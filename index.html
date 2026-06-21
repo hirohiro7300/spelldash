@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpellDash</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <p class="logo">SpellDash</p>
+        <h1>英単語を、思い出して打つ。</h1>
+        <p class="subtitle">スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。</p>
+      </div>
+    </header>
+
+    <section class="stats">
+      <div class="stat-card">
+        <span>残り時間</span>
+        <strong><span id="time">60</span>秒</strong>
+      </div>
+      <div class="stat-card">
+        <span>スコア</span>
+        <strong id="score">0</strong>
+      </div>
+      <div class="stat-card">
+        <span>ミス</span>
+        <strong id="miss">0</strong>
+      </div>
+      <div class="stat-card">
+        <span>平均タイプ</span>
+        <strong><span id="typeSpeed">0.0</span>打/秒</strong>
+      </div>
+      <div class="stat-card">
+        <span>ベスト</span>
+        <strong id="bestScore">0</strong>
+      </div>
+    </section>
+
+    <main class="game-card">
+      <p class="label">日本語訳</p>
+      <h2 id="japanese">Enterキーでスタート</h2>
+
+      <p id="word" class="hidden-word">スペルはまだ非表示</p>
+
+      <input
+        id="input"
+        type="text"
+        placeholder="英単語を入力"
+        autocomplete="off"
+        autofocus
+      />
+
+      <p id="message" class="message">Enterキーでゲーム開始</p>
+
+      <button id="restart">もう一回</button>
+    </main>
+
+    <section class="result-card">
+      <h3>学習データ</h3>
+      <div id="weakWords">まだデータがありません。</div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
