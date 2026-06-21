@@ -231,7 +231,7 @@ function startGame() {
   inputElement.value = "";
   inputElement.focus();
   typedPreviewElement.innerHTML = "";
-  
+
   scoreElement.textContent = score;
   missElement.textContent = miss;
   timeElement.textContent = time;
@@ -318,7 +318,7 @@ inputElement.addEventListener("keydown", (event) => {
 
   if (typedChar === expectedChar) {
     inputElement.value += expectedChar;
-    typedPreviewElement.innerHTML = colorizeWord(inputElement.value);
+    typedPreviewElement.innerHTML = renderColoredWord(inputElement.value);
     currentIndex++;
     correctChars++;
     updateTypeSpeed();
