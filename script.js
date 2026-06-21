@@ -51,6 +51,7 @@ const japaneseElement = document.getElementById("japanese");
 const wordElement = document.getElementById("word");
 const inputElement = document.getElementById("input");
 const messageElement = document.getElementById("message");
+const typedPreviewElement = document.getElementById("typedPreview");
 const restartButton = document.getElementById("restart");
 const weakWordsElement = document.getElementById("weakWords");
 
@@ -161,7 +162,7 @@ function setNewWord() {
   wordElement.textContent = "スペルはまだ非表示";
   wordElement.classList.add("hidden");
   inputElement.value = "";
-
+  typedPreviewElement.innerHTML = "";
   recordPlay(currentWord.en);
 }
 
@@ -229,7 +230,8 @@ function startGame() {
   inputElement.disabled = false;
   inputElement.value = "";
   inputElement.focus();
-
+  typedPreviewElement.innerHTML = "";
+  
   scoreElement.textContent = score;
   missElement.textContent = miss;
   timeElement.textContent = time;
@@ -316,6 +318,7 @@ inputElement.addEventListener("keydown", (event) => {
 
   if (typedChar === expectedChar) {
     inputElement.value += expectedChar;
+    typedPreviewElement.innerHTML = colorizeWord(inputElement.value);
     currentIndex++;
     correctChars++;
     updateTypeSpeed();
