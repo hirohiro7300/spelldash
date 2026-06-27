@@ -4,39 +4,26 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SpellDash</title>
-  <link rel="stylesheet" href="style.css" />
+
+  <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="stylesheet" href="./css/layout.css" />
+  <link rel="stylesheet" href="./css/game.css" />
+  <link rel="stylesheet" href="./css/responsive.css" />
 </head>
 <body>
   <div class="app">
     <header class="header">
-      <div>
-        <p class="logo">SpellDash</p>
-        <h1>英単語を、思い出して打つ。</h1>
-        <p class="subtitle">スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。</p>
-      </div>
+      <p class="logo">SpellDash</p>
+      <h1>英単語を、思い出して打つ。</h1>
+      <p class="subtitle">スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。</p>
     </header>
 
     <section class="stats">
-      <div class="stat-card">
-        <span>残り時間</span>
-        <strong><span id="time">60</span>秒</strong>
-      </div>
-      <div class="stat-card">
-        <span>スコア</span>
-        <strong id="score">0</strong>
-      </div>
-      <div class="stat-card">
-        <span>ミス</span>
-        <strong id="miss">0</strong>
-      </div>
-      <div class="stat-card">
-        <span>平均タイプ</span>
-        <strong><span id="typeSpeed">0.0</span>打/秒</strong>
-      </div>
-      <div class="stat-card">
-        <span>ベスト</span>
-        <strong id="bestScore">0</strong>
-      </div>
+      <div class="stat-card"><span>残り時間</span><strong><span id="time">60</span>秒</strong></div>
+      <div class="stat-card"><span>スコア</span><strong id="score">0</strong></div>
+      <div class="stat-card"><span>ミス</span><strong id="miss">0</strong></div>
+      <div class="stat-card"><span>平均タイプ</span><strong><span id="typeSpeed">0.0</span>打/秒</strong></div>
+      <div class="stat-card"><span>ベスト</span><strong id="bestScore">0</strong></div>
     </section>
 
     <main class="game-card">
@@ -45,19 +32,20 @@
 
       <p id="word" class="hidden-word">スペルはまだ非表示</p>
 
+      <!-- 入力欄の中に虹色テキストを重ねる -->
       <div class="input-wrapper">
-  <div id="typedPreview" class="typed-preview"></div>
+        <div id="typedPreview" class="typed-preview"></div>
 
-  <input
-    id="input"
-    type="text"
-    placeholder="英単語を入力"
-    autocomplete="off"
-    autofocus
-  />
-</div>
+        <input
+          id="input"
+          type="text"
+          placeholder="英単語を入力"
+          autocomplete="off"
+          autofocus
+        />
+      </div>
 
-<p id="message" class="message">Enterキーでゲーム開始</p>
+      <p id="message" class="message">Enterキーでゲーム開始</p>
 
       <button id="restart">もう一回</button>
     </main>
@@ -68,6 +56,6 @@
     </section>
   </div>
 
-  <script src="script.js"></script>
+  <script type="module" src="./js/main.js"></script>
 </body>
 </html>

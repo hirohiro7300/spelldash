@@ -1,0 +1,39 @@
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  background: linear-gradient(135deg, #0f172a, #1e293b, #111827);
+  color: #f8fafc;
+  min-height: 100vh;
+}
+
+.app {
+  width: min(1100px, 92%);
+  margin: 0 auto;
+  padding: 40px 0;
+}
+
+.header {
+  margin-bottom: 28px;
+}
+
+.logo {
+  display: inline-block;
+  margin: 0 0 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(32px, 6vw, 64px);
+  line-height: 1.05;
+}
+
+.subtitle {
+  color: #cbd5e1;
+  font-size: 18px;
+  margin-top: 14px;
+}
