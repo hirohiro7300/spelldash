@@ -15,15 +15,36 @@
     <header class="header">
       <p class="logo">SpellDash</p>
       <h1>英単語を、思い出して打つ。</h1>
-      <p class="subtitle">スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。</p>
+      <p class="subtitle">
+        スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。
+      </p>
     </header>
 
     <section class="stats">
-      <div class="stat-card"><span>残り時間</span><strong><span id="time">60</span>秒</strong></div>
-      <div class="stat-card"><span>スコア</span><strong id="score">0</strong></div>
-      <div class="stat-card"><span>ミス</span><strong id="miss">0</strong></div>
-      <div class="stat-card"><span>平均タイプ</span><strong><span id="typeSpeed">0.0</span>打/秒</strong></div>
-      <div class="stat-card"><span>ベスト</span><strong id="bestScore">0</strong></div>
+      <div class="stat-card">
+        <span>残り時間</span>
+        <strong><span id="time">60</span>秒</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>スコア</span>
+        <strong id="score">0</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>ミス</span>
+        <strong id="miss">0</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>平均タイプ</span>
+        <strong><span id="typeSpeed">0.0</span>打/秒</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>ベスト</span>
+        <strong id="bestScore">0</strong>
+      </div>
     </section>
 
     <main class="game-card">
@@ -51,17 +72,22 @@
     </main>
 
     <section class="result-card">
+      <h3>学習データ</h3>
+      <div id="weakWords">まだデータがありません。</div>
+    </section>
+
+    <section class="result-card">
       <h3>単語一覧</h3>
 
       <input
-      id="wordSearch"
-      type="text"
-      placeholder="英単語・日本語で検索"
-      autocomplete="off"
-    />
+        id="wordSearch"
+        type="text"
+        placeholder="英単語・日本語で検索"
+        autocomplete="off"
+      />
 
-    <div id="wordList"></div>
-</section>
+      <div id="wordList"></div>
+    </section>
   </div>
 
   <script type="module" src="./js/main.js"></script>
