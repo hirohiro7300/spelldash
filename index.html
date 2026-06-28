@@ -51,9 +51,17 @@
     </main>
 
     <section class="result-card">
-      <h3>学習データ</h3>
-      <div id="weakWords">まだデータがありません。</div>
-    </section>
+      <h3>単語一覧</h3>
+
+      <input
+      id="wordSearch"
+      type="text"
+      placeholder="英単語・日本語で検索"
+      autocomplete="off"
+    />
+
+    <div id="wordList"></div>
+</section>
   </div>
 
   <script type="module" src="./js/main.js"></script>

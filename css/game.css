@@ -181,3 +181,13 @@ button:hover {
   60% { transform: translateX(8px); }
   100% { transform: translateX(0); }
 }
+
+#wordSearch {
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  border: none;
+  outline: none;
+  font-size: 16px;
+}
