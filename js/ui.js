@@ -44,6 +44,8 @@ export function clearTypedPreview() {
 }
 
 export function renderWeakWords() {
+  if (!elements.weakWords) return;
+
   const stats = getWordStats();
 
   const weakWords = Object.entries(stats)

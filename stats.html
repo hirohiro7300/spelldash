@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SpellDash</title>
+  <title>学習データ | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
   <link rel="stylesheet" href="./css/layout.css" />
@@ -19,8 +19,8 @@
       </a>
 
       <nav class="site-nav" aria-label="メインナビ">
-        <a href="/" class="site-nav__link" aria-current="page">プレイ</a>
-        <a href="./stats.html" class="site-nav__link">学習データ</a>
+        <a href="/" class="site-nav__link">プレイ</a>
+        <a href="./stats.html" class="site-nav__link" aria-current="page">学習データ</a>
       </nav>
 
       <div class="account">
@@ -48,64 +48,38 @@
 
   <div class="app">
     <section class="hero">
-      <p class="logo">英単語タイピング学習</p>
-      <h1>英単語を、思い出して打つ。</h1>
+      <p class="logo">学習データ</p>
+      <h1>あなたの学習の記録。</h1>
       <p class="subtitle">
-        スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。
+        これまでの練習で貯まったデータをまとめて確認できます。
       </p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
-    <section class="stats">
-      <div class="stat-card">
-        <span>残り時間</span>
-        <strong><span id="time">60</span>秒</strong>
-      </div>
+    <section class="metric-grid" id="overview"></section>
 
-      <div class="stat-card">
-        <span>スコア</span>
-        <strong id="score">0</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>ミス</span>
-        <strong id="miss">0</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>平均タイプ</span>
-        <strong><span id="typeSpeed">0.0</span>打/秒</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>ベスト</span>
-        <strong id="bestScore">0</strong>
-      </div>
+    <section class="result-card">
+      <h3>習得の進捗</h3>
+      <div id="progress"></div>
     </section>
 
-    <main class="game-card">
-      <p class="label">日本語訳</p>
-      <h2 id="japanese">Enterキーでスタート</h2>
+    <section class="result-card">
+      <h3>苦手単語</h3>
+      <div id="weakWords">まだデータがありません。</div>
+    </section>
 
-      <p id="word" class="hidden-word">スペルはまだ非表示</p>
+    <section class="result-card">
+      <h3>単語一覧</h3>
 
-      <!-- 入力欄の中に虹色テキストを重ねる -->
-      <div class="input-wrapper">
-        <div id="typedPreview" class="typed-preview"></div>
+      <input
+        id="wordSearch"
+        type="text"
+        placeholder="英単語・日本語で検索"
+        autocomplete="off"
+      />
 
-        <input
-          id="input"
-          type="text"
-          placeholder="英単語を入力"
-          autocomplete="off"
-          autofocus
-        />
-      </div>
-
-      <p id="message" class="message">Enterキーでゲーム開始</p>
-
-      <button id="restart">もう一回</button>
-    </main>
+      <div id="wordList"></div>
+    </section>
   </div>
 
   <footer class="site-footer">
@@ -129,6 +103,6 @@
     </div>
   </footer>
 
-  <script type="module" src="./js/main.js"></script>
+  <script type="module" src="./js/statsView.js"></script>
 </body>
 </html>
