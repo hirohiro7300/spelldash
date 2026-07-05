@@ -1,4 +1,4 @@
-import { supabase } from "./supabase.js";
+import { supabase, isSupabaseConfigured } from "./supabase.js";
 
 const accountLoginElement = document.getElementById("accountLogin");
 const accountUserElement = document.getElementById("accountUser");
@@ -25,6 +25,14 @@ export async function initializeAuth() {
 }
 
 async function sendLoginLink() {
+  if (!isSupabaseConfigured) {
+    showAuthMessage(
+      "ログイン設定が未完了です（Supabaseキー未設定）。管理者にお問い合わせください。",
+      "error"
+    );
+    return;
+  }
+
   const email = emailInputElement.value.trim();
 
   if (!email) {

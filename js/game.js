@@ -1,5 +1,5 @@
 import { words } from "./words.js";
-import { getWordStats, getBestScore, saveBestScore } from "./storage.js";
+import { getWordStats, getBestScore, saveBestScore, recordTypingSession } from "./storage.js";
 import { recordPlay, recordCorrect, recordMiss } from "./stats.js";
 import {
   elements,
@@ -157,6 +157,16 @@ function endGame() {
   clearInterval(timer);
   isPlaying = false;
   elements.input.disabled = true;
+
+  const elapsedSeconds = startTime ? (Date.now() - startTime) / 1000 : 0;
+  const speed = elapsedSeconds > 0 ? correctChars / elapsedSeconds : 0;
+
+  recordTypingSession({
+    correctChars,
+    missChars: miss,
+    seconds: elapsedSeconds,
+    speed
+  });
 
   saveBestScore(score);
   elements.bestScore.textContent = getBestScore();

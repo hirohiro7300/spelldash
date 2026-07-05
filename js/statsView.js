@@ -2,61 +2,22 @@ import { initializeAuth } from "./auth.js";
 import { initializeWordList } from "./wordList.js";
 import { renderWeakWords } from "./ui.js";
 import { setFooterYear } from "./footer.js";
-import { getWordStats, getBestScore } from "./storage.js";
-import { words } from "./words.js";
+import { computeSummary, computeTypingSummary } from "./summary.js";
 
 const overviewElement = document.getElementById("overview");
 const progressElement = document.getElementById("progress");
+const typingElement = document.getElementById("typingMetrics");
 
 initializeAuth();
 renderOverview();
+renderTyping();
 renderProgress();
 renderWeakWords();
 initializeWordList();
 setFooterYear();
 
-function computeSummary() {
-  const stats = getWordStats();
-  const entries = Object.values(stats);
-
-  const total = words.length;
-  const learned = words.filter((word) => (stats[word.en]?.playCount ?? 0) > 0).length;
-  const mastered = words.filter((word) => stats[word.en]?.mastered).length;
-
-  const totalCorrect = entries.reduce((sum, data) => sum + (data.correctCount ?? 0), 0);
-  const totalMiss = entries.reduce((sum, data) => sum + (data.missCount ?? 0), 0);
-  const totalPlays = entries.reduce((sum, data) => sum + (data.playCount ?? 0), 0);
-
-  const attempts = totalCorrect + totalMiss;
-  const accuracy = attempts > 0 ? Math.round((totalCorrect / attempts) * 100) : 0;
-  const masteryRate = total > 0 ? Math.round((mastered / total) * 100) : 0;
-
-  return {
-    best: getBestScore(),
-    total,
-    learned,
-    mastered,
-    masteryRate,
-    totalCorrect,
-    totalMiss,
-    totalPlays,
-    accuracy
-  };
-}
-
-function renderOverview() {
-  const s = computeSummary();
-
-  const cards = [
-    { label: "ベストスコア", value: s.best },
-    { label: "学習した単語", value: `${s.learned} / ${s.total}` },
-    { label: "習得済み", value: s.mastered },
-    { label: "習得率", value: `${s.masteryRate}%` },
-    { label: "正答率", value: `${s.accuracy}%` },
-    { label: "総プレイ", value: s.totalPlays }
-  ];
-
-  overviewElement.innerHTML = cards
+function renderCards(container, cards) {
+  container.innerHTML = cards
     .map(
       (card) => `
         <div class="stat-card">
@@ -66,6 +27,32 @@ function renderOverview() {
       `
     )
     .join("");
+}
+
+function renderOverview() {
+  const s = computeSummary();
+
+  renderCards(overviewElement, [
+    { label: "ベストスコア", value: s.best },
+    { label: "学習した単語", value: `${s.learned} / ${s.total}` },
+    { label: "習得済み", value: s.mastered },
+    { label: "習得率", value: `${s.masteryRate}%` },
+    { label: "正答率", value: `${s.accuracy}%` },
+    { label: "総プレイ", value: s.totalPlays }
+  ]);
+}
+
+function renderTyping() {
+  const t = computeTypingSummary();
+
+  renderCards(typingElement, [
+    { label: "平均タップ / 秒", value: t.tapsPerSecond.toFixed(1) },
+    { label: "ミスタイプ率", value: `${t.mistypeRate.toFixed(1)}%` },
+    { label: "最高速度 (打/秒)", value: t.bestSpeed.toFixed(1) },
+    { label: "推定WPM", value: Math.round(t.wordsPerMinute) },
+    { label: "総タップ数", value: t.totalTaps.toLocaleString() },
+    { label: "プレイ回数", value: t.sessions }
+  ]);
 }
 
 function renderProgress() {

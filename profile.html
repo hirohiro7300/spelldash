@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SpellDash</title>
+  <title>プロフィール | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
   <link rel="stylesheet" href="./css/layout.css" />
@@ -19,7 +19,7 @@
       </a>
 
       <nav class="site-nav" aria-label="メインナビ">
-        <a href="/" class="site-nav__link" aria-current="page">プレイ</a>
+        <a href="/" class="site-nav__link">プレイ</a>
         <a href="./stats.html" class="site-nav__link">学習データ</a>
       </nav>
 
@@ -48,64 +48,40 @@
 
   <div class="app">
     <section class="hero">
-      <p class="logo">英単語タイピング学習</p>
-      <h1>英単語を、思い出して打つ。</h1>
+      <p class="logo">プロフィール</p>
+      <h1>マイページ</h1>
       <p class="subtitle">
-        スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。
+        アカウント情報と、これまでの学習の記録をまとめて確認できます。
       </p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
-    <section class="stats">
-      <div class="stat-card">
-        <span>残り時間</span>
-        <strong><span id="time">60</span>秒</strong>
-      </div>
+    <section class="result-card" id="profileLoggedOut">
+      <h3>ログインしていません</h3>
+      <p class="muted">
+        右上のメールアドレス欄からログインすると、プロフィールが表示されます。
+      </p>
+    </section>
 
-      <div class="stat-card">
-        <span>スコア</span>
-        <strong id="score">0</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>ミス</span>
-        <strong id="miss">0</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>平均タイプ</span>
-        <strong><span id="typeSpeed">0.0</span>打/秒</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>ベスト</span>
-        <strong id="bestScore">0</strong>
+    <section class="result-card profile-card" id="profileCard" hidden>
+      <div class="profile-head">
+        <div class="profile-avatar" id="profileAvatar">?</div>
+        <div class="profile-head__body">
+          <p class="profile-email" id="profileEmail"></p>
+          <p class="muted" id="profileJoined"></p>
+        </div>
       </div>
     </section>
 
-    <main class="game-card">
-      <p class="label">日本語訳</p>
-      <h2 id="japanese">Enterキーでスタート</h2>
+    <section class="result-card">
+      <h3>学習サマリー</h3>
+      <div class="metric-grid" id="profileSummary"></div>
+    </section>
 
-      <p id="word" class="hidden-word">スペルはまだ非表示</p>
-
-      <!-- 入力欄の中に虹色テキストを重ねる -->
-      <div class="input-wrapper">
-        <div id="typedPreview" class="typed-preview"></div>
-
-        <input
-          id="input"
-          type="text"
-          placeholder="英単語を入力"
-          autocomplete="off"
-          autofocus
-        />
-      </div>
-
-      <p id="message" class="message">Enterキーでゲーム開始</p>
-
-      <button id="restart">もう一回</button>
-    </main>
+    <section class="result-card">
+      <h3>タイピング</h3>
+      <div class="metric-grid" id="profileTyping"></div>
+    </section>
   </div>
 
   <footer class="site-footer">
@@ -129,6 +105,6 @@
     </div>
   </footer>
 
-  <script type="module" src="./js/main.js"></script>
+  <script type="module" src="./js/profileView.js"></script>
 </body>
 </html>

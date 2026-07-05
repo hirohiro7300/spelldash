@@ -123,6 +123,12 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-decoration: none;
+}
+
+a.account__email:hover {
+  color: #93c5fd;
+  text-decoration: underline;
 }
 
 /* ===== ボタン共通 ===== */
