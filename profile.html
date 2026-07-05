@@ -37,10 +37,28 @@
         </form>
 
         <div class="account__user" id="accountUser" hidden>
-          <a href="./profile.html" class="account__email" id="userStatus"></a>
-          <button id="logoutButton" type="button" class="btn btn--sm btn--ghost">
-            ログアウト
+          <button
+            class="avatar-button"
+            id="avatarButton"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="アカウントメニュー"
+          >
+            <span class="avatar" id="headerAvatar">?</span>
           </button>
+
+          <div class="account-menu" id="accountMenu" hidden>
+            <p class="account-menu__email" id="userStatus"></p>
+            <a class="account-menu__item" href="./profile.html">プロフィール</a>
+            <button
+              class="account-menu__item account-menu__item--danger"
+              id="logoutButton"
+              type="button"
+            >
+              ログアウト
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -31,11 +31,7 @@
 
   .account__user {
     width: 100%;
-    justify-content: space-between;
-  }
-
-  .account__email {
-    max-width: none;
+    justify-content: flex-end;
   }
 
   .app {

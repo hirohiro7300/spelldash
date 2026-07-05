@@ -7,6 +7,9 @@ const loginButtonElement = document.getElementById("loginButton");
 const logoutButtonElement = document.getElementById("logoutButton");
 const userStatusElement = document.getElementById("userStatus");
 const authMessageElement = document.getElementById("authMessage");
+const avatarButtonElement = document.getElementById("avatarButton");
+const accountMenuElement = document.getElementById("accountMenu");
+const headerAvatarElement = document.getElementById("headerAvatar");
 
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
@@ -22,6 +25,23 @@ export async function initializeAuth() {
   });
 
   logoutButtonElement.addEventListener("click", logout);
+
+  avatarButtonElement.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleMenu();
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!accountUserElement.contains(event.target)) {
+      closeMenu();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeMenu();
+    }
+  });
 }
 
 async function sendLoginLink() {
@@ -70,12 +90,33 @@ function updateAuthDisplay(session) {
     accountLoginElement.hidden = false;
     accountUserElement.hidden = true;
     userStatusElement.textContent = "";
+    closeMenu();
     return;
   }
 
+  const email = session.user.email ?? "";
   accountLoginElement.hidden = true;
   accountUserElement.hidden = false;
-  userStatusElement.textContent = session.user.email;
+  userStatusElement.textContent = email;
+  headerAvatarElement.textContent = email.charAt(0).toUpperCase() || "?";
+}
+
+function toggleMenu() {
+  if (accountMenuElement.hidden) {
+    openMenu();
+  } else {
+    closeMenu();
+  }
+}
+
+function openMenu() {
+  accountMenuElement.hidden = false;
+  avatarButtonElement.setAttribute("aria-expanded", "true");
+}
+
+function closeMenu() {
+  accountMenuElement.hidden = true;
+  avatarButtonElement.setAttribute("aria-expanded", "false");
 }
 
 function showAuthMessage(text, type = "") {
