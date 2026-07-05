@@ -1,14 +1,15 @@
 import { supabase, isSupabaseConfigured } from "./supabase.js";
 
-const accountLoginElement = document.getElementById("accountLogin");
+const accountGuestElement = document.getElementById("accountGuest");
 const accountUserElement = document.getElementById("accountUser");
+const accountLoginElement = document.getElementById("accountLogin");
+const loginToggleElement = document.getElementById("loginToggle");
 const emailInputElement = document.getElementById("emailInput");
 const loginButtonElement = document.getElementById("loginButton");
 const logoutButtonElement = document.getElementById("logoutButton");
 const userStatusElement = document.getElementById("userStatus");
 const authMessageElement = document.getElementById("authMessage");
 const avatarButtonElement = document.getElementById("avatarButton");
-const accountMenuElement = document.getElementById("accountMenu");
 const headerAvatarElement = document.getElementById("headerAvatar");
 
 export async function initializeAuth() {
@@ -26,22 +27,44 @@ export async function initializeAuth() {
 
   logoutButtonElement.addEventListener("click", logout);
 
-  avatarButtonElement.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleMenu();
+  // ホバーはCSS（.dropdown:hover）が担当。クリックはタッチ端末用の開閉。
+  setupDropdownToggle(loginToggleElement, accountGuestElement, () => {
+    emailInputElement.focus();
   });
+  setupDropdownToggle(avatarButtonElement, accountUserElement);
 
   document.addEventListener("click", (event) => {
+    if (!accountGuestElement.contains(event.target)) {
+      closeDropdown(accountGuestElement, loginToggleElement);
+    }
     if (!accountUserElement.contains(event.target)) {
-      closeMenu();
+      closeDropdown(accountUserElement, avatarButtonElement);
     }
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      closeMenu();
+      closeDropdown(accountGuestElement, loginToggleElement);
+      closeDropdown(accountUserElement, avatarButtonElement);
     }
   });
+}
+
+function setupDropdownToggle(trigger, dropdown, onOpen) {
+  trigger.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const isOpen = dropdown.classList.toggle("is-open");
+    trigger.setAttribute("aria-expanded", String(isOpen));
+
+    if (isOpen && onOpen) {
+      onOpen();
+    }
+  });
+}
+
+function closeDropdown(dropdown, trigger) {
+  dropdown.classList.remove("is-open");
+  trigger.setAttribute("aria-expanded", "false");
 }
 
 async function sendLoginLink() {
@@ -77,6 +100,7 @@ async function sendLoginLink() {
     return;
   }
 
+  closeDropdown(accountGuestElement, loginToggleElement);
   showAuthMessage("ログインリンクをメールに送りました。メールをご確認ください。", "success");
 }
 
@@ -87,36 +111,19 @@ async function logout() {
 
 function updateAuthDisplay(session) {
   if (!session) {
-    accountLoginElement.hidden = false;
+    accountGuestElement.hidden = false;
     accountUserElement.hidden = true;
     userStatusElement.textContent = "";
-    closeMenu();
+    closeDropdown(accountUserElement, avatarButtonElement);
     return;
   }
 
   const email = session.user.email ?? "";
-  accountLoginElement.hidden = true;
+  accountGuestElement.hidden = true;
   accountUserElement.hidden = false;
   userStatusElement.textContent = email;
   headerAvatarElement.textContent = email.charAt(0).toUpperCase() || "?";
-}
-
-function toggleMenu() {
-  if (accountMenuElement.hidden) {
-    openMenu();
-  } else {
-    closeMenu();
-  }
-}
-
-function openMenu() {
-  accountMenuElement.hidden = false;
-  avatarButtonElement.setAttribute("aria-expanded", "true");
-}
-
-function closeMenu() {
-  accountMenuElement.hidden = true;
-  avatarButtonElement.setAttribute("aria-expanded", "false");
+  closeDropdown(accountGuestElement, loginToggleElement);
 }
 
 function showAuthMessage(text, type = "") {

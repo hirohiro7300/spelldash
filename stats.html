@@ -24,19 +24,36 @@
       </nav>
 
       <div class="account">
-        <form class="account__login" id="accountLogin">
-          <input
-            id="emailInput"
-            type="email"
-            placeholder="メールアドレス"
-            autocomplete="email"
-          />
-          <button id="loginButton" type="submit" class="btn btn--sm">
+        <div class="account__guest dropdown" id="accountGuest" hidden>
+          <button
+            class="btn btn--sm btn--ghost"
+            id="loginToggle"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+          >
             ログイン
           </button>
-        </form>
 
-        <div class="account__user" id="accountUser" hidden>
+          <div class="dropdown__panel">
+            <form class="account-menu account-menu--login" id="accountLogin">
+              <p class="account-menu__hint">
+                メールアドレスにログインリンクを送ります。
+              </p>
+              <input
+                id="emailInput"
+                type="email"
+                placeholder="メールアドレス"
+                autocomplete="email"
+              />
+              <button id="loginButton" type="submit" class="btn btn--sm">
+                リンクを送信
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="account__user dropdown" id="accountUser" hidden>
           <button
             class="avatar-button"
             id="avatarButton"
@@ -48,16 +65,18 @@
             <span class="avatar" id="headerAvatar">?</span>
           </button>
 
-          <div class="account-menu" id="accountMenu" hidden>
-            <p class="account-menu__email" id="userStatus"></p>
-            <a class="account-menu__item" href="./profile.html">プロフィール</a>
-            <button
-              class="account-menu__item account-menu__item--danger"
-              id="logoutButton"
-              type="button"
-            >
-              ログアウト
-            </button>
+          <div class="dropdown__panel">
+            <div class="account-menu" id="accountMenu">
+              <p class="account-menu__email" id="userStatus"></p>
+              <a class="account-menu__item" href="./profile.html">プロフィール</a>
+              <button
+                class="account-menu__item account-menu__item--danger"
+                id="logoutButton"
+                type="button"
+              >
+                ログアウト
+              </button>
+            </div>
           </div>
         </div>
       </div>
