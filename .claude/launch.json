@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "spelldash",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/hiraga/Desktop/spelldash/.claude/serve.py"],
+      "port": 4173
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+/* ===== タブレット以下 ===== */
+@media (max-width: 720px) {
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .game-card {
+    padding: 24px 18px;
+  }
+}
+
+/* ===== スマホ ===== */
+@media (max-width: 560px) {
+  .site-header__inner {
+    flex-wrap: wrap;
+    padding: 10px 0;
+  }
+
+  .account {
+    width: 100%;
+  }
+
+  .account__login {
+    width: 100%;
+  }
+
+  .account__login input {
+    flex: 1;
+    max-width: none;
+  }
+
+  .account__user {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .account__email {
+    max-width: none;
+  }
+
+  .app {
+    padding: 28px 0;
+  }
+
+  .stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .site-footer__inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .site-footer__nav {
+    margin-left: 0;
+  }
+}

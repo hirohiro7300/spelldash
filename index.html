@@ -11,29 +11,46 @@
   <link rel="stylesheet" href="./css/responsive.css" />
 </head>
 <body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <div class="account">
+        <form class="account__login" id="accountLogin">
+          <input
+            id="emailInput"
+            type="email"
+            placeholder="メールアドレス"
+            autocomplete="email"
+          />
+          <button id="loginButton" type="submit" class="btn btn--sm">
+            ログイン
+          </button>
+        </form>
+
+        <div class="account__user" id="accountUser" hidden>
+          <span class="account__email" id="userStatus"></span>
+          <button id="logoutButton" type="button" class="btn btn--sm btn--ghost">
+            ログアウト
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
   <div class="app">
-    <header class="header">
-      <p class="logo">SpellDash</p>
+    <section class="hero">
+      <p class="logo">英単語タイピング学習</p>
       <h1>英単語を、思い出して打つ。</h1>
       <p class="subtitle">
         スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。
       </p>
-    </header>
-    <section class="result-card auth-card">
-  <h3>アカウント</h3>
+      <p class="auth-message" id="authMessage" role="status"></p>
+    </section>
 
-  <p id="userStatus">未ログイン</p>
-
-  <input
-    id="emailInput"
-    type="email"
-    placeholder="メールアドレス"
-    autocomplete="email"
-  />
-
-  <button id="loginButton">ログインリンクを送る</button>
-  <button id="logoutButton" style="display: none;">ログアウト</button>
-</section>
     <section class="stats">
       <div class="stat-card">
         <span>残り時間</span>
@@ -103,6 +120,27 @@
       <div id="wordList"></div>
     </section>
   </div>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="https://github.com/hirohiro7300/spelldash" target="_blank" rel="noopener">GitHub</a>
+        <a href="#">使い方</a>
+        <a href="#">プライバシー</a>
+      </nav>
+
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
+    </div>
+  </footer>
 
   <script type="module" src="./js/main.js"></script>
 </body>

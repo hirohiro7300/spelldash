@@ -1,9 +1,12 @@
 import { supabase } from "./supabase.js";
 
-const userStatusElement = document.getElementById("userStatus");
+const accountLoginElement = document.getElementById("accountLogin");
+const accountUserElement = document.getElementById("accountUser");
 const emailInputElement = document.getElementById("emailInput");
 const loginButtonElement = document.getElementById("loginButton");
 const logoutButtonElement = document.getElementById("logoutButton");
+const userStatusElement = document.getElementById("userStatus");
+const authMessageElement = document.getElementById("authMessage");
 
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
@@ -13,7 +16,11 @@ export async function initializeAuth() {
     updateAuthDisplay(session);
   });
 
-  loginButtonElement.addEventListener("click", sendLoginLink);
+  accountLoginElement.addEventListener("submit", (event) => {
+    event.preventDefault();
+    sendLoginLink();
+  });
+
   logoutButtonElement.addEventListener("click", logout);
 }
 
@@ -21,9 +28,12 @@ async function sendLoginLink() {
   const email = emailInputElement.value.trim();
 
   if (!email) {
-    userStatusElement.textContent = "メールアドレスを入力してください。";
+    showAuthMessage("メールアドレスを入力してください。", "error");
     return;
   }
+
+  loginButtonElement.disabled = true;
+  showAuthMessage("ログインリンクを送信中…");
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -32,29 +42,35 @@ async function sendLoginLink() {
     }
   });
 
+  loginButtonElement.disabled = false;
+
   if (error) {
-    userStatusElement.textContent = `ログインリンク送信失敗：${error.message}`;
+    showAuthMessage(`ログインリンク送信に失敗しました：${error.message}`, "error");
     return;
   }
 
-  userStatusElement.textContent = "ログインリンクをメールに送りました。";
+  showAuthMessage("ログインリンクをメールに送りました。メールをご確認ください。", "success");
 }
 
 async function logout() {
   await supabase.auth.signOut();
+  showAuthMessage("ログアウトしました。");
 }
 
 function updateAuthDisplay(session) {
   if (!session) {
-    userStatusElement.textContent = "未ログイン";
-    emailInputElement.style.display = "block";
-    loginButtonElement.style.display = "inline-block";
-    logoutButtonElement.style.display = "none";
+    accountLoginElement.hidden = false;
+    accountUserElement.hidden = true;
+    userStatusElement.textContent = "";
     return;
   }
 
-  userStatusElement.textContent = `ログイン中：${session.user.email}`;
-  emailInputElement.style.display = "none";
-  loginButtonElement.style.display = "none";
-  logoutButtonElement.style.display = "inline-block";
+  accountLoginElement.hidden = true;
+  accountUserElement.hidden = false;
+  userStatusElement.textContent = session.user.email;
+}
+
+function showAuthMessage(text, type = "") {
+  authMessageElement.textContent = text;
+  authMessageElement.className = `auth-message ${type}`.trim();
 }
