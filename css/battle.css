@@ -1,0 +1,303 @@
+/* ===== Battle Preseason ===== */
+/* 方向性: ミニマル・知的・静か・能力測定の緊張感 */
+
+.preseason-tag {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: #94a3b8;
+}
+
+/* ===== ロビー ===== */
+.rank-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.rank-card__rank {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.rank-card__rp {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.rank-card__record {
+  text-align: right;
+  color: #cbd5e1;
+  font-size: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.battle-start-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.battle-start-btn {
+  flex: 1;
+  padding: 15px 24px;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+}
+
+.battle-note {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+/* ===== 対戦画面 ===== */
+#battleArena {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.arena-panel {
+  padding: 20px 24px;
+  border-radius: 24px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  backdrop-filter: blur(14px);
+}
+
+.arena-panel--you {
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.arena-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.arena-panel__who {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.arena-panel__stats {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.arena-panel__stats strong {
+  color: #f8fafc;
+  font-size: 20px;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.arena-combo {
+  margin-left: 10px;
+  color: #fb923c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.arena-ja {
+  margin: 6px 0 10px;
+  font-size: clamp(26px, 5vw, 44px);
+  font-weight: 700;
+  min-height: 1.2em;
+}
+
+.arena-ja--cpu {
+  font-size: clamp(20px, 4vw, 32px);
+  color: #cbd5e1;
+}
+
+.arena-status {
+  min-height: 20px;
+  margin: 8px 0 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.arena-timer {
+  align-self: center;
+  font-size: 34px;
+  font-weight: 800;
+  color: #facc15;
+  font-variant-numeric: tabular-nums;
+}
+
+.input-wrapper--battle {
+  width: min(520px, 100%);
+}
+
+/* CPUの入力進捗ドット（文字は見せない） */
+.cpu-progress {
+  display: flex;
+  gap: 6px;
+  min-height: 12px;
+}
+
+.cpu-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.25);
+}
+
+.cpu-dot--done {
+  background: #94a3b8;
+}
+
+/* スコア加算の小さな脈動 */
+.score-pulse {
+  animation: score-pulse 0.3s ease;
+}
+
+@keyframes score-pulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* ===== 結果画面 ===== */
+.battle-result-card {
+  text-align: center;
+}
+
+.battle-verdict {
+  margin: 4px 0 18px;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.battle-verdict--win { color: #4ade80; }
+.battle-verdict--loss { color: #f87171; }
+.battle-verdict--draw { color: #facc15; }
+
+.battle-scores {
+  display: grid;
+  gap: 6px;
+  max-width: 340px;
+  margin: 0 auto 18px;
+}
+
+.battle-scores__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.battle-scores__row--cpu {
+  color: #94a3b8;
+}
+
+.battle-detail {
+  display: flex;
+  justify-content: center;
+  gap: 26px;
+  margin-bottom: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.battle-detail strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 18px;
+  margin-top: 2px;
+}
+
+.battle-rp {
+  max-width: 340px;
+  margin: 0 auto 18px;
+}
+
+.battle-rp__change {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.battle-promotion {
+  margin: 10px 0 0;
+  color: #facc15;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  animation: promotion-in 0.5s ease;
+}
+
+@keyframes promotion-in {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.battle-review {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 0 auto 20px;
+  padding: 12px 16px;
+  max-width: 340px;
+  border-radius: 14px;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.battle-review p {
+  margin: 0;
+  color: #f87171;
+  font-weight: 700;
+}
+
+.battle-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+/* デスクトップは対戦パネルを左右に */
+@media (min-width: 860px) {
+  #battleArena {
+    display: grid;
+    grid-template-columns: 1fr auto 1.2fr;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .arena-timer {
+    align-self: center;
+  }
+
+  .arena-panel--cpu {
+    order: 0;
+  }
+
+  .arena-panel--you {
+    order: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .score-pulse,
+  .battle-promotion {
+    animation: none;
+  }
+}

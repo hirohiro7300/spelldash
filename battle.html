@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Battle | SpellDash</title>
+
+  <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="stylesheet" href="./css/layout.css" />
+  <link rel="stylesheet" href="./css/game.css" />
+  <link rel="stylesheet" href="./css/battle.css" />
+  <link rel="stylesheet" href="./css/responsive.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link">プレイ</a>
+        <a href="./battle.html" class="site-nav__link" aria-current="page">バトル</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
+      </nav>
+
+      <div class="account">
+        <div class="account__guest dropdown" id="accountGuest" hidden>
+          <button
+            class="btn btn--sm btn--ghost"
+            id="loginToggle"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+          >
+            ログイン
+          </button>
+
+          <div class="dropdown__panel">
+            <form class="account-menu account-menu--login" id="accountLogin">
+              <button
+                id="googleLoginButton"
+                type="button"
+                class="btn btn--sm btn--google"
+              >
+                Googleでログイン
+              </button>
+
+              <div class="account-menu__divider">または</div>
+
+              <p class="account-menu__hint">
+                メールアドレスにログインリンクを送ります。
+              </p>
+              <input
+                id="emailInput"
+                type="email"
+                placeholder="メールアドレス"
+                autocomplete="email"
+              />
+              <button id="loginButton" type="submit" class="btn btn--sm">
+                リンクを送信
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="account__user dropdown" id="accountUser" hidden>
+          <button
+            class="avatar-button"
+            id="avatarButton"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="アカウントメニュー"
+          >
+            <span class="avatar" id="headerAvatar">?</span>
+          </button>
+
+          <div class="dropdown__panel">
+            <div class="account-menu" id="accountMenu">
+              <p class="account-menu__email" id="userStatus"></p>
+              <a class="account-menu__item" href="./profile.html">プロフィール</a>
+              <button
+                class="account-menu__item account-menu__item--danger"
+                id="logoutButton"
+                type="button"
+              >
+                ログアウト
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="app">
+    <!-- ===== ロビー ===== -->
+    <section id="battleLobby">
+      <section class="hero">
+        <p class="logo">CPU Ranked <span class="preseason-tag">PRESEASON</span></p>
+        <h1>Battle</h1>
+        <p class="subtitle">
+          60秒、CPUと同条件の別問題で実力を測る。Passした単語はStudyの復習へ戻る。
+        </p>
+        <p class="auth-message" id="authMessage" role="status"></p>
+      </section>
+
+      <section class="result-card rank-card">
+        <div class="rank-card__head">
+          <div>
+            <p class="rank-card__rank" id="lobbyRank">Bronze</p>
+            <p class="rank-card__rp" id="lobbyRp">0 / 100 RP</p>
+          </div>
+          <div class="rank-card__record">
+            <span id="lobbyRecord">0勝 0敗 0分</span>
+            <span class="muted" id="lobbyStreak"></span>
+          </div>
+        </div>
+        <div class="progress-bar progress-bar--slim">
+          <div class="progress-bar__fill" id="lobbyRpFill" style="width: 0%;"></div>
+        </div>
+
+        <div class="battle-start-row">
+          <select id="battleCategory" class="setting-select" aria-label="出題カテゴリ"></select>
+          <button id="startBattle" class="btn battle-start-btn" type="button">
+            Ranked Match
+          </button>
+        </div>
+        <p class="muted battle-note">対戦相手はCPUです（プレシーズン）。</p>
+      </section>
+    </section>
+
+    <!-- ===== 対戦 ===== -->
+    <section id="battleArena" hidden>
+      <div class="arena-panel arena-panel--cpu" aria-label="CPU側">
+        <div class="arena-panel__head">
+          <span class="arena-panel__who" id="cpuName">CPU</span>
+          <span class="arena-panel__stats">
+            Score <strong id="cpuScore">0</strong>
+            <span class="arena-combo" id="cpuCombo"></span>
+          </span>
+        </div>
+        <p class="arena-ja arena-ja--cpu" id="cpuJa">…</p>
+        <div class="cpu-progress" id="cpuProgress" aria-label="CPUの入力進捗"></div>
+        <p class="arena-status" id="cpuStatus"></p>
+      </div>
+
+      <div class="arena-timer" id="battleTimer" role="timer">60</div>
+
+      <div class="arena-panel arena-panel--you" aria-label="あなた側">
+        <div class="arena-panel__head">
+          <span class="arena-panel__who">YOU</span>
+          <span class="arena-panel__stats">
+            Score <strong id="playerScore">0</strong>
+            <span class="arena-combo" id="playerCombo"></span>
+          </span>
+        </div>
+        <p class="arena-ja" id="playerJa">…</p>
+
+        <div class="input-wrapper input-wrapper--battle">
+          <div id="battleTypedPreview" class="typed-preview"></div>
+          <input
+            id="battleInput"
+            type="text"
+            placeholder="英単語を入力（Enterでパス）"
+            autocomplete="off"
+          />
+        </div>
+        <p class="arena-status" id="playerStatus">分からなければ Enter でパス（答えは出ません）</p>
+      </div>
+    </section>
+
+    <!-- ===== 結果 ===== -->
+    <section id="battleResult" hidden>
+      <section class="result-card battle-result-card">
+        <p class="battle-verdict" id="resultVerdict">VICTORY</p>
+
+        <div class="battle-scores">
+          <div class="battle-scores__row">
+            <span>You</span><strong id="resultPlayerScore">0</strong>
+          </div>
+          <div class="battle-scores__row battle-scores__row--cpu">
+            <span id="resultCpuName">CPU</span><strong id="resultCpuScore">0</strong>
+          </div>
+        </div>
+
+        <div class="battle-detail" id="resultDetail"></div>
+
+        <div class="battle-rp">
+          <p class="battle-rp__change" id="resultRpChange"></p>
+          <div class="progress-bar progress-bar--slim">
+            <div class="progress-bar__fill" id="resultRpFill" style="width: 0%;"></div>
+          </div>
+          <p class="muted" id="resultRankLine"></p>
+          <p class="battle-promotion" id="resultPromotion" hidden></p>
+        </div>
+
+        <div class="battle-review" id="resultReview" hidden>
+          <p id="resultUnresolvedText"></p>
+          <a href="/" class="btn btn--sm">復習する</a>
+        </div>
+
+        <div class="battle-actions">
+          <button id="rematchButton" class="btn" type="button">もう一回</button>
+          <button id="backToLobby" class="btn btn--sm btn--ghost" type="button">ロビーへ</button>
+        </div>
+      </section>
+    </section>
+  </div>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="https://github.com/hirohiro7300/spelldash" target="_blank" rel="noopener">GitHub</a>
+        <a href="./privacy.html">プライバシー</a>
+      </nav>
+
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
+    </div>
+  </footer>
+
+  <script type="module" src="./js/battleView.js"></script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import { getQueueSnapshot, getRecalledTodayCount } from "./studyQueue.js";
+import { findWord } from "./wordStore.js";
 
 // Study Recall Loop の表示部分。
 // 右側の小カード列は「次に何が来るか」ではなく「状態と残量」だけを伝える
@@ -17,16 +18,27 @@ export function renderStudyQueue(visible) {
 
   const { items, remaining } = getQueueSnapshot(VISIBLE_CHIPS);
 
+  // Unresolved（赤）だけ日本語の問題文を見せる。
+  // 「投資」がまだ赤い、と具体的に見えることで消したくなる。
+  // 英単語の答えは絶対に出さない。Pendingは内容を見せない（次問題の先読み防止）
   const chips = items
     .map((item) => {
-      const label = item.unresolved ? "未解決（再挑戦待ち）" : "未回答";
+      if (item.unresolved) {
+        const word = findWord(item.id);
+        const ja = word ? word.ja : "";
+        const label = `未解決: ${ja}（もう一度出題されます）`;
+        return `
+          <div
+            class="queue-chip queue-chip--unresolved"
+            role="img"
+            aria-label="${label}"
+            title="${label}"
+          ><span class="queue-chip__icon" aria-hidden="true">↻</span><span class="queue-chip__ja">${ja}</span></div>
+        `;
+      }
+
       return `
-        <div
-          class="queue-chip${item.unresolved ? " queue-chip--unresolved" : ""}"
-          role="img"
-          aria-label="${label}"
-          title="${label}"
-        >${item.unresolved ? "↻" : ""}</div>
+        <div class="queue-chip" role="img" aria-label="未回答" title="未回答"></div>
       `;
     })
     .join("");

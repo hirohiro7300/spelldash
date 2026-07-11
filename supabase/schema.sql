@@ -60,6 +60,12 @@ create table if not exists public.user_progress (
   best_score integer not null default 0,
   selected_category text,
   selected_mode text,
+  battle_rp integer not null default 0,
+  battle_wins integer not null default 0,
+  battle_losses integer not null default 0,
+  battle_draws integer not null default 0,
+  battle_current_win_streak integer not null default 0,
+  battle_best_win_streak integer not null default 0,
   updated_at timestamptz not null default now()
 );
 
@@ -71,6 +77,39 @@ create policy "user_progress_insert_own" on public.user_progress
   for insert with check (auth.uid() = user_id);
 create policy "user_progress_update_own" on public.user_progress
   for update using (auth.uid() = user_id);
+
+-- ===== battle_sessions: Battle試合履歴（Ghost Match用タイムライン含む） =====
+create table if not exists public.battle_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  opponent_type text not null,
+  opponent_name text,
+  category text,
+  duration_seconds integer,
+  result text not null,
+  player_score integer not null default 0,
+  opponent_score integer not null default 0,
+  rp_before integer,
+  rp_change integer,
+  rp_after integer,
+  correct_count integer not null default 0,
+  typing_miss integer not null default 0,
+  recall_fail integer not null default 0,
+  accuracy numeric,
+  event_timeline jsonb,
+  difficulty_profile jsonb,
+  played_at timestamptz not null default now()
+);
+
+alter table public.battle_sessions enable row level security;
+
+create policy "battle_sessions_select_own" on public.battle_sessions
+  for select using (auth.uid() = user_id);
+create policy "battle_sessions_insert_own" on public.battle_sessions
+  for insert with check (auth.uid() = user_id);
+
+create index if not exists battle_sessions_user_idx
+  on public.battle_sessions (user_id, played_at desc);
 
 -- ===== play_sessions: プレイ履歴（Challenge終了ごと） =====
 create table if not exists public.play_sessions (
@@ -104,3 +143,4 @@ grant select, insert, update on public.profiles to authenticated;
 grant select, insert, update, delete on public.word_progress to authenticated;
 grant select, insert, update on public.user_progress to authenticated;
 grant select, insert on public.play_sessions to authenticated;
+grant select, insert on public.battle_sessions to authenticated;

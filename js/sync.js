@@ -1,6 +1,12 @@
 import { supabase } from "./supabase.js";
 import { getWordStats, saveWordStats, getBestScore, saveBestScore } from "./storage.js";
 import { getTotalXp, getLevelState, getStreak } from "./level.js";
+import {
+  getBattleStore,
+  saveBattleStore,
+  getPendingBattleSessions,
+  clearPendingBattleSessions
+} from "./battleRank.js";
 
 // ===== Local First 同期 =====
 // プレイ中は localStorage のみに書き、以下のタイミングでSupabaseへ同期する:
@@ -113,6 +119,7 @@ export async function pushSync() {
     }
 
     await pushUserProgress(userId);
+    await flushPendingBattleSessions(userId);
   } finally {
     isPushing = false;
   }
@@ -120,6 +127,7 @@ export async function pushSync() {
 
 async function pushUserProgress(userId) {
   const level = getLevelState();
+  const battle = getBattleStore();
 
   await supabase.from("user_progress").upsert({
     user_id: userId,
@@ -129,8 +137,27 @@ async function pushUserProgress(userId) {
     best_score: getBestScore(),
     selected_category: localStorage.getItem("spelldash_category") || "all",
     selected_mode: localStorage.getItem("spelldash_mode") || "study",
+    battle_rp: battle.rp,
+    battle_wins: battle.wins,
+    battle_losses: battle.losses,
+    battle_draws: battle.draws,
+    battle_current_win_streak: battle.currentWinStreak,
+    battle_best_win_streak: battle.bestWinStreak,
     updated_at: new Date().toISOString()
   });
+}
+
+// battle_sessionsの送信待ち行列を送る（失敗しても残り、次回再送）
+async function flushPendingBattleSessions(userId) {
+  const pending = getPendingBattleSessions();
+  if (pending.length === 0) return;
+
+  const rows = pending.map((row) => ({ ...row, user_id: userId }));
+  const { error } = await supabase.from("battle_sessions").insert(rows);
+
+  if (!error) {
+    clearPendingBattleSessions();
+  }
 }
 
 // ---- play_sessions: Challenge終了ごとの履歴 ----
@@ -256,6 +283,30 @@ export async function initialSync() {
         })
       );
       changedLocal = true;
+    }
+
+    // Battle戦績: 更新が新しい方のスナップショットを採用（累計の二重計上を防ぐ）。
+    // bestWinStreakのみ両者のmax
+    const localBattle = getBattleStore();
+    const cloudUpdated = Date.parse(cloudProgress.updated_at ?? 0) || 0;
+    const localBattleUpdated = Date.parse(localBattle.updatedAt ?? 0) || 0;
+
+    if ((cloudProgress.battle_rp ?? 0) > 0 || cloudUpdated > 0) {
+      if (cloudUpdated > localBattleUpdated) {
+        saveBattleStore({
+          rp: cloudProgress.battle_rp ?? 0,
+          wins: cloudProgress.battle_wins ?? 0,
+          losses: cloudProgress.battle_losses ?? 0,
+          draws: cloudProgress.battle_draws ?? 0,
+          currentWinStreak: cloudProgress.battle_current_win_streak ?? 0,
+          bestWinStreak: Math.max(
+            cloudProgress.battle_best_win_streak ?? 0,
+            localBattle.bestWinStreak ?? 0
+          ),
+          updatedAt: cloudProgress.updated_at
+        });
+        changedLocal = true;
+      }
     }
   }
 

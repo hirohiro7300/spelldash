@@ -76,7 +76,7 @@ body:not(.mode-study) .stat-card--study {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 48px;
+  width: 118px;
 }
 
 .study-queue:empty {
@@ -100,9 +100,28 @@ body:not(.mode-study) .study-queue {
 }
 
 .queue-chip--unresolved {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0 10px;
   background: rgba(248, 113, 113, 0.14);
   border-color: rgba(248, 113, 113, 0.6);
   color: #f87171;
+}
+
+.queue-chip__icon {
+  flex-shrink: 0;
+}
+
+/* 長い日本語訳でもレイアウトを壊さない（全文はtitle/aria-labelで） */
+.queue-chip__ja {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .queue-chip--more {
@@ -172,12 +191,18 @@ body:not(.mode-study) .study-queue {
     transform: none;
     flex-direction: row;
     justify-content: center;
+    flex-wrap: wrap;
     width: auto;
     margin-bottom: 14px;
   }
 
   .queue-chip {
     width: 34px;
+  }
+
+  .queue-chip--unresolved {
+    width: auto;
+    max-width: 96px;
   }
 }
 

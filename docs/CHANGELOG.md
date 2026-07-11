@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 2026-07-13 (Recall Loop UI改善＋Battle Preseason)
+
+- Recall Loopの未解決カード（赤）に日本語の問題文を表示（「↻ 投資」形式、英単語は非表示、ellipsis対応）
+- Battle Preseason（CPUランクマッチ）を追加: battle.html
+  - 60秒、プレイヤーとCPUが同カテゴリ・同難易度構成の別問題を解く
+  - CPUはローカル確率モデル（ランク別性能×4タイプ: Steady/Sprinter/Scholar/Rival）、問題ごとにイベント進行
+  - CPU側は日本語問題文と入力進捗ドットのみ表示（英単語・入力文字は非表示）
+  - EnterはPass: 0点で次へ、lastRecallFailAt更新→StudyのUnresolvedへ接続（Battle中に答えは出ない）
+  - スコア: 正解100＋速度ボーナス最大50＋ノーミス10（プレイヤー/CPU共通関数）
+  - Rank: Bronze〜Master（RP 100刻み）、勝利+20/引き分け+5/敗北-10、RPは0未満にならない
+  - 結果画面: 勝敗・RP変化・昇格表示・未解決語数と「復習する」導線
+  - Local First保存（spelldash_battle）→ user_progressのbattle_*列＋battle_sessionsテーブルへ同期（失敗分は保留・再送）
+  - BattleはXP・レベル・ミッションに影響しない（Rank=実力、Level=学習量の分離）
+- ヘッダーに「バトル」ナビを追加（全ページ）
+
 ## 2026-07-12 (Study Recall Loop)
 
 - Studyモードに「Recall Loop」を実装: 思い出せなかった単語が画面内を巡回し、自力で思い出せるまで残り続ける
