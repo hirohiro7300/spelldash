@@ -1,7 +1,24 @@
 # CHANGELOG
 
+## 2026-07-11
+
+- ログインパネルに「Googleでログイン」ボタンを追加（signInWithOAuth）
+- ローカルプレビューをミラー方式に変更（macOS TCC制限の回避、~/.claude/projects配下から配信）
+
+## 2026-07-09
+
+- 独自ドメイン spelldash.net を開通（https://www.spelldash.net で公開）
+  - お名前.comのドメイン利用制限（メール認証未完了によるclientHold）を解除
+  - wwwのCNAMEレコードを設定（有料オプション「ドメインプロテクション」は申し込まず無料で設定）
+  - VercelのSSL証明書発行を確認
+- SupabaseのURL Configurationを修正（Site URLが初期値localhost:3000のままだったのが、ログインリンク切れの根本原因）
+  - Site URL: https://www.spelldash.net / Redirect URLs: vercel.app・localhost:4173
+- 本番でメールログイン成功を確認
+
 ## 2026-07-05
 
+- ログインエラーを分かりやすい日本語に変換（rate limit → 「メール送信の上限に達しました」など）
+- ログインリンク送信後に60秒のクールダウンを追加（Supabaseのメール送信枠を連打で消費しない）
 - ヘッダーのアカウントUIをホバー式に刷新。未ログイン時は小さな「ログイン」ボタンだけ表示し、カーソルを合わせる（かクリック）とメール入力パネルが開く
 - ログイン時のメニューもホバーで表示されるように変更（ゲームの邪魔にならない）
 - hidden属性がCSSのdisplay指定に打ち消されて要素が常時表示されるバグを修正（reset.cssに[hidden]ルール追加）

@@ -4,7 +4,7 @@
     {
       "name": "spelldash",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["/Users/hiraga/Desktop/spelldash/.claude/serve.py"],
+      "runtimeArgs": ["/Users/hiraga/.claude/projects/-Users-hiraga-Desktop-spelldash/preview/serve.py"],
       "port": 4173
     }
   ]

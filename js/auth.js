@@ -11,6 +11,7 @@ const userStatusElement = document.getElementById("userStatus");
 const authMessageElement = document.getElementById("authMessage");
 const avatarButtonElement = document.getElementById("avatarButton");
 const headerAvatarElement = document.getElementById("headerAvatar");
+const googleLoginButtonElement = document.getElementById("googleLoginButton");
 
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
@@ -25,6 +26,7 @@ export async function initializeAuth() {
     sendLoginLink();
   });
 
+  googleLoginButtonElement.addEventListener("click", signInWithGoogle);
   logoutButtonElement.addEventListener("click", logout);
 
   // ホバーはCSS（.dropdown:hover）が担当。クリックはタッチ端末用の開閉。
@@ -67,6 +69,24 @@ function closeDropdown(dropdown, trigger) {
   trigger.setAttribute("aria-expanded", "false");
 }
 
+async function signInWithGoogle() {
+  googleLoginButtonElement.disabled = true;
+  showAuthMessage("Googleに移動します…");
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin
+    }
+  });
+
+  // 成功時はGoogleへページ遷移するため、ここに戻るのはエラー時のみ
+  if (error) {
+    googleLoginButtonElement.disabled = false;
+    showAuthMessage(`Googleログインに失敗しました：${error.message}`, "error");
+  }
+}
+
 async function sendLoginLink() {
   if (!isSupabaseConfigured) {
     showAuthMessage(
@@ -93,15 +113,49 @@ async function sendLoginLink() {
     }
   });
 
-  loginButtonElement.disabled = false;
-
   if (error) {
-    showAuthMessage(`ログインリンク送信に失敗しました：${error.message}`, "error");
+    loginButtonElement.disabled = false;
+    showAuthMessage(formatAuthError(error), "error");
     return;
   }
 
   closeDropdown(accountGuestElement, loginToggleElement);
   showAuthMessage("ログインリンクをメールに送りました。メールをご確認ください。", "success");
+  startSendCooldown();
+}
+
+// 送信直後の連打でメール送信枠（レートリミット）を消費しないための待機
+function startSendCooldown() {
+  let remaining = 60;
+  loginButtonElement.disabled = true;
+  loginButtonElement.textContent = `再送信まで ${remaining}秒`;
+
+  const cooldownTimer = setInterval(() => {
+    remaining--;
+
+    if (remaining <= 0) {
+      clearInterval(cooldownTimer);
+      loginButtonElement.disabled = false;
+      loginButtonElement.textContent = "リンクを送信";
+      return;
+    }
+
+    loginButtonElement.textContent = `再送信まで ${remaining}秒`;
+  }, 1000);
+}
+
+function formatAuthError(error) {
+  const message = error.message ?? "";
+
+  if (message.includes("rate limit")) {
+    return "メール送信の上限に達しました。約1時間おいてから再度お試しください。";
+  }
+
+  if (message.includes("Invalid API key")) {
+    return "ログイン設定に問題があります（APIキーが無効）。管理者にお問い合わせください。";
+  }
+
+  return `ログインリンク送信に失敗しました：${message}`;
 }
 
 async function logout() {

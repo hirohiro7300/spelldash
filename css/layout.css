@@ -186,6 +186,32 @@ body {
   border-color: #60a5fa;
 }
 
+.btn.btn--google {
+  background: #fff;
+  color: #1f2937;
+}
+
+.btn.btn--google:hover {
+  background: #e2e8f0;
+}
+
+.account-menu__divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.account-menu__divider::before,
+.account-menu__divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.25);
+}
+
 .account-menu__email {
   margin: 0 0 4px;
   padding: 8px 12px;
