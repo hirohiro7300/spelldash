@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-11 (Today's Mission・簡易SRS)
+
+- Today's Missionをゲーム画面に追加（Review 最大12語＋New 5語、1日1回自動生成）
+  - Reviewの優先順位: ミスが多い順 → 最後にプレイしてから時間が経っている順（習得済みは除外）
+  - Newは選択中カテゴリ・易しいレベルを優先して選定
+  - ミッション対象の単語は通常プレイで優先出題される（遊ぶだけで自然に達成）
+  - 達成時は静かな「MISSION COMPLETE」表示＋ボーナス+40 XP
+- 簡易SRS（間隔反復）を導入: 単語statsに lastPlayed / nextReviewAt を追加
+  - 連続ノーミス正解1回→1日後、3回→3日後、10回→30日後に復習期限を設定
+  - ミスすると即復習対象に戻る
+- localStorageのmigration機構を追加（既存ユーザーのデータを壊さずスキーマ拡張、version管理）
+
 ## 2026-07-11 (Knowledge Map基盤・1000語)
 
 - コンセプトを「Knowledge Map / 成長可視化ツール」路線へ転換（docs/DESIGN.md全面改訂）

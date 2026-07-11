@@ -3,6 +3,7 @@ import { getWordStats, getBestScore, saveBestScore, recordTypingSession } from "
 import { recordPlay, recordCorrect, recordMiss } from "./stats.js";
 import { addXp, updateStreak } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
+import { markMissionWord, isMissionWordPending, renderMission } from "./mission.js";
 import {
   elements,
   showMessage,
@@ -133,7 +134,16 @@ function handleCorrectChar(expectedChar) {
     const wordXp = 10 + (isClean ? 5 : 0) + Math.min(combo, 10);
     gainedXp += wordXp;
 
-    showMessage(`Good! +${wordXp} XP`, "correct");
+    // ミッション対象ならカウント。完了の瞬間はボーナスXP
+    const missionResult = markMissionWord(currentWord.en);
+    gainedXp += missionResult.bonusXp;
+    renderMission();
+
+    if (missionResult.justCompleted) {
+      showMessage(`MISSION COMPLETE +${missionResult.bonusXp} XP`, "correct");
+    } else {
+      showMessage(`Good! +${wordXp} XP`, "correct");
+    }
 
     setTimeout(setNewWord, 250);
   }
@@ -179,6 +189,11 @@ function chooseWord() {
       const accuracy = data.correctCount / Math.max(data.playCount, 1);
       if (accuracy < 0.5) weight += 5;
       if (data.mastered) weight = 1;
+    }
+
+    // 今日のミッション対象は優先的に出題（遊んでいるだけで達成できる）
+    if (isMissionWordPending(word.en)) {
+      weight += 8;
     }
 
     return Array(weight).fill(word);

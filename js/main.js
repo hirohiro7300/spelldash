@@ -5,6 +5,7 @@ import { setFooterYear } from "./footer.js";
 import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
+import { renderMission } from "./mission.js";
 
 initializeAuth();
 setFooterYear();
@@ -17,6 +18,7 @@ elements.restart.addEventListener("click", restartGame);
 initWordStore()
   .then(() => {
     initializeCategoryPicker();
+    renderMission();
     initializeDisplay();
     showMessage("Enterキーでゲーム開始");
   })

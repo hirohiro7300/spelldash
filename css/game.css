@@ -12,6 +12,73 @@
   margin-bottom: 20px;
 }
 
+/* ===== Today's Mission ===== */
+.mission {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  backdrop-filter: blur(14px);
+}
+
+.mission:empty {
+  display: none;
+}
+
+.mission__head {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.mission__items {
+  display: flex;
+  gap: 24px;
+}
+
+.mission__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mission__label {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.mission__item strong {
+  color: #f8fafc;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mission__empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* 達成時は静かに色が変わるだけ */
+.mission--complete {
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+.mission__complete {
+  margin: 0;
+  color: #4ade80;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
 /* ===== レベルバー ===== */
 .level-bar {
   display: flex;
