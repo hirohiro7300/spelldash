@@ -151,10 +151,19 @@ export async function initialSync() {
 
   sessionStorage.setItem(SYNCED_FLAG, "1");
 
-  const [{ data: cloudRows }, { data: cloudProgress }] = await Promise.all([
+  const [wordResult, progressResult] = await Promise.all([
     supabase.from("word_progress").select("*"),
     supabase.from("user_progress").select("*").maybeSingle()
   ]);
+
+  // 取得に失敗したらフラグを戻して次回再試行（データを壊さない）
+  if (wordResult.error) {
+    sessionStorage.removeItem(SYNCED_FLAG);
+    throw new Error(`sync pull failed: ${wordResult.error.message}`);
+  }
+
+  const cloudRows = wordResult.data;
+  const cloudProgress = progressResult.data;
 
   const local = getWordStats();
   const cloudMap = new Map((cloudRows ?? []).map((row) => [row.word_id, row]));

@@ -93,3 +93,12 @@ create policy "play_sessions_insert_own" on public.play_sessions
 -- 復習期限での検索用（将来のミッション/統計クエリ向け）
 create index if not exists word_progress_review_idx
   on public.word_progress (user_id, next_review_at);
+
+-- ===== テーブル権限（GRANT） =====
+-- RLSは「行」を守るが、テーブル自体へのアクセス権は別途必要。
+-- ログインユーザー（authenticated）にのみ付与する。
+grant usage on schema public to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert, update, delete on public.word_progress to authenticated;
+grant select, insert, update on public.user_progress to authenticated;
+grant select, insert on public.play_sessions to authenticated;
