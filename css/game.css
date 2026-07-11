@@ -493,6 +493,47 @@ button:hover {
   margin: 8px 0 0;
 }
 
+/* ===== 発音ボタン・設定 ===== */
+.speak-button {
+  margin: 0 0 18px;
+  padding: 8px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.speak-button:hover {
+  background: rgba(148, 163, 184, 0.22);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.setting-row label {
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.setting-select {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.8);
+  color: #f8fafc;
+  font-size: 14px;
+  outline: none;
+}
+
 .profile-head {
   display: flex;
   align-items: center;

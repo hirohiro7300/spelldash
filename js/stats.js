@@ -1,4 +1,5 @@
 import { getWordStats, saveWordStats } from "./storage.js";
+import { markWordDirty } from "./sync.js";
 
 // 簡易SRS: 連続ノーミス正解数 → 次の復習までの日数
 // 1回→1日後、3連続→3日後、10連続→30日後（それ以上は30日固定）
@@ -25,6 +26,7 @@ export function recordPlay(word) {
   stats[word].playCount += 1;
   stats[word].lastPlayed = new Date().toISOString();
   saveWordStats(stats);
+  markWordDirty(word);
 }
 
 export function recordCorrect(word, wasClean) {
@@ -51,6 +53,7 @@ export function recordCorrect(word, wasClean) {
   }
 
   saveWordStats(stats);
+  markWordDirty(word);
 }
 
 // 打ち間違い（覚えていたがタイプをミスした）。苦手判定には使わない
@@ -61,6 +64,7 @@ export function recordTypingMiss(word) {
 
   stats[word].typingMiss += 1;
   saveWordStats(stats);
+  markWordDirty(word);
 }
 
 // 思い出せなかった（Enterで答えを見た）。これが本当の「苦手」
@@ -76,6 +80,7 @@ export function recordRecallFail(word) {
   stats[word].nextReviewAt = new Date().toISOString();
 
   saveWordStats(stats);
+  markWordDirty(word);
 }
 
 function createInitialWordStats() {

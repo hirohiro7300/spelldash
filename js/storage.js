@@ -5,28 +5,58 @@ const SCHEMA_VERSION_KEY = "spelldash_schema_version";
 
 // 既存ユーザーのデータを壊さずに新フィールドを追加するmigration。
 // スキーマを変えるときは CURRENT_SCHEMA_VERSION を上げて処理を足す。
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 
 function migrateStorage() {
   let version = Number(localStorage.getItem(SCHEMA_VERSION_KEY)) || 1;
   if (version >= CURRENT_SCHEMA_VERSION) return;
 
-  const stats = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+  let stats = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
 
   // v1 → v2: lastPlayed / nextReviewAt を追加
   if (version < 2) {
-    for (const en of Object.keys(stats)) {
-      stats[en] = { lastPlayed: null, nextReviewAt: null, ...stats[en] };
+    for (const key of Object.keys(stats)) {
+      stats[key] = { lastPlayed: null, nextReviewAt: null, ...stats[key] };
     }
     version = 2;
   }
 
   // v2 → v3: ミスを「打ち間違い」と「思い出せなかった」に分離
   if (version < 3) {
-    for (const en of Object.keys(stats)) {
-      stats[en] = { typingMiss: 0, recallFail: 0, ...stats[en] };
+    for (const key of Object.keys(stats)) {
+      stats[key] = { typingMiss: 0, recallFail: 0, ...stats[key] };
     }
     version = 3;
+  }
+
+  // v3 → v4: 主キーを en から word.id（教科プレフィックス付き）へ変更
+  // 例: "apple" → "english-apple"。ミッションの保存内容も同様に変換
+  if (version < 4) {
+    const rekeyed = {};
+    for (const key of Object.keys(stats)) {
+      const newKey = key.startsWith("english-") ? key : `english-${key}`;
+      rekeyed[newKey] = stats[key];
+    }
+    stats = rekeyed;
+
+    const missionRaw = localStorage.getItem("spelldash_mission");
+    if (missionRaw) {
+      try {
+        const mission = JSON.parse(missionRaw);
+        for (const listName of ["review", "new", "reviewDone", "newDone"]) {
+          if (Array.isArray(mission[listName])) {
+            mission[listName] = mission[listName].map((key) =>
+              key.startsWith("english-") ? key : `english-${key}`
+            );
+          }
+        }
+        localStorage.setItem("spelldash_mission", JSON.stringify(mission));
+      } catch {
+        localStorage.removeItem("spelldash_mission");
+      }
+    }
+
+    version = 4;
   }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));

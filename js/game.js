@@ -4,6 +4,8 @@ import { recordPlay, recordCorrect, recordTypingMiss, recordRecallFail } from ".
 import { addXp, updateStreak } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
 import { markMissionWord, isMissionWordPending, renderMission } from "./mission.js";
+import { pushSync, recordPlaySession } from "./sync.js";
+import { speak, autoSpeak } from "./audio.js";
 import {
   elements,
   showMessage,
@@ -179,12 +181,18 @@ function revealAnswer() {
   recallFailCount++;
   if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
 
-  recordRecallFail(currentWord.en);
+  recordRecallFail(currentWord.id);
 
   combo = 0;
   updateCombo(0);
 
   showColoredAnswer(currentWord.en);
+
+  // 発音: autoなら1回再生。スピーカーボタンも表示
+  autoSpeak(currentWord.en);
+  if (elements.speakButton) {
+    elements.speakButton.hidden = false;
+  }
 
   // 頭から打ち直して練習できるようにリセット
   currentIndex = 0;
@@ -192,6 +200,12 @@ function revealAnswer() {
   clearTypedPreview();
 
   showMessage("答えを表示。入力して練習 or Enterで次へ", "revealed");
+}
+
+export function speakCurrentWord() {
+  if (currentWord) {
+    speak(currentWord.en);
+  }
 }
 
 function handleCorrectChar(expectedChar) {
@@ -207,13 +221,24 @@ function handleCorrectChar(expectedChar) {
   }
 }
 
+let studyWordsSinceSync = 0;
+
 function completeWord() {
   score++;
   elements.score.textContent = score;
 
+  // Studyは終了イベントがないため、10語ごとにクラウド同期
+  if (mode === "study") {
+    studyWordsSinceSync++;
+    if (studyWordsSinceSync >= 10) {
+      studyWordsSinceSync = 0;
+      pushSync();
+    }
+  }
+
   // clean = 思い出せて、かつ打ち間違いもなし
   const isClean = !hasMissedCurrentWord && !isRevealed;
-  recordCorrect(currentWord.en, isClean);
+  recordCorrect(currentWord.id, isClean);
 
   if (isClean) {
     combo++;
@@ -224,7 +249,7 @@ function completeWord() {
   const wordXp = isRevealed ? 5 : 10 + (isClean ? 5 : 0) + Math.min(combo, 10);
   let earned = wordXp;
 
-  const missionResult = markMissionWord(currentWord.en);
+  const missionResult = markMissionWord(currentWord.id);
   earned += missionResult.bonusXp;
   renderMission();
 
@@ -275,7 +300,7 @@ function handleTypingMiss() {
   combo = 0;
   updateCombo(0);
 
-  recordTypingMiss(currentWord.en);
+  recordTypingMiss(currentWord.id);
   showMessage("Miss!", "wrong");
 }
 
@@ -287,11 +312,14 @@ function setNewWord() {
 
   elements.japanese.textContent = currentWord.ja;
   showHiddenWordText("分からないときは Enter で答えを表示");
+  if (elements.speakButton) {
+    elements.speakButton.hidden = true;
+  }
 
   elements.input.value = "";
   clearTypedPreview();
 
-  recordPlay(currentWord.en);
+  recordPlay(currentWord.id);
 }
 
 function chooseWord() {
@@ -299,7 +327,7 @@ function chooseWord() {
   const words = getWordsByCategory(activeCategory);
 
   const weightedWords = words.flatMap((word) => {
-    const data = stats[word.en];
+    const data = stats[word.id];
     let weight = 3;
 
     if (data) {
@@ -311,7 +339,7 @@ function chooseWord() {
     }
 
     // 今日のミッション対象は優先的に出題（遊んでいるだけで達成できる）
-    if (isMissionWordPending(word.en)) {
+    if (isMissionWordPending(word.id)) {
       weight += 8;
     }
 
@@ -320,8 +348,8 @@ function chooseWord() {
 
   let selected = weightedWords[Math.floor(Math.random() * weightedWords.length)];
 
-  if (currentWord && selected.en === currentWord.en && words.length > 1) {
-    selected = words.find((word) => word.en !== currentWord.en);
+  if (currentWord && selected.id === currentWord.id && words.length > 1) {
+    selected = words.find((word) => word.id !== currentWord.id);
   }
 
   return selected;
@@ -341,6 +369,17 @@ function endChallenge() {
     seconds: elapsedSeconds,
     speed
   });
+
+  // クラウド同期＋プレイ履歴（未ログインなら何もしない）
+  recordPlaySession({
+    mode: "challenge",
+    score,
+    typingSpeed: Math.round(speed * 10) / 10,
+    typingMiss: typingMissCount,
+    recallFail: recallFailCount,
+    durationSeconds: Math.round(elapsedSeconds)
+  });
+  pushSync();
 
   saveBestScore(score);
   elements.bestScore.textContent = getBestScore();

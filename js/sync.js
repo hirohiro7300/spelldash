@@ -1,0 +1,281 @@
+import { supabase } from "./supabase.js";
+import { getWordStats, saveWordStats, getBestScore, saveBestScore } from "./storage.js";
+import { getTotalXp, getLevelState, getStreak } from "./level.js";
+
+// ===== Local First 同期 =====
+// プレイ中は localStorage のみに書き、以下のタイミングでSupabaseへ同期する:
+//   - Challenge終了時 / Studyで10語ごと / ページ離脱時 / ログイン直後（マージ）
+// 毎入力での同期はしない。
+
+const DIRTY_KEY = "spelldash_dirty_words";
+const XP_KEY = "spelldash_xp";
+const STREAK_KEY = "spelldash_streak";
+const SYNCED_FLAG = "spelldash_synced_this_session"; // sessionStorage
+
+let isPushing = false;
+
+// ---- dirty管理（前回同期以降に変わった単語ID） ----
+
+function getDirtyWords() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DIRTY_KEY)) || []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDirtyWords(set) {
+  localStorage.setItem(DIRTY_KEY, JSON.stringify([...set]));
+}
+
+export function markWordDirty(wordId) {
+  const dirty = getDirtyWords();
+  if (!dirty.has(wordId)) {
+    dirty.add(wordId);
+    saveDirtyWords(dirty);
+  }
+}
+
+// ---- 変換 ----
+
+function statToRow(userId, wordId, s) {
+  return {
+    user_id: userId,
+    word_id: wordId,
+    play_count: s.playCount ?? 0,
+    correct_count: s.correctCount ?? 0,
+    typing_miss: s.typingMiss ?? 0,
+    recall_fail: s.recallFail ?? 0,
+    clean_correct_streak: s.cleanCorrectStreak ?? 0,
+    mastered: !!s.mastered,
+    mastered_at: s.masteredAt ?? null,
+    last_played: s.lastPlayed ?? null,
+    next_review_at: s.nextReviewAt ?? null,
+    updated_at: new Date().toISOString()
+  };
+}
+
+function rowToStat(row, localStat) {
+  return {
+    playCount: row.play_count,
+    correctCount: row.correct_count,
+    typingMiss: row.typing_miss,
+    recallFail: row.recall_fail,
+    // missCountはローカル互換の合算値（クラウドには持たない）
+    missCount: Math.max(localStat?.missCount ?? 0, row.recall_fail),
+    cleanCorrectStreak: row.clean_correct_streak,
+    mastered: row.mastered,
+    masteredAt: row.mastered_at,
+    lastPlayed: row.last_played,
+    nextReviewAt: row.next_review_at
+  };
+}
+
+async function getUserId() {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user?.id ?? null;
+}
+
+// ---- push: ローカル → クラウド ----
+
+export async function pushSync() {
+  if (isPushing) return;
+
+  const userId = await getUserId();
+  if (!userId) return; // 未ログインなら何もしない（Local First）
+
+  isPushing = true;
+
+  try {
+    const dirty = getDirtyWords();
+    const stats = getWordStats();
+
+    if (dirty.size > 0) {
+      const rows = [...dirty]
+        .filter((wordId) => stats[wordId])
+        .map((wordId) => statToRow(userId, wordId, stats[wordId]));
+
+      const { error } = await supabase.from("word_progress").upsert(rows);
+      if (!error) {
+        saveDirtyWords(new Set());
+      }
+    }
+
+    await pushUserProgress(userId);
+  } finally {
+    isPushing = false;
+  }
+}
+
+async function pushUserProgress(userId) {
+  const level = getLevelState();
+
+  await supabase.from("user_progress").upsert({
+    user_id: userId,
+    xp: getTotalXp(),
+    level: level.level,
+    streak: getStreak(),
+    best_score: getBestScore(),
+    selected_category: localStorage.getItem("spelldash_category") || "all",
+    selected_mode: localStorage.getItem("spelldash_mode") || "study",
+    updated_at: new Date().toISOString()
+  });
+}
+
+// ---- play_sessions: Challenge終了ごとの履歴 ----
+
+export async function recordPlaySession(session) {
+  const userId = await getUserId();
+  if (!userId) return;
+
+  await supabase.from("play_sessions").insert({
+    user_id: userId,
+    mode: session.mode,
+    score: session.score,
+    typing_speed: session.typingSpeed,
+    typing_miss: session.typingMiss,
+    recall_fail: session.recallFail,
+    duration_seconds: session.durationSeconds
+  });
+}
+
+// ---- 初回同期（ログイン直後 / ページロード時に1回） ----
+// パターン①クラウド空 → ローカルを全アップロード
+// パターン②両方あり → 単語ごとに新しい方（last_played比較）を採用してマージ
+
+export async function initialSync() {
+  if (sessionStorage.getItem(SYNCED_FLAG)) return false;
+
+  const userId = await getUserId();
+  if (!userId) return false;
+
+  sessionStorage.setItem(SYNCED_FLAG, "1");
+
+  const [{ data: cloudRows }, { data: cloudProgress }] = await Promise.all([
+    supabase.from("word_progress").select("*"),
+    supabase.from("user_progress").select("*").maybeSingle()
+  ]);
+
+  const local = getWordStats();
+  const cloudMap = new Map((cloudRows ?? []).map((row) => [row.word_id, row]));
+
+  let changedLocal = false;
+  const toUpload = [];
+  const merged = { ...local };
+
+  const allIds = new Set([...Object.keys(local), ...cloudMap.keys()]);
+
+  for (const wordId of allIds) {
+    const l = local[wordId];
+    const c = cloudMap.get(wordId);
+
+    if (l && !c) {
+      toUpload.push(statToRow(userId, wordId, l));
+      continue;
+    }
+
+    if (!l && c) {
+      merged[wordId] = rowToStat(c, null);
+      changedLocal = true;
+      continue;
+    }
+
+    // 両方ある: 新しい方を採用
+    const localTime = Date.parse(l.lastPlayed ?? 0) || 0;
+    const cloudTime = Date.parse(c.last_played ?? 0) || 0;
+
+    if (localTime > cloudTime) {
+      toUpload.push(statToRow(userId, wordId, l));
+    } else if (cloudTime > localTime) {
+      merged[wordId] = rowToStat(c, l);
+      changedLocal = true;
+    }
+  }
+
+  if (changedLocal) {
+    saveWordStats(merged);
+  }
+
+  if (toUpload.length > 0) {
+    // 一度に送りすぎないよう分割
+    for (let i = 0; i < toUpload.length; i += 500) {
+      await supabase.from("word_progress").upsert(toUpload.slice(i, i + 500));
+    }
+  }
+
+  // user_progress のマージ（XP・ベスト・最長ストリークは大きい方を採用）
+  if (cloudProgress) {
+    const localXp = getTotalXp();
+    if (cloudProgress.xp > localXp) {
+      localStorage.setItem(XP_KEY, String(cloudProgress.xp));
+      changedLocal = true;
+    }
+
+    if (cloudProgress.best_score > getBestScore()) {
+      saveBestScore(cloudProgress.best_score);
+    }
+
+    const localStreak = getStreak();
+    const cloudStreak = cloudProgress.streak;
+    if (cloudStreak && (cloudStreak.last ?? "") > (localStreak.last ?? "")) {
+      localStorage.setItem(
+        STREAK_KEY,
+        JSON.stringify({
+          last: cloudStreak.last,
+          current: cloudStreak.current,
+          best: Math.max(cloudStreak.best ?? 0, localStreak.best ?? 0)
+        })
+      );
+      changedLocal = true;
+    }
+  }
+
+  await pushUserProgress(userId);
+  await ensureProfile(userId);
+
+  saveDirtyWords(new Set());
+
+  if (changedLocal) {
+    // 各ページに再描画を促す
+    window.dispatchEvent(new CustomEvent("spelldash:synced"));
+  }
+
+  return true;
+}
+
+// profiles行がなければ作成（表示名・アバターはGoogleログイン情報から）
+async function ensureProfile(userId) {
+  const { data: existing } = await supabase
+    .from("profiles")
+    .select("user_id")
+    .maybeSingle();
+
+  if (existing) return;
+
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  const meta = user?.user_metadata ?? {};
+  const audio = JSON.parse(localStorage.getItem("spelldash_audio") || "{}");
+
+  await supabase.from("profiles").insert({
+    user_id: userId,
+    display_name: meta.full_name || meta.name || user?.email?.split("@")[0] || null,
+    avatar_url: meta.avatar_url || null,
+    audio_mode: audio.mode || "auto",
+    preferred_accent: audio.accent || "us"
+  });
+}
+
+// ---- ページ離脱時の送信（ベストエフォート） ----
+
+export function setupUnloadSync() {
+  window.addEventListener("pagehide", () => {
+    pushSync();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      pushSync();
+    }
+  });
+}

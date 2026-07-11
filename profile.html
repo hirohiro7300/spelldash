@@ -131,6 +131,29 @@
       <h3>タイピング</h3>
       <div class="metric-grid" id="profileTyping"></div>
     </section>
+
+    <section class="result-card">
+      <h3>発音の設定</h3>
+
+      <div class="setting-row">
+        <label for="audioModeSelect">答え表示時の音声</label>
+        <select id="audioModeSelect" class="setting-select">
+          <option value="auto">自動再生（答え表示時に1回）</option>
+          <option value="manual">手動再生のみ（🔊ボタン）</option>
+          <option value="off">OFF</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label for="accentSelect">アクセント</label>
+        <select id="accentSelect" class="setting-select">
+          <option value="us">アメリカ英語（US）</option>
+          <option value="uk">イギリス英語（UK）</option>
+        </select>
+      </div>
+
+      <p class="muted" id="audioSettingStatus"></p>
+    </section>
   </div>
 
   <footer class="site-footer">
@@ -146,8 +169,7 @@
 
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="https://github.com/hirohiro7300/spelldash" target="_blank" rel="noopener">GitHub</a>
-        <a href="#">使い方</a>
-        <a href="#">プライバシー</a>
+        <a href="./privacy.html">プライバシー</a>
       </nav>
 
       <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>

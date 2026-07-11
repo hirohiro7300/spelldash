@@ -7,6 +7,7 @@ import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 
 import { initWordStore } from "./wordStore.js";
+import { setupUnloadSync } from "./sync.js";
 
 const overviewElement = document.getElementById("overview");
 const progressElement = document.getElementById("progress");
@@ -15,6 +16,7 @@ const typingElement = document.getElementById("typingMetrics");
 initializeAuth();
 renderLevelBar();
 setFooterYear();
+setupUnloadSync();
 
 initWordStore().then(() => {
   renderOverview();
@@ -22,6 +24,14 @@ initWordStore().then(() => {
   renderProgress();
   renderWeakWords();
   initializeWordList();
+});
+
+window.addEventListener("spelldash:synced", () => {
+  renderLevelBar();
+  renderOverview();
+  renderTyping();
+  renderProgress();
+  renderWeakWords();
 });
 
 function renderCards(container, cards) {

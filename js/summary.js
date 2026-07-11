@@ -7,8 +7,8 @@ export function computeSummary() {
   const words = getAllWords();
 
   const total = words.length;
-  const learned = words.filter((word) => (stats[word.en]?.playCount ?? 0) > 0).length;
-  const mastered = words.filter((word) => stats[word.en]?.mastered).length;
+  const learned = words.filter((word) => (stats[word.id]?.playCount ?? 0) > 0).length;
+  const mastered = words.filter((word) => stats[word.id]?.mastered).length;
 
   const totalCorrect = entries.reduce((sum, data) => sum + (data.correctCount ?? 0), 0);
   const totalMiss = entries.reduce((sum, data) => sum + (data.missCount ?? 0), 0);

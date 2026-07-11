@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>プライバシーポリシー | SpellDash</title>
+
+  <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="stylesheet" href="./css/layout.css" />
+  <link rel="stylesheet" href="./css/game.css" />
+  <link rel="stylesheet" href="./css/responsive.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link">プレイ</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="app">
+    <section class="hero">
+      <p class="logo">プライバシーポリシー</p>
+      <h1>Privacy Policy</h1>
+      <p class="subtitle">最終更新日: 2026年7月11日</p>
+    </section>
+
+    <section class="result-card policy">
+      <h3>収集する情報</h3>
+      <p>
+        SpellDash（https://www.spelldash.net）は、以下の情報を取得・保存します。
+      </p>
+      <ul>
+        <li>アカウント情報：メールアドレス、表示名、プロフィール画像（GoogleログインまたはメールログインでSupabase Authに保存）</li>
+        <li>学習データ：単語ごとの学習記録（正解数・ミス数・復習予定など）、XP・レベル・連続学習日数、プレイ履歴、音声設定</li>
+      </ul>
+
+      <h3>情報の利用目的</h3>
+      <ul>
+        <li>学習進捗の保存と端末間での同期</li>
+        <li>復習ミッションなど学習体験の提供・改善</li>
+      </ul>
+
+      <h3>保存場所</h3>
+      <p>
+        学習データはお使いのブラウザ（localStorage）と、ログイン時はSupabase（クラウドデータベース）に保存されます。
+        クラウド上のデータは本人のアカウントからのみアクセスできます。
+      </p>
+
+      <h3>第三者提供</h3>
+      <p>
+        取得した情報を第三者に販売・提供することはありません。
+        認証とデータ保存にはSupabase、ホスティングにはVercelを利用しています。
+      </p>
+
+      <h3>広告・トラッキング</h3>
+      <p>本サービスは広告を掲載しておらず、広告目的のトラッキングも行いません。</p>
+
+      <h3>データの削除</h3>
+      <p>
+        アカウントと学習データの削除を希望される場合は、下記の連絡先までご連絡ください。
+      </p>
+
+      <h3>お問い合わせ</h3>
+      <p>
+        本ポリシーに関するお問い合わせ：
+        <a href="https://github.com/hirohiro7300/spelldash/issues" target="_blank" rel="noopener">GitHubリポジトリのIssue</a>
+        までお願いします。
+      </p>
+    </section>
+  </div>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="https://github.com/hirohiro7300/spelldash" target="_blank" rel="noopener">GitHub</a>
+        <a href="./privacy.html">プライバシー</a>
+      </nav>
+
+      <p class="site-footer__copy">© 2026 SpellDash</p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -56,9 +56,14 @@ function pickNewWords(excludeSet) {
   const stats = getWordStats();
   const preferredCategory = localStorage.getItem("spelldash_category") || "all";
 
-  const candidates = getAllWords().filter(
-    (word) => (stats[word.en]?.playCount ?? 0) === 0 && !excludeSet.has(word.en)
-  );
+  // カテゴリ間で重複する単語（同一id）は1つに絞る
+  const seen = new Set();
+  const candidates = getAllWords().filter((word) => {
+    if ((stats[word.id]?.playCount ?? 0) > 0) return false;
+    if (excludeSet.has(word.id) || seen.has(word.id)) return false;
+    seen.add(word.id);
+    return true;
+  });
 
   return candidates
     .map((word) => ({
@@ -70,7 +75,7 @@ function pickNewWords(excludeSet) {
     }))
     .sort((a, b) => a.rank - b.rank)
     .slice(0, NEW_TARGET)
-    .map((entry) => entry.word.en);
+    .map((entry) => entry.word.id);
 }
 
 // 今日のミッションを取得（日付が変わっていたら作り直す）

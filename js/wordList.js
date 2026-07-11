@@ -62,7 +62,7 @@ function renderWordList(targetWords) {
       ${targetWords
         .slice(0, 200)
         .map((word) => {
-          const data = stats[word.en];
+          const data = stats[word.id];
 
           const status = data?.mastered
             ? "習得済み"

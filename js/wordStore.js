@@ -14,8 +14,9 @@ export async function initWordStore(subjectId = "english") {
   wordIndex.clear();
   for (const word of allWords) {
     // 同じ単語が複数カテゴリにある場合は最初のものを索引に使う
-    if (!wordIndex.has(word.en)) {
-      wordIndex.set(word.en, word);
+    // （idは教科-単語 形式なので、カテゴリ違いの同一単語は同じidを持ち、統計を共有する）
+    if (!wordIndex.has(word.id)) {
+      wordIndex.set(word.id, word);
     }
   }
 
@@ -33,8 +34,8 @@ export function getWordsByCategory(categoryId) {
   return allWords.filter((word) => word.category === categoryId);
 }
 
-export function findWord(en) {
-  return wordIndex.get(en) ?? null;
+export function findWord(wordId) {
+  return wordIndex.get(wordId) ?? null;
 }
 
 export function getCategories(subjectId = "english") {

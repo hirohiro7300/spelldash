@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 2026-07-11 (Knowledge Database・クラウド同期)
+
+- 単語statsの主キーを word.id（教科プレフィックス付き、例: english-apple）に変更（migration v4）
+  - カテゴリ間で重複する単語は同一idとなり学習記録を共有。将来の他教科追加に対応
+- Supabaseにテーブル作成: profiles / word_progress / user_progress / play_sessions（すべてRLS有効・本人のみ）
+- Local Firstのクラウド同期を実装（js/sync.js）
+  - 同期タイミング: Challenge終了時 / Studyで10語ごと / ページ離脱時 / ログイン直後
+  - 初回ログイン: クラウド空→全アップロード、両方あり→単語ごとに新しい方を採用してマージ
+  - XP・ベストスコア・最長ストリークは大きい方を採用
+- 発音機能の基盤（Web Speech API）
+  - 答え表示時の自動再生（auto/manual/offをプロフィールで設定、US/UK切替）
+  - 🔊発音ボタン（答え表示中に表示）
+  - 設定はprofilesテーブルにも保存（端末間で共有）
+- プライバシーポリシーページ（privacy.html）を追加、フッターからリンク
+
 ## 2026-07-11 (Study/Challenge分離・Active Recall)
 
 - Study Mode と Challenge Mode を分離（モード切替UI追加、選択を保存）

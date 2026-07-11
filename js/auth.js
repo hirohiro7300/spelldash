@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from "./supabase.js";
+import { initialSync } from "./sync.js";
 
 const accountGuestElement = document.getElementById("accountGuest");
 const accountUserElement = document.getElementById("accountUser");
@@ -17,8 +18,17 @@ export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
   updateAuthDisplay(data.session);
 
+  // ログイン済みならクラウドと初回同期（マージ）
+  if (data.session) {
+    runInitialSync();
+  }
+
   supabase.auth.onAuthStateChange((_event, session) => {
     updateAuthDisplay(session);
+
+    if (_event === "SIGNED_IN") {
+      runInitialSync();
+    }
   });
 
   accountLoginElement.addEventListener("submit", (event) => {
@@ -178,6 +188,17 @@ function updateAuthDisplay(session) {
   userStatusElement.textContent = email;
   headerAvatarElement.textContent = email.charAt(0).toUpperCase() || "?";
   closeDropdown(accountGuestElement, loginToggleElement);
+}
+
+async function runInitialSync() {
+  try {
+    const synced = await initialSync();
+    if (synced) {
+      showAuthMessage("学習データをクラウドと同期しました。", "success");
+    }
+  } catch {
+    // 同期失敗してもローカルで動き続ける（Local First）
+  }
 }
 
 function showAuthMessage(text, type = "") {

@@ -5,6 +5,8 @@ import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
+import { setupUnloadSync } from "./sync.js";
+import { getAudioSettings, saveAudioSettings, speak } from "./audio.js";
 
 const loggedOutElement = document.getElementById("profileLoggedOut");
 const profileCardElement = document.getElementById("profileCard");
@@ -18,10 +20,44 @@ initializeAuth();
 renderLevelBar();
 renderTyping();
 setFooterYear();
+setupUnloadSync();
 
 initWordStore().then(() => {
   renderSummary();
 });
+
+window.addEventListener("spelldash:synced", () => {
+  renderLevelBar();
+  renderSummary();
+  renderTyping();
+});
+
+// ===== 発音の設定 =====
+initializeAudioSettings();
+
+function initializeAudioSettings() {
+  const modeSelect = document.getElementById("audioModeSelect");
+  const accentSelect = document.getElementById("accentSelect");
+  const statusElement = document.getElementById("audioSettingStatus");
+  if (!modeSelect || !accentSelect) return;
+
+  const settings = getAudioSettings();
+  modeSelect.value = settings.mode;
+  accentSelect.value = settings.accent;
+
+  const save = () => {
+    saveAudioSettings({ mode: modeSelect.value, accent: accentSelect.value });
+    statusElement.textContent = "保存しました。";
+    // アクセント確認用に1回だけサンプル再生
+    if (modeSelect.value !== "off") {
+      speak("investment");
+    }
+    setTimeout(() => (statusElement.textContent = ""), 2000);
+  };
+
+  modeSelect.addEventListener("change", save);
+  accentSelect.addEventListener("change", save);
+}
 
 supabase.auth.getSession().then(({ data }) => renderProfile(data.session));
 supabase.auth.onAuthStateChange((_event, session) => renderProfile(session));

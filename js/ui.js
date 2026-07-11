@@ -16,7 +16,8 @@ export const elements = {
   restart: document.getElementById("restart"),
   weakWords: document.getElementById("weakWords"),
   combo: document.getElementById("combo"),
-  recallFail: document.getElementById("recallFail")
+  recallFail: document.getElementById("recallFail"),
+  speakButton: document.getElementById("speakButton")
 };
 
 export function initializeDisplay() {
@@ -75,8 +76,9 @@ export function renderWeakWords() {
 
   elements.weakWords.innerHTML = `
     <div class="word-list">
-      ${weakWords.map(([en, data]) => {
-        const word = findWord(en);
+      ${weakWords.map(([wordId, data]) => {
+        const word = findWord(wordId);
+        const en = word ? word.en : wordId.replace(/^[a-z]+-/, "");
         const ja = word ? word.ja : "";
 
         const recallFail = data.recallFail ?? 0;
