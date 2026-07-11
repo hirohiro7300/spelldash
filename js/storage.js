@@ -5,7 +5,7 @@ const SCHEMA_VERSION_KEY = "spelldash_schema_version";
 
 // 既存ユーザーのデータを壊さずに新フィールドを追加するmigration。
 // スキーマを変えるときは CURRENT_SCHEMA_VERSION を上げて処理を足す。
-const CURRENT_SCHEMA_VERSION = 4;
+const CURRENT_SCHEMA_VERSION = 5;
 
 function migrateStorage() {
   let version = Number(localStorage.getItem(SCHEMA_VERSION_KEY)) || 1;
@@ -57,6 +57,15 @@ function migrateStorage() {
     }
 
     version = 4;
+  }
+
+  // v4 → v5: Recall Loop用の日時を追加
+  // lastRecallFailAt = 最後に思い出せなかった日時 / lastRecallSuccessAt = 最後に自力で思い出せた日時
+  if (version < 5) {
+    for (const key of Object.keys(stats)) {
+      stats[key] = { lastRecallFailAt: null, lastRecallSuccessAt: null, ...stats[key] };
+    }
+    version = 5;
   }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));

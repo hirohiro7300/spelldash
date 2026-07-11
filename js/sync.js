@@ -51,6 +51,8 @@ function statToRow(userId, wordId, s) {
     mastered_at: s.masteredAt ?? null,
     last_played: s.lastPlayed ?? null,
     next_review_at: s.nextReviewAt ?? null,
+    last_recall_fail_at: s.lastRecallFailAt ?? null,
+    last_recall_success_at: s.lastRecallSuccessAt ?? null,
     updated_at: new Date().toISOString()
   };
 }
@@ -67,8 +69,17 @@ function rowToStat(row, localStat) {
     mastered: row.mastered,
     masteredAt: row.mastered_at,
     lastPlayed: row.last_played,
-    nextReviewAt: row.next_review_at
+    nextReviewAt: row.next_review_at,
+    lastRecallFailAt: row.last_recall_fail_at ?? null,
+    lastRecallSuccessAt: row.last_recall_success_at ?? null
   };
+}
+
+// 2つのISO日時のうち新しい方（どちらか欠けていれば存在する方）
+function newerIso(a, b) {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return Date.parse(a) >= Date.parse(b) ? a : b;
 }
 
 async function getUserId() {
@@ -189,14 +200,23 @@ export async function initialSync() {
       continue;
     }
 
-    // 両方ある: 新しい方を採用
+    // 両方ある: 行全体は新しい方を採用。
+    // ただしRecall Loopの2つの日時は、フィールド単位で両端末の新しい方を採用する
     const localTime = Date.parse(l.lastPlayed ?? 0) || 0;
     const cloudTime = Date.parse(c.last_played ?? 0) || 0;
 
+    const recallFields = {
+      lastRecallFailAt: newerIso(l.lastRecallFailAt, c.last_recall_fail_at),
+      lastRecallSuccessAt: newerIso(l.lastRecallSuccessAt, c.last_recall_success_at)
+    };
+
     if (localTime > cloudTime) {
-      toUpload.push(statToRow(userId, wordId, l));
+      const combined = { ...l, ...recallFields };
+      merged[wordId] = combined;
+      changedLocal = true;
+      toUpload.push(statToRow(userId, wordId, combined));
     } else if (cloudTime > localTime) {
-      merged[wordId] = rowToStat(c, l);
+      merged[wordId] = { ...rowToStat(c, l), ...recallFields };
       changedLocal = true;
     }
   }

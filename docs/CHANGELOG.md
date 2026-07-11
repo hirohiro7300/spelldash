@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 2026-07-12 (Study Recall Loop)
+
+- Studyモードに「Recall Loop」を実装: 思い出せなかった単語が画面内を巡回し、自力で思い出せるまで残り続ける
+  - 単語の3状態: 未回答（ニュートラル）/ 未解決（赤・Enterで答えを見た）/ 今日思い出せた（緑・自力正解）
+  - ゲームカード右側に問題キューを表示（内容は見せず、状態と残量のみ）
+  - Recall Fail後は1回目3〜5問後・2回目以降2〜4問後にランダム再出題（連続出題なし）
+  - 答え表示後に入力練習しても「解決」にはならない（自力正解のみが解決）
+  - Study開始時の優先順位: Unresolved → Mission Review → 復習期限 → Mission New → 通常抽選
+- 「今日思い出せた」（Recalled Today）カウンター追加（日次ユニーク、Studyのみ表示）
+- lastRecallFailAt / lastRecallSuccessAt を単語statsに追加（migration v5）
+  - Supabase word_progress にも同名カラム追加、同期・初回マージ対応（日時はフィールド単位で新しい方を採用）
+  - Unresolvedは端末をまたいで復元される
+- 練習+5XPは同一Studyセッション・同一単語につき1回まで（XP無限稼ぎ防止）
+- 状態変化アニメーション（緑=右へ抜ける/赤=点滅）、prefers-reduced-motion対応、色以外の手掛かり（✓/↻・aria-label）
+
 ## 2026-07-11 (Knowledge Database・クラウド同期)
 
 - 単語statsの主キーを word.id（教科プレフィックス付き、例: english-apple）に変更（migration v4）

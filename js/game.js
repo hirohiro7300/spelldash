@@ -1,6 +1,25 @@
-import { getWordsByCategory } from "./wordStore.js";
+import { getWordsByCategory, findWord } from "./wordStore.js";
 import { getWordStats, getBestScore, saveBestScore, recordTypingSession } from "./storage.js";
-import { recordPlay, recordCorrect, recordTypingMiss, recordRecallFail } from "./stats.js";
+import {
+  recordPlay,
+  recordCorrect,
+  recordTypingMiss,
+  recordRecallFail,
+  recordRecallSuccess
+} from "./stats.js";
+import {
+  startStudyQueue,
+  nextStudyWordId,
+  onRecallFail as queueRecallFail,
+  onRecallSuccess as queueRecallSuccess,
+  claimPracticeXp
+} from "./studyQueue.js";
+import {
+  renderStudyQueue,
+  updateRecalledToday,
+  playRecallSuccessEffect,
+  playRecallFailEffect
+} from "./studyQueueUi.js";
 import { addXp, updateStreak } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
 import { markMissionWord, isMissionWordPending, renderMission } from "./mission.js";
@@ -82,6 +101,7 @@ export function stopGame() {
   elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
   showHiddenWordText("");
   updateCombo(0);
+  renderStudyQueue(false);
 }
 
 export function startGame() {
@@ -119,6 +139,13 @@ export function startGame() {
       ? "思い出してタイプ。分からなければEnter"
       : "日本語訳を見てスペルを入力"
   );
+
+  // Study: Recall Loopキューを構築（Unresolved → Mission Review → 復習期限 → Mission New → 通常）
+  if (mode === "study") {
+    startStudyQueue(activeCategory);
+    updateRecalledToday();
+  }
+
   setNewWord();
 
   // タイマーはChallengeのみ
@@ -183,6 +210,13 @@ function revealAnswer() {
 
   recordRecallFail(currentWord.id);
 
+  // Study: Unresolved（赤）としてキューへ戻す。数問後に再出題される
+  if (mode === "study") {
+    queueRecallFail(currentWord.id);
+    playRecallFailEffect();
+    renderStudyQueue(true);
+  }
+
   combo = 0;
   updateCombo(0);
 
@@ -240,13 +274,31 @@ function completeWord() {
   const isClean = !hasMissedCurrentWord && !isRevealed;
   recordCorrect(currentWord.id, isClean);
 
+  // 答えを見ずに正解 = 自力で思い出せた（打ち間違いは許容）
+  // ※答え表示後の入力練習では lastRecallSuccessAt を更新しない
+  if (!isRevealed) {
+    recordRecallSuccess(currentWord.id);
+
+    if (mode === "study") {
+      queueRecallSuccess(currentWord.id);
+      playRecallSuccessEffect();
+      updateRecalledToday();
+    }
+  }
+
   if (isClean) {
     combo++;
   }
   updateCombo(combo);
 
-  // XP: 答えを見た後の練習は+5。思い出せたら 基本10+クリーン5+コンボ最大10
-  const wordXp = isRevealed ? 5 : 10 + (isClean ? 5 : 0) + Math.min(combo, 10);
+  // XP: 答えを見た後の練習は+5（Studyでは同一単語につきセッション1回まで）。
+  // 思い出せたら 基本10+クリーン5+コンボ最大10
+  let wordXp;
+  if (isRevealed) {
+    wordXp = mode === "study" ? (claimPracticeXp(currentWord.id) ? 5 : 0) : 5;
+  } else {
+    wordXp = 10 + (isClean ? 5 : 0) + Math.min(combo, 10);
+  }
   let earned = wordXp;
 
   const missionResult = markMissionWord(currentWord.id);
@@ -289,7 +341,7 @@ function applyStudyXp(earned, missionResult) {
     return;
   }
 
-  showMessage(`Good! +${earned} XP`, "correct");
+  showMessage(earned > 0 ? `Good! +${earned} XP` : "Good!", "correct");
 }
 
 // 打ち間違い: 答えは表示しない（覚えていたかどうかとは別のデータとして記録）
@@ -305,7 +357,15 @@ function handleTypingMiss() {
 }
 
 function setNewWord() {
-  currentWord = chooseWord();
+  // Study: Recall Loopキューから取り出す / Challenge: 従来の重み付き抽選
+  if (mode === "study") {
+    const wordId = nextStudyWordId();
+    currentWord = (wordId && findWord(wordId)) || chooseWord();
+    renderStudyQueue(true);
+  } else {
+    currentWord = chooseWord();
+  }
+
   currentIndex = 0;
   hasMissedCurrentWord = false;
   isRevealed = false;

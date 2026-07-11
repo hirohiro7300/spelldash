@@ -68,6 +68,7 @@ export function recordTypingMiss(word) {
 }
 
 // 思い出せなかった（Enterで答えを見た）。これが本当の「苦手」
+// lastRecallFailAt を更新 → 自力正解するまで Unresolved（未解決）状態になる
 export function recordRecallFail(word) {
   const stats = getWordStats();
 
@@ -78,6 +79,20 @@ export function recordRecallFail(word) {
   stats[word].cleanCorrectStreak = 0;
   stats[word].mastered = false;
   stats[word].nextReviewAt = new Date().toISOString();
+  stats[word].lastRecallFailAt = new Date().toISOString();
+
+  saveWordStats(stats);
+  markWordDirty(word);
+}
+
+// 答えを見ずに自力で正解した（打ち間違いはあってもよい）。
+// 答え表示後の入力練習ではこの関数を呼ばないこと。
+export function recordRecallSuccess(word) {
+  const stats = getWordStats();
+
+  if (!stats[word]) return;
+
+  stats[word].lastRecallSuccessAt = new Date().toISOString();
 
   saveWordStats(stats);
   markWordDirty(word);
@@ -94,6 +109,8 @@ function createInitialWordStats() {
     mastered: false,
     masteredAt: null,
     lastPlayed: null,
-    nextReviewAt: null
+    nextReviewAt: null,
+    lastRecallFailAt: null,
+    lastRecallSuccessAt: null
   };
 }

@@ -34,6 +34,8 @@ create table if not exists public.word_progress (
   mastered_at timestamptz,
   last_played timestamptz,
   next_review_at timestamptz,
+  last_recall_fail_at timestamptz,     -- 最後に思い出せなかった日時（Recall Loop）
+  last_recall_success_at timestamptz,  -- 最後に自力で思い出せた日時（Recall Loop）
   updated_at timestamptz not null default now(),
   primary key (user_id, word_id)
 );
