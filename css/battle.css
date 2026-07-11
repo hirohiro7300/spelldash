@@ -76,8 +76,50 @@
   backdrop-filter: blur(14px);
 }
 
+/* YOU側が主役: Study/Challengeのゲームカードと同程度のサイズ感 */
 .arena-panel--you {
   border-color: rgba(96, 165, 250, 0.4);
+  padding: 32px 28px;
+  text-align: center;
+}
+
+.arena-panel--you .arena-ja {
+  font-size: clamp(30px, 5.5vw, 58px);
+  margin: 10px 0 18px;
+}
+
+.arena-panel--you .arena-panel__stats strong {
+  font-size: 24px;
+}
+
+.arena-panel--you .arena-status {
+  font-size: 14px;
+  min-height: 22px;
+}
+
+/* CPU側はコンパクト: 「相手が進行している」と分かれば十分 */
+.arena-panel--cpu {
+  padding: 14px 18px;
+}
+
+.arena-panel--cpu .arena-ja {
+  font-size: clamp(16px, 2.5vw, 22px);
+  margin: 4px 0 8px;
+}
+
+.arena-panel--cpu .arena-panel__stats strong {
+  font-size: 16px;
+}
+
+.arena-panel--cpu .arena-status {
+  font-size: 12px;
+  min-height: 16px;
+  margin-top: 4px;
+}
+
+.arena-panel--cpu .cpu-dot {
+  width: 8px;
+  height: 8px;
 }
 
 .arena-panel__head {
@@ -133,9 +175,15 @@
   font-size: 13px;
 }
 
+/* タイマーはレイアウト内に収める（浮かせない） */
 .arena-timer {
+  order: -1; /* モバイル縦配置では一番上 */
   align-self: center;
-  font-size: 34px;
+  padding: 6px 26px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  font-size: 26px;
   font-weight: 800;
   color: #facc15;
   font-variant-numeric: tabular-nums;
@@ -143,6 +191,28 @@
 
 .input-wrapper--battle {
   width: min(520px, 100%);
+  margin: 0 auto;
+}
+
+/* Battleの入力欄も Study/Challenge と同じ「透明文字＋色付きレイヤー」方式にする
+   （既存CSSは #input へのID指定のため、ここで #battleInput に同じ規則を与える） */
+#battleInput {
+  width: 100%;
+  padding: 18px 20px;
+  font-size: 26px;
+  text-align: center;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: #0f172a;
+  position: relative;
+  z-index: 2;
+}
+
+#battleInput::placeholder {
+  color: #94a3b8;
+  font-size: 17px;
 }
 
 /* CPUの入力進捗ドット（文字は見せない） */
@@ -273,25 +343,34 @@
   gap: 12px;
 }
 
-/* デスクトップは対戦パネルを左右に */
+/* デスクトップ: タイマーを上部中央、CPU 32% / YOU 68% */
 @media (min-width: 860px) {
   #battleArena {
     display: grid;
-    grid-template-columns: 1fr auto 1.2fr;
-    align-items: stretch;
-    gap: 16px;
+    grid-template-columns: minmax(0, 32fr) minmax(0, 68fr);
+    grid-template-areas:
+      "timer timer"
+      "cpu you";
+    align-items: start;
+    gap: 14px 16px;
   }
 
   .arena-timer {
-    align-self: center;
+    grid-area: timer;
+    order: 0;
+    justify-self: center;
   }
 
   .arena-panel--cpu {
-    order: 0;
+    grid-area: cpu;
   }
 
   .arena-panel--you {
-    order: 2;
+    grid-area: you;
+    min-height: 340px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
 }
 
