@@ -7,6 +7,7 @@ import {
   getPendingBattleSessions,
   clearPendingBattleSessions
 } from "./battleRank.js";
+import { getStudyMix, adoptCloudRatio } from "./studyMix.js";
 
 // ===== Local First 同期 =====
 // プレイ中は localStorage のみに書き、以下のタイミングでSupabaseへ同期する:
@@ -59,6 +60,9 @@ function statToRow(userId, wordId, s) {
     next_review_at: s.nextReviewAt ?? null,
     last_recall_fail_at: s.lastRecallFailAt ?? null,
     last_recall_success_at: s.lastRecallSuccessAt ?? null,
+    daily_learning_date: s.dailyLearningDate ?? null,
+    daily_learning_stage: s.dailyLearningStage ?? 0,
+    srs_advanced_on: s.srsAdvancedOn ?? null,
     updated_at: new Date().toISOString()
   };
 }
@@ -77,7 +81,10 @@ function rowToStat(row, localStat) {
     lastPlayed: row.last_played,
     nextReviewAt: row.next_review_at,
     lastRecallFailAt: row.last_recall_fail_at ?? null,
-    lastRecallSuccessAt: row.last_recall_success_at ?? null
+    lastRecallSuccessAt: row.last_recall_success_at ?? null,
+    dailyLearningDate: row.daily_learning_date ?? null,
+    dailyLearningStage: row.daily_learning_stage ?? 0,
+    srsAdvancedOn: row.srs_advanced_on ?? null
   };
 }
 
@@ -143,6 +150,7 @@ async function pushUserProgress(userId) {
     battle_draws: battle.draws,
     battle_current_win_streak: battle.currentWinStreak,
     battle_best_win_streak: battle.bestWinStreak,
+    study_familiar_ratio: getStudyMix().familiarRatio,
     updated_at: new Date().toISOString()
   });
 }
@@ -282,6 +290,17 @@ export async function initialSync() {
           best: Math.max(cloudStreak.best ?? 0, localStreak.best ?? 0)
         })
       );
+      changedLocal = true;
+    }
+
+    // 出題比率: 更新が新しい方を採用
+    const localMix = getStudyMix();
+    const cloudProgressUpdated = Date.parse(cloudProgress.updated_at ?? 0) || 0;
+    if (
+      cloudProgress.study_familiar_ratio != null &&
+      cloudProgressUpdated > (Date.parse(localMix.updatedAt ?? 0) || 0)
+    ) {
+      adoptCloudRatio(cloudProgress.study_familiar_ratio, cloudProgress.updated_at);
       changedLocal = true;
     }
 

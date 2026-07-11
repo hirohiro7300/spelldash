@@ -12,8 +12,10 @@ import {
   nextStudyWordId,
   onRecallFail as queueRecallFail,
   onRecallSuccess as queueRecallSuccess,
-  claimPracticeXp
+  claimPracticeXp,
+  isRecalledToday
 } from "./studyQueue.js";
+import { REPEAT_SUCCESS_XP } from "./studyConfig.js";
 import {
   renderStudyQueue,
   updateRecalledToday,
@@ -272,15 +274,20 @@ function completeWord() {
 
   // clean = 思い出せて、かつ打ち間違いもなし
   const isClean = !hasMissedCurrentWord && !isRevealed;
+
+  // 当日初の自力正解かどうか（XPと学習ループの判定に使う。記録前に見る）
+  const firstRecallToday = !isRecalledToday(getWordStats()[currentWord.id]);
+
   recordCorrect(currentWord.id, isClean);
 
   // 答えを見ずに正解 = 自力で思い出せた（打ち間違いは許容）
   // ※答え表示後の入力練習では lastRecallSuccessAt を更新しない
+  let loopResult = null;
   if (!isRevealed) {
     recordRecallSuccess(currentWord.id);
 
     if (mode === "study") {
-      queueRecallSuccess(currentWord.id);
+      loopResult = queueRecallSuccess(currentWord.id);
       playRecallSuccessEffect();
       updateRecalledToday();
     }
@@ -292,10 +299,13 @@ function completeWord() {
   updateCombo(combo);
 
   // XP: 答えを見た後の練習は+5（Studyでは同一単語につきセッション1回まで）。
-  // 思い出せたら 基本10+クリーン5+コンボ最大10
+  // 自力正解は 基本10+クリーン5+コンボ最大10。
+  // ただしStudyでの同日反復（2回目以降の自力正解）は少額XP（反復の目的は定着でありXP稼ぎではない）
   let wordXp;
   if (isRevealed) {
     wordXp = mode === "study" ? (claimPracticeXp(currentWord.id) ? 5 : 0) : 5;
+  } else if (mode === "study" && !firstRecallToday) {
+    wordXp = REPEAT_SUCCESS_XP;
   } else {
     wordXp = 10 + (isClean ? 5 : 0) + Math.min(combo, 10);
   }
@@ -306,7 +316,7 @@ function completeWord() {
   renderMission();
 
   if (mode === "study") {
-    applyStudyXp(earned, missionResult);
+    applyStudyXp(earned, missionResult, loopResult);
   } else {
     gainedXp += earned;
 
@@ -321,7 +331,7 @@ function completeWord() {
 }
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
-function applyStudyXp(earned, missionResult) {
+function applyStudyXp(earned, missionResult, loopResult) {
   const streak = updateStreak();
   if (streak.isFirstToday) {
     earned += 50;
@@ -338,6 +348,12 @@ function applyStudyXp(earned, missionResult) {
 
   if (missionResult.justCompleted) {
     showMessage(`MISSION COMPLETE +${missionResult.bonusXp} XP`, "correct");
+    return;
+  }
+
+  // New単語を今日4回思い出せた → 静かに定着を伝える
+  if (loopResult?.secured) {
+    showMessage(`今日定着 ✓ もう今日は出ません +${earned} XP`, "correct");
     return;
   }
 

@@ -1,34 +1,50 @@
 import { getWordStats } from "./storage.js";
 import { getWordsByCategory } from "./wordStore.js";
 import { getTodayMission } from "./mission.js";
+import { setDailyLearning, localDateString } from "./stats.js";
+import { getFamiliarRatio } from "./studyMix.js";
+import {
+  MAX_ACTIVE_NEW_WORDS,
+  NEW_WORD_DAILY_SUCCESS_TARGET,
+  NEW_WORD_REVIEW_GAPS
+} from "./studyConfig.js";
 
-// ===== Study Recall Loop のキュー =====
-// 「思い出せなかった問題が画面内を巡回し、自力で一度思い出せるまで残り続ける」
+// ===== Study Recall Loop ＋ New Word Learning Loop のキュー =====
 //
-// 状態の定義（word statsの日時から導出。キュー自体はセッション限り）:
-//   Pending       … まだ今日回答していない
-//   Unresolved    … lastRecallFailAt > lastRecallSuccessAt（自力正解するまで継続、日をまたいでも残る）
-//   Recalled Today… lastRecallSuccessAt がローカル日付で今日
+// 出題の優先順位:
+//   1. Unresolved（自力正解するまで日をまたいでも残る）
+//   2. Today's Mission の Review
+//   3. SRS復習期限到来
+//   4. 学習中New単語の同日反復（前セッションからの持ち越し含む）
+//   5. 通常補充 … ここだけ Mix Control の比率（回答済み/未回答）で構成
+//
+// 単語プール:
+//   Familiar = 過去に自力正解済み（lastRecallSuccessAtあり）かつ非Unresolved
+//   New      = 一度も回答していない（playCount === 0）
+//
+// New Word Learning Loop（Study限定）:
+//   New単語は導入時に「学習中」となり、同日に自力正解を重ねるごとに
+//   [3,5,8]問後(±1)に再出題 → 4回目で Today Secured（今日はもう出ない）。
+//   途中で思い出せなければ段階が1つ戻る。同時学習は最大3語。
 
 const MIN_QUEUE = 8;
 
-let queue = [];                    // これから出題するword idの列
-let sessionFailCounts = new Map(); // セッション内のRecall Fail回数（再出題間隔の決定用）
-let practicedXpClaimed = new Set(); // 答え表示後の練習+5XPを取得済みのword id
-let recalledThisSession = new Set();
+let queue = [];
+let sessionFailCounts = new Map();
+let practicedXpClaimed = new Set();
+let recalledThisSession = new Set(); // Familiar語のセッション内再出題防止（学習中語は含めない）
 let activeCategoryId = "all";
 
-function localDateString(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function todayString() {
-  return localDateString(new Date().toISOString());
+  return localDateString();
 }
 
-// Unresolved: 思い出せなかった記録があり、その後まだ自力で思い出せていない
+function localDateOf(iso) {
+  return iso ? localDateString(new Date(iso)) : null;
+}
+
+// ===== 状態判定 =====
+
 export function isUnresolved(stat) {
   if (!stat?.lastRecallFailAt) return false;
   if (!stat.lastRecallSuccessAt) return true;
@@ -36,10 +52,25 @@ export function isUnresolved(stat) {
 }
 
 export function isRecalledToday(stat) {
-  return !!stat?.lastRecallSuccessAt && localDateString(stat.lastRecallSuccessAt) === todayString();
+  return !!stat?.lastRecallSuccessAt && localDateOf(stat.lastRecallSuccessAt) === todayString();
 }
 
-// 今日、自力で一度以上思い出せたユニーク単語数（日次で自動リセット）
+// 学習中（今日導入されたNew単語で、まだToday Securedでない）
+export function isLearningToday(stat) {
+  return (
+    stat?.dailyLearningDate === todayString() &&
+    (stat.dailyLearningStage ?? 0) < NEW_WORD_DAILY_SUCCESS_TARGET
+  );
+}
+
+// 今日定着（同日に規定回数の自力正解を達成。masteredとは別物）
+export function isSecuredToday(stat) {
+  return (
+    stat?.dailyLearningDate === todayString() &&
+    (stat.dailyLearningStage ?? 0) >= NEW_WORD_DAILY_SUCCESS_TARGET
+  );
+}
+
 export function getRecalledTodayCount() {
   const stats = getWordStats();
   let count = 0;
@@ -49,16 +80,33 @@ export function getRecalledTodayCount() {
   return count;
 }
 
-export function getUnresolvedCount() {
+export function getSecuredTodayCount() {
   const stats = getWordStats();
   let count = 0;
   for (const stat of Object.values(stats)) {
-    if (isUnresolved(stat)) count++;
+    if (isSecuredToday(stat)) count++;
   }
   return count;
 }
 
-// カテゴリ間重複語は同じidを共有しているため、id単位で1つに絞る
+function activeLearningCount(stats) {
+  let count = 0;
+  for (const stat of Object.values(stats)) {
+    if (isLearningToday(stat)) count++;
+  }
+  return count;
+}
+
+// 今日はもう出題しない単語か
+function isDoneForToday(stat) {
+  if (isSecuredToday(stat)) return true;
+  if (isUnresolved(stat)) return false;
+  if (isLearningToday(stat)) return false; // 学習中は反復のため出題を続ける
+  return isRecalledToday(stat);
+}
+
+// ===== 単語プール =====
+
 function categoryWordsDeduped() {
   const seen = new Set();
   return getWordsByCategory(activeCategoryId).filter((word) => {
@@ -68,41 +116,103 @@ function categoryWordsDeduped() {
   });
 }
 
-// 今日すでに自力正解済み（かつその後失敗していない）単語は出題から外す
-function isDoneForToday(stat) {
-  return isRecalledToday(stat) && !isUnresolved(stat);
+function isFamiliar(stat) {
+  return !!stat?.lastRecallSuccessAt && !isUnresolved(stat);
 }
 
-// 通常抽選（穴埋め用）: 既存の重み付けを簡略化して流用
+function isNew(stat) {
+  return !stat || (stat.playCount ?? 0) === 0;
+}
+
+// ===== 通常補充（Mix Controlの比率はここだけに効く） =====
+
 function pickFillers(count, excludeSet) {
   const stats = getWordStats();
+  const ratio = getFamiliarRatio();
+  const mission = getTodayMission();
 
-  let candidates = categoryWordsDeduped().filter((word) => {
+  const usable = categoryWordsDeduped().filter((word) => {
     if (excludeSet.has(word.id)) return false;
     if (recalledThisSession.has(word.id)) return false;
     return !isDoneForToday(stats[word.id]);
   });
 
-  // 対象が尽きた場合は「今日済み」も許可（即時再出題の防止を優先）
-  if (candidates.length === 0) {
-    candidates = categoryWordsDeduped().filter((word) => !excludeSet.has(word.id));
-  }
+  const familiarPool = shuffle(usable.filter((w) => isFamiliar(stats[w.id])));
+  let newPool = usable.filter((w) => isNew(stats[w.id]));
+
+  // Mission NewをNew候補の先頭に
+  const missionNewPending = new Set(mission.new.filter((id) => !mission.newDone.includes(id)));
+  newPool = [
+    ...newPool.filter((w) => missionNewPending.has(w.id)),
+    ...shuffle(newPool.filter((w) => !missionNewPending.has(w.id)))
+  ];
+
+  // 学習中New単語の上限。枠が空いている分だけ新しいNew単語を導入できる
+  let newIntroBudget = Math.max(0, MAX_ACTIVE_NEW_WORDS - activeLearningCount(stats));
 
   const picks = [];
-  const used = new Set();
+  let familiarIndex = 0;
+  let newIndex = 0;
 
-  while (picks.length < count && used.size < candidates.length) {
-    const word = candidates[Math.floor(Math.random() * candidates.length)];
-    if (used.has(word.id)) continue;
-    used.add(word.id);
-    picks.push(word.id);
+  while (picks.length < count) {
+    const wantFamiliar = Math.random() * 100 < ratio;
+    let pick = null;
+
+    if (wantFamiliar) {
+      pick = familiarPool[familiarIndex] ?? null;
+      if (pick) familiarIndex++;
+      // Familiar不足 → Newで補充
+      if (!pick && newIntroBudget > 0 && newIndex < newPool.length) {
+        pick = newPool[newIndex++];
+        newIntroBudget--;
+        markIntroduced(pick.id);
+      }
+    } else {
+      if (newIntroBudget > 0 && newIndex < newPool.length) {
+        pick = newPool[newIndex++];
+        newIntroBudget--;
+        markIntroduced(pick.id);
+      }
+      // New不足（または学習中上限） → Familiarで補充
+      if (!pick) {
+        pick = familiarPool[familiarIndex] ?? null;
+        if (pick) familiarIndex++;
+      }
+    }
+
+    if (!pick) break; // どちらの候補も尽きた
+    picks.push(pick.id);
+  }
+
+  // それでも足りなければ「今日済み」も許可して埋める（出題停止を防ぐ）
+  if (picks.length < count) {
+    const fallback = shuffle(
+      categoryWordsDeduped().filter(
+        (w) => !excludeSet.has(w.id) && !picks.includes(w.id)
+      )
+    ).slice(0, count - picks.length);
+    picks.push(...fallback.map((w) => w.id));
   }
 
   return picks;
 }
 
-// Study開始時のキュー構築。優先順位:
-// 1. Unresolved → 2. MissionのReview → 3. 復習期限到来 → 4. MissionのNew → 5. 通常抽選
+// New単語を「学習中」として登録（比率で導入された時点から同日反復の対象になる）
+function markIntroduced(wordId) {
+  setDailyLearning(wordId, 0);
+}
+
+function shuffle(array) {
+  const copy = [...array];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+// ===== キュー構築・進行 =====
+
 export function startStudyQueue(categoryId) {
   activeCategoryId = categoryId;
   queue = [];
@@ -124,7 +234,7 @@ export function startStudyQueue(categoryId) {
     queue.push(id);
   };
 
-  // 1. Unresolved（日をまたいでも解決するまで残る）
+  // 1. Unresolved
   words.filter((w) => isUnresolved(stats[w.id])).forEach((w) => push(w.id));
 
   // 2. Today's Mission の Review（未達成分）
@@ -138,10 +248,10 @@ export function startStudyQueue(categoryId) {
     })
     .forEach((w) => push(w.id));
 
-  // 4. Today's Mission の New（未達成分）
-  mission.new.filter((id) => !mission.newDone.includes(id)).forEach(push);
+  // 4. 学習中New単語（同日の持ち越し。Today Secured前なら反復を続ける）
+  words.filter((w) => isLearningToday(stats[w.id])).forEach((w) => push(w.id));
 
-  // 5. 通常抽選で最低数まで埋める
+  // 5. 通常補充（比率適用）
   if (queue.length < MIN_QUEUE) {
     queue.push(...pickFillers(MIN_QUEUE - queue.length, new Set(queue)));
   }
@@ -152,47 +262,83 @@ function refillIfNeeded() {
   queue.push(...pickFillers(MIN_QUEUE - queue.length, new Set(queue)));
 }
 
-// 次の問題を取り出す
 export function nextStudyWordId() {
   refillIfNeeded();
   return queue.shift() ?? null;
 }
 
-// Recall Fail: 数問後に再出題されるようキューへ戻す
-// 1回目は3〜5問後、2回目以降は2〜4問後（範囲内でランダム）。連続出題はしない
-export function onRecallFail(wordId) {
-  const fails = (sessionFailCounts.get(wordId) ?? 0) + 1;
-  sessionFailCounts.set(wordId, fails);
-
-  const [min, max] = fails === 1 ? [3, 5] : [2, 4];
-  let offset = min + Math.floor(Math.random() * (max - min + 1));
-
-  // キューが短い場合は間に別問題を挟む（直後の即時再出題を防ぐ）
+// 指定した問数だけ後ろに再挿入（±のジッターは呼び出し側の値に含める）。
+// キューが短ければ別問題で埋めて、直後の即時再出題を防ぐ
+function scheduleAt(wordId, offset) {
   if (queue.length < offset) {
     const fillers = pickFillers(offset - queue.length, new Set([...queue, wordId]));
     queue.push(...fillers);
   }
 
-  offset = Math.min(offset, queue.length);
-  if (offset === 0 && queue.length > 0) offset = 1;
+  let position = Math.min(offset, queue.length);
+  if (position === 0 && queue.length > 0) position = 1;
 
-  queue.splice(offset, 0, wordId);
+  queue.splice(position, 0, wordId);
 }
 
-// 自力正解: このセッションではもう出題しない
+// Recall Fail: 数問後に再出題。学習中New単語は同日成功段階を1つ戻す
+export function onRecallFail(wordId) {
+  const stats = getWordStats();
+  const stat = stats[wordId];
+
+  if (isLearningToday(stat) || isSecuredToday(stat)) {
+    // 全リセットはせず1段階だけ戻す（Secured後の失敗も学習中に戻る）
+    const stage = Math.max(0, (stat.dailyLearningStage ?? 0) - 1);
+    setDailyLearning(wordId, stage);
+  }
+
+  const fails = (sessionFailCounts.get(wordId) ?? 0) + 1;
+  sessionFailCounts.set(wordId, fails);
+
+  // 学習中単語は2〜4問後、それ以外は初回3〜5問後・以降2〜4問後
+  const learning = isLearningToday(getWordStats()[wordId]);
+  const [min, max] = learning || fails > 1 ? [2, 4] : [3, 5];
+  const offset = min + Math.floor(Math.random() * (max - min + 1));
+
+  scheduleAt(wordId, offset);
+}
+
+// 自力正解。学習中New単語なら段階を進め、Today Securedまで同日反復する
+// 戻り値: { secured, requeued, stage }
 export function onRecallSuccess(wordId) {
-  recalledThisSession.add(wordId);
+  const stats = getWordStats();
+  const stat = stats[wordId];
+
   queue = queue.filter((id) => id !== wordId);
+
+  if (isLearningToday(stat)) {
+    const stage = (stat.dailyLearningStage ?? 0) + 1;
+    setDailyLearning(wordId, stage);
+
+    if (stage >= NEW_WORD_DAILY_SUCCESS_TARGET) {
+      // 今日定着。今日はもう出題しない（翌日以降は既存SRSが引き継ぐ）
+      recalledThisSession.add(wordId);
+      return { secured: true, requeued: false, stage };
+    }
+
+    // n回目の成功 → GAPS[n-1] ±1問後に再出題
+    const base = NEW_WORD_REVIEW_GAPS[stage - 1] ?? NEW_WORD_REVIEW_GAPS.at(-1);
+    const offset = Math.max(2, base + (Math.floor(Math.random() * 3) - 1));
+    scheduleAt(wordId, offset);
+    return { secured: false, requeued: true, stage };
+  }
+
+  // Familiar語: このセッションではもう出さない
+  recalledThisSession.add(wordId);
+  return { secured: false, requeued: false, stage: null };
 }
 
-// 答え表示後の練習+5XPは同一セッション・同一単語につき1回まで
 export function claimPracticeXp(wordId) {
   if (practicedXpClaimed.has(wordId)) return false;
   practicedXpClaimed.add(wordId);
   return true;
 }
 
-// キュー表示用（内容は見せない。状態と残量だけ）
 export function getQueueSnapshot(limit = 5) {
   const stats = getWordStats();
   return {

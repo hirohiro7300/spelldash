@@ -7,6 +7,7 @@ import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
+import { initializeMixControl } from "./studyMix.js";
 
 initializeAuth();
 setFooterYear();
@@ -39,6 +40,7 @@ document.querySelectorAll(".mode-switch__btn").forEach((btn) => {
 initWordStore()
   .then(() => {
     initializeCategoryPicker();
+    initializeMixControl();
     renderMission();
     initializeDisplay();
     setMode(getMode());

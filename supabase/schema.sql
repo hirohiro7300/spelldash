@@ -36,6 +36,9 @@ create table if not exists public.word_progress (
   next_review_at timestamptz,
   last_recall_fail_at timestamptz,     -- 最後に思い出せなかった日時（Recall Loop）
   last_recall_success_at timestamptz,  -- 最後に自力で思い出せた日時（Recall Loop）
+  daily_learning_date text,            -- New単語の同日学習ループの日付
+  daily_learning_stage integer not null default 0, -- 同日の自力正解回数（4でToday Secured）
+  srs_advanced_on text,                -- SRSを最後に進めた日（1日1回制限）
   updated_at timestamptz not null default now(),
   primary key (user_id, word_id)
 );
@@ -66,6 +69,7 @@ create table if not exists public.user_progress (
   battle_draws integer not null default 0,
   battle_current_win_streak integer not null default 0,
   battle_best_win_streak integer not null default 0,
+  study_familiar_ratio integer not null default 80,
   updated_at timestamptz not null default now()
 );
 

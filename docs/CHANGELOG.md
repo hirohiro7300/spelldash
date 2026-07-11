@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-07-14 (Study Mix Control＋New Word Learning Loop)
+
+- 出題比率スライダーを追加（テンポ重視⇔新規学習、初期値: 回答済み80%/未回答20%、10%刻み）
+  - 比率は通常補充にのみ適用。Unresolved・Mission Review・SRS期限は従来通り最優先
+  - 設定はLocal First保存＋user_progress.study_familiar_ratioへ同期
+- New Word Learning Loop: 新しい単語はその日のうちに繰り返して定着させる
+  - New単語は導入時に「学習中」となり、自力正解のたびに[3,5,8]問後(±1)に再出題
+  - 同日4回の自力正解で「今日定着（Today Secured）」→ その日はもう出題しない
+  - 途中で思い出せないと成功段階が1つ戻る（全リセットはしない）
+  - 同時学習は最大3語（超えるとFamiliarで補充）
+  - 状態はローカル日付基準で保存（リロード・端末間同期対応、日付変更でリセット）
+- SRSと同日反復を分離: cleanCorrectStreakの前進を1日1回に制限（srsAdvancedOn）
+  - masteredが「複数日にまたがる10連続正解」の意味を厳密に持つように
+- XP: 同一単語の同日反復は2回目以降+3 XP（初回はフルXP、XP無限稼ぎ防止）
+- migration v6（dailyLearningDate/dailyLearningStage/srsAdvancedOn）
+
 ## 2026-07-13 (Recall Loop UI改善＋Battle Preseason)
 
 - Recall Loopの未解決カード（赤）に日本語の問題文を表示（「↻ 投資」形式、英単語は非表示、ellipsis対応）

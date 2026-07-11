@@ -5,6 +5,66 @@
   margin-bottom: 20px;
 }
 
+/* ===== Study Mix Control（出題比率スライダー） ===== */
+.mix-control {
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  backdrop-filter: blur(14px);
+}
+
+/* Challengeモードでは非表示（Study限定機能） */
+body:not(.mode-study) .mix-control {
+  display: none;
+}
+
+.mix-control__head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#mixSlider {
+  width: 100%;
+  accent-color: #60a5fa;
+  cursor: pointer;
+  height: 22px; /* スマホでタップしやすく */
+}
+
+.mix-control__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+#mixLabel {
+  color: #93c5fd;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mix-control__hint {
+  color: #64748b;
+  font-size: 11px;
+  text-align: right;
+}
+
+.stat-card__sub {
+  display: block;
+  margin-top: 4px;
+  color: #4ade80;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 /* ===== Study / Challenge モード切替 ===== */
 .mode-switch {
   display: flex;

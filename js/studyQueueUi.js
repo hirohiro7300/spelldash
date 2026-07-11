@@ -1,4 +1,4 @@
-import { getQueueSnapshot, getRecalledTodayCount } from "./studyQueue.js";
+import { getQueueSnapshot, getRecalledTodayCount, getSecuredTodayCount } from "./studyQueue.js";
 import { findWord } from "./wordStore.js";
 
 // Study Recall Loop の表示部分。
@@ -55,6 +55,12 @@ export function updateRecalledToday() {
   const element = document.getElementById("recalledToday");
   if (!element) return;
   element.textContent = getRecalledTodayCount();
+
+  const secured = document.getElementById("securedToday");
+  if (secured) {
+    const count = getSecuredTodayCount();
+    secured.textContent = count > 0 ? `今日定着 ${count}` : "";
+  }
 }
 
 // 自力正解: カードが緑になり右へ抜ける（reduced-motionでは色のみ）

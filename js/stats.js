@@ -11,6 +11,10 @@ function daysFromNow(days) {
   return d.toISOString();
 }
 
+export function localDateString(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function reviewIntervalFor(streak) {
   const index = Math.min(Math.max(streak, 1), REVIEW_INTERVAL_DAYS.length) - 1;
   return REVIEW_INTERVAL_DAYS[index];
@@ -37,20 +41,43 @@ export function recordCorrect(word, wasClean) {
   stats[word].correctCount += 1;
 
   if (wasClean) {
-    stats[word].cleanCorrectStreak += 1;
+    // SRSの前進は1日1回まで。同日反復（New Word Learning Loop）は
+    // 短期定着のためのもので、長期のSRS段階を進めない。
+    // これによりmasteredは「複数日にまたがる10連続正解」の意味を保つ
+    const today = localDateString();
 
-    if (stats[word].cleanCorrectStreak >= 10) {
-      stats[word].mastered = true;
-      stats[word].masteredAt = new Date().toISOString();
+    if (stats[word].srsAdvancedOn !== today) {
+      stats[word].cleanCorrectStreak += 1;
+      stats[word].srsAdvancedOn = today;
+
+      if (stats[word].cleanCorrectStreak >= 10) {
+        stats[word].mastered = true;
+        stats[word].masteredAt = new Date().toISOString();
+      }
+
+      stats[word].nextReviewAt = daysFromNow(
+        reviewIntervalFor(stats[word].cleanCorrectStreak)
+      );
     }
-
-    stats[word].nextReviewAt = daysFromNow(
-      reviewIntervalFor(stats[word].cleanCorrectStreak)
-    );
   } else {
     stats[word].cleanCorrectStreak = 0;
     stats[word].nextReviewAt = daysFromNow(1);
   }
+
+  saveWordStats(stats);
+  markWordDirty(word);
+}
+
+// New Word Learning Loop: 同日の学習段階を保存（ローカル日付基準）
+export function setDailyLearning(word, stage) {
+  const stats = getWordStats();
+
+  if (!stats[word]) {
+    stats[word] = createInitialWordStats();
+  }
+
+  stats[word].dailyLearningDate = localDateString();
+  stats[word].dailyLearningStage = stage;
 
   saveWordStats(stats);
   markWordDirty(word);
@@ -111,6 +138,9 @@ function createInitialWordStats() {
     lastPlayed: null,
     nextReviewAt: null,
     lastRecallFailAt: null,
-    lastRecallSuccessAt: null
+    lastRecallSuccessAt: null,
+    dailyLearningDate: null,
+    dailyLearningStage: 0,
+    srsAdvancedOn: null
   };
 }
