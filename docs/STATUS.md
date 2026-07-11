@@ -1,4 +1,16 @@
-# SpellDash 現状整理（2026-07-11 Knowledge Databaseフェーズ完了時点）
+# SpellDash 現状整理（2026-07-12 Study Recall Loop完了時点）
+
+## 直近の追加（Study Recall Loop）
+
+- Studyモード：思い出せなかった単語（Unresolved・赤）が3〜5問後に再出題され、自力正解（緑）するまで巡回
+- 「今日思い出せた」（Recalled Today）日次ユニークカウント
+- lastRecallFailAt / lastRecallSuccessAt をローカル＋word_progressに追加（フィールド単位マージ）→ **Unresolvedは端末をまたいで復元**
+- 練習+5XPはセッション内同一単語1回まで。typingMiss/recallFail分離は維持
+- Challenge・SRS・mastered判定は変更なし
+
+---
+（以下は前フェーズ時点の整理。上記以外は変わらず）
+
 
 上流設計（ChatGPT協議）用スナップショット。
 
