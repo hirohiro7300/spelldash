@@ -1,6 +1,8 @@
 import { words } from "./words.js";
 import { getWordStats, getBestScore, saveBestScore, recordTypingSession } from "./storage.js";
 import { recordPlay, recordCorrect, recordMiss } from "./stats.js";
+import { addXp, updateStreak } from "./level.js";
+import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
 import {
   elements,
   showMessage,
@@ -8,7 +10,8 @@ import {
   showColoredAnswer,
   updateTypedPreview,
   clearTypedPreview,
-  renderWeakWords
+  renderWeakWords,
+  updateCombo
 } from "./ui.js";
 
 let currentWord = null;
@@ -21,6 +24,8 @@ let timer = null;
 let correctChars = 0;
 let hasMissedCurrentWord = false;
 let startTime = null;
+let combo = 0;
+let gainedXp = 0;
 
 export function startGame() {
   if (isPlaying) return;
@@ -30,7 +35,10 @@ export function startGame() {
   miss = 0;
   time = 60;
   correctChars = 0;
+  combo = 0;
+  gainedXp = 0;
   startTime = Date.now();
+  updateCombo(0);
 
   elements.input.disabled = false;
   elements.input.value = "";
@@ -95,8 +103,19 @@ function handleCorrectChar(expectedChar) {
     score++;
     elements.score.textContent = score;
 
-    recordCorrect(currentWord.en, !hasMissedCurrentWord);
-    showMessage("Good!", "correct");
+    const isClean = !hasMissedCurrentWord;
+    recordCorrect(currentWord.en, isClean);
+
+    if (isClean) {
+      combo++;
+    }
+    updateCombo(combo);
+
+    // XP: 基本10 + ノーミスボーナス5 + コンボボーナス（最大10）
+    const wordXp = 10 + (isClean ? 5 : 0) + Math.min(combo, 10);
+    gainedXp += wordXp;
+
+    showMessage(`Good! +${wordXp} XP`, "correct");
 
     setTimeout(setNewWord, 250);
   }
@@ -106,6 +125,8 @@ function handleMiss() {
   miss++;
   elements.miss.textContent = miss;
   hasMissedCurrentWord = true;
+  combo = 0;
+  updateCombo(0);
 
   showColoredAnswer(currentWord.en);
   recordMiss(currentWord.en);
@@ -171,8 +192,30 @@ function endGame() {
   saveBestScore(score);
   elements.bestScore.textContent = getBestScore();
   renderWeakWords();
+  updateCombo(0);
 
-  showMessage(`終了！スコア ${score} / 平均 ${elements.typeSpeed.textContent}打/秒`, "finished");
+  // 今日最初のプレイならストリークボーナス
+  const streak = updateStreak();
+  let bonusText = "";
+
+  if (streak.isFirstToday) {
+    gainedXp += 50;
+    bonusText = `（今日の初プレイ +50 XP / ${streak.current}日連続）`;
+  }
+
+  const result = addXp(gainedXp);
+  renderLevelBar();
+
+  if (result.leveledUp) {
+    playLevelUpEffect();
+    showMessage(
+      `🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」 +${gainedXp} XP`,
+      "finished"
+    );
+    return;
+  }
+
+  showMessage(`終了！スコア ${score} / +${gainedXp} XP ${bonusText}`, "finished");
 }
 
 function updateTypeSpeed() {

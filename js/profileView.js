@@ -2,6 +2,8 @@ import { supabase } from "./supabase.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
+import { getLevelState, getStreak } from "./level.js";
+import { renderLevelBar } from "./levelUi.js";
 
 const loggedOutElement = document.getElementById("profileLoggedOut");
 const profileCardElement = document.getElementById("profileCard");
@@ -12,6 +14,7 @@ const summaryElement = document.getElementById("profileSummary");
 const typingElement = document.getElementById("profileTyping");
 
 initializeAuth();
+renderLevelBar();
 renderSummary();
 renderTyping();
 setFooterYear();
@@ -55,8 +58,12 @@ function renderCards(container, cards) {
 
 function renderSummary() {
   const s = computeSummary();
+  const level = getLevelState();
+  const streak = getStreak();
 
   renderCards(summaryElement, [
+    { label: "称号", value: level.title },
+    { label: "連続プレイ", value: `${streak.current}日` },
     { label: "ベストスコア", value: s.best },
     { label: "習得済み", value: `${s.mastered} / ${s.total}` },
     { label: "習得率", value: `${s.masteryRate}%` },

@@ -3,12 +3,15 @@ import { initializeWordList } from "./wordList.js";
 import { renderWeakWords } from "./ui.js";
 import { setFooterYear } from "./footer.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
+import { getLevelState, getStreak } from "./level.js";
+import { renderLevelBar } from "./levelUi.js";
 
 const overviewElement = document.getElementById("overview");
 const progressElement = document.getElementById("progress");
 const typingElement = document.getElementById("typingMetrics");
 
 initializeAuth();
+renderLevelBar();
 renderOverview();
 renderTyping();
 renderProgress();
@@ -31,8 +34,14 @@ function renderCards(container, cards) {
 
 function renderOverview() {
   const s = computeSummary();
+  const level = getLevelState();
+  const streak = getStreak();
 
   renderCards(overviewElement, [
+    { label: "レベル", value: `Lv.${level.level}` },
+    { label: "総XP", value: level.totalXp.toLocaleString() },
+    { label: "連続プレイ", value: `${streak.current}日` },
+    { label: "最長連続", value: `${streak.best}日` },
     { label: "ベストスコア", value: s.best },
     { label: "学習した単語", value: `${s.learned} / ${s.total}` },
     { label: "習得済み", value: s.mastered },

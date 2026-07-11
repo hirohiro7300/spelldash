@@ -14,7 +14,8 @@ export const elements = {
   typedPreview: document.getElementById("typedPreview"),
   message: document.getElementById("message"),
   restart: document.getElementById("restart"),
-  weakWords: document.getElementById("weakWords")
+  weakWords: document.getElementById("weakWords"),
+  combo: document.getElementById("combo")
 };
 
 export function initializeDisplay() {
@@ -25,6 +26,19 @@ export function initializeDisplay() {
 export function showMessage(text, type = "") {
   elements.message.textContent = text;
   elements.message.className = `message ${type}`;
+}
+
+export function updateCombo(combo) {
+  if (!elements.combo) return;
+
+  if (combo < 2) {
+    elements.combo.textContent = "";
+    elements.combo.className = "combo";
+    return;
+  }
+
+  elements.combo.textContent = `🔥 ${combo} COMBO`;
+  elements.combo.className = combo >= 5 ? "combo combo--hot" : "combo combo--on";
 }
 
 export function showHiddenWordText(text) {

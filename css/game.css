@@ -12,6 +12,95 @@
   margin-bottom: 20px;
 }
 
+/* ===== レベルバー ===== */
+.level-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  backdrop-filter: blur(14px);
+}
+
+.level-bar:empty {
+  display: none;
+}
+
+.level-bar__badge {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.level-bar__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.level-bar__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.level-bar__title {
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.level-bar__xp {
+  color: #94a3b8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.progress-bar--slim {
+  height: 8px;
+}
+
+.level-bar--levelup .level-bar__badge {
+  animation: levelup-pop 0.9s ease;
+}
+
+@keyframes levelup-pop {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.8); }
+  40% { transform: scale(1.25); box-shadow: 0 0 0 14px rgba(250, 204, 21, 0); }
+  100% { transform: scale(1); }
+}
+
+/* ===== コンボ表示 ===== */
+.combo {
+  min-height: 26px;
+  margin: 14px 0 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.combo--on {
+  color: #fb923c;
+}
+
+.combo--hot {
+  color: #f97316;
+  animation: combo-pulse 0.6s ease infinite alternate;
+}
+
+@keyframes combo-pulse {
+  from { transform: scale(1); text-shadow: 0 0 8px rgba(249, 115, 22, 0.4); }
+  to { transform: scale(1.08); text-shadow: 0 0 18px rgba(249, 115, 22, 0.8); }
+}
+
 .progress-row {
   margin: 8px 0 18px;
 }
