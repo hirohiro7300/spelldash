@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 2026-07-11 (Study/Challenge分離・Active Recall)
+
+- Study Mode と Challenge Mode を分離（モード切替UI追加、選択を保存）
+  - Study: 制限時間なし・1語ごとに即XP反映・毎日の学習向け（デフォルト）
+  - Challenge: 従来の60秒・スコア・タイピング速度・ベスト更新
+- 「わからない」をEnterに（Active Recall強化）
+  - 1回目のEnterで答えを表示 → 入力して練習（+5 XP）or 2回目のEnterで次へ
+  - ミスタイプしても答えは表示しない（思い出す行為を守る）
+- 学習データを分離: typingMiss（打ち間違い）と recallFail（思い出せなかった）
+  - 苦手判定（missCount）は recallFail のみ加算に変更（キー連打の偽ミスが消える）
+  - 苦手単語の表示を「思い出せず◯回 / 打ち間違い◯回」に更新
+- migration v3（既存データに新フィールドを安全追加）
+
 ## 2026-07-11 (Today's Mission・簡易SRS)
 
 - Today's Missionをゲーム画面に追加（Review 最大12語＋New 5語、1日1回自動生成）

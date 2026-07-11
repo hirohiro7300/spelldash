@@ -86,11 +86,27 @@ localStorageに保存（キーは単語の `en`）：
 - 色彩記憶：アルファベットごとの固定色
 - 反復記憶：ミスした単語を優先的に再出題（重み付き抽選）
 
+## 学習体験の原則（Active Recall）
+
+「どれだけ速く打てたか」ではなく「どれだけ思い出せたか」を中心に置く。
+
+- スペルはEnterを押すまで表示しない（思い出す行為に価値がある）
+- 分からない → Enterで答え表示 → もう一度Enterで次へ
+- ミスタイプ（typingMiss）と思い出せなかった（recallFail）は別データ
+- 苦手 = recallFail が多い単語
+- Study Mode（時間なし・学習）と Challenge Mode（60秒・計測）を分離
+
+理想の体験: 最初は「投資→Enter→investment」、数日後に「投資→investment」。
+「あっ、出てきた」→ Enterを押さなくなる → 自然とタイピングも速くなる。
+
 ## ロードマップ
 
 1. ~~XP・レベル・称号・コンボ・ストリーク~~（済）
 2. ~~カテゴリ別データ構造（1000語規模）~~（済）
-3. UIのミニマル化（Monkeytype/Notion系へ）
-4. 学習データのクラウド保存（Supabase、端末間共有）
-5. Knowledge Map の可視化（タグ・つながりのグラフ表示）
-6. 英語以外の教科追加
+3. ~~Today's Mission・簡易SRS~~（済）
+4. ~~Study/Challenge分離・Active Recall化~~（済）
+5. UIのミニマル化（Monkeytype/Notion系へ）
+6. 学習データのクラウド保存（Supabase、端末間共有）
+7. Recall Accuracy などの統計表示（データは収集済み）
+8. Knowledge Map の可視化（タグ・つながりのグラフ表示）
+9. 英語以外の教科追加

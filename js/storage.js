@@ -5,20 +5,32 @@ const SCHEMA_VERSION_KEY = "spelldash_schema_version";
 
 // 既存ユーザーのデータを壊さずに新フィールドを追加するmigration。
 // スキーマを変えるときは CURRENT_SCHEMA_VERSION を上げて処理を足す。
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 function migrateStorage() {
-  const version = Number(localStorage.getItem(SCHEMA_VERSION_KEY)) || 1;
+  let version = Number(localStorage.getItem(SCHEMA_VERSION_KEY)) || 1;
   if (version >= CURRENT_SCHEMA_VERSION) return;
 
-  // v1 → v2: 単語statsに lastPlayed / nextReviewAt を追加
   const stats = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-  for (const en of Object.keys(stats)) {
-    stats[en] = { lastPlayed: null, nextReviewAt: null, ...stats[en] };
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
 
-  localStorage.setItem(SCHEMA_VERSION_KEY, String(CURRENT_SCHEMA_VERSION));
+  // v1 → v2: lastPlayed / nextReviewAt を追加
+  if (version < 2) {
+    for (const en of Object.keys(stats)) {
+      stats[en] = { lastPlayed: null, nextReviewAt: null, ...stats[en] };
+    }
+    version = 2;
+  }
+
+  // v2 → v3: ミスを「打ち間違い」と「思い出せなかった」に分離
+  if (version < 3) {
+    for (const en of Object.keys(stats)) {
+      stats[en] = { typingMiss: 0, recallFail: 0, ...stats[en] };
+    }
+    version = 3;
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+  localStorage.setItem(SCHEMA_VERSION_KEY, String(version));
 }
 
 migrateStorage();

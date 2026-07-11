@@ -109,28 +109,44 @@
 
     <section class="category-picker" id="categoryPicker" aria-label="出題カテゴリ"></section>
 
+    <section class="mode-switch" id="modeSwitch" aria-label="モード切替">
+      <button type="button" class="mode-switch__btn" data-mode="study">
+        Study
+        <span>じっくり思い出して覚える</span>
+      </button>
+      <button type="button" class="mode-switch__btn" data-mode="challenge">
+        Challenge
+        <span>60秒で定着度を測る</span>
+      </button>
+    </section>
+
     <section class="stats">
-      <div class="stat-card">
+      <div class="stat-card stat-card--challenge">
         <span>残り時間</span>
         <strong><span id="time">60</span>秒</strong>
       </div>
 
       <div class="stat-card">
-        <span>スコア</span>
+        <span>正解</span>
         <strong id="score">0</strong>
       </div>
 
       <div class="stat-card">
-        <span>ミス</span>
-        <strong id="miss">0</strong>
+        <span>思い出せず</span>
+        <strong id="recallFail">0</strong>
       </div>
 
       <div class="stat-card">
+        <span>ミスタイプ</span>
+        <strong id="miss">0</strong>
+      </div>
+
+      <div class="stat-card stat-card--challenge">
         <span>平均タイプ</span>
         <strong><span id="typeSpeed">0.0</span>打/秒</strong>
       </div>
 
-      <div class="stat-card">
+      <div class="stat-card stat-card--challenge">
         <span>ベスト</span>
         <strong id="bestScore">0</strong>
       </div>

@@ -1,8 +1,61 @@
 .stats {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 14px;
   margin-bottom: 20px;
+}
+
+/* ===== Study / Challenge モード切替 ===== */
+.mode-switch {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.mode-switch__btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.6);
+  color: #94a3b8;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-align: center;
+}
+
+.mode-switch__btn span {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.mode-switch__btn:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: #e2e8f0;
+}
+
+.mode-switch__btn--active {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: #60a5fa;
+  color: #93c5fd;
+}
+
+.mode-switch__btn--active span {
+  color: #7ba7d9;
+}
+
+/* Studyモードでは時間・速度・ベスト・もう一回を隠す */
+body.mode-study .stat-card--challenge {
+  display: none;
+}
+
+body.mode-study #restart {
+  display: none;
 }
 
 .metric-grid {
@@ -387,6 +440,10 @@
 }
 
 .message.finished {
+  color: #facc15;
+}
+
+.message.revealed {
   color: #facc15;
 }
 

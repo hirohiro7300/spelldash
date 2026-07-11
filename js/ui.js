@@ -15,7 +15,8 @@ export const elements = {
   message: document.getElementById("message"),
   restart: document.getElementById("restart"),
   weakWords: document.getElementById("weakWords"),
-  combo: document.getElementById("combo")
+  combo: document.getElementById("combo"),
+  recallFail: document.getElementById("recallFail")
 };
 
 export function initializeDisplay() {
@@ -78,10 +79,17 @@ export function renderWeakWords() {
         const word = findWord(en);
         const ja = word ? word.ja : "";
 
+        const recallFail = data.recallFail ?? 0;
+        const typingMiss = data.typingMiss ?? 0;
+        const missDetail =
+          recallFail + typingMiss > 0
+            ? `思い出せず ${recallFail}回 / 打ち間違い ${typingMiss}回`
+            : `ミス ${data.missCount}回`;
+
         return `
           <div class="word-item">
             <strong>${en}</strong>：${ja}<br>
-            ミス ${data.missCount}回 / 正解 ${data.correctCount}回
+            ${missDetail} / 正解 ${data.correctCount}回
           </div>
         `;
       }).join("")}

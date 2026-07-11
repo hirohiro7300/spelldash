@@ -53,11 +53,23 @@ export function recordCorrect(word, wasClean) {
   saveWordStats(stats);
 }
 
-export function recordMiss(word) {
+// 打ち間違い（覚えていたがタイプをミスした）。苦手判定には使わない
+export function recordTypingMiss(word) {
   const stats = getWordStats();
 
   if (!stats[word]) return;
 
+  stats[word].typingMiss += 1;
+  saveWordStats(stats);
+}
+
+// 思い出せなかった（Enterで答えを見た）。これが本当の「苦手」
+export function recordRecallFail(word) {
+  const stats = getWordStats();
+
+  if (!stats[word]) return;
+
+  stats[word].recallFail += 1;
   stats[word].missCount += 1;
   stats[word].cleanCorrectStreak = 0;
   stats[word].mastered = false;
@@ -71,6 +83,8 @@ function createInitialWordStats() {
     playCount: 0,
     correctCount: 0,
     missCount: 0,
+    typingMiss: 0,
+    recallFail: 0,
     cleanCorrectStreak: 0,
     mastered: false,
     masteredAt: null,

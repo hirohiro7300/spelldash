@@ -1,6 +1,6 @@
 import { getWordsByCategory } from "./wordStore.js";
 import { getWordStats, getBestScore, saveBestScore, recordTypingSession } from "./storage.js";
-import { recordPlay, recordCorrect, recordMiss } from "./stats.js";
+import { recordPlay, recordCorrect, recordTypingMiss, recordRecallFail } from "./stats.js";
 import { addXp, updateStreak } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
 import { markMissionWord, isMissionWordPending, renderMission } from "./mission.js";
@@ -11,19 +11,23 @@ import {
   showColoredAnswer,
   updateTypedPreview,
   clearTypedPreview,
-  renderWeakWords,
   updateCombo
 } from "./ui.js";
 
+const MODE_KEY = "spelldash_mode";
+
+let mode = localStorage.getItem(MODE_KEY) || "study";
 let currentWord = null;
 let currentIndex = 0;
 let score = 0;
-let miss = 0;
+let typingMissCount = 0;
+let recallFailCount = 0;
 let time = 60;
 let isPlaying = false;
 let timer = null;
 let correctChars = 0;
 let hasMissedCurrentWord = false;
+let isRevealed = false;
 let startTime = null;
 let combo = 0;
 let gainedXp = 0;
@@ -33,12 +37,49 @@ export function setActiveCategory(categoryId) {
   activeCategory = categoryId;
 }
 
-export function getActiveCategory() {
-  return activeCategory;
-}
-
 export function isGamePlaying() {
   return isPlaying;
+}
+
+export function getMode() {
+  return mode;
+}
+
+let modeInitialized = false;
+
+// Study / Challenge の切り替え。プレイ中なら中断する
+export function setMode(newMode) {
+  if (mode === newMode && modeInitialized) return;
+  modeInitialized = true;
+
+  mode = newMode;
+  stopGame();
+  localStorage.setItem(MODE_KEY, newMode);
+
+  document.body.classList.toggle("mode-study", mode === "study");
+
+  document.querySelectorAll(".mode-switch__btn").forEach((btn) => {
+    btn.classList.toggle("mode-switch__btn--active", btn.dataset.mode === mode);
+  });
+
+  showIdleMessage();
+}
+
+function showIdleMessage() {
+  if (mode === "study") {
+    showMessage("Enterで開始。分からない単語はEnterで答えを見る");
+  } else {
+    showMessage("Enterで開始（60秒チャレンジ）");
+  }
+}
+
+export function stopGame() {
+  clearInterval(timer);
+  isPlaying = false;
+  currentWord = null;
+  elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
+  showHiddenWordText("");
+  updateCombo(0);
 }
 
 export function startGame() {
@@ -51,7 +92,8 @@ export function startGame() {
 
   isPlaying = true;
   score = 0;
-  miss = 0;
+  typingMissCount = 0;
+  recallFailCount = 0;
   time = 60;
   correctChars = 0;
   combo = 0;
@@ -65,22 +107,30 @@ export function startGame() {
   clearTypedPreview();
 
   elements.score.textContent = score;
-  elements.miss.textContent = miss;
+  elements.miss.textContent = typingMissCount;
+  if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
   elements.time.textContent = time;
   elements.typeSpeed.textContent = "0.0";
 
-  showMessage("日本語訳を見てスペルを入力");
+  showMessage(
+    mode === "study"
+      ? "思い出してタイプ。分からなければEnter"
+      : "日本語訳を見てスペルを入力"
+  );
   setNewWord();
 
-  timer = setInterval(() => {
-    time--;
-    elements.time.textContent = time;
-    updateTypeSpeed();
+  // タイマーはChallengeのみ
+  if (mode === "challenge") {
+    timer = setInterval(() => {
+      time--;
+      elements.time.textContent = time;
+      updateTypeSpeed();
 
-    if (time <= 0) {
-      endGame();
-    }
-  }, 1000);
+      if (time <= 0) {
+        endChallenge();
+      }
+    }, 1000);
+  }
 }
 
 export function restartGame() {
@@ -90,8 +140,21 @@ export function restartGame() {
 }
 
 export function handleKeydown(event) {
-  if (event.key === "Enter" && !isPlaying) {
-    startGame();
+  if (event.key === "Enter") {
+    event.preventDefault();
+
+    if (!isPlaying) {
+      startGame();
+      return;
+    }
+
+    // Enter = 「わからない」。1回目で答え表示、2回目で次へ
+    if (!isRevealed) {
+      revealAnswer();
+    } else {
+      setNewWord();
+      showMessage(mode === "study" ? "思い出してタイプ。分からなければEnter" : "");
+    }
     return;
   }
 
@@ -106,8 +169,29 @@ export function handleKeydown(event) {
   if (typedChar === expectedChar) {
     handleCorrectChar(expectedChar);
   } else {
-    handleMiss();
+    handleTypingMiss();
   }
+}
+
+// Enter1回目: 思い出せなかった → 答えを表示（recallFailとして記録）
+function revealAnswer() {
+  isRevealed = true;
+  recallFailCount++;
+  if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
+
+  recordRecallFail(currentWord.en);
+
+  combo = 0;
+  updateCombo(0);
+
+  showColoredAnswer(currentWord.en);
+
+  // 頭から打ち直して練習できるようにリセット
+  currentIndex = 0;
+  elements.input.value = "";
+  clearTypedPreview();
+
+  showMessage("答えを表示。入力して練習 or Enterで次へ", "revealed");
 }
 
 function handleCorrectChar(expectedChar) {
@@ -119,55 +203,90 @@ function handleCorrectChar(expectedChar) {
   updateTypeSpeed();
 
   if (currentIndex === currentWord.en.length) {
-    score++;
-    elements.score.textContent = score;
+    completeWord();
+  }
+}
 
-    const isClean = !hasMissedCurrentWord;
-    recordCorrect(currentWord.en, isClean);
+function completeWord() {
+  score++;
+  elements.score.textContent = score;
 
-    if (isClean) {
-      combo++;
-    }
-    updateCombo(combo);
+  // clean = 思い出せて、かつ打ち間違いもなし
+  const isClean = !hasMissedCurrentWord && !isRevealed;
+  recordCorrect(currentWord.en, isClean);
 
-    // XP: 基本10 + ノーミスボーナス5 + コンボボーナス（最大10）
-    const wordXp = 10 + (isClean ? 5 : 0) + Math.min(combo, 10);
-    gainedXp += wordXp;
+  if (isClean) {
+    combo++;
+  }
+  updateCombo(combo);
 
-    // ミッション対象ならカウント。完了の瞬間はボーナスXP
-    const missionResult = markMissionWord(currentWord.en);
-    gainedXp += missionResult.bonusXp;
-    renderMission();
+  // XP: 答えを見た後の練習は+5。思い出せたら 基本10+クリーン5+コンボ最大10
+  const wordXp = isRevealed ? 5 : 10 + (isClean ? 5 : 0) + Math.min(combo, 10);
+  let earned = wordXp;
+
+  const missionResult = markMissionWord(currentWord.en);
+  earned += missionResult.bonusXp;
+  renderMission();
+
+  if (mode === "study") {
+    applyStudyXp(earned, missionResult);
+  } else {
+    gainedXp += earned;
 
     if (missionResult.justCompleted) {
       showMessage(`MISSION COMPLETE +${missionResult.bonusXp} XP`, "correct");
     } else {
       showMessage(`Good! +${wordXp} XP`, "correct");
     }
-
-    setTimeout(setNewWord, 250);
   }
+
+  setTimeout(setNewWord, 250);
 }
 
-function handleMiss() {
-  miss++;
-  elements.miss.textContent = miss;
+// Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
+function applyStudyXp(earned, missionResult) {
+  const streak = updateStreak();
+  if (streak.isFirstToday) {
+    earned += 50;
+  }
+
+  const result = addXp(earned);
+  renderLevelBar();
+
+  if (result.leveledUp) {
+    playLevelUpEffect();
+    showMessage(`🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」`, "finished");
+    return;
+  }
+
+  if (missionResult.justCompleted) {
+    showMessage(`MISSION COMPLETE +${missionResult.bonusXp} XP`, "correct");
+    return;
+  }
+
+  showMessage(`Good! +${earned} XP`, "correct");
+}
+
+// 打ち間違い: 答えは表示しない（覚えていたかどうかとは別のデータとして記録）
+function handleTypingMiss() {
+  typingMissCount++;
+  elements.miss.textContent = typingMissCount;
   hasMissedCurrentWord = true;
   combo = 0;
   updateCombo(0);
 
-  showColoredAnswer(currentWord.en);
-  recordMiss(currentWord.en);
-  showMessage("Miss! スペルを表示しました", "wrong");
+  recordTypingMiss(currentWord.en);
+  showMessage("Miss!", "wrong");
 }
 
 function setNewWord() {
   currentWord = chooseWord();
   currentIndex = 0;
   hasMissedCurrentWord = false;
+  isRevealed = false;
 
   elements.japanese.textContent = currentWord.ja;
-  showHiddenWordText("スペルはまだ非表示");
+  showHiddenWordText("分からないときは Enter で答えを表示");
 
   elements.input.value = "";
   clearTypedPreview();
@@ -208,7 +327,7 @@ function chooseWord() {
   return selected;
 }
 
-function endGame() {
+function endChallenge() {
   clearInterval(timer);
   isPlaying = false;
   elements.input.disabled = true;
@@ -218,14 +337,13 @@ function endGame() {
 
   recordTypingSession({
     correctChars,
-    missChars: miss,
+    missChars: typingMissCount,
     seconds: elapsedSeconds,
     speed
   });
 
   saveBestScore(score);
   elements.bestScore.textContent = getBestScore();
-  renderWeakWords();
   updateCombo(0);
 
   // 今日最初のプレイならストリークボーナス
