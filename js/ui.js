@@ -1,6 +1,6 @@
 import { renderColoredWord } from "./colors.js";
 import { getBestScore, getWordStats } from "./storage.js";
-import { words } from "./words.js";
+import { findWord } from "./wordStore.js";
 
 export const elements = {
   time: document.getElementById("time"),
@@ -75,7 +75,7 @@ export function renderWeakWords() {
   elements.weakWords.innerHTML = `
     <div class="word-list">
       ${weakWords.map(([en, data]) => {
-        const word = words.find((item) => item.en === en);
+        const word = findWord(en);
         const ja = word ? word.ja : "";
 
         return `

@@ -1,0 +1,17 @@
+{
+  "subjects": [
+    {
+      "id": "english",
+      "label": "英語",
+      "categories": [
+        { "id": "junior", "label": "中学英語", "file": "english/junior.json" },
+        { "id": "highschool", "label": "高校英語", "file": "english/highschool.json" },
+        { "id": "toeic", "label": "TOEIC", "file": "english/toeic.json" },
+        { "id": "business", "label": "ビジネス", "file": "english/business.json" },
+        { "id": "it", "label": "IT", "file": "english/it.json" },
+        { "id": "travel", "label": "旅行", "file": "english/travel.json" },
+        { "id": "daily", "label": "日常英会話", "file": "english/daily.json" }
+      ]
+    }
+  ]
+}

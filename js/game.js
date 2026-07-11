@@ -1,4 +1,4 @@
-import { words } from "./words.js";
+import { getWordsByCategory } from "./wordStore.js";
 import { getWordStats, getBestScore, saveBestScore, recordTypingSession } from "./storage.js";
 import { recordPlay, recordCorrect, recordMiss } from "./stats.js";
 import { addXp, updateStreak } from "./level.js";
@@ -26,9 +26,27 @@ let hasMissedCurrentWord = false;
 let startTime = null;
 let combo = 0;
 let gainedXp = 0;
+let activeCategory = "all";
+
+export function setActiveCategory(categoryId) {
+  activeCategory = categoryId;
+}
+
+export function getActiveCategory() {
+  return activeCategory;
+}
+
+export function isGamePlaying() {
+  return isPlaying;
+}
 
 export function startGame() {
   if (isPlaying) return;
+
+  if (getWordsByCategory(activeCategory).length === 0) {
+    showMessage("単語データを読み込み中です…");
+    return;
+  }
 
   isPlaying = true;
   score = 0;
@@ -149,6 +167,7 @@ function setNewWord() {
 
 function chooseWord() {
   const stats = getWordStats();
+  const words = getWordsByCategory(activeCategory);
 
   const weightedWords = words.flatMap((word) => {
     const data = stats[word.en];

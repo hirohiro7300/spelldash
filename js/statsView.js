@@ -6,18 +6,23 @@ import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 
+import { initWordStore } from "./wordStore.js";
+
 const overviewElement = document.getElementById("overview");
 const progressElement = document.getElementById("progress");
 const typingElement = document.getElementById("typingMetrics");
 
 initializeAuth();
 renderLevelBar();
-renderOverview();
-renderTyping();
-renderProgress();
-renderWeakWords();
-initializeWordList();
 setFooterYear();
+
+initWordStore().then(() => {
+  renderOverview();
+  renderTyping();
+  renderProgress();
+  renderWeakWords();
+  initializeWordList();
+});
 
 function renderCards(container, cards) {
   container.innerHTML = cards

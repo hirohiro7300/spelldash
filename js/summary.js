@@ -1,9 +1,10 @@
 import { getWordStats, getBestScore, getTypingStats } from "./storage.js";
-import { words } from "./words.js";
+import { getAllWords } from "./wordStore.js";
 
 export function computeSummary() {
   const stats = getWordStats();
   const entries = Object.values(stats);
+  const words = getAllWords();
 
   const total = words.length;
   const learned = words.filter((word) => (stats[word.en]?.playCount ?? 0) > 0).length;

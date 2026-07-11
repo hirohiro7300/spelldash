@@ -4,6 +4,7 @@ import { setFooterYear } from "./footer.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
+import { initWordStore } from "./wordStore.js";
 
 const loggedOutElement = document.getElementById("profileLoggedOut");
 const profileCardElement = document.getElementById("profileCard");
@@ -15,9 +16,12 @@ const typingElement = document.getElementById("profileTyping");
 
 initializeAuth();
 renderLevelBar();
-renderSummary();
 renderTyping();
 setFooterYear();
+
+initWordStore().then(() => {
+  renderSummary();
+});
 
 supabase.auth.getSession().then(({ data }) => renderProfile(data.session));
 supabase.auth.onAuthStateChange((_event, session) => renderProfile(session));
