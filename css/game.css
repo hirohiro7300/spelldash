@@ -273,6 +273,108 @@ body:not(.mode-study) .study-queue {
   margin-bottom: 20px;
 }
 
+/* ===== ストリークカード ===== */
+.streak-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  backdrop-filter: blur(14px);
+}
+
+.streak-card:empty {
+  display: none;
+}
+
+/* 今日クリア済みは炎色の枠でご褒美感を出す */
+.streak-card--active {
+  border-color: rgba(251, 146, 60, 0.45);
+}
+
+.streak-card__flame {
+  flex-shrink: 0;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.streak-card__flame--off {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+.streak-card__main {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.streak-card__count {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: #f8fafc;
+}
+
+.streak-card__count strong {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.streak-card__count span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.streak-card__status {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.streak-card__status--done {
+  color: #4ade80;
+}
+
+.streak-card__status--pending {
+  color: #fbbf24;
+}
+
+.streak-card__saved {
+  color: #38bdf8;
+  font-size: 12px;
+}
+
+.streak-card__side {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.streak-card__shields {
+  display: flex;
+  gap: 2px;
+  font-size: 15px;
+  cursor: help;
+}
+
+.streak-card__shield--empty {
+  filter: grayscale(1);
+  opacity: 0.3;
+}
+
+.streak-card__best {
+  color: #64748b;
+  font-size: 12px;
+}
+
 /* ===== Today's Mission ===== */
 .mission {
   display: flex;
