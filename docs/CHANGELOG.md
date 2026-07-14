@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-14 (モバイル入力対応)
+
+- ソフトキーボード（Android Gboard等）でプレイできない問題を修正
+  - 従来は keydown + event.key のみに依存 → モバイルでは "Unidentified" が返り入力不能だった
+  - inputイベントで入力欄の値を受理済みプレフィックスと照合する方式を追加（メインゲーム・バトル両方）
+  - デスクトップはkeydownでpreventDefault済みのため二重処理なし（従来経路は不変）
+- 予測変換の一括挿入に対応（正しい文字は連続受理、ミスは1イベント1回まで）
+- 削除・予測変換の置き換えは受理済み位置へ巻き戻すだけ（ミス扱いしない）
+- ソフトキーボードのEnter（Go）: beforeinput insertLineBreak をEnter相当として処理（開始/答え表示/バトルのパス）
+- 入力欄に autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go" を付与
+- 検証: ヘッドレスブラウザでソフトキーボード入力（Unidentified keydown + inputイベント）をシミュレートし、開始・ミス巻き戻し・1文字ずつ入力・一括挿入・デスクトップ回帰・バトル（Miss/Pass/巻き戻し）の全ケースがパス。390px幅のレイアウトも確認
+
 ## 2026-07-14 (Streak Guard: ストリーク可視化＋シールド)
 
 - ホーム画面にストリークカードを追加（これまでストリークは学習データページと終了メッセージでしか見えなかった）

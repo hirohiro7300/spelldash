@@ -171,22 +171,26 @@ export function restartGame() {
   startGame();
 }
 
+// Enterキー相当の操作（物理キーボード・ソフトキーボード共通）
+// 未開始=スタート / プレイ中=「わからない」1回目で答え表示、2回目で次へ
+function triggerEnter() {
+  if (!isPlaying) {
+    startGame();
+    return;
+  }
+
+  if (!isRevealed) {
+    revealAnswer();
+  } else {
+    setNewWord();
+    showMessage(mode === "study" ? "思い出してタイプ。分からなければEnter" : "");
+  }
+}
+
 export function handleKeydown(event) {
   if (event.key === "Enter") {
     event.preventDefault();
-
-    if (!isPlaying) {
-      startGame();
-      return;
-    }
-
-    // Enter = 「わからない」。1回目で答え表示、2回目で次へ
-    if (!isRevealed) {
-      revealAnswer();
-    } else {
-      setNewWord();
-      showMessage(mode === "study" ? "思い出してタイプ。分からなければEnter" : "");
-    }
+    triggerEnter();
     return;
   }
 
@@ -202,6 +206,54 @@ export function handleKeydown(event) {
     handleCorrectChar(expectedChar);
   } else {
     handleTypingMiss();
+  }
+}
+
+// ===== モバイル（ソフトキーボード/IME）対応 =====
+// AndroidのGboard等はkeydownで "Unidentified" しか返さないため、
+// inputイベントで入力欄の実際の値を照合する。
+// デスクトップではprintableキーをkeydownでpreventDefaultしているので二重処理にならない。
+
+export function handleTextInput() {
+  if (!isPlaying || !currentWord) return;
+
+  const word = currentWord.en;
+  const accepted = word.slice(0, currentIndex);
+  const raw = elements.input.value.toLowerCase().replace(/\s/g, "");
+
+  if (raw === accepted) return;
+
+  // 削除や予測変換での置き換えは、受理済みの位置へ巻き戻すだけ（ミス扱いしない）
+  if (!raw.startsWith(accepted)) {
+    elements.input.value = accepted;
+    updateTypedPreview(accepted);
+    return;
+  }
+
+  for (const typedChar of raw.slice(accepted.length)) {
+    if (typedChar === word[currentIndex]) {
+      const isLastChar = currentIndex + 1 === word.length;
+      if (isLastChar) {
+        elements.input.value = word;
+        updateTypedPreview(word);
+      }
+      if (acceptChar()) return; // 単語完成。setNewWordが入力欄をリセットする
+    } else {
+      handleTypingMiss();
+      break; // 1イベントにつきミスは1回まで（予測変換の一括挿入対策）
+    }
+  }
+
+  const prefix = word.slice(0, currentIndex);
+  elements.input.value = prefix;
+  updateTypedPreview(prefix);
+}
+
+// ソフトキーボードのEnter（Go/実行）はkeydownではなくinsertLineBreakとして来る環境がある
+export function handleBeforeInput(event) {
+  if (event.inputType === "insertLineBreak") {
+    event.preventDefault();
+    triggerEnter();
   }
 }
 
@@ -248,14 +300,21 @@ export function speakCurrentWord() {
 function handleCorrectChar(expectedChar) {
   elements.input.value += expectedChar;
   updateTypedPreview(elements.input.value);
+  acceptChar();
+}
 
+// 1文字受理の共通処理（DOMの入力欄には触れない）。単語完成ならtrueを返す
+function acceptChar() {
   currentIndex++;
   correctChars++;
   updateTypeSpeed();
 
   if (currentIndex === currentWord.en.length) {
     completeWord();
+    return true;
   }
+
+  return false;
 }
 
 let studyWordsSinceSync = 0;
