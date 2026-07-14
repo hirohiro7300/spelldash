@@ -57,6 +57,7 @@ function renderOverview() {
     { label: "総XP", value: level.totalXp.toLocaleString() },
     { label: "連続プレイ", value: `${streak.current}日` },
     { label: "最長連続", value: `${streak.best}日` },
+    { label: "ストリークシールド", value: `🛡️ × ${streak.shields ?? 0}` },
     { label: "ベストスコア", value: s.best },
     { label: "学習した単語", value: `${s.learned} / ${s.total}` },
     { label: "習得済み", value: s.mastered },

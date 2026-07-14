@@ -282,12 +282,15 @@ export async function initialSync() {
     const localStreak = getStreak();
     const cloudStreak = cloudProgress.streak;
     if (cloudStreak && (cloudStreak.last ?? "") > (localStreak.last ?? "")) {
+      // シールドは「最後にプレイした側」の値が正（消費の巻き戻しを防ぐため maxにしない）
       localStorage.setItem(
         STREAK_KEY,
         JSON.stringify({
           last: cloudStreak.last,
           current: cloudStreak.current,
-          best: Math.max(cloudStreak.best ?? 0, localStreak.best ?? 0)
+          best: Math.max(cloudStreak.best ?? 0, localStreak.best ?? 0),
+          shields: cloudStreak.shields ?? 0,
+          shieldSavedOn: cloudStreak.shieldSavedOn ?? null
         })
       );
       changedLocal = true;
