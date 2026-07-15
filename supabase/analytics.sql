@@ -106,3 +106,37 @@ from public.play_sessions
 where played_at >= now() - interval '14 days'
 group by 1, 2
 order by 1 desc, 2;
+
+-- ---------- 10. 【毎日これ1本】KPIサマリー（直近7日を1画面で） ----------
+with days as (
+  select to_char(current_date - offs, 'YYYY-MM-DD') as day
+  from generate_series(0, 6) as offs
+),
+act as (
+  select day, count(*) as dau,
+         count(*) filter (where daily_done) as daily_users,
+         count(*) filter (where study_correct > 0) as study_users,
+         count(*) filter (where battle_runs > 0) as battle_users,
+         round(avg(study_correct), 1) as avg_words
+  from public.activity_days group by day
+)
+select d.day,
+       coalesce(a.dau, 0) as dau,
+       coalesce(a.daily_users, 0) as daily,
+       coalesce(a.study_users, 0) as study,
+       coalesce(a.battle_users, 0) as battle,
+       coalesce(a.avg_words, 0) as avg_words,
+       case when coalesce(a.dau, 0) > 0
+            then round(100.0 * a.daily_users / a.dau, 0) || '%'
+            else '-' end as daily_rate
+from days d
+left join act a using (day)
+order by d.day desc;
+
+-- ---------- 11. チートスコア検知（ランキング公開の健全性チェック） ----------
+-- 60秒で30語超は人間には困難。typing_speedとの不整合も怪しい
+select day, user_id, display_name, score, typing_speed, created_at
+from public.daily_scores
+where score > 30
+   or (typing_speed is not null and typing_speed < 2 and score > 15)
+order by day desc, score desc;
