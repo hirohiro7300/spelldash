@@ -154,18 +154,20 @@
     </section>
 
     <section class="result-card">
-      <h3>単語一覧</h3>
+      <details class="word-list-fold">
+        <summary>単語一覧を開く（検索・カテゴリで絞り込み）</summary>
 
-      <select id="wordCategoryFilter" class="word-filter"></select>
+        <select id="wordCategoryFilter" class="word-filter"></select>
 
-      <input
-        id="wordSearch"
-        type="text"
-        placeholder="英単語・日本語・タグで検索"
-        autocomplete="off"
-      />
+        <input
+          id="wordSearch"
+          type="text"
+          placeholder="英単語・日本語・タグで検索"
+          autocomplete="off"
+        />
 
-      <div id="wordList"></div>
+        <div id="wordList"></div>
+      </details>
     </section>
   </div>
 

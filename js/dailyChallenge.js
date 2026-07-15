@@ -293,6 +293,16 @@ export function renderDailyCard(onStart) {
 
   const state = getDailyState();
 
+  // モード選択タイル（ホーム）にも完了状態を反映
+  const tile = document.getElementById("modeDailyTile");
+  const tileDesc = document.getElementById("modeDailyDesc");
+  if (tile && tileDesc) {
+    tile.classList.toggle("mode-switch__btn--done", state.played);
+    tileDesc.textContent = state.played
+      ? `✓ 今日は完了（スコア ${state.score}）`
+      : "1日1回・全員同じ問題";
+  }
+
   if (state.played) {
     container.classList.add("daily--done");
     container.innerHTML = `
