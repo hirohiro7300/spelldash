@@ -124,11 +124,115 @@ export function buildDailyShareText(state = getDailyState()) {
   return lines.join("\n");
 }
 
-// Web Share APIがあれば共有シート、なければクリップボードへコピー
+// ===== リザルト画像（Canvas生成・依存なし） =====
+// SNSで目を引くOGP風カード。Web Share API Level 2（files）対応環境では画像付き共有
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+export function buildDailyResultImage(state = getDailyState()) {
+  const W = 1080;
+  const H = 1080;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  // 背景（ダークスレート＋ブルーのグロー）
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W * 0.85, H * 0.12, 60, W * 0.85, H * 0.12, 640);
+  glow.addColorStop(0, "rgba(99,102,241,0.4)");
+  glow.addColorStop(1, "rgba(99,102,241,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // ブランド
+  const grad = ctx.createLinearGradient(80, 80, 176, 176);
+  grad.addColorStop(0, "#3b82f6");
+  grad.addColorStop(1, "#6366f1");
+  ctx.fillStyle = grad;
+  roundRect(ctx, 80, 80, 96, 96, 26);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 40px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("SD", 128, 130);
+  ctx.textAlign = "left";
+  ctx.font = "800 56px sans-serif";
+  ctx.fillText("SpellDash", 208, 130);
+
+  // タイトル
+  const [, month, day] = state.date.split("-");
+  ctx.fillStyle = "#facc15";
+  ctx.font = "800 64px sans-serif";
+  ctx.fillText(`⚡ Daily Dash ${Number(month)}/${Number(day)}`, 80, 320);
+
+  // スコア（主役）
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "800 220px sans-serif";
+  ctx.fillText(`${state.score}`, 80, 540);
+  const scoreWidth = ctx.measureText(`${state.score}`).width;
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "700 56px sans-serif";
+  ctx.fillText("語", 80 + scoreWidth + 24, 540);
+
+  // ストリーク
+  const streak = getStreak();
+  if (streak.current > 0) {
+    ctx.fillStyle = "#fb923c";
+    ctx.font = "700 52px sans-serif";
+    ctx.fillText(`🔥 ${streak.current}日連続`, 80, 660);
+  }
+
+  // 絵文字グリッド
+  const cells = Array.from(state.emoji ?? "").slice(0, 30);
+  ctx.font = "52px sans-serif";
+  cells.forEach((cell, i) => {
+    const cx = 80 + (i % 10) * 62;
+    const cy = 760 + Math.floor(i / 10) * 66;
+    ctx.fillText(cell, cx, cy);
+  });
+
+  // URL
+  ctx.fillStyle = "#64748b";
+  ctx.font = "600 40px sans-serif";
+  ctx.fillText("spelldash.net", 80, H - 70);
+
+  return canvas;
+}
+
+async function canvasToPng(canvas) {
+  return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+}
+
+// Web Share APIがあれば共有シート（画像対応環境は画像付き）、なければコピー
 export async function shareDailyResult() {
   const text = buildDailyShareText();
 
   if (navigator.share) {
+    // 画像付き共有（対応環境のみ）
+    try {
+      const blob = await canvasToPng(buildDailyResultImage());
+      if (blob) {
+        const file = new File([blob], "spelldash-daily.png", { type: "image/png" });
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ text, files: [file] });
+          return "shared";
+        }
+      }
+    } catch {
+      // 画像生成/共有に失敗したらテキスト共有へフォールバック
+    }
+
     try {
       await navigator.share({ text });
       return "shared";
