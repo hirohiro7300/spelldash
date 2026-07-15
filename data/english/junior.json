@@ -8,7 +8,7 @@
     {"id": "english-bread", "en": "bread", "ja": "パン", "level": "easy", "tags": ["food"]},
     {"id": "english-milk", "en": "milk", "ja": "牛乳", "level": "easy", "tags": ["food"]},
     {"id": "english-egg", "en": "egg", "ja": "卵", "level": "easy", "tags": ["food"]},
-    {"id": "english-rice", "en": "rice", "ja": "ごはん", "level": "easy", "tags": ["food"]},
+    {"id": "english-rice", "en": "rice", "ja": "ご飯", "level": "easy", "tags": ["food"]},
     {"id": "english-fish", "en": "fish", "ja": "魚", "level": "easy", "tags": ["food", "animal"]},
     {"id": "english-cake", "en": "cake", "ja": "ケーキ", "level": "easy", "tags": ["food"]},
     {"id": "english-tea", "en": "tea", "ja": "お茶", "level": "easy", "tags": ["food"]},
