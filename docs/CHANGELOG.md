@@ -1,6 +1,14 @@
 # CHANGELOG
 
-## 2026-07-15 (可用性: esm.sh単一障害点の解消) ※承認待ち・未デプロイ
+## 2026-07-15 (E2Eテストスイート常設)
+
+- tests/e2e.mjs: `npm test` 1コマンドで回るスモークテスト16件を常設
+  - 全5ページのエラーゼロ / Study（物理キー＋ソフトキーボード両経路）/ Daily（完走→ロック→カウントダウン→シェア→KPI心拍）/ ストリークカード / 苦手トグル
+  - テストサーバーが /js/supabase.js をスタブに差し替えるため、**テストが本番Supabaseに接続することは構造上ない**
+  - Chromiumの場所は CHROME_PATH で指定可能（playwright既定キャッシュも自動探索）
+- package.json 新規（devDependency: playwright-core のみ。本体は引き続き依存ゼロ）
+
+## 2026-07-15 (可用性: esm.sh単一障害点の解消)
 
 - supabase.jsを動的import化。CDN（esm.sh）障害時でもアプリが起動し、ゲームはLocal Firstで動作
   - 従来は静的importのためesm.sh障害＝アプリ全滅だった（SECURITY.md 発見事項5の解消）
