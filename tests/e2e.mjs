@@ -177,6 +177,20 @@ console.log("challenge result:");
   await page.close();
 }
 
+// ===== 6. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
+console.log("difficulty gate:");
+{
+  const page = await newPage({ storage: { spelldash_category: "it", spelldash_mode: "challenge" } });
+  await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(400);
+  const ja = (await page.textContent("#japanese")).trim();
+  check("IT×Lv1でも出題される（最易難易度で救済）", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
+  check("IT×Lv1でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
 await browser.close();
 server.close();
 

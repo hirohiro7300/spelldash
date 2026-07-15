@@ -53,7 +53,7 @@ import {
   sfxSparkle
 } from "./sfx.js";
 import { bumpActivity, markDailyDone } from "./activity.js";
-import { allowedWordLevels, isWordLevelAllowed, unlockNoteForLevel } from "./difficulty.js";
+import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel } from "./difficulty.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak } from "./audio.js";
 import {
@@ -612,10 +612,15 @@ function chooseWord() {
   const stats = getWordStats();
   const allowed = allowedWordLevels();
 
-  // 未プレイの単語はプレイヤーレベルで解放（既習語は常に出題対象）
-  const words = getWordsByCategory(activeCategory).filter(
-    (word) => stats[word.id] || isWordLevelAllowed(word, allowed)
+  // 未プレイの単語はプレイヤーレベルで解放（既習語は常に出題対象）。
+  // カテゴリ内に解放難易度が無い場合はfilterByAllowedLevelsが最易難易度で救済
+  const pool = getWordsByCategory(activeCategory);
+  const played = pool.filter((word) => stats[word.id]);
+  const unlocked = filterByAllowedLevels(
+    pool.filter((word) => !stats[word.id]),
+    allowed
   );
+  const words = [...played, ...unlocked];
 
   const weightedWords = words.flatMap((word) => {
     const data = stats[word.id];
