@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-07-15 (PWA化)
+
+- Webアプリマニフェスト追加（manifest.webmanifest）: ホーム画面に「SpellDash」として追加可能に
+- アプリアイコン生成（192/512/maskable/apple-touch、ブランドのSDマーク・青グラデ）
+- Service Worker（sw.js）: Network First＋オフライン時キャッシュフォールバック
+  - デプロイは即反映（キャッシュ優先にしない）。Supabase等のクロスオリジンには一切触らない
+  - オフラインでも訪問済みページが開く
+- 全ページにmanifest・theme-color・アイコンリンク・SW登録を追加
+- 検証: SW登録（active）・SW有効後のゲーム動作・オフラインでのページ表示を確認
+
 ## 2026-07-15 (Daily Dash結果シェア)
 
 - Daily Dash完走後に「結果をシェア」ボタンを追加（SNS拡散導線の第一歩）
