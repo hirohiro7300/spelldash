@@ -267,6 +267,16 @@ export function startStudyQueue(categoryId) {
     queue.push(id);
   };
 
+  // 0. 初回体験: 学習履歴が全く無ければ、短くて易しい単語から始める
+  //    （最初の1語の成功体験を30秒以内に作る。2回目以降は発動しない）
+  if (Object.keys(stats).length === 0) {
+    words
+      .filter((w) => w.level === "easy")
+      .sort((a, b) => a.en.length - b.en.length)
+      .slice(0, 3)
+      .forEach((w) => push(w.id));
+  }
+
   // 1. Unresolved
   words.filter((w) => isUnresolved(stats[w.id])).forEach((w) => push(w.id));
 
