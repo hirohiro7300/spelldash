@@ -31,11 +31,46 @@ $("backToLobby").addEventListener("click", () => {
   renderLobby();
 });
 
+// エンジンが確定させた入力欄の値（onPlayerWord/onPlayerProgressで更新）。
+// モバイルのinputイベント処理で「どこまで受理済みか」の基準になる
+let engineValue = "";
+
 $("battleInput").addEventListener("keydown", (event) => {
   if (!match) return;
   if (event.key === "Enter" || event.key.length === 1) {
     event.preventDefault();
     match.handleKey(event.key);
+  }
+});
+
+// モバイル（ソフトキーボード）: keydownで文字が取れない環境はinputイベントで照合。
+// デスクトップはkeydownでpreventDefault済みのため二重処理にならない
+$("battleInput").addEventListener("beforeinput", (event) => {
+  if (match && event.inputType === "insertLineBreak") {
+    event.preventDefault();
+    match.handleKey("Enter");
+  }
+});
+
+$("battleInput").addEventListener("input", () => {
+  const input = $("battleInput");
+  if (!match) return;
+
+  const raw = input.value.toLowerCase().replace(/\s/g, "");
+
+  if (raw.startsWith(engineValue)) {
+    for (const ch of raw.slice(engineValue.length)) {
+      const before = engineValue;
+      match.handleKey(ch);
+      if (!match) break; // 最終文字で試合終了した場合
+      if (engineValue === before) break; // ミス: 1イベントにつき1回まで
+    }
+  }
+
+  // 受理済みの位置に巻き戻す（削除・予測変換の置き換えもここで吸収）
+  if (input.value !== engineValue) {
+    input.value = engineValue;
+    $("battleTypedPreview").innerHTML = renderColoredWord(engineValue);
   }
 });
 
@@ -85,11 +120,13 @@ function startMatch() {
       },
       onPlayerWord(word) {
         $("playerJa").textContent = word.ja;
+        engineValue = "";
         $("battleInput").value = "";
         $("battleTypedPreview").innerHTML = "";
       },
       onPlayerProgress(player) {
         const typed = player.word.en.slice(0, player.charIndex);
+        engineValue = typed;
         $("battleInput").value = typed;
         $("battleTypedPreview").innerHTML = renderColoredWord(typed);
       },

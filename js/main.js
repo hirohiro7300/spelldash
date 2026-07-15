@@ -1,5 +1,13 @@
 import { elements, initializeDisplay, showMessage } from "./ui.js";
-import { handleKeydown, restartGame, setMode, getMode, speakCurrentWord } from "./game.js";
+import {
+  handleKeydown,
+  handleTextInput,
+  handleBeforeInput,
+  restartGame,
+  setMode,
+  getMode,
+  speakCurrentWord
+} from "./game.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderLevelBar } from "./levelUi.js";
@@ -25,6 +33,9 @@ window.addEventListener("spelldash:synced", () => {
 });
 
 elements.input.addEventListener("keydown", handleKeydown);
+// モバイル（ソフトキーボード）: keydownで文字が取れない環境用
+elements.input.addEventListener("beforeinput", handleBeforeInput);
+elements.input.addEventListener("input", handleTextInput);
 elements.restart.addEventListener("click", restartGame);
 
 if (elements.speakButton) {
