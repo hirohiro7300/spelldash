@@ -26,6 +26,13 @@ import { addXp, updateStreak } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
 import { renderStreakCard } from "./streakUi.js";
 import { markMissionWord, isMissionWordPending, renderMission } from "./mission.js";
+import {
+  getDailyWords,
+  isDailyPlayedToday,
+  recordDailyResult,
+  renderDailyCard,
+  DAILY_BONUS_XP
+} from "./dailyChallenge.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak } from "./audio.js";
 import {
@@ -39,6 +46,10 @@ import {
 } from "./ui.js";
 
 const MODE_KEY = "spelldash_mode";
+
+// デバッグ用: ?t=10 でChallenge/Dailyの時間を短縮できる（battle.htmlと同じ流儀）
+const durationOverride = Number(new URLSearchParams(location.search).get("t")) || null;
+const CHALLENGE_SECONDS = durationOverride ?? 60;
 
 let mode = localStorage.getItem(MODE_KEY) || "study";
 let currentWord = null;
@@ -101,10 +112,25 @@ export function stopGame() {
   clearInterval(timer);
   isPlaying = false;
   currentWord = null;
+  dailyRun = null; // 中断したDailyはロックせず、カードからやり直せる
   elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
   showHiddenWordText("");
   updateCombo(0);
   renderStudyQueue(false);
+}
+
+// ===== Daily Dash =====
+// 日替わり固定セットを順番に出題する60秒チャレンジ。完走でその日はロック
+let dailyRun = null;
+
+export function startDailyGame() {
+  if (isDailyPlayedToday()) return false;
+
+  setMode("challenge");
+  stopGame(); // 通常Challengeのプレイ中でも確実に仕切り直す（dailyRunはこの後に設定）
+  dailyRun = { words: getDailyWords(), index: 0 };
+  startGame();
+  return true;
 }
 
 export function startGame() {
@@ -119,7 +145,8 @@ export function startGame() {
   score = 0;
   typingMissCount = 0;
   recallFailCount = 0;
-  time = 60;
+  time = CHALLENGE_SECONDS;
+  if (dailyRun) dailyRun.index = 0; // 「もう一回」は先頭から（完走前のみ可能）
   correctChars = 0;
   combo = 0;
   gainedXp = 0;
@@ -138,9 +165,11 @@ export function startGame() {
   elements.typeSpeed.textContent = "0.0";
 
   showMessage(
-    mode === "study"
-      ? "思い出してタイプ。分からなければEnter"
-      : "日本語訳を見てスペルを入力"
+    dailyRun
+      ? "⚡ DAILY DASH! 今日の問題は全員共通。60秒で何語打てるか"
+      : mode === "study"
+        ? "思い出してタイプ。分からなければEnter"
+        : "日本語訳を見てスペルを入力"
   );
 
   // Study: Recall Loopキューを構築（Unresolved → Mission Review → 復習期限 → Mission New → 通常）
@@ -440,8 +469,11 @@ function handleTypingMiss() {
 }
 
 function setNewWord() {
-  // Study: Recall Loopキューから取り出す / Challenge: 従来の重み付き抽選
-  if (mode === "study") {
+  // Daily: 固定セットを順番に / Study: Recall Loopキュー / Challenge: 重み付き抽選
+  if (dailyRun && mode === "challenge") {
+    currentWord = dailyRun.words[dailyRun.index % dailyRun.words.length];
+    dailyRun.index++;
+  } else if (mode === "study") {
     const wordId = nextStudyWordId();
     currentWord = (wordId && findWord(wordId)) || chooseWord();
     renderStudyQueue(true);
@@ -503,6 +535,8 @@ function endChallenge() {
   isPlaying = false;
   elements.input.disabled = true;
 
+  const isDaily = !!dailyRun;
+
   const elapsedSeconds = startTime ? (Date.now() - startTime) / 1000 : 0;
   const speed = elapsedSeconds > 0 ? correctChars / elapsedSeconds : 0;
 
@@ -515,7 +549,7 @@ function endChallenge() {
 
   // クラウド同期＋プレイ履歴（未ログインなら何もしない）
   recordPlaySession({
-    mode: "challenge",
+    mode: isDaily ? "daily" : "challenge",
     score,
     typingSpeed: Math.round(speed * 10) / 10,
     typingMiss: typingMissCount,
@@ -523,6 +557,19 @@ function endChallenge() {
     durationSeconds: Math.round(elapsedSeconds)
   });
   pushSync();
+
+  // Daily完走: 結果を保存してその日はロック＋ボーナスXP
+  if (isDaily) {
+    gainedXp += DAILY_BONUS_XP;
+    recordDailyResult({
+      score,
+      typingMiss: typingMissCount,
+      recallFail: recallFailCount,
+      speed: Math.round(speed * 10) / 10
+    });
+    dailyRun = null;
+    renderDailyCard();
+  }
 
   saveBestScore(score);
   elements.bestScore.textContent = getBestScore();
@@ -548,6 +595,11 @@ function endChallenge() {
       `🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」 +${gainedXp} XP`,
       "finished"
     );
+    return;
+  }
+
+  if (isDaily) {
+    showMessage(`⚡ DAILY DASH 終了！スコア ${score} / +${gainedXp} XP（また明日）${bonusText}`, "finished");
     return;
   }
 
