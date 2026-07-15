@@ -470,6 +470,44 @@ body:not(.mode-study) .study-queue {
   border-color: rgba(148, 163, 184, 0.6);
 }
 
+/* ===== スコア推移グラフ ===== */
+.score-trend__empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.score-trend__legend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 10px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.score-trend__dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.score-trend__dot--challenge {
+  background: #3b82f6;
+}
+
+.score-trend__dot--daily {
+  background: #facc15;
+}
+
+.score-trend__latest {
+  margin-left: auto;
+  color: #64748b;
+}
+
 /* ===== Today's Mission ===== */
 .mission {
   display: flex;
