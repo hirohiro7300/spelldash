@@ -470,6 +470,81 @@ body:not(.mode-study) .study-queue {
   border-color: rgba(148, 163, 184, 0.6);
 }
 
+/* ===== Daily ランキング ===== */
+.daily {
+  flex-wrap: wrap;
+}
+
+.daily-rank {
+  flex-basis: 100%;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.daily-rank__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.daily-rank__hint {
+  color: #64748b;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.daily-rank__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.daily-rank__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.daily-rank__item--me {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #f8fafc;
+}
+
+.daily-rank__pos {
+  flex-shrink: 0;
+  width: 26px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-rank__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-rank__score {
+  margin-left: auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #facc15;
+}
+
 /* ===== スコア推移グラフ ===== */
 .score-trend__empty {
   margin: 0;

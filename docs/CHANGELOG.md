@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-07-15 (Daily Dashランキング)
+
+- daily_scoresテーブルをschema.sqlに追加（**有効化にはSupabase SQL Editorで新規ブロックの実行が必要**）
+  - 公開情報はdisplay_nameとscoreのみ。RLS: 閲覧は全員（anon含む）、insertは本人のみ、更新不可（スコア確定制）
+- Dailyカードに「今日のランキング」を表示（TOP5＋圏外なら自分の順位、未ログインは閲覧のみ＋参加ヒント）
+- Daily完走時に自動でスコア送信（未ログイン・テーブル未作成・オフラインでは静かにスキップ）
+- display_nameはHTMLエスケープ（XSS対策）
+- これで「毎日同じ問題 → 競う → シェア → 友達参入」のWordle型バイラルループが完成
+
 ## 2026-07-15 (OGP対応)
 
 - 全ページにOGP/Twitterカードメタタグを追加（og:title/description/url/image、summary_large_image）

@@ -148,3 +148,32 @@ grant select, insert, update, delete on public.word_progress to authenticated;
 grant select, insert, update on public.user_progress to authenticated;
 grant select, insert on public.play_sessions to authenticated;
 grant select, insert on public.battle_sessions to authenticated;
+
+-- ===== daily_scores: Daily Dashランキング（2026-07-15追加） =====
+-- 全員が同じ問題を解くDaily Dashの完走スコアを公開ランキングにする。
+-- 公開されるのは display_name と score のみ。1日1回の完走スコアが確定値（上書き不可）。
+create table if not exists public.daily_scores (
+  day text not null,                  -- 'YYYY-MM-DD'（プレイヤーのローカル日付）
+  user_id uuid not null references auth.users (id) on delete cascade,
+  display_name text,                  -- 表示用スナップショット（profilesは非公開のため）
+  score integer not null default 0,
+  typing_speed real,
+  created_at timestamptz not null default now(),
+  primary key (day, user_id)
+);
+
+alter table public.daily_scores enable row level security;
+
+-- ランキングとして誰でも閲覧可（未ログインでも見える＝参加動機になる）
+create policy "daily_scores_select_all" on public.daily_scores
+  for select using (true);
+-- 自分の行のみ作成可。更新は不可（完走スコアの改善リトライを防ぐ）
+create policy "daily_scores_insert_own" on public.daily_scores
+  for insert with check (auth.uid() = user_id);
+
+create index if not exists daily_scores_day_idx
+  on public.daily_scores (day, score desc, created_at asc);
+
+grant select, insert on public.daily_scores to authenticated;
+grant usage on schema public to anon;
+grant select on public.daily_scores to anon;
