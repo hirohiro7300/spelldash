@@ -107,6 +107,27 @@ export function saveBestScore(newScore) {
   }
 }
 
+// ===== セッションログ（スコア推移グラフ用・ローカルのみ） =====
+const SESSION_LOG_KEY = "spelldash_session_log";
+const SESSION_LOG_MAX = 100;
+
+export function getSessionLog() {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_LOG_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+export function appendSessionLog(entry) {
+  const log = getSessionLog();
+  log.push(entry);
+  if (log.length > SESSION_LOG_MAX) {
+    log.splice(0, log.length - SESSION_LOG_MAX);
+  }
+  localStorage.setItem(SESSION_LOG_KEY, JSON.stringify(log));
+}
+
 export function getTypingStats() {
   const defaults = {
     correctChars: 0,

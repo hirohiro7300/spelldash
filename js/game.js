@@ -1,5 +1,11 @@
 import { getWordsByCategory, findWord } from "./wordStore.js";
-import { getWordStats, getBestScore, saveBestScore, recordTypingSession } from "./storage.js";
+import {
+  getWordStats,
+  getBestScore,
+  saveBestScore,
+  recordTypingSession,
+  appendSessionLog
+} from "./storage.js";
 import {
   recordPlay,
   recordCorrect,
@@ -558,6 +564,16 @@ function endChallenge() {
     missChars: typingMissCount,
     seconds: elapsedSeconds,
     speed
+  });
+
+  // スコア推移グラフ用のローカル履歴
+  appendSessionLog({
+    at: new Date().toISOString(),
+    mode: isDaily ? "daily" : "challenge",
+    score,
+    speed: Math.round(speed * 10) / 10,
+    typingMiss: typingMissCount,
+    recallFail: recallFailCount
   });
 
   // クラウド同期＋プレイ履歴（未ログインなら何もしない）
