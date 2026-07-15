@@ -331,6 +331,7 @@ function revealAnswer() {
   updateCombo(0);
 
   showColoredAnswer(currentWord.en);
+  renderWordFamily(currentWord);
 
   // 発音: autoなら1回再生。スピーカーボタンも表示
   autoSpeak(currentWord.en);
@@ -350,6 +351,26 @@ export function speakCurrentWord() {
   if (currentWord) {
     speak(currentWord.en);
   }
+}
+
+// Knowledge Map（Phase A）: 答え表示時に派生語ファミリーを1行見せる。
+// 「単語は孤立した点ではなく、つながっている」ことの予告編
+function renderWordFamily(word) {
+  if (!elements.wordFamily) return;
+
+  if (!Array.isArray(word.family) || word.family.length === 0) {
+    elements.wordFamily.textContent = "";
+    return;
+  }
+
+  const names = word.family
+    .map((id) => findWord(id))
+    .filter(Boolean)
+    .map((w) => `${w.en}（${w.ja}）`);
+
+  elements.wordFamily.textContent = names.length
+    ? `🔗 同じ仲間: ${names.join(" / ")}`
+    : "";
 }
 
 function handleCorrectChar(expectedChar) {
@@ -539,6 +560,9 @@ function setNewWord() {
   showHiddenWordText("分からないときは Enter で答えを表示");
   if (elements.speakButton) {
     elements.speakButton.hidden = true;
+  }
+  if (elements.wordFamily) {
+    elements.wordFamily.textContent = "";
   }
 
   elements.input.value = "";

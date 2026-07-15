@@ -470,6 +470,18 @@ body:not(.mode-study) .study-queue {
   border-color: rgba(148, 163, 184, 0.6);
 }
 
+/* ===== 同じ仲間（Knowledge Map Phase A） ===== */
+.word-family {
+  min-height: 20px;
+  margin: 2px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.word-family:empty {
+  display: none;
+}
+
 /* ===== 初回オンボーディング ===== */
 .onboarding {
   position: relative;
