@@ -170,6 +170,7 @@ export function renderMission() {
     container.innerHTML = `
       <div class="mission__head">Today's Mission</div>
       <p class="mission__complete">MISSION COMPLETE</p>
+      <span class="mission__tomorrow">明日も新しいミッションが届きます 🌅</span>
     `;
     return;
   }
