@@ -39,6 +39,7 @@ import {
   renderDailyCard,
   DAILY_BONUS_XP
 } from "./dailyChallenge.js";
+import { submitDailyScore } from "./dailyRank.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak } from "./audio.js";
 import {
@@ -599,6 +600,8 @@ function endChallenge() {
     });
     dailyRun = null;
     renderDailyCard();
+    // ランキング送信 → 反映後にカードを再描画（未ログイン・テーブル未作成なら静かに無視）
+    submitDailyScore({ score, speed: Math.round(speed * 10) / 10 }).finally(() => renderDailyCard());
   }
 
   saveBestScore(score);

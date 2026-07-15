@@ -1,5 +1,6 @@
 import { getAllWords } from "./wordStore.js";
 import { getStreak } from "./level.js";
+import { renderDailyRanking } from "./dailyRank.js";
 
 // Daily Dash: 1日1回だけ挑戦できる60秒チャレンジ。
 // 問題は日付シードで決定論的に生成されるため全ユーザー共通（将来のランキングの土台）。
@@ -156,6 +157,7 @@ export function renderDailyCard(onStart) {
       <div class="daily__result">今日のスコア <strong>${state.score}</strong> ✓</div>
       <span class="daily__note">また明日、新しい問題が届きます</span>
       <button type="button" class="daily__share" id="dailyShareButton">結果をシェア</button>
+      <div class="daily-rank" id="dailyRankArea" hidden></div>
     `;
 
     const shareButton = document.getElementById("dailyShareButton");
@@ -168,6 +170,8 @@ export function renderDailyCard(onStart) {
         }, 2500);
       }
     });
+
+    renderDailyRanking(state.score); // 失敗時は非表示のまま（await不要）
     return;
   }
 
@@ -176,10 +180,13 @@ export function renderDailyCard(onStart) {
     <div class="daily__head">⚡ Daily Dash</div>
     <span class="daily__desc">日替わり60秒チャレンジ。問題は全員共通・1日1回</span>
     <button type="button" class="daily__button" id="dailyStartButton">挑戦する</button>
+    <div class="daily-rank" id="dailyRankArea" hidden></div>
   `;
 
   const button = document.getElementById("dailyStartButton");
   if (button && onStart) {
     button.addEventListener("click", onStart);
   }
+
+  renderDailyRanking(); // 挑戦前でも今日のTOPが見える＝参加動機
 }
