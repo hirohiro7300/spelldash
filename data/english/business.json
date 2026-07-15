@@ -37,7 +37,7 @@
     {"id": "english-leadership", "en": "leadership", "ja": "指導力", "level": "normal", "tags": ["hr"]},
     {"id": "english-management", "en": "management", "ja": "経営", "level": "normal", "tags": ["management"]},
     {"id": "english-corporate", "en": "corporate", "ja": "企業の", "level": "hard", "tags": ["management"]},
-    {"id": "english-enterprise", "en": "enterprise", "ja": "大企業", "level": "hard", "tags": ["management"]},
+    {"id": "english-enterprise", "en": "enterprise", "ja": "企業", "level": "hard", "tags": ["management"]},
     {"id": "english-merger", "en": "merger", "ja": "合併", "level": "hard", "tags": ["finance"]},
     {"id": "english-acquisition", "en": "acquisition", "ja": "買収", "level": "hard", "tags": ["finance"]},
     {"id": "english-stakeholder", "en": "stakeholder", "ja": "利害関係者", "level": "hard", "tags": ["management"]},
