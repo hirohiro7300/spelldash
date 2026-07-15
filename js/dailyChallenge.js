@@ -248,9 +248,48 @@ export async function shareDailyResult() {
 
 // ===== 表示 =====
 
+// 「次の問題まで HH:MM」カウントダウン（再訪トリガー。Wordleで実証済みの型）
+let countdownTimer = null;
+
+function startDailyCountdown() {
+  clearInterval(countdownTimer);
+
+  const tick = () => {
+    const el = document.getElementById("dailyCountdown");
+    if (!el) {
+      clearInterval(countdownTimer);
+      return;
+    }
+
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setHours(24, 0, 0, 0);
+    const remainMs = midnight - now;
+
+    // 日付が変わったらカードを未挑戦状態に描き直す
+    if (remainMs <= 0) {
+      clearInterval(countdownTimer);
+      renderDailyCard();
+      return;
+    }
+
+    const h = Math.floor(remainMs / 3600000);
+    const m = Math.floor((remainMs % 3600000) / 60000);
+    el.textContent = `${h}時間${String(m).padStart(2, "0")}分`;
+  };
+
+  tick();
+  countdownTimer = setInterval(tick, 30000);
+}
+
+let lastOnStart = null; // 0時の自動再描画でもボタンが機能するよう保持
+
 export function renderDailyCard(onStart) {
   const container = document.getElementById("dailyCard");
   if (!container) return;
+
+  if (onStart) lastOnStart = onStart;
+  const startHandler = onStart ?? lastOnStart;
 
   const state = getDailyState();
 
@@ -259,10 +298,12 @@ export function renderDailyCard(onStart) {
     container.innerHTML = `
       <div class="daily__head">⚡ Daily Dash</div>
       <div class="daily__result">今日のスコア <strong>${state.score}</strong> ✓</div>
-      <span class="daily__note">また明日、新しい問題が届きます</span>
+      <span class="daily__note">次の問題まで <strong id="dailyCountdown">--:--</strong></span>
       <button type="button" class="daily__share" id="dailyShareButton">結果をシェア</button>
       <div class="daily-rank" id="dailyRankArea" hidden></div>
     `;
+
+    startDailyCountdown();
 
     const shareButton = document.getElementById("dailyShareButton");
     shareButton.addEventListener("click", async () => {
@@ -288,8 +329,8 @@ export function renderDailyCard(onStart) {
   `;
 
   const button = document.getElementById("dailyStartButton");
-  if (button && onStart) {
-    button.addEventListener("click", onStart);
+  if (button && startHandler) {
+    button.addEventListener("click", startHandler);
   }
 
   renderDailyRanking(); // 挑戦前でも今日のTOPが見える＝参加動機

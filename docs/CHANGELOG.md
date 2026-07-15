@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-07-15 (Daily改善: 次の問題カウントダウン)
+
+- Daily完了カードの「また明日」を「次の問題まで ◯時間◯◯分」カウントダウンに変更（30秒ごと更新）
+- 0時をまたぐと自動でカードが未挑戦状態に戻る（リロード不要、挑戦ボタンも機能維持）
+- 狙うKPI: Daily参加率・D1継続率（Wordleで実証済みの再訪トリガー）
+
 ## 2026-07-15 (KPI計測基盤)
 
 - **activity_days テーブル**（要SQL適用）: Studyを含む日次アクティビティを1日1行で記録（study_correct / challenge_runs / daily_done / battle_runs）
