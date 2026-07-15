@@ -451,6 +451,25 @@ body:not(.mode-study) .study-queue {
   box-shadow: 0 6px 18px rgba(250, 204, 21, 0.35);
 }
 
+.daily__share {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 7px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.daily__share:hover {
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
 /* ===== Today's Mission ===== */
 .mission {
   display: flex;

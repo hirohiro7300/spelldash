@@ -128,7 +128,7 @@ export function startDailyGame() {
 
   setMode("challenge");
   stopGame(); // 通常Challengeのプレイ中でも確実に仕切り直す（dailyRunはこの後に設定）
-  dailyRun = { words: getDailyWords(), index: 0 };
+  dailyRun = { words: getDailyWords(), index: 0, emoji: [] };
   startGame();
   return true;
 }
@@ -146,7 +146,11 @@ export function startGame() {
   typingMissCount = 0;
   recallFailCount = 0;
   time = CHALLENGE_SECONDS;
-  if (dailyRun) dailyRun.index = 0; // 「もう一回」は先頭から（完走前のみ可能）
+  if (dailyRun) {
+    // 「もう一回」は先頭から（完走前のみ可能）
+    dailyRun.index = 0;
+    dailyRun.emoji = [];
+  }
   correctChars = 0;
   combo = 0;
   gainedXp = 0;
@@ -211,6 +215,10 @@ function triggerEnter() {
   if (!isRevealed) {
     revealAnswer();
   } else {
+    // 答えを見た後のスキップ = Dailyでは「打てなかった単語」⬛
+    if (dailyRun && mode === "challenge") {
+      dailyRun.emoji.push("⬛");
+    }
     setNewWord();
     showMessage(mode === "study" ? "思い出してタイプ。分からなければEnter" : "");
   }
@@ -351,6 +359,11 @@ let studyWordsSinceSync = 0;
 function completeWord() {
   score++;
   elements.score.textContent = score;
+
+  // Dailyのシェア用グリッド: 🟩自力正解 🟨答えを見て正解
+  if (dailyRun && mode === "challenge") {
+    dailyRun.emoji.push(isRevealed ? "🟨" : "🟩");
+  }
 
   // Studyは終了イベントがないため、10語ごとにクラウド同期
   if (mode === "study") {
@@ -565,7 +578,8 @@ function endChallenge() {
       score,
       typingMiss: typingMissCount,
       recallFail: recallFailCount,
-      speed: Math.round(speed * 10) / 10
+      speed: Math.round(speed * 10) / 10,
+      emoji: dailyRun.emoji.join("")
     });
     dailyRun = null;
     renderDailyCard();

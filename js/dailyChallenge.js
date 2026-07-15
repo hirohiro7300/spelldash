@@ -1,4 +1,5 @@
 import { getAllWords } from "./wordStore.js";
+import { getStreak } from "./level.js";
 
 // Daily Dash: 1日1回だけ挑戦できる60秒チャレンジ。
 // 問題は日付シードで決定論的に生成されるため全ユーザー共通（将来のランキングの土台）。
@@ -77,7 +78,8 @@ export function isDailyPlayedToday() {
 }
 
 // 完走時に呼ぶ（完走でその日はロック。中断はやり直し可）
-export function recordDailyResult({ score, typingMiss, recallFail, speed }) {
+// emoji: 単語ごとの結果（🟩自力正解 🟨答えを見て正解 ⬛パス）を並べた文字列
+export function recordDailyResult({ score, typingMiss, recallFail, speed, emoji }) {
   localStorage.setItem(
     DAILY_KEY,
     JSON.stringify({
@@ -86,9 +88,57 @@ export function recordDailyResult({ score, typingMiss, recallFail, speed }) {
       score,
       typingMiss,
       recallFail,
-      speed
+      speed,
+      emoji: emoji ?? ""
     })
   );
+}
+
+// ===== シェア（Wordle式テキスト） =====
+
+// 例:
+// SpellDash Daily Dash 7/15
+// ⚡ 14語 / 🔥 6日連続
+// 🟩🟩🟨🟩🟩⬛🟩🟩🟩🟩
+// 🟩🟩🟨🟩
+// https://www.spelldash.net
+export function buildDailyShareText(state = getDailyState()) {
+  const [, month, day] = state.date.split("-");
+  const streak = getStreak();
+
+  const lines = [`SpellDash Daily Dash ${Number(month)}/${Number(day)}`];
+
+  let scoreLine = `⚡ ${state.score}語`;
+  if (streak.current > 0) scoreLine += ` / 🔥 ${streak.current}日連続`;
+  lines.push(scoreLine);
+
+  // 絵文字グリッドは10個ずつ改行（Wordleの行形式）。長すぎ防止で3行まで
+  const cells = Array.from(state.emoji ?? "");
+  for (let i = 0; i < cells.length && i < 30; i += 10) {
+    lines.push(cells.slice(i, i + 10).join(""));
+  }
+  if (cells.length > 30) lines.push("…");
+
+  lines.push("https://www.spelldash.net");
+  return lines.join("\n");
+}
+
+// Web Share APIがあれば共有シート、なければクリップボードへコピー
+export async function shareDailyResult() {
+  const text = buildDailyShareText();
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ text });
+      return "shared";
+    } catch {
+      // キャンセル時はコピーにフォールバックしない（ユーザーの意思を尊重）
+      return "cancelled";
+    }
+  }
+
+  await navigator.clipboard.writeText(text);
+  return "copied";
 }
 
 // ===== 表示 =====
@@ -105,7 +155,19 @@ export function renderDailyCard(onStart) {
       <div class="daily__head">⚡ Daily Dash</div>
       <div class="daily__result">今日のスコア <strong>${state.score}</strong> ✓</div>
       <span class="daily__note">また明日、新しい問題が届きます</span>
+      <button type="button" class="daily__share" id="dailyShareButton">結果をシェア</button>
     `;
+
+    const shareButton = document.getElementById("dailyShareButton");
+    shareButton.addEventListener("click", async () => {
+      const outcome = await shareDailyResult().catch(() => "failed");
+      if (outcome === "copied") {
+        shareButton.textContent = "コピーしました！SNSに貼り付けてね";
+        setTimeout(() => {
+          shareButton.textContent = "結果をシェア";
+        }, 2500);
+      }
+    });
     return;
   }
 
