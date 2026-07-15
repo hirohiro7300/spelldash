@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-07-15 (OGP対応)
+
+- 全ページにOGP/Twitterカードメタタグを追加（og:title/description/url/image、summary_large_image）
+- OG画像（1200x630）を生成: SDブランド＋「英単語を、思い出して打つ。」＋機能チップ
+- シェアされたURLがX/LINE/Discordでリッチカード表示される → Daily Dashシェアの流入効率向上
+
 ## 2026-07-15 (学習の伸び可視化)
 
 - 学習データページに「スコア推移」グラフを追加（依存なしのインラインSVG棒グラフ）
