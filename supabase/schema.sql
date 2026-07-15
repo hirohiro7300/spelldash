@@ -177,3 +177,29 @@ create index if not exists daily_scores_day_idx
 grant select, insert on public.daily_scores to authenticated;
 grant usage on schema public to anon;
 grant select on public.daily_scores to anon;
+
+-- ===== activity_days: 日次アクティビティ（KPI計測の心拍、2026-07-15追加） =====
+-- Studyを含む「その日プレイしたか」を1日1行で記録する。DAU/D1/D7の算出基盤。
+create table if not exists public.activity_days (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  day text not null,                       -- 'YYYY-MM-DD'（プレイヤーのローカル日付）
+  study_correct integer not null default 0, -- Studyでの自力正解数
+  challenge_runs integer not null default 0,
+  daily_done boolean not null default false,
+  battle_runs integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
+
+alter table public.activity_days enable row level security;
+
+create policy "activity_days_select_own" on public.activity_days
+  for select using (auth.uid() = user_id);
+create policy "activity_days_insert_own" on public.activity_days
+  for insert with check (auth.uid() = user_id);
+create policy "activity_days_update_own" on public.activity_days
+  for update using (auth.uid() = user_id);
+
+create index if not exists activity_days_day_idx on public.activity_days (day);
+
+grant select, insert, update on public.activity_days to authenticated;

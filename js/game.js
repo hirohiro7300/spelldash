@@ -50,6 +50,7 @@ import {
   sfxComplete,
   sfxSparkle
 } from "./sfx.js";
+import { bumpActivity, markDailyDone } from "./activity.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak } from "./audio.js";
 import {
@@ -442,6 +443,7 @@ function completeWord() {
   let loopResult = null;
   if (!isRevealed) {
     recordRecallSuccess(currentWord.id);
+    if (mode === "study") bumpActivity("studyCorrect"); // KPI心拍
 
     if (mode === "study") {
       loopResult = queueRecallSuccess(currentWord.id);
@@ -651,6 +653,13 @@ function endChallenge() {
     durationSeconds: Math.round(elapsedSeconds)
   });
   pushSync();
+
+  // KPI心拍: challenge/daily の完走を記録
+  if (isDaily) {
+    markDailyDone();
+  } else {
+    bumpActivity("challengeRuns");
+  }
 
   // Daily完走: 結果を保存してその日はロック＋ボーナスXP
   if (isDaily) {
