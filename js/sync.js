@@ -8,6 +8,7 @@ import {
   clearPendingBattleSessions
 } from "./battleRank.js";
 import { getStudyMix, adoptCloudRatio } from "./studyMix.js";
+import { buildActivityRow } from "./activity.js";
 
 // ===== Local First 同期 =====
 // プレイ中は localStorage のみに書き、以下のタイミングでSupabaseへ同期する:
@@ -126,9 +127,22 @@ export async function pushSync() {
     }
 
     await pushUserProgress(userId);
+    await pushActivityDay(userId);
     await flushPendingBattleSessions(userId);
   } finally {
     isPushing = false;
+  }
+}
+
+// KPI計測の心拍: 当日のアクティビティを1日1行upsert。
+// テーブル未作成・失敗時は静かにスキップ（ゲームに影響なし）
+async function pushActivityDay(userId) {
+  try {
+    const row = buildActivityRow(userId);
+    if (!row) return;
+    await supabase.from("activity_days").upsert(row);
+  } catch {
+    // 計測はベストエフォート
   }
 }
 

@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-07-15 (KPI計測基盤)
+
+- **activity_days テーブル**（要SQL適用）: Studyを含む日次アクティビティを1日1行で記録（study_correct / challenge_runs / daily_done / battle_runs）
+  - 従来はStudyのみのユーザーがDAUに映らない計測欠落があった
+  - クライアントはローカルでカウントし同期時にupsert（js/activity.js、失敗は静かにスキップ）
+- **supabase/analytics.sql**: SQL Editorに貼るだけのKPIクエリ集
+  - DAU推移 / D1・D7継続率（コホート別）/ Daily参加率 / 1日平均問題数 / ストリーク分布 / 離脱日数分布 / 過去分の近似DAU / モード別利用状況
+- 方針転換を反映: 今後は「機能追加」より「計測→1課題選択→最小実装→計測」のループ（ユーザー指示による）
+
 ## 2026-07-15 (事業ドキュメント＋性能監査)
 
 - docs/MONETIZATION.md: Phase2課金設計ドラフト（Pro候補・価格580円案・KPI前提・「継続率を人質にしない」原則）

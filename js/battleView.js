@@ -7,6 +7,7 @@ import { getBattleStore, getRankState, applyMatchResult, queueBattleSession } fr
 import { BATTLE } from "./battleConfig.js";
 import { renderColoredWord } from "./colors.js";
 import { sfxCorrect, sfxMiss, sfxReveal, sfxComplete } from "./sfx.js";
+import { bumpActivity } from "./activity.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -201,6 +202,7 @@ function flash(element, className) {
 
 function showResult(summary) {
   const outcome = applyMatchResult(summary.result);
+  bumpActivity("battleRuns"); // KPI心拍
 
   const verdict = summary.result === "win" ? "VICTORY" : summary.result === "loss" ? "DEFEAT" : "DRAW";
   if (summary.result === "win") sfxComplete();
