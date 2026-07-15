@@ -22,6 +22,7 @@ setupUnloadSync();
 initWordStore().then(() => {
   renderOverview();
   renderTyping();
+  renderWeeklySummary();
   renderScoreTrend();
   renderProgress();
   renderWeakWords();
@@ -32,6 +33,7 @@ window.addEventListener("spelldash:synced", () => {
   renderLevelBar();
   renderOverview();
   renderTyping();
+  renderWeeklySummary();
   renderScoreTrend();
   renderProgress();
   renderWeakWords();
@@ -85,6 +87,68 @@ function computeRecallRateLabel() {
 
   const total = ok + fail;
   return total > 0 ? `${Math.round((ok / total) * 100)}%` : "-";
+}
+
+// ===== 今週のまとめ（月曜起点、先週との比較つき） =====
+
+function startOfWeek(offsetWeeks = 0) {
+  const d = new Date();
+  const day = (d.getDay() + 6) % 7; // 月曜=0
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - day - offsetWeeks * 7);
+  return d.getTime();
+}
+
+function renderWeeklySummary() {
+  const container = document.getElementById("weeklySummary");
+  if (!container) return;
+
+  const thisWeekStart = startOfWeek(0);
+  const lastWeekStart = startOfWeek(1);
+  const log = getSessionLog();
+
+  const inRange = (iso, from, to) => {
+    const t = Date.parse(iso ?? 0) || 0;
+    return t >= from && (to == null || t < to);
+  };
+
+  const thisWeek = log.filter((e) => inRange(e.at, thisWeekStart, null));
+  const lastWeek = log.filter((e) => inRange(e.at, lastWeekStart, thisWeekStart));
+
+  const best = (entries) => (entries.length ? Math.max(...entries.map((e) => e.score)) : 0);
+  const dailyCount = (entries) => entries.filter((e) => e.mode === "daily").length;
+
+  // 今週「思い出せた」語数（lastRecallSuccessAtが今週の単語。先週分は上書きされるため比較しない）
+  const stats = getWordStats();
+  let recalledThisWeek = 0;
+  for (const data of Object.values(stats)) {
+    if (data.lastRecallSuccessAt && inRange(data.lastRecallSuccessAt, thisWeekStart, null)) {
+      recalledThisWeek++;
+    }
+  }
+
+  const diffLabel = (now, prev) => {
+    if (prev === 0 && now === 0) return "";
+    const diff = now - prev;
+    if (diff === 0) return "（先週と同じ）";
+    return diff > 0 ? `（先週 +${diff}）` : `（先週 ${diff}）`;
+  };
+
+  renderCards(container, [
+    { label: "思い出せた単語", value: `${recalledThisWeek}語` },
+    {
+      label: "プレイ回数（Challenge/Daily）",
+      value: `${thisWeek.length}回 ${diffLabel(thisWeek.length, lastWeek.length)}`
+    },
+    {
+      label: "今週のベストスコア",
+      value: `${best(thisWeek)} ${diffLabel(best(thisWeek), best(lastWeek))}`
+    },
+    {
+      label: "Daily Dash完走",
+      value: `${dailyCount(thisWeek)}回 ${diffLabel(dailyCount(thisWeek), dailyCount(lastWeek))}`
+    }
+  ]);
 }
 
 // ===== スコア推移（Challenge / Daily Dashの直近履歴） =====

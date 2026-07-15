@@ -33,8 +33,13 @@ export async function submitDailyScore({ score, speed }) {
     if (!user) return false;
 
     const meta = user.user_metadata ?? {};
+    // プロフィールで設定した表示名（ローカルキャッシュ）を最優先
     const displayName =
-      meta.full_name || meta.name || user.email?.split("@")[0] || "player";
+      localStorage.getItem("spelldash_display_name") ||
+      meta.full_name ||
+      meta.name ||
+      user.email?.split("@")[0] ||
+      "player";
 
     const { error } = await supabase.from("daily_scores").insert({
       day: todayString(),
