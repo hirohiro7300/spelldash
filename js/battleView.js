@@ -6,6 +6,7 @@ import { createBattleMatch } from "./battleEngine.js";
 import { getBattleStore, getRankState, applyMatchResult, queueBattleSession } from "./battleRank.js";
 import { BATTLE } from "./battleConfig.js";
 import { renderColoredWord } from "./colors.js";
+import { sfxCorrect, sfxMiss, sfxReveal, sfxComplete } from "./sfx.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -135,13 +136,16 @@ function startMatch() {
         $("playerCombo").textContent = player.combo >= 2 ? `${player.combo} combo` : "";
         flash($("playerScore"), "score-pulse");
         $("playerStatus").textContent = "";
+        sfxCorrect(player.combo);
       },
       onPlayerMiss() {
         $("playerStatus").textContent = "Miss!";
+        sfxMiss();
       },
       onPlayerPass(player) {
         $("playerCombo").textContent = "";
         $("playerStatus").textContent = "Pass（試合後にStudyで復習できます）";
+        sfxReveal();
       },
       onCpuUpdate(cpuState, event) {
         $("cpuJa").textContent = cpuState.ja;
@@ -199,6 +203,7 @@ function showResult(summary) {
   const outcome = applyMatchResult(summary.result);
 
   const verdict = summary.result === "win" ? "VICTORY" : summary.result === "loss" ? "DEFEAT" : "DRAW";
+  if (summary.result === "win") sfxComplete();
   $("resultVerdict").textContent = verdict;
   $("resultVerdict").className = `battle-verdict battle-verdict--${summary.result}`;
 

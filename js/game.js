@@ -41,6 +41,15 @@ import {
   DAILY_BONUS_XP
 } from "./dailyChallenge.js";
 import { submitDailyScore } from "./dailyRank.js";
+import {
+  sfxCorrect,
+  sfxSoftCorrect,
+  sfxMiss,
+  sfxReveal,
+  sfxLevelUp,
+  sfxComplete,
+  sfxSparkle
+} from "./sfx.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak } from "./audio.js";
 import {
@@ -307,6 +316,7 @@ function revealAnswer() {
   isRevealed = true;
   recallFailCount++;
   if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
+  sfxReveal();
 
   recordRecallFail(currentWord.id);
 
@@ -367,6 +377,12 @@ let studyWordsSinceSync = 0;
 function completeWord() {
   score++;
   elements.score.textContent = score;
+
+  if (isRevealed) {
+    sfxSoftCorrect();
+  } else {
+    sfxCorrect(combo);
+  }
 
   // Dailyのシェア用グリッド: 🟩自力正解 🟨答えを見て正解
   if (dailyRun && mode === "challenge") {
@@ -453,23 +469,27 @@ function applyStudyXp(earned, missionResult, loopResult) {
 
   if (result.leveledUp) {
     playLevelUpEffect();
+    sfxLevelUp();
     showMessage(`🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」`, "finished");
     return;
   }
 
   if (streak.isFirstToday) {
     const shieldNote = streak.earnedShield ? " 🛡️ シールド獲得！" : "";
+    if (streak.earnedShield) sfxSparkle();
     showMessage(`🔥 ${streak.current}日連続！ +${earned} XP${shieldNote}`, "correct");
     return;
   }
 
   if (missionResult.justCompleted) {
+    sfxComplete();
     showMessage(`MISSION COMPLETE +${missionResult.bonusXp} XP`, "correct");
     return;
   }
 
   // New単語を今日4回思い出せた → 静かに定着を伝える
   if (loopResult?.secured) {
+    sfxComplete();
     showMessage(`今日定着 ✓ もう今日は出ません +${earned} XP`, "correct");
     return;
   }
@@ -484,6 +504,7 @@ function handleTypingMiss() {
   hasMissedCurrentWord = true;
   combo = 0;
   updateCombo(0);
+  sfxMiss();
 
   recordTypingMiss(currentWord.id);
   showMessage("Miss!", "wrong");
@@ -633,6 +654,7 @@ function endChallenge() {
 
   if (result.leveledUp) {
     playLevelUpEffect();
+    sfxLevelUp();
     showMessage(
       `🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」 +${gainedXp} XP`,
       "finished"
@@ -641,6 +663,7 @@ function endChallenge() {
   }
 
   if (isDaily) {
+    sfxComplete();
     showMessage(`⚡ DAILY DASH 終了！スコア ${score} / +${gainedXp} XP（また明日）${bonusText}`, "finished");
     return;
   }

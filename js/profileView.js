@@ -7,6 +7,7 @@ import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
 import { getAudioSettings, saveAudioSettings, speak } from "./audio.js";
+import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 
 const loggedOutElement = document.getElementById("profileLoggedOut");
 const profileCardElement = document.getElementById("profileCard");
@@ -46,7 +47,7 @@ function initializeAudioSettings() {
   accentSelect.value = settings.accent;
 
   const save = () => {
-    saveAudioSettings({ mode: modeSelect.value, accent: accentSelect.value });
+    saveAudioSettings({ ...getAudioSettings(), mode: modeSelect.value, accent: accentSelect.value });
     statusElement.textContent = "保存しました。";
     // アクセント確認用に1回だけサンプル再生
     if (modeSelect.value !== "off") {
@@ -57,6 +58,18 @@ function initializeAudioSettings() {
 
   modeSelect.addEventListener("change", save);
   accentSelect.addEventListener("change", save);
+
+  // 効果音のON/OFF（発音とは独立）
+  const sfxSelect = document.getElementById("sfxSelect");
+  if (sfxSelect) {
+    sfxSelect.value = isSfxEnabled() ? "on" : "off";
+    sfxSelect.addEventListener("change", () => {
+      setSfxEnabled(sfxSelect.value === "on");
+      if (sfxSelect.value === "on") sfxCorrect(3); // 確認用サンプル
+      statusElement.textContent = "保存しました。";
+      setTimeout(() => (statusElement.textContent = ""), 2000);
+    });
+  }
 }
 
 supabase.auth.getSession().then(({ data }) => renderProfile(data.session));
