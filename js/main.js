@@ -9,7 +9,7 @@ import {
   speakCurrentWord,
   startDailyGame
 } from "./game.js";
-import { renderDailyCard } from "./dailyChallenge.js";
+import { renderDailyCard, isDailyPlayedToday } from "./dailyChallenge.js";
 import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
 import { isGamePlaying } from "./game.js";
 import { renderOnboarding } from "./onboarding.js";
@@ -50,12 +50,24 @@ if (elements.speakButton) {
   });
 }
 
-// Study / Challenge の切り替え
-document.querySelectorAll(".mode-switch__btn").forEach((btn) => {
+// モード選択カード: 選んだら即スタート（選択画面としてふるまう）
+document.querySelectorAll(".mode-switch__btn[data-mode]").forEach((btn) => {
   btn.addEventListener("click", () => {
     setMode(btn.dataset.mode);
     refreshWeakToggle();
+    restartGame();
+    elements.input.focus();
   });
+});
+
+// Dailyタイル: 未挑戦なら即開始、完了済みなら結果カードへスクロール
+document.getElementById("modeDailyTile")?.addEventListener("click", () => {
+  if (isDailyPlayedToday()) {
+    document.getElementById("dailyCard")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  startDailyGame();
+  elements.input.focus();
 });
 
 // ===== 苦手のみ復習トグル（Studyモード限定） =====

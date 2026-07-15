@@ -121,15 +121,23 @@
 
                             <div class="home-grid">
       <div class="home-main">
-    <section class="mode-switch" id="modeSwitch" aria-label="モード切替">
+    <section class="mode-switch mode-switch--select" id="modeSwitch" aria-label="モード選択">
       <button type="button" class="mode-switch__btn" data-mode="study">
-        Study
+        📚 Study
         <span>じっくり思い出して覚える</span>
       </button>
       <button type="button" class="mode-switch__btn" data-mode="challenge">
-        Challenge
-        <span>60秒で定着度を測る</span>
+        ⏱ Challenge
+        <span>60秒スコアアタック</span>
       </button>
+      <button type="button" class="mode-switch__btn" id="modeDailyTile">
+        ⚡ Daily Dash
+        <span id="modeDailyDesc">1日1回・全員同じ問題</span>
+      </button>
+      <a class="mode-switch__btn mode-switch__btn--link" href="./battle.html">
+        ⚔️ Battle
+        <span>CPUとランクマッチ</span>
+      </a>
     </section>
 
     <section class="weak-toggle" id="weakToggleRow">

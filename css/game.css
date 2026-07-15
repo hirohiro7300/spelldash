@@ -178,6 +178,28 @@ body:not(.mode-study) .mix-control {
   margin-bottom: 14px;
 }
 
+/* ホームの「モード選択」: 4枚カードの2x2グリッド */
+.mode-switch--select {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mode-switch__btn--link {
+  display: block;
+  text-decoration: none;
+  text-align: center;
+}
+
+/* Daily完了後のタイル */
+.mode-switch__btn--done {
+  border-color: rgba(74, 222, 128, 0.4);
+  color: #86efac;
+}
+
+.mode-switch__btn--done span {
+  color: #4ade80;
+}
+
 .mode-switch__btn {
   flex: 1;
   padding: 12px 16px;
@@ -597,6 +619,32 @@ body:not(.mode-study) .study-queue {
 .stat-card strong.stat-pulse {
   display: inline-block;
   animation: stat-pulse 0.3s ease-out;
+}
+
+/* ===== 単語一覧の折りたたみ ===== */
+.word-list-fold summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 0;
+  color: #93c5fd;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.word-list-fold summary::before {
+  content: "▸ ";
+}
+
+.word-list-fold[open] summary::before {
+  content: "▾ ";
+}
+
+.word-list-fold summary::-webkit-details-marker {
+  display: none;
+}
+
+.word-list-fold[open] summary {
+  margin-bottom: 12px;
 }
 
 /* ===== 語根ファミリーカード ===== */
