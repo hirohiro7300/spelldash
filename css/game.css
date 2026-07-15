@@ -470,6 +470,79 @@ body:not(.mode-study) .study-queue {
   border-color: rgba(148, 163, 184, 0.6);
 }
 
+/* ===== 初回オンボーディング ===== */
+.onboarding {
+  position: relative;
+  padding: 18px 22px;
+  margin-bottom: 14px;
+  border-radius: 20px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  backdrop-filter: blur(14px);
+}
+
+.onboarding:empty {
+  display: none;
+}
+
+.onboarding__close {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.onboarding__close:hover {
+  color: #f8fafc;
+  background: transparent;
+}
+
+.onboarding__title {
+  color: #93c5fd;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+}
+
+.onboarding__steps {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.9;
+}
+
+.onboarding__steps kbd {
+  padding: 1px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.6);
+  font-size: 12px;
+}
+
+.onboarding__start {
+  padding: 10px 22px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.onboarding__start:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.4);
+}
+
 /* ===== 苦手のみ復習トグル ===== */
 .weak-toggle {
   display: none;

@@ -12,6 +12,7 @@ import {
 import { renderDailyCard } from "./dailyChallenge.js";
 import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
 import { isGamePlaying } from "./game.js";
+import { renderOnboarding } from "./onboarding.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderLevelBar } from "./levelUi.js";
@@ -99,6 +100,12 @@ initWordStore()
     initializeDisplay();
     setMode(getMode());
     refreshWeakToggle();
+    renderOnboarding(() => {
+      setMode("study");
+      restartGame();
+      elements.input.focus();
+      document.getElementById("input")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   })
   .catch(() => {
     showMessage("単語データの読み込みに失敗しました。再読み込みしてください。", "wrong");
