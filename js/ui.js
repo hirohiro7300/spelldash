@@ -10,6 +10,7 @@ export const elements = {
   bestScore: document.getElementById("bestScore"),
   japanese: document.getElementById("japanese"),
   word: document.getElementById("word"),
+  wordFamily: document.getElementById("wordFamily"),
   input: document.getElementById("input"),
   typedPreview: document.getElementById("typedPreview"),
   message: document.getElementById("message"),

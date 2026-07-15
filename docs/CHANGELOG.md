@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-07-15 (Knowledge Map Phase A: 語根ファミリー)
+
+- 単語データに root / family フィールドを付与（37ファミリー・82エントリ、docs/KNOWLEDGE_MAP.md準拠）
+  - 例: teach⇄teacher、receive⇄receipt、expense⇄expensive⇄expenditure
+  - 同一IDの全コピーに一貫付与（カテゴリ間でも同じ情報）
+- 答え表示時に「🔗 同じ仲間: teach（教える）」を1行表示（Knowledge Mapの予告編）
+  - 派生語の存在に気付ける＝1語の学習が2〜3語に波及する
+- scripts/validate-words.mjs を常設（機械検証＋family実在・自己参照・相互参照・コピー間一致チェック）
+
 ## 2026-07-15 (リザルト画像シェア＋Knowledge Map設計)
 
 - Daily Dash結果のシェアに画像を追加（Canvas生成・1080x1080・依存なし）
