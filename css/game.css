@@ -470,6 +470,62 @@ body:not(.mode-study) .study-queue {
   border-color: rgba(148, 163, 184, 0.6);
 }
 
+/* ===== 苦手のみ復習トグル ===== */
+.weak-toggle {
+  display: none;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+body.mode-study .weak-toggle {
+  display: flex;
+}
+
+.weak-toggle__btn {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.weak-toggle__btn:hover:not(:disabled) {
+  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.weak-toggle__btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.weak-toggle__btn--on {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fca5a5;
+}
+
+.weak-toggle__count {
+  opacity: 0.8;
+  font-weight: 600;
+}
+
+.weak-toggle__hint {
+  color: #64748b;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .weak-toggle__hint {
+    display: none;
+  }
+}
+
 /* ===== Daily ランキング ===== */
 .daily {
   flex-wrap: wrap;
