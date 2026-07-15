@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-07-15 (苦手のみ復習モード)
+
+- Studyモードに「♻️ 苦手のみ復習」トグルを追加（Study選択時のみ表示、苦手語数バッジ付き）
+  - 苦手 = 未習得 かつ（recallFailあり / typingMiss 3回以上 / Unresolved）
+  - ONにすると全出題経路（Unresolved・Mission・SRS・補充）が苦手語プールに絞られる
+  - 苦手語をすべて自力正解すると「🎉 苦手単語をすべてクリア！」で終了（達成感の演出。無限ループしない）
+  - プレイ中の切替は即座にキューを作り直す。設定はlocalStorageに保存
+- 堅牢性: cleanCorrectStreak欠損データでもSRS計算がNaN→例外にならないよう防御
+
 ## 2026-07-15 (Daily Dashランキング)
 
 - daily_scoresテーブルをschema.sqlに追加（**有効化にはSupabase SQL Editorで新規ブロックの実行が必要**）

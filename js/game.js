@@ -19,7 +19,8 @@ import {
   onRecallFail as queueRecallFail,
   onRecallSuccess as queueRecallSuccess,
   claimPracticeXp,
-  isRecalledToday
+  isRecalledToday,
+  isWeakOnlyMode
 } from "./studyQueue.js";
 import { REPEAT_SUCCESS_XP } from "./studyConfig.js";
 import {
@@ -495,6 +496,14 @@ function setNewWord() {
     dailyRun.index++;
   } else if (mode === "study") {
     const wordId = nextStudyWordId();
+
+    // 苦手のみモードで出題が尽きた = 全部クリア。達成感を演出して終了
+    if (!wordId && isWeakOnlyMode()) {
+      stopGame();
+      showMessage("🎉 苦手単語をすべてクリア！明日また確認しよう", "finished");
+      return;
+    }
+
     currentWord = (wordId && findWord(wordId)) || chooseWord();
     renderStudyQueue(true);
   } else {

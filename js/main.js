@@ -10,6 +10,8 @@ import {
   startDailyGame
 } from "./game.js";
 import { renderDailyCard } from "./dailyChallenge.js";
+import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
+import { isGamePlaying } from "./game.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderLevelBar } from "./levelUi.js";
@@ -49,7 +51,39 @@ if (elements.speakButton) {
 
 // Study / Challenge の切り替え
 document.querySelectorAll(".mode-switch__btn").forEach((btn) => {
-  btn.addEventListener("click", () => setMode(btn.dataset.mode));
+  btn.addEventListener("click", () => {
+    setMode(btn.dataset.mode);
+    refreshWeakToggle();
+  });
+});
+
+// ===== 苦手のみ復習トグル（Studyモード限定） =====
+function refreshWeakToggle() {
+  const button = document.getElementById("weakToggleButton");
+  const count = document.getElementById("weakToggleCount");
+  if (!button || !count) return;
+
+  button.classList.toggle("weak-toggle__btn--on", isWeakOnlyMode());
+  const weak = getWeakCount();
+  count.textContent = weak > 0 ? `${weak}語` : "0語";
+  button.disabled = weak === 0 && !isWeakOnlyMode();
+}
+
+const weakToggleButton = document.getElementById("weakToggleButton");
+if (weakToggleButton) {
+  weakToggleButton.addEventListener("click", () => {
+    setWeakOnlyMode(!isWeakOnlyMode());
+    refreshWeakToggle();
+    // プレイ中なら新しいプールでキューを作り直す
+    if (isGamePlaying() && getMode() === "study") {
+      restartGame();
+    }
+  });
+}
+
+// カテゴリ変更後に苦手数を更新（描画後に反映されるよう次のtickで）
+document.getElementById("categoryPicker")?.addEventListener("click", () => {
+  setTimeout(refreshWeakToggle, 0);
 });
 
 // 単語データを読み込んでからゲームを有効化
@@ -64,6 +98,7 @@ initWordStore()
     });
     initializeDisplay();
     setMode(getMode());
+    refreshWeakToggle();
   })
   .catch(() => {
     showMessage("単語データの読み込みに失敗しました。再読み込みしてください。", "wrong");

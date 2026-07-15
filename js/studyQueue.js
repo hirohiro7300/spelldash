@@ -28,6 +28,37 @@ import {
 //   途中で思い出せなければ段階が1つ戻る。同時学習は最大3語。
 
 const MIN_QUEUE = 8;
+const WEAK_ONLY_KEY = "spelldash_weak_only";
+
+// 苦手のみ復習モード: プールを「苦手単語」に絞る（全出題経路に効く）
+let weakOnly = localStorage.getItem(WEAK_ONLY_KEY) === "1";
+
+export function isWeakOnlyMode() {
+  return weakOnly;
+}
+
+export function setWeakOnlyMode(value) {
+  weakOnly = !!value;
+  localStorage.setItem(WEAK_ONLY_KEY, weakOnly ? "1" : "0");
+}
+
+// 苦手 = 未習得 かつ（思い出せなかったことがある / 打ち間違いが多い / 未解決）
+export function isWeakStat(stat) {
+  if (!stat || stat.mastered) return false;
+  return (stat.recallFail ?? 0) > 0 || (stat.typingMiss ?? 0) >= 3 || isUnresolved(stat);
+}
+
+export function getWeakCount(
+  categoryId = localStorage.getItem("spelldash_category") || "all"
+) {
+  const stats = getWordStats();
+  const seen = new Set();
+  return getWordsByCategory(categoryId).filter((word) => {
+    if (seen.has(word.id)) return false;
+    seen.add(word.id);
+    return isWeakStat(stats[word.id]);
+  }).length;
+}
 
 let queue = [];
 let sessionFailCounts = new Map();
@@ -108,11 +139,12 @@ function isDoneForToday(stat) {
 // ===== 単語プール =====
 
 function categoryWordsDeduped() {
+  const stats = weakOnly ? getWordStats() : null;
   const seen = new Set();
   return getWordsByCategory(activeCategoryId).filter((word) => {
     if (seen.has(word.id)) return false;
     seen.add(word.id);
-    return true;
+    return weakOnly ? isWeakStat(stats[word.id]) : true;
   });
 }
 
@@ -184,8 +216,9 @@ function pickFillers(count, excludeSet) {
     picks.push(pick.id);
   }
 
-  // それでも足りなければ「今日済み」も許可して埋める（出題停止を防ぐ）
-  if (picks.length < count) {
+  // それでも足りなければ「今日済み」も許可して埋める（出題停止を防ぐ）。
+  // 苦手のみモードでは埋めない: 尽きたら「全部クリア」で気持ちよく終わるのが正
+  if (picks.length < count && !weakOnly) {
     const fallback = shuffle(
       categoryWordsDeduped().filter(
         (w) => !excludeSet.has(w.id) && !picks.includes(w.id)

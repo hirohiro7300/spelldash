@@ -47,7 +47,8 @@ export function recordCorrect(word, wasClean) {
     const today = localDateString();
 
     if (stats[word].srsAdvancedOn !== today) {
-      stats[word].cleanCorrectStreak += 1;
+      // 欠損データでもNaN→toISOString例外にならないよう0起点で加算
+      stats[word].cleanCorrectStreak = (stats[word].cleanCorrectStreak ?? 0) + 1;
       stats[word].srsAdvancedOn = today;
 
       if (stats[word].cleanCorrectStreak >= 10) {
