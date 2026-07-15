@@ -470,6 +470,29 @@ body:not(.mode-study) .study-queue {
   border-color: rgba(148, 163, 184, 0.6);
 }
 
+/* ===== マイクロアニメーション（正解の気持ちよさ） ===== */
+@keyframes msg-pop {
+  0% { transform: scale(0.92); opacity: 0.4; }
+  60% { transform: scale(1.04); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.message.correct,
+.message.finished {
+  animation: msg-pop 0.22s ease-out;
+}
+
+@keyframes stat-pulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); color: #4ade80; }
+  100% { transform: scale(1); }
+}
+
+.stat-card strong.stat-pulse {
+  display: inline-block;
+  animation: stat-pulse 0.3s ease-out;
+}
+
 /* ===== 語根ファミリーカード ===== */
 .family-grid {
   display: grid;

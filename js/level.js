@@ -13,7 +13,12 @@ const TITLES = [
   { level: 25, name: "単語マスター" },
   { level: 30, name: "スペルの賢者" },
   { level: 40, name: "疾風のタイピスト" },
-  { level: 50, name: "伝説のスペルダッシャー" }
+  { level: 50, name: "伝説のスペルダッシャー" },
+  { level: 60, name: "単語の覇者" },
+  { level: 70, name: "記憶の錬金術師" },
+  { level: 80, name: "語彙の巨人" },
+  { level: 90, name: "スペルの神域" },
+  { level: 100, name: "SpellDash マスター" }
 ];
 
 // レベルnからn+1に上がるのに必要なXP（少しずつ重くなる）

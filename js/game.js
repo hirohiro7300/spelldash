@@ -353,6 +353,15 @@ export function speakCurrentWord() {
   }
 }
 
+// 正解時にスコア数字をパルスさせる（気持ちよさの微調整）
+function pulseScore() {
+  const el = elements.score;
+  if (!el) return;
+  el.classList.remove("stat-pulse");
+  void el.offsetWidth; // アニメーション再トリガー
+  el.classList.add("stat-pulse");
+}
+
 // Knowledge Map（Phase A）: 答え表示時に派生語ファミリーを1行見せる。
 // 「単語は孤立した点ではなく、つながっている」ことの予告編
 function renderWordFamily(word) {
@@ -398,6 +407,7 @@ let studyWordsSinceSync = 0;
 function completeWord() {
   score++;
   elements.score.textContent = score;
+  pulseScore();
 
   if (isRevealed) {
     sfxSoftCorrect();
