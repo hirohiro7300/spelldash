@@ -1,5 +1,6 @@
 import { getWordStats } from "./storage.js";
 import { getAllWords, findWord } from "./wordStore.js";
+import { allowedWordLevels, isWordLevelAllowed } from "./difficulty.js";
 
 // Today's Mission: 「今日はこれだけやればOK」を作る。
 // Review = 復習が必要な単語（ミスが多い順 → 最後にやってから時間が経っている順）
@@ -56,11 +57,14 @@ function pickNewWords(excludeSet) {
   const stats = getWordStats();
   const preferredCategory = localStorage.getItem("spelldash_category") || "all";
 
-  // カテゴリ間で重複する単語（同一id）は1つに絞る
+  // カテゴリ間で重複する単語（同一id）は1つに絞る。
+  // 新出単語はプレイヤーレベルで解放された難易度のみ
+  const allowed = allowedWordLevels();
   const seen = new Set();
   const candidates = getAllWords().filter((word) => {
     if ((stats[word.id]?.playCount ?? 0) > 0) return false;
     if (excludeSet.has(word.id) || seen.has(word.id)) return false;
+    if (!isWordLevelAllowed(word, allowed)) return false;
     seen.add(word.id);
     return true;
   });

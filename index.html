@@ -109,47 +109,18 @@
   </header>
 
   <div class="app">
-    <section class="hero">
-      <p class="logo">英単語タイピング学習</p>
+    <section class="hero hero--compact">
       <h1>英単語を、思い出して打つ。</h1>
       <p class="subtitle">
-        スペルを隠して記憶からタイピング。ミスしたら答えを見ながら復習。
+        スペルを隠して記憶からタイピング。分からなければ答えを見て、数問後にもう一度。
       </p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
     <section class="onboarding" id="onboardingCard"></section>
 
-    <section class="streak-card" id="streakCard" aria-label="連続プレイ記録"></section>
-
-    <section class="daily" id="dailyCard" aria-label="デイリーチャレンジ"></section>
-
-    <section class="mission" id="missionCard"></section>
-
-    <section class="level-bar" id="levelBar"></section>
-
-    <section class="category-picker" id="categoryPicker" aria-label="出題カテゴリ"></section>
-
-    <section class="mix-control" id="mixControl">
-      <div class="mix-control__head">
-        <span>テンポ重視</span>
-        <span>新規学習</span>
-      </div>
-      <input
-        type="range"
-        id="mixSlider"
-        min="0"
-        max="100"
-        step="10"
-        value="80"
-        dir="rtl"
-      />
-      <div class="mix-control__foot">
-        <span id="mixLabel">回答済み 80% / 未回答 20%</span>
-        <span class="mix-control__hint">回答済みを増やすとテンポよく、未回答を増やすと新しい単語を多く学べます。</span>
-      </div>
-    </section>
-
+                            <div class="home-grid">
+      <div class="home-main">
     <section class="mode-switch" id="modeSwitch" aria-label="モード切替">
       <button type="button" class="mode-switch__btn" data-mode="study">
         Study
@@ -168,45 +139,8 @@
       <span class="weak-toggle__hint">思い出せなかった・打ち間違いが多い単語だけを出題</span>
     </section>
 
-    <section class="stats">
-      <div class="stat-card stat-card--challenge">
-        <span>残り時間</span>
-        <strong><span id="time">60</span>秒</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>正解</span>
-        <strong id="score">0</strong>
-      </div>
-
-      <div class="stat-card">
-        <span>思い出せず</span>
-        <strong id="recallFail">0</strong>
-      </div>
-
-      <div class="stat-card stat-card--study">
-        <span>今日思い出せた</span>
-        <strong id="recalledToday">0</strong>
-        <span class="stat-card__sub" id="securedToday"></span>
-      </div>
-
-      <div class="stat-card">
-        <span>ミスタイプ</span>
-        <strong id="miss">0</strong>
-      </div>
-
-      <div class="stat-card stat-card--challenge">
-        <span>平均タイプ</span>
-        <strong><span id="typeSpeed">0.0</span>打/秒</strong>
-      </div>
-
-      <div class="stat-card stat-card--challenge">
-        <span>ベスト</span>
-        <strong id="bestScore">0</strong>
-      </div>
-    </section>
-
-    <main class="game-card">
+        <main class="game-card">
+      <div class="big-timer" id="bigTimer" hidden aria-label="残り時間">60</div>
       <div class="study-queue" id="studyQueue" aria-label="このあとの問題"></div>
 
       <p class="label">日本語訳</p>
@@ -249,6 +183,73 @@
 
       <button id="restart">もう一回</button>
     </main>
+
+<section class="stats">
+      <div class="stat-card stat-card--challenge">
+        <span>残り時間</span>
+        <strong><span id="time">60</span>秒</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>正解</span>
+        <strong id="score">0</strong>
+      </div>
+
+      <div class="stat-card">
+        <span>思い出せず</span>
+        <strong id="recallFail">0</strong>
+      </div>
+
+      <div class="stat-card stat-card--study">
+        <span>今日思い出せた</span>
+        <strong id="recalledToday">0</strong>
+        <span class="stat-card__sub" id="securedToday"></span>
+      </div>
+
+      <div class="stat-card">
+        <span>ミスタイプ</span>
+        <strong id="miss">0</strong>
+      </div>
+
+      <div class="stat-card stat-card--challenge">
+        <span>平均タイプ</span>
+        <strong><span id="typeSpeed">0.0</span>打/秒</strong>
+      </div>
+
+      <div class="stat-card stat-card--challenge">
+        <span>ベスト</span>
+        <strong id="bestScore">0</strong>
+      </div>
+    </section>
+      </div>
+
+      <aside class="home-side">
+<section class="streak-card" id="streakCard" aria-label="連続プレイ記録"></section>
+<section class="daily" id="dailyCard" aria-label="デイリーチャレンジ"></section>
+<section class="mission" id="missionCard"></section>
+<section class="level-bar" id="levelBar"></section>
+<section class="category-picker" id="categoryPicker" aria-label="出題カテゴリ"></section>
+<section class="mix-control" id="mixControl">
+      <div class="mix-control__head">
+        <span>テンポ重視</span>
+        <span>新規学習</span>
+      </div>
+      <input
+        type="range"
+        id="mixSlider"
+        min="0"
+        max="100"
+        step="10"
+        value="80"
+        dir="rtl"
+      />
+      <div class="mix-control__foot">
+        <span id="mixLabel">回答済み 80% / 未回答 20%</span>
+        <span class="mix-control__hint">回答済みを増やすとテンポよく、未回答を増やすと新しい単語を多く学べます。</span>
+      </div>
+    </section>
+      </aside>
+    </div>
   </div>
 
   <footer class="site-footer">
