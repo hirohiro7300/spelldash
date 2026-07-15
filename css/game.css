@@ -470,6 +470,68 @@ body:not(.mode-study) .study-queue {
   border-color: rgba(148, 163, 184, 0.6);
 }
 
+/* ===== 語根ファミリーカード ===== */
+.family-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.family-card {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.family-card--complete {
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.family-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.family-card__root {
+  color: #93c5fd;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.family-card--complete .family-card__root {
+  color: #86efac;
+}
+
+.family-card__count {
+  color: #64748b;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.family-card__members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.family-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #64748b;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.family-chip--learned {
+  color: #f8fafc;
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
 /* ===== 同じ仲間（Knowledge Map Phase A） ===== */
 .word-family {
   min-height: 20px;

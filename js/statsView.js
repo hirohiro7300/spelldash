@@ -7,7 +7,7 @@ import { getLevelState, getStreak } from "./level.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
 
-import { initWordStore } from "./wordStore.js";
+import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
 
 const overviewElement = document.getElementById("overview");
@@ -25,6 +25,7 @@ initWordStore().then(() => {
   renderWeeklySummary();
   renderScoreTrend();
   renderProgress();
+  renderWordFamilies();
   renderWeakWords();
   initializeWordList();
 });
@@ -36,6 +37,7 @@ window.addEventListener("spelldash:synced", () => {
   renderWeeklySummary();
   renderScoreTrend();
   renderProgress();
+  renderWordFamilies();
   renderWeakWords();
 });
 
@@ -87,6 +89,67 @@ function computeRecallRateLabel() {
 
   const total = ok + fail;
   return total > 0 ? `${Math.round((ok / total) * 100)}%` : "-";
+}
+
+// ===== 語根ファミリー（Knowledge Map Phase A） =====
+// 学習済みメンバーが1語以上ある族だけ表示（初心者にはノイズを出さない）
+
+function renderWordFamilies() {
+  const container = document.getElementById("wordFamilies");
+  if (!container) return;
+
+  const stats = getWordStats();
+  const isLearned = (id) => (stats[id]?.correctCount ?? 0) > 0;
+
+  // root → メンバー（重複IDは1つ）
+  const families = new Map();
+  const seen = new Set();
+  for (const word of getAllWords()) {
+    if (!word.root || seen.has(word.id)) continue;
+    seen.add(word.id);
+    if (!families.has(word.root)) families.set(word.root, []);
+    families.get(word.root).push(word);
+  }
+
+  const rows = [...families.entries()]
+    .map(([root, members]) => ({
+      root,
+      members,
+      learned: members.filter((w) => isLearned(w.id)).length
+    }))
+    .filter((f) => f.learned > 0)
+    .sort((a, b) => b.learned / b.members.length - a.learned / a.members.length);
+
+  if (rows.length === 0) {
+    container.innerHTML =
+      '<p class="muted">まだありません。学習を進めると、覚えた単語の「仲間」がここに集まります。</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="family-grid">
+      ${rows
+        .map((f) => {
+          const complete = f.learned === f.members.length;
+          return `
+        <div class="family-card${complete ? " family-card--complete" : ""}">
+          <div class="family-card__head">
+            <span class="family-card__root">${f.root}族</span>
+            <span class="family-card__count">${f.learned} / ${f.members.length}${complete ? " ✓" : ""}</span>
+          </div>
+          <div class="family-card__members">
+            ${f.members
+              .map(
+                (w) =>
+                  `<span class="family-chip${isLearned(w.id) ? " family-chip--learned" : ""}">${w.en}</span>`
+              )
+              .join("")}
+          </div>
+        </div>`;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 // ===== 今週のまとめ（月曜起点、先週との比較つき） =====
