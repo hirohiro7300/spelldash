@@ -203,3 +203,28 @@ create policy "activity_days_update_own" on public.activity_days
 create index if not exists activity_days_day_idx on public.activity_days (day);
 
 grant select, insert, update on public.activity_days to authenticated;
+
+-- ===== セキュリティ強化（2026-07-15 監査対応） =====
+-- daily_scoresは「認証さえすれば誰でもinsertできる公開テーブル」のため、
+-- 荒らしの上限をDB側で制約する（もっともらしい値のチートは仕様上残る＝受容リスク）。
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'daily_scores_score_range') then
+    alter table public.daily_scores
+      add constraint daily_scores_score_range check (score >= 0 and score <= 200);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'daily_scores_name_length') then
+    alter table public.daily_scores
+      add constraint daily_scores_name_length check (char_length(coalesce(display_name, '')) <= 30);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'daily_scores_day_format') then
+    alter table public.daily_scores
+      add constraint daily_scores_day_format check (day ~ '^\d{4}-\d{2}-\d{2}$');
+  end if;
+end $$;
+
+-- プライバシー: 自分のランキング記録は自分で削除できる（問い合わせ不要に）
+drop policy if exists "daily_scores_delete_own" on public.daily_scores;
+create policy "daily_scores_delete_own" on public.daily_scores
+  for delete using (auth.uid() = user_id);
+grant delete on public.daily_scores to authenticated;
