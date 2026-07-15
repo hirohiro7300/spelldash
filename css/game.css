@@ -375,6 +375,82 @@ body:not(.mode-study) .study-queue {
   font-size: 12px;
 }
 
+/* ===== Daily Dash ===== */
+.daily {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  backdrop-filter: blur(14px);
+}
+
+.daily:empty {
+  display: none;
+}
+
+.daily--done {
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.daily__head {
+  flex-shrink: 0;
+  color: #facc15;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.daily--done .daily__head {
+  color: #94a3b8;
+}
+
+.daily__desc {
+  color: #94a3b8;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.daily__result {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.daily__result strong {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #4ade80;
+}
+
+.daily__note {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.daily__button {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f59e0b, #facc15);
+  color: #1c1917;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.daily__button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(250, 204, 21, 0.35);
+}
+
 /* ===== Today's Mission ===== */
 .mission {
   display: flex;

@@ -6,8 +6,10 @@ import {
   restartGame,
   setMode,
   getMode,
-  speakCurrentWord
+  speakCurrentWord,
+  startDailyGame
 } from "./game.js";
+import { renderDailyCard } from "./dailyChallenge.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderLevelBar } from "./levelUi.js";
@@ -56,6 +58,10 @@ initWordStore()
     initializeCategoryPicker();
     initializeMixControl();
     renderMission();
+    renderDailyCard(() => {
+      startDailyGame();
+      elements.input.focus();
+    });
     initializeDisplay();
     setMode(getMode());
   })
