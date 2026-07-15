@@ -1,4 +1,4 @@
-import { getLevelState } from "./level.js";
+import { getLevelState, getNextTitle } from "./level.js";
 
 // ページ内に #levelBar があればレベルバーを描画する（無いページでは何もしない）
 export function renderLevelBar() {
@@ -8,11 +8,17 @@ export function renderLevelBar() {
   const state = getLevelState();
   const percent = Math.min(100, Math.round((state.currentXp / state.neededXp) * 100));
 
+  // 次の称号予告（あと少しで手が届く目標を常に見せる）
+  const next = getNextTitle(state.level);
+  const nextText = next
+    ? `<span class="level-bar__next">あと${next.level - state.level}レベルで「${next.name}」</span>`
+    : "";
+
   container.innerHTML = `
     <div class="level-bar__badge">Lv.${state.level}</div>
     <div class="level-bar__body">
       <div class="level-bar__head">
-        <span class="level-bar__title">${state.title}</span>
+        <span class="level-bar__title">${state.title}${nextText}</span>
         <span class="level-bar__xp">${state.currentXp} / ${state.neededXp} XP</span>
       </div>
       <div class="progress-bar progress-bar--slim">

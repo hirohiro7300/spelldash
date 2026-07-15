@@ -876,6 +876,24 @@ body.mode-study .weak-toggle {
   letter-spacing: 0.18em;
 }
 
+.mission__tomorrow {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.level-bar__next {
+  margin-left: 10px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+@media (max-width: 640px) {
+  .level-bar__next {
+    display: none;
+  }
+}
+
 /* ===== レベルバー ===== */
 .level-bar {
   display: flex;

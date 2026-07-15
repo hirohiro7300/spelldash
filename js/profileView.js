@@ -174,6 +174,7 @@ function renderSummary() {
   renderCards(summaryElement, [
     { label: "称号", value: level.title },
     { label: "連続プレイ", value: `${streak.current}日` },
+    { label: "ストリークシールド", value: `🛡️ × ${streak.shields ?? 0}` },
     { label: "ベストスコア", value: s.best },
     { label: "習得済み", value: `${s.mastered} / ${s.total}` },
     { label: "習得率", value: `${s.masteryRate}%` },

@@ -60,6 +60,11 @@ export function getTitle(level) {
   return title;
 }
 
+// 次に到達する称号（最上位到達済みならnull）
+export function getNextTitle(level) {
+  return TITLES.find((entry) => entry.level > level) ?? null;
+}
+
 // XPを加算し、加算前後のレベル状態を返す（レベルアップ検知用）
 export function addXp(amount) {
   const before = getLevelState();
