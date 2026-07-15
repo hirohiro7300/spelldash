@@ -1,4 +1,4 @@
-import { BATTLE, calculateBattleScore } from "./battleConfig.js";
+import { BATTLE, calculateBattleScore , LEVEL_MIX_BY_RANK } from "./battleConfig.js";
 import { createCpuOpponent } from "./cpuOpponent.js";
 import { getWordsByCategory } from "./wordStore.js";
 import { getRankState } from "./battleRank.js";
@@ -33,7 +33,7 @@ function dedupeById(words) {
 }
 
 // 難易度ミックスに沿って問題セットを抽選（excludeIdsは可能な範囲で避ける）
-function buildWordSet(categoryId, count, excludeIds = new Set()) {
+function buildWordSet(categoryId, count, excludeIds = new Set(), mix = BATTLE.levelMix) {
   const all = dedupeById(getWordsByCategory(categoryId));
   const byLevel = {
     easy: shuffle(all.filter((w) => w.level === "easy")),
@@ -42,9 +42,9 @@ function buildWordSet(categoryId, count, excludeIds = new Set()) {
   };
 
   const targets = {
-    easy: Math.round(count * BATTLE.levelMix.easy),
-    normal: Math.round(count * BATTLE.levelMix.normal),
-    hard: Math.round(count * BATTLE.levelMix.hard)
+    easy: Math.round(count * mix.easy),
+    normal: Math.round(count * mix.normal),
+    hard: Math.round(count * mix.hard)
   };
 
   const set = [];
@@ -81,8 +81,10 @@ export function createBattleMatch({ categoryId, durationSeconds, callbacks }) {
   const duration = (durationSeconds ?? BATTLE.durationSeconds) * 1000;
   const rank = getRankState();
 
-  const playerSet = buildWordSet(categoryId, BATTLE.wordsPerSet);
-  const cpuSet = buildWordSet(categoryId, BATTLE.wordsPerSet, new Set(playerSet.map((w) => w.id)));
+  // ランク別の難易度構成（Bronzeはhardなし）。両者同構成なので公平
+  const levelMix = LEVEL_MIX_BY_RANK[rank.id] ?? BATTLE.levelMix;
+  const playerSet = buildWordSet(categoryId, BATTLE.wordsPerSet, new Set(), levelMix);
+  const cpuSet = buildWordSet(categoryId, BATTLE.wordsPerSet, new Set(playerSet.map((w) => w.id)), levelMix);
 
   const timeline = [];
   let startTime = null;

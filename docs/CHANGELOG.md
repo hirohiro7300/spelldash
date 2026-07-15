@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-07-15 (Battleのランク別難易度) ※承認待ち・デプロイ凍結中
+
+- Battleの問題難易度をランク連動に（従来は全ランク一律 easy40/normal40/hard20）
+  - Bronze: easy70/normal30/**hard0** → 初心者が「単語むずい」でBattleから離脱するのを防ぐ
+  - ランクが上がるほどhard比率が増加（Master: easy20/normal45/hard35）
+  - 両者の問題セットに同じ構成比を使うため公平性は維持。difficulty_profileにrankIdを記録済みで効果検証可能
+- 検証: Bronze実測 easy28/normal12/hard0、Masterでhard出現をE2E確認
+
 ## 2026-07-15 (難易度ゲートのバグ修正＋CI導入) ※承認待ち・デプロイ凍結中
 
 - **バグ修正**: easy 0語のカテゴリ（IT）をLv1〜4で選ぶとChallengeの出題が空になりクラッシュする問題

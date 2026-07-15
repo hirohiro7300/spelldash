@@ -16,6 +16,17 @@ export const BATTLE = {
   rp: { win: 20, draw: 5, loss: -10 }
 };
 
+// ランク別の問題難易度構成。初心者帯（Bronze）はhardを出さない。
+// 両者の問題セットに同じ構成比を使うため公平性は保たれる
+export const LEVEL_MIX_BY_RANK = {
+  bronze:   { easy: 0.7,  normal: 0.3,  hard: 0 },
+  silver:   { easy: 0.55, normal: 0.4,  hard: 0.05 },
+  gold:     { easy: 0.4,  normal: 0.45, hard: 0.15 },
+  platinum: { easy: 0.3,  normal: 0.45, hard: 0.25 },
+  diamond:  { easy: 0.25, normal: 0.45, hard: 0.3 },
+  master:   { easy: 0.2,  normal: 0.45, hard: 0.35 }
+};
+
 export const RANKS = [
   { id: "bronze", label: "Bronze", min: 0 },
   { id: "silver", label: "Silver", min: 100 },
