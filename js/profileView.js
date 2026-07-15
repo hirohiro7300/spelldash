@@ -94,6 +94,63 @@ function renderProfile(session) {
   } else {
     joinedElement.textContent = "";
   }
+
+  initializeDisplayName(session);
+}
+
+// ===== ランキング表示名 =====
+// profiles.display_name を編集し、ローカルにもキャッシュする。
+// Daily Dashのスコア送信はキャッシュを優先して使う（次回の記録から反映）
+const DISPLAY_NAME_KEY = "spelldash_display_name";
+let displayNameInitialized = false;
+
+async function initializeDisplayName(session) {
+  const input = document.getElementById("displayNameInput");
+  const saveButton = document.getElementById("displayNameSave");
+  const status = document.getElementById("displayNameStatus");
+  if (!input || !saveButton || displayNameInitialized) return;
+  displayNameInitialized = true;
+
+  // 現在値: profiles → メタデータ → メール先頭 の順
+  const { data } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .maybeSingle();
+  const meta = session.user.user_metadata ?? {};
+  const current =
+    data?.display_name ||
+    meta.full_name ||
+    meta.name ||
+    session.user.email?.split("@")[0] ||
+    "";
+
+  input.value = current;
+  if (current) localStorage.setItem(DISPLAY_NAME_KEY, current);
+
+  saveButton.addEventListener("click", async () => {
+    const name = input.value.trim().slice(0, 20);
+    if (!name) {
+      status.textContent = "表示名を入力してください。";
+      return;
+    }
+
+    const { error } = await supabase.from("profiles").upsert({
+      user_id: session.user.id,
+      display_name: name,
+      updated_at: new Date().toISOString()
+    });
+
+    if (error) {
+      status.textContent = "保存に失敗しました。時間をおいて再試行してください。";
+      return;
+    }
+
+    localStorage.setItem(DISPLAY_NAME_KEY, name);
+    status.textContent = "保存しました。次回のDaily Dashから反映されます。";
+    setTimeout(() => {
+      status.textContent = "Daily Dashランキングに表示される名前です（次回の記録から反映）。";
+    }, 3000);
+  });
 }
 
 function renderCards(container, cards) {

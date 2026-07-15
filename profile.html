@@ -133,6 +133,20 @@
           <p class="muted" id="profileJoined"></p>
         </div>
       </div>
+
+      <div class="setting-row">
+        <label for="displayNameInput">ランキング表示名</label>
+        <input
+          id="displayNameInput"
+          class="setting-select"
+          type="text"
+          maxlength="20"
+          placeholder="例: hiro"
+          autocomplete="nickname"
+        />
+        <button id="displayNameSave" class="btn btn--sm" type="button">保存</button>
+      </div>
+      <p class="muted" id="displayNameStatus">Daily Dashランキングに表示される名前です（次回の記録から反映）。</p>
     </section>
 
     <section class="level-bar" id="levelBar"></section>
