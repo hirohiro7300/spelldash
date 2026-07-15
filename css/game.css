@@ -721,6 +721,100 @@ body:not(.mode-study) .study-queue {
   display: none;
 }
 
+/* ===== リザルトパネル ===== */
+.result-panel {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  text-align: left;
+}
+
+.result-panel__title {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  margin-bottom: 10px;
+}
+
+.result-panel__best {
+  margin-bottom: 10px;
+  color: #facc15;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.result-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.result-panel__grid span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.result-panel__grid strong {
+  color: #f8fafc;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-panel__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.result-panel__action {
+  padding: 9px 18px;
+  font-size: 13px;
+  border-radius: 999px;
+}
+
+.result-panel__action--ghost {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #94a3b8;
+}
+
+.result-panel__action--ghost:hover {
+  background: rgba(148, 163, 184, 0.12);
+  color: #e2e8f0;
+}
+
+/* ===== ヘッダーの🔥ストリーク（.accountのmargin-left:autoの左隣） ===== */
+.header-streak {
+  margin-left: auto;
+  margin-right: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(251, 146, 60, 0.35);
+  color: #fb923c;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.header-streak--off {
+  background: transparent;
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #64748b;
+  filter: grayscale(1);
+}
+
+/* streakが右端グループの先頭になるので、accountの押し出しは無効化 */
+.header-streak + .account {
+  margin-left: 0;
+}
+
 /* ===== 初回オンボーディング ===== */
 .onboarding {
   position: relative;

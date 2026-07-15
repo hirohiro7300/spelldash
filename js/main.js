@@ -17,6 +17,7 @@ import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderLevelBar } from "./levelUi.js";
 import { renderStreakCard } from "./streakUi.js";
+import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderMission } from "./mission.js";
@@ -25,6 +26,7 @@ import { initializeMixControl } from "./studyMix.js";
 
 initializeAuth();
 setFooterYear();
+renderHeaderStreak();
 renderLevelBar();
 renderStreakCard();
 setupUnloadSync();

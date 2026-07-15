@@ -1,5 +1,6 @@
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
+import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore, getCategories } from "./wordStore.js";
 import { setupUnloadSync, pushSync } from "./sync.js";
 import { createBattleMatch } from "./battleEngine.js";
@@ -19,6 +20,7 @@ const durationOverride = Number(new URLSearchParams(location.search).get("t")) |
 
 initializeAuth();
 setFooterYear();
+renderHeaderStreak();
 setupUnloadSync();
 
 initWordStore().then(() => {

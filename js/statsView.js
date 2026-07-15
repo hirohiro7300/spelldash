@@ -2,6 +2,7 @@ import { initializeAuth } from "./auth.js";
 import { initializeWordList } from "./wordList.js";
 import { renderWeakWords } from "./ui.js";
 import { setFooterYear } from "./footer.js";
+import { renderHeaderStreak } from "./headerStreak.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getLevelState, getStreak } from "./level.js";
 import { getWordStats, getSessionLog } from "./storage.js";
@@ -17,6 +18,7 @@ const typingElement = document.getElementById("typingMetrics");
 initializeAuth();
 renderLevelBar();
 setFooterYear();
+renderHeaderStreak();
 setupUnloadSync();
 
 initWordStore().then(() => {
