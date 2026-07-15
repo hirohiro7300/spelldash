@@ -51,7 +51,7 @@
     {"id": "english-commit", "en": "commit", "ja": "コミットする", "level": "normal", "tags": ["software"]},
     {"id": "english-merge", "en": "merge", "ja": "マージする", "level": "hard", "tags": ["software"]},
     {"id": "english-branch", "en": "branch", "ja": "ブランチ", "level": "normal", "tags": ["software"]},
-    {"id": "english-refactor", "en": "refactor", "ja": "書き直す", "level": "hard", "tags": ["software"]},
+    {"id": "english-refactor", "en": "refactor", "ja": "リファクタリングする", "level": "hard", "tags": ["software"]},
     {"id": "english-markup", "en": "markup", "ja": "マークアップ", "level": "hard", "tags": ["software", "web"]},
     {"id": "english-browser", "en": "browser", "ja": "ブラウザ", "level": "normal", "tags": ["web"]},
     {"id": "english-website", "en": "website", "ja": "ウェブサイト", "level": "normal", "tags": ["web"]},

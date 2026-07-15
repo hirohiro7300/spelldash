@@ -107,7 +107,7 @@
     {"id": "english-complimentary", "en": "complimentary", "ja": "無料の", "level": "hard", "tags": ["travel"]},
     {"id": "english-brochure", "en": "brochure", "ja": "パンフレット", "level": "hard", "tags": ["marketing"]},
     {"id": "english-pamphlet", "en": "pamphlet", "ja": "小冊子", "level": "hard", "tags": ["marketing"]},
-    {"id": "english-souvenir", "en": "souvenir", "ja": "土産", "level": "hard", "tags": ["travel"]},
+    {"id": "english-souvenir", "en": "souvenir", "ja": "お土産", "level": "hard", "tags": ["travel"]},
     {"id": "english-customs", "en": "customs", "ja": "税関", "level": "hard", "tags": ["travel"]},
     {"id": "english-embassy", "en": "embassy", "ja": "大使館", "level": "hard", "tags": ["travel"]},
     {"id": "english-renovation", "en": "renovation", "ja": "改装", "level": "hard", "tags": ["housing"]},
