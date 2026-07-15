@@ -51,6 +51,7 @@ import {
   sfxSparkle
 } from "./sfx.js";
 import { bumpActivity, markDailyDone } from "./activity.js";
+import { allowedWordLevels, isWordLevelAllowed, unlockNoteForLevel } from "./difficulty.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak } from "./audio.js";
 import {
@@ -134,6 +135,7 @@ export function stopGame() {
   elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
   showHiddenWordText("");
   updateCombo(0);
+  updateBigTimer();
   renderStudyQueue(false);
 }
 
@@ -185,6 +187,7 @@ export function startGame() {
   if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
   elements.time.textContent = time;
   elements.typeSpeed.textContent = "0.0";
+  updateBigTimer();
 
   showMessage(
     dailyRun
@@ -207,6 +210,7 @@ export function startGame() {
     timer = setInterval(() => {
       time--;
       elements.time.textContent = time;
+      updateBigTimer();
       updateTypeSpeed();
 
       if (time <= 0) {
@@ -214,6 +218,19 @@ export function startGame() {
       }
     }, 1000);
   }
+}
+
+// カード右上の大型タイマー（Challenge/Dailyプレイ中のみ表示、残り10秒で赤）
+function updateBigTimer() {
+  const el = document.getElementById("bigTimer");
+  if (!el) return;
+
+  const active = isPlaying && mode === "challenge";
+  el.hidden = !active;
+  if (!active) return;
+
+  el.textContent = time;
+  el.classList.toggle("big-timer--danger", time <= 10);
 }
 
 export function restartGame() {
@@ -503,7 +520,10 @@ function applyStudyXp(earned, missionResult, loopResult) {
   if (result.leveledUp) {
     playLevelUpEffect();
     sfxLevelUp();
-    showMessage(`🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」`, "finished");
+    showMessage(
+      `🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」${unlockNoteForLevel(result.after.level)}`,
+      "finished"
+    );
     return;
   }
 
@@ -585,7 +605,12 @@ function setNewWord() {
 
 function chooseWord() {
   const stats = getWordStats();
-  const words = getWordsByCategory(activeCategory);
+  const allowed = allowedWordLevels();
+
+  // 未プレイの単語はプレイヤーレベルで解放（既習語は常に出題対象）
+  const words = getWordsByCategory(activeCategory).filter(
+    (word) => stats[word.id] || isWordLevelAllowed(word, allowed)
+  );
 
   const weightedWords = words.flatMap((word) => {
     const data = stats[word.id];
@@ -620,6 +645,7 @@ function endChallenge() {
   clearInterval(timer);
   isPlaying = false;
   elements.input.disabled = true;
+  updateBigTimer();
 
   const isDaily = !!dailyRun;
 
@@ -699,7 +725,7 @@ function endChallenge() {
     playLevelUpEffect();
     sfxLevelUp();
     showMessage(
-      `🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」 +${gainedXp} XP`,
+      `🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」 +${gainedXp} XP${unlockNoteForLevel(result.after.level)}`,
       "finished"
     );
     return;

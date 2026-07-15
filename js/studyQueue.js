@@ -3,6 +3,7 @@ import { getWordsByCategory } from "./wordStore.js";
 import { getTodayMission } from "./mission.js";
 import { setDailyLearning, localDateString } from "./stats.js";
 import { getFamiliarRatio } from "./studyMix.js";
+import { allowedWordLevels, isWordLevelAllowed } from "./difficulty.js";
 import {
   MAX_ACTIVE_NEW_WORDS,
   NEW_WORD_DAILY_SUCCESS_TARGET,
@@ -170,7 +171,10 @@ function pickFillers(count, excludeSet) {
   });
 
   const familiarPool = shuffle(usable.filter((w) => isFamiliar(stats[w.id])));
-  let newPool = usable.filter((w) => isNew(stats[w.id]));
+
+  // 新出単語はプレイヤーレベルで解放（既習語には適用しない）
+  const allowed = allowedWordLevels();
+  let newPool = usable.filter((w) => isNew(stats[w.id]) && isWordLevelAllowed(w, allowed));
 
   // Mission NewをNew候補の先頭に
   const missionNewPending = new Set(mission.new.filter((id) => !mission.newDone.includes(id)));
