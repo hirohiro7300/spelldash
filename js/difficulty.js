@@ -22,6 +22,24 @@ export function isWordLevelAllowed(word, allowed = allowedWordLevels()) {
   return !allowed || allowed.has(word.level);
 }
 
+// 新出単語リストへのゲート適用。
+// 解放難易度の語が1語も無いカテゴリ（例: ITはeasy 0語）では、
+// そのカテゴリに存在する最も易しい難易度を許可する。
+// カテゴリ選択はユーザーの明示的な意思なので「何も出ない」を絶対に作らない
+export function filterByAllowedLevels(words, allowed = allowedWordLevels()) {
+  if (!allowed) return words;
+
+  const gated = words.filter((w) => allowed.has(w.level));
+  if (gated.length > 0) return gated;
+
+  for (const level of ["easy", "normal", "hard"]) {
+    const fallback = words.filter((w) => w.level === level);
+    if (fallback.length > 0) return fallback;
+  }
+
+  return words;
+}
+
 // レベルアップ時の解放メッセージ（該当しなければ空文字）
 export function unlockNoteForLevel(level) {
   if (level === UNLOCK_NORMAL_LEVEL) return " 🔓 新しい難易度の単語が解放！";

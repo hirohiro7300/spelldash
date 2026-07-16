@@ -1,6 +1,7 @@
 import { supabase } from "./supabase.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
+import { renderHeaderStreak } from "./headerStreak.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
@@ -21,6 +22,7 @@ initializeAuth();
 renderLevelBar();
 renderTyping();
 setFooterYear();
+renderHeaderStreak();
 setupUnloadSync();
 
 initWordStore().then(() => {

@@ -32,12 +32,14 @@ import {
 import { addXp, updateStreak } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
 import { renderStreakCard } from "./streakUi.js";
+import { renderHeaderStreak } from "./headerStreak.js";
 import { markMissionWord, isMissionWordPending, renderMission } from "./mission.js";
 import {
   getDailyWords,
   isDailyPlayedToday,
   recordDailyResult,
   renderDailyCard,
+  shareDailyResult,
   DAILY_BONUS_XP
 } from "./dailyChallenge.js";
 import { submitDailyScore } from "./dailyRank.js";
@@ -51,7 +53,7 @@ import {
   sfxSparkle
 } from "./sfx.js";
 import { bumpActivity, markDailyDone } from "./activity.js";
-import { allowedWordLevels, isWordLevelAllowed, unlockNoteForLevel } from "./difficulty.js";
+import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel } from "./difficulty.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak } from "./audio.js";
 import {
@@ -136,6 +138,7 @@ export function stopGame() {
   showHiddenWordText("");
   updateCombo(0);
   updateBigTimer();
+  hideResultPanel();
   renderStudyQueue(false);
 }
 
@@ -162,6 +165,7 @@ export function startGame() {
   }
 
   isPlaying = true;
+  hideResultPanel();
   score = 0;
   typingMissCount = 0;
   recallFailCount = 0;
@@ -512,6 +516,7 @@ function applyStudyXp(earned, missionResult, loopResult) {
   if (streak.isFirstToday) {
     earned += 50;
     renderStreakCard();
+    renderHeaderStreak();
   }
 
   const result = addXp(earned);
@@ -607,10 +612,15 @@ function chooseWord() {
   const stats = getWordStats();
   const allowed = allowedWordLevels();
 
-  // 未プレイの単語はプレイヤーレベルで解放（既習語は常に出題対象）
-  const words = getWordsByCategory(activeCategory).filter(
-    (word) => stats[word.id] || isWordLevelAllowed(word, allowed)
+  // 未プレイの単語はプレイヤーレベルで解放（既習語は常に出題対象）。
+  // カテゴリ内に解放難易度が無い場合はfilterByAllowedLevelsが最易難易度で救済
+  const pool = getWordsByCategory(activeCategory);
+  const played = pool.filter((word) => stats[word.id]);
+  const unlocked = filterByAllowedLevels(
+    pool.filter((word) => !stats[word.id]),
+    allowed
   );
+  const words = [...played, ...unlocked];
 
   const weightedWords = words.flatMap((word) => {
     const data = stats[word.id];
@@ -648,6 +658,7 @@ function endChallenge() {
   updateBigTimer();
 
   const isDaily = !!dailyRun;
+  const previousBest = getBestScore();
 
   const elapsedSeconds = startTime ? (Date.now() - startTime) / 1000 : 0;
   const speed = elapsedSeconds > 0 ? correctChars / elapsedSeconds : 0;
@@ -704,6 +715,7 @@ function endChallenge() {
   }
 
   saveBestScore(score);
+  const isBest = score > 0 && score > previousBest;
   elements.bestScore.textContent = getBestScore();
   updateCombo(0);
 
@@ -716,6 +728,7 @@ function endChallenge() {
     const shieldNote = streak.earnedShield ? " 🛡️ シールド獲得！" : "";
     bonusText = `（今日の初プレイ +50 XP / 🔥${streak.current}日連続${shieldNote}）`;
     renderStreakCard();
+    renderHeaderStreak();
   }
 
   const result = addXp(gainedXp);
@@ -734,10 +747,69 @@ function endChallenge() {
   if (isDaily) {
     sfxComplete();
     showMessage(`⚡ DAILY DASH 終了！スコア ${score} / +${gainedXp} XP（また明日）${bonusText}`, "finished");
+    renderResultPanel({ isDaily, isBest, gainedXp, speed });
     return;
   }
 
   showMessage(`終了！スコア ${score} / +${gainedXp} XP ${bonusText}`, "finished");
+  renderResultPanel({ isDaily, isBest, gainedXp, speed });
+}
+
+// ===== 終了リザルトパネル =====
+// メッセージ1行では終了の満足感と次のアクションが弱いため、
+// スコア・ベスト更新・次の一手（もう一回/シェア）をカード内に見せる
+function renderResultPanel({ isDaily, isBest, gainedXp, speed }) {
+  const panel = document.getElementById("resultPanel");
+  if (!panel) return;
+
+  const bestBadge = isBest ? `<div class="result-panel__best">🏆 ベストスコア更新！</div>` : "";
+  const title = isDaily ? "⚡ DAILY DASH 結果" : "⏱ CHALLENGE 結果";
+
+  const actions = isDaily
+    ? `<button type="button" class="result-panel__action" id="resultShare">結果をシェア</button>
+       <button type="button" class="result-panel__action result-panel__action--ghost" id="resultStudy">苦手をStudyで復習</button>`
+    : `<button type="button" class="result-panel__action" id="resultRetry">もう一回</button>
+       <button type="button" class="result-panel__action result-panel__action--ghost" id="resultStudy">苦手をStudyで復習</button>`;
+
+  panel.innerHTML = `
+    <div class="result-panel__title">${title}</div>
+    ${bestBadge}
+    <div class="result-panel__grid">
+      <div><span>スコア</span><strong>${score}</strong></div>
+      <div><span>思い出せず</span><strong>${recallFailCount}</strong></div>
+      <div><span>ミスタイプ</span><strong>${typingMissCount}</strong></div>
+      <div><span>速度</span><strong>${(Math.round(speed * 10) / 10).toFixed(1)}打/秒</strong></div>
+      <div><span>獲得XP</span><strong>+${gainedXp}</strong></div>
+    </div>
+    <div class="result-panel__actions">${actions}</div>
+  `;
+  panel.hidden = false;
+
+  document.getElementById("resultRetry")?.addEventListener("click", () => {
+    restartGame();
+    elements.input.focus();
+  });
+
+  document.getElementById("resultStudy")?.addEventListener("click", () => {
+    setMode("study");
+    startGame();
+    elements.input.focus();
+  });
+
+  const shareButton = document.getElementById("resultShare");
+  if (shareButton) {
+    shareButton.addEventListener("click", async () => {
+      const outcome = await shareDailyResult().catch(() => "failed");
+      if (outcome === "copied") {
+        shareButton.textContent = "コピーしました！SNSに貼り付けてね";
+      }
+    });
+  }
+}
+
+function hideResultPanel() {
+  const panel = document.getElementById("resultPanel");
+  if (panel) panel.hidden = true;
 }
 
 function updateTypeSpeed() {

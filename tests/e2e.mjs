@@ -148,7 +148,7 @@ console.log("daily:");
   await page.close();
 }
 
-// ===== 4. ストリークカード＋苦手トグル表示 =====
+// ===== 4. ストリークカード＋苦手トグル＋ヘッダーストリーク表示 =====
 console.log("home widgets:");
 {
   const page = await newPage();
@@ -156,6 +156,38 @@ console.log("home widgets:");
   await page.waitForTimeout(900);
   check("ストリークカード表示", (await page.textContent("#streakCard")).includes("日連続"));
   check("苦手トグル（Study時）表示", await page.isVisible("#weakToggleButton"));
+  check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
+  await page.close();
+}
+
+// ===== 5. Challenge: 完走でリザルトパネル =====
+console.log("challenge result:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.click('.mode-switch__btn[data-mode="challenge"]');
+  await page.waitForTimeout(3800);
+  check("リザルトパネル表示", await page.isVisible("#resultPanel"));
+  check("もう一回でパネルが消える", await page.click("#resultRetry").then(async () => {
+    await page.waitForTimeout(300);
+    return !(await page.isVisible("#resultPanel"));
+  }));
+  check("Challengeフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 6. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
+console.log("difficulty gate:");
+{
+  const page = await newPage({ storage: { spelldash_category: "it", spelldash_mode: "challenge" } });
+  await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(400);
+  const ja = (await page.textContent("#japanese")).trim();
+  check("IT×Lv1でも出題される（最易難易度で救済）", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
+  check("IT×Lv1でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
 
