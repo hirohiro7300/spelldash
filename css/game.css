@@ -1587,3 +1587,81 @@ button:hover {
   outline: none;
   font-size: 16px;
 }
+/* ===== はちゃん（学習パートナー）吹き出し ===== */
+/* キャラクターカラー: 紫 #8D70FF / #6E60A9（キャラシート準拠） */
+.hasumi {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.hasumi--home {
+  margin: 14px 0 4px;
+}
+
+.hasumi__avatar {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(141, 112, 255, 0.55);
+  background: #f5f0fa;
+  object-fit: cover;
+}
+
+.hasumi__bubble {
+  position: relative;
+  padding: 10px 14px;
+  border-radius: 4px 14px 14px 14px;
+  background: rgba(141, 112, 255, 0.14);
+  border: 1px solid rgba(141, 112, 255, 0.35);
+  color: #e2d9ff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  align-self: center;
+}
+
+/* 結果画面では中央寄せ・ひかえめに */
+.hasumi--result {
+  justify-content: center;
+  margin: 10px 0 2px;
+}
+
+.hasumi--result .hasumi__avatar {
+  width: 38px;
+  height: 38px;
+}
+
+/* ストリークカード内の一言 */
+.streak-card__hasumi {
+  display: block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #b9a5ff;
+}
+
+/* ===== フォーカスモード（Challenge/Dailyプレイ中・スマホ） =====
+   1画面1目的・学習の邪魔をしない（docs/CHARACTER.md §8 スマホUI原則）。
+   終了・中断で自動的に元へ戻る */
+@media (max-width: 980px) {
+  body.is-playing .hero,
+  body.is-playing .onboarding,
+  body.is-playing #hasumiHome,
+  body.is-playing .mode-switch,
+  body.is-playing .weak-toggle,
+  body.is-playing .mix-control,
+  body.is-playing .home-side {
+    display: none;
+  }
+}
+
+/* レベルバー: XPを行動の言葉に翻訳した一行（あと約N問正解でLv.X） */
+.level-bar__remaining {
+  display: block;
+  margin-top: 5px;
+  color: #7ba7d9;
+  font-size: 11.5px;
+  font-weight: 700;
+}

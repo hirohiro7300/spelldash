@@ -1,4 +1,5 @@
 import { getStreak, hasPlayedToday, SHIELD_MAX, SHIELD_EARN_EVERY } from "./level.js";
+import { hasumiStreakLine } from "./hasumi.js";
 
 // ホーム画面のストリークカード。
 // 「今日やったか / やっていないか」を常に見せて、毎日開く理由を作る
@@ -30,6 +31,10 @@ export function renderStreakCard() {
       ? `<span class="streak-card__saved">🛡️ シールドが連続記録を守りました</span>`
       : "";
 
+  // はちゃんの一言（記録更新が近い時などだけ・出しゃばらない）
+  const hasumiLine = hasumiStreakLine();
+  const hasumiNote = hasumiLine ? `<span class="streak-card__hasumi">${hasumiLine}</span>` : "";
+
   const shieldIcons = Array.from({ length: SHIELD_MAX }, (_, i) =>
     i < (streak.shields ?? 0)
       ? `<span class="streak-card__shield">🛡️</span>`
@@ -45,6 +50,7 @@ export function renderStreakCard() {
       </div>
       ${statusHtml}
       ${savedNote}
+      ${hasumiNote}
     </div>
     <div class="streak-card__side">
       <div class="streak-card__shields" title="${SHIELD_EARN_EVERY}日連続ごとに1枚獲得。休んだ日に自動で使われて連続記録を守ります（最大${SHIELD_MAX}枚）">

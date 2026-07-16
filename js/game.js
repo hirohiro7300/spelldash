@@ -1,4 +1,5 @@
 import { getWordsByCategory, findWord } from "./wordStore.js";
+import { hasumiResultLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import {
   getWordStats,
   getBestScore,
@@ -132,6 +133,7 @@ function showIdleMessage() {
 export function stopGame() {
   clearInterval(timer);
   isPlaying = false;
+  document.body.classList.remove("is-playing");
   currentWord = null;
   dailyRun = null; // 中断したDailyはロックせず、カードからやり直せる
   elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
@@ -165,6 +167,9 @@ export function startGame() {
   }
 
   isPlaying = true;
+  // フォーカスモード: 時間制ラン中はスマホで周辺UIを畳む（1画面1目的）。
+  // Studyは終了の概念がないため対象外（モード切替手段を奪わない）
+  document.body.classList.toggle("is-playing", mode === "challenge");
   hideResultPanel();
   score = 0;
   typingMissCount = 0;
@@ -517,6 +522,7 @@ function applyStudyXp(earned, missionResult, loopResult) {
     earned += 50;
     renderStreakCard();
     renderHeaderStreak();
+    renderHasumiHome();
   }
 
   const result = addXp(earned);
@@ -654,6 +660,7 @@ function chooseWord() {
 function endChallenge() {
   clearInterval(timer);
   isPlaying = false;
+  document.body.classList.remove("is-playing");
   elements.input.disabled = true;
   updateBigTimer();
 
@@ -729,6 +736,7 @@ function endChallenge() {
     bonusText = `（今日の初プレイ +50 XP / 🔥${streak.current}日連続${shieldNote}）`;
     renderStreakCard();
     renderHeaderStreak();
+    renderHasumiHome();
   }
 
   const result = addXp(gainedXp);
@@ -774,6 +782,7 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed }) {
   panel.innerHTML = `
     <div class="result-panel__title">${title}</div>
     ${bestBadge}
+    ${hasumiBubbleHtml(hasumiResultLine({ isBest, isDaily }), "hasumi--result")}
     <div class="result-panel__grid">
       <div><span>スコア</span><strong>${score}</strong></div>
       <div><span>思い出せず</span><strong>${recallFailCount}</strong></div>
