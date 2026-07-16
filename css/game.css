@@ -1656,3 +1656,12 @@ button:hover {
     display: none;
   }
 }
+
+/* レベルバー: XPを行動の言葉に翻訳した一行（あと約N問正解でLv.X） */
+.level-bar__remaining {
+  display: block;
+  margin-top: 5px;
+  color: #7ba7d9;
+  font-size: 11.5px;
+  font-weight: 700;
+}

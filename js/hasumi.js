@@ -1,4 +1,5 @@
 import { getStreak, hasPlayedToday } from "./level.js";
+import { getRecalledTodayCount } from "./studyQueue.js";
 
 // ===== はちゃん（はすみ / Hasumi）: 学習パートナー =====
 //
@@ -23,6 +24,11 @@ export function hasumiHomeLine() {
   const streak = getStreak();
 
   if (hasPlayedToday()) {
+    // 成長の実感: 今日思い出せた語数を一緒に喜ぶ（docs/PMF.md 候補A）
+    const recalled = getRecalledTodayCount();
+    if (recalled > 0) {
+      return { mood: "happy", text: `今日は${recalled}語思い出せたよ！えらい！` };
+    }
     return {
       mood: "happy",
       text: pick(["今日の分ばっちり！えらい！", "今日もクリア済み！その調子だよ〜！"])
