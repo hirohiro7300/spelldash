@@ -157,6 +157,13 @@ console.log("home widgets:");
   check("ストリークカード表示", (await page.textContent("#streakCard")).includes("日連続"));
   check("苦手トグル（Study時）表示", await page.isVisible("#weakToggleButton"));
   check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
+  // はちゃん（ホーム一言）: 吹き出し＋アバター画像がロードされている
+  check("はちゃんのホーム一言表示", await page.isVisible("#hasumiHome .hasumi__bubble"));
+  const avatarLoaded = await page.evaluate(() => {
+    const img = document.querySelector("#hasumiHome .hasumi__avatar");
+    return img && img.complete && img.naturalWidth > 0;
+  });
+  check("はちゃんアバター画像ロード", avatarLoaded);
   await page.close();
 }
 
@@ -169,6 +176,7 @@ console.log("challenge result:");
   await page.click('.mode-switch__btn[data-mode="challenge"]');
   await page.waitForTimeout(3800);
   check("リザルトパネル表示", await page.isVisible("#resultPanel"));
+  check("リザルトにはちゃんの一言", await page.isVisible("#resultPanel .hasumi__bubble"));
   check("もう一回でパネルが消える", await page.click("#resultRetry").then(async () => {
     await page.waitForTimeout(300);
     return !(await page.isVisible("#resultPanel"));

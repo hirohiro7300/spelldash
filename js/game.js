@@ -1,4 +1,5 @@
 import { getWordsByCategory, findWord } from "./wordStore.js";
+import { hasumiResultLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import {
   getWordStats,
   getBestScore,
@@ -517,6 +518,7 @@ function applyStudyXp(earned, missionResult, loopResult) {
     earned += 50;
     renderStreakCard();
     renderHeaderStreak();
+    renderHasumiHome();
   }
 
   const result = addXp(earned);
@@ -729,6 +731,7 @@ function endChallenge() {
     bonusText = `（今日の初プレイ +50 XP / 🔥${streak.current}日連続${shieldNote}）`;
     renderStreakCard();
     renderHeaderStreak();
+    renderHasumiHome();
   }
 
   const result = addXp(gainedXp);
@@ -774,6 +777,7 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed }) {
   panel.innerHTML = `
     <div class="result-panel__title">${title}</div>
     ${bestBadge}
+    ${hasumiBubbleHtml(hasumiResultLine({ isBest, isDaily }), "hasumi--result")}
     <div class="result-panel__grid">
       <div><span>スコア</span><strong>${score}</strong></div>
       <div><span>思い出せず</span><strong>${recallFailCount}</strong></div>
