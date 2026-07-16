@@ -52,13 +52,25 @@ if (elements.speakButton) {
   });
 }
 
+// モバイルではモード選択後にゲームカードが画面外に残るため、見える位置へ寄せる
+// （すでに十分見えているデスクトップ等では何もしない）
+function scrollGameIntoView() {
+  const card = document.getElementById("gameCard");
+  if (!card) return;
+  const top = card.getBoundingClientRect().top;
+  if (top < 0 || top > window.innerHeight * 0.35) {
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
 // モード選択カード: 選んだら即スタート（選択画面としてふるまう）
 document.querySelectorAll(".mode-switch__btn[data-mode]").forEach((btn) => {
   btn.addEventListener("click", () => {
     setMode(btn.dataset.mode);
     refreshWeakToggle();
     restartGame();
-    elements.input.focus();
+    elements.input.focus({ preventScroll: true });
+    scrollGameIntoView();
   });
 });
 
@@ -69,7 +81,8 @@ document.getElementById("modeDailyTile")?.addEventListener("click", () => {
     return;
   }
   startDailyGame();
-  elements.input.focus();
+  elements.input.focus({ preventScroll: true });
+  scrollGameIntoView();
 });
 
 // ===== 苦手のみ復習トグル（Studyモード限定） =====

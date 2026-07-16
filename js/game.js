@@ -785,6 +785,10 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed }) {
   `;
   panel.hidden = false;
 
+  // モバイルではパネルが画面外（ゲームカードの下）に出るため、結果を見える位置へ。
+  // すでに見えていればblock:"nearest"は何もしない
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
   document.getElementById("resultRetry")?.addEventListener("click", () => {
     restartGame();
     elements.input.focus();
