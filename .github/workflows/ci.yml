@@ -20,7 +20,7 @@ jobs:
         run: npm install
 
       - name: Chromiumインストール
-        run: npx playwright-core install chromium
+        run: npx playwright-core install --with-deps chromium
 
       - name: 単語データ検証
         run: node scripts/validate-words.mjs
