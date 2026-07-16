@@ -1641,3 +1641,18 @@ button:hover {
   font-weight: 700;
   color: #b9a5ff;
 }
+
+/* ===== フォーカスモード（Challenge/Dailyプレイ中・スマホ） =====
+   1画面1目的・学習の邪魔をしない（docs/CHARACTER.md §8 スマホUI原則）。
+   終了・中断で自動的に元へ戻る */
+@media (max-width: 980px) {
+  body.is-playing .hero,
+  body.is-playing .onboarding,
+  body.is-playing #hasumiHome,
+  body.is-playing .mode-switch,
+  body.is-playing .weak-toggle,
+  body.is-playing .mix-control,
+  body.is-playing .home-side {
+    display: none;
+  }
+}

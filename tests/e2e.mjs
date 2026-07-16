@@ -197,7 +197,11 @@ console.log("mobile flow:");
   await page.waitForTimeout(800);
   const cardTop = await page.evaluate(() => document.getElementById("gameCard").getBoundingClientRect().top);
   check("モード選択後ゲームカードが画面上部へ", cardTop >= 0 && cardTop < 300, `top=${cardTop}`);
+  // フォーカスモード: プレイ中はヒーロー・モードタイルが畳まれる
+  check("プレイ中はヒーロー非表示", !(await page.isVisible(".hero")));
+  check("プレイ中はモードタイル非表示", !(await page.isVisible("#modeSwitch")));
   await page.waitForTimeout(3200);
+  check("終了後モードタイル復帰", await page.isVisible("#modeSwitch"));
   const panelVisible = await page.evaluate(() => {
     const r = document.getElementById("resultPanel").getBoundingClientRect();
     return r.top < window.innerHeight && r.bottom > 0;

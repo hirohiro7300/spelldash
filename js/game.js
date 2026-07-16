@@ -133,6 +133,7 @@ function showIdleMessage() {
 export function stopGame() {
   clearInterval(timer);
   isPlaying = false;
+  document.body.classList.remove("is-playing");
   currentWord = null;
   dailyRun = null; // 中断したDailyはロックせず、カードからやり直せる
   elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
@@ -166,6 +167,9 @@ export function startGame() {
   }
 
   isPlaying = true;
+  // フォーカスモード: 時間制ラン中はスマホで周辺UIを畳む（1画面1目的）。
+  // Studyは終了の概念がないため対象外（モード切替手段を奪わない）
+  document.body.classList.toggle("is-playing", mode === "challenge");
   hideResultPanel();
   score = 0;
   typingMissCount = 0;
@@ -656,6 +660,7 @@ function chooseWord() {
 function endChallenge() {
   clearInterval(timer);
   isPlaying = false;
+  document.body.classList.remove("is-playing");
   elements.input.disabled = true;
   updateBigTimer();
 
