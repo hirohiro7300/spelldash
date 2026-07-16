@@ -177,7 +177,29 @@ console.log("challenge result:");
   await page.close();
 }
 
-// ===== 6. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
+// ===== 6. モバイル: ヘッダー1行＋完走時にリザルトが見える位置へスクロール =====
+console.log("mobile flow:");
+{
+  const page = await newPage({ viewport: { width: 390, height: 844 } });
+  await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  const headerHeight = await page.evaluate(() => document.querySelector(".site-header").offsetHeight);
+  check("モバイルヘッダーが1行（<70px）", headerHeight < 70, `height=${headerHeight}`);
+  await page.click('.mode-switch__btn[data-mode="challenge"]');
+  await page.waitForTimeout(800);
+  const cardTop = await page.evaluate(() => document.getElementById("gameCard").getBoundingClientRect().top);
+  check("モード選択後ゲームカードが画面上部へ", cardTop >= 0 && cardTop < 300, `top=${cardTop}`);
+  await page.waitForTimeout(3200);
+  const panelVisible = await page.evaluate(() => {
+    const r = document.getElementById("resultPanel").getBoundingClientRect();
+    return r.top < window.innerHeight && r.bottom > 0;
+  });
+  check("完走時リザルトパネルが画面内", panelVisible);
+  check("モバイルフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 7. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
 console.log("difficulty gate:");
 {
   const page = await newPage({ storage: { spelldash_category: "it", spelldash_mode: "challenge" } });

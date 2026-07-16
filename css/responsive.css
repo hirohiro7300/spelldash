@@ -11,9 +11,52 @@
 
 /* ===== スマホ ===== */
 @media (max-width: 560px) {
+  /* ヘッダーを1行に収める: brand名を隠してSDマークのみ、navは圧縮して
+     入り切らない極小画面では横スクロール（sticky headerの縦幅を最小化） */
   .site-header__inner {
-    flex-wrap: wrap;
-    padding: 10px 0;
+    flex-wrap: nowrap;
+    gap: 6px;
+    width: 94%;
+    min-height: 52px;
+    padding: 8px 0;
+  }
+
+  .brand__name {
+    display: none;
+  }
+
+  .brand__mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .header-streak {
+    padding: 5px 9px;
+    font-size: 12px;
+  }
+
+  .site-nav {
+    flex: 1;
+    min-width: 0;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .site-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .site-nav__link {
+    flex-shrink: 0;
+    padding: 7px 8px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .account .btn {
+    padding: 6px 10px;
+    font-size: 13px;
   }
 
   .dropdown__panel {

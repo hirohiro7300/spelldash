@@ -254,6 +254,7 @@ body:not(.mode-study) .stat-card--study {
 /* ===== Study Recall Loop: 問題キュー ===== */
 .game-card {
   position: relative;
+  scroll-margin-top: 64px; /* sticky headerに隠れない位置でスクロールを止める */
 }
 
 .study-queue {
