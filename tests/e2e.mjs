@@ -24,19 +24,19 @@ const MIME = {
 
 function findChromium() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
-  const candidates = [
-    "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+  const roots = [
+    process.env.PLAYWRIGHT_BROWSERS_PATH,
+    "/opt/pw-browsers",
     process.env.HOME + "/.cache/ms-playwright"
   ];
-  for (const c of candidates) {
-    if (c && fs.existsSync(c) && fs.statSync(c).isFile()) return c;
-    if (c && fs.existsSync(c) && fs.statSync(c).isDirectory()) {
-      const hit = fs
-        .readdirSync(c)
-        .filter((d) => d.startsWith("chromium"))
-        .map((d) => path.join(c, d, "chrome-linux", "chrome"))
-        .find((p) => fs.existsSync(p));
-      if (hit) return hit;
+  for (const root of roots) {
+    if (!root || !fs.existsSync(root) || !fs.statSync(root).isDirectory()) continue;
+    for (const dir of fs.readdirSync(root).filter((d) => d.startsWith("chromium"))) {
+      // 旧形式(chrome-linux)と新Chrome for Testing形式(chrome-linux64)の両対応
+      for (const sub of ["chrome-linux/chrome", "chrome-linux64/chrome"]) {
+        const p = path.join(root, dir, sub);
+        if (fs.existsSync(p)) return p;
+      }
     }
   }
   throw new Error("Chromiumが見つかりません。CHROME_PATH を設定してください。");
