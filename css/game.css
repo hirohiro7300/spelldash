@@ -1674,3 +1674,41 @@ button:hover {
   text-align: center;
   letter-spacing: 0.06em;
 }
+
+/* ===== お知らせページ（App Storeリリースノート調・シンプル） ===== */
+.news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+}
+
+.news-item {
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.news-item__date {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.news-item__title {
+  margin-top: 4px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.news-item__body {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #cbd5e1;
+}

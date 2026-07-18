@@ -91,7 +91,7 @@ async function newPage(init = {}) {
 
 // ===== 1. 全ページがエラーなく表示される =====
 console.log("pages:");
-for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html"]) {
+for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html"]) {
   const page = await newPage();
   await page.goto(BASE + p, { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
@@ -211,7 +211,25 @@ console.log("mobile flow:");
   await page.close();
 }
 
-// ===== 7. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
+// ===== 7. お知らせページ＋フッターリンク =====
+console.log("news:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/news.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+  const items = await page.$$eval(".news-item", (els) => els.length);
+  check("お知らせが3件以上表示", items >= 3, `items=${items}`);
+  check("β公開エントリあり", (await page.textContent("#newsList")).includes("β公開"));
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+  const footerNav = await page.textContent(".site-footer__nav");
+  check("フッターにお知らせリンク", footerNav.includes("お知らせ"));
+  check("フッターからGitHubリンク削除", !footerNav.includes("GitHub"));
+  check("newsフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 8. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
 console.log("difficulty gate:");
 {
   const page = await newPage({ storage: { spelldash_category: "it", spelldash_mode: "challenge" } });
