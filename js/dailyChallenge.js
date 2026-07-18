@@ -120,6 +120,7 @@ export function buildDailyShareText(state = getDailyState()) {
   }
   if (cells.length > 30) lines.push("…");
 
+  lines.push("今日も、はちゃんと少しだけ。");
   lines.push("https://www.spelldash.net");
   return lines.join("\n");
 }
