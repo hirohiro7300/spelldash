@@ -791,6 +791,7 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed }) {
       <div><span>獲得XP</span><strong>+${gainedXp}</strong></div>
     </div>
     <div class="result-panel__actions">${actions}</div>
+    <div class="result-panel__tagline">今日も、はちゃんと少しだけ。</div>
   `;
   panel.hidden = false;
 

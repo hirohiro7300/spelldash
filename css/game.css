@@ -1665,3 +1665,12 @@ button:hover {
   font-size: 11.5px;
   font-weight: 700;
 }
+
+/* 継続ユーザー向けコピー（結果画面の締め。初見向けヒーローには使わない: v4 §4） */
+.result-panel__tagline {
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+  letter-spacing: 0.06em;
+}
