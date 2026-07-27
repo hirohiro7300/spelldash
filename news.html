@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>お知らせ | SpellDash</title>
+
+  <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="stylesheet" href="./css/layout.css" />
+  <link rel="stylesheet" href="./css/game.css" />
+  <link rel="stylesheet" href="./css/responsive.css" />
+
+  <meta name="description" content="SpellDashのお知らせ・アップデート情報。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SpellDash" />
+  <meta property="og:title" content="お知らせ | SpellDash" />
+  <meta property="og:description" content="SpellDashのお知らせ・アップデート情報。" />
+  <meta property="og:url" content="https://www.spelldash.net/news.html" />
+  <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link">プレイ</a>
+        <a href="./battle.html" class="site-nav__link">バトル</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="app">
+    <section class="hero hero--compact">
+      <h1>お知らせ</h1>
+      <p class="subtitle">SpellDashのアップデートと歩み。</p>
+    </section>
+
+    <section class="news-list" id="newsList" aria-label="お知らせ一覧"></section>
+  </div>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="./news.html">お知らせ</a>
+        <a href="./privacy.html">プライバシー</a>
+      </nav>
+
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { renderNews } from "./js/news.js";
+    import { setFooterYear } from "./js/footer.js";
+    renderNews();
+    setFooterYear();
+  </script>
+</body>
+</html>
