@@ -1,0 +1,373 @@
+/* ===== ライトテーマ（標準） =====
+   既存CSSはダーク基調のまま残し、html[data-theme="light"] で上書きする。
+   ダーク選択時（data-theme="dark"）はこのファイルは何も適用されない。 */
+
+html[data-theme="light"] body {
+  background: #f4f6fb;
+  color: #0f172a;
+}
+
+/* ---- サイト骨格 ---- */
+html[data-theme="light"] .site-header {
+  background: rgba(255, 255, 255, 0.88);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+html[data-theme="light"] .brand,
+html[data-theme="light"] .site-footer .brand__name {
+  color: #0f172a;
+}
+
+html[data-theme="light"] .site-nav__link {
+  color: #475569;
+}
+
+html[data-theme="light"] .site-nav__link:hover {
+  color: #0f172a;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+html[data-theme="light"] .site-nav__link[aria-current="page"] {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.12);
+}
+
+html[data-theme="light"] .site-footer {
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+html[data-theme="light"] .site-footer__nav a {
+  color: #475569;
+}
+
+html[data-theme="light"] .site-footer__tagline,
+html[data-theme="light"] .site-footer__copy {
+  color: #64748b;
+}
+
+/* ---- 汎用テキスト ---- */
+html[data-theme="light"] .subtitle,
+html[data-theme="light"] .muted,
+html[data-theme="light"] .label,
+html[data-theme="light"] .mix-control__hint,
+html[data-theme="light"] .weak-toggle__hint,
+html[data-theme="light"] .account-menu__hint,
+html[data-theme="light"] .account-menu__email,
+html[data-theme="light"] .onboarding__close {
+  color: #64748b;
+}
+
+html[data-theme="light"] .message {
+  color: #334155;
+}
+
+html[data-theme="light"] .hidden-word {
+  color: #64748b;
+}
+
+/* ---- カード類（白背景＋淡い枠） ---- */
+html[data-theme="light"] .game-card,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .streak-card,
+html[data-theme="light"] .daily,
+html[data-theme="light"] .mission,
+html[data-theme="light"] .level-bar,
+html[data-theme="light"] .result-card,
+html[data-theme="light"] .mix-control,
+html[data-theme="light"] .onboarding,
+html[data-theme="light"] .onboarding__steps,
+html[data-theme="light"] .news-item,
+html[data-theme="light"] .family-card,
+html[data-theme="light"] .daily-rank,
+html[data-theme="light"] .arena-panel,
+html[data-theme="light"] .word-list-fold {
+  background: #ffffff;
+  border-color: #dbe2ec;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+html[data-theme="light"] .stat-card span,
+html[data-theme="light"] .mission__label,
+html[data-theme="light"] .mix-control__head,
+html[data-theme="light"] .daily-rank__head,
+html[data-theme="light"] .daily__desc,
+html[data-theme="light"] .daily__note,
+html[data-theme="light"] .level-bar__xp,
+html[data-theme="light"] .streak-card__best,
+html[data-theme="light"] .news-item__date {
+  color: #64748b;
+}
+
+html[data-theme="light"] .stat-card strong,
+html[data-theme="light"] .streak-card__count strong,
+html[data-theme="light"] .mission__item,
+html[data-theme="light"] .news-item__title,
+html[data-theme="light"] .level-bar__title,
+html[data-theme="light"] .daily-rank__name {
+  color: #0f172a;
+}
+
+html[data-theme="light"] .news-item__body {
+  color: #334155;
+}
+
+/* ---- モード選択・トグル・チップ ---- */
+html[data-theme="light"] .mode-switch__btn,
+html[data-theme="light"] .weak-toggle__btn,
+html[data-theme="light"] .category-chip,
+html[data-theme="light"] .setting-select {
+  background: #ffffff;
+  border-color: #dbe2ec;
+  color: #475569;
+}
+
+html[data-theme="light"] .mode-switch__btn span {
+  color: #64748b;
+}
+
+html[data-theme="light"] .mode-switch__btn:hover,
+html[data-theme="light"] .category-chip:hover {
+  background: #eef2f9;
+  color: #0f172a;
+}
+
+html[data-theme="light"] .mode-switch__btn--active {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
+html[data-theme="light"] .mode-switch__btn--active span {
+  color: #3b82f6;
+}
+
+html[data-theme="light"] .mode-switch__btn--done {
+  border-color: rgba(22, 163, 74, 0.45);
+  color: #15803d;
+}
+
+html[data-theme="light"] .mode-switch__btn--done span {
+  color: #16a34a;
+}
+
+html[data-theme="light"] .category-chip--active {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: #3b82f6;
+  color: #1d4ed8;
+}
+
+/* ---- 入力まわり ---- */
+html[data-theme="light"] .input-wrapper input,
+html[data-theme="light"] .account-menu--login input {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+html[data-theme="light"] .input-wrapper input::placeholder,
+html[data-theme="light"] .account-menu--login input::placeholder {
+  color: #94a3b8;
+}
+
+/* ---- ヘッダーメニュー・ボタン ---- */
+html[data-theme="light"] .account-menu {
+  background: #ffffff;
+  border-color: #dbe2ec;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme="light"] .account-menu__item {
+  color: #334155;
+}
+
+html[data-theme="light"] .account-menu__item:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+html[data-theme="light"] .account-menu__item--danger {
+  color: #dc2626;
+}
+
+html[data-theme="light"] .btn--ghost {
+  background: rgba(15, 23, 42, 0.06);
+  color: #334155;
+}
+
+html[data-theme="light"] .btn--ghost:hover {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+html[data-theme="light"] .btn.btn--google {
+  border: 1px solid #cbd5e1;
+}
+
+/* ---- ゲーム内表示 ---- */
+html[data-theme="light"] .big-timer {
+  background: #ffffff;
+  border-color: rgba(217, 119, 6, 0.5);
+  color: #d97706;
+}
+
+html[data-theme="light"] .big-timer--danger {
+  border-color: rgba(220, 38, 38, 0.6);
+  color: #dc2626;
+}
+
+html[data-theme="light"] .correct {
+  color: #16a34a;
+}
+
+html[data-theme="light"] .wrong {
+  color: #dc2626;
+}
+
+html[data-theme="light"] .combo--on {
+  color: #d97706;
+}
+
+html[data-theme="light"] .combo--hot {
+  color: #ea580c;
+}
+
+html[data-theme="light"] .queue-chip {
+  background: #f1f5f9;
+  border-color: #dbe2ec;
+  color: #64748b;
+}
+
+html[data-theme="light"] .queue-chip--unresolved {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.45);
+  color: #dc2626;
+}
+
+html[data-theme="light"] .queue-chip--recalled {
+  background: rgba(22, 163, 74, 0.12);
+  border-color: rgba(22, 163, 74, 0.55);
+  color: #16a34a;
+}
+
+html[data-theme="light"] .word-family {
+  color: #64748b;
+}
+
+/* ---- リザルトパネル ---- */
+html[data-theme="light"] .result-panel {
+  background: #f8fafc;
+  border-color: #dbe2ec;
+}
+
+html[data-theme="light"] .result-panel__grid span {
+  color: #64748b;
+}
+
+html[data-theme="light"] .result-panel__grid strong {
+  color: #0f172a;
+}
+
+html[data-theme="light"] .result-panel__action--ghost {
+  background: rgba(15, 23, 42, 0.06);
+  color: #334155;
+}
+
+html[data-theme="light"] .result-panel__tagline {
+  color: #94a3b8;
+}
+
+/* ---- はちゃん ---- */
+html[data-theme="light"] .hasumi__bubble {
+  background: rgba(141, 112, 255, 0.1);
+  border-color: rgba(110, 96, 169, 0.35);
+  color: #4c3f8f;
+}
+
+html[data-theme="light"] .hasumi__avatar {
+  background: #ffffff;
+}
+
+html[data-theme="light"] .streak-card__hasumi {
+  color: #6e60a9;
+}
+
+/* ---- ストリーク・進捗 ---- */
+html[data-theme="light"] .streak-card__status--pending {
+  color: #b45309;
+}
+
+html[data-theme="light"] .streak-card__status--done {
+  color: #15803d;
+}
+
+html[data-theme="light"] .header-streak {
+  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.35);
+  color: #c2570c;
+}
+
+html[data-theme="light"] .header-streak--off {
+  border-color: #dbe2ec;
+  color: #94a3b8;
+}
+
+html[data-theme="light"] .progress-bar {
+  background: #e2e8f0;
+}
+
+/* ---- Battleページ ---- */
+html[data-theme="light"] .battle-verdict--win { color: #16a34a; }
+html[data-theme="light"] .battle-verdict--loss { color: #dc2626; }
+html[data-theme="light"] .battle-verdict--draw { color: #d97706; }
+
+/* battle.cssの薄グレー文字を読める濃さに */
+html[data-theme="light"] .arena-panel,
+html[data-theme="light"] .arena-panel p,
+html[data-theme="light"] .battle-hero p {
+  color: #334155;
+}
+
+/* ---- 視認性追修正（ライト） ---- */
+html[data-theme="light"] .logo {
+  background: rgba(59, 130, 246, 0.1);
+  color: #1d4ed8;
+}
+
+html[data-theme="light"] .mission__item strong,
+html[data-theme="light"] .progress-row__head strong,
+html[data-theme="light"] .daily-rank__score,
+html[data-theme="light"] .family-card__root {
+  color: #0f172a;
+}
+
+html[data-theme="light"] .progress-row__head,
+html[data-theme="light"] .setting-row label,
+html[data-theme="light"] .word-count,
+html[data-theme="light"] .word-filter,
+html[data-theme="light"] .family-card__count,
+html[data-theme="light"] .score-trend__legend,
+html[data-theme="light"] .score-trend__empty,
+html[data-theme="light"] .mission__tomorrow,
+html[data-theme="light"] .onboarding__title {
+  color: #475569;
+}
+
+html[data-theme="light"] .daily__head {
+  color: #b45309;
+}
+
+html[data-theme="light"] .preseason-tag {
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+html[data-theme="light"] .word-item {
+  background: #ffffff;
+  border-color: #dbe2ec;
+  color: #334155;
+}
+
+html[data-theme="light"] .setting-select {
+  color: #0f172a;
+}

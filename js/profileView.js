@@ -9,6 +9,7 @@ import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
 import { getAudioSettings, saveAudioSettings, speak } from "./audio.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
+import { getTheme, setTheme } from "./theme.js";
 
 const loggedOutElement = document.getElementById("profileLoggedOut");
 const profileCardElement = document.getElementById("profileCard");
@@ -34,6 +35,19 @@ window.addEventListener("spelldash:synced", () => {
   renderSummary();
   renderTyping();
 });
+
+// ===== 見た目の設定（テーマ: 白/黒） =====
+initializeThemeSetting();
+
+function initializeThemeSetting() {
+  const themeSelect = document.getElementById("themeSelect");
+  if (!themeSelect) return;
+
+  themeSelect.value = getTheme();
+  themeSelect.addEventListener("change", () => {
+    setTheme(themeSelect.value); // 即時反映＋ローカル保存
+  });
+}
 
 // ===== 発音の設定 =====
 initializeAudioSettings();

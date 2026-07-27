@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
+  <link rel="stylesheet" href="./css/theme.css" />
+  <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
 
 
   <meta name="description" content="表示名・発音設定などのプロフィール設定。" />
@@ -159,6 +161,20 @@
     <section class="result-card">
       <h3>タイピング</h3>
       <div class="metric-grid" id="profileTyping"></div>
+    </section>
+
+    <section class="result-card">
+      <h3>見た目の設定</h3>
+
+      <div class="setting-row">
+        <label for="themeSelect">テーマ</label>
+        <select id="themeSelect" class="setting-select">
+          <option value="light">白ベース（標準）</option>
+          <option value="dark">黒ベース</option>
+        </select>
+      </div>
+
+      <p class="muted">この端末での表示に適用されます。</p>
     </section>
 
     <section class="result-card">
