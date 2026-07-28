@@ -229,7 +229,28 @@ console.log("news:");
   await page.close();
 }
 
-// ===== 8. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
+// ===== 8. テーマ: 標準は白、プロフィールで黒に切替→永続化 =====
+console.log("theme:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(400);
+  check("標準テーマは白（light）", (await page.evaluate(() => document.documentElement.dataset.theme)) === "light");
+  const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  check("ライトで背景が明色", bodyBg.includes("244, 246, 251"), `bg=${bodyBg}`);
+  await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+  await page.selectOption("#themeSelect", "dark");
+  await page.waitForTimeout(200);
+  check("黒選択で即時ダーク適用", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(400);
+  check("ページ遷移後もダーク維持", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+  check("テーマフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 9. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
 console.log("difficulty gate:");
 {
   const page = await newPage({ storage: { spelldash_category: "it", spelldash_mode: "challenge" } });
