@@ -1,5 +1,6 @@
 import { getWordsByCategory, findWord } from "./wordStore.js";
 import { hasumiResultLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
+import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
 import {
   getWordStats,
   getBestScore,
@@ -134,6 +135,7 @@ export function stopGame() {
   clearInterval(timer);
   isPlaying = false;
   document.body.classList.remove("is-playing");
+  stopBgm();
   currentWord = null;
   dailyRun = null; // 中断したDailyはロックせず、カードからやり直せる
   elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
@@ -170,6 +172,7 @@ export function startGame() {
   // フォーカスモード: 時間制ラン中はスマホで周辺UIを畳む（1画面1目的）。
   // Studyは終了の概念がないため対象外（モード切替手段を奪わない）
   document.body.classList.toggle("is-playing", mode === "challenge");
+  if (mode === "challenge") startBgm(); // 時間制ランのみBGM（Studyは静かに集中）
   hideResultPanel();
   score = 0;
   typingMissCount = 0;
@@ -240,6 +243,7 @@ function updateBigTimer() {
 
   el.textContent = time;
   el.classList.toggle("big-timer--danger", time <= 10);
+  setBgmIntensity(time <= 10 ? 2 : 1); // 終盤はBGMも前のめりに
 }
 
 export function restartGame() {
@@ -661,6 +665,7 @@ function endChallenge() {
   clearInterval(timer);
   isPlaying = false;
   document.body.classList.remove("is-playing");
+  stopBgm();
   elements.input.disabled = true;
   updateBigTimer();
 

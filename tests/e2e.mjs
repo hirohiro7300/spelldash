@@ -243,6 +243,12 @@ console.log("theme:");
   await page.selectOption("#themeSelect", "dark");
   await page.waitForTimeout(200);
   check("黒選択で即時ダーク適用", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
+  // BGM設定: 既定ON→OFFに切替（profileページ上で確認）
+  check("BGM設定は既定ON", (await page.$eval("#bgmSelect", (el) => el.value)) === "on");
+  await page.selectOption("#bgmSelect", "off");
+  await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+  check("BGM OFFが永続化", (await page.$eval("#bgmSelect", (el) => el.value)) === "off");
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(400);
   check("ページ遷移後もダーク維持", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
