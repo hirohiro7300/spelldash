@@ -257,15 +257,15 @@ body:not(.mode-study) .stat-card--study {
   scroll-margin-top: 64px; /* sticky headerに隠れない位置でスクロールを止める */
 }
 
+/* 常に横並びでカード上部に置く（入力欄と重ならない: 以前の右側絶対配置は
+   カード幅によって入力欄と重なるバグがあった） */
 .study-queue {
-  position: absolute;
-  right: 18px;
-  top: 50%;
-  transform: translateY(-50%);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 8px;
-  width: 118px;
+  margin-bottom: 14px;
 }
 
 .study-queue:empty {
@@ -373,26 +373,13 @@ body:not(.mode-study) .study-queue {
   }
 }
 
-/* モバイル: キューは横並びでカードの上部へ */
-@media (max-width: 720px) {
-  .study-queue {
-    position: static;
-    transform: none;
-    flex-direction: row;
-    justify-content: center;
-    flex-wrap: wrap;
-    width: auto;
-    margin-bottom: 14px;
-  }
+.queue-chip {
+  width: 34px;
+}
 
-  .queue-chip {
-    width: 34px;
-  }
-
-  .queue-chip--unresolved {
-    width: auto;
-    max-width: 96px;
-  }
+.queue-chip--unresolved {
+  width: auto;
+  max-width: 118px;
 }
 
 .metric-grid {

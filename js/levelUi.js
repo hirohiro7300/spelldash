@@ -8,10 +8,10 @@ export function renderLevelBar() {
   const state = getLevelState();
   const percent = Math.min(100, Math.round((state.currentXp / state.neededXp) * 100));
 
-  // 次の称号予告（あと少しで手が届く目標を常に見せる）
+  // 次のランク予告（あと少しで手が届く目標を常に見せる）
   const next = getNextTitle(state.level);
   const nextText = next
-    ? `<span class="level-bar__next">あと${next.level - state.level}レベルで「${next.name}」</span>`
+    ? `<span class="level-bar__next">あと${next.level - state.level}レベルで ${next.name} に昇格</span>`
     : "";
 
   // XPを「あと何問」という行動の言葉に翻訳する（自力正解1問 ≈ 15XP。docs/PMF.md 候補C）
@@ -22,7 +22,7 @@ export function renderLevelBar() {
     <div class="level-bar__badge">Lv.${state.level}</div>
     <div class="level-bar__body">
       <div class="level-bar__head">
-        <span class="level-bar__title">${state.title}${nextText}</span>
+        <span class="level-bar__title">ランク ${state.title}${nextText}</span>
         <span class="level-bar__xp">${state.currentXp} / ${state.neededXp} XP</span>
       </div>
       <div class="progress-bar progress-bar--slim">

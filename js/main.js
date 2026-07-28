@@ -3,6 +3,8 @@ import {
   handleKeydown,
   handleTextInput,
   handleBeforeInput,
+  handleCompositionStart,
+  handleCompositionEnd,
   restartGame,
   setMode,
   getMode,
@@ -46,6 +48,9 @@ elements.input.addEventListener("keydown", handleKeydown);
 // モバイル（ソフトキーボード）: keydownで文字が取れない環境用
 elements.input.addEventListener("beforeinput", handleBeforeInput);
 elements.input.addEventListener("input", handleTextInput);
+// 日本語IME対策: 変換中はvalueに触らず、確定時にまとめて処理
+elements.input.addEventListener("compositionstart", handleCompositionStart);
+elements.input.addEventListener("compositionend", handleCompositionEnd);
 elements.restart.addEventListener("click", restartGame);
 
 if (elements.speakButton) {

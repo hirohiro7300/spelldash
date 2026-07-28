@@ -200,7 +200,7 @@ function renderSummary() {
   const streak = getStreak();
 
   renderCards(summaryElement, [
-    { label: "称号", value: level.title },
+    { label: "ランク", value: level.title },
     { label: "連続プレイ", value: `${streak.current}日` },
     { label: "ストリークシールド", value: `🛡️ × ${streak.shields ?? 0}` },
     { label: "ベストスコア", value: s.best },

@@ -56,11 +56,27 @@ $("battleInput").addEventListener("beforeinput", (event) => {
   }
 });
 
+// 日本語IMEの変換中はvalueを触らない（IMEと衝突して入力が壊れるため）
+let battleComposing = false;
+$("battleInput").addEventListener("compositionstart", () => {
+  battleComposing = true;
+});
+$("battleInput").addEventListener("compositionend", () => {
+  battleComposing = false;
+  const input = $("battleInput");
+  // 日本語が確定されたら受理済み位置へ静かに巻き戻す
+  if (match && /[^a-z\s]/i.test(input.value)) {
+    input.value = engineValue;
+    $("battleTypedPreview").innerHTML = renderColoredWord(engineValue);
+  }
+});
+
 $("battleInput").addEventListener("input", () => {
   const input = $("battleInput");
   if (!match) return;
+  if (battleComposing) return;
 
-  const raw = input.value.toLowerCase().replace(/\s/g, "");
+  const raw = input.value.toLowerCase().replace(/[^a-z]/g, "");
 
   if (raw.startsWith(engineValue)) {
     for (const ch of raw.slice(engineValue.length)) {
