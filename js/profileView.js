@@ -10,6 +10,7 @@ import { setupUnloadSync } from "./sync.js";
 import { getAudioSettings, saveAudioSettings, speak } from "./audio.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
+import { isBgmEnabled, setBgmEnabled } from "./bgm.js";
 
 const loggedOutElement = document.getElementById("profileLoggedOut");
 const profileCardElement = document.getElementById("profileCard");
@@ -82,6 +83,17 @@ function initializeAudioSettings() {
     sfxSelect.addEventListener("change", () => {
       setSfxEnabled(sfxSelect.value === "on");
       if (sfxSelect.value === "on") sfxCorrect(3); // 確認用サンプル
+      statusElement.textContent = "保存しました。";
+      setTimeout(() => (statusElement.textContent = ""), 2000);
+    });
+  }
+
+  // BGMのON/OFF（Challenge/Daily中のみ再生される）
+  const bgmSelect = document.getElementById("bgmSelect");
+  if (bgmSelect) {
+    bgmSelect.value = isBgmEnabled() ? "on" : "off";
+    bgmSelect.addEventListener("change", () => {
+      setBgmEnabled(bgmSelect.value === "on");
       statusElement.textContent = "保存しました。";
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });
