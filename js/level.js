@@ -1,24 +1,32 @@
 const XP_KEY = "spelldash_xp";
 const STREAK_KEY = "spelldash_streak";
 
-// レベルごとの称号（そのレベル以上で最後に到達したものが付く）
+// レベルごとのランク（そのレベル以上で最後に到達したものが付く）
+// F3スタート → F2 → F1 → E3 → … → S1 → レジェンド。
+// 序盤は1レベルごとに上がって「進んでる感」を作り、上位ほど1段が重くなる
 const TITLES = [
-  { level: 1, name: "見習いタイピスト" },
-  { level: 3, name: "駆け出しスペラー" },
-  { level: 5, name: "単語コレクター" },
-  { level: 8, name: "単語ハンター" },
-  { level: 12, name: "スペルの旅人" },
-  { level: 16, name: "タイピング職人" },
-  { level: 20, name: "コンボアーティスト" },
-  { level: 25, name: "単語マスター" },
-  { level: 30, name: "スペルの賢者" },
-  { level: 40, name: "疾風のタイピスト" },
-  { level: 50, name: "伝説のスペルダッシャー" },
-  { level: 60, name: "単語の覇者" },
-  { level: 70, name: "記憶の錬金術師" },
-  { level: 80, name: "語彙の巨人" },
-  { level: 90, name: "スペルの神域" },
-  { level: 100, name: "SpellDash マスター" }
+  { level: 1, name: "F3" },
+  { level: 2, name: "F2" },
+  { level: 3, name: "F1" },
+  { level: 5, name: "E3" },
+  { level: 7, name: "E2" },
+  { level: 9, name: "E1" },
+  { level: 12, name: "D3" },
+  { level: 15, name: "D2" },
+  { level: 18, name: "D1" },
+  { level: 22, name: "C3" },
+  { level: 26, name: "C2" },
+  { level: 30, name: "C1" },
+  { level: 35, name: "B3" },
+  { level: 40, name: "B2" },
+  { level: 45, name: "B1" },
+  { level: 51, name: "A3" },
+  { level: 57, name: "A2" },
+  { level: 63, name: "A1" },
+  { level: 70, name: "S3" },
+  { level: 77, name: "S2" },
+  { level: 84, name: "S1" },
+  { level: 92, name: "レジェンド" }
 ];
 
 // レベルnからn+1に上がるのに必要なXP（少しずつ重くなる）
@@ -60,7 +68,7 @@ export function getTitle(level) {
   return title;
 }
 
-// 次に到達する称号（最上位到達済みならnull）
+// 次に到達するランク（最上位到達済みならnull）
 export function getNextTitle(level) {
   return TITLES.find((entry) => entry.level > level) ?? null;
 }

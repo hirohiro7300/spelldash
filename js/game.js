@@ -299,12 +299,36 @@ export function handleKeydown(event) {
 // inputイベントで入力欄の実際の値を照合する。
 // デスクトップではprintableキーをkeydownでpreventDefaultしているので二重処理にならない。
 
+// 日本語IMEの変換中はvalueを触らない（触るとIMEと衝突して入力が壊れる）
+let composing = false;
+
+export function handleCompositionStart() {
+  composing = true;
+}
+
+export function handleCompositionEnd() {
+  composing = false;
+  if (!isPlaying || !currentWord) return;
+
+  // 確定された文字に日本語等が含まれていたら、受理済み位置へ巻き戻して案内する
+  // （かな→ローマ字の復元は不可能なため、打ち直してもらうのが最も安全）
+  if (/[^a-z\s]/i.test(elements.input.value)) {
+    const prefix = currentWord.en.slice(0, currentIndex);
+    elements.input.value = prefix;
+    updateTypedPreview(prefix);
+    showMessage("キーボードを英字モードにしてね", "wrong");
+    return;
+  }
+  handleTextInput();
+}
+
 export function handleTextInput() {
   if (!isPlaying || !currentWord) return;
+  if (composing) return; // 変換確定はhandleCompositionEndで処理する
 
   const word = currentWord.en;
   const accepted = word.slice(0, currentIndex);
-  const raw = elements.input.value.toLowerCase().replace(/\s/g, "");
+  const raw = elements.input.value.toLowerCase().replace(/[^a-z]/g, "");
 
   if (raw === accepted) return;
 

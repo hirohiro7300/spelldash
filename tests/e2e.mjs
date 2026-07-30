@@ -130,6 +130,41 @@ console.log("study:");
   await page.close();
 }
 
+// ===== 2.5 日本語IME＋Studyキュー配置 =====
+console.log("ime & queue:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter"); // Study開始
+  await page.waitForTimeout(250);
+  // 日本語IMEを模擬: 変換開始→かなが入る→確定
+  await page.evaluate(() => {
+    const input = document.getElementById("input");
+    input.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    input.value = "こんにちは";
+    input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "こんにちは" }));
+    input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "こんにちは" }));
+  });
+  await page.waitForTimeout(200);
+  check("IME確定後に入力欄が巻き戻る", (await page.inputValue("#input")) === "");
+  check("日本語入力はミス扱いにしない", (await page.textContent("#miss")) === "0");
+  check("英字モード案内が表示される", (await page.textContent("#message")).includes("英字モード"));
+  // Studyキュー: 答えを見てUnresolvedチップを出し、入力欄と重ならないことを確認
+  await page.press("#input", "Enter"); // 答えを表示（recallFail→キューに赤チップ）
+  await page.waitForTimeout(400);
+  const overlap = await page.evaluate(() => {
+    const q = document.getElementById("studyQueue").getBoundingClientRect();
+    const i = document.getElementById("input").getBoundingClientRect();
+    if (q.width === 0 || q.height === 0) return "queue-empty";
+    const separate = q.right <= i.left || q.left >= i.right || q.bottom <= i.top || q.top >= i.bottom;
+    return separate ? "ok" : "overlap";
+  });
+  check("キューが入力欄と重ならない", overlap === "ok", `state=${overlap}`);
+  check("IME/キューフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
 // ===== 3. Daily Dash: 完走→ロック→カウントダウン =====
 console.log("daily:");
 {
@@ -155,6 +190,7 @@ console.log("home widgets:");
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   check("ストリークカード表示", (await page.textContent("#streakCard")).includes("日連続"));
+  check("ランク表示（F3スタート）", (await page.textContent("#levelBar")).includes("ランク F3"));
   check("苦手トグル（Study時）表示", await page.isVisible("#weakToggleButton"));
   check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
   // はちゃん（ホーム一言）: 吹き出し＋アバター画像がロードされている
