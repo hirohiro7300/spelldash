@@ -366,12 +366,12 @@ export function handleBeforeInput(event) {
   }
 }
 
-// Enter1回目: 思い出せなかった → 答えを表示（recallFailとして記録）
-function revealAnswer() {
+// Enter1回目 or 1ミスタイプ: 不正解 → 答えを表示（recallFailとして記録）
+function revealAnswer(fromMiss = false) {
   isRevealed = true;
   recallFailCount++;
   if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
-  sfxReveal();
+  if (!fromMiss) sfxReveal(); // ミス起点ではsfxMissが鳴っているので重ねない
 
   recordRecallFail(currentWord.id);
 
@@ -399,7 +399,12 @@ function revealAnswer() {
   elements.input.value = "";
   clearTypedPreview();
 
-  showMessage("答えを表示。入力して練習 or Enterで次へ", "revealed");
+  showMessage(
+    fromMiss
+      ? "ミス！正しいスペルを見て打ち直そう"
+      : "答えを表示。入力して練習 or Enterで次へ",
+    fromMiss ? "wrong" : "revealed"
+  );
 }
 
 export function speakCurrentWord() {
@@ -599,6 +604,15 @@ function handleTypingMiss() {
   sfxMiss();
 
   recordTypingMiss(currentWord.id);
+
+  // 1回でもミスしたら不正解: スペルを表示して打ち直し。
+  // 当てずっぽうでの正解到達は「思い出して打つ」の本質ではない（2026-08-15創業者決定）
+  if (!isRevealed) {
+    revealAnswer(true);
+    return;
+  }
+
+  // 答え表示後の練習中のミスは表示のみ
   showMessage("Miss!", "wrong");
 }
 
