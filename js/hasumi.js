@@ -70,6 +70,15 @@ export function hasumiSetLine({ count = 0, failed = 0, sets = 1 } = {}) {
   return { mood: "happy", text: pick([`${count}語思い出せた！今日のぶん完了！おつかれさま〜！`, "今日のぶんクリア！思い出せなかった語はまた出すから大丈夫だよ！"]) };
 }
 
+// 週間レポートの一言（数字を一緒に喜ぶ。少ない週も責めない）
+export function hasumiWeeklyLine(r) {
+  if (r.activeDays >= 6) return { mood: "happy", text: `今週は${r.activeDays}日も一緒にできた！${r.learnedDelta > 0 ? `${r.learnedDelta}語も増えたね！` : "すごいよ〜！"}` };
+  if (r.learnedDelta >= 10) return { mood: "happy", text: `今週 +${r.learnedDelta}語！ちゃんと積み上がってるよ！` };
+  if (r.activeDays >= 3) return { mood: "normal", text: `今週は${r.activeDays}日やれたね！来週も少しずつ、一緒にね！` };
+  if (r.activeDays > 0) return { mood: "normal", text: "少しでも続いてるのがえらい！来週も5分だけ、一緒にやろっ！" };
+  return { mood: "normal", text: "今週はお休みだったね。今日から1セット、一緒にどう？" };
+}
+
 // ストリークカードの一言（言うことがある時だけ返す）
 export function hasumiStreakLine() {
   const streak = getStreak();

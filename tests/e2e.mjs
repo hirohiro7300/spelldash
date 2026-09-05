@@ -452,6 +452,30 @@ console.log("category progress:");
   await page.close();
 }
 
+// ===== 9.55 成長の証拠: 週間レポート・推移・今週+N =====
+console.log("growth:");
+{
+  const page = await newPage({ storage: { spelldash_growth_log: JSON.stringify([
+    { date: "2000-01-01", learned: 0, mastered: 0, active: true }
+  ]) } });
+  await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("週間レポートが表示", (await page.textContent("#weeklyReport")).includes("週間レポート"));
+  check("週間レポートに学習した日", (await page.textContent("#weeklyReport")).includes("学習した日"));
+  check("推移グラフ or 案内", (await page.$("#growthTrend svg")) !== null || (await page.textContent("#growthTrend")).includes("明日から"));
+  const log = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_growth_log") || "[]"));
+  check("成長ログに今日の行", log.some((e) => e.date === new Date().toISOString().slice(0, 10) || e.date.length === 10) && log.length >= 2, `len=${log.length}`);
+  await page.click("[data-weekly-share]");
+  await page.waitForTimeout(300);
+  check("シェア押下でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  // ホーム: ?weekly=1 で週間レポートを強制表示
+  await page.goto(BASE + "/index.html?weekly=1", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("ホームに週間レポート（コンパクト）", !(await page.$eval("#weeklyHome", (el) => el.hidden)) && (await page.textContent("#weeklyHome")).includes("くわしく見る"));
+  check("成長フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
 // ===== 9.6 マイ単語帳: 追加→一覧→ホームで出題 =====
 console.log("my words:");
 {

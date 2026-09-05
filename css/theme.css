@@ -439,3 +439,10 @@ html[data-theme="light"] .my-word__status { background: #f1f5f9; color: #64748b;
 html[data-theme="light"] .my-word__status--learning { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
 html[data-theme="light"] .my-word__status--mastered { background: rgba(22, 163, 74, 0.12); color: #15803d; }
 html[data-theme="light"] .my-word__status--weak { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
+
+/* ---- 週間レポート（ライト） ---- */
+html[data-theme="light"] .weekly--home { background: #ffffff; border-color: rgba(37, 99, 235, 0.3); }
+html[data-theme="light"] .weekly__title { color: #0f172a; }
+html[data-theme="light"] .weekly__grid div { background: #f8fafc; border-color: #e2e8f0; }
+html[data-theme="light"] .weekly__grid strong { color: #0f172a; }
+html[data-theme="light"] .weekly__grid span { color: #64748b; }
