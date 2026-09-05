@@ -2091,3 +2091,110 @@ button:hover {
   .play-score__value { font-size: 24px; }
   .play-score { top: 12px; right: 14px; }
 }
+
+/* ===== マイ単語帳 ===== */
+.my-words__form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.my-words__form input {
+  width: 100%;
+}
+
+.my-words__bulk {
+  margin: 6px 0 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.my-words__bulk summary {
+  cursor: pointer;
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+.my-words__bulk textarea {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.my-words__status:empty {
+  display: none;
+}
+
+.my-words__status--error {
+  color: #f87171;
+}
+
+.my-words__list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.my-word {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 14px;
+}
+
+.my-word__en {
+  font-weight: 800;
+  color: #f8fafc;
+  overflow-wrap: anywhere;
+}
+
+.my-word__ja {
+  color: #cbd5e1;
+  overflow-wrap: anywhere;
+}
+
+.my-word__status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.my-word__status--learning { background: rgba(96, 165, 250, 0.18); color: #93c5fd; }
+.my-word__status--mastered { background: rgba(74, 222, 128, 0.18); color: #86efac; }
+.my-word__status--weak { background: rgba(248, 113, 113, 0.16); color: #fca5a5; }
+
+.my-word__remove {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.my-word__remove:hover {
+  color: #f87171;
+}
+
+@media (max-width: 600px) {
+  .my-words__form { grid-template-columns: 1fr; }
+  .my-word { grid-template-columns: minmax(0, 1fr) auto; }
+  .my-word__ja { grid-column: 1 / -1; }
+}

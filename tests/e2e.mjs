@@ -445,10 +445,46 @@ console.log("category progress:");
   await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
   const rows = await page.$$eval("#categoryProgress .cat-row", (els) => els.map((e) => e.textContent));
-  check("カテゴリ行が9件（すべて＋8）", rows.length === 9, `rows=${rows.length}`);
+  check("カテゴリ行が10件（すべて＋8＋マイ単語帳）", rows.length === 10, `rows=${rows.length}`);
   check("広告・マーケの行がある", rows.some((t) => t.includes("広告・マーケ") && t.includes("101語")));
   check("すべての行に語数1101", rows[0]?.includes("1101語") === true, rows[0]);
   check("カテゴリ進捗でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 9.6 マイ単語帳: 追加→一覧→ホームで出題 =====
+console.log("my words:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/stats.html#myWords", { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  await page.fill("#myWordEn", "Negotiate");
+  await page.fill("#myWordJa", "交渉する");
+  await page.click("#myWordForm button[type=submit]");
+  await page.waitForTimeout(200);
+  check("1語追加で一覧に出る", (await page.textContent("#myWordList")).includes("negotiate"));
+  await page.fill("#myWordEn", "negotiate");
+  await page.fill("#myWordJa", "重複");
+  await page.click("#myWordForm button[type=submit]");
+  await page.waitForTimeout(200);
+  check("重複は拒否される", (await page.textContent("#myWordStatus")).includes("すでに"));
+  await page.click(".my-words__bulk summary");
+  await page.fill("#myWordBulk", "invoice, 請求書\ndeadline\t締め切り\nbad word!, だめ");
+  await page.click("#myWordBulkAdd");
+  await page.waitForTimeout(200);
+  const status = await page.textContent("#myWordStatus");
+  check("まとめて追加: 2語追加＋1件スキップ", status.includes("2語") && status.includes("スキップ 1"), status);
+  check("カテゴリ進捗にマイ単語帳3語", (await page.textContent("#categoryProgress")).includes("マイ単語帳3語") || (await page.textContent("#categoryProgress")).includes("マイ単語帳") );
+  // ホーム: カテゴリ「マイ単語帳」で出題される
+  await page.evaluate(() => localStorage.setItem("spelldash_category", "my"));
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("チップにマイ単語帳3", (await page.textContent("#categoryPicker")).replace(/\s/g, "").includes("マイ単語帳3"));
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  const ja = (await page.textContent("#japanese")).trim();
+  check("マイ単語帳の語が出題される", ["交渉する", "請求書", "締め切り"].includes(ja), `ja=${ja}`);
+  check("マイ単語帳フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
 
