@@ -59,6 +59,17 @@ export function hasumiResultLine({ isBest = false, isDaily = false } = {}) {
   return { mood: "normal", text: pick(["今日もお疲れさま！前より伸びてるよ！", "いい感じ〜！その調子だよ〜！"]) };
 }
 
+// 今日のセット完了の一言（完了感を一緒に喜ぶ。次を急かさない）
+export function hasumiSetLine({ count = 0, failed = 0, sets = 1 } = {}) {
+  if (sets > 1) {
+    return { mood: "happy", text: pick([`${sets}セット目もクリア！今日はノってるね〜！`, "もう1セットやるなんて！すごいよ〜！"]) };
+  }
+  if (failed === 0) {
+    return { mood: "happy", text: `${count}語ぜんぶ自力で思い出せた！今日のぶん、ばっちりだよ！` };
+  }
+  return { mood: "happy", text: pick([`${count}語思い出せた！今日のぶん完了！おつかれさま〜！`, "今日のぶんクリア！思い出せなかった語はまた出すから大丈夫だよ！"]) };
+}
+
 // ストリークカードの一言（言うことがある時だけ返す）
 export function hasumiStreakLine() {
   const streak = getStreak();

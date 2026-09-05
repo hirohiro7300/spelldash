@@ -1,5 +1,7 @@
 import { getWordsByCategory, findWord } from "./wordStore.js";
-import { hasumiResultLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
+import { hasumiResultLine, hasumiSetLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
+import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
+import { renderTodayCta } from "./todayCta.js";
 import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
 import { renderLearnedCard } from "./learnedCard.js";
 import {
@@ -27,7 +29,8 @@ import {
   isUnresolved,
   isLearningToday,
   isReviewDue,
-  getSessionReviewCount
+  getSessionReviewCount,
+  getDueReviewCount
 } from "./studyQueue.js";
 import { REPEAT_SUCCESS_XP, NEW_WORD_DAILY_SUCCESS_TARGET } from "./studyConfig.js";
 import {
@@ -96,6 +99,15 @@ let combo = 0;
 let gainedXp = 0;
 let activeCategory = "all";
 
+// 今日のセット（Study）: 自力で思い出せたユニーク語を数え、規定数で完了
+let setRecalled = new Set();
+let setFailed = new Set();
+let setNewCount = 0;
+let setReviewCount = 0;
+let setCompletePending = false;
+let currentWordKind = ""; // new / review / weak / repeat / ""
+let wordSerial = 0; // setNewWordごとに増える。正解直後の二重進行防止に使う
+
 export function setActiveCategory(categoryId) {
   activeCategory = categoryId;
 }
@@ -149,6 +161,9 @@ export function stopGame() {
   updateBigTimer();
   hideResultPanel();
   renderStudyQueue(false);
+  renderSetProgress();
+  const meta = document.getElementById("wordMeta");
+  if (meta) meta.textContent = "";
 }
 
 // ===== Daily Dash =====
@@ -218,6 +233,12 @@ export function startGame() {
   if (mode === "study") {
     startStudyQueue(activeCategory);
     updateRecalledToday();
+    setRecalled = new Set();
+    setFailed = new Set();
+    setNewCount = 0;
+    setReviewCount = 0;
+    setCompletePending = false;
+    renderSetProgress();
   }
 
   setNewWord();
@@ -387,6 +408,7 @@ function revealAnswer(fromMiss = false) {
 
   // Study: Unresolved（赤）としてキューへ戻す。数問後に再出題される
   if (mode === "study") {
+    setFailed.add(currentWord.id);
     queueRecallFail(currentWord.id);
     playRecallFailEffect();
     renderStudyQueue(true);
@@ -518,6 +540,15 @@ function completeWord() {
       loopResult = queueRecallSuccess(currentWord.id);
       playRecallSuccessEffect();
       updateRecalledToday();
+
+      // 今日のセット: 自力正解のユニーク語を数える
+      if (!setRecalled.has(currentWord.id)) {
+        setRecalled.add(currentWord.id);
+        if (currentWordKind === "new") setNewCount++;
+        if (currentWordKind === "review") setReviewCount++;
+        renderSetProgress();
+        if (setRecalled.size >= getSetSize()) setCompletePending = true;
+      }
     }
   }
 
@@ -555,7 +586,95 @@ function completeWord() {
     }
   }
 
-  setTimeout(setNewWord, 250);
+  // 正解演出の後に次へ。250ms以内にEnter等で既に進んでいたら二重に進めない
+  const serialAtComplete = wordSerial;
+  setTimeout(() => {
+    if (!isPlaying) return;
+    if (mode === "study" && setCompletePending) {
+      endStudySession();
+      return;
+    }
+    if (wordSerial !== serialAtComplete) return;
+    setNewWord();
+  }, 250);
+}
+
+// ===== 今日のセット: 進捗と完了 =====
+function renderSetProgress() {
+  const el = document.getElementById("setProgress");
+  if (!el) return;
+  if (!isPlaying || mode !== "study") {
+    el.innerHTML = "";
+    return;
+  }
+  const size = getSetSize();
+  const done = Math.min(setRecalled.size, size);
+  el.innerHTML = `
+    <span class="set-progress__label">今日のセット</span>
+    <span class="set-progress__count"><b>${done}</b> / ${size}</span>
+    <span class="set-progress__bar"><i style="width:${(done / size) * 100}%"></i></span>
+  `;
+}
+
+function endStudySession() {
+  clearInterval(timer);
+  isPlaying = false;
+  setCompletePending = false;
+  currentWord = null;
+
+  const recalled = setRecalled.size;
+  const failed = [...setFailed].filter((id) => !setRecalled.has(id)).length;
+  const state = markDailySetDone(recalled);
+  pushSync();
+
+  elements.japanese.textContent = "Study Mode";
+  showHiddenWordText("");
+  const meta = document.getElementById("wordMeta");
+  if (meta) meta.textContent = "";
+  renderStudyQueue(false);
+  renderSetProgress();
+  renderTodayCta();
+  renderLearnedCard();
+  renderHasumiHome();
+
+  // 明日までに復習期日が来る語（今日片付けた分は除く）
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(23, 59, 59, 999);
+  const dueTomorrow = getDueReviewCount(activeCategory, tomorrow.getTime());
+
+  const panel = document.getElementById("resultPanel");
+  if (panel) {
+    panel.innerHTML = `
+      <div class="result-panel__title">🎉 今日のセット完了</div>
+      ${hasumiBubbleHtml(hasumiSetLine({ count: recalled, failed, sets: state.setsToday }), "hasumi--result")}
+      <div class="result-panel__grid">
+        <div><span>思い出せた</span><strong>${recalled}語</strong></div>
+        <div><span>うち復習</span><strong>${setReviewCount}</strong></div>
+        <div><span>新しく覚えた</span><strong>${setNewCount}</strong></div>
+        <div><span>思い出せず</span><strong>${failed}</strong></div>
+        <div><span>明日の復習予定</span><strong>${dueTomorrow}語</strong></div>
+      </div>
+      <div class="result-panel__actions">
+        <button type="button" class="result-panel__action" id="setAgain">もう1セット</button>
+        <button type="button" class="result-panel__action result-panel__action--ghost" id="setChallenge">Challengeで腕試し</button>
+      </div>
+      <div class="result-panel__tagline">今日も、はちゃんと少しだけ。</div>
+    `;
+    panel.hidden = false;
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    document.getElementById("setAgain")?.addEventListener("click", () => {
+      restartGame();
+      elements.input.focus();
+    });
+    document.getElementById("setChallenge")?.addEventListener("click", () => {
+      setMode("challenge");
+      startGame();
+      elements.input.focus();
+    });
+  }
+
+  showMessage(`今日のぶん完了！${recalled}語思い出せた`, "finished");
 }
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
@@ -643,6 +762,7 @@ function handleTypingMiss() {
 }
 
 function setNewWord() {
+  wordSerial++;
   // Daily: 固定セットを順番に / Study: Recall Loopキュー / Challenge: 重み付き抽選
   if (dailyRun && mode === "challenge") {
     currentWord = dailyRun.words[dailyRun.index % dailyRun.words.length];
@@ -694,13 +814,18 @@ function renderWordMeta() {
 
   const stat = getWordStats()[currentWord.id];
   let label = "";
+  currentWordKind = "";
   if (!stat || (stat.playCount ?? 0) === 0) {
     label = "✨ 新しい単語";
+    currentWordKind = "new";
   } else if (isUnresolved(stat)) {
     label = "♻️ もう一度（前回は思い出せなかった）";
+    currentWordKind = "weak";
   } else if (isLearningToday(stat)) {
     label = `🔁 今日の反復 ${Math.min((stat.dailyLearningStage ?? 0) + 1, NEW_WORD_DAILY_SUCCESS_TARGET)}/${NEW_WORD_DAILY_SUCCESS_TARGET}`;
+    currentWordKind = "repeat";
   } else if (isReviewDue(stat)) {
+    currentWordKind = "review";
     const days = stat.lastRecallSuccessAt
       ? Math.floor((Date.now() - Date.parse(stat.lastRecallSuccessAt)) / 86400000)
       : 0;

@@ -1,5 +1,6 @@
 import { computeCategoryProgress } from "./categoryProgress.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
+import { getWeekDots } from "./dailySet.js";
 
 // ===== ホーム「覚えた単語」カード =====
 // 「いくつ覚えたか」を一等地に常設する（覚えた実感 v1）。
@@ -29,6 +30,7 @@ export function renderLearnedCard() {
       ${today > 0 ? `<span class="learned-card__today">今日 +${today}</span>` : ""}
     </div>
     <div class="learned-card__cat">${currentLine}</div>
+    <div class="learned-card__week" aria-label="今週のセット完了">今週 ${getWeekDots().map((d) => `<i class="${d.done ? "on" : ""}${d.isToday ? " today" : ""}" title="${d.date}"></i>`).join("")}</div>
     <a class="learned-card__link" href="./stats.html#categories">カテゴリ別の一覧を見る →</a>
   `;
 }
