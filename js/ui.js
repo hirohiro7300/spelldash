@@ -41,7 +41,8 @@ export function updateCombo(combo) {
   }
 
   elements.combo.textContent = `🔥 ${combo} COMBO`;
-  elements.combo.className = combo >= 5 ? "combo combo--hot" : "combo combo--on";
+  const tier = combo >= 20 ? "combo--max" : combo >= 10 ? "combo--blaze" : combo >= 5 ? "combo--hot" : "combo--on";
+  elements.combo.className = `combo ${tier}`;
 }
 
 export function showHiddenWordText(text) {

@@ -2025,3 +2025,69 @@ button:hover {
   border: 1px solid #60a5fa;
   background: transparent;
 }
+
+/* ===== Challenge: カード内スコア＋コンボ（big-timerの対角） ===== */
+.play-score {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  z-index: 2;
+}
+
+.play-score__value {
+  color: #f8fafc;
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.play-score__combo {
+  min-width: 1ch;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 800;
+  transition: transform 0.15s ease;
+}
+
+.play-score__combo--on { color: #fb923c; }
+.play-score__combo--hot { color: #f97316; font-size: 15px; }
+.play-score__combo--blaze { color: #f59e0b; font-size: 18px; text-shadow: 0 0 10px rgba(245, 158, 11, 0.6); }
+.play-score__combo--max { color: #facc15; font-size: 22px; text-shadow: 0 0 14px rgba(250, 204, 21, 0.8); }
+
+/* コンボ表示の段階（5 / 10 / 20） */
+.combo--blaze {
+  color: #f59e0b;
+  font-size: 21px;
+  animation: combo-pulse 0.5s ease infinite alternate;
+}
+
+.combo--max {
+  color: #facc15;
+  font-size: 24px;
+  letter-spacing: 0.1em;
+  animation: combo-pulse 0.4s ease infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .combo--blaze, .combo--max { animation: none; }
+}
+
+.result-panel__gap {
+  margin: 6px 0 10px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.result-panel__gap b {
+  color: #facc15;
+  font-size: 16px;
+}
+
+@media (max-width: 720px) {
+  .play-score__value { font-size: 24px; }
+  .play-score { top: 12px; right: 14px; }
+}
