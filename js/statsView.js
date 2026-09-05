@@ -7,6 +7,7 @@ import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getLevelState, getStreak } from "./level.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
+import { computeCategoryProgress } from "./categoryProgress.js";
 
 import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
@@ -26,6 +27,7 @@ initWordStore().then(() => {
   renderTyping();
   renderWeeklySummary();
   renderScoreTrend();
+  renderCategoryProgress();
   renderProgress();
   renderWordFamilies();
   renderWeakWords();
@@ -38,6 +40,7 @@ window.addEventListener("spelldash:synced", () => {
   renderTyping();
   renderWeeklySummary();
   renderScoreTrend();
+  renderCategoryProgress();
   renderProgress();
   renderWordFamilies();
   renderWeakWords();
@@ -308,4 +311,41 @@ function renderProgress() {
       `
     )
     .join("");
+}
+
+// ===== カテゴリ別の進捗（学習項目の一覧＋ステータス） =====
+function renderCategoryProgress() {
+  const container = document.getElementById("categoryProgress");
+  if (!container) return;
+
+  const rows = computeCategoryProgress();
+  const pct = (v, total) => (total > 0 ? ((v / total) * 100).toFixed(1) : 0);
+
+  container.innerHTML =
+    rows
+      .map(
+        (r) => `
+        <button type="button" class="cat-row" data-category="${r.id}">
+          <div class="cat-row__head">
+            <span class="cat-row__label">${r.label}<span class="cat-row__total">${r.total}語</span></span>
+            <span class="cat-row__learned">覚えた <strong>${r.learned}</strong> / ${r.total}</span>
+          </div>
+          <div class="cat-bar" aria-hidden="true">
+            <i class="cat-bar__mastered" style="width:${pct(r.mastered, r.total)}%"></i>
+            <i class="cat-bar__learning" style="width:${pct(r.learning, r.total)}%"></i>
+            <i class="cat-bar__weak" style="width:${pct(r.weak, r.total)}%"></i>
+          </div>
+          <div class="cat-row__legend">習得 ${r.mastered} ・ 覚えかけ ${r.learning} ・ 苦手 ${r.weak} ・ 未着手 ${r.untouched}</div>
+        </button>
+      `
+      )
+      .join("") +
+    `<p class="cat-legend"><i class="cat-bar__mastered"></i>習得（10日以上かけてノーミス10回）<i class="cat-bar__learning"></i>覚えかけ（自力で思い出せた）<i class="cat-bar__weak"></i>苦手（最後に思い出せなかった）</p>`;
+
+  container.querySelectorAll(".cat-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      localStorage.setItem("spelldash_category", row.dataset.category);
+      window.location.href = "/";
+    });
+  });
 }

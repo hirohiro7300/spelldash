@@ -1,5 +1,6 @@
 import { getCategories, getWordsByCategory } from "./wordStore.js";
 import { setActiveCategory, isGamePlaying } from "./game.js";
+import { renderLearnedCard } from "./learnedCard.js";
 
 const CATEGORY_KEY = "spelldash_category";
 
@@ -40,6 +41,7 @@ export function initializeCategoryPicker() {
     const categoryId = chip.dataset.category;
     localStorage.setItem(CATEGORY_KEY, categoryId);
     setActiveCategory(categoryId);
+    renderLearnedCard();
 
     container.querySelectorAll(".category-chip").forEach((el) => {
       el.classList.toggle("category-chip--active", el === chip);

@@ -149,8 +149,20 @@ function categoryWordsDeduped() {
   });
 }
 
-function isFamiliar(stat) {
+export function isFamiliar(stat) {
   return !!stat?.lastRecallSuccessAt && !isUnresolved(stat);
+}
+
+// SRSの復習期限が来ている（習得済みは対象外）
+export function isReviewDue(stat) {
+  return !!stat && !stat.mastered && !!stat.nextReviewAt && Date.parse(stat.nextReviewAt) <= Date.now();
+}
+
+let sessionReviewCount = 0;
+
+// セッション開始時に「今日の復習」として積んだ語数（見える化用）
+export function getSessionReviewCount() {
+  return sessionReviewCount;
 }
 
 function isNew(stat) {
@@ -291,13 +303,15 @@ export function startStudyQueue(categoryId) {
   // 2. Today's Mission の Review（未達成分）
   mission.review.filter((id) => !mission.reviewDone.includes(id)).forEach(push);
 
-  // 3. SRSの復習期限が来ている単語
+  // 3. SRSの復習期限が来ている単語（「今日の復習」として件数を控える）
+  const before = queue.length;
   words
     .filter((w) => {
       const s = stats[w.id];
       return s && !s.mastered && s.nextReviewAt && Date.parse(s.nextReviewAt) <= now;
     })
     .forEach((w) => push(w.id));
+  sessionReviewCount = queue.length - before;
 
   // 4. 学習中New単語（同日の持ち越し。Today Secured前なら反復を続ける）
   words.filter((w) => isLearningToday(stats[w.id])).forEach((w) => push(w.id));

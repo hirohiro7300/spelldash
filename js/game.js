@@ -1,6 +1,7 @@
 import { getWordsByCategory, findWord } from "./wordStore.js";
 import { hasumiResultLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
+import { renderLearnedCard } from "./learnedCard.js";
 import {
   getWordStats,
   getBestScore,
@@ -22,9 +23,13 @@ import {
   onRecallSuccess as queueRecallSuccess,
   claimPracticeXp,
   isRecalledToday,
-  isWeakOnlyMode
+  isWeakOnlyMode,
+  isUnresolved,
+  isLearningToday,
+  isReviewDue,
+  getSessionReviewCount
 } from "./studyQueue.js";
-import { REPEAT_SUCCESS_XP } from "./studyConfig.js";
+import { REPEAT_SUCCESS_XP, NEW_WORD_DAILY_SUCCESS_TARGET } from "./studyConfig.js";
 import {
   renderStudyQueue,
   updateRecalledToday,
@@ -216,6 +221,11 @@ export function startGame() {
   }
 
   setNewWord();
+
+  // 復習の見える化: 期日が来た単語から始まることを伝える
+  if (mode === "study" && getSessionReviewCount() > 0) {
+    showMessage(`↻ 今日の復習 ${getSessionReviewCount()}語からスタート。思い出せるかな？`, "revealed");
+  }
 
   // タイマーはChallengeのみ
   if (mode === "challenge") {
@@ -550,6 +560,7 @@ function completeWord() {
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
 function applyStudyXp(earned, missionResult, loopResult) {
+  renderLearnedCard(); // 覚えた単語数を即時更新
   const streak = updateStreak();
   if (streak.isFirstToday) {
     earned += 50;
@@ -588,6 +599,21 @@ function applyStudyXp(earned, missionResult, loopResult) {
   if (loopResult?.secured) {
     sfxComplete();
     showMessage(`今日定着 ✓ もう今日は出ません +${earned} XP`, "correct");
+    return;
+  }
+
+  // 通常の自力正解: この単語の成長を1行で見せる（覚えた実感）
+  if (!isRevealed) {
+    const stat = getWordStats()[currentWord.id];
+    const streakCount = stat?.cleanCorrectStreak ?? 0;
+    const left = Math.max(0, 10 - streakCount);
+    const nextDays = stat?.nextReviewAt
+      ? Math.max(1, Math.round((Date.parse(stat.nextReviewAt) - Date.now()) / 86400000))
+      : null;
+    const growth = stat?.mastered
+      ? "🏆 習得！もう出題されません"
+      : `📈 ノーミス${streakCount}回目${nextDays ? ` ・ 次は${nextDays}日後に復習` : ""} ・ 習得まであと${left}回`;
+    showMessage(`${growth}${earned > 0 ? `  +${earned} XP` : ""}`, "correct");
     return;
   }
 
@@ -653,7 +679,34 @@ function setNewWord() {
   elements.input.value = "";
   clearTypedPreview();
 
+  renderWordMeta(); // recordPlayより前（未プレイ判定のため）
   recordPlay(currentWord.id);
+}
+
+// 単語の状態ラベル（Studyのみ）: 「なぜ今この単語が出たか」を1行で見せる
+function renderWordMeta() {
+  const el = document.getElementById("wordMeta");
+  if (!el) return;
+  if (mode !== "study" || !currentWord) {
+    el.textContent = "";
+    return;
+  }
+
+  const stat = getWordStats()[currentWord.id];
+  let label = "";
+  if (!stat || (stat.playCount ?? 0) === 0) {
+    label = "✨ 新しい単語";
+  } else if (isUnresolved(stat)) {
+    label = "♻️ もう一度（前回は思い出せなかった）";
+  } else if (isLearningToday(stat)) {
+    label = `🔁 今日の反復 ${Math.min((stat.dailyLearningStage ?? 0) + 1, NEW_WORD_DAILY_SUCCESS_TARGET)}/${NEW_WORD_DAILY_SUCCESS_TARGET}`;
+  } else if (isReviewDue(stat)) {
+    const days = stat.lastRecallSuccessAt
+      ? Math.floor((Date.now() - Date.parse(stat.lastRecallSuccessAt)) / 86400000)
+      : 0;
+    label = days >= 1 ? `↻ ${days}日ぶりの復習` : "↻ 復習";
+  }
+  el.textContent = label;
 }
 
 function chooseWord() {
