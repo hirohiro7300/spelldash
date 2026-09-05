@@ -414,3 +414,15 @@ html[data-theme="light"] .set-progress__count b { color: #0f172a; }
 html[data-theme="light"] .set-progress__bar { background: #e2e8f0; }
 html[data-theme="light"] .learned-card__week i { background: #e2e8f0; }
 html[data-theme="light"] .learned-card__week i.on { background: #16a34a; }
+
+/* ---- Challenge手触り（ライト） ---- */
+html[data-theme="light"] .play-score__value { color: #0f172a; }
+html[data-theme="light"] .play-score__combo { color: #94a3b8; }
+html[data-theme="light"] .play-score__combo--on { color: #ea580c; }
+html[data-theme="light"] .play-score__combo--hot { color: #ea580c; }
+html[data-theme="light"] .play-score__combo--blaze { color: #d97706; text-shadow: none; }
+html[data-theme="light"] .play-score__combo--max { color: #ca8a04; text-shadow: none; }
+html[data-theme="light"] .combo--blaze { color: #d97706; }
+html[data-theme="light"] .combo--max { color: #ca8a04; }
+html[data-theme="light"] .result-panel__gap { color: #475569; }
+html[data-theme="light"] .result-panel__gap b { color: #b45309; }

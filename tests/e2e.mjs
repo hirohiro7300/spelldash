@@ -139,11 +139,14 @@ console.log("study:");
   await page.waitForTimeout(600);
   check("inputイベント経路（ソフトキーボード）で正解", (await page.textContent("#score")) === "2");
   // 自力正解の成長メッセージ: 1語目（答えを見た語）がRecall Loopで戻ってきたら見ずに打つ
+  // 答えを見た語（既知）がRecall Loopで戻ってきたら、どれでも見ずに打つ＝自力正解
+  const known = new Map([[answerJa, answer]]);
   let grew = false;
-  for (let i = 0; i < 20 && !grew; i++) {
+  for (let i = 0; i < 24 && !grew; i++) {
     const ja = (await page.textContent("#japanese")).trim();
-    if (ja === answerJa) {
-      for (const ch of answer) await page.press("#input", ch); // 自力正解（答えを見ない）
+    const hidden = !/^[a-z]+$/.test((await page.textContent("#word")).trim());
+    if (known.has(ja) && hidden) {
+      for (const ch of known.get(ja)) await page.press("#input", ch); // 自力正解（答えを見ない）
       await waitUntil(async () => (await page.textContent("#message")).includes("XP"));
       grew = (await page.textContent("#message")).includes("習得まで");
       break;
@@ -152,9 +155,10 @@ console.log("study:");
     await waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 1000);
     const shown = (await page.textContent("#word")).trim();
     if (!/^[a-z]+$/.test(shown)) continue;
+    known.set(ja, shown);
     for (const ch of shown) await page.press("#input", ch); // 練習で通過
     await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja, 1500);
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(120);
   }
   check("自力正解後に成長メッセージ（習得まで）", grew, `last msg=${await page.textContent("#message")}`);
   check("ホームに覚えた単語カード", (await page.textContent("#learnedCard")).includes("覚えた単語"));
@@ -357,6 +361,30 @@ console.log("difficulty gate:");
   const ja = (await page.textContent("#japanese")).trim();
   check("IT×Lv1でも出題される（最易難易度で救済）", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
   check("IT×Lv1でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 9.3 Challengeの手触り: 即時進行・カード内スコア・ベスト差分 =====
+console.log("challenge feel:");
+{
+  const page = await newPage({ storage: { spelldash_mode: "challenge", spelldash_best_score: "3" } });
+  await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter"); // 開始
+  await page.waitForTimeout(200);
+  check("プレイ中にカード内スコアが出る", !(await page.$eval("#playScore", (el) => el.hidden)));
+  await page.press("#input", "Enter"); // 答え表示
+  await waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 1000);
+  const shown = (await page.textContent("#word")).trim();
+  const jaBefore = (await page.textContent("#japanese")).trim();
+  for (const ch of shown) await page.press("#input", ch);
+  await page.waitForTimeout(60); // 250ms待ちが無いことの確認: 60ms後には次の単語
+  check("正解直後に即座に次の単語へ", (await page.textContent("#japanese")).trim() !== jaBefore);
+  check("カード内スコアが1", (await page.textContent("#playScore")).includes("1"));
+  await page.waitForTimeout(3600); // 終了まで
+  const panel = await page.$eval("#resultPanel", (el) => (el.hidden ? "" : el.textContent));
+  check("結果にベスト差分 or 更新", /ベスト/.test(panel), panel.slice(0, 60));
+  check("Challenge手触りでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
 

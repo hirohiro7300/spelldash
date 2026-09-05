@@ -159,6 +159,7 @@ export function stopGame() {
   showHiddenWordText("");
   updateCombo(0);
   updateBigTimer();
+  renderPlayScore();
   hideResultPanel();
   renderStudyQueue(false);
   renderSetProgress();
@@ -220,6 +221,7 @@ export function startGame() {
   elements.time.textContent = time;
   elements.typeSpeed.textContent = "0.0";
   updateBigTimer();
+  renderPlayScore();
 
   showMessage(
     dailyRun
@@ -416,6 +418,7 @@ function revealAnswer(fromMiss = false) {
 
   combo = 0;
   updateCombo(0);
+  renderPlayScore();
 
   showColoredAnswer(currentWord.en);
   renderWordFamily(currentWord);
@@ -586,7 +589,15 @@ function completeWord() {
     }
   }
 
-  // 正解演出の後に次へ。250ms以内にEnter等で既に進んでいたら二重に進めない
+  // Challenge/Daily: 待ち時間ゼロで次の単語へ（60秒×30語で7.5秒あった空白をなくす）。
+  // 正解の音・スコアのパルスは非同期で重なるのでテンポを止めない
+  if (mode !== "study") {
+    renderPlayScore();
+    setNewWord();
+    return;
+  }
+
+  // Study: 正解演出の後に次へ。250ms以内にEnter等で既に進んでいたら二重に進めない
   const serialAtComplete = wordSerial;
   setTimeout(() => {
     if (!isPlaying) return;
@@ -613,6 +624,20 @@ function renderSetProgress() {
     <span class="set-progress__label">今日のセット</span>
     <span class="set-progress__count"><b>${done}</b> / ${size}</span>
     <span class="set-progress__bar"><i style="width:${(done / size) * 100}%"></i></span>
+  `;
+}
+
+// Challenge/Dailyプレイ中: カード内にスコアとコンボを常設（統計カードは視界外のため）
+function renderPlayScore() {
+  const el = document.getElementById("playScore");
+  if (!el) return;
+  const active = isPlaying && mode === "challenge";
+  el.hidden = !active;
+  if (!active) return;
+  const tier = combo >= 20 ? "max" : combo >= 10 ? "blaze" : combo >= 5 ? "hot" : combo >= 2 ? "on" : "";
+  el.innerHTML = `
+    <span class="play-score__value">${score}</span>
+    <span class="play-score__combo ${tier ? `play-score__combo--${tier}` : ""}">${combo >= 2 ? `🔥${combo}` : ""}</span>
   `;
 }
 
@@ -884,6 +909,7 @@ function endChallenge() {
   stopBgm();
   elements.input.disabled = true;
   updateBigTimer();
+  renderPlayScore();
 
   const isDaily = !!dailyRun;
   const previousBest = getBestScore();
@@ -976,22 +1002,28 @@ function endChallenge() {
   if (isDaily) {
     sfxComplete();
     showMessage(`⚡ DAILY DASH 終了！スコア ${score} / +${gainedXp} XP（また明日）${bonusText}`, "finished");
-    renderResultPanel({ isDaily, isBest, gainedXp, speed });
+    renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest });
     return;
   }
 
   showMessage(`終了！スコア ${score} / +${gainedXp} XP ${bonusText}`, "finished");
-  renderResultPanel({ isDaily, isBest, gainedXp, speed });
+  renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest });
 }
 
 // ===== 終了リザルトパネル =====
 // メッセージ1行では終了の満足感と次のアクションが弱いため、
 // スコア・ベスト更新・次の一手（もう一回/シェア）をカード内に見せる
-function renderResultPanel({ isDaily, isBest, gainedXp, speed }) {
+function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0 }) {
   const panel = document.getElementById("resultPanel");
   if (!panel) return;
 
-  const bestBadge = isBest ? `<div class="result-panel__best">🏆 ベストスコア更新！</div>` : "";
+  // ベスト更新 or ベストまでの差分（次にもう一回押す理由を作る）
+  let bestBadge = "";
+  if (isBest) {
+    bestBadge = `<div class="result-panel__best">🏆 ベストスコア更新！${previousBest > 0 ? ` +${score - previousBest}` : ""}</div>`;
+  } else if (previousBest > 0) {
+    bestBadge = `<div class="result-panel__gap">ベスト ${previousBest} まであと <b>${previousBest + 1 - score}</b></div>`;
+  }
   const title = isDaily ? "⚡ DAILY DASH 結果" : "⏱ CHALLENGE 結果";
 
   const actions = isDaily

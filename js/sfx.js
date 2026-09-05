@@ -63,10 +63,12 @@ function play(fn) {
 // 単語正解: コンボが伸びるほど少しずつ高く（気持ちよさの積み上げ）
 export function sfxCorrect(combo = 0) {
   play(() => {
-    const step = Math.min(combo, 10);
-    const base = 660 * Math.pow(1.03, step);
+    const step = Math.min(combo, 20);
+    const base = 660 * Math.pow(1.025, step);
     tone({ freq: base, duration: 0.07, gain: 0.07 });
     tone({ freq: base * 1.335, duration: 0.09, gain: 0.07, delay: 0.06 });
+    // 10コンボ以上: 上に一音重ねて「乗ってる」感を出す（音量は控えめ）
+    if (combo >= 10) tone({ freq: base * 2, duration: 0.08, gain: 0.035, delay: 0.1 });
   });
 }
 
