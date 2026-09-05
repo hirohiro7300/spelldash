@@ -165,6 +165,28 @@ console.log("ime & queue:");
   await page.close();
 }
 
+// ===== 2.6 1ミス＝不正解＋スペル表示（当てずっぽう防止） =====
+console.log("strict miss:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter"); // Study開始
+  await page.waitForTimeout(250);
+  await page.press("#input", "1"); // 絶対に一致しない文字＝1ミス
+  await page.waitForTimeout(300);
+  check("1ミスで不正解カウント", (await page.textContent("#recallFail")) === "1");
+  check("1ミスでスペルが表示される", !(await page.textContent("#word")).includes("非表示"));
+  check("打ち直し案内が出る", (await page.textContent("#message")).includes("打ち直そう"));
+  // 表示されたスペルを見ながら打ち直すと次へ進める（練習扱い）
+  const answer = await page.evaluate(() => document.getElementById("word").textContent.trim());
+  await page.type("#input", answer, { delay: 20 });
+  await page.waitForTimeout(400);
+  check("打ち直しで完了して次の単語へ", (await page.inputValue("#input")) === "");
+  check("strict missフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
 // ===== 3. Daily Dash: 完走→ロック→カウントダウン =====
 console.log("daily:");
 {
@@ -303,6 +325,21 @@ console.log("difficulty gate:");
   const ja = (await page.textContent("#japanese")).trim();
   check("IT×Lv1でも出題される（最易難易度で救済）", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
   check("IT×Lv1でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====
+console.log("ads category:");
+{
+  const page = await newPage({ storage: { spelldash_category: "ads", spelldash_mode: "challenge" } });
+  await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("カテゴリチップに「広告・マーケ」", (await page.textContent("body")).includes("広告・マーケ"));
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(400);
+  const ja = (await page.textContent("#japanese")).trim();
+  check("広告・マーケ×Lv1で出題される", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
+  check("広告・マーケでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
 

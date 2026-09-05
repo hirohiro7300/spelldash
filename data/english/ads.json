@@ -1,0 +1,745 @@
+{
+  "subject": "english",
+  "category": "ads",
+  "label": "広告・マーケ",
+  "words": [
+    {
+      "id": "english-impression",
+      "en": "impression",
+      "ja": "表示回数（インプレッション）",
+      "level": "normal",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-click",
+      "en": "click",
+      "ja": "クリック",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-cost",
+      "en": "cost",
+      "ja": "費用・広告費",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-conversion",
+      "en": "conversion",
+      "ja": "コンバージョン（成果）",
+      "level": "normal",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-ctr",
+      "en": "ctr",
+      "ja": "クリック率（略語）",
+      "level": "hard",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-cpc",
+      "en": "cpc",
+      "ja": "クリック単価（略語）",
+      "level": "hard",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-cvr",
+      "en": "cvr",
+      "ja": "コンバージョン率（略語）",
+      "level": "hard",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-cpa",
+      "en": "cpa",
+      "ja": "コンバージョン単価（略語）",
+      "level": "hard",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-roas",
+      "en": "roas",
+      "ja": "広告費用対効果（略語）",
+      "level": "hard",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-value",
+      "en": "value",
+      "ja": "価値（コンバージョン値の「値」）",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-rate",
+      "en": "rate",
+      "ja": "率・割合",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-share",
+      "en": "share",
+      "ja": "シェア（表示機会に占める割合）",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-lost",
+      "en": "lost",
+      "ja": "失われた・損失した",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-rank",
+      "en": "rank",
+      "ja": "ランク・順位",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-top",
+      "en": "top",
+      "ja": "上部・最上位",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "english-campaign",
+      "en": "campaign",
+      "ja": "キャンペーン",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-account",
+      "en": "account",
+      "ja": "アカウント",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-keyword",
+      "en": "keyword",
+      "ja": "キーワード（広告主が登録する語）",
+      "level": "easy",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-query",
+      "en": "query",
+      "ja": "検索語句（実際に検索された語）",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-ad",
+      "en": "ad",
+      "ja": "広告",
+      "level": "easy",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-asset",
+      "en": "asset",
+      "ja": "アセット（広告に追加する要素）",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-headline",
+      "en": "headline",
+      "ja": "見出し",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-description",
+      "en": "description",
+      "ja": "説明文",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-group",
+      "en": "group",
+      "ja": "グループ",
+      "level": "easy",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-search",
+      "en": "search",
+      "ja": "検索",
+      "level": "easy",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-auction",
+      "en": "auction",
+      "ja": "オークション（競り）",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-display",
+      "en": "display",
+      "ja": "ディスプレイ（表示・掲載面）",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-responsive",
+      "en": "responsive",
+      "ja": "レスポンシブ（可変対応の）",
+      "level": "hard",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "english-bid",
+      "en": "bid",
+      "ja": "入札",
+      "level": "easy",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-budget",
+      "en": "budget",
+      "ja": "予算",
+      "level": "easy",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-target",
+      "en": "target",
+      "ja": "目標",
+      "level": "easy",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-manual",
+      "en": "manual",
+      "ja": "手動の",
+      "level": "normal",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-maximize",
+      "en": "maximize",
+      "ja": "最大化する",
+      "level": "hard",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-limited",
+      "en": "limited",
+      "ja": "制限された",
+      "level": "normal",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-learning",
+      "en": "learning",
+      "ja": "学習中",
+      "level": "easy",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-strategy",
+      "en": "strategy",
+      "ja": "戦略",
+      "level": "normal",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-portfolio",
+      "en": "portfolio",
+      "ja": "ポートフォリオ",
+      "level": "hard",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-status",
+      "en": "status",
+      "ja": "状態・ステータス",
+      "level": "easy",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "english-exact",
+      "en": "exact",
+      "ja": "完全一致の・正確な",
+      "level": "normal",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-phrase",
+      "en": "phrase",
+      "ja": "フレーズ・句",
+      "level": "normal",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-broad",
+      "en": "broad",
+      "ja": "幅広い",
+      "level": "normal",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-negative",
+      "en": "negative",
+      "ja": "除外の・否定的な",
+      "level": "normal",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-intent",
+      "en": "intent",
+      "ja": "意図",
+      "level": "normal",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-audience",
+      "en": "audience",
+      "ja": "オーディエンス（対象ユーザー層）",
+      "level": "normal",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-observation",
+      "en": "observation",
+      "ja": "観測・観察",
+      "level": "hard",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-targeting",
+      "en": "targeting",
+      "ja": "ターゲティング（対象を絞ること）",
+      "level": "hard",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-extension",
+      "en": "extension",
+      "ja": "拡張",
+      "level": "hard",
+      "tags": [
+        "matching"
+      ]
+    },
+    {
+      "id": "english-quality",
+      "en": "quality",
+      "ja": "品質",
+      "level": "easy",
+      "tags": [
+        "quality"
+      ]
+    },
+    {
+      "id": "english-policy",
+      "en": "policy",
+      "ja": "ポリシー・方針",
+      "level": "normal",
+      "tags": [
+        "quality"
+      ]
+    },
+    {
+      "id": "english-strength",
+      "en": "strength",
+      "ja": "強さ・有効性",
+      "level": "normal",
+      "tags": [
+        "quality"
+      ]
+    },
+    {
+      "id": "english-relevance",
+      "en": "relevance",
+      "ja": "関連性",
+      "level": "hard",
+      "tags": [
+        "quality"
+      ]
+    },
+    {
+      "id": "english-landing",
+      "en": "landing",
+      "ja": "着地（ランディングページの「ランディング」）",
+      "level": "normal",
+      "tags": [
+        "quality"
+      ]
+    },
+    {
+      "id": "english-attribution",
+      "en": "attribution",
+      "ja": "アトリビューション（成果の帰属）",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-primary",
+      "en": "primary",
+      "ja": "メインの・主要な",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-secondary",
+      "en": "secondary",
+      "ja": "サブの・二次的な",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-offline",
+      "en": "offline",
+      "ja": "オフラインの",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-gclid",
+      "en": "gclid",
+      "ja": "Googleクリック識別子（略語）",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-crm",
+      "en": "crm",
+      "ja": "顧客管理システム（略語）",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-tracking",
+      "en": "tracking",
+      "ja": "計測・追跡",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-window",
+      "en": "window",
+      "ja": "期間（計測ウィンドウの「ウィンドウ」）",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-enhanced",
+      "en": "enhanced",
+      "ja": "拡張された・強化された",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-upload",
+      "en": "upload",
+      "ja": "アップロードする",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-api",
+      "en": "api",
+      "ja": "プログラム連携の窓口（略語）",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "english-lead",
+      "en": "lead",
+      "ja": "リード（見込み客・問い合わせ）",
+      "level": "easy",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-inquiry",
+      "en": "inquiry",
+      "ja": "問い合わせ",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-contact",
+      "en": "contact",
+      "ja": "接触・連絡",
+      "level": "easy",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-capacity",
+      "en": "capacity",
+      "ja": "処理能力・収容力",
+      "level": "hard",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-backlog",
+      "en": "backlog",
+      "ja": "滞留・未処理の山",
+      "level": "hard",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-response",
+      "en": "response",
+      "ja": "応答・返答",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-funnel",
+      "en": "funnel",
+      "ja": "ファネル（漏斗状の流れ）",
+      "level": "hard",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-retail",
+      "en": "retail",
+      "ja": "小売",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-export",
+      "en": "export",
+      "ja": "輸出",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-dealer",
+      "en": "dealer",
+      "ja": "ディーラー・販売店",
+      "level": "easy",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-appraisal",
+      "en": "appraisal",
+      "ja": "査定",
+      "level": "hard",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-margin",
+      "en": "margin",
+      "ja": "粗利・利ざや",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-average",
+      "en": "average",
+      "ja": "平均の",
+      "level": "easy",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-marginal",
+      "en": "marginal",
+      "ja": "限界の（追加1単位あたりの）",
+      "level": "hard",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-expected",
+      "en": "expected",
+      "ja": "期待される",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-demand",
+      "en": "demand",
+      "ja": "需要",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-signal",
+      "en": "signal",
+      "ja": "シグナル・信号",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-recommend",
+      "en": "recommend",
+      "ja": "推奨する",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    },
+    {
+      "id": "english-optimize",
+      "en": "optimize",
+      "ja": "最適化する",
+      "level": "normal",
+      "tags": [
+        "funnel"
+      ]
+    }
+  ]
+}
