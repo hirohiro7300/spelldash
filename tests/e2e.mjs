@@ -75,6 +75,16 @@ function check(name, ok, detail = "") {
   }
 }
 
+// 状態変化を待つ（固定waitだと負荷でズレるため）
+async function waitUntil(fn, timeout = 2000, step = 50) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (await fn()) return true;
+    await new Promise((r) => setTimeout(r, step));
+  }
+  return false;
+}
+
 const browser = await chromium.launch({ executablePath: findChromium(), args: ["--no-sandbox"] });
 
 async function newPage(init = {}) {
@@ -126,24 +136,25 @@ console.log("study:");
     input.value = val;
     input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: val }));
   }, answer2);
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(600);
   check("inputイベント経路（ソフトキーボード）で正解", (await page.textContent("#score")) === "2");
   // 自力正解の成長メッセージ: 1語目（答えを見た語）がRecall Loopで戻ってきたら見ずに打つ
   let grew = false;
-  for (let i = 0; i < 12 && !grew; i++) {
+  for (let i = 0; i < 20 && !grew; i++) {
     const ja = (await page.textContent("#japanese")).trim();
     if (ja === answerJa) {
       for (const ch of answer) await page.press("#input", ch); // 自力正解（答えを見ない）
-      await page.waitForTimeout(400);
+      await waitUntil(async () => (await page.textContent("#message")).includes("XP"));
       grew = (await page.textContent("#message")).includes("習得まで");
       break;
     }
     await page.press("#input", "Enter"); // 答え表示
-    await page.waitForTimeout(150);
+    await waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 1000);
     const shown = (await page.textContent("#word")).trim();
-    if (!/^[a-z]+$/.test(shown)) continue; // 表示中でなければ（次へ進んだ等）読み直す
+    if (!/^[a-z]+$/.test(shown)) continue;
     for (const ch of shown) await page.press("#input", ch); // 練習で通過
-    await page.waitForTimeout(400);
+    await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja, 1500);
+    await page.waitForTimeout(100);
   }
   check("自力正解後に成長メッセージ（習得まで）", grew, `last msg=${await page.textContent("#message")}`);
   check("ホームに覚えた単語カード", (await page.textContent("#learnedCard")).includes("覚えた単語"));
@@ -346,6 +357,56 @@ console.log("difficulty gate:");
   const ja = (await page.textContent("#japanese")).trim();
   check("IT×Lv1でも出題される（最易難易度で救済）", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
   check("IT×Lv1でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 9.4 今日のセット: CTA→開始→完了パネル→CTA完了表示 =====
+console.log("daily set:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("ホームに今日のセットCTA", (await page.textContent("#todayCta")).includes("今日のセット"));
+  await page.click("#todayCtaButton");
+  await page.waitForTimeout(500);
+  const ja0 = (await page.textContent("#japanese")).trim();
+  check("CTAでStudyが始まる", ja0 !== "Study Mode" && ja0.length > 0, `ja=${ja0}`);
+  check("セット進捗バーが出る", (await page.textContent("#setProgress")).includes("/ 2"));
+  // 答えを見た語がRecall Loopで戻ってきたら自力で打つ、を2語ぶん繰り返す
+  const known = new Map(); // ja -> en
+  let done = false;
+  for (let i = 0; i < 40 && !done; i++) {
+    const panel = await page.$eval("#resultPanel", (el) => (el.hidden ? "" : el.textContent));
+    if (panel.includes("今日のセット完了")) { done = true; break; }
+    const ja = (await page.textContent("#japanese")).trim();
+    if (known.has(ja)) {
+      for (const ch of known.get(ja)) await page.press("#input", ch);
+      await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja || !(await page.$eval("#resultPanel", (el) => el.hidden)), 1500);
+      await page.waitForTimeout(100);
+      continue;
+    }
+    await page.press("#input", "Enter"); // 答え表示
+    await waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 1000);
+    const shown = (await page.textContent("#word")).trim();
+    if (!/^[a-z]+$/.test(shown)) continue;
+    known.set(ja, shown);
+    for (const ch of shown) await page.press("#input", ch); // 練習で通過
+    await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja, 1500);
+    await page.waitForTimeout(100);
+  }
+  const panelText = await page.$eval("#resultPanel", (el) => (el.hidden ? "" : el.textContent));
+  check("2語自力正解でセット完了パネル", panelText.includes("今日のセット完了"), panelText.slice(0, 60));
+  check("完了パネルに明日の復習予定", panelText.includes("明日の復習予定"));
+  check("CTAが完了表示に切替", (await page.textContent("#todayCta")).includes("完了"));
+  check("今週ドットに今日が点灯", (await page.$$eval("#learnedCard .learned-card__week i.on", (els) => els.length)) >= 1);
+  check("今日のセットフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  // 設定の永続化
+  await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
+  await page.selectOption("#setSizeSelect", "25");
+  await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
+  check("セット語数の設定が保存される", (await page.$eval("#setSizeSelect", (el) => el.value)) === "25");
   await page.close();
 }
 

@@ -396,3 +396,21 @@ html[data-theme="light"] .cat-bar { background: #e2e8f0; }
 html[data-theme="light"] .cat-bar__mastered { background: #16a34a; }
 html[data-theme="light"] .cat-bar__learning { background: #2563eb; }
 html[data-theme="light"] .cat-bar__weak { background: #dc2626; }
+
+/* ---- 今日のセット（ライト） ---- */
+html[data-theme="light"] .today-cta {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.1));
+  border-color: rgba(59, 130, 246, 0.45);
+}
+html[data-theme="light"] .today-cta--done { background: #ffffff; border-color: rgba(22, 163, 74, 0.45); }
+html[data-theme="light"] .today-cta__title { color: #0f172a; }
+html[data-theme="light"] .today-cta__title small { color: #1d4ed8; }
+html[data-theme="light"] .today-cta--done .today-cta__title { color: #15803d; }
+html[data-theme="light"] .today-cta__sub { color: #475569; }
+html[data-theme="light"] .today-cta__button--ghost { background: rgba(15, 23, 42, 0.06); color: #334155; }
+html[data-theme="light"] .today-cta__daily { color: #b45309; }
+html[data-theme="light"] .set-progress { color: #64748b; }
+html[data-theme="light"] .set-progress__count b { color: #0f172a; }
+html[data-theme="light"] .set-progress__bar { background: #e2e8f0; }
+html[data-theme="light"] .learned-card__week i { background: #e2e8f0; }
+html[data-theme="light"] .learned-card__week i.on { background: #16a34a; }

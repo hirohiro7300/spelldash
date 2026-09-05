@@ -11,6 +11,7 @@ import { getAudioSettings, saveAudioSettings, speak } from "./audio.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
 import { isBgmEnabled, setBgmEnabled } from "./bgm.js";
+import { getSetSize, setSetSize } from "./dailySet.js";
 
 const loggedOutElement = document.getElementById("profileLoggedOut");
 const profileCardElement = document.getElementById("profileCard");
@@ -36,6 +37,15 @@ window.addEventListener("spelldash:synced", () => {
   renderSummary();
   renderTyping();
 });
+
+// ===== 学習の設定（今日のセットの語数） =====
+{
+  const select = document.getElementById("setSizeSelect");
+  if (select) {
+    select.value = String(getSetSize());
+    select.addEventListener("change", () => setSetSize(select.value));
+  }
+}
 
 // ===== 見た目の設定（テーマ: 白/黒） =====
 initializeThemeSetting();

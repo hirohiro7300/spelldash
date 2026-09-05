@@ -24,6 +24,7 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
+import { renderTodayCta } from "./todayCta.js";
 import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
@@ -39,6 +40,7 @@ setupUnloadSync();
 // クラウド同期でローカルデータが更新されたら表示を作り直す
 window.addEventListener("spelldash:synced", () => {
   renderLearnedCard();
+  renderTodayCta();
   renderLevelBar();
   renderStreakCard();
   renderHasumiHome();
@@ -84,6 +86,16 @@ document.querySelectorAll(".mode-switch__btn[data-mode]").forEach((btn) => {
   });
 });
 
+// 今日のセットCTA: Studyを開始（カテゴリは選択中のまま）
+document.getElementById("todayCta")?.addEventListener("click", (event) => {
+  if (!event.target.closest("#todayCtaButton")) return;
+  setMode("study");
+  refreshWeakToggle();
+  restartGame();
+  elements.input.focus({ preventScroll: true });
+  scrollGameIntoView();
+});
+
 // Dailyタイル: 未挑戦なら即開始、完了済みなら結果カードへスクロール
 document.getElementById("modeDailyTile")?.addEventListener("click", () => {
   if (isDailyPlayedToday()) {
@@ -121,7 +133,10 @@ if (weakToggleButton) {
 
 // カテゴリ変更後に苦手数を更新（描画後に反映されるよう次のtickで）
 document.getElementById("categoryPicker")?.addEventListener("click", () => {
-  setTimeout(refreshWeakToggle, 0);
+  setTimeout(() => {
+    refreshWeakToggle();
+    renderTodayCta();
+  }, 0);
 });
 
 // 単語データを読み込んでからゲームを有効化
@@ -129,6 +144,7 @@ initWordStore()
   .then(() => {
     initializeCategoryPicker();
     renderLearnedCard();
+    renderTodayCta();
     initializeMixControl();
     renderMission();
     renderDailyCard(() => {

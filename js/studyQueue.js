@@ -160,6 +160,23 @@ export function isReviewDue(stat) {
 
 let sessionReviewCount = 0;
 
+// 復習期日が来ていて、今日まだ片付いていない語の数（ホームCTA・完了パネル用）
+export function getDueReviewCount(categoryId = localStorage.getItem("spelldash_category") || "all", until = Date.now()) {
+  const stats = getWordStats();
+  const seen = new Set();
+  let count = 0;
+  for (const word of getWordsByCategory(categoryId)) {
+    if (seen.has(word.id)) continue;
+    seen.add(word.id);
+    const s = stats[word.id];
+    if (!s || s.mastered || !s.nextReviewAt) continue;
+    if (Date.parse(s.nextReviewAt) > until) continue;
+    if (isDoneForToday(s)) continue;
+    count++;
+  }
+  return count;
+}
+
 // セッション開始時に「今日の復習」として積んだ語数（見える化用）
 export function getSessionReviewCount() {
   return sessionReviewCount;
