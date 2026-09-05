@@ -23,6 +23,7 @@ import { renderHasumiHome } from "./hasumi.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
+import { renderLearnedCard } from "./learnedCard.js";
 import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
@@ -37,6 +38,7 @@ setupUnloadSync();
 
 // クラウド同期でローカルデータが更新されたら表示を作り直す
 window.addEventListener("spelldash:synced", () => {
+  renderLearnedCard();
   renderLevelBar();
   renderStreakCard();
   renderHasumiHome();
@@ -126,6 +128,7 @@ document.getElementById("categoryPicker")?.addEventListener("click", () => {
 initWordStore()
   .then(() => {
     initializeCategoryPicker();
+    renderLearnedCard();
     initializeMixControl();
     renderMission();
     renderDailyCard(() => {

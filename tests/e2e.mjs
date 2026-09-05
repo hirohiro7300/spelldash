@@ -110,11 +110,13 @@ console.log("study:");
   await page.press("#input", "Enter"); // 答え表示
   await page.waitForTimeout(150);
   const answer = (await page.textContent("#word")).trim();
+  const answerJa = (await page.textContent("#japanese")).trim();
   check("初回スターターは短いeasy語", answer.length <= 4, `got=${answer}`);
   // デスクトップ: keydown経路
   for (const ch of answer) await page.press("#input", ch);
   await page.waitForTimeout(400);
   check("keydown経路で正解", (await page.textContent("#score")) === "1");
+  check("単語の状態ラベル（新しい単語）", (await page.textContent("#wordMeta")).includes("新しい単語"));
   // モバイル: inputイベント経路（2語目）
   await page.press("#input", "Enter");
   await page.waitForTimeout(150);
@@ -126,6 +128,25 @@ console.log("study:");
   }, answer2);
   await page.waitForTimeout(400);
   check("inputイベント経路（ソフトキーボード）で正解", (await page.textContent("#score")) === "2");
+  // 自力正解の成長メッセージ: 1語目（答えを見た語）がRecall Loopで戻ってきたら見ずに打つ
+  let grew = false;
+  for (let i = 0; i < 12 && !grew; i++) {
+    const ja = (await page.textContent("#japanese")).trim();
+    if (ja === answerJa) {
+      for (const ch of answer) await page.press("#input", ch); // 自力正解（答えを見ない）
+      await page.waitForTimeout(400);
+      grew = (await page.textContent("#message")).includes("習得まで");
+      break;
+    }
+    await page.press("#input", "Enter"); // 答え表示
+    await page.waitForTimeout(150);
+    const shown = (await page.textContent("#word")).trim();
+    if (!/^[a-z]+$/.test(shown)) continue; // 表示中でなければ（次へ進んだ等）読み直す
+    for (const ch of shown) await page.press("#input", ch); // 練習で通過
+    await page.waitForTimeout(400);
+  }
+  check("自力正解後に成長メッセージ（習得まで）", grew, `last msg=${await page.textContent("#message")}`);
+  check("ホームに覚えた単語カード", (await page.textContent("#learnedCard")).includes("覚えた単語"));
   check("Studyフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
@@ -325,6 +346,20 @@ console.log("difficulty gate:");
   const ja = (await page.textContent("#japanese")).trim();
   check("IT×Lv1でも出題される（最易難易度で救済）", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
   check("IT×Lv1でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
+// ===== 9.5 学習データ: カテゴリ別の進捗一覧 =====
+console.log("category progress:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  const rows = await page.$$eval("#categoryProgress .cat-row", (els) => els.map((e) => e.textContent));
+  check("カテゴリ行が9件（すべて＋8）", rows.length === 9, `rows=${rows.length}`);
+  check("広告・マーケの行がある", rows.some((t) => t.includes("広告・マーケ") && t.includes("101語")));
+  check("すべての行に語数1101", rows[0]?.includes("1101語") === true, rows[0]);
+  check("カテゴリ進捗でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
 

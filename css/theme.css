@@ -371,3 +371,28 @@ html[data-theme="light"] .word-item {
 html[data-theme="light"] .setting-select {
   color: #0f172a;
 }
+
+/* ---- 覚えた実感 v1（ライト） ---- */
+html[data-theme="light"] .word-meta { color: #64748b; }
+html[data-theme="light"] .learned-card {
+  background: #ffffff;
+  border-color: rgba(37, 99, 235, 0.3);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+html[data-theme="light"] .learned-card__label { color: #334155; }
+html[data-theme="light"] .learned-card__num { color: #0f172a; }
+html[data-theme="light"] .learned-card__today { color: #16a34a; }
+html[data-theme="light"] .learned-card__cat { color: #64748b; }
+html[data-theme="light"] .learned-card__link { color: #1d4ed8; }
+html[data-theme="light"] .cat-row {
+  background: #ffffff;
+  border-color: #dbe2ec;
+}
+html[data-theme="light"] .cat-row:hover { border-color: #3b82f6; }
+html[data-theme="light"] .cat-row__label,
+html[data-theme="light"] .cat-row__learned strong { color: #0f172a; }
+html[data-theme="light"] .cat-row__learned { color: #334155; }
+html[data-theme="light"] .cat-bar { background: #e2e8f0; }
+html[data-theme="light"] .cat-bar__mastered { background: #16a34a; }
+html[data-theme="light"] .cat-bar__learning { background: #2563eb; }
+html[data-theme="light"] .cat-bar__weak { background: #dc2626; }
