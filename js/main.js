@@ -25,6 +25,7 @@ import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
 import { renderTodayCta } from "./todayCta.js";
+import { renderWeeklyReport } from "./weeklyReport.js";
 import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
@@ -145,6 +146,13 @@ initWordStore()
     initializeCategoryPicker();
     renderLearnedCard();
     renderTodayCta();
+    // 週間レポート: 日曜・月曜だけホームに（それ以外は学習データで見られる）
+    const dow = new Date().getDay();
+    const weeklyHome = document.getElementById("weeklyHome");
+    if (weeklyHome && (dow === 0 || dow === 1 || location.search.includes("weekly=1"))) {
+      weeklyHome.hidden = false;
+      renderWeeklyReport("weeklyHome", { compact: true });
+    }
     initializeMixControl();
     renderMission();
     renderDailyCard(() => {

@@ -2198,3 +2198,88 @@ button:hover {
   .my-word { grid-template-columns: minmax(0, 1fr) auto; }
   .my-word__ja { grid-column: 1 / -1; }
 }
+
+/* ===== 週間レポート ===== */
+.weekly--home {
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(147, 197, 253, 0.35);
+}
+
+.weekly__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.weekly__title {
+  color: #f8fafc;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.weekly__range {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.weekly__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+
+.weekly__grid div {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.weekly__grid span {
+  display: block;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.weekly__grid strong {
+  display: block;
+  margin-top: 2px;
+  color: #f8fafc;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekly__grid small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.weekly__note {
+  margin: 4px 0 8px;
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.weekly__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.weekly__actions a {
+  text-decoration: none;
+  display: inline-block;
+}
+
+@media (max-width: 600px) {
+  .weekly__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

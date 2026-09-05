@@ -9,6 +9,8 @@ import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
 import { initializeMyWordsView } from "./myWordsView.js";
+import { renderWeeklyReport } from "./weeklyReport.js";
+import { getLearnedSeries, recordGrowthSnapshot } from "./growthLog.js";
 
 import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
@@ -29,6 +31,8 @@ initWordStore().then(() => {
   renderWeeklySummary();
   renderScoreTrend();
   renderCategoryProgress();
+  renderGrowthTrend();
+  renderWeeklyReport("weeklyReport");
   renderProgress();
   renderWordFamilies();
   renderWeakWords();
@@ -46,6 +50,8 @@ window.addEventListener("spelldash:synced", () => {
   renderWeeklySummary();
   renderScoreTrend();
   renderCategoryProgress();
+  renderGrowthTrend();
+  renderWeeklyReport("weeklyReport");
   renderProgress();
   renderWordFamilies();
   renderWeakWords();
@@ -353,4 +359,57 @@ function renderCategoryProgress() {
       window.location.href = "/";
     });
   });
+}
+
+// ===== 覚えた単語の推移（30日） =====
+function renderGrowthTrend() {
+  const container = document.getElementById("growthTrend");
+  if (!container) return;
+
+  const all = computeCategoryProgress()[0];
+  recordGrowthSnapshot({ learned: all.learned, mastered: all.mastered });
+  const series = getLearnedSeries(30);
+  const points = series.filter((p) => p.learned != null);
+
+  if (points.length < 2) {
+    container.innerHTML = '<p class="score-trend__empty">毎日少しずつ学ぶと、覚えた単語の増え方がここに描かれます（明日から）。</p>';
+    return;
+  }
+
+  const width = 640;
+  const height = 180;
+  const pad = { top: 16, right: 12, bottom: 24, left: 36 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const values = series.map((p) => p.learned);
+  const min = Math.min(...values.filter((v) => v != null));
+  const max = Math.max(...values.filter((v) => v != null), min + 1);
+  const x = (i) => pad.left + (i / (series.length - 1)) * innerW;
+  const y = (v) => pad.top + innerH - ((v - min) / (max - min)) * innerH;
+
+  let d = "";
+  series.forEach((p, i) => {
+    if (p.learned == null) return;
+    d += `${d ? "L" : "M"}${x(i).toFixed(1)},${y(p.learned).toFixed(1)}`;
+  });
+  const firstIdx = series.findIndex((p) => p.learned != null);
+  const lastIdx = series.length - 1;
+  const area = `${d}L${x(lastIdx).toFixed(1)},${(pad.top + innerH).toFixed(1)}L${x(firstIdx).toFixed(1)},${(pad.top + innerH).toFixed(1)}Z`;
+  const dots = series
+    .map((p, i) => (p.active && p.learned != null ? `<circle cx="${x(i).toFixed(1)}" cy="${y(p.learned).toFixed(1)}" r="3.5" fill="#4ade80"><title>${p.date}: ${p.learned}語</title></circle>` : ""))
+    .join("");
+
+  container.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="覚えた単語の推移">
+      <text x="${pad.left - 6}" y="${pad.top + 4}" text-anchor="end" font-size="11" fill="#94a3b8">${max}</text>
+      <text x="${pad.left - 6}" y="${pad.top + innerH}" text-anchor="end" font-size="11" fill="#94a3b8">${min}</text>
+      <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="rgba(148,163,184,0.3)" />
+      <path d="${area}" fill="rgba(96,165,250,0.18)" />
+      <path d="${d}" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linejoin="round" />
+      ${dots}
+      <text x="${pad.left}" y="${height - 6}" font-size="11" fill="#94a3b8">${series[0].date.slice(5)}</text>
+      <text x="${width - pad.right}" y="${height - 6}" text-anchor="end" font-size="11" fill="#94a3b8">今日 ${all.learned}語</text>
+    </svg>
+    <p class="score-trend__legend">● 学習した日</p>
+  `;
 }

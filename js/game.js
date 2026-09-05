@@ -2,6 +2,8 @@ import { getWordsByCategory, findWord } from "./wordStore.js";
 import { hasumiResultLine, hasumiSetLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
 import { renderTodayCta } from "./todayCta.js";
+import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
+import { computeCategoryProgress } from "./categoryProgress.js";
 import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
 import { renderLearnedCard } from "./learnedCard.js";
 import {
@@ -614,6 +616,16 @@ function completeWord() {
   }, 250);
 }
 
+// 成長ログ: 覚えた語数のスナップショット（今週+N・30日推移の材料）
+function snapshotGrowth() {
+  try {
+    const all = computeCategoryProgress()[0];
+    recordGrowthSnapshot({ learned: all.learned, mastered: all.mastered });
+  } catch {
+    // ログは装飾
+  }
+}
+
 // ===== 今日のセット: 進捗と完了 =====
 function renderSetProgress() {
   const el = document.getElementById("setProgress");
@@ -708,6 +720,8 @@ function endStudySession() {
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
 function applyStudyXp(earned, missionResult, loopResult) {
+  markActiveToday();
+  snapshotGrowth();
   renderLearnedCard(); // 覚えた単語数を即時更新
   const streak = updateStreak();
   if (streak.isFirstToday) {
@@ -909,6 +923,8 @@ function chooseWord() {
 function endChallenge() {
   clearInterval(timer);
   isPlaying = false;
+  markActiveToday();
+  snapshotGrowth();
   document.body.classList.remove("is-playing");
   stopBgm();
   elements.input.disabled = true;

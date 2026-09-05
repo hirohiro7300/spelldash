@@ -97,10 +97,21 @@ export function recordTypingMiss(word) {
 
 // 思い出せなかった（Enterで答えを見た）。これが本当の「苦手」
 // lastRecallFailAt を更新 → 自力正解するまで Unresolved（未解決）状態になる
+// 1日以上前に覚えていた語への挑戦か（復習の成否＝定着率の材料）
+function isReviewAttempt(stat) {
+  if (!stat?.lastRecallSuccessAt) return false;
+  return Date.now() - Date.parse(stat.lastRecallSuccessAt) >= 20 * 60 * 60 * 1000;
+}
+
 export function recordRecallFail(word) {
   const stats = getWordStats();
 
   if (!stats[word]) return;
+
+  if (isReviewAttempt(stats[word])) {
+    stats[word].lastReviewResult = "ng";
+    stats[word].lastReviewAt = new Date().toISOString();
+  }
 
   stats[word].recallFail += 1;
   stats[word].missCount += 1;
@@ -119,6 +130,11 @@ export function recordRecallSuccess(word) {
   const stats = getWordStats();
 
   if (!stats[word]) return;
+
+  if (isReviewAttempt(stats[word])) {
+    stats[word].lastReviewResult = "ok";
+    stats[word].lastReviewAt = new Date().toISOString();
+  }
 
   stats[word].lastRecallSuccessAt = new Date().toISOString();
 

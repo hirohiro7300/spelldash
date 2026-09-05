@@ -1,6 +1,7 @@
 import { computeCategoryProgress } from "./categoryProgress.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
 import { getWeekDots } from "./dailySet.js";
+import { getLearnedDelta7, recordGrowthSnapshot } from "./growthLog.js";
 
 // ===== ホーム「覚えた単語」カード =====
 // 「いくつ覚えたか」を一等地に常設する（覚えた実感 v1）。
@@ -17,6 +18,8 @@ export function renderLearnedCard() {
   const activeId = localStorage.getItem("spelldash_category") || "all";
   const current = rows.find((r) => r.id === activeId) ?? all;
   const today = getRecalledTodayCount();
+  recordGrowthSnapshot({ learned: all.learned, mastered: all.mastered });
+  const week = getLearnedDelta7(all.learned);
 
   const currentLine =
     current.id === "all"
@@ -27,7 +30,7 @@ export function renderLearnedCard() {
     <div class="learned-card__main">
       <span class="learned-card__label">🧠 覚えた単語</span>
       <span class="learned-card__num">${all.learned}<small> / ${all.total}</small></span>
-      ${today > 0 ? `<span class="learned-card__today">今日 +${today}</span>` : ""}
+      ${week > 0 ? `<span class="learned-card__today">今週 +${week}</span>` : today > 0 ? `<span class="learned-card__today">今日 ${today}語</span>` : ""}
     </div>
     <div class="learned-card__cat">${currentLine}</div>
     <div class="learned-card__week" aria-label="今週のセット完了">今週 ${getWeekDots().map((d) => `<i class="${d.done ? "on" : ""}${d.isToday ? " today" : ""}" title="${d.date}"></i>`).join("")}</div>
