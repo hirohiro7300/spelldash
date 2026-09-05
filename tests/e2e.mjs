@@ -328,6 +328,21 @@ console.log("difficulty gate:");
   await page.close();
 }
 
+// ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====
+console.log("ads category:");
+{
+  const page = await newPage({ storage: { spelldash_category: "ads", spelldash_mode: "challenge" } });
+  await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("カテゴリチップに「広告・マーケ」", (await page.textContent("body")).includes("広告・マーケ"));
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(400);
+  const ja = (await page.textContent("#japanese")).trim();
+  check("広告・マーケ×Lv1で出題される", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
+  check("広告・マーケでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
 await browser.close();
 server.close();
 
