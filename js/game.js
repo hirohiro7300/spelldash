@@ -185,7 +185,11 @@ export function startGame() {
   if (isPlaying) return;
 
   if (getWordsByCategory(activeCategory).length === 0) {
-    showMessage("単語データを読み込み中です…");
+    showMessage(
+      activeCategory === "my"
+        ? "マイ単語帳はまだ空です。学習データ → マイ単語帳 から追加できます"
+        : "単語データを読み込み中です…"
+    );
     return;
   }
 

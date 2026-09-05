@@ -8,6 +8,7 @@ import { getLevelState, getStreak } from "./level.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
+import { initializeMyWordsView } from "./myWordsView.js";
 
 import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
@@ -32,6 +33,10 @@ initWordStore().then(() => {
   renderWordFamilies();
   renderWeakWords();
   initializeWordList();
+  initializeMyWordsView(() => {
+    renderCategoryProgress();
+    renderOverview();
+  });
 });
 
 window.addEventListener("spelldash:synced", () => {

@@ -150,6 +150,23 @@
       <div id="progress"></div>
     </section>
 
+    <section class="result-card" id="myWords">
+      <h3>マイ単語帳 <span class="muted" id="myWordCount"></span></h3>
+      <p class="muted">仕事・試験・本で出会った単語を自分で登録。ホームのカテゴリ「マイ単語帳」で、同じ仕組み（思い出して打つ・復習）で覚えられます。</p>
+      <form class="my-words__form" id="myWordForm">
+        <input id="myWordEn" class="setting-select" type="text" placeholder="英単語（例: negotiate）" autocomplete="off" autocapitalize="none" spellcheck="false" required />
+        <input id="myWordJa" class="setting-select" type="text" placeholder="日本語訳（例: 交渉する）" autocomplete="off" required />
+        <button type="submit" class="btn btn--sm">追加</button>
+      </form>
+      <details class="my-words__bulk">
+        <summary>まとめて追加（1行に「英単語, 日本語」）</summary>
+        <textarea id="myWordBulk" rows="5" placeholder="negotiate, 交渉する&#10;invoice, 請求書&#10;deadline, 締め切り"></textarea>
+        <button type="button" class="btn btn--sm" id="myWordBulkAdd">まとめて追加</button>
+      </details>
+      <p class="muted my-words__status" id="myWordStatus"></p>
+      <div class="my-words__list" id="myWordList"></div>
+    </section>
+
     <section class="result-card">
       <h3>語根ファミリー</h3>
       <p class="muted">同じ語根の仲間をそろえると、単語は忘れにくくなります。</p>
