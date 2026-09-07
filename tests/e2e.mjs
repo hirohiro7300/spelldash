@@ -445,7 +445,7 @@ console.log("category progress:");
   await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
   const rows = await page.$$eval("#categoryProgress .cat-row", (els) => els.map((e) => e.textContent));
-  check("カテゴリ行が10件（すべて＋8＋マイ単語帳）", rows.length === 10, `rows=${rows.length}`);
+  check("カテゴリ行が11件（すべて＋9＋マイ単語帳）", rows.length === 11, `rows=${rows.length}`);
   check("広告・マーケの行がある", rows.some((t) => t.includes("広告・マーケ") && t.includes("101語")));
   check("すべての行に語数1101", rows[0]?.includes("1101語") === true, rows[0]);
   check("カテゴリ進捗でエラー0", page.errors.length === 0, page.errors[0] ?? "");
@@ -927,6 +927,86 @@ console.log("challenge & quality:");
   check("オンライン復帰でバナーが消える", offlineHidden);
   check("音量／オフラインでエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
   await page3.close();
+}
+
+// ===== 9.97 概念カード「リスティング広告 実務」: 場面→用語、日本語で答える全文入力モード =====
+console.log("concept cards:");
+{
+  const page = await newPage({ storage: { spelldash_category: "listing", spelldash_placement: "done", spelldash_level_boost: "2",
+    spelldash_streak: JSON.stringify({ last: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })(), current: 1, best: 1, shields: 0 }) } });
+  await page.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("カテゴリチップに「リスティング広告 実務」", (await page.textContent("#categoryPicker")).includes("リスティング広告 実務"));
+  const excluded = await page.evaluate(async () => {
+    const ws = await import("/js/wordStore.js");
+    const dc = await import("/js/dailyChallenge.js");
+    return {
+      all: ws.getWordsByCategory("all").some((w) => w.kind === "concept"),
+      daily: dc.getDailyWords().some((w) => w.kind === "concept"),
+      count: ws.getWordsByCategory("listing").length
+    };
+  });
+  check("概念カードは「すべて」とDailyに混ざらない（119語）", !excluded.all && !excluded.daily && excluded.count === 119, JSON.stringify(excluded));
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  const findCard = async () => {
+    const prompt = (await page.textContent("#japanese")).trim();
+    return page.evaluate(async (q) => {
+      const ws = await import("/js/wordStore.js");
+      const w = ws.getWordsByCategory("listing").find((x) => x.q === q);
+      return w ? { en: w.en, accept: w.accept, explain: w.explain, free: !/^[a-z-]+$/.test(w.en) } : null;
+    }, prompt);
+  };
+  let card = await findCard();
+  check("出題文は場面の説明（q）", !!card && (await page.textContent("#japanese")).trim().length > 12, JSON.stringify(card));
+  // 1語目: 答えを見る → 解説が出る → 答えを打って練習（全文入力なら fill+Enter）
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(200);
+  check("答え表示で用語と解説が出る", (await page.textContent("#word")).replace(/\s/g, "").includes(card.en.replace(/\s/g, "")) && (await page.textContent("#wordExplain")).includes("📘"));
+  if (card.free) {
+    await page.fill("#input", card.en);
+    await page.press("#input", "Enter");
+  } else {
+    for (const ch of card.en) await page.press("#input", ch);
+  }
+  await waitUntil(async () => (await page.textContent("#score")).trim() === "1", 2000);
+  check("答えを打って練習できる（score 1）", (await page.textContent("#score")).trim() === "1");
+  await page.press("#input", "Enter"); // 次へ
+  await waitUntil(async () => (await findCard()) && (await findCard()).en !== card.en, 3000);
+  // 2語目: 自力で答える。全文入力なら別解（accept）で、IMEの表記ゆれもOK
+  card = await findCard();
+  const typed = card.free ? (card.accept[0] ?? card.en) : card.en;
+  if (card.free) {
+    await page.fill("#input", typed);
+    await page.press("#input", "Enter");
+  } else {
+    for (const ch of typed) await page.press("#input", ch);
+  }
+  await waitUntil(async () => (await page.textContent("#score")).trim() === "2", 2000);
+  check(`自力正解（${card.free ? "別解で全文入力" : "スペル入力"}）`, (await page.textContent("#score")).trim() === "2" && (await page.textContent("#recalledToday")).trim() === "1", `typed=${typed}`);
+  check("正解後も用語と解説が残る（読む時間）", (await page.textContent("#wordExplain")).includes("📘"));
+  await page.press("#input", "Enter"); // 待たずに次へ
+  await waitUntil(async () => (await findCard()) && (await findCard()).en !== card.en, 3000);
+  // 3語目: 全文入力で間違える → 答え表示＋×（1ミス＝不正解と同じ扱い）
+  card = await findCard();
+  const before = Number((await page.textContent("#recallFail")).trim());
+  if (card.free) {
+    await page.fill("#input", "まちがい");
+    await page.press("#input", "Enter");
+  } else {
+    await page.press("#input", card.en[0] === "z" ? "q" : "z");
+  }
+  await page.waitForTimeout(200);
+  check("間違えると答え表示＋思い出せず+1", Number((await page.textContent("#recallFail")).trim()) === before + 1 && (await page.textContent("#word")).replace(/\s/g, "").includes(card.en.replace(/\s/g, "")));
+  check("概念カードでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  const page2 = await newPage();
+  await page2.goto(BASE + "/battle.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(700);
+  const opts = await page2.$$eval("#battleCategory option", (els) => els.map((e) => e.value));
+  check("Battleのカテゴリに概念カードは出ない", opts.length > 0 && !opts.includes("listing"), opts.join(","));
+  await page2.close();
 }
 
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====

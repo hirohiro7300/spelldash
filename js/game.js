@@ -1,4 +1,4 @@
-import { getWordsByCategory, findWord, getCategories } from "./wordStore.js";
+import { getWordsByCategory, findWord, getCategories, promptOf, speechTextOf, isConceptWord } from "./wordStore.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
@@ -134,6 +134,38 @@ let hintUsed = false;
 let hintTimer = null;
 let retryIds = null; // 「思い出せなかった語だけもう1周」中はその語のID配列
 
+// 全文入力モード（概念カード等、答えが a-z だけでない語）: 1文字ずつではなく Enter で答え全体を判定する。
+// 日本語IMEで打てるように、入力欄の値には触らない
+let freeMode = false;
+let hintChars = 0; // 全文入力モードでヒントで見せた文字数
+let awaitingNext = false; // 正解後、次の語へ進むまでの待ち（Enterで即進行）
+let advanceTimer = null;
+
+function isFreeAnswer(word) {
+  return !!word && !/^[a-z-]+$/.test(word.en);
+}
+
+// 表記ゆれを吸収して比較（全角/半角・空白・記号・大文字小文字）
+function normalizeAnswer(text) {
+  return String(text ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s・／/\-‐－_（）()「」『』.,、。:：]/g, "");
+}
+
+function answerMatches(word, text) {
+  const typed = normalizeAnswer(text);
+  if (!typed) return false;
+  const candidates = [word.en, ...(Array.isArray(word.accept) ? word.accept : [])];
+  return candidates.some((c) => normalizeAnswer(c) === typed);
+}
+
+function renderExplain(word) {
+  const el = document.getElementById("wordExplain");
+  if (!el) return;
+  el.textContent = word?.explain ? `📘 ${word.explain}` : "";
+}
+
 export function setActiveCategory(categoryId) {
   activeCategory = categoryId;
 }
@@ -191,6 +223,11 @@ export function stopGame() {
   renderSetProgress();
   hideHint();
   renderWordNote(null);
+  renderExplain(null);
+  clearTimeout(advanceTimer);
+  awaitingNext = false;
+  document.body.classList.remove("free-answer");
+  document.getElementById("gameCard")?.classList.remove("game-card--concept");
   const meta = document.getElementById("wordMeta");
   if (meta) meta.textContent = "";
 }
@@ -345,6 +382,32 @@ function triggerEnter() {
     return;
   }
 
+  // 正解直後の待ち: Enterで待たずに次へ
+  if (awaitingNext) {
+    advanceNow();
+    return;
+  }
+
+  // 全文入力モード: 入力があれば判定、空なら「分からない」
+  if (freeMode) {
+    const typed = elements.input.value.trim();
+    if (!isRevealed) {
+      if (typed) submitFreeAnswer(typed);
+      else revealAnswer();
+      return;
+    }
+    if (typed) {
+      if (answerMatches(currentWord, typed)) {
+        finishFreeWord();
+      } else {
+        showMessage("Miss! 表示された答えのとおりに打ってみよう", "wrong");
+        elements.input.value = "";
+      }
+      return;
+    }
+    // 空でEnter = スキップして次へ（下の通常処理）
+  }
+
   if (!isRevealed) {
     revealAnswer();
   } else {
@@ -358,6 +421,9 @@ function triggerEnter() {
 }
 
 export function handleKeydown(event) {
+  // IME変換確定のEnter（isComposing / keyCode 229）はゲーム操作にしない
+  if (event.key === "Enter" && (event.isComposing || event.keyCode === 229)) return;
+
   if (event.key === "Enter") {
     event.preventDefault();
     triggerEnter();
@@ -375,9 +441,12 @@ export function handleKeydown(event) {
   // Tab = 発音（フォーカスは入力欄に留める）
   if (event.key === "Tab") {
     event.preventDefault();
-    speak(currentWord.en);
+    speak(speechTextOf(currentWord));
     return;
   }
+
+  // 全文入力モード: 文字入力はブラウザ／IMEに任せる（Enterで判定）
+  if (freeMode) return;
 
   if (event.key.length !== 1) return;
 
@@ -408,6 +477,7 @@ export function handleCompositionStart() {
 export function handleCompositionEnd() {
   composing = false;
   if (!isPlaying || !currentWord) return;
+  if (freeMode) return; // 全文入力モードでは日本語をそのまま受け付ける
 
   // 確定された文字に日本語等が含まれていたら、受理済み位置へ巻き戻して案内する
   // （かな→ローマ字の復元は不可能なため、打ち直してもらうのが最も安全）
@@ -423,6 +493,7 @@ export function handleCompositionEnd() {
 
 export function handleTextInput() {
   if (!isPlaying || !currentWord) return;
+  if (freeMode) return; // 全文入力モードは Enter で判定
   if (composing) return; // 変換確定はhandleCompositionEndで処理する
 
   const word = currentWord.en;
@@ -498,11 +569,12 @@ function revealAnswer(fromMiss = false) {
   renderWordFamily(currentWord);
   renderWordHistory();
   renderWordNote(currentWord);
+  renderExplain(currentWord);
 
-  // 発音: autoなら1回再生。スピーカーボタンも表示
-  autoSpeak(currentWord.en);
+  // 発音: autoなら1回再生。スピーカーボタンも表示（英語がある語だけ）
+  autoSpeak(speechTextOf(currentWord));
   if (elements.speakButton) {
-    elements.speakButton.hidden = false;
+    elements.speakButton.hidden = !speechTextOf(currentWord);
   }
 
   // 頭から打ち直して練習できるようにリセット
@@ -514,12 +586,53 @@ function revealAnswer(fromMiss = false) {
   const leech = (stat?.recallFail ?? 0) >= LEECH_FAILS;
   showMessage(
     fromMiss
-      ? "ミス！正しいスペルを見て打ち直そう"
+      ? freeMode
+        ? "違った。答えを見て、もう一度打ってみよう（Enterで判定）"
+        : "ミス！正しいスペルを見て打ち直そう"
       : leech
         ? `答えを表示。${stat.recallFail}回目の難敵。覚え方を📝メモしておくと効くよ`
-        : "答えを表示。入力して練習 or Enterで次へ",
+        : freeMode
+          ? "答えを表示。打って練習（Enterで判定）or 空のままEnterで次へ"
+          : "答えを表示。入力して練習 or Enterで次へ",
     fromMiss ? "wrong" : "revealed"
   );
+}
+
+// ===== 全文入力モードの判定 =====
+function submitFreeAnswer(typed) {
+  if (answerMatches(currentWord, typed)) {
+    finishFreeWord();
+    return;
+  }
+  // 違う答え = 思い出せていない。答えを見せて打ち直し（1ミス＝不正解の方針と同じ）
+  typingMissCount++;
+  elements.miss.textContent = typingMissCount;
+  hasMissedCurrentWord = true;
+  combo = 0;
+  updateCombo(0);
+  sfxMiss();
+  recordTypingMiss(currentWord.id);
+  revealAnswer(true);
+}
+
+function finishFreeWord() {
+  currentIndex = currentWord.en.length;
+  correctChars += currentWord.en.length;
+  updateTypeSpeed();
+  completeWord();
+}
+
+// 正解後の待ちを終えて次へ（Enter または タイマー）
+function advanceNow() {
+  clearTimeout(advanceTimer);
+  advanceTimer = null;
+  awaitingNext = false;
+  if (!isPlaying) return;
+  if (mode === "study" && setCompletePending) {
+    endStudySession();
+    return;
+  }
+  setNewWord();
 }
 
 // ===== ヒント（Study） =====
@@ -552,6 +665,20 @@ export function useHint() {
     renderWordHistory();
     renderWordNote(currentWord);
     sfxReveal();
+  }
+
+  // 全文入力モード: 文字を入力欄に入れず、頭から1文字ずつ見せるだけ
+  if (freeMode) {
+    hintChars = Math.min(currentWord.en.length, hintChars + 1);
+    const total = currentWord.en.length;
+    showHiddenWordText(`💡 ${currentWord.en.slice(0, hintChars)}${"・".repeat(Math.max(0, total - hintChars))}（${total}文字）`);
+    showMessage(
+      hintChars === 1
+        ? `💡 頭文字は「${currentWord.en[0]}」。続きを思い出して入力（ヒントを見たので、この語はまた出すね）`
+        : `💡 ${currentWord.en.slice(0, hintChars)}… 続きを入力してEnter`,
+      "revealed"
+    );
+    return;
   }
 
   const nextChar = currentWord.en[currentIndex];
@@ -615,7 +742,7 @@ function renderWordNote(word) {
 
 export function speakCurrentWord() {
   if (currentWord) {
-    speak(currentWord.en);
+    speak(speechTextOf(currentWord));
   }
 }
 
@@ -733,7 +860,7 @@ function completeWord() {
     if (mode === "study") bumpActivity("studyCorrect"); // KPI心拍
 
     if (mode === "study") {
-      speakOnCorrect(currentWord.en); // 綴りを打てた直後に音でも確認（設定で切れる）
+      speakOnCorrect(speechTextOf(currentWord)); // 綴りを打てた直後に音でも確認（設定で切れる）
       loopResult = queueRecallSuccess(currentWord.id);
       playRecallSuccessEffect();
       updateRecalledToday();
@@ -800,17 +927,20 @@ function completeWord() {
     return;
   }
 
-  // Study: 正解演出の後に次へ。250ms以内にEnter等で既に進んでいたら二重に進めない
+  // Study: 正解演出の後に次へ。概念カードは答えと解説を読む時間を置く（Enterで即進行）
+  const concept = isConceptWord(currentWord);
+  if (concept) {
+    renderExplain(currentWord);
+    showColoredAnswer(currentWord.en);
+  }
   const serialAtComplete = wordSerial;
-  setTimeout(() => {
+  awaitingNext = true;
+  clearTimeout(advanceTimer);
+  advanceTimer = setTimeout(() => {
     if (!isPlaying) return;
-    if (mode === "study" && setCompletePending) {
-      endStudySession();
-      return;
-    }
     if (wordSerial !== serialAtComplete) return;
-    setNewWord();
-  }, 250);
+    advanceNow();
+  }, concept ? 2600 : 250);
 }
 
 // 成長ログ: 覚えた語数のスナップショット（今週+N・30日推移の材料）
@@ -863,7 +993,8 @@ function celebrateLearned(word, earned) {
     setTimeout(() => stamp.remove(), 1400);
   }
 
-  showMessage(`✨ 覚えた！ ${word.en}（${word.ja}）${earned > 0 ? `  +${earned} XP` : ""}`, "learned");
+  const jaShort = word.ja.length > 22 ? `${word.ja.slice(0, 22)}…` : word.ja;
+  showMessage(`✨ 覚えた！ ${word.en}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}`, "learned");
 
   const toast = document.getElementById("learnToast");
   if (toast) {
@@ -1178,11 +1309,23 @@ function setNewWord() {
   hasMissedCurrentWord = false;
   isRevealed = false;
   hintUsed = false;
+  hintChars = 0;
+  awaitingNext = false;
+  clearTimeout(advanceTimer);
   hideHint();
   renderWordNote(null);
+  renderExplain(null);
 
-  elements.japanese.textContent = currentWord.ja;
-  showHiddenWordText("分からないときは Enter で答えを表示");
+  // 全文入力モード（日本語で答える概念カード等）の切替
+  freeMode = isFreeAnswer(currentWord);
+  document.body.classList.toggle("free-answer", freeMode);
+  document.getElementById("gameCard")?.classList.toggle("game-card--concept", isConceptWord(currentWord));
+  elements.input.placeholder = freeMode ? "答えを入力してEnter（日本語OK）" : "英単語を入力";
+
+  const promptLabel = document.querySelector("#gameCard .label");
+  if (promptLabel) promptLabel.textContent = isConceptWord(currentWord) ? "場面（これは何のこと？）" : "日本語訳";
+  elements.japanese.textContent = promptOf(currentWord);
+  showHiddenWordText(freeMode ? "用語や略語で答える。分からないときは Enter" : "分からないときは Enter で答えを表示");
   if (elements.speakButton) {
     elements.speakButton.hidden = true;
   }

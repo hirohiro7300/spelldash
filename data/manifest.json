@@ -43,6 +43,12 @@
           "id": "ads",
           "label": "広告・マーケ",
           "file": "english/ads.json"
+        },
+        {
+          "id": "listing",
+          "label": "リスティング広告 実務",
+          "file": "english/listing.json",
+          "kind": "concept"
         }
       ]
     }

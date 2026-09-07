@@ -3138,3 +3138,49 @@ button.learned-item__en { text-align: left; font-weight: 800; color: #f8fafc; }
 @media (prefers-reduced-motion: reduce) {
   .rank-up, .rank-up__inner { animation: none; }
 }
+
+/* ===== 概念カード（場面 → 用語）／全文入力モード ===== */
+.game-card--concept #japanese {
+  font-size: 19px;
+  line-height: 1.6;
+  font-weight: 700;
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.word-explain {
+  min-height: 0;
+  margin: 2px auto 8px;
+  max-width: 620px;
+  color: #cbd5e1;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.word-explain:empty {
+  display: none;
+}
+
+/* 全文入力モード: 入力欄の文字をそのまま見せる（色付きプレビューは使わない） */
+body.free-answer #input {
+  color: #0f172a;
+  font-size: 24px;
+}
+
+body.free-answer .typed-preview {
+  display: none;
+}
+
+.word-chip small {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.word-detail__q {
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.55;
+}

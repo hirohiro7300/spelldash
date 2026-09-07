@@ -535,3 +535,7 @@ html[data-theme="light"] .rank-up__title b { color: #b45309; text-shadow: none; 
 html[data-theme="light"] .rank-up__sub { color: #334155; }
 html[data-theme="light"] .offline-banner { background: #fffbeb; border-color: #f59e0b; color: #92400e; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15); }
 html[data-theme="light"] .volume-row__value { color: #64748b; }
+
+/* ---- 概念カード（ライト） ---- */
+html[data-theme="light"] .word-explain { color: #334155; }
+html[data-theme="light"] .word-detail__q { color: #475569; }

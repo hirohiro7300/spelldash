@@ -1,0 +1,2187 @@
+{
+  "subject": "english",
+  "category": "listing",
+  "label": "リスティング広告 実務",
+  "words": [
+    {
+      "id": "concept-search-demand",
+      "en": "search-demand",
+      "kind": "concept",
+      "answer": "検索需要",
+      "accept": [
+        "検索ニーズ",
+        "検索ボリューム",
+        "需要"
+      ],
+      "ja": "ユーザーが検索している量。広告を出す前提",
+      "q": "ユーザーが「車 買取」「廃車」「査定」等を検索する。広告を出す前提になる「探されている量」",
+      "explain": "需要が無いキーワードに広告は出せても、クリックは生まれない。Imp増だけで需要増と断定しない",
+      "level": "easy",
+      "tags": [
+        "flow"
+      ],
+      "say": "search demand"
+    },
+    {
+      "id": "concept-ad-auction",
+      "en": "ad-auction",
+      "kind": "concept",
+      "answer": "広告オークション",
+      "accept": [
+        "オークション"
+      ],
+      "ja": "Googleが入札・品質・文脈で掲載を決める仕組み",
+      "q": "検索が起きた瞬間、Googleが対象広告を集め、入札・品質・文脈などを使ってどれを載せるか決める",
+      "explain": "入札単価だけでは決まらない。掲載と順位は「広告ランク」で決まる",
+      "level": "easy",
+      "tags": [
+        "flow"
+      ],
+      "say": "ad auction"
+    },
+    {
+      "id": "concept-click",
+      "en": "click",
+      "kind": "concept",
+      "answer": "クリック",
+      "accept": [],
+      "ja": "ユーザーが広告を押す。ここで費用が発生",
+      "q": "ユーザーが検索結果の広告を押す。この瞬間に広告費（CPC）が発生する",
+      "explain": "表示（Imp）は無料、クリックで課金。だから CTR と CPC が最初の2指標",
+      "level": "easy",
+      "tags": [
+        "flow"
+      ],
+      "say": "click"
+    },
+    {
+      "id": "concept-landing-page",
+      "en": "landing-page",
+      "kind": "concept",
+      "answer": "ランディングページ",
+      "accept": [
+        "lp",
+        "LP",
+        "着地ページ"
+      ],
+      "ja": "広告を押した先のページ。理解と問い合わせが起きる場所",
+      "q": "広告を押したユーザーが最初に着地し、サービスを理解してフォームを送るページ",
+      "explain": "CVRの多くはここで決まる。広告だけ変えてもLPが弱ければCVRは上がらない",
+      "level": "easy",
+      "tags": [
+        "flow"
+      ],
+      "say": "landing page"
+    },
+    {
+      "id": "concept-lead",
+      "en": "lead",
+      "kind": "concept",
+      "answer": "問い合わせ",
+      "accept": [
+        "リード",
+        "lead",
+        "Lead",
+        "問合せ",
+        "入電"
+      ],
+      "ja": "電話・フォームで顧客情報が入った状態＝リード",
+      "q": "電話やフォームで顧客情報が入った。Google上の「CV」はここに置かれることが多い",
+      "explain": "問い合わせ1件＝成約1件ではない。ここから先は広告画面に出ない",
+      "level": "easy",
+      "tags": [
+        "flow"
+      ],
+      "say": "lead"
+    },
+    {
+      "id": "concept-call-center",
+      "en": "call-center",
+      "kind": "concept",
+      "answer": "コールセンター",
+      "accept": [
+        "CC",
+        "cc",
+        "コルセン"
+      ],
+      "ja": "架電・接触・ヒアリングで案件を処理する現場",
+      "q": "問い合わせに対して電話をかけ、つながったら売却意思や車両情報を聞き取る部門",
+      "explain": "広告の配信上限を決める事業制約になりうる。処理能力を超える送客は損失を生む",
+      "level": "easy",
+      "tags": [
+        "flow"
+      ],
+      "say": "call center"
+    },
+    {
+      "id": "concept-qualification",
+      "en": "qualification",
+      "kind": "concept",
+      "answer": "有望化",
+      "accept": [
+        "有望化率",
+        "案件選別",
+        "選別"
+      ],
+      "ja": "案件として価値があるかを判定し査定へ進める段階",
+      "q": "問い合わせの中から「実際に売る可能性があり、車に価値がある案件」を選び出し、査定・価格提示へ進める",
+      "explain": "有望化率は広告画面に出ない。フォームCVだけでは良さは分からない",
+      "level": "hard",
+      "tags": [
+        "flow"
+      ]
+    },
+    {
+      "id": "concept-deal",
+      "en": "deal",
+      "kind": "concept",
+      "answer": "成約",
+      "accept": [
+        "契約",
+        "売却合意",
+        "成約件数"
+      ],
+      "ja": "売却合意・契約。問い合わせとは別の成果",
+      "q": "ユーザーと買取価格で合意し、契約に至った。問い合わせとは別にカウントする成果",
+      "explain": "フォームCVと成約CVは別物。Googleに全問い合わせを同じ1CVとして教えると、この差は媒体に見えない",
+      "level": "easy",
+      "tags": [
+        "flow"
+      ],
+      "say": "closed deal"
+    },
+    {
+      "id": "concept-exit",
+      "en": "exit",
+      "kind": "concept",
+      "answer": "出口",
+      "accept": [
+        "出口モデル",
+        "販路",
+        "換金先"
+      ],
+      "ja": "買い取った車をどこで換金するか（小売・AA・輸出・解体）",
+      "q": "買い取った1台を、小売・業販・オートオークション・輸出・部品利用のどれで換金するかという行き先",
+      "explain": "出口が違えば価値関数が変わる。「事故車だから価値が低い」と一律に決めない",
+      "level": "normal",
+      "tags": [
+        "flow",
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-gross-profit",
+      "en": "gross-profit",
+      "kind": "concept",
+      "answer": "粗利",
+      "accept": [
+        "粗利益",
+        "売上総利益"
+      ],
+      "ja": "売却で得た価値から仕入・陸送・整備・手数料等を引いた利益",
+      "q": "出口で得た売却額から、仕入（買取価格）・陸送・整備・手数料・人件費・リスクを差し引いて残る利益",
+      "explain": "広告費をどこまで許容できるかの起点。CPAの上限は最終的にここから逆算する",
+      "level": "easy",
+      "tags": [
+        "flow",
+        "economics"
+      ],
+      "say": "gross profit"
+    },
+    {
+      "id": "concept-advertiser-role",
+      "en": "advertiser-role",
+      "kind": "concept",
+      "answer": "広告運用者",
+      "accept": [
+        "運用者",
+        "広告運用担当",
+        "運用担当"
+      ],
+      "ja": "事業目的と媒体の目的関数を接続する人",
+      "q": "Googleは媒体内の目的しか最適化しない。会社の粗利やコールセンターの能力を知った上で、両者をつなぐ役割の人",
+      "explain": "Googleの推奨を正解として覚えない。自社の目的・制約と照合するのがこの役割",
+      "level": "normal",
+      "tags": [
+        "flow"
+      ]
+    },
+    {
+      "id": "concept-trade-in",
+      "en": "trade-in",
+      "kind": "concept",
+      "answer": "下取り",
+      "accept": [],
+      "ja": "次の車の購入とセットで販売店が今の車を引き取る",
+      "q": "新車ディーラーで次の車を買うのとセットで、今乗っている車を販売店が引き取る取引",
+      "explain": "「買取」の比較対象。買替需要と売却需要が重なる語句が出る",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ],
+      "say": "trade-in"
+    },
+    {
+      "id": "concept-purchase",
+      "en": "purchase",
+      "kind": "concept",
+      "answer": "買取",
+      "accept": [
+        "車買取",
+        "買い取り"
+      ],
+      "ja": "事業者がユーザーから車を買い取る取引",
+      "q": "販売店ではなく買取専門の事業者が、一般ユーザーから直接車を買い取る取引",
+      "explain": "広告で獲得するリードの直接の買い手。出口は小売・業販・AA・輸出",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-bulk-appraisal",
+      "en": "bulk-appraisal",
+      "kind": "concept",
+      "answer": "一括査定",
+      "accept": [
+        "一括査定サイト",
+        "一括"
+      ],
+      "ja": "一度の入力で複数の買取業者へ査定依頼が飛ぶ形態",
+      "q": "ユーザーが1回フォームを入れると、複数の買取会社に同時に査定依頼が送られるサービス形態",
+      "explain": "同じ「問い合わせ1件」でも競合が同時に電話するので、応答速度の価値が跳ね上がる",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-appraisal",
+      "en": "appraisal",
+      "kind": "concept",
+      "answer": "査定",
+      "accept": [],
+      "ja": "車両状態・相場から価値を評価すること",
+      "q": "車両の状態や相場から価値を評価する行為。提示する買取価格そのものとは区別する",
+      "explain": "査定＝価格提示ではない。査定は評価、価格は交渉と出口で決まる",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ],
+      "say": "appraisal"
+    },
+    {
+      "id": "concept-intent-to-sell",
+      "en": "intent-to-sell",
+      "kind": "concept",
+      "answer": "売却意思",
+      "accept": [
+        "売る意思",
+        "本気度",
+        "売却意向"
+      ],
+      "ja": "「相場だけ知りたい」ではなく実際に売る可能性の度合い",
+      "q": "問い合わせてきた人が、相場を知りたいだけなのか、本当に売るつもりなのか。その本気度",
+      "explain": "媒体のCVとは別の変数。広告画面には出ない",
+      "level": "normal",
+      "tags": [
+        "auto",
+        "flow"
+      ]
+    },
+    {
+      "id": "concept-auto-auction",
+      "en": "auto-auction",
+      "kind": "concept",
+      "answer": "AA",
+      "accept": [
+        "aa",
+        "オートオークション",
+        "オークション"
+      ],
+      "ja": "事業者間の中古車オークション（Auto Auction）",
+      "q": "事業者同士が中古車を売買する市場。車両の換金価格・相場が形成される重要な出口",
+      "explain": "Auto Auction。出品・成約手数料、陸送、相場変動、検査差異がコスト",
+      "level": "easy",
+      "tags": [
+        "auto",
+        "abbr"
+      ],
+      "say": "auto auction"
+    },
+    {
+      "id": "concept-wholesale",
+      "en": "wholesale",
+      "kind": "concept",
+      "answer": "業販",
+      "accept": [
+        "卸",
+        "業者間販売",
+        "業者販売"
+      ],
+      "ja": "事業者間で車を直接売買する（卸）",
+      "q": "AAを経由せず、事業者同士で車を直接売買する出口。手数料・時間・リスクの構造が変わる",
+      "explain": "一般消費者への「小売」と区別する",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-retail",
+      "en": "retail",
+      "kind": "concept",
+      "answer": "小売",
+      "accept": [],
+      "ja": "最終消費者へ販売すること",
+      "q": "買い取った車を整備・商品化して、最終消費者に直接販売する出口",
+      "explain": "出口価格は高くなりやすいが、在庫・整備・保証のリスクを負う",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ],
+      "say": "retail"
+    },
+    {
+      "id": "concept-export",
+      "en": "export",
+      "kind": "concept",
+      "answer": "輸出",
+      "accept": [
+        "輸出業者",
+        "海外輸出"
+      ],
+      "ja": "海外市場へ中古車を販売する出口",
+      "q": "国内では小売価値が低い車でも、海外需要があれば価値が付くことがある出口",
+      "explain": "物流・為替・規制・現地需要・書類がコストとリスク",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ],
+      "say": "export"
+    },
+    {
+      "id": "concept-dismantle",
+      "en": "dismantle",
+      "kind": "concept",
+      "answer": "解体",
+      "accept": [
+        "解体業者",
+        "リサイクル",
+        "解体・リサイクル"
+      ],
+      "ja": "使用済自動車を解体し部品・素材を再利用する",
+      "q": "走れない・売れない車を分解し、部品や素材として再利用する出口",
+      "explain": "「廃車＝価値ゼロ」ではない。部品・素材・還付の価値が残る場合がある",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-transport",
+      "en": "transport",
+      "kind": "concept",
+      "answer": "陸送",
+      "accept": [
+        "輸送",
+        "陸送費"
+      ],
+      "ja": "車両を拠点・AA・港へ輸送すること",
+      "q": "買い取った車をユーザーの所在地から保管場所・AA・港まで運ぶ工程",
+      "explain": "距離・不動車・地域が原価に効く。遠方の不動車は同じ問い合わせでも期待価値が下がる",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-finance-lease",
+      "en": "finance-lease",
+      "kind": "concept",
+      "answer": "信販",
+      "accept": [
+        "信販会社",
+        "リース会社",
+        "信販・リース"
+      ],
+      "ja": "車両代金の金融。所有権留保やリースを扱う",
+      "q": "ローンで買った車の所有者名義を持っていたり、リース契約を管理していたりする会社",
+      "explain": "残債や所有者名義によって売却手続きが変わる",
+      "level": "hard",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-max-purchase-price",
+      "en": "max-purchase-price",
+      "kind": "concept",
+      "answer": "買取上限価格",
+      "accept": [
+        "最大仕入価格",
+        "上限価格",
+        "仕入上限"
+      ],
+      "ja": "期待出口価値からコストと必要粗利を引いた最大仕入価格",
+      "q": "期待出口価値 −（陸送＋整備＋AA手数料＋書類＋在庫コスト＋リスク引当＋必要粗利）で出る、この車にいくらまで出せるかの上限",
+      "explain": "同じ問い合わせでも車両・地域・売却意思・出口で期待価値が違う理由がこの式",
+      "level": "hard",
+      "tags": [
+        "auto",
+        "economics"
+      ]
+    },
+    {
+      "id": "concept-first-registration",
+      "en": "first-registration",
+      "kind": "concept",
+      "answer": "初度登録年月",
+      "accept": [
+        "初度登録",
+        "初年度登録"
+      ],
+      "ja": "その車が最初に登録された年月",
+      "q": "「年式」を実務で確認するときに見る、その自動車が最初に登録された年月",
+      "explain": "日常語の「年式」は曖昧。査定・相場の基本項目はこれ",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-model-code",
+      "en": "model-code",
+      "kind": "concept",
+      "answer": "型式",
+      "accept": [
+        "型式番号"
+      ],
+      "ja": "車両の型を識別する記号。車種名だけでは分からない仕様差",
+      "q": "同じ車種名でも仕様が違うことがある。それを区別するための車両の型を表す記号",
+      "explain": "検索語句の車種名だけでは車両価値を断定できない理由の一つ",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-grade",
+      "en": "grade",
+      "kind": "concept",
+      "answer": "グレード",
+      "accept": [],
+      "ja": "同一車種内の装備・仕様区分",
+      "q": "同じ車種の中で装備や仕様によって分かれる区分。価格差を生む",
+      "explain": "型式と合わせて相場を読む",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ],
+      "say": "grade"
+    },
+    {
+      "id": "concept-mileage",
+      "en": "mileage",
+      "kind": "concept",
+      "answer": "走行距離",
+      "accept": [],
+      "ja": "オドメーター上の走行量。車両価値の主要要素",
+      "q": "メーターに表示される、その車がこれまでに走った距離",
+      "explain": "価値の主要要素だが、出口によって重みは変わる（輸出では許容が広い等）",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ],
+      "say": "mileage"
+    },
+    {
+      "id": "concept-repair-history",
+      "en": "repair-history",
+      "kind": "concept",
+      "answer": "修復歴",
+      "accept": [
+        "修復歴車",
+        "修復歴あり"
+      ],
+      "ja": "骨格等の所定部位に修復・交換歴がある状態",
+      "q": "業界基準で定めた骨格などの所定部位に、修復・交換の履歴がある状態。単なる傷の修理とは違う",
+      "explain": "「事故車」と同義ではない。混同すると査定と広告文の両方で事故る",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-accident-car",
+      "en": "accident-car",
+      "kind": "concept",
+      "answer": "事故車",
+      "accept": [
+        "事故車両"
+      ],
+      "ja": "日常・広告上の曖昧な語。実務では具体状態を確認",
+      "q": "「ぶつけたことがある」から「骨格を修復した」まで人によって意味が違う、日常や広告で使われる曖昧な言葉",
+      "explain": "修復歴車・事故現状車などを混同しうるので、実務では具体状態を確認する",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-as-is-car",
+      "en": "as-is-car",
+      "kind": "concept",
+      "answer": "事故現状車",
+      "accept": [
+        "現状車",
+        "事故現状"
+      ],
+      "ja": "事故・故障を修復せずそのままの状態で扱う車",
+      "q": "事故や故障の状態を直さず、そのままの状態で査定・売買される車",
+      "explain": "修復歴車（直した車）と区別する",
+      "level": "hard",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-immobile-car",
+      "en": "immobile-car",
+      "kind": "concept",
+      "answer": "不動車",
+      "accept": [
+        "不動"
+      ],
+      "ja": "自力走行できない車",
+      "q": "エンジンがかからない・動かないなど、自力で走行できない車",
+      "explain": "陸送・引取コストと出口が変わる。遠方の不動車は期待価値が下がる",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-flooded-car",
+      "en": "flooded-car",
+      "kind": "concept",
+      "answer": "冠水車",
+      "accept": [
+        "水没車"
+      ],
+      "ja": "水害等で水に浸かった履歴がある車",
+      "q": "台風や水害で車内まで水に浸かった履歴のある車。電装系のリスク評価が重要",
+      "explain": "見た目で分からないリスクがある車の代表",
+      "level": "normal",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-remaining-loan",
+      "en": "remaining-loan",
+      "kind": "concept",
+      "answer": "残債",
+      "accept": [
+        "ローン残債",
+        "残ローン"
+      ],
+      "ja": "ローン等で残っている未返済額",
+      "q": "車のローンがまだ残っていて、売る前に清算が必要な未返済額",
+      "explain": "残債があると所有権留保の解除手続きが絡む",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-title-retention",
+      "en": "title-retention",
+      "kind": "concept",
+      "answer": "所有権留保",
+      "accept": [
+        "所有権解除"
+      ],
+      "ja": "ローン完済まで信販会社等が所有者名義になる仕組み",
+      "q": "ローンを払い終わるまで、車検証上の所有者が信販会社や販売店になっている仕組み",
+      "explain": "売却時に解除手続きが必要になりうる。手続きの遅れは成約の遅れ",
+      "level": "hard",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-temporary-deregistration",
+      "en": "temporary-deregistration",
+      "kind": "concept",
+      "answer": "一時抹消登録",
+      "accept": [
+        "一時抹消"
+      ],
+      "ja": "登録自動車の使用を一時的に止める抹消。解体前提ではない",
+      "q": "車を一時的に使わなくするための抹消登録。解体を前提としない",
+      "explain": "「廃車」と言われたら、一時抹消・永久抹消・解体のどれかを確認する",
+      "level": "hard",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-permanent-deregistration",
+      "en": "permanent-deregistration",
+      "kind": "concept",
+      "answer": "永久抹消登録",
+      "accept": [
+        "永久抹消"
+      ],
+      "ja": "解体済み等の自動車について行う抹消登録",
+      "q": "解体が終わった車について行う、もう戻さない前提の抹消登録",
+      "explain": "重量税還付の要件に関わる",
+      "level": "hard",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-scrapping",
+      "en": "scrapping",
+      "kind": "concept",
+      "answer": "廃車",
+      "accept": [
+        "廃車手続き"
+      ],
+      "ja": "一般語。一時抹消／永久抹消／解体のどれかを確認する",
+      "q": "ユーザーが検索でよく使う「もう乗らない車を処分する」ことを指す一般語。実務では中身が3種類ある",
+      "explain": "検索語句の「廃車」は一時抹消・永久抹消・解体のどれを指すか分けて確認する",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-weight-tax-refund",
+      "en": "weight-tax-refund",
+      "kind": "concept",
+      "answer": "重量税還付",
+      "accept": [
+        "自動車重量税還付",
+        "重量税の還付"
+      ],
+      "ja": "適正に解体された車で車検残存期間に応じて戻る税",
+      "q": "適正に解体され要件を満たした使用済自動車について、車検の残り期間に応じて自動車重量税が戻ってくる制度",
+      "explain": "「廃車＝価値ゼロ」ではない根拠の一つ",
+      "level": "hard",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-recycling-fee",
+      "en": "recycling-fee",
+      "kind": "concept",
+      "answer": "リサイクル料金",
+      "accept": [
+        "リサイクル預託金",
+        "預託金"
+      ],
+      "ja": "自動車リサイクル法に基づき預託される再資源化費用",
+      "q": "自動車リサイクル法に基づいて、再資源化の費用として車の所有者が預けているお金",
+      "explain": "預託金として売却時に精算対象になる",
+      "level": "hard",
+      "tags": [
+        "auto"
+      ]
+    },
+    {
+      "id": "concept-inspection",
+      "en": "inspection",
+      "kind": "concept",
+      "answer": "車検",
+      "accept": [],
+      "ja": "自動車検査登録制度上の検査と有効期間",
+      "q": "公道を走るために定期的に受ける検査と、その有効期間。残期間は売却や還付に影響する",
+      "explain": "「車検残あり」は価値に効く",
+      "level": "easy",
+      "tags": [
+        "auto"
+      ],
+      "say": "vehicle inspection"
+    },
+    {
+      "id": "concept-inventory-turnover",
+      "en": "inventory-turnover",
+      "kind": "concept",
+      "answer": "在庫回転",
+      "accept": [
+        "在庫回転率",
+        "回転"
+      ],
+      "ja": "仕入れてから売却・換金するまでの速度",
+      "q": "車を仕入れてから売って現金になるまでの速さ。遅いほど資金拘束と価格変動リスクが増える",
+      "explain": "小売出口のリスクの本体",
+      "level": "normal",
+      "tags": [
+        "auto",
+        "economics"
+      ]
+    },
+    {
+      "id": "concept-mcc",
+      "en": "mcc",
+      "kind": "concept",
+      "answer": "MCC",
+      "accept": [
+        "mcc",
+        "管理アカウント"
+      ],
+      "ja": "複数の広告アカウントを管理する上位の器（管理アカウント）",
+      "q": "代理店や大企業が複数の広告アカウントをまとめて管理するための、上位の器",
+      "explain": "広告アカウントそのものではない。請求・計測の単位は広告アカウント",
+      "level": "easy",
+      "tags": [
+        "structure",
+        "abbr"
+      ],
+      "say": "MCC"
+    },
+    {
+      "id": "concept-ad-account",
+      "en": "ad-account",
+      "kind": "concept",
+      "answer": "広告アカウント",
+      "accept": [
+        "アカウント"
+      ],
+      "ja": "請求・計測・設定の基本単位",
+      "q": "請求、コンバージョン計測、各種設定の基本単位になる器。MCCの配下に複数存在しうる",
+      "explain": "MCC → 広告アカウント → キャンペーン → 広告グループ → キーワード・広告・アセット",
+      "level": "easy",
+      "tags": [
+        "structure"
+      ]
+    },
+    {
+      "id": "concept-campaign",
+      "en": "campaign",
+      "kind": "concept",
+      "answer": "キャンペーン",
+      "accept": [],
+      "ja": "予算・入札戦略・地域・配信設定の主要な制御単位",
+      "q": "日予算・入札戦略・配信地域・配信設定を決める、広告アカウントの中の主要な制御単位",
+      "explain": "広告グループより上位。予算はここに付く",
+      "level": "easy",
+      "tags": [
+        "structure"
+      ],
+      "say": "campaign"
+    },
+    {
+      "id": "concept-ad-group",
+      "en": "ad-group",
+      "kind": "concept",
+      "answer": "広告グループ",
+      "accept": [],
+      "ja": "キーワード・広告をまとめる単位",
+      "q": "キャンペーンの中で、関連するキーワードと広告をひとまとめにする単位",
+      "explain": "キャンペーン予算とは別。広告グループに予算は無い",
+      "level": "easy",
+      "tags": [
+        "structure"
+      ],
+      "say": "ad group"
+    },
+    {
+      "id": "concept-keyword",
+      "en": "keyword",
+      "kind": "concept",
+      "answer": "キーワード",
+      "accept": [],
+      "ja": "広告主が登録する、検索との接続条件",
+      "q": "広告主が「この検索に広告を出したい」と登録する語句。ユーザーが実際に打った語句とは別",
+      "explain": "検索語句（Query）と一致しないことが普通にある",
+      "level": "easy",
+      "tags": [
+        "structure",
+        "keyword"
+      ],
+      "say": "keyword"
+    },
+    {
+      "id": "concept-search-term",
+      "en": "search-term",
+      "kind": "concept",
+      "answer": "検索語句",
+      "accept": [
+        "検索クエリ",
+        "クエリ",
+        "query",
+        "Query"
+      ],
+      "ja": "ユーザーが実際に検索した語句（Query）",
+      "q": "広告主が登録した語句ではなく、ユーザーが実際に検索窓に打ち込んだ語句",
+      "explain": "キーワードと検索語句の違いは Day 0 の合格ゲート",
+      "level": "easy",
+      "tags": [
+        "structure",
+        "keyword"
+      ],
+      "say": "search term"
+    },
+    {
+      "id": "concept-rsa",
+      "en": "rsa",
+      "kind": "concept",
+      "answer": "RSA",
+      "accept": [
+        "rsa",
+        "レスポンシブ検索広告"
+      ],
+      "ja": "複数の見出し・説明文を組み合わせて配信する検索広告",
+      "q": "見出しを最大15本、説明文を最大4本登録し、Googleが組み合わせて出す検索広告の形式",
+      "explain": "Responsive Search Ad（レスポンシブ検索広告）",
+      "level": "easy",
+      "tags": [
+        "ad",
+        "abbr"
+      ],
+      "say": "responsive search ad"
+    },
+    {
+      "id": "concept-asset",
+      "en": "asset",
+      "kind": "concept",
+      "answer": "アセット",
+      "accept": [
+        "広告表示オプション",
+        "広告アセット"
+      ],
+      "ja": "サイトリンク等、広告に追加される情報要素",
+      "q": "サイトリンク、コールアウト、電話番号など、広告本体に追加で付く情報要素。旧称「広告表示オプション」",
+      "explain": "広告本体（RSA）とアセットを混同しない",
+      "level": "normal",
+      "tags": [
+        "ad"
+      ],
+      "say": "asset"
+    },
+    {
+      "id": "concept-search-campaign",
+      "en": "search-campaign",
+      "kind": "concept",
+      "answer": "検索キャンペーン",
+      "accept": [
+        "検索",
+        "検索広告",
+        "Search"
+      ],
+      "ja": "検索語句と意図に応じて検索結果面に出す。本教育の中心",
+      "q": "ユーザーの検索語句と意図に応じて、検索結果ページに広告を出すキャンペーンタイプ",
+      "explain": "リスティング運用の中心。Demand Gen や P-MAX とは別",
+      "level": "easy",
+      "tags": [
+        "structure"
+      ],
+      "say": "search campaign"
+    },
+    {
+      "id": "concept-demand-gen",
+      "en": "demand-gen",
+      "kind": "concept",
+      "answer": "デマンドジェネレーション",
+      "accept": [
+        "Demand Gen",
+        "demand gen",
+        "デマンドジェン"
+      ],
+      "ja": "YouTube・Discover等で需要喚起・再接触するキャンペーン群",
+      "q": "YouTubeやDiscoverなどの面で、まだ検索していない人に需要を喚起したり再接触したりするキャンペーン",
+      "explain": "Demand Gen。Day 0では名前だけ把握",
+      "level": "normal",
+      "tags": [
+        "structure"
+      ],
+      "say": "demand generation"
+    },
+    {
+      "id": "concept-pmax",
+      "en": "pmax",
+      "kind": "concept",
+      "answer": "P-MAX",
+      "accept": [
+        "pmax",
+        "p-max",
+        "Performance Max",
+        "パフォーマンスマックス",
+        "PMAX"
+      ],
+      "ja": "Googleの複数面を横断し目標に基づき自動最適化するキャンペーン",
+      "q": "検索・YouTube・ディスプレイなどGoogleの面をまたいで、設定した目標に向けて自動で配信を最適化するキャンペーン",
+      "explain": "Performance Max。何が起きているか見えにくいので Day 0では名前だけ",
+      "level": "normal",
+      "tags": [
+        "structure",
+        "abbr"
+      ],
+      "say": "performance max"
+    },
+    {
+      "id": "concept-impressions",
+      "en": "impressions",
+      "kind": "concept",
+      "answer": "表示回数",
+      "accept": [
+        "imp",
+        "Imp",
+        "impressions",
+        "インプレッション",
+        "表示"
+      ],
+      "ja": "広告が表示された回数（Imp）。需要量そのものではない",
+      "q": "広告が検索結果に表示された回数。ユーザーが見たかどうかは問わない",
+      "explain": "Imp / Impressions。Imp増は配信範囲の変更でも起きる。需要増と断定しない",
+      "level": "easy",
+      "tags": [
+        "metrics"
+      ],
+      "say": "impressions"
+    },
+    {
+      "id": "concept-ctr",
+      "en": "ctr",
+      "kind": "concept",
+      "answer": "CTR",
+      "accept": [
+        "ctr",
+        "クリック率"
+      ],
+      "ja": "クリック率 ＝ Click ÷ Imp",
+      "q": "広告が100回表示されて3回クリックされたら3%。表示からクリックへの率",
+      "explain": "Click Through Rate ＝ Click ÷ Imp",
+      "level": "easy",
+      "tags": [
+        "metrics",
+        "abbr",
+        "formula"
+      ],
+      "say": "click-through rate"
+    },
+    {
+      "id": "concept-cpc",
+      "en": "cpc",
+      "kind": "concept",
+      "answer": "CPC",
+      "accept": [
+        "cpc",
+        "クリック単価"
+      ],
+      "ja": "クリック単価 ＝ Cost ÷ Click",
+      "q": "1クリックごとに広告費が発生する。100クリックで1万円なら1クリック100円。この単価",
+      "explain": "Cost Per Click ＝ Cost ÷ Click",
+      "level": "easy",
+      "tags": [
+        "metrics",
+        "abbr",
+        "formula"
+      ],
+      "say": "cost per click"
+    },
+    {
+      "id": "concept-conversion",
+      "en": "conversion",
+      "kind": "concept",
+      "answer": "CV",
+      "accept": [
+        "cv",
+        "コンバージョン",
+        "conversion"
+      ],
+      "ja": "広告主が「成果」と定義したイベント",
+      "q": "フォーム送信や電話など、広告主が「これを成果と数える」と自分で定義したイベント。自然界に存在する客観的成果ではない",
+      "explain": "Conversion。問い合わせとは限らないし、成約でもない。CV＝売上と思うのは不合格の典型",
+      "level": "easy",
+      "tags": [
+        "metrics",
+        "abbr",
+        "measurement"
+      ],
+      "say": "conversion"
+    },
+    {
+      "id": "concept-cvr",
+      "en": "cvr",
+      "kind": "concept",
+      "answer": "CVR",
+      "accept": [
+        "cvr",
+        "cv率",
+        "CV率",
+        "コンバージョン率"
+      ],
+      "ja": "CV率 ＝ CV ÷ Click",
+      "q": "100クリックのうち5件が問い合わせになったら5%。クリックから成果への率",
+      "explain": "Conversion Rate ＝ CV ÷ Click（分母定義はレポートに注意）",
+      "level": "easy",
+      "tags": [
+        "metrics",
+        "abbr",
+        "formula"
+      ],
+      "say": "conversion rate"
+    },
+    {
+      "id": "concept-cpa",
+      "en": "cpa",
+      "kind": "concept",
+      "answer": "CPA",
+      "accept": [
+        "cpa",
+        "cv単価",
+        "CV単価",
+        "獲得単価"
+      ],
+      "ja": "CV単価 ＝ Cost ÷ CV ＝ CPC ÷ CVR",
+      "q": "広告費12万円で問い合わせが12件なら1件1万円。成果1件あたりのコスト",
+      "explain": "Cost Per Acquisition ＝ Cost ÷ CV ＝ CPC ÷ CVR。何をCVにしたかで意味が変わる",
+      "level": "easy",
+      "tags": [
+        "metrics",
+        "abbr",
+        "formula"
+      ],
+      "say": "cost per acquisition"
+    },
+    {
+      "id": "concept-cv-value",
+      "en": "cv-value",
+      "kind": "concept",
+      "answer": "コンバージョン値",
+      "accept": [
+        "cv値",
+        "CV値",
+        "CV Value",
+        "コンバージョン価値"
+      ],
+      "ja": "各CVに付与した価値。売上・粗利・代理値など設計次第",
+      "q": "問い合わせ1件に「2,000円」のように広告主が付けた価値。売上でも粗利でも代理値でもよい",
+      "explain": "CV Value。ROASの分子。広告主が設計できる",
+      "level": "normal",
+      "tags": [
+        "metrics",
+        "measurement"
+      ],
+      "say": "conversion value"
+    },
+    {
+      "id": "concept-roas",
+      "en": "roas",
+      "kind": "concept",
+      "answer": "ROAS",
+      "accept": [
+        "roas",
+        "広告費用対効果"
+      ],
+      "ja": "広告費用対効果 ＝ CV Value ÷ Cost",
+      "q": "広告費100万円に対して、CVに付けた価値の合計が300万円なら300%。この比率",
+      "explain": "Return On Ad Spend ＝ CV Value ÷ Cost。分子は広告主が設計した値",
+      "level": "easy",
+      "tags": [
+        "metrics",
+        "abbr",
+        "formula"
+      ],
+      "say": "return on ad spend"
+    },
+    {
+      "id": "concept-impression-share",
+      "en": "impression-share",
+      "kind": "concept",
+      "answer": "IS",
+      "accept": [
+        "is",
+        "インプレッションシェア",
+        "impression share",
+        "表示シェア"
+      ],
+      "ja": "表示可能だった推定機会のうち実際に表示された割合",
+      "q": "本当は1,000回出せたはずの機会のうち、実際に600回出たなら60%。この割合",
+      "explain": "Impression Share。ISが高い＝良い、ではない。費用対効果・限界価値は別問題",
+      "level": "easy",
+      "tags": [
+        "metrics",
+        "abbr"
+      ],
+      "say": "impression share"
+    },
+    {
+      "id": "concept-lost-is-budget",
+      "en": "lost-is-budget",
+      "kind": "concept",
+      "answer": "損失IS（予算）",
+      "accept": [
+        "損失is（予算）",
+        "予算による損失IS",
+        "Lost IS budget",
+        "損失IS 予算"
+      ],
+      "ja": "予算不足で表示されなかった推定割合",
+      "q": "出せたはずの機会のうち、日予算が尽きて出せなかったぶんの割合",
+      "explain": "Search Lost IS (budget)。予算制約の存在を示す状態であって善悪ではない",
+      "level": "normal",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "concept-lost-is-rank",
+      "en": "lost-is-rank",
+      "kind": "concept",
+      "answer": "損失IS（ランク）",
+      "accept": [
+        "損失is（ランク）",
+        "ランクによる損失IS",
+        "Lost IS rank",
+        "損失IS ランク"
+      ],
+      "ja": "広告ランク不足で表示されなかった推定割合",
+      "q": "出せたはずの機会のうち、広告ランクが足りずに負けて出せなかったぶんの割合",
+      "explain": "Search Lost IS (rank)。入札・品質・アセットのどれが原因かは別に見る",
+      "level": "normal",
+      "tags": [
+        "metrics"
+      ]
+    },
+    {
+      "id": "concept-abs-top",
+      "en": "abs-top",
+      "kind": "concept",
+      "answer": "最上部",
+      "accept": [
+        "絶対最上部",
+        "abs top",
+        "Abs. Top",
+        "最上部率"
+      ],
+      "ja": "検索結果の絶対最上部に出た位置関連指標",
+      "q": "検索結果の一番上（他の広告より上）に出た割合を表す位置指標",
+      "explain": "Abs. Top（Absolute Top）。「上部（Top）」はその下の複数枠も含む",
+      "level": "hard",
+      "tags": [
+        "metrics"
+      ],
+      "say": "absolute top"
+    },
+    {
+      "id": "concept-cpa-decomposition",
+      "en": "cpa-decomposition",
+      "kind": "concept",
+      "answer": "CPC÷CVR",
+      "accept": [
+        "cpc÷cvr",
+        "cpc/cvr",
+        "CPC/CVR",
+        "CPC ÷ CVR"
+      ],
+      "ja": "CPAの分解式。CPA悪化の原因を分ける",
+      "q": "CPAが8,000円から12,000円に悪化した。「入札を下げる」の前に思い出す式",
+      "explain": "CPA ＝ CPC ÷ CVR。CPCが動いたのか、CVRが動いたのか、両方か、計測定義が変わったのかを分ける",
+      "level": "normal",
+      "tags": [
+        "formula"
+      ]
+    },
+    {
+      "id": "concept-smart-bidding",
+      "en": "smart-bidding",
+      "kind": "concept",
+      "answer": "スマート自動入札",
+      "accept": [
+        "スマート入札",
+        "Smart Bidding",
+        "自動入札"
+      ],
+      "ja": "Google AIがオークションごとにCV数またはCV値を重視して入札",
+      "q": "オークションごとにGoogleのAIが、CV数やCV値を重視して入札額を決める戦略群",
+      "explain": "Smart Bidding。tCPA・tROAS・CV最大化などの総称",
+      "level": "normal",
+      "tags": [
+        "bidding"
+      ],
+      "say": "smart bidding"
+    },
+    {
+      "id": "concept-tcpa",
+      "en": "tcpa",
+      "kind": "concept",
+      "answer": "tCPA",
+      "accept": [
+        "tcpa",
+        "目標cpa",
+        "目標CPA",
+        "target cpa"
+      ],
+      "ja": "目標とする1CVあたりコストを与えるスマート自動入札",
+      "q": "「問い合わせ1件を1万円以内で取ってほしい」と目標単価を渡す自動入札",
+      "explain": "Target CPA。CPA（実績）と tCPA（目標）は別物。何%ずつ動かすかは暗記しない",
+      "level": "easy",
+      "tags": [
+        "bidding",
+        "abbr"
+      ],
+      "say": "target CPA"
+    },
+    {
+      "id": "concept-troas",
+      "en": "troas",
+      "kind": "concept",
+      "answer": "tROAS",
+      "accept": [
+        "troas",
+        "目標roas",
+        "目標ROAS",
+        "target roas"
+      ],
+      "ja": "目標とするCV値÷広告費の比率を与えるスマート自動入札",
+      "q": "「広告費の3倍のコンバージョン値を取ってほしい」と目標比率を渡す自動入札",
+      "explain": "Target ROAS。分子（CV値）を広告主が設計していることが前提",
+      "level": "easy",
+      "tags": [
+        "bidding",
+        "abbr"
+      ],
+      "say": "target ROAS"
+    },
+    {
+      "id": "concept-max-conversions",
+      "en": "max-conversions",
+      "kind": "concept",
+      "answer": "コンバージョン数の最大化",
+      "accept": [
+        "CV数の最大化",
+        "cv最大化",
+        "CV最大化",
+        "Maximize Conversions",
+        "コンバージョン最大化"
+      ],
+      "ja": "予算内でCV数最大化を狙う自動入札",
+      "q": "目標単価は渡さず、決めた予算の中でとにかくCVの件数を最大にしようとする自動入札",
+      "explain": "Maximize Conversions。件数を追うので1件の質は見ない",
+      "level": "normal",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "concept-max-conversion-value",
+      "en": "max-conversion-value",
+      "kind": "concept",
+      "answer": "コンバージョン値の最大化",
+      "accept": [
+        "CV値の最大化",
+        "cv値最大化",
+        "CV値最大化",
+        "Maximize Conversion Value"
+      ],
+      "ja": "予算内でCV値最大化を狙う自動入札",
+      "q": "決めた予算の中で、CVに付けた価値の合計を最大にしようとする自動入札",
+      "explain": "Maximize Conversion Value。CV値の設計が悪いと目的関数が壊れる",
+      "level": "normal",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "concept-max-clicks",
+      "en": "max-clicks",
+      "kind": "concept",
+      "answer": "クリック数の最大化",
+      "accept": [
+        "クリック最大化",
+        "Maximize Clicks"
+      ],
+      "ja": "予算内でクリック数を増やす自動入札",
+      "q": "CVではなく、予算内でクリックの数を最大にしようとする自動入札",
+      "explain": "Maximize Clicks。CVが少ない立ち上げ期に使われることがある",
+      "level": "normal",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "concept-manual-cpc",
+      "en": "manual-cpc",
+      "kind": "concept",
+      "answer": "個別クリック単価",
+      "accept": [
+        "個別cpc",
+        "個別CPC",
+        "Manual CPC",
+        "手動入札",
+        "手動cpc"
+      ],
+      "ja": "クリック単価を広告主側で設定する入札方式",
+      "q": "AIに任せず、キーワードごとに「1クリック最大○円まで」を人が決める入札方式",
+      "explain": "Manual CPC / 個別CPC",
+      "level": "normal",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "concept-portfolio-bid-strategy",
+      "en": "portfolio-bid-strategy",
+      "kind": "concept",
+      "answer": "ポートフォリオ入札戦略",
+      "accept": [
+        "ポートフォリオ入札",
+        "ポートフォリオ戦略"
+      ],
+      "ja": "複数キャンペーンで共有できる入札戦略",
+      "q": "複数のキャンペーンをまとめて1つの入札戦略で動かす仕組み",
+      "explain": "Portfolio Bid Strategy。学習データを束ねられる",
+      "level": "hard",
+      "tags": [
+        "bidding"
+      ]
+    },
+    {
+      "id": "concept-daily-budget",
+      "en": "daily-budget",
+      "kind": "concept",
+      "answer": "日予算",
+      "accept": [
+        "予算",
+        "1日の予算",
+        "デイリーバジェット"
+      ],
+      "ja": "キャンペーンに設定する予算。配信量を制約する主要レバー",
+      "q": "キャンペーンに設定する1日あたりの予算。配信量を制約する主要なレバー",
+      "explain": "Budget。予算を上げる＝正解ではない。事業側で意図したキャップの場合もある",
+      "level": "easy",
+      "tags": [
+        "bidding"
+      ],
+      "say": "daily budget"
+    },
+    {
+      "id": "concept-limited-by-budget",
+      "en": "limited-by-budget",
+      "kind": "concept",
+      "answer": "予算による制限",
+      "accept": [
+        "予算制限",
+        "Limited by budget",
+        "予算の制限"
+      ],
+      "ja": "予算が配信機会を制約している状態表示。善悪ではない",
+      "q": "管理画面に出る「予算が配信機会を制約しています」という状態表示",
+      "explain": "Limited by budget。× 機会損失なので必ず予算を上げる ／ ○ 予算制約が存在するという状態",
+      "level": "normal",
+      "tags": [
+        "bidding",
+        "status"
+      ]
+    },
+    {
+      "id": "concept-learning",
+      "en": "learning",
+      "kind": "concept",
+      "answer": "学習中",
+      "accept": [
+        "学習期間",
+        "Learning"
+      ],
+      "ja": "入札戦略が新しいデータ・変更へ適応している状態表示",
+      "q": "入札戦略を変えた直後などに管理画面に出る、AIが新しい条件に適応中という状態表示",
+      "explain": "Learning。「14日間絶対に触らない」ではなく、変更の情報価値と撹乱コストを比較する",
+      "level": "normal",
+      "tags": [
+        "bidding",
+        "status"
+      ],
+      "say": "learning"
+    },
+    {
+      "id": "concept-exact-match",
+      "en": "exact-match",
+      "kind": "concept",
+      "answer": "完全一致",
+      "accept": [
+        "exact",
+        "Exact",
+        "完全一致キーワード"
+      ],
+      "ja": "キーワードと同じ意味・意図の検索を中心に対象化",
+      "q": "登録キーワードと同じ意味・意図の検索を中心に広告を出すマッチタイプ。文字列の完全一致だけではない",
+      "explain": "Exact。「一番狭い」が「一番正しい」ではない",
+      "level": "easy",
+      "tags": [
+        "keyword"
+      ],
+      "say": "exact match"
+    },
+    {
+      "id": "concept-phrase-match",
+      "en": "phrase-match",
+      "kind": "concept",
+      "answer": "フレーズ一致",
+      "accept": [
+        "phrase",
+        "Phrase",
+        "フレーズ"
+      ],
+      "ja": "キーワードと同じ意味の内容を含む検索へ範囲を広げる",
+      "q": "登録キーワードと同じ意味の内容を含む検索まで広げて広告を出すマッチタイプ",
+      "explain": "Phrase。完全一致とインテントマッチの中間",
+      "level": "easy",
+      "tags": [
+        "keyword"
+      ],
+      "say": "phrase match"
+    },
+    {
+      "id": "concept-intent-match",
+      "en": "intent-match",
+      "kind": "concept",
+      "answer": "インテントマッチ",
+      "accept": [
+        "部分一致",
+        "broad",
+        "Broad",
+        "インテント マッチ"
+      ],
+      "ja": "キーワードに関連する検索へ広く接続する（旧・部分一致）",
+      "q": "登録キーワードに関連する検索へ広く接続するマッチタイプ。以前は「部分一致」と呼ばれた",
+      "explain": "Broad。Googleにどこまで探索を許すかの話であって、正しい／間違いではない",
+      "level": "easy",
+      "tags": [
+        "keyword"
+      ],
+      "say": "broad match"
+    },
+    {
+      "id": "concept-negative-keyword",
+      "en": "negative-keyword",
+      "kind": "concept",
+      "answer": "除外キーワード",
+      "accept": [
+        "除外",
+        "ネガティブキーワード",
+        "negative"
+      ],
+      "ja": "特定の検索で広告を出さないための除外条件",
+      "q": "「無料」「バイク」など、この語を含む検索には広告を出さない、と決める条件",
+      "explain": "Negative。検索語句レポートを見て育てる",
+      "level": "easy",
+      "tags": [
+        "keyword"
+      ],
+      "say": "negative keyword"
+    },
+    {
+      "id": "concept-search-terms-report",
+      "en": "search-terms-report",
+      "kind": "concept",
+      "answer": "検索語句レポート",
+      "accept": [
+        "検索語句レポ",
+        "検索クエリレポート",
+        "Search terms report"
+      ],
+      "ja": "実際にどんな検索から表示・クリック・CVが生じたかを見る",
+      "q": "ユーザーが実際にどんな語句で検索して広告が出て、クリックされ、CVしたかを一覧で見るレポート",
+      "explain": "キーワードと検索語句のズレを見る唯一の場所",
+      "level": "normal",
+      "tags": [
+        "keyword"
+      ]
+    },
+    {
+      "id": "concept-ai-max",
+      "en": "ai-max",
+      "kind": "concept",
+      "answer": "AI Max",
+      "accept": [
+        "aimax",
+        "ai max",
+        "AI 最大化設定",
+        "AI最大化設定",
+        "エーアイマックス"
+      ],
+      "ja": "検索キャンペーンに追加される最適化レイヤ。新しいキャンペーンタイプではない",
+      "q": "既存の検索キャンペーンに追加する最適化レイヤ。検索語句とのマッチング拡張・テキストのカスタマイズ・最終ページURL拡張を含む",
+      "explain": "AI 最大化設定。新しいキャンペーンタイプ「ではない」がテスト問題",
+      "level": "normal",
+      "tags": [
+        "keyword",
+        "ai"
+      ],
+      "say": "AI Max"
+    },
+    {
+      "id": "concept-text-customization",
+      "en": "text-customization",
+      "kind": "concept",
+      "answer": "テキストのカスタマイズ",
+      "accept": [
+        "自動作成アセット",
+        "テキストカスタマイズ"
+      ],
+      "ja": "LP等を基に広告テキストを生成・調整するAI Max内機能（旧・自動作成アセット）",
+      "q": "AI Maxの中で、LPや既存広告を基に見出し・説明文を自動生成・調整する機能。旧称「自動作成アセット」",
+      "explain": "何が出たかは確認できる。良し悪しの議論はDay 0ではしない",
+      "level": "hard",
+      "tags": [
+        "keyword",
+        "ai"
+      ]
+    },
+    {
+      "id": "concept-final-url-expansion",
+      "en": "final-url-expansion",
+      "kind": "concept",
+      "answer": "最終ページURL拡張",
+      "accept": [
+        "最終URL拡張",
+        "URL拡張",
+        "final url expansion"
+      ],
+      "ja": "検索意図に応じてより関連するLPへ動的に誘導する機能",
+      "q": "検索の意図に合わせて、設定したLPではなくサイト内のより関連するページへ自動で飛ばす機能群",
+      "explain": "AI Maxに含まれる。意図しないページに飛ぶリスクは除外設定で制御",
+      "level": "hard",
+      "tags": [
+        "keyword",
+        "ai"
+      ]
+    },
+    {
+      "id": "concept-audience-observation",
+      "en": "audience-observation",
+      "kind": "concept",
+      "answer": "オーディエンス観測",
+      "accept": [
+        "観測",
+        "モニタリング",
+        "Observation",
+        "オブザベーション"
+      ],
+      "ja": "対象を狭めずオーディエンス別の情報を観測する設定",
+      "q": "配信対象は狭めず、「この属性の人はCVRが高い」などをオーディエンス別に観測だけする設定",
+      "explain": "Audience: Observation。Targeting（対象を制限）と混同しない",
+      "level": "hard",
+      "tags": [
+        "audience"
+      ],
+      "say": "observation"
+    },
+    {
+      "id": "concept-audience-targeting",
+      "en": "audience-targeting",
+      "kind": "concept",
+      "answer": "オーディエンスターゲティング",
+      "accept": [
+        "ターゲティング",
+        "Targeting"
+      ],
+      "ja": "指定したオーディエンスに対象を制限する設定",
+      "q": "指定したオーディエンス（例: 過去訪問者）だけに配信対象を絞る設定",
+      "explain": "Audience: Targeting。狭めるので配信量が落ちる",
+      "level": "hard",
+      "tags": [
+        "audience"
+      ],
+      "say": "targeting"
+    },
+    {
+      "id": "concept-headline",
+      "en": "headline",
+      "kind": "concept",
+      "answer": "見出し",
+      "accept": [],
+      "ja": "検索広告の主要テキスト要素",
+      "q": "検索広告で一番大きく表示される、青い文字のテキスト要素。RSAでは最大15本登録",
+      "explain": "Headline。説明文（Description）が補足する",
+      "level": "easy",
+      "tags": [
+        "ad"
+      ],
+      "say": "headline"
+    },
+    {
+      "id": "concept-description",
+      "en": "description",
+      "kind": "concept",
+      "answer": "説明文",
+      "accept": [],
+      "ja": "見出しを補足する広告文",
+      "q": "見出しの下に出る、サービス内容や強みを補足する広告文。RSAでは最大4本",
+      "explain": "Description",
+      "level": "easy",
+      "tags": [
+        "ad"
+      ],
+      "say": "description"
+    },
+    {
+      "id": "concept-ad-strength",
+      "en": "ad-strength",
+      "kind": "concept",
+      "answer": "広告の有効性",
+      "accept": [
+        "Ad Strength",
+        "広告の強さ",
+        "有効性"
+      ],
+      "ja": "RSAの素材構成に関するGoogleの診断。事業KPIではない",
+      "q": "RSAに登録した見出し・説明文の数や多様性についてGoogleが出す「低い〜非常に高い」の診断",
+      "explain": "Ad Strength。事業KPIそのものではない",
+      "level": "normal",
+      "tags": [
+        "ad",
+        "status"
+      ]
+    },
+    {
+      "id": "concept-quality-score",
+      "en": "quality-score",
+      "kind": "concept",
+      "answer": "品質スコア",
+      "accept": [
+        "Quality Score",
+        "qs",
+        "QS"
+      ],
+      "ja": "キーワード単位の診断指標（推定CTR・関連性・LP利便性、1〜10）",
+      "q": "キーワードごとに1〜10で出る、推定CTR・広告の関連性・LPの利便性をもとにした診断指標",
+      "explain": "Quality Score。× まず品質スコア改善 ／ ○ 診断情報の一つ。ボトルネックを特定してから",
+      "level": "easy",
+      "tags": [
+        "ad",
+        "status"
+      ],
+      "say": "quality score"
+    },
+    {
+      "id": "concept-ad-rank",
+      "en": "ad-rank",
+      "kind": "concept",
+      "answer": "広告ランク",
+      "accept": [
+        "Ad Rank"
+      ],
+      "ja": "そのオークションで掲載や位置を決める仕組み。入札単価だけでは決まらない",
+      "q": "オークションごとに、その広告を載せるか・どの位置に載せるかを決める仕組み。入札単価だけでは決まらない",
+      "explain": "Ad Rank。入札・品質・アセット・文脈などが入る",
+      "level": "easy",
+      "tags": [
+        "ad"
+      ],
+      "say": "ad rank"
+    },
+    {
+      "id": "concept-policy",
+      "en": "policy",
+      "kind": "concept",
+      "answer": "ポリシー",
+      "accept": [
+        "広告ポリシー",
+        "審査",
+        "Policy"
+      ],
+      "ja": "広告・LPがGoogle広告ポリシーに適合するかの審査状態",
+      "q": "広告文やLPがGoogleのルールに適合しているかの審査。制限・不承認になると配信に影響する",
+      "explain": "Policy。不承認は配信停止と同じ",
+      "level": "normal",
+      "tags": [
+        "ad",
+        "status"
+      ],
+      "say": "policy"
+    },
+    {
+      "id": "concept-conversion-action",
+      "en": "conversion-action",
+      "kind": "concept",
+      "answer": "コンバージョンアクション",
+      "accept": [
+        "cvアクション",
+        "CVアクション",
+        "Conversion Action"
+      ],
+      "ja": "フォーム送信・電話・成約など個別に定義した成果イベント",
+      "q": "「フォーム送信」「電話タップ」「成約」のように、個別に定義した成果イベントの単位",
+      "explain": "Conversion Action。CVは広告主が作った計測定義",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "concept-conversion-goal",
+      "en": "conversion-goal",
+      "kind": "concept",
+      "answer": "コンバージョン目標",
+      "accept": [
+        "cv目標",
+        "CV目標",
+        "Conversion Goal"
+      ],
+      "ja": "複数のCVアクションを目的別にまとめ最適化に使う枠組み",
+      "q": "複数のCVアクションを「問い合わせ」などの目的別にまとめ、キャンペーンの最適化対象として使う枠組み",
+      "explain": "Conversion Goal",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "concept-primary-conversion",
+      "en": "primary-conversion",
+      "kind": "concept",
+      "answer": "メインコンバージョン",
+      "accept": [
+        "メイン",
+        "プライマリ",
+        "Primary",
+        "メインcv",
+        "メインCV"
+      ],
+      "ja": "原則として入札最適化の対象に使うCVアクション",
+      "q": "入札の最適化に使うと決めたCVアクション。ここに何を置くかで媒体が追う目的が変わる",
+      "explain": "Primary。サブ（Secondary）は観測のみ",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "concept-secondary-conversion",
+      "en": "secondary-conversion",
+      "kind": "concept",
+      "answer": "サブコンバージョン",
+      "accept": [
+        "サブ",
+        "セカンダリ",
+        "Secondary",
+        "サブcv",
+        "サブCV"
+      ],
+      "ja": "観測には使うが入札の主要最適化対象にしないCVアクション",
+      "q": "数は見たいが、入札の最適化には使わないと決めたCVアクション",
+      "explain": "Secondary",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "concept-count-one-every",
+      "en": "count-one-every",
+      "kind": "concept",
+      "answer": "カウント方法",
+      "accept": [
+        "count",
+        "Count",
+        "カウント",
+        "One/Every",
+        "ワン・エブリー"
+      ],
+      "ja": "1クリックに対してCVを1件だけ数えるか複数数えるかの設定",
+      "q": "同じ人が1回のクリックで2回フォームを送ったとき、CVを1件と数えるか2件と数えるかの設定",
+      "explain": "Count: One / Every。問い合わせはOne、購入はEveryが典型",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "concept-conversion-window",
+      "en": "conversion-window",
+      "kind": "concept",
+      "answer": "コンバージョン期間",
+      "accept": [
+        "計測期間",
+        "コンバージョンウィンドウ",
+        "Conversion Window",
+        "cv期間",
+        "CV期間"
+      ],
+      "ja": "広告接触後、何日までを成果として計測対象にするか",
+      "q": "広告をクリックしてから何日以内に起きた成果までをCVとして数えるかの設定",
+      "explain": "Conversion Window。車買取は検討が長いので期間設計が効く",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "concept-attribution",
+      "en": "attribution",
+      "kind": "concept",
+      "answer": "アトリビューション",
+      "accept": [
+        "Attribution",
+        "アトリビューションモデル",
+        "貢献度"
+      ],
+      "ja": "複数の広告接触があるとき、どの接触へ成果を割り当てるか",
+      "q": "検索広告を2回クリックしてから問い合わせた人の成果を、どのクリックに割り当てるかの考え方",
+      "explain": "Attribution",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ],
+      "say": "attribution"
+    },
+    {
+      "id": "concept-gclid",
+      "en": "gclid",
+      "kind": "concept",
+      "answer": "GCLID",
+      "accept": [
+        "gclid",
+        "Google Click ID"
+      ],
+      "ja": "広告クリックを識別するID。クリックとCRM上の後段成果を結ぶ鍵",
+      "q": "広告クリックごとに付く識別ID。あとで「この成約はどのクリックから来たか」をCRMと突き合わせる鍵になる",
+      "explain": "Google Click ID。広告クリックとCRM上の後段成果（成約等）を結び付ける",
+      "level": "easy",
+      "tags": [
+        "measurement",
+        "abbr"
+      ],
+      "say": "G-C-L-I-D"
+    },
+    {
+      "id": "concept-offline-conversion",
+      "en": "offline-conversion",
+      "kind": "concept",
+      "answer": "オフラインコンバージョン",
+      "accept": [
+        "オフラインcv",
+        "オフラインCV",
+        "Offline Conversion",
+        "オフラインコンバージョンインポート"
+      ],
+      "ja": "電話・営業・店舗で起きた成果をGoogleへ戻す計測",
+      "q": "広告クリックの後に電話や営業や店舗で起きた成約などの成果を、GCLIDを使ってGoogleに戻す計測",
+      "explain": "Offline Conversion。これが無いとGoogleはフォームCVまでしか知らない",
+      "level": "normal",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "concept-enhanced-conversions-leads",
+      "en": "enhanced-conversions-leads",
+      "kind": "concept",
+      "answer": "リードの拡張コンバージョン",
+      "accept": [
+        "拡張コンバージョン",
+        "拡張cv",
+        "拡張CV",
+        "Enhanced Conversions"
+      ],
+      "ja": "ユーザー提供データでオフライン成果との照合精度を高める",
+      "q": "メールアドレスなどユーザーが提供したデータも使って、オフライン成果との照合精度を高める仕組み",
+      "explain": "Enhanced Conversions for Leads。GCLIDが取れない経路の補完",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ]
+    },
+    {
+      "id": "concept-crm",
+      "en": "crm",
+      "kind": "concept",
+      "answer": "CRM",
+      "accept": [
+        "crm",
+        "顧客管理システム"
+      ],
+      "ja": "顧客・リード・商談を管理するシステム。後段情報の主要保管場所",
+      "q": "問い合わせ後の架電結果・売却意思・成約など、Google広告の外側で起きたことが記録されているシステム",
+      "explain": "後段情報の主要保管場所。GCLIDとつなぐ相手",
+      "level": "easy",
+      "tags": [
+        "measurement",
+        "abbr"
+      ],
+      "say": "CRM"
+    },
+    {
+      "id": "concept-data-manager",
+      "en": "data-manager",
+      "kind": "concept",
+      "answer": "Data Manager",
+      "accept": [
+        "data manager",
+        "データマネージャー",
+        "Data Manager API"
+      ],
+      "ja": "ファーストパーティデータやオフラインデータを接続・管理する仕組み",
+      "q": "Google広告でCRMなどの自社データやオフラインCVを接続・管理する仕組み。2026年6月以降はオフラインCVの入口がここ中心",
+      "explain": "計測基盤そのものも運用対象。仕様変更で経路が変わる",
+      "level": "hard",
+      "tags": [
+        "measurement"
+      ],
+      "say": "data manager"
+    },
+    {
+      "id": "concept-outbound-call",
+      "en": "outbound-call",
+      "kind": "concept",
+      "answer": "架電",
+      "accept": [
+        "コール",
+        "発信"
+      ],
+      "ja": "コールセンターから顧客へ電話をかける",
+      "q": "問い合わせが入った顧客に、コールセンターからこちらが電話をかける行為",
+      "explain": "リード件数が多すぎると処理が遅れる",
+      "level": "easy",
+      "tags": [
+        "callcenter"
+      ]
+    },
+    {
+      "id": "concept-contact-rate",
+      "en": "contact-rate",
+      "kind": "concept",
+      "answer": "接触率",
+      "accept": [
+        "接続率",
+        "通話率"
+      ],
+      "ja": "リードのうち実際に会話できた割合",
+      "q": "100件の問い合わせのうち、実際に電話がつながって会話できたのが60件なら60%",
+      "explain": "広告側だけでは見えない品質指標。一括査定では応答速度で大きく変わる",
+      "level": "normal",
+      "tags": [
+        "callcenter"
+      ]
+    },
+    {
+      "id": "concept-response-time",
+      "en": "response-time",
+      "kind": "concept",
+      "answer": "応答速度",
+      "accept": [
+        "応答時間",
+        "初回接触時間",
+        "折返し速度"
+      ],
+      "ja": "問い合わせから最初の有効接触までの時間",
+      "q": "問い合わせが入ってから、最初に本人と話せるまでにかかった時間",
+      "explain": "送客過多で悪化する。一括査定では競合より先に話せるかが勝負",
+      "level": "normal",
+      "tags": [
+        "callcenter"
+      ]
+    },
+    {
+      "id": "concept-capacity",
+      "en": "capacity",
+      "kind": "concept",
+      "answer": "処理能力",
+      "accept": [
+        "キャパシティ",
+        "キャパ",
+        "capacity",
+        "処理キャパ"
+      ],
+      "ja": "一定時間に現場が処理できるリード量",
+      "q": "コールセンターが1日に電話・ヒアリング・査定手配まで回せるリードの件数の上限",
+      "explain": "Capacity。広告の配信上限を決める事業制約になりうる",
+      "level": "normal",
+      "tags": [
+        "callcenter"
+      ],
+      "say": "capacity"
+    },
+    {
+      "id": "concept-backlog",
+      "en": "backlog",
+      "kind": "concept",
+      "answer": "滞留",
+      "accept": [
+        "バックログ",
+        "backlog",
+        "未処理",
+        "案件滞留"
+      ],
+      "ja": "未処理リードがたまった状態",
+      "q": "電話が追いつかず、まだ誰も対応していない問い合わせがたまっている状態",
+      "explain": "Backlog。追加CVが「良い成果」でも現場では損失を生む場合がある",
+      "level": "normal",
+      "tags": [
+        "callcenter"
+      ],
+      "say": "backlog"
+    },
+    {
+      "id": "concept-expected-profit-per-lead",
+      "en": "expected-profit-per-lead",
+      "kind": "concept",
+      "answer": "期待粗利",
+      "accept": [
+        "期待粗利/lead",
+        "リードの期待価値",
+        "期待値",
+        "1Leadの期待粗利"
+      ],
+      "ja": "P(成約|Lead)×平均粗利/成約。1問い合わせの価値",
+      "q": "100件の問い合わせから5件成約、1成約の限界粗利が4万円なら、1件あたり2,000円。この「問い合わせ1件が将来生む利益の期待値」",
+      "explain": "期待粗利/Lead ＝ P(成約|Lead) × 平均粗利/成約。許容CPAの上限はここから",
+      "level": "hard",
+      "tags": [
+        "economics"
+      ]
+    },
+    {
+      "id": "concept-allowable-cpa",
+      "en": "allowable-cpa",
+      "kind": "concept",
+      "answer": "許容CPA",
+      "accept": [
+        "許容cpa",
+        "上限CPA",
+        "上限cpa",
+        "目標上限"
+      ],
+      "ja": "期待粗利から可変費と必要利益を引いた、払ってよい上限",
+      "q": "問い合わせ1件の期待粗利から、広告以外の可変費や必要利益を差し引いて決める「1件にいくらまで払えるか」",
+      "explain": "許容CPA ≤ 期待粗利/Lead。Google推奨ではなく事業から逆算する",
+      "level": "hard",
+      "tags": [
+        "economics"
+      ]
+    },
+    {
+      "id": "concept-average-cpa",
+      "en": "average-cpa",
+      "kind": "concept",
+      "answer": "平均CPA",
+      "accept": [
+        "平均cpa",
+        "平均獲得単価"
+      ],
+      "ja": "これまで使った総広告費 ÷ 総CV",
+      "q": "100万円使って100件の問い合わせなら1万円。過去の実績全体の平均",
+      "explain": "平均CPA。過去の説明に向くが、予算を増やす判断には限界CPAを見る",
+      "level": "normal",
+      "tags": [
+        "economics"
+      ]
+    },
+    {
+      "id": "concept-marginal-cpa",
+      "en": "marginal-cpa",
+      "kind": "concept",
+      "answer": "限界CPA",
+      "accept": [
+        "限界cpa",
+        "マージナルCPA",
+        "追加1件のコスト"
+      ],
+      "ja": "次に追加する広告費が生む追加CVのコスト",
+      "q": "追加で20万円使ったら問い合わせが10件増えた。この「次の1件」のコスト2万円",
+      "explain": "限界CPA。平均より高くなるのが普通。予算増の判断はこちら",
+      "level": "hard",
+      "tags": [
+        "economics"
+      ]
+    },
+    {
+      "id": "concept-marginal-profit",
+      "en": "marginal-profit",
+      "kind": "concept",
+      "answer": "限界粗利",
+      "accept": [
+        "限界利益"
+      ],
+      "ja": "追加で獲得する次の案件から期待する粗利",
+      "q": "既存全体の平均ではなく、追加で取る「次の1件」の案件から期待できる粗利",
+      "explain": "限界粗利 vs 限界CPA が予算を増やすかどうかの比較",
+      "level": "hard",
+      "tags": [
+        "economics"
+      ]
+    },
+    {
+      "id": "concept-proxy-signal",
+      "en": "proxy-signal",
+      "kind": "concept",
+      "answer": "代理信号",
+      "accept": [
+        "代理指標",
+        "プロキシ",
+        "proxy"
+      ],
+      "ja": "事業側の言葉を広告側で観測できる指標に置き換えたもの",
+      "q": "「良い問い合わせが欲しい」という事業側の言葉を、CV定義・CV値・オフラインCVという広告側の観測可能なものに翻訳したもの",
+      "explain": "フォームCV数だけでは「良さ」をGoogleは知らない。代理信号を設計するのが運用者",
+      "level": "hard",
+      "tags": [
+        "translation"
+      ]
+    },
+    {
+      "id": "concept-auction-insights",
+      "en": "auction-insights",
+      "kind": "concept",
+      "answer": "オークション分析",
+      "accept": [
+        "Auction Insights",
+        "オークションインサイト",
+        "競合分析"
+      ],
+      "ja": "競合の重なりや上位表示率を見るレポート",
+      "q": "CPCが上がったとき「競合が強くなったのか」を確かめる手がかりになる、競合との重なりや表示率を見るレポート",
+      "explain": "Auction Insights。CPC上昇だけで競合原因と断定しない",
+      "level": "hard",
+      "tags": [
+        "translation"
+      ]
+    },
+    {
+      "id": "concept-decompose-first",
+      "en": "decompose-first",
+      "kind": "concept",
+      "answer": "分解",
+      "accept": [
+        "要因分解",
+        "分解する",
+        "切り分け",
+        "切り分ける"
+      ],
+      "ja": "CPA悪化を見たら入札を下げる前にやること",
+      "q": "CPAが上がった。「入札を下げる」ではなく、CPC・CVR・計測定義・流入構成のどれが動いたかをまず___する",
+      "explain": "禁止反射: × 入札を下げる ／ ○ 何がCPAを生成したかを分解する",
+      "level": "normal",
+      "tags": [
+        "reflex"
+      ]
+    },
+    {
+      "id": "concept-google-recommendation",
+      "en": "google-recommendation",
+      "kind": "concept",
+      "answer": "推奨",
+      "accept": [
+        "Google推奨",
+        "最適化案",
+        "おすすめ",
+        "recommendation"
+      ],
+      "ja": "Google側のモデルが提案している選択肢。自社の目的と照合する",
+      "q": "管理画面に出る「この設定を適用しましょう」というGoogleからの提案。× 適用する ／ ○ 自社の目的・制約と照合する",
+      "explain": "Googleは媒体内の目的を最適化する。会社の粗利・コールセンター能力は知らない",
+      "level": "normal",
+      "tags": [
+        "reflex"
+      ]
+    }
+  ]
+}
