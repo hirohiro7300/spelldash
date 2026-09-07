@@ -48,7 +48,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
   panel.innerHTML = `
     <button type="button" class="word-detail__close" data-detail-close aria-label="閉じる">✕</button>
     <div class="word-detail__head">
-      <span class="word-detail__en">${escapeHtml(word.en)}</span>
+      <span class="word-detail__en">${escapeHtml(word.answer ?? word.en)}</span>
       ${speechTextOf(word) ? `<button type="button" class="speak-button word-detail__speak" id="wordDetailSpeak">🔊</button>` : ""}
     </div>
     <div class="word-detail__ja">${escapeHtml(word.ja)}</div>
