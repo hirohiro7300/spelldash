@@ -490,3 +490,33 @@ html[data-theme="light"] .learned-card__week i.future { background: #f1f5f9; }
 html[data-theme="light"] .result-panel__goal { background: rgba(22, 163, 74, 0.08); border-color: #86efac; color: #15803d; }
 html[data-theme="light"] .result-panel__goal--progress { background: #f8fafc; border-color: #e2e8f0; color: #64748b; }
 html[data-theme="light"] .install__done { color: #15803d; }
+
+/* ---- Batch 3（ライト） ---- */
+html[data-theme="light"] .cal__summary { color: #64748b; }
+html[data-theme="light"] .cal__summary b { color: #0f172a; }
+html[data-theme="light"] .cal__day { background: #e2e8f0; }
+html[data-theme="light"] .cal__day--1 { background: #bbf7d0; }
+html[data-theme="light"] .cal__day--2 { background: #86efac; }
+html[data-theme="light"] .cal__day--3 { background: #4ade80; }
+html[data-theme="light"] .cal__day--4 { background: #16a34a; }
+html[data-theme="light"] .cal__day--future { background: transparent; border-color: #e2e8f0; }
+html[data-theme="light"] .keymiss__top { color: #334155; }
+html[data-theme="light"] .keymiss__top b { color: #b91c1c; }
+html[data-theme="light"] .keymap__key { background: #f1f5f9; color: #64748b; }
+html[data-theme="light"] .keymap__key--1 { background: #fecaca; color: #7f1d1d; }
+html[data-theme="light"] .keymap__key--2 { background: #fca5a5; color: #7f1d1d; }
+html[data-theme="light"] .keymap__key--3 { background: #f87171; color: #fff; }
+html[data-theme="light"] .keymap__key--4 { background: #dc2626; color: #fff; }
+html[data-theme="light"] .keymiss__pairs span { background: #f1f5f9; color: #475569; }
+html[data-theme="light"] button.learned-item__en { color: #0f172a; }
+html[data-theme="light"] .word-detail__backdrop { background: rgba(15, 23, 42, 0.35); }
+html[data-theme="light"] .word-detail__panel { background: #ffffff; border-color: #dbe2ec; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2); }
+html[data-theme="light"] .word-detail__en { color: #0f172a; }
+html[data-theme="light"] .word-detail__ja { color: #334155; }
+html[data-theme="light"] .word-detail__meta, html[data-theme="light"] .word-detail__history, html[data-theme="light"] .word-detail__family { color: #64748b; }
+html[data-theme="light"] .word-detail__status { background: #f1f5f9; color: #334155; }
+html[data-theme="light"] .word-detail__status--learning { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
+html[data-theme="light"] .word-detail__status--mastered { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+html[data-theme="light"] .word-detail__status--weak { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
+html[data-theme="light"] .word-detail__status--known { background: rgba(245, 158, 11, 0.12); color: #92400e; }
+html[data-theme="light"] .word-detail__note label { color: #334155; }

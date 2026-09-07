@@ -94,7 +94,7 @@ export function renderWeakWords() {
 
         return `
           <div class="word-item">
-            <strong>${en}</strong>：${ja} ${leech}<br>
+            <strong>${word ? `<button type="button" class="word-item__detail" data-word-detail="${wordId}">${en}</button>` : en}</strong>：${ja} ${leech}<br>
             ${missDetail} / 正解 ${data.correctCount}回<br>
             ${noteChipHtml(wordId)}
           </div>

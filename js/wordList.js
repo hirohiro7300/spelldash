@@ -74,7 +74,7 @@ function renderWordList(targetWords) {
 
           return `
             <div class="word-item">
-              <strong>${word.en}</strong>：${word.ja}<br>
+              <strong><button type="button" class="word-item__detail" data-word-detail="${word.id}">${word.en}</button></strong>：${word.ja}<br>
               ${labelOf(word.category)} / レベル：${word.level} / 状態：${status}
             </div>
           `;
