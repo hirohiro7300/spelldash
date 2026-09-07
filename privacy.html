@@ -116,11 +116,16 @@
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
+        <a href="#" data-feedback-open>ご意見・不具合</a>
       </nav>
 
       <p class="site-footer__copy">© 2026 SpellDash</p>
     </div>
   </footer>
+  <script type="module">
+    import { setFooterYear } from "./js/footer.js";
+    setFooterYear();
+  </script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js");

@@ -205,6 +205,14 @@
       </div>
 
       <div class="setting-row">
+        <label for="speakCorrectSelect">正解した時にも発音（Study）</label>
+        <select id="speakCorrectSelect" class="setting-select">
+          <option value="on">ON（綴りと音をセットで覚える）</option>
+          <option value="off">OFF</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
         <label for="accentSelect">アクセント</label>
         <select id="accentSelect" class="setting-select">
           <option value="us">アメリカ英語（US）</option>
@@ -230,6 +238,19 @@
 
       <p class="muted" id="audioSettingStatus"></p>
     </section>
+
+    <section class="result-card" id="backupCard">
+      <h3>学習データのバックアップ</h3>
+      <p class="muted">学習の記録・覚えた単語・マイ単語帳・メモ・設定をこの端末からファイルに書き出せます。端末の買い替えやブラウザのデータ消去に備えて、ときどき保存しておくと安心です。</p>
+      <div class="backup-actions">
+        <button type="button" class="btn btn--sm" id="backupExport">📤 書き出す（JSON）</button>
+        <label class="btn btn--sm btn--ghost backup-import">
+          📥 読み込む
+          <input type="file" id="backupImport" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p class="muted" id="backupStatus">読み込むと、この端末のデータはファイルの内容で置き換わります。</p>
+    </section>
   </div>
 
   <footer class="site-footer">
@@ -246,6 +267,7 @@
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
+        <a href="#" data-feedback-open>ご意見・不具合</a>
       </nav>
 
       <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>

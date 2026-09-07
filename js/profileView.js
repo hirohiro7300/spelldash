@@ -7,7 +7,8 @@ import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
-import { getAudioSettings, saveAudioSettings, speak } from "./audio.js";
+import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled } from "./audio.js";
+import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./backup.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
 import { isBgmEnabled, setBgmEnabled } from "./bgm.js";
@@ -98,6 +99,18 @@ function initializeAudioSettings() {
     });
   }
 
+  // 正解時の発音（Studyで自力正解した瞬間に1回）
+  const speakCorrectSelect = document.getElementById("speakCorrectSelect");
+  if (speakCorrectSelect) {
+    speakCorrectSelect.value = isSpeakOnCorrectEnabled() ? "on" : "off";
+    speakCorrectSelect.addEventListener("change", () => {
+      setSpeakOnCorrectEnabled(speakCorrectSelect.value === "on");
+      if (speakCorrectSelect.value === "on") speak("negotiate");
+      statusElement.textContent = "保存しました。";
+      setTimeout(() => (statusElement.textContent = ""), 2000);
+    });
+  }
+
   // BGMのON/OFF（Challenge/Daily中のみ再生される）
   const bgmSelect = document.getElementById("bgmSelect");
   if (bgmSelect) {
@@ -108,6 +121,48 @@ function initializeAudioSettings() {
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });
   }
+}
+
+// ===== 学習データのバックアップ / 復元 =====
+initializeBackup();
+
+function initializeBackup() {
+  const exportButton = document.getElementById("backupExport");
+  const importInput = document.getElementById("backupImport");
+  const status = document.getElementById("backupStatus");
+  if (!exportButton || !importInput || !status) return;
+
+  exportButton.addEventListener("click", () => {
+    try {
+      downloadBackup();
+      status.textContent = "書き出しました。ダウンロードフォルダを確認してください。";
+    } catch {
+      status.textContent = "書き出しに失敗しました。";
+    }
+  });
+
+  importInput.addEventListener("change", async () => {
+    const file = importInput.files?.[0];
+    importInput.value = "";
+    if (!file) return;
+    try {
+      const obj = await readBackupFile(file);
+      const info = inspectBackup(obj);
+      const when = info.exportedAt ? new Date(info.exportedAt).toLocaleString("ja-JP") : "不明";
+      const ok = window.confirm(
+        `このバックアップを読み込みますか？\n\n単語の記録: ${info.words}語 / XP: ${info.xp}\n書き出し日時: ${when}\n\nこの端末の学習データはファイルの内容で置き換わります。`
+      );
+      if (!ok) {
+        status.textContent = "読み込みを中止しました。";
+        return;
+      }
+      applyBackup(obj);
+      status.textContent = `復元しました（${info.words}語）。ページを再読み込みします…`;
+      setTimeout(() => location.reload(), 900);
+    } catch (error) {
+      status.textContent = error.message || "読み込みに失敗しました。";
+    }
+  });
 }
 
 supabase.auth.getSession().then(({ data }) => renderProfile(data.session));

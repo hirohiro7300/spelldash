@@ -560,6 +560,104 @@ console.log("my words:");
   await page.close();
 }
 
+// ===== 9.7 学びの質（Batch 1）: ヒント／メモ／難敵／正解時発音／バックアップ／ご意見 =====
+console.log("learning quality:");
+{
+  // ヒント: 迷ったら次の1文字。見た時点で×扱い、残りを打っても自力扱いにならない
+  const todayKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const page = await newPage({ storage: {
+    spelldash_category: "my",
+    spelldash_streak: JSON.stringify({ last: todayKey, current: 1, best: 1, shields: 0 }), // 今日初プレイの祝いメッセージを外す
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }]),
+    spelldash_word_stats: JSON.stringify({ "my-negotiate": { playCount: 5, correctCount: 0, missCount: 5, typingMiss: 0, recallFail: 5, cleanCorrectStreak: 0, mastered: false, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date(Date.now() - 86400000).toISOString(), lastRecallSuccessAt: null } })
+  } });
+  await page.goto(BASE + "/index.html?set=5&hintms=300", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  // 難敵（5回思い出せていない negotiate）が先頭（Unresolved優先）
+  check("難敵ラベル（4回以上思い出せていない語）", (await page.textContent("#wordMeta")).includes("難敵"), await page.textContent("#wordMeta"));
+  const hintShown = await waitUntil(async () => !(await page.$eval("#hintButton", (el) => el.hidden)), 2000);
+  check("迷っているとヒントボタンが出る", hintShown);
+  await page.click("#hintButton");
+  await page.waitForTimeout(150);
+  check("ヒントで頭文字が入力される", (await page.inputValue("#input")) === "n", await page.inputValue("#input"));
+  check("ヒント使用は×として記録", (await page.textContent("#recallFail")).trim() === "1");
+  check("メモ欄が表示される（覚え方をメモ）", (await page.textContent("#wordNote")).includes("覚え方をメモ"));
+  for (const ch of "egotiate") await page.press("#input", ch);
+  await waitUntil(async () => (await page.textContent("#message")).includes("ヒントあり"), 1500);
+  check("ヒントありで打てた→自力扱いではないメッセージ", (await page.textContent("#message")).includes("ヒントあり"), await page.textContent("#message"));
+  const statHint = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_word_stats"))["my-negotiate"]);
+  check("ヒント正解は lastRecallSuccessAt を更新しない", !statHint.lastRecallSuccessAt && statHint.recallFail === 6, JSON.stringify(statHint).slice(0, 100));
+  // メモ: 答え表示後に書く → 保存 → 表示
+  await waitUntil(async () => (await page.textContent("#japanese")).trim() !== "交渉する", 1500);
+  await page.press("#input", "Enter"); // 答えを見る
+  await page.waitForTimeout(200);
+  await page.click("#noteEdit");
+  await page.fill("#noteInput", "in(中に)+voice(声) → 請求の声");
+  await page.press("#noteInput", "Enter");
+  await page.waitForTimeout(150);
+  check("メモが保存・表示される", (await page.textContent("#wordNote")).includes("請求の声"), await page.textContent("#wordNote"));
+  const notes = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_word_notes") || "{}"));
+  check("メモは spelldash_word_notes に保存", Object.values(notes).some((n) => n.includes("請求の声")));
+  check("学びの質フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  const statsAfter = await page.evaluate(() => localStorage.getItem("spelldash_word_stats"));
+  const myWords = await page.evaluate(() => localStorage.getItem("spelldash_my_words"));
+  const notesRaw = await page.evaluate(() => localStorage.getItem("spelldash_word_notes"));
+  await page.close();
+
+  // 学習データ: 苦手単語に難敵タグとメモ
+  const page2 = await newPage({ storage: { spelldash_word_stats: statsAfter, spelldash_my_words: myWords, spelldash_word_notes: notesRaw } });
+  await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  const weak = await page2.textContent("#weakWords");
+  check("苦手単語に「難敵」タグ", weak.includes("難敵") && weak.includes("negotiate"), weak.slice(0, 80));
+  check("苦手単語にメモが出る", weak.includes("請求の声"));
+  check("学習データでエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  await page2.close();
+
+  // プロフィール: 正解時発音の設定＋バックアップの書き出し/復元
+  const page3 = await newPage({ storage: { spelldash_xp: "1234", spelldash_word_notes: notesRaw } });
+  await page3.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(700);
+  check("正解時発音の設定（既定ON）", (await page3.inputValue("#speakCorrectSelect")) === "on");
+  await page3.selectOption("#speakCorrectSelect", "off");
+  await page3.waitForTimeout(100);
+  const audio = await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_audio") || "{}"));
+  check("正解時発音OFFが保存される", audio.speakOnCorrect === false, JSON.stringify(audio));
+  const backup = await page3.evaluate(async () => {
+    const m = await import("/js/backup.js");
+    return m.buildBackup();
+  });
+  check("バックアップにXPとメモが含まれる", backup.app === "SpellDash" && backup.data.spelldash_xp === "1234" && String(backup.data.spelldash_word_notes).includes("請求の声"));
+  const restored = await page3.evaluate(async (b) => {
+    const m = await import("/js/backup.js");
+    localStorage.setItem("spelldash_xp", "0");
+    localStorage.removeItem("spelldash_word_notes");
+    m.applyBackup(b);
+    return { xp: localStorage.getItem("spelldash_xp"), notes: localStorage.getItem("spelldash_word_notes") };
+  }, backup);
+  check("バックアップから復元できる", restored.xp === "1234" && String(restored.notes).includes("請求の声"));
+  check("プロフィール（設定・バックアップ）でエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
+  await page3.close();
+
+  // ご意見フォーム: フッターから開く→送信（スタブでは失敗→端末に保持）
+  const page4 = await newPage();
+  await page4.goto(BASE + "/news.html", { waitUntil: "networkidle" });
+  await page4.waitForTimeout(500);
+  await page4.click("[data-feedback-open]");
+  await page4.waitForTimeout(150);
+  check("ご意見モーダルが開く", !(await page4.$eval("#feedbackModal", (el) => el.hidden)));
+  await page4.fill("#feedbackMessage", "テスト送信です");
+  await page4.click("#feedbackSubmit");
+  await waitUntil(async () => (await page4.textContent("#feedbackStatus")).includes("ありがとう"), 3000);
+  const fbStatus = await page4.textContent("#feedbackStatus");
+  const queue = await page4.evaluate(() => JSON.parse(localStorage.getItem("spelldash_feedback_queue") || "[]"));
+  check("送信→お礼表示（未接続時は端末に保持）", fbStatus.includes("ありがとう") && (fbStatus.includes("届きました") || queue.length === 1), `${fbStatus} queue=${queue.length}`);
+  check("ご意見フローでエラー0", page4.errors.length === 0, page4.errors[0] ?? "");
+  await page4.close();
+}
+
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====
 console.log("ads category:");
 {

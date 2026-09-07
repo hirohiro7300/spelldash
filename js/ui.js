@@ -1,6 +1,7 @@
 import { renderColoredWord } from "./colors.js";
 import { getBestScore, getWordStats } from "./storage.js";
 import { findWord } from "./wordStore.js";
+import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 
 export const elements = {
   time: document.getElementById("time"),
@@ -89,14 +90,17 @@ export function renderWeakWords() {
           recallFail + typingMiss > 0
             ? `思い出せず ${recallFail}回 / 打ち間違い ${typingMiss}回`
             : `ミス ${data.missCount}回`;
+        const leech = recallFail >= 4 ? `<span class="leech-tag">🔥 難敵</span>` : "";
 
         return `
           <div class="word-item">
-            <strong>${en}</strong>：${ja}<br>
-            ${missDetail} / 正解 ${data.correctCount}回
+            <strong>${en}</strong>：${ja} ${leech}<br>
+            ${missDetail} / 正解 ${data.correctCount}回<br>
+            ${noteChipHtml(wordId)}
           </div>
         `;
       }).join("")}
     </div>
   `;
+  bindNoteEditors(elements.weakWords, () => renderWeakWords());
 }
