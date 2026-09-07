@@ -9,7 +9,8 @@ import {
   setMode,
   getMode,
   speakCurrentWord,
-  startDailyGame
+  startDailyGame,
+  useHint
 } from "./game.js";
 import { renderDailyCard, isDailyPlayedToday } from "./dailyChallenge.js";
 import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
@@ -64,6 +65,12 @@ if (elements.speakButton) {
     elements.input.focus();
   });
 }
+
+// ヒント（Study）: 迷った時に次の1文字だけ。見た時点で×扱い
+document.getElementById("hintButton")?.addEventListener("click", () => {
+  useHint();
+  elements.input.focus();
+});
 
 // モバイルではモード選択後にゲームカードが画面外に残るため、見える位置へ寄せる
 // （すでに十分見えているデスクトップ等では何もしない）

@@ -64,6 +64,22 @@ export function autoSpeak(text) {
   speak(text);
 }
 
+// 正解時の発音（Studyで自力正解した瞬間）: 綴りと音を結びつける。
+// 既定ON。mode=off なら鳴らさない（発音そのものを切っている人を尊重）
+export function isSpeakOnCorrectEnabled() {
+  const settings = getAudioSettings();
+  return settings.mode !== "off" && settings.speakOnCorrect !== false;
+}
+
+export function setSpeakOnCorrectEnabled(enabled) {
+  saveAudioSettings({ ...getAudioSettings(), speakOnCorrect: !!enabled });
+}
+
+export function speakOnCorrect(text) {
+  if (!isSpeakOnCorrectEnabled()) return;
+  speak(text);
+}
+
 // 一部ブラウザは初回getVoicesが空なので事前ロード
 if (window.speechSynthesis) {
   window.speechSynthesis.getVoices();

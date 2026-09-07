@@ -463,3 +463,23 @@ html[data-theme="light"] .learned-item { background: #ffffff; border-color: #dbe
 html[data-theme="light"] .learned-item__en { color: #0f172a; }
 html[data-theme="light"] .learned-item__ja { color: #334155; }
 html[data-theme="light"] .known-fold, html[data-theme="light"] .known-words { color: #64748b; }
+
+/* ---- Batch 1: ヒント・メモ・難敵・ご意見（ライト） ---- */
+html[data-theme="light"] .hint-button { background: rgba(245, 158, 11, 0.12); border-color: #f59e0b; color: #92400e; }
+html[data-theme="light"] .hint-button:hover { background: rgba(245, 158, 11, 0.22); }
+html[data-theme="light"] .word-note { color: #334155; }
+html[data-theme="light"] .word-note__text { background: rgba(245, 158, 11, 0.1); border-color: #f59e0b; color: #92400e; }
+html[data-theme="light"] .word-note__edit, html[data-theme="light"] .word-note__save, html[data-theme="light"] .note-save { border-color: #cbd5e1; color: #475569; }
+html[data-theme="light"] .word-note__edit:hover, html[data-theme="light"] .word-note__save:hover, html[data-theme="light"] .note-save:hover { background: #f1f5f9; color: #0f172a; }
+html[data-theme="light"] .note-input { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
+html[data-theme="light"] .note-chip { border-color: #cbd5e1; color: #475569; }
+html[data-theme="light"] .note-chip--has { border-color: #f59e0b; background: rgba(245, 158, 11, 0.08); color: #92400e; }
+html[data-theme="light"] .leech-tag { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
+html[data-theme="light"] .feedback-modal__backdrop { background: rgba(15, 23, 42, 0.35); }
+html[data-theme="light"] .feedback-modal__panel { background: #ffffff; border-color: #dbe2ec; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2); }
+html[data-theme="light"] .feedback-modal__head h3 { color: #0f172a; }
+html[data-theme="light"] .feedback-modal__lead { color: #334155; }
+html[data-theme="light"] .feedback-modal__panel textarea, html[data-theme="light"] .feedback-modal__panel input { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
+html[data-theme="light"] .feedback-modal__status { color: #15803d; }
+html[data-theme="light"] .feedback-modal__note { color: #64748b; }
+html[data-theme="light"] .word-item strong { color: #0f172a; }

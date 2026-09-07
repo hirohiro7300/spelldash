@@ -12,6 +12,7 @@ import { initializeMyWordsView } from "./myWordsView.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { getLearnedSeries, recordGrowthSnapshot } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, historyDotsHtml } from "./learnedWords.js";
+import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 
 import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
@@ -443,9 +444,11 @@ function renderLearnedWords() {
             <span class="learned-item__ja">${w.ja}</span>
             <span class="learned-item__meta">${w.label}${w.status === "mastered" ? " ・ 習得" : ""}</span>
             ${historyDotsHtml(w.stat)}
+            <span class="learned-item__note">${noteChipHtml(w.id)}</span>
           </div>`
         )
         .join("") + (list.length > shown.length ? `<p class="muted">ほか ${list.length - shown.length} 語</p>` : "");
+    bindNoteEditors(container, () => renderLearnedWords());
   }
 
   const knownContainer = document.getElementById("knownWordList");

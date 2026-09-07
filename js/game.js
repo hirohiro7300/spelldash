@@ -70,7 +70,8 @@ import {
 import { bumpActivity, markDailyDone } from "./activity.js";
 import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel, consumeBoostNote } from "./difficulty.js";
 import { pushSync, recordPlaySession } from "./sync.js";
-import { speak, autoSpeak } from "./audio.js";
+import { speak, autoSpeak, speakOnCorrect } from "./audio.js";
+import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import {
   elements,
   showMessage,
@@ -113,6 +114,13 @@ let setReviewCount = 0;
 let setCompletePending = false;
 let currentWordKind = ""; // new / review / weak / repeat / ""
 let wordSerial = 0; // setNewWordごとに増える。正解直後の二重進行防止に使う
+
+// ヒント（Study）: 迷ったら次の1文字だけ見せる。見た時点で「自力」ではなくなる（×扱い）
+// 「全く出てこない」と「見れば分かる」の間を埋め、数問後の「思い出せた！」につなげる
+const HINT_DELAY_MS = Number(new URLSearchParams(location.search).get("hintms")) || 7000;
+const LEECH_FAILS = 4; // これ以上思い出せていない語は「難敵」
+let hintUsed = false;
+let hintTimer = null;
 
 export function setActiveCategory(categoryId) {
   activeCategory = categoryId;
@@ -169,6 +177,8 @@ export function stopGame() {
   hideResultPanel();
   renderStudyQueue(false);
   renderSetProgress();
+  hideHint();
+  renderWordNote(null);
   const meta = document.getElementById("wordMeta");
   if (meta) meta.textContent = "";
 }
@@ -410,12 +420,10 @@ export function handleBeforeInput(event) {
   }
 }
 
-// Enter1回目 or 1ミスタイプ: 不正解 → 答えを表示（recallFailとして記録）
-function revealAnswer(fromMiss = false) {
-  isRevealed = true;
+// 「思い出せなかった」の記録（答え表示・ヒントで共通）。1語につき1回だけ
+function markRecallFail() {
   recallFailCount++;
   if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
-  if (!fromMiss) sfxReveal(); // ミス起点ではsfxMissが鳴っているので重ねない
 
   recordRecallFail(currentWord.id);
 
@@ -430,10 +438,21 @@ function revealAnswer(fromMiss = false) {
   combo = 0;
   updateCombo(0);
   renderPlayScore();
+}
+
+// Enter1回目 or 1ミスタイプ: 不正解 → 答えを表示（recallFailとして記録）
+function revealAnswer(fromMiss = false) {
+  isRevealed = true;
+  hideHint();
+  if (!fromMiss) sfxReveal(); // ミス起点ではsfxMissが鳴っているので重ねない
+
+  // ヒントを見た時点で×は記録済み。二重に数えない
+  if (!hintUsed) markRecallFail();
 
   showColoredAnswer(currentWord.en);
   renderWordFamily(currentWord);
   renderWordHistory();
+  renderWordNote(currentWord);
 
   // 発音: autoなら1回再生。スピーカーボタンも表示
   autoSpeak(currentWord.en);
@@ -446,12 +465,107 @@ function revealAnswer(fromMiss = false) {
   elements.input.value = "";
   clearTypedPreview();
 
+  const stat = getWordStats()[currentWord.id];
+  const leech = (stat?.recallFail ?? 0) >= LEECH_FAILS;
   showMessage(
     fromMiss
       ? "ミス！正しいスペルを見て打ち直そう"
-      : "答えを表示。入力して練習 or Enterで次へ",
+      : leech
+        ? `答えを表示。${stat.recallFail}回目の難敵。覚え方を📝メモしておくと効くよ`
+        : "答えを表示。入力して練習 or Enterで次へ",
     fromMiss ? "wrong" : "revealed"
   );
+}
+
+// ===== ヒント（Study） =====
+function scheduleHint() {
+  clearTimeout(hintTimer);
+  hintTimer = null;
+  if (mode !== "study" || !isPlaying) return;
+  hintTimer = setTimeout(() => {
+    if (!isPlaying || !currentWord || isRevealed || mode !== "study") return;
+    const button = document.getElementById("hintButton");
+    if (button) button.hidden = false;
+  }, HINT_DELAY_MS);
+}
+
+function hideHint() {
+  clearTimeout(hintTimer);
+  hintTimer = null;
+  const button = document.getElementById("hintButton");
+  if (button) button.hidden = true;
+}
+
+// 次の1文字を見せる（＝その文字を受理する）。最初のヒントで×を記録
+export function useHint() {
+  if (!isPlaying || !currentWord || isRevealed || mode !== "study") return;
+
+  if (!hintUsed) {
+    hintUsed = true;
+    hasMissedCurrentWord = true; // クリーン判定からも外す
+    markRecallFail();
+    renderWordHistory();
+    renderWordNote(currentWord);
+    sfxReveal();
+  }
+
+  const nextChar = currentWord.en[currentIndex];
+  const total = currentWord.en.length;
+  const shown = currentIndex + 1;
+  showHiddenWordText(
+    `💡 ${currentWord.en.slice(0, shown)}${"・".repeat(Math.max(0, total - shown))}（${total}文字）`
+  );
+  showMessage(
+    shown === 1
+      ? `💡 頭文字は「${nextChar}」。残りを自力で打ってみよう（ヒントを見たので、この語はまた出すね）`
+      : `💡 次は「${nextChar}」。続きを打ってみよう`,
+    "revealed"
+  );
+
+  elements.input.value += nextChar;
+  updateTypedPreview(elements.input.value);
+  acceptChar();
+}
+
+// ===== 自分のメモ（覚え方）: 答え表示・ヒント後に表示＋編集 =====
+function renderWordNote(word) {
+  const el = document.getElementById("wordNote");
+  if (!el) return;
+  if (!word || mode !== "study") {
+    el.innerHTML = "";
+    return;
+  }
+
+  const note = getNote(word.id);
+  el.innerHTML = note
+    ? `<span class="word-note__text">📝 ${escapeHtml(note)}</span><button type="button" class="word-note__edit" id="noteEdit">編集</button>`
+    : `<button type="button" class="word-note__edit word-note__edit--add" id="noteEdit">📝 覚え方をメモ</button>`;
+
+  document.getElementById("noteEdit")?.addEventListener("click", () => {
+    el.innerHTML = `
+      <input type="text" class="note-input" id="noteInput" maxlength="${NOTE_MAX_LENGTH}" placeholder="覚え方（例: nego＝交渉のネゴ）" value="${escapeHtml(note)}" autocomplete="off" />
+      <button type="button" class="word-note__save" id="noteSave">保存</button>
+    `;
+    const input = document.getElementById("noteInput");
+    const save = () => {
+      setNote(word.id, input.value);
+      renderWordNote(word);
+      elements.input.focus();
+    };
+    document.getElementById("noteSave")?.addEventListener("click", save);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        save();
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        renderWordNote(word);
+        elements.input.focus();
+      }
+    });
+    input.focus();
+  });
 }
 
 export function speakCurrentWord() {
@@ -515,11 +629,15 @@ function completeWord() {
   score++;
   elements.score.textContent = score;
   pulseScore();
+  hideHint();
 
-  if (isRevealed) {
-    sfxSoftCorrect();
-  } else {
+  // 自力 = 答えもヒントも見ていない
+  const selfRecall = !isRevealed && !hintUsed;
+
+  if (selfRecall) {
     sfxCorrect(combo);
+  } else {
+    sfxSoftCorrect();
   }
 
   // Dailyのシェア用グリッド: 🟩自力正解 🟨答えを見て正解
@@ -536,8 +654,8 @@ function completeWord() {
     }
   }
 
-  // clean = 思い出せて、かつ打ち間違いもなし
-  const isClean = !hasMissedCurrentWord && !isRevealed;
+  // clean = 思い出せて、かつ打ち間違いもなし（ヒント使用は hasMissedCurrentWord=true で除外済み）
+  const isClean = !hasMissedCurrentWord && selfRecall;
 
   // 当日初の自力正解かどうか（XPと学習ループの判定に使う。記録前に見る）
   const prevStat = getWordStats()[currentWord.id];
@@ -549,7 +667,7 @@ function completeWord() {
   //  retained  = 1日以上前に覚えた語を復習で思い出せた（定着）
   //  known     = 初見でノーミス自力正解（もともと知っていた）
   let learnEvent = null;
-  if (mode === "study" && !isRevealed && prevStat) {
+  if (mode === "study" && selfRecall && prevStat) {
     if (isUnresolved(prevStat)) {
       const failDay = prevStat.lastRecallFailAt ? localDateString(new Date(prevStat.lastRecallFailAt)) : null;
       learnEvent = failDay && failDay !== localDateString() ? "learned" : "recovered";
@@ -565,11 +683,12 @@ function completeWord() {
   // 答えを見ずに正解 = 自力で思い出せた（打ち間違いは許容）
   // ※答え表示後の入力練習では lastRecallSuccessAt を更新しない
   let loopResult = null;
-  if (!isRevealed) {
+  if (selfRecall) {
     recordRecallSuccess(currentWord.id);
     if (mode === "study") bumpActivity("studyCorrect"); // KPI心拍
 
     if (mode === "study") {
+      speakOnCorrect(currentWord.en); // 綴りを打てた直後に音でも確認（設定で切れる）
       loopResult = queueRecallSuccess(currentWord.id);
       playRecallSuccessEffect();
       updateRecalledToday();
@@ -599,7 +718,7 @@ function completeWord() {
   // 自力正解は 基本10+クリーン5+コンボ最大10。
   // ただしStudyでの同日反復（2回目以降の自力正解）は少額XP（反復の目的は定着でありXP稼ぎではない）
   let wordXp;
-  if (isRevealed) {
+  if (!selfRecall) {
     wordXp = mode === "study" ? (claimPracticeXp(currentWord.id) ? 5 : 0) : 5;
   } else if (mode === "study" && !firstRecallToday) {
     wordXp = REPEAT_SUCCESS_XP;
@@ -864,6 +983,12 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     return;
   }
 
+  // ヒントを見て打てた: 自力ではないが、次に自力で打てる準備はできた
+  if (hintUsed && !isRevealed) {
+    showMessage(`💡 ヒントありで打てた。数問後にもう一度、今度は自力で${earned > 0 ? `  +${earned} XP` : ""}`, "revealed");
+    return;
+  }
+
   // 自力正解: 学びの種類ごとに違う言葉で（数字より意味）
   if (!isRevealed) {
     const xp = earned > 0 ? `  +${earned} XP` : "";
@@ -944,6 +1069,9 @@ function setNewWord() {
   currentIndex = 0;
   hasMissedCurrentWord = false;
   isRevealed = false;
+  hintUsed = false;
+  hideHint();
+  renderWordNote(null);
 
   elements.japanese.textContent = currentWord.ja;
   showHiddenWordText("分からないときは Enter で答えを表示");
@@ -961,6 +1089,7 @@ function setNewWord() {
   const hist = document.getElementById("wordHistory");
   if (hist) hist.innerHTML = "";
   recordPlay(currentWord.id);
+  scheduleHint();
 }
 
 // 単語の状態ラベル（Studyのみ）: 「なぜ今この単語が出たか」を1行で見せる
@@ -979,7 +1108,8 @@ function renderWordMeta() {
     label = "✨ 新しい単語";
     currentWordKind = "new";
   } else if (isUnresolved(stat)) {
-    label = "♻️ もう一度（前回は思い出せなかった）";
+    const fails = stat.recallFail ?? 0;
+    label = fails >= LEECH_FAILS ? `🔥 難敵（${fails}回思い出せていない）今度こそ` : "♻️ もう一度（前回は思い出せなかった）";
     currentWordKind = "weak";
   } else if (isLearningToday(stat)) {
     label = `🔁 今日の反復 ${Math.min((stat.dailyLearningStage ?? 0) + 1, NEW_WORD_DAILY_SUCCESS_TARGET)}/${NEW_WORD_DAILY_SUCCESS_TARGET}`;

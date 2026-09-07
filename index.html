@@ -171,16 +171,28 @@
       <p id="wordHistory" class="word-history" aria-live="polite"></p>
 
       <p id="wordFamily" class="word-family"></p>
+      <div id="wordNote" class="word-note"></div>
 
-      <button
-        id="speakButton"
-        type="button"
-        class="speak-button"
-        aria-label="発音を再生"
-        hidden
-      >
-        🔊 発音
-      </button>
+      <div class="word-tools">
+        <button
+          id="hintButton"
+          type="button"
+          class="hint-button"
+          aria-label="ヒント（次の1文字）"
+          hidden
+        >
+          💡 ヒント
+        </button>
+        <button
+          id="speakButton"
+          type="button"
+          class="speak-button"
+          aria-label="発音を再生"
+          hidden
+        >
+          🔊 発音
+        </button>
+      </div>
 
       <!-- 入力欄の中に虹色テキストを重ねる -->
       <div class="input-wrapper">
@@ -291,6 +303,7 @@
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
+        <a href="#" data-feedback-open>ご意見・不具合</a>
       </nav>
 
       <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>

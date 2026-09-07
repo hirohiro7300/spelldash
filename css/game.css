@@ -2453,3 +2453,271 @@ button:hover {
   .game-card--learned { animation: none; box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.6); }
   .learn-stamp { animation: none; opacity: 1; transform: translate(-50%, -50%) rotate(-8deg); }
 }
+
+/* ===== Batch 1: ヒント・メモ・難敵・バックアップ・ご意見 ===== */
+.word-tools {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 0 18px;
+  min-height: 0;
+}
+
+.word-tools:has(> [hidden]:only-child),
+.word-tools:not(:has(> :not([hidden]))) {
+  margin: 0;
+}
+
+.word-tools .speak-button {
+  margin: 0;
+}
+
+.hint-button {
+  padding: 8px 18px;
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.12);
+  color: #fde68a;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  animation: hint-in 0.35s ease-out;
+}
+
+.hint-button:hover {
+  background: rgba(250, 204, 21, 0.22);
+}
+
+@keyframes hint-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 自分のメモ（ゲームカード内） */
+.word-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 2px 0 10px;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.word-note:empty {
+  display: none;
+}
+
+.word-note__text {
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(250, 204, 21, 0.1);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  color: #fde68a;
+}
+
+.word-note__edit,
+.word-note__save,
+.note-save {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.word-note__edit:hover,
+.word-note__save:hover,
+.note-save:hover {
+  background: rgba(148, 163, 184, 0.14);
+  color: #e2e8f0;
+}
+
+.word-note__edit--add {
+  border-style: dashed;
+}
+
+.note-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 360px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.6);
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+/* 一覧内のメモチップ */
+.note-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.note-chip--has {
+  border-style: solid;
+  border-color: rgba(250, 204, 21, 0.4);
+  background: rgba(250, 204, 21, 0.08);
+  color: #fde68a;
+}
+
+.note-chip--editing {
+  border-style: solid;
+  cursor: default;
+  padding: 2px 4px;
+}
+
+.note-chip--editing .note-input {
+  flex-basis: 180px;
+  padding: 4px 8px;
+}
+
+.learned-item__note {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.learned-item__note .note-chip {
+  white-space: normal;
+}
+
+.leech-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+  font-size: 11.5px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.word-item .note-chip {
+  margin-top: 6px;
+}
+
+/* バックアップ */
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 8px;
+}
+
+.backup-import {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* ご意見・不具合モーダル */
+.feedback-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.feedback-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.feedback-modal__panel {
+  position: relative;
+  width: min(480px, 100%);
+  padding: 18px 20px 14px;
+  border-radius: 16px;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feedback-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feedback-modal__head h3 {
+  margin: 0;
+  font-size: 17px;
+  color: #f8fafc;
+}
+
+.feedback-modal__close {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.feedback-modal__lead {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 13.5px;
+}
+
+.feedback-modal__panel textarea,
+.feedback-modal__panel input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  color: #f8fafc;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.feedback-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.feedback-modal__status {
+  color: #86efac;
+  font-size: 13px;
+}
+
+.feedback-modal__note {
+  margin: 0;
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.site-footer__nav [data-feedback-open] {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint-button { animation: none; }
+}
