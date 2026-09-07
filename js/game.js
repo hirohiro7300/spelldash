@@ -35,8 +35,13 @@ import {
   isLearningToday,
   isReviewDue,
   getSessionReviewCount,
-  getDueReviewCount
+  getDueReviewCount,
+  startRetryQueue,
+  isPlacementRun,
+  getQueueComposition
 } from "./studyQueue.js";
+import { getWeekGoal, getActiveDaysThisWeek } from "./growthLog.js";
+import { canInstall, promptInstall } from "./installPrompt.js";
 import { REPEAT_SUCCESS_XP, NEW_WORD_DAILY_SUCCESS_TARGET } from "./studyConfig.js";
 import {
   renderStudyQueue,
@@ -68,7 +73,7 @@ import {
   sfxSparkle
 } from "./sfx.js";
 import { bumpActivity, markDailyDone } from "./activity.js";
-import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel, consumeBoostNote } from "./difficulty.js";
+import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel, consumeBoostNote, consumePlacementNote } from "./difficulty.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak, speakOnCorrect } from "./audio.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
@@ -121,6 +126,7 @@ const HINT_DELAY_MS = Number(new URLSearchParams(location.search).get("hintms"))
 const LEECH_FAILS = 4; // これ以上思い出せていない語は「難敵」
 let hintUsed = false;
 let hintTimer = null;
+let retryIds = null; // 「思い出せなかった語だけもう1周」中はその語のID配列
 
 export function setActiveCategory(categoryId) {
   activeCategory = categoryId;
@@ -197,8 +203,10 @@ export function startDailyGame() {
   return true;
 }
 
-export function startGame() {
+export function startGame(options = {}) {
   if (isPlaying) return;
+  const retry = Array.isArray(options.retry) && options.retry.length > 0 ? options.retry : null;
+  let composition = null;
 
   if (getWordsByCategory(activeCategory).length === 0) {
     showMessage(
@@ -253,7 +261,10 @@ export function startGame() {
 
   // Study: Recall Loopキューを構築（Unresolved → Mission Review → 復習期限 → Mission New → 通常）
   if (mode === "study") {
-    startStudyQueue(activeCategory);
+    retryIds = retry;
+    if (retry) startRetryQueue(retry);
+    else startStudyQueue(activeCategory);
+    composition = getQueueComposition(); // 最初の1語を取り出す前に構成を控える
     updateRecalledToday();
     setRecalled = new Set();
     setFailed = new Set();
@@ -266,9 +277,23 @@ export function startGame() {
 
   setNewWord();
 
-  // 復習の見える化: 期日が来た単語から始まることを伝える
-  if (mode === "study" && getSessionReviewCount() > 0) {
-    showMessage(`↻ 今日の復習 ${getSessionReviewCount()}語からスタート。思い出せるかな？`, "revealed");
+  // セットの中身を先に伝える（何をやるか分かってから始める）
+  if (mode === "study") {
+    if (retry) {
+      showMessage(`🔁 思い出せなかった ${retry.length}語 をもう一度。全部自力で打てたら回収完了`, "revealed");
+    } else if (isPlacementRun()) {
+      showMessage("まず腕試し10語。知ってる語はそのまま打って、知らない語はEnterで答えを見てOK", "revealed");
+    } else {
+      const c = composition ?? getQueueComposition();
+      const parts = [];
+      if (c.review > 0) parts.push(`復習 ${c.review}`);
+      if (c.weak > 0) parts.push(`苦手 ${c.weak}`);
+      if (c.repeat > 0) parts.push(`反復 ${c.repeat}`);
+      if (c.fresh > 0) parts.push(`新しい語 ${c.fresh}`);
+      if (c.review > 0 || c.weak > 0) {
+        showMessage(`${parts.join("・")} からスタート。思い出せるかな？`, "revealed");
+      }
+    }
   }
 
   // タイマーはChallengeのみ
@@ -704,7 +729,7 @@ function completeWord() {
         if (currentWordKind === "new") setNewCount++;
         if (currentWordKind === "review") setReviewCount++;
         renderSetProgress();
-        if (setRecalled.size >= getSetSize()) setCompletePending = true;
+        if (setRecalled.size >= currentSetSize()) setCompletePending = true;
       }
     }
   }
@@ -736,6 +761,7 @@ function completeWord() {
     if (consumeBoostNote()) {
       setTimeout(() => showMessage("知ってる語が多いみたい。少し難しい単語も混ぜていくね", "revealed"), 1200);
     }
+    announcePlacement();
   } else {
     gainedXp += earned;
 
@@ -778,6 +804,11 @@ function snapshotGrowth() {
 }
 
 // ===== 今日のセット: 進捗と完了 =====
+// セットの目標語数（回収モードではその語数）
+function currentSetSize() {
+  return retryIds ? retryIds.length : getSetSize();
+}
+
 function renderSetProgress() {
   const el = document.getElementById("setProgress");
   if (!el) return;
@@ -785,10 +816,10 @@ function renderSetProgress() {
     el.innerHTML = "";
     return;
   }
-  const size = getSetSize();
+  const size = currentSetSize();
   const done = Math.min(setRecalled.size, size);
   el.innerHTML = `
-    <span class="set-progress__label">今日のセット</span>
+    <span class="set-progress__label">${retryIds ? "もう一度" : "今日のセット"}</span>
     <span class="set-progress__count"><b>${done}</b> / ${size}</span>
     <span class="set-progress__bar"><i style="width:${(done / size) * 100}%"></i></span>
   `;
@@ -868,15 +899,31 @@ function renderSetWordChips() {
   );
 }
 
+// 腕試し（初回10語）の結果を1回だけ伝える。答え表示後にも出るよう、少し遅らせて上書きする
+function announcePlacement() {
+  const p = consumePlacementNote();
+  if (!p) return;
+  const line =
+    p.boost >= 2
+      ? `腕試し: ${p.total}語中 ${p.known}語 知ってた！難しい単語も最初から混ぜていくね`
+      : p.boost === 1
+        ? `腕試し: ${p.total}語中 ${p.known}語 知ってた。少し難しい単語も混ぜていくね`
+        : `腕試し: ${p.total}語中 ${p.known}語 知ってた。まずは基本の単語から一緒に積み上げよう`;
+  setTimeout(() => showMessage(`🎯 ${line}`, "revealed"), 1300);
+}
+
 function endStudySession() {
   clearInterval(timer);
   isPlaying = false;
   setCompletePending = false;
   currentWord = null;
 
+  const isRetry = !!retryIds;
+  retryIds = null;
   const recalled = setRecalled.size;
-  const failed = [...setFailed].filter((id) => !setRecalled.has(id)).length;
-  const state = markDailySetDone(recalled);
+  const failedIds = [...setFailed].filter((id) => !setRecalled.has(id));
+  const failed = failedIds.length;
+  const state = isRetry ? { setsToday: getSetsToday() } : markDailySetDone(recalled);
   pushSync();
 
   elements.japanese.textContent = "Study Mode";
@@ -895,28 +942,54 @@ function endStudySession() {
   tomorrow.setHours(23, 59, 59, 999);
   const dueTomorrow = getDueReviewCount(activeCategory, tomorrow.getTime());
 
+  // 週の目標（学習日数）: ちょうど達成した日は一言添える
+  const goal = getWeekGoal();
+  const activeDays = getActiveDaysThisWeek();
+  const goalLine =
+    activeDays >= goal
+      ? `<div class="result-panel__goal">🎯 今週の目標 ${goal}日 達成！（${activeDays}日目）</div>`
+      : `<div class="result-panel__goal result-panel__goal--progress">今週 ${activeDays} / ${goal}日 ・ 目標まであと${goal - activeDays}日</div>`;
+
   const panel = document.getElementById("resultPanel");
   if (panel) {
+    const hasumiLine = isRetry
+      ? failed === 0
+        ? { mood: "happy", text: `${recalled}語ぜんぶ回収！さっき出てこなかった語が、もう自分のものだよ！` }
+        : { mood: "happy", text: `${recalled}語回収！残りはまた明日、一緒に確認しよう！` }
+      : hasumiSetLine({ count: recalled, failed, sets: state.setsToday });
     panel.innerHTML = `
-      <div class="result-panel__title">🎉 今日のセット完了</div>
-      ${hasumiBubbleHtml(hasumiSetLine({ count: recalled, failed, sets: state.setsToday }), "hasumi--result")}
+      <div class="result-panel__title">${isRetry ? "🔁 回収完了" : "🎉 今日のセット完了"}</div>
+      ${hasumiBubbleHtml(hasumiLine, "hasumi--result")}
       <div class="result-panel__grid">
         <div><span>思い出せた</span><strong>${recalled}語</strong></div>
-        <div><span>うち復習</span><strong>${setReviewCount}</strong></div>
-        <div><span>新しく覚えた</span><strong>${setNewCount}</strong></div>
+        ${isRetry ? "" : `<div><span>うち復習</span><strong>${setReviewCount}</strong></div>
+        <div><span>新しく覚えた</span><strong>${setNewCount}</strong></div>`}
         <div><span>思い出せず</span><strong>${failed}</strong></div>
         <div><span>明日の復習予定</span><strong>${dueTomorrow}語</strong></div>
       </div>
       ${renderSetWordChips()}
+      ${goalLine}
       <div class="result-panel__actions">
-        <button type="button" class="result-panel__action" id="setAgain">もう1セット</button>
+        ${failed > 0 ? `<button type="button" class="result-panel__action" id="setRetry">思い出せなかった${failed}語をもう一度</button>` : ""}
+        <button type="button" class="result-panel__action${failed > 0 ? " result-panel__action--ghost" : ""}" id="setAgain">もう1セット</button>
         <button type="button" class="result-panel__action result-panel__action--ghost" id="setChallenge">Challengeで腕試し</button>
+        ${canInstall() ? `<button type="button" class="result-panel__action result-panel__action--ghost" id="setInstall">📲 ホーム画面に追加</button>` : ""}
       </div>
       <div class="result-panel__tagline">今日も、はちゃんと少しだけ。</div>
     `;
     panel.hidden = false;
     panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     panel.querySelectorAll("[data-speak]").forEach((chip) => chip.addEventListener("click", () => speak(chip.dataset.speak)));
+    document.getElementById("setRetry")?.addEventListener("click", () => {
+      clearInterval(timer);
+      isPlaying = false;
+      startGame({ retry: failedIds });
+      elements.input.focus();
+    });
+    document.getElementById("setInstall")?.addEventListener("click", async (event) => {
+      const outcome = await promptInstall();
+      event.currentTarget.textContent = outcome === "accepted" ? "✓ 追加しました" : "📲 ホーム画面に追加";
+    });
     document.getElementById("setAgain")?.addEventListener("click", () => {
       restartGame();
       elements.input.focus();
@@ -928,7 +1001,7 @@ function endStudySession() {
     });
   }
 
-  showMessage(`今日のぶん完了！${recalled}語思い出せた`, "finished");
+  showMessage(isRetry ? `回収完了！${recalled}語をもう一度思い出せた` : `今日のぶん完了！${recalled}語思い出せた`, "finished");
 }
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）

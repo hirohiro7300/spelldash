@@ -30,6 +30,7 @@ import { renderWeeklyReport } from "./weeklyReport.js";
 import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
+import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
 
 initializeAuth();
 setFooterYear();

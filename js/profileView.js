@@ -13,6 +13,8 @@ import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
 import { isBgmEnabled, setBgmEnabled } from "./bgm.js";
 import { getSetSize, setSetSize } from "./dailySet.js";
+import { getWeekGoal, setWeekGoal } from "./growthLog.js";
+import { renderInstallCard } from "./installPrompt.js";
 
 const loggedOutElement = document.getElementById("profileLoggedOut");
 const profileCardElement = document.getElementById("profileCard");
@@ -47,6 +49,18 @@ window.addEventListener("spelldash:synced", () => {
     select.addEventListener("change", () => setSetSize(select.value));
   }
 }
+
+// ===== 週の学習日目標 =====
+{
+  const select = document.getElementById("weekGoalSelect");
+  if (select) {
+    select.value = String(getWeekGoal());
+    select.addEventListener("change", () => setWeekGoal(select.value));
+  }
+}
+
+// ===== ホーム画面に追加 =====
+renderInstallCard("installCard");
 
 // ===== 見た目の設定（テーマ: 白/黒） =====
 initializeThemeSetting();

@@ -3,7 +3,14 @@ import { getWordsByCategory } from "./wordStore.js";
 import { getTodayMission } from "./mission.js";
 import { setDailyLearning, localDateString } from "./stats.js";
 import { getFamiliarRatio } from "./studyMix.js";
-import { allowedWordLevels, filterByAllowedLevels, recordFirstSight } from "./difficulty.js";
+import {
+  allowedWordLevels,
+  filterByAllowedLevels,
+  recordFirstSight,
+  isPlacementPending,
+  markPlacementStarted,
+  PLACEMENT_MIX
+} from "./difficulty.js";
 import {
   MAX_ACTIVE_NEW_WORDS,
   NEW_WORD_DAILY_SUCCESS_TARGET,
@@ -66,6 +73,8 @@ let sessionFailCounts = new Map();
 let practicedXpClaimed = new Set();
 let recalledThisSession = new Set(); // Familiar語のセッション内再出題防止（学習中語は含めない）
 let activeCategoryId = "all";
+let restricted = false; // 「思い出せなかった語だけもう1周」: 補充しない
+let placementRun = false; // このセッションが腕試し（初回10語）か
 
 function todayString() {
   return localDateString();
@@ -189,6 +198,7 @@ function isNew(stat) {
 // ===== 通常補充（Mix Controlの比率はここだけに効く） =====
 
 function pickFillers(count, excludeSet) {
+  if (restricted) return []; // 回収モードは指定語だけ
   const stats = getWordStats();
   const ratio = getFamiliarRatio();
   const mission = getTodayMission();
@@ -289,6 +299,8 @@ export function startStudyQueue(categoryId) {
   sessionFailCounts = new Map();
   practicedXpClaimed = new Set();
   recalledThisSession = new Set();
+  restricted = false;
+  placementRun = false;
 
   const stats = getWordStats();
   const words = categoryWordsDeduped();
@@ -304,14 +316,31 @@ export function startStudyQueue(categoryId) {
     queue.push(id);
   };
 
-  // 0. 初回体験: 学習履歴が全く無ければ、短くて易しい単語から始める
-  //    （最初の1語の成功体験を30秒以内に作る。2回目以降は発動しない）
-  if (Object.keys(stats).length === 0) {
-    words
+  // 0. 初回体験＝腕試し: 学習履歴が全く無ければ、短くて易しい3語で成功体験を作ってから
+  //    普通4語・難しい3語を混ぜた計10語で「どこから始めるか」を決める（2回目以降は発動しない）
+  if (Object.keys(stats).length === 0 && isPlacementPending()) {
+    const byLevel = (level) => shuffle(words.filter((w) => w.level === level));
+    const easy = words
       .filter((w) => w.level === "easy")
       .sort((a, b) => a.en.length - b.en.length)
-      .slice(0, 3)
-      .forEach((w) => push(w.id));
+      .slice(0, PLACEMENT_MIX.easy);
+    const rest = shuffle([...byLevel("normal").slice(0, PLACEMENT_MIX.normal), ...byLevel("hard").slice(0, PLACEMENT_MIX.hard)]);
+    const picks = [...easy, ...rest];
+    if (picks.length >= 6) {
+      picks.forEach((w) => {
+        push(w.id);
+        markIntroduced(w.id); // 初見の「知ってた／知らなかった」を記録対象にする
+      });
+      markPlacementStarted();
+      placementRun = true;
+    } else {
+      // 難易度が偏ったカテゴリ（マイ単語帳等）: 従来どおり短い語から
+      words
+        .filter((w) => w.level === "easy")
+        .sort((a, b) => a.en.length - b.en.length)
+        .slice(0, 3)
+        .forEach((w) => push(w.id));
+    }
   }
 
   // 1. Unresolved
@@ -337,6 +366,35 @@ export function startStudyQueue(categoryId) {
   if (queue.length < MIN_QUEUE) {
     queue.push(...pickFillers(MIN_QUEUE - queue.length, new Set(queue)));
   }
+}
+
+// 「思い出せなかった語だけもう1周」: 指定語だけを回す（補充なし）。全部自力で思い出せたら終わり
+export function startRetryQueue(ids) {
+  queue = shuffle([...new Set(ids)]);
+  sessionFailCounts = new Map();
+  practicedXpClaimed = new Set();
+  recalledThisSession = new Set();
+  sessionReviewCount = 0;
+  restricted = true;
+  placementRun = false;
+}
+
+export function isPlacementRun() {
+  return placementRun;
+}
+
+// セッション開始時のキュー構成（開始メッセージ用）
+export function getQueueComposition() {
+  const stats = getWordStats();
+  const c = { weak: 0, review: 0, repeat: 0, fresh: 0, total: queue.length };
+  for (const id of queue) {
+    const s = stats[id];
+    if (!s || (s.playCount ?? 0) === 0) c.fresh++;
+    else if (isUnresolved(s)) c.weak++;
+    else if (isLearningToday(s)) c.repeat++;
+    else if (isReviewDue(s)) c.review++;
+  }
+  return c;
 }
 
 function refillIfNeeded() {
