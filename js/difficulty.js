@@ -11,10 +11,61 @@ import { getLevelState } from "./level.js";
 export const UNLOCK_NORMAL_LEVEL = 5;
 export const UNLOCK_HARD_LEVEL = 10;
 
+// ===== 難易度の自動引き上げ =====
+// 初見の新語を「知ってた」割合が高い人（社会人の学び直し等）に、
+// レベルを待たずに次の難易度を混ぜる。直近12語中9語以上知っていたら1段上げる。
+const FIRST_SIGHT_KEY = "spelldash_first_sight";
+const BOOST_KEY = "spelldash_level_boost";
+const BOOST_NOTE_KEY = "spelldash_level_boost_note";
+const FIRST_SIGHT_WINDOW = 12;
+const FIRST_SIGHT_THRESHOLD = 9;
+
+export function getLevelBoost() {
+  const v = Number(localStorage.getItem(BOOST_KEY)) || 0;
+  return Math.max(0, Math.min(2, v));
+}
+
+// 初見の結果を記録し、条件を満たせば1段ブースト（戻すことはしない）
+export function recordFirstSight(known) {
+  let log = [];
+  try {
+    log = JSON.parse(localStorage.getItem(FIRST_SIGHT_KEY) || "[]");
+    if (!Array.isArray(log)) log = [];
+  } catch {
+    log = [];
+  }
+  log.push(!!known);
+  log = log.slice(-FIRST_SIGHT_WINDOW);
+
+  let boosted = false;
+  if (log.length >= FIRST_SIGHT_WINDOW && log.filter(Boolean).length >= FIRST_SIGHT_THRESHOLD && getLevelBoost() < 2) {
+    localStorage.setItem(BOOST_KEY, String(getLevelBoost() + 1));
+    localStorage.setItem(BOOST_NOTE_KEY, "1");
+    log = [];
+    boosted = true;
+  }
+  localStorage.setItem(FIRST_SIGHT_KEY, JSON.stringify(log));
+  return { boosted };
+}
+
+// ブースト直後の案内を1回だけ取り出す
+export function consumeBoostNote() {
+  if (localStorage.getItem(BOOST_NOTE_KEY) !== "1") return false;
+  localStorage.removeItem(BOOST_NOTE_KEY);
+  return true;
+}
+
+function tierForLevel(playerLevel) {
+  if (playerLevel < UNLOCK_NORMAL_LEVEL) return 0;
+  if (playerLevel < UNLOCK_HARD_LEVEL) return 1;
+  return 2;
+}
+
 // 解放されている難易度のSet。全解放ならnull（フィルタ不要の意）
 export function allowedWordLevels(playerLevel = getLevelState().level) {
-  if (playerLevel < UNLOCK_NORMAL_LEVEL) return new Set(["easy"]);
-  if (playerLevel < UNLOCK_HARD_LEVEL) return new Set(["easy", "normal"]);
+  const tier = Math.max(tierForLevel(playerLevel), getLevelBoost());
+  if (tier === 0) return new Set(["easy"]);
+  if (tier === 1) return new Set(["easy", "normal"]);
   return null;
 }
 

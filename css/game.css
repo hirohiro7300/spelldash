@@ -2283,3 +2283,173 @@ button:hover {
 @media (max-width: 600px) {
   .weekly__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ===== 覚えた！の瞬間 ===== */
+.game-card--learned {
+  animation: card-learned 0.9s ease;
+}
+
+@keyframes card-learned {
+  0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
+  30% { box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.75), 0 0 40px rgba(250, 204, 21, 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
+}
+
+.learn-stamp {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  transform: translate(-50%, -50%) rotate(-8deg) scale(0.6);
+  padding: 8px 22px;
+  border: 4px solid #facc15;
+  border-radius: 14px;
+  color: #facc15;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  background: rgba(15, 23, 42, 0.85);
+  pointer-events: none;
+  z-index: 3;
+  animation: stamp-in 1.4s ease forwards;
+}
+
+@keyframes stamp-in {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(-8deg) scale(1.6); }
+  18% { opacity: 1; transform: translate(-50%, -50%) rotate(-8deg) scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -60%) rotate(-8deg) scale(1); }
+}
+
+.message.learned {
+  color: #facc15;
+  font-weight: 800;
+}
+
+.learn-toast {
+  margin-top: 8px;
+}
+
+.learn-toast:empty {
+  display: none;
+}
+
+/* 単語の履歴ドット */
+.word-history {
+  min-height: 14px;
+  margin: 2px 0 6px;
+}
+
+.word-history:empty {
+  display: none;
+}
+
+.hist {
+  display: inline-flex;
+  gap: 5px;
+  vertical-align: middle;
+}
+
+.hist i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.hist__o { background: #4ade80; }
+.hist__x { background: #f87171; }
+
+/* 完了パネルの語チップ */
+.word-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.word-chips__title {
+  flex-basis: 100%;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.word-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.1);
+  color: #f8fafc;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.word-chip b { font-size: 14px; font-weight: 800; }
+.word-chip small { color: #94a3b8; font-size: 11px; }
+.word-chip--learned { border-color: rgba(250, 204, 21, 0.6); background: rgba(250, 204, 21, 0.12); }
+.word-chip--recovered { border-color: rgba(74, 222, 128, 0.5); background: rgba(74, 222, 128, 0.1); }
+.word-chip--failed { border-color: rgba(248, 113, 113, 0.45); background: rgba(248, 113, 113, 0.08); }
+
+/* 覚えたカード: 今日覚えた語 */
+.learned-card__today-words {
+  flex-basis: 100%;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.learned-card__today-words b {
+  color: #facc15;
+  font-weight: 800;
+}
+
+/* 学習データ: 覚えた単語帳 */
+.learned-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 14px;
+}
+
+.learned-item__en { font-weight: 800; color: #f8fafc; }
+.learned-item__ja { color: #cbd5e1; }
+.learned-item__meta { color: #64748b; font-size: 11.5px; white-space: nowrap; }
+
+.known-fold {
+  margin-top: 10px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.known-fold summary { cursor: pointer; }
+
+.known-words {
+  margin: 8px 0 0;
+  line-height: 1.9;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.known-words span { margin-right: 6px; }
+
+@media (max-width: 600px) {
+  .learned-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .learned-item__ja { grid-column: 1 / -1; }
+  .learn-stamp { font-size: 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-card--learned { animation: none; box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.6); }
+  .learn-stamp { animation: none; opacity: 1; transform: translate(-50%, -50%) rotate(-8deg); }
+}

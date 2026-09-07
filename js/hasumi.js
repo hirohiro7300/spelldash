@@ -1,5 +1,6 @@
 import { getStreak, hasPlayedToday } from "./level.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
+import { getLearnedWordsToday } from "./learnedWords.js";
 
 // ===== はちゃん（はすみ / Hasumi）: 学習パートナー =====
 //
@@ -24,6 +25,12 @@ export function hasumiHomeLine() {
   const streak = getStreak();
 
   if (hasPlayedToday()) {
+    // 今日覚えた語があれば、語を名指しで一緒に喜ぶ（数字より語）
+    const learned = getLearnedWordsToday();
+    if (learned.length > 0) {
+      const extra = learned.length > 1 ? `ほか${learned.length - 1}語も！` : "";
+      return { mood: "happy", text: `今日は ${learned[0].en} を覚えたね！${extra}えらい！` };
+    }
     // 成長の実感: 今日思い出せた語数を一緒に喜ぶ（docs/PMF.md 候補A）
     const recalled = getRecalledTodayCount();
     if (recalled > 0) {
@@ -57,6 +64,11 @@ export function hasumiResultLine({ isBest = false, isDaily = false } = {}) {
     return { mood: "happy", text: pick(["Daily完走おつかれさま！また明日ね！", "今日もお疲れさま！前より伸びてるよ！"]) };
   }
   return { mood: "normal", text: pick(["今日もお疲れさま！前より伸びてるよ！", "いい感じ〜！その調子だよ〜！"]) };
+}
+
+// 「覚えた！」の瞬間の一言（語を名指しで喜ぶ）
+export function hasumiLearnedLine(en) {
+  return { mood: "happy", text: pick([`${en}、覚えたね！前は出てこなかったのに！`, `やった！${en} が自分のものになったよ！`, `${en}、ちゃんと残ってた！すごい！`]) };
 }
 
 // 今日のセット完了の一言（完了感を一緒に喜ぶ。次を急かさない）

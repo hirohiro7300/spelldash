@@ -446,3 +446,20 @@ html[data-theme="light"] .weekly__title { color: #0f172a; }
 html[data-theme="light"] .weekly__grid div { background: #f8fafc; border-color: #e2e8f0; }
 html[data-theme="light"] .weekly__grid strong { color: #0f172a; }
 html[data-theme="light"] .weekly__grid span { color: #64748b; }
+
+/* ---- 覚えた！（ライト） ---- */
+html[data-theme="light"] .learn-stamp { color: #b45309; border-color: #f59e0b; background: rgba(255, 255, 255, 0.92); }
+html[data-theme="light"] .message.learned { color: #b45309; }
+html[data-theme="light"] .hist__o { background: #16a34a; }
+html[data-theme="light"] .hist__x { background: #dc2626; }
+html[data-theme="light"] .word-chip { background: #f8fafc; border-color: #dbe2ec; color: #0f172a; }
+html[data-theme="light"] .word-chip small { color: #64748b; }
+html[data-theme="light"] .word-chip--learned { border-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+html[data-theme="light"] .word-chip--recovered { border-color: #16a34a; background: rgba(22, 163, 74, 0.08); }
+html[data-theme="light"] .word-chip--failed { border-color: #dc2626; background: rgba(220, 38, 38, 0.06); }
+html[data-theme="light"] .learned-card__today-words { color: #334155; }
+html[data-theme="light"] .learned-card__today-words b { color: #b45309; }
+html[data-theme="light"] .learned-item { background: #ffffff; border-color: #dbe2ec; }
+html[data-theme="light"] .learned-item__en { color: #0f172a; }
+html[data-theme="light"] .learned-item__ja { color: #334155; }
+html[data-theme="light"] .known-fold, html[data-theme="light"] .known-words { color: #64748b; }
