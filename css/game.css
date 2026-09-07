@@ -2757,3 +2757,264 @@ button:hover {
   font-size: 14px;
   font-weight: 600;
 }
+
+/* ===== Batch 3: 学習カレンダー・よく間違えるキー・単語詳細・CSV ===== */
+.cal__summary {
+  margin: 0 0 6px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.cal__summary b {
+  color: #f8fafc;
+  font-size: 15px;
+}
+
+.cal__months {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 2px;
+  color: #64748b;
+  font-size: 10.5px;
+}
+
+.cal {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.cal__day {
+  display: block;
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.cal__day--1 { background: rgba(74, 222, 128, 0.35); }
+.cal__day--2 { background: rgba(74, 222, 128, 0.55); }
+.cal__day--3 { background: rgba(74, 222, 128, 0.78); }
+.cal__day--4 { background: #4ade80; }
+.cal__day--today { outline: 2px solid #60a5fa; outline-offset: -1px; }
+.cal__day--future { background: transparent; border: 1px dashed rgba(148, 163, 184, 0.15); }
+
+.cal__legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.cal__legend .cal__day {
+  width: 11px;
+  height: 11px;
+}
+
+.keymiss {
+  margin-top: 12px;
+}
+
+.keymiss__top {
+  margin: 0 0 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.keymiss__top b {
+  color: #fca5a5;
+  font-size: 15px;
+}
+
+.keymap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.keymap__row {
+  display: flex;
+  gap: 4px;
+}
+
+.keymap__key {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.keymap__key--1 { background: rgba(248, 113, 113, 0.25); color: #fecaca; }
+.keymap__key--2 { background: rgba(248, 113, 113, 0.45); color: #fff; }
+.keymap__key--3 { background: rgba(248, 113, 113, 0.7); color: #fff; }
+.keymap__key--4 { background: #ef4444; color: #fff; }
+
+.keymiss__pairs {
+  margin: 8px 0 0;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.keymiss__pairs span {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.learned-csv {
+  margin-left: 8px;
+  vertical-align: middle;
+  font-size: 12px;
+}
+
+button.learned-item__en,
+.word-item__detail,
+.known-words__item {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted rgba(148, 163, 184, 0.5);
+  text-underline-offset: 3px;
+}
+
+button.learned-item__en { text-align: left; font-weight: 800; color: #f8fafc; }
+.word-item__detail { font-weight: 700; }
+.known-words__item { margin-right: 6px; }
+
+.word-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.word-detail__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.6);
+}
+
+.word-detail__panel {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 20px 20px 16px;
+  border-radius: 16px;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.word-detail__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.word-detail__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.word-detail__en {
+  font-size: 30px;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: 0.02em;
+}
+
+.word-detail__speak {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.word-detail__ja {
+  font-size: 16px;
+  color: #cbd5e1;
+}
+
+.word-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: #94a3b8;
+  font-size: 12.5px;
+}
+
+.word-detail__status {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.word-detail__status--learning { background: rgba(96, 165, 250, 0.18); color: #93c5fd; }
+.word-detail__status--mastered { background: rgba(74, 222, 128, 0.18); color: #86efac; }
+.word-detail__status--weak { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
+.word-detail__status--known { background: rgba(250, 204, 21, 0.14); color: #fde68a; }
+
+.word-detail__history {
+  color: #94a3b8;
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.word-detail__note label {
+  display: block;
+  margin-bottom: 4px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.word-detail__note-row {
+  display: flex;
+  gap: 8px;
+}
+
+.word-detail__note-row .note-input {
+  flex: 1;
+  max-width: none;
+}
+
+.word-detail__family {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.word-detail__family .family-chip {
+  cursor: pointer;
+  border: none;
+  font: inherit;
+}

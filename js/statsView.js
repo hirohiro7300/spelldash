@@ -13,6 +13,10 @@ import { renderWeeklyReport } from "./weeklyReport.js";
 import { getLearnedSeries, recordGrowthSnapshot } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, historyDotsHtml } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
+import { renderCalendar } from "./calendarView.js";
+import { renderKeyMiss } from "./keyMiss.js";
+import { downloadLearnedCsv } from "./exportCsv.js";
+import { bindWordDetail } from "./wordDetail.js";
 
 import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
@@ -30,6 +34,14 @@ setupUnloadSync();
 initWordStore().then(() => {
   renderOverview();
   renderTyping();
+  renderKeyMiss("keyMiss");
+  renderCalendar("calendarGrid");
+  bindWordDetail({ onNoteSaved: () => { renderLearnedWords(); renderWeakWords(); } });
+  document.getElementById("learnedCsv")?.addEventListener("click", (event) => {
+    const n = downloadLearnedCsv();
+    event.currentTarget.textContent = `CSV書き出し ✓ ${n}語`;
+    setTimeout(() => (event.target.textContent = "CSV書き出し"), 2500);
+  });
   renderWeeklySummary();
   renderScoreTrend();
   renderLearnedWords();
@@ -51,6 +63,7 @@ window.addEventListener("spelldash:synced", () => {
   renderLevelBar();
   renderOverview();
   renderTyping();
+  renderCalendar("calendarGrid");
   renderWeeklySummary();
   renderScoreTrend();
   renderLearnedWords();
@@ -440,7 +453,7 @@ function renderLearnedWords() {
         .map(
           (w) => `
           <div class="learned-item">
-            <span class="learned-item__en">${w.en}</span>
+            <button type="button" class="learned-item__en" data-word-detail="${w.id}">${w.en}</button>
             <span class="learned-item__ja">${w.ja}</span>
             <span class="learned-item__meta">${w.label}${w.status === "mastered" ? " ・ 習得" : ""}</span>
             ${historyDotsHtml(w.stat)}
@@ -454,7 +467,7 @@ function renderLearnedWords() {
   const knownContainer = document.getElementById("knownWordList");
   if (knownContainer) {
     knownContainer.innerHTML = known.length
-      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<span title="${w.ja}">${w.en}</span>`).join(" ")}${known.length > 200 ? " …" : ""}</p>`
+      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<button type="button" class="known-words__item" data-word-detail="${w.id}" title="${w.ja}">${w.en}</button>`).join(" ")}${known.length > 200 ? " …" : ""}</p>`
       : '<p class="muted">まだありません。</p>';
   }
 }

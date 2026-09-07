@@ -42,6 +42,8 @@ import {
 } from "./studyQueue.js";
 import { getWeekGoal, getActiveDaysThisWeek } from "./growthLog.js";
 import { canInstall, promptInstall } from "./installPrompt.js";
+import { recordKeyMiss } from "./keyMiss.js";
+import { shareSetResult, buildSetShareData } from "./setShare.js";
 import { REPEAT_SUCCESS_XP, NEW_WORD_DAILY_SUCCESS_TARGET } from "./studyConfig.js";
 import {
   renderStudyQueue,
@@ -369,7 +371,7 @@ export function handleKeydown(event) {
   if (typedChar === expectedChar) {
     handleCorrectChar(expectedChar);
   } else {
-    handleTypingMiss();
+    handleTypingMiss(expectedChar, typedChar);
   }
 }
 
@@ -427,7 +429,7 @@ export function handleTextInput() {
       }
       if (acceptChar()) return; // 単語完成。setNewWordが入力欄をリセットする
     } else {
-      handleTypingMiss();
+      handleTypingMiss(word[currentIndex], typedChar);
       break; // 1イベントにつきミスは1回まで（予測変換の一括挿入対策）
     }
   }
@@ -973,6 +975,7 @@ function endStudySession() {
         ${failed > 0 ? `<button type="button" class="result-panel__action" id="setRetry">思い出せなかった${failed}語をもう一度</button>` : ""}
         <button type="button" class="result-panel__action${failed > 0 ? " result-panel__action--ghost" : ""}" id="setAgain">もう1セット</button>
         <button type="button" class="result-panel__action result-panel__action--ghost" id="setChallenge">Challengeで腕試し</button>
+        ${isRetry ? "" : `<button type="button" class="result-panel__action result-panel__action--ghost" id="setShare">今日の成果をシェア</button>`}
         ${canInstall() ? `<button type="button" class="result-panel__action result-panel__action--ghost" id="setInstall">📲 ホーム画面に追加</button>` : ""}
       </div>
       <div class="result-panel__tagline">今日も、はちゃんと少しだけ。</div>
@@ -985,6 +988,12 @@ function endStudySession() {
       isPlaying = false;
       startGame({ retry: failedIds });
       elements.input.focus();
+    });
+    document.getElementById("setShare")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      const outcome = await shareSetResult(buildSetShareData({ recalled })).catch(() => "failed");
+      if (outcome === "copied") button.textContent = "コピーしました！SNSに貼り付けてね";
+      if (outcome === "failed") button.textContent = "シェアできませんでした";
     });
     document.getElementById("setInstall")?.addEventListener("click", async (event) => {
       const outcome = await promptInstall();
@@ -1096,7 +1105,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
 }
 
 // 打ち間違い: 答えは表示しない（覚えていたかどうかとは別のデータとして記録）
-function handleTypingMiss() {
+function handleTypingMiss(expectedChar = currentWord?.en[currentIndex], typedChar = "") {
   typingMissCount++;
   elements.miss.textContent = typingMissCount;
   hasMissedCurrentWord = true;
@@ -1105,6 +1114,7 @@ function handleTypingMiss() {
   sfxMiss();
 
   recordTypingMiss(currentWord.id);
+  recordKeyMiss(expectedChar, typedChar); // よく間違えるキー（学習データ）
 
   // 1回でもミスしたら不正解: スペルを表示して打ち直し。
   // 当てずっぽうでの正解到達は「思い出して打つ」の本質ではない（2026-08-15創業者決定）

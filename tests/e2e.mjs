@@ -784,6 +784,74 @@ console.log("first run & retention:");
   await page2.close();
 }
 
+// ===== 9.9 成長の証拠と獲得（Batch 3）: ミスキー／カレンダー／CSV／単語詳細／セットのシェア =====
+console.log("growth evidence:");
+{
+  const todayKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const y = new Date(Date.now() - 86400000);
+  const yKey = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+  const now = new Date().toISOString();
+  const seed = {
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }]),
+    spelldash_growth_log: JSON.stringify([{ date: yKey, learned: 0, mastered: 0, active: true }, { date: todayKey, learned: 1, mastered: 0, active: true }]),
+    spelldash_word_stats: JSON.stringify({
+      "my-invoice": { playCount: 2, correctCount: 1, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 1, mastered: false, lastPlayed: now, nextReviewAt: new Date(Date.now() + 86400000).toISOString(), lastRecallFailAt: y.toISOString(), lastRecallSuccessAt: now, history: [{ d: yKey, r: "x" }, { d: todayKey, r: "o" }] }
+    })
+  };
+
+  // ミスキー: Studyで1文字打ち間違える → 記録
+  const page = await newPage({ storage: { ...seed, spelldash_category: "my" } });
+  await page.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  await page.press("#input", "Enter"); // 答え表示
+  await page.waitForTimeout(150);
+  const shown = (await page.textContent("#word")).trim();
+  const wrong = shown[0] === "z" ? "q" : "z";
+  await page.press("#input", wrong); // 打ち間違い
+  await page.waitForTimeout(150);
+  const keyMiss = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_key_miss") || "{}"));
+  check("打ち間違いの文字と型が記録される", keyMiss.letters?.[shown[0]] === 1 && keyMiss.pairs?.[`${shown[0]}>${wrong}`] === 1, JSON.stringify(keyMiss));
+  const shareText = await page.evaluate(async () => {
+    const m = await import("/js/setShare.js");
+    return m.buildSetShareText(m.buildSetShareData({ recalled: 5 }));
+  });
+  check("セットのシェア文に今日覚えた語", shareText.includes("5語 思い出せた") && shareText.includes("今日覚えた: invoice"), shareText);
+  const imgOk = await page.evaluate(async () => {
+    const m = await import("/js/setShare.js");
+    const c = m.buildSetShareImage(m.buildSetShareData({ recalled: 5 }));
+    return c.width === 1080 && c.height === 1080;
+  });
+  check("セットのシェア画像が生成できる（1080×1080）", imgOk);
+  check("ミスキー／シェアでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  const keyMissRaw = await page.evaluate(() => localStorage.getItem("spelldash_key_miss"));
+  await page.close();
+
+  // 学習データ: ミスキー表示・カレンダー・CSV・単語詳細
+  const page2 = await newPage({ storage: { ...seed, spelldash_key_miss: keyMissRaw } });
+  await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  check("よく間違えるキーが表示される", (await page2.textContent("#keyMiss")).includes("よく間違える文字") && (await page2.$$(".keymap__key")).length === 26);
+  const calDays = await page2.$$eval("#calendarGrid .cal .cal__day", (els) => ({ total: els.length, active: els.filter((e) => /cal__day--[1-4]/.test(e.className)).length }));
+  check("学習カレンダー（13週×7日・学習日2）", calDays.total === 91 && calDays.active === 2 && (await page2.textContent("#calendarGrid")).includes("2日"), JSON.stringify(calDays));
+  const csv = await page2.evaluate(async () => (await import("/js/exportCsv.js")).buildLearnedCsv());
+  check("覚えた単語帳CSVに見出しと語", csv.includes("english,japanese") && csv.includes("invoice,請求書") && csv.includes("xo"), csv.slice(0, 120));
+  await page2.click("#learnedWordList [data-word-detail]");
+  await page2.waitForTimeout(200);
+  check("単語詳細が開く（語・訳・状態・履歴）", !(await page2.$eval("#wordDetail", (el) => el.hidden)) && /invoice/.test(await page2.textContent("#wordDetailPanel")) && (await page2.textContent("#wordDetailPanel")).includes("請求書") && (await page2.textContent("#wordDetailPanel")).includes("覚えかけ") && (await page2.$("#wordDetailPanel .hist__x")) !== null, (await page2.textContent("#wordDetailPanel")).slice(0, 120));
+  await page2.fill("#wordDetailNote", "in+voice");
+  await page2.press("#wordDetailNote", "Enter");
+  await page2.waitForTimeout(150);
+  const notes = await page2.evaluate(() => JSON.parse(localStorage.getItem("spelldash_word_notes") || "{}"));
+  check("詳細からメモを保存できる", notes["my-invoice"] === "in+voice", JSON.stringify(notes));
+  await page2.keyboard.press("Escape");
+  await page2.waitForTimeout(100);
+  check("Escで詳細が閉じる", await page2.$eval("#wordDetail", (el) => el.hidden));
+  check("学習データ（Batch 3）でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  await page2.close();
+}
+
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====
 console.log("ads category:");
 {
