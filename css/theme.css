@@ -483,3 +483,10 @@ html[data-theme="light"] .feedback-modal__panel textarea, html[data-theme="light
 html[data-theme="light"] .feedback-modal__status { color: #15803d; }
 html[data-theme="light"] .feedback-modal__note { color: #64748b; }
 html[data-theme="light"] .word-item strong { color: #0f172a; }
+
+/* ---- Batch 2（ライト） ---- */
+html[data-theme="light"] .learned-card__week b { color: #0f172a; }
+html[data-theme="light"] .learned-card__week i.future { background: #f1f5f9; }
+html[data-theme="light"] .result-panel__goal { background: rgba(22, 163, 74, 0.08); border-color: #86efac; color: #15803d; }
+html[data-theme="light"] .result-panel__goal--progress { background: #f8fafc; border-color: #e2e8f0; color: #64748b; }
+html[data-theme="light"] .install__done { color: #15803d; }

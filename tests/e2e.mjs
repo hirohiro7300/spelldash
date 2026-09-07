@@ -658,6 +658,132 @@ console.log("learning quality:");
   await page4.close();
 }
 
+// ===== 9.8 初回体験と継続（Batch 2）: 腕試し／回収／中身予告／週の目標／ホーム画面に追加 =====
+console.log("first run & retention:");
+{
+  // 腕試し: 初回は易3＋普通4＋難3の10語。全部答えを見ると「10語中0語知ってた」で基本から
+  const page = await newPage();
+  await page.goto(BASE + "/index.html?set=15", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  check("初回は腕試しの案内から始まる", (await page.textContent("#message")).includes("腕試し"), await page.textContent("#message"));
+  check("腕試し開始が記録される", (await page.evaluate(() => localStorage.getItem("spelldash_placement"))) === "started");
+  const known = new Map();
+  let placement = null;
+  for (let i = 0; i < 40 && !placement; i++) {
+    const ja = (await page.textContent("#japanese")).trim();
+    const hidden = !/^[a-z]+$/.test((await page.textContent("#word")).trim());
+    if (known.has(ja) && hidden) {
+      for (const ch of known.get(ja)) await page.press("#input", ch);
+    } else {
+      await page.press("#input", "Enter");
+      await waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 1000);
+      const shown = (await page.textContent("#word")).trim();
+      if (!/^[a-z]+$/.test(shown)) continue;
+      known.set(ja, shown);
+      for (const ch of shown) await page.press("#input", ch);
+    }
+    await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja, 1500);
+    await page.waitForTimeout(120);
+    placement = await page.evaluate(() => {
+      const raw = localStorage.getItem("spelldash_placement");
+      return raw && raw !== "started" ? JSON.parse(raw) : null;
+    });
+  }
+  check("10語で腕試しが確定（知ってた0）", placement && placement.total === 10 && placement.known === 0 && placement.boost === 0, JSON.stringify(placement));
+  const seenLevels = await page.evaluate(async (ids) => {
+    const m = await import("/js/wordStore.js");
+    return ids.map((en) => m.getAllWords().find((w) => w.en === en)?.level);
+  }, [...known.values()]);
+  check("腕試しに普通・難しい語が混ざる", seenLevels.includes("normal") && seenLevels.includes("hard"), seenLevels.join(","));
+  await waitUntil(async () => (await page.textContent("#message")).includes("腕試し:"), 2500);
+  check("腕試し結果のメッセージ", (await page.textContent("#message")).includes("腕試し:"), await page.textContent("#message"));
+  // 知ってた語が多い場合は即ブースト（モジュール直呼び）
+  const boosted = await page.evaluate(async () => {
+    const m = await import("/js/difficulty.js");
+    localStorage.setItem("spelldash_placement", "started");
+    localStorage.setItem("spelldash_first_sight", "[]");
+    localStorage.setItem("spelldash_level_boost", "0");
+    let r = null;
+    for (let i = 0; i < 10; i++) r = m.recordFirstSight(i !== 3);
+    return { boost: localStorage.getItem("spelldash_level_boost"), placement: r.placement, note: m.consumePlacementNote() };
+  });
+  check("10語中9語知ってた→難易度ブースト2", boosted.boost === "2" && boosted.placement?.known === 9 && boosted.note?.boost === 2, JSON.stringify(boosted));
+  check("腕試しフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+{
+  // 中身予告＋回収: 苦手1（invoice, 昨日×）・復習1（budget, 期日到来）・新しい語2
+  const y = new Date(Date.now() - 86400000);
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400000);
+  const yKey = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+  const todayKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const page = await newPage({ storage: {
+    spelldash_category: "my",
+    spelldash_week_goal: "3",
+    spelldash_growth_log: JSON.stringify([{ date: todayKey, learned: 0, mastered: 0, active: true }]),
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "deadline", ja: "締め切り" }, { en: "budget", ja: "予算" }]),
+    spelldash_word_stats: JSON.stringify({
+      "my-invoice": { playCount: 1, correctCount: 0, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 0, mastered: false, lastPlayed: y.toISOString(), lastRecallFailAt: y.toISOString(), lastRecallSuccessAt: null, history: [{ d: yKey, r: "x" }] },
+      "my-budget": { playCount: 2, correctCount: 2, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 2, mastered: false, lastPlayed: threeDaysAgo.toISOString(), nextReviewAt: y.toISOString(), lastRecallSuccessAt: threeDaysAgo.toISOString(), srsAdvancedOn: "2026-01-01" }
+    })
+  } });
+  await page.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  const card = await page.textContent("#learnedCard");
+  check("覚えたカードに週の目標（今週 1/3日）", /今週\s*1\s*\/\s*3日/.test(card.replace(/\s+/g, " ")), card.slice(0, 120));
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  const startMsg = await page.textContent("#message");
+  check("開始時にセットの中身予告（復習1・苦手1）", startMsg.includes("復習 1") && startMsg.includes("苦手 1") && startMsg.includes("からスタート"), startMsg);
+  check("苦手（Unresolved）が先頭", (await page.textContent("#japanese")).trim() === "請求書");
+  await page.press("#input", "Enter"); // invoice: 答えを見る（思い出せず）
+  await page.waitForTimeout(200);
+  for (const ch of "invoice") await page.press("#input", ch);
+  await waitUntil(async () => (await page.textContent("#japanese")).trim() !== "請求書", 1500);
+  const answers = { 交渉する: "negotiate", 締め切り: "deadline", 予算: "budget" };
+  for (let i = 0; i < 6; i++) {
+    const done = !(await page.$eval("#resultPanel", (el) => el.hidden));
+    if (done) break;
+    const ja = (await page.textContent("#japanese")).trim();
+    if (ja === "請求書") {
+      await page.press("#input", "Enter");
+      await page.waitForTimeout(150);
+      for (const ch of "invoice") await page.press("#input", ch);
+    } else if (answers[ja]) {
+      for (const ch of answers[ja]) await page.press("#input", ch);
+    }
+    await page.waitForTimeout(450);
+  }
+  await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 2000);
+  const panel = await page.textContent("#resultPanel");
+  check("完了パネルに「思い出せなかった1語をもう一度」", panel.includes("思い出せなかった1語をもう一度"), panel.slice(0, 160));
+  check("完了パネルに週の目標の進み具合", panel.includes("今週") && (panel.includes("目標") || panel.includes("達成")), panel.slice(0, 200));
+  await page.click("#setRetry");
+  await page.waitForTimeout(300);
+  check("回収モードの案内", (await page.textContent("#message")).includes("もう一度"), await page.textContent("#message"));
+  check("回収モードの進捗ラベル", (await page.textContent("#setProgress")).includes("もう一度") && (await page.textContent("#setProgress")).includes("/ 1"));
+  check("回収モードでは思い出せなかった語だけ", (await page.textContent("#japanese")).trim() === "請求書", await page.textContent("#japanese"));
+  for (const ch of "invoice") await page.press("#input", ch);
+  await waitUntil(async () => (await page.textContent("#resultPanel")).includes("回収完了"), 2500);
+  check("全部自力で打てたら「回収完了」", (await page.textContent("#resultPanel")).includes("回収完了"), (await page.textContent("#resultPanel")).slice(0, 80));
+  const sets = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_daily_set")).setsToday);
+  check("回収はセット数に数えない", sets === 1, `setsToday=${sets}`);
+  check("回収フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  const page2 = await newPage();
+  await page2.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(600);
+  check("週の目標の設定（既定4日）", (await page2.inputValue("#weekGoalSelect")) === "4");
+  await page2.selectOption("#weekGoalSelect", "5");
+  check("週の目標が保存される", (await page2.evaluate(() => localStorage.getItem("spelldash_week_goal"))) === "5");
+  check("「ホーム画面に追加」の案内が出る", (await page2.textContent("#installCard")).trim().length > 10);
+  check("プロフィール（Batch 2）でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  await page2.close();
+}
+
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====
 console.log("ads category:");
 {

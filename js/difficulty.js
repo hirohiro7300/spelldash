@@ -25,6 +25,48 @@ export function getLevelBoost() {
   return Math.max(0, Math.min(2, v));
 }
 
+// ===== 初回の腕試し（Placement） =====
+// 初回セッションの先頭10語（易3・普通4・難3）の「知ってた／知らなかった」で、
+// 12語の観察を待たずに難易度を即決定する。社会人の初回が apple/water で終わらないように。
+const PLACEMENT_KEY = "spelldash_placement";
+const PLACEMENT_NOTE_KEY = "spelldash_placement_note";
+export const PLACEMENT_WORDS = 10;
+export const PLACEMENT_MIX = { easy: 3, normal: 4, hard: 3 };
+
+export function isPlacementPending() {
+  return !localStorage.getItem(PLACEMENT_KEY);
+}
+
+export function markPlacementStarted() {
+  if (isPlacementPending()) localStorage.setItem(PLACEMENT_KEY, "started");
+}
+
+function isPlacementRunning() {
+  return localStorage.getItem(PLACEMENT_KEY) === "started";
+}
+
+function finishPlacement(log) {
+  const known = log.filter(Boolean).length;
+  const boost = known >= 9 ? 2 : known >= 6 ? 1 : 0;
+  if (boost > getLevelBoost()) localStorage.setItem(BOOST_KEY, String(boost));
+  const result = { known, total: log.length, boost, at: new Date().toISOString() };
+  localStorage.setItem(PLACEMENT_KEY, JSON.stringify(result));
+  localStorage.setItem(PLACEMENT_NOTE_KEY, JSON.stringify(result));
+  return result;
+}
+
+// 腕試し直後の案内を1回だけ取り出す（{known, total, boost}）
+export function consumePlacementNote() {
+  const raw = localStorage.getItem(PLACEMENT_NOTE_KEY);
+  if (!raw) return null;
+  localStorage.removeItem(PLACEMENT_NOTE_KEY);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 // 初見の結果を記録し、条件を満たせば1段ブースト（戻すことはしない）
 export function recordFirstSight(known) {
   let log = [];
@@ -35,6 +77,18 @@ export function recordFirstSight(known) {
     log = [];
   }
   log.push(!!known);
+
+  // 腕試し中: 10語そろった時点で判定して終了（以降は12語窓の通常判定）
+  if (isPlacementRunning()) {
+    if (log.length >= PLACEMENT_WORDS) {
+      const result = finishPlacement(log);
+      localStorage.setItem(FIRST_SIGHT_KEY, "[]");
+      return { boosted: result.boost > 0, placement: result };
+    }
+    localStorage.setItem(FIRST_SIGHT_KEY, JSON.stringify(log));
+    return { boosted: false };
+  }
+
   log = log.slice(-FIRST_SIGHT_WINDOW);
 
   let boosted = false;

@@ -1,7 +1,6 @@
 import { computeCategoryProgress } from "./categoryProgress.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
-import { getWeekDots } from "./dailySet.js";
-import { getLearnedDelta7, recordGrowthSnapshot } from "./growthLog.js";
+import { getLearnedDelta7, recordGrowthSnapshot, getWeekGoal, getThisWeekDays } from "./growthLog.js";
 import { getLearnedWordsToday } from "./learnedWords.js";
 
 // ===== ホーム「覚えた単語」カード =====
@@ -34,6 +33,18 @@ export function renderLearnedCard() {
       ? `今日覚えた: ${learnedToday.slice(0, 4).map((w) => `<b title="${w.ja}">${w.en}</b>`).join("・")}${learnedToday.length > 4 ? ` ほか${learnedToday.length - 4}語` : ""}`
       : "今日はまだ。1セットで1語は覚えられるよ";
 
+  // 今週の学習日（月〜日）と週の目標。毎日でなくてよい設計
+  const goal = getWeekGoal();
+  const days = getThisWeekDays();
+  const activeDays = days.filter((d) => d.active).length;
+  const dots = days
+    .map((d) => `<i class="${d.active ? "on" : ""}${d.isToday ? " today" : ""}${d.isFuture ? " future" : ""}" title="${d.date}"></i>`)
+    .join("");
+  const weekLine =
+    activeDays >= goal
+      ? `🎯 今週の目標達成 ${activeDays}/${goal}日 ${dots}`
+      : `今週 <b>${activeDays}</b>/${goal}日 ${dots}`;
+
   el.innerHTML = `
     <div class="learned-card__main">
       <span class="learned-card__label">🧠 覚えた単語</span>
@@ -42,7 +53,7 @@ export function renderLearnedCard() {
     </div>
     <div class="learned-card__today-words">${todayLine}</div>
     <div class="learned-card__cat">${currentLine}</div>
-    <div class="learned-card__week" aria-label="今週のセット完了">今週 ${getWeekDots().map((d) => `<i class="${d.done ? "on" : ""}${d.isToday ? " today" : ""}" title="${d.date}"></i>`).join("")}</div>
+    <div class="learned-card__week" aria-label="今週の学習日" title="週の目標はプロフィールの学習の設定で変えられます">${weekLine}</div>
     <a class="learned-card__link" href="./stats.html#learnedWords">覚えた単語帳を見る →</a>
   `;
 }

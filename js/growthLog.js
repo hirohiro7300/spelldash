@@ -61,6 +61,40 @@ function dateKeyDaysAgo(days) {
   return localDateString(d);
 }
 
+// ===== 週の学習日目標（月曜始まり） =====
+// 「毎日」ではなく「週○日」を目標にする（罪悪感なしで続く設計）。既定4日
+const WEEK_GOAL_KEY = "spelldash_week_goal";
+export const WEEK_GOAL_OPTIONS = [3, 4, 5, 7];
+
+export function getWeekGoal() {
+  const v = Number(localStorage.getItem(WEEK_GOAL_KEY));
+  return WEEK_GOAL_OPTIONS.includes(v) ? v : 4;
+}
+
+export function setWeekGoal(v) {
+  if (WEEK_GOAL_OPTIONS.includes(Number(v))) localStorage.setItem(WEEK_GOAL_KEY, String(v));
+}
+
+// 今週（月〜日）の各日 {date, active, isToday, isFuture}
+export function getThisWeekDays() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dow = (today.getDay() + 6) % 7; // 月曜=0
+  const active = new Set(getGrowthLog().filter((e) => e.active).map((e) => e.date));
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - dow + i);
+    const key = localDateString(d);
+    days.push({ date: key, active: active.has(key), isToday: i === dow, isFuture: i > dow });
+  }
+  return days;
+}
+
+export function getActiveDaysThisWeek() {
+  return getThisWeekDays().filter((d) => d.active).length;
+}
+
 // 直近7日で「学習した日」の数
 export function getActiveDaysLast7() {
   const since = dateKeyDaysAgo(6);

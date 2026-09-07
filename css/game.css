@@ -2721,3 +2721,39 @@ button:hover {
 @media (prefers-reduced-motion: reduce) {
   .hint-button { animation: none; }
 }
+
+/* ===== Batch 2: 週の目標・回収・ホーム画面に追加 ===== */
+.learned-card__week b {
+  color: #f8fafc;
+  font-weight: 800;
+}
+
+.learned-card__week i.future {
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.result-panel__goal {
+  margin: 10px 0 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  color: #86efac;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.result-panel__goal--progress {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.install__done {
+  margin: 0;
+  color: #86efac;
+  font-size: 14px;
+  font-weight: 600;
+}
