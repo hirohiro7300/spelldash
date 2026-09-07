@@ -186,6 +186,24 @@ export function getDueReviewCount(categoryId = localStorage.getItem("spelldash_c
   return count;
 }
 
+// 期日が来る語そのもの（「明日は negotiate など5語の復習から」の材料）
+export function getDueReviewWords(categoryId = localStorage.getItem("spelldash_category") || "all", until = Date.now(), limit = 3) {
+  const stats = getWordStats();
+  const seen = new Set();
+  const list = [];
+  for (const word of getWordsByCategory(categoryId)) {
+    if (seen.has(word.id)) continue;
+    seen.add(word.id);
+    const s = stats[word.id];
+    if (!s || s.mastered || !s.nextReviewAt) continue;
+    if (Date.parse(s.nextReviewAt) > until) continue;
+    if (isDoneForToday(s)) continue;
+    list.push(word);
+    if (list.length >= limit) break;
+  }
+  return list;
+}
+
 // セッション開始時に「今日の復習」として積んだ語数（見える化用）
 export function getSessionReviewCount() {
   return sessionReviewCount;

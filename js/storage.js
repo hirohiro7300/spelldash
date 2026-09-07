@@ -107,6 +107,33 @@ export function saveBestScore(newScore) {
   }
 }
 
+// ===== カテゴリ別ベスト（Challenge） =====
+const CATEGORY_BEST_KEY = "spelldash_best_by_category";
+
+export function getCategoryBest(categoryId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(CATEGORY_BEST_KEY) || "{}");
+    return Number(all[categoryId]) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// 更新したら true
+export function saveCategoryBest(categoryId, score) {
+  const best = getCategoryBest(categoryId);
+  if (score <= best) return false;
+  let all = {};
+  try {
+    all = JSON.parse(localStorage.getItem(CATEGORY_BEST_KEY) || "{}");
+  } catch {
+    all = {};
+  }
+  all[categoryId] = score;
+  localStorage.setItem(CATEGORY_BEST_KEY, JSON.stringify(all));
+  return true;
+}
+
 // ===== セッションログ（スコア推移グラフ用・ローカルのみ） =====
 const SESSION_LOG_KEY = "spelldash_session_log";
 const SESSION_LOG_MAX = 100;

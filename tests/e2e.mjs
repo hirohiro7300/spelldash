@@ -852,6 +852,83 @@ console.log("growth evidence:");
   await page2.close();
 }
 
+// ===== 9.95 Challenge・品質（Batch 4）: 前回比／カテゴリ別ベスト／Esc・Tab／ランクアップ／明日の予告／音量／オフライン =====
+console.log("challenge & quality:");
+{
+  // Challenge 2回: 1回目はカテゴリ別ベスト、2回目は前回比
+  const page = await newPage({ storage: { spelldash_category: "ads", spelldash_mode: "challenge" } });
+  await page.goto(BASE + "/index.html?t=2", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 5000);
+  const panel1 = await page.textContent("#resultPanel");
+  check("Challenge結果にカテゴリ別ベスト", panel1.includes("広告・マーケ") && panel1.includes("ベスト"), panel1.slice(0, 160));
+  check("1回目は前回比なし", !panel1.includes("前回"));
+  await page.click("#resultRetry");
+  await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 5000);
+  const panel2 = await page.textContent("#resultPanel");
+  check("2回目は前回比が出る", /前回 \d+ → 今回 \d+/.test(panel2), panel2.slice(0, 200));
+  check("Challenge（Batch 4）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  // Esc = 分からない（答え表示）、Tab = 発音（エラーなし・進行しない）。ランクアップ演出（Lv1→2 = F3→F2）
+  const tomorrow = new Date(Date.now() + 20 * 3600000);
+  const page2 = await newPage({ storage: {
+    spelldash_category: "my",
+    spelldash_xp: "95",
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "budget", ja: "予算" }]),
+    spelldash_word_stats: JSON.stringify({
+      "my-budget": { playCount: 2, correctCount: 2, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 2, mastered: false, lastPlayed: new Date(Date.now() - 3 * 86400000).toISOString(), nextReviewAt: tomorrow.toISOString(), lastRecallSuccessAt: new Date(Date.now() - 3 * 86400000).toISOString(), srsAdvancedOn: "2026-01-01" }
+    })
+  } });
+  await page2.goto(BASE + "/index.html?set=1", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.press("#input", "Enter");
+  await page2.waitForTimeout(300);
+  const ja = (await page2.textContent("#japanese")).trim();
+  await page2.press("#input", "Tab");
+  await page2.waitForTimeout(100);
+  check("Tabで進行しない（発音のみ）", (await page2.textContent("#japanese")).trim() === ja && (await page2.evaluate(() => document.activeElement?.id)) === "input");
+  await page2.press("#input", "Escape");
+  await page2.waitForTimeout(150);
+  check("Escで答えが表示される（×扱い）", /^[a-z]+$/.test((await page2.textContent("#word")).trim()) && (await page2.textContent("#recallFail")).trim() === "1");
+  const shown = (await page2.textContent("#word")).trim();
+  for (const ch of shown) await page2.press("#input", ch);
+  const rankUp = await waitUntil(async () => (await page2.$(".rank-up")) !== null, 1500);
+  check("ランクアップ演出（F3→F2）", rankUp && (await page2.textContent(".rank-up")).includes("F2"));
+  // 明日の予告: セットを完了させる（残り1語を自力で）
+  await waitUntil(async () => !(await page2.$eval("#resultPanel", (el) => el.hidden)) || (await page2.textContent("#japanese")).trim() !== ja, 1500);
+  const answers = { 請求書: "invoice", 予算: "budget" };
+  for (let i = 0; i < 6; i++) {
+    if (!(await page2.$eval("#resultPanel", (el) => el.hidden))) break;
+    const j = (await page2.textContent("#japanese")).trim();
+    if (answers[j]) for (const ch of answers[j]) await page2.press("#input", ch);
+    await page2.waitForTimeout(450);
+  }
+  await waitUntil(async () => !(await page2.$eval("#resultPanel", (el) => el.hidden)), 2000);
+  const panel = await page2.textContent("#resultPanel");
+  check("完了パネルに明日の予告（語つき）", panel.includes("明日は") && panel.includes("の復習から"), panel.slice(0, 220));
+  check("Esc/Tab/ランクアップでエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  await page2.close();
+
+  // 音量設定＋オフライン表示
+  const page3 = await newPage();
+  await page3.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(600);
+  check("音量スライダー（既定100%）", (await page3.inputValue("#volumeRange")) === "100");
+  await page3.$eval("#volumeRange", (el) => { el.value = "50"; el.dispatchEvent(new Event("input", { bubbles: true })); });
+  const audio = await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_audio") || "{}"));
+  check("音量が保存される（0.5）", audio.volume === 0.5, JSON.stringify(audio));
+  await page3.context().setOffline(true);
+  const offlineShown = await waitUntil(async () => (await page3.$(".offline-banner:not([hidden])")) !== null, 2000);
+  check("オフラインで案内バナー", offlineShown);
+  await page3.context().setOffline(false);
+  const offlineHidden = await waitUntil(async () => (await page3.$(".offline-banner:not([hidden])")) === null, 2000);
+  check("オンライン復帰でバナーが消える", offlineHidden);
+  check("音量／オフラインでエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
+  await page3.close();
+}
+
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====
 console.log("ads category:");
 {

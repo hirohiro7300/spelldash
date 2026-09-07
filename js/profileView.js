@@ -7,7 +7,7 @@ import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
-import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled } from "./audio.js";
+import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled, getVolume, setVolume } from "./audio.js";
 import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./backup.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
@@ -120,6 +120,23 @@ function initializeAudioSettings() {
     speakCorrectSelect.addEventListener("change", () => {
       setSpeakOnCorrectEnabled(speakCorrectSelect.value === "on");
       if (speakCorrectSelect.value === "on") speak("negotiate");
+      statusElement.textContent = "保存しました。";
+      setTimeout(() => (statusElement.textContent = ""), 2000);
+    });
+  }
+
+  // 音量（効果音・BGM共通）
+  const volumeRange = document.getElementById("volumeRange");
+  const volumeValue = document.getElementById("volumeValue");
+  if (volumeRange) {
+    volumeRange.value = String(Math.round(getVolume() * 100));
+    if (volumeValue) volumeValue.textContent = `${volumeRange.value}%`;
+    volumeRange.addEventListener("input", () => {
+      setVolume(Number(volumeRange.value) / 100);
+      if (volumeValue) volumeValue.textContent = `${volumeRange.value}%`;
+    });
+    volumeRange.addEventListener("change", () => {
+      if (Number(volumeRange.value) > 0) sfxCorrect(3); // 確認用サンプル
       statusElement.textContent = "保存しました。";
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });

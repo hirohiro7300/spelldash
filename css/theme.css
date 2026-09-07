@@ -520,3 +520,18 @@ html[data-theme="light"] .word-detail__status--mastered { background: rgba(22, 1
 html[data-theme="light"] .word-detail__status--weak { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
 html[data-theme="light"] .word-detail__status--known { background: rgba(245, 158, 11, 0.12); color: #92400e; }
 html[data-theme="light"] .word-detail__note label { color: #334155; }
+
+/* ---- Batch 4（ライト） ---- */
+html[data-theme="light"] .result-panel__diff, html[data-theme="light"] .result-panel__tomorrow { color: #64748b; }
+html[data-theme="light"] .result-panel__diff--up { color: #15803d; }
+html[data-theme="light"] .result-panel__diff--down { color: #b91c1c; }
+html[data-theme="light"] .result-panel__cat { color: #334155; }
+html[data-theme="light"] .result-panel__tomorrow b { color: #1d4ed8; }
+html[data-theme="light"] .rank-up { background: radial-gradient(circle at center, rgba(245, 158, 11, 0.18), rgba(255, 255, 255, 0.7) 70%); }
+html[data-theme="light"] .rank-up__inner { background: #ffffff; border-color: #f59e0b; box-shadow: 0 0 60px rgba(245, 158, 11, 0.3); }
+html[data-theme="light"] .rank-up__label { color: #92400e; }
+html[data-theme="light"] .rank-up__title { color: #64748b; }
+html[data-theme="light"] .rank-up__title b { color: #b45309; text-shadow: none; }
+html[data-theme="light"] .rank-up__sub { color: #334155; }
+html[data-theme="light"] .offline-banner { background: #fffbeb; border-color: #f59e0b; color: #92400e; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15); }
+html[data-theme="light"] .volume-row__value { color: #64748b; }

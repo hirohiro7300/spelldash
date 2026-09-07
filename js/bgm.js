@@ -1,4 +1,4 @@
-import { getAudioSettings, saveAudioSettings } from "./audio.js";
+import { getAudioSettings, saveAudioSettings, getVolume } from "./audio.js";
 
 // ===== BGM（WebAudioで生成、音源ファイル不要） =====
 //
@@ -142,7 +142,7 @@ export function startBgm() {
     if (!context) return;
 
     master = context.createGain();
-    master.gain.value = 1;
+    master.gain.value = getVolume();
     master.connect(context.destination);
 
     running = true;

@@ -246,6 +246,14 @@
       </div>
 
       <div class="setting-row">
+        <label for="volumeRange">音量（効果音・BGM）</label>
+        <span class="volume-row">
+          <input id="volumeRange" type="range" min="0" max="100" step="10" />
+          <span id="volumeValue" class="volume-row__value">100%</span>
+        </span>
+      </div>
+
+      <div class="setting-row">
         <label for="bgmSelect">BGM（Challenge/Daily中）</label>
         <select id="bgmSelect" class="setting-select">
           <option value="on">ON</option>
