@@ -32,11 +32,17 @@ export async function loadCategory(subjectId, categoryId) {
     const res = await fetch(`${DATA_BASE}${category.file}`);
     const data = await res.json();
 
-    const words = data.words.map((word) => ({
-      ...word,
-      subject: data.subject,
-      category: data.category
-    }));
+    const words = data.words.map((word) => {
+      const base = { ...word, subject: data.subject, category: data.category };
+      // 概念カード: id のキーは word.en のまま残し、表示・入力に使う en は「答え」に差し替える。
+      // 答えが a-z のみ（cpc 等）なら通常のスペル入力、日本語や空白入りなら全文入力モードになる
+      if (word.kind === "concept") {
+        const answer = String(word.answer ?? word.en).trim();
+        const spell = /^[a-z-]+$/i.test(answer);
+        return { ...base, key: word.en, en: spell ? answer.toLowerCase() : answer, accept: Array.isArray(word.accept) ? word.accept : [] };
+      }
+      return base;
+    });
 
     categoryCache.set(cacheKey, words);
   }

@@ -45,6 +45,7 @@ function pickVoice(accent) {
 // 手動再生（スピーカーボタン）: 設定OFFでも鳴らす
 export function speak(text) {
   if (!window.speechSynthesis) return;
+  if (!text || /[^\x00-\x7f]/.test(text)) return; // 英語以外は読まない
 
   const settings = getAudioSettings();
   const utterance = new SpeechSynthesisUtterance(text);

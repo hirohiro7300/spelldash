@@ -4,6 +4,7 @@ import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml } from "./learnedWords.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { speak } from "./audio.js";
+import { speechTextOf } from "./wordStore.js";
 
 // ===== 単語詳細ポップアップ =====
 // 一覧のどこから押しても、その語の「状態・履歴・メモ・仲間・発音」を1か所で見られる。
@@ -48,9 +49,11 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
     <button type="button" class="word-detail__close" data-detail-close aria-label="閉じる">✕</button>
     <div class="word-detail__head">
       <span class="word-detail__en">${escapeHtml(word.en)}</span>
-      <button type="button" class="speak-button word-detail__speak" id="wordDetailSpeak">🔊</button>
+      ${speechTextOf(word) ? `<button type="button" class="speak-button word-detail__speak" id="wordDetailSpeak">🔊</button>` : ""}
     </div>
     <div class="word-detail__ja">${escapeHtml(word.ja)}</div>
+    ${word.q ? `<div class="word-detail__q">場面: ${escapeHtml(word.q)}</div>` : ""}
+    ${word.explain ? `<div class="word-detail__q">📘 ${escapeHtml(word.explain)}</div>` : ""}
     <div class="word-detail__meta">
       <span class="word-detail__status word-detail__status--${status}">${STATUS_LABEL[status]}</span>
       ${category ? `<span>${escapeHtml(category)}</span>` : ""}
@@ -71,7 +74,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
   `;
   modal.hidden = false;
   panel.querySelector("[data-detail-close]").addEventListener("click", closeWordDetail);
-  panel.querySelector("#wordDetailSpeak").addEventListener("click", () => speak(word.en));
+  panel.querySelector("#wordDetailSpeak")?.addEventListener("click", () => speak(speechTextOf(word)));
   const input = panel.querySelector("#wordDetailNote");
   const save = () => {
     setNote(wordId, input.value);

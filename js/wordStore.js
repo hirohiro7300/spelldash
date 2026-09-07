@@ -27,6 +27,7 @@ export async function initWordStore(subjectId = "english") {
   manifest = await loadManifest();
   allWords = await loadAllWords(subjectId);
 
+  generalWords = allWords.filter((w) => !isConceptWord(w));
   wordIndex.clear();
   for (const word of allWords) {
     // 同じ単語が複数カテゴリにある場合は最初のものを索引に使う
@@ -44,9 +45,28 @@ export function getAllWords() {
   return allWords;
 }
 
+// 概念カード（日本語で答えるカード）はカテゴリを選んだ人だけに出す。「すべて」には含めない
+export function isConceptWord(word) {
+  return word?.kind === "concept";
+}
+
+// 発音に使う英語（概念カードは say があればそれ、無ければ英語キー。日本語なら読まない）
+export function speechTextOf(word) {
+  if (!word) return "";
+  if (word.say) return word.say;
+  return /^[\x00-\x7f]+$/.test(word.en) ? word.en : "";
+}
+
+// 出題文（概念カードは場面の説明 q、それ以外は日本語訳）
+export function promptOf(word) {
+  return word?.q ?? word?.ja ?? "";
+}
+
+let generalWords = [];
+
 export function getWordsByCategory(categoryId) {
   if (!categoryId || categoryId === "all") {
-    return allWords;
+    return generalWords;
   }
   if (categoryId === MY_CATEGORY.id) {
     return myWords;

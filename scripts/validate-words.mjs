@@ -21,8 +21,17 @@ for (const file of files) {
     const where = `${file}:${w.id}`;
 
     if (!w.id || !w.en || !w.ja) problems.push(`空フィールド ${where}`);
-    if (w.id !== `english-${w.en}`) problems.push(`ID不整合 ${where} (en=${w.en})`);
-    if (!/^[a-z][a-z-]*$/.test(w.en ?? "")) problems.push(`スペル形式 ${where} en="${w.en}"`);
+    if (w.kind === "concept") {
+      // 概念カード: id は concept-<key>、answer（打つ答え）と q（場面）が必須
+      if (w.id !== `concept-${w.en}`) problems.push(`ID不整合(concept) ${where} (en=${w.en})`);
+      if (!/^[a-z][a-z0-9-]*$/.test(w.en ?? "")) problems.push(`キー形式 ${where} en="${w.en}"`);
+      if (typeof w.answer !== "string" || !w.answer.trim()) problems.push(`answerなし ${where}`);
+      if (typeof w.q !== "string" || w.q.length < 8) problems.push(`qなし/短い ${where}`);
+      if (w.accept != null && !Array.isArray(w.accept)) problems.push(`accept形式 ${where}`);
+    } else {
+      if (w.id !== `english-${w.en}`) problems.push(`ID不整合 ${where} (en=${w.en})`);
+      if (!/^[a-z][a-z-]*$/.test(w.en ?? "")) problems.push(`スペル形式 ${where} en="${w.en}"`);
+    }
     if (!["easy", "normal", "hard"].includes(w.level)) problems.push(`level不正 ${where}`);
     if (!Array.isArray(w.tags) || w.tags.length === 0) problems.push(`タグなし ${where}`);
     if (seen.has(w.id)) problems.push(`ファイル内重複 ${where}`);
