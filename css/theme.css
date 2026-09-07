@@ -539,3 +539,27 @@ html[data-theme="light"] .volume-row__value { color: #64748b; }
 /* ---- 概念カード（ライト） ---- */
 html[data-theme="light"] .word-explain { color: #334155; }
 html[data-theme="light"] .word-detail__q { color: #475569; }
+
+/* ---- 単語帳・ジャンル（ライト） ---- */
+html[data-theme="light"] .list-controls__field { color: #64748b; }
+html[data-theme="light"] .genre-nav { background: linear-gradient(#f5f7fb, rgba(245, 247, 251, 0.92)); }
+html[data-theme="light"] .genre-chip { background: #ffffff; border-color: #dbe2ec; color: #334155; }
+html[data-theme="light"] .genre-chip--active { border-color: #2563eb; color: #1d4ed8; background: rgba(37, 99, 235, 0.08); }
+html[data-theme="light"] .genre__title { color: #0f172a; }
+html[data-theme="light"] .genre__meta { color: #64748b; }
+html[data-theme="light"] .gcard { background: #ffffff; border-color: #dbe2ec; }
+html[data-theme="light"] .gcard--weak { border-color: #fca5a5; }
+html[data-theme="light"] .gcard--learning { border-color: #93c5fd; }
+html[data-theme="light"] .gcard--mastered { border-color: #86efac; }
+html[data-theme="light"] .gcard__term { color: #0f172a; }
+html[data-theme="light"] .gcard__status { background: #f1f5f9; color: #64748b; }
+html[data-theme="light"] .gcard__status--learning { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
+html[data-theme="light"] .gcard__status--mastered { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+html[data-theme="light"] .gcard__status--weak { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
+html[data-theme="light"] .gcard__status--known { background: rgba(245, 158, 11, 0.12); color: #92400e; }
+html[data-theme="light"] .gcard__q { color: #0f172a; }
+html[data-theme="light"] .gcard__ja { color: #64748b; }
+html[data-theme="light"] .gcard__explain { color: #334155; }
+html[data-theme="light"] .genre-bar { color: #64748b; }
+html[data-theme="light"] .genre-bar__active b, html[data-theme="light"] .genre-bar__link, html[data-theme="light"] .cat-row__list { color: #1d4ed8; }
+html[data-theme="light"] .genre-bar__clear { border-color: #cbd5e1; color: #334155; }

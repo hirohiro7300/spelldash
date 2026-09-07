@@ -9,7 +9,8 @@ const CORE_ASSETS = [
   "/battle.html",
   "/stats.html",
   "/profile.html",
-  "/news.html"
+  "/news.html",
+  "/list.html"
 ];
 
 self.addEventListener("install", (event) => {

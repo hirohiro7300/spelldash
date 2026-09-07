@@ -357,7 +357,7 @@ function renderCategoryProgress() {
         <button type="button" class="cat-row" data-category="${r.id}">
           <div class="cat-row__head">
             <span class="cat-row__label">${r.label}<span class="cat-row__total">${r.total}語</span></span>
-            <span class="cat-row__learned">覚えた <strong>${r.learned}</strong> / ${r.total}</span>
+            <span class="cat-row__learned">覚えた <strong>${r.learned}</strong> / ${r.total}${r.id !== "all" ? ` <a class="cat-row__list" href="./list.html?category=${r.id}" data-stop>一覧</a>` : ""}</span>
           </div>
           <div class="cat-bar" aria-hidden="true">
             <i class="cat-bar__mastered" style="width:${pct(r.mastered, r.total)}%"></i>
@@ -372,7 +372,8 @@ function renderCategoryProgress() {
     `<p class="cat-legend"><i class="cat-bar__mastered"></i>習得（10日以上かけてノーミス10回）<i class="cat-bar__learning"></i>覚えかけ（自力で思い出せた）<i class="cat-bar__weak"></i>苦手（最後に思い出せなかった）</p>`;
 
   container.querySelectorAll(".cat-row").forEach((row) => {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("[data-stop]")) return; // 「一覧」リンクは行のクリックにしない
       localStorage.setItem("spelldash_category", row.dataset.category);
       window.location.href = "/";
     });

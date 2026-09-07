@@ -101,7 +101,7 @@ async function newPage(init = {}) {
 
 // ===== 1. 全ページがエラーなく表示される =====
 console.log("pages:");
-for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html"]) {
+for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html", "/list.html"]) {
   const page = await newPage();
   await page.goto(BASE + p, { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
@@ -1007,6 +1007,65 @@ console.log("concept cards:");
   const opts = await page2.$$eval("#battleCategory option", (els) => els.map((e) => e.value));
   check("Battleのカテゴリに概念カードは出ない", opts.length > 0 && !opts.includes("listing"), opts.join(","));
   await page2.close();
+}
+
+// ===== 9.98 単語帳: ジャンルごとの一覧＋ジャンルで絞って練習 =====
+console.log("genre list:");
+{
+  const page = await newPage({ storage: {
+    spelldash_word_notes: JSON.stringify({ "concept-cpc": "Cost per Click" }),
+    spelldash_word_stats: JSON.stringify({ "concept-cpc": { playCount: 2, correctCount: 1, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 1, mastered: false, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date(Date.now() - 86400000).toISOString(), lastRecallSuccessAt: new Date().toISOString(), history: [{ d: "2026-09-06", r: "x" }, { d: "2026-09-07", r: "o" }] } })
+  } });
+  await page.goto(BASE + "/list.html?category=listing", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("ナビに「単語帳」", (await page.textContent(".site-nav")).includes("単語帳"));
+  const genres = await page.$$eval("#listGenres .genre-chip", (els) => els.map((e) => e.textContent.trim()));
+  check("ジャンルのナビ（14ジャンル・ラベル化）", genres.length === 14 && genres.some((g) => g.startsWith("指標・略語")) && genres.some((g) => g.startsWith("入札・配信")), genres.join(","));
+  const cards = await page.$$eval(".gcard", (els) => els.length);
+  check("119枚がジャンルごとに並ぶ", cards === 119 && (await page.$$eval(".genre", (els) => els.length)) === 14, `cards=${cards}`);
+  const cpc = await page.$eval("#genre-metrics", (el) => el.textContent);
+  check("カードに場面・解説・状態・メモ", cpc.includes("CPC") && cpc.includes("100クリックで1万円") && cpc.includes("📘") && cpc.includes("覚えかけ") && cpc.includes("Cost per Click"));
+  check("一覧のまとめ行", (await page.textContent("#listSummary")).includes("14ジャンル") && (await page.textContent("#listSummary")).includes("119語"));
+  await page.fill("#listSearch", "重量税");
+  await page.waitForTimeout(150);
+  const hits = await page.$$eval(".gcard", (els) => els.length);
+  check("検索で絞り込める（用語・場面・解説を横断）", hits >= 1 && hits <= 3 && (await page.textContent("#listBody")).includes("重量税還付"), `hits=${hits}`);
+  await page.fill("#listSearch", "");
+  await page.waitForTimeout(150);
+  await page.selectOption("#listCategory", "ads");
+  await page.waitForTimeout(200);
+  check("カテゴリを切り替えると別のジャンル（広告・マーケ）", (await page.textContent("#listSummary")).includes("広告・マーケ") && (await page.$$eval(".gcard", (els) => els.length)) === 101);
+  await page.selectOption("#listCategory", "listing");
+  await page.waitForTimeout(200);
+  await page.click('[data-practice="bidding"]');
+  await page.waitForURL((u) => u.pathname === "/" || u.pathname === "/index.html", { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(900);
+  check("「このジャンルを練習」でホームへ（カテゴリ＋ジャンルが保存）", (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "listing" && (await page.evaluate(() => localStorage.getItem("spelldash_genre"))) === "bidding");
+  check("ホームにジャンルの絞り込み表示", (await page.textContent("#genreBar")).includes("入札・配信") && (await page.$("#genreClear")) !== null);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  const prompt = (await page.textContent("#japanese")).trim();
+  const tag = await page.evaluate(async (q) => {
+    const ws = await import("/js/wordStore.js");
+    return ws.getWordsByCategory("listing").find((w) => w.q === q)?.tags?.[0] ?? null;
+  }, prompt);
+  check("Studyがそのジャンルだけになる", tag === "bidding", `tag=${tag}`);
+  check("単語帳フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  const page2 = await newPage({ storage: { spelldash_category: "listing", spelldash_genre: "bidding" } });
+  await page2.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.click('.category-chip[data-category="ads"]');
+  await page2.waitForTimeout(100);
+  check("カテゴリを変えるとジャンルは解除", (await page2.evaluate(() => localStorage.getItem("spelldash_genre"))) === null && !(await page2.textContent("#genreBar")).includes("解除"));
+  await page2.close();
+
+  const page3 = await newPage();
+  await page3.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(800);
+  check("カテゴリ別進捗に「一覧」リンク", (await page3.$$eval(".cat-row__list", (els) => els.map((e) => e.getAttribute("href")))).includes("./list.html?category=listing"));
+  await page3.close();
 }
 
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====

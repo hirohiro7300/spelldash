@@ -11,6 +11,7 @@ import {
   markPlacementStarted,
   PLACEMENT_MIX
 } from "./difficulty.js";
+import { applyGenre } from "./genres.js";
 import {
   MAX_ACTIVE_NEW_WORDS,
   NEW_WORD_DAILY_SUCCESS_TARGET,
@@ -151,7 +152,7 @@ function isDoneForToday(stat) {
 function categoryWordsDeduped() {
   const stats = weakOnly ? getWordStats() : null;
   const seen = new Set();
-  return getWordsByCategory(activeCategoryId).filter((word) => {
+  return applyGenre(getWordsByCategory(activeCategoryId)).filter((word) => {
     if (seen.has(word.id)) return false;
     seen.add(word.id);
     return weakOnly ? isWeakStat(stats[word.id]) : true;

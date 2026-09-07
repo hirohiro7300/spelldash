@@ -1,4 +1,5 @@
 import { getWordsByCategory, findWord, getCategories, promptOf, speechTextOf, isConceptWord } from "./wordStore.js";
+import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
@@ -1381,7 +1382,7 @@ function chooseWord() {
 
   // 未プレイの単語はプレイヤーレベルで解放（既習語は常に出題対象）。
   // カテゴリ内に解放難易度が無い場合はfilterByAllowedLevelsが最易難易度で救済
-  const pool = getWordsByCategory(activeCategory);
+  const pool = applyGenre(getWordsByCategory(activeCategory)); // ジャンル絞り込みはChallengeにも効く
   const played = pool.filter((word) => stats[word.id]);
   const unlocked = filterByAllowedLevels(
     pool.filter((word) => !stats[word.id]),

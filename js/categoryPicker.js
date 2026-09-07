@@ -1,6 +1,7 @@
 import { getCategories, getWordsByCategory } from "./wordStore.js";
 import { setActiveCategory, isGamePlaying } from "./game.js";
 import { renderLearnedCard } from "./learnedCard.js";
+import { getGenre, setGenre, genreLabel, groupByGenre } from "./genres.js";
 
 const CATEGORY_KEY = "spelldash_category";
 
@@ -31,6 +32,7 @@ export function initializeCategoryPicker() {
     .join("");
 
   setActiveCategory(saved);
+  renderGenreBar(saved);
 
   container.addEventListener("click", (event) => {
     const chip = event.target.closest(".category-chip");
@@ -41,10 +43,31 @@ export function initializeCategoryPicker() {
     const categoryId = chip.dataset.category;
     localStorage.setItem(CATEGORY_KEY, categoryId);
     setActiveCategory(categoryId);
+    setGenre(""); // カテゴリを変えたらジャンルの絞り込みは解除
+    renderGenreBar(categoryId);
     renderLearnedCard();
 
     container.querySelectorAll(".category-chip").forEach((el) => {
       el.classList.toggle("category-chip--active", el === chip);
     });
+  });
+}
+
+// カテゴリの下: 一覧へのリンクと、ジャンルで絞っている時の表示・解除
+function renderGenreBar(categoryId) {
+  const bar = document.getElementById("genreBar");
+  if (!bar) return;
+  const genre = getGenre();
+  const listHref = `./list.html?category=${encodeURIComponent(categoryId === "all" ? "" : categoryId)}`;
+  const genres = categoryId === "all" ? [] : groupByGenre(categoryId);
+  bar.innerHTML = `
+    ${genre ? `<span class="genre-bar__active">ジャンル: <b>${genreLabel(genre)}</b><button type="button" class="genre-bar__clear" id="genreClear" aria-label="ジャンルの絞り込みを解除">✕ 解除</button></span>` : ""}
+    ${genres.length > 1 && !genre ? `<span class="genre-bar__hint">${genres.length}ジャンル</span>` : ""}
+    <a class="genre-bar__link" href="${listHref}">📖 ${categoryId === "all" ? "単語帳を見る" : "このカテゴリの一覧を見る"}</a>
+  `;
+  document.getElementById("genreClear")?.addEventListener("click", () => {
+    if (isGamePlaying()) return;
+    setGenre("");
+    renderGenreBar(categoryId);
   });
 }

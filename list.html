@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>単語帳 | SpellDash</title>
+
+  <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="stylesheet" href="./css/layout.css" />
+  <link rel="stylesheet" href="./css/game.css" />
+  <link rel="stylesheet" href="./css/responsive.css" />
+  <link rel="stylesheet" href="./css/theme.css" />
+  <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
+
+  <meta name="description" content="カテゴリ・ジャンルごとの単語とカードの一覧。状態・場面・解説・メモを見ながら、ジャンルを選んで練習。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SpellDash" />
+  <meta property="og:title" content="単語帳 | SpellDash" />
+  <meta property="og:description" content="カテゴリ・ジャンルごとの単語とカードの一覧。" />
+  <meta property="og:url" content="https://www.spelldash.net/list.html" />
+  <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link">プレイ</a>
+        <a href="./battle.html" class="site-nav__link">バトル</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
+        <a href="./list.html" class="site-nav__link" aria-current="page">単語帳</a>
+      </nav>
+
+      <div class="account">
+        <div class="account__guest dropdown" id="accountGuest" hidden>
+          <button
+            class="btn btn--sm btn--ghost"
+            id="loginToggle"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+          >
+            ログイン
+          </button>
+
+          <div class="dropdown__panel">
+            <form class="account-menu account-menu--login" id="accountLogin">
+              <button
+                id="googleLoginButton"
+                type="button"
+                class="btn btn--sm btn--google"
+              >
+                Googleでログイン
+              </button>
+
+              <div class="account-menu__divider">または</div>
+
+              <p class="account-menu__hint">
+                メールアドレスにログインリンクを送ります。
+              </p>
+              <input
+                id="emailInput"
+                type="email"
+                placeholder="メールアドレス"
+                autocomplete="email"
+              />
+              <button id="loginButton" type="submit" class="btn btn--sm">
+                リンクを送信
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="account__user dropdown" id="accountUser" hidden>
+          <button
+            class="avatar-button"
+            id="avatarButton"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="アカウントメニュー"
+          >
+            <span class="avatar" id="headerAvatar">?</span>
+          </button>
+
+          <div class="dropdown__panel">
+            <div class="account-menu" id="accountMenu">
+              <p class="account-menu__email" id="userStatus"></p>
+              <a class="account-menu__item" href="./profile.html">プロフィール</a>
+              <button
+                class="account-menu__item account-menu__item--danger"
+                id="logoutButton"
+                type="button"
+              >
+                ログアウト
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="app">
+    <section class="hero hero--compact">
+      <p class="logo">単語帳</p>
+      <h1>ジャンルごとに、眺めて選ぶ。</h1>
+      <p class="subtitle">カテゴリの中をジャンルで分けて一覧にしました。語をタップすると詳細、ジャンルごとに練習にも入れます。</p>
+      <p class="auth-message" id="authMessage" role="status"></p>
+    </section>
+
+    <section class="list-controls">
+      <label class="list-controls__field">
+        <span>カテゴリ</span>
+        <select id="listCategory" class="setting-select"></select>
+      </label>
+      <label class="list-controls__field list-controls__field--grow">
+        <span>検索</span>
+        <input id="listSearch" type="search" class="setting-select" placeholder="用語・意味・場面・別解で検索" autocomplete="off" />
+      </label>
+    </section>
+    <p class="muted list-summary" id="listSummary"></p>
+    <nav class="genre-nav" id="listGenres" aria-label="ジャンル"></nav>
+
+    <div id="listBody"></div>
+  </div>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="./news.html">お知らせ</a>
+        <a href="./privacy.html">プライバシー</a>
+        <a href="#" data-feedback-open>ご意見・不具合</a>
+      </nav>
+
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
+    </div>
+  </footer>
+
+  <script type="module" src="./js/listView.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js");
+    }
+  </script>
+</body>
+</html>

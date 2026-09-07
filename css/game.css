@@ -3184,3 +3184,248 @@ body.free-answer .typed-preview {
   font-size: 13px;
   line-height: 1.55;
 }
+
+/* ===== 単語帳（ジャンルごとの一覧） ===== */
+.list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.list-controls__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.list-controls__field--grow {
+  flex: 1 1 240px;
+}
+
+.list-controls__field .setting-select {
+  width: 100%;
+}
+
+.list-summary {
+  margin: 0 0 10px;
+}
+
+.genre-nav {
+  position: sticky;
+  top: 60px;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 8px 0;
+  margin-bottom: 12px;
+  scrollbar-width: none;
+  background: linear-gradient(#0b1220, rgba(11, 18, 32, 0.92));
+}
+
+.genre-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.genre-chip {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.6);
+  color: #cbd5e1;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.genre-chip span {
+  margin-left: 5px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.genre-chip--active {
+  border-color: #60a5fa;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.genre {
+  margin-bottom: 26px;
+  scroll-margin-top: 110px;
+}
+
+.genre__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+
+.genre__title {
+  margin: 0;
+  font-size: 18px;
+  color: #f8fafc;
+}
+
+.genre__count {
+  margin-left: 6px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.genre__meta {
+  color: #94a3b8;
+  font-size: 12.5px;
+}
+
+.genre__practice {
+  margin-left: auto;
+}
+
+.genre__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+}
+
+.gcard {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gcard--weak { border-color: rgba(248, 113, 113, 0.45); }
+.gcard--learning { border-color: rgba(96, 165, 250, 0.45); }
+.gcard--mastered { border-color: rgba(74, 222, 128, 0.5); }
+
+.gcard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gcard__term {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #f8fafc;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted rgba(148, 163, 184, 0.5);
+  text-underline-offset: 3px;
+}
+
+.gcard__status {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.14);
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.gcard__status--learning { background: rgba(96, 165, 250, 0.18); color: #93c5fd; }
+.gcard__status--mastered { background: rgba(74, 222, 128, 0.18); color: #86efac; }
+.gcard__status--weak { background: rgba(248, 113, 113, 0.18); color: #fca5a5; }
+.gcard__status--known { background: rgba(250, 204, 21, 0.14); color: #fde68a; }
+
+.gcard__q {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.gcard__ja {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.gcard__explain {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.gcard__accept {
+  margin: 0;
+  color: #64748b;
+  font-size: 11.5px;
+}
+
+.gcard__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* ホーム: カテゴリの下のジャンル行 */
+.genre-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: -10px 0 18px;
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+
+.genre-bar:empty {
+  display: none;
+}
+
+.genre-bar__active b {
+  color: #93c5fd;
+}
+
+.genre-bar__clear {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.genre-bar__link {
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+.genre-bar__link:hover {
+  text-decoration: underline;
+}
+
+.cat-row__list {
+  margin-left: 8px;
+  color: #93c5fd;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cat-row__list:hover {
+  text-decoration: underline;
+}
