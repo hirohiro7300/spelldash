@@ -265,7 +265,8 @@ export async function initialSync() {
       changedLocal = true;
       toUpload.push(statToRow(userId, wordId, combined));
     } else if (cloudTime > localTime) {
-      merged[wordId] = { ...rowToStat(c, l), ...recallFields };
+      // ローカルだけにある拡張フィールド（history / knownOnSight / lastReviewResult 等）は残す
+      merged[wordId] = { ...l, ...rowToStat(c, l), ...recallFields };
       changedLocal = true;
     }
   }

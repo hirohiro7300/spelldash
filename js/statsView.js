@@ -11,6 +11,7 @@ import { computeCategoryProgress } from "./categoryProgress.js";
 import { initializeMyWordsView } from "./myWordsView.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { getLearnedSeries, recordGrowthSnapshot } from "./growthLog.js";
+import { getLearnedWordList, getKnownWordList, historyDotsHtml } from "./learnedWords.js";
 
 import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
@@ -30,6 +31,7 @@ initWordStore().then(() => {
   renderTyping();
   renderWeeklySummary();
   renderScoreTrend();
+  renderLearnedWords();
   renderCategoryProgress();
   renderGrowthTrend();
   renderWeeklyReport("weeklyReport");
@@ -39,6 +41,7 @@ initWordStore().then(() => {
   initializeWordList();
   initializeMyWordsView(() => {
     renderCategoryProgress();
+    renderLearnedWords();
     renderOverview();
   });
 });
@@ -49,6 +52,7 @@ window.addEventListener("spelldash:synced", () => {
   renderTyping();
   renderWeeklySummary();
   renderScoreTrend();
+  renderLearnedWords();
   renderCategoryProgress();
   renderGrowthTrend();
   renderWeeklyReport("weeklyReport");
@@ -412,4 +416,42 @@ function renderGrowthTrend() {
     </svg>
     <p class="score-trend__legend">● 学習した日</p>
   `;
+}
+
+// ===== 覚えた単語帳（語で見せる） =====
+function renderLearnedWords() {
+  const container = document.getElementById("learnedWordList");
+  if (!container) return;
+
+  const list = getLearnedWordList();
+  const known = getKnownWordList();
+  const count = document.getElementById("learnedWordsCount");
+  if (count) count.textContent = `${list.length}語`;
+  const knownSummary = document.getElementById("knownWordsSummary");
+  if (knownSummary) knownSummary.textContent = `もともと知っていた語 ${known.length}語（覚えた数には入れていません）`;
+
+  if (list.length === 0) {
+    container.innerHTML = '<p class="muted">まだありません。思い出せなかった語が、次に自力で打てた時にここへ入ります。</p>';
+  } else {
+    const shown = list.slice(0, 60);
+    container.innerHTML =
+      shown
+        .map(
+          (w) => `
+          <div class="learned-item">
+            <span class="learned-item__en">${w.en}</span>
+            <span class="learned-item__ja">${w.ja}</span>
+            <span class="learned-item__meta">${w.label}${w.status === "mastered" ? " ・ 習得" : ""}</span>
+            ${historyDotsHtml(w.stat)}
+          </div>`
+        )
+        .join("") + (list.length > shown.length ? `<p class="muted">ほか ${list.length - shown.length} 語</p>` : "");
+  }
+
+  const knownContainer = document.getElementById("knownWordList");
+  if (knownContainer) {
+    knownContainer.innerHTML = known.length
+      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<span title="${w.ja}">${w.en}</span>`).join(" ")}${known.length > 200 ? " …" : ""}</p>`
+      : '<p class="muted">まだありません。</p>';
+  }
 }

@@ -148,7 +148,7 @@ console.log("study:");
     if (known.has(ja) && hidden) {
       for (const ch of known.get(ja)) await page.press("#input", ch); // 自力正解（答えを見ない）
       await waitUntil(async () => (await page.textContent("#message")).includes("XP"));
-      grew = (await page.textContent("#message")).includes("習得まで");
+      grew = /思い出せた|覚えた/.test(await page.textContent("#message"));
       break;
     }
     await page.press("#input", "Enter"); // 答え表示
@@ -160,7 +160,7 @@ console.log("study:");
     await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja, 1500);
     await page.waitForTimeout(120);
   }
-  check("自力正解後に成長メッセージ（習得まで）", grew, `last msg=${await page.textContent("#message")}`);
+  check("自力正解後に学びのメッセージ（思い出せた/覚えた）", grew, `last msg=${await page.textContent("#message")}`);
   check("ホームに覚えた単語カード", (await page.textContent("#learnedCard")).includes("覚えた単語"));
   check("Studyフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
@@ -450,6 +450,54 @@ console.log("category progress:");
   check("すべての行に語数1101", rows[0]?.includes("1101語") === true, rows[0]);
   check("カテゴリ進捗でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
+}
+
+// ===== 9.5 覚えた瞬間 v2: 知ってた／覚えた！／履歴／語チップ／単語帳／難易度ブースト =====
+console.log("learned moment:");
+{
+  const y = new Date(Date.now() - 86400000);
+  const yKey = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+  const page = await newPage({ storage: {
+    spelldash_category: "my",
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }]),
+    spelldash_word_stats: JSON.stringify({ "my-invoice": { playCount: 1, correctCount: 0, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 0, mastered: false, lastPlayed: y.toISOString(), nextReviewAt: y.toISOString(), lastRecallFailAt: y.toISOString(), lastRecallSuccessAt: null, history: [{ d: yKey, r: "x" }] } }),
+    spelldash_first_sight: JSON.stringify(Array(11).fill(true))
+  } });
+  await page.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  check("昨日思い出せなかった語が先頭に出る", (await page.textContent("#japanese")).trim() === "請求書", await page.textContent("#japanese"));
+  for (const ch of "invoice") await page.press("#input", ch);
+  await waitUntil(async () => (await page.textContent("#message")).includes("覚えた"));
+  check("日をまたいで自力正解→「覚えた！」", (await page.textContent("#message")).includes("覚えた！"), await page.textContent("#message"));
+  check("はちゃんが語を名指しで喜ぶ", !(await page.$eval("#learnToast", (el) => el.hidden)) && (await page.textContent("#learnToast")).includes("invoice"));
+  check("履歴ドット ×→○", (await page.$$eval("#wordHistory .hist i", (els) => els.map((e) => e.className).join(","))) === "hist__x,hist__o");
+  await waitUntil(async () => (await page.textContent("#japanese")).trim() === "交渉する", 1500);
+  for (const ch of "negotiate") await page.press("#input", ch);
+  await waitUntil(async () => (await page.textContent("#message")).includes("知ってた"), 1500);
+  check("初見ノーミス→「知ってた」", (await page.textContent("#message")).includes("知ってた"), await page.textContent("#message"));
+  const stat = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_word_stats"))["my-negotiate"]);
+  check("知ってた語はknownOnSight＋同日反復に入らない", stat.knownOnSight === true && stat.dailyLearningStage >= 4, JSON.stringify(stat).slice(0, 80));
+  check("初見12語中12語知ってた→難易度ブースト", (await page.evaluate(() => localStorage.getItem("spelldash_level_boost"))) === "1");
+  await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 2000);
+  const panel = await page.textContent("#resultPanel");
+  check("完了パネルに「覚えた！」の語チップ", panel.includes("覚えた！") && (await page.$$eval(".word-chip--learned", (els) => els.map((e) => e.textContent).join(""))).includes("invoice"));
+  await waitUntil(async () => (await page.textContent("#message")).includes("難しい単語"), 2500);
+  check("ブースト時の案内メッセージ", (await page.textContent("#message")).includes("難しい単語"), await page.textContent("#message"));
+  check("ホームカードに「今日覚えた: invoice」", (await page.textContent("#learnedCard")).includes("今日覚えた") && (await page.textContent("#learnedCard")).includes("invoice"));
+  check("覚えた瞬間フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  // 学習後の状態を持って学習データへ（初期化スクリプトがseedを再適用するため新ページで）
+  const statsAfter = await page.evaluate(() => localStorage.getItem("spelldash_word_stats"));
+  const myWords = await page.evaluate(() => localStorage.getItem("spelldash_my_words"));
+  await page.close();
+  const page2 = await newPage({ storage: { spelldash_word_stats: statsAfter, spelldash_my_words: myWords } });
+  await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  const list = await page2.textContent("#learnedWordList");
+  check("覚えた単語帳に invoice（履歴つき）", list.includes("invoice") && (await page2.$("#learnedWordList .hist__x")) !== null, list.slice(0, 80));
+  check("知ってた語は別枠に negotiate", (await page2.textContent("#knownWordList")).includes("negotiate") && !list.includes("negotiate"));
+  await page2.close();
 }
 
 // ===== 9.55 成長の証拠: 週間レポート・推移・今週+N =====

@@ -40,6 +40,18 @@ export function recordCorrect(word, wasClean) {
 
   stats[word].correctCount += 1;
 
+  // 初見でノーミス自力正解 = もともと知っていた語。学習ではないので「覚えた」に数えず、
+  // 復習も薄く（2週間後に1回確認）。知っている語で時間を使わせない
+  if (wasClean && stats[word].playCount === 1 && (stats[word].recallFail ?? 0) === 0 && !stats[word].lastRecallSuccessAt) {
+    stats[word].knownOnSight = true;
+    stats[word].cleanCorrectStreak = 1;
+    stats[word].srsAdvancedOn = localDateString();
+    stats[word].nextReviewAt = daysFromNow(14);
+    saveWordStats(stats);
+    markWordDirty(word);
+    return;
+  }
+
   if (wasClean) {
     // SRSの前進は1日1回まで。同日反復（New Word Learning Loop）は
     // 短期定着のためのもので、長期のSRS段階を進めない。
@@ -97,8 +109,14 @@ export function recordTypingMiss(word) {
 
 // 思い出せなかった（Enterで答えを見た）。これが本当の「苦手」
 // lastRecallFailAt を更新 → 自力正解するまで Unresolved（未解決）状態になる
+// 直近8回の思い出せた/思い出せなかった履歴（「昨日×→今日○」を語ごとに見せる）
+function pushHistory(stat, r) {
+  const h = Array.isArray(stat.history) ? stat.history : [];
+  stat.history = [...h.slice(-7), { d: localDateString(), r }];
+}
+
 // 1日以上前に覚えていた語への挑戦か（復習の成否＝定着率の材料）
-function isReviewAttempt(stat) {
+export function isReviewAttempt(stat) {
   if (!stat?.lastRecallSuccessAt) return false;
   return Date.now() - Date.parse(stat.lastRecallSuccessAt) >= 20 * 60 * 60 * 1000;
 }
@@ -113,6 +131,7 @@ export function recordRecallFail(word) {
     stats[word].lastReviewAt = new Date().toISOString();
   }
 
+  pushHistory(stats[word], "x");
   stats[word].recallFail += 1;
   stats[word].missCount += 1;
   stats[word].cleanCorrectStreak = 0;
@@ -136,6 +155,7 @@ export function recordRecallSuccess(word) {
     stats[word].lastReviewAt = new Date().toISOString();
   }
 
+  pushHistory(stats[word], "o");
   stats[word].lastRecallSuccessAt = new Date().toISOString();
 
   saveWordStats(stats);

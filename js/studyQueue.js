@@ -3,7 +3,7 @@ import { getWordsByCategory } from "./wordStore.js";
 import { getTodayMission } from "./mission.js";
 import { setDailyLearning, localDateString } from "./stats.js";
 import { getFamiliarRatio } from "./studyMix.js";
-import { allowedWordLevels, filterByAllowedLevels } from "./difficulty.js";
+import { allowedWordLevels, filterByAllowedLevels, recordFirstSight } from "./difficulty.js";
 import {
   MAX_ACTIVE_NEW_WORDS,
   NEW_WORD_DAILY_SUCCESS_TARGET,
@@ -368,6 +368,11 @@ export function onRecallFail(wordId) {
   const stats = getWordStats();
   const stat = stats[wordId];
 
+  // 初見で思い出せなかった = 学ぶべき語。難易度ブーストの材料に「知らなかった」を記録
+  if (stat && (stat.playCount ?? 0) <= 1 && (stat.recallFail ?? 0) <= 1 && !stat.lastRecallSuccessAt) {
+    recordFirstSight(false);
+  }
+
   if (isLearningToday(stat) || isSecuredToday(stat)) {
     // 全リセットはせず1段階だけ戻す（Secured後の失敗も学習中に戻る）
     const stage = Math.max(0, (stat.dailyLearningStage ?? 0) - 1);
@@ -392,6 +397,14 @@ export function onRecallSuccess(wordId) {
   const stat = stats[wordId];
 
   queue = queue.filter((id) => id !== wordId);
+
+  // 初見でノーミス自力正解（もともと知っていた語）: 同日反復に入れず今日は終わり
+  if (stat?.knownOnSight && isLearningToday(stat) && (stat.dailyLearningStage ?? 0) === 0) {
+    recordFirstSight(true);
+    setDailyLearning(wordId, NEW_WORD_DAILY_SUCCESS_TARGET);
+    recalledThisSession.add(wordId);
+    return { secured: false, requeued: false, stage: null, known: true };
+  }
 
   if (isLearningToday(stat)) {
     const stage = (stat.dailyLearningStage ?? 0) + 1;

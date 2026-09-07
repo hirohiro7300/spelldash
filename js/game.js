@@ -1,5 +1,6 @@
 import { getWordsByCategory, findWord } from "./wordStore.js";
-import { hasumiResultLine, hasumiSetLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
+import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
+import { historyDotsHtml } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
 import { renderTodayCta } from "./todayCta.js";
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
@@ -18,7 +19,9 @@ import {
   recordCorrect,
   recordTypingMiss,
   recordRecallFail,
-  recordRecallSuccess
+  recordRecallSuccess,
+  isReviewAttempt,
+  localDateString
 } from "./stats.js";
 import {
   startStudyQueue,
@@ -65,7 +68,7 @@ import {
   sfxSparkle
 } from "./sfx.js";
 import { bumpActivity, markDailyDone } from "./activity.js";
-import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel } from "./difficulty.js";
+import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel, consumeBoostNote } from "./difficulty.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak } from "./audio.js";
 import {
@@ -104,6 +107,7 @@ let activeCategory = "all";
 // 今日のセット（Study）: 自力で思い出せたユニーク語を数え、規定数で完了
 let setRecalled = new Set();
 let setFailed = new Set();
+let setLearnEvents = new Map(); // id -> "learned" | "recovered"（完了パネルで語を見せる）
 let setNewCount = 0;
 let setReviewCount = 0;
 let setCompletePending = false;
@@ -243,6 +247,7 @@ export function startGame() {
     updateRecalledToday();
     setRecalled = new Set();
     setFailed = new Set();
+    setLearnEvents = new Map();
     setNewCount = 0;
     setReviewCount = 0;
     setCompletePending = false;
@@ -428,6 +433,7 @@ function revealAnswer(fromMiss = false) {
 
   showColoredAnswer(currentWord.en);
   renderWordFamily(currentWord);
+  renderWordHistory();
 
   // 発音: autoなら1回再生。スピーカーボタンも表示
   autoSpeak(currentWord.en);
@@ -534,7 +540,25 @@ function completeWord() {
   const isClean = !hasMissedCurrentWord && !isRevealed;
 
   // 当日初の自力正解かどうか（XPと学習ループの判定に使う。記録前に見る）
-  const firstRecallToday = !isRecalledToday(getWordStats()[currentWord.id]);
+  const prevStat = getWordStats()[currentWord.id];
+  const firstRecallToday = !isRecalledToday(prevStat);
+
+  // 学びの瞬間を判定（記録前の状態で）:
+  //  learned   = 別の日に思い出せなかった語を、今日自力で思い出せた（学習成立）
+  //  recovered = 同じ日の失敗からの回復（Recall Loop）
+  //  retained  = 1日以上前に覚えた語を復習で思い出せた（定着）
+  //  known     = 初見でノーミス自力正解（もともと知っていた）
+  let learnEvent = null;
+  if (mode === "study" && !isRevealed && prevStat) {
+    if (isUnresolved(prevStat)) {
+      const failDay = prevStat.lastRecallFailAt ? localDateString(new Date(prevStat.lastRecallFailAt)) : null;
+      learnEvent = failDay && failDay !== localDateString() ? "learned" : "recovered";
+    } else if (isClean && prevStat.playCount === 1 && (prevStat.recallFail ?? 0) === 0 && !prevStat.lastRecallSuccessAt) {
+      learnEvent = "known";
+    } else if (isReviewAttempt(prevStat)) {
+      learnEvent = "retained";
+    }
+  }
 
   recordCorrect(currentWord.id, isClean);
 
@@ -549,6 +573,11 @@ function completeWord() {
       loopResult = queueRecallSuccess(currentWord.id);
       playRecallSuccessEffect();
       updateRecalledToday();
+
+      if (learnEvent === "learned" || learnEvent === "recovered") {
+        if (!setLearnEvents.has(currentWord.id) || learnEvent === "learned") setLearnEvents.set(currentWord.id, learnEvent);
+      }
+      renderWordHistory();
 
       // 今日のセット: 自力正解のユニーク語を数える
       if (!setRecalled.has(currentWord.id)) {
@@ -584,7 +613,10 @@ function completeWord() {
   renderMission();
 
   if (mode === "study") {
-    applyStudyXp(earned, missionResult, loopResult);
+    applyStudyXp(earned, missionResult, loopResult, learnEvent);
+    if (consumeBoostNote()) {
+      setTimeout(() => showMessage("知ってる語が多いみたい。少し難しい単語も混ぜていくね", "revealed"), 1200);
+    }
   } else {
     gainedXp += earned;
 
@@ -643,6 +675,48 @@ function renderSetProgress() {
   `;
 }
 
+// ===== 「覚えた！」の瞬間 =====
+// 別の日に思い出せなかった語を今日自力で思い出せた＝学習成立。ここだけは大きく祝う
+function celebrateLearned(word, earned) {
+  sfxSparkle();
+  sfxComplete();
+
+  const card = document.getElementById("gameCard");
+  if (card) {
+    card.classList.remove("game-card--learned");
+    void card.offsetWidth;
+    card.classList.add("game-card--learned");
+    const stamp = document.createElement("div");
+    stamp.className = "learn-stamp";
+    stamp.textContent = "覚えた！";
+    card.appendChild(stamp);
+    setTimeout(() => stamp.remove(), 1400);
+  }
+
+  showMessage(`✨ 覚えた！ ${word.en}（${word.ja}）${earned > 0 ? `  +${earned} XP` : ""}`, "learned");
+
+  const toast = document.getElementById("learnToast");
+  if (toast) {
+    toast.innerHTML = hasumiBubbleHtml(hasumiLearnedLine(word.en), "hasumi--result");
+    toast.hidden = false;
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+      toast.hidden = true;
+    }, 4500);
+  }
+}
+
+// 単語の履歴ドット（× × ○ ○）を単語の下に出す（Studyのみ）
+function renderWordHistory() {
+  const el = document.getElementById("wordHistory");
+  if (!el) return;
+  if (mode !== "study" || !currentWord) {
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = historyDotsHtml(getWordStats()[currentWord.id]);
+}
+
 // Challenge/Dailyプレイ中: カード内にスコアとコンボを常設（統計カードは視界外のため）
 function renderPlayScore() {
   const el = document.getElementById("playScore");
@@ -655,6 +729,24 @@ function renderPlayScore() {
     <span class="play-score__value">${score}</span>
     <span class="play-score__combo ${tier ? `play-score__combo--${tier}` : ""}">${combo >= 2 ? `🔥${combo}` : ""}</span>
   `;
+}
+
+// 完了パネル: 数字ではなく語で見せる（覚えた！／思い出せた／思い出せず）
+function renderSetWordChips() {
+  const chip = (id, cls = "") => {
+    const w = findWord(id);
+    return w ? `<button type="button" class="word-chip ${cls}" data-speak="${w.en}"><b>${w.en}</b><small>${w.ja}</small></button>` : "";
+  };
+  const learned = [...setLearnEvents].filter(([, e]) => e === "learned").map(([id]) => id);
+  const recovered = [...setLearnEvents].filter(([, e]) => e === "recovered").map(([id]) => id);
+  const failed = [...setFailed].filter((id) => !setRecalled.has(id));
+  const group = (title, ids, cls) =>
+    ids.length ? `<div class="word-chips"><span class="word-chips__title">${title}</span>${ids.map((id) => chip(id, cls)).join("")}</div>` : "";
+  return (
+    group("✨ 覚えた！（前は出てこなかった語）", learned, "word-chip--learned") +
+    group("👍 思い出せた（さっき見た語）", recovered, "word-chip--recovered") +
+    group("↻ 思い出せず（また出すね）", failed, "word-chip--failed")
+  );
 }
 
 function endStudySession() {
@@ -696,6 +788,7 @@ function endStudySession() {
         <div><span>思い出せず</span><strong>${failed}</strong></div>
         <div><span>明日の復習予定</span><strong>${dueTomorrow}語</strong></div>
       </div>
+      ${renderSetWordChips()}
       <div class="result-panel__actions">
         <button type="button" class="result-panel__action" id="setAgain">もう1セット</button>
         <button type="button" class="result-panel__action result-panel__action--ghost" id="setChallenge">Challengeで腕試し</button>
@@ -704,6 +797,7 @@ function endStudySession() {
     `;
     panel.hidden = false;
     panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    panel.querySelectorAll("[data-speak]").forEach((chip) => chip.addEventListener("click", () => speak(chip.dataset.speak)));
     document.getElementById("setAgain")?.addEventListener("click", () => {
       restartGame();
       elements.input.focus();
@@ -719,7 +813,7 @@ function endStudySession() {
 }
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
-function applyStudyXp(earned, missionResult, loopResult) {
+function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
   markActiveToday();
   snapshotGrowth();
   renderLearnedCard(); // 覚えた単語数を即時更新
@@ -733,6 +827,12 @@ function applyStudyXp(earned, missionResult, loopResult) {
 
   const result = addXp(earned);
   renderLevelBar();
+
+  // 「覚えた！」は他の何より先に祝う（学習が成立した瞬間）
+  if (learnEvent === "learned") {
+    celebrateLearned(currentWord, earned);
+    return;
+  }
 
   if (result.leveledUp) {
     playLevelUpEffect();
@@ -764,18 +864,33 @@ function applyStudyXp(earned, missionResult, loopResult) {
     return;
   }
 
-  // 通常の自力正解: この単語の成長を1行で見せる（覚えた実感）
+  // 自力正解: 学びの種類ごとに違う言葉で（数字より意味）
   if (!isRevealed) {
+    const xp = earned > 0 ? `  +${earned} XP` : "";
     const stat = getWordStats()[currentWord.id];
+    if (stat?.mastered) {
+      sfxComplete();
+      showMessage(`🏆 ${currentWord.en} を習得！10回連続で思い出せた${xp}`, "learned");
+      return;
+    }
+    if (learnEvent === "recovered") {
+      sfxSparkle();
+      showMessage(`👍 思い出せた！ ${currentWord.en} — さっきは出てこなかったのに${xp}`, "correct");
+      return;
+    }
+    if (learnEvent === "retained") {
+      const days = stat?.lastReviewAt && stat?.history?.length > 1
+        ? Math.max(1, Math.round((Date.now() - Date.parse(stat.history[stat.history.length - 2]?.d ?? stat.lastReviewAt)) / 86400000))
+        : null;
+      showMessage(`✓ 定着 ${days ? `${days}日ぶりでも` : ""}思い出せた${xp}`, "correct");
+      return;
+    }
+    if (learnEvent === "known") {
+      showMessage(`知ってた ✓ ${currentWord.en} は2週間後にもう一度だけ確認するね${xp}`, "correct");
+      return;
+    }
     const streakCount = stat?.cleanCorrectStreak ?? 0;
-    const left = Math.max(0, 10 - streakCount);
-    const nextDays = stat?.nextReviewAt
-      ? Math.max(1, Math.round((Date.parse(stat.nextReviewAt) - Date.now()) / 86400000))
-      : null;
-    const growth = stat?.mastered
-      ? "🏆 習得！もう出題されません"
-      : `📈 ノーミス${streakCount}回目${nextDays ? ` ・ 次は${nextDays}日後に復習` : ""} ・ 習得まであと${left}回`;
-    showMessage(`${growth}${earned > 0 ? `  +${earned} XP` : ""}`, "correct");
+    showMessage(`○ 思い出せた${streakCount >= 2 ? `（${streakCount}回目）` : ""}${xp}`, "correct");
     return;
   }
 
@@ -843,6 +958,8 @@ function setNewWord() {
   clearTypedPreview();
 
   renderWordMeta(); // recordPlayより前（未プレイ判定のため）
+  const hist = document.getElementById("wordHistory");
+  if (hist) hist.innerHTML = "";
   recordPlay(currentWord.id);
 }
 
