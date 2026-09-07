@@ -1,4 +1,4 @@
-import { getWordsByCategory, findWord } from "./wordStore.js";
+import { getWordsByCategory, findWord, getCategories } from "./wordStore.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
@@ -11,6 +11,9 @@ import {
   getWordStats,
   getBestScore,
   saveBestScore,
+  getCategoryBest,
+  saveCategoryBest,
+  getSessionLog,
   recordTypingSession,
   appendSessionLog
 } from "./storage.js";
@@ -36,6 +39,7 @@ import {
   isReviewDue,
   getSessionReviewCount,
   getDueReviewCount,
+  getDueReviewWords,
   startRetryQueue,
   isPlacementRun,
   getQueueComposition
@@ -51,7 +55,7 @@ import {
   playRecallSuccessEffect,
   playRecallFailEffect
 } from "./studyQueueUi.js";
-import { addXp, updateStreak } from "./level.js";
+import { addXp, updateStreak, getTitle } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
 import { renderStreakCard } from "./streakUi.js";
 import { renderHeaderStreak } from "./headerStreak.js";
@@ -361,6 +365,20 @@ export function handleKeydown(event) {
   }
 
   if (!isPlaying || !currentWord) return;
+
+  // Esc = 「わからない」（Enterと同じ: 答え表示 → もう一度で次へ）
+  if (event.key === "Escape") {
+    event.preventDefault();
+    triggerEnter();
+    return;
+  }
+  // Tab = 発音（フォーカスは入力欄に留める）
+  if (event.key === "Tab") {
+    event.preventDefault();
+    speak(currentWord.en);
+    return;
+  }
+
   if (event.key.length !== 1) return;
 
   event.preventDefault();
@@ -943,6 +961,11 @@ function endStudySession() {
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(23, 59, 59, 999);
   const dueTomorrow = getDueReviewCount(activeCategory, tomorrow.getTime());
+  const dueWords = getDueReviewWords(activeCategory, tomorrow.getTime(), 3);
+  const tomorrowLine =
+    dueTomorrow > 0
+      ? `<div class="result-panel__tomorrow">明日は <b>${dueWords.map((w) => w.en).join("・")}</b>${dueTomorrow > dueWords.length ? ` など${dueTomorrow}語` : ""} の復習から</div>`
+      : `<div class="result-panel__tomorrow">明日の復習はまだ無し。新しい語から始めよう</div>`;
 
   // 週の目標（学習日数）: ちょうど達成した日は一言添える
   const goal = getWeekGoal();
@@ -970,6 +993,7 @@ function endStudySession() {
         <div><span>明日の復習予定</span><strong>${dueTomorrow}語</strong></div>
       </div>
       ${renderSetWordChips()}
+      ${tomorrowLine}
       ${goalLine}
       <div class="result-panel__actions">
         ${failed > 0 ? `<button type="button" class="result-panel__action" id="setRetry">思い出せなかった${failed}語をもう一度</button>` : ""}
@@ -1038,6 +1062,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
   if (result.leveledUp) {
     playLevelUpEffect();
     sfxLevelUp();
+    celebrateRankUp(result);
     showMessage(
       `🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」${unlockNoteForLevel(result.after.level)}`,
       "finished"
@@ -1231,6 +1256,8 @@ function chooseWord() {
       const accuracy = data.correctCount / Math.max(data.playCount, 1);
       if (accuracy < 0.5) weight += 5;
       if (data.mastered) weight = 1;
+      // 復習期日が来ている語はChallengeでも優先（Challengeが復習にもなる）
+      if (isReviewDue(data)) weight += 6;
     }
 
     // 今日のミッション対象は優先的に出題（遊んでいるだけで達成できる）
@@ -1263,6 +1290,9 @@ function endChallenge() {
 
   const isDaily = !!dailyRun;
   const previousBest = getBestScore();
+  const previousRun = getSessionLog().filter((e) => e.mode === (isDaily ? "daily" : "challenge")).at(-1)?.score ?? null;
+  const categoryBestBefore = isDaily ? 0 : getCategoryBest(activeCategory);
+  const categoryBestUpdated = isDaily ? false : saveCategoryBest(activeCategory, score);
 
   const elapsedSeconds = startTime ? (Date.now() - startTime) / 1000 : 0;
   const speed = elapsedSeconds > 0 ? correctChars / elapsedSeconds : 0;
@@ -1342,28 +1372,30 @@ function endChallenge() {
   if (result.leveledUp) {
     playLevelUpEffect();
     sfxLevelUp();
+    celebrateRankUp(result);
     showMessage(
       `🎉 レベルアップ！ Lv.${result.after.level}「${result.after.title}」 +${gainedXp} XP${unlockNoteForLevel(result.after.level)}`,
       "finished"
     );
+    renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun, categoryBestBefore, categoryBestUpdated });
     return;
   }
 
   if (isDaily) {
     sfxComplete();
     showMessage(`⚡ DAILY DASH 終了！スコア ${score} / +${gainedXp} XP（また明日）${bonusText}`, "finished");
-    renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest });
+    renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun });
     return;
   }
 
   showMessage(`終了！スコア ${score} / +${gainedXp} XP ${bonusText}`, "finished");
-  renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest });
+  renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun, categoryBestBefore, categoryBestUpdated });
 }
 
 // ===== 終了リザルトパネル =====
 // メッセージ1行では終了の満足感と次のアクションが弱いため、
 // スコア・ベスト更新・次の一手（もう一回/シェア）をカード内に見せる
-function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0 }) {
+function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0, previousRun = null, categoryBestBefore = 0, categoryBestUpdated = false }) {
   const panel = document.getElementById("resultPanel");
   if (!panel) return;
 
@@ -1373,6 +1405,18 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0 
     bestBadge = `<div class="result-panel__best">🏆 ベストスコア更新！${previousBest > 0 ? ` +${score - previousBest}` : ""}</div>`;
   } else if (previousBest > 0) {
     bestBadge = `<div class="result-panel__gap">ベスト ${previousBest} まであと <b>${previousBest + 1 - score}</b></div>`;
+  }
+  // 前回比（1回ごとの伸び）
+  if (previousRun != null) {
+    const diff = score - previousRun;
+    bestBadge += `<div class="result-panel__diff${diff > 0 ? " result-panel__diff--up" : diff < 0 ? " result-panel__diff--down" : ""}">前回 ${previousRun} → 今回 ${score}（${diff > 0 ? `+${diff}` : diff === 0 ? "同じ" : diff}）</div>`;
+  }
+  // カテゴリ別ベスト（「すべて」以外で挑戦した時）
+  if (!isDaily && activeCategory !== "all") {
+    const label = getCategoryLabel(activeCategory);
+    bestBadge += categoryBestUpdated
+      ? `<div class="result-panel__cat">🎯 「${label}」のベスト更新 ${categoryBestBefore > 0 ? `${categoryBestBefore} → ` : ""}${score}</div>`
+      : `<div class="result-panel__cat">「${label}」のベスト ${categoryBestBefore}</div>`;
   }
   const title = isDaily ? "⚡ DAILY DASH 結果" : "⏱ CHALLENGE 結果";
 
@@ -1422,6 +1466,33 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0 
       }
     });
   }
+}
+
+function getCategoryLabel(id) {
+  return getCategories().find((c) => c.id === id)?.label ?? (id === "my" ? "マイ単語帳" : id);
+}
+
+// ランクアップ（F3→F2 等）はレベルアップの中でも節目。大きめのオーバーレイで祝う
+function celebrateRankUp(result) {
+  if (!result?.leveledUp) return false;
+  const beforeTitle = getTitle(result.before.level);
+  const afterTitle = result.after.title;
+  if (beforeTitle === afterTitle) return false;
+  const overlay = document.createElement("div");
+  overlay.className = "rank-up";
+  overlay.setAttribute("role", "status");
+  overlay.innerHTML = `
+    <div class="rank-up__inner">
+      <div class="rank-up__label">RANK UP</div>
+      <div class="rank-up__title"><span>${beforeTitle}</span><i>→</i><b>${afterTitle}</b></div>
+      <div class="rank-up__sub">Lv.${result.after.level} 到達${unlockNoteForLevel(result.after.level)}</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  sfxSparkle();
+  setTimeout(() => overlay.classList.add("rank-up--out"), 2200);
+  setTimeout(() => overlay.remove(), 2800);
+  return true;
 }
 
 function hideResultPanel() {

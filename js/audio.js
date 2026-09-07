@@ -80,6 +80,17 @@ export function speakOnCorrect(text) {
   speak(text);
 }
 
+// ===== 音量（効果音・BGM共通、0〜1。既定1） =====
+export function getVolume() {
+  const v = Number(getAudioSettings().volume);
+  return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 1;
+}
+
+export function setVolume(v) {
+  const clamped = Math.max(0, Math.min(1, Number(v) || 0));
+  saveAudioSettings({ ...getAudioSettings(), volume: clamped });
+}
+
 // 一部ブラウザは初回getVoicesが空なので事前ロード
 if (window.speechSynthesis) {
   window.speechSynthesis.getVoices();

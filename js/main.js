@@ -178,5 +178,27 @@ initWordStore()
     });
   })
   .catch(() => {
-    showMessage("単語データの読み込みに失敗しました。再読み込みしてください。", "wrong");
+    showMessage("単語データの読み込みに失敗しました。", "wrong");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "reload-button";
+    button.textContent = "再読み込み";
+    button.addEventListener("click", () => location.reload());
+    elements.message.append(" ", button);
   });
+
+// スマホ: ソフトキーボードが開いて入力欄が隠れたら見える位置へ寄せる
+if (window.visualViewport) {
+  let recenterTimer = null;
+  window.visualViewport.addEventListener("resize", () => {
+    if (window.innerWidth > 560 || document.activeElement !== elements.input) return;
+    clearTimeout(recenterTimer);
+    recenterTimer = setTimeout(() => {
+      const rect = elements.input.getBoundingClientRect();
+      const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop;
+      if (rect.bottom > visibleBottom - 8 || rect.top < 0) {
+        elements.input.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 120);
+  });
+}

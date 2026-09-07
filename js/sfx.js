@@ -1,4 +1,4 @@
-import { getAudioSettings, saveAudioSettings } from "./audio.js";
+import { getAudioSettings, saveAudioSettings, getVolume } from "./audio.js";
 
 // 効果音（WebAudioで合成、音声ファイル不要）。
 // 設定は spelldash_audio の sfx フィールド（既定ON）。発音(mode/accent)とは独立。
@@ -41,8 +41,10 @@ function tone({ freq, duration = 0.08, type = "sine", gain = 0.08, delay = 0, sl
     osc.frequency.exponentialRampToValueAtTime(slideTo, start + duration);
   }
 
+  const level = gain * getVolume();
+  if (level <= 0) return;
   amp.gain.setValueAtTime(0, start);
-  amp.gain.linearRampToValueAtTime(gain, start + 0.005);
+  amp.gain.linearRampToValueAtTime(level, start + 0.005);
   amp.gain.exponentialRampToValueAtTime(0.0001, start + duration);
 
   osc.connect(amp);
