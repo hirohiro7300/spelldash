@@ -83,7 +83,8 @@ import {
 import { bumpActivity, markDailyDone } from "./activity.js";
 import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel, consumeBoostNote, consumePlacementNote } from "./difficulty.js";
 import { pushSync, recordPlaySession } from "./sync.js";
-import { speak, autoSpeak, speakOnCorrect } from "./audio.js";
+import { speak, autoSpeak, speakOnCorrect, getListenRatio } from "./audio.js";
+import { generateCalc } from "./calcCards.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import {
   elements,
@@ -136,6 +137,7 @@ let hintUsed = false;
 let hintTimer = null;
 let retryIds = null; // 「思い出せなかった語だけもう1周」中はその語のID配列
 let consecutiveFails = 0; // Studyで連続して思い出せなかった数（3で救済）
+let listenMode = false; // 音で出題（日本語を隠して発音だけ聞かせる）
 
 // 全文入力モード（概念カード等、答えが a-z だけでない語）: 1文字ずつではなく Enter で答え全体を判定する。
 // 日本語IMEで打てるように、入力欄の値には触らない
@@ -585,6 +587,7 @@ function revealAnswer(fromMiss = false) {
   if (!hintUsed) markRecallFail();
 
   showColoredAnswer(currentWord.en);
+  if (listenMode) elements.japanese.textContent = promptOf(currentWord); // 音だけだった語の意味を見せる
   renderWordFamily(currentWord);
   renderWordHistory();
   renderWordNote(currentWord);
@@ -686,6 +689,13 @@ export function useHint() {
     sfxReveal();
   }
 
+  // 計算カード: 頭文字ではなく式を見せる
+  if (currentWord.calc) {
+    showHiddenWordText(`💡 ${currentWord.calcFormula}`);
+    showMessage(`💡 ${currentWord.calcFormula}。計算して数字を入力（ヒントを見たので、この問題はまた出すね）`, "revealed");
+    return;
+  }
+
   // 全文入力モード: 文字を入力欄に入れず、頭から1文字ずつ見せるだけ
   if (freeMode) {
     hintChars = Math.min(currentWord.en.length, hintChars + 1);
@@ -779,19 +789,49 @@ function pulseScore() {
 function renderWordFamily(word) {
   if (!elements.wordFamily) return;
 
-  if (!Array.isArray(word.family) || word.family.length === 0) {
-    elements.wordFamily.textContent = "";
-    return;
+  const lines = [];
+  if (Array.isArray(word.family) && word.family.length > 0) {
+    const names = word.family
+      .map((id) => findWord(id))
+      .filter(Boolean)
+      .map((w) => `${w.en}（${w.ja}）`);
+    if (names.length) lines.push(`🔗 同じ仲間: ${names.join(" / ")}`);
   }
+  // 紛らわしい語（affect/effect, adapt/adopt …）: 綴りが1〜2文字違いの語を並べて混同を潰す
+  const confusables = findConfusables(word);
+  if (confusables.length) lines.push(`⚠ 混同注意: ${confusables.map((w) => `${w.en}（${w.ja}）`).join(" / ")}`);
 
-  const names = word.family
-    .map((id) => findWord(id))
-    .filter(Boolean)
-    .map((w) => `${w.en}（${w.ja}）`);
+  elements.wordFamily.textContent = lines.join("　");
+}
 
-  elements.wordFamily.textContent = names.length
-    ? `🔗 同じ仲間: ${names.join(" / ")}`
-    : "";
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (Math.abs(m - n) > 2) return 3;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+function findConfusables(word) {
+  if (!word || isConceptWord(word) || !/^[a-z-]{4,}$/.test(word.en)) return [];
+  const family = new Set(Array.isArray(word.family) ? word.family : []);
+  const seen = new Set([word.id]);
+  const maxDistance = word.en.length >= 7 ? 2 : 1;
+  const out = [];
+  for (const w of getWordsByCategory(word.category === "my" ? "my" : "all")) {
+    if (seen.has(w.id) || family.has(w.id) || isConceptWord(w) || !/^[a-z-]+$/.test(w.en)) continue;
+    seen.add(w.id);
+    if (levenshtein(word.en, w.en) <= maxDistance) out.push(w);
+    if (out.length >= 3) break;
+  }
+  return out;
 }
 
 function handleCorrectChar(expectedChar) {
@@ -953,6 +993,7 @@ function completeWord() {
     renderExplain(currentWord);
     showColoredAnswer(currentWord.en);
   }
+  if (listenMode) elements.japanese.textContent = promptOf(currentWord);
   const serialAtComplete = wordSerial;
   awaitingNext = true;
   clearTimeout(advanceTimer);
@@ -1325,6 +1366,20 @@ function setNewWord() {
     currentWord = chooseWord();
   }
 
+  // 計算カード: 出題のたびに数字を作り直し、この1問だけの答え・解説を持つ複製にする（記録は元のidに乗る）
+  if (currentWord.calc) {
+    const g = generateCalc(currentWord.calc);
+    if (g) currentWord = { ...currentWord, en: g.answer, answer: g.answer, accept: g.accept, q: g.q, explain: g.explain, calcFormula: g.formula };
+  }
+
+  // 音で出題: Studyの英単語（概念カード以外）を設定の割合で「聞いて打つ」にする
+  listenMode =
+    mode === "study" &&
+    !isConceptWord(currentWord) &&
+    !!speechTextOf(currentWord) &&
+    getListenRatio() > 0 &&
+    Math.random() * 100 < getListenRatio();
+
   currentIndex = 0;
   hasMissedCurrentWord = false;
   isRevealed = false;
@@ -1343,12 +1398,22 @@ function setNewWord() {
   elements.input.placeholder = freeMode ? "答えを入力してEnter（日本語OK）" : "英単語を入力";
 
   const promptLabel = document.querySelector("#gameCard .label");
-  if (promptLabel) promptLabel.textContent = isConceptWord(currentWord) ? "場面（これは何のこと？）" : "日本語訳";
-  elements.japanese.textContent = promptOf(currentWord);
-  showHiddenWordText(freeMode ? "用語や略語で答える。分からないときは Enter" : "分からないときは Enter で答えを表示");
-  if (elements.speakButton) {
-    elements.speakButton.hidden = true;
+  if (promptLabel) {
+    promptLabel.textContent = currentWord.calc ? "計算（数字で答える）" : listenMode ? "音を聞いて打つ（Tab か 🔊 でもう一度）" : isConceptWord(currentWord) ? "場面（これは何のこと？）" : "日本語訳";
   }
+  elements.japanese.textContent = listenMode ? "🔊 聞いて打つ" : promptOf(currentWord);
+  if (currentWord.calc) elements.input.placeholder = "数字を入力してEnter（例: 8000 / 5%）";
+  showHiddenWordText(
+    currentWord.calc
+      ? "式を思い出して計算。分からないときは Enter（💡ヒントで式）"
+      : freeMode
+        ? "用語や略語で答える。分からないときは Enter"
+        : "分からないときは Enter で答えを表示"
+  );
+  if (elements.speakButton) {
+    elements.speakButton.hidden = !listenMode;
+  }
+  if (listenMode) setTimeout(() => speak(speechTextOf(currentWord)), 150);
   if (elements.wordFamily) {
     elements.wordFamily.textContent = "";
   }

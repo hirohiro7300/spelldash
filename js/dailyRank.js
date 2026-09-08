@@ -88,6 +88,20 @@ async function fetchMyRank(myScore) {
   }
 }
 
+// 今日の参加人数（上位◯%の分母）
+async function fetchTodayCount() {
+  try {
+    const { count, error } = await supabase
+      .from("daily_scores")
+      .select("*", { count: "exact", head: true })
+      .eq("day", todayString());
+    if (error || typeof count !== "number") return null;
+    return count;
+  } catch {
+    return null;
+  }
+}
+
 // #dailyRankArea にTOP5＋自分の順位を描画。データが無ければ非表示のまま
 export async function renderDailyRanking(myScore = null) {
   const container = document.getElementById("dailyRankArea");
@@ -104,9 +118,10 @@ export async function renderDailyRanking(myScore = null) {
 
   let myRankLine = "";
   if (user && !inTop && myScore != null) {
-    const rank = await fetchMyRank(myScore);
+    const [rank, total] = await Promise.all([fetchMyRank(myScore), fetchTodayCount()]);
     if (rank) {
-      myRankLine = `<li class="daily-rank__item daily-rank__item--me"><span class="daily-rank__pos">${rank}</span><span class="daily-rank__name">あなた</span><span class="daily-rank__score">${myScore}</span></li>`;
+      const pct = total && total > 0 ? Math.max(1, Math.ceil((rank / total) * 100)) : null;
+      myRankLine = `<li class="daily-rank__item daily-rank__item--me"><span class="daily-rank__pos">${rank}</span><span class="daily-rank__name">あなた${pct ? ` <small>上位 ${pct}%（${total}人中）</small>` : ""}</span><span class="daily-rank__score">${myScore}</span></li>`;
     }
   }
 

@@ -2182,6 +2182,134 @@
       "tags": [
         "reflex"
       ]
+    },
+    {
+      "id": "concept-calc-ctr",
+      "en": "calc-ctr",
+      "kind": "concept",
+      "calc": "ctr",
+      "answer": "CTR = Click ÷ Imp",
+      "accept": [],
+      "ja": "CTRの計算",
+      "q": "（計算）表示回数とクリック数からクリック率を出す。数字は毎回変わります",
+      "explain": "CTR = Click ÷ Imp",
+      "level": "easy",
+      "tags": [
+        "calc",
+        "formula"
+      ]
+    },
+    {
+      "id": "concept-calc-cpc",
+      "en": "calc-cpc",
+      "kind": "concept",
+      "calc": "cpc",
+      "answer": "CPC = Cost ÷ Click",
+      "accept": [],
+      "ja": "CPCの計算",
+      "q": "（計算）広告費とクリック数からクリック単価を出す。数字は毎回変わります",
+      "explain": "CPC = Cost ÷ Click",
+      "level": "easy",
+      "tags": [
+        "calc",
+        "formula"
+      ]
+    },
+    {
+      "id": "concept-calc-cvr",
+      "en": "calc-cvr",
+      "kind": "concept",
+      "calc": "cvr",
+      "answer": "CVR = CV ÷ Click",
+      "accept": [],
+      "ja": "CVRの計算",
+      "q": "（計算）クリック数とCV数からCV率を出す。数字は毎回変わります",
+      "explain": "CVR = CV ÷ Click",
+      "level": "easy",
+      "tags": [
+        "calc",
+        "formula"
+      ]
+    },
+    {
+      "id": "concept-calc-cpa",
+      "en": "calc-cpa",
+      "kind": "concept",
+      "calc": "cpa",
+      "answer": "CPA = Cost ÷ CV",
+      "accept": [],
+      "ja": "CPAの計算",
+      "q": "（計算）広告費とCV数からCV単価を出す。数字は毎回変わります",
+      "explain": "CPA = Cost ÷ CV",
+      "level": "easy",
+      "tags": [
+        "calc",
+        "formula"
+      ]
+    },
+    {
+      "id": "concept-calc-roas",
+      "en": "calc-roas",
+      "kind": "concept",
+      "calc": "roas",
+      "answer": "ROAS = CV Value ÷ Cost",
+      "accept": [],
+      "ja": "ROASの計算",
+      "q": "（計算）CV値と広告費から広告費用対効果を出す。数字は毎回変わります",
+      "explain": "ROAS = CV Value ÷ Cost",
+      "level": "normal",
+      "tags": [
+        "calc",
+        "formula"
+      ]
+    },
+    {
+      "id": "concept-calc-cpa-decomp",
+      "en": "calc-cpa-decomp",
+      "kind": "concept",
+      "calc": "cpa-decomp",
+      "answer": "CPA = CPC ÷ CVR",
+      "accept": [],
+      "ja": "CPAの分解",
+      "q": "（計算）CPCとCVRからCPAを出す（クリック数不要）。数字は毎回変わります",
+      "explain": "CPA = CPC ÷ CVR",
+      "level": "normal",
+      "tags": [
+        "calc",
+        "formula"
+      ]
+    },
+    {
+      "id": "concept-calc-lead-value",
+      "en": "calc-lead-value",
+      "kind": "concept",
+      "calc": "lead-value",
+      "answer": "期待粗利/Lead = P(成約|Lead) × 粗利/成約",
+      "accept": [],
+      "ja": "期待粗利/Leadの計算",
+      "q": "（計算）成約率と粗利から問い合わせ1件の価値を出す。数字は毎回変わります",
+      "explain": "期待粗利/Lead = P(成約|Lead) × 粗利/成約",
+      "level": "hard",
+      "tags": [
+        "calc",
+        "formula"
+      ]
+    },
+    {
+      "id": "concept-calc-marginal-cpa",
+      "en": "calc-marginal-cpa",
+      "kind": "concept",
+      "calc": "marginal-cpa",
+      "answer": "限界CPA = 追加広告費 ÷ 追加CV",
+      "accept": [],
+      "ja": "限界CPAの計算",
+      "q": "（計算）追加費用と追加CVから次の1件のコストを出す。数字は毎回変わります",
+      "explain": "限界CPA = 追加広告費 ÷ 追加CV",
+      "level": "hard",
+      "tags": [
+        "calc",
+        "formula"
+      ]
     }
   ]
 }
