@@ -10,7 +10,8 @@ import {
   getMode,
   speakCurrentWord,
   startDailyGame,
-  useHint
+  useHint,
+  startGame
 } from "./game.js";
 import { renderDailyCard, isDailyPlayedToday } from "./dailyChallenge.js";
 import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
@@ -178,6 +179,19 @@ initWordStore()
       elements.input.focus();
       document.getElementById("input")?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
+
+    // 単語帳の「苦手だけ練習」: ?words=id1,id2 でその語だけのセッションを始める
+    const wordsParam = new URLSearchParams(location.search).get("words");
+    if (wordsParam) {
+      const ids = wordsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 50);
+      if (ids.length > 0) {
+        setMode("study");
+        startGame({ retry: ids });
+        elements.input.focus({ preventScroll: true });
+        scrollGameIntoView();
+        history.replaceState(null, "", location.pathname);
+      }
+    }
   })
   .catch(() => {
     showMessage("単語データの読み込みに失敗しました。", "wrong");

@@ -123,62 +123,68 @@
 
     <section class="level-bar" id="levelBar"></section>
 
-    <section class="metric-grid" id="overview"></section>
+    <nav class="stats-tabs" id="statsTabs" aria-label="学習データの表示切替">
+      <a href="#week" class="stats-tab" data-tab="week">今週</a>
+      <a href="#words" class="stats-tab" data-tab="words">単語帳</a>
+      <a href="#analysis" class="stats-tab" data-tab="analysis">分析</a>
+    </nav>
 
-    <section class="result-card">
+    <section class="metric-grid" id="overview" data-tab="week"></section>
+
+    <section data-tab="analysis" class="result-card">
       <h3>タイピング分析</h3>
       <div class="metric-grid" id="typingMetrics"></div>
       <div class="keymiss" id="keyMiss"></div>
     </section>
 
-    <section class="result-card weekly" id="weekly">
+    <section data-tab="week" class="result-card weekly" id="weekly">
       <div id="weeklyReport"></div>
     </section>
 
-    <section class="result-card" id="monthly">
+    <section data-tab="week" class="result-card" id="monthly">
       <h3>今月のまとめ</h3>
       <div class="metric-grid" id="monthlySummary"></div>
     </section>
 
-    <section class="result-card">
+    <section data-tab="week" class="result-card">
       <h3>覚えた単語の推移（30日）</h3>
       <div id="growthTrend"></div>
     </section>
 
-    <section class="result-card" id="calendar">
+    <section data-tab="week" class="result-card" id="calendar">
       <h3>学習カレンダー</h3>
       <div id="calendarGrid"></div>
     </section>
 
-    <section class="result-card">
+    <section data-tab="week" class="result-card">
       <h3>今週のまとめ</h3>
       <div class="metric-grid" id="weeklySummary"></div>
     </section>
 
-    <section class="result-card">
+    <section data-tab="analysis" class="result-card">
       <h3>スコア推移</h3>
       <div id="scoreTrend"></div>
     </section>
 
-    <section class="result-card" id="learnedWords">
-      <h3>覚えた単語帳 <span class="muted" id="learnedWordsCount"></span> <button type="button" class="btn btn--sm btn--ghost learned-csv" id="learnedCsv">CSV書き出し</button></h3>
+    <section data-tab="words" class="result-card" id="learnedWords">
+      <h3>覚えた単語帳 <span class="muted" id="learnedWordsCount"></span> <button type="button" class="btn btn--sm btn--ghost learned-csv" id="learnedCsv">CSV書き出し</button> <button type="button" class="btn btn--sm btn--ghost learned-csv" id="learnedShare">累計を画像でシェア</button></h3>
       <p class="muted">一度つまずいてから、自力で思い出せるようになった語。× → ○ の履歴つき。語をタップすると詳細（メモ・仲間・発音）。</p>
       <div id="learnedWordList"></div>
       <details class="known-fold"><summary id="knownWordsSummary">もともと知っていた語</summary><div id="knownWordList"></div></details>
     </section>
 
-    <section class="result-card" id="categories">
+    <section data-tab="words" class="result-card" id="categories">
       <h3>カテゴリ別の進捗</h3>
       <p class="muted">行をタップするとそのカテゴリで練習を始められます。</p>
       <div id="categoryProgress"></div>
     </section>
 
-    <section class="result-card">
+    <section data-tab="analysis" class="result-card">
       <h3>習得の進捗</h3>
       <div id="progress"></div>
     </section>
 
-    <section class="result-card" id="myWords">
+    <section data-tab="words" class="result-card" id="myWords">
       <h3>マイ単語帳 <span class="muted" id="myWordCount"></span></h3>
       <p class="muted">仕事・試験・本で出会った単語や、覚えたい概念を自分で登録。ホームのカテゴリ「マイ単語帳」で、同じ仕組み（思い出して打つ・復習）で覚えられます。</p>
       <div class="my-tabs" role="tablist">
@@ -207,18 +213,18 @@
       <div class="my-words__list" id="myWordList"></div>
     </section>
 
-    <section class="result-card">
+    <section data-tab="words" class="result-card">
       <h3>語根ファミリー</h3>
       <p class="muted">同じ語根の仲間をそろえると、単語は忘れにくくなります。</p>
       <div id="wordFamilies"></div>
     </section>
 
-    <section class="result-card">
+    <section data-tab="words" class="result-card">
       <h3>苦手単語</h3>
       <div id="weakWords">まだデータがありません。</div>
     </section>
 
-    <section class="result-card">
+    <section data-tab="words" class="result-card">
       <details class="word-list-fold">
         <summary>単語一覧を開く（検索・カテゴリで絞り込み）</summary>
 

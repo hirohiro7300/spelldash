@@ -19,6 +19,7 @@ const CATEGORY_KEY = "spelldash_category";
 const params = new URLSearchParams(location.search);
 let categoryId = params.get("category") || localStorage.getItem(CATEGORY_KEY) || "all";
 let keyword = "";
+let statusFilter = "all"; // all | untouched | weak | learned
 
 initializeAuth();
 setFooterYear();
@@ -37,6 +38,20 @@ initWordStore().then(() => {
     keyword = e.target.value.trim().toLowerCase();
     render();
   });
+  document.getElementById("listFilters")?.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-filter]");
+    if (!chip) return;
+    statusFilter = chip.dataset.filter;
+    document.querySelectorAll("#listFilters [data-filter]").forEach((c) => c.classList.toggle("filter-chip--active", c === chip));
+    render();
+  });
+  // "/" で検索にフォーカス
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && !/input|textarea/i.test(document.activeElement?.tagName ?? "")) {
+      e.preventDefault();
+      document.getElementById("listSearch")?.focus();
+    }
+  });
 });
 
 window.addEventListener("spelldash:synced", render);
@@ -53,6 +68,15 @@ function renderCategorySelect(categories) {
   });
 }
 
+function matchesStatus(word, stats) {
+  if (statusFilter === "all") return true;
+  const st = classifyWord(stats[word.id]);
+  if (statusFilter === "untouched") return st === "untouched";
+  if (statusFilter === "weak") return st === "weak";
+  if (statusFilter === "learned") return st === "learning" || st === "mastered";
+  return true;
+}
+
 function matches(word) {
   if (!keyword) return true;
   const hay = [word.en, word.ja, word.q, word.explain, ...(word.accept ?? []), ...(word.tags ?? [])].filter(Boolean).join(" ").toLowerCase();
@@ -67,7 +91,7 @@ function render() {
 
   const stats = getWordStats();
   const groups = groupByGenre(categoryId)
-    .map((g) => ({ ...g, words: g.words.filter(matches) }))
+    .map((g) => ({ ...g, words: g.words.filter((w) => matches(w) && matchesStatus(w, stats)) }))
     .filter((g) => g.words.length > 0);
   const total = groups.reduce((n, g) => n + g.words.length, 0);
   const learned = groups.reduce((n, g) => n + g.words.filter((w) => ["learning", "mastered"].includes(classifyWord(stats[w.id]))).length, 0);
@@ -97,6 +121,7 @@ function render() {
           <div class="genre__head">
             <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count">${g.words.length}語</span>${done === g.words.length ? ` <span class="genre__clear">🏆 制覇</span>` : ""}</h2>
             <div class="genre__meta">覚えた ${done}${weak > 0 ? ` ・ 苦手 ${weak}` : ""}</div>
+            ${weak > 0 ? `<button type="button" class="btn btn--sm btn--ghost genre__weak" data-practice-words="${g.words.filter((w) => classifyWord(stats[w.id]) === "weak").map((w) => w.id).join(",")}">苦手 ${weak}語だけ練習</button>` : ""}
             <button type="button" class="btn btn--sm${practicing ? "" : " btn--ghost"} genre__practice" data-practice="${g.tag}">${practicing ? "▶ このジャンルを練習中" : "このジャンルを練習"}</button>
           </div>
           <div class="genre__cards">
@@ -111,6 +136,13 @@ function render() {
       localStorage.setItem(CATEGORY_KEY, categoryId);
       setGenre(button.dataset.practice);
       location.href = "/";
+    });
+  });
+  // 苦手だけ練習: その語だけの回収セッションをホームで始める
+  container.querySelectorAll("[data-practice-words]").forEach((button) => {
+    button.addEventListener("click", () => {
+      localStorage.setItem(CATEGORY_KEY, categoryId);
+      location.href = `/?words=${encodeURIComponent(button.dataset.practiceWords)}`;
     });
   });
   bindNoteEditors(container, render);
