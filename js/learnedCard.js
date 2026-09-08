@@ -68,6 +68,8 @@ export function renderLearnedCard() {
       ? `🎯 今週の目標達成 ${activeDays}/${goal}日 ${dots}`
       : `今週 <b>${activeDays}</b>/${goal}日 ${dots}`;
 
+  const showBreakdown = all.learning + all.mastered + all.weak + all.known > 0 || genre;
+
   el.innerHTML = `
     <div class="learned-card__main">
       <span class="learned-card__label">🧠 覚えた単語</span>
@@ -75,7 +77,7 @@ export function renderLearnedCard() {
       ${week > 0 ? `<span class="learned-card__today">今週 +${week}</span>` : today > 0 ? `<span class="learned-card__today">今日 ${today}語</span>` : ""}
     </div>
     <div class="learned-card__today-words">${todayLine}</div>
-    <div class="learned-card__cat">${currentLine}</div>
+    ${showBreakdown ? `<div class="learned-card__cat">${currentLine}</div>` : ""}
     <div class="learned-card__week" aria-label="今週の学習日" title="週の目標はプロフィールの学習の設定で変えられます">${weekLine}</div>
     <a class="learned-card__link" href="./stats.html#learnedWords">覚えた単語帳を見る →</a>
   `;

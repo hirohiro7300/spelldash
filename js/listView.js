@@ -45,6 +45,19 @@ initWordStore().then(() => {
     document.querySelectorAll("#listFilters [data-filter]").forEach((c) => c.classList.toggle("filter-chip--active", c === chip));
     render();
   });
+  // 表示密度: 簡潔（用語＋意味だけ）／詳しく。選択を記憶
+  const DENSITY_KEY = "spelldash_list_compact";
+  const densityButton = document.getElementById("listDensity");
+  const applyDensity = (compact) => {
+    document.body.classList.toggle("list-compact", compact);
+    densityButton?.setAttribute("aria-pressed", String(compact));
+    densityButton?.classList.toggle("filter-chip--active", compact);
+    if (densityButton) densityButton.textContent = compact ? "詳しく表示" : "簡潔表示";
+    localStorage.setItem(DENSITY_KEY, compact ? "1" : "0");
+  };
+  applyDensity(localStorage.getItem(DENSITY_KEY) === "1");
+  densityButton?.addEventListener("click", () => applyDensity(!document.body.classList.contains("list-compact")));
+
   // "/" で検索にフォーカス
   document.addEventListener("keydown", (e) => {
     if (e.key === "/" && !/input|textarea/i.test(document.activeElement?.tagName ?? "")) {

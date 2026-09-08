@@ -604,3 +604,6 @@ html[data-theme="light"] .stats--strip .stat-card span { color: #64748b; }
 html[data-theme="light"] .stats--strip .stat-card strong { color: #0f172a; }
 html[data-theme="light"] .home-more { background: #ffffff; border-color: #dbe2ec; }
 html[data-theme="light"] .home-more > summary { color: #475569; }
+html[data-theme="light"] .monthly-line { color: #64748b; }
+html[data-theme="light"] .monthly-line b { color: #0f172a; }
+html[data-theme="light"] .profile-link a { color: #1d4ed8; }

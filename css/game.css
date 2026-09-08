@@ -3950,3 +3950,43 @@ body.returning .hero--compact {
     display: none;
   }
 }
+
+/* ===== 整理 第2弾: 学習データ・プロフィール・単語帳の密度 ===== */
+.monthly-line {
+  margin: 0 0 10px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.monthly-line b {
+  color: #f8fafc;
+}
+
+.profile-link {
+  margin: 0 0 18px;
+}
+
+.profile-link a {
+  color: #93c5fd;
+}
+
+.filter-chip--right {
+  margin-left: auto;
+}
+
+body.list-compact .gcard__q,
+body.list-compact .gcard__explain,
+body.list-compact .gcard__accept,
+body.list-compact .gcard__foot {
+  display: none;
+}
+
+body.list-compact .gcard {
+  padding: 8px 12px;
+  gap: 2px;
+}
+
+body.list-compact .genre__cards {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+}
