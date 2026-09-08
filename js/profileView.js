@@ -2,7 +2,6 @@ import { supabase } from "./supabase.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
-import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
@@ -21,24 +20,16 @@ const profileCardElement = document.getElementById("profileCard");
 const avatarElement = document.getElementById("profileAvatar");
 const emailElement = document.getElementById("profileEmail");
 const joinedElement = document.getElementById("profileJoined");
-const summaryElement = document.getElementById("profileSummary");
-const typingElement = document.getElementById("profileTyping");
 
 initializeAuth();
 renderLevelBar();
-renderTyping();
 setFooterYear();
 renderHeaderStreak();
 setupUnloadSync();
-
-initWordStore().then(() => {
-  renderSummary();
-});
+initWordStore();
 
 window.addEventListener("spelldash:synced", () => {
   renderLevelBar();
-  renderSummary();
-  renderTyping();
 });
 
 // ===== 学習の設定（今日のセットの語数） =====
@@ -284,44 +275,4 @@ async function initializeDisplayName(session) {
       status.textContent = "Daily Dashランキングに表示される名前です（次回の記録から反映）。";
     }, 3000);
   });
-}
-
-function renderCards(container, cards) {
-  container.innerHTML = cards
-    .map(
-      (card) => `
-        <div class="stat-card">
-          <span>${card.label}</span>
-          <strong>${card.value}</strong>
-        </div>
-      `
-    )
-    .join("");
-}
-
-function renderSummary() {
-  const s = computeSummary();
-  const level = getLevelState();
-  const streak = getStreak();
-
-  renderCards(summaryElement, [
-    { label: "ランク", value: level.title },
-    { label: "連続プレイ", value: `${streak.current}日` },
-    { label: "ストリークシールド", value: `🛡️ × ${streak.shields ?? 0}` },
-    { label: "ベストスコア", value: s.best },
-    { label: "習得済み", value: `${s.mastered} / ${s.total}` },
-    { label: "習得率", value: `${s.masteryRate}%` },
-    { label: "正答率", value: `${s.accuracy}%` }
-  ]);
-}
-
-function renderTyping() {
-  const t = computeTypingSummary();
-
-  renderCards(typingElement, [
-    { label: "平均タップ / 秒", value: t.tapsPerSecond.toFixed(1) },
-    { label: "ミスタイプ率", value: `${t.mistypeRate.toFixed(1)}%` },
-    { label: "最高速度 (打/秒)", value: t.bestSpeed.toFixed(1) },
-    { label: "プレイ回数", value: t.sessions }
-  ]);
 }

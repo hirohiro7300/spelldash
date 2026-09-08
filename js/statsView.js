@@ -130,7 +130,6 @@ function renderOverview() {
 
   // 概要は6枚だけ。残りは「分析」タブの「その他の数字」へ
   renderCards(overviewElement, [
-    { label: "レベル", value: `Lv.${level.level} ${level.title}` },
     { label: "連続プレイ", value: `${streak.current}日` },
     { label: "学習した単語", value: `${s.learned} / ${s.total}` },
     { label: "習得済み", value: s.mastered },
@@ -350,14 +349,8 @@ function renderMonthlySummary() {
   }
   const runs = getSessionLog().filter((e) => (e.at ?? "").startsWith(ym));
   const best = runs.length ? Math.max(...runs.map((e) => e.score)) : 0;
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  renderCards(container, [
-    { label: `学習した日（${now.getMonth() + 1}月）`, value: `${activeDays} / ${now.getDate()}日` },
-    { label: "今月 覚えた語", value: `+${learnedDelta}` },
-    { label: "今日のセット完了", value: `${sets}回` },
-    { label: "Challenge/Daily", value: `${runs.length}回${best ? `・ベスト ${best}` : ""}` },
-    { label: "残り", value: `${daysInMonth - now.getDate()}日` }
-  ]);
+  // カードではなく1行（カレンダーの見出しの下に置く）
+  container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月: 学習した日 <b>${activeDays}</b> / ${now.getDate()}日 ・ 覚えた語 <b>+${learnedDelta}</b> ・ セット完了 <b>${sets}</b>回 ・ Challenge/Daily <b>${runs.length}</b>回${best ? `（ベスト ${best}）` : ""}</p>`;
 }
 
 // ===== 覚えた単語の推移（30日） =====
