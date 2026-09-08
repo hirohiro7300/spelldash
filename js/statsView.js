@@ -10,7 +10,7 @@ import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
 import { initializeMyWordsView } from "./myWordsView.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
-import { getLearnedSeries, recordGrowthSnapshot } from "./growthLog.js";
+import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, historyDotsHtml } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
@@ -36,6 +36,7 @@ initWordStore().then(() => {
   renderTyping();
   renderKeyMiss("keyMiss");
   renderCalendar("calendarGrid");
+  renderMonthlySummary();
   bindWordDetail({ onNoteSaved: () => { renderLearnedWords(); renderWeakWords(); } });
   document.getElementById("learnedCsv")?.addEventListener("click", (event) => {
     const n = downloadLearnedCsv();
@@ -356,7 +357,7 @@ function renderCategoryProgress() {
         (r) => `
         <button type="button" class="cat-row" data-category="${r.id}">
           <div class="cat-row__head">
-            <span class="cat-row__label">${r.label}<span class="cat-row__total">${r.total}語</span></span>
+            <span class="cat-row__label">${r.label}<span class="cat-row__total">${r.total}語</span>${r.total > 0 && r.learned === r.total ? `<span class="cat-row__clear">🏆 制覇</span>` : ""}</span>
             <span class="cat-row__learned">覚えた <strong>${r.learned}</strong> / ${r.total}${r.id !== "all" ? ` <a class="cat-row__list" href="./list.html?category=${r.id}" data-stop>一覧</a>` : ""}</span>
           </div>
           <div class="cat-bar" aria-hidden="true">
@@ -378,6 +379,35 @@ function renderCategoryProgress() {
       window.location.href = "/";
     });
   });
+}
+
+// ===== 今月のまとめ（学習日・覚えた語・セット・Challenge） =====
+function renderMonthlySummary() {
+  const container = document.getElementById("monthlySummary");
+  if (!container) return;
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const log = getGrowthLog().filter((e) => e.date.startsWith(ym));
+  const activeDays = log.filter((e) => e.active).length;
+  const first = log.find((e) => e.learned != null);
+  const last = [...log].reverse().find((e) => e.learned != null);
+  const learnedDelta = first && last ? Math.max(0, (last.learned ?? 0) - (first.learned ?? 0)) : 0;
+  let sets = 0;
+  try {
+    sets = (JSON.parse(localStorage.getItem("spelldash_daily_set") || "{}").history ?? []).filter((d) => d.startsWith(ym)).length;
+  } catch {
+    sets = 0;
+  }
+  const runs = getSessionLog().filter((e) => (e.at ?? "").startsWith(ym));
+  const best = runs.length ? Math.max(...runs.map((e) => e.score)) : 0;
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  renderCards(container, [
+    { label: `学習した日（${now.getMonth() + 1}月）`, value: `${activeDays} / ${now.getDate()}日` },
+    { label: "今月 覚えた語", value: `+${learnedDelta}` },
+    { label: "今日のセット完了", value: `${sets}回` },
+    { label: "Challenge/Daily", value: `${runs.length}回${best ? `・ベスト ${best}` : ""}` },
+    { label: "残り", value: `${daysInMonth - now.getDate()}日` }
+  ]);
 }
 
 // ===== 覚えた単語の推移（30日） =====

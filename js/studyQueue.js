@@ -205,6 +205,29 @@ export function getDueReviewWords(categoryId = localStorage.getItem("spelldash_c
   return list;
 }
 
+// 連続で思い出せなかった時の救済: 過去に自力で思い出せた語（今日まだ）を次に1語挟む。
+// 心が折れる前に「思い出せた」を1回作る。無ければ何もしない（false）
+export function insertBreather() {
+  if (restricted) return false;
+  const stats = getWordStats();
+  const candidates = categoryWordsDeduped().filter((w) => {
+    const s = stats[w.id];
+    return isFamiliar(s) && !isDoneForToday(s) && !recalledThisSession.has(w.id) && (s.recallFail ?? 0) <= 1;
+  });
+  if (candidates.length === 0) return false;
+  // キューの先頭にすでに居るなら何もしない。後ろに居るなら前へ持ってくる
+  const inQueue = candidates.find((w) => queue.includes(w.id));
+  if (inQueue) {
+    if (queue[0] === inQueue.id) return true;
+    queue = queue.filter((id) => id !== inQueue.id);
+    queue.unshift(inQueue.id);
+    return true;
+  }
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  queue.unshift(pick.id);
+  return true;
+}
+
 // セッション開始時に「今日の復習」として積んだ語数（見える化用）
 export function getSessionReviewCount() {
   return sessionReviewCount;

@@ -135,6 +135,11 @@
       <div id="weeklyReport"></div>
     </section>
 
+    <section class="result-card" id="monthly">
+      <h3>今月のまとめ</h3>
+      <div class="metric-grid" id="monthlySummary"></div>
+    </section>
+
     <section class="result-card">
       <h3>覚えた単語の推移（30日）</h3>
       <div id="growthTrend"></div>
@@ -175,16 +180,28 @@
 
     <section class="result-card" id="myWords">
       <h3>マイ単語帳 <span class="muted" id="myWordCount"></span></h3>
-      <p class="muted">仕事・試験・本で出会った単語を自分で登録。ホームのカテゴリ「マイ単語帳」で、同じ仕組み（思い出して打つ・復習）で覚えられます。</p>
+      <p class="muted">仕事・試験・本で出会った単語や、覚えたい概念を自分で登録。ホームのカテゴリ「マイ単語帳」で、同じ仕組み（思い出して打つ・復習）で覚えられます。</p>
+      <div class="my-tabs" role="tablist">
+        <button type="button" class="my-tab my-tab--active" data-my-tab="word" role="tab">英単語</button>
+        <button type="button" class="my-tab" data-my-tab="concept" role="tab">場面カード（意味 → 用語）</button>
+      </div>
       <form class="my-words__form" id="myWordForm">
         <input id="myWordEn" class="setting-select" type="text" placeholder="英単語（例: negotiate）" autocomplete="off" autocapitalize="none" spellcheck="false" required />
         <input id="myWordJa" class="setting-select" type="text" placeholder="日本語訳（例: 交渉する）" autocomplete="off" required />
         <button type="submit" class="btn btn--sm">追加</button>
       </form>
+      <form class="my-concept__form" id="myConceptForm" hidden>
+        <textarea id="myConceptQ" class="setting-select" rows="2" placeholder="場面・意味（例: ユーザーが「車 買取」「廃車」等を検索する）" required></textarea>
+        <input id="myConceptAnswer" class="setting-select" type="text" placeholder="答え・用語（例: 検索需要。日本語OK）" autocomplete="off" required />
+        <input id="myConceptExplain" class="setting-select" type="text" placeholder="解説（任意。答えの後に1行出ます）" autocomplete="off" />
+        <input id="myConceptAccept" class="setting-select" type="text" placeholder="別解（任意。/ 区切り。例: 検索ニーズ/需要）" autocomplete="off" />
+        <button type="submit" class="btn btn--sm">場面カードを追加</button>
+      </form>
       <details class="my-words__bulk">
-        <summary>まとめて追加（1行に「英単語, 日本語」）</summary>
-        <textarea id="myWordBulk" rows="5" placeholder="negotiate, 交渉する&#10;invoice, 請求書&#10;deadline, 締め切り"></textarea>
+        <summary>まとめて追加（英単語は「英単語, 日本語」／場面カードは「場面 → 答え | 解説 | 別解」）</summary>
+        <textarea id="myWordBulk" rows="6" placeholder="negotiate, 交渉する&#10;invoice, 請求書&#10;ユーザーが「車 買取」等を検索する → 検索需要 | 広告を出す前提になる量 | 検索ニーズ/需要&#10;Cost ÷ Click → CPC"></textarea>
         <button type="button" class="btn btn--sm" id="myWordBulkAdd">まとめて追加</button>
+        <p class="muted">Excel/Sheetsからの貼り付け（タブ区切り・見出し行つき）もそのまま読み込めます。</p>
       </details>
       <p class="muted my-words__status" id="myWordStatus"></p>
       <div class="my-words__list" id="myWordList"></div>

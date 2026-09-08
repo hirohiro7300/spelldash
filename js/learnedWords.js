@@ -60,6 +60,20 @@ export function getKnownWordList() {
   return list.sort((a, b) => a.en.localeCompare(b.en));
 }
 
+// 記憶ゲージ: 習得（ノーミス連続10・複数日）までの距離と、次の復習まで
+export function memoryGaugeHtml(stat) {
+  if (!stat || (stat.playCount ?? 0) === 0) return "";
+  const streak = Math.min(10, stat.cleanCorrectStreak ?? 0);
+  let due = "";
+  if (stat.mastered) {
+    due = "習得済み";
+  } else if (stat.nextReviewAt) {
+    const days = Math.ceil((Date.parse(stat.nextReviewAt) - Date.now()) / 86400000);
+    due = days <= 0 ? "復習: 今日" : `復習: ${days}日後`;
+  }
+  return `<span class="mem" title="ノーミスで思い出せた連続回数（1日1回まで進む）。10で習得"><i class="mem__bar"><b style="width:${streak * 10}%"></b></i><small>${streak}/10${due ? ` ・ ${due}` : ""}</small></span>`;
+}
+
 // 履歴ドット（× × ○ ○）。日付はtitleに
 export function historyDotsHtml(stat, max = 8) {
   const h = historyOf(stat).slice(-max);

@@ -23,7 +23,9 @@ export const GENRE_LABELS = {
   general: "その他", daily: "日常", travel: "旅行", school: "学校", people: "人", nature: "自然", animal: "動物",
   body: "体", color: "色", house: "家", object: "もの", place: "場所", action: "動作", emotion: "感情", size: "大きさ",
   state: "状態", mind: "心・考え", life: "生活", art: "芸術", media: "メディア", sports: "スポーツ", society: "社会",
-  science: "科学", work: "仕事", music: "音楽"
+  science: "科学", work: "仕事", music: "音楽",
+  // マイ単語帳
+  my: "英単語", "my-concept": "場面カード"
 };
 
 const GENRE_KEY = "spelldash_genre";
