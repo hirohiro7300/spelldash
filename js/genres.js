@@ -9,7 +9,7 @@ export const GENRE_LABELS = {
   flow: "商流（検索から粗利まで）", auto: "車業界の主体と用語", structure: "Google広告の構造", metrics: "指標・略語",
   formula: "式", bidding: "入札・配信", keyword: "キーワード・検索語句", ai: "AI Max", audience: "オーディエンス",
   ad: "広告・品質", status: "状態表示", measurement: "計測（CV・GCLID）", callcenter: "コールセンター",
-  economics: "経済性（CPAの逆算）", translation: "ビジネス語との翻訳", reflex: "誤読防止", abbr: "略語",
+  economics: "経済性（CPAの逆算）", translation: "ビジネス語との翻訳", reflex: "誤読防止", abbr: "略語", calc: "計算ドリル（数字は毎回変わる）",
   // 広告・マーケ
   targeting: "ターゲティング", quality: "品質", marketing: "マーケティング",
   // ビジネス・TOEIC

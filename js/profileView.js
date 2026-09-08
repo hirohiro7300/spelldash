@@ -7,7 +7,7 @@ import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
-import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled, getVolume, setVolume } from "./audio.js";
+import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled, getVolume, setVolume, getListenRatio, setListenRatio } from "./audio.js";
 import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./backup.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
@@ -47,6 +47,15 @@ window.addEventListener("spelldash:synced", () => {
   if (select) {
     select.value = String(getSetSize());
     select.addEventListener("change", () => setSetSize(select.value));
+  }
+}
+
+// ===== 音で出題（リスニング） =====
+{
+  const select = document.getElementById("listenSelect");
+  if (select) {
+    select.value = String(getListenRatio());
+    select.addEventListener("change", () => setListenRatio(select.value));
   }
 }
 

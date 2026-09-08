@@ -81,6 +81,16 @@ export function speakOnCorrect(text) {
   speak(text);
 }
 
+// ===== 音で出題（リスニング）: Studyで日本語の代わりに発音を聞いて打つ割合（0/25/50%、既定0） =====
+export function getListenRatio() {
+  const v = Number(getAudioSettings().listenRatio);
+  return [0, 25, 50].includes(v) ? v : 0;
+}
+
+export function setListenRatio(v) {
+  saveAudioSettings({ ...getAudioSettings(), listenRatio: [0, 25, 50].includes(Number(v)) ? Number(v) : 0 });
+}
+
 // ===== 音量（効果音・BGM共通、0〜1。既定1） =====
 export function getVolume() {
   const v = Number(getAudioSettings().volume);

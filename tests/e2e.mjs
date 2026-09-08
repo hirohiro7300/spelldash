@@ -946,7 +946,7 @@ console.log("concept cards:");
       count: ws.getWordsByCategory("listing").length
     };
   });
-  check("概念カードは「すべて」とDailyに混ざらない（119語）", !excluded.all && !excluded.daily && excluded.count === 119, JSON.stringify(excluded));
+  check("概念カードは「すべて」とDailyに混ざらない（127語）", !excluded.all && !excluded.daily && excluded.count === 127, JSON.stringify(excluded));
   await page.press("#input", "Enter");
   await page.waitForTimeout(300);
   const findCard = async () => {
@@ -1020,12 +1020,12 @@ console.log("genre list:");
   await page.waitForTimeout(900);
   check("ナビに「単語帳」", (await page.textContent(".site-nav")).includes("単語帳"));
   const genres = await page.$$eval("#listGenres .genre-chip", (els) => els.map((e) => e.textContent.trim()));
-  check("ジャンルのナビ（14ジャンル・ラベル化）", genres.length === 14 && genres.some((g) => g.startsWith("指標・略語")) && genres.some((g) => g.startsWith("入札・配信")), genres.join(","));
+  check("ジャンルのナビ（15ジャンル・ラベル化）", genres.length === 15 && genres.some((g) => g.startsWith("指標・略語")) && genres.some((g) => g.startsWith("計算ドリル")), genres.join(","));
   const cards = await page.$$eval(".gcard", (els) => els.length);
-  check("119枚がジャンルごとに並ぶ", cards === 119 && (await page.$$eval(".genre", (els) => els.length)) === 14, `cards=${cards}`);
+  check("127枚がジャンルごとに並ぶ", cards === 127 && (await page.$$eval(".genre", (els) => els.length)) === 15, `cards=${cards}`);
   const cpc = await page.$eval("#genre-metrics", (el) => el.textContent);
   check("カードに場面・解説・状態・メモ", cpc.includes("CPC") && cpc.includes("100クリックで1万円") && cpc.includes("📘") && cpc.includes("覚えかけ") && cpc.includes("Cost per Click"));
-  check("一覧のまとめ行", (await page.textContent("#listSummary")).includes("14ジャンル") && (await page.textContent("#listSummary")).includes("119語"));
+  check("一覧のまとめ行", (await page.textContent("#listSummary")).includes("15ジャンル") && (await page.textContent("#listSummary")).includes("127語"));
   await page.fill("#listSearch", "重量税");
   await page.waitForTimeout(150);
   const hits = await page.$$eval(".gcard", (els) => els.length);
@@ -1232,6 +1232,102 @@ console.log("tabs & filters:");
   await page3.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page3.waitForTimeout(800);
   check("CTAにジャンル名（入札・配信）", (await page3.textContent("#todayCta")).includes("入札・配信"));
+  await page3.close();
+}
+
+// ===== 9.999 Batch 6: 計算ドリル／音で出題／混同注意 =====
+console.log("calc & listen:");
+{
+  // 計算カード: 生成器の整合性（8種）
+  const page = await newPage({ storage: { spelldash_category: "listing", spelldash_genre: "calc", spelldash_placement: "done", spelldash_level_boost: "2" } });
+  await page.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  const calcOk = await page.evaluate(async () => {
+    const m = await import("/js/calcCards.js");
+    const out = {};
+    const v = (kind) => m.generateCalc(kind);
+    let g;
+    g = v("cpc"); out.cpc = g.answer === String(g.values.cost / g.values.click) && g.accept.includes(`${g.values.cpc}円`);
+    g = v("cpa"); out.cpa = g.answer === String(g.values.cost / g.values.cv);
+    g = v("ctr"); out.ctr = g.answer === `${g.values.ctr}%` && Math.abs(g.values.click / g.values.imp * 100 - g.values.ctr) < 1e-9;
+    g = v("cvr"); out.cvr = g.answer === `${g.values.cvr}%` && Math.abs(g.values.cv / g.values.click * 100 - g.values.cvr) < 1e-9;
+    g = v("roas"); out.roas = g.answer === `${g.values.roas}%` && g.values.value / g.values.cost * 100 === g.values.roas;
+    g = v("cpa-decomp"); out.decomp = Number(g.answer) === Math.round(g.values.cpc / (g.values.cvr / 100));
+    g = v("lead-value"); out.lead = Number(g.answer) === g.values.deals * g.values.profit / 100;
+    g = v("marginal-cpa"); out.marginal = Number(g.answer) === g.values.extraCost / g.values.extraCv && g.explain.includes("=");
+    return out;
+  });
+  check("計算カード8種の答えが式と一致", Object.values(calcOk).every(Boolean), JSON.stringify(calcOk));
+  // Studyで計算カードが出る → 数字を間違える → 答え＋計算過程 → ヒントは式
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  check("計算カードのラベルと数字入りの出題", (await page.textContent("#gameCard .label")).includes("計算") && /[0-9]/.test(await page.textContent("#japanese")));
+  const prompt = (await page.textContent("#japanese")).trim();
+  const expected = await page.evaluate(async (q) => {
+    // 出題文から数字を拾って CPC/CPA 等を逆算（Cost と Click/CV が明記されている型だけ）
+    const nums = (q.match(/[0-9][0-9,]*/g) ?? []).map((n) => Number(n.replace(/,/g, "")));
+    return nums;
+  }, prompt);
+  await page.fill("#input", "1");
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(250);
+  const shownAnswer = (await page.textContent("#word")).trim();
+  check("間違えると答えと計算過程", /^[0-9.]+%?$/.test(shownAnswer) && (await page.textContent("#wordExplain")).includes("=") && (await page.textContent("#recallFail")).trim() === "1", `answer=${shownAnswer} nums=${expected.join(",")}`);
+  await page.fill("#input", shownAnswer);
+  await page.press("#input", "Enter");
+  await waitUntil(async () => (await page.textContent("#score")).trim() === "1", 2000);
+  check("答えを打って練習できる", (await page.textContent("#score")).trim() === "1");
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(400);
+  await page.goto(BASE + "/index.html?set=3&hintms=200", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  const hintShown = await waitUntil(async () => !(await page.$eval("#hintButton", (el) => el.hidden)), 2000);
+  if (hintShown) await page.click("#hintButton");
+  await page.waitForTimeout(150);
+  check("計算カードのヒントは式", hintShown && /[=÷×]/.test(await page.textContent("#word")), await page.textContent("#word"));
+  check("計算ドリルでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  // 音で出題（100%相当は無いので50%を何回か試す）＋ 混同注意（adapt/adopt）
+  const page2 = await newPage({ storage: {
+    spelldash_category: "my", spelldash_placement: "done",
+    spelldash_audio: JSON.stringify({ mode: "auto", accent: "us", listenRatio: 50 }),
+    spelldash_my_words: JSON.stringify([{ en: "adapt", ja: "適応する" }, { en: "adopt", ja: "採用する" }, { en: "invoice", ja: "請求書" }, { en: "deadline", ja: "締め切り" }])
+  } });
+  await page2.goto(BASE + "/index.html?set=8", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.press("#input", "Enter");
+  await page2.waitForTimeout(300);
+  let sawListen = false;
+  let sawConfusable = false;
+  for (let i = 0; i < 10 && !(sawListen && sawConfusable); i++) {
+    const prompt = (await page2.textContent("#japanese")).trim();
+    if (prompt.includes("聞いて打つ")) sawListen = true;
+    await page2.press("#input", "Enter"); // 答え表示
+    await page2.waitForTimeout(150);
+    const shown = (await page2.textContent("#word")).trim();
+    if (sawListen && prompt.includes("聞いて打つ")) {
+      check("音で出題: 答え表示で意味が出る", !(await page2.textContent("#japanese")).includes("聞いて打つ"));
+      sawListen = "checked";
+    }
+    if (shown === "adapt" || shown === "adopt") {
+      const fam = await page2.textContent("#wordFamily");
+      sawConfusable = fam.includes("混同注意") && fam.includes(shown === "adapt" ? "adopt" : "adapt");
+    }
+    for (const ch of shown) await page2.press("#input", ch);
+    await page2.waitForTimeout(350);
+  }
+  check("音で出題が混ざる（50%設定）", !!sawListen);
+  check("紛らわしい語に「混同注意」（adapt ↔ adopt）", sawConfusable);
+  check("音で出題／混同注意でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  await page2.close();
+
+  const page3 = await newPage();
+  await page3.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(500);
+  await page3.selectOption("#listenSelect", "25");
+  check("音で出題の設定が保存される", (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_audio") || "{}").listenRatio)) === 25);
   await page3.close();
 }
 
