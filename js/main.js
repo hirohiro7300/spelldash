@@ -33,6 +33,9 @@ import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
 import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
 import { renderLoginNudge } from "./loginNudge.js";
+import { getCategories } from "./wordStore.js";
+import { getGenre, genreLabel } from "./genres.js";
+import { getWordStats } from "./storage.js";
 
 initializeAuth();
 setFooterYear();
@@ -118,6 +121,39 @@ document.getElementById("modeDailyTile")?.addEventListener("click", () => {
   scrollGameIntoView();
 });
 
+// ===== 出題設定（カテゴリ・ジャンル・苦手のみ・比率）は普段は畳む。要約1行だけ見せる =====
+const SETUP_OPEN_KEY = "spelldash_setup_open";
+
+function renderSetupSummary() {
+  const el = document.getElementById("setupSummary");
+  if (!el) return;
+  const categoryId = localStorage.getItem("spelldash_category") || "all";
+  const label = categoryId === "all" ? "すべて" : getCategories().find((c) => c.id === categoryId)?.label ?? categoryId;
+  const parts = [label];
+  if (getGenre()) parts.push(genreLabel(getGenre()));
+  if (isWeakOnlyMode()) parts.push("苦手のみ");
+  el.textContent = parts.join(" › ");
+}
+
+function setSetupOpen(open) {
+  const panel = document.getElementById("setupPanel");
+  const toggle = document.getElementById("setupToggle");
+  if (!panel || !toggle) return;
+  panel.hidden = !open;
+  toggle.setAttribute("aria-expanded", String(open));
+  toggle.classList.toggle("setup-toggle--open", open);
+  localStorage.setItem(SETUP_OPEN_KEY, open ? "1" : "0");
+}
+
+document.getElementById("setupToggle")?.addEventListener("click", () => {
+  const panel = document.getElementById("setupPanel");
+  setSetupOpen(panel?.hidden !== false);
+});
+window.addEventListener("spelldash:genre", renderSetupSummary);
+
+// 戻ってきた人にはキャッチコピーの説明文を出さない（1画面目を「今日のセット」に寄せる）
+if (Object.keys(getWordStats()).length > 0) document.body.classList.add("returning");
+
 // ===== 苦手のみ復習トグル（Studyモード限定） =====
 function refreshWeakToggle() {
   const button = document.getElementById("weakToggleButton");
@@ -135,6 +171,7 @@ if (weakToggleButton) {
   weakToggleButton.addEventListener("click", () => {
     setWeakOnlyMode(!isWeakOnlyMode());
     refreshWeakToggle();
+    renderSetupSummary();
     // プレイ中なら新しいプールでキューを作り直す
     if (isGamePlaying() && getMode() === "study") {
       restartGame();
@@ -147,6 +184,7 @@ document.getElementById("categoryPicker")?.addEventListener("click", () => {
   setTimeout(() => {
     refreshWeakToggle();
     renderTodayCta();
+    renderSetupSummary();
   }, 0);
 });
 
@@ -157,6 +195,8 @@ initWordStore()
     renderLearnedCard();
     renderTodayCta();
     renderLoginNudge();
+    renderSetupSummary();
+    setSetupOpen(localStorage.getItem(SETUP_OPEN_KEY) === "1");
     // 週間レポート: 日曜・月曜だけホームに（それ以外は学習データで見られる）
     const dow = new Date().getDay();
     const weeklyHome = document.getElementById("weeklyHome");

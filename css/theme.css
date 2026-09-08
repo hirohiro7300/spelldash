@@ -584,3 +584,23 @@ html[data-theme="light"] .stats-tab--active { background: rgba(37, 99, 235, 0.12
 html[data-theme="light"] .filter-chip { border-color: #cbd5e1; color: #475569; }
 html[data-theme="light"] .filter-chip--active { border-color: #2563eb; color: #1d4ed8; background: rgba(37, 99, 235, 0.08); }
 html[data-theme="light"] :focus-visible { outline-color: #2563eb; }
+
+/* ---- ホーム v2（ライト） ---- */
+html[data-theme="light"] .today { background: #ffffff; border-color: rgba(37, 99, 235, 0.3); }
+html[data-theme="light"] .today .learned-card { border-top-color: #e2e8f0; }
+html[data-theme="light"] .strip__chip { background: #f8fafc; border-color: #dbe2ec; color: #334155; }
+html[data-theme="light"] .strip__chip b { color: #0f172a; }
+html[data-theme="light"] .strip__chip--on { background: rgba(22, 163, 74, 0.08); border-color: #86efac; color: #15803d; }
+html[data-theme="light"] .strip__chip--streak.strip__chip--on { background: rgba(249, 115, 22, 0.08); border-color: #fdba74; color: #c2410c; }
+html[data-theme="light"] .strip__bar { background: #e2e8f0; }
+html[data-theme="light"] .mode-switch--seg { background: #ffffff; border-color: #dbe2ec; }
+html[data-theme="light"] .mode-switch--seg .mode-switch__btn { color: #475569; }
+html[data-theme="light"] .mode-switch--seg .mode-switch__btn--active { background: rgba(37, 99, 235, 0.12); color: #0f172a; }
+html[data-theme="light"] .setup-toggle { background: #ffffff; border-color: #dbe2ec; color: #334155; }
+html[data-theme="light"] .setup-toggle__summary { color: #1d4ed8; }
+html[data-theme="light"] .setup { background: #f8fafc; border-color: #e2e8f0; }
+html[data-theme="light"] .stats--strip .stat-card { background: #ffffff; border-color: #dbe2ec; }
+html[data-theme="light"] .stats--strip .stat-card span { color: #64748b; }
+html[data-theme="light"] .stats--strip .stat-card strong { color: #0f172a; }
+html[data-theme="light"] .home-more { background: #ffffff; border-color: #dbe2ec; }
+html[data-theme="light"] .home-more > summary { color: #475569; }
