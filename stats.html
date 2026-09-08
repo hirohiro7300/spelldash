@@ -36,9 +36,9 @@
 
       <nav class="site-nav" aria-label="メインナビ">
         <a href="/" class="site-nav__link">プレイ</a>
-        <a href="./battle.html" class="site-nav__link">バトル</a>
         <a href="./stats.html" class="site-nav__link" aria-current="page">学習データ</a>
         <a href="./list.html" class="site-nav__link">単語帳</a>
+        <a href="./battle.html" class="site-nav__link">バトル</a>
       </nav>
 
       <div class="account">
@@ -137,6 +137,11 @@
       <div class="keymiss" id="keyMiss"></div>
     </section>
 
+    <section data-tab="analysis" class="result-card">
+      <h3>その他の数字</h3>
+      <div class="metric-grid" id="overviewMore"></div>
+    </section>
+
     <section data-tab="week" class="result-card weekly" id="weekly">
       <div id="weeklyReport"></div>
     </section>
@@ -156,11 +161,6 @@
       <div id="calendarGrid"></div>
     </section>
 
-    <section data-tab="week" class="result-card">
-      <h3>今週のまとめ</h3>
-      <div class="metric-grid" id="weeklySummary"></div>
-    </section>
-
     <section data-tab="analysis" class="result-card">
       <h3>スコア推移</h3>
       <div id="scoreTrend"></div>
@@ -177,11 +177,6 @@
       <h3>カテゴリ別の進捗</h3>
       <p class="muted">行をタップするとそのカテゴリで練習を始められます。</p>
       <div id="categoryProgress"></div>
-    </section>
-
-    <section data-tab="analysis" class="result-card">
-      <h3>習得の進捗</h3>
-      <div id="progress"></div>
     </section>
 
     <section data-tab="words" class="result-card" id="myWords">

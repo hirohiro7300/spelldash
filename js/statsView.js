@@ -23,7 +23,6 @@ import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
 
 const overviewElement = document.getElementById("overview");
-const progressElement = document.getElementById("progress");
 const typingElement = document.getElementById("typingMetrics");
 
 initializeAuth();
@@ -82,13 +81,11 @@ initWordStore().then(() => {
     event.currentTarget.textContent = `CSV書き出し ✓ ${n}語`;
     setTimeout(() => (event.target.textContent = "CSV書き出し"), 2500);
   });
-  renderWeeklySummary();
   renderScoreTrend();
   renderLearnedWords();
   renderCategoryProgress();
   renderGrowthTrend();
   renderWeeklyReport("weeklyReport");
-  renderProgress();
   renderWordFamilies();
   renderWeakWords();
   initializeWordList();
@@ -104,13 +101,11 @@ window.addEventListener("spelldash:synced", () => {
   renderOverview();
   renderTyping();
   renderCalendar("calendarGrid");
-  renderWeeklySummary();
   renderScoreTrend();
   renderLearnedWords();
   renderCategoryProgress();
   renderGrowthTrend();
   renderWeeklyReport("weeklyReport");
-  renderProgress();
   renderWordFamilies();
   renderWeakWords();
 });
@@ -133,20 +128,26 @@ function renderOverview() {
   const level = getLevelState();
   const streak = getStreak();
 
+  // 概要は6枚だけ。残りは「分析」タブの「その他の数字」へ
   renderCards(overviewElement, [
-    { label: "レベル", value: `Lv.${level.level}` },
-    { label: "総XP", value: level.totalXp.toLocaleString() },
+    { label: "レベル", value: `Lv.${level.level} ${level.title}` },
     { label: "連続プレイ", value: `${streak.current}日` },
-    { label: "最長連続", value: `${streak.best}日` },
-    { label: "ストリークシールド", value: `🛡️ × ${streak.shields ?? 0}` },
-    { label: "ベストスコア", value: s.best },
     { label: "学習した単語", value: `${s.learned} / ${s.total}` },
     { label: "習得済み", value: s.mastered },
-    { label: "習得率", value: `${s.masteryRate}%` },
-    { label: "正答率", value: `${s.accuracy}%` },
     { label: "思い出し成功率", value: computeRecallRateLabel() },
-    { label: "総プレイ", value: s.totalPlays }
+    { label: "ベストスコア", value: s.best }
   ]);
+  const more = document.getElementById("overviewMore");
+  if (more) {
+    renderCards(more, [
+      { label: "総XP", value: level.totalXp.toLocaleString() },
+      { label: "最長連続", value: `${streak.best}日` },
+      { label: "ストリークシールド", value: `🛡️ × ${streak.shields ?? 0}` },
+      { label: "習得率", value: `${s.masteryRate}%` },
+      { label: "正答率", value: `${s.accuracy}%` },
+      { label: "総プレイ", value: s.totalPlays }
+    ]);
+  }
 }
 
 // 思い出し成功率 = 自力正解 / (自力正解 + 思い出せなかった回数)
@@ -226,68 +227,6 @@ function renderWordFamilies() {
   `;
 }
 
-// ===== 今週のまとめ（月曜起点、先週との比較つき） =====
-
-function startOfWeek(offsetWeeks = 0) {
-  const d = new Date();
-  const day = (d.getDay() + 6) % 7; // 月曜=0
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - day - offsetWeeks * 7);
-  return d.getTime();
-}
-
-function renderWeeklySummary() {
-  const container = document.getElementById("weeklySummary");
-  if (!container) return;
-
-  const thisWeekStart = startOfWeek(0);
-  const lastWeekStart = startOfWeek(1);
-  const log = getSessionLog();
-
-  const inRange = (iso, from, to) => {
-    const t = Date.parse(iso ?? 0) || 0;
-    return t >= from && (to == null || t < to);
-  };
-
-  const thisWeek = log.filter((e) => inRange(e.at, thisWeekStart, null));
-  const lastWeek = log.filter((e) => inRange(e.at, lastWeekStart, thisWeekStart));
-
-  const best = (entries) => (entries.length ? Math.max(...entries.map((e) => e.score)) : 0);
-  const dailyCount = (entries) => entries.filter((e) => e.mode === "daily").length;
-
-  // 今週「思い出せた」語数（lastRecallSuccessAtが今週の単語。先週分は上書きされるため比較しない）
-  const stats = getWordStats();
-  let recalledThisWeek = 0;
-  for (const data of Object.values(stats)) {
-    if (data.lastRecallSuccessAt && inRange(data.lastRecallSuccessAt, thisWeekStart, null)) {
-      recalledThisWeek++;
-    }
-  }
-
-  const diffLabel = (now, prev) => {
-    if (prev === 0 && now === 0) return "";
-    const diff = now - prev;
-    if (diff === 0) return "（先週と同じ）";
-    return diff > 0 ? `（先週 +${diff}）` : `（先週 ${diff}）`;
-  };
-
-  renderCards(container, [
-    { label: "思い出せた単語", value: `${recalledThisWeek}語` },
-    {
-      label: "プレイ回数（Challenge/Daily）",
-      value: `${thisWeek.length}回 ${diffLabel(thisWeek.length, lastWeek.length)}`
-    },
-    {
-      label: "今週のベストスコア",
-      value: `${best(thisWeek)} ${diffLabel(best(thisWeek), best(lastWeek))}`
-    },
-    {
-      label: "Daily Dash完走",
-      value: `${dailyCount(thisWeek)}回 ${diffLabel(dailyCount(thisWeek), dailyCount(lastWeek))}`
-    }
-  ]);
-}
-
 // ===== スコア推移（Challenge / Daily Dashの直近履歴） =====
 
 function renderScoreTrend() {
@@ -352,34 +291,6 @@ function renderTyping() {
     { label: "総タップ数", value: t.totalTaps.toLocaleString() },
     { label: "プレイ回数", value: t.sessions }
   ]);
-}
-
-function renderProgress() {
-  const s = computeSummary();
-
-  const rows = [
-    { label: "習得率", detail: `${s.mastered} / ${s.total} 語`, percent: s.masteryRate },
-    { label: "正答率", detail: `正解 ${s.totalCorrect} / ミス ${s.totalMiss}`, percent: s.accuracy }
-  ];
-
-  progressElement.innerHTML = rows
-    .map(
-      (row) => `
-        <div class="progress-row">
-          <div class="progress-row__head">
-            <span>${row.label}</span>
-            <strong>${row.percent}%</strong>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-bar__fill" style="width: ${row.percent}%;"></div>
-          </div>
-          <div class="progress-row__head" style="margin-top: 6px; margin-bottom: 0;">
-            <span>${row.detail}</span>
-          </div>
-        </div>
-      `
-    )
-    .join("");
 }
 
 // ===== カテゴリ別の進捗（学習項目の一覧＋ステータス） =====

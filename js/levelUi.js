@@ -1,7 +1,9 @@
 import { getLevelState, getNextTitle } from "./level.js";
+import { renderTodayStrip, pulseTodayStrip } from "./homeStrip.js";
 
 // ページ内に #levelBar があればレベルバーを描画する（無いページでは何もしない）
 export function renderLevelBar() {
+  renderTodayStrip(); // ホームの数字1行（#levelBar が無いページでも）
   const container = document.getElementById("levelBar");
   if (!container) return;
 
@@ -35,6 +37,7 @@ export function renderLevelBar() {
 
 // レベルアップ演出（バッジを一瞬光らせる）
 export function playLevelUpEffect() {
+  pulseTodayStrip();
   const container = document.getElementById("levelBar");
   if (!container) return;
 

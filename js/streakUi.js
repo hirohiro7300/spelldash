@@ -1,5 +1,6 @@
 import { getStreak, hasPlayedToday, SHIELD_MAX, SHIELD_EARN_EVERY } from "./level.js";
 import { hasumiStreakLine } from "./hasumi.js";
+import { renderTodayStrip } from "./homeStrip.js";
 
 // ホーム画面のストリークカード。
 // 「今日やったか / やっていないか」を常に見せて、毎日開く理由を作る
@@ -10,6 +11,7 @@ function todayString() {
 }
 
 export function renderStreakCard() {
+  renderTodayStrip(); // ホームでは数字1行に集約
   const container = document.getElementById("streakCard");
   if (!container) return;
 

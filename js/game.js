@@ -1572,6 +1572,8 @@ function endChallenge() {
     });
     dailyRun = null;
     renderDailyCard();
+    const more = document.getElementById("homeMore");
+    if (more) more.open = true; // 結果とランキングが見える位置に
     // ランキング送信 → 反映後にカードを再描画（未ログイン・テーブル未作成なら静かに無視）
     submitDailyScore({ score, speed: Math.round(speed * 10) / 10 }).finally(() => renderDailyCard());
   }

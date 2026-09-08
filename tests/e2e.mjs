@@ -229,6 +229,7 @@ console.log("daily:");
   const page = await newPage();
   await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
+  await page.$eval("#homeMore", (el) => { el.open = true; });
   await page.click("#dailyStartButton");
   await page.waitForTimeout(3800);
   const card = await page.textContent("#dailyCard");
@@ -247,8 +248,9 @@ console.log("home widgets:");
   const page = await newPage();
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
-  check("ストリークカード表示", (await page.textContent("#streakCard")).includes("日連続"));
-  check("ランク表示（F3スタート）", (await page.textContent("#levelBar")).includes("ランク F3"));
+  check("数字1行にストリーク・週の目標", (await page.textContent("#todayStrip")).includes("連続記録") || (await page.textContent("#todayStrip")).includes("日連続"));
+  check("ランク表示（F3スタート）", (await page.textContent("#todayStrip")).includes("F3"));
+  await page.click("#setupToggle"); // 出題設定は畳まれている
   check("苦手トグル（Study時）表示", await page.isVisible("#weakToggleButton"));
   check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
   // はちゃん（ホーム一言）: 吹き出し＋アバター画像がロードされている
@@ -1056,6 +1058,7 @@ console.log("genre list:");
   const page2 = await newPage({ storage: { spelldash_category: "listing", spelldash_genre: "bidding" } });
   await page2.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
+  await page2.click("#setupToggle");
   await page2.click('.category-chip[data-category="ads"]');
   await page2.waitForTimeout(100);
   check("カテゴリを変えるとジャンルは解除", (await page2.evaluate(() => localStorage.getItem("spelldash_genre"))) === null && !(await page2.textContent("#genreBar")).includes("解除"));
