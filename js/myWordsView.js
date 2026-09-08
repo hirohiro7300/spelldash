@@ -1,4 +1,4 @@
-import { getMyWords, addMyWord, addMyWordsBulk, removeMyWord } from "./myWords.js";
+import { getMyWords, addMyWord, addMyConcept, addMyWordsBulk, removeMyWord } from "./myWords.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 
@@ -24,6 +24,37 @@ export function initializeMyWordsView(onChange = () => {}) {
       renderMyWordsList();
       onChange();
     }
+  });
+
+  // 場面カード（意味→用語）: 自分の教材を意味ベースで入れる
+  const conceptForm = document.getElementById("myConceptForm");
+  conceptForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const q = document.getElementById("myConceptQ");
+    const answer = document.getElementById("myConceptAnswer");
+    const explain = document.getElementById("myConceptExplain");
+    const accept = document.getElementById("myConceptAccept");
+    const result = addMyConcept({ q: q.value, answer: answer.value, explain: explain.value, accept: accept.value });
+    setStatus(result.ok ? `場面カード「${result.en}」を追加しました` : result.error, !result.ok);
+    if (result.ok) {
+      q.value = "";
+      answer.value = "";
+      explain.value = "";
+      accept.value = "";
+      q.focus();
+      renderMyWordsList();
+      onChange();
+    }
+  });
+
+  // 「英単語 / 場面カード」の切替
+  document.querySelectorAll("[data-my-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const kind = tab.dataset.myTab;
+      document.querySelectorAll("[data-my-tab]").forEach((t) => t.classList.toggle("my-tab--active", t === tab));
+      document.getElementById("myWordForm").hidden = kind !== "word";
+      document.getElementById("myConceptForm").hidden = kind !== "concept";
+    });
   });
 
   bulkButton?.addEventListener("click", () => {
@@ -74,13 +105,15 @@ export function renderMyWordsList() {
 
   container.innerHTML = list
     .map((w) => {
-      const status = classifyWord(stats[`my-${w.en}`]);
+      const concept = w.kind === "concept";
+      const status = classifyWord(stats[concept ? `my-q-${w.en}` : `my-${w.en}`]);
+      const label = concept ? w.answer : w.en;
       return `
-        <div class="my-word">
-          <span class="my-word__en">${w.en}</span>
-          <span class="my-word__ja">${escapeHtml(w.ja)}</span>
+        <div class="my-word${concept ? " my-word--concept" : ""}">
+          <span class="my-word__en">${escapeHtml(label)}</span>
+          <span class="my-word__ja">${concept ? `<span class="my-word__q">${escapeHtml(w.q)}</span>${w.explain ? `<br><span class="my-word__explain">📘 ${escapeHtml(w.explain)}</span>` : ""}` : escapeHtml(w.ja)}</span>
           <span class="my-word__status my-word__status--${status}">${STATUS_LABEL[status]}</span>
-          <button type="button" class="my-word__remove" data-remove="${w.en}" aria-label="${w.en} を削除">削除</button>
+          <button type="button" class="my-word__remove" data-remove="${escapeHtml(w.en)}" aria-label="${escapeHtml(label)} を削除">削除</button>
         </div>`;
     })
     .join("");

@@ -1,7 +1,7 @@
 import { findWord, getCategories } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
-import { historyDotsHtml } from "./learnedWords.js";
+import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { speak } from "./audio.js";
 import { speechTextOf } from "./wordStore.js";
@@ -63,6 +63,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
       ${stat?.cleanCorrectStreak ? `<span>ノーミス連続 ${stat.cleanCorrectStreak}/10</span>` : ""}
     </div>
     ${historyDotsHtml(stat) ? `<div class="word-detail__history">履歴 ${historyDotsHtml(stat)}</div>` : ""}
+    ${memoryGaugeHtml(stat) ? `<div class="word-detail__history">記憶 ${memoryGaugeHtml(stat)}</div>` : ""}
     <div class="word-detail__note">
       <label for="wordDetailNote">📝 覚え方のメモ</label>
       <div class="word-detail__note-row">

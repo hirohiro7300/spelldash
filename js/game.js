@@ -43,7 +43,8 @@ import {
   getDueReviewWords,
   startRetryQueue,
   isPlacementRun,
-  getQueueComposition
+  getQueueComposition,
+  insertBreather
 } from "./studyQueue.js";
 import { getWeekGoal, getActiveDaysThisWeek } from "./growthLog.js";
 import { canInstall, promptInstall } from "./installPrompt.js";
@@ -134,6 +135,7 @@ const LEECH_FAILS = 4; // これ以上思い出せていない語は「難敵」
 let hintUsed = false;
 let hintTimer = null;
 let retryIds = null; // 「思い出せなかった語だけもう1周」中はその語のID配列
+let consecutiveFails = 0; // Studyで連続して思い出せなかった数（3で救済）
 
 // 全文入力モード（概念カード等、答えが a-z だけでない語）: 1文字ずつではなく Enter で答え全体を判定する。
 // 日本語IMEで打てるように、入力欄の値には触らない
@@ -306,6 +308,7 @@ export function startGame(options = {}) {
   // Study: Recall Loopキューを構築（Unresolved → Mission Review → 復習期限 → Mission New → 通常）
   if (mode === "study") {
     retryIds = retry;
+    consecutiveFails = 0;
     if (retry) startRetryQueue(retry);
     else startStudyQueue(activeCategory);
     composition = getQueueComposition(); // 最初の1語を取り出す前に構成を控える
@@ -550,6 +553,21 @@ function markRecallFail() {
     queueRecallFail(currentWord.id);
     playRecallFailEffect();
     renderStudyQueue(true);
+
+    // 3連続で思い出せなかったら、次に「思い出せる語」を1つ挟んで立て直す
+    consecutiveFails++;
+    if (consecutiveFails === 3 && insertBreather()) {
+      const toast = document.getElementById("learnToast");
+      if (toast) {
+        toast.innerHTML = hasumiBubbleHtml({ mood: "normal", text: "3つ続けて出てこないのは誰でもあるよ。次は思い出せる語を1つ挟むね！" }, "hasumi--result");
+        toast.hidden = false;
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(() => {
+          toast.hidden = true;
+        }, 4000);
+      }
+      renderStudyQueue(true);
+    }
   }
 
   combo = 0;
@@ -857,6 +875,7 @@ function completeWord() {
   // ※答え表示後の入力練習では lastRecallSuccessAt を更新しない
   let loopResult = null;
   if (selfRecall) {
+    consecutiveFails = 0;
     recordRecallSuccess(currentWord.id);
     if (mode === "study") bumpActivity("studyCorrect"); // KPI心拍
 

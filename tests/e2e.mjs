@@ -1068,6 +1068,115 @@ console.log("genre list:");
   await page3.close();
 }
 
+// ===== 9.99 Batch 5a: マイ場面カード／まとめて追加／記憶ゲージ／救済／今月／制覇／ログイン案内 =====
+console.log("my concept & retention:");
+{
+  const todayKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const dayKey = (i) => { const d = new Date(Date.now() - i * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  // マイ単語帳: 場面カードのフォーム＋まとめて追加（→形式・タブ区切り見出しつき）
+  const page = await newPage();
+  await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.click('[data-my-tab="concept"]');
+  check("場面カードのタブでフォームが切り替わる", !(await page.$eval("#myConceptForm", (el) => el.hidden)) && (await page.$eval("#myWordForm", (el) => el.hidden)));
+  await page.fill("#myConceptQ", "ユーザーが「車 買取」等を検索する");
+  await page.fill("#myConceptAnswer", "検索需要");
+  await page.fill("#myConceptExplain", "広告を出す前提になる量");
+  await page.fill("#myConceptAccept", "検索ニーズ/需要");
+  await page.click("#myConceptForm button[type=submit]");
+  await page.waitForTimeout(200);
+  check("場面カードを追加できる", (await page.textContent("#myWordStatus")).includes("検索需要") && (await page.textContent("#myWordList")).includes("車 買取"));
+  await page.click(".my-words__bulk summary");
+  await page.fill("#myWordBulk", "english\tjapanese\ninvoice\t請求書\nCost ÷ Click → CPC | クリック単価\n表示回数のうちクリックされた割合 → クリック率 | CTR | ctr/CTR");
+  await page.click("#myWordBulkAdd");
+  await page.waitForTimeout(200);
+  const myWords = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
+  check("まとめて追加: 見出し行を飛ばし、英単語1＋場面カード2", myWords.length === 4 && myWords.filter((w) => w.kind === "concept").length === 3 && myWords.some((w) => w.answer === "CPC") && myWords.some((w) => w.answer === "クリック率" && w.accept.includes("ctr")), JSON.stringify(myWords).slice(0, 200));
+  check("今月のまとめが出る", (await page.textContent("#monthlySummary")).includes("学習した日"));
+  check("マイ単語帳（場面カード）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  const myRaw = await page.evaluate(() => localStorage.getItem("spelldash_my_words"));
+  await page.close();
+
+  // ホーム: マイ単語帳の場面カードが全文入力で出題される（検索需要を別解で正解）
+  const page2 = await newPage({ storage: { spelldash_category: "my", spelldash_my_words: myRaw, spelldash_placement: "done" } });
+  await page2.goto(BASE + "/index.html?set=4", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.press("#input", "Enter");
+  await page2.waitForTimeout(300);
+  let answered = false;
+  for (let i = 0; i < 6 && !answered; i++) {
+    const q = (await page2.textContent("#japanese")).trim();
+    if (q.includes("車 買取")) {
+      await page2.fill("#input", "需要");
+      await page2.press("#input", "Enter");
+      await waitUntil(async () => (await page2.textContent("#recalledToday")).trim() === "1", 2000);
+      answered = (await page2.textContent("#recalledToday")).trim() === "1";
+      break;
+    }
+    await page2.press("#input", "Enter");
+    await page2.waitForTimeout(150);
+    await page2.press("#input", "Enter");
+    await page2.waitForTimeout(300);
+  }
+  check("自分の場面カードが出題され、別解で自力正解", answered);
+  check("マイ場面カードの出題でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  await page2.close();
+
+  // 救済: 3連続で思い出せなかったら、思い出せる語（Familiar）が次に挟まる
+  const y = new Date(Date.now() - 3 * 86400000).toISOString();
+  const page3 = await newPage({ storage: {
+    spelldash_category: "my", spelldash_placement: "done",
+    spelldash_study_mix: JSON.stringify({ familiarRatio: 0, updatedAt: null }), // 既知語（予算）は救済でしか出ないようにする
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "deadline", ja: "締め切り" }, { en: "budget", ja: "予算" }, { en: "revenue", ja: "売上" }]),
+    spelldash_word_stats: JSON.stringify({ "my-budget": { playCount: 3, correctCount: 3, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 3, mastered: false, lastPlayed: y, nextReviewAt: new Date(Date.now() + 5 * 86400000).toISOString(), lastRecallSuccessAt: y, srsAdvancedOn: "2026-01-01" } })
+  } });
+  await page3.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(900);
+  await page3.press("#input", "Enter");
+  await page3.waitForTimeout(300);
+  let breather = false;
+  for (let i = 0; i < 3; i++) {
+    const ja = (await page3.textContent("#japanese")).trim();
+    if (ja === "予算") { breather = false; break; }
+    await page3.press("#input", "Enter"); // 思い出せず
+    await page3.waitForTimeout(150);
+    if (i === 2) breather = !(await page3.$eval("#learnToast", (el) => el.hidden)) && (await page3.textContent("#learnToast")).includes("3つ続けて");
+    const shown = (await page3.textContent("#word")).trim();
+    for (const ch of shown) await page3.press("#input", ch);
+    await page3.waitForTimeout(400);
+  }
+  check("3連続で思い出せず→はちゃんの助け舟", breather);
+  check("次に思い出せる語（予算）が挟まる", (await page3.textContent("#japanese")).trim() === "予算", await page3.textContent("#japanese"));
+  check("救済フローでエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
+  await page3.close();
+
+  // ログイン案内（3日以上学習・未ログイン・1回だけ）＋ 記憶ゲージ ＋ 制覇
+  const page4 = await newPage({ storage: {
+    spelldash_growth_log: JSON.stringify([{ date: dayKey(4), learned: 1, mastered: 0, active: true }, { date: dayKey(2), learned: 2, mastered: 0, active: true }, { date: todayKey, learned: 3, mastered: 0, active: true }]),
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }]),
+    spelldash_word_stats: JSON.stringify({ "my-invoice": { playCount: 4, correctCount: 3, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 3, mastered: false, lastPlayed: y, nextReviewAt: new Date(Date.now() + 2 * 86400000).toISOString(), lastRecallFailAt: new Date(Date.now() - 6 * 86400000).toISOString(), lastRecallSuccessAt: y, history: [{ d: dayKey(6), r: "x" }, { d: dayKey(3), r: "o" }] } })
+  } });
+  await page4.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page4.waitForTimeout(900);
+  check("3日以上学習した未ログインにログイン案内", (await page4.textContent("#loginNudge")).includes("ログイン") && (await page4.$("#loginNudgeLater")) !== null);
+  await page4.click("#loginNudgeLater");
+  check("「あとで」で消えて記録される", (await page4.textContent("#loginNudge")).trim() === "" && (await page4.evaluate(() => localStorage.getItem("spelldash_login_nudge"))) === "later");
+  await page4.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
+  await page4.waitForTimeout(800);
+  const listText = await page4.textContent("#listBody");
+  check("単語帳に記憶ゲージ（3/10・復習2日後）", (await page4.$(".mem__bar")) !== null && listText.includes("3/10") && listText.includes("復習: 2日後"), listText.slice(0, 160));
+  check("ジャンル全部覚えたら「制覇」", listText.includes("制覇"));
+  check("ログイン案内／ゲージでエラー0", page4.errors.length === 0, page4.errors[0] ?? "");
+  await page4.close();
+
+  // 初回オンボーディングは「腕試し」導線
+  const page5 = await newPage({ keepOnboarding: true });
+  await page5.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page5.waitForTimeout(800);
+  check("初回カードは腕試しの案内", (await page5.textContent("#onboardingCard")).includes("腕試し"));
+  await page5.close();
+}
+
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====
 console.log("ads category:");
 {

@@ -5,7 +5,7 @@ import { setupUnloadSync } from "./sync.js";
 import { initWordStore, getCategories, isConceptWord } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
-import { historyDotsHtml } from "./learnedWords.js";
+import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors, escapeHtml } from "./wordNotes.js";
 import { bindWordDetail } from "./wordDetail.js";
 import { groupByGenre, setGenre, getGenre, genreLabel } from "./genres.js";
@@ -95,7 +95,7 @@ function render() {
       return `
         <section class="genre" id="genre-${g.tag}">
           <div class="genre__head">
-            <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count">${g.words.length}語</span></h2>
+            <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count">${g.words.length}語</span>${done === g.words.length ? ` <span class="genre__clear">🏆 制覇</span>` : ""}</h2>
             <div class="genre__meta">覚えた ${done}${weak > 0 ? ` ・ 苦手 ${weak}` : ""}</div>
             <button type="button" class="btn btn--sm${practicing ? "" : " btn--ghost"} genre__practice" data-practice="${g.tag}">${practicing ? "▶ このジャンルを練習中" : "このジャンルを練習"}</button>
           </div>
@@ -133,6 +133,7 @@ function cardHtml(word, stat) {
         : `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`}
       <div class="gcard__foot">
         ${historyDotsHtml(stat)}
+        ${memoryGaugeHtml(stat)}
         ${noteChipHtml(word.id)}
       </div>
     </article>`;

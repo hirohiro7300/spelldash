@@ -28,13 +28,12 @@ export function renderOnboarding(onStart) {
 
   container.innerHTML = `
     <button type="button" class="onboarding__close" id="onboardingClose" aria-label="閉じる">✕</button>
-    <div class="onboarding__title">30秒で分かるSpellDash</div>
+    <div class="onboarding__title">まず腕試し、10語だけ。</div>
     <ol class="onboarding__steps">
-      <li><strong>日本語訳</strong>を見て、英単語をタイプ</li>
-      <li>分からなければ <kbd>Enter</kbd> で答えを表示</li>
-      <li>答えを見た単語は、数問後にもう一度出ます。<strong>思い出せたら勝ち</strong></li>
+      <li><strong>日本語</strong>を見て英単語をタイプ。知らなければ <kbd>Enter</kbd> で答えを見てOK</li>
+      <li>10語で、あなたに合う難しさが決まります。答えを見た語は数問後にまた出て、<strong>思い出せたら勝ち</strong></li>
     </ol>
-    <button type="button" class="onboarding__start" id="onboardingStart">▶ 最初の1語を打ってみる</button>
+    <button type="button" class="onboarding__start" id="onboardingStart">▶ 腕試しを始める（約2分）</button>
   `;
 
   document.getElementById("onboardingStart").addEventListener("click", () => {

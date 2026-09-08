@@ -563,3 +563,16 @@ html[data-theme="light"] .gcard__explain { color: #334155; }
 html[data-theme="light"] .genre-bar { color: #64748b; }
 html[data-theme="light"] .genre-bar__active b, html[data-theme="light"] .genre-bar__link, html[data-theme="light"] .cat-row__list { color: #1d4ed8; }
 html[data-theme="light"] .genre-bar__clear { border-color: #cbd5e1; color: #334155; }
+
+/* ---- Batch 5a（ライト） ---- */
+html[data-theme="light"] .my-tab { border-color: #cbd5e1; color: #475569; }
+html[data-theme="light"] .my-tab--active { border-color: #2563eb; color: #1d4ed8; background: rgba(37, 99, 235, 0.08); }
+html[data-theme="light"] .my-concept__form textarea { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
+html[data-theme="light"] .my-word--concept .my-word__en { color: #92400e; }
+html[data-theme="light"] .my-word__q { color: #0f172a; }
+html[data-theme="light"] .my-word__explain { color: #64748b; }
+html[data-theme="light"] .mem { color: #64748b; }
+html[data-theme="light"] .mem__bar { background: #e2e8f0; }
+html[data-theme="light"] .genre__clear, html[data-theme="light"] .cat-row__clear { background: rgba(245, 158, 11, 0.14); color: #92400e; }
+html[data-theme="light"] .login-nudge { background: rgba(37, 99, 235, 0.06); border-color: #bfdbfe; color: #334155; }
+html[data-theme="light"] .login-nudge__text b { color: #0f172a; }

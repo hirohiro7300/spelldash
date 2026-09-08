@@ -2,6 +2,10 @@ import { computeCategoryProgress } from "./categoryProgress.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
 import { getLearnedDelta7, recordGrowthSnapshot, getWeekGoal, getThisWeekDays } from "./growthLog.js";
 import { getLearnedWordsToday } from "./learnedWords.js";
+import { getGenre, genreLabel, applyGenre } from "./genres.js";
+import { getWordsByCategory } from "./wordStore.js";
+import { getWordStats } from "./storage.js";
+import { classifyWord } from "./categoryProgress.js";
 
 // ===== ホーム「覚えた単語」カード =====
 // 「いくつ覚えたか」を一等地に常設する（覚えた実感 v1）。
@@ -22,10 +26,29 @@ export function renderLearnedCard() {
   recordGrowthSnapshot({ learned: all.learned, mastered: all.mastered });
   const week = getLearnedDelta7(all.learned);
 
-  const currentLine =
+  let currentLine =
     current.id === "all"
       ? `覚えかけ ${all.learning} ・ 習得 ${all.mastered} ・ 苦手 ${all.weak} ・ 知ってた ${all.known}`
       : `${current.label}: 覚えた ${current.learned} / ${current.total} ・ 苦手 ${current.weak} ・ 知ってた ${current.known}`;
+  // ジャンルで絞っている時は、そのジャンルの進みを見せる
+  const genre = getGenre();
+  if (genre && current.id !== "all") {
+    const stats = getWordStats();
+    const words = applyGenre(getWordsByCategory(current.id), genre);
+    const seen = new Set();
+    let learnedG = 0;
+    let weakG = 0;
+    let totalG = 0;
+    for (const w of words) {
+      if (seen.has(w.id)) continue;
+      seen.add(w.id);
+      totalG++;
+      const st = classifyWord(stats[w.id]);
+      if (st === "learning" || st === "mastered") learnedG++;
+      if (st === "weak") weakG++;
+    }
+    currentLine = `${genreLabel(genre)}: 覚えた ${learnedG} / ${totalG} ・ 苦手 ${weakG}${learnedG === totalG && totalG > 0 ? " 🏆 制覇" : ""}`;
+  }
 
   const learnedToday = getLearnedWordsToday();
   const todayLine =

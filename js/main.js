@@ -31,6 +31,7 @@ import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
 import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
+import { renderLoginNudge } from "./loginNudge.js";
 
 initializeAuth();
 setFooterYear();
@@ -154,6 +155,7 @@ initWordStore()
     initializeCategoryPicker();
     renderLearnedCard();
     renderTodayCta();
+    renderLoginNudge();
     // 週間レポート: 日曜・月曜だけホームに（それ以外は学習データで見られる）
     const dow = new Date().getDay();
     const weeklyHome = document.getElementById("weeklyHome");

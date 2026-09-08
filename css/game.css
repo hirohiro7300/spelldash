@@ -3429,3 +3429,125 @@ body.free-answer .typed-preview {
 .cat-row__list:hover {
   text-decoration: underline;
 }
+
+/* ===== Batch 5a: 場面カード・記憶ゲージ・制覇・ログイン案内 ===== */
+.my-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+
+.my-tab {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.my-tab--active {
+  border-color: #60a5fa;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.18);
+}
+
+.my-concept__form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.my-concept__form textarea,
+.my-concept__form button {
+  grid-column: 1 / -1;
+}
+
+.my-concept__form textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.my-word--concept .my-word__en {
+  color: #fde68a;
+}
+
+.my-word__q {
+  color: #e2e8f0;
+}
+
+.my-word__explain {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.mem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 11.5px;
+}
+
+.mem__bar {
+  display: inline-block;
+  width: 60px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+
+.mem__bar b {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #4ade80);
+}
+
+.genre__clear,
+.cat-row__clear {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.15);
+  color: #fde68a;
+  font-size: 11.5px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.login-nudge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin: -4px 0 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.login-nudge:empty {
+  display: none;
+}
+
+.login-nudge__text b {
+  color: #f8fafc;
+}
+
+.login-nudge__actions {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 600px) {
+  .my-concept__form { grid-template-columns: 1fr; }
+}
