@@ -17,6 +17,7 @@ import { renderCalendar } from "./calendarView.js";
 import { renderKeyMiss } from "./keyMiss.js";
 import { downloadLearnedCsv } from "./exportCsv.js";
 import { bindWordDetail } from "./wordDetail.js";
+import { shareTotalResult } from "./setShare.js";
 
 import { initWordStore, getAllWords } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
@@ -30,6 +31,38 @@ renderLevelBar();
 setFooterYear();
 renderHeaderStreak();
 setupUnloadSync();
+initializeTabs();
+
+// ===== 3タブ（今週／単語帳／分析）。#learnedWords 等の深いリンクは所属タブを開いてスクロール =====
+function initializeTabs() {
+  const sections = [...document.querySelectorAll("[data-tab]")].filter((el) => !el.classList.contains("stats-tab"));
+  const tabs = [...document.querySelectorAll(".stats-tab")];
+  if (tabs.length === 0) return;
+  const TAB_KEY = "spelldash_stats_tab";
+
+  const show = (tab, scrollToId = null) => {
+    sections.forEach((el) => {
+      el.hidden = el.dataset.tab !== tab;
+    });
+    tabs.forEach((t) => t.classList.toggle("stats-tab--active", t.dataset.tab === tab));
+    localStorage.setItem(TAB_KEY, tab);
+    if (scrollToId) {
+      setTimeout(() => document.getElementById(scrollToId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    }
+  };
+
+  const resolve = () => {
+    const hash = location.hash.replace("#", "");
+    if (["week", "words", "analysis"].includes(hash)) return show(hash);
+    const target = hash ? document.getElementById(hash) : null;
+    const owner = target?.closest("[data-tab]");
+    if (owner) return show(owner.dataset.tab, hash);
+    show(localStorage.getItem(TAB_KEY) || "week");
+  };
+
+  window.addEventListener("hashchange", resolve);
+  resolve();
+}
 
 initWordStore().then(() => {
   renderOverview();
@@ -38,6 +71,12 @@ initWordStore().then(() => {
   renderCalendar("calendarGrid");
   renderMonthlySummary();
   bindWordDetail({ onNoteSaved: () => { renderLearnedWords(); renderWeakWords(); } });
+  document.getElementById("learnedShare")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    const outcome = await shareTotalResult().catch(() => "failed");
+    if (outcome === "copied") button.textContent = "コピーしました！";
+    if (outcome === "failed") button.textContent = "シェアできませんでした";
+  });
   document.getElementById("learnedCsv")?.addEventListener("click", (event) => {
     const n = downloadLearnedCsv();
     event.currentTarget.textContent = `CSV書き出し ✓ ${n}語`;

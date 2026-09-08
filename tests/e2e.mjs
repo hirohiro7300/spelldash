@@ -442,7 +442,7 @@ console.log("daily set:");
 console.log("category progress:");
 {
   const page = await newPage();
-  await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
   const rows = await page.$$eval("#categoryProgress .cat-row", (els) => els.map((e) => e.textContent));
   check("カテゴリ行が11件（すべて＋9＋マイ単語帳）", rows.length === 11, `rows=${rows.length}`);
@@ -830,7 +830,7 @@ console.log("growth evidence:");
 
   // 学習データ: ミスキー表示・カレンダー・CSV・単語詳細
   const page2 = await newPage({ storage: { ...seed, spelldash_key_miss: keyMissRaw } });
-  await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page2.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
   check("よく間違えるキーが表示される", (await page2.textContent("#keyMiss")).includes("よく間違える文字") && (await page2.$$(".keymap__key")).length === 26);
   const calDays = await page2.$$eval("#calendarGrid .cal .cal__day", (els) => ({ total: els.length, active: els.filter((e) => /cal__day--[1-4]/.test(e.className)).length }));
@@ -1075,7 +1075,7 @@ console.log("my concept & retention:");
   const dayKey = (i) => { const d = new Date(Date.now() - i * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   // マイ単語帳: 場面カードのフォーム＋まとめて追加（→形式・タブ区切り見出しつき）
   const page = await newPage();
-  await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   await page.click('[data-my-tab="concept"]');
   check("場面カードのタブでフォームが切り替わる", !(await page.$eval("#myConceptForm", (el) => el.hidden)) && (await page.$eval("#myWordForm", (el) => el.hidden)));
@@ -1175,6 +1175,64 @@ console.log("my concept & retention:");
   await page5.waitForTimeout(800);
   check("初回カードは腕試しの案内", (await page5.textContent("#onboardingCard")).includes("腕試し"));
   await page5.close();
+}
+
+// ===== 9.995 Batch 5b: 学習データ3タブ／一覧フィルタと苦手だけ練習／累計シェア／CTAのジャンル名 =====
+console.log("tabs & filters:");
+{
+  const y = new Date(Date.now() - 86400000).toISOString();
+  const seed = {
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "deadline", ja: "締め切り" }]),
+    spelldash_word_stats: JSON.stringify({
+      "my-invoice": { playCount: 2, correctCount: 0, missCount: 2, typingMiss: 0, recallFail: 2, cleanCorrectStreak: 0, mastered: false, lastPlayed: y, lastRecallFailAt: y, lastRecallSuccessAt: null },
+      "my-negotiate": { playCount: 2, correctCount: 1, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 1, mastered: false, lastPlayed: y, lastRecallFailAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRecallSuccessAt: y, history: [{ d: "2026-09-04", r: "x" }, { d: "2026-09-06", r: "o" }] }
+    })
+  };
+  const page = await newPage({ storage: seed });
+  await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  check("学習データは3タブ（既定は今週）", (await page.$$(".stats-tab")).length === 3 && !(await page.$eval("#weekly", (el) => el.hidden)) && (await page.$eval("#learnedWords", (el) => el.hidden)));
+  await page.click('.stats-tab[data-tab="analysis"]');
+  await page.waitForTimeout(150);
+  check("分析タブでタイピング分析が見える", !(await page.$eval("#keyMiss", (el) => el.closest("[data-tab]").hidden)) && (await page.$eval("#weekly", (el) => el.hidden)));
+  await page.goto(BASE + "/stats.html#learnedWords", { waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+  check("#learnedWords の深いリンクで単語帳タブが開く", !(await page.$eval("#learnedWords", (el) => el.hidden)) && (await page.$eval(".stats-tab--active", (el) => el.dataset.tab)) === "words");
+  check("前回のタブを覚える", (await page.evaluate(() => localStorage.getItem("spelldash_stats_tab"))) === "words");
+  const total = await page.evaluate(async () => {
+    const m = await import("/js/setShare.js");
+    const d = m.buildTotalShareData();
+    const c = m.buildTotalShareImage(d);
+    return { learned: d.learned, text: m.buildTotalShareText(d), w: c.width };
+  });
+  check("累計シェア（覚えた1語・画像1080）", total.learned === 1 && total.text.includes("覚えた英単語 1語") && total.text.includes("negotiate") && total.w === 1080, JSON.stringify(total).slice(0, 120));
+  check("学習データ（タブ）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  const page2 = await newPage({ storage: seed });
+  await page2.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(800);
+  await page2.click('[data-filter="weak"]');
+  await page2.waitForTimeout(150);
+  const weakCards = await page2.$$eval(".gcard__term", (els) => els.map((e) => e.textContent.trim()));
+  check("一覧の「苦手」フィルタ", weakCards.length === 1 && weakCards[0] === "invoice", weakCards.join(","));
+  await page2.click('[data-filter="learned"]');
+  await page2.waitForTimeout(150);
+  check("一覧の「覚えた」フィルタ", (await page2.$$eval(".gcard__term", (els) => els.map((e) => e.textContent.trim()))).join(",") === "negotiate");
+  await page2.click('[data-filter="all"]');
+  await page2.waitForTimeout(150);
+  await page2.click("[data-practice-words]");
+  await page2.waitForURL((u) => u.pathname === "/" || u.pathname === "/index.html", { timeout: 3000 }).catch(() => {});
+  await page2.waitForTimeout(1200);
+  check("「苦手だけ練習」でその語だけのセッションが始まる", (await page2.textContent("#setProgress")).includes("もう一度") && (await page2.textContent("#japanese")).trim() === "請求書", `${await page2.textContent("#setProgress")} / ${await page2.textContent("#japanese")}`);
+  check("苦手だけ練習でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  await page2.close();
+
+  const page3 = await newPage({ storage: { spelldash_category: "listing", spelldash_genre: "bidding" } });
+  await page3.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(800);
+  check("CTAにジャンル名（入札・配信）", (await page3.textContent("#todayCta")).includes("入札・配信"));
+  await page3.close();
 }
 
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====

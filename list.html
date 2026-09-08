@@ -128,6 +128,12 @@
         <input id="listSearch" type="search" class="setting-select" placeholder="用語・意味・場面・別解で検索" autocomplete="off" />
       </label>
     </section>
+    <div class="list-filters" id="listFilters" aria-label="状態で絞り込み">
+      <button type="button" class="filter-chip filter-chip--active" data-filter="all">すべて</button>
+      <button type="button" class="filter-chip" data-filter="untouched">未着手</button>
+      <button type="button" class="filter-chip" data-filter="weak">苦手</button>
+      <button type="button" class="filter-chip" data-filter="learned">覚えた</button>
+    </div>
     <p class="muted list-summary" id="listSummary"></p>
     <nav class="genre-nav" id="listGenres" aria-label="ジャンル"></nav>
 

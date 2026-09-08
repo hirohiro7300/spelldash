@@ -212,7 +212,8 @@ export function insertBreather() {
   const stats = getWordStats();
   const candidates = categoryWordsDeduped().filter((w) => {
     const s = stats[w.id];
-    return isFamiliar(s) && !isDoneForToday(s) && !recalledThisSession.has(w.id) && (s.recallFail ?? 0) <= 1;
+    // 今日導入した学習中の語は自前の反復予定があるので使わない（前に回すと反復が崩れる）
+    return isFamiliar(s) && !isDoneForToday(s) && !isLearningToday(s) && !recalledThisSession.has(w.id) && (s.recallFail ?? 0) <= 1;
   });
   if (candidates.length === 0) return false;
   // キューの先頭にすでに居るなら何もしない。後ろに居るなら前へ持ってくる
