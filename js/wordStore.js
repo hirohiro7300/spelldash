@@ -1,5 +1,6 @@
 import { loadAllWords, loadManifest } from "./wordData.js";
 import { toWordObjects } from "./myWords.js";
+import { isCategoryLoaded, packsOf } from "./packs.js";
 
 // 読み込んだ単語をページ内で共有するストア。
 // ゲームはここからカテゴリで絞った出題リストを取り出す。
@@ -78,7 +79,14 @@ export function findWord(wordId) {
   return wordIndex.get(wordId) ?? myIndex.get(wordId) ?? null;
 }
 
+// 表示・出題に使うカテゴリ（分野パックは追加済みのものだけ）＋マイ単語帳
 export function getCategories(subjectId = "english") {
   const subject = manifest?.subjects.find((s) => s.id === subjectId);
-  return [...(subject?.categories ?? []), MY_CATEGORY];
+  return [...(subject?.categories ?? []).filter(isCategoryLoaded), MY_CATEGORY];
+}
+
+// 教材ライブラリ用: 分野パックの一覧（追加の有無つき）
+export function getPackCatalog(subjectId = "english") {
+  const subject = manifest?.subjects.find((s) => s.id === subjectId);
+  return packsOf(subject?.categories).map((c) => ({ ...c, enabled: isCategoryLoaded(c) }));
 }

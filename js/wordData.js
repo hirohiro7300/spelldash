@@ -2,10 +2,15 @@
 // カテゴリごとのJSONを fetch して読み込む（読み込み済みはキャッシュ）。
 // 将来 math などの教科が増えても manifest に追記するだけで動く。
 
+import { isCategoryLoaded } from "./packs.js";
+
 const DATA_BASE = "./data/";
 
 let manifestCache = null;
 const categoryCache = new Map();
+
+// 分野パックが持つジャンル表示名（tags[0] → ラベル）。読み込んだ分だけ溜まる
+export const packGenreLabels = {};
 
 export async function loadManifest() {
   if (!manifestCache) {
@@ -31,6 +36,7 @@ export async function loadCategory(subjectId, categoryId) {
 
     const res = await fetch(`${DATA_BASE}${category.file}`);
     const data = await res.json();
+    if (data.genres && typeof data.genres === "object") Object.assign(packGenreLabels, data.genres);
 
     const words = data.words.map((word) => {
       const base = { ...word, subject: data.subject, category: data.category };
@@ -50,13 +56,13 @@ export async function loadCategory(subjectId, categoryId) {
   return categoryCache.get(cacheKey);
 }
 
-// 教科の全カテゴリをまとめて読み込む
+// 教科の全カテゴリをまとめて読み込む（分野パックは追加済みのものだけ）
 export async function loadAllWords(subjectId = "english") {
   const subject = await getSubject(subjectId);
   if (!subject) return [];
 
   const lists = await Promise.all(
-    subject.categories.map((c) => loadCategory(subjectId, c.id))
+    subject.categories.filter(isCategoryLoaded).map((c) => loadCategory(subjectId, c.id))
   );
 
   return lists.flat();

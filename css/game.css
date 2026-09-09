@@ -4188,3 +4188,84 @@ body.list-compact .genre__cards {
 .cardgen__card textarea.cardgen__field {
   resize: vertical;
 }
+
+/* ===== Batch 8: 分野パック（教材ライブラリ） ===== */
+.category-chip--add {
+  border-style: dashed;
+  color: #94a3b8;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.packs {
+  margin: 4px 0 18px;
+}
+
+.packs__title {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.packs__lead {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.packs__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.pack {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.pack--on {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.pack__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pack__title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.pack__count {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.pack__blurb {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.pack__audience {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.pack__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}

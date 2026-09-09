@@ -48,7 +48,8 @@ Active Recall（思い出す学習）をタイピングゲームの形にし、�
 - サーバー関数: `api/generate-cards.js`（テキストから場面カードを作る）／`api/explain-word.js`（語の覚え方・例文・注意点を作る）。Claude APIをサーバー側で呼ぶ
   - Vercel の環境変数 `ANTHROPIC_API_KEY` が必要。未設定のときは「この機能は準備中です」と返す（アプリ本体は影響なし）
   - ログイン必須（Supabaseのアクセストークンを検証）。1ユーザー1日20回目安（`CARD_GEN_DAILY_LIMIT` で変更可）
-- 単語データ: 1000語・7カテゴリ（中学/高校/TOEIC/ビジネス/IT/旅行/日常）を `data/` にJSONで保持
+- 単語データ: 1000語・7カテゴリ（中学/高校/TOEIC/ビジネス/IT/旅行/日常）＋ 場面カード（広告・マーケ／リスティング広告 実務）を `data/english/` にJSONで保持
+- 分野パック: `data/packs/*.json`（不動産・会計・人事・SaaS・EC・医療事務・飲食・法務・中古車 など）。ユーザーが「単語帳」の教材ライブラリで追加したものだけ読み込まれる。形式は `docs/PACK_FORMAT.md`、検証は `node scripts/validate-words.mjs`
 
 ## 開発
 

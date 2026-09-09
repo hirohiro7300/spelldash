@@ -1448,6 +1448,62 @@ console.log("card generation:");
   await page3.close();
 }
 
+// ===== 9.9996 Batch 8: 分野パック（教材ライブラリ）: 追加→一覧→ホームのチップ→外す =====
+console.log("domain packs:");
+{
+  const page = await newPage();
+  await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  const packCount = (await page.$$(".pack")).length;
+  check("教材ライブラリに9分野のパック", packCount === 9, `packs=${packCount}`);
+  const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
+  check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
+  await page.click('[data-pack-toggle="realestate"]');
+  await waitUntil(async () => (await page.textContent("#listSummary")).includes("不動産"));
+  const summary = await page.textContent("#listSummary");
+  const cards = (await page.$$(".gcard")).length;
+  check("追加すると不動産の一覧がすぐ出る（40枚以上・ジャンル4以上）", summary.includes("不動産") && cards >= 40 && (await page.$$(".genre")).length >= 4, `${summary} cards=${cards}`);
+  check("ジャンル名がパック内の表示名になる（re-…のままではない）", !(await page.$$eval("#listGenres .genre-chip", (els) => els.map((e) => e.textContent))).some((t) => /^re-/.test(t)));
+  check("パックが「追加済み」表示になり、端末に保存", (await page.textContent('[data-pack-toggle="realestate"]')).includes("追加済み") && (await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_packs") || "[]"))).includes("realestate"));
+  check("ホームのカテゴリが不動産に切り替わる", (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "realestate");
+  check("分野パックでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  const packsRaw = await page.evaluate(() => localStorage.getItem("spelldash_packs"));
+  await page.close();
+
+  // ホーム: 追加したパックだけチップに出る。「＋ 分野を追加」の導線
+  const page2 = await newPage({ storage: { spelldash_packs: packsRaw, spelldash_category: "realestate", spelldash_placement: "done" } });
+  await page2.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.click("#setupToggle");
+  await page2.waitForTimeout(150);
+  const chips = await page2.textContent("#categoryPicker");
+  check("ホームのチップに「不動産 実務」、未追加の「簿記・会計」は無い", chips.includes("不動産 実務") && !chips.includes("簿記・会計"));
+  check("「＋ 分野を追加」がライブラリへ", (await page2.getAttribute("#packsLink", "href")).includes("list.html#packs"));
+  await page2.press("#input", "Enter");
+  await page2.waitForTimeout(300);
+  const prompt = (await page2.textContent("#japanese")).trim();
+  check("不動産の場面カードが出題される", prompt.length > 20, `prompt=${prompt.slice(0, 40)}`);
+  check("ホーム（パック）でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  await page2.close();
+
+  // 外す: カテゴリ選択から消え、ホームの保存カテゴリは「すべて」へ
+  const page3 = await newPage({ storage: { spelldash_packs: packsRaw, spelldash_category: "realestate" } });
+  await page3.goto(BASE + "/list.html?category=realestate", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(900);
+  await page3.click('[data-pack-toggle="realestate"]');
+  await waitUntil(async () => !(await page3.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("realestate"));
+  check("外すとカテゴリ選択から消える", !(await page3.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("realestate"));
+  check("外すとホームの保存カテゴリは「すべて」", (await page3.evaluate(() => localStorage.getItem("spelldash_category"))) === "all");
+  await page3.close();
+
+  // ?add= の紹介リンクで直接追加
+  const page4 = await newPage();
+  await page4.goto(BASE + "/list.html?add=accounting", { waitUntil: "networkidle" });
+  await page4.waitForTimeout(900);
+  check("?add=accounting で簿記・会計が追加されて表示", (await page4.textContent("#listSummary")).includes("簿記") && (await page4.evaluate(() => JSON.parse(localStorage.getItem("spelldash_packs") || "[]"))).includes("accounting"));
+  await page4.close();
+}
+
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====
 console.log("ads category:");
 {

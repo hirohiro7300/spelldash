@@ -627,3 +627,11 @@ html[data-theme="light"] .word-ai__pitfall { color: #b45309; }
 html[data-theme="light"] .cardgen__field { border-color: #cbd5e1; background: #fff; color: #0f172a; }
 html[data-theme="light"] .cardgen__field--answer { color: #1d4ed8; }
 html[data-theme="light"] .cardgen__field--sub { color: #475569; }
+
+/* ===== Batch 8: 分野パック（ライト） ===== */
+html[data-theme="light"] .category-chip--add { color: #64748b; }
+html[data-theme="light"] .pack { border-color: #e2e8f0; background: #fff; }
+html[data-theme="light"] .pack--on { border-color: #93c5fd; background: #eff6ff; }
+html[data-theme="light"] .pack__blurb { color: #334155; }
+html[data-theme="light"] .pack__count,
+html[data-theme="light"] .pack__audience { color: #64748b; }
