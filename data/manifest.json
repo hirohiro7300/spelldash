@@ -79,6 +79,36 @@
           "count": 54,
           "blurb": "NDAから業務委託、条項の読み方、締結の実務まで。契約の共通言語",
           "audience": "契約書を扱う営業・法務の新人、フリーランス"
+        },
+        {
+          "id": "hr",
+          "label": "人事・労務 実務",
+          "file": "packs/hr.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "採用から退職まで、人事が毎日使う言葉。勤怠・給与・社保・労務リスク",
+          "audience": "人事・労務の新人、初めて部下を持つ管理職"
+        },
+        {
+          "id": "saas",
+          "label": "SaaS営業・CS",
+          "file": "packs/saas.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 54,
+          "blurb": "MRRからチャーンまで。SaaSの営業・CS・契約で毎日出る共通言語",
+          "audience": "SaaS企業の営業・CS・マーケの新人"
+        },
+        {
+          "id": "ec",
+          "label": "EC・D2C運営",
+          "file": "packs/ec.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 53,
+          "blurb": "集客・サイト・KPI・受注物流・CRM。ネット通販の現場で毎日出る言葉",
+          "audience": "EC・D2Cの運営担当になった人、店舗からECへ移った人"
         }
       ]
     }
