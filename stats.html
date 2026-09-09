@@ -181,6 +181,7 @@
       <div class="my-tabs" role="tablist">
         <button type="button" class="my-tab my-tab--active" data-my-tab="word" role="tab">英単語</button>
         <button type="button" class="my-tab" data-my-tab="concept" role="tab">場面カード（意味 → 用語）</button>
+        <button type="button" class="my-tab" data-my-tab="ai" role="tab">✨ テキストから作る</button>
       </div>
       <form class="my-words__form" id="myWordForm">
         <input id="myWordEn" class="setting-select" type="text" placeholder="英単語（例: negotiate）" autocomplete="off" autocapitalize="none" spellcheck="false" required />
@@ -194,6 +195,16 @@
         <input id="myConceptAccept" class="setting-select" type="text" placeholder="別解（任意。/ 区切り。例: 検索ニーズ/需要）" autocomplete="off" />
         <button type="submit" class="btn btn--sm">場面カードを追加</button>
       </form>
+      <div class="cardgen" id="myCardGen" hidden>
+        <p class="muted">マニュアル・研修資料・記事・会議メモなどを貼ると、「場面 → 用語」のカード候補を自動で作ります。候補を確認して、選んだものだけマイ単語帳に入ります。ログインしている方が使えます（無料）。</p>
+        <textarea id="cardGenText" class="setting-select" rows="7" maxlength="4000" placeholder="ここにテキストを貼り付け（20〜4000文字）&#10;例: リスティング広告は、ユーザーが検索したキーワードに連動して表示される広告。クリックされるごとに費用が発生し（CPC）、…"></textarea>
+        <div class="cardgen__actions">
+          <span class="muted" id="cardGenCount"></span>
+          <button type="button" class="btn btn--sm" id="cardGenRun">カードを作る</button>
+        </div>
+        <p class="muted my-words__status" id="cardGenStatus"></p>
+        <div id="cardGenPreview"></div>
+      </div>
       <details class="my-words__bulk">
         <summary>まとめて追加（英単語は「英単語, 日本語」／場面カードは「場面 → 答え | 解説 | 別解」）</summary>
         <textarea id="myWordBulk" rows="6" placeholder="negotiate, 交渉する&#10;invoice, 請求書&#10;ユーザーが「車 買取」等を検索する → 検索需要 | 広告を出す前提になる量 | 検索ニーズ/需要&#10;Cost ÷ Click → CPC"></textarea>

@@ -607,3 +607,12 @@ html[data-theme="light"] .home-more > summary { color: #475569; }
 html[data-theme="light"] .monthly-line { color: #64748b; }
 html[data-theme="light"] .monthly-line b { color: #0f172a; }
 html[data-theme="light"] .profile-link a { color: #1d4ed8; }
+
+/* ===== Batch 7a: テキストから作る（ライト） ===== */
+html[data-theme="light"] .cardgen__card { border-color: #cbd5e1; background: #f8fafc; }
+html[data-theme="light"] .cardgen__q { color: #0f172a; }
+html[data-theme="light"] .cardgen__answer { color: #1d4ed8; }
+html[data-theme="light"] .cardgen__accept,
+html[data-theme="light"] .cardgen__explain { color: #64748b; }
+html[data-theme="light"] .cardgen__dup { color: #b45309; }
+html[data-theme="light"] .cardgen__done a { color: #1d4ed8; }
