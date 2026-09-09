@@ -1,6 +1,7 @@
 import { getMyWords, addMyWord, addMyConcept, addMyWordsBulk, removeMyWord } from "./myWords.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
+import { initializeCardGen } from "./cardGen.js";
 
 // ===== 学習データ: マイ単語帳の管理UI =====
 
@@ -47,14 +48,21 @@ export function initializeMyWordsView(onChange = () => {}) {
     }
   });
 
-  // 「英単語 / 場面カード」の切替
+  // 「英単語 / 場面カード / テキストから作る」の切替
+  const panels = { word: "myWordForm", concept: "myConceptForm", ai: "myCardGen" };
   document.querySelectorAll("[data-my-tab]").forEach((tab) => {
     tab.addEventListener("click", () => {
       const kind = tab.dataset.myTab;
       document.querySelectorAll("[data-my-tab]").forEach((t) => t.classList.toggle("my-tab--active", t === tab));
-      document.getElementById("myWordForm").hidden = kind !== "word";
-      document.getElementById("myConceptForm").hidden = kind !== "concept";
+      for (const [key, id] of Object.entries(panels)) {
+        const panel = document.getElementById(id);
+        if (panel) panel.hidden = key !== kind;
+      }
     });
+  });
+  initializeCardGen(() => {
+    renderMyWordsList();
+    onChange();
   });
 
   bulkButton?.addEventListener("click", () => {

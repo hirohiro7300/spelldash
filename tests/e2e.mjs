@@ -47,6 +47,27 @@ const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (urlPath === "/") urlPath = "/index.html";
 
+  // /api/generate-cards の偽装（本物のClaude APIには接続しない）。
+  // 本文に "401" があれば未ログイン、"empty" なら0件、それ以外は固定2枚を返す
+  if (urlPath === "/api/generate-cards") {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      const text = (() => { try { return JSON.parse(raw).text ?? ""; } catch { return ""; } })();
+      const json = (status, body) => res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+      if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
+      if (text.includes("401")) return json(401, { error: "login_required", message: "ログインすると使えます（無料）。" });
+      if (text.includes("empty")) return json(200, { cards: [] });
+      json(200, {
+        cards: [
+          { q: "検索結果に連動して出る広告で、クリックごとに費用が発生する", answer: "リスティング広告", explain: "検索キーワードに連動する運用型広告", accept: ["検索連動型広告"] },
+          { q: "1クリックあたりにかかった広告費", answer: "CPC", explain: "Cost ÷ Click", accept: ["クリック単価"] }
+        ]
+      });
+    });
+    return;
+  }
+
   const file =
     urlPath === "/js/supabase.js" ? STUB : path.join(ROOT, urlPath.slice(1));
 
@@ -1332,6 +1353,44 @@ console.log("calc & listen:");
   await page3.selectOption("#listenSelect", "25");
   check("音で出題の設定が保存される", (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_audio") || "{}").listenRatio)) === 25);
   await page3.close();
+}
+
+// ===== 9.9995 Batch 7a: テキストから場面カードを作る（AI生成のUIフロー） =====
+console.log("card generation:");
+{
+  const page = await newPage({ storage: { spelldash_my_words: JSON.stringify([{ kind: "concept", en: "cpc", answer: "CPC", q: "1クリックの費用", explain: "", accept: [], ja: "" }]) } });
+  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.click('[data-my-tab="ai"]');
+  check("「テキストから作る」タブでパネルが出る", !(await page.$eval("#myCardGen", (el) => el.hidden)) && (await page.$eval("#myWordForm", (el) => el.hidden)));
+  check("短いテキストではボタンが無効", await page.$eval("#cardGenRun", (el) => el.disabled));
+  await page.fill("#cardGenText", "リスティング広告は検索結果に連動して表示される広告で、クリックごとに費用（CPC）が発生する。");
+  check("文字数カウンタが出る", /\d+ \/ 4000文字/.test(await page.textContent("#cardGenCount")));
+  await page.click("#cardGenRun");
+  await waitUntil(async () => (await page.$$("[data-cardgen-pick]")).length === 2);
+  const picks = await page.$$("[data-cardgen-pick]");
+  check("候補が2枚プレビューされる", picks.length === 2);
+  check("すでにある語（CPC）はチェックが外れて「すでにあります」", (await page.$$eval("[data-cardgen-pick]", (els) => els.map((e) => e.checked))).join() === "true,false" && (await page.textContent("#cardGenPreview")).includes("すでにマイ単語帳にあります"));
+  const previewText = await page.textContent("#cardGenPreview");
+  check("候補に場面・答え・別解が出る", ["リスティング広告", "検索連動型広告", "クリックごとに費用"].every((s) => previewText.includes(s)));
+  await page.click("[data-cardgen-add]");
+  await page.waitForTimeout(200);
+  const myWords = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
+  check("選んだ1枚だけマイ単語帳に追加される", myWords.length === 2 && myWords.some((w) => w.answer === "リスティング広告" && w.accept.includes("検索連動型広告")), JSON.stringify(myWords).slice(0, 160));
+  check("追加後に「練習する」導線とステータス", (await page.textContent("#cardGenPreview")).includes("練習する") && (await page.textContent("#cardGenStatus")).includes("1枚"));
+  check("一覧にも反映", (await page.textContent("#myWordList")).includes("リスティング広告"));
+  // 未ログイン（401）はやさしい文言
+  await page.fill("#cardGenText", "401 のケース: このテキストはログインしていない扱いになります。");
+  await page.click("#cardGenRun");
+  await waitUntil(async () => (await page.textContent("#cardGenStatus")).includes("ログイン"));
+  check("未ログイン時は「ログインすると使えます」", (await page.textContent("#cardGenStatus")).includes("ログインすると使えます"));
+  // 0件
+  await page.fill("#cardGenText", "empty のケース: 用語が見つからないテキストとして扱われます。");
+  await page.click("#cardGenRun");
+  await waitUntil(async () => (await page.textContent("#cardGenStatus")).includes("見つかりません"));
+  check("0件のときは案内が出る", (await page.textContent("#cardGenStatus")).includes("見つかりませんでした"));
+  check("カード生成フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
 }
 
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====

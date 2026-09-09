@@ -45,6 +45,9 @@ Active Recall（思い出す学習）をタイピングゲームの形にし、�
 - フロント: 素のHTML/CSS/JavaScript（ESモジュール、ビルドなし、依存ライブラリなし）
 - 認証/DB: Supabase（Google OAuth＋メールマジックリンク、Postgres＋RLS）
 - ホスティング: Vercel（mainへのpushで自動デプロイ）
+- サーバー関数: `api/generate-cards.js`（テキストから場面カードを作る。Claude APIをサーバー側で呼ぶ）
+  - Vercel の環境変数 `ANTHROPIC_API_KEY` が必要。未設定のときは「この機能は準備中です」と返す（アプリ本体は影響なし）
+  - ログイン必須（Supabaseのアクセストークンを検証）。1ユーザー1日20回目安（`CARD_GEN_DAILY_LIMIT` で変更可）
 - 単語データ: 1000語・7カテゴリ（中学/高校/TOEIC/ビジネス/IT/旅行/日常）を `data/` にJSONで保持
 
 ## 開発
