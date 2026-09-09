@@ -1,6 +1,7 @@
 {
   "functions": {
-    "api/generate-cards.js": { "maxDuration": 60 }
+    "api/generate-cards.js": { "maxDuration": 60 },
+    "api/explain-word.js": { "maxDuration": 30 }
   },
   "headers": [
     {

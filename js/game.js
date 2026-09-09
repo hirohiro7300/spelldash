@@ -86,6 +86,7 @@ import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak, speakOnCorrect, getListenRatio } from "./audio.js";
 import { generateCalc } from "./calcCards.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
+import { renderWordAi } from "./wordAi.js";
 import {
   elements,
   showMessage,
@@ -732,10 +733,14 @@ export function useHint() {
 function renderWordNote(word) {
   const el = document.getElementById("wordNote");
   if (!el) return;
+  const aiSlot = document.getElementById("wordAi");
   if (!word || mode !== "study") {
     el.innerHTML = "";
+    if (aiSlot) aiSlot.innerHTML = "";
     return;
   }
+  // ✨ 覚え方を作る（AI）: 保存済みなら表示、無ければボタン。生成後は入力欄へ戻す
+  renderWordAi(aiSlot, word, { onDone: () => elements.input.focus() });
 
   const note = getNote(word.id);
   el.innerHTML = note

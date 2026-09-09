@@ -75,14 +75,22 @@ export function initializeCardGen(onChange = () => {}) {
     }
     cards = result.cards;
     if (cards.length === 0) return setStatus("カードにできる用語が見つかりませんでした。用語や説明が含まれるテキストを貼ってみてください。", true);
-    setStatus(`${cards.length}枚の候補ができました。チェックを外すと除外できます。`);
+    setStatus(`${cards.length}枚の候補ができました。文面はそのまま直せます。いらないものはチェックを外してください。`);
     renderPreview();
   });
 
   preview.addEventListener("click", (event) => {
     const add = event.target.closest("[data-cardgen-add]");
     if (!add) return;
-    const picked = [...preview.querySelectorAll("[data-cardgen-pick]:checked")].map((box) => cards[Number(box.dataset.cardgenPick)]).filter(Boolean);
+    // チェックされたカードを、編集後の値で読み取る
+    const picked = [...preview.querySelectorAll("[data-cardgen-pick]:checked")]
+      .map((box) => {
+        const card = box.closest(".cardgen__card");
+        if (!card) return null;
+        const value = (name) => card.querySelector(`[data-field="${name}"]`)?.value ?? "";
+        return { q: value("q"), answer: value("answer"), explain: value("explain"), accept: value("accept") };
+      })
+      .filter(Boolean);
     if (picked.length === 0) return setStatus("追加するカードを選んでください", true);
     const added = [];
     const skipped = [];
@@ -116,16 +124,18 @@ export function initializeCardGen(onChange = () => {}) {
         ${cards
           .map((card, index) => {
             const dup = !validateConcept(card, existing).ok;
+            // 各欄はそのまま編集できる（追加時に編集後の値を読む）
             return `
-              <label class="cardgen__card${dup ? " cardgen__card--dup" : ""}">
-                <input type="checkbox" data-cardgen-pick="${index}"${dup ? "" : " checked"} />
+              <div class="cardgen__card${dup ? " cardgen__card--dup" : ""}">
+                <input type="checkbox" data-cardgen-pick="${index}"${dup ? "" : " checked"} aria-label="このカードを追加する" />
                 <span class="cardgen__body">
-                  <span class="cardgen__q">${escapeHtml(card.q)}</span>
-                  <span class="cardgen__answer">→ ${escapeHtml(card.answer)}${card.accept?.length ? `<span class="cardgen__accept">（別解: ${card.accept.map(escapeHtml).join(" / ")}）</span>` : ""}</span>
-                  ${card.explain ? `<span class="cardgen__explain">📘 ${escapeHtml(card.explain)}</span>` : ""}
+                  <textarea class="cardgen__field" data-field="q" rows="2" aria-label="場面・意味">${escapeHtml(card.q)}</textarea>
+                  <input class="cardgen__field cardgen__field--answer" data-field="answer" value="${escapeHtml(card.answer)}" aria-label="答え" />
+                  <input class="cardgen__field cardgen__field--sub" data-field="explain" value="${escapeHtml(card.explain ?? "")}" placeholder="解説（任意）" aria-label="解説" />
+                  <input class="cardgen__field cardgen__field--sub" data-field="accept" value="${escapeHtml((card.accept ?? []).join(" / "))}" placeholder="別解（任意。/ 区切り）" aria-label="別解" />
                   ${dup ? `<span class="cardgen__dup">すでにマイ単語帳にあります</span>` : ""}
                 </span>
-              </label>`;
+              </div>`;
           })
           .join("")}
       </div>

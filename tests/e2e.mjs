@@ -47,6 +47,20 @@ const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (urlPath === "/") urlPath = "/index.html";
 
+  // /api/explain-word の偽装: 固定の覚え方を返す（"401" を含む語なら未ログイン）
+  if (urlPath === "/api/explain-word") {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      const word = (() => { try { return JSON.parse(raw).word ?? {}; } catch { return {}; } })();
+      const json = (status, body) => res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+      if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
+      if (String(word.en).includes("401")) return json(401, { error: "login_required", message: "ログインすると使えます（無料）。" });
+      json(200, { mnemonic: `${word.en} は「${word.ja}」。音で覚える`, example: `Example with ${word.en}.`, exampleJa: `${word.en} を使った例文`, pitfall: "似た綴りの語に注意" });
+    });
+    return;
+  }
+
   // /api/generate-cards の偽装（本物のClaude APIには接続しない）。
   // 本文に "401" があれば未ログイン、"empty" なら0件、それ以外は固定2枚を返す
   if (urlPath === "/api/generate-cards") {
@@ -1371,12 +1385,14 @@ console.log("card generation:");
   const picks = await page.$$("[data-cardgen-pick]");
   check("候補が2枚プレビューされる", picks.length === 2);
   check("すでにある語（CPC）はチェックが外れて「すでにあります」", (await page.$$eval("[data-cardgen-pick]", (els) => els.map((e) => e.checked))).join() === "true,false" && (await page.textContent("#cardGenPreview")).includes("すでにマイ単語帳にあります"));
-  const previewText = await page.textContent("#cardGenPreview");
-  check("候補に場面・答え・別解が出る", ["リスティング広告", "検索連動型広告", "クリックごとに費用"].every((s) => previewText.includes(s)));
+  const previewText = await page.$$eval("#cardGenPreview [data-field]", (els) => els.map((e) => e.value).join(" | "));
+  check("候補に場面・答え・別解が編集可能な欄で出る", ["リスティング広告", "検索連動型広告", "クリックごとに費用"].every((s) => previewText.includes(s)), previewText.slice(0, 120));
+  // 追加前に文面を直せる（G8）
+  await page.fill('#cardGenPreview .cardgen__card:first-child [data-field="explain"]', "検索キーワードに連動する運用型広告（編集済み）");
   await page.click("[data-cardgen-add]");
   await page.waitForTimeout(200);
   const myWords = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
-  check("選んだ1枚だけマイ単語帳に追加される", myWords.length === 2 && myWords.some((w) => w.answer === "リスティング広告" && w.accept.includes("検索連動型広告")), JSON.stringify(myWords).slice(0, 160));
+  check("選んだ1枚だけ、編集後の文面でマイ単語帳に追加される", myWords.length === 2 && myWords.some((w) => w.answer === "リスティング広告" && w.accept.includes("検索連動型広告") && w.explain.includes("編集済み")), JSON.stringify(myWords).slice(0, 160));
   check("追加後に「練習する」導線とステータス", (await page.textContent("#cardGenPreview")).includes("練習する") && (await page.textContent("#cardGenStatus")).includes("1枚"));
   check("一覧にも反映", (await page.textContent("#myWordList")).includes("リスティング広告"));
   // 未ログイン（401）はやさしい文言
@@ -1391,6 +1407,45 @@ console.log("card generation:");
   check("0件のときは案内が出る", (await page.textContent("#cardGenStatus")).includes("見つかりませんでした"));
   check("カード生成フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
+
+  // ✨ 覚え方を作る: 答え表示時にボタン → 生成 → 保存され、単語詳細にも出る
+  const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const page2 = await newPage({ storage: { spelldash_placement: "done", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await page2.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.press("#input", "Enter");
+  await page2.waitForTimeout(250);
+  check("答え表示前は覚え方ボタンが無い", (await page2.$$("[data-word-ai-run]")).length === 0);
+  await page2.press("#input", "Enter"); // 答え表示
+  await page2.waitForTimeout(200);
+  const shownWord = (await page2.textContent("#word")).trim();
+  check("答え表示で「✨ 覚え方を作る」が出る", (await page2.$$("[data-word-ai-run]")).length === 1);
+  await page2.click("[data-word-ai-run]");
+  await waitUntil(async () => (await page2.textContent("#wordAi")).includes("音で覚える"));
+  const aiText = await page2.textContent("#wordAi");
+  check("覚え方・例文・注意点が表示される", aiText.includes("音で覚える") && aiText.includes("Example with") && aiText.includes("似た綴り"), aiText.slice(0, 120));
+  const aiStore = await page2.evaluate(() => JSON.parse(localStorage.getItem("spelldash_word_ai") || "{}"));
+  const aiKeys = Object.keys(aiStore);
+  check("覚え方が端末に保存される", aiKeys.length === 1 && aiStore[aiKeys[0]].mnemonic.includes(shownWord), JSON.stringify(aiStore).slice(0, 120));
+  check("生成後も入力欄にフォーカスが戻る", await page2.evaluate(() => document.activeElement?.id === "input"));
+  check("覚え方AIでエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  const aiRaw = await page2.evaluate(() => localStorage.getItem("spelldash_word_ai"));
+  await page2.close();
+
+  // 単語詳細: 保存済みの覚え方はボタンではなく本文が出る
+  const page3 = await newPage({ storage: { spelldash_word_ai: aiRaw } });
+  await page3.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(900);
+  await page3.evaluate((id) => {
+    const el = document.createElement("button");
+    el.dataset.wordDetail = id;
+    el.id = "aiDetailProbe";
+    document.body.appendChild(el);
+  }, aiKeys[0]);
+  await page3.click("#aiDetailProbe");
+  await page3.waitForTimeout(200);
+  check("単語詳細に保存済みの覚え方が出る", (await page3.textContent("#wordDetailAi")).includes("音で覚える") && (await page3.$$("#wordDetailAi [data-word-ai-run]")).length === 0);
+  await page3.close();
 }
 
 // ===== 10. 新カテゴリ「広告・マーケ」: チップ表示＋Lv1で出題 =====

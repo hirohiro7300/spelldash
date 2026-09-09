@@ -4027,7 +4027,7 @@ body.list-compact .genre__cards {
   cursor: pointer;
 }
 
-.cardgen__card input {
+.cardgen__card > input[type="checkbox"] {
   margin-top: 3px;
   width: 16px;
   height: 16px;
@@ -4078,4 +4078,113 @@ body.list-compact .genre__cards {
 .cardgen__done a {
   font-weight: 700;
   color: #93c5fd;
+}
+
+/* ===== Batch 7b: ✨ 覚え方を作る（AI）＋生成カードの編集 ===== */
+.word-ai-slot {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 10px;
+}
+
+.word-ai-slot:empty {
+  display: none;
+}
+
+.word-ai__button {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px dashed rgba(167, 139, 250, 0.55);
+  background: rgba(139, 92, 246, 0.1);
+  color: #c4b5fd;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.word-ai__button:hover {
+  background: rgba(139, 92, 246, 0.2);
+}
+
+.word-ai__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.word-ai {
+  display: grid;
+  gap: 4px;
+  max-width: 520px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  background: rgba(139, 92, 246, 0.08);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+  color: #e2e8f0;
+}
+
+.word-ai__mnemonic {
+  color: #ddd6fe;
+  font-weight: 600;
+}
+
+.word-ai__example {
+  color: #cbd5e1;
+}
+
+.word-ai__ja {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.word-ai__pitfall {
+  font-size: 12px;
+  color: #fcd34d;
+}
+
+.word-ai__error {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.word-detail__ai {
+  margin-top: 8px;
+}
+
+.word-detail__ai:empty {
+  display: none;
+}
+
+.cardgen__field {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.35);
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cardgen__field--answer {
+  font-weight: 700;
+  color: #93c5fd;
+}
+
+.cardgen__field--sub {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.cardgen__field:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.7);
+}
+
+.cardgen__card textarea.cardgen__field {
+  resize: vertical;
 }
