@@ -49,6 +49,36 @@
           "label": "リスティング広告 実務",
           "file": "english/listing.json",
           "kind": "concept"
+        },
+        {
+          "id": "realestate",
+          "label": "不動産 実務",
+          "file": "packs/realestate.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "賃貸・売買の現場で毎日出る用語。契約・重説・ローン・管理まで",
+          "audience": "不動産会社の新人、宅建の勉強を始めた人"
+        },
+        {
+          "id": "accounting",
+          "label": "簿記・会計の基本",
+          "file": "packs/accounting.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "仕訳から財務諸表、月次決算、消費税の入口まで。経理の共通言語",
+          "audience": "経理の新人、簿記を学び始めた人、数字を読みたい人"
+        },
+        {
+          "id": "legal",
+          "label": "契約・法務の基本",
+          "file": "packs/legal.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 54,
+          "blurb": "NDAから業務委託、条項の読み方、締結の実務まで。契約の共通言語",
+          "audience": "契約書を扱う営業・法務の新人、フリーランス"
         }
       ]
     }
