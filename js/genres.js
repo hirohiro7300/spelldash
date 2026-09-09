@@ -1,4 +1,5 @@
 import { getWordsByCategory } from "./wordStore.js";
+import { packGenreLabels } from "./wordData.js";
 
 // ===== ジャンル（タグ）で束ねる =====
 // カテゴリの中を「指標」「入札」「車業界」のようなジャンルに分けて、一覧と練習を絞れるようにする。
@@ -35,7 +36,7 @@ export function genreOf(word) {
 }
 
 export function genreLabel(tag) {
-  return GENRE_LABELS[tag] ?? tag;
+  return GENRE_LABELS[tag] ?? packGenreLabels[tag] ?? tag;
 }
 
 // 練習で絞っているジャンル（カテゴリ切替で解除）

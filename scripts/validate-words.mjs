@@ -4,17 +4,45 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "english");
-const files = fs.readdirSync(DATA_DIR).filter((f) => f.endsWith(".json"));
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const DATA_DIR = path.join(ROOT, "data", "english");
+const PACK_DIR = path.join(ROOT, "data", "packs");
+const files = [
+  ...fs.readdirSync(DATA_DIR).filter((f) => f.endsWith(".json")).map((f) => path.join(DATA_DIR, f)),
+  ...(fs.existsSync(PACK_DIR) ? fs.readdirSync(PACK_DIR).filter((f) => f.endsWith(".json")).map((f) => path.join(PACK_DIR, f)) : [])
+];
+const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));
+const manifestCategories = manifest.subjects.flatMap((s) => s.categories);
 
 const problems = [];
 const allIds = new Set();
 const entries = [];
 let total = 0;
 
-for (const file of files) {
-  const data = JSON.parse(fs.readFileSync(path.join(DATA_DIR, file), "utf8"));
+for (const fullPath of files) {
+  const file = path.relative(path.join(ROOT, "data"), fullPath);
+  const data = JSON.parse(fs.readFileSync(fullPath, "utf8"));
   const seen = new Set();
+  const isPack = fullPath.startsWith(PACK_DIR);
+
+  // 分野パック: genres が tags[0] を網羅し、manifest の count と一致すること（docs/PACK_FORMAT.md）
+  if (isPack) {
+    if (!data.genres || typeof data.genres !== "object") problems.push(`genresなし ${file}`);
+    if (!data.label || !data.blurb || !data.audience) problems.push(`label/blurb/audienceなし ${file}`);
+    if (String(data.blurb ?? "").length > 40) problems.push(`blurbが長い ${file}`);
+    const entry = manifestCategories.find((c) => c.id === data.category);
+    if (!entry) problems.push(`manifest未登録 ${file} (category=${data.category})`);
+    else if (entry.count !== data.words.length) problems.push(`manifestのcount不一致 ${file}: manifest=${entry.count} 実際=${data.words.length}`);
+    const answers = new Set();
+    for (const w of data.words) {
+      if (w.kind !== "concept") problems.push(`パックはconceptのみ ${file}:${w.id}`);
+      if (data.genres && !(w.tags?.[0] in data.genres)) problems.push(`genres未登録タグ ${file}:${w.id} tag=${w.tags?.[0]}`);
+      if (w.answer && w.q && w.q.includes(w.answer)) problems.push(`qに答えが含まれる ${file}:${w.id}`);
+      const key = String(w.answer ?? "").normalize("NFKC").toLowerCase();
+      if (answers.has(key)) problems.push(`answer重複 ${file}:${w.id} (${w.answer})`);
+      answers.add(key);
+    }
+  }
 
   for (const w of data.words) {
     total++;
@@ -76,6 +104,17 @@ for (const [file, w] of entries) {
     if (sig != null && !sig.includes(w.id)) {
       problems.push(`相互参照欠け ${file}:${w.id} <- ${fid} 側にない`);
     }
+  }
+}
+
+// 同じ id が別ファイルにあるのは「同一単語の重複掲載」（統計を共有）としてカテゴリ間では許容するが、
+// 概念カードは意味が異なりうるので id の衝突を禁止する
+{
+  const conceptSeen = new Map();
+  for (const [file, w] of entries) {
+    if (w.kind !== "concept") continue;
+    if (conceptSeen.has(w.id) && conceptSeen.get(w.id) !== file) problems.push(`概念カードのid衝突 ${w.id}: ${conceptSeen.get(w.id)} と ${file}`);
+    conceptSeen.set(w.id, file);
   }
 }
 

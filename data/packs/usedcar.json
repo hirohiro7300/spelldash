@@ -1,0 +1,1033 @@
+{
+  "subject": "english",
+  "category": "usedcar",
+  "label": "中古車 買取・販売 実務",
+  "blurb": "修復歴の見方から名義変更・税金の精算・契約まで。現場で使う手続きの言葉",
+  "audience": "中古車店・買取店の新人、査定士を目指す人",
+  "genres": {
+    "car-inspect": "査定・車両の見方",
+    "car-paper": "名義・書類手続き",
+    "car-sale": "販売・契約",
+    "car-money": "お金・税金",
+    "car-spec": "車両の基本",
+    "car-abbr": "略語"
+  },
+  "words": [
+    {
+      "id": "concept-car-shufukureki",
+      "en": "car-shufukureki",
+      "kind": "concept",
+      "answer": "修復歴",
+      "accept": [
+        "修復歴車",
+        "修復歴あり",
+        "修復歴有"
+      ],
+      "ja": "骨格部分を交換・修理したことがある状態。価格を大きく左右",
+      "q": "事故などで車の骨格部分を交換・修理したことがある状態。価格に直結し、販売時には必ず表示する",
+      "explain": "「事故歴」とは別。バンパーやドアの交換だけなら該当しない。基準は業界団体で統一されている",
+      "level": "easy",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "repair history"
+    },
+    {
+      "id": "concept-car-kokkaku-bui",
+      "en": "car-kokkaku-bui",
+      "kind": "concept",
+      "answer": "骨格部位",
+      "accept": [
+        "骨格",
+        "骨格部分",
+        "フレーム"
+      ],
+      "ja": "フレーム・ピラーなど車体の強度を担う部分",
+      "q": "フレーム・ピラー・クロスメンバー・インサイドパネルなど、車体の強度を担う部分。ここを交換・修正したかで修復歴の有無が決まる",
+      "explain": "溶接跡やシーラーの違い、ボルトの回し跡で見分ける。査定研修の中心テーマ",
+      "level": "hard",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "structural parts"
+    },
+    {
+      "id": "concept-car-hyokaten",
+      "en": "car-hyokaten",
+      "kind": "concept",
+      "answer": "評価点",
+      "accept": [
+        "評点",
+        "総合評価",
+        "オークション評価点"
+      ],
+      "ja": "検査員が車の状態を点数で表したもの。業者間の共通言語",
+      "q": "業者間の市場で検査員が車の状態を点数で表したもの。内外装の記号とは別に、総合の等級が付く",
+      "explain": "RやRAは修復歴あり。点数と走行距離で相場表を引くのが仕入れの基本",
+      "level": "hard",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "grade score"
+    },
+    {
+      "id": "concept-car-naigaiso-hyoka",
+      "en": "car-naigaiso-hyoka",
+      "kind": "concept",
+      "answer": "内外装評価",
+      "accept": [
+        "内装評価",
+        "外装評価",
+        "内外装"
+      ],
+      "ja": "外装のキズや内装の汚れをAからEなどの記号で示すもの",
+      "q": "総合の等級とは別に、外装のキズ・へこみと内装の汚れ・破れをそれぞれAからEなどの記号で示す評価",
+      "explain": "総合点が同じでも外装Cと外装Aでは仕上げ費用が変わる。出品票の展開図と合わせて読む",
+      "level": "hard",
+      "tags": [
+        "car-inspect"
+      ]
+    },
+    {
+      "id": "concept-car-soko-kyori",
+      "en": "car-soko-kyori",
+      "kind": "concept",
+      "answer": "走行距離",
+      "accept": [
+        "走行",
+        "距離",
+        "走行キロ"
+      ],
+      "ja": "メーターの累計距離。年式と合わせて相場を見る最初の項目",
+      "q": "メーターに表示される累計の走った距離。年式と合わせて相場を見る最初の項目で、極端に多い・少ないは理由を確認する",
+      "explain": "年1万kmが目安と言われる。記録簿や車検証の履歴と照らして不自然さを見る",
+      "level": "easy",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "mileage"
+    },
+    {
+      "id": "concept-car-meter-kaizan",
+      "en": "car-meter-kaizan",
+      "kind": "concept",
+      "answer": "メーター改ざん",
+      "accept": [
+        "メーター戻し",
+        "走行距離改ざん",
+        "巻き戻し"
+      ],
+      "ja": "走行距離を少なく見せるために表示を戻す不正",
+      "q": "走行距離を実際より少なく見せるために表示を巻き戻す不正。記録簿や過去の車検の距離との食い違いで疑う",
+      "explain": "業界の走行距離管理システムで過去の記録を照会できる。該当車は「走行不明」扱い",
+      "level": "normal",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "odometer tampering"
+    },
+    {
+      "id": "concept-car-one-owner",
+      "en": "car-one-owner",
+      "kind": "concept",
+      "answer": "ワンオーナー",
+      "accept": [
+        "1オーナー",
+        "一オーナー"
+      ],
+      "ja": "新車登録から持ち主が一度も変わっていない車",
+      "q": "新車で登録されてから持ち主が一度も変わっていない車。整備履歴が追いやすく、販売時の訴求点になる",
+      "explain": "車検証の所有者欄だけでは分からないこともある。記録簿と前歴で裏を取る",
+      "level": "easy",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "one owner"
+    },
+    {
+      "id": "concept-car-kirokubo",
+      "en": "car-kirokubo",
+      "kind": "concept",
+      "answer": "記録簿",
+      "accept": [
+        "整備記録簿",
+        "点検整備記録簿",
+        "メンテナンスノート",
+        "整備手帳"
+      ],
+      "ja": "点検や車検で整備した内容と走行距離が書かれた冊子",
+      "q": "定期点検や車検のたびに整備した内容と、そのときの走行距離が書かれた冊子。履歴の裏付けになる",
+      "explain": "「あり」だけで加点になる。走行距離の推移がメーター改ざんの発見にもつながる",
+      "level": "normal",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "service record"
+    },
+    {
+      "id": "concept-car-junsei",
+      "en": "car-junsei",
+      "kind": "concept",
+      "answer": "純正",
+      "accept": [
+        "純正品",
+        "メーカー純正",
+        "純正パーツ"
+      ],
+      "ja": "メーカーが最初から付けている、または正規に用意している部品",
+      "q": "自動車メーカーが最初から付けている、または正規に用意している部品やナビ。後から他社製に替えたものと区別する",
+      "explain": "他社製に替えたものは「社外品」。元の部品が保管されていればプラス。ナビ・ホイールでよく確認する",
+      "level": "easy",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "genuine parts"
+    },
+    {
+      "id": "concept-car-grade",
+      "en": "car-grade",
+      "kind": "concept",
+      "answer": "グレード",
+      "accept": [
+        "グレード名",
+        "仕様"
+      ],
+      "ja": "同じ車種の中で装備やエンジンの違いで分かれる区分",
+      "q": "同じ車種の中で装備やエンジンの違いで分かれる区分。同じ年式・距離でも数十万円の差になることがある",
+      "explain": "車検証には載らない。型式とカタログ、装備の有無で特定する。間違えると査定額を誤る",
+      "level": "easy",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "grade"
+    },
+    {
+      "id": "concept-car-nenshiki",
+      "en": "car-nenshiki",
+      "kind": "concept",
+      "answer": "年式",
+      "accept": [
+        "初度登録年",
+        "初度登録",
+        "登録年"
+      ],
+      "ja": "その車が最初に登録された年。相場の基準",
+      "q": "その車が最初に登録された年。車検証の登録年月で確認し、走行距離と並ぶ相場の基準になる",
+      "explain": "モデルチェンジをまたぐと同じ登録年でも価値が違う。前期・後期も確認する",
+      "level": "easy",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "model year"
+    },
+    {
+      "id": "concept-car-shaken-zan",
+      "en": "car-shaken-zan",
+      "kind": "concept",
+      "answer": "車検残",
+      "accept": [
+        "車検残り",
+        "車検有効期限",
+        "車検付き"
+      ],
+      "ja": "次の車検までに残っている期間。長いほど販売に有利",
+      "q": "次の車検までに残っている期間。長く残っているほど買った人がすぐ乗れるので、販売時に有利になる",
+      "explain": "残りが短い車は「車検整備付き」で売るか価格に反映する。有効期限は車検証とステッカーで確認",
+      "level": "easy",
+      "tags": [
+        "car-inspect"
+      ]
+    },
+    {
+      "id": "concept-car-shitamawari",
+      "en": "car-shitamawari",
+      "kind": "concept",
+      "answer": "下回り",
+      "accept": [
+        "下廻り",
+        "下回りの錆",
+        "アンダーボディ"
+      ],
+      "ja": "車体の底面やマフラー周り。錆や腐食、漏れを見る場所",
+      "q": "車体の底面やマフラー、サスペンションの周り。リフトアップやライトで覗き、錆・腐食・オイル漏れを見る場所",
+      "explain": "雪国の融雪剤で錆びやすい。腐食で穴が開いていると車検に通らず大きな減額",
+      "level": "normal",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "underbody"
+    },
+    {
+      "id": "concept-car-suibotsusha",
+      "en": "car-suibotsusha",
+      "kind": "concept",
+      "answer": "水没車",
+      "accept": [
+        "冠水車",
+        "水害車"
+      ],
+      "ja": "室内の床より上まで水に浸かった車。電装トラブルが出やすい",
+      "q": "洪水などで室内の床より上まで水に浸かった車。電装系のトラブルが出やすく、販売時に告知が必要",
+      "explain": "シート下の錆、泥、カビ臭、シートベルトを引き出した先の汚れで見分ける",
+      "level": "hard",
+      "tags": [
+        "car-inspect"
+      ],
+      "say": "flood-damaged car"
+    },
+    {
+      "id": "concept-car-meigi-henko",
+      "en": "car-meigi-henko",
+      "kind": "concept",
+      "answer": "名義変更",
+      "accept": [
+        "移転登録",
+        "名変"
+      ],
+      "ja": "所有者が変わったとき運輸支局で行う登録手続き",
+      "q": "車の所有者が変わったときに運輸支局で行う登録手続き。中古車の売買では必ず発生し、販売店が代行することが多い",
+      "explain": "正式には移転登録。遅れると翌年の税金の通知が前の持ち主に届いてトラブルになる",
+      "level": "easy",
+      "tags": [
+        "car-paper"
+      ],
+      "say": "title transfer"
+    },
+    {
+      "id": "concept-car-ichiji-masho",
+      "en": "car-ichiji-masho",
+      "kind": "concept",
+      "answer": "一時抹消",
+      "accept": [
+        "一時抹消登録",
+        "一時抹消登録証明書"
+      ],
+      "ja": "ナンバーを返し登録を一時的に止める手続き。再登録できる",
+      "q": "しばらく乗らない車や在庫車のナンバーを返し、登録を一時的に止める手続き。再登録すればまた公道を走れる",
+      "explain": "この状態にすると翌年度の自動車税が止まる。在庫を長期保有するときの選択肢",
+      "level": "normal",
+      "tags": [
+        "car-paper"
+      ]
+    },
+    {
+      "id": "concept-car-eikyu-masho",
+      "en": "car-eikyu-masho",
+      "kind": "concept",
+      "answer": "永久抹消",
+      "accept": [
+        "永久抹消登録",
+        "廃車手続き"
+      ],
+      "ja": "解体した車の登録を完全に消す手続き。再登録できない",
+      "q": "スクラップにした車の登録を完全に消す手続き。もう二度と登録できず、解体業者からの報告後に行う",
+      "explain": "重量税と自動車税の残り分が戻る手続きにつながる。一時抹消との違いを客に説明する",
+      "level": "normal",
+      "tags": [
+        "car-paper"
+      ]
+    },
+    {
+      "id": "concept-car-shakensho",
+      "en": "car-shakensho",
+      "kind": "concept",
+      "answer": "車検証",
+      "accept": [
+        "自動車検査証",
+        "検査証"
+      ],
+      "ja": "ナンバー・車台番号・所有者・使用者・有効期限が書かれた証明書",
+      "q": "ナンバー・車台番号・型式・所有者・使用者・有効期限が書かれた、車に載せておく証明書。査定でも書類手続きでも最初に見る",
+      "explain": "所有者欄が本人以外なら所有権留保。電子化されICチップに情報が入る形式もある",
+      "level": "easy",
+      "tags": [
+        "car-paper"
+      ],
+      "say": "vehicle inspection certificate"
+    },
+    {
+      "id": "concept-car-jibaiseki",
+      "en": "car-jibaiseki",
+      "kind": "concept",
+      "answer": "自賠責",
+      "accept": [
+        "自賠責保険",
+        "強制保険",
+        "自賠責保険証明書"
+      ],
+      "ja": "全車に加入が義務の保険。車検と一緒に更新する",
+      "q": "すべての車に加入が義務づけられた保険。車検と一緒に更新し、証明書を車に積んでおく。任意保険とは別",
+      "explain": "売買では残り期間分を精算する慣行がある。抹消時は解約して返戻金を受け取れる",
+      "level": "easy",
+      "tags": [
+        "car-paper"
+      ],
+      "say": "compulsory automobile liability insurance"
+    },
+    {
+      "id": "concept-car-recycle-ken",
+      "en": "car-recycle-ken",
+      "kind": "concept",
+      "answer": "リサイクル券",
+      "accept": [
+        "リサイクル料金",
+        "リサイクル預託金",
+        "預託証明書"
+      ],
+      "ja": "将来の処分費用を前払いした証明。次の持ち主に引き継ぐ",
+      "q": "車を将来処分するときの費用を新車購入時などに前払いした証明。中古車の売買では次の持ち主に引き継ぎ、金額を精算する",
+      "explain": "買取価格とは別枠で「預託金相当額」として渡すのが一般的。紛失時は照会システムで確認",
+      "level": "easy",
+      "tags": [
+        "car-paper"
+      ]
+    },
+    {
+      "id": "concept-car-inkan-shomei",
+      "en": "car-inkan-shomei",
+      "kind": "concept",
+      "answer": "印鑑証明",
+      "accept": [
+        "印鑑証明書",
+        "印鑑登録証明書"
+      ],
+      "ja": "普通車の名義変更で売り手・買い手が用意する実印の証明書",
+      "q": "普通車の名義変更で売り手・買い手が用意する、市区町村が発行する実印の証明書。委任状や譲渡証明書の実印と一致させる",
+      "explain": "有効期限（発行から3か月以内）を確認。軽自動車の手続きでは不要",
+      "level": "easy",
+      "tags": [
+        "car-paper"
+      ],
+      "say": "seal certificate"
+    },
+    {
+      "id": "concept-car-ininjo",
+      "en": "car-ininjo",
+      "kind": "concept",
+      "answer": "委任状",
+      "accept": [],
+      "ja": "手続きを販売店に代行してもらうために所有者が実印を押す書類",
+      "q": "名義変更や抹消の手続きを本人に代わって販売店が行うために、所有者が実印を押して渡す書類",
+      "explain": "受任者欄は空欄でもらうことが多い。捨印の有無で訂正できる範囲が変わる",
+      "level": "normal",
+      "tags": [
+        "car-paper"
+      ],
+      "say": "power of attorney"
+    },
+    {
+      "id": "concept-car-joto-shomeisho",
+      "en": "car-joto-shomeisho",
+      "kind": "concept",
+      "answer": "譲渡証明書",
+      "accept": [
+        "譲渡証",
+        "譲渡書"
+      ],
+      "ja": "前の所有者が譲り渡したことを示す実印付きの書類",
+      "q": "前の所有者が「この車を譲り渡した」ことを示し、実印を押して渡す書類。移転登録のときに必ず添付する",
+      "explain": "譲渡人の欄だけ埋めてもらい、譲受人は後で記入するのが実務の流れ。訂正には実印が要る",
+      "level": "normal",
+      "tags": [
+        "car-paper"
+      ],
+      "say": "transfer certificate"
+    },
+    {
+      "id": "concept-car-shako-shomei",
+      "en": "car-shako-shomei",
+      "kind": "concept",
+      "answer": "車庫証明",
+      "accept": [
+        "自動車保管場所証明書",
+        "保管場所証明",
+        "保管場所証明書"
+      ],
+      "ja": "車を置く場所があることを警察署が証明する書類",
+      "q": "車を置く場所が確保されていることを警察署が証明する書類。普通車の登録に必要で、申請から取得まで数日かかる",
+      "explain": "納車日程はここで決まることが多い。軽自動車は地域により届出のみ、または不要",
+      "level": "easy",
+      "tags": [
+        "car-paper"
+      ],
+      "say": "parking space certificate"
+    },
+    {
+      "id": "concept-car-kei-kyokai",
+      "en": "car-kei-kyokai",
+      "kind": "concept",
+      "answer": "軽自動車検査協会",
+      "accept": [
+        "軽検協",
+        "軽自動車協会",
+        "軽協"
+      ],
+      "ja": "軽自動車の名義変更や抹消を行う窓口。運輸支局とは別",
+      "q": "軽自動車の名義変更や抹消を行う窓口。普通車を扱う運輸支局とは別の組織で、手続きは「登録」ではなく「届出」",
+      "explain": "実印や印鑑証明が不要など普通車より手続きが軽い。用紙も窓口も別なので混同しない",
+      "level": "normal",
+      "tags": [
+        "car-paper"
+      ]
+    },
+    {
+      "id": "concept-car-shoyuken-ryuho",
+      "en": "car-shoyuken-ryuho",
+      "kind": "concept",
+      "answer": "所有権留保",
+      "accept": [
+        "所有権付き",
+        "所有権あり",
+        "所有者がディーラー"
+      ],
+      "ja": "ローン完済まで所有者欄がディーラーや信販会社になっている状態",
+      "q": "ローンで買った車の車検証の所有者欄がディーラーや信販会社になっている状態。完済するまで名義上の持ち主はその会社",
+      "explain": "この車は本人だけでは売れない。買取時は残債の確認と所有権解除の書類取り寄せが要る",
+      "level": "normal",
+      "tags": [
+        "car-paper"
+      ]
+    },
+    {
+      "id": "concept-car-shoyuken-kaijo",
+      "en": "car-shoyuken-kaijo",
+      "kind": "concept",
+      "answer": "所有権解除",
+      "accept": [
+        "所有権留保解除",
+        "所有権の解除"
+      ],
+      "ja": "ローン完済後に所有者名義を本人へ変える手続き",
+      "q": "ローンを払い終えた後、車検証の所有者名義をディーラーや信販会社から使用者本人に変える手続き",
+      "explain": "完済しても自動では変わらない。書類は所有者側の会社から取り寄せ、数日〜数週間かかる",
+      "level": "normal",
+      "tags": [
+        "car-paper"
+      ]
+    },
+    {
+      "id": "concept-car-zansai",
+      "en": "car-zansai",
+      "kind": "concept",
+      "answer": "残債",
+      "accept": [
+        "ローン残債",
+        "ローン残高",
+        "残高"
+      ],
+      "ja": "売りたい車にまだ残っているローンの金額",
+      "q": "売りたい車にまだローンの支払いが残っているときの、その残りの金額。買取価格と比べて手続きの流れが変わる",
+      "explain": "買取額＞残り分なら差額を客へ、逆なら客が不足分を用意する。契約前に金額を確定させる",
+      "level": "normal",
+      "tags": [
+        "car-paper"
+      ],
+      "say": "outstanding loan balance"
+    },
+    {
+      "id": "concept-car-sogaku-hyoji",
+      "en": "car-sogaku-hyoji",
+      "kind": "concept",
+      "answer": "総額表示",
+      "accept": [
+        "支払総額",
+        "支払総額表示",
+        "乗り出し価格"
+      ],
+      "ja": "税金や登録費用を含め客が実際に払う金額を広告に示すこと",
+      "q": "車両本体価格に税金や登録費用などを含め、客が実際に払う金額を広告や店頭に示すこと。業界ルールで求められている",
+      "explain": "本体価格だけ大きく見せる表示はトラブルの元。任意のオプションや保証は別枠で示す",
+      "level": "easy",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "total price display"
+    },
+    {
+      "id": "concept-car-shohiyo",
+      "en": "car-shohiyo",
+      "kind": "concept",
+      "answer": "諸費用",
+      "accept": [
+        "諸経費",
+        "登録諸費用"
+      ],
+      "ja": "車両価格とは別にかかる登録・車庫証明・納車・税金などの費用",
+      "q": "車両価格とは別にかかる、登録代行・車庫証明・納車費用・税金・自賠責などの費用の総称。見積書で内訳を示す",
+      "explain": "法定費用（税金・自賠責）と店の手数料を分けて説明できると信頼につながる",
+      "level": "normal",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "additional fees"
+    },
+    {
+      "id": "concept-car-nosha-seibi",
+      "en": "car-nosha-seibi",
+      "kind": "concept",
+      "answer": "納車整備",
+      "accept": [
+        "納車前整備",
+        "納車点検",
+        "納車前点検"
+      ],
+      "ja": "客に渡す前に油脂類や消耗品を点検・交換する作業",
+      "q": "販売が決まった車を客に渡す前に、オイルやバッテリー、ブレーキなどの消耗品を点検・交換する作業",
+      "explain": "何をどこまでやるかを見積書と契約書に書く。車検整備付きかどうかで内容が変わる",
+      "level": "normal",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "pre-delivery inspection"
+    },
+    {
+      "id": "concept-car-hosho",
+      "en": "car-hosho",
+      "kind": "concept",
+      "answer": "保証",
+      "accept": [
+        "販売保証",
+        "保証付き",
+        "中古車保証"
+      ],
+      "ja": "納車後の一定期間・距離内の故障を販売店が修理する約束",
+      "q": "納車後に決めた期間・距離の範囲内で故障が出たとき、販売店が修理費を負担する約束。有償の延長プランもある",
+      "explain": "対象部位と免責を書面で渡す。消耗品や社外品の不具合は対象外にするのが一般的",
+      "level": "easy",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "warranty"
+    },
+    {
+      "id": "concept-car-auction-daiko",
+      "en": "car-auction-daiko",
+      "kind": "concept",
+      "answer": "オークション代行",
+      "accept": [
+        "代行",
+        "代行落札",
+        "オークション仕入れ代行"
+      ],
+      "ja": "業者間の市場で客の希望に合う車を代わりに仕入れて売るサービス",
+      "q": "業者しか参加できない市場で、客の希望条件に合う車を代わりに落札して販売するサービス。在庫を持たずに売れる",
+      "explain": "手数料の内訳と、落札後のキャンセル不可、現車確認できない点を事前に説明する",
+      "level": "normal",
+      "tags": [
+        "car-sale"
+      ]
+    },
+    {
+      "id": "concept-car-zaiko-kaiten",
+      "en": "car-zaiko-kaiten",
+      "kind": "concept",
+      "answer": "在庫回転",
+      "accept": [
+        "在庫回転率",
+        "在庫日数",
+        "回転"
+      ],
+      "ja": "仕入れた車が何日で売れるか。長引くと利益が減る",
+      "q": "仕入れた車が何日で売れていくか。長く売れ残ると値下げや保管費、金利で利益が減る",
+      "explain": "日数の上限を決め、超えたら値下げか業者間で処分する。仕入れの質がここに出る",
+      "level": "normal",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "inventory turnover"
+    },
+    {
+      "id": "concept-car-arari",
+      "en": "car-arari",
+      "kind": "concept",
+      "answer": "粗利",
+      "accept": [
+        "粗利益",
+        "台粗利",
+        "車両粗利"
+      ],
+      "ja": "売値から仕入れ値と整備・輸送などの原価を引いた1台あたりの利益",
+      "q": "売値から仕入れ値と整備・輸送などの原価を引いた、1台あたりの利益。ここから人件費や店の経費を払う",
+      "explain": "値引き交渉はここを削る。台数ではなく1台の利益と回転日数で店の数字を見る",
+      "level": "easy",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "gross profit"
+    },
+    {
+      "id": "concept-car-gengaku",
+      "en": "car-gengaku",
+      "kind": "concept",
+      "answer": "減額",
+      "accept": [
+        "二重査定",
+        "再査定",
+        "契約後減額"
+      ],
+      "ja": "契約後に「修復歴が見つかった」などとして買取金額を下げること",
+      "q": "契約後に「修復歴が見つかった」などとして買取金額を下げること。トラブルになりやすく、業界のルールで制限されている",
+      "explain": "防ぐには契約前の確認を徹底し、告知内容を書面に残す。客側にも告知の責任がある",
+      "level": "normal",
+      "tags": [
+        "car-sale"
+      ]
+    },
+    {
+      "id": "concept-car-cooling-off",
+      "en": "car-cooling-off",
+      "kind": "concept",
+      "answer": "クーリングオフ",
+      "accept": [
+        "クーリング・オフ"
+      ],
+      "ja": "一定期間内なら無条件で契約をやめられる制度。車は原則対象外",
+      "q": "訪問販売などで一定期間内なら無条件で契約をやめられる制度。店舗での車の売買や出張買取では原則として使えない",
+      "explain": "「できますよね」と言われても店頭契約は対象外。代わりに自社のキャンセル規定を説明する",
+      "level": "hard",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "cooling-off"
+    },
+    {
+      "id": "concept-car-keiyakusho",
+      "en": "car-keiyakusho",
+      "kind": "concept",
+      "answer": "契約書",
+      "accept": [
+        "売買契約書",
+        "注文書",
+        "買取契約書"
+      ],
+      "ja": "車両・価格・支払・引渡し日・キャンセル条件を書き署名する書類",
+      "q": "車両の情報・価格・支払方法・引き渡し日・キャンセル条件を書き、客と店が署名する書類。裏面の約款も説明する",
+      "explain": "口頭の約束は残らない。整備内容や付属品の有無まで書いておくと後のトラブルが減る",
+      "level": "easy",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "sales contract"
+    },
+    {
+      "id": "concept-car-kokuchi-gimu",
+      "en": "car-kokuchi-gimu",
+      "kind": "concept",
+      "answer": "告知義務",
+      "accept": [
+        "告知",
+        "説明義務"
+      ],
+      "ja": "修復歴や水没歴など価格に影響する事実を伝える義務",
+      "q": "修復歴や水没歴、メーター交換など価格に影響する事実を、売り手が買い手に伝えなければならない義務。買取でも販売でも問題になる",
+      "explain": "販売店側は表示と説明、客側は買取時の申告。書面に残すことで減額トラブルを防ぐ",
+      "level": "hard",
+      "tags": [
+        "car-sale"
+      ],
+      "say": "duty of disclosure"
+    },
+    {
+      "id": "concept-car-jidoshazei",
+      "en": "car-jidoshazei",
+      "kind": "concept",
+      "answer": "自動車税",
+      "accept": [
+        "自動車税種別割",
+        "種別割",
+        "軽自動車税"
+      ],
+      "ja": "毎年4月1日時点の所有者に課される税金",
+      "q": "毎年4月1日時点の所有者（所有権留保なら使用者）に課される税金。排気量で額が決まり、売買時期によっては精算する",
+      "explain": "3月中の名義変更と4月以降では誰に通知が届くかが変わる。年度末の手続きは特に急ぐ",
+      "level": "easy",
+      "tags": [
+        "car-money"
+      ],
+      "say": "automobile tax"
+    },
+    {
+      "id": "concept-car-tsukiwari",
+      "en": "car-tsukiwari",
+      "kind": "concept",
+      "answer": "月割",
+      "accept": [
+        "月割精算",
+        "未経過相当額",
+        "月割り",
+        "未経過分"
+      ],
+      "ja": "年払いの税金や保険の残り期間分を買い手が負担する精算の考え方",
+      "q": "年払いの自動車税や自賠責について、引き渡し日以降の残り期間分を買い手が負担する形で精算する考え方",
+      "explain": "普通車の自動車税は還付制度があるが、軽自動車税にはない。見積書の「未経過相当額」がこれ",
+      "level": "hard",
+      "tags": [
+        "car-money"
+      ]
+    },
+    {
+      "id": "concept-car-kanpu",
+      "en": "car-kanpu",
+      "kind": "concept",
+      "answer": "還付",
+      "accept": [
+        "税金還付",
+        "自動車税還付",
+        "還付金"
+      ],
+      "ja": "抹消したとき残り期間分の税金や保険料が戻ってくること",
+      "q": "抹消登録をしたとき、残りの期間分の自動車税や重量税、自賠責保険料が戻ってくること。買取の交渉材料になる",
+      "explain": "名義変更だけでは戻らない。誰が受け取るかを契約時に決めておく",
+      "level": "hard",
+      "tags": [
+        "car-money"
+      ],
+      "say": "refund"
+    },
+    {
+      "id": "concept-car-kankyo-seino-wari",
+      "en": "car-kankyo-seino-wari",
+      "kind": "concept",
+      "answer": "環境性能割",
+      "accept": [
+        "自動車税環境性能割",
+        "取得税"
+      ],
+      "ja": "車を取得したとき燃費性能に応じてかかる税金",
+      "q": "車を取得したときに燃費性能に応じてかかる税金。中古車でも取得価額が一定額を超えると対象になり、諸費用に入る",
+      "explain": "以前の「自動車取得税」の後継。税率は燃費基準の達成度で変わるので見積時に確認",
+      "level": "hard",
+      "tags": [
+        "car-money"
+      ]
+    },
+    {
+      "id": "concept-car-haikiryo",
+      "en": "car-haikiryo",
+      "kind": "concept",
+      "answer": "排気量",
+      "accept": [
+        "総排気量",
+        "cc"
+      ],
+      "ja": "エンジンの大きさを示す数値。税区分と車格を決める",
+      "q": "エンジンの大きさを示す数値。軽自動車と普通車の区分や自動車税の額を決め、車検証に記載されている",
+      "explain": "ターボ付きの小さいエンジンも増えた。税金は排気量、パワーは別と説明する",
+      "level": "easy",
+      "tags": [
+        "car-spec"
+      ],
+      "say": "engine displacement"
+    },
+    {
+      "id": "concept-car-kudo-hoshiki",
+      "en": "car-kudo-hoshiki",
+      "kind": "concept",
+      "answer": "駆動方式",
+      "accept": [
+        "駆動",
+        "ドライブトレイン"
+      ],
+      "ja": "エンジンの力を前輪・後輪・四輪のどれに伝えるか",
+      "q": "エンジンの力を前輪・後輪・四輪のどれに伝えるかという区分。雪国では四輪に伝える仕様の需要が高い",
+      "explain": "FF/FR/4WDと略す。同じ車種でも地域によって相場が違う要因",
+      "level": "easy",
+      "tags": [
+        "car-spec"
+      ],
+      "say": "drivetrain"
+    },
+    {
+      "id": "concept-car-hybrid",
+      "en": "car-hybrid",
+      "kind": "concept",
+      "answer": "ハイブリッド",
+      "accept": [
+        "HV",
+        "HEV",
+        "ハイブリッド車"
+      ],
+      "ja": "エンジンとモーターの両方で走る車",
+      "q": "エンジンとモーターの両方で走る車。駆動用バッテリーの劣化具合が査定と販売価格の確認点になる",
+      "explain": "バッテリー交換は高額。保証の範囲と走行距離を合わせて説明する",
+      "level": "easy",
+      "tags": [
+        "car-spec"
+      ],
+      "say": "hybrid"
+    },
+    {
+      "id": "concept-car-ev",
+      "en": "car-ev",
+      "kind": "concept",
+      "answer": "EV",
+      "accept": [
+        "電気自動車",
+        "BEV"
+      ],
+      "ja": "バッテリーとモーターだけで走る車",
+      "q": "ガソリンを使わず、バッテリーとモーターだけで走る車。バッテリーの残存性能と充電環境が価格を左右する",
+      "explain": "エンジンオイルは無いが冷却系や充電口の点検が要る。補助金の返還条件も確認",
+      "level": "normal",
+      "tags": [
+        "car-spec",
+        "abbr"
+      ],
+      "say": "electric vehicle"
+    },
+    {
+      "id": "concept-car-shadai-bango",
+      "en": "car-shadai-bango",
+      "kind": "concept",
+      "answer": "車台番号",
+      "accept": [
+        "車体番号",
+        "フレームナンバー",
+        "フレームNo"
+      ],
+      "ja": "1台ごとの固有番号。車検証と打刻の一致を確認する",
+      "q": "1台ごとに付いた固有の番号。車検証に記載され、エンジンルームや床の打刻と一致するかを査定で確認する",
+      "explain": "不一致や打刻の不自然さは盗難車や違法改造の疑い。写真を残しておく",
+      "level": "easy",
+      "tags": [
+        "car-spec"
+      ],
+      "say": "chassis number"
+    },
+    {
+      "id": "concept-car-katashiki",
+      "en": "car-katashiki",
+      "kind": "concept",
+      "answer": "型式",
+      "accept": [
+        "型式番号",
+        "かたしき"
+      ],
+      "ja": "車検証にある車種の構造・エンジンを示す記号",
+      "q": "車検証に書かれている、その車種の構造やエンジンの種類を示す記号。部品の照合や年式の絞り込みに使う",
+      "explain": "同じ車名でも記号が違えば別物。相場検索と部品発注はこれで行う",
+      "level": "normal",
+      "tags": [
+        "car-spec"
+      ],
+      "say": "model code"
+    },
+    {
+      "id": "concept-car-color-number",
+      "en": "car-color-number",
+      "kind": "concept",
+      "answer": "カラーナンバー",
+      "accept": [
+        "カラーコード",
+        "塗色番号",
+        "色番"
+      ],
+      "ja": "ボディ色を示すメーカーごとの記号。補修塗装の色合わせに使う",
+      "q": "ボディ色を示すメーカーごとの記号。コーションプレートに書かれ、補修塗装の色合わせや在庫登録に使う",
+      "explain": "同じ「白」でもパール系とソリッド系で価値が違う。色番で正確に登録する",
+      "level": "normal",
+      "tags": [
+        "car-spec"
+      ],
+      "say": "color code"
+    },
+    {
+      "id": "concept-car-caution-plate",
+      "en": "car-caution-plate",
+      "kind": "concept",
+      "answer": "コーションプレート",
+      "accept": [
+        "コーション",
+        "車両銘板"
+      ],
+      "ja": "型式・車台番号・色番などが打刻された金属板",
+      "q": "エンジンルームやドア周りに貼られた金属板。型式・車台番号・カラーナンバーなどが打刻されている",
+      "explain": "剥がれや貼り直しの跡は事故修理や不正の手がかり。査定の最初に見る場所のひとつ",
+      "level": "hard",
+      "tags": [
+        "car-spec"
+      ],
+      "say": "caution plate"
+    },
+    {
+      "id": "concept-car-four-wd",
+      "en": "car-four-wd",
+      "kind": "concept",
+      "answer": "4WD",
+      "accept": [
+        "AWD",
+        "四駆",
+        "四輪駆動",
+        "ヨンク"
+      ],
+      "ja": "四つの車輪すべてに駆動力を伝える方式",
+      "q": "四つの車輪すべてに駆動力を伝える方式。雪国や山間部で人気が高く、地域によって相場が違う",
+      "explain": "寒冷地へ流すと高く売れることがある。車検証の型式や車体の下回りで確認する",
+      "level": "normal",
+      "tags": [
+        "car-abbr",
+        "abbr"
+      ],
+      "say": "four wheel drive"
+    },
+    {
+      "id": "concept-car-at",
+      "en": "car-at",
+      "kind": "concept",
+      "answer": "AT",
+      "accept": [
+        "オートマ",
+        "オートマチック",
+        "オートマ車"
+      ],
+      "ja": "変速を自動で行う変速機",
+      "q": "変速を自動で行う変速機。国内の中古車の大半がこれで、免許の限定区分にも関わる",
+      "explain": "在庫登録ではCVTと分けるか統一するかを店で決める。客への説明では大きな違いではない",
+      "level": "easy",
+      "tags": [
+        "car-abbr",
+        "abbr"
+      ],
+      "say": "automatic transmission"
+    },
+    {
+      "id": "concept-car-mt",
+      "en": "car-mt",
+      "kind": "concept",
+      "answer": "MT",
+      "accept": [
+        "マニュアル",
+        "マニュアル車",
+        "ミッション車"
+      ],
+      "ja": "運転者がクラッチを踏んで手動で変速する変速機",
+      "q": "運転者がクラッチを踏んで手動で変速する変速機。台数が少なく、スポーツ車では高値がつくことがある",
+      "explain": "クラッチの滑りを試乗で確認する。免許の限定がある客には売れない",
+      "level": "easy",
+      "tags": [
+        "car-abbr",
+        "abbr"
+      ],
+      "say": "manual transmission"
+    },
+    {
+      "id": "concept-car-cvt",
+      "en": "car-cvt",
+      "kind": "concept",
+      "answer": "CVT",
+      "accept": [
+        "無段変速機",
+        "無段変速"
+      ],
+      "ja": "ギアの段を持たず変速比を連続的に変える変速機",
+      "q": "ギアの段を持たず、ベルトやチェーンで変速比を連続的に変える変速機。軽自動車やコンパクトカーで主流",
+      "explain": "異音やジャダーは高額修理につながる。オイル交換履歴を記録簿で確認する",
+      "level": "normal",
+      "tags": [
+        "car-abbr",
+        "abbr"
+      ],
+      "say": "continuously variable transmission"
+    }
+  ]
+}

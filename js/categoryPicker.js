@@ -13,8 +13,13 @@ export function initializeCategoryPicker() {
   const container = document.getElementById("categoryPicker");
   if (!container) return;
 
-  const saved = getSavedCategory();
   const categories = [{ id: "all", label: "すべて" }, ...getCategories()];
+  let saved = getSavedCategory();
+  // 外した分野パックが選ばれたままなら「すべて」に戻す
+  if (!categories.some((c) => c.id === saved)) {
+    saved = "all";
+    localStorage.setItem(CATEGORY_KEY, saved);
+  }
 
   container.innerHTML = categories
     .map((c) => {
@@ -29,7 +34,9 @@ export function initializeCategoryPicker() {
         </button>
       `;
     })
-    .join("");
+    .join("") +
+    // 分野パック（不動産・会計・医療事務…）は教材ライブラリから追加する
+    `<a class="category-chip category-chip--add" href="./list.html#packs" id="packsLink">＋ 分野を追加</a>`;
 
   setActiveCategory(saved);
   renderGenreBar(saved);

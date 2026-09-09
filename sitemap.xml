@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://spelldash.net/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://spelldash.net/list.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://spelldash.net/list.html?category=listing</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=realestate</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=accounting</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=hr</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=saas</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=ec</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=medical</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=restaurant</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=legal</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=usedcar</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/news.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://spelldash.net/battle.html</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://spelldash.net/privacy.html</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
+</urlset>

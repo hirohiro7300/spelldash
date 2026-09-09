@@ -2,7 +2,8 @@ import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
-import { initWordStore, getCategories, isConceptWord } from "./wordStore.js";
+import { initWordStore, getCategories, getPackCatalog, isConceptWord } from "./wordStore.js";
+import { setPackEnabled } from "./packs.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
@@ -26,11 +27,19 @@ setFooterYear();
 renderHeaderStreak();
 setupUnloadSync();
 
-initWordStore().then(() => {
+initWordStore().then(async () => {
+  // ?add=<packId> で来たら、そのパックを追加してすぐ表示（分野ごとの紹介リンク用）
+  const addId = params.get("add");
+  if (addId && getPackCatalog().some((p) => p.id === addId && !p.enabled)) {
+    setPackEnabled(addId, true);
+    await initWordStore();
+    categoryId = addId;
+  }
   const categories = getCategories();
   if (categoryId === "all" || !categories.some((c) => c.id === categoryId)) {
     categoryId = categories[0]?.id ?? "all";
   }
+  renderPacks();
   renderCategorySelect(categories);
   render();
   bindWordDetail({ onNoteSaved: render });
@@ -70,14 +79,78 @@ initWordStore().then(() => {
 window.addEventListener("spelldash:synced", render);
 window.addEventListener("spelldash:notes", render);
 
+let selectBound = false;
 function renderCategorySelect(categories) {
   const select = document.getElementById("listCategory");
   if (!select) return;
   select.innerHTML = categories.map((c) => `<option value="${c.id}"${c.id === categoryId ? " selected" : ""}>${c.label}</option>`).join("");
+  if (selectBound) return;
+  selectBound = true;
   select.addEventListener("change", () => {
     categoryId = select.value;
     history.replaceState(null, "", `?category=${encodeURIComponent(categoryId)}`);
     render();
+  });
+}
+
+// ===== 教材ライブラリ: 分野パックの追加／外す =====
+function renderPacks() {
+  const grid = document.getElementById("packsGrid");
+  if (!grid) return;
+  const packs = getPackCatalog();
+  if (packs.length === 0) {
+    grid.closest("#packs")?.setAttribute("hidden", "");
+    return;
+  }
+  grid.innerHTML = packs
+    .map(
+      (p) => `
+        <article class="pack${p.enabled ? " pack--on" : ""}" data-pack="${p.id}">
+          <div class="pack__head">
+            <h3 class="pack__title">${escapeHtml(p.label)}</h3>
+            <span class="pack__count">${p.count ?? ""}${p.count ? "枚" : ""}</span>
+          </div>
+          <p class="pack__blurb">${escapeHtml(p.blurb ?? "")}</p>
+          ${p.audience ? `<p class="pack__audience">👤 ${escapeHtml(p.audience)}</p>` : ""}
+          <div class="pack__actions">
+            <button type="button" class="btn btn--sm${p.enabled ? " btn--ghost" : ""}" data-pack-toggle="${p.id}">${p.enabled ? "✓ 追加済み（外す）" : "＋ 追加する"}</button>
+            ${p.enabled ? `<button type="button" class="btn btn--sm btn--ghost" data-pack-view="${p.id}">一覧を見る</button>` : ""}
+          </div>
+        </article>`
+    )
+    .join("");
+
+  grid.querySelectorAll("[data-pack-toggle]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.packToggle;
+      const wasEnabled = getPackCatalog().find((p) => p.id === id)?.enabled;
+      setPackEnabled(id, !wasEnabled);
+      button.disabled = true;
+      button.textContent = wasEnabled ? "外しています…" : "読み込み中…";
+      await initWordStore();
+      const categories = getCategories();
+      if (!wasEnabled) {
+        categoryId = id; // 追加したらその一覧をすぐ見せる
+        localStorage.setItem(CATEGORY_KEY, id); // ホームのカテゴリもこれに
+      } else if (categoryId === id) {
+        categoryId = categories[0]?.id ?? "all";
+        if (localStorage.getItem(CATEGORY_KEY) === id) localStorage.setItem(CATEGORY_KEY, "all");
+      }
+      history.replaceState(null, "", `?category=${encodeURIComponent(categoryId)}`);
+      renderPacks();
+      renderCategorySelect(categories);
+      render();
+      if (!wasEnabled) document.getElementById("listSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  grid.querySelectorAll("[data-pack-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      categoryId = button.dataset.packView;
+      history.replaceState(null, "", `?category=${encodeURIComponent(categoryId)}`);
+      renderCategorySelect(getCategories());
+      render();
+      document.getElementById("listSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   });
 }
 
