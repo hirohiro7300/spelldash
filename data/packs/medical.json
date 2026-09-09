@@ -18,12 +18,18 @@
       "en": "med-hokensho",
       "kind": "concept",
       "answer": "保険証",
-      "accept": ["健康保険証", "被保険者証", "健康保険被保険者証"],
+      "accept": [
+        "健康保険証",
+        "被保険者証",
+        "健康保険被保険者証"
+      ],
       "ja": "加入している公的医療保険を示す証。受付で確認する",
       "q": "初めて来た患者さんが受付で出す、加入している公的医療保険を示すカード。月が変わったら再度確認する",
       "explain": "マイナンバーカードでの確認に移行しても、資格を確かめる作業自体はなくならない",
       "level": "easy",
-      "tags": ["med-front"],
+      "tags": [
+        "med-front"
+      ],
       "say": "health insurance card"
     },
     {
@@ -31,36 +37,51 @@
       "en": "med-maina-hokensho",
       "kind": "concept",
       "answer": "マイナ保険証",
-      "accept": ["マイナンバーカード", "マイナカード"],
+      "accept": [
+        "マイナンバーカード",
+        "マイナカード"
+      ],
       "ja": "マイナンバーカードを保険証として使う仕組み",
       "q": "患者が受付のカードリーダーにマイナンバーカードをかざし、顔認証か暗証番号で本人確認と保険資格の確認を同時に済ませる方式",
       "explain": "読み取りエラー時の代替手段（資格確認書など）を受付で決めておく",
       "level": "easy",
-      "tags": ["med-front"]
+      "tags": [
+        "med-front"
+      ]
     },
     {
       "id": "concept-med-shikaku-kakunin",
       "en": "med-shikaku-kakunin",
       "kind": "concept",
       "answer": "資格確認",
-      "accept": ["保険資格確認", "保険確認"],
+      "accept": [
+        "保険資格確認",
+        "保険確認"
+      ],
       "ja": "患者の保険が有効か、負担割合はどれかを確かめる作業",
       "q": "診察の前に、患者の保険が今も有効か、負担割合はどれか、記号番号は変わっていないかを受付で確かめる作業",
       "explain": "資格切れのまま診療すると請求先がなく返戻になる。月初の再確認が基本",
       "level": "easy",
-      "tags": ["med-front"]
+      "tags": [
+        "med-front"
+      ]
     },
     {
       "id": "concept-med-shoshin",
       "en": "med-shoshin",
       "kind": "concept",
       "answer": "初診",
-      "accept": ["初診料", "初診患者"],
+      "accept": [
+        "初診料",
+        "初診患者"
+      ],
       "ja": "その医療機関に初めて、または新たな病気でかかる受診",
       "q": "その医療機関のその診療科に初めてかかる、または前の治療が終わった後に別の病気で改めてかかる受診",
       "explain": "再診との区別が基本診療料に直結。前の治療が終了していれば同じ人でもこちらになりうる",
       "level": "easy",
-      "tags": ["med-front"],
+      "tags": [
+        "med-front"
+      ],
       "say": "first visit"
     },
     {
@@ -68,12 +89,17 @@
       "en": "med-saishin",
       "kind": "concept",
       "answer": "再診",
-      "accept": ["再診料", "再来"],
+      "accept": [
+        "再診料",
+        "再来"
+      ],
       "ja": "同じ病気の治療を続けて受ける2回目以降の受診",
       "q": "前回と同じ病気の治療を続けるために来た、2回目以降の受診。受付は診察券で患者を呼び出す",
       "explain": "初診か再診かは「治療が継続しているか」で決まる。日数だけで機械的に判断しない",
       "level": "easy",
-      "tags": ["med-front"],
+      "tags": [
+        "med-front"
+      ],
       "say": "follow-up visit"
     },
     {
@@ -81,38 +107,36 @@
       "en": "med-monshinhyo",
       "kind": "concept",
       "answer": "問診票",
-      "accept": ["問診表", "問診"],
+      "accept": [
+        "問診表",
+        "問診"
+      ],
       "ja": "初診時に症状・既往歴・服薬・アレルギーを書いてもらう用紙",
       "q": "初めて来た患者に受付で渡し、今日の症状、過去の病気、飲んでいる薬、アレルギーなどを書いてもらう用紙",
       "explain": "医師の診察時間を短くし、カルテの初期情報になる。記入漏れは受付で軽く確認する",
       "level": "easy",
-      "tags": ["med-front"],
+      "tags": [
+        "med-front"
+      ],
       "say": "medical questionnaire"
-    },
-    {
-      "id": "concept-med-shinsatsuken",
-      "en": "med-shinsatsuken",
-      "kind": "concept",
-      "answer": "診察券",
-      "accept": ["診察カード", "患者カード"],
-      "ja": "患者IDが書かれたカード。再診の受付で出してもらう",
-      "q": "初診のときに発行し、次回以降の受付で出してもらう患者番号入りのカード。カルテを呼び出す鍵になる",
-      "explain": "忘れた患者は氏名と生年月日で検索。同姓同名がいるので生年月日まで必ず確認",
-      "level": "easy",
-      "tags": ["med-front"],
-      "say": "patient registration card"
     },
     {
       "id": "concept-med-kaikei",
       "en": "med-kaikei",
       "kind": "concept",
       "answer": "会計",
-      "accept": ["窓口会計", "会計業務", "お会計"],
+      "accept": [
+        "窓口会計",
+        "会計業務",
+        "お会計"
+      ],
       "ja": "診察後に患者から自己負担分を受け取る窓口業務",
       "q": "診察と処方が終わった患者を呼び、その日の診療内容から自己負担分を計算して代金を受け取る窓口の仕事",
       "explain": "レセコンの入力が終わらないと金額が出ない。待たせる時間の多くはここで生まれる",
       "level": "easy",
-      "tags": ["med-front"],
+      "tags": [
+        "med-front"
+      ],
       "say": "payment counter"
     },
     {
@@ -120,12 +144,16 @@
       "en": "med-ryoshusho",
       "kind": "concept",
       "answer": "領収書",
-      "accept": ["領収証"],
+      "accept": [
+        "領収証"
+      ],
       "ja": "支払った金額を証明する書類。医療費控除に使う",
       "q": "会計のときに患者に渡す、その日に支払った金額を証明する書類。確定申告の医療費控除で使われる",
       "explain": "原則として再発行しない。紛失時に出すのは「支払証明書」で、有料になることを説明する",
       "level": "easy",
-      "tags": ["med-front"],
+      "tags": [
+        "med-front"
+      ],
       "say": "receipt"
     },
     {
@@ -133,38 +161,34 @@
       "en": "med-shinryo-meisaisho",
       "kind": "concept",
       "answer": "診療明細書",
-      "accept": ["明細書", "明細"],
+      "accept": [
+        "明細書",
+        "明細"
+      ],
       "ja": "検査や処置ごとの点数内訳を示す書類。領収書と一緒に渡す",
       "q": "会計で領収書と一緒に渡す、その日にどの検査や処置を行い、それぞれ何点かかったかが項目ごとに書かれた書類",
       "explain": "領収書は金額、こちらは点数の内訳。無料で発行するのが原則",
       "level": "normal",
-      "tags": ["med-front"],
+      "tags": [
+        "med-front"
+      ],
       "say": "itemized statement"
-    },
-    {
-      "id": "concept-med-ichibu-futankin",
-      "en": "med-ichibu-futankin",
-      "kind": "concept",
-      "answer": "一部負担金",
-      "accept": ["自己負担金", "自己負担", "窓口負担", "患者負担"],
-      "ja": "診療費のうち患者が窓口で払う分",
-      "q": "診療費全体のうち、保険から支払われる分を除いて患者本人が窓口で払うお金。負担割合を掛けて計算する",
-      "explain": "残りは審査支払機関を通じて保険者から入金される。窓口で受け取るのは一部だけ",
-      "level": "normal",
-      "tags": ["med-front"],
-      "say": "co-payment"
     },
     {
       "id": "concept-med-hihokensha",
       "en": "med-hihokensha",
       "kind": "concept",
       "answer": "被保険者",
-      "accept": ["本人"],
+      "accept": [
+        "本人"
+      ],
       "ja": "保険に自分の名前で加入し保険料を納めている本人",
       "q": "会社の健康保険や国民健康保険に自分の名前で加入し、保険料を納めている本人。家族はこの人の保険に入っている",
       "explain": "「保険者」と一字違いで意味は逆。保険証の「本人・家族」の区分にあたる",
       "level": "normal",
-      "tags": ["med-insurance"],
+      "tags": [
+        "med-insurance"
+      ],
       "say": "insured person"
     },
     {
@@ -172,86 +196,107 @@
       "en": "med-hifuyosha",
       "kind": "concept",
       "answer": "被扶養者",
-      "accept": ["扶養家族", "家族"],
+      "accept": [
+        "扶養家族",
+        "家族"
+      ],
       "ja": "被保険者の収入で生活し、その保険に一緒に入っている家族",
       "q": "被保険者の収入で生活している配偶者や子どもなど、被保険者の保険に一緒に入っている家族。保険証の「家族」区分",
       "explain": "就職や収入増で資格を失うことがある。学生の子どもの資格切れが見つかりやすい",
       "level": "normal",
-      "tags": ["med-insurance"],
+      "tags": [
+        "med-insurance"
+      ],
       "say": "dependent"
-    },
-    {
-      "id": "concept-med-hokensha",
-      "en": "med-hokensha",
-      "kind": "concept",
-      "answer": "保険者",
-      "accept": ["健康保険組合", "協会けんぽ"],
-      "ja": "保険料を集めて医療費を払う運営主体",
-      "q": "健康保険組合、協会けんぽ、市区町村など、加入者から保険料を集め、医療機関に医療費を支払う運営主体",
-      "explain": "レセプトの送り先は審査支払機関だが、最終的にお金を出すのはここ。保険証の下部に名称がある",
-      "level": "normal",
-      "tags": ["med-insurance"],
-      "say": "insurer"
     },
     {
       "id": "concept-med-futan-wariai",
       "en": "med-futan-wariai",
       "kind": "concept",
       "answer": "負担割合",
-      "accept": ["自己負担割合", "割合", "給付割合"],
+      "accept": [
+        "自己負担割合",
+        "割合",
+        "給付割合"
+      ],
       "ja": "診療費のうち患者が払う比率。年齢と所得で区分される",
       "q": "診療費のうち患者が窓口で払う分の比率。年齢や所得で区分が分かれ、保険証や資格確認の結果で確かめる",
       "explain": "数字は年齢区分・所得区分・制度改定で変わる。思い込みではなく必ず確認結果で判断する",
       "level": "easy",
-      "tags": ["med-insurance"]
+      "tags": [
+        "med-insurance"
+      ]
     },
     {
       "id": "concept-med-kogaku-ryoyohi",
       "en": "med-kogaku-ryoyohi",
       "kind": "concept",
       "answer": "高額療養費",
-      "accept": ["高額療養費制度", "高額医療費"],
+      "accept": [
+        "高額療養費制度",
+        "高額医療費"
+      ],
       "ja": "1か月の自己負担が上限を超えた分が払い戻される制度",
       "q": "手術や入院で1か月の医療費の自己負担が上限を超えたとき、超えた分が後から保険者から払い戻される制度",
       "explain": "上限額は所得区分で異なる。事前に認定証や同意があれば窓口の支払い自体を上限までにできる",
       "level": "normal",
-      "tags": ["med-insurance"]
+      "tags": [
+        "med-insurance"
+      ]
     },
     {
       "id": "concept-med-gendogaku-nintei",
       "en": "med-gendogaku-nintei",
       "kind": "concept",
       "answer": "限度額適用認定証",
-      "accept": ["限度額認定証", "認定証", "限度額証"],
+      "accept": [
+        "限度額認定証",
+        "認定証",
+        "限度額証"
+      ],
       "ja": "窓口支払いを自己負担限度額までに抑えるための証",
       "q": "入院や高額な治療の前に患者が保険者からもらい受付に出す書類。これがあると窓口での支払いが月の上限額までで済む",
       "explain": "マイナンバーカードでの資格確認なら、患者の同意操作で同じ扱いになる",
       "level": "hard",
-      "tags": ["med-insurance"]
+      "tags": [
+        "med-insurance"
+      ]
     },
     {
       "id": "concept-med-kohi",
       "en": "med-kohi",
       "kind": "concept",
       "answer": "公費負担医療",
-      "accept": ["公費", "公費負担", "公費医療"],
+      "accept": [
+        "公費",
+        "公費負担",
+        "公費医療"
+      ],
       "ja": "国や自治体が医療費の一部または全部を負担する制度",
       "q": "難病、小児、生活保護、乳幼児など、医療費の一部や全部を国や自治体が負担する制度。受給者証を保険証と一緒に確認する",
       "explain": "制度ごとに法別番号がある。保険との併用時はレセプトの記載順と負担計算が決まっている",
       "level": "normal",
-      "tags": ["med-insurance"]
+      "tags": [
+        "med-insurance"
+      ]
     },
     {
       "id": "concept-med-rosai",
       "en": "med-rosai",
       "kind": "concept",
       "answer": "労災",
-      "accept": ["労災保険", "労働災害", "労災扱い"],
+      "accept": [
+        "労災保険",
+        "労働災害",
+        "労災扱い"
+      ],
       "ja": "仕事中・通勤中のけがや病気。健康保険ではなく別の保険で請求",
       "q": "仕事中や通勤途中のけがで受診した患者。健康保険は使えず、専用の様式で労働基準監督署に請求する",
       "explain": "健康保険で受けてしまうと後で切り替えが必要。受付で「お仕事中のけがですか」と聞く理由",
       "level": "normal",
-      "tags": ["med-insurance"],
+      "tags": [
+        "med-insurance"
+      ],
       "say": "workers' compensation"
     },
     {
@@ -259,12 +304,18 @@
       "en": "med-jihi-shinryo",
       "kind": "concept",
       "answer": "自費診療",
-      "accept": ["自由診療", "自費", "保険外診療"],
+      "accept": [
+        "自由診療",
+        "自費",
+        "保険外診療"
+      ],
       "ja": "公的保険が使えず全額を患者が払う診療",
       "q": "美容目的の処置や健康診断、予防接種など公的保険の対象外の診療。全額を患者が払い、価格は医療機関が決める",
       "explain": "保険診療と同じ病気で同日に混ぜると混合診療の問題になる。会計も別枠で扱う",
       "level": "easy",
-      "tags": ["med-insurance"],
+      "tags": [
+        "med-insurance"
+      ],
       "say": "self-pay treatment"
     },
     {
@@ -272,12 +323,18 @@
       "en": "med-daisansha-koi",
       "kind": "concept",
       "answer": "第三者行為",
-      "accept": ["第三者行為による傷病", "第三者行為届", "第三者行為傷病届"],
+      "accept": [
+        "第三者行為による傷病",
+        "第三者行為届",
+        "第三者行為傷病届"
+      ],
       "ja": "交通事故など他人が原因のけがで保険を使うときの扱い",
       "q": "交通事故など他人の行為が原因のけがで健康保険を使うとき、患者が保険者へ届け出る必要がある扱い。受付で事故かどうかを聞く",
       "explain": "本来は加害者側が負担するもの。届出がないと保険者が加害者に請求できない",
       "level": "hard",
-      "tags": ["med-insurance"]
+      "tags": [
+        "med-insurance"
+      ]
     },
     {
       "id": "concept-med-kongo-shinryo",
@@ -289,141 +346,168 @@
       "q": "同じ病気の治療の中で、保険が使える診療と保険が使えない診療を一緒に行うこと。原則として認められず全体が自費扱いになる",
       "explain": "例外として認められる枠が保険外併用療養費（評価療養・選定療養など）",
       "level": "hard",
-      "tags": ["med-insurance"]
-    },
-    {
-      "id": "concept-med-sentei-ryoyo",
-      "en": "med-sentei-ryoyo",
-      "kind": "concept",
-      "answer": "選定療養",
-      "accept": ["保険外併用療養費", "保険外併用療養"],
-      "ja": "差額ベッドなど患者が選ぶ追加分。保険診療と併用できる",
-      "q": "差額ベッド代や紹介状なしでの大病院受診など、患者が自分で選んで追加費用を払うもの。保険診療と一緒に受けられる例外枠",
-      "explain": "院内掲示と患者への事前説明、同意が要件。料金は医療機関が届け出て決める",
-      "level": "hard",
-      "tags": ["med-insurance"]
+      "tags": [
+        "med-insurance"
+      ]
     },
     {
       "id": "concept-med-receipt",
       "en": "med-receipt",
       "kind": "concept",
       "answer": "レセプト",
-      "accept": ["診療報酬明細書", "レセ"],
+      "accept": [
+        "診療報酬明細書",
+        "レセ"
+      ],
       "ja": "患者ごと月ごとの診療内容と点数をまとめた請求書",
       "q": "患者ごと・月ごとに診療内容と点数をまとめ、審査支払機関へ提出する請求書。医療機関の収入の大半はこれで決まる",
       "explain": "正式名称は診療報酬明細書。患者に渡す明細書とは別物",
       "level": "easy",
-      "tags": ["med-receipt"],
+      "tags": [
+        "med-receipt"
+      ],
       "say": "medical claim"
-    },
-    {
-      "id": "concept-med-shinryo-hoshu",
-      "en": "med-shinryo-hoshu",
-      "kind": "concept",
-      "answer": "診療報酬",
-      "accept": [],
-      "ja": "保険診療の対価。国の点数表に基づいて計算する",
-      "q": "保険診療を行った医療機関が保険から受け取る対価。国が定めた点数表に基づき、全国どこでも同じ基準で計算される",
-      "explain": "定期的に改定される。改定のたびに算定ルールとレセコンの設定が変わる",
-      "level": "easy",
-      "tags": ["med-receipt"],
-      "say": "medical service fee"
     },
     {
       "id": "concept-med-tensu",
       "en": "med-tensu",
       "kind": "concept",
       "answer": "点数",
-      "accept": ["診療報酬点数", "保険点数"],
+      "accept": [
+        "診療報酬点数",
+        "保険点数"
+      ],
       "ja": "診療行為ごとに国が付けた単位。合計して請求額を出す",
       "q": "診察・検査・処置・薬などの診療行為ごとに国が付けた単位。これを合計し、金額に換算して請求する",
       "explain": "1点＝10円で換算するのが基本。患者に渡す明細書に並ぶ数字がこれ",
       "level": "easy",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-santei",
       "en": "med-santei",
       "kind": "concept",
       "answer": "算定",
-      "accept": ["算定する", "点数算定"],
+      "accept": [
+        "算定する",
+        "点数算定"
+      ],
       "ja": "点数表のルールに従い請求できる項目と点数を決めること",
       "q": "行った診療行為に対して、点数表のルールに従いどの項目を何点請求できるかを決めること。医事課の中心作業",
       "explain": "「やった＝請求できる」ではない。回数制限、併用不可、施設基準などの条件がある",
       "level": "easy",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-satei",
       "en": "med-satei",
       "kind": "concept",
       "answer": "査定",
-      "accept": ["減点", "査定減"],
+      "accept": [
+        "減点",
+        "査定減"
+      ],
       "ja": "審査側が過剰と判断して点数を減らす処分",
       "q": "提出した請求について、審査側が「この検査は病名に対して過剰」などと判断し、点数を減らして支払うこと",
       "explain": "返戻と違い、直して出し直しても戻らない。減点理由を読んで翌月の算定を直す",
       "level": "normal",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-henrei",
       "en": "med-henrei",
       "kind": "concept",
       "answer": "返戻",
-      "accept": ["返戻レセプト", "差し戻し"],
+      "accept": [
+        "返戻レセプト",
+        "差し戻し"
+      ],
       "ja": "記載漏れや資格エラーでレセプトが差し戻されること",
       "q": "記載漏れや保険資格の誤りなどでレセプトが審査を通らず、医療機関に差し戻されること。直せば再提出できる",
       "explain": "その月の入金が遅れる。資格確認の徹底で大半は防げる",
       "level": "normal",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-saiseikyu",
       "en": "med-saiseikyu",
       "kind": "concept",
       "answer": "再請求",
-      "accept": ["再提出", "再審査請求"],
+      "accept": [
+        "再提出",
+        "再審査請求"
+      ],
       "ja": "差し戻されたレセプトを直して翌月以降に再度提出すること",
       "q": "差し戻されたレセプトの誤りを直し、翌月以降の請求にまとめてもう一度提出すること",
       "explain": "査定に納得できない場合の「再審査請求」とは手続きが違う。どちらも期限がある",
       "level": "normal",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-shinsa-shiharai",
       "en": "med-shinsa-shiharai",
       "kind": "concept",
       "answer": "審査支払機関",
-      "accept": ["支払基金", "国保連合会", "国保連", "社会保険診療報酬支払基金"],
+      "accept": [
+        "支払基金",
+        "国保連合会",
+        "国保連",
+        "社会保険診療報酬支払基金"
+      ],
       "ja": "レセプトを審査し保険者に代わって支払う組織",
       "q": "医療機関から集めたレセプトを審査し、保険者に代わって診療報酬を支払う組織。社保と国保で別々にある",
       "explain": "被用者保険は支払基金、国保と後期高齢者は国保連。提出先を間違えると返戻",
       "level": "normal",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-receipt-seikyu",
       "en": "med-receipt-seikyu",
       "kind": "concept",
       "answer": "レセプト請求",
-      "accept": ["レセ請求", "請求業務", "月初請求", "レセプト業務"],
+      "accept": [
+        "レセ請求",
+        "請求業務",
+        "月初請求",
+        "レセプト業務"
+      ],
       "ja": "前月分のレセプトを点検し締切までに提出する月初の業務",
       "q": "前月分の診療を患者ごとにまとめて点検し、締切までに審査支払機関へ送る、毎月初めの集中業務",
       "explain": "提出期限は毎月10日が目安。この数日は残業が増えるので受付シフトも調整する",
-      "level": "easy",
-      "tags": ["med-receipt"]
+      "level": "normal",
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-byomei",
       "en": "med-byomei",
       "kind": "concept",
       "answer": "病名",
-      "accept": ["傷病名", "レセプト病名", "保険病名"],
+      "accept": [
+        "傷病名",
+        "レセプト病名",
+        "保険病名"
+      ],
       "ja": "検査や薬の必要性を示すためにレセプトに載せる診断名",
       "q": "行った検査や処方した薬について、なぜ必要だったかを示すためにレセプトに載せる診断名。抜けていると査定の原因になる",
       "explain": "検査・薬と診断名の対応（適応）が審査の中心。開始日と転帰も一緒に管理する",
       "level": "normal",
-      "tags": ["med-receipt"],
+      "tags": [
+        "med-receipt"
+      ],
       "say": "diagnosis name"
     },
     {
@@ -436,67 +520,90 @@
       "q": "基本の点数に、時間外・休日・乳幼児・特定の体制など条件を満たしたときに上乗せして算定できる点数",
       "explain": "算定要件と回数制限がある。取り忘れと取りすぎの両方が起きやすい",
       "level": "normal",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-shojo-shoki",
       "en": "med-shojo-shoki",
       "kind": "concept",
       "answer": "症状詳記",
-      "accept": ["詳記"],
+      "accept": [
+        "詳記"
+      ],
       "ja": "高額な検査や多い投薬の必要性を医師が文章で添える説明",
       "q": "通常より多い投薬や高額な検査について、なぜ必要だったかを医師が文章で書き、レセプトに添付する説明",
       "explain": "査定を防ぐための書類。医事課が対象を拾い、医師に依頼するのが月初の仕事",
       "level": "hard",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-juran-tenken",
       "en": "med-juran-tenken",
       "kind": "concept",
       "answer": "縦覧点検",
-      "accept": ["縦覧"],
+      "accept": [
+        "縦覧"
+      ],
       "ja": "同じ患者の複数月のレセプトを並べて審査する点検",
       "q": "審査側が同じ患者の複数月分のレセプトを並べ、回数制限のある検査の重複などをチェックすること",
       "explain": "単月では通っても数か月並べると査定される。院内でも過去分を見て点検する",
       "level": "hard",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-totsugo-tenken",
       "en": "med-totsugo-tenken",
       "kind": "concept",
       "answer": "突合点検",
-      "accept": ["突合"],
+      "accept": [
+        "突合"
+      ],
       "ja": "医科レセプトと薬局の調剤レセプトを照合する審査",
       "q": "院外処方のとき、審査側が医療機関のレセプトと薬局の調剤レセプトを照らし合わせ、病名と薬の対応を確認すること",
       "explain": "薬局側の請求が減点されると、処方した医療機関側に負担が回る仕組み",
       "level": "hard",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-shisetsu-kijun",
       "en": "med-shisetsu-kijun",
       "kind": "concept",
       "answer": "施設基準",
-      "accept": ["施設基準届出"],
+      "accept": [
+        "施設基準届出"
+      ],
       "ja": "特定の点数を算定するために満たすべき人員・設備の条件",
       "q": "特定の加算や点数を算定するために医療機関が満たすべき人員・設備・体制の条件。地方厚生局に届け出る",
       "explain": "届出後も要件を満たし続ける必要がある。職員の退職で要件を割ると返還の対象",
       "level": "hard",
-      "tags": ["med-receipt"]
+      "tags": [
+        "med-receipt"
+      ]
     },
     {
       "id": "concept-med-shuso",
       "en": "med-shuso",
       "kind": "concept",
       "answer": "主訴",
-      "accept": ["CC", "チーフコンプレイント"],
+      "accept": [
+        "CC",
+        "チーフコンプレイント"
+      ],
       "ja": "患者が一番困って受診した症状。カルテの冒頭に書く",
       "q": "患者が一番困って受診した症状。カルテの最初に書かれる「今日はどうされましたか」への答え",
       "explain": "レセプトの病名はここから始まる。受付でも聞き取りメモがあると診察が早い",
       "level": "easy",
-      "tags": ["med-chart"],
+      "tags": [
+        "med-chart"
+      ],
       "say": "chief complaint"
     },
     {
@@ -504,12 +611,17 @@
       "en": "med-kioreki",
       "kind": "concept",
       "answer": "既往歴",
-      "accept": ["既往症", "既往"],
+      "accept": [
+        "既往症",
+        "既往"
+      ],
       "ja": "過去にかかった病気や手術の記録",
       "q": "患者が過去にかかった病気や受けた手術の記録。問診票で聞き取り、カルテに書いておく",
       "explain": "薬の選択や検査の判断に関わる。今治療中の病気（現病歴）とは分けて書く",
       "level": "easy",
-      "tags": ["med-chart"],
+      "tags": [
+        "med-chart"
+      ],
       "say": "past medical history"
     },
     {
@@ -517,12 +629,17 @@
       "en": "med-shohosen",
       "kind": "concept",
       "answer": "処方箋",
-      "accept": ["処方せん", "院外処方箋"],
+      "accept": [
+        "処方せん",
+        "院外処方箋"
+      ],
       "ja": "薬の名前・量・日数を書き、患者が薬局へ持っていく書類",
       "q": "医師が薬の名前・量・日数を書き、患者が調剤薬局に持っていく書類。会計時に受付から患者へ渡す",
       "explain": "有効期限は発行日を含めて4日以内が原則。渡すときに一言添える",
       "level": "easy",
-      "tags": ["med-chart"],
+      "tags": [
+        "med-chart"
+      ],
       "say": "prescription"
     },
     {
@@ -530,61 +647,69 @@
       "en": "med-ingai-shoho",
       "kind": "concept",
       "answer": "院外処方",
-      "accept": ["院外"],
+      "accept": [
+        "院外"
+      ],
       "ja": "処方箋を発行し、患者が外の調剤薬局で薬を受け取る方式",
       "q": "医療機関では薬を渡さず、処方箋だけを発行して患者が外の調剤薬局で薬を受け取る方式",
       "explain": "薬の在庫と説明は薬局側。医療機関は処方箋料を算定し、薬剤費は薬局が請求する",
       "level": "easy",
-      "tags": ["med-chart"]
+      "tags": [
+        "med-chart"
+      ]
     },
     {
       "id": "concept-med-innai-shoho",
       "en": "med-innai-shoho",
       "kind": "concept",
       "answer": "院内処方",
-      "accept": ["院内"],
+      "accept": [
+        "院内"
+      ],
       "ja": "医療機関の中で調剤し、会計時に薬を直接渡す方式",
       "q": "医療機関の中で薬を調剤し、会計のときに患者へ直接渡す方式。薬の在庫と管理を院内で持つ",
       "explain": "患者は一度で済むが、薬剤費と調剤の点数を医療機関側で算定する",
       "level": "normal",
-      "tags": ["med-chart"]
+      "tags": [
+        "med-chart"
+      ]
     },
     {
       "id": "concept-med-generic",
       "en": "med-generic",
       "kind": "concept",
       "answer": "ジェネリック",
-      "accept": ["後発医薬品", "後発品", "ジェネリック医薬品", "GE"],
+      "accept": [
+        "後発医薬品",
+        "後発品",
+        "ジェネリック医薬品",
+        "GE"
+      ],
       "ja": "先発品の特許切れ後に同じ有効成分で作られる安価な薬",
       "q": "先発品の特許が切れた後に、同じ有効成分で他社が製造する安価な薬。患者に希望を聞く場面がある",
       "explain": "処方箋の「変更不可」欄にチェックがなければ薬局で変更できる",
       "level": "easy",
-      "tags": ["med-chart"],
+      "tags": [
+        "med-chart"
+      ],
       "say": "generic drug"
-    },
-    {
-      "id": "concept-med-okusuri-techo",
-      "en": "med-okusuri-techo",
-      "kind": "concept",
-      "answer": "お薬手帳",
-      "accept": ["薬手帳", "おくすり手帳"],
-      "ja": "処方された薬の履歴を記録する手帳。重複や飲み合わせの確認に使う",
-      "q": "患者が処方された薬の履歴を記録しておく手帳。他院の薬との飲み合わせや重複投薬の確認に使う",
-      "explain": "受付で持参を確認する。電子版もあり、マイナンバーカードで薬剤情報を見る仕組みもある",
-      "level": "easy",
-      "tags": ["med-chart"]
     },
     {
       "id": "concept-med-shokaijo",
       "en": "med-shokaijo",
       "kind": "concept",
       "answer": "紹介状",
-      "accept": ["診療情報提供書", "診情"],
+      "accept": [
+        "診療情報提供書",
+        "診情"
+      ],
       "ja": "他院へ患者を送るとき病状や経過を書いて渡す書類",
       "q": "他の医療機関に患者を送るとき、医師が病状・検査結果・治療経過を書いて渡す書類。受付で封筒を渡し宛先を確認する",
       "explain": "正式名称は診療情報提供書で点数がある。大病院をこれなしで受診すると別途費用がかかる",
       "level": "easy",
-      "tags": ["med-chart"],
+      "tags": [
+        "med-chart"
+      ],
       "say": "referral letter"
     },
     {
@@ -592,12 +717,18 @@
       "en": "med-kensa-order",
       "kind": "concept",
       "answer": "検査オーダー",
-      "accept": ["オーダー", "オーダリング", "検査依頼"],
+      "accept": [
+        "オーダー",
+        "オーダリング",
+        "検査依頼"
+      ],
       "ja": "医師が検査を指示し、検査部門や外注先へ依頼が飛ぶこと",
       "q": "医師が電子カルテから血液検査や画像検査を指示し、検査室や外注の検査会社へ依頼が飛ぶこと",
       "explain": "検体を出す前にラベルと患者名を照合。外注検査は結果が届く日数を患者に伝える",
       "level": "normal",
-      "tags": ["med-chart"],
+      "tags": [
+        "med-chart"
+      ],
       "say": "test order"
     },
     {
@@ -605,12 +736,16 @@
       "en": "med-karte",
       "kind": "concept",
       "answer": "カルテ",
-      "accept": ["診療録"],
+      "accept": [
+        "診療録"
+      ],
       "ja": "診察内容・診断・治療方針を記録する法定の書類",
       "q": "医師が診察の内容・診断・治療方針を記録する法定の書類。保存期間が法律で決まっている",
       "explain": "正式には診療録。保存義務は5年が原則で、廃棄や開示には手順がある",
       "level": "normal",
-      "tags": ["med-chart"],
+      "tags": [
+        "med-chart"
+      ],
       "say": "medical record"
     },
     {
@@ -618,24 +753,34 @@
       "en": "med-utagai-byomei",
       "kind": "concept",
       "answer": "疑い病名",
-      "accept": ["疑い", "疑い病名"],
+      "accept": [
+        "疑い",
+        "の疑い"
+      ],
       "ja": "確定前に検査の根拠として付ける「〇〇の疑い」",
       "q": "確定診断の前に検査を行う根拠として、「〇〇の疑い」という形でカルテとレセプトに付ける診断名",
       "explain": "検査結果が出たら確定か中止にする。長期間残ると審査で不自然に見える",
       "level": "normal",
-      "tags": ["med-chart"]
+      "tags": [
+        "med-chart"
+      ]
     },
     {
       "id": "concept-med-tenki",
       "en": "med-tenki",
       "kind": "concept",
       "answer": "転帰",
-      "accept": ["治癒", "中止"],
+      "accept": [
+        "治癒",
+        "中止"
+      ],
       "ja": "治癒・中止・死亡など、その病名の治療がどう終わったかの区分",
       "q": "治癒・中止・死亡など、その病名の治療がどう終わったかを示す区分。レセプトの病名欄にセットで入れる",
       "explain": "終わった病名を残しっぱなしにすると病名が増え続ける。月初点検で整理する",
       "level": "hard",
-      "tags": ["med-chart"],
+      "tags": [
+        "med-chart"
+      ],
       "say": "outcome"
     },
     {
@@ -643,12 +788,16 @@
       "en": "med-shinryoka",
       "kind": "concept",
       "answer": "診療科",
-      "accept": ["科"],
+      "accept": [
+        "科"
+      ],
       "ja": "内科・小児科など、扱う病気や部位で分けた区分",
       "q": "内科・小児科・整形外科・皮膚科など、扱う病気や体の部位で分けた区分。受付でどこにかかるかを案内する",
       "explain": "同じ日に複数の科にかかると初診・再診の扱いが変わる。案内前に症状を軽く聞く",
       "level": "easy",
-      "tags": ["med-ops"],
+      "tags": [
+        "med-ops"
+      ],
       "say": "department"
     },
     {
@@ -656,38 +805,36 @@
       "en": "med-yoyaku-waku",
       "kind": "concept",
       "answer": "予約枠",
-      "accept": ["枠", "予約"],
+      "accept": [
+        "枠",
+        "予約"
+      ],
       "ja": "診察時間を区切って患者を割り当てる単位",
       "q": "診察時間を数分単位に区切って患者を割り当てる単位。埋まり具合で待ち時間と一日の患者数が決まる",
       "explain": "予約外の急患用に空けておく分と、無断キャンセル率を見込んで設計する",
       "level": "easy",
-      "tags": ["med-ops"],
+      "tags": [
+        "med-ops"
+      ],
       "say": "appointment slot"
-    },
-    {
-      "id": "concept-med-machi-jikan",
-      "en": "med-machi-jikan",
-      "kind": "concept",
-      "answer": "待ち時間",
-      "accept": ["待ち"],
-      "ja": "受付から診察に呼ばれるまでの時間。苦情の最大要因",
-      "q": "受付を済ませてから診察に呼ばれるまでの時間。クリニックへの苦情で最も多く、予約枠の設計で大きく変わる",
-      "explain": "「あと何人」を伝えるだけで体感は変わる。会計の待ちも含めて考える",
-      "level": "easy",
-      "tags": ["med-ops"],
-      "say": "waiting time"
     },
     {
       "id": "concept-med-denshi-karte",
       "en": "med-denshi-karte",
       "kind": "concept",
       "answer": "電子カルテ",
-      "accept": ["電カル", "EMR", "EHR"],
+      "accept": [
+        "電カル",
+        "EMR",
+        "EHR"
+      ],
       "ja": "パソコンで診療録を書き、検査や処方も一元管理するシステム",
       "q": "紙ではなくパソコンで診療録を書き、検査結果や処方、画像も一元管理するシステム。受付の患者登録から始まる",
       "explain": "レセコンと連携して算定まで流す。入力ミスがそのまま請求ミスになる",
       "level": "easy",
-      "tags": ["med-ops"],
+      "tags": [
+        "med-ops"
+      ],
       "say": "electronic medical record"
     },
     {
@@ -695,86 +842,90 @@
       "en": "med-recepon",
       "kind": "concept",
       "answer": "レセコン",
-      "accept": ["レセプトコンピュータ", "医事コン", "医事コンピュータ", "医事システム"],
+      "accept": [
+        "レセプトコンピュータ",
+        "医事コン",
+        "医事コンピュータ",
+        "医事システム"
+      ],
       "ja": "診療内容から点数を計算し会計とレセプトを作る医事システム",
       "q": "診療内容を入力すると点数を計算し、会計の金額とレセプトを作る医事課専用のシステム",
       "explain": "算定ルールのチェック機能を持つ。改定のたびにマスタ更新が必要",
       "level": "easy",
-      "tags": ["med-ops"]
+      "tags": [
+        "med-ops"
+      ]
     },
     {
       "id": "concept-med-online-shikaku",
       "en": "med-online-shikaku",
       "kind": "concept",
       "answer": "オンライン資格確認",
-      "accept": ["オン資", "オンライン資格確認システム"],
+      "accept": [
+        "オン資",
+        "オンライン資格確認システム"
+      ],
       "ja": "受付端末から保険資格をその場で照会する仕組み",
       "q": "受付のカードリーダーや端末から、患者の保険資格を保険者側のデータベースにその場で照会する仕組み",
       "explain": "資格切れによる返戻を減らせる。同意があれば薬剤情報や健診情報も閲覧できる",
       "level": "normal",
-      "tags": ["med-ops"]
+      "tags": [
+        "med-ops"
+      ]
     },
     {
       "id": "concept-med-kojin-joho",
       "en": "med-kojin-joho",
       "kind": "concept",
       "answer": "個人情報",
-      "accept": ["個人情報保護", "患者情報"],
+      "accept": [
+        "個人情報保護",
+        "患者情報"
+      ],
       "ja": "氏名・病名・検査結果など。受付での取り扱いに配慮が要る",
       "q": "患者の氏名・病名・検査結果など。待合室での呼び出し方や電話での問い合わせ対応で漏れないよう配慮する対象",
       "explain": "診療情報は要配慮個人情報。家族を名乗る電話でも本人確認なしに病状は答えない",
       "level": "easy",
-      "tags": ["med-ops"],
+      "tags": [
+        "med-ops"
+      ],
       "say": "personal information"
-    },
-    {
-      "id": "concept-med-ijika",
-      "en": "med-ijika",
-      "kind": "concept",
-      "answer": "医事課",
-      "accept": ["医事", "医療事務", "医事部門"],
-      "ja": "受付・会計・レセプト請求を担う部署",
-      "q": "病院で受付・会計・レセプト請求を担う部署。診療報酬の知識で医療機関の収入を支える",
-      "explain": "臨床の知識より算定ルールと保険制度の知識が武器になる部門",
-      "level": "normal",
-      "tags": ["med-ops"],
-      "say": "medical affairs department"
     },
     {
       "id": "concept-med-kaitei",
       "en": "med-kaitei",
       "kind": "concept",
       "answer": "診療報酬改定",
-      "accept": ["改定", "点数改定"],
+      "accept": [
+        "改定",
+        "点数改定"
+      ],
       "ja": "国が点数表と算定ルールを見直すこと。定期的に行われる",
       "q": "国が点数表と算定ルールを見直すこと。実施の年は医事課がレセコン更新と院内周知、掲示の差し替えに追われる",
       "explain": "原則2年ごと（薬価は毎年）。施設基準の要件も変わるので届出の見直しが要る",
       "level": "normal",
-      "tags": ["med-ops"]
-    },
-    {
-      "id": "concept-med-innai-keiji",
-      "en": "med-innai-keiji",
-      "kind": "concept",
-      "answer": "院内掲示",
-      "accept": ["掲示", "掲示義務"],
-      "ja": "施設基準や保険外料金など、待合室に掲げることが求められる情報",
-      "q": "届け出ている施設基準や保険外負担の料金、明細書発行の方針など、待合室に掲げることが求められている情報",
-      "explain": "指導や監査で最初に見られる。改定や料金変更のたびに差し替える",
-      "level": "hard",
-      "tags": ["med-ops"]
+      "tags": [
+        "med-ops"
+      ]
     },
     {
       "id": "concept-med-dpc",
       "en": "med-dpc",
       "kind": "concept",
       "answer": "DPC",
-      "accept": ["包括評価", "診断群分類", "DPC/PDPS"],
+      "accept": [
+        "包括評価",
+        "診断群分類",
+        "DPC/PDPS"
+      ],
       "ja": "急性期入院で病名と治療の組み合わせごとに1日定額で支払う方式",
       "q": "急性期の入院で、病名と治療内容の組み合わせごとに1日あたりの点数が決まる包括支払いの方式。対象病院で使う",
       "explain": "出来高と違い、検査を増やしても収入は増えない。コーディングの正確さが収入を左右する",
       "level": "hard",
-      "tags": ["med-abbr", "abbr"],
+      "tags": [
+        "med-abbr",
+        "abbr"
+      ],
       "say": "Diagnosis Procedure Combination"
     },
     {
@@ -782,12 +933,20 @@
       "en": "med-do",
       "kind": "concept",
       "answer": "Do",
-      "accept": ["ドゥー", "Do処方", "同上", "デュー"],
+      "accept": [
+        "ドゥー",
+        "Do処方",
+        "同上",
+        "デュー"
+      ],
       "ja": "「前回と同じ」を指す略記。処方やカルテで使う",
       "q": "カルテや処方の欄で「前回と同じ内容」を指す略記。医師が指示すると前回の処方がそのまま繰り返される",
       "explain": "ラテン語由来。長く続くと病名や検査との整合を見落としやすい",
       "level": "normal",
-      "tags": ["med-abbr", "abbr"],
+      "tags": [
+        "med-abbr",
+        "abbr"
+      ],
       "say": "ditto"
     },
     {
@@ -795,12 +954,19 @@
       "en": "med-otc",
       "kind": "concept",
       "answer": "OTC",
-      "accept": ["市販薬", "OTC医薬品", "一般用医薬品"],
+      "accept": [
+        "市販薬",
+        "OTC医薬品",
+        "一般用医薬品"
+      ],
       "ja": "処方箋なしで買える市販薬",
       "q": "処方箋なしでドラッグストアや薬局で買える薬。問診で「飲んでいる薬」を聞くときにこれも含めて確認する",
       "explain": "処方薬との重複や飲み合わせに注意。サプリメントも一緒に聞く",
       "level": "normal",
-      "tags": ["med-abbr", "abbr"],
+      "tags": [
+        "med-abbr",
+        "abbr"
+      ],
       "say": "over the counter"
     },
     {
@@ -808,52 +974,20 @@
       "en": "med-icd",
       "kind": "concept",
       "answer": "ICD",
-      "accept": ["ICD-10", "国際疾病分類", "ICD10"],
+      "accept": [
+        "ICD-10",
+        "国際疾病分類",
+        "ICD10"
+      ],
       "ja": "病名を世界共通のコードで分類する体系",
       "q": "病名を世界共通のコードで分類する体系。傷病名マスタやDPCのコード、統計のもとになる",
       "explain": "レセプトの傷病名コードはこの分類に対応している。版が変わると読み替えが要る",
       "level": "hard",
-      "tags": ["med-abbr", "abbr"],
+      "tags": [
+        "med-abbr",
+        "abbr"
+      ],
       "say": "International Classification of Diseases"
-    },
-    {
-      "id": "concept-med-rp",
-      "en": "med-rp",
-      "kind": "concept",
-      "answer": "Rp",
-      "accept": ["処方欄", "レシピ"],
-      "ja": "処方欄の先頭に書く記号。「以下を処方せよ」の意味",
-      "q": "カルテや処方箋の処方欄の先頭に書く記号。この後に薬の名前・量・日数が続く",
-      "explain": "ラテン語 recipe の略。読み方はそのまま「アールピー」",
-      "level": "normal",
-      "tags": ["med-abbr", "abbr"],
-      "say": "recipe"
-    },
-    {
-      "id": "concept-med-ic",
-      "en": "med-ic",
-      "kind": "concept",
-      "answer": "IC",
-      "accept": ["インフォームドコンセント", "説明と同意"],
-      "ja": "医師が説明し患者が理解して同意すること",
-      "q": "医師が治療の内容・リスク・代替案を説明し、患者が理解した上で同意すること。カルテに記録が残る",
-      "explain": "同意書の保管は事務の仕事になることが多い。手術や検査の前に「取れているか」を確認",
-      "level": "normal",
-      "tags": ["med-abbr", "abbr"],
-      "say": "informed consent"
-    },
-    {
-      "id": "concept-med-ns",
-      "en": "med-ns",
-      "kind": "concept",
-      "answer": "Ns",
-      "accept": ["看護師", "ナース", "NS"],
-      "ja": "看護師の略記。申し送りやシフト表で使う",
-      "q": "院内の申し送りメモやシフト表、電子カルテの職種欄で使う看護師の略記。医師はDrと書く",
-      "explain": "受付から看護師へ伝えるメモにも使う。患者の前では略さず職種名で呼ぶ",
-      "level": "easy",
-      "tags": ["med-abbr", "abbr"],
-      "say": "nurse"
     }
   ]
 }

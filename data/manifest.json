@@ -109,6 +109,36 @@
           "count": 53,
           "blurb": "集客・サイト・KPI・受注物流・CRM。ネット通販の現場で毎日出る言葉",
           "audience": "EC・D2Cの運営担当になった人、店舗からECへ移った人"
+        },
+        {
+          "id": "medical",
+          "label": "医療事務・受付",
+          "file": "packs/medical.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "受付・会計からレセプト請求まで。クリニックの窓口で毎日使う言葉",
+          "audience": "医療事務の新人、クリニック受付を始めた人"
+        },
+        {
+          "id": "restaurant",
+          "label": "飲食店経営",
+          "file": "packs/restaurant.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "原価・回転率からHACCP・シフト・開業まで。店を回す数字と現場の言葉",
+          "audience": "飲食店の店長候補、開業を考えている人"
+        },
+        {
+          "id": "usedcar",
+          "label": "中古車 買取・販売 実務",
+          "file": "packs/usedcar.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "修復歴の見方から名義変更・税金の精算・契約まで。現場で使う手続きの言葉",
+          "audience": "中古車店・買取店の新人、査定士を目指す人"
         }
       ]
     }

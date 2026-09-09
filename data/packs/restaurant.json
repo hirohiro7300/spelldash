@@ -18,12 +18,20 @@
       "en": "rest-fl-ratio",
       "kind": "concept",
       "answer": "FL比率",
-      "accept": ["FLコスト", "FL", "FLレシオ", "FL率"],
+      "accept": [
+        "FLコスト",
+        "FL",
+        "FLレシオ",
+        "FL率"
+      ],
       "ja": "売上に占める食材費と人件費の合計の割合",
       "q": "売上に占める食材費（Food）と人件費（Labor）の合計の割合。飲食店の健全性を見る最初の指標",
       "explain": "目安は60%以下と言われる。ここが膨らむと家賃を払う前に利益が消える",
       "level": "easy",
-      "tags": ["rest-num", "abbr"],
+      "tags": [
+        "rest-num",
+        "abbr"
+      ],
       "say": "food and labor cost ratio"
     },
     {
@@ -31,12 +39,18 @@
       "en": "rest-genkaritsu",
       "kind": "concept",
       "answer": "原価率",
-      "accept": ["食材原価率", "フードコスト", "材料費率"],
+      "accept": [
+        "食材原価率",
+        "フードコスト",
+        "材料費率"
+      ],
       "ja": "売上に対して食材の仕入れがいくらかかったかの割合",
       "q": "売上に対して食材の仕入れがいくらかかったかの割合。メニュー1品ごとにも、店全体の月次でも見る",
       "explain": "目安は30%前後と言われるが業態で大きく違う。廃棄ロスも含めた実績で見る",
       "level": "easy",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "food cost ratio"
     },
     {
@@ -44,12 +58,17 @@
       "en": "rest-jinkenhiritsu",
       "kind": "concept",
       "answer": "人件費率",
-      "accept": ["労務費率", "レイバーコスト"],
+      "accept": [
+        "労務費率",
+        "レイバーコスト"
+      ],
       "ja": "売上に対するスタッフの給与・時給などの費用の割合",
       "q": "売上に対して、給与・時給・社会保険料・交通費などスタッフにかかる費用がどれだけの割合かを示す数字",
       "explain": "シフトの組み方で毎日変わる。売上予測に対して人時を組むと下がる",
-      "level": "easy",
-      "tags": ["rest-num"],
+      "level": "normal",
+      "tags": [
+        "rest-num"
+      ],
       "say": "labor cost ratio"
     },
     {
@@ -57,12 +76,17 @@
       "en": "rest-yachin-hiritsu",
       "kind": "concept",
       "answer": "家賃比率",
-      "accept": ["賃料比率", "家賃率"],
+      "accept": [
+        "賃料比率",
+        "家賃率"
+      ],
       "ja": "売上に対する家賃の割合。物件契約時にほぼ決まる固定費",
       "q": "売上に対する家賃の割合。物件を契約した時点でほぼ確定し、売上が落ちても下がらない固定費",
       "explain": "目安は10%以内と言われる。物件を決める前に見込み売上から逆算する",
       "level": "normal",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "rent ratio"
     },
     {
@@ -70,12 +94,17 @@
       "en": "rest-kyakutanka",
       "kind": "concept",
       "answer": "客単価",
-      "accept": ["平均客単価", "単価"],
+      "accept": [
+        "平均客単価",
+        "単価"
+      ],
       "ja": "客1人あたりの平均支払額。売上÷客数",
       "q": "客1人あたりの平均支払額。1日の売上を来店した人数で割って出す。ドリンクやサイドの一品で動く",
       "explain": "売上＝客数×この値。値上げ以外に「もう一品」の提案でも上がる",
       "level": "easy",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "average spend per customer"
     },
     {
@@ -83,12 +112,18 @@
       "en": "rest-kyakusu",
       "kind": "concept",
       "answer": "客数",
-      "accept": ["来客数", "来店客数", "組数"],
+      "accept": [
+        "来客数",
+        "来店客数",
+        "組数"
+      ],
       "ja": "来店した人数。売上を分解した一方の要素",
       "q": "売上を分解したときの一方の要素で、来店した人の数。もう一方は1人あたりの支払額で、売上はこの2つの掛け算",
       "explain": "売上が落ちたら、まずこちらが落ちたのか単価が落ちたのかを分ける。対策が全く違う",
       "level": "easy",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "number of customers"
     },
     {
@@ -96,12 +131,18 @@
       "en": "rest-kaitenritsu",
       "kind": "concept",
       "answer": "回転率",
-      "accept": ["席回転率", "回転数", "回転"],
+      "accept": [
+        "席回転率",
+        "回転数",
+        "回転"
+      ],
       "ja": "1日の客数÷席数。1つの席を何組が使ったか",
       "q": "1日の客数を席数で割った値。1つの席を何組の客が使ったかを示し、ランチ業態の売上を左右する",
       "explain": "ランチは滞在時間短縮でこれを上げ、ディナーは客単価で稼ぐなど時間帯で戦略が変わる",
       "level": "easy",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "table turnover rate"
     },
     {
@@ -109,12 +150,17 @@
       "en": "rest-seki-kadoritsu",
       "kind": "concept",
       "answer": "席稼働率",
-      "accept": ["稼働率", "満席率"],
+      "accept": [
+        "稼働率",
+        "満席率"
+      ],
       "ja": "満席を100としたとき実際にどれだけ席が埋まったかの割合",
       "q": "満席を100としたとき、実際にどれだけ席が埋まっていたかの割合。4人席に2人だと半分しか使えていない",
       "explain": "回転率と違い「席の埋まり方」を見る。2人席を増やしたり相席運用で上がる",
-      "level": "normal",
-      "tags": ["rest-num"],
+      "level": "hard",
+      "tags": [
+        "rest-num"
+      ],
       "say": "seat occupancy rate"
     },
     {
@@ -122,38 +168,38 @@
       "en": "rest-soneki-bunkiten",
       "kind": "concept",
       "answer": "損益分岐点",
-      "accept": ["損益分岐点売上", "損益分岐点売上高", "BEP"],
+      "accept": [
+        "損益分岐点売上",
+        "損益分岐点売上高",
+        "BEP"
+      ],
       "ja": "利益がゼロになる売上高。最低いくら売る必要があるか",
       "q": "利益がちょうどゼロになる売上高。家賃や人件費などの固定費を賄うために、月に最低いくら売らなければならないか",
       "explain": "固定費÷（1−変動費率）で出す。月の目標売上と日割りの根拠になる",
-      "level": "normal",
-      "tags": ["rest-num"],
+      "level": "hard",
+      "tags": [
+        "rest-num"
+      ],
       "say": "break-even point"
-    },
-    {
-      "id": "concept-rest-arari",
-      "en": "rest-arari",
-      "kind": "concept",
-      "answer": "粗利",
-      "accept": ["粗利益", "売上総利益", "荒利"],
-      "ja": "売上から食材費を引いた残り。人件費や家賃はここから払う",
-      "q": "売上から食材費を引いた残り。人件費・家賃・光熱費はここから払う。メニューごとの額を見て看板商品を決める",
-      "explain": "原価率が低くても額が小さい商品は店を支えない。率と額の両方で見る",
-      "level": "easy",
-      "tags": ["rest-num"],
-      "say": "gross profit"
     },
     {
       "id": "concept-rest-loss-ritsu",
       "en": "rest-loss-ritsu",
       "kind": "concept",
       "answer": "ロス率",
-      "accept": ["廃棄率", "廃棄ロス", "ロス", "フードロス"],
+      "accept": [
+        "廃棄率",
+        "廃棄ロス",
+        "ロス",
+        "フードロス"
+      ],
       "ja": "仕入れた食材のうち期限切れや作りすぎで捨てた分の割合",
       "q": "仕入れた食材のうち、期限切れや作りすぎ、オーダーミスで捨てた分の割合。原価率が理論値より高くなる原因",
       "explain": "仕込み量と発注量を売上予測に合わせて減らす。廃棄の記録を付けないと見えない",
       "level": "normal",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "waste rate"
     },
     {
@@ -161,12 +207,18 @@
       "en": "rest-budomari",
       "kind": "concept",
       "answer": "歩留まり",
-      "accept": ["歩留り", "歩留まり率", "可食率"],
+      "accept": [
+        "歩留り",
+        "歩留まり率",
+        "可食率"
+      ],
       "ja": "魚1匹や野菜1個から実際に使える部分がどれだけ残るかの割合",
       "q": "魚1匹や野菜1個から、皮・骨・芯を除いて実際に料理に使える部分がどれだけ残るかの割合",
       "explain": "原価は買値ではなく可食部で計算する。ここを見落とすとレシピの原価率が狂う",
-      "level": "normal",
-      "tags": ["rest-num"],
+      "level": "hard",
+      "tags": [
+        "rest-num"
+      ],
       "say": "yield"
     },
     {
@@ -174,12 +226,18 @@
       "en": "rest-tanaoroshi",
       "kind": "concept",
       "answer": "棚卸",
-      "accept": ["棚卸し", "在庫棚卸", "たなおろし"],
+      "accept": [
+        "棚卸し",
+        "在庫棚卸",
+        "たなおろし"
+      ],
       "ja": "月末に食材と酒の在庫を数えて金額に直す作業",
       "q": "月末などに冷蔵庫・冷凍庫・倉庫の食材と酒の在庫を数え、金額に直す作業。正しい原価率を出すために欠かせない",
       "explain": "原価＝期首在庫＋仕入−期末在庫。数えないと「仕入額」しか分からない",
-      "level": "easy",
-      "tags": ["rest-num"],
+      "level": "normal",
+      "tags": [
+        "rest-num"
+      ],
       "say": "inventory count"
     },
     {
@@ -187,12 +245,17 @@
       "en": "rest-abc-analysis",
       "kind": "concept",
       "answer": "ABC分析",
-      "accept": ["ABC", "メニュー分析"],
+      "accept": [
+        "ABC",
+        "メニュー分析"
+      ],
       "ja": "メニューを売上や粗利の貢献度で3ランクに分ける手法",
       "q": "メニューを売上や粗利への貢献度が高い順に3つのランクに分け、看板商品と外す候補を見分ける手法",
       "explain": "上位は目立たせ、下位は廃止か改良。原価率だけでなく粗利額と出数で判断する",
       "level": "normal",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "ABC analysis"
     },
     {
@@ -200,12 +263,18 @@
       "en": "rest-riron-genka",
       "kind": "concept",
       "answer": "理論原価",
-      "accept": ["標準原価", "理論原価率", "レシピ原価"],
+      "accept": [
+        "標準原価",
+        "理論原価率",
+        "レシピ原価"
+      ],
       "ja": "レシピ通りに作った場合の原価を出数分積み上げた値",
       "q": "レシピ通りに作った場合の1皿あたりの食材費を、売れた数だけ積み上げた原価。実際の仕入れと在庫から出した原価と比べる",
       "explain": "実際原価との差がロス・盗難・レシピ逸脱。差が開いたら現場を見に行く",
       "level": "hard",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "theoretical food cost"
     },
     {
@@ -213,12 +282,17 @@
       "en": "rest-ninji-uriage",
       "kind": "concept",
       "answer": "人時売上高",
-      "accept": ["人時売上", "人時生産性"],
+      "accept": [
+        "人時売上",
+        "人時生産性"
+      ],
       "ja": "売上÷総労働時間。1人1時間あたりいくら売ったか",
       "q": "売上をスタッフの総労働時間で割った値。1人が1時間働いていくら売ったかを見る生産性の指標",
       "explain": "人件費率を下げるにはこれを上げる。時間帯別に出すとシフトの過不足が見える",
       "level": "hard",
-      "tags": ["rest-num"],
+      "tags": [
+        "rest-num"
+      ],
       "say": "sales per labor hour"
     },
     {
@@ -226,12 +300,17 @@
       "en": "rest-shikomi",
       "kind": "concept",
       "answer": "仕込み",
-      "accept": ["下ごしらえ", "プレップ"],
+      "accept": [
+        "下ごしらえ",
+        "プレップ"
+      ],
       "ja": "営業前に食材を切る・だしを取るなど提供の準備をしておく作業",
       "q": "営業前に野菜を切る、だしを取る、ソースを作るなど、注文が入ったらすぐ出せるよう準備しておく作業",
       "explain": "量は売上予測から決める。多すぎればロス、少なすぎれば品切れと提供遅れ",
       "level": "easy",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "prep"
     },
     {
@@ -239,12 +318,18 @@
       "en": "rest-peak",
       "kind": "concept",
       "answer": "ピーク",
-      "accept": ["ピークタイム", "ピーク帯", "繁忙時間"],
+      "accept": [
+        "ピークタイム",
+        "ピーク帯",
+        "繁忙時間"
+      ],
       "ja": "注文が集中し厨房もホールも最も忙しい時間帯",
       "q": "ランチの正午前後や週末の夜など、注文が集中して厨房もホールも最も忙しい時間帯。人を厚く配置する",
       "explain": "この時間に何組さばけるかが売上の上限。前後の仕込みと片付けで人を薄くする",
       "level": "easy",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "peak time"
     },
     {
@@ -252,12 +337,17 @@
       "en": "rest-idle-time",
       "kind": "concept",
       "answer": "アイドルタイム",
-      "accept": ["アイドル", "中間時間"],
+      "accept": [
+        "アイドル",
+        "中間時間"
+      ],
       "ja": "ランチとディナーの間など客がほとんど来ない時間帯",
       "q": "ランチとディナーの間など、客がほとんど来ない時間帯。仕込みや掃除、休憩、発注に充てる",
       "explain": "人件費の無駄が出やすい時間。中抜けシフトやカフェ営業で使い方を決める",
       "level": "normal",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "idle time"
     },
     {
@@ -265,38 +355,36 @@
       "en": "rest-last-order",
       "kind": "concept",
       "answer": "ラストオーダー",
-      "accept": ["LO", "L.O.", "ラスオ"],
+      "accept": [
+        "LO",
+        "L.O.",
+        "ラスオ"
+      ],
       "ja": "閉店前に注文を締め切る時刻",
       "q": "閉店前に注文を締め切る時刻。ホールが各テーブルを回って「最後のご注文はございますか」と聞く",
       "explain": "料理と飲み物で時刻を分ける店も多い。ここから閉店までが片付けの時間になる",
       "level": "easy",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "last order"
-    },
-    {
-      "id": "concept-rest-hall",
-      "en": "rest-hall",
-      "kind": "concept",
-      "answer": "ホール",
-      "accept": ["フロア", "サービス", "接客"],
-      "ja": "案内・注文・配膳・会計など客と接する側の担当",
-      "q": "案内・注文取り・配膳・下げ物・会計など、客と直接接する側の担当。厨房と対になる言葉",
-      "explain": "提供の順番と厨房への声かけで店の流れを作る。厨房との連携が悪いと提供が遅れる",
-      "level": "easy",
-      "tags": ["rest-ops"],
-      "say": "front of house"
     },
     {
       "id": "concept-rest-position",
       "en": "rest-position",
       "kind": "concept",
       "answer": "ポジション",
-      "accept": ["持ち場", "担当"],
+      "accept": [
+        "持ち場",
+        "担当"
+      ],
       "ja": "焼き場・揚げ場・ドリンクなど厨房やホールの中で分けた持ち場",
       "q": "焼き場・揚げ場・盛り付け・ドリンク・レジなど、厨房やホールの中で担当を分けた持ち場",
       "explain": "誰がどこに入るかがシフト表の中身。複数こなせる人が増えると少人数で回る",
       "level": "normal",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "position"
     },
     {
@@ -304,12 +392,18 @@
       "en": "rest-order-entry",
       "kind": "concept",
       "answer": "オーダーエントリー",
-      "accept": ["オーダーエントリーシステム", "OES", "オーダーシステム"],
+      "accept": [
+        "オーダーエントリーシステム",
+        "OES",
+        "オーダーシステム"
+      ],
       "ja": "注文を端末に入れると厨房と会計に飛ぶシステム",
       "q": "ホールが取った注文を端末に入力すると、厨房のプリンタやモニターに飛び、そのまま会計にもつながるシステム",
       "explain": "伝票の往復と聞き間違いを減らす。売れ数データがABC分析の元になる",
       "level": "normal",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "order entry system"
     },
     {
@@ -317,12 +411,17 @@
       "en": "rest-handy",
       "kind": "concept",
       "answer": "ハンディ",
-      "accept": ["ハンディターミナル", "ハンディ端末"],
+      "accept": [
+        "ハンディターミナル",
+        "ハンディ端末"
+      ],
       "ja": "ホールが持ち歩きテーブル番号と注文を入力する小型端末",
       "q": "ホールスタッフが持ち歩き、テーブル番号と注文を入力する小型の端末。押した瞬間に厨房へ伝わる",
       "explain": "メニュー変更時の登録漏れが事故の元。テーブル番号の押し間違いにも注意",
       "level": "easy",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "handheld terminal"
     },
     {
@@ -330,12 +429,18 @@
       "en": "rest-reji-jime",
       "kind": "concept",
       "answer": "レジ締め",
-      "accept": ["レジ点検", "締め作業", "精算"],
+      "accept": [
+        "レジ点検",
+        "締め作業",
+        "精算"
+      ],
       "ja": "閉店後にレジの現金と売上記録が合っているか確認する作業",
       "q": "閉店後にレジの現金を数え、レジの売上記録と合っているかを確認する作業。翌日の釣銭を分けてから金庫へ入れる",
       "explain": "過不足が出たら当日中に原因を探す。キャッシュレスの分は入金日が違うので別に管理",
       "level": "easy",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "cash-up"
     },
     {
@@ -343,64 +448,38 @@
       "en": "rest-tsurisen",
       "kind": "concept",
       "answer": "釣銭準備金",
-      "accept": ["釣銭", "釣り銭", "釣銭準備", "小銭"],
+      "accept": [
+        "釣銭",
+        "釣り銭",
+        "釣銭準備",
+        "小銭"
+      ],
       "ja": "開店前にレジに入れておく小銭と千円札",
       "q": "開店前にレジに入れておく小銭と千円札。営業中に足りなくならないよう額と内訳を決めておく",
       "explain": "レジ締めのとき売上と分けて数える。両替の手数料もコストなので週の計画を立てる",
       "level": "easy",
-      "tags": ["rest-ops"],
+      "tags": [
+        "rest-ops"
+      ],
       "say": "change float"
-    },
-    {
-      "id": "concept-rest-teikyo-jikan",
-      "en": "rest-teikyo-jikan",
-      "kind": "concept",
-      "answer": "提供時間",
-      "accept": ["提供スピード", "提供までの時間"],
-      "ja": "注文から料理がテーブルに届くまでの時間",
-      "q": "注文を受けてから料理がテーブルに届くまでの時間。ランチでは回転率を、ディナーでは満足度を左右する",
-      "explain": "遅れるときは先に一声かける。先付けやドリンクを早く出すと体感が変わる",
-      "level": "normal",
-      "tags": ["rest-ops"],
-      "say": "ticket time"
-    },
-    {
-      "id": "concept-rest-shinagire",
-      "en": "rest-shinagire",
-      "kind": "concept",
-      "answer": "品切れ",
-      "accept": ["売り切れ", "欠品", "売切"],
-      "ja": "仕込みや発注が足りず営業中にメニューが出せなくなること",
-      "q": "仕込みや発注が足りず、営業中にメニューが出せなくなること。ホールが客に謝り、代わりを勧める場面",
-      "explain": "ロスを恐れて仕込みを絞りすぎると起きる。看板商品で起こすと来店理由を失う",
-      "level": "normal",
-      "tags": ["rest-ops"],
-      "say": "sold out"
-    },
-    {
-      "id": "concept-rest-hacchu",
-      "en": "rest-hacchu",
-      "kind": "concept",
-      "answer": "発注",
-      "accept": ["仕入れ発注", "オーダー"],
-      "ja": "業者に翌日以降の食材や酒を注文する作業",
-      "q": "業者に翌日以降の食材や酒を注文する作業。在庫と売上予測を見て量を決め、締め時間までに送る",
-      "explain": "発注点と発注量を決めておくと属人化しない。締め時間を過ぎると納品が1日ずれる",
-      "level": "easy",
-      "tags": ["rest-ops"],
-      "say": "ordering"
     },
     {
       "id": "concept-rest-haccp",
       "en": "rest-haccp",
       "kind": "concept",
       "answer": "HACCP",
-      "accept": ["ハサップ", "ハセップ"],
+      "accept": [
+        "ハサップ",
+        "ハセップ"
+      ],
       "ja": "工程ごとに危害を決めて温度や時間を記録する衛生管理手法",
       "q": "原材料の受け入れから提供までの工程で危険な点を決め、温度や時間を毎日記録して管理する衛生管理の手法。小規模店にも導入が求められる",
       "explain": "小規模店は手引書に沿った「考え方を取り入れた衛生管理」でよい。記録を残すことが核",
       "level": "easy",
-      "tags": ["rest-hygiene", "abbr"],
+      "tags": [
+        "rest-hygiene",
+        "abbr"
+      ],
       "say": "Hazard Analysis and Critical Control Point"
     },
     {
@@ -408,12 +487,16 @@
       "en": "rest-shokuhin-eisei",
       "kind": "concept",
       "answer": "食品衛生責任者",
-      "accept": ["衛生責任者"],
+      "accept": [
+        "衛生責任者"
+      ],
       "ja": "店ごとに1人置く衛生管理の担当者。講習で取得",
       "q": "飲食店ごとに1人置くことが求められる衛生管理の担当者。講習を受けて取得し、店内に名札を掲示する",
       "explain": "調理師や栄養士は講習免除。営業許可の申請時に必要になる",
       "level": "easy",
-      "tags": ["rest-hygiene"],
+      "tags": [
+        "rest-hygiene"
+      ],
       "say": "food hygiene supervisor"
     },
     {
@@ -421,12 +504,17 @@
       "en": "rest-chushin-ondo",
       "kind": "concept",
       "answer": "中心温度",
-      "accept": ["芯温", "中心部温度"],
+      "accept": [
+        "芯温",
+        "中心部温度"
+      ],
       "ja": "肉などの一番厚い部分の温度。加熱が十分かを測る",
       "q": "肉やハンバーグの一番厚い部分の温度。温度計を刺して測り、加熱が十分かを確かめてHACCPの記録に残す",
       "explain": "75℃で1分以上が加熱の目安（ノロ対策は85〜90℃で90秒以上）",
       "level": "normal",
-      "tags": ["rest-hygiene"],
+      "tags": [
+        "rest-hygiene"
+      ],
       "say": "core temperature"
     },
     {
@@ -434,12 +522,17 @@
       "en": "rest-niji-osen",
       "kind": "concept",
       "answer": "二次汚染",
-      "accept": ["交差汚染", "クロスコンタミネーション"],
+      "accept": [
+        "交差汚染",
+        "クロスコンタミネーション"
+      ],
       "ja": "菌が器具や手を介して別の食材に移ること",
       "q": "生肉を切ったまな板でサラダの野菜を切るなど、菌が器具や手を介して別の食材に移ること",
       "explain": "生食用と加熱用でまな板と包丁を色分け。手洗いのタイミングを工程で決める",
       "level": "normal",
-      "tags": ["rest-hygiene"],
+      "tags": [
+        "rest-hygiene"
+      ],
       "say": "cross contamination"
     },
     {
@@ -447,12 +540,18 @@
       "en": "rest-allergy-hyoji",
       "kind": "concept",
       "answer": "アレルギー表示",
-      "accept": ["アレルゲン表示", "特定原材料", "アレルゲン"],
+      "accept": [
+        "アレルゲン表示",
+        "特定原材料",
+        "アレルゲン"
+      ],
       "ja": "メニューにえび・小麦・卵などの原材料が含まれるかを示すこと",
       "q": "メニューにえび・小麦・卵・乳などの原材料が含まれるかを示すこと。客に聞かれたら正確に答えられる体制が要る",
       "explain": "「分かりません」は事故につながる。メニューごとの一覧表を作り、変更時に更新する",
-      "level": "easy",
-      "tags": ["rest-hygiene"],
+      "level": "normal",
+      "tags": [
+        "rest-hygiene"
+      ],
       "say": "allergen labeling"
     },
     {
@@ -465,7 +564,9 @@
       "q": "弁当や生菓子、生肉など傷みやすい食品に付く、この日を過ぎたら食べない方がよい期限。過ぎたものは廃棄する",
       "explain": "賞味期限は「おいしく食べられる目安」で意味が違う。混同すると廃棄判断を誤る",
       "level": "normal",
-      "tags": ["rest-hygiene"],
+      "tags": [
+        "rest-hygiene"
+      ],
       "say": "use-by date"
     },
     {
@@ -478,7 +579,9 @@
       "q": "缶詰や調味料、乾物など日持ちする食品に付く、おいしく食べられる期間を示す期限",
       "explain": "過ぎてもすぐ食べられなくなるわけではない。傷みやすい食品に付くのは別の期限",
       "level": "easy",
-      "tags": ["rest-hygiene"],
+      "tags": [
+        "rest-hygiene"
+      ],
       "say": "best-before date"
     },
     {
@@ -486,38 +589,36 @@
       "en": "rest-tearai",
       "kind": "concept",
       "answer": "手洗い",
-      "accept": ["手指洗浄", "手指消毒"],
+      "accept": [
+        "手指洗浄",
+        "手指消毒"
+      ],
       "ja": "調理前・生肉の後・トイレの後などに行う衛生の基本",
       "q": "調理前、生肉を触った後、トイレの後、清掃の後などに石けんで行う衛生の基本。HACCPでもタイミングを決めて記録する",
       "explain": "食中毒予防の最初の一手。「いつ」を手順に書き込むと新人でも抜けない",
       "level": "easy",
-      "tags": ["rest-hygiene"],
+      "tags": [
+        "rest-hygiene"
+      ],
       "say": "hand washing"
-    },
-    {
-      "id": "concept-rest-shokuchudoku",
-      "en": "rest-shokuchudoku",
-      "kind": "concept",
-      "answer": "食中毒",
-      "accept": ["食あたり"],
-      "ja": "加熱不足や保存温度の不備で客が体調を崩すこと",
-      "q": "加熱不足や保存温度の不備、手洗い不足で客が腹痛や嘔吐を起こすこと。発生すると営業停止や店名公表につながる",
-      "explain": "原因菌で対策が違う。ノロは加熱と手洗い、カンピロバクターは鶏肉の加熱",
-      "level": "easy",
-      "tags": ["rest-hygiene"],
-      "say": "food poisoning"
     },
     {
       "id": "concept-rest-kenben",
       "en": "rest-kenben",
       "kind": "concept",
       "answer": "検便",
-      "accept": ["検便検査", "腸内細菌検査", "保菌検査"],
+      "accept": [
+        "検便検査",
+        "腸内細菌検査",
+        "保菌検査"
+      ],
       "ja": "調理スタッフが定期的に受ける、保菌がないか調べる検査",
       "q": "調理に関わるスタッフが定期的に受ける、ノロや赤痢菌などを持っていないか調べる検査。結果を保管する",
       "explain": "頻度は保健所や業態の基準に従う。新人の入店前にも受けさせる店が多い",
       "level": "hard",
-      "tags": ["rest-hygiene"],
+      "tags": [
+        "rest-hygiene"
+      ],
       "say": "stool test"
     },
     {
@@ -525,12 +626,18 @@
       "en": "rest-gourmet-site",
       "kind": "concept",
       "answer": "グルメサイト",
-      "accept": ["口コミサイト", "グルメ媒体", "予約サイト"],
+      "accept": [
+        "口コミサイト",
+        "グルメ媒体",
+        "予約サイト"
+      ],
       "ja": "店を探す客が最初に見る掲載サイト。予約導線と口コミがある",
       "q": "店を探す客が最初に見る掲載サイト。店舗ページ、写真、メニュー、ネット予約、口コミが載る",
       "explain": "掲載料と送客手数料のプランを理解する。写真とメニューの更新頻度が効く",
       "level": "easy",
-      "tags": ["rest-marketing"],
+      "tags": [
+        "rest-marketing"
+      ],
       "say": "restaurant review site"
     },
     {
@@ -538,12 +645,18 @@
       "en": "rest-kuchikomi",
       "kind": "concept",
       "answer": "口コミ",
-      "accept": ["レビュー", "クチコミ", "評価"],
+      "accept": [
+        "レビュー",
+        "クチコミ",
+        "評価"
+      ],
       "ja": "来店した客が投稿した星と感想。次の客が来店を決める材料",
       "q": "来店した客がサイトや地図アプリに投稿した星と感想。次の客が来店を決める材料になり、検索順位にも影響する",
       "explain": "低評価には冷静に返信。自作自演や割引と引き換えの依頼は規約や法律に触れる",
       "level": "easy",
-      "tags": ["rest-marketing"],
+      "tags": [
+        "rest-marketing"
+      ],
       "say": "review"
     },
     {
@@ -551,12 +664,18 @@
       "en": "rest-repeat-ritsu",
       "kind": "concept",
       "answer": "リピート率",
-      "accept": ["再来店率", "リピーター率", "再訪率"],
+      "accept": [
+        "再来店率",
+        "リピーター率",
+        "再訪率"
+      ],
       "ja": "一度来た客のうちもう一度来てくれた客の割合",
       "q": "一度来た客のうち、もう一度来てくれた客の割合。新規集客より安く売上を作れるかを示す指標",
       "explain": "新規1人の獲得費用と比べる。会員登録やLINEで測れるようにしておく",
       "level": "normal",
-      "tags": ["rest-marketing"],
+      "tags": [
+        "rest-marketing"
+      ],
       "say": "repeat rate"
     },
     {
@@ -564,12 +683,19 @@
       "en": "rest-line-official",
       "kind": "concept",
       "answer": "LINE公式アカウント",
-      "accept": ["LINE公式", "公式LINE", "LINE", "店舗LINE"],
+      "accept": [
+        "LINE公式",
+        "公式LINE",
+        "LINE",
+        "店舗LINE"
+      ],
       "ja": "客に友だち登録してもらいクーポンや新メニューを直接届ける手段",
       "q": "客に友だち登録してもらい、クーポンや新メニューの案内を直接届ける店側のアカウント。再来店の呼びかけに使う",
       "explain": "配信数で料金が変わるので配信対象を絞る。登録の入口はレジ横と会計時の一声",
       "level": "normal",
-      "tags": ["rest-marketing"],
+      "tags": [
+        "rest-marketing"
+      ],
       "say": "LINE official account"
     },
     {
@@ -577,12 +703,18 @@
       "en": "rest-takeout",
       "kind": "concept",
       "answer": "テイクアウト",
-      "accept": ["持ち帰り", "お持ち帰り", "TO"],
+      "accept": [
+        "持ち帰り",
+        "お持ち帰り",
+        "TO"
+      ],
       "ja": "料理を容器に入れて客が持ち帰る販売形態",
       "q": "店で作った料理を容器に入れて客が持ち帰る販売形態。席数に縛られずに売上を足せる",
       "explain": "容器代、持ち帰り後の保存時間、税率の扱いが店内飲食と異なる",
       "level": "easy",
-      "tags": ["rest-marketing"],
+      "tags": [
+        "rest-marketing"
+      ],
       "say": "takeout"
     },
     {
@@ -590,38 +722,36 @@
       "en": "rest-delivery-fee",
       "kind": "concept",
       "answer": "デリバリー手数料",
-      "accept": ["配達手数料", "プラットフォーム手数料", "出前手数料"],
+      "accept": [
+        "配達手数料",
+        "プラットフォーム手数料",
+        "出前手数料"
+      ],
       "ja": "出前アプリ経由の注文で売上から差し引かれる支払い",
       "q": "出前アプリ経由の注文で、売上から差し引かれる代行会社への支払い。原価率と粗利の計算に直接影響する",
       "explain": "店内と同じ価格では利益が残らないことがある。アプリ用の価格とメニューを検討する",
       "level": "normal",
-      "tags": ["rest-marketing"],
+      "tags": [
+        "rest-marketing"
+      ],
       "say": "delivery commission"
-    },
-    {
-      "id": "concept-rest-kanban-menu",
-      "en": "rest-kanban-menu",
-      "kind": "concept",
-      "answer": "看板メニュー",
-      "accept": ["看板商品", "名物", "スペシャリテ"],
-      "ja": "その店といえばこれ、と客が思い出す商品",
-      "q": "その店といえばこれ、と客が思い出す商品。グルメサイトの写真や口コミの中心になり、来店理由を作る",
-      "explain": "ABC分析の上位。原価をかけてでも満足度を取りに行き、品切れを起こさない",
-      "level": "easy",
-      "tags": ["rest-marketing"],
-      "say": "signature dish"
     },
     {
       "id": "concept-rest-lunch-eigyo",
       "en": "rest-lunch-eigyo",
       "kind": "concept",
       "answer": "ランチ営業",
-      "accept": ["ランチ", "昼営業"],
+      "accept": [
+        "ランチ",
+        "昼営業"
+      ],
       "ja": "昼に安めの価格と早い提供で客を回し、夜の来店につなげる営業",
       "q": "昼の時間帯に安めの価格と早い提供で客を回し、店を知ってもらって夜の来店につなげる営業",
       "explain": "回転率勝負。単価が低いので人件費と提供時間を締めないと赤字になる",
       "level": "normal",
-      "tags": ["rest-marketing"],
+      "tags": [
+        "rest-marketing"
+      ],
       "say": "lunch service"
     },
     {
@@ -629,12 +759,17 @@
       "en": "rest-sokyaku-tesuryo",
       "kind": "concept",
       "answer": "送客手数料",
-      "accept": ["予約手数料", "送客料"],
+      "accept": [
+        "予約手数料",
+        "送客料"
+      ],
       "ja": "グルメサイト経由の予約で来店人数に応じて媒体に払う費用",
       "q": "グルメサイト経由でネット予約が入ったとき、来店した人数に応じて媒体に払う費用。ランチとディナーで単価が違うことが多い",
       "explain": "満席の日にサイト経由で埋めると利益が薄くなる。自店予約への誘導と使い分ける",
       "level": "hard",
-      "tags": ["rest-marketing"],
+      "tags": [
+        "rest-marketing"
+      ],
       "say": "booking commission"
     },
     {
@@ -642,12 +777,17 @@
       "en": "rest-shift",
       "kind": "concept",
       "answer": "シフト",
-      "accept": ["シフト表", "勤務表"],
+      "accept": [
+        "シフト表",
+        "勤務表"
+      ],
       "ja": "誰がいつ働くかを決めた勤務表。売上予測に合わせて配置",
       "q": "誰が何曜日の何時から何時まで働くかを決めた勤務表。売上予測に合わせて時間帯ごとの人数を配置する",
       "explain": "人件費率はここで決まる。希望収集→作成→確定の締切を決めておく",
       "level": "easy",
-      "tags": ["rest-staff"],
+      "tags": [
+        "rest-staff"
+      ],
       "say": "shift"
     },
     {
@@ -655,12 +795,17 @@
       "en": "rest-one-ope",
       "kind": "concept",
       "answer": "ワンオペ",
-      "accept": ["ワンオペレーション", "一人営業"],
+      "accept": [
+        "ワンオペレーション",
+        "一人営業"
+      ],
       "ja": "一人でホールも厨房もレジも回す状態",
       "q": "一人でホールも厨房もレジも回す状態。深夜帯や小規模店、急な欠勤で起きやすい",
       "explain": "安全と品質のリスクが高い。やむを得ない場合はメニューと席数を絞る",
       "level": "easy",
-      "tags": ["rest-staff"],
+      "tags": [
+        "rest-staff"
+      ],
       "say": "one-man operation"
     },
     {
@@ -668,38 +813,36 @@
       "en": "rest-ojt",
       "kind": "concept",
       "answer": "OJT",
-      "accept": ["現場研修", "実地研修"],
+      "accept": [
+        "現場研修",
+        "実地研修"
+      ],
       "ja": "営業中の現場で先輩が付いて教える育成方法",
       "q": "新人に営業中の現場で先輩が付き、実際の接客や調理をやらせながら教える育成方法。座学と組み合わせる",
       "explain": "教える側の時間も人件費。チェックリストを作ると教える人によるばらつきが減る",
       "level": "normal",
-      "tags": ["rest-staff", "abbr"],
+      "tags": [
+        "rest-staff",
+        "abbr"
+      ],
       "say": "on the job training"
-    },
-    {
-      "id": "concept-rest-manual",
-      "en": "rest-manual",
-      "kind": "concept",
-      "answer": "マニュアル",
-      "accept": ["手順書", "作業手順書"],
-      "ja": "接客の流れ・レシピ・清掃手順をまとめた文書",
-      "q": "接客の流れやレシピ、清掃の手順を文章と写真でまとめたもの。誰がやっても同じ品質にするための道具",
-      "explain": "作って終わりではなくOJTと組み合わせる。レシピは分量と手順を数字で書く",
-      "level": "easy",
-      "tags": ["rest-staff"],
-      "say": "manual"
     },
     {
       "id": "concept-rest-opening-staff",
       "en": "rest-opening-staff",
       "kind": "concept",
       "answer": "オープニングスタッフ",
-      "accept": ["オープニング", "開店スタッフ"],
+      "accept": [
+        "オープニング",
+        "開店スタッフ"
+      ],
       "ja": "新店の開店に合わせて一斉に採用するスタッフ",
       "q": "新店の開店に合わせて一斉に採用され、開店前の研修から入るスタッフ。求人では人気が高い",
       "explain": "全員が新人なので研修期間と教える側の確保が要る。開店直後の離職も見込んで採る",
       "level": "normal",
-      "tags": ["rest-staff"],
+      "tags": [
+        "rest-staff"
+      ],
       "say": "opening staff"
     },
     {
@@ -707,12 +850,17 @@
       "en": "rest-nakanuke",
       "kind": "concept",
       "answer": "中抜け",
-      "accept": ["中抜けシフト", "分割勤務"],
+      "accept": [
+        "中抜けシフト",
+        "分割勤務"
+      ],
       "ja": "ランチとディナーの間に数時間退勤し、また戻る勤務の形",
       "q": "ランチ営業とディナー営業の間に数時間いったん退勤し、夕方また戻ってくる勤務の形",
       "explain": "アイドルタイムの人件費を抑えられるが、スタッフには負担。募集時に明記する",
       "level": "normal",
-      "tags": ["rest-staff"],
+      "tags": [
+        "rest-staff"
+      ],
       "say": "split shift"
     },
     {
@@ -720,12 +868,18 @@
       "en": "rest-ninji",
       "kind": "concept",
       "answer": "人時",
-      "accept": ["人時数", "マンアワー", "総労働時間"],
+      "accept": [
+        "人時数",
+        "マンアワー",
+        "総労働時間"
+      ],
       "ja": "「1人が1時間働く」を1と数える労働量の単位",
       "q": "「1人が1時間働く」を1と数える労働量の単位。人数ではなく時間で、売上予測に対してシフトの総量を組む物差し",
       "explain": "人時売上高＝売上÷この値。時間帯別に見ると余っている時間が分かる",
       "level": "hard",
-      "tags": ["rest-staff"],
+      "tags": [
+        "rest-staff"
+      ],
       "say": "man-hour"
     },
     {
@@ -733,24 +887,34 @@
       "en": "rest-inuki",
       "kind": "concept",
       "answer": "居抜き",
-      "accept": ["居抜き物件", "居抜き店舗"],
+      "accept": [
+        "居抜き物件",
+        "居抜き店舗"
+      ],
       "ja": "前の店の厨房機器や内装が残ったまま借りられる物件",
       "q": "前の店の厨房機器や内装が残ったまま借りられる物件。工事費を抑えて早く開店できる",
       "explain": "機器の故障や造作譲渡料の有無を確認。何もない状態の物件と費用を比べる",
       "level": "easy",
-      "tags": ["rest-open"]
+      "tags": [
+        "rest-open"
+      ]
     },
     {
       "id": "concept-rest-skeleton",
       "en": "rest-skeleton",
       "kind": "concept",
       "answer": "スケルトン",
-      "accept": ["スケルトン物件", "スケルトン渡し"],
+      "accept": [
+        "スケルトン物件",
+        "スケルトン渡し"
+      ],
       "ja": "内装も設備もないコンクリートむき出しの状態で借りる物件",
       "q": "内装も設備も何もない、コンクリートむき出しの状態で借りる物件。自由に作れるが工事費と期間がかかる",
       "explain": "退去時も同じ状態に戻す「原状回復」の費用を最初から見込んでおく",
       "level": "easy",
-      "tags": ["rest-open"],
+      "tags": [
+        "rest-open"
+      ],
       "say": "skeleton"
     },
     {
@@ -758,12 +922,17 @@
       "en": "rest-hoshokin",
       "kind": "concept",
       "answer": "保証金",
-      "accept": ["敷金", "保証金・敷金"],
+      "accept": [
+        "敷金",
+        "保証金・敷金"
+      ],
       "ja": "物件を借りるときに大家に預けるお金。一部は戻らない",
       "q": "店舗物件を借りるときに大家に預けるお金。退去時に一部が償却されて戻らないことが多い",
       "explain": "家賃の数か月〜十か月分が目安と言われ、開業資金の大きな部分を占める",
       "level": "normal",
-      "tags": ["rest-open"],
+      "tags": [
+        "rest-open"
+      ],
       "say": "security deposit"
     },
     {
@@ -771,24 +940,34 @@
       "en": "rest-zosaku-joto",
       "kind": "concept",
       "answer": "造作譲渡",
-      "accept": ["造作譲渡料", "造作売買"],
+      "accept": [
+        "造作譲渡料",
+        "造作売買"
+      ],
       "ja": "居抜き物件で前の借主が残した内装や機器を買い取ること",
       "q": "居抜き物件で、前の借主が残した内装や厨房機器を次の借主がお金を払って引き継ぐこと",
       "explain": "大家との賃貸借契約とは別の契約。何が含まれ、故障時に誰が直すかをリストで確認",
       "level": "hard",
-      "tags": ["rest-open"]
+      "tags": [
+        "rest-open"
+      ]
     },
     {
       "id": "concept-rest-eigyo-kyoka",
       "en": "rest-eigyo-kyoka",
       "kind": "concept",
       "answer": "営業許可",
-      "accept": ["飲食店営業許可", "保健所の許可"],
+      "accept": [
+        "飲食店営業許可",
+        "保健所の許可"
+      ],
       "ja": "開店前に保健所の検査を受けて取る許可",
       "q": "飲食店を開く前に保健所の検査を受けて取る許可。シンクの数や手洗い設備など厨房の基準を満たす必要がある",
       "explain": "図面の段階で保健所に事前相談する。食品衛生責任者の設置が要件",
       "level": "easy",
-      "tags": ["rest-open"],
+      "tags": [
+        "rest-open"
+      ],
       "say": "business license"
     },
     {
@@ -801,7 +980,9 @@
       "q": "一定以上の収容人数の店で選任し、消防署に届け出る担当者。消防計画の作成や避難訓練を担う",
       "explain": "講習で取れる。保健所の営業許可とは別に、消防への届出が要ることを忘れやすい",
       "level": "normal",
-      "tags": ["rest-open"],
+      "tags": [
+        "rest-open"
+      ],
       "say": "fire prevention manager"
     },
     {
@@ -809,12 +990,17 @@
       "en": "rest-chubo-kiki",
       "kind": "concept",
       "answer": "厨房機器",
-      "accept": ["厨房設備", "厨房器具"],
+      "accept": [
+        "厨房設備",
+        "厨房器具"
+      ],
       "ja": "コンロ・冷蔵庫・食洗機など厨房に入れる設備",
       "q": "コンロ・フライヤー・冷蔵庫・製氷機・食洗機など、店の厨房に入れる設備。新品・中古・リースで初期費用が変わる",
       "explain": "電気・ガスの容量とダクトの位置で入れられる機器が決まる。図面段階で確認",
       "level": "easy",
-      "tags": ["rest-open"],
+      "tags": [
+        "rest-open"
+      ],
       "say": "kitchen equipment"
     },
     {
@@ -822,25 +1008,18 @@
       "en": "rest-shinya-sakerui",
       "kind": "concept",
       "answer": "深夜酒類提供飲食店営業",
-      "accept": ["深夜酒類提供", "深夜営業届", "深夜酒類提供飲食店営業開始届出"],
+      "accept": [
+        "深夜酒類提供",
+        "深夜営業届",
+        "深夜酒類提供飲食店営業開始届出"
+      ],
       "ja": "深夜に主に酒を出す店が警察署に出す届出",
       "q": "深夜0時以降に主にお酒を出すバーや居酒屋が、開店前に警察署へ出す届出。保健所の許可とは別",
       "explain": "接待を伴うなら別の許可（風営法）になる。営業形態を決めてから届出の種類を確認",
       "level": "hard",
-      "tags": ["rest-open"]
-    },
-    {
-      "id": "concept-rest-jigyo-keikaku",
-      "en": "rest-jigyo-keikaku",
-      "kind": "concept",
-      "answer": "事業計画書",
-      "accept": ["事業計画", "創業計画書"],
-      "ja": "売上予測・原価・家賃・人件費・返済を書き出した開業計画",
-      "q": "開業前に売上予測・原価・家賃・人件費・借入の返済を書き出した計画。金融機関に融資を申し込むときに必要",
-      "explain": "損益分岐点を計算した上で、客数と客単価に落とす。席数×回転率で売上の上限も確認",
-      "level": "normal",
-      "tags": ["rest-open"],
-      "say": "business plan"
+      "tags": [
+        "rest-open"
+      ]
     }
   ]
 }
