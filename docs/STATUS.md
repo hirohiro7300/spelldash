@@ -1,6 +1,7 @@
 # SpellDash 現状スナップショット（2026-07-17 上流設計用・詳細版）
 
 > **2026-09-09追記（Batch 7a: AIカード生成）**: マイ単語帳に「✨ テキストから作る」。貼ったテキストを `api/generate-cards.js`（Vercel Node関数、`@anthropic-ai/sdk`、`claude-opus-5`、JSONスキーマ出力）が場面カード候補（q/answer/explain/accept、最大20枚）にして返し、ユーザーが選んで追加。ログイン必須（Supabaseトークンをサーバーで検証）・20〜4000文字・1日20回目安。**Vercelに `ANTHROPIC_API_KEY` を設定するまでは「準備中」表示**（創業者作業）。E2E 249件（ローカルサーバーが /api を偽装、実APIには接続しない）。
+> **同日 Batch 7b**: 「✨ 覚え方を作る」（`api/explain-word.js`: 覚え方・例文・注意点をJSONで生成、`spelldash_word_ai` に端末保存、答え表示時と単語詳細に表示）／生成カードのプレビューを編集可能に／API共通処理を `api/_lib/shared.js` に。E2E 256件。
 
 > **2026-09-07追記（概念カード）**: 新カテゴリ「リスティング広告 実務」119枚（data/english/listing.json、kind:"concept"）。出題文は場面の説明（q）、答えは用語・略語（answer、別解 accept）。答えが a-z 以外なら**全文入力モード**（IMEで日本語入力→Enterで判定、表記ゆれ吸収、間違いは答え表示＋×）。正解後は用語＋1行解説（explain）を2.6秒表示（Enterで即次へ）。「すべて」・Daily・Battleには混ぜない（カテゴリ選択者のみ）。validate-words は concept スキーマ対応。E2E 185件。
 

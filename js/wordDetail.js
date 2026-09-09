@@ -3,6 +3,7 @@ import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
+import { renderWordAi } from "./wordAi.js";
 import { speak } from "./audio.js";
 import { speechTextOf } from "./wordStore.js";
 
@@ -71,6 +72,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
         <button type="button" class="note-save" id="wordDetailNoteSave">保存</button>
       </div>
     </div>
+    <div class="word-detail__ai" id="wordDetailAi"></div>
     ${family.length ? `<div class="word-detail__family">🔗 同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${w.id}">${escapeHtml(w.en)}</button>`).join(" ")}</div>` : ""}
   `;
   modal.hidden = false;
@@ -85,6 +87,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
     if (onNoteSaved) onNoteSaved(wordId);
   };
   panel.querySelector("#wordDetailNoteSave").addEventListener("click", save);
+  renderWordAi(panel.querySelector("#wordDetailAi"), word);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();

@@ -12,19 +12,12 @@
 // 秘密鍵はブラウザに出さない。ここ（サーバー側）だけで扱う。
 
 import Anthropic from "@anthropic-ai/sdk";
-
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://sujvgwozsnzjsjmkcrnk.supabase.co";
-const SUPABASE_ANON_KEY =
-  process.env.SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1anZnd296c256anNqbWtjcm5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2MDA5NDIsImV4cCI6MjA5ODE3Njk0Mn0.NkgB0vIgI4Q3DL5fSuF4kbtF3P4ORMbHzoPGbnOG3mc";
+import { send, readBody, reject, sendUpstreamError } from "./_lib/shared.js";
 
 const MIN_CHARS = 20;
 const MAX_CHARS = 4000;
 const MAX_CARDS = 20;
 const DAILY_LIMIT = Number(process.env.CARD_GEN_DAILY_LIMIT) || 20;
-
-// 1ユーザーの当日回数（サーバーレスのインスタンス内メモリ: 厳密ではないが暴走の歯止めになる）
-const usage = new Map();
 
 const SYSTEM_PROMPT = `あなたは英単語×タイピング学習アプリ SpellDash の教材編集者です。
 ユーザーが貼り付けたテキスト（業務マニュアル・研修資料・会議メモ・教科書・記事など、日本語または英語）から、
@@ -64,48 +57,6 @@ const CARD_SCHEMA = {
   additionalProperties: false
 };
 
-function send(res, status, body) {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store");
-  res.status(status).json(body);
-}
-
-function readBody(req) {
-  if (req.body && typeof req.body === "object") return req.body;
-  try {
-    return JSON.parse(typeof req.body === "string" ? req.body : "{}");
-  } catch {
-    return {};
-  }
-}
-
-// Supabaseのアクセストークンを検証し、ユーザーIDを返す（無効なら null）
-async function verifyUser(authorization) {
-  const token = String(authorization || "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return null;
-  try {
-    const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) return null;
-    const user = await response.json();
-    return user?.id || null;
-  } catch {
-    return null;
-  }
-}
-
-function overDailyLimit(userId) {
-  const today = new Date().toISOString().slice(0, 10);
-  const entry = usage.get(userId);
-  if (!entry || entry.day !== today) {
-    usage.set(userId, { day: today, count: 1 });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > DAILY_LIMIT;
-}
-
 // モデル出力を安全側に整える（長さ・件数・重複・空欄）
 function sanitizeCards(cards) {
   const seen = new Set();
@@ -128,14 +79,7 @@ function sanitizeCards(cards) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return send(res, 405, { error: "method_not_allowed" });
-  }
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return send(res, 503, { error: "not_configured", message: "この機能は準備中です。" });
-  }
+  if (await reject(req, res, { scope: "cards", limit: DAILY_LIMIT })) return;
 
   const { text } = readBody(req);
   const source = String(text ?? "").replace(/\r\n/g, "\n").trim();
@@ -144,14 +88,6 @@ export default async function handler(req, res) {
   }
   if (source.length > MAX_CHARS) {
     return send(res, 400, { error: "too_long", message: `テキストが長すぎます（${MAX_CHARS}文字まで）。` });
-  }
-
-  const userId = await verifyUser(req.headers.authorization);
-  if (!userId) {
-    return send(res, 401, { error: "login_required", message: "ログインすると使えます（無料）。" });
-  }
-  if (overDailyLimit(userId)) {
-    return send(res, 429, { error: "daily_limit", message: "今日の生成回数の上限に達しました。また明日どうぞ。" });
   }
 
   const client = new Anthropic();
@@ -183,13 +119,6 @@ export default async function handler(req, res) {
     const cards = sanitizeCards(parsed.cards);
     return send(res, 200, { cards, usage: { input: response.usage?.input_tokens ?? 0, output: response.usage?.output_tokens ?? 0 } });
   } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      return send(res, 503, { error: "not_configured", message: "この機能は準備中です。" });
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      return send(res, 429, { error: "busy", message: "混み合っています。少し待ってからお試しください。" });
-    }
-    console.error("generate-cards failed:", error instanceof Anthropic.APIError ? `${error.status} ${error.message}` : error);
-    return send(res, 502, { error: "upstream", message: "うまく作れませんでした。時間をおいてお試しください。" });
+    return sendUpstreamError(res, Anthropic, error, "generate-cards");
   }
 }
