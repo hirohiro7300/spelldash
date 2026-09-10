@@ -1,5 +1,6 @@
 # SpellDash 現状スナップショット（2026-07-17 上流設計用・詳細版）
 
+> **2026-09-10追記（Batch 8b: 分野パック第2弾）**: 27分野を追加して計36分野・1972枚（総語数3200）。執筆はサブエージェント並列（docs/PACK_FORMAT.md＋共通ブリーフ）、`scripts/sync-packs.mjs` で manifest 同期（group 表もここ）。ライブラリはグループ見出し（7グループ）＋検索＋件数、パックの一覧に「気になる点を送る」（feedback に分野名を前置き）。sitemap に全分野の `?add=` リンク。創業者方針: 業界の人の確認は前提として、まずできる限り作る。第3弾候補は BACKLOG G14。
 > **2026-09-09追記（Batch 7a: AIカード生成）**: マイ単語帳に「✨ テキストから作る」。貼ったテキストを `api/generate-cards.js`（Vercel Node関数、`@anthropic-ai/sdk`、`claude-opus-5`、JSONスキーマ出力）が場面カード候補（q/answer/explain/accept、最大20枚）にして返し、ユーザーが選んで追加。ログイン必須（Supabaseトークンをサーバーで検証）・20〜4000文字・1日20回目安。**Vercelに `ANTHROPIC_API_KEY` を設定するまでは「準備中」表示**（創業者作業）。E2E 249件（ローカルサーバーが /api を偽装、実APIには接続しない）。
 > **同日 Batch 8（分野パック）**: `data/packs/*.json`（不動産・簿記会計・人事労務・SaaS・EC・医療事務・飲食・法務・中古車、各45〜55枚の場面カード）を manifest に `pack:true` で登録。`js/packs.js`（`spelldash_packs`）で追加したものだけ `loadAllWords` が読み込み、`getCategories` に出る。単語帳ページ先頭に教材ライブラリ（追加／外す／一覧）、ホームに「＋ 分野を追加」。ジャンル名はパック内 `genres` から（`packGenreLabels`）。validate-words がパックの形式・重複・manifest count を検証（合計1719語、うちパック491枚）。形式仕様は docs/PACK_FORMAT.md。robots.txt／sitemap.xml（`?add=` の分野リンク入り）を追加。学習データの「単語帳」タブを「記録」に改名（H7）。E2E 271件。
 > **同日 Batch 7b**: 「✨ 覚え方を作る」（`api/explain-word.js`: 覚え方・例文・注意点をJSONで生成、`spelldash_word_ai` に端末保存、答え表示時と単語詳細に表示）／生成カードのプレビューを編集可能に／API共通処理を `api/_lib/shared.js` に。E2E 256件。

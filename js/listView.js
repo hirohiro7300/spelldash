@@ -4,6 +4,7 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
 import { initWordStore, getCategories, getPackCatalog, isConceptWord } from "./wordStore.js";
 import { setPackEnabled } from "./packs.js";
+import { openFeedback } from "./feedback.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
@@ -94,6 +95,12 @@ function renderCategorySelect(categories) {
 }
 
 // ===== 教材ライブラリ: 分野パックの追加／外す =====
+let packKeyword = "";
+document.getElementById("packsSearch")?.addEventListener("input", (e) => {
+  packKeyword = e.target.value.trim().toLowerCase();
+  renderPacks();
+});
+
 function renderPacks() {
   const grid = document.getElementById("packsGrid");
   if (!grid) return;
@@ -102,9 +109,21 @@ function renderPacks() {
     grid.closest("#packs")?.setAttribute("hidden", "");
     return;
   }
-  grid.innerHTML = packs
-    .map(
-      (p) => `
+  // 検索語で絞り込み（分野名・説明・対象・ジャンル名）。分野ごとにグループ見出し
+  const q = packKeyword;
+  const hit = (p) => !q || [p.label, p.blurb, p.audience, p.group].filter(Boolean).join(" ").toLowerCase().includes(q);
+  const groups = new Map();
+  for (const p of packs) {
+    if (!hit(p)) continue;
+    const key = p.group ?? "その他";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+  const enabledCount = packs.filter((p) => p.enabled).length;
+  const countEl = document.getElementById("packsCount");
+  if (countEl) countEl.textContent = `${packs.length}分野 ・ 追加済み ${enabledCount}`;
+
+  const card = (p) => `
         <article class="pack${p.enabled ? " pack--on" : ""}" data-pack="${p.id}">
           <div class="pack__head">
             <h3 class="pack__title">${escapeHtml(p.label)}</h3>
@@ -116,9 +135,20 @@ function renderPacks() {
             <button type="button" class="btn btn--sm${p.enabled ? " btn--ghost" : ""}" data-pack-toggle="${p.id}">${p.enabled ? "✓ 追加済み（外す）" : "＋ 追加する"}</button>
             ${p.enabled ? `<button type="button" class="btn btn--sm btn--ghost" data-pack-view="${p.id}">一覧を見る</button>` : ""}
           </div>
-        </article>`
-    )
-    .join("");
+        </article>`;
+
+  grid.innerHTML =
+    groups.size === 0
+      ? `<p class="muted">該当する分野がありません。</p>`
+      : [...groups.entries()]
+          .map(
+            ([name, list]) => `
+        <section class="pack-group">
+          <h3 class="pack-group__title">${escapeHtml(name)} <span class="pack-group__count">${list.length}</span></h3>
+          <div class="pack-group__grid">${list.map(card).join("")}</div>
+        </section>`
+          )
+          .join("");
 
   grid.querySelectorAll("[data-pack-toggle]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -185,6 +215,17 @@ function render() {
   const label = getCategories().find((c) => c.id === categoryId)?.label ?? categoryId;
 
   if (summary) summary.textContent = `${label} ・ ${groups.length}ジャンル ・ ${total}語 ・ 覚えた ${learned}`;
+
+  // 分野パックは業界の人のレビューで磨く: 気になる点をその場で送れる導線
+  const review = document.getElementById("listReview");
+  if (review) {
+    const isPack = getPackCatalog().some((p) => p.id === categoryId);
+    review.hidden = !isPack;
+    review.innerHTML = isPack
+      ? `<span>この分野に詳しい方へ:</span> <button type="button" class="list-review__button" data-pack-review>用語や説明の気になる点を送る</button>`
+      : "";
+    review.querySelector("[data-pack-review]")?.addEventListener("click", () => openFeedback({ prefill: `[分野パック: ${label}] ` }));
+  }
 
   if (nav) {
     nav.innerHTML = groups

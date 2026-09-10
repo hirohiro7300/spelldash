@@ -1,0 +1,1145 @@
+{
+  "subject": "english",
+  "category": "mechanic",
+  "label": "自動車整備・車検",
+  "blurb": "車検・点検から部品・診断・接客まで、整備工場の共通語",
+  "audience": "整備工場の新人、フロント・事務の担当者",
+  "genres": {
+    "mech-inspect": "車検・点検",
+    "mech-parts": "部品・作業",
+    "mech-diag": "故障診断",
+    "mech-service": "接客・事務",
+    "mech-safety": "安全・環境"
+  },
+  "words": [
+    {
+      "id": "concept-mech-shaken",
+      "en": "mech-shaken",
+      "kind": "concept",
+      "answer": "車検",
+      "accept": [
+        "継続検査",
+        "自動車検査",
+        "自動車検査登録制度",
+        "継続車検"
+      ],
+      "ja": "保安基準に適合しているか定期的に国が確認する検査",
+      "q": "公道を走る車が保安基準に適合しているかを、有効期間ごとに国が確認する検査。自家用乗用車は新車で3年、以降は2年ごとに受ける",
+      "explain": "正式には「継続検査」。検査は「その時点で基準を満たすか」の確認で、次回まで壊れない保証ではない",
+      "level": "easy",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "vehicle inspection"
+    },
+    {
+      "id": "concept-mech-legal-inspection",
+      "en": "mech-legal-inspection",
+      "kind": "concept",
+      "answer": "法定点検",
+      "accept": [
+        "定期点検",
+        "12か月点検",
+        "24か月点検",
+        "12ヶ月点検",
+        "24ヶ月点検",
+        "法定12か月点検"
+      ],
+      "ja": "法律で使用者に義務づけられた定期的な点検整備",
+      "q": "道路運送車両法で車の使用者に義務づけられた定期的な点検。自家用乗用車では1年ごとと2年ごとの2種類があり、後者は検査と同時に行うことが多い",
+      "explain": "検査（車検）は「合否判定」、こちらは「予防整備」で別物。2年ごとの方が点検項目が多い",
+      "level": "easy",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "statutory periodic inspection"
+    },
+    {
+      "id": "concept-mech-record-book",
+      "en": "mech-record-book",
+      "kind": "concept",
+      "answer": "定期点検整備記録簿",
+      "accept": [
+        "点検整備記録簿",
+        "記録簿",
+        "整備記録簿",
+        "メンテナンスノート"
+      ],
+      "ja": "法定点検の結果と交換部品を記録し車に備え付ける帳票",
+      "q": "法定点検で何を点検し、どの部品を交換・調整したかを項目ごとに記録して車に備え付けておく帳票。中古車査定でも整備履歴の証拠になる",
+      "explain": "検査時に提示を求められる。点検項目は「点検・調整・交換・清掃・締付」などの記号で記入する",
+      "level": "normal",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "maintenance record book"
+    },
+    {
+      "id": "concept-mech-safety-standard",
+      "en": "mech-safety-standard",
+      "kind": "concept",
+      "answer": "保安基準",
+      "accept": [
+        "道路運送車両の保安基準",
+        "保安基準適合",
+        "基準"
+      ],
+      "ja": "公道を走る車が満たすべき構造・装置の技術基準",
+      "q": "灯火の色や明るさ、タイヤのはみ出し、最低地上高、ブレーキ性能など、公道を走る車が満たさなければならない構造・装置の技術基準",
+      "explain": "検査の合否はすべてこれに照らして判断する。カスタム車の入庫時は「基準に適合しているか」を先に確認",
+      "level": "normal",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "safety regulations"
+    },
+    {
+      "id": "concept-mech-inspection-lane",
+      "en": "mech-inspection-lane",
+      "kind": "concept",
+      "answer": "検査ライン",
+      "accept": [
+        "ライン",
+        "検査コース",
+        "テスターライン",
+        "コース"
+      ],
+      "ja": "サイドスリップ・ブレーキ・排ガスなどを順に測る検査設備",
+      "q": "運輸支局や指定工場にある、車を順に進めながら横滑り量、ブレーキ力、スピードメーター、ヘッドライト、排ガス、下回りを機械で測定する一連の設備",
+      "explain": "測定順は施設で異なるが、外観検査→テスター→下回りの流れが基本。工場では「ラインを通す」と言う",
+      "level": "normal",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "inspection lane"
+    },
+    {
+      "id": "concept-mech-side-slip",
+      "en": "mech-side-slip",
+      "kind": "concept",
+      "answer": "サイドスリップ",
+      "accept": [
+        "サイドスリップ検査",
+        "横滑り量",
+        "横すべり",
+        "side slip",
+        "サイドスリップテスター"
+      ],
+      "ja": "直進時に前輪がどれだけ横に滑るかを測る検査",
+      "q": "検査ラインの入口で、直進したときに前輪が内側または外側にどれだけ横滑りするかを鉄板の上を通過させて測る項目。基準は1m走行あたり5mm以内",
+      "explain": "主にトー角のずれで不合格になる。タイロッドの調整で直す。測定前にハンドルを切らずまっすぐ進入する",
+      "level": "hard",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "side slip test"
+    },
+    {
+      "id": "concept-mech-emission-test",
+      "en": "mech-emission-test",
+      "kind": "concept",
+      "answer": "排ガス検査",
+      "accept": [
+        "排気ガス検査",
+        "排ガス測定",
+        "排ガステスター",
+        "排ガス"
+      ],
+      "ja": "マフラーにプローブを入れ排出ガスの濃度を測る検査",
+      "q": "マフラーの出口に測定用のプローブを差し込み、排出ガスに含まれる一酸化炭素と炭化水素の濃度が基準内かを確認する検査項目",
+      "explain": "暖機が不十分だと数値が悪化する。ディーゼル車は黒煙・粒子状物質の測定になる。触媒やO2センサーの不良で不合格",
+      "level": "easy",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "emission test"
+    },
+    {
+      "id": "concept-mech-underbody",
+      "en": "mech-underbody",
+      "kind": "concept",
+      "answer": "下回り点検",
+      "accept": [
+        "下回り検査",
+        "下回り",
+        "下廻り点検",
+        "足回り点検"
+      ],
+      "ja": "車の下からブーツ・漏れ・緩み・腐食を目視と打音で確認",
+      "q": "リフトやピットで車を下から見上げ、ゴムブーツの破れ、オイルや冷却水の漏れ、ボルトの緩み、マフラーの腐食や穴をハンマーの打音と目視で確認する作業",
+      "explain": "検査ラインでは検査官がハンマーで叩いて点検する。ブーツ破れとオイル滴下は不合格の定番",
+      "level": "normal",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "underbody inspection"
+    },
+    {
+      "id": "concept-mech-specified-maintenance",
+      "en": "mech-specified-maintenance",
+      "kind": "concept",
+      "answer": "特定整備",
+      "accept": [
+        "分解整備",
+        "電子制御装置整備",
+        "特定整備制度",
+        "特定整備認証"
+      ],
+      "ja": "分解整備に電子制御装置の整備を加えた、認証が要る整備の区分",
+      "q": "エンジンやブレーキ、ステアリングなど重要装置の取り外しを伴う整備に、カメラやレーダーなど運転支援装置の調整を加えた区分。行うには地方運輸局長の認証が必要",
+      "explain": "旧「分解整備」に「電子制御装置整備」が加わった名称。認証のない工場は該当作業を受けられない",
+      "level": "hard",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "specified maintenance"
+    },
+    {
+      "id": "concept-mech-designated-shop",
+      "en": "mech-designated-shop",
+      "kind": "concept",
+      "answer": "指定工場",
+      "accept": [
+        "指定整備工場",
+        "民間車検場",
+        "指定自動車整備事業",
+        "指定"
+      ],
+      "ja": "自社の検査ラインで検査まで完結できる工場。民間車検場",
+      "q": "自社に検査ラインと検査員を備え、運輸支局へ車を持ち込まずに整備から検査までを完結し、保安基準適合証を発行できる工場",
+      "explain": "整備はできるが検査は持ち込む工場は「認証工場」。看板の色は指定が青、認証が黄で見分ける",
+      "level": "normal",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "designated maintenance shop"
+    },
+    {
+      "id": "concept-mech-inspector",
+      "en": "mech-inspector",
+      "kind": "concept",
+      "answer": "自動車検査員",
+      "accept": [
+        "検査員",
+        "自動車検査員資格",
+        "検査員資格"
+      ],
+      "ja": "指定工場で完成検査を行い保安基準適合証を交付する資格者",
+      "q": "指定工場で整備が終わった車の完成検査を行い、保安基準に適合していると判断して適合証を交付する資格者。国に代わって検査する立場で、不正には重い処分がある",
+      "explain": "整備の完了確認をする「整備主任者」とは別の役割。検査員になるには整備主任者の経験と講習・教習が必要",
+      "level": "hard",
+      "tags": [
+        "mech-inspect"
+      ],
+      "say": "vehicle inspector"
+    },
+    {
+      "id": "concept-mech-obd-inspection",
+      "en": "mech-obd-inspection",
+      "kind": "concept",
+      "answer": "OBD検査",
+      "accept": [
+        "OBD車検",
+        "電子的検査",
+        "オンボード診断検査",
+        "OBD"
+      ],
+      "ja": "法定スキャンツールで故障コードを読み、電子制御装置を判定",
+      "q": "車の診断コネクタに専用のスキャンツールをつなぎ、自動ブレーキや横滑り防止装置など電子制御装置の故障コードを読み取って合否を判定する、比較的新しい検査項目",
+      "explain": "On-Board Diagnostics。一定年式以降の車が対象。目視では分からない運転支援装置の不具合を検査できる",
+      "level": "hard",
+      "tags": [
+        "mech-inspect",
+        "abbr"
+      ],
+      "say": "on-board diagnostics inspection"
+    },
+    {
+      "id": "concept-mech-engine-oil",
+      "en": "mech-engine-oil",
+      "kind": "concept",
+      "answer": "エンジンオイル",
+      "accept": [
+        "オイル",
+        "エンジン油",
+        "オイル交換",
+        "engine oil"
+      ],
+      "ja": "エンジン内部の潤滑・冷却・清浄を担う油。定期交換が基本",
+      "q": "エンジン内部の金属部品の潤滑、冷却、汚れの洗浄、密封を担う油。走行距離または期間の早い方で定期的に交換する、整備工場で最も多い作業",
+      "explain": "粘度（0W-20 など）と規格は取扱説明書の指定に従う。交換後は必ずレベルゲージで量を確認し、ドレンボルトの締め忘れを指差し確認",
+      "level": "easy",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "engine oil"
+    },
+    {
+      "id": "concept-mech-oil-filter",
+      "en": "mech-oil-filter",
+      "kind": "concept",
+      "answer": "オイルフィルター",
+      "accept": [
+        "オイルエレメント",
+        "エレメント",
+        "oil filter",
+        "オイルフィルタ"
+      ],
+      "ja": "エンジンオイル中の汚れをこし取る部品。オイル2回に1回交換が目安",
+      "q": "エンジンオイルに混ざった金属粉やスラッジをこし取る円筒形の部品。オイル交換2回に1回の同時交換が目安とされ、伝票では別名で書かれることも多い",
+      "explain": "取り付け前にパッキンに薄くオイルを塗る。締めすぎると次回外せない。交換後はオイル量が増える分を足す",
+      "level": "easy",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "oil filter"
+    },
+    {
+      "id": "concept-mech-battery",
+      "en": "mech-battery",
+      "kind": "concept",
+      "answer": "バッテリー",
+      "accept": [
+        "鉛バッテリー",
+        "補機バッテリー",
+        "battery",
+        "バッテリ"
+      ],
+      "ja": "始動と電装品に電気を供給する蓄電池。寿命2〜3年が目安",
+      "q": "エンジン始動やライト、電装品に電気を供給する蓄電池。走行中に充電されるが劣化は避けられず、突然の始動不能を防ぐため点検時に電圧やCCAを測る",
+      "explain": "寿命は2〜3年が目安。アイドリングストップ車や充電制御車は専用品を使う。交換時はマイナス端子から外す",
+      "level": "easy",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "battery"
+    },
+    {
+      "id": "concept-mech-tire-rotation",
+      "en": "mech-tire-rotation",
+      "kind": "concept",
+      "answer": "ローテーション",
+      "accept": [
+        "タイヤローテーション",
+        "タイヤの位置交換",
+        "位置交換",
+        "tire rotation"
+      ],
+      "ja": "偏摩耗を防ぐため前後・左右のタイヤ位置を入れ替える作業",
+      "q": "前輪と後輪で減り方が違うタイヤを、偏摩耗を防いで寿命を均一にするために前後や対角で位置を入れ替える作業。オイル交換と同時に勧めることが多い",
+      "explain": "目安は5,000km ごと。回転方向指定タイヤは前後のみ、サイズが前後で違う車はできない。作業後はナットのトルク確認",
+      "level": "easy",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "tire rotation"
+    },
+    {
+      "id": "concept-mech-tire-pressure",
+      "en": "mech-tire-pressure",
+      "kind": "concept",
+      "answer": "空気圧",
+      "accept": [
+        "タイヤ空気圧",
+        "エア圧",
+        "エアー",
+        "tire pressure",
+        "空気圧点検"
+      ],
+      "ja": "タイヤに入れる空気の圧力。運転席ドア付近のラベルが指定値",
+      "q": "タイヤに充填する空気の圧力。車種ごとの指定値が運転席ドアの開口部などのラベルに書かれており、入庫時に必ず点検・調整する項目",
+      "explain": "不足すると偏摩耗と燃費悪化、バーストの原因。走行直後は温まって高めに出るので冷間で測るのが基本",
+      "level": "easy",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "tire pressure"
+    },
+    {
+      "id": "concept-mech-alignment",
+      "en": "mech-alignment",
+      "kind": "concept",
+      "answer": "ホイールアライメント",
+      "accept": [
+        "アライメント",
+        "アライメント調整",
+        "四輪アライメント",
+        "wheel alignment",
+        "アラインメント"
+      ],
+      "ja": "タイヤの取り付け角度（トー・キャンバー・キャスター）の調整",
+      "q": "タイヤが車体に対してどの角度で付いているかを専用の測定機で測り、直進安定性や偏摩耗を左右するトー・キャンバー・キャスターを調整する作業",
+      "explain": "縁石ヒットや足回り部品の交換後に狂う。ハンドルセンターのずれや片減りの相談はまずこれを疑う",
+      "level": "normal",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "wheel alignment"
+    },
+    {
+      "id": "concept-mech-brake-pad",
+      "en": "mech-brake-pad",
+      "kind": "concept",
+      "answer": "ブレーキパッド",
+      "accept": [
+        "パッド",
+        "ディスクパッド",
+        "brake pad",
+        "ブレーキパット"
+      ],
+      "ja": "ディスクローターを挟んで車を止める摩擦材。残量で交換判断",
+      "q": "ディスクブレーキで回転する円盤を両側から挟み、摩擦で車を減速させる消耗部品。点検では残りの厚みを測り、減っていれば交換を提案する",
+      "explain": "残り3mm前後が交換の目安。使い切ると円盤（ローター）まで傷めて費用が跳ね上がる。キーキー音は摩耗警告の金具が原因のことが多い",
+      "level": "easy",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "brake pad"
+    },
+    {
+      "id": "concept-mech-brake-fluid",
+      "en": "mech-brake-fluid",
+      "kind": "concept",
+      "answer": "ブレーキフルード",
+      "accept": [
+        "ブレーキオイル",
+        "ブレーキ液",
+        "brake fluid",
+        "フルード"
+      ],
+      "ja": "踏力を油圧で伝える液体。吸湿するので車検ごとの交換が目安",
+      "q": "ブレーキペダルの踏力を油圧に変えて各輪に伝える液体。空気中の水分を吸って性能が落ちるため、2年ごと（検査のたび）の交換が目安",
+      "explain": "劣化すると沸騰して効かなくなる（ベーパーロック）。DOT 規格で種類がある。塗装を溶かすのでこぼしたら即水洗い",
+      "level": "normal",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "brake fluid"
+    },
+    {
+      "id": "concept-mech-coolant",
+      "en": "mech-coolant",
+      "kind": "concept",
+      "answer": "クーラント",
+      "accept": [
+        "冷却水",
+        "LLC",
+        "ロングライフクーラント",
+        "不凍液",
+        "coolant",
+        "スーパーLLC"
+      ],
+      "ja": "エンジンの熱を運ぶ冷却液。凍結防止と防錆の成分入り",
+      "q": "エンジンで発生した熱をラジエーターへ運んで冷やす液体。冬に凍らないよう不凍成分と防錆剤が入っており、色が付いている。量と濃度を点検する",
+      "explain": "水だけを足すと濃度が下がり凍結・錆の原因。長寿命タイプと従来型で交換周期が大きく違うので銘柄を確認",
+      "level": "easy",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "coolant"
+    },
+    {
+      "id": "concept-mech-spark-plug",
+      "en": "mech-spark-plug",
+      "kind": "concept",
+      "answer": "スパークプラグ",
+      "accept": [
+        "プラグ",
+        "点火プラグ",
+        "spark plug",
+        "イリジウムプラグ"
+      ],
+      "ja": "ガソリンエンジンの混合気に火花で点火する部品",
+      "q": "ガソリンエンジンの燃焼室で、圧縮された混合気に電気火花で点火する部品。劣化すると始動不良や加速時の息つき、燃費悪化が出る",
+      "explain": "白金・イリジウムなど電極の材質で寿命が大きく違う。締め付けは規定トルク、ガスケットの潰し過ぎに注意",
+      "level": "normal",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "spark plug"
+    },
+    {
+      "id": "concept-mech-atf",
+      "en": "mech-atf",
+      "kind": "concept",
+      "answer": "ATF",
+      "accept": [
+        "オートマオイル",
+        "CVTフルード",
+        "ATフルード",
+        "オートマチックトランスミッションフルード",
+        "CVTF"
+      ],
+      "ja": "自動変速機の作動油。交換可否と方法の判断が難しい",
+      "q": "オートマチック車の変速機の内部で、潤滑と油圧による変速の両方を担う作動油。メーカーが「無交換」と指定する車もあり、交換の可否と方法の判断が難しい",
+      "explain": "Automatic Transmission Fluid。過走行車で急に全量交換すると不調が出ることがあり、圧送交換や少量ずつの交換が使われる。CVT は専用品",
+      "level": "hard",
+      "tags": [
+        "mech-parts",
+        "abbr"
+      ],
+      "say": "automatic transmission fluid"
+    },
+    {
+      "id": "concept-mech-cv-boot",
+      "en": "mech-cv-boot",
+      "kind": "concept",
+      "answer": "ドライブシャフトブーツ",
+      "accept": [
+        "ドラシャブーツ",
+        "ブーツ",
+        "CVブーツ",
+        "ジョイントブーツ",
+        "drive shaft boot"
+      ],
+      "ja": "駆動軸の関節を覆うゴム。破れてグリスが飛ぶと車検不合格",
+      "q": "前輪駆動車の駆動軸の関節部分を覆う蛇腹のゴム部品。経年で裂けると内部のグリスが周囲に飛び散り、放置すると関節が壊れる。破れは検査不合格",
+      "explain": "下回り点検の定番指摘項目。軸を抜かずに交換できる分割式と、抜いて交換する純正タイプがある",
+      "level": "normal",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "drive shaft boot"
+    },
+    {
+      "id": "concept-mech-hub-bearing",
+      "en": "mech-hub-bearing",
+      "kind": "concept",
+      "answer": "ハブベアリング",
+      "accept": [
+        "ハブベア",
+        "ホイールベアリング",
+        "hub bearing",
+        "ベアリング"
+      ],
+      "ja": "車輪を滑らかに回す軸受。傷むと速度に比例したゴー音",
+      "q": "車輪の中心で軸を支え、タイヤを滑らかに回転させる軸受。傷むと速度に比例して「ゴー」というこもった音が出て、ガタが増える",
+      "explain": "音はカーブで荷重がかかる側が大きくなるので左右を切り分けられる。タイヤの偏摩耗音と混同しやすい",
+      "level": "hard",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "hub bearing"
+    },
+    {
+      "id": "concept-mech-shock-absorber",
+      "en": "mech-shock-absorber",
+      "kind": "concept",
+      "answer": "ショックアブソーバー",
+      "accept": [
+        "ショック",
+        "ダンパー",
+        "shock absorber",
+        "アブソーバー"
+      ],
+      "ja": "バネの揺れを減衰させる部品。オイル漏れは車検不合格",
+      "q": "サスペンションのバネの動きを油圧で抑え、路面の凹凸を吸収して車体の揺れを収める筒状の部品。抜けると段差後にふわふわ揺れが続く",
+      "explain": "本体からのオイル漏れは検査不合格。左右同時交換が基本。にじみ程度なら経過観察とすることが多い",
+      "level": "normal",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "shock absorber"
+    },
+    {
+      "id": "concept-mech-catalyst",
+      "en": "mech-catalyst",
+      "kind": "concept",
+      "answer": "触媒",
+      "accept": [
+        "三元触媒",
+        "キャタライザー",
+        "触媒コンバーター",
+        "catalytic converter",
+        "キャタ"
+      ],
+      "ja": "排ガス中の有害成分を化学反応で無害化する装置",
+      "q": "マフラーの途中に付き、排ガス中の一酸化炭素・炭化水素・窒素酸化物を内部の貴金属の働きで無害な成分に変える装置。劣化すると排ガス検査に通らない",
+      "explain": "内部の貴金属が高価なため盗難が多発している。失火を放置すると未燃焼ガスで溶損する",
+      "level": "hard",
+      "tags": [
+        "mech-parts"
+      ],
+      "say": "catalytic converter"
+    },
+    {
+      "id": "concept-mech-scan-tool",
+      "en": "mech-scan-tool",
+      "kind": "concept",
+      "answer": "診断機",
+      "accept": [
+        "スキャンツール",
+        "故障診断機",
+        "テスター",
+        "外部診断機",
+        "scan tool"
+      ],
+      "ja": "車の診断コネクタにつなぎ故障コードやデータを読む機器",
+      "q": "運転席足元の診断コネクタにつなぎ、コンピューターが記録した故障の記録やセンサーの生データを読み出したり、警告灯を消したりする機器",
+      "explain": "コードを消すのは「直す」ことではない。原因を確認してから消去し、再現の有無を試運転で確認する",
+      "level": "easy",
+      "tags": [
+        "mech-diag"
+      ],
+      "say": "scan tool"
+    },
+    {
+      "id": "concept-mech-dtc",
+      "en": "mech-dtc",
+      "kind": "concept",
+      "answer": "DTC",
+      "accept": [
+        "故障コード",
+        "ダイアグコード",
+        "診断コード",
+        "エラーコード",
+        "diagnostic trouble code"
+      ],
+      "ja": "コンピューターが記録した異常を示す英数字のコード",
+      "q": "車のコンピューターがセンサーの異常などを検知したときに記録する「P0301」のような英数字。診断機で読み出し、どの系統の不具合かを絞り込む手がかりにする",
+      "explain": "Diagnostic Trouble Code。コードは「系統」を示すだけで部品の特定ではない。フリーズフレームデータと合わせて見る",
+      "level": "normal",
+      "tags": [
+        "mech-diag",
+        "abbr"
+      ],
+      "say": "diagnostic trouble code"
+    },
+    {
+      "id": "concept-mech-warning-light",
+      "en": "mech-warning-light",
+      "kind": "concept",
+      "answer": "警告灯",
+      "accept": [
+        "ワーニングランプ",
+        "チェックランプ",
+        "インジケーター",
+        "警告ランプ",
+        "エンジン警告灯"
+      ],
+      "ja": "メーター内で異常を知らせる表示。赤は停止、黄は早めに点検",
+      "q": "メーター内に点灯して異常を知らせるマーク。エンジン形のもの、油圧、充電、ブレーキなど種類があり、点いたまま来店したお客様の最初の問診対象になる",
+      "explain": "赤は「すぐ停止」、黄・橙は「早めに点検」が国際的な色分け。エンジン形は排ガス関連の異常で点く",
+      "level": "easy",
+      "tags": [
+        "mech-diag"
+      ],
+      "say": "warning light"
+    },
+    {
+      "id": "concept-mech-ecu",
+      "en": "mech-ecu",
+      "kind": "concept",
+      "answer": "ECU",
+      "accept": [
+        "エンジンコンピューター",
+        "電子制御ユニット",
+        "electronic control unit",
+        "ECM"
+      ],
+      "ja": "センサーの情報をもとにエンジンなどを制御するコンピューター",
+      "q": "各センサーから入る回転数や温度、空気量などの情報をもとに、燃料噴射量や点火時期を計算してアクチュエーターに指示を出す車載コンピューター",
+      "explain": "Electronic Control Unit。1台の車に数十個載る。バッテリーを外すと学習値がリセットされ、アイドリングが一時不安定になることがある",
+      "level": "normal",
+      "tags": [
+        "mech-diag",
+        "abbr"
+      ],
+      "say": "electronic control unit"
+    },
+    {
+      "id": "concept-mech-o2-sensor",
+      "en": "mech-o2-sensor",
+      "kind": "concept",
+      "answer": "O2センサー",
+      "accept": [
+        "酸素センサー",
+        "A/Fセンサー",
+        "空燃比センサー",
+        "オーツーセンサー",
+        "ラムダセンサー"
+      ],
+      "ja": "排ガス中の酸素濃度を測り燃料の濃さを補正するセンサー",
+      "q": "排気管に付いて排ガス中の酸素の量を測り、その信号でコンピューターが燃料の濃い薄いを常に補正する部品。劣化すると燃費悪化や排ガス不合格の原因になる",
+      "explain": "触媒の前後に付き、後ろ側は触媒の劣化判定用。エンジン警告灯の原因として最も多い部類",
+      "level": "hard",
+      "tags": [
+        "mech-diag"
+      ],
+      "say": "oxygen sensor"
+    },
+    {
+      "id": "concept-mech-abnormal-noise",
+      "en": "mech-abnormal-noise",
+      "kind": "concept",
+      "answer": "異音",
+      "accept": [
+        "異音診断",
+        "異音点検",
+        "音の不具合",
+        "noise"
+      ],
+      "ja": "普段と違う音の不具合。発生条件の問診が診断の出発点",
+      "q": "「ブレーキを踏むとキーキー鳴る」「段差でコトコト」など、普段と違う音がするという相談。いつ・どこから・どんな音かを聞き取り、再現させて原因を絞る",
+      "explain": "速度・回転数・操舵・制動のどれに連動するかで発生源が分かれる。同乗試運転で再現できるかが勝負",
+      "level": "easy",
+      "tags": [
+        "mech-diag"
+      ],
+      "say": "abnormal noise"
+    },
+    {
+      "id": "concept-mech-oil-leak",
+      "en": "mech-oil-leak",
+      "kind": "concept",
+      "answer": "オイル漏れ",
+      "accept": [
+        "油漏れ",
+        "オイルにじみ",
+        "オイル滲み",
+        "oil leak",
+        "オイルリーク"
+      ],
+      "ja": "パッキンやシールの劣化で油が外に出る不具合",
+      "q": "駐車場に黒いシミができる、エンジン下部が油で濡れているといった相談。パッキンやオイルシールの劣化が主な原因で、どこから出ているかの特定に洗浄が要る",
+      "explain": "「にじみ」と「漏れ」は区別する。滴下していると検査不合格、にじみは経過観察も可。上から下へ伝うので一番高い所を疑う",
+      "level": "easy",
+      "tags": [
+        "mech-diag"
+      ],
+      "say": "oil leak"
+    },
+    {
+      "id": "concept-mech-dead-battery",
+      "en": "mech-dead-battery",
+      "kind": "concept",
+      "answer": "バッテリー上がり",
+      "accept": [
+        "バッテリーあがり",
+        "上がり",
+        "電池切れ",
+        "バッテリー切れ",
+        "dead battery"
+      ],
+      "ja": "蓄電池の電気が不足してエンジンがかからない状態",
+      "q": "ライトの消し忘れや長期放置、劣化で蓄電池の電気が足りなくなり、キーを回してもセルが弱々しく回るかカチカチ音だけでエンジンがかからない状態",
+      "explain": "ブースターケーブルやジャンプスターターで始動後、原因が劣化か放電かを充電・点検で切り分ける。復帰しても再発するなら交換",
+      "level": "easy",
+      "tags": [
+        "mech-diag"
+      ],
+      "say": "dead battery"
+    },
+    {
+      "id": "concept-mech-alternator",
+      "en": "mech-alternator",
+      "kind": "concept",
+      "answer": "オルタネーター",
+      "accept": [
+        "発電機",
+        "ダイナモ",
+        "alternator",
+        "オルタ"
+      ],
+      "ja": "エンジンの力で発電し、走行中にバッテリーを充電する部品",
+      "q": "エンジンの回転をベルトで受けて発電し、走行中の電装品への電力供給とバッテリーの充電を担う部品。故障するとバッテリーの充電警告灯が点く",
+      "explain": "新品交換に換えたばかりのバッテリーがすぐ上がるなら、まずこれの発電電圧を疑う。リビルト品の利用が多い部品",
+      "level": "normal",
+      "tags": [
+        "mech-diag"
+      ],
+      "say": "alternator"
+    },
+    {
+      "id": "concept-mech-starter",
+      "en": "mech-starter",
+      "kind": "concept",
+      "answer": "セルモーター",
+      "accept": [
+        "スターター",
+        "スターターモーター",
+        "セル",
+        "starter motor",
+        "始動モーター"
+      ],
+      "ja": "エンジンを最初に回して始動させる電動モーター",
+      "q": "キーを回したりスタートボタンを押したときに、バッテリーの電気でエンジンを最初に回転させる電動モーター。壊れると「カチッ」と音はするのに回らない",
+      "explain": "バッテリー上がりと症状が似るため、電圧を測ってから判断する。故障はマグネットスイッチやブラシの摩耗が多い",
+      "level": "normal",
+      "tags": [
+        "mech-diag"
+      ],
+      "say": "starter motor"
+    },
+    {
+      "id": "concept-mech-estimate",
+      "en": "mech-estimate",
+      "kind": "concept",
+      "answer": "見積",
+      "accept": [
+        "見積書",
+        "見積もり",
+        "お見積り",
+        "概算見積",
+        "estimate"
+      ],
+      "ja": "作業前に部品代・工賃・法定費用の内訳を示す書類",
+      "q": "作業に入る前に、交換部品の代金、作業の工賃、検査にかかる法定費用などの内訳と合計をお客様に示し、了承を得るための書類",
+      "explain": "「必ず要る作業」と「推奨作業」を分けて示すのが定石。点検後に増える可能性があるなら概算であることを伝える",
+      "level": "easy",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "estimate"
+    },
+    {
+      "id": "concept-mech-work-order",
+      "en": "mech-work-order",
+      "kind": "concept",
+      "answer": "作業指示書",
+      "accept": [
+        "指示書",
+        "作業依頼書",
+        "ワークオーダー",
+        "整備指示書",
+        "work order"
+      ],
+      "ja": "フロントが整備士へ作業内容と顧客の要望を伝える帳票",
+      "q": "フロント担当が受付で聞き取ったお客様の依頼内容や不具合の症状、実施する作業項目を書いて整備士に渡す帳票。作業結果もここに記入する",
+      "explain": "症状は「お客様の言葉のまま」書くと診断で役立つ。ここに無い作業を勝手に行うと追加請求のトラブルになる",
+      "level": "normal",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "work order"
+    },
+    {
+      "id": "concept-mech-courtesy-car",
+      "en": "mech-courtesy-car",
+      "kind": "concept",
+      "answer": "代車",
+      "accept": [
+        "代車貸出",
+        "貸出車",
+        "レンタカー代車",
+        "courtesy car",
+        "だいしゃ"
+      ],
+      "ja": "預かり中にお客様へ貸し出す車。保険と燃料の取り決めが要る",
+      "q": "検査や修理で車を預かる間、お客様の移動手段として工場が無料または有料で貸し出す車。予約時に台数を押さえ、返却時の燃料や事故時の扱いを説明する",
+      "explain": "貸出時に傷のチェックと免許証の確認をし、事故時の自己負担を書面で渡す。禁煙・ペットなどの条件も先に伝える",
+      "level": "easy",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "courtesy car"
+    },
+    {
+      "id": "concept-mech-additional-work",
+      "en": "mech-additional-work",
+      "kind": "concept",
+      "answer": "追加整備",
+      "accept": [
+        "追加作業",
+        "追加修理",
+        "追加整備の同意",
+        "追加項目"
+      ],
+      "ja": "点検で見つかった当初見積にない作業。必ず了承を得てから行う",
+      "q": "分解や点検を進める中で見つかった、最初の見積に入っていない不具合の修理。お客様に電話などで内容と金額を伝え、了承をもらってから着手する",
+      "explain": "連絡なしに行うと支払いを拒否されても反論できない。了承の日時・相手・内容を指示書に残す",
+      "level": "normal",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "additional repair work"
+    },
+    {
+      "id": "concept-mech-oem-parts",
+      "en": "mech-oem-parts",
+      "kind": "concept",
+      "answer": "純正部品",
+      "accept": [
+        "純正",
+        "純正パーツ",
+        "メーカー純正",
+        "OEM部品",
+        "genuine parts"
+      ],
+      "ja": "自動車メーカーが供給する部品。品質確実だが価格は高め",
+      "q": "自動車メーカーが自社ブランドで供給する交換部品。適合と品質が確実で保証も付くが価格は高めで、部品商やディーラーの部品部門から取り寄せる",
+      "explain": "同等品質で安価な「優良部品（社外品）」と、再生品の「リビルト」を使い分ける。見積では区分を明記して選んでもらう",
+      "level": "normal",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "genuine parts"
+    },
+    {
+      "id": "concept-mech-rebuilt-parts",
+      "en": "mech-rebuilt-parts",
+      "kind": "concept",
+      "answer": "リビルト部品",
+      "accept": [
+        "リビルト",
+        "リビルト品",
+        "再生部品",
+        "リンク品",
+        "rebuilt parts"
+      ],
+      "ja": "使用済み部品を分解・再生した部品。安価だがコア返却が要る",
+      "q": "オルタネーターやスターター、エアコンのコンプレッサーなどの使用済み部品を分解し、消耗部分を新品に替えて再生した部品。新品より安く、保証も付く",
+      "explain": "取り外した古い部品（コア）を返却する前提の価格。返さないとコア代を請求される。「中古部品」とは別物",
+      "level": "normal",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "rebuilt parts"
+    },
+    {
+      "id": "concept-mech-labor-cost",
+      "en": "mech-labor-cost",
+      "kind": "concept",
+      "answer": "工賃",
+      "accept": [
+        "技術料",
+        "作業工賃",
+        "作業料",
+        "labor cost",
+        "技術料金"
+      ],
+      "ja": "部品代とは別に請求する作業の対価",
+      "q": "部品代とは別に、取り外し・取り付け・調整といった作業そのものに対して請求する料金。伝票では部品代と分けて記載する",
+      "explain": "標準作業時間（点数）×時間単価で算出するのが基本。「部品は持ち込みで」と言われたら持込工賃の扱いを先に決めておく",
+      "level": "easy",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "labor cost"
+    },
+    {
+      "id": "concept-mech-labor-rate",
+      "en": "mech-labor-rate",
+      "kind": "concept",
+      "answer": "レバレート",
+      "accept": [
+        "レーバーレート",
+        "時間単価",
+        "作業単価",
+        "labor rate",
+        "工賃単価"
+      ],
+      "ja": "工賃を計算するときの1時間あたりの作業単価",
+      "q": "工賃を算出する基準になる、整備士の作業1時間あたりの料金。工場ごとに設定し、標準作業時間に掛けて請求額を出す",
+      "explain": "labor rate の訛り。ディーラーと専業工場で差がある。保険修理では保険会社との協定単価が使われる",
+      "level": "hard",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "labor rate"
+    },
+    {
+      "id": "concept-mech-recall",
+      "en": "mech-recall",
+      "kind": "concept",
+      "answer": "リコール",
+      "accept": [
+        "リコール修理",
+        "リコール作業",
+        "recall",
+        "改善対策",
+        "サービスキャンペーン"
+      ],
+      "ja": "メーカーが不具合を届け出て無償で回収・修理する制度",
+      "q": "設計や製造に原因がある不具合で保安基準に適合しなくなるおそれがあるとき、メーカーが国に届け出て対象車を無償で修理する制度。入庫時に未実施がないか確認する",
+      "explain": "保安基準に関わらない不具合の無償修理は「改善対策」「サービスキャンペーン」と呼び分ける。実施はディーラーが基本",
+      "level": "normal",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "recall"
+    },
+    {
+      "id": "concept-mech-registration",
+      "en": "mech-registration",
+      "kind": "concept",
+      "answer": "車検証",
+      "accept": [
+        "自動車検査証",
+        "検査証",
+        "電子車検証",
+        "車検証書"
+      ],
+      "ja": "車の登録情報と検査の有効期間を記した公的書類。常時携帯",
+      "q": "車台番号、所有者・使用者、型式、有効期間などが記された公的な書類で、車に備え付けておく義務がある。受付では最初に預かり、有効期限と車台番号を照合する",
+      "explain": "近年 IC タグ付きに電子化され、有効期限は券面でなく閲覧アプリや別紙で確認する。車台番号の打刻との照合は検査の必須手順",
+      "level": "easy",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "vehicle registration certificate"
+    },
+    {
+      "id": "concept-mech-jibaiseki",
+      "en": "mech-jibaiseki",
+      "kind": "concept",
+      "answer": "自賠責",
+      "accept": [
+        "自賠責保険",
+        "自動車損害賠償責任保険",
+        "強制保険",
+        "自賠"
+      ],
+      "ja": "加入が義務の対人賠償保険。次の車検満了までの期間で加入",
+      "q": "すべての車に加入が義務づけられた、事故の相手のけがや死亡を補償する保険。検査を受けるには次回満了日まで有効な証明書が必要で、工場で継続加入の手続きをする",
+      "explain": "任意保険とは別で、対物や自分のけがは補償しない。証明書は原本を車に備え付け、検査時に有効期間が足りているか必ず確認",
+      "level": "easy",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "compulsory automobile liability insurance"
+    },
+    {
+      "id": "concept-mech-statutory-fees",
+      "en": "mech-statutory-fees",
+      "kind": "concept",
+      "answer": "法定費用",
+      "accept": [
+        "諸費用",
+        "法定諸費用",
+        "税金・保険料",
+        "検査諸費用"
+      ],
+      "ja": "自賠責・重量税・印紙代など工場を通さず国等に納める費用",
+      "q": "検査の際に必要な自賠責保険料、自動車重量税、検査手数料（印紙代）の合計。工場は預かって納めるだけで、どこで受けても同額になる",
+      "explain": "整備費用と違い消費税がかからず、値引きもできない。見積では「法定費用」と「整備・代行費用」を分けて示す",
+      "level": "normal",
+      "tags": [
+        "mech-service"
+      ],
+      "say": "statutory fees"
+    },
+    {
+      "id": "concept-mech-jack-stand",
+      "en": "mech-jack-stand",
+      "kind": "concept",
+      "answer": "リジッドラック",
+      "accept": [
+        "ウマ",
+        "馬",
+        "ジャッキスタンド",
+        "jack stand",
+        "リジットラック"
+      ],
+      "ja": "ジャッキで上げた車を支える台。ジャッキだけで下に潜らない",
+      "q": "ジャッキで持ち上げた車体を確実に支えるための金属製の台。油圧ジャッキは徐々に下がることがあるため、車の下に入る作業では必ずこれを掛ける",
+      "explain": "現場では「ウマを掛ける」と言う。指定のジャッキアップポイントに掛け、掛けた後に車体を揺すって安定を確認",
+      "level": "normal",
+      "tags": [
+        "mech-safety"
+      ],
+      "say": "jack stand"
+    },
+    {
+      "id": "concept-mech-torque-wrench",
+      "en": "mech-torque-wrench",
+      "kind": "concept",
+      "answer": "トルクレンチ",
+      "accept": [
+        "トルク管理",
+        "規定トルク",
+        "torque wrench",
+        "トルクレンチ締め"
+      ],
+      "ja": "ボルトを規定の力で締めるための工具。ホイールナットは必須",
+      "q": "ボルトやナットを車種ごとに決められた強さで締めるため、設定した力に達すると音や手応えで知らせる工具。タイヤ交換後のホイールナットには必ず使う",
+      "explain": "インパクトで締めっぱなしは締め過ぎでボルト折損の原因。ナットは対角の順に締め、締め付け後は伝票に「トルク確認済」と残す",
+      "level": "easy",
+      "tags": [
+        "mech-safety"
+      ],
+      "say": "torque wrench"
+    },
+    {
+      "id": "concept-mech-waste-oil",
+      "en": "mech-waste-oil",
+      "kind": "concept",
+      "answer": "廃油",
+      "accept": [
+        "廃オイル",
+        "使用済みオイル",
+        "廃油処理",
+        "waste oil"
+      ],
+      "ja": "交換で出た使用済みオイル。産業廃棄物として業者に処理委託",
+      "q": "オイル交換などで抜き取った使用済みの油。工場の専用タンクにため、許可を持つ業者に回収・処理を委託する。下水や土に流すことはできない",
+      "explain": "産業廃棄物として処理の記録（マニフェスト）が残る。クーラントやブレーキフルードは種類が違うので混ぜない",
+      "level": "normal",
+      "tags": [
+        "mech-safety"
+      ],
+      "say": "waste oil"
+    },
+    {
+      "id": "concept-mech-refrigerant-recovery",
+      "en": "mech-refrigerant-recovery",
+      "kind": "concept",
+      "answer": "フロン回収",
+      "accept": [
+        "冷媒回収",
+        "フロンガス回収",
+        "ガス回収",
+        "エアコンガス回収",
+        "refrigerant recovery"
+      ],
+      "ja": "エアコンの冷媒を大気放出せず回収機で回収する義務作業",
+      "q": "エアコン修理や廃車の前に、配管の中の冷媒ガスを大気中に放出せず専用の回収機で抜き取る作業。法律で義務づけられ、放出には罰則がある",
+      "explain": "回収・充填には専用機と冷媒の種類（R134a / R1234yf など）の確認が要る。廃車時は自動車リサイクル法の対象",
+      "level": "hard",
+      "tags": [
+        "mech-safety"
+      ],
+      "say": "refrigerant recovery"
+    },
+    {
+      "id": "concept-mech-ppe",
+      "en": "mech-ppe",
+      "kind": "concept",
+      "answer": "保護具",
+      "accept": [
+        "個人用保護具",
+        "PPE",
+        "保護装備",
+        "安全保護具"
+      ],
+      "ja": "保護メガネ・安全靴・手袋など作業者の体を守る装備",
+      "q": "下回り作業で落ちてくるサビや液体から目を守るメガネ、重い部品の落下に備える安全靴、薬品や熱から手を守る手袋など、作業者の体を守るための装備",
+      "explain": "回転部に巻き込まれるため軍手は禁止の工場が多い。ブレーキフルードやバッテリー液は目に入ると危険なのでメガネは必須",
+      "level": "easy",
+      "tags": [
+        "mech-safety"
+      ],
+      "say": "personal protective equipment"
+    },
+    {
+      "id": "concept-mech-service-plug",
+      "en": "mech-service-plug",
+      "kind": "concept",
+      "answer": "サービスプラグ",
+      "accept": [
+        "サービスディスコネクト",
+        "高電圧遮断プラグ",
+        "service plug",
+        "メンテナンスプラグ"
+      ],
+      "ja": "HV・EVの高電圧回路を遮断する部品。整備前に必ず抜く",
+      "q": "ハイブリッド車や電気自動車の駆動用バッテリーの高電圧回路を物理的に切り離すための部品。感電を防ぐため、高電圧部に触れる整備の前に抜いて絶縁手袋で作業する",
+      "explain": "抜いた後も放電待ち時間が必要。作業者には低圧電気取扱の特別教育が求められ、橙色の高電圧ケーブルには不用意に触れない",
+      "level": "hard",
+      "tags": [
+        "mech-safety"
+      ],
+      "say": "service plug"
+    }
+  ]
+}

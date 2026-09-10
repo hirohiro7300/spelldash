@@ -132,11 +132,15 @@ function ensureModal() {
   return modal;
 }
 
-export function openFeedback() {
+// prefill: 本文の書き出し（分野パックのレビュー依頼など）。すでに入力中なら上書きしない
+export function openFeedback({ prefill = "" } = {}) {
   const modal = ensureModal();
   modal.hidden = false;
   modal.querySelector("#feedbackStatus").textContent = "";
-  modal.querySelector("#feedbackMessage").focus();
+  const message = modal.querySelector("#feedbackMessage");
+  if (prefill && !message.value.trim()) message.value = prefill;
+  message.focus();
+  message.setSelectionRange(message.value.length, message.value.length);
 }
 
 export function closeFeedback() {
