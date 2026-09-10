@@ -635,3 +635,4 @@ html[data-theme="light"] .pack--on { border-color: #93c5fd; background: #eff6ff;
 html[data-theme="light"] .pack__blurb { color: #334155; }
 html[data-theme="light"] .pack__count,
 html[data-theme="light"] .pack__audience { color: #64748b; }
+html[data-theme="light"] .pack-group__title { color: #64748b; }

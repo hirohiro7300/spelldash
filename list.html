@@ -121,7 +121,11 @@
     <section class="packs" id="packs">
       <div class="packs__head">
         <h2 class="packs__title">📚 分野パック</h2>
-        <p class="muted packs__lead">不動産・会計・医療事務など、業界の共通言語を「場面 → 用語」で。追加するとホームのカテゴリに出ます（外すのもここ）。</p>
+        <p class="muted packs__lead">不動産・会計・医療事務・建設・SaaS など、業界の共通言語を「場面 → 用語」で。追加した分野だけがホームのカテゴリに出ます（外すのもここ）。</p>
+        <div class="packs__tools">
+          <input id="packsSearch" type="search" class="setting-select" placeholder="分野を検索（例: 介護、SEO、貿易）" autocomplete="off" />
+          <span class="muted packs__count" id="packsCount"></span>
+        </div>
       </div>
       <div class="packs__grid" id="packsGrid"></div>
     </section>
@@ -144,6 +148,7 @@
       <button type="button" class="filter-chip filter-chip--right" id="listDensity" aria-pressed="false">簡潔表示</button>
     </div>
     <p class="muted list-summary" id="listSummary"></p>
+    <p class="muted list-review" id="listReview" hidden></p>
     <nav class="genre-nav" id="listGenres" aria-label="ジャンル"></nav>
 
     <div id="listBody"></div>
