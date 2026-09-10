@@ -106,6 +106,17 @@
           "group": "ビジネス・バックオフィス"
         },
         {
+          "id": "startupfinance",
+          "label": "スタートアップの資金調達",
+          "file": "packs/startupfinance.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "VCとの会話に出る言葉。評価額・優先株・タームシート・バーンレートまで",
+          "audience": "初めて資金調達に臨む起業家、VC・CVCの新人",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
           "id": "banking",
           "label": "銀行・金融の基本",
           "file": "packs/banking.json",
@@ -224,6 +235,17 @@
           "count": 55,
           "blurb": "問い合わせ対応・アカウント・端末・ネットワーク・情シス業務の用語",
           "audience": "情シス配属の新人、ヘルプデスク担当",
+          "group": "IT・セキュリティ"
+        },
+        {
+          "id": "security",
+          "label": "情報セキュリティの基本",
+          "file": "packs/security.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "全社員に必要な守りの共通語。脅威・対策・事故対応・法令まで",
+          "audience": "情シス・総務の担当者、新入社員研修の受講者",
           "group": "IT・セキュリティ"
         },
         {
