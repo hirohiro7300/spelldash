@@ -1,0 +1,1148 @@
+{
+  "subject": "english",
+  "category": "staffing",
+  "label": "人材紹介・人材派遣",
+  "blurb": "紹介と派遣の仕組み・料金・KPI・法令。人材業界の共通語",
+  "audience": "人材紹介・派遣会社の新人、CA/RA/コーディネーター",
+  "genres": {
+    "staff-intro": "人材紹介",
+    "staff-dispatch": "労働者派遣",
+    "staff-kpi": "数字・KPI",
+    "staff-sales": "営業・運用",
+    "staff-law": "法令・契約"
+  },
+  "words": [
+    {
+      "id": "concept-staff-agency",
+      "en": "staff-agency",
+      "kind": "concept",
+      "answer": "人材紹介",
+      "accept": [
+        "職業紹介",
+        "有料職業紹介",
+        "転職エージェント",
+        "エージェント",
+        "紹介"
+      ],
+      "ja": "求人企業と求職者を引き合わせ、入社が決まれば企業から報酬を得る事業",
+      "q": "採用したい企業と転職したい人の間に立って引き合わせ、入社が決まった時点で企業から手数料を受け取る事業。行うには厚生労働大臣の許可が要る",
+      "explain": "求職者から手数料を取らないのが原則。雇用主はあくまで入社先で、自社で雇って送り出す「派遣」とは仕組みが違う",
+      "level": "easy",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "recruitment agency"
+    },
+    {
+      "id": "concept-staff-ca",
+      "en": "staff-ca",
+      "kind": "concept",
+      "answer": "キャリアアドバイザー",
+      "accept": [
+        "CA",
+        "キャリアコンサルタント",
+        "career advisor",
+        "キャリアカウンセラー",
+        "求職者担当"
+      ],
+      "ja": "求職者側を担当し、面談・求人提案・選考対策を行う職種",
+      "q": "転職希望者と面談して経歴や希望を聞き取り、合いそうな求人を提案し、書類の添削や面接対策、内定後の条件調整まで伴走する求職者側の担当者",
+      "explain": "略して CA。企業側の担当（RA）と情報をつなぐのが仕事の要。国家資格の「キャリアコンサルタント」とは別の職種名",
+      "level": "easy",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "career advisor"
+    },
+    {
+      "id": "concept-staff-ra",
+      "en": "staff-ra",
+      "kind": "concept",
+      "answer": "リクルーティングアドバイザー",
+      "accept": [
+        "RA",
+        "法人担当",
+        "recruiting advisor",
+        "企業担当",
+        "法人営業"
+      ],
+      "ja": "求人企業側を担当し、求人開拓と採用要件の把握を行う職種",
+      "q": "採用したい企業を訪問して求人を預かり、募集の背景や求める人物像を聞き取り、候補者を推薦して選考結果をやり取りする企業側の担当者",
+      "explain": "略して RA。企業と求職者を別々の人が担当するのが「分業型」、1人で両方見るのが「両面型」",
+      "level": "easy",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "recruiting advisor"
+    },
+    {
+      "id": "concept-staff-full-desk",
+      "en": "staff-full-desk",
+      "kind": "concept",
+      "answer": "両面型",
+      "accept": [
+        "両面",
+        "一気通貫型",
+        "両手型",
+        "360度型",
+        "一気通貫"
+      ],
+      "ja": "1人の担当者が企業側と求職者側の両方を受け持つ体制",
+      "q": "1人のコンサルタントが企業への営業から求職者との面談、推薦、条件交渉まで一貫して担当する体制。中小のエージェントや専門領域特化型に多い",
+      "explain": "情報の伝言ゲームが起きにくい反面、1人が抱える件数に限界がある。企業と求職者で担当を分けるのが「分業型」",
+      "level": "normal",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "full desk"
+    },
+    {
+      "id": "concept-staff-job-order",
+      "en": "staff-job-order",
+      "kind": "concept",
+      "answer": "求人票",
+      "accept": [
+        "求人情報",
+        "JD",
+        "ジョブディスクリプション",
+        "求人案件",
+        "案件"
+      ],
+      "ja": "職種・業務内容・条件・応募要件をまとめた募集情報",
+      "q": "企業から預かった募集内容を、職種、仕事内容、勤務地、給与、必須・歓迎要件などの項目にまとめた資料。求職者に見せる前に条件の抜けや誤りを確認する",
+      "explain": "職業安定法で労働条件の明示が求められる。「見込み年収」と「固定給」の区別、みなし残業の有無は必ず確認",
+      "level": "easy",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "job order"
+    },
+    {
+      "id": "concept-staff-referral",
+      "en": "staff-referral",
+      "kind": "concept",
+      "answer": "推薦",
+      "accept": [
+        "推薦文",
+        "推薦状",
+        "エントリー",
+        "候補者推薦",
+        "レジュメ送付"
+      ],
+      "ja": "求職者の職務経歴書に担当者のコメントを添えて企業へ送ること",
+      "q": "面談を終えた求職者の職務経歴書に、担当者が人物像や強み、転職理由を補足するコメントを添えて企業の採用担当へ送る工程。ここから選考が始まる",
+      "explain": "本人の同意なしに送るのは個人情報の観点で禁止。書類通過率はコメントの質で変わるため、企業の要件に沿って書く",
+      "level": "normal",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "candidate referral"
+    },
+    {
+      "id": "concept-staff-placement-fee",
+      "en": "staff-placement-fee",
+      "kind": "concept",
+      "answer": "紹介手数料",
+      "accept": [
+        "紹介料",
+        "紹介フィー",
+        "フィー",
+        "placement fee",
+        "成約手数料"
+      ],
+      "ja": "入社が決まったときに企業が人材紹介会社へ払う報酬",
+      "q": "推薦した人の入社が決まったときに、企業が人材紹介会社へ払う報酬。理論年収に一定の料率を掛けて算出し、入社日を基準に請求することが多い",
+      "explain": "料率は理論年収の30〜35%が目安とされるが契約ごとに異なる。早期退職時の返金規定とセットで契約書に定める",
+      "level": "easy",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "placement fee"
+    },
+    {
+      "id": "concept-staff-theoretical-salary",
+      "en": "staff-theoretical-salary",
+      "kind": "concept",
+      "answer": "理論年収",
+      "accept": [
+        "想定年収",
+        "理論値年収",
+        "年収理論値",
+        "オファー年収"
+      ],
+      "ja": "手数料計算の基準になる、入社時の条件から算出した年収",
+      "q": "紹介手数料を計算する基準として、入社時に提示された月給の12か月分に賞与などを加えて算出する年収。実際に1年働いて受け取る額とは異なる",
+      "explain": "残業代や通勤手当を含めないのが一般的だが、何を含めるかは契約書の定義に従う。オファー面談で条件が変わったら再計算",
+      "level": "hard",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "theoretical annual salary"
+    },
+    {
+      "id": "concept-staff-refund",
+      "en": "staff-refund",
+      "kind": "concept",
+      "answer": "返金規定",
+      "accept": [
+        "返戻金規定",
+        "返金保証",
+        "返戻金",
+        "リファンド",
+        "返金条項"
+      ],
+      "ja": "紹介した人が早期退職した場合に手数料の一部を返す取り決め",
+      "q": "紹介した人が入社後の短い期間で自己都合退職した場合に、受け取った手数料の一部を企業へ返す取り決め。在籍期間に応じて返す割合が段階的に決まる",
+      "explain": "対象は自己都合退職が基本で、会社都合や試用期間中の解雇は除くことが多い。入社後フォローで早期離職を防ぐ動機になる",
+      "level": "normal",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "refund policy"
+    },
+    {
+      "id": "concept-staff-headhunting",
+      "en": "staff-headhunting",
+      "kind": "concept",
+      "answer": "ヘッドハンティング",
+      "accept": [
+        "サーチ型",
+        "エグゼクティブサーチ",
+        "サーチファーム",
+        "headhunting",
+        "引き抜き"
+      ],
+      "ja": "登録者を待たず、条件に合う人を探し出して直接口説く手法",
+      "q": "転職活動をしていない人も含めて、企業が求める経歴の人物を業界内から調べ上げ、直接連絡して転職を持ちかける手法。経営幹部や専門職の採用で使う",
+      "explain": "登録者の中から選ぶ「登録型」と対比される。着手時に前金（リテナー）をもらう契約が多く、成功報酬のみの登録型と収益構造が違う",
+      "level": "hard",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "headhunting"
+    },
+    {
+      "id": "concept-staff-scout",
+      "en": "staff-scout",
+      "kind": "concept",
+      "answer": "スカウト",
+      "accept": [
+        "スカウトメール",
+        "スカウト配信",
+        "オファー",
+        "scout",
+        "プラチナスカウト"
+      ],
+      "ja": "データベースの登録者に、担当者や企業から声をかけるメッセージ",
+      "q": "転職サイトやエージェントのデータベースに登録した人の経歴を見て、担当者や企業側から「この求人に応募しませんか」と個別に送るメッセージ",
+      "explain": "定型文の一斉送信は返信率が低い。経歴のどこに惹かれたかを冒頭に書く「個別化」が返信率を左右する",
+      "level": "easy",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "scout message"
+    },
+    {
+      "id": "concept-staff-direct-recruiting",
+      "en": "staff-direct-recruiting",
+      "kind": "concept",
+      "answer": "ダイレクトリクルーティング",
+      "accept": [
+        "ダイレクトソーシング",
+        "direct recruiting",
+        "攻めの採用",
+        "ダイレクト採用",
+        "DR"
+      ],
+      "ja": "企業が仲介を通さず、自らデータベースから候補者に声をかける採用",
+      "q": "企業の採用担当がエージェントに頼らず、スカウト媒体のデータベースや SNS で候補者を探して自ら声をかける採用手法。手数料を抑えられるが工数がかかる",
+      "explain": "エージェントにとっては競合でもあり、媒体運用の代行を請け負うビジネスにもなる。返信率と工数のバランスが企業側の課題",
+      "level": "normal",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "direct recruiting"
+    },
+    {
+      "id": "concept-staff-contingency",
+      "en": "staff-contingency",
+      "kind": "concept",
+      "answer": "成功報酬",
+      "accept": [
+        "成功報酬型",
+        "完全成功報酬",
+        "成果報酬",
+        "contingency fee",
+        "コンティンジェンシー"
+      ],
+      "ja": "入社が決まった場合にのみ報酬が発生する契約形態",
+      "q": "推薦や面接をいくら行っても、紹介した人が実際に入社した場合にだけ企業から報酬を受け取る契約形態。登録型の人材紹介で一般的",
+      "explain": "決まらなければ売上ゼロなので、案件の選別と決定率の管理が経営に直結する。前金をもらう「リテナー」と対比される",
+      "level": "normal",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "contingency fee"
+    },
+    {
+      "id": "concept-staff-retainer",
+      "en": "staff-retainer",
+      "kind": "concept",
+      "answer": "リテナー",
+      "accept": [
+        "リテイナー",
+        "着手金",
+        "リテナー契約",
+        "retainer",
+        "前金"
+      ],
+      "ja": "着手時に一部を前払いで受け取る契約形態。サーチ型で多い",
+      "q": "採用活動の着手時に報酬の一部を前払いで受け取り、候補者の提示や入社の段階で残りを受け取る契約形態。幹部採用のサーチ型でよく使われる",
+      "explain": "企業側は結果が出なくても着手金を回収できない代わりに、専任で探索してもらえる。成功報酬型との違いを提案時に説明する",
+      "level": "hard",
+      "tags": [
+        "staff-intro"
+      ],
+      "say": "retainer"
+    },
+    {
+      "id": "concept-staff-dispatch",
+      "en": "staff-dispatch",
+      "kind": "concept",
+      "answer": "労働者派遣",
+      "accept": [
+        "派遣",
+        "人材派遣",
+        "一般労働者派遣",
+        "temporary staffing"
+      ],
+      "ja": "派遣会社に雇用された人が、派遣先の指揮命令で働く仕組み",
+      "q": "人材会社と雇用契約を結んだ人が、契約した別の会社の職場でその会社の指示を受けて働く仕組み。給与を払うのは人材会社、仕事の指示をするのは受け入れ先",
+      "explain": "「雇う会社」と「指示する会社」が分かれるのが特徴。港湾運送・建設・警備などは対象外の禁止業務",
+      "level": "easy",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "worker dispatch"
+    },
+    {
+      "id": "concept-staff-dispatching-agency",
+      "en": "staff-dispatching-agency",
+      "kind": "concept",
+      "answer": "派遣元",
+      "accept": [
+        "派遣会社",
+        "派遣元事業主",
+        "派遣事業者",
+        "人材派遣会社",
+        "派遣元企業"
+      ],
+      "ja": "派遣スタッフを雇用し給与を払う側の会社",
+      "q": "派遣スタッフと雇用契約を結び、給与の支払い、社会保険の手続き、有給休暇の管理を行う側の会社。スタッフが実際に働くのは別の会社の職場",
+      "explain": "スタッフが働く受け入れ側は「派遣先」。トラブル時にスタッフが最初に相談する窓口はこちら",
+      "level": "easy",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "dispatching agency"
+    },
+    {
+      "id": "concept-staff-client-supervisor",
+      "en": "staff-client-supervisor",
+      "kind": "concept",
+      "answer": "派遣先責任者",
+      "accept": [
+        "派遣先の責任者",
+        "受入責任者",
+        "派遣先管理責任者"
+      ],
+      "ja": "受け入れ企業側で派遣スタッフの就業管理の窓口となる人",
+      "q": "派遣スタッフを受け入れる企業側で選任され、就業状況の管理、苦情の窓口、派遣会社との連絡調整を担う人。法律で選任が義務づけられている",
+      "explain": "派遣会社側にも対になる「派遣元責任者」がいる。日々の業務指示をする「指揮命令者」とは別に定めることができる",
+      "level": "normal",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "client-side supervisor"
+    },
+    {
+      "id": "concept-staff-dispatch-contract",
+      "en": "staff-dispatch-contract",
+      "kind": "concept",
+      "answer": "派遣契約",
+      "accept": [
+        "労働者派遣契約",
+        "派遣基本契約",
+        "派遣個別契約",
+        "個別契約"
+      ],
+      "ja": "派遣会社と受け入れ企業の間で結ぶ契約。労働契約とは別",
+      "q": "派遣会社と受け入れ企業の間で、業務内容、就業場所、期間、料金、責任者などを定めて結ぶ契約。スタッフ本人は当事者ではない",
+      "explain": "スタッフとの間で結ぶのは「労働契約」で、契約が2本あるのが派遣の構造。契約に無い業務をさせてはいけない",
+      "level": "normal",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "dispatch contract"
+    },
+    {
+      "id": "concept-staff-conflict-date",
+      "en": "staff-conflict-date",
+      "kind": "concept",
+      "answer": "抵触日",
+      "accept": [
+        "派遣抵触日",
+        "期間制限抵触日",
+        "事業所単位の抵触日",
+        "個人単位の抵触日"
+      ],
+      "ja": "派遣の期間制限を超える最初の日。原則3年の翌日",
+      "q": "同じ職場・同じ部署に派遣スタッフを受け入れられる期間の上限を超えてしまう最初の日。期間制限は原則3年で、事業所単位と個人単位の2種類がある",
+      "explain": "事業所単位は過半数労働組合等への意見聴取で延長できるが、個人単位は延長できない。契約前に受け入れ側から通知してもらう",
+      "level": "hard",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "conflict date"
+    },
+    {
+      "id": "concept-staff-temp-to-perm",
+      "en": "staff-temp-to-perm",
+      "kind": "concept",
+      "answer": "紹介予定派遣",
+      "accept": [
+        "TTP",
+        "temp to perm",
+        "紹介予定",
+        "テンプトゥパーム"
+      ],
+      "ja": "直接雇用を前提に、最長6か月派遣で働いてから双方が判断する仕組み",
+      "q": "受け入れ企業での直接雇用を前提として、まず一定期間は派遣として働き、期間の終わりに企業と本人の双方が合意すれば社員として採用する仕組み",
+      "explain": "派遣期間は最長6か月。この形に限り事前の面接や履歴書の提出が認められる。入社時には紹介手数料が発生する",
+      "level": "normal",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "temp to perm"
+    },
+    {
+      "id": "concept-staff-indefinite-dispatch",
+      "en": "staff-indefinite-dispatch",
+      "kind": "concept",
+      "answer": "無期雇用派遣",
+      "accept": [
+        "常用型派遣",
+        "無期派遣",
+        "正社員型派遣",
+        "無期雇用"
+      ],
+      "ja": "派遣会社と期間の定めのない雇用契約を結んで派遣される形",
+      "q": "派遣会社と期間の定めのない雇用契約を結び、派遣先での就業が終わっても雇用が続く形。就業していない期間も給与が支払われる",
+      "explain": "案件ごとに契約する「登録型（有期雇用派遣）」と対比される。個人単位の3年の期間制限が適用されない",
+      "level": "normal",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "indefinite-term dispatch"
+    },
+    {
+      "id": "concept-staff-equal-pay",
+      "en": "staff-equal-pay",
+      "kind": "concept",
+      "answer": "同一労働同一賃金",
+      "accept": [
+        "同一労働・同一賃金",
+        "均等待遇",
+        "均衡待遇",
+        "equal pay for equal work"
+      ],
+      "ja": "派遣スタッフと派遣先の正社員との不合理な待遇差を禁じる考え方",
+      "q": "同じ仕事をしている派遣スタッフと受け入れ企業の正社員との間で、賃金や手当、福利厚生に不合理な差をつけてはならないという考え方。派遣法の改正で義務化された",
+      "explain": "派遣会社は「労使協定方式」か「派遣先均等・均衡方式」のどちらかで待遇を決める。派遣料金の値上げ交渉の根拠にもなる",
+      "level": "normal",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "equal pay for equal work"
+    },
+    {
+      "id": "concept-staff-labor-agreement-method",
+      "en": "staff-labor-agreement-method",
+      "kind": "concept",
+      "answer": "労使協定方式",
+      "accept": [
+        "労使協定",
+        "協定方式",
+        "派遣先均等均衡方式",
+        "派遣先均等・均衡方式"
+      ],
+      "ja": "派遣会社が労使協定で賃金水準を定めて待遇を決める方式",
+      "q": "同一労働同一賃金に対応する2つの方式のうち、派遣会社が労働者の過半数代表と協定を結び、国が示す同種業務の賃金統計以上の水準で待遇を決める方式",
+      "explain": "もう一方が受け入れ企業の社員に合わせる「派遣先均等・均衡方式」。実務では前者を選ぶ派遣会社が多数。協定は毎年更新",
+      "level": "hard",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "labor-management agreement method"
+    },
+    {
+      "id": "concept-staff-dispatch-fee",
+      "en": "staff-dispatch-fee",
+      "kind": "concept",
+      "answer": "派遣料金",
+      "accept": [
+        "派遣単価",
+        "時間単価",
+        "請求単価",
+        "派遣料",
+        "チャージ"
+      ],
+      "ja": "受け入れ企業が派遣会社に払う、1時間あたりの料金",
+      "q": "受け入れ企業が派遣会社に払う料金で、スタッフの就業1時間あたりの単価で決めることが多い。ここからスタッフの時給や社会保険料、派遣会社の経費と利益が出る",
+      "explain": "スタッフの時給とは別物で、両者の差がマージン。残業や深夜には割増の単価を契約で定める",
+      "level": "easy",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "dispatch fee"
+    },
+    {
+      "id": "concept-staff-margin-rate",
+      "en": "staff-margin-rate",
+      "kind": "concept",
+      "answer": "マージン率",
+      "accept": [
+        "マージン",
+        "派遣マージン率",
+        "margin rate",
+        "マージン比率"
+      ],
+      "ja": "派遣料金のうちスタッフの賃金以外が占める割合。公開が義務",
+      "q": "派遣料金からスタッフに払う賃金を引いた差額が、派遣料金に占める割合。派遣会社には事業所ごとに公開する義務がある",
+      "explain": "全部が利益ではなく、社会保険料の会社負担、有給休暇の費用、教育訓練費、経費が含まれる。求職者から聞かれたときに内訳を説明できるように",
+      "level": "hard",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "margin rate"
+    },
+    {
+      "id": "concept-staff-timesheet",
+      "en": "staff-timesheet",
+      "kind": "concept",
+      "answer": "タイムシート",
+      "accept": [
+        "勤務表",
+        "就業時間報告書",
+        "勤怠",
+        "timesheet",
+        "勤怠表"
+      ],
+      "ja": "派遣スタッフの日々の勤務時間を記録し、派遣先が承認する帳票",
+      "q": "派遣スタッフが日々の出退勤と休憩、残業の時間を記録し、受け入れ企業の担当者が承認する帳票。締め日ごとに派遣会社へ提出され、給与と請求の元になる",
+      "explain": "承認された時間が給与と請求の両方の根拠。未承認や修正は締め日前に片付けないと給与遅れになる",
+      "level": "easy",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "timesheet"
+    },
+    {
+      "id": "concept-staff-non-renewal",
+      "en": "staff-non-renewal",
+      "kind": "concept",
+      "answer": "雇止め",
+      "accept": [
+        "雇い止め",
+        "契約不更新",
+        "更新なし",
+        "不更新"
+      ],
+      "ja": "有期契約の期間満了時に、更新せずに終了させること",
+      "q": "期間を定めた雇用契約について、期間が満了したときに次の契約を結ばず終了させること。受け入れ企業の契約終了に伴って起きやすい",
+      "explain": "更新を繰り返している場合は30日前までの予告が求められ、合理的な理由がないと無効とされることがある。解雇とは別の概念",
+      "level": "normal",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "non-renewal of contract"
+    },
+    {
+      "id": "concept-staff-day-labor",
+      "en": "staff-day-labor",
+      "kind": "concept",
+      "answer": "日雇い派遣",
+      "accept": [
+        "日雇派遣",
+        "日々紹介",
+        "スポット派遣",
+        "単発派遣",
+        "日雇い"
+      ],
+      "ja": "30日以内の短期の派遣。原則禁止で、例外要件がある",
+      "q": "雇用契約の期間が30日以内の短い派遣。雇用が不安定になりやすいため法律で原則禁止されており、一定の業務や一定の収入・年齢などの例外に該当する場合だけ認められる",
+      "explain": "単発の仕事を扱うなら「日々紹介（職業紹介）」や直接雇用のアルバイトとの区別が必要。例外要件の確認書類を残す",
+      "level": "hard",
+      "tags": [
+        "staff-dispatch"
+      ],
+      "say": "day labor dispatch"
+    },
+    {
+      "id": "concept-staff-kpi",
+      "en": "staff-kpi",
+      "kind": "concept",
+      "answer": "KPI",
+      "accept": [
+        "重要業績評価指標",
+        "key performance indicator",
+        "ケーピーアイ",
+        "管理指標"
+      ],
+      "ja": "目標達成までの過程を測る数値指標。面談数・推薦数など",
+      "q": "月の売上目標から逆算して、面談数、推薦数、面接設定数、内定数のように日々追いかける数値の指標。朝会や週次の進捗会議で確認する",
+      "explain": "Key Performance Indicator。最終目標（売上・決定数）は KGI と呼び分ける。各工程の「率」と「数」を両方見る",
+      "level": "easy",
+      "tags": [
+        "staff-kpi",
+        "abbr"
+      ],
+      "say": "key performance indicator"
+    },
+    {
+      "id": "concept-staff-reply-rate",
+      "en": "staff-reply-rate",
+      "kind": "concept",
+      "answer": "返信率",
+      "accept": [
+        "スカウト返信率",
+        "開封率",
+        "反応率",
+        "レスポンス率",
+        "reply rate"
+      ],
+      "ja": "送ったスカウトのうち返信があった割合。文面と対象選びの成果",
+      "q": "送ったスカウトメッセージのうち、返信や応募につながった割合。件名や冒頭の個別化、送る相手の絞り込みが適切かを測る数字",
+      "explain": "分母を「送信数」にするか「開封数」にするかで意味が変わる。媒体によって水準が違うので同じ媒体内で比較する",
+      "level": "normal",
+      "tags": [
+        "staff-kpi"
+      ],
+      "say": "reply rate"
+    },
+    {
+      "id": "concept-staff-meeting-rate",
+      "en": "staff-meeting-rate",
+      "kind": "concept",
+      "answer": "面談設定率",
+      "accept": [
+        "面談率",
+        "面談化率",
+        "面談設定数",
+        "アポ率",
+        "面談獲得率"
+      ],
+      "ja": "問い合わせや登録のうち、面談の予定まで進んだ割合",
+      "q": "登録や問い合わせ、スカウトへの返信があった人のうち、実際に面談の日程が確定した割合。初回連絡の速さと電話のつながりやすさで大きく変わる",
+      "explain": "登録から初回連絡までの時間が短いほど上がるとされる。設定しても当日来ない「面談キャンセル率」と合わせて見る",
+      "level": "easy",
+      "tags": [
+        "staff-kpi"
+      ],
+      "say": "meeting set rate"
+    },
+    {
+      "id": "concept-staff-offer-rate",
+      "en": "staff-offer-rate",
+      "kind": "concept",
+      "answer": "内定率",
+      "accept": [
+        "内定獲得率",
+        "オファー率",
+        "内定数",
+        "offer rate",
+        "最終通過率"
+      ],
+      "ja": "選考に進んだ人のうち内定が出た割合。選考対策と推薦精度の成果",
+      "q": "書類選考や面接に進んだ人のうち、企業から採用の意思表示をもらえた割合。求人と候補者の合わせ方と面接対策の質を測る数字",
+      "explain": "分母を「推薦数」にするか「最終面接数」にするかを揃えないと比較できない。低い場合は推薦の段階で要件がずれていることが多い",
+      "level": "easy",
+      "tags": [
+        "staff-kpi"
+      ],
+      "say": "offer rate"
+    },
+    {
+      "id": "concept-staff-placement-rate",
+      "en": "staff-placement-rate",
+      "kind": "concept",
+      "answer": "決定率",
+      "accept": [
+        "成約率",
+        "決定数",
+        "入社決定率",
+        "成約数",
+        "placement rate"
+      ],
+      "ja": "面談した求職者のうち入社まで至った割合。事業の最重要指標",
+      "q": "面談した転職希望者のうち、実際に入社が決まって売上になった割合。人材紹介の事業で最も重視される数字で、担当者の評価にも直結する",
+      "explain": "内定が出ても本人が辞退すれば売上にならない。内定後の「承諾率」を分けて追うと打ち手が見える",
+      "level": "normal",
+      "tags": [
+        "staff-kpi"
+      ],
+      "say": "placement rate"
+    },
+    {
+      "id": "concept-staff-retention-rate",
+      "en": "staff-retention-rate",
+      "kind": "concept",
+      "answer": "定着率",
+      "accept": [
+        "早期離職率",
+        "離職率",
+        "在籍率",
+        "retention rate",
+        "継続率"
+      ],
+      "ja": "入社・就業した人が一定期間後も在籍している割合",
+      "q": "紹介や派遣で就業した人が、入社から一定期間（3か月、1年など）を過ぎても辞めずに在籍している割合。企業からの信頼と返金の発生に直結する",
+      "explain": "紹介では返金規定、派遣では契約更新に響く。入社前の条件の認識合わせと入社後フォローで上げる",
+      "level": "normal",
+      "tags": [
+        "staff-kpi"
+      ],
+      "say": "retention rate"
+    },
+    {
+      "id": "concept-staff-utilization",
+      "en": "staff-utilization",
+      "kind": "concept",
+      "answer": "稼働率",
+      "accept": [
+        "稼働",
+        "稼働人数",
+        "稼働数",
+        "就業率",
+        "utilization rate"
+      ],
+      "ja": "登録スタッフのうち実際に派遣先で就業している人の割合や人数",
+      "q": "派遣会社の登録スタッフのうち、実際に契約中の職場で働いている人の割合や人数。派遣事業の売上はこの人数×時間×単価で決まる",
+      "explain": "「稼働」は就業中という意味で「稼働が切れる」は契約終了のこと。月初と月末で人数が変わるので時点を決めて数える",
+      "level": "normal",
+      "tags": [
+        "staff-kpi"
+      ],
+      "say": "utilization rate"
+    },
+    {
+      "id": "concept-staff-job-development",
+      "en": "staff-job-development",
+      "kind": "concept",
+      "answer": "求人開拓",
+      "accept": [
+        "新規開拓",
+        "求人獲得",
+        "法人開拓",
+        "案件開拓",
+        "テレアポ"
+      ],
+      "ja": "電話や訪問で企業に働きかけ、新しい求人を預かる営業活動",
+      "q": "採用ニーズがありそうな企業に電話や訪問で働きかけ、募集中のポジションを預かって契約を結ぶ営業活動。RA や法人営業の基本業務",
+      "explain": "求人サイトに出している企業や業績の良い企業がリスト化の起点。預かるだけでなく「決めやすい求人か」を見極める",
+      "level": "easy",
+      "tags": [
+        "staff-sales"
+      ],
+      "say": "job development"
+    },
+    {
+      "id": "concept-staff-job-seeker",
+      "en": "staff-job-seeker",
+      "kind": "concept",
+      "answer": "求職者",
+      "accept": [
+        "候補者",
+        "登録者",
+        "転職希望者",
+        "キャンディデート",
+        "job seeker"
+      ],
+      "ja": "仕事を探してサービスに登録した人。企業へは候補者と呼ぶ",
+      "q": "転職や就業を希望してエージェントや派遣会社に登録し、面談を受ける人。経歴書や希望条件を預かる相手で、個人情報の扱いに最も注意が要る",
+      "explain": "職業安定法上の用語。企業側は「求人者」。個人情報の塊なので、経歴書の扱いと同意の取り方が最初に叩き込まれる",
+      "level": "easy",
+      "tags": [
+        "staff-sales"
+      ],
+      "say": "job seeker"
+    },
+    {
+      "id": "concept-staff-matching",
+      "en": "staff-matching",
+      "kind": "concept",
+      "answer": "マッチング",
+      "accept": [
+        "求人マッチング",
+        "案件マッチング",
+        "matching",
+        "マッチ",
+        "すり合わせ"
+      ],
+      "ja": "求人の要件と求職者の経歴・希望を突き合わせて組み合わせる作業",
+      "q": "預かった求人の必須要件や社風と、面談した人の経歴・希望条件・人柄を突き合わせ、双方が納得できそうな組み合わせを探す作業。この精度が決定率を決める",
+      "explain": "スキルの一致だけでなく年収・勤務地・転職理由との整合を見る。「合わないと分かって推薦する」のは双方の信頼を失う",
+      "level": "easy",
+      "tags": [
+        "staff-sales"
+      ],
+      "say": "matching"
+    },
+    {
+      "id": "concept-staff-media",
+      "en": "staff-media",
+      "kind": "concept",
+      "answer": "媒体",
+      "accept": [
+        "求人媒体",
+        "求人サイト",
+        "転職サイト",
+        "求人広告",
+        "スカウト媒体"
+      ],
+      "ja": "求職者を集めるために使う求人サイトやスカウトサービス",
+      "q": "転職希望者を集めるために掲載料や利用料を払って使う、掲載型のサイトやスカウトサービスの総称。集客の入口で、どこから何人登録したかを毎月集計する",
+      "explain": "「どこ経由の登録が決定につながったか」の費用対効果（登録単価・決定単価）で予算配分を決める",
+      "level": "easy",
+      "tags": [
+        "staff-sales"
+      ],
+      "say": "recruitment media"
+    },
+    {
+      "id": "concept-staff-ats",
+      "en": "staff-ats",
+      "kind": "concept",
+      "answer": "ATS",
+      "accept": [
+        "採用管理システム",
+        "応募者管理システム",
+        "applicant tracking system",
+        "候補者管理システム"
+      ],
+      "ja": "応募者・候補者の情報と選考の進み具合を一元管理するシステム",
+      "q": "応募者や候補者の経歴、面接日程、選考結果、やり取りの履歴を一元管理するシステム。企業の採用担当が使うほか、エージェント側の候補者データベースも同様の仕組み",
+      "explain": "Applicant Tracking System。企業側の ATS 経由で推薦する運用だと、返信の遅れや情報の入力漏れがそのまま評価になる",
+      "level": "normal",
+      "tags": [
+        "staff-sales",
+        "abbr"
+      ],
+      "say": "applicant tracking system"
+    },
+    {
+      "id": "concept-staff-requirements",
+      "en": "staff-requirements",
+      "kind": "concept",
+      "answer": "要件定義",
+      "accept": [
+        "採用要件",
+        "求人要件",
+        "採用要件の整理",
+        "要件ヒアリング",
+        "要件整理"
+      ],
+      "ja": "企業と話し合い、必須・歓迎条件と採用の背景を具体化する工程",
+      "q": "「若手で優秀な人」といった曖昧な希望を、企業の採用担当や現場と話し合って必須スキル、歓迎条件、年収レンジ、募集の背景まで具体化する工程。推薦の精度を左右する",
+      "explain": "必須と歓迎を分け、「なぜその条件か」まで聞くと代替案を提案できる。条件が厳しすぎる求人は先に調整しないと決まらない",
+      "level": "normal",
+      "tags": [
+        "staff-sales"
+      ],
+      "say": "requirements definition"
+    },
+    {
+      "id": "concept-staff-persona",
+      "en": "staff-persona",
+      "kind": "concept",
+      "answer": "ペルソナ",
+      "accept": [
+        "採用ペルソナ",
+        "ターゲット人物像",
+        "persona",
+        "求める人物像",
+        "ターゲット像"
+      ],
+      "ja": "採用したい人物像を経歴・志向まで具体的に描いた架空の人物",
+      "q": "採用したい人物像を、年齢層、現職、経験、転職を考える理由、重視する条件まで1人の架空の人物として具体的に描いたもの。スカウト文面や媒体選びの基準になる",
+      "explain": "マーケティング用語の転用。作りっぱなしにせず、実際に決まった人と照らして更新する",
+      "level": "normal",
+      "tags": [
+        "staff-sales"
+      ],
+      "say": "persona"
+    },
+    {
+      "id": "concept-staff-post-hire-follow",
+      "en": "staff-post-hire-follow",
+      "kind": "concept",
+      "answer": "入社後フォロー",
+      "accept": [
+        "就業後フォロー",
+        "定着フォロー",
+        "アフターフォロー",
+        "入社後面談",
+        "フォロー"
+      ],
+      "ja": "入社・就業後に本人と企業に連絡し、早期離職の芽を摘む活動",
+      "q": "入社や就業開始のあとに本人と受け入れ企業の双方へ連絡し、仕事内容や人間関係の困りごとを早めに聞き出して調整する活動。1週間後・1か月後などの節目で行う",
+      "explain": "紹介では返金期間中の離職防止、派遣では契約更新につながる。不満は本人から企業に言いにくいので担当者が間に入る",
+      "level": "easy",
+      "tags": [
+        "staff-sales"
+      ],
+      "say": "post-placement follow-up"
+    },
+    {
+      "id": "concept-staff-employment-security-act",
+      "en": "staff-employment-security-act",
+      "kind": "concept",
+      "answer": "職業安定法",
+      "accept": [
+        "職安法",
+        "職業安定法の規制",
+        "employment security act"
+      ],
+      "ja": "職業紹介や労働者募集のルールを定めた法律。許可制の根拠",
+      "q": "職業紹介、労働者の募集、労働者供給について事業の許可や求人条件の明示、手数料の制限などを定めた法律。人材紹介会社の許可はこの法律に基づく",
+      "explain": "求人票の労働条件の明示義務や、虚偽求人の禁止もここが根拠。派遣については別に「労働者派遣法」がある",
+      "level": "normal",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "employment security act"
+    },
+    {
+      "id": "concept-staff-dispatch-act",
+      "en": "staff-dispatch-act",
+      "kind": "concept",
+      "answer": "労働者派遣法",
+      "accept": [
+        "派遣法",
+        "労働者派遣事業の適正な運営の確保及び派遣労働者の保護等に関する法律",
+        "worker dispatch act"
+      ],
+      "ja": "派遣事業の許可、期間制限、待遇などを定めた法律",
+      "q": "派遣事業の許可制、派遣できない業務、同じ職場で受け入れられる期間の上限、責任者の選任、待遇の確保などを定めた法律。派遣会社の実務の土台",
+      "explain": "改正が多く、期間制限や同一労働同一賃金はこの法律の改正で導入された。違反は許可の取消しにつながる",
+      "level": "normal",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "worker dispatch act"
+    },
+    {
+      "id": "concept-staff-disguised-contracting",
+      "en": "staff-disguised-contracting",
+      "kind": "concept",
+      "answer": "偽装請負",
+      "accept": [
+        "偽装委託",
+        "違法派遣",
+        "disguised contracting",
+        "偽装請け負い"
+      ],
+      "ja": "請負や委託の契約なのに、発注者が直接指揮命令している状態",
+      "q": "契約書は請負や業務委託になっているのに、実際には発注者の社員が現場で直接作業の指示や勤怠管理をしている状態。実態が派遣なのに派遣法の規制を逃れることになる",
+      "explain": "判断基準は「誰が指揮命令しているか」。請負なら受託側の責任者が指示する。発覚すると発注者に直接雇用の申込みをしたとみなされる",
+      "level": "hard",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "disguised contracting"
+    },
+    {
+      "id": "concept-staff-double-dispatch",
+      "en": "staff-double-dispatch",
+      "kind": "concept",
+      "answer": "二重派遣",
+      "accept": [
+        "再派遣",
+        "多重派遣",
+        "double dispatch",
+        "又貸し"
+      ],
+      "ja": "派遣されたスタッフを、派遣先がさらに別の会社へ送って働かせること",
+      "q": "派遣会社から受け入れたスタッフを、受け入れ企業がさらに別の会社の職場へ送り、その会社の指示で働かせること。雇用関係のない会社が人を供給する形になり違法",
+      "explain": "職業安定法の労働者供給の禁止に触れる。多重下請けの現場や客先常駐で起きやすく、契約の相手先と指示する人を確認する",
+      "level": "hard",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "double dispatch"
+    },
+    {
+      "id": "concept-staff-exclusive-dispatch",
+      "en": "staff-exclusive-dispatch",
+      "kind": "concept",
+      "answer": "専ら派遣",
+      "accept": [
+        "もっぱら派遣",
+        "専ら派遣の禁止",
+        "特定派遣先限定"
+      ],
+      "ja": "特定の会社だけに派遣することを目的とした事業。禁止されている",
+      "q": "グループ会社など特定の会社にだけスタッフを送ることを目的に派遣事業を営むこと。労働力の需給調整という派遣の目的に反するため認められていない",
+      "explain": "グループ内派遣そのものは可能だが、グループ企業への派遣割合には上限がある。新規の派遣先開拓の姿勢が許可審査でも見られる",
+      "level": "hard",
+      "tags": [
+        "staff-law"
+      ]
+    },
+    {
+      "id": "concept-staff-outsourcing",
+      "en": "staff-outsourcing",
+      "kind": "concept",
+      "answer": "業務委託",
+      "accept": [
+        "請負",
+        "委託",
+        "業務委託契約",
+        "準委任",
+        "フリーランス契約"
+      ],
+      "ja": "雇用でなく成果や業務の遂行を約束する契約。指揮命令は受けない",
+      "q": "会社と個人や別会社が雇用関係を結ばず、仕事の完成や業務の遂行を約束する契約。仕事の進め方は受ける側が決め、発注者は細かな指示をしない",
+      "explain": "派遣との違いは「指揮命令の有無」。発注者が直接指示すると偽装請負になる。労働時間の規制や社会保険の対象外",
+      "level": "easy",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "outsourcing contract"
+    },
+    {
+      "id": "concept-staff-working-conditions-notice",
+      "en": "staff-working-conditions-notice",
+      "kind": "concept",
+      "answer": "労働条件通知書",
+      "accept": [
+        "就業条件明示書",
+        "雇用契約書",
+        "労働条件明示",
+        "雇入通知書",
+        "条件通知書"
+      ],
+      "ja": "雇用の際に賃金・時間・期間などを書面で明示する書類",
+      "q": "採用や派遣就業の開始時に、契約期間、勤務場所、業務内容、始業終業時刻、賃金、退職に関することなどを書面で本人に示す書類。交付は法律上の義務",
+      "explain": "派遣では就業条件明示書も別途交付する。「求人票と内容が違う」トラブルはこの書類で防ぐ。電子交付は本人の希望が条件",
+      "level": "easy",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "notice of working conditions"
+    },
+    {
+      "id": "concept-staff-social-insurance",
+      "en": "staff-social-insurance",
+      "kind": "concept",
+      "answer": "社会保険",
+      "accept": [
+        "社保",
+        "健康保険・厚生年金",
+        "社保加入",
+        "社会保険加入"
+      ],
+      "ja": "健康保険と厚生年金の総称。一定の条件を満たす派遣スタッフも加入",
+      "q": "健康保険と厚生年金保険をまとめた呼び方。派遣スタッフも所定の労働時間や契約期間の条件を満たせば、派遣会社を通じて加入し保険料は労使で負担する",
+      "explain": "加入は派遣先ではなく派遣会社で行う。雇用保険と合わせて「社保完備」と求人に書く。加入条件は制度改正で変わるので最新を確認",
+      "level": "easy",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "social insurance"
+    },
+    {
+      "id": "concept-staff-probation",
+      "en": "staff-probation",
+      "kind": "concept",
+      "answer": "試用期間",
+      "accept": [
+        "試用",
+        "トライアル期間",
+        "probation period",
+        "見習い期間",
+        "使用期間"
+      ],
+      "ja": "入社後に適性を見る期間。雇用契約は成立しており解雇は容易でない",
+      "q": "入社直後に会社が適性を見極めるために設ける期間。この間も雇用契約は成立しているため、期間満了で自由に辞めさせられるわけではない",
+      "explain": "3〜6か月が目安。求職者には「期間中の給与や待遇が本採用と違うか」を必ず確認して伝える。誤字の「使用期間」に注意",
+      "level": "easy",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "probation period"
+    },
+    {
+      "id": "concept-staff-offer-letter",
+      "en": "staff-offer-letter",
+      "kind": "concept",
+      "answer": "オファーレター",
+      "accept": [
+        "内定通知書",
+        "採用通知書",
+        "労働条件提示書",
+        "offer letter",
+        "オファー面談"
+      ],
+      "ja": "内定時に給与・役職・入社日などの条件を示す書面",
+      "q": "企業が採用を決めた人に対し、給与、役職、入社日、勤務地などの条件を明記して送る書面。本人はこれを見て承諾するか判断する",
+      "explain": "口頭の年収と書面の額が違うトラブルが多いので、担当者は必ず原本を確認する。承諾期限の交渉も仕事のうち",
+      "level": "normal",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "offer letter"
+    },
+    {
+      "id": "concept-staff-reference-check",
+      "en": "staff-reference-check",
+      "kind": "concept",
+      "answer": "リファレンスチェック",
+      "accept": [
+        "リファレンス",
+        "前職照会",
+        "reference check",
+        "推薦者照会",
+        "バックグラウンドチェック"
+      ],
+      "ja": "候補者の同意を得て、前職の上司などに働きぶりを確認する手続き",
+      "q": "採用の最終段階で、候補者の同意を得たうえで前職の上司や同僚に連絡し、実際の働きぶりや人柄を確認する手続き。外資系や管理職採用で行われることが多い",
+      "explain": "本人の同意なしに前職へ問い合わせるのは個人情報の観点で不可。経歴や犯罪歴の調査は「バックグラウンドチェック」と呼び分ける",
+      "level": "hard",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "reference check"
+    },
+    {
+      "id": "concept-staff-fixed-term",
+      "en": "staff-fixed-term",
+      "kind": "concept",
+      "answer": "有期雇用契約",
+      "accept": [
+        "有期契約",
+        "有期雇用",
+        "期間の定めのある契約",
+        "有期労働契約"
+      ],
+      "ja": "期間を定めた雇用契約。登録型派遣や契約社員がこれにあたる",
+      "q": "3か月や1年など期間を定めて結ぶ雇用契約。登録型の派遣スタッフや契約社員はこれで働き、期間満了ごとに更新するかどうかを判断する",
+      "explain": "対になるのが「無期雇用契約」。通算5年を超えて更新すると本人の申込みで無期に転換できるルールがある",
+      "level": "normal",
+      "tags": [
+        "staff-law"
+      ],
+      "say": "fixed-term employment contract"
+    }
+  ]
+}

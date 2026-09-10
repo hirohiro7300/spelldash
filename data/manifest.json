@@ -95,6 +95,17 @@
           "group": "ビジネス・バックオフィス"
         },
         {
+          "id": "staffing",
+          "label": "人材紹介・人材派遣",
+          "file": "packs/staffing.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "紹介と派遣の仕組み・料金・KPI・法令。人材業界の共通語",
+          "audience": "人材紹介・派遣会社の新人、CA/RA/コーディネーター",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
           "id": "publicbid",
           "label": "入札・官公庁営業",
           "file": "packs/publicbid.json",
@@ -422,6 +433,17 @@
           "count": 55,
           "blurb": "修復歴の見方から名義変更・税金の精算・契約まで。現場で使う手続きの言葉",
           "audience": "中古車店・買取店の新人、査定士を目指す人",
+          "group": "不動産・自動車"
+        },
+        {
+          "id": "mechanic",
+          "label": "自動車整備・車検",
+          "file": "packs/mechanic.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "車検・点検から部品・診断・接客まで、整備工場の共通語",
+          "audience": "整備工場の新人、フロント・事務の担当者",
           "group": "不動産・自動車"
         }
       ]

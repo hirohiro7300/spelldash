@@ -1,0 +1,1098 @@
+{
+  "subject": "english",
+  "category": "security",
+  "label": "情報セキュリティの基本",
+  "blurb": "全社員に必要な守りの共通語。脅威・対策・事故対応・法令まで",
+  "audience": "情シス・総務の担当者、新入社員研修の受講者",
+  "genres": {
+    "sec-basic": "基本概念",
+    "sec-attack": "攻撃の手口",
+    "sec-defense": "技術的対策",
+    "sec-incident": "運用・事故対応",
+    "sec-law": "法令・規格"
+  },
+  "words": [
+    {
+      "id": "concept-sec-confidentiality",
+      "en": "sec-confidentiality",
+      "kind": "concept",
+      "answer": "機密性",
+      "accept": [
+        "confidentiality",
+        "C"
+      ],
+      "ja": "許可された人だけが情報にアクセスできる状態",
+      "q": "許可された人だけが情報を見られる状態。IDとパスワードで閲覧を制限し、部外者には見せないことを指す、情報セキュリティ3要素の1つ",
+      "explain": "CIAのC。完全性・可用性とセットで覚える。情報漏えいはこれが破られた状態",
+      "level": "easy",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "confidentiality"
+    },
+    {
+      "id": "concept-sec-integrity",
+      "en": "sec-integrity",
+      "kind": "concept",
+      "answer": "完全性",
+      "accept": [
+        "integrity",
+        "I"
+      ],
+      "ja": "情報が改ざん・破損なく正確に保たれている状態",
+      "q": "情報が改ざんや破損なく正確な状態に保たれていること。データが勝手に書き換えられていないことを指す、情報セキュリティ3要素の1つ",
+      "explain": "CIAのI。ハッシュ値や電子署名で改ざんの有無を確認する。Webサイト改ざんはこれの侵害",
+      "level": "easy",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "integrity"
+    },
+    {
+      "id": "concept-sec-availability",
+      "en": "sec-availability",
+      "kind": "concept",
+      "answer": "可用性",
+      "accept": [
+        "availability",
+        "A"
+      ],
+      "ja": "必要なときにいつでもシステムや情報を使える状態",
+      "q": "必要なときにいつでもシステムや情報を使える状態。サーバー停止で業務が止まらないようにすることを指す、情報セキュリティ3要素の1つ",
+      "explain": "CIAのA。DDoSやランサムウェアはこれを奪う攻撃。バックアップと冗長化が主な対策",
+      "level": "easy",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "availability"
+    },
+    {
+      "id": "concept-sec-asset",
+      "en": "sec-asset",
+      "kind": "concept",
+      "answer": "情報資産",
+      "accept": [
+        "資産",
+        "情報資産一覧",
+        "information asset"
+      ],
+      "ja": "会社が守るべき価値のある情報と、それを扱う機器の総称",
+      "q": "顧客名簿、設計図、サーバー、社員のノートPCなど、会社が守るべき価値のある情報と、それを保存・処理する機器の総称",
+      "explain": "紙の書類や人の頭の中の知識も含む。まず何があるかを台帳に洗い出さないと守り方が決まらない",
+      "level": "easy",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "information asset"
+    },
+    {
+      "id": "concept-sec-threat",
+      "en": "sec-threat",
+      "kind": "concept",
+      "answer": "脅威",
+      "accept": [
+        "threat",
+        "セキュリティ脅威"
+      ],
+      "ja": "情報資産に損害を与える可能性のある原因や出来事",
+      "q": "マルウェア、不正アクセス、地震や火災、社員による持ち出しなど、情報資産に損害を与える可能性のある原因や出来事のこと",
+      "explain": "弱点（脆弱性）と組み合わさると被害になる。人為的・環境的・技術的に分けて洗い出す",
+      "level": "easy",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "threat"
+    },
+    {
+      "id": "concept-sec-vulnerability",
+      "en": "sec-vulnerability",
+      "kind": "concept",
+      "answer": "脆弱性",
+      "accept": [
+        "セキュリティホール",
+        "vulnerability",
+        "ぜいじゃく性"
+      ],
+      "ja": "攻撃者に付け込まれるソフトの欠陥や設定の弱点",
+      "q": "ソフトウェアの欠陥、設定ミス、更新の放置など、攻撃者に付け込まれる弱点。修正プログラムを当てて塞ぐ対象",
+      "explain": "公開されたものには CVE 番号が付き、深刻度は CVSS で示される。パッチ適用が基本対策",
+      "level": "easy",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "vulnerability"
+    },
+    {
+      "id": "concept-sec-risk",
+      "en": "sec-risk",
+      "kind": "concept",
+      "answer": "リスク",
+      "accept": [
+        "情報セキュリティリスク",
+        "risk",
+        "セキュリティリスク"
+      ],
+      "ja": "脅威が脆弱性を突いて損害を与える可能性の大きさ",
+      "q": "脅威が脆弱性を突いて情報資産に損害を与える可能性の大きさ。「起こりやすさ」と「起きたときの影響」の2軸で評価する",
+      "explain": "発生可能性×影響度で優先順位を付ける。対応は低減・回避・移転（保険など）・受容の4つ",
+      "level": "normal",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "risk"
+    },
+    {
+      "id": "concept-sec-residual-risk",
+      "en": "sec-residual-risk",
+      "kind": "concept",
+      "answer": "残存リスク",
+      "accept": [
+        "残留リスク",
+        "residual risk"
+      ],
+      "ja": "対策を講じた後にも残る損害の可能性",
+      "q": "対策を講じた後にも残る損害の可能性。ゼロにはできないので、責任者が「この程度なら受け入れる」と判断して記録する",
+      "explain": "受容の判断は現場でなく経営層・責任者が行う。ISMS では承認の記録が求められる",
+      "level": "hard",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "residual risk"
+    },
+    {
+      "id": "concept-sec-defense-in-depth",
+      "en": "sec-defense-in-depth",
+      "kind": "concept",
+      "answer": "多層防御",
+      "accept": [
+        "縦深防御",
+        "多重防御",
+        "defense in depth",
+        "深層防御"
+      ],
+      "ja": "複数の対策を重ね、1つ破られても被害を止める考え方",
+      "q": "入口対策だけに頼らず、メールフィルタ・端末の検知・権限制限・バックアップなど複数の対策を重ね、1つ破られても被害を止める考え方",
+      "explain": "「完全に防ぐ」ではなく「侵入される前提で被害を最小化」。入口・内部・出口の3段で整理することが多い",
+      "level": "normal",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "defense in depth"
+    },
+    {
+      "id": "concept-sec-least-privilege",
+      "en": "sec-least-privilege",
+      "kind": "concept",
+      "answer": "最小権限の原則",
+      "accept": [
+        "最小権限",
+        "最小特権",
+        "最小特権の原則",
+        "least privilege"
+      ],
+      "ja": "業務に必要な範囲だけの権限を与える考え方",
+      "q": "業務に必要な範囲だけのアクセス権を与え、それ以上は付けない考え方。全員に管理者権限を配らず、閲覧だけで済む人は閲覧のみにする",
+      "explain": "異動・退職時の権限削除とセット。共有アカウントや「とりあえず管理者」は監査で真っ先に指摘される",
+      "level": "normal",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "principle of least privilege"
+    },
+    {
+      "id": "concept-sec-zero-trust",
+      "en": "sec-zero-trust",
+      "kind": "concept",
+      "answer": "ゼロトラスト",
+      "accept": [
+        "zero trust",
+        "ゼロトラストセキュリティ",
+        "ゼロトラストモデル"
+      ],
+      "ja": "社内でも信用せず、すべてのアクセスを毎回検証する考え方",
+      "q": "社内ネットワークだからと信用せず、誰が・どの端末から・何にアクセスするかを毎回検証する考え方。クラウドやテレワークの普及で広まった",
+      "explain": "「境界防御」（社内は安全とみなす従来型）の対として語られる。製品名ではなく設計思想",
+      "level": "normal",
+      "tags": [
+        "sec-basic"
+      ],
+      "say": "zero trust"
+    },
+    {
+      "id": "concept-sec-phishing",
+      "en": "sec-phishing",
+      "kind": "concept",
+      "answer": "フィッシング",
+      "accept": [
+        "フィッシング詐欺",
+        "フィッシングメール",
+        "phishing",
+        "フィッシングサイト"
+      ],
+      "ja": "偽メール・偽サイトでIDやカード情報を盗む手口",
+      "q": "銀行や宅配業者、社内システムをかたったメールやSMSで偽サイトへ誘導し、IDやパスワード、カード番号を入力させて盗む手口",
+      "explain": "送信者名は偽装できるのでリンク先ドメインで判断する。SMS 経由は「スミッシング」と呼ぶ",
+      "level": "easy",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "phishing"
+    },
+    {
+      "id": "concept-sec-targeted-attack",
+      "en": "sec-targeted-attack",
+      "kind": "concept",
+      "answer": "標的型攻撃",
+      "accept": [
+        "標的型攻撃メール",
+        "標的型メール",
+        "APT",
+        "targeted attack"
+      ],
+      "ja": "特定の組織を狙い、業務を装ったメールなどで侵入する攻撃",
+      "q": "特定の会社や部署を狙い、取引先や社内を装った自然な文面のメールで添付ファイルを開かせ、内部に侵入して情報を盗む攻撃",
+      "explain": "ばらまき型と違い文面が自然で見抜きにくい。「開いてしまった」をすぐ報告できる空気づくりが対策の要",
+      "level": "normal",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "targeted attack"
+    },
+    {
+      "id": "concept-sec-bec",
+      "en": "sec-bec",
+      "kind": "concept",
+      "answer": "ビジネスメール詐欺",
+      "accept": [
+        "BEC",
+        "CEO詐欺",
+        "business email compromise"
+      ],
+      "ja": "経営者や取引先になりすまし、偽口座へ送金させる詐欺",
+      "q": "経営者や取引先になりすましたメールで「振込先が変わった」「至急送金を」と経理担当をだまし、攻撃者の口座へ送金させる手口",
+      "explain": "英語では BEC。振込先変更の連絡はメール以外（電話など）で必ず再確認する運用が対策",
+      "level": "normal",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "business email compromise"
+    },
+    {
+      "id": "concept-sec-ransomware",
+      "en": "sec-ransomware",
+      "kind": "concept",
+      "answer": "ランサムウェア",
+      "accept": [
+        "ransomware",
+        "身代金要求型ウイルス",
+        "ランサム"
+      ],
+      "ja": "ファイルを暗号化し、復号と引き換えに身代金を要求する",
+      "q": "社内のファイルやサーバーを勝手に暗号化して使えなくし、元に戻す代わりに金銭を要求する不正プログラム。工場や病院の停止事例が多い",
+      "explain": "近年は暗号化に加えて盗んだデータの公開で脅す「二重恐喝」が主流。復旧の鍵はオフラインのバックアップ",
+      "level": "easy",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "ransomware"
+    },
+    {
+      "id": "concept-sec-malware",
+      "en": "sec-malware",
+      "kind": "concept",
+      "answer": "マルウェア",
+      "accept": [
+        "malware",
+        "不正プログラム",
+        "悪意のあるソフトウェア"
+      ],
+      "ja": "ウイルス・ワーム・トロイの木馬など悪意あるソフトの総称",
+      "q": "ウイルス、ワーム、トロイの木馬、スパイウェアなど、利用者に害をなす目的で作られたソフトウェアの総称",
+      "explain": "malicious software の略。「ウイルス」は本来その一種で、業務では総称としてこの語を使う",
+      "level": "easy",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "malware"
+    },
+    {
+      "id": "concept-sec-credential-stuffing",
+      "en": "sec-credential-stuffing",
+      "kind": "concept",
+      "answer": "パスワードリスト攻撃",
+      "accept": [
+        "リスト型攻撃",
+        "アカウントリスト攻撃",
+        "credential stuffing",
+        "リスト攻撃"
+      ],
+      "ja": "他サービスから漏れたIDとパスワードの組で不正ログインを試す",
+      "q": "他のサービスから漏れたIDとパスワードの組み合わせを大量に使い、別のサービスへのログインを試す攻撃。使い回しをしている人が被害に遭う",
+      "explain": "総当たり（ブルートフォース）と違い1回で当たるため、ロックでは防げない。使い回し禁止と多要素認証が対策",
+      "level": "normal",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "credential stuffing"
+    },
+    {
+      "id": "concept-sec-ddos",
+      "en": "sec-ddos",
+      "kind": "concept",
+      "answer": "DDoS攻撃",
+      "accept": [
+        "DDoS",
+        "ディードス",
+        "分散型サービス妨害攻撃",
+        "DoS攻撃",
+        "DoS"
+      ],
+      "ja": "大量の通信を送りつけてサービスを停止させる攻撃",
+      "q": "乗っ取った多数のパソコンやIoT機器から一斉に大量の通信を送りつけ、Webサイトやサーバーを応答不能にする攻撃",
+      "explain": "Distributed Denial of Service。可用性を狙う攻撃で、対策は CDN や専用の緩和サービス。自社だけでは防ぎにくい",
+      "level": "normal",
+      "tags": [
+        "sec-attack",
+        "abbr"
+      ],
+      "say": "distributed denial of service attack"
+    },
+    {
+      "id": "concept-sec-sql-injection",
+      "en": "sec-sql-injection",
+      "kind": "concept",
+      "answer": "SQLインジェクション",
+      "accept": [
+        "SQLi",
+        "SQL injection",
+        "SQLインジェクション攻撃"
+      ],
+      "ja": "入力欄に不正な命令を混ぜてデータベースを操作する攻撃",
+      "q": "Webサイトの検索欄やログイン欄にデータベースへの命令文を混ぜて送り、本来見えない顧客情報を抜き取ったり書き換えたりする攻撃",
+      "explain": "大規模な個人情報漏えいの定番原因。対策はプレースホルダ（バインド機構）の利用と WAF",
+      "level": "hard",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "SQL injection"
+    },
+    {
+      "id": "concept-sec-xss",
+      "en": "sec-xss",
+      "kind": "concept",
+      "answer": "クロスサイトスクリプティング",
+      "accept": [
+        "XSS",
+        "cross-site scripting",
+        "クロスサイト・スクリプティング"
+      ],
+      "ja": "Webページに不正なスクリプトを埋め込み、閲覧者を狙う攻撃",
+      "q": "掲示板や検索結果など入力内容を表示するページに不正なスクリプトを埋め込み、閲覧した利用者のブラウザで実行させてCookieなどを盗む攻撃",
+      "explain": "略称は XSS（CSS と区別するため）。対策は出力時のエスケープ。SQLインジェクションと並ぶ Web の二大脆弱性",
+      "level": "hard",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "cross-site scripting"
+    },
+    {
+      "id": "concept-sec-supply-chain",
+      "en": "sec-supply-chain",
+      "kind": "concept",
+      "answer": "サプライチェーン攻撃",
+      "accept": [
+        "サプライチェーンアタック",
+        "supply chain attack",
+        "供給網攻撃"
+      ],
+      "ja": "取引先や利用ソフトの弱点を経由して本命の組織を狙う攻撃",
+      "q": "守りの固い大企業を直接狙わず、対策の弱い取引先や子会社、導入しているソフトの更新経路を踏み台にして本命に侵入する攻撃",
+      "explain": "自社の対策だけでは防げないため、委託先管理と利用ソフトの構成把握（SBOM）が重視される",
+      "level": "hard",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "supply chain attack"
+    },
+    {
+      "id": "concept-sec-insider",
+      "en": "sec-insider",
+      "kind": "concept",
+      "answer": "内部不正",
+      "accept": [
+        "内部犯行",
+        "インサイダー脅威",
+        "内部脅威",
+        "insider threat"
+      ],
+      "ja": "社員や元社員が権限を悪用して情報を持ち出す・破壊する行為",
+      "q": "社員や退職者、委託先の担当者が正規のアクセス権を悪用し、顧客情報を持ち出したりデータを消したりする行為。外部攻撃より発見が遅れやすい",
+      "explain": "動機・機会・正当化の3条件で起きる。ログ取得の周知、権限の最小化、退職時の即時削除が抑止になる",
+      "level": "normal",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "insider threat"
+    },
+    {
+      "id": "concept-sec-social-engineering",
+      "en": "sec-social-engineering",
+      "kind": "concept",
+      "answer": "ソーシャルエンジニアリング",
+      "accept": [
+        "ソーシャル・エンジニアリング",
+        "social engineering"
+      ],
+      "ja": "技術でなく人の心理や隙を突いて情報を聞き出す手口",
+      "q": "システムの弱点ではなく人の心理や隙を突き、電話で情報システム部を装ってパスワードを聞き出す、ゴミ箱の書類をあさるなどして情報を得る手口",
+      "explain": "フィッシングもこの一種。「急かす」「権威を使う」が典型なので、本人確認の手順を決めておく",
+      "level": "easy",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "social engineering"
+    },
+    {
+      "id": "concept-sec-shoulder-hack",
+      "en": "sec-shoulder-hack",
+      "kind": "concept",
+      "answer": "ショルダーハック",
+      "accept": [
+        "ショルダーハッキング",
+        "のぞき見",
+        "覗き見",
+        "shoulder surfing",
+        "ショルダーサーフィン"
+      ],
+      "ja": "背後や横から画面や手元をのぞき見て情報を盗むこと",
+      "q": "電車やカフェで背後や隣から画面や手元をのぞき、パスワードの入力や顧客情報を盗み見る行為。社外作業時の基本的な注意点",
+      "explain": "対策はのぞき見防止フィルタと席の向き。英語圏では shoulder surfing と言う",
+      "level": "easy",
+      "tags": [
+        "sec-attack"
+      ],
+      "say": "shoulder surfing"
+    },
+    {
+      "id": "concept-sec-mfa",
+      "en": "sec-mfa",
+      "kind": "concept",
+      "answer": "多要素認証",
+      "accept": [
+        "MFA",
+        "二要素認証",
+        "2要素認証",
+        "2FA",
+        "二段階認証",
+        "multi-factor authentication"
+      ],
+      "ja": "パスワードに加えスマホや生体など別の要素で本人確認する",
+      "q": "パスワードに加えて、スマホアプリの確認コードや指紋など別の種類の要素でも本人確認する仕組み。パスワードが漏れても不正ログインを防ぐ",
+      "explain": "知識・所持・生体のうち2種類以上を組み合わせるのが定義。SMS よりアプリや物理キーが推奨される",
+      "level": "easy",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "multi-factor authentication"
+    },
+    {
+      "id": "concept-sec-password-manager",
+      "en": "sec-password-manager",
+      "kind": "concept",
+      "answer": "パスワードマネージャー",
+      "accept": [
+        "パスワード管理ツール",
+        "パスワード管理ソフト",
+        "password manager",
+        "パスワード管理アプリ"
+      ],
+      "ja": "サービスごとに違う長いパスワードを生成・保管するツール",
+      "q": "サービスごとに異なる長いパスワードを自動生成し、暗号化して保管・入力してくれるツール。使い回しをなくすために会社で導入する",
+      "explain": "「定期変更」より「使い回さない・長くする」が現在の主流。マスターパスワードには多要素認証を必ず付ける",
+      "level": "normal",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "password manager"
+    },
+    {
+      "id": "concept-sec-encryption",
+      "en": "sec-encryption",
+      "kind": "concept",
+      "answer": "暗号化",
+      "accept": [
+        "encryption",
+        "データ暗号化",
+        "暗号"
+      ],
+      "ja": "鍵がないと読めない形にデータを変換すること",
+      "q": "ノートPCのディスクやメール添付のファイルを、鍵を持つ人以外には読めない形に変換すること。紛失や盗難のときに中身を守る",
+      "explain": "元に戻せる（復号できる）点がハッシュ化との違い。鍵やパスワードを同じメールで送っては意味がない",
+      "level": "easy",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "encryption"
+    },
+    {
+      "id": "concept-sec-digital-signature",
+      "en": "sec-digital-signature",
+      "kind": "concept",
+      "answer": "電子署名",
+      "accept": [
+        "デジタル署名",
+        "digital signature",
+        "電子サイン"
+      ],
+      "ja": "作成者本人であることと改ざんがないことを証明する仕組み",
+      "q": "契約書やメールに対し、確かにその人が作成し、その後に改ざんされていないことを暗号技術で証明する仕組み。電子契約サービスの土台",
+      "explain": "本人の秘密鍵で署名し、公開鍵で検証する。ハッシュ値と公開鍵暗号の組み合わせで完全性と否認防止を担保",
+      "level": "hard",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "digital signature"
+    },
+    {
+      "id": "concept-sec-https",
+      "en": "sec-https",
+      "kind": "concept",
+      "answer": "HTTPS",
+      "accept": [
+        "SSL",
+        "TLS",
+        "SSL/TLS",
+        "常時SSL",
+        "SSL化",
+        "SSL証明書"
+      ],
+      "ja": "通信を暗号化し、サイトの正当性を証明書で示す接続方式",
+      "q": "ブラウザとWebサイトの間の通信を暗号化し、アドレス欄に鍵マークが出る接続方式。サーバー証明書でサイトの運営者が確認できる",
+      "explain": "鍵マークは「通信の暗号化」の証拠で、サイトが安全・本物という保証ではない。証明書の期限切れに注意",
+      "level": "easy",
+      "tags": [
+        "sec-defense",
+        "abbr"
+      ],
+      "say": "HTTPS"
+    },
+    {
+      "id": "concept-sec-vpn",
+      "en": "sec-vpn",
+      "kind": "concept",
+      "answer": "VPN",
+      "accept": [
+        "仮想プライベートネットワーク",
+        "VPN接続",
+        "virtual private network",
+        "ブイピーエヌ"
+      ],
+      "ja": "公衆回線上に暗号化された専用の通信路を作る仕組み",
+      "q": "自宅や外出先から社内ネットワークへ接続するとき、インターネット上に暗号化された専用の通信路を作って安全につなぐ仕組み",
+      "explain": "Virtual Private Network。装置自体の脆弱性を突かれてランサムウェア侵入口になる事例が多く、機器の更新管理が必須",
+      "level": "easy",
+      "tags": [
+        "sec-defense",
+        "abbr"
+      ],
+      "say": "virtual private network"
+    },
+    {
+      "id": "concept-sec-firewall",
+      "en": "sec-firewall",
+      "kind": "concept",
+      "answer": "ファイアウォール",
+      "accept": [
+        "firewall",
+        "FW",
+        "ファイヤーウォール",
+        "ファイアーウォール"
+      ],
+      "ja": "ネットワークの境界で許可した通信だけを通す装置・機能",
+      "q": "社内ネットワークとインターネットの境目に置き、あらかじめ許可した通信だけを通して不要な通信を遮断する装置や機能",
+      "explain": "通信の宛先とポートで判断する。Web アプリの中身までは見ないので、その役割は WAF が担う",
+      "level": "easy",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "firewall"
+    },
+    {
+      "id": "concept-sec-waf",
+      "en": "sec-waf",
+      "kind": "concept",
+      "answer": "WAF",
+      "accept": [
+        "ワフ",
+        "Webアプリケーションファイアウォール",
+        "web application firewall"
+      ],
+      "ja": "Webアプリへの攻撃通信を検知・遮断する仕組み",
+      "q": "自社のWebサイトやECサイトの手前に置き、SQLインジェクションやクロスサイトスクリプティングなどアプリを狙う攻撃通信を検知して遮断する仕組み",
+      "explain": "Web Application Firewall。脆弱性そのものを直すわけではない「盾」。誤検知で正常な入力を弾くことがあるので初期は検知モードで様子を見る",
+      "level": "normal",
+      "tags": [
+        "sec-defense",
+        "abbr"
+      ],
+      "say": "web application firewall"
+    },
+    {
+      "id": "concept-sec-edr",
+      "en": "sec-edr",
+      "kind": "concept",
+      "answer": "EDR",
+      "accept": [
+        "endpoint detection and response",
+        "イーディーアール"
+      ],
+      "ja": "端末の挙動を監視し、侵入後の不審な動きを検知・対処する",
+      "q": "パソコンやサーバーの操作や通信を常時記録し、ウイルス対策ソフトをすり抜けた侵入後の不審な動きを検知して隔離・調査できる仕組み",
+      "explain": "Endpoint Detection and Response。アンチウイルスは「侵入を防ぐ」、こちらは「侵入後を見つける」。監視体制が要る",
+      "level": "normal",
+      "tags": [
+        "sec-defense",
+        "abbr"
+      ],
+      "say": "endpoint detection and response"
+    },
+    {
+      "id": "concept-sec-patch",
+      "en": "sec-patch",
+      "kind": "concept",
+      "answer": "パッチ管理",
+      "accept": [
+        "パッチ適用",
+        "セキュリティパッチ",
+        "アップデート",
+        "更新プログラムの適用",
+        "patch management"
+      ],
+      "ja": "OSやソフトの修正プログラムを漏れなく適用する運用",
+      "q": "OSやソフトの脆弱性を直す修正プログラムが公開されたら、社内の端末やサーバーに漏れなく適用する運用。放置が侵入の主要因になる",
+      "explain": "「どの端末に何が入っているか」の資産管理が前提。公開直後に攻撃が急増するので緊急度を決めて適用する",
+      "level": "easy",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "patch management"
+    },
+    {
+      "id": "concept-sec-vuln-assessment",
+      "en": "sec-vuln-assessment",
+      "kind": "concept",
+      "answer": "脆弱性診断",
+      "accept": [
+        "セキュリティ診断",
+        "脆弱性検査",
+        "脆弱性スキャン",
+        "vulnerability assessment"
+      ],
+      "ja": "システムやWebサイトの弱点をツールや専門家が網羅的に洗い出す",
+      "q": "公開前のWebサイトやサーバーに対し、ツールや専門家が既知の弱点を網羅的に洗い出して報告書にまとめる作業。リリース前や年1回などに実施する",
+      "explain": "「見つける」のが目的で、深く侵入を試すペネトレーションテストとは別。結果は深刻度順に対応期限を決める",
+      "level": "normal",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "vulnerability assessment"
+    },
+    {
+      "id": "concept-sec-pentest",
+      "en": "sec-pentest",
+      "kind": "concept",
+      "answer": "ペネトレーションテスト",
+      "accept": [
+        "ペンテスト",
+        "侵入テスト",
+        "penetration test",
+        "ペネトレ"
+      ],
+      "ja": "攻撃者の視点で実際に侵入を試み、どこまで到達できるか検証",
+      "q": "専門家が攻撃者になりきり、実際にシステムへの侵入を試みて機密情報や管理者権限までたどり着けるかを検証するテスト",
+      "explain": "網羅性より「本当に突破されるか」を見る。範囲と時間帯を契約で明確にし、本番影響の合意を取ってから実施",
+      "level": "hard",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "penetration test"
+    },
+    {
+      "id": "concept-sec-siem",
+      "en": "sec-siem",
+      "kind": "concept",
+      "answer": "SIEM",
+      "accept": [
+        "シーム",
+        "security information and event management",
+        "ログ統合管理"
+      ],
+      "ja": "各機器のログを集約・相関分析して異常を検知する仕組み",
+      "q": "ファイアウォール、サーバー、認証システムなどバラバラのログを一か所に集め、時系列で突き合わせて不審なパターンを自動検知する仕組み",
+      "explain": "ログを集めるだけでなく「相関分析」が肝。検知ルールの見直しを怠ると誤検知に埋もれて本物を見逃す",
+      "level": "hard",
+      "tags": [
+        "sec-defense",
+        "abbr"
+      ],
+      "say": "security information and event management"
+    },
+    {
+      "id": "concept-sec-backup",
+      "en": "sec-backup",
+      "kind": "concept",
+      "answer": "バックアップ",
+      "accept": [
+        "backup",
+        "データバックアップ",
+        "バックアップ取得"
+      ],
+      "ja": "障害や攻撃に備えてデータの複製を別の場所に保存する",
+      "q": "故障、誤操作、ランサムウェアに備えて、サーバーや共有フォルダのデータの複製を定期的に別の場所へ保存しておくこと",
+      "explain": "「取っている」だけでなく「戻せる」ことを復元テストで確認する。ネットワーク上の複製は一緒に暗号化される",
+      "level": "easy",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "backup"
+    },
+    {
+      "id": "concept-sec-321-rule",
+      "en": "sec-321-rule",
+      "kind": "concept",
+      "answer": "3-2-1ルール",
+      "accept": [
+        "321ルール",
+        "3-2-1バックアップ",
+        "3-2-1 rule",
+        "スリーツーワンルール"
+      ],
+      "ja": "複製3つ・媒体2種類・1つは別の場所に置くバックアップの原則",
+      "q": "データの複製を3つ持ち、2種類の異なる媒体に保存し、そのうち1つは別の場所（オフラインやクラウド）に置くという保管の原則",
+      "explain": "ランサムウェア対策では「1つはネットワークから切り離す」が要点。近年は「+1（不変・オフライン）」を足した派生形もある",
+      "level": "normal",
+      "tags": [
+        "sec-defense"
+      ],
+      "say": "three two one rule"
+    },
+    {
+      "id": "concept-sec-incident",
+      "en": "sec-incident",
+      "kind": "concept",
+      "answer": "インシデント",
+      "accept": [
+        "セキュリティインシデント",
+        "incident",
+        "セキュリティ事故"
+      ],
+      "ja": "情報漏えいやウイルス感染など、セキュリティ上の事故・事象",
+      "q": "メールの誤送信、PCの紛失、ウイルス感染、不正アクセスの痕跡など、情報の安全を脅かす事故や事象の総称。発見したらまず報告する",
+      "explain": "「未遂」や「疑い」も含めて報告するのが原則。隠して対応が遅れることが最も被害を広げる",
+      "level": "easy",
+      "tags": [
+        "sec-incident"
+      ],
+      "say": "security incident"
+    },
+    {
+      "id": "concept-sec-csirt",
+      "en": "sec-csirt",
+      "kind": "concept",
+      "answer": "CSIRT",
+      "accept": [
+        "シーサート",
+        "computer security incident response team",
+        "インシデント対応チーム"
+      ],
+      "ja": "インシデント発生時に対応を指揮する社内の専門チーム",
+      "q": "情報漏えいやウイルス感染が起きたときに、報告を受け付け、調査・対応の指揮、外部機関との連絡を担う社内の専門チーム",
+      "explain": "Computer Security Incident Response Team。専任でなく兼任の組織も多い。平時は訓練と情報収集、有事は司令塔",
+      "level": "normal",
+      "tags": [
+        "sec-incident",
+        "abbr"
+      ],
+      "say": "computer security incident response team"
+    },
+    {
+      "id": "concept-sec-first-response",
+      "en": "sec-first-response",
+      "kind": "concept",
+      "answer": "初動対応",
+      "accept": [
+        "初動",
+        "初期対応",
+        "初動措置",
+        "initial response"
+      ],
+      "ja": "インシデント発覚直後に被害拡大を防ぐための最初の行動",
+      "q": "ウイルス感染の疑いに気づいた直後に、ネットワークから切り離す、電源は切らずに保全する、担当窓口へ報告するなど、被害拡大を防ぐ最初の行動",
+      "explain": "電源を切ると証拠（メモリ上の痕跡）が消えるため、LANケーブルを抜く・Wi-Fiを切るが基本。手順書を机の見える所に",
+      "level": "normal",
+      "tags": [
+        "sec-incident"
+      ],
+      "say": "initial response"
+    },
+    {
+      "id": "concept-sec-containment",
+      "en": "sec-containment",
+      "kind": "concept",
+      "answer": "封じ込め",
+      "accept": [
+        "containment",
+        "隔離",
+        "封じ込め対応"
+      ],
+      "ja": "被害の拡大を止めるため感染端末やアカウントを隔離する段階",
+      "q": "インシデント対応の中で、感染した端末の隔離、侵害されたアカウントの無効化、通信の遮断などを行い、これ以上広がらないようにする段階",
+      "explain": "対応は「検知→封じ込め→根絶→復旧→教訓」の順。復旧を急いで原因を残すと再発する",
+      "level": "hard",
+      "tags": [
+        "sec-incident"
+      ],
+      "say": "containment"
+    },
+    {
+      "id": "concept-sec-phishing-drill",
+      "en": "sec-phishing-drill",
+      "kind": "concept",
+      "answer": "標的型メール訓練",
+      "accept": [
+        "フィッシング訓練",
+        "標的型攻撃メール訓練",
+        "メール訓練",
+        "疑似攻撃メール訓練"
+      ],
+      "ja": "疑似的な攻撃メールを社員に送り、対応力を測って教育する",
+      "q": "会社が疑似的な攻撃メールを社員に送り、開封率や報告率を測って結果をもとに教育する取り組み。年1〜2回など定期的に行う",
+      "explain": "開封した人を責めるのではなく「報告率を上げる」のが目的。結果は部署名で晒さない運用が定着している",
+      "level": "normal",
+      "tags": [
+        "sec-incident"
+      ],
+      "say": "phishing simulation"
+    },
+    {
+      "id": "concept-sec-nda",
+      "en": "sec-nda",
+      "kind": "concept",
+      "answer": "NDA",
+      "accept": [
+        "秘密保持契約",
+        "機密保持契約",
+        "秘密保持契約書",
+        "non-disclosure agreement",
+        "秘密保持誓約書"
+      ],
+      "ja": "知り得た情報を第三者に漏らさないと約束する契約",
+      "q": "取引先と情報をやり取りする前や、社員の入社時に結ぶ、業務で知った情報を第三者に漏らさない・目的外に使わないと約束する契約や誓約書",
+      "explain": "Non-Disclosure Agreement。「何が秘密か」「いつまでか」「返却・廃棄」の条項を確認。委託先管理の入口",
+      "level": "easy",
+      "tags": [
+        "sec-incident",
+        "abbr"
+      ],
+      "say": "non-disclosure agreement"
+    },
+    {
+      "id": "concept-sec-clear-desk",
+      "en": "sec-clear-desk",
+      "kind": "concept",
+      "answer": "クリアデスク",
+      "accept": [
+        "クリアデスク・クリアスクリーン",
+        "クリアスクリーン",
+        "clear desk",
+        "クリアデスクポリシー"
+      ],
+      "ja": "離席時に机上に書類を残さず、画面もロックする習慣",
+      "q": "離席や退社のときに机の上に書類やUSBメモリを置きっぱなしにせず施錠保管し、あわせて画面もロックしておく職場の基本ルール",
+      "explain": "画面側は「クリアスクリーン」。ISMS の管理策にも含まれ、内部監査で最もよく見られるポイント",
+      "level": "easy",
+      "tags": [
+        "sec-incident"
+      ],
+      "say": "clear desk"
+    },
+    {
+      "id": "concept-sec-shadow-it",
+      "en": "sec-shadow-it",
+      "kind": "concept",
+      "answer": "シャドーIT",
+      "accept": [
+        "shadow IT",
+        "野良IT",
+        "シャドウIT"
+      ],
+      "ja": "会社が把握・許可していないツールを業務で使うこと",
+      "q": "情報システム部門が把握・許可していない個人契約のクラウドストレージやチャットアプリなどを、社員が便利だからと業務で使っている状態",
+      "explain": "禁止するだけでは地下化する。公式に使える代替手段を用意することが対策。私物端末の業務利用は BYOD と呼ぶ",
+      "level": "normal",
+      "tags": [
+        "sec-incident"
+      ],
+      "say": "shadow IT"
+    },
+    {
+      "id": "concept-sec-access-review",
+      "en": "sec-access-review",
+      "kind": "concept",
+      "answer": "権限棚卸",
+      "accept": [
+        "アクセス権棚卸",
+        "権限の棚卸し",
+        "アカウント棚卸",
+        "権限棚卸し",
+        "access review"
+      ],
+      "ja": "誰にどの権限があるかを定期的に見直し、不要分を削除する",
+      "q": "誰がどのシステムにどの権限を持っているかの一覧を定期的に確認し、退職者や異動者の残ったアカウント、過剰な権限を削除する作業",
+      "explain": "退職者アカウントの放置は不正アクセスの定番の入口。人事異動の情報が情シスへ流れる仕組みとセットで回す",
+      "level": "normal",
+      "tags": [
+        "sec-incident"
+      ],
+      "say": "access review"
+    },
+    {
+      "id": "concept-sec-appi",
+      "en": "sec-appi",
+      "kind": "concept",
+      "answer": "個人情報保護法",
+      "accept": [
+        "個情法",
+        "個人情報の保護に関する法律",
+        "APPI"
+      ],
+      "ja": "個人情報の取得・利用・管理・提供のルールを定めた法律",
+      "q": "氏名や連絡先などから特定の個人が分かる情報について、利用目的の明示、安全管理、本人同意のない第三者提供の制限などを事業者に求める法律",
+      "explain": "漏えい時は一定の場合に個人情報保護委員会への報告と本人への通知が義務。「要配慮個人情報」は取得に同意が要る",
+      "level": "easy",
+      "tags": [
+        "sec-law"
+      ],
+      "say": "Act on the Protection of Personal Information"
+    },
+    {
+      "id": "concept-sec-unauthorized-access-law",
+      "en": "sec-unauthorized-access-law",
+      "kind": "concept",
+      "answer": "不正アクセス禁止法",
+      "accept": [
+        "不正アクセス行為の禁止等に関する法律",
+        "不アク法"
+      ],
+      "ja": "他人のIDでのログインや脆弱性を突く侵入を処罰する法律",
+      "q": "他人のIDとパスワードを無断で使ってログインする、脆弱性を突いてシステムに侵入するといった行為と、そのためのパスワード不正取得を処罰する法律",
+      "explain": "「同僚のIDで代わりにログイン」も形式上は該当しうる。管理者側には防御措置の努力義務がある",
+      "level": "normal",
+      "tags": [
+        "sec-law"
+      ],
+      "say": "Act on Prohibition of Unauthorized Computer Access"
+    },
+    {
+      "id": "concept-sec-gdpr",
+      "en": "sec-gdpr",
+      "kind": "concept",
+      "answer": "GDPR",
+      "accept": [
+        "EU一般データ保護規則",
+        "一般データ保護規則",
+        "general data protection regulation"
+      ],
+      "ja": "EUの個人データ保護規則。域外の日本企業にも及ぶ",
+      "q": "EU域内の個人データの取り扱いを定めた規則。EU在住者向けにサービスを提供する日本企業にも適用され、違反すると高額の制裁金が科されうる",
+      "explain": "General Data Protection Regulation。Cookie 同意バナーが広まった主因。日本は十分性認定を受けている",
+      "level": "hard",
+      "tags": [
+        "sec-law",
+        "abbr"
+      ],
+      "say": "general data protection regulation"
+    },
+    {
+      "id": "concept-sec-pci-dss",
+      "en": "sec-pci-dss",
+      "kind": "concept",
+      "answer": "PCI DSS",
+      "accept": [
+        "PCIDSS",
+        "PCI-DSS",
+        "payment card industry data security standard"
+      ],
+      "ja": "クレジットカード情報を扱う事業者向けの国際セキュリティ基準",
+      "q": "クレジットカード番号を保存・処理・伝送する加盟店や決済代行会社に求められる国際的なセキュリティ基準。準拠しないとカード取引ができないことがある",
+      "explain": "Payment Card Industry Data Security Standard。実務では「カード番号を自社で持たない（非保持化）」で対象範囲を縮める",
+      "level": "hard",
+      "tags": [
+        "sec-law",
+        "abbr"
+      ],
+      "say": "PCI DSS"
+    },
+    {
+      "id": "concept-sec-soc2",
+      "en": "sec-soc2",
+      "kind": "concept",
+      "answer": "SOC2",
+      "accept": [
+        "SOC 2",
+        "SOC2レポート",
+        "SOC2報告書",
+        "ソックツー"
+      ],
+      "ja": "クラウド事業者の内部統制を監査法人が評価した報告書",
+      "q": "クラウドサービスを提供する会社のセキュリティや可用性などの内部統制を、監査法人が評価した報告書。取引先から提出を求められる",
+      "explain": "ISMS は「認証」、こちらは「監査報告書」。Type 1（時点評価）と Type 2（期間評価）がある",
+      "level": "hard",
+      "tags": [
+        "sec-law",
+        "abbr"
+      ],
+      "say": "SOC two"
+    },
+    {
+      "id": "concept-sec-isms",
+      "en": "sec-isms",
+      "kind": "concept",
+      "answer": "ISMS",
+      "accept": [
+        "情報セキュリティマネジメントシステム",
+        "ISO27001",
+        "ISO/IEC 27001",
+        "ISMS認証",
+        "アイエスエムエス"
+      ],
+      "ja": "情報を守る仕組みを計画・運用・改善する管理の枠組みと認証",
+      "q": "会社が情報を守る仕組みを計画・運用・点検・改善の流れで回す管理の枠組み。国際規格に基づく第三者認証があり、入札や取引の条件になることもある",
+      "explain": "規格は ISO/IEC 27001。認証は範囲（部署・拠点）を決めて取得し、毎年の審査で維持する",
+      "level": "normal",
+      "tags": [
+        "sec-law",
+        "abbr"
+      ],
+      "say": "information security management system"
+    },
+    {
+      "id": "concept-sec-top10",
+      "en": "sec-top10",
+      "kind": "concept",
+      "answer": "情報セキュリティ10大脅威",
+      "accept": [
+        "10大脅威",
+        "セキュリティ10大脅威",
+        "十大脅威"
+      ],
+      "ja": "IPAが毎年公表する、前年に影響が大きかった脅威のランキング",
+      "q": "情報処理推進機構（IPA）が毎年公表する、前年に社会的影響が大きかった攻撃や事故を組織向け・個人向けに順位付けした資料。社内研修の定番教材",
+      "explain": "順位は毎年入れ替わるので最新版を見る。ランサムウェアやサプライチェーン攻撃が組織向け上位の常連",
+      "level": "normal",
+      "tags": [
+        "sec-law"
+      ]
+    }
+  ]
+}
