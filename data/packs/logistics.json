@@ -1,0 +1,1087 @@
+{
+  "subject": "english",
+  "category": "logistics",
+  "label": "物流・倉庫",
+  "blurb": "入荷から出荷、配車、KPI、貿易の入口まで。現場の共通語",
+  "audience": "倉庫・運送会社の新人、荷主側の物流担当",
+  "genres": {
+    "logi-inbound": "入荷・保管",
+    "logi-equipment": "設備・単位・システム",
+    "logi-outbound": "出荷",
+    "logi-transport": "輸配送",
+    "logi-kpi": "KPI・契約",
+    "logi-trade": "貿易・国際物流",
+    "logi-safety": "安全・品質"
+  },
+  "words": [
+    {
+      "id": "concept-logi-nyuka",
+      "en": "logi-nyuka",
+      "kind": "concept",
+      "answer": "入荷",
+      "accept": [
+        "入荷作業",
+        "着荷",
+        "荷受け",
+        "荷受"
+      ],
+      "ja": "商品がトラックで倉庫に届き、受け取る作業",
+      "q": "仕入先や工場からトラックで商品が倉庫に到着し、荷降ろしをして受け取る作業。予定データと照らして数量と状態を確認する入口の工程",
+      "explain": "「入庫」は棚に格納して在庫に計上するまでを指すことが多く、区別する現場もある。予定データ（ASN）との照合が肝",
+      "level": "easy",
+      "tags": [
+        "logi-inbound"
+      ],
+      "say": "receiving"
+    },
+    {
+      "id": "concept-logi-kenpin",
+      "en": "logi-kenpin",
+      "kind": "concept",
+      "answer": "検品",
+      "accept": [
+        "入荷検品",
+        "出荷検品",
+        "検数",
+        "検品作業"
+      ],
+      "ja": "品番・数量・破損の有無を伝票と突き合わせて確認する作業",
+      "q": "届いた荷物や出荷する荷物について、伝票と現物を突き合わせ、品番・数量が合っているか、破損や汚れがないかを確認する作業",
+      "explain": "入荷側と出荷側の2か所で行う。バーコードスキャンで目視の見落としを減らすのが基本",
+      "level": "easy",
+      "tags": [
+        "logi-inbound"
+      ],
+      "say": "inspection"
+    },
+    {
+      "id": "concept-logi-location",
+      "en": "logi-location",
+      "kind": "concept",
+      "answer": "ロケーション",
+      "accept": [
+        "ロケ",
+        "棚番",
+        "ロケーション番号",
+        "location",
+        "棚番号"
+      ],
+      "ja": "倉庫内の保管場所を示す番地",
+      "q": "倉庫の中で「どの列・何段目・何番目」に商品があるかを示す番地。ピッキング指示やハンディの画面に表示される",
+      "explain": "置き場を固定する「固定ロケ」と空いた場所に置く「フリーロケ」がある。実物と登録がずれると探す時間と誤出荷が増える",
+      "level": "easy",
+      "tags": [
+        "logi-inbound"
+      ],
+      "say": "location"
+    },
+    {
+      "id": "concept-logi-tanaoroshi",
+      "en": "logi-tanaoroshi",
+      "kind": "concept",
+      "answer": "棚卸",
+      "accept": [
+        "棚卸し",
+        "実地棚卸",
+        "たなおろし",
+        "循環棚卸",
+        "サイクルカウント"
+      ],
+      "ja": "帳簿在庫と実在庫を数えて突き合わせること",
+      "q": "倉庫内の商品を実際に数え、システム上の在庫数と一致しているかを確かめる作業。期末に全数行うほか、毎日一部ずつ行う方法もある",
+      "explain": "全体を止めて行う「一斉」と、日々一部を回す「循環（サイクルカウント）」。差異は必ず原因を追う",
+      "level": "normal",
+      "tags": [
+        "logi-inbound"
+      ],
+      "say": "stocktaking"
+    },
+    {
+      "id": "concept-logi-zaiko-sai",
+      "en": "logi-zaiko-sai",
+      "kind": "concept",
+      "answer": "在庫差異",
+      "accept": [
+        "棚卸差異",
+        "在庫誤差",
+        "差異",
+        "在庫ずれ"
+      ],
+      "ja": "帳簿の在庫数と実際の数が合わないこと",
+      "q": "システム上の在庫数と実際に棚にある数が合わない状態。棚卸やピッキング時に見つかり、原因を調べて数を修正する",
+      "explain": "主な原因は入荷計上漏れ・誤出荷・ロケ違い・破損の未処理。修正前に原因を記録に残すのが鉄則",
+      "level": "normal",
+      "tags": [
+        "logi-inbound"
+      ],
+      "say": "inventory discrepancy"
+    },
+    {
+      "id": "concept-logi-fifo",
+      "en": "logi-fifo",
+      "kind": "concept",
+      "answer": "先入先出",
+      "accept": [
+        "先入れ先出し",
+        "FIFO",
+        "先入先出法",
+        "first in first out"
+      ],
+      "ja": "先に入荷した物から先に出荷する原則",
+      "q": "先に倉庫へ入った商品から順に出荷し、古い在庫が残らないようにする原則。食品や消耗品では賞味期限の管理と直結する",
+      "explain": "FIFO。賞味期限が近い順に出すのは「FEFO」で区別する。棚の前後入替えが日々の実務",
+      "level": "easy",
+      "tags": [
+        "logi-inbound"
+      ],
+      "say": "first in first out"
+    },
+    {
+      "id": "concept-logi-pallet",
+      "en": "logi-pallet",
+      "kind": "concept",
+      "answer": "パレット",
+      "accept": [
+        "パレ",
+        "木パレ",
+        "プラパレ",
+        "pallet",
+        "樹脂パレット"
+      ],
+      "ja": "荷物を載せてフォークリフトで運ぶための荷台",
+      "q": "荷物をまとめて載せ、フォークリフトの爪を差し込んで運ぶための木製や樹脂製の荷台。荷姿とラック保管の基本単位になる",
+      "explain": "国内の標準サイズは1100×1100mm（T11型）。レンタル品の回収と枚数管理がトラブルの元",
+      "level": "easy",
+      "tags": [
+        "logi-equipment"
+      ],
+      "say": "pallet"
+    },
+    {
+      "id": "concept-logi-rack",
+      "en": "logi-rack",
+      "kind": "concept",
+      "answer": "ラック",
+      "accept": [
+        "パレットラック",
+        "重量ラック",
+        "中量ラック",
+        "保管棚",
+        "rack"
+      ],
+      "ja": "パレットや商品を段積みで保管する金属棚",
+      "q": "パレットや商品を何段にも重ねて保管するための金属製の棚。倉庫の高さを活かして保管量を増やす",
+      "explain": "パレット用の「重量」と手作業用の「中量・軽量」で使い分け。耐荷重表示と地震時の固定を確認する",
+      "level": "normal",
+      "tags": [
+        "logi-equipment"
+      ],
+      "say": "rack"
+    },
+    {
+      "id": "concept-logi-forklift",
+      "en": "logi-forklift",
+      "kind": "concept",
+      "answer": "フォークリフト",
+      "accept": [
+        "フォーク",
+        "リフト",
+        "forklift",
+        "リーチリフト",
+        "カウンターリフト"
+      ],
+      "ja": "爪で荷物を持ち上げて運ぶ倉庫の車両",
+      "q": "2本の爪でパレットごと荷物を持ち上げ、運搬や高い棚への格納を行う車両。屋内向けの立ち乗り型と屋外向けの座り乗り型がある",
+      "explain": "運転には技能講習または特別教育が必要。歩行者との接触事故が最も多く、動線の分離が基本",
+      "level": "easy",
+      "tags": [
+        "logi-equipment"
+      ],
+      "say": "forklift"
+    },
+    {
+      "id": "concept-logi-boru",
+      "en": "logi-boru",
+      "kind": "concept",
+      "answer": "ボール",
+      "accept": [
+        "ボール単位",
+        "インナーカートン",
+        "内箱",
+        "中箱"
+      ],
+      "ja": "ケースとピース（バラ）の間にある内箱の単位",
+      "q": "外箱（カートン）の中に入っている、数個ずつまとめられた内箱の単位。外箱でも1個単位でもない中間のまとまり",
+      "explain": "荷姿は「ケース／内箱／ピース」の3段階。入数（いりすう）を取り違えると数量が桁でずれる",
+      "level": "normal",
+      "tags": [
+        "logi-equipment"
+      ],
+      "say": "inner carton"
+    },
+    {
+      "id": "concept-logi-sku",
+      "en": "logi-sku",
+      "kind": "concept",
+      "answer": "SKU",
+      "accept": [
+        "ストックキーピングユニット",
+        "stock keeping unit",
+        "エスケーユー",
+        "最小管理単位"
+      ],
+      "ja": "色・サイズまで区別した在庫管理の最小単位",
+      "q": "同じ商品でも色やサイズが違えば別に数える、在庫管理上の最小の単位。この数で倉庫の規模や難しさを表す",
+      "explain": "Stock Keeping Unit。品番より細かい。数が多いほどロケ設計とピッキングが難しくなる",
+      "level": "easy",
+      "tags": [
+        "logi-equipment",
+        "abbr"
+      ],
+      "say": "stock keeping unit"
+    },
+    {
+      "id": "concept-logi-handy",
+      "en": "logi-handy",
+      "kind": "concept",
+      "answer": "ハンディ",
+      "accept": [
+        "ハンディターミナル",
+        "HT",
+        "ハンディスキャナ",
+        "ハンディ端末"
+      ],
+      "ja": "バーコードを読み取り作業実績を記録する携帯端末",
+      "q": "作業者が手に持ち、商品や棚のバーコードを読み取って入荷・ピッキング・出荷の実績をその場で記録する携帯端末。WMSとつながる",
+      "explain": "読ませる順番（棚→商品→数量）が決まっている。バッテリー管理と落下対策が地味に重要",
+      "level": "normal",
+      "tags": [
+        "logi-equipment"
+      ],
+      "say": "handheld terminal"
+    },
+    {
+      "id": "concept-logi-wms",
+      "en": "logi-wms",
+      "kind": "concept",
+      "answer": "WMS",
+      "accept": [
+        "倉庫管理システム",
+        "warehouse management system",
+        "倉庫システム"
+      ],
+      "ja": "入荷から出荷までの庫内作業と在庫を管理するシステム",
+      "q": "入荷予定・在庫・ロケーション・ピッキング指示・出荷実績など、倉庫の中の作業と在庫をまとめて管理する専用のシステム",
+      "explain": "Warehouse Management System。輸配送を管理するのはTMS、会社全体の販売・会計はERPと分ける",
+      "level": "normal",
+      "tags": [
+        "logi-equipment",
+        "abbr"
+      ],
+      "say": "warehouse management system"
+    },
+    {
+      "id": "concept-logi-hokan-koritsu",
+      "en": "logi-hokan-koritsu",
+      "kind": "concept",
+      "answer": "保管効率",
+      "accept": [
+        "充填率",
+        "スペース効率",
+        "ロケーション充填率",
+        "保管効率化"
+      ],
+      "ja": "倉庫の容積をどれだけ有効に使えているかの指標",
+      "q": "倉庫の床面積や棚の容積に対して、実際にどれだけ荷物を置けているかを示す考え方。空きロケや通路の取り方で大きく変わる",
+      "explain": "上げすぎると作業性が落ち事故が増える。保管料が坪建ての契約なら収益に直結する",
+      "level": "hard",
+      "tags": [
+        "logi-equipment"
+      ],
+      "say": "storage efficiency"
+    },
+    {
+      "id": "concept-logi-shukka-shiji",
+      "en": "logi-shukka-shiji",
+      "kind": "concept",
+      "answer": "出荷指示",
+      "accept": [
+        "出荷指示書",
+        "出荷オーダー",
+        "出荷依頼",
+        "出荷指示データ"
+      ],
+      "ja": "何をどこへいつ出すかを倉庫に伝えるデータ",
+      "q": "荷主やシステムから倉庫へ届く「この商品をこの数量、この届け先へ、この日に出す」という指示。ここからピッキングリストが作られる",
+      "explain": "受付の締め時間が倉庫の一日を決める。締め後の追加は「割込み」として別扱いにする",
+      "level": "easy",
+      "tags": [
+        "logi-outbound"
+      ],
+      "say": "shipping order"
+    },
+    {
+      "id": "concept-logi-picking",
+      "en": "logi-picking",
+      "kind": "concept",
+      "answer": "ピッキング",
+      "accept": [
+        "ピック",
+        "シングルピッキング",
+        "摘み取り方式",
+        "picking",
+        "オーダーピッキング"
+      ],
+      "ja": "出荷指示に従い棚から商品を集める作業",
+      "q": "出荷指示に従って倉庫の棚を回り、指定の商品を指定の数だけ集めてくる作業。庫内で最も人手と時間がかかる",
+      "explain": "1件ずつ回る「シングル」と、複数件をまとめて後で分ける「トータル」がある。歩行距離の削減が改善の中心",
+      "level": "easy",
+      "tags": [
+        "logi-outbound"
+      ],
+      "say": "picking"
+    },
+    {
+      "id": "concept-logi-total-picking",
+      "en": "logi-total-picking",
+      "kind": "concept",
+      "answer": "トータルピッキング",
+      "accept": [
+        "種まき方式",
+        "総量ピッキング",
+        "バッチピッキング",
+        "種まき"
+      ],
+      "ja": "複数の注文分をまとめて集め、後で注文ごとに仕分ける方式",
+      "q": "複数の注文分の商品を品目ごとにまとめて集めてから、後で注文ごとに分ける方式。件数が多く品目が重なるときに歩行距離が減る",
+      "explain": "「種まき」とも呼ぶ。1件ずつ集める「摘み取り（シングル）」と対。後工程の仕分け場所が必要",
+      "level": "normal",
+      "tags": [
+        "logi-outbound"
+      ]
+    },
+    {
+      "id": "concept-logi-shiwake",
+      "en": "logi-shiwake",
+      "kind": "concept",
+      "answer": "仕分け",
+      "accept": [
+        "ソーティング",
+        "仕分",
+        "方面別仕分け",
+        "sorting"
+      ],
+      "ja": "荷物を届け先や方面ごとに分けること",
+      "q": "集めた商品や到着した荷物を、届け先・配送コース・方面ごとに分けて積み分ける作業。センターでは自動の機械で行うことも多い",
+      "explain": "ここでの間違いは誤配に直結。方面コードやラベルの色分けで人の判断を減らす",
+      "level": "normal",
+      "tags": [
+        "logi-outbound"
+      ],
+      "say": "sorting"
+    },
+    {
+      "id": "concept-logi-konpo",
+      "en": "logi-konpo",
+      "kind": "concept",
+      "answer": "梱包",
+      "accept": [
+        "梱包作業",
+        "包装",
+        "パッキング",
+        "packing"
+      ],
+      "ja": "出荷物を箱に詰め、緩衝材で保護する作業",
+      "q": "集めた商品を段ボールに詰め、緩衝材で隙間を埋めてテープで閉じ、届く途中で壊れないようにする作業。納品書の同封もここで行う",
+      "explain": "箱サイズの選び方が送料と破損率を左右する。「過剰包装」への指摘も増えている",
+      "level": "easy",
+      "tags": [
+        "logi-outbound"
+      ],
+      "say": "packing"
+    },
+    {
+      "id": "concept-logi-okurijo",
+      "en": "logi-okurijo",
+      "kind": "concept",
+      "answer": "送り状",
+      "accept": [
+        "伝票",
+        "配送伝票",
+        "送状",
+        "荷札",
+        "出荷ラベル"
+      ],
+      "ja": "届け先・依頼主・荷物の情報を書いた配送用の伝票",
+      "q": "荷物に貼る、届け先・依頼主・品名・個数・配達希望などを記載した配送会社向けの伝票。番号で荷物を追跡できる",
+      "explain": "問い合わせ番号で追跡する。貼り間違いは誤配の主因なので、梱包後に照合スキャンを入れる",
+      "level": "easy",
+      "tags": [
+        "logi-outbound"
+      ],
+      "say": "waybill"
+    },
+    {
+      "id": "concept-logi-goshukka",
+      "en": "logi-goshukka",
+      "kind": "concept",
+      "answer": "誤出荷",
+      "accept": [
+        "出荷ミス",
+        "誤出荷率",
+        "出荷間違い",
+        "ミスシップ"
+      ],
+      "ja": "違う商品・数量・届け先で出荷してしまうこと",
+      "q": "注文と違う商品や数量を送る、別の顧客宛ての荷物を送ってしまうなど、出荷内容を間違えること。倉庫の品質を測る代表的な指標になる",
+      "explain": "発生率は「件数÷出荷件数」で管理し、ppmで表すことが多い。原因の多くはロケ違い・類似品番・伝票の貼り違い",
+      "level": "normal",
+      "tags": [
+        "logi-outbound"
+      ],
+      "say": "mis-shipment"
+    },
+    {
+      "id": "concept-logi-rosenbin",
+      "en": "logi-rosenbin",
+      "kind": "concept",
+      "answer": "路線便",
+      "accept": [
+        "特別積合せ",
+        "特積み",
+        "混載便",
+        "路線"
+      ],
+      "ja": "複数荷主の荷物を混載し全国網で運ぶトラック便",
+      "q": "複数の荷主の荷物を集荷して拠点で方面別に積み替え、決まった路線網で全国へ運ぶトラック輸送。小口の荷物に向く",
+      "explain": "法令上は「特別積合せ」。運賃は重量・サイズと距離の運賃表で決まり、翌日〜翌々日着が目安",
+      "level": "easy",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "LTL"
+    },
+    {
+      "id": "concept-logi-charter",
+      "en": "logi-charter",
+      "kind": "concept",
+      "answer": "チャーター",
+      "accept": [
+        "貸切便",
+        "チャーター便",
+        "貸切",
+        "貸し切り",
+        "charter"
+      ],
+      "ja": "トラック1台を貸し切って直送する輸送",
+      "q": "トラック1台を丸ごと借り、1つの荷主の荷物だけを積んで直接届け先へ運ぶ形。大口や急ぎ、積替えを避けたい荷物に使う",
+      "explain": "運賃は車両サイズと距離・拘束時間で決まる「車建て」。帰り荷（復荷）の有無で見積が変わる",
+      "level": "easy",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "charter"
+    },
+    {
+      "id": "concept-logi-route",
+      "en": "logi-route",
+      "kind": "concept",
+      "answer": "ルート配送",
+      "accept": [
+        "ルート便",
+        "定期便",
+        "定期配送",
+        "巡回配送"
+      ],
+      "ja": "決まったコースの複数の届け先を順に回る配送",
+      "q": "同じ地域の複数の店舗や取引先を、決まった順番とスケジュールで毎日巡回して届ける配送。コンビニや飲食店への納品が典型",
+      "explain": "訪問順はコース表で固定。時間指定と積み込み順（後で降ろす物を先に積む）が肝",
+      "level": "easy",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "route delivery"
+    },
+    {
+      "id": "concept-logi-haisha",
+      "en": "logi-haisha",
+      "kind": "concept",
+      "answer": "配車",
+      "accept": [
+        "配車計画",
+        "配車業務",
+        "配車係",
+        "車両手配"
+      ],
+      "ja": "荷物にトラックとドライバーを割り当てる仕事",
+      "q": "その日の出荷量と届け先に対して、どのトラックにどの荷物を積み、誰がどの順に回るかを決める仕事。運送会社の司令塔",
+      "explain": "積載率と拘束時間の両立が腕の見せどころ。急な追加や欠車に備えて協力会社の枠を持っておく",
+      "level": "normal",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "vehicle dispatching"
+    },
+    {
+      "id": "concept-logi-sekisairitsu",
+      "en": "logi-sekisairitsu",
+      "kind": "concept",
+      "answer": "積載率",
+      "accept": [
+        "積載効率",
+        "積載量率",
+        "load factor"
+      ],
+      "ja": "トラックの最大積載量に対して実際に積んだ割合",
+      "q": "トラックに積める最大の重さや容積に対して、実際にどれだけ積んで走ったかの割合。低いと空気を運んでいることになる",
+      "explain": "重量ベースと容積ベースがある。帰り便が空だと往復で半分。共同配送や帰り荷で上げる",
+      "level": "normal",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "load factor"
+    },
+    {
+      "id": "concept-logi-kansen",
+      "en": "logi-kansen",
+      "kind": "concept",
+      "answer": "幹線輸送",
+      "accept": [
+        "幹線",
+        "幹線便",
+        "長距離輸送",
+        "トランク輸送"
+      ],
+      "ja": "拠点間を大型車で長距離まとめて運ぶ輸送",
+      "q": "各地の物流拠点どうしを大型トラックや鉄道・船で結び、まとめた荷物を長距離で運ぶ区間。届け先へ配る区間とは分けて考える",
+      "explain": "拠点までの「集荷」と拠点からの「配達」の間に位置する。中継輸送で1人の長距離運転を減らす動きも",
+      "level": "normal",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "trunk transport"
+    },
+    {
+      "id": "concept-logi-last-mile",
+      "en": "logi-last-mile",
+      "kind": "concept",
+      "answer": "ラストワンマイル",
+      "accept": [
+        "ラストマイル",
+        "last one mile",
+        "last mile",
+        "最終区間"
+      ],
+      "ja": "最寄り拠点から届け先までの最後の配送区間",
+      "q": "配送センターや営業所から、個人宅や店舗の玄関先まで届ける最後の区間。距離は短いが最も手間と費用がかかる",
+      "explain": "再配達と不在が費用を押し上げる主因。置き配や宅配ボックスはこの区間の対策",
+      "level": "easy",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "last mile"
+    },
+    {
+      "id": "concept-logi-okihai",
+      "en": "logi-okihai",
+      "kind": "concept",
+      "answer": "置き配",
+      "accept": [
+        "置き配指定",
+        "玄関置き",
+        "非対面配達",
+        "置配"
+      ],
+      "ja": "対面せず指定場所に荷物を置いて配達完了とすること",
+      "q": "受取人と対面せず、玄関前や宅配ボックスなど指定された場所に荷物を置いて配達完了とする方法。不在でも再配達が要らない",
+      "explain": "完了の証拠に配達写真を残す。盗難や雨濡れの責任範囲は約款と事前の指定内容で決まる",
+      "level": "easy",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "unattended delivery"
+    },
+    {
+      "id": "concept-logi-kyodo-haiso",
+      "en": "logi-kyodo-haiso",
+      "kind": "concept",
+      "answer": "共同配送",
+      "accept": [
+        "共配",
+        "共同物流",
+        "共同輸送",
+        "joint delivery"
+      ],
+      "ja": "複数の荷主の荷物を1台にまとめて運ぶ取り組み",
+      "q": "複数の会社が別々に走らせていたトラックを1台にまとめ、同じ地域や届け先へ一緒に運ぶ取り組み。積載率を上げ台数を減らす",
+      "explain": "競合他社どうしでも進んでいる。荷姿・伝票・納品時間の標準化が前提条件",
+      "level": "normal",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "joint delivery"
+    },
+    {
+      "id": "concept-logi-modal-shift",
+      "en": "logi-modal-shift",
+      "kind": "concept",
+      "answer": "モーダルシフト",
+      "accept": [
+        "modal shift",
+        "鉄道シフト",
+        "海運シフト",
+        "鉄道・船への転換"
+      ],
+      "ja": "トラック輸送を鉄道や船に切り替えること",
+      "q": "長距離の幹線輸送を、トラックから鉄道コンテナや内航船に切り替えること。CO2削減とドライバー不足の対策として推進される",
+      "explain": "両端はトラックが必要。所要日数が延びるためリードタイムに余裕のある荷物から始める",
+      "level": "hard",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "modal shift"
+    },
+    {
+      "id": "concept-logi-kosoku-jikan",
+      "en": "logi-kosoku-jikan",
+      "kind": "concept",
+      "answer": "拘束時間",
+      "accept": [
+        "ドライバーの拘束時間",
+        "改善基準告示",
+        "運転者の拘束時間"
+      ],
+      "ja": "始業から終業までの、運転・荷役・待機を含む時間",
+      "q": "ドライバーが出勤してから退勤するまでの、運転だけでなく荷役や荷待ちの待機も含めた時間。厚労省の基準で1日と1か月の上限が定められている",
+      "explain": "「運転時間」より広い概念。荷待ちを減らすのは荷主側の責任でもある。上限の数値は最新の告示で確認",
+      "level": "hard",
+      "tags": [
+        "logi-transport"
+      ],
+      "say": "on-duty hours"
+    },
+    {
+      "id": "concept-logi-kaitenritsu",
+      "en": "logi-kaitenritsu",
+      "kind": "concept",
+      "answer": "在庫回転率",
+      "accept": [
+        "回転率",
+        "在庫回転",
+        "inventory turnover",
+        "回転数"
+      ],
+      "ja": "一定期間に在庫が何回入れ替わったかを示す指標",
+      "q": "一定期間の出荷量（または売上原価）を平均在庫で割り、在庫が何回入れ替わったかを示す指標。高いほど在庫が滞留していない",
+      "explain": "出荷高÷平均在庫。裏返しは「在庫日数」。低い品目は滞留・不動在庫の候補",
+      "level": "hard",
+      "tags": [
+        "logi-kpi"
+      ],
+      "say": "inventory turnover"
+    },
+    {
+      "id": "concept-logi-shukka-lt",
+      "en": "logi-shukka-lt",
+      "kind": "concept",
+      "answer": "出荷リードタイム",
+      "accept": [
+        "出荷LT",
+        "オーダーリードタイム",
+        "受注出荷リードタイム",
+        "出荷までのリードタイム"
+      ],
+      "ja": "受注から出荷完了までにかかる時間",
+      "q": "注文を受け付けてから、ピッキング・梱包を経てトラックに載せるまでにかかる時間。「当日〇時までの受注は当日出荷」の形で約束する",
+      "explain": "締め時間と出荷便の時刻で決まる。短縮には受注データの早期取り込みと締め回数の増加が効く",
+      "level": "normal",
+      "tags": [
+        "logi-kpi"
+      ],
+      "say": "order lead time"
+    },
+    {
+      "id": "concept-logi-hokanryo",
+      "en": "logi-hokanryo",
+      "kind": "concept",
+      "answer": "保管料",
+      "accept": [
+        "保管費",
+        "保管料金",
+        "倉庫保管料",
+        "坪建て保管料"
+      ],
+      "ja": "倉庫に荷物を置くことに対して払う料金",
+      "q": "倉庫に商品を置いておくことに対して荷主が倉庫会社へ払う料金。使った面積で決める方式と、在庫量と期間で決める方式がある",
+      "explain": "「坪建て」と「個建て（三期制など）」が代表。作業に対する荷役料とは別建てで請求する",
+      "level": "easy",
+      "tags": [
+        "logi-kpi"
+      ],
+      "say": "storage fee"
+    },
+    {
+      "id": "concept-logi-niyakuryo",
+      "en": "logi-niyakuryo",
+      "kind": "concept",
+      "answer": "荷役料",
+      "accept": [
+        "荷役費",
+        "荷役料金",
+        "作業料",
+        "入出庫料"
+      ],
+      "ja": "入出庫やピッキングなど作業に対して払う料金",
+      "q": "入荷・入庫・ピッキング・梱包・出荷など倉庫の中で人が手を動かす作業に対して払う料金。個数やケース数などの単位で計算する",
+      "explain": "「にやく」と読む。保管料と分けて請求する。作業単価×数量の内訳を出せることが契約の前提",
+      "level": "normal",
+      "tags": [
+        "logi-kpi"
+      ],
+      "say": "handling charge"
+    },
+    {
+      "id": "concept-logi-3pl",
+      "en": "logi-3pl",
+      "kind": "concept",
+      "answer": "3PL",
+      "accept": [
+        "サードパーティロジスティクス",
+        "third party logistics",
+        "スリーピーエル",
+        "物流アウトソーシング"
+      ],
+      "ja": "荷主に代わり物流業務を一括して請け負う事業者",
+      "q": "荷主でも運送会社でもない第三者として、保管・流通加工・配送などの物流業務を一括で受託し、荷主に最適な仕組みを提案する事業者",
+      "explain": "Third Party Logistics。単なる倉庫貸しとの違いは「設計と改善まで担う」こと。契約はKPI付きが普通",
+      "level": "normal",
+      "tags": [
+        "logi-kpi",
+        "abbr"
+      ],
+      "say": "third party logistics"
+    },
+    {
+      "id": "concept-logi-hado",
+      "en": "logi-hado",
+      "kind": "concept",
+      "answer": "波動",
+      "accept": [
+        "物量波動",
+        "出荷波動",
+        "繁閑差",
+        "ピーク"
+      ],
+      "ja": "日や季節によって物量が大きく増減すること",
+      "q": "曜日・月末・セール・季節によって入出荷の量が大きく増減すること。人員と車両をどこに合わせるかが倉庫運営の難所",
+      "explain": "ピークに合わせると平常時が過剰、平均に合わせると繁忙期に破綻。派遣・短期契約と作業の平準化で吸収する",
+      "level": "hard",
+      "tags": [
+        "logi-kpi"
+      ],
+      "say": "volume fluctuation"
+    },
+    {
+      "id": "concept-logi-bcp",
+      "en": "logi-bcp",
+      "kind": "concept",
+      "answer": "BCP",
+      "accept": [
+        "事業継続計画",
+        "business continuity plan",
+        "災害時対応計画"
+      ],
+      "ja": "災害時に物流を止めないための事前計画",
+      "q": "地震や水害、感染症などで倉庫や輸送網が止まったときに、重要な業務をどう続けるかを事前に決めておく計画。荷主から策定を求められる",
+      "explain": "Business Continuity Plan。代替拠点・在庫の分散・連絡網が柱。定期的な訓練と見直しが前提",
+      "level": "hard",
+      "tags": [
+        "logi-kpi",
+        "abbr"
+      ],
+      "say": "business continuity plan"
+    },
+    {
+      "id": "concept-logi-konai-sagyo",
+      "en": "logi-konai-sagyo",
+      "kind": "concept",
+      "answer": "庫内作業",
+      "accept": [
+        "庫内",
+        "庫内業務",
+        "倉庫作業",
+        "庫内オペレーション"
+      ],
+      "ja": "倉庫の中で行う入荷から出荷までの作業全般",
+      "q": "入荷・検品・格納・ピッキング・梱包・出荷など倉庫の建物の中で行う作業全般。トラックで運ぶ輸配送と分けて呼ぶ",
+      "explain": "費用は「保管」と「荷役」に分かれる。生産性は「1人1時間あたりの処理行数」で測ることが多い",
+      "level": "easy",
+      "tags": [
+        "logi-kpi"
+      ],
+      "say": "warehouse operations"
+    },
+    {
+      "id": "concept-logi-container",
+      "en": "logi-container",
+      "kind": "concept",
+      "answer": "コンテナ",
+      "accept": [
+        "海上コンテナ",
+        "海コン",
+        "container",
+        "ドライコンテナ"
+      ],
+      "ja": "国際輸送で使う規格化された鋼製の箱",
+      "q": "船・鉄道・トラックを積み替えなしで通せるよう規格化された鋼製の箱。長さで種類が分かれ、冷凍用や天井なしの型もある",
+      "explain": "主流は20フィートと40フィート。冷凍は「リーファー」。返却期限を過ぎると延滞料（デマレージ等）が発生",
+      "level": "easy",
+      "tags": [
+        "logi-trade"
+      ],
+      "say": "container"
+    },
+    {
+      "id": "concept-logi-fcl",
+      "en": "logi-fcl",
+      "kind": "concept",
+      "answer": "FCL",
+      "accept": [
+        "フルコンテナ",
+        "full container load",
+        "コンテナ貸切",
+        "フルコン"
+      ],
+      "ja": "1荷主でコンテナ1本を貸し切る海上輸送",
+      "q": "1つの荷主の貨物だけでコンテナ1本を丸ごと使う海上輸送の形。量が多いときに使い、他社の貨物と混載せずにそのまま届く",
+      "explain": "Full Container Load。少量で他社と混載するのはLCL。混載は積替えがあり日数と破損リスクが増える",
+      "level": "hard",
+      "tags": [
+        "logi-trade",
+        "abbr"
+      ],
+      "say": "full container load"
+    },
+    {
+      "id": "concept-logi-tsukan",
+      "en": "logi-tsukan",
+      "kind": "concept",
+      "answer": "通関",
+      "accept": [
+        "輸出通関",
+        "輸入通関",
+        "税関手続き",
+        "customs clearance",
+        "通関手続き"
+      ],
+      "ja": "貨物の輸出入を税関に申告し許可を受ける手続き",
+      "q": "貨物を輸出入するときに、品名・数量・価格を税関へ申告し、検査や関税の納付を経て許可を受ける手続き。専門の業者に依頼するのが一般的",
+      "explain": "許可が出るまで貨物は動かせない。書類はインボイス・パッキングリスト・B/Lが基本セット",
+      "level": "hard",
+      "tags": [
+        "logi-trade"
+      ],
+      "say": "customs clearance"
+    },
+    {
+      "id": "concept-logi-invoice",
+      "en": "logi-invoice",
+      "kind": "concept",
+      "answer": "インボイス",
+      "accept": [
+        "商業送り状",
+        "コマーシャルインボイス",
+        "invoice",
+        "commercial invoice"
+      ],
+      "ja": "貿易で売主が発行する品名・数量・金額の明細書",
+      "q": "貿易で売主が買主宛てに発行する、品名・数量・単価・金額・取引条件を記した書類。通関の申告価格の根拠になる",
+      "explain": "国内の「請求書」より役割が広い。個数・重量・容積を示すパッキングリストと必ずセットで用意する",
+      "level": "normal",
+      "tags": [
+        "logi-trade"
+      ],
+      "say": "invoice"
+    },
+    {
+      "id": "concept-logi-bl",
+      "en": "logi-bl",
+      "kind": "concept",
+      "answer": "B/L",
+      "accept": [
+        "BL",
+        "船荷証券",
+        "bill of lading",
+        "ビーエル"
+      ],
+      "ja": "船会社が発行する貨物の受取証で、引取りの引換証",
+      "q": "船会社が貨物を受け取ったことを証明して発行する書類。届け先で貨物を引き取るときに原本の提出が必要で、有価証券として扱われる",
+      "explain": "Bill of Lading。原本を紛失すると貨物が引き取れない。航空はAWBで、こちらは有価証券ではない",
+      "level": "hard",
+      "tags": [
+        "logi-trade",
+        "abbr"
+      ],
+      "say": "bill of lading"
+    },
+    {
+      "id": "concept-logi-forwarder",
+      "en": "logi-forwarder",
+      "kind": "concept",
+      "answer": "フォワーダー",
+      "accept": [
+        "乙仲",
+        "貨物利用運送事業者",
+        "freight forwarder",
+        "forwarder"
+      ],
+      "ja": "船や飛行機を持たずに国際輸送を手配する事業者",
+      "q": "自社では船や飛行機を持たず、荷主に代わって船腹や航空スペースの予約・通関・現地配送までを手配する、国際輸送の窓口となる事業者",
+      "explain": "業界では「乙仲」と呼ぶ人も多い。通関業の許可を併せ持つ会社が多い",
+      "level": "normal",
+      "tags": [
+        "logi-trade"
+      ],
+      "say": "freight forwarder"
+    },
+    {
+      "id": "concept-logi-hozei",
+      "en": "logi-hozei",
+      "kind": "concept",
+      "answer": "保税倉庫",
+      "accept": [
+        "保税蔵置場",
+        "保税",
+        "保税地域",
+        "bonded warehouse"
+      ],
+      "ja": "関税を払う前の外国貨物を置ける、税関許可の倉庫",
+      "q": "輸入許可がまだ下りておらず関税を払っていない外国貨物を、税関の許可のもとで一時的に保管できる倉庫。ここにある間は関税がかからない",
+      "explain": "法令上の名称は「保税蔵置場」。仕分けやラベル貼りなどの作業を税関の許可範囲で行える",
+      "level": "hard",
+      "tags": [
+        "logi-trade"
+      ],
+      "say": "bonded warehouse"
+    },
+    {
+      "id": "concept-logi-hiyari-hatto",
+      "en": "logi-hiyari-hatto",
+      "kind": "concept",
+      "answer": "ヒヤリハット",
+      "accept": [
+        "ヒヤリ・ハット",
+        "ヒヤリ",
+        "ヒヤリハット報告",
+        "ニアミス"
+      ],
+      "ja": "事故には至らなかったが危なかった出来事",
+      "q": "フォークリフトと人がぶつかりそうになった、荷物が落ちかけたなど、事故にはならなかったが危なかった出来事。報告して対策に活かす",
+      "explain": "報告した人を責めない運用が前提。倉庫ではフォークの動線と積み降ろし中の落下が定番",
+      "level": "easy",
+      "tags": [
+        "logi-safety"
+      ],
+      "say": "near miss"
+    },
+    {
+      "id": "concept-logi-nikuzure",
+      "en": "logi-nikuzure",
+      "kind": "concept",
+      "answer": "荷崩れ",
+      "accept": [
+        "荷くずれ",
+        "積荷崩れ",
+        "荷崩れ事故"
+      ],
+      "ja": "積んだ荷物が輸送中や保管中に崩れること",
+      "q": "パレットに積んだ荷物やトラックの荷台の荷物が、走行中の振動や急ブレーキ、積み方の悪さで崩れること。破損と事故の原因になる",
+      "explain": "対策はストレッチフィルム・ラッシングベルト・段積みの組み方。荷台では隙間を作らないのが基本",
+      "level": "easy",
+      "tags": [
+        "logi-safety"
+      ],
+      "say": "load collapse"
+    },
+    {
+      "id": "concept-logi-tsumitsuke",
+      "en": "logi-tsumitsuke",
+      "kind": "concept",
+      "answer": "積み付け",
+      "accept": [
+        "積付け",
+        "積み付け方法",
+        "積付",
+        "荷積み"
+      ],
+      "ja": "荷物を重さ・順番を考えて積む作業や配置",
+      "q": "トラックやコンテナ、パレットに荷物を積む際に、重い物を下に、先に降ろす物を手前になど、順序と配置を考えて積む作業",
+      "explain": "重量配分が偏ると走行が不安定になる。配達順（後で降ろす物を奥）と重量バランスの両立が腕",
+      "level": "normal",
+      "tags": [
+        "logi-safety"
+      ],
+      "say": "stowage"
+    },
+    {
+      "id": "concept-logi-cold-chain",
+      "en": "logi-cold-chain",
+      "kind": "concept",
+      "answer": "コールドチェーン",
+      "accept": [
+        "低温物流",
+        "cold chain",
+        "温度管理物流",
+        "定温物流"
+      ],
+      "ja": "生産から消費まで低温を切らさず運ぶ仕組み",
+      "q": "生鮮食品や医薬品を、生産地から店頭・患者のもとまで冷蔵・冷凍の温度帯を一度も切らさずに保管・輸送する仕組み",
+      "explain": "温度帯は常温・冷蔵・冷凍の3区分が基本。温度記録（ロガー）が証拠として求められる",
+      "level": "normal",
+      "tags": [
+        "logi-safety"
+      ],
+      "say": "cold chain"
+    },
+    {
+      "id": "concept-logi-kikenbutsu",
+      "en": "logi-kikenbutsu",
+      "kind": "concept",
+      "answer": "危険物",
+      "accept": [
+        "危険物倉庫",
+        "危険品",
+        "hazardous materials",
+        "危物"
+      ],
+      "ja": "引火性などがあり、法令で保管・輸送の扱いが定められた物品",
+      "q": "灯油・アルコール・塗料など、引火や爆発、有害性のおそれがあり、法令で保管場所や輸送方法が定められている物品",
+      "explain": "消防法上は専用倉庫と資格者が必要。航空・海上は別の国際ルールで申告と表示が要る",
+      "level": "normal",
+      "tags": [
+        "logi-safety"
+      ],
+      "say": "hazardous materials"
+    },
+    {
+      "id": "concept-logi-gohai",
+      "en": "logi-gohai",
+      "kind": "concept",
+      "answer": "誤配",
+      "accept": [
+        "誤配達",
+        "誤配送",
+        "配達ミス",
+        "誤配率"
+      ],
+      "ja": "別の届け先に荷物を届けてしまうこと",
+      "q": "荷物を本来と違う届け先に配達してしまうこと。仕分けミス、伝票の貼り間違い、似た住所の読み違いで起きる。個人情報の観点でも重大",
+      "explain": "倉庫側の誤出荷と配送側のこれは原因が違う。発見したら回収と正しい届け先への再配達を最優先",
+      "level": "normal",
+      "tags": [
+        "logi-safety"
+      ],
+      "say": "misdelivery"
+    }
+  ]
+}

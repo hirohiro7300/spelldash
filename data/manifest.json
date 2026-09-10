@@ -84,6 +84,28 @@
           "group": "ビジネス・バックオフィス"
         },
         {
+          "id": "banking",
+          "label": "銀行・金融の基本",
+          "file": "packs/banking.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "窓口・為替・融資・投信・支店内の共通語。1年目に出る用語を一通り",
+          "audience": "銀行・信金の新人、金融業界を目指す学生",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
+          "id": "insurance",
+          "label": "保険営業の基本",
+          "file": "packs/insurance.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "生保・損保の現場で毎日出る用語。契約・商品・請求・法令まで",
+          "audience": "保険会社・代理店の新人、募集人資格の勉強中の人",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
           "id": "saas",
           "label": "SaaS営業・CS",
           "file": "packs/saas.json",
@@ -106,6 +128,72 @@
           "group": "営業・マーケティング"
         },
         {
+          "id": "sns",
+          "label": "SNS運用・インフルエンサーマーケ",
+          "file": "packs/sns.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "リーチ・保存数・PR表記まで、SNS担当とインフルエンサー施策の共通言語",
+          "audience": "企業のSNS担当1年目、PR・マーケの若手",
+          "group": "営業・マーケティング"
+        },
+        {
+          "id": "video",
+          "label": "動画制作・YouTube運用",
+          "file": "packs/video.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "企画・撮影・編集からYouTube分析と権利・納品まで一通り",
+          "audience": "動画制作の新人、YouTube運用担当",
+          "group": "営業・マーケティング"
+        },
+        {
+          "id": "callcenter",
+          "label": "コールセンター・CS運営",
+          "file": "packs/callcenter.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 54,
+          "blurb": "応答率・AHT・SVなど、受電も発信も現場で毎日飛び交う言葉",
+          "audience": "コールセンターの新人オペレーター、SV候補",
+          "group": "営業・マーケティング"
+        },
+        {
+          "id": "webdev",
+          "label": "Web制作・SEO",
+          "file": "packs/webdev.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 54,
+          "blurb": "制作の流れからSEO・解析・運用まで、Web制作の現場で毎日出る用語",
+          "audience": "Web制作会社の新人、サイト担当になった人",
+          "group": "営業・マーケティング"
+        },
+        {
+          "id": "programming",
+          "label": "プログラミング基礎",
+          "file": "packs/programming.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "変数からGit・API・DB・デプロイまで、開発チームの共通言語",
+          "audience": "駆け出しエンジニア、開発と一緒に働く人",
+          "group": "IT・セキュリティ"
+        },
+        {
+          "id": "itsupport",
+          "label": "社内SE・ITヘルプデスク",
+          "file": "packs/itsupport.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "問い合わせ対応・アカウント・端末・ネットワーク・情シス業務の用語",
+          "audience": "情シス配属の新人、ヘルプデスク担当",
+          "group": "IT・セキュリティ"
+        },
+        {
           "id": "medical",
           "label": "医療事務・受付",
           "file": "packs/medical.json",
@@ -114,6 +202,61 @@
           "count": 55,
           "blurb": "受付・会計からレセプト請求まで。クリニックの窓口で毎日使う言葉",
           "audience": "医療事務の新人、クリニック受付を始めた人",
+          "group": "医療・福祉・保育"
+        },
+        {
+          "id": "nursing",
+          "label": "看護・病棟の基本",
+          "file": "packs/nursing.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "申し送り・バイタル・与薬・安全対策など病棟で毎日飛び交う共通語",
+          "audience": "新人看護師、看護学生、病棟で働き始めた人",
+          "group": "医療・福祉・保育"
+        },
+        {
+          "id": "pharmacy",
+          "label": "調剤薬局事務",
+          "file": "packs/pharmacy.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "受付・処方箋の読み方・調剤の流れ・レセプト・在庫まで薬局の共通語",
+          "audience": "調剤薬局の新人事務、医療事務を目指す人",
+          "group": "医療・福祉・保育"
+        },
+        {
+          "id": "care",
+          "label": "介護 実務",
+          "file": "packs/care.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "介護保険の仕組みからサービス種別、介助・記録・加算まで現場の共通語",
+          "audience": "介護職の新人、初任者研修〜介護福祉士を目指す人",
+          "group": "医療・福祉・保育"
+        },
+        {
+          "id": "dental",
+          "label": "歯科受付・歯科助手",
+          "file": "packs/dental.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "受付・アシスト・保険請求まで、歯科医院で毎日飛び交う言葉",
+          "audience": "歯科医院の新人受付・歯科助手",
+          "group": "医療・福祉・保育"
+        },
+        {
+          "id": "childcare",
+          "label": "保育の現場",
+          "file": "packs/childcare.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "登園から降園までの日課、計画・記録、安全、運営、発達の共通語",
+          "audience": "保育園・こども園の新人保育士、保育補助",
           "group": "医療・福祉・保育"
         },
         {
@@ -126,6 +269,39 @@
           "blurb": "原価・回転率からHACCP・シフト・開業まで。店を回す数字と現場の言葉",
           "audience": "飲食店の店長候補、開業を考えている人",
           "group": "店舗・サービス"
+        },
+        {
+          "id": "construction",
+          "label": "建設・施工管理",
+          "file": "packs/construction.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "体制・工程・安全・図面・検査・書類。現場監督の共通語を一通り",
+          "audience": "建設会社・工務店の新人、施工管理を始める人",
+          "group": "建設・製造・物流"
+        },
+        {
+          "id": "manufacturing",
+          "label": "製造・品質管理",
+          "file": "packs/manufacturing.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "5S・タクト・不良率からFMEAまで。工場の共通語を一通り",
+          "audience": "工場の新人、生産管理・品質保証の担当者",
+          "group": "建設・製造・物流"
+        },
+        {
+          "id": "logistics",
+          "label": "物流・倉庫",
+          "file": "packs/logistics.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 53,
+          "blurb": "入荷から出荷、配車、KPI、貿易の入口まで。現場の共通語",
+          "audience": "倉庫・運送会社の新人、荷主側の物流担当",
+          "group": "建設・製造・物流"
         },
         {
           "id": "realestate",

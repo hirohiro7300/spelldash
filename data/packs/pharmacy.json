@@ -1,0 +1,1112 @@
+{
+  "subject": "english",
+  "category": "pharmacy",
+  "label": "調剤薬局事務",
+  "blurb": "受付・処方箋の読み方・調剤の流れ・レセプト・在庫まで薬局の共通語",
+  "audience": "調剤薬局の新人事務、医療事務を目指す人",
+  "genres": {
+    "pharm-reception": "受付",
+    "pharm-rx": "処方箋の読み方",
+    "pharm-dispense": "調剤の流れ",
+    "pharm-billing": "請求・レセプト",
+    "pharm-stock": "在庫・管理",
+    "pharm-drug": "薬の基本"
+  },
+  "words": [
+    {
+      "id": "concept-pharm-prescription",
+      "en": "pharm-prescription",
+      "kind": "concept",
+      "answer": "処方箋",
+      "accept": [
+        "処方せん",
+        "院外処方箋",
+        "処方箋受付",
+        "prescription"
+      ],
+      "ja": "医師が薬の種類・量・飲み方を指示した書類",
+      "q": "医師が診察後に発行する、薬の名前・量・飲み方・日数を指示した書類。患者が薬局に持ち込み、事務が最初に受け取って保険情報と記載内容を確認する",
+      "explain": "薬の内容だけでなく、保険者番号・発行日・医師名・押印の有無を受付で確認。原本は薬局で保存する",
+      "level": "easy",
+      "tags": [
+        "pharm-reception"
+      ],
+      "say": "prescription"
+    },
+    {
+      "id": "concept-pharm-validity",
+      "en": "pharm-validity",
+      "kind": "concept",
+      "answer": "有効期限",
+      "accept": [
+        "有効期間",
+        "処方箋の有効期限",
+        "使用期間",
+        "処方箋有効期間"
+      ],
+      "ja": "処方箋を薬局に出せる期限。発行日を含めて原則4日",
+      "q": "患者が処方箋をいつまでに薬局へ持ち込めばよいかという期限。土日祝も数えるため、金曜や連休前の発行分は週明けに注意が必要",
+      "explain": "発行日を含めて4日以内が原則。過ぎたものは医療機関での再発行が必要で、薬局では調剤できない",
+      "level": "normal",
+      "tags": [
+        "pharm-reception"
+      ]
+    },
+    {
+      "id": "concept-pharm-insurance-check",
+      "en": "pharm-insurance-check",
+      "kind": "concept",
+      "answer": "保険証確認",
+      "accept": [
+        "資格確認",
+        "マイナ保険証",
+        "オンライン資格確認",
+        "保険証",
+        "保険確認"
+      ],
+      "ja": "受付で加入する保険と負担割合を確認すること",
+      "q": "受付で、患者がどの健康保険に加入しているか、負担割合はいくつかを、カードや専用端末で確認する作業。月初めや初来局時は必ず行う",
+      "explain": "マイナンバーカードの端末読み取りが主流。資格が切れていると請求が返戻になるため、確認した記録を残す",
+      "level": "normal",
+      "tags": [
+        "pharm-reception"
+      ]
+    },
+    {
+      "id": "concept-pharm-medicine-notebook",
+      "en": "pharm-medicine-notebook",
+      "kind": "concept",
+      "answer": "お薬手帳",
+      "accept": [
+        "薬手帳",
+        "手帳",
+        "電子お薬手帳",
+        "おくすり手帳"
+      ],
+      "ja": "患者が持ち歩く、処方された薬の記録帳",
+      "q": "患者が持ち歩く、いつどこでどんな薬が出たかを貼って記録する冊子やアプリ。複数の医療機関にかかる人の重複や飲み合わせの確認に使う",
+      "explain": "提示の有無で患者負担が変わる仕組みがあるため受付で必ず尋ねる。災害時や救急時にも役立つ",
+      "level": "easy",
+      "tags": [
+        "pharm-reception"
+      ]
+    },
+    {
+      "id": "concept-pharm-generic",
+      "en": "pharm-generic",
+      "kind": "concept",
+      "answer": "ジェネリック",
+      "accept": [
+        "後発医薬品",
+        "後発品",
+        "ジェネリック医薬品",
+        "GE",
+        "generic"
+      ],
+      "ja": "先発品と同じ有効成分で後から発売された薬",
+      "q": "特許が切れた薬と同じ有効成分・効能で、後から別の会社が発売する薬。受付で希望を聞き、処方箋の「変更不可」欄を見て切り替え可否を確認する",
+      "explain": "「変更不可」にチェックがなければ薬剤師の判断で変更できる。価格は先発より安いのが原則",
+      "level": "easy",
+      "tags": [
+        "pharm-reception"
+      ],
+      "say": "generic"
+    },
+    {
+      "id": "concept-pharm-questionnaire",
+      "en": "pharm-questionnaire",
+      "kind": "concept",
+      "answer": "問診票",
+      "accept": [
+        "問診",
+        "初回問診票",
+        "アンケート",
+        "質問票",
+        "初回質問票"
+      ],
+      "ja": "初来局時にアレルギーや併用薬などを記入してもらう用紙",
+      "q": "初めて来た患者に、アレルギー・副作用歴・持病・他で飲んでいる薬・妊娠授乳の有無などを書いてもらう用紙。薬歴の最初の情報になる",
+      "explain": "事務が回収し薬剤師が確認。記入内容は薬歴に転記し、変更がないか定期的に聞き直す",
+      "level": "easy",
+      "tags": [
+        "pharm-reception"
+      ]
+    },
+    {
+      "id": "concept-pharm-wait-time",
+      "en": "pharm-wait-time",
+      "kind": "concept",
+      "answer": "待ち時間",
+      "accept": [
+        "待ち時間短縮",
+        "お待ち時間",
+        "調剤待ち",
+        "待ち時間対策"
+      ],
+      "ja": "受付から薬の受け渡しまでにかかる時間。苦情の最大要因",
+      "q": "受付してから薬を渡すまでにかかる時間。混雑時や一包化・疑義照会があると長くなるため、目安を最初に伝えるのが受付の役目",
+      "explain": "「あとどれくらい」を伝えるだけで苦情は減る。疑義照会中は理由も一言添える。外出を希望する人には呼び出し方法を案内",
+      "level": "easy",
+      "tags": [
+        "pharm-reception"
+      ],
+      "say": "waiting time"
+    },
+    {
+      "id": "concept-pharm-dosage",
+      "en": "pharm-dosage",
+      "kind": "concept",
+      "answer": "用法用量",
+      "accept": [
+        "用法・用量",
+        "用法",
+        "用量",
+        "服用方法",
+        "飲み方"
+      ],
+      "ja": "1回量・1日回数・飲むタイミングの指示",
+      "q": "処方箋に書かれた、1回にいくつを、1日に何回、いつ（食後・食前・就寝前など）飲むかの指示。薬袋と薬情に転記する",
+      "explain": "「1日3回毎食後」など。入力ミスが最も起きやすい欄。錠数と mg 数のどちらで書かれているか確認",
+      "level": "easy",
+      "tags": [
+        "pharm-rx"
+      ],
+      "say": "dosage and administration"
+    },
+    {
+      "id": "concept-pharm-bun",
+      "en": "pharm-bun",
+      "kind": "concept",
+      "answer": "分3",
+      "accept": [
+        "分三",
+        "ぶんさん",
+        "1日3回",
+        "3×",
+        "分3毎食後"
+      ],
+      "ja": "1日量を3回に分けて飲む、の処方箋表記",
+      "q": "処方箋で、1日の総量を1日何回に分けて飲むかを示す書き方。1日量の後ろにこの記号と回数が続き、1回量はそこから割り算で出す",
+      "explain": "読みは「ぶんさん」。「3錠 分3」なら1回1錠を1日3回。1日量で書かれているので1回量に直して薬袋に書く",
+      "level": "normal",
+      "tags": [
+        "pharm-rx"
+      ]
+    },
+    {
+      "id": "concept-pharm-prn",
+      "en": "pharm-prn",
+      "kind": "concept",
+      "answer": "頓服",
+      "accept": [
+        "頓用",
+        "頓服薬",
+        "とんぷく",
+        "屯服",
+        "頓服指示"
+      ],
+      "ja": "症状が出たときだけ飲む薬の指示",
+      "q": "「痛いとき」「発熱時」「眠れないとき」など、症状が出たときだけ飲むよう指示された薬。処方箋には日数ではなく「〇回分」と書かれる",
+      "explain": "定時薬とは別の薬袋に入れる。1日の上限回数と間隔を薬袋に明記する",
+      "level": "easy",
+      "tags": [
+        "pharm-rx"
+      ]
+    },
+    {
+      "id": "concept-pharm-topical",
+      "en": "pharm-topical",
+      "kind": "concept",
+      "answer": "外用薬",
+      "accept": [
+        "外用",
+        "塗り薬",
+        "貼り薬",
+        "点眼",
+        "外用剤"
+      ],
+      "ja": "塗る・貼る・点眼など体の表面に使う薬",
+      "q": "軟膏・湿布・点眼・点鼻・坐薬など、飲むのではなく皮膚や粘膜に使う薬の区分。処方箋では内服と別の欄に、本数や枚数で書かれる",
+      "explain": "報酬上の調剤の区分が内服と異なる。「1日2回患部に塗布」など部位と回数を薬袋に書く",
+      "level": "easy",
+      "tags": [
+        "pharm-rx"
+      ],
+      "say": "topical medication"
+    },
+    {
+      "id": "concept-pharm-oral",
+      "en": "pharm-oral",
+      "kind": "concept",
+      "answer": "内服薬",
+      "accept": [
+        "内服",
+        "飲み薬",
+        "経口薬",
+        "内用薬",
+        "内服剤"
+      ],
+      "ja": "口から飲む薬の区分",
+      "q": "錠剤・カプセル・散剤・シロップなど、口から飲んで体の中で効かせる薬の区分。処方箋の記載の中心で、日数と用法ごとに薬袋を分ける",
+      "explain": "同じ用法のものは一つの薬袋にまとめる。「内用」は舌下錠やトローチも含む広い言い方",
+      "level": "easy",
+      "tags": [
+        "pharm-rx"
+      ],
+      "say": "oral medication"
+    },
+    {
+      "id": "concept-pharm-generic-name-rx",
+      "en": "pharm-generic-name-rx",
+      "kind": "concept",
+      "answer": "一般名処方",
+      "accept": [
+        "一般名",
+        "一般名処方箋",
+        "成分名処方",
+        "般"
+      ],
+      "ja": "商品名ではなく成分名で書かれた処方",
+      "q": "処方箋に商品名ではなく有効成分の名前で薬が書かれている形。薬局はその成分の先発品でも後発品でも在庫にあるものを選んで調剤できる",
+      "explain": "記載の頭に【般】が付く。どの銘柄を渡したかは薬歴と手帳に残し、医療機関にも情報提供する",
+      "level": "normal",
+      "tags": [
+        "pharm-rx"
+      ],
+      "say": "generic name prescription"
+    },
+    {
+      "id": "concept-pharm-no-substitution",
+      "en": "pharm-no-substitution",
+      "kind": "concept",
+      "answer": "変更不可",
+      "accept": [
+        "後発医薬品への変更不可",
+        "変更不可欄",
+        "変更不可チェック",
+        "銘柄指定",
+        "後発品変更不可"
+      ],
+      "ja": "医師が後発品への変更を認めない意思を示す欄",
+      "q": "処方箋の欄の一つで、医師がここにチェックと署名をすると、薬局は後発品への切り替えができず、書かれた銘柄どおりに調剤する",
+      "explain": "チェックだけでなく署名（記名押印）が必要。ここが空欄なら患者の希望で切り替え可",
+      "level": "normal",
+      "tags": [
+        "pharm-rx"
+      ]
+    },
+    {
+      "id": "concept-pharm-inquiry",
+      "en": "pharm-inquiry",
+      "kind": "concept",
+      "answer": "疑義照会",
+      "accept": [
+        "疑義",
+        "照会",
+        "疑義紹介",
+        "ぎぎ",
+        "疑義照会中"
+      ],
+      "ja": "処方内容に疑問があるとき薬剤師が医師に確認すること",
+      "q": "処方箋の用量が多すぎる、飲み合わせが悪い、日数が合わないなど疑問があるとき、薬剤師が処方した医師に電話などで確認する行為。解決するまで調剤できない",
+      "explain": "薬剤師法で義務づけられた行為。事務は「確認中」と患者に伝え、結果は処方箋の余白と薬歴に記録",
+      "level": "easy",
+      "tags": [
+        "pharm-rx"
+      ]
+    },
+    {
+      "id": "concept-pharm-leftover-adjust",
+      "en": "pharm-leftover-adjust",
+      "kind": "concept",
+      "answer": "残薬調整",
+      "accept": [
+        "残薬確認",
+        "残薬",
+        "日数調整",
+        "残薬調節",
+        "残薬確認欄"
+      ],
+      "ja": "患者の手元に余っている薬に合わせて日数を減らすこと",
+      "q": "患者の家に飲み残しが溜まっているとき、薬剤師が量を確認して処方日数を減らし、無駄と飲み間違いを防ぐ取り組み",
+      "explain": "処方箋の「残薬確認欄」にチェックがあれば薬局判断で調整して事後報告。なければ疑義照会が必要",
+      "level": "normal",
+      "tags": [
+        "pharm-rx"
+      ]
+    },
+    {
+      "id": "concept-pharm-split-dispensing",
+      "en": "pharm-split-dispensing",
+      "kind": "concept",
+      "answer": "分割調剤",
+      "accept": [
+        "分割",
+        "分割指示",
+        "分割調剤指示",
+        "分割調剤用処方箋"
+      ],
+      "ja": "一枚の処方箋を複数回に分けて調剤すること",
+      "q": "長期処方の薬を、保存の問題や後発品を試したい事情などで、一枚の処方箋を数回に分けて渡す仕組み。医師の分割指示に基づくものもある",
+      "explain": "2回目以降も同じ処方箋（または写し）を持参してもらう。リフィルとは別制度なので混同しない",
+      "level": "hard",
+      "tags": [
+        "pharm-rx"
+      ]
+    },
+    {
+      "id": "concept-pharm-refill",
+      "en": "pharm-refill",
+      "kind": "concept",
+      "answer": "リフィル処方箋",
+      "accept": [
+        "リフィル",
+        "リフィル処方",
+        "refill",
+        "リフィル処方せん"
+      ],
+      "ja": "一定期間内に同じ処方箋を繰り返し使える仕組み",
+      "q": "症状が安定した患者について、医師が定めた回数まで同じ処方箋で繰り返し薬を受け取れる仕組み。毎回受診しなくてよい",
+      "explain": "回数と次回調剤予定日を薬局が記録する。対象にできない薬や上限回数が決まっているので確認",
+      "level": "hard",
+      "tags": [
+        "pharm-rx"
+      ],
+      "say": "refill prescription"
+    },
+    {
+      "id": "concept-pharm-picking",
+      "en": "pharm-picking",
+      "kind": "concept",
+      "answer": "ピッキング",
+      "accept": [
+        "取り揃え",
+        "薬の取りそろえ",
+        "picking",
+        "取りそろえ"
+      ],
+      "ja": "処方箋どおりに棚から薬を取り出すこと",
+      "q": "処方箋の内容どおりに、薬の棚から錠剤のシートや外用薬を必要な数だけ取り出して集める作業。似た名前・似た包装の取り違えが起きやすい",
+      "explain": "規格（mg）と剤形の確認が肝。バーコードで照合するシステムを使う薬局が増えた",
+      "level": "easy",
+      "tags": [
+        "pharm-dispense"
+      ],
+      "say": "picking"
+    },
+    {
+      "id": "concept-pharm-final-check",
+      "en": "pharm-final-check",
+      "kind": "concept",
+      "answer": "監査",
+      "accept": [
+        "最終監査",
+        "調剤監査",
+        "鑑査",
+        "薬剤監査",
+        "最終鑑査"
+      ],
+      "ja": "渡す前に薬剤師が処方箋と調剤した薬を照合すること",
+      "q": "患者に渡す前に、調剤した薬が処方箋の内容（薬・規格・数・用法）と一致しているか、薬剤師が別の目で確認する工程",
+      "explain": "調剤した人と別の薬剤師が行うのが原則。一人薬剤師の店では時間を置いて再確認する",
+      "level": "normal",
+      "tags": [
+        "pharm-dispense"
+      ]
+    },
+    {
+      "id": "concept-pharm-unit-dose",
+      "en": "pharm-unit-dose",
+      "kind": "concept",
+      "answer": "一包化",
+      "accept": [
+        "一包化調剤",
+        "ワンドーズ",
+        "分包",
+        "一包"
+      ],
+      "ja": "服用時点ごとに複数の薬を1袋にまとめること",
+      "q": "朝・昼・夕など飲む時点ごとに、複数の薬をシートから出して1つの袋にまとめる調剤。飲み忘れや飲み間違いの多い患者に医師の指示で行う",
+      "explain": "医師の指示が必要で加算の対象。湿気や光に弱い薬は入れられないものがあるので薬剤師が判断",
+      "level": "normal",
+      "tags": [
+        "pharm-dispense"
+      ]
+    },
+    {
+      "id": "concept-pharm-crushing",
+      "en": "pharm-crushing",
+      "kind": "concept",
+      "answer": "粉砕",
+      "accept": [
+        "粉砕指示",
+        "錠剤粉砕",
+        "つぶし",
+        "粉砕調剤"
+      ],
+      "ja": "錠剤を飲めない患者のために砕いて粉にすること",
+      "q": "錠剤やカプセルをそのまま飲めない患者のために、医師の指示で錠剤を砕いて粉にする調剤。砕いてはいけない薬もあるので事前確認が必要",
+      "explain": "徐放錠や腸溶錠は不可。代替の剤形（散剤・口腔内崩壊錠）がないか薬剤師が検討する",
+      "level": "normal",
+      "tags": [
+        "pharm-dispense"
+      ]
+    },
+    {
+      "id": "concept-pharm-counting",
+      "en": "pharm-counting",
+      "kind": "concept",
+      "answer": "計数調剤",
+      "accept": [
+        "計数",
+        "計数・計量",
+        "PTP調剤",
+        "計数調剤・計量調剤"
+      ],
+      "ja": "シートのまま数を数えて揃える調剤",
+      "q": "錠剤のシートやチューブなど、包装のまま「何錠・何本」と数を数えて揃える調剤。これに対して粉や水剤を量って混ぜる作業は別の呼び方",
+      "explain": "対になるのが計量調剤（散剤・水剤・軟膏の混合）。報酬上も区分が違う",
+      "level": "normal",
+      "tags": [
+        "pharm-dispense"
+      ]
+    },
+    {
+      "id": "concept-pharm-medicine-bag",
+      "en": "pharm-medicine-bag",
+      "kind": "concept",
+      "answer": "薬袋",
+      "accept": [
+        "やくたい",
+        "薬の袋",
+        "薬袋印字",
+        "くすり袋"
+      ],
+      "ja": "患者名・用法・日数を印字した薬を入れる袋",
+      "q": "患者の名前、飲み方、日数、薬局名を印字して薬を入れる袋。用法ごとに分け、印字内容の確認も監査の一部",
+      "explain": "読みは「やくたい」。名前の取り違えが最も危険なミス。渡すときにフルネームで確認",
+      "level": "easy",
+      "tags": [
+        "pharm-dispense"
+      ]
+    },
+    {
+      "id": "concept-pharm-counseling",
+      "en": "pharm-counseling",
+      "kind": "concept",
+      "answer": "服薬指導",
+      "accept": [
+        "服薬説明",
+        "投薬",
+        "薬の説明",
+        "窓口指導",
+        "服薬説明・指導"
+      ],
+      "ja": "薬剤師が患者に薬の飲み方や注意点を説明すること",
+      "q": "薬を渡すときに薬剤師が、飲み方・効果・副作用・保管方法を患者に説明し、体調や他の薬の変化を聞き取る場面。事務は代行できない",
+      "explain": "薬剤師の独占業務。薬情（薬剤情報提供文書）を添えて行う。聞き取った内容は薬歴に記録",
+      "level": "easy",
+      "tags": [
+        "pharm-dispense"
+      ],
+      "say": "medication counseling"
+    },
+    {
+      "id": "concept-pharm-history",
+      "en": "pharm-history",
+      "kind": "concept",
+      "answer": "薬歴",
+      "accept": [
+        "薬剤服用歴",
+        "薬歴簿",
+        "電子薬歴",
+        "服薬歴",
+        "薬歴管理"
+      ],
+      "ja": "患者ごとの処方・指導内容・体質などの記録",
+      "q": "患者ごとに、処方された薬、アレルギー、副作用歴、指導した内容、患者の訴えを継続して記録するもの。次回の指導と相互作用チェックの根拠",
+      "explain": "SOAP 形式で書く薬局が多い。記載がないと管理料が算定できないうえ、個別指導で最も見られる",
+      "level": "normal",
+      "tags": [
+        "pharm-dispense"
+      ]
+    },
+    {
+      "id": "concept-pharm-tracing-report",
+      "en": "pharm-tracing-report",
+      "kind": "concept",
+      "answer": "トレーシングレポート",
+      "accept": [
+        "服薬情報提供書",
+        "TR",
+        "トレレポ",
+        "服薬情報等提供",
+        "tracing report"
+      ],
+      "ja": "緊急性は低いが医師に伝えたい情報を書面で送る仕組み",
+      "q": "疑義照会するほど急ぎではないが、残薬の状況や飲みにくさ、副作用の疑いなど医師に知らせたい情報を、薬局から後日書面で送る仕組み",
+      "explain": "疑義照会は「調剤前・即時」、こちらは「調剤後・任意」。処方見直しのきっかけになる",
+      "level": "hard",
+      "tags": [
+        "pharm-dispense"
+      ],
+      "say": "tracing report"
+    },
+    {
+      "id": "concept-pharm-family-pharmacist",
+      "en": "pharm-family-pharmacist",
+      "kind": "concept",
+      "answer": "かかりつけ薬剤師",
+      "accept": [
+        "かかりつけ",
+        "かかりつけ薬剤師指導料",
+        "かかりつけ薬局",
+        "かかりつけ薬剤師制度"
+      ],
+      "ja": "患者が指名し、薬の一元管理と相談を担う薬剤師",
+      "q": "患者が同意書で指名し、他の薬局や病院の薬も含めて一元的に管理し、時間外も相談に応じる薬剤師。1人の患者につき1人だけ",
+      "explain": "算定には薬剤師の経験年数や勤務時間などの要件がある。同意書の日付管理と、担当不在時の案内を事務が把握",
+      "level": "hard",
+      "tags": [
+        "pharm-dispense"
+      ]
+    },
+    {
+      "id": "concept-pharm-fee-schedule",
+      "en": "pharm-fee-schedule",
+      "kind": "concept",
+      "answer": "調剤報酬",
+      "accept": [
+        "調剤報酬点数",
+        "診療報酬",
+        "調剤報酬点数表",
+        "調剤報酬改定"
+      ],
+      "ja": "薬局が保険から受け取る技術料と薬剤料の体系",
+      "q": "保険調剤に対して薬局が受け取る対価の仕組み。薬そのものの代金と、調剤や指導に対する技術料からなり、国が点数で定めている",
+      "explain": "2年ごとに改定される。改定のたびにレセコンのマスタ更新と加算要件の見直しが事務の大仕事",
+      "level": "normal",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-points",
+      "en": "pharm-points",
+      "kind": "concept",
+      "answer": "点数",
+      "accept": [
+        "保険点数",
+        "調剤点数",
+        "点",
+        "診療報酬点数"
+      ],
+      "ja": "報酬を表す単位。1点＝10円で計算",
+      "q": "保険の報酬を表す単位で、薬剤料も技術料もこの単位で積み上げる。金額に直してから患者の負担割合を掛ける",
+      "explain": "1点は10円。薬剤料は薬価を10で割って換算する際の端数処理ルールがあり、手計算とレセコンで差が出やすい",
+      "level": "normal",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-receipt",
+      "en": "pharm-receipt",
+      "kind": "concept",
+      "answer": "レセプト",
+      "accept": [
+        "調剤報酬明細書",
+        "レセ",
+        "診療報酬明細書",
+        "レセプト請求"
+      ],
+      "ja": "保険者に費用を請求するため月ごとにまとめる明細書",
+      "q": "患者ごと・月ごとに調剤内容と点数をまとめ、翌月10日までに審査支払機関へ送る請求の明細書。ここで間違うと入金が遅れる",
+      "explain": "翌月10日が提出期限。オンライン請求が原則。送る前の点検（レセチェック）で返戻を減らす",
+      "level": "easy",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-basic-fee",
+      "en": "pharm-basic-fee",
+      "kind": "concept",
+      "answer": "調剤基本料",
+      "accept": [
+        "基本料",
+        "調剤基本料1",
+        "基本料区分"
+      ],
+      "ja": "処方箋受付1回ごとに算定する薬局の基本の技術料",
+      "q": "処方箋を受け付けるごとに算定する土台の技術料。薬局の処方箋枚数や特定の医療機関への集中率などで区分が決まり、点数が変わる",
+      "explain": "区分は年に一度の実績で届け出る。地域支援体制加算などはこれに上乗せされる",
+      "level": "normal",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-management-fee",
+      "en": "pharm-management-fee",
+      "kind": "concept",
+      "answer": "薬学管理料",
+      "accept": [
+        "薬剤服用歴管理指導料",
+        "服薬管理指導料",
+        "管理料",
+        "指導料"
+      ],
+      "ja": "薬歴管理と服薬指導に対する技術料",
+      "q": "薬歴の記録と患者への説明・確認に対して算定する技術料。手帳の持参の有無や来局間隔で区分が分かれる",
+      "explain": "算定要件は薬歴に指導内容が記録されていること。記録がなければ算定できない",
+      "level": "normal",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-reduction",
+      "en": "pharm-reduction",
+      "kind": "concept",
+      "answer": "査定",
+      "accept": [
+        "減点",
+        "査定減点",
+        "減額査定",
+        "査定・減点"
+      ],
+      "ja": "審査で請求の一部が認められず減点されること",
+      "q": "提出したレセプトを審査機関が確認し、用量が多い、適応外、算定要件を満たさないなどの理由で点数の一部を認めず減らすこと",
+      "explain": "返戻と違い直して出し直すことはできない（再審査請求は可能）。理由通知を見て同じ請求を繰り返さない",
+      "level": "hard",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-return",
+      "en": "pharm-return",
+      "kind": "concept",
+      "answer": "返戻",
+      "accept": [
+        "返戻レセプト",
+        "へんれい",
+        "差し戻し",
+        "返戻再請求"
+      ],
+      "ja": "記載不備でレセプトが差し戻されること",
+      "q": "保険者番号の誤り、資格喪失、記載漏れなどでレセプトが審査機関から差し戻されること。直して再請求すれば支払われる",
+      "explain": "読みは「へんれい」。査定と違い直せば通る。資格確認の徹底で大半は防げる",
+      "level": "normal",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-public-expense",
+      "en": "pharm-public-expense",
+      "kind": "concept",
+      "answer": "公費",
+      "accept": [
+        "公費負担医療",
+        "公費負担",
+        "公費併用",
+        "医療費助成",
+        "公費医療"
+      ],
+      "ja": "国や自治体が医療費の一部・全部を負担する制度",
+      "q": "子ども医療、難病、生活保護、自立支援医療など、国や自治体が患者負担を肩代わりする制度。受給者証を確認し、保険と併用してレセプトを作る",
+      "explain": "制度ごとに法別番号と請求方法が違う。受給者証の有効期限と対象疾患の確認が必須",
+      "level": "hard",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-copayment",
+      "en": "pharm-copayment",
+      "kind": "concept",
+      "answer": "自己負担額",
+      "accept": [
+        "一部負担金",
+        "窓口負担",
+        "患者負担",
+        "自己負担",
+        "窓口負担金"
+      ],
+      "ja": "総額に負担割合を掛けて患者が窓口で払う金額",
+      "q": "調剤の総額に、保険証で確認した負担割合を掛けて出す、患者が窓口で払う金額。公費や上限額があるとさらに変わる",
+      "explain": "端数処理のルールがある。公費併用や高額療養費の上限で計算が変わるため、レセコン任せでも根拠は理解しておく",
+      "level": "normal",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-drug-price",
+      "en": "pharm-drug-price",
+      "kind": "concept",
+      "answer": "薬価",
+      "accept": [
+        "薬価基準",
+        "公定価格",
+        "薬価収載",
+        "薬価改定"
+      ],
+      "ja": "国が定める医療用医薬品の公定価格",
+      "q": "保険で使う医療用医薬品一つひとつについて国が定めている公定の価格。薬剤料はこれをもとに点数化され、定期的に改定される",
+      "explain": "卸からの仕入れ値との差が「薬価差益」。改定のたびに在庫の評価額も変わる",
+      "level": "normal",
+      "tags": [
+        "pharm-billing"
+      ]
+    },
+    {
+      "id": "concept-pharm-ordering",
+      "en": "pharm-ordering",
+      "kind": "concept",
+      "answer": "発注",
+      "accept": [
+        "注文",
+        "医薬品発注",
+        "発注業務",
+        "発注点"
+      ],
+      "ja": "在庫が減った薬を卸に注文すること",
+      "q": "在庫が減った薬や、新しい処方で必要になった薬を、卸に電話や端末で注文する業務。締め時間を過ぎると翌日以降の納品になる",
+      "explain": "「このくらいで注文する」量（発注点）を品目ごとに決めておく。締め時間と配送回数は卸ごとに違う",
+      "level": "easy",
+      "tags": [
+        "pharm-stock"
+      ],
+      "say": "ordering"
+    },
+    {
+      "id": "concept-pharm-wholesaler",
+      "en": "pharm-wholesaler",
+      "kind": "concept",
+      "answer": "卸",
+      "accept": [
+        "医薬品卸",
+        "卸売業者",
+        "卸業者",
+        "おろし",
+        "卸売販売業者"
+      ],
+      "ja": "メーカーと薬局の間で薬を流通させる業者",
+      "q": "製薬会社から薬を仕入れ、薬局や病院に配送する流通業者。薬局は複数社と取引し、価格交渉や欠品時の調達も担当者を通じて行う",
+      "explain": "MS と呼ばれる営業担当が窓口。返品可否や納入価は会社ごとに条件が異なる",
+      "level": "easy",
+      "tags": [
+        "pharm-stock"
+      ],
+      "say": "wholesaler"
+    },
+    {
+      "id": "concept-pharm-delivery",
+      "en": "pharm-delivery",
+      "kind": "concept",
+      "answer": "納品",
+      "accept": [
+        "納品検収",
+        "検品",
+        "入荷",
+        "納品書",
+        "検収"
+      ],
+      "ja": "卸から届いた薬を伝票と照合して受け入れること",
+      "q": "卸から届いた薬を伝票と照らし合わせ、品名・規格・数量・使用期限を確認してから棚に入れる作業。ロット番号の記録が必要なものもある",
+      "explain": "検品せずに棚入れすると数量ミスが在庫差異になる。冷所品は最優先で冷蔵庫へ",
+      "level": "easy",
+      "tags": [
+        "pharm-stock"
+      ],
+      "say": "delivery"
+    },
+    {
+      "id": "concept-pharm-expiry",
+      "en": "pharm-expiry",
+      "kind": "concept",
+      "answer": "使用期限",
+      "accept": [
+        "期限",
+        "期限切れ",
+        "使用期限管理",
+        "使用期限チェック"
+      ],
+      "ja": "薬を安全に使える期限。棚では先入れ先出しで管理",
+      "q": "その薬を品質が保たれた状態で使える期限。納品時に確認し、棚では期限の近いものを手前に置いて先に使う",
+      "explain": "先入れ先出しが基本。期限切れの投薬は重大インシデント。定期的に棚を回って近いものを抜く",
+      "level": "easy",
+      "tags": [
+        "pharm-stock"
+      ],
+      "say": "expiration date"
+    },
+    {
+      "id": "concept-pharm-stockout",
+      "en": "pharm-stockout",
+      "kind": "concept",
+      "answer": "欠品",
+      "accept": [
+        "品切れ",
+        "在庫切れ",
+        "欠品対応",
+        "出荷調整"
+      ],
+      "ja": "必要な薬が手元にない状態",
+      "q": "処方された薬が薬局の棚になく、その場で渡せない状態。卸に至急発注する、近隣薬局から分けてもらう、後で届けるなどの対応を取る",
+      "explain": "メーカー側の供給不足で長期化する「出荷調整」と、自店の発注漏れは原因が違う。患者への説明を最初に",
+      "level": "easy",
+      "tags": [
+        "pharm-stock"
+      ],
+      "say": "stockout"
+    },
+    {
+      "id": "concept-pharm-transfer",
+      "en": "pharm-transfer",
+      "kind": "concept",
+      "answer": "小分け",
+      "accept": [
+        "譲渡",
+        "薬局間譲渡",
+        "分譲",
+        "小分け譲渡",
+        "医薬品の譲渡"
+      ],
+      "ja": "薬局同士で薬を必要量だけ融通し合うこと",
+      "q": "急に必要になった薬や滅多に出ない薬を、近隣の薬局同士で必要な分だけ譲り合うこと。譲渡の記録と薬の品質確認が必要",
+      "explain": "販売業の許可なしにできるのは調剤に必要な範囲に限られる。譲渡書や記録の保存が求められる",
+      "level": "hard",
+      "tags": [
+        "pharm-stock"
+      ]
+    },
+    {
+      "id": "concept-pharm-dead-stock",
+      "en": "pharm-dead-stock",
+      "kind": "concept",
+      "answer": "不動在庫",
+      "accept": [
+        "デッドストック",
+        "死蔵在庫",
+        "不良在庫",
+        "動かない在庫",
+        "dead stock"
+      ],
+      "ja": "長期間使われず棚に残っている在庫",
+      "q": "処方が途切れて長期間動かず棚に残っている薬。期限切れになると廃棄損になるため、定期的に洗い出して他店へ譲渡するなどの対策を取る",
+      "explain": "在庫金額の圧迫要因。処方元の変更や患者の転居で発生する。譲渡・返品の可否を早めに確認",
+      "level": "normal",
+      "tags": [
+        "pharm-stock"
+      ],
+      "say": "dead stock"
+    },
+    {
+      "id": "concept-pharm-stocktaking",
+      "en": "pharm-stocktaking",
+      "kind": "concept",
+      "answer": "棚卸",
+      "accept": [
+        "棚卸し",
+        "たなおろし",
+        "実地棚卸",
+        "在庫確認",
+        "棚卸業務"
+      ],
+      "ja": "実際の在庫数を数えて帳簿と突き合わせる作業",
+      "q": "決算期や月末に、棚にある薬を一つずつ数え、システム上の在庫数と差がないか確認する作業。差異の原因を探して正す",
+      "explain": "在庫は薬局の資産。差異の原因は入力漏れ・小分け未処理・破損が多い。期限確認を同時に行う",
+      "level": "normal",
+      "tags": [
+        "pharm-stock"
+      ],
+      "say": "stocktaking"
+    },
+    {
+      "id": "concept-pharm-narcotics",
+      "en": "pharm-narcotics",
+      "kind": "concept",
+      "answer": "麻薬管理",
+      "accept": [
+        "麻薬",
+        "医療用麻薬",
+        "麻薬金庫",
+        "麻薬帳簿",
+        "麻薬小売業者"
+      ],
+      "ja": "施錠保管・帳簿・免許が必要な薬の管理",
+      "q": "特定の強い鎮痛薬などについて、鍵のかかる堅固な金庫での保管、受払い帳簿の記録、廃棄時の届出、専用の免許が求められる管理の仕組み",
+      "explain": "法律で薬局ごとに免許が必要。向精神薬は種類ごとに保管・記録の厳しさが異なり、別ルールで管理する",
+      "level": "hard",
+      "tags": [
+        "pharm-stock"
+      ]
+    },
+    {
+      "id": "concept-pharm-powerful-drug",
+      "en": "pharm-powerful-drug",
+      "kind": "concept",
+      "answer": "劇薬",
+      "accept": [
+        "毒薬",
+        "毒薬劇薬",
+        "毒劇",
+        "毒薬・劇薬",
+        "毒劇薬"
+      ],
+      "ja": "作用が強く、表示と保管に法律上のルールがある薬",
+      "q": "作用が強く、法律で他の薬と区別して陳列・保管し、容器やラベルに決められた枠と文字の表示をすることが定められた薬の区分。2段階ある",
+      "explain": "毒薬は黒地に白枠白字で施錠保管、こちらは白地に赤枠赤字で他の薬と区別して保管。どちらも棚の表示を確認",
+      "level": "hard",
+      "tags": [
+        "pharm-stock"
+      ]
+    },
+    {
+      "id": "concept-pharm-brand",
+      "en": "pharm-brand",
+      "kind": "concept",
+      "answer": "先発医薬品",
+      "accept": [
+        "先発品",
+        "新薬",
+        "先発",
+        "長期収載品",
+        "先発薬"
+      ],
+      "ja": "最初に開発・承認された特許のある薬",
+      "q": "製薬会社が研究開発し、最初に承認を受けて発売した薬。特許が切れるまで他社は同じ成分の薬を出せない",
+      "explain": "特許が切れて後発品が出た後は「長期収載品」と呼ばれる。後発品との価格差で患者負担が変わる仕組みがある",
+      "level": "easy",
+      "tags": [
+        "pharm-drug"
+      ],
+      "say": "brand-name drug"
+    },
+    {
+      "id": "concept-pharm-otc",
+      "en": "pharm-otc",
+      "kind": "concept",
+      "answer": "OTC",
+      "accept": [
+        "市販薬",
+        "一般用医薬品",
+        "OTC医薬品",
+        "大衆薬",
+        "オーティーシー"
+      ],
+      "ja": "処方箋なしで薬局・ドラッグストアで買える薬",
+      "q": "医師の処方箋がなくても、薬局やドラッグストアで買える薬。リスクに応じて第1類〜第3類などに分類され、説明の仕方が異なる",
+      "explain": "Over The Counter。処方薬と成分が重なることがあるため、問診では「市販薬も含めて」聞く",
+      "level": "easy",
+      "tags": [
+        "pharm-drug",
+        "abbr"
+      ],
+      "say": "over the counter"
+    },
+    {
+      "id": "concept-pharm-guidance-required",
+      "en": "pharm-guidance-required",
+      "kind": "concept",
+      "answer": "要指導医薬品",
+      "accept": [
+        "要指導",
+        "要指導薬",
+        "要指導医薬品区分"
+      ],
+      "ja": "薬剤師の対面説明が必須で、ネット販売できない市販薬",
+      "q": "医療用から市販に移って間もない薬など、購入時に薬剤師が対面で書面を使って説明することが義務づけられた区分。インターネットでは買えない",
+      "explain": "一般用医薬品の第1類より前の段階。一定期間後に第1類へ移行するものが多い",
+      "level": "hard",
+      "tags": [
+        "pharm-drug"
+      ]
+    },
+    {
+      "id": "concept-pharm-incompatibility",
+      "en": "pharm-incompatibility",
+      "kind": "concept",
+      "answer": "配合変化",
+      "accept": [
+        "配合禁忌",
+        "配合不可",
+        "混合不可",
+        "配合不適"
+      ],
+      "ja": "薬同士を混ぜると変質・沈殿などが起きること",
+      "q": "複数の薬を混ぜたとき、色が変わる、沈殿する、効き目が落ちるなどの変化が起きること。散剤の混合や水剤・軟膏の調製前に確認する",
+      "explain": "相互作用（体内での影響）とは別で、混ぜた時点で起きる物理・化学的な変化。混合前に文献で確認",
+      "level": "hard",
+      "tags": [
+        "pharm-drug"
+      ],
+      "say": "incompatibility"
+    },
+    {
+      "id": "concept-pharm-interaction",
+      "en": "pharm-interaction",
+      "kind": "concept",
+      "answer": "相互作用",
+      "accept": [
+        "飲み合わせ",
+        "薬物相互作用",
+        "併用禁忌",
+        "併用注意",
+        "drug interaction"
+      ],
+      "ja": "薬と薬・食品が互いの効き目に影響し合うこと",
+      "q": "複数の薬や特定の食品を一緒に使ったとき、効き目が強くなったり弱くなったりすること。薬歴とお薬手帳で他の薬を把握して確認する",
+      "explain": "「併用禁忌」は一緒に使ってはいけない、「併用注意」は条件付き。グレープフルーツや納豆が代表例",
+      "level": "normal",
+      "tags": [
+        "pharm-drug"
+      ],
+      "say": "drug interaction"
+    },
+    {
+      "id": "concept-pharm-side-effect",
+      "en": "pharm-side-effect",
+      "kind": "concept",
+      "answer": "副作用",
+      "accept": [
+        "有害事象",
+        "副反応",
+        "薬の副作用",
+        "side effect"
+      ],
+      "ja": "薬の本来の目的以外に現れる好ましくない作用",
+      "q": "薬を正しく使っても現れることがある、目的以外の好ましくない作用。眠気や胃の不快感から重いものまであり、初期症状を患者に伝える",
+      "explain": "薬歴に記録し、重いものは医師に報告。国の救済制度の対象になる場合がある",
+      "level": "normal",
+      "tags": [
+        "pharm-drug"
+      ],
+      "say": "side effect"
+    },
+    {
+      "id": "concept-pharm-adherence",
+      "en": "pharm-adherence",
+      "kind": "concept",
+      "answer": "アドヒアランス",
+      "accept": [
+        "服薬アドヒアランス",
+        "adherence",
+        "服薬遵守",
+        "コンプライアンス"
+      ],
+      "ja": "患者が納得して治療方針に沿って薬を飲み続けること",
+      "q": "患者が薬の必要性を理解し、自ら納得して指示どおりに飲み続けている度合い。残薬の量や飲み忘れの理由を聞くことで把握する",
+      "explain": "「言われたとおり飲む」コンプライアンスより患者主体の考え方。一包化やお薬カレンダーが支援策",
+      "level": "normal",
+      "tags": [
+        "pharm-drug"
+      ],
+      "say": "adherence"
+    }
+  ]
+}
