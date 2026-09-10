@@ -84,6 +84,28 @@
           "group": "ビジネス・バックオフィス"
         },
         {
+          "id": "freelancetax",
+          "label": "フリーランスの税務・確定申告",
+          "file": "packs/freelancetax.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "開業届から青色申告・経費・インボイス・記帳まで、独立1年目の共通言語",
+          "audience": "独立したばかりのフリーランス、副業を始めた人",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
+          "id": "publicbid",
+          "label": "入札・官公庁営業",
+          "file": "packs/publicbid.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "公告から落札・検収まで。予定価格・随契・参加資格・予算の動きを一気に",
+          "audience": "官公庁向け営業の新人、初めて入札に参加する会社",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
           "id": "banking",
           "label": "銀行・金融の基本",
           "file": "packs/banking.json",
@@ -103,6 +125,17 @@
           "count": 55,
           "blurb": "生保・損保の現場で毎日出る用語。契約・商品・請求・法令まで",
           "audience": "保険会社・代理店の新人、募集人資格の勉強中の人",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
+          "id": "trade",
+          "label": "貿易実務",
+          "file": "packs/trade.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "輸出入の現場の共通語。インコタームズ・B/L・L/C・通関・コンテナまで",
+          "audience": "商社・メーカーの貿易担当1年目、通関士を目指す人",
           "group": "ビジネス・バックオフィス"
         },
         {
@@ -271,6 +304,39 @@
           "group": "店舗・サービス"
         },
         {
+          "id": "hotel",
+          "label": "ホテル・宿泊業",
+          "file": "packs/hotel.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "フロント・客室・レベニューの共通言語。稼働率からOOOまで",
+          "audience": "ホテル・旅館の新人スタッフ、宿泊業に転職する人",
+          "group": "店舗・サービス"
+        },
+        {
+          "id": "apparel",
+          "label": "アパレル販売・店舗運営",
+          "file": "packs/apparel.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "SKU・消化率・VMD・客単価。店頭の共通言語を一通り",
+          "audience": "アパレル店舗の新人販売員、店長を目指す人",
+          "group": "店舗・サービス"
+        },
+        {
+          "id": "salon",
+          "label": "美容室・サロン経営",
+          "file": "packs/salon.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "カットから客単価・失客・面貸しまで。サロンの共通言語",
+          "audience": "美容室のアシスタント、独立を考える美容師",
+          "group": "店舗・サービス"
+        },
+        {
           "id": "construction",
           "label": "建設・施工管理",
           "file": "packs/construction.json",
@@ -301,6 +367,17 @@
           "count": 53,
           "blurb": "入荷から出荷、配車、KPI、貿易の入口まで。現場の共通語",
           "audience": "倉庫・運送会社の新人、荷主側の物流担当",
+          "group": "建設・製造・物流"
+        },
+        {
+          "id": "printing",
+          "label": "印刷・DTP",
+          "file": "packs/printing.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "入稿・校正・製版・製本・用紙まで、印刷会社と話が通じる共通言語",
+          "audience": "印刷会社の新人、DTPや発注を担当する人",
           "group": "建設・製造・物流"
         },
         {
