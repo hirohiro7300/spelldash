@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "claude/spelldash-dev-strategy-wzjixj": false
+    }
+  },
   "redirects": [
     {
       "source": "/:path*",
