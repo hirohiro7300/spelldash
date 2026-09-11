@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>分野パック一覧 | SpellDash</title>
+  <link rel="stylesheet" href="/css/reset.css" />
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/game.css" />
+  <link rel="stylesheet" href="/css/responsive.css" />
+  <link rel="stylesheet" href="/css/theme.css" />
+  <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
+  <meta name="description" content="不動産・会計・医療・SaaS・英検・TOEIC・中学高校の教科など、SpellDash の学習パック一覧。追加した分野だけがホームに出ます。" />
+  <link rel="canonical" href="https://www.spelldash.net/packs/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SpellDash" />
+  <meta property="og:title" content="分野パック一覧 | SpellDash" />
+  <meta property="og:description" content="不動産・会計・医療・SaaS・英検・TOEIC・中学高校の教科など、SpellDash の学習パック一覧。追加した分野だけがホームに出ます。" />
+  <meta property="og:url" content="https://www.spelldash.net/packs/" />
+  <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <style>
+    .pp { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; }
+    .pp-hero { padding: 28px 0 16px; }
+    .pp-kicker { font-size: 12px; color: #64748b; margin: 0 0 6px; }
+    .pp h1 { font-size: 26px; margin: 0 0 8px; line-height: 1.3; }
+    .pp-lead { font-size: 15px; line-height: 1.7; margin: 0 0 6px; }
+    .pp-meta { font-size: 13px; color: #64748b; margin: 0 0 16px; }
+    .pp-cta { display: inline-block; padding: 12px 22px; border-radius: 999px; background: #2563eb; color: #fff; font-weight: 700; text-decoration: none; }
+    .pp-cta:hover { background: #1d4ed8; }
+    .pp-sub { margin-left: 12px; font-size: 13px; }
+    .pp h2 { font-size: 17px; margin: 28px 0 10px; }
+    .pp-genres { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0; list-style: none; }
+    .pp-genres li { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid #cbd5e1; }
+    .pp-cards { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
+    .pp-card { display: grid; gap: 3px; padding: 10px 12px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; }
+    .pp-card__q { font-size: 14px; line-height: 1.6; }
+    .pp-card__q small { color: #64748b; margin-left: 4px; }
+    .pp-card__a { font-weight: 700; color: #1d4ed8; }
+    .pp-card__ex { font-size: 12.5px; color: #475569; }
+    .pp-how { font-size: 14px; line-height: 1.7; }
+    .pp-how li { margin: 4px 0; }
+    .pp-other { font-size: 13.5px; line-height: 1.9; }
+    .pp-index h2 { margin-top: 24px; }
+    .pp-index ul { padding-left: 18px; line-height: 1.9; }
+    html[data-theme="dark"] .pp-kicker, html[data-theme="dark"] .pp-meta { color: #94a3b8; }
+    html[data-theme="dark"] .pp-genres li { border-color: rgba(148,163,184,.35); }
+    html[data-theme="dark"] .pp-card { background: rgba(15,23,42,.6); border-color: rgba(148,163,184,.25); }
+    html[data-theme="dark"] .pp-card__a { color: #93c5fd; }
+    html[data-theme="dark"] .pp-card__ex { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand"><span class="brand__mark">SD</span><span class="brand__name">SpellDash</span></a>
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link">プレイ</a>
+        <a href="/stats.html" class="site-nav__link">学習データ</a>
+        <a href="/list.html" class="site-nav__link">単語帳</a>
+        <a href="/battle.html" class="site-nav__link">バトル</a>
+      </nav>
+    </div>
+  </header>
+  <main class="pp">
+
+    <section class="pp-hero">
+      <p class="pp-kicker">SpellDash</p>
+      <h1>分野パック一覧</h1>
+      <p class="pp-lead">仕事の共通言語、試験の語彙、学校の暗記もの。追加した分野だけがホームに出て、思い出して打つ・復習の仕組みで覚えられます。</p>
+      <p class="pp-meta">65パック ・ 4,575枚</p>
+      <a class="pp-cta" href="/list.html#packs">単語帳ページで追加する</a>
+    </section>
+    <section class="pp-index">
+      <h2>中学校（社会・理科・国語・数学）</h2>
+      <ul><li><a href="/packs/pref.html">都道府県と県庁所在地</a> <small>60枚 ・ 47都道府県と、県名と異なる県庁所在地。地方・特産・地形の手がかりで答える</small></li><li><a href="/packs/jhist1.html">中学歴史 古代〜近世</a> <small>75枚 ・ 縄文から江戸幕末まで。人物・出来事・制度・文化を説明から答える</small></li><li><a href="/packs/jhist2.html">中学歴史 近現代</a> <small>75枚 ・ 欧米の近代から明治維新、二つの大戦、戦後・現代まで。説明から答える</small></li><li><a href="/packs/jgeo1.html">中学地理 日本</a> <small>60枚 ・ 地形・気候・産業・地図の読み方・領域。教科書の日本地理を説明から答える</small></li><li><a href="/packs/jgeo2.html">中学地理 世界</a> <small>60枚 ・ 大陸と海洋・気候帯・宗教・各州の特色・国際組織。世界地理の重要語を説明から答える</small></li><li><a href="/packs/jcivics.html">中学公民</a> <small>65枚 ・ 憲法・政治・経済・国際の重要語を説明から答える。入試の基本用語を網羅</small></li><li><a href="/packs/jsci1.html">中学理科 物理・化学</a> <small>65枚 ・ 光・力・電流・運動と、物質・原子・イオン。実験と法則の用語を説明から答える</small></li><li><a href="/packs/jsci2.html">中学理科 生物・地学</a> <small>65枚 ・ 植物・動物・細胞・生態系と、大地・天気・宇宙。図と用語がつながる説明で答える</small></li><li><a href="/packs/jkokugo1.html">国語 四字熟語・ことわざ・慣用句</a> <small>75枚 ・ 中学までに習う定番の四字熟語・ことわざ・慣用句を意味から答える</small></li><li><a href="/packs/jkokugo2.html">国語 漢字の読み（中学）</a> <small>80枚 ・ 中学で習う常用漢字の読み。難読熟語・熟字訓・読み分け・同音異義語</small></li><li><a href="/packs/jmath.html">中学数学 用語と定理</a> <small>60枚 ・ 数と式・方程式・関数・図形・データの活用の用語と定理名を説明から答える</small></li></ul>
+      <h2>文法（中学・高校・TOEIC）</h2>
+      <ul><li><a href="/packs/grammar-jhs1.html">中学英文法 1年</a> <small>70枚 ・ be動詞から現在進行形・過去形の入口まで。中1文法の基本形と疑問・否定</small></li><li><a href="/packs/grammar-jhs2.html">中学英文法 2年</a> <small>70枚 ・ 過去形・未来・不定詞・比較・受動態。中2で習う文法を空欄で確認</small></li><li><a href="/packs/grammar-jhs3.html">中学英文法 3年</a> <small>70枚 ・ 現在完了・関係代名詞・分詞・間接疑問・仮定法。入試で差がつく文法</small></li><li><a href="/packs/grammar-hs1.html">高校英文法 基礎</a> <small>70枚 ・ 時制・助動詞・受動態・準動詞・関係詞・比較。高1で固める文法</small></li><li><a href="/packs/grammar-hs2.html">高校英文法 発展</a> <small>72枚 ・ 仮定法・分詞構文・倒置・関係詞の発展。大学入試で差がつく高校文法</small></li><li><a href="/packs/grammar-toeic.html">TOEIC 文法（短文穴埋め）</a> <small>70枚 ・ 品詞・前置詞と接続詞・時制・関係詞。ビジネス英文の短文穴埋めで文法を固める</small></li></ul>
+      <h2>試験・レベル別（英検・TOEIC）</h2>
+      <ul><li><a href="/packs/eiken5.html">英検5級</a> <small>120枚 ・ 中学初級レベル。身近な名詞・基本動詞・家族・学校・時間の語</small></li><li><a href="/packs/eiken4.html">英検4級</a> <small>120枚 ・ 中学中級レベル。日常の動作・場所・気持ち・基本の形容詞と副詞</small></li><li><a href="/packs/eiken3.html">英検3級</a> <small>120枚 ・ 中学卒業レベル。抽象名詞の入口、社会・環境・意見を言うための語</small></li><li><a href="/packs/eikenp2.html">英検準2級</a> <small>120枚 ・ 高校中級レベル。長文で出る一般語彙・接続表現・学問分野の語</small></li><li><a href="/packs/eiken2.html">英検2級</a> <small>120枚 ・ 高校卒業レベル。社会問題・科学技術・経済・意見論述の語</small></li><li><a href="/packs/eikenp1.html">英検準1級</a> <small>120枚 ・ 大学中級レベル。新聞英語・学術的な一般語・評価や態度を表す語</small></li><li><a href="/packs/eiken1.html">英検1級</a> <small>120枚 ・ 大学上級レベル。高度で低頻度だが試験で狙われる形容詞・動詞</small></li><li><a href="/packs/toeic500.html">TOEIC 500点</a> <small>120枚 ・ オフィス・買い物・交通の基本語。まず土台になる120語</small></li><li><a href="/packs/toeic600.html">TOEIC 600点</a> <small>120枚 ・ 会議・メール・日程・施設・採用。職場の定番語を一気に</small></li><li><a href="/packs/toeic730.html">TOEIC 730点</a> <small>120枚 ・ 契約・財務・製造・広告・人事。文法・読解問題で毎回出る語</small></li><li><a href="/packs/toeic860.html">TOEIC 860点</a> <small>120枚 ・ 言い換えで狙われる語、フォーマルな動詞・形容詞、経済記事の語彙</small></li><li><a href="/packs/toeic990.html">TOEIC 990点</a> <small>121枚 ・ 低頻度でも満点なら落とせない語。似た語の精密な使い分け</small></li></ul>
+      <h2>ビジネス・バックオフィス</h2>
+      <ul><li><a href="/packs/accounting.html">簿記・会計の基本</a> <small>55枚 ・ 仕訳から財務諸表、月次決算、消費税の入口まで。経理の共通言語</small></li><li><a href="/packs/legal.html">契約・法務の基本</a> <small>54枚 ・ NDAから業務委託、条項の読み方、締結の実務まで。契約の共通言語</small></li><li><a href="/packs/hr.html">人事・労務 実務</a> <small>55枚 ・ 採用から退職まで、人事が毎日使う言葉。勤怠・給与・社保・労務リスク</small></li><li><a href="/packs/freelancetax.html">フリーランスの税務・確定申告</a> <small>55枚 ・ 開業届から青色申告・経費・インボイス・記帳まで、独立1年目の共通言語</small></li><li><a href="/packs/staffing.html">人材紹介・人材派遣</a> <small>55枚 ・ 紹介と派遣の仕組み・料金・KPI・法令。人材業界の共通語</small></li><li><a href="/packs/publicbid.html">入札・官公庁営業</a> <small>55枚 ・ 公告から落札・検収まで。予定価格・随契・参加資格・予算の動きを一気に</small></li><li><a href="/packs/startupfinance.html">スタートアップの資金調達</a> <small>55枚 ・ VCとの会話に出る言葉。評価額・優先株・タームシート・バーンレートまで</small></li><li><a href="/packs/banking.html">銀行・金融の基本</a> <small>55枚 ・ 窓口・為替・融資・投信・支店内の共通語。1年目に出る用語を一通り</small></li><li><a href="/packs/insurance.html">保険営業の基本</a> <small>55枚 ・ 生保・損保の現場で毎日出る用語。契約・商品・請求・法令まで</small></li><li><a href="/packs/trade.html">貿易実務</a> <small>55枚 ・ 輸出入の現場の共通語。インコタームズ・B/L・L/C・通関・コンテナまで</small></li></ul>
+      <h2>営業・マーケティング</h2>
+      <ul><li><a href="/packs/saas.html">SaaS営業・CS</a> <small>54枚 ・ MRRからチャーンまで。SaaSの営業・CS・契約で毎日出る共通言語</small></li><li><a href="/packs/ec.html">EC・D2C運営</a> <small>53枚 ・ 集客・サイト・KPI・受注物流・CRM。ネット通販の現場で毎日出る言葉</small></li><li><a href="/packs/sns.html">SNS運用・インフルエンサーマーケ</a> <small>55枚 ・ リーチ・保存数・PR表記まで、SNS担当とインフルエンサー施策の共通言語</small></li><li><a href="/packs/video.html">動画制作・YouTube運用</a> <small>55枚 ・ 企画・撮影・編集からYouTube分析と権利・納品まで一通り</small></li><li><a href="/packs/callcenter.html">コールセンター・CS運営</a> <small>54枚 ・ 応答率・AHT・SVなど、受電も発信も現場で毎日飛び交う言葉</small></li><li><a href="/packs/webdev.html">Web制作・SEO</a> <small>54枚 ・ 制作の流れからSEO・解析・運用まで、Web制作の現場で毎日出る用語</small></li></ul>
+      <h2>IT・セキュリティ</h2>
+      <ul><li><a href="/packs/programming.html">プログラミング基礎</a> <small>55枚 ・ 変数からGit・API・DB・デプロイまで、開発チームの共通言語</small></li><li><a href="/packs/itsupport.html">社内SE・ITヘルプデスク</a> <small>55枚 ・ 問い合わせ対応・アカウント・端末・ネットワーク・情シス業務の用語</small></li><li><a href="/packs/security.html">情報セキュリティの基本</a> <small>55枚 ・ 全社員に必要な守りの共通語。脅威・対策・事故対応・法令まで</small></li></ul>
+      <h2>医療・福祉・保育</h2>
+      <ul><li><a href="/packs/medical.html">医療事務・受付</a> <small>55枚 ・ 受付・会計からレセプト請求まで。クリニックの窓口で毎日使う言葉</small></li><li><a href="/packs/nursing.html">看護・病棟の基本</a> <small>55枚 ・ 申し送り・バイタル・与薬・安全対策など病棟で毎日飛び交う共通語</small></li><li><a href="/packs/pharmacy.html">調剤薬局事務</a> <small>55枚 ・ 受付・処方箋の読み方・調剤の流れ・レセプト・在庫まで薬局の共通語</small></li><li><a href="/packs/care.html">介護 実務</a> <small>55枚 ・ 介護保険の仕組みからサービス種別、介助・記録・加算まで現場の共通語</small></li><li><a href="/packs/dental.html">歯科受付・歯科助手</a> <small>55枚 ・ 受付・アシスト・保険請求まで、歯科医院で毎日飛び交う言葉</small></li><li><a href="/packs/childcare.html">保育の現場</a> <small>55枚 ・ 登園から降園までの日課、計画・記録、安全、運営、発達の共通語</small></li></ul>
+      <h2>店舗・サービス</h2>
+      <ul><li><a href="/packs/restaurant.html">飲食店経営</a> <small>55枚 ・ 原価・回転率からHACCP・シフト・開業まで。店を回す数字と現場の言葉</small></li><li><a href="/packs/hotel.html">ホテル・宿泊業</a> <small>55枚 ・ フロント・客室・レベニューの共通言語。稼働率からOOOまで</small></li><li><a href="/packs/apparel.html">アパレル販売・店舗運営</a> <small>55枚 ・ SKU・消化率・VMD・客単価。店頭の共通言語を一通り</small></li><li><a href="/packs/salon.html">美容室・サロン経営</a> <small>55枚 ・ カットから客単価・失客・面貸しまで。サロンの共通言語</small></li></ul>
+      <h2>建設・製造・物流</h2>
+      <ul><li><a href="/packs/construction.html">建設・施工管理</a> <small>55枚 ・ 体制・工程・安全・図面・検査・書類。現場監督の共通語を一通り</small></li><li><a href="/packs/manufacturing.html">製造・品質管理</a> <small>55枚 ・ 5S・タクト・不良率からFMEAまで。工場の共通語を一通り</small></li><li><a href="/packs/logistics.html">物流・倉庫</a> <small>53枚 ・ 入荷から出荷、配車、KPI、貿易の入口まで。現場の共通語</small></li><li><a href="/packs/printing.html">印刷・DTP</a> <small>55枚 ・ 入稿・校正・製版・製本・用紙まで、印刷会社と話が通じる共通言語</small></li></ul>
+      <h2>不動産・自動車</h2>
+      <ul><li><a href="/packs/realestate.html">不動産 実務</a> <small>55枚 ・ 賃貸・売買の現場で毎日出る用語。契約・重説・ローン・管理まで</small></li><li><a href="/packs/usedcar.html">中古車 買取・販売 実務</a> <small>55枚 ・ 修復歴の見方から名義変更・税金の精算・契約まで。現場で使う手続きの言葉</small></li><li><a href="/packs/mechanic.html">自動車整備・車検</a> <small>55枚 ・ 車検・点検から部品・診断・接客まで、整備工場の共通語</small></li></ul>
+    </section>
+  
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand"><span class="brand__mark">SD</span><span class="brand__name">SpellDash</span></div>
+      <p class="site-footer__tagline">思い出して打つから、残る。</p>
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="/news.html">お知らせ</a>
+        <a href="/privacy.html">プライバシー</a>
+        <a href="/packs/">分野パック一覧</a>
+      </nav>
+      <p class="site-footer__copy">© 2026 SpellDash</p>
+    </div>
+  </footer>
+</body>
+</html>
