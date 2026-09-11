@@ -282,6 +282,28 @@
           "group": "高校（世界史・日本史・地理・公民・理科・国語）"
         },
         {
+          "id": "hs-physics",
+          "label": "高校 物理基礎",
+          "file": "packs/hs-physics.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "運動・エネルギー・波・電気・単位。物理基礎の用語と法則を説明から答える",
+          "audience": "高校生、物理基礎を復習する人",
+          "group": "高校（世界史・日本史・地理・公民・理科・国語）"
+        },
+        {
+          "id": "hs-earth",
+          "label": "高校 地学基礎",
+          "file": "packs/hs-earth.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "地球の内部・地震火山・地史・大気海洋・宇宙。地学基礎の用語を説明から答える",
+          "audience": "高校生、地学基礎を復習する人",
+          "group": "高校（世界史・日本史・地理・公民・理科・国語）"
+        },
+        {
           "id": "hs-kobun",
           "label": "高校 古文単語",
           "file": "packs/hs-kobun.json",
@@ -290,6 +312,28 @@
           "count": 100,
           "blurb": "入試頻出の古文単語100語。現代語の意味から歴史的仮名遣いで答える",
           "audience": "高校生、大学入試の古文を復習する人",
+          "group": "高校（世界史・日本史・地理・公民・理科・国語）"
+        },
+        {
+          "id": "hs-kanbun",
+          "label": "高校 漢文 句法と重要語",
+          "file": "packs/hs-kanbun.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "再読文字・否定・使役・受身などの句法と重要語、返り点、故事成語15",
+          "audience": "高校生、大学入試の漢文を復習する人",
+          "group": "高校（世界史・日本史・地理・公民・理科・国語）"
+        },
+        {
+          "id": "hs-gendaibun",
+          "label": "高校 現代文 キーワード",
+          "file": "packs/hs-gendaibun.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "評論文の頻出語70。抽象と具体、近代、他者、記号など対義語のペアで覚える",
+          "audience": "高校生、大学入試の評論文を読む人",
           "group": "高校（世界史・日本史・地理・公民・理科・国語）"
         },
         {
