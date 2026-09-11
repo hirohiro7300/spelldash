@@ -1462,7 +1462,7 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに65パック（36分野＋レベル別12＋文法6＋義務教育11）", packCount === 65, `packs=${packCount}`);
+  check("教材ライブラリに76パック（36分野＋レベル別12＋文法6＋中学11＋小学4＋高校7）", packCount === 76, `packs=${packCount}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
@@ -1587,8 +1587,50 @@ console.log("domain packs:");
   await page10.goto(BASE + "/list.html?category=pref", { waitUntil: "networkidle" });
   await page10.waitForTimeout(900);
   check("都道府県パックの一覧（60枚・地方ごとのジャンル）", (await page10.$$(".gcard")).length === 60 && (await page10.$$(".genre")).length >= 6);
-  check("ライブラリに「義務教育」グループ（11パック）", (await page10.$$eval(".pack-group__title", (els) => els.map((e) => e.textContent))).some((t) => t.includes("義務教育")) && (await page10.$$('[data-pack-toggle="jhist1"], [data-pack-toggle="jsci2"], [data-pack-toggle="jmath"]')).length === 3);
+  check("ライブラリに「中学校」グループ（11パック）", (await page10.$$eval(".pack-group__title", (els) => els.map((e) => e.textContent))).some((t) => t.includes("中学校")) && (await page10.$$('[data-pack-toggle="jhist1"], [data-pack-toggle="jsci2"], [data-pack-toggle="jmath"]')).length === 3);
   await page10.close();
+
+  // 自分のデータの端末間同期: 変更が dirty に積まれ、クラウド行のマージで新しい方が勝つ（テーブルはスタブ）
+  const page12 = await newPage({ storage: { spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書", addedAt: "2026-09-01T00:00:00.000Z" }]) } });
+  await page12.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
+  await page12.waitForTimeout(800);
+  await page12.click('[data-pack-toggle="realestate"]');
+  await waitUntil(async () => (await page12.textContent("#listSummary")).includes("不動産"));
+  await page12.fill("#myWordEn", "deadline");
+  await page12.fill("#myWordJa", "締め切り");
+  await page12.click("#myWordForm button[type=submit]");
+  await page12.waitForTimeout(200);
+  const dirty = await page12.evaluate(() => JSON.parse(localStorage.getItem("spelldash_user_items_dirty") || "[]"));
+  check("同期: パック追加と単語追加が未送信として記録される", dirty.includes("pack:realestate") && dirty.includes("my_word:deadline"), dirty.join(","));
+  const merged = await page12.evaluate(async () => {
+    const m = await import("/js/userItemsSync.js");
+    const future = new Date(Date.now() + 60000).toISOString();
+    const past = "2026-08-01T00:00:00.000Z";
+    const r = m.mergeCloudItems([
+      { kind: "my_word", key: "negotiate", payload: { en: "negotiate", ja: "交渉する", addedAt: future }, deleted: false, updated_at: future }, // クラウドだけ → 追加
+      { kind: "my_word", key: "invoice", payload: {}, deleted: true, updated_at: future }, // 新しい墓標 → 削除
+      { kind: "my_word", key: "deadline", payload: { en: "deadline", ja: "古い訳", addedAt: past }, deleted: false, updated_at: past }, // 古いクラウド → ローカルが勝つ
+      { kind: "note", key: "english-negotiate", payload: { text: "nego＝交渉" }, deleted: false, updated_at: future },
+      { kind: "pack", key: "accounting", payload: { enabled: true }, deleted: false, updated_at: future }
+    ], "u1");
+    const words = JSON.parse(localStorage.getItem("spelldash_my_words") || "[]").map((w) => `${w.en}=${w.ja}`);
+    return { words, notes: JSON.parse(localStorage.getItem("spelldash_word_notes") || "{}"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), upload: r.toUpload.map((x) => `${x.kind}:${x.key}`), changed: r.changed };
+  });
+  check("同期: クラウドの新しい行を反映（追加・墓標で削除・古い行はローカル優先）", merged.words.includes("negotiate=交渉する") && !merged.words.some((w) => w.startsWith("invoice=")) && merged.words.includes("deadline=締め切り"), merged.words.join(","));
+  check("同期: メモとパックも反映し、ローカルが新しい項目はアップロード対象", merged.notes["english-negotiate"] === "nego＝交渉" && merged.packs.includes("accounting") && merged.packs.includes("realestate") && merged.upload.includes("my_word:deadline") && merged.upload.includes("pack:realestate"), JSON.stringify(merged).slice(0, 200));
+  check("同期でエラー0", page12.errors.length === 0, page12.errors[0] ?? "");
+  await page12.close();
+
+  // 入口ページ（静的HTML）: 内容のサンプルと「追加して始める」→ ?add=
+  const page11 = await newPage();
+  await page11.goto(BASE + "/packs/pref.html", { waitUntil: "networkidle" });
+  await page11.waitForTimeout(300);
+  check("入口ページ: タイトル・見出し・CTA が ?add= に向く", (await page11.title()).includes("都道府県") && (await page11.textContent("h1")).includes("都道府県") && (await page11.getAttribute(".pp-cta", "href")) === "/list.html?add=pref" && (await page11.$$(".pp-card")).length === 8);
+  check("入口ページ: canonical が www.spelldash.net/packs/", (await page11.getAttribute('link[rel="canonical"]', "href")) === "https://www.spelldash.net/packs/pref.html");
+  await page11.goto(BASE + "/packs/index.html", { waitUntil: "networkidle" });
+  check("入口ページ一覧: 全パックへのリンク", (await page11.$$('a[href^="/packs/"][href$=".html"]')).length >= 65);
+  check("入口ページでエラー0", page11.errors.length === 0, page11.errors[0] ?? "");
+  await page11.close();
 
   // ?add= の紹介リンクで直接追加
   const page4 = await newPage();

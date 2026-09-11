@@ -5,6 +5,8 @@
 // 学習記録は既存の word_progress（word_id = "my-<en>"）にそのまま乗る。
 // ※単語定義そのものの端末間同期は未対応（将来 my_words テーブル: SQL承認案件）
 
+import { touchItem } from "./userItemsSync.js";
+
 const KEY = "spelldash_my_words";
 const MAX_WORDS = 500;
 const EN_PATTERN = /^[a-z][a-z-]*$/;
@@ -94,6 +96,7 @@ export function addMyConcept(fields) {
   if (!v.ok) return v;
   list.push({ ...v.entry, addedAt: new Date().toISOString() });
   save(list);
+  touchItem("my_word", v.entry.en);
   return { ok: true, en: v.entry.answer };
 }
 
@@ -120,12 +123,14 @@ export function addMyWord(en, ja) {
   if (!v.ok) return v;
   list.push({ en: v.en, ja: v.ja, addedAt: new Date().toISOString() });
   save(list);
+  touchItem("my_word", v.en);
   return { ok: true, en: v.en, ja: v.ja };
 }
 
 export function removeMyWord(en) {
   const list = getMyWords().filter((w) => w.en !== en);
   save(list);
+  touchItem("my_word", en, true); // 墓標: 他の端末からも消える
 }
 
 // まとめて追加:
@@ -167,6 +172,7 @@ export function addMyWordsBulk(text) {
       }
       list.push({ ...v.entry, addedAt: new Date().toISOString() });
       added.push(v.entry.answer);
+      touchItem("my_word", v.entry.en);
       continue;
     }
     const v = validateEntry(entry.en, entry.ja, list);
@@ -176,6 +182,7 @@ export function addMyWordsBulk(text) {
     }
     list.push({ en: v.en, ja: v.ja, addedAt: new Date().toISOString() });
     added.push(v.en);
+    touchItem("my_word", v.en);
   }
   if (added.length > 0) save(list);
   return { added, skipped };

@@ -41,6 +41,8 @@ export function initializeCategoryPicker() {
   setActiveCategory(saved);
   renderGenreBar(saved);
 
+  if (container.dataset.bound) return; // 再描画時にリスナーを重ねない
+  container.dataset.bound = "1";
   container.addEventListener("click", (event) => {
     const chip = event.target.closest(".category-chip");
     if (!chip) return;

@@ -1,0 +1,1002 @@
+{
+  "subject": "english",
+  "category": "elem-math",
+  "cardType": "school",
+  "label": "小学 算数の用語",
+  "blurb": "数・計算・割合・図形・データの用語を説明から答える。中学数学の土台",
+  "audience": "小学5・6年生、算数を復習する中学生",
+  "genres": {
+    "em-num": "数",
+    "em-calc": "計算",
+    "em-ratio": "量と割合",
+    "em-geo": "図形",
+    "em-data": "データの活用"
+  },
+  "words": [
+    {
+      "id": "concept-em-guusuu",
+      "en": "em-guusuu",
+      "kind": "concept",
+      "answer": "偶数",
+      "accept": [
+        "ぐうすう"
+      ],
+      "ja": "2でわり切れる整数",
+      "q": "2でわり切れる整数。0、2、4、6、8 … のように、一の位が 0・2・4・6・8 になる数",
+      "explain": "0も入れる。2でわり切れない整数と交互に並ぶ。5年で習う",
+      "level": "easy",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-kisuu",
+      "en": "em-kisuu",
+      "kind": "concept",
+      "answer": "奇数",
+      "accept": [
+        "きすう"
+      ],
+      "ja": "2でわり切れない整数",
+      "q": "2でわると1あまる整数。1、3、5、7、9 … のように、一の位が 1・3・5・7・9 になる数",
+      "explain": "「奇」は「半端」の意味。偶数＋奇数＝奇数、奇数＋奇数＝偶数になる",
+      "level": "easy",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-yakusuu",
+      "en": "em-yakusuu",
+      "kind": "concept",
+      "answer": "約数",
+      "accept": [
+        "やくすう"
+      ],
+      "ja": "ある整数をわり切れる整数",
+      "q": "ある整数をわり切ることができる整数。たとえば 12 なら 1、2、3、4、6、12 の6個",
+      "explain": "1とその数自身も入れる。倍数と対で覚える。中学の素数・素因数分解につながる",
+      "level": "easy",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-baisuu",
+      "en": "em-baisuu",
+      "kind": "concept",
+      "answer": "倍数",
+      "accept": [
+        "ばいすう"
+      ],
+      "ja": "ある整数を整数倍した数",
+      "q": "ある整数を1倍、2倍、3倍 … した数。たとえば 3 なら 3、6、9、12 … と限りなく続く",
+      "explain": "小学校では 0 は入れない。3でわり切れる数は、各位の数字の和も3でわり切れる",
+      "level": "easy",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-saidaikouyakusuu",
+      "en": "em-saidaikouyakusuu",
+      "kind": "concept",
+      "answer": "最大公約数",
+      "accept": [
+        "さいだいこうやくすう"
+      ],
+      "ja": "公約数の中でいちばん大きい数",
+      "q": "二つ以上の整数に共通する約数（公約数）のうち、いちばん大きいもの。12 と 18 なら 6",
+      "explain": "分数の約分に使う。公約数はすべてこの数の約数になっている",
+      "level": "normal",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-saishoukoubaisuu",
+      "en": "em-saishoukoubaisuu",
+      "kind": "concept",
+      "answer": "最小公倍数",
+      "accept": [
+        "さいしょうこうばいすう"
+      ],
+      "ja": "公倍数の中でいちばん小さい数",
+      "q": "二つ以上の整数に共通する倍数（公倍数）のうち、いちばん小さいもの。4 と 6 なら 12",
+      "explain": "分数の通分に使う。公倍数はすべてこの数の倍数。「最大公倍数」は存在しない",
+      "level": "hard",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-shousuu",
+      "en": "em-shousuu",
+      "kind": "concept",
+      "answer": "小数",
+      "accept": [
+        "しょうすう"
+      ],
+      "ja": "0.1や0.25のように表す数",
+      "q": "1より小さい端数を、0.1 や 0.25 のように「.」（点）を使って表した数。0.1 は 1 を10等分した1つ分",
+      "explain": "小数点のすぐ右が 1/10 の位（小数第一位）。位取りは整数と同じ十進法",
+      "level": "easy",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-shinbunsuu",
+      "en": "em-shinbunsuu",
+      "kind": "concept",
+      "answer": "真分数",
+      "accept": [
+        "しんぶんすう"
+      ],
+      "ja": "分子が分母より小さい分数",
+      "q": "分子が分母より小さい分数。2/3 や 5/8 のように、大きさが1より小さい",
+      "explain": "分子が分母以上なら仮分数。「真」は「本当の・正しい」の意",
+      "level": "normal",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-kabunsuu",
+      "en": "em-kabunsuu",
+      "kind": "concept",
+      "answer": "仮分数",
+      "accept": [
+        "かぶんすう"
+      ],
+      "ja": "分子が分母以上の分数",
+      "q": "分子が分母と等しいか、分母より大きい分数。7/4 や 3/3 のように、大きさが1以上になる",
+      "explain": "整数や帯分数に直せる。分数のかけ算・わり算では帯分数をこの形に直して計算する",
+      "level": "normal",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-taibunsuu",
+      "en": "em-taibunsuu",
+      "kind": "concept",
+      "answer": "帯分数",
+      "accept": [
+        "たいぶんすう"
+      ],
+      "ja": "整数と真分数を合わせた分数",
+      "q": "1と3/4 のように、整数と真分数を組み合わせて表した分数。大きさが1以上の数を表す",
+      "explain": "「1と3/4」は 1＋3/4 の意味。かけ算・わり算では仮分数に直す",
+      "level": "normal",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-tsuubun",
+      "en": "em-tsuubun",
+      "kind": "concept",
+      "answer": "通分",
+      "accept": [
+        "つうぶん"
+      ],
+      "ja": "分母をそろえること",
+      "q": "分母のちがう分数を、大きさを変えずに同じ分母の分数に直すこと。1/2 と 1/3 を 3/6 と 2/6 にする",
+      "explain": "分母の最小公倍数にそろえる。たし算・ひき算・大小比べの前に行う",
+      "level": "normal",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-yakubun",
+      "en": "em-yakubun",
+      "kind": "concept",
+      "answer": "約分",
+      "accept": [
+        "やくぶん"
+      ],
+      "ja": "分母と分子を公約数でわる",
+      "q": "分母と分子を同じ数（公約数）でわって、大きさを変えずに簡単な分数にすること。6/8 を 3/4 にする",
+      "explain": "最大公約数でわればいちどで済む。答えはふつう、これ以上できない形にする",
+      "level": "normal",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-gaisuu",
+      "en": "em-gaisuu",
+      "kind": "concept",
+      "answer": "概数",
+      "accept": [
+        "がいすう",
+        "がい数",
+        "およその数"
+      ],
+      "ja": "およその数",
+      "q": "「約 3000 人」のように、細かい数字を省いてだいたいの大きさで表した数",
+      "explain": "四捨五入・切り上げ・切り捨てで作る。「上から2けた」「千の位まで」と指示される",
+      "level": "normal",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-shishagonyuu",
+      "en": "em-shishagonyuu",
+      "kind": "concept",
+      "answer": "四捨五入",
+      "accept": [
+        "ししゃごにゅう"
+      ],
+      "ja": "4以下は切り捨て5以上は切り上げ",
+      "q": "概数を作るときの方法。ある位の数字が 0〜4 なら切り捨て、5〜9 なら切り上げる。1462 を百の位までにすると 1500",
+      "explain": "「四を捨て五を入れる」。どの位を見るかで結果が変わるので、問題の指示を確認する",
+      "level": "easy",
+      "tags": [
+        "em-num"
+      ]
+    },
+    {
+      "id": "concept-em-shisoku",
+      "en": "em-shisoku",
+      "kind": "concept",
+      "answer": "四則",
+      "accept": [
+        "しそく",
+        "四則計算",
+        "四則演算"
+      ],
+      "ja": "たし算・ひき算・かけ算・わり算",
+      "q": "たし算・ひき算・かけ算・わり算の4種類の計算をまとめて呼ぶ言葉。「○○計算」「○○の混じった式」",
+      "explain": "混じった式では かけ算・わり算を先に、（ ）の中はさらに先に計算する",
+      "level": "normal",
+      "tags": [
+        "em-calc"
+      ]
+    },
+    {
+      "id": "concept-em-bunpai",
+      "en": "em-bunpai",
+      "kind": "concept",
+      "answer": "分配のきまり",
+      "accept": [
+        "ぶんぱいのきまり",
+        "分配法則"
+      ],
+      "ja": "(a+b)×c＝a×c＋b×c",
+      "q": "（□＋○）×△＝□×△＋○×△ のように、かっこの中の和に数をかける計算は、それぞれにかけて足しても同じになるというきまり",
+      "explain": "(100＋2)×7 などの工夫計算に使う。中学では「分配法則」と呼び、文字式の展開の基本",
+      "level": "hard",
+      "tags": [
+        "em-calc"
+      ]
+    },
+    {
+      "id": "concept-em-koukan",
+      "en": "em-koukan",
+      "kind": "concept",
+      "answer": "交換のきまり",
+      "accept": [
+        "こうかんのきまり",
+        "交換法則"
+      ],
+      "ja": "たす・かける順序を入れかえてよい",
+      "q": "□＋○＝○＋□、□×○＝○×□ のように、たし算やかけ算では数の順序を入れかえても答えが変わらないというきまり",
+      "explain": "ひき算・わり算では成り立たない。3つの数の組み合わせ方を変えてよいのは「結合のきまり」",
+      "level": "normal",
+      "tags": [
+        "em-calc"
+      ]
+    },
+    {
+      "id": "concept-em-amari",
+      "en": "em-amari",
+      "kind": "concept",
+      "answer": "あまり",
+      "accept": [
+        "余り"
+      ],
+      "ja": "わり算でわり切れずに残る数",
+      "q": "わり算でわり切れないときに残る数。13÷4＝3 …… 1 の 1 のこと。わる数より必ず小さくなる",
+      "explain": "確かめは「わる数×商＋残った数＝わられる数」。小数のわり算では小数点の位置に注意",
+      "level": "easy",
+      "tags": [
+        "em-calc"
+      ]
+    },
+    {
+      "id": "concept-em-hireihaibun",
+      "en": "em-hireihaibun",
+      "kind": "concept",
+      "answer": "比例配分",
+      "accept": [
+        "ひれいはいぶん"
+      ],
+      "ja": "全体を決まった比に分けること",
+      "q": "全体の量を、決められた比になるように分けること。1200円を 2：1 に分けると 800円と400円",
+      "explain": "全体を比の和（2＋1＝3）で分けた1つ分を求めてから、それぞれの数をかける",
+      "level": "hard",
+      "tags": [
+        "em-calc"
+      ]
+    },
+    {
+      "id": "concept-em-gyakusuu",
+      "en": "em-gyakusuu",
+      "kind": "concept",
+      "answer": "逆数",
+      "accept": [
+        "ぎゃくすう"
+      ],
+      "ja": "かけると1になる数",
+      "q": "ある数にかけると積が1になる数。2/3 に対する 3/2、5 に対する 1/5 のこと",
+      "explain": "分母と分子を入れかえた数。分数のわり算は、わる数をこれに変えてかけ算にする",
+      "level": "hard",
+      "tags": [
+        "em-calc"
+      ]
+    },
+    {
+      "id": "concept-em-kakko",
+      "en": "em-kakko",
+      "kind": "concept",
+      "answer": "かっこ",
+      "accept": [
+        "カッコ",
+        "括弧"
+      ],
+      "ja": "先に計算する部分を囲む記号",
+      "q": "式の中で先に計算したい部分を囲む記号「（ ）」。これで囲まれた部分は、かけ算・わり算よりも先に計算する",
+      "explain": "計算の順序は「この記号の中 → ×÷ → ＋−」。あとは左から順に計算するのが基本",
+      "level": "easy",
+      "tags": [
+        "em-calc"
+      ]
+    },
+    {
+      "id": "concept-em-tanniryou",
+      "en": "em-tanniryou",
+      "kind": "concept",
+      "answer": "単位量あたりの大きさ",
+      "accept": [
+        "たんいりょうあたりのおおきさ",
+        "単位量あたり"
+      ],
+      "ja": "1つ分あたりで比べる量",
+      "q": "1㎡あたりの人数、1Lあたりに走る道のりのように、「1つ分あたり」の量にそろえて混みぐあいや燃費を比べる考え方",
+      "explain": "人口密度は 1㎢あたりの人口。速さもこの考え方の仲間（1時間あたりに進む道のり）",
+      "level": "hard",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-heikin",
+      "en": "em-heikin",
+      "kind": "concept",
+      "answer": "平均",
+      "accept": [
+        "へいきん"
+      ],
+      "ja": "いくつかの量をならした大きさ",
+      "q": "いくつかの数や量を、全部同じ大きさになるようにならしたもの。合計を個数でわって求める",
+      "explain": "合計＝この値×個数 と使うことも多い。0 の値も個数に数え入れる",
+      "level": "easy",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-hayasa",
+      "en": "em-hayasa",
+      "kind": "concept",
+      "answer": "速さ",
+      "accept": [
+        "はやさ"
+      ],
+      "ja": "単位時間あたりに進む道のり",
+      "q": "1時間や1分などの決まった時間に進む道のりで表した、動くものの進みぐあい。道のり÷時間で求める",
+      "explain": "時速・分速・秒速。道のり＝これ×時間、時間＝道のり÷これ。単位をそろえてから計算",
+      "level": "easy",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-wariai",
+      "en": "em-wariai",
+      "kind": "concept",
+      "answer": "割合",
+      "accept": [
+        "わりあい"
+      ],
+      "ja": "比べる量がもとにする量の何倍か",
+      "q": "比べられる量がもとにする量の何倍にあたるかを表した数。比べられる量÷もとにする量で求める",
+      "explain": "0.3 のような小数のほか、百分率（％）や歩合（割・分・厘）でも表す",
+      "level": "easy",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-hyakubunritsu",
+      "en": "em-hyakubunritsu",
+      "kind": "concept",
+      "answer": "百分率",
+      "accept": [
+        "ひゃくぶんりつ",
+        "パーセント"
+      ],
+      "ja": "もとにする量を100とした割合",
+      "q": "もとにする量を 100 としたときの割合の表し方。0.35 なら 35％ と書く",
+      "explain": "1％＝0.01。小数の割合を100倍する。「％」の読みがそのまま別名になっている",
+      "level": "easy",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-buai",
+      "en": "em-buai",
+      "kind": "concept",
+      "answer": "歩合",
+      "accept": [
+        "ぶあい"
+      ],
+      "ja": "割・分・厘で表す割合",
+      "q": "割合を「3割2分」のように割・分・厘で表す表し方。野球の打率や商品の値引きでよく使う",
+      "explain": "1割＝0.1、1分＝0.01、1厘＝0.001。「3割」は30％",
+      "level": "hard",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-hi",
+      "en": "em-hi",
+      "kind": "concept",
+      "answer": "比",
+      "accept": [
+        "ひ"
+      ],
+      "ja": "2つの量の割合を a：b で表す",
+      "q": "二つの量の割合を、3：2 のように記号「：」を使って表したもの。「さんたいに」と読む",
+      "explain": "両方に同じ数をかけても、同じ数でわっても等しい比になる。3：2＝6：4",
+      "level": "normal",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-hinoatai",
+      "en": "em-hinoatai",
+      "kind": "concept",
+      "answer": "比の値",
+      "accept": [
+        "ひのあたい"
+      ],
+      "ja": "a：b で a÷b の値",
+      "q": "3：2 のとき、前の数を後ろの数でわった 3÷2＝1.5 のこと。この値が等しければ、二つは等しい関係になる",
+      "explain": "等しい比かどうかを確かめるのに使う。「：」の前÷後ろ、の順を間違えない",
+      "level": "hard",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-motonisuru",
+      "en": "em-motonisuru",
+      "kind": "concept",
+      "answer": "もとにする量",
+      "accept": [
+        "もとにするりょう",
+        "基準量"
+      ],
+      "ja": "割合の基準となる量",
+      "q": "割合を考えるとき、「1」や「100％」として基準にする量。「定員の80％」なら定員がこれにあたる",
+      "explain": "問題文では「〜の」「〜をもとにして」の直後に来ることが多い。比べられる量÷割合で求められる",
+      "level": "normal",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-kuraberareru",
+      "en": "em-kuraberareru",
+      "kind": "concept",
+      "answer": "比べられる量",
+      "accept": [
+        "くらべられるりょう",
+        "比べる量",
+        "比較量"
+      ],
+      "ja": "割合にあたる量",
+      "q": "割合を考えるとき、もとにする量の何倍にあたるかを調べる方の量。「定員40人の80％」なら 32人 のこと",
+      "explain": "もとにする量×割合で求める。「〜は」「〜が」の部分にあることが多い",
+      "level": "normal",
+      "tags": [
+        "em-ratio"
+      ]
+    },
+    {
+      "id": "concept-em-nitouhen",
+      "en": "em-nitouhen",
+      "kind": "concept",
+      "answer": "二等辺三角形",
+      "accept": [
+        "にとうへんさんかっけい",
+        "にとうへんさんかくけい"
+      ],
+      "ja": "2つの辺の長さが等しい三角形",
+      "q": "二つの辺の長さが等しい三角形。二つの角（底角）の大きさも等しく、真ん中で折るとぴったり重なる",
+      "explain": "二つの角が等しいことは、折って重ねて確かめる。三つの辺が等しい正三角形はこの特別な場合",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-seisankaku",
+      "en": "em-seisankaku",
+      "kind": "concept",
+      "answer": "正三角形",
+      "accept": [
+        "せいさんかっけい",
+        "せいさんかくけい"
+      ],
+      "ja": "3つの辺が等しい三角形",
+      "q": "三つの辺の長さがすべて等しい三角形。三つの角もすべて等しく、どれも 60° になる",
+      "explain": "コンパスで同じ長さの辺をとってかく。角の大きさは 180°÷3＝60°",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-chokkaku",
+      "en": "em-chokkaku",
+      "kind": "concept",
+      "answer": "直角",
+      "accept": [
+        "ちょっかく"
+      ],
+      "ja": "90°の角",
+      "q": "紙を二回折ってできる、きちんと立った角。角の大きさは 90° で、三角定規の一つの角にもある",
+      "explain": "半回転（180°）の半分。これを一つ持つ三角形が直角三角形、四つ持つ四角形が長方形",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-suichoku",
+      "en": "em-suichoku",
+      "kind": "concept",
+      "answer": "垂直",
+      "accept": [
+        "すいちょく"
+      ],
+      "ja": "2直線が直角に交わる",
+      "q": "二つの直線が交わってできる角が直角であるとき、この二つの直線の関係をいう言葉",
+      "explain": "交わっていなくても、延ばして直角に交わればこの関係。記号は ⊥。平行と対で覚える",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-heikou",
+      "en": "em-heikou",
+      "kind": "concept",
+      "answer": "平行",
+      "accept": [
+        "へいこう"
+      ],
+      "ja": "どこまで延ばしても交わらない2直線",
+      "q": "一つの直線に垂直な二つの直線の関係。どこまで延ばしても交わらず、幅（間の長さ）がどこでも等しい",
+      "explain": "記号は ∥。台形は1組、平行四辺形は2組の向かい合う辺がこの関係",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-heikoushihenkei",
+      "en": "em-heikoushihenkei",
+      "kind": "concept",
+      "answer": "平行四辺形",
+      "accept": [
+        "へいこうしへんけい"
+      ],
+      "ja": "2組の向かい合う辺が平行な四角形",
+      "q": "向かい合う二組の辺がどちらも平行な四角形。向かい合う辺の長さ、向かい合う角の大きさも等しい",
+      "explain": "面積＝底辺×高さ。長方形・ひし形・正方形はすべてこの仲間",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-daikei",
+      "en": "em-daikei",
+      "kind": "concept",
+      "answer": "台形",
+      "accept": [
+        "だいけい"
+      ],
+      "ja": "1組の向かい合う辺が平行な四角形",
+      "q": "向かい合う一組の辺だけが平行な四角形。平行な二辺を上底・下底と呼ぶ",
+      "explain": "面積＝（上底＋下底）×高さ÷2。同じ形を2つ合わせると平行四辺形になるのが式の理由",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-hishigata",
+      "en": "em-hishigata",
+      "kind": "concept",
+      "answer": "ひし形",
+      "accept": [
+        "ひしがた",
+        "菱形"
+      ],
+      "ja": "4つの辺が等しい四角形",
+      "q": "四つの辺の長さがすべて等しい四角形。向かい合う辺は平行で、二本の対角線は垂直に交わる",
+      "explain": "面積＝対角線×対角線÷2。正方形は角が全部直角なこの図形",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-taikakusen",
+      "en": "em-taikakusen",
+      "kind": "concept",
+      "answer": "対角線",
+      "accept": [
+        "たいかくせん"
+      ],
+      "ja": "となり合わない頂点を結ぶ直線",
+      "q": "多角形で、となり合っていない二つの頂点を結んだ直線。四角形には2本ある",
+      "explain": "長方形は長さが等しい、ひし形は垂直に交わる、平行四辺形はそれぞれの真ん中で交わる",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-enshuuritsu",
+      "en": "em-enshuuritsu",
+      "kind": "concept",
+      "answer": "円周率",
+      "accept": [
+        "えんしゅうりつ",
+        "パイ"
+      ],
+      "ja": "円周÷直径、約3.14",
+      "q": "円周の長さが直径の何倍になっているかを表す数。円の大きさに関係なく、およそ 3.14",
+      "explain": "円周＝直径×3.14、円の面積＝半径×半径×3.14。中学では π（パイ）と書く",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-ougigata",
+      "en": "em-ougigata",
+      "kind": "concept",
+      "answer": "おうぎ形",
+      "accept": [
+        "おうぎがた",
+        "扇形"
+      ],
+      "ja": "円を2本の半径で切り取った形",
+      "q": "円を二本の半径で切り取った形。二本の半径がつくる角を中心角という",
+      "explain": "中心角が 90° なら円の 1/4。弧の長さも面積も、中心角÷360 の割合で求める",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-sentaishou",
+      "en": "em-sentaishou",
+      "kind": "concept",
+      "answer": "線対称",
+      "accept": [
+        "せんたいしょう"
+      ],
+      "ja": "1本の直線で折るとぴったり重なる",
+      "q": "一本の直線を折り目にして二つに折ったとき、両側の部分がぴったり重なる図形の性質。その直線を対称の軸という",
+      "explain": "対応する点を結ぶ直線は、対称の軸と垂直に交わる。二等辺三角形・正方形などがこの図形",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-tentaishou",
+      "en": "em-tentaishou",
+      "kind": "concept",
+      "answer": "点対称",
+      "accept": [
+        "てんたいしょう"
+      ],
+      "ja": "1点を中心に180°回すと重なる",
+      "q": "一つの点を中心にして 180° 回転させたとき、もとの図形にぴったり重なる図形の性質。その点を対称の中心という",
+      "explain": "平行四辺形はこの性質を持つが線対称ではない。対応する2点を結ぶ直線は対称の中心を通る",
+      "level": "hard",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-goudou",
+      "en": "em-goudou",
+      "kind": "concept",
+      "answer": "合同",
+      "accept": [
+        "ごうどう"
+      ],
+      "ja": "ぴったり重ね合わせられる図形",
+      "q": "二つの図形を、ずらしたり回したり裏返したりして、ぴったり重ね合わせることができるとき、その二つの図形の関係",
+      "explain": "対応する辺の長さ・角の大きさが等しい。三角形は3辺、2辺と間の角、1辺と両端の角で決まる",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-kakudaizu",
+      "en": "em-kakudaizu",
+      "kind": "concept",
+      "answer": "拡大図",
+      "accept": [
+        "かくだいず"
+      ],
+      "ja": "形を変えず大きくした図",
+      "q": "もとの図形と形を変えずに、辺の長さをすべて同じ割合で長くした図。角の大きさはもとと同じ",
+      "explain": "「2倍の〜」は辺が2倍、面積は4倍。小さくした図が縮図",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-shukuzu",
+      "en": "em-shukuzu",
+      "kind": "concept",
+      "answer": "縮図",
+      "accept": [
+        "しゅくず"
+      ],
+      "ja": "形を変えず小さくした図",
+      "q": "もとの図形と形を変えずに、辺の長さをすべて同じ割合で短くした図。地図はこの考え方でかかれている",
+      "explain": "縮尺 1/1000 の地図の 1cm は実際の 10m。木の高さなど直接測れない長さを求めるのに使う",
+      "level": "hard",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-kakuchuu",
+      "en": "em-kakuchuu",
+      "kind": "concept",
+      "answer": "角柱",
+      "accept": [
+        "かくちゅう"
+      ],
+      "ja": "底面が多角形の柱の形",
+      "q": "合同な二つの多角形を底面とし、側面がすべて長方形（または正方形）でできた立体。名前は底面の形で決まる",
+      "explain": "体積＝底面積×高さ。底面が三角形なら三角柱。底面が円なら円柱で、体積の式は同じ",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-enchuu",
+      "en": "em-enchuu",
+      "kind": "concept",
+      "answer": "円柱",
+      "accept": [
+        "えんちゅう"
+      ],
+      "ja": "底面が円の柱の形",
+      "q": "合同な二つの円を底面とし、側面が曲面でできた立体。缶ジュースやちくわのような形",
+      "explain": "展開図では側面が長方形になり、横の長さは底面の円周と等しい。体積＝底面積×高さ",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-taiseki",
+      "en": "em-taiseki",
+      "kind": "concept",
+      "answer": "体積",
+      "accept": [
+        "たいせき"
+      ],
+      "ja": "立体の大きさ（かさ）",
+      "q": "立体が空間の中でしめる大きさ。1辺 1cm の立方体がいくつ分あるかで表し、単位は ㎤ や ㎥",
+      "explain": "直方体はたて×横×高さ。1㎥＝1,000,000㎤、1L＝1,000㎤。容器の内側の大きさは容積",
+      "level": "easy",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-tenkaizu",
+      "en": "em-tenkaizu",
+      "kind": "concept",
+      "answer": "展開図",
+      "accept": [
+        "てんかいず"
+      ],
+      "ja": "立体を切り開いて平面にした図",
+      "q": "立体の表面を辺にそって切り開き、一つの平面の上に広げた図。組み立てるともとの立体にもどる",
+      "explain": "立方体のものは11種類ある。組み立てたときに重なる辺・向かい合う面を考えるのがコツ",
+      "level": "normal",
+      "tags": [
+        "em-geo"
+      ]
+    },
+    {
+      "id": "concept-em-bougurafu",
+      "en": "em-bougurafu",
+      "kind": "concept",
+      "answer": "棒グラフ",
+      "accept": [
+        "ぼうぐらふ",
+        "ぼうグラフ"
+      ],
+      "ja": "量の大小を棒の長さで表す",
+      "q": "好きな給食の人数のように、いくつかの種類の数量の大小を、棒の長さで表して比べるグラフ",
+      "explain": "3年で習う。時間による変化を見るなら折れ線グラフを選ぶ",
+      "level": "easy",
+      "tags": [
+        "em-data"
+      ]
+    },
+    {
+      "id": "concept-em-oresen",
+      "en": "em-oresen",
+      "kind": "concept",
+      "answer": "折れ線グラフ",
+      "accept": [
+        "おれせんぐらふ",
+        "おれせんグラフ"
+      ],
+      "ja": "変化のようすを線で表す",
+      "q": "1日の気温のように、時間とともに変わる数量を点で打ち、点を線で結んで変化のようすを表すグラフ",
+      "explain": "線の傾きが急なほど変化が大きい。4年で習う。種類ごとの比較なら棒グラフ",
+      "level": "easy",
+      "tags": [
+        "em-data"
+      ]
+    },
+    {
+      "id": "concept-em-engurafu",
+      "en": "em-engurafu",
+      "kind": "concept",
+      "answer": "円グラフ",
+      "accept": [
+        "えんぐらふ",
+        "えんグラフ"
+      ],
+      "ja": "全体に対する割合を円で表す",
+      "q": "全体を 100％ として、それぞれの部分の割合を円の中心角の大きさで表すグラフ",
+      "explain": "ふつう真上から時計回りに大きい順にかき、「その他」は最後。5年の割合で習う",
+      "level": "easy",
+      "tags": [
+        "em-data"
+      ]
+    },
+    {
+      "id": "concept-em-obigurafu",
+      "en": "em-obigurafu",
+      "kind": "concept",
+      "answer": "帯グラフ",
+      "accept": [
+        "おびぐらふ",
+        "おびグラフ"
+      ],
+      "ja": "割合を帯の長さで表す",
+      "q": "全体を 100％ として、それぞれの部分の割合を細長い長方形の区切りの長さで表すグラフ",
+      "explain": "年ごとに並べると割合の変化を比べやすいのが円グラフとの違い",
+      "level": "normal",
+      "tags": [
+        "em-data"
+      ]
+    },
+    {
+      "id": "concept-em-chuujou",
+      "en": "em-chuujou",
+      "kind": "concept",
+      "answer": "柱状グラフ",
+      "accept": [
+        "ちゅうじょうぐらふ",
+        "ちゅうじょうグラフ",
+        "ヒストグラム"
+      ],
+      "ja": "階級ごとの度数を柱で表す",
+      "q": "記録を「20m以上25m未満」のような区間（階級）に分け、区間ごとの人数を、すき間なく並べた長方形の高さで表すグラフ",
+      "explain": "棒グラフと違って横軸が連続した数量なので、柱の間をあけない。6年のデータの活用で習う",
+      "level": "hard",
+      "tags": [
+        "em-data"
+      ]
+    },
+    {
+      "id": "concept-em-heikinchi",
+      "en": "em-heikinchi",
+      "kind": "concept",
+      "answer": "平均値",
+      "accept": [
+        "へいきんち"
+      ],
+      "ja": "合計÷個数の値",
+      "q": "データの値をすべて足して、その個数でわった値。データ全体を代表する値の一つ",
+      "explain": "極端に大きい・小さい値に引っぱられやすい。中央値・最頻値とあわせて使う",
+      "level": "normal",
+      "tags": [
+        "em-data"
+      ]
+    },
+    {
+      "id": "concept-em-chuuouchi",
+      "en": "em-chuuouchi",
+      "kind": "concept",
+      "answer": "中央値",
+      "accept": [
+        "ちゅうおうち",
+        "メジアン"
+      ],
+      "ja": "大きさ順に並べた真ん中の値",
+      "q": "データを小さい順に並べたとき、ちょうど真ん中にくる値。個数が偶数なら真ん中二つの平均",
+      "explain": "極端な値の影響を受けにくい。個数が奇数なら真ん中の1つがそのまま答え",
+      "level": "hard",
+      "tags": [
+        "em-data"
+      ]
+    },
+    {
+      "id": "concept-em-saihinchi",
+      "en": "em-saihinchi",
+      "kind": "concept",
+      "answer": "最頻値",
+      "accept": [
+        "さいひんち",
+        "モード"
+      ],
+      "ja": "最も多く現れる値",
+      "q": "データの中で、最も多く現れる値。ドットプロットでいちばん高く積み上がった所の値",
+      "explain": "「頻」はひんぱんの頻。柱状グラフなら、いちばん高い柱の階級を答える",
+      "level": "hard",
+      "tags": [
+        "em-data"
+      ]
+    },
+    {
+      "id": "concept-em-dotplot",
+      "en": "em-dotplot",
+      "kind": "concept",
+      "answer": "ドットプロット",
+      "accept": [
+        "どっとぷろっと"
+      ],
+      "ja": "値を数直線上に点で積む図",
+      "q": "数直線の上に、データの一つ一つを点（●）で表し、同じ値は上に積み重ねていく図",
+      "explain": "散らばりや最頻値が一目で分かる。6年で柱状グラフとともに習う",
+      "level": "normal",
+      "tags": [
+        "em-data"
+      ]
+    }
+  ]
+}

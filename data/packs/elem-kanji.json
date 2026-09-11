@@ -1,0 +1,1168 @@
+{
+  "subject": "english",
+  "category": "elem-kanji",
+  "cardType": "school",
+  "label": "小学 漢字の読み（5・6年）",
+  "blurb": "5・6年で習う漢字の熟語・訓読み・特別な読み・同音異義語の書き分け",
+  "audience": "小学5・6年生、漢検5級前後を目指す人",
+  "genres": {
+    "ek-on": "音読み熟語",
+    "ek-kun": "訓読み",
+    "ek-tokubetsu": "特別な読み・熟字訓",
+    "ek-doon": "同音異義語"
+  },
+  "words": [
+    {
+      "id": "concept-ek-sontoku",
+      "en": "ek-sontoku",
+      "kind": "concept",
+      "answer": "そんとく",
+      "accept": [],
+      "ja": "損と得",
+      "q": "『損得』の読み。損をすることと得をすること。「○○を考えずに人を助ける」「○○勘定」",
+      "explain": "「損」「得」ともに音読み。「そんどく」と濁らない。「得」は「え（る）・う（る）」が訓",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-eikyuu",
+      "en": "ek-eikyuu",
+      "kind": "concept",
+      "answer": "えいきゅう",
+      "accept": [],
+      "ja": "いつまでも続くこと",
+      "q": "『永久』の読み。いつまでも限りなく続くこと。「○○に変わらない友情」「○○歯」",
+      "explain": "「久」は「ひさ（しい）」が訓。「永遠」も同じ意味。「えいく」と読まない",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-boueki",
+      "en": "ek-boueki",
+      "kind": "concept",
+      "answer": "ぼうえき",
+      "accept": [],
+      "ja": "国と国との商品の売り買い",
+      "q": "『貿易』の読み。外国と商品を売り買いすること。「日本は自動車の○○がさかん」「○○黒字」",
+      "explain": "「易」はエキ・イの二つの音があり、「容易・安易」ではイと読む。訓は「やさ（しい）」",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-seimitsu",
+      "en": "ek-seimitsu",
+      "kind": "concept",
+      "answer": "せいみつ",
+      "accept": [],
+      "ja": "細かいところまで正確",
+      "q": "『精密』の読み。細かいところまでくわしく正確なこと。「○○機械」「○○検査を受ける」",
+      "explain": "「精」はセイ・ショウ（精進）。「密」は「ひそか」の意もある（秘密・密林）",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-kintou",
+      "en": "ek-kintou",
+      "kind": "concept",
+      "answer": "きんとう",
+      "accept": [],
+      "ja": "差がなく等しい",
+      "q": "『均等』の読み。どれも差がなく等しいこと。「四人で○○に分ける」「機会○○」",
+      "explain": "「均」は「ならす」の意（平均・均一）。「きんどう」と濁らない",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-keppaku",
+      "en": "ek-keppaku",
+      "kind": "concept",
+      "answer": "けっぱく",
+      "accept": [],
+      "ja": "やましいところがない",
+      "q": "『潔白』の読み。心や行いが正しく、やましいところがないこと。「身の○○を証明する」",
+      "explain": "「潔」はケツで、促音化して「けっ」。訓は「いさぎよ（い）」",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-koufun",
+      "en": "ek-koufun",
+      "kind": "concept",
+      "answer": "こうふん",
+      "accept": [],
+      "ja": "感情が高ぶること",
+      "q": "『興奮』の読み。刺激を受けて感情が高ぶること。「試合前で○○して眠れない」",
+      "explain": "「興」はコウ・キョウ（興行・興味）の二つの音。「奮」の訓は「ふる（う）」",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-shuukyou",
+      "en": "ek-shuukyou",
+      "kind": "concept",
+      "answer": "しゅうきょう",
+      "accept": [],
+      "ja": "神や仏を信じる教え",
+      "q": "『宗教』の読み。神や仏などを信じ、心のよりどころとする教え。「世界の三大○○」",
+      "explain": "「宗」はシュウ・ソウ（宗家・宗匠）。「宗派」はシュウハ",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-isan",
+      "en": "ek-isan",
+      "kind": "concept",
+      "answer": "いさん",
+      "accept": [],
+      "ja": "亡くなった人が残した財産",
+      "q": "『遺産』の読み。亡くなった人が残した財産。また、前の時代から受けつがれたもの。「世界○○」「○○を相続する」",
+      "explain": "「遺」はイ・ユイ（遺言＝ゆいごん）。「遺失物」はイシツブツ",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-shikyuu",
+      "en": "ek-shikyuu",
+      "kind": "concept",
+      "answer": "しきゅう",
+      "accept": [],
+      "ja": "大急ぎ",
+      "q": "『至急』の読み。非常に急ぐこと。「○○連絡してください」「○○の用事で早退する」",
+      "explain": "「至」の音はシ、訓は「いた（る）」（至る所）。「至上・冬至」も同じ音",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-haishaku",
+      "en": "ek-haishaku",
+      "kind": "concept",
+      "answer": "はいしゃく",
+      "accept": [],
+      "ja": "借りることの謙譲語",
+      "q": "『拝借』の読み。「借りる」のへりくだった言い方。「ペンを○○してもよろしいですか」",
+      "explain": "「拝」は「拝む・拝見・拝聴」のように、へりくだる言葉に付く。音はハイ",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-juurai",
+      "en": "ek-juurai",
+      "kind": "concept",
+      "answer": "じゅうらい",
+      "accept": [],
+      "ja": "これまで",
+      "q": "『従来』の読み。以前から今まで。これまで。「○○の方法を見直す」「○○どおり」",
+      "explain": "「従」はジュウが基本の音（従業員・服従）。訓は「したが（う）」",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-juuou",
+      "en": "ek-juuou",
+      "kind": "concept",
+      "answer": "じゅうおう",
+      "accept": [],
+      "ja": "たてとよこ、思いのまま",
+      "q": "『縦横』の読み。たてと横。また、思いのままに動き回ること。「グラウンドを○○に走り回る」「○○無尽」",
+      "explain": "「縦」の音はジュウ（操縦）。「横」はオウ（横断・横領）。「たてよこ」と訓で読む場合もある",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-nattoku",
+      "en": "ek-nattoku",
+      "kind": "concept",
+      "answer": "なっとく",
+      "accept": [],
+      "ja": "よく分かって認めること",
+      "q": "『納得』の読み。人の考えや行いをもっともだと認めること。「説明を聞いて○○した」「○○がいかない」",
+      "explain": "「納」はノウ・ナッ・ナ・ナン・トウの五つの音（納入・納得・納屋・納戸・出納）",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-shuunou",
+      "en": "ek-shuunou",
+      "kind": "concept",
+      "answer": "しゅうのう",
+      "accept": [],
+      "ja": "物をしまうこと",
+      "q": "『収納』の読み。物を中にしまい入れること。また、お金を受け取っておさめること。「○○スペース」「税の○○」",
+      "explain": "「納」はここではノウ。「収」の音はシュウ（収入・回収）、訓は「おさ（める）」",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-hakki",
+      "en": "ek-hakki",
+      "kind": "concept",
+      "answer": "はっき",
+      "accept": [],
+      "ja": "力を外に出すこと",
+      "q": "『発揮』の読み。持っている力や特性を十分に外へ表し出すこと。「実力を○○する」",
+      "explain": "「発」はハツで、促音化して「はっ」。「揮」は「ふるう」の意（指揮）",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-shuushoku",
+      "en": "ek-shuushoku",
+      "kind": "concept",
+      "answer": "しゅうしょく",
+      "accept": [],
+      "ja": "職につくこと",
+      "q": "『就職』の読み。新しく職業につくこと。「大学を出て○○する」「○○活動」",
+      "explain": "「就」はシュウ・ジュ（成就＝じょうじゅ）。訓は「つ（く）」（職に就く）",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-shugyou",
+      "en": "ek-shugyou",
+      "kind": "concept",
+      "answer": "しゅぎょう",
+      "accept": [],
+      "ja": "学問や技をみがくこと",
+      "q": "『修行』の読み。仏の教えを学んで努力すること。また、学問や技をみがくために努力すること。「武者○○」「料理の○○」",
+      "explain": "「修」はシュウ・シュ、「行」はギョウ・コウ・アン。「しゅうこう」と読まない",
+      "level": "hard",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-shoujin",
+      "en": "ek-shoujin",
+      "kind": "concept",
+      "answer": "しょうじん",
+      "accept": [],
+      "ja": "一つのことに励むこと",
+      "q": "『精進』の読み。一つのことに心をこめて励むこと。また、肉や魚を食べないこと。「日々○○します」「○○料理」",
+      "explain": "「精」はセイ・ショウ、「進」はシン。「せいしん」と読まない。「不精（ぶしょう）」も同じ音",
+      "level": "hard",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-keidai",
+      "en": "ek-keidai",
+      "kind": "concept",
+      "answer": "けいだい",
+      "accept": [],
+      "ja": "神社や寺の敷地の中",
+      "q": "『境内』の読み。神社や寺の敷地の中。「神社の○○を散歩する」「○○にある大きなクスノキ」",
+      "explain": "「境」はキョウ・ケイ、「内」はナイ・ダイ。「きょうない」と読まない",
+      "level": "hard",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-kuyou",
+      "en": "ek-kuyou",
+      "kind": "concept",
+      "answer": "くよう",
+      "accept": [],
+      "ja": "死者の霊をなぐさめること",
+      "q": "『供養』の読み。仏や死者の霊に物を供えて、その冥福を祈ること。「先祖の○○をする」",
+      "explain": "「供」はキョウ・ク（供給・供物）。訓は「そな（える）」「とも」",
+      "level": "hard",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-seijitsu",
+      "en": "ek-seijitsu",
+      "kind": "concept",
+      "answer": "せいじつ",
+      "accept": [],
+      "ja": "まじめで真心がある",
+      "q": "『誠実』の読み。まじめで真心がこもっていること。「○○な人柄」「○○に対応する」",
+      "explain": "「誠」の音はセイ、訓は「まこと」。「成・盛・聖」もセイと読む同音の字",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-kougou",
+      "en": "ek-kougou",
+      "kind": "concept",
+      "answer": "こうごう",
+      "accept": [],
+      "ja": "天皇のきさき",
+      "q": "『皇后』の読み。天皇のきさき。「天皇・○○両陛下」「○○陛下のお言葉」",
+      "explain": "「后」の音はコウ。「后」は「きさき」の意で、「後」とは別の字",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-tennou",
+      "en": "ek-tennou",
+      "kind": "concept",
+      "answer": "てんのう",
+      "accept": [],
+      "ja": "日本国と国民統合の象徴",
+      "q": "『天皇』の読み。日本国憲法で日本国と日本国民統合の象徴と定められている人。「○○陛下」",
+      "explain": "「皇」はコウ・オウ。「てんこう」ではない。常用漢字表に例として示されている読み",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-shisso",
+      "en": "ek-shisso",
+      "kind": "concept",
+      "answer": "しっそ",
+      "accept": [],
+      "ja": "かざりけがない",
+      "q": "『質素』の読み。ぜいたくをせず、かざりけがないこと。「○○な暮らし」「○○な服装」",
+      "explain": "「質」はシツ・シチ・チ（質問・質屋・言質）。「素」はソ・ス（素材・素顔）",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-tousotsu",
+      "en": "ek-tousotsu",
+      "kind": "concept",
+      "answer": "とうそつ",
+      "accept": [],
+      "ja": "まとめて率いること",
+      "q": "『統率』の読み。多くの人をまとめて率いること。「チームを○○する力」「○○力」",
+      "explain": "「率」はソツ・リツの二つの音。「率先・引率」はソツ、「確率・能率」はリツ",
+      "level": "normal",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-kouritsu",
+      "en": "ek-kouritsu",
+      "kind": "concept",
+      "answer": "こうりつ",
+      "accept": [],
+      "ja": "むだがない度合い",
+      "q": "『効率』の読み。使った労力や時間に対する成果の割合。「○○よく勉強する」「作業の○○を上げる」",
+      "explain": "「率」はここではリツ。「効」の訓は「き（く）」（薬が効く）",
+      "level": "easy",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-sunao",
+      "en": "ek-sunao",
+      "kind": "concept",
+      "answer": "すなお",
+      "accept": [],
+      "ja": "ひねくれていないさま",
+      "q": "『素直』の読み。性質や態度がひねくれておらず、おだやかなこと。「注意を○○に聞く」",
+      "explain": "「素」の音はソ・ス。「直」はチョク・ジキ（正直）。「そちょく」と読まない",
+      "level": "hard",
+      "tags": [
+        "ek-on"
+      ]
+    },
+    {
+      "id": "concept-ek-itonamu",
+      "en": "ek-itonamu",
+      "kind": "concept",
+      "answer": "いとなむ",
+      "accept": [],
+      "ja": "仕事や生活をする",
+      "q": "『営む』の読み。仕事や生活をする。店などを経営する。「町で洋服店を○○む」",
+      "explain": "音読みはエイ（営業・経営）。「営み」は名詞",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-kokoroyoi",
+      "en": "ek-kokoroyoi",
+      "kind": "concept",
+      "answer": "こころよい",
+      "accept": [],
+      "ja": "気持ちがよい",
+      "q": "『快い』の読み。気持ちがよく、心地よい。「○○い風がふく」「○○く引き受ける」",
+      "explain": "音読みはカイ（快適・快晴）。反対の意味は「不快」",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-kewashii",
+      "en": "ek-kewashii",
+      "kind": "concept",
+      "answer": "けわしい",
+      "accept": [],
+      "ja": "傾きが急、厳しい",
+      "q": "『険しい』の読み。山や道の傾きが急で登りにくい。また、表情や態度が厳しい。「○○い山道」「○○い目つき」",
+      "explain": "音読みはケン（危険・保険）。「検・験・剣」と形が似る字に注意",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-arawareru",
+      "en": "ek-arawareru",
+      "kind": "concept",
+      "answer": "あらわれる",
+      "accept": [],
+      "ja": "見えるようになる",
+      "q": "『現れる』の読み。今まで見えなかったものが姿を見せる。「雲の間から月が○○れる」",
+      "explain": "「表れる」は気持ちなどが表面に出ること、「著す」は本を書くこと。音読みはゲン（現在）",
+      "level": "easy",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-kokorozasu",
+      "en": "ek-kokorozasu",
+      "kind": "concept",
+      "answer": "こころざす",
+      "accept": [],
+      "ja": "目標を心に決める",
+      "q": "『志す』の読み。ある目標を心に決めて、そこへ向かおうとする。「医者を○○す」",
+      "explain": "名詞形は「志（こころざし）」。音読みはシ（志望・意志）",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-sokonau",
+      "en": "ek-sokonau",
+      "kind": "concept",
+      "answer": "そこなう",
+      "accept": [],
+      "ja": "こわす・傷つける",
+      "q": "『損なう』の読み。物をこわしたり、状態を悪くしたりする。「健康を○○う」「機嫌を○○う」",
+      "explain": "「損ねる（そこねる）」も同じ意味。音読みはソン（損害・損得）",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-michibiku",
+      "en": "ek-michibiku",
+      "kind": "concept",
+      "answer": "みちびく",
+      "accept": [],
+      "ja": "案内する・教え導く",
+      "q": "『導く』の読み。道案内をする。正しい方向へ教え進める。「生徒を優勝に○○く」「結論を○○く」",
+      "explain": "音読みはドウ（指導・導入）。「道」に「寸」を加えた形",
+      "level": "easy",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-mazushii",
+      "en": "ek-mazushii",
+      "kind": "concept",
+      "answer": "まずしい",
+      "accept": [],
+      "ja": "お金や物が足りない",
+      "q": "『貧しい』の読み。お金や物が少なくて生活が苦しい。また、内容がとぼしい。「○○い暮らし」",
+      "explain": "音読みはヒン・ビン（貧困・貧乏）。「貧乏」は びんぼう と濁る",
+      "level": "easy",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-yutaka",
+      "en": "ek-yutaka",
+      "kind": "concept",
+      "answer": "ゆたか",
+      "accept": [],
+      "ja": "満ち足りている",
+      "q": "『豊か』の読み。物や心が満ち足りていて、不足がないさま。「自然が○○な町」「○○な表情」",
+      "explain": "音読みはホウ（豊富・豊作）。「豊臣秀吉」の「とよ」も訓",
+      "level": "easy",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-utagau",
+      "en": "ek-utagau",
+      "kind": "concept",
+      "answer": "うたがう",
+      "accept": [],
+      "ja": "本当かどうか怪しむ",
+      "q": "『疑う』の読み。本当かどうか怪しいと思う。「自分の目を○○う」「○○いの余地がない」",
+      "explain": "音読みはギ（疑問・質疑）。「凝」「擬」と形が似る",
+      "level": "easy",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-uyamau",
+      "en": "ek-uyamau",
+      "kind": "concept",
+      "answer": "うやまう",
+      "accept": [],
+      "ja": "尊んで礼をつくす",
+      "q": "『敬う』の読み。相手を尊いものとして、礼をつくす。「先生を○○う」「祖先を○○う」",
+      "explain": "音読みはケイ（尊敬・敬語）。「警」「驚」と形が似る",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-ogosoka",
+      "en": "ek-ogosoka",
+      "kind": "concept",
+      "answer": "おごそか",
+      "accept": [],
+      "ja": "重々しく近寄りがたい",
+      "q": "『厳か』の読み。重々しく、気持ちが引きしまるようなさま。「○○な雰囲気で式が進む」",
+      "explain": "同じ字で「厳しい（きびしい）」とも読む。音読みはゲン・ゴン（厳重・荘厳）",
+      "level": "hard",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-kizamu",
+      "en": "ek-kizamu",
+      "kind": "concept",
+      "answer": "きざむ",
+      "accept": [],
+      "ja": "細かく切る・彫る",
+      "q": "『刻む』の読み。細かく切る。彫りつける。「ねぎを細かく○○む」「石に名前を○○む」",
+      "explain": "音読みはコク（時刻・深刻）。「心に○○む」は忘れないようにする、の意",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-shitagau",
+      "en": "ek-shitagau",
+      "kind": "concept",
+      "answer": "したがう",
+      "accept": [],
+      "ja": "言うとおりにする",
+      "q": "『従う』の読み。人の言うことや決まりのとおりにする。後についていく。「指示に○○う」",
+      "explain": "音読みはジュウ（従来・服従）。「従える（したがえる）」は連れて歩く、の意",
+      "level": "easy",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-ayatsuru",
+      "en": "ek-ayatsuru",
+      "kind": "concept",
+      "answer": "あやつる",
+      "accept": [],
+      "ja": "思いどおりに動かす",
+      "q": "『操る』の読み。物や人を思いどおりに動かす。「人形を○○る」「三か国語を○○る」",
+      "explain": "音読みはソウ（操作・体操）。「操（みさお）」は堅い志の意",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-toutoi",
+      "en": "ek-toutoi",
+      "kind": "concept",
+      "answer": "とうとい",
+      "accept": [
+        "たっとい"
+      ],
+      "ja": "非常に価値がある",
+      "q": "『尊い』の読み。非常に価値が高く、大切である。「○○い命」「○○い教え」",
+      "explain": "「たっとい」とも読む。「貴い」も同じ読み。音読みはソン（尊敬・尊重）",
+      "level": "hard",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-uketamawaru",
+      "en": "ek-uketamawaru",
+      "kind": "concept",
+      "answer": "うけたまわる",
+      "accept": [],
+      "ja": "聞く・引き受けるの謙譲語",
+      "q": "『承る』の読み。「聞く」「引き受ける」のへりくだった言い方。「ご注文を○○ります」",
+      "explain": "送りがなは「る」だけ。音読みはショウ（承知・継承）",
+      "level": "hard",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-isagiyoi",
+      "en": "ek-isagiyoi",
+      "kind": "concept",
+      "answer": "いさぎよい",
+      "accept": [],
+      "ja": "未練がなく思いきりがよい",
+      "q": "『潔い』の読み。未練がましくなく、思いきりがよい。「負けを○○く認める」",
+      "explain": "送りがなは「い」だけ（「潔よい」は誤り）。音読みはケツ（清潔・潔白）",
+      "level": "hard",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-hikiiru",
+      "en": "ek-hikiiru",
+      "kind": "concept",
+      "answer": "ひきいる",
+      "accept": [],
+      "ja": "先頭に立ってまとめる",
+      "q": "『率いる』の読み。多くの人の先頭に立ってまとめ、連れて行く。「チームを○○いて優勝する」",
+      "explain": "送りがなは「いる」。音読みはソツ・リツ（引率・確率）",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-shirizoku",
+      "en": "ek-shirizoku",
+      "kind": "concept",
+      "answer": "しりぞく",
+      "accept": [],
+      "ja": "後ろに下がる・身を引く",
+      "q": "『退く』の読み。後ろへ下がる。その地位から身を引く。「一歩○○く」「第一線を○○く」",
+      "explain": "「退ける（しりぞける）」は追い返す、の意。音読みはタイ（退場・引退）",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-osanai",
+      "en": "ek-osanai",
+      "kind": "concept",
+      "answer": "おさない",
+      "accept": [],
+      "ja": "年が小さい",
+      "q": "『幼い』の読み。年が小さい。考え方が子どもっぽい。「○○い妹の世話をする」「○○い考え」",
+      "explain": "音読みはヨウ（幼稚園・幼虫）。「幻」と形が似る",
+      "level": "easy",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-hogaraka",
+      "en": "ek-hogaraka",
+      "kind": "concept",
+      "answer": "ほがらか",
+      "accept": [],
+      "ja": "明るく晴れ晴れしている",
+      "q": "『朗らか』の読み。心が明るく、晴れ晴れとしているさま。「○○に笑う」「○○な性格」",
+      "explain": "音読みはロウ（朗読・明朗）。「良」に「月」を加えた形",
+      "level": "hard",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-tagayasu",
+      "en": "ek-tagayasu",
+      "kind": "concept",
+      "answer": "たがやす",
+      "accept": [],
+      "ja": "田畑を掘り返す",
+      "q": "『耕す』の読み。作物を育てるため、田や畑の土を掘り返してやわらかくする。「畑を○○す」",
+      "explain": "音読みはコウ（農耕・耕地）。部首は「耒（すきへん）」",
+      "level": "normal",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-noberu",
+      "en": "ek-noberu",
+      "kind": "concept",
+      "answer": "のべる",
+      "accept": [],
+      "ja": "考えを言う・書く",
+      "q": "『述べる』の読み。考えや意見を口で言ったり、文章に書いたりする。「意見を○○べる」",
+      "explain": "音読みはジュツ（記述・述語）。「伸べる（手をのべる）」は別の字",
+      "level": "easy",
+      "tags": [
+        "ek-kun"
+      ]
+    },
+    {
+      "id": "concept-ek-kyou",
+      "en": "ek-kyou",
+      "kind": "concept",
+      "answer": "きょう",
+      "accept": [
+        "こんにち"
+      ],
+      "ja": "いま過ごしているこの日",
+      "q": "『今日』の読み。いま過ごしているこの日。「○○は朝から雨だ」「○○中に終わらせる」",
+      "explain": "熟字訓（二字まとめて一つの読み）。「こんにち」と読むと「近ごろ・現代」の意味",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-asu",
+      "en": "ek-asu",
+      "kind": "concept",
+      "answer": "あす",
+      "accept": [
+        "あした"
+      ],
+      "ja": "今日の次の日",
+      "q": "『明日』の読み。今日の次の日。「○○の天気は晴れ」「○○に備えて早く寝る」",
+      "explain": "「あした」も同じ字。常用漢字表の付表には「あす」で載る。「みょうにち」は音読み",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-otona",
+      "en": "ek-otona",
+      "kind": "concept",
+      "answer": "おとな",
+      "accept": [],
+      "ja": "成長した人",
+      "q": "『大人』の読み。十分に成長した人。子どもの反対。「○○になったら何になりたい」",
+      "explain": "熟字訓。「大人（たいじん）」と音で読むと、人格がりっぱな人、の意",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-hakase",
+      "en": "ek-hakase",
+      "kind": "concept",
+      "answer": "はかせ",
+      "accept": [],
+      "ja": "学問にくわしい人",
+      "q": "『博士』の読み。学問にくわしい人。「昆虫○○」「○○の研究室」",
+      "explain": "付表の読み。「はくし」と音で読めば学位（博士号）の正式な呼び方",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-megane",
+      "en": "ek-megane",
+      "kind": "concept",
+      "answer": "めがね",
+      "accept": [],
+      "ja": "目にかけて視力を補う道具",
+      "q": "『眼鏡』の読み。目にかけて、見えにくいのを補う道具。「○○をかける」「○○をふく」",
+      "explain": "熟字訓。「がんきょう」は音読み。「眼」の訓は「まなこ」。「お○○にかなう」は気に入られる、の意",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-shimizu",
+      "en": "ek-shimizu",
+      "kind": "concept",
+      "answer": "しみず",
+      "accept": [],
+      "ja": "地下からわき出るきれいな水",
+      "q": "『清水』の読み。地面からわき出るきれいな水。「山道でわき出る○○を飲む」「○○の舞台から飛び降りる」",
+      "explain": "熟字訓。京都の清水寺は「きよみず」。「せいすい」は音読み",
+      "level": "normal",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-tanabata",
+      "en": "ek-tanabata",
+      "kind": "concept",
+      "answer": "たなばた",
+      "accept": [],
+      "ja": "7月7日の星祭り",
+      "q": "『七夕』の読み。7月7日の夜、織姫と彦星の星に願いごとをする行事。「○○の短冊」",
+      "explain": "付表の読み。「しちせき」は音読み。五節句の一つ",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-tokei",
+      "en": "ek-tokei",
+      "kind": "concept",
+      "answer": "とけい",
+      "accept": [],
+      "ja": "時刻を知る道具",
+      "q": "『時計』の読み。時刻を知るための道具。「○○の針」「腕○○を見る」",
+      "explain": "付表の読み。「時」の音はジ、「計」はケイで、二字とも規則的でない読み",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-heya",
+      "en": "ek-heya",
+      "kind": "concept",
+      "answer": "へや",
+      "accept": [],
+      "ja": "建物の中を仕切った一区切り",
+      "q": "『部屋』の読み。建物の中をかべで仕切った、一つ一つの区切り。「自分の○○をかたづける」",
+      "explain": "付表の読み。「部」の音はブ、「屋」はオクなので、音の組み合わせでは読めない",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-yaoya",
+      "en": "ek-yaoya",
+      "kind": "concept",
+      "answer": "やおや",
+      "accept": [],
+      "ja": "野菜や果物を売る店",
+      "q": "『八百屋』の読み。野菜や果物を売る店。「○○でトマトを買う」「駅前の○○」",
+      "explain": "「八百（やお）」は数が多いこと（八百万の神＝やおよろずのかみ）。「はっぴゃくや」は誤り",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-makka",
+      "en": "ek-makka",
+      "kind": "concept",
+      "answer": "まっか",
+      "accept": [],
+      "ja": "とても赤い",
+      "q": "『真っ赤』の読み。真ん中まで全部赤いこと。とても赤いこと。「○○な夕日」「顔が○○になる」",
+      "explain": "付表の読み。「真っ青（まっさお）」も同じ仲間。「まあか」ではない",
+      "level": "easy",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-inaka",
+      "en": "ek-inaka",
+      "kind": "concept",
+      "answer": "いなか",
+      "accept": [],
+      "ja": "都会から離れた地方",
+      "q": "『田舎』の読み。都会から離れた、田や畑の多い土地。生まれ育った故郷。「夏休みに○○へ帰る」",
+      "explain": "熟字訓。「舎」は「建物」の意（校舎・宿舎）。「でんしゃ」と読まない",
+      "level": "normal",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-momen",
+      "en": "ek-momen",
+      "kind": "concept",
+      "answer": "もめん",
+      "accept": [],
+      "ja": "わたから作った糸や布",
+      "q": "『木綿』の読み。わたの実からとった繊維で作った糸や布。「○○のシャツ」「○○豆腐」",
+      "explain": "熟字訓。「綿」の音はメン、訓は「わた」。「もくめん」と読まない",
+      "level": "normal",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-shirouto",
+      "en": "ek-shirouto",
+      "kind": "concept",
+      "answer": "しろうと",
+      "accept": [],
+      "ja": "専門でない人",
+      "q": "『素人』の読み。その事を専門にしていない人。経験の浅い人。「○○にはむずかしい作業」",
+      "explain": "熟字訓。反対は「玄人（くろうと）」。「そじん」と読まない",
+      "level": "hard",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-momiji",
+      "en": "ek-momiji",
+      "kind": "concept",
+      "answer": "もみじ",
+      "accept": [],
+      "ja": "秋に赤く色づいた葉",
+      "q": "『紅葉』の読み。秋に赤や黄色に色づいた木の葉。特にカエデ。「○○狩り」「○○のような手」",
+      "explain": "付表の読み。「こうよう」と音で読めば、葉が色づく現象そのものを指すことが多い",
+      "level": "normal",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-shiwasu",
+      "en": "ek-shiwasu",
+      "kind": "concept",
+      "answer": "しわす",
+      "accept": [
+        "しはす"
+      ],
+      "ja": "12月の別名",
+      "q": "『師走』の読み。陰暦の12月の呼び方。「○○の街はあわただしい」「○○を迎える」",
+      "explain": "「しはす」とも。師（僧）も走り回るほど忙しい月、という説が有名。付表の読み",
+      "level": "hard",
+      "tags": [
+        "ek-tokubetsu"
+      ]
+    },
+    {
+      "id": "concept-ek-osameru-nou",
+      "en": "ek-osameru-nou",
+      "kind": "concept",
+      "answer": "納める",
+      "accept": [
+        "おさめる"
+      ],
+      "ja": "お金や品物を決まった所に出す",
+      "q": "同じ読みの言葉の書き分け。お金や品物を、決められた相手や場所に出し入れる。「税金を○○める」「注文の品を○○める」",
+      "explain": "箱にしまう・成果を得るは「収める」、国は「治める」、学問は「修める」。音読みはノウ（納税）",
+      "level": "normal",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-osameru-shuu",
+      "en": "ek-osameru-shuu",
+      "kind": "concept",
+      "answer": "修める",
+      "accept": [
+        "おさめる"
+      ],
+      "ja": "学問や技を身につける",
+      "q": "同じ読みの言葉の書き分け。学問や技を学んで身につける。行いを正しくする。「大学で医学を○○める」「身を○○める」",
+      "explain": "税金は「納める」、成功は「収める」、国は「治める」。音読みはシュウ（修理・研修）",
+      "level": "normal",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-sonaeru",
+      "en": "ek-sonaeru",
+      "kind": "concept",
+      "answer": "供える",
+      "accept": [
+        "そなえる"
+      ],
+      "ja": "神仏に物をささげる",
+      "q": "同じ読みの言葉の書き分け。神や仏、死者の霊の前に物をささげる。「仏壇に花を○○える」「お墓に果物を○○える」",
+      "explain": "災害などに前もって準備するのは「備える」（台風に備える）。音読みはキョウ・ク（供給・供養）",
+      "level": "normal",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-tsutomeru-kin",
+      "en": "ek-tsutomeru-kin",
+      "kind": "concept",
+      "answer": "勤める",
+      "accept": [
+        "つとめる"
+      ],
+      "ja": "会社などで働く",
+      "q": "同じ読みの言葉の書き分け。会社や役所などに通って働く。「銀行に○○める」「市役所に○○めている」",
+      "explain": "役目を果たすのは「務める」（司会を務める）、努力するのは「努める」。音読みはキン・ゴン（勤務・勤行）",
+      "level": "normal",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-tsutomeru-mu",
+      "en": "ek-tsutomeru-mu",
+      "kind": "concept",
+      "answer": "務める",
+      "accept": [
+        "つとめる"
+      ],
+      "ja": "役目を引き受けて果たす",
+      "q": "同じ読みの言葉の書き分け。役目や仕事を引き受けて、その役を果たす。「クラス委員を○○める」「主役を○○める」",
+      "explain": "会社で働くのは「勤める」、努力するのは「努める」。音読みはム（任務・事務）",
+      "level": "normal",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-tatsu-sai",
+      "en": "ek-tatsu-sai",
+      "kind": "concept",
+      "answer": "裁つ",
+      "accept": [
+        "たつ"
+      ],
+      "ja": "布や紙を寸法に合わせて切る",
+      "q": "同じ読みの言葉の書き分け。布や紙を、寸法に合わせて切る。「型紙どおりに布を○○つ」「生地を○○つ」",
+      "explain": "関係をやめるのは「絶つ（消息を絶つ）」、さえぎるのは「断つ（酒を断つ）」。音読みはサイ（裁判・裁縫）",
+      "level": "hard",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-arawasu-cho",
+      "en": "ek-arawasu-cho",
+      "kind": "concept",
+      "answer": "著す",
+      "accept": [
+        "あらわす"
+      ],
+      "ja": "本を書いて世に出す",
+      "q": "同じ読みの言葉の書き分け。本を書いて世の中に出す。「教育についての本を○○す」「多くの研究書を○○した学者」",
+      "explain": "姿を見せるのは「現す」、気持ちや言葉で示すのは「表す」。音読みはチョ（著者・著名）",
+      "level": "hard",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-kouen",
+      "en": "ek-kouen",
+      "kind": "concept",
+      "answer": "講演",
+      "accept": [
+        "こうえん"
+      ],
+      "ja": "大勢の前で話をすること",
+      "q": "同じ読みの熟語の書き分け。ある題目について、大勢の人の前で話をすること。「作家の○○を聞きに行く」「○○会」",
+      "explain": "劇や音楽を舞台で見せるのは「公演」、みごとな演技は「好演」。「講」は「話す・説く」の意（講義）",
+      "level": "normal",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-tekisei",
+      "en": "ek-tekisei",
+      "kind": "concept",
+      "answer": "適性",
+      "accept": [
+        "てきせい"
+      ],
+      "ja": "その事に向いている性質",
+      "q": "同じ読みの熟語の書き分け。その仕事や役割に向いている性質や能力。「○○検査」「教師としての○○がある」",
+      "explain": "ちょうどよくて正しいのは「適正」（適正な価格）。「性」は「性質」の意",
+      "level": "hard",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-hoshou",
+      "en": "ek-hoshou",
+      "kind": "concept",
+      "answer": "保証",
+      "accept": [
+        "ほしょう"
+      ],
+      "ja": "確かだと請け合う",
+      "q": "同じ読みの熟語の書き分け。間違いない、確かだと請け合うこと。「品質を○○する」「身元○○人」「一年間の○○書」",
+      "explain": "権利や地位を守るのは「保障」（安全保障・社会保障）、損害をつぐなうのは「補償」",
+      "level": "normal",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-kaihou",
+      "en": "ek-kaihou",
+      "kind": "concept",
+      "answer": "解放",
+      "accept": [
+        "かいほう"
+      ],
+      "ja": "束縛を解いて自由にする",
+      "q": "同じ読みの熟語の書き分け。束縛や制限を解いて自由にすること。「人質を○○する」「宿題から○○される」",
+      "explain": "門や施設を開けて出入りを自由にするのは「開放」（校庭開放・窓を開放する）",
+      "level": "normal",
+      "tags": [
+        "ek-doon"
+      ]
+    },
+    {
+      "id": "concept-ek-idou",
+      "en": "ek-idou",
+      "kind": "concept",
+      "answer": "異動",
+      "accept": [
+        "いどう"
+      ],
+      "ja": "職場での地位や部署の変更",
+      "q": "同じ読みの熟語の書き分け。会社や役所で、地位や勤め先、担当が変わること。「人事○○で支店に移る」「四月の○○」",
+      "explain": "場所を変えて動くのは「移動」（車で移動）。「異」は「ちがう・別の」の意",
+      "level": "hard",
+      "tags": [
+        "ek-doon"
+      ]
+    }
+  ]
+}
