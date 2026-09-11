@@ -28,3 +28,14 @@
 | trade | 2 | インコタームズ6枚は費用・危険の分岐点を検証済み。輸出申告と保税地域の手続き順序（申告→搬入後に許可）と保税地域の定義を修正 | trade-advance-ruling（3年）、trade-aeo |
 | saas | 4 | 稟議「必ず」を緩和、MRR の別解を月次経常売上に、商談化の別解から率を除去 | saas-magic-number（0.75/0.5 は目安） |
 | ec | 12 | 返品の explain を特商法の返品特約の考え方に修正、リピート率の別解重複除去、PR表記は景表法（ステマ規制）と明記、LINE料金の表現、非別名の別解を除去 | ec-cart-abandonment（7割は目安）、ec-chargeback |
+
+### 営業・マーケ／IT（SNS・動画・コールセンター・Web制作・プログラミング・社内SE）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| sns | 16 | プレゼント企画の景表法の扱いを「購入条件の有無で異なる」に、ステマ規制は「措置命令の対象は事業者」、Instagram固有の挙動を「媒体によっては」に一般化、q に別名が漏れていた5枚を修正 | sns-gifting（無償提供のステマ告示上の扱い）、sns-early-velocity（アルゴリズムの記述） |
+| video | 14 | 解像度・粗編・肖像権（パブリシティ権は別物）などの別解整理、ビットレートの単位、ショートの機能名を一般化 | video-browse／video-suggested（YouTubeの流入元名称）、video-end-screen（20秒の仕様） |
+| callcenter | 7 | IVR・録音・WFM の q から別名を除去、SMS「開封率が高い」を緩和、KYC を別解から除去 | cc-customer-harassment（法改正の施行時期）、cc-utilization／cc-occupancy（定義がベンダーで異なる） |
+| webdev | 18 | E-E-A-T の Trust→Trustworthiness、canonical と noindex の対比を正確に、GA4 のイベント種別を4種類に、Git≠GitHub、非別名の別解を除去 | web-core-web-vitals（指標は改定されうる）、web-conversion（キーイベントの名称） |
+| programming | 13 | Promise の別解から async/await を除去、ロールバック≠revert、製品名（npm・ESLint・JWT 等）を別解から除去 | なし |
+| itsupport | 18 | Active Directory と Entra ID の関係、MFA の別解からワンタイムパスワードを除去、稟議の別解整理、UTM・NAS・製品名を別解から除去 | its-password-policy（最新ガイダンスの表現）、its-antivirus（EDR との対比の書き方） |
