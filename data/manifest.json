@@ -629,6 +629,39 @@
           "group": "ビジネス・バックオフィス"
         },
         {
+          "id": "generalaffairs",
+          "label": "総務 実務",
+          "file": "packs/generalaffairs.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 54,
+          "blurb": "規程・押印・文書管理から防災・総会事務まで、総務の共通言語",
+          "audience": "総務部門に配属された新人、バックオフィス兼務の担当者",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
+          "id": "secretary",
+          "label": "秘書・役員サポート",
+          "file": "packs/secretary.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 54,
+          "blurb": "アポ調整・来客・敬語・出張・慶弔まで、役員を支える現場の言葉",
+          "audience": "秘書・役員付きアシスタントの新人、総務・営業事務の担当者",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
+          "id": "pr",
+          "label": "広報・PR",
+          "file": "packs/pr.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 54,
+          "blurb": "リリース・記者対応・会見・危機管理・効果測定。広報の共通言語",
+          "audience": "広報担当になった人、スタートアップの兼務広報",
+          "group": "ビジネス・バックオフィス"
+        },
+        {
           "id": "freelancetax",
           "label": "フリーランスの税務・確定申告",
           "file": "packs/freelancetax.json",
@@ -714,7 +747,7 @@
           "count": 54,
           "blurb": "MRRからチャーンまで。SaaSの営業・CS・契約で毎日出る共通言語",
           "audience": "SaaS企業の営業・CS・マーケの新人",
-          "group": "営業・マーケティング"
+          "group": "営業・マーケティング・メディア"
         },
         {
           "id": "ec",
@@ -725,7 +758,7 @@
           "count": 53,
           "blurb": "集客・サイト・KPI・受注物流・CRM。ネット通販の現場で毎日出る言葉",
           "audience": "EC・D2Cの運営担当になった人、店舗からECへ移った人",
-          "group": "営業・マーケティング"
+          "group": "営業・マーケティング・メディア"
         },
         {
           "id": "sns",
@@ -736,7 +769,7 @@
           "count": 55,
           "blurb": "リーチ・保存数・PR表記まで、SNS担当とインフルエンサー施策の共通言語",
           "audience": "企業のSNS担当1年目、PR・マーケの若手",
-          "group": "営業・マーケティング"
+          "group": "営業・マーケティング・メディア"
         },
         {
           "id": "video",
@@ -747,7 +780,18 @@
           "count": 55,
           "blurb": "企画・撮影・編集からYouTube分析と権利・納品まで一通り",
           "audience": "動画制作の新人、YouTube運用担当",
-          "group": "営業・マーケティング"
+          "group": "営業・マーケティング・メディア"
+        },
+        {
+          "id": "publishing",
+          "label": "出版・編集",
+          "file": "packs/publishing.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "企画から校了・組版・製本・流通・権利・電子まで編集現場の共通言語",
+          "audience": "出版社・編集プロダクションの新人、ライター",
+          "group": "営業・マーケティング・メディア"
         },
         {
           "id": "callcenter",
@@ -758,7 +802,7 @@
           "count": 54,
           "blurb": "応答率・AHT・SVなど、受電も発信も現場で毎日飛び交う言葉",
           "audience": "コールセンターの新人オペレーター、SV候補",
-          "group": "営業・マーケティング"
+          "group": "営業・マーケティング・メディア"
         },
         {
           "id": "webdev",
@@ -769,7 +813,7 @@
           "count": 54,
           "blurb": "制作の流れからSEO・解析・運用まで、Web制作の現場で毎日出る用語",
           "audience": "Web制作会社の新人、サイト担当になった人",
-          "group": "営業・マーケティング"
+          "group": "営業・マーケティング・メディア"
         },
         {
           "id": "programming",
@@ -780,7 +824,7 @@
           "count": 55,
           "blurb": "変数からGit・API・DB・デプロイまで、開発チームの共通言語",
           "audience": "駆け出しエンジニア、開発と一緒に働く人",
-          "group": "IT・セキュリティ"
+          "group": "IT・セキュリティ・ゲーム"
         },
         {
           "id": "itsupport",
@@ -791,7 +835,7 @@
           "count": 55,
           "blurb": "問い合わせ対応・アカウント・端末・ネットワーク・情シス業務の用語",
           "audience": "情シス配属の新人、ヘルプデスク担当",
-          "group": "IT・セキュリティ"
+          "group": "IT・セキュリティ・ゲーム"
         },
         {
           "id": "security",
@@ -802,7 +846,18 @@
           "count": 55,
           "blurb": "全社員に必要な守りの共通語。脅威・対策・事故対応・法令まで",
           "audience": "情シス・総務の担当者、新入社員研修の受講者",
-          "group": "IT・セキュリティ"
+          "group": "IT・セキュリティ・ゲーム"
+        },
+        {
+          "id": "gamedev",
+          "label": "ゲーム開発",
+          "file": "packs/gamedev.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "企画・開発・運営・アートまで、ゲーム会社で毎日飛び交う共通語",
+          "audience": "ゲーム会社の新人、開発職を目指す人",
+          "group": "IT・セキュリティ・ゲーム"
         },
         {
           "id": "medical",
@@ -835,6 +890,28 @@
           "count": 55,
           "blurb": "受付・処方箋の読み方・調剤の流れ・レセプト・在庫まで薬局の共通語",
           "audience": "調剤薬局の新人事務、医療事務を目指す人",
+          "group": "医療・福祉・保育"
+        },
+        {
+          "id": "pt",
+          "label": "理学療法・リハビリの基本",
+          "file": "packs/pt.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "評価・基本動作・運動療法から退院支援まで、リハ現場の共通語",
+          "audience": "リハ職の学生・新人、リハに関わる医療介護職",
+          "group": "医療・福祉・保育"
+        },
+        {
+          "id": "labtech",
+          "label": "臨床検査の基本",
+          "file": "packs/labtech.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "採血管から精度管理まで、検査室と病棟をつなぐ共通語",
+          "audience": "臨床検査技師の学生・新人、検査に関わる医療職",
           "group": "医療・福祉・保育"
         },
         {
@@ -879,7 +956,7 @@
           "count": 55,
           "blurb": "原価・回転率からHACCP・シフト・開業まで。店を回す数字と現場の言葉",
           "audience": "飲食店の店長候補、開業を考えている人",
-          "group": "店舗・サービス"
+          "group": "店舗・サービス・教育・観光"
         },
         {
           "id": "hotel",
@@ -890,7 +967,7 @@
           "count": 55,
           "blurb": "フロント・客室・レベニューの共通言語。稼働率からOOOまで",
           "audience": "ホテル・旅館の新人スタッフ、宿泊業に転職する人",
-          "group": "店舗・サービス"
+          "group": "店舗・サービス・教育・観光"
         },
         {
           "id": "apparel",
@@ -901,7 +978,7 @@
           "count": 55,
           "blurb": "SKU・消化率・VMD・客単価。店頭の共通言語を一通り",
           "audience": "アパレル店舗の新人販売員、店長を目指す人",
-          "group": "店舗・サービス"
+          "group": "店舗・サービス・教育・観光"
         },
         {
           "id": "salon",
@@ -912,7 +989,40 @@
           "count": 55,
           "blurb": "カットから客単価・失客・面貸しまで。サロンの共通言語",
           "audience": "美容室のアシスタント、独立を考える美容師",
-          "group": "店舗・サービス"
+          "group": "店舗・サービス・教育・観光"
+        },
+        {
+          "id": "juku",
+          "label": "学習塾 運営",
+          "file": "packs/juku.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "教室運営・生徒管理・保護者対応・集客・受験の基礎まで塾の共通言語",
+          "audience": "塾の新人教室長・社員、アルバイト講師",
+          "group": "店舗・サービス・教育・観光"
+        },
+        {
+          "id": "tourguide",
+          "label": "観光ガイド・旅行業",
+          "file": "packs/tourguide.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "行程・添乗・ガイド・手配・インバウンド・約款まで旅行現場の共通言語",
+          "audience": "旅行会社の新人、添乗員・ガイドを始めた人",
+          "group": "店舗・サービス・教育・観光"
+        },
+        {
+          "id": "event",
+          "label": "イベント運営",
+          "file": "packs/event.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "企画から当日運営・撤収まで、イベントの現場で飛び交う用語",
+          "audience": "イベント会社の新人、社内イベント担当者",
+          "group": "店舗・サービス・教育・観光"
         },
         {
           "id": "construction",
@@ -923,7 +1033,18 @@
           "count": 55,
           "blurb": "体制・工程・安全・図面・検査・書類。現場監督の共通語を一通り",
           "audience": "建設会社・工務店の新人、施工管理を始める人",
-          "group": "建設・製造・物流"
+          "group": "建設・製造・物流・農業"
+        },
+        {
+          "id": "archdesign",
+          "label": "建築設計 実務",
+          "file": "packs/archdesign.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "設計事務所で毎日出る用語。図面・法規・構造・設備・積算・監理まで",
+          "audience": "設計事務所の新人、建築士を目指す人",
+          "group": "建設・製造・物流・農業"
         },
         {
           "id": "manufacturing",
@@ -934,7 +1055,7 @@
           "count": 55,
           "blurb": "5S・タクト・不良率からFMEAまで。工場の共通語を一通り",
           "audience": "工場の新人、生産管理・品質保証の担当者",
-          "group": "建設・製造・物流"
+          "group": "建設・製造・物流・農業"
         },
         {
           "id": "logistics",
@@ -945,7 +1066,7 @@
           "count": 53,
           "blurb": "入荷から出荷、配車、KPI、貿易の入口まで。現場の共通語",
           "audience": "倉庫・運送会社の新人、荷主側の物流担当",
-          "group": "建設・製造・物流"
+          "group": "建設・製造・物流・農業"
         },
         {
           "id": "printing",
@@ -956,7 +1077,18 @@
           "count": 55,
           "blurb": "入稿・校正・製版・製本・用紙まで、印刷会社と話が通じる共通言語",
           "audience": "印刷会社の新人、DTPや発注を担当する人",
-          "group": "建設・製造・物流"
+          "group": "建設・製造・物流・農業"
+        },
+        {
+          "id": "agriculture",
+          "label": "農業 実務",
+          "file": "packs/agriculture.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 55,
+          "blurb": "畑と田んぼの現場で毎日出る用語。土づくり・防除・施設・出荷・経営まで",
+          "audience": "新規就農者、農業法人やJAの新人",
+          "group": "建設・製造・物流・農業"
         },
         {
           "id": "realestate",
