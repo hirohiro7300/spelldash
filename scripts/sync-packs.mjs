@@ -11,6 +11,7 @@ const PACK_DIR = path.join(ROOT, "data", "packs");
 const MANIFEST = path.join(ROOT, "data", "manifest.json");
 
 const GROUPS = {
+  "試験・レベル別（英検・TOEIC）": ["eiken5", "eiken4", "eiken3", "eikenp2", "eiken2", "eikenp1", "eiken1", "toeic500", "toeic600", "toeic730", "toeic860", "toeic990"],
   "ビジネス・バックオフィス": ["accounting", "legal", "hr", "freelancetax", "staffing", "publicbid", "startupfinance", "banking", "insurance", "trade"],
   "営業・マーケティング": ["saas", "ec", "sns", "video", "callcenter", "webdev"],
   "IT・セキュリティ": ["programming", "itsupport", "security"],
@@ -34,11 +35,12 @@ const packs = fs
   .filter((f) => f.endsWith(".json"))
   .map((f) => JSON.parse(fs.readFileSync(path.join(PACK_DIR, f), "utf8")));
 
+// cardType: "word"（英単語 en/ja のパック）は kind を付けない。それ以外は場面カード（concept）
 const entries = packs.map((p) => ({
   id: p.category,
   label: p.label,
   file: `packs/${p.category}.json`,
-  kind: "concept",
+  ...(p.cardType === "word" ? {} : { kind: "concept" }),
   pack: true,
   count: p.words.length,
   blurb: p.blurb,

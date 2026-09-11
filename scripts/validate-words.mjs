@@ -34,12 +34,19 @@ for (const fullPath of files) {
     if (!entry) problems.push(`manifest未登録 ${file} (category=${data.category})`);
     else if (entry.count !== data.words.length) problems.push(`manifestのcount不一致 ${file}: manifest=${entry.count} 実際=${data.words.length}`);
     const answers = new Set();
+    const isWordPack = data.cardType === "word"; // レベル別パック（英検・TOEIC）: 英単語 en/ja 形式
     for (const w of data.words) {
-      if (w.kind !== "concept") problems.push(`パックはconceptのみ ${file}:${w.id}`);
+      if (isWordPack) {
+        if (w.kind === "concept") problems.push(`英単語パックにconcept ${file}:${w.id}`);
+        if (!w.pos) problems.push(`posなし ${file}:${w.id}`);
+        if (String(w.ja ?? "").length > 24) problems.push(`jaが長い ${file}:${w.id} (${w.ja})`);
+      } else if (w.kind !== "concept") {
+        problems.push(`パックはconceptのみ ${file}:${w.id}`);
+      }
       if (data.genres && !(w.tags?.[0] in data.genres)) problems.push(`genres未登録タグ ${file}:${w.id} tag=${w.tags?.[0]}`);
       if (w.answer && w.q && w.q.includes(w.answer)) problems.push(`qに答えが含まれる ${file}:${w.id}`);
-      const key = String(w.answer ?? "").normalize("NFKC").toLowerCase();
-      if (answers.has(key)) problems.push(`answer重複 ${file}:${w.id} (${w.answer})`);
+      const key = String(isWordPack ? w.en : w.answer ?? "").normalize("NFKC").toLowerCase();
+      if (answers.has(key)) problems.push(`${isWordPack ? "en" : "answer"}重複 ${file}:${w.id} (${isWordPack ? w.en : w.answer})`);
       answers.add(key);
     }
   }

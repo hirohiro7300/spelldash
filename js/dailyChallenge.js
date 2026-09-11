@@ -42,6 +42,7 @@ export function getDailyWords(date = todayString()) {
   const seen = new Set();
   const pool = getAllWords().filter((word) => {
     if (word.kind === "concept") return false; // 日本語で答えるカードは全員共通のDailyに入れない
+    if (word.pack) return false; // 追加式のパックの語も同様（人によって入っている語が違う）
     if (seen.has(word.id)) return false;
     seen.add(word.id);
     return true;
