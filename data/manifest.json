@@ -51,6 +51,50 @@
           "kind": "concept"
         },
         {
+          "id": "elem-hist",
+          "label": "小学 歴史の人物とできごと",
+          "file": "packs/elem-hist.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "6年社会で習う42人の人物と主なできごと・文化。説明から人名や用語を答える",
+          "audience": "小学6年生、中学受験の歴史を始めた人",
+          "group": "小学校（社会・理科・算数・漢字）"
+        },
+        {
+          "id": "elem-sci",
+          "label": "小学 理科の用語",
+          "file": "packs/elem-sci.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "3〜6年の理科で習う用語と実験器具。説明を読んで用語を答える",
+          "audience": "小学3〜6年生、中学理科の前に基礎を確認したい人",
+          "group": "小学校（社会・理科・算数・漢字）"
+        },
+        {
+          "id": "elem-math",
+          "label": "小学 算数の用語",
+          "file": "packs/elem-math.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 60,
+          "blurb": "数・計算・割合・図形・データの用語を説明から答える。中学数学の土台",
+          "audience": "小学5・6年生、算数を復習する中学生",
+          "group": "小学校（社会・理科・算数・漢字）"
+        },
+        {
+          "id": "elem-kanji",
+          "label": "小学 漢字の読み（5・6年）",
+          "file": "packs/elem-kanji.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 80,
+          "blurb": "5・6年で習う漢字の熟語・訓読み・特別な読み・同音異義語の書き分け",
+          "audience": "小学5・6年生、漢検5級前後を目指す人",
+          "group": "小学校（社会・理科・算数・漢字）"
+        },
+        {
           "id": "pref",
           "label": "都道府県と県庁所在地",
           "file": "packs/pref.json",
@@ -170,6 +214,28 @@
           "blurb": "数と式・方程式・関数・図形・データの活用の用語と定理名を説明から答える",
           "audience": "中学生、高校入試の対策をする人",
           "group": "中学校（社会・理科・国語・数学）"
+        },
+        {
+          "id": "hs-chem",
+          "label": "高校 化学基礎",
+          "file": "packs/hs-chem.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "原子・結合・mol・酸塩基・酸化還元。化学基礎の用語を説明から答える",
+          "audience": "高校生、化学基礎を復習する人",
+          "group": "高校（世界史・日本史・化学・生物・古文）"
+        },
+        {
+          "id": "hs-bio",
+          "label": "高校 生物基礎",
+          "file": "packs/hs-bio.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "細胞・遺伝子・体内環境・免疫・植生・生態系。生物基礎の用語を説明から答える",
+          "audience": "高校生、生物基礎を復習する人",
+          "group": "高校（世界史・日本史・化学・生物・古文）"
         },
         {
           "id": "grammar-jhs1",
