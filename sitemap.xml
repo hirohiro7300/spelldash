@@ -57,6 +57,9 @@
   <url><loc>https://www.spelldash.net/packs/accounting.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/legal.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/hr.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/generalaffairs.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/secretary.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/pr.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/freelancetax.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/staffing.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/publicbid.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
@@ -68,14 +71,18 @@
   <url><loc>https://www.spelldash.net/packs/ec.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/sns.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/video.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/publishing.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/callcenter.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/webdev.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/programming.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/itsupport.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/security.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/gamedev.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/medical.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/nursing.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/pharmacy.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/pt.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/labtech.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/care.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/dental.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/childcare.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
@@ -83,10 +90,15 @@
   <url><loc>https://www.spelldash.net/packs/hotel.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/apparel.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/salon.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/juku.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/tourguide.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/event.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/construction.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/archdesign.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/manufacturing.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/logistics.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/printing.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/agriculture.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/realestate.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/usedcar.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/mechanic.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>

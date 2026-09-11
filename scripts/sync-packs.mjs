@@ -17,12 +17,12 @@ const GROUPS = {
   "英語（教科書レベル）": ["elem-english", "jhs-english1", "jhs-english2", "jhs-english3"],
   "文法（中学・高校・TOEIC）": ["grammar-jhs1", "grammar-jhs2", "grammar-jhs3", "grammar-hs1", "grammar-hs2", "grammar-toeic"],
   "試験・レベル別（英検・TOEIC）": ["eiken5", "eiken4", "eiken3", "eikenp2", "eiken2", "eikenp1", "eiken1", "toeic500", "toeic600", "toeic730", "toeic860", "toeic990"],
-  "ビジネス・バックオフィス": ["accounting", "legal", "hr", "freelancetax", "staffing", "publicbid", "startupfinance", "banking", "insurance", "trade"],
-  "営業・マーケティング": ["saas", "ec", "sns", "video", "callcenter", "webdev"],
-  "IT・セキュリティ": ["programming", "itsupport", "security"],
-  "医療・福祉・保育": ["medical", "nursing", "pharmacy", "care", "dental", "childcare"],
-  "店舗・サービス": ["restaurant", "hotel", "apparel", "salon"],
-  "建設・製造・物流": ["construction", "manufacturing", "logistics", "printing"],
+  "ビジネス・バックオフィス": ["accounting", "legal", "hr", "generalaffairs", "secretary", "pr", "freelancetax", "staffing", "publicbid", "startupfinance", "banking", "insurance", "trade"],
+  "営業・マーケティング・メディア": ["saas", "ec", "sns", "video", "publishing", "callcenter", "webdev"],
+  "IT・セキュリティ・ゲーム": ["programming", "itsupport", "security", "gamedev"],
+  "医療・福祉・保育": ["medical", "nursing", "pharmacy", "pt", "labtech", "care", "dental", "childcare"],
+  "店舗・サービス・教育・観光": ["restaurant", "hotel", "apparel", "salon", "juku", "tourguide", "event"],
+  "建設・製造・物流・農業": ["construction", "archdesign", "manufacturing", "logistics", "printing", "agriculture"],
   "不動産・自動車": ["realestate", "usedcar", "mechanic"]
 };
 const groupOf = (id) => Object.entries(GROUPS).find(([, ids]) => ids.includes(id))?.[0] ?? "その他";
