@@ -95,6 +95,17 @@
           "group": "義務教育（社会・理科・国語・数学）"
         },
         {
+          "id": "jsci1",
+          "label": "中学理科 物理・化学",
+          "file": "packs/jsci1.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "光・力・電流・運動と、物質・原子・イオン。実験と法則の用語を説明から答える",
+          "audience": "中学生、高校入試の理科を復習する人",
+          "group": "義務教育（社会・理科・国語・数学）"
+        },
+        {
           "id": "jkokugo1",
           "label": "国語 四字熟語・ことわざ・慣用句",
           "file": "packs/jkokugo1.json",
@@ -102,6 +113,17 @@
           "pack": true,
           "count": 75,
           "blurb": "中学までに習う定番の四字熟語・ことわざ・慣用句を意味から答える",
+          "audience": "中学生、高校入試や漢検の対策をする人",
+          "group": "義務教育（社会・理科・国語・数学）"
+        },
+        {
+          "id": "jkokugo2",
+          "label": "国語 漢字の読み（中学）",
+          "file": "packs/jkokugo2.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 80,
+          "blurb": "中学で習う常用漢字の読み。難読熟語・熟字訓・読み分け・同音異義語",
           "audience": "中学生、高校入試や漢検の対策をする人",
           "group": "義務教育（社会・理科・国語・数学）"
         },
