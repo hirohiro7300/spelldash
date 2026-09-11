@@ -314,7 +314,7 @@
       "answer": "which",
       "ja": "非制限用法 which（前文を受ける）",
       "q": "He said he was busy, ____ was not true.（彼は忙しいと言ったが、それは本当ではなかった）",
-      "explain": "前の文全体を先行詞にできるのはコンマ＋ which だけ。what や that では受けられない",
+      "explain": "前の文全体を先行詞にできるのはコンマ＋ which（文頭なら as）。what や that では受けられない",
       "say": "He said he was busy, which was not true.",
       "level": "hard",
       "tags": [
@@ -881,7 +881,9 @@
       "accept": [
         "so long as",
         "provided",
-        "provided that"
+        "provided that",
+        "providing",
+        "providing that"
       ],
       "ja": "as long as（条件）",
       "q": "You can stay here ____ you keep quiet.（静かにしているかぎり、ここにいてよい）",

@@ -257,7 +257,9 @@
       "answer": "because of",
       "accept": [
         "due to",
-        "owing to"
+        "owing to",
+        "as a result of",
+        "on account of"
       ],
       "ja": "前置詞 because of",
       "q": "The flight was delayed ____ the heavy snow.（大雪のせいで便が遅れた）",
@@ -880,7 +882,8 @@
       "kind": "concept",
       "answer": "likely",
       "accept": [
-        "expected"
+        "expected",
+        "projected"
       ],
       "ja": "be likely to do",
       "q": "The new policy is ____ to reduce costs by 10 percent.（新方針によりコストが10%削減される見込みだ）",
@@ -899,7 +902,8 @@
       "accept": [
         "keep",
         "stop",
-        "bar"
+        "bar",
+        "prohibit"
       ],
       "ja": "prevent A from doing",
       "q": "Strict security measures ____ unauthorized people from entering the building.（厳格な警備対策により、権限のない人は建物に入れない）",
@@ -1017,6 +1021,7 @@
       "answer": "participating",
       "accept": [
         "who participate",
+        "who participated",
         "taking part"
       ],
       "ja": "現在分詞の後置修飾",
@@ -1063,7 +1068,8 @@
       "answer": "however",
       "accept": [
         "nevertheless",
-        "nonetheless"
+        "nonetheless",
+        "still"
       ],
       "ja": "接続副詞 however（逆接）",
       "q": "The product is expensive; ____, it is very popular.（その製品は高価だ。しかし、とても人気がある）",
@@ -1103,7 +1109,8 @@
         "furthermore",
         "in addition",
         "besides",
-        "additionally"
+        "additionally",
+        "also"
       ],
       "ja": "接続副詞 moreover（追加）",
       "q": "The hotel is conveniently located. ____, the rates are reasonable.（ホテルは便利な場所にある。そのうえ、料金も手ごろだ）",
@@ -1119,9 +1126,6 @@
       "en": "gt-adv-otherwise",
       "kind": "concept",
       "answer": "otherwise",
-      "accept": [
-        "or"
-      ],
       "ja": "接続副詞 otherwise",
       "q": "Please submit the form by Friday; ____, your application will not be processed.（金曜までに書類を提出してください。さもないと、申請は処理されません）",
       "explain": "otherwise「さもないと」は命令や条件の後で結果を示す。unless や if not と混同しやすいが、これは副詞",

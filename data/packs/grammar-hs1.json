@@ -252,7 +252,7 @@
       "answer": "should",
       "ja": "should not have done",
       "q": "You ____ not have eaten so much.（そんなにたくさん食べるべきではなかったのに）",
-      "explain": "否定は should not have + 過去分詞。「してしまったが、すべきでなかった」。must not have は使わない",
+      "explain": "否定は should not have + 過去分詞。「してしまったが、すべきでなかった」。must not have done は「〜しなかったにちがいない」で別の意味",
       "say": "You should not have eaten so much.",
       "level": "hard",
       "tags": ["gh1-modalhave"]
@@ -882,7 +882,7 @@
       "answer": "much",
       "ja": "不可算名詞と much",
       "q": "How ____ homework do you have today?（今日は宿題がどのくらいありますか）",
-      "explain": "homework は不可算名詞なので量は much で聞く。many homeworks は誤り。数えるなら a lot of",
+      "explain": "homework は不可算名詞なので量は much で聞く。many homeworks は誤り。肯定文では a lot of homework が自然",
       "say": "How much homework do you have today?",
       "level": "hard",
       "tags": ["gh1-noun"]
