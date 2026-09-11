@@ -195,3 +195,14 @@ pos・綴り・id・ジャンルは全数確認で誤りなし。7本をまた�
 | jhs-english3 | 1 | realize「実感する・悟る」→「はっきりと理解する・実現する」 | なし |
 
 - 配置の指摘（移動はしていない）: jhs2 の say・give・put・history・sick は中1でも可、jhs3 の space・robot・volunteer・never・earthquake は中2でも可。
+
+### 高校 物理基礎・地学基礎・漢文・現代文（4本・265枚）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| hs-physics | 1 | 数値・公式（3公式、F=kx、½mv²、T=t+273、v=fλ、1kWh=3.6×10⁶J など）を全数確認。うなりに別表記「唸り」 | なし |
+| hs-earth | 2 | P波・S波の誤った読み（ぴーなみ・えすなみ）を削除。地殻の厚さ・地震波速度・地質年代・宇宙の数値を確認 | なし |
+| hs-kanbun | 29 | 再読文字を10字（且・由を追加）に、「莫・毋・勿」の読みの説明を訂正。句法27枚は q に読みが書いてあるので **kanjiOnly** にして accept から読みを削除（写すだけで正解できた） | hkb-kokowomotte／hkb-kedashi（例文が出典不明） |
+| hs-gendaibun | 5 | 差異の別解 différance→différence（差延は別語）、シニフィアン／シニフィエ・メディア・テクノロジーで accept の語が q に含まれていたのを除去 | hgb-irony の別解「反語」 |
+
+- 同じ「q に読みがあるのに accept にも読み」は中学国語（jkokugo2）の同音異義語10枚にもあり、kanjiOnly で修正。validate-words に「accept の語が q に含まれていたら NG」を追加したので以後は機械的に止まる。
