@@ -1583,6 +1583,17 @@ console.log("domain packs:");
   });
   check("義務教育カード: 漢字の答えに読みの別解がある", kana.reading.length > 0, JSON.stringify(kana).slice(0, 100));
   await page9.close();
+  // kanjiOnly: 問題文に読みが書いてあるカード（同音異義語・漢文の句法）は漢字で答えさせる。読みは別解に入れない
+  const page9b = await newPage({ storage: { spelldash_packs: JSON.stringify(["jkokugo2"]) } });
+  await page9b.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page9b.waitForTimeout(600);
+  const kanjiOnly = await page9b.evaluate(async () => {
+    const s = await import("/js/wordStore.js");
+    const ws = s.getWordsByCategory("jkokugo2").filter((x) => x.kanjiOnly);
+    return { n: ws.length, leak: ws.filter((w) => (w.accept ?? []).some((a) => /^[ぁ-ゖー]+$/.test(a))).length };
+  });
+  check("kanjiOnly カード: 同音異義語10枚に読みの別解がない", kanjiOnly.n === 10 && kanjiOnly.leak === 0, JSON.stringify(kanjiOnly));
+  await page9b.close();
   const page10 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]) } });
   await page10.goto(BASE + "/list.html?category=pref", { waitUntil: "networkidle" });
   await page10.waitForTimeout(900);
