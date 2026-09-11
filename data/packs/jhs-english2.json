@@ -1,0 +1,1223 @@
+{
+  "subject": "english",
+  "category": "jhs-english2",
+  "cardType": "word",
+  "label": "中学英語 2年（教科書レベル）",
+  "blurb": "中2教科書の新出語。不規則動詞・旅行・環境・気持ち・比較の形容詞",
+  "audience": "中学2年生、中学英語を復習する社会人",
+  "genres": {
+    "action": "動作",
+    "travel": "旅行",
+    "environment": "環境",
+    "work": "仕事",
+    "feeling": "気持ち",
+    "state": "状態",
+    "connect": "つなぎ言葉",
+    "communication": "伝達",
+    "culture": "文化",
+    "health": "健康",
+    "time": "時間"
+  },
+  "words": [
+    {
+      "id": "english-become",
+      "en": "become",
+      "ja": "～になる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-begin",
+      "en": "begin",
+      "ja": "始める・始まる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-break",
+      "en": "break",
+      "ja": "こわす",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-bring",
+      "en": "bring",
+      "ja": "持ってくる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-build",
+      "en": "build",
+      "ja": "建てる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-choose",
+      "en": "choose",
+      "ja": "選ぶ",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-feel",
+      "en": "feel",
+      "ja": "感じる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-find",
+      "en": "find",
+      "ja": "見つける",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-forget",
+      "en": "forget",
+      "ja": "忘れる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-give",
+      "en": "give",
+      "ja": "与える",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-grow",
+      "en": "grow",
+      "ja": "育つ・育てる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-hear",
+      "en": "hear",
+      "ja": "聞こえる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-hold",
+      "en": "hold",
+      "ja": "持つ・開催する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-keep",
+      "en": "keep",
+      "ja": "保つ",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-leave",
+      "en": "leave",
+      "ja": "去る・残す",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-lose",
+      "en": "lose",
+      "ja": "失う・負ける",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-mean",
+      "en": "mean",
+      "ja": "意味する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-put",
+      "en": "put",
+      "ja": "置く",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-say",
+      "en": "say",
+      "ja": "言う",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-sell",
+      "en": "sell",
+      "ja": "売る",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-send",
+      "en": "send",
+      "ja": "送る",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-show",
+      "en": "show",
+      "ja": "見せる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-tell",
+      "en": "tell",
+      "ja": "伝える・話す",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-understand",
+      "en": "understand",
+      "ja": "理解する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-arrive",
+      "en": "arrive",
+      "ja": "到着する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-decide",
+      "en": "decide",
+      "ja": "決める",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-agree",
+      "en": "agree",
+      "ja": "賛成する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-believe",
+      "en": "believe",
+      "ja": "信じる",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-borrow",
+      "en": "borrow",
+      "ja": "借りる",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-happen",
+      "en": "happen",
+      "ja": "起こる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-invite",
+      "en": "invite",
+      "ja": "招待する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-return",
+      "en": "return",
+      "ja": "戻る・返す",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-worry",
+      "en": "worry",
+      "ja": "心配する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-wait",
+      "en": "wait",
+      "ja": "待つ",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-stay",
+      "en": "stay",
+      "ja": "滞在する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-ask",
+      "en": "ask",
+      "ja": "たずねる・頼む",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-travel",
+      "en": "travel",
+      "ja": "旅行する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-hotel",
+      "en": "hotel",
+      "ja": "ホテル",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-ticket",
+      "en": "ticket",
+      "ja": "切符・チケット",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-passport",
+      "en": "passport",
+      "ja": "パスポート",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-airport",
+      "en": "airport",
+      "ja": "空港",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-abroad",
+      "en": "abroad",
+      "ja": "外国に",
+      "pos": "副",
+      "level": "hard",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-foreign",
+      "en": "foreign",
+      "ja": "外国の",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-tourist",
+      "en": "tourist",
+      "ja": "観光客",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-sightseeing",
+      "en": "sightseeing",
+      "ja": "観光",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-flight",
+      "en": "flight",
+      "ja": "飛行機の便",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-guide",
+      "en": "guide",
+      "ja": "案内人・ガイド",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-visitor",
+      "en": "visitor",
+      "ja": "訪問者",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "travel"
+      ]
+    },
+    {
+      "id": "english-environment",
+      "en": "environment",
+      "ja": "環境",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-earth",
+      "en": "earth",
+      "ja": "地球",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-energy",
+      "en": "energy",
+      "ja": "エネルギー",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-pollution",
+      "en": "pollution",
+      "ja": "汚染",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-recycle",
+      "en": "recycle",
+      "ja": "再生利用する・リサイクルする",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-garbage",
+      "en": "garbage",
+      "ja": "ごみ",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-plastic",
+      "en": "plastic",
+      "ja": "プラスチック",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-forest",
+      "en": "forest",
+      "ja": "森",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-nature",
+      "en": "nature",
+      "ja": "自然",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-protect",
+      "en": "protect",
+      "ja": "守る",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-save",
+      "en": "save",
+      "ja": "救う・節約する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-job",
+      "en": "job",
+      "ja": "仕事",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-engineer",
+      "en": "engineer",
+      "ja": "技師・エンジニア",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-designer",
+      "en": "designer",
+      "ja": "デザイナー",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-company",
+      "en": "company",
+      "ja": "会社",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-worker",
+      "en": "worker",
+      "ja": "労働者",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-actor",
+      "en": "actor",
+      "ja": "俳優",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-writer",
+      "en": "writer",
+      "ja": "作家",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-reporter",
+      "en": "reporter",
+      "ja": "記者",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-excited",
+      "en": "excited",
+      "ja": "わくわくした",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-surprised",
+      "en": "surprised",
+      "ja": "驚いた",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-nervous",
+      "en": "nervous",
+      "ja": "緊張した",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-bored",
+      "en": "bored",
+      "ja": "退屈した",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-lonely",
+      "en": "lonely",
+      "ja": "さびしい",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-proud",
+      "en": "proud",
+      "ja": "誇りに思って",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-scared",
+      "en": "scared",
+      "ja": "おびえた",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-interested",
+      "en": "interested",
+      "ja": "興味がある",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-sure",
+      "en": "sure",
+      "ja": "確信して",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-shy",
+      "en": "shy",
+      "ja": "内気な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-large",
+      "en": "large",
+      "ja": "大きい・広い",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-heavy",
+      "en": "heavy",
+      "ja": "重い",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-light",
+      "en": "light",
+      "ja": "軽い",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-cheap",
+      "en": "cheap",
+      "ja": "安い",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-expensive",
+      "en": "expensive",
+      "ja": "高価な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-useful",
+      "en": "useful",
+      "ja": "役に立つ",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-important",
+      "en": "important",
+      "ja": "重要な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-dangerous",
+      "en": "dangerous",
+      "ja": "危険な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-safe",
+      "en": "safe",
+      "ja": "安全な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-strong",
+      "en": "strong",
+      "ja": "強い",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-weak",
+      "en": "weak",
+      "ja": "弱い",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-quiet",
+      "en": "quiet",
+      "ja": "静かな",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-warm",
+      "en": "warm",
+      "ja": "暖かい",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-different",
+      "en": "different",
+      "ja": "ちがう・異なる",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-because",
+      "en": "because",
+      "ja": "なぜなら",
+      "pos": "接",
+      "level": "easy",
+      "tags": [
+        "connect"
+      ]
+    },
+    {
+      "id": "english-if",
+      "en": "if",
+      "ja": "もし～なら",
+      "pos": "接",
+      "level": "easy",
+      "tags": [
+        "connect"
+      ]
+    },
+    {
+      "id": "english-until",
+      "en": "until",
+      "ja": "～まで（ずっと）",
+      "pos": "接",
+      "level": "hard",
+      "tags": [
+        "connect"
+      ]
+    },
+    {
+      "id": "english-while",
+      "en": "while",
+      "ja": "～する間に",
+      "pos": "接",
+      "level": "hard",
+      "tags": [
+        "connect"
+      ]
+    },
+    {
+      "id": "english-however",
+      "en": "however",
+      "ja": "しかしながら",
+      "pos": "副",
+      "level": "hard",
+      "tags": [
+        "connect"
+      ]
+    },
+    {
+      "id": "english-though",
+      "en": "though",
+      "ja": "～だけれども",
+      "pos": "接",
+      "level": "hard",
+      "tags": [
+        "connect"
+      ]
+    },
+    {
+      "id": "english-reason",
+      "en": "reason",
+      "ja": "理由",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-example",
+      "en": "example",
+      "ja": "例",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-speech",
+      "en": "speech",
+      "ja": "スピーチ・演説",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-news",
+      "en": "news",
+      "ja": "ニュース・知らせ",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-letter",
+      "en": "letter",
+      "ja": "手紙",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-present",
+      "en": "present",
+      "ja": "プレゼント・贈り物",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-festival",
+      "en": "festival",
+      "ja": "祭り",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-tradition",
+      "en": "tradition",
+      "ja": "伝統",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-culture",
+      "en": "culture",
+      "ja": "文化",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-history",
+      "en": "history",
+      "ja": "歴史",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-language",
+      "en": "language",
+      "ja": "言語",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-custom",
+      "en": "custom",
+      "ja": "習慣",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-international",
+      "en": "international",
+      "ja": "国際的な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-local",
+      "en": "local",
+      "ja": "地元の",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-sick",
+      "en": "sick",
+      "ja": "病気の",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-healthy",
+      "en": "healthy",
+      "ja": "健康な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-medicine",
+      "en": "medicine",
+      "ja": "薬",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-headache",
+      "en": "headache",
+      "ja": "頭痛",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-fever",
+      "en": "fever",
+      "ja": "熱",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-exercise",
+      "en": "exercise",
+      "ja": "運動",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-future",
+      "en": "future",
+      "ja": "未来・将来",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-century",
+      "en": "century",
+      "ja": "世紀",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-ago",
+      "en": "ago",
+      "ja": "（今から）～前に",
+      "pos": "副",
+      "level": "normal",
+      "tags": [
+        "time"
+      ]
+    }
+  ]
+}

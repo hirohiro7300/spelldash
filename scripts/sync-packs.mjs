@@ -13,7 +13,8 @@ const MANIFEST = path.join(ROOT, "data", "manifest.json");
 const GROUPS = {
   "小学校（社会・理科・算数・漢字）": ["elem-hist", "elem-sci", "elem-math", "elem-kanji"],
   "中学校（社会・理科・国語・数学）": ["pref", "jhist1", "jhist2", "jgeo1", "jgeo2", "jcivics", "jsci1", "jsci2", "jkokugo1", "jkokugo2", "jmath"],
-  "高校（世界史・日本史・化学・生物・古文）": ["hs-worldhist1", "hs-worldhist2", "hs-japhist1", "hs-japhist2", "hs-chem", "hs-bio", "hs-kobun"],
+  "高校（世界史・日本史・地理・公民・理科・国語）": ["hs-worldhist1", "hs-worldhist2", "hs-japhist1", "hs-japhist2", "hs-geo", "hs-civics", "hs-ethics", "hs-chem", "hs-bio", "hs-physics", "hs-earth", "hs-kobun", "hs-kanbun", "hs-gendaibun"],
+  "英語（教科書レベル）": ["elem-english", "jhs-english1", "jhs-english2", "jhs-english3"],
   "文法（中学・高校・TOEIC）": ["grammar-jhs1", "grammar-jhs2", "grammar-jhs3", "grammar-hs1", "grammar-hs2", "grammar-toeic"],
   "試験・レベル別（英検・TOEIC）": ["eiken5", "eiken4", "eiken3", "eikenp2", "eiken2", "eikenp1", "eiken1", "toeic500", "toeic600", "toeic730", "toeic860", "toeic990"],
   "ビジネス・バックオフィス": ["accounting", "legal", "hr", "freelancetax", "staffing", "publicbid", "startupfinance", "banking", "insurance", "trade"],

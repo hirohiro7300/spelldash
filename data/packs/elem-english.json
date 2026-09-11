@@ -1,0 +1,1226 @@
+{
+  "subject": "english",
+  "category": "elem-english",
+  "cardType": "word",
+  "label": "小学英語",
+  "blurb": "小学5・6年の外国語で出てくる基本語。食べ物・動物・職業・動作など",
+  "audience": "小学5・6年生、英語を始めたばかりの人",
+  "genres": {
+    "food": "食べ物",
+    "animal": "動物",
+    "school": "学校",
+    "sport": "スポーツ",
+    "work": "職業",
+    "place": "場所",
+    "nature": "自然",
+    "daily": "身の回り",
+    "action": "動作",
+    "feeling": "気持ち",
+    "state": "状態",
+    "time": "季節",
+    "family": "家族",
+    "people": "人"
+  },
+  "words": [
+    {
+      "id": "english-apple",
+      "en": "apple",
+      "ja": "りんご",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-banana",
+      "en": "banana",
+      "ja": "バナナ",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-grape",
+      "en": "grape",
+      "ja": "ぶどう",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-strawberry",
+      "en": "strawberry",
+      "ja": "いちご",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-tomato",
+      "en": "tomato",
+      "ja": "トマト",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-potato",
+      "en": "potato",
+      "ja": "じゃがいも",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-onion",
+      "en": "onion",
+      "ja": "たまねぎ",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-carrot",
+      "en": "carrot",
+      "ja": "にんじん",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-egg",
+      "en": "egg",
+      "ja": "卵",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-bread",
+      "en": "bread",
+      "ja": "パン",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-rice",
+      "en": "rice",
+      "ja": "ごはん・米",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-milk",
+      "en": "milk",
+      "ja": "牛乳",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-juice",
+      "en": "juice",
+      "ja": "ジュース",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-cake",
+      "en": "cake",
+      "ja": "ケーキ",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-pizza",
+      "en": "pizza",
+      "ja": "ピザ",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-soup",
+      "en": "soup",
+      "ja": "スープ",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-curry",
+      "en": "curry",
+      "ja": "カレー",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-sandwich",
+      "en": "sandwich",
+      "ja": "サンドイッチ",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "food"
+      ]
+    },
+    {
+      "id": "english-dog",
+      "en": "dog",
+      "ja": "犬",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-cat",
+      "en": "cat",
+      "ja": "ねこ",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-rabbit",
+      "en": "rabbit",
+      "ja": "うさぎ",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-bird",
+      "en": "bird",
+      "ja": "鳥",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-fish",
+      "en": "fish",
+      "ja": "魚",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-horse",
+      "en": "horse",
+      "ja": "馬",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-monkey",
+      "en": "monkey",
+      "ja": "さる",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-elephant",
+      "en": "elephant",
+      "ja": "ぞう",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-lion",
+      "en": "lion",
+      "ja": "ライオン",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-tiger",
+      "en": "tiger",
+      "ja": "とら",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-bear",
+      "en": "bear",
+      "ja": "くま",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-panda",
+      "en": "panda",
+      "ja": "パンダ",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "animal"
+      ]
+    },
+    {
+      "id": "english-math",
+      "en": "math",
+      "ja": "算数・数学",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-science",
+      "en": "science",
+      "ja": "理科",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-music",
+      "en": "music",
+      "ja": "音楽",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-art",
+      "en": "art",
+      "ja": "図工・美術",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-pencil",
+      "en": "pencil",
+      "ja": "えんぴつ",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-eraser",
+      "en": "eraser",
+      "ja": "消しゴム",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-notebook",
+      "en": "notebook",
+      "ja": "ノート",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-ruler",
+      "en": "ruler",
+      "ja": "定規",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-desk",
+      "en": "desk",
+      "ja": "机",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-chair",
+      "en": "chair",
+      "ja": "いす",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-book",
+      "en": "book",
+      "ja": "本",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-bag",
+      "en": "bag",
+      "ja": "かばん",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-homework",
+      "en": "homework",
+      "ja": "宿題",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "school"
+      ]
+    },
+    {
+      "id": "english-soccer",
+      "en": "soccer",
+      "ja": "サッカー",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "sport"
+      ]
+    },
+    {
+      "id": "english-baseball",
+      "en": "baseball",
+      "ja": "野球",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "sport"
+      ]
+    },
+    {
+      "id": "english-tennis",
+      "en": "tennis",
+      "ja": "テニス",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "sport"
+      ]
+    },
+    {
+      "id": "english-basketball",
+      "en": "basketball",
+      "ja": "バスケットボール",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "sport"
+      ]
+    },
+    {
+      "id": "english-volleyball",
+      "en": "volleyball",
+      "ja": "バレーボール",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "sport"
+      ]
+    },
+    {
+      "id": "english-rugby",
+      "en": "rugby",
+      "ja": "ラグビー",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "sport"
+      ]
+    },
+    {
+      "id": "english-badminton",
+      "en": "badminton",
+      "ja": "バドミントン",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "sport"
+      ]
+    },
+    {
+      "id": "english-dodgeball",
+      "en": "dodgeball",
+      "ja": "ドッジボール",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "sport"
+      ]
+    },
+    {
+      "id": "english-teacher",
+      "en": "teacher",
+      "ja": "先生",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-doctor",
+      "en": "doctor",
+      "ja": "医者",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-nurse",
+      "en": "nurse",
+      "ja": "看護師",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-cook",
+      "en": "cook",
+      "ja": "料理人",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-singer",
+      "en": "singer",
+      "ja": "歌手",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-pilot",
+      "en": "pilot",
+      "ja": "パイロット",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-farmer",
+      "en": "farmer",
+      "ja": "農家",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-firefighter",
+      "en": "firefighter",
+      "ja": "消防士",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-scientist",
+      "en": "scientist",
+      "ja": "科学者",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-artist",
+      "en": "artist",
+      "ja": "芸術家",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-baker",
+      "en": "baker",
+      "ja": "パン職人",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-florist",
+      "en": "florist",
+      "ja": "花屋",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-school",
+      "en": "school",
+      "ja": "学校",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-park",
+      "en": "park",
+      "ja": "公園",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-library",
+      "en": "library",
+      "ja": "図書館",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-hospital",
+      "en": "hospital",
+      "ja": "病院",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-station",
+      "en": "station",
+      "ja": "駅",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-zoo",
+      "en": "zoo",
+      "ja": "動物園",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-museum",
+      "en": "museum",
+      "ja": "博物館",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-restaurant",
+      "en": "restaurant",
+      "ja": "レストラン",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-supermarket",
+      "en": "supermarket",
+      "ja": "スーパーマーケット",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-house",
+      "en": "house",
+      "ja": "家",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "place"
+      ]
+    },
+    {
+      "id": "english-mountain",
+      "en": "mountain",
+      "ja": "山",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "nature"
+      ]
+    },
+    {
+      "id": "english-river",
+      "en": "river",
+      "ja": "川",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "nature"
+      ]
+    },
+    {
+      "id": "english-sea",
+      "en": "sea",
+      "ja": "海",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "nature"
+      ]
+    },
+    {
+      "id": "english-flower",
+      "en": "flower",
+      "ja": "花",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "nature"
+      ]
+    },
+    {
+      "id": "english-tree",
+      "en": "tree",
+      "ja": "木",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "nature"
+      ]
+    },
+    {
+      "id": "english-cap",
+      "en": "cap",
+      "ja": "ぼうし",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "daily"
+      ]
+    },
+    {
+      "id": "english-shirt",
+      "en": "shirt",
+      "ja": "シャツ",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "daily"
+      ]
+    },
+    {
+      "id": "english-umbrella",
+      "en": "umbrella",
+      "ja": "かさ",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "daily"
+      ]
+    },
+    {
+      "id": "english-bed",
+      "en": "bed",
+      "ja": "ベッド",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "daily"
+      ]
+    },
+    {
+      "id": "english-cup",
+      "en": "cup",
+      "ja": "カップ",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "daily"
+      ]
+    },
+    {
+      "id": "english-bike",
+      "en": "bike",
+      "ja": "自転車",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "daily"
+      ]
+    },
+    {
+      "id": "english-play",
+      "en": "play",
+      "ja": "（スポーツを）する・遊ぶ",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-eat",
+      "en": "eat",
+      "ja": "食べる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-drink",
+      "en": "drink",
+      "ja": "飲む",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-see",
+      "en": "see",
+      "ja": "見る・会う",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-like",
+      "en": "like",
+      "ja": "～が好きだ",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-want",
+      "en": "want",
+      "ja": "～がほしい",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-run",
+      "en": "run",
+      "ja": "走る",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-swim",
+      "en": "swim",
+      "ja": "泳ぐ",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-jump",
+      "en": "jump",
+      "ja": "とぶ",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-sing",
+      "en": "sing",
+      "ja": "歌う",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-dance",
+      "en": "dance",
+      "ja": "おどる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-watch",
+      "en": "watch",
+      "ja": "（じっと）見る",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-happy",
+      "en": "happy",
+      "ja": "幸せな",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-sad",
+      "en": "sad",
+      "ja": "悲しい",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-hungry",
+      "en": "hungry",
+      "ja": "おなかがすいた",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-sleepy",
+      "en": "sleepy",
+      "ja": "ねむい",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-big",
+      "en": "big",
+      "ja": "大きい",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-small",
+      "en": "small",
+      "ja": "小さい",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-cute",
+      "en": "cute",
+      "ja": "かわいい",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-delicious",
+      "en": "delicious",
+      "ja": "おいしい",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-beautiful",
+      "en": "beautiful",
+      "ja": "美しい",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-spring",
+      "en": "spring",
+      "ja": "春",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-summer",
+      "en": "summer",
+      "ja": "夏",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-autumn",
+      "en": "autumn",
+      "ja": "秋",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-winter",
+      "en": "winter",
+      "ja": "冬",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-family",
+      "en": "family",
+      "ja": "家族",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "family"
+      ]
+    },
+    {
+      "id": "english-father",
+      "en": "father",
+      "ja": "父",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "family"
+      ]
+    },
+    {
+      "id": "english-mother",
+      "en": "mother",
+      "ja": "母",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "family"
+      ]
+    },
+    {
+      "id": "english-brother",
+      "en": "brother",
+      "ja": "兄・弟",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "family"
+      ]
+    },
+    {
+      "id": "english-sister",
+      "en": "sister",
+      "ja": "姉・妹",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "family"
+      ]
+    },
+    {
+      "id": "english-grandfather",
+      "en": "grandfather",
+      "ja": "祖父",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "family"
+      ]
+    },
+    {
+      "id": "english-grandmother",
+      "en": "grandmother",
+      "ja": "祖母",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "family"
+      ]
+    },
+    {
+      "id": "english-friend",
+      "en": "friend",
+      "ja": "友達",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-student",
+      "en": "student",
+      "ja": "生徒",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-boy",
+      "en": "boy",
+      "ja": "男の子",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-girl",
+      "en": "girl",
+      "ja": "女の子",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "people"
+      ]
+    }
+  ]
+}

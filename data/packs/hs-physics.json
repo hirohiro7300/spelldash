@@ -1,0 +1,1089 @@
+{
+  "subject": "english",
+  "category": "hs-physics",
+  "cardType": "school",
+  "label": "高校 物理基礎",
+  "blurb": "運動・エネルギー・波・電気・単位。物理基礎の用語と法則を説明から答える",
+  "audience": "高校生、物理基礎を復習する人",
+  "genres": {
+    "hph-motion": "運動と力",
+    "hph-energy": "エネルギーと熱",
+    "hph-wave": "波と音",
+    "hph-elec": "電気と磁気",
+    "hph-unit": "単位と物理量"
+  },
+  "words": [
+    {
+      "id": "concept-hph-sokudo",
+      "en": "hph-sokudo",
+      "kind": "concept",
+      "answer": "速度",
+      "accept": [
+        "そくど"
+      ],
+      "ja": "速さに向きを含めた量",
+      "q": "物体の位置の変化を経過時間で割った量で、大きさだけでなく向きももつベクトル量。同じ速さでも向きが違えば別の値として扱う",
+      "explain": "大きさだけを表すのが「速さ」。単位はどちらもm/s。向きが反対なら負の値で表す",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-kasokudo",
+      "en": "hph-kasokudo",
+      "kind": "concept",
+      "answer": "加速度",
+      "accept": [
+        "かそくど"
+      ],
+      "ja": "単位時間あたりの速度の変化",
+      "q": "単位時間あたりに速度がどれだけ変化したかを表す量。単位はm/s²で、速さが一定でも向きが変われば0にならない",
+      "explain": "a＝Δv／Δt。v-tグラフの傾きにあたる。減速しているときは負の値になる",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-tokasokudo",
+      "en": "hph-tokasokudo",
+      "kind": "concept",
+      "answer": "等加速度直線運動",
+      "accept": [
+        "とうかそくどちょくせんうんどう",
+        "等加速度運動"
+      ],
+      "ja": "一定の加速度で進む直線運動",
+      "q": "一定の大きさの力を受け続ける物体のように、速度が時間に比例して一定の割合で増えたり減ったりする直線上の運動。v-tグラフが直線になる",
+      "explain": "3公式: v＝v0＋at、x＝v0t＋½at²、v²−v0²＝2ax。v-tグラフと横軸で囲む面積が移動距離",
+      "level": "normal",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-jiyurakka",
+      "en": "hph-jiyurakka",
+      "kind": "concept",
+      "answer": "自由落下",
+      "accept": [
+        "じゆうらっか",
+        "自由落下運動"
+      ],
+      "ja": "重力だけを受け初速度0で落ちる運動",
+      "q": "静かに手を離した物体が、空気抵抗を無視して重力だけを受けて落ちる運動。初速度は0で、速さは毎秒約9.8m/sずつ増えていく",
+      "explain": "質量に関係なく同じ加速度で落ちる（ガリレイ）。v＝gt、y＝½gt²。真空中では羽も鉄球も同時に落ちる",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-juryokukasokudo",
+      "en": "hph-juryokukasokudo",
+      "kind": "concept",
+      "answer": "重力加速度",
+      "accept": [
+        "じゅうりょくかそくど"
+      ],
+      "ja": "地表付近の落下の加速度、約9.8m/s²",
+      "q": "地表付近で落下する物体がもつ加速度で、物体の質量や形によらず一定。記号gで表し、大きさは約9.8m/s²",
+      "explain": "重力の大きさはmg。場所によりわずかに違い、赤道より極の方が大きい。計算では9.8で覚える",
+      "level": "normal",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-sotaisokudo",
+      "en": "hph-sotaisokudo",
+      "kind": "concept",
+      "answer": "相対速度",
+      "accept": [
+        "そうたいそくど"
+      ],
+      "ja": "動く観測者から見た他の物体の速度",
+      "q": "並走する電車から隣の電車を見たときのように、動いている観測者から見た他の物体の速度。相手の速度から自分の速度を引いて求める",
+      "explain": "「AからみたBの速度」＝vB−vA。引く順番を間違えやすい。走ると雨が前から降ってくるように見えるのもこれ",
+      "level": "hard",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-kanseinohosoku",
+      "en": "hph-kanseinohosoku",
+      "kind": "concept",
+      "answer": "慣性の法則",
+      "accept": [
+        "かんせいのほうそく",
+        "運動の第一法則",
+        "運動の第1法則"
+      ],
+      "ja": "力がつり合えば運動状態を保つ",
+      "q": "物体に力がはたらいていないか、はたらく力がつり合っているとき、静止している物体は静止し続け、運動している物体は等速直線運動を続けるという法則",
+      "explain": "運動の第一法則。急ブレーキで乗客が前へつんのめるのは、体がそれまでの運動を続けようとするため",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-undohoteishiki",
+      "en": "hph-undohoteishiki",
+      "kind": "concept",
+      "answer": "運動方程式",
+      "accept": [
+        "うんどうほうていしき",
+        "運動の第二法則",
+        "運動の第2法則"
+      ],
+      "ja": "ma＝F、運動の第二法則",
+      "q": "質量mの物体に力Fがはたらくと、力の向きに、力の大きさに比例し質量に反比例する加速度aが生じるという関係を、質量・加速度・力の記号を使って表した式",
+      "explain": "ma＝F。左辺は「質量×加速度」、右辺は「はたらく力の合力」。1N＝1kg·m/s²もここから定まる",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-sayohansayo",
+      "en": "hph-sayohansayo",
+      "kind": "concept",
+      "answer": "作用反作用の法則",
+      "accept": [
+        "さようはんさようのほうそく",
+        "作用・反作用の法則",
+        "運動の第三法則"
+      ],
+      "ja": "2物体間の力は必ず対になる",
+      "q": "壁を押すと壁からも同じ大きさで逆向きに押し返されるように、2つの物体の間ではたらく力は、常に大きさが等しく逆向きで一直線上にあるという法則",
+      "explain": "運動の第三法則。「つり合い」は同じ物体にはたらく2力、作用・反作用は別々の物体にはたらく2力なので区別する",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-seishimasatsu",
+      "en": "hph-seishimasatsu",
+      "kind": "concept",
+      "answer": "静止摩擦力",
+      "accept": [
+        "せいしまさつりょく"
+      ],
+      "ja": "動かない物体にはたらく摩擦力",
+      "q": "床の上の箱を押しても動かないとき、押す力とつり合って箱の動きを妨げている、接触面に平行な力。押す力に応じて大きさが変わる",
+      "explain": "押す力と同じ大きさで逆向き（0から最大値まで変化）。μNを常に使うのは誤り。最大値になるのは動き出す直前だけ",
+      "level": "normal",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-saidaimasatsu",
+      "en": "hph-saidaimasatsu",
+      "kind": "concept",
+      "answer": "最大摩擦力",
+      "accept": [
+        "さいだいまさつりょく",
+        "最大静止摩擦力"
+      ],
+      "ja": "動き出す直前の摩擦力",
+      "q": "押す力を大きくしていき、物体がまさに滑り出そうとする瞬間にはたらく静止摩擦力の大きさ。垂直抗力に比例し、接触面の面積にはよらない",
+      "explain": "F0＝μN（μは静止摩擦係数）。動き出した後の動摩擦力より大きいので、動かし始めが一番重い",
+      "level": "hard",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-domasatsu",
+      "en": "hph-domasatsu",
+      "kind": "concept",
+      "answer": "動摩擦力",
+      "accept": [
+        "どうまさつりょく"
+      ],
+      "ja": "滑っている物体にはたらく摩擦力",
+      "q": "床の上を滑っている物体に、運動の向きと逆向きにはたらく摩擦力。速さによらずほぼ一定で、滑り出す直前の摩擦力より小さい",
+      "explain": "F'＝μ'N（μ'は動摩擦係数）。μ'＜μ。滑っている間は一定の力で減速するので等加速度運動になる",
+      "level": "normal",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-suichokukoryoku",
+      "en": "hph-suichokukoryoku",
+      "kind": "concept",
+      "answer": "垂直抗力",
+      "accept": [
+        "すいちょくこうりょく"
+      ],
+      "ja": "面が物体を垂直に押す力",
+      "q": "机の上に置かれた本が机から受ける、接触面に垂直で面から離れる向きの力。水平な面に置かれた物体では重力とつり合う",
+      "explain": "記号N。斜面上ではmgcosθになり重力より小さい。摩擦力の最大値はこの力に比例する",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-danseiryoku",
+      "en": "hph-danseiryoku",
+      "kind": "concept",
+      "answer": "弾性力",
+      "accept": [
+        "だんせいりょく"
+      ],
+      "ja": "変形した物体が元に戻ろうとする力",
+      "q": "伸ばしたり縮めたりしたばねが、元の長さ（自然長）に戻ろうとして物体におよぼす力。変形が大きいほど大きくなる",
+      "explain": "向きは常に自然長に戻る向き。伸びと縮みで向きが逆になる。ゴムやたわんだ板にもはたらく",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-hooke",
+      "en": "hph-hooke",
+      "kind": "concept",
+      "answer": "フックの法則",
+      "accept": [
+        "ふっくのほうそく"
+      ],
+      "ja": "弾性力は伸びに比例する",
+      "q": "ばねの弾性力の大きさが、自然長からの伸びまたは縮みの長さに比例するという法則。比例定数はばねの硬さを表す",
+      "explain": "F＝kx（kはばね定数、単位N/m）。伸ばしすぎて元に戻らなくなる弾性限界を超えると成り立たない",
+      "level": "normal",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-atsuryoku",
+      "en": "hph-atsuryoku",
+      "kind": "concept",
+      "answer": "圧力",
+      "accept": [
+        "あつりょく"
+      ],
+      "ja": "単位面積あたりの力、単位Pa",
+      "q": "単位面積あたりに面に垂直にはたらく力の大きさ。同じ力でも受ける面積が小さいほど大きくなり、単位はPa",
+      "explain": "p＝F／S。1Pa＝1N/m²。画びょうの先が刺さりやすいのは面積が小さいから。水中では深さに比例して増す",
+      "level": "easy",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-furyoku",
+      "en": "hph-furyoku",
+      "kind": "concept",
+      "answer": "浮力",
+      "accept": [
+        "ふりょく"
+      ],
+      "ja": "液体中の物体が受ける上向きの力",
+      "q": "水中の物体が、上面より下面の方が水圧が大きいために受ける上向きの力。押しのけた液体の重さに等しい（アルキメデスの原理）",
+      "explain": "F＝ρVg（ρは液体の密度、Vは液体中の体積）。物体の材質や重さにはよらず、押しのけた液体で決まる",
+      "level": "normal",
+      "tags": [
+        "hph-motion"
+      ]
+    },
+    {
+      "id": "concept-hph-shigoto",
+      "en": "hph-shigoto",
+      "kind": "concept",
+      "answer": "仕事",
+      "accept": [
+        "しごと"
+      ],
+      "ja": "力×力の向きの移動距離、単位J",
+      "q": "物体に力を加えて力の向きに動かしたとき、力の大きさと移動距離の積で表される量。単位はJ",
+      "explain": "W＝Fx。力と移動方向が垂直なら0（荷物を持って水平に歩いても0）。逆向きなら負",
+      "level": "easy",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-shigotoritsu",
+      "en": "hph-shigotoritsu",
+      "kind": "concept",
+      "answer": "仕事率",
+      "accept": [
+        "しごとりつ"
+      ],
+      "ja": "単位時間あたりの仕事、単位W",
+      "q": "単位時間あたりにされる仕事の大きさ。同じ量の仕事でも短い時間で行うほど大きくなり、単位はW",
+      "explain": "P＝W／t＝Fv。1W＝1J/s。「馬力」も同じ量の単位で、1馬力は約735W",
+      "level": "easy",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-undoenergy",
+      "en": "hph-undoenergy",
+      "kind": "concept",
+      "answer": "運動エネルギー",
+      "accept": [
+        "うんどうえねるぎー"
+      ],
+      "ja": "運動する物体がもつエネルギー",
+      "q": "運動している物体が、他の物体に衝突して仕事ができるためにもつエネルギー。質量に比例し、速さの2乗に比例する",
+      "explain": "K＝½mv²。速さが2倍になると4倍。「された仕事の分だけ増える」のがエネルギーの原理",
+      "level": "easy",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-ichienergy",
+      "en": "hph-ichienergy",
+      "kind": "concept",
+      "answer": "位置エネルギー",
+      "accept": [
+        "いちえねるぎー",
+        "重力による位置エネルギー"
+      ],
+      "ja": "高い所の物体がもつエネルギー",
+      "q": "高い所にある物体が、落下すれば仕事ができるためにもつエネルギー。質量と基準面からの高さに比例する",
+      "explain": "U＝mgh。基準面（h＝0）は自由に決めてよく、基準面より下では負になる",
+      "level": "normal",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-danseienergy",
+      "en": "hph-danseienergy",
+      "kind": "concept",
+      "answer": "弾性エネルギー",
+      "accept": [
+        "だんせいえねるぎー",
+        "弾性力による位置エネルギー"
+      ],
+      "ja": "変形したばねがもつエネルギー",
+      "q": "縮めたばねや引き絞った弓のように、変形した物体が元に戻るときに仕事ができるためにもつエネルギー。変形の大きさの2乗に比例する",
+      "explain": "U＝½kx²。伸びでも縮みでも正の値。F-xグラフの三角形の面積として求められる",
+      "level": "hard",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-rikigakuhozon",
+      "en": "hph-rikigakuhozon",
+      "kind": "concept",
+      "answer": "力学的エネルギー保存の法則",
+      "accept": [
+        "りきがくてきえねるぎーほぞんのほうそく",
+        "力学的エネルギー保存則"
+      ],
+      "ja": "運動＋位置エネルギーが一定",
+      "q": "摩擦や空気抵抗がなく、重力や弾性力だけが仕事をするとき、運動エネルギーと位置エネルギーの和が常に一定に保たれるという法則",
+      "explain": "½mv²＋mgh＝一定。ジェットコースターや振り子で使う。摩擦があると熱に変わり成り立たない",
+      "level": "normal",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-netsuundo",
+      "en": "hph-netsuundo",
+      "kind": "concept",
+      "answer": "熱運動",
+      "accept": [
+        "ねつうんどう"
+      ],
+      "ja": "原子・分子の不規則な運動",
+      "q": "物質をつくる原子や分子が、温度に応じて絶えず不規則に行っている運動。温度が高いほど激しく、温度はこの激しさの目安",
+      "explain": "熱とは、この運動のエネルギーが移動すること。拡散やブラウン運動はこの運動の証拠",
+      "level": "normal",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-zettaiondo",
+      "en": "hph-zettaiondo",
+      "kind": "concept",
+      "answer": "絶対温度",
+      "accept": [
+        "ぜったいおんど",
+        "熱力学温度"
+      ],
+      "ja": "0Kを基準にした温度、単位K",
+      "q": "原子・分子の熱運動が最も穏やかになる温度を0とした温度の表し方。単位はK（ケルビン）で、セ氏温度に約273を加えた値になる",
+      "explain": "T＝t＋273。0K＝−273℃が絶対零度で、これより低い温度はない。目盛りの間隔はセ氏と同じ",
+      "level": "normal",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-netsuryo",
+      "en": "hph-netsuryo",
+      "kind": "concept",
+      "answer": "熱量",
+      "accept": [
+        "ねつりょう"
+      ],
+      "ja": "移動する熱の量、単位J",
+      "q": "高温の物体から低温の物体へ移動する熱の量。単位はJで、かつては水1gを1K上げるのに必要な量を基準にしたcalも使われた",
+      "explain": "1cal≒4.2J。温度変化との関係はQ＝mcΔT。「温度」と「熱」は別物",
+      "level": "easy",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-hinetsu",
+      "en": "hph-hinetsu",
+      "kind": "concept",
+      "answer": "比熱",
+      "accept": [
+        "ひねつ",
+        "比熱容量"
+      ],
+      "ja": "物質1gを1K上げる熱量",
+      "q": "物質1gの温度を1K上げるのに必要な熱量。単位はJ/(g·K)で、水は約4.2と大きく、温まりにくく冷めにくい",
+      "explain": "Q＝mcΔTのc。水が大きいので海沿いは気温変化が小さい。金属は小さくすぐ熱くなる",
+      "level": "normal",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-netsuyoryo",
+      "en": "hph-netsuyoryo",
+      "kind": "concept",
+      "answer": "熱容量",
+      "accept": [
+        "ねつようりょう"
+      ],
+      "ja": "物体全体を1K上げる熱量",
+      "q": "ある物体全体の温度を1K上げるのに必要な熱量。比熱に質量をかけた値で、単位はJ/K",
+      "explain": "C＝mc、Q＝CΔT。比熱は「物質1gあたり」、こちらは「その物体まるごと」の値",
+      "level": "hard",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-shigototoryo",
+      "en": "hph-shigototoryo",
+      "kind": "concept",
+      "answer": "熱の仕事当量",
+      "accept": [
+        "ねつのしごととうりょう"
+      ],
+      "ja": "1cal＝約4.2J",
+      "q": "ジュールがおもりで羽根車を回して水温を上げる実験で確かめた、熱量1calに相当する仕事の量。熱が仕事と同じエネルギーの一形態であることを示す",
+      "explain": "J＝約4.19J/cal。この実験がエネルギー保存の法則の確立につながった",
+      "level": "hard",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-energyhozon",
+      "en": "hph-energyhozon",
+      "kind": "concept",
+      "answer": "エネルギー保存の法則",
+      "accept": [
+        "えねるぎーほぞんのほうそく",
+        "エネルギー保存則"
+      ],
+      "ja": "全エネルギーの総量は一定",
+      "q": "力学的なエネルギーだけでなく、熱・電気・光・化学・核などあらゆる形を含めたエネルギーの総量は、形が変わっても常に一定に保たれるという法則",
+      "explain": "摩擦で減った力学的エネルギーは熱になっただけ。「エネルギーを消費する」とは使いにくい形に変わること",
+      "level": "normal",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-netsukikan",
+      "en": "hph-netsukikan",
+      "kind": "concept",
+      "answer": "熱機関",
+      "accept": [
+        "ねつきかん"
+      ],
+      "ja": "熱を仕事に変える装置",
+      "q": "ガソリンエンジンや蒸気機関のように、高温の熱源から受け取った熱の一部を仕事に変え、残りの熱を低温の物体へ捨てる装置",
+      "explain": "受け取った熱をすべて仕事に変えることはできない。捨てる熱があるからこそ繰り返し動ける",
+      "level": "normal",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-netsukoritsu",
+      "en": "hph-netsukoritsu",
+      "kind": "concept",
+      "answer": "熱効率",
+      "accept": [
+        "ねつこうりつ"
+      ],
+      "ja": "熱のうち仕事になった割合",
+      "q": "熱機関が高温の熱源から受け取った熱量のうち、どれだけの割合を仕事に変えられたかを示す値。1（100%）になることはない",
+      "explain": "e＝W／Q1＝(Q1−Q2)／Q1。ガソリンエンジンで約0.3、火力発電所で約0.4が目安",
+      "level": "hard",
+      "tags": [
+        "hph-energy"
+      ]
+    },
+    {
+      "id": "concept-hph-hacho",
+      "en": "hph-hacho",
+      "kind": "concept",
+      "answer": "波長",
+      "accept": [
+        "はちょう"
+      ],
+      "ja": "山から隣の山までの距離",
+      "q": "波の山から隣の山まで、あるいは谷から隣の谷までの距離。記号λで表し、単位はm。波が1周期の間に進む距離に等しい",
+      "explain": "v＝fλ。振動数が大きいほど短い。音では約1.7cm〜17m、可視光では約400〜800nm",
+      "level": "easy",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-shindosu",
+      "en": "hph-shindosu",
+      "kind": "concept",
+      "answer": "振動数",
+      "accept": [
+        "しんどうすう",
+        "周波数"
+      ],
+      "ja": "1秒間の振動の回数、単位Hz",
+      "q": "波を伝える媒質の各点が1秒間に振動する回数。単位はHzで、音ではこの値が大きいほど高い音に聞こえる",
+      "explain": "f＝1／T。人が聞こえるのは約20〜20000Hz。電気や電波では周波数と呼ぶことが多い",
+      "level": "easy",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-shuki",
+      "en": "hph-shuki",
+      "kind": "concept",
+      "answer": "周期",
+      "accept": [
+        "しゅうき"
+      ],
+      "ja": "1回振動するのにかかる時間",
+      "q": "媒質の各点が1回振動するのにかかる時間。単位はsで、1秒間の振動回数の逆数にあたる",
+      "explain": "T＝1／f。この時間に波は1波長分だけ進むので、λ＝vT",
+      "level": "easy",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-shinpuku",
+      "en": "hph-shinpuku",
+      "kind": "concept",
+      "answer": "振幅",
+      "accept": [
+        "しんぷく"
+      ],
+      "ja": "振動の中心からの最大の変位",
+      "q": "振動の中心から山の頂上まで、あるいは谷の底までの変位の大きさ。音ではこれが大きいほど大きな音になる",
+      "explain": "山から谷までの高さの半分。波が運ぶエネルギーはこの2乗に比例する",
+      "level": "easy",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-yokonami",
+      "en": "hph-yokonami",
+      "kind": "concept",
+      "answer": "横波",
+      "accept": [
+        "よこなみ"
+      ],
+      "ja": "振動方向が進行方向と垂直な波",
+      "q": "ロープを上下に振ったときにできる波や光のように、媒質の振動する方向が波の進む方向と垂直になっている波",
+      "explain": "地震のS波もこれ。S波は固体中しか伝わらないので、地球の外核が液体だと分かった",
+      "level": "easy",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-tatenami",
+      "en": "hph-tatenami",
+      "kind": "concept",
+      "answer": "縦波",
+      "accept": [
+        "たてなみ",
+        "疎密波"
+      ],
+      "ja": "振動方向が進行方向と平行な波",
+      "q": "音波や地震のP波のように、媒質の振動する方向が波の進む方向と平行で、密な部分と疎な部分が交互に伝わっていく波",
+      "explain": "疎密波ともいう。気体・液体中も伝わる。作図では変位を90°回して横波のように描く",
+      "level": "normal",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-kasaneawase",
+      "en": "hph-kasaneawase",
+      "kind": "concept",
+      "answer": "重ね合わせの原理",
+      "accept": [
+        "かさねあわせのげんり"
+      ],
+      "ja": "変位は各波の変位の和",
+      "q": "2つの波が同じ場所で出会ったとき、その点の変位はそれぞれの波が単独で来たときの変位の和になるという原理。すれ違った後は元の波形に戻る",
+      "explain": "通り過ぎた後も互いに影響しないのが「波の独立性」。定常波・うなり・干渉はすべてこれで説明できる",
+      "level": "hard",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-teijoha",
+      "en": "hph-teijoha",
+      "kind": "concept",
+      "answer": "定常波",
+      "accept": [
+        "ていじょうは",
+        "定在波"
+      ],
+      "ja": "進まずその場で振動する波",
+      "q": "波長・振幅の等しい2つの波が逆向きに進んで重なり合い、どちらにも進まずその場で振動しているように見える波。大きく振動する腹と全く動かない節ができる",
+      "explain": "腹と腹、節と節の間隔は半波長。弦楽器や管楽器の音はこれによる。進む波は進行波",
+      "level": "normal",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-sanyoso",
+      "en": "hph-sanyoso",
+      "kind": "concept",
+      "answer": "音の三要素",
+      "accept": [
+        "おとのさんようそ"
+      ],
+      "ja": "高さ・大きさ・音色",
+      "q": "音の高さ・大きさ・音色をまとめた呼び方。順に、振動数・振幅・波形の違いによって決まる",
+      "explain": "高さ＝振動数、大きさ＝振幅、音色＝波形。同じ高さ・大きさでも楽器で違って聞こえるのは波形の違い",
+      "level": "normal",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-unari",
+      "en": "hph-unari",
+      "kind": "concept",
+      "answer": "うなり",
+      "accept": [
+        "唸り"
+      ],
+      "ja": "音が周期的に強弱する現象",
+      "q": "振動数がわずかに異なる2つの音を同時に鳴らしたとき、音が周期的に大きくなったり小さくなったりして聞こえる現象。1秒あたりの回数は2つの振動数の差に等しい",
+      "explain": "回数＝|f1−f2|。楽器のチューニングで、この回数が0になるように合わせる",
+      "level": "normal",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-kyomei",
+      "en": "hph-kyomei",
+      "kind": "concept",
+      "answer": "共鳴",
+      "accept": [
+        "きょうめい",
+        "共振"
+      ],
+      "ja": "固有振動数が一致し大きく振動",
+      "q": "同じ振動数のおんさを2つ並べて一方を鳴らすと、もう一方も鳴り出すように、外から加わる振動の振動数が物体の固有振動数と一致して大きく振動する現象",
+      "explain": "ブランコを揺れに合わせて押すと大きく揺れるのも同じ。橋が風で壊れる原因にもなる。一般には共振という",
+      "level": "normal",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-koyushindo",
+      "en": "hph-koyushindo",
+      "kind": "concept",
+      "answer": "固有振動",
+      "accept": [
+        "こゆうしんどう"
+      ],
+      "ja": "物体に固有の振動数での振動",
+      "q": "弦をはじいたり気柱を吹いたりしたとき、その物体の長さや張り方によって決まる特定の振動数だけで振動すること。最も低い振動を基本振動という",
+      "explain": "振動数は基本振動の整数倍（倍振動）。弦の張力を強く、長さを短くすると高くなる",
+      "level": "hard",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-kaikan",
+      "en": "hph-kaikan",
+      "kind": "concept",
+      "answer": "開管",
+      "accept": [
+        "かいかん"
+      ],
+      "ja": "両端が開いた管",
+      "q": "フルートのように両端が開いている管。中の気柱の固有振動では両端が定常波の腹になり、基本振動の波長は管の長さの2倍になる",
+      "explain": "開口端は腹、閉じた端は節。実際は開口端補正で腹が少し外に出る。倍音はすべての整数倍",
+      "level": "hard",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-heikan",
+      "en": "hph-heikan",
+      "kind": "concept",
+      "answer": "閉管",
+      "accept": [
+        "へいかん"
+      ],
+      "ja": "一端が閉じた管",
+      "q": "試験管やクラリネットのように一端が閉じている管。中の気柱の固有振動では閉じた端が節、開いた端が腹になり、基本振動の波長は管の長さの4倍になる",
+      "explain": "奇数倍の振動しか出ない（3倍、5倍…）。同じ長さなら開いた管より1オクターブ低い音が出る",
+      "level": "hard",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-doppler",
+      "en": "hph-doppler",
+      "kind": "concept",
+      "answer": "ドップラー効果",
+      "accept": [
+        "どっぷらーこうか"
+      ],
+      "ja": "音源や観測者が動くと振動数が変わる",
+      "q": "救急車のサイレンが近づくときは高く、遠ざかるときは低く聞こえるように、音源や観測者が動くことで観測される振動数が変わって聞こえる現象",
+      "explain": "近づくと高く、遠ざかると低い。光でも起こり、遠くの銀河の光が赤くずれることから宇宙の膨張が分かった",
+      "level": "easy",
+      "tags": [
+        "hph-wave"
+      ]
+    },
+    {
+      "id": "concept-hph-denryu",
+      "en": "hph-denryu",
+      "kind": "concept",
+      "answer": "電流",
+      "accept": [
+        "でんりゅう"
+      ],
+      "ja": "電荷の流れ、単位A",
+      "q": "導線の中を電荷が移動する流れ。1秒間に導線の断面を通過する電気量の大きさで表し、単位はA",
+      "explain": "I＝q／t。1A＝1C/s。向きは正電荷が動く向きと決められ、実際に動く電子とは逆向き",
+      "level": "easy",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-denatsu",
+      "en": "hph-denatsu",
+      "kind": "concept",
+      "answer": "電圧",
+      "accept": [
+        "でんあつ",
+        "電位差"
+      ],
+      "ja": "電流を流そうとするはたらき、単位V",
+      "q": "電流を流そうとするはたらきの大きさ。電池の両極間などの電位の差で、単位はV",
+      "explain": "1Vは1Cの電荷を運ぶのに1Jの仕事が必要な差。乾電池は約1.5V、家庭のコンセントは100V",
+      "level": "easy",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-ohm",
+      "en": "hph-ohm",
+      "kind": "concept",
+      "answer": "オームの法則",
+      "accept": [
+        "おーむのほうそく"
+      ],
+      "ja": "V＝RI",
+      "q": "導体を流れる電流の大きさが、その両端に加えた電圧に比例するという法則。比例定数の逆数が抵抗になる",
+      "explain": "V＝RI。1Ωは1Vで1A流れる抵抗。直列では抵抗の和、並列では逆数の和になる",
+      "level": "easy",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-teikoritsu",
+      "en": "hph-teikoritsu",
+      "kind": "concept",
+      "answer": "抵抗率",
+      "accept": [
+        "ていこうりつ"
+      ],
+      "ja": "物質ごとの電流の流れにくさ",
+      "q": "物質の電流の流れにくさを表す、材料ごとに決まった定数。導線の抵抗は長さに比例し断面積に反比例するが、その比例定数にあたる",
+      "explain": "R＝ρL／S。単位はΩ·m。銀・銅は小さく、ニクロムは大きい。金属では温度が上がると大きくなる",
+      "level": "hard",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-joulenetsu",
+      "en": "hph-joulenetsu",
+      "kind": "concept",
+      "answer": "ジュール熱",
+      "accept": [
+        "じゅーるねつ"
+      ],
+      "ja": "電流が流れたとき発生する熱",
+      "q": "電熱線に電流を流したときに発生する熱。電圧・電流・時間の積に等しく、電気ストーブや白熱電球、ドライヤーで利用される",
+      "explain": "Q＝VIt＝RI²t。送電線で失われる電力もこれで、送電電圧を高くするのは電流を減らして損失を抑えるため",
+      "level": "normal",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-denryoku",
+      "en": "hph-denryoku",
+      "kind": "concept",
+      "answer": "電力",
+      "accept": [
+        "でんりょく"
+      ],
+      "ja": "1秒あたりの電気エネルギー、単位W",
+      "q": "電流が1秒間にする仕事、つまり電気エネルギーが消費される速さ。電圧と電流の積で表され、単位はW",
+      "explain": "P＝VI＝RI²＝V²／R。時間をかけたものが電力量（J、実用ではkWh）",
+      "level": "easy",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-chokuryu",
+      "en": "hph-chokuryu",
+      "kind": "concept",
+      "answer": "直流",
+      "accept": [
+        "ちょくりゅう",
+        "DC"
+      ],
+      "ja": "向きが一定の電流",
+      "q": "乾電池や太陽電池から得られる電流のように、流れる向きが常に一定で変わらない電流",
+      "explain": "DC。スマホや電子機器の内部はこれで動くので、ACアダプターで変換している",
+      "level": "easy",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-koryu",
+      "en": "hph-koryu",
+      "kind": "concept",
+      "answer": "交流",
+      "accept": [
+        "こうりゅう",
+        "AC"
+      ],
+      "ja": "向きと大きさが周期的に変わる電流",
+      "q": "家庭のコンセントから供給される電流のように、流れる向きと大きさが周期的に変化する電流。日本では東日本50Hz、西日本60Hz",
+      "explain": "AC。変圧器で電圧を簡単に変えられるため送電に使われる。発電機は基本的にこれをつくる",
+      "level": "normal",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-henatsuki",
+      "en": "hph-henatsuki",
+      "kind": "concept",
+      "answer": "変圧器",
+      "accept": [
+        "へんあつき",
+        "トランス"
+      ],
+      "ja": "コイルの巻数比で電圧を変える装置",
+      "q": "鉄心に巻いた一次コイルと二次コイルの巻数の比に応じて、交流の電圧を上げたり下げたりする装置。発電所から家庭までの送配電で使われる",
+      "explain": "V1：V2＝N1：N2。電力は変わらないので電圧を上げると電流は下がる。直流には使えない",
+      "level": "hard",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-denjiyudo",
+      "en": "hph-denjiyudo",
+      "kind": "concept",
+      "answer": "電磁誘導",
+      "accept": [
+        "でんじゆうどう"
+      ],
+      "ja": "磁場の変化で電圧が生じる現象",
+      "q": "コイルに磁石を出し入れするなどしてコイルを貫く磁力線の数を変化させると、コイルに電圧が生じて電流が流れる現象。発電機の原理",
+      "explain": "生じる電流が誘導電流。磁石を速く動かす、巻数を増やす、強い磁石を使うと大きくなる。ICカードやIH調理器にも利用",
+      "level": "normal",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-denjiha",
+      "en": "hph-denjiha",
+      "kind": "concept",
+      "answer": "電磁波",
+      "accept": [
+        "でんじは"
+      ],
+      "ja": "電場と磁場の振動が伝わる波",
+      "q": "電場と磁場の振動が空間を伝わる横波。波長の長い順に電波・赤外線・可視光線・紫外線・X線・γ線があり、真空中を光の速さで進む",
+      "explain": "速さは約3.0×10⁸m/s。波長が短いほどエネルギーが大きく、X線・γ線は透過力が強く人体に有害",
+      "level": "normal",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-xsen",
+      "en": "hph-xsen",
+      "kind": "concept",
+      "answer": "X線",
+      "accept": [
+        "えっくすせん",
+        "エックス線",
+        "レントゲン線"
+      ],
+      "ja": "透過力の強い短波長の電磁波",
+      "q": "紫外線より波長が短く、物質を透過する力が強い電磁波。医療のレントゲン撮影や空港の手荷物検査、CTに使われる",
+      "explain": "レントゲンが発見。骨のようにカルシウムを含む部分は透過しにくく白く写る。γ線はさらに波長が短い",
+      "level": "hard",
+      "tags": [
+        "hph-elec"
+      ]
+    },
+    {
+      "id": "concept-hph-si",
+      "en": "hph-si",
+      "kind": "concept",
+      "answer": "国際単位系",
+      "accept": [
+        "こくさいたんいけい",
+        "SI",
+        "SI単位系"
+      ],
+      "ja": "7つの基本単位からなる単位の体系",
+      "q": "長さのm、質量のkg、時間のs、電流のA、温度のKなど7つの基本単位を定め、世界共通で使われる単位の体系。略称はアルファベット2文字",
+      "explain": "基本単位はm・kg・s・A・K・mol・cd。N・J・Wなどはこれらを組み合わせた組立単位",
+      "level": "normal",
+      "tags": [
+        "hph-unit"
+      ]
+    },
+    {
+      "id": "concept-hph-newton",
+      "en": "hph-newton",
+      "kind": "concept",
+      "answer": "ニュートン",
+      "accept": [
+        "にゅーとん",
+        "N"
+      ],
+      "ja": "力の単位",
+      "q": "力の大きさを表す組立単位。質量1kgの物体に1m/s²の加速度を生じさせる力の大きさで、記号はアルファベット1文字",
+      "explain": "1N＝1kg·m/s²。質量100gの物体にはたらく重力が約1N。1kgf（重量キログラム）は約9.8N",
+      "level": "easy",
+      "tags": [
+        "hph-unit"
+      ]
+    },
+    {
+      "id": "concept-hph-joule",
+      "en": "hph-joule",
+      "kind": "concept",
+      "answer": "ジュール",
+      "accept": [
+        "じゅーる",
+        "J"
+      ],
+      "ja": "仕事・エネルギー・熱量の単位",
+      "q": "仕事やエネルギー、熱量を表す組立単位。1Nの力で物体を力の向きに1m動かしたときの仕事の大きさで、記号はアルファベット1文字",
+      "explain": "1J＝1N·m。1cal≒4.2J。食品の熱量表示はkcal。1kWh＝3.6×10⁶J",
+      "level": "easy",
+      "tags": [
+        "hph-unit"
+      ]
+    },
+    {
+      "id": "concept-hph-watt",
+      "en": "hph-watt",
+      "kind": "concept",
+      "answer": "ワット",
+      "accept": [
+        "わっと",
+        "W"
+      ],
+      "ja": "仕事率・電力の単位",
+      "q": "仕事率や電力を表す組立単位。1秒間に1Jの仕事をするときの仕事率で、蒸気機関を改良した技術者の名にちなむ",
+      "explain": "1W＝1J/s。家電の消費電力の表示に使う。1馬力は約735W",
+      "level": "normal",
+      "tags": [
+        "hph-unit"
+      ]
+    },
+    {
+      "id": "concept-hph-pascal",
+      "en": "hph-pascal",
+      "kind": "concept",
+      "answer": "パスカル",
+      "accept": [
+        "ぱすかる",
+        "Pa"
+      ],
+      "ja": "圧力の単位",
+      "q": "圧力を表す組立単位。1m²の面積に1Nの力が垂直にはたらくときの圧力で、天気予報の気圧では、100倍を表すヘクトをつけた単位が使われる",
+      "explain": "1Pa＝1N/m²。1気圧≒1013hPa≒1.013×10⁵Pa。「人間は考える葦である」の哲学者でもある",
+      "level": "normal",
+      "tags": [
+        "hph-unit"
+      ]
+    },
+    {
+      "id": "concept-hph-hertz",
+      "en": "hph-hertz",
+      "kind": "concept",
+      "answer": "ヘルツ",
+      "accept": [
+        "へるつ",
+        "Hz"
+      ],
+      "ja": "振動数・周波数の単位",
+      "q": "振動数や周波数を表す組立単位。1秒間に1回振動するときの値で、電磁波の存在を実験で確かめた物理学者の名にちなむ",
+      "explain": "1Hz＝1/s。ピアノのラの音は440Hz。家庭の交流は東日本50、西日本60",
+      "level": "normal",
+      "tags": [
+        "hph-unit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1060 @@
+{
+  "subject": "english",
+  "category": "hs-kanbun",
+  "cardType": "school",
+  "label": "高校 漢文 句法と重要語",
+  "blurb": "再読文字・否定・使役・受身などの句法と重要語、返り点、故事成語15",
+  "audience": "高校生、大学入試の漢文を復習する人",
+  "genres": {
+    "hkb-saidoku": "再読文字",
+    "hkb-hitei": "否定",
+    "hkb-gimon": "疑問・反語",
+    "hkb-kuho": "使役・受身・比較・限定ほか",
+    "hkb-goi": "重要語",
+    "hkb-kundoku": "返り点・置き字",
+    "hkb-koji": "故事成語"
+  },
+  "words": [
+    {
+      "id": "concept-hkb-saidoku",
+      "en": "hkb-saidoku",
+      "kind": "concept",
+      "answer": "再読文字",
+      "accept": [
+        "さいどくもじ"
+      ],
+      "ja": "一字を二度読む字（未・将・当など）",
+      "q": "『未』は「いまだ〜ず」と読み、まず副詞として読み、返ってもう一度助動詞として読む。このように一字を二度読む文字の総称",
+      "explain": "未・将・且・当・応・宜・須・猶・由・盍の10字。一度目の送り仮名は右下、二度目は左下に書く",
+      "level": "easy",
+      "tags": [
+        "hkb-saidoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-mi",
+      "en": "hkb-mi",
+      "kind": "concept",
+      "answer": "未",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "いまだ〜ず。まだ〜ない",
+      "q": "「いまだ〜ず」と読み、「まだ〜ない」を表す再読文字。「〜」の部分の動詞は打消の「ず」に続く活用形で読む",
+      "explain": "「未だ知らず」＝まだ知らない。一度目「いまだ」、返って「ず」。「已（すでに）」の反対",
+      "level": "easy",
+      "tags": [
+        "hkb-saidoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-shou",
+      "en": "hkb-shou",
+      "kind": "concept",
+      "answer": "将",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "まさに〜んとす。今にも〜しそうだ",
+      "q": "「まさに〜（せ）んとす」と読み、「今にも〜しようとする」を表す再読文字。「且」も同じ読みで同じ意味",
+      "explain": "「将に死せんとす」＝今にも死にそうだ。同じ「まさに」でも「当」は「〜べし」と返る",
+      "level": "easy",
+      "tags": [
+        "hkb-saidoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-tou",
+      "en": "hkb-tou",
+      "kind": "concept",
+      "answer": "当",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "まさに〜べし。〜すべきだ",
+      "q": "「まさに〜べし」と読み、「〜すべきだ・〜しなければならない」と義務を表す再読文字。「応」と同じ読みだが、こちらは義務の意味が強い",
+      "explain": "「当に学ぶべし」＝学ぶべきだ。「応」は「きっと〜だろう」の推量寄り",
+      "level": "normal",
+      "tags": [
+        "hkb-saidoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-ou",
+      "en": "hkb-ou",
+      "kind": "concept",
+      "answer": "応",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "まさに〜べし。きっと〜だろう",
+      "q": "「まさに〜べし」と読み、「きっと〜だろう・〜するはずだ」と推量を表す再読文字。義務を表す同じ読みの字と区別する",
+      "explain": "「応に知るべし」＝きっと知っているだろう。「当」は義務、「応」は推量と覚える",
+      "level": "normal",
+      "tags": [
+        "hkb-saidoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-gi",
+      "en": "hkb-gi",
+      "kind": "concept",
+      "answer": "宜",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "よろしく〜べし。〜するのがよい",
+      "q": "「よろしく〜べし」と読み、「〜するのがよい・〜するのが適切だ」を表す再読文字",
+      "explain": "「宜しく去るべし」＝立ち去るのがよい。命令ではなく穏やかな勧め",
+      "level": "normal",
+      "tags": [
+        "hkb-saidoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-shu",
+      "en": "hkb-shu",
+      "kind": "concept",
+      "answer": "須",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "すべからく〜べし。ぜひ〜する必要がある",
+      "q": "「すべからく〜べし」と読み、「ぜひ〜する必要がある」を表す再読文字。現代語で「すべて」の意味に使うのは誤用",
+      "explain": "「須らく学ぶべし」＝ぜひ学ぶ必要がある。「すべて」の意味ではない",
+      "level": "normal",
+      "tags": [
+        "hkb-saidoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-nao",
+      "en": "hkb-nao",
+      "kind": "concept",
+      "answer": "猶",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "なほ〜ごとし。ちょうど〜のようだ",
+      "q": "「なほ〜（の・が）ごとし」と読み、「ちょうど〜のようだ」と比況を表す再読文字。「過ぎたるは〜及ばざるがごとし」で使われる",
+      "explain": "「過猶不及」＝過ぎたるは猶ほ及ばざるがごとし。「由」も同じ読み・意味で使う",
+      "level": "easy",
+      "tags": [
+        "hkb-saidoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-fu",
+      "en": "hkb-fu",
+      "kind": "concept",
+      "answer": "不",
+      "accept": [
+        "ず"
+      ],
+      "ja": "〜ず。単純な否定",
+      "q": "「〜ず」と読み、単純に「〜ない」と打ち消す否定の字。「弗」も同じ読み。動詞・形容詞の下から返って読む",
+      "explain": "「不知」＝知らず。「非」は「〜ではない」と判断を否定、「無」は存在の否定",
+      "level": "easy",
+      "tags": [
+        "hkb-hitei"
+      ]
+    },
+    {
+      "id": "concept-hkb-hi",
+      "en": "hkb-hi",
+      "kind": "concept",
+      "answer": "非",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "〜にあらず。〜ではない",
+      "q": "「〜にあらず」と読み、「〜ではない」と名詞や状態を否定する字。「匪」も同じ読み",
+      "explain": "「非人」＝人に非ず。「不」は動作の打ち消し、こちらは「AはBではない」の判断の否定",
+      "level": "easy",
+      "tags": [
+        "hkb-hitei"
+      ]
+    },
+    {
+      "id": "concept-hkb-mu",
+      "en": "hkb-mu",
+      "kind": "concept",
+      "answer": "無",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "〜なし。〜がない",
+      "q": "「〜なし」と読み、「〜がない・存在しない」を表す字。「莫」も同じく読むが、「莫」「勿」「毋」は「なかれ」と読んで禁止も表す",
+      "explain": "「無人」＝人無し。反対は「有」。「無不」と重ねれば二重否定「〜せざるは無し」",
+      "level": "easy",
+      "tags": [
+        "hkb-hitei"
+      ]
+    },
+    {
+      "id": "concept-hkb-baku",
+      "en": "hkb-baku",
+      "kind": "concept",
+      "answer": "莫",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "〜なかれ。〜してはいけない",
+      "q": "「〜（する）なかれ」と読み、「〜してはいけない」と禁止を表す字。「勿」「毋」も同じ読み。「なし」と読んで否定にもなる",
+      "explain": "「莫言」＝言ふこと莫かれ。「なし」と読めば「〜する者はいない」。「莫若」なら比較",
+      "level": "normal",
+      "tags": [
+        "hkb-hitei"
+      ]
+    },
+    {
+      "id": "concept-hkb-bubun-hitei",
+      "en": "hkb-bubun-hitei",
+      "kind": "concept",
+      "answer": "部分否定",
+      "accept": [
+        "ぶぶんひてい"
+      ],
+      "ja": "必ずしも〜ず。〜とは限らない",
+      "q": "「必ずしも〜ず」「常には〜ず」のように、否定の字を「必」「常」「倶」などの副詞の上に置き、「いつも〜とは限らない」と一部だけ打ち消す形",
+      "explain": "不必＝必ずしも〜ず（部分）。必不＝必ず〜ず（全部否定）。否定の字と副詞の語順で意味が逆になる",
+      "level": "normal",
+      "tags": [
+        "hkb-hitei"
+      ]
+    },
+    {
+      "id": "concept-hkb-niju-hitei",
+      "en": "hkb-niju-hitei",
+      "kind": "concept",
+      "answer": "二重否定",
+      "accept": [
+        "にじゅうひてい"
+      ],
+      "ja": "〜ざるは無し。必ず〜する",
+      "q": "「〜ざるは無し」「〜ずんばあらず」のように否定の字を二つ重ね、「〜しないものはない＝必ず〜する」と強い肯定を表す形",
+      "explain": "「無不」＝〜せざるは無し。「不可不」＝〜せざるべからず（〜しなければならない）",
+      "level": "normal",
+      "tags": [
+        "hkb-hitei"
+      ]
+    },
+    {
+      "id": "concept-hkb-nanzo",
+      "en": "hkb-nanzo",
+      "kind": "concept",
+      "answer": "何",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "なんぞ・なにをか。理由や物を問う",
+      "q": "「なんぞ」「なにをか」「いづれの」などと読み、理由・物・時などを問う疑問詞。文末が「〜や」なら疑問、「〜ん（や）」なら反語",
+      "explain": "「何為（なんすれぞ）」「何如（いかん）」「如何（いかん）」の複合形も頻出。奈何・若何も「いかん」",
+      "level": "easy",
+      "tags": [
+        "hkb-gimon"
+      ]
+    },
+    {
+      "id": "concept-hkb-izukunzo",
+      "en": "hkb-izukunzo",
+      "kind": "concept",
+      "answer": "安",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "いづくんぞ。どうして〜か",
+      "q": "「いづくんぞ」「いづくにか」と読み、「どうして〜か」「どこに〜か」を問う疑問・反語の字。「悪」「焉」「寧」も同じ読み",
+      "explain": "「安くんぞ知らんや」＝どうして知ろうか、いや知らない。反語なら文末「〜んや」",
+      "level": "normal",
+      "tags": [
+        "hkb-gimon"
+      ]
+    },
+    {
+      "id": "concept-hkb-ani",
+      "en": "hkb-ani",
+      "kind": "concept",
+      "answer": "豈",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "あに〜んや。どうして〜だろうか",
+      "q": "「あに〜んや」と読み、「どうして〜だろうか、いや〜ない」と強い反語を表す字。「〜ずや」と読めば「〜ではないか」と詠嘆",
+      "explain": "「豈に憂へんや」＝どうして心配しようか。「豈に〜ずや」なら「なんと〜ではないか」の詠嘆",
+      "level": "normal",
+      "tags": [
+        "hkb-gimon"
+      ]
+    },
+    {
+      "id": "concept-hkb-ko",
+      "en": "hkb-ko",
+      "kind": "concept",
+      "answer": "乎",
+      "accept": [
+        "か",
+        "や"
+      ],
+      "ja": "文末で〜か・〜や。疑問・反語",
+      "q": "文末に置いて「〜か」「〜や」と読み、疑問や反語を表す助字。「哉」「与」「邪」「耶」も同じ働き。文中では「於」と同じ置き字にもなる",
+      "explain": "文末なら疑問・反語・詠嘆、文中なら「於」と同じ置き字。「〜ん乎」と読めば反語",
+      "level": "normal",
+      "tags": [
+        "hkb-gimon"
+      ]
+    },
+    {
+      "id": "concept-hkb-shieki",
+      "en": "hkb-shieki",
+      "kind": "concept",
+      "answer": "使役",
+      "accept": [
+        "しえき"
+      ],
+      "ja": "AをしてBせしむ。AにBさせる",
+      "q": "『使AB』で「AをしてBせしむ」と読み、「AにBさせる」を表す句法。「令」「教」「遣」も同じ「しむ」と読む",
+      "explain": "「使」は「〜をして」の送り仮名が目印。「令」は命令、「教」は教える、「遣」は派遣のニュアンス",
+      "level": "easy",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-ukemi",
+      "en": "hkb-ukemi",
+      "kind": "concept",
+      "answer": "受身",
+      "accept": [
+        "うけみ",
+        "受け身"
+      ],
+      "ja": "AのBする所と為る。AにBされる",
+      "q": "『為A所B』で「AのBする所と為る」と読み、「AにBされる」を表す句法。「見」「被」「於」も同じ意味を表す",
+      "explain": "「為楚所滅」＝楚の滅ぼす所と為る。「見」「被」は「〜る・〜らる」、「於」は「〜に…る」",
+      "level": "easy",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-ru",
+      "en": "hkb-ru",
+      "kind": "concept",
+      "answer": "見",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "〜る・〜らる。〜される",
+      "q": "動詞の前に置いて「〜る」「〜らる」と読み、「〜される」の意味を表す字。「まみゆ」と読めば「お目にかかる」",
+      "explain": "「見笑」＝笑はる。「被」も同じ働き。「まみゆ」は謁見の意で、「みる」とは別",
+      "level": "normal",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-shikazu",
+      "en": "hkb-shikazu",
+      "kind": "concept",
+      "answer": "不如",
+      "kanjiOnly": true,
+      "accept": [
+        "不若"
+      ],
+      "ja": "〜にしかず。〜には及ばない",
+      "q": "「〜にしかず」と読み、「〜には及ばない・〜のほうがよい」を表す比較の句法。「百聞は一見に〜」のことわざで使われる",
+      "explain": "「百聞不如一見」。「A不如B」＝AはBに及ばない、つまりBのほうが上。「若」でも同じ",
+      "level": "easy",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-shikuhanashi",
+      "en": "hkb-shikuhanashi",
+      "kind": "concept",
+      "answer": "莫若",
+      "kanjiOnly": true,
+      "accept": [
+        "莫如"
+      ],
+      "ja": "〜にしくはなし。〜が一番だ",
+      "q": "「〜にしくはなし」と読み、「〜に及ぶものはない＝〜が一番だ」と最上級を表す比較の句法",
+      "explain": "「莫若A」＝Aが最上。「莫A焉（これよりAなるはなし）」も最上級",
+      "level": "hard",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-tada",
+      "en": "hkb-tada",
+      "kind": "concept",
+      "answer": "唯",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "ただ〜のみ。限定",
+      "q": "「ただ〜（のみ）」と読み、「ただ〜だけ」と限定を表す副詞の字。「惟」「但」「徒」「只」も同じ読み。文末に「のみ」を伴うことが多い",
+      "explain": "「唯A耳」＝ただAのみ。「独り」も限定で使う。累加「不唯A亦B」の要素にもなる",
+      "level": "easy",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-nomi",
+      "en": "hkb-nomi",
+      "kind": "concept",
+      "answer": "耳",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "文末で〜のみ。〜だけだ",
+      "q": "文末に置いて「のみ」と読み、「〜だけだ」と限定・強調を表す助字。「已」「而已」「爾」も同じ読み",
+      "explain": "「耳」は「而已（じい）」の合音。「已」は文頭なら「すでに」、文末なら「のみ」",
+      "level": "normal",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-ruika",
+      "en": "hkb-ruika",
+      "kind": "concept",
+      "answer": "累加",
+      "accept": [
+        "るいか"
+      ],
+      "ja": "ただにAのみならず、またB",
+      "q": "『不唯A亦B』で「ただにAのみならず、またB」と読み、「AだけでなくBも」と付け加える句法。「不独」「非徒」の形もある",
+      "explain": "限定「唯〜のみ」を否定して「〜だけでない」と重ねる。「豈唯A（あにただにAのみならんや）」は反語形",
+      "level": "hard",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-moshi",
+      "en": "hkb-moshi",
+      "kind": "concept",
+      "answer": "若",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "もし〜ば。仮定（ほかに三つの読み）",
+      "q": "文頭で「もし〜ば」と読み、仮定を表す字。「如」も同じ。ほかに「ごとし（〜のようだ）」「なんぢ（お前）」「しく（及ぶ）」とも読む多義の字",
+      "explain": "読みは4つ。もし（仮定）／ごとし（比況）／なんぢ（二人称）／しく（比較）。文頭なら仮定を疑う",
+      "level": "hard",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-iedomo",
+      "en": "hkb-iedomo",
+      "kind": "concept",
+      "answer": "雖",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "〜といへども。たとえ〜でも",
+      "q": "「〜（と）いへども」と読み、「たとえ〜でも・〜ではあるが」と逆接の仮定や譲歩を表す字",
+      "explain": "「雖然（しかりといへども）」＝そうではあるが。「縦ひ（たとひ）」と呼応することも",
+      "level": "normal",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-iwanya",
+      "en": "hkb-iwanya",
+      "kind": "concept",
+      "answer": "況",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "いはんや〜をや。まして〜はなおさら",
+      "q": "「いはんや〜をや」と読み、「まして〜はなおさらだ」を表す抑揚形の字。「A且B、〜C乎」の形で、軽い例Aを挙げてCを強調する",
+      "explain": "「死馬且買之、況生者乎」＝死んだ馬でさえ買う、まして生きた馬は。「且」は「すら・でさえ」",
+      "level": "normal",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-kana",
+      "en": "hkb-kana",
+      "kind": "concept",
+      "answer": "哉",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "文末で〜かな。詠嘆",
+      "q": "文末に置いて「かな」と読み、「〜だなあ」と詠嘆を表す助字。「夫」「乎」「与」も詠嘆で使う。疑問・反語では「や」と読む",
+      "explain": "「快なるかな」＝愉快だなあ。文頭の「嗚呼（ああ）」「噫（ああ）」と組んで詠嘆を強める",
+      "level": "easy",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-sore",
+      "en": "hkb-sore",
+      "kind": "concept",
+      "answer": "夫",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "文頭で「それ」。そもそも",
+      "q": "文頭で「それ」と読み、「そもそも」と話を切り出す発語の字。文末では「かな」と読んで詠嘆、「かの」と読んで指示語にもなる",
+      "explain": "「夫れ天下の事は」＝そもそも天下のことは。「大丈夫（りっぱな男）」の人の意味とは区別",
+      "level": "hard",
+      "tags": [
+        "hkb-kuho"
+      ]
+    },
+    {
+      "id": "concept-hkb-kedashi",
+      "en": "hkb-kedashi",
+      "kind": "concept",
+      "answer": "蓋し",
+      "accept": [
+        "けだし",
+        "蓋"
+      ],
+      "ja": "思うに・おそらく",
+      "q": "文頭に置いて「思うに・おそらく」と自分の推量や判断を控えめに切り出す副詞。「〜、学は人の性を変ふるものなり」のように使う",
+      "explain": "「蓋」一字で「おほふ」「ふた」の意味も。「盍（なんぞ〜ざる）」と字形が似るので注意",
+      "level": "hard",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-yuen",
+      "en": "hkb-yuen",
+      "kind": "concept",
+      "answer": "所以",
+      "accept": [
+        "ゆゑん",
+        "ゆえん"
+      ],
+      "ja": "〜する理由・手段",
+      "q": "「〜する理由・わけ」を表す二字の語。「学ぶ〜」なら「学ぶ理由」。「〜する手段・もの」の意味にもなる",
+      "explain": "「所」と「以」の組。「所謂（いはゆる）」「所為（しわざ）」と区別。「A之所以B」＝AがBする理由",
+      "level": "easy",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-iwayuru",
+      "en": "hkb-iwayuru",
+      "kind": "concept",
+      "answer": "所謂",
+      "accept": [
+        "いはゆる",
+        "いわゆる"
+      ],
+      "ja": "世に言うところの",
+      "q": "「世間で言うところの・よく言われる」を表す二字の語。「〜君子とは」のように、話題の語を取り上げる前置き",
+      "explain": "「所」＋「謂（いふ）」。現代語でも同じ意味で使う。「いはゆる」は連体詞のように次の名詞にかかる",
+      "level": "easy",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-kokonioite",
+      "en": "hkb-kokonioite",
+      "kind": "concept",
+      "answer": "於是",
+      "accept": [
+        "ここにおいて",
+        "ここにおいてか",
+        "是に於いて"
+      ],
+      "ja": "ここにおいて。そこで",
+      "q": "「そこで・こうして」の意味で、前の出来事を受けて次の展開へつなぐ接続の二字語。「〜、王大いに喜ぶ」のように使う",
+      "explain": "「是（これ）」を「ここ」と読む。同じ接続でも「是以（ここをもつて）」は「だから」と理由を受ける",
+      "level": "normal",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-omoeraku",
+      "en": "hkb-omoeraku",
+      "kind": "concept",
+      "answer": "以為",
+      "accept": [
+        "おもへらく",
+        "おもえらく",
+        "以て為す"
+      ],
+      "ja": "おもへらく。〜と思う",
+      "q": "「〜と思う・〜と考える」を表す二字の語。「〜、天下に敵なしと」のように、人物の判断や思い込みを述べるときに使う",
+      "explain": "「以A為B」なら「AをもつてBとなす（AをBとする）」。二字で「おもへらく」と読む",
+      "level": "hard",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-shikari",
+      "en": "hkb-shikari",
+      "kind": "concept",
+      "answer": "然り",
+      "accept": [
+        "しかり",
+        "然"
+      ],
+      "ja": "その通りだ。そうである",
+      "q": "「その通りだ・そうである」と肯定する語。一語で相手の言葉を認める返事にもなる。「〜して後」「〜と雖も」のような接続語のもとになる",
+      "explain": "「然而（しかれども）」「然則（しからばすなはち）」「然後（しかるのち）」など接続語の核。「燃」と混同しない",
+      "level": "normal",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-sunawachi-soku",
+      "en": "hkb-sunawachi-soku",
+      "kind": "concept",
+      "answer": "則ち",
+      "accept": [
+        "すなはち",
+        "すなわち",
+        "則"
+      ],
+      "ja": "〜ならば。条件を受ける接続",
+      "q": "「〜ば、すぐに〜」「〜の場合は〜」と条件や場合分けを受けて結果を導く接続の字。「学びて思はざれば〜罔し」で使われる",
+      "explain": "「A則B」＝AならばB。同じ「すなはち」でも「乃」は「そこで・やっと」、「即」は「すぐに」",
+      "level": "easy",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-sunawachi-dai",
+      "en": "hkb-sunawachi-dai",
+      "kind": "concept",
+      "answer": "乃ち",
+      "accept": [
+        "すなはち",
+        "すなわち",
+        "乃"
+      ],
+      "ja": "そこで・やっと。展開の接続",
+      "q": "「そこで・やっと・意外にも」と、前の事柄を受けて意外な展開や時間の経過を示す接続の字。同じ読みでも条件を受ける「則」とは働きが違う",
+      "explain": "「乃ち去る」＝そこでやっと立ち去った。「則」は条件、「乃」は展開・意外性、「即」は即時",
+      "level": "hard",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-kokowomotte",
+      "en": "hkb-kokowomotte",
+      "kind": "concept",
+      "answer": "是以",
+      "accept": [
+        "ここをもつて",
+        "ここをもって",
+        "是を以て"
+      ],
+      "ja": "ここをもつて。だから",
+      "q": "「だから・こういうわけで」の意味で、前に述べた理由を受けて結論を導く接続の二字語。「〜、君子は言に訥ならんことを欲す」のように使う",
+      "explain": "「以是（これをもつて）」と語順が逆になると「これによって」の手段。「於是」は時間的な「そこで」",
+      "level": "hard",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-mushiro",
+      "en": "hkb-mushiro",
+      "kind": "concept",
+      "answer": "寧ろ",
+      "accept": [
+        "むしろ",
+        "寧"
+      ],
+      "ja": "AよりはむしろB。選択",
+      "q": "「AよりはBのほうがましだ」と選択を表す副詞。「〜鶏口と為るとも牛後と為る無かれ」のように、二つを比べて一方を選ぶ",
+      "explain": "「寧A無B」＝むしろAするともBする無かれ。「寧」は「いづくんぞ（反語）」「やすし」とも読む",
+      "level": "normal",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-to-atau",
+      "en": "hkb-to-atau",
+      "kind": "concept",
+      "answer": "与",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "〜と・あたふ・くみす・か",
+      "q": "「〜と」「〜とともに」と読んで並列や同伴を表し、動詞なら「あたふ（あたえる）」「くみす（味方する）」、文末なら「か・や」と疑問・詠嘆を表す多義の字",
+      "explain": "「AとBと」の「と」、「あたふ」、文末の「か（歟）」。「〜と与に（ともに）」も頻出",
+      "level": "hard",
+      "tags": [
+        "hkb-goi"
+      ]
+    },
+    {
+      "id": "concept-hkb-reten",
+      "en": "hkb-reten",
+      "kind": "concept",
+      "answer": "レ点",
+      "accept": [
+        "れてん"
+      ],
+      "ja": "一字下から返る返り点",
+      "q": "漢文を訓読するときに漢字の左下に付ける返り点のうち、すぐ下の一字から上の一字へ返って読むことを示す記号",
+      "explain": "「読レ書」＝書を読む。一二点と組んで「一レ」「上レ」の形にもなる",
+      "level": "easy",
+      "tags": [
+        "hkb-kundoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-ichiniten",
+      "en": "hkb-ichiniten",
+      "kind": "concept",
+      "answer": "一二点",
+      "accept": [
+        "いちにてん",
+        "一・二点"
+      ],
+      "ja": "二字以上離れて返る返り点",
+      "q": "二字以上離れた下の字から上の字へ返って読むときに使う返り点。「一」の付いた字を先に読み、次に「二」の字へ返る。三・四と続くこともある",
+      "explain": "レ点は隣の一字、一二点は二字以上離れて返る。一二点をはさんでさらに返るときは上下点",
+      "level": "easy",
+      "tags": [
+        "hkb-kundoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-jogeten",
+      "en": "hkb-jogeten",
+      "kind": "concept",
+      "answer": "上下点",
+      "accept": [
+        "じょうげてん",
+        "上中下点"
+      ],
+      "ja": "一二点をはさんで返る返り点",
+      "q": "一二点を付けた部分をはさんで、さらにその外側へ大きく返って読むときに使う返り点。「上・下」または「上・中・下」を使う",
+      "explain": "一二点の内側を先に読み、それを包む形で上下点。さらに外側なら甲乙点、天地点",
+      "level": "easy",
+      "tags": [
+        "hkb-kundoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-okiji",
+      "en": "hkb-okiji",
+      "kind": "concept",
+      "answer": "置き字",
+      "accept": [
+        "おきじ"
+      ],
+      "ja": "訓読で読まない字",
+      "q": "漢文の訓読で、送り仮名や語順の働きは示すが、それ自体は読まない字の総称。「而」「於」「矣」「焉」「于」「乎」など",
+      "explain": "読まないだけで意味はある。「而」は接続、「於」は場所・対象・比較・受身、「矣」「焉」は文末の断定・完了",
+      "level": "easy",
+      "tags": [
+        "hkb-kundoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-ji-setsuzoku",
+      "en": "hkb-ji-setsuzoku",
+      "kind": "concept",
+      "answer": "而",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "接続の置き字（〜て／〜ども）",
+      "q": "接続の働きを持ち、前後の語をつなぐ置き字。順接なら「〜て・〜して」、逆接なら「〜ども・〜も」と、直前の字の送り仮名で表す。「しかうして」「しかれども」と読むこともある",
+      "explain": "文頭に来ると「而して（しかうして）」「而るに」と読む。文末の「而已」は「のみ」",
+      "level": "normal",
+      "tags": [
+        "hkb-kundoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-oite",
+      "en": "hkb-oite",
+      "kind": "concept",
+      "answer": "於",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "場所・対象・比較・受身の置き字",
+      "q": "動詞の下に置いて、場所・時（〜に・〜で）、対象（〜に）、起点（〜より）、比較（〜より）、受身（〜に…る）を示す置き字。「于」「乎」も同じ働き",
+      "explain": "「A於B」で形容詞の下なら比較「BよりA」、動詞の下なら受身「Bに〜さる」の可能性。「於是」は読む",
+      "level": "hard",
+      "tags": [
+        "hkb-kundoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-i-matsu",
+      "en": "hkb-i-matsu",
+      "kind": "concept",
+      "answer": "矣",
+      "accept": [
+        "い"
+      ],
+      "ja": "文末の置き字。断定・完了",
+      "q": "文末に置いて、断定や完了、強い言い切りを表す読まない字。「〜なり」「〜たり」「〜ぬ」の語気を添える",
+      "explain": "「已矣（やんぬるかな）」は例外的に読む。焉と同じく文末の置き字だが、焉は「いづくんぞ」とも読む",
+      "level": "normal",
+      "tags": [
+        "hkb-kundoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-en",
+      "en": "hkb-en",
+      "kind": "concept",
+      "answer": "焉",
+      "kanjiOnly": true,
+      "accept": [],
+      "ja": "文末の置き字。文頭なら「いづくんぞ」",
+      "q": "文末に置けば断定・完了を表す読まない字。文頭・文中で「いづくんぞ」と読めば反語、「これ（ここ）」と読めば指示語になる",
+      "explain": "「焉んぞ」＝どうして〜か（安と同じ）。文末の「焉」は置き字、「〜焉（これに）」は「於之」の意",
+      "level": "hard",
+      "tags": [
+        "hkb-kundoku"
+      ]
+    },
+    {
+      "id": "concept-hkb-mujun",
+      "en": "hkb-mujun",
+      "kind": "concept",
+      "answer": "矛盾",
+      "accept": [
+        "むじゅん"
+      ],
+      "ja": "つじつまが合わないこと",
+      "q": "つじつまが合わないこと。どんな盾も突き通す矛と、どんな矛も防ぐ盾を売る楚の商人が、「その矛でその盾を突いたらどうなる」と問われて答えられなかった話から",
+      "explain": "出典は『韓非子』。法家の韓非が儒家の主張の非を説くたとえ。「楚人に盾と矛とを鬻ぐ者有り」",
+      "level": "easy",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-gojippo",
+      "en": "hkb-gojippo",
+      "kind": "concept",
+      "answer": "五十歩百歩",
+      "accept": [
+        "ごじっぽひゃっぽ",
+        "ごじゅっぽひゃっぽ"
+      ],
+      "ja": "少しの差はあっても本質は同じ",
+      "q": "少しの違いはあっても本質は同じだということ。戦場で五十歩逃げた兵が百歩逃げた兵を臆病だと笑ったら、と孟子が梁の恵王に問うたたとえから",
+      "explain": "出典は『孟子』。恵王の政治も隣国と大差ないと諫めた。「王道政治」の説明の導入",
+      "level": "easy",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-suiko",
+      "en": "hkb-suiko",
+      "kind": "concept",
+      "answer": "推敲",
+      "accept": [
+        "すいこう"
+      ],
+      "ja": "文章の字句を練り直すこと",
+      "q": "詩や文章の字句を何度も練り直すこと。唐の詩人賈島が「僧は敲く月下の門」の「敲く」を「推す」にするか迷い、韓愈に相談した故事から",
+      "explain": "賈島が考えに夢中で韓愈の行列にぶつかり、韓愈が「敲」がよいと助言。「敲」は「たたく」",
+      "level": "easy",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-dasoku",
+      "en": "hkb-dasoku",
+      "kind": "concept",
+      "answer": "蛇足",
+      "accept": [
+        "だそく"
+      ],
+      "ja": "余計なつけたし",
+      "q": "余計なつけたし。楚の国で酒を賭けて蛇の絵を早く描く競争をし、先に描き終えた者が調子に乗って足を描き足したために負けた話から",
+      "explain": "出典は『戦国策』。斉の使者陳軫が楚の将軍に「これ以上攻めても無益」と説いたたとえ",
+      "level": "easy",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-kiyu",
+      "en": "hkb-kiyu",
+      "kind": "concept",
+      "answer": "杞憂",
+      "accept": [
+        "きゆう"
+      ],
+      "ja": "取り越し苦労",
+      "q": "取り越し苦労、無用の心配。古代中国の杞の国の人が、天が崩れ落ちてきたらどうしようと心配して食事も喉を通らなくなった話から",
+      "explain": "出典は『列子』。「杞人の憂へ」ともいう。天は気の集まりで落ちないと諭される",
+      "level": "easy",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-shimensoka",
+      "en": "hkb-shimensoka",
+      "kind": "concept",
+      "answer": "四面楚歌",
+      "accept": [
+        "しめんそか"
+      ],
+      "ja": "周りが敵ばかりで孤立すること",
+      "q": "周りが敵ばかりで孤立していること。垓下に追い詰められた項羽が、夜、漢軍の陣から自分の故郷の歌が聞こえてくるのを聞き、故郷も敵に降ったかと嘆いた場面から",
+      "explain": "出典は『史記』項羽本紀。「虞や虞や若を奈何せん」の垓下の歌に続く。翌日、項羽は自刎する",
+      "level": "easy",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-gashinshotan",
+      "en": "hkb-gashinshotan",
+      "kind": "concept",
+      "answer": "臥薪嘗胆",
+      "accept": [
+        "がしんしょうたん"
+      ],
+      "ja": "目的のために長く苦労を重ねる",
+      "q": "目的を果たすために長い間苦労を重ねること。呉王夫差が父の仇を忘れないため薪の上に寝、越王勾践が敗戦の屈辱を忘れないため苦い肝をなめ続けた故事から",
+      "explain": "出典は『十八史略』。夫差は越に勝ち、勾践はのちに呉を滅ぼす。「会稽の恥」も同じ場面",
+      "level": "normal",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-gyofunori",
+      "en": "hkb-gyofunori",
+      "kind": "concept",
+      "answer": "漁夫の利",
+      "accept": [
+        "ぎょふのり",
+        "漁父の利"
+      ],
+      "ja": "争いの間に第三者が利益を得る",
+      "q": "二者が争っている間に、第三者が労せず利益を横取りすること。シギとハマグリが互いに離さず争っているところを通りかかった者が両方とも捕まえた話から",
+      "explain": "出典は『戦国策』。「鷸蚌の争い」ともいう。趙が燕を攻めようとしたのを蘇代がいさめた",
+      "level": "normal",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-saiogauma",
+      "en": "hkb-saiogauma",
+      "kind": "concept",
+      "answer": "塞翁が馬",
+      "accept": [
+        "さいおうがうま",
+        "人間万事塞翁が馬"
+      ],
+      "ja": "人生の幸不幸は予測できない",
+      "q": "人生の幸不幸は予測できないということ。国境の砦近くに住む老人の馬が逃げたが良馬を連れて帰り、息子がその馬から落ちて骨折したが、そのために戦争に行かず命拾いした話から",
+      "explain": "出典は『淮南子』。「人間万事〜」の「人間（じんかん）」は世の中の意。禍福はあざなえる縄のごとし",
+      "level": "normal",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-chosanboshi",
+      "en": "hkb-chosanboshi",
+      "kind": "concept",
+      "answer": "朝三暮四",
+      "accept": [
+        "ちょうさんぼし"
+      ],
+      "ja": "目先の違いにとらわれ結果が同じと気づかない",
+      "q": "目先の違いにとらわれて結果が同じだと気づかないこと。猿を飼う宋の狙公がトチの実を「朝に三つ夕に四つ」と言うと猿が怒り、「朝に四つ夕に三つ」と言うと喜んだ話から",
+      "explain": "出典は『列子』『荘子』。合計は七つで同じ。「朝令暮改（命令がすぐ変わる）」と混同しない",
+      "level": "normal",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-garyotensei",
+      "en": "hkb-garyotensei",
+      "kind": "concept",
+      "answer": "画竜点睛",
+      "accept": [
+        "がりょうてんせい",
+        "画龍点睛"
+      ],
+      "ja": "最後の大切な仕上げ",
+      "q": "物事を完成させる最後の大切な仕上げ。梁の画家張僧繇が寺の壁に描いた竜に瞳を描き入れたところ、たちまち天に昇ったという話から。「〜を欠く」の形でよく使う",
+      "explain": "「睛」は「ひとみ」。「晴」と書き間違えやすい。読みは「がりゅう」ではなく「がりょう」",
+      "level": "normal",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-haisuinojin",
+      "en": "hkb-haisuinojin",
+      "kind": "concept",
+      "answer": "背水の陣",
+      "accept": [
+        "はいすいのじん"
+      ],
+      "ja": "退路を断って全力で当たること",
+      "q": "一歩も引けない状況に身を置いて全力で事に当たること。漢の韓信が趙と戦ったとき、わざと川を背にして陣を敷き、退路を断って兵に決死の覚悟をさせて勝った故事から",
+      "explain": "出典は『史記』淮陰侯列伝。兵法の常識に反する布陣で、兵法を知る趙軍が油断した",
+      "level": "normal",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-kanpeki",
+      "en": "hkb-kanpeki",
+      "kind": "concept",
+      "answer": "完璧",
+      "accept": [
+        "かんぺき"
+      ],
+      "ja": "欠点がまったくないこと",
+      "q": "欠点がまったくないこと。もとは「傷のない宝玉をそのまま持ち帰る」の意で、趙の藺相如が秦の昭王に和氏の璧を渡さず無事に趙へ持ち帰った故事から",
+      "explain": "出典は『史記』。「璧を完うす」。十五の城との交換の約束を秦が守らないと見抜いた。「壁」ではなく「璧（玉）」",
+      "level": "normal",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-shushu",
+      "en": "hkb-shushu",
+      "kind": "concept",
+      "answer": "守株",
+      "accept": [
+        "しゅしゅ",
+        "株を守る"
+      ],
+      "ja": "古い習慣や偶然にこだわり進歩がない",
+      "q": "古い習慣や偶然の成功にこだわって進歩がないこと。宋の農夫が、切り株にぶつかって死んだうさぎを拾って以来、畑を耕さずに株を見張り続けて笑いものになった話から",
+      "explain": "出典は『韓非子』。「株を守りて兎を待つ」。古い聖人の政治にこだわる儒家を批判したたとえ",
+      "level": "hard",
+      "tags": [
+        "hkb-koji"
+      ]
+    },
+    {
+      "id": "concept-hkb-goetsudoshu",
+      "en": "hkb-goetsudoshu",
+      "kind": "concept",
+      "answer": "呉越同舟",
+      "accept": [
+        "ごえつどうしゅう"
+      ],
+      "ja": "仲の悪い者どうしが同じ場所にいる",
+      "q": "仲の悪い者どうしが同じ場所に居合わせること。また、共通の困難のために協力すること。長年争っていた二つの国の人でも、同じ舟で嵐にあえば助け合うと『孫子』が説いたことから",
+      "explain": "出典は『孫子』九地篇。本来は「協力する」の意味が主だが、現代では「仲の悪い者が一緒にいる」で使われがち",
+      "level": "hard",
+      "tags": [
+        "hkb-koji"
+      ]
+    }
+  ]
+}

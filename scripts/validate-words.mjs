@@ -42,7 +42,12 @@ for (const fullPath of files) {
         const a = String(w.answer ?? "");
         const hasKanji = /[一-龯]/.test(a);
         const hasKana = (w.accept ?? []).some((s) => /^[ぁ-ゖー・\s]+$/.test(String(s).trim()));
-        if (hasKanji && !hasKana) problems.push(`読み（ひらがな）が accept にない ${file}:${w.id} (${a})`);
+        // kanjiOnly: 問題文に読みが書いてある（同音異義語の書き分け・漢文の句法など）ので漢字で答えさせる。読みは accept に入れない
+        if (hasKanji && !hasKana && !w.kanjiOnly) problems.push(`読み（ひらがな）が accept にない ${file}:${w.id} (${a})`);
+        if (w.kanjiOnly && hasKana) problems.push(`kanjiOnly なのに accept に読みがある ${file}:${w.id}`);
+        const q = String(w.q ?? "");
+        const leaked = (w.accept ?? []).find((s) => String(s).length >= 2 && q.includes(String(s)));
+        if (leaked) problems.push(`別解が問題文に含まれる ${file}:${w.id} (${leaked})`);
         if (String(w.explain ?? "").length > 100) problems.push(`explainが長い ${file}:${w.id}`);
       }
       if (isGrammar) {

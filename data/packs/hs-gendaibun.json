@@ -1,0 +1,1269 @@
+{
+  "subject": "english",
+  "category": "hs-gendaibun",
+  "cardType": "school",
+  "label": "高校 現代文 キーワード",
+  "blurb": "評論文の頻出語70。抽象と具体、近代、他者、記号など対義語のペアで覚える",
+  "audience": "高校生、大学入試の評論文を読む人",
+  "genres": {
+    "hgb-logic": "論理・思考",
+    "hgb-lang": "言語・表現",
+    "hgb-self": "自己・認識",
+    "hgb-modern": "近代・思想",
+    "hgb-society": "社会・現代"
+  },
+  "words": [
+    {
+      "id": "concept-hgb-chusho",
+      "en": "hgb-chusho",
+      "kind": "concept",
+      "answer": "抽象",
+      "accept": [
+        "ちゅうしょう",
+        "abstract",
+        "抽象的"
+      ],
+      "ja": "共通の性質を抜き出すこと",
+      "q": "多くの個々の事物から共通する性質だけを抜き出してとらえること。「筆者は個々の体験を一般化して、〜的な概念で論じている」のように使い、対義語は「具体」",
+      "explain": "「抽」は抜き出す。「具体」と対にして、評論では「具体例→抽象化された主張」の往復を読み取る",
+      "level": "easy",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-gutai",
+      "en": "hgb-gutai",
+      "kind": "concept",
+      "answer": "具体",
+      "accept": [
+        "ぐたい",
+        "concrete",
+        "具体的"
+      ],
+      "ja": "個々の事物として形を持つこと",
+      "q": "個々の事物が、はっきりした形や事例として直接とらえられること。「〜例を挙げて説明する」のように、抽象的な主張を裏づける場面で使う",
+      "explain": "抽象の対義語。「具体的に言えば」の後に例が来る。「具象」は美術で形あるものを指す近い語",
+      "level": "easy",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-fuhen",
+      "en": "hgb-fuhen",
+      "kind": "concept",
+      "answer": "普遍",
+      "accept": [
+        "ふへん",
+        "universal",
+        "普遍的"
+      ],
+      "ja": "すべてに共通して当てはまること",
+      "q": "時代や場所、文化を問わず、すべてのものに共通して当てはまること。「人権は〜的な価値だ」のように用いる。対義語は「特殊」",
+      "explain": "「不変（変わらない）」と書き間違えない。西洋近代は普遍性を掲げ、それが相対主義から批判された",
+      "level": "easy",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-tokushu",
+      "en": "hgb-tokushu",
+      "kind": "concept",
+      "answer": "特殊",
+      "accept": [
+        "とくしゅ",
+        "particular",
+        "special"
+      ],
+      "ja": "限られた範囲だけに当てはまる",
+      "q": "限られた範囲や条件のもとでだけ当てはまること。「日本の〜性を強調しすぎると普遍的な議論ができない」のように用いる",
+      "explain": "普遍の対義語。「個別」「固有」も近い。「特殊→普遍」へ一般化するのが帰納、逆が演繹",
+      "level": "easy",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-eneki",
+      "en": "hgb-eneki",
+      "kind": "concept",
+      "answer": "演繹",
+      "accept": [
+        "えんえき",
+        "deduction",
+        "演繹法"
+      ],
+      "ja": "一般原理から個別の結論を導く",
+      "q": "一般的な原理や法則を前提として、そこから個別の結論を論理的に導く推論の方法。「人は死ぬ、ソクラテスは人だ、ゆえに…」の三段論法が典型",
+      "explain": "帰納の対。前提が正しければ結論も必ず正しいが、新しい知識は増えない。デカルトの合理論の方法",
+      "level": "normal",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-kino",
+      "en": "hgb-kino",
+      "kind": "concept",
+      "answer": "帰納",
+      "accept": [
+        "きのう",
+        "induction",
+        "帰納法"
+      ],
+      "ja": "個別の事例から一般法則を導く",
+      "q": "多くの個別の観察や事例を集め、そこに共通する一般的な法則を導く推論の方法。「実験を重ねて法則を見いだす」のが典型",
+      "explain": "演繹の対。結論は確からしいが絶対ではない（白い白鳥ばかり見ても黒い白鳥はいるかも）。ベーコンの経験論",
+      "level": "normal",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-benshoho",
+      "en": "hgb-benshoho",
+      "kind": "concept",
+      "answer": "弁証法",
+      "accept": [
+        "べんしょうほう",
+        "dialectic",
+        "dialectics"
+      ],
+      "ja": "対立を通して高次の統一へ至る論理",
+      "q": "ある主張（正）に対立する主張（反）が現れ、両者の矛盾を乗り越えてより高い段階の結論（合）に至るという、ヘーゲルが体系化した思考の方法",
+      "explain": "正・反・合の三段階。矛盾を否定するのではなく発展の原動力とみなす。マルクスは唯物論に応用",
+      "level": "normal",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-shiyo",
+      "en": "hgb-shiyo",
+      "kind": "concept",
+      "answer": "止揚",
+      "accept": [
+        "しよう",
+        "aufheben",
+        "アウフヘーベン",
+        "揚棄"
+      ],
+      "ja": "対立を保ちつつ高次で統一する",
+      "q": "弁証法で、対立する二つのものを単に捨てるのではなく、それぞれの長所を生かしながらより高い次元で統一すること。ドイツ語の訳語",
+      "explain": "aufheben は「捨てる」「保存する」「高める」の三つの意味を持つ。「揚棄」とも訳す",
+      "level": "hard",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-nikotairitsu",
+      "en": "hgb-nikotairitsu",
+      "kind": "concept",
+      "answer": "二項対立",
+      "accept": [
+        "にこうたいりつ",
+        "binary opposition",
+        "dichotomy"
+      ],
+      "ja": "二つの概念を対立させる枠組み",
+      "q": "精神と身体、文明と野蛮、男と女のように、世界を対になる二つの概念で分けてとらえる思考の枠組み。評論ではこの枠組みの限界を指摘することが多い",
+      "explain": "「二項」対立と書く（二考・二効ではない）。一方を優位に置く構造を批判したのが脱構築（デリダ）",
+      "level": "normal",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-gyakusetsu",
+      "en": "hgb-gyakusetsu",
+      "kind": "concept",
+      "answer": "逆説",
+      "accept": [
+        "ぎゃくせつ",
+        "paradox",
+        "パラドックス"
+      ],
+      "ja": "一見矛盾するが真理を含む説",
+      "q": "一見すると常識に反して矛盾しているようで、よく考えると真理を突いている表現や主張。「急がば回れ」「負けるが勝ち」など",
+      "explain": "単なる「逆の説」ではない。評論は「便利になるほど不自由になる」のような逆説を主張の核に置くことが多い",
+      "level": "normal",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-hitsuzen",
+      "en": "hgb-hitsuzen",
+      "kind": "concept",
+      "answer": "必然",
+      "accept": [
+        "ひつぜん",
+        "necessity",
+        "必然的"
+      ],
+      "ja": "必ずそうなること",
+      "q": "ほかの可能性がなく、必ずそうなると決まっていること。「近代化の〜的な帰結として環境問題が生じた」のように用いる。対義語は「偶然」",
+      "explain": "「必然性がある」＝そうなる理由がある。「当然」は「そうあるべき」で、規範のニュアンス",
+      "level": "normal",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-guzen",
+      "en": "hgb-guzen",
+      "kind": "concept",
+      "answer": "偶然",
+      "accept": [
+        "ぐうぜん",
+        "contingency",
+        "chance"
+      ],
+      "ja": "たまたまそうなること",
+      "q": "そうなる理由や決まりがなく、たまたま起こること。「〜の出会いが人生を変える」のように用い、「必然」と対にして論じられる",
+      "explain": "九鬼周造『偶然性の問題』が有名。「他でもありえた」ことを指し、実存や自由と結びつけて論じられる",
+      "level": "easy",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-gainen",
+      "en": "hgb-gainen",
+      "kind": "concept",
+      "answer": "概念",
+      "accept": [
+        "がいねん",
+        "concept"
+      ],
+      "ja": "物事の本質をまとめた考え",
+      "q": "多くの事物から共通の特徴を抜き出してまとめた、物事の意味内容。「自由という〜は時代によって変化する」のように用いる",
+      "explain": "「観念」は個人の頭の中のイメージ、「概念」は共有される意味内容。「概念規定」＝定義",
+      "level": "easy",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-meidai",
+      "en": "hgb-meidai",
+      "kind": "concept",
+      "answer": "命題",
+      "accept": [
+        "めいだい",
+        "proposition"
+      ],
+      "ja": "真偽を判定できる文",
+      "q": "「AはBである」のように、真か偽かを判定できる形で述べられた文や主張。「この〜は反証可能か」のように用いる。「与えられた課題」の意味は俗用",
+      "explain": "「命題」に「使命・課題」の意味はもともとない（誤用が広まった）。論理学では真偽の担い手",
+      "level": "hard",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-shiiteki",
+      "en": "hgb-shiiteki",
+      "kind": "concept",
+      "answer": "恣意的",
+      "accept": [
+        "しいてき",
+        "arbitrary",
+        "恣意"
+      ],
+      "ja": "気ままで必然性がないさま",
+      "q": "論理的な必然性や根拠がなく、その時々の思いつきや好みで決められているさま。「言葉と物の結びつきは〜だ」という言語学の考えが有名",
+      "explain": "「意図的」「作為的」とは違う。ソシュールは記号（音と意味の結びつき）の恣意性を説いた",
+      "level": "hard",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-zettai",
+      "en": "hgb-zettai",
+      "kind": "concept",
+      "answer": "絶対",
+      "accept": [
+        "ぜったい",
+        "absolute",
+        "絶対的"
+      ],
+      "ja": "他と比較されず成り立つこと",
+      "q": "ほかの何ものにも依存せず、比較や条件を超えて成り立つこと。「神を〜的な存在とみなす」のように用い、対義語は「相対」",
+      "explain": "「絶対」は「対を絶つ」。近代以前は神や真理が絶対、近代以降は価値の相対化が進んだと論じられる",
+      "level": "easy",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-sotaishugi",
+      "en": "hgb-sotaishugi",
+      "kind": "concept",
+      "answer": "相対主義",
+      "accept": [
+        "そうたいしゅぎ",
+        "relativism"
+      ],
+      "ja": "真理や価値は立場次第という考え",
+      "q": "真理や善悪の基準は文化や立場によって異なり、すべてに通用する絶対的なものはないとする考え方。「文化〜は異文化への寛容を生むが、何でもありに陥る危険もある」",
+      "explain": "「文化相対主義」は人類学の基本態度。批判：「すべては相対的だ」という主張自体は絶対的では、という自己矛盾",
+      "level": "normal",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-kaigi",
+      "en": "hgb-kaigi",
+      "kind": "concept",
+      "answer": "懐疑",
+      "accept": [
+        "かいぎ",
+        "skepticism",
+        "doubt",
+        "懐疑主義"
+      ],
+      "ja": "疑うこと",
+      "q": "物事を当たり前とせず、本当にそうか疑いをもって考えること。デカルトは方法として徹底的にこれを行い、「われ思う、ゆえにわれあり」にたどり着いた",
+      "explain": "「懐疑的」＝疑ってかかる態度。デカルトの「方法的懐疑」は疑うために疑うのではなく確実な知を得るため",
+      "level": "normal",
+      "tags": [
+        "hgb-logic"
+      ]
+    },
+    {
+      "id": "concept-hgb-irony",
+      "en": "hgb-irony",
+      "kind": "concept",
+      "answer": "アイロニー",
+      "accept": [
+        "irony",
+        "皮肉",
+        "反語"
+      ],
+      "ja": "反対のことを言って本心を示す表現",
+      "q": "本心と反対のことを言うことで、かえって真意や批判を伝える表現。「文明の進歩が人を不幸にする」のような、意図と結果のずれを指すこともある",
+      "explain": "日本語では「皮肉」「反語」。「歴史のアイロニー」＝目指したことと逆の結果になる状況",
+      "level": "normal",
+      "tags": [
+        "hgb-lang"
+      ]
+    },
+    {
+      "id": "concept-hgb-metaphor",
+      "en": "hgb-metaphor",
+      "kind": "concept",
+      "answer": "メタファー",
+      "accept": [
+        "metaphor",
+        "隠喩",
+        "暗喩"
+      ],
+      "ja": "「〜のようだ」を使わないたとえ",
+      "q": "「〜のようだ」「〜みたいに」を使わずに、あるものを別のものに直接見立てるたとえ。「人生は旅だ」「時は金なり」など。評論では思考の枠組みそのものを指すこともある",
+      "explain": "「〜のようだ」を使うのは直喩（シミリ）。レイコフは「人は隠喩によって思考している」と論じた",
+      "level": "easy",
+      "tags": [
+        "hgb-lang"
+      ]
+    },
+    {
+      "id": "concept-hgb-rhetoric",
+      "en": "hgb-rhetoric",
+      "kind": "concept",
+      "answer": "レトリック",
+      "accept": [
+        "rhetoric",
+        "修辞",
+        "修辞法"
+      ],
+      "ja": "言葉を効果的に用いる技術",
+      "q": "聞き手や読み手を説得し、印象づけるために言葉を効果的に用いる技術。比喩・反復・倒置など。「〜にすぎない」と言えば中身のない飾りの意味になる",
+      "explain": "古代ギリシャの弁論術に由来。「修辞」。悪い意味では「巧言」、良い意味では「表現の工夫」の両面",
+      "level": "easy",
+      "tags": [
+        "hgb-lang"
+      ]
+    },
+    {
+      "id": "concept-hgb-kigo",
+      "en": "hgb-kigo",
+      "kind": "concept",
+      "answer": "記号",
+      "accept": [
+        "きごう",
+        "sign"
+      ],
+      "ja": "意味を表す音・文字・しるし",
+      "q": "ある意味内容を表す文字・音声・図形・しるし全般。言語学では、表すもの（音のイメージ）と表されるもの（意味）の結びつきで成り立つと説明される",
+      "explain": "ソシュール以来の「記号論」。ボードリヤールは消費社会では商品も記号として消費されると論じた",
+      "level": "normal",
+      "tags": [
+        "hgb-lang"
+      ]
+    },
+    {
+      "id": "concept-hgb-signifiant",
+      "en": "hgb-signifiant",
+      "kind": "concept",
+      "answer": "シニフィアン",
+      "accept": [
+        "signifiant",
+        "signifier",
+        "能記",
+        "意味するもの"
+      ],
+      "ja": "記号のうち音・文字の側面",
+      "q": "ソシュールの言語学で、記号を構成する二つの面のうち、音声や文字といった「表すもの」の側。フランス語の用語をそのままカタカナで用いる",
+      "explain": "対はシニフィエ（所記・意味されるもの）。「イヌ」という音の連なりがシニフィアン、犬のイメージがシニフィエ",
+      "level": "hard",
+      "tags": [
+        "hgb-lang"
+      ]
+    },
+    {
+      "id": "concept-hgb-signifie",
+      "en": "hgb-signifie",
+      "kind": "concept",
+      "answer": "シニフィエ",
+      "accept": [
+        "signifié",
+        "signifie",
+        "signified",
+        "所記",
+        "意味されるもの"
+      ],
+      "ja": "記号のうち意味内容の側面",
+      "q": "ソシュールの言語学で、記号を構成する二つの面のうち、その音や文字が指し示す概念・意味内容の側。フランス語の用語をそのままカタカナで用いる",
+      "explain": "対はシニフィアン（能記）。両者の結びつきに必然性がない（恣意的）というのがソシュールの核心",
+      "level": "hard",
+      "tags": [
+        "hgb-lang"
+      ]
+    },
+    {
+      "id": "concept-hgb-shocho",
+      "en": "hgb-shocho",
+      "kind": "concept",
+      "answer": "象徴",
+      "accept": [
+        "しょうちょう",
+        "symbol",
+        "シンボル"
+      ],
+      "ja": "抽象的なものを具体物で表す",
+      "q": "平和をハトで、日本を桜で表すように、形のない抽象的な観念を、具体的なものによって表すこと。また、その具体的なもの",
+      "explain": "「シンボル」。比喩と違い、文化の中で結びつきが定着したもの。憲法の「天皇は日本国の象徴」も同じ字",
+      "level": "easy",
+      "tags": [
+        "hgb-lang"
+      ]
+    },
+    {
+      "id": "concept-hgb-kyoko",
+      "en": "hgb-kyoko",
+      "kind": "concept",
+      "answer": "虚構",
+      "accept": [
+        "きょこう",
+        "fiction",
+        "フィクション"
+      ],
+      "ja": "事実ではない作りごと",
+      "q": "事実ではなく、想像によって作り上げられたこと。小説や物語だけでなく、「貨幣や国家も人々が共有する〜だ」のように、社会の仕組みを論じる際にも使われる",
+      "explain": "「フィクション」。評論では「虚構／現実」の二分法を疑い、現実自体が物語によって構成されると論じる",
+      "level": "normal",
+      "tags": [
+        "hgb-lang"
+      ]
+    },
+    {
+      "id": "concept-hgb-identity",
+      "en": "hgb-identity",
+      "kind": "concept",
+      "answer": "アイデンティティ",
+      "accept": [
+        "identity",
+        "自己同一性",
+        "自我同一性"
+      ],
+      "ja": "自分が自分であるという感覚",
+      "q": "時間がたっても場面が変わっても、自分は一貫して自分だという感覚。また、集団への帰属によって「自分は何者か」を規定するもの。「〜の危機」「国民的〜」",
+      "explain": "エリクソンの心理学用語。「自己同一性」。評論では「アイデンティティは他者との関係の中で作られる」と論じられる",
+      "level": "easy",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-tasha",
+      "en": "hgb-tasha",
+      "kind": "concept",
+      "answer": "他者",
+      "accept": [
+        "たしゃ",
+        "other",
+        "the other"
+      ],
+      "ja": "自分とは異なる理解しきれない存在",
+      "q": "自分とは異なり、自分の思い通りにならず、完全には理解しきれない存在。単なる「他人」より重く、「〜との出会いが自己を変える」のように使われる",
+      "explain": "レヴィナスの哲学が源流。「他者性」＝理解や支配に回収できない異質さ。自己を映す鏡としても論じられる",
+      "level": "easy",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-shutai",
+      "en": "hgb-shutai",
+      "kind": "concept",
+      "answer": "主体",
+      "accept": [
+        "しゅたい",
+        "subject"
+      ],
+      "ja": "自らの意志で行為するもの",
+      "q": "自らの意志と判断で認識し、行為する側の存在。「〜的に学ぶ」「近代は個人を〜として確立した」のように使い、対義語は「客体」",
+      "explain": "英語では subject。「主観」（認識のあり方）とは字が違う。ポストモダンは「主体の死」を論じた",
+      "level": "easy",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-kyakutai",
+      "en": "hgb-kyakutai",
+      "kind": "concept",
+      "answer": "客体",
+      "accept": [
+        "きゃくたい",
+        "object"
+      ],
+      "ja": "認識や行為の対象となるもの",
+      "q": "認識したり働きかけたりする側から見て、その対象となるもの。「近代科学は自然を〜として観察し、支配してきた」のように用いる",
+      "explain": "主体の対義語。英語では object（対象・物）。「客観」（見方）とは別の語",
+      "level": "normal",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-shukan",
+      "en": "hgb-shukan",
+      "kind": "concept",
+      "answer": "主観",
+      "accept": [
+        "しゅかん",
+        "subjective",
+        "subjectivity",
+        "主観的"
+      ],
+      "ja": "自分ひとりの見方・感じ方",
+      "q": "自分ひとりの立場や感じ方に基づいた見方・考え。「それは〜的な印象にすぎない」のように、普遍的な妥当性がないという意味で使われることが多い",
+      "explain": "対義語は客観。ただし評論では「完全に客観的な認識はありうるか」と主観／客観の区分そのものが問われる",
+      "level": "easy",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-kyakkan",
+      "en": "hgb-kyakkan",
+      "kind": "concept",
+      "answer": "客観",
+      "accept": [
+        "きゃっかん",
+        "objective",
+        "objectivity",
+        "客観的"
+      ],
+      "ja": "誰が見ても同じであるさま",
+      "q": "個人の感じ方や立場に左右されず、誰にとっても同じように成り立つこと。「データに基づいて〜的に判断する」のように、科学的な態度を表す語",
+      "explain": "「客観性」は近代科学の理想。しかし観察者の視点を消せるのかという批判がある。「客体」と区別",
+      "level": "easy",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-jitsuzon",
+      "en": "hgb-jitsuzon",
+      "kind": "concept",
+      "answer": "実存",
+      "accept": [
+        "じつぞん",
+        "existence",
+        "existenz",
+        "実存主義"
+      ],
+      "ja": "今ここに生きる個別の人間存在",
+      "q": "「人間とは何か」という一般的な本質ではなく、今ここに生きている、かけがえのない個別の人間の存在。「〜は本質に先立つ」というサルトルの言葉が有名",
+      "explain": "実存主義（キルケゴール、ハイデガー、サルトル）。人間はまず存在し、あとから自分の意味を作るという考え",
+      "level": "hard",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-sogai",
+      "en": "hgb-sogai",
+      "kind": "concept",
+      "answer": "疎外",
+      "accept": [
+        "そがい",
+        "alienation"
+      ],
+      "ja": "人が作ったものに人が支配される",
+      "q": "人間が自分で作り出したもの（労働の成果・制度・技術）が、逆に人間を支配し、人間らしさを失わせること。「機械化された労働のもとで人は〜される」",
+      "explain": "マルクスの「労働の疎外」が源。「疎外感」＝仲間外れの気持ちは日常語で、評論では上の意味",
+      "level": "hard",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-jiga",
+      "en": "hgb-jiga",
+      "kind": "concept",
+      "answer": "自我",
+      "accept": [
+        "じが",
+        "ego",
+        "self"
+      ],
+      "ja": "他と区別される自分自身",
+      "q": "他者や外界から区別された「自分」という意識。「近代的〜の確立」のように、個人の内面を持つ主体として自分をとらえる意識を指す",
+      "explain": "フロイトでは「エス（欲望）」「超自我（良心）」との間で調整する心の部分。「自我が芽生える」は日常語",
+      "level": "easy",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-muishiki",
+      "en": "hgb-muishiki",
+      "kind": "concept",
+      "answer": "無意識",
+      "accept": [
+        "むいしき",
+        "unconscious",
+        "the unconscious"
+      ],
+      "ja": "意識されない心の領域",
+      "q": "本人が自覚できないまま、行動や感情を左右している心の領域。フロイトが精神分析で見いだし、「人間は自分の心の主人ではない」と理性中心の近代的人間観を揺るがした",
+      "explain": "フロイトの発見。夢・言い間違い・神経症に現れる。日常語の「無意識のうちに」はほぼ「知らず知らず」",
+      "level": "normal",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-shintaisei",
+      "en": "hgb-shintaisei",
+      "kind": "concept",
+      "answer": "身体性",
+      "accept": [
+        "しんたいせい",
+        "embodiment",
+        "corporeality"
+      ],
+      "ja": "身体を持つ存在としてのあり方",
+      "q": "人間が精神だけでなく身体を持つ存在であること、また身体を通して世界と関わっているというあり方。「情報化の中で〜が失われる」のように用いる",
+      "explain": "メルロ＝ポンティの現象学が背景。「精神／身体」の二元論（デカルト）への批判として使われる",
+      "level": "hard",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-risei",
+      "en": "hgb-risei",
+      "kind": "concept",
+      "answer": "理性",
+      "accept": [
+        "りせい",
+        "reason",
+        "ratio"
+      ],
+      "ja": "筋道立てて考える能力",
+      "q": "感情や欲望に流されず、筋道を立てて考え、真偽や善悪を判断する能力。近代はこれを人間の本質とみなし、対義語の「感性」より上位に置いた",
+      "explain": "啓蒙思想の中心概念。カント『純粋理性批判』。20世紀は理性への信頼が揺らぎ「理性の限界」が論じられた",
+      "level": "easy",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-kansei",
+      "en": "hgb-kansei",
+      "kind": "concept",
+      "answer": "感性",
+      "accept": [
+        "かんせい",
+        "sensibility",
+        "sensitivity"
+      ],
+      "ja": "感じ取る力",
+      "q": "外からの刺激を受け取り、感じ取る能力。美しさや情緒を受け止める力。「〜を磨く」のように用い、対義語は「理性」",
+      "explain": "カントでは「感性（受け取る）→悟性（整理する）→理性（推論する）」。「感受性」はほぼ同義",
+      "level": "normal",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-jiritsu",
+      "en": "hgb-jiritsu",
+      "kind": "concept",
+      "answer": "自律",
+      "accept": [
+        "じりつ",
+        "autonomy"
+      ],
+      "ja": "自分で立てた規範に従うこと",
+      "q": "他からの命令や欲望に従うのではなく、自分自身で立てた規範に従って行動すること。カントはこれを道徳の条件とした。対義語は「他律」",
+      "explain": "「自立（一人で立つ）」と字が違う。「自律」は「律（きまり）」を自分で決めること。「他律」は外から決められる",
+      "level": "normal",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-keijijo",
+      "en": "hgb-keijijo",
+      "kind": "concept",
+      "answer": "形而上",
+      "accept": [
+        "けいじじょう",
+        "metaphysical",
+        "形而上学"
+      ],
+      "ja": "感覚を超えた抽象的なもの",
+      "q": "形をもたず、感覚や経験ではとらえられない、抽象的・観念的なもの。存在の根拠や神・魂などを論じる哲学の領域を指すこともある。対義語は「形而下」",
+      "explain": "「形而上学（メタフィジックス）」。『易経』の「形よりして上なる者これを道と謂ふ」に由来",
+      "level": "hard",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-keijika",
+      "en": "hgb-keijika",
+      "kind": "concept",
+      "answer": "形而下",
+      "accept": [
+        "けいじか",
+        "physical"
+      ],
+      "ja": "形があり感覚でとらえられるもの",
+      "q": "形をもち、感覚や経験でとらえられる具体的なもの・現象の世界。「〜の問題としてではなく、形而上の問いとして考える」のように用いる",
+      "explain": "対義語は形而上。『易経』の「形よりして下なる者これを器と謂ふ」。「器」＝具体的なもの",
+      "level": "hard",
+      "tags": [
+        "hgb-self"
+      ]
+    },
+    {
+      "id": "concept-hgb-kindai",
+      "en": "hgb-kindai",
+      "kind": "concept",
+      "answer": "近代",
+      "accept": [
+        "きんだい",
+        "modern",
+        "modernity",
+        "近代的"
+      ],
+      "ja": "合理性・個人・進歩を軸とした時代",
+      "q": "西洋では市民革命・産業革命以降、日本では明治以降の時代。理性・科学・個人・進歩を重んじ、評論ではこの時代の価値観の限界を問い直す文脈で頻出する",
+      "explain": "「近代化」＝合理化・産業化・個人化。「前近代」「ポストモダン（脱近代）」と対比して読む",
+      "level": "easy",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-gorishugi",
+      "en": "hgb-gorishugi",
+      "kind": "concept",
+      "answer": "合理主義",
+      "accept": [
+        "ごうりしゅぎ",
+        "rationalism",
+        "合理性"
+      ],
+      "ja": "理性で説明できるものを重んじる",
+      "q": "理性や論理によって説明できることを正しいとし、そうでないものを排除しようとする考え方。「近代の〜が自然を計算可能な資源とみなした」のように批判的にも使う",
+      "explain": "哲学では経験論に対して理性を知の源とする立場（デカルト）。日常語の「合理的」は効率がよい意味",
+      "level": "normal",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-keimo",
+      "en": "hgb-keimo",
+      "kind": "concept",
+      "answer": "啓蒙",
+      "accept": [
+        "けいもう",
+        "enlightenment",
+        "啓蒙思想"
+      ],
+      "ja": "理性の光で無知を照らすこと",
+      "q": "無知や迷信にとらわれた人々を、理性の光によって導き、知識を与えること。18世紀ヨーロッパでこの思想が広まり、市民革命の土台となった",
+      "explain": "「蒙（くらい）を啓（ひら）く」。カント「啓蒙とは人間が自ら招いた未成年状態から抜け出ること」",
+      "level": "normal",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-korishugi",
+      "en": "hgb-korishugi",
+      "kind": "concept",
+      "answer": "功利主義",
+      "accept": [
+        "こうりしゅぎ",
+        "utilitarianism",
+        "功利"
+      ],
+      "ja": "最大多数の最大幸福を目指す",
+      "q": "行為の正しさを、それがもたらす幸福や利益の大きさで判断する倫理思想。「最大多数の最大幸福」を掲げ、ベンサムやミルが唱えた",
+      "explain": "少数者の犠牲を正当化しうるとして批判もある。「利己主義」とは違い、社会全体の幸福を基準にする",
+      "level": "normal",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-ideology",
+      "en": "hgb-ideology",
+      "kind": "concept",
+      "answer": "イデオロギー",
+      "accept": [
+        "ideology",
+        "観念形態"
+      ],
+      "ja": "社会集団の思想・信念体系",
+      "q": "ある社会や集団が共有し、その行動を方向づけている思想・信念の体系。「中立に見える教育にも特定の〜が潜んでいる」のように、隠れた偏りを指して批判的に使う",
+      "explain": "マルクスは支配階級の利益を正当化する「虚偽意識」とした。「観念形態」とも訳す",
+      "level": "normal",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-paradigm",
+      "en": "hgb-paradigm",
+      "kind": "concept",
+      "answer": "パラダイム",
+      "accept": [
+        "paradigm",
+        "範例"
+      ],
+      "ja": "ある時代の科学の共通の枠組み",
+      "q": "ある時代の科学者集団が共有している、ものの見方や研究の枠組み。クーンはこれが革命的に転換することで科学が進歩すると論じた。「〜シフト」",
+      "explain": "クーン『科学革命の構造』。天動説から地動説への転換が典型例。日常では「発想の枠組み」全般に拡張",
+      "level": "normal",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-nationalism",
+      "en": "hgb-nationalism",
+      "kind": "concept",
+      "answer": "ナショナリズム",
+      "accept": [
+        "nationalism",
+        "国民主義",
+        "民族主義",
+        "国家主義"
+      ],
+      "ja": "国民・民族の一体性を重んじる思想",
+      "q": "自分たちの国民や民族を一つのまとまりとみなし、その独立・統一・利益を重んじる思想や運動。評論では「国民」は近代に作られたものだという議論と結びつく",
+      "explain": "アンダーソン『想像の共同体』：国民は印刷メディアなどを通じて想像された共同体。訳語は文脈で使い分ける",
+      "level": "normal",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-globalism",
+      "en": "hgb-globalism",
+      "kind": "concept",
+      "answer": "グローバリズム",
+      "accept": [
+        "globalism",
+        "グローバリゼーション",
+        "globalization",
+        "グローバル化"
+      ],
+      "ja": "国境を越えて世界が一体化する動き",
+      "q": "人・モノ・資本・情報が国境を越えて移動し、世界が一つの市場や社会として一体化していく動き、またそれを推し進める考え方。「〜の陰で格差が広がる」",
+      "explain": "批判：文化の画一化、格差の拡大。反動としてナショナリズムの高まりが論じられる",
+      "level": "easy",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-postmodern",
+      "en": "hgb-postmodern",
+      "kind": "concept",
+      "answer": "ポストモダン",
+      "accept": [
+        "postmodern",
+        "ポストモダニズム",
+        "postmodernism",
+        "脱近代"
+      ],
+      "ja": "近代の理念を疑う思想潮流",
+      "q": "理性・進歩・普遍的真理といった近代の理念を疑い、「大きな物語」の終わりを説く20世紀後半の思想潮流。多様性や差異を重んじる",
+      "explain": "リオタール『ポストモダンの条件』。「近代の後」の意。建築・文学の様式名でもある",
+      "level": "hard",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-shihonshugi",
+      "en": "hgb-shihonshugi",
+      "kind": "concept",
+      "answer": "資本主義",
+      "accept": [
+        "しほんしゅぎ",
+        "capitalism"
+      ],
+      "ja": "利潤を求めて資本を投じる経済体制",
+      "q": "生産手段を私有する資本家が労働者を雇い、市場での利潤を目指して生産を行う経済の仕組み。評論では「あらゆるものを商品にする」と批判的に論じられる",
+      "explain": "マルクスは労働者の搾取と疎外を批判。「後期資本主義」「新自由主義」は現代の変化を指す語",
+      "level": "easy",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-shohishakai",
+      "en": "hgb-shohishakai",
+      "kind": "concept",
+      "answer": "消費社会",
+      "accept": [
+        "しょうひしゃかい",
+        "consumer society",
+        "大衆消費社会"
+      ],
+      "ja": "消費が生活の中心となる社会",
+      "q": "必要を満たすためではなく、他人との差異や記号としてのイメージを求めてモノを買うことが生活の中心となった社会。ボードリヤールが分析した",
+      "explain": "「記号の消費」：商品の機能より、それが示す地位やセンスを買う。「使い捨て」「広告」がキーワード",
+      "level": "normal",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-taishu",
+      "en": "hgb-taishu",
+      "kind": "concept",
+      "answer": "大衆",
+      "accept": [
+        "たいしゅう",
+        "mass",
+        "the masses"
+      ],
+      "ja": "均質で受動的な多数の人々",
+      "q": "近代の産業化・都市化によって生まれた、個性や判断力をもたず均質で受動的な多数の人々。「〜社会」「〜文化」のように用い、オルテガは「〜の反逆」と批判した",
+      "explain": "「民衆」「市民」が肯定的なのに対し、批判的な含み。「大衆文化」は流行・娯楽を指す",
+      "level": "normal",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-kenryoku",
+      "en": "hgb-kenryoku",
+      "kind": "concept",
+      "answer": "権力",
+      "accept": [
+        "けんりょく",
+        "power"
+      ],
+      "ja": "他者を従わせる力",
+      "q": "他人の意志に反してでも従わせることのできる力。国家や支配者だけでなく、フーコーは学校や病院など日常の制度に浸透して人々を規律づける目に見えない力を論じた",
+      "explain": "フーコーの「規律権力」「生権力」。「権利（right）」と混同しない",
+      "level": "hard",
+      "tags": [
+        "hgb-modern"
+      ]
+    },
+    {
+      "id": "concept-hgb-kyodotai",
+      "en": "hgb-kyodotai",
+      "kind": "concept",
+      "answer": "共同体",
+      "accept": [
+        "きょうどうたい",
+        "community",
+        "コミュニティ"
+      ],
+      "ja": "血縁・地縁で結ばれた集団",
+      "q": "血縁や地縁、共通の価値観によって自然に結びついた人々の集団。村落や家族が典型で、近代化によって解体し、利害で結ばれた「社会」に置き換わったと論じられる",
+      "explain": "テンニース：ゲマインシャフト（共同体）とゲゼルシャフト（利益社会）。「想像の共同体」は国民のこと",
+      "level": "easy",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-kokyosei",
+      "en": "hgb-kokyosei",
+      "kind": "concept",
+      "answer": "公共性",
+      "accept": [
+        "こうきょうせい",
+        "publicness",
+        "public sphere",
+        "公共圏"
+      ],
+      "ja": "みんなに開かれていること",
+      "q": "特定の個人や集団だけでなく、社会の誰にでも開かれ、関わることのできる性質。「私的な利害を超えて〜を担う」のように使う",
+      "explain": "ハーバーマスは市民が対等に議論する「公共圏」を論じた。「公＝お上」ではなく「みんなの」",
+      "level": "hard",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-shiminshakai",
+      "en": "hgb-shiminshakai",
+      "kind": "concept",
+      "answer": "市民社会",
+      "accept": [
+        "しみんしゃかい",
+        "civil society"
+      ],
+      "ja": "自立した個人がつくる社会",
+      "q": "身分制から解放され、自由で対等な個人が、自発的に結びついてつくる社会。市民革命以降に成立し、国家や市場から相対的に独立した領域として論じられる",
+      "explain": "「市民」は都市住民ではなく、権利と責任を持つ自立した個人。NPOやボランティアはその現代的な形",
+      "level": "normal",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-tayosei",
+      "en": "hgb-tayosei",
+      "kind": "concept",
+      "answer": "多様性",
+      "accept": [
+        "たようせい",
+        "diversity",
+        "ダイバーシティ"
+      ],
+      "ja": "異なるものが共存すること",
+      "q": "性別・民族・文化・価値観・生物の種など、異なるものがさまざまに存在している状態。「〜を尊重する」が現代社会の理念となり、生態系にも用いられる",
+      "explain": "「ダイバーシティ」。生物多様性・文化的多様性。「画一化」「同質性」が対義的な語",
+      "level": "easy",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-hosetsu",
+      "en": "hgb-hosetsu",
+      "kind": "concept",
+      "answer": "包摂",
+      "accept": [
+        "ほうせつ",
+        "inclusion",
+        "インクルージョン"
+      ],
+      "ja": "異質なものを内に取り込むこと",
+      "q": "異質なものや弱い立場の人々を排除せず、社会や共同体の一員として内側に取り込むこと。「社会的〜」「〜と排除」のように使い、福祉や教育の理念になっている",
+      "explain": "「インクルージョン」。ただし包摂は同化の圧力にもなりうるという批判的読みが評論では問われる",
+      "level": "normal",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-haijo",
+      "en": "hgb-haijo",
+      "kind": "concept",
+      "answer": "排除",
+      "accept": [
+        "はいじょ",
+        "exclusion"
+      ],
+      "ja": "異質なものを外へ押し出すこと",
+      "q": "異質なものや異なる者を、共同体や社会の外へ押し出して締め出すこと。「共同体の一体感は誰かの〜によって成り立つ」のように批判的な文脈で使われる",
+      "explain": "対義語は包摂。「差別」「周縁化」と結びつく。「社会的排除」＝貧困などで社会参加から締め出されること",
+      "level": "easy",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-kihan",
+      "en": "hgb-kihan",
+      "kind": "concept",
+      "answer": "規範",
+      "accept": [
+        "きはん",
+        "norm"
+      ],
+      "ja": "守るべきとされる基準",
+      "q": "社会の中で「こうすべきだ」と共有されている行動の基準やきまり。法律のような明文化されたものから、マナーや常識のような暗黙のものまで含む",
+      "explain": "「規範的」＝あるべき姿を語る（事実を語る「記述的」の対）。ジェンダー規範などの形で頻出",
+      "level": "normal",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-sai",
+      "en": "hgb-sai",
+      "kind": "concept",
+      "answer": "差異",
+      "accept": [
+        "さい",
+        "difference",
+        "différence"
+      ],
+      "ja": "他と異なること",
+      "q": "あるものが他のものと異なっていること。ソシュールやポスト構造主義では、ものの意味は本質ではなく他との違いによって決まるとされ、この語が中心になる",
+      "explain": "「差別」とは別。「差異の体系」：「赤」は「青」「黄」との違いによって意味を持つ。デリダは「差延」と造語",
+      "level": "hard",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-media",
+      "en": "hgb-media",
+      "kind": "concept",
+      "answer": "メディア",
+      "accept": [
+        "media",
+        "medium",
+        "媒体"
+      ],
+      "ja": "情報を伝える媒体",
+      "q": "新聞・テレビ・インターネットなど、情報を伝える手段や仕組み。マクルーハンは、伝えられる内容だけでなくそれ自体が人間の感覚や社会を変えると論じた",
+      "explain": "「メディアはメッセージである」（マクルーハン）。「媒体」は「間にあって媒介するもの」",
+      "level": "easy",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-literacy",
+      "en": "hgb-literacy",
+      "kind": "concept",
+      "answer": "リテラシー",
+      "accept": [
+        "literacy",
+        "読み書き能力"
+      ],
+      "ja": "情報を読み解き使いこなす力",
+      "q": "もとは文字を読み書きする力。転じて、情報やメディアを批判的に読み解き、適切に活用する力。「〜が低いと偽情報にだまされやすい」のように使う",
+      "explain": "「メディアリテラシー」「情報リテラシー」「金融リテラシー」。受け取るだけでなく発信する力も含む",
+      "level": "easy",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-kankyo",
+      "en": "hgb-kankyo",
+      "kind": "concept",
+      "answer": "環境",
+      "accept": [
+        "かんきょう",
+        "environment"
+      ],
+      "ja": "主体を取り巻く外界",
+      "q": "生物や人間を取り巻き、相互に影響し合う外界。「自然〜」「〜問題」のように使い、評論では人間が支配・利用する対象ではなく人間もその一部であるという視点が問われる",
+      "explain": "「環境倫理」は人間中心主義を問い直す。「里山」は人と自然の中間的な例として頻出",
+      "level": "easy",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-jizokukanosei",
+      "en": "hgb-jizokukanosei",
+      "kind": "concept",
+      "answer": "持続可能性",
+      "accept": [
+        "じぞくかのうせい",
+        "sustainability",
+        "サステナビリティ"
+      ],
+      "ja": "将来世代も満たせる発展",
+      "q": "将来の世代の必要を損なわずに、現在の世代の必要を満たすことができる性質。1987年の国連報告書で「〜な開発」として提唱され、環境・経済・社会の三側面をもつ",
+      "explain": "「サステナビリティ」。SDGs（持続可能な開発目標）は2015年に国連が採択。「成長の限界」が背景",
+      "level": "easy",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-seimeirinri",
+      "en": "hgb-seimeirinri",
+      "kind": "concept",
+      "answer": "生命倫理",
+      "accept": [
+        "せいめいりんり",
+        "bioethics",
+        "バイオエシックス"
+      ],
+      "ja": "生命をめぐる倫理問題",
+      "q": "医療や生命科学の発展にともなって生じる、人の生と死をめぐる倫理的な問題を扱う分野。脳死・臓器移植・出生前診断・遺伝子操作・安楽死などが主題",
+      "explain": "「バイオエシックス」。「生命の質（QOL）」と「生命の尊厳（SOL）」の対立、「自己決定権」がキーワード",
+      "level": "normal",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-technology",
+      "en": "hgb-technology",
+      "kind": "concept",
+      "answer": "テクノロジー",
+      "accept": [
+        "technology",
+        "科学技術"
+      ],
+      "ja": "科学に基づく技術",
+      "q": "科学的な知識を応用した技術の体系。評論では「人間の道具にとどまらず、人間の思考や社会のあり方を変える力」として、その両義性が論じられる",
+      "explain": "ハイデガーは技術が自然を「用立てる」ことで人間を支配すると論じた。「技術決定論」も頻出",
+      "level": "easy",
+      "tags": [
+        "hgb-society"
+      ]
+    },
+    {
+      "id": "concept-hgb-algorithm",
+      "en": "hgb-algorithm",
+      "kind": "concept",
+      "answer": "アルゴリズム",
+      "accept": [
+        "algorithm"
+      ],
+      "ja": "問題を解く手順・計算方法",
+      "q": "問題を解決するための決まった手順や計算方法。現代では、検索やSNSで何を表示するかを決める仕組みを指し、「〜が私たちの見る世界を選別している」のように使う",
+      "explain": "「フィルターバブル」「エコーチェンバー」と組で出る。語源はアラビアの数学者アル＝フワーリズミー",
+      "level": "normal",
+      "tags": [
+        "hgb-society"
+      ]
+    }
+  ]
+}

@@ -1312,7 +1312,7 @@ console.log("calc & listen:");
     const nums = (q.match(/[0-9][0-9,]*/g) ?? []).map((n) => Number(n.replace(/,/g, "")));
     return nums;
   }, prompt);
-  await page.fill("#input", "1");
+  await page.fill("#input", "0"); // 0 は生成されない（答えが 1% のとき "1" だと正解扱いになる）
   await page.press("#input", "Enter");
   await page.waitForTimeout(250);
   const shownAnswer = (await page.textContent("#word")).trim();
@@ -1462,7 +1462,7 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに76パック（36分野＋レベル別12＋文法6＋中学11＋小学4＋高校7）", packCount === 76, `packs=${packCount}`);
+  check("教材ライブラリに87パック（36分野＋レベル別12＋文法6＋中学11＋小学4＋高校14＋教科書英語4）", packCount === 87, `packs=${packCount}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
@@ -1583,6 +1583,17 @@ console.log("domain packs:");
   });
   check("義務教育カード: 漢字の答えに読みの別解がある", kana.reading.length > 0, JSON.stringify(kana).slice(0, 100));
   await page9.close();
+  // kanjiOnly: 問題文に読みが書いてあるカード（同音異義語・漢文の句法）は漢字で答えさせる。読みは別解に入れない
+  const page9b = await newPage({ storage: { spelldash_packs: JSON.stringify(["jkokugo2"]) } });
+  await page9b.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page9b.waitForTimeout(600);
+  const kanjiOnly = await page9b.evaluate(async () => {
+    const s = await import("/js/wordStore.js");
+    const ws = s.getWordsByCategory("jkokugo2").filter((x) => x.kanjiOnly);
+    return { n: ws.length, leak: ws.filter((w) => (w.accept ?? []).some((a) => /^[ぁ-ゖー]+$/.test(a))).length };
+  });
+  check("kanjiOnly カード: 同音異義語10枚に読みの別解がない", kanjiOnly.n === 10 && kanjiOnly.leak === 0, JSON.stringify(kanjiOnly));
+  await page9b.close();
   const page10 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]) } });
   await page10.goto(BASE + "/list.html?category=pref", { waitUntil: "networkidle" });
   await page10.waitForTimeout(900);
