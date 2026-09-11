@@ -62,6 +62,39 @@
           "group": "義務教育（社会・理科・国語・数学）"
         },
         {
+          "id": "jgeo1",
+          "label": "中学地理 日本",
+          "file": "packs/jgeo1.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 60,
+          "blurb": "地形・気候・産業・地図の読み方・領域。教科書の日本地理を説明から答える",
+          "audience": "中学生、日本地理をやり直す大人",
+          "group": "義務教育（社会・理科・国語・数学）"
+        },
+        {
+          "id": "jgeo2",
+          "label": "中学地理 世界",
+          "file": "packs/jgeo2.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 60,
+          "blurb": "大陸と海洋・気候帯・宗教・各州の特色・国際組織。世界地理の重要語を説明から答える",
+          "audience": "中学生、世界地理をやり直す大人",
+          "group": "義務教育（社会・理科・国語・数学）"
+        },
+        {
+          "id": "jcivics",
+          "label": "中学公民",
+          "file": "packs/jcivics.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "憲法・政治・経済・国際の重要語を説明から答える。入試の基本用語を網羅",
+          "audience": "中学3年生、公民をやり直す大人",
+          "group": "義務教育（社会・理科・国語・数学）"
+        },
+        {
           "id": "jkokugo1",
           "label": "国語 四字熟語・ことわざ・慣用句",
           "file": "packs/jkokugo1.json",
@@ -92,6 +125,28 @@
           "count": 70,
           "blurb": "過去形・未来・不定詞・比較・受動態。中2で習う文法を空欄で確認",
           "audience": "中学2年生、中学文法をやり直す社会人",
+          "group": "文法（中学・高校・TOEIC）"
+        },
+        {
+          "id": "grammar-jhs3",
+          "label": "中学英文法 3年",
+          "file": "packs/grammar-jhs3.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "現在完了・関係代名詞・分詞・間接疑問・仮定法。入試で差がつく文法",
+          "audience": "中学3年生、中学文法をやり直す社会人",
+          "group": "文法（中学・高校・TOEIC）"
+        },
+        {
+          "id": "grammar-hs1",
+          "label": "高校英文法 基礎",
+          "file": "packs/grammar-hs1.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "時制・助動詞・受動態・準動詞・関係詞・比較。高1で固める文法",
+          "audience": "高校1年生、高校文法をやり直す社会人",
           "group": "文法（中学・高校・TOEIC）"
         },
         {
