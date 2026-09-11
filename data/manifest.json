@@ -216,6 +216,39 @@
           "group": "中学校（社会・理科・国語・数学）"
         },
         {
+          "id": "hs-worldhist1",
+          "label": "高校世界史 古代〜近世",
+          "file": "packs/hs-worldhist1.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 80,
+          "blurb": "オリエントから宗教改革まで。王朝・人物・制度を説明から答える",
+          "audience": "高校生、大学受験で世界史を選ぶ人",
+          "group": "高校（世界史・日本史・化学・生物・古文）"
+        },
+        {
+          "id": "hs-japhist1",
+          "label": "高校日本史 原始〜近世",
+          "file": "packs/hs-japhist1.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 80,
+          "blurb": "縄文から江戸後期まで。制度・法令・外交と文化史の作品・作者を説明から答える",
+          "audience": "日本史探究を学ぶ高校生、共通テスト受験生",
+          "group": "高校（世界史・日本史・化学・生物・古文）"
+        },
+        {
+          "id": "hs-japhist2",
+          "label": "高校日本史 近現代",
+          "file": "packs/hs-japhist2.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 80,
+          "blurb": "ペリー来航からバブルまで。条約・法令・内閣・経済史を説明から答える",
+          "audience": "日本史探究を学ぶ高校生、共通テスト受験生",
+          "group": "高校（世界史・日本史・化学・生物・古文）"
+        },
+        {
           "id": "hs-chem",
           "label": "高校 化学基礎",
           "file": "packs/hs-chem.json",
