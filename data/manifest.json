@@ -121,6 +121,56 @@
           "group": "試験・レベル別（英検・TOEIC）"
         },
         {
+          "id": "toeic500",
+          "label": "TOEIC 500点",
+          "file": "packs/toeic500.json",
+          "pack": true,
+          "count": 120,
+          "blurb": "オフィス・買い物・交通の基本語。まず土台になる120語",
+          "audience": "英語の学び直しを始める社会人・大学生",
+          "group": "試験・レベル別（英検・TOEIC）"
+        },
+        {
+          "id": "toeic600",
+          "label": "TOEIC 600点",
+          "file": "packs/toeic600.json",
+          "pack": true,
+          "count": 120,
+          "blurb": "会議・メール・日程・施設・採用。職場の定番語を一気に",
+          "audience": "600点を目指す社会人・就活生",
+          "group": "試験・レベル別（英検・TOEIC）"
+        },
+        {
+          "id": "toeic730",
+          "label": "TOEIC 730点",
+          "file": "packs/toeic730.json",
+          "pack": true,
+          "count": 120,
+          "blurb": "契約・財務・製造・広告・人事。文法・読解問題で毎回出る語",
+          "audience": "730点を目標にする社会人",
+          "group": "試験・レベル別（英検・TOEIC）"
+        },
+        {
+          "id": "toeic860",
+          "label": "TOEIC 860点",
+          "file": "packs/toeic860.json",
+          "pack": true,
+          "count": 120,
+          "blurb": "言い換えで狙われる語、フォーマルな動詞・形容詞、経済記事の語彙",
+          "audience": "860点を狙う中上級者",
+          "group": "試験・レベル別（英検・TOEIC）"
+        },
+        {
+          "id": "toeic990",
+          "label": "TOEIC 990点",
+          "file": "packs/toeic990.json",
+          "pack": true,
+          "count": 121,
+          "blurb": "低頻度でも満点なら落とせない語。似た語の精密な使い分け",
+          "audience": "満点を目指す上級者",
+          "group": "試験・レベル別（英検・TOEIC）"
+        },
+        {
           "id": "accounting",
           "label": "簿記・会計の基本",
           "file": "packs/accounting.json",
