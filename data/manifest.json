@@ -51,6 +51,72 @@
           "kind": "concept"
         },
         {
+          "id": "pref",
+          "label": "都道府県と県庁所在地",
+          "file": "packs/pref.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 60,
+          "blurb": "47都道府県と、県名と異なる県庁所在地。地方・特産・地形の手がかりで答える",
+          "audience": "小学4年生〜中学生、地理をやり直す大人",
+          "group": "義務教育（社会・理科・国語・数学）"
+        },
+        {
+          "id": "jkokugo1",
+          "label": "国語 四字熟語・ことわざ・慣用句",
+          "file": "packs/jkokugo1.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 75,
+          "blurb": "中学までに習う定番の四字熟語・ことわざ・慣用句を意味から答える",
+          "audience": "中学生、高校入試や漢検の対策をする人",
+          "group": "義務教育（社会・理科・国語・数学）"
+        },
+        {
+          "id": "grammar-jhs1",
+          "label": "中学英文法 1年",
+          "file": "packs/grammar-jhs1.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "be動詞から現在進行形・過去形の入口まで。中1文法の基本形と疑問・否定",
+          "audience": "中学1年生、英文法を基礎からやり直す人",
+          "group": "文法（中学・高校・TOEIC）"
+        },
+        {
+          "id": "grammar-jhs2",
+          "label": "中学英文法 2年",
+          "file": "packs/grammar-jhs2.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "過去形・未来・不定詞・比較・受動態。中2で習う文法を空欄で確認",
+          "audience": "中学2年生、中学文法をやり直す社会人",
+          "group": "文法（中学・高校・TOEIC）"
+        },
+        {
+          "id": "grammar-hs2",
+          "label": "高校英文法 発展",
+          "file": "packs/grammar-hs2.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 72,
+          "blurb": "仮定法・分詞構文・倒置・関係詞の発展。大学入試で差がつく高校文法",
+          "audience": "高校2・3年生、大学受験生、高校文法をやり直す社会人",
+          "group": "文法（中学・高校・TOEIC）"
+        },
+        {
+          "id": "grammar-toeic",
+          "label": "TOEIC 文法（短文穴埋め）",
+          "file": "packs/grammar-toeic.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "品詞・前置詞と接続詞・時制・関係詞。ビジネス英文の短文穴埋めで文法を固める",
+          "audience": "スコアを伸ばしたい社会人・大学生、ビジネス英語を学び直す人",
+          "group": "文法（中学・高校・TOEIC）"
+        },
+        {
           "id": "eiken5",
           "label": "英検5級",
           "file": "packs/eiken5.json",
