@@ -22,39 +22,51 @@
       "en": "gh2-subj-were",
       "kind": "concept",
       "answer": "were",
-      "accept": ["was"],
+      "accept": [
+        "was"
+      ],
       "ja": "仮定法過去",
       "q": "If I ____ rich, I would travel around the world.（もし私が金持ちなら、世界中を旅行するのに）",
       "explain": "現在の事実に反する仮定は if 節を過去形にする。be 動詞は主語にかかわらず were が原則（口語では was も可）",
       "say": "If I were rich, I would travel around the world.",
       "level": "easy",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-past-perfect",
       "en": "gh2-subj-past-perfect",
       "kind": "concept",
       "answer": "would have passed",
-      "accept": ["'d have passed"],
+      "accept": [
+        "'d have passed"
+      ],
       "ja": "仮定法過去完了",
       "q": "If you had studied harder, you ____ the exam.（もっと熱心に勉強していたら、試験に合格していただろうに）",
       "explain": "過去の事実に反する仮定。if 節は had ＋過去分詞、主節は would have ＋過去分詞。would pass にしない",
       "say": "If you had studied harder, you would have passed the exam.",
       "level": "normal",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-mixed",
       "en": "gh2-subj-mixed",
       "kind": "concept",
       "answer": "would be",
-      "accept": ["'d be"],
+      "accept": [
+        "'d be"
+      ],
       "ja": "混合仮定法",
       "q": "If I had taken that job, I ____ in Osaka now.（あの仕事を引き受けていたら、今ごろ大阪にいるだろう）",
       "explain": "if 節は過去（had taken）、主節は現在（now）の話。主節は would ＋原形で、would have been にしない",
       "say": "If I had taken that job, I would be in Osaka now.",
       "level": "hard",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-had-inversion",
@@ -66,7 +78,9 @@
       "explain": "If I had known の if を省くと Had I known と助動詞が主語の前に出る。Were / Should も同じ",
       "say": "Had I known about the problem, I would have called you.",
       "level": "normal",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-should-inversion",
@@ -78,33 +92,43 @@
       "explain": "If anyone should call → Should anyone call。「万一〜なら」の should。動詞が原形 call なので if は入らない",
       "say": "Should anyone call while I am out, please take a message.",
       "level": "hard",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-as-if",
       "en": "gh2-subj-as-if",
       "kind": "concept",
       "answer": "as if",
-      "accept": ["as though"],
+      "accept": [
+        "as though"
+      ],
       "ja": "as if ＋仮定法過去",
       "q": "She talks ____ she knew everything about the company.（彼女はまるでその会社についてすべて知っているかのように話す）",
       "explain": "「まるで〜のように」は as if / as though。実際は知らないので後ろは過去形 knew になる",
       "say": "She talks as if she knew everything about the company.",
       "level": "normal",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-without",
       "en": "gh2-subj-without",
       "kind": "concept",
       "answer": "without",
-      "accept": ["but for"],
+      "accept": [
+        "but for"
+      ],
       "ja": "without / but for",
       "q": "____ your help, I could not have finished the report.（あなたの助けがなかったら、その報告書を仕上げられなかっただろう）",
       "explain": "Without / But for A = If it had not been for A「Aがなかったら」。if 節の代わりに前置詞句で仮定を表す",
       "say": "Without your help, I could not have finished the report.",
       "level": "normal",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-it-is-time",
@@ -116,7 +140,9 @@
       "explain": "It is (about / high) time の後は「まだしていない」含みで過去形。go や to go は誤り",
       "say": "It is time you went to bed.",
       "level": "normal",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-wish-could",
@@ -128,20 +154,26 @@
       "explain": "現在の実現しない願望は wish の後を過去形にする。can の過去形 could。wish I can は誤り",
       "say": "I wish I could speak French as well as you do.",
       "level": "easy",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-subj-if-only",
       "en": "gh2-subj-if-only",
       "kind": "concept",
       "answer": "had listened",
-      "accept": ["'d listened"],
+      "accept": [
+        "'d listened"
+      ],
       "ja": "if only ＋仮定法過去完了",
       "q": "If only I ____ to her advice.（彼女の忠告を聞いていさえすればよかった）",
       "explain": "If only = I wish の強い形。過去にしなかったことへの後悔は had ＋過去分詞。listened だけでは不可",
       "say": "If only I had listened to her advice.",
       "level": "normal",
-      "tags": ["gh2-subj"]
+      "tags": [
+        "gh2-subj"
+      ]
     },
     {
       "id": "concept-gh2-part-opening",
@@ -153,7 +185,9 @@
       "explain": "When she opened の接続詞と主語を省き、動詞を -ing にした形。主語 she が「開ける」側なので現在分詞",
       "say": "Opening the window, she saw a strange man in the garden.",
       "level": "easy",
-      "tags": ["gh2-part"]
+      "tags": [
+        "gh2-part"
+      ]
     },
     {
       "id": "concept-gh2-part-written",
@@ -165,7 +199,9 @@
       "explain": "主語 this book は「書かれる」側なので過去分詞。Being written の being は省略するのがふつう",
       "say": "Written in simple English, this book is easy to read.",
       "level": "easy",
-      "tags": ["gh2-part"]
+      "tags": [
+        "gh2-part"
+      ]
     },
     {
       "id": "concept-gh2-part-having",
@@ -177,7 +213,9 @@
       "explain": "主節より前に完了した動作は Having ＋過去分詞。Finishing だと「終えながら」と同時の意味になる",
       "say": "Having finished his homework, he went out to play.",
       "level": "hard",
-      "tags": ["gh2-part"]
+      "tags": [
+        "gh2-part"
+      ]
     },
     {
       "id": "concept-gh2-part-not",
@@ -189,7 +227,9 @@
       "explain": "分詞構文の否定は分詞の直前に not を置く。Knowing not や Don't knowing は誤り",
       "say": "Not knowing what to say, I kept silent.",
       "level": "normal",
-      "tags": ["gh2-part"]
+      "tags": [
+        "gh2-part"
+      ]
     },
     {
       "id": "concept-gh2-part-weather-permitting",
@@ -201,7 +241,9 @@
       "explain": "主節の主語（the game）と違う主語 weather を分詞の前に残す独立分詞構文。If the weather permits の意味",
       "say": "Weather permitting, the game will be held on Sunday.",
       "level": "hard",
-      "tags": ["gh2-part"]
+      "tags": [
+        "gh2-part"
+      ]
     },
     {
       "id": "concept-gh2-part-all-things-considered",
@@ -213,33 +255,43 @@
       "explain": "all things は「考慮される」側なので過去分詞。All things considered「すべてを考え合わせると」は定型表現",
       "say": "All things considered, she is a good teacher.",
       "level": "normal",
-      "tags": ["gh2-part"]
+      "tags": [
+        "gh2-part"
+      ]
     },
     {
       "id": "concept-gh2-part-with-running",
       "en": "gh2-part-with-running",
       "kind": "concept",
       "answer": "running",
-      "accept": ["on"],
+      "accept": [
+        "on"
+      ],
       "ja": "with A doing（付帯状況）",
       "q": "Don't leave the car with the engine ____.（エンジンをかけたまま車を離れてはいけません）",
       "explain": "with ＋名詞＋分詞で「〜したまま」。エンジンは「動いている」側なので現在分詞 running。with his eyes closed なら過去分詞",
       "say": "Don't leave the car with the engine running.",
       "level": "normal",
-      "tags": ["gh2-part"]
+      "tags": [
+        "gh2-part"
+      ]
     },
     {
       "id": "concept-gh2-part-frankly",
       "en": "gh2-part-frankly",
       "kind": "concept",
       "answer": "frankly",
-      "accept": ["honestly"],
+      "accept": [
+        "honestly"
+      ],
       "ja": "分詞構文の慣用表現",
       "q": "____ speaking, I do not agree with the plan.（率直に言って、私はその計画に賛成ではない）",
       "explain": "Frankly speaking「率直に言えば」。Generally speaking / Strictly speaking も同じ型で、主語の一致を問わない慣用表現",
       "say": "Frankly speaking, I do not agree with the plan.",
       "level": "easy",
-      "tags": ["gh2-part"]
+      "tags": [
+        "gh2-part"
+      ]
     },
     {
       "id": "concept-gh2-rel-who-nonrestrictive",
@@ -251,7 +303,9 @@
       "explain": "コンマ付きの非制限用法は先行詞に補足説明を加える。非制限用法では that は使えない",
       "say": "My uncle, who lives in Hokkaido, is a doctor.",
       "level": "easy",
-      "tags": ["gh2-rel"]
+      "tags": [
+        "gh2-rel"
+      ]
     },
     {
       "id": "concept-gh2-rel-which-sentence",
@@ -263,7 +317,9 @@
       "explain": "前の文全体を先行詞にできるのはコンマ＋ which だけ。what や that では受けられない",
       "say": "He said he was busy, which was not true.",
       "level": "hard",
-      "tags": ["gh2-rel"]
+      "tags": [
+        "gh2-rel"
+      ]
     },
     {
       "id": "concept-gh2-rel-whoever",
@@ -275,33 +331,44 @@
       "explain": "whoever = anyone who「〜する人は誰でも」で名詞節を作る。Who だけでは疑問文になってしまう",
       "say": "Whoever comes first will get the best seat.",
       "level": "normal",
-      "tags": ["gh2-rel"]
+      "tags": [
+        "gh2-rel"
+      ]
     },
     {
       "id": "concept-gh2-rel-whatever",
       "en": "gh2-rel-whatever",
       "kind": "concept",
       "answer": "whatever",
-      "accept": ["anything", "whichever"],
+      "accept": [
+        "anything",
+        "whichever"
+      ],
       "ja": "複合関係代名詞 whatever",
       "q": "You may take ____ you like from the box.（箱の中から好きなものを何でも持っていってよい）",
       "explain": "whatever = anything that「〜するものは何でも」。take の目的語になる名詞節を作る",
       "say": "You may take whatever you like from the box.",
       "level": "easy",
-      "tags": ["gh2-rel"]
+      "tags": [
+        "gh2-rel"
+      ]
     },
     {
       "id": "concept-gh2-rel-however",
       "en": "gh2-rel-however",
       "kind": "concept",
       "answer": "however",
-      "accept": ["no matter how"],
+      "accept": [
+        "no matter how"
+      ],
       "ja": "複合関係副詞 however",
       "q": "____ hard you try, you cannot please everyone.（どんなに一生懸命やっても、皆を喜ばせることはできない）",
       "explain": "however ＋形容詞・副詞＋ S ＋ V「どんなに〜でも」= no matter how。接続副詞の「しかし」と区別",
       "say": "However hard you try, you cannot please everyone.",
       "level": "normal",
-      "tags": ["gh2-rel"]
+      "tags": [
+        "gh2-rel"
+      ]
     },
     {
       "id": "concept-gh2-rel-as",
@@ -313,7 +380,9 @@
       "explain": "as is often the case with A「Aにはよくあることだが」。主節全体を受ける関係代名詞 as。which は文頭で使えない",
       "say": "As is often the case with him, he was late again.",
       "level": "hard",
-      "tags": ["gh2-rel"]
+      "tags": [
+        "gh2-rel"
+      ]
     },
     {
       "id": "concept-gh2-rel-than",
@@ -325,7 +394,9 @@
       "explain": "比較級 more の後で than が主語の働きをする擬似関係代名詞。than it was necessary とは言わない",
       "say": "He spent more money than was necessary.",
       "level": "normal",
-      "tags": ["gh2-rel"]
+      "tags": [
+        "gh2-rel"
+      ]
     },
     {
       "id": "concept-gh2-inv-never-have",
@@ -337,20 +408,27 @@
       "explain": "否定語 Never を文頭に置くと疑問文の語順（have I seen）になる。I have never seen の強調形",
       "say": "Never have I seen such a beautiful sunset.",
       "level": "easy",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-inv-hardly",
       "en": "gh2-inv-hardly",
       "kind": "concept",
       "answer": "hardly",
-      "accept": ["scarcely", "barely"],
+      "accept": [
+        "scarcely",
+        "barely"
+      ],
       "ja": "hardly ... when の倒置",
       "q": "____ had I left home when it began to rain.（家を出るとすぐに雨が降り出した）",
       "explain": "Hardly had S ＋過去分詞 when S ＋過去形「〜するとすぐに」。No sooner なら when でなく than",
       "say": "Hardly had I left home when it began to rain.",
       "level": "hard",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-inv-not-only-does",
@@ -362,7 +440,9 @@
       "explain": "Not only が文頭に来ると倒置。一般動詞の現在形・主語 he なので does he sing。Not only he sings は誤り",
       "say": "Not only does he sing well, but he also dances well.",
       "level": "hard",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-inv-so-am-i",
@@ -374,33 +454,43 @@
       "explain": "前の文が be 動詞なので So am I。So I am は「本当にそうだね」と相手の言葉を認める別の意味",
       "say": "I'm tired. So am I.",
       "level": "easy",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-inv-nor",
       "en": "gh2-inv-nor",
       "kind": "concept",
       "answer": "nor",
-      "accept": ["neither"],
-      "ja": "nor / neither ＋ V ＋ S",
+      "accept": [
+        "neither"
+      ],
+      "ja": "nor / neither の倒置",
       "q": "She has never been abroad, ____ has her brother.（彼女は海外に行ったことがないし、兄もない）",
       "explain": "否定文を受けて「〜もそうでない」は nor / neither ＋助動詞＋ S。肯定文を受けるときは so を使う",
       "say": "She has never been abroad, nor has her brother.",
       "level": "normal",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-inv-cleft-that",
       "en": "gh2-inv-cleft-that",
       "kind": "concept",
       "answer": "that",
-      "accept": ["when"],
+      "accept": [
+        "when"
+      ],
       "ja": "強調構文 It is ... that",
       "q": "It was in 2010 ____ we first met.（私たちが初めて会ったのは2010年のことだった）",
       "explain": "It is ＋強調したい語句＋ that。時や場所を強調するときも that が基本（時なら when も可）。which は不可",
       "say": "It was in 2010 that we first met.",
       "level": "normal",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-inv-emphatic-do",
@@ -412,20 +502,27 @@
       "explain": "動詞の前に do / does / did を置いて「本当に・ぜひ」と強調する。命令文でも Do come のように使える",
       "say": "Please do come to the party.",
       "level": "normal",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-inv-cannot",
       "en": "gh2-inv-cannot",
       "kind": "concept",
       "answer": "cannot",
-      "accept": ["can't", "can not"],
+      "accept": [
+        "can't",
+        "can not"
+      ],
       "ja": "省略と代用（助動詞で受ける）",
       "q": "She can speak Chinese, but her brother ____.（彼女は中国語を話せるが、弟は話せない）",
       "explain": "繰り返しを避けて助動詞だけを残す省略。cannot speak Chinese の speak 以下を省いた形",
       "say": "She can speak Chinese, but her brother cannot.",
       "level": "easy",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-inv-if-any",
@@ -437,7 +534,9 @@
       "explain": "if there are any の省略で「もしあれば」。if necessary / if possible も同じく S ＋ be を省いた形",
       "say": "Correct the errors, if any.",
       "level": "hard",
-      "tags": ["gh2-inv"]
+      "tags": [
+        "gh2-inv"
+      ]
     },
     {
       "id": "concept-gh2-speech-was",
@@ -449,20 +548,26 @@
       "explain": "主節が過去形 said なら that 節の現在形も過去形にそろえる。He said, \"I am busy.\" の間接話法",
       "say": "He said that he was busy.",
       "level": "easy",
-      "tags": ["gh2-speech"]
+      "tags": [
+        "gh2-speech"
+      ]
     },
     {
       "id": "concept-gh2-speech-had-seen",
       "en": "gh2-speech-had-seen",
       "kind": "concept",
       "answer": "had seen",
-      "accept": ["'d seen"],
+      "accept": [
+        "'d seen"
+      ],
       "ja": "時制の一致（過去完了）",
       "q": "She told me that she ____ the movie before.（彼女は以前にその映画を見たことがあると私に言った）",
       "explain": "直接話法の現在完了 have seen は、主節が過去なら過去完了 had seen になる。saw では「見た」だけになる",
       "say": "She told me that she had seen the movie before.",
       "level": "hard",
-      "tags": ["gh2-speech"]
+      "tags": [
+        "gh2-speech"
+      ]
     },
     {
       "id": "concept-gh2-speech-lived",
@@ -474,20 +579,26 @@
       "explain": "疑問詞の後は平叙文の語順で、主節 asked に合わせて過去形。where did I live の語順にしない",
       "say": "He asked me where I lived.",
       "level": "easy",
-      "tags": ["gh2-speech"]
+      "tags": [
+        "gh2-speech"
+      ]
     },
     {
       "id": "concept-gh2-speech-to-close",
       "en": "gh2-speech-to-close",
       "kind": "concept",
       "answer": "to close",
-      "accept": ["to shut"],
+      "accept": [
+        "to shut"
+      ],
       "ja": "命令文の話法転換",
       "q": "She told me ____ the door.（彼女は私にドアを閉めるように言った）",
       "explain": "命令文は tell / ask ＋人＋ to 不定詞で伝える。否定の命令なら told me not to close",
       "say": "She told me to close the door.",
       "level": "normal",
-      "tags": ["gh2-speech"]
+      "tags": [
+        "gh2-speech"
+      ]
     },
     {
       "id": "concept-gh2-speech-boils",
@@ -499,33 +610,44 @@
       "explain": "不変の真理・習慣は主節が過去でも現在形のまま。boiled にしない",
       "say": "The teacher said that water boils at 100 degrees Celsius.",
       "level": "normal",
-      "tags": ["gh2-speech"]
+      "tags": [
+        "gh2-speech"
+      ]
     },
     {
       "id": "concept-gh2-speech-would",
       "en": "gh2-speech-would",
       "kind": "concept",
       "answer": "would",
-      "accept": ["'d"],
+      "accept": [
+        "'d"
+      ],
       "ja": "話法転換（will → would）",
       "q": "He said that he ____ call me the next day.（彼は翌日私に電話すると言った）",
       "explain": "He said, \"I will call you tomorrow.\" を間接話法に。will → would、tomorrow → the next day に変わる",
       "say": "He said that he would call me the next day.",
       "level": "easy",
-      "tags": ["gh2-speech"]
+      "tags": [
+        "gh2-speech"
+      ]
     },
     {
       "id": "concept-gh2-nounsubj-prevented",
       "en": "gh2-nounsubj-prevented",
       "kind": "concept",
       "answer": "prevented",
-      "accept": ["kept", "stopped"],
-      "ja": "無生物主語（prevent A from）",
+      "accept": [
+        "kept",
+        "stopped"
+      ],
+      "ja": "無生物主語（prevent）",
       "q": "The heavy rain ____ us from going out.（大雨のせいで私たちは外出できなかった）",
       "explain": "prevent / keep / stop A from doing「Aが〜するのを妨げる」。日本語では「〜のせいで」と訳すと自然",
       "say": "The heavy rain prevented us from going out.",
       "level": "easy",
-      "tags": ["gh2-nounsubj"]
+      "tags": [
+        "gh2-nounsubj"
+      ]
     },
     {
       "id": "concept-gh2-nounsubj-reminds",
@@ -537,7 +659,9 @@
       "explain": "remind A of B「AにBを思い出させる」。主語は picture なので三単現の -s を忘れない。remember とは別",
       "say": "This picture reminds me of my childhood.",
       "level": "easy",
-      "tags": ["gh2-nounsubj"]
+      "tags": [
+        "gh2-nounsubj"
+      ]
     },
     {
       "id": "concept-gh2-nounsubj-made",
@@ -549,20 +673,28 @@
       "explain": "「何があなたに考えを変えさせたか」= どうして。使役の make は原形 change を取る。caused なら to change",
       "say": "What made you change your mind?",
       "level": "normal",
-      "tags": ["gh2-nounsubj"]
+      "tags": [
+        "gh2-nounsubj"
+      ]
     },
     {
       "id": "concept-gh2-nounsubj-take",
       "en": "gh2-nounsubj-take",
       "kind": "concept",
       "answer": "take",
-      "accept": ["bring", "get", "lead"],
+      "accept": [
+        "bring",
+        "get",
+        "lead"
+      ],
       "ja": "無生物主語（take A to B）",
       "q": "A five-minute walk will ____ you to the station.（5分歩けば駅に着きます）",
       "explain": "「5分の歩行があなたを駅に連れて行く」→「5分歩けば着く」。If you walk for five minutes の言い換え",
       "say": "A five-minute walk will take you to the station.",
       "level": "normal",
-      "tags": ["gh2-nounsubj"]
+      "tags": [
+        "gh2-nounsubj"
+      ]
     },
     {
       "id": "concept-gh2-nounsubj-arrival",
@@ -574,7 +706,9 @@
       "explain": "As soon as he arrived を on ＋所有格＋名詞で圧縮した名詞構文。arrive の名詞形 arrival",
       "say": "On his arrival at the airport, he called his wife.",
       "level": "hard",
-      "tags": ["gh2-nounsubj"]
+      "tags": [
+        "gh2-nounsubj"
+      ]
     },
     {
       "id": "concept-gh2-nounsubj-refusal",
@@ -586,7 +720,9 @@
       "explain": "he refused to help us を his refusal to help us と名詞化。動詞の目的語や不定詞はそのまま名詞に続く",
       "say": "I was surprised at his refusal to help us.",
       "level": "hard",
-      "tags": ["gh2-nounsubj"]
+      "tags": [
+        "gh2-nounsubj"
+      ]
     },
     {
       "id": "concept-gh2-verbal-to-have-been",
@@ -598,7 +734,9 @@
       "explain": "主節 seems（現在）より前のことは to have ＋過去分詞。It seems that he was ill yesterday. の書き換え",
       "say": "He seems to have been ill yesterday.",
       "level": "hard",
-      "tags": ["gh2-verbal"]
+      "tags": [
+        "gh2-verbal"
+      ]
     },
     {
       "id": "concept-gh2-verbal-needless",
@@ -610,32 +748,40 @@
       "explain": "Needless to say「言うまでもなく」。To tell the truth / To be frank with you など文全体を修飾する慣用句",
       "say": "Needless to say, he failed the exam again.",
       "level": "easy",
-      "tags": ["gh2-verbal"]
+      "tags": [
+        "gh2-verbal"
+      ]
     },
     {
       "id": "concept-gh2-verbal-to-make-matters-worse",
       "en": "gh2-verbal-to-make-matters-worse",
       "kind": "concept",
       "answer": "to",
-      "ja": "独立不定詞（to make matters worse）",
+      "ja": "独立不定詞",
       "q": "____ make matters worse, it started snowing.（さらに悪いことに、雪が降り始めた）",
       "explain": "To make matters worse「さらに悪いことに」。文頭の To ＋原形が独立不定詞。Making ではなく To",
       "say": "To make matters worse, it started snowing.",
       "level": "easy",
-      "tags": ["gh2-verbal"]
+      "tags": [
+        "gh2-verbal"
+      ]
     },
     {
       "id": "concept-gh2-verbal-my",
       "en": "gh2-verbal-my",
       "kind": "concept",
       "answer": "my",
-      "accept": ["me"],
+      "accept": [
+        "me"
+      ],
       "ja": "動名詞の意味上の主語",
       "q": "Would you mind ____ opening the window?（私が窓を開けても構いませんか）",
       "explain": "動名詞の主語は所有格（口語では目的格 me も可）。Would you mind opening だと「あなたが開けてくれませんか」",
       "say": "Would you mind my opening the window?",
       "level": "normal",
-      "tags": ["gh2-verbal"]
+      "tags": [
+        "gh2-verbal"
+      ]
     },
     {
       "id": "concept-gh2-verbal-being",
@@ -647,7 +793,9 @@
       "explain": "前置詞 without の後は動名詞。「気づかれる」と受け身なので being ＋過去分詞。without noticing は「気づかずに」",
       "say": "She left the room without being noticed.",
       "level": "normal",
-      "tags": ["gh2-verbal"]
+      "tags": [
+        "gh2-verbal"
+      ]
     },
     {
       "id": "concept-gh2-verbal-to-be",
@@ -659,7 +807,9 @@
       "explain": "time is lost「時間が失われる」の関係なので to be ＋過去分詞。There is no time to lose も同じ意味の別形",
       "say": "There is no time to be lost.",
       "level": "normal",
-      "tags": ["gh2-verbal"]
+      "tags": [
+        "gh2-verbal"
+      ]
     },
     {
       "id": "concept-gh2-verbal-to-be-invited",
@@ -671,20 +821,26 @@
       "explain": "感情の原因を表す不定詞。she was invited「招待された」と受け身なので to be ＋過去分詞。to invite は「招待して」",
       "say": "She was very happy to be invited to the party.",
       "level": "normal",
-      "tags": ["gh2-verbal"]
+      "tags": [
+        "gh2-verbal"
+      ]
     },
     {
       "id": "concept-gh2-verbal-to-have-made",
       "en": "gh2-verbal-to-have-made",
       "kind": "concept",
       "answer": "to have made",
-      "accept": ["to have earned"],
-      "ja": "完了不定詞（is said to have done）",
+      "accept": [
+        "to have earned"
+      ],
+      "ja": "完了不定詞",
       "q": "He is said ____ a fortune when he was young.（彼は若いころ財産を築いたと言われている）",
       "explain": "「言われている」のは今、「築いた」のは過去なので to have ＋過去分詞。It is said that he made a fortune の書き換え",
       "say": "He is said to have made a fortune when he was young.",
       "level": "hard",
-      "tags": ["gh2-verbal"]
+      "tags": [
+        "gh2-verbal"
+      ]
     },
     {
       "id": "concept-gh2-conj-whether",
@@ -696,33 +852,45 @@
       "explain": "「〜かどうか」の名詞節が主語・補語・前置詞の目的語のときや or not が直後に続くときは whether。if は不可",
       "say": "Whether or not he will come is not certain.",
       "level": "normal",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-conj-if",
       "en": "gh2-conj-if",
       "kind": "concept",
       "answer": "if",
-      "accept": ["whether"],
+      "accept": [
+        "whether"
+      ],
       "ja": "名詞節の if（〜かどうか）",
       "q": "I wonder ____ she is coming to the party.（彼女はパーティーに来るのかなあ）",
       "explain": "wonder / know / ask の目的語になる「〜かどうか」は if でも whether でもよい。「もし」の if と区別",
       "say": "I wonder if she is coming to the party.",
       "level": "easy",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-conj-as-long-as",
       "en": "gh2-conj-as-long-as",
       "kind": "concept",
       "answer": "as long as",
-      "accept": ["so long as", "provided", "provided that"],
+      "accept": [
+        "so long as",
+        "provided",
+        "provided that"
+      ],
       "ja": "as long as（条件）",
       "q": "You can stay here ____ you keep quiet.（静かにしているかぎり、ここにいてよい）",
       "explain": "as long as「〜する限り（条件）」。as far as は「〜する限りでは（範囲）」で、条件には使えない",
       "say": "You can stay here as long as you keep quiet.",
       "level": "normal",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-conj-no-sooner",
@@ -734,46 +902,63 @@
       "explain": "No sooner had S ＋過去分詞 than S ＋過去形「〜するやいなや」。比較級 sooner なので when でなく than",
       "say": "No sooner had he arrived than the phone rang.",
       "level": "hard",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-conj-lest",
       "en": "gh2-conj-lest",
       "kind": "concept",
       "answer": "lest",
-      "accept": ["for fear", "for fear that"],
+      "accept": [
+        "for fear",
+        "for fear that"
+      ],
       "ja": "lest S (should) do",
       "q": "He worked hard ____ he should fail.（彼は失敗しないように一生懸命働いた）",
       "explain": "lest S (should) ＋原形「〜しないように」。lest 自体に否定の意味があるので not を入れない。for fear (that) も同じ",
       "say": "He worked hard lest he should fail.",
       "level": "hard",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-conj-though",
       "en": "gh2-conj-though",
       "kind": "concept",
       "answer": "though",
-      "accept": ["as"],
-      "ja": "譲歩の 形容詞 ＋ as / though",
+      "accept": [
+        "as"
+      ],
+      "ja": "譲歩の as / though",
       "q": "Rich ____ he is, he is not happy.（金持ちではあるが、彼は幸せではない）",
       "explain": "形容詞を文頭に出した Rich though / as he is = Though he is rich。この語順では although は使えない",
       "say": "Rich though he is, he is not happy.",
       "level": "hard",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-conj-get",
       "en": "gh2-conj-get",
       "kind": "concept",
       "answer": "get",
-      "accept": ["arrive", "come", "am"],
+      "accept": [
+        "arrive",
+        "come",
+        "am"
+      ],
       "ja": "時の副詞節は現在形",
       "q": "I will call you as soon as I ____ home.（家に着いたらすぐに電話するね）",
       "explain": "時・条件の副詞節では未来のことも現在形で表す。as soon as I will get は誤り",
       "say": "I will call you as soon as I get home.",
       "level": "easy",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-conj-such",
@@ -785,7 +970,9 @@
       "explain": "such ＋ a ＋形容詞＋名詞＋ that。so を使うなら so cold a day と語順が変わる。so a cold day は誤り",
       "say": "It was such a cold day that we stayed home all day.",
       "level": "easy",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-conj-now-that",
@@ -797,20 +984,28 @@
       "explain": "now that S ＋ V「今や〜なので」は理由を表す接続詞。that は省略されることもある",
       "say": "Now that you mention it, I do remember.",
       "level": "hard",
-      "tags": ["gh2-conj"]
+      "tags": [
+        "gh2-conj"
+      ]
     },
     {
       "id": "concept-gh2-art-a-number-of",
       "en": "gh2-art-a-number-of",
       "kind": "concept",
       "answer": "a",
-      "accept": ["a large", "a good", "a great"],
+      "accept": [
+        "a large",
+        "a good",
+        "a great"
+      ],
       "ja": "a number of（多くの）",
       "q": "____ number of students were absent.（多くの生徒が欠席した）",
       "explain": "a number of ＋複数名詞は「多くの〜」で複数扱い（were）。the number of は「〜の数」で単数扱い",
       "say": "A number of students were absent.",
       "level": "normal",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     },
     {
       "id": "concept-gh2-art-the-number-of",
@@ -822,51 +1017,68 @@
       "explain": "the number of ＋複数名詞「〜の数」は主語が number なので単数扱い。直前の students につられて are にしない",
       "say": "The number of students in this class is thirty.",
       "level": "normal",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     },
     {
       "id": "concept-gh2-art-most-of",
       "en": "gh2-art-most-of",
       "kind": "concept",
       "answer": "most",
-      "accept": ["the majority"],
+      "accept": [
+        "the majority"
+      ],
       "ja": "most of the",
       "q": "____ of the students passed the exam.（学生の大半が試験に合格した）",
       "explain": "most of の後は the や所有格つきの名詞。almost of the students や most of students は誤り",
       "say": "Most of the students passed the exam.",
       "level": "easy",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     },
     {
       "id": "concept-gh2-art-almost-every",
       "en": "gh2-art-almost-every",
       "kind": "concept",
       "answer": "almost",
-      "accept": ["nearly"],
+      "accept": [
+        "nearly"
+      ],
       "ja": "almost every",
       "q": "____ every student has a smartphone.（ほとんどすべての生徒がスマホを持っている）",
       "explain": "almost は副詞なので名詞に直接つかない。almost every student か almost all (of the) students の形にする",
       "say": "Almost every student has a smartphone.",
       "level": "normal",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     },
     {
       "id": "concept-gh2-art-few",
       "en": "gh2-art-few",
       "kind": "concept",
       "answer": "few",
-      "accept": ["very few", "hardly any"],
+      "accept": [
+        "very few",
+        "hardly any"
+      ],
       "ja": "few（ほとんど〜ない）",
       "q": "He has ____ friends in Tokyo, so he feels lonely.（東京にはほとんど友達がいないので、彼は寂しい）",
       "explain": "可算名詞に few、不可算名詞に little。a few は「少しはある」と肯定的で、so he feels lonely とつながらない",
       "say": "He has few friends in Tokyo, so he feels lonely.",
       "level": "easy",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     },
     {
       "id": "concept-gh2-art-little",
       "en": "gh2-art-little",
-      "accept": ["very little"],
+      "accept": [
+        "very little"
+      ],
       "kind": "concept",
       "answer": "little",
       "ja": "little（ほとんど〜ない）",
@@ -874,7 +1086,9 @@
       "explain": "不可算名詞 hope には little。a little なら「少しはある」。few は可算名詞用",
       "say": "There is little hope of his recovery.",
       "level": "easy",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     },
     {
       "id": "concept-gh2-art-the-other",
@@ -886,7 +1100,9 @@
       "explain": "2つのうち残りの1つは特定できるので the other。another は「別のもう1つ」で3つ以上の中から選ぶとき",
       "say": "I have two brothers. One lives in Kyoto and the other lives in Nara.",
       "level": "easy",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     },
     {
       "id": "concept-gh2-art-by-the-arm",
@@ -898,20 +1114,26 @@
       "explain": "catch / take ＋人＋ by the ＋身体部位。人を目的語にした後の部位には所有格 my でなく the を使う",
       "say": "He caught me by the arm.",
       "level": "hard",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     },
     {
       "id": "concept-gh2-art-quite-a-few",
       "en": "gh2-art-quite-a-few",
       "kind": "concept",
       "answer": "quite",
-      "accept": ["not"],
+      "accept": [
+        "not"
+      ],
       "ja": "quite a few（かなり多くの）",
       "q": "____ a few people came to the party.（かなり多くの人がパーティーに来た）",
       "explain": "quite a few / not a few は「かなり多くの」。few（ほとんどない）や a few（少しの）と逆の意味になるので注意",
       "say": "Quite a few people came to the party.",
       "level": "hard",
-      "tags": ["gh2-art"]
+      "tags": [
+        "gh2-art"
+      ]
     }
   ]
 }
