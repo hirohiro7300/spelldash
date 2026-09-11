@@ -227,6 +227,17 @@
           "group": "高校（世界史・日本史・化学・生物・古文）"
         },
         {
+          "id": "hs-worldhist2",
+          "label": "高校世界史 近代〜現代",
+          "file": "packs/hs-worldhist2.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 80,
+          "blurb": "市民革命から冷戦の終結まで。事件・条約・人物を説明から答える",
+          "audience": "高校生、大学受験で世界史を選ぶ人",
+          "group": "高校（世界史・日本史・化学・生物・古文）"
+        },
+        {
           "id": "hs-japhist1",
           "label": "高校日本史 原始〜近世",
           "file": "packs/hs-japhist1.json",

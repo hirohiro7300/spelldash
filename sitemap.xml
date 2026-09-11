@@ -3,6 +3,10 @@
   <url><loc>https://www.spelldash.net/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
   <url><loc>https://www.spelldash.net/list.html</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://www.spelldash.net/packs/</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.spelldash.net/packs/elem-hist.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/elem-sci.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/elem-math.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/elem-kanji.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/pref.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/jhist1.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/jhist2.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
@@ -14,6 +18,13 @@
   <url><loc>https://www.spelldash.net/packs/jkokugo1.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/jkokugo2.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/jmath.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/hs-worldhist1.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/hs-worldhist2.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/hs-japhist1.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/hs-japhist2.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/hs-chem.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/hs-bio.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.spelldash.net/packs/hs-kobun.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/grammar-jhs1.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/grammar-jhs2.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://www.spelldash.net/packs/grammar-jhs3.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
