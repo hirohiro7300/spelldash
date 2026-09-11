@@ -18,6 +18,7 @@
   <meta property="og:site_name" content="SpellDash" />
   <meta property="og:title" content="学習データ | SpellDash" />
   <meta property="og:description" content="スコア推移・思い出し成功率・習得の進捗。あなたの学習の記録。" />
+<link rel="canonical" href="https://www.spelldash.net/stats.html" />
   <meta property="og:url" content="https://www.spelldash.net/stats.html" />
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -66,7 +67,7 @@
               <div class="account-menu__divider">または</div>
 
               <p class="account-menu__hint">
-                メールアドレスにログインリンクを送ります。
+                ログインすると学習データがクラウドに保存され、機種変更や別の端末でも引き継げます。メールアドレスにログインリンクを送ります。
               </p>
               <input
                 id="emailInput"
@@ -175,46 +176,6 @@
       <div id="categoryProgress"></div>
     </section>
 
-    <section data-tab="words" class="result-card" id="myWords">
-      <h3>マイ単語帳 <span class="muted" id="myWordCount"></span></h3>
-      <p class="muted">仕事・試験・本で出会った単語や、覚えたい概念を自分で登録。ホームのカテゴリ「マイ単語帳」で、同じ仕組み（思い出して打つ・復習）で覚えられます。</p>
-      <div class="my-tabs" role="tablist">
-        <button type="button" class="my-tab my-tab--active" data-my-tab="word" role="tab">英単語</button>
-        <button type="button" class="my-tab" data-my-tab="concept" role="tab">場面カード（意味 → 用語）</button>
-        <button type="button" class="my-tab" data-my-tab="ai" role="tab">✨ テキストから作る</button>
-      </div>
-      <form class="my-words__form" id="myWordForm">
-        <input id="myWordEn" class="setting-select" type="text" placeholder="英単語（例: negotiate）" autocomplete="off" autocapitalize="none" spellcheck="false" required />
-        <input id="myWordJa" class="setting-select" type="text" placeholder="日本語訳（例: 交渉する）" autocomplete="off" required />
-        <button type="submit" class="btn btn--sm">追加</button>
-      </form>
-      <form class="my-concept__form" id="myConceptForm" hidden>
-        <textarea id="myConceptQ" class="setting-select" rows="2" placeholder="場面・意味（例: ユーザーが「車 買取」「廃車」等を検索する）" required></textarea>
-        <input id="myConceptAnswer" class="setting-select" type="text" placeholder="答え・用語（例: 検索需要。日本語OK）" autocomplete="off" required />
-        <input id="myConceptExplain" class="setting-select" type="text" placeholder="解説（任意。答えの後に1行出ます）" autocomplete="off" />
-        <input id="myConceptAccept" class="setting-select" type="text" placeholder="別解（任意。/ 区切り。例: 検索ニーズ/需要）" autocomplete="off" />
-        <button type="submit" class="btn btn--sm">場面カードを追加</button>
-      </form>
-      <div class="cardgen" id="myCardGen" hidden>
-        <p class="muted">マニュアル・研修資料・記事・会議メモなどを貼ると、「場面 → 用語」のカード候補を自動で作ります。候補を確認して、選んだものだけマイ単語帳に入ります。ログインしている方が使えます（無料）。</p>
-        <textarea id="cardGenText" class="setting-select" rows="7" maxlength="4000" placeholder="ここにテキストを貼り付け（20〜4000文字）&#10;例: リスティング広告は、ユーザーが検索したキーワードに連動して表示される広告。クリックされるごとに費用が発生し（CPC）、…"></textarea>
-        <div class="cardgen__actions">
-          <span class="muted" id="cardGenCount"></span>
-          <button type="button" class="btn btn--sm" id="cardGenRun">カードを作る</button>
-        </div>
-        <p class="muted my-words__status" id="cardGenStatus"></p>
-        <div id="cardGenPreview"></div>
-      </div>
-      <details class="my-words__bulk">
-        <summary>まとめて追加（英単語は「英単語, 日本語」／場面カードは「場面 → 答え | 解説 | 別解」）</summary>
-        <textarea id="myWordBulk" rows="6" placeholder="negotiate, 交渉する&#10;invoice, 請求書&#10;ユーザーが「車 買取」等を検索する → 検索需要 | 広告を出す前提になる量 | 検索ニーズ/需要&#10;Cost ÷ Click → CPC"></textarea>
-        <button type="button" class="btn btn--sm" id="myWordBulkAdd">まとめて追加</button>
-        <p class="muted">Excel/Sheetsからの貼り付け（タブ区切り・見出し行つき）もそのまま読み込めます。</p>
-      </details>
-      <p class="muted my-words__status" id="myWordStatus"></p>
-      <div class="my-words__list" id="myWordList"></div>
-    </section>
-
     <section data-tab="words" class="result-card">
       <h3>語根ファミリー</h3>
       <p class="muted">同じ語根の仲間をそろえると、単語は忘れにくくなります。</p>
@@ -258,7 +219,7 @@
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
-        <a href="#" data-feedback-open>ご意見・不具合</a>
+        <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
       </nav>
 
       <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>

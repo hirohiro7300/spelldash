@@ -5,6 +5,7 @@ import { setupUnloadSync } from "./sync.js";
 import { initWordStore, getCategories, getPackCatalog, isConceptWord } from "./wordStore.js";
 import { setPackEnabled } from "./packs.js";
 import { openFeedback } from "./feedback.js";
+import { initializeMyWordsView } from "./myWordsView.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
@@ -44,6 +45,16 @@ initWordStore().then(async () => {
   renderCategorySelect(categories);
   render();
   bindWordDetail({ onNoteSaved: render });
+  // マイ単語帳（自分の教材を作る）: 追加・削除のたびに一覧とカテゴリ選択を更新
+  initializeMyWordsView(() => {
+    renderCategorySelect(getCategories());
+    render();
+  });
+  const myFold = document.getElementById("myWords");
+  if (myFold && (location.hash === "#myWords" || categoryId === "my")) {
+    myFold.open = true;
+    if (location.hash === "#myWords") myFold.scrollIntoView({ block: "start" });
+  }
   document.getElementById("listSearch")?.addEventListener("input", (e) => {
     keyword = e.target.value.trim().toLowerCase();
     render();

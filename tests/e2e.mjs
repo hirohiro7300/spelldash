@@ -565,8 +565,9 @@ console.log("growth:");
 console.log("my words:");
 {
   const page = await newPage();
-  await page.goto(BASE + "/stats.html#myWords", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
+  check("マイ単語帳は単語帳ページの折りたたみ（#myWords で開く）", await page.$eval("#myWords", (el) => el.open));
   await page.fill("#myWordEn", "Negotiate");
   await page.fill("#myWordJa", "交渉する");
   await page.click("#myWordForm button[type=submit]");
@@ -583,6 +584,9 @@ console.log("my words:");
   await page.waitForTimeout(200);
   const status = await page.textContent("#myWordStatus");
   check("まとめて追加: 2語追加＋1件スキップ", status.includes("2語") && status.includes("スキップ 1"), status);
+  check("単語帳のカテゴリ選択にマイ単語帳", (await page.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("my"));
+  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
   check("カテゴリ進捗にマイ単語帳3語", (await page.textContent("#categoryProgress")).includes("マイ単語帳3語") || (await page.textContent("#categoryProgress")).includes("マイ単語帳") );
   // ホーム: カテゴリ「マイ単語帳」で出題される
   await page.evaluate(() => localStorage.setItem("spelldash_category", "my"));
@@ -1113,7 +1117,7 @@ console.log("my concept & retention:");
   const dayKey = (i) => { const d = new Date(Date.now() - i * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   // マイ単語帳: 場面カードのフォーム＋まとめて追加（→形式・タブ区切り見出しつき）
   const page = await newPage();
-  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   await page.click('[data-my-tab="concept"]');
   check("場面カードのタブでフォームが切り替わる", !(await page.$eval("#myConceptForm", (el) => el.hidden)) && (await page.$eval("#myWordForm", (el) => el.hidden)));
@@ -1130,6 +1134,8 @@ console.log("my concept & retention:");
   await page.waitForTimeout(200);
   const myWords = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
   check("まとめて追加: 見出し行を飛ばし、英単語1＋場面カード2", myWords.length === 4 && myWords.filter((w) => w.kind === "concept").length === 3 && myWords.some((w) => w.answer === "CPC") && myWords.some((w) => w.answer === "クリック率" && w.accept.includes("ctr")), JSON.stringify(myWords).slice(0, 200));
+  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.waitForTimeout(700);
   check("今月のまとめが出る", (await page.textContent("#monthlySummary")).includes("学習した日"));
   check("マイ単語帳（場面カード）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   const myRaw = await page.evaluate(() => localStorage.getItem("spelldash_my_words"));
@@ -1373,7 +1379,7 @@ console.log("calc & listen:");
 console.log("card generation:");
 {
   const page = await newPage({ storage: { spelldash_my_words: JSON.stringify([{ kind: "concept", en: "cpc", answer: "CPC", q: "1クリックの費用", explain: "", accept: [], ja: "" }]) } });
-  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   await page.click('[data-my-tab="ai"]');
   check("「テキストから作る」タブでパネルが出る", !(await page.$eval("#myCardGen", (el) => el.hidden)) && (await page.$eval("#myWordForm", (el) => el.hidden)));
