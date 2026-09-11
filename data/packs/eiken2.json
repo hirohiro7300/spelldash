@@ -308,7 +308,7 @@
     {
       "id": "english-corporation",
       "en": "corporation",
-      "ja": "大企業",
+      "ja": "企業・法人",
       "pos": "名",
       "level": "easy",
       "tags": [
@@ -768,7 +768,7 @@
     {
       "id": "english-adequate",
       "en": "adequate",
-      "ja": "十分な",
+      "ja": "十分な・適切な",
       "pos": "形",
       "level": "hard",
       "tags": [
@@ -818,7 +818,7 @@
     {
       "id": "english-widespread",
       "en": "widespread",
-      "ja": "広まった",
+      "ja": "広く普及した",
       "pos": "形",
       "level": "normal",
       "tags": [
@@ -978,7 +978,7 @@
     {
       "id": "english-legislation",
       "en": "legislation",
-      "ja": "法律の制定",
+      "ja": "立法・法律",
       "pos": "名",
       "level": "hard",
       "tags": [

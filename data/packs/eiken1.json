@@ -355,7 +355,7 @@
     {
       "id": "english-insidious",
       "en": "insidious",
-      "ja": "潜行性の",
+      "ja": "陰険な・知らぬ間に進む",
       "pos": "形",
       "level": "normal",
       "tags": [
@@ -545,7 +545,7 @@
     {
       "id": "english-parsimonious",
       "en": "parsimonious",
-      "ja": "極度に倹約な",
+      "ja": "極端にけちな",
       "pos": "形",
       "level": "hard",
       "tags": [
@@ -615,7 +615,7 @@
     {
       "id": "english-extrapolate",
       "en": "extrapolate",
-      "ja": "推定する",
+      "ja": "外挿する・推定する",
       "pos": "動",
       "level": "normal",
       "tags": [
@@ -755,7 +755,7 @@
     {
       "id": "english-laconic",
       "en": "laconic",
-      "ja": "簡潔な",
+      "ja": "言葉少なで簡潔な",
       "pos": "形",
       "level": "hard",
       "tags": [
@@ -885,7 +885,7 @@
     {
       "id": "english-disenfranchise",
       "en": "disenfranchise",
-      "ja": "権利を奪う",
+      "ja": "参政権を奪う",
       "pos": "動",
       "level": "hard",
       "tags": [

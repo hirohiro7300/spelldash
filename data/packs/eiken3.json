@@ -158,7 +158,7 @@
     {
       "id": "english-recycle",
       "en": "recycle",
-      "ja": "再利用する",
+      "ja": "リサイクルする",
       "pos": "動",
       "level": "normal",
       "tags": [
@@ -1048,7 +1048,7 @@
     {
       "id": "english-ocean",
       "en": "ocean",
-      "ja": "大洋",
+      "ja": "海・大洋",
       "pos": "名",
       "level": "easy",
       "tags": [

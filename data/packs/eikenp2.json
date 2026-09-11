@@ -239,7 +239,7 @@
     {
       "id": "english-prefer",
       "en": "prefer",
-      "ja": "より好む",
+      "ja": "〜のほうを好む",
       "pos": "動",
       "level": "easy",
       "tags": [
@@ -1089,7 +1089,7 @@
     {
       "id": "english-extremely",
       "en": "extremely",
-      "ja": "極端に",
+      "ja": "非常に・極めて",
       "pos": "副",
       "level": "normal",
       "tags": [
