@@ -260,6 +260,39 @@
           "group": "高校（世界史・日本史・地理・公民・理科・国語）"
         },
         {
+          "id": "hs-geo",
+          "label": "高校 地理総合・探究",
+          "file": "packs/hs-geo.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "図法・地形・気候区・農業・工業・都市・地域統合。系統地理の基本用語を説明から",
+          "audience": "地理総合・地理探究を学ぶ高校生、共通テスト受験生",
+          "group": "高校（世界史・日本史・地理・公民・理科・国語）"
+        },
+        {
+          "id": "hs-civics",
+          "label": "高校 政治・経済",
+          "file": "packs/hs-civics.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "政治のしくみ・憲法・市場と財政・労働・国際経済。頻出用語を説明から答える",
+          "audience": "公共・政治経済を学ぶ高校生、共通テスト受験生",
+          "group": "高校（世界史・日本史・地理・公民・理科・国語）"
+        },
+        {
+          "id": "hs-ethics",
+          "label": "高校 倫理",
+          "file": "packs/hs-ethics.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 65,
+          "blurb": "源流思想・日本思想・西洋近現代・現代の課題。思想家と鍵概念を説明から答える",
+          "audience": "倫理・公共を学ぶ高校生、共通テスト受験生",
+          "group": "高校（世界史・日本史・地理・公民・理科・国語）"
+        },
+        {
           "id": "hs-chem",
           "label": "高校 化学基礎",
           "file": "packs/hs-chem.json",
