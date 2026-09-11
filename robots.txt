@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /api/
 
-Sitemap: https://spelldash.net/sitemap.xml
+Sitemap: https://www.spelldash.net/sitemap.xml

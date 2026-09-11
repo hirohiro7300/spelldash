@@ -565,8 +565,9 @@ console.log("growth:");
 console.log("my words:");
 {
   const page = await newPage();
-  await page.goto(BASE + "/stats.html#myWords", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
+  check("マイ単語帳は単語帳ページの折りたたみ（#myWords で開く）", await page.$eval("#myWords", (el) => el.open));
   await page.fill("#myWordEn", "Negotiate");
   await page.fill("#myWordJa", "交渉する");
   await page.click("#myWordForm button[type=submit]");
@@ -583,6 +584,9 @@ console.log("my words:");
   await page.waitForTimeout(200);
   const status = await page.textContent("#myWordStatus");
   check("まとめて追加: 2語追加＋1件スキップ", status.includes("2語") && status.includes("スキップ 1"), status);
+  check("単語帳のカテゴリ選択にマイ単語帳", (await page.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("my"));
+  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
   check("カテゴリ進捗にマイ単語帳3語", (await page.textContent("#categoryProgress")).includes("マイ単語帳3語") || (await page.textContent("#categoryProgress")).includes("マイ単語帳") );
   // ホーム: カテゴリ「マイ単語帳」で出題される
   await page.evaluate(() => localStorage.setItem("spelldash_category", "my"));
@@ -1113,7 +1117,7 @@ console.log("my concept & retention:");
   const dayKey = (i) => { const d = new Date(Date.now() - i * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   // マイ単語帳: 場面カードのフォーム＋まとめて追加（→形式・タブ区切り見出しつき）
   const page = await newPage();
-  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   await page.click('[data-my-tab="concept"]');
   check("場面カードのタブでフォームが切り替わる", !(await page.$eval("#myConceptForm", (el) => el.hidden)) && (await page.$eval("#myWordForm", (el) => el.hidden)));
@@ -1130,6 +1134,8 @@ console.log("my concept & retention:");
   await page.waitForTimeout(200);
   const myWords = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
   check("まとめて追加: 見出し行を飛ばし、英単語1＋場面カード2", myWords.length === 4 && myWords.filter((w) => w.kind === "concept").length === 3 && myWords.some((w) => w.answer === "CPC") && myWords.some((w) => w.answer === "クリック率" && w.accept.includes("ctr")), JSON.stringify(myWords).slice(0, 200));
+  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.waitForTimeout(700);
   check("今月のまとめが出る", (await page.textContent("#monthlySummary")).includes("学習した日"));
   check("マイ単語帳（場面カード）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   const myRaw = await page.evaluate(() => localStorage.getItem("spelldash_my_words"));
@@ -1373,7 +1379,7 @@ console.log("calc & listen:");
 console.log("card generation:");
 {
   const page = await newPage({ storage: { spelldash_my_words: JSON.stringify([{ kind: "concept", en: "cpc", answer: "CPC", q: "1クリックの費用", explain: "", accept: [], ja: "" }]) } });
-  await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+  await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   await page.click('[data-my-tab="ai"]');
   check("「テキストから作る」タブでパネルが出る", !(await page.$eval("#myCardGen", (el) => el.hidden)) && (await page.$eval("#myWordForm", (el) => el.hidden)));
@@ -1451,11 +1457,12 @@ console.log("card generation:");
 // ===== 9.9996 Batch 8: 分野パック（教材ライブラリ）: 追加→一覧→ホームのチップ→外す =====
 console.log("domain packs:");
 {
+  const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   const page = await newPage();
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに48パック（36分野＋レベル別12）", packCount === 48, `packs=${packCount}`);
+  check("教材ライブラリに65パック（36分野＋レベル別12＋文法6＋義務教育11）", packCount === 65, `packs=${packCount}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
@@ -1530,6 +1537,58 @@ console.log("domain packs:");
   check("英検2級の語が出題され、ラベルに品詞", /日本語訳（[名動形副前接代助間]）/.test(await page6.textContent("#gameCard .label")), await page6.textContent("#gameCard .label"));
   check("レベル別パックの出題でエラー0", page6.errors.length === 0, page6.errors[0] ?? "");
   await page6.close();
+
+  // 文法パック（穴埋め）: 空欄つきの英文が出て、空欄の語を英語で打つ。発音は完成文
+  const page7 = await newPage({ storage: { spelldash_packs: JSON.stringify(["grammar-jhs1"]), spelldash_category: "grammar-jhs1", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await page7.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page7.waitForTimeout(900);
+  await page7.press("#input", "Enter");
+  await page7.waitForTimeout(300);
+  const gLabel = await page7.textContent("#gameCard .label");
+  const gPrompt = (await page7.textContent("#japanese")).trim();
+  check("文法カード: ラベルが「空欄に入る英語を打つ（文法項目）」", gLabel.startsWith("空欄に入る英語を打つ（"), gLabel);
+  check("文法カード: 英文に空欄と日本語訳", gPrompt.includes("____") && /（.+）/.test(gPrompt), gPrompt.slice(0, 60));
+  await page7.press("#input", "Enter"); // 答え表示
+  await page7.waitForTimeout(200);
+  const gAnswer = (await page7.textContent("#word")).trim();
+  check("文法カード: 答え表示で空欄の語と解説", gAnswer.length > 0 && (await page7.textContent("#wordExplain")).trim().length > 0, `answer=${gAnswer}`);
+  if (/^[a-z]+$/.test(gAnswer)) {
+    for (const ch of gAnswer) await page7.press("#input", ch);
+  } else {
+    await page7.fill("#input", gAnswer);
+    await page7.press("#input", "Enter");
+  }
+  await waitUntil(async () => (await page7.textContent("#score")).trim() === "1", 2000);
+  check("文法カード: 空欄の語を打って正解になる", (await page7.textContent("#score")).trim() === "1", `answer=${gAnswer}`);
+  check("文法カードでエラー0", page7.errors.length === 0, page7.errors[0] ?? "");
+  await page7.close();
+  const page8 = await newPage({ storage: { spelldash_packs: JSON.stringify(["grammar-jhs1"]) } });
+  await page8.goto(BASE + "/list.html?category=grammar-jhs1", { waitUntil: "networkidle" });
+  await page8.waitForTimeout(900);
+  check("文法パックの一覧（60枚以上・文法項目のジャンル）", (await page8.$$(".gcard")).length >= 60 && (await page8.$$(".genre")).length >= 5 && (await page8.textContent("#listBody")).includes("____"));
+  check("ライブラリに「文法」グループ（6パック）", (await page8.$$('[data-pack-toggle^="grammar-"]')).length === 6);
+  await page8.close();
+
+  // 義務教育パック: 日本語で答える。漢字の答えはひらがなの読みでも正解
+  const page9 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]), spelldash_category: "pref", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await page9.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page9.waitForTimeout(900);
+  await page9.press("#input", "Enter");
+  await page9.waitForTimeout(300);
+  check("義務教育カード: ラベルが「説明に合う語を答える」", (await page9.textContent("#gameCard .label")).includes("説明に合う語を答える"));
+  const kana = await page9.evaluate(async () => {
+    const s = await import("/js/wordStore.js");
+    const w = s.getWordsByCategory("pref").find((x) => /[一-龯]/.test(x.answer));
+    return { reading: (w.accept ?? []).find((a) => /^[ぁ-ゖー]+$/.test(a)) ?? "", q: w.q, id: w.id };
+  });
+  check("義務教育カード: 漢字の答えに読みの別解がある", kana.reading.length > 0, JSON.stringify(kana).slice(0, 100));
+  await page9.close();
+  const page10 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]) } });
+  await page10.goto(BASE + "/list.html?category=pref", { waitUntil: "networkidle" });
+  await page10.waitForTimeout(900);
+  check("都道府県パックの一覧（60枚・地方ごとのジャンル）", (await page10.$$(".gcard")).length === 60 && (await page10.$$(".genre")).length >= 6);
+  check("ライブラリに「義務教育」グループ（11パック）", (await page10.$$eval(".pack-group__title", (els) => els.map((e) => e.textContent))).some((t) => t.includes("義務教育")) && (await page10.$$('[data-pack-toggle="jhist1"], [data-pack-toggle="jsci2"], [data-pack-toggle="jmath"]')).length === 3);
+  await page10.close();
 
   // ?add= の紹介リンクで直接追加
   const page4 = await newPage();

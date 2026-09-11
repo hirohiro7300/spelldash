@@ -4344,3 +4344,54 @@ body.list-compact .genre__cards {
   color: #94a3b8;
   vertical-align: middle;
 }
+
+/* ===== マイ単語帳を「単語帳」ページへ（教材を作る場所） ===== */
+.my-fold {
+  margin: 0 0 18px;
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.my-fold__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.my-fold__summary::-webkit-details-marker {
+  display: none;
+}
+
+.my-fold__summary::before {
+  content: "▸";
+  color: #94a3b8;
+  margin-right: 2px;
+}
+
+.my-fold[open] .my-fold__summary::before {
+  content: "▾";
+}
+
+.my-fold__title {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.my-fold__count {
+  font-size: 12px;
+}
+
+.my-fold__hint {
+  flex-basis: 100%;
+  font-size: 12.5px;
+}
+
+.my-fold__body {
+  padding: 0 14px 14px;
+}

@@ -1,0 +1,1166 @@
+{
+  "subject": "english",
+  "category": "grammar-toeic",
+  "cardType": "grammar",
+  "label": "TOEIC 文法（短文穴埋め）",
+  "blurb": "品詞・前置詞と接続詞・時制・関係詞。ビジネス英文の短文穴埋めで文法を固める",
+  "audience": "スコアを伸ばしたい社会人・大学生、ビジネス英語を学び直す人",
+  "genres": {
+    "gt-pos": "品詞の選択",
+    "gt-pron": "代名詞",
+    "gt-prep": "前置詞 vs 接続詞",
+    "gt-tense": "時制と態",
+    "gt-rel": "関係詞",
+    "gt-quant": "数量詞と冠詞",
+    "gt-comp": "比較",
+    "gt-verb": "動詞の語法",
+    "gt-part": "分詞・不定詞",
+    "gt-adv": "接続副詞"
+  },
+  "words": [
+    {
+      "id": "concept-gt-pos-carefully",
+      "en": "gt-pos-carefully",
+      "kind": "concept",
+      "answer": "carefully",
+      "ja": "品詞（副詞：動詞を修飾）",
+      "q": "Please read the contract ____ before signing it.（署名する前に、契約書を注意深く読んでください）",
+      "explain": "動詞 read を修飾するので副詞 carefully。care（名）careful（形）carefully（副）。目的語の後の空欄は副詞が定番",
+      "say": "Please read the contract carefully before signing it.",
+      "level": "easy",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pos-impressive",
+      "en": "gt-pos-impressive",
+      "kind": "concept",
+      "answer": "impressive",
+      "ja": "品詞（形容詞：冠詞と名詞の間）",
+      "q": "The manager gave an ____ presentation to the clients.（部長は顧客に向けて印象的なプレゼンを行った）",
+      "explain": "冠詞 an と名詞 presentation の間は形容詞。impress（動）impression（名）impressive（形）impressively（副）",
+      "say": "The manager gave an impressive presentation to the clients.",
+      "level": "normal",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pos-approval",
+      "en": "gt-pos-approval",
+      "kind": "concept",
+      "answer": "approval",
+      "ja": "品詞（名詞：the ＋ ____ of）",
+      "q": "The budget proposal requires the ____ of the finance director.（予算案には財務部長の承認が必要だ）",
+      "explain": "the と of に挟まれた位置は名詞。approve（動）approval（名）approved（形）。動詞形を入れない",
+      "say": "The budget proposal requires the approval of the finance director.",
+      "level": "easy",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pos-expand",
+      "en": "gt-pos-expand",
+      "kind": "concept",
+      "answer": "expand",
+      "accept": [
+        "extend"
+      ],
+      "ja": "品詞（動詞：to ＋原形）",
+      "q": "The company plans to ____ its business into Asia.（同社はアジアへ事業を拡大する計画だ）",
+      "explain": "plan to の後は動詞の原形。expand（動）expansion（名）expansive（形）。名詞 expansion を入れない",
+      "say": "The company plans to expand its business into Asia.",
+      "level": "normal",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pos-steadily",
+      "en": "gt-pos-steadily",
+      "kind": "concept",
+      "answer": "steadily",
+      "ja": "品詞（副詞：自動詞の後）",
+      "q": "Sales have grown ____ over the past year.（過去1年で売上は着実に伸びた）",
+      "explain": "自動詞 grown の後で動詞を修飾するのは副詞。steady（形）steadiness（名）steadily（副）",
+      "say": "Sales have grown steadily over the past year.",
+      "level": "hard",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pos-opening",
+      "en": "gt-pos-opening",
+      "kind": "concept",
+      "answer": "opening",
+      "ja": "品詞（名詞：主語）",
+      "q": "The ____ of the new branch is scheduled for May.（新支店の開設は5月に予定されている）",
+      "explain": "The の後で文の主語になるのは名詞 opening。open（動・形）openly（副）。「開設」の意味では -ing 形が名詞",
+      "say": "The opening of the new branch is scheduled for May.",
+      "level": "normal",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pos-responsible",
+      "en": "gt-pos-responsible",
+      "kind": "concept",
+      "answer": "responsible",
+      "ja": "品詞（形容詞：be の補語）",
+      "q": "Our team is ____ for handling customer complaints.（私たちのチームは顧客の苦情対応を担当している）",
+      "explain": "be 動詞の補語で for が続くのは形容詞 responsible。responsibility（名）responsibly（副）",
+      "say": "Our team is responsible for handling customer complaints.",
+      "level": "easy",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pos-promptly",
+      "en": "gt-pos-promptly",
+      "kind": "concept",
+      "answer": "promptly",
+      "accept": [
+        "immediately",
+        "quickly"
+      ],
+      "ja": "品詞（副詞：文末）",
+      "q": "Please respond to customer inquiries ____.（顧客からの問い合わせには速やかに対応してください）",
+      "explain": "文が完成した後の文末の空欄は副詞。prompt（形）promptness（名）promptly（副）",
+      "say": "Please respond to customer inquiries promptly.",
+      "level": "hard",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pos-relevant",
+      "en": "gt-pos-relevant",
+      "kind": "concept",
+      "answer": "relevant",
+      "accept": [
+        "related"
+      ],
+      "ja": "品詞（形容詞：名詞を修飾）",
+      "q": "Applicants must have at least three years of ____ experience.（応募者は少なくとも3年の関連する経験が必要です）",
+      "explain": "名詞 experience の直前は形容詞。relevance（名）relevant（形）relevantly（副）",
+      "say": "Applicants must have at least three years of relevant experience.",
+      "level": "normal",
+      "tags": [
+        "gt-pos"
+      ]
+    },
+    {
+      "id": "concept-gt-pron-himself",
+      "en": "gt-pron-himself",
+      "kind": "concept",
+      "answer": "himself",
+      "accept": [
+        "herself"
+      ],
+      "ja": "再帰代名詞（強調用法）",
+      "q": "The president ____ will hand out the awards.（社長自らが賞を手渡します）",
+      "explain": "主語の直後に置いて「自ら・本人が」と強調する再帰代名詞。省いても文は成り立つ。him は不可",
+      "say": "The president himself will hand out the awards.",
+      "level": "easy",
+      "tags": [
+        "gt-pron"
+      ]
+    },
+    {
+      "id": "concept-gt-pron-herself",
+      "en": "gt-pron-herself",
+      "kind": "concept",
+      "answer": "herself",
+      "ja": "by oneself（独力で）",
+      "q": "Ms. Lee completed the entire project by ____.（リーさんはプロジェクト全体を一人で完成させた）",
+      "explain": "by oneself「一人で・独力で」。by her では「彼女によって」と意味が変わる",
+      "say": "Ms. Lee completed the entire project by herself.",
+      "level": "normal",
+      "tags": [
+        "gt-pron"
+      ]
+    },
+    {
+      "id": "concept-gt-pron-those-who",
+      "en": "gt-pron-those-who",
+      "kind": "concept",
+      "answer": "those",
+      "accept": [
+        "people"
+      ],
+      "ja": "those who（〜する人々）",
+      "q": "____ who wish to attend the seminar should register by Monday.（セミナーへの参加を希望する人は月曜までに登録してください）",
+      "explain": "those who ＋複数動詞「〜する人々」。them who / they who は不可。anyone who なら動詞は wishes",
+      "say": "Those who wish to attend the seminar should register by Monday.",
+      "level": "normal",
+      "tags": [
+        "gt-pron"
+      ]
+    },
+    {
+      "id": "concept-gt-pron-that-of",
+      "en": "gt-pron-that-of",
+      "kind": "concept",
+      "answer": "that",
+      "ja": "代名詞 that of（名詞の反復回避）",
+      "q": "The design of this model is more compact than ____ of the previous one.（このモデルのデザインは前モデルのものよりコンパクトだ）",
+      "explain": "前に出た単数名詞 the design の繰り返しを避ける that。複数なら those。it は of を伴えない",
+      "say": "The design of this model is more compact than that of the previous one.",
+      "level": "hard",
+      "tags": [
+        "gt-pron"
+      ]
+    },
+    {
+      "id": "concept-gt-pron-each-other",
+      "en": "gt-pron-each-other",
+      "kind": "concept",
+      "answer": "each other",
+      "accept": [
+        "one another"
+      ],
+      "ja": "each other（お互い）",
+      "q": "The two companies have agreed to help ____.（両社は互いに助け合うことで合意した）",
+      "explain": "each other / one another は「お互い」を表す代名詞で目的語の位置に置く。副詞ではないので help each other の語順",
+      "say": "The two companies have agreed to help each other.",
+      "level": "hard",
+      "tags": [
+        "gt-pron"
+      ]
+    },
+    {
+      "id": "concept-gt-pron-yourself",
+      "en": "gt-pron-yourself",
+      "kind": "concept",
+      "answer": "yourself",
+      "accept": [
+        "yourselves"
+      ],
+      "ja": "再帰代名詞（目的語）",
+      "q": "Please introduce ____ to the new members.（新しいメンバーに自己紹介をしてください）",
+      "explain": "主語（you）と目的語が同じ人なので再帰代名詞。introduce you では別人を紹介することになる",
+      "say": "Please introduce yourself to the new members.",
+      "level": "easy",
+      "tags": [
+        "gt-pron"
+      ]
+    },
+    {
+      "id": "concept-gt-prep-because-of",
+      "en": "gt-prep-because-of",
+      "kind": "concept",
+      "answer": "because of",
+      "accept": [
+        "due to",
+        "owing to"
+      ],
+      "ja": "前置詞 because of",
+      "q": "The flight was delayed ____ the heavy snow.（大雪のせいで便が遅れた）",
+      "explain": "後ろが名詞句 the heavy snow なので前置詞 because of。接続詞 because の後は S ＋ V が必要",
+      "say": "The flight was delayed because of the heavy snow.",
+      "level": "easy",
+      "tags": [
+        "gt-prep"
+      ]
+    },
+    {
+      "id": "concept-gt-prep-because",
+      "en": "gt-prep-because",
+      "kind": "concept",
+      "answer": "because",
+      "accept": [
+        "since",
+        "as"
+      ],
+      "ja": "接続詞 because",
+      "q": "The meeting was canceled ____ the manager was sick.（部長が病気だったので会議は中止になった）",
+      "explain": "後ろに S ＋ V（the manager was）が続くので接続詞 because。because of の後には節を置けない",
+      "say": "The meeting was canceled because the manager was sick.",
+      "level": "easy",
+      "tags": [
+        "gt-prep"
+      ]
+    },
+    {
+      "id": "concept-gt-prep-despite",
+      "en": "gt-prep-despite",
+      "kind": "concept",
+      "answer": "despite",
+      "accept": [
+        "in spite of"
+      ],
+      "ja": "前置詞 despite",
+      "q": "____ the bad weather, the event was held as planned.（悪天候にもかかわらず、イベントは予定通り開催された）",
+      "explain": "後ろが名詞句なので前置詞 despite / in spite of。despite of は誤り。節が続くなら although",
+      "say": "Despite the bad weather, the event was held as planned.",
+      "level": "easy",
+      "tags": [
+        "gt-prep"
+      ]
+    },
+    {
+      "id": "concept-gt-prep-although",
+      "en": "gt-prep-although",
+      "kind": "concept",
+      "answer": "although",
+      "accept": [
+        "though",
+        "even though",
+        "while"
+      ],
+      "ja": "接続詞 although",
+      "q": "____ the price was high, the product sold well.（価格は高かったが、その製品はよく売れた）",
+      "explain": "後ろに S ＋ V が続く譲歩は接続詞 although。despite / in spite of は前置詞なので節を取れない",
+      "say": "Although the price was high, the product sold well.",
+      "level": "normal",
+      "tags": [
+        "gt-prep"
+      ]
+    },
+    {
+      "id": "concept-gt-prep-during",
+      "en": "gt-prep-during",
+      "kind": "concept",
+      "answer": "during",
+      "accept": [
+        "throughout"
+      ],
+      "ja": "前置詞 during",
+      "q": "Please turn off your phone ____ the presentation.（プレゼンの間は電話の電源を切ってください）",
+      "explain": "後ろが名詞 the presentation なので前置詞 during。while は接続詞で S ＋ V が続く",
+      "say": "Please turn off your phone during the presentation.",
+      "level": "normal",
+      "tags": [
+        "gt-prep"
+      ]
+    },
+    {
+      "id": "concept-gt-prep-while",
+      "en": "gt-prep-while",
+      "kind": "concept",
+      "answer": "while",
+      "accept": [
+        "as",
+        "when"
+      ],
+      "ja": "接続詞 while",
+      "q": "Ms. Park took notes ____ the speaker was talking.（話し手が話している間、パクさんはメモを取った）",
+      "explain": "後ろが S ＋ V（the speaker was talking）なので接続詞 while。during the talk なら前置詞",
+      "say": "Ms. Park took notes while the speaker was talking.",
+      "level": "hard",
+      "tags": [
+        "gt-prep"
+      ]
+    },
+    {
+      "id": "concept-gt-prep-within",
+      "en": "gt-prep-within",
+      "kind": "concept",
+      "answer": "within",
+      "accept": [
+        "in"
+      ],
+      "ja": "前置詞 within（〜以内に）",
+      "q": "The order will be shipped ____ 24 hours.（ご注文は24時間以内に発送されます）",
+      "explain": "期間の上限「〜以内に」は within。by は期限の一点、until は継続、for は期間の長さ",
+      "say": "The order will be shipped within 24 hours.",
+      "level": "hard",
+      "tags": [
+        "gt-prep"
+      ]
+    },
+    {
+      "id": "concept-gt-tense-was-sent",
+      "en": "gt-tense-was-sent",
+      "kind": "concept",
+      "answer": "was",
+      "ja": "受動態（過去）",
+      "q": "The invoice ____ sent to the client yesterday.（請求書は昨日顧客に送られた）",
+      "explain": "主語 invoice は「送られる」側なので be ＋過去分詞。yesterday があるので過去形 was。has been は不可",
+      "say": "The invoice was sent to the client yesterday.",
+      "level": "easy",
+      "tags": [
+        "gt-tense"
+      ]
+    },
+    {
+      "id": "concept-gt-tense-has-worked",
+      "en": "gt-tense-has-worked",
+      "kind": "concept",
+      "answer": "has worked",
+      "accept": [
+        "has been working",
+        "'s worked"
+      ],
+      "ja": "現在完了（継続）since",
+      "q": "Mr. Kim ____ for this company since 2015.（キム氏は2015年からこの会社で働いている）",
+      "explain": "since ＋起点があれば現在完了。works や worked は since と合わない",
+      "say": "Mr. Kim has worked for this company since 2015.",
+      "level": "normal",
+      "tags": [
+        "gt-tense"
+      ]
+    },
+    {
+      "id": "concept-gt-tense-is-scheduled",
+      "en": "gt-tense-is-scheduled",
+      "kind": "concept",
+      "answer": "is scheduled",
+      "accept": [
+        "is expected",
+        "is due",
+        "is set",
+        "is planned"
+      ],
+      "ja": "be scheduled to do",
+      "q": "The new product ____ to be launched next month.（新製品は来月発売される予定だ）",
+      "explain": "be scheduled to do「〜する予定だ」は受動態の形。is scheduling と能動にしない",
+      "say": "The new product is scheduled to be launched next month.",
+      "level": "easy",
+      "tags": [
+        "gt-tense"
+      ]
+    },
+    {
+      "id": "concept-gt-tense-will-have-opened",
+      "en": "gt-tense-will-have-opened",
+      "kind": "concept",
+      "answer": "will have opened",
+      "accept": [
+        "'ll have opened"
+      ],
+      "ja": "未来完了 will have done",
+      "q": "By the end of this year, we ____ over 500 stores.（今年の年末までに、当社は500店舗以上を開店していることになる）",
+      "explain": "by ＋未来の時点「〜までに完了している」は will have ＋過去分詞。will open では完了の意味が出ない",
+      "say": "By the end of this year, we will have opened over 500 stores.",
+      "level": "hard",
+      "tags": [
+        "gt-tense"
+      ]
+    },
+    {
+      "id": "concept-gt-tense-had-been",
+      "en": "gt-tense-had-been",
+      "kind": "concept",
+      "answer": "had been",
+      "accept": [
+        "has been",
+        "was"
+      ],
+      "ja": "時制の一致（受動態）",
+      "q": "The manager said that the deadline ____ extended.（部長は締め切りが延長されたと言った）",
+      "explain": "said より前に「延長された」ので過去完了の受動態 had been extended。主節が過去なら that 節も過去側にそろえる",
+      "say": "The manager said that the deadline had been extended.",
+      "level": "hard",
+      "tags": [
+        "gt-tense"
+      ]
+    },
+    {
+      "id": "concept-gt-tense-had",
+      "en": "gt-tense-had",
+      "kind": "concept",
+      "answer": "had",
+      "ja": "過去完了（過去のある時点まで）",
+      "q": "When I arrived at the office, the meeting ____ already started.（私がオフィスに着いたとき、会議はすでに始まっていた）",
+      "explain": "過去の一点（arrived）より前に起きたことは had ＋過去分詞。has already started は現在とのつながりになる",
+      "say": "When I arrived at the office, the meeting had already started.",
+      "level": "normal",
+      "tags": [
+        "gt-tense"
+      ]
+    },
+    {
+      "id": "concept-gt-tense-comes",
+      "en": "gt-tense-comes",
+      "kind": "concept",
+      "answer": "comes",
+      "accept": [
+        "gets",
+        "is"
+      ],
+      "ja": "時の副詞節は現在形",
+      "q": "Please wait here until the manager ____ back.（部長が戻るまでここでお待ちください）",
+      "explain": "until / when / as soon as の副詞節では未来のことも現在形。will come は誤り。主語が三人称なので -s",
+      "say": "Please wait here until the manager comes back.",
+      "level": "normal",
+      "tags": [
+        "gt-tense"
+      ]
+    },
+    {
+      "id": "concept-gt-rel-which",
+      "en": "gt-rel-which",
+      "kind": "concept",
+      "answer": "which",
+      "accept": [
+        "that"
+      ],
+      "ja": "関係代名詞 which（主格）",
+      "q": "The report ____ was submitted yesterday contains several errors.（昨日提出された報告書にはいくつか誤りがある）",
+      "explain": "先行詞が物で、後ろに動詞が続く主格なので which / that。what は先行詞を取れない。who は人",
+      "say": "The report which was submitted yesterday contains several errors.",
+      "level": "easy",
+      "tags": [
+        "gt-rel"
+      ]
+    },
+    {
+      "id": "concept-gt-rel-whose",
+      "en": "gt-rel-whose",
+      "kind": "concept",
+      "answer": "whose",
+      "ja": "関係代名詞 whose（所有格）",
+      "q": "We are looking for a candidate ____ experience matches our needs.（当社の要件に合う経験を持つ候補者を探している）",
+      "explain": "後ろに冠詞のない名詞 experience が続き「候補者の経験」の関係なので所有格 whose。who / which は不可",
+      "say": "We are looking for a candidate whose experience matches our needs.",
+      "level": "normal",
+      "tags": [
+        "gt-rel"
+      ]
+    },
+    {
+      "id": "concept-gt-rel-where",
+      "en": "gt-rel-where",
+      "kind": "concept",
+      "answer": "where",
+      "accept": [
+        "in which"
+      ],
+      "ja": "関係副詞 where",
+      "q": "This is the conference room ____ the board meeting will be held.（ここが取締役会が開かれる会議室です）",
+      "explain": "後ろが完全な文（S ＋ V がそろっている）なので関係副詞 where = in which。which なら後ろに名詞の欠けが必要",
+      "say": "This is the conference room where the board meeting will be held.",
+      "level": "easy",
+      "tags": [
+        "gt-rel"
+      ]
+    },
+    {
+      "id": "concept-gt-rel-what",
+      "en": "gt-rel-what",
+      "kind": "concept",
+      "answer": "what",
+      "ja": "関係代名詞 what",
+      "q": "____ the customer wants is a quick response.（顧客が望んでいるのは迅速な対応だ）",
+      "explain": "先行詞を含む関係代名詞 what = the thing which。文の主語になる名詞節を作る。That / Which は先行詞が必要",
+      "say": "What the customer wants is a quick response.",
+      "level": "hard",
+      "tags": [
+        "gt-rel"
+      ]
+    },
+    {
+      "id": "concept-gt-rel-whom",
+      "en": "gt-rel-whom",
+      "kind": "concept",
+      "answer": "whom",
+      "accept": [
+        "who",
+        "that"
+      ],
+      "ja": "関係代名詞 whom（目的格）",
+      "q": "The candidate ____ we interviewed yesterday has accepted the offer.（昨日面接した候補者は内定を受諾した）",
+      "explain": "interviewed の目的語が欠けているので目的格 whom（口語では who / that、省略も可）。whose は不可",
+      "say": "The candidate whom we interviewed yesterday has accepted the offer.",
+      "level": "normal",
+      "tags": [
+        "gt-rel"
+      ]
+    },
+    {
+      "id": "concept-gt-rel-who",
+      "en": "gt-rel-who",
+      "kind": "concept",
+      "answer": "who",
+      "ja": "関係代名詞 who（非制限用法）",
+      "q": "Please contact Ms. Chen, ____ is in charge of the project.（プロジェクトの担当であるチェンさんに連絡してください）",
+      "explain": "先行詞が人で主格なので who。コンマ付きの非制限用法では that は使えない",
+      "say": "Please contact Ms. Chen, who is in charge of the project.",
+      "level": "easy",
+      "tags": [
+        "gt-rel"
+      ]
+    },
+    {
+      "id": "concept-gt-rel-why",
+      "en": "gt-rel-why",
+      "kind": "concept",
+      "answer": "why",
+      "accept": [
+        "that",
+        "for which"
+      ],
+      "ja": "関係副詞 why",
+      "q": "This is the reason ____ the shipment was delayed.（これが出荷が遅れた理由です）",
+      "explain": "先行詞 the reason ＋完全な文なので関係副詞 why = for which。because は接続詞で先行詞を取れない",
+      "say": "This is the reason why the shipment was delayed.",
+      "level": "hard",
+      "tags": [
+        "gt-rel"
+      ]
+    },
+    {
+      "id": "concept-gt-quant-every",
+      "en": "gt-quant-every",
+      "kind": "concept",
+      "answer": "every",
+      "accept": [
+        "each"
+      ],
+      "ja": "every ＋単数名詞",
+      "q": "____ employee must wear an ID badge at all times.（すべての社員は常にIDバッジを着用しなければならない）",
+      "explain": "every / each の後は単数名詞＋単数動詞。all employees なら複数。every employees は誤り",
+      "say": "Every employee must wear an ID badge at all times.",
+      "level": "easy",
+      "tags": [
+        "gt-quant"
+      ]
+    },
+    {
+      "id": "concept-gt-quant-each-of",
+      "en": "gt-quant-each-of",
+      "kind": "concept",
+      "answer": "each",
+      "ja": "each of ＋複数名詞（単数扱い）",
+      "q": "____ of the applicants has been interviewed twice.（応募者はそれぞれ2回面接を受けた）",
+      "explain": "each of the ＋複数名詞は単数扱い（has）。every は代名詞として使えないので every of は誤り",
+      "say": "Each of the applicants has been interviewed twice.",
+      "level": "hard",
+      "tags": [
+        "gt-quant"
+      ]
+    },
+    {
+      "id": "concept-gt-quant-almost-all",
+      "en": "gt-quant-almost-all",
+      "kind": "concept",
+      "answer": "almost",
+      "accept": [
+        "nearly"
+      ],
+      "ja": "almost all（ほぼ全員）",
+      "q": "____ all of the staff attended the training session.（スタッフのほぼ全員が研修に出席した）",
+      "explain": "almost は副詞で all を修飾する。most all や almost of the staff は誤り。most of the staff なら「大半」",
+      "say": "Almost all of the staff attended the training session.",
+      "level": "hard",
+      "tags": [
+        "gt-quant"
+      ]
+    },
+    {
+      "id": "concept-gt-quant-most-of",
+      "en": "gt-quant-most-of",
+      "kind": "concept",
+      "answer": "most",
+      "accept": [
+        "the majority"
+      ],
+      "ja": "most of ＋限定された名詞",
+      "q": "____ of our customers pay by credit card.（顧客のほとんどがクレジットカードで支払う）",
+      "explain": "most of の後は our / the などで限定された名詞。almost of our customers は誤り（almost は副詞）",
+      "say": "Most of our customers pay by credit card.",
+      "level": "normal",
+      "tags": [
+        "gt-quant"
+      ]
+    },
+    {
+      "id": "concept-gt-quant-little",
+      "en": "gt-quant-little",
+      "kind": "concept",
+      "answer": "little",
+      "accept": [
+        "very little",
+        "not much"
+      ],
+      "ja": "little（ほとんど〜ない）",
+      "q": "We have ____ time before the deadline, so let's hurry.（締め切りまでほとんど時間がないので急ごう）",
+      "explain": "不可算名詞 time には little（ほとんどない）。a little は「少しはある」で so let's hurry とつながらない。few は可算用",
+      "say": "We have little time before the deadline, so let's hurry.",
+      "level": "normal",
+      "tags": [
+        "gt-quant"
+      ]
+    },
+    {
+      "id": "concept-gt-quant-much",
+      "en": "gt-quant-much",
+      "kind": "concept",
+      "answer": "much",
+      "ja": "much ＋不可算名詞",
+      "q": "How ____ information do you need for the report?（報告書にはどのくらいの情報が必要ですか）",
+      "explain": "information は不可算名詞なので量は much。many は可算名詞用。informations とは言わない",
+      "say": "How much information do you need for the report?",
+      "level": "easy",
+      "tags": [
+        "gt-quant"
+      ]
+    },
+    {
+      "id": "concept-gt-quant-a-number-of",
+      "en": "gt-quant-a-number-of",
+      "kind": "concept",
+      "answer": "a",
+      "accept": [
+        "a large",
+        "a growing"
+      ],
+      "ja": "a number of（複数扱い）",
+      "q": "____ number of employees have requested remote work.（多くの社員がリモート勤務を要望している）",
+      "explain": "a number of ＋複数名詞「多くの〜」は複数扱いで have。the number of「〜の数」なら has になる",
+      "say": "A number of employees have requested remote work.",
+      "level": "hard",
+      "tags": [
+        "gt-quant"
+      ]
+    },
+    {
+      "id": "concept-gt-quant-neither-of",
+      "en": "gt-quant-neither-of",
+      "kind": "concept",
+      "answer": "neither",
+      "ja": "neither of",
+      "q": "____ of the two proposals was accepted.（2つの提案はどちらも受け入れられなかった）",
+      "explain": "2つのうち「どちらも〜ない」は neither of。3つ以上なら none of。単数扱いで was",
+      "say": "Neither of the two proposals was accepted.",
+      "level": "normal",
+      "tags": [
+        "gt-quant"
+      ]
+    },
+    {
+      "id": "concept-gt-comp-far",
+      "en": "gt-comp-far",
+      "kind": "concept",
+      "answer": "far",
+      "accept": [
+        "much",
+        "a lot"
+      ],
+      "ja": "比較級の強調 far / much",
+      "q": "The new model is ____ more efficient than the old one.（新モデルは旧モデルよりはるかに効率的だ）",
+      "explain": "比較級を強めるのは far / much / a lot / even。very more は誤り。very は原級を強める",
+      "say": "The new model is far more efficient than the old one.",
+      "level": "easy",
+      "tags": [
+        "gt-comp"
+      ]
+    },
+    {
+      "id": "concept-gt-comp-worst-ever",
+      "en": "gt-comp-worst-ever",
+      "kind": "concept",
+      "answer": "worst",
+      "ja": "最上級＋ ever",
+      "q": "This is the ____ sales result we have ever recorded.（これは当社が記録した中で最悪の売上実績だ）",
+      "explain": "the ＋最上級＋名詞＋ (that) S have ever ＋過去分詞「今まで〜した中で最も…」。bad の最上級は worst",
+      "say": "This is the worst sales result we have ever recorded.",
+      "level": "normal",
+      "tags": [
+        "gt-comp"
+      ]
+    },
+    {
+      "id": "concept-gt-comp-as-soon-as-possible",
+      "en": "gt-comp-as-soon-as-possible",
+      "kind": "concept",
+      "answer": "as soon",
+      "accept": [
+        "as quickly",
+        "as early"
+      ],
+      "ja": "as ... as possible",
+      "q": "Please reply ____ as possible.（できるだけ早く返信してください）",
+      "explain": "as ＋原級＋ as possible「できるだけ〜」= as ... as you can。動詞 reply を修飾するので副詞 soon を挟む",
+      "say": "Please reply as soon as possible.",
+      "level": "normal",
+      "tags": [
+        "gt-comp"
+      ]
+    },
+    {
+      "id": "concept-gt-comp-the-more",
+      "en": "gt-comp-the-more",
+      "kind": "concept",
+      "answer": "more",
+      "ja": "the 比較級, the 比較級",
+      "q": "The ____ you order, the bigger the discount you get.（注文が多いほど、割引も大きくなります）",
+      "explain": "The ＋比較級 S V, the ＋比較級 S V「〜すればするほど…」。後半の the bigger と対にして前半も比較級 more",
+      "say": "The more you order, the bigger the discount you get.",
+      "level": "normal",
+      "tags": [
+        "gt-comp"
+      ]
+    },
+    {
+      "id": "concept-gt-comp-superior-to",
+      "en": "gt-comp-superior-to",
+      "kind": "concept",
+      "answer": "superior",
+      "ja": "ラテン比較級 superior to",
+      "q": "The new system is ____ to the old one.（新システムは旧システムより優れている）",
+      "explain": "superior / inferior / senior / junior / prior は than でなく to を取る。more superior は誤り",
+      "say": "The new system is superior to the old one.",
+      "level": "hard",
+      "tags": [
+        "gt-comp"
+      ]
+    },
+    {
+      "id": "concept-gt-comp-by-far",
+      "en": "gt-comp-by-far",
+      "kind": "concept",
+      "answer": "by far",
+      "ja": "最上級の強調 by far",
+      "q": "This is ____ the best proposal we have received.（これは私たちが受け取った中で断然最高の提案だ）",
+      "explain": "最上級を強めるのは by far / much / the very。比較級を強める far / much と形が違うので注意",
+      "say": "This is by far the best proposal we have received.",
+      "level": "hard",
+      "tags": [
+        "gt-comp"
+      ]
+    },
+    {
+      "id": "concept-gt-comp-better-than-expected",
+      "en": "gt-comp-better-than-expected",
+      "kind": "concept",
+      "answer": "better",
+      "ja": "比較級（than expected）",
+      "q": "The second quarter results were ____ than expected.（第2四半期の業績は予想より良かった）",
+      "explain": "than があるので比較級。good の比較級は better（more good は誤り）。than (they had been) expected の省略形",
+      "say": "The second quarter results were better than expected.",
+      "level": "easy",
+      "tags": [
+        "gt-comp"
+      ]
+    },
+    {
+      "id": "concept-gt-verb-suggest-be",
+      "en": "gt-verb-suggest-be",
+      "kind": "concept",
+      "answer": "be",
+      "accept": [
+        "should be"
+      ],
+      "ja": "suggest that＋原形",
+      "q": "The consultant suggested that the meeting ____ postponed.（コンサルタントは会議を延期するよう提案した）",
+      "explain": "提案・要求・命令の that 節は動詞の原形（仮定法現在）。受動態なので be postponed。is / was は誤り",
+      "say": "The consultant suggested that the meeting be postponed.",
+      "level": "normal",
+      "tags": [
+        "gt-verb"
+      ]
+    },
+    {
+      "id": "concept-gt-verb-insist-attend",
+      "en": "gt-verb-insist-attend",
+      "kind": "concept",
+      "answer": "attend",
+      "accept": [
+        "should attend"
+      ],
+      "ja": "insist that＋原形",
+      "q": "The manager insisted that every employee ____ the safety training.（部長はすべての社員が安全研修に出席するよう主張した）",
+      "explain": "insist / demand / require that の後は主語が三人称単数でも原形 attend。attends や attended にしない",
+      "say": "The manager insisted that every employee attend the safety training.",
+      "level": "hard",
+      "tags": [
+        "gt-verb"
+      ]
+    },
+    {
+      "id": "concept-gt-verb-likely",
+      "en": "gt-verb-likely",
+      "kind": "concept",
+      "answer": "likely",
+      "accept": [
+        "expected"
+      ],
+      "ja": "be likely to do",
+      "q": "The new policy is ____ to reduce costs by 10 percent.（新方針によりコストが10%削減される見込みだ）",
+      "explain": "be likely to do「〜しそうだ・〜する見込みだ」。It is likely that S V でも言える。probable to do は不可",
+      "say": "The new policy is likely to reduce costs by 10 percent.",
+      "level": "easy",
+      "tags": [
+        "gt-verb"
+      ]
+    },
+    {
+      "id": "concept-gt-verb-prevent-from",
+      "en": "gt-verb-prevent-from",
+      "kind": "concept",
+      "answer": "prevent",
+      "accept": [
+        "keep",
+        "stop",
+        "bar"
+      ],
+      "ja": "prevent A from doing",
+      "q": "Strict security measures ____ unauthorized people from entering the building.（厳格な警備対策により、権限のない人は建物に入れない）",
+      "explain": "prevent / keep / stop A from doing「Aが〜するのを防ぐ」。from の後は動名詞 entering",
+      "say": "Strict security measures prevent unauthorized people from entering the building.",
+      "level": "easy",
+      "tags": [
+        "gt-verb"
+      ]
+    },
+    {
+      "id": "concept-gt-verb-enable",
+      "en": "gt-verb-enable",
+      "kind": "concept",
+      "answer": "enables",
+      "accept": [
+        "allows",
+        "helps",
+        "permits"
+      ],
+      "ja": "enable A to do",
+      "q": "The new software ____ us to process orders more quickly.（新しいソフトウェアのおかげで、注文をより速く処理できる）",
+      "explain": "enable / allow A to do「Aが〜できるようにする」。主語が三人称単数の software なので -s。make なら原形",
+      "say": "The new software enables us to process orders more quickly.",
+      "level": "normal",
+      "tags": [
+        "gt-verb"
+      ]
+    },
+    {
+      "id": "concept-gt-verb-force",
+      "en": "gt-verb-force",
+      "kind": "concept",
+      "answer": "forced",
+      "accept": [
+        "compelled",
+        "obliged",
+        "caused"
+      ],
+      "ja": "force A to do",
+      "q": "The delay ____ us to reschedule the meeting.（遅れのせいで、私たちは会議の日程を変更せざるを得なかった）",
+      "explain": "force / compel / oblige A to do「Aに〜させる・余儀なくさせる」。make A do とは違い to 不定詞を取る",
+      "say": "The delay forced us to reschedule the meeting.",
+      "level": "normal",
+      "tags": [
+        "gt-verb"
+      ]
+    },
+    {
+      "id": "concept-gt-verb-refrain-from",
+      "en": "gt-verb-refrain-from",
+      "kind": "concept",
+      "answer": "refrain",
+      "ja": "refrain from doing",
+      "q": "Please ____ from using your phone during the meeting.（会議中は電話の使用をお控えください）",
+      "explain": "refrain from doing「〜を控える」。他動詞 avoid doing と違い from が必要。掲示や案内文の定番",
+      "say": "Please refrain from using your phone during the meeting.",
+      "level": "hard",
+      "tags": [
+        "gt-verb"
+      ]
+    },
+    {
+      "id": "concept-gt-part-attached",
+      "en": "gt-part-attached",
+      "kind": "concept",
+      "answer": "attached",
+      "ja": "過去分詞 attached（添付の）",
+      "q": "Please find the ____ file for details.（詳細は添付ファイルをご覧ください）",
+      "explain": "ファイルは「添付される」側なので過去分詞 attached が名詞を修飾。attaching は不可。メールの定型表現",
+      "say": "Please find the attached file for details.",
+      "level": "easy",
+      "tags": [
+        "gt-part"
+      ]
+    },
+    {
+      "id": "concept-gt-part-enclosed",
+      "en": "gt-part-enclosed",
+      "kind": "concept",
+      "answer": "enclosed",
+      "accept": [
+        "attached"
+      ],
+      "ja": "Enclosed is A（倒置）",
+      "q": "____ is a copy of the invoice.（請求書の写しを同封します）",
+      "explain": "A copy of the invoice is enclosed. の過去分詞を文頭に出した倒置。Attached is / Enclosed please find も同じ型",
+      "say": "Enclosed is a copy of the invoice.",
+      "level": "hard",
+      "tags": [
+        "gt-part"
+      ]
+    },
+    {
+      "id": "concept-gt-part-in-order-to",
+      "en": "gt-part-in-order-to",
+      "kind": "concept",
+      "answer": "in order",
+      "accept": [
+        "so as"
+      ],
+      "ja": "in order to（目的）",
+      "q": "The company hired more staff ____ to meet the growing demand.（増大する需要に応えるために、会社はスタッフを増員した）",
+      "explain": "in order to / so as to ＋原形「〜するために」は目的を明示する形。否定は in order not to",
+      "say": "The company hired more staff in order to meet the growing demand.",
+      "level": "easy",
+      "tags": [
+        "gt-part"
+      ]
+    },
+    {
+      "id": "concept-gt-part-participating",
+      "en": "gt-part-participating",
+      "kind": "concept",
+      "answer": "participating",
+      "accept": [
+        "who participate",
+        "taking part"
+      ],
+      "ja": "現在分詞の後置修飾",
+      "q": "Customers ____ in the survey will receive a coupon.（アンケートに参加した顧客はクーポンを受け取れます）",
+      "explain": "Customers who participate in の関係代名詞を省いた現在分詞の後置修飾。顧客が「参加する」側なので -ing",
+      "say": "Customers participating in the survey will receive a coupon.",
+      "level": "hard",
+      "tags": [
+        "gt-part"
+      ]
+    },
+    {
+      "id": "concept-gt-part-boring",
+      "en": "gt-part-boring",
+      "kind": "concept",
+      "answer": "boring",
+      "ja": "感情を表す分詞（-ing / -ed）",
+      "q": "The presentation was so ____ that everyone fell asleep.（プレゼンがあまりに退屈で、皆眠ってしまった）",
+      "explain": "物事が人を「退屈させる」→ boring。人が「退屈している」→ bored。主語が presentation なので -ing",
+      "say": "The presentation was so boring that everyone fell asleep.",
+      "level": "normal",
+      "tags": [
+        "gt-part"
+      ]
+    },
+    {
+      "id": "concept-gt-part-look-forward-to",
+      "en": "gt-part-look-forward-to",
+      "kind": "concept",
+      "answer": "hearing",
+      "ja": "look forward to ＋動名詞",
+      "q": "We look forward to ____ from you soon.（近いうちにご連絡いただけるのを楽しみにしています）",
+      "explain": "look forward to の to は前置詞なので動名詞 hearing。to hear は誤り。be used to doing も同じ型",
+      "say": "We look forward to hearing from you soon.",
+      "level": "normal",
+      "tags": [
+        "gt-part"
+      ]
+    },
+    {
+      "id": "concept-gt-adv-however",
+      "en": "gt-adv-however",
+      "kind": "concept",
+      "answer": "however",
+      "accept": [
+        "nevertheless",
+        "nonetheless"
+      ],
+      "ja": "接続副詞 however（逆接）",
+      "q": "The product is expensive; ____, it is very popular.（その製品は高価だ。しかし、とても人気がある）",
+      "explain": "セミコロンの後・コンマの前は接続副詞。but は接続詞なので「; but,」の形にはならない",
+      "say": "The product is expensive; however, it is very popular.",
+      "level": "easy",
+      "tags": [
+        "gt-adv"
+      ]
+    },
+    {
+      "id": "concept-gt-adv-therefore",
+      "en": "gt-adv-therefore",
+      "kind": "concept",
+      "answer": "therefore",
+      "accept": [
+        "thus",
+        "consequently",
+        "hence",
+        "as a result"
+      ],
+      "ja": "接続副詞 therefore（結果）",
+      "q": "Sales have dropped sharply; ____, we need to cut costs.（売上が急減した。したがって、コストを削減する必要がある）",
+      "explain": "前文を理由に結論を導く therefore / thus / consequently。接続詞 so とは違い文をつなぐ力はなく、句読点が必要",
+      "say": "Sales have dropped sharply; therefore, we need to cut costs.",
+      "level": "normal",
+      "tags": [
+        "gt-adv"
+      ]
+    },
+    {
+      "id": "concept-gt-adv-moreover",
+      "en": "gt-adv-moreover",
+      "kind": "concept",
+      "answer": "moreover",
+      "accept": [
+        "furthermore",
+        "in addition",
+        "besides",
+        "additionally"
+      ],
+      "ja": "接続副詞 moreover（追加）",
+      "q": "The hotel is conveniently located. ____, the rates are reasonable.（ホテルは便利な場所にある。そのうえ、料金も手ごろだ）",
+      "explain": "前文に情報を付け加える moreover / furthermore / in addition。however（逆接）や therefore（結果）と文脈で区別",
+      "say": "The hotel is conveniently located. Moreover, the rates are reasonable.",
+      "level": "normal",
+      "tags": [
+        "gt-adv"
+      ]
+    },
+    {
+      "id": "concept-gt-adv-otherwise",
+      "en": "gt-adv-otherwise",
+      "kind": "concept",
+      "answer": "otherwise",
+      "accept": [
+        "or"
+      ],
+      "ja": "接続副詞 otherwise",
+      "q": "Please submit the form by Friday; ____, your application will not be processed.（金曜までに書類を提出してください。さもないと、申請は処理されません）",
+      "explain": "otherwise「さもないと」は命令や条件の後で結果を示す。unless や if not と混同しやすいが、これは副詞",
+      "say": "Please submit the form by Friday; otherwise, your application will not be processed.",
+      "level": "hard",
+      "tags": [
+        "gt-adv"
+      ]
+    },
+    {
+      "id": "concept-gt-adv-instead",
+      "en": "gt-adv-instead",
+      "kind": "concept",
+      "answer": "instead",
+      "ja": "副詞 instead（代わりに）",
+      "q": "The manager was unavailable, so his assistant attended the meeting ____.（部長は都合がつかず、代わりにアシスタントが会議に出席した）",
+      "explain": "文末の instead「その代わりに」は単独で使う副詞。名詞を続けるなら instead of ＋名詞",
+      "say": "The manager was unavailable, so his assistant attended the meeting instead.",
+      "level": "normal",
+      "tags": [
+        "gt-adv"
+      ]
+    },
+    {
+      "id": "concept-gt-adv-meanwhile",
+      "en": "gt-adv-meanwhile",
+      "kind": "concept",
+      "answer": "meanwhile",
+      "accept": [
+        "in the meantime"
+      ],
+      "ja": "接続副詞 meanwhile（その間）",
+      "q": "The sales team is attending the trade show. ____, the marketing team is preparing the new brochure.（営業チームは展示会に参加している。その間、マーケティングチームは新しいパンフレットを準備している）",
+      "explain": "同時に進む別の出来事をつなぐ meanwhile / in the meantime。while は接続詞なので文頭に置いて単独では使わない",
+      "say": "The sales team is attending the trade show. Meanwhile, the marketing team is preparing the new brochure.",
+      "level": "hard",
+      "tags": [
+        "gt-adv"
+      ]
+    }
+  ]
+}

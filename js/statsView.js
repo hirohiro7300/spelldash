@@ -8,7 +8,6 @@ import { getLevelState, getStreak } from "./level.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
-import { initializeMyWordsView } from "./myWordsView.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, historyDotsHtml } from "./learnedWords.js";
@@ -89,7 +88,8 @@ initWordStore().then(() => {
   renderWordFamilies();
   renderWeakWords();
   initializeWordList();
-  initializeMyWordsView(() => {
+  // マイ単語帳の作成・管理は「単語帳」ページ（教材）へ移動。ここは記録だけ
+  window.addEventListener("spelldash:mywords", () => {
     renderCategoryProgress();
     renderLearnedWords();
     renderOverview();
