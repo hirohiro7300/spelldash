@@ -57,6 +57,17 @@
   <url><loc>https://spelldash.net/list.html?add=grammar-hs1</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://spelldash.net/list.html?add=grammar-hs2</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://spelldash.net/list.html?add=grammar-toeic</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=pref</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jhist1</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jhist2</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jgeo1</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jgeo2</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jcivics</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jsci1</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jsci2</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jkokugo1</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jkokugo2</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=jmath</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://spelldash.net/news.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
   <url><loc>https://spelldash.net/battle.html</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
   <url><loc>https://spelldash.net/privacy.html</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>

@@ -1413,8 +1413,10 @@ function setNewWord() {
         ? "音を聞いて打つ（Tab か 🔊 でもう一度）"
         : currentWord.blank
           ? `空欄に入る英語を打つ${currentWord.ja ? `（${currentWord.ja}）` : ""}`
-          : isConceptWord(currentWord)
-            ? "場面（これは何のこと？）"
+          : currentWord.school
+            ? "説明に合う語を答える（漢字でも、ひらがなでもOK）"
+            : isConceptWord(currentWord)
+              ? "場面（これは何のこと？）"
             : currentWord.pos
               ? `日本語訳（${currentWord.pos}）`
               : "日本語訳";

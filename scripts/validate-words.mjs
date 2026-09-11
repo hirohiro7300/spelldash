@@ -36,7 +36,15 @@ for (const fullPath of files) {
     const answers = new Set();
     const isWordPack = data.cardType === "word"; // レベル別パック（英検・TOEIC）: 英単語 en/ja 形式
     const isGrammar = data.cardType === "grammar"; // 文法パック: 穴埋め（q に ____ を1か所、say に完成文）
+    const isSchool = data.cardType === "school"; // 義務教育パック: 日本語で答える。漢字の答えには読み（ひらがな）を accept に
     for (const w of data.words) {
+      if (isSchool) {
+        const a = String(w.answer ?? "");
+        const hasKanji = /[一-龯]/.test(a);
+        const hasKana = (w.accept ?? []).some((s) => /^[ぁ-ゖー・\s]+$/.test(String(s).trim()));
+        if (hasKanji && !hasKana) problems.push(`読み（ひらがな）が accept にない ${file}:${w.id} (${a})`);
+        if (String(w.explain ?? "").length > 100) problems.push(`explainが長い ${file}:${w.id}`);
+      }
       if (isGrammar) {
         const blanks = (String(w.q ?? "").match(/____/g) || []).length;
         if (blanks !== 1) problems.push(`空欄が1か所でない ${file}:${w.id} (${blanks})`);

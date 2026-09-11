@@ -46,7 +46,8 @@ export async function loadCategory(subjectId, categoryId) {
         subject: data.subject,
         category: data.category,
         ...(category.pack ? { pack: true } : {}),
-        ...(data.cardType === "grammar" ? { blank: true } : {})
+        ...(data.cardType === "grammar" ? { blank: true } : {}),
+        ...(data.cardType === "school" ? { school: true } : {})
       };
       // 概念カード: id のキーは word.en のまま残し、表示・入力に使う en は「答え」に差し替える。
       // 答えが a-z のみ（cpc 等）なら通常のスペル入力、日本語や空白入りなら全文入力モードになる

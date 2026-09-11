@@ -1455,7 +1455,7 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに54パック（36分野＋レベル別12＋文法6）", packCount === 54, `packs=${packCount}`);
+  check("教材ライブラリに65パック（36分野＋レベル別12＋文法6＋義務教育11）", packCount === 65, `packs=${packCount}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
@@ -1561,6 +1561,27 @@ console.log("domain packs:");
   check("文法パックの一覧（60枚以上・文法項目のジャンル）", (await page8.$$(".gcard")).length >= 60 && (await page8.$$(".genre")).length >= 5 && (await page8.textContent("#listBody")).includes("____"));
   check("ライブラリに「文法」グループ（6パック）", (await page8.$$('[data-pack-toggle^="grammar-"]')).length === 6);
   await page8.close();
+
+  // 義務教育パック: 日本語で答える。漢字の答えはひらがなの読みでも正解
+  const page9 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]), spelldash_category: "pref", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await page9.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page9.waitForTimeout(900);
+  await page9.press("#input", "Enter");
+  await page9.waitForTimeout(300);
+  check("義務教育カード: ラベルが「説明に合う語を答える」", (await page9.textContent("#gameCard .label")).includes("説明に合う語を答える"));
+  const kana = await page9.evaluate(async () => {
+    const s = await import("/js/wordStore.js");
+    const w = s.getWordsByCategory("pref").find((x) => /[一-龯]/.test(x.answer));
+    return { reading: (w.accept ?? []).find((a) => /^[ぁ-ゖー]+$/.test(a)) ?? "", q: w.q, id: w.id };
+  });
+  check("義務教育カード: 漢字の答えに読みの別解がある", kana.reading.length > 0, JSON.stringify(kana).slice(0, 100));
+  await page9.close();
+  const page10 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]) } });
+  await page10.goto(BASE + "/list.html?category=pref", { waitUntil: "networkidle" });
+  await page10.waitForTimeout(900);
+  check("都道府県パックの一覧（60枚・地方ごとのジャンル）", (await page10.$$(".gcard")).length === 60 && (await page10.$$(".genre")).length >= 6);
+  check("ライブラリに「義務教育」グループ（11パック）", (await page10.$$eval(".pack-group__title", (els) => els.map((e) => e.textContent))).some((t) => t.includes("義務教育")) && (await page10.$$('[data-pack-toggle="jhist1"], [data-pack-toggle="jsci2"], [data-pack-toggle="jmath"]')).length === 3);
+  await page10.close();
 
   // ?add= の紹介リンクで直接追加
   const page4 = await newPage();
