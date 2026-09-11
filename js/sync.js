@@ -9,6 +9,7 @@ import {
 } from "./battleRank.js";
 import { getStudyMix, adoptCloudRatio } from "./studyMix.js";
 import { buildActivityRow } from "./activity.js";
+import { pushUserItems, pullUserItems } from "./userItemsSync.js";
 
 // ===== Local First 同期 =====
 // プレイ中は localStorage のみに書き、以下のタイミングでSupabaseへ同期する:
@@ -129,6 +130,7 @@ export async function pushSync() {
     await pushUserProgress(userId);
     await pushActivityDay(userId);
     await flushPendingBattleSessions(userId);
+    await pushUserItems(supabase, userId); // マイ単語帳・メモ・パック（テーブル未作成なら何もしない）
   } finally {
     isPushing = false;
   }
@@ -349,6 +351,10 @@ export async function initialSync() {
 
   await pushUserProgress(userId);
   await ensureProfile(userId);
+
+  // 自分のデータ（マイ単語帳・メモ・追加したパック）の項目マージ
+  const items = await pullUserItems(supabase, userId);
+  if (items.changed && (items.changed.my_word || items.changed.note || items.changed.pack)) changedLocal = true;
 
   saveDirtyWords(new Set());
 

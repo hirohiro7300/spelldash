@@ -45,6 +45,12 @@ renderStreakCard();
 renderHasumiHome();
 setupUnloadSync();
 
+// 同期で追加パックの選択が変わったら、語を読み直してカテゴリを作り直す
+window.addEventListener("spelldash:packs", (event) => {
+  if (!event.detail?.synced) return;
+  initWordStore().then(() => initializeCategoryPicker());
+});
+
 // クラウド同期でローカルデータが更新されたら表示を作り直す
 window.addEventListener("spelldash:synced", () => {
   renderLearnedCard();

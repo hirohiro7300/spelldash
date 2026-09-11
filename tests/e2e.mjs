@@ -1590,6 +1590,37 @@ console.log("domain packs:");
   check("ライブラリに「中学校」グループ（11パック）", (await page10.$$eval(".pack-group__title", (els) => els.map((e) => e.textContent))).some((t) => t.includes("中学校")) && (await page10.$$('[data-pack-toggle="jhist1"], [data-pack-toggle="jsci2"], [data-pack-toggle="jmath"]')).length === 3);
   await page10.close();
 
+  // 自分のデータの端末間同期: 変更が dirty に積まれ、クラウド行のマージで新しい方が勝つ（テーブルはスタブ）
+  const page12 = await newPage({ storage: { spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書", addedAt: "2026-09-01T00:00:00.000Z" }]) } });
+  await page12.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
+  await page12.waitForTimeout(800);
+  await page12.click('[data-pack-toggle="realestate"]');
+  await waitUntil(async () => (await page12.textContent("#listSummary")).includes("不動産"));
+  await page12.fill("#myWordEn", "deadline");
+  await page12.fill("#myWordJa", "締め切り");
+  await page12.click("#myWordForm button[type=submit]");
+  await page12.waitForTimeout(200);
+  const dirty = await page12.evaluate(() => JSON.parse(localStorage.getItem("spelldash_user_items_dirty") || "[]"));
+  check("同期: パック追加と単語追加が未送信として記録される", dirty.includes("pack:realestate") && dirty.includes("my_word:deadline"), dirty.join(","));
+  const merged = await page12.evaluate(async () => {
+    const m = await import("/js/userItemsSync.js");
+    const future = new Date(Date.now() + 60000).toISOString();
+    const past = "2026-08-01T00:00:00.000Z";
+    const r = m.mergeCloudItems([
+      { kind: "my_word", key: "negotiate", payload: { en: "negotiate", ja: "交渉する", addedAt: future }, deleted: false, updated_at: future }, // クラウドだけ → 追加
+      { kind: "my_word", key: "invoice", payload: {}, deleted: true, updated_at: future }, // 新しい墓標 → 削除
+      { kind: "my_word", key: "deadline", payload: { en: "deadline", ja: "古い訳", addedAt: past }, deleted: false, updated_at: past }, // 古いクラウド → ローカルが勝つ
+      { kind: "note", key: "english-negotiate", payload: { text: "nego＝交渉" }, deleted: false, updated_at: future },
+      { kind: "pack", key: "accounting", payload: { enabled: true }, deleted: false, updated_at: future }
+    ], "u1");
+    const words = JSON.parse(localStorage.getItem("spelldash_my_words") || "[]").map((w) => `${w.en}=${w.ja}`);
+    return { words, notes: JSON.parse(localStorage.getItem("spelldash_word_notes") || "{}"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), upload: r.toUpload.map((x) => `${x.kind}:${x.key}`), changed: r.changed };
+  });
+  check("同期: クラウドの新しい行を反映（追加・墓標で削除・古い行はローカル優先）", merged.words.includes("negotiate=交渉する") && !merged.words.some((w) => w.startsWith("invoice=")) && merged.words.includes("deadline=締め切り"), merged.words.join(","));
+  check("同期: メモとパックも反映し、ローカルが新しい項目はアップロード対象", merged.notes["english-negotiate"] === "nego＝交渉" && merged.packs.includes("accounting") && merged.packs.includes("realestate") && merged.upload.includes("my_word:deadline") && merged.upload.includes("pack:realestate"), JSON.stringify(merged).slice(0, 200));
+  check("同期でエラー0", page12.errors.length === 0, page12.errors[0] ?? "");
+  await page12.close();
+
   // 入口ページ（静的HTML）: 内容のサンプルと「追加して始める」→ ?add=
   const page11 = await newPage();
   await page11.goto(BASE + "/packs/pref.html", { waitUntil: "networkidle" });

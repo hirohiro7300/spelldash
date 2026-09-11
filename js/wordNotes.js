@@ -3,7 +3,9 @@
 // 「negotiate = nego(交渉)＋…」のような、本人だけに効く覚え方を語ごとに1つ持つ。
 // 答えを見た時／ヒントを見た時に表示し、思い出せなかった語を自分のものにする場をつくる。
 // 端末ローカル（spelldash_word_notes）。バックアップ（backup.js）に含まれる。
-// クラウド同期は word_progress に note 列が入ってから（docs/SQL_FEEDBACK.md 参照）。
+// クラウド同期: user_items テーブル（docs/SQL_USER_ITEMS.md）。書き込みのたびに touchItem で記録。
+
+import { touchItem } from "./userItemsSync.js";
 
 const NOTES_KEY = "spelldash_word_notes";
 export const NOTE_MAX_LENGTH = 80;
@@ -32,6 +34,7 @@ export function setNote(wordId, text) {
     delete notes[wordId];
   }
   localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+  touchItem("note", wordId, !trimmed);
   window.dispatchEvent(new CustomEvent("spelldash:notes"));
   return trimmed;
 }

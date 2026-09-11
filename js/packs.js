@@ -4,6 +4,8 @@
 // ユーザーが「追加」するまで読み込まず、ホームのカテゴリにも出ない（増えてもごちゃつかない）。
 // 追加したパックの id は端末ローカル（spelldash_packs）。バックアップに含まれる。
 
+import { touchItem } from "./userItemsSync.js";
+
 const KEY = "spelldash_packs";
 
 export function getEnabledPackIds() {
@@ -23,6 +25,7 @@ export function setPackEnabled(id, enabled) {
   const current = getEnabledPackIds().filter((x) => x !== id);
   const next = enabled ? [...current, id] : current;
   localStorage.setItem(KEY, JSON.stringify(next));
+  touchItem("pack", id, !enabled);
   window.dispatchEvent(new CustomEvent("spelldash:packs", { detail: { id, enabled } }));
   return next;
 }
