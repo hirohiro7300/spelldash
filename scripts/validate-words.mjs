@@ -35,7 +35,16 @@ for (const fullPath of files) {
     else if (entry.count !== data.words.length) problems.push(`manifestのcount不一致 ${file}: manifest=${entry.count} 実際=${data.words.length}`);
     const answers = new Set();
     const isWordPack = data.cardType === "word"; // レベル別パック（英検・TOEIC）: 英単語 en/ja 形式
+    const isGrammar = data.cardType === "grammar"; // 文法パック: 穴埋め（q に ____ を1か所、say に完成文）
     for (const w of data.words) {
+      if (isGrammar) {
+        const blanks = (String(w.q ?? "").match(/____/g) || []).length;
+        if (blanks !== 1) problems.push(`空欄が1か所でない ${file}:${w.id} (${blanks})`);
+        if (!/（.+）/.test(String(w.q ?? ""))) problems.push(`日本語訳（全角カッコ）なし ${file}:${w.id}`);
+        if (!w.say || !/^[A-Za-z]/.test(w.say)) problems.push(`sayなし/英文でない ${file}:${w.id}`);
+        if (String(w.ja ?? "").length > 20) problems.push(`jaが長い ${file}:${w.id}`);
+        if (String(w.answer ?? "").split(/\s+/).length > 4) problems.push(`answerが長い ${file}:${w.id}`);
+      }
       if (isWordPack) {
         if (w.kind === "concept") problems.push(`英単語パックにconcept ${file}:${w.id}`);
         if (!w.pos) problems.push(`posなし ${file}:${w.id}`);
@@ -44,7 +53,7 @@ for (const fullPath of files) {
         problems.push(`パックはconceptのみ ${file}:${w.id}`);
       }
       if (data.genres && !(w.tags?.[0] in data.genres)) problems.push(`genres未登録タグ ${file}:${w.id} tag=${w.tags?.[0]}`);
-      if (w.answer && w.q && w.q.includes(w.answer)) problems.push(`qに答えが含まれる ${file}:${w.id}`);
+      if (w.answer && w.q && (isGrammar ? new RegExp(`(^|[^A-Za-z])${String(w.answer).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z]|$)`, "i").test(w.q) : w.q.includes(w.answer))) problems.push(`qに答えが含まれる ${file}:${w.id}`);
       const key = String(isWordPack ? w.en : w.answer ?? "").normalize("NFKC").toLowerCase();
       if (answers.has(key)) problems.push(`${isWordPack ? "en" : "answer"}重複 ${file}:${w.id} (${isWordPack ? w.en : w.answer})`);
       answers.add(key);

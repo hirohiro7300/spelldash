@@ -1400,21 +1400,35 @@ function setNewWord() {
   freeMode = isFreeAnswer(currentWord);
   document.body.classList.toggle("free-answer", freeMode);
   document.getElementById("gameCard")?.classList.toggle("game-card--concept", isConceptWord(currentWord));
-  elements.input.placeholder = freeMode ? "答えを入力してEnter（日本語OK）" : "英単語を入力";
+  elements.input.placeholder = currentWord.blank
+    ? freeMode ? "空欄の英語を入力してEnter" : "空欄の英語を入力"
+    : freeMode ? "答えを入力してEnter（日本語OK）" : "英単語を入力";
 
   const promptLabel = document.querySelector("#gameCard .label");
   if (promptLabel) {
     // 品詞（pos）があるレベル別パックの語は「日本語訳（動）」のように添える。訳の曖昧さを減らす
-    promptLabel.textContent = currentWord.calc ? "計算（数字で答える）" : listenMode ? "音を聞いて打つ（Tab か 🔊 でもう一度）" : isConceptWord(currentWord) ? "場面（これは何のこと？）" : currentWord.pos ? `日本語訳（${currentWord.pos}）` : "日本語訳";
+    promptLabel.textContent = currentWord.calc
+      ? "計算（数字で答える）"
+      : listenMode
+        ? "音を聞いて打つ（Tab か 🔊 でもう一度）"
+        : currentWord.blank
+          ? `空欄に入る英語を打つ${currentWord.ja ? `（${currentWord.ja}）` : ""}`
+          : isConceptWord(currentWord)
+            ? "場面（これは何のこと？）"
+            : currentWord.pos
+              ? `日本語訳（${currentWord.pos}）`
+              : "日本語訳";
   }
   elements.japanese.textContent = listenMode ? "🔊 聞いて打つ" : promptOf(currentWord);
   if (currentWord.calc) elements.input.placeholder = "数字を入力してEnter（例: 8000 / 5%）";
   showHiddenWordText(
     currentWord.calc
       ? "式を思い出して計算。分からないときは Enter（💡ヒントで式）"
-      : freeMode
-        ? "用語や略語で答える。分からないときは Enter"
-        : "分からないときは Enter で答えを表示"
+      : currentWord.blank
+        ? "空欄に入る語を英語で。分からないときは Enter で答えを表示"
+        : freeMode
+          ? "用語や略語で答える。分からないときは Enter"
+          : "分からないときは Enter で答えを表示"
   );
   if (elements.speakButton) {
     elements.speakButton.hidden = !listenMode;

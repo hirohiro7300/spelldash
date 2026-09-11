@@ -51,6 +51,12 @@
   <url><loc>https://spelldash.net/list.html?add=toeic730</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://spelldash.net/list.html?add=toeic860</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://spelldash.net/list.html?add=toeic990</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=grammar-jhs1</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=grammar-jhs2</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=grammar-jhs3</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=grammar-hs1</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=grammar-hs2</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://spelldash.net/list.html?add=grammar-toeic</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://spelldash.net/news.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
   <url><loc>https://spelldash.net/battle.html</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
   <url><loc>https://spelldash.net/privacy.html</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>

@@ -11,6 +11,7 @@ const PACK_DIR = path.join(ROOT, "data", "packs");
 const MANIFEST = path.join(ROOT, "data", "manifest.json");
 
 const GROUPS = {
+  "文法（中学・高校・TOEIC）": ["grammar-jhs1", "grammar-jhs2", "grammar-jhs3", "grammar-hs1", "grammar-hs2", "grammar-toeic"],
   "試験・レベル別（英検・TOEIC）": ["eiken5", "eiken4", "eiken3", "eikenp2", "eiken2", "eikenp1", "eiken1", "toeic500", "toeic600", "toeic730", "toeic860", "toeic990"],
   "ビジネス・バックオフィス": ["accounting", "legal", "hr", "freelancetax", "staffing", "publicbid", "startupfinance", "banking", "insurance", "trade"],
   "営業・マーケティング": ["saas", "ec", "sns", "video", "callcenter", "webdev"],

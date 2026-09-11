@@ -40,7 +40,14 @@ export async function loadCategory(subjectId, categoryId) {
 
     const words = data.words.map((word) => {
       // pack: 分野パック／レベル別パックの語（追加した人だけに出る。「すべて」や Daily には混ぜない）
-      const base = { ...word, subject: data.subject, category: data.category, ...(category.pack ? { pack: true } : {}) };
+      // blank: 文法パック（穴埋め）。ラベルと入力欄の文言が変わる
+      const base = {
+        ...word,
+        subject: data.subject,
+        category: data.category,
+        ...(category.pack ? { pack: true } : {}),
+        ...(data.cardType === "grammar" ? { blank: true } : {})
+      };
       // 概念カード: id のキーは word.en のまま残し、表示・入力に使う en は「答え」に差し替える。
       // 答えが a-z のみ（cpc 等）なら通常のスペル入力、日本語や空白入りなら全文入力モードになる
       if (word.kind === "concept") {
