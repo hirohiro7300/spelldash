@@ -905,7 +905,7 @@
     {
       "id": "english-like",
       "en": "like",
-      "ja": "好む",
+      "ja": "～が好きだ",
       "pos": "動",
       "level": "normal",
       "tags": [
@@ -915,7 +915,7 @@
     {
       "id": "english-want",
       "en": "want",
-      "ja": "ほしい",
+      "ja": "～がほしい",
       "pos": "動",
       "level": "normal",
       "tags": [

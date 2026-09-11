@@ -542,7 +542,7 @@
     {
       "id": "english-recycle",
       "en": "recycle",
-      "ja": "再利用する",
+      "ja": "再生利用する・リサイクルする",
       "pos": "動",
       "level": "hard",
       "tags": [
@@ -742,7 +742,7 @@
     {
       "id": "english-proud",
       "en": "proud",
-      "ja": "誇りに思う",
+      "ja": "誇りに思って",
       "pos": "形",
       "level": "hard",
       "tags": [
@@ -1012,7 +1012,7 @@
     {
       "id": "english-speech",
       "en": "speech",
-      "ja": "スピーチ",
+      "ja": "スピーチ・演説",
       "pos": "名",
       "level": "normal",
       "tags": [
@@ -1022,7 +1022,7 @@
     {
       "id": "english-news",
       "en": "news",
-      "ja": "ニュース",
+      "ja": "ニュース・知らせ",
       "pos": "名",
       "level": "easy",
       "tags": [
