@@ -238,6 +238,17 @@
           "group": "高校（世界史・日本史・化学・生物・古文）"
         },
         {
+          "id": "hs-kobun",
+          "label": "高校 古文単語",
+          "file": "packs/hs-kobun.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 100,
+          "blurb": "入試頻出の古文単語100語。現代語の意味から歴史的仮名遣いで答える",
+          "audience": "高校生、大学入試の古文を復習する人",
+          "group": "高校（世界史・日本史・化学・生物・古文）"
+        },
+        {
           "id": "grammar-jhs1",
           "label": "中学英文法 1年",
           "file": "packs/grammar-jhs1.json",
