@@ -848,7 +848,7 @@
       "accept": [
         "should be"
       ],
-      "ja": "suggest that S (should) do",
+      "ja": "suggest that＋原形",
       "q": "The consultant suggested that the meeting ____ postponed.（コンサルタントは会議を延期するよう提案した）",
       "explain": "提案・要求・命令の that 節は動詞の原形（仮定法現在）。受動態なので be postponed。is / was は誤り",
       "say": "The consultant suggested that the meeting be postponed.",
