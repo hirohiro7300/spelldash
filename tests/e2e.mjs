@@ -1312,7 +1312,7 @@ console.log("calc & listen:");
     const nums = (q.match(/[0-9][0-9,]*/g) ?? []).map((n) => Number(n.replace(/,/g, "")));
     return nums;
   }, prompt);
-  await page.fill("#input", "1");
+  await page.fill("#input", "0"); // 0 は生成されない（答えが 1% のとき "1" だと正解扱いになる）
   await page.press("#input", "Enter");
   await page.waitForTimeout(250);
   const shownAnswer = (await page.textContent("#word")).trim();
