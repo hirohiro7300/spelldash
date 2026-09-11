@@ -58,7 +58,7 @@
     {
       "id": "english-deduce",
       "en": "deduce",
-      "ja": "推論する",
+      "ja": "推論して導き出す",
       "pos": "動",
       "level": "hard",
       "tags": [
@@ -118,7 +118,7 @@
     {
       "id": "english-ponder",
       "en": "ponder",
-      "ja": "熟考する",
+      "ja": "じっくり考える",
       "pos": "動",
       "level": "normal",
       "tags": [
@@ -178,7 +178,7 @@
     {
       "id": "english-denounce",
       "en": "denounce",
-      "ja": "非難する",
+      "ja": "公然と非難する",
       "pos": "動",
       "level": "normal",
       "tags": [
@@ -568,7 +568,7 @@
     {
       "id": "english-marginal",
       "en": "marginal",
-      "ja": "周辺的な",
+      "ja": "わずかな・周辺的な",
       "pos": "形",
       "level": "normal",
       "tags": [
@@ -798,7 +798,7 @@
     {
       "id": "english-paradigm",
       "en": "paradigm",
-      "ja": "枠組み",
+      "ja": "パラダイム・枠組み",
       "pos": "名",
       "level": "hard",
       "tags": [

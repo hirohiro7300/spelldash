@@ -77,3 +77,19 @@
 
 - 36本・1,972枚を全数レビュー。修正 約320枚。主な傾向: (1) 別解に「下位概念・関連語・製品名」が混ざる、(2) q に別解の語が漏れる、(3) 医療・法務で断定や助言に読める表現、(4) 年で変わる数字。
 - 「要確認」は各パック0〜3枚。業界の人に見てもらう優先リストとして使う。
+
+## 2026-09-12 第2回（レベル別・文法・義務教育）
+
+### 英検 5級〜1級（7本・840語）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| eiken5 | 0 | 誤りなし。level の付け方にむらあり（例: notebook が hard） | なし |
+| eiken4 | 1 | afraid 恐れて→怖がって | なし |
+| eiken3 | 2 | recycle 再利用する→リサイクルする、ocean 大洋→海・大洋。problem／idea／important／future は4級相当の可能性 | なし |
+| eikenp2 | 2 | prefer・extremely の訳を試験で問われる意味に | なし |
+| eiken2 | 4 | corporation 大企業→企業・法人、legislation、widespread、adequate（sufficient と同訳だった） | bacteria（複数形のまま） |
+| eikenp1 | 5 | deduce／ponder／denounce が類義語と同訳だったのを区別、marginal、paradigm | なし |
+| eiken1 | 5 | insidious・parsimonious・laconic・disenfranchise・extrapolate の訳を一般的な語義に | entropy（専門語） |
+
+pos・綴り・id・ジャンルは全数確認で誤りなし。7本をまたぐ重複 0。
