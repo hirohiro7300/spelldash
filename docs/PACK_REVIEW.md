@@ -93,3 +93,15 @@
 | eiken1 | 5 | insidious・parsimonious・laconic・disenfranchise・extrapolate の訳を一般的な語義に | entropy（専門語） |
 
 pos・綴り・id・ジャンルは全数確認で誤りなし。7本をまたぐ重複 0。
+
+### TOEIC 500〜990（5本・601語）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| toeic500 | 6 | request を名詞「依頼・要請」に、copy「部」→「写し」、offer・flight・item・manager の訳をビジネスの語義に | なし |
+| toeic600 | 6 | benefit「福利厚生」、deposit「頭金・保証金」、transfer を動詞の訳に、due を形容詞の訳に、assignment・reminder | access（利用・接続）、issue（「号」の意味も） |
+| toeic730 | 5 | fiscal「会計年度の」、revenue「収入・売上高」（収益は利益寄り）、payroll、authorize、bid のジャンルを contract に | accountant（経理担当者の意味も） |
+| toeic860 | 5 | prospective「見込みの・将来の」（「見込みのある」は誤り）、adhere「（規則を）守る」、incur、overhead、occupancy | compliance（順守／遵守の表記） |
+| toeic990 | 4 | amortize に会計の「償却する」、severance「解雇・退職手当」、attrition、testimonial | clientele のジャンル |
+
+綴り・pos・id・重複（5本間）は誤りなし。
