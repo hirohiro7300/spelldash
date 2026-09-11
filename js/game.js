@@ -1404,7 +1404,8 @@ function setNewWord() {
 
   const promptLabel = document.querySelector("#gameCard .label");
   if (promptLabel) {
-    promptLabel.textContent = currentWord.calc ? "計算（数字で答える）" : listenMode ? "音を聞いて打つ（Tab か 🔊 でもう一度）" : isConceptWord(currentWord) ? "場面（これは何のこと？）" : "日本語訳";
+    // 品詞（pos）があるレベル別パックの語は「日本語訳（動）」のように添える。訳の曖昧さを減らす
+    promptLabel.textContent = currentWord.calc ? "計算（数字で答える）" : listenMode ? "音を聞いて打つ（Tab か 🔊 でもう一度）" : isConceptWord(currentWord) ? "場面（これは何のこと？）" : currentWord.pos ? `日本語訳（${currentWord.pos}）` : "日本語訳";
   }
   elements.japanese.textContent = listenMode ? "🔊 聞いて打つ" : promptOf(currentWord);
   if (currentWord.calc) elements.input.placeholder = "数字を入力してEnter（例: 8000 / 5%）";

@@ -1,0 +1,1226 @@
+{
+  "subject": "english",
+  "category": "eiken1",
+  "cardType": "word",
+  "label": "英検1級",
+  "blurb": "大学上級レベル。高度で低頻度だが試験で狙われる形容詞・動詞",
+  "audience": "最上級を目指す大学生・社会人",
+  "genres": {
+    "action": "動作",
+    "state": "状態",
+    "character": "性格",
+    "mind": "思考",
+    "communication": "伝達",
+    "feeling": "気持ち",
+    "society": "社会",
+    "politics": "政治",
+    "economy": "経済",
+    "law": "法律",
+    "science": "科学",
+    "degree": "程度",
+    "people": "人",
+    "health": "健康"
+  },
+  "words": [
+    {
+      "id": "english-abrogate",
+      "en": "abrogate",
+      "ja": "廃止する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-assuage",
+      "en": "assuage",
+      "ja": "和らげる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-castigate",
+      "en": "castigate",
+      "ja": "厳しく叱責する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-coerce",
+      "en": "coerce",
+      "ja": "強制する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-debilitate",
+      "en": "debilitate",
+      "ja": "衰弱させる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-disparage",
+      "en": "disparage",
+      "ja": "見くびる・けなす",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-eschew",
+      "en": "eschew",
+      "ja": "避ける",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-exacerbate",
+      "en": "exacerbate",
+      "ja": "悪化させる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-expunge",
+      "en": "expunge",
+      "ja": "抹消する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-extol",
+      "en": "extol",
+      "ja": "絶賛する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-galvanize",
+      "en": "galvanize",
+      "ja": "奮い立たせる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-impede",
+      "en": "impede",
+      "ja": "妨げる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-inundate",
+      "en": "inundate",
+      "ja": "殺到させる・水浸しにする",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-obfuscate",
+      "en": "obfuscate",
+      "ja": "わかりにくくする",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-placate",
+      "en": "placate",
+      "ja": "なだめる",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-quell",
+      "en": "quell",
+      "ja": "鎮圧する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-rescind",
+      "en": "rescind",
+      "ja": "撤回する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-squander",
+      "en": "squander",
+      "ja": "浪費する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-thwart",
+      "en": "thwart",
+      "ja": "阻止する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-vilify",
+      "en": "vilify",
+      "ja": "中傷する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-vindicate",
+      "en": "vindicate",
+      "ja": "正しさを証明する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-wane",
+      "en": "wane",
+      "ja": "衰える",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-abstruse",
+      "en": "abstruse",
+      "ja": "難解な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-austere",
+      "en": "austere",
+      "ja": "厳格な・質素な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-banal",
+      "en": "banal",
+      "ja": "陳腐な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-capricious",
+      "en": "capricious",
+      "ja": "気まぐれな",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-clandestine",
+      "en": "clandestine",
+      "ja": "秘密の",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-copious",
+      "en": "copious",
+      "ja": "豊富な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-ephemeral",
+      "en": "ephemeral",
+      "ja": "つかの間の",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-esoteric",
+      "en": "esoteric",
+      "ja": "難解な・秘教的な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-flagrant",
+      "en": "flagrant",
+      "ja": "目に余る",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-impeccable",
+      "en": "impeccable",
+      "ja": "非の打ちどころのない",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-incessant",
+      "en": "incessant",
+      "ja": "絶え間ない",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-insidious",
+      "en": "insidious",
+      "ja": "潜行性の",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-lethargic",
+      "en": "lethargic",
+      "ja": "無気力な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-ostensible",
+      "en": "ostensible",
+      "ja": "表向きの",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-pervasive",
+      "en": "pervasive",
+      "ja": "広く行き渡った",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-quintessential",
+      "en": "quintessential",
+      "ja": "典型的な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-salient",
+      "en": "salient",
+      "ja": "顕著な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-spurious",
+      "en": "spurious",
+      "ja": "偽りの",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-tenuous",
+      "en": "tenuous",
+      "ja": "希薄な・根拠の弱い",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-ubiquitous",
+      "en": "ubiquitous",
+      "ja": "至る所にある",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-volatile",
+      "en": "volatile",
+      "ja": "不安定な・揮発性の",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-egregious",
+      "en": "egregious",
+      "ja": "甚だしい",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-affable",
+      "en": "affable",
+      "ja": "愛想のよい",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-belligerent",
+      "en": "belligerent",
+      "ja": "好戦的な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-callous",
+      "en": "callous",
+      "ja": "冷淡な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-fastidious",
+      "en": "fastidious",
+      "ja": "潔癖な・気難しい",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-gregarious",
+      "en": "gregarious",
+      "ja": "社交的な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-haughty",
+      "en": "haughty",
+      "ja": "傲慢な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-magnanimous",
+      "en": "magnanimous",
+      "ja": "寛大な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-obstinate",
+      "en": "obstinate",
+      "ja": "頑固な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-parsimonious",
+      "en": "parsimonious",
+      "ja": "極度に倹約な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-reticent",
+      "en": "reticent",
+      "ja": "口数の少ない",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-sanctimonious",
+      "en": "sanctimonious",
+      "ja": "聖人ぶった",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-taciturn",
+      "en": "taciturn",
+      "ja": "無口な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "character"
+      ]
+    },
+    {
+      "id": "english-conjecture",
+      "en": "conjecture",
+      "ja": "推測",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-discernment",
+      "en": "discernment",
+      "ja": "識別力",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-epiphany",
+      "en": "epiphany",
+      "ja": "ひらめき",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-extrapolate",
+      "en": "extrapolate",
+      "ja": "推定する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-premonition",
+      "en": "premonition",
+      "ja": "予感",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-sagacious",
+      "en": "sagacious",
+      "ja": "賢明な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-astute",
+      "en": "astute",
+      "ja": "抜け目のない",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-perspicacious",
+      "en": "perspicacious",
+      "ja": "洞察力の鋭い",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-cogent",
+      "en": "cogent",
+      "ja": "説得力のある",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-dogmatic",
+      "en": "dogmatic",
+      "ja": "独断的な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-admonish",
+      "en": "admonish",
+      "ja": "忠告する・たしなめる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-berate",
+      "en": "berate",
+      "ja": "激しく叱る",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-cajole",
+      "en": "cajole",
+      "ja": "おだてて〜させる",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-diatribe",
+      "en": "diatribe",
+      "ja": "痛烈な非難",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-eloquent",
+      "en": "eloquent",
+      "ja": "雄弁な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-garrulous",
+      "en": "garrulous",
+      "ja": "おしゃべりな",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-harangue",
+      "en": "harangue",
+      "ja": "長々と熱弁する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-laconic",
+      "en": "laconic",
+      "ja": "簡潔な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-succinct",
+      "en": "succinct",
+      "ja": "簡潔な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-verbose",
+      "en": "verbose",
+      "ja": "冗長な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-acrimony",
+      "en": "acrimony",
+      "ja": "とげとげしさ",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-chagrin",
+      "en": "chagrin",
+      "ja": "無念・くやしさ",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-despondent",
+      "en": "despondent",
+      "ja": "落胆した",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-euphoria",
+      "en": "euphoria",
+      "ja": "強い幸福感",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-jubilant",
+      "en": "jubilant",
+      "ja": "歓喜した",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-melancholy",
+      "en": "melancholy",
+      "ja": "憂うつ",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-trepidation",
+      "en": "trepidation",
+      "ja": "不安・恐れ",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-vexation",
+      "en": "vexation",
+      "ja": "いらだち",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-dearth",
+      "en": "dearth",
+      "ja": "不足",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-destitute",
+      "en": "destitute",
+      "ja": "極貧の",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-disenfranchise",
+      "en": "disenfranchise",
+      "ja": "権利を奪う",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-opulent",
+      "en": "opulent",
+      "ja": "豪華な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-ostracize",
+      "en": "ostracize",
+      "ja": "追放する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-pariah",
+      "en": "pariah",
+      "ja": "のけ者",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-plight",
+      "en": "plight",
+      "ja": "苦境",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-upheaval",
+      "en": "upheaval",
+      "ja": "大変動",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-demagogue",
+      "en": "demagogue",
+      "ja": "扇動政治家",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "politics"
+      ]
+    },
+    {
+      "id": "english-despot",
+      "en": "despot",
+      "ja": "専制君主",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "politics"
+      ]
+    },
+    {
+      "id": "english-insurgent",
+      "en": "insurgent",
+      "ja": "反乱者",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "politics"
+      ]
+    },
+    {
+      "id": "english-partisan",
+      "en": "partisan",
+      "ja": "党派的な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "politics"
+      ]
+    },
+    {
+      "id": "english-plebiscite",
+      "en": "plebiscite",
+      "ja": "国民投票",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "politics"
+      ]
+    },
+    {
+      "id": "english-sedition",
+      "en": "sedition",
+      "ja": "扇動",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "politics"
+      ]
+    },
+    {
+      "id": "english-embezzle",
+      "en": "embezzle",
+      "ja": "横領する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-exorbitant",
+      "en": "exorbitant",
+      "ja": "法外な",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-insolvent",
+      "en": "insolvent",
+      "ja": "支払い不能の",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-pecuniary",
+      "en": "pecuniary",
+      "ja": "金銭上の",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-remuneration",
+      "en": "remuneration",
+      "ja": "報酬",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-windfall",
+      "en": "windfall",
+      "ja": "思いがけない収入",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-adjudicate",
+      "en": "adjudicate",
+      "ja": "裁定する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-exonerate",
+      "en": "exonerate",
+      "ja": "無罪にする",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-litigation",
+      "en": "litigation",
+      "ja": "訴訟",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-perjury",
+      "en": "perjury",
+      "ja": "偽証",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-subpoena",
+      "en": "subpoena",
+      "ja": "召喚状",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-entropy",
+      "en": "entropy",
+      "ja": "エントロピー",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-pathogen",
+      "en": "pathogen",
+      "ja": "病原体",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-symbiosis",
+      "en": "symbiosis",
+      "ja": "共生",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-metamorphosis",
+      "en": "metamorphosis",
+      "ja": "変態・変容",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-inordinately",
+      "en": "inordinately",
+      "ja": "過度に",
+      "pos": "副",
+      "level": "normal",
+      "tags": [
+        "degree"
+      ]
+    },
+    {
+      "id": "english-exceedingly",
+      "en": "exceedingly",
+      "ja": "非常に",
+      "pos": "副",
+      "level": "easy",
+      "tags": [
+        "degree"
+      ]
+    },
+    {
+      "id": "english-unequivocally",
+      "en": "unequivocally",
+      "ja": "明確に",
+      "pos": "副",
+      "level": "normal",
+      "tags": [
+        "degree"
+      ]
+    },
+    {
+      "id": "english-connoisseur",
+      "en": "connoisseur",
+      "ja": "目利き",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-philanthropist",
+      "en": "philanthropist",
+      "ja": "慈善家",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-malaise",
+      "en": "malaise",
+      "ja": "不調・沈滞",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-convalesce",
+      "en": "convalesce",
+      "ja": "回復期を過ごす",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "health"
+      ]
+    }
+  ]
+}

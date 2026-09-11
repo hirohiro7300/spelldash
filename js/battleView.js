@@ -102,7 +102,7 @@ function showSection(id) {
 
 function renderCategorySelect() {
   const select = $("battleCategory");
-  const categories = [{ id: "all", label: "すべて" }, ...getCategories().filter((c) => c.kind !== "concept")];
+  const categories = [{ id: "all", label: "すべて" }, ...getCategories().filter((c) => c.kind !== "concept" && !c.pack)];
   select.innerHTML = categories
     .map((c) => `<option value="${c.id}"${c.id === currentCategory ? " selected" : ""}>${c.label}</option>`)
     .join("");

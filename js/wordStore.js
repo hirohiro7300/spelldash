@@ -28,7 +28,8 @@ export async function initWordStore(subjectId = "english") {
   manifest = await loadManifest();
   allWords = await loadAllWords(subjectId);
 
-  generalWords = allWords.filter((w) => !isConceptWord(w));
+  // 「すべて」= 基本カテゴリの英単語だけ（概念カードと、追加式のパックの語は含めない）
+  generalWords = allWords.filter((w) => !isConceptWord(w) && !w.pack);
   wordIndex.clear();
   for (const word of allWords) {
     // 同じ単語が複数カテゴリにある場合は最初のものを索引に使う

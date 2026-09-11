@@ -1455,7 +1455,7 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに36分野のパック", packCount === 36, `packs=${packCount}`);
+  check("教材ライブラリに48パック（36分野＋レベル別12）", packCount === 48, `packs=${packCount}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
@@ -1506,6 +1506,30 @@ console.log("domain packs:");
   check("外すとカテゴリ選択から消える", !(await page3.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("realestate"));
   check("外すとホームの保存カテゴリは「すべて」", (await page3.evaluate(() => localStorage.getItem("spelldash_category"))) === "all");
   await page3.close();
+
+  // レベル別パック（英検・TOEIC）: 英単語形式。追加すると出題され、「すべて」や Daily には混ざらない
+  const page5 = await newPage({ storage: { spelldash_packs: JSON.stringify(["eiken2"]), spelldash_category: "eiken2", spelldash_placement: "done", spelldash_level_boost: "2" } });
+  await page5.goto(BASE + "/list.html?category=eiken2", { waitUntil: "networkidle" });
+  await page5.waitForTimeout(900);
+  const lvSummary = await page5.textContent("#listSummary");
+  check("英検2級の一覧（110語以上・品詞タグつき）", lvSummary.includes("英検2級") && (await page5.$$(".gcard")).length >= 110 && (await page5.$$(".gcard__pos")).length >= 110, lvSummary);
+  check("ライブラリに「試験・レベル別」グループ（12パック）", (await page5.$$eval(".pack-group", (els) => els.map((e) => e.textContent))).some((t) => t.includes("試験・レベル別")) && (await page5.$$('[data-pack-toggle^="eiken"], [data-pack-toggle^="toeic"]')).length === 12);
+  const dailyPool = await page5.evaluate(async () => {
+    const m = await import("/js/dailyChallenge.js");
+    const s = await import("/js/wordStore.js");
+    const all = s.getWordsByCategory("all");
+    return { dailyHasPack: m.getDailyWords().some((w) => w.pack), allHasPack: all.some((w) => w.pack), eiken: s.getWordsByCategory("eiken2").length };
+  });
+  check("レベル別の語は「すべて」と Daily に混ざらない", !dailyPool.dailyHasPack && !dailyPool.allHasPack && dailyPool.eiken >= 110, JSON.stringify(dailyPool));
+  await page5.close();
+  const page6 = await newPage({ storage: { spelldash_packs: JSON.stringify(["eiken2"]), spelldash_category: "eiken2", spelldash_placement: "done", spelldash_level_boost: "2" } });
+  await page6.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page6.waitForTimeout(900);
+  await page6.press("#input", "Enter");
+  await page6.waitForTimeout(300);
+  check("英検2級の語が出題され、ラベルに品詞", /日本語訳（[名動形副前接代助間]）/.test(await page6.textContent("#gameCard .label")), await page6.textContent("#gameCard .label"));
+  check("レベル別パックの出題でエラー0", page6.errors.length === 0, page6.errors[0] ?? "");
+  await page6.close();
 
   // ?add= の紹介リンクで直接追加
   const page4 = await newPage();

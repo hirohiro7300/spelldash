@@ -58,6 +58,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
     <div class="word-detail__meta">
       <span class="word-detail__status word-detail__status--${status}">${STATUS_LABEL[status]}</span>
       ${category ? `<span>${escapeHtml(category)}</span>` : ""}
+      ${word.pos ? `<span>品詞: ${escapeHtml(word.pos)}</span>` : ""}
       ${word.level ? `<span>レベル ${word.level}</span>` : ""}
       ${stat ? `<span>思い出せた ${stat.correctCount ?? 0}回 ・ 思い出せず ${stat.recallFail ?? 0}回</span>` : ""}
       ${nextReview != null ? `<span>次の復習: ${nextReview === 0 ? "今日" : `${nextReview}日後`}</span>` : ""}

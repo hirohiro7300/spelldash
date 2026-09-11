@@ -1,0 +1,1230 @@
+{
+  "subject": "english",
+  "category": "eikenp2",
+  "cardType": "word",
+  "label": "英検準2級",
+  "blurb": "高校中級レベル。長文で出る一般語彙・接続表現・学問分野の語",
+  "audience": "高校1〜2年生、基礎から一段上を目指す人",
+  "genres": {
+    "society": "社会",
+    "mind": "思考",
+    "communication": "伝達",
+    "action": "動作",
+    "state": "状態",
+    "science": "科学",
+    "economy": "経済",
+    "work": "仕事",
+    "education": "教育",
+    "health": "健康",
+    "environment": "環境",
+    "people": "人",
+    "culture": "文化",
+    "time": "時間",
+    "degree": "程度",
+    "law": "法律",
+    "feeling": "気持ち",
+    "relation": "人間関係"
+  },
+  "words": [
+    {
+      "id": "english-population",
+      "en": "population",
+      "ja": "人口",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-generation",
+      "en": "generation",
+      "ja": "世代",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-poverty",
+      "en": "poverty",
+      "ja": "貧困",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-charity",
+      "en": "charity",
+      "ja": "慈善",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-citizen",
+      "en": "citizen",
+      "ja": "市民",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-crime",
+      "en": "crime",
+      "ja": "犯罪",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-religion",
+      "en": "religion",
+      "ja": "宗教",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-immigrant",
+      "en": "immigrant",
+      "ja": "移民",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-welfare",
+      "en": "welfare",
+      "ja": "福祉",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-equality",
+      "en": "equality",
+      "ja": "平等",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "society"
+      ]
+    },
+    {
+      "id": "english-consider",
+      "en": "consider",
+      "ja": "よく考える",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-recognize",
+      "en": "recognize",
+      "ja": "認識する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-realize",
+      "en": "realize",
+      "ja": "気づく",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-expect",
+      "en": "expect",
+      "ja": "予期する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-suppose",
+      "en": "suppose",
+      "ja": "思う・仮定する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-doubt",
+      "en": "doubt",
+      "ja": "疑う",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-concentrate",
+      "en": "concentrate",
+      "ja": "集中する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-memory",
+      "en": "memory",
+      "ja": "記憶",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-attitude",
+      "en": "attitude",
+      "ja": "態度",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-purpose",
+      "en": "purpose",
+      "ja": "目的",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-judge",
+      "en": "judge",
+      "ja": "判断する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-prefer",
+      "en": "prefer",
+      "ja": "より好む",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "mind"
+      ]
+    },
+    {
+      "id": "english-argue",
+      "en": "argue",
+      "ja": "議論する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-persuade",
+      "en": "persuade",
+      "ja": "説得する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-complain",
+      "en": "complain",
+      "ja": "不平を言う",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-mention",
+      "en": "mention",
+      "ja": "言及する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-suggest",
+      "en": "suggest",
+      "ja": "提案する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-respond",
+      "en": "respond",
+      "ja": "応答する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-announce",
+      "en": "announce",
+      "ja": "発表する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-apologize",
+      "en": "apologize",
+      "ja": "謝る",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-debate",
+      "en": "debate",
+      "ja": "討論",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-translate",
+      "en": "translate",
+      "ja": "翻訳する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "communication"
+      ]
+    },
+    {
+      "id": "english-achieve",
+      "en": "achieve",
+      "ja": "達成する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-avoid",
+      "en": "avoid",
+      "ja": "避ける",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-encourage",
+      "en": "encourage",
+      "ja": "励ます",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-establish",
+      "en": "establish",
+      "ja": "設立する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-maintain",
+      "en": "maintain",
+      "ja": "維持する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-obtain",
+      "en": "obtain",
+      "ja": "得る",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-prevent",
+      "en": "prevent",
+      "ja": "防ぐ",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-provide",
+      "en": "provide",
+      "ja": "提供する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-reduce",
+      "en": "reduce",
+      "ja": "減らす",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-require",
+      "en": "require",
+      "ja": "必要とする",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-replace",
+      "en": "replace",
+      "ja": "取り替える",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-supply",
+      "en": "supply",
+      "ja": "供給する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "action"
+      ]
+    },
+    {
+      "id": "english-available",
+      "en": "available",
+      "ja": "利用できる",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-common",
+      "en": "common",
+      "ja": "よくある・共通の",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-complex",
+      "en": "complex",
+      "ja": "複雑な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-efficient",
+      "en": "efficient",
+      "ja": "効率的な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-essential",
+      "en": "essential",
+      "ja": "不可欠な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-obvious",
+      "en": "obvious",
+      "ja": "明らかな",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-previous",
+      "en": "previous",
+      "ja": "以前の",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-rare",
+      "en": "rare",
+      "ja": "まれな",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-recent",
+      "en": "recent",
+      "ja": "最近の",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-typical",
+      "en": "typical",
+      "ja": "典型的な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-various",
+      "en": "various",
+      "ja": "さまざまな",
+      "pos": "形",
+      "level": "easy",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-appropriate",
+      "en": "appropriate",
+      "ja": "適切な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "state"
+      ]
+    },
+    {
+      "id": "english-theory",
+      "en": "theory",
+      "ja": "理論",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-evidence",
+      "en": "evidence",
+      "ja": "証拠",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-chemical",
+      "en": "chemical",
+      "ja": "化学物質",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-physical",
+      "en": "physical",
+      "ja": "身体の・物理的な",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-gene",
+      "en": "gene",
+      "ja": "遺伝子",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-species",
+      "en": "species",
+      "ja": "種（生物の）",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-laboratory",
+      "en": "laboratory",
+      "ja": "実験室",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "english-economy",
+      "en": "economy",
+      "ja": "経済",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-industry",
+      "en": "industry",
+      "ja": "産業",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-profit",
+      "en": "profit",
+      "ja": "利益",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-trade",
+      "en": "trade",
+      "ja": "貿易",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-income",
+      "en": "income",
+      "ja": "収入",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-budget",
+      "en": "budget",
+      "ja": "予算",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-invest",
+      "en": "invest",
+      "ja": "投資する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "economy"
+      ]
+    },
+    {
+      "id": "english-employee",
+      "en": "employee",
+      "ja": "従業員",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-employer",
+      "en": "employer",
+      "ja": "雇用主",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-colleague",
+      "en": "colleague",
+      "ja": "同僚",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-promote",
+      "en": "promote",
+      "ja": "昇進させる・促進する",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-schedule",
+      "en": "schedule",
+      "ja": "予定表",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-task",
+      "en": "task",
+      "ja": "仕事・課題",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "work"
+      ]
+    },
+    {
+      "id": "english-graduate",
+      "en": "graduate",
+      "ja": "卒業する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "education"
+      ]
+    },
+    {
+      "id": "english-lecture",
+      "en": "lecture",
+      "ja": "講義",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "education"
+      ]
+    },
+    {
+      "id": "english-scholarship",
+      "en": "scholarship",
+      "ja": "奨学金",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "education"
+      ]
+    },
+    {
+      "id": "english-major",
+      "en": "major",
+      "ja": "専攻",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "education"
+      ]
+    },
+    {
+      "id": "english-academic",
+      "en": "academic",
+      "ja": "学問の",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "education"
+      ]
+    },
+    {
+      "id": "english-mental",
+      "en": "mental",
+      "ja": "精神の",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-stress",
+      "en": "stress",
+      "ja": "ストレス",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-symptom",
+      "en": "symptom",
+      "ja": "症状",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-nutrition",
+      "en": "nutrition",
+      "ja": "栄養",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-surgery",
+      "en": "surgery",
+      "ja": "手術",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-recover",
+      "en": "recover",
+      "ja": "回復する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "health"
+      ]
+    },
+    {
+      "id": "english-climate",
+      "en": "climate",
+      "ja": "気候",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-resource",
+      "en": "resource",
+      "ja": "資源",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-fuel",
+      "en": "fuel",
+      "ja": "燃料",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-waste",
+      "en": "waste",
+      "ja": "廃棄物",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-wildlife",
+      "en": "wildlife",
+      "ja": "野生生物",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-temperature",
+      "en": "temperature",
+      "ja": "気温・温度",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "environment"
+      ]
+    },
+    {
+      "id": "english-expert",
+      "en": "expert",
+      "ja": "専門家",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-professor",
+      "en": "professor",
+      "ja": "教授",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-author",
+      "en": "author",
+      "ja": "著者",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-ancestor",
+      "en": "ancestor",
+      "ja": "祖先",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-individual",
+      "en": "individual",
+      "ja": "個人",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "people"
+      ]
+    },
+    {
+      "id": "english-literature",
+      "en": "literature",
+      "ja": "文学",
+      "pos": "名",
+      "level": "normal",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-philosophy",
+      "en": "philosophy",
+      "ja": "哲学",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-architecture",
+      "en": "architecture",
+      "ja": "建築",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-poem",
+      "en": "poem",
+      "ja": "詩",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "culture"
+      ]
+    },
+    {
+      "id": "english-eventually",
+      "en": "eventually",
+      "ja": "結局",
+      "pos": "副",
+      "level": "hard",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-immediately",
+      "en": "immediately",
+      "ja": "直ちに",
+      "pos": "副",
+      "level": "normal",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-temporary",
+      "en": "temporary",
+      "ja": "一時的な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-permanent",
+      "en": "permanent",
+      "ja": "永続的な",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "time"
+      ]
+    },
+    {
+      "id": "english-extremely",
+      "en": "extremely",
+      "ja": "極端に",
+      "pos": "副",
+      "level": "normal",
+      "tags": [
+        "degree"
+      ]
+    },
+    {
+      "id": "english-slightly",
+      "en": "slightly",
+      "ja": "わずかに",
+      "pos": "副",
+      "level": "hard",
+      "tags": [
+        "degree"
+      ]
+    },
+    {
+      "id": "english-hardly",
+      "en": "hardly",
+      "ja": "ほとんど〜ない",
+      "pos": "副",
+      "level": "hard",
+      "tags": [
+        "degree"
+      ]
+    },
+    {
+      "id": "english-permit",
+      "en": "permit",
+      "ja": "許可する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-forbid",
+      "en": "forbid",
+      "ja": "禁じる",
+      "pos": "動",
+      "level": "hard",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-illegal",
+      "en": "illegal",
+      "ja": "違法の",
+      "pos": "形",
+      "level": "normal",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-punish",
+      "en": "punish",
+      "ja": "罰する",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "law"
+      ]
+    },
+    {
+      "id": "english-anxiety",
+      "en": "anxiety",
+      "ja": "不安",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-satisfy",
+      "en": "satisfy",
+      "ja": "満足させる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-disappoint",
+      "en": "disappoint",
+      "ja": "失望させる",
+      "pos": "動",
+      "level": "normal",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-embarrassed",
+      "en": "embarrassed",
+      "ja": "恥ずかしい",
+      "pos": "形",
+      "level": "hard",
+      "tags": [
+        "feeling"
+      ]
+    },
+    {
+      "id": "english-relationship",
+      "en": "relationship",
+      "ja": "関係",
+      "pos": "名",
+      "level": "easy",
+      "tags": [
+        "relation"
+      ]
+    },
+    {
+      "id": "english-respect",
+      "en": "respect",
+      "ja": "尊敬する",
+      "pos": "動",
+      "level": "easy",
+      "tags": [
+        "relation"
+      ]
+    },
+    {
+      "id": "english-conflict",
+      "en": "conflict",
+      "ja": "対立",
+      "pos": "名",
+      "level": "hard",
+      "tags": [
+        "relation"
+      ]
+    }
+  ]
+}

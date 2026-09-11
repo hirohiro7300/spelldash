@@ -54,9 +54,14 @@ export const CALC_KINDS = {
     label: "CVR",
     formula: "CVR = CV ÷ Click",
     make() {
-      const click = pick([50, 100, 200, 250, 400, 500, 1000]);
-      const cvr = pick([2, 4, 5, 8, 10, 12, 20]);
-      const cv = Math.round((click * cvr) / 100);
+      // 割り切れる組み合わせだけ（50×5% や 250×5% は CV が整数にならず、答えと式が食い違う）
+      let click = 100;
+      let cvr = 5;
+      do {
+        click = pick([50, 100, 200, 250, 400, 500, 1000]);
+        cvr = pick([2, 4, 5, 8, 10, 12, 20]);
+      } while ((click * cvr) % 100 !== 0);
+      const cv = (click * cvr) / 100;
       return {
         q: `クリック ${num(click)}回のうち、問い合わせ（CV）が ${num(cv)}件。CVR は何%？`,
         answer: `${cvr}%`,
