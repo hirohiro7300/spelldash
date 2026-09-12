@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/path.css" />
+  <link rel="stylesheet" href="./css/welcome.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
   <link rel="stylesheet" href="./css/theme.css" />
   <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
@@ -115,6 +116,60 @@
       </div>
     </div>
   </header>
+
+  <!-- 初めて来た人向けのトップページ。学習データが無い初回だけ表示し、「無料で始める」でアプリ（道）に切り替える -->
+  <section class="welcome" id="welcome" hidden aria-label="SpellDash の紹介">
+    <div class="welcome__hero">
+      <p class="welcome__kicker">登録なし ・ 無料 ・ ブラウザだけで動く</p>
+      <h1 class="welcome__title">思い出して打つから、<br />英単語が残る。</h1>
+      <p class="welcome__lead">日本語を見て、英単語をタイピング。中学英語のやり直しから、英検・TOEIC・仕事の専門用語まで。1日5分、今日のセットをこなすだけ。</p>
+      <div class="welcome__cta">
+        <button type="button" class="welcome__start" data-welcome-start>▶ 無料で始める（登録不要）</button>
+        <a class="welcome__login" href="#login" id="welcomeLogin">すでに使っている方はログイン</a>
+      </div>
+    </div>
+
+    <div class="welcome-demo" aria-label="1語だけ体験">
+      <p class="welcome-demo__label">試しに1語 <span id="welcomeDemoDots" class="welcome-demo__dots"></span></p>
+      <div class="welcome-demo__card">
+        <p class="welcome-demo__ja" id="welcomeDemoJa">りんご</p>
+        <p class="welcome-demo__preview" id="welcomeDemoPreview" aria-hidden="true"></p>
+        <input id="welcomeDemoInput" class="welcome-demo__input" type="text" placeholder="英単語を入力（分からなければ Enter）" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英単語を入力" />
+        <p class="welcome-demo__msg" id="welcomeDemoMsg"></p>
+      </div>
+      <div class="welcome-demo__after" id="welcomeAfterDemo" hidden>
+        <button type="button" class="welcome__start" data-welcome-start>▶ 本番を始める（中学英語の腕試し10語）</button>
+      </div>
+    </div>
+
+    <ol class="welcome-steps" aria-label="使い方">
+      <li><span class="welcome-steps__num">1</span><b>日本語を見て打つ</b><span>訳を見て英単語をタイプ。1文字ずつ色が付くので、打てている実感があります。</span></li>
+      <li><span class="welcome-steps__num">2</span><b>分からなければ Enter</b><span>答えを見てOK。その語は数問後にまた出て、自力で打てたら「覚えた」に近づきます。</span></li>
+      <li><span class="welcome-steps__num">3</span><b>復習は自動で</b><span>忘れそうな頃にまた出ます（間隔反復）。今日のセットは10〜15語・約5分で終わります。</span></li>
+    </ol>
+
+    <section class="welcome-content" aria-label="学べるもの">
+      <h2>学べるもの</h2>
+      <ul class="welcome-content__grid">
+        <li><b>中学英語やり直し</b><span>最初のコース。中学英語1〜3年 → 英文法 → 並べ替え → 英作文の8セクション</span></li>
+        <li><b>英検 5級〜1級</b><span>級ごとに約120語。品詞つきで訳の迷いが減ります</span></li>
+        <li><b>TOEIC 500〜990</b><span>スコア帯ごとの語彙と、短文穴埋めの文法</span></li>
+        <li><b>英文法・英作文</b><span>空欄を打つ／日本語を英文にして丸ごと打つ。語順まで身につきます</span></li>
+        <li><b>仕事の分野 48</b><span>不動産・会計・医療事務・看護・建築・広報… 現場の共通言語を場面カードで</span></li>
+        <li><b>小中高の暗記</b><span>歴史・地理・公民・理科・漢字・古文・漢文。説明を読んで日本語で答える</span></li>
+      </ul>
+      <p class="welcome-content__more"><a href="./packs/">全104パックの紹介ページを見る →</a></p>
+    </section>
+
+    <section class="welcome-trust" aria-label="データについて">
+      <p>学習データはこの端末に保存されます。ログインすると別の端末でも続きから。広告なし・課金なしで使えます。</p>
+    </section>
+
+    <div class="welcome__bottom">
+      <button type="button" class="welcome__start" data-welcome-start>▶ 無料で始める（登録不要）</button>
+      <p class="welcome__note">最初は腕試し10語（約2分）。知っている語はそのまま打って、知らない語は Enter で答えを見てOK。</p>
+    </div>
+  </section>
 
   <div class="app app--home">
     <section class="hero hero--compact" id="hero">

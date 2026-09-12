@@ -1221,8 +1221,27 @@ console.log("my concept & retention:");
   const page5 = await newPage({ keepOnboarding: true });
   await page5.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page5.waitForTimeout(800);
+  // 初めての人: アプリの代わりにトップページ。1語体験 → 「無料で始める」で腕試しへ
+  check("初回はトップページが出てアプリは隠れる", (await page5.isVisible("#welcome")) && !(await page5.isVisible("#pathCard")) && (await page5.textContent("#welcome")).includes("無料で始める"));
+  await page5.click("#welcomeDemoInput");
+  for (const ch of "apple") await page5.press("#welcomeDemoInput", ch);
+  await page5.waitForTimeout(200);
+  check("トップの1語体験: apple を打つと思い出せた", (await page5.textContent("#welcomeDemoMsg")).includes("思い出せた"));
+  await page5.waitForTimeout(1200);
+  await page5.press("#welcomeDemoInput", "Enter");
+  check("トップの1語体験: Enter で答えが見える", (await page5.textContent("#welcomeDemoMsg")).includes("school"));
   check("初回は道のスタートに腕試しの案内・既定コースは中学英語やり直し", (await page5.textContent("#pathCard")).includes("腕試し") && (await page5.textContent("#pathCard")).includes("中学英語やり直し") && (await page5.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhs-english1");
   check("初回は Daily・Battle が未解放、Challenge は解放", (await page5.$$("#playModes .play-modes__row--locked")).length === 2 && (await page5.$('#playModes [data-mode="challenge"]')) !== null);
+  await page5.click("#welcome .welcome__cta [data-welcome-start]");
+  await page5.waitForTimeout(900);
+  check("「無料で始める」でトップが消え、腕試しが始まる", !(await page5.isVisible("#welcome")) && (await page5.isVisible("#pathCard")) && (await page5.textContent("#message")).includes("腕試し") && (await page5.evaluate(() => localStorage.getItem("spelldash_onboarded"))) === "1");
+  check("トップページのフローでエラー0", page5.errors.length === 0, page5.errors[0] ?? "");
+  // 深いリンク（?set= など）や2回目以降はトップページを出さない
+  const page5b = await newPage({ keepOnboarding: true });
+  await page5b.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page5b.waitForTimeout(600);
+  check("深いリンクではトップページを出さない", !(await page5b.isVisible("#welcome")) && (await page5b.isVisible("#pathCard")));
+  await page5b.close();
   await page5.close();
 }
 
