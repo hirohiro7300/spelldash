@@ -151,12 +151,12 @@ function isFreeAnswer(word) {
   return !!word && !/^[a-z-]+$/.test(word.en);
 }
 
-// 表記ゆれを吸収して比較（全角/半角・空白・記号・大文字小文字）
+// 表記ゆれを吸収して比較（全角/半角・空白・記号・大文字小文字・アポストロフィ）
 function normalizeAnswer(text) {
   return String(text ?? "")
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/[\s・／/\-‐－_（）()「」『』.,、。:：]/g, "");
+    .replace(/[\s・／/\-‐－_（）()「」『』.,、。:：;；?？!！'’"”“]/g, "");
 }
 
 function answerMatches(word, text) {
@@ -164,6 +164,42 @@ function answerMatches(word, text) {
   if (!typed) return false;
   const candidates = [word.en, ...(Array.isArray(word.accept) ? word.accept : [])];
   return candidates.some((c) => normalizeAnswer(c) === typed);
+}
+
+// 英作文: 語ごとに比べて、最初に違う語の位置を返す（語順・時制の誤りを指摘するため）
+function splitWords(text) {
+  return String(text ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[.,、。:：;；?？!！"”“]/g, "")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function firstWordDiff(answer, typed) {
+  const a = splitWords(answer);
+  const t = splitWords(typed);
+  const shown = String(answer ?? "").replace(/[.,、。:：;；?？!！"”“]/g, "").split(/\s+/).filter(Boolean); // 表示用（大文字を保つ）
+  for (let i = 0; i < Math.max(a.length, t.length); i++) {
+    if (a[i] !== t[i]) return { index: i, expected: shown[i] ?? "", typed: t[i] ?? "", total: a.length, typedTotal: t.length };
+  }
+  return null;
+}
+
+// 並べ替え: 答えの語をシャッフル（元の順と同じにならないように。カードごとに固定）
+let bankWords = [];
+function buildWordBank(word) {
+  const words = String(word?.en ?? "").replace(/[.?!]$/, "").split(/\s+/).filter(Boolean);
+  if (words.length < 2) return words;
+  let shuffled = words.slice();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    if (shuffled.join(" ") !== words.join(" ")) break;
+  }
+  return shuffled;
 }
 
 function renderExplain(word) {
@@ -636,6 +672,18 @@ function submitFreeAnswer(typed) {
   sfxMiss();
   recordTypingMiss(currentWord.id);
   revealAnswer(true);
+  // 英作文: どこから違うかを語単位で指摘（語順・時制・冠詞の気づきに）
+  if (currentWord.write) {
+    const diff = firstWordDiff(currentWord.en, typed);
+    if (diff) {
+      const where = diff.index >= diff.total
+        ? `${diff.total}語で終わりだけど、余分に「${diff.typed}」がある`
+        : diff.typed
+          ? `${diff.index + 1}語目が違う: あなたは「${diff.typed}」、答えは「${diff.expected}」`
+          : `${diff.index + 1}語目「${diff.expected}」から先が足りない`;
+      showMessage(`違った。${where}。答えを見て、もう一度打ってみよう（Enterで判定）`, "wrong");
+    }
+  }
 }
 
 function finishFreeWord() {
@@ -694,6 +742,21 @@ export function useHint() {
   if (currentWord.calc) {
     showHiddenWordText(`💡 ${currentWord.calcFormula}`);
     showMessage(`💡 ${currentWord.calcFormula}。計算して数字を入力（ヒントを見たので、この問題はまた出すね）`, "revealed");
+    return;
+  }
+
+  // 英作文: 1語ずつ見せる（文字単位だと長すぎる）
+  if (currentWord.write) {
+    const words = currentWord.en.split(/\s+/).filter(Boolean);
+    hintChars = Math.min(words.length, hintChars + 1);
+    const shown = words.slice(0, hintChars).join(" ");
+    showHiddenWordText(`💡 ${shown}${" ▢".repeat(Math.max(0, words.length - hintChars))}（${words.length}語）`);
+    showMessage(
+      hintChars === 1
+        ? `💡 最初の語は「${words[0]}」。続きを思い出して入力（ヒントを見たので、この文はまた出すね）`
+        : `💡 ${shown} … 続きを入力してEnter`,
+      "revealed"
+    );
     return;
   }
 
@@ -1400,9 +1463,12 @@ function setNewWord() {
   freeMode = isFreeAnswer(currentWord);
   document.body.classList.toggle("free-answer", freeMode);
   document.getElementById("gameCard")?.classList.toggle("game-card--concept", isConceptWord(currentWord));
-  elements.input.placeholder = currentWord.blank
-    ? freeMode ? "空欄の英語を入力してEnter" : "空欄の英語を入力"
-    : freeMode ? "答えを入力してEnter（日本語OK）" : "英単語を入力";
+  bankWords = currentWord.bank ? buildWordBank(currentWord) : [];
+  elements.input.placeholder = currentWord.write
+    ? "英文を入力してEnter"
+    : currentWord.blank
+      ? freeMode ? "空欄の英語を入力してEnter" : "空欄の英語を入力"
+      : freeMode ? "答えを入力してEnter（日本語OK）" : "英単語を入力";
 
   const promptLabel = document.querySelector("#gameCard .label");
   if (promptLabel) {
@@ -1411,6 +1477,8 @@ function setNewWord() {
       ? "計算（数字で答える）"
       : listenMode
         ? "音を聞いて打つ（Tab か 🔊 でもう一度）"
+        : currentWord.write
+          ? `${currentWord.bank ? "語を並べ替えて英文を打つ" : "日本語を英文にして打つ"}${currentWord.ja ? `（${currentWord.ja}）` : ""}`
         : currentWord.blank
           ? `空欄に入る英語を打つ${currentWord.ja ? `（${currentWord.ja}）` : ""}`
           : currentWord.school
@@ -1428,6 +1496,10 @@ function setNewWord() {
   showHiddenWordText(
     currentWord.calc
       ? "式を思い出して計算。分からないときは Enter（💡ヒントで式）"
+      : currentWord.bank
+        ? `🔀 ${bankWords.join(" ／ ")}`
+        : currentWord.write
+          ? "英文を丸ごと打つ（大文字・句読点は気にしなくてOK）。分からないときは Enter"
       : currentWord.blank
         ? "空欄に入る語を英語で。分からないときは Enter で答えを表示"
         : freeMode

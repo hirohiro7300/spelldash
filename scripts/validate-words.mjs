@@ -37,6 +37,7 @@ for (const fullPath of files) {
     const isWordPack = data.cardType === "word"; // レベル別パック（英検・TOEIC）: 英単語 en/ja 形式
     const isGrammar = data.cardType === "grammar"; // 文法パック: 穴埋め（q に ____ を1か所、say に完成文）
     const isSchool = data.cardType === "school"; // 義務教育パック: 日本語で答える。漢字の答えには読み（ひらがな）を accept に
+    const isWriting = data.cardType === "writing"; // 英作文パック: 日本語文 → 英文を丸ごと打つ（say 必須、2〜12語）
     for (const w of data.words) {
       if (isSchool) {
         const a = String(w.answer ?? "");
@@ -48,6 +49,18 @@ for (const fullPath of files) {
         const q = String(w.q ?? "");
         const leaked = (w.accept ?? []).find((s) => String(s).length >= 2 && q.includes(String(s)));
         if (leaked) problems.push(`別解が問題文に含まれる ${file}:${w.id} (${leaked})`);
+        if (String(w.explain ?? "").length > 100) problems.push(`explainが長い ${file}:${w.id}`);
+      }
+      if (isWriting) {
+        const a = String(w.answer ?? "").trim();
+        const n = a.split(/\s+/).filter(Boolean).length;
+        if (!/^[A-Za-z]/.test(a) || /[ぁ-んァ-ン一-龯]/.test(a)) problems.push(`英文でない answer ${file}:${w.id}`);
+        if (n < 2 || n > 14) problems.push(`answerの語数が範囲外(2〜14) ${file}:${w.id} (${n})`);
+        if (data.wordBank && n > 10) problems.push(`並べ替えの文が長い(>10語) ${file}:${w.id} (${n})`);
+        if (!/[ぁ-んァ-ン一-龯]/.test(String(w.q ?? ""))) problems.push(`qが日本語でない ${file}:${w.id}`);
+        if (!w.say || !/^[A-Za-z]/.test(w.say)) problems.push(`sayなし/英文でない ${file}:${w.id}`);
+        if (String(w.ja ?? "").length > 20) problems.push(`jaが長い ${file}:${w.id}`);
+        for (const alt of w.accept ?? []) if (/[ぁ-んァ-ン一-龯]/.test(String(alt))) problems.push(`acceptが英文でない ${file}:${w.id} (${alt})`);
         if (String(w.explain ?? "").length > 100) problems.push(`explainが長い ${file}:${w.id}`);
       }
       if (isGrammar) {

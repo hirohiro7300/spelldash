@@ -47,7 +47,9 @@ export async function loadCategory(subjectId, categoryId) {
         category: data.category,
         ...(category.pack ? { pack: true } : {}),
         ...(data.cardType === "grammar" ? { blank: true } : {}),
-        ...(data.cardType === "school" ? { school: true } : {})
+        ...(data.cardType === "school" ? { school: true } : {}),
+        // write: 英作文パック（日本語→英文を丸ごと打つ）。bank: 並べ替え（答えの語をシャッフルして見せる）
+        ...(data.cardType === "writing" ? { write: true, ...(data.wordBank ? { bank: true } : {}) } : {})
       };
       // 概念カード: id のキーは word.en のまま残し、表示・入力に使う en は「答え」に差し替える。
       // 答えが a-z のみ（cpc 等）なら通常のスペル入力、日本語や空白入りなら全文入力モードになる

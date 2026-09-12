@@ -28,11 +28,21 @@ export const letterColors = {
 };
 
 export function renderColoredWord(word) {
-  return word
-    .split("")
-    .map((letter) => {
-      const color = letterColors[letter.toLowerCase()] || "#facc15";
-      return `<span style="color: ${color};">${letter}</span>`;
-    })
-    .join("");
+  const letters = (text) =>
+    text
+      .split("")
+      .map((letter) => {
+        const color = letterColors[letter.toLowerCase()] || "#facc15";
+        return `<span style="color: ${color};">${letter}</span>`;
+      })
+      .join("");
+  // 英文（空白あり）は単語ごとにまとめて、単語の途中で折り返さないようにする
+  if (/\s/.test(word.trim())) {
+    return word
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => `<span class="cw">${letters(w)}</span>`)
+      .join(" ");
+  }
+  return letters(word);
 }

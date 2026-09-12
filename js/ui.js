@@ -47,10 +47,12 @@ export function updateCombo(combo) {
 }
 
 export function showHiddenWordText(text) {
+  elements.word.classList.remove("hidden-word--long");
   elements.word.textContent = text;
 }
 
 export function showColoredAnswer(word) {
+  elements.word.classList.toggle("hidden-word--long", String(word).length > 24); // 英文は小さめに
   elements.word.innerHTML = renderColoredWord(word);
 }
 

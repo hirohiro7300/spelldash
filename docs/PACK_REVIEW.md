@@ -264,3 +264,30 @@ pos・綴り・id・ジャンルは全数確認で誤りなし。7本をまた�
 - 12本・657枚を全数レビュー。修正 217枚（建築18・農業21・イベント18・塾20・観光25・出版15・総務16・秘書15・広報17・ゲーム22・理学療法23・臨床検査27）。
 - 事実誤認は各パック1〜5枚（取締役会議事録の署名・避難訓練の消防通報・手配旅行の債務・縦組みのノンブル・クロスマッチ・ロットチェック など）。大半は「別解に別概念（上位／下位／隣接語）が入っている」「q に別解語が含まれる」の形式面で、第4回と同じ傾向。
 - 次回の執筆ブリーフに追記する: (1) accept は同じものの別名だけ（上位概念・下位区分・器具・担当者・検査名は入れない）、(2) 法規は「原則」「〜が多い」で守る、(3) 助言調（「〜すべき」「加入を強く勧める」）は業務の定義に言い換える。
+
+## 2026-09-16 第6回（英作文パック）
+
+### 英語面接 定番フレーズ（1本・70文）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| writing-interview | 14 | 別解の網羅（five years of sales experience／I am open to discussing…／I could start next month など）、指定語のヒントで別解が広すぎる q を絞る（experience を使って、describe を使って）、「失ったところでした」と we lost の時制のずれを解消 | wi-close-salary（My expected salary の方が自然か）、wi-strength-colleagues（would describe） |
+
+### 高校英作文（構文）・英検ライティング 定型表現（2本・150文）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| writing-hs | 13 | 仮定法の時制・分詞構文の主語・倒置の語順・no more than／not so much は正しいことを確認。Without／動名詞のヒント追加で別解の広がりを抑制、短縮形の組み合わせ（I'd／would've）を網羅、whom のヒントに反する別解を差し替え | wh-subj-if-rich／wh-subj-wish-taller（If I was を別解に残した） |
+| writing-eiken | 8 | 「それが本当だ」→「これが本当だ」で that／it の揺れを解消、To conclude を追加、反論の型で But 始まりの別解を除去、Eメールの that なし形を追加 | we-opinion-strongly-believe（explain に級名） |
+
+### 中学英語 並べ替え・中学英作文（2本・200文）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| writing-jhs-order | 9 | 同じ語で別の語順も自然だった文（If it rains tomorrow…）を tomorrow 抜きに、頻度副詞の文頭・文末、yet の位置、時と同伴者の順など「第2の自然な語順」を accept に追加 | wo-adverb-often-soccer（Often we play… は やや特殊） |
+| writing-jhs | 11 | 「晴れ」の sunny／fine の揺れをヒントで固定、things to do のヒントを絞る、brothers and sisters／absent from school／near my home／was not able to などの自然な別解を追加。短縮形は全数確認 | wj-subjunctive-wish-had-brother（brothers も想定）、wj-infinitive-happy-to-see（meet を不正解にしている） |
+
+### まとめ（第6回）
+
+- 5本・420文を全数レビュー。修正 55文（面接14・高校13・英検8・並べ替え9・中学英作文11）。英文の誤りはほぼ無く、大半は「学習者が打ちそうな自然な別解が accept に無い」「q の日本語が複数の英文を許す」の2種。
+- 英作文パックは別解の網羅が命なので、次回の執筆ブリーフに「1文につき、中学生・高校生が打ちそうな英文を3つ書き出してから accept を決める」を入れる。

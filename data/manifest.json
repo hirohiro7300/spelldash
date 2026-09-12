@@ -476,6 +476,61 @@
           "group": "文法（中学・高校・TOEIC）"
         },
         {
+          "id": "writing-jhs-order",
+          "label": "中学英語 並べ替え",
+          "file": "packs/writing-jhs-order.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 100,
+          "blurb": "ばらばらの語を正しい順に並べて英文を打つ。疑問文・副詞・比較の語順",
+          "audience": "中学生、語順に自信がない大人",
+          "group": "英作文・表現（並べ替え・英作文・ライティング・面接）"
+        },
+        {
+          "id": "writing-jhs",
+          "label": "中学英作文",
+          "file": "packs/writing-jhs.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 100,
+          "blurb": "中学で習う文法で言える日常の文を、日本語から英文にして打つ",
+          "audience": "中学生、中学英語をやり直す人",
+          "group": "英作文・表現（並べ替え・英作文・ライティング・面接）"
+        },
+        {
+          "id": "writing-hs",
+          "label": "高校英作文（構文）",
+          "file": "packs/writing-hs.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 80,
+          "blurb": "仮定法・関係詞・分詞構文・倒置。高校の基本構文を日本語から英文にして打つ",
+          "audience": "高校生、大学入試の英作文に備える人",
+          "group": "英作文・表現（並べ替え・英作文・ライティング・面接）"
+        },
+        {
+          "id": "writing-eiken",
+          "label": "英検ライティング 定型表現",
+          "file": "packs/writing-eiken.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "意見文とEメールで使い回せる型を、日本語から英文にして打つ。3級〜準1級",
+          "audience": "試験の英作文対策をする中学生・高校生・社会人",
+          "group": "英作文・表現（並べ替え・英作文・ライティング・面接）"
+        },
+        {
+          "id": "writing-interview",
+          "label": "英語面接 定番フレーズ",
+          "file": "packs/writing-interview.json",
+          "kind": "concept",
+          "pack": true,
+          "count": 70,
+          "blurb": "自己紹介・強み・志望動機から逆質問・締めまで、面接で言いたい70文",
+          "audience": "転職・外資・社内英語面接、留学面接を控えた人",
+          "group": "英作文・表現（並べ替え・英作文・ライティング・面接）"
+        },
+        {
           "id": "eiken5",
           "label": "英検5級",
           "file": "packs/eiken5.json",
