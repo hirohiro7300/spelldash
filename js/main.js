@@ -16,7 +16,6 @@ import {
 import { renderDailyCard, isDailyPlayedToday } from "./dailyChallenge.js";
 import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
 import { isGamePlaying } from "./game.js";
-import { renderOnboarding } from "./onboarding.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderLevelBar } from "./levelUi.js";
@@ -26,7 +25,11 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
-import { renderTodayCta } from "./todayCta.js";
+import { renderPath } from "./pathView.js";
+import { renderPlayModes } from "./playModes.js";
+import { ensureDefaultCourse, advanceSection } from "./course.js";
+import { setFocusGenre } from "./studyQueue.js";
+import { setGenre } from "./genres.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
@@ -54,7 +57,7 @@ window.addEventListener("spelldash:packs", (event) => {
 // クラウド同期でローカルデータが更新されたら表示を作り直す
 window.addEventListener("spelldash:synced", () => {
   renderLearnedCard();
-  renderTodayCta();
+  renderHome();
   renderLevelBar();
   renderStreakCard();
   renderHasumiHome();
@@ -95,36 +98,80 @@ function scrollGameIntoView() {
   }
 }
 
-// モード選択カード: 選んだら即スタート（選択画面としてふるまう）
-document.querySelectorAll(".mode-switch__btn[data-mode]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    setMode(btn.dataset.mode);
-    refreshWeakToggle();
-    restartGame();
-    elements.input.focus({ preventScroll: true });
-    scrollGameIntoView();
-  });
-});
+// ===== 道（ホームの1画面目）: スタート1個でStudy、ほかの遊び方は解放式の一覧 =====
+function showGame(show) {
+  document.body.classList.toggle("home--playing", show);
+  const back = document.getElementById("backToPath");
+  if (back) back.hidden = !show;
+}
 
-// 今日のセットCTA: Studyを開始（カテゴリは選択中のまま）
-document.getElementById("todayCta")?.addEventListener("click", (event) => {
-  if (!event.target.closest("#todayCtaButton")) return;
+// 道のスタート／復習: 新しく出す語をそのユニットに絞ってStudyを始める（復習はカテゴリ全体から）
+function startUnit(unit) {
+  setGenre(""); // 手動のジャンル絞り込みは解除（道が代わりに絞る）
+  setFocusGenre(unit?.tag ?? "");
   setMode("study");
   refreshWeakToggle();
+  showGame(true);
   restartGame();
   elements.input.focus({ preventScroll: true });
   scrollGameIntoView();
-});
+}
 
-// Dailyタイル: 未挑戦なら即開始、完了済みなら結果カードへスクロール
-document.getElementById("modeDailyTile")?.addEventListener("click", () => {
+function startChallenge() {
+  setFocusGenre("");
+  setMode("challenge");
+  refreshWeakToggle();
+  showGame(true);
+  restartGame();
+  elements.input.focus({ preventScroll: true });
+  scrollGameIntoView();
+}
+
+function startDaily() {
   if (isDailyPlayedToday()) {
+    const more = document.getElementById("homeMore");
+    if (more) more.open = true;
     document.getElementById("dailyCard")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return;
   }
+  setFocusGenre("");
+  showGame(true);
   startDailyGame();
   elements.input.focus({ preventScroll: true });
   scrollGameIntoView();
+}
+
+// 次のセクション（コースの次のパック）へ: パックを追加して語を読み直し、道を描き直す
+function goNextSection() {
+  const next = advanceSection(localStorage.getItem("spelldash_category") || "");
+  if (!next) return;
+  initWordStore().then(() => {
+    initializeCategoryPicker();
+    renderHome();
+    document.getElementById("pathCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function renderHome() {
+  renderPath({ onStart: startUnit, onAdvance: goNextSection });
+  renderPlayModes({ onChallenge: startChallenge, onDaily: startDaily });
+  renderSetupSummary();
+}
+
+document.getElementById("backToPath")?.addEventListener("click", () => {
+  setMode("study");
+  showGame(false);
+  renderHome();
+  document.getElementById("pathCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+// どの入口から始まっても（Enter キー含む）ゲームカードを出す
+window.addEventListener("spelldash:game-start", () => showGame(true));
+
+// セットが終わったら道の数字を更新（結果パネルはそのまま）
+window.addEventListener("spelldash:session-end", () => {
+  renderHome();
+  renderLearnedCard();
 });
 
 // ===== 出題設定（カテゴリ・ジャンル・苦手のみ・比率）は普段は畳む。要約1行だけ見せる =====
@@ -189,19 +236,21 @@ if (weakToggleButton) {
 document.getElementById("categoryPicker")?.addEventListener("click", () => {
   setTimeout(() => {
     refreshWeakToggle();
-    renderTodayCta();
-    renderSetupSummary();
+    setFocusGenre("");
+    renderHome();
   }, 0);
 });
+
+// 初めての人には既定のコース（中学英語やり直し）を敷いてから語を読む
+ensureDefaultCourse();
 
 // 単語データを読み込んでからゲームを有効化
 initWordStore()
   .then(() => {
     initializeCategoryPicker();
     renderLearnedCard();
-    renderTodayCta();
+    renderHome();
     renderLoginNudge();
-    renderSetupSummary();
     setSetupOpen(localStorage.getItem(SETUP_OPEN_KEY) === "1");
     // 週間レポート: 日曜・月曜だけホームに（それ以外は学習データで見られる）
     const dow = new Date().getDay();
@@ -219,12 +268,6 @@ initWordStore()
     initializeDisplay();
     setMode(getMode());
     refreshWeakToggle();
-    renderOnboarding(() => {
-      setMode("study");
-      restartGame();
-      elements.input.focus();
-      document.getElementById("input")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
 
     // 単語帳の「苦手だけ練習」: ?words=id1,id2 でその語だけのセッションを始める
     const wordsParam = new URLSearchParams(location.search).get("words");
@@ -232,6 +275,7 @@ initWordStore()
       const ids = wordsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 50);
       if (ids.length > 0) {
         setMode("study");
+        showGame(true);
         startGame({ retry: ids });
         elements.input.focus({ preventScroll: true });
         scrollGameIntoView();

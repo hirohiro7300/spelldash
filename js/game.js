@@ -3,7 +3,6 @@ import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
-import { renderTodayCta } from "./todayCta.js";
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
 import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
@@ -303,6 +302,7 @@ export function startGame(options = {}) {
   }
 
   isPlaying = true;
+  window.dispatchEvent(new CustomEvent("spelldash:game-start", { detail: { mode } })); // ホーム: ゲームカードを出す
   // フォーカスモード: 時間制ラン中はスマホで周辺UIを畳む（1画面1目的）。
   // Studyは終了の概念がないため対象外（モード切替手段を奪わない）
   document.body.classList.toggle("is-playing", mode === "challenge");
@@ -1205,6 +1205,7 @@ function endStudySession() {
   const failed = failedIds.length;
   const state = isRetry ? { setsToday: getSetsToday() } : markDailySetDone(recalled);
   pushSync();
+  window.dispatchEvent(new CustomEvent("spelldash:session-end", { detail: { recalled, failed: failedIds.length, retry: isRetry } })); // ホームの道を描き直す
 
   elements.japanese.textContent = "Study Mode";
   showHiddenWordText("");
@@ -1212,7 +1213,6 @@ function endStudySession() {
   if (meta) meta.textContent = "";
   renderStudyQueue(false);
   renderSetProgress();
-  renderTodayCta();
   renderLearnedCard();
   renderHasumiHome();
 
