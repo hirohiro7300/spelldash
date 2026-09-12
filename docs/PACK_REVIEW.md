@@ -272,3 +272,10 @@ pos・綴り・id・ジャンルは全数確認で誤りなし。7本をまた�
 | パック | 修正 | 主な修正内容 | 要確認 |
 |---|---|---|---|
 | writing-interview | 14 | 別解の網羅（five years of sales experience／I am open to discussing…／I could start next month など）、指定語のヒントで別解が広すぎる q を絞る（experience を使って、describe を使って）、「失ったところでした」と we lost の時制のずれを解消 | wi-close-salary（My expected salary の方が自然か）、wi-strength-colleagues（would describe） |
+
+### 高校英作文（構文）・英検ライティング 定型表現（2本・150文）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| writing-hs | 13 | 仮定法の時制・分詞構文の主語・倒置の語順・no more than／not so much は正しいことを確認。Without／動名詞のヒント追加で別解の広がりを抑制、短縮形の組み合わせ（I'd／would've）を網羅、whom のヒントに反する別解を差し替え | wh-subj-if-rich／wh-subj-wish-taller（If I was を別解に残した） |
+| writing-eiken | 8 | 「それが本当だ」→「これが本当だ」で that／it の揺れを解消、To conclude を追加、反論の型で But 始まりの別解を除去、Eメールの that なし形を追加 | we-opinion-strongly-believe（explain に級名） |
