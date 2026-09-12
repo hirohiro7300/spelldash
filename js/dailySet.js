@@ -1,4 +1,5 @@
 import { localDateString } from "./stats.js";
+import { bumpTotalSets } from "./unlocks.js";
 
 // ===== 今日のセット（Daily Set） =====
 //
@@ -55,6 +56,7 @@ export function markDailySetDone(count) {
   s.setsTodayDate = today;
   s.last = { date: today, count };
   saveState(s);
+  bumpTotalSets(); // 遊び方の解放（Daily・Battle）に使う累計
   return s;
 }
 

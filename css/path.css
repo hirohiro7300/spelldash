@@ -1,0 +1,392 @@
+/* ===== ホームの「道」（コース／セクション／ユニット） =====
+   1画面目は 見出しカード → 数字1行 → はちゃん → 道（スタート1個）。
+   ゲームカードは道でスタートしたときだけ出す（body.home--playing）。 */
+
+.path {
+  margin: 0 0 12px;
+}
+
+.path__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.28);
+}
+
+.path__head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.path__kicker {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.path__title {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.path__unit {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+.path__unit small {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.path__guide {
+  margin-left: auto;
+  flex: none;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.path__guide:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* 道本体: ジグザグに並ぶノード */
+.path__list {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 8px 0 0;
+  position: relative;
+}
+
+.path__list::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  transform: translateX(-50%);
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.path__node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 20px;
+  min-height: 60px;
+}
+
+.path__node--c { padding-left: calc(50% - 30px); }
+.path__node--r { padding-left: calc(50% + 24px); }
+.path__node--l { padding-left: calc(50% - 84px); }
+
+.path__dot {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 50%;
+  border: 4px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.9);
+  color: rgba(148, 163, 184, 0.7);
+  font-size: 20px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: default;
+}
+
+.path__node--done .path__dot {
+  background: #16a34a;
+  border-color: #15803d;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #14532d;
+}
+
+.path__node--done .path__dot:hover {
+  filter: brightness(1.08);
+}
+
+.path__dot--goal {
+  background: rgba(250, 204, 21, 0.12);
+  border-color: rgba(250, 204, 21, 0.4);
+  font-size: 24px;
+}
+
+.path__node--current {
+  margin: 26px 0 28px;
+}
+
+.path__start {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  flex: none;
+  padding: 0;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  border-radius: 50%;
+  border: 4px solid #1d4ed8;
+  background: #2563eb;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 0 #1e40af, 0 14px 30px rgba(37, 99, 235, 0.35);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.path__start:hover {
+  transform: translateY(-1px);
+}
+
+.path__start:active {
+  transform: translateY(6px);
+  box-shadow: 0 2px 0 #1e40af;
+}
+
+.path__start--next {
+  width: auto;
+  height: auto;
+  border-radius: 16px;
+  padding: 14px 18px;
+  background: #16a34a;
+  border-color: #15803d;
+  box-shadow: 0 6px 0 #14532d;
+}
+
+.path__tip {
+  position: absolute;
+  top: -34px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 9px;
+  border: 2px solid #3b82f6;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: path-bob 1.6s ease-in-out infinite;
+}
+
+@keyframes path-bob {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, -3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .path__tip { animation: none; }
+}
+
+.path__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.path__label b {
+  font-size: 14px;
+  color: #e2e8f0;
+}
+
+.path__node--current .path__label b {
+  color: #93c5fd;
+  font-size: 15px;
+}
+
+.path__node--locked .path__label b {
+  color: #cbd5e1;
+}
+
+.path__label a {
+  color: #93c5fd;
+}
+
+/* 節目（セクション制覇） */
+.path__node--goal {
+  margin-top: 8px;
+}
+
+.path__node--more .path__dot {
+  font-size: 16px;
+  letter-spacing: 2px;
+}
+
+/* ゲームカードは道でスタートしたときだけ。畳んでいる間も入力欄は存在させる（Enterで開始できる） */
+.app--home .play {
+  margin-top: 4px;
+}
+
+body.home--playing .path__list {
+  display: none; /* プレイ中は道を畳んで、見出しの下にゲームカードが来るように */
+}
+
+body.returning .app--home .hero {
+  display: none; /* 戻ってきた人にキャッチコピーは不要。道の見出しが1行目 */
+}
+
+body:not(.home--playing) .app--home .game-card,
+body:not(.home--playing) .app--home .stats--strip {
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.back-to-path {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.5);
+  color: #cbd5e1;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.back-to-path:hover {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+/* ほかの遊び方（解放式） */
+.play-modes {
+  margin: 14px 0 10px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.play-modes__title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.play-modes__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.play-modes__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px dashed rgba(148, 163, 184, 0.22);
+}
+
+.play-modes__row:first-child {
+  border-top: 0;
+}
+
+.play-modes__icon {
+  width: 28px;
+  text-align: center;
+  font-size: 18px;
+  flex: none;
+}
+
+.play-modes__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.play-modes__text b {
+  font-size: 14px;
+  color: #e2e8f0;
+}
+
+.play-modes__row--locked .play-modes__text b {
+  color: #94a3b8;
+}
+
+.play-modes__go {
+  flex: none;
+  border: none;
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.play-modes__go:hover {
+  background: #1d4ed8;
+}
+
+.play-modes__go--ghost {
+  background: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+}
+
+.play-modes__lock {
+  flex: none;
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+/* ---- ライトテーマ ---- */
+html[data-theme="light"] .path__list::before { background: #dbe2ea; }
+html[data-theme="light"] .path__dot { background: #e2e8f0; border-color: #cbd5e1; color: #94a3b8; }
+html[data-theme="light"] .path__node--done .path__dot { background: #16a34a; border-color: #15803d; color: #fff; }
+html[data-theme="light"] .path__dot--goal { background: #fef9c3; border-color: #fde047; }
+html[data-theme="light"] .path__tip { background: #fff; color: #1d4ed8; }
+html[data-theme="light"] .path__label { color: #64748b; }
+html[data-theme="light"] .path__label b { color: #0f172a; }
+html[data-theme="light"] .path__node--current .path__label b { color: #1d4ed8; }
+html[data-theme="light"] .path__node--locked .path__label b { color: #475569; }
+html[data-theme="light"] .path__label a { color: #1d4ed8; }
+html[data-theme="light"] .back-to-path { background: #fff; border-color: #cbd5e1; color: #334155; }
+html[data-theme="light"] .play-modes { background: #fff; border-color: #e2e8f0; }
+html[data-theme="light"] .play-modes__title { color: #64748b; }
+html[data-theme="light"] .play-modes__row { border-color: #e2e8f0; }
+html[data-theme="light"] .play-modes__text { color: #64748b; }
+html[data-theme="light"] .play-modes__text b { color: #0f172a; }
+html[data-theme="light"] .play-modes__row--locked .play-modes__text b { color: #64748b; }
+html[data-theme="light"] .play-modes__go--ghost { background: #e2e8f0; color: #0f172a; }
+html[data-theme="light"] .play-modes__lock { color: #64748b; }
+
+/* PC: 道は中央 560px、見出しは横長 */
+@media (min-width: 900px) {
+  .path__list { max-width: 560px; margin-left: auto; margin-right: auto; }
+}

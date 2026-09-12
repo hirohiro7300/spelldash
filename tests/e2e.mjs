@@ -304,7 +304,7 @@ console.log("challenge result:");
   const page = await newPage();
   await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
-  await page.click('.mode-switch__btn[data-mode="challenge"]');
+  await page.click('#playModes [data-mode="challenge"]');
   await page.waitForTimeout(3800);
   check("リザルトパネル表示", await page.isVisible("#resultPanel"));
   check("リザルトにはちゃんの一言", await page.isVisible("#resultPanel .hasumi__bubble"));
@@ -324,20 +324,23 @@ console.log("mobile flow:");
   await page.waitForTimeout(900);
   const headerHeight = await page.evaluate(() => document.querySelector(".site-header").offsetHeight);
   check("モバイルヘッダーが1行（<70px）", headerHeight < 70, `height=${headerHeight}`);
-  await page.click('.mode-switch__btn[data-mode="challenge"]');
+  await page.click('#playModes [data-mode="challenge"]');
   await page.waitForTimeout(800);
   const cardTop = await page.evaluate(() => document.getElementById("gameCard").getBoundingClientRect().top);
   check("モード選択後ゲームカードが画面上部へ", cardTop >= 0 && cardTop < 300, `top=${cardTop}`);
-  // フォーカスモード: プレイ中はヒーロー・モードタイルが畳まれる
+  // フォーカスモード: プレイ中はヒーローと道が畳まれる
   check("プレイ中はヒーロー非表示", !(await page.isVisible(".hero")));
-  check("プレイ中はモードタイル非表示", !(await page.isVisible("#modeSwitch")));
+  check("プレイ中は道（ユニット一覧）非表示", !(await page.isVisible("#pathList .path__list")));
   await page.waitForTimeout(3200);
-  check("終了後モードタイル復帰", await page.isVisible("#modeSwitch"));
+  check("終了後は「道に戻る」が見える", await page.isVisible("#backToPath"));
   const panelVisible = await page.evaluate(() => {
     const r = document.getElementById("resultPanel").getBoundingClientRect();
     return r.top < window.innerHeight && r.bottom > 0;
   });
   check("完走時リザルトパネルが画面内", panelVisible);
+  await page.click("#backToPath");
+  await page.waitForTimeout(300);
+  check("道に戻るとユニット一覧が復帰", await page.isVisible("#pathList .path__list"));
   check("モバイルフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
@@ -431,8 +434,8 @@ console.log("daily set:");
   const page = await newPage();
   await page.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
-  check("ホームに今日のセットCTA", (await page.textContent("#todayCta")).includes("今日のセット"));
-  await page.click("#todayCtaButton");
+  check("ホームの道にスタート1個（初回は腕試しの案内）", (await page.$$("#pathStart")).length === 1 && (await page.textContent("#pathCard")).includes("腕試し"));
+  await page.click("#pathStart");
   await page.waitForTimeout(500);
   const ja0 = (await page.textContent("#japanese")).trim();
   check("CTAでStudyが始まる", ja0 !== "Study Mode" && ja0.length > 0, `ja=${ja0}`);
@@ -462,7 +465,7 @@ console.log("daily set:");
   const panelText = await page.$eval("#resultPanel", (el) => (el.hidden ? "" : el.textContent));
   check("2語自力正解でセット完了パネル", panelText.includes("今日のセット完了"), panelText.slice(0, 60));
   check("完了パネルに明日の復習予定", panelText.includes("明日の復習予定"));
-  check("CTAが完了表示に切替", (await page.textContent("#todayCta")).includes("完了"));
+  check("道のスタートが完了表示に切替", (await page.textContent("#pathCard")).includes("今日のぶんは完了"));
   check("今週ドットに今日が点灯", (await page.$$eval("#learnedCard .learned-card__week i.on", (els) => els.length)) >= 1);
   check("今日のセットフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   // 設定の永続化
@@ -712,7 +715,7 @@ console.log("first run & retention:");
   check("腕試し開始が記録される", (await page.evaluate(() => localStorage.getItem("spelldash_placement"))) === "started");
   const known = new Map();
   let placement = null;
-  for (let i = 0; i < 40 && !placement; i++) {
+  for (let i = 0; i < 90 && !placement; i++) { // 再出題の間隔がランダムなので余裕を持つ
     const ja = (await page.textContent("#japanese")).trim();
     const hidden = !/^[a-z]+$/.test((await page.textContent("#word")).trim());
     if (known.has(ja) && hidden) {
@@ -735,7 +738,8 @@ console.log("first run & retention:");
   check("10語で腕試しが確定（知ってた0）", placement && placement.total === 10 && placement.known === 0 && placement.boost === 0, JSON.stringify(placement));
   const seenLevels = await page.evaluate(async (ids) => {
     const m = await import("/js/wordStore.js");
-    return ids.map((en) => m.getAllWords().find((w) => w.en === en)?.level);
+    const pool = m.getWordsByCategory(localStorage.getItem("spelldash_category") || "all"); // 同じ綴りが他カテゴリにもあるので、出題中のカテゴリで引く
+    return ids.map((en) => pool.find((w) => w.en === en)?.level);
   }, [...known.values()]);
   check("腕試しに普通・難しい語が混ざる", seenLevels.includes("normal") && seenLevels.includes("hard"), seenLevels.join(","));
   await waitUntil(async () => (await page.textContent("#message")).includes("腕試し:"), 2500);
@@ -1217,7 +1221,8 @@ console.log("my concept & retention:");
   const page5 = await newPage({ keepOnboarding: true });
   await page5.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page5.waitForTimeout(800);
-  check("初回カードは腕試しの案内", (await page5.textContent("#onboardingCard")).includes("腕試し"));
+  check("初回は道のスタートに腕試しの案内・既定コースは中学英語やり直し", (await page5.textContent("#pathCard")).includes("腕試し") && (await page5.textContent("#pathCard")).includes("中学英語やり直し") && (await page5.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhs-english1");
+  check("初回は Daily・Battle が未解放、Challenge は解放", (await page5.$$("#playModes .play-modes__row--locked")).length === 2 && (await page5.$('#playModes [data-mode="challenge"]')) !== null);
   await page5.close();
 }
 
@@ -1275,7 +1280,7 @@ console.log("tabs & filters:");
   const page3 = await newPage({ storage: { spelldash_category: "listing", spelldash_genre: "bidding" } });
   await page3.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page3.waitForTimeout(800);
-  check("CTAにジャンル名（入札・配信）", (await page3.textContent("#todayCta")).includes("入札・配信"));
+  check("出題の要約にジャンル名（入札・配信）", (await page3.textContent("#setupSummary")).includes("入札・配信"));
   await page3.close();
 }
 
@@ -1439,7 +1444,7 @@ console.log("card generation:");
   await page2.close();
 
   // 単語詳細: 保存済みの覚え方はボタンではなく本文が出る
-  const page3 = await newPage({ storage: { spelldash_word_ai: aiRaw } });
+  const page3 = await newPage({ storage: { spelldash_word_ai: aiRaw, spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1" } }); // 既定コースの語なのでパックを読み込む
   await page3.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page3.waitForTimeout(900);
   await page3.evaluate((id) => {
@@ -1634,6 +1639,33 @@ console.log("domain packs:");
   await page9d.waitForTimeout(300);
   check("並べ替えカード: ラベルと語バンク（🔀）", (await page9d.textContent("#gameCard .label")).startsWith("語を並べ替えて英文を打つ") && (await page9d.textContent("#word")).includes("🔀"), await page9d.textContent("#word"));
   await page9d.close();
+
+  // 道: 済みユニットは✓、現在地にスタート、セクション制覇で「次のセクションへ」→ 次のパックが追加されて道が切り替わる
+  const jhs1 = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
+  const allKnown = Object.fromEntries(jhs1.map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]));
+  const page9e = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(allKnown), spelldash_placement: "done" } });
+  await page9e.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page9e.waitForTimeout(900);
+  check("道: 全ユニット済みで「次のセクションへ」", (await page9e.$("#pathNext")) !== null && (await page9e.textContent("#pathHead")).includes("制覇") && (await page9e.$$(".path__node--done")).length === 11);
+  await page9e.click("#pathNext");
+  await page9e.waitForTimeout(1200);
+  const advanced = await page9e.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]") }));
+  check("道: 次のセクション（中学英語2年）が追加されてカテゴリになる", advanced.cat === "jhs-english2" && advanced.packs.includes("jhs-english2"), JSON.stringify(advanced));
+  check("道: 見出しがセクション2／8に", (await page9e.textContent("#pathHead")).includes("セクション 2／8") && (await page9e.$("#pathStart")) !== null);
+  // 済みユニットのタップで復習が始まる（その道の語だけ）
+  const page9f = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(Object.fromEntries(jhs1.filter((w) => w.tags[0] === jhs1[0].tags[0]).map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]))), spelldash_placement: "done" } });
+  await page9f.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await page9f.waitForTimeout(900);
+  check("道: 1ユニット済み・2つ目が現在地", (await page9f.$$(".path__node--done")).length === 1 && (await page9f.textContent("#pathHead")).includes("ユニット 2／11"));
+  await page9f.click("#pathStart");
+  await page9f.waitForTimeout(600);
+  const focusTag = jhs1.find((w) => w.tags[0] !== jhs1[0].tags[0]).tags[0];
+  const ja1 = (await page9f.textContent("#japanese")).trim();
+  const inUnit = jhs1.some((w) => (w.ja === ja1 || w.ja.split("・").includes(ja1)) && w.tags[0] === focusTag); // 訳が「授業・クラス」なら片方だけ出ることがある
+  check("道: スタートで現在ユニットの語から出題、ゲームカードが出る", inUnit && (await page9f.isVisible("#backToPath")) && !(await page9f.isVisible("#pathList .path__list")), `ja=${ja1}`);
+  check("道のフローでエラー0", page9e.errors.length === 0 && page9f.errors.length === 0, page9e.errors[0] ?? page9f.errors[0] ?? "");
+  await page9e.close();
+  await page9f.close();
   const page10 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]) } });
   await page10.goto(BASE + "/list.html?category=pref", { waitUntil: "networkidle" });
   await page10.waitForTimeout(900);

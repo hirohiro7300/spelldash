@@ -240,13 +240,23 @@ function isNew(stat) {
 
 // ===== 通常補充（Mix Controlの比率はここだけに効く） =====
 
+// 道の「いまのユニット」: 新しく出す語はこのジャンルに絞る（復習は今までどおりカテゴリ全体から）
+let focusTag = "";
+export function setFocusGenre(tag) {
+  focusTag = tag || "";
+}
+export function getFocusGenre() {
+  return focusTag;
+}
+
 function pickFillers(count, excludeSet) {
   if (restricted) return []; // 回収モードは指定語だけ
   const stats = getWordStats();
   const ratio = getFamiliarRatio();
   const mission = getTodayMission();
 
-  const usable = categoryWordsDeduped().filter((word) => {
+  const pool = focusTag ? categoryWordsDeduped().filter((w) => (w.tags ?? []).includes(focusTag)) : categoryWordsDeduped();
+  const usable = (pool.length > 0 ? pool : categoryWordsDeduped()).filter((word) => {
     if (excludeSet.has(word.id)) return false;
     if (recalledThisSession.has(word.id)) return false;
     return !isDoneForToday(stats[word.id]);

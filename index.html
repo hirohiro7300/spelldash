@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="./css/reset.css" />
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
+  <link rel="stylesheet" href="./css/path.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
   <link rel="stylesheet" href="./css/theme.css" />
   <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
@@ -124,26 +125,18 @@
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
-    <section class="onboarding" id="onboardingCard"></section>
-
-    <!-- 今日: はちゃんの一言・今日のセット・数字1行・覚えた語。ホームで見せる情報はここだけ -->
-    <section class="today" id="todayCard" aria-label="今日">
-      <div id="hasumiHome" aria-label="はちゃんからの一言"></div>
-      <section class="today-cta" id="todayCta" aria-label="今日のセット"></section>
+    <!-- 道: いまのコース／セクション／ユニットと、スタート1個。ホームの1画面目はこれだけ -->
+    <section class="path" id="pathCard" aria-label="いまの道">
+      <div id="pathHead"></div>
       <div class="today__strip" id="todayStrip" aria-label="連続日数・レベル・週の目標"></div>
-      <section class="learned-card" id="learnedCard" aria-label="覚えた単語"></section>
-      <div class="login-nudge" id="loginNudge"></div>
+      <div id="hasumiHome" aria-label="はちゃんからの一言"></div>
+      <div id="pathList"></div>
     </section>
 
-    <!-- プレイ: モード切替と出題設定（折りたたみ）→ ゲームカード → セッションの数字1行 -->
+    <!-- プレイ: ゲームカードは道でスタートしたときだけ出る。出題設定は折りたたみ -->
     <section class="play" aria-label="プレイ">
       <div class="play__bar">
-        <div class="mode-switch mode-switch--seg" id="modeSwitch" aria-label="モード選択">
-          <button type="button" class="mode-switch__btn" data-mode="study">📚 Study<span>じっくり覚える</span></button>
-          <button type="button" class="mode-switch__btn" data-mode="challenge">⏱ Challenge<span>60秒</span></button>
-          <button type="button" class="mode-switch__btn" id="modeDailyTile">⚡ Daily<span id="modeDailyDesc">1日1回・全員同じ問題</span></button>
-          <a class="mode-switch__btn mode-switch__btn--link" href="./battle.html">⚔️ Battle<span>CPUと対戦</span></a>
-        </div>
+        <button type="button" class="back-to-path" id="backToPath" hidden>← 道に戻る</button>
         <button type="button" class="setup-toggle" id="setupToggle" aria-expanded="false" aria-controls="setupPanel">
           <span class="setup-toggle__label">出題</span>
           <span class="setup-toggle__summary" id="setupSummary">すべて</span>
@@ -153,7 +146,7 @@
 
       <div class="setup" id="setupPanel" hidden>
         <div class="setup__row">
-          <span class="setup__label">カテゴリ</span>
+          <span class="setup__label">コース・カテゴリ</span>
           <section class="category-picker" id="categoryPicker" aria-label="出題カテゴリ"></section>
           <div class="genre-bar" id="genreBar"></div>
         </div>
@@ -257,10 +250,15 @@
       </section>
     </section>
 
-    <!-- 詳細: ミッション・Daily Dashの結果とランキング・週間レポート。普段は畳んでおく -->
+    <!-- ほかの遊び方（解放式）とログインの案内 -->
+    <section class="play-modes" id="playModes" aria-label="ほかの遊び方"></section>
+    <div class="login-nudge" id="loginNudge"></div>
+
+    <!-- 詳細: 覚えた単語・ミッション・Daily Dashの結果とランキング・週間レポート。普段は畳んでおく -->
     <details class="home-more" id="homeMore">
-      <summary><span>今日のミッション ・ Daily Dash ・ 週間レポート</span><span class="home-more__badge" id="homeMoreBadge"></span></summary>
+      <summary><span>覚えた単語 ・ 今日のミッション ・ Daily Dash ・ 週間レポート</span><span class="home-more__badge" id="homeMoreBadge"></span></summary>
       <div class="home-more__body">
+        <section class="learned-card" id="learnedCard" aria-label="覚えた単語"></section>
         <section class="mission" id="missionCard"></section>
         <section class="daily" id="dailyCard" aria-label="デイリーチャレンジ"></section>
         <section class="weekly weekly--home" id="weeklyHome" aria-label="週間レポート" hidden></section>
