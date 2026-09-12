@@ -108,7 +108,7 @@
 
 - フロー: devブランチ（claude/spelldash-dev-strategy-wzjixj）→ PR → mainマージ → Vercel自動デプロイ（1マージ=1デプロイ、バッチマージ運用）
 - ⚠️ **Vercelに2プロジェクト接続中**（spelldash / spelldash-jzf8）— デプロイ枠を2倍消費。07-15にHobby枠の日次上限に到達した主因。**片方の削除を推奨（未対応）**
-- ⚠️ **09-11 再発**: 開発ブランチへの push 13回×2プロジェクトで Hobby の日次デプロイ上限に到達（09:36 UTC）。PR #70 の main へのマージが「Deployment rate limited — retry in 24 hours」で本番に反映されていない（本番は PR #69 時点）。対策: vercel.json の `git.deploymentEnabled` で開発ブランチのプレビューを無効化（PR #71）。**解除後に main へ1コミット入れるか、Vercel ダッシュボードで Redeploy が必要**（こちらで解除後に確認して main を更新する）
+- ⚠️ **09-11 再発**: 開発ブランチへの push 13回×2プロジェクトで Hobby の日次デプロイ上限に到達（09:36 UTC）。PR #70 の main へのマージが「Deployment rate limited — retry in 24 hours」で本番に反映されていない（本番は PR #69 時点）。対策: vercel.json の `git.deploymentEnabled` で開発ブランチのプレビューを無効化（PR #71）。→ **09-11 中に解消**: PR #72 のマージ（10:xx UTC 以降）で両プロジェクトとも success、本番は最新（99パック）に追いついた。以後、開発ブランチは Vercel を消費しない
 - 教訓（07-17障害）: GitHub障害時はVercelへのwebhookが遅延し「マージしたのに反映されない」が起きる。マージ後はVercelステータスsuccessまで確認するルーチンに変更済み
 - 既知の無害な警告: コミットがGitHub上「Unverified」表示（この環境でGPG署名不可のため。author情報は正しい）
 
