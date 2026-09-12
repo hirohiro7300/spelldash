@@ -1605,6 +1605,8 @@ console.log("domain packs:");
   check("英作文カード: ラベルが「日本語を英文にして打つ（項目）」", wLabel.startsWith("日本語を英文にして打つ（"), wLabel);
   check("英作文カード: 入力欄は英文入力", (await page9c.getAttribute("#input", "placeholder")) === "英文を入力してEnter");
   const wPrompt = (await page9c.textContent("#japanese")).trim();
+  await page9c.press("#input", "Enter"); // 答え表示
+  await page9c.waitForTimeout(200);
   const wAnswer = (await page9c.textContent("#word")).trim();
   check("英作文カード: 日本語文が出て、答えは英文", /[ぁ-ん一-龯]/.test(wPrompt) && /^[A-Za-z].+\s.+/.test(wAnswer), `q=${wPrompt.slice(0, 30)} a=${wAnswer}`);
   await page9c.fill("#input", wAnswer.toLowerCase().replace(/[.?!]/g, ""));
