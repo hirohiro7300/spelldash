@@ -25,7 +25,8 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
-import { renderPath } from "./pathView.js";
+import { renderPath, currentUnitOf } from "./pathView.js";
+import { renderWelcome } from "./welcome.js";
 import { renderPlayModes } from "./playModes.js";
 import { ensureDefaultCourse, advanceSection } from "./course.js";
 import { setFocusGenre } from "./studyQueue.js";
@@ -153,9 +154,10 @@ function goNextSection() {
 }
 
 function renderHome() {
-  renderPath({ onStart: startUnit, onAdvance: goNextSection });
+  const path = renderPath({ onStart: startUnit, onAdvance: goNextSection });
   renderPlayModes({ onChallenge: startChallenge, onDaily: startDaily });
   renderSetupSummary();
+  return path;
 }
 
 document.getElementById("backToPath")?.addEventListener("click", () => {
@@ -249,7 +251,9 @@ initWordStore()
   .then(() => {
     initializeCategoryPicker();
     renderLearnedCard();
-    renderHome();
+    const path = renderHome();
+    // 初めての人にはトップページ。「無料で始める」でそのまま腕試し（道の最初のユニット）へ
+    renderWelcome({ onStart: () => startUnit(path ? currentUnitOf(path) : null) });
     renderLoginNudge();
     setSetupOpen(localStorage.getItem(SETUP_OPEN_KEY) === "1");
     // 週間レポート: 日曜・月曜だけホームに（それ以外は学習データで見られる）
