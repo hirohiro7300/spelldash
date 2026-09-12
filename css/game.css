@@ -1370,6 +1370,24 @@ body.mode-study .weak-toggle {
   text-shadow: 0 0 12px currentColor;
 }
 
+/* 英文（英作文）: 単語ごとに折り返し、少し小さく */
+.hidden-word--long {
+  font-size: 19px;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+}
+
+.hidden-word .cw {
+  display: inline-block;
+  white-space: nowrap;
+  margin: 0 0.18em 0 0;
+}
+
+.hidden-word .cw span {
+  display: inline;
+  margin: 0 0.5px;
+}
+
 .input-wrapper {
   position: relative;
   width: min(620px, 100%);

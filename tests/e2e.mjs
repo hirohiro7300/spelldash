@@ -1594,6 +1594,44 @@ console.log("domain packs:");
   });
   check("kanjiOnly カード: 同音異義語10枚に読みの別解がない", kanjiOnly.n === 10 && kanjiOnly.leak === 0, JSON.stringify(kanjiOnly));
   await page9b.close();
+
+  // 英作文パック: 日本語文を見て英文を丸ごと打つ。語順が違うと何語目かを指摘。並べ替えは語をシャッフルして見せる
+  const page9c = await newPage({ storage: { spelldash_packs: JSON.stringify(["writing-jhs"]), spelldash_category: "writing-jhs", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await page9c.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page9c.waitForTimeout(900);
+  await page9c.press("#input", "Enter");
+  await page9c.waitForTimeout(300);
+  const wLabel = await page9c.textContent("#gameCard .label");
+  check("英作文カード: ラベルが「日本語を英文にして打つ（項目）」", wLabel.startsWith("日本語を英文にして打つ（"), wLabel);
+  check("英作文カード: 入力欄は英文入力", (await page9c.getAttribute("#input", "placeholder")) === "英文を入力してEnter");
+  const wPrompt = (await page9c.textContent("#japanese")).trim();
+  const wAnswer = (await page9c.textContent("#word")).trim();
+  check("英作文カード: 日本語文が出て、答えは英文", /[ぁ-ん一-龯]/.test(wPrompt) && /^[A-Za-z].+\s.+/.test(wAnswer), `q=${wPrompt.slice(0, 30)} a=${wAnswer}`);
+  await page9c.fill("#input", wAnswer.toLowerCase().replace(/[.?!]/g, ""));
+  await page9c.press("#input", "Enter");
+  await waitUntil(async () => (await page9c.textContent("#score")).trim() === "1", 2000);
+  check("英作文カード: 大文字・句読点なしでも英文が合えば正解", (await page9c.textContent("#score")).trim() === "1");
+  await page9c.press("#input", "Enter"); // 次へ
+  await page9c.waitForTimeout(400);
+  const wAnswer2 = await page9c.evaluate(async () => {
+    const s = await import("/js/wordStore.js");
+    const q = document.querySelector("#japanese").textContent.trim();
+    return s.getWordsByCategory("writing-jhs").find((w) => w.q === q)?.en ?? "";
+  });
+  const scrambled = wAnswer2.replace(/[.?!]/g, "").split(" ").reverse().join(" ");
+  await page9c.fill("#input", scrambled);
+  await page9c.press("#input", "Enter");
+  await page9c.waitForTimeout(300);
+  check("英作文カード: 語順が違うと何語目が違うかを指摘", (await page9c.textContent("#message")).includes("語目"), (await page9c.textContent("#message")).slice(0, 60));
+  check("英作文カードでエラー0", page9c.errors.length === 0, page9c.errors[0] ?? "");
+  await page9c.close();
+  const page9d = await newPage({ storage: { spelldash_packs: JSON.stringify(["writing-jhs-order"]), spelldash_category: "writing-jhs-order", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await page9d.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page9d.waitForTimeout(900);
+  await page9d.press("#input", "Enter");
+  await page9d.waitForTimeout(300);
+  check("並べ替えカード: ラベルと語バンク（🔀）", (await page9d.textContent("#gameCard .label")).startsWith("語を並べ替えて英文を打つ") && (await page9d.textContent("#word")).includes("🔀"), await page9d.textContent("#word"));
+  await page9d.close();
   const page10 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]) } });
   await page10.goto(BASE + "/list.html?category=pref", { waitUntil: "networkidle" });
   await page10.waitForTimeout(900);
