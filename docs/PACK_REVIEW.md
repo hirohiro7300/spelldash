@@ -279,3 +279,15 @@ pos・綴り・id・ジャンルは全数確認で誤りなし。7本をまた�
 |---|---|---|---|
 | writing-hs | 13 | 仮定法の時制・分詞構文の主語・倒置の語順・no more than／not so much は正しいことを確認。Without／動名詞のヒント追加で別解の広がりを抑制、短縮形の組み合わせ（I'd／would've）を網羅、whom のヒントに反する別解を差し替え | wh-subj-if-rich／wh-subj-wish-taller（If I was を別解に残した） |
 | writing-eiken | 8 | 「それが本当だ」→「これが本当だ」で that／it の揺れを解消、To conclude を追加、反論の型で But 始まりの別解を除去、Eメールの that なし形を追加 | we-opinion-strongly-believe（explain に級名） |
+
+### 中学英語 並べ替え・中学英作文（2本・200文）
+
+| パック | 修正 | 主な修正内容 | 要確認 |
+|---|---|---|---|
+| writing-jhs-order | 9 | 同じ語で別の語順も自然だった文（If it rains tomorrow…）を tomorrow 抜きに、頻度副詞の文頭・文末、yet の位置、時と同伴者の順など「第2の自然な語順」を accept に追加 | wo-adverb-often-soccer（Often we play… は やや特殊） |
+| writing-jhs | 11 | 「晴れ」の sunny／fine の揺れをヒントで固定、things to do のヒントを絞る、brothers and sisters／absent from school／near my home／was not able to などの自然な別解を追加。短縮形は全数確認 | wj-subjunctive-wish-had-brother（brothers も想定）、wj-infinitive-happy-to-see（meet を不正解にしている） |
+
+### まとめ（第6回）
+
+- 5本・420文を全数レビュー。修正 55文（面接14・高校13・英検8・並べ替え9・中学英作文11）。英文の誤りはほぼ無く、大半は「学習者が打ちそうな自然な別解が accept に無い」「q の日本語が複数の英文を許す」の2種。
+- 英作文パックは別解の網羅が命なので、次回の執筆ブリーフに「1文につき、中学生・高校生が打ちそうな英文を3つ書き出してから accept を決める」を入れる。
