@@ -1,3 +1,4 @@
+import { apiUrl } from "./appEnv.js";
 import { supabase } from "./supabase.js";
 
 // ===== ✨ 覚え方を作る（AI） =====
@@ -43,7 +44,7 @@ export async function requestWordAi(word) {
   const payload = { en: word.answer ?? word.en, ja: word.ja, q: word.q || "", explain: word.explain || "" };
   let response;
   try {
-    response = await fetch("/api/explain-word", { method: "POST", headers, body: JSON.stringify({ word: payload }) });
+    response = await fetch(apiUrl("/api/explain-word"), { method: "POST", headers, body: JSON.stringify({ word: payload }) });
   } catch {
     return { ok: false, message: "通信できませんでした。" };
   }

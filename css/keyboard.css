@@ -1,0 +1,126 @@
+/* ===== 専用キーボード（A〜Z＋⌫） =====
+   スマホでプレイ中だけ画面下に固定。OS キーボードの代わりなので、押しやすさ最優先。 */
+
+.osk {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(15, 23, 42, 0.96);
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.osk[hidden] {
+  display: none !important;
+}
+
+/* 盤面が出ている間はコンテンツの下に余白（入力欄が隠れない） */
+body.osk-open {
+  padding-bottom: 236px;
+}
+
+.osk__rows {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.osk__row {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+
+.osk__row--1 {
+  padding: 0 5%;
+}
+
+.osk__key {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 46px;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 8px;
+  background: #334155;
+  color: #f8fafc;
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: lowercase;
+  box-shadow: 0 2px 0 #0f172a;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: transform 0.05s ease, background 0.05s ease;
+}
+
+.osk__key--down,
+.osk__key:active {
+  transform: translateY(2px);
+  box-shadow: none;
+  background: #3b82f6;
+}
+
+.osk__key--bs {
+  flex: 1.5 1 0;
+  background: #1e293b;
+  font-size: 18px;
+}
+
+.osk__row--3 .osk__key {
+  height: 42px;
+  font-size: 15px;
+}
+
+.osk__key--space {
+  flex: 2 1 0;
+  background: #1e293b;
+}
+
+.osk__key--enter {
+  flex: 1.6 1 0;
+  background: #2563eb;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.osk__key--enter small {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
+/* PC で「常にオン」にした場合は少しコンパクトに */
+@media (min-width: 900px) {
+  .osk__key {
+    height: 40px;
+    font-size: 17px;
+  }
+  body.osk-open {
+    padding-bottom: 210px;
+  }
+}
+
+/* ---- ライトテーマ ---- */
+html[data-theme="light"] .osk { background: rgba(226, 232, 240, 0.97); border-top-color: #cbd5e1; }
+html[data-theme="light"] .osk__key { background: #ffffff; color: #0f172a; box-shadow: 0 2px 0 #94a3b8; }
+html[data-theme="light"] .osk__key--down,
+html[data-theme="light"] .osk__key:active { background: #bfdbfe; }
+html[data-theme="light"] .osk__key--bs,
+html[data-theme="light"] .osk__key--space { background: #cbd5e1; }
+html[data-theme="light"] .osk__key--enter { background: #2563eb; color: #fff; box-shadow: 0 2px 0 #1e40af; }

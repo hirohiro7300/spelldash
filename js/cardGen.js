@@ -1,3 +1,4 @@
+import { apiUrl } from "./appEnv.js";
 import { supabase } from "./supabase.js";
 import { addMyConcept, validateConcept, getMyWords } from "./myWords.js";
 
@@ -18,7 +19,7 @@ export async function requestCards(text) {
 
   let response;
   try {
-    response = await fetch("/api/generate-cards", { method: "POST", headers, body: JSON.stringify({ text }) });
+    response = await fetch(apiUrl("/api/generate-cards"), { method: "POST", headers, body: JSON.stringify({ text }) });
   } catch {
     return { ok: false, error: "network", message: "通信できませんでした。接続を確認してください。" };
   }

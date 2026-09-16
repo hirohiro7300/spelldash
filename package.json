@@ -3,12 +3,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/e2e.mjs"
+    "test": "node tests/e2e.mjs",
+    "app:build": "node scripts/build-app.mjs",
+    "app:sync": "node scripts/build-app.mjs && npx cap sync",
+    "app:ios": "node scripts/build-app.mjs && npx cap sync ios && npx cap open ios",
+    "app:android": "node scripts/build-app.mjs && npx cap sync android && npx cap open android"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "playwright-core": "^1.49.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.124.0"
+    "@anthropic-ai/sdk": "^0.124.0",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3"
   }
 }
