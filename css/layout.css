@@ -382,3 +382,18 @@ h1 {
   color: #64748b;
   font-size: 13px;
 }
+
+/* ===== ネイティブアプリ（Capacitor）／ホーム画面に追加: セーフエリア ===== */
+html.native-app .site-header {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+html.native-app body {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (display-mode: standalone) {
+  .site-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}

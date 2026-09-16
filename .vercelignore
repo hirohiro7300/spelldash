@@ -1,0 +1,7 @@
+ios/
+android/
+dist/
+node_modules/
+tests/
+scripts/
+docs/

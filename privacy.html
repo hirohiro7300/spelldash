@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>プライバシーポリシー | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
@@ -130,7 +130,7 @@
     setFooterYear();
   </script>
   <script>
-    if ("serviceWorker" in navigator) {
+    if ("serviceWorker" in navigator && !window.Capacitor) {
       navigator.serviceWorker.register("/sw.js");
     }
   </script>

@@ -123,7 +123,10 @@ async function waitUntil(fn, timeout = 2000, step = 50) {
 const browser = await chromium.launch({ executablePath: findChromium(), args: ["--no-sandbox"] });
 
 async function newPage(init = {}) {
-  const page = await browser.newPage(init.viewport ? { viewport: init.viewport } : {});
+  const opts = {};
+  if (init.viewport) opts.viewport = init.viewport;
+  if (init.mobile) Object.assign(opts, { isMobile: true, hasTouch: true }); // pointer: coarse になり、画面キーボードが出る
+  const page = await browser.newPage(opts);
   page.errors = [];
   page.on("pageerror", (e) => page.errors.push(e.message));
   await page.addInitScript((seed) => {
@@ -1658,6 +1661,41 @@ console.log("domain packs:");
   await page9d.waitForTimeout(300);
   check("並べ替えカード: ラベルと語バンク（🔀）", (await page9d.textContent("#gameCard .label")).startsWith("語を並べ替えて英文を打つ") && (await page9d.textContent("#word")).includes("🔀"), await page9d.textContent("#word"));
   await page9d.close();
+
+  // 専用キーボード（A〜Z＋⌫）: タッチ端末ではプレイ中に画面下へ出て、OS キーボードは出さない（inputmode=none）
+  const jhs1k = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
+  const pageK = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 1 } }) } });
+  await pageK.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await pageK.waitForTimeout(900);
+  check("画面キーボード: プレイ前は出ない", !(await pageK.isVisible("#osk")));
+  await pageK.tap("#pathStart");
+  await pageK.waitForTimeout(700);
+  check("画面キーボード: スマホでプレイ中に出て、OS キーボードは抑止", (await pageK.isVisible("#osk")) && (await pageK.getAttribute("#input", "inputmode")) === "none" && (await pageK.$$("#osk [data-key]")).length === 26);
+  const jaK = (await pageK.textContent("#japanese")).trim();
+  const wordK = jhs1k.find((w) => w.ja === jaK || w.ja.split("・").includes(jaK));
+  for (const ch of wordK.en) await pageK.tap(`#osk [data-key="${ch}"]`);
+  await waitUntil(async () => (await pageK.textContent("#score")).trim() === "1", 2000);
+  check("画面キーボード: キーをタップして正解になる", (await pageK.textContent("#score")).trim() === "1", `word=${wordK.en}`);
+  await pageK.waitForTimeout(1500);
+  await pageK.tap('#osk [data-action="enter"]');
+  await pageK.waitForTimeout(300);
+  check("画面キーボード: Enter キーで答え表示", /^[a-z]+$/.test((await pageK.textContent("#word")).trim()));
+  check("画面キーボードでエラー0", pageK.errors.length === 0, pageK.errors[0] ?? "");
+  await pageK.close();
+  const pageD = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" } });
+  await pageD.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await pageD.waitForTimeout(700);
+  await pageD.click("#pathStart");
+  await pageD.waitForTimeout(500);
+  check("画面キーボード: PC（自動）では出ない", !(await pageD.isVisible("#osk")) && (await pageD.getAttribute("#input", "inputmode")) === null);
+  await pageD.close();
+  const pageO = await newPage({ storage: { spelldash_osk: "on", spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" } });
+  await pageO.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await pageO.waitForTimeout(700);
+  await pageO.click("#pathStart");
+  await pageO.waitForTimeout(500);
+  check("画面キーボード: 設定「常にオン」なら PC でも出る", await pageO.isVisible("#osk"));
+  await pageO.close();
 
   // 道: 済みユニットは✓、現在地にスタート、セクション制覇で「次のセクションへ」→ 次のパックが追加されて道が切り替わる
   const jhs1 = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;

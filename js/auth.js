@@ -1,3 +1,4 @@
+import { authRedirectOrigin } from "./appEnv.js";
 import { supabase, isSupabaseConfigured } from "./supabase.js";
 import { initialSync } from "./sync.js";
 
@@ -86,7 +87,7 @@ async function signInWithGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: window.location.origin
+      redirectTo: authRedirectOrigin()
     }
   });
 
@@ -119,7 +120,7 @@ async function sendLoginLink() {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: window.location.origin
+      emailRedirectTo: authRedirectOrigin()
     }
   });
 

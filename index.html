@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>SpellDash - 思い出して打つ、英単語タイピング学習</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/path.css" />
   <link rel="stylesheet" href="./css/welcome.css" />
+  <link rel="stylesheet" href="./css/keyboard.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
   <link rel="stylesheet" href="./css/theme.css" />
   <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
@@ -321,6 +322,9 @@
     </details>
   </div>
 
+  <!-- 専用キーボード（A〜Z＋BS）。スマホでプレイ中だけ画面下に出る -->
+  <div class="osk" id="osk" hidden></div>
+
   <footer class="site-footer">
     <div class="site-footer__inner">
       <div class="site-footer__brand">
@@ -344,7 +348,7 @@
 
   <script type="module" src="./js/main.js"></script>
   <script>
-    if ("serviceWorker" in navigator) {
+    if ("serviceWorker" in navigator && !window.Capacitor) {
       navigator.serviceWorker.register("/sw.js");
     }
   </script>

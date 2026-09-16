@@ -1,3 +1,4 @@
+import { getOskMode, setOskMode } from "./keyboard.js";
 import { supabase } from "./supabase.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
@@ -66,6 +67,12 @@ renderInstallCard("installCard");
 initializeThemeSetting();
 
 function initializeThemeSetting() {
+  const oskSelect = document.getElementById("oskSelect");
+  if (oskSelect) {
+    oskSelect.value = getOskMode();
+    oskSelect.addEventListener("change", () => setOskMode(oskSelect.value));
+  }
+
   const themeSelect = document.getElementById("themeSelect");
   if (!themeSelect) return;
 

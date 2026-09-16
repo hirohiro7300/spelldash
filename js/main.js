@@ -1,3 +1,4 @@
+import "./appEnv.js"; // 実行環境（アプリなら html.native-app）
 import { elements, initializeDisplay, showMessage } from "./ui.js";
 import {
   handleKeydown,
@@ -27,6 +28,7 @@ import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
 import { renderPath, currentUnitOf } from "./pathView.js";
 import { renderWelcome } from "./welcome.js";
+import { initializeKeyboard } from "./keyboard.js";
 import { renderPlayModes } from "./playModes.js";
 import { ensureDefaultCourse, advanceSection } from "./course.js";
 import { setFocusGenre } from "./studyQueue.js";
@@ -43,6 +45,7 @@ import { getWordStats } from "./storage.js";
 
 initializeAuth();
 setFooterYear();
+initializeKeyboard(); // 専用キーボード（スマホでプレイ中だけ出る）
 renderHeaderStreak();
 renderLevelBar();
 renderStreakCard();

@@ -1462,6 +1462,7 @@ function setNewWord() {
   // 全文入力モード（日本語で答える概念カード等）の切替
   freeMode = isFreeAnswer(currentWord);
   document.body.classList.toggle("free-answer", freeMode);
+  document.body.classList.toggle("write-answer", !!currentWord.write); // 画面キーボード: 英文カードは A〜Z＋空白で打てる
   document.getElementById("gameCard")?.classList.toggle("game-card--concept", isConceptWord(currentWord));
   bankWords = currentWord.bank ? buildWordBank(currentWord) : [];
   elements.input.placeholder = currentWord.write
@@ -1522,6 +1523,7 @@ function setNewWord() {
   if (hist) hist.innerHTML = "";
   recordPlay(currentWord.id);
   scheduleHint();
+  window.dispatchEvent(new CustomEvent("spelldash:word", { detail: { id: currentWord.id } })); // 画面キーボード等が盤面を更新する
 }
 
 // 単語の状態ラベル（Studyのみ）: 「なぜ今この単語が出たか」を1行で見せる
