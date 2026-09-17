@@ -12,7 +12,8 @@ import {
   speakCurrentWord,
   startDailyGame,
   useHint,
-  startGame
+  startGame,
+  stopGame
 } from "./game.js";
 import { renderDailyCard, isDailyPlayedToday } from "./dailyChallenge.js";
 import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
@@ -55,7 +56,23 @@ setupUnloadSync();
 // 同期で追加パックの選択が変わったら、語を読み直してカテゴリを作り直す
 window.addEventListener("spelldash:packs", (event) => {
   if (!event.detail?.synced) return;
-  initWordStore().then(() => initializeCategoryPicker());
+  initWordStore().then(() => {
+    initializeCategoryPicker();
+    renderHome(); // 語が変わったので道も描き直す
+  });
+});
+
+// 道が見えている間（プレイ前）の Enter は、見えない入力欄でゲームを始めず、道のスタートと同じ動きにする
+elements.input.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
+  if (document.body.classList.contains("home--playing")) return;
+  if (getMode() !== "study") return; // Challenge を選んでいる人の Enter は従来どおり
+  if (getGenre()) return; // 単語帳の「このジャンルを練習」で来た人は、その絞り込みのまま始める
+  const start = document.getElementById("pathStart");
+  if (!start) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  start.click();
 });
 
 // クラウド同期でローカルデータが更新されたら表示を作り直す
@@ -114,6 +131,7 @@ function startUnit(unit) {
   setGenre(""); // 手動のジャンル絞り込みは解除（道が代わりに絞る）
   setFocusGenre(unit?.tag ?? "");
   setMode("study");
+  stopGame(); // すでに Study 中でも仕切り直す（setMode は同じモードだと何もしない）
   refreshWeakToggle();
   showGame(true);
   restartGame();
@@ -124,6 +142,7 @@ function startUnit(unit) {
 function startChallenge() {
   setFocusGenre("");
   setMode("challenge");
+  stopGame(); // Daily Dash の途中でも通常 Challenge として仕切り直す（dailyRun を消す）
   refreshWeakToggle();
   showGame(true);
   restartGame();
@@ -165,6 +184,7 @@ function renderHome() {
 
 document.getElementById("backToPath")?.addEventListener("click", () => {
   setMode("study");
+  stopGame(); // プレイ中のセットは中断する（setMode は同じモードだと止めない）
   showGame(false);
   renderHome();
   document.getElementById("pathCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -250,13 +270,21 @@ document.getElementById("categoryPicker")?.addEventListener("click", () => {
 ensureDefaultCourse();
 
 // 単語データを読み込んでからゲームを有効化
-initWordStore()
+// 初めての人にはトップページ（語の読み込みを待たずに出す。アプリのホームが一瞬見えないように）。
+// 「無料で始める」でそのまま腕試し（道の最初のユニット）へ
+const storeReady = initWordStore();
+renderWelcome({
+  onStart: () => storeReady.then(() => {
+    const path = renderHome();
+    startUnit(path ? currentUnitOf(path) : null);
+  })
+});
+
+storeReady
   .then(() => {
     initializeCategoryPicker();
     renderLearnedCard();
-    const path = renderHome();
-    // 初めての人にはトップページ。「無料で始める」でそのまま腕試し（道の最初のユニット）へ
-    renderWelcome({ onStart: () => startUnit(path ? currentUnitOf(path) : null) });
+    renderHome();
     renderLoginNudge();
     setSetupOpen(localStorage.getItem(SETUP_OPEN_KEY) === "1");
     // 週間レポート: 日曜・月曜だけホームに（それ以外は学習データで見られる）

@@ -54,8 +54,27 @@ export function overDailyLimit(scope, userId, limit) {
   return entry.count > limit;
 }
 
+// アプリ（Capacitor の WebView）からの呼び出しを許可する（本番 Web は同一オリジンなので不要）
+const APP_ORIGINS = new Set(["capacitor://localhost", "https://localhost", "http://localhost", "ionic://localhost"]);
+
+function allowAppOrigin(req, res) {
+  const origin = req.headers.origin;
+  if (!origin || !APP_ORIGINS.has(origin)) return;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
 // 共通の前処理: メソッド／キー／ログイン／回数。問題があれば応答して true を返す
 export async function reject(req, res, { scope, limit }) {
+  allowAppOrigin(req, res);
+  if (req.method === "OPTIONS") {
+    res.statusCode = 204;
+    res.end();
+    return true;
+  }
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     send(res, 405, { error: "method_not_allowed" });

@@ -166,11 +166,36 @@
 .path__start--next {
   width: auto;
   height: auto;
+  max-width: 100%;
   border-radius: 16px;
   padding: 14px 18px;
   background: #16a34a;
   border-color: #15803d;
   box-shadow: 0 6px 0 #14532d;
+}
+
+/* 全体の button:hover（青）に負けないように、緑のまま少し明るく */
+.path__start--next:hover {
+  background: #15803d;
+}
+
+/* 制覇ノード（次のセクションへ）は横長ボタンなので、道の中央寄せをやめて縦積みにする（スマホで横にはみ出さない） */
+.path__node--goal:has(.path__start--next) {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-left: 0;
+}
+
+.path__node--goal:has(.path__start--next) .path__label {
+  align-items: center;
+}
+
+/* 狭い画面では右レーンのラベル幅を確保する */
+@media (max-width: 480px) {
+  .path__node--r { padding-left: calc(50% - 8px); }
+  .path__node--l { padding-left: calc(50% - 96px); }
+  .path__node--current.path__node--r { padding-left: calc(50% - 30px); }
 }
 
 .path__tip {
@@ -245,7 +270,7 @@ body.home--playing .path__list {
 }
 
 body.returning .app--home .hero {
-  display: none; /* 戻ってきた人にキャッチコピーは不要。道の見出しが1行目 */
+  display: none; /* 戻ってきた人にキャッチコピーは不要。道の見出しが1行目（認証メッセージは hero の外にあるので消えない） */
 }
 
 body:not(.home--playing) .app--home .game-card,

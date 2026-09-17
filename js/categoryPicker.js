@@ -80,3 +80,6 @@ function renderGenreBar(categoryId) {
     renderGenreBar(categoryId);
   });
 }
+
+// 道のスタート等でジャンルが外れたら表示も合わせる
+window.addEventListener("spelldash:genre", () => renderGenreBar(getSavedCategory()));

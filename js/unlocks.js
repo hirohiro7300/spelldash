@@ -19,9 +19,15 @@ export function bumpTotalSets() {
   return next;
 }
 
-// 学習データが30語以上ある人は「以前から使っている人」として全部解放
+// 学習データが30語以上ある人は「以前から使っている人」として全部解放。
+// 判定は最初に見た時に一度だけ行って保存する（新しい人が1〜2セットで30語に達しても、解放は UNLOCK_AT のセット数で）
+const VETERAN_KEY = "spelldash_veteran";
 function isVeteran() {
-  return Object.keys(getWordStats()).length >= 30;
+  const saved = localStorage.getItem(VETERAN_KEY);
+  if (saved !== null) return saved === "1";
+  const veteran = Object.keys(getWordStats()).length >= 30;
+  localStorage.setItem(VETERAN_KEY, veteran ? "1" : "0");
+  return veteran;
 }
 
 export function isUnlocked(mode) {

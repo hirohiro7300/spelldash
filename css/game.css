@@ -67,13 +67,24 @@
   color: #94a3b8;
 }
 
-.hero--compact .auth-message {
+.hero--compact .auth-message,
+.auth-message--home {
   margin-top: 6px;
   min-height: 0;
 }
 
-.hero--compact .auth-message:empty {
+.hero--compact .auth-message:empty,
+.auth-message--home:empty {
   display: none;
+}
+
+.auth-message--home {
+  margin: 0 0 10px;
+}
+
+/* 専用キーボードが出ている間、オフライン表示は盤面の上に出す */
+body.osk-open .offline-banner {
+  bottom: calc(236px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ===== 大型残り時間タイマー（Challenge/Dailyプレイ中） ===== */

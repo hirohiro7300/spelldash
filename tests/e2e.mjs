@@ -1579,9 +1579,30 @@ console.log("domain packs:");
   const exText = (await page6b.textContent("#wordExample")).trim();
   check("例文: 答え表示で例文と訳が出る", !!exWord && exText.includes(exWord.ex) && exText.includes(exWord.exJa), `${exAnswer}: ${exText.slice(0, 60)}`);
   check("例文: 見出し語が太字", (await page6b.$eval("#wordExample", (el) => el.querySelector("b")?.textContent.toLowerCase() ?? "")) === (exWord?.exForm ?? exWord?.en ?? "").toLowerCase());
-  for (const ch of exAnswer) await page6b.press("#input", ch);
+  for (const ch of exAnswer) await page6b.press("#input", ch); // 答えを見た語は従来どおり即次へ
   await page6b.waitForTimeout(400);
-  check("例文: 正解のあとも例文が残り、読む時間が置かれる", (await page6b.textContent("#wordExample")).includes(exWord.ex) && (await page6b.textContent("#japanese")).trim() === exWord.ja.split("・")[0] || (await page6b.textContent("#japanese")).trim().includes(exWord.ja.split("・")[0]));
+  check("例文: 答えを見た語は正解後すぐ次へ", (await page6b.textContent("#japanese")).trim() !== exWord.ja && !(await page6b.textContent("#wordExample")).includes(exWord.ex));
+  // 自力で思い出した語: 正解後に例文が出て、読む時間が置かれる（Enter で即進行）
+  let selfWord = null;
+  for (let i = 0; i < 6 && !selfWord; i++) {
+    const ja = (await page6b.textContent("#japanese")).trim();
+    const cands = bizWords.filter((w) => w.ja === ja || w.ja.split("・").includes(ja));
+    if (cands.length === 1) {
+      selfWord = cands[0];
+      break;
+    }
+    await page6b.press("#input", "Enter"); // 答え表示
+    await page6b.waitForTimeout(150);
+    for (const ch of (await page6b.textContent("#word")).trim()) await page6b.press("#input", ch);
+    await page6b.waitForTimeout(400);
+  }
+  if (selfWord) {
+    for (const ch of selfWord.en) await page6b.press("#input", ch);
+    await page6b.waitForTimeout(500);
+    check("例文: 自力正解のあとに例文が出て、読む時間が置かれる", (await page6b.textContent("#wordExample")).includes(selfWord.ex) && (await page6b.textContent("#word")).trim() === selfWord.en, `${selfWord.en}: ${(await page6b.textContent("#wordExample")).slice(0, 50)}`);
+  } else {
+    check("例文: 自力正解のあとに例文が出て、読む時間が置かれる（一意な語が見つからずスキップ）", true);
+  }
   await page6b.close();
   const page6c = await newPage();
   await page6c.goto(BASE + "/list.html?category=business", { waitUntil: "networkidle" });
@@ -1703,7 +1724,7 @@ console.log("domain packs:");
   for (const ch of wordK.en) await pageK.tap(`#osk [data-key="${ch}"]`);
   await waitUntil(async () => (await pageK.textContent("#score")).trim() === "1", 2000);
   check("画面キーボード: キーをタップして正解になる", (await pageK.textContent("#score")).trim() === "1", `word=${wordK.en}`);
-  await pageK.waitForTimeout(1500);
+  await pageK.waitForTimeout(2600); // 自力正解のあとは例文を読む間（2.2秒）がある
   await pageK.tap('#osk [data-action="enter"]');
   await pageK.waitForTimeout(300);
   check("画面キーボード: Enter キーで答え表示", /^[a-z]+$/.test((await pageK.textContent("#word")).trim()));
@@ -1820,6 +1841,143 @@ console.log("ads category:");
   check("広告・マーケ×Lv1で出題される", ja !== "Challenge Mode" && ja.length > 0, `ja=${ja}`);
   check("広告・マーケでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
+}
+
+// ===== 11. レビュー修正: 正解直後のキー・道に戻る・解放・トップページ・認証メッセージ・道の表示 =====
+console.log("review fixes:");
+{
+  const todayR = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const bizR = JSON.parse(fs.readFileSync(path.join(ROOT, "data/english/business.json"), "utf8")).words;
+  const jhs1R = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
+  const findByJa = (list, ja) => list.filter((w) => w.ja === ja || w.ja.split("・").includes(ja));
+
+  // 正解直後の待ち（例文を読む時間）に打ったキーは次の語のミスにしない
+  const pageA = await newPage({ storage: { spelldash_category: "business", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: todayR }) } });
+  await pageA.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await pageA.waitForTimeout(900);
+  await pageA.press("#input", "Enter");
+  await pageA.waitForTimeout(300);
+  const jaA = (await pageA.textContent("#japanese")).trim();
+  const candA = findByJa(bizR, jaA);
+  let ansA;
+  if (candA.length === 1) {
+    ansA = candA[0].en;
+  } else {
+    await pageA.press("#input", "Enter"); // 答え表示
+    await pageA.waitForTimeout(200);
+    ansA = (await pageA.textContent("#word")).trim();
+  }
+  const failBefore = Number(await pageA.textContent("#recallFail"));
+  for (const ch of ansA) await pageA.press("#input", ch);
+  await pageA.press("#input", "z"); // 待ち中のキー
+  await pageA.press("#input", "q");
+  await pageA.waitForTimeout(150);
+  check("正解直後の待ち中に打ったキーはミスにならない（思い出せず が増えない）", Number(await pageA.textContent("#recallFail")) === failBefore && (await pageA.textContent("#word")).trim() === ansA, `fail ${failBefore}→${await pageA.textContent("#recallFail")}`);
+  await pageA.press("#input", "Enter"); // 待たずに次へ
+  await pageA.waitForTimeout(200);
+  check("待ち中の Enter で次の語へ", (await pageA.textContent("#japanese")).trim() !== jaA && (await pageA.evaluate(() => document.getElementById("input").value)) === "");
+  check("正解直後のキーでエラー0", pageA.errors.length === 0, pageA.errors[0] ?? "");
+  await pageA.close();
+
+  // 「← 道に戻る」でプレイ中のセットは止まる／道が見えている間の Enter は道のスタート扱い
+  const pageB = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 1 } }) } });
+  await pageB.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await pageB.waitForTimeout(900);
+  await pageB.press("#input", "Enter"); // 道が見えている状態の Enter
+  await pageB.waitForTimeout(500);
+  const jaB = (await pageB.textContent("#japanese")).trim();
+  const unitTagB = await pageB.evaluate(async () => (await import("/js/studyQueue.js")).getFocusGenre());
+  check("道の Enter は現在ユニットのスタートと同じ（ユニットに絞られる）", !!unitTagB && findByJa(jhs1R, jaB).some((w) => (w.tags ?? []).includes(unitTagB)) && (await pageB.isVisible("#backToPath")), `tag=${unitTagB} ja=${jaB}`);
+  await pageB.click("#backToPath");
+  await pageB.waitForTimeout(300);
+  const playingB = await pageB.evaluate(async () => (await import("/js/game.js")).isGamePlaying());
+  check("道に戻るとセットは止まり、道が出る", !playingB && (await pageB.isVisible("#pathList .path__list")) && !(await pageB.isVisible("#backToPath")));
+  check("道に戻るでエラー0", pageB.errors.length === 0, pageB.errors[0] ?? "");
+  await pageB.close();
+
+  // 解放: 新しい人は統計が30語を超えても、セット数（Daily 2・Battle 5）で解放
+  const manyStats = Object.fromEntries(jhs1R.slice(0, 40).map((w) => [w.id, { playCount: 1 }]));
+  const pageC = await newPage({ storage: { spelldash_veteran: "0", spelldash_sets_total: "1", spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify(manyStats) } });
+  await pageC.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageC.waitForTimeout(900);
+  check("解放: 新しい人は統計が多くても Daily はセット数で解放（🔒 あと1セット）", (await pageC.$$(".play-modes__lock")).length >= 2 && (await pageC.textContent("#playModes, .play-modes")).includes("あと1セット"));
+  await pageC.close();
+  const pageC2 = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify(manyStats) } });
+  await pageC2.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageC2.waitForTimeout(900);
+  check("解放: 以前から使っている人（初回判定で30語以上）は全部開いていて、判定が保存される", (await pageC2.$$(".play-modes__lock")).length === 0 && (await pageC2.evaluate(() => localStorage.getItem("spelldash_veteran"))) === "1");
+  await pageC2.close();
+
+  // トップページ: 計測用パラメータでは出す（?set= などの深いリンクだけ抑止）。認証メッセージは hero の外
+  const pageE = await newPage({ keepOnboarding: true });
+  await pageE.goto(BASE + "/index.html?utm_source=x", { waitUntil: "networkidle" });
+  await pageE.waitForTimeout(700);
+  check("トップページ: 計測用のパラメータ付きでも初回は出る", await pageE.isVisible("#welcome"));
+  check("認証メッセージは hero の外にある（戻ってきた人にも見える）", await pageE.evaluate(() => !document.getElementById("hero").contains(document.getElementById("authMessage"))));
+  // ソフトキーボード相当: input イベントで値を照合しても1語体験が進む
+  await pageE.click("#welcomeDemoInput");
+  await pageE.evaluate(() => {
+    const el = document.getElementById("welcomeDemoInput");
+    el.value = "apple";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await pageE.waitForTimeout(100);
+  check("トップの1語体験: input イベント（ソフトキーボード）でも思い出せた", (await pageE.textContent("#welcomeDemoMsg")).includes("思い出せた"));
+  check("トップページでエラー0", pageE.errors.length === 0, pageE.errors[0] ?? "");
+  await pageE.close();
+
+  // 道: 「すべて」はカテゴリごとのユニットで、スタートはそのカテゴリに絞る。空のマイ単語帳には案内
+  const pageF = await newPage({ storage: { spelldash_category: "all", spelldash_placement: "done", spelldash_level_boost: "2" } });
+  await pageF.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await pageF.waitForTimeout(900);
+  const unitF = await pageF.getAttribute("#pathStart", "data-unit");
+  check("道（すべて）: ユニットは基本カテゴリで、スタートはカテゴリに絞る", (unitF ?? "").startsWith("category:") && (await pageF.$$(".path__node")).length >= 5 && !(await pageF.textContent("#pathList")).includes("マイ単語帳"), `unit=${unitF}`);
+  await pageF.click("#pathStart");
+  await pageF.waitForTimeout(500);
+  const catF = unitF.slice("category:".length);
+  const wordsF = JSON.parse(fs.readFileSync(path.join(ROOT, `data/english/${catF}.json`), "utf8")).words;
+  check("道（すべて）: スタートでそのカテゴリの語が出る", findByJa(wordsF, (await pageF.textContent("#japanese")).trim()).length > 0, `cat=${catF} ja=${await pageF.textContent("#japanese")}`);
+  await pageF.close();
+  const pageG = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done" } });
+  await pageG.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageG.waitForTimeout(900);
+  check("道: 語が無いカテゴリ（空のマイ単語帳）には案内が出る", (await pageG.textContent("#pathList")).includes("まだ語がありません") && (await pageG.$("#pathList a[href*='myWords']")) !== null);
+  await pageG.close();
+
+  // 道（スマホ）: 制覇ノードの「次のセクションへ」で横にはみ出さない
+  const allKnownR = Object.fromEntries(jhs1R.map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]));
+  const pageH = await newPage({ mobile: true, viewport: { width: 320, height: 640 }, storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(allKnownR), spelldash_placement: "done" } });
+  await pageH.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageH.waitForTimeout(900);
+  check("道（320px）: 「次のセクションへ」があっても横スクロールしない", (await pageH.$("#pathNext")) !== null && (await pageH.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)), `scrollWidth=${await pageH.evaluate(() => document.documentElement.scrollWidth)}`);
+  check("道: 次のセクション名はまだ追加していないパックでも出る", (await pageH.textContent("#pathList")).includes("中学英語 2年"));
+  await pageH.close();
+
+  // 画面キーボード: セットが終わって結果パネルが出たら畳む
+  const pageI = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 1 } }) } });
+  await pageI.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
+  await pageI.waitForTimeout(900);
+  await pageI.tap("#pathStart");
+  await pageI.waitForTimeout(600);
+  for (let i = 0; i < 6 && (await pageI.$("#resultPanel[hidden]")) !== null; i++) {
+    const ja = (await pageI.textContent("#japanese")).trim();
+    const cand = findByJa(jhs1R, ja);
+    let ans;
+    if (cand.length === 1) {
+      ans = cand[0].en;
+    } else {
+      await pageI.press("#input", "Enter");
+      await pageI.waitForTimeout(200);
+      ans = (await pageI.textContent("#word")).trim();
+    }
+    for (const ch of ans) await pageI.press("#input", ch);
+    await pageI.waitForTimeout(150);
+    await pageI.press("#input", "Enter"); // 待たずに次へ（最後の語なら結果へ）
+    await pageI.waitForTimeout(400);
+  }
+  check("画面キーボード: セット完了で結果パネルが出て、盤面は畳まれる", (await pageI.$("#resultPanel:not([hidden])")) !== null && !(await pageI.isVisible("#osk")));
+  check("画面キーボード（完了時）でエラー0", pageI.errors.length === 0, pageI.errors[0] ?? "");
+  await pageI.close();
 }
 
 await browser.close();

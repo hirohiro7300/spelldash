@@ -8,6 +8,7 @@ import {
   filterByAllowedLevels,
   recordFirstSight,
   isPlacementPending,
+  isPlacementRunning,
   markPlacementStarted,
   PLACEMENT_MIX
 } from "./difficulty.js";
@@ -238,15 +239,26 @@ function isNew(stat) {
   return !stat || (stat.playCount ?? 0) === 0;
 }
 
+// 出題されたが一度も答えていない（正解も「思い出せない」も無い）語。道では未着手のままなので、新出と同じ枠でもう一度出す
+function isUntouched(stat) {
+  return !!stat && (stat.playCount ?? 0) > 0 && !stat.lastRecallSuccessAt && !stat.lastRecallFailAt && !stat.known;
+}
+
 // ===== 通常補充（Mix Controlの比率はここだけに効く） =====
 
-// 道の「いまのユニット」: 新しく出す語はこのジャンルに絞る（復習は今までどおりカテゴリ全体から）
+// 道の「いまのユニット」: 新しく出す語はこのジャンルに絞る（復習は今までどおりカテゴリ全体から）。
+// 「すべて」の道ではユニットがカテゴリなので "category:<id>" の形で受け取る
 let focusTag = "";
 export function setFocusGenre(tag) {
   focusTag = tag || "";
 }
 export function getFocusGenre() {
   return focusTag;
+}
+function inFocus(word) {
+  if (!focusTag) return true;
+  if (focusTag.startsWith("category:")) return word.category === focusTag.slice("category:".length);
+  return (word.tags ?? []).includes(focusTag);
 }
 
 function pickFillers(count, excludeSet) {
@@ -255,8 +267,10 @@ function pickFillers(count, excludeSet) {
   const ratio = getFamiliarRatio();
   const mission = getTodayMission();
 
-  const pool = focusTag ? categoryWordsDeduped().filter((w) => (w.tags ?? []).includes(focusTag)) : categoryWordsDeduped();
-  const usable = (pool.length > 0 ? pool : categoryWordsDeduped()).filter((word) => {
+  const all = categoryWordsDeduped();
+  const focused = focusTag ? all.filter(inFocus) : all;
+  const pool = focused.length > 0 ? focused : all;
+  const usable = pool.filter((word) => {
     if (excludeSet.has(word.id)) return false;
     if (recalledThisSession.has(word.id)) return false;
     return !isDoneForToday(stats[word.id]);
@@ -267,6 +281,8 @@ function pickFillers(count, excludeSet) {
   // 新出単語はプレイヤーレベルで解放（既習語には適用しない）。
   // カテゴリに解放難易度が無い場合は最易難易度で救済（IT等のeasy 0語対策）
   const allowed = allowedWordLevels();
+  // 出題されたが未回答の語は新出と同じ枠で先に出し直す（学習中の枠は消費しない）
+  const reintroPool = shuffle(usable.filter((w) => isUntouched(stats[w.id])));
   let newPool = filterByAllowedLevels(
     usable.filter((w) => isNew(stats[w.id])),
     allowed
@@ -285,46 +301,58 @@ function pickFillers(count, excludeSet) {
   const picks = [];
   let familiarIndex = 0;
   let newIndex = 0;
+  let reintroIndex = 0;
+
+  const takeNew = () => {
+    if (reintroIndex < reintroPool.length) {
+      const w = reintroPool[reintroIndex++];
+      if (!isLearningToday(stats[w.id])) markIntroduced(w.id);
+      return w;
+    }
+    if (newIntroBudget > 0 && newIndex < newPool.length) {
+      const w = newPool[newIndex++];
+      newIntroBudget--;
+      markIntroduced(w.id);
+      return w;
+    }
+    return null;
+  };
+  const takeFamiliar = () => {
+    const w = familiarPool[familiarIndex] ?? null;
+    if (w) familiarIndex++;
+    return w;
+  };
 
   while (picks.length < count) {
     const wantFamiliar = Math.random() * 100 < ratio;
-    let pick = null;
-
-    if (wantFamiliar) {
-      pick = familiarPool[familiarIndex] ?? null;
-      if (pick) familiarIndex++;
-      // Familiar不足 → Newで補充
-      if (!pick && newIntroBudget > 0 && newIndex < newPool.length) {
-        pick = newPool[newIndex++];
-        newIntroBudget--;
-        markIntroduced(pick.id);
-      }
-    } else {
-      if (newIntroBudget > 0 && newIndex < newPool.length) {
-        pick = newPool[newIndex++];
-        newIntroBudget--;
-        markIntroduced(pick.id);
-      }
-      // New不足（または学習中上限） → Familiarで補充
-      if (!pick) {
-        pick = familiarPool[familiarIndex] ?? null;
-        if (pick) familiarIndex++;
-      }
-    }
-
+    // Familiar不足 → Newで補充／New不足（または学習中上限） → Familiarで補充
+    const pick = wantFamiliar ? takeFamiliar() ?? takeNew() : takeNew() ?? takeFamiliar();
     if (!pick) break; // どちらの候補も尽きた
     picks.push(pick.id);
   }
 
   // それでも足りなければ「今日済み」も許可して埋める（出題停止を防ぐ）。
+  // 順番: いまのユニットの語（学習済み → 未出題）→ カテゴリ全体の学習済みの語 → 残り。
+  // 別ユニットの未出題語は最後（道の「いまの場所」を飛び越えて新語を出さない）
   // 苦手のみモードでは埋めない: 尽きたら「全部クリア」で気持ちよく終わるのが正
   if (picks.length < count && !weakOnly) {
-    const fallback = shuffle(
-      categoryWordsDeduped().filter(
-        (w) => !excludeSet.has(w.id) && !picks.includes(w.id)
-      )
-    ).slice(0, count - picks.length);
-    picks.push(...fallback.map((w) => w.id));
+    const taken = new Set(picks);
+    const free = (list) => shuffle(list.filter((w) => !excludeSet.has(w.id) && !taken.has(w.id)));
+    const touched = (w) => !isNew(stats[w.id]);
+    const focusedSet = new Set(pool.map((w) => w.id));
+    const ordered = [
+      ...free(pool.filter(touched)),
+      ...free(filterByAllowedLevels(pool.filter((w) => !touched(w)), allowed)),
+      ...free(all.filter((w) => !focusedSet.has(w.id) && touched(w))),
+      ...free(all.filter((w) => !focusedSet.has(w.id) && !touched(w)))
+    ];
+    for (const w of ordered) {
+      if (picks.length >= count) break;
+      if (taken.has(w.id)) continue;
+      taken.add(w.id);
+      if (isNew(stats[w.id])) markIntroduced(w.id);
+      picks.push(w.id);
+    }
   }
 
   return picks;
@@ -371,9 +399,14 @@ export function startStudyQueue(categoryId) {
 
   // 0. 初回体験＝腕試し: 学習履歴が全く無ければ、短くて易しい3語で成功体験を作ってから
   //    普通4語・難しい3語を混ぜた計10語で「どこから始めるか」を決める（2回目以降は発動しない）
-  if (Object.keys(stats).length === 0 && isPlacementPending()) {
-    const byLevel = (level) => shuffle(words.filter((w) => w.level === level));
-    const easy = words
+  // （始めたが途中でやめた場合も、まだ1語も答えていなければもう一度）
+  const nothingAnswered = Object.values(stats).every((s) => !s?.lastRecallSuccessAt && !s?.lastRecallFailAt && !s?.known);
+  if (nothingAnswered && (isPlacementPending() || isPlacementRunning())) {
+    // 道のいまのユニットの語を優先する（無ければカテゴリ全体）
+    const focusedWords = focusTag ? words.filter(inFocus) : words;
+    const source = focusedWords.filter((w) => w.level === "easy").length >= PLACEMENT_MIX.easy && focusedWords.length >= 10 ? focusedWords : words;
+    const byLevel = (level) => shuffle(source.filter((w) => w.level === level));
+    const easy = source
       .filter((w) => w.level === "easy")
       .sort((a, b) => a.en.length - b.en.length)
       .slice(0, PLACEMENT_MIX.easy);

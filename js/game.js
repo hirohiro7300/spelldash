@@ -248,9 +248,15 @@ function showIdleMessage() {
   }
 }
 
+// ゲームが終わった／止まったことをホームに知らせる（専用キーボードを畳む等）
+function notifyGameEnd() {
+  window.dispatchEvent(new CustomEvent("spelldash:game-end", { detail: { mode } }));
+}
+
 export function stopGame() {
   clearInterval(timer);
   isPlaying = false;
+  notifyGameEnd();
   document.body.classList.remove("is-playing");
   stopBgm();
   currentWord = null;
@@ -476,6 +482,12 @@ export function handleKeydown(event) {
 
   if (!isPlaying || !currentWord) return;
 
+  // 正解直後の待ち（次の語が出る前）: 文字キーは判定しない（次の語の1文字目をミス扱いにしない）
+  if (awaitingNext) {
+    event.preventDefault();
+    return;
+  }
+
   // Esc = 「わからない」（Enterと同じ: 答え表示 → もう一度で次へ）
   if (event.key === "Escape") {
     event.preventDefault();
@@ -539,6 +551,11 @@ export function handleTextInput() {
   if (!isPlaying || !currentWord) return;
   if (freeMode) return; // 全文入力モードは Enter で判定
   if (composing) return; // 変換確定はhandleCompositionEndで処理する
+  if (awaitingNext) {
+    // 正解直後の待ち: 入力は捨てる（次の語の判定に持ち越さない）
+    elements.input.value = "";
+    return;
+  }
 
   const word = currentWord.en;
   const accepted = word.slice(0, currentIndex);
@@ -1058,7 +1075,8 @@ function completeWord() {
 
   // Study: 正解演出の後に次へ。概念カードは答えと解説を、例文のある語は例文を読む時間を置く（Enterで即進行）
   const concept = isConceptWord(currentWord);
-  const withExample = !concept && hasExample(currentWord);
+  // 例文を読む間を置くのは、自力で思い出した語だけ（答えを見た語は表示時に例文を読んでいるので従来どおり即次へ）
+  const withExample = !concept && !isRevealed && !isPlacementRun() && hasExample(currentWord); // 腕試し中はテンポ優先
   if (concept || withExample) {
     renderExplain(currentWord);
     showColoredAnswer(currentWord.en);
@@ -1197,6 +1215,7 @@ function announcePlacement() {
 function endStudySession() {
   clearInterval(timer);
   isPlaying = false;
+  notifyGameEnd();
   setCompletePending = false;
   currentWord = null;
 
@@ -1608,6 +1627,7 @@ function chooseWord() {
 function endChallenge() {
   clearInterval(timer);
   isPlaying = false;
+  notifyGameEnd();
   markActiveToday();
   snapshotGrowth();
   document.body.classList.remove("is-playing");
