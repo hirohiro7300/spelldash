@@ -31,9 +31,11 @@ const out = lines.map((line) => {
   else added++;
   const tail = body.match(/}\s*,?\s*$/);
   if (!tail) return line;
-  const spaced = / "id"/.test(body); // {"id": ...} (space after colon) か {"id":...} かに合わせる
+  const spaced = /"id":\s"/.test(body); // {"id": ...}（コロンの後に空白）か {"id":...} かに合わせる
   const sep = spaced ? ": " : ":";
-  const fields = [`"ex"${sep}${esc(e.ex)}`, `"exJa"${sep}${esc(e.exJa)}`, ...(e.exForm && e.exForm !== e.ex ? [`"exForm"${sep}${esc(e.exForm)}`] : [])];
+  const en = (body.match(/"en":\s*"([^"]+)"/) || [])[1] ?? "";
+  const form = e.exForm && String(e.exForm).toLowerCase() !== en.toLowerCase() ? String(e.exForm) : ""; // 見出し語と同じなら不要
+  const fields = [`"ex"${sep}${esc(e.ex)}`, `"exJa"${sep}${esc(e.exJa)}`, ...(form ? [`"exForm"${sep}${esc(form)}`] : [])];
   const insertAt = body.lastIndexOf("}");
   return body.slice(0, insertAt) + ", " + fields.join(", ") + body.slice(insertAt);
 });
