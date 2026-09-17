@@ -117,7 +117,7 @@ node scripts/validate-words.mjs   # data/english と data/packs をまとめて�
 | `exJa` | 自然な日本語訳、40字以内。直訳より「日本人がその場面で言う言い方」 |
 | `exForm` | 英文中の語形が見出し語と違うときだけ（went, better, studies, children）。同じなら書かない（検証で弾く） |
 
-- 差し込みは `node scripts/add-examples.mjs <データ> <例文JSON>`（1行1語の書式を保つ）。例文JSONは `{ "<id>": { "ex", "exJa", "exForm"? } }`
+- 差し込みは `node scripts/add-examples.mjs <データ> <例文JSON>`（1行1語の書式を保つ。1項目1行に整形されたファイルは `words` だけを1行1語に直してから差し込む。内容は変えない）。例文JSONは `{ "<id>": { "ex", "exJa", "exForm"? } }`。終わったら `grep -c '"exJa"'` で語数と一致することを確認
 - レベル感: そのカテゴリ／級の学習者が読める語彙で書く（例文の方が見出し語より難しくならない）
 - 同じ英文を複数の語に使い回さない。数字は英単語で（two, not 2）
 
