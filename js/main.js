@@ -27,11 +27,11 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
-import { renderPath, currentUnitOf } from "./pathView.js";
+import { renderPath, currentUnitOf, buildPath, showPathToast } from "./pathView.js";
 import { renderWelcome } from "./welcome.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { renderPlayModes } from "./playModes.js";
-import { ensureDefaultCourse, advanceSection } from "./course.js";
+import { ensureDefaultCourse, advanceSection, startCourse, COURSES } from "./course.js";
 import { setFocusGenre } from "./studyQueue.js";
 import { setGenre } from "./genres.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
@@ -175,8 +175,40 @@ function goNextSection() {
   });
 }
 
+// コースの乗り換え: まだ制覇していない最初のセクションから（進捗は語ごとなので失われない）
+function chooseCourse(courseId) {
+  const course = COURSES[courseId];
+  if (!course) return;
+  const start = course.packs.find((id) => !buildPath(id).allDone) ?? course.packs[0];
+  startCourse(courseId, start);
+  setGenre("");
+  initWordStore().then(() => {
+    initializeCategoryPicker();
+    renderHome();
+    document.getElementById("pathCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+// ユニット制覇の演出: セット開始時の済みユニットを控えて、終了時に増えていたら知らせる
+let doneUnitsAtStart = null;
+window.addEventListener("spelldash:game-start", () => {
+  try {
+    doneUnitsAtStart = new Set(buildPath().units.filter((u) => u.done).map((u) => u.label));
+  } catch {
+    doneUnitsAtStart = null;
+  }
+});
+
+function celebrateNewUnits(path) {
+  if (!doneUnitsAtStart || !path) return;
+  const fresh = path.units.filter((u) => u.done && !doneUnitsAtStart.has(u.label)).map((u) => u.label);
+  doneUnitsAtStart = null;
+  if (fresh.length === 0) return;
+  showPathToast(path.allDone ? `🏆 ${path.label} 制覇！ ${fresh.map((l) => `「${l}」`).join("")}も覚えた` : `🎉 ユニット${fresh.map((l) => `「${l}」`).join("")}を制覇！ 次は「${currentUnitOf(path)?.label ?? ""}」`);
+}
+
 function renderHome() {
-  const path = renderPath({ onStart: startUnit, onAdvance: goNextSection });
+  const path = renderPath({ onStart: startUnit, onAdvance: goNextSection, onCourse: chooseCourse });
   renderPlayModes({ onChallenge: startChallenge, onDaily: startDaily });
   renderSetupSummary();
   return path;
@@ -195,8 +227,9 @@ window.addEventListener("spelldash:game-start", () => showGame(true));
 
 // セットが終わったら道の数字を更新（結果パネルはそのまま）
 window.addEventListener("spelldash:session-end", () => {
-  renderHome();
+  const path = renderHome();
   renderLearnedCard();
+  celebrateNewUnits(path);
 });
 
 // ===== 出題設定（カテゴリ・ジャンル・苦手のみ・比率）は普段は畳む。要約1行だけ見せる =====

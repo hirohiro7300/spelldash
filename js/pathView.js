@@ -2,7 +2,7 @@ import { getCategories, getWordsByCategory, getPackCatalog, isConceptWord } from
 import { groupByGenre } from "./genres.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
-import { getCourse, sectionOf } from "./course.js";
+import { getCourse, sectionOf, listCourses, getCourseId } from "./course.js";
 import { getSetSize, isDailySetDone } from "./dailySet.js";
 import { getDueReviewCount } from "./studyQueue.js";
 
@@ -64,8 +64,31 @@ export function currentUnitOf(path) {
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-// 描画。onStart(unit|null) はスタート／復習、onAdvance() は次のセクションへ
-export function renderPath({ onStart, onAdvance } = {}) {
+// コース選択パネル（見出しの「コースを変える」で開く）
+function courseChooserHtml(currentId) {
+  return `
+    <div class="path__courses" id="pathCourses" hidden>
+      <div class="path__courses-head"><b>コースを選ぶ</b><span>進み具合は語ごとに残るので、いつでも戻れます</span></div>
+      <ul class="path__courses-list">
+        ${listCourses()
+          .map(
+            (c) => `
+          <li class="path__course${c.id === currentId ? " path__course--current" : ""}">
+            <div class="path__course-text">
+              <b>${esc(c.label)}</b>
+              <span>${esc(c.blurb)}</span>
+              <small>${esc(c.audience)} ・ ${c.packs.length}セクション</small>
+            </div>
+            ${c.id === currentId ? `<span class="path__course-now">いまのコース</span>` : `<button type="button" class="path__course-pick" data-course="${esc(c.id)}">このコースにする</button>`}
+          </li>`
+          )
+          .join("")}
+      </ul>
+    </div>`;
+}
+
+// 描画。onStart(unit|null) はスタート／復習、onAdvance() は次のセクションへ、onCourse(courseId) はコースの乗り換え
+export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const el = document.getElementById("pathCard");
   const headEl = document.getElementById("pathHead");
   const listEl = document.getElementById("pathList");
@@ -151,8 +174,13 @@ export function renderPath({ onStart, onAdvance } = {}) {
         <span class="path__title">${esc(label)}</span>
         <span class="path__unit">${unitLine}${units.length > 0 && !allDone ? ` <small>（${doneCount}／${units.length} 済み）</small>` : ""}</span>
       </div>
-      <a class="path__guide" href="./list.html?category=${encodeURIComponent(path.categoryId === "all" ? "" : path.categoryId)}">📖 一覧</a>
+      <div class="path__head-actions">
+        <a class="path__guide" href="./list.html?category=${encodeURIComponent(path.categoryId === "all" ? "" : path.categoryId)}">📖 一覧</a>
+        <button type="button" class="path__guide path__guide--course" id="pathCourse" aria-expanded="false" aria-controls="pathCourses">コースを変える</button>
+      </div>
     </div>
+    ${courseChooserHtml(getCourseId())}
+    <div class="path__toast" id="pathToast" hidden role="status"></div>
   `;
   // 語が1つも無いカテゴリ（空のマイ単語帳など）: 道の代わりに次にやることを出す
   const empty = units.length === 0
@@ -172,5 +200,28 @@ export function renderPath({ onStart, onAdvance } = {}) {
     });
   });
   el.querySelector("#pathNext")?.addEventListener("click", () => onAdvance?.());
+  const courseBtn = el.querySelector("#pathCourse");
+  const courses = el.querySelector("#pathCourses");
+  courseBtn?.addEventListener("click", () => {
+    const open = courses.hidden;
+    courses.hidden = !open;
+    courseBtn.setAttribute("aria-expanded", String(open));
+  });
+  el.querySelectorAll(".path__course-pick").forEach((btn) => btn.addEventListener("click", () => onCourse?.(btn.dataset.course)));
   return path;
+}
+
+// ユニット制覇の小さな演出（道の見出しの下に数秒）。はちゃんは出さない（登場は3場面だけ）
+export function showPathToast(text) {
+  const toast = document.getElementById("pathToast");
+  if (!toast) return;
+  toast.textContent = text;
+  toast.hidden = false;
+  toast.classList.remove("path__toast--in");
+  void toast.offsetWidth;
+  toast.classList.add("path__toast--in");
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => {
+    toast.hidden = true;
+  }, 5000);
 }

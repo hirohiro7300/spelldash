@@ -1980,6 +1980,79 @@ console.log("review fixes:");
   await pageI.close();
 }
 
+// ===== 12. コース選択と制覇の演出 =====
+console.log("courses:");
+{
+  const jhs1C = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
+  const findByJaC = (list, ja) => list.filter((w) => w.ja === ja || w.ja.split("・").includes(ja));
+  // 「コースを変える」→ TOEIC コース: 最初のパックが追加されてカテゴリになり、道の見出しが変わる
+  const page = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" } });
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("コース: 見出しに「コースを変える」、パネルは閉じている", (await page.$("#pathCourse")) !== null && !(await page.isVisible("#pathCourses")));
+  await page.click("#pathCourse");
+  await page.waitForTimeout(150);
+  check("コース: パネルに6コース、いまのコースに印", (await page.$$(".path__course")).length === 6 && (await page.textContent(".path__course--current")).includes("中学英語やり直し") && (await page.$$(".path__course-pick")).length === 5);
+  await page.click('.path__course-pick[data-course="toeic"]');
+  await waitUntil(async () => (await page.textContent("#pathHead")).includes("セクション 1／6"), 4000); // パネルの文にも「TOEIC 500」があるので見出しのセクション表示で待つ
+  const st = await page.evaluate(() => ({ course: localStorage.getItem("spelldash_course"), category: localStorage.getItem("spelldash_category"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]") }));
+  check("コース: TOEIC に乗り換えると toeic500 が追加されてカテゴリに", st.course === "toeic" && st.category === "toeic500" && st.packs.includes("toeic500") && (await page.textContent("#pathHead")).includes("セクション 1／6"), JSON.stringify(st));
+  await page.click("#pathStart");
+  await page.waitForTimeout(600);
+  check("コース: 乗り換え後のスタートで TOEIC 500 の語が出る", (await page.textContent("#gameCard .label")).includes("日本語訳") && (await page.isVisible("#backToPath")));
+  check("コースでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  // 乗り換えは「まだ制覇していない最初のセクション」から: 中学英語1年を全部覚えている人が中学英語やり直しに戻ると 2年から
+  const allKnownC = Object.fromEntries(jhs1C.map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]));
+  const page2 = await newPage({ storage: { spelldash_course: "toeic", spelldash_packs: JSON.stringify(["jhs-english1", "toeic500"]), spelldash_category: "toeic500", spelldash_word_stats: JSON.stringify(allKnownC), spelldash_placement: "done" } });
+  await page2.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.click("#pathCourse");
+  await page2.click('.path__course-pick[data-course="jhs-redo"]');
+  await waitUntil(async () => (await page2.textContent("#pathHead")).includes("中学英語 2年"), 4000);
+  check("コース: 制覇済みのセクションは飛ばして続きから", (await page2.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhs-english2" && (await page2.textContent("#pathHead")).includes("セクション 2／8"));
+  await page2.close();
+
+  // ユニット制覇の演出: 残り1語のユニットを終えると道に🎉が出る（はちゃんは出さない）
+  const firstTagC = jhs1C[0].tags[0];
+  const unitWords = jhs1C.filter((w) => w.tags[0] === firstTagC);
+  // 残す1語は訳が一意な語（別の語と同じ訳だと答えを見ることになり「覚えた」にならない）
+  const uniqueJa = (w) => findByJaC(jhs1C, w.ja).length === 1 && w.ja.split("・").every((j) => findByJaC(jhs1C, j).length === 1);
+  const last = unitWords.slice().reverse().find(uniqueJa) ?? unitWords[unitWords.length - 1];
+  const stats3 = Object.fromEntries(unitWords.filter((w) => w.id !== last.id).map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]));
+  const page3 = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(stats3), spelldash_placement: "done", spelldash_level_boost: "2" } });
+  await page3.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
+  await page3.waitForTimeout(900);
+  check("制覇の演出: 開始前はユニット 1／11 で残り1語", (await page3.textContent("#pathHead")).includes("ユニット 1／11") && (await page3.textContent("#pathStart")).includes(`${unitWords.length - 1}／${unitWords.length}`));
+  await page3.click("#pathStart");
+  await page3.waitForTimeout(600);
+  let sawLast = false;
+  for (let i = 0; i < 8 && (await page3.$("#resultPanel[hidden]")) !== null; i++) {
+    const ja = (await page3.textContent("#japanese")).trim();
+    const cand = findByJaC(jhs1C, ja);
+    let ans;
+    if (cand.length === 1) {
+      ans = cand[0].en;
+    } else {
+      await page3.press("#input", "Enter");
+      await page3.waitForTimeout(200);
+      ans = (await page3.textContent("#word")).trim();
+    }
+    if (ans === last.en) sawLast = true;
+    for (const ch of ans) await page3.press("#input", ch);
+    await page3.waitForTimeout(150);
+    await page3.press("#input", "Enter");
+    await page3.waitForTimeout(400);
+  }
+  await page3.waitForTimeout(300);
+  const toast = await page3.textContent("#pathToast");
+  check("制覇の演出: セット完了で🎉ユニット制覇のお知らせ、次のユニット名", sawLast && (await page3.isVisible("#pathToast")) && toast.includes("制覇") && (await page3.textContent("#pathHead")).includes("ユニット 2／11"), `sawLast=${sawLast} toast=${toast}`);
+  check("制覇の演出: はちゃんは出さない", !(await page3.$eval("#pathToast", (el) => el.innerHTML.includes("hasumi"))));
+  check("制覇の演出でエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
+  await page3.close();
+}
+
 await browser.close();
 server.close();
 
