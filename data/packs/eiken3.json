@@ -43,7 +43,7 @@
     {"id": "english-planet", "en": "planet", "ja": "惑星", "pos": "名", "level": "hard", "tags": ["environment"], "ex": "How many planets are there in space?", "exJa": "宇宙には惑星がいくつあるの？", "exForm": "planets"},
     {"id": "english-earthquake", "en": "earthquake", "ja": "地震", "pos": "名", "level": "normal", "tags": ["environment"], "ex": "There was a big earthquake last night.", "exJa": "昨夜、大きな地震があった。"},
     {"id": "english-disaster", "en": "disaster", "ja": "災害", "pos": "名", "level": "hard", "tags": ["environment"], "ex": "We practiced what to do in a disaster.", "exJa": "災害のときにどうするか練習した。"},
-    {"id": "english-idea", "en": "idea", "ja": "考え", "pos": "名", "level": "easy", "tags": ["mind"], "ex": "I have a good idea for the party.", "exJa": "パーティーにいい考えがあるんだ。"},
+    {"id": "english-idea", "en": "idea", "ja": "考え", "pos": "名", "level": "easy", "tags": ["mind"], "ex": "I have a good idea for the party.", "exJa": "パーティーについて、いい考えがあるんだ。"},
     {"id": "english-opinion", "en": "opinion", "ja": "意見", "pos": "名", "level": "normal", "tags": ["mind"], "ex": "In my opinion, this book is the best.", "exJa": "私の意見では、この本が一番だ。"},
     {"id": "english-decide", "en": "decide", "ja": "決める", "pos": "動", "level": "easy", "tags": ["mind"], "ex": "I decided to join the volleyball team.", "exJa": "バレー部に入ることに決めた。", "exForm": "decided"},
     {"id": "english-believe", "en": "believe", "ja": "信じる", "pos": "動", "level": "easy", "tags": ["mind"], "ex": "I believe that you can do it.", "exJa": "君ならできると信じてるよ。"},

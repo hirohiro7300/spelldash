@@ -115,7 +115,7 @@
     {"id": "english-recover", "en": "recover", "ja": "回復する", "pos": "動", "level": "normal", "tags": ["health"], "ex": "It took me a week to recover from the cold.", "exJa": "風邪が治るのに一週間かかった。"},
     {"id": "english-climate", "en": "climate", "ja": "気候", "pos": "名", "level": "easy", "tags": ["environment"], "ex": "The climate here is warm and dry all year round.", "exJa": "ここの気候は一年中暖かくて乾燥している。"},
     {"id": "english-resource", "en": "resource", "ja": "資源", "pos": "名", "level": "normal", "tags": ["environment"], "ex": "Water is one of our most important natural resources.", "exJa": "水は最も大切な天然資源の一つだ。", "exForm": "resources"},
-    {"id": "english-fuel", "en": "fuel", "ja": "燃料", "pos": "名", "level": "normal", "tags": ["environment"], "ex": "This new car uses much less fuel than my old one.", "exJa": "この新しい車は前の車よりずっと燃費がいい。"},
+    {"id": "english-fuel", "en": "fuel", "ja": "燃料", "pos": "名", "level": "normal", "tags": ["environment"], "ex": "This new car uses much less fuel than my old one.", "exJa": "この新しい車は前の車より使う燃料がずっと少ない。"},
     {"id": "english-waste", "en": "waste", "ja": "廃棄物", "pos": "名", "level": "normal", "tags": ["environment"], "ex": "Our town is trying to reduce food waste.", "exJa": "私たちの町は食品廃棄物を減らそうとしている。"},
     {"id": "english-wildlife", "en": "wildlife", "ja": "野生生物", "pos": "名", "level": "hard", "tags": ["environment"], "ex": "The forest is home to many kinds of wildlife.", "exJa": "その森には多くの野生生物がすんでいる。"},
     {"id": "english-temperature", "en": "temperature", "ja": "気温・温度", "pos": "名", "level": "easy", "tags": ["environment"], "ex": "The temperature will drop below zero tonight.", "exJa": "今夜は気温が零度を下回るでしょう。"},
