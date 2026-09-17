@@ -2053,6 +2053,27 @@ console.log("courses:");
   await page3.close();
 }
 
+// ===== 13. 道: 済みユニットの折りたたみとユニットの一覧リンク =====
+console.log("path fold:");
+{
+  const jhs1F = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
+  const tagsF = [...new Set(jhs1F.map((w) => w.tags[0]))];
+  const doneTags = new Set(tagsF.slice(0, 6)); // 最初の6ユニットを済みに
+  const statsF = Object.fromEntries(jhs1F.filter((w) => doneTags.has(w.tags[0])).map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]));
+  const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(statsF), spelldash_placement: "done" } });
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("道: 済み6ユニットは「済み 4ユニット」＋直前の2つに畳まれる", (await page.$$(".path__node--done:not(.path__node--fold)")).length === 2 && (await page.textContent(".path__node--fold")).includes("済み 4ユニット") && (await page.textContent("#pathHead")).includes("ユニット 7／11"));
+  const startTop = await page.$eval("#pathStart", (el) => el.getBoundingClientRect().top);
+  check("道: 現在地のスタートが最初の画面内（スクロール不要）", startTop < 844, `top=${startTop}`);
+  check("道: 現在ユニットに一覧リンク（ジャンルのアンカー）", (await page.getAttribute(".path__node--current .path__unit-link", "href")).includes(`#genre-${tagsF[6]}`));
+  await page.click("#pathDoneFold");
+  await page.waitForTimeout(200);
+  check("道: 開くと済みユニットが全部出る", (await page.$$(".path__node--done:not(.path__node--fold)")).length === 6 && (await page.$(".path__node--fold")) === null && (await page.$$(".path__dot[data-review]")).length === 6);
+  check("道の折りたたみでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
 await browser.close();
 server.close();
 
