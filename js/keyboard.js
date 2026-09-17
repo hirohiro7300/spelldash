@@ -28,8 +28,12 @@ export function setOskMode(mode) {
   window.dispatchEvent(new CustomEvent("spelldash:osk"));
 }
 
+// スマホ・タブレット判定: 主ポインタが指（coarse）か、タッチはあるがマウス等の精密ポインタが無い端末。
+// タッチ対応のノート PC（pointer: fine）はここには入らない（PC ではオフ、の約束）
 export function isTouchDevice() {
-  return window.matchMedia?.("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+  const mq = (q) => !!window.matchMedia?.(q).matches;
+  if (mq("(pointer: coarse)")) return true;
+  return navigator.maxTouchPoints > 0 && !mq("(pointer: fine)");
 }
 
 export function oskEnabled() {
@@ -68,11 +72,26 @@ function isFreeText() {
   return document.body.classList.contains("free-answer");
 }
 
+// 英文カードの値編集はカーソル位置を尊重する（文の途中をタップして直せる）
+function editAtCaret(insert, deleteBefore = 0) {
+  const value = input.value;
+  const start = input.selectionStart ?? value.length;
+  const end = input.selectionEnd ?? start;
+  const from = start === end ? Math.max(0, start - deleteBefore) : start;
+  input.value = value.slice(0, from) + insert + value.slice(end);
+  const caret = from + insert.length;
+  try {
+    input.setSelectionRange(caret, caret);
+  } catch {
+    // 一部の input type では不可
+  }
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function pressChar(ch) {
   haptic();
   if (isFreeText()) {
-    input.value += ch;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+    editAtCaret(ch);
     return;
   }
   sendKey(ch);
@@ -81,8 +100,7 @@ function pressChar(ch) {
 function pressBackspace() {
   haptic();
   if (isFreeText()) {
-    input.value = input.value.slice(0, -1);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+    editAtCaret("", 1);
   }
   // 綴り入力では受理済みの文字は消せない（1ミス＝不正解の方針）。何もしない
 }
@@ -98,9 +116,13 @@ function usableNow() {
   return !isFreeText() || write;
 }
 
+// プレイ中か（game.js のイベントで追う。profile.html 等でも読み込まれるので game.js は import しない）
+let playing = false;
+
 export function refreshKeyboard() {
   if (!container || !input) return;
-  const on = oskEnabled() && usableNow() && document.body.classList.contains("home--playing");
+  // プレイ中だけ。セット／チャレンジが終わって結果パネルが出ている間は畳む（ボタンを隠さない）
+  const on = oskEnabled() && usableNow() && document.body.classList.contains("home--playing") && playing;
   container.hidden = !on;
   document.body.classList.toggle("osk-open", on);
   if (on) {
@@ -149,8 +171,15 @@ export function initializeKeyboard() {
   container.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
 
   window.addEventListener("spelldash:osk", refreshKeyboard);
-  window.addEventListener("spelldash:game-start", () => setTimeout(refreshKeyboard, 0));
+  window.addEventListener("spelldash:game-start", () => {
+    playing = true;
+    setTimeout(refreshKeyboard, 0);
+  });
   window.addEventListener("spelldash:word", refreshKeyboard);
+  window.addEventListener("spelldash:game-end", () => {
+    playing = false;
+    setTimeout(refreshKeyboard, 0);
+  });
   new MutationObserver(refreshKeyboard).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   refreshKeyboard();
 }

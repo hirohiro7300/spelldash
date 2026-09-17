@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID.net.spelldash.app",
+        "paths": ["/", "/index.html", "/list.html*", "/stats.html", "/profile.html", "/battle.html", "/news.html", "/packs/*", "/auth/*"]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAMID.net.spelldash.app"]
+  }
+}

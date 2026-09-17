@@ -103,6 +103,17 @@ for (const fullPath of files) {
       if (!/^[a-z][a-z-]*$/.test(w.en ?? "")) problems.push(`スペル形式 ${where} en="${w.en}"`);
     }
     if (!["easy", "normal", "hard"].includes(w.level)) problems.push(`level不正 ${where}`);
+    // 例文（任意）: ex は英文で 70字以内、見出し語（または exForm の語形）を含む。exJa は 40字以内で必須
+    if (w.ex != null || w.exJa != null || w.exForm != null) {
+      const ex = String(w.ex ?? "");
+      const form = String(w.exForm ?? w.en ?? "");
+      if (!ex || !/^[A-Za-z"'(]/.test(ex)) problems.push(`exが英文でない ${where}`);
+      if (ex.length > 70) problems.push(`exが長い(>70) ${where}`);
+      if (!w.exJa || String(w.exJa).length > 40) problems.push(`exJaなし/長い(>40) ${where}`);
+      const re = new RegExp(`(^|[^A-Za-z])${form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z]|$)`, "i");
+      if (form && !re.test(ex)) problems.push(`exに見出し語が無い ${where} (${form})`);
+      if (w.exForm && String(w.exForm).toLowerCase() === String(w.en).toLowerCase()) problems.push(`exFormが見出し語と同じ（不要） ${where}`);
+    }
     if (!Array.isArray(w.tags) || w.tags.length === 0) problems.push(`タグなし ${where}`);
     if (seen.has(w.id)) problems.push(`ファイル内重複 ${where}`);
     seen.add(w.id);

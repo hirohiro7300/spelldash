@@ -3,914 +3,106 @@
   "category": "ads",
   "label": "広告・マーケ",
   "words": [
-    {
-      "id": "english-ctr",
-      "en": "ctr",
-      "ja": "クリック率（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cpc",
-      "en": "cpc",
-      "ja": "クリック単価（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cpm",
-      "en": "cpm",
-      "ja": "インプレッション千回あたりの広告単価（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cvr",
-      "en": "cvr",
-      "ja": "コンバージョン率（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cpa",
-      "en": "cpa",
-      "ja": "コンバージョン獲得単価（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cpl",
-      "en": "cpl",
-      "ja": "リード獲得単価（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cpr",
-      "en": "cpr",
-      "ja": "レスポンス獲得単価（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cpo",
-      "en": "cpo",
-      "ja": "受注獲得単価（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cpv",
-      "en": "cpv",
-      "ja": "動画視聴単価（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cpi",
-      "en": "cpi",
-      "ja": "アプリインストール単価（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-cac",
-      "en": "cac",
-      "ja": "顧客獲得コスト（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-ltv",
-      "en": "ltv",
-      "ja": "顧客生涯価値（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-roas",
-      "en": "roas",
-      "ja": "広告費用対効果（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-roi",
-      "en": "roi",
-      "ja": "投資利益率（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-kpi",
-      "en": "kpi",
-      "ja": "重要業績評価指標（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-kgi",
-      "en": "kgi",
-      "ja": "重要目標達成指標（略語）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-impression",
-      "en": "impression",
-      "ja": "インプレッション（広告の表示回数）",
-      "level": "normal",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-click",
-      "en": "click",
-      "ja": "クリック",
-      "level": "easy",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-conversion",
-      "en": "conversion",
-      "ja": "コンバージョン（購入・問い合わせなどの成果）",
-      "level": "normal",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-reach",
-      "en": "reach",
-      "ja": "リーチ（広告が届いた人数）",
-      "level": "easy",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-frequency",
-      "en": "frequency",
-      "ja": "フリークエンシー（同一人物への表示頻度）",
-      "level": "normal",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-engagement",
-      "en": "engagement",
-      "ja": "エンゲージメント（いいね・コメント等の反応）",
-      "level": "normal",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-traffic",
-      "en": "traffic",
-      "ja": "トラフィック（サイトへの流入・訪問）",
-      "level": "normal",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-session",
-      "en": "session",
-      "ja": "セッション（1回の訪問）",
-      "level": "normal",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-bounce",
-      "en": "bounce",
-      "ja": "直帰（1ページだけ見て離脱）",
-      "level": "normal",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-retention",
-      "en": "retention",
-      "ja": "リテンション（顧客の継続・定着）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-churn",
-      "en": "churn",
-      "ja": "チャーン（顧客の解約・離脱）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-benchmark",
-      "en": "benchmark",
-      "ja": "ベンチマーク（比較の基準値）",
-      "level": "hard",
-      "tags": [
-        "metrics"
-      ]
-    },
-    {
-      "id": "english-ad",
-      "en": "ad",
-      "ja": "広告",
-      "level": "easy",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-campaign",
-      "en": "campaign",
-      "ja": "キャンペーン（広告運用の管理単位）",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-account",
-      "en": "account",
-      "ja": "アカウント",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-keyword",
-      "en": "keyword",
-      "ja": "キーワード（広告主が登録する検索語）",
-      "level": "easy",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-query",
-      "en": "query",
-      "ja": "検索クエリ（ユーザーが実際に検索した語句）",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-creative",
-      "en": "creative",
-      "ja": "クリエイティブ（広告の素材・表現物）",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-banner",
-      "en": "banner",
-      "ja": "バナー（画像広告）",
-      "level": "easy",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-headline",
-      "en": "headline",
-      "ja": "見出し",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-copy",
-      "en": "copy",
-      "ja": "コピー（広告文）",
-      "level": "easy",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-placement",
-      "en": "placement",
-      "ja": "プレースメント（広告の掲載面・掲載位置）",
-      "level": "hard",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-auction",
-      "en": "auction",
-      "ja": "オークション（広告枠の入札競売）",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-budget",
-      "en": "budget",
-      "ja": "予算",
-      "level": "easy",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-bid",
-      "en": "bid",
-      "ja": "入札・入札額",
-      "level": "easy",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-bidding",
-      "en": "bidding",
-      "ja": "入札戦略・入札行為",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-optimization",
-      "en": "optimization",
-      "ja": "最適化",
-      "level": "hard",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-performance",
-      "en": "performance",
-      "ja": "パフォーマンス（成果・実績）",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-dashboard",
-      "en": "dashboard",
-      "ja": "ダッシュボード（指標を一覧する管理画面）",
-      "level": "normal",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-report",
-      "en": "report",
-      "ja": "レポート・報告書",
-      "level": "easy",
-      "tags": [
-        "structure"
-      ]
-    },
-    {
-      "id": "english-targeting",
-      "en": "targeting",
-      "ja": "ターゲティング（配信対象の絞り込み）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-audience",
-      "en": "audience",
-      "ja": "オーディエンス（広告の配信対象となる人々）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-segment",
-      "en": "segment",
-      "ja": "セグメント（属性で区切った顧客集団）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-persona",
-      "en": "persona",
-      "ja": "ペルソナ（代表的な顧客像）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-retargeting",
-      "en": "retargeting",
-      "ja": "リターゲティング（一度訪問した人への再配信）",
-      "level": "hard",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-remarketing",
-      "en": "remarketing",
-      "ja": "リマーケティング（既接触ユーザーへの再アプローチ）",
-      "level": "hard",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-intent",
-      "en": "intent",
-      "ja": "インテント（検索意図・購買意図）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-exact",
-      "en": "exact",
-      "ja": "完全一致（マッチタイプ）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-phrase",
-      "en": "phrase",
-      "ja": "フレーズ一致（マッチタイプ）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-broad",
-      "en": "broad",
-      "ja": "インテントマッチ・部分一致（マッチタイプ）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-negative",
-      "en": "negative",
-      "ja": "除外（除外キーワードの「除外」）",
-      "level": "normal",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-demographic",
-      "en": "demographic",
-      "ja": "デモグラフィック（年齢・性別などの属性）",
-      "level": "hard",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-geo",
-      "en": "geo",
-      "ja": "地域（ジオターゲティングの「ジオ」）",
-      "level": "easy",
-      "tags": [
-        "targeting"
-      ]
-    },
-    {
-      "id": "english-quality",
-      "en": "quality",
-      "ja": "品質（品質スコアの「品質」）",
-      "level": "easy",
-      "tags": [
-        "quality"
-      ]
-    },
-    {
-      "id": "english-relevance",
-      "en": "relevance",
-      "ja": "関連性",
-      "level": "hard",
-      "tags": [
-        "quality"
-      ]
-    },
-    {
-      "id": "english-rank",
-      "en": "rank",
-      "ja": "広告ランク・掲載順位",
-      "level": "easy",
-      "tags": [
-        "quality"
-      ]
-    },
-    {
-      "id": "english-policy",
-      "en": "policy",
-      "ja": "ポリシー（広告掲載の規約）",
-      "level": "normal",
-      "tags": [
-        "quality"
-      ]
-    },
-    {
-      "id": "english-approval",
-      "en": "approval",
-      "ja": "承認（広告審査の承認）",
-      "level": "normal",
-      "tags": [
-        "quality"
-      ]
-    },
-    {
-      "id": "english-rejection",
-      "en": "rejection",
-      "ja": "不承認・却下",
-      "level": "hard",
-      "tags": [
-        "quality"
-      ]
-    },
-    {
-      "id": "english-tracking",
-      "en": "tracking",
-      "ja": "トラッキング（行動の計測・追跡）",
-      "level": "normal",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-attribution",
-      "en": "attribution",
-      "ja": "アトリビューション（成果をどの接点に帰属させるか）",
-      "level": "hard",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-pixel",
-      "en": "pixel",
-      "ja": "ピクセル（計測用の埋め込みタグ）",
-      "level": "normal",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-cookie",
-      "en": "cookie",
-      "ja": "クッキー（ブラウザに保存される識別情報）",
-      "level": "normal",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-gclid",
-      "en": "gclid",
-      "ja": "Google広告のクリック識別ID（略語）",
-      "level": "hard",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-crm",
-      "en": "crm",
-      "ja": "顧客関係管理システム（略語）",
-      "level": "hard",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-api",
-      "en": "api",
-      "ja": "外部システム連携の窓口（略語）",
-      "level": "hard",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-metric",
-      "en": "metric",
-      "ja": "指標",
-      "level": "normal",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-insight",
-      "en": "insight",
-      "ja": "インサイト（データから得る洞察）",
-      "level": "hard",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-hypothesis",
-      "en": "hypothesis",
-      "ja": "仮説",
-      "level": "hard",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-analytics",
-      "en": "analytics",
-      "ja": "アナリティクス（アクセス解析）",
-      "level": "normal",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-offline",
-      "en": "offline",
-      "ja": "オフライン（電話・来店など画面外の成果）",
-      "level": "normal",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-primary",
-      "en": "primary",
-      "ja": "メイン（主要なコンバージョン設定）",
-      "level": "normal",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-secondary",
-      "en": "secondary",
-      "ja": "サブ（補助的なコンバージョン設定）",
-      "level": "normal",
-      "tags": [
-        "measurement"
-      ]
-    },
-    {
-      "id": "english-marketing",
-      "en": "marketing",
-      "ja": "マーケティング",
-      "level": "easy",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-brand",
-      "en": "brand",
-      "ja": "ブランド",
-      "level": "easy",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-awareness",
-      "en": "awareness",
-      "ja": "認知（ブランド認知）",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-consideration",
-      "en": "consideration",
-      "ja": "比較検討（購買前の検討段階）",
-      "level": "hard",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-acquisition",
-      "en": "acquisition",
-      "ja": "獲得（新規顧客の獲得）",
-      "level": "hard",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-funnel",
-      "en": "funnel",
-      "ja": "ファネル（認知から購入までの漏斗状の流れ）",
-      "level": "hard",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-lead",
-      "en": "lead",
-      "ja": "リード（見込み客・問い合わせ）",
-      "level": "easy",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-prospect",
-      "en": "prospect",
-      "ja": "見込み客",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-customer",
-      "en": "customer",
-      "ja": "顧客",
-      "level": "easy",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-revenue",
-      "en": "revenue",
-      "ja": "売上",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-profit",
-      "en": "profit",
-      "ja": "利益",
-      "level": "easy",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-margin",
-      "en": "margin",
-      "ja": "マージン・利益率",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-demand",
-      "en": "demand",
-      "ja": "需要",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-supply",
-      "en": "supply",
-      "ja": "供給",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-competitor",
-      "en": "competitor",
-      "ja": "競合他社",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-channel",
-      "en": "channel",
-      "ja": "チャネル（集客経路）",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-organic",
-      "en": "organic",
-      "ja": "オーガニック（広告費をかけない自然流入）",
-      "level": "normal",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-seo",
-      "en": "seo",
-      "ja": "検索エンジン最適化（略語）",
-      "level": "hard",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-sem",
-      "en": "sem",
-      "ja": "検索エンジンマーケティング（略語）",
-      "level": "hard",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-ppc",
-      "en": "ppc",
-      "ja": "クリック課金型広告（略語）",
-      "level": "hard",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-cta",
-      "en": "cta",
-      "ja": "行動喚起（ボタン等で次の行動を促す要素・略語）",
-      "level": "hard",
-      "tags": [
-        "marketing"
-      ]
-    },
-    {
-      "id": "english-lp",
-      "en": "lp",
-      "ja": "ランディングページ（略語）",
-      "level": "hard",
-      "tags": [
-        "marketing"
-      ]
-    }
+    {"id": "english-ctr", "en": "ctr", "ja": "クリック率（略語）", "level": "hard", "tags": ["metrics"], "ex": "The CTR on the new banner rose from two to three percent.", "exJa": "新バナーのCTRは2%から3%に上がった。"},
+    {"id": "english-cpc", "en": "cpc", "ja": "クリック単価（略語）", "level": "hard", "tags": ["metrics"], "ex": "Our average CPC went up after a competitor raised its bids.", "exJa": "競合が入札を上げてから平均CPCが上がった。"},
+    {"id": "english-cpm", "en": "cpm", "ja": "インプレッション千回あたりの広告単価（略語）", "level": "hard", "tags": ["metrics"], "ex": "The CPM for this audience is about five hundred yen.", "exJa": "このオーディエンスのCPMは約500円です。"},
+    {"id": "english-cvr", "en": "cvr", "ja": "コンバージョン率（略語）", "level": "hard", "tags": ["metrics"], "ex": "The new landing page has almost double the CVR of the old one.", "exJa": "新LPのCVRは旧LPのほぼ2倍です。"},
+    {"id": "english-cpa", "en": "cpa", "ja": "コンバージョン獲得単価（略語）", "level": "hard", "tags": ["metrics"], "ex": "Our target CPA for this campaign is three thousand yen.", "exJa": "このキャンペーンの目標CPAは3,000円です。"},
+    {"id": "english-cpl", "en": "cpl", "ja": "リード獲得単価（略語）", "level": "hard", "tags": ["metrics"], "ex": "CPL dropped by twenty percent after we shortened the form.", "exJa": "フォームを短くしたらCPLが20%下がった。"},
+    {"id": "english-cpr", "en": "cpr", "ja": "レスポンス獲得単価（略語）", "level": "hard", "tags": ["metrics"], "ex": "We track CPR to see how much each response costs us.", "exJa": "レスポンス1件あたりの費用をCPRで追っている。"},
+    {"id": "english-cpo", "en": "cpo", "ja": "受注獲得単価（略語）", "level": "hard", "tags": ["metrics"], "ex": "CPO stayed below our target, so we can scale this campaign.", "exJa": "CPOが目標を下回ったので拡大できる。"},
+    {"id": "english-cpv", "en": "cpv", "ja": "動画視聴単価（略語）", "level": "hard", "tags": ["metrics"], "ex": "CPV on the fifteen-second video was only four yen.", "exJa": "15秒動画のCPVはわずか4円だった。"},
+    {"id": "english-cpi", "en": "cpi", "ja": "アプリインストール単価（略語）", "level": "hard", "tags": ["metrics"], "ex": "Our CPI went up because of stronger competition this quarter.", "exJa": "今期は競争が激しくCPIが上がった。"},
+    {"id": "english-cac", "en": "cac", "ja": "顧客獲得コスト（略語）", "level": "hard", "tags": ["metrics"], "ex": "CAC is still too high compared with the value of each customer.", "exJa": "顧客1人の価値に比べCACがまだ高すぎる。"},
+    {"id": "english-ltv", "en": "ltv", "ja": "顧客生涯価値（略語）", "level": "hard", "tags": ["metrics"], "ex": "LTV is much higher for users who came through search ads.", "exJa": "検索広告経由のユーザーはLTVがかなり高い。"},
+    {"id": "english-roas", "en": "roas", "ja": "広告費用対効果（略語）", "level": "hard", "tags": ["metrics"], "ex": "ROAS for the shopping campaign reached four hundred percent.", "exJa": "ショッピングキャンペーンのROASは400%に達した。"},
+    {"id": "english-roi", "en": "roi", "ja": "投資利益率（略語）", "level": "hard", "tags": ["metrics"], "ex": "The client wants to see ROI, not just clicks.", "exJa": "クライアントはクリック数でなくROIを見たがっている。"},
+    {"id": "english-kpi", "en": "kpi", "ja": "重要業績評価指標（略語）", "level": "hard", "tags": ["metrics"], "ex": "Our main KPI for this quarter is the number of new leads.", "exJa": "今期のメインKPIは新規リード数です。"},
+    {"id": "english-kgi", "en": "kgi", "ja": "重要目標達成指標（略語）", "level": "hard", "tags": ["metrics"], "ex": "The KGI is annual revenue, and CPA is one of the KPIs under it.", "exJa": "KGIは年間売上で、CPAはその下のKPIの一つ。"},
+    {"id": "english-impression", "en": "impression", "ja": "インプレッション（広告の表示回数）", "level": "normal", "tags": ["metrics"], "ex": "We got one million impressions but only a few hundred clicks.", "exJa": "100万インプレッションを獲得したがクリックは数百件だった。", "exForm": "impressions"},
+    {"id": "english-click", "en": "click", "ja": "クリック", "level": "easy", "tags": ["metrics"], "ex": "Each click costs about eighty yen on this keyword.", "exJa": "このキーワードは1クリック約80円かかる。"},
+    {"id": "english-conversion", "en": "conversion", "ja": "コンバージョン（購入・問い合わせなどの成果）", "level": "normal", "tags": ["metrics"], "ex": "We counted forty conversions from the campaign last week.", "exJa": "先週のキャンペーンで40件のコンバージョンがあった。", "exForm": "conversions"},
+    {"id": "english-reach", "en": "reach", "ja": "リーチ（広告が届いた人数）", "level": "easy", "tags": ["metrics"], "ex": "The reach of the video ad was about two hundred thousand people.", "exJa": "動画広告のリーチは約20万人だった。"},
+    {"id": "english-frequency", "en": "frequency", "ja": "フリークエンシー（同一人物への表示頻度）", "level": "normal", "tags": ["metrics"], "ex": "Let's cap the frequency at three so users don't get tired of the ad.", "exJa": "飽きられないようフリークエンシーは3までに制限しよう。"},
+    {"id": "english-engagement", "en": "engagement", "ja": "エンゲージメント（いいね・コメント等の反応）", "level": "normal", "tags": ["metrics"], "ex": "Engagement was much higher on the post with the short video.", "exJa": "短い動画付きの投稿はエンゲージメントがかなり高かった。"},
+    {"id": "english-traffic", "en": "traffic", "ja": "トラフィック（サイトへの流入・訪問）", "level": "normal", "tags": ["metrics"], "ex": "Most of our traffic still comes from organic search.", "exJa": "トラフィックの大半はまだ自然検索からです。"},
+    {"id": "english-session", "en": "session", "ja": "セッション（1回の訪問）", "level": "normal", "tags": ["metrics"], "ex": "The average session lasted less than one minute.", "exJa": "平均セッション時間は1分未満だった。"},
+    {"id": "english-bounce", "en": "bounce", "ja": "直帰（1ページだけ見て離脱）", "level": "normal", "tags": ["metrics"], "ex": "The bounce rate on the mobile page is over seventy percent.", "exJa": "モバイルページの直帰率は70%を超えている。"},
+    {"id": "english-retention", "en": "retention", "ja": "リテンション（顧客の継続・定着）", "level": "hard", "tags": ["metrics"], "ex": "Retention after thirty days is only fifteen percent.", "exJa": "30日後のリテンションはわずか15%です。"},
+    {"id": "english-churn", "en": "churn", "ja": "チャーン（顧客の解約・離脱）", "level": "hard", "tags": ["metrics"], "ex": "Churn went up after we raised the monthly price.", "exJa": "月額を値上げしてからチャーンが増えた。"},
+    {"id": "english-benchmark", "en": "benchmark", "ja": "ベンチマーク（比較の基準値）", "level": "hard", "tags": ["metrics"], "ex": "A two percent CTR is a good benchmark for search ads.", "exJa": "検索広告ではCTR2%が良いベンチマークです。"},
+    {"id": "english-ad", "en": "ad", "ja": "広告", "level": "easy", "tags": ["structure"], "ex": "This ad has been running for two weeks without any changes.", "exJa": "この広告は2週間、何も変えずに配信し続けている。"},
+    {"id": "english-campaign", "en": "campaign", "ja": "キャンペーン（広告運用の管理単位）", "level": "normal", "tags": ["structure"], "ex": "We will pause the campaign until the new creative is ready.", "exJa": "新しいクリエイティブができるまでキャンペーンは停止します。"},
+    {"id": "english-account", "en": "account", "ja": "アカウント", "level": "normal", "tags": ["structure"], "ex": "Please give Ms. Sato access to the ad account.", "exJa": "佐藤さんに広告アカウントの権限を付与してください。"},
+    {"id": "english-keyword", "en": "keyword", "ja": "キーワード（広告主が登録する検索語）", "level": "easy", "tags": ["structure"], "ex": "We added ten new keywords to the search campaign.", "exJa": "検索キャンペーンに新しいキーワードを10個追加した。", "exForm": "keywords"},
+    {"id": "english-query", "en": "query", "ja": "検索クエリ（ユーザーが実際に検索した語句）", "level": "normal", "tags": ["structure"], "ex": "Check the search query report for terms we should exclude.", "exJa": "除外すべき語がないか検索クエリレポートを確認して。"},
+    {"id": "english-creative", "en": "creative", "ja": "クリエイティブ（広告の素材・表現物）", "level": "normal", "tags": ["structure"], "ex": "Let's test two creatives and keep the one with the higher CTR.", "exJa": "クリエイティブを2本テストしてCTRが高い方を残そう。", "exForm": "creatives"},
+    {"id": "english-banner", "en": "banner", "ja": "バナー（画像広告）", "level": "easy", "tags": ["structure"], "ex": "The new banner looks too busy on a small screen.", "exJa": "新しいバナーは小さい画面だとごちゃごちゃして見える。"},
+    {"id": "english-headline", "en": "headline", "ja": "見出し", "level": "normal", "tags": ["structure"], "ex": "Try a headline that mentions the free trial.", "exJa": "無料トライアルに触れた見出しを試してみて。"},
+    {"id": "english-copy", "en": "copy", "ja": "コピー（広告文）", "level": "easy", "tags": ["structure"], "ex": "The copy is too long; users won't read it on mobile.", "exJa": "コピーが長すぎる。スマホでは読まれないよ。"},
+    {"id": "english-placement", "en": "placement", "ja": "プレースメント（広告の掲載面・掲載位置）", "level": "hard", "tags": ["structure"], "ex": "Some placements in the app network have a very low CVR.", "exJa": "アプリ面の一部のプレースメントはCVRがとても低い。", "exForm": "placements"},
+    {"id": "english-auction", "en": "auction", "ja": "オークション（広告枠の入札競売）", "level": "normal", "tags": ["structure"], "ex": "We lost the auction because our bid was lower than the others.", "exJa": "入札額が他社より低かったのでオークションに負けた。"},
+    {"id": "english-budget", "en": "budget", "ja": "予算", "level": "easy", "tags": ["structure"], "ex": "The daily budget for this campaign is ten thousand yen.", "exJa": "このキャンペーンの日予算は1万円です。"},
+    {"id": "english-bid", "en": "bid", "ja": "入札・入札額", "level": "easy", "tags": ["structure"], "ex": "Let's raise the bid on our brand keywords by ten percent.", "exJa": "ブランドキーワードの入札額を10%上げよう。"},
+    {"id": "english-bidding", "en": "bidding", "ja": "入札戦略・入札行為", "level": "normal", "tags": ["structure"], "ex": "We switched to automated bidding to save time.", "exJa": "時間を節約するため自動入札に切り替えた。"},
+    {"id": "english-optimization", "en": "optimization", "ja": "最適化", "level": "hard", "tags": ["structure"], "ex": "Optimization takes a few weeks before the results become clear.", "exJa": "最適化の結果が見えるまで数週間かかる。"},
+    {"id": "english-performance", "en": "performance", "ja": "パフォーマンス（成果・実績）", "level": "normal", "tags": ["structure"], "ex": "Performance dropped sharply after the weekend.", "exJa": "週末明けからパフォーマンスが急に落ちた。"},
+    {"id": "english-dashboard", "en": "dashboard", "ja": "ダッシュボード（指標を一覧する管理画面）", "level": "normal", "tags": ["structure"], "ex": "You can check yesterday's numbers on the dashboard.", "exJa": "昨日の数字はダッシュボードで確認できます。"},
+    {"id": "english-report", "en": "report", "ja": "レポート・報告書", "level": "easy", "tags": ["structure"], "ex": "I will send the monthly report to the client by Friday.", "exJa": "月次レポートは金曜までにクライアントに送ります。"},
+    {"id": "english-targeting", "en": "targeting", "ja": "ターゲティング（配信対象の絞り込み）", "level": "normal", "tags": ["targeting"], "ex": "Our targeting is too narrow, so the ad is hardly being shown.", "exJa": "ターゲティングが狭すぎて広告がほとんど表示されていない。"},
+    {"id": "english-audience", "en": "audience", "ja": "オーディエンス（広告の配信対象となる人々）", "level": "normal", "tags": ["targeting"], "ex": "We built a new audience from people who watched the video.", "exJa": "動画を見た人で新しいオーディエンスを作った。"},
+    {"id": "english-segment", "en": "segment", "ja": "セグメント（属性で区切った顧客集団）", "level": "normal", "tags": ["targeting"], "ex": "The segment of users in their twenties converted best.", "exJa": "20代のセグメントが最もコンバージョンにつながった。"},
+    {"id": "english-persona", "en": "persona", "ja": "ペルソナ（代表的な顧客像）", "level": "normal", "tags": ["targeting"], "ex": "Our persona is a working mother in her thirties who shops online.", "exJa": "ペルソナはネット通販を使う30代の働く母親です。"},
+    {"id": "english-retargeting", "en": "retargeting", "ja": "リターゲティング（一度訪問した人への再配信）", "level": "hard", "tags": ["targeting"], "ex": "Retargeting brought back many users who left without buying.", "exJa": "リターゲティングで買わずに離脱した人を多く呼び戻せた。"},
+    {"id": "english-remarketing", "en": "remarketing", "ja": "リマーケティング（既接触ユーザーへの再アプローチ）", "level": "hard", "tags": ["targeting"], "ex": "The remarketing list covers visitors from the last thirty days.", "exJa": "リマーケティングリストは過去30日の訪問者が対象。"},
+    {"id": "english-intent", "en": "intent", "ja": "インテント（検索意図・購買意図）", "level": "normal", "tags": ["targeting"], "ex": "Users searching for prices usually have high purchase intent.", "exJa": "価格を検索する人はたいてい購買インテントが高い。"},
+    {"id": "english-exact", "en": "exact", "ja": "完全一致（マッチタイプ）", "level": "normal", "tags": ["targeting"], "ex": "Switch the keyword to exact match to cut wasted spend.", "exJa": "無駄な消化を減らすためキーワードを完全一致にして。"},
+    {"id": "english-phrase", "en": "phrase", "ja": "フレーズ一致（マッチタイプ）", "level": "normal", "tags": ["targeting"], "ex": "Phrase match gave us more clicks with a similar CPA.", "exJa": "フレーズ一致は同程度のCPAでクリックが増えた。"},
+    {"id": "english-broad", "en": "broad", "ja": "インテントマッチ・部分一致（マッチタイプ）", "level": "normal", "tags": ["targeting"], "ex": "Broad match brings volume, but watch the search terms closely.", "exJa": "部分一致は量が取れるが検索語句をよく見ておこう。"},
+    {"id": "english-negative", "en": "negative", "ja": "除外（除外キーワードの「除外」）", "level": "normal", "tags": ["targeting"], "ex": "Add 'free' as a negative keyword to filter out low-value clicks.", "exJa": "「無料」を除外キーワードに追加して質の低いクリックを防ごう。"},
+    {"id": "english-demographic", "en": "demographic", "ja": "デモグラフィック（年齢・性別などの属性）", "level": "hard", "tags": ["targeting"], "ex": "Demographic data shows most buyers are women over forty.", "exJa": "デモグラフィックデータでは購入者の大半は40歳以上の女性。"},
+    {"id": "english-geo", "en": "geo", "ja": "地域（ジオターゲティングの「ジオ」）", "level": "easy", "tags": ["targeting"], "ex": "Set the geo targeting to Tokyo and Osaka only.", "exJa": "地域ターゲティングは東京と大阪だけに設定して。"},
+    {"id": "english-quality", "en": "quality", "ja": "品質（品質スコアの「品質」）", "level": "easy", "tags": ["quality"], "ex": "A higher quality score means a lower CPC for the same position.", "exJa": "品質スコアが高いほど同じ順位でもCPCが安くなる。"},
+    {"id": "english-relevance", "en": "relevance", "ja": "関連性", "level": "hard", "tags": ["quality"], "ex": "Low ad relevance is hurting our quality score.", "exJa": "広告の関連性が低く品質スコアを下げている。"},
+    {"id": "english-rank", "en": "rank", "ja": "広告ランク・掲載順位", "level": "easy", "tags": ["quality"], "ex": "Our ad rank fell, so we are no longer at the top of the page.", "exJa": "広告ランクが下がり、ページ上部に出なくなった。"},
+    {"id": "english-policy", "en": "policy", "ja": "ポリシー（広告掲載の規約）", "level": "normal", "tags": ["quality"], "ex": "The ad was flagged for a policy issue, so please check the text.", "exJa": "ポリシー違反の疑いで広告が止まったので文面を確認して。"},
+    {"id": "english-approval", "en": "approval", "ja": "承認（広告審査の承認）", "level": "normal", "tags": ["quality"], "ex": "The new ads are still waiting for approval.", "exJa": "新しい広告はまだ審査の承認待ちです。"},
+    {"id": "english-rejection", "en": "rejection", "ja": "不承認・却下", "level": "hard", "tags": ["quality"], "ex": "The rejection reason was a broken link on the landing page.", "exJa": "不承認の理由はLPのリンク切れだった。"},
+    {"id": "english-tracking", "en": "tracking", "ja": "トラッキング（行動の計測・追跡）", "level": "normal", "tags": ["measurement"], "ex": "Conversion tracking stopped working after the site update.", "exJa": "サイト更新後にコンバージョントラッキングが止まった。"},
+    {"id": "english-attribution", "en": "attribution", "ja": "アトリビューション（成果をどの接点に帰属させるか）", "level": "hard", "tags": ["measurement"], "ex": "With last-click attribution, display ads get almost no credit.", "exJa": "ラストクリックのアトリビューションではディスプレイ広告がほぼ評価されない。"},
+    {"id": "english-pixel", "en": "pixel", "ja": "ピクセル（計測用の埋め込みタグ）", "level": "normal", "tags": ["measurement"], "ex": "Make sure the pixel fires on the thank-you page.", "exJa": "サンクスページでピクセルが発火するか確認して。"},
+    {"id": "english-cookie", "en": "cookie", "ja": "クッキー（ブラウザに保存される識別情報）", "level": "normal", "tags": ["measurement"], "ex": "Fewer users accept cookies now, so some conversions are missed.", "exJa": "クッキーを許可する人が減り一部のコンバージョンが漏れている。", "exForm": "cookies"},
+    {"id": "english-gclid", "en": "gclid", "ja": "Google広告のクリック識別ID（略語）", "level": "hard", "tags": ["measurement"], "ex": "The gclid was missing, so the conversion was not imported.", "exJa": "gclidが欠けていてコンバージョンが取り込まれなかった。"},
+    {"id": "english-crm", "en": "crm", "ja": "顧客関係管理システム（略語）", "level": "hard", "tags": ["measurement"], "ex": "We upload sales data from the CRM to measure offline conversions.", "exJa": "オフライン成果を計測するためCRMの売上データをアップロードしている。"},
+    {"id": "english-api", "en": "api", "ja": "外部システム連携の窓口（略語）", "level": "hard", "tags": ["measurement"], "ex": "We pull the daily numbers through the API instead of by hand.", "exJa": "日次の数字は手作業でなくAPI経由で取得している。"},
+    {"id": "english-metric", "en": "metric", "ja": "指標", "level": "normal", "tags": ["measurement"], "ex": "CTR is a useful metric, but it does not tell us about sales.", "exJa": "CTRは便利な指標だが売上のことは分からない。"},
+    {"id": "english-insight", "en": "insight", "ja": "インサイト（データから得る洞察）", "level": "hard", "tags": ["measurement"], "ex": "The key insight is that mobile users convert at night.", "exJa": "重要なインサイトは、モバイルユーザーは夜にコンバージョンする点だ。"},
+    {"id": "english-hypothesis", "en": "hypothesis", "ja": "仮説", "level": "hard", "tags": ["measurement"], "ex": "Our hypothesis is that a shorter form will raise the CVR.", "exJa": "フォームを短くすればCVRが上がるというのが仮説です。"},
+    {"id": "english-analytics", "en": "analytics", "ja": "アナリティクス（アクセス解析）", "level": "normal", "tags": ["measurement"], "ex": "Analytics shows that most visitors leave within ten seconds.", "exJa": "アナリティクスでは訪問者の大半が10秒以内に離脱している。"},
+    {"id": "english-offline", "en": "offline", "ja": "オフライン（電話・来店など画面外の成果）", "level": "normal", "tags": ["measurement"], "ex": "We import offline conversions such as phone orders every week.", "exJa": "電話注文などのオフラインコンバージョンを毎週取り込んでいる。"},
+    {"id": "english-primary", "en": "primary", "ja": "メイン（主要なコンバージョン設定）", "level": "normal", "tags": ["measurement"], "ex": "Only the primary conversion is used for bidding.", "exJa": "入札に使われるのはメインのコンバージョンだけです。"},
+    {"id": "english-secondary", "en": "secondary", "ja": "サブ（補助的なコンバージョン設定）", "level": "normal", "tags": ["measurement"], "ex": "We set newsletter sign-ups as a secondary conversion for now.", "exJa": "メルマガ登録はひとまずサブのコンバージョンにした。"},
+    {"id": "english-marketing", "en": "marketing", "ja": "マーケティング", "level": "easy", "tags": ["marketing"], "ex": "The marketing team meets every Monday to review the numbers.", "exJa": "マーケティングチームは毎週月曜に数字を振り返っている。"},
+    {"id": "english-brand", "en": "brand", "ja": "ブランド", "level": "easy", "tags": ["marketing"], "ex": "Searches for our brand name doubled after the TV campaign.", "exJa": "TVキャンペーン後にブランド名の検索が倍増した。"},
+    {"id": "english-awareness", "en": "awareness", "ja": "認知（ブランド認知）", "level": "normal", "tags": ["marketing"], "ex": "The goal of this video campaign is brand awareness, not sales.", "exJa": "この動画キャンペーンの目的は売上でなくブランド認知です。"},
+    {"id": "english-consideration", "en": "consideration", "ja": "比較検討（購買前の検討段階）", "level": "hard", "tags": ["marketing"], "ex": "Users in the consideration stage often compare prices.", "exJa": "比較検討段階のユーザーはよく価格を比べる。"},
+    {"id": "english-acquisition", "en": "acquisition", "ja": "獲得（新規顧客の獲得）", "level": "hard", "tags": ["marketing"], "ex": "Our acquisition cost per new customer is about five thousand yen.", "exJa": "新規顧客1人あたりの獲得コストは約5,000円です。"},
+    {"id": "english-funnel", "en": "funnel", "ja": "ファネル（認知から購入までの漏斗状の流れ）", "level": "hard", "tags": ["marketing"], "ex": "Many users drop out of the funnel at the payment step.", "exJa": "多くのユーザーが決済ステップでファネルから離脱している。"},
+    {"id": "english-lead", "en": "lead", "ja": "リード（見込み客・問い合わせ）", "level": "easy", "tags": ["marketing"], "ex": "We got thirty leads from the campaign, and ten turned into sales.", "exJa": "キャンペーンで30件のリードが取れ、10件が受注につながった。", "exForm": "leads"},
+    {"id": "english-prospect", "en": "prospect", "ja": "見込み客", "level": "normal", "tags": ["marketing"], "ex": "Send the case study to every prospect who downloaded the guide.", "exJa": "ガイドをダウンロードした見込み客全員に事例を送って。"},
+    {"id": "english-customer", "en": "customer", "ja": "顧客", "level": "easy", "tags": ["marketing"], "ex": "It costs more to win a new customer than to keep an old one.", "exJa": "新規顧客の獲得は既存顧客の維持よりコストがかかる。"},
+    {"id": "english-revenue", "en": "revenue", "ja": "売上", "level": "normal", "tags": ["marketing"], "ex": "Revenue from the campaign was three times the ad spend.", "exJa": "キャンペーンの売上は広告費の3倍だった。"},
+    {"id": "english-profit", "en": "profit", "ja": "利益", "level": "easy", "tags": ["marketing"], "ex": "High sales mean nothing if there is no profit left.", "exJa": "利益が残らなければ売上が高くても意味がない。"},
+    {"id": "english-margin", "en": "margin", "ja": "マージン・利益率", "level": "normal", "tags": ["marketing"], "ex": "The margin on this product is too thin to run paid ads.", "exJa": "この商品はマージンが薄すぎて有料広告は回せない。"},
+    {"id": "english-demand", "en": "demand", "ja": "需要", "level": "normal", "tags": ["marketing"], "ex": "Search demand for the product peaks in December every year.", "exJa": "この商品の検索需要は毎年12月にピークを迎える。"},
+    {"id": "english-supply", "en": "supply", "ja": "供給", "level": "normal", "tags": ["marketing"], "ex": "When supply is low, we pause the ads so we don't oversell.", "exJa": "供給が少ない時期は、売りすぎないよう広告を止めている。"},
+    {"id": "english-competitor", "en": "competitor", "ja": "競合他社", "level": "normal", "tags": ["marketing"], "ex": "A competitor started bidding on our brand keywords last week.", "exJa": "先週から競合他社がうちのブランドキーワードに入札し始めた。"},
+    {"id": "english-channel", "en": "channel", "ja": "チャネル（集客経路）", "level": "normal", "tags": ["marketing"], "ex": "Search is still our best channel for new customers.", "exJa": "新規顧客の獲得には検索が今も最良のチャネルです。"},
+    {"id": "english-organic", "en": "organic", "ja": "オーガニック（広告費をかけない自然流入）", "level": "normal", "tags": ["marketing"], "ex": "Organic traffic grew after we rewrote the product pages.", "exJa": "商品ページを書き直したらオーガニック流入が増えた。"},
+    {"id": "english-seo", "en": "seo", "ja": "検索エンジン最適化（略語）", "level": "hard", "tags": ["marketing"], "ex": "SEO takes months, so we run paid search in the meantime.", "exJa": "SEOは何か月もかかるので、その間は検索広告を回している。"},
+    {"id": "english-sem", "en": "sem", "ja": "検索エンジンマーケティング（略語）", "level": "hard", "tags": ["marketing"], "ex": "Our SEM budget is split between search ads and shopping ads.", "exJa": "SEM予算は検索広告とショッピング広告に分けている。"},
+    {"id": "english-ppc", "en": "ppc", "ja": "クリック課金型広告（略語）", "level": "hard", "tags": ["marketing"], "ex": "PPC gives us results right away, but the cost adds up quickly.", "exJa": "PPCはすぐに成果が出るが費用もすぐかさむ。"},
+    {"id": "english-cta", "en": "cta", "ja": "行動喚起（ボタン等で次の行動を促す要素・略語）", "level": "hard", "tags": ["marketing"], "ex": "Changing the CTA from 'Learn more' to 'Try free' lifted the CVR.", "exJa": "CTAを「詳しく見る」から「無料で試す」に変えたらCVRが上がった。"},
+    {"id": "english-lp", "en": "lp", "ja": "ランディングページ（略語）", "level": "hard", "tags": ["marketing"], "ex": "The LP loads slowly on mobile, and that is hurting the CVR.", "exJa": "LPはスマホで表示が遅く、それがCVRを下げている。"}
   ]
 }

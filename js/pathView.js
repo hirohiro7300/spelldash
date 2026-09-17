@@ -1,4 +1,4 @@
-import { getCategories, getWordsByCategory } from "./wordStore.js";
+import { getCategories, getWordsByCategory, getPackCatalog, isConceptWord } from "./wordStore.js";
 import { groupByGenre } from "./genres.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
@@ -41,11 +41,15 @@ export function buildPath(categoryId = localStorage.getItem(CATEGORY_KEY) || "al
   const category = categories.find((c) => c.id === categoryId);
   const label = categoryId === "all" ? "すべて" : category?.label ?? categoryId;
 
+  // 「すべて」の道: 「すべて」が実際に出題するカテゴリ（基本カテゴリの英単語。概念カードと分野パックは含まない）だけをユニットにする。
+  // スタートはそのカテゴリに絞る（tag は "category:<id>"）
   const units =
     categoryId === "all"
       ? categories
-          .filter((c) => c.id !== "my")
-          .map((c) => ({ tag: "", label: c.label, ...unitProgress(getWordsByCategory(c.id), stats) }))
+          .filter((c) => c.id !== "my" && !c.pack)
+          .map((c) => ({ id: c.id, words: getWordsByCategory(c.id).filter((w) => !isConceptWord(w) && !w.pack) }))
+          .filter((c) => c.words.length > 0)
+          .map((c) => ({ tag: `category:${c.id}`, label: categories.find((x) => x.id === c.id)?.label ?? c.id, ...unitProgress(c.words, stats) }))
       : groupByGenre(categoryId).map((g) => ({ tag: g.tag, label: g.label, ...unitProgress(g.words, stats) }));
 
   const currentIndex = units.findIndex((u) => !u.done);
@@ -75,11 +79,16 @@ export function renderPath({ onStart, onAdvance } = {}) {
   const due = getDueReviewCount(path.categoryId);
   const doneCount = units.filter((u) => u.done).length;
 
+  const category = getCategories().find((c) => c.id === path.categoryId);
   const kicker = section
     ? `${esc(course.label)} ・ セクション ${section.index + 1}／${section.total}`
     : path.categoryId === "all"
       ? "コース: すべての単語"
-      : "分野パック";
+      : path.categoryId === "my"
+        ? "自分で登録した語"
+        : category?.pack
+          ? "分野パック"
+          : "カテゴリ";
   const unitLine = allDone
     ? `🏆 ${units.length}ユニット制覇`
     : current
@@ -93,7 +102,8 @@ export function renderPath({ onStart, onAdvance } = {}) {
 
   // 現在地より先の未着手ユニットは3つまで見せ、残りは「あとNユニット」にまとめる（道が長くなりすぎない）
   const lockedLimit = currentIndex >= 0 ? currentIndex + 3 : units.length;
-  const hiddenLocked = Math.max(0, units.length - 1 - lockedLimit);
+  const hiddenUnits = units.filter((u, i) => !u.done && i !== currentIndex && i > lockedLimit);
+  const hiddenLocked = hiddenUnits.length;
   const nodes = units
     .map((u, i) => {
       const state = u.done ? "done" : i === currentIndex ? "current" : "locked";
@@ -126,12 +136,12 @@ export function renderPath({ onStart, onAdvance } = {}) {
 
   const goal = allDone
     ? section?.next
-      ? `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start path__start--next" id="pathNext">次のセクションへ →</button><div class="path__label"><b>${esc(label)} 制覇！</b><span>次は「${esc(getCategories().find((c) => c.id === section.next)?.label ?? "次のパック")}」</span></div></li>`
+      ? `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start path__start--next" id="pathNext">次のセクションへ →</button><div class="path__label"><b>${esc(label)} 制覇！</b><span>次は「${esc([...getCategories(), ...getPackCatalog()].find((c) => c.id === section.next)?.label ?? "次のパック")}」</span></div></li>`
       : `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start" id="pathStart" data-unit="" aria-label="復習を続ける"><span class="path__tip">全部覚えた</span>復習</button><div class="path__label"><b>${esc(label)} 制覇！</b><span>復習を続けるか、<a href="./list.html#packs">単語帳</a>から次の分野を追加</span></div></li>`
     : `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">🏆</span><div class="path__label"><b>${esc(label)} 制覇</b><span>${section?.next ? "次のセクションが開く" : "全ユニットを覚えたら"}</span></div></li>`;
 
   const more = hiddenLocked > 0
-    ? `<li class="path__node path__node--locked path__node--more path__node--c"><span class="path__dot" aria-hidden="true">…</span><div class="path__label"><b>あと${hiddenLocked}ユニット</b><span>${units.slice(lockedLimit + 1).map((u) => esc(u.label)).join("・")}</span></div></li>`
+    ? `<li class="path__node path__node--locked path__node--more path__node--c"><span class="path__dot" aria-hidden="true">…</span><div class="path__label"><b>あと${hiddenLocked}ユニット</b><span>${hiddenUnits.map((u) => esc(u.label)).join("・")}</span></div></li>`
     : "";
 
   headEl.innerHTML = `
@@ -144,7 +154,15 @@ export function renderPath({ onStart, onAdvance } = {}) {
       <a class="path__guide" href="./list.html?category=${encodeURIComponent(path.categoryId === "all" ? "" : path.categoryId)}">📖 一覧</a>
     </div>
   `;
-  listEl.innerHTML = `<ol class="path__list">${nodes}${more}${units.length > 0 ? goal : ""}</ol>`;
+  // 語が1つも無いカテゴリ（空のマイ単語帳など）: 道の代わりに次にやることを出す
+  const empty = units.length === 0
+    ? `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">📝</span><div class="path__label"><b>まだ語がありません</b><span>${
+        path.categoryId === "my"
+          ? `<a href="./list.html#myWords">マイ単語帳</a>に語を登録するか、上の「出題」から別のカテゴリを選んでください`
+          : `<a href="./list.html#packs">単語帳</a>から分野を追加するか、上の「出題」から別のカテゴリを選んでください`
+      }</span></div></li>`
+    : "";
+  listEl.innerHTML = `<ol class="path__list">${nodes}${more}${units.length > 0 ? goal : empty}</ol>`;
 
   el.querySelector("#pathStart")?.addEventListener("click", () => onStart?.(current && !allDone ? current : null));
   el.querySelectorAll(".path__dot[data-review]").forEach((btn) => {

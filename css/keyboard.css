@@ -21,9 +21,16 @@
   display: none !important;
 }
 
-/* 盤面が出ている間はコンテンツの下に余白（入力欄が隠れない） */
-body.osk-open {
-  padding-bottom: 236px;
+/* 盤面が出ている間はコンテンツの下に余白（入力欄が隠れない）。
+   アプリ（html.native-app body の safe-area 指定）より優先されるよう詳細度を合わせる */
+body.osk-open,
+html.native-app body.osk-open {
+  padding-bottom: calc(236px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Enter や scrollIntoView で入力欄が盤面の下に隠れないように */
+html:has(body.osk-open) {
+  scroll-padding-bottom: 250px;
 }
 
 .osk__rows {
@@ -111,9 +118,40 @@ body.osk-open {
     height: 40px;
     font-size: 17px;
   }
-  body.osk-open {
-    padding-bottom: 210px;
+  body.osk-open,
+  html.native-app body.osk-open {
+    padding-bottom: calc(210px + env(safe-area-inset-bottom, 0px));
   }
+}
+
+/* 横向きなど背の低い画面では盤面を低くする */
+@media (max-height: 480px) {
+  .osk {
+    padding-top: 4px;
+  }
+  .osk__rows {
+    gap: 4px;
+  }
+  .osk__key,
+  .osk__row--3 .osk__key {
+    height: 34px;
+    font-size: 16px;
+  }
+  .osk__key--enter small {
+    display: none;
+  }
+  body.osk-open,
+  html.native-app body.osk-open {
+    padding-bottom: calc(170px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* 押した色は ⌫・空白・Enter にも効かせる（後勝ちにならないよう詳細度を上げる） */
+.osk__key.osk__key--down,
+.osk__key.osk__key--bs:active,
+.osk__key.osk__key--space:active,
+.osk__key.osk__key--enter:active {
+  background: #3b82f6;
 }
 
 /* ---- ライトテーマ ---- */
@@ -124,3 +162,8 @@ html[data-theme="light"] .osk__key:active { background: #bfdbfe; }
 html[data-theme="light"] .osk__key--bs,
 html[data-theme="light"] .osk__key--space { background: #cbd5e1; }
 html[data-theme="light"] .osk__key--enter { background: #2563eb; color: #fff; box-shadow: 0 2px 0 #1e40af; }
+html[data-theme="light"] .osk__key.osk__key--down,
+html[data-theme="light"] .osk__key.osk__key--bs:active,
+html[data-theme="light"] .osk__key.osk__key--space:active { background: #bfdbfe; }
+html[data-theme="light"] .osk__key.osk__key--enter.osk__key--down,
+html[data-theme="light"] .osk__key.osk__key--enter:active { background: #1d4ed8; }

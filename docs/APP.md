@@ -80,3 +80,10 @@ Android Studio で ▶ Run（USB デバッグ ON の端末）。Play への配�
 - iOS の Safe Area とキーボード表示中のスクロール位置
 - Universal Links（メールリンクをアプリで開く）と Sign in with Apple
 - ユニット制覇の演出（道の続き）
+
+## 7. Universal Links / App Links の準備（v2、Team ID が分かってから有効化）
+
+- `/.well-known/apple-app-site-association` と `/.well-known/assetlinks.json` を置いてある（vercel.json で `Content-Type: application/json` を付与）。
+- iOS: `TEAMID` を Apple Developer の Team ID（例 `AB12CD34EF`）に置き換える。Xcode の Signing & Capabilities で **Associated Domains** を追加し `applinks:www.spelldash.net` と `webcredentials:www.spelldash.net` を入れる。
+- Android: `REPLACE_WITH_RELEASE_KEY_SHA256` をリリース署名鍵の SHA-256（`keytool -list -v -keystore <release.keystore>`）に置き換え、`android/app/src/main/AndroidManifest.xml` の MainActivity に `autoVerify` 付きの intent-filter（scheme https、host www.spelldash.net）を追加する。
+- アプリ側の受け口（`@capacitor/app` の `appUrlOpen` でパスを開く）は v2 で実装する。これが入ると、メールのログインリンクがアプリで開き、Web と同じ `?add=<pack>` の紹介リンクもアプリに入る。

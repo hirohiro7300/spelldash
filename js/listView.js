@@ -1,3 +1,4 @@
+import { exampleHtml, hasExample } from "./wordExample.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
@@ -300,7 +301,8 @@ function cardHtml(word, stat) {
            <p class="gcard__ja">${escapeHtml(word.ja)}</p>
            ${word.explain ? `<p class="gcard__explain">📘 ${escapeHtml(word.explain)}</p>` : ""}
            ${word.accept?.length ? `<p class="gcard__accept">別解: ${word.accept.map(escapeHtml).join(" / ")}</p>` : ""}`
-        : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}
+        : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>
+           ${hasExample(word) ? `<p class="gcard__ex">${exampleHtml(word, { speakButton: false, className: "gcard__ex" })}</p>` : ""}`}
       <div class="gcard__foot">
         ${historyDotsHtml(stat)}
         ${memoryGaugeHtml(stat)}

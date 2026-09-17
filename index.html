@@ -135,7 +135,7 @@
       <div class="welcome-demo__card">
         <p class="welcome-demo__ja" id="welcomeDemoJa">りんご</p>
         <p class="welcome-demo__preview" id="welcomeDemoPreview" aria-hidden="true"></p>
-        <input id="welcomeDemoInput" class="welcome-demo__input" type="text" placeholder="英単語を入力（分からなければ Enter）" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英単語を入力" />
+        <input id="welcomeDemoInput" class="welcome-demo__input" type="text" placeholder="英単語を入力（Enter で答え）" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英単語を入力" />
         <p class="welcome-demo__msg" id="welcomeDemoMsg"></p>
       </div>
       <div class="welcome-demo__after" id="welcomeAfterDemo" hidden>
@@ -178,8 +178,8 @@
       <p class="subtitle">
         日本語を見て、英単語をタイピング。1日少しずつ、英語とタイピングを同時に鍛える。
       </p>
-      <p class="auth-message" id="authMessage" role="status"></p>
     </section>
+    <p class="auth-message auth-message--home" id="authMessage" role="status"></p>
 
     <!-- 道: いまのコース／セクション／ユニットと、スタート1個。ホームの1画面目はこれだけ -->
     <section class="path" id="pathCard" aria-label="いまの道">
@@ -242,6 +242,7 @@
       <p id="word" class="hidden-word">スペルはまだ非表示</p>
       <p id="wordHistory" class="word-history" aria-live="polite"></p>
       <p id="wordExplain" class="word-explain"></p>
+      <p id="wordExample" class="word-example"></p>
 
       <p id="wordFamily" class="word-family"></p>
       <div id="wordNote" class="word-note"></div>

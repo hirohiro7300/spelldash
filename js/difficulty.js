@@ -41,7 +41,8 @@ export function markPlacementStarted() {
   if (isPlacementPending()) localStorage.setItem(PLACEMENT_KEY, "started");
 }
 
-function isPlacementRunning() {
+// 腕試しを始めたがまだ終えていない（途中でやめた人は次回もう一度）
+export function isPlacementRunning() {
   return localStorage.getItem(PLACEMENT_KEY) === "started";
 }
 

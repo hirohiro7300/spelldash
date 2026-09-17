@@ -1,3 +1,4 @@
+import { exampleHtml, hasExample } from "./wordExample.js";
 import { findWord, getCategories } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
@@ -55,6 +56,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
     <div class="word-detail__ja">${escapeHtml(word.ja)}</div>
     ${word.q ? `<div class="word-detail__q">場面: ${escapeHtml(word.q)}</div>` : ""}
     ${word.explain ? `<div class="word-detail__q">📘 ${escapeHtml(word.explain)}</div>` : ""}
+    ${hasExample(word) ? `<div class="word-detail__ex word-example">${exampleHtml(word)}</div>` : ""}
     <div class="word-detail__meta">
       <span class="word-detail__status word-detail__status--${status}">${STATUS_LABEL[status]}</span>
       ${category ? `<span>${escapeHtml(category)}</span>` : ""}
@@ -79,6 +81,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
   modal.hidden = false;
   panel.querySelector("[data-detail-close]").addEventListener("click", closeWordDetail);
   panel.querySelector("#wordDetailSpeak")?.addEventListener("click", () => speak(speechTextOf(word)));
+  panel.querySelector("[data-example-speak]")?.addEventListener("click", () => speak(word.ex)); // 例文の読み上げ
   const input = panel.querySelector("#wordDetailNote");
   const save = () => {
     setNote(wordId, input.value);

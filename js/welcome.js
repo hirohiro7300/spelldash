@@ -24,7 +24,9 @@ export function shouldShowWelcome() {
   if (localStorage.getItem(ONBOARDED_KEY)) return false;
   if (getTotalXp() > 0) return false;
   if (Object.keys(getWordStats()).length > 0) return false;
-  if (location.search.length > 1) return false; // ?set= ?words= ?t= などの深いリンク
+  // アプリ内への深いリンク（?set= ?words= ?t= など）で来た人には出さない。それ以外のパラメータ（計測用等）では出す
+  const params = new URLSearchParams(location.search);
+  if (["set", "words", "t", "weekly", "category", "genre", "mode"].some((k) => params.has(k))) return false;
   if (location.hash === "#play") return false;
   return true;
 }
@@ -74,31 +76,74 @@ function setupDemo(root, onDone) {
     }, 1100);
   };
 
-  input.addEventListener("keydown", (event) => {
-    if (event.isComposing || event.keyCode === 229) return;
-    if (event.key === "Enter") {
-      event.preventDefault();
-      if (locked) return;
-      // 分からないときの動きも体験できる: 答えを見せて、そのまま打てば進む
-      preview.innerHTML = renderColoredWord(DEMO_WORDS[index].en);
-      msg.textContent = `答えは「${DEMO_WORDS[index].en}」。見ながら打ってOK（本番では数問後にもう一度出ます）`;
-      msg.className = "welcome-demo__msg welcome-demo__msg--reveal";
-      return;
-    }
-    if (event.key.length !== 1) return;
-    event.preventDefault();
-    if (locked) return;
+  const flashMiss = () => {
+    root.querySelector(".welcome-demo__card")?.classList.remove("welcome-demo__card--miss");
+    void root.offsetWidth;
+    root.querySelector(".welcome-demo__card")?.classList.add("welcome-demo__card--miss");
+  };
+
+  // 1文字受け付ける。合っていれば true
+  const acceptChar = (ch) => {
+    if (locked) return false;
     const expected = DEMO_WORDS[index].en[typed.length];
-    if (event.key.toLowerCase() !== expected) {
-      root.querySelector(".welcome-demo__card")?.classList.remove("welcome-demo__card--miss");
-      void root.offsetWidth;
-      root.querySelector(".welcome-demo__card")?.classList.add("welcome-demo__card--miss");
-      return;
+    if (ch.toLowerCase() !== expected) {
+      flashMiss();
+      return false;
     }
     typed += expected;
     input.value = typed;
     preview.innerHTML = renderColoredWord(typed);
     if (typed === DEMO_WORDS[index].en) finishWord();
+    return true;
+  };
+
+  const reveal = () => {
+    if (locked) return;
+    // 分からないときの動きも体験できる: 答えを見せて、そのまま打てば進む
+    preview.innerHTML = renderColoredWord(DEMO_WORDS[index].en);
+    msg.textContent = `答えは「${DEMO_WORDS[index].en}」。見ながら打ってOK（本番では数問後にもう一度出ます）`;
+    msg.className = "welcome-demo__msg welcome-demo__msg--reveal";
+  };
+
+  // 物理キーボード: keydown で1文字ずつ
+  input.addEventListener("keydown", (event) => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      reveal();
+      return;
+    }
+    if (event.key.length !== 1) return;
+    event.preventDefault();
+    acceptChar(event.key);
+  });
+  // ソフトキーボード・IME（keydown で文字が取れない環境）: 入力欄の値を照合する
+  let composing = false;
+  input.addEventListener("compositionstart", () => {
+    composing = true;
+  });
+  input.addEventListener("compositionend", () => {
+    composing = false;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  input.addEventListener("beforeinput", (event) => {
+    if (event.inputType === "insertLineBreak") {
+      event.preventDefault();
+      reveal();
+    }
+  });
+  input.addEventListener("input", () => {
+    if (composing) return;
+    const raw = input.value.toLowerCase().replace(/[^a-z]/g, "");
+    if (raw === typed) return;
+    if (!raw.startsWith(typed)) {
+      input.value = typed; // 削除や置き換えは受理済みの位置へ戻すだけ
+      return;
+    }
+    for (const ch of raw.slice(typed.length)) {
+      if (!acceptChar(ch)) break;
+    }
+    if (input.value !== typed && !locked) input.value = typed;
   });
 
   show();
@@ -130,6 +175,7 @@ export function renderWelcome({ onStart } = {}) {
   root.querySelectorAll("[data-welcome-start]").forEach((btn) => btn.addEventListener("click", start));
   root.querySelector("#welcomeLogin")?.addEventListener("click", (event) => {
     event.preventDefault();
+    event.stopPropagation(); // document のクリック監視（auth.js）が開いた直後のログイン欄を閉じないように
     markOnboarded();
     root.hidden = true;
     app.hidden = false;
