@@ -64,6 +64,9 @@ export function currentUnitOf(path) {
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+// 済みユニットの折りたたみを開いたか（この表示の間だけ）
+let doneExpanded = false;
+
 // コース選択パネル（見出しの「コースを変える」で開く）
 function courseChooserHtml(currentId) {
   return `
@@ -127,11 +130,25 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const lockedLimit = currentIndex >= 0 ? currentIndex + 3 : units.length;
   const hiddenUnits = units.filter((u, i) => !u.done && i !== currentIndex && i > lockedLimit);
   const hiddenLocked = hiddenUnits.length;
+  // 現在地より前の済みユニットは直前の2つだけ見せ、それより前は「済み Nユニット」1つに畳む（開くと全部出る）。
+  // 毎日開くたびに済みの列をスクロールしなくていいように、現在地が最初の画面に来る
+  const doneBefore = currentIndex >= 0 ? units.slice(0, currentIndex).filter((u) => u.done) : [];
+  const foldDone = !doneExpanded && doneBefore.length > 3 ? doneBefore.slice(0, doneBefore.length - 2) : [];
+  const foldedSet = new Set(foldDone);
+  const listHref = (tag) => `./list.html?category=${encodeURIComponent(path.categoryId === "all" ? "" : path.categoryId)}${tag && !tag.startsWith("category:") ? `#genre-${encodeURIComponent(tag)}` : ""}`;
   const nodes = units
     .map((u, i) => {
       const state = u.done ? "done" : i === currentIndex ? "current" : "locked";
       const lane = ["c", "r", "c", "l"][i % 4];
       if (state === "locked" && i > lockedLimit) return "";
+      if (foldedSet.has(u)) {
+        if (u !== foldDone[0]) return "";
+        return `
+          <li class="path__node path__node--done path__node--fold path__node--c">
+            <button type="button" class="path__dot" id="pathDoneFold" aria-expanded="false" aria-label="済みのユニットを開く">✓</button>
+            <div class="path__label"><b>済み ${foldDone.length}ユニット</b><span>${foldDone.map((d) => esc(d.label)).join("・")} ・ <button type="button" class="path__linkbtn" data-fold-open>開く</button></span></div>
+          </li>`;
+      }
       const count = `${u.learned}／${u.total}`;
       if (state === "current") {
         return `
@@ -139,14 +156,14 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
             <button type="button" class="path__start" id="pathStart" data-unit="${esc(u.tag)}" aria-label="スタート: ${esc(u.label)}">
               <span class="path__tip">${count} 語 覚えた</span>スタート
             </button>
-            <div class="path__label"><b>${esc(u.label)}</b><span>${startSub}</span></div>
+            <div class="path__label"><b>${esc(u.label)} <a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">📖</a></b><span>${startSub}</span></div>
           </li>`;
       }
       if (state === "done") {
         return `
           <li class="path__node path__node--done path__node--${lane}">
             <button type="button" class="path__dot" data-unit="${esc(u.tag)}" data-review="1" aria-label="復習: ${esc(u.label)}">✓</button>
-            <div class="path__label"><b>${esc(u.label)}</b><span>${count}${u.weak > 0 ? ` ・ 苦手 ${u.weak}` : ""} ・ タップで復習</span></div>
+            <div class="path__label"><b>${esc(u.label)} <a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">📖</a></b><span>${count}${u.weak > 0 ? ` ・ 苦手 ${u.weak}` : ""} ・ タップで復習</span></div>
           </li>`;
       }
       return `
@@ -200,6 +217,12 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     });
   });
   el.querySelector("#pathNext")?.addEventListener("click", () => onAdvance?.());
+  el.querySelectorAll("#pathDoneFold, [data-fold-open]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      doneExpanded = true;
+      renderPath({ onStart, onAdvance, onCourse });
+    })
+  );
   const courseBtn = el.querySelector("#pathCourse");
   const courses = el.querySelector("#pathCourses");
   courseBtn?.addEventListener("click", () => {
