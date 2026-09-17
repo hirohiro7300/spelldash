@@ -51,7 +51,7 @@
     {"id": "english-rice", "en": "rice", "ja": "ご飯", "level": "easy", "tags": ["food"], "ex": "In Japan, many people eat rice every day.", "exJa": "日本では、多くの人が毎日ご飯を食べる。"},
     {"id": "english-egg", "en": "egg", "ja": "卵", "level": "easy", "tags": ["food"], "ex": "Emi broke an egg into the bowl.", "exJa": "エミはボウルに卵を割り入れた。"},
     {"id": "english-meat", "en": "meat", "ja": "肉", "level": "easy", "tags": ["food"], "ex": "My sister doesn't eat meat.", "exJa": "姉は肉を食べない。"},
-    {"id": "english-fish", "en": "fish", "ja": "魚", "level": "easy", "tags": ["food"], "ex": "We had fish for dinner last night.", "exJa": "昨日の夜は夕食に魚を食べた。"},
+    {"id": "english-fish", "en": "fish", "ja": "魚", "level": "easy", "tags": ["food"], "ex": "We had fish for dinner last night.", "exJa": "昨日の夕食は魚だった。"},
     {"id": "english-vegetable", "en": "vegetable", "ja": "野菜", "level": "normal", "tags": ["food"], "ex": "Eat your vegetables, Ken.", "exJa": "ケン、野菜も食べなさい。", "exForm": "vegetables"},
     {"id": "english-fruit", "en": "fruit", "ja": "果物", "level": "easy", "tags": ["food"], "ex": "What is your favorite fruit?", "exJa": "好きな果物は何？"},
     {"id": "english-apple", "en": "apple", "ja": "りんご", "level": "easy", "tags": ["food"], "ex": "An apple a day keeps the doctor away.", "exJa": "一日一個のりんごで医者いらず。"},
