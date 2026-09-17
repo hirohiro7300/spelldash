@@ -638,3 +638,12 @@ html[data-theme="light"] .pack__audience { color: #64748b; }
 html[data-theme="light"] .pack-group__title { color: #64748b; }
 html[data-theme="light"] .gcard__pos { border-color: #cbd5e1; color: #64748b; }
 html[data-theme="light"] .my-fold { border-color: #e2e8f0; background: #fff; }
+
+/* ---- 例文 ---- */
+html[data-theme="light"] .word-example { color: #0f172a; }
+html[data-theme="light"] .word-example__en b,
+html[data-theme="light"] .gcard__ex__en b { color: #b45309; }
+html[data-theme="light"] .word-example__ja,
+html[data-theme="light"] .gcard__ex__ja { color: #64748b; }
+html[data-theme="light"] .word-example__speak { border-color: #cbd5e1; color: #334155; }
+html[data-theme="light"] .gcard__ex { color: #334155; border-top-color: #e2e8f0; }

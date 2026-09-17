@@ -1565,6 +1565,33 @@ console.log("domain packs:");
   check("レベル別パックの出題でエラー0", page6.errors.length === 0, page6.errors[0] ?? "");
   await page6.close();
 
+  // 例文: 英単語カードは答え表示と正解時に例文（見出し語は太字）と訳が出る。単語帳・単語詳細にも
+  const bizWords = JSON.parse(fs.readFileSync(path.join(ROOT, "data/english/business.json"), "utf8")).words;
+  const page6b = await newPage({ storage: { spelldash_category: "business", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await page6b.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page6b.waitForTimeout(900);
+  await page6b.press("#input", "Enter"); // 開始
+  await page6b.waitForTimeout(300);
+  await page6b.press("#input", "Enter"); // 答え表示
+  await page6b.waitForTimeout(250);
+  const exAnswer = (await page6b.textContent("#word")).trim();
+  const exWord = bizWords.find((w) => w.en === exAnswer);
+  const exText = (await page6b.textContent("#wordExample")).trim();
+  check("例文: 答え表示で例文と訳が出る", !!exWord && exText.includes(exWord.ex) && exText.includes(exWord.exJa), `${exAnswer}: ${exText.slice(0, 60)}`);
+  check("例文: 見出し語が太字", (await page6b.$eval("#wordExample", (el) => el.querySelector("b")?.textContent.toLowerCase() ?? "")) === (exWord?.exForm ?? exWord?.en ?? "").toLowerCase());
+  for (const ch of exAnswer) await page6b.press("#input", ch);
+  await page6b.waitForTimeout(400);
+  check("例文: 正解のあとも例文が残り、読む時間が置かれる", (await page6b.textContent("#wordExample")).includes(exWord.ex) && (await page6b.textContent("#japanese")).trim() === exWord.ja.split("・")[0] || (await page6b.textContent("#japanese")).trim().includes(exWord.ja.split("・")[0]));
+  await page6b.close();
+  const page6c = await newPage();
+  await page6c.goto(BASE + "/list.html?category=business", { waitUntil: "networkidle" });
+  await page6c.waitForTimeout(900);
+  check("例文: 単語帳のカードに例文", (await page6c.$$(".gcard__ex")).length >= 100 && (await page6c.textContent("#listBody")).includes(bizWords[0].ex));
+  await page6c.click(`[data-word-detail="${bizWords[0].id}"]`);
+  await page6c.waitForTimeout(300);
+  check("例文: 単語詳細に例文と読み上げボタン", (await page6c.textContent(".word-detail__ex")).includes(bizWords[0].ex) && (await page6c.$(".word-detail__ex [data-example-speak]")) !== null);
+  await page6c.close();
+
   // 文法パック（穴埋め）: 空欄つきの英文が出て、空欄の語を英語で打つ。発音は完成文
   const page7 = await newPage({ storage: { spelldash_packs: JSON.stringify(["grammar-jhs1"]), spelldash_category: "grammar-jhs1", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
   await page7.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });

@@ -83,6 +83,7 @@ import { bumpActivity, markDailyDone } from "./activity.js";
 import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel, consumeBoostNote, consumePlacementNote } from "./difficulty.js";
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak, speakOnCorrect, getListenRatio } from "./audio.js";
+import { renderWordExample, hasExample } from "./wordExample.js";
 import { generateCalc } from "./calcCards.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { renderWordAi } from "./wordAi.js";
@@ -203,8 +204,8 @@ function buildWordBank(word) {
 
 function renderExplain(word) {
   const el = document.getElementById("wordExplain");
-  if (!el) return;
-  el.textContent = word?.explain ? `📘 ${word.explain}` : "";
+  if (el) el.textContent = word?.explain ? `📘 ${word.explain}` : "";
+  renderWordExample(document.getElementById("wordExample"), word); // 例文（英単語カード）も同じタイミングで出す
 }
 
 export function setActiveCategory(categoryId) {
@@ -1055,9 +1056,10 @@ function completeWord() {
     return;
   }
 
-  // Study: 正解演出の後に次へ。概念カードは答えと解説を読む時間を置く（Enterで即進行）
+  // Study: 正解演出の後に次へ。概念カードは答えと解説を、例文のある語は例文を読む時間を置く（Enterで即進行）
   const concept = isConceptWord(currentWord);
-  if (concept) {
+  const withExample = !concept && hasExample(currentWord);
+  if (concept || withExample) {
     renderExplain(currentWord);
     showColoredAnswer(currentWord.en);
   }
@@ -1069,7 +1071,7 @@ function completeWord() {
     if (!isPlaying) return;
     if (wordSerial !== serialAtComplete) return;
     advanceNow();
-  }, concept ? 2600 : 250);
+  }, concept ? 2600 : withExample ? 2200 : 250);
 }
 
 // 成長ログ: 覚えた語数のスナップショット（今週+N・30日推移の材料）
