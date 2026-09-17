@@ -241,7 +241,7 @@ function isNew(stat) {
 
 // 出題されたが一度も答えていない（正解も「思い出せない」も無い）語。道では未着手のままなので、新出と同じ枠でもう一度出す
 function isUntouched(stat) {
-  return !!stat && (stat.playCount ?? 0) > 0 && !stat.lastRecallSuccessAt && !stat.lastRecallFailAt && !stat.known;
+  return !!stat && (stat.playCount ?? 0) > 0 && !stat.lastRecallSuccessAt && !stat.lastRecallFailAt && !stat.knownOnSight && !stat.mastered;
 }
 
 // ===== 通常補充（Mix Controlの比率はここだけに効く） =====

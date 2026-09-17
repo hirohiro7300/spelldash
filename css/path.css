@@ -415,3 +415,172 @@ html[data-theme="light"] .play-modes__lock { color: #64748b; }
 @media (min-width: 900px) {
   .path__list { max-width: 560px; margin-left: auto; margin-right: auto; }
 }
+
+/* ===== 見出しの操作（一覧・コースを変える） ===== */
+.path__head-actions {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.path__head-actions .path__guide {
+  margin-left: 0;
+}
+
+.path__guide--course {
+  background: rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.path__guide--course:hover,
+.path__guide--course[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* ===== コース選択パネル ===== */
+.path__courses {
+  margin: 10px 0 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.path__courses-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 10px;
+}
+
+.path__courses-head b {
+  font-size: 15px;
+}
+
+.path__courses-head span {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.path__courses-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.path__course {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid transparent;
+}
+
+.path__course--current {
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
+.path__course-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.path__course-text b {
+  font-size: 14px;
+}
+
+.path__course-text span {
+  font-size: 12.5px;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.path__course-text small {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+.path__course-pick {
+  flex: none;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.6);
+  background: transparent;
+  color: #bfdbfe;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.path__course-pick:hover {
+  background: #2563eb;
+  color: #fff;
+}
+
+.path__course-now {
+  flex: none;
+  font-size: 12px;
+  color: #93c5fd;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .path__course {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .path__course-pick {
+    align-self: flex-end;
+  }
+}
+
+/* ===== ユニット制覇のお知らせ（数秒で消える） ===== */
+.path__toast {
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(22, 163, 74, 0.16);
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  color: #bbf7d0;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.path__toast--in {
+  animation: path-toast-in 0.45s ease-out;
+}
+
+@keyframes path-toast-in {
+  0% { transform: translateY(-6px) scale(0.98); opacity: 0; }
+  60% { transform: translateY(0) scale(1.02); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .path__toast--in { animation: none; }
+}
+
+html[data-theme="light"] .path__courses { background: #f8fafc; border-color: #e2e8f0; }
+html[data-theme="light"] .path__courses-head span,
+html[data-theme="light"] .path__course-text small { color: #64748b; }
+html[data-theme="light"] .path__course { background: #fff; border-color: #e2e8f0; }
+html[data-theme="light"] .path__course--current { border-color: #93c5fd; }
+html[data-theme="light"] .path__course-text span { color: #334155; }
+html[data-theme="light"] .path__course-pick { color: #1d4ed8; border-color: #93c5fd; }
+html[data-theme="light"] .path__course-now { color: #1d4ed8; }
+html[data-theme="light"] .path__toast { background: #dcfce7; border-color: #86efac; color: #166534; }
