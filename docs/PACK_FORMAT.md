@@ -102,6 +102,25 @@ node scripts/validate-words.mjs   # data/english と data/packs をまとめて�
 - 「そのレベルで新たに覚える語」を選ぶ。全レベル共通の超基本語（the, is …）は入れない
 - 級・スコア帯と語彙の対応は公式の語彙表が無いので「目安」。検定団体名や商標的な表現は label 以外で使わない
 
+## 例文（英単語カード共通・任意）
+
+英単語カード（`data/english/*.json` と `cardType:"word"` のパック）には例文を付けられる。答えを見た時・正解した時と、単語帳・単語詳細に出る。
+
+```json
+{"id":"english-negotiate","en":"negotiate","ja":"交渉する","pos":"動","level":"normal","tags":["contract"], "ex": "We need to negotiate a better price.", "exJa": "もっと良い値段を交渉する必要がある。"}
+{"id":"english-go","en":"go","ja":"行く","level":"easy","tags":["action"], "ex": "I went to Kyoto last week.", "exJa": "先週、京都に行きました。", "exForm": "went"}
+```
+
+| 項目 | ルール |
+|---|---|
+| `ex` | 自然な英文、70字以内、1文。見出し語（または `exForm` の語形）を必ず含む。その語の `ja` の意味で使う。固有名詞は教科書の範囲（Kyoto, Ken, Emi） |
+| `exJa` | 自然な日本語訳、40字以内。直訳より「日本人がその場面で言う言い方」 |
+| `exForm` | 英文中の語形が見出し語と違うときだけ（went, better, studies, children）。同じなら書かない（検証で弾く） |
+
+- 差し込みは `node scripts/add-examples.mjs <データ> <例文JSON>`（1行1語の書式を保つ）。例文JSONは `{ "<id>": { "ex", "exJa", "exForm"? } }`
+- レベル感: そのカテゴリ／級の学習者が読める語彙で書く（例文の方が見出し語より難しくならない）
+- 同じ英文を複数の語に使い回さない。数字は英単語で（two, not 2）
+
 ## 文法パック: 穴埋め形式
 
 英文の空欄に入る語を英語で打つ。場面カードと同じ仕組み（`kind: "concept"`）で、`q` が「空欄つきの英文＋日本語訳」、`answer` が空欄に入る語。
