@@ -34,6 +34,7 @@ import { renderPlayModes } from "./playModes.js";
 import { ensureDefaultCourse, advanceSection, startCourse, COURSES } from "./course.js";
 import { setFocusGenre } from "./studyQueue.js";
 import { setGenre } from "./genres.js";
+import { resumableFor } from "./sessionResume.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
@@ -127,14 +128,17 @@ function showGame(show) {
 }
 
 // 道のスタート／復習: 新しく出す語をそのユニットに絞ってStudyを始める（復習はカテゴリ全体から）
-function startUnit(unit) {
+function startUnit(unit, opts = {}) {
   setGenre(""); // 手動のジャンル絞り込みは解除（道が代わりに絞る）
-  setFocusGenre(unit?.tag ?? "");
+  // 今日、同じカテゴリで途中だったセットがあれば続きから（復習ボタンからは新しく）
+  const resume = opts.review ? null : resumableFor(localStorage.getItem("spelldash_category") || "all");
+  setFocusGenre(resume ? resume.focus ?? "" : unit?.tag ?? "");
   setMode("study");
   stopGame(); // すでに Study 中でも仕切り直す（setMode は同じモードだと何もしない）
   refreshWeakToggle();
   showGame(true);
-  restartGame();
+  if (resume) startGame({ resume });
+  else restartGame();
   elements.input.focus({ preventScroll: true });
   scrollGameIntoView();
 }

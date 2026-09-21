@@ -42,6 +42,9 @@ import {
   getDueReviewWords,
   startRetryQueue,
   isPlacementRun,
+  startResumedQueue,
+  getUpcomingIds,
+  getFocusGenre,
   getQueueComposition,
   insertBreather
 } from "./studyQueue.js";
@@ -84,6 +87,7 @@ import { allowedWordLevels, filterByAllowedLevels, unlockNoteForLevel, consumeBo
 import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak, speakOnCorrect, getListenRatio } from "./audio.js";
 import { renderWordExample, hasExample } from "./wordExample.js";
+import { saveSession, clearSession } from "./sessionResume.js";
 import { generateCalc } from "./calcCards.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { renderWordAi } from "./wordAi.js";
@@ -297,6 +301,7 @@ export function startDailyGame() {
 export function startGame(options = {}) {
   if (isPlaying) return;
   const retry = Array.isArray(options.retry) && options.retry.length > 0 ? options.retry : null;
+  const resume = !retry && options.resume && Array.isArray(options.resume.queue) && options.resume.queue.length > 0 ? options.resume : null; // 前回の続きから
   let composition = null;
 
   if (getWordsByCategory(activeCategory).length === 0) {
@@ -356,14 +361,15 @@ export function startGame(options = {}) {
     retryIds = retry;
     consecutiveFails = 0;
     if (retry) startRetryQueue(retry);
+    else if (resume) startResumedQueue(resume.queue, resume.recalled);
     else startStudyQueue(activeCategory);
     composition = getQueueComposition(); // 最初の1語を取り出す前に構成を控える
     updateRecalledToday();
-    setRecalled = new Set();
-    setFailed = new Set();
+    setRecalled = new Set(resume?.recalled ?? []);
+    setFailed = new Set(resume?.failed ?? []);
     setLearnEvents = new Map();
-    setNewCount = 0;
-    setReviewCount = 0;
+    setNewCount = resume?.newCount ?? 0;
+    setReviewCount = resume?.reviewCount ?? 0;
     setCompletePending = false;
     renderSetProgress();
   }
@@ -374,6 +380,8 @@ export function startGame(options = {}) {
   if (mode === "study") {
     if (retry) {
       showMessage(`🔁 思い出せなかった ${retry.length}語 をもう一度。全部自力で打てたら回収完了`, "revealed");
+    } else if (resume) {
+      showMessage(`▶ 前回の続きから。あと ${Math.max(0, currentSetSize() - setRecalled.size)}語 で今日のセット完了`, "revealed");
     } else if (isPlacementRun()) {
       showMessage("まず腕試し10語。知ってる語はそのまま打って、知らない語はEnterで答えを見てOK", "revealed");
     } else {
@@ -1023,6 +1031,7 @@ function completeWord() {
         if (currentWordKind === "review") setReviewCount++;
         renderSetProgress();
         if (setRecalled.size >= currentSetSize()) setCompletePending = true;
+        saveResumePoint();
       }
     }
   }
@@ -1218,6 +1227,7 @@ function endStudySession() {
   notifyGameEnd();
   setCompletePending = false;
   currentWord = null;
+  if (!retryIds) clearSession(); // セットを終えたので「前回の続き」は消す
 
   const isRetry = !!retryIds;
   retryIds = null;
@@ -1545,6 +1555,22 @@ function setNewWord() {
   recordPlay(currentWord.id);
   scheduleHint();
   window.dispatchEvent(new CustomEvent("spelldash:word", { detail: { id: currentWord.id } })); // 画面キーボード等が盤面を更新する
+  saveResumePoint();
+}
+
+// 「前回の続きから」用に、いまの語と残りの語・セットの進みを保存（通常の Study セットだけ）
+function saveResumePoint() {
+  if (mode !== "study" || !isPlaying || !currentWord || retryIds || isPlacementRun()) return;
+  saveSession({
+    category: activeCategory,
+    focus: getFocusGenre(),
+    queue: [currentWord.id, ...getUpcomingIds()],
+    recalled: [...setRecalled],
+    failed: [...setFailed],
+    newCount: setNewCount,
+    reviewCount: setReviewCount,
+    setSize: currentSetSize()
+  });
 }
 
 // 単語の状態ラベル（Studyのみ）: 「なぜ今この単語が出たか」を1行で見せる

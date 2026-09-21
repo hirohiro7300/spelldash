@@ -5,6 +5,7 @@ import { classifyWord } from "./categoryProgress.js";
 import { getCourse, sectionOf, listCourses, getCourseId } from "./course.js";
 import { getSetSize, isDailySetDone } from "./dailySet.js";
 import { getDueReviewCount } from "./studyQueue.js";
+import { resumableFor } from "./sessionResume.js";
 
 // ===== ホームの「道」 =====
 //
@@ -120,7 +121,10 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     : current
       ? `ユニット ${currentIndex + 1}／${units.length} ・ ${esc(current.label)}`
       : "";
-  const startSub = firstVisit
+  const resume = firstVisit ? null : resumableFor(path.categoryId);
+  const startSub = resume
+    ? `▶ 前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み・残り ${resume.queue.length}語）`
+    : firstVisit
     ? "まず腕試し10語（約2分）。知ってる語はそのまま打って、知らない語は Enter でOK"
     : isDailySetDone()
       ? `✓ 今日のぶんは完了。もう1セット（${setSize}語）`
@@ -153,8 +157,8 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       if (state === "current") {
         return `
           <li class="path__node path__node--current path__node--${lane}">
-            <button type="button" class="path__start" id="pathStart" data-unit="${esc(u.tag)}" aria-label="スタート: ${esc(u.label)}">
-              <span class="path__tip">${count} 語 覚えた</span>スタート
+            <button type="button" class="path__start${resume ? " path__start--resume" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : "スタート"}: ${esc(u.label)}">
+              <span class="path__tip">${resume ? "途中のセット" : `${count} 語 覚えた`}</span>${resume ? "続きから" : "スタート"}
             </button>
             <div class="path__label"><b>${esc(u.label)} <a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">📖</a></b><span>${startSub}</span></div>
           </li>`;
