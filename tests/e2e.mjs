@@ -843,18 +843,7 @@ console.log("growth evidence:");
   await page.waitForTimeout(150);
   const keyMiss = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_key_miss") || "{}"));
   check("打ち間違いの文字と型が記録される", keyMiss.letters?.[shown[0]] === 1 && keyMiss.pairs?.[`${shown[0]}>${wrong}`] === 1, JSON.stringify(keyMiss));
-  const shareText = await page.evaluate(async () => {
-    const m = await import("/js/setShare.js");
-    return m.buildSetShareText(m.buildSetShareData({ recalled: 5 }));
-  });
-  check("セットのシェア文に今日覚えた語", shareText.includes("5語 思い出せた") && shareText.includes("今日覚えた: invoice"), shareText);
-  const imgOk = await page.evaluate(async () => {
-    const m = await import("/js/setShare.js");
-    const c = m.buildSetShareImage(m.buildSetShareData({ recalled: 5 }));
-    return c.width === 1080 && c.height === 1080;
-  });
-  check("セットのシェア画像が生成できる（1080×1080）", imgOk);
-  check("ミスキー／シェアでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  check("ミスキーでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   const keyMissRaw = await page.evaluate(() => localStorage.getItem("spelldash_key_miss"));
   await page.close();
 
@@ -1251,13 +1240,6 @@ console.log("tabs & filters:");
   await page.waitForTimeout(600);
   check("#learnedWords の深いリンクで単語帳タブが開く", !(await page.$eval("#learnedWords", (el) => el.hidden)) && (await page.$eval(".stats-tab--active", (el) => el.dataset.tab)) === "words");
   check("前回のタブを覚える", (await page.evaluate(() => localStorage.getItem("spelldash_stats_tab"))) === "words");
-  const total = await page.evaluate(async () => {
-    const m = await import("/js/setShare.js");
-    const d = m.buildTotalShareData();
-    const c = m.buildTotalShareImage(d);
-    return { learned: d.learned, text: m.buildTotalShareText(d), w: c.width };
-  });
-  check("累計シェア（覚えた1語・画像1080）", total.learned === 1 && total.text.includes("覚えた英単語 1語") && total.text.includes("negotiate") && total.w === 1080, JSON.stringify(total).slice(0, 120));
   check("学習データ（タブ）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 

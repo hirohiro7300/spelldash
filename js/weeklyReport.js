@@ -59,10 +59,10 @@ export function computeWeeklyReport() {
 
 export function buildWeeklyShareText(r = computeWeeklyReport()) {
   const lines = [`SpellDash 週間レポート ${r.range}`];
-  lines.push(`📚 学習 ${r.activeDays}/7日 ・ 🧠 覚えた +${r.learnedDelta}語（累計 ${r.learnedTotal}）`);
+  lines.push(`学習 ${r.activeDays}/7日 ・ 覚えた +${r.learnedDelta}語（累計 ${r.learnedTotal}）`);
   const rate = r.retention ?? r.recallRate;
-  if (rate != null) lines.push(`↻ 思い出せた率 ${rate}%${r.streak > 0 ? ` ・ 🔥 ${r.streak}日連続` : ""}`);
-  else if (r.streak > 0) lines.push(`🔥 ${r.streak}日連続`);
+  if (rate != null) lines.push(`思い出せた率 ${rate}%${r.streak > 0 ? ` ・ ${r.streak}日連続` : ""}`);
+  else if (r.streak > 0) lines.push(`${r.streak}日連続`);
   if (r.bestScore > 0) lines.push(`⏱ 今週のベスト ${r.bestScore}`);
   lines.push("今日も、はちゃんと少しだけ。");
   lines.push("https://www.spelldash.net");
@@ -77,7 +77,7 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
 
   el.innerHTML = `
     <div class="weekly__head">
-      <span class="weekly__title">📅 週間レポート</span>
+      <span class="weekly__title">週間レポート</span>
       <span class="weekly__range">${r.range}</span>
     </div>
     ${compact ? "" : hasumiBubbleHtml(hasumiWeeklyLine(r), "hasumi--result")}
@@ -147,9 +147,9 @@ export function buildWeeklyReportImage(r = computeWeeklyReport()) {
 
   const rate = r.retention ?? r.recallRate;
   const rows = [
-    `📚 学習した日  ${r.activeDays} / 7`,
+    `学習した日  ${r.activeDays} / 7`,
     rate == null ? null : `↻ 思い出せた率  ${rate}%`,
-    r.streak > 0 ? `🔥 ${r.streak}日連続` : null,
+    r.streak > 0 ? `${r.streak}日連続` : null,
     r.bestScore > 0 ? `⏱ 今週のベスト  ${r.bestScore}` : null
   ].filter(Boolean);
   ctx.fillStyle = "#e2e8f0";

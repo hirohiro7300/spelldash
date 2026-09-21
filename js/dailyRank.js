@@ -113,7 +113,7 @@ export async function renderDailyRanking(myScore = null) {
     return;
   }
 
-  const medals = ["🥇", "🥈", "🥉"];
+  const medals = [];
   const inTop = user && rows.some((row) => row.user_id === user.id);
 
   let myRankLine = "";
