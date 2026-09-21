@@ -85,7 +85,7 @@ const NEWS = [
   },
   {
     date: "2026.09.09",
-    title: "テキストを貼るだけで教材がカードに／思い出せない語に「✨ 覚え方を作る」",
+    title: "テキストを貼るだけで教材がカードに／思い出せない語に「覚え方を作る」",
     body: "学習データ → マイ単語帳に「✨ テキストから作る」を追加しました。マニュアル・研修資料・記事・会議メモなどを貼り付けて「カードを作る」を押すと、「場面（意味）→ 用語」の場面カードの候補を自動で作ります（解説と別解つき）。候補の文面はその場で直せて、いらないもののチェックを外してから追加。すでに持っているカードは自動で除外されます。追加した語はホームのカテゴリ「マイ単語帳」でそのまま覚えられます。もうひとつ、Studyで答えを見たときに「✨ 覚え方を作る」を押すと、その語の覚え方・例文・混同しやすい点を作って端末に保存します（同じ語は2回目から即表示。単語の詳細にも出ます）。どちらもログインしている方が使えます（無料）。"
   },
   {
@@ -207,9 +207,11 @@ export function renderNews() {
   container.innerHTML = NEWS.map(
     (item) => `
     <article class="news-item">
-      <time class="news-item__date" datetime="${item.date.replaceAll(".", "-")}">${item.date}</time>
-      <h2 class="news-item__title">${item.title}</h2>
-      <p class="news-item__body">${item.body}</p>
+      <time class="news-item__date mono" datetime="${item.date.replaceAll(".", "-")}">${item.date}</time>
+      <div class="news-item__main">
+        <h2 class="news-item__title">${item.title}</h2>
+        <p class="news-item__body">${item.body}</p>
+      </div>
     </article>
   `
   ).join("");

@@ -50,21 +50,21 @@ function setupDemo(root, onDone) {
     typed = "";
     preview.innerHTML = "";
     input.value = "";
-    msg.textContent = index === 0 ? "キーボードで英単語を打ってみて（1文字ずつ色が付きます）" : "次の1語。思い出して打つ";
+    msg.textContent = index === 0 ? "キーボードで英単語を打つ。打てた文字から色が変わる" : "次の1語。思い出して打つ";
     msg.className = "welcome-demo__msg";
     if (dots) dots.innerHTML = DEMO_WORDS.map((_, i) => `<i class="${i < index ? "on" : ""}"></i>`).join("");
   };
 
   const finishWord = () => {
     locked = true;
-    msg.textContent = index === 0 ? "○ 思い出せた！ 打てた語は「覚えた」に近づき、忘れそうな頃にまた出ます" : index === 1 ? "○ いい感じ。分からない語は Enter で答えを見てOK。数問後にまた出ます" : "○ 3語クリア！ 本番は中学英語の腕試し10語から";
+    msg.textContent = index === 0 ? "思い出せた。打てた語は「覚えた」に近づき、忘れそうな頃にまた出る" : index === 1 ? "思い出せた。分からない語は Enter で答えを見てよい。数問後にまた出る" : "3語できた。本番は中学英語の腕試し10語から";
     msg.className = "welcome-demo__msg welcome-demo__msg--ok";
     if (dots) dots.innerHTML = DEMO_WORDS.map((_, i) => `<i class="${i <= index ? "on" : ""}"></i>`).join("");
     setTimeout(() => {
       index++;
       locked = false;
       if (index >= DEMO_WORDS.length) {
-        ja.textContent = "できた！";
+        ja.textContent = "できた";
         preview.innerHTML = "";
         input.value = "";
         input.disabled = true;
@@ -101,7 +101,7 @@ function setupDemo(root, onDone) {
     if (locked) return;
     // 分からないときの動きも体験できる: 答えを見せて、そのまま打てば進む
     preview.innerHTML = renderColoredWord(DEMO_WORDS[index].en);
-    msg.textContent = `答えは「${DEMO_WORDS[index].en}」。見ながら打ってOK（本番では数問後にもう一度出ます）`;
+    msg.textContent = `答えは「${DEMO_WORDS[index].en}」。見ながら打ってよい（本番では数問後にもう一度出る）`;
     msg.className = "welcome-demo__msg welcome-demo__msg--reveal";
   };
 

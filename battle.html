@@ -124,19 +124,17 @@
     <!-- ===== ロビー ===== -->
     <section id="battleLobby">
       <section class="hero hero--compact">
-        <p class="logo">CPU Ranked <span class="preseason-tag">PRESEASON</span></p>
+        <p class="logo">CPU Ranked <span class="preseason-tag">Preseason</span></p>
         <h1>Battle</h1>
-        <p class="subtitle">
-          60秒、CPUと同条件の別問題で実力を測る。Passした単語はStudyの復習へ戻る。
-        </p>
+        <p class="subtitle">60秒、CPUと同条件の別問題で実力を測る。パスした語はStudyの復習に戻る。</p>
         <p class="auth-message" id="authMessage" role="status"></p>
       </section>
 
       <section class="result-card rank-card">
         <div class="rank-card__head">
           <div>
-            <p class="rank-card__rank" id="lobbyRank">Bronze</p>
-            <p class="rank-card__rp" id="lobbyRp">0 / 100 RP</p>
+            <p class="rank-card__rank mono" id="lobbyRank">Bronze</p>
+            <p class="rank-card__rp mono" id="lobbyRp">0 / 100 RP</p>
           </div>
           <div class="rank-card__record">
             <span id="lobbyRecord">0勝 0敗 0分</span>
@@ -153,7 +151,7 @@
             Ranked Match
           </button>
         </div>
-        <p class="muted battle-note">対戦相手はCPUです（プレシーズン）。</p>
+        <p class="muted battle-note">対戦相手はCPU（プレシーズン）。</p>
       </section>
     </section>
 
@@ -172,7 +170,7 @@
         <p class="arena-status" id="cpuStatus"></p>
       </div>
 
-      <div class="arena-timer" id="battleTimer" role="timer">60</div>
+      <div class="arena-timer mono" id="battleTimer" role="timer">60</div>
 
       <div class="arena-panel arena-panel--you" aria-label="あなた側">
         <div class="arena-panel__head">
@@ -189,7 +187,7 @@
           <input
             id="battleInput"
             type="text"
-            placeholder="英単語を入力（Enterでパス）"
+            placeholder="英単語を入力（Enter でパス）"
             autocomplete="off"
             autocapitalize="none"
             autocorrect="off"

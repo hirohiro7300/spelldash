@@ -7,6 +7,7 @@ import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { renderWordAi } from "./wordAi.js";
 import { speak } from "./audio.js";
 import { speechTextOf } from "./wordStore.js";
+import { icon } from "./icons.js";
 
 // ===== 単語詳細ポップアップ =====
 // 一覧のどこから押しても、その語の「状態・履歴・メモ・仲間・発音」を1か所で見られる。
@@ -48,14 +49,14 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
   const nextReview = stat?.nextReviewAt && !stat.mastered ? Math.max(0, Math.ceil((Date.parse(stat.nextReviewAt) - Date.now()) / 86400000)) : null;
 
   panel.innerHTML = `
-    <button type="button" class="word-detail__close" data-detail-close aria-label="閉じる">✕</button>
+    <button type="button" class="word-detail__close" data-detail-close aria-label="閉じる">${icon("x")}</button>
     <div class="word-detail__head">
-      <span class="word-detail__en">${escapeHtml(word.answer ?? word.en)}</span>
-      ${speechTextOf(word) ? `<button type="button" class="speak-button word-detail__speak" id="wordDetailSpeak">🔊</button>` : ""}
+      <span class="word-detail__en${word.q && !/^[A-Za-z0-9 .,'’/&()-]+$/.test(word.answer ?? word.en ?? "") ? "" : " mono"}">${escapeHtml(word.answer ?? word.en)}</span>
+      ${speechTextOf(word) ? `<button type="button" class="speak-button word-detail__speak" id="wordDetailSpeak" aria-label="発音">${icon("speaker")}発音</button>` : ""}
     </div>
     <div class="word-detail__ja">${escapeHtml(word.ja)}</div>
     ${word.q ? `<div class="word-detail__q">場面: ${escapeHtml(word.q)}</div>` : ""}
-    ${word.explain ? `<div class="word-detail__q">📘 ${escapeHtml(word.explain)}</div>` : ""}
+    ${word.explain ? `<div class="word-detail__q">${escapeHtml(word.explain)}</div>` : ""}
     ${hasExample(word) ? `<div class="word-detail__ex word-example">${exampleHtml(word)}</div>` : ""}
     <div class="word-detail__meta">
       <span class="word-detail__status word-detail__status--${status}">${STATUS_LABEL[status]}</span>
@@ -69,14 +70,14 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
     ${historyDotsHtml(stat) ? `<div class="word-detail__history">履歴 ${historyDotsHtml(stat)}</div>` : ""}
     ${memoryGaugeHtml(stat) ? `<div class="word-detail__history">記憶 ${memoryGaugeHtml(stat)}</div>` : ""}
     <div class="word-detail__note">
-      <label for="wordDetailNote">📝 覚え方のメモ</label>
+      <label for="wordDetailNote">覚え方のメモ</label>
       <div class="word-detail__note-row">
         <input type="text" id="wordDetailNote" class="note-input" maxlength="${NOTE_MAX_LENGTH}" value="${escapeHtml(note)}" placeholder="例: nego＝交渉のネゴ" autocomplete="off" />
         <button type="button" class="note-save" id="wordDetailNoteSave">保存</button>
       </div>
     </div>
     <div class="word-detail__ai" id="wordDetailAi"></div>
-    ${family.length ? `<div class="word-detail__family">🔗 同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${w.id}">${escapeHtml(w.en)}</button>`).join(" ")}</div>` : ""}
+    ${family.length ? `<div class="word-detail__family">同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${w.id}">${escapeHtml(w.en)}</button>`).join(" ")}</div>` : ""}
   `;
   modal.hidden = false;
   panel.querySelector("[data-detail-close]").addEventListener("click", closeWordDetail);
@@ -86,7 +87,7 @@ export function openWordDetail(wordId, { onNoteSaved } = {}) {
   const save = () => {
     setNote(wordId, input.value);
     const btn = panel.querySelector("#wordDetailNoteSave");
-    btn.textContent = "保存済み ✓";
+    btn.textContent = "保存済み";
     setTimeout(() => (btn.textContent = "保存"), 1500);
     if (onNoteSaved) onNoteSaved(wordId);
   };

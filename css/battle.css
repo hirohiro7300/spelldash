@@ -1,14 +1,17 @@
-/* ===== Battle Preseason ===== */
-/* 方向性: ミニマル・知的・静か・能力測定の緊張感 */
+/* ===== Battle Preseason（「墨と朱」） ===== */
+/* 方向性: ミニマル・静か・能力測定の緊張感。色と字体は css/tokens.css だけ。
+   配置・タイマーの仕組み・js/battleEngine.js / js/battleView.js のロジックは変えない。 */
 
 .preseason-tag {
   margin-left: 8px;
-  padding: 2px 8px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
+  padding: 1px 8px;
+  border: 1px solid var(--line-2);
   border-radius: 999px;
+  font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.16em;
-  color: #94a3b8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
 
 /* ===== ロビー ===== */
@@ -22,21 +25,24 @@
 
 .rank-card__rank {
   margin: 0;
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 
 .rank-card__rp {
   margin: 4px 0 0;
-  color: #94a3b8;
-  font-size: 14px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
 }
 
 .rank-card__record {
   text-align: right;
-  color: #cbd5e1;
-  font-size: 15px;
+  color: var(--ink-2);
+  font-size: 14px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -51,9 +57,19 @@
 
 .battle-start-btn {
   flex: 1;
-  padding: 15px 24px;
-  font-size: 17px;
-  letter-spacing: 0.06em;
+  padding: 12px 24px;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+/* ページに1つの朱: スタート */
+html[data-theme] .btn.battle-start-btn {
+  background: var(--signal);
+  color: #fff;
+}
+
+html[data-theme] .btn.battle-start-btn:hover {
+  background: var(--signal-ink);
 }
 
 .battle-note {
@@ -70,15 +86,16 @@
 
 .arena-panel {
   padding: 20px 24px;
-  border-radius: 24px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  backdrop-filter: blur(14px);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  backdrop-filter: none;
+  box-shadow: none;
 }
 
 /* YOU側が主役: Study/Challengeのゲームカードと同程度のサイズ感 */
 .arena-panel--you {
-  border-color: rgba(96, 165, 250, 0.4);
+  border-color: var(--line-2);
   padding: 32px 28px;
   text-align: center;
 }
@@ -131,47 +148,53 @@
 }
 
 .arena-panel__who {
-  color: #94a3b8;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
 }
 
 .arena-panel__stats {
-  color: #94a3b8;
+  color: var(--ink-3);
   font-size: 13px;
 }
 
 .arena-panel__stats strong {
-  color: #f8fafc;
+  color: var(--ink);
+  font-family: var(--font-mono);
   font-size: 20px;
+  font-weight: 600;
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
 }
 
 .arena-combo {
   margin-left: 10px;
-  color: #fb923c;
+  color: var(--signal-ink);
+  font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .arena-ja {
   margin: 6px 0 10px;
   font-size: clamp(26px, 5vw, 44px);
   font-weight: 700;
+  letter-spacing: -0.01em;
   min-height: 1.2em;
+  color: var(--ink);
 }
 
 .arena-ja--cpu {
   font-size: clamp(20px, 4vw, 32px);
-  color: #cbd5e1;
+  color: var(--ink-2);
 }
 
 .arena-status {
   min-height: 20px;
   margin: 8px 0 0;
-  color: #94a3b8;
+  color: var(--ink-3);
   font-size: 13px;
 }
 
@@ -179,13 +202,14 @@
 .arena-timer {
   order: -1; /* モバイル縦配置では一番上 */
   align-self: center;
-  padding: 6px 26px;
+  padding: 4px 22px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  font-size: 26px;
-  font-weight: 800;
-  color: #facc15;
+  background: var(--paper-2);
+  border: 1px solid var(--line-2);
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 
@@ -198,21 +222,27 @@
    （既存CSSは #input へのID指定のため、ここで #battleInput に同じ規則を与える） */
 #battleInput {
   width: 100%;
-  padding: 18px 20px;
-  font-size: 26px;
+  padding: 16px 20px;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   text-align: center;
   border: none;
   outline: none;
   background: transparent;
   color: transparent;
-  caret-color: #0f172a;
+  caret-color: var(--signal);
   position: relative;
   z-index: 2;
 }
 
 #battleInput::placeholder {
-  color: #94a3b8;
-  font-size: 17px;
+  color: var(--ink-4);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 /* CPUの入力進捗ドット（文字は見せない） */
@@ -226,21 +256,21 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: rgba(148, 163, 184, 0.25);
+  background: var(--line-2);
 }
 
 .cpu-dot--done {
-  background: #94a3b8;
+  background: var(--ink-3);
 }
 
-/* スコア加算の小さな脈動 */
+/* スコア加算の小さな脈動（短く） */
 .score-pulse {
-  animation: score-pulse 0.3s ease;
+  animation: score-pulse 0.18s ease;
 }
 
 @keyframes score-pulse {
   0% { transform: scale(1); }
-  40% { transform: scale(1.18); }
+  40% { transform: scale(1.1); }
   100% { transform: scale(1); }
 }
 
@@ -251,14 +281,16 @@
 
 .battle-verdict {
   margin: 4px 0 18px;
-  font-size: 40px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink);
 }
 
-.battle-verdict--win { color: #4ade80; }
-.battle-verdict--loss { color: #f87171; }
-.battle-verdict--draw { color: #facc15; }
+.battle-verdict--win { color: var(--ok); }
+.battle-verdict--loss { color: var(--signal-ink); }
+.battle-verdict--draw { color: var(--ink-2); }
 
 .battle-scores {
   display: grid;
@@ -270,12 +302,18 @@
 .battle-scores__row {
   display: flex;
   justify-content: space-between;
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.battle-scores__row strong {
+  font-family: var(--font-mono);
+  font-weight: 600;
 }
 
 .battle-scores__row--cpu {
-  color: #94a3b8;
+  color: var(--ink-3);
 }
 
 .battle-detail {
@@ -283,14 +321,16 @@
   justify-content: center;
   gap: 26px;
   margin-bottom: 20px;
-  color: #94a3b8;
+  color: var(--ink-3);
   font-size: 13px;
 }
 
 .battle-detail strong {
   display: block;
-  color: #f8fafc;
+  color: var(--ink);
+  font-family: var(--font-mono);
   font-size: 18px;
+  font-weight: 600;
   margin-top: 2px;
 }
 
@@ -301,20 +341,23 @@
 
 .battle-rp__change {
   margin: 0 0 8px;
-  font-size: 18px;
-  font-weight: 800;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .battle-promotion {
   margin: 10px 0 0;
-  color: #facc15;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  animation: promotion-in 0.5s ease;
+  color: var(--signal-ink);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  animation: promotion-in 0.2s ease;
 }
 
 @keyframes promotion-in {
-  0% { opacity: 0; transform: translateY(6px); }
+  0% { opacity: 0; transform: translateY(4px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
@@ -326,15 +369,15 @@
   margin: 0 auto 20px;
   padding: 12px 16px;
   max-width: 340px;
-  border-radius: 14px;
-  background: rgba(248, 113, 113, 0.1);
-  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: var(--radius-lg);
+  background: var(--warn-soft);
+  border: 1px solid var(--line);
 }
 
 .battle-review p {
   margin: 0;
-  color: #f87171;
-  font-weight: 700;
+  color: var(--warn);
+  font-weight: 600;
 }
 
 .battle-actions {
@@ -379,4 +422,55 @@
   .battle-promotion {
     animation: none;
   }
+}
+
+/* theme.css（後読み）のライト上書きに勝つため、同じ詳細度で色だけ再指定 */
+html[data-theme] .arena-panel {
+  background: var(--paper-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html[data-theme] .arena-panel--you {
+  border-color: var(--line-2);
+}
+
+html[data-theme] .arena-panel p,
+html[data-theme] .arena-status {
+  color: var(--ink-3);
+}
+
+html[data-theme] .arena-panel .arena-ja {
+  color: var(--ink);
+}
+
+html[data-theme] .arena-panel .arena-ja--cpu {
+  color: var(--ink-2);
+}
+
+html[data-theme] .battle-verdict--win { color: var(--ok); }
+html[data-theme] .battle-verdict--loss { color: var(--signal-ink); }
+html[data-theme] .battle-verdict--draw { color: var(--ink-2); }
+
+html[data-theme] .preseason-tag {
+  border-color: var(--line-2);
+  background: transparent;
+  color: var(--ink-3);
+}
+
+html[data-theme] .arena-timer {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+html[data-theme] .input-wrapper--battle {
+  background: var(--paper-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+}
+
+html[data-theme] .input-wrapper--battle:focus-within {
+  border-color: var(--signal);
+  box-shadow: var(--focus);
 }
