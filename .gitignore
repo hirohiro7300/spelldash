@@ -2,3 +2,6 @@
 node_modules/
 package-lock.json
 dist/
+
+# エージェントの作業ツリー（一時）
+.claude/worktrees/
