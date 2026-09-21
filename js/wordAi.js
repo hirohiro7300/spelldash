@@ -1,11 +1,13 @@
 import { apiUrl } from "./appEnv.js";
 import { supabase } from "./supabase.js";
+import { icon } from "./icons.js";
 
-// ===== ✨ 覚え方を作る（AI） =====
+// ===== 覚え方を作る（AI） =====
 //
 // 思い出せなかった語について、覚え方・例文・注意点を /api/explain-word（サーバー側でClaude）に
 // 1回だけ作ってもらい、端末に保存する（spelldash_word_ai）。答え表示時と単語詳細に出る。
-// 自分のメモ（📝）とは別物: メモは自分の言葉、こちらは助け舟。
+// 自分のメモとは別物: メモは自分の言葉、こちらは助け舟。
+// 生成はログイン中だけ（未ログインではボタンを出さない。保存済みの本文は誰でも見える）。
 
 const KEY = "spelldash_word_ai";
 
@@ -73,13 +75,30 @@ export function wordAiHtml(wordId) {
   if (!entry) return "";
   return `
     <div class="word-ai">
-      <div class="word-ai__line word-ai__mnemonic">✨ ${escapeHtml(entry.mnemonic)}</div>
+      <div class="word-ai__line word-ai__mnemonic">${escapeHtml(entry.mnemonic)}</div>
       ${entry.example ? `<div class="word-ai__line word-ai__example">${escapeHtml(entry.example)}${entry.exampleJa ? `<span class="word-ai__ja">${escapeHtml(entry.exampleJa)}</span>` : ""}</div>` : ""}
-      ${entry.pitfall ? `<div class="word-ai__line word-ai__pitfall">⚠ ${escapeHtml(entry.pitfall)}</div>` : ""}
+      ${entry.pitfall ? `<div class="word-ai__line word-ai__pitfall">注意: ${escapeHtml(entry.pitfall)}</div>` : ""}
     </div>`;
 }
 
-// 「✨ 覚え方を作る」ボタン＋結果。container 内に描画し、生成後は onDone を呼ぶ
+// ログイン状態（初回だけ問い合わせ、以後は変更イベントで追う）
+let loggedIn = null;
+async function isLoggedIn() {
+  if (loggedIn !== null) return loggedIn;
+  try {
+    const { data } = await supabase.auth.getSession();
+    loggedIn = !!data?.session;
+    supabase.auth.onAuthStateChange((_event, session) => {
+      loggedIn = !!session;
+    });
+  } catch {
+    loggedIn = false;
+  }
+  return loggedIn;
+}
+
+// 「覚え方を作る」ボタン＋結果。container 内に描画し、生成後は onDone を呼ぶ。
+// 未ログインではボタンを出さない（生成 API がログイン必須のため）
 export function renderWordAi(container, word, { onDone } = {}) {
   if (!container || !word) return;
   const cached = getWordAi(word.id);
@@ -87,7 +106,16 @@ export function renderWordAi(container, word, { onDone } = {}) {
     container.innerHTML = wordAiHtml(word.id);
     return;
   }
-  container.innerHTML = `<button type="button" class="word-ai__button" data-word-ai-run>✨ 覚え方を作る</button>`;
+  container.innerHTML = "";
+  container.dataset.wordAiFor = word.id;
+  isLoggedIn().then((ok) => {
+    if (!ok || container.dataset.wordAiFor !== word.id || container.innerHTML !== "") return;
+    renderAiButton(container, word, onDone);
+  });
+}
+
+function renderAiButton(container, word, onDone) {
+  container.innerHTML = `<button type="button" class="word-ai__button" data-word-ai-run>${icon("spark")}覚え方を作る</button>`;
   container.querySelector("[data-word-ai-run]").addEventListener("click", async (event) => {
     const button = event.currentTarget;
     button.disabled = true;

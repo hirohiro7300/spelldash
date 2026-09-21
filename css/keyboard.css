@@ -1,5 +1,7 @@
 /* ===== 専用キーボード（A〜Z＋⌫） =====
-   スマホでプレイ中だけ画面下に固定。OS キーボードの代わりなので、押しやすさ最優先。 */
+   スマホでプレイ中だけ画面下に固定。OS キーボードの代わりなので、押しやすさ最優先。
+   見た目は「墨と朱」（docs/CONCEPT.md）: 紙の盤面に 1px の罫線、キーは等幅の墨、Enter だけ墨の塗り。
+   色はすべて css/tokens.css の変数（ダークは自動で反転）。高さ・data-key／data-action は変えない。 */
 
 .osk {
   position: fixed;
@@ -8,10 +10,8 @@
   bottom: 0;
   z-index: 60;
   padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
-  background: rgba(15, 23, 42, 0.96);
-  border-top: 1px solid rgba(148, 163, 184, 0.25);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: var(--paper-3);
+  border-top: 1px solid var(--line);
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
@@ -58,33 +58,34 @@ html:has(body.osk-open) {
   padding: 0;
   margin: 0;
   box-sizing: border-box;
-  border: none;
-  border-radius: 8px;
-  background: #334155;
-  color: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 500;
   text-transform: lowercase;
-  box-shadow: 0 2px 0 #0f172a;
+  box-shadow: none;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   line-height: 1;
-  transition: transform 0.05s ease, background 0.05s ease;
+  transition: background 60ms ease, color 60ms ease;
 }
 
 .osk__key--down,
 .osk__key:active {
-  transform: translateY(2px);
+  background: var(--paper-3);
+  border-color: var(--line-2);
   box-shadow: none;
-  background: #3b82f6;
 }
 
 .osk__key--bs {
   flex: 1.5 1 0;
-  background: #1e293b;
+  background: var(--paper-3);
   font-size: 18px;
 }
 
@@ -95,21 +96,40 @@ html:has(body.osk-open) {
 
 .osk__key--space {
   flex: 2 1 0;
-  background: #1e293b;
+  background: var(--paper-3);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .osk__key--enter {
   flex: 1.6 1 0;
-  background: #2563eb;
-  font-weight: 800;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
   text-transform: none;
 }
 
 .osk__key--enter small {
+  font-family: var(--font-ui);
   font-size: 10px;
   font-weight: 600;
-  opacity: 0.85;
+  opacity: 0.8;
   margin-top: 2px;
+}
+
+/* 押した色は ⌫・空白・Enter にも効かせる（後勝ちにならないよう詳細度を上げる） */
+.osk__key.osk__key--down,
+.osk__key.osk__key--bs:active,
+.osk__key.osk__key--space:active {
+  background: var(--line);
+}
+
+.osk__key.osk__key--enter.osk__key--down,
+.osk__key.osk__key--enter:active {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
 }
 
 /* PC で「常にオン」にした場合は少しコンパクトに */
@@ -146,24 +166,8 @@ html:has(body.osk-open) {
   }
 }
 
-/* 押した色は ⌫・空白・Enter にも効かせる（後勝ちにならないよう詳細度を上げる） */
-.osk__key.osk__key--down,
-.osk__key.osk__key--bs:active,
-.osk__key.osk__key--space:active,
-.osk__key.osk__key--enter:active {
-  background: #3b82f6;
+@media (prefers-reduced-motion: reduce) {
+  .osk__key {
+    transition: none;
+  }
 }
-
-/* ---- ライトテーマ ---- */
-html[data-theme="light"] .osk { background: rgba(226, 232, 240, 0.97); border-top-color: #cbd5e1; }
-html[data-theme="light"] .osk__key { background: #ffffff; color: #0f172a; box-shadow: 0 2px 0 #94a3b8; }
-html[data-theme="light"] .osk__key--down,
-html[data-theme="light"] .osk__key:active { background: #bfdbfe; }
-html[data-theme="light"] .osk__key--bs,
-html[data-theme="light"] .osk__key--space { background: #cbd5e1; }
-html[data-theme="light"] .osk__key--enter { background: #2563eb; color: #fff; box-shadow: 0 2px 0 #1e40af; }
-html[data-theme="light"] .osk__key.osk__key--down,
-html[data-theme="light"] .osk__key.osk__key--bs:active,
-html[data-theme="light"] .osk__key.osk__key--space:active { background: #bfdbfe; }
-html[data-theme="light"] .osk__key.osk__key--enter.osk__key--down,
-html[data-theme="light"] .osk__key.osk__key--enter:active { background: #1d4ed8; }

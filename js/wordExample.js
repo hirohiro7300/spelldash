@@ -1,4 +1,5 @@
 import { speak } from "./audio.js";
+import { icon } from "./icons.js";
 
 // ===== 例文（英単語カード） =====
 // データの ex（英文）／exJa（訳）／exForm（英文中の語形）を、答え表示・正解時・単語帳・単語詳細に出す。
@@ -25,14 +26,14 @@ export function highlightExample(word) {
 
 export function exampleHtml(word, { speakButton = true, className = "word-example" } = {}) {
   if (!hasExample(word)) return "";
-  // 🔊 は英文の末尾に続けて置く（別行に落ちないように __en の中に入れる）
+  // 読み上げボタンは英文の末尾に続けて置く（別行に落ちないように __en の中に入れる）
   return `
-    <span class="${className}__en">${highlightExample(word)}${speakButton ? ` <button type="button" class="${className}__speak" data-example-speak aria-label="例文を読み上げる">🔊</button>` : ""}</span>
+    <span class="${className}__en">${highlightExample(word)}${speakButton ? ` <button type="button" class="${className}__speak" data-example-speak aria-label="例文を読み上げる">${icon("speaker", { size: 14 })}</button>` : ""}</span>
     <span class="${className}__ja">${esc(word.exJa)}</span>
   `;
 }
 
-// container に描画（無ければ空にする）。🔊 で英文を読み上げる
+// container に描画（無ければ空にする）。読み上げボタンで英文を読み上げる
 export function renderWordExample(container, word) {
   if (!container) return;
   if (!hasExample(word)) {
