@@ -141,7 +141,7 @@ function renderOverview() {
     renderCards(more, [
       { label: "総XP", value: level.totalXp.toLocaleString() },
       { label: "最長連続", value: `${streak.best}日` },
-      { label: "ストリークシールド", value: `🛡️ × ${streak.shields ?? 0}` },
+      { label: "ストリークシールド", value: `${streak.shields ?? 0}枚` },
       { label: "習得率", value: `${s.masteryRate}%` },
       { label: "正答率", value: `${s.accuracy}%` },
       { label: "総プレイ", value: s.totalPlays }

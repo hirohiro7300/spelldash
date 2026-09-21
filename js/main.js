@@ -21,7 +21,6 @@ import { isGamePlaying } from "./game.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderLevelBar } from "./levelUi.js";
-import { renderStreakCard } from "./streakUi.js";
 import { renderHasumiHome } from "./hasumi.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
@@ -35,8 +34,6 @@ import { ensureDefaultCourse, advanceSection, startCourse, COURSES } from "./cou
 import { setFocusGenre } from "./studyQueue.js";
 import { setGenre } from "./genres.js";
 import { resumableFor } from "./sessionResume.js";
-import { renderWeeklyReport } from "./weeklyReport.js";
-import { renderMission } from "./mission.js";
 import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
 import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
@@ -44,13 +41,13 @@ import { renderLoginNudge } from "./loginNudge.js";
 import { getCategories } from "./wordStore.js";
 import { getGenre, genreLabel } from "./genres.js";
 import { getWordStats } from "./storage.js";
+import { icon } from "./icons.js";
 
 initializeAuth();
 setFooterYear();
 initializeKeyboard(); // 専用キーボード（スマホでプレイ中だけ出る）
 renderHeaderStreak();
 renderLevelBar();
-renderStreakCard();
 renderHasumiHome();
 setupUnloadSync();
 
@@ -81,9 +78,7 @@ window.addEventListener("spelldash:synced", () => {
   renderLearnedCard();
   renderHome();
   renderLevelBar();
-  renderStreakCard();
   renderHasumiHome();
-  renderMission();
   initializeDisplay();
 });
 
@@ -208,7 +203,7 @@ function celebrateNewUnits(path) {
   const fresh = path.units.filter((u) => u.done && !doneUnitsAtStart.has(u.label)).map((u) => u.label);
   doneUnitsAtStart = null;
   if (fresh.length === 0) return;
-  showPathToast(path.allDone ? `🏆 ${path.label} 制覇！ ${fresh.map((l) => `「${l}」`).join("")}も覚えた` : `🎉 ユニット${fresh.map((l) => `「${l}」`).join("")}を制覇！ 次は「${currentUnitOf(path)?.label ?? ""}」`);
+  showPathToast(path.allDone ? `${path.label} 制覇。${fresh.map((l) => `「${l}」`).join("")}も覚えた` : `ユニット${fresh.map((l) => `「${l}」`).join("")}を制覇。次は「${currentUnitOf(path)?.label ?? ""}」`);
 }
 
 function renderHome() {
@@ -218,7 +213,9 @@ function renderHome() {
   return path;
 }
 
-document.getElementById("backToPath")?.addEventListener("click", () => {
+const backToPath = document.getElementById("backToPath");
+if (backToPath) backToPath.innerHTML = `${icon("arrowLeft")}道に戻る`;
+backToPath?.addEventListener("click", () => {
   setMode("study");
   stopGame(); // プレイ中のセットは中断する（setMode は同じモードだと止めない）
   showGame(false);
@@ -324,15 +321,7 @@ storeReady
     renderHome();
     renderLoginNudge();
     setSetupOpen(localStorage.getItem(SETUP_OPEN_KEY) === "1");
-    // 週間レポート: 日曜・月曜だけホームに（それ以外は学習データで見られる）
-    const dow = new Date().getDay();
-    const weeklyHome = document.getElementById("weeklyHome");
-    if (weeklyHome && (dow === 0 || dow === 1 || location.search.includes("weekly=1"))) {
-      weeklyHome.hidden = false;
-      renderWeeklyReport("weeklyHome", { compact: true });
-    }
     initializeMixControl();
-    renderMission();
     renderDailyCard(() => {
       startDailyGame();
       elements.input.focus();

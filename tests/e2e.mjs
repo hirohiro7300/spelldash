@@ -273,7 +273,6 @@ console.log("daily:");
   const card = await page.textContent("#dailyCard");
   check("完走でロック（スコア表示）", card.includes("今日のスコア"));
   check("カウントダウン表示", card.includes("次の問題まで"));
-  check("シェアボタンあり", (await page.$("#dailyShareButton")) !== null);
   const act = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_activity") || "{}"));
   check("KPI心拍にdaily完走記録", act.dailyDone === true);
   check("Dailyフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
@@ -287,7 +286,7 @@ console.log("home widgets:");
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   check("数字1行にストリーク・週の目標", (await page.textContent("#todayStrip")).includes("連続記録") || (await page.textContent("#todayStrip")).includes("日連続"));
-  check("ランク表示（F3スタート）", (await page.textContent("#todayStrip")).includes("F3"));
+  check("ホームにランク表示は出さない（学習データにある）", !(await page.textContent("#todayStrip")).includes("F3") && !(await page.textContent("#todayStrip")).includes("Lv."));
   await page.click("#setupToggle"); // 出題設定は畳まれている
   check("苦手トグル（Study時）表示", await page.isVisible("#weakToggleButton"));
   check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
@@ -560,10 +559,6 @@ console.log("growth:");
   await page.click("[data-weekly-share]");
   await page.waitForTimeout(300);
   check("シェア押下でエラー0", page.errors.length === 0, page.errors[0] ?? "");
-  // ホーム: ?weekly=1 で週間レポートを強制表示
-  await page.goto(BASE + "/index.html?weekly=1", { waitUntil: "networkidle" });
-  await page.waitForTimeout(900);
-  check("ホームに週間レポート（コンパクト）", !(await page.$eval("#weeklyHome", (el) => el.hidden)) && (await page.textContent("#weeklyHome")).includes("くわしく見る"));
   check("成長フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }

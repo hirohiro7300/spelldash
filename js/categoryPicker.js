@@ -2,6 +2,7 @@ import { getCategories, getWordsByCategory } from "./wordStore.js";
 import { setActiveCategory, isGamePlaying } from "./game.js";
 import { renderLearnedCard } from "./learnedCard.js";
 import { getGenre, setGenre, genreLabel, groupByGenre } from "./genres.js";
+import { icon } from "./icons.js";
 
 const CATEGORY_KEY = "spelldash_category";
 
@@ -36,7 +37,7 @@ export function initializeCategoryPicker() {
     })
     .join("") +
     // 分野パック（不動産・会計・医療事務…）は教材ライブラリから追加する
-    `<a class="category-chip category-chip--add" href="./list.html#packs" id="packsLink">＋ 分野を追加</a>`;
+    `<a class="category-chip category-chip--add" href="./list.html#packs" id="packsLink">分野を追加</a>`;
 
   setActiveCategory(saved);
   renderGenreBar(saved);
@@ -70,9 +71,9 @@ function renderGenreBar(categoryId) {
   const listHref = `./list.html?category=${encodeURIComponent(categoryId === "all" ? "" : categoryId)}`;
   const genres = categoryId === "all" ? [] : groupByGenre(categoryId);
   bar.innerHTML = `
-    ${genre ? `<span class="genre-bar__active">ジャンル: <b>${genreLabel(genre)}</b><button type="button" class="genre-bar__clear" id="genreClear" aria-label="ジャンルの絞り込みを解除">✕ 解除</button></span>` : ""}
+    ${genre ? `<span class="genre-bar__active">ジャンル: <b>${genreLabel(genre)}</b><button type="button" class="genre-bar__clear" id="genreClear" aria-label="ジャンルの絞り込みを解除">${icon("x", { size: 12 })}解除</button></span>` : ""}
     ${genres.length > 1 && !genre ? `<span class="genre-bar__hint">${genres.length}ジャンル</span>` : ""}
-    <a class="genre-bar__link" href="${listHref}">📖 ${categoryId === "all" ? "単語帳を見る" : "このカテゴリの一覧を見る"}</a>
+    <a class="genre-bar__link" href="${listHref}">${categoryId === "all" ? "単語帳を見る" : "このカテゴリの一覧を見る"}</a>
   `;
   document.getElementById("genreClear")?.addEventListener("click", () => {
     if (isGamePlaying()) return;
