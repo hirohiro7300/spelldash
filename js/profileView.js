@@ -7,7 +7,7 @@ import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
-import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled, getVolume, setVolume, getListenRatio, setListenRatio, getEnglishVoices, getPreferredVoiceURI, setPreferredVoiceURI, previewVoice, getSpeechRate, setSpeechRate, onVoicesReady } from "./audio.js";
+import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled, getVolume, setVolume, getListenRatio, setListenRatio, getEnglishVoices, getPreferredVoiceURI, setPreferredVoiceURI, previewVoice, getSpeechRate, setSpeechRate, onVoicesReady, prettyVoiceName } from "./audio.js";
 import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./backup.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
@@ -100,7 +100,7 @@ function initializeAudioSettings() {
     statusElement.textContent = "保存しました。";
     // アクセント確認用に1回だけサンプル再生
     if (modeSelect.value !== "off") {
-      speak("investment");
+      previewVoice(getPreferredVoiceURI());
     }
     setTimeout(() => (statusElement.textContent = ""), 2000);
   };
@@ -118,8 +118,8 @@ function initializeAudioSettings() {
     if (!voiceSelect) return;
     const list = getEnglishVoices(accentSelect.value);
     const current = getPreferredVoiceURI();
-    voiceSelect.innerHTML = `<option value="">自動（この端末でいちばん自然な声${list[0] ? `: ${list[0].voice.name}` : ""}）</option>` + list
-      .map(({ voice }) => `<option value="${voice.voiceURI.replace(/"/g, "&quot;")}">${voice.name} (${voice.lang})</option>`)
+    voiceSelect.innerHTML = `<option value="">自動（${list[0] ? prettyVoiceName(list[0].voice) : "この端末の英語の声"}）</option>` + list
+      .map(({ voice }) => `<option value="${voice.voiceURI.replace(/"/g, "&quot;")}">${prettyVoiceName(voice)}</option>`)
       .join("");
     voiceSelect.value = list.some(({ voice }) => voice.voiceURI === current) ? current : "";
   };
@@ -140,7 +140,7 @@ function initializeAudioSettings() {
     rateSelect.value = getSpeechRate();
     rateSelect.addEventListener("change", () => {
       setSpeechRate(rateSelect.value);
-      speak("investment");
+      previewVoice(getPreferredVoiceURI());
       statusElement.textContent = "保存しました。";
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });
