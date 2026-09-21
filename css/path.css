@@ -396,20 +396,20 @@ html[data-theme="light"] .path__dot { background: #e2e8f0; border-color: #cbd5e1
 html[data-theme="light"] .path__node--done .path__dot { background: #16a34a; border-color: #15803d; color: #fff; }
 html[data-theme="light"] .path__dot--goal { background: #fef9c3; border-color: #fde047; }
 html[data-theme="light"] .path__tip { background: #fff; color: #1d4ed8; }
-html[data-theme="light"] .path__label { color: #64748b; }
+html[data-theme="light"] .path__label { color: #526070; }
 html[data-theme="light"] .path__label b { color: #0f172a; }
 html[data-theme="light"] .path__node--current .path__label b { color: #1d4ed8; }
 html[data-theme="light"] .path__node--locked .path__label b { color: #475569; }
 html[data-theme="light"] .path__label a { color: #1d4ed8; }
 html[data-theme="light"] .back-to-path { background: #fff; border-color: #cbd5e1; color: #334155; }
 html[data-theme="light"] .play-modes { background: #fff; border-color: #e2e8f0; }
-html[data-theme="light"] .play-modes__title { color: #64748b; }
+html[data-theme="light"] .play-modes__title { color: #526070; }
 html[data-theme="light"] .play-modes__row { border-color: #e2e8f0; }
-html[data-theme="light"] .play-modes__text { color: #64748b; }
+html[data-theme="light"] .play-modes__text { color: #526070; }
 html[data-theme="light"] .play-modes__text b { color: #0f172a; }
-html[data-theme="light"] .play-modes__row--locked .play-modes__text b { color: #64748b; }
+html[data-theme="light"] .play-modes__row--locked .play-modes__text b { color: #526070; }
 html[data-theme="light"] .play-modes__go--ghost { background: #e2e8f0; color: #0f172a; }
-html[data-theme="light"] .play-modes__lock { color: #64748b; }
+html[data-theme="light"] .play-modes__lock { color: #526070; }
 
 /* PC: 道は中央 560px、見出しは横長 */
 @media (min-width: 900px) {
@@ -577,7 +577,7 @@ html[data-theme="light"] .play-modes__lock { color: #64748b; }
 
 html[data-theme="light"] .path__courses { background: #f8fafc; border-color: #e2e8f0; }
 html[data-theme="light"] .path__courses-head span,
-html[data-theme="light"] .path__course-text small { color: #64748b; }
+html[data-theme="light"] .path__course-text small { color: #526070; }
 html[data-theme="light"] .path__course { background: #fff; border-color: #e2e8f0; }
 html[data-theme="light"] .path__course--current { border-color: #93c5fd; }
 html[data-theme="light"] .path__course-text span { color: #334155; }

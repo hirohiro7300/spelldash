@@ -44,7 +44,7 @@ html[data-theme="light"] .site-footer__nav a {
 
 html[data-theme="light"] .site-footer__tagline,
 html[data-theme="light"] .site-footer__copy {
-  color: #64748b;
+  color: #526070;
 }
 
 /* ---- 汎用テキスト ---- */
@@ -56,7 +56,7 @@ html[data-theme="light"] .weak-toggle__hint,
 html[data-theme="light"] .account-menu__hint,
 html[data-theme="light"] .account-menu__email,
 html[data-theme="light"] .onboarding__close {
-  color: #64748b;
+  color: #526070;
 }
 
 html[data-theme="light"] .message {
@@ -64,7 +64,7 @@ html[data-theme="light"] .message {
 }
 
 html[data-theme="light"] .hidden-word {
-  color: #64748b;
+  color: #526070;
 }
 
 /* ---- カード類（白背景＋淡い枠） ---- */
@@ -98,7 +98,7 @@ html[data-theme="light"] .daily__note,
 html[data-theme="light"] .level-bar__xp,
 html[data-theme="light"] .streak-card__best,
 html[data-theme="light"] .news-item__date {
-  color: #64748b;
+  color: #526070;
 }
 
 html[data-theme="light"] .stat-card strong,
@@ -125,7 +125,7 @@ html[data-theme="light"] .setting-select {
 }
 
 html[data-theme="light"] .mode-switch__btn span {
-  color: #64748b;
+  color: #526070;
 }
 
 html[data-theme="light"] .mode-switch__btn:hover,
@@ -235,7 +235,7 @@ html[data-theme="light"] .combo--hot {
 html[data-theme="light"] .queue-chip {
   background: #f1f5f9;
   border-color: #dbe2ec;
-  color: #64748b;
+  color: #526070;
 }
 
 html[data-theme="light"] .queue-chip--unresolved {
@@ -251,7 +251,7 @@ html[data-theme="light"] .queue-chip--recalled {
 }
 
 html[data-theme="light"] .word-family {
-  color: #64748b;
+  color: #526070;
 }
 
 /* ---- リザルトパネル ---- */
@@ -261,7 +261,7 @@ html[data-theme="light"] .result-panel {
 }
 
 html[data-theme="light"] .result-panel__grid span {
-  color: #64748b;
+  color: #526070;
 }
 
 html[data-theme="light"] .result-panel__grid strong {
@@ -274,7 +274,7 @@ html[data-theme="light"] .result-panel__action--ghost {
 }
 
 html[data-theme="light"] .result-panel__tagline {
-  color: #94a3b8;
+  color: #526070;
 }
 
 /* ---- はちゃん ---- */
@@ -309,7 +309,7 @@ html[data-theme="light"] .header-streak {
 
 html[data-theme="light"] .header-streak--off {
   border-color: #dbe2ec;
-  color: #94a3b8;
+  color: #57534e;
 }
 
 html[data-theme="light"] .progress-bar {
@@ -359,7 +359,7 @@ html[data-theme="light"] .daily__head {
 
 html[data-theme="light"] .preseason-tag {
   border-color: #cbd5e1;
-  color: #64748b;
+  color: #526070;
 }
 
 html[data-theme="light"] .word-item {
@@ -373,7 +373,7 @@ html[data-theme="light"] .setting-select {
 }
 
 /* ---- 覚えた実感 v1（ライト） ---- */
-html[data-theme="light"] .word-meta { color: #64748b; }
+html[data-theme="light"] .word-meta { color: #526070; }
 html[data-theme="light"] .learned-card {
   background: #ffffff;
   border-color: rgba(37, 99, 235, 0.3);
@@ -381,8 +381,8 @@ html[data-theme="light"] .learned-card {
 }
 html[data-theme="light"] .learned-card__label { color: #334155; }
 html[data-theme="light"] .learned-card__num { color: #0f172a; }
-html[data-theme="light"] .learned-card__today { color: #16a34a; }
-html[data-theme="light"] .learned-card__cat { color: #64748b; }
+html[data-theme="light"] .learned-card__today { color: #15803d; }
+html[data-theme="light"] .learned-card__cat { color: #526070; }
 html[data-theme="light"] .learned-card__link { color: #1d4ed8; }
 html[data-theme="light"] .cat-row {
   background: #ffffff;
@@ -409,7 +409,7 @@ html[data-theme="light"] .today-cta--done .today-cta__title { color: #15803d; }
 html[data-theme="light"] .today-cta__sub { color: #475569; }
 html[data-theme="light"] .today-cta__button--ghost { background: rgba(15, 23, 42, 0.06); color: #334155; }
 html[data-theme="light"] .today-cta__daily { color: #b45309; }
-html[data-theme="light"] .set-progress { color: #64748b; }
+html[data-theme="light"] .set-progress { color: #526070; }
 html[data-theme="light"] .set-progress__count b { color: #0f172a; }
 html[data-theme="light"] .set-progress__bar { background: #e2e8f0; }
 html[data-theme="light"] .learned-card__week i { background: #e2e8f0; }
@@ -417,7 +417,7 @@ html[data-theme="light"] .learned-card__week i.on { background: #16a34a; }
 
 /* ---- Challenge手触り（ライト） ---- */
 html[data-theme="light"] .play-score__value { color: #0f172a; }
-html[data-theme="light"] .play-score__combo { color: #94a3b8; }
+html[data-theme="light"] .play-score__combo { color: #526070; }
 html[data-theme="light"] .play-score__combo--on { color: #ea580c; }
 html[data-theme="light"] .play-score__combo--hot { color: #ea580c; }
 html[data-theme="light"] .play-score__combo--blaze { color: #d97706; text-shadow: none; }
@@ -435,7 +435,7 @@ html[data-theme="light"] .my-words__status--error { color: #dc2626; }
 html[data-theme="light"] .my-word { background: #ffffff; border-color: #dbe2ec; }
 html[data-theme="light"] .my-word__en { color: #0f172a; }
 html[data-theme="light"] .my-word__ja { color: #334155; }
-html[data-theme="light"] .my-word__status { background: #f1f5f9; color: #64748b; }
+html[data-theme="light"] .my-word__status { background: #f1f5f9; color: #526070; }
 html[data-theme="light"] .my-word__status--learning { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
 html[data-theme="light"] .my-word__status--mastered { background: rgba(22, 163, 74, 0.12); color: #15803d; }
 html[data-theme="light"] .my-word__status--weak { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
@@ -445,7 +445,7 @@ html[data-theme="light"] .weekly--home { background: #ffffff; border-color: rgba
 html[data-theme="light"] .weekly__title { color: #0f172a; }
 html[data-theme="light"] .weekly__grid div { background: #f8fafc; border-color: #e2e8f0; }
 html[data-theme="light"] .weekly__grid strong { color: #0f172a; }
-html[data-theme="light"] .weekly__grid span { color: #64748b; }
+html[data-theme="light"] .weekly__grid span { color: #526070; }
 
 /* ---- 覚えた！（ライト） ---- */
 html[data-theme="light"] .learn-stamp { color: #b45309; border-color: #f59e0b; background: rgba(255, 255, 255, 0.92); }
@@ -453,7 +453,7 @@ html[data-theme="light"] .message.learned { color: #b45309; }
 html[data-theme="light"] .hist__o { background: #16a34a; }
 html[data-theme="light"] .hist__x { background: #dc2626; }
 html[data-theme="light"] .word-chip { background: #f8fafc; border-color: #dbe2ec; color: #0f172a; }
-html[data-theme="light"] .word-chip small { color: #64748b; }
+html[data-theme="light"] .word-chip small { color: #526070; }
 html[data-theme="light"] .word-chip--learned { border-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
 html[data-theme="light"] .word-chip--recovered { border-color: #16a34a; background: rgba(22, 163, 74, 0.08); }
 html[data-theme="light"] .word-chip--failed { border-color: #dc2626; background: rgba(220, 38, 38, 0.06); }
@@ -462,7 +462,7 @@ html[data-theme="light"] .learned-card__today-words b { color: #b45309; }
 html[data-theme="light"] .learned-item { background: #ffffff; border-color: #dbe2ec; }
 html[data-theme="light"] .learned-item__en { color: #0f172a; }
 html[data-theme="light"] .learned-item__ja { color: #334155; }
-html[data-theme="light"] .known-fold, html[data-theme="light"] .known-words { color: #64748b; }
+html[data-theme="light"] .known-fold, html[data-theme="light"] .known-words { color: #526070; }
 
 /* ---- Batch 1: ヒント・メモ・難敵・ご意見（ライト） ---- */
 html[data-theme="light"] .hint-button { background: rgba(245, 158, 11, 0.12); border-color: #f59e0b; color: #92400e; }
@@ -481,18 +481,18 @@ html[data-theme="light"] .feedback-modal__head h3 { color: #0f172a; }
 html[data-theme="light"] .feedback-modal__lead { color: #334155; }
 html[data-theme="light"] .feedback-modal__panel textarea, html[data-theme="light"] .feedback-modal__panel input { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
 html[data-theme="light"] .feedback-modal__status { color: #15803d; }
-html[data-theme="light"] .feedback-modal__note { color: #64748b; }
+html[data-theme="light"] .feedback-modal__note { color: #526070; }
 html[data-theme="light"] .word-item strong { color: #0f172a; }
 
 /* ---- Batch 2（ライト） ---- */
 html[data-theme="light"] .learned-card__week b { color: #0f172a; }
 html[data-theme="light"] .learned-card__week i.future { background: #f1f5f9; }
 html[data-theme="light"] .result-panel__goal { background: rgba(22, 163, 74, 0.08); border-color: #86efac; color: #15803d; }
-html[data-theme="light"] .result-panel__goal--progress { background: #f8fafc; border-color: #e2e8f0; color: #64748b; }
+html[data-theme="light"] .result-panel__goal--progress { background: #f8fafc; border-color: #e2e8f0; color: #526070; }
 html[data-theme="light"] .install__done { color: #15803d; }
 
 /* ---- Batch 3（ライト） ---- */
-html[data-theme="light"] .cal__summary { color: #64748b; }
+html[data-theme="light"] .cal__summary { color: #526070; }
 html[data-theme="light"] .cal__summary b { color: #0f172a; }
 html[data-theme="light"] .cal__day { background: #e2e8f0; }
 html[data-theme="light"] .cal__day--1 { background: #bbf7d0; }
@@ -502,7 +502,7 @@ html[data-theme="light"] .cal__day--4 { background: #16a34a; }
 html[data-theme="light"] .cal__day--future { background: transparent; border-color: #e2e8f0; }
 html[data-theme="light"] .keymiss__top { color: #334155; }
 html[data-theme="light"] .keymiss__top b { color: #b91c1c; }
-html[data-theme="light"] .keymap__key { background: #f1f5f9; color: #64748b; }
+html[data-theme="light"] .keymap__key { background: #f1f5f9; color: #526070; }
 html[data-theme="light"] .keymap__key--1 { background: #fecaca; color: #7f1d1d; }
 html[data-theme="light"] .keymap__key--2 { background: #fca5a5; color: #7f1d1d; }
 html[data-theme="light"] .keymap__key--3 { background: #f87171; color: #fff; }
@@ -513,7 +513,7 @@ html[data-theme="light"] .word-detail__backdrop { background: rgba(15, 23, 42, 0
 html[data-theme="light"] .word-detail__panel { background: #ffffff; border-color: #dbe2ec; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2); }
 html[data-theme="light"] .word-detail__en { color: #0f172a; }
 html[data-theme="light"] .word-detail__ja { color: #334155; }
-html[data-theme="light"] .word-detail__meta, html[data-theme="light"] .word-detail__history, html[data-theme="light"] .word-detail__family { color: #64748b; }
+html[data-theme="light"] .word-detail__meta, html[data-theme="light"] .word-detail__history, html[data-theme="light"] .word-detail__family { color: #526070; }
 html[data-theme="light"] .word-detail__status { background: #f1f5f9; color: #334155; }
 html[data-theme="light"] .word-detail__status--learning { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
 html[data-theme="light"] .word-detail__status--mastered { background: rgba(22, 163, 74, 0.12); color: #15803d; }
@@ -522,7 +522,7 @@ html[data-theme="light"] .word-detail__status--known { background: rgba(245, 158
 html[data-theme="light"] .word-detail__note label { color: #334155; }
 
 /* ---- Batch 4（ライト） ---- */
-html[data-theme="light"] .result-panel__diff, html[data-theme="light"] .result-panel__tomorrow { color: #64748b; }
+html[data-theme="light"] .result-panel__diff, html[data-theme="light"] .result-panel__tomorrow { color: #526070; }
 html[data-theme="light"] .result-panel__diff--up { color: #15803d; }
 html[data-theme="light"] .result-panel__diff--down { color: #b91c1c; }
 html[data-theme="light"] .result-panel__cat { color: #334155; }
@@ -530,37 +530,37 @@ html[data-theme="light"] .result-panel__tomorrow b { color: #1d4ed8; }
 html[data-theme="light"] .rank-up { background: radial-gradient(circle at center, rgba(245, 158, 11, 0.18), rgba(255, 255, 255, 0.7) 70%); }
 html[data-theme="light"] .rank-up__inner { background: #ffffff; border-color: #f59e0b; box-shadow: 0 0 60px rgba(245, 158, 11, 0.3); }
 html[data-theme="light"] .rank-up__label { color: #92400e; }
-html[data-theme="light"] .rank-up__title { color: #64748b; }
+html[data-theme="light"] .rank-up__title { color: #526070; }
 html[data-theme="light"] .rank-up__title b { color: #b45309; text-shadow: none; }
 html[data-theme="light"] .rank-up__sub { color: #334155; }
 html[data-theme="light"] .offline-banner { background: #fffbeb; border-color: #f59e0b; color: #92400e; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15); }
-html[data-theme="light"] .volume-row__value { color: #64748b; }
+html[data-theme="light"] .volume-row__value { color: #526070; }
 
 /* ---- 概念カード（ライト） ---- */
 html[data-theme="light"] .word-explain { color: #334155; }
 html[data-theme="light"] .word-detail__q { color: #475569; }
 
 /* ---- 単語帳・ジャンル（ライト） ---- */
-html[data-theme="light"] .list-controls__field { color: #64748b; }
+html[data-theme="light"] .list-controls__field { color: #526070; }
 html[data-theme="light"] .genre-nav { background: linear-gradient(#f5f7fb, rgba(245, 247, 251, 0.92)); }
 html[data-theme="light"] .genre-chip { background: #ffffff; border-color: #dbe2ec; color: #334155; }
 html[data-theme="light"] .genre-chip--active { border-color: #2563eb; color: #1d4ed8; background: rgba(37, 99, 235, 0.08); }
 html[data-theme="light"] .genre__title { color: #0f172a; }
-html[data-theme="light"] .genre__meta { color: #64748b; }
+html[data-theme="light"] .genre__meta { color: #526070; }
 html[data-theme="light"] .gcard { background: #ffffff; border-color: #dbe2ec; }
 html[data-theme="light"] .gcard--weak { border-color: #fca5a5; }
 html[data-theme="light"] .gcard--learning { border-color: #93c5fd; }
 html[data-theme="light"] .gcard--mastered { border-color: #86efac; }
 html[data-theme="light"] .gcard__term { color: #0f172a; }
-html[data-theme="light"] .gcard__status { background: #f1f5f9; color: #64748b; }
+html[data-theme="light"] .gcard__status { background: #f1f5f9; color: #526070; }
 html[data-theme="light"] .gcard__status--learning { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
 html[data-theme="light"] .gcard__status--mastered { background: rgba(22, 163, 74, 0.12); color: #15803d; }
 html[data-theme="light"] .gcard__status--weak { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
 html[data-theme="light"] .gcard__status--known { background: rgba(245, 158, 11, 0.12); color: #92400e; }
 html[data-theme="light"] .gcard__q { color: #0f172a; }
-html[data-theme="light"] .gcard__ja { color: #64748b; }
+html[data-theme="light"] .gcard__ja { color: #526070; }
 html[data-theme="light"] .gcard__explain { color: #334155; }
-html[data-theme="light"] .genre-bar { color: #64748b; }
+html[data-theme="light"] .genre-bar { color: #526070; }
 html[data-theme="light"] .genre-bar__active b, html[data-theme="light"] .genre-bar__link, html[data-theme="light"] .cat-row__list { color: #1d4ed8; }
 html[data-theme="light"] .genre-bar__clear { border-color: #cbd5e1; color: #334155; }
 
@@ -570,8 +570,8 @@ html[data-theme="light"] .my-tab--active { border-color: #2563eb; color: #1d4ed8
 html[data-theme="light"] .my-concept__form textarea { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
 html[data-theme="light"] .my-word--concept .my-word__en { color: #92400e; }
 html[data-theme="light"] .my-word__q { color: #0f172a; }
-html[data-theme="light"] .my-word__explain { color: #64748b; }
-html[data-theme="light"] .mem { color: #64748b; }
+html[data-theme="light"] .my-word__explain { color: #526070; }
+html[data-theme="light"] .mem { color: #526070; }
 html[data-theme="light"] .mem__bar { background: #e2e8f0; }
 html[data-theme="light"] .genre__clear, html[data-theme="light"] .cat-row__clear { background: rgba(245, 158, 11, 0.14); color: #92400e; }
 html[data-theme="light"] .login-nudge { background: rgba(37, 99, 235, 0.06); border-color: #bfdbfe; color: #334155; }
@@ -600,11 +600,11 @@ html[data-theme="light"] .setup-toggle { background: #ffffff; border-color: #dbe
 html[data-theme="light"] .setup-toggle__summary { color: #1d4ed8; }
 html[data-theme="light"] .setup { background: #f8fafc; border-color: #e2e8f0; }
 html[data-theme="light"] .stats--strip .stat-card { background: #ffffff; border-color: #dbe2ec; }
-html[data-theme="light"] .stats--strip .stat-card span { color: #64748b; }
+html[data-theme="light"] .stats--strip .stat-card span { color: #526070; }
 html[data-theme="light"] .stats--strip .stat-card strong { color: #0f172a; }
 html[data-theme="light"] .home-more { background: #ffffff; border-color: #dbe2ec; }
 html[data-theme="light"] .home-more > summary { color: #475569; }
-html[data-theme="light"] .monthly-line { color: #64748b; }
+html[data-theme="light"] .monthly-line { color: #526070; }
 html[data-theme="light"] .monthly-line b { color: #0f172a; }
 html[data-theme="light"] .profile-link a { color: #1d4ed8; }
 
@@ -613,7 +613,7 @@ html[data-theme="light"] .cardgen__card { border-color: #cbd5e1; background: #f8
 html[data-theme="light"] .cardgen__q { color: #0f172a; }
 html[data-theme="light"] .cardgen__answer { color: #1d4ed8; }
 html[data-theme="light"] .cardgen__accept,
-html[data-theme="light"] .cardgen__explain { color: #64748b; }
+html[data-theme="light"] .cardgen__explain { color: #526070; }
 html[data-theme="light"] .cardgen__dup { color: #b45309; }
 html[data-theme="light"] .cardgen__done a { color: #1d4ed8; }
 
@@ -622,21 +622,21 @@ html[data-theme="light"] .word-ai__button { border-color: #a78bfa; background: #
 html[data-theme="light"] .word-ai { border-color: #ddd6fe; background: #f5f3ff; color: #1e293b; }
 html[data-theme="light"] .word-ai__mnemonic { color: #5b21b6; }
 html[data-theme="light"] .word-ai__example { color: #334155; }
-html[data-theme="light"] .word-ai__ja { color: #64748b; }
+html[data-theme="light"] .word-ai__ja { color: #526070; }
 html[data-theme="light"] .word-ai__pitfall { color: #b45309; }
 html[data-theme="light"] .cardgen__field { border-color: #cbd5e1; background: #fff; color: #0f172a; }
 html[data-theme="light"] .cardgen__field--answer { color: #1d4ed8; }
 html[data-theme="light"] .cardgen__field--sub { color: #475569; }
 
 /* ===== Batch 8: 分野パック（ライト） ===== */
-html[data-theme="light"] .category-chip--add { color: #64748b; }
+html[data-theme="light"] .category-chip--add { color: #526070; }
 html[data-theme="light"] .pack { border-color: #e2e8f0; background: #fff; }
 html[data-theme="light"] .pack--on { border-color: #93c5fd; background: #eff6ff; }
 html[data-theme="light"] .pack__blurb { color: #334155; }
 html[data-theme="light"] .pack__count,
-html[data-theme="light"] .pack__audience { color: #64748b; }
-html[data-theme="light"] .pack-group__title { color: #64748b; }
-html[data-theme="light"] .gcard__pos { border-color: #cbd5e1; color: #64748b; }
+html[data-theme="light"] .pack__audience { color: #526070; }
+html[data-theme="light"] .pack-group__title { color: #526070; }
+html[data-theme="light"] .gcard__pos { border-color: #cbd5e1; color: #526070; }
 html[data-theme="light"] .my-fold { border-color: #e2e8f0; background: #fff; }
 
 /* ---- 例文 ---- */
@@ -644,6 +644,14 @@ html[data-theme="light"] .word-example { color: #0f172a; }
 html[data-theme="light"] .word-example__en b,
 html[data-theme="light"] .gcard__ex__en b { color: #b45309; }
 html[data-theme="light"] .word-example__ja,
-html[data-theme="light"] .gcard__ex__ja { color: #64748b; }
+html[data-theme="light"] .gcard__ex__ja { color: #526070; }
 html[data-theme="light"] .word-example__speak { border-color: #cbd5e1; color: #334155; }
 html[data-theme="light"] .gcard__ex { color: #334155; border-top-color: #e2e8f0; }
+
+/* ---- コントラスト（AA）: ライトで薄すぎた文字 ---- */
+html[data-theme="light"] .speak-button { color: #334155; border-color: #cbd5e1; background: #f1f5f9; }
+html[data-theme="light"] .speak-button:hover { background: #e2e8f0; }
+html[data-theme="light"] .level-bar__remaining { color: #2f6fc4; }
+html[data-theme="light"] .queue-chip__ja { color: #b91c1c; }
+html[data-theme="light"] .mission__head { color: #526070; }
+html[data-theme="light"] .genre__count { color: #526070; }
