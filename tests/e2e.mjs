@@ -2216,6 +2216,26 @@ console.log("prompt context:");
   }
 }
 
+// ===== 17. 答え表示後の操作が1行（H4） =====
+console.log("compact actions:");
+{
+  const todayH = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_osk: "off", spelldash_category: "business", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: todayH }) } });
+  await page.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(300);
+  await page.press("#input", "Enter"); // 答え表示
+  await page.waitForTimeout(300);
+  const tops = await page.evaluate(() => ["#noteEdit", "[data-word-ai-run]", "#speakButton"].map((sel) => { const el = document.querySelector(sel); if (!el || el.hidden) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height) }; }));
+  const shown = tops.filter(Boolean);
+  check("答え表示後: メモ・覚え方を作る・発音が同じ1行に並ぶ（スマホ）", shown.length >= 2 && Math.max(...shown.map((t) => t.top)) - Math.min(...shown.map((t) => t.top)) <= 6 && shown.every((t) => t.h <= 34), JSON.stringify(tops));
+  const inputTop = await page.$eval("#input", (el) => el.getBoundingClientRect().top);
+  check("答え表示後: 入力欄が画面内（390×844）", inputTop < 844, `inputTop=${inputTop}`);
+  check("1行化でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
 await browser.close();
 server.close();
 
