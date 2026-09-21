@@ -45,6 +45,13 @@ export const COURSES = {
     audience: "英検を受ける人",
     packs: ["eiken5", "eiken4", "eiken3", "eikenp2", "eiken2", "eikenp1", "eiken1", "writing-eiken"]
   },
+  ngsl: {
+    id: "ngsl",
+    label: "基本英単語 2,800語（NGSL）",
+    blurb: "英文の約9割を作る基本語を頻度順に24セクション。数・曜日・月から始めて、よく出会う語から順に",
+    audience: "英語をゼロから体系的にやり直したい人（オープン教材 NGSL）",
+    packs: Array.from({ length: 24 }, (_, i) => `ngsl${String(i + 1).padStart(2, "0")}`)
+  },
   toeic: {
     id: "toeic",
     label: "TOEIC 500→990",

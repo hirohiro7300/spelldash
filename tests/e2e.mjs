@@ -1966,7 +1966,7 @@ console.log("courses:");
   check("コース: 見出しに「コースを変える」、パネルは閉じている", (await page.$("#pathCourse")) !== null && !(await page.isVisible("#pathCourses")));
   await page.click("#pathCourse");
   await page.waitForTimeout(150);
-  check("コース: パネルに6コース、いまのコースに印", (await page.$$(".path__course")).length === 6 && (await page.textContent(".path__course--current")).includes("中学英語やり直し") && (await page.$$(".path__course-pick")).length === 5);
+  check("コース: パネルに7コース、いまのコースに印", (await page.$$(".path__course")).length === 7 && (await page.textContent(".path__course--current")).includes("中学英語やり直し") && (await page.$$(".path__course-pick")).length === 6);
   await page.click('.path__course-pick[data-course="toeic"]');
   await waitUntil(async () => (await page.textContent("#pathHead")).includes("セクション 1／6"), 4000); // パネルの文にも「TOEIC 500」があるので見出しのセクション表示で待つ
   const st = await page.evaluate(() => ({ course: localStorage.getItem("spelldash_course"), category: localStorage.getItem("spelldash_category"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]") }));
