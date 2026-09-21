@@ -248,14 +248,14 @@ body {
 .btn {
   border: none;
   border-radius: 999px;
-  background: #3b82f6;
+  background: #2563eb; /* 白文字で AA（4.5:1） */
   color: #fff;
   font-weight: 700;
   cursor: pointer;
 }
 
 .btn:hover {
-  background: #2563eb;
+  background: #1d4ed8;
 }
 
 .btn:disabled {
