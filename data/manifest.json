@@ -1061,6 +1061,16 @@
           "group": "学術英単語 960語（オープン教材・アルファベット順）"
         },
         {
+          "id": "nawl07",
+          "label": "学術英単語（NAWL） 7（r〜s）",
+          "file": "packs/nawl07.json",
+          "pack": true,
+          "count": 120,
+          "blurb": "論文・講義に出る語をアルファベット順に（r〜s）",
+          "audience": "大学の英語・英検準1級以上を読む人（NAWL: CC BY-SA 4.0）",
+          "group": "学術英単語 960語（オープン教材・アルファベット順）"
+        },
+        {
           "id": "bsl01",
           "label": "ビジネス英単語（BSL） 1（1〜118位）",
           "file": "packs/bsl01.json",
