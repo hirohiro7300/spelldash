@@ -4498,3 +4498,16 @@ body.list-compact .genre__cards {
   margin: 8px 0 4px;
   font-size: 14px;
 }
+
+/* 同じ訳の語が複数あるときの文脈（例文の訳）。英語は見せない */
+.prompt-context {
+  margin: -6px auto 10px;
+  max-width: 560px;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.prompt-context:empty {
+  display: none;
+}
