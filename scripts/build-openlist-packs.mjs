@@ -145,6 +145,7 @@ function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLea
     const words = list.map((x, k) => card(x.en, { level: k < third ? "easy" : k < third * 2 ? "normal" : "hard" }));
     const label = `${shortLabel} ${n + 1}（${lo}〜${hi}位）`;
     const blurb = n === 0 ? blurbLead : `${listLabel} の ${lo}〜${hi}位。頻度順。前のパックほどよく出会う語`;
+    if (blurb.length > 40) throw new Error(`blurbが40字を超える（${id}）: ${blurb}`);
     return writePack(id, label, blurb, audience, words, { ...meta, ranks: `${lo}-${hi}` });
   });
   console.table(report);
@@ -158,7 +159,7 @@ if (which === "tsl") {
     per: 114,
     listLabel: "TSL",
     shortLabel: "TOEIC 英単語（TSL）",
-    blurbLead: "TOEIC に出る語のうち基本2,800語の外側にある1,250語（TSL）を頻度順に",
+    blurbLead: "基本2,800語の外側でTOEICに出る1,250語を頻度順に",
     audience: "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
     meta: { list: "TSL 1.2", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/toeic-list" }
   });
@@ -169,7 +170,7 @@ if (which === "tsl") {
     per: 117,
     listLabel: "BSL",
     shortLabel: "ビジネス英単語（BSL）",
-    blurbLead: "仕事の英語でよく出る語のうち基本2,800語の外側にある1,750語（BSL）を頻度順に",
+    blurbLead: "基本2,800語の外側で仕事に出る1,750語を頻度順に",
     audience: "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
     meta: { list: "BSL 1.01", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/bsl-business-service-list" }
   });

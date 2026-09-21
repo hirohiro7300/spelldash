@@ -14,8 +14,7 @@
   "genres": {
     "n": "名詞",
     "v": "動詞",
-    "adj": "形容詞・副詞",
-    "fn": "機能語（前置詞・接続詞・代名詞など）"
+    "adj": "形容詞・副詞"
   },
   "words": [
     {"id": "english-festival", "en": "festival", "ja": "祭り", "pos": "名", "level": "normal", "tags": ["n"], "ex": "There is a big festival in Kyoto in July.", "exJa": "七月に京都で大きな祭りがある。"},

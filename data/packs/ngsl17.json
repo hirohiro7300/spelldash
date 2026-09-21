@@ -14,8 +14,7 @@
   "genres": {
     "n": "名詞",
     "v": "動詞",
-    "adj": "形容詞・副詞",
-    "fn": "機能語（前置詞・接続詞・代名詞など）"
+    "adj": "形容詞・副詞"
   },
   "words": [
     {"id": "english-passage", "en": "passage", "ja": "一節・通路", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Please read the passage on page ten aloud.", "exJa": "10ページの一節を声に出して読んでください。"},
