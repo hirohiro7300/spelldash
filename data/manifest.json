@@ -941,6 +941,66 @@
           "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
         },
         {
+          "id": "tsl06",
+          "label": "TOEIC 英単語（TSL） 6（575〜688位）",
+          "file": "packs/tsl06.json",
+          "pack": true,
+          "count": 114,
+          "blurb": "TSL の 575〜688位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl07",
+          "label": "TOEIC 英単語（TSL） 7（689〜804位）",
+          "file": "packs/tsl07.json",
+          "pack": true,
+          "count": 115,
+          "blurb": "TSL の 689〜804位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl08",
+          "label": "TOEIC 英単語（TSL） 8（805〜918位）",
+          "file": "packs/tsl08.json",
+          "pack": true,
+          "count": 114,
+          "blurb": "TSL の 805〜918位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl09",
+          "label": "TOEIC 英単語（TSL） 9（919〜1033位）",
+          "file": "packs/tsl09.json",
+          "pack": true,
+          "count": 115,
+          "blurb": "TSL の 919〜1033位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl10",
+          "label": "TOEIC 英単語（TSL） 10（1034〜1147位）",
+          "file": "packs/tsl10.json",
+          "pack": true,
+          "count": 114,
+          "blurb": "TSL の 1034〜1147位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl11",
+          "label": "TOEIC 英単語（TSL） 11（1148〜1250位）",
+          "file": "packs/tsl11.json",
+          "pack": true,
+          "count": 103,
+          "blurb": "TSL の 1148〜1250位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
           "id": "bsl01",
           "label": "ビジネス英単語（BSL） 1（1〜118位）",
           "file": "packs/bsl01.json",
@@ -967,6 +1027,126 @@
           "pack": true,
           "count": 117,
           "blurb": "BSL の 237〜353位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl04",
+          "label": "ビジネス英単語（BSL） 4（354〜470位）",
+          "file": "packs/bsl04.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 354〜470位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl05",
+          "label": "ビジネス英単語（BSL） 5（471〜587位）",
+          "file": "packs/bsl05.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 471〜587位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl06",
+          "label": "ビジネス英単語（BSL） 6（588〜704位）",
+          "file": "packs/bsl06.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 588〜704位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl07",
+          "label": "ビジネス英単語（BSL） 7（705〜821位）",
+          "file": "packs/bsl07.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 705〜821位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl08",
+          "label": "ビジネス英単語（BSL） 8（822〜938位）",
+          "file": "packs/bsl08.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 822〜938位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl09",
+          "label": "ビジネス英単語（BSL） 9（939〜1055位）",
+          "file": "packs/bsl09.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 939〜1055位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl10",
+          "label": "ビジネス英単語（BSL） 10（1056〜1172位）",
+          "file": "packs/bsl10.json",
+          "pack": true,
+          "count": 116,
+          "blurb": "BSL の 1056〜1172位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl11",
+          "label": "ビジネス英単語（BSL） 11（1173〜1289位）",
+          "file": "packs/bsl11.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 1173〜1289位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl12",
+          "label": "ビジネス英単語（BSL） 12（1290〜1406位）",
+          "file": "packs/bsl12.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 1290〜1406位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl13",
+          "label": "ビジネス英単語（BSL） 13（1407〜1523位）",
+          "file": "packs/bsl13.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 1407〜1523位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl14",
+          "label": "ビジネス英単語（BSL） 14（1524〜1641位）",
+          "file": "packs/bsl14.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 1524〜1641位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl15",
+          "label": "ビジネス英単語（BSL） 15（1642〜1757位）",
+          "file": "packs/bsl15.json",
+          "pack": true,
+          "count": 116,
+          "blurb": "BSL の 1642〜1757位。頻度順。前のパックほどよく出会う語",
           "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
           "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
         },

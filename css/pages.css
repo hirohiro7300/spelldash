@@ -386,15 +386,43 @@ html[data-theme] .pack-group {
 
 html[data-theme] .pack-group__title {
   margin: 0;
-  padding: 8px 0 6px;
+  padding: 10px 0 8px;
   border-bottom: 1px solid var(--line-2);
   font-size: 13px;
   font-weight: 700;
   color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+html[data-theme] .pack-group__title::-webkit-details-marker {
+  display: none;
+}
+
+/* 開閉の向きを示す小さな三角（絵文字は使わない） */
+html[data-theme] .pack-group__title::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--ink-3);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform var(--ease);
+}
+
+html[data-theme] .pack-group[open] > .pack-group__title::before {
+  transform: rotate(90deg);
+}
+
+html[data-theme] .pack-group__title:hover {
+  color: var(--signal-ink);
 }
 
 html[data-theme] .pack-group__count {
-  margin-left: 6px;
+  margin-left: auto;
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;

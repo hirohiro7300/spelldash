@@ -124,7 +124,9 @@ const RESPELL = { "r\u00e9sum\u00e9": "resume", "caf\u00e9": "cafe", "entr\u00e9
 const UNUSABLE = {
   "o'clock": "アポストロフィを含む（en は英字とハイフンのみ）",
   "ma'am": "アポストロフィを含む（en は英字とハイフンのみ）",
-  "ice cream": "2語（パックは1語見出しのみ）"
+  "ice cream": "2語（パックは1語見出しのみ）",
+  // co-ordinate を分割した断片。単独では使わず、訳を書くと「co-ordinate と打つ」問題になってしまう
+  ordinate: "co-ordinate の分割による語（単独では使わない）"
 };
 const respellOf = (en) => RESPELL[en] ?? null;
 const unusableOf = (en) => UNUSABLE[en] ?? null;
@@ -157,13 +159,16 @@ const excluded = [];
 const respelled = new Set();
 
 // ---- 頻度順リストを N 語ずつのパックに割る（共通） ----
-function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLead, audience, meta }) {
+function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLead, audience, meta, beyondBasic = false }) {
   // つづりを直して拾った語は、順位で切り直すと既に書き上がったパックの中身が入れ替わってしまう。
   // そこで切るのは元からある語だけにして、拾った語はその順位が入るパックに足す。
-  // CEFR-J に無い語の level は、パック内の位置ではなくリスト全体の位置で決める。
-  // パックごとに三等分すると「どのパックも前半は easy」になり、難易度の物差しがパックごとに変わってしまう。
+  // CEFR-J に無い語の level の決め方。
+  // NGSL は基本語そのものの並びなので、リスト全体の位置で三等分する。
+  // TSL / BSL は「基本2,800語の外側」だけを集めたリストなので、いちばん頻度の高い語でも
+  // 基本語より難しい。頻度で三等分すると quota や trademark が easy になってしまうため、
+  // CEFR-J にある語はその値、無い語は hard を既定にする（カタカナ語などは執筆時に下げる）。
   const third = Math.ceil(ranked.length / 3);
-  const globalLevel = new Map(ranked.map((x, i) => [x.en, i < third ? "easy" : i < third * 2 ? "normal" : "hard"]));
+  const globalLevel = new Map(ranked.map((x, i) => [x.en, beyondBasic ? "hard" : i < third ? "easy" : i < third * 2 ? "normal" : "hard"]));
   const base = ranked.filter((x) => !respelled.has(x.en));
   const packs = [];
   for (let i = 0; i < base.length; i += per) packs.push(base.slice(i, i + per));
@@ -196,7 +201,8 @@ if (which === "tsl") {
     shortLabel: "TOEIC 英単語（TSL）",
     blurbLead: "基本2,800語の外側でTOEICに出る1,250語を頻度順に",
     audience: "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
-    meta: { list: "TSL 1.2", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/toeic-list" }
+    meta: { list: "TSL 1.2", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/toeic-list" },
+    beyondBasic: true
   });
 } else if (which === "bsl") {
   buildRankedPacks({
@@ -207,7 +213,8 @@ if (which === "tsl") {
     shortLabel: "ビジネス英単語（BSL）",
     blurbLead: "基本2,800語の外側で仕事に出る1,750語を頻度順に",
     audience: "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
-    meta: { list: "BSL 1.01", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/bsl-business-service-list" }
+    meta: { list: "BSL 1.01", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/bsl-business-service-list" },
+    beyondBasic: true
   });
 } else if (which === "ngsl") {
   const ranked = readNgsl();

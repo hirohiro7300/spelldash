@@ -102,7 +102,7 @@
     {"id": "english-chat", "en": "chat", "ja": "おしゃべりする", "pos": "動", "level": "normal", "tags": ["v"], "ex": "We chatted over coffee for an hour.", "exJa": "コーヒーを飲みながら1時間おしゃべりした。", "exForm": "chatted"},
     {"id": "english-clothing", "en": "clothing", "ja": "衣類", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Bring warm clothing because the nights are cold.", "exJa": "夜は冷えるので暖かい衣類を持ってきてください。"},
     {"id": "english-evolve", "en": "evolve", "ja": "進化する・発展する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "The company has evolved into a global business.", "exJa": "その会社は世界的な企業へと発展した。", "exForm": "evolved"},
-    {"id": "english-sake", "en": "sake", "ja": "〜のため（for the sake of）", "pos": "名", "level": "normal", "tags": ["n"], "ex": "He moved to the country for the sake of his health.", "exJa": "彼は健康のために田舎へ引っ越した。"},
+    {"id": "english-sake", "en": "sake", "ja":"〜のため（for the ___ of）", "pos": "名", "level": "normal", "tags": ["n"], "ex": "He moved to the country for the sake of his health.", "exJa": "彼は健康のために田舎へ引っ越した。"},
     {"id": "english-shelf", "en": "shelf", "ja": "棚", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The files are on the top shelf.", "exJa": "ファイルは一番上の棚にあります。"},
     {"id": "english-boost", "en": "boost", "ja": "高める・押し上げる", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Good sleep will boost your energy.", "exJa": "よく眠れば活力が高まります。"},
     {"id": "english-tail", "en": "tail", "ja": "しっぽ", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The cat has a long black tail.", "exJa": "その猫は長くて黒いしっぽをしている。"},

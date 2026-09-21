@@ -110,7 +110,7 @@
     {"id": "english-round", "en": "round", "ja": "丸い", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "The moon is round tonight.", "exJa": "今夜の月は丸い。"},
     {"id": "english-opportunity", "en": "opportunity", "ja": "機会", "pos": "名", "level": "easy", "tags": ["n"], "ex": "This job is a great opportunity to learn new skills.", "exJa": "この仕事は新しいスキルを学ぶ良い機会です。"},
     {"id": "english-road", "en": "road", "ja": "道路", "pos": "名", "level": "normal", "tags": ["n"], "ex": "This road goes to the station.", "exJa": "この道路は駅に通じている。"},
-    {"id": "english-accord", "en": "accord", "ja": "一致（according to〜によれば）", "pos": "名", "level": "hard", "tags": ["n"], "ex": "According to Ken, the meeting starts at ten.", "exJa": "ケンによれば、会議は十時に始まる。", "exForm": "according"},
+    {"id": "english-accord", "en": "accord", "ja":"一致・調和", "pos": "名", "level": "hard", "tags": ["n"], "ex": "According to Ken, the meeting starts at ten.", "exJa": "ケンによれば、会議は十時に始まる。", "exForm": "according"},
     {"id": "english-list", "en": "list", "ja": "リスト・一覧", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Please put milk on the shopping list.", "exJa": "買い物リストに牛乳を入れておいて。"},
     {"id": "english-wish", "en": "wish", "ja": "願う", "pos": "動", "level": "normal", "tags": ["v"], "ex": "I wish I could fly like a bird.", "exJa": "鳥みたいに飛べたらいいのに。"},
     {"id": "english-therefore", "en": "therefore", "ja": "したがって・それゆえ", "pos": "副", "level": "normal", "tags": ["adj"], "ex": "Ken was sick, and therefore he stayed home.", "exJa": "ケンは病気だった。したがって家にいた。"},

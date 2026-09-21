@@ -52,6 +52,20 @@ export const COURSES = {
     audience: "英語をゼロから体系的にやり直したい人（オープン教材 NGSL）",
     packs: Array.from({ length: 24 }, (_, i) => `ngsl${String(i + 1).padStart(2, "0")}`)
   },
+  tsl: {
+    id: "tsl",
+    label: "TOEIC 英単語 1,250語（TSL）",
+    blurb: "基本2,800語の外側でTOEICによく出る語を頻度順に11セクション。基本語を終えた次に",
+    audience: "TOEIC の語彙を土台から埋めたい人（オープン教材 TSL）",
+    packs: Array.from({ length: 11 }, (_, i) => `tsl${String(i + 1).padStart(2, "0")}`)
+  },
+  bsl: {
+    id: "bsl",
+    label: "ビジネス英単語 1,750語（BSL）",
+    blurb: "仕事の英語でよく出る語を頻度順に15セクション。契約・会計・会議の語まで",
+    audience: "仕事で英語を読む・書く人（オープン教材 BSL）",
+    packs: Array.from({ length: 15 }, (_, i) => `bsl${String(i + 1).padStart(2, "0")}`)
+  },
   toeic: {
     id: "toeic",
     label: "TOEIC 500→990",

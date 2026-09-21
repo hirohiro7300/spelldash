@@ -1461,15 +1461,28 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに136パック（48分野＋レベル別12＋文法6＋英作文5＋中学11＋小学4＋高校14＋教科書英語4＋NGSL 24＋TSL 5＋BSL 3）", packCount === 136, `packs=${packCount}`);
+  // 期待値は manifest から取る（パックを足すたびに数字を書き換えると、書き換え漏れで落ちるため）。
+  // 「全部描画されているか」を見るのが目的。合計が激減していないことだけ別に見る。
+  const manifestPacks = await page.evaluate(async () => {
+    const m = await (await fetch("/data/manifest.json")).json();
+    return m.subjects.find((s) => s.id === "english").categories.filter((c) => c.pack).length;
+  });
+  check("教材ライブラリに manifest のパックが全部出る", packCount === manifestPacks, `画面=${packCount} manifest=${manifestPacks}`);
+  check("教材ライブラリのパック数が減っていない（140以上）", manifestPacks >= 140, `manifest=${manifestPacks}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
   await page.fill("#packsSearch", "介護");
   await page.waitForTimeout(100);
+  check("検索中はグループが開く", (await page.$$("details.pack-group:not([open])")).length === 0);
   check("分野の検索で絞れる", (await page.$$(".pack")).length >= 1 && (await page.$$(".pack")).length < 5 && (await page.textContent("#packsGrid")).includes("介護"));
   await page.fill("#packsSearch", "");
-  await page.waitForTimeout(100);
+  await page.waitForTimeout(150);
+  check("分野のグループは畳んである（140超の分野が一度に並ばない）", (await page.$$("details.pack-group:not([open])")).length >= 5, `open=${(await page.$$("details.pack-group[open]")).length}`);
+  // 見出しを押してグループを開いてから追加する（開いた状態は描き直しても残る）
+  await page.click('details.pack-group:has([data-pack-toggle="realestate"]) > summary');
+  await waitUntil(async () => await page.isVisible('[data-pack-toggle="realestate"]'));
+  check("開いたグループは描き直しても開いたまま", await page.isVisible('[data-pack-toggle="realestate"]'));
   await page.click('[data-pack-toggle="realestate"]');
   await waitUntil(async () => (await page.textContent("#listSummary")).includes("不動産"));
   const summary = await page.textContent("#listSummary");
@@ -1514,6 +1527,22 @@ console.log("domain packs:");
   check("外すとカテゴリ選択から消える", !(await page3.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("realestate"));
   check("外すとホームの保存カテゴリは「すべて」", (await page3.evaluate(() => localStorage.getItem("spelldash_category"))) === "all");
   await page3.close();
+
+  // 同じ id の語が複数パックにあり、訳が違う場合（compile: IT=コンパイルする / TOEIC=まとめる）、
+  // 一覧から開いた単語詳細はそのパックの版を出す
+  {
+    const pageDup = await newPage({ storage: { spelldash_packs: JSON.stringify(["tsl07"]), spelldash_category: "tsl07" } });
+    await pageDup.goto(BASE + "/list.html?category=tsl07", { waitUntil: "networkidle" });
+    await pageDup.waitForTimeout(900);
+    await pageDup.fill("#listSearch", "compile");
+    await pageDup.waitForTimeout(400);
+    await pageDup.click('[data-word-detail="english-compile"]');
+    await pageDup.waitForTimeout(300);
+    const detail = await pageDup.textContent("#wordDetailPanel");
+    check("単語詳細は開いたパックの版の訳を出す（同じ語が別パックにもあるとき）", detail.includes("まとめる") && !detail.includes("コンパイル"), detail.slice(0, 120));
+    check("重複 id の単語詳細でエラー0", pageDup.errors.length === 0, pageDup.errors[0] ?? "");
+    await pageDup.close();
+  }
 
   // レベル別パック（英検・TOEIC）: 英単語形式。追加すると出題され、「すべて」や Daily には混ざらない
   const page5 = await newPage({ storage: { spelldash_packs: JSON.stringify(["eiken2"]), spelldash_category: "eiken2", spelldash_placement: "done", spelldash_level_boost: "2" } });
@@ -1756,6 +1785,10 @@ console.log("domain packs:");
   const page12 = await newPage({ storage: { spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書", addedAt: "2026-09-01T00:00:00.000Z" }]) } });
   await page12.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
   await page12.waitForTimeout(800);
+  // 棚が閉じていれば開く（#myWords で来たときは既に開いていることがある）
+  if (!(await page12.$eval("#packsFold", (el) => el.open))) await page12.click("#packsFold > summary");
+  await page12.click('details.pack-group:has([data-pack-toggle="realestate"]) > summary');
+  await waitUntil(async () => await page12.isVisible('[data-pack-toggle="realestate"]'));
   await page12.click('[data-pack-toggle="realestate"]');
   await waitUntil(async () => (await page12.textContent("#listSummary")).includes("不動産"));
   await page12.fill("#myWordEn", "deadline");
@@ -1966,7 +1999,7 @@ console.log("courses:");
   check("コース: 見出しに「コースを変える」、パネルは閉じている", (await page.$("#pathCourse")) !== null && !(await page.isVisible("#pathCourses")));
   await page.click("#pathCourse");
   await page.waitForTimeout(150);
-  check("コース: パネルに7コース、いまのコースに印", (await page.$$(".path__course")).length === 7 && (await page.textContent(".path__course--current")).includes("中学英語やり直し") && (await page.$$(".path__course-pick")).length === 6);
+  check("コース: パネルに9コース、いまのコースに印", (await page.$$(".path__course")).length === 9 && (await page.textContent(".path__course--current")).includes("中学英語やり直し") && (await page.$$(".path__course-pick")).length === 8);
   await page.click('.path__course-pick[data-course="toeic"]');
   await waitUntil(async () => (await page.textContent("#pathHead")).includes("セクション 1／6"), 4000); // パネルの文にも「TOEIC 500」があるので見出しのセクション表示で待つ
   const st = await page.evaluate(() => ({ course: localStorage.getItem("spelldash_course"), category: localStorage.getItem("spelldash_category"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]") }));
@@ -2169,6 +2202,24 @@ console.log("prompt context:");
   const toks = (w) => String(w.ja).split(/[・、／,]/).map((t) => t.trim()).filter(Boolean);
   const ambiguous = bizP.find((w) => w.exJa && bizP.some((o) => o.id !== w.id && o.en !== w.en && toks(o).some((t) => toks(w).includes(t))));
   const unique = bizP.find((w) => w.exJa && !bizP.some((o) => o.id !== w.id && toks(o).some((t) => toks(w).includes(t))));
+  // 訳の近さの判定そのものを直接試す（ほぼ同じ訳も拾えているか）。出題の当たり外れに左右されないよう単体で見る
+  {
+    const pageJa = await newPage();
+    await pageJa.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const amb = await pageJa.evaluate(async () => {
+      const m = await import("/js/jaAmbiguity.js");
+      return {
+        same: m.jaLooksSame("始める", "始める"),
+        sharedToken: m.jaLooksSame("義務づける・義務を負わせる", "義務づける"),
+        paren: m.jaLooksSame("たくさん（a lot of）", "たくさんの"),
+        diff: m.jaLooksSame("請求書", "締め切り"),
+        shortNoise: m.jaLooksSame("犬", "犬小屋")
+      };
+    });
+    check("訳の近さ: 同じ訳・訳の一部が共通・かっこ書きを拾い、無関係な訳は拾わない", amb.same && amb.sharedToken && amb.paren && !amb.diff && !amb.shortNoise, JSON.stringify(amb));
+    await pageJa.close();
+  }
+
   const seedP = { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" };
   if (ambiguous && unique) {
     const page = await newPage({ storage: seedP });

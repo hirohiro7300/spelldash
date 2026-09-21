@@ -87,7 +87,7 @@
     {"id": "english-stroke", "en": "stroke", "ja": "脳卒中・一打ち", "pos": "名", "level": "hard", "tags": ["n"], "ex": "My grandmother had a stroke last year but is better now.", "exJa": "祖母は去年脳卒中になったが今は良くなった。"},
     {"id": "english-dare", "en": "dare", "ja": "あえて〜する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "I did not dare to tell him the truth.", "exJa": "彼に本当のことをあえて言う勇気がなかった。"},
     {"id": "english-barrier", "en": "barrier", "ja": "障壁・柵", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Language is often a barrier when you travel.", "exJa": "旅行では言葉がしばしば障壁になる。"},
-    {"id": "english-rid", "en": "rid", "ja": "取り除く（get rid ofで）", "pos": "動", "level": "hard", "tags": ["v"], "ex": "I want to get rid of these old books.", "exJa": "この古い本を処分したい。"},
+    {"id": "english-rid", "en": "rid", "ja":"取り除く（get ___ of）", "pos": "動", "level": "hard", "tags": ["v"], "ex": "I want to get rid of these old books.", "exJa": "この古い本を処分したい。"},
     {"id": "english-divorce", "en": "divorce", "ja": "離婚", "pos": "名", "level": "hard", "tags": ["n"], "ex": "After the divorce, she moved back to Osaka.", "exJa": "離婚後、彼女は大阪に戻った。"},
     {"id": "english-ruin", "en": "ruin", "ja": "台無しにする", "pos": "動", "level": "normal", "tags": ["v"], "ex": "The rain ruined our picnic.", "exJa": "雨でピクニックが台無しになった。", "exForm": "ruined"},
     {"id": "english-bury", "en": "bury", "ja": "埋める", "pos": "動", "level": "normal", "tags": ["v"], "ex": "The dog buried a bone in the garden.", "exJa": "犬は庭に骨を埋めた。", "exForm": "buried"},
