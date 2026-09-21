@@ -651,6 +651,126 @@
           "group": "試験・レベル別（英検・TOEIC）"
         },
         {
+          "id": "ngsl01",
+          "label": "NGSL 基本英単語 1（数・曜日・月と 1〜72位）",
+          "file": "packs/ngsl01.json",
+          "pack": true,
+          "count": 120,
+          "blurb": "英文の約9割を作る基本2,800語（NGSL）を頻度順に。まず数・曜日・月から",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl02",
+          "label": "NGSL 基本英単語 2（73〜191位）",
+          "file": "packs/ngsl02.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 73〜191位。頻度順なので、前のパックほど出会う回数が多い語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl03",
+          "label": "NGSL 基本英単語 3（192〜310位）",
+          "file": "packs/ngsl03.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 192〜310位。頻度順なので、前のパックほど出会う回数が多い語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl04",
+          "label": "NGSL 基本英単語 4（311〜429位）",
+          "file": "packs/ngsl04.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 311〜429位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl05",
+          "label": "NGSL 基本英単語 5（430〜548位）",
+          "file": "packs/ngsl05.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 430〜548位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl06",
+          "label": "NGSL 基本英単語 6（549〜667位）",
+          "file": "packs/ngsl06.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 549〜667位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl07",
+          "label": "NGSL 基本英単語 7（668〜786位）",
+          "file": "packs/ngsl07.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 668〜786位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl08",
+          "label": "NGSL 基本英単語 8（787〜905位）",
+          "file": "packs/ngsl08.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 787〜905位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl09",
+          "label": "NGSL 基本英単語 9（906〜1024位）",
+          "file": "packs/ngsl09.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 906〜1024位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl10",
+          "label": "NGSL 基本英単語 10（1025〜1143位）",
+          "file": "packs/ngsl10.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 1025〜1143位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl11",
+          "label": "NGSL 基本英単語 11（1144〜1262位）",
+          "file": "packs/ngsl11.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 1144〜1262位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
+          "id": "ngsl12",
+          "label": "NGSL 基本英単語 12（1263〜1381位）",
+          "file": "packs/ngsl12.json",
+          "pack": true,
+          "count": 119,
+          "blurb": "NGSL の 1263〜1381位。頻度順。前のパックほどよく出会う語",
+          "audience": "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）",
+          "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
+        },
+        {
           "id": "accounting",
           "label": "簿記・会計の基本",
           "file": "packs/accounting.json",

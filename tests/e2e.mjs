@@ -273,7 +273,6 @@ console.log("daily:");
   const card = await page.textContent("#dailyCard");
   check("完走でロック（スコア表示）", card.includes("今日のスコア"));
   check("カウントダウン表示", card.includes("次の問題まで"));
-  check("シェアボタンあり", (await page.$("#dailyShareButton")) !== null);
   const act = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_activity") || "{}"));
   check("KPI心拍にdaily完走記録", act.dailyDone === true);
   check("Dailyフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
@@ -287,7 +286,7 @@ console.log("home widgets:");
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   check("数字1行にストリーク・週の目標", (await page.textContent("#todayStrip")).includes("連続記録") || (await page.textContent("#todayStrip")).includes("日連続"));
-  check("ランク表示（F3スタート）", (await page.textContent("#todayStrip")).includes("F3"));
+  check("ホームにランク表示は出さない（学習データにある）", !(await page.textContent("#todayStrip")).includes("F3") && !(await page.textContent("#todayStrip")).includes("Lv."));
   await page.click("#setupToggle"); // 出題設定は畳まれている
   check("苦手トグル（Study時）表示", await page.isVisible("#weakToggleButton"));
   check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
@@ -374,18 +373,13 @@ console.log("theme:");
   await page.waitForTimeout(400);
   check("標準テーマは白（light）", (await page.evaluate(() => document.documentElement.dataset.theme)) === "light");
   const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  check("ライトで背景が明色", bodyBg.includes("244, 246, 251"), `bg=${bodyBg}`);
+  const bgLum = (() => { const m = bodyBg.match(/\d+/g) ?? []; return m.length >= 3 ? (Number(m[0]) + Number(m[1]) + Number(m[2])) / 3 : 0; })();
+  check("ライトで背景が明色", bgLum > 235, `bg=${bodyBg}`);
   await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
   await page.selectOption("#themeSelect", "dark");
   await page.waitForTimeout(200);
   check("黒選択で即時ダーク適用", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
-  // BGM設定: 既定ON→OFFに切替（profileページ上で確認）
-  check("BGM設定は既定ON", (await page.$eval("#bgmSelect", (el) => el.value)) === "on");
-  await page.selectOption("#bgmSelect", "off");
-  await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
-  await page.waitForTimeout(600);
-  check("BGM OFFが永続化", (await page.$eval("#bgmSelect", (el) => el.value)) === "off");
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(400);
   check("ページ遷移後もダーク維持", (await page.evaluate(() => document.documentElement.dataset.theme)) === "dark");
@@ -556,13 +550,7 @@ console.log("growth:");
   check("推移グラフ or 案内", (await page.$("#growthTrend svg")) !== null || (await page.textContent("#growthTrend")).includes("明日から"));
   const log = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_growth_log") || "[]"));
   check("成長ログに今日の行", log.some((e) => e.date === new Date().toISOString().slice(0, 10) || e.date.length === 10) && log.length >= 2, `len=${log.length}`);
-  await page.click("[data-weekly-share]");
-  await page.waitForTimeout(300);
-  check("シェア押下でエラー0", page.errors.length === 0, page.errors[0] ?? "");
-  // ホーム: ?weekly=1 で週間レポートを強制表示
-  await page.goto(BASE + "/index.html?weekly=1", { waitUntil: "networkidle" });
-  await page.waitForTimeout(900);
-  check("ホームに週間レポート（コンパクト）", !(await page.$eval("#weeklyHome", (el) => el.hidden)) && (await page.textContent("#weeklyHome")).includes("くわしく見る"));
+  check("学習データ（今週）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   check("成長フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
@@ -667,11 +655,6 @@ console.log("learning quality:");
   const page3 = await newPage({ storage: { spelldash_xp: "1234", spelldash_word_notes: notesRaw } });
   await page3.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
   await page3.waitForTimeout(700);
-  check("正解時発音の設定（既定ON）", (await page3.inputValue("#speakCorrectSelect")) === "on");
-  await page3.selectOption("#speakCorrectSelect", "off");
-  await page3.waitForTimeout(100);
-  const audio = await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_audio") || "{}"));
-  check("正解時発音OFFが保存される", audio.speakOnCorrect === false, JSON.stringify(audio));
   const backup = await page3.evaluate(async () => {
     const m = await import("/js/backup.js");
     return m.buildBackup();
@@ -827,7 +810,6 @@ console.log("first run & retention:");
   check("週の目標の設定（既定4日）", (await page2.inputValue("#weekGoalSelect")) === "4");
   await page2.selectOption("#weekGoalSelect", "5");
   check("週の目標が保存される", (await page2.evaluate(() => localStorage.getItem("spelldash_week_goal"))) === "5");
-  check("「ホーム画面に追加」の案内が出る", (await page2.textContent("#installCard")).trim().length > 10);
   check("プロフィール（Batch 2）でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 }
@@ -861,18 +843,7 @@ console.log("growth evidence:");
   await page.waitForTimeout(150);
   const keyMiss = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_key_miss") || "{}"));
   check("打ち間違いの文字と型が記録される", keyMiss.letters?.[shown[0]] === 1 && keyMiss.pairs?.[`${shown[0]}>${wrong}`] === 1, JSON.stringify(keyMiss));
-  const shareText = await page.evaluate(async () => {
-    const m = await import("/js/setShare.js");
-    return m.buildSetShareText(m.buildSetShareData({ recalled: 5 }));
-  });
-  check("セットのシェア文に今日覚えた語", shareText.includes("5語 思い出せた") && shareText.includes("今日覚えた: invoice"), shareText);
-  const imgOk = await page.evaluate(async () => {
-    const m = await import("/js/setShare.js");
-    const c = m.buildSetShareImage(m.buildSetShareData({ recalled: 5 }));
-    return c.width === 1080 && c.height === 1080;
-  });
-  check("セットのシェア画像が生成できる（1080×1080）", imgOk);
-  check("ミスキー／シェアでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  check("ミスキーでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   const keyMissRaw = await page.evaluate(() => localStorage.getItem("spelldash_key_miss"));
   await page.close();
 
@@ -880,7 +851,6 @@ console.log("growth evidence:");
   const page2 = await newPage({ storage: { ...seed, spelldash_key_miss: keyMissRaw } });
   await page2.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
-  check("よく間違えるキーが表示される", (await page2.textContent("#keyMiss")).includes("よく間違える文字") && (await page2.$$(".keymap__key")).length === 26);
   const calDays = await page2.$$eval("#calendarGrid .cal .cal__day", (els) => ({ total: els.length, active: els.filter((e) => /cal__day--[1-4]/.test(e.className)).length }));
   check("学習カレンダー（13週×7日・学習日2）", calDays.total === 91 && calDays.active === 2 && (await page2.textContent("#calendarGrid")).includes("2日"), JSON.stringify(calDays));
   const csv = await page2.evaluate(async () => (await import("/js/exportCsv.js")).buildLearnedCsv());
@@ -1010,7 +980,7 @@ console.log("concept cards:");
   // 1語目: 答えを見る → 解説が出る → 答えを打って練習（全文入力なら fill+Enter）
   await page.press("#input", "Enter");
   await page.waitForTimeout(200);
-  check("答え表示で用語と解説が出る", (await page.textContent("#word")).replace(/\s/g, "").includes(card.en.replace(/\s/g, "")) && (await page.textContent("#wordExplain")).includes("📘"));
+  check("答え表示で用語と解説が出る", (await page.textContent("#word")).replace(/\s/g, "").includes(card.en.replace(/\s/g, "")) && (await page.textContent("#wordExplain")).trim().length > 0);
   if (card.free) {
     await page.fill("#input", card.en);
     await page.press("#input", "Enter");
@@ -1032,7 +1002,7 @@ console.log("concept cards:");
   }
   await waitUntil(async () => (await page.textContent("#score")).trim() === "2", 2000);
   check(`自力正解（${card.free ? "別解で全文入力" : "スペル入力"}）`, (await page.textContent("#score")).trim() === "2" && (await page.textContent("#recalledToday")).trim() === "1", `typed=${typed}`);
-  check("正解後も用語と解説が残る（読む時間）", (await page.textContent("#wordExplain")).includes("📘"));
+  check("正解後も用語と解説が残る（読む時間）", (await page.textContent("#wordExplain")).trim().length > 0);
   await page.press("#input", "Enter"); // 待たずに次へ
   await waitUntil(async () => (await findCard()) && (await findCard()).en !== card.en, 3000);
   // 3語目: 全文入力で間違える → 答え表示＋×（1ミス＝不正解と同じ扱い）
@@ -1072,7 +1042,7 @@ console.log("genre list:");
   const cards = await page.$$eval(".gcard", (els) => els.length);
   check("127枚がジャンルごとに並ぶ", cards === 127 && (await page.$$eval(".genre", (els) => els.length)) === 15, `cards=${cards}`);
   const cpc = await page.$eval("#genre-metrics", (el) => el.textContent);
-  check("カードに場面・解説・状態・メモ", cpc.includes("CPC") && cpc.includes("100クリックで1万円") && cpc.includes("📘") && cpc.includes("覚えかけ") && cpc.includes("Cost per Click"));
+  check("カードに場面・解説・状態・メモ", cpc.includes("CPC") && cpc.includes("100クリックで1万円") && cpc.includes("覚えかけ") && cpc.includes("Cost per Click"));
   check("一覧のまとめ行", (await page.textContent("#listSummary")).includes("15ジャンル") && (await page.textContent("#listSummary")).includes("127語"));
   await page.fill("#listSearch", "重量税");
   await page.waitForTimeout(150);
@@ -1265,18 +1235,11 @@ console.log("tabs & filters:");
   check("学習データは3タブ（既定は今週）", (await page.$$(".stats-tab")).length === 3 && !(await page.$eval("#weekly", (el) => el.hidden)) && (await page.$eval("#learnedWords", (el) => el.hidden)));
   await page.click('.stats-tab[data-tab="analysis"]');
   await page.waitForTimeout(150);
-  check("分析タブでタイピング分析が見える", !(await page.$eval("#keyMiss", (el) => el.closest("[data-tab]").hidden)) && (await page.$eval("#weekly", (el) => el.hidden)));
+  check("分析タブでタイピング分析が見える", !(await page.$eval("#typingMetrics", (el) => el.closest("[data-tab]").hidden)) && (await page.$eval("#weekly", (el) => el.hidden)));
   await page.goto(BASE + "/stats.html#learnedWords", { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
   check("#learnedWords の深いリンクで単語帳タブが開く", !(await page.$eval("#learnedWords", (el) => el.hidden)) && (await page.$eval(".stats-tab--active", (el) => el.dataset.tab)) === "words");
   check("前回のタブを覚える", (await page.evaluate(() => localStorage.getItem("spelldash_stats_tab"))) === "words");
-  const total = await page.evaluate(async () => {
-    const m = await import("/js/setShare.js");
-    const d = m.buildTotalShareData();
-    const c = m.buildTotalShareImage(d);
-    return { learned: d.learned, text: m.buildTotalShareText(d), w: c.width };
-  });
-  check("累計シェア（覚えた1語・画像1080）", total.learned === 1 && total.text.includes("覚えた英単語 1語") && total.text.includes("negotiate") && total.w === 1080, JSON.stringify(total).slice(0, 120));
   check("学習データ（タブ）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
@@ -1441,9 +1404,18 @@ console.log("card generation:");
   check("カード生成フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
-  // ✨ 覚え方を作る: 答え表示時にボタン → 生成 → 保存され、単語詳細にも出る
+  // 覚え方を作る: ログイン中に答え表示でボタン → 生成 → 保存され、単語詳細にも出る（未ログインではボタンを出さない）
   const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
-  const page2 = await newPage({ storage: { spelldash_placement: "done", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const pageOut = await newPage({ storage: { spelldash_placement: "done", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await pageOut.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await pageOut.waitForTimeout(900);
+  await pageOut.press("#input", "Enter");
+  await pageOut.waitForTimeout(250);
+  await pageOut.press("#input", "Enter"); // 答え表示
+  await pageOut.waitForTimeout(300);
+  check("未ログインでは覚え方ボタンを出さない", (await pageOut.$$("[data-word-ai-run]")).length === 0);
+  await pageOut.close();
+  const page2 = await newPage({ storage: { spelldash_placement: "done", spelldash_test_session: "1", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
   await page2.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
   await page2.press("#input", "Enter");
@@ -1452,7 +1424,7 @@ console.log("card generation:");
   await page2.press("#input", "Enter"); // 答え表示
   await page2.waitForTimeout(200);
   const shownWord = (await page2.textContent("#word")).trim();
-  check("答え表示で「✨ 覚え方を作る」が出る", (await page2.$$("[data-word-ai-run]")).length === 1);
+  check("ログイン中は答え表示で「覚え方を作る」が出る", (await page2.$$("[data-word-ai-run]")).length === 1);
   await page2.click("[data-word-ai-run]");
   await waitUntil(async () => (await page2.textContent("#wordAi")).includes("音で覚える"));
   const aiText = await page2.textContent("#wordAi");
@@ -1489,7 +1461,7 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに104パック（48分野＋レベル別12＋文法6＋英作文5＋中学11＋小学4＋高校14＋教科書英語4）", packCount === 104, `packs=${packCount}`);
+  check("教材ライブラリに116パック（48分野＋レベル別12＋文法6＋英作文5＋中学11＋小学4＋高校14＋教科書英語4＋NGSL 12）", packCount === 116, `packs=${packCount}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
@@ -1535,6 +1507,8 @@ console.log("domain packs:");
   const page3 = await newPage({ storage: { spelldash_packs: packsRaw, spelldash_category: "realestate" } });
   await page3.goto(BASE + "/list.html?category=realestate", { waitUntil: "networkidle" });
   await page3.waitForTimeout(900);
+  check("カテゴリ表示中は分野パックの棚が畳まれている", !(await page3.$eval("#packsFold", (el) => el.open)));
+  await page3.click("#packsFold > summary"); // 棚を開いてから外す
   await page3.click('[data-pack-toggle="realestate"]');
   await waitUntil(async () => !(await page3.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("realestate"));
   check("外すとカテゴリ選択から消える", !(await page3.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("realestate"));
@@ -1707,7 +1681,7 @@ console.log("domain packs:");
   await page9d.waitForTimeout(900);
   await page9d.press("#input", "Enter");
   await page9d.waitForTimeout(300);
-  check("並べ替えカード: ラベルと語バンク（🔀）", (await page9d.textContent("#gameCard .label")).startsWith("語を並べ替えて英文を打つ") && (await page9d.textContent("#word")).includes("🔀"), await page9d.textContent("#word"));
+  check("並べ替えカード: ラベルと語バンク（並べ替え:）", (await page9d.textContent("#gameCard .label")).startsWith("語を並べ替えて英文を打つ") && (await page9d.textContent("#word")).includes("並べ替え"), await page9d.textContent("#word"));
   await page9d.close();
 
   // 専用キーボード（A〜Z＋⌫）: タッチ端末ではプレイ中に画面下へ出て、OS キーボードは出さない（inputmode=none）

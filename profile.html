@@ -6,10 +6,16 @@
   <title>プロフィール | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="./css/tokens.css" />
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
   <link rel="stylesheet" href="./css/theme.css" />
+  <link rel="stylesheet" href="./css/brand.css" />
+  <link rel="stylesheet" href="./css/pages.css" />
   <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
 
 
@@ -113,53 +119,16 @@
     </div>
   </header>
 
-  <div class="app">
+  <div class="app app--narrow">
     <section class="hero hero--compact">
       <p class="logo">プロフィール</p>
-      <h1>マイページ</h1>
-      <p class="subtitle">
-        アカウントと設定。学習の記録は「学習データ」で。
-      </p>
+      <h1>設定</h1>
+      <p class="subtitle">学習の記録は<a href="./stats.html">学習データ</a>に。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
-    <section class="result-card" id="profileLoggedOut">
-      <h3>ログインしていません</h3>
-      <p class="muted">
-        右上のメールアドレス欄からログインすると、プロフィールが表示されます。
-      </p>
-    </section>
-
-    <section class="result-card profile-card" id="profileCard" hidden>
-      <div class="profile-head">
-        <div class="profile-avatar" id="profileAvatar">?</div>
-        <div class="profile-head__body">
-          <p class="profile-email" id="profileEmail"></p>
-          <p class="muted" id="profileJoined"></p>
-        </div>
-      </div>
-
-      <div class="setting-row">
-        <label for="displayNameInput">ランキング表示名</label>
-        <input
-          id="displayNameInput"
-          class="setting-select"
-          type="text"
-          maxlength="20"
-          placeholder="例: hiro"
-          autocomplete="nickname"
-        />
-        <button id="displayNameSave" class="btn btn--sm" type="button">保存</button>
-      </div>
-      <p class="muted" id="displayNameStatus">Daily Dashランキングに表示される名前です（次回の記録から反映）。</p>
-    </section>
-
-    <section class="level-bar" id="levelBar"></section>
-
-    <p class="muted profile-link">学習の記録（覚えた語・タイピング分析・カレンダー）は <a href="./stats.html">学習データ</a> にまとめました。</p>
-
-    <section class="result-card">
-      <h3>学習の設定</h3>
+    <section class="settings">
+      <h2 class="settings__title">学習</h2>
 
       <div class="setting-row">
         <label for="setSizeSelect">今日のセットの語数</label>
@@ -168,17 +137,7 @@
           <option value="15">15語（約5分・標準）</option>
           <option value="25">25語（約8分）</option>
         </select>
-      </div>
-
-      <p class="muted">自力で思い出せた語数がこの数に達すると「今日のぶん完了」になります。</p>
-
-      <div class="setting-row">
-        <label for="listenSelect">音で出題（リスニング）</label>
-        <select id="listenSelect" class="setting-select">
-          <option value="0">なし（日本語を見て打つ）</option>
-          <option value="25">たまに（4語に1語は音だけ）</option>
-          <option value="50">半分（2語に1語は音だけ）</option>
-        </select>
+        <p class="setting-hint">自力で思い出せた語数がこの数に達すると、今日のぶんは完了です。</p>
       </div>
 
       <div class="setting-row">
@@ -190,98 +149,138 @@
           <option value="7">毎日</option>
         </select>
       </div>
-
-      <p class="muted">毎日でなくて大丈夫。ホームの「覚えた単語」カードに今週の進み具合が出ます。</p>
     </section>
 
-    <section class="result-card" id="installSection">
-      <h3>アプリのように使う</h3>
-      <div id="installCard"></div>
-    </section>
-
-    <section class="result-card">
-      <h3>音と見た目の設定</h3>
+    <section class="settings">
+      <h2 class="settings__title">音</h2>
 
       <div class="setting-row">
-        <label for="themeSelect">テーマ</label>
-        <select id="themeSelect" class="setting-select">
-          <option value="light">白ベース（標準）</option>
-          <option value="dark">黒ベース</option>
+        <label for="audioModeSelect">発音</label>
+        <select id="audioModeSelect" class="setting-select">
+          <option value="auto">自動（答え表示時に1回）</option>
+          <option value="manual">ボタンのみ</option>
+          <option value="off">オフ</option>
         </select>
       </div>
 
       <div class="setting-row">
-        <label for="oskSelect">画面キーボード（A〜Z＋⌫）</label>
+        <label for="voiceSelect">声</label>
+        <span class="voice-row">
+          <select id="accentSelect" class="setting-select setting-select--accent" aria-label="アクセント">
+            <option value="us">US</option>
+            <option value="uk">UK</option>
+          </select>
+          <select id="voiceSelect" class="setting-select">
+            <option value="">自動（この端末でいちばん自然な声）</option>
+          </select>
+          <button type="button" class="btn btn--sm btn--ghost" id="voicePreview">試聴</button>
+        </span>
+        <p class="setting-hint setting-hint--ios" id="voiceIosHint" hidden>設定 › アクセシビリティ › 読み上げコンテンツ › 声 で高品質の声を追加できます</p>
+      </div>
+
+      <div class="setting-row">
+        <label for="rateSelect">速さ</label>
+        <select id="rateSelect" class="setting-select">
+          <option value="slow">ゆっくり</option>
+          <option value="normal">ふつう</option>
+          <option value="fast">速め</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label for="listenSelect">音で出題</label>
+        <select id="listenSelect" class="setting-select">
+          <option value="0">なし（日本語を見て打つ）</option>
+          <option value="25">たまに（4語に1語は音だけ）</option>
+          <option value="50">半分（2語に1語は音だけ）</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label for="sfxSelect">効果音</label>
+        <span class="volume-row">
+          <select id="sfxSelect" class="setting-select">
+            <option value="on">オン</option>
+            <option value="off">オフ</option>
+          </select>
+          <input id="volumeRange" type="range" min="0" max="100" step="10" aria-label="音量" />
+          <span id="volumeValue" class="volume-row__value mono">100%</span>
+        </span>
+      </div>
+
+      <p class="muted setting-status" id="audioSettingStatus"></p>
+    </section>
+
+    <section class="settings">
+      <h2 class="settings__title">見た目</h2>
+
+      <div class="setting-row">
+        <label for="themeSelect">テーマ</label>
+        <select id="themeSelect" class="setting-select">
+          <option value="light">白（標準）</option>
+          <option value="dark">黒</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label for="oskSelect">画面キーボード</label>
         <select id="oskSelect" class="setting-select">
           <option value="auto">自動（スマホ・タブレットでオン）</option>
           <option value="on">常にオン</option>
           <option value="off">オフ（OSのキーボードを使う）</option>
         </select>
       </div>
-
-      <div class="setting-row">
-        <label for="audioModeSelect">答え表示時の音声</label>
-        <select id="audioModeSelect" class="setting-select">
-          <option value="auto">自動再生（答え表示時に1回）</option>
-          <option value="manual">手動再生のみ（🔊ボタン）</option>
-          <option value="off">OFF</option>
-        </select>
-      </div>
-
-      <div class="setting-row">
-        <label for="speakCorrectSelect">正解した時にも発音（Study）</label>
-        <select id="speakCorrectSelect" class="setting-select">
-          <option value="on">ON（綴りと音をセットで覚える）</option>
-          <option value="off">OFF</option>
-        </select>
-      </div>
-
-      <div class="setting-row">
-        <label for="accentSelect">アクセント</label>
-        <select id="accentSelect" class="setting-select">
-          <option value="us">アメリカ英語（US）</option>
-          <option value="uk">イギリス英語（UK）</option>
-        </select>
-      </div>
-
-      <div class="setting-row">
-        <label for="sfxSelect">効果音（正解・ミスなど）</label>
-        <select id="sfxSelect" class="setting-select">
-          <option value="on">ON</option>
-          <option value="off">OFF</option>
-        </select>
-      </div>
-
-      <div class="setting-row">
-        <label for="volumeRange">音量（効果音・BGM）</label>
-        <span class="volume-row">
-          <input id="volumeRange" type="range" min="0" max="100" step="10" />
-          <span id="volumeValue" class="volume-row__value">100%</span>
-        </span>
-      </div>
-
-      <div class="setting-row">
-        <label for="bgmSelect">BGM（Challenge/Daily中）</label>
-        <select id="bgmSelect" class="setting-select">
-          <option value="on">ON</option>
-          <option value="off">OFF</option>
-        </select>
-      </div>
-
-      <p class="muted" id="audioSettingStatus"></p>
     </section>
 
-    <section class="result-card" id="backupCard">
-      <h3>学習データのバックアップ</h3>
-      <p class="muted">学習の記録・覚えた単語・マイ単語帳・メモ・設定をこの端末からファイルに書き出せます。端末の買い替えやブラウザのデータ消去に備えて、ときどき保存しておくと安心です。</p>
-      <div class="backup-actions">
-        <button type="button" class="btn btn--sm" id="backupExport">📤 書き出す（JSON）</button>
-        <label class="btn btn--sm btn--ghost backup-import">
-          📥 読み込む
-          <input type="file" id="backupImport" accept="application/json,.json" hidden />
-        </label>
+    <section class="settings">
+      <h2 class="settings__title">アカウント・データ</h2>
+
+      <div class="setting-row" id="profileLoggedOut">
+        <span class="setting-row__text">ログインしていません</span>
+        <p class="setting-hint">右上のログインから。学習データをクラウドに保存し、別の端末でも続けられます。</p>
       </div>
-      <p class="muted" id="backupStatus">読み込むと、この端末のデータはファイルの内容で置き換わります。</p>
+
+      <div class="setting-block" id="profileCard" hidden>
+        <div class="setting-row">
+          <span class="setting-row__text">ログイン中</span>
+          <span class="setting-row__value">
+            <span class="profile-email mono" id="profileEmail"></span>
+            <span class="muted" id="profileJoined"></span>
+          </span>
+        </div>
+        <div class="setting-row">
+          <label for="displayNameInput">ランキング表示名</label>
+          <span class="voice-row">
+            <input
+              id="displayNameInput"
+              class="setting-select"
+              type="text"
+              maxlength="20"
+              placeholder="例: hiro"
+              autocomplete="nickname"
+            />
+            <button id="displayNameSave" class="btn btn--sm btn--ghost" type="button">保存</button>
+          </span>
+          <p class="setting-hint" id="displayNameStatus">Daily Dashのランキングに表示される名前です（次回の記録から）。</p>
+        </div>
+      </div>
+
+      <div class="setting-row setting-row--stack" id="backupCard">
+        <span class="setting-row__text">バックアップ</span>
+        <p class="setting-hint">学習の記録・覚えた単語・マイ単語帳・メモ・設定をファイルに書き出せます。端末の買い替えや、ブラウザのデータ消去に備えて。</p>
+        <div class="backup-actions">
+          <button type="button" class="btn btn--sm btn--ghost" id="backupExport">書き出す（JSON）</button>
+          <label class="btn btn--sm btn--ghost backup-import">
+            読み込む
+            <input type="file" id="backupImport" accept="application/json,.json" hidden />
+          </label>
+        </div>
+        <p class="setting-hint" id="backupStatus">読み込むと、この端末のデータはファイルの内容で置き換わります。</p>
+      </div>
+
+      <div class="setting-row setting-row--stack setting-row--install" id="installSection">
+        <div id="installCard"></div>
+      </div>
     </section>
   </div>
 

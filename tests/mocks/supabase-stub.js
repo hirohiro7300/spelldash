@@ -12,9 +12,18 @@ function chain() {
   });
 }
 
+// localStorage に spelldash_test_session があればログイン済みとして振る舞う（覚え方を作る 等の検証用）
+function fakeSession() {
+  try {
+    return localStorage.getItem("spelldash_test_session") ? { access_token: "test-token", user: { id: "test-user", email: "test@example.com" } } : null;
+  } catch {
+    return null;
+  }
+}
+
 export const supabase = {
   auth: {
-    getSession: async () => ({ data: { session: null } }),
+    getSession: async () => ({ data: { session: fakeSession() } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     signInWithOtp: asyncNull,
     signInWithOAuth: asyncNull,

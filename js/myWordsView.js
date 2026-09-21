@@ -107,7 +107,7 @@ export function renderMyWordsList() {
   if (count) count.textContent = `${list.length}語`;
 
   if (list.length === 0) {
-    container.innerHTML = `<p class="muted">まだありません。仕事や試験でよく見る単語を入れてみましょう。</p>`;
+    container.innerHTML = `<p class="muted">まだありません。仕事や試験でよく見る語から。</p>`;
     return;
   }
 
@@ -118,8 +118,8 @@ export function renderMyWordsList() {
       const label = concept ? w.answer : w.en;
       return `
         <div class="my-word${concept ? " my-word--concept" : ""}">
-          <span class="my-word__en">${escapeHtml(label)}</span>
-          <span class="my-word__ja">${concept ? `<span class="my-word__q">${escapeHtml(w.q)}</span>${w.explain ? `<br><span class="my-word__explain">📘 ${escapeHtml(w.explain)}</span>` : ""}` : escapeHtml(w.ja)}</span>
+          <span class="my-word__en${concept ? "" : " mono"}">${escapeHtml(label)}</span>
+          <span class="my-word__ja">${concept ? `<span class="my-word__q">${escapeHtml(w.q)}</span>${w.explain ? `<br><span class="my-word__explain">${escapeHtml(w.explain)}</span>` : ""}` : escapeHtml(w.ja)}</span>
           <span class="my-word__status my-word__status--${status}">${STATUS_LABEL[status]}</span>
           <button type="button" class="my-word__remove" data-remove="${escapeHtml(w.en)}" aria-label="${escapeHtml(label)} を削除">削除</button>
         </div>`;

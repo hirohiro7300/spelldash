@@ -26,31 +26,55 @@ export function setSfxEnabled(enabled) {
   saveAudioSettings({ ...getAudioSettings(), sfx: !!enabled });
 }
 
-// 単音を鳴らす。type/周波数/長さ/音量/開始遅延
+// 単音（サイン波などの純音）。ノイズ系と組み合わせる
 function tone({ freq, duration = 0.08, type = "sine", gain = 0.08, delay = 0, slideTo = null }) {
   const context = getCtx();
   if (!context) return;
-
   const start = context.currentTime + delay;
   const osc = context.createOscillator();
   const amp = context.createGain();
-
   osc.type = type;
   osc.frequency.setValueAtTime(freq, start);
-  if (slideTo) {
-    osc.frequency.exponentialRampToValueAtTime(slideTo, start + duration);
-  }
-
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, start + duration);
   const level = gain * getVolume();
   if (level <= 0) return;
   amp.gain.setValueAtTime(0, start);
-  amp.gain.linearRampToValueAtTime(level, start + 0.005);
+  amp.gain.linearRampToValueAtTime(level, start + 0.004);
   amp.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
   osc.connect(amp);
   amp.connect(context.destination);
   osc.start(start);
   osc.stop(start + duration + 0.02);
+}
+
+// ごく短いノイズ（キーボードのクリック・木を叩く音に近い）。バンドパスで音色を決める
+let noiseBuffer = null;
+function noise({ duration = 0.02, gain = 0.03, freq = 2200, q = 1.2, type = "bandpass", delay = 0 }) {
+  const context = getCtx();
+  if (!context) return;
+  if (!noiseBuffer) {
+    const len = Math.floor(context.sampleRate * 0.1);
+    noiseBuffer = context.createBuffer(1, len, context.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const level = gain * getVolume();
+  if (level <= 0) return;
+  const start = context.currentTime + delay;
+  const src = context.createBufferSource();
+  src.buffer = noiseBuffer;
+  const filter = context.createBiquadFilter();
+  filter.type = type;
+  filter.frequency.value = freq;
+  filter.Q.value = q;
+  const amp = context.createGain();
+  amp.gain.setValueAtTime(level, start);
+  amp.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  src.connect(filter);
+  filter.connect(amp);
+  amp.connect(context.destination);
+  src.start(start);
+  src.stop(start + duration + 0.01);
 }
 
 function play(fn) {
@@ -62,54 +86,52 @@ function play(fn) {
   }
 }
 
-// 単語正解: コンボが伸びるほど少しずつ高く（気持ちよさの積み上げ）
-export function sfxCorrect(combo = 0) {
+// 方針（docs/CONCEPT.md §7）: 短く・小さく・少なく。ゲーム機ではなくキーボードの音。
+// 4種類だけ: 正解のティック／答えを見た後の正解（さらに小さく）／ミス（低いコツン）／完了（2音）。
+
+// 単語正解: 12ms のクリック＋ごく短い木の音
+export function sfxCorrect() {
   play(() => {
-    const step = Math.min(combo, 20);
-    const base = 660 * Math.pow(1.025, step);
-    tone({ freq: base, duration: 0.07, gain: 0.07 });
-    tone({ freq: base * 1.335, duration: 0.09, gain: 0.07, delay: 0.06 });
-    // 10コンボ以上: 上に一音重ねて「乗ってる」感を出す（音量は控えめ）
-    if (combo >= 10) tone({ freq: base * 2, duration: 0.08, gain: 0.035, delay: 0.1 });
+    noise({ duration: 0.012, gain: 0.035, freq: 2200, q: 1.5 });
+    tone({ freq: 900, duration: 0.025, type: "triangle", gain: 0.02 });
   });
 }
 
-// 答えを見た後の練習正解: 控えめな単音
+// 答えを見た後の練習正解: クリックだけ
 export function sfxSoftCorrect() {
-  play(() => tone({ freq: 520, duration: 0.06, gain: 0.045 }));
+  play(() => noise({ duration: 0.012, gain: 0.02, freq: 2000, q: 1.5 }));
 }
 
-// 打ち間違い: 低く短く（不快すぎない程度）
+// 打ち間違い・思い出せなかった: 低いコツン
 export function sfxMiss() {
-  play(() => tone({ freq: 180, duration: 0.06, type: "triangle", gain: 0.05 }));
-}
-
-// 思い出せなかった（答え表示）: 下降音
-export function sfxReveal() {
-  play(() => tone({ freq: 330, slideTo: 210, duration: 0.16, type: "sine", gain: 0.05 }));
-}
-
-// レベルアップ: 上昇アルペジオ
-export function sfxLevelUp() {
   play(() => {
-    [523, 659, 784, 1047].forEach((freq, i) =>
-      tone({ freq, duration: 0.12, gain: 0.08, delay: i * 0.09 })
-    );
+    noise({ duration: 0.04, gain: 0.03, freq: 300, q: 0.8, type: "lowpass" });
+    tone({ freq: 140, duration: 0.06, type: "sine", gain: 0.02 });
   });
 }
 
-// ミッション完了・今日定着・Daily完走: 短いチャイム
+// 思い出せなかった（答え表示）: ミスと同じ音を小さく（別の「下降音」は廃止）
+export function sfxReveal() {
+  play(() => noise({ duration: 0.035, gain: 0.02, freq: 300, q: 0.8, type: "lowpass" }));
+}
+
+// セット完了・レベルアップ・Daily 完走・ご褒美: 柔らかい2音（G5 → C6）
 export function sfxComplete() {
   play(() => {
-    tone({ freq: 784, duration: 0.1, gain: 0.08 });
-    tone({ freq: 1047, duration: 0.16, gain: 0.08, delay: 0.09 });
+    tone({ freq: 784, duration: 0.09, type: "sine", gain: 0.04 });
+    tone({ freq: 1047, duration: 0.16, type: "sine", gain: 0.04, delay: 0.09 });
   });
 }
 
-// シールド獲得などのご褒美: キラッ
+export function sfxLevelUp() {
+  sfxComplete();
+}
+
 export function sfxSparkle() {
-  play(() => {
-    tone({ freq: 1319, duration: 0.07, gain: 0.06 });
-    tone({ freq: 1760, duration: 0.1, gain: 0.05, delay: 0.05 });
-  });
+  play(() => tone({ freq: 1568, duration: 0.06, type: "sine", gain: 0.02 }));
+}
+
+// 他モジュール（将来）が同じ AudioContext を使えるように
+export function getAudioContext() {
+  return getCtx();
 }

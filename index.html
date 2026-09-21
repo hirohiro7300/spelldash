@@ -6,6 +6,10 @@
   <title>SpellDash - 思い出して打つ、英単語タイピング学習</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="./css/tokens.css" />
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/path.css" />
@@ -13,6 +17,9 @@
   <link rel="stylesheet" href="./css/keyboard.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
   <link rel="stylesheet" href="./css/theme.css" />
+  <link rel="stylesheet" href="./css/brand.css" />
+  <link rel="stylesheet" href="./css/home.css" />
+  <link rel="stylesheet" href="./css/card.css" />
   <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
 
 
@@ -122,11 +129,11 @@
   <!-- 初めて来た人向けのトップページ。学習データが無い初回だけ表示し、「無料で始める」でアプリ（道）に切り替える -->
   <section class="welcome" id="welcome" hidden aria-label="SpellDash の紹介">
     <div class="welcome__hero">
-      <p class="welcome__kicker">登録なし ・ 無料 ・ ブラウザだけで動く</p>
+      <p class="welcome__kicker">登録なし ・ 無料 ・ ブラウザで動く</p>
       <h1 class="welcome__title">思い出して打つから、<br />英単語が残る。</h1>
-      <p class="welcome__lead">日本語を見て、英単語をタイピング。中学英語のやり直しから、英検・TOEIC・仕事の専門用語まで。1日5分、今日のセットをこなすだけ。</p>
+      <p class="welcome__lead">日本語を見て、英単語を打つ。中学英語のやり直しから、英検・TOEIC・仕事の用語まで。1日5分、今日のセットだけ。</p>
       <div class="welcome__cta">
-        <button type="button" class="welcome__start" data-welcome-start>▶ 無料で始める（登録不要）</button>
+        <button type="button" class="welcome__start" data-welcome-start>無料で始める</button>
         <a class="welcome__login" href="#login" id="welcomeLogin">すでに使っている方はログイン</a>
       </div>
     </div>
@@ -135,57 +142,51 @@
       <p class="welcome-demo__label">試しに1語 <span id="welcomeDemoDots" class="welcome-demo__dots"></span></p>
       <div class="welcome-demo__card">
         <p class="welcome-demo__ja" id="welcomeDemoJa">りんご</p>
-        <p class="welcome-demo__preview" id="welcomeDemoPreview" aria-hidden="true"></p>
-        <input id="welcomeDemoInput" class="welcome-demo__input" type="text" placeholder="英単語を入力（Enter で答え）" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英単語を入力" />
+        <p class="welcome-demo__preview mono" id="welcomeDemoPreview" aria-hidden="true"></p>
+        <input id="welcomeDemoInput" class="welcome-demo__input mono" type="text" placeholder="英単語を入力（Enter で答え）" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英単語を入力" />
         <p class="welcome-demo__msg" id="welcomeDemoMsg"></p>
       </div>
       <div class="welcome-demo__after" id="welcomeAfterDemo" hidden>
-        <button type="button" class="welcome__start" data-welcome-start>▶ 本番を始める（中学英語の腕試し10語）</button>
+        <button type="button" class="welcome__start" data-welcome-start>本番を始める（腕試し10語）</button>
       </div>
     </div>
 
     <ol class="welcome-steps" aria-label="使い方">
-      <li><span class="welcome-steps__num">1</span><b>日本語を見て打つ</b><span>訳を見て英単語をタイプ。1文字ずつ色が付くので、打てている実感があります。</span></li>
-      <li><span class="welcome-steps__num">2</span><b>分からなければ Enter</b><span>答えを見てOK。その語は数問後にまた出て、自力で打てたら「覚えた」に近づきます。</span></li>
-      <li><span class="welcome-steps__num">3</span><b>復習は自動で</b><span>忘れそうな頃にまた出ます（間隔反復）。今日のセットは10〜15語・約5分で終わります。</span></li>
+      <li><span class="welcome-steps__num mono">1</span><div><b>日本語を見て打つ</b><span>訳を見て英単語をタイプ。打てた文字から色が変わる。</span></div></li>
+      <li><span class="welcome-steps__num mono">2</span><div><b>分からなければ Enter</b><span>答えを見てよい。その語は数問後にまた出て、自力で打てたら「覚えた」に近づく。</span></div></li>
+      <li><span class="welcome-steps__num mono">3</span><div><b>復習は自動</b><span>忘れそうな頃にまた出る。今日のセットは10〜15語、約5分。</span></div></li>
     </ol>
 
     <section class="welcome-content" aria-label="学べるもの">
       <h2>学べるもの</h2>
       <ul class="welcome-content__grid">
-        <li><b>中学英語やり直し</b><span>最初のコース。中学英語1〜3年 → 英文法 → 並べ替え → 英作文の8セクション</span></li>
-        <li><b>英検 5級〜1級</b><span>級ごとに約120語。品詞つきで訳の迷いが減ります</span></li>
+        <li><b>中学英語やり直し</b><span>最初のコース。中学英語1〜3年、英文法、並べ替え、英作文の8セクション</span></li>
+        <li><b>英検 5級〜1級</b><span>級ごとに約120語。品詞つき</span></li>
         <li><b>TOEIC 500〜990</b><span>スコア帯ごとの語彙と、短文穴埋めの文法</span></li>
-        <li><b>英文法・英作文</b><span>空欄を打つ／日本語を英文にして丸ごと打つ。語順まで身につきます</span></li>
-        <li><b>仕事の分野 48</b><span>不動産・会計・医療事務・看護・建築・広報… 現場の共通言語を場面カードで</span></li>
+        <li><b>英文法・英作文</b><span>空欄を打つ。日本語を英文にして丸ごと打つ</span></li>
+        <li><b>仕事の分野 48</b><span>不動産・会計・医療事務・看護・建築・広報。現場の共通言語を場面カードで</span></li>
         <li><b>小中高の暗記</b><span>歴史・地理・公民・理科・漢字・古文・漢文。説明を読んで日本語で答える</span></li>
       </ul>
-      <p class="welcome-content__more"><a href="./packs/">全104パックの紹介ページを見る →</a></p>
+      <p class="welcome-content__more"><a href="./packs/">全104パックの紹介ページ</a></p>
     </section>
 
-    <section class="welcome-trust" aria-label="データについて">
-      <p>学習データはこの端末に保存されます。ログインすると別の端末でも続きから。広告なし・課金なしで使えます。</p>
-    </section>
+    <p class="welcome-trust" aria-label="データについて">学習データはこの端末に保存。ログインすると別の端末でも続きから。広告なし・課金なし。</p>
 
     <div class="welcome__bottom">
-      <button type="button" class="welcome__start" data-welcome-start>▶ 無料で始める（登録不要）</button>
-      <p class="welcome__note">最初は腕試し10語（約2分）。知っている語はそのまま打って、知らない語は Enter で答えを見てOK。</p>
+      <button type="button" class="welcome__start" data-welcome-start>無料で始める</button>
+      <p class="welcome__note">最初は腕試し10語（約2分）。知っている語はそのまま打ち、知らない語は Enter で答えを見る。</p>
     </div>
   </section>
 
   <div class="app app--home">
-    <section class="hero hero--compact" id="hero">
-      <h1>思い出して打つから、英単語が残る。</h1>
-      <p class="subtitle">
-        日本語を見て、英単語をタイピング。1日少しずつ、英語とタイピングを同時に鍛える。
-      </p>
-    </section>
+    <!-- キャッチコピーはトップページ（#welcome）が担う。ホームの見出しは道の1行目。要素は残す（認証メッセージは外にある） -->
+    <section class="hero hero--compact" id="hero" hidden></section>
     <p class="auth-message auth-message--home" id="authMessage" role="status"></p>
 
     <!-- 道: いまのコース／セクション／ユニットと、スタート1個。ホームの1画面目はこれだけ -->
     <section class="path" id="pathCard" aria-label="いまの道">
       <div id="pathHead"></div>
-      <div class="today__strip" id="todayStrip" aria-label="連続日数・レベル・週の目標"></div>
+      <div class="today__strip" id="todayStrip" aria-label="連続日数・今週の学習日"></div>
       <div id="hasumiHome" aria-label="はちゃんからの一言"></div>
       <div id="pathList"></div>
     </section>
@@ -193,11 +194,12 @@
     <!-- プレイ: ゲームカードは道でスタートしたときだけ出る。出題設定は折りたたみ -->
     <section class="play" aria-label="プレイ">
       <div class="play__bar">
-        <button type="button" class="back-to-path" id="backToPath" hidden>← 道に戻る</button>
+        <button type="button" class="back-to-path" id="backToPath" hidden>道に戻る</button>
         <button type="button" class="setup-toggle" id="setupToggle" aria-expanded="false" aria-controls="setupPanel">
-          <span class="setup-toggle__label">出題</span>
+          <span class="setup-toggle__label">出題:</span>
           <span class="setup-toggle__summary" id="setupSummary">すべて</span>
-          <span class="setup-toggle__caret" aria-hidden="true">▾</span>
+          <span class="setup-toggle__sep" aria-hidden="true">・</span>
+          <span class="setup-toggle__more">設定</span>
         </button>
       </div>
 
@@ -210,7 +212,7 @@
         <div class="setup__row setup__row--inline">
           <section class="weak-toggle" id="weakToggleRow">
             <button type="button" class="weak-toggle__btn" id="weakToggleButton">
-              ♻️ 苦手のみ復習 <span class="weak-toggle__count" id="weakToggleCount"></span>
+              苦手のみ復習 <span class="weak-toggle__count" id="weakToggleCount"></span>
             </button>
             <span class="weak-toggle__hint">思い出せなかった・打ち間違いが多い単語だけを出題</span>
           </section>
@@ -224,7 +226,7 @@
             <input type="range" id="mixSlider" min="0" max="100" step="10" value="80" dir="rtl" />
             <div class="mix-control__foot">
               <span id="mixLabel">回答済み 80% / 未回答 20%</span>
-              <span class="mix-control__hint">回答済みを増やすとテンポよく、未回答を増やすと新しい単語を多く学べます。</span>
+              <span class="mix-control__hint">回答済みを増やすとテンポよく、未回答を増やすと新しい語が多く出る</span>
             </div>
           </section>
         </div>
@@ -247,34 +249,17 @@
       <p id="wordExample" class="word-example"></p>
 
       <p id="wordFamily" class="word-family"></p>
-      <!-- 答え表示後の操作は1行にまとめる（メモ・覚え方を作る・ヒント・発音） -->
+      <!-- 答え表示後の操作は1行（メモ・覚え方を作る・ヒント・発音）。絵文字ではなく線画アイコン -->
       <div class="word-actions">
-      <div id="wordNote" class="word-note"></div>
-      <div id="wordAi" class="word-ai-slot"></div>
-
-      <div class="word-tools">
-    <button
-      id="hintButton"
-      type="button"
-      class="hint-button"
-      aria-label="ヒント（次の1文字）"
-      hidden
-    >
-      💡 ヒント
-    </button>
-    <button
-      id="speakButton"
-      type="button"
-      class="speak-button"
-      aria-label="発音を再生"
-      hidden
-    >
-      🔊 発音
-    </button>
-      </div>
+        <div id="wordNote" class="word-note"></div>
+        <div id="wordAi" class="word-ai-slot"></div>
+        <div class="word-tools">
+          <button id="hintButton" type="button" class="hint-button" aria-label="ヒント（次の1文字）" hidden><svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 10.5a3.8 3.8 0 1 1 5 0v1.5h-5z"/><path d="M6.5 14h3"/></svg>ヒント</button>
+          <button id="speakButton" type="button" class="speak-button" aria-label="発音を再生" hidden><svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h3l4-3v10l-4-3H3z"/><path d="M12 5.5a3.5 3.5 0 0 1 0 5"/></svg>発音</button>
+        </div>
       </div>
 
-      <!-- 入力欄の中に虹色テキストを重ねる -->
+      <!-- 入力欄: 打った文字は朱で重ねる（2トーン） -->
       <div class="input-wrapper">
     <div id="typedPreview" class="typed-preview"></div>
 
@@ -298,17 +283,18 @@
 
       <div id="resultPanel" class="result-panel" hidden></div>
 
-      <button id="restart">もう一回</button>
+      <button id="restart" class="btn btn--ghost btn--sm">もう一回</button>
     </main>
 
+      <!-- セッションの数字: 1行の静かなテキスト（正解 3 ・ 思い出せず 1 ・ 今日 20）。要素は残す -->
       <section class="stats stats--strip" aria-label="このセッションの数字">
-        <div class="stat-card stat-card--challenge"><span>残り</span><strong><span id="time">60</span>秒</strong></div>
         <div class="stat-card"><span>正解</span><strong id="score">0</strong></div>
         <div class="stat-card"><span>思い出せず</span><strong id="recallFail">0</strong></div>
-        <div class="stat-card stat-card--study"><span>今日思い出せた</span><strong id="recalledToday">0</strong><span class="stat-card__sub" id="securedToday"></span></div>
-        <div class="stat-card"><span>ミスタイプ</span><strong id="miss">0</strong></div>
+        <div class="stat-card stat-card--study"><span>今日</span><strong id="recalledToday">0</strong><span class="stat-card__sub" id="securedToday"></span></div>
+        <div class="stat-card stat-card--miss"><span>ミスタイプ</span><strong id="miss">0</strong></div>
         <div class="stat-card stat-card--challenge"><span>速度</span><strong><span id="typeSpeed">0.0</span>打/秒</strong></div>
         <div class="stat-card stat-card--challenge"><span>ベスト</span><strong id="bestScore">0</strong></div>
+        <div class="stat-card stat-card--challenge stat-card--time"><span>残り</span><strong><span id="time">60</span>秒</strong></div>
       </section>
     </section>
 
@@ -316,14 +302,12 @@
     <section class="play-modes" id="playModes" aria-label="ほかの遊び方"></section>
     <div class="login-nudge" id="loginNudge"></div>
 
-    <!-- 詳細: 覚えた単語・ミッション・Daily Dashの結果とランキング・週間レポート。普段は畳んでおく -->
+    <!-- 詳細: 覚えた単語・Daily Dashの結果とランキング。普段は畳んでおく（ミッション・週間レポートはホームから外した。週間レポートは学習データにある） -->
     <details class="home-more" id="homeMore">
-      <summary><span>覚えた単語 ・ 今日のミッション ・ Daily Dash ・ 週間レポート</span><span class="home-more__badge" id="homeMoreBadge"></span></summary>
+      <summary><span>覚えた単語 ・ Daily Dash</span></summary>
       <div class="home-more__body">
         <section class="learned-card" id="learnedCard" aria-label="覚えた単語"></section>
-        <section class="mission" id="missionCard"></section>
         <section class="daily" id="dailyCard" aria-label="デイリーチャレンジ"></section>
-        <section class="weekly weekly--home" id="weeklyHome" aria-label="週間レポート" hidden></section>
       </div>
     </details>
   </div>

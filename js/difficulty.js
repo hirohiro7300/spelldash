@@ -148,7 +148,7 @@ export function filterByAllowedLevels(words, allowed = allowedWordLevels()) {
 
 // レベルアップ時の解放メッセージ（該当しなければ空文字）
 export function unlockNoteForLevel(level) {
-  if (level === UNLOCK_NORMAL_LEVEL) return " 🔓 新しい難易度の単語が解放！";
-  if (level === UNLOCK_HARD_LEVEL) return " 🔓 最高難易度の単語が解放！";
+  if (level === UNLOCK_NORMAL_LEVEL) return " 新しい難易度の単語を解放";
+  if (level === UNLOCK_HARD_LEVEL) return " 最高難易度の単語を解放";
   return "";
 }

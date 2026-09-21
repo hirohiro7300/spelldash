@@ -64,9 +64,9 @@ export function initializeCardGen(onChange = () => {}) {
     if (text.length < MIN_CHARS) return setStatus(`テキストが短すぎます（${MIN_CHARS}文字以上）`, true);
     if (text.length > MAX_CHARS) return setStatus(`テキストが長すぎます（${MAX_CHARS}文字まで）`, true);
     run.disabled = true;
-    run.textContent = "作成中…（10〜30秒）";
+    run.textContent = "作成中（10〜30秒）";
     preview.innerHTML = "";
-    setStatus("はちゃんが読んでいます…");
+    setStatus("読んでいます。");
     const result = await requestCards(text);
     run.disabled = false;
     run.textContent = "カードを作る";
@@ -106,7 +106,7 @@ export function initializeCardGen(onChange = () => {}) {
     setStatus(lines.join("　"), added.length === 0);
     if (added.length > 0) {
       cards = [];
-      preview.innerHTML = `<p class="cardgen__done">追加しました。<a href="/" data-cardgen-practice>マイ単語帳で練習する ▶</a></p>`;
+      preview.innerHTML = `<p class="cardgen__done">追加しました。<a href="/" data-cardgen-practice>マイ単語帳で練習する</a></p>`;
       textarea.value = "";
       updateCounter();
       onChange();

@@ -62,28 +62,21 @@ export function renderInstallCard(containerId) {
     return;
   }
 
+  // 実際に追加できるときだけ出す（説明文は出さない）。追加済み・iOS・非対応は空のまま
   const draw = () => {
-    if (isStandalone()) {
-      el.innerHTML = `<p class="install__done">✓ ホーム画面から起動しています。1タップで今日のセットへ。</p>`;
+    if (isStandalone() || !canInstall()) {
+      el.innerHTML = "";
       return;
     }
-    if (canInstall()) {
-      el.innerHTML = `
-        <button type="button" class="btn btn--sm" id="installButton">📲 ホーム画面に追加</button>
-        <p class="muted">アイコンから1タップで開けます。通知は送りません。</p>
-      `;
-      el.querySelector("#installButton").addEventListener("click", async () => {
-        const outcome = await promptInstall();
-        if (outcome === "accepted") el.innerHTML = `<p class="install__done">✓ 追加しました。ホーム画面のアイコンから開けます。</p>`;
-        else draw();
-      });
-      return;
-    }
-    if (isIOS()) {
-      el.innerHTML = `<p class="muted">iPhone/iPad: Safariの「共有」<span aria-hidden="true">⎙</span> → <b>「ホーム画面に追加」</b>で、アプリのように1タップで開けます（通知は送りません）。</p>`;
-      return;
-    }
-    el.innerHTML = `<p class="muted">ブラウザのメニューから「ホーム画面に追加」「アプリをインストール」を選ぶと、アイコンから1タップで開けます。</p>`;
+    el.innerHTML = `
+      <button type="button" class="btn btn--sm btn--ghost" id="installButton">ホーム画面に追加</button>
+      <p class="muted">アイコンから1タップで開けます。通知は送りません。</p>
+    `;
+    el.querySelector("#installButton").addEventListener("click", async () => {
+      const outcome = await promptInstall();
+      if (outcome === "accepted") el.innerHTML = `<p class="install__done">追加しました。ホーム画面のアイコンから開けます。</p>`;
+      else draw();
+    });
   };
 
   draw();

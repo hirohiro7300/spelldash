@@ -108,7 +108,7 @@ export function hasumiStreakLine() {
 export function hasumiBubbleHtml({ mood, text }, extraClass = "") {
   return `
     <div class="hasumi ${extraClass}">
-      <img class="hasumi__avatar" src="${AVATAR[mood] ?? AVATAR.normal}" alt="はちゃん" width="44" height="44" />
+      <img class="hasumi__avatar" src="${AVATAR[mood] ?? AVATAR.normal}" alt="はちゃん" width="32" height="32" />
       <div class="hasumi__bubble">${text}</div>
     </div>
   `;

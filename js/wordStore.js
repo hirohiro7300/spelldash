@@ -31,6 +31,7 @@ export async function initWordStore(subjectId = "english") {
   // 「すべて」= 基本カテゴリの英単語だけ（概念カードと、追加式のパックの語は含めない）
   generalWords = allWords.filter((w) => !isConceptWord(w) && !w.pack);
   wordIndex.clear();
+  categoryIndex.clear();
   for (const word of allWords) {
     // 同じ単語が複数カテゴリにある場合は最初のものを索引に使う
     // （idは教科-単語 形式なので、カテゴリ違いの同一単語は同じidを持ち、統計を共有する）
@@ -78,6 +79,20 @@ export function getWordsByCategory(categoryId) {
 
 export function findWord(wordId) {
   return wordIndex.get(wordId) ?? myIndex.get(wordId) ?? null;
+}
+
+// カテゴリ内の版を優先して引く。同じ id の語が複数カテゴリにある時（基本カテゴリと
+// レベル別パックなど）、出題中のカテゴリの訳・品詞・例文を使う（統計は id で共有のまま）
+const categoryIndex = new Map();
+export function findWordIn(categoryId, wordId) {
+  if (!categoryId || categoryId === "all" || categoryId === MY_CATEGORY.id) return findWord(wordId);
+  let index = categoryIndex.get(categoryId);
+  if (!index || index.size === 0) {
+    index = new Map();
+    for (const word of allWords) if (word.category === categoryId && !index.has(word.id)) index.set(word.id, word);
+    categoryIndex.set(categoryId, index);
+  }
+  return index.get(wordId) ?? findWord(wordId);
 }
 
 // 表示・出題に使うカテゴリ（分野パックは追加済みのものだけ）＋マイ単語帳

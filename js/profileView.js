@@ -3,15 +3,12 @@ import { supabase } from "./supabase.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
-import { getLevelState, getStreak } from "./level.js";
-import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
-import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled, getVolume, setVolume, getListenRatio, setListenRatio } from "./audio.js";
+import { getAudioSettings, saveAudioSettings, speak, getVolume, setVolume, getListenRatio, setListenRatio, getEnglishVoices, getPreferredVoiceURI, setPreferredVoiceURI, previewVoice, getSpeechRate, setSpeechRate, onVoicesReady, prettyVoiceName } from "./audio.js";
 import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./backup.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
-import { isBgmEnabled, setBgmEnabled } from "./bgm.js";
 import { getSetSize, setSetSize } from "./dailySet.js";
 import { getWeekGoal, setWeekGoal } from "./growthLog.js";
 import { renderInstallCard } from "./installPrompt.js";
@@ -23,15 +20,10 @@ const emailElement = document.getElementById("profileEmail");
 const joinedElement = document.getElementById("profileJoined");
 
 initializeAuth();
-renderLevelBar();
 setFooterYear();
 renderHeaderStreak();
 setupUnloadSync();
 initWordStore();
-
-window.addEventListener("spelldash:synced", () => {
-  renderLevelBar();
-});
 
 // ===== 学習の設定（今日のセットの語数） =====
 {
@@ -100,13 +92,54 @@ function initializeAudioSettings() {
     statusElement.textContent = "保存しました。";
     // アクセント確認用に1回だけサンプル再生
     if (modeSelect.value !== "off") {
-      speak("investment");
+      previewVoice(getPreferredVoiceURI());
     }
     setTimeout(() => (statusElement.textContent = ""), 2000);
   };
 
   modeSelect.addEventListener("change", save);
-  accentSelect.addEventListener("change", save);
+  accentSelect.addEventListener("change", () => {
+    save();
+    fillVoices(); // アクセントが変わると候補の並びも変わる
+  });
+
+  // 声の選択（端末にある英語の声を自然さ順に）と試聴
+  const voiceSelect = document.getElementById("voiceSelect");
+  const voicePreview = document.getElementById("voicePreview");
+  const fillVoices = () => {
+    if (!voiceSelect) return;
+    const list = getEnglishVoices(accentSelect.value);
+    const current = getPreferredVoiceURI();
+    voiceSelect.innerHTML = `<option value="">自動（${list[0] ? prettyVoiceName(list[0].voice) : "この端末の英語の声"}）</option>` + list
+      .map(({ voice }) => `<option value="${voice.voiceURI.replace(/"/g, "&quot;")}">${prettyVoiceName(voice)}</option>`)
+      .join("");
+    voiceSelect.value = list.some(({ voice }) => voice.voiceURI === current) ? current : "";
+  };
+  if (voiceSelect) {
+    fillVoices();
+    onVoicesReady(fillVoices);
+    voiceSelect.addEventListener("change", () => {
+      setPreferredVoiceURI(voiceSelect.value);
+      previewVoice(voiceSelect.value);
+      statusElement.textContent = "保存しました。";
+      setTimeout(() => (statusElement.textContent = ""), 2000);
+    });
+  }
+  voicePreview?.addEventListener("click", () => previewVoice(voiceSelect?.value || ""));
+  // iOS だけ: 高品質の声は OS の設定から追加できる
+  const iosHint = document.getElementById("voiceIosHint");
+  if (iosHint && /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream) iosHint.hidden = false;
+
+  const rateSelect = document.getElementById("rateSelect");
+  if (rateSelect) {
+    rateSelect.value = getSpeechRate();
+    rateSelect.addEventListener("change", () => {
+      setSpeechRate(rateSelect.value);
+      previewVoice(getPreferredVoiceURI());
+      statusElement.textContent = "保存しました。";
+      setTimeout(() => (statusElement.textContent = ""), 2000);
+    });
+  }
 
   // 効果音のON/OFF（発音とは独立）
   const sfxSelect = document.getElementById("sfxSelect");
@@ -120,19 +153,7 @@ function initializeAudioSettings() {
     });
   }
 
-  // 正解時の発音（Studyで自力正解した瞬間に1回）
-  const speakCorrectSelect = document.getElementById("speakCorrectSelect");
-  if (speakCorrectSelect) {
-    speakCorrectSelect.value = isSpeakOnCorrectEnabled() ? "on" : "off";
-    speakCorrectSelect.addEventListener("change", () => {
-      setSpeakOnCorrectEnabled(speakCorrectSelect.value === "on");
-      if (speakCorrectSelect.value === "on") speak("negotiate");
-      statusElement.textContent = "保存しました。";
-      setTimeout(() => (statusElement.textContent = ""), 2000);
-    });
-  }
-
-  // 音量（効果音・BGM共通）
+  // 音量（効果音）
   const volumeRange = document.getElementById("volumeRange");
   const volumeValue = document.getElementById("volumeValue");
   if (volumeRange) {
@@ -144,17 +165,6 @@ function initializeAudioSettings() {
     });
     volumeRange.addEventListener("change", () => {
       if (Number(volumeRange.value) > 0) sfxCorrect(3); // 確認用サンプル
-      statusElement.textContent = "保存しました。";
-      setTimeout(() => (statusElement.textContent = ""), 2000);
-    });
-  }
-
-  // BGMのON/OFF（Challenge/Daily中のみ再生される）
-  const bgmSelect = document.getElementById("bgmSelect");
-  if (bgmSelect) {
-    bgmSelect.value = isBgmEnabled() ? "on" : "off";
-    bgmSelect.addEventListener("change", () => {
-      setBgmEnabled(bgmSelect.value === "on");
       statusElement.textContent = "保存しました。";
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });
@@ -195,7 +205,7 @@ function initializeBackup() {
         return;
       }
       applyBackup(obj);
-      status.textContent = `復元しました（${info.words}語）。ページを再読み込みします…`;
+      status.textContent = `復元しました（${info.words}語）。ページを再読み込みします。`;
       setTimeout(() => location.reload(), 900);
     } catch (error) {
       status.textContent = error.message || "読み込みに失敗しました。";
@@ -216,7 +226,7 @@ function renderProfile(session) {
 
   const email = session.user.email ?? "";
   emailElement.textContent = email;
-  avatarElement.textContent = email.charAt(0).toUpperCase() || "?";
+  if (avatarElement) avatarElement.textContent = email.charAt(0).toUpperCase() || "?";
 
   const createdAt = session.user.created_at;
   if (createdAt) {

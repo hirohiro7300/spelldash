@@ -1,0 +1,16 @@
+# NGSL ファミリーの語彙リスト（出典・ライセンス）
+
+このフォルダの CSV / TXT は、Charles Browne・Brent Culligan・Joseph Phillips による **New General Service List (NGSL) プロジェクト**の公開リストです。
+
+- NGSL 1.2（New General Service List, 2,809 語）— Browne, C., Culligan, B. & Phillips, J. (2013)
+- NAWL 1.2（New Academic Word List）、TSL 1.2（TOEIC Service List）、BSL 1.01 / 1.2（Business Service List）、NGSL-Spoken 1.2、NDL 1.1（New Dolch List）
+- ライセンス: **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)**
+- 一次配布元: https://www.newgeneralservicelist.com/ （この環境からは到達できなかったため、GitHub 上のミラーから取得。内容は語数で照合）
+
+SpellDash はこれらのリストを「どの語を、どの順に出すか」の骨組みとして使い、日本語訳・品詞・例文は SpellDash 側で書き足しています。
+リストに由来する部分（語の選定と順序）は CC BY-SA 4.0 の条件（出典表示・同一条件での共有）に従います。アプリ内のパック紹介と docs/LICENSES.md に出典を表示します。
+
+# CEFR-J Vocabulary Profile
+
+`../cefrj/cefrj-vocabulary-profile-1.5.csv` は東京外国語大学 投野由紀夫研究室の CEFR-J Vocabulary Profile（Ver 1.5）です。
+品詞と CEFR レベル（A1〜B2）の参照に使います。配布元: https://github.com/openlanguageprofiles/olp-en-cefrj （Open Language Profiles、利用条件は配布元の記載に従う）。

@@ -13,6 +13,7 @@ import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors, escapeHtml } from "./wordNotes.js";
 import { bindWordDetail } from "./wordDetail.js";
 import { groupByGenre, setGenre, getGenre, genreLabel } from "./genres.js";
+import { icon } from "./icons.js";
 
 // ===== 単語帳（ジャンルごとの一覧） =====
 // カテゴリ → ジャンル → カード。読み物として眺められて、そのジャンルだけ練習にも入れる。
@@ -41,6 +42,12 @@ initWordStore().then(async () => {
   const categories = getCategories();
   if (categoryId === "all" || !categories.some((c) => c.id === categoryId)) {
     categoryId = categories[0]?.id ?? "all";
+  }
+  // 分野パックの棚: カテゴリが決まっている人には畳んで、一覧を上に。追加リンクや #packs では開く
+  const packsFold = document.getElementById("packsFold");
+  if (packsFold) {
+    const hasCategory = Boolean(params.get("category") || localStorage.getItem(CATEGORY_KEY));
+    packsFold.open = !hasCategory || Boolean(addId) || location.hash === "#packs";
   }
   renderPacks();
   renderCategorySelect(categories);
@@ -134,18 +141,20 @@ function renderPacks() {
   const enabledCount = packs.filter((p) => p.enabled).length;
   const countEl = document.getElementById("packsCount");
   if (countEl) countEl.textContent = `${packs.length}分野 ・ 追加済み ${enabledCount}`;
+  const fold = grid.closest("#packsFold");
+  if (fold && q && !fold.open) fold.open = true;
 
+  // 1行＝1分野: 名前・枚数・1行の説明・追加ボタン（対象者は title に）
   const card = (p) => `
-        <article class="pack${p.enabled ? " pack--on" : ""}" data-pack="${p.id}">
+        <article class="pack${p.enabled ? " pack--on" : ""}" data-pack="${p.id}"${p.audience ? ` title="${escapeHtml(p.audience)}向け"` : ""}>
           <div class="pack__head">
             <h3 class="pack__title">${escapeHtml(p.label)}</h3>
-            <span class="pack__count">${p.count ?? ""}${p.count ? "枚" : ""}</span>
+            <span class="pack__count mono">${p.count ?? ""}${p.count ? "枚" : ""}</span>
           </div>
           <p class="pack__blurb">${escapeHtml(p.blurb ?? "")}</p>
-          ${p.audience ? `<p class="pack__audience">👤 ${escapeHtml(p.audience)}</p>` : ""}
           <div class="pack__actions">
-            <button type="button" class="btn btn--sm${p.enabled ? " btn--ghost" : ""}" data-pack-toggle="${p.id}">${p.enabled ? "✓ 追加済み（外す）" : "＋ 追加する"}</button>
-            ${p.enabled ? `<button type="button" class="btn btn--sm btn--ghost" data-pack-view="${p.id}">一覧を見る</button>` : ""}
+            ${p.enabled ? `<button type="button" class="btn btn--sm btn--ghost" data-pack-view="${p.id}">一覧</button>` : ""}
+            <button type="button" class="btn btn--sm btn--ghost${p.enabled ? " pack__toggle--on" : ""}" data-pack-toggle="${p.id}">${p.enabled ? `${icon("check", { size: 14 })}追加済み` : "追加する"}</button>
           </div>
         </article>`;
 
@@ -168,7 +177,7 @@ function renderPacks() {
       const wasEnabled = getPackCatalog().find((p) => p.id === id)?.enabled;
       setPackEnabled(id, !wasEnabled);
       button.disabled = true;
-      button.textContent = wasEnabled ? "外しています…" : "読み込み中…";
+      button.textContent = wasEnabled ? "外しています" : "読み込み中";
       await initWordStore();
       const categories = getCategories();
       if (!wasEnabled) {
@@ -258,10 +267,10 @@ function render() {
       return `
         <section class="genre" id="genre-${g.tag}">
           <div class="genre__head">
-            <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count">${g.words.length}語</span>${done === g.words.length ? ` <span class="genre__clear">🏆 制覇</span>` : ""}</h2>
+            <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count mono">${g.words.length}語</span>${done === g.words.length ? ` <span class="genre__clear">${icon("check", { size: 12 })}制覇</span>` : ""}</h2>
             <div class="genre__meta">覚えた ${done}${weak > 0 ? ` ・ 苦手 ${weak}` : ""}</div>
             ${weak > 0 ? `<button type="button" class="btn btn--sm btn--ghost genre__weak" data-practice-words="${g.words.filter((w) => classifyWord(stats[w.id]) === "weak").map((w) => w.id).join(",")}">苦手 ${weak}語だけ練習</button>` : ""}
-            <button type="button" class="btn btn--sm${practicing ? "" : " btn--ghost"} genre__practice" data-practice="${g.tag}">${practicing ? "▶ このジャンルを練習中" : "このジャンルを練習"}</button>
+            <button type="button" class="btn btn--sm${practicing ? "" : " btn--ghost"} genre__practice" data-practice="${g.tag}">${practicing ? "このジャンルを練習中" : "このジャンルを練習"}</button>
           </div>
           <div class="genre__cards">
             ${g.words.map((w) => cardHtml(w, stats[w.id])).join("")}
@@ -290,19 +299,23 @@ function render() {
 function cardHtml(word, stat) {
   const status = classifyWord(stat);
   const concept = isConceptWord(word);
+  // 1行目: 見出し語（英語は等幅）＋訳＋状態、2行目: 例文または場面。足元に履歴・記憶・メモ
+  const term = escapeHtml(word.answer ?? word.en);
+  const termClass = concept && !/^[A-Za-z0-9 .,'’/&()-]+$/.test(word.answer ?? word.en ?? "") ? "gcard__term" : "gcard__term mono";
   return `
     <article class="gcard gcard--${status}">
       <div class="gcard__head">
-        <button type="button" class="gcard__term" data-word-detail="${word.id}">${escapeHtml(word.answer ?? word.en)}</button>
+        <button type="button" class="${termClass}" data-word-detail="${word.id}">${term}</button>
+        ${concept
+          ? `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`
+          : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}
         <span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span>
       </div>
       ${concept
         ? `<p class="gcard__q">${escapeHtml(word.q)}</p>
-           <p class="gcard__ja">${escapeHtml(word.ja)}</p>
-           ${word.explain ? `<p class="gcard__explain">📘 ${escapeHtml(word.explain)}</p>` : ""}
+           ${word.explain ? `<p class="gcard__explain">${escapeHtml(word.explain)}</p>` : ""}
            ${word.accept?.length ? `<p class="gcard__accept">別解: ${word.accept.map(escapeHtml).join(" / ")}</p>` : ""}`
-        : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>
-           ${hasExample(word) ? `<p class="gcard__ex">${exampleHtml(word, { speakButton: false, className: "gcard__ex" })}</p>` : ""}`}
+        : hasExample(word) ? `<p class="gcard__ex">${exampleHtml(word, { speakButton: false, className: "gcard__ex" })}</p>` : ""}
       <div class="gcard__foot">
         ${historyDotsHtml(stat)}
         ${memoryGaugeHtml(stat)}

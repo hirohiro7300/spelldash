@@ -1,0 +1,1831 @@
+/* pages — 「墨と朱」領域別スタイル（docs/CONCEPT.md）。brand.css の後に読み込む。
+   対象: list / stats / profile / news / privacy / battle と、そこに出る部品（単語詳細・ご意見フォーム）。
+   すべて html[data-theme] を頭に付けて theme.css と同じ詳細度で後勝ちにする。 */
+
+/* ===== ページの器 ===== */
+html[data-theme] .app {
+  width: min(1000px, 100%);
+  padding: 20px 16px 56px;
+}
+
+html[data-theme] .app--narrow {
+  width: min(720px, 100%);
+}
+
+/* ---- 見出し（装飾なしの文字だけ） ---- */
+html[data-theme] .hero,
+html[data-theme] .hero--compact {
+  margin: 8px 0 20px;
+}
+
+html[data-theme] .logo {
+  display: block;
+  margin: 0 0 6px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] .hero h1,
+html[data-theme] .hero--compact h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+html[data-theme] .hero .subtitle,
+html[data-theme] .hero--compact .subtitle {
+  margin: 8px 0 0;
+  max-width: 640px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+html[data-theme] .hero .subtitle a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+html[data-theme] .hero .subtitle a:hover {
+  color: var(--signal-ink);
+}
+
+@media (min-width: 720px) {
+  html[data-theme] .hero h1,
+  html[data-theme] .hero--compact h1 {
+    font-size: 32px;
+  }
+}
+
+/* ---- カード ---- */
+html[data-theme] .result-card,
+html[data-theme] .stat-card {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] .result-card {
+  margin-top: 16px;
+  padding: 16px;
+}
+
+html[data-theme] .result-card > h3,
+html[data-theme] .result-card .card-head h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .result-card > h3 .muted {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+html[data-theme] .card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+html[data-theme] .result-card > .muted,
+html[data-theme] .muted {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+html[data-theme] .result-card > .muted {
+  margin: 0 0 12px;
+}
+
+@media (min-width: 720px) {
+  html[data-theme] .result-card {
+    padding: 20px;
+  }
+}
+
+/* ---- 数字（1枚1数字。等幅） ---- */
+html[data-theme] .metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+html[data-theme] .result-card .metric-grid {
+  margin: 0;
+}
+
+html[data-theme] .stat-card {
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+}
+
+html[data-theme] .stat-card span {
+  display: block;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+html[data-theme] .stat-card strong {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  animation: none;
+}
+
+@media (min-width: 720px) {
+  html[data-theme] .metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ---- タブ（下線） ---- */
+html[data-theme] .stats-tabs,
+html[data-theme] .my-tabs {
+  display: flex;
+  gap: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-theme] .stats-tab,
+html[data-theme] .my-tab {
+  flex: 0 0 auto;
+  margin-bottom: -1px;
+  padding: 10px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  text-align: center;
+}
+
+html[data-theme] .stats-tab:hover,
+html[data-theme] .my-tab:hover {
+  color: var(--ink);
+  background: transparent;
+}
+
+html[data-theme] .stats-tab--active,
+html[data-theme] .my-tab--active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+  background: transparent;
+}
+
+html[data-theme] .stats-tab {
+  flex: 1 1 0;
+}
+
+html[data-theme] .my-tabs {
+  margin: 4px 0 12px;
+}
+
+html[data-theme] .my-tab {
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+/* ---- チップ ---- */
+html[data-theme] .filter-chip,
+html[data-theme] .genre-chip,
+html[data-theme] .gcard__status,
+html[data-theme] .gcard__pos,
+html[data-theme] .word-detail__status,
+html[data-theme] .my-word__status,
+html[data-theme] .known-words__item,
+html[data-theme] .preseason-tag {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+  text-decoration: none;
+}
+
+html[data-theme] .filter-chip {
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+html[data-theme] .filter-chip:hover,
+html[data-theme] .genre-chip:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+  border-color: var(--line-2);
+}
+
+html[data-theme] .filter-chip--active,
+html[data-theme] .genre-chip--active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+html[data-theme] .filter-chip--active:hover,
+html[data-theme] .genre-chip--active:hover {
+  background: var(--ink-2);
+  color: var(--paper);
+}
+
+html[data-theme] .list-filters {
+  gap: 6px;
+  margin: 12px 0 8px;
+}
+
+html[data-theme] .filter-chip--right {
+  margin-left: auto;
+}
+
+/* 状態は文字色だけで表す */
+html[data-theme] .gcard__status--learning,
+html[data-theme] .word-detail__status--learning,
+html[data-theme] .my-word__status--learning { color: var(--ink); }
+html[data-theme] .gcard__status--mastered,
+html[data-theme] .word-detail__status--mastered,
+html[data-theme] .my-word__status--mastered { color: var(--ok); background: var(--ok-soft); }
+html[data-theme] .gcard__status--weak,
+html[data-theme] .word-detail__status--weak,
+html[data-theme] .my-word__status--weak { color: var(--signal-ink); background: var(--signal-soft); }
+html[data-theme] .gcard__status--known,
+html[data-theme] .word-detail__status--known { color: var(--ink-3); }
+
+/* ===== 単語帳ページ ===== */
+
+/* ---- 分野パック（畳める棚） ---- */
+html[data-theme] .packs {
+  margin: 0 0 12px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+html[data-theme] .packs-fold__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 12px 16px;
+  list-style: none;
+  cursor: pointer;
+}
+
+html[data-theme] .packs-fold__summary::-webkit-details-marker {
+  display: none;
+}
+
+html[data-theme] .packs-fold__summary::before,
+html[data-theme] .my-fold__summary::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: translateY(-2px) rotate(-45deg);
+  transition: transform var(--ease);
+  color: transparent;
+}
+
+html[data-theme] .packs-fold[open] > .packs-fold__summary::before,
+html[data-theme] .my-fold[open] > .my-fold__summary::before {
+  transform: translateY(-3px) rotate(45deg);
+}
+
+html[data-theme] .packs__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .packs__count {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .packs-fold__hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .packs__head {
+  padding: 0 16px;
+}
+
+html[data-theme] .packs__lead {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .packs__lead a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+html[data-theme] .packs__tools {
+  margin: 0 0 4px;
+}
+
+html[data-theme] .packs__tools input {
+  flex: 1 1 220px;
+  max-width: 360px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+html[data-theme] .packs__grid {
+  display: block;
+  padding: 0 16px 12px;
+}
+
+html[data-theme] .pack-group {
+  margin-top: 12px;
+}
+
+html[data-theme] .pack-group__title {
+  margin: 0;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .pack-group__count {
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+html[data-theme] .pack-group__grid {
+  display: block;
+}
+
+/* 1分野=1行。名前・枚数／説明／ボタン */
+html[data-theme] .pack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head actions"
+    "blurb actions";
+  align-items: center;
+  gap: 2px 12px;
+  padding: 10px 0;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-theme] .pack:last-child {
+  border-bottom: none;
+}
+
+html[data-theme] .pack--on {
+  background: transparent;
+  border-color: var(--line);
+}
+
+html[data-theme] .pack__head {
+  grid-area: head;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+html[data-theme] .pack__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-theme] .pack__count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+html[data-theme] .pack__blurb {
+  grid-area: blurb;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-theme] .pack__actions {
+  grid-area: actions;
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  flex-wrap: nowrap;
+}
+
+html[data-theme] .pack__actions .btn--sm {
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+html[data-theme] .pack__toggle--on {
+  color: var(--ok);
+  border-color: var(--line);
+}
+
+html[data-theme] .pack__toggle--on .icon {
+  margin-right: 2px;
+}
+
+html[data-theme] .pack__toggle--on:hover {
+  color: var(--signal-ink);
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .pack {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "head"
+      "blurb"
+      "actions";
+    gap: 2px;
+  }
+  html[data-theme] .pack__actions {
+    margin-top: 4px;
+  }
+  html[data-theme] .pack__blurb {
+    white-space: normal;
+  }
+  html[data-theme] .packs-fold__hint {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}
+
+/* ---- マイ単語帳（畳み） ---- */
+html[data-theme] .my-fold {
+  margin: 0 0 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+}
+
+html[data-theme] .my-fold__summary {
+  padding: 12px 16px;
+}
+
+html[data-theme] .my-fold__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .my-fold__count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin: 0;
+}
+
+html[data-theme] .my-fold__hint {
+  font-size: 12px;
+  margin: 0;
+}
+
+html[data-theme] .my-fold__body {
+  padding: 0 16px 16px;
+}
+
+html[data-theme] .my-words__form input,
+html[data-theme] .my-concept__form input,
+html[data-theme] .my-concept__form textarea,
+html[data-theme] .cardgen textarea,
+html[data-theme] .my-words__bulk textarea {
+  padding: 9px 12px;
+  font-size: 14px;
+  background: var(--paper-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+
+html[data-theme] .my-words__bulk {
+  margin-top: 12px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+html[data-theme] .my-words__bulk summary {
+  cursor: pointer;
+  color: var(--ink-2);
+}
+
+html[data-theme] .my-words__status--error {
+  color: var(--signal-ink);
+}
+
+html[data-theme] .my-word {
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 0;
+}
+
+html[data-theme] .my-word__en {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html[data-theme] .my-word--concept .my-word__en {
+  color: var(--ink);
+}
+
+html[data-theme] .my-word__ja,
+html[data-theme] .my-word__q {
+  color: var(--ink-2);
+}
+
+html[data-theme] .my-word__explain {
+  color: var(--ink-3);
+}
+
+html[data-theme] .my-word__remove {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .my-word__remove:hover {
+  color: var(--signal-ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] .cardgen__card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+}
+
+html[data-theme] .cardgen__card--dup {
+  opacity: 0.6;
+}
+
+html[data-theme] .cardgen__field {
+  background: var(--paper-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+
+html[data-theme] .cardgen__dup {
+  color: var(--warn);
+}
+
+html[data-theme] .cardgen__done a {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* ---- 一覧の操作 ---- */
+html[data-theme] .list-controls {
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+html[data-theme] .list-controls__field {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+html[data-theme] .list-controls__field .setting-select {
+  padding: 8px 12px;
+  font-size: 14px;
+  border-radius: var(--radius);
+}
+
+html[data-theme] .list-summary {
+  margin: 4px 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .list-review {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .list-review__button {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+html[data-theme] .genre-nav {
+  top: 56px;
+  gap: 6px;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  background: var(--paper);
+  background-image: none;
+  border-bottom: 1px solid var(--line);
+}
+
+html[data-theme] .genre-chip {
+  padding: 5px 10px;
+  color: var(--ink-2);
+}
+
+html[data-theme] .genre-chip span {
+  margin-left: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .genre-chip--active span {
+  color: var(--paper);
+  opacity: 0.8;
+}
+
+/* ---- ジャンル ---- */
+html[data-theme] .genre {
+  margin: 24px 0 0;
+  scroll-margin-top: 110px;
+}
+
+html[data-theme] .genre__head {
+  align-items: center;
+  gap: 8px 12px;
+  padding-bottom: 8px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--line-2);
+}
+
+html[data-theme] .genre__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .genre__count {
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+html[data-theme] .genre__clear,
+html[data-theme] .cat-row__clear {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+html[data-theme] .genre__clear .icon {
+  margin-right: 2px;
+}
+
+html[data-theme] .genre__meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .genre__head .btn--sm {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* ---- 語の行（2行） ---- */
+html[data-theme] .genre__cards {
+  display: block;
+}
+
+html[data-theme] .gcard {
+  display: block;
+  padding: 10px 0;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  gap: 0;
+}
+
+html[data-theme] .gcard--weak,
+html[data-theme] .gcard--learning,
+html[data-theme] .gcard--mastered {
+  border-color: var(--line);
+}
+
+html[data-theme] .gcard__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 4px 10px;
+}
+
+html[data-theme] .gcard__term {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  letter-spacing: 0;
+}
+
+html[data-theme] .gcard__term:not(.mono) {
+  font-family: var(--font-ui);
+  font-weight: 700;
+}
+
+html[data-theme] .gcard__term:hover {
+  color: var(--signal-ink);
+  background: transparent;
+}
+
+html[data-theme] .gcard__ja {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+html[data-theme] .gcard__pos {
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+  vertical-align: 1px;
+}
+
+html[data-theme] .gcard__status {
+  margin-left: auto;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+
+html[data-theme] .gcard__q {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+html[data-theme] .gcard__ex {
+  margin: 4px 0 0;
+  padding: 0;
+  border: none;
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+html[data-theme] .gcard__ex__en {
+  display: block;
+  font-family: var(--font-mono);
+  color: var(--ink-2);
+}
+
+html[data-theme] .gcard__ex__en b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html[data-theme] .gcard__ex__ja {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .gcard__explain {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+html[data-theme] .gcard__accept {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .gcard__foot {
+  margin-top: 6px;
+  gap: 6px 10px;
+}
+
+html[data-theme] .gcard__foot:empty {
+  display: none;
+}
+
+html[data-theme] body.list-compact .gcard {
+  padding: 7px 0;
+}
+
+html[data-theme] body.list-compact .gcard__ex {
+  display: none;
+}
+
+/* ---- 履歴・記憶ゲージ・メモ ---- */
+html[data-theme] .hist i {
+  width: 8px;
+  height: 8px;
+}
+
+html[data-theme] .hist__o { background: var(--ok); }
+html[data-theme] .hist__x { background: var(--signal); }
+
+html[data-theme] .mem {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+html[data-theme] .mem__bar {
+  height: 4px;
+  background: var(--paper-3);
+}
+
+html[data-theme] .mem__bar b {
+  background: var(--ink);
+  background-image: none;
+}
+
+html[data-theme] .note-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .note-chip .icon {
+  margin: 0;
+}
+
+html[data-theme] .note-chip:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] .note-chip--has {
+  border-style: solid;
+  border-color: var(--line-2);
+  background: var(--paper-3);
+  color: var(--ink-2);
+}
+
+html[data-theme] .note-input {
+  background: var(--paper-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+
+html[data-theme] .note-save {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html[data-theme] .note-save:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+/* ===== 学習データ ===== */
+
+/* ---- レベル: 1行 ---- */
+html[data-theme] .level-bar {
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 0 0 12px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] .level-bar__badge {
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  background: var(--paper-3);
+  background-image: none;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  animation: none;
+  box-shadow: none;
+}
+
+html[data-theme] .level-bar__head {
+  margin-bottom: 4px;
+}
+
+html[data-theme] .level-bar__title {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-theme] .level-bar__next,
+html[data-theme] .level-bar__remaining {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+html[data-theme] .level-bar__xp {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .progress-bar {
+  background: var(--paper-3);
+  border-radius: 999px;
+}
+
+html[data-theme] .progress-bar--slim {
+  height: 4px;
+}
+
+html[data-theme] .progress-bar__fill {
+  background: var(--ink);
+  background-image: none;
+}
+
+/* ---- 週間レポート（シェアは外す） ---- */
+html[data-theme] .weekly__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .weekly__range {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .weekly__grid div {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+}
+
+html[data-theme] .weekly__grid span {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .weekly__grid strong {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .weekly__grid small {
+  color: var(--ink-3);
+}
+
+html[data-theme] .weekly__note {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .weekly .weekly__actions {
+  display: none;
+}
+
+/* はちゃん（週間レポートの一言）: 32px・紙の吹き出し */
+html[data-theme] .hasumi {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 8px 0 12px;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+html[data-theme] .hasumi__avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--paper-2);
+  box-shadow: none;
+}
+
+html[data-theme] .hasumi__avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+html[data-theme] .hasumi__bubble {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+html[data-theme] .hasumi__bubble::before,
+html[data-theme] .hasumi__bubble::after {
+  display: none;
+}
+
+/* ---- 推移グラフの凡例 ---- */
+html[data-theme] .score-trend__empty,
+html[data-theme] .score-trend__legend {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .score-trend__dot--challenge { background: var(--ink); }
+html[data-theme] .score-trend__dot--daily { background: var(--signal); }
+html[data-theme] .score-trend__latest { font-family: var(--font-mono); color: var(--ink-2); }
+
+/* ---- 今月のまとめ・カレンダー ---- */
+html[data-theme] .monthly-line {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .monthly-line b {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .cal__summary {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+html[data-theme] .cal__summary b {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .cal__months {
+  font-family: var(--font-mono);
+  color: var(--ink-3);
+}
+
+html[data-theme] .cal__day {
+  border-radius: 2px;
+  background: var(--paper-3);
+}
+
+html[data-theme] .cal__day--1 { background: var(--ok); opacity: 0.35; }
+html[data-theme] .cal__day--2 { background: var(--ok); opacity: 0.55; }
+html[data-theme] .cal__day--3 { background: var(--ok); opacity: 0.78; }
+html[data-theme] .cal__day--4 { background: var(--ok); opacity: 1; }
+html[data-theme] .cal__day--today { outline: 1.5px solid var(--ink); outline-offset: -1px; }
+html[data-theme] .cal__day--future { background: transparent; border: 1px dashed var(--line); opacity: 1; }
+
+html[data-theme] .cal__legend {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* ---- 覚えた単語帳 ---- */
+html[data-theme] .learned-item {
+  margin: 0;
+  padding: 8px 0;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  font-size: 14px;
+}
+
+html[data-theme] .learned-item__en {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+html[data-theme] .learned-item__en:hover {
+  color: var(--signal-ink);
+  background: transparent;
+}
+
+html[data-theme] .learned-item__ja { color: var(--ink-2); font-size: 13px; }
+html[data-theme] .learned-item__meta { color: var(--ink-3); font-size: 12px; }
+
+html[data-theme] .known-fold {
+  margin-top: 12px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+html[data-theme] .known-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
+html[data-theme] .known-words__item {
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+html[data-theme] .known-words__item:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] .learned-csv {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* ---- カテゴリ別の進捗 ---- */
+html[data-theme] .cat-row {
+  margin: 0;
+  padding: 12px 0;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+html[data-theme] .cat-row:hover {
+  background: transparent;
+  border-color: var(--line-2);
+}
+
+html[data-theme] .cat-row__label {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+html[data-theme] .cat-row__total {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+html[data-theme] .cat-row__learned {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .cat-row__learned strong {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .cat-row__list {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: transparent;
+  border: none;
+  margin-left: 8px;
+}
+
+html[data-theme] .cat-bar {
+  height: 4px;
+  margin: 8px 0 6px;
+  background: var(--paper-3);
+}
+
+html[data-theme] .cat-bar__mastered { background: var(--ok); }
+html[data-theme] .cat-bar__learning { background: var(--ink-4); }
+html[data-theme] .cat-bar__weak { background: var(--signal); }
+
+html[data-theme] .cat-row__legend,
+html[data-theme] .cat-legend {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* ---- 苦手単語・単語一覧 ---- */
+html[data-theme] .word-list {
+  gap: 0;
+}
+
+html[data-theme] .word-item {
+  padding: 10px 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+html[data-theme] .word-item strong,
+html[data-theme] .word-item__detail {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+html[data-theme] .leech-tag {
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+  font-size: 11px;
+}
+
+html[data-theme] .word-count {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+html[data-theme] .word-list-fold summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+html[data-theme] .word-filter,
+html[data-theme] #wordSearch {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  width: 100%;
+  max-width: 360px;
+  display: block;
+}
+
+/* ===== プロフィール（設定） ===== */
+html[data-theme] .settings {
+  margin-top: 24px;
+}
+
+html[data-theme] .settings__title {
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .setting-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+html[data-theme] .setting-row label,
+html[data-theme] .setting-row__text {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+html[data-theme] .setting-row__value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+  text-align: right;
+}
+
+html[data-theme] .setting-row__value .muted {
+  font-size: 12px;
+  margin: 0;
+}
+
+html[data-theme] .profile-email {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .setting-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+html[data-theme] .setting-row--stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html[data-theme] .setting-row--install:empty,
+html[data-theme] .setting-row--install:has(#installCard:empty) {
+  display: none;
+}
+
+html[data-theme] .setting-block .setting-row:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+html[data-theme] .setting-select {
+  max-width: 100%;
+  padding: 8px 32px 8px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-2);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+html[data-theme] .setting-select--accent {
+  max-width: 76px;
+  font-family: var(--font-mono);
+}
+
+html[data-theme] .voice-row .setting-select {
+  max-width: 280px;
+}
+
+html[data-theme] .voice-row,
+html[data-theme] .volume-row {
+  justify-self: end;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+html[data-theme] .volume-row input[type="range"] {
+  width: 120px;
+  accent-color: var(--ink);
+}
+
+html[data-theme] .volume-row__value {
+  min-width: 40px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .setting-status {
+  min-height: 18px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+html[data-theme] .setting-status:empty {
+  display: none;
+}
+
+html[data-theme] .backup-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+html[data-theme] .backup-import {
+  cursor: pointer;
+}
+
+html[data-theme] .install__done {
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .setting-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  html[data-theme] .voice-row,
+  html[data-theme] .volume-row {
+    justify-self: start;
+    justify-content: flex-start;
+    width: 100%;
+  }
+  html[data-theme] .voice-row .setting-select {
+    max-width: none;
+    flex: 1 1 140px;
+  }
+  html[data-theme] .setting-select--accent {
+    flex: 0 0 76px;
+  }
+  html[data-theme] .setting-row > .setting-select {
+    width: 100%;
+  }
+  html[data-theme] .setting-row__value {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+/* ===== お知らせ ===== */
+html[data-theme] .news-list {
+  gap: 0;
+  max-width: none;
+}
+
+html[data-theme] .news-item {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 4px 16px;
+  padding: 16px 0;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-theme] .news-item__date {
+  padding-top: 2px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+html[data-theme] .news-item__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+html[data-theme] .news-item__body {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ink-2);
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .news-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+/* ===== プライバシー ===== */
+html[data-theme] .policy {
+  max-width: 680px;
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ink-2);
+}
+
+html[data-theme] .policy h3 {
+  margin: 28px 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .policy h3:first-child {
+  margin-top: 0;
+}
+
+html[data-theme] .policy p {
+  margin: 0 0 8px;
+}
+
+html[data-theme] .policy ul {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+html[data-theme] .policy li {
+  margin: 4px 0;
+}
+
+html[data-theme] .policy strong {
+  color: var(--ink);
+}
+
+html[data-theme] .policy a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+html[data-theme] .policy a:hover {
+  color: var(--signal-ink);
+}
+
+/* ===== 単語詳細・ご意見（モーダル） ===== */
+html[data-theme] .word-detail__backdrop,
+html[data-theme] .feedback-modal__backdrop {
+  background: rgba(22, 23, 27, 0.45);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] .word-detail__panel,
+html[data-theme] .feedback-modal__panel {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  box-shadow: none;
+  color: var(--ink);
+}
+
+html[data-theme] .word-detail__close,
+html[data-theme] .feedback-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-3);
+}
+
+html[data-theme] .word-detail__close .icon,
+html[data-theme] .feedback-modal__close .icon {
+  margin: 0;
+}
+
+html[data-theme] .word-detail__close:hover,
+html[data-theme] .feedback-modal__close:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] .word-detail__head {
+  padding-right: 36px;
+}
+
+html[data-theme] .word-detail__en {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+html[data-theme] .word-detail__en:not(.mono) {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 22px;
+}
+
+html[data-theme] .word-detail__speak,
+html[data-theme] .speak-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+html[data-theme] .word-detail__speak:hover,
+html[data-theme] .speak-button:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+html[data-theme] .word-detail__ja {
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+html[data-theme] .word-detail__q {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+html[data-theme] .word-detail__meta {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .word-detail__status {
+  padding: 1px 8px;
+}
+
+html[data-theme] .word-detail__history {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .word-detail__note label {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-theme] .word-detail__family {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+html[data-theme] .word-detail__family .family-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+html[data-theme] .word-detail__ex,
+html[data-theme] .word-example {
+  text-align: left;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+html[data-theme] .word-example__en,
+html[data-theme] .word-detail__ex .word-example__en {
+  display: block;
+  font-family: var(--font-mono);
+  color: var(--ink-2);
+}
+
+html[data-theme] .word-example__en b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html[data-theme] .word-example__ja {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .word-example__speak {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 4px;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-3);
+}
+
+html[data-theme] .word-example__speak .icon {
+  margin: 0;
+}
+
+html[data-theme] .word-example__speak:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] .feedback-modal__head h3 {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+html[data-theme] .feedback-modal__lead {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+html[data-theme] .feedback-modal__panel textarea,
+html[data-theme] .feedback-modal__panel input {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+html[data-theme] .feedback-modal__status {
+  color: var(--ok);
+  font-size: 13px;
+}
+
+html[data-theme] .feedback-modal__note {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* ===== 覚え方（AI）の表示: 単語詳細の中 ===== */
+html[data-theme] .word-detail__ai {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* ===== 減速設定 ===== */
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] .packs-fold__summary::before,
+  html[data-theme] .my-fold__summary::before {
+    transition: none;
+  }
+}

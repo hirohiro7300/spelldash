@@ -5,10 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>分野パック一覧 | SpellDash</title>
   <link rel="stylesheet" href="/css/reset.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="/css/tokens.css" />
   <link rel="stylesheet" href="/css/layout.css" />
   <link rel="stylesheet" href="/css/game.css" />
   <link rel="stylesheet" href="/css/responsive.css" />
   <link rel="stylesheet" href="/css/theme.css" />
+  <link rel="stylesheet" href="/css/brand.css" />
+  <link rel="stylesheet" href="/css/pages.css" />
   <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
   <meta name="description" content="不動産・会計・医療・SaaS・英検・TOEIC・中学高校の教科など、SpellDash の学習パック一覧。追加した分野だけがホームに出ます。" />
   <link rel="canonical" href="https://www.spelldash.net/packs/" />
@@ -23,34 +29,35 @@
   <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <style>
-    .pp { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; }
-    .pp-hero { padding: 28px 0 16px; }
-    .pp-kicker { font-size: 12px; color: #64748b; margin: 0 0 6px; }
-    .pp h1 { font-size: 26px; margin: 0 0 8px; line-height: 1.3; }
-    .pp-lead { font-size: 15px; line-height: 1.7; margin: 0 0 6px; }
-    .pp-meta { font-size: 13px; color: #64748b; margin: 0 0 16px; }
-    .pp-cta { display: inline-block; padding: 12px 22px; border-radius: 999px; background: #2563eb; color: #fff; font-weight: 700; text-decoration: none; }
-    .pp-cta:hover { background: #1d4ed8; }
-    .pp-sub { margin-left: 12px; font-size: 13px; }
-    .pp h2 { font-size: 17px; margin: 28px 0 10px; }
+    .pp { max-width: 720px; margin: 0 auto; padding: 8px 16px 56px; color: var(--ink); }
+    .pp-hero { padding: 24px 0 8px; }
+    .pp-kicker { margin: 0 0 6px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); }
+    .pp h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; }
+    .pp-lead { margin: 0 0 6px; font-size: 15px; line-height: 1.7; color: var(--ink-2); }
+    .pp-meta { margin: 0 0 16px; font-size: 13px; color: var(--ink-3); }
+    .pp-cta { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: var(--radius); background: var(--ink); color: var(--paper); font-size: 14px; font-weight: 700; text-decoration: none; }
+    .pp-cta:hover { background: var(--ink-2); }
+    .pp-sub { margin-left: 12px; font-size: 13px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+    .pp-sub:hover { color: var(--signal-ink); }
+    .pp h2 { margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-2); font-size: 16px; font-weight: 700; }
     .pp-genres { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0; list-style: none; }
-    .pp-genres li { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid #cbd5e1; }
-    .pp-cards { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
-    .pp-card { display: grid; gap: 3px; padding: 10px 12px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; }
-    .pp-card__q { font-size: 14px; line-height: 1.6; }
-    .pp-card__q small { color: #64748b; margin-left: 4px; }
-    .pp-card__a { font-weight: 700; color: #1d4ed8; }
-    .pp-card__ex { font-size: 12.5px; color: #475569; }
-    .pp-how { font-size: 14px; line-height: 1.7; }
+    .pp-genres li { padding: 4px 10px; border-radius: 999px; background: var(--paper-3); color: var(--ink-2); font-size: 12px; font-weight: 600; }
+    .pp-genres li span { margin-left: 4px; font-family: var(--font-mono); font-weight: 500; color: var(--ink-3); }
+    .pp-cards { display: grid; gap: 0; padding: 0; margin: 0; list-style: none; border-top: 1px solid var(--line); }
+    .pp-card { display: grid; gap: 2px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .pp-card__q { font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+    .pp-card__q small { margin-left: 4px; color: var(--ink-3); }
+    .pp-card__a { font-weight: 600; color: var(--ink); }
+    .pp-card--en .pp-card__a { font-family: var(--font-mono); font-size: 16px; }
+    .pp-card__ex { font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+    .pp-how { padding-left: 18px; font-size: 14px; line-height: 1.7; color: var(--ink-2); }
     .pp-how li { margin: 4px 0; }
-    .pp-other { font-size: 13.5px; line-height: 1.9; }
-    .pp-index h2 { margin-top: 24px; }
+    .pp-other { font-size: 13.5px; line-height: 1.9; color: var(--ink-2); }
+    .pp-other a, .pp-index a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+    .pp-other a:hover, .pp-index a:hover { color: var(--signal-ink); }
+    .pp-index h2 { margin-top: 28px; }
     .pp-index ul { padding-left: 18px; line-height: 1.9; }
-    html[data-theme="dark"] .pp-kicker, html[data-theme="dark"] .pp-meta { color: #94a3b8; }
-    html[data-theme="dark"] .pp-genres li { border-color: rgba(148,163,184,.35); }
-    html[data-theme="dark"] .pp-card { background: rgba(15,23,42,.6); border-color: rgba(148,163,184,.25); }
-    html[data-theme="dark"] .pp-card__a { color: #93c5fd; }
-    html[data-theme="dark"] .pp-card__ex { color: #94a3b8; }
+    .pp-index small { color: var(--ink-3); }
   </style>
 </head>
 <body>
@@ -71,7 +78,7 @@
       <p class="pp-kicker">SpellDash</p>
       <h1>分野パック一覧</h1>
       <p class="pp-lead">仕事の共通言語、試験の語彙、学校の暗記もの。追加した分野だけがホームに出て、思い出して打つ・復習の仕組みで覚えられます。</p>
-      <p class="pp-meta">104パック ・ 7,422枚</p>
+      <p class="pp-meta">116パック ・ 8,851枚</p>
       <a class="pp-cta" href="/list.html#packs">単語帳ページで追加する</a>
     </section>
     <section class="pp-index">
@@ -89,6 +96,8 @@
       <ul><li><a href="/packs/writing-jhs-order.html">中学英語 並べ替え</a> <small>100枚 ・ ばらばらの語を正しい順に並べて英文を打つ。疑問文・副詞・比較の語順</small></li><li><a href="/packs/writing-jhs.html">中学英作文</a> <small>100枚 ・ 中学で習う文法で言える日常の文を、日本語から英文にして打つ</small></li><li><a href="/packs/writing-hs.html">高校英作文（構文）</a> <small>80枚 ・ 仮定法・関係詞・分詞構文・倒置。高校の基本構文を日本語から英文にして打つ</small></li><li><a href="/packs/writing-eiken.html">英検ライティング 定型表現</a> <small>70枚 ・ 意見文とEメールで使い回せる型を、日本語から英文にして打つ。3級〜準1級</small></li><li><a href="/packs/writing-interview.html">英語面接 定番フレーズ</a> <small>70枚 ・ 自己紹介・強み・志望動機から逆質問・締めまで、面接で言いたい70文</small></li></ul>
       <h2>試験・レベル別（英検・TOEIC）</h2>
       <ul><li><a href="/packs/eiken5.html">英検5級</a> <small>120枚 ・ 中学初級レベル。身近な名詞・基本動詞・家族・学校・時間の語</small></li><li><a href="/packs/eiken4.html">英検4級</a> <small>120枚 ・ 中学中級レベル。日常の動作・場所・気持ち・基本の形容詞と副詞</small></li><li><a href="/packs/eiken3.html">英検3級</a> <small>120枚 ・ 中学卒業レベル。抽象名詞の入口、社会・環境・意見を言うための語</small></li><li><a href="/packs/eikenp2.html">英検準2級</a> <small>120枚 ・ 高校中級レベル。長文で出る一般語彙・接続表現・学問分野の語</small></li><li><a href="/packs/eiken2.html">英検2級</a> <small>120枚 ・ 高校卒業レベル。社会問題・科学技術・経済・意見論述の語</small></li><li><a href="/packs/eikenp1.html">英検準1級</a> <small>120枚 ・ 大学中級レベル。新聞英語・学術的な一般語・評価や態度を表す語</small></li><li><a href="/packs/eiken1.html">英検1級</a> <small>120枚 ・ 大学上級レベル。高度で低頻度だが試験で狙われる形容詞・動詞</small></li><li><a href="/packs/toeic500.html">TOEIC 500点</a> <small>120枚 ・ オフィス・買い物・交通の基本語。まず土台になる120語</small></li><li><a href="/packs/toeic600.html">TOEIC 600点</a> <small>120枚 ・ 会議・メール・日程・施設・採用。職場の定番語を一気に</small></li><li><a href="/packs/toeic730.html">TOEIC 730点</a> <small>120枚 ・ 契約・財務・製造・広告・人事。文法・読解問題で毎回出る語</small></li><li><a href="/packs/toeic860.html">TOEIC 860点</a> <small>120枚 ・ 言い換えで狙われる語、フォーマルな動詞・形容詞、経済記事の語彙</small></li><li><a href="/packs/toeic990.html">TOEIC 990点</a> <small>121枚 ・ 低頻度でも満点なら落とせない語。似た語の精密な使い分け</small></li></ul>
+      <h2>NGSL 基本英単語 2,800語（オープン教材・頻度順）</h2>
+      <ul><li><a href="/packs/ngsl01.html">NGSL 基本英単語 1（数・曜日・月と 1〜72位）</a> <small>120枚 ・ 英文の約9割を作る基本2,800語（NGSL）を頻度順に。まず数・曜日・月から</small></li><li><a href="/packs/ngsl02.html">NGSL 基本英単語 2（73〜191位）</a> <small>119枚 ・ NGSL の 73〜191位。頻度順なので、前のパックほど出会う回数が多い語</small></li><li><a href="/packs/ngsl03.html">NGSL 基本英単語 3（192〜310位）</a> <small>119枚 ・ NGSL の 192〜310位。頻度順なので、前のパックほど出会う回数が多い語</small></li><li><a href="/packs/ngsl04.html">NGSL 基本英単語 4（311〜429位）</a> <small>119枚 ・ NGSL の 311〜429位。頻度順。前のパックほどよく出会う語</small></li><li><a href="/packs/ngsl05.html">NGSL 基本英単語 5（430〜548位）</a> <small>119枚 ・ NGSL の 430〜548位。頻度順。前のパックほどよく出会う語</small></li><li><a href="/packs/ngsl06.html">NGSL 基本英単語 6（549〜667位）</a> <small>119枚 ・ NGSL の 549〜667位。頻度順。前のパックほどよく出会う語</small></li><li><a href="/packs/ngsl07.html">NGSL 基本英単語 7（668〜786位）</a> <small>119枚 ・ NGSL の 668〜786位。頻度順。前のパックほどよく出会う語</small></li><li><a href="/packs/ngsl08.html">NGSL 基本英単語 8（787〜905位）</a> <small>119枚 ・ NGSL の 787〜905位。頻度順。前のパックほどよく出会う語</small></li><li><a href="/packs/ngsl09.html">NGSL 基本英単語 9（906〜1024位）</a> <small>119枚 ・ NGSL の 906〜1024位。頻度順。前のパックほどよく出会う語</small></li><li><a href="/packs/ngsl10.html">NGSL 基本英単語 10（1025〜1143位）</a> <small>119枚 ・ NGSL の 1025〜1143位。頻度順。前のパックほどよく出会う語</small></li><li><a href="/packs/ngsl11.html">NGSL 基本英単語 11（1144〜1262位）</a> <small>119枚 ・ NGSL の 1144〜1262位。頻度順。前のパックほどよく出会う語</small></li><li><a href="/packs/ngsl12.html">NGSL 基本英単語 12（1263〜1381位）</a> <small>119枚 ・ NGSL の 1263〜1381位。頻度順。前のパックほどよく出会う語</small></li></ul>
       <h2>ビジネス・バックオフィス</h2>
       <ul><li><a href="/packs/accounting.html">簿記・会計の基本</a> <small>55枚 ・ 仕訳から財務諸表、月次決算、消費税の入口まで。経理の共通言語</small></li><li><a href="/packs/legal.html">契約・法務の基本</a> <small>54枚 ・ NDAから業務委託、条項の読み方、締結の実務まで。契約の共通言語</small></li><li><a href="/packs/hr.html">人事・労務 実務</a> <small>55枚 ・ 採用から退職まで、人事が毎日使う言葉。勤怠・給与・社保・労務リスク</small></li><li><a href="/packs/generalaffairs.html">総務 実務</a> <small>54枚 ・ 規程・押印・文書管理から防災・総会事務まで、総務の共通言語</small></li><li><a href="/packs/secretary.html">秘書・役員サポート</a> <small>54枚 ・ アポ調整・来客・敬語・出張・慶弔まで、役員を支える現場の言葉</small></li><li><a href="/packs/pr.html">広報・PR</a> <small>54枚 ・ リリース・記者対応・会見・危機管理・効果測定。広報の共通言語</small></li><li><a href="/packs/freelancetax.html">フリーランスの税務・確定申告</a> <small>55枚 ・ 開業届から青色申告・経費・インボイス・記帳まで、独立1年目の共通言語</small></li><li><a href="/packs/staffing.html">人材紹介・人材派遣</a> <small>55枚 ・ 紹介と派遣の仕組み・料金・KPI・法令。人材業界の共通語</small></li><li><a href="/packs/publicbid.html">入札・官公庁営業</a> <small>55枚 ・ 公告から落札・検収まで。予定価格・随契・参加資格・予算の動きを一気に</small></li><li><a href="/packs/startupfinance.html">スタートアップの資金調達</a> <small>55枚 ・ VCとの会話に出る言葉。評価額・優先株・タームシート・バーンレートまで</small></li><li><a href="/packs/banking.html">銀行・金融の基本</a> <small>55枚 ・ 窓口・為替・融資・投信・支店内の共通語。1年目に出る用語を一通り</small></li><li><a href="/packs/insurance.html">保険営業の基本</a> <small>55枚 ・ 生保・損保の現場で毎日出る用語。契約・商品・請求・法令まで</small></li><li><a href="/packs/trade.html">貿易実務</a> <small>55枚 ・ 輸出入の現場の共通語。インコタームズ・B/L・L/C・通関・コンテナまで</small></li></ul>
       <h2>営業・マーケティング・メディア</h2>
