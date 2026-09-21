@@ -38,11 +38,6 @@ body.osk-open .offline-banner {
   border-color: rgba(248, 113, 113, 0.7);
 }
 
-@keyframes timer-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
-}
-
 /* Challengeモードでは非表示（Study限定機能） */
 body:not(.mode-study) .mix-control {
   display: none;
@@ -146,23 +141,6 @@ body:not(.mode-study) .study-queue {
 
 .queue-chip--more {
   border-style: dashed;
-}
-
-@keyframes chip-exit {
-  0% { opacity: 1; transform: translateX(0); }
-  100% { opacity: 0; transform: translateX(26px); }
-}
-
-@keyframes card-recalled {
-  0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
-  40% { box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.55); }
-  100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
-}
-
-@keyframes card-failed {
-  0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
-  40% { box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.55); }
-  100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
 }
 
 /* Reduced Motion: 移動アニメーションは行わず色だけで伝える */
@@ -1109,24 +1087,11 @@ button:hover {
   .weekly__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-@keyframes card-learned {
-  0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
-  30% { box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.75), 0 0 40px rgba(250, 204, 21, 0.35); }
-  100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
-}
-
 .learn-stamp {
   position: absolute;
   left: 50%;
   pointer-events: none;
   z-index: 3;
-}
-
-@keyframes stamp-in {
-  0% { opacity: 0; transform: translate(-50%, -50%) rotate(-8deg) scale(1.6); }
-  18% { opacity: 1; transform: translate(-50%, -50%) rotate(-8deg) scale(1); }
-  75% { opacity: 1; }
-  100% { opacity: 0; transform: translate(-50%, -60%) rotate(-8deg) scale(1); }
 }
 
 .message.learned {
@@ -1226,11 +1191,6 @@ button:hover {
 
 .word-tools .speak-button {
   margin: 0;
-}
-
-@keyframes hint-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
 }
 
 /* 自分のメモ（ゲームカード内） */
