@@ -39,7 +39,7 @@ for (const f of fs.readdirSync(path.join(ROOT, "data", "english"))) {
 for (const f of fs.readdirSync(path.join(ROOT, "data", "packs"))) {
   try {
     const d = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", f), "utf8"));
-    if (d.cardType === "word" && !/^(ngsl|tsl|bsl)/.test(String(d.category))) d.words?.forEach(addExisting);
+    if (d.cardType === "word") d.words?.forEach(addExisting);
   } catch {}
 }
 
@@ -113,30 +113,61 @@ function writePack(id, label, blurb, audience, words, meta) {
   fs.mkdirSync(OUT, { recursive: true });
   const dest = install ? path.join(ROOT, "data", "packs", `${id}.json`) : path.join(OUT, `${id}.json`);
   fs.writeFileSync(dest, text);
-  const todo = words.filter((w) => !w.ja || !w.pos || !w.ex).map((w) => ({ id: w.id, en: w.en, need: [!w.ja && "ja", !w.pos && "pos", !w.ex && "ex"].filter(Boolean), forms: (forms.get(w.en) || []).slice(0, 6), cefr: cefr.get(w.en)?.level ?? "" }));
+  const todo = words.filter((w) => !w.ja || !w.pos || !w.ex || respelled.has(w.en)).map((w) => ({ id: w.id, en: w.en, need: [!w.ja && "ja", !w.pos && "pos", !w.ex && "ex", respelled.has(w.en) && "つづりを直して収録した語。訳と例文がこのリストの意味か確認"].filter(Boolean), forms: (forms.get(w.en) || []).slice(0, 6), cefr: cefr.get(w.en)?.level ?? "" }));
   fs.writeFileSync(path.join(OUT, `${id}.todo.json`), JSON.stringify(todo, null, 1));
   return { id, total: words.length, todo: todo.length, ex: words.filter((w) => w.ex).length };
 }
 
+// ---- 元リストにあるが SpellDash の en 形式（小文字英字とハイフンのみの1語）に入らない語 ----
+// アクセント記号つづりは標準的な無記号つづりで収録する。残りは収録できない（理由つきで表示する）。
+const RESPELL = { "r\u00e9sum\u00e9": "resume", "caf\u00e9": "cafe", "entr\u00e9e": "entree" };
+const UNUSABLE = {
+  "o'clock": "アポストロフィを含む（en は英字とハイフンのみ）",
+  "ma'am": "アポストロフィを含む（en は英字とハイフンのみ）",
+  "ice cream": "2語（パックは1語見出しのみ）"
+};
+const respellOf = (en) => RESPELL[en] ?? null;
+const unusableOf = (en) => UNUSABLE[en] ?? null;
+
 // ---- 頻度順 CSV（Word, Rank, ...）を読む ----
 function readRanked(file, skip = new Set()) {
-  const lines = fs.readFileSync(path.join(SRC, "ngsl", file), "utf8").split(/\r?\n/).slice(1);
+  // 元CSVは ISO-8859（UTF-8 ではない）。アクセント記号を壊さずに読む
+  const lines = fs.readFileSync(path.join(SRC, "ngsl", file), "latin1").split(/\r?\n/).slice(1);
   const ranked = [];
   for (const line of lines) {
     const [lemma, rank] = line.split(",");
     if (!lemma) continue;
-    const en = lemma.trim().toLowerCase();
-    if (!/^[a-z][a-z-]*$/.test(en) || skip.has(en)) continue;
+    let en = lemma.trim().toLowerCase();
+    if (!/^[a-z][a-z-]*$/.test(en)) {
+      const why = unusableOf(en);
+      if (why) { excluded.push(`${lemma.trim()}（${rank}位）: ${why}`); continue; }
+      const re = respellOf(en);
+      if (!re) { excluded.push(`${lemma.trim()}（${rank}位）: en の形式に合わない`); continue; }
+      en = re;
+      respelled.add(en);
+    }
+    if (skip.has(en)) continue;
     ranked.push({ en, rank: Number(rank) });
   }
   ranked.sort((a, b) => a.rank - b.rank);
   return ranked;
 }
 
+const excluded = [];
+const respelled = new Set();
+
 // ---- 頻度順リストを N 語ずつのパックに割る（共通） ----
 function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLead, audience, meta }) {
+  // つづりを直して拾った語は、順位で切り直すと既に書き上がったパックの中身が入れ替わってしまう。
+  // そこで切るのは元からある語だけにして、拾った語はその順位が入るパックに足す。
+  const base = ranked.filter((x) => !respelled.has(x.en));
   const packs = [];
-  for (let i = 0; i < ranked.length; i += per) packs.push(ranked.slice(i, i + per));
+  for (let i = 0; i < base.length; i += per) packs.push(base.slice(i, i + per));
+  for (const extra of ranked.filter((x) => respelled.has(x.en))) {
+    const target = packs.find((list) => extra.rank <= list[list.length - 1].rank) ?? packs[packs.length - 1];
+    target.push(extra);
+    target.sort((a, b) => a.rank - b.rank);
+  }
   const report = packs.map((list, n) => {
     const id = `${prefix}${String(n + 1).padStart(2, "0")}`;
     const lo = list[0].rank;
@@ -150,6 +181,7 @@ function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLea
   });
   console.table(report);
   console.log("total", report.reduce((a, r) => a + r.total, 0), "todo", report.reduce((a, r) => a + r.todo, 0), "with ex", report.reduce((a, r) => a + r.ex, 0));
+  if (excluded.length) console.log("収録できなかった語:\n  " + excluded.join("\n  "));
 }
 
 if (which === "tsl") {
