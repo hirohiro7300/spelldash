@@ -1,3 +1,4 @@
+import { isNativeApp } from "./appEnv.js";
 // ===== ホーム画面に追加（PWAインストール導線） =====
 //
 // 通知を使わない方針のため、「戻ってくる」導線はホーム画面のアイコンに寄せる。
@@ -56,6 +57,10 @@ export async function promptInstall() {
 export function renderInstallCard(containerId) {
   const el = document.getElementById(containerId);
   if (!el) return;
+  if (isNativeApp) {
+    el.innerHTML = ""; // アプリ版では「ホーム画面に追加」は不要
+    return;
+  }
 
   const draw = () => {
     if (isStandalone()) {

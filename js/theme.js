@@ -4,6 +4,8 @@
 // 各ページの<head>先頭のインラインスニペットが初期適用を担う（FOUC防止）。
 // このモジュールは設定画面からの切替と、meta theme-colorの追従を担当する。
 
+import { syncNativeChrome } from "./appEnv.js";
+
 const KEY = "spelldash_theme";
 
 export function getTheme() {
@@ -18,6 +20,7 @@ export function setTheme(theme) {
 export function applyTheme() {
   const theme = getTheme();
   document.documentElement.dataset.theme = theme;
+  syncNativeChrome(theme); // アプリではステータスバーの色も追従
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute("content", theme === "dark" ? "#0f172a" : "#f4f6fb");

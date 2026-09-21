@@ -1,3 +1,4 @@
+import { isNativeApp } from "./appEnv.js";
 import { supabase } from "./supabase.js";
 import { getActiveDaysLast7, getGrowthLog } from "./growthLog.js";
 
@@ -15,6 +16,7 @@ export async function renderLoginNudge() {
   const el = document.getElementById("loginNudge");
   if (!el) return;
   el.innerHTML = "";
+  if (isNativeApp) return; // アプリ v1 ではログインを使わない
   if (localStorage.getItem(KEY)) return;
   if (activeDaysTotal() < 3 && getActiveDaysLast7() < 3) return;
 
