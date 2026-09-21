@@ -124,7 +124,9 @@ const RESPELL = { "r\u00e9sum\u00e9": "resume", "caf\u00e9": "cafe", "entr\u00e9
 const UNUSABLE = {
   "o'clock": "アポストロフィを含む（en は英字とハイフンのみ）",
   "ma'am": "アポストロフィを含む（en は英字とハイフンのみ）",
-  "ice cream": "2語（パックは1語見出しのみ）"
+  "ice cream": "2語（パックは1語見出しのみ）",
+  // co-ordinate を分割した断片。単独では使わず、訳を書くと「co-ordinate と打つ」問題になってしまう
+  ordinate: "co-ordinate の分割による語（単独では使わない）"
 };
 const respellOf = (en) => RESPELL[en] ?? null;
 const unusableOf = (en) => UNUSABLE[en] ?? null;

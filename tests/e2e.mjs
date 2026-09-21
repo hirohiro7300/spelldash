@@ -1474,9 +1474,15 @@ console.log("domain packs:");
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
   await page.fill("#packsSearch", "介護");
   await page.waitForTimeout(100);
+  check("検索中はグループが開く", (await page.$$("details.pack-group:not([open])")).length === 0);
   check("分野の検索で絞れる", (await page.$$(".pack")).length >= 1 && (await page.$$(".pack")).length < 5 && (await page.textContent("#packsGrid")).includes("介護"));
   await page.fill("#packsSearch", "");
-  await page.waitForTimeout(100);
+  await page.waitForTimeout(150);
+  check("分野のグループは畳んである（140超の分野が一度に並ばない）", (await page.$$("details.pack-group:not([open])")).length >= 5, `open=${(await page.$$("details.pack-group[open]")).length}`);
+  // 見出しを押してグループを開いてから追加する（開いた状態は描き直しても残る）
+  await page.click('details.pack-group:has([data-pack-toggle="realestate"]) > summary');
+  await waitUntil(async () => await page.isVisible('[data-pack-toggle="realestate"]'));
+  check("開いたグループは描き直しても開いたまま", await page.isVisible('[data-pack-toggle="realestate"]'));
   await page.click('[data-pack-toggle="realestate"]');
   await waitUntil(async () => (await page.textContent("#listSummary")).includes("不動産"));
   const summary = await page.textContent("#listSummary");
@@ -1779,6 +1785,10 @@ console.log("domain packs:");
   const page12 = await newPage({ storage: { spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書", addedAt: "2026-09-01T00:00:00.000Z" }]) } });
   await page12.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
   await page12.waitForTimeout(800);
+  // 棚が閉じていれば開く（#myWords で来たときは既に開いていることがある）
+  if (!(await page12.$eval("#packsFold", (el) => el.open))) await page12.click("#packsFold > summary");
+  await page12.click('details.pack-group:has([data-pack-toggle="realestate"]) > summary');
+  await waitUntil(async () => await page12.isVisible('[data-pack-toggle="realestate"]'));
   await page12.click('[data-pack-toggle="realestate"]');
   await waitUntil(async () => (await page12.textContent("#listSummary")).includes("不動産"));
   await page12.fill("#myWordEn", "deadline");

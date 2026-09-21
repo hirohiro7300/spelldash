@@ -115,6 +115,9 @@ function renderCategorySelect(categories) {
 
 // ===== 教材ライブラリ: 分野パックの追加／外す =====
 let packKeyword = "";
+// 開いたグループを覚えておく（棚は検索や追加のたびに描き直されるので、
+// 覚えていないと開いた直後に閉じてしまう）
+const openPackGroups = new Set();
 document.getElementById("packsSearch")?.addEventListener("input", (e) => {
   packKeyword = e.target.value.trim().toLowerCase();
   renderPacks();
@@ -162,14 +165,26 @@ function renderPacks() {
     groups.size === 0
       ? `<p class="muted">該当する分野がありません。</p>`
       : [...groups.entries()]
-          .map(
-            ([name, list]) => `
-        <section class="pack-group">
-          <h3 class="pack-group__title">${escapeHtml(name)} <span class="pack-group__count">${list.length}</span></h3>
+          .map(([name, list]) => {
+            // グループは畳んでおく（分野が140を超えて、開いたままだと延々スクロールになるため）。
+            // 検索中と、追加済みの分野を含むグループは開く。
+            const open = Boolean(q) || list.some((p) => p.enabled) || openPackGroups.has(name);
+            return `
+        <details class="pack-group" data-group-name="${escapeHtml(name)}"${open ? " open" : ""}>
+          <summary class="pack-group__title">${escapeHtml(name)} <span class="pack-group__count">${list.length}</span></summary>
           <div class="pack-group__grid">${list.map(card).join("")}</div>
-        </section>`
-          )
+        </details>`;
+          })
           .join("");
+
+  grid.querySelectorAll("details.pack-group").forEach((group) => {
+    group.addEventListener("toggle", () => {
+      const name = group.dataset.groupName;
+      if (!name) return;
+      if (group.open) openPackGroups.add(name);
+      else openPackGroups.delete(name);
+    });
+  });
 
   grid.querySelectorAll("[data-pack-toggle]").forEach((button) => {
     button.addEventListener("click", async () => {
