@@ -2,6 +2,7 @@
 //   node scripts/build-openlist-packs.mjs ngsl            → scratchpad の out/ に ngsl01..ngsl24 の骨組み JSON と、書き足しが必要な語の一覧
 //   node scripts/build-openlist-packs.mjs tsl             → TOEIC Service List（tsl01..）
 //   node scripts/build-openlist-packs.mjs bsl             → Business Service List（bsl01..）
+//   node scripts/build-openlist-packs.mjs nawl            → New Academic Word List（nawl01..、頻度の情報が無いのでアルファベット順）
 //   node scripts/build-openlist-packs.mjs ngsl --install  → 骨組みを data/packs/ に置く（ja が空の語が残っていると validate は通らない）
 // 既存の語（data/english/*.json と cardType:"word" のパック）と同じ en があれば、ja / pos / level / ex / exJa / exForm を再利用する。
 // 品詞と難易度の初期値は CEFR-J Vocabulary Profile から（A1→easy, A2→normal, B1以上→hard）。無ければ順位で3等分。
@@ -159,7 +160,7 @@ const excluded = [];
 const respelled = new Set();
 
 // ---- 頻度順リストを N 語ずつのパックに割る（共通） ----
-function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLead, audience, meta, beyondBasic = false }) {
+function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLead, audience, meta, beyondBasic = false, alphabetical = false }) {
   // つづりを直して拾った語は、順位で切り直すと既に書き上がったパックの中身が入れ替わってしまう。
   // そこで切るのは元からある語だけにして、拾った語はその順位が入るパックに足す。
   // CEFR-J に無い語の level の決め方。
@@ -182,8 +183,14 @@ function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLea
     const lo = list[0].rank;
     const hi = list[list.length - 1].rank;
     const words = list.map((x) => card(x.en, { level: globalLevel.get(x.en) ?? "hard" }));
-    const label = `${shortLabel} ${n + 1}（${lo}〜${hi}位）`;
-    const blurb = n === 0 ? blurbLead : `${listLabel} の ${lo}〜${hi}位。頻度順。前のパックほどよく出会う語`;
+    const letters = `${list[0].en[0]}〜${list[list.length - 1].en[0]}`;
+    const span = alphabetical ? letters : `${lo}〜${hi}位`;
+    const label = `${shortLabel} ${n + 1}（${span}）`;
+    const blurb = alphabetical
+      ? `${blurbLead}（${letters}）`
+      : n === 0
+        ? blurbLead
+        : `${listLabel} の ${lo}〜${hi}位。頻度順。前のパックほどよく出会う語`;
     if (blurb.length > 40) throw new Error(`blurbが40字を超える（${id}）: ${blurb}`);
     return writePack(id, label, blurb, audience, words, { ...meta, ranks: `${lo}-${hi}` });
   });
@@ -192,7 +199,38 @@ function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLea
   if (excluded.length) console.log("収録できなかった語:\n  " + excluded.join("\n  "));
 }
 
-if (which === "tsl") {
+// ---- 順位の無いリスト（アルファベット順の語だけ）を読む ----
+function readAlphabetical(file) {
+  const lines = fs.readFileSync(path.join(SRC, "ngsl", file), "latin1").split(/\r?\n/);
+  const seen = new Set();
+  const words = [];
+  for (const line of lines) {
+    const en = line.trim().toLowerCase();
+    if (!/^[a-z][a-z-]*$/.test(en) || seen.has(en)) continue;
+    // 説明文の行を拾わないように、参考文献より後ろの語だけを使う（1語だけの行が語彙）
+    if (line.trim() !== line.trim().split(/\s+/)[0]) continue;
+    seen.add(en);
+    words.push({ en, rank: words.length + 1 });
+  }
+  return words;
+}
+
+if (which === "nawl") {
+  // NAWL は頻度順が公開されていないのでアルファベット順。順位は通し番号として扱う
+  const all = readAlphabetical("NAWL_1.2_alphabetized_description.txt").filter((x) => x.en !== "references");
+  buildRankedPacks({
+    ranked: all,
+    prefix: "nawl",
+    per: Math.ceil(all.length / 8),
+    listLabel: "NAWL",
+    shortLabel: "学術英単語（NAWL）",
+    blurbLead: "論文・講義に出る語をアルファベット順に",
+    audience: "大学の英語・英検準1級以上を読む人（NAWL: CC BY-SA 4.0）",
+    meta: { list: "NAWL 1.2", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/nawl-new-academic-word-list" },
+    beyondBasic: true,
+    alphabetical: true
+  });
+} else if (which === "tsl") {
   buildRankedPacks({
     ranked: readRanked("TSL_1.2_stats.csv"),
     prefix: "tsl",

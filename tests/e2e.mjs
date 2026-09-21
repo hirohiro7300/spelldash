@@ -1999,7 +1999,7 @@ console.log("courses:");
   check("コース: 見出しに「コースを変える」、パネルは閉じている", (await page.$("#pathCourse")) !== null && !(await page.isVisible("#pathCourses")));
   await page.click("#pathCourse");
   await page.waitForTimeout(150);
-  check("コース: パネルに9コース、いまのコースに印", (await page.$$(".path__course")).length === 9 && (await page.textContent(".path__course--current")).includes("中学英語やり直し") && (await page.$$(".path__course-pick")).length === 8);
+  check("コース: パネルに10コース、いまのコースに印", (await page.$$(".path__course")).length === 10 && (await page.textContent(".path__course--current")).includes("中学英語やり直し") && (await page.$$(".path__course-pick")).length === 9);
   await page.click('.path__course-pick[data-course="toeic"]');
   await waitUntil(async () => (await page.textContent("#pathHead")).includes("セクション 1／6"), 4000); // パネルの文にも「TOEIC 500」があるので見出しのセクション表示で待つ
   const st = await page.evaluate(() => ({ course: localStorage.getItem("spelldash_course"), category: localStorage.getItem("spelldash_category"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]") }));
@@ -2053,7 +2053,8 @@ console.log("courses:");
     await page3.waitForTimeout(400);
   }
   await waitUntil(async () => (await page3.$("#resultPanel:not([hidden])")) !== null, 4000).catch(() => {});
-  await page3.waitForTimeout(600);
+  // お知らせは道の描き直しの後に出るので、固定待ちではなく中身が入るのを待つ
+  await waitUntil(async () => (await page3.textContent("#pathToast")).trim().length > 0, 4000).catch(() => {});
   const toast = await page3.textContent("#pathToast");
   check("制覇の演出: セット完了で🎉ユニット制覇のお知らせ、次のユニット名", sawLast && (await page3.isVisible("#pathToast")) && toast.includes("制覇") && (await page3.textContent("#pathHead")).includes("ユニット 2／11"), `sawLast=${sawLast} toast=${toast}`);
   check("制覇の演出: はちゃんは出さない", !(await page3.$eval("#pathToast", (el) => el.innerHTML.includes("hasumi"))));

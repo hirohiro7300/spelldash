@@ -1,5 +1,7 @@
 # SpellDash 現状スナップショット（2026-07-17 上流設計用・詳細版）
 
+> **2026-09-21追記（Batch 31: NAWL 完結）**: オープン教材は NGSL 24 + TSL 11 + BSL 15 + NAWL 8 = 58パック・6,814語。道のコースは10本（うち4本がオープン教材）。教材ライブラリは162パック・14,236枚。NGSL ファミリーのうち NGSL-Spoken と NDL は既存との重なりが大きく収録しない（根拠は data/sources/ngsl/LICENSE.md）。
+
 > **2026-09-21追記（Batch 30: TSL・BSL 完結）**: オープン教材は NGSL 24 + TSL 11 + BSL 15 = 50パック・5,857語。道のコースは9本（うち3本がオープン教材）。教材ライブラリは154パックで、分野グループは畳んで表示する。検証に「訳に見出し語を入れない」規則を追加（scripts/validate-words.mjs）。
 
 > **2026-09-21追記（Batch 27・28: 再設計「墨と朱」／NGSL パック 1〜12）**: デザインの基準は docs/CONCEPT.md と css/tokens.css。各ページは brand.css（共通）＋ home.css／card.css／pages.css（領域別）で既存 CSS を上書きしている（`html[data-theme]` 接頭辞で theme.css に勝つ）。廃止: シェア画像（js/setShare.js 削除）、BGM（js/bgm.js は no-op）、ミッション UI・週間レポートのホーム表示・キーミス・語根ファミリー表示・正解時発音の設定。E2E 379 件。NGSL（CC BY-SA 4.0、data/sources/ngsl/LICENSE.md）は scripts/build-openlist-packs.mjs → data/packs/ngsl01..24（2,857語）を登録済み（教材ライブラリは128パック）、パックページに出典セクション、道のコースは7本に。

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-09-21 (学術英単語 NAWL・オープン教材の完結)
+
+- NAWL（New Academic Word List 1.2、CC BY-SA 4.0）957語を8パックで収録。頻度順が公開されていないのでアルファベット順に分けた
+- 道のコースに「学術英単語 960語（NAWL）」を追加（コースは10本）。教材ライブラリは162パック・14,236枚
+- オープン教材は NGSL 2,857 + TSL 1,247 + BSL 1,753 + NAWL 957 = **6,814語**
+- 同じ語でもパックごとに意味を持てる仕組みを使い、学術パックは学術の意味にした（derivative 導関数／null 帰無の／protocol 実験の手順／solvent 溶媒／stimulus 刺激）
+- NGSL-Spoken（721語すべてが既存と重複）と NDL（新しい語は48語のみ）は収録しない。重なりを数えた結果と理由を data/sources/ngsl/LICENSE.md に記録
+
 ## 2026-09-21 (TOEIC・ビジネスのオープン教材を完結)
 
 - TSL（TOEIC Service List 1.2）11パック 1,247語、BSL（Business Service List 1.01）15パック 1,753語を全部収録（ともに CC BY-SA 4.0）。教材ライブラリは154パック・13,279枚
