@@ -1461,7 +1461,7 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに140パック（48分野＋レベル別12＋文法6＋英作文5＋中学11＋小学4＋高校14＋教科書英語4＋NGSL 24＋TSL 7＋BSL 5）", packCount === 140, `packs=${packCount}`);
+  check("教材ライブラリに141パック（48分野＋レベル別12＋文法6＋英作文5＋中学11＋小学4＋高校14＋教科書英語4＋NGSL 24＋TSL 7＋BSL 6）", packCount === 141, `packs=${packCount}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
