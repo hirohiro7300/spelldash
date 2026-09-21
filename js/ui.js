@@ -41,17 +41,20 @@ export function updateCombo(combo) {
     return;
   }
 
-  elements.combo.textContent = `🔥 ${combo} COMBO`;
+  elements.combo.textContent = `×${combo}`;
   const tier = combo >= 20 ? "combo--max" : combo >= 10 ? "combo--blaze" : combo >= 5 ? "combo--hot" : "combo--on";
   elements.combo.className = `combo ${tier}`;
 }
 
-export function showHiddenWordText(text) {
+// 答え以外の文（案内・ヒント）。hint=true は等幅（頭文字や語バンクを見せる）
+export function showHiddenWordText(text, { hint = false } = {}) {
   elements.word.classList.remove("hidden-word--long");
+  elements.word.classList.toggle("hidden-word--hint", hint);
   elements.word.textContent = text;
 }
 
 export function showColoredAnswer(word) {
+  elements.word.classList.remove("hidden-word--hint");
   elements.word.classList.toggle("hidden-word--long", String(word).length > 24); // 英文は小さめに
   elements.word.innerHTML = renderColoredWord(word);
 }
@@ -92,7 +95,7 @@ export function renderWeakWords() {
           recallFail + typingMiss > 0
             ? `思い出せず ${recallFail}回 / 打ち間違い ${typingMiss}回`
             : `ミス ${data.missCount}回`;
-        const leech = recallFail >= 4 ? `<span class="leech-tag">🔥 難敵</span>` : "";
+        const leech = recallFail >= 4 ? `<span class="leech-tag">難敵</span>` : "";
 
         return `
           <div class="word-item">

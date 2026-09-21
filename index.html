@@ -251,34 +251,17 @@
       <p id="wordExample" class="word-example"></p>
 
       <p id="wordFamily" class="word-family"></p>
-      <!-- 答え表示後の操作は1行にまとめる（メモ・覚え方を作る・ヒント・発音） -->
+      <!-- 答え表示後の操作は1行（メモ・覚え方を作る・ヒント・発音）。絵文字ではなく線画アイコン -->
       <div class="word-actions">
-      <div id="wordNote" class="word-note"></div>
-      <div id="wordAi" class="word-ai-slot"></div>
-
-      <div class="word-tools">
-    <button
-      id="hintButton"
-      type="button"
-      class="hint-button"
-      aria-label="ヒント（次の1文字）"
-      hidden
-    >
-      💡 ヒント
-    </button>
-    <button
-      id="speakButton"
-      type="button"
-      class="speak-button"
-      aria-label="発音を再生"
-      hidden
-    >
-      🔊 発音
-    </button>
-      </div>
+        <div id="wordNote" class="word-note"></div>
+        <div id="wordAi" class="word-ai-slot"></div>
+        <div class="word-tools">
+          <button id="hintButton" type="button" class="hint-button" aria-label="ヒント（次の1文字）" hidden><svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 10.5a3.8 3.8 0 1 1 5 0v1.5h-5z"/><path d="M6.5 14h3"/></svg>ヒント</button>
+          <button id="speakButton" type="button" class="speak-button" aria-label="発音を再生" hidden><svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h3l4-3v10l-4-3H3z"/><path d="M12 5.5a3.5 3.5 0 0 1 0 5"/></svg>発音</button>
+        </div>
       </div>
 
-      <!-- 入力欄の中に虹色テキストを重ねる -->
+      <!-- 入力欄: 打った文字は朱で重ねる（2トーン） -->
       <div class="input-wrapper">
     <div id="typedPreview" class="typed-preview"></div>
 
@@ -302,17 +285,18 @@
 
       <div id="resultPanel" class="result-panel" hidden></div>
 
-      <button id="restart">もう一回</button>
+      <button id="restart" class="btn btn--ghost btn--sm">もう一回</button>
     </main>
 
+      <!-- セッションの数字: 1行の静かなテキスト（正解 3 ・ 思い出せず 1 ・ 今日 20）。要素は残す -->
       <section class="stats stats--strip" aria-label="このセッションの数字">
-        <div class="stat-card stat-card--challenge"><span>残り</span><strong><span id="time">60</span>秒</strong></div>
         <div class="stat-card"><span>正解</span><strong id="score">0</strong></div>
         <div class="stat-card"><span>思い出せず</span><strong id="recallFail">0</strong></div>
-        <div class="stat-card stat-card--study"><span>今日思い出せた</span><strong id="recalledToday">0</strong><span class="stat-card__sub" id="securedToday"></span></div>
-        <div class="stat-card"><span>ミスタイプ</span><strong id="miss">0</strong></div>
+        <div class="stat-card stat-card--study"><span>今日</span><strong id="recalledToday">0</strong><span class="stat-card__sub" id="securedToday"></span></div>
+        <div class="stat-card stat-card--miss"><span>ミスタイプ</span><strong id="miss">0</strong></div>
         <div class="stat-card stat-card--challenge"><span>速度</span><strong><span id="typeSpeed">0.0</span>打/秒</strong></div>
         <div class="stat-card stat-card--challenge"><span>ベスト</span><strong id="bestScore">0</strong></div>
+        <div class="stat-card stat-card--challenge stat-card--time"><span>残り</span><strong><span id="time">60</span>秒</strong></div>
       </section>
     </section>
 

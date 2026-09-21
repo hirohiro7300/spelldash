@@ -6,6 +6,7 @@
 // クラウド同期: user_items テーブル（docs/SQL_USER_ITEMS.md）。書き込みのたびに touchItem で記録。
 
 import { touchItem } from "./userItemsSync.js";
+import { icon } from "./icons.js";
 
 const NOTES_KEY = "spelldash_word_notes";
 export const NOTE_MAX_LENGTH = 80;
@@ -50,10 +51,10 @@ export function escapeHtml(text) {
 // 一覧用: メモの表示＋編集ボタン（クリック処理は bindNoteEditors で委譲）
 export function noteChipHtml(wordId) {
   const note = getNote(wordId);
-  return `<button type="button" class="note-chip${note ? " note-chip--has" : ""}" data-note-word="${wordId}" title="${note ? "メモを編集" : "覚え方をメモ"}">📝${note ? ` ${escapeHtml(note)}` : ""}</button>`;
+  return `<button type="button" class="note-chip${note ? " note-chip--has" : ""}" data-note-word="${wordId}" title="${note ? "メモを編集" : "覚え方をメモ"}">${icon("note", { size: 14 })}${note ? escapeHtml(note) : "メモ"}</button>`;
 }
 
-// 一覧内の 📝 ボタンをインライン編集にする（container内で委譲）
+// 一覧内のメモボタンをインライン編集にする（container内で委譲）
 export function bindNoteEditors(container, onSaved) {
   if (!container || container.dataset.noteBound) return;
   container.dataset.noteBound = "1";

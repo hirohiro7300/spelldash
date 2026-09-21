@@ -1,5 +1,6 @@
 import { getQueueSnapshot, getRecalledTodayCount, getSecuredTodayCount } from "./studyQueue.js";
 import { findWord } from "./wordStore.js";
+import { icon } from "./icons.js";
 
 // Study Recall Loop の表示部分。
 // 右側の小カード列は「次に何が来るか」ではなく「状態と残量」だけを伝える
@@ -18,7 +19,7 @@ export function renderStudyQueue(visible) {
 
   const { items, remaining } = getQueueSnapshot(VISIBLE_CHIPS);
 
-  // Unresolved（赤）だけ日本語の問題文を見せる。
+  // Unresolved（朱）だけ日本語の問題文を見せる。
   // 「投資」がまだ赤い、と具体的に見えることで消したくなる。
   // 英単語の答えは絶対に出さない。Pendingは内容を見せない（次問題の先読み防止）
   const chips = items
@@ -33,7 +34,7 @@ export function renderStudyQueue(visible) {
             role="img"
             aria-label="${label}"
             title="${label}"
-          ><span class="queue-chip__icon" aria-hidden="true">↻</span><span class="queue-chip__ja">${ja}</span></div>
+          ><span class="queue-chip__ja">${ja}</span></div>
         `;
       }
 
@@ -63,7 +64,7 @@ export function updateRecalledToday() {
   }
 }
 
-// 自力正解: カードが緑になり右へ抜ける（reduced-motionでは色のみ）
+// 自力正解: 済みのチップが短く現れて消える（reduced-motionでは色のみ）
 export function playRecallSuccessEffect() {
   flashCard("game-card--recalled");
 
@@ -73,13 +74,13 @@ export function playRecallSuccessEffect() {
   const chip = document.createElement("div");
   chip.className = "queue-chip queue-chip--recalled";
   chip.setAttribute("aria-hidden", "true");
-  chip.textContent = "✓";
+  chip.innerHTML = icon("check", { size: 14 });
   container.prepend(chip);
 
   setTimeout(() => chip.remove(), 320);
 }
 
-// Recall Fail: カードが赤く点滅し、キューに赤カードが現れる
+// Recall Fail: カードの枠が短く朱になり、キューに朱のチップが現れる
 export function playRecallFailEffect() {
   flashCard("game-card--failed");
 }

@@ -1006,7 +1006,7 @@ console.log("concept cards:");
   // 1語目: 答えを見る → 解説が出る → 答えを打って練習（全文入力なら fill+Enter）
   await page.press("#input", "Enter");
   await page.waitForTimeout(200);
-  check("答え表示で用語と解説が出る", (await page.textContent("#word")).replace(/\s/g, "").includes(card.en.replace(/\s/g, "")) && (await page.textContent("#wordExplain")).includes("📘"));
+  check("答え表示で用語と解説が出る", (await page.textContent("#word")).replace(/\s/g, "").includes(card.en.replace(/\s/g, "")) && (await page.textContent("#wordExplain")).trim().length > 0);
   if (card.free) {
     await page.fill("#input", card.en);
     await page.press("#input", "Enter");
@@ -1028,7 +1028,7 @@ console.log("concept cards:");
   }
   await waitUntil(async () => (await page.textContent("#score")).trim() === "2", 2000);
   check(`自力正解（${card.free ? "別解で全文入力" : "スペル入力"}）`, (await page.textContent("#score")).trim() === "2" && (await page.textContent("#recalledToday")).trim() === "1", `typed=${typed}`);
-  check("正解後も用語と解説が残る（読む時間）", (await page.textContent("#wordExplain")).includes("📘"));
+  check("正解後も用語と解説が残る（読む時間）", (await page.textContent("#wordExplain")).trim().length > 0);
   await page.press("#input", "Enter"); // 待たずに次へ
   await waitUntil(async () => (await findCard()) && (await findCard()).en !== card.en, 3000);
   // 3語目: 全文入力で間違える → 答え表示＋×（1ミス＝不正解と同じ扱い）
@@ -1437,9 +1437,18 @@ console.log("card generation:");
   check("カード生成フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
-  // ✨ 覚え方を作る: 答え表示時にボタン → 生成 → 保存され、単語詳細にも出る
+  // 覚え方を作る: ログイン中に答え表示でボタン → 生成 → 保存され、単語詳細にも出る（未ログインではボタンを出さない）
   const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
-  const page2 = await newPage({ storage: { spelldash_placement: "done", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const pageOut = await newPage({ storage: { spelldash_placement: "done", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  await pageOut.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await pageOut.waitForTimeout(900);
+  await pageOut.press("#input", "Enter");
+  await pageOut.waitForTimeout(250);
+  await pageOut.press("#input", "Enter"); // 答え表示
+  await pageOut.waitForTimeout(300);
+  check("未ログインでは覚え方ボタンを出さない", (await pageOut.$$("[data-word-ai-run]")).length === 0);
+  await pageOut.close();
+  const page2 = await newPage({ storage: { spelldash_placement: "done", spelldash_test_session: "1", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
   await page2.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
   await page2.press("#input", "Enter");
@@ -1448,7 +1457,7 @@ console.log("card generation:");
   await page2.press("#input", "Enter"); // 答え表示
   await page2.waitForTimeout(200);
   const shownWord = (await page2.textContent("#word")).trim();
-  check("答え表示で「✨ 覚え方を作る」が出る", (await page2.$$("[data-word-ai-run]")).length === 1);
+  check("ログイン中は答え表示で「覚え方を作る」が出る", (await page2.$$("[data-word-ai-run]")).length === 1);
   await page2.click("[data-word-ai-run]");
   await waitUntil(async () => (await page2.textContent("#wordAi")).includes("音で覚える"));
   const aiText = await page2.textContent("#wordAi");
@@ -1703,7 +1712,7 @@ console.log("domain packs:");
   await page9d.waitForTimeout(900);
   await page9d.press("#input", "Enter");
   await page9d.waitForTimeout(300);
-  check("並べ替えカード: ラベルと語バンク（🔀）", (await page9d.textContent("#gameCard .label")).startsWith("語を並べ替えて英文を打つ") && (await page9d.textContent("#word")).includes("🔀"), await page9d.textContent("#word"));
+  check("並べ替えカード: ラベルと語バンク（並べ替え:）", (await page9d.textContent("#gameCard .label")).startsWith("語を並べ替えて英文を打つ") && (await page9d.textContent("#word")).includes("並べ替え"), await page9d.textContent("#word"));
   await page9d.close();
 
   // 専用キーボード（A〜Z＋⌫）: タッチ端末ではプレイ中に画面下へ出て、OS キーボードは出さない（inputmode=none）
