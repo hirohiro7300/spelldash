@@ -4511,3 +4511,39 @@ body.list-compact .genre__cards {
 .prompt-context:empty {
   display: none;
 }
+
+/* ===== 答え表示後の操作を1行に（H4: プレイ中の行数を減らす） ===== */
+.word-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.word-actions:not(:has(button:not([hidden]), .word-note__text, .word-ai)) {
+  margin: 0;
+}
+
+.word-actions .word-note,
+.word-actions .word-ai-slot,
+.word-actions .word-tools {
+  margin: 0;
+  min-height: 0;
+}
+
+/* メモの編集中・覚え方の本文は1行を占有 */
+.word-actions .word-note:has(.note-input),
+.word-actions .word-note:has(.word-note__text),
+.word-actions .word-ai-slot:has(.word-ai),
+.word-actions .word-ai-slot:has(.word-ai__error) {
+  flex: 1 1 100%;
+}
+
+.word-actions .speak-button,
+.word-actions .hint-button {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}

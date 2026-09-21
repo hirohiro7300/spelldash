@@ -212,6 +212,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       }</span></div></li>`
     : "";
   listEl.innerHTML = `<ol class="path__list">${nodes}${more}${units.length > 0 ? goal : empty}</ol>`;
+  applyToast(false); // 表示中のお知らせは描き直しても残す
 
   el.querySelector("#pathStart")?.addEventListener("click", () => onStart?.(current && !allDone ? current : null));
   el.querySelectorAll(".path__dot[data-review]").forEach((btn) => {
@@ -238,17 +239,34 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   return path;
 }
 
-// ユニット制覇の小さな演出（道の見出しの下に数秒）。はちゃんは出さない（登場は3場面だけ）
-export function showPathToast(text) {
+// ユニット制覇の小さな演出（道の見出しの下に数秒）。はちゃんは出さない（登場は3場面だけ）。
+// 直後に同期などで道が描き直されても消えないよう、表示中の内容を覚えておいて再描画時に出し直す
+let toastState = null;
+const TOAST_MS = 5000;
+
+function applyToast(animate) {
   const toast = document.getElementById("pathToast");
   if (!toast) return;
-  toast.textContent = text;
+  if (!toastState || Date.now() >= toastState.until) {
+    toastState = null;
+    toast.hidden = true;
+    return;
+  }
+  toast.textContent = toastState.text;
   toast.hidden = false;
   toast.classList.remove("path__toast--in");
-  void toast.offsetWidth;
-  toast.classList.add("path__toast--in");
+  if (animate) {
+    void toast.offsetWidth;
+    toast.classList.add("path__toast--in");
+  }
   clearTimeout(toast._timer);
   toast._timer = setTimeout(() => {
     toast.hidden = true;
-  }, 5000);
+    toastState = null;
+  }, Math.max(0, toastState.until - Date.now()));
+}
+
+export function showPathToast(text) {
+  toastState = { text, until: Date.now() + TOAST_MS };
+  applyToast(true);
 }
