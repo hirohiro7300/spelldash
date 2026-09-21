@@ -20,6 +20,7 @@ const GROUPS = {
   "試験・レベル別（英検・TOEIC）": ["eiken5", "eiken4", "eiken3", "eikenp2", "eiken2", "eikenp1", "eiken1", "toeic500", "toeic600", "toeic730", "toeic860", "toeic990"],
   "NGSL 基本英単語 2,800語（オープン教材・頻度順）": Array.from({ length: 24 }, (_, i) => `ngsl${String(i + 1).padStart(2, "0")}`),
   "TOEIC 英単語 1,250語（オープン教材・頻度順）": Array.from({ length: 11 }, (_, i) => `tsl${String(i + 1).padStart(2, "0")}`),
+  "学術英単語 960語（オープン教材・アルファベット順）": Array.from({ length: 8 }, (_, i) => `nawl${String(i + 1).padStart(2, "0")}`),
   "ビジネス英単語 1,750語（オープン教材・頻度順）": Array.from({ length: 15 }, (_, i) => `bsl${String(i + 1).padStart(2, "0")}`),
   "ビジネス・バックオフィス": ["accounting", "legal", "hr", "generalaffairs", "secretary", "pr", "freelancetax", "staffing", "publicbid", "startupfinance", "banking", "insurance", "trade"],
   "営業・マーケティング・メディア": ["saas", "ec", "sns", "video", "publishing", "callcenter", "webdev"],

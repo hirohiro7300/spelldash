@@ -31,6 +31,18 @@ BSL 1.01 では次の1語を外しています。
 （resume / cafe / entree）で収録しています。それ以外に落とした語はありません
 （`node scripts/build-openlist-packs.mjs tsl` が収録できなかった語を必ず表示します）。
 
+## 収録しないリストと、その理由
+
+同梱している NGSL ファミリーのうち、次の2つは収録していません（2026-09-21 時点で測った重なり）。
+
+| リスト | 語数 | SpellDash にまだ無い語 | 判断 |
+|---|---:|---:|---|
+| NGSL-Spoken 1.2（話し言葉） | 721 | **0** | 全語が既に他のパックにある。足しても同じ語を別の名前で並べるだけなので収録しない |
+| NDL 1.1（New Dolch・児童向け） | 873 | 48 | 残りは ant・crayon・dinosaur のような児童語で、小学英語のパックと重なる範囲。1パックに満たないため単独では収録しない |
+
+NAWL 1.2（学術）は 958語中 372語が新しいため収録しています。
+重なりは `data/` の全カードと突き合わせて数えたものです。
+
 # CEFR-J Vocabulary Profile
 
 `../cefrj/cefrj-vocabulary-profile-1.5.csv` は東京外国語大学 投野由紀夫研究室の CEFR-J Vocabulary Profile（Ver 1.5）です。
