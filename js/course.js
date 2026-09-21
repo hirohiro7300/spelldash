@@ -66,6 +66,13 @@ export const COURSES = {
     audience: "仕事で英語を読む・書く人（オープン教材 BSL）",
     packs: Array.from({ length: 15 }, (_, i) => `bsl${String(i + 1).padStart(2, "0")}`)
   },
+  nawl: {
+    id: "nawl",
+    label: "学術英単語 960語（NAWL）",
+    blurb: "論文・講義に出る語を8セクション。基本語とTOEIC語の次、英検準1級以上の読解に",
+    audience: "大学の英語・論文を読む人（オープン教材 NAWL）",
+    packs: Array.from({ length: 8 }, (_, i) => `nawl${String(i + 1).padStart(2, "0")}`)
+  },
   toeic: {
     id: "toeic",
     label: "TOEIC 500→990",
