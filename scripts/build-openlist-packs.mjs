@@ -1,5 +1,7 @@
 // オープン教材（NGSL ファミリー）からパックの骨組みを作る
 //   node scripts/build-openlist-packs.mjs ngsl            → scratchpad の out/ に ngsl01..ngsl24 の骨組み JSON と、書き足しが必要な語の一覧
+//   node scripts/build-openlist-packs.mjs tsl             → TOEIC Service List（tsl01..）
+//   node scripts/build-openlist-packs.mjs bsl             → Business Service List（bsl01..）
 //   node scripts/build-openlist-packs.mjs ngsl --install  → 骨組みを data/packs/ に置く（ja が空の語が残っていると validate は通らない）
 // 既存の語（data/english/*.json と cardType:"word" のパック）と同じ en があれば、ja / pos / level / ex / exJa / exForm を再利用する。
 // 品詞と難易度の初期値は CEFR-J Vocabulary Profile から（A1→easy, A2→normal, B1以上→hard）。無ければ順位で3等分。
@@ -37,7 +39,7 @@ for (const f of fs.readdirSync(path.join(ROOT, "data", "english"))) {
 for (const f of fs.readdirSync(path.join(ROOT, "data", "packs"))) {
   try {
     const d = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", f), "utf8"));
-    if (d.cardType === "word" && !String(d.category).startsWith("ngsl")) d.words?.forEach(addExisting);
+    if (d.cardType === "word" && !/^(ngsl|tsl|bsl)/.test(String(d.category))) d.words?.forEach(addExisting);
   } catch {}
 }
 
@@ -116,7 +118,62 @@ function writePack(id, label, blurb, audience, words, meta) {
   return { id, total: words.length, todo: todo.length, ex: words.filter((w) => w.ex).length };
 }
 
-if (which === "ngsl") {
+// ---- 頻度順 CSV（Word, Rank, ...）を読む ----
+function readRanked(file, skip = new Set()) {
+  const lines = fs.readFileSync(path.join(SRC, "ngsl", file), "utf8").split(/\r?\n/).slice(1);
+  const ranked = [];
+  for (const line of lines) {
+    const [lemma, rank] = line.split(",");
+    if (!lemma) continue;
+    const en = lemma.trim().toLowerCase();
+    if (!/^[a-z][a-z-]*$/.test(en) || skip.has(en)) continue;
+    ranked.push({ en, rank: Number(rank) });
+  }
+  ranked.sort((a, b) => a.rank - b.rank);
+  return ranked;
+}
+
+// ---- 頻度順リストを N 語ずつのパックに割る（共通） ----
+function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLead, audience, meta }) {
+  const packs = [];
+  for (let i = 0; i < ranked.length; i += per) packs.push(ranked.slice(i, i + per));
+  const report = packs.map((list, n) => {
+    const id = `${prefix}${String(n + 1).padStart(2, "0")}`;
+    const lo = list[0].rank;
+    const hi = list[list.length - 1].rank;
+    const third = Math.ceil(list.length / 3);
+    const words = list.map((x, k) => card(x.en, { level: k < third ? "easy" : k < third * 2 ? "normal" : "hard" }));
+    const label = `${shortLabel} ${n + 1}（${lo}〜${hi}位）`;
+    const blurb = n === 0 ? blurbLead : `${listLabel} の ${lo}〜${hi}位。頻度順。前のパックほどよく出会う語`;
+    return writePack(id, label, blurb, audience, words, { ...meta, ranks: `${lo}-${hi}` });
+  });
+  console.table(report);
+  console.log("total", report.reduce((a, r) => a + r.total, 0), "todo", report.reduce((a, r) => a + r.todo, 0), "with ex", report.reduce((a, r) => a + r.ex, 0));
+}
+
+if (which === "tsl") {
+  buildRankedPacks({
+    ranked: readRanked("TSL_1.2_stats.csv"),
+    prefix: "tsl",
+    per: 114,
+    listLabel: "TSL",
+    shortLabel: "TOEIC 英単語（TSL）",
+    blurbLead: "TOEIC に出る語のうち基本2,800語の外側にある1,250語（TSL）を頻度順に",
+    audience: "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+    meta: { list: "TSL 1.2", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/toeic-list" }
+  });
+} else if (which === "bsl") {
+  buildRankedPacks({
+    ranked: readRanked("BSL_1.01_SFI_freq_bands.csv"),
+    prefix: "bsl",
+    per: 117,
+    listLabel: "BSL",
+    shortLabel: "ビジネス英単語（BSL）",
+    blurbLead: "仕事の英語でよく出る語のうち基本2,800語の外側にある1,750語（BSL）を頻度順に",
+    audience: "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+    meta: { list: "BSL 1.01", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/bsl-business-service-list" }
+  });
+} else if (which === "ngsl") {
   const ranked = readNgsl();
   const sup = SUPPLEMENTARY.filter((en) => !ranked.some((r) => r.en === en));
   const packs = [];
