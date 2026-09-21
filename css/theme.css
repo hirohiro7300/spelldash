@@ -54,8 +54,7 @@ html[data-theme="light"] .label,
 html[data-theme="light"] .mix-control__hint,
 html[data-theme="light"] .weak-toggle__hint,
 html[data-theme="light"] .account-menu__hint,
-html[data-theme="light"] .account-menu__email,
-html[data-theme="light"] .onboarding__close {
+html[data-theme="light"] .account-menu__email {
   color: #526070;
 }
 
@@ -70,16 +69,11 @@ html[data-theme="light"] .hidden-word {
 /* ---- カード類（白背景＋淡い枠） ---- */
 html[data-theme="light"] .game-card,
 html[data-theme="light"] .stat-card,
-html[data-theme="light"] .streak-card,
 html[data-theme="light"] .daily,
-html[data-theme="light"] .mission,
 html[data-theme="light"] .level-bar,
 html[data-theme="light"] .result-card,
 html[data-theme="light"] .mix-control,
-html[data-theme="light"] .onboarding,
-html[data-theme="light"] .onboarding__steps,
 html[data-theme="light"] .news-item,
-html[data-theme="light"] .family-card,
 html[data-theme="light"] .daily-rank,
 html[data-theme="light"] .arena-panel,
 html[data-theme="light"] .word-list-fold {
@@ -90,20 +84,16 @@ html[data-theme="light"] .word-list-fold {
 }
 
 html[data-theme="light"] .stat-card span,
-html[data-theme="light"] .mission__label,
 html[data-theme="light"] .mix-control__head,
 html[data-theme="light"] .daily-rank__head,
 html[data-theme="light"] .daily__desc,
 html[data-theme="light"] .daily__note,
 html[data-theme="light"] .level-bar__xp,
-html[data-theme="light"] .streak-card__best,
 html[data-theme="light"] .news-item__date {
   color: #526070;
 }
 
 html[data-theme="light"] .stat-card strong,
-html[data-theme="light"] .streak-card__count strong,
-html[data-theme="light"] .mission__item,
 html[data-theme="light"] .news-item__title,
 html[data-theme="light"] .level-bar__title,
 html[data-theme="light"] .daily-rank__name {
@@ -115,7 +105,6 @@ html[data-theme="light"] .news-item__body {
 }
 
 /* ---- モード選択・トグル・チップ ---- */
-html[data-theme="light"] .mode-switch__btn,
 html[data-theme="light"] .weak-toggle__btn,
 html[data-theme="light"] .category-chip,
 html[data-theme="light"] .setting-select {
@@ -124,33 +113,9 @@ html[data-theme="light"] .setting-select {
   color: #475569;
 }
 
-html[data-theme="light"] .mode-switch__btn span {
-  color: #526070;
-}
-
-html[data-theme="light"] .mode-switch__btn:hover,
 html[data-theme="light"] .category-chip:hover {
   background: #eef2f9;
   color: #0f172a;
-}
-
-html[data-theme="light"] .mode-switch__btn--active {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: #3b82f6;
-  color: #1d4ed8;
-}
-
-html[data-theme="light"] .mode-switch__btn--active span {
-  color: #3b82f6;
-}
-
-html[data-theme="light"] .mode-switch__btn--done {
-  border-color: rgba(22, 163, 74, 0.45);
-  color: #15803d;
-}
-
-html[data-theme="light"] .mode-switch__btn--done span {
-  color: #16a34a;
 }
 
 html[data-theme="light"] .category-chip--active {
@@ -288,19 +253,6 @@ html[data-theme="light"] .hasumi__avatar {
   background: #ffffff;
 }
 
-html[data-theme="light"] .streak-card__hasumi {
-  color: #6e60a9;
-}
-
-/* ---- ストリーク・進捗 ---- */
-html[data-theme="light"] .streak-card__status--pending {
-  color: #b45309;
-}
-
-html[data-theme="light"] .streak-card__status--done {
-  color: #15803d;
-}
-
 html[data-theme="light"] .header-streak {
   background: rgba(217, 119, 6, 0.08);
   border-color: rgba(217, 119, 6, 0.35);
@@ -334,22 +286,15 @@ html[data-theme="light"] .logo {
   color: #1d4ed8;
 }
 
-html[data-theme="light"] .mission__item strong,
-html[data-theme="light"] .progress-row__head strong,
-html[data-theme="light"] .daily-rank__score,
-html[data-theme="light"] .family-card__root {
+html[data-theme="light"] .daily-rank__score {
   color: #0f172a;
 }
 
-html[data-theme="light"] .progress-row__head,
 html[data-theme="light"] .setting-row label,
 html[data-theme="light"] .word-count,
 html[data-theme="light"] .word-filter,
-html[data-theme="light"] .family-card__count,
 html[data-theme="light"] .score-trend__legend,
-html[data-theme="light"] .score-trend__empty,
-html[data-theme="light"] .mission__tomorrow,
-html[data-theme="light"] .onboarding__title {
+html[data-theme="light"] .score-trend__empty {
   color: #475569;
 }
 
@@ -397,18 +342,6 @@ html[data-theme="light"] .cat-bar__mastered { background: #16a34a; }
 html[data-theme="light"] .cat-bar__learning { background: #2563eb; }
 html[data-theme="light"] .cat-bar__weak { background: #dc2626; }
 
-/* ---- 今日のセット（ライト） ---- */
-html[data-theme="light"] .today-cta {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.1));
-  border-color: rgba(59, 130, 246, 0.45);
-}
-html[data-theme="light"] .today-cta--done { background: #ffffff; border-color: rgba(22, 163, 74, 0.45); }
-html[data-theme="light"] .today-cta__title { color: #0f172a; }
-html[data-theme="light"] .today-cta__title small { color: #1d4ed8; }
-html[data-theme="light"] .today-cta--done .today-cta__title { color: #15803d; }
-html[data-theme="light"] .today-cta__sub { color: #475569; }
-html[data-theme="light"] .today-cta__button--ghost { background: rgba(15, 23, 42, 0.06); color: #334155; }
-html[data-theme="light"] .today-cta__daily { color: #b45309; }
 html[data-theme="light"] .set-progress { color: #526070; }
 html[data-theme="light"] .set-progress__count b { color: #0f172a; }
 html[data-theme="light"] .set-progress__bar { background: #e2e8f0; }
@@ -440,8 +373,6 @@ html[data-theme="light"] .my-word__status--learning { background: rgba(37, 99, 2
 html[data-theme="light"] .my-word__status--mastered { background: rgba(22, 163, 74, 0.12); color: #15803d; }
 html[data-theme="light"] .my-word__status--weak { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
 
-/* ---- 週間レポート（ライト） ---- */
-html[data-theme="light"] .weekly--home { background: #ffffff; border-color: rgba(37, 99, 235, 0.3); }
 html[data-theme="light"] .weekly__title { color: #0f172a; }
 html[data-theme="light"] .weekly__grid div { background: #f8fafc; border-color: #e2e8f0; }
 html[data-theme="light"] .weekly__grid strong { color: #0f172a; }
@@ -500,14 +431,6 @@ html[data-theme="light"] .cal__day--2 { background: #86efac; }
 html[data-theme="light"] .cal__day--3 { background: #4ade80; }
 html[data-theme="light"] .cal__day--4 { background: #16a34a; }
 html[data-theme="light"] .cal__day--future { background: transparent; border-color: #e2e8f0; }
-html[data-theme="light"] .keymiss__top { color: #334155; }
-html[data-theme="light"] .keymiss__top b { color: #b91c1c; }
-html[data-theme="light"] .keymap__key { background: #f1f5f9; color: #526070; }
-html[data-theme="light"] .keymap__key--1 { background: #fecaca; color: #7f1d1d; }
-html[data-theme="light"] .keymap__key--2 { background: #fca5a5; color: #7f1d1d; }
-html[data-theme="light"] .keymap__key--3 { background: #f87171; color: #fff; }
-html[data-theme="light"] .keymap__key--4 { background: #dc2626; color: #fff; }
-html[data-theme="light"] .keymiss__pairs span { background: #f1f5f9; color: #475569; }
 html[data-theme="light"] button.learned-item__en { color: #0f172a; }
 html[data-theme="light"] .word-detail__backdrop { background: rgba(15, 23, 42, 0.35); }
 html[data-theme="light"] .word-detail__panel { background: #ffffff; border-color: #dbe2ec; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2); }
@@ -592,10 +515,6 @@ html[data-theme="light"] .strip__chip { background: #f8fafc; border-color: #dbe2
 html[data-theme="light"] .strip__chip b { color: #0f172a; }
 html[data-theme="light"] .strip__chip--on { background: rgba(22, 163, 74, 0.08); border-color: #86efac; color: #15803d; }
 html[data-theme="light"] .strip__chip--streak.strip__chip--on { background: rgba(249, 115, 22, 0.08); border-color: #fdba74; color: #c2410c; }
-html[data-theme="light"] .strip__bar { background: #e2e8f0; }
-html[data-theme="light"] .mode-switch--seg { background: #ffffff; border-color: #dbe2ec; }
-html[data-theme="light"] .mode-switch--seg .mode-switch__btn { color: #475569; }
-html[data-theme="light"] .mode-switch--seg .mode-switch__btn--active { background: rgba(37, 99, 235, 0.12); color: #0f172a; }
 html[data-theme="light"] .setup-toggle { background: #ffffff; border-color: #dbe2ec; color: #334155; }
 html[data-theme="light"] .setup-toggle__summary { color: #1d4ed8; }
 html[data-theme="light"] .setup { background: #f8fafc; border-color: #e2e8f0; }
@@ -606,14 +525,8 @@ html[data-theme="light"] .home-more { background: #ffffff; border-color: #dbe2ec
 html[data-theme="light"] .home-more > summary { color: #475569; }
 html[data-theme="light"] .monthly-line { color: #526070; }
 html[data-theme="light"] .monthly-line b { color: #0f172a; }
-html[data-theme="light"] .profile-link a { color: #1d4ed8; }
-
 /* ===== Batch 7a: テキストから作る（ライト） ===== */
 html[data-theme="light"] .cardgen__card { border-color: #cbd5e1; background: #f8fafc; }
-html[data-theme="light"] .cardgen__q { color: #0f172a; }
-html[data-theme="light"] .cardgen__answer { color: #1d4ed8; }
-html[data-theme="light"] .cardgen__accept,
-html[data-theme="light"] .cardgen__explain { color: #526070; }
 html[data-theme="light"] .cardgen__dup { color: #b45309; }
 html[data-theme="light"] .cardgen__done a { color: #1d4ed8; }
 
@@ -633,8 +546,7 @@ html[data-theme="light"] .category-chip--add { color: #526070; }
 html[data-theme="light"] .pack { border-color: #e2e8f0; background: #fff; }
 html[data-theme="light"] .pack--on { border-color: #93c5fd; background: #eff6ff; }
 html[data-theme="light"] .pack__blurb { color: #334155; }
-html[data-theme="light"] .pack__count,
-html[data-theme="light"] .pack__audience { color: #526070; }
+html[data-theme="light"] .pack__count { color: #526070; }
 html[data-theme="light"] .pack-group__title { color: #526070; }
 html[data-theme="light"] .gcard__pos { border-color: #cbd5e1; color: #526070; }
 html[data-theme="light"] .my-fold { border-color: #e2e8f0; background: #fff; }
@@ -653,6 +565,5 @@ html[data-theme="light"] .speak-button { color: #334155; border-color: #cbd5e1; 
 html[data-theme="light"] .speak-button:hover { background: #e2e8f0; }
 html[data-theme="light"] .level-bar__remaining { color: #2f6fc4; }
 html[data-theme="light"] .queue-chip__ja { color: #b91c1c; }
-html[data-theme="light"] .mission__head { color: #526070; }
 html[data-theme="light"] .genre__count { color: #526070; }
 html[data-theme="light"] .prompt-context { color: #526070; }

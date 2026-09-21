@@ -6,52 +6,6 @@
   margin-bottom: 20px;
 }
 
-/* ===== ホーム2カラム: ゲームが主役、周辺情報はサイドへ ===== */
-.home-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 24px;
-  align-items: start;
-}
-
-.home-side {
-  min-width: 0;
-}
-
-@media (max-width: 980px) {
-  .home-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* サイドバー幅（360px）でもカード内が破綻しないように */
-.home-side .mission {
-  flex-wrap: wrap;
-  gap: 10px 18px;
-}
-
-.home-side .mission__item {
-  white-space: nowrap;
-}
-
-.home-side .streak-card {
-  flex-wrap: wrap;
-  gap: 10px 14px;
-}
-
-.home-side .streak-card__side {
-  margin-left: 0;
-}
-
-.home-side .level-bar {
-  flex-wrap: wrap;
-}
-
-.home-side .level-bar__next {
-  display: block;
-  margin: 4px 0 0;
-}
-
 /* ヒーローは薄く（ゲームを1画面目に入れる） */
 .hero--compact {
   margin-bottom: 20px;
@@ -244,10 +198,6 @@ body:not(.mode-study) .study-queue {
   color: #f87171;
 }
 
-.queue-chip__icon {
-  flex-shrink: 0;
-}
-
 /* 長い日本語訳でもレイアウトを壊さない（全文はtitle/aria-labelで） */
 .queue-chip__ja {
   min-width: 0;
@@ -334,108 +284,6 @@ body:not(.mode-study) .study-queue {
   margin-bottom: 20px;
 }
 
-/* ===== ストリークカード ===== */
-.streak-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 18px;
-  margin-bottom: 14px;
-  border-radius: 20px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  backdrop-filter: blur(14px);
-}
-
-.streak-card:empty {
-  display: none;
-}
-
-/* 今日クリア済みは炎色の枠でご褒美感を出す */
-.streak-card--active {
-  border-color: rgba(251, 146, 60, 0.45);
-}
-
-.streak-card__flame {
-  flex-shrink: 0;
-  font-size: 26px;
-  line-height: 1;
-}
-
-.streak-card__flame--off {
-  filter: grayscale(1);
-  opacity: 0.45;
-}
-
-.streak-card__main {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.streak-card__count {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  color: #f8fafc;
-}
-
-.streak-card__count strong {
-  font-size: 22px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.streak-card__count span {
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.streak-card__status {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.streak-card__status--done {
-  color: #4ade80;
-}
-
-.streak-card__status--pending {
-  color: #fbbf24;
-}
-
-.streak-card__saved {
-  color: #38bdf8;
-  font-size: 12px;
-}
-
-.streak-card__side {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-shrink: 0;
-}
-
-.streak-card__shields {
-  display: flex;
-  gap: 2px;
-  font-size: 15px;
-  cursor: help;
-}
-
-.streak-card__shield--empty {
-  filter: grayscale(1);
-  opacity: 0.3;
-}
-
-.streak-card__best {
-  color: #64748b;
-  font-size: 12px;
-}
-
 /* ===== Daily Dash ===== */
 .daily {
   display: flex;
@@ -512,25 +360,6 @@ body:not(.mode-study) .study-queue {
   box-shadow: 0 6px 18px rgba(250, 204, 21, 0.35);
 }
 
-.daily__share {
-  margin-left: auto;
-  flex-shrink: 0;
-  padding: 7px 16px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 999px;
-  background: transparent;
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.daily__share:hover {
-  color: #f8fafc;
-  border-color: rgba(148, 163, 184, 0.6);
-}
-
 /* ===== マイクロアニメーション（正解の気持ちよさ） ===== */
 @keyframes msg-pop {
   0% { transform: scale(0.92); opacity: 0.4; }
@@ -580,66 +409,12 @@ body:not(.mode-study) .study-queue {
   margin-bottom: 12px;
 }
 
-/* ===== 語根ファミリーカード ===== */
-.family-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.family-card {
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-}
-
-.family-card--complete {
-  border-color: rgba(74, 222, 128, 0.4);
-}
-
-.family-card__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 8px;
-}
-
-.family-card__root {
-  color: #93c5fd;
-  font-weight: 800;
-  font-size: 13px;
-}
-
-.family-card--complete .family-card__root {
-  color: #86efac;
-}
-
-.family-card__count {
-  color: #64748b;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.family-card__members {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 .family-chip {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
   color: #64748b;
   border: 1px solid rgba(148, 163, 184, 0.22);
-}
-
-.family-chip--learned {
-  color: #f8fafc;
-  background: rgba(59, 130, 246, 0.18);
-  border-color: rgba(59, 130, 246, 0.45);
 }
 
 /* ===== 同じ仲間（Knowledge Map Phase A） ===== */
@@ -746,79 +521,6 @@ body:not(.mode-study) .study-queue {
 /* streakが右端グループの先頭になるので、accountの押し出しは無効化 */
 .header-streak + .account {
   margin-left: 0;
-}
-
-/* ===== 初回オンボーディング ===== */
-.onboarding {
-  position: relative;
-  padding: 18px 22px;
-  margin-bottom: 14px;
-  border-radius: 20px;
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.35);
-  backdrop-filter: blur(14px);
-}
-
-.onboarding:empty {
-  display: none;
-}
-
-.onboarding__close {
-  position: absolute;
-  top: 10px;
-  right: 14px;
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  color: #64748b;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.onboarding__close:hover {
-  color: #f8fafc;
-  background: transparent;
-}
-
-.onboarding__title {
-  color: #93c5fd;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  margin-bottom: 10px;
-}
-
-.onboarding__steps {
-  margin: 0 0 14px;
-  padding-left: 20px;
-  color: #cbd5e1;
-  font-size: 14px;
-  line-height: 1.9;
-}
-
-.onboarding__steps kbd {
-  padding: 1px 7px;
-  border-radius: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.6);
-  font-size: 12px;
-}
-
-.onboarding__start {
-  padding: 10px 22px;
-  border: none;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.onboarding__start:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.4);
 }
 
 /* ===== 苦手のみ復習トグル ===== */
@@ -990,78 +692,6 @@ body.mode-study .weak-toggle {
   color: #64748b;
 }
 
-/* ===== Today's Mission ===== */
-.mission {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  padding: 14px 18px;
-  margin-bottom: 14px;
-  border-radius: 20px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  backdrop-filter: blur(14px);
-}
-
-.mission:empty {
-  display: none;
-}
-
-.mission__head {
-  flex-shrink: 0;
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.mission__items {
-  display: flex;
-  gap: 24px;
-}
-
-.mission__item {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.mission__label {
-  color: #64748b;
-  font-size: 13px;
-}
-
-.mission__item strong {
-  color: #f8fafc;
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-}
-
-.mission__empty {
-  margin: 0;
-  color: #64748b;
-  font-size: 13px;
-}
-
-/* 達成時は静かに色が変わるだけ */
-.mission--complete {
-  border-color: rgba(74, 222, 128, 0.35);
-}
-
-.mission__complete {
-  margin: 0;
-  color: #4ade80;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-}
-
-.mission__tomorrow {
-  color: #64748b;
-  font-size: 12px;
-}
-
 .level-bar__next {
   margin-left: 10px;
   color: #64748b;
@@ -1222,26 +852,6 @@ body.mode-study .weak-toggle {
 @keyframes combo-pulse {
   from { transform: scale(1); text-shadow: 0 0 8px rgba(249, 115, 22, 0.4); }
   to { transform: scale(1.08); text-shadow: 0 0 18px rgba(249, 115, 22, 0.8); }
-}
-
-.progress-row {
-  margin: 8px 0 18px;
-}
-
-.progress-row:last-child {
-  margin-bottom: 0;
-}
-
-.progress-row__head {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  color: #cbd5e1;
-  font-size: 14px;
-}
-
-.progress-row__head strong {
-  color: #f8fafc;
 }
 
 .progress-bar {
@@ -1494,25 +1104,6 @@ button:hover {
   outline: none;
 }
 
-.profile-head {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.profile-avatar {
-  flex-shrink: 0;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  color: #fff;
-  font-size: 28px;
-  font-weight: 800;
-}
-
 .profile-email {
   margin: 0;
   font-size: 20px;
@@ -1582,26 +1173,14 @@ button:hover {
   height: 38px;
 }
 
-/* ストリークカード内の一言 */
-.streak-card__hasumi {
-  display: block;
-  margin-top: 4px;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #b9a5ff;
-}
-
 /* ===== フォーカスモード（Challenge/Dailyプレイ中・スマホ） =====
    1画面1目的・学習の邪魔をしない（docs/CHARACTER.md §8 スマホUI原則）。
    終了・中断で自動的に元へ戻る */
 @media (max-width: 980px) {
   body.is-playing .hero,
-  body.is-playing .onboarding,
   body.is-playing #hasumiHome,
-  body.is-playing .mode-switch,
   body.is-playing .weak-toggle,
-  body.is-playing .mix-control,
-  body.is-playing .home-side {
+  body.is-playing .mix-control {
     display: none;
   }
 }
@@ -2074,15 +1653,6 @@ button:hover {
   .my-words__form { grid-template-columns: 1fr; }
   .my-word { grid-template-columns: minmax(0, 1fr) auto; }
   .my-word__ja { grid-column: 1 / -1; }
-}
-
-/* ===== 週間レポート ===== */
-.weekly--home {
-  padding: 14px 18px;
-  margin-bottom: 12px;
-  border-radius: 20px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(147, 197, 253, 0.35);
 }
 
 .weekly__head {
@@ -2689,65 +2259,6 @@ button:hover {
 .cal__legend .cal__day {
   width: 11px;
   height: 11px;
-}
-
-.keymiss {
-  margin-top: 12px;
-}
-
-.keymiss__top {
-  margin: 0 0 8px;
-  color: #cbd5e1;
-  font-size: 13px;
-}
-
-.keymiss__top b {
-  color: #fca5a5;
-  font-size: 15px;
-}
-
-.keymap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: center;
-}
-
-.keymap__row {
-  display: flex;
-  gap: 4px;
-}
-
-.keymap__key {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: rgba(148, 163, 184, 0.12);
-  color: #94a3b8;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.keymap__key--1 { background: rgba(248, 113, 113, 0.25); color: #fecaca; }
-.keymap__key--2 { background: rgba(248, 113, 113, 0.45); color: #fff; }
-.keymap__key--3 { background: rgba(248, 113, 113, 0.7); color: #fff; }
-.keymap__key--4 { background: #ef4444; color: #fff; }
-
-.keymiss__pairs {
-  margin: 8px 0 0;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.keymiss__pairs span {
-  display: inline-block;
-  margin-right: 8px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.1);
 }
 
 .learned-csv {
@@ -3420,11 +2931,6 @@ body.free-answer .typed-preview {
   color: #f8fafc;
 }
 
-.login-nudge__actions {
-  display: flex;
-  gap: 8px;
-}
-
 @media (max-width: 600px) {
   .my-concept__form { grid-template-columns: 1fr; }
 }
@@ -3542,12 +3048,6 @@ body.returning .hero--compact {
   height: 36px;
 }
 
-.today .today-cta {
-  margin: 0 0 10px;
-  padding: 12px 14px;
-  border-radius: 14px;
-}
-
 .today .learned-card {
   margin: 8px 0 0;
   padding: 10px 0 0;
@@ -3606,26 +3106,6 @@ body.returning .hero--compact {
   color: #fed7aa;
 }
 
-.strip__bar {
-  display: inline-block;
-  width: 52px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.2);
-  overflow: hidden;
-}
-
-.strip__bar b {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #3b82f6, #6366f1);
-}
-
-.strip__chip--pop {
-  animation: levelup-pop 0.9s ease;
-}
-
 /* プレイブロック: モード切替（セグメント）＋出題の要約ボタン */
 .play__bar {
   display: flex;
@@ -3634,40 +3114,6 @@ body.returning .hero--compact {
   justify-content: space-between;
   gap: 8px 12px;
   margin-bottom: 10px;
-}
-
-.mode-switch--seg {
-  display: flex;
-  gap: 4px;
-  margin: 0;
-  padding: 4px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.mode-switch--seg .mode-switch__btn {
-  flex: 0 1 auto;
-  padding: 7px 12px;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  font-size: 13px;
-  letter-spacing: 0;
-  line-height: 1.15;
-}
-
-.mode-switch--seg .mode-switch__btn span {
-  display: none; /* 説明文はセグメントでは出さない（title で補う） */
-}
-
-.mode-switch--seg .mode-switch__btn--active {
-  background: rgba(59, 130, 246, 0.25);
-  color: #f8fafc;
-}
-
-.mode-switch--seg .mode-switch__btn--link {
-  color: #94a3b8;
 }
 
 .setup-toggle {
@@ -3695,15 +3141,6 @@ body.returning .hero--compact {
   white-space: nowrap;
   font-weight: 700;
   color: #93c5fd;
-}
-
-.setup-toggle__caret {
-  color: #64748b;
-  transition: transform 0.15s;
-}
-
-.setup-toggle--open .setup-toggle__caret {
-  transform: rotate(180deg);
 }
 
 .setup {
@@ -3812,9 +3249,7 @@ body.returning .hero--compact {
   padding: 0 16px 6px;
 }
 
-.home-more__body .mission,
-.home-more__body .daily,
-.home-more__body .weekly--home {
+.home-more__body .daily {
   margin: 0 0 12px;
 }
 
@@ -3837,14 +3272,6 @@ body.returning .hero--compact {
 
 .monthly-line b {
   color: #f8fafc;
-}
-
-.profile-link {
-  margin: 0 0 18px;
-}
-
-.profile-link a {
-  color: #93c5fd;
 }
 
 .filter-chip--right {
@@ -3921,23 +3348,6 @@ body.list-compact .genre__cards {
   line-height: 1.5;
 }
 
-.cardgen__q {
-  color: #e2e8f0;
-}
-
-.cardgen__answer {
-  font-weight: 700;
-  color: #93c5fd;
-}
-
-.cardgen__accept {
-  font-weight: 400;
-  font-size: 12px;
-  color: #94a3b8;
-  margin-left: 4px;
-}
-
-.cardgen__explain,
 .cardgen__dup {
   font-size: 12px;
   color: #94a3b8;
@@ -4132,12 +3542,6 @@ body.list-compact .genre__cards {
   font-size: 13px;
   line-height: 1.5;
   color: #cbd5e1;
-}
-
-.pack__audience {
-  margin: 0;
-  font-size: 12px;
-  color: #94a3b8;
 }
 
 .pack__actions {
