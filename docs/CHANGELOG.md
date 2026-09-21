@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-09-21 (CSS の整理・TOEIC／ビジネスのオープン教材)
+
+- 再設計で使われなくなった旧 CSS を 2,556行削除（game.css −46% / theme.css −65%）。見た目は変えない方針で、64枚のスクリーンショットが削除前後でバイト一致することを確認
+- TSL（TOEIC Service List 1.2）と BSL（Business Service List 1.01、ともに CC BY-SA 4.0）の収録を開始。tsl01〜05・bsl01〜03 の 923語を追加（教材ライブラリ 136パック・11,202枚）
+- 元CSVが ISO-8859 のため文字化けして落ちていた résumé・café・entrée を収録。収録できない語（o'clock・ma'am・ice cream）は理由つきで data/sources/ngsl/LICENSE.md に記載
+- CEFR-J に無い語の難易度を、パック内の位置ではなくリスト全体の位置で決めるようにした
+
 ## 2026-09-21 (再設計「墨と朱」・音声改良・NGSL 1〜12)
 
 - デザインコンセプト docs/CONCEPT.md とトークン css/tokens.css。共通レイヤー brand.css、領域別 home.css／card.css／pages.css。IBM Plex Mono を英語・入力欄に

@@ -3,10 +3,6 @@
   .stats {
     grid-template-columns: repeat(2, 1fr);
   }
-
-  .game-card {
-    padding: 24px 18px;
-  }
 }
 
 /* ===== スマホ ===== */
@@ -15,43 +11,20 @@
      入り切らない極小画面では横スクロール（sticky headerの縦幅を最小化） */
   .site-header__inner {
     flex-wrap: nowrap;
-    gap: 6px;
     width: 94%;
-    min-height: 52px;
-    padding: 8px 0;
   }
 
   .brand__name {
     display: none;
   }
 
-  .brand__mark {
-    width: 30px;
-    height: 30px;
-  }
-
-  .header-streak {
-    padding: 5px 9px;
-    font-size: 12px;
-  }
-
   .site-nav {
     flex: 1;
     min-width: 0;
-    gap: 2px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .site-nav::-webkit-scrollbar {
-    display: none;
   }
 
   .site-nav__link {
     flex-shrink: 0;
-    padding: 7px 8px;
-    font-size: 13px;
-    white-space: nowrap;
   }
 
   .account .btn {

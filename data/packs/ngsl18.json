@@ -14,8 +14,7 @@
   "genres": {
     "n": "名詞",
     "v": "動詞",
-    "adj": "形容詞・副詞",
-    "fn": "機能語（前置詞・接続詞・代名詞など）"
+    "adj": "形容詞・副詞"
   },
   "words": [
     {"id": "english-grateful", "en": "grateful", "ja": "感謝している", "pos": "形", "level": "easy", "tags": ["adj"], "ex": "I am grateful for all your help with the project.", "exJa": "プロジェクトでいろいろ助けてくれて本当に感謝しています。"},

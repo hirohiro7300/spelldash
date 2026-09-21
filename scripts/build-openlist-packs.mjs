@@ -1,5 +1,7 @@
 // オープン教材（NGSL ファミリー）からパックの骨組みを作る
 //   node scripts/build-openlist-packs.mjs ngsl            → scratchpad の out/ に ngsl01..ngsl24 の骨組み JSON と、書き足しが必要な語の一覧
+//   node scripts/build-openlist-packs.mjs tsl             → TOEIC Service List（tsl01..）
+//   node scripts/build-openlist-packs.mjs bsl             → Business Service List（bsl01..）
 //   node scripts/build-openlist-packs.mjs ngsl --install  → 骨組みを data/packs/ に置く（ja が空の語が残っていると validate は通らない）
 // 既存の語（data/english/*.json と cardType:"word" のパック）と同じ en があれば、ja / pos / level / ex / exJa / exForm を再利用する。
 // 品詞と難易度の初期値は CEFR-J Vocabulary Profile から（A1→easy, A2→normal, B1以上→hard）。無ければ順位で3等分。
@@ -37,7 +39,7 @@ for (const f of fs.readdirSync(path.join(ROOT, "data", "english"))) {
 for (const f of fs.readdirSync(path.join(ROOT, "data", "packs"))) {
   try {
     const d = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", f), "utf8"));
-    if (d.cardType === "word" && !String(d.category).startsWith("ngsl")) d.words?.forEach(addExisting);
+    if (d.cardType === "word") d.words?.forEach(addExisting);
   } catch {}
 }
 
@@ -111,12 +113,103 @@ function writePack(id, label, blurb, audience, words, meta) {
   fs.mkdirSync(OUT, { recursive: true });
   const dest = install ? path.join(ROOT, "data", "packs", `${id}.json`) : path.join(OUT, `${id}.json`);
   fs.writeFileSync(dest, text);
-  const todo = words.filter((w) => !w.ja || !w.pos || !w.ex).map((w) => ({ id: w.id, en: w.en, need: [!w.ja && "ja", !w.pos && "pos", !w.ex && "ex"].filter(Boolean), forms: (forms.get(w.en) || []).slice(0, 6), cefr: cefr.get(w.en)?.level ?? "" }));
+  const todo = words.filter((w) => !w.ja || !w.pos || !w.ex || respelled.has(w.en)).map((w) => ({ id: w.id, en: w.en, need: [!w.ja && "ja", !w.pos && "pos", !w.ex && "ex", respelled.has(w.en) && "つづりを直して収録した語。訳と例文がこのリストの意味か確認"].filter(Boolean), forms: (forms.get(w.en) || []).slice(0, 6), cefr: cefr.get(w.en)?.level ?? "" }));
   fs.writeFileSync(path.join(OUT, `${id}.todo.json`), JSON.stringify(todo, null, 1));
   return { id, total: words.length, todo: todo.length, ex: words.filter((w) => w.ex).length };
 }
 
-if (which === "ngsl") {
+// ---- 元リストにあるが SpellDash の en 形式（小文字英字とハイフンのみの1語）に入らない語 ----
+// アクセント記号つづりは標準的な無記号つづりで収録する。残りは収録できない（理由つきで表示する）。
+const RESPELL = { "r\u00e9sum\u00e9": "resume", "caf\u00e9": "cafe", "entr\u00e9e": "entree" };
+const UNUSABLE = {
+  "o'clock": "アポストロフィを含む（en は英字とハイフンのみ）",
+  "ma'am": "アポストロフィを含む（en は英字とハイフンのみ）",
+  "ice cream": "2語（パックは1語見出しのみ）"
+};
+const respellOf = (en) => RESPELL[en] ?? null;
+const unusableOf = (en) => UNUSABLE[en] ?? null;
+
+// ---- 頻度順 CSV（Word, Rank, ...）を読む ----
+function readRanked(file, skip = new Set()) {
+  // 元CSVは ISO-8859（UTF-8 ではない）。アクセント記号を壊さずに読む
+  const lines = fs.readFileSync(path.join(SRC, "ngsl", file), "latin1").split(/\r?\n/).slice(1);
+  const ranked = [];
+  for (const line of lines) {
+    const [lemma, rank] = line.split(",");
+    if (!lemma) continue;
+    let en = lemma.trim().toLowerCase();
+    if (!/^[a-z][a-z-]*$/.test(en)) {
+      const why = unusableOf(en);
+      if (why) { excluded.push(`${lemma.trim()}（${rank}位）: ${why}`); continue; }
+      const re = respellOf(en);
+      if (!re) { excluded.push(`${lemma.trim()}（${rank}位）: en の形式に合わない`); continue; }
+      en = re;
+      respelled.add(en);
+    }
+    if (skip.has(en)) continue;
+    ranked.push({ en, rank: Number(rank) });
+  }
+  ranked.sort((a, b) => a.rank - b.rank);
+  return ranked;
+}
+
+const excluded = [];
+const respelled = new Set();
+
+// ---- 頻度順リストを N 語ずつのパックに割る（共通） ----
+function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLead, audience, meta }) {
+  // つづりを直して拾った語は、順位で切り直すと既に書き上がったパックの中身が入れ替わってしまう。
+  // そこで切るのは元からある語だけにして、拾った語はその順位が入るパックに足す。
+  // CEFR-J に無い語の level は、パック内の位置ではなくリスト全体の位置で決める。
+  // パックごとに三等分すると「どのパックも前半は easy」になり、難易度の物差しがパックごとに変わってしまう。
+  const third = Math.ceil(ranked.length / 3);
+  const globalLevel = new Map(ranked.map((x, i) => [x.en, i < third ? "easy" : i < third * 2 ? "normal" : "hard"]));
+  const base = ranked.filter((x) => !respelled.has(x.en));
+  const packs = [];
+  for (let i = 0; i < base.length; i += per) packs.push(base.slice(i, i + per));
+  for (const extra of ranked.filter((x) => respelled.has(x.en))) {
+    const target = packs.find((list) => extra.rank <= list[list.length - 1].rank) ?? packs[packs.length - 1];
+    target.push(extra);
+    target.sort((a, b) => a.rank - b.rank);
+  }
+  const report = packs.map((list, n) => {
+    const id = `${prefix}${String(n + 1).padStart(2, "0")}`;
+    const lo = list[0].rank;
+    const hi = list[list.length - 1].rank;
+    const words = list.map((x) => card(x.en, { level: globalLevel.get(x.en) ?? "hard" }));
+    const label = `${shortLabel} ${n + 1}（${lo}〜${hi}位）`;
+    const blurb = n === 0 ? blurbLead : `${listLabel} の ${lo}〜${hi}位。頻度順。前のパックほどよく出会う語`;
+    if (blurb.length > 40) throw new Error(`blurbが40字を超える（${id}）: ${blurb}`);
+    return writePack(id, label, blurb, audience, words, { ...meta, ranks: `${lo}-${hi}` });
+  });
+  console.table(report);
+  console.log("total", report.reduce((a, r) => a + r.total, 0), "todo", report.reduce((a, r) => a + r.todo, 0), "with ex", report.reduce((a, r) => a + r.ex, 0));
+  if (excluded.length) console.log("収録できなかった語:\n  " + excluded.join("\n  "));
+}
+
+if (which === "tsl") {
+  buildRankedPacks({
+    ranked: readRanked("TSL_1.2_stats.csv"),
+    prefix: "tsl",
+    per: 114,
+    listLabel: "TSL",
+    shortLabel: "TOEIC 英単語（TSL）",
+    blurbLead: "基本2,800語の外側でTOEICに出る1,250語を頻度順に",
+    audience: "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+    meta: { list: "TSL 1.2", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/toeic-list" }
+  });
+} else if (which === "bsl") {
+  buildRankedPacks({
+    ranked: readRanked("BSL_1.01_SFI_freq_bands.csv"),
+    prefix: "bsl",
+    per: 117,
+    listLabel: "BSL",
+    shortLabel: "ビジネス英単語（BSL）",
+    blurbLead: "基本2,800語の外側で仕事に出る1,750語を頻度順に",
+    audience: "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+    meta: { list: "BSL 1.01", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/bsl-business-service-list" }
+  });
+} else if (which === "ngsl") {
   const ranked = readNgsl();
   const sup = SUPPLEMENTARY.filter((en) => !ranked.some((r) => r.en === en));
   const packs = [];
