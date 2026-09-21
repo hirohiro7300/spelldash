@@ -1,6 +1,7 @@
 import { getStreak, hasPlayedToday } from "./level.js";
+import { icon } from "./icons.js";
 
-// 全ページのヘッダーに🔥ストリークを常時表示する。
+// 全ページのヘッダーに連続日数を常時表示する（線画の炎＋日数。絵文字は使わない）。
 // 「今日まだやっていない」がどのページでも目に入る＝損失回避の常時提示
 
 export function renderHeaderStreak() {
@@ -22,5 +23,6 @@ export function renderHeaderStreak() {
   const done = hasPlayedToday();
 
   el.classList.toggle("header-streak--off", !done);
-  el.textContent = `🔥 ${streak.current}`;
+  el.innerHTML = `${icon("flame", { size: 14 })}<b>${streak.current}</b><span>日</span>`;
+  el.setAttribute("aria-label", `連続 ${streak.current}日${done ? "" : "（今日はまだ）"}`);
 }

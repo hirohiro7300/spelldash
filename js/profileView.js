@@ -7,7 +7,7 @@ import { getLevelState, getStreak } from "./level.js";
 import { renderLevelBar } from "./levelUi.js";
 import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
-import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled, getVolume, setVolume, getListenRatio, setListenRatio } from "./audio.js";
+import { getAudioSettings, saveAudioSettings, speak, isSpeakOnCorrectEnabled, setSpeakOnCorrectEnabled, getVolume, setVolume, getListenRatio, setListenRatio, getEnglishVoices, getPreferredVoiceURI, setPreferredVoiceURI, previewVoice, getSpeechRate, setSpeechRate, onVoicesReady } from "./audio.js";
 import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./backup.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme } from "./theme.js";
@@ -106,7 +106,45 @@ function initializeAudioSettings() {
   };
 
   modeSelect.addEventListener("change", save);
-  accentSelect.addEventListener("change", save);
+  accentSelect.addEventListener("change", () => {
+    save();
+    fillVoices(); // アクセントが変わると候補の並びも変わる
+  });
+
+  // 声の選択（端末にある英語の声を自然さ順に）と試聴
+  const voiceSelect = document.getElementById("voiceSelect");
+  const voicePreview = document.getElementById("voicePreview");
+  const fillVoices = () => {
+    if (!voiceSelect) return;
+    const list = getEnglishVoices(accentSelect.value);
+    const current = getPreferredVoiceURI();
+    voiceSelect.innerHTML = `<option value="">自動（この端末でいちばん自然な声${list[0] ? `: ${list[0].voice.name}` : ""}）</option>` + list
+      .map(({ voice }) => `<option value="${voice.voiceURI.replace(/"/g, "&quot;")}">${voice.name} (${voice.lang})</option>`)
+      .join("");
+    voiceSelect.value = list.some(({ voice }) => voice.voiceURI === current) ? current : "";
+  };
+  if (voiceSelect) {
+    fillVoices();
+    onVoicesReady(fillVoices);
+    voiceSelect.addEventListener("change", () => {
+      setPreferredVoiceURI(voiceSelect.value);
+      previewVoice(voiceSelect.value);
+      statusElement.textContent = "保存しました。";
+      setTimeout(() => (statusElement.textContent = ""), 2000);
+    });
+  }
+  voicePreview?.addEventListener("click", () => previewVoice(voiceSelect?.value || ""));
+
+  const rateSelect = document.getElementById("rateSelect");
+  if (rateSelect) {
+    rateSelect.value = getSpeechRate();
+    rateSelect.addEventListener("change", () => {
+      setSpeechRate(rateSelect.value);
+      speak("investment");
+      statusElement.textContent = "保存しました。";
+      setTimeout(() => (statusElement.textContent = ""), 2000);
+    });
+  }
 
   // 効果音のON/OFF（発音とは独立）
   const sfxSelect = document.getElementById("sfxSelect");

@@ -63,53 +63,49 @@ function play(fn) {
 }
 
 // 単語正解: コンボが伸びるほど少しずつ高く（気持ちよさの積み上げ）
-export function sfxCorrect(combo = 0) {
+// 方針（docs/CONCEPT.md §7）: 短く・小さく・少なく。正解はごく短いクリック、思い出せずは低い1音。
+// コンボで音程は上げない（数字を煽らない）。
+
+// 単語正解: 木のクリックのような短い2音（高めだが小さく）
+export function sfxCorrect() {
   play(() => {
-    const step = Math.min(combo, 20);
-    const base = 660 * Math.pow(1.025, step);
-    tone({ freq: base, duration: 0.07, gain: 0.07 });
-    tone({ freq: base * 1.335, duration: 0.09, gain: 0.07, delay: 0.06 });
-    // 10コンボ以上: 上に一音重ねて「乗ってる」感を出す（音量は控えめ）
-    if (combo >= 10) tone({ freq: base * 2, duration: 0.08, gain: 0.035, delay: 0.1 });
+    tone({ freq: 880, duration: 0.035, type: "triangle", gain: 0.04 });
+    tone({ freq: 1320, duration: 0.05, type: "sine", gain: 0.03, delay: 0.03 });
   });
 }
 
-// 答えを見た後の練習正解: 控えめな単音
+// 答えを見た後の練習正解: さらに控えめな単音
 export function sfxSoftCorrect() {
-  play(() => tone({ freq: 520, duration: 0.06, gain: 0.045 }));
+  play(() => tone({ freq: 660, duration: 0.04, type: "triangle", gain: 0.025 }));
 }
 
-// 打ち間違い: 低く短く（不快すぎない程度）
+// 打ち間違い: 低く短く
 export function sfxMiss() {
-  play(() => tone({ freq: 180, duration: 0.06, type: "triangle", gain: 0.05 }));
+  play(() => tone({ freq: 160, duration: 0.05, type: "triangle", gain: 0.035 }));
 }
 
-// 思い出せなかった（答え表示）: 下降音
+// 思い出せなかった（答え表示）: 低い1音（下降はしない）
 export function sfxReveal() {
-  play(() => tone({ freq: 330, slideTo: 210, duration: 0.16, type: "sine", gain: 0.05 }));
+  play(() => tone({ freq: 240, duration: 0.09, type: "sine", gain: 0.03 }));
 }
 
-// レベルアップ: 上昇アルペジオ
+// レベルアップ: 2音だけ
 export function sfxLevelUp() {
   play(() => {
-    [523, 659, 784, 1047].forEach((freq, i) =>
-      tone({ freq, duration: 0.12, gain: 0.08, delay: i * 0.09 })
-    );
+    tone({ freq: 659, duration: 0.09, gain: 0.05 });
+    tone({ freq: 988, duration: 0.14, gain: 0.05, delay: 0.09 });
   });
 }
 
-// ミッション完了・今日定着・Daily完走: 短いチャイム
+// セット完了・Daily完走: 短いチャイム（音量控えめ）
 export function sfxComplete() {
   play(() => {
-    tone({ freq: 784, duration: 0.1, gain: 0.08 });
-    tone({ freq: 1047, duration: 0.16, gain: 0.08, delay: 0.09 });
+    tone({ freq: 784, duration: 0.08, gain: 0.05 });
+    tone({ freq: 1047, duration: 0.14, gain: 0.05, delay: 0.08 });
   });
 }
 
-// シールド獲得などのご褒美: キラッ
+// ご褒美: 1音だけ
 export function sfxSparkle() {
-  play(() => {
-    tone({ freq: 1319, duration: 0.07, gain: 0.06 });
-    tone({ freq: 1760, duration: 0.1, gain: 0.05, delay: 0.05 });
-  });
+  play(() => tone({ freq: 1568, duration: 0.08, gain: 0.035 }));
 }

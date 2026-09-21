@@ -1,0 +1,70 @@
+/* ===== SpellDash デザイントークン（docs/CONCEPT.md「墨と朱」） =====
+   全ページの最初に読み込む。色・フォント・角丸はここだけで決め、各 CSS はこの変数を使う。
+   ライトが標準。ダークは html[data-theme="dark"] で反転。 */
+
+:root {
+  --paper: #f7f6f2;
+  --paper-2: #ffffff;
+  --paper-3: #efede7;
+  --ink: #16171b;
+  --ink-2: #3d4048;
+  --ink-3: #6e727b;
+  --ink-4: #a9acb3;
+  --line: #e2e0d9;
+  --line-2: #cbc9c1;
+  --signal: #d9482b;
+  --signal-ink: #b03a21;
+  --signal-soft: #fbe9e4;
+  --ok: #2f6f4e;
+  --ok-soft: #e4f0e9;
+  --warn: #9a6700;
+  --warn-soft: #fbf1dc;
+
+  --font-ui: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius: 6px;
+  --radius-lg: 10px;
+  --focus: 0 0 0 3px rgba(217, 72, 43, 0.22);
+  --ease: 160ms ease;
+
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --paper: #131417;
+  --paper-2: #1a1b1f;
+  --paper-3: #212228;
+  --ink: #eceae4;
+  --ink-2: #c9c7c0;
+  --ink-3: #9a9891;
+  --ink-4: #6c6b68;
+  --line: #2b2c31;
+  --line-2: #3b3c42;
+  --signal: #ff6a45;
+  --signal-ink: #ffa48d;
+  --signal-soft: #3a2119;
+  --ok: #7bc29a;
+  --ok-soft: #1d2b24;
+  --warn: #e0b84a;
+  --warn-soft: #332a14;
+  --focus: 0 0 0 3px rgba(255, 106, 69, 0.28);
+
+  color-scheme: dark;
+}
+
+/* 英語（打つ対象）と数字は等幅 */
+.mono,
+.en,
+input[type="text"]#input,
+#word,
+#typedPreview,
+.typed-preview {
+  font-family: var(--font-mono);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ease: 0ms linear;
+  }
+}

@@ -1,0 +1,326 @@
+/* ===== 「墨と朱」共通レイヤー（docs/CONCEPT.md） =====
+   全ページの最後に読み込む。土台（ページ・ヘッダー・ナビ・ボタン・入力欄・カード・文字色）をトークンで統一し、
+   既存 CSS のダーク基調＋ライト上書きを両方まとめて置き換える。
+   html[data-theme] を頭に付けているのは theme.css（html[data-theme="light"] .x）と同じ詳細度で後勝ちにするため。 */
+
+html[data-theme] body {
+  font-family: var(--font-ui);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+:where(html[data-theme]) a {
+  color: inherit;
+}
+
+:where(html[data-theme]) :focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+/* ---- ヘッダー ---- */
+html[data-theme] .site-header {
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] .site-header__inner {
+  min-height: 56px;
+  padding: 6px 0;
+}
+
+html[data-theme] .brand,
+html[data-theme] .site-footer .brand__name {
+  color: var(--ink);
+}
+
+html[data-theme] .brand__mark {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+html[data-theme] .brand__name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+html[data-theme] .site-nav__link {
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 600;
+  background: transparent;
+}
+
+html[data-theme] .site-nav__link:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] .site-nav__link[aria-current="page"] {
+  color: var(--ink);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--ink);
+  border-radius: 0;
+}
+
+/* ---- フッター ---- */
+html[data-theme] .site-footer {
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+  backdrop-filter: none;
+  color: var(--ink-3);
+}
+
+html[data-theme] .site-footer__tagline,
+html[data-theme] .site-footer__copy,
+html[data-theme] .site-footer__nav a {
+  color: var(--ink-3);
+}
+
+html[data-theme] .site-footer__nav a:hover {
+  color: var(--ink);
+}
+
+/* ---- ボタン ---- */
+:where(html[data-theme]) button,
+html[data-theme] .btn {
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: inherit;
+  font-weight: 700;
+  box-shadow: none;
+  transition: background var(--ease), color var(--ease), border-color var(--ease), transform var(--ease);
+}
+
+:where(html[data-theme]) button:hover,
+html[data-theme] .btn:hover {
+  background: var(--ink-2);
+}
+
+html[data-theme] .btn--sm {
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: var(--radius);
+}
+
+html[data-theme] .btn--ghost,
+html[data-theme] .btn--ghost:hover {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+}
+
+html[data-theme] .btn--ghost:hover {
+  background: var(--paper-3);
+}
+
+html[data-theme] .btn:disabled,
+:where(html[data-theme]) button:disabled {
+  opacity: 0.5;
+}
+
+/* ---- 入力欄（ゲーム） ---- */
+html[data-theme] .input-wrapper {
+  background: var(--paper-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+}
+
+html[data-theme] .input-wrapper:focus-within {
+  border-color: var(--signal);
+  box-shadow: var(--focus);
+}
+
+html[data-theme] #input {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  caret-color: var(--signal);
+}
+
+html[data-theme] #input::placeholder {
+  color: var(--ink-4);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  letter-spacing: 0;
+  font-size: 18px;
+}
+
+html[data-theme] .typed-preview {
+  font-weight: 500;
+  font-size: 24px;
+  letter-spacing: 0.04em;
+}
+
+/* 汎用の入力・選択 */
+:where(html[data-theme]) input[type="text"],
+:where(html[data-theme]) input[type="email"],
+:where(html[data-theme]) input[type="search"],
+:where(html[data-theme]) input[type="number"],
+:where(html[data-theme]) textarea,
+:where(html[data-theme]) select {
+  background: var(--paper-2);
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  font-family: inherit;
+}
+
+:where(html[data-theme]) input:focus,
+:where(html[data-theme]) textarea:focus,
+:where(html[data-theme]) select:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: var(--focus);
+}
+
+/* ---- 文字 ---- */
+html[data-theme] .muted,
+html[data-theme] .subtitle,
+html[data-theme] .label,
+html[data-theme] .word-meta,
+html[data-theme] .auth-message {
+  color: var(--ink-3);
+}
+
+:where(html[data-theme]) h1,
+:where(html[data-theme]) h2,
+:where(html[data-theme]) h3 {
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+html[data-theme] .auth-message.success { color: var(--ok); }
+html[data-theme] .auth-message.error { color: var(--signal-ink); }
+
+/* ---- カード（ゲームカードと結果） ---- */
+html[data-theme] .game-card {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+html[data-theme] .label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-theme] #japanese {
+  color: var(--ink);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+html[data-theme] .message {
+  color: var(--ink-2);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+html[data-theme] .message.correct { color: var(--ok); }
+html[data-theme] .message.wrong { color: var(--signal-ink); }
+html[data-theme] .message.revealed { color: var(--ink-2); }
+
+/* ---- アイコン ---- */
+html[data-theme] .icon {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 4px;
+}
+
+/* ---- 選択・スクロールバーの色（ブラウザ既定を紙と墨に） ---- */
+:where(html[data-theme]) ::selection {
+  background: var(--signal-soft);
+  color: var(--ink);
+}
+
+/* ---- ヘッダー（スマホ）: ナビが切れないように詰める ---- */
+@media (max-width: 560px) {
+  html[data-theme] .site-header__inner {
+    gap: 8px;
+  }
+  html[data-theme] .site-nav {
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  html[data-theme] .site-nav::-webkit-scrollbar {
+    display: none;
+  }
+  html[data-theme] .site-nav__link {
+    padding: 8px 7px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  html[data-theme] .account .btn--ghost {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
+
+/* ---- ヘッダーの連続日数（炎の線画＋日数） ---- */
+html[data-theme] .header-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: none;
+}
+
+html[data-theme] .header-streak .icon {
+  margin-right: 2px;
+  color: var(--signal);
+}
+
+html[data-theme] .header-streak span {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+html[data-theme] .header-streak--off {
+  color: var(--ink-3);
+  border-color: var(--line);
+}
+
+html[data-theme] .header-streak--off .icon {
+  color: var(--ink-4);
+}
+
+/* ---- プロフィール: 声の選択 ---- */
+html[data-theme] .voice-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+html[data-theme] .voice-row .setting-select {
+  max-width: 260px;
+}

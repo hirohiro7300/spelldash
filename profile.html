@@ -6,10 +6,15 @@
   <title>プロフィール | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="./css/tokens.css" />
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
   <link rel="stylesheet" href="./css/theme.css" />
+  <link rel="stylesheet" href="./css/brand.css" />
   <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
 
 
@@ -223,7 +228,7 @@
         <label for="audioModeSelect">答え表示時の音声</label>
         <select id="audioModeSelect" class="setting-select">
           <option value="auto">自動再生（答え表示時に1回）</option>
-          <option value="manual">手動再生のみ（🔊ボタン）</option>
+          <option value="manual">手動再生のみ（発音ボタン）</option>
           <option value="off">OFF</option>
         </select>
       </div>
@@ -241,6 +246,25 @@
         <select id="accentSelect" class="setting-select">
           <option value="us">アメリカ英語（US）</option>
           <option value="uk">イギリス英語（UK）</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label for="voiceSelect">声</label>
+        <span class="voice-row">
+          <select id="voiceSelect" class="setting-select">
+            <option value="">自動（この端末でいちばん自然な声）</option>
+          </select>
+          <button type="button" class="btn btn--sm btn--ghost" id="voicePreview">試聴</button>
+        </span>
+      </div>
+
+      <div class="setting-row">
+        <label for="rateSelect">速さ</label>
+        <select id="rateSelect" class="setting-select">
+          <option value="slow">ゆっくり</option>
+          <option value="normal">ふつう</option>
+          <option value="fast">速め</option>
         </select>
       </div>
 
