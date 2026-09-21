@@ -2202,6 +2202,24 @@ console.log("prompt context:");
   const toks = (w) => String(w.ja).split(/[・、／,]/).map((t) => t.trim()).filter(Boolean);
   const ambiguous = bizP.find((w) => w.exJa && bizP.some((o) => o.id !== w.id && o.en !== w.en && toks(o).some((t) => toks(w).includes(t))));
   const unique = bizP.find((w) => w.exJa && !bizP.some((o) => o.id !== w.id && toks(o).some((t) => toks(w).includes(t))));
+  // 訳の近さの判定そのものを直接試す（ほぼ同じ訳も拾えているか）。出題の当たり外れに左右されないよう単体で見る
+  {
+    const pageJa = await newPage();
+    await pageJa.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const amb = await pageJa.evaluate(async () => {
+      const m = await import("/js/jaAmbiguity.js");
+      return {
+        same: m.jaLooksSame("始める", "始める"),
+        sharedToken: m.jaLooksSame("義務づける・義務を負わせる", "義務づける"),
+        paren: m.jaLooksSame("たくさん（a lot of）", "たくさんの"),
+        diff: m.jaLooksSame("請求書", "締め切り"),
+        shortNoise: m.jaLooksSame("犬", "犬小屋")
+      };
+    });
+    check("訳の近さ: 同じ訳・訳の一部が共通・かっこ書きを拾い、無関係な訳は拾わない", amb.same && amb.sharedToken && amb.paren && !amb.diff && !amb.shortNoise, JSON.stringify(amb));
+    await pageJa.close();
+  }
+
   const seedP = { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" };
   if (ambiguous && unique) {
     const page = await newPage({ storage: seedP });

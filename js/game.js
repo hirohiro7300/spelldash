@@ -1,4 +1,5 @@
 import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord } from "./wordStore.js";
+import { jaLooksSame } from "./jaAmbiguity.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml } from "./learnedWords.js";
@@ -1551,18 +1552,10 @@ function setNewWord() {
 
 // 同じ訳の語が同じカテゴリに複数あるとき（見る: see／look／watch など）は、例文の訳を文脈として添える。
 // 訳だけでは決まらない語を「当てずっぽう」にしない（英語の綴りは見せない）
-function jaTokens(word) {
-  return String(word?.ja ?? "")
-    .split(/[・、／,]/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-}
-
 function isAmbiguousPrompt(word) {
   if (!word || isConceptWord(word) || word.write || word.blank || word.calc || word.school) return false;
-  const mine = new Set(jaTokens(word));
-  if (mine.size === 0) return false;
-  return getWordsByCategory(activeCategory).some((w) => w.id !== word.id && w.en !== word.en && jaTokens(w).some((t) => mine.has(t)));
+  if (!String(word.ja ?? "").trim()) return false;
+  return getWordsByCategory(activeCategory).some((w) => w.id !== word.id && w.en !== word.en && jaLooksSame(word.ja, w.ja));
 }
 
 function renderPromptContext(word) {
