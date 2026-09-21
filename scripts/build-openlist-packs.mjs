@@ -160,6 +160,10 @@ const respelled = new Set();
 function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLead, audience, meta }) {
   // つづりを直して拾った語は、順位で切り直すと既に書き上がったパックの中身が入れ替わってしまう。
   // そこで切るのは元からある語だけにして、拾った語はその順位が入るパックに足す。
+  // CEFR-J に無い語の level は、パック内の位置ではなくリスト全体の位置で決める。
+  // パックごとに三等分すると「どのパックも前半は easy」になり、難易度の物差しがパックごとに変わってしまう。
+  const third = Math.ceil(ranked.length / 3);
+  const globalLevel = new Map(ranked.map((x, i) => [x.en, i < third ? "easy" : i < third * 2 ? "normal" : "hard"]));
   const base = ranked.filter((x) => !respelled.has(x.en));
   const packs = [];
   for (let i = 0; i < base.length; i += per) packs.push(base.slice(i, i + per));
@@ -172,8 +176,7 @@ function buildRankedPacks({ ranked, prefix, per, listLabel, shortLabel, blurbLea
     const id = `${prefix}${String(n + 1).padStart(2, "0")}`;
     const lo = list[0].rank;
     const hi = list[list.length - 1].rank;
-    const third = Math.ceil(list.length / 3);
-    const words = list.map((x, k) => card(x.en, { level: k < third ? "easy" : k < third * 2 ? "normal" : "hard" }));
+    const words = list.map((x) => card(x.en, { level: globalLevel.get(x.en) ?? "hard" }));
     const label = `${shortLabel} ${n + 1}（${lo}〜${hi}位）`;
     const blurb = n === 0 ? blurbLead : `${listLabel} の ${lo}〜${hi}位。頻度順。前のパックほどよく出会う語`;
     if (blurb.length > 40) throw new Error(`blurbが40字を超える（${id}）: ${blurb}`);
