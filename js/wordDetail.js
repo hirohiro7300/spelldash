@@ -1,5 +1,5 @@
 import { exampleHtml, hasExample } from "./wordExample.js";
-import { findWord, getCategories } from "./wordStore.js";
+import { findWord, findWordIn, getCategories } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
@@ -36,8 +36,11 @@ export function closeWordDetail() {
   if (modal) modal.hidden = true;
 }
 
-export function openWordDetail(wordId, { onNoteSaved } = {}) {
-  const word = findWord(wordId);
+// category を渡すと、そのカテゴリに入っている版の語を優先して引く。
+// 同じ id の語が複数のパックにあり、パックごとに訳・例文が違うことがあるため
+// （例: compile は IT パックでは「コンパイルする」、TOEIC パックでは「まとめる」）。
+export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } = {}) {
+  const word = findWordIn(fromCategory, wordId) ?? findWord(wordId);
   if (!word) return;
   const modal = ensureModal();
   const panel = modal.querySelector("#wordDetailPanel");
@@ -111,6 +114,6 @@ export function bindWordDetail(options = {}) {
     const target = event.target.closest("[data-word-detail]");
     if (!target || target.closest("#wordDetail")) return;
     event.preventDefault();
-    openWordDetail(target.dataset.wordDetail, options);
+    openWordDetail(target.dataset.wordDetail, { ...options, category: target.dataset.wordCategory || options.category });
   });
 }

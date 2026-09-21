@@ -305,7 +305,7 @@ function cardHtml(word, stat) {
   return `
     <article class="gcard gcard--${status}">
       <div class="gcard__head">
-        <button type="button" class="${termClass}" data-word-detail="${word.id}">${term}</button>
+        <button type="button" class="${termClass}" data-word-detail="${word.id}" data-word-category="${escapeHtml(word.category ?? "")}">${term}</button>
         ${concept
           ? `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`
           : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}

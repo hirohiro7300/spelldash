@@ -1461,7 +1461,7 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに136パック（48分野＋レベル別12＋文法6＋英作文5＋中学11＋小学4＋高校14＋教科書英語4＋NGSL 24＋TSL 5＋BSL 3）", packCount === 136, `packs=${packCount}`);
+  check("教材ライブラリに140パック（48分野＋レベル別12＋文法6＋英作文5＋中学11＋小学4＋高校14＋教科書英語4＋NGSL 24＋TSL 7＋BSL 5）", packCount === 140, `packs=${packCount}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
@@ -1514,6 +1514,22 @@ console.log("domain packs:");
   check("外すとカテゴリ選択から消える", !(await page3.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("realestate"));
   check("外すとホームの保存カテゴリは「すべて」", (await page3.evaluate(() => localStorage.getItem("spelldash_category"))) === "all");
   await page3.close();
+
+  // 同じ id の語が複数パックにあり、訳が違う場合（compile: IT=コンパイルする / TOEIC=まとめる）、
+  // 一覧から開いた単語詳細はそのパックの版を出す
+  {
+    const pageDup = await newPage({ storage: { spelldash_packs: JSON.stringify(["tsl07"]), spelldash_category: "tsl07" } });
+    await pageDup.goto(BASE + "/list.html?category=tsl07", { waitUntil: "networkidle" });
+    await pageDup.waitForTimeout(900);
+    await pageDup.fill("#listSearch", "compile");
+    await pageDup.waitForTimeout(400);
+    await pageDup.click('[data-word-detail="english-compile"]');
+    await pageDup.waitForTimeout(300);
+    const detail = await pageDup.textContent("#wordDetailPanel");
+    check("単語詳細は開いたパックの版の訳を出す（同じ語が別パックにもあるとき）", detail.includes("まとめる") && !detail.includes("コンパイル"), detail.slice(0, 120));
+    check("重複 id の単語詳細でエラー0", pageDup.errors.length === 0, pageDup.errors[0] ?? "");
+    await pageDup.close();
+  }
 
   // レベル別パック（英検・TOEIC）: 英単語形式。追加すると出題され、「すべて」や Daily には混ざらない
   const page5 = await newPage({ storage: { spelldash_packs: JSON.stringify(["eiken2"]), spelldash_category: "eiken2", spelldash_placement: "done", spelldash_level_boost: "2" } });
