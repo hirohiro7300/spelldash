@@ -1,4 +1,4 @@
-import { getWordsByCategory, findWord, getCategories, promptOf, speechTextOf, isConceptWord } from "./wordStore.js";
+import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord } from "./wordStore.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml } from "./learnedWords.js";
@@ -1448,7 +1448,7 @@ function setNewWord() {
       return;
     }
 
-    currentWord = (wordId && findWord(wordId)) || chooseWord();
+    currentWord = (wordId && findWordIn(activeCategory, wordId)) || chooseWord();
     renderStudyQueue(true);
   } else {
     currentWord = chooseWord();

@@ -191,6 +191,7 @@ ${sampleHtml(data, sample)}
       <p><a class="pp-cta" href="/list.html?add=${encodeURIComponent(p.id)}">このパックを追加して始める</a></p>
     </section>
     ${siblings.length ? `<section><h2>同じグループの分野</h2><p class="pp-other">${siblings.map((s) => `<a href="/packs/${s.id}.html">${esc(s.label)}</a>`).join(" ／ ")}</p></section>` : ""}
+    ${data.source ? `<section><h2>出典</h2><p class="pp-source">語彙リスト: <a href="${esc(data.source.url)}" rel="license noopener" target="_blank">${esc(data.source.list)}</a>（${esc(data.source.license)}${data.source.ranks ? ` ・ 頻度順位 ${esc(data.source.ranks)}` : ""}）。訳・品詞・例文は SpellDash が作成。</p></section>` : ""}
   `;
   fs.writeFileSync(path.join(OUT_DIR, `${p.id}.html`), pageShell({ title, description, canonical, body }));
   if (!groups.has(p.group)) groups.set(p.group, []);
