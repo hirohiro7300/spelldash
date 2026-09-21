@@ -136,7 +136,7 @@ if (which === "ngsl") {
     const third = Math.ceil(list.length / 3);
     const words = list.map((x, k) => card(x.en, { level: k < third ? "easy" : k < third * 2 ? "normal" : "hard" }));
     const label = n === 0 ? `NGSL 基本英単語 1（数・曜日・月と 1〜${hi}位）` : `NGSL 基本英単語 ${n + 1}（${lo}〜${hi}位）`;
-    const blurb = n === 0 ? "英文の約9割を作る基本2,800語（NGSL）を頻度順に。最初は数・曜日・月と、いちばんよく使う語から" : `NGSL の ${lo}〜${hi}位。頻度順なので、前のパックほど出会う回数が多い語`;
+    const blurb = n === 0 ? "英文の約9割を作る基本2,800語（NGSL）を頻度順に。まず数・曜日・月から" : `NGSL の ${lo}〜${hi}位。頻度順。前のパックほどよく出会う語`;
     return writePack(id, label, blurb, "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）", words, { list: "NGSL 1.2", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/", ranks: `${lo}-${hi}` });
   });
   console.table(report);
