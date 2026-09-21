@@ -1131,6 +1131,26 @@
           "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
         },
         {
+          "id": "bsl14",
+          "label": "ビジネス英単語（BSL） 14（1524〜1641位）",
+          "file": "packs/bsl14.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 1524〜1641位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl15",
+          "label": "ビジネス英単語（BSL） 15（1642〜1757位）",
+          "file": "packs/bsl15.json",
+          "pack": true,
+          "count": 116,
+          "blurb": "BSL の 1642〜1757位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
           "id": "accounting",
           "label": "簿記・会計の基本",
           "file": "packs/accounting.json",
