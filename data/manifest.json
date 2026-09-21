@@ -891,6 +891,86 @@
           "group": "NGSL 基本英単語 2,800語（オープン教材・頻度順）"
         },
         {
+          "id": "tsl01",
+          "label": "TOEIC 英単語（TSL） 1（1〜117位）",
+          "file": "packs/tsl01.json",
+          "pack": true,
+          "count": 116,
+          "blurb": "基本2,800語の外側でTOEICに出る1,250語を頻度順に",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl02",
+          "label": "TOEIC 英単語（TSL） 2（118〜231位）",
+          "file": "packs/tsl02.json",
+          "pack": true,
+          "count": 114,
+          "blurb": "TSL の 118〜231位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl03",
+          "label": "TOEIC 英単語（TSL） 3（232〜346位）",
+          "file": "packs/tsl03.json",
+          "pack": true,
+          "count": 114,
+          "blurb": "TSL の 232〜346位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl04",
+          "label": "TOEIC 英単語（TSL） 4（347〜460位）",
+          "file": "packs/tsl04.json",
+          "pack": true,
+          "count": 114,
+          "blurb": "TSL の 347〜460位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "tsl05",
+          "label": "TOEIC 英単語（TSL） 5（461〜574位）",
+          "file": "packs/tsl05.json",
+          "pack": true,
+          "count": 114,
+          "blurb": "TSL の 461〜574位。頻度順。前のパックほどよく出会う語",
+          "audience": "TOEIC のスコアを上げたい人（TSL: CC BY-SA 4.0）",
+          "group": "TOEIC 英単語 1,250語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl01",
+          "label": "ビジネス英単語（BSL） 1（1〜118位）",
+          "file": "packs/bsl01.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "基本2,800語の外側で仕事に出る1,750語を頻度順に",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl02",
+          "label": "ビジネス英単語（BSL） 2（119〜236位）",
+          "file": "packs/bsl02.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 119〜236位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
+          "id": "bsl03",
+          "label": "ビジネス英単語（BSL） 3（237〜353位）",
+          "file": "packs/bsl03.json",
+          "pack": true,
+          "count": 117,
+          "blurb": "BSL の 237〜353位。頻度順。前のパックほどよく出会う語",
+          "audience": "仕事で英語を使う人（BSL: CC BY-SA 4.0）",
+          "group": "ビジネス英単語 1,750語（オープン教材・頻度順）"
+        },
+        {
           "id": "accounting",
           "label": "簿記・会計の基本",
           "file": "packs/accounting.json",
