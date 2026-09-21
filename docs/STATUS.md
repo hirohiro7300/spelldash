@@ -1,6 +1,6 @@
 # SpellDash 現状スナップショット（2026-07-17 上流設計用・詳細版）
 
-> **2026-09-21追記（Batch 27・28: 再設計「墨と朱」／NGSL パック 1〜12）**: デザインの基準は docs/CONCEPT.md と css/tokens.css。各ページは brand.css（共通）＋ home.css／card.css／pages.css（領域別）で既存 CSS を上書きしている（`html[data-theme]` 接頭辞で theme.css に勝つ）。廃止: シェア画像（js/setShare.js 削除）、BGM（js/bgm.js は no-op）、ミッション UI・週間レポートのホーム表示・キーミス・語根ファミリー表示・正解時発音の設定。E2E 379 件。NGSL（CC BY-SA 4.0、data/sources/ngsl/LICENSE.md）は scripts/build-openlist-packs.mjs → data/packs/ngsl01..12（1,381位まで）を登録済み、パックページに出典セクション。
+> **2026-09-21追記（Batch 27・28: 再設計「墨と朱」／NGSL パック 1〜12）**: デザインの基準は docs/CONCEPT.md と css/tokens.css。各ページは brand.css（共通）＋ home.css／card.css／pages.css（領域別）で既存 CSS を上書きしている（`html[data-theme]` 接頭辞で theme.css に勝つ）。廃止: シェア画像（js/setShare.js 削除）、BGM（js/bgm.js は no-op）、ミッション UI・週間レポートのホーム表示・キーミス・語根ファミリー表示・正解時発音の設定。E2E 379 件。NGSL（CC BY-SA 4.0、data/sources/ngsl/LICENSE.md）は scripts/build-openlist-packs.mjs → data/packs/ngsl01..24（2,857語）を登録済み（教材ライブラリは128パック）、パックページに出典セクション、道のコースは7本に。
 
 > **2026-09-21追記（Batch 26: 答え表示後の1行化・訳の曖昧さレポート）**: index.html の `#wordNote`／`#wordAi`／`.word-tools` を `.word-actions`（flex・wrap・中央）で包み、チップを同じ大きさに。メモ編集中・覚え方の本文は `flex: 1 1 100%`。E2E で 390px の答え表示後に3つが同じ行・入力欄が画面内であることを確認。訳の曖昧さは docs/AMBIGUOUS_JA.md（同訳 14組・カタカナ 225語・1文字 180語）。
 > **2026-09-21追記（Batch 25: 同じ訳の語に文脈）**: game.js `isAmbiguousPrompt`（同じカテゴリの別の語と訳のトークン（・／、で分割）が重なる）なら `#promptContext` に `例文: <exJa>` を出す（概念・穴埋め・英作文・計算・学校カードは対象外、音で出題時も出さない）。該当は約30語（jhs-english1 の speak／talk・class／lesson、toeic600 の warehouse／storage・benefit／profit など）。E2E 2件。

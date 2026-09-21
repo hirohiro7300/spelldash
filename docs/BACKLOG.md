@@ -157,7 +157,7 @@
 - **Batch 8**: G11 分野パック9種＋教材ライブラリ ✅（形式は docs/PACK_FORMAT.md）
 - **Batch 8b（候補）**: G12 パック追加、G13 分野紹介ページ＋sitemap、G8残り（英単語リストの生成・PDF） 概念カードの逆方向ドリル（用語→意味の4択 ⚠出題形式の追加） A12 B7 B8 F8 G4 D6拡張（年間） ＋ Day 1以降のハンドブック取り込み（素材待ち）
 - **Batch 27（再設計「墨と朱」）** ✅ 2026-09-21: docs/CONCEPT.md、css/tokens.css・brand.css・home.css・card.css・pages.css（上書きレイヤー方式。theme.css は未削除）、js/icons.js、2トーン文字、絵文字ラベル全廃、ホームからミッション・週間レポート・ヒーロー・レベルバーを外す、シェア画像機能・BGM・キーミス・語根ファミリー・正解時発音の設定を廃止、覚え方を作るはログイン時のみ、音声は自然な声の自動選択＋試聴＋速さ。残り: **CSS の整理**（theme.css／game.css の死んだ規則を消し、上書きレイヤーを畳む）、`npm run app:build` の dist 再生成
-- **Batch 28（オープン教材 NGSL）** 進行中: scripts/build-openlist-packs.mjs で骨組み → エージェント執筆 → data/packs/ngsl01..24。12/24 完了（1〜1,381位）。残り: ngsl13..24、NGSL コース（js/course.js）、以降 TSL／BSL／NAWL／NDL／NGSL-Spoken
+- **Batch 28（オープン教材 NGSL）** ✅ 2026-09-21: scripts/build-openlist-packs.mjs で骨組み → エージェント執筆 → data/packs/ngsl01..24（2,857語・24パック）。全パックに出典（CC BY-SA 4.0）、道のコース「基本英単語 2,800語（NGSL）」を追加。以降の候補: TSL（TOEIC）／BSL（ビジネス）／NAWL（アカデミック）／NDL（新聞）／NGSL-Spoken
 - 以降はこの表から順に。創業者の「止めろ」があれば即中断。
 
 ## 実装しないと決めたもの（理由つき）
