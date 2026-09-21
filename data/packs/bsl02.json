@@ -92,7 +92,7 @@
     {"id": "english-accumulate", "en": "accumulate", "ja": "蓄積する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Interest will accumulate on the loan every month.", "exJa": "ローンの利息は毎月積み上がっていきます。"},
     {"id": "english-diversify", "en": "diversify", "ja": "多角化する", "pos": "動", "level": "normal", "tags": ["v"], "ex": "The firm wants to diversify into food and travel.", "exJa": "同社は食品と旅行へ事業を多角化したい。"},
     {"id": "english-feedback", "en": "feedback", "ja": "意見・反応", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Thank you for your feedback on the new website.", "exJa": "新しいサイトへのご意見ありがとうございます。"},
-    {"id": "english-behalf", "en": "behalf", "ja": "〜に代わって（on behalf of）", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Mike spoke on behalf of the whole team at the meeting.", "exJa": "マイクは会議でチーム全体に代わって話しました。"},
+    {"id": "english-behalf", "en": "behalf", "ja": "〜に代わって（on ___ of）", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Mike spoke on behalf of the whole team at the meeting.", "exJa": "マイクは会議でチーム全体に代わって話しました。"},
     {"id": "english-exploit", "en": "exploit", "ja": "搾取する・利用する", "pos": "動", "level": "normal", "tags": ["v"], "ex": "The company was accused of exploiting its part-time workers.", "exJa": "その会社はパート従業員を搾取していると非難された。", "exForm": "exploiting"},
     {"id": "english-diagram", "en": "diagram", "ja": "図・図表", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The diagram on page two explains how the system works.", "exJa": "2ページ目の図がシステムの仕組みを説明しています。"},
     {"id": "english-referendum", "en": "referendum", "ja": "国民投票", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The country held a referendum on the new tax law.", "exJa": "その国は新しい税法について国民投票を行いました。"},

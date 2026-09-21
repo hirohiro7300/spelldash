@@ -55,7 +55,7 @@
     {"id": "english-stranger", "en": "stranger", "ja": "見知らぬ人", "pos": "名", "level": "hard", "tags": ["n"], "ex": "A stranger asked me the way to the station.", "exJa": "知らない人に駅への道を聞かれた。"},
     {"id": "english-shade", "en": "shade", "ja": "日陰・陰", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Let's sit in the shade of that big tree.", "exJa": "あの大きな木の陰に座ろう。"},
     {"id": "english-grain", "en": "grain", "ja": "穀物・粒", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Farmers here grow grain and vegetables.", "exJa": "この辺りの農家は穀物と野菜を育てている。"},
-    {"id": "english-situate", "en": "situate", "ja": "（be situated で）位置する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "The hotel is situated near the sea.", "exJa": "そのホテルは海の近くにある。", "exForm": "situated"},
+    {"id": "english-situate", "en": "situate", "ja":"位置させる・置く", "pos": "動", "level": "hard", "tags": ["v"], "ex": "The hotel is situated near the sea.", "exJa": "そのホテルは海の近くにある。", "exForm": "situated"},
     {"id": "english-summarize", "en": "summarize", "ja": "要約する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Can you summarize the report in a few words?", "exJa": "その報告書を一言で要約してもらえますか？"},
     {"id": "english-leap", "en": "leap", "ja": "跳ぶ・跳躍する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "The cat leaped over the wall and ran away.", "exJa": "猫は塀を跳び越えて逃げた。", "exForm": "leaped"},
     {"id": "english-snap", "en": "snap", "ja": "ポキッと折れる・折る", "pos": "動", "level": "hard", "tags": ["v"], "ex": "The branch snapped under the weight of the snow.", "exJa": "雪の重みで枝がポキッと折れた。", "exForm": "snapped"},

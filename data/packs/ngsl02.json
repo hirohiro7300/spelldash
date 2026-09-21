@@ -68,7 +68,7 @@
     {"id": "english-problem", "en": "problem", "ja": "問題", "pos": "名", "level": "normal", "tags": ["n"], "ex": "We have a small problem with the car.", "exJa": "車にちょっと問題があるんだ。"},
     {"id": "english-write", "en": "write", "ja": "書く", "pos": "動", "level": "easy", "tags": ["v"], "ex": "Please write your name here.", "exJa": "ここに名前を書いてください。"},
     {"id": "english-same", "en": "same", "ja": "同じ", "pos": "形", "level": "easy", "tags": ["adj"], "ex": "We go to the same school.", "exJa": "私たちは同じ学校に通っている。"},
-    {"id": "english-lot", "en": "lot", "ja": "たくさん（a lot of）", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I have a lot of work to do today.", "exJa": "今日はやる仕事がたくさんある。"},
+    {"id": "english-lot", "en": "lot", "ja":"たくさん（a ___ of）", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I have a lot of work to do today.", "exJa": "今日はやる仕事がたくさんある。"},
     {"id": "english-great", "en": "great", "ja": "すばらしい・偉大な", "pos": "形", "level": "easy", "tags": ["adj"], "ex": "That's a great idea!", "exJa": "それはすばらしい考えだね！"},
     {"id": "english-try", "en": "try", "ja": "試す・やってみる", "pos": "動", "level": "easy", "tags": ["v"], "ex": "Please try this cake.", "exJa": "このケーキを試してみてください。"},
     {"id": "english-leave", "en": "leave", "ja": "去る・出発する", "pos": "動", "level": "normal", "tags": ["v"], "ex": "I have to leave home at seven.", "exJa": "7時に家を出なきゃいけないんだ。"},

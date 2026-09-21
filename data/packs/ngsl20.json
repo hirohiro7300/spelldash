@@ -47,7 +47,7 @@
     {"id": "english-intervention", "en": "intervention", "ja": "介入", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The teacher's intervention stopped the fight.", "exJa": "先生の介入でけんかは止まった。"},
     {"id": "english-impress", "en": "impress", "ja": "感心させる", "pos": "動", "level": "normal", "tags": ["v"], "ex": "His speech impressed everyone in the room.", "exJa": "彼のスピーチは部屋の全員を感心させた。", "exForm": "impressed"},
     {"id": "english-exam", "en": "exam", "ja": "試験", "pos": "名", "level": "normal", "tags": ["n"], "ex": "I have a math exam next Monday.", "exJa": "来週の月曜に数学の試験がある。"},
-    {"id": "english-vice", "en": "vice", "ja": "副〜（vice president など）", "pos": "形", "level": "hard", "tags": ["adj"], "ex": "Ms. Sato is the vice president of our company.", "exJa": "佐藤さんは当社の副社長です。"},
+    {"id": "english-vice", "en": "vice", "ja":"副〜（___ president など）", "pos": "形", "level": "hard", "tags": ["adj"], "ex": "Ms. Sato is the vice president of our company.", "exJa": "佐藤さんは当社の副社長です。"},
     {"id": "english-radical", "en": "radical", "ja": "急進的な・根本的な", "pos": "形", "level": "hard", "tags": ["adj"], "ex": "The new manager made radical changes to the plan.", "exJa": "新しい部長は計画を根本的に変えた。"},
     {"id": "english-similarly", "en": "similarly", "ja": "同様に", "pos": "副", "level": "hard", "tags": ["adj"], "ex": "Prices rose in Tokyo, and similarly in Osaka.", "exJa": "東京で物価が上がり、大阪でも同様に上がった。"},
     {"id": "english-behave", "en": "behave", "ja": "ふるまう", "pos": "動", "level": "hard", "tags": ["v"], "ex": "The children behaved well at the party.", "exJa": "子どもたちはパーティーで行儀よくふるまった。", "exForm": "behaved"},

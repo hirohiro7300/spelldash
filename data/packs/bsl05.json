@@ -44,7 +44,7 @@
     {"id": "english-unfair", "en": "unfair", "ja": "不公平な", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "The workers said the new rule was unfair.", "exJa": "社員たちは新しい規則は不公平だと言いました。"},
     {"id": "english-terminate", "en": "terminate", "ja": "解約する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Either party may terminate the contract with one month's notice.", "exJa": "双方とも1か月前に通知すれば契約を解約できます。"},
     {"id": "english-advisor", "en": "advisor", "ja": "助言者・顧問", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Ask your tax advisor before you sign.", "exJa": "署名する前に税の顧問に相談してください。"},
-    {"id": "english-inter", "en": "inter", "ja": "〜の間の（inter-）", "pos": "形", "level": "hard", "tags": ["adj"], "ex": "Inter-office mail is delivered twice a day at our company.", "exJa": "当社では社内便が一日二回配られます。"},
+    {"id": "english-inter", "en": "inter", "ja": "〜の間の・相互の（接頭辞）", "pos": "形", "level": "hard", "tags": ["adj"], "ex": "Inter-office mail is delivered twice a day at our company.", "exJa": "当社では社内便が一日二回配られます。"},
     {"id": "english-induce", "en": "induce", "ja": "促す・引き起こす", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Lower prices may induce more people to buy now.", "exJa": "値下げは今買うよう人々を促すかもしれません。"},
     {"id": "english-elite", "en": "elite", "ja": "エリート・上層部", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Only a small elite in the company sees these figures.", "exJa": "社内のごく一部の上層部だけがこの数字を見ます。"},
     {"id": "english-coordinate", "en": "coordinate", "ja": "調整する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Please coordinate the schedule with the other teams.", "exJa": "他のチームとスケジュールを調整してください。"},

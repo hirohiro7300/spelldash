@@ -103,6 +103,11 @@ for (const fullPath of files) {
       if (!/^[a-z][a-z-]*$/.test(w.en ?? "")) problems.push(`スペル形式 ${where} en="${w.en}"`);
     }
     if (!["easy", "normal", "hard"].includes(w.level)) problems.push(`level不正 ${where}`);
+    // 訳に見出し語そのものを書かない（出題文に答えが出てしまい、思い出す練習にならない）。
+    // 連語を示したいときは「〜に代わって（on ___ of）」のように見出し語を伏せる。
+    if (w.en && String(w.ja ?? "").toLowerCase().includes(String(w.en).toLowerCase())) {
+      problems.push(`訳に答えが入っている ${where} ja="${w.ja}"`);
+    }
     // 例文（任意）: ex は英文で 70字以内、見出し語（または exForm の語形）を含む。exJa は 40字以内で必須
     if (w.ex != null || w.exJa != null || w.exForm != null) {
       const ex = String(w.ex ?? "");
