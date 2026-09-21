@@ -266,6 +266,7 @@ export function stopGame() {
   currentWord = null;
   dailyRun = null; // 中断したDailyはロックせず、カードからやり直せる
   elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
+  renderPromptContext(null);
   showHiddenWordText("");
   updateCombo(0);
   updateBigTimer();
@@ -1524,6 +1525,7 @@ function setNewWord() {
               : "日本語訳";
   }
   elements.japanese.textContent = listenMode ? "🔊 聞いて打つ" : promptOf(currentWord);
+  renderPromptContext(listenMode ? null : currentWord);
   if (currentWord.calc) elements.input.placeholder = "数字を入力してEnter（例: 8000 / 5%）";
   showHiddenWordText(
     currentWord.calc
@@ -1556,6 +1558,28 @@ function setNewWord() {
   scheduleHint();
   window.dispatchEvent(new CustomEvent("spelldash:word", { detail: { id: currentWord.id } })); // 画面キーボード等が盤面を更新する
   saveResumePoint();
+}
+
+// 同じ訳の語が同じカテゴリに複数あるとき（見る: see／look／watch など）は、例文の訳を文脈として添える。
+// 訳だけでは決まらない語を「当てずっぽう」にしない（英語の綴りは見せない）
+function jaTokens(word) {
+  return String(word?.ja ?? "")
+    .split(/[・、／,]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+function isAmbiguousPrompt(word) {
+  if (!word || isConceptWord(word) || word.write || word.blank || word.calc || word.school) return false;
+  const mine = new Set(jaTokens(word));
+  if (mine.size === 0) return false;
+  return getWordsByCategory(activeCategory).some((w) => w.id !== word.id && w.en !== word.en && jaTokens(w).some((t) => mine.has(t)));
+}
+
+function renderPromptContext(word) {
+  const el = document.getElementById("promptContext");
+  if (!el) return;
+  el.textContent = word && word.exJa && isAmbiguousPrompt(word) ? `例文: ${word.exJa}` : "";
 }
 
 // 「前回の続きから」用に、いまの語と残りの語・セットの進みを保存（通常の Study セットだけ）

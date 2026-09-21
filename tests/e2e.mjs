@@ -2188,6 +2188,34 @@ console.log("native app:");
   await page2.close();
 }
 
+// ===== 16. 同じ訳の語には例文の訳を文脈として添える =====
+console.log("prompt context:");
+{
+  const bizP = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words; // speak／talk（話す）、class／lesson（授業）がある
+  const toks = (w) => String(w.ja).split(/[・、／,]/).map((t) => t.trim()).filter(Boolean);
+  const ambiguous = bizP.find((w) => w.exJa && bizP.some((o) => o.id !== w.id && o.en !== w.en && toks(o).some((t) => toks(w).includes(t))));
+  const unique = bizP.find((w) => w.exJa && !bizP.some((o) => o.id !== w.id && toks(o).some((t) => toks(w).includes(t))));
+  const seedP = { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" };
+  if (ambiguous && unique) {
+    const page = await newPage({ storage: seedP });
+    await page.goto(BASE + `/index.html?words=${ambiguous.id}`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(900);
+    await page.press("#input", "Enter");
+    await page.waitForTimeout(400);
+    check("文脈: 同じ訳の語が他にあるときは例文の訳を添える（英語は出さない）", (await page.textContent("#promptContext")).includes(ambiguous.exJa) && !(await page.textContent("#promptContext")).includes(ambiguous.en), `${ambiguous.en}/${ambiguous.ja}: ${await page.textContent("#promptContext")}`);
+    await page.close();
+    const page2 = await newPage({ storage: seedP });
+    await page2.goto(BASE + `/index.html?words=${unique.id}`, { waitUntil: "networkidle" });
+    await page2.waitForTimeout(900);
+    await page2.press("#input", "Enter");
+    await page2.waitForTimeout(400);
+    check("文脈: 訳が一意な語には添えない", (await page2.textContent("#promptContext")).trim() === "" && (await page2.textContent("#japanese")).trim() !== "", `${unique.en}/${unique.ja}`);
+    await page2.close();
+  } else {
+    check("文脈: テスト用の語が見つからずスキップ", true);
+  }
+}
+
 await browser.close();
 server.close();
 
