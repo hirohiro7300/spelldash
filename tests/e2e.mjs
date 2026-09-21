@@ -2074,6 +2074,75 @@ console.log("path fold:");
   await page.close();
 }
 
+// ===== 14. 前回の続きから =====
+console.log("resume:");
+{
+  const bizR2 = JSON.parse(fs.readFileSync(path.join(ROOT, "data/english/business.json"), "utf8")).words;
+  const byJa = (ja) => bizR2.filter((w) => w.ja === ja || w.ja.split("・").includes(ja));
+  const todayS = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const seed = { spelldash_category: "business", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: todayS }) };
+  const page = await newPage({ storage: seed });
+  await page.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter");
+  await page.waitForTimeout(400);
+  // 自力で2語思い出す（訳が一意な語だけ自力、他は答えを見て練習）
+  let recalled = 0;
+  for (let i = 0; i < 10 && recalled < 2; i++) {
+    const ja = (await page.textContent("#japanese")).trim();
+    const cand = byJa(ja);
+    if (cand.length === 1) {
+      for (const ch of cand[0].en) await page.press("#input", ch);
+      recalled++;
+    } else {
+      await page.press("#input", "Enter");
+      await page.waitForTimeout(150);
+      for (const ch of (await page.textContent("#word")).trim()) await page.press("#input", ch);
+    }
+    await page.waitForTimeout(200);
+    await page.press("#input", "Enter"); // 待たずに次へ
+    await page.waitForTimeout(300);
+  }
+  const jaBefore = (await page.textContent("#japanese")).trim();
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_session") || "null"));
+  check("続きから: プレイ中に残りの語と進みが保存される", !!saved && saved.category === "business" && saved.recalled.length === 2 && saved.queue.length > 0 && saved.setSize === 5, JSON.stringify(saved)?.slice(0, 120));
+  await page.click("#backToPath");
+  await page.waitForTimeout(300);
+  // 開き直しても道に「続きから」
+  await page.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("続きから: 道のスタートが「続きから」になり、進みと残りが見える", (await page.textContent("#pathStart")).includes("続きから") && (await page.textContent(".path__node--current .path__label")).includes("2／5語 済み"));
+  await page.click("#pathStart");
+  await page.waitForTimeout(500);
+  check("続きから: 中断した語から再開し、セットの進みは 2", (await page.textContent("#japanese")).trim() === jaBefore && (await page.textContent("#message")).includes("前回の続きから") && (await page.textContent("#setProgress, .set-progress")).includes("2"), `ja=${await page.textContent("#japanese")} msg=${await page.textContent("#message")}`);
+  check("続きからでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  // セットを終えると消える（?set=2 で2語）
+  const page2 = await newPage({ storage: seed });
+  await page2.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.press("#input", "Enter");
+  await page2.waitForTimeout(400);
+  for (let i = 0; i < 10 && (await page2.$("#resultPanel[hidden]")) !== null; i++) {
+    const ja = (await page2.textContent("#japanese")).trim();
+    const cand = byJa(ja);
+    let ans;
+    if (cand.length === 1) ans = cand[0].en;
+    else {
+      await page2.press("#input", "Enter");
+      await page2.waitForTimeout(150);
+      ans = (await page2.textContent("#word")).trim();
+    }
+    for (const ch of ans) await page2.press("#input", ch);
+    await page2.waitForTimeout(200);
+    await page2.press("#input", "Enter");
+    await page2.waitForTimeout(300);
+  }
+  check("続きから: セット完了で保存が消え、道は通常のスタートに戻る", (await page2.evaluate(() => localStorage.getItem("spelldash_session"))) === null && !(await page2.textContent("#pathStart")).includes("続きから"));
+  await page2.close();
+}
+
 await browser.close();
 server.close();
 

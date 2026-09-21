@@ -465,6 +465,22 @@ export function startRetryQueue(ids) {
   placementRun = false;
 }
 
+// 「前回の続きから」: 残っていた語をそのまま並べる（補充はする）。自力で思い出せた語は今回のセッションでも数え直さない
+export function startResumedQueue(ids, recalledIds = []) {
+  queue = [...new Set(ids)];
+  sessionFailCounts = new Map();
+  practicedXpClaimed = new Set();
+  recalledThisSession = new Set(recalledIds);
+  sessionReviewCount = 0;
+  restricted = false;
+  placementRun = false;
+}
+
+// これから出る語（保存用）
+export function getUpcomingIds() {
+  return [...queue];
+}
+
 export function isPlacementRun() {
   return placementRun;
 }

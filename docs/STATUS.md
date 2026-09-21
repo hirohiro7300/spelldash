@@ -1,5 +1,6 @@
 # SpellDash 現状スナップショット（2026-07-17 上流設計用・詳細版）
 
+> **2026-09-21追記（Batch 22: 前回の続きから）**: `js/sessionResume.js`（`spelldash_session`: category／focus／queue（いまの語＋残り）／recalled／failed／setSize、日付つき）。game.js が語を出すたび・自力正解のたびに保存し、セット完了で消す（もう一度・腕試しは対象外）。道は当日・同カテゴリの保存があればスタートを「続きから」（橙）にし、main.js startUnit が `startGame({ resume })` → studyQueue.startResumedQueue。E2E 5件追加（374件）。
 > **2026-09-17追記（Batch 21: 道の折りたたみ）**: 現在地より前の済みユニットが4つ以上なら、直前の2つを残して「✓ 済み Nユニット（開く）」1ノードに畳む（`pathView.js` doneExpanded、開くと再描画）。毎日開くたびに済みの列をスクロールしなくてよくなる（390px でスタートが最初の画面内）。現在・済みユニットのラベルに 📖（`list.html?category=…#genre-<tag>`）。
 > **2026-09-17追記（Batch 20: コース選択・制覇演出）**: `js/course.js` に6コース（jhs-redo／biz／conversation／hs／eiken／toeic、各 blurb・audience・packs）。道の見出しの「コースを変える」でパネル（`pathView.js` courseChooserHtml）、選ぶと `main.js` chooseCourse がまだ制覇していない最初のセクション（`buildPath(id).allDone` で判定）から開始し、基本カテゴリはパック追加せずにカテゴリだけ切替。ユニット制覇はセット開始時の済みユニットと終了時を比べて `showPathToast`（はちゃんは出さない）。E2E 8件追加。
 > **2026-09-17追記（第7回レビュー修正）**: 道・専用キーボード・トップページ・アプリ環境をマルチエージェントで敵対的レビュー（各指摘を反証＋再現で確認、確定 22件＋アプリ限定 7件）。Web に効くものはすべて修正（BACKLOG F11）。特に重要: 正解直後の待ち中に打ったキーが次の語のミス＝「思い出せず」として記録されていた／「道に戻る」でセットが止まらなかった／解放判定が1〜2セットで外れていた／補充が別ユニットの新語を先に出していた。アプリ限定の残りは J2 に列挙。

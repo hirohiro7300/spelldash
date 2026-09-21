@@ -624,3 +624,25 @@ html[data-theme="light"] .path__toast { background: #dcfce7; border-color: #86ef
 
 html[data-theme="light"] .path__node--fold .path__dot { background: #dcfce7; border-color: #86efac; color: #15803d; }
 html[data-theme="light"] .path__linkbtn { color: #1d4ed8; }
+
+/* 前回の続きから（途中のセットがあるとき） */
+.path__start--resume {
+  background: #f59e0b;
+  border-color: #d97706;
+  box-shadow: 0 8px 0 #b45309, 0 14px 30px rgba(245, 158, 11, 0.35);
+  font-size: 14px;
+}
+
+.path__start--resume:active {
+  box-shadow: 0 2px 0 #b45309;
+}
+
+.path__start--resume:hover {
+  background: #d97706;
+}
+
+.path__node--current .path__start--resume + .path__label b {
+  color: #fbbf24;
+}
+
+html[data-theme="light"] .path__node--current .path__start--resume + .path__label b { color: #b45309; }
