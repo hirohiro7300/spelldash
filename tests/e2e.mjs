@@ -1461,7 +1461,14 @@ console.log("domain packs:");
   await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const packCount = (await page.$$(".pack")).length;
-  check("教材ライブラリに142パック（48分野＋レベル別12＋文法6＋英作文5＋中学11＋小学4＋高校14＋教科書英語4＋NGSL 24＋TSL 7＋BSL 7）", packCount === 142, `packs=${packCount}`);
+  // 期待値は manifest から取る（パックを足すたびに数字を書き換えると、書き換え漏れで落ちるため）。
+  // 「全部描画されているか」を見るのが目的。合計が激減していないことだけ別に見る。
+  const manifestPacks = await page.evaluate(async () => {
+    const m = await (await fetch("/data/manifest.json")).json();
+    return m.subjects.find((s) => s.id === "english").categories.filter((c) => c.pack).length;
+  });
+  check("教材ライブラリに manifest のパックが全部出る", packCount === manifestPacks, `画面=${packCount} manifest=${manifestPacks}`);
+  check("教材ライブラリのパック数が減っていない（140以上）", manifestPacks >= 140, `manifest=${manifestPacks}`);
   const options = await page.$$eval("#listCategory option", (els) => els.map((e) => e.value));
   check("追加前はカテゴリ選択にパックが無い", !options.includes("realestate"), options.join(","));
   check("ライブラリはグループ見出しつき（5グループ以上）", (await page.$$(".pack-group")).length >= 5);
