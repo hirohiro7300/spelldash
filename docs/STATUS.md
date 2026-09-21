@@ -1,5 +1,6 @@
 # SpellDash 現状スナップショット（2026-07-17 上流設計用・詳細版）
 
+> **2026-09-21追記（Batch 24: アプリ限定の残り）**: `js/appEnv.js` に `nativeCall`（`Capacitor.nativePromise` を直接呼ぶ。ビルド無しなので `Capacitor.Plugins` は存在しない）、`syncNativeChrome`（StatusBar をテーマに追従）、`/packs/` リンクを本番の外部ブラウザで開くクリック委譲。専用キーボードの Haptics はこれ経由。アプリではログイン欄の Google／メールを隠して案内文だけ（全5ページ）、ログイン案内と「ホーム画面に追加」を出さない、news・privacy も appEnv を読む。E2E は Capacitor を偽装して 9件（`window.Capacitor.nativePromise` の呼び出しを記録）。実機確認は創業者側。
 > **2026-09-21追記（Batch 23: コントラスト AA）**: 全ページの可視テキストの文字色／実効背景色を Playwright で計測（背景が半透明なら親と合成、グラデーション背景は除外）。ライトで 4.5:1 未満が 31 種あり、薄い灰色（#64748b→#526070、#94a3b8→#64748b）、青ボタン（button／.btn の背景 #3b82f6→#2563eb、hover #1d4ed8。ダークにも効く）、発音ボタン・レベルバーの残り・キューの赤・ストリーク OFF を修正。再計測でライト 0件（Battle の2件は触らない方針、🏆 は絵文字）、ダーク 0件。
 > **2026-09-21追記（Batch 22: 前回の続きから）**: `js/sessionResume.js`（`spelldash_session`: category／focus／queue（いまの語＋残り）／recalled／failed／setSize、日付つき）。game.js が語を出すたび・自力正解のたびに保存し、セット完了で消す（もう一度・腕試しは対象外）。道は当日・同カテゴリの保存があればスタートを「続きから」（橙）にし、main.js startUnit が `startGame({ resume })` → studyQueue.startResumedQueue。E2E 5件追加（374件）。
 > **2026-09-17追記（Batch 21: 道の折りたたみ）**: 現在地より前の済みユニットが4つ以上なら、直前の2つを残して「✓ 済み Nユニット（開く）」1ノードに畳む（`pathView.js` doneExpanded、開くと再描画）。毎日開くたびに済みの列をスクロールしなくてよくなる（390px でスタートが最初の画面内）。現在・済みユニットのラベルに 📖（`list.html?category=…#genre-<tag>`）。

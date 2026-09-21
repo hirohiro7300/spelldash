@@ -1,3 +1,4 @@
+import { isNativeApp, nativeCall } from "./appEnv.js";
 // ===== 専用キーボード（画面キーボード、A〜Z＋BS） =====
 //
 // docs/KEYBOARD.md の構想。スマホの OS キーボードは日本語切替・予測変換・数字記号が邪魔で、
@@ -45,9 +46,8 @@ export function oskEnabled() {
 
 function haptic() {
   try {
-    const H = window.Capacitor?.Plugins?.Haptics;
-    if (H?.impact) {
-      H.impact({ style: "LIGHT" });
+    if (isNativeApp) {
+      nativeCall("Haptics", "impact", { style: "LIGHT" }); // ビルド無しなので Capacitor.Plugins は無い。ブリッジを直接呼ぶ
       return;
     }
     navigator.vibrate?.(8);

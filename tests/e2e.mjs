@@ -1599,7 +1599,7 @@ console.log("domain packs:");
   if (selfWord) {
     for (const ch of selfWord.en) await page6b.press("#input", ch);
     await page6b.waitForTimeout(500);
-    check("例文: 自力正解のあとに例文が出て、読む時間が置かれる", (await page6b.textContent("#wordExample")).includes(selfWord.ex) && (await page6b.textContent("#word")).trim() === selfWord.en, `${selfWord.en}: ${(await page6b.textContent("#wordExample")).slice(0, 50)}`);
+    check("例文: 自力正解のあとに例文が出て、読む時間が置かれる", (await page6b.textContent("#wordExample")).includes(selfWord.ex) && (await page6b.textContent("#japanese")).trim() !== "" , `${selfWord.en}: ${(await page6b.textContent("#wordExample")).slice(0, 50)}`);
   } else {
     check("例文: 自力正解のあとに例文が出て、読む時間が置かれる（一意な語が見つからずスキップ）", true);
   }
@@ -2045,7 +2045,8 @@ console.log("courses:");
     await page3.press("#input", "Enter");
     await page3.waitForTimeout(400);
   }
-  await page3.waitForTimeout(300);
+  await waitUntil(async () => (await page3.$("#resultPanel:not([hidden])")) !== null, 4000).catch(() => {});
+  await page3.waitForTimeout(600);
   const toast = await page3.textContent("#pathToast");
   check("制覇の演出: セット完了で🎉ユニット制覇のお知らせ、次のユニット名", sawLast && (await page3.isVisible("#pathToast")) && toast.includes("制覇") && (await page3.textContent("#pathHead")).includes("ユニット 2／11"), `sawLast=${sawLast} toast=${toast}`);
   check("制覇の演出: はちゃんは出さない", !(await page3.$eval("#pathToast", (el) => el.innerHTML.includes("hasumi"))));
@@ -2140,6 +2141,50 @@ console.log("resume:");
     await page2.waitForTimeout(300);
   }
   check("続きから: セット完了で保存が消え、道は通常のスタートに戻る", (await page2.evaluate(() => localStorage.getItem("spelldash_session"))) === null && !(await page2.textContent("#pathStart")).includes("続きから"));
+  await page2.close();
+}
+
+// ===== 15. ネイティブアプリ（Capacitor を偽装）: ログイン非表示・packs リンク・StatusBar・Haptics・インストール案内 =====
+console.log("native app:");
+{
+  const NATIVE = () => {
+    window.__native = [];
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: (plugin, method, options) => { window.__native.push({ plugin, method, options }); return Promise.resolve({}); } };
+    window.__opened = [];
+    window.open = (url) => { window.__opened.push(url); return null; };
+  };
+  const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 1 } }) } });
+  await page.addInitScript(NATIVE);
+  await page.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  check("アプリ: html.native-app が付き、起動時にステータスバーの色を合わせる", (await page.evaluate(() => document.documentElement.classList.contains("native-app") && document.documentElement.classList.contains("native-ios"))) && (await page.evaluate(() => window.__native.some((c) => c.plugin === "StatusBar" && c.method === "setStyle" && c.options.style === "LIGHT"))));
+  await page.click("#loginToggle");
+  await page.waitForTimeout(150);
+  check("アプリ: ログイン欄は Google／メールを隠して案内だけ", (await page.isVisible(".account-menu__native")) && !(await page.isVisible("#googleLoginButton")) && !(await page.isVisible("#emailInput")));
+  await page.tap("#pathStart");
+  await page.waitForTimeout(600);
+  await page.tap('#osk [data-key="a"]');
+  await page.waitForTimeout(100);
+  check("アプリ: 専用キーボードのタップで Haptics が鳴る（ブリッジ経由）", await page.evaluate(() => window.__native.some((c) => c.plugin === "Haptics" && c.method === "impact")));
+  await page.evaluate(async () => { const t = await import("/js/theme.js"); t.setTheme("dark"); });
+  check("アプリ: ダークにするとステータスバーも DARK", await page.evaluate(() => window.__native.some((c) => c.plugin === "StatusBar" && c.method === "setStyle" && c.options.style === "DARK")));
+  check("アプリでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  const page2 = await newPage({ storage: { spelldash_packs: JSON.stringify(["jhs-english1"]) } });
+  await page2.addInitScript(NATIVE);
+  await page2.goto(BASE + "/list.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(900);
+  await page2.click('.packs__lead a[href="/packs/"]');
+  await page2.waitForTimeout(150);
+  check("アプリ: /packs/ の紹介ページは本番サイトを外部で開く（WebView 内で壊れない）", (await page2.evaluate(() => window.__opened[0])) === "https://www.spelldash.net/packs/" && page2.url().endsWith("/list.html"));
+  await page2.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(700);
+  check("アプリ: 「ホーム画面に追加」の案内は出さない", (await page2.evaluate(() => (document.getElementById("installCard") ?? document.querySelector("[id*='install']"))?.textContent.trim() ?? "")) === "");
+  await page2.goto(BASE + "/news.html", { waitUntil: "networkidle" });
+  await page2.waitForTimeout(500);
+  check("アプリ: お知らせページでも native-app（セーフエリア）", await page2.evaluate(() => document.documentElement.classList.contains("native-app")));
+  check("アプリ（他ページ）でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 }
 

@@ -397,3 +397,28 @@ html.native-app body {
     padding-top: env(safe-area-inset-top, 0px);
   }
 }
+
+/* ===== ネイティブアプリ v1: ログイン（Google／メールリンク）は使わない ===== */
+.account-menu__native {
+  display: none;
+}
+
+html.native-app .account-menu--login > :not(.account-menu__native) {
+  display: none;
+}
+
+html.native-app .account-menu__native {
+  display: block;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #cbd5e1;
+}
+
+html[data-theme="light"].native-app .account-menu__native {
+  color: #334155;
+}
+
+html.native-app #welcomeLogin {
+  display: none;
+}

@@ -50,8 +50,11 @@ Android Studio で ▶ Run（USB デバッグ ON の端末）。Play への配�
 
 | 事項 | 状態 | 対応 |
 |---|---|---|
-| Google ログイン | アプリ内 WebView では Google が拒否する（`disallowed_useragent`） | v1 では使わない。v2 で `@capacitor/browser`＋Universal Links、または Sign in with Apple |
-| メールのログインリンク | リンクは Safari で開き、アプリにはセッションが入らない | v1 はローカルのみで使う（Local-First なので学習は全部動く）。v2 で Universal Links |
+| Google ログイン | アプリ内 WebView では Google が拒否する（`disallowed_useragent`） | v1 では使わない。**アプリではログイン欄の Google／メールを隠して「準備中」の案内だけ出す**（`html.native-app`、css/layout.css）。v2 で `@capacitor/browser`＋Universal Links、または Sign in with Apple |
+| メールのログインリンク | リンクは Safari で開き、アプリにはセッションが入らない | 同上（v1 はローカルのみ。Local-First なので学習は全部動く）。v2 で Universal Links |
+| ネイティブのプラグイン呼び出し | ビルド無しの ES modules なので `@capacitor/core` を読み込まず `Capacitor.Plugins` が無い | `js/appEnv.js` の `nativeCall(plugin, method, options)` が WebView に注入されたブリッジ `Capacitor.nativePromise` を直接呼ぶ。Haptics（専用キーボード）と StatusBar（テーマ追従）はこれ経由 |
+| `/packs/` の紹介ページ | dist に含めていないので WebView 内で開くと壊れる | アプリでは本番サイトを外部ブラウザで開く（appEnv.js のクリック委譲） |
+| 「ホーム画面に追加」・ログイン案内 | アプリ内では意味が無い | `isNativeApp` なら出さない（installPrompt.js／loginNudge.js） |
 | 教材・コードの更新 | dist を同梱しているので、更新のたびにビルドし直しが必要 | 内部テストなら数分。頻度が上がったら Capacitor の Live Updates か、教材だけ本番から取得する方式に |
 | Apple 審査 4.2（薄い Web ラッパー） | 公開申請時のリスク | 専用キーボード・触覚・オフライン動作・スプラッシュで「アプリらしさ」を用意済み。申請時の説明文は §5 |
 | 通知 | 方針で保留（DECISIONS_V4 §7） | 解禁するなら `@capacitor/push-notifications` か、まずローカル通知 |
