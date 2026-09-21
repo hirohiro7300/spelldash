@@ -302,41 +302,28 @@ export function renderDailyCard(onStart) {
   if (tile && tileDesc) {
     tile.classList.toggle("mode-switch__btn--done", state.played);
     tileDesc.textContent = state.played
-      ? `✓ 今日は完了（スコア ${state.score}）`
+      ? `今日は完了（スコア ${state.score}）`
       : "1日1回・全員同じ問題";
   }
 
   if (state.played) {
     container.classList.add("daily--done");
     container.innerHTML = `
-      <div class="daily__head">⚡ Daily Dash</div>
-      <div class="daily__result">今日のスコア <strong>${state.score}</strong> ✓</div>
+      <div class="daily__head">Daily Dash</div>
+      <div class="daily__result">今日のスコア <strong>${state.score}</strong></div>
       <span class="daily__note">次の問題まで <strong id="dailyCountdown">--:--</strong></span>
-      <button type="button" class="daily__share" id="dailyShareButton">結果をシェア</button>
       <div class="daily-rank" id="dailyRankArea" hidden></div>
     `;
 
     startDailyCountdown();
-
-    const shareButton = document.getElementById("dailyShareButton");
-    shareButton.addEventListener("click", async () => {
-      const outcome = await shareDailyResult().catch(() => "failed");
-      if (outcome === "copied") {
-        shareButton.textContent = "コピーしました！SNSに貼り付けてね";
-        setTimeout(() => {
-          shareButton.textContent = "結果をシェア";
-        }, 2500);
-      }
-    });
-
     renderDailyRanking(state.score); // 失敗時は非表示のまま（await不要）
     return;
   }
 
   container.classList.remove("daily--done");
   container.innerHTML = `
-    <div class="daily__head">⚡ Daily Dash</div>
-    <span class="daily__desc">日替わり60秒チャレンジ。問題は全員共通・1日1回</span>
+    <div class="daily__head">Daily Dash</div>
+    <span class="daily__desc">日替わりの60秒。問題は全員共通、1日1回</span>
     <button type="button" class="daily__button" id="dailyStartButton">挑戦する</button>
     <div class="daily-rank" id="dailyRankArea" hidden></div>
   `;

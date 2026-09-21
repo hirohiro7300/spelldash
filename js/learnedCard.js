@@ -6,6 +6,7 @@ import { getGenre, genreLabel, applyGenre } from "./genres.js";
 import { getWordsByCategory } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
+import { icon } from "./icons.js";
 
 // ===== ホーム「覚えた単語」カード =====
 // 「いくつ覚えたか」を一等地に常設する（覚えた実感 v1）。
@@ -47,14 +48,14 @@ export function renderLearnedCard() {
       if (st === "learning" || st === "mastered") learnedG++;
       if (st === "weak") weakG++;
     }
-    currentLine = `${genreLabel(genre)}: 覚えた ${learnedG} / ${totalG} ・ 苦手 ${weakG}${learnedG === totalG && totalG > 0 ? " 🏆 制覇" : ""}`;
+    currentLine = `${genreLabel(genre)}: 覚えた ${learnedG} / ${totalG} ・ 苦手 ${weakG}${learnedG === totalG && totalG > 0 ? " ・ 制覇" : ""}`;
   }
 
   const learnedToday = getLearnedWordsToday();
   const todayLine =
     learnedToday.length > 0
       ? `今日覚えた: ${learnedToday.slice(0, 4).map((w) => `<b title="${w.ja}">${w.en}</b>`).join("・")}${learnedToday.length > 4 ? ` ほか${learnedToday.length - 4}語` : ""}`
-      : "今日はまだ。1セットで1語は覚えられるよ";
+      : "今日はまだ。1セットで1語は増える";
 
   // 今週の学習日（月〜日）と週の目標。毎日でなくてよい設計
   const goal = getWeekGoal();
@@ -65,20 +66,20 @@ export function renderLearnedCard() {
     .join("");
   const weekLine =
     activeDays >= goal
-      ? `🎯 今週の目標達成 ${activeDays}/${goal}日 ${dots}`
+      ? `今週の目標達成 ${activeDays}/${goal}日 ${dots}`
       : `今週 <b>${activeDays}</b>/${goal}日 ${dots}`;
 
   const showBreakdown = all.learning + all.mastered + all.weak + all.known > 0 || genre;
 
   el.innerHTML = `
     <div class="learned-card__main">
-      <span class="learned-card__label">🧠 覚えた単語</span>
+      <span class="learned-card__label">覚えた単語</span>
       <span class="learned-card__num">${all.learned}<small> / ${all.total}</small></span>
       ${week > 0 ? `<span class="learned-card__today">今週 +${week}</span>` : today > 0 ? `<span class="learned-card__today">今日 ${today}語</span>` : ""}
     </div>
     <div class="learned-card__today-words">${todayLine}</div>
     ${showBreakdown ? `<div class="learned-card__cat">${currentLine}</div>` : ""}
     <div class="learned-card__week" aria-label="今週の学習日" title="週の目標はプロフィールの学習の設定で変えられます">${weekLine}</div>
-    <a class="learned-card__link" href="./stats.html#learnedWords">覚えた単語帳を見る →</a>
+    <a class="learned-card__link" href="./stats.html#learnedWords">覚えた単語帳を見る${icon("arrowRight", { size: 14 })}</a>
   `;
 }

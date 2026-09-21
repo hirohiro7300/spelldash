@@ -1,264 +1,647 @@
-/* ===== ホームの「道」（コース／セクション／ユニット） =====
-   1画面目は 見出しカード → 数字1行 → はちゃん → 道（スタート1個）。
-   ゲームカードは道でスタートしたときだけ出す（body.home--playing）。 */
+/* ===== ホームの「道」（コース／セクション／ユニット）— 「墨と朱」（docs/CONCEPT.md） =====
+   1画面目は 見出し → 数字1行 → はちゃん → 道（スタート1個）。
+   ゲームカードは道でスタートしたときだけ出す（body.home--playing）。
+   色・角丸・フォントは css/tokens.css の変数だけ。html[data-theme] を頭に付けて theme.css と同じ詳細度で後勝ちにする。
+   道の規則: 1本の細い縦線、済み＝墨の輪郭に✓、現在地＝朱の円に「スタート」、未着手＝薄い点。影・光彩・跳ねる動きは無し。 */
 
-.path {
-  margin: 0 0 12px;
+html[data-theme] .path {
+  margin: 0 0 16px;
 }
 
-.path__head {
+/* ---- 見出し: 飾りのないブロック（キッカー・タイトル・ユニット1行・副ボタン2つ） ---- */
+html[data-theme] .path__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 12px;
-  padding: 16px 18px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #2563eb, #4f46e5);
-  color: #fff;
-  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.28);
+  gap: 12px 16px;
+  padding: 4px 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  background-image: none;
+  color: var(--ink);
+  box-shadow: none;
 }
 
-.path__head-text {
+html[data-theme] .path__head-text {
+  flex: 1 1 240px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 
-.path__kicker {
+html[data-theme] .path__kicker {
   font-size: 12px;
-  opacity: 0.85;
+  color: var(--ink-3);
+  opacity: 1;
 }
 
-.path__title {
-  font-size: 20px;
-  font-weight: 800;
+html[data-theme] .path__title {
+  font-size: 24px;
+  font-weight: 700;
   line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 
-.path__unit {
+html[data-theme] .path__unit {
   font-size: 14px;
-  font-weight: 600;
-  opacity: 0.95;
-}
-
-.path__unit small {
   font-weight: 500;
-  opacity: 0.8;
+  color: var(--ink-2);
+  opacity: 1;
 }
 
-.path__guide {
+html[data-theme] .path__unit small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+html[data-theme] .path__head-actions {
   margin-left: auto;
   flex: none;
-  padding: 7px 11px;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 12px;
-  color: #fff;
-  font-size: 12px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+html[data-theme] .path__guide,
+html[data-theme] .path__guide--course {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
   text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
 }
 
-.path__guide:hover {
-  background: rgba(255, 255, 255, 0.14);
+html[data-theme] .path__guide:hover,
+html[data-theme] .path__guide--course:hover,
+html[data-theme] .path__guide--course[aria-expanded="true"] {
+  background: var(--paper-3);
+  color: var(--ink);
 }
 
-/* 道本体: ジグザグに並ぶノード */
-.path__list {
+/* ---- 道本体: 左に1本の縦線、ノードは縦に並ぶ ---- */
+html[data-theme] .path__list {
   list-style: none;
-  margin: 18px 0 0;
-  padding: 8px 0 0;
+  margin: 8px 0 0;
+  padding: 4px 0 0;
   position: relative;
+  max-width: 640px;
+  animation: path-fade var(--ease);
 }
 
-.path__list::before {
+@keyframes path-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+html[data-theme] .path__list::before {
   content: "";
   position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  transform: translateX(-50%);
-  border-radius: 4px;
-  background: rgba(148, 163, 184, 0.18);
+  left: 31px;
+  top: 20px;
+  bottom: 20px;
+  width: 1px;
+  transform: none;
+  border-radius: 0;
+  background: var(--line-2);
 }
 
-.path__node {
+html[data-theme] .path__node {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  column-gap: 12px;
   align-items: center;
-  gap: 12px;
-  margin: 0 0 20px;
-  min-height: 60px;
+  margin: 0;
+  padding: 10px 0;
+  min-height: 0;
 }
 
-.path__node--c { padding-left: calc(50% - 30px); }
-.path__node--r { padding-left: calc(50% + 24px); }
-.path__node--l { padding-left: calc(50% - 84px); }
+html[data-theme] .path__node--c,
+html[data-theme] .path__node--r,
+html[data-theme] .path__node--l,
+html[data-theme] .path__node--current.path__node--r {
+  padding-left: 0;
+}
 
-.path__dot {
-  width: 56px;
-  height: 56px;
+/* 点（済み・未着手・節目）。縦線の上に紙色で置く */
+html[data-theme] .path__dot {
+  position: relative;
+  justify-self: center;
+  width: 24px;
+  height: 24px;
   flex: none;
+  padding: 0;
   border-radius: 50%;
-  border: 4px solid rgba(148, 163, 184, 0.35);
-  background: rgba(30, 41, 59, 0.9);
-  color: rgba(148, 163, 184, 0.7);
-  font-size: 20px;
-  font-weight: 800;
+  border: 1.5px solid var(--line-2);
+  background: var(--paper);
+  color: var(--ink-3);
+  font-size: 0;
+  font-weight: 600;
+  letter-spacing: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
   cursor: default;
+  box-shadow: none;
+  transition: background var(--ease), border-color var(--ease);
 }
 
-.path__node--done .path__dot {
-  background: #16a34a;
-  border-color: #15803d;
-  color: #fff;
+html[data-theme] .path__dot .icon {
+  margin: 0;
+}
+
+/* 済み: 墨の輪郭に✓。タップで復習 */
+html[data-theme] .path__node--done .path__dot {
+  border-color: var(--ink);
+  background: var(--paper);
+  color: var(--ink);
   cursor: pointer;
-  box-shadow: 0 4px 0 #14532d;
 }
 
-.path__node--done .path__dot:hover {
-  filter: brightness(1.08);
+html[data-theme] .path__node--done .path__dot:hover {
+  background: var(--paper-3);
+  filter: none;
 }
 
-.path__dot--goal {
-  background: rgba(250, 204, 21, 0.12);
-  border-color: rgba(250, 204, 21, 0.4);
-  font-size: 24px;
+/* 済みの折りたたみ: 破線の輪郭 */
+html[data-theme] .path__node--fold .path__dot {
+  border-style: dashed;
+  border-color: var(--ink-3);
+  background: var(--paper);
+  color: var(--ink-3);
 }
 
-.path__node--current {
-  margin: 26px 0 28px;
+/* 未着手: 小さな点 */
+html[data-theme] .path__node--locked .path__dot {
+  width: 8px;
+  height: 8px;
+  border: 0;
+  background: var(--line-2);
 }
 
-.path__start {
+/* 節目（セクション制覇）・語が無いとき */
+html[data-theme] .path__dot--goal {
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--line-2);
+  background: var(--paper);
+  color: var(--ink-3);
+  font-size: 0;
+}
+
+/* 現在地: 朱の円に「スタート」。下に語数を小さく */
+html[data-theme] .path__node--current {
+  margin: 0;
+  padding: 12px 0 28px;
+}
+
+html[data-theme] .path__start {
   position: relative;
-  width: 84px;
-  height: 84px;
+  justify-self: center;
+  width: 64px;
+  height: 64px;
   flex: none;
   padding: 0;
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
   border-radius: 50%;
-  border: 4px solid #1d4ed8;
-  background: #2563eb;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 800;
+  border: 0;
+  background: var(--signal);
+  background-image: none;
+  color: var(--paper-2);
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 8px 0 #1e40af, 0 14px 30px rgba(37, 99, 235, 0.35);
-  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  box-shadow: none;
+  transition: box-shadow var(--ease), transform var(--ease), background var(--ease);
 }
 
-.path__start:hover {
-  transform: translateY(-1px);
+html[data-theme] .path__start:hover {
+  background: var(--signal);
+  box-shadow: 0 0 0 4px var(--signal-soft);
+  transform: none;
 }
 
-.path__start:active {
-  transform: translateY(6px);
-  box-shadow: 0 2px 0 #1e40af;
+html[data-theme] .path__start:active {
+  transform: translateY(1px);
+  box-shadow: none;
 }
 
-.path__start--next {
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  border-radius: 16px;
-  padding: 14px 18px;
-  background: #16a34a;
-  border-color: #15803d;
-  box-shadow: 0 6px 0 #14532d;
+html[data-theme] .path__start--resume,
+html[data-theme] .path__start--resume:hover {
+  background: var(--signal);
+  border: 0;
+  font-size: 12px;
 }
 
-/* 全体の button:hover（青）に負けないように、緑のまま少し明るく */
-.path__start--next:hover {
-  background: #15803d;
-}
-
-/* 制覇ノード（次のセクションへ）は横長ボタンなので、道の中央寄せをやめて縦積みにする（スマホで横にはみ出さない） */
-.path__node--goal:has(.path__start--next) {
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding-left: 0;
-}
-
-.path__node--goal:has(.path__start--next) .path__label {
-  align-items: center;
-}
-
-/* 狭い画面では右レーンのラベル幅を確保する */
-@media (max-width: 480px) {
-  .path__node--r { padding-left: calc(50% - 8px); }
-  .path__node--l { padding-left: calc(50% - 96px); }
-  .path__node--current.path__node--r { padding-left: calc(50% - 30px); }
-}
-
-.path__tip {
+html[data-theme] .path__tip {
   position: absolute;
-  top: -34px;
+  top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  padding: 3px 9px;
-  border: 2px solid #3b82f6;
-  border-radius: 10px;
-  background: #0f172a;
-  color: #93c5fd;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   white-space: nowrap;
-  animation: path-bob 1.6s ease-in-out infinite;
+  animation: none;
 }
 
-@keyframes path-bob {
-  0%, 100% { transform: translate(-50%, 0); }
-  50% { transform: translate(-50%, -3px); }
+/* 制覇したとき: 次のセクションへ（墨の主ボタン）。横長なのでラベルの列に置く */
+html[data-theme] .path__node--goal:has(.path__start--next) {
+  grid-template-columns: minmax(0, 1fr);
+  padding-left: 76px;
+  row-gap: 8px;
+  align-items: start;
+  text-align: left;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .path__tip { animation: none; }
+html[data-theme] .path__node--goal:has(.path__start--next) .path__label {
+  align-items: flex-start;
 }
 
-.path__label {
+html[data-theme] .path__start--next,
+html[data-theme] .path__start--next:hover {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: 40px;
+  max-width: 100%;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  box-shadow: none;
+}
+
+html[data-theme] .path__start--next:hover {
+  background: var(--ink-2);
+}
+
+html[data-theme] .path__start--next .icon {
+  margin: 0;
+}
+
+/* ラベル: 墨、補助は薄墨 */
+html[data-theme] .path__label {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ink-3);
 }
 
-.path__label b {
+html[data-theme] .path__label b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
   font-size: 14px;
-  color: #e2e8f0;
+  font-weight: 600;
+  color: var(--ink);
 }
 
-.path__node--current .path__label b {
-  color: #93c5fd;
-  font-size: 15px;
-}
-
-.path__node--locked .path__label b {
-  color: #cbd5e1;
-}
-
-.path__label a {
-  color: #93c5fd;
-}
-
-/* 節目（セクション制覇） */
-.path__node--goal {
-  margin-top: 8px;
-}
-
-.path__node--more .path__dot {
+html[data-theme] .path__node--current .path__label b {
   font-size: 16px;
-  letter-spacing: 2px;
+  font-weight: 700;
+  color: var(--ink);
 }
+
+html[data-theme] .path__node--locked .path__label b {
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+html[data-theme] .path__label a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+html[data-theme] .path__label a:hover {
+  color: var(--signal-ink);
+}
+
+html[data-theme] .path__unit-link {
+  display: inline-flex;
+  margin: 0;
+  color: var(--ink-3);
+  text-decoration: none;
+  opacity: 1;
+}
+
+html[data-theme] .path__unit-link .icon {
+  margin: 0;
+}
+
+html[data-theme] .path__unit-link:hover {
+  color: var(--signal-ink);
+  opacity: 1;
+}
+
+html[data-theme] .path__linkbtn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+html[data-theme] .path__linkbtn:hover {
+  background: transparent;
+  color: var(--signal-ink);
+}
+
+html[data-theme] .path__node--goal {
+  margin-top: 0;
+}
+
+/* ---- コース選択パネル（カードの規則: 紙2・罫線1px・角丸10） ---- */
+html[data-theme] .path__courses {
+  margin: 12px 0 0;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  box-shadow: none;
+}
+
+html[data-theme] .path__courses-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 4px;
+}
+
+html[data-theme] .path__courses-head b {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+html[data-theme] .path__courses-head span {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .path__courses-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: block;
+}
+
+html[data-theme] .path__course {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-theme] .path__course--current {
+  border-left: 2px solid var(--signal);
+  padding-left: 10px;
+}
+
+html[data-theme] .path__course-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+html[data-theme] .path__course-text b {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .path__course-text span {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+html[data-theme] .path__course-text small {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .path__course-pick {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+html[data-theme] .path__course-pick:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+html[data-theme] .path__course-now {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--signal-ink);
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  html[data-theme] .path__course {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  html[data-theme] .path__course-pick {
+    align-self: flex-end;
+  }
+}
+
+/* ---- ユニット制覇のお知らせ（数秒で消える。カードの規則） ---- */
+html[data-theme] .path__toast {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  box-shadow: none;
+}
+
+html[data-theme] .path__toast--in {
+  animation: path-fade var(--ease);
+}
+
+/* ---- 道に戻る（副ボタン） ---- */
+html[data-theme] .back-to-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+html[data-theme] .back-to-path:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+html[data-theme] .back-to-path .icon {
+  margin: 0;
+}
+
+/* ---- ほかの遊び方: 飾りのない3行 ---- */
+html[data-theme] .play-modes {
+  margin: 20px 0 12px;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-theme] .play-modes__title {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+html[data-theme] .play-modes__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+html[data-theme] .play-modes__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+html[data-theme] .play-modes__row:first-child {
+  border-top: 0;
+}
+
+html[data-theme] .play-modes__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .play-modes__text b {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .play-modes__row--locked .play-modes__text b {
+  color: var(--ink-3);
+}
+
+html[data-theme] .play-modes__go {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+html[data-theme] .play-modes__go:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+html[data-theme] .play-modes__go--ghost {
+  color: var(--ink-3);
+  border-color: var(--line);
+}
+
+html[data-theme] .play-modes__lock {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+html[data-theme] .play-modes__lock .icon {
+  margin-right: 3px;
+}
+
+/* ===== 状態の切り替え（振る舞い。見た目ではないので接頭辞なし） ===== */
 
 /* ゲームカードは道でスタートしたときだけ。畳んでいる間も入力欄は存在させる（Enterで開始できる） */
 .app--home .play {
@@ -270,7 +653,7 @@ body.home--playing .path__list {
 }
 
 body.returning .app--home .hero {
-  display: none; /* 戻ってきた人にキャッチコピーは不要。道の見出しが1行目（認証メッセージは hero の外にあるので消えない） */
+  display: none; /* キャッチコピーはトップページが担う（認証メッセージは hero の外にあるので消えない） */
 }
 
 body:not(.home--playing) .app--home .game-card,
@@ -284,365 +667,3 @@ body:not(.home--playing) .app--home .stats--strip {
   opacity: 0;
   pointer-events: none;
 }
-
-.back-to-path {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.5);
-  color: #cbd5e1;
-  border-radius: 12px;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.back-to-path:hover {
-  background: rgba(148, 163, 184, 0.16);
-}
-
-/* ほかの遊び方（解放式） */
-.play-modes {
-  margin: 14px 0 10px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(15, 23, 42, 0.62);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-}
-
-.play-modes__title {
-  margin: 0 0 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #94a3b8;
-}
-
-.play-modes__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.play-modes__row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 0;
-  border-top: 1px dashed rgba(148, 163, 184, 0.22);
-}
-
-.play-modes__row:first-child {
-  border-top: 0;
-}
-
-.play-modes__icon {
-  width: 28px;
-  text-align: center;
-  font-size: 18px;
-  flex: none;
-}
-
-.play-modes__text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1;
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.play-modes__text b {
-  font-size: 14px;
-  color: #e2e8f0;
-}
-
-.play-modes__row--locked .play-modes__text b {
-  color: #94a3b8;
-}
-
-.play-modes__go {
-  flex: none;
-  border: none;
-  border-radius: 12px;
-  padding: 8px 12px;
-  background: #2563eb;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.play-modes__go:hover {
-  background: #1d4ed8;
-}
-
-.play-modes__go--ghost {
-  background: rgba(148, 163, 184, 0.16);
-  color: #e2e8f0;
-}
-
-.play-modes__lock {
-  flex: none;
-  font-size: 12px;
-  color: #94a3b8;
-  white-space: nowrap;
-}
-
-/* ---- ライトテーマ ---- */
-html[data-theme="light"] .path__list::before { background: #dbe2ea; }
-html[data-theme="light"] .path__dot { background: #e2e8f0; border-color: #cbd5e1; color: #94a3b8; }
-html[data-theme="light"] .path__node--done .path__dot { background: #16a34a; border-color: #15803d; color: #fff; }
-html[data-theme="light"] .path__dot--goal { background: #fef9c3; border-color: #fde047; }
-html[data-theme="light"] .path__tip { background: #fff; color: #1d4ed8; }
-html[data-theme="light"] .path__label { color: #526070; }
-html[data-theme="light"] .path__label b { color: #0f172a; }
-html[data-theme="light"] .path__node--current .path__label b { color: #1d4ed8; }
-html[data-theme="light"] .path__node--locked .path__label b { color: #475569; }
-html[data-theme="light"] .path__label a { color: #1d4ed8; }
-html[data-theme="light"] .back-to-path { background: #fff; border-color: #cbd5e1; color: #334155; }
-html[data-theme="light"] .play-modes { background: #fff; border-color: #e2e8f0; }
-html[data-theme="light"] .play-modes__title { color: #526070; }
-html[data-theme="light"] .play-modes__row { border-color: #e2e8f0; }
-html[data-theme="light"] .play-modes__text { color: #526070; }
-html[data-theme="light"] .play-modes__text b { color: #0f172a; }
-html[data-theme="light"] .play-modes__row--locked .play-modes__text b { color: #526070; }
-html[data-theme="light"] .play-modes__go--ghost { background: #e2e8f0; color: #0f172a; }
-html[data-theme="light"] .play-modes__lock { color: #526070; }
-
-/* PC: 道は中央 560px、見出しは横長 */
-@media (min-width: 900px) {
-  .path__list { max-width: 560px; margin-left: auto; margin-right: auto; }
-}
-
-/* ===== 見出しの操作（一覧・コースを変える） ===== */
-.path__head-actions {
-  margin-left: auto;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-}
-
-.path__head-actions .path__guide {
-  margin-left: 0;
-}
-
-.path__guide--course {
-  background: rgba(255, 255, 255, 0.14);
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.path__guide--course:hover,
-.path__guide--course[aria-expanded="true"] {
-  background: rgba(255, 255, 255, 0.28);
-}
-
-/* ===== コース選択パネル ===== */
-.path__courses {
-  margin: 10px 0 0;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(30, 41, 59, 0.7);
-}
-
-.path__courses-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  margin-bottom: 10px;
-}
-
-.path__courses-head b {
-  font-size: 15px;
-}
-
-.path__courses-head span {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.path__courses-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.path__course {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid transparent;
-}
-
-.path__course--current {
-  border-color: rgba(59, 130, 246, 0.6);
-}
-
-.path__course-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.path__course-text b {
-  font-size: 14px;
-}
-
-.path__course-text span {
-  font-size: 12.5px;
-  color: #cbd5e1;
-  line-height: 1.5;
-}
-
-.path__course-text small {
-  font-size: 11.5px;
-  color: #94a3b8;
-}
-
-.path__course-pick {
-  flex: none;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(96, 165, 250, 0.6);
-  background: transparent;
-  color: #bfdbfe;
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.path__course-pick:hover {
-  background: #2563eb;
-  color: #fff;
-}
-
-.path__course-now {
-  flex: none;
-  font-size: 12px;
-  color: #93c5fd;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-@media (max-width: 520px) {
-  .path__course {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .path__course-pick {
-    align-self: flex-end;
-  }
-}
-
-/* ===== ユニット制覇のお知らせ（数秒で消える） ===== */
-.path__toast {
-  margin: 10px 0 0;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: rgba(22, 163, 74, 0.16);
-  border: 1px solid rgba(34, 197, 94, 0.5);
-  color: #bbf7d0;
-  font-size: 14px;
-  font-weight: 700;
-  text-align: center;
-}
-
-.path__toast--in {
-  animation: path-toast-in 0.45s ease-out;
-}
-
-@keyframes path-toast-in {
-  0% { transform: translateY(-6px) scale(0.98); opacity: 0; }
-  60% { transform: translateY(0) scale(1.02); opacity: 1; }
-  100% { transform: none; opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .path__toast--in { animation: none; }
-}
-
-html[data-theme="light"] .path__courses { background: #f8fafc; border-color: #e2e8f0; }
-html[data-theme="light"] .path__courses-head span,
-html[data-theme="light"] .path__course-text small { color: #526070; }
-html[data-theme="light"] .path__course { background: #fff; border-color: #e2e8f0; }
-html[data-theme="light"] .path__course--current { border-color: #93c5fd; }
-html[data-theme="light"] .path__course-text span { color: #334155; }
-html[data-theme="light"] .path__course-pick { color: #1d4ed8; border-color: #93c5fd; }
-html[data-theme="light"] .path__course-now { color: #1d4ed8; }
-html[data-theme="light"] .path__toast { background: #dcfce7; border-color: #86efac; color: #166534; }
-
-/* ===== 済みユニットの折りたたみ・ユニットの一覧リンク ===== */
-.path__node--fold .path__dot {
-  background: rgba(22, 163, 74, 0.35);
-  border-style: dashed;
-  border-color: rgba(34, 197, 94, 0.6);
-  color: #86efac;
-  cursor: pointer;
-  box-shadow: none;
-}
-
-.path__linkbtn {
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: #60a5fa;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.path__linkbtn:hover {
-  background: transparent;
-  color: #93c5fd;
-}
-
-.path__unit-link {
-  font-size: 12px;
-  text-decoration: none;
-  margin-left: 2px;
-  opacity: 0.8;
-}
-
-.path__unit-link:hover {
-  opacity: 1;
-}
-
-html[data-theme="light"] .path__node--fold .path__dot { background: #dcfce7; border-color: #86efac; color: #15803d; }
-html[data-theme="light"] .path__linkbtn { color: #1d4ed8; }
-
-/* 前回の続きから（途中のセットがあるとき） */
-.path__start--resume {
-  background: #f59e0b;
-  border-color: #d97706;
-  box-shadow: 0 8px 0 #b45309, 0 14px 30px rgba(245, 158, 11, 0.35);
-  font-size: 14px;
-}
-
-.path__start--resume:active {
-  box-shadow: 0 2px 0 #b45309;
-}
-
-.path__start--resume:hover {
-  background: #d97706;
-}
-
-.path__node--current .path__start--resume + .path__label b {
-  color: #fbbf24;
-}
-
-html[data-theme="light"] .path__node--current .path__start--resume + .path__label b { color: #b45309; }

@@ -61,7 +61,6 @@ import {
 } from "./studyQueueUi.js";
 import { addXp, updateStreak, getTitle } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
-import { renderStreakCard } from "./streakUi.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { markMissionWord, isMissionWordPending, renderMission } from "./mission.js";
 import {
@@ -1337,7 +1336,6 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
   const streak = updateStreak();
   if (streak.isFirstToday) {
     earned += 50;
-    renderStreakCard();
     renderHeaderStreak();
     renderHasumiHome();
   }
@@ -1363,7 +1361,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
   }
 
   if (streak.isFirstToday) {
-    const shieldNote = streak.earnedShield ? " 🛡️ シールド獲得！" : "";
+    const shieldNote = streak.earnedShield ? " ・ シールド獲得" : "";
     if (streak.earnedShield) sfxSparkle();
     showMessage(`🔥 ${streak.current}日連続！ +${earned} XP${shieldNote}`, "correct");
     return;
@@ -1759,9 +1757,8 @@ function endChallenge() {
 
   if (streak.isFirstToday) {
     gainedXp += 50;
-    const shieldNote = streak.earnedShield ? " 🛡️ シールド獲得！" : "";
-    bonusText = `（今日の初プレイ +50 XP / 🔥${streak.current}日連続${shieldNote}）`;
-    renderStreakCard();
+    const shieldNote = streak.earnedShield ? " ・ シールド獲得" : "";
+    bonusText = `（今日の初プレイ +50 XP ・ ${streak.current}日連続${shieldNote}）`;
     renderHeaderStreak();
     renderHasumiHome();
   }

@@ -6,6 +6,7 @@ import { getCourse, sectionOf, listCourses, getCourseId } from "./course.js";
 import { getSetSize, isDailySetDone } from "./dailySet.js";
 import { getDueReviewCount } from "./studyQueue.js";
 import { resumableFor } from "./sessionResume.js";
+import { icon } from "./icons.js";
 
 // ===== ホームの「道」 =====
 //
@@ -117,17 +118,17 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
           ? "分野パック"
           : "カテゴリ";
   const unitLine = allDone
-    ? `🏆 ${units.length}ユニット制覇`
+    ? `${units.length}ユニット制覇`
     : current
       ? `ユニット ${currentIndex + 1}／${units.length} ・ ${esc(current.label)}`
       : "";
   const resume = firstVisit ? null : resumableFor(path.categoryId);
   const startSub = resume
-    ? `▶ 前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み・残り ${resume.queue.length}語）`
+    ? `前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み・残り ${resume.queue.length}語）`
     : firstVisit
-    ? "まず腕試し10語（約2分）。知ってる語はそのまま打って、知らない語は Enter でOK"
+    ? "まず腕試し10語（約2分）。知っている語はそのまま打ち、知らない語は Enter で答えを見る"
     : isDailySetDone()
-      ? `✓ 今日のぶんは完了。もう1セット（${setSize}語）`
+      ? `今日のぶんは完了。もう1セット（${setSize}語）`
       : `今日のセット ${setSize}語・約5分${due > 0 ? ` ・ 復習 ${due}語 待ち` : ""}`;
 
   // 現在地より先の未着手ユニットは3つまで見せ、残りは「あとNユニット」にまとめる（道が長くなりすぎない）
@@ -149,7 +150,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
         if (u !== foldDone[0]) return "";
         return `
           <li class="path__node path__node--done path__node--fold path__node--c">
-            <button type="button" class="path__dot" id="pathDoneFold" aria-expanded="false" aria-label="済みのユニットを開く">✓</button>
+            <button type="button" class="path__dot" id="pathDoneFold" aria-expanded="false" aria-label="済みのユニットを開く">${icon("check", { size: 14 })}</button>
             <div class="path__label"><b>済み ${foldDone.length}ユニット</b><span>${foldDone.map((d) => esc(d.label)).join("・")} ・ <button type="button" class="path__linkbtn" data-fold-open>開く</button></span></div>
           </li>`;
       }
@@ -158,21 +159,21 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
         return `
           <li class="path__node path__node--current path__node--${lane}">
             <button type="button" class="path__start${resume ? " path__start--resume" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : "スタート"}: ${esc(u.label)}">
-              <span class="path__tip">${resume ? "途中のセット" : `${count} 語 覚えた`}</span>${resume ? "続きから" : "スタート"}
+              <span class="path__tip">${resume ? "途中のセット" : `${count} 語`}</span>${resume ? "続きから" : "スタート"}
             </button>
-            <div class="path__label"><b>${esc(u.label)} <a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">📖</a></b><span>${startSub}</span></div>
+            <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${startSub}</span></div>
           </li>`;
       }
       if (state === "done") {
         return `
           <li class="path__node path__node--done path__node--${lane}">
-            <button type="button" class="path__dot" data-unit="${esc(u.tag)}" data-review="1" aria-label="復習: ${esc(u.label)}">✓</button>
-            <div class="path__label"><b>${esc(u.label)} <a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">📖</a></b><span>${count}${u.weak > 0 ? ` ・ 苦手 ${u.weak}` : ""} ・ タップで復習</span></div>
+            <button type="button" class="path__dot" data-unit="${esc(u.tag)}" data-review="1" aria-label="復習: ${esc(u.label)}">${icon("check", { size: 14 })}</button>
+            <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${count}${u.weak > 0 ? ` ・ 苦手 ${u.weak}` : ""} ・ タップで復習</span></div>
           </li>`;
       }
       return `
         <li class="path__node path__node--locked path__node--${lane}">
-          <span class="path__dot" aria-hidden="true">★</span>
+          <span class="path__dot" aria-hidden="true"></span>
           <div class="path__label"><b>${esc(u.label)}</b><span>${u.learned > 0 ? count : `${u.total}語`}</span></div>
         </li>`;
     })
@@ -180,12 +181,12 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
 
   const goal = allDone
     ? section?.next
-      ? `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start path__start--next" id="pathNext">次のセクションへ →</button><div class="path__label"><b>${esc(label)} 制覇！</b><span>次は「${esc([...getCategories(), ...getPackCatalog()].find((c) => c.id === section.next)?.label ?? "次のパック")}」</span></div></li>`
-      : `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start" id="pathStart" data-unit="" aria-label="復習を続ける"><span class="path__tip">全部覚えた</span>復習</button><div class="path__label"><b>${esc(label)} 制覇！</b><span>復習を続けるか、<a href="./list.html#packs">単語帳</a>から次の分野を追加</span></div></li>`
-    : `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">🏆</span><div class="path__label"><b>${esc(label)} 制覇</b><span>${section?.next ? "次のセクションが開く" : "全ユニットを覚えたら"}</span></div></li>`;
+      ? `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start path__start--next" id="pathNext">次のセクションへ${icon("arrowRight")}</button><div class="path__label"><b>${esc(label)} 制覇</b><span>次は「${esc([...getCategories(), ...getPackCatalog()].find((c) => c.id === section.next)?.label ?? "次のパック")}」</span></div></li>`
+      : `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start" id="pathStart" data-unit="" aria-label="復習を続ける"><span class="path__tip">全部覚えた</span>復習</button><div class="path__label"><b>${esc(label)} 制覇</b><span>復習を続けるか、<a href="./list.html#packs">単語帳</a>から次の分野を追加</span></div></li>`
+    : `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("star", { size: 14 })}</span><div class="path__label"><b>${esc(label)} 制覇</b><span>${section?.next ? "次のセクションが開く" : "全ユニットを覚えたら"}</span></div></li>`;
 
   const more = hiddenLocked > 0
-    ? `<li class="path__node path__node--locked path__node--more path__node--c"><span class="path__dot" aria-hidden="true">…</span><div class="path__label"><b>あと${hiddenLocked}ユニット</b><span>${hiddenUnits.map((u) => esc(u.label)).join("・")}</span></div></li>`
+    ? `<li class="path__node path__node--locked path__node--more path__node--c"><span class="path__dot path__dot--more" aria-hidden="true"></span><div class="path__label"><b>あと${hiddenLocked}ユニット</b><span>${hiddenUnits.map((u) => esc(u.label)).join("・")}</span></div></li>`
     : "";
 
   headEl.innerHTML = `
@@ -193,10 +194,10 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       <div class="path__head-text">
         <span class="path__kicker">${kicker}</span>
         <span class="path__title">${esc(label)}</span>
-        <span class="path__unit">${unitLine}${units.length > 0 && !allDone ? ` <small>（${doneCount}／${units.length} 済み）</small>` : ""}</span>
+        <span class="path__unit">${unitLine}${units.length > 0 && !allDone ? ` <small>・ ${doneCount}／${units.length} 済み</small>` : ""}</span>
       </div>
       <div class="path__head-actions">
-        <a class="path__guide" href="./list.html?category=${encodeURIComponent(path.categoryId === "all" ? "" : path.categoryId)}">📖 一覧</a>
+        <a class="path__guide" href="./list.html?category=${encodeURIComponent(path.categoryId === "all" ? "" : path.categoryId)}">一覧</a>
         <button type="button" class="path__guide path__guide--course" id="pathCourse" aria-expanded="false" aria-controls="pathCourses">コースを変える</button>
       </div>
     </div>
@@ -205,7 +206,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   `;
   // 語が1つも無いカテゴリ（空のマイ単語帳など）: 道の代わりに次にやることを出す
   const empty = units.length === 0
-    ? `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">📝</span><div class="path__label"><b>まだ語がありません</b><span>${
+    ? `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("note", { size: 14 })}</span><div class="path__label"><b>まだ語がありません</b><span>${
         path.categoryId === "my"
           ? `<a href="./list.html#myWords">マイ単語帳</a>に語を登録するか、上の「出題」から別のカテゴリを選んでください`
           : `<a href="./list.html#packs">単語帳</a>から分野を追加するか、上の「出題」から別のカテゴリを選んでください`
