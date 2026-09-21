@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { icon } from "./icons.js";
 
 // ===== ご意見・不具合フォーム =====
 //
@@ -89,7 +90,7 @@ function ensureModal() {
     <form class="feedback-modal__panel" id="feedbackForm" role="dialog" aria-modal="true" aria-labelledby="feedbackTitle">
       <div class="feedback-modal__head">
         <h3 id="feedbackTitle">ご意見・不具合</h3>
-        <button type="button" class="feedback-modal__close" data-feedback-close aria-label="閉じる">✕</button>
+        <button type="button" class="feedback-modal__close" data-feedback-close aria-label="閉じる">${icon("x")}</button>
       </div>
       <p class="feedback-modal__lead">「訳が分かりにくい」「ここで詰まった」など、一言で大丈夫です。全部読みます。</p>
       <textarea id="feedbackMessage" rows="4" maxlength="${MAX_LENGTH}" placeholder="例: 復習の単語が多すぎて新しい語が出てこない" required></textarea>
@@ -115,11 +116,11 @@ function ensureModal() {
     const message = modal.querySelector("#feedbackMessage");
     const contact = modal.querySelector("#feedbackContact");
     button.disabled = true;
-    status.textContent = "送信中…";
+    status.textContent = "送信中";
     try {
       const result = await submitFeedback({ message: message.value, contact: contact.value });
       status.textContent =
-        result.status === "sent" ? "ありがとうございます。届きました！" : "ありがとうございます。保存しました（次回接続時に送ります）";
+        result.status === "sent" ? "ありがとうございます。届きました。" : "ありがとうございます。保存しました（次回接続時に送ります）。";
       message.value = "";
       setTimeout(closeFeedback, 1600);
     } catch (error) {

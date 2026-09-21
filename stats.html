@@ -122,14 +122,12 @@
   <div class="app">
     <section class="hero hero--compact">
       <p class="logo">学習データ</p>
-      <h1>あなたの学習の記録。</h1>
-      <p class="subtitle">
-        これまでの練習で貯まったデータをまとめて確認できます。
-      </p>
+      <h1>学習の記録</h1>
+      <p class="subtitle">覚えた語と、続けた日。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
-    <section class="level-bar" id="levelBar"></section>
+    <section class="level-bar level-bar--line" id="levelBar"></section>
 
     <nav class="stats-tabs" id="statsTabs" aria-label="学習データの表示切替">
       <a href="#week" class="stats-tab" data-tab="week">今週</a>
@@ -138,17 +136,6 @@
     </nav>
 
     <section class="metric-grid" id="overview" data-tab="week"></section>
-
-    <section data-tab="analysis" class="result-card">
-      <h3>タイピング分析</h3>
-      <div class="metric-grid" id="typingMetrics"></div>
-      <div class="keymiss" id="keyMiss"></div>
-    </section>
-
-    <section data-tab="analysis" class="result-card">
-      <h3>その他の数字</h3>
-      <div class="metric-grid" id="overviewMore"></div>
-    </section>
 
     <section data-tab="week" class="result-card weekly" id="weekly">
       <div id="weeklyReport"></div>
@@ -165,28 +152,20 @@
       <div id="calendarGrid"></div>
     </section>
 
-    <section data-tab="analysis" class="result-card">
-      <h3>スコア推移</h3>
-      <div id="scoreTrend"></div>
-    </section>
-
     <section data-tab="words" class="result-card" id="learnedWords">
-      <h3>覚えた単語帳 <span class="muted" id="learnedWordsCount"></span> <button type="button" class="btn btn--sm btn--ghost learned-csv" id="learnedCsv">CSV書き出し</button> <button type="button" class="btn btn--sm btn--ghost learned-csv" id="learnedShare">累計を画像でシェア</button></h3>
-      <p class="muted">一度つまずいてから、自力で思い出せるようになった語。× → ○ の履歴つき。語をタップすると詳細（メモ・仲間・発音）。</p>
+      <div class="card-head">
+        <h3>覚えた単語帳 <span class="muted" id="learnedWordsCount"></span></h3>
+        <button type="button" class="btn btn--sm btn--ghost learned-csv" id="learnedCsv">CSV書き出し</button>
+      </div>
+      <p class="muted">一度つまずいてから、自力で思い出せるようになった語。語を押すと詳細（メモ・発音）。</p>
       <div id="learnedWordList"></div>
       <details class="known-fold"><summary id="knownWordsSummary">もともと知っていた語</summary><div id="knownWordList"></div></details>
     </section>
 
     <section data-tab="words" class="result-card" id="categories">
       <h3>カテゴリ別の進捗</h3>
-      <p class="muted">行をタップするとそのカテゴリで練習を始められます。</p>
+      <p class="muted">行を押すとそのカテゴリで練習を始めます。</p>
       <div id="categoryProgress"></div>
-    </section>
-
-    <section data-tab="words" class="result-card">
-      <h3>語根ファミリー</h3>
-      <p class="muted">同じ語根の仲間をそろえると、単語は忘れにくくなります。</p>
-      <div id="wordFamilies"></div>
     </section>
 
     <section data-tab="words" class="result-card">
@@ -209,6 +188,21 @@
 
         <div id="wordList"></div>
       </details>
+    </section>
+
+    <section data-tab="analysis" class="result-card">
+      <h3>タイピング</h3>
+      <div class="metric-grid" id="typingMetrics"></div>
+    </section>
+
+    <section data-tab="analysis" class="result-card">
+      <h3>スコア推移</h3>
+      <div id="scoreTrend"></div>
+    </section>
+
+    <section data-tab="analysis" class="result-card">
+      <h3>その他の数字</h3>
+      <div class="metric-grid" id="overviewMore"></div>
     </section>
   </div>
 

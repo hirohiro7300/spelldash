@@ -1,3 +1,4 @@
+import { icon } from "./icons.js";
 // ===== 自分のメモ（覚え方） =====
 //
 // 「negotiate = nego(交渉)＋…」のような、本人だけに効く覚え方を語ごとに1つ持つ。
@@ -50,7 +51,7 @@ export function escapeHtml(text) {
 // 一覧用: メモの表示＋編集ボタン（クリック処理は bindNoteEditors で委譲）
 export function noteChipHtml(wordId) {
   const note = getNote(wordId);
-  return `<button type="button" class="note-chip${note ? " note-chip--has" : ""}" data-note-word="${wordId}" title="${note ? "メモを編集" : "覚え方をメモ"}">📝${note ? ` ${escapeHtml(note)}` : ""}</button>`;
+  return `<button type="button" class="note-chip${note ? " note-chip--has" : ""}" data-note-word="${wordId}" title="${note ? "メモを編集" : "覚え方をメモ"}">${icon("note", { size: 14 })}${note ? escapeHtml(note) : "メモ"}</button>`;
 }
 
 // 一覧内の 📝 ボタンをインライン編集にする（container内で委譲）
