@@ -2234,6 +2234,15 @@ console.log("prompt context:");
     check("別解: 無関係な文字はこれまでどおり不正解", (await pageB.textContent("#word")).trim() === "speak" && (await pageB.textContent("#message")).includes("違"), (await pageB.textContent("#message")).trim());
     await pageB.close();
 
+    // つづり違いは打ち直させずにそのまま正解にする
+    const pageS = await newPage({ storage: seed });
+    await pageS.goto(BASE + "/index.html?words=english-favorite", { waitUntil: "networkidle" });
+    await pageS.waitForTimeout(900);
+    for (const ch of "favourite") await pageS.press("#input", ch);
+    await pageS.waitForTimeout(400);
+    check("つづり違い: favourite と打っても正解（打ち直させない）", (await pageS.textContent("#score")) === "1" && (await pageS.textContent("#message")).includes("favorite"), (await pageS.textContent("#message")).trim());
+    await pageS.close();
+
     // 答えを見た後は出題語だけ。別解でごまかせない
     const pageC = await newPage({ storage: seed });
     await pageC.goto(BASE + "/index.html?words=english-speak", { waitUntil: "networkidle" });
@@ -2272,6 +2281,13 @@ console.log("prompt context:");
     check("別解の表: 同じ訳の語を集める / 訳が一意な語には別解を作らない", alt.start.join(",") === "start,begin" && alt.alone.join(",") === "invoice", JSON.stringify(alt));
     check("別解の表: 短い別解で長い出題語を打ち切らない（advertisement を ad で止めない）", alt.adPartial === null && alt.advFull === "advertisement" && alt.adForced === "ad", JSON.stringify(alt));
     check("別解の表: 別解は完成として認め、無関係な文字は認めない", alt.beginOk === "begin" && alt.junk === 0, JSON.stringify(alt));
+    const spell = await pageD.evaluate(async () => {
+      const m = await import("/js/answers.js");
+      const same = [["favourite", "favorite"], ["practise", "practice"], ["maths", "math"], ["neighbour", "neighbor"], ["realise", "realize"]];
+      const diff = [["talk", "speak"], ["begin", "start"], ["big", "large"], ["kid", "child"]];
+      return { same: same.every(([a, b]) => m.isSpellingVariant(a, b)), diff: diff.every(([a, b]) => !m.isSpellingVariant(a, b)) };
+    });
+    check("つづり違い（favourite / favorite）は同じ語、別の語（talk / speak）とは区別する", spell.same && spell.diff, JSON.stringify(spell));
     await pageD.close();
   }
 

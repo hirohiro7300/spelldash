@@ -60,6 +60,29 @@ export function viableAnswers(candidates, typed) {
   return candidates.filter((c) => c.startsWith(prefix));
 }
 
+// つづり違い（favourite / favorite、practise / practice、maths / math）は「別の語」ではなく
+// 同じ語の綴り違い。別解として案内するのではなく、そのまま正解にする。
+// 先頭が同じで、編集距離が語長の1/4以内（最低1、最大3）なら同じ語とみなす。
+export function isSpellingVariant(a, b) {
+  const x = String(a ?? "").toLowerCase();
+  const y = String(b ?? "").toLowerCase();
+  if (!x || !y || x === y) return false;
+  if (x[0] !== y[0]) return false;
+  const limit = Math.min(3, Math.max(1, Math.floor(Math.max(x.length, y.length) / 4)));
+  if (Math.abs(x.length - y.length) > limit) return false;
+  // 編集距離（limit を超えたら打ち切る）
+  let prev = Array.from({ length: y.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= x.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= y.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    }
+    if (Math.min(...cur) > limit) return false;
+    prev = cur;
+  }
+  return prev[y.length] <= limit;
+}
+
 // いま打ち終わっているか。出題語を優先し、まだ伸びる綴りが残っている間は完成としない
 // （出題語が advertisement で別解が ad のとき、"ad" で止めない）
 export function completedAnswer(candidates, typed, { force = false } = {}) {

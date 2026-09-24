@@ -1,6 +1,6 @@
 import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord, answersFor } from "./wordStore.js";
 import { jaLooksSame } from "./jaAmbiguity.js";
-import { viableAnswers, completedAnswer } from "./answers.js";
+import { viableAnswers, completedAnswer, isSpellingVariant } from "./answers.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml } from "./learnedWords.js";
@@ -987,6 +987,12 @@ function acceptChar(typedChar) {
 function finishTypedAnswer(typed) {
   if (typed === currentWord.en) {
     completeWord();
+    return;
+  }
+  // つづり違い（favourite / favorite）は同じ語。打ち直させずにそのまま正解にする
+  if (isSpellingVariant(typed, currentWord.en)) {
+    completeWord();
+    showMessage(`${typed} も正解（この教材では ${currentWord.en}）`, "info");
     return;
   }
   acceptAlternative(typed);
