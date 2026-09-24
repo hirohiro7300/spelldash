@@ -504,6 +504,8 @@ html[data-theme] .message {
 
 html[data-theme] .message.correct { color: var(--ok); animation: none; }
 html[data-theme] .message.wrong { color: var(--signal-ink); animation: none; }
+/* 別解を受け入れたときの案内。正解でも間違いでもないので墨のまま */
+html[data-theme] .message.info { color: var(--ink); animation: none; }
 html[data-theme] .message.revealed { color: var(--ink-2); }
 html[data-theme] .message.finished { color: var(--ink); animation: none; }
 html[data-theme] .message.learned { color: var(--ink); font-weight: 700; }

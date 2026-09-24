@@ -1,6 +1,7 @@
 import { loadAllWords, loadManifest } from "./wordData.js";
 import { toWordObjects } from "./myWords.js";
 import { isCategoryLoaded, packsOf } from "./packs.js";
+import { buildAlternativeIndex, acceptedAnswers } from "./answers.js";
 
 // 読み込んだ単語をページ内で共有するストア。
 // ゲームはここからカテゴリで絞った出題リストを取り出す。
@@ -41,7 +42,16 @@ export async function initWordStore(subjectId = "english") {
   }
 
   refreshMyWords();
+  altIndex = buildAlternativeIndex(allWords);
   return allWords;
+}
+
+// 訳が同じ語どうしの表（広告 = ad / advertisement）。語の読み込み後に作り直す
+let altIndex = new Map();
+
+// この語を出したときに正解として受け入れる綴り（先頭は出題語）
+export function answersFor(word) {
+  return acceptedAnswers(word, altIndex);
 }
 
 export function getAllWords() {
