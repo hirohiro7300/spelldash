@@ -1,5 +1,6 @@
-import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord } from "./wordStore.js";
+import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord, answersFor } from "./wordStore.js";
 import { jaLooksSame } from "./jaAmbiguity.js";
+import { viableAnswers, completedAnswer } from "./answers.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml } from "./learnedWords.js";
@@ -109,6 +110,9 @@ const CHALLENGE_SECONDS = durationOverride ?? 60;
 let mode = localStorage.getItem(MODE_KEY) || "study";
 let currentWord = null;
 let currentIndex = 0;
+// いま受け入れている綴りの候補（先頭が出題語、あとは同じ訳の別解）
+let answerCandidates = [];
+let typedSoFar = "";
 let score = 0;
 let typingMissCount = 0;
 let recallFailCount = 0;
@@ -467,6 +471,13 @@ function triggerEnter() {
   }
 
   if (!isRevealed) {
+    // 別解を打ち終えて止まっている場合（出題語 advertisement に対して "ad" など）は、
+    // 「分からない」ではなく別解として受け取る
+    const done = completedAnswer(activeCandidates(), typedSoFar, { force: true });
+    if (done && done !== currentWord.en) {
+      finishTypedAnswer(done);
+      return;
+    }
     revealAnswer();
   } else {
     // 答えを見た後のスキップ = Dailyでは「打てなかった単語」⬛
@@ -516,14 +527,18 @@ export function handleKeydown(event) {
 
   event.preventDefault();
 
-  const expectedChar = currentWord.en[currentIndex];
   const typedChar = event.key.toLowerCase();
 
-  if (typedChar === expectedChar) {
-    handleCorrectChar(expectedChar);
+  if (viableAnswers(activeCandidates(), typedSoFar + typedChar).length > 0) {
+    handleCorrectChar(typedChar);
   } else {
-    handleTypingMiss(expectedChar, typedChar);
+    handleTypingMiss(currentWord.en[currentIndex], typedChar);
   }
+}
+
+// 答えを見た後は出題語だけを練習させる（別解でごまかせないように）
+function activeCandidates() {
+  return isRevealed ? [currentWord.en] : answerCandidates;
 }
 
 // ===== モバイル（ソフトキーボード/IME）対応 =====
@@ -546,9 +561,8 @@ export function handleCompositionEnd() {
   // 確定された文字に日本語等が含まれていたら、受理済み位置へ巻き戻して案内する
   // （かな→ローマ字の復元は不可能なため、打ち直してもらうのが最も安全）
   if (/[^a-z\s]/i.test(elements.input.value)) {
-    const prefix = currentWord.en.slice(0, currentIndex);
-    elements.input.value = prefix;
-    updateTypedPreview(prefix);
+    elements.input.value = typedSoFar;
+    updateTypedPreview(typedSoFar);
     showMessage("キーボードを英字モードにしてね", "wrong");
     return;
   }
@@ -565,8 +579,7 @@ export function handleTextInput() {
     return;
   }
 
-  const word = currentWord.en;
-  const accepted = word.slice(0, currentIndex);
+  const accepted = typedSoFar;
   const raw = elements.input.value.toLowerCase().replace(/[^a-z]/g, "");
 
   if (raw === accepted) return;
@@ -579,22 +592,21 @@ export function handleTextInput() {
   }
 
   for (const typedChar of raw.slice(accepted.length)) {
-    if (typedChar === word[currentIndex]) {
-      const isLastChar = currentIndex + 1 === word.length;
-      if (isLastChar) {
-        elements.input.value = word;
-        updateTypedPreview(word);
+    if (viableAnswers(activeCandidates(), typedSoFar + typedChar).length > 0) {
+      const willFinish = completedAnswer(activeCandidates(), typedSoFar + typedChar) !== null;
+      if (willFinish) {
+        elements.input.value = typedSoFar + typedChar;
+        updateTypedPreview(elements.input.value);
       }
-      if (acceptChar()) return; // 単語完成。setNewWordが入力欄をリセットする
+      if (acceptChar(typedChar)) return; // 単語完成。setNewWordが入力欄をリセットする
     } else {
-      handleTypingMiss(word[currentIndex], typedChar);
+      handleTypingMiss(currentWord.en[currentIndex], typedChar);
       break; // 1イベントにつきミスは1回まで（予測変換の一括挿入対策）
     }
   }
 
-  const prefix = word.slice(0, currentIndex);
-  elements.input.value = prefix;
-  updateTypedPreview(prefix);
+  elements.input.value = typedSoFar;
+  updateTypedPreview(typedSoFar);
 }
 
 // ソフトキーボードのEnter（Go/実行）はkeydownではなくinsertLineBreakとして来る環境がある
@@ -641,6 +653,28 @@ function markRecallFail() {
 }
 
 // Enter1回目 or 1ミスタイプ: 不正解 → 答えを表示（recallFailとして記録）
+// 別解を打ち終わったとき: 減点も×記録もしない。「それも正解」と伝えたうえで、
+// この問題の語を見せて打ってもらう（別解だけで済ませると出題語が身につかないため）
+function acceptAlternative(typed) {
+  sfxSoftCorrect();
+  isRevealed = true;
+  hideHint();
+  showColoredAnswer(currentWord.en);
+  if (listenMode) elements.japanese.textContent = promptOf(currentWord);
+  renderWordFamily(currentWord);
+  renderWordHistory();
+  renderWordNote(currentWord);
+  renderExplain(currentWord);
+  autoSpeak(speechTextOf(currentWord));
+  if (elements.speakButton) elements.speakButton.hidden = !speechTextOf(currentWord);
+
+  currentIndex = 0;
+  typedSoFar = "";
+  elements.input.value = "";
+  clearTypedPreview();
+  showMessage(`${typed} も「${promptOf(currentWord)}」。この問題の語は ${currentWord.en}`, "info");
+}
+
 function revealAnswer(fromMiss = false) {
   isRevealed = true;
   hideHint();
@@ -664,6 +698,7 @@ function revealAnswer(fromMiss = false) {
 
   // 頭から打ち直して練習できるようにリセット
   currentIndex = 0;
+  typedSoFar = "";
   elements.input.value = "";
   clearTypedPreview();
 
@@ -926,24 +961,35 @@ function findConfusables(word) {
   return out;
 }
 
-function handleCorrectChar(expectedChar) {
-  elements.input.value += expectedChar;
+function handleCorrectChar(typedChar) {
+  elements.input.value += typedChar;
   updateTypedPreview(elements.input.value);
-  acceptChar();
+  acceptChar(typedChar);
 }
 
 // 1文字受理の共通処理（DOMの入力欄には触れない）。単語完成ならtrueを返す
-function acceptChar() {
-  currentIndex++;
+function acceptChar(typedChar) {
+  typedSoFar += typedChar ?? currentWord.en[currentIndex];
+  currentIndex = typedSoFar.length;
   correctChars++;
   updateTypeSpeed();
 
-  if (currentIndex === currentWord.en.length) {
-    completeWord();
+  const done = completedAnswer(activeCandidates(), typedSoFar);
+  if (done) {
+    finishTypedAnswer(done);
     return true;
   }
 
   return false;
+}
+
+// 打ち終わった綴りで分岐。出題語ならそのまま正解、別解なら減点せずに出題語を見せる
+function finishTypedAnswer(typed) {
+  if (typed === currentWord.en) {
+    completeWord();
+    return;
+  }
+  acceptAlternative(typed);
 }
 
 let studyWordsSinceSync = 0;
@@ -1470,6 +1516,9 @@ function setNewWord() {
     Math.random() * 100 < getListenRatio();
 
   currentIndex = 0;
+  typedSoFar = "";
+  // 答えを見た後は出題語だけを練習させる（別解でごまかせないように）
+  answerCandidates = answersFor(currentWord);
   hasMissedCurrentWord = false;
   isRevealed = false;
   hintUsed = false;

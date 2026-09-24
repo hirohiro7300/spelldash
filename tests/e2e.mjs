@@ -2203,6 +2203,78 @@ console.log("prompt context:");
   const toks = (w) => String(w.ja).split(/[・、／,]/).map((t) => t.trim()).filter(Boolean);
   const ambiguous = bizP.find((w) => w.exJa && bizP.some((o) => o.id !== w.id && o.en !== w.en && toks(o).some((t) => toks(w).includes(t))));
   const unique = bizP.find((w) => w.exJa && !bizP.some((o) => o.id !== w.id && toks(o).some((t) => toks(w).includes(t))));
+  // ===== 別解（同じ訳の別の英単語）=====
+  // 受験生の指摘: 「話す」に talk と打つと1文字目で不正解になって答えられない
+  console.log("alternative answers:");
+  {
+    const seed = { spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" };
+    const pageA = await newPage({ storage: seed });
+    await pageA.goto(BASE + "/index.html?words=english-speak", { waitUntil: "networkidle" });
+    await pageA.waitForTimeout(900);
+    for (const ch of "talk") await pageA.press("#input", ch);
+    await pageA.waitForTimeout(400);
+    const msg = (await pageA.textContent("#message")).trim();
+    check("別解: 「話す」に talk と打っても不正解にならない", msg.includes("talk") && msg.includes("speak"), msg);
+    check("別解: 答え欄にこの問題の語が出る", (await pageA.textContent("#word")).trim() === "speak");
+    const stat = await pageA.evaluate(() => JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")["english-speak"] ?? {});
+    check("別解: 思い出せなかった扱いにしない（×を記録しない）", (stat.recallFail ?? 0) === 0 && (stat.typingMiss ?? 0) === 0, JSON.stringify(stat));
+    // 続けて出題語を打てば正解になる
+    for (const ch of "speak") await pageA.press("#input", ch);
+    await pageA.waitForTimeout(400);
+    check("別解: そのあと出題語を打つと正解になる", (await pageA.textContent("#score")) === "1");
+    check("別解でエラー0", pageA.errors.length === 0, pageA.errors[0] ?? "");
+    await pageA.close();
+
+    // 別解でも何でもない綴りは、これまでどおり不正解
+    const pageB = await newPage({ storage: seed });
+    await pageB.goto(BASE + "/index.html?words=english-speak", { waitUntil: "networkidle" });
+    await pageB.waitForTimeout(900);
+    await pageB.press("#input", "x");
+    await pageB.waitForTimeout(300);
+    check("別解: 無関係な文字はこれまでどおり不正解", (await pageB.textContent("#word")).trim() === "speak" && (await pageB.textContent("#message")).includes("違"), (await pageB.textContent("#message")).trim());
+    await pageB.close();
+
+    // 答えを見た後は出題語だけ。別解でごまかせない
+    const pageC = await newPage({ storage: seed });
+    await pageC.goto(BASE + "/index.html?words=english-speak", { waitUntil: "networkidle" });
+    await pageC.waitForTimeout(900);
+    await pageC.press("#input", "Enter"); // 答えを見る
+    await pageC.waitForTimeout(300);
+    await pageC.press("#input", "t"); // talk を打とうとする
+    await pageC.waitForTimeout(300);
+    check("別解: 答えを見た後は出題語だけを受け付ける", (await pageC.textContent("#message")).includes("違"), (await pageC.textContent("#message")).trim());
+    await pageC.close();
+  }
+
+  // 別解の表そのものを直接試す（出題の当たり外れに左右されない）
+  {
+    const pageD = await newPage();
+    await pageD.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const alt = await pageD.evaluate(async () => {
+      const m = await import("/js/answers.js");
+      const idx = m.buildAlternativeIndex([
+        { en: "start", ja: "始める" }, { en: "begin", ja: "始める" },
+        { en: "ad", ja: "広告" }, { en: "advertisement", ja: "広告" },
+        { en: "invoice", ja: "請求書" }
+      ]);
+      const cand = (w) => m.acceptedAnswers(w, idx);
+      const adv = cand({ en: "advertisement", ja: "広告" });
+      return {
+        start: cand({ en: "start", ja: "始める" }),
+        alone: cand({ en: "invoice", ja: "請求書" }),
+        adPartial: m.completedAnswer(adv, "ad"),
+        adForced: m.completedAnswer(adv, "ad", { force: true }),
+        advFull: m.completedAnswer(adv, "advertisement"),
+        beginOk: m.completedAnswer(cand({ en: "start", ja: "始める" }), "begin"),
+        junk: m.viableAnswers(cand({ en: "start", ja: "始める" }), "x").length
+      };
+    });
+    check("別解の表: 同じ訳の語を集める / 訳が一意な語には別解を作らない", alt.start.join(",") === "start,begin" && alt.alone.join(",") === "invoice", JSON.stringify(alt));
+    check("別解の表: 短い別解で長い出題語を打ち切らない（advertisement を ad で止めない）", alt.adPartial === null && alt.advFull === "advertisement" && alt.adForced === "ad", JSON.stringify(alt));
+    check("別解の表: 別解は完成として認め、無関係な文字は認めない", alt.beginOk === "begin" && alt.junk === 0, JSON.stringify(alt));
+    await pageD.close();
+  }
+
   // 訳の近さの判定そのものを直接試す（ほぼ同じ訳も拾えているか）。出題の当たり外れに左右されないよう単体で見る
   {
     const pageJa = await newPage();

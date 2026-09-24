@@ -101,6 +101,17 @@ for (const fullPath of files) {
     } else {
       if (w.id !== `english-${w.en}`) problems.push(`ID不整合 ${where} (en=${w.en})`);
       if (!/^[a-z][a-z-]*$/.test(w.en ?? "")) problems.push(`スペル形式 ${where} en="${w.en}"`);
+      // 別解（accept）: 同じ訳で打たれても正解として受け入れる綴り
+      if (w.accept != null) {
+        if (!Array.isArray(w.accept)) problems.push(`accept形式 ${where}`);
+        else {
+          for (const a of w.accept) {
+            if (!/^[a-z][a-z-]*$/.test(String(a))) problems.push(`accept のつづり ${where} "${a}"`);
+            if (String(a) === w.en) problems.push(`accept に出題語そのもの ${where}`);
+          }
+          if (new Set(w.accept.map(String)).size !== w.accept.length) problems.push(`accept重複 ${where}`);
+        }
+      }
     }
     if (!["easy", "normal", "hard"].includes(w.level)) problems.push(`level不正 ${where}`);
     // 訳に見出し語そのものを書かない（出題文に答えが出てしまい、思い出す練習にならない）。
