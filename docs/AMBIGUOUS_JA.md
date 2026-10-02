@@ -336,3 +336,221 @@
 | ngsl24 | uncertainty: 不確かさ・不安 → 不確実さ・不確かさ — 「不安」だと anxiety/worry を強く連想する |
 | ngsl24 | immigration: 移民・入国審査 → 移住・入国審査 — 「移民」は人（immigrant）と読める |
 | ngsl24 | found: 設立する — 訳は問題ないが find の過去形と同形で、出題時に混乱しやすい（参考） |
+
+## 6. TSL／BSL／NAWL 34 パックの別解執筆時に挙がった候補（Batch 37、211 件・未反映）
+
+英語の見出し語が単数形で不自然なもの（headquarter → headquarters、pant → pants、congratulation → congratulations）、同じパック内で訳が近い組（goods／merchandise、trainee／intern）、品詞と訳のずれ（pos が 動 なのに名詞の訳が併記）など。見出し語そのものを直す提案は ⚠ として扱い、判断してもらってから反映する。
+
+| パック | 候補 |
+|---|---|
+| bsl01 | portfolio: 事業構成 → ポートフォリオ・事業構成 — 事業構成 だけでは portfolio を想起しにくい（lineup／structure を打ちそう） |
+| bsl01 | client: 取引先 → 顧客・取引先 — 取引先 は business partner／supplier も指し、client の中心義「顧客」が伝わらない |
+| bsl01 | utility: 公共料金 → 公共サービス・公共料金 — 公共料金 は通常 utility bill／utilities（複数）で、単数 utility は「公益事業」 |
+| bsl01 | volatility: 変動の大きさ → 変動性（ボラティリティ） — 説明文的で、学習者が fluctuation を打ちそう |
+| bsl01 | beta: ベータ版（試験版） → ベータ（ベータ値・ベータ版） — BSL（金融）の beta は株式のベータ値が中心。IT の訳になっている |
+| bsl01 | media: メディア・報道 → メディア・報道機関 — 報道 単独だと report／coverage／news が答えになりうる |
+| bsl01 | stockmarket: 株式市場 — ja ではなく en が BSL 独自の一語つづり。学習者は stock market（2 語）を打つので正解にできない |
+| bsl02 | withdrawal: 引き出し・撤退 → （預金の）引き出し・撤退 — 「引き出し」だけだと家具の drawer と取れる |
+| bsl02 | parameter: 条件・範囲 → パラメータ・媒介変数（条件・範囲） — 一般的な訳はパラメータ。「条件・範囲」だけでは condition/range/scope と区別できない |
+| bsl02 | exploit: 搾取する・利用する → 搾取する・（資源などを）活用する — 「利用する」が広すぎて use と区別できない |
+| bsl02 | governance: 統治・企業統治 → 企業統治・ガバナンス — 「統治」だけだと rule/government と重なる |
+| bsl02 | bound: （契約に）拘束された → 拘束された（be bound by） — 形容詞 bound は過去分詞としての用法で、カードとしてはやや特殊 |
+| bsl02 | sophisticate: 洗練させる → （動詞）洗練させる — 動詞用法は稀で、学習者は sophisticated（形）を連想しやすい |
+| bsl02 | lobby: ロビー → ロビー（玄関ホール） — 「圧力団体」の lobby との区別のため補足があると親切 |
+| bsl03 | headquarter: 本社 → headquarters を見出し語にするか ja を「本社を置く」(動詞) に — headquarter 単独は名詞として不自然。accept に headquarters / hq を入れた |
+| bsl03 | immigration: 入国審査 → 移民・入国管理 — immigration の中心義は移民・入国管理。入国審査は immigration control / passport control の略用法 |
+| bsl03 | deputy: 副～・代理 → 副官・代理人 — 「副～」は接頭的で名詞の訳として答えが絞れない(vice / proxy / substitute も浮かぶ) |
+| bsl03 | bust: 倒産する → 破綻する・破産させる — bust 単独動詞は「破裂させる・摘発する」が主で、倒産は go bust の句 |
+| bsl03 | tech: 技術・IT業界 → テック・技術(technology の略) — 「技術」だけ見ると technology / technique / skill が浮かぶ |
+| bsl03 | con: 欠点・反対意見 → 反対意見(pros and cons の con) — 「欠点」だと drawback / flaw / weakness が先に出る |
+| bsl03 | charter: 憲章・貸し切り → 憲章・特許状 — 「貸し切り」は chartered の用法で、名詞 charter 単独では伝わりにくい |
+| bsl04 | automobile: 自動車 → (same ja as auto) — two cards in this pack share ja 自動車; consider 自動車（正式語） or merge |
+| bsl04 | auto: 自動車 → 自動車（略） — duplicate ja with automobile |
+| bsl04 | gamble: 賭け・賭ける → 賭け — ja mixes noun and verb while pos is 名 |
+| bsl04 | capitalization: 時価総額 → 資本化・時価総額 — alone, capitalization means 資本化 (or 大文字化); 時価総額 is market capitalization |
+| bsl04 | endorse: 推奨する → 支持する・承認する — core business senses are endorse a candidate/plan (支持・承認) or endorse a cheque (裏書き); 推奨する invites recommend |
+| bsl04 | quota: ノルマ → 割り当て・ノルマ — quota is primarily an allotted share; ノルマ covers only the sales-target sense |
+| bsl04 | precede: 先に起こる → 先行する・先立つ — 先に起こる reads like an event-only paraphrase |
+| bsl05 | inter: 〜の間の・相互の（接頭辞） → 要検討 — 単語として inter は「埋葬する」（動詞）。接頭辞を形容詞カードとして出題しているので、訳だけでは何を打つか決まりにくい |
+| bsl05 | capitalist: 資本主義の → 資本家・資本主義者（名）または「資本主義の」のまま — capitalist は名詞が主で形容詞用法は限定的。ja が「資本主義の」だと capitalistic も同じく正解になる |
+| bsl05 | render: （サービスを）提供する → 置換案なし — この訳では provide / offer / supply が先に出るので、render を思い出すヒントが弱い |
+| bsl05 | deploy: 配置する・投入する → 配備する・展開する — 「配置する」だけでは arrange / place / station が先に出る |
+| bsl06 | bail: 救済する → 救済する（bail out）・保釈金 — bail 単独では「保釈（金）」が第一義で、「救済する」は bail out の句動詞の意味。訳だけ見ると rescue／save と区別がつかない |
+| bsl06 | span: 〜にわたる → （期間・範囲に）わたる — 訳が助詞付きの句の形で、動詞 1 語の答えを導きにくい |
+| bsl06 | discharge: （義務を）果たす → （義務を）果たす・解雇する — 同パック termination の訳に「解雇」があり、discharge 自体も「解雇する／放出する」が主要義。現状の訳は限定的で fulfill と区別がつきにくい |
+| bsl06 | handful: ひと握り・少数 → ひと握り（の人・物） — 「少数」だけ見ると few／minority を打つ学習者がいるが名詞 1 語では受けにくい |
+| bsl07 | preliminary: 予備の → 予備的な・準備段階の — 「予備の」は spare／reserve（予備のタイヤ）と読まれやすく、preliminary の「本番前の・事前の」が伝わらない |
+| bsl07 | semi: 半〜・準〜 → 半分の・準〜 — 接頭辞の訳で 1 語の英単語に対応しづらい（学習者は half を打ちやすい。accept に half, quasi を入れた） |
+| bsl07 | tuple: タプル・組 → タプル（組み） — 「組」だけだと set／pair／group と読める |
+| bsl07 | validity: 有効性 → 妥当性・有効性 — ビジネス文脈の「有効性」は effectiveness と打たれやすい（accept に effectiveness を入れた） |
+| bsl07 | orientation: 新人研修 → 新人研修・オリエンテーション — 訳が狭く、training と打たれると不正解になる |
+| bsl08 | basket: かご → 買い物かご — ひらがなの「かご」は籠（cage）とも取れる |
+| bsl08 | disability: 障害 → 身体の障害 — 「障害」は obstacle／failure／disorder の訳でもある |
+| bsl08 | recruitment: 採用 → 人材の採用 — 「採用」は adoption（案の採用）の訳でもある |
+| bsl08 | receiver: 受取人・受話器 / handset: 受話器・携帯端末 → 同じパック内で「受話器」が両カードに重なる。receiver は「受取人・受信機」、handset は「携帯端末・受話器」に分けると衝突しにくい |
+| bsl08 | alert: 警告する・知らせる / notify: 通知する → 「知らせる」と「通知する」が近く、どちらを打つか迷う。alert は「警告する」だけでもよい |
+| bsl08 | purely: 純粋に・全く → 純粋に・ただ〜だけ — 「全く」は completely／entirely と重なりやすい |
+| bsl09 | forum: 掲示板 → フォーラム・掲示板 — forum は本来「討論の場・会議」。IT のユーザーフォーラムの意味だけに絞った訳で、学習者が forum を思いつきにくい |
+| bsl09 | admission: 入場料 → 入場・入場料 — admission の中心義は「入場（許可）」。「入場料」単独だと fee／charge を打ちたくなる |
+| bsl09 | compile: コンパイルする → 編集する・まとめる（コンパイルする） — BSL（ビジネス）のパックなのに IT のカタカナ語だけの訳。本来の「資料をまとめる」の意味が落ちている |
+| bsl09 | accountable: 説明責任のある → 責任を負う・説明責任のある — 例文訳も「責任を負う」としており、responsible を打つ学習者が出やすい |
+| bsl09 | determinant: 決定要因 → 決定要因（1 語で） — 「決定要因」は determining factor とも訳せ、factor を打つ学習者が出やすい |
+| bsl10 | spark: 引き起こす → 火付け役となる・引き起こす — cause/trigger/provoke など多数の語が同じ訳になり、spark 固有の意味が見えない |
+| bsl10 | arguably: おそらく・ほぼ間違いなく → 議論の余地はあるが・おそらく — 「ほぼ間違いなく」は arguably より強い確度で、probably/certainly 側に寄る |
+| bsl10 | renewal: 更新 → （契約などの）更新 — 「更新」だけだと update と区別がつかない |
+| bsl10 | dot: 点・ドット → 点（ドット） — 「点」は point/spot にも当たるため |
+| bsl10 | constituency: 選挙区 → 選挙区（有権者） — 単語 1 語で別の訳語が立たず、district と迷う学習者が出そう |
+| bsl11 | predictor: 予測の手がかり → 予測因子・予測指標 — 現訳は説明的で、学習者が一語を思い出しにくい |
+| bsl11 | erode: 徐々に減らす → 侵食する・徐々に損なう — erode は自動詞「徐々に減る」でも頻用。「減らす」だけだと reduce 系を打たれやすい |
+| bsl12 | overtime: 残業 → 時間外に・残業で — pos が 副（tags adj）なのに訳が名詞。名詞なら pos を 名 に、副詞のままなら訳を副詞句に |
+| bsl12 | cattle: 牛（家畜の総称） → 牛（家畜・集合的に） — 学習者は cow を打つ可能性が高い（accept に cow/ox を入れたが、訳側で cattle を導きたいなら「畜牛」などの検討を） |
+| bsl12 | ideology: イデオロギー・思想 → イデオロギー（政治・社会の思想体系） — 「思想」だけだと thought/idea など広く取れる |
+| bsl12 | graphics: 図や画像 → グラフィックス（図版・画像） — 「図や画像」は picture/figure/image も正解になり得る |
+| bsl12 | grasp: （内容の）把握 → （内容の）把握・理解 — understanding/comprehension を打つ学習者が多そう（accept に入れた） |
+| bsl12 | cleaner: 清掃員 → 清掃員（人） — cleaner は「洗剤」の意味もあるが訳は人なので janitor/custodian が同等。問題なければ現状可 |
+| bsl12 | underwriter: 引受会社・保険引受人 → （証券の）引受会社・保険引受人 — 「引受会社」だけだと insurer と区別しにくい（accept に insurer を入れた） |
+| bsl13 | bounce: 直帰（1ページだけ見て離脱） → 跳ね返る・直帰する — pos が 動 なのに訳が名詞形。Web 解析の専門義のみで一般義（跳ねる）が無い |
+| bsl13 | unauthorize: 許可を取り消す → （語自体が稀。unauthorized の形容詞で収録し直す案） — unauthorize は辞書にほぼ無い動詞で、学習者が答えにたどり着けない |
+| bsl13 | amongst: 〜の間で（among の別形） — 訳に答えのヒント語 among が書かれているので among を accept に入れたが、ヒント表記を外すか判断が要る |
+| bsl13 | reap: 得る・収穫する — 「得る」だけだと get/gain/obtain 等が無限に正解になる。「（利益を）刈り取る・収穫する」に寄せる案 |
+| bsl13 | mentor: 指導者 → 助言者・メンター — 「指導者」は leader/instructor が第一想起で mentor が出にくい |
+| bsl13 | faculty: 教授陣・学部 — 「学部」は department が第一想起。訳を「教授陣」に絞る案 |
+| bsl13 | specialty: 名物・専門 — 「専門」だけ見ると major/field が想起される。「専門分野・名物料理」に寄せる案 |
+| bsl13 | drain: 流出・消耗 — pos 名 だが drain は動詞義が主で、「流出」は outflow/leak が想起される |
+| bsl13 | manipulation: 操作・不正操作 — 「操作」は operation が第一想起。「（不正な）操作・改ざん」に寄せる案 |
+| bsl13 | endorsement: 支持・推薦 — 「支持」は support が第一想起で endorsement が出にくい。「（公の）支持表明・推薦」に寄せる案 |
+| bsl14 | expectancy: 見込み（life ___ で平均寿命） → 期待・見込み — ヒント付きの訳で、単独では expectation などとも取れる |
+| bsl14 | scratch: ゼロから（from ___） → 引っかき傷・ゼロから（from scratch） — 名詞 pos なのに訳が句の一部になっている |
+| bsl14 | annum: 年（per ___ で1年あたり） → 年（ラテン語、per annum） — 「年」だけなら year を打つ学習者が多い |
+| bsl14 | proprietorship: 個人事業（sole ___） → 所有権・個人事業（sole proprietorship） — 単独では business などとも取れる |
+| bsl14 | franc: スイスなどの通貨単位 → フラン（スイスなどの通貨単位） — 語そのものの訳が無く、説明だけでは答えが決まらない |
+| bsl14 | ounce: 重さの単位（約28グラム） → オンス（約28グラム） — 同上。説明だけでは gram などとも取れる |
+| bsl14 | neo: 新〜・新しい形の（接頭辞） → ネオ・新〜（接頭辞） — 単独語として出題する妥当性が低く、new と打たれやすい |
+| bsl14 | electorate: 有権者（全体） → 有権者全体・選挙民 — 単独では voter を打つ学習者が多い |
+| bsl14 | intrigue: 興味をそそる → 興味をそそる・陰謀 — 他パックで名詞「陰謀」として出る可能性があり、本パックは動詞限定であることを明記した方がよい |
+| bsl15 | mold: 型・鋳型 → 鋳型・かび（mold は「かび」も） — 「型」だけ見ると type / pattern / model / form を打ちやすい |
+| bsl15 | seeker: 求める人・求職者 → 探し求める人（job ___ で求職者） — 「求職者」だけでは applicant / job-seeker（2語）に流れる |
+| bsl15 | monopolist: 独占企業・独占者 → 独占者・独占企業家 — 「独占企業」は monopoly とも訳せる |
+| bsl15 | worksheet: 作業用の表・練習用紙 → ワークシート・練習用紙 — 「作業用の表」は spreadsheet / table と取られうる |
+| bsl15 | confirmation: 確認・確認書 → 確認（書）・確定 — 「確認」単独は check / verification が先に浮かぶ（verification は accept に入れた） |
+| bsl15 | demise: 消滅・終焉 → 終焉・（制度などの）消滅・死去 — 「消滅」は disappearance / extinction / collapse に広がる |
+| bsl15 | cruise: 船旅 → クルーズ・遊覧航海 — 「船旅」は voyage が同程度に自然（accept に入れた） |
+| nawl01 | admission: 入場料 → 入場・入学（許可） — NAWL の学術文脈では「入学・入場・容認」の意味。入場料なら admission fee / entrance fee と迷う |
+| nawl01 | availability: 空き状況・在庫 → 利用可能性・入手しやすさ — 学術の availability は「利用できること」。在庫だと stock と迷う（stock/inventory を accept に入れた） |
+| nawl01 | carrier: 運送会社 → 保菌者・担体・運送業者 — 学術では「保菌者・キャリア」の意味が多い |
+| nawl01 | binary: 二進数 → 二進法の・二元の — NAWL では形容詞用法が主。二進数なら binary number |
+| nawl01 | assembly: 組み立て → 組み立て・集会・議会 — 学術では「集会・議会」の意味が多い |
+| nawl01 | bound: （契約に）拘束された → 〜する義務がある・向かう・境界 — 用法が広く、この訳だけでは bound を思いつきにくい |
+| nawl01 | bargain: お買い得品 → 取引・交渉 — 学術・ビジネスでは「取引・交渉（する）」の意味が中心 |
+| nawl02 | client: 取引先 → 顧客・依頼人 — client は個人の依頼人・顧客が中心。「取引先」だと customer/partner/account を打つ学習者が出る |
+| nawl02 | compact: 小型の → 小型で場所を取らない — 「小型の」だけだと small/mini が自然な別解になり、compact 固有の意味が見えない |
+| nawl02 | convergence: 収束・集中 → 収束・（一点への）集中 — 「集中」だけだと concentration/focus を思い浮かべやすい |
+| nawl03 | discrete: 別個の → 離散的な・別個の — NAWL の学術的な意味（離散変数）が訳に出ていない。現状の訳だと separate / distinct が正解になる |
+| nawl03 | disability: 障害 → （心身の）障害 — 「障害」だけだと obstacle / barrier / disorder / failure も思い浮かぶ |
+| nawl03 | fever: 熱 → 発熱・（病気の）熱 — 「熱」だけだと heat / temperature も正解になる |
+| nawl03 | erase: 消す → 消去する・消し去る — 「消す」は turn off（電気）/ put out（火）にも読める |
+| nawl03 | dissection: 解剖 → 解剖（切り開くこと） — 「解剖」だけだと anatomy / autopsy も同じ訳 |
+| nawl03 | descendent: 子孫 — 訳は妥当だが見出し語 descendent は異綴りで、標準は descendant（accept に入れてある） |
+| nawl03 | ex: 元〜・前の — ex は接頭辞で単独の形容詞としては弱い。former / previous を打つ学習者が多そう |
+| nawl04 | headquarter: 本社 → （en を headquarters に）— 名詞としての標準形は headquarters。headquarter は動詞（本社を置く）の逆成語で、学習者は headquarters と打つ（accept に headquarters を入れて暫定対応） |
+| nawl04 | hip: 腰・股関節 → 尻・腰骨・股関節 — 「腰」は英語では waist／lower back で、hip は腰骨の張り出した部分。waist と打たれても正解にできない |
+| nawl04 | hierarchy: 階層 → 階層構造・序列 — 「階層」だけだと layer／level／stratum とも取れる |
+| nawl04 | gross: 総額の・税引き前の → 総計の（控除前の） — 「総額の」は total と区別がつきにくい（accept に total を入れた） |
+| nawl04 | incumbent: 現職の → 現職の・在任中の — 「現職の」だけだと current／present とも取れる（accept に current を入れた） |
+| nawl04 | junior: 後輩の・下級の → 下位の・年少の — 「後輩の」は英語で一語に対応しにくく、younger／lower とも取れる |
+| nawl04 | lateral: 横の・側面の → 側面の・横方向の — 「横の」は side／horizontal とも取れる（accept に side を入れた） |
+| nawl05 | mentor: 指導者 → 助言者・指導役 — 「指導者」は leader／instructor／coach が第一想起で mentor（助言役の先輩）に特有の意味が出ない。leader・instructor・coach を accept に入れたが訳の方を絞る余地あり |
+| nawl05 | manual: 取扱説明書 → 説明書・マニュアル — NAWL では「手引き・マニュアル」の広い意味。handbook を accept に入れたが訳はやや狭い |
+| nawl05 | momentum: 勢い → 運動量・勢い — 学術（物理）の意味 momentum（運動量）が訳から出ない。「勢い」だけだと impetus／force と区別がつかない |
+| nawl05 | media: メディア・報道 → 媒体・メディア — NAWL の media は medium の複数（培地・媒体）の意味も多い。「報道」だけだと press・news と重なる |
+| nawl05 | matrix: 行列・マトリックス — 「行列」は queue／line（人の列）の意味もあるが、マトリックス併記で判別可。念のため報告 |
+| nawl06 | optimal: 最適な → same ja as optimum (line 25) — two cards in this pack share the ja; each accepts the other |
+| nawl06 | optimum: 最適な → same ja as optimal (line 24) — duplicate ja within pack |
+| nawl06 | precipitation: 降水量 → same ja as rainfall (line 135) — duplicate ja within pack; each accepts the other |
+| nawl06 | rainfall: 降水量 → same ja as precipitation (line 90) — duplicate ja within pack |
+| nawl06 | prediction: 予測 → same ja as projection (line 109) — duplicate ja within pack; each accepts the other |
+| nawl06 | projection: 予測 → 「（将来の）予測・見通し」 — same ja as prediction (line 92) |
+| nawl06 | pre: 前の・事前の → 「前の（接頭辞）」 — pre is a prefix, not a standalone word; ja invites prior/previous/former, which were accepted |
+| nawl06 | preliminary: 予備の → 「予備的な・準備段階の」 — 予備の is commonly read as spare/backup, which is a different sense from preliminary |
+| nawl06 | parameter: 条件・範囲 → 「（変動する）条件・媒介変数」 — condition and range are generic and match many other words; accepted both but the ja barely points to parameter |
+| nawl06 | powder: 粉 → 「粉末」 — 粉 alone suggests flour for many learners |
+| nawl07 | replicate: 複製する・再現する → （reproduce と同一の ja）— 同パック内の reproduce と訳が完全に同じで、訳だけでは区別できない |
+| nawl07 | reproduce: 複製する・再現する → 生殖する・複製する — replicate と同一 ja。生殖の意味を加えれば区別できる |
+| nawl07 | sin: 罪 → （宗教・道徳上の）罪 — 罪 だけだと crime が最も自然な答えになる |
+| nawl07 | scenario: 想定・シナリオ → 想定される筋書き・シナリオ — 想定 だけだと assumption を打ちやすい |
+| nawl07 | shuttle: 送迎バス → 定期往復便・シャトル — 送迎バス は shuttle の一用法で狭い |
+| nawl07 | semi: 半〜・準〜 → （接頭辞）半〜・準〜 — pos が 形 だが接頭辞で、学習者は half を打ちやすい |
+| nawl07 | sub: 下位の・補助の → （接頭辞）下位の・副〜 — 同じく接頭辞。形容詞 sub は普通使わない |
+| nawl08 | thereby: それによって → それによって（その結果） — 同パック whereby と ja が完全に同一 |
+| nawl08 | whereby: それによって → （それに）よって〜する（関係副詞） — 同パック thereby と ja が完全に同一。例文の exJa にも「それによって」が出ない |
+| nawl08 | unintelligible: 聞き取れない → 理解できない・判読できない — 原義は「意味が取れない」で、「聞き取れない」だと inaudible が最も自然な答えになる（inaudible を accept に入れた） |
+| nawl08 | utility: 公共料金 → 効用・有用性 — NAWL（学術）の主要義は効用・有用性。公共料金の意味なら通常 utilities と複数形 |
+| nawl08 | upward: 上向きの → 上向きの・上方への — 問題なし寄りだが副詞 upwards を打つ学習者が多そう（pos 形 なので accept に入れず） |
+| nawl08 | variability / variance: 「ばらつき」が両カードの ja に共通 — 互いに accept で相互参照したが、オーケストレータ側で ja の差別化（variance → 分散・差異）を検討されたい |
+| nawl08 | trans: 横断の・〜を越えた → （接頭辞）横断の・越えて — 単独の形容詞としては通常使わない接頭辞 |
+| nawl08 | whichever: どちらの〜でも・どの〜でも — pos 形 だが tags は adj、実際は限定詞・代名詞。別解なしで問題なし |
+| tsl01 | supervisor: 上司 → 監督者・上司 — 上司 alone equally yields boss / manager; added both, but the ja does not point to supervisor specifically |
+| tsl01 | client: 取引先 → 顧客・依頼人 — client is primarily a customer/retained party; 取引先 reads as business partner (学習者は partner / customer も打ちうる) |
+| tsl01 | precede: 先に起こる → 〜に先立つ — the current ja reads like an intransitive event and does not evoke the transitive verb precede |
+| tsl01 | compact: 小型の → 小型の・コンパクトな — same ja field also matches mini (ミニの・超小型の) in this pack; the two cards overlap |
+| tsl01 | goods / merchandise: 品物 / 商品 — near-identical senses in one pack; each now accepts the other, but a learner may still see them as the same prompt |
+| tsl02 | headquarter: 本社 → ja はそのままで en を headquarters にする検討 — 「本社」は通常 headquarters（例文も headquarters）。単数形 headquarter はまれで動詞扱いが主。accept に headquarters / hq を入れて対処済み |
+| tsl02 | bulletin: 掲示・会報 — newsletter（会報・広報紙）と「会報」が重なり、訳だけでは 2 枚の区別がつかない。bulletin は「掲示・速報」に寄せる案 |
+| tsl02 | gym: 体育館 → ジム・体育館 — TOEIC では fitness gym（ジム）の意味で出ることが多い。gymnasium と区別するなら「ジム」併記が自然 |
+| tsl02 | distractor: 誤答の選択肢 — テスト用語で TOEIC 本番には出ない語。訳は正しいが学習者には answer しにくい |
+| tsl02 | sunny: 晴れた — fine / clear も学校英語で「晴れた」として教わるため、訳だけでは 3 語が同列。accept で吸収済み |
+| tsl02 | inspection / inspect: 検査 / 検査する — examination / check / test などと訳が重なり、訳だけで一意に決まらない（accept で吸収済み） |
+| tsl03 | taker: 受験者・受け取る人 → 受ける人・受け取る人（test ___） — 単独の taker は「受験者」にならず、ja から taker を思いつきにくい |
+| tsl03 | utility: 公共料金 → 公共サービス・公共料金（___ costs） — 「公共料金」は通常 utilities／utility bill。単数 utility は公益事業の意味 |
+| tsl03 | leak: 漏れる・漏れ → 漏れる — pos は 動 だが ja に名詞「漏れ」も併記されている |
+| tsl03 | sightsee: 観光する → 観光する（go ___ing） — 原形 sightsee はほとんど使われず、学習者は sightseeing／tour を打ちやすい |
+| tsl03 | congratulation: 祝いの言葉 → 祝いの言葉（通例 ___s） — 実際には複数形 congratulations が標準で単数は letter of congratulation など限定的 |
+| tsl03 | trainee / intern: 研修生 / 実習生 — 同一パック内で訳が近く、互いに入れ替えて打ちやすい（両方に相互 accept を付けた） |
+| tsl03 | grocery: 食料品（店） — 学習者は supermarket を打ちやすいが訳とずれるため accept は付けなかった。「食料雑貨」などの方が grocery に近い |
+| tsl04 | pant: ズボン → 「ズボン（通常 pants）」または en を pants に — 学習者は pants と打つが単数形 pant では答えに辿り着きにくい |
+| tsl04 | economical: 経済的な → 「経済的な・節約になる」 — 「経済的な」だけでは economic（経済の）と区別できない。economic を accept に入れた |
+| tsl04 | packet: 一包み・資料一式 → 「小包・（資料の）一式」 — 一包み は package/pack と区別がつかない |
+| tsl04 | seeker: 求める人・求職者 → 「（職などを）求める人」 — 求職者 は job seeker / applicant を連想させ、単語 seeker 単独に結びつきにくい |
+| tsl04 | orientation: 新人研修 → 「オリエンテーション・新人研修」 — 新人研修 だけでは training と答えたくなる |
+| tsl05 | bake: 焼く → オーブンで焼く — 焼くだけでは roast / grill / fry / toast など複数の語が同じ訳になる（roast, grill は accept に入れた） |
+| tsl05 | portfolio: 事業構成 → ポートフォリオ・作品集 — TOEIC では投資・作品集の意味が多く、事業構成だけでは語を思いつきにくい |
+| tsl05 | superior: 優れた・上位の → 上位の・上役の — 優れた側は excellent など多数の語が重なる |
+| tsl05 | considerably: かなり → 相当に・大幅に — かなりは quite / fairly / rather など多くの語と重なる |
+| tsl05 | statue: 像 → 彫像 — 像だけでは image / figure / sculpture とも読める |
+| tsl05 | overhead: 間接費 → 諸経費・間接費 — 名詞の間接費は indirect-cost と読む学習者もいる |
+| tsl06 | preliminary: 予備の → 予備的な・事前の — 「予備の」だと spare（予備のタイヤ）を打つ学習者が多い。preparatory の意味である「予備的な」が安全 |
+| tsl06 | mentor: 指導者 → 助言者・メンター — 「指導者」は leader／instructor も正解になりうる訳で、mentor 固有の意味（経験者としての助言役）が伝わらない |
+| tsl06 | institute: 研究所 → 協会・研究機関 — laboratory／lab も「研究所」。TOEIC では institute は機関名として出るので「研究機関・協会」の方が的確 |
+| tsl06 | postage: 送料 → 郵便料金 — 「送料」なら shipping／freight／carriage も正解。郵便の料金という限定が落ちている |
+| tsl06 | recruitment: 採用 → 人材採用・募集 — 「採用」はアイデアの採用（adoption）とも読める |
+| tsl06 | generic: 一般的な・ノーブランドの → ノーブランドの・総称の — 「一般的な」だと general／common を打つ学習者が多く、generic の中心義から遠い |
+| tsl06 | candy: あめ・菓子 → キャンディー・あめ — 「菓子」だと sweets／snack／confectionery まで広がる |
+| tsl07 | compatible: 両立できる → 互換性のある・両立できる — TOEIC では機器・ソフトの互換性の意味が主。例文は両立だが訳だけでは compatible に結びつきにくい |
+| tsl07 | cosmetic: 化粧品 → 化粧品の・化粧用の — 名詞「化粧品」は通例 cosmetics。例文 cosmetic company も形容詞用法で、単数 cosmetic を名詞訳で出すと cosmetics と打たれる |
+| tsl07 | spa: 温泉施設 → スパ・温泉施設 — spa は温泉に限らない。学習者は hot-spring 系を連想しやすい |
+| tsl07 | forum: 掲示板 → フォーラム・掲示板 — 掲示板だけだと bulletin board／notice board を連想する。オンラインの意味であることが訳から分かりにくい |
+| tsl07 | graphics: 図や画像 → 図版・グラフィックス — 訳が説明的で、image／figure／picture など別の語を打ちやすい |
+| tsl08 | amenity: 備え付け品 → 設備・アメニティ — TOEIC での amenity はホテル等の「設備・快適さ」。備え付け品だと fixture / furnishing を打たれやすい |
+| tsl08 | reflexive: 反射的な → 再帰の（文法）・反射的な — TOEIC/一般では reflexive pronoun の「再帰の」が主。反射的な だけだと reflex を打たれる |
+| tsl08 | grill: 焼く・網焼きにする → 網焼きにする — 「焼く」が広すぎて bake / fry / toast 等も正解になりうる（accept には roast / broil / barbecue のみ入れた） |
+| tsl08 | pole: 棒・柱 → 棒・ポール — 「柱」は pillar / post / column が先に浮かぶ（accept に rod / stick / pillar を入れたが post / column も正解になりうる） |
+| tsl08 | teen: 十代の若者 → 十代（の若者）・ティーン — 学習者は teenager を先に打つ（accept 済み）が、ja がカタカナを含むと teen に寄せやすい |
+| tsl09 | cage: かご・おり → 鳥かご・おり — 「かご」単独では basket（買い物かご）を連想しやすい（basket を accept に入れてあるが、訳を絞れば不要） |
+| tsl09 | sue: 訴える → 訴訟を起こす — 「訴える」は appeal（訴求する）・complain（痛みを訴える）の意味もあり、訳だけでは sue に決まらない |
+| tsl09 | formally / officially: 正式に / 公式に — ほぼ同義の訳が同一パックに2枚あり学習者が取り違える（互いを accept に入れてある） |
+| tsl09 | transmission: 伝達・送信 → 送信・伝送 — 「伝達」だけなら communication / delivery も浮かぶ |
+| tsl09 | ward: 病棟・区 → 病棟・（行政の）区 — 「区」だけでは district / section も正解になりうる |
+| tsl09 | slot: 差し込み口・枠 → 差し込み口・時間枠 — 「枠」だけでは frame を連想しやすい |
+| tsl10 | engagement: （会う）約束・予定 → 約束・予定（engagement）or 先約 — the ja points most learners to appointment or promise; the card's sense (a prior social/business engagement) is hard to recover from this ja |
+| tsl10 | rider: （乗り物に）乗る人 → （自転車・馬などに）乗る人 — as written it covers passenger too; narrowing the vehicle type pins it to rider |
+| tsl10 | salespeople: 販売員 → 販売員（複数） — the headword is the plural form but the ja is number-neutral, so learners will naturally type salesperson/salesman |
+| tsl10 | housekeep: 家事をする・清掃する → 家事・清掃をする（動詞 housekeep） — housekeep is rare as a verb; the ja 清掃する invites clean, and 家事をする invites a phrase |
+| tsl10 | bound: （契約に）拘束された → 義務のある・拘束された — the ja is a past-participle gloss; bound reads as an adjective here but learners may reach for obligated/obliged |
+| tsl10 | diagram: 図・図表 → 図解・ダイアグラム — 図 alone is also figure/drawing/picture, 図表 is chart/table; the ja is wider than diagram |
+| tsl10 | spectator: 観客 → 観客（スポーツなどの見物人） — 観客 is just as often audience (theatre/concert), which I added; a sports/event cue would disambiguate |
+| tsl10 | anyhow: とにかく・いずれにせよ → いずれにせよ・ともかく — anyway is the far more frequent English for this ja; anyhow would be hard to produce from it even with accept |
+| tsl11 | obligate: 義務づける・義務を負わせる / oblige: 義務づける — two cards in the same pack with effectively identical ja; a learner cannot tell which is wanted. Cross-accept added, but one of the ja could be differentiated (e.g. oblige → 義務づける・（恩恵で）恩に着せる) |
+| tsl11 | stimulus: 刺激策 → 刺激・刺激策 — the ja narrows to the economic sense only, while inspiration's ja 刺激 in this pack also invites stimulus; consider aligning |
+| tsl11 | serial: 連続の・通し番号の → 連続の・連番の — 通し番号の is a noun-adjunct gloss; 連番の reads more naturally as an adjective |
+| tsl11 | sedan: セダン（乗用車） → セダン — the parenthetical 乗用車 invites plain car as an answer |
+| tsl11 | wellness: 健康・健康増進 → 健康増進・ウェルネス — 健康 alone maps to health, which is already a very common NGSL word |

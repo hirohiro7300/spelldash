@@ -166,6 +166,7 @@
 - **Batch 34（SpellDash Pro）** ✅ 2026-10-02: 創業者の解禁で月額サブスク。Stripe Checkout／Billing Portal／Webhook（`api/billing/*`、SDK 無し・fetch と crypto）、`subscriptions` テーブル（docs/SQL_BILLING.md）と entitlement（active／trialing／past_due かつ 期限 + 3 日）、クライアントは `js/plan.js` のキャッシュで同期判定。特典: マイ単語帳 100 → 1,000 語、AI の回数（サーバーで判定、429 に Pro の案内）、推移 30 → 90 日、シールド 3 枚＋連続記録の修復（月 1 回・7 日以内）、テーマ 紙／藍。`/pro.html`（価格は Stripe から）、プロフィールのプラン行、`/tokushoho.html`、privacy.html にお支払い情報、CRM にプラン列。アプリでは購入導線を出さない。E2E 529 件（+86）。**創業者側**: docs/BILLING.md §2（Stripe の商品と Price → Vercel の環境変数 → Webhook → Redeploy → SQL → tokushoho.html の［ ］→ テストカードで一巡 → 本番キー → 告知）。残り: 年額の有無と価格の決定、マイ単語帳の端末間同期、1 年の推移
 - **Batch 35（試験パックの別解・利用規約）** ✅ 2026-10-02: Batch 32 の残り。16 パック（英検 5〜1 級・TOEIC 500〜990・高校・TOEIC・ビジネス・IT）1,057 枚に別解 1,874 語（執筆 → 別のエージェントが反証 → 71 語を外す）。AMBIGUOUS_JA §1 の 14 組の訳を分け、新候補 137 件を §4 に。`/terms.html`（利用規約）。残り: §4 の候補の判断（創業者）、NGSL／TSL／BSL／NAWL の 58 パックへの別解（6,814 枚。頻度順リストなので同義語が多い）、カタカナだけの訳 225 語の方針
 - **Batch 36（NGSL の別解）** ✅ 2026-10-02: NGSL 24 パック 1,568 枚に別解 2,820 語（執筆 → 反証で 129 語を外す）。新候補 147 件を AMBIGUOUS_JA §5 に。残り: TSL／BSL／NAWL の 34 パック（3,957 枚）
+- **Batch 37（TSL／BSL／NAWL の別解・ログインの案内・keepalive）** ✅ 2026-10-02: 34 パック 2,289 枚に別解 4,214 語（執筆 → 反証で 269 語を外す）。英単語パック 81 本の別解確認が一巡（合計 4,914 枚・8,908 語）。新候補 211 件を AMBIGUOUS_JA §6 に。Supabase 停止でログイン不能になったのを受け、到達確認してから遷移する案内と、日次の keepalive cron。**創業者側**: Supabase ダッシュボードで Restore project
 - 以降はこの表から順に。創業者の「止めろ」があれば即中断。
 
 ## 実装しないと決めたもの（理由つき）
