@@ -89,6 +89,23 @@ function lazyBuilder(table) {
   return proxy;
 }
 
+// ログインのサーバーに届くか（プロジェクトの一時停止・通信断の検出）。
+// Supabase の無料プロジェクトは 1 週間使われないと一時停止し、ホスト名が引けなくなる（DNS_PROBE_FINISHED_NXDOMAIN）。
+// そのまま signInWithOAuth すると Google ではなく壊れたページへ飛ばされるので、先に 1 回だけ軽く確かめる。
+export async function checkAuthReachable(timeoutMs = 4000) {
+  if (!isSupabaseConfigured) return false;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/health`, { headers: { apikey: supabaseAnonKey }, signal: controller.signal, cache: "no-store" });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const supabase = {
   auth: authProxy,
   from: (table) => lazyBuilder(table)
