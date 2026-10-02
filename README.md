@@ -61,7 +61,7 @@ python3 -m http.server 8000
 
 - Supabaseのスキーマは `supabase/schema.sql`（SQL Editorで実行）
 - `?t=10` でChallenge/Daily/Battleの制限時間を短縮できる（デバッグ用）
-- ドキュメント: `docs/STATUS.md`（現状整理）/ `docs/CHANGELOG.md` / `docs/TODO.md`
+- ドキュメント: `docs/STATUS.md`（現状整理）/ `docs/FOUNDER_TODO.md`（創業者側の作業と判断）/ `docs/CHANGELOG.md` / `docs/BACKLOG.md`
 
 ## ライセンス / クレジット
 
