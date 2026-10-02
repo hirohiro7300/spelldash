@@ -14,6 +14,7 @@ import { noteChipHtml, bindNoteEditors, escapeHtml } from "./wordNotes.js";
 import { bindWordDetail } from "./wordDetail.js";
 import { groupByGenre, setGenre, getGenre, genreLabel } from "./genres.js";
 import { icon } from "./icons.js";
+import { scrollBehavior } from "./ui.js";
 
 // ===== 単語帳（ジャンルごとの一覧） =====
 // カテゴリ → ジャンル → カード。読み物として眺められて、そのジャンルだけ練習にも入れる。
@@ -71,7 +72,10 @@ initWordStore().then(async () => {
     const chip = e.target.closest("[data-filter]");
     if (!chip) return;
     statusFilter = chip.dataset.filter;
-    document.querySelectorAll("#listFilters [data-filter]").forEach((c) => c.classList.toggle("filter-chip--active", c === chip));
+    document.querySelectorAll("#listFilters [data-filter]").forEach((c) => {
+      c.classList.toggle("filter-chip--active", c === chip);
+      c.setAttribute("aria-pressed", String(c === chip));
+    });
     render();
   });
   // 表示密度: 簡潔（用語＋意味だけ）／詳しく。選択を記憶
@@ -208,7 +212,7 @@ function renderPacks() {
       renderPacks();
       renderCategorySelect(categories);
       render();
-      if (!wasEnabled) document.getElementById("listSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!wasEnabled) document.getElementById("listSummary")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     });
   });
   grid.querySelectorAll("[data-pack-view]").forEach((button) => {
@@ -217,7 +221,7 @@ function renderPacks() {
       history.replaceState(null, "", `?category=${encodeURIComponent(categoryId)}`);
       renderCategorySelect(getCategories());
       render();
-      document.getElementById("listSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("listSummary")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     });
   });
 }
@@ -267,7 +271,7 @@ function render() {
 
   if (nav) {
     nav.innerHTML = groups
-      .map((g) => `<a class="genre-chip${g.tag === activeGenre ? " genre-chip--active" : ""}" href="#genre-${g.tag}">${escapeHtml(g.label)}<span>${g.words.length}</span></a>`)
+      .map((g) => `<a class="genre-chip${g.tag === activeGenre ? " genre-chip--active" : ""}"${g.tag === activeGenre ? ' aria-current="true"' : ""} href="#genre-${g.tag}">${escapeHtml(g.label)}<span>${g.words.length}</span></a>`)
       .join("");
   }
 

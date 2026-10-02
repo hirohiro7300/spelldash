@@ -1,5 +1,6 @@
 import { supabase } from "./supabase.js";
 import { icon } from "./icons.js";
+import { trapFocus } from "./focusTrap.js";
 
 // ===== ご意見・不具合フォーム =====
 //
@@ -93,7 +94,9 @@ function ensureModal() {
         <button type="button" class="feedback-modal__close" data-feedback-close aria-label="閉じる">${icon("x")}</button>
       </div>
       <p class="feedback-modal__lead">「訳が分かりにくい」「ここで詰まった」など、一言で大丈夫です。全部読みます。</p>
+      <label class="sr-only" for="feedbackMessage">内容</label>
       <textarea id="feedbackMessage" rows="4" maxlength="${MAX_LENGTH}" placeholder="例: 復習の単語が多すぎて新しい語が出てこない" required></textarea>
+      <label class="sr-only" for="feedbackContact">返信先（任意）</label>
       <input id="feedbackContact" type="text" maxlength="120" placeholder="返信先（任意: メール / X など）" autocomplete="off" />
       <div class="feedback-modal__actions">
         <span class="feedback-modal__status" id="feedbackStatus" role="status"></span>
@@ -105,9 +108,6 @@ function ensureModal() {
   document.body.appendChild(modal);
 
   modal.querySelectorAll("[data-feedback-close]").forEach((el) => el.addEventListener("click", closeFeedback));
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !modal.hidden) closeFeedback();
-  });
 
   modal.querySelector("#feedbackForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -134,19 +134,28 @@ function ensureModal() {
 }
 
 // prefill: 本文の書き出し（分野パックのレビュー依頼など）。すでに入力中なら上書きしない
+let releaseTrap = null;
+
 export function openFeedback({ prefill = "" } = {}) {
   const modal = ensureModal();
   modal.hidden = false;
   modal.querySelector("#feedbackStatus").textContent = "";
   const message = modal.querySelector("#feedbackMessage");
   if (prefill && !message.value.trim()) message.value = prefill;
-  message.focus();
+  // フォーカストラップ: Esc で閉じる・Tab は中で循環・閉じたら押したリンクへ戻る。背後は inert
+  if (!releaseTrap) releaseTrap = trapFocus(modal.querySelector("#feedbackForm"), { onEscape: closeFeedback, initialFocus: message, inert: true });
+  else message.focus();
   message.setSelectionRange(message.value.length, message.value.length);
 }
 
 export function closeFeedback() {
   const modal = document.getElementById("feedbackModal");
   if (modal) modal.hidden = true;
+  if (releaseTrap) {
+    const release = releaseTrap;
+    releaseTrap = null;
+    release();
+  }
 }
 
 // フッターの「ご意見・不具合」リンクを配線し、送信待ちがあれば再送を試みる

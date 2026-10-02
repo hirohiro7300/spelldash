@@ -1,7 +1,7 @@
 /* ===== ホームの「道」（コース／セクション／ユニット）— 「墨と朱」（docs/CONCEPT.md） =====
    1画面目は 見出し → 数字1行 → はちゃん → 道（スタート1個）。
    ゲームカードは道でスタートしたときだけ出す（body.home--playing）。
-   色・角丸・フォントは css/tokens.css の変数だけ。html[data-theme] を頭に付けて theme.css と同じ詳細度で後勝ちにする。
+   色・角丸・フォントは css/tokens.css の変数だけ。html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。
    道の規則: 1本の細い縦線、済み＝墨の輪郭に✓、現在地＝朱の円に「スタート」、未着手＝薄い点。影・光彩・跳ねる動きは無し。 */
 
 html[data-theme] .path {
@@ -183,6 +183,13 @@ html[data-theme] .path__node--done .path__dot:hover {
   filter: none;
 }
 
+/* 済みの✓（24px）は指で狙いにくいので、見た目を変えずに当たり判定を 40px に */
+html[data-theme] .path__node--done .path__dot::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
 /* 済みの折りたたみ: 破線の輪郭 */
 html[data-theme] .path__node--fold .path__dot {
   border-style: dashed;
@@ -238,7 +245,7 @@ html[data-theme] .path__start {
   white-space: nowrap;
   border-radius: 50%;
   border: 0;
-  background: var(--signal);
+  background: var(--signal-fill);
   background-image: none;
   color: var(--paper-2);
   font-size: 13px;
@@ -249,7 +256,7 @@ html[data-theme] .path__start {
 }
 
 html[data-theme] .path__start:hover {
-  background: var(--signal);
+  background: var(--signal-fill);
   box-shadow: 0 0 0 4px var(--signal-soft);
   transform: none;
 }
@@ -261,7 +268,7 @@ html[data-theme] .path__start:active {
 
 html[data-theme] .path__start--resume,
 html[data-theme] .path__start--resume:hover {
-  background: var(--signal);
+  background: var(--signal-fill);
   border: 0;
   font-size: 12px;
 }
@@ -365,7 +372,8 @@ html[data-theme] .path__label a:hover {
 
 html[data-theme] .path__unit-link {
   display: inline-flex;
-  margin: 0;
+  padding: 10px; /* 14px のアイコンでも当たり判定 34px（見た目の位置は margin で据え置く） */
+  margin: -10px;
   color: var(--ink-3);
   text-decoration: none;
   opacity: 1;

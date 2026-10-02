@@ -139,16 +139,16 @@ export function initializeKeyboard() {
   if (!container || !input) return;
 
   container.innerHTML = `
-    <div class="osk__rows" aria-label="画面キーボード">
+    <div class="osk__rows" role="group" aria-label="画面キーボード">
       ${ROWS.map(
         (row, i) => `<div class="osk__row osk__row--${i}">
-          ${row.map((k) => `<button type="button" class="osk__key" data-key="${k}">${k}</button>`).join("")}
-          ${i === 2 ? `<button type="button" class="osk__key osk__key--bs" data-action="bs" aria-label="1文字消す">⌫</button>` : ""}
+          ${row.map((k) => `<button type="button" class="osk__key" data-key="${k}" tabindex="-1">${k}</button>`).join("")}
+          ${i === 2 ? `<button type="button" class="osk__key osk__key--bs" data-action="bs" aria-label="1文字消す" tabindex="-1">⌫</button>` : ""}
         </div>`
       ).join("")}
       <div class="osk__row osk__row--3">
-        <button type="button" class="osk__key osk__key--space" data-action="space" hidden aria-label="空白">空白</button>
-        <button type="button" class="osk__key osk__key--enter" data-action="enter">Enter<small>答え／次へ</small></button>
+        <button type="button" class="osk__key osk__key--space" data-action="space" hidden aria-label="空白" tabindex="-1">空白</button>
+        <button type="button" class="osk__key osk__key--enter" data-action="enter" aria-label="答えを見る／次へ" tabindex="-1">Enter<small>答え／次へ</small></button>
       </div>
     </div>
   `;

@@ -85,7 +85,7 @@ export function renderCalendar(containerId) {
   el.innerHTML = `
     <div class="cal__summary">直近${weeks}週で <b>${activeDays}日</b> 学習</div>
     ${monthRow}
-    <div class="cal" style="grid-template-columns: repeat(${weeks}, 1fr)">${cells}</div>
-    <p class="cal__legend">少ない <i class="cal__day cal__day--1"></i><i class="cal__day cal__day--2"></i><i class="cal__day cal__day--3"></i><i class="cal__day cal__day--4"></i> 多い（セット完了・Challenge・Dailyの回数）</p>
+    <div class="cal" style="grid-template-columns: repeat(${weeks}, 1fr)" aria-hidden="true">${cells}</div>
+    <p class="cal__legend" aria-hidden="true">少ない <i class="cal__day cal__day--1"></i><i class="cal__day cal__day--2"></i><i class="cal__day cal__day--3"></i><i class="cal__day cal__day--4"></i> 多い（セット完了・Challenge・Dailyの回数）</p>
   `;
 }

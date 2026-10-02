@@ -1,6 +1,6 @@
 /* ===== プレイヤー管理（CRM・創業者専用） =====
    docs/CONCEPT.md「墨と朱」: トークンだけ、罫線で区切る、数字は等幅、影なし、絵文字なし。
-   html[data-theme] を頭に付けて theme.css と同じ詳細度で後勝ちにする。 */
+   html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。 */
 
 html[data-theme] .admin-app {
   width: min(1000px, 100%);

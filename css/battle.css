@@ -427,7 +427,7 @@ html[data-theme] .btn.battle-start-btn:hover {
   }
 }
 
-/* theme.css（後読み）のライト上書きに勝つため、同じ詳細度で色だけ再指定 */
+/* 旧パレットの上書きに勝つため、同じ詳細度で色だけ再指定 */
 html[data-theme] .arena-panel {
   background: var(--paper-2);
   border-color: var(--line);

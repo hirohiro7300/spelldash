@@ -7,6 +7,8 @@ import { getSetSize, isDailySetDone } from "./dailySet.js";
 import { getDueReviewCount } from "./studyQueue.js";
 import { resumableFor } from "./sessionResume.js";
 import { icon } from "./icons.js";
+import { trapFocus } from "./focusTrap.js";
+import { scrollBehavior } from "./ui.js";
 
 // ===== ホームの「道」 =====
 //
@@ -75,7 +77,7 @@ let doneExpanded = false;
 function courseChooserHtml(currentId) {
   return `
     <div class="path__courses-backdrop" id="pathCoursesBackdrop" hidden></div>
-    <div class="path__courses" id="pathCourses" role="dialog" aria-label="コースを選ぶ" hidden>
+    <div class="path__courses" id="pathCourses" role="dialog" aria-modal="true" aria-label="コースを選ぶ" hidden>
       <div class="path__courses-head"><b>コースを選ぶ</b><button type="button" class="path__guide path__courses-close" id="pathCoursesClose">閉じる</button></div>
       <ul class="path__courses-list">
         ${listCourses()
@@ -102,6 +104,11 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const headEl = document.getElementById("pathHead");
   const listEl = document.getElementById("pathList");
   if (!el || !headEl || !listEl) return null;
+
+  // 描き直しで焦点を失わない: 道の中に焦点があれば同じ id の要素へ戻す（畳みを開いたときは最初の済みユニットへ）
+  const active = document.activeElement;
+  const activeId = active && el.contains(active) ? active.id : "";
+  const wasFold = activeId === "pathDoneFold" || (active && el.contains(active) && active.hasAttribute("data-fold-open"));
 
   const path = buildPath();
   const { units, currentIndex, allDone, course, section, label } = path;
@@ -197,7 +204,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     <div class="path__head">
       <div class="path__head-text">
         <span class="path__kicker">${kicker}</span>
-        <span class="path__title">${esc(label)}</span>
+        <h1 class="path__title">${esc(label)}</h1>
         <span class="path__unit">${unitLine}</span>
       </div>
       <div class="path__head-actions">
@@ -217,6 +224,11 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     : "";
   listEl.innerHTML = `<ol class="path__list">${nodes}${more}${units.length > 0 ? goal : empty}</ol>`;
   applyToast(false); // 表示中のお知らせは描き直しても残す
+  if (wasFold) {
+    (el.querySelector(".path__node--done .path__dot[data-review]") ?? el.querySelector("#pathStart"))?.focus({ preventScroll: true });
+  } else if (activeId) {
+    el.querySelector(`#${CSS.escape(activeId)}`)?.focus({ preventScroll: true });
+  }
 
   el.querySelector("#pathStart")?.addEventListener("click", () => onStart?.(current && !allDone ? current : null));
   el.querySelectorAll(".path__dot[data-review]").forEach((btn) => {
@@ -231,24 +243,33 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       doneExpanded = true;
       renderPath({ onStart, onAdvance, onCourse });
       // 開いた途端にスタートが画面外に出ないよう、現在地を画面の中央に
-      el.querySelector(".path__node--current")?.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.querySelector(".path__node--current")?.scrollIntoView({ block: "center", behavior: scrollBehavior() });
     })
   );
   const courseBtn = el.querySelector("#pathCourse");
   const courses = el.querySelector("#pathCourses");
   const backdrop = el.querySelector("#pathCoursesBackdrop");
-  const onEsc = (event) => {
-    if (event.key === "Escape") setCoursesOpen(false);
-  };
+  // 開いている間はフォーカストラップ（Tab は中で循環・Esc で閉じる）。閉じたら必ず「コースを変える」へ戻す
+  let releaseCourses = null;
   function setCoursesOpen(open) {
     if (!courses) return;
     courses.hidden = !open;
     if (backdrop) backdrop.hidden = !open;
     courseBtn?.setAttribute("aria-expanded", String(open));
     document.body.classList.toggle("courses-open", open);
-    if (open) document.addEventListener("keydown", onEsc);
-    else document.removeEventListener("keydown", onEsc);
-    if (!open && document.activeElement && courses.contains(document.activeElement)) courseBtn?.focus();
+    if (open) {
+      releaseCourses?.({ restore: false });
+      releaseCourses = trapFocus(courses, {
+        onEscape: () => setCoursesOpen(false),
+        initialFocus: courses.querySelector(".path__course-pick, #pathCoursesClose"),
+        restoreFocus: false
+      });
+    } else {
+      const release = releaseCourses;
+      releaseCourses = null;
+      release?.({ restore: false });
+      if (courseBtn && courseBtn.isConnected) courseBtn.focus({ preventScroll: true });
+    }
   }
   courseBtn?.addEventListener("click", () => setCoursesOpen(courses.hidden));
   el.querySelector("#pathCoursesClose")?.addEventListener("click", () => setCoursesOpen(false));

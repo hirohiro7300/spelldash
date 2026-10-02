@@ -10,13 +10,14 @@
   --paper-3: #efede7;
   --ink: #16171b;
   --ink-2: #3d4048;
-  --ink-3: #6e727b;
+  --ink-3: #656972; /* 紙の上で 5.1:1、paper-3 の上で 4.7:1 */
   --ink-4: #a9acb3;
   --line: #e2e0d9;
   --line-2: #cbc9c1;
   --signal: #d9482b;
   --signal-ink: #b03a21;
   --signal-soft: #fbe9e4;
+  --signal-fill: #c73e24; /* 白文字を載せる塗り（スタート）。--signal より一段濃く 4.5:1 を超える */
   --ok: #2f6f4e;
   --ok-soft: #e4f0e9;
   --warn: #9a6700;
@@ -47,6 +48,7 @@ html[data-theme="dark"] {
   --signal: #ff6a45;
   --signal-ink: #ffa48d;
   --signal-soft: #3a2119;
+  --signal-fill: #ff6a45;
   --ok: #7bc29a;
   --ok-soft: #1d2b24;
   --warn: #e0b84a;
@@ -70,6 +72,7 @@ html[data-theme="paper"] {
   --signal: #c2411f;
   --signal-ink: #9b3318;
   --signal-soft: #f6dfd4;
+  --signal-fill: #b8391a;
   --ok: #3e6b45;
   --ok-soft: #e3ecdc;
   --warn: #8a5a00;
@@ -93,6 +96,7 @@ html[data-theme="indigo"] {
   --signal: #ff7a52;
   --signal-ink: #ffb09a;
   --signal-soft: #3a2a2c;
+  --signal-fill: #ff7a52;
   --ok: #86c7a3;
   --ok-soft: #1c3330;
   --warn: #e6c05a;

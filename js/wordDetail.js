@@ -8,6 +8,7 @@ import { renderWordAi } from "./wordAi.js";
 import { speak } from "./audio.js";
 import { speechTextOf } from "./wordStore.js";
 import { icon } from "./icons.js";
+import { trapFocus } from "./focusTrap.js";
 
 // ===== 単語詳細ポップアップ =====
 // 一覧のどこから押しても、その語の「状態・履歴・メモ・仲間・発音」を1か所で見られる。
@@ -23,19 +24,25 @@ function ensureModal() {
   modal.id = "wordDetail";
   modal.className = "word-detail";
   modal.hidden = true;
-  modal.innerHTML = `<div class="word-detail__backdrop" data-detail-close></div><div class="word-detail__panel" role="dialog" aria-modal="true" id="wordDetailPanel"></div>`;
+  modal.innerHTML = `<div class="word-detail__backdrop" data-detail-close></div><div class="word-detail__panel" role="dialog" aria-modal="true" aria-labelledby="wordDetailTitle" id="wordDetailPanel"></div>`;
   document.body.appendChild(modal);
   modal.querySelector("[data-detail-close]").addEventListener("click", closeWordDetail);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !modal.hidden) closeWordDetail();
-  });
   return modal;
 }
+
+// 開いている間のフォーカストラップ（Esc で閉じる・Tab は中で循環・閉じたら押した要素へ戻る）。
+// 仲間の語で開き直しても同じトラップを使い回す（戻り先は最初に押した要素のまま）
+let releaseTrap = null;
 
 export function closeWordDetail() {
   const modal = document.getElementById("wordDetail");
   if (modal) modal.hidden = true;
   document.body.classList.remove("modal-open");
+  if (releaseTrap) {
+    const release = releaseTrap;
+    releaseTrap = null;
+    release();
+  }
 }
 
 // category を渡すと、そのカテゴリに入っている版の語を優先して引く。
@@ -56,7 +63,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
   panel.innerHTML = `
     <button type="button" class="word-detail__close" data-detail-close aria-label="閉じる">${icon("x")}</button>
     <div class="word-detail__head">
-      <span class="word-detail__en${word.q && !/^[A-Za-z0-9 .,'’/&()-]+$/.test(word.answer ?? word.en ?? "") ? "" : " mono"}">${escapeHtml(word.answer ?? word.en)}</span>
+      <span class="word-detail__en${word.q && !/^[A-Za-z0-9 .,'’/&()-]+$/.test(word.answer ?? word.en ?? "") ? "" : " mono"}" id="wordDetailTitle">${escapeHtml(word.answer ?? word.en)}</span>
       ${speechTextOf(word) ? `<button type="button" class="speak-button word-detail__speak" id="wordDetailSpeak" aria-label="発音">${icon("speaker")}発音</button>` : ""}
     </div>
     <div class="word-detail__ja">${escapeHtml(word.ja)}</div>
@@ -83,7 +90,13 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
   `;
   modal.hidden = false;
   document.body.classList.add("modal-open"); // 背後の sticky（ジャンル列）を止める
-  panel.querySelector("[data-detail-close]").addEventListener("click", closeWordDetail);
+  const closeButton = panel.querySelector("[data-detail-close]");
+  closeButton.addEventListener("click", closeWordDetail);
+  if (!releaseTrap) {
+    releaseTrap = trapFocus(panel, { onEscape: closeWordDetail, initialFocus: closeButton, inert: true });
+  } else {
+    closeButton.focus({ preventScroll: true }); // 仲間の語で開き直したとき
+  }
   panel.querySelector("#wordDetailSpeak")?.addEventListener("click", () => speak(speechTextOf(word)));
   panel.querySelector("[data-example-speak]")?.addEventListener("click", () => speak(word.ex)); // 例文の読み上げ
   const input = panel.querySelector("#wordDetailNote");

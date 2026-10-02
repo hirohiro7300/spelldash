@@ -13,7 +13,6 @@
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
-  <link rel="stylesheet" href="./css/theme.css" />
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
   <meta name="theme-color" content="#f7f6f2" />
@@ -33,10 +32,11 @@
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
 <body>
+  <a class="skip-link" href="#main">本文へ</a>
   <header class="site-header">
     <div class="site-header__inner">
       <a href="/" class="brand">
-        <span class="brand__mark">SD</span>
+        <span class="brand__mark" aria-hidden="true">SD</span>
         <span class="brand__name">SpellDash</span>
       </a>
 
@@ -55,6 +55,7 @@
             type="button"
             aria-haspopup="true"
             aria-expanded="false"
+            aria-controls="accountLogin"
           >
             ログイン
           </button>
@@ -79,6 +80,7 @@
                 id="emailInput"
                 type="email"
                 placeholder="メールアドレス"
+                aria-label="メールアドレス"
                 autocomplete="email"
               />
               <button id="loginButton" type="submit" class="btn btn--sm">
@@ -95,6 +97,7 @@
             type="button"
             aria-haspopup="true"
             aria-expanded="false"
+            aria-controls="accountMenu"
             aria-label="アカウントメニュー"
           >
             <span class="avatar" id="headerAvatar">?</span>
@@ -118,7 +121,7 @@
     </div>
   </header>
 
-  <div class="app">
+  <main class="app" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <h1>単語帳</h1>
       <p class="auth-message" id="authMessage" role="status"></p>
@@ -134,7 +137,7 @@
         <div class="packs__head">
           <p class="muted packs__lead">仕事の共通言語、試験の語彙、学校の暗記もの。外すのもここから。<a href="/packs/">各分野の紹介ページ</a></p>
           <div class="packs__tools">
-            <input id="packsSearch" type="search" class="setting-select" placeholder="分野を検索（例: 介護、SEO、貿易）" autocomplete="off" />
+            <input id="packsSearch" type="search" class="setting-select" placeholder="分野を検索（例: 介護、SEO、貿易）" aria-label="分野を検索" autocomplete="off" />
           </div>
         </div>
         <div class="packs__grid" id="packsGrid"></div>
@@ -150,25 +153,25 @@
       <div class="my-fold__body">
 
       <div class="my-tabs" role="tablist">
-        <button type="button" class="my-tab my-tab--active" data-my-tab="word" role="tab">英単語</button>
-        <button type="button" class="my-tab" data-my-tab="concept" role="tab">場面カード</button>
-        <button type="button" class="my-tab" data-my-tab="ai" role="tab">テキストから作る</button>
+        <button type="button" class="my-tab my-tab--active" data-my-tab="word" role="tab" aria-selected="true" aria-controls="myWordForm">英単語</button>
+        <button type="button" class="my-tab" data-my-tab="concept" role="tab" aria-selected="false" aria-controls="myConceptForm">場面カード</button>
+        <button type="button" class="my-tab" data-my-tab="ai" role="tab" aria-selected="false" aria-controls="myCardGen">テキストから作る</button>
       </div>
-      <form class="my-words__form" id="myWordForm">
-        <input id="myWordEn" class="setting-select mono" type="text" placeholder="英単語（例: negotiate）" autocomplete="off" autocapitalize="none" spellcheck="false" required />
-        <input id="myWordJa" class="setting-select" type="text" placeholder="日本語訳（例: 交渉する）" autocomplete="off" required />
+      <form class="my-words__form" id="myWordForm" role="tabpanel">
+        <input id="myWordEn" class="setting-select mono" type="text" placeholder="英単語（例: negotiate）" aria-label="英単語" autocomplete="off" autocapitalize="none" spellcheck="false" required />
+        <input id="myWordJa" class="setting-select" type="text" placeholder="日本語訳（例: 交渉する）" aria-label="日本語訳" autocomplete="off" required />
         <button type="submit" class="btn btn--sm">追加</button>
       </form>
-      <form class="my-concept__form" id="myConceptForm" hidden>
-        <textarea id="myConceptQ" class="setting-select" rows="2" placeholder="場面・意味（例: ユーザーが「車 買取」「廃車」等を検索する）" required></textarea>
-        <input id="myConceptAnswer" class="setting-select" type="text" placeholder="答え・用語（例: 検索需要。日本語OK）" autocomplete="off" required />
-        <input id="myConceptExplain" class="setting-select" type="text" placeholder="解説（任意。答えの後に1行出ます）" autocomplete="off" />
-        <input id="myConceptAccept" class="setting-select" type="text" placeholder="別解（任意。/ 区切り。例: 検索ニーズ/需要）" autocomplete="off" />
+      <form class="my-concept__form" id="myConceptForm" role="tabpanel" hidden>
+        <textarea id="myConceptQ" class="setting-select" rows="2" placeholder="場面・意味（例: ユーザーが「車 買取」「廃車」等を検索する）" aria-label="場面・意味" required></textarea>
+        <input id="myConceptAnswer" class="setting-select" type="text" placeholder="答え・用語（例: 検索需要。日本語OK）" aria-label="答え・用語" autocomplete="off" required />
+        <input id="myConceptExplain" class="setting-select" type="text" placeholder="解説（任意。答えの後に1行出ます）" aria-label="解説（任意）" autocomplete="off" />
+        <input id="myConceptAccept" class="setting-select" type="text" placeholder="別解（任意。/ 区切り。例: 検索ニーズ/需要）" aria-label="別解（任意）" autocomplete="off" />
         <button type="submit" class="btn btn--sm">場面カードを追加</button>
       </form>
-      <div class="cardgen" id="myCardGen" hidden>
+      <div class="cardgen" id="myCardGen" role="tabpanel" hidden>
         <p class="muted">マニュアル・研修資料・記事・会議メモを貼ると、「場面 → 用語」のカード候補を作ります。選んだものだけマイ単語帳に入ります。ログインしている方が使えます（無料）。</p>
-        <textarea id="cardGenText" class="setting-select" rows="7" maxlength="4000" placeholder="ここにテキストを貼り付け（20〜4000文字）&#10;例: リスティング広告は、ユーザーが検索したキーワードに連動して表示される広告。クリックされるごとに費用が発生し（CPC）、…"></textarea>
+        <textarea id="cardGenText" class="setting-select" rows="7" maxlength="4000" aria-label="カードを作るテキスト" placeholder="ここにテキストを貼り付け（20〜4000文字）&#10;例: リスティング広告は、ユーザーが検索したキーワードに連動して表示される広告。クリックされるごとに費用が発生し（CPC）、…"></textarea>
         <div class="cardgen__actions">
           <span class="muted" id="cardGenCount"></span>
           <button type="button" class="btn btn--sm" id="cardGenRun">カードを作る</button>
@@ -178,7 +181,7 @@
       </div>
       <details class="my-words__bulk">
         <summary>まとめて追加（英単語は「英単語, 日本語」、場面カードは「場面 → 答え | 解説 | 別解」）</summary>
-        <textarea id="myWordBulk" rows="6" placeholder="negotiate, 交渉する&#10;invoice, 請求書&#10;ユーザーが「車 買取」等を検索する → 検索需要 | 広告を出す前提になる量 | 検索ニーズ/需要&#10;Cost ÷ Click → CPC"></textarea>
+        <textarea id="myWordBulk" rows="6" aria-label="まとめて追加する語（1行に1語）" placeholder="negotiate, 交渉する&#10;invoice, 請求書&#10;ユーザーが「車 買取」等を検索する → 検索需要 | 広告を出す前提になる量 | 検索ニーズ/需要&#10;Cost ÷ Click → CPC"></textarea>
         <button type="button" class="btn btn--sm" id="myWordBulkAdd">まとめて追加</button>
         <p class="muted">Excel/Sheetsからの貼り付け（タブ区切り・見出し行つき）もそのまま読み込めます。</p>
       </details>
@@ -197,11 +200,11 @@
         <input id="listSearch" type="search" class="setting-select" placeholder="用語・意味・場面・別解で検索" autocomplete="off" />
       </label>
     </section>
-    <div class="list-filters" id="listFilters" aria-label="状態で絞り込み">
-      <button type="button" class="filter-chip filter-chip--active" data-filter="all">すべて</button>
-      <button type="button" class="filter-chip" data-filter="untouched">未着手</button>
-      <button type="button" class="filter-chip" data-filter="weak">苦手</button>
-      <button type="button" class="filter-chip" data-filter="learned">覚えた</button>
+    <div class="list-filters" id="listFilters" role="group" aria-label="状態で絞り込み">
+      <button type="button" class="filter-chip filter-chip--active" data-filter="all" aria-pressed="true">すべて</button>
+      <button type="button" class="filter-chip" data-filter="untouched" aria-pressed="false">未着手</button>
+      <button type="button" class="filter-chip" data-filter="weak" aria-pressed="false">苦手</button>
+      <button type="button" class="filter-chip" data-filter="learned" aria-pressed="false">覚えた</button>
       <button type="button" class="filter-chip filter-chip--right" id="listDensity" aria-pressed="false">簡潔表示</button>
     </div>
     <p class="muted list-summary" id="listSummary"></p>
@@ -209,12 +212,12 @@
 
     <div id="listBody"></div>
     <p class="muted list-review" id="listReview" hidden></p>
-  </div>
+  </main>
 
   <footer class="site-footer">
     <div class="site-footer__inner">
       <div class="site-footer__brand">
-        <span class="brand__mark">SD</span>
+        <span class="brand__mark" aria-hidden="true">SD</span>
         <span class="brand__name">SpellDash</span>
       </div>
 
@@ -227,7 +230,7 @@
         <a href="./privacy.html">プライバシー</a>
         <a href="./tokushoho.html">特定商取引法に基づく表記</a>
         <a href="./terms.html">利用規約</a>
-        <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
+        <button type="button" class="site-footer__linkbtn" data-feedback-open>ご意見・不具合</button>
       </nav>
 
       <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>

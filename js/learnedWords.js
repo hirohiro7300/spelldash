@@ -78,7 +78,8 @@ export function memoryGaugeHtml(stat) {
 export function historyDotsHtml(stat, max = 8) {
   const h = historyOf(stat).slice(-max);
   if (h.length === 0) return "";
-  return `<span class="hist" aria-label="思い出せた履歴">${h
-    .map((e) => `<i class="hist__${e.r}" title="${e.d} ${e.r === "o" ? "思い出せた" : "思い出せず"}"></i>`)
+  const word = (r) => (r === "o" ? "思い出せた" : "思い出せず");
+  return `<span class="hist" role="img" aria-label="履歴: ${h.map((e) => word(e.r)).join(", ")}">${h
+    .map((e) => `<i class="hist__${e.r}" title="${e.d} ${word(e.r)}" aria-hidden="true"></i>`)
     .join("")}</span>`;
 }

@@ -1,6 +1,6 @@
 import { initializeAuth } from "./auth.js";
 import { initializeWordList } from "./wordList.js";
-import { renderWeakWords } from "./ui.js";
+import { renderWeakWords, scrollBehavior } from "./ui.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
@@ -43,11 +43,16 @@ function initializeTabs() {
     sections.forEach((el) => {
       el.hidden = el.dataset.tab !== tab;
     });
-    tabs.forEach((t) => t.classList.toggle("stats-tab--active", t.dataset.tab === tab));
+    tabs.forEach((t) => {
+      const on = t.dataset.tab === tab;
+      t.classList.toggle("stats-tab--active", on);
+      if (on) t.setAttribute("aria-current", "true");
+      else t.removeAttribute("aria-current");
+    });
     localStorage.setItem(TAB_KEY, tab);
     rerenderTrends(); // 隠れていたタブのグラフは幅 0 で描かれているので描き直す
     if (scrollToId) {
-      setTimeout(() => document.getElementById(scrollToId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      setTimeout(() => document.getElementById(scrollToId)?.scrollIntoView({ behavior: scrollBehavior(), block: "start" }), 50);
     }
   };
 
@@ -289,9 +294,9 @@ function renderCategoryProgress() {
     rows
       .map(
         (r) => `
-        <button type="button" class="cat-row" data-category="${r.id}">
+        <div class="cat-row" data-category="${r.id}">
           <div class="cat-row__head">
-            <span class="cat-row__label">${r.label}<span class="cat-row__total mono">${r.total}語</span>${r.total > 0 && r.learned === r.total ? `<span class="cat-row__clear">制覇</span>` : ""}</span>
+            <button type="button" class="cat-row__go" data-category="${r.id}" aria-label="${r.label} で練習を始める（覚えた ${r.learned} / ${r.total}）"><span class="cat-row__label">${r.label}<span class="cat-row__total mono">${r.total}語</span>${r.total > 0 && r.learned === r.total ? `<span class="cat-row__clear">制覇</span>` : ""}</span></button>
             <span class="cat-row__learned">覚えた <strong class="mono">${r.learned}</strong> / ${r.total}${r.id !== "all" ? ` <a class="cat-row__list" href="./list.html?category=${r.id}" data-stop>一覧</a>` : ""}</span>
           </div>
           <div class="cat-bar" aria-hidden="true">
@@ -300,7 +305,7 @@ function renderCategoryProgress() {
             <i class="cat-bar__weak" style="width:${pct(r.weak, r.total)}%"></i>
           </div>
           <div class="cat-row__legend">${r.mastered + r.learning + r.weak === 0 ? `未着手 ${r.untouched}語` : `習得 ${r.mastered} ・ 覚えかけ ${r.learning} ・ 苦手 ${r.weak} ・ 未着手 ${r.untouched}`}</div>
-        </button>
+        </div>
       `
       )
       .join("") +

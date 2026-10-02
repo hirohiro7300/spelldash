@@ -166,10 +166,6 @@ body:not(.mode-study) .study-queue {
   flex-shrink: 0;
 }
 
-.daily__desc {
-  min-width: 0;
-}
-
 .daily__result strong {
   font-variant-numeric: tabular-nums;
 }
@@ -404,19 +400,6 @@ body.mode-study .weak-toggle {
   margin-left: auto;
 }
 
-.level-bar__next {
-  margin-left: 10px;
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 400;
-}
-
-@media (max-width: 640px) {
-  .level-bar__next {
-    display: none;
-  }
-}
-
 /* ===== レベルバー ===== */
 .level-bar {
   display: flex;
@@ -434,53 +417,8 @@ body.mode-study .weak-toggle {
   display: none;
 }
 
-.level-bar__badge {
-  flex-shrink: 0;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  color: #fff;
-  font-weight: 800;
-  font-size: 15px;
-}
-
-.level-bar__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.level-bar__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.level-bar__title {
-  color: #f8fafc;
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.level-bar__xp {
-  color: #94a3b8;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
 .progress-bar--slim {
   height: 8px;
-}
-
-.level-bar--levelup .level-bar__badge {
-  animation: levelup-pop 0.9s ease;
-}
-
-@keyframes levelup-pop {
-  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.8); }
-  40% { transform: scale(1.25); box-shadow: 0 0 0 14px rgba(250, 204, 21, 0); }
-  100% { transform: scale(1); }
 }
 
 /* ===== カテゴリ選択チップ ===== */
@@ -781,15 +719,6 @@ button:hover {
   body.is-playing .mix-control {
     display: none;
   }
-}
-
-/* レベルバー: XPを行動の言葉に翻訳した一行（あと約N問正解でLv.X） */
-.level-bar__remaining {
-  display: block;
-  margin-top: 5px;
-  color: #7ba7d9;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 /* ===== お知らせページ（App Storeリリースノート調・シンプル） ===== */
@@ -1832,10 +1761,6 @@ body.free-answer .typed-preview {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #60a5fa, #4ade80);
-}
-
-.login-nudge__text b {
-  color: #f8fafc;
 }
 
 @media (max-width: 600px) {

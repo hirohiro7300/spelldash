@@ -12,13 +12,7 @@ export function renderLevelBar() {
   container.innerHTML = `<span class="level-bar__line">${state.title} ・ Lv.${state.level} ・ 経験値 <span class="mono">${state.currentXp}/${state.neededXp}</span></span>`;
 }
 
-// レベルアップ演出（バッジを一瞬光らせる）
+// レベルアップ演出（ホームの数字 1 行を一瞬強調するだけ。レベルバーの点滅は Batch 38 でやめた）
 export function playLevelUpEffect() {
   pulseTodayStrip();
-  const container = document.getElementById("levelBar");
-  if (!container) return;
-
-  container.classList.remove("level-bar--levelup");
-  void container.offsetWidth;
-  container.classList.add("level-bar--levelup");
 }

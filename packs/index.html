@@ -12,7 +12,6 @@
   <link rel="stylesheet" href="/css/layout.css" />
   <link rel="stylesheet" href="/css/game.css" />
   <link rel="stylesheet" href="/css/responsive.css" />
-  <link rel="stylesheet" href="/css/theme.css" />
   <link rel="stylesheet" href="/css/brand.css" />
   <link rel="stylesheet" href="/css/pages.css" />
   <meta name="theme-color" content="#f7f6f2" />
@@ -69,18 +68,22 @@
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#main">本文へ</a>
   <header class="site-header">
     <div class="site-header__inner">
-      <a href="/" class="brand"><span class="brand__mark">SD</span><span class="brand__name">SpellDash</span></a>
+      <a href="/" class="brand"><span class="brand__mark" aria-hidden="true">SD</span><span class="brand__name">SpellDash</span></a>
       <nav class="site-nav" aria-label="メインナビ">
         <a href="/" class="site-nav__link">プレイ</a>
         <a href="/stats.html" class="site-nav__link">学習データ</a>
         <a href="/list.html" class="site-nav__link">単語帳</a>
         <a href="/battle.html" class="site-nav__link">バトル</a>
       </nav>
+      <div class="account">
+        <a class="btn btn--sm btn--ghost account__home" href="/">ホームへ</a>
+      </div>
     </div>
   </header>
-  <main class="pp">
+  <main class="pp" id="main" tabindex="-1">
 
     <section class="pp-hero">
       <p class="pp-kicker">SpellDash</p>
@@ -132,14 +135,14 @@
   </main>
   <footer class="site-footer">
     <div class="site-footer__inner">
-      <div class="site-footer__brand"><span class="brand__mark">SD</span><span class="brand__name">SpellDash</span></div>
+      <div class="site-footer__brand"><span class="brand__mark" aria-hidden="true">SD</span><span class="brand__name">SpellDash</span></div>
       <p class="site-footer__tagline">タイピングで、英単語を体に覚えさせる。</p>
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="/news.html">お知らせ</a>
         <a href="/privacy.html">プライバシー</a>
         <a href="/tokushoho.html">特定商取引法に基づく表記</a>
         <a href="/terms.html">利用規約</a>
-        <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
+        <button type="button" class="site-footer__linkbtn" data-feedback-open>ご意見・不具合</button>
       </nav>
       <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
     </div>

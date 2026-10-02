@@ -2,6 +2,7 @@ import { authRedirectOrigin } from "./appEnv.js";
 import { supabase, isSupabaseConfigured, checkAuthReachable } from "./supabase.js";
 import { initialSync } from "./sync.js";
 import { refreshPlan, clearPlan } from "./plan.js";
+import { trapFocus } from "./focusTrap.js";
 
 const accountGuestElement = document.getElementById("accountGuest");
 const accountUserElement = document.getElementById("accountUser");
@@ -66,21 +67,53 @@ export async function initializeAuth() {
   });
 }
 
+// 開いているドロップダウンのフォーカストラップ解除関数（dropdown 要素 → release）
+const dropdownTraps = new Map();
+
 function setupDropdownToggle(trigger, dropdown, onOpen) {
   trigger.addEventListener("click", (event) => {
     event.stopPropagation();
     const isOpen = dropdown.classList.toggle("is-open");
     trigger.setAttribute("aria-expanded", String(isOpen));
 
-    if (isOpen && onOpen) {
-      onOpen();
+    if (isOpen) {
+      // Esc で閉じて焦点をトリガーへ。パネルの端を Tab で越えたら閉じる（ループしない）
+      dropdownTraps.get(dropdown)?.({ restore: false });
+      const release = trapFocus(dropdown.querySelector(".dropdown__panel"), {
+        loop: false,
+        restoreFocus: false,
+        initialFocus: () => dropdown.querySelector(".dropdown__panel").querySelector("input, button, a"),
+        onEscape: (e, info) => {
+          const leaving = info?.leaving;
+          if (leaving === "pointer" && trigger.contains(e.target)) return; // トリガー自身のクリック（閉じる）は click 側で畳む
+          closeDropdown(dropdown, trigger);
+          // Tab で先に抜けるときは焦点をトリガーに置いてブラウザの既定の移動に任せる（＝トリガーの次へ）。
+          // Shift+Tab で戻るときはトリガー自身に止める
+          if (leaving === "forward") trigger.focus();
+          if (leaving === "backward") {
+            e.preventDefault();
+            trigger.focus();
+          }
+        }
+      });
+      dropdownTraps.set(dropdown, release);
+      if (onOpen) onOpen();
+    } else {
+      closeDropdown(dropdown, trigger);
     }
   });
 }
 
 function closeDropdown(dropdown, trigger) {
+  const wasOpen = dropdown.classList.contains("is-open");
   dropdown.classList.remove("is-open");
   trigger.setAttribute("aria-expanded", "false");
+  const release = dropdownTraps.get(dropdown);
+  if (release) {
+    dropdownTraps.delete(dropdown);
+    release({ restore: false });
+  }
+  if (wasOpen && dropdown.contains(document.activeElement) && document.activeElement !== trigger) trigger.focus();
 }
 
 const UNREACHABLE_MESSAGE = "ログインのサーバーにつながりません（停止中か、通信の問題です）。学習はこのまま続けられ、記録はこの端末に残ります。";
