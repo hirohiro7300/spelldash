@@ -168,8 +168,5 @@
   <url><loc>https://www.spelldash.net/list.html?category=listing</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://www.spelldash.net/news.html</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
   <url><loc>https://www.spelldash.net/battle.html</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
-  <url><loc>https://www.spelldash.net/pro.html</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://www.spelldash.net/privacy.html</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
-  <url><loc>https://www.spelldash.net/tokushoho.html</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
-  <url><loc>https://www.spelldash.net/terms.html</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>
 </urlset>
