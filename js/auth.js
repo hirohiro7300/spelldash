@@ -182,7 +182,7 @@ async function sendLoginLink() {
   }
 
   closeDropdown(accountGuestElement, loginToggleElement);
-  showAuthMessage("ログインリンクをメールに送りました。メールをご確認ください。", "success");
+  showAuthMessage("ログインリンクを送った。メールを開いて続ける。", "success");
   startSendCooldown();
 }
 
@@ -198,7 +198,7 @@ function startSendCooldown() {
     if (remaining <= 0) {
       clearInterval(cooldownTimer);
       loginButtonElement.disabled = false;
-      loginButtonElement.textContent = "リンクを送信";
+      loginButtonElement.textContent = "ログインリンクを送る";
       return;
     }
 
