@@ -559,7 +559,7 @@ console.log("category progress:");
   const rows = await page.$$eval("#categoryProgress .cat-row", (els) => els.map((e) => e.textContent));
   check("カテゴリ行が11件（すべて＋9＋マイ単語帳）", rows.length === 11, `rows=${rows.length}`);
   check("広告・マーケの行がある", rows.some((t) => t.includes("広告・マーケ") && t.includes("101語")));
-  check("すべての行に語数1101", rows[0]?.includes("1101語") === true, rows[0]);
+  check("すべての行に語数990（同じ語は 1 回だけ数える）", rows[0]?.includes("990語") === true, rows[0]);
   check("カテゴリ進捗でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
@@ -2040,7 +2040,7 @@ console.log("review fixes:");
   const pageG = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done" } });
   await pageG.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await pageG.waitForTimeout(900);
-  check("道: 語が無いカテゴリ（空のマイ単語帳）には案内が出る", (await pageG.textContent("#pathList")).includes("まだ語がありません") && (await pageG.$("#pathList a[href*='myWords']")) !== null);
+  check("道: 語が無いカテゴリ（空のマイ単語帳）には案内が出る", (await pageG.textContent("#pathList")).includes("まだ語が無い") && (await pageG.$("#pathList a[href*='myWords']")) !== null);
   await pageG.close();
 
   // 道（スマホ）: 制覇ノードの「次のセクションへ」で横にはみ出さない
