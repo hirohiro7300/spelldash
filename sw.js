@@ -1,7 +1,7 @@
 // SpellDash Service Worker
 // 方針: Network First（デプロイが即反映される）＋オフライン時はキャッシュへフォールバック。
 // Supabase等のクロスオリジンには一切触らない。
-const CACHE_NAME = "spelldash-v1";
+const CACHE_NAME = "spelldash-v2";
 
 const CORE_ASSETS = [
   "/",
@@ -37,8 +37,10 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  // GET かつ同一オリジンのみ扱う（Supabase・認証リクエストは素通し）
-  if (request.method !== "GET" || url.origin !== location.origin) return;
+  // GET かつ同一オリジンのみ扱う（Supabase・認証リクエストは素通し）。
+  // /api/ は保存しない: 管理画面の応答（プレイヤーのメール等）が端末のキャッシュに残らないように。
+  // Cache API は Cache-Control: no-store を見ないので、ここで除外する必要がある
+  if (request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/api/")) return;
 
   event.respondWith(
     fetch(request)
