@@ -30,6 +30,7 @@ export function initializeCategoryPicker() {
           type="button"
           class="category-chip${c.id === saved ? " category-chip--active" : ""}"
           data-category="${c.id}"
+          aria-pressed="${c.id === saved}"
         >
           ${c.label}<span class="category-chip__count">${count}</span>
         </button>
@@ -59,6 +60,7 @@ export function initializeCategoryPicker() {
 
     container.querySelectorAll(".category-chip").forEach((el) => {
       el.classList.toggle("category-chip--active", el === chip);
+      if (el.tagName === "BUTTON") el.setAttribute("aria-pressed", String(el === chip));
     });
   });
 }

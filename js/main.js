@@ -1,5 +1,5 @@
 import "./appEnv.js"; // 実行環境（アプリなら html.native-app）
-import { elements, initializeDisplay, showMessage } from "./ui.js";
+import { elements, initializeDisplay, showMessage, scrollBehavior } from "./ui.js";
 import {
   handleKeydown,
   handleTextInput,
@@ -111,7 +111,7 @@ function scrollGameIntoView() {
   if (!card) return;
   const top = card.getBoundingClientRect().top;
   if (top < 0 || top > window.innerHeight * 0.35) {
-    card.scrollIntoView({ behavior: "smooth", block: "start" });
+    card.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   }
 }
 
@@ -153,7 +153,7 @@ function startDaily() {
   if (isDailyPlayedToday()) {
     const more = document.getElementById("homeMore");
     if (more) more.open = true;
-    document.getElementById("dailyCard")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById("dailyCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
     return;
   }
   setFocusGenre("");
@@ -170,7 +170,7 @@ function goNextSection() {
   initWordStore().then(() => {
     initializeCategoryPicker();
     renderHome();
-    document.getElementById("pathCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   });
 }
 
@@ -184,7 +184,7 @@ function chooseCourse(courseId) {
   initWordStore().then(() => {
     initializeCategoryPicker();
     renderHome();
-    document.getElementById("pathCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   });
 }
 
@@ -220,7 +220,8 @@ backToPath?.addEventListener("click", () => {
   stopGame(); // プレイ中のセットは中断する（setMode は同じモードだと止めない）
   showGame(false);
   renderHome();
-  document.getElementById("pathCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+  document.getElementById("pathStart")?.focus({ preventScroll: true }); // 「道に戻る」は消えるので、焦点はスタートへ
 });
 
 // どの入口から始まっても（Enter キー含む）ゲームカードを出す
@@ -275,12 +276,19 @@ function refreshWeakToggle() {
   button.classList.toggle("weak-toggle__btn--on", isWeakOnlyMode());
   const weak = getWeakCount();
   count.textContent = weak > 0 ? `${weak}語` : "0語";
-  button.disabled = weak === 0 && !isWeakOnlyMode();
+  // disabled にせず aria-disabled（キーボードで到達でき、押すと理由を伝える）
+  const off = weak === 0 && !isWeakOnlyMode();
+  button.setAttribute("aria-disabled", String(off));
+  button.setAttribute("aria-pressed", String(isWeakOnlyMode()));
 }
 
 const weakToggleButton = document.getElementById("weakToggleButton");
 if (weakToggleButton) {
   weakToggleButton.addEventListener("click", () => {
+    if (weakToggleButton.getAttribute("aria-disabled") === "true") {
+      showMessage("苦手の語はまだありません。思い出せなかった語が出たら、ここで絞れます。");
+      return;
+    }
     setWeakOnlyMode(!isWeakOnlyMode());
     refreshWeakToggle();
     renderSetupSummary();
@@ -364,7 +372,7 @@ if (window.visualViewport) {
       const rect = elements.input.getBoundingClientRect();
       const visibleBottom = window.visualViewport.height + window.visualViewport.offsetTop;
       if (rect.bottom > visibleBottom - 8 || rect.top < 0) {
-        elements.input.scrollIntoView({ behavior: "smooth", block: "center" });
+        elements.input.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
       }
     }, 120);
   });

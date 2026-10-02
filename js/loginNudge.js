@@ -1,6 +1,7 @@
 import { isNativeApp } from "./appEnv.js";
 import { supabase } from "./supabase.js";
 import { getActiveDaysLast7, getGrowthLog } from "./growthLog.js";
+import { scrollBehavior } from "./ui.js";
 
 // ===== 未ログインへの穏やかな保存案内 =====
 // 3日以上学習した未ログインの人に、1回だけ「ログインすると別端末でも続きから」と伝える。
@@ -43,7 +44,7 @@ export async function renderLoginNudge() {
     const toggle = document.getElementById("loginToggle");
     if (toggle) {
       toggle.click();
-      toggle.scrollIntoView({ behavior: "smooth", block: "center" });
+      toggle.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
     }
   });
   document.getElementById("loginNudgeLater")?.addEventListener("click", () => {

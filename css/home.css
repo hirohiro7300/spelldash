@@ -1,7 +1,7 @@
 /* home — 「墨と朱」領域別スタイル（docs/CONCEPT.md）。brand.css の後に読み込む。
    ホームの1画面目（見出し・道・ほかの遊び方・道に戻る）は css/path.css。ここはそれ以外のホーム部品:
    数字1行、はちゃんの一言、出題の要約行と設定パネル、ログイン案内、詳細（覚えた単語・Daily Dash）。
-   すべて html[data-theme] を頭に付け、theme.css と同じ詳細度で後勝ちにする。色は tokens.css の変数だけ。 */
+   すべて html[data-theme] を頭に付け、(0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。色は tokens.css の変数だけ。 */
 
 html[data-theme] .app--home {
   max-width: 820px;
@@ -53,7 +53,7 @@ html[data-theme] .strip__chip {
 
 html[data-theme] .strip__chip .icon {
   margin: 0;
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 
 html[data-theme] .strip__chip--on {
@@ -66,7 +66,7 @@ html[data-theme] .strip__chip--on .icon {
   color: var(--signal);
 }
 
-/* theme.css の (0,3,1) の炎チップ（橙の面）に勝つ */
+/* 旧パレットの炎チップ（橙の面）に勝つ */
 html[data-theme] .strip__chip--streak.strip__chip--on {
   background: var(--paper-3);
   border: 0;
@@ -324,7 +324,7 @@ html[data-theme] .weak-toggle__btn {
   box-shadow: none;
 }
 
-html[data-theme] .weak-toggle__btn:hover:not(:disabled) {
+html[data-theme] .weak-toggle__btn:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--paper-3);
   border-color: var(--line-2);
   color: var(--ink);
@@ -611,11 +611,6 @@ html[data-theme] .daily--done .daily__head {
   letter-spacing: 0;
   text-transform: none;
   color: var(--ink);
-}
-
-html[data-theme] .daily__desc {
-  font-size: 13px;
-  color: var(--ink-3);
 }
 
 html[data-theme] .daily__result {

@@ -34,7 +34,7 @@ export function renderPlayModes({ onChallenge, onDaily } = {}) {
   ];
 
   el.innerHTML = `
-    <h3 class="play-modes__title">ほかの遊び方</h3>
+    <h2 class="play-modes__title">ほかの遊び方</h2>
     <ul class="play-modes__list">
       ${rows
         .map((r) => {

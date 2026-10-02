@@ -53,10 +53,8 @@ export function initializeMixControl() {
   const apply = (ratio) => {
     slider.value = ratio;
     label.textContent = `回答済み ${ratio}% / 未回答 ${100 - ratio}%`;
-    slider.setAttribute(
-      "aria-label",
-      `出題比率: 回答済み${ratio}パーセント、未回答${100 - ratio}パーセント`
-    );
+    slider.setAttribute("aria-label", "出題の比率");
+    slider.setAttribute("aria-valuetext", `回答済み${ratio}%、未回答${100 - ratio}%`);
   };
 
   apply(getFamiliarRatio());

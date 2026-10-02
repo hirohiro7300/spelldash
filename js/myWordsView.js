@@ -53,7 +53,10 @@ export function initializeMyWordsView(onChange = () => {}) {
   document.querySelectorAll("[data-my-tab]").forEach((tab) => {
     tab.addEventListener("click", () => {
       const kind = tab.dataset.myTab;
-      document.querySelectorAll("[data-my-tab]").forEach((t) => t.classList.toggle("my-tab--active", t === tab));
+      document.querySelectorAll("[data-my-tab]").forEach((t) => {
+        t.classList.toggle("my-tab--active", t === tab);
+        t.setAttribute("aria-selected", String(t === tab));
+      });
       for (const [key, id] of Object.entries(panels)) {
         const panel = document.getElementById(id);
         if (panel) panel.hidden = key !== kind;

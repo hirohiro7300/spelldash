@@ -15,7 +15,6 @@
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
-  <link rel="stylesheet" href="./css/theme.css" />
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
   <meta name="theme-color" content="#f7f6f2" />
@@ -35,10 +34,11 @@
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
 <body>
+  <a class="skip-link" href="#main">本文へ</a>
   <header class="site-header">
     <div class="site-header__inner">
       <a href="/" class="brand">
-        <span class="brand__mark">SD</span>
+        <span class="brand__mark" aria-hidden="true">SD</span>
         <span class="brand__name">SpellDash</span>
       </a>
 
@@ -48,10 +48,14 @@
         <a href="./list.html" class="site-nav__link">単語帳</a>
         <a href="./battle.html" class="site-nav__link">バトル</a>
       </nav>
+
+      <div class="account">
+        <a class="btn btn--sm btn--ghost account__home" href="/">ホームへ</a>
+      </div>
     </div>
   </header>
 
-  <div class="app app--narrow">
+  <main class="app app--narrow" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <p class="logo">Legal Notice</p>
       <h1>特定商取引法に基づく表記</h1>
@@ -111,12 +115,12 @@
         または上記の連絡先までお願いします。個人情報の扱いは<a href="./privacy.html">プライバシーポリシー</a>をご覧ください。
       </p>
     </section>
-  </div>
+  </main>
 
   <footer class="site-footer">
     <div class="site-footer__inner">
       <div class="site-footer__brand">
-        <span class="brand__mark">SD</span>
+        <span class="brand__mark" aria-hidden="true">SD</span>
         <span class="brand__name">SpellDash</span>
       </div>
 
@@ -129,7 +133,7 @@
         <a href="./privacy.html">プライバシー</a>
         <a href="./tokushoho.html">特定商取引法に基づく表記</a>
         <a href="./terms.html">利用規約</a>
-        <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
+        <button type="button" class="site-footer__linkbtn" data-feedback-open>ご意見・不具合</button>
       </nav>
 
       <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>

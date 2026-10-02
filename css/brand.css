@@ -1,7 +1,7 @@
 /* ===== 「墨と朱」共通レイヤー（docs/CONCEPT.md） =====
    全ページの最後に読み込む。土台（ページ・ヘッダー・ナビ・ボタン・入力欄・カード・文字色）をトークンで統一し、
    既存 CSS のダーク基調＋ライト上書きを両方まとめて置き換える。
-   html[data-theme] を頭に付けているのは theme.css（html[data-theme="light"] .x）と同じ詳細度で後勝ちにするため。 */
+   html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。 */
 
 html[data-theme] body {
   font-family: var(--font-ui);
@@ -24,6 +24,46 @@ html[data-theme] body {
 html[data-theme] .input-wrapper :focus-visible,
 html[data-theme] .input-wrapper--battle :focus-visible {
   outline: none;
+}
+
+/* プログラムで焦点を置くだけの要素（本文の入口・結果の見出し）には枠を出さない */
+html[data-theme] #main:focus,
+html[data-theme] .result-panel__title:focus {
+  outline: none;
+}
+
+/* ---- 読み上げ専用（画面には出さない） ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- スキップリンク: Tab で最初に現れ、本文（<main id="main">）へ飛ぶ ---- */
+html[data-theme] .skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 100;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+html[data-theme] .skip-link:focus {
+  left: 16px;
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
 }
 
 /* ---- ヘッダー ---- */
@@ -102,6 +142,25 @@ html[data-theme] .site-footer__nav a:hover {
   color: var(--ink);
 }
 
+/* フッターの「ご意見・不具合」はモーダルを開くので button。見た目は隣のリンクと同じ */
+html[data-theme] .site-footer__linkbtn {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+html[data-theme] .site-footer__linkbtn:hover {
+  background: none;
+  color: var(--ink);
+}
+
 /* ---- ボタン ---- */
 :where(html[data-theme]) button,
 html[data-theme] .btn {
@@ -136,9 +195,15 @@ html[data-theme] .btn--ghost:hover {
   background: var(--paper-3);
 }
 
+/* 無効: 半透明ではなく、灰の文字＋紙3の面で示す（文字が薄くなりすぎない） */
 html[data-theme] .btn:disabled,
-:where(html[data-theme]) button:disabled {
-  opacity: 0.5;
+:where(html[data-theme]) button:disabled,
+html[data-theme] .weak-toggle__btn[aria-disabled="true"] {
+  opacity: 1;
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border-color: var(--line);
+  cursor: default;
 }
 
 /* ---- 入力欄（ゲーム） ---- */
@@ -162,7 +227,7 @@ html[data-theme] #input {
 }
 
 html[data-theme] #input::placeholder {
-  color: var(--ink-4);
+  color: var(--ink-3);
   font-family: var(--font-ui);
   font-weight: 500;
   letter-spacing: 0;
@@ -173,6 +238,12 @@ html[data-theme] .typed-preview {
   font-weight: 500;
   font-size: 24px;
   letter-spacing: 0.04em;
+}
+
+/* プレースホルダは唯一の説明文になることがあるので ink-3（4.5:1 以上）。layout.css の ink-4 を上書き */
+html[data-theme] .account-menu--login input::placeholder,
+html[data-theme] .welcome-demo__input::placeholder {
+  color: var(--ink-3);
 }
 
 /* 汎用の入力・選択 */
@@ -247,6 +318,21 @@ html[data-theme] .message {
 html[data-theme] .message.correct { color: var(--ok); }
 html[data-theme] .message.wrong { color: var(--signal-ink); }
 html[data-theme] .message.revealed { color: var(--ink-2); }
+
+/* ---- 学習データ: カテゴリ別の行。行（div）の中の見出し部分だけが button（a と button の入れ子をやめた） ---- */
+html[data-theme] .cat-row__go,
+html[data-theme] .cat-row__go:hover {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 
 /* ---- アイコン ---- */
 html[data-theme] .icon {
@@ -335,7 +421,7 @@ html[data-theme] .header-streak--off {
 }
 
 html[data-theme] .header-streak--off .icon {
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 
 /* ---- プロフィール: 声の選択 ---- */
@@ -371,6 +457,21 @@ html[data-theme] .voice-row .setting-select {
   html[data-theme] .word-example__speak {
     width: 36px;
     height: 36px;
+  }
+  /* 文字だけのリンク・ボタン: 見た目は変えず当たり判定だけ縦に広げる */
+  html[data-theme] .gcard__term,
+  html[data-theme] .learned-card__link {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    margin-top: -8px;
+    margin-bottom: -8px;
+  }
+  html[data-theme] .site-footer__nav a,
+  html[data-theme] .site-footer__linkbtn {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    margin-top: -8px;
+    margin-bottom: -8px; /* 当たり判定だけ広げ、行間は据え置く */
   }
   html[data-theme] .setting-select {
     min-height: 44px;

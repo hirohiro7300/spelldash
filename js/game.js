@@ -98,7 +98,9 @@ import {
   showColoredAnswer,
   updateTypedPreview,
   clearTypedPreview,
-  updateCombo
+  updateCombo,
+  scrollBehavior,
+  announce
 } from "./ui.js";
 
 const MODE_KEY = "spelldash_mode";
@@ -514,8 +516,8 @@ export function handleKeydown(event) {
     triggerEnter();
     return;
   }
-  // Tab = 発音（フォーカスは入力欄に留める）
-  if (event.key === "Tab") {
+  // Ctrl+.（Cmd+.）= 発音。Tab は既定どおり次の要素へ（入力欄に閉じ込めない）
+  if (event.key === "." && (event.ctrlKey || event.metaKey)) {
     event.preventDefault();
     speak(speechTextOf(currentWord));
     return;
@@ -721,7 +723,7 @@ function revealAnswer(fromMiss = false) {
   // 画面キーボードが出ていると、答え・例文・操作チップの分だけ入力欄が盤面の下に落ちる。見える位置へ戻す
   // （html:has(body.osk-open) の scroll-padding-bottom が盤面の高さ分を確保している）
   if (document.body.classList.contains("osk-open")) {
-    elements.input.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    elements.input.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
   }
 }
 
@@ -1328,7 +1330,7 @@ function endStudySession() {
         : { mood: "normal", text: "残りは明日また出す。" }
       : hasumiSetLine({ count: recalled, failed, sets: state.setsToday });
     panel.innerHTML = `
-      <div class="result-panel__title">${isRetry ? "回収完了" : "今日のセット完了"}</div>
+      <h2 class="result-panel__title" id="resultTitle" tabindex="-1">${isRetry ? "回収完了" : "今日のセット完了"}</h2>
       ${hasumiBubbleHtml(hasumiLine, "hasumi--result")}
       <div class="result-panel__grid">
         <div><span>思い出せた</span><strong>${recalled}</strong></div>
@@ -1346,7 +1348,8 @@ function endStudySession() {
       </div>
     `;
     panel.hidden = false;
-    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    focusResultTitle(panel);
+    panel.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     panel.querySelectorAll("[data-speak]").forEach((chip) => chip.addEventListener("click", () => speak(chip.dataset.speak)));
     document.getElementById("setRetry")?.addEventListener("click", () => {
       clearInterval(timer);
@@ -1554,7 +1557,7 @@ function setNewWord() {
     currentWord.calc
       ? "計算（数字で答える）"
       : listenMode
-        ? "音を聞いて打つ（Tab か 発音 でもう一度）"
+        ? "音を聞いて打つ（発音 か Ctrl+. でもう一度）"
         : currentWord.write
           ? `${currentWord.bank ? "語を並べ替えて英文を打つ" : "日本語を英文にして打つ"}${currentWord.ja ? `（${currentWord.ja}）` : ""}`
         : currentWord.blank
@@ -1859,7 +1862,7 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0,
        <button type="button" class="result-panel__action result-panel__action--ghost" id="resultStudy">苦手を復習</button>`;
 
   panel.innerHTML = `
-    <div class="result-panel__title">${title}</div>
+    <h2 class="result-panel__title" id="resultTitle" tabindex="-1">${title}</h2>
     ${bestBadge}
     ${hasumiBubbleHtml(hasumiResultLine({ isBest, isDaily, diff }), "hasumi--result")}
     <div class="result-panel__grid">
@@ -1871,9 +1874,10 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0,
     <div class="result-panel__actions">${actions}</div>
   `;
   panel.hidden = false;
+  focusResultTitle(panel);
 
   // 結果は見出しから見せる（scroll-margin-top はヘッダー分。css/card.css）
-  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  panel.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
 
   document.getElementById("resultRetry")?.addEventListener("click", () => {
     restartGame();
@@ -1899,7 +1903,8 @@ function celebrateRankUp(result) {
   if (beforeTitle === afterTitle) return false;
   const overlay = document.createElement("div");
   overlay.className = "rank-up";
-  overlay.setAttribute("role", "status");
+  overlay.setAttribute("aria-hidden", "true"); // 読み上げは静的な #srStatus（role=status）に流す。後から挿入した live 領域は読まれない
+  announce(`ランクアップ: ${beforeTitle} から ${afterTitle}`);
   overlay.innerHTML = `
     <div class="rank-up__inner">
       <div class="rank-up__label">ランクアップ</div>
@@ -1914,12 +1919,31 @@ function celebrateRankUp(result) {
   const close = () => {
     if (closed) return;
     closed = true;
+    document.removeEventListener("keydown", onKey, true);
     overlay.classList.add("rank-up--out");
     setTimeout(() => overlay.remove(), 220);
   };
+  // キーボードでも閉じられる（Esc／Enter）。既定動作は妨げない。表示直後の Enter（答え表示→次への連打）では消さない
+  const shownAt = performance.now();
+  const onKey = (event) => {
+    if (event.key === "Enter" && performance.now() - shownAt < 300) return;
+    if (event.key === "Escape" || event.key === "Enter") close();
+  };
+  document.addEventListener("keydown", onKey, true);
   overlay.addEventListener("pointerdown", close);
   setTimeout(close, 1200);
   return true;
+}
+
+// 結果パネルが出たら見出しに焦点（SR に「今日のセット完了」等が伝わり、Tab で次の操作に届く）
+function focusResultTitle(panel) {
+  const title = panel.querySelector("#resultTitle");
+  if (!title) return;
+  try {
+    title.focus({ preventScroll: true });
+  } catch {
+    // 無視
+  }
 }
 
 function hideResultPanel() {

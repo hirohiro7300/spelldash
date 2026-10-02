@@ -179,7 +179,7 @@
 .welcome-demo__input::placeholder {
   font-family: var(--font-ui);
   font-size: 15px;
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 
 .welcome-demo__input:focus {

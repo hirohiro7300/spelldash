@@ -1,6 +1,6 @@
 /* pages — 「墨と朱」領域別スタイル（docs/CONCEPT.md）。brand.css の後に読み込む。
    対象: list / stats / profile / news / privacy / battle と、そこに出る部品（単語詳細・ご意見フォーム）。
-   すべて html[data-theme] を頭に付けて theme.css と同じ詳細度で後勝ちにする。 */
+   すべて html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で空に）。 */
 
 /* ===== ページの器 ===== */
 html[data-theme] .app {
@@ -911,6 +911,7 @@ html[data-theme] .gcard__ex {
   padding: 0;
   border: none;
   display: block;
+  color: var(--ink-2);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -1059,42 +1060,6 @@ html[data-theme] .level-bar__line {
 
 html[data-theme] .level-bar__line .mono {
   font-family: var(--font-mono);
-}
-
-html[data-theme] .level-bar__badge {
-  padding: 2px 8px;
-  border-radius: var(--radius);
-  background: var(--paper-3);
-  background-image: none;
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  animation: none;
-  box-shadow: none;
-}
-
-html[data-theme] .level-bar__head {
-  margin-bottom: 4px;
-}
-
-html[data-theme] .level-bar__title {
-  color: var(--ink-2);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-html[data-theme] .level-bar__next,
-html[data-theme] .level-bar__remaining {
-  color: var(--ink-3);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-html[data-theme] .level-bar__xp {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--ink-3);
 }
 
 html[data-theme] .progress-bar {
@@ -1331,6 +1296,7 @@ html[data-theme] .known-words {
   flex-wrap: wrap;
   gap: 6px;
   margin: 8px 0 0;
+  color: var(--ink-3);
   line-height: 1.4;
 }
 
@@ -1980,6 +1946,84 @@ html[data-theme] .feedback-modal__note {
 html[data-theme] .word-detail__ai {
   color: var(--ink-2);
   font-size: 13px;
+}
+
+/* 「覚え方を作る」（js/wordAi.js）: card.css を読まないページ（list／stats／profile）向け。値は card.css と同じ */
+html[data-theme] .word-ai__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: none;
+  animation: none;
+  cursor: pointer;
+  transition: background var(--ease), color var(--ease), border-color var(--ease);
+}
+
+html[data-theme] .word-ai__button .icon {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  vertical-align: 0;
+}
+
+html[data-theme] .word-ai__button:hover {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+html[data-theme] .word-ai__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+html[data-theme] .word-ai {
+  max-width: 520px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+html[data-theme] .word-ai__mnemonic {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html[data-theme] .word-ai__example {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+html[data-theme] .word-ai__ja {
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+html[data-theme] .word-ai__pitfall {
+  color: var(--warn);
+  font-size: 12px;
+}
+
+html[data-theme] .word-ai__error {
+  color: var(--ink-3);
+  font-size: 12px;
 }
 
 /* ===== 減速設定 ===== */

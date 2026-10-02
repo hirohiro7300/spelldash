@@ -1,6 +1,6 @@
 /* card — 「墨と朱」領域別スタイル（docs/CONCEPT.md）。brand.css の後に読み込む。
    ゲームカード（Study / Challenge / Daily の盤面）と、その下のセッションの数字、完了パネル、覚えたトースト。
-   html[data-theme] を頭に付けて theme.css と同じ詳細度で後勝ちにする。
+   html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。
    注意: .game-card / .stats--strip の余白・枠は必ずクラスで書く（path.css の畳み込み
    body:not(.home--playing) .app--home .game-card { height:0 } より強くしない）。 */
 
@@ -709,7 +709,6 @@ html[data-theme] .result-panel__best {
   font-weight: 600;
 }
 
-html[data-theme] .result-panel__gap,
 html[data-theme] .result-panel__diff,
 html[data-theme] .result-panel__cat,
 html[data-theme] .result-panel__level,
@@ -720,7 +719,6 @@ html[data-theme] .result-panel__tomorrow {
   text-align: left;
 }
 
-html[data-theme] .result-panel__gap b,
 html[data-theme] .result-panel__tomorrow b {
   color: var(--ink);
   font-family: var(--font-mono);
@@ -811,8 +809,7 @@ html[data-theme] .result-panel__tomorrow {
   color: var(--ink-2);
 }
 
-html[data-theme] .result-panel__goal,
-html[data-theme] .result-panel__goal--progress {
+html[data-theme] .result-panel__goal {
   margin: 4px 0 0;
   padding: 0;
   border: 0;
@@ -823,7 +820,7 @@ html[data-theme] .result-panel__goal--progress {
   text-align: left;
 }
 
-html[data-theme] .result-panel__goal:not(.result-panel__goal--progress) {
+html[data-theme] .result-panel__goal {
   color: var(--ok);
 }
 
@@ -860,14 +857,6 @@ html[data-theme] .result-panel__action--ghost:hover {
   background: var(--paper-3);
   border-color: var(--line-2);
   color: var(--ink);
-}
-
-html[data-theme] .result-panel__tagline {
-  margin-top: 12px;
-  color: var(--ink-3);
-  font-size: 12px;
-  letter-spacing: 0;
-  text-align: left;
 }
 
 /* ===== カード下: セッションの数字を1行に（正解 3 ・ 思い出せず 1 ・ 今日 20） ===== */

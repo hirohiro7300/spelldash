@@ -49,6 +49,15 @@ body {
   margin-left: auto;
 }
 
+/* 静的ページ（news／privacy／terms／tokushoho／packs）の右端: ログイン UI の代わりの 1 リンク。
+   ボタン（#loginToggle）と同じ高さにするため line-height はボタン既定（normal）に合わせる */
+.account__home {
+  display: inline-flex;
+  align-items: center;
+  line-height: normal;
+  text-decoration: none;
+}
+
 /* ホバー（またはクリック）で開くドロップダウン */
 .dropdown {
   position: relative;
@@ -64,7 +73,6 @@ body {
 }
 
 .dropdown:hover .dropdown__panel,
-.dropdown:focus-within .dropdown__panel,
 .dropdown.is-open .dropdown__panel {
   display: block;
 }
@@ -148,7 +156,7 @@ body {
 }
 
 .account-menu--login input::placeholder {
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 
 .account-menu--login input:focus {

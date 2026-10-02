@@ -962,7 +962,7 @@ console.log("challenge & quality:");
   check("Challenge（Batch 4）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
-  // Esc = 分からない（答え表示）、Tab = 発音（エラーなし・進行しない）。ランクアップ演出（Lv1→2 = F3→F2）
+  // Esc = 分からない（答え表示）、Ctrl+. = 発音（エラーなし・進行しない）、Tab は既定どおり次の要素へ（キーボードトラップなし）。ランクアップ演出（Lv1→2 = F3→F2）
   const tomorrow = new Date(Date.now() + 20 * 3600000);
   const page2 = await newPage({ storage: {
     spelldash_category: "my",
@@ -979,7 +979,11 @@ console.log("challenge & quality:");
   const ja = (await page2.textContent("#japanese")).trim();
   await page2.press("#input", "Tab");
   await page2.waitForTimeout(100);
-  check("Tabで進行しない（発音のみ）", (await page2.textContent("#japanese")).trim() === ja && (await page2.evaluate(() => document.activeElement?.id)) === "input");
+  check("Tabで進行しない（フォーカスは入力欄から次の要素へ）", (await page2.textContent("#japanese")).trim() === ja && (await page2.evaluate(() => document.activeElement?.id)) !== "input");
+  await page2.focus("#input");
+  await page2.press("#input", "Control+.");
+  await page2.waitForTimeout(100);
+  check("Ctrl+.で発音のみ（進行せず・フォーカスは入力欄のまま）", (await page2.textContent("#japanese")).trim() === ja && (await page2.evaluate(() => document.activeElement?.id)) === "input");
   await page2.press("#input", "Escape");
   await page2.waitForTimeout(150);
   check("Escで答えが表示される（×扱い）", /^[a-z]+$/.test((await page2.textContent("#word")).trim()) && (await page2.textContent("#recallFail")).trim() === "1");

@@ -14,7 +14,6 @@
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
   <link rel="stylesheet" href="./css/responsive.css" />
-  <link rel="stylesheet" href="./css/theme.css" />
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
   <link rel="stylesheet" href="./css/admin.css" />
@@ -26,10 +25,11 @@
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
 <body>
+  <a class="skip-link" href="#main">本文へ</a>
   <header class="site-header">
     <div class="site-header__inner">
       <a href="/" class="brand">
-        <span class="brand__mark">SD</span>
+        <span class="brand__mark" aria-hidden="true">SD</span>
         <span class="brand__name">SpellDash</span>
       </a>
 
@@ -111,7 +111,7 @@
     </div>
   </header>
 
-  <div class="app admin-app">
+  <main class="app admin-app" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <p class="logo">管理</p>
       <h1>プレイヤー</h1>
@@ -219,12 +219,12 @@
         </div>
       </aside>
     </section>
-  </div>
+  </main>
 
   <footer class="site-footer">
     <div class="site-footer__inner">
       <div class="site-footer__brand">
-        <span class="brand__mark">SD</span>
+        <span class="brand__mark" aria-hidden="true">SD</span>
         <span class="brand__name">SpellDash</span>
       </div>
 
@@ -237,7 +237,7 @@
         <a href="./privacy.html">プライバシー</a>
         <a href="./tokushoho.html">特定商取引法に基づく表記</a>
         <a href="./terms.html">利用規約</a>
-        <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
+        <button type="button" class="site-footer__linkbtn" data-feedback-open>ご意見・不具合</button>
       </nav>
 
       <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>

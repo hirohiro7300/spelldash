@@ -22,6 +22,21 @@ export const elements = {
   speakButton: document.getElementById("speakButton")
 };
 
+// prefers-reduced-motion の人には JS のスクロールも滑らかにしない（CSS の scroll-behavior より JS の behavior が優先されるため）
+export function scrollBehavior() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+// 読み上げ専用のステータス行（index.html の #srStatus）。見た目の演出と切り離して SR に一言伝える
+export function announce(text) {
+  const el = document.getElementById("srStatus");
+  if (!el) return;
+  el.textContent = "";
+  setTimeout(() => {
+    el.textContent = text;
+  }, 30);
+}
+
 export function initializeDisplay() {
   elements.bestScore.textContent = getBestScore();
   renderWeakWords();
@@ -50,11 +65,13 @@ export function updateCombo(combo) {
 export function showHiddenWordText(text, { hint = false } = {}) {
   elements.word.classList.remove("hidden-word--long");
   elements.word.classList.toggle("hidden-word--hint", hint);
+  elements.word.setAttribute("aria-live", "off"); // 案内文は毎語同じなので読み上げない（出題は #japanese が伝える）
   elements.word.textContent = text;
 }
 
 export function showColoredAnswer(word) {
   elements.word.classList.remove("hidden-word--hint");
+  elements.word.setAttribute("aria-live", "polite"); // 答えのスペルだけ読み上げる
   elements.word.classList.toggle("hidden-word--long", String(word).length > 24); // 英文は小さめに
   elements.word.innerHTML = renderColoredWord(word);
 }
