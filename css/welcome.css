@@ -77,6 +77,11 @@
 }
 
 .welcome__login {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px; /* 主ボタン（44px）の隣の文字リンク。指で押せる高さ */
+  padding: 0 8px;
+  margin: 0 -8px;
   color: var(--ink-2);
   font-size: 13px;
   text-decoration: underline;
@@ -189,10 +194,12 @@
 
 .welcome-demo__msg {
   min-height: 20px;
-  margin: 10px 0 0;
+  max-width: 22em; /* 1 文字だけの孤立行を作らない */
+  margin: 10px auto 0;
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink-3);
+  text-wrap: balance;
 }
 
 .welcome-demo__msg--ok {

@@ -2,6 +2,7 @@ import { getMyWords, addMyWord, addMyConcept, addMyWordsBulk, removeMyWord } fro
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { initializeCardGen } from "./cardGen.js";
+import { icon } from "./icons.js";
 
 // ===== 学習データ: マイ単語帳の管理UI =====
 
@@ -17,7 +18,7 @@ export function initializeMyWordsView(onChange = () => {}) {
     const en = document.getElementById("myWordEn");
     const ja = document.getElementById("myWordJa");
     const result = addMyWord(en.value, ja.value);
-    setStatus(result.ok ? `「${result.en}」を追加しました` : result.error, !result.ok);
+    setStatus(result.ok ? `追加済み: ${result.en}` : result.error, !result.ok);
     if (result.ok) {
       en.value = "";
       ja.value = "";
@@ -36,7 +37,7 @@ export function initializeMyWordsView(onChange = () => {}) {
     const explain = document.getElementById("myConceptExplain");
     const accept = document.getElementById("myConceptAccept");
     const result = addMyConcept({ q: q.value, answer: answer.value, explain: explain.value, accept: accept.value });
-    setStatus(result.ok ? `場面カード「${result.en}」を追加しました` : result.error, !result.ok);
+    setStatus(result.ok ? `追加済み: ${result.en}` : result.error, !result.ok);
     if (result.ok) {
       q.value = "";
       answer.value = "";
@@ -72,9 +73,9 @@ export function initializeMyWordsView(onChange = () => {}) {
     const textarea = document.getElementById("myWordBulk");
     const { added, skipped } = addMyWordsBulk(textarea.value);
     const lines = [];
-    if (added.length > 0) lines.push(`${added.length}語を追加しました`);
+    if (added.length > 0) lines.push(`${added.length}語を追加した`);
     if (skipped.length > 0) lines.push(`スキップ ${skipped.length}件: ${skipped.slice(0, 3).join(" / ")}${skipped.length > 3 ? " …" : ""}`);
-    setStatus(lines.join("　") || "追加する行がありません", added.length === 0);
+    setStatus(lines.join("　") || "追加する行が無い", added.length === 0);
     if (added.length > 0) {
       textarea.value = "";
       renderMyWordsList();
@@ -118,10 +119,11 @@ export function renderMyWordsList() {
   if (count) count.textContent = `${list.length}語`;
 
   if (list.length === 0) {
-    container.innerHTML = `<p class="muted">まだありません。仕事や試験でよく見る語から。</p>`;
+    container.innerHTML = `<p class="muted">まだ無い。仕事や試験でよく見る語から</p>`;
     return;
   }
 
+  // 1 行＝1 語: 用語（太字）・意味 ・ 状態、右端に削除（40×40 のアイコン）。解説や別解は下の一覧（.gcard）に出る
   container.innerHTML = list
     .map((w) => {
       const concept = w.kind === "concept";
@@ -129,10 +131,8 @@ export function renderMyWordsList() {
       const label = concept ? w.answer : w.en;
       return `
         <div class="my-word${concept ? " my-word--concept" : ""}">
-          <span class="my-word__en${concept ? "" : " mono"}">${escapeHtml(label)}</span>
-          <span class="my-word__ja">${concept ? `<span class="my-word__q">${escapeHtml(w.q)}</span>${w.explain ? `<br><span class="my-word__explain">${escapeHtml(w.explain)}</span>` : ""}` : escapeHtml(w.ja)}</span>
-          <span class="my-word__status my-word__status--${status}">${STATUS_LABEL[status]}</span>
-          <button type="button" class="my-word__remove" data-remove="${escapeHtml(w.en)}" aria-label="${escapeHtml(label)} を削除">削除</button>
+          <span class="my-word__text"><b class="my-word__en${concept ? "" : " mono"}">${escapeHtml(label)}</b> <span class="my-word__ja">${escapeHtml(concept ? w.q : w.ja)}</span> ・ <span class="my-word__status my-word__status--${status}">${STATUS_LABEL[status]}</span></span>
+          <button type="button" class="my-word__remove" data-remove="${escapeHtml(w.en)}" aria-label="${escapeHtml(label)} を削除" title="削除">${icon("x", { size: 16 })}</button>
         </div>`;
     })
     .join("");

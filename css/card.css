@@ -241,8 +241,8 @@ html[data-theme] .game-card .hist i {
   height: 8px;
 }
 
-html[data-theme] .game-card .hist__o { background: var(--ok); }
-html[data-theme] .game-card .hist__x { background: var(--signal); }
+html[data-theme] .hist__o { background: var(--ok); }
+html[data-theme] .hist__x { background: var(--signal); }
 
 /* 解説・例文・仲間 */
 html[data-theme] .word-explain {
@@ -275,30 +275,6 @@ html[data-theme] .word-example__ja {
   font-size: 13px;
 }
 
-html[data-theme] .word-example__speak {
-  width: 24px;
-  height: 24px;
-  min-height: 0;
-  margin: 0 0 0 6px;
-  padding: 0;
-  justify-content: center;
-  border: 1px solid var(--line-2);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink-2);
-  box-shadow: none;
-}
-
-html[data-theme] .word-example__speak .icon {
-  margin: 0;
-  vertical-align: 0;
-}
-
-html[data-theme] .word-example__speak:hover {
-  background: var(--paper-3);
-  color: var(--ink);
-}
-
 html[data-theme] .word-family {
   margin: 0 0 8px;
   color: var(--ink-3);
@@ -319,55 +295,7 @@ html[data-theme] .word-note {
   font-size: 13px;
 }
 
-html[data-theme] .word-note__edit,
-html[data-theme] .word-ai__button,
-html[data-theme] .speak-button,
-html[data-theme] .hint-button,
-html[data-theme] .word-note__save {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  margin: 0;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--paper-3);
-  color: var(--ink-2);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  box-shadow: none;
-  animation: none;
-  cursor: pointer;
-  transition: background var(--ease), color var(--ease), border-color var(--ease);
-}
-
-html[data-theme] .word-note__edit .icon,
-html[data-theme] .word-ai__button .icon,
-html[data-theme] .speak-button .icon,
-html[data-theme] .hint-button .icon {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  vertical-align: 0;
-}
-
-html[data-theme] .word-note__edit:hover,
-html[data-theme] .word-ai__button:hover,
-html[data-theme] .speak-button:hover,
-html[data-theme] .hint-button:hover,
-html[data-theme] .word-note__save:hover {
-  background: var(--paper-2);
-  border-color: var(--line-2);
-  color: var(--ink);
-}
-
-html[data-theme] .word-ai__button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
+/* 発音・ヒント・メモ・覚え方のボタン（28px の pill）は brand.css の部品節（単語詳細の .word-detail__speak と同じ 1 つの定義） */
 
 html[data-theme] .word-note__edit--add {
   border-style: solid;
@@ -400,6 +328,20 @@ html[data-theme] .game-card .note-input {
   background: var(--paper-2);
   color: var(--ink);
   font-size: 13px;
+}
+
+/* 指で押す端末: メモの入力と保存は 44px・入力は 16px（単語詳細のメモ行と同値） */
+@media (pointer: coarse) {
+  html[data-theme] .game-card .note-input {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 16px;
+  }
+  html[data-theme] .game-card .note-save {
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
 }
 
 /* 覚え方（AI）の本文 */

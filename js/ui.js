@@ -2,6 +2,7 @@ import { renderColoredWord } from "./colors.js";
 import { getBestScore, getWordStats } from "./storage.js";
 import { findWord } from "./wordStore.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
+import { classifyWord } from "./categoryProgress.js";
 
 export const elements = {
   time: document.getElementById("time"),
@@ -84,18 +85,20 @@ export function clearTypedPreview() {
   elements.typedPreview.innerHTML = "";
 }
 
+// いま苦手な語: 「最後に思い出せなかったまま」の語（単語帳・カテゴリ別と同じ定義 = classifyWord が weak）。
+// 覚えた単語帳（覚えかけ・習得）とは排他。思い出せなかった回数が多い順に 5 語、1 語 1 行
 export function renderWeakWords() {
   if (!elements.weakWords) return;
 
   const stats = getWordStats();
 
   const weakWords = Object.entries(stats)
-    .filter(([, data]) => data.missCount > 0)
-    .sort((a, b) => b[1].missCount - a[1].missCount)
+    .filter(([, data]) => classifyWord(data) === "weak")
+    .sort((a, b) => (b[1].recallFail ?? 0) - (a[1].recallFail ?? 0) || (b[1].missCount ?? 0) - (a[1].missCount ?? 0))
     .slice(0, 5);
 
   if (weakWords.length === 0) {
-    elements.weakWords.textContent = "まだ苦手単語はありません。";
+    elements.weakWords.textContent = "いま苦手な語はない。";
     return;
   }
 
@@ -108,17 +111,18 @@ export function renderWeakWords() {
 
         const recallFail = data.recallFail ?? 0;
         const typingMiss = data.typingMiss ?? 0;
-        const missDetail =
-          recallFail + typingMiss > 0
-            ? `思い出せず ${recallFail}回 / 打ち間違い ${typingMiss}回`
-            : `ミス ${data.missCount}回`;
+        const correct = data.correctCount ?? 0;
+        // 見せる数字は「思い出せず N回」だけ。思い出せた回数・打ち間違いは title に
+        const detailTitle = [`思い出せた ${correct}回`, typingMiss > 0 ? `打ち間違い ${typingMiss}回` : ""].filter(Boolean).join(" ・ ");
+        const missDetail = recallFail > 0 ? `<small title="${detailTitle}">思い出せず ${recallFail}回</small>` : "";
         const leech = recallFail >= 4 ? `<span class="leech-tag">難敵</span>` : "";
 
         return `
           <div class="word-item">
-            <strong>${word ? `<button type="button" class="word-item__detail" data-word-detail="${wordId}">${en}</button>` : en}</strong>：${ja} ${leech}<br>
-            ${missDetail} / 正解 ${data.correctCount}回<br>
-            ${noteChipHtml(wordId)}
+            <span class="gcard__status gcard__status--weak">苦手</span>
+            <b class="mono">${word ? `<button type="button" class="word-item__detail" data-word-detail="${wordId}">${en}</button>` : en}</b>
+            ${ja ? `<span class="word-item__ja">${ja}</span>` : ""}
+            ${missDetail}${leech}${noteChipHtml(wordId, { onlyIfHas: true })}
           </div>
         `;
       }).join("")}

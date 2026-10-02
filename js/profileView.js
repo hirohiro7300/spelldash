@@ -76,7 +76,7 @@ function initializeThemeSetting() {
     // 紙・藍は Pro だけ。無料の人には案内を出して選択を戻す（適用しない）
     if (isProTheme(themeSelect.value) && !isPro()) {
       if (hint) {
-        hint.innerHTML = '紙・藍は Pro のテーマです。<a href="./pro.html">Pro について</a>';
+        hint.innerHTML = '紙・藍は Pro のテーマ。<a href="./pro.html">Pro について</a>';
         hint.hidden = false;
       }
       themeSelect.value = getTheme();
@@ -122,23 +122,23 @@ function initializePlanRow() {
     portal.disabled = false;
     portal.textContent = label;
     const message = status === 404
-      ? "お支払いの記録が見つかりません。加入直後なら、少し待ってから開き直してください。"
+      ? "お支払いの記録が無い。加入直後なら少し待って開き直す"
       : status === 401
-        ? "ログインしてください。"
+        ? "ログインが要る"
         : status === 0
-          ? "通信できませんでした。接続を確認してください。"
-          : body.message || "お支払いの管理を開けませんでした。時間をおいてお試しください。";
+          ? "通信できなかった。接続を確認"
+          : body.message || "お支払いの管理を開けなかった。時間をおいてもう一度";
     showProfileMessage(message, "error");
   });
 
   // Checkout から戻ってきた（?pro=done）: webhook の反映を待つ
   if (new URLSearchParams(location.search).get("pro") === "done") {
-    showProfileMessage("お支払いを確認しています…");
+    showProfileMessage("お支払いを確認中…");
     waitForPro().then((ok) => {
       showProfileMessage(
         ok
-          ? "Pro になりました。ありがとうございます。"
-          : "お支払いは完了しています。反映まで少しお待ちください（数分後にこのページを開き直してください）。",
+          ? "Pro になった。ありがとう"
+          : "お支払いは完了。反映まで少し待つ（1 分たっても変わらなければ開き直す）",
         ok ? "success" : ""
       );
     });
@@ -167,7 +167,7 @@ function initializeAudioSettings() {
 
   const save = () => {
     saveAudioSettings({ ...getAudioSettings(), mode: modeSelect.value, accent: accentSelect.value });
-    statusElement.textContent = "保存しました。";
+    statusElement.textContent = "保存済み";
     // アクセント確認用に1回だけサンプル再生
     if (modeSelect.value !== "off") {
       previewVoice(getPreferredVoiceURI());
@@ -188,7 +188,7 @@ function initializeAudioSettings() {
     if (!voiceSelect) return;
     const list = getEnglishVoices(accentSelect.value);
     const current = getPreferredVoiceURI();
-    voiceSelect.innerHTML = `<option value="">自動（${list[0] ? prettyVoiceName(list[0].voice) : "この端末の英語の声"}）</option>` + list
+    voiceSelect.innerHTML = `<option value="">自動（${list[0] ? prettyVoiceName(list[0].voice) : "端末の声"}）</option>` + list
       .map(({ voice }) => `<option value="${voice.voiceURI.replace(/"/g, "&quot;")}">${prettyVoiceName(voice)}</option>`)
       .join("");
     voiceSelect.value = list.some(({ voice }) => voice.voiceURI === current) ? current : "";
@@ -199,7 +199,7 @@ function initializeAudioSettings() {
     voiceSelect.addEventListener("change", () => {
       setPreferredVoiceURI(voiceSelect.value);
       previewVoice(voiceSelect.value);
-      statusElement.textContent = "保存しました。";
+      statusElement.textContent = "保存済み";
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });
   }
@@ -214,7 +214,7 @@ function initializeAudioSettings() {
     rateSelect.addEventListener("change", () => {
       setSpeechRate(rateSelect.value);
       previewVoice(getPreferredVoiceURI());
-      statusElement.textContent = "保存しました。";
+      statusElement.textContent = "保存済み";
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });
   }
@@ -226,7 +226,7 @@ function initializeAudioSettings() {
     sfxSelect.addEventListener("change", () => {
       setSfxEnabled(sfxSelect.value === "on");
       if (sfxSelect.value === "on") sfxCorrect(3); // 確認用サンプル
-      statusElement.textContent = "保存しました。";
+      statusElement.textContent = "保存済み";
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });
   }
@@ -243,7 +243,7 @@ function initializeAudioSettings() {
     });
     volumeRange.addEventListener("change", () => {
       if (Number(volumeRange.value) > 0) sfxCorrect(3); // 確認用サンプル
-      statusElement.textContent = "保存しました。";
+      statusElement.textContent = "保存済み";
       setTimeout(() => (statusElement.textContent = ""), 2000);
     });
   }
@@ -261,9 +261,9 @@ function initializeBackup() {
   exportButton.addEventListener("click", () => {
     try {
       downloadBackup();
-      status.textContent = "書き出しました。ダウンロードフォルダを確認してください。";
+      status.textContent = "書き出した。ダウンロードフォルダに保存";
     } catch {
-      status.textContent = "書き出しに失敗しました。";
+      status.textContent = "書き出せなかった";
     }
   });
 
@@ -279,14 +279,14 @@ function initializeBackup() {
         `このバックアップを読み込みますか？\n\n単語の記録: ${info.words}語 / XP: ${info.xp}\n書き出し日時: ${when}\n\nこの端末の学習データはファイルの内容で置き換わります。`
       );
       if (!ok) {
-        status.textContent = "読み込みを中止しました。";
+        status.textContent = "読み込みを中止した";
         return;
       }
       applyBackup(obj);
-      status.textContent = `復元しました（${info.words}語）。ページを再読み込みします。`;
+      status.textContent = `復元した（${info.words}語）。ページを再読み込みする`;
       setTimeout(() => location.reload(), 900);
     } catch (error) {
-      status.textContent = error.message || "読み込みに失敗しました。";
+      status.textContent = error.message || "読み込めなかった";
     }
   });
 }
@@ -349,7 +349,7 @@ async function initializeDisplayName(session) {
   saveButton.addEventListener("click", async () => {
     const name = input.value.trim().slice(0, 20);
     if (!name) {
-      status.textContent = "表示名を入力してください。";
+      status.textContent = "表示名が空";
       return;
     }
 
@@ -360,14 +360,14 @@ async function initializeDisplayName(session) {
     });
 
     if (error) {
-      status.textContent = "保存に失敗しました。時間をおいて再試行してください。";
+      status.textContent = "保存できなかった。時間をおいてもう一度";
       return;
     }
 
     localStorage.setItem(DISPLAY_NAME_KEY, name);
-    status.textContent = "保存しました。次回のDaily Dashから反映されます。";
+    status.textContent = "保存済み。次回の Daily Dash から反映";
     setTimeout(() => {
-      status.textContent = "Daily Dashランキングに表示される名前です（次回の記録から反映）。";
+      status.textContent = "Daily Dash のランキングに出る名前（次回の記録から）";
     }, 3000);
   });
 }

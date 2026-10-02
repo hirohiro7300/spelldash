@@ -117,20 +117,20 @@ export async function reject(req, res, { scope, limit, proLimit = limit }) {
     return true;
   }
   if (!process.env.ANTHROPIC_API_KEY) {
-    send(res, 503, { error: "not_configured", message: "この機能は準備中です。" });
+    send(res, 503, { error: "not_configured", message: "この機能は準備中" });
     return true;
   }
   const userId = await verifyUser(req.headers.authorization);
   if (!userId) {
-    send(res, 401, { error: "login_required", message: "ログインすると使えます（無料）。" });
+    send(res, 401, { error: "login_required", message: "ログインすると使える（無料）" });
     return true;
   }
   const pro = await isProUser(bearerToken(req.headers.authorization), userId);
   const max = pro ? proLimit : limit;
   if (overDailyLimit(scope, userId, max)) {
     const message = pro
-      ? `今日の上限（${max}回）に達しました。また明日どうぞ。`
-      : `今日の無料ぶん（${limit}回）を使い切りました。Pro なら 1 日 ${proLimit} 回まで使えます。`;
+      ? `今日の上限（${max}回）に達した。また明日`
+      : `今日の無料ぶん（${limit}回）を使い切った。Pro なら 1 日 ${proLimit} 回まで使える`;
     send(res, 429, { error: "daily_limit", upgrade: !pro, message });
     return true;
   }
@@ -140,11 +140,11 @@ export async function reject(req, res, { scope, limit, proLimit = limit }) {
 // Claude SDKの例外を利用者向けの応答にする
 export function sendUpstreamError(res, Anthropic, error, label) {
   if (error instanceof Anthropic.AuthenticationError) {
-    return send(res, 503, { error: "not_configured", message: "この機能は準備中です。" });
+    return send(res, 503, { error: "not_configured", message: "この機能は準備中" });
   }
   if (error instanceof Anthropic.RateLimitError) {
-    return send(res, 429, { error: "busy", message: "混み合っています。少し待ってからお試しください。" });
+    return send(res, 429, { error: "busy", message: "混み合っている。少し待ってもう一度" });
   }
   console.error(`${label} failed:`, error instanceof Anthropic.APIError ? `${error.status} ${error.message}` : error);
-  return send(res, 502, { error: "upstream", message: "うまく作れませんでした。時間をおいてお試しください。" });
+  return send(res, 502, { error: "upstream", message: "作れなかった。時間をおいてもう一度" });
 }

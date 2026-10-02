@@ -10,6 +10,7 @@ import { addMyConcept, validateConcept, getMyWords } from "./myWords.js";
 
 const MIN_CHARS = 20;
 const MAX_CHARS = 4000;
+const LOGIN_HINT = "ログインすると使える（無料）";
 
 export async function requestCards(text) {
   const { data } = await supabase.auth.getSession();
@@ -21,7 +22,7 @@ export async function requestCards(text) {
   try {
     response = await fetch(apiUrl("/api/generate-cards"), { method: "POST", headers, body: JSON.stringify({ text }) });
   } catch {
-    return { ok: false, error: "network", message: "通信できませんでした。接続を確認してください。" };
+    return { ok: false, error: "network", message: "通信できなかった。接続を確認" };
   }
   let body = {};
   try {
@@ -30,7 +31,7 @@ export async function requestCards(text) {
     body = {};
   }
   if (!response.ok) {
-    const fallback = response.status === 401 ? "ログインすると使えます（無料）。" : response.status === 404 ? "この機能は準備中です。" : "うまく作れませんでした。時間をおいてお試しください。";
+    const fallback = response.status === 401 ? LOGIN_HINT : response.status === 404 ? "準備中" : "作れなかった。時間をおいてもう一度";
     // 429 で upgrade:true は「無料ぶんを使い切った」: Pro の案内を添える
     return { ok: false, status: response.status, error: body.error || "http", message: body.message || fallback, upgrade: response.status === 429 && body.upgrade === true };
   }
@@ -67,14 +68,25 @@ export function initializeCardGen(onChange = () => {}) {
   textarea.addEventListener("input", updateCounter);
   updateCounter();
 
+  // 未ログインの人には、押す前から理由を出しておく（ボタンは生かしたまま。押せば同じ案内）
+  const showLoginHint = (hasSession) => {
+    if (hasSession) {
+      if (status.textContent === LOGIN_HINT) setStatus("");
+    } else if (!status.textContent) {
+      setStatus(LOGIN_HINT);
+    }
+  };
+  supabase.auth.getSession().then(({ data }) => showLoginHint(Boolean(data?.session)));
+  supabase.auth.onAuthStateChange((_event, nextSession) => showLoginHint(Boolean(nextSession)));
+
   run.addEventListener("click", async () => {
     const text = textarea.value.trim();
-    if (text.length < MIN_CHARS) return setStatus(`テキストが短すぎます（${MIN_CHARS}文字以上）`, true);
-    if (text.length > MAX_CHARS) return setStatus(`テキストが長すぎます（${MAX_CHARS}文字まで）`, true);
+    if (text.length < MIN_CHARS) return setStatus(`${MIN_CHARS}文字以上で`, true);
+    if (text.length > MAX_CHARS) return setStatus(`${MAX_CHARS}文字まで`, true);
     run.disabled = true;
     run.textContent = "作成中（10〜30秒）";
     preview.innerHTML = "";
-    setStatus("読んでいます。");
+    setStatus("読んでいる…");
     const result = await requestCards(text);
     run.disabled = false;
     run.textContent = "カードを作る";
@@ -83,8 +95,8 @@ export function initializeCardGen(onChange = () => {}) {
       return setStatus(result.message, true, { upgrade: result.upgrade === true });
     }
     cards = result.cards;
-    if (cards.length === 0) return setStatus("カードにできる用語が見つかりませんでした。用語や説明が含まれるテキストを貼ってみてください。", true);
-    setStatus(`${cards.length}枚の候補ができました。文面はそのまま直せます。いらないものはチェックを外してください。`);
+    if (cards.length === 0) return setStatus("用語が見つからなかった。説明文や会話文を貼る", true);
+    setStatus(`候補 ${cards.length}枚。文面はそのまま直せる。いらないものはチェックを外す`);
     renderPreview();
   });
 
@@ -100,7 +112,7 @@ export function initializeCardGen(onChange = () => {}) {
         return { q: value("q"), answer: value("answer"), explain: value("explain"), accept: value("accept") };
       })
       .filter(Boolean);
-    if (picked.length === 0) return setStatus("追加するカードを選んでください", true);
+    if (picked.length === 0) return setStatus("追加するカードを選ぶ", true);
     const added = [];
     const skipped = [];
     for (const card of picked) {
@@ -109,12 +121,12 @@ export function initializeCardGen(onChange = () => {}) {
       else skipped.push(`${card.answer}: ${result.error}`);
     }
     const lines = [];
-    if (added.length > 0) lines.push(`${added.length}枚をマイ単語帳に追加しました`);
+    if (added.length > 0) lines.push(`${added.length}枚をマイ単語帳に追加した`);
     if (skipped.length > 0) lines.push(`スキップ ${skipped.length}件: ${skipped.slice(0, 2).join(" / ")}${skipped.length > 2 ? " …" : ""}`);
     setStatus(lines.join("　"), added.length === 0);
     if (added.length > 0) {
       cards = [];
-      preview.innerHTML = `<p class="cardgen__done">追加しました。<a href="/" data-cardgen-practice>マイ単語帳で練習する</a></p>`;
+      preview.innerHTML = `<p class="cardgen__done">追加した。<a href="/" data-cardgen-practice>マイ単語帳で練習する</a></p>`;
       textarea.value = "";
       updateCounter();
       onChange();
@@ -142,7 +154,7 @@ export function initializeCardGen(onChange = () => {}) {
                   <input class="cardgen__field cardgen__field--answer" data-field="answer" value="${escapeHtml(card.answer)}" aria-label="答え" />
                   <input class="cardgen__field cardgen__field--sub" data-field="explain" value="${escapeHtml(card.explain ?? "")}" placeholder="解説（任意）" aria-label="解説" />
                   <input class="cardgen__field cardgen__field--sub" data-field="accept" value="${escapeHtml((card.accept ?? []).join(" / "))}" placeholder="別解（任意。/ 区切り）" aria-label="別解" />
-                  ${dup ? `<span class="cardgen__dup">すでにマイ単語帳にあります</span>` : ""}
+                  ${dup ? `<span class="cardgen__dup">すでにマイ単語帳にある</span>` : ""}
                 </span>
               </div>`;
           })

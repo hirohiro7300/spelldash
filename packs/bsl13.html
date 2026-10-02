@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ビジネス英単語（BSL） 13（1407〜1523位）（117枚）| SpellDash 分野パック</title>
+  <title>ビジネス英単語（BSL） 13（1407〜1523位）（117語）| SpellDash 分野パック</title>
   <link rel="stylesheet" href="/css/reset.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -20,7 +20,7 @@
   <link rel="canonical" href="https://www.spelldash.net/packs/bsl13.html" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="SpellDash" />
-  <meta property="og:title" content="ビジネス英単語（BSL） 13（1407〜1523位）（117枚）| SpellDash 分野パック" />
+  <meta property="og:title" content="ビジネス英単語（BSL） 13（1407〜1523位）（117語）| SpellDash 分野パック" />
   <meta property="og:description" content="BSL の 1407〜1523位。頻度順。前のパックほどよく出会う語。仕事で英語を使う人（BSL: CC BY-SA 4.0）向け。日本語訳を見て英単語を打つ。追加した人だけに出題され、思い出せなかった問題は復習の仕組みでまた出ます。" />
   <meta property="og:url" content="https://www.spelldash.net/packs/bsl13.html" />
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
@@ -38,7 +38,7 @@
     .pp-cta:hover { background: var(--ink-2); }
     .pp-cta--ghost, .pp-cta--ghost:hover { background: transparent; color: var(--ink); border: 1px solid var(--line-2); }
     .pp-cta--ghost:hover { background: var(--paper-3); }
-    .pp-sub { margin-left: 12px; font-size: 13px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+    .pp-sub { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; margin: 0 -8px 0 4px; font-size: 13px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
     .pp-sub:hover { color: var(--signal-ink); }
     .pp h2 { margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-2); font-size: 16px; font-weight: 700; }
     .pp-genres { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0; list-style: none; }
@@ -54,17 +54,29 @@
     .pp-card__ex { font-size: 13px; line-height: 1.5; color: var(--ink-3); }
     .pp-how { padding-left: 18px; font-size: 14px; line-height: 1.7; color: var(--ink-2); }
     .pp-how li { margin: 4px 0; }
-    .pp-index a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
-    .pp-index a:hover { color: var(--signal-ink); }
     .pp-index h2 { margin-top: 28px; scroll-margin-top: 72px; }
-    .pp-index ul { padding-left: 18px; line-height: 1.9; }
-    .pp-index small { color: var(--ink-3); }
+    /* 一覧の 1 行＝1 パック。行全体がリンク（44px）。説明は 560px 以下では出さない（入口ページに同じ文がある） */
+    .pp-index ul { padding: 0; margin: 0; list-style: none; line-height: 1.5; }
+    .pp-index li { border-bottom: 1px solid var(--line); }
+    .pp-index .packs-item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 0; color: var(--ink); text-decoration: none; }
+    .pp-index .packs-item b { flex: 0 0 auto; max-width: 100%; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+    .pp-index .packs-item:hover b { color: var(--signal-ink); }
+    .pp-index .packs-item small { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--ink-3); }
+    .pp-index .packs-item__n { white-space: nowrap; font-family: var(--font-mono); }
     /* チップ状のリンク（同じグループの分野・一覧のグループへのジャンプ）。指で押せる 40px */
     .pp-related, .packs-jump { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; list-style: none; }
     .packs-jump { margin: 16px 0 0; }
     .pp-related a, .packs-jump a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 999px; background: var(--paper-3); color: var(--ink); font-size: 13px; font-weight: 600; text-decoration: none; }
     .pp-related a:hover, .packs-jump a:hover { background: var(--line); }
     .packs-jump a small { margin-left: 6px; font-family: var(--font-mono); font-weight: 500; font-size: 12px; color: var(--ink-3); }
+    /* 560px 以下: ジャンプチップは 2 列 grid（1 行 1 個の縦積みにしない）。一覧の説明は出さない（.packs-jump の flex より後に置く） */
+    @media (max-width: 560px) {
+      .packs-jump { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .packs-jump a { min-height: 40px; padding: 0 10px; font-size: 12px; }
+      .pp-index .packs-item__blurb { display: none; }
+      .pp-index .packs-item b { flex: 1 1 auto; }
+      .pp-index .packs-item small { flex: 0 0 auto; }
+    }
   </style>
 </head>
 <body>
@@ -78,20 +90,21 @@
         <a href="/list.html" class="site-nav__link">単語帳</a>
         <a href="/battle.html" class="site-nav__link">バトル</a>
       </nav>
+      <a id="headerStreak" class="header-streak" href="/stats.html" title="連続プレイ日数" hidden></a>
       <div class="account">
-        <a class="btn btn--sm btn--ghost account__home" href="/">ホームへ</a>
+        <a class="btn btn--sm btn--ghost account__home account__link" id="accountLink" href="/?login=1">ログイン</a>
       </div>
     </div>
   </header>
   <main class="pp" id="main" tabindex="-1">
 
     <section class="pp-hero">
-      <p class="pp-kicker">ビジネス英単語 1,750語（オープン教材・頻度順） ・ 分野パック</p>
+      <p class="pp-kicker">ビジネス英単語 1,750語（オープン教材・頻度順） ・ パック</p>
       <h1>ビジネス英単語（BSL） 13（1407〜1523位）</h1>
       <p class="pp-lead">BSL の 1407〜1523位。頻度順。前のパックほどよく出会う語</p>
-      <p class="pp-meta">仕事で英語を使う人（BSL: CC BY-SA 4.0）向け ・ 117枚 ・ 日本語訳を見て英単語を打つ</p>
+      <p class="pp-meta">仕事で英語を使う人（BSL: CC BY-SA 4.0）向け ・ 117語 ・ 日本語訳を見て英単語を打つ</p>
       <a class="pp-cta" href="/list.html?add=bsl13">このパックを追加して始める</a>
-      <a class="pp-sub" href="/packs/">他の分野を見る</a>
+      <a class="pp-sub" href="/packs/">他のパックを見る</a>
     </section>
     <section>
       <h2>収録ジャンル</h2>
@@ -113,13 +126,13 @@
     <section>
       <h2>どう覚えるか</h2>
       <ul class="pp-how">
-        <li>日本語訳を見て英単語を打つ。分からなければ Enter で答えを見て、数問後にもう一度出ます。</li>
-        <li>自力で思い出せた語は復習の間隔が伸び、思い出せなかった語は近いうちにまた出ます（想起練習と間隔反復）。</li>
-        <li>学習の記録は端末に保存され、ログインすると別の端末でも引き継げます。</li>
+        <li>日本語訳を見て英単語を打つ。分からなければ Enter で答えを見て、数問後にもう一度出る</li>
+        <li>自力で思い出せた語は復習の間隔が伸び、思い出せなかった語は近いうちにまた出る（想起練習と間隔反復）</li>
+        <li>学習の記録は端末に保存され、ログインすると別の端末でも続きから</li>
       </ul>
       <p><a class="pp-cta pp-cta--ghost" href="/list.html?add=bsl13">このパックを追加して始める</a></p>
     </section>
-    <section><h2>同じグループの分野</h2><ul class="pp-related"><li><a href="/packs/bsl01.html">ビジネス英単語（BSL） 1（1〜118位）</a></li><li><a href="/packs/bsl02.html">ビジネス英単語（BSL） 2（119〜236位）</a></li><li><a href="/packs/bsl03.html">ビジネス英単語（BSL） 3（237〜353位）</a></li><li><a href="/packs/bsl04.html">ビジネス英単語（BSL） 4（354〜470位）</a></li><li><a href="/packs/bsl05.html">ビジネス英単語（BSL） 5（471〜587位）</a></li><li><a href="/packs/bsl06.html">ビジネス英単語（BSL） 6（588〜704位）</a></li><li><a href="/packs/bsl07.html">ビジネス英単語（BSL） 7（705〜821位）</a></li><li><a href="/packs/bsl08.html">ビジネス英単語（BSL） 8（822〜938位）</a></li></ul></section>
+    <section><h2>同じグループのパック</h2><ul class="pp-related"><li><a href="/packs/bsl01.html">ビジネス英単語（BSL） 1（1〜118位）</a></li><li><a href="/packs/bsl02.html">ビジネス英単語（BSL） 2（119〜236位）</a></li><li><a href="/packs/bsl03.html">ビジネス英単語（BSL） 3（237〜353位）</a></li><li><a href="/packs/bsl04.html">ビジネス英単語（BSL） 4（354〜470位）</a></li><li><a href="/packs/bsl05.html">ビジネス英単語（BSL） 5（471〜587位）</a></li><li><a href="/packs/bsl06.html">ビジネス英単語（BSL） 6（588〜704位）</a></li><li><a href="/packs/bsl07.html">ビジネス英単語（BSL） 7（705〜821位）</a></li><li><a href="/packs/bsl08.html">ビジネス英単語（BSL） 8（822〜938位）</a></li></ul></section>
     <section><h2>出典</h2><p class="pp-source">語彙リスト: <a href="https://www.newgeneralservicelist.com/bsl-business-service-list" rel="license noopener" target="_blank">BSL 1.01</a>（CC BY-SA 4.0 ・ 頻度順位 1407-1523）。訳・品詞・例文は SpellDash が作成。</p></section>
   
   </main>
@@ -138,6 +151,7 @@
     </div>
   </footer>
   <script type="module">
+    import "/js/staticHeader.js"; // ヘッダー右端（連続日数・ログイン／設定）
     import { setFooterYear } from "/js/footer.js";
     setFooterYear();
   </script>

@@ -49,9 +49,10 @@ body {
   margin-left: auto;
 }
 
-/* 静的ページ（news／privacy／terms／tokushoho／packs）の右端: ログイン UI の代わりの 1 リンク。
+/* 静的ページ（news／privacy／terms／tokushoho／packs）の右端: ログイン／設定への 1 リンク（.account__link。account__home は旧名）。
    ボタン（#loginToggle）と同じ高さにするため line-height はボタン既定（normal）に合わせる */
-.account__home {
+.account__home,
+.account__link {
   display: inline-flex;
   align-items: center;
   line-height: normal;

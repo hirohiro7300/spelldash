@@ -4,14 +4,14 @@ import { renderWeakWords, scrollBehavior } from "./ui.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
-import { getLevelState, getStreak, getLostStreak, canRepairStreak, repairStreak } from "./level.js";
+import { getStreak, getLostStreak, canRepairStreak, repairStreak } from "./level.js";
 import { isPro } from "./plan.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
-import { getLearnedWordList, getKnownWordList, historyDotsHtml } from "./learnedWords.js";
+import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
 import { downloadLearnedCsv } from "./exportCsv.js";
@@ -80,7 +80,7 @@ initWordStore().then(() => {
   bindWordDetail({ onNoteSaved: () => { renderLearnedWords(); renderWeakWords(); } });
   document.getElementById("learnedCsv")?.addEventListener("click", (event) => {
     const n = downloadLearnedCsv();
-    event.currentTarget.textContent = `書き出しました（${n}語）`;
+    event.currentTarget.textContent = `書き出した（${n}語）`;
     setTimeout(() => (event.target.textContent = "CSV書き出し"), 2500);
   });
   renderScoreTrend();
@@ -124,7 +124,7 @@ function renderCards(container, cards) {
       (card) => `
         <div class="stat-card">
           <span>${card.label}</span>
-          <strong class="mono">${card.value}</strong>
+          <strong class="mono"${card.title ? ` title="${card.title}"` : ""}>${card.value}</strong>
         </div>
       `
     )
@@ -133,7 +133,6 @@ function renderCards(container, cards) {
 
 function renderOverview() {
   const s = computeSummary();
-  const level = getLevelState();
   const streak = getStreak();
   const all = computeCategoryProgress()[0];
 
@@ -144,10 +143,10 @@ function renderOverview() {
   ]);
   const more = document.getElementById("overviewMore");
   if (more) {
+    // 4 枚（2 列でも孤立しない）。経験値は .level-bar の 1 行に任せる
     renderCards(more, [
-      { label: "出会った語", value: `${s.learned} / ${s.total}` },
+      { label: "出会った語", value: s.learned, title: `${s.learned} / ${s.total}語` },
       { label: "ベストスコア", value: s.best },
-      { label: "経験値", value: level.totalXp.toLocaleString() },
       { label: "最長連続", value: `${streak.best}日` },
       { label: "プレイ回数", value: s.totalPlays }
     ]);
@@ -181,7 +180,7 @@ function renderStreakRepair() {
   if (!container) return;
   container.classList.toggle("streak-repair--done", repairedCount != null);
   if (repairedCount != null) {
-    container.innerHTML = `<span class="streak-repair__text">連続 <b>${repairedCount}</b> 日に戻しました</span>`;
+    container.innerHTML = `<span class="streak-repair__text">連続 <b>${repairedCount}</b> 日に戻した</span>`;
     return;
   }
   const lost = getLostStreak();
@@ -193,13 +192,13 @@ function renderStreakRepair() {
   const when = `${Number(m)}/${Number(d)}`;
   let action;
   if (!isPro()) {
-    action = `<span>Pro なら月 1 回、連続記録を修復できます。<a href="./pro.html">Pro について</a></span>`;
+    action = `<span>Pro なら月 1 回、連続記録を修復できる。<a href="./pro.html">Pro について</a></span>`;
   } else if (canRepairStreak()) {
     action = `<button type="button" class="btn btn--sm" id="streakRepairButton">今月の修復を使う（月 1 回）</button>`;
   } else {
-    action = `<span>今月の修復は使いました</span>`;
+    action = `<span>今月の修復は使った</span>`;
   }
-  container.innerHTML = `<span class="streak-repair__text">連続 <b>${lost.count}</b> 日が ${when} に途切れました。</span>${action}`;
+  container.innerHTML = `<span class="streak-repair__text">連続 <b>${lost.count}</b> 日が ${when} に途切れた。</span>${action}`;
 }
 
 // 推移グラフは viewBox をカードの実寸に合わせて描く（縮小で軸の文字が 12px 未満にならないように）
@@ -227,7 +226,7 @@ function renderScoreTrend() {
 
   if (log.length < 2) {
     container.innerHTML =
-      '<p class="score-trend__empty">ChallengeやDaily Dashを遊ぶと、ここにスコアの推移が表示されます。</p>';
+      '<p class="score-trend__empty">ChallengeやDaily Dashを遊ぶと、スコアの推移がここに出る。</p>';
     return;
   }
 
@@ -273,11 +272,11 @@ function renderScoreTrend() {
 function renderTyping() {
   const t = computeTypingSummary();
 
+  // 4 枚。単位は「打つ」で統一（1分あたりの語数は出さない）
   renderCards(typingElement, [
-    { label: "平均タップ / 秒", value: t.tapsPerSecond.toFixed(1) },
-    { label: "ミスタイプ率", value: `${t.mistypeRate.toFixed(1)}%` },
-    { label: "最高速度（打/秒）", value: t.bestSpeed.toFixed(1) },
-    { label: "1分あたりの語数", value: Math.round(t.wordsPerMinute) },
+    { label: "1秒に打つ数", value: t.tapsPerSecond.toFixed(1) },
+    { label: "最速", value: `${t.bestSpeed.toFixed(1)}／秒` },
+    { label: "打ち間違い率", value: `${t.mistypeRate.toFixed(1)}%` },
     { label: "打った回数", value: t.totalTaps.toLocaleString() }
   ]);
 }
@@ -311,16 +310,16 @@ function renderCategoryProgress() {
       .join("") +
     `<p class="cat-legend"><i class="cat-bar__mastered"></i>習得（10日以上かけてノーミス10回）<i class="cat-bar__learning"></i>覚えかけ（自力で思い出せた）<i class="cat-bar__weak"></i>苦手（最後に思い出せなかった）</p>`;
 
-  container.querySelectorAll(".cat-row").forEach((row) => {
-    row.addEventListener("click", (event) => {
-      if (event.target.closest("[data-stop]")) return; // 「一覧」リンクは行のクリックにしない
-      localStorage.setItem("spelldash_category", row.dataset.category);
+  // 練習開始はカテゴリ名のボタン（.cat-row__go）だけ。行全体は押しても何も起きない（「一覧」と押し分けられるように）
+  container.querySelectorAll(".cat-row__go").forEach((button) => {
+    button.addEventListener("click", () => {
+      localStorage.setItem("spelldash_category", button.dataset.category);
       window.location.href = "/";
     });
   });
 }
 
-// ===== 今月のまとめ（学習日・覚えた語・セット・Challenge） =====
+// ===== 今月のまとめ（学習した日・覚えた・セット。値が 0 の項目は出さない） =====
 function renderMonthlySummary() {
   const container = document.getElementById("monthlySummary");
   if (!container) return;
@@ -337,10 +336,11 @@ function renderMonthlySummary() {
   } catch {
     sets = 0;
   }
-  const runs = getSessionLog().filter((e) => (e.at ?? "").startsWith(ym));
-  const best = runs.length ? Math.max(...runs.map((e) => e.score)) : 0;
-  // カードではなく1行（カレンダーの見出しの下に置く）
-  container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月: 学習した日 <b>${activeDays}</b> / ${now.getDate()}日 ・ 覚えた語 <b>+${learnedDelta}</b> ・ セット完了 <b>${sets}</b>回 ・ Challenge/Daily <b>${runs.length}</b>回${best ? `（ベスト ${best}）` : ""}</p>`;
+  // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない（Challenge/Daily の回数はカレンダーの濃さで足りる）
+  const parts = [`学習した日 <b>${activeDays}</b>日`];
+  if (learnedDelta > 0) parts.push(`覚えた <b>+${learnedDelta}</b>`);
+  if (sets > 0) parts.push(`セット <b>${sets}</b>回`);
+  container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月 ${parts.join(" ・ ")}</p>`;
 }
 
 // ===== 覚えた単語の推移（無料 30日・Pro 90日） =====
@@ -365,7 +365,7 @@ function initializeTrendRange() {
       // グラフは 30 日のまま、案内だけ出す
       const hint = document.createElement("p");
       hint.className = "trend-range__hint";
-      hint.innerHTML = '90 日の推移は Pro で見られます。<a href="./pro.html">Pro について</a>';
+      hint.innerHTML = '90 日の推移は Pro で見られる。<a href="./pro.html">Pro について</a>';
       card?.querySelector(".card-head")?.after(hint);
       return;
     }
@@ -396,7 +396,7 @@ function renderGrowthTrend() {
   const points = series.filter((p) => p.learned != null);
 
   if (points.length < 2) {
-    container.innerHTML = '<p class="score-trend__empty">毎日少しずつ学ぶと、覚えた単語の増え方がここに描かれます（明日から）。</p>';
+    container.innerHTML = '<p class="score-trend__empty">毎日少しずつ学ぶと、覚えた語の増え方がここに描かれる（明日から）。</p>';
     return;
   }
 
@@ -445,13 +445,14 @@ function renderLearnedWords() {
 
   const list = getLearnedWordList();
   const known = getKnownWordList();
+  const dropped = getDroppedLearnedCount(); // 外したパックの語（単語帳には出せないが、記録は残っている）
   const count = document.getElementById("learnedWordsCount");
   if (count) count.textContent = `${list.length}語`;
   const knownSummary = document.getElementById("knownWordsSummary");
-  if (knownSummary) knownSummary.textContent = `もともと知っていた語 ${known.length}語（覚えた数には入れていません）`;
+  if (knownSummary) knownSummary.textContent = `もともと知っていた語 ${known.length}語（覚えた数には入れない）`;
 
   if (list.length === 0) {
-    container.innerHTML = '<p class="muted">まだありません。思い出せなかった語が、次に自力で打てた時にここへ入ります。</p>';
+    container.innerHTML = '<p class="muted">まだない。思い出せなかった語が、次に自力で打てたときにここへ入る。</p>';
   } else {
     const shown = list.slice(0, 60);
     // 1行＝1語: 語・訳（・メモがある語だけメモ）／右端にカテゴリと履歴の点
@@ -466,19 +467,22 @@ function renderLearnedWords() {
               <span class="learned-item__note">${noteChipHtml(w.id, { onlyIfHas: true })}</span>
             </span>
             <span class="learned-item__side">
-              <span class="learned-item__meta">${w.label}${w.status === "mastered" ? " ・ 習得" : ""}</span>
+              <span class="learned-item__meta">${w.label}${w.status === "mastered" ? ` <span class="gcard__status gcard__status--mastered">習得</span>` : ""}</span>
               ${historyDotsHtml(w.stat)}
             </span>
           </div>`
         )
-        .join("") + (list.length > shown.length ? `<p class="muted">ほか ${list.length - shown.length} 語</p>` : "");
+        .join("") +
+      (list.length > shown.length ? `<p class="muted">ほか ${list.length - shown.length}語</p>` : "") +
+      (dropped > 0 ? `<p class="muted learned-dropped">ほか ${dropped}語は外したパックの語</p>` : "");
     bindNoteEditors(container, () => renderLearnedWords());
   }
 
   const knownContainer = document.getElementById("knownWordList");
   if (knownContainer) {
+    // 並びは CSS の flex-wrap（空白文字に頼らない）
     knownContainer.innerHTML = known.length
-      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<button type="button" class="known-words__item mono" data-word-detail="${w.id}" title="${w.ja}">${w.en}</button>`).join(" ")}${known.length > 200 ? " …" : ""}</p>`
-      : '<p class="muted">まだありません。</p>';
+      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<button type="button" class="known-words__item mono" data-word-detail="${w.id}" title="${w.ja}">${w.en}</button>`).join("")}${known.length > 200 ? `<span class="known-words__more">ほか ${known.length - 200}語</span>` : ""}</p>`
+      : '<p class="muted">まだない。</p>';
   }
 }

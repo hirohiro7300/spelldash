@@ -55,9 +55,9 @@ const server = http.createServer((req, res) => {
       const word = (() => { try { return JSON.parse(raw).word ?? {}; } catch { return {}; } })();
       const json = (status, body) => res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
       if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
-      if (String(word.en).includes("401")) return json(401, { error: "login_required", message: "ログインすると使えます（無料）。" });
+      if (String(word.en).includes("401")) return json(401, { error: "login_required", message: "ログインすると使える（無料）" });
       // "limit" を含む語なら無料ぶんを使い切った（429・upgrade:true → 表示側が「Pro について」を添える）
-      if (String(word.en).includes("limit")) return json(429, { error: "daily_limit", upgrade: true, message: "今日の無料ぶん（3回）を使い切りました。Pro なら 1 日 60 回まで使えます。" });
+      if (String(word.en).includes("limit")) return json(429, { error: "daily_limit", upgrade: true, message: "今日の無料ぶん（3回）を使い切った。Pro なら 1 日 60 回まで使える" });
       json(200, { mnemonic: `${word.en} は「${word.ja}」。音で覚える`, example: `Example with ${word.en}.`, exampleJa: `${word.en} を使った例文`, pitfall: "似た綴りの語に注意" });
     });
     return;
@@ -72,7 +72,7 @@ const server = http.createServer((req, res) => {
       const text = (() => { try { return JSON.parse(raw).text ?? ""; } catch { return ""; } })();
       const json = (status, body) => res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
       if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
-      if (text.includes("401")) return json(401, { error: "login_required", message: "ログインすると使えます（無料）。" });
+      if (text.includes("401")) return json(401, { error: "login_required", message: "ログインすると使える（無料）" });
       if (text.includes("empty")) return json(200, { cards: [] });
       json(200, {
         cards: [
@@ -353,12 +353,14 @@ console.log("daily:");
 }
 
 // ===== 4. ストリークカード＋苦手トグル＋ヘッダーストリーク表示 =====
+// Batch 42: 初回（ストリーク未設定: current 0・best 0）は #todayStrip が空・#headerStreak が hidden になったので、3 日連続の記録を seed して表示を見る
 console.log("home widgets:");
 {
-  const page = await newPage();
+  const todayYmd = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const page = await newPage({ storage: { spelldash_streak: JSON.stringify({ last: todayYmd, current: 3, best: 3, shields: 0 }) } });
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
-  check("数字1行にストリーク・週の目標", (await page.textContent("#todayStrip")).includes("連続記録") || (await page.textContent("#todayStrip")).includes("日連続"));
+  check("数字1行にストリーク・週の目標", (await page.textContent("#todayStrip")).includes("3日連続"), await page.textContent("#todayStrip"));
   check("ホームにランク表示は出さない（学習データにある）", !(await page.textContent("#todayStrip")).includes("F3") && !(await page.textContent("#todayStrip")).includes("Lv."));
   await page.click("#setupToggle"); // 出題設定は畳まれている
   check("苦手トグル（Study時）表示", await page.isVisible("#weakToggleButton"));
@@ -1469,7 +1471,7 @@ console.log("card generation:");
   await waitUntil(async () => (await page.$$("[data-cardgen-pick]")).length === 2);
   const picks = await page.$$("[data-cardgen-pick]");
   check("候補が2枚プレビューされる", picks.length === 2);
-  check("すでにある語（CPC）はチェックが外れて「すでにあります」", (await page.$$eval("[data-cardgen-pick]", (els) => els.map((e) => e.checked))).join() === "true,false" && (await page.textContent("#cardGenPreview")).includes("すでにマイ単語帳にあります"));
+  check("すでにある語（CPC）はチェックが外れて「すでにある」", (await page.$$eval("[data-cardgen-pick]", (els) => els.map((e) => e.checked))).join() === "true,false" && (await page.textContent("#cardGenPreview")).includes("すでにマイ単語帳にある"));
   const previewText = await page.$$eval("#cardGenPreview [data-field]", (els) => els.map((e) => e.value).join(" | "));
   check("候補に場面・答え・別解が編集可能な欄で出る", ["リスティング広告", "検索連動型広告", "クリックごとに費用"].every((s) => previewText.includes(s)), previewText.slice(0, 120));
   // 追加前に文面を直せる（G8）
@@ -1484,12 +1486,13 @@ console.log("card generation:");
   await page.fill("#cardGenText", "401 のケース: このテキストはログインしていない扱いになります。");
   await page.click("#cardGenRun");
   await waitUntil(async () => (await page.textContent("#cardGenStatus")).includes("ログイン"));
-  check("未ログイン時は「ログインすると使えます」", (await page.textContent("#cardGenStatus")).includes("ログインすると使えます"));
+  // 401 の文は API の body.message（api/_lib/shared.js「ログインすると使える（無料）」をスタブも返す）が優先、無ければ cardGen.js の既定「ログインすると使える（無料）」。どちらも含む語幹で見る
+  check("未ログイン時は「ログインすると使え…」の案内", (await page.textContent("#cardGenStatus")).includes("ログインすると使え"), await page.textContent("#cardGenStatus"));
   // 0件
   await page.fill("#cardGenText", "empty のケース: 用語が見つからないテキストとして扱われます。");
   await page.click("#cardGenRun");
   await waitUntil(async () => (await page.textContent("#cardGenStatus")).includes("見つかりません"));
-  check("0件のときは案内が出る", (await page.textContent("#cardGenStatus")).includes("見つかりませんでした"));
+  check("0件のときは案内が出る", (await page.textContent("#cardGenStatus")).includes("見つからなかった"));
   check("カード生成フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
@@ -2631,26 +2634,26 @@ console.log("pro:");
   const theme = (page) => page.evaluate(() => document.documentElement.dataset.theme);
   const noHorizontalScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
-  // 1. 未ログイン: 価格 2 つ・ログインの案内・CTA を押すとログインの案内
+  // 1. 未ログイン: 価格 2 つ・CTA は「ログインして始める」（#proLoginStart）→ 押すとヘッダーのログインが開く（Batch 42: #proCheckoutMonth はログイン後だけ。#proState は空）
   {
     const page = await newPage({ viewport: { width: 1200, height: 900 } });
     await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
-    const loaded = await waitUntil(async () => (await page.$("#proCheckoutMonth")) !== null, 5000);
+    const loaded = await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
     const plans = await text(page, "#proPlans");
     check("Pro: 未ログインでも価格が 2 つ出る（580 と 4,800）", loaded && plans.includes("580") && plans.includes("4,800"), plans);
     check("Pro: 年額ボタンに月あたりの額（400）", (await text(page, "#proCheckoutYear")).includes("400"), await text(page, "#proCheckoutYear"));
     check("Pro: 比較表は 5 項目", (await page.$$("#proCompare tbody tr")).length === 5);
-    check("Pro: 未ログインは #proState に「ログイン」の案内", (await text(page, "#proState")).includes("ログイン"), await text(page, "#proState"));
-    await page.click("#proCheckoutMonth");
-    await page.waitForTimeout(200);
-    check("Pro: 未ログインで月額ボタンを押すと #proMessage に「ログイン」", (await text(page, "#proMessage")).includes("ログイン"), await text(page, "#proMessage"));
+    check("Pro: 未ログインは #proState が空で、#proCheckoutMonth は無く #proLoginStart「ログインして始める」", (await text(page, "#proState")) === "" && (await page.$("#proCheckoutMonth")) === null && (await text(page, "#proLoginStart")).includes("ログインして始める"), await text(page, "#proState"));
+    await page.click("#proLoginStart");
+    await waitUntil(async () => (await page.getAttribute("#loginToggle", "aria-expanded")) === "true", 2000);
+    check("Pro: 未ログインで「ログインして始める」を押すとヘッダーのログイン（#loginToggle）が開く", (await page.getAttribute("#loginToggle", "aria-expanded")) === "true" && (await text(page, "#proMessage")) === "", `aria-expanded=${await page.getAttribute("#loginToggle", "aria-expanded")} msg=${await text(page, "#proMessage")}`);
     check("Pro: ページ内に特商法のリンク", (await page.$$('a[href="./tokushoho.html"]')).length >= 2);
     check("Pro: よくある質問が 5 つ以上", (await page.$$("details.pro-faq")).length >= 5);
     check("Pro: 未ログインでエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
 
-  // 2. ログイン済み free: 月額ボタン → Checkout（偽: profile.html?pro=done）→ 反映されると「Pro になりました」
+  // 2. ログイン済み free: 月額ボタン → Checkout（偽: profile.html?pro=done）→ 反映されると「Pro になった」
   {
     const page = await newPage({ storage: { spelldash_test_session: "1" } });
     await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
@@ -2661,8 +2664,8 @@ console.log("pro:");
     await page.click("#proCheckoutMonth");
     const moved = await waitUntil(() => page.url().includes("/profile.html?pro=done"), 5000);
     check("Pro: 月額ボタンで Checkout（偽）→ profile.html?pro=done に戻る", moved, page.url());
-    const thanked = await waitUntil(async () => (await text(page, "#authMessage")).includes("Pro になりました"), 8000);
-    check("Pro: ?pro=done で反映を待ち「Pro になりました」", thanked, await text(page, "#authMessage"));
+    const thanked = await waitUntil(async () => (await text(page, "#authMessage")).includes("Pro になった"), 8000);
+    check("Pro: ?pro=done で反映を待ち「Pro になった」", thanked, await text(page, "#authMessage"));
     check("Pro: プラン行が Pro になる", (await text(page, "#planValue")).includes("Pro"), await text(page, "#planValue"));
     check("Pro: 加入フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
@@ -2753,7 +2756,7 @@ console.log("pro:");
     await page.click('[data-trend-range="90"]');
     await page.waitForTimeout(300);
     const hint = await text(page, ".trend-range__hint");
-    check("Pro: free が 90 を押すと「Pro で見られます」の案内と「Pro について」", hint.includes("Pro で見られます") && (await page.$$('.trend-range__hint a[href="./pro.html"]')).length === 1, hint);
+    check("Pro: free が 90 を押すと「Pro で見られる」の案内と「Pro について」", hint.includes("Pro で見られる") && (await page.$$('.trend-range__hint a[href="./pro.html"]')).length === 1, hint);
     check("Pro: free のグラフは 30 日のまま（描き直さない）", before === (await page.$eval("#growthTrend", (el) => el.innerHTML)) && (await page.$eval('[data-trend-range="30"]', (el) => el.classList.contains("is-active"))) && (await text(page, "#growthDays")) === "30");
     check("Pro: free は spelldash_trend_range を保存しない", (await page.evaluate(() => localStorage.getItem("spelldash_trend_range"))) !== "90");
     await page.close();
@@ -2782,7 +2785,7 @@ console.log("pro:");
     await page.selectOption("#themeSelect", "paper");
     await page.waitForTimeout(200);
     const hint = await text(page, "#themeHint");
-    check("Pro: free が紙を選ぶと #themeHint に「Pro のテーマです」と「Pro について」", (await visible(page, "#themeHint")) && hint.includes("Pro のテーマ") && (await page.$$('#themeHint a[href="./pro.html"]')).length === 1, hint);
+    check("Pro: free が紙を選ぶと #themeHint に「Pro のテーマ」と「Pro について」", (await visible(page, "#themeHint")) && hint.includes("Pro のテーマ") && (await page.$$('#themeHint a[href="./pro.html"]')).length === 1, hint);
     check("Pro: free の data-theme は light のまま・選択も戻る", (await theme(page)) === "light" && (await page.$eval("#themeSelect", (el) => el.value)) === "light" && (await page.evaluate(() => localStorage.getItem("spelldash_theme"))) !== "paper");
     await page.selectOption("#themeSelect", "indigo");
     await page.waitForTimeout(200);
@@ -2820,7 +2823,7 @@ console.log("pro:");
     await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     const repair = await text(page, "#streakRepair");
-    check("Pro: 途切れた記録があると #streakRepair「連続 7 日が M/D に途切れました」", repair.includes("連続 7 日") && repair.includes("途切れました"), repair);
+    check("Pro: 途切れた記録があると #streakRepair「連続 7 日が M/D に途切れた」", repair.includes("連続 7 日") && repair.includes("途切れた"), repair);
     check("Pro: free は「Pro なら」の案内と「Pro について」", repair.includes("Pro なら") && (await page.$$('#streakRepair a[href="./pro.html"]')).length === 1 && (await page.$("#streakRepairButton")) === null, repair);
     await page.close();
     const page2 = await newPage({ storage: proStorage({}, { spelldash_streak: streak }) });
@@ -2829,7 +2832,7 @@ console.log("pro:");
     check("Pro: Pro には #streakRepairButton「今月の修復を使う」", (await text(page2, "#streakRepairButton")).includes("今月の修復"), await text(page2, "#streakRepair"));
     await page2.click("#streakRepairButton");
     await page2.waitForTimeout(300);
-    check("Pro: 押すと「連続 7 日に戻しました」", (await text(page2, "#streakRepair")).includes("連続 7 日に戻しました"), await text(page2, "#streakRepair"));
+    check("Pro: 押すと「連続 7 日に戻した」", (await text(page2, "#streakRepair")).includes("連続 7 日に戻した"), await text(page2, "#streakRepair"));
     const saved = await page2.evaluate(() => JSON.parse(localStorage.getItem("spelldash_streak") || "{}"));
     const thisMonth = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
     check("Pro: 保存値は current 7・repairedMonth が今月・lost は消える", saved.current === 7 && saved.repairedMonth === thisMonth && !saved.lost, JSON.stringify(saved));
@@ -2840,7 +2843,7 @@ console.log("pro:");
     const page3 = await newPage({ storage: proStorage({}, { spelldash_streak: JSON.stringify({ last: ymdDaysAgo(3), current: 4, best: 7, shields: 0, lost: null, repairedMonth: thisMonth }) }) });
     await page3.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page3.waitForTimeout(900);
-    check("Pro: 今月すでに使っていれば「今月の修復は使いました」でボタン無し", (await text(page3, "#streakRepair")).includes("今月の修復は使いました") && (await page3.$("#streakRepairButton")) === null, await text(page3, "#streakRepair"));
+    check("Pro: 今月すでに使っていれば「今月の修復は使った」でボタン無し", (await text(page3, "#streakRepair")).includes("今月の修復は使った") && (await page3.$("#streakRepairButton")) === null, await text(page3, "#streakRepair"));
     check("Pro: 修復フローでエラー0", page.errors.length === 0 && page2.errors.length === 0 && page3.errors.length === 0, page.errors[0] ?? page2.errors[0] ?? page3.errors[0] ?? "");
     await page3.close();
   }
@@ -2892,7 +2895,7 @@ console.log("pro:");
     await page.click("[data-word-ai-run]");
     const told = await waitUntil(async () => (await text(page, "#wordAi")).includes("Pro について"), 3000);
     const ai = await text(page, "#wordAi");
-    check("Pro: 429（upgrade）は API の message と「Pro について」", told && ai.includes("使い切りました") && ai.includes("60 回"), ai);
+    check("Pro: 429（upgrade）は API の message と「Pro について」", told && ai.includes("使い切った") && ai.includes("60 回"), ai);
     check("Pro: 「Pro について」は .ai-upgrade で pro.html へ", (await page.$$('#wordAi a.ai-upgrade[href="./pro.html"]')).length === 1);
     check("Pro: 上限の案内は端末に保存しない", (await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("spelldash_word_ai") || "{}")).length)) === 0);
     check("Pro: 覚え方の 429 でエラー0", page.errors.length === 0, page.errors[0] ?? "");
@@ -2943,7 +2946,7 @@ console.log("pro:");
     await page.close();
     const page2 = await newPage({ mobile: true, viewport: { width: 390, height: 844 } });
     await page2.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
-    await waitUntil(async () => (await page2.$("#proCheckoutMonth")) !== null, 5000);
+    await waitUntil(async () => (await page2.$("#proLoginStart")) !== null, 5000); // 未ログインの CTA
     check("Pro（390px）: 横スクロールしない", await noHorizontalScroll(page2));
     await page2.goto(BASE + "/tokushoho.html", { waitUntil: "networkidle" });
     await page2.waitForTimeout(300);
