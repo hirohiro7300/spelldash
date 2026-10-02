@@ -1,5 +1,5 @@
 import { authRedirectOrigin } from "./appEnv.js";
-import { supabase, isSupabaseConfigured } from "./supabase.js";
+import { supabase, isSupabaseConfigured, checkAuthReachable } from "./supabase.js";
 import { initialSync } from "./sync.js";
 import { refreshPlan, clearPlan } from "./plan.js";
 
@@ -83,9 +83,18 @@ function closeDropdown(dropdown, trigger) {
   trigger.setAttribute("aria-expanded", "false");
 }
 
+const UNREACHABLE_MESSAGE = "ログインのサーバーにつながりません（停止中か、通信の問題です）。学習はこのまま続けられ、記録はこの端末に残ります。";
+
 async function signInWithGoogle() {
   googleLoginButtonElement.disabled = true;
   showAuthMessage("Googleに移動します…");
+
+  // サーバーが止まっていると Google ではなく「このサイトにアクセスできません」へ飛ぶので、先に確かめる
+  if (!(await checkAuthReachable())) {
+    googleLoginButtonElement.disabled = false;
+    showAuthMessage(UNREACHABLE_MESSAGE, "error");
+    return;
+  }
 
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
@@ -119,6 +128,12 @@ async function sendLoginLink() {
 
   loginButtonElement.disabled = true;
   showAuthMessage("ログインリンクを送信中…");
+
+  if (!(await checkAuthReachable())) {
+    loginButtonElement.disabled = false;
+    showAuthMessage(UNREACHABLE_MESSAGE, "error");
+    return;
+  }
 
   const { error } = await supabase.auth.signInWithOtp({
     email,

@@ -40,6 +40,9 @@ function subscriptionsTable() {
   return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: row(), error: null }) }) }) };
 }
 
+// 到達確認はテストでは常に OK（本物のサーバーには行かない）
+export const checkAuthReachable = async () => true;
+
 export const supabase = {
   auth: {
     getSession: async () => ({ data: { session: fakeSession() } }),

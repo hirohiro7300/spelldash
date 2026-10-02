@@ -39,6 +39,9 @@
       "permanent": true
     }
   ],
+  "crons": [
+    { "path": "/api/cron/keepalive", "schedule": "0 20 * * *" }
+  ],
   "functions": {
     "api/generate-cards.js": {
       "maxDuration": 60
