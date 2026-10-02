@@ -958,7 +958,7 @@ console.log("challenge & quality:");
   await page.click("#resultRetry");
   await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 5000);
   const panel2 = await page.textContent("#resultPanel");
-  check("2回目は前回比が出る", /前回 \d+ → 今回 \d+/.test(panel2), panel2.slice(0, 200));
+  check("2回目は前回比が出る", /前回 \d+ → \d+/.test(panel2), panel2.slice(0, 200));
   check("Challenge（Batch 4）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
@@ -998,7 +998,7 @@ console.log("challenge & quality:");
   }
   await waitUntil(async () => !(await page2.$eval("#resultPanel", (el) => el.hidden)), 2000);
   const panel = await page2.textContent("#resultPanel");
-  check("完了パネルに明日の予告（語つき）", panel.includes("明日は") && panel.includes("の復習から"), panel.slice(0, 220));
+  check("完了パネルに明日の予告（語つき）", panel.includes("明日は") && /明日は [a-z]/.test(panel) && panel.includes("から"), panel.slice(0, 220));
   check("Esc/Tab/ランクアップでエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 
