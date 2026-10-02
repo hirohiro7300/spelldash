@@ -40,7 +40,7 @@
     {"id": "english-seldom", "en": "seldom", "ja": "めったに〜ない", "pos": "副", "level": "hard", "accept": ["rarely"], "tags": ["adj"], "ex": "Our boss seldom leaves the office before seven.", "exJa": "上司はめったに7時前に退社しません。"},
     {"id":"english-marketable","en":"marketable","ja":"売れる・市場性のある","pos":"形","level":"hard","accept":["sellable","saleable","salable"],"tags":["adj"],"ex":"The design is nice but not marketable at that price.","exJa":"デザインは良いが、その価格では売れません。"},
     {"id": "english-plausible", "en": "plausible", "ja": "もっともらしい", "pos": "形", "level": "normal", "accept": ["believable", "credible"], "tags": ["adj"], "ex": "His explanation for the delay sounded plausible enough.", "exJa": "遅れについての彼の説明は十分もっともらしく聞こえた。"},
-    {"id": "english-graphics", "en": "graphics", "ja": "図や画像", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The report looks better with simple graphics.", "exJa": "報告書は簡単な図や画像があると見やすいです。"},
+    {"id": "english-graphics", "en": "graphics", "ja": "グラフィックス（図版・画像）", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The report looks better with simple graphics.", "exJa": "報告書は簡単な図や画像があると見やすいです。"},
     {"id":"english-conjunction","en":"conjunction","ja":"共同で（in ___ with）","pos":"名","level":"hard","tags":["n"],"ex":"We run the program in conjunction with a local college.","exJa":"その事業は地元の大学と共同で運営しています。"},
     {"id": "english-pan", "en": "pan", "ja": "フライパン・鍋", "pos": "名", "level": "normal", "accept": ["pot", "saucepan", "skillet"], "tags": ["n"], "ex": "Put a little oil in the pan before you cook.", "exJa": "料理の前にフライパンに少し油を入れてください。"},
     {"id":"english-overhaul","en":"overhaul","ja":"全面的な見直し・分解修理","pos":"名","level":"hard","tags":["n"],"ex":"The pay system needs a complete overhaul.","exJa":"給与制度は全面的な見直しが必要です。"},

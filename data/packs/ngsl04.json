@@ -33,7 +33,7 @@
     {"id": "english-send", "en": "send", "ja": "送る", "pos": "動", "level": "normal", "tags": ["v"], "ex": "I will send you a photo later.", "exJa": "あとで写真を送るね。"},
     {"id": "english-allow", "en": "allow", "ja": "許す", "pos": "動", "level": "normal", "accept": ["permit","forgive"], "tags": ["v"], "ex": "My parents do not allow me to stay out late.", "exJa": "親は夜遅くまで外にいることを許してくれない。"},
     {"id": "english-soon", "en": "soon", "ja": "すぐに", "pos": "副", "level": "normal", "accept": ["immediately","shortly"], "tags": ["adj"], "ex": "The bus will come soon.", "exJa": "バスはすぐ来るよ。"},
-    {"id": "english-watch", "en": "watch", "ja": "（じっと）見る", "pos": "動", "level": "normal", "accept": ["stare"], "tags": ["v"], "ex": "I watch TV after dinner.", "exJa": "夕ごはんのあとにテレビを見ます。"},
+    {"id": "english-watch", "en": "watch", "ja": "（テレビなどを）見る", "pos": "動", "level": "normal", "accept": ["stare"], "tags": ["v"], "ex": "I watch TV after dinner.", "exJa": "夕ごはんのあとにテレビを見ます。"},
     {"id": "english-base", "en": "base", "ja": "土台・基礎", "pos": "名", "level": "normal", "accept": ["foundation","basis"], "tags": ["n"], "ex": "The base of the tower is made of stone.", "exJa": "塔の土台は石でできている。"},
     {"id": "english-probably", "en": "probably", "ja": "たぶん", "pos": "副", "level": "normal", "accept": ["maybe","perhaps"], "tags": ["adj"], "ex": "It will probably rain this afternoon.", "exJa": "今日の午後はたぶん雨だろう。"},
     {"id": "english-suggest", "en": "suggest", "ja": "提案する", "pos": "動", "level": "normal", "accept": ["propose"], "tags": ["v"], "ex": "Mike suggested going to the beach on Sunday.", "exJa": "マイクは日曜に海に行こうと提案した。", "exForm": "suggested"},

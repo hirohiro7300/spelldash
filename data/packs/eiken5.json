@@ -119,7 +119,7 @@
     {"id": "english-many", "en": "many", "ja": "多くの", "pos": "形", "level": "normal", "accept": ["much"], "tags": ["number"], "ex": "I have many friends.", "exJa": "友達がたくさんいる。"},
     {"id": "english-eat", "en": "eat", "ja": "食べる", "pos": "動", "level": "easy", "tags": ["action"], "ex": "What do you eat for breakfast?", "exJa": "朝ごはんは何を食べる？"},
     {"id": "english-drink", "en": "drink", "ja": "飲む", "pos": "動", "level": "easy", "tags": ["action"], "ex": "I don't drink coffee.", "exJa": "コーヒーは飲まない。"},
-    {"id": "english-play", "en": "play", "ja": "遊ぶ・する", "pos": "動", "level": "easy", "tags": ["action"], "ex": "Let's play soccer after school.", "exJa": "放課後、サッカーしよう。"},
+    {"id": "english-play", "en": "play", "ja": "遊ぶ・（スポーツを）する", "pos": "動", "level": "easy", "tags": ["action"], "ex": "Let's play soccer after school.", "exJa": "放課後、サッカーしよう。"},
     {"id": "english-study", "en": "study", "ja": "勉強する", "pos": "動", "level": "normal", "tags": ["action"], "ex": "I study for two hours every day.", "exJa": "毎日2時間勉強する。"},
     {"id": "english-read", "en": "read", "ja": "読む", "pos": "動", "level": "normal", "tags": ["action"], "ex": "Can you read this kanji?", "exJa": "この漢字、読める？"},
     {"id": "english-write", "en": "write", "ja": "書く", "pos": "動", "level": "normal", "tags": ["action"], "ex": "Please write your name here.", "exJa": "ここに名前を書いてください。"},

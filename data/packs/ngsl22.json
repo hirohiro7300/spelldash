@@ -30,7 +30,7 @@
     {"id": "english-contest", "en": "contest", "ja": "コンテスト・競争", "pos": "名", "level": "easy", "accept": ["competition"], "tags": ["n"], "ex": "Emi won first prize in the speech contest.", "exJa": "エミはスピーチコンテストで一等賞を取った。"},
     {"id": "english-brush", "en": "brush", "ja": "ブラシ・筆", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I need a new brush for my hair.", "exJa": "髪用の新しいブラシが必要です。"},
     {"id": "english-embarrass", "en": "embarrass", "ja": "恥ずかしい思いをさせる", "pos": "動", "level": "hard", "tags": ["v"], "ex": "I was embarrassed when I forgot his name.", "exJa": "彼の名前を忘れて恥ずかしい思いをした。", "exForm": "embarrassed"},
-    {"id": "english-gallery", "en": "gallery", "ja": "美術館", "pos": "名", "level": "normal", "accept": ["museum"], "tags": ["n"], "ex": "The gallery is free on the first Sunday of the month.", "exJa": "その美術館は毎月第1日曜日は無料です。"},
+    {"id": "english-gallery", "en": "gallery", "ja": "画廊・美術館", "pos": "名", "level": "normal", "accept": ["museum"], "tags": ["n"], "ex": "The gallery is free on the first Sunday of the month.", "exJa": "その美術館は毎月第1日曜日は無料です。"},
     {"id": "english-genetic", "en": "genetic", "ja": "遺伝の", "pos": "形", "level": "normal", "accept": ["hereditary"], "tags": ["adj"], "ex": "Some diseases are caused by genetic factors.", "exJa": "病気の中には遺伝的な要因で起こるものがある。"},
     {"id": "english-aggressive", "en": "aggressive", "ja": "攻撃的な", "pos": "形", "level": "hard", "accept": ["offensive"], "tags": ["adj"], "ex": "Don't be so aggressive when you talk to customers.", "exJa": "お客様と話す時はそんなに攻撃的にならないで。"},
     {"id": "english-chest", "en": "chest", "ja": "胸", "pos": "名", "level": "normal", "accept": ["breast"], "tags": ["n"], "ex": "He felt a pain in his chest and went to the doctor.", "exJa": "彼は胸に痛みを感じて医者に行った。"},

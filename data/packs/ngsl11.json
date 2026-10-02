@@ -94,7 +94,7 @@
     {"id": "english-football", "en": "football", "ja": "サッカー・フットボール", "pos": "名", "level": "easy", "accept": ["soccer"], "tags": ["n"], "ex": "Ken plays football with his friends after school.", "exJa": "ケンは放課後、友達とサッカーをする。"},
     {"id": "english-survive", "en": "survive", "ja": "生き残る", "pos": "動", "level": "normal", "tags": ["v"], "ex": "Only a few plants can survive in the desert.", "exJa": "砂漠で生き残れる植物はわずかしかない。"},
     {"id": "english-flight", "en": "flight", "ja": "フライト", "pos": "名", "level": "easy", "tags": ["n"], "ex": "My flight leaves at nine tomorrow morning.", "exJa": "私のフライトは明日の朝9時に出ます。"},
-    {"id": "english-left", "en": "left", "ja": "左の・左へ", "pos": "形", "level": "easy", "tags": ["adj"], "ex": "The bank is on the left side of the street.", "exJa": "銀行は通りの左側にあります。"},
+    {"id": "english-left", "en": "left", "ja": "左の", "pos": "形", "level": "easy", "tags": ["adj"], "ex": "The bank is on the left side of the street.", "exJa": "銀行は通りの左側にあります。"},
     {"id": "english-solve", "en": "solve", "ja": "解決する", "pos": "動", "level": "normal", "accept": ["resolve", "settle"], "tags": ["v"], "ex": "We talked together and solved the problem.", "exJa": "みんなで話し合って問題を解決した。", "exForm": "solved"},
     {"id": "english-neighbor", "en": "neighbor", "ja": "隣人", "pos": "名", "level": "normal", "accept": ["neighbour"], "tags": ["n"], "ex": "Our neighbor gave us some apples.", "exJa": "お隣さんがりんごをくれた。"},
     {"id": "english-background", "en": "background", "ja": "背景・経歴", "pos": "名", "level": "normal", "accept": ["career"], "tags": ["n"], "ex": "There are mountains in the background of the photo.", "exJa": "写真の背景に山が写っている。"},

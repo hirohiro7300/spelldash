@@ -94,7 +94,7 @@
     {"id": "english-politician", "en": "politician", "ja": "政治家", "pos": "名", "level": "hard", "accept": ["statesman"], "tags": ["n"], "ex": "The politician promised to build more schools.", "exJa": "その政治家はもっと学校を建てると約束した。"},
     {"id": "english-angry", "en": "angry", "ja": "怒った", "pos": "形", "level": "easy", "accept": ["mad","furious"], "tags": ["adj"], "ex": "Why are you so angry with me?", "exJa": "どうしてそんなに私に怒ってるの？"},
     {"id": "english-knock", "en": "knock", "ja": "ノックする・たたく", "pos": "動", "level": "normal", "accept": ["tap","hit","rap"], "tags": ["v"], "ex": "Please knock before you come in.", "exJa": "入る前にノックしてください。"},
-    {"id": "english-seed", "en": "seed", "ja": "種", "pos": "名", "level": "normal", "tags": ["n"], "ex": "We planted some seeds in the garden in spring.", "exJa": "春に庭に種をまいた。", "exForm": "seeds"},
+    {"id": "english-seed", "en": "seed", "ja": "種（たね）", "pos": "名", "level": "normal", "tags": ["n"], "ex": "We planted some seeds in the garden in spring.", "exJa": "春に庭に種をまいた。", "exForm": "seeds"},
     {"id": "english-salary", "en": "salary", "ja": "給料", "pos": "名", "level": "normal", "accept": ["pay","wage"], "tags": ["n"], "ex": "My salary is paid on the twenty-fifth of each month.", "exJa": "給料は毎月25日に支払われます。"},
     {"id": "english-illustrate", "en": "illustrate", "ja": "（例で）説明する・図解する", "pos": "動", "level": "hard", "accept": ["explain","demonstrate"], "tags": ["v"], "ex": "Let me give an example to illustrate my point.", "exJa": "私の言いたいことを例を挙げて説明しましょう。"},
     {"id": "english-imply", "en": "imply", "ja": "ほのめかす", "pos": "動", "level": "normal", "accept": ["suggest","hint","insinuate"], "tags": ["v"], "ex": "His e-mail implied that the project might be delayed.", "exJa": "彼のメールは計画が遅れそうだとほのめかしていた。", "exForm": "implied"},

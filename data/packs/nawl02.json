@@ -35,7 +35,7 @@
     {"id": "english-classroom", "en": "classroom", "ja": "教室", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Ken is in the classroom now.", "exJa": "ケンは今、教室にいるよ。"},
     {"id": "english-clay", "en": "clay", "ja": "粘土", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The students shaped the wet clay into small bowls.", "exJa": "学生たちは湿った粘土で小さな鉢を作った。"},
     {"id": "english-clever", "en": "clever", "ja": "賢い", "pos": "形", "level": "easy", "accept": ["smart", "wise", "intelligent"], "tags": ["adj"], "ex": "That was a clever way to cut costs.", "exJa": "それは費用を削る賢い方法でした。"},
-    {"id": "english-client", "en": "client", "ja": "取引先", "pos": "名", "level": "normal", "tags": ["n"], "ex": "I am visiting a client in Osaka this afternoon.", "exJa": "今日の午後、大阪の取引先を訪問します。"},
+    {"id": "english-client", "en": "client", "ja": "顧客・依頼人", "pos": "名", "level": "normal", "tags": ["n"], "ex": "I am visiting a client in Osaka this afternoon.", "exJa": "今日の午後、大阪の取引先を訪問します。"},
     {"id": "english-clinic", "en": "clinic", "ja": "診療所", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The clinic near the station is closed on Wednesdays.", "exJa": "駅の近くの診療所は水曜が休みです。"},
     {"id": "english-clip", "en": "clip", "ja": "クリップ", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Use a clip to hold these papers together.", "exJa": "この書類はクリップでまとめてください。"},
     {"id": "english-clone", "en": "clone", "ja": "複製する", "pos": "動", "level": "normal", "accept": ["copy", "duplicate", "replicate"], "tags": ["v"], "ex": "Scientists have cloned several kinds of animals.", "exJa": "科学者は何種類かの動物を複製してきた。", "exForm": "cloned"},

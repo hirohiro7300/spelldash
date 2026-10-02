@@ -59,7 +59,7 @@
     {"id": "english-submission", "en": "submission", "ja": "提出", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The deadline for submission is next Monday.", "exJa": "提出の締め切りは来週の月曜日です。"},
     {"id": "english-bulletin", "en": "bulletin", "ja": "掲示・会報", "pos": "名", "level": "hard", "accept": ["notice", "newsletter"], "tags": ["n"], "ex": "The notice is on the bulletin board near the door.", "exJa": "お知らせはドアの近くの掲示板にあります。"},
     {"id": "english-certificate", "en": "certificate", "ja": "証明書・修了証", "pos": "名", "level": "normal", "accept": ["diploma"], "tags": ["n"], "ex": "You will receive a certificate after the training course.", "exJa": "研修を終えると修了証がもらえます。"},
-    {"id": "english-gym", "en": "gym", "ja": "体育館", "pos": "名", "level": "normal", "accept": ["gymnasium"], "tags": ["n"], "ex": "We play basketball in the gym.", "exJa": "体育館でバスケをする。"},
+    {"id": "english-gym", "en": "gym", "ja": "ジム・体育館", "pos": "名", "level": "normal", "accept": ["gymnasium"], "tags": ["n"], "ex": "We play basketball in the gym.", "exJa": "体育館でバスケをする。"},
     {"id": "english-highway", "en": "highway", "ja": "高速道路", "pos": "名", "level": "easy", "accept": ["expressway", "freeway", "motorway"], "tags": ["n"], "ex": "We drove along the highway to the coast.", "exJa": "高速道路を走って海岸へ向かいました。"},
     {"id": "english-respondent", "en": "respondent", "ja": "回答者", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Most respondents said the service was good.", "exJa": "回答者の多くはサービスが良いと答えた。", "exForm": "respondents"},
     {"id": "english-jewelry", "en": "jewelry", "ja": "宝石類・アクセサリー", "pos": "名", "level": "easy", "accept": ["jewellery", "accessory"], "tags": ["n"], "ex": "She sells jewelry at a small shop in Kyoto.", "exJa": "彼女は京都の小さな店で宝石類を売っている。"},

@@ -32,7 +32,7 @@
     {"id": "english-chance", "en": "chance", "ja": "機会", "pos": "名", "level": "normal", "accept": ["opportunity"], "tags": ["n"], "ex": "This is a good chance to practice English.", "exJa": "英語を練習するいい機会だ。"},
     {"id": "english-accept", "en": "accept", "ja": "受け入れる", "pos": "動", "level": "normal", "tags": ["v"], "ex": "She accepted our offer right away.", "exJa": "彼女はすぐに私たちの申し出を受け入れた。", "exForm": "accepted"},
     {"id": "english-society", "en": "society", "ja": "社会", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Smartphones have changed our society a lot.", "exJa": "スマホは私たちの社会を大きく変えた。"},
-    {"id": "english-technology", "en": "technology", "ja": "技術", "pos": "名", "level": "normal", "accept": ["technique", "skill"], "tags": ["n"], "ex": "New technology has made our lives easier.", "exJa": "新しい技術で私たちの生活は楽になった。"},
+    {"id": "english-technology", "en": "technology", "ja": "科学技術・テクノロジー", "pos": "名", "level": "normal", "accept": ["technique", "skill"], "tags": ["n"], "ex": "New technology has made our lives easier.", "exJa": "新しい技術で私たちの生活は楽になった。"},
     {"id": "english-mention", "en": "mention", "ja": "言及する", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Ms. Sato mentioned the test at the end of class.", "exJa": "佐藤先生は授業の最後にテストのことに触れた。", "exForm": "mentioned"},
     {"id": "english-choice", "en": "choice", "ja": "選択", "pos": "名", "level": "normal", "accept": ["selection"], "tags": ["n"], "ex": "Going to that school was a good choice.", "exJa": "あの学校に行ったのはいい選択だった。"},
     {"id": "english-save", "en": "save", "ja": "救う・節約する", "pos": "動", "level": "easy", "accept": ["rescue"], "tags": ["v"], "ex": "The doctor saved the boy's life.", "exJa": "医者がその男の子の命を救った。", "exForm": "saved"},

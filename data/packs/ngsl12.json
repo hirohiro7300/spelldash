@@ -79,7 +79,7 @@
     {"id": "english-expand", "en": "expand", "ja": "拡大する", "pos": "動", "level": "easy", "accept": ["enlarge","extend"], "tags": ["v"], "ex": "We plan to expand our business into three new countries.", "exJa": "事業を新たに三か国へ拡大する計画です。"},
     {"id": "english-commit", "en": "commit", "ja": "約束する・専念する", "pos": "動", "level": "normal", "accept": ["promise","devote","dedicate"], "tags": ["v"], "ex": "I can't commit to a date yet.", "exJa": "まだ日程は約束できません。"},
     {"id": "english-obvious", "en": "obvious", "ja": "明らかな", "pos": "形", "level": "hard", "accept": ["clear","evident","apparent"], "tags": ["adj"], "ex": "It was obvious that she was tired.", "exJa": "彼女が疲れているのは明らかだった。"},
-    {"id": "english-jump", "en": "jump", "ja": "とぶ", "pos": "動", "level": "normal", "accept": ["leap","hop"], "tags": ["v"], "ex": "I can jump high.", "exJa": "高くジャンプできます。"},
+    {"id": "english-jump", "en": "jump", "ja": "跳ぶ・ジャンプする", "pos": "動", "level": "normal", "accept": ["leap","hop"], "tags": ["v"], "ex": "I can jump high.", "exJa": "高くジャンプできます。"},
     {"id": "english-weapon", "en": "weapon", "ja": "武器", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The man had no weapon with him.", "exJa": "その男は武器を持っていなかった。"},
     {"id": "english-relatively", "en": "relatively", "ja": "比較的", "pos": "副", "level": "normal", "accept": ["comparatively"], "tags": ["adj"], "ex": "The new laptop is relatively light and easy to carry.", "exJa": "新しいノートパソコンは比較的軽くて持ち運びやすいです。"},
     {"id": "english-host", "en": "host", "ja": "（客を招く）主人・主催者", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Our host cooked a wonderful dinner for us.", "exJa": "招いてくれた主人が素晴らしい夕食を作ってくれた。"},

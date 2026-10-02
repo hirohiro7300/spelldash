@@ -39,6 +39,8 @@
 
 `犬／dog`、`水／water` など。曖昧ではないので対応不要（参考数値）。
 
+> **2026-10-02（Batch 39）**: §4〜§6 の 494 件を、提案者 → 反証者の 2 段で仕分けた。**訳を直したのは 141 件**（提案 149、反証で 8 件を元に戻した: 共有トークンが消えて別解が壊れるもの、改善が確実でないもの）。見出し語の変更を伴う 18 件は §7 に（創業者判断）。残り 328 件は「変えない」（互いに accept 済み、置換案が別義に寄る、§2 のカタカナ方針が未決 など）。§4〜§6 の表は記録として残す。
+
 ## 4. 別解の執筆時に挙がった候補（Batch 35、137 件・未反映）
 
 英検 5 級〜1 級・TOEIC 500〜990・高校英語・TOEIC・ビジネス・IT の 16 パックに別解（`accept`）を書き足したとき、執筆者が「訳だけでは答えが一つに決まらない」「訳が英語の中心義とずれる」と報告したカード。多くは `accept` で別の語も正解にしてあるので実害は小さいが、訳を直した方が親切なものは ○ を付けてもらえれば反映する。書式は `語: 今の訳 → 置換案 — 理由`。
@@ -554,3 +556,28 @@
 | tsl11 | serial: 連続の・通し番号の → 連続の・連番の — 通し番号の is a noun-adjunct gloss; 連番の reads more naturally as an adjective |
 | tsl11 | sedan: セダン（乗用車） → セダン — the parenthetical 乗用車 invites plain car as an answer |
 | tsl11 | wellness: 健康・健康増進 → 健康増進・ウェルネス — 健康 alone maps to health, which is already a very common NGSL word |
+
+## 7. 見出し語の変更を伴う候補（Batch 39、18 件・創業者判断）
+
+`en` そのものを変える（headquarter → headquarters、pant → pants）、カードの統合、例文の差し替えを伴うもの。データの構造（id・学習記録のキー）に触れるので、方針を決めてから反映する。
+
+| グループ | 候補 |
+|---|---|
+| toeic-biz | toeic860 keynote: 基調(講演) — 単語 keynote 単体か keynote speech/address を見出し語にするかの判断。訳の括弧書きは見出し語の決定後に直す |
+| ngsl-a | ngsl05 accord: 一致・調和 → according to（〜によれば）or 名詞のまま例文差し替え — ex/exForm が 'according' で名詞義を示していない。例文変更を伴うので創業者判断 |
+| ngsl-a | ngsl05 raise: 昇給（名のみ）→ 動詞義 上げる・育てる の追加 — pos 名のカードに動詞義を足す／pos 変更を伴うので創業者判断 |
+| ngsl-c | ngsl22 march: 3月の意味では大文字 March — 出題語の表記（小文字 march）と訳「3月」の整合は見出し語側の判断。訳は変えず残す |
+| ngsl-c | ngsl17 retain: level easy が不釣り合い — 訳以外（level）の変更提案なので創業者判断。訳は保持する のまま |
+| tsl | tsl02 headquarter: en を headquarters にする検討 — 単数形はまれ、例文も headquarters（accept に headquarters/hq 済み） |
+| tsl | tsl04 pant: en を pants にする検討 — 例文も pants、単数形では答えに辿り着きにくい（accept に trousers 済み） |
+| tsl | tsl07 cosmetic: 訳を「化粧品の・化粧用の」にするなら pos を 名→形 に変える必要あり（例文 cosmetic company は形容詞用法）。pos 変更は創業者判断 |
+| tsl | tsl03 congratulation: 通例 congratulations（複数形）が標準 — en／例文の見直し候補 |
+| tsl | tsl03 sightsee: 原形 sightsee はほぼ使われず、例文も sightseeing — en／例文の見直し候補 |
+| bsl | bsl01 stockmarket: en が BSL 独自の一語つづり（学習者は stock market と打つ）— 見出し語・正解判定の設計判断 |
+| bsl | bsl03 headquarter: headquarters を見出し語にするか ja を動詞「本社を置く」にするか — en 変更を伴う（accept に headquarters/hq は入っている） |
+| bsl | bsl05 inter: 接頭辞を形容詞カードとして出題すること自体の要検討 — カード削除・形式変更の判断 |
+| bsl | bsl05 capitalist: 名詞「資本家」に寄せるなら pos 変更が必要（現状は形・accept capitalistic で動作） — pos 変更は創業者判断 |
+| bsl | bsl12 overtime: pos 副（tags adj）なのに ja が名詞「残業」 — pos を 名 に変えるか ja を副詞句にするか、カード構造の判断 |
+| bsl | bsl13 unauthorize: 辞書にほぼ無い動詞。unauthorized（形）で収録し直す案 — en 変更・例文変更を伴う |
+| nawl | nawl03 descendent: 見出し語を descendant に — 異綴り。accept に descendant 済み |
+| nawl | nawl04 headquarter: 見出し語を headquarters に — 名詞の標準形。accept に headquarters 済み（例文も headquarters） |

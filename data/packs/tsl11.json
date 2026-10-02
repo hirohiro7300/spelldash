@@ -100,7 +100,7 @@
     {"id": "english-restatement", "en": "restatement", "ja": "言い直し・訂正", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The letter was a simple restatement of the old rules.", "exJa": "その手紙は古い規則の単なる言い直しでした。"},
     {"id": "english-sedan", "en": "sedan", "ja": "セダン（乗用車）", "pos": "名", "level": "normal", "accept": ["saloon"], "tags": ["n"], "ex": "He bought a used sedan for his daily drive to work.", "exJa": "彼は通勤用に中古のセダンを買いました。"},
     {"id": "english-sunscreen", "en": "sunscreen", "ja": "日焼け止め", "pos": "名", "level": "hard", "accept": ["sunblock"], "tags": ["n"], "ex": "Put on sunscreen before you go to the beach.", "exJa": "海に行く前に日焼け止めを塗ってください。"},
-    {"id": "english-wellness", "en": "wellness", "ja": "健康・健康増進", "pos": "名", "level": "hard", "accept": ["health"], "tags": ["n"], "ex": "The company started a wellness program for staff.", "exJa": "会社は社員向けの健康増進計画を始めました。"},
+    {"id": "english-wellness", "en": "wellness", "ja": "健康増進・ウェルネス", "pos": "名", "level": "hard", "accept": ["health"], "tags": ["n"], "ex": "The company started a wellness program for staff.", "exJa": "会社は社員向けの健康増進計画を始めました。"},
     {"id": "english-workbook", "en": "workbook", "ja": "練習帳", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Students write their answers in the workbook.", "exJa": "生徒は練習帳に答えを書きます。"},
     {"id": "english-bookcase", "en": "bookcase", "ja": "本棚", "pos": "名", "level": "normal", "accept": ["bookshelf"], "tags": ["n"], "ex": "We moved the bookcase to the corner of the room.", "exJa": "本棚を部屋の隅に動かしました。"},
     {"id": "english-cleanliness", "en": "cleanliness", "ja": "清潔さ", "pos": "名", "level": "hard", "accept": ["cleanness"], "tags": ["n"], "ex": "The kitchen staff are proud of their cleanliness.", "exJa": "調理場の従業員は清潔さを誇りにしています。"},

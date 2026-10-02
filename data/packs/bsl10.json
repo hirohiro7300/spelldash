@@ -56,7 +56,7 @@
     {"id": "english-processor", "en": "processor", "ja": "プロセッサ", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The new machine has a much faster processor.", "exJa": "新しいマシンはプロセッサがずっと速いです。"},
     {"id": "english-divert", "en": "divert", "ja": "転用する・迂回させる", "pos": "動", "level": "hard", "accept": ["redirect", "reroute"], "tags": ["v"], "ex": "We had to divert money from the travel budget.", "exJa": "出張費から資金を転用せざるを得ませんでした。"},
     {"id": "english-delegation", "en": "delegation", "ja": "委任・代表団", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Good delegation of work makes the team faster.", "exJa": "仕事を上手に委任するとチームは速くなります。"},
-    {"id": "english-arguably", "en": "arguably", "ja": "おそらく・ほぼ間違いなく", "pos": "副", "level": "hard", "accept": ["probably", "perhaps"], "tags": ["adj"], "ex": "This is arguably the best hotel in Kyoto.", "exJa": "ここはおそらく京都で一番のホテルです。"},
+    {"id": "english-arguably", "en": "arguably", "ja": "議論の余地はあるが・おそらく", "pos": "副", "level": "hard", "accept": ["probably", "perhaps"], "tags": ["adj"], "ex": "This is arguably the best hotel in Kyoto.", "exJa": "ここはおそらく京都で一番のホテルです。"},
     {"id": "english-casualty", "en": "casualty", "ja": "死傷者", "pos": "名", "level": "hard", "tags": ["n"], "ex": "There were no casualties in the factory fire.", "exJa": "工場の火事で死傷者は出ませんでした。", "exForm": "casualties"},
     {"id": "english-verdict", "en": "verdict", "ja": "評決", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The jury reached a verdict after two days of discussion.", "exJa": "陪審は二日間の協議の末に評決に達した。"},
     {"id": "english-dot", "en": "dot", "ja": "点・ドット", "pos": "名", "level": "normal", "accept": ["point", "spot"], "tags": ["n"], "ex": "Put a dot next to each name on the list.", "exJa": "一覧の名前の横に点を打ってください。"},
