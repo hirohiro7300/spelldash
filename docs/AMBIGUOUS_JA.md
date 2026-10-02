@@ -182,3 +182,157 @@
 | it | gadget: 小型機器 → ガジェット — 小型機器 は device が第一想起 |
 | it | chip: 半導体チップ → チップ — semiconductor を打つ学習者が出る |
 | it | forum: 掲示板 → フォーラム — 掲示板 は bulletin board / board が第一想起 |
+
+## 5. NGSL 24 パックの別解執筆時に挙がった候補（Batch 36、147 件・未反映）
+
+基本語ほど多義で、同じパックに同じ訳の語が並ぶ（始める start／begin、置く put／set、〜の間に between／during など）。多くは互いに `accept` を入れてあるので打っても不正解にはならないが、訳を分けた方が親切なものは ○ を付けてもらえれば反映する。波ダッシュの字種（～ と 〜）の揺れの指摘も含む。
+
+| パック | 候補 |
+|---|---|
+| ngsl01 | like: 好き → 好む・好きである — pos が「動」なのに訳が形容動詞で、学習者は fond / favorite など形容詞を連想しやすい |
+| ngsl01 | well: 上手に・よく → 上手に・十分に — 「よく」は often（頻度）とも読めて答えが一つに決まらない |
+| ngsl01 | that: あれ・それ → あれ・あの — 同パックの it（それ）と訳が重なる |
+| ngsl01 | time: 時間 → 時間・時 — 「時間」だけだと hour を打つ学習者が多い（hour は accept に入れたが、訳側で区別した方がよい） |
+| ngsl01 | very: とても → とても（程度を強める） — so（接: だから・それで）が同パックにあり、so を accept に入れたので訳の整理が望ましい |
+| ngsl02 | between: ～の間に → ～の間に（2つの） — during と ja が完全に同じ（空間と時間で別の語） |
+| ngsl02 | during: ～の間に → ～の間（期間中）に — between と ja が完全に同じ |
+| ngsl02 | start: 始める → 始める（start） / begin: 始める — ja が完全に同じ 2 枚（accept を相互に入れた） |
+| ngsl02 | home: 家・家庭 / house: 家 — 「家」で両方が正解になる（accept を相互に入れた） |
+| ngsl02 | put: 置く / set: 置く・設定する — 「置く」で両方が正解になる（accept を相互に入れた） |
+| ngsl02 | many: 多くの / much: 多くの・たくさんの — 「多くの」で両方が正解になる（accept を相互に入れた） |
+| ngsl02 | little: 小さい・少しの / small: 小さい — 「小さい」で両方が正解になる（accept を相互に入れた） |
+| ngsl02 | tell: 伝える・話す / talk: 話す・しゃべる — 「話す」で両方が正解になる（tell に talk/speak を入れた） |
+| ngsl02 | kind: 親切な — 「種類」の意味が頻度上は主で、exJa は「優しい」。訳はこのままで問題ないが例文訳とのずれあり |
+| ngsl02 | lot: たくさん（a ___ of） — 訳に空欄記法が入っている唯一のカード。形式が他と違う |
+| ngsl03 | though: ～だけれども → 〜だけれども — although と同じ訳だが波ダッシュの字種が違う（～ U+FF5E vs 〜 U+301C）。until「～まで（ずっと）」も同じ字種ずれ。同一視すべき2枚なので統一を推奨 |
+| ngsl03 | early: 早く・早い → 早く — pos が 副 なのに形容詞訳「早い」も併記されている |
+| ngsl03 | hold: 持つ・開催する → 持っている・開催する — 「持つ」だけだと ngsl01 の have と訳が重なり答えが一つに決まらない（have を accept に入れた） |
+| ngsl03 | quite / rather: かなり が両方に含まれ、互いに別解になる。rather は「むしろ」を主訳にしたほうが区別しやすい |
+| ngsl03 | price: 値段 / cost: 費用 — 学習者は 値段→cost、費用→price も打つので相互に accept したが、訳側で「価格」「経費」など語を分けると区別しやすい |
+| ngsl04 | power: 力・電力 → 同じ pack の force も ja が「力」。訳だけでは power / force が決まらない（相互に accept を入れて対応したが、force 側を「力ずく・武力」などにすると区別しやすい） |
+| ngsl04 | sort: 種類 → 同じ pack の type が「種類・型」で重複。sort を「（口語の）種類」などにしないと sort / type / kind が区別できない（相互 accept で対応済み） |
+| ngsl04 | bit: 少し → pos が名で「少し」は副詞的に読める。「少量・ちょっと」など名詞らしい訳にすると little との混乱が減る |
+| ngsl04 | receive: 受け取る → get / accept も正解になるため訳だけでは決まらない（accept 済み）。「受信する・受領する」寄りにすると receive に絞れる |
+| ngsl04 | watch: （じっと）見る → look / see / stare も「見る」で正解になる。「（テレビ・試合などを）見る」のほうが watch に絞れる |
+| ngsl04 | create: 作り出す → make / produce も正解。「創造する」なら create に絞れる |
+| ngsl04 | produce: 生産する → make / manufacture も正解（accept 済み） |
+| ngsl04 | perhaps / probably: たぶん が両方に含まれ、確度の差が訳に出ていない。probably を「おそらく（高確率）」、perhaps を「ひょっとすると」に分けると区別できる |
+| ngsl04 | human: 人間 → person も「人間」で正解になる。「人類・ヒト」なら human に絞れる |
+| ngsl05 | accord: 一致・調和 → according to（〜によれば）or keep noun with a matching ex — ex/exForm use 'according' (preposition phrase), which does not illustrate the noun 一致・調和 |
+| ngsl05 | staff: 職員 → スタッフ・職員 — ex translates staff as スタッフ; 職員 alone invites employee/official |
+| ngsl05 | act: 行動する・行為 → 行動する — pos is 動 but ja also lists noun 行為 |
+| ngsl05 | charge: 料金・請求する → 料金 — pos is 名 but ja also lists verb 請求する |
+| ngsl05 | measure: 測る・対策 → 測る — pos is 動 but ja also lists noun 対策 |
+| ngsl05 | vote: 投票・投票する → 投票 — pos is 名 but ja also lists verb 投票する |
+| ngsl05 | outside: 外に・外側 → 外に — pos is 副 but ja also lists noun 外側 |
+| ngsl05 | particular: 特定の・特別な overlaps with special (特別な) — a learner seeing 特別な cannot tell which card is meant; suggest 特定の for particular |
+| ngsl05 | raise: 昇給 — noun-only sense; the far more common verb sense 上げる・育てる is absent, so learners may not connect it |
+| ngsl05 | site: 場所・サイト — 場所 alone would elicit place; suggest 用地・サイト or 現場・サイト |
+| ngsl06 | technology: 技術 → 科学技術・テクノロジー — 「技術」だけだと skill / technique が同等に正しく、答えが一つに決まらない（暫定で technique, skill を accept に入れた） |
+| ngsl06 | fast: 速い・速く — pos が「形」なのに副詞義も併記されており、quickly など副詞も正解になる（quick, quickly, rapid を accept に入れた） |
+| ngsl06 | inside: 〜の中に・内側 — 「〜の中に」は in がもっとも素直な答えで、inside に特定しづらい（in, within を accept に入れた） |
+| ngsl06 | store: 商店 → 店 — 「商店」は shop の訳としても同等（shop を accept に入れた） |
+| ngsl06 | heart: 心臓・心 — 「心」は mind とも訳せる（mind を accept に入れた） |
+| ngsl07 | contract: 契約 ／ agreement: 合意・契約 — 同じパック内で「契約」が重なる。両方に互いを accept で入れたが、agreement の ja を「合意・協定」に寄せると区別しやすい |
+| ngsl07 | sorry: ごめんなさい — 形容詞カードなのに訳が間投詞句。「すまなく思う・残念な」等の形容詞訳の方が pos と合う |
+| ngsl07 | floor: 階 — floor の基本義「床」が訳に無く、story/storey と区別がつかない。「床・階」が妥当 |
+| ngsl07 | stuff: 物・こと — thing と区別不能（thing が別パックにある場合は衝突）。「（漠然と）物・持ち物」などで区別可 |
+| ngsl07 | challenge: 挑戦 — attempt（試み）と意味が近く、学習者は try/attempt も打ちうる。「難題・挑戦」とすると challenge らしさが出る |
+| ngsl08 | target: 目標 → 的・目標 — 同パック内の goal (目標) と ja が完全に同じ。出題時に区別がつかない |
+| ngsl08 | goal: 目標 → ゴール・目標 — 上と同じく target と ja が重複 |
+| ngsl08 | bill: 会計 → 勘定書・請求書 — 「会計」だけだと accounting も正解になり、bill の意味からややずれる |
+| ngsl08 | officer: 警察官・役人 → 警官・将校・役員 — officer 単独は「警察官」とは限らない（police officer で初めてその意味） |
+| ngsl08 | message: 伝言 → メッセージ・伝言 — message の中心義より狭い訳で、他の語（note など）を連想させやすい |
+| ngsl08 | access: 利用・接続 → 利用する権利・アクセス — 「利用」だけだと use と区別できない |
+| ngsl08 | dress: ドレス・ワンピース — 訳としては問題ないが、ワンピースは和製英語なので one-piece と打つ学習者が出うる |
+| ngsl09 | clock: 時計 → 置き時計・掛け時計 — watch も「時計」なので訳だけでは決まらない（watch は accept に入れた） |
+| ngsl09 | exercise: 運動 → 運動（体を動かすこと） — movement／sport／workout も「運動」で答えが一つに決まらない |
+| ngsl09 | credit: クレジット → 信用・クレジット — カタカナだけでは意味が取りにくい |
+| ngsl09 | proposal: 提案書 → 提案・提案書 — proposal の基本義は「提案」で、「書」を付けると document 等に寄る |
+| ngsl09 | property: 不動産 → 財産・不動産 — property の第一義は「財産・所有物」 |
+| ngsl09 | exchange / replace: 交換する / 取り替える — 同パック内でほぼ同義の訳が並び、互いに別解になる（双方の accept に相手を入れた） |
+| ngsl09 | track: 線路・走路 → 線路・走路・跡 — railway／rail も同じ訳で打たれる |
+| ngsl10 | extra: 追加の → 「余分の・追加の」 — 同パック内の additional と ja が完全に同じ（2 枚重複） |
+| ngsl10 | additional: 追加の → 「追加の・さらなる」 — 同上、extra と ja が同じ |
+| ngsl10 | alternative: 代替の・代案 → 「代替の」 — pos は 形・tags は adj なのに訳に名詞「代案」が併記されている |
+| ngsl10 | slow: 遅い → 「（速度が）遅い」 — 「遅い」だけでは late（時刻が遅い）と区別できない |
+| ngsl10 | reply: 返信する → 「返事する・返信する」 — respond（返答する）とほぼ同義で、学習者はどちらも互いに打ちうる |
+| ngsl10 | glass: ガラス・コップ → 「ガラス・グラス」 — 「コップ」は cup とも取れる |
+| ngsl10 | status: 状況・地位 → 「状態・地位」 — 「状況」は situation に寄りすぎる |
+| ngsl10 | trial: 試し・裁判 → 「試用・裁判」 — 「試し」は test/try とも取れる |
+| ngsl11 | photograph: 写真 → 「写真（正式語）」または「写真・フォトグラフ」 — 同パック内の photo と ja が同一。訳だけでは photo / photograph / picture のどれを打つべきか決まらない |
+| ngsl11 | photo: 写真 → 「写真（口語）」 — 同パック内の photograph と ja が同一（上と対） |
+| ngsl11 | labor: 労働 → 「労働・労力」 — 米式つづり固有の情報が訳に無く、学習者は labour / work も打ちうる（accept で対応済み） |
+| ngsl11 | feed: 食べ物を与える → 「えさをやる・食べ物を与える」 — exJa は「えさをやる」。訳が長く、品詞感が伝わりにくい |
+| ngsl11 | mass: 大量の・大衆の → 「大量の・大規模な」 — 「大衆の」は mass media 等の連語でのみ成り立つ。単独の形容詞訳としては誤解を招く |
+| ngsl11 | left: 左の・左へ → 「左の」 — pos が形なのに「左へ」（副詞）を併記。ta­gs も adj。どちらかに揃えたい |
+| ngsl11 | plus: 〜を足して・プラス → 「〜を足して（前置詞）」 — 「プラス」だけ見ると名詞や間投詞と受け取られる |
+| ngsl11 | traffic: 交通（量） → 「交通量・交通」 — 括弧付き表記が他カードと不揃い。transport（輸送・交通機関）との区別は訳からは付きにくい |
+| ngsl11 | struggle: 苦労する・もがく → 「苦労する・奮闘する」 — 「もがく」は身体的な動きが主で、exJa（苦労した）とずれる |
+| ngsl11 | adopt: 採用する → 「採用する（方法・案を）・導入する」 — 「採用する」は人を雇う意味（hire）に取られやすい。exJa は「導入している」（accept に hire / employ を入れたが、訳を絞る方がよい） |
+| ngsl12 | jump: とぶ → 跳ぶ・ジャンプする — ひらがな「とぶ」は飛ぶ（fly）とも読める。今回は fly も accept に入れたが、ja を漢字にすれば不要 |
+| ngsl12 | code: コード・暗号 → 暗号・（プログラムの）コード — カタカナ「コード」は cord（電気コード）・chord（和音）とも取れる。暗号の併記で絞れてはいるが、出題意図（例文は暗証コード）に寄せた訳のほうが安全 |
+| ngsl12 | twice: 2回 → 2回・2倍 — 答えは twice 一つだが、「2回」だけ見た学習者は two times と考えて止まりやすい。訳に「（副詞）」等の補足があるとよい |
+| ngsl12 | host: （客を招く）主人・主催者 — 「主人」は husband／master とも読め、括弧書きがないと迷う。現状の括弧書きで絞れているので置換案なし（注意喚起のみ） |
+| ngsl12 | tire: 疲れさせる・疲れる — 同綴りの名詞 tire（タイヤ）が別パックにあると ja で区別できるが、「疲れる」単独だと get tired の句を打とうとする学習者が多い。訳は妥当だが、exJa「本当に疲れる」が自動詞寄りで en の他動詞用法と少しずれる |
+| ngsl13 | army: 軍隊・陸軍 → 陸軍 — 同パック troop の ja も「軍隊・部隊」で「軍隊」が重複。army は陸軍に絞ると一意になる |
+| ngsl13 | troop: 軍隊・部隊 → 部隊・兵士たち — army と「軍隊」が重複。troop は通常 troops（部隊・兵士）の意 |
+| ngsl13 | gold: 金 → 金（きん）・黄金 — 「金」だけでは「かね＝money」とも読め、money を打つ学習者が出る |
+| ngsl13 | cup: コップ → カップ・コップ — 日本語の「コップ」はガラスの glass を指すことが多く、cup とずれる（glass/mug を accept に入れた） |
+| ngsl13 | civil: 市民の・民間の → 市民の・民事の — 「民間の」は private の訳として定着しており civil とずれる |
+| ngsl13 | capacity: 生産能力・収容力 → 収容力・能力 — 「生産能力」は狭すぎ、production capacity の文脈に限られる |
+| ngsl13 | technical: 技術的な・専門の → 技術的な — 「専門の」は professional/specialized を誘い、technical の中心義からずれる |
+| ngsl14 | commitment: 献身・約束 → 献身・責任ある約束 — 「約束」だけ見ると promise を打つ学習者が多い（accept に入れたが、訳の軸が commitment 寄りだと伝わりにくい） |
+| ngsl14 | row: 列 → 横一列・（座席の）列 — 「列」だけだと line / queue / column も同等に正しい |
+| ngsl14 | cast: 出演者・配役 → 出演者全員・配役 — 「出演者」は単数だと actor / performer が第一候補 |
+| ngsl14 | commission: 手数料 → （仲介）手数料 — 「手数料」単独だと fee / charge が第一候補 |
+| ngsl14 | device: 機器・装置 → （小型の）機器・装置 — 「機器」は equipment、「装置」は apparatus を打つ学習者も多い |
+| ngsl14 | forest: 森 → 森林 — 「森」だと wood / woods も同等 |
+| ngsl14 | grade: 成績・学年 → 成績（評点）・学年 — 「成績」だけだと score / mark が先に浮かぶ |
+| ngsl14 | appearance: 外見・出現 → 外見・見た目 — 「外見」は look(s) も同等、「出現」は emergence 寄り |
+| ngsl15 | sick: 病気の → 「病気の（口語）」など — 同じパック内で ill（病気の）と ja が同一。互いに accept には入れたが、訳だけでは一つに決まらない |
+| ngsl15 | latter: 後者の・後者 → 「後者の」 — pos が 形 なのに名詞の訳も併記されている |
+| ngsl15 | musical: 音楽の → 「音楽の・音楽好きな」 — 例文訳は「音楽好きな」で ja と一致していない |
+| ngsl16 | seed: 種 → 種（たね） — 「種」だけだと「しゅ・種類」(kind/species) とも読める |
+| ngsl16 | self: 自分自身 → 自己・自我 — 「自分自身」だと myself / oneself と打つ学習者が多そう（代名詞なので accept には入れていない） |
+| ngsl16 | diet: 食事・ダイエット → 日常の食事・ダイエット — 「食事」だけだと meal と打つ可能性が高い（meal は accept に入れた） |
+| ngsl16 | dozen: 12個・ダース → 1ダース（12個） — 数語扱いで accept は入れていないが、「12個」だけだと twelve と打つ可能性あり |
+| ngsl17 | reporter: 記者 / journalist: ジャーナリスト・記者 → both cards share 記者 in the same pack; cross-accepted, but consider 「（新聞・テレビの）記者」 for reporter |
+| ngsl17 | convention: 大会 → 「（業界の）大会・会議・慣習」 — 大会 alone invites tournament/competition, which is not this sense |
+| ngsl17 | corporation: 株式会社 → 「法人・大企業」 — corporation is not specifically 株式会社 (that is a joint-stock company) |
+| ngsl17 | dish: 料理 → 「料理・皿」 — the primary sense 皿 is missing; a learner thinking 料理 may type food/cuisine (accepted) |
+| ngsl17 | excuse: 許す → 「（軽い失礼を）許す・言い訳」 — 許す alone points to forgive/allow (forgive, pardon accepted) |
+| ngsl17 | retain: 保持する (level easy) → 「保持する・保管する」 — the example uses 保管 sense; also the easy level looks off for this word |
+| ngsl18 | gate: 搭乗口 → 門・搭乗口 — gate の基本義は「門」。搭乗口だけだと学習者が gate にたどり着きにくい |
+| ngsl18 | pitch: 売り込み → 売り込み（sales pitch） — 単独の pitch は「投球・音の高さ」が先に浮かび、訳から一意に決まりにくい |
+| ngsl18 | fault: せい・過失 → 責任・過失 — 「せい」は blame/responsibility も連想される |
+| ngsl18 | input: 意見・入力 → （求められた）意見・入力 — 「意見」だけなら opinion/feedback が第一候補になる |
+| ngsl19 | alter: 変える → 変更する・改める — 同パック内の transform(変える)と ja が完全に同じ。両者に相互 accept を付けたが、ja を分けたほうがよい |
+| ngsl19 | transform: 変える → 一変させる・変形させる — alter と ja が同じ（上記）。例文訳も「一変させた」なので寄せる案 |
+| ngsl19 | platform: 乗り場 → （駅の）ホーム・乗り場 — 「乗り場」だけだと stop / stand（バス・タクシー乗り場）も正解になりうる。プラットホームと分かる訳が望ましい |
+| ngsl19 | pupil: 生徒・瞳 → 生徒・児童 — 「生徒」の訳では student を打つ学習者が大半で、pupil が出てきにくい。「児童」を併記すると pupil に寄る |
+| ngsl19 | anymore: もう（〜ない） → （否定文で）もはや — no longer と同義で、1 語の別解が立てられない訳。現状でも可だが注記 |
+| ngsl19 | false: 誤った・偽の → 偽の・間違った — 「誤った」単独だと wrong / incorrect / mistaken の方が自然で、false はやや二義的（真偽の「偽」） |
+| ngsl20 | knee: 膝 → 膝（ひざ関節） — 膝は lap（膝の上）とも訳せるので lap を accept に入れた。訳を絞るなら「膝（関節）」 |
+| ngsl20 | vice: 副〜（___ president など） → そのまま — vice は接頭辞的用法で pos 形は便宜上。別解なし |
+| ngsl20 | mate: 仲間 → 仲間・相棒 — 仲間だけだと companion/fellow/colleague など候補が広い（companion/buddy/fellow を入れた） |
+| ngsl20 | deposit: 保証金・預金 → 保証金・頭金・預金 — 「預金」だけなら savings が最初に浮かぶ（savings を入れた） |
+| ngsl21 | cap: ぼうし → （つばの付いた）ぼうし・キャップ — 「ぼうし」だけでは hat が第一候補になる（hat を accept に入れた） |
+| ngsl21 | greatly: 大いに・非常に → 大いに・大幅に — 「非常に」は very を強く連想させる（very / extremely を accept に入れたが、ja を直すなら外してよい） |
+| ngsl21 | successfully: うまく・首尾よく → 首尾よく・無事に — 「うまく」は well を連想させるが well は accept にできない |
+| ngsl21 | eastern: 東の・東部の → 東部の・東側の — 「東の」は east でも正しい（east を accept に入れた） |
+| ngsl22 | whilst: 〜する間・一方で（=while） → 〜する間・一方で — ja に別解 while が書かれており、accept の while と重なる（ヒントとして残すなら要判断） |
+| ngsl22 | sake: 〜のため（for the ___ of） → 〜のため（for the ___ of） — 訳が熟語の穴埋め形式で他カードと体裁が異なる（問題はないが要確認） |
+| ngsl22 | personnel: 人事 → 職員・人員（人事部） — personnel の中心義は「職員・人員」で、「人事」単独だと human resources を連想させる |
+| ngsl22 | gallery: 美術館 → 画廊・美術館 — gallery の中心義は画廊で、「美術館」だけだと museum と区別がつかない（museum を accept に入れた） |
+| ngsl22 | march: 3月・行進 → 3月・行進 — 3月の意味では大文字 March なので、小文字出題との整合を確認 |
+| ngsl23 | magic: 魔法・手品 → 魔法 — 同パックの trick (手品・いたずら) と「手品」が重なるので相互に accept を入れたが、ja を分けた方が明快 |
+| ngsl23 | trick: 手品・いたずら → いたずら・策略 — magic と「手品」が重なる（上記と同じ理由） |
+| ngsl23 | ocean: 海・大洋 → 大洋・大海 — 「海」だけ見ると sea が第一候補になる（sea を accept に入れた） |
+| ngsl23 | distinct: はっきり異なる・明確な → はっきり異なる・独特の — 「明確な」は clear/obvious が先に浮かび、distinct の中心義からやや外れる |
+| ngsl23 | compose: 作曲する・構成する → 作曲する・（詩文を）書く — 「構成する」は constitute/make up が先に浮かぶ |
+| ngsl23 | regardless: 〜にかかわらず → （〜に）かかわらず・それでも — 訳が前置詞句 regardless of 前提で、単独副詞の用法が見えにくい |
+| ngsl24 | rice: ご飯 → 米・ご飯 — 「ご飯」は食事（meal）とも取れる |
+| ngsl24 | uncertainty: 不確かさ・不安 → 不確実さ・不確かさ — 「不安」だと anxiety/worry を強く連想する |
+| ngsl24 | immigration: 移民・入国審査 → 移住・入国審査 — 「移民」は人（immigrant）と読める |
+| ngsl24 | found: 設立する — 訳は問題ないが find の過去形と同形で、出題時に混乱しやすい（参考） |
