@@ -99,7 +99,7 @@
 
 ## 7. CSV
 
-`#adminExport` でダウンロード。列: `email, displayName, segment, lastActiveDay, activeDays7, activeDays30, wordsMastered, streakCurrent, level, tags, note`。
+`#adminExport` でダウンロード。列: `email, displayName, segment, lastActiveDay, activeDays7, activeDays30, wordsMastered, streakCurrent, level, plan, tags, note`。
 ブラウザの中で文字列を組み立てて `spelldash-players-YYYY-MM-DD.csv` として保存するだけで、サーバーにも外部にも送らない。
 BOM 付き UTF-8（Excel で文字化けしない）。値はダブルクォートでくくり、`=` `+` `-` `@` で始まる値には `'` を前置する（表計算ソフトの数式として実行されないため）。
 
