@@ -15,21 +15,21 @@ export function renderPlayModes({ onChallenge, onDaily } = {}) {
       id: "challenge",
       label: "Challenge",
       desc: "60秒で何語打てるか",
-      action: `<button type="button" class="play-modes__go" data-mode="challenge">遊ぶ</button>`
+      action: `<button type="button" class="play-modes__go" data-mode="challenge">始める</button>`
     },
     {
       id: "daily",
       label: "Daily Dash",
-      desc: "毎日同じ10語。全員と順位を競う",
+      desc: "毎日同じ問題で60秒。順位が出る",
       action: isDailyPlayedToday()
         ? `<button type="button" class="play-modes__go play-modes__go--ghost" data-mode="daily">今日の結果</button>`
-        : `<button type="button" class="play-modes__go" data-mode="daily">挑戦</button>`
+        : `<button type="button" class="play-modes__go" data-mode="daily">始める</button>`
     },
     {
       id: "battle",
       label: "Battle",
       desc: "CPU・友だちと対戦",
-      action: `<a class="play-modes__go" href="./battle.html">対戦</a>`
+      action: `<a class="play-modes__go" href="./battle.html">始める</a>`
     }
   ];
 

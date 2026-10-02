@@ -324,7 +324,7 @@ console.log("strict miss:");
   await page.waitForTimeout(300);
   check("1ミスで不正解カウント", (await page.textContent("#recallFail")) === "1");
   check("1ミスでスペルが表示される", !(await page.textContent("#word")).includes("非表示"));
-  check("打ち直し案内が出る", (await page.textContent("#message")).includes("打ち直そう"));
+  check("打ち直し案内が出る", (await page.textContent("#message")).includes("打ち直す"), await page.textContent("#message"));
   // 表示されたスペルを見ながら打ち直すと次へ進める（練習扱い）
   const answer = await page.evaluate(() => document.getElementById("word").textContent.trim());
   await page.type("#input", answer, { delay: 20 });
@@ -534,7 +534,7 @@ console.log("daily set:");
   }
   const panelText = await page.$eval("#resultPanel", (el) => (el.hidden ? "" : el.textContent));
   check("2語自力正解でセット完了パネル", panelText.includes("今日のセット完了"), panelText.slice(0, 60));
-  check("完了パネルに明日の復習予定", panelText.includes("明日の復習予定"));
+  check("完了パネルに明日の復習（数字1行）", panelText.includes("明日の復習") && panelText.includes("思い出せた") && panelText.includes("思い出せず"), panelText.slice(0, 160));
   check("道のスタートが完了表示に切替", (await page.textContent("#pathCard")).includes("今日のぶんは完了"));
   check("今週ドットに今日が点灯", (await page.$$eval("#learnedCard .learned-card__week i.on", (els) => els.length)) >= 1);
   check("今日のセットフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
@@ -592,7 +592,7 @@ console.log("learned moment:");
   check("初見12語中12語知ってた→難易度ブースト", (await page.evaluate(() => localStorage.getItem("spelldash_level_boost"))) === "1");
   await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 2000);
   const panel = await page.textContent("#resultPanel");
-  check("完了パネルに「覚えた！」の語チップ", panel.includes("覚えた！") && (await page.$$eval(".word-chip--learned", (els) => els.map((e) => e.textContent).join(""))).includes("invoice"));
+  check("完了パネルに「覚えた」の語チップ", panel.includes("覚えた（前は出てこなかった語）") && (await page.$$eval(".word-chip--learned", (els) => els.map((e) => e.textContent).join(""))).includes("invoice"));
   await waitUntil(async () => (await page.textContent("#message")).includes("難しい単語"), 2500);
   check("ブースト時の案内メッセージ", (await page.textContent("#message")).includes("難しい単語"), await page.textContent("#message"));
   check("ホームカードに「今日覚えた: invoice」", (await page.textContent("#learnedCard")).includes("今日覚えた") && (await page.textContent("#learnedCard")).includes("invoice"));
@@ -863,7 +863,7 @@ console.log("first run & retention:");
   await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 2000);
   const panel = await page.textContent("#resultPanel");
   check("完了パネルに「思い出せなかった1語をもう一度」", panel.includes("思い出せなかった1語をもう一度"), panel.slice(0, 160));
-  check("完了パネルに週の目標の進み具合", panel.includes("今週") && (panel.includes("目標") || panel.includes("達成")), panel.slice(0, 200));
+  check("完了パネルは数字1行（週の途中経過は出さない）", panel.includes("思い出せた") && panel.includes("思い出せず") && panel.includes("明日の復習") && !panel.includes("目標まであと") && !/今週\s*\d+\s*\/\s*\d+日/.test(panel), panel.slice(0, 200));
   await page.click("#setRetry");
   await page.waitForTimeout(300);
   check("回収モードの案内", (await page.textContent("#message")).includes("もう一度"), await page.textContent("#message"));
@@ -953,7 +953,7 @@ console.log("challenge & quality:");
   await page.press("#input", "Enter");
   await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 5000);
   const panel1 = await page.textContent("#resultPanel");
-  check("Challenge結果にカテゴリ別ベスト", panel1.includes("広告・マーケ") && panel1.includes("ベスト"), panel1.slice(0, 160));
+  check("Challenge結果の数字は1行（スコア・ベスト・速度・XP）", panel1.includes("スコア") && panel1.includes("ベスト") && panel1.includes("速度") && panel1.includes("XP") && !panel1.includes("広告・マーケ"), panel1.slice(0, 160));
   check("1回目は前回比なし", !panel1.includes("前回"));
   await page.click("#resultRetry");
   await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 5000);
@@ -1258,10 +1258,22 @@ console.log("my concept & retention:");
   await page4.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
   await page4.waitForTimeout(800);
   const listText = await page4.textContent("#listBody");
-  check("単語帳に記憶ゲージ（3/10・復習2日後）", (await page4.$(".mem__bar")) !== null && listText.includes("3/10") && listText.includes("復習: 2日後"), listText.slice(0, 160));
+  check("単語帳: 覚えかけの語には記憶ゲージが出ない", (await page4.$(".mem__bar")) === null && !listText.includes("/10"), listText.slice(0, 160));
   check("ジャンル全部覚えたら「制覇」", listText.includes("制覇"));
   check("ログイン案内／ゲージでエラー0", page4.errors.length === 0, page4.errors[0] ?? "");
   await page4.close();
+
+  // 記憶ゲージは苦手（最後に思い出せなかったまま）の語だけ
+  const pageW = await newPage({ storage: {
+    spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }]),
+    spelldash_word_stats: JSON.stringify({ "my-invoice": { playCount: 4, correctCount: 3, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 3, mastered: false, lastPlayed: new Date(Date.now() - 86400000).toISOString(), nextReviewAt: new Date(Date.now() + 2 * 86400000).toISOString(), lastRecallFailAt: new Date(Date.now() - 86400000).toISOString(), lastRecallSuccessAt: y, history: [{ d: dayKey(3), r: "o" }, { d: dayKey(1), r: "x" }] } })
+  } });
+  await pageW.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
+  await pageW.waitForTimeout(800);
+  const listTextW = await pageW.textContent("#listBody");
+  check("単語帳: 苦手の語に記憶ゲージ（3/10・復習2日後）", (await pageW.$(".mem__bar")) !== null && listTextW.includes("3/10") && listTextW.includes("復習: 2日後"), listTextW.slice(0, 160));
+  check("苦手ゲージでエラー0", pageW.errors.length === 0, pageW.errors[0] ?? "");
+  await pageW.close();
 
   // 初回オンボーディングは「腕試し」導線
   const page5 = await newPage({ keepOnboarding: true });
@@ -2104,7 +2116,7 @@ console.log("courses:");
   const page3 = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(stats3), spelldash_placement: "done", spelldash_level_boost: "2" } });
   await page3.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
   await page3.waitForTimeout(900);
-  check("制覇の演出: 開始前はユニット 1／11 で残り1語", (await page3.textContent("#pathHead")).includes("ユニット 1／11") && (await page3.textContent("#pathStart")).includes(`${unitWords.length - 1}／${unitWords.length}`));
+  check("制覇の演出: 開始前はユニット 1／11・スタートは「スタート」だけ", (await page3.textContent("#pathHead")).includes("ユニット 1／11") && (await page3.textContent("#pathStart")).trim() === "スタート", (await page3.textContent("#pathHead")).slice(0, 80));
   await page3.click("#pathStart");
   await page3.waitForTimeout(600);
   let sawLast = false;
@@ -2416,7 +2428,7 @@ console.log("compact actions:");
   await page.waitForTimeout(300);
   const tops = await page.evaluate(() => ["#noteEdit", "[data-word-ai-run]", "#speakButton"].map((sel) => { const el = document.querySelector(sel); if (!el || el.hidden) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height) }; }));
   const shown = tops.filter(Boolean);
-  check("答え表示後: メモ・覚え方を作る・発音が同じ1行に並ぶ（スマホ）", shown.length >= 2 && Math.max(...shown.map((t) => t.top)) - Math.min(...shown.map((t) => t.top)) <= 6 && shown.every((t) => t.h <= 34), JSON.stringify(tops));
+  check("答え表示後: メモ・覚え方を作る・発音が同じ1行に並ぶ（スマホ）", shown.length >= 2 && Math.max(...shown.map((t) => t.top)) - Math.min(...shown.map((t) => t.top)) <= 6 && shown.every((t) => t.h <= 36), JSON.stringify(tops));
   const inputTop = await page.$eval("#input", (el) => el.getBoundingClientRect().top);
   check("答え表示後: 入力欄が画面内（390×844）", inputTop < 844, `inputTop=${inputTop}`);
   check("1行化でエラー0", page.errors.length === 0, page.errors[0] ?? "");

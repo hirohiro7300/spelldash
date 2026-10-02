@@ -16,7 +16,8 @@
   <link rel="stylesheet" href="./css/theme.css" />
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
-  <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
+  <meta name="theme-color" content="#f7f6f2" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
 
 
   <meta name="description" content="SpellDash の利用規約。無料で使える範囲、Pro（有料プラン）の条件、禁止事項、免責。" />
@@ -29,7 +30,6 @@
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
@@ -81,7 +81,7 @@
       <ul>
         <li>Pro は月額または年額の自動更新のプランです。内容と税込の料金は<a href="./pro.html">加入画面</a>に表示します</li>
         <li>決済は Stripe が処理します。カード番号は本サービスのサーバーに渡りません</li>
-        <li>更新日に自動で決済されます。解約はいつでもでき、プロフィールの「お支払いの管理」から行えます。解約後も支払い済みの期間の終わりまで Pro を使えます。日割りの返金はしません</li>
+        <li>更新日に自動で決済されます。解約はいつでもでき、設定の「お支払いの管理」から行えます。解約後も支払い済みの期間の終わりまで Pro を使えます。日割りの返金はしません</li>
         <li>料金を変える場合は、変更の 30 日前までに本サービス上でお知らせします。変更後の料金は次の更新から適用されます</li>
         <li>Pro をやめても、学習データとマイ単語帳の内容は消えません。無料の範囲を超えるぶんは、新しく追加できなくなるだけです</li>
         <li>販売事業者・連絡先・支払方法などは<a href="./tokushoho.html">特定商取引法に基づく表記</a>に記載します</li>
@@ -112,7 +112,7 @@
       <h3>8. 免責</h3>
       <ul>
         <li>本サービスは学習の成果（試験の合格・点数など）を保証しません</li>
-        <li>端末やブラウザのデータ消去、通信障害などによる学習データの消失について、運営者は責任を負いません。プロフィールの「バックアップ」で定期的に書き出すことをおすすめします</li>
+        <li>端末やブラウザのデータ消去、通信障害などによる学習データの消失について、運営者は責任を負いません。設定の「バックアップ」で定期的に書き出すことをおすすめします</li>
         <li>運営者の故意または重大な過失による場合を除き、本サービスの利用によって生じた損害の賠償は、Pro の利用者については直近 1 か月に支払った料金を上限とします</li>
       </ul>
 
@@ -159,7 +159,7 @@
         <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
       </nav>
 
-      <p class="site-footer__copy">© 2026 SpellDash</p>
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
     </div>
   </footer>
   <script type="module">

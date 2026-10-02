@@ -1,233 +1,37 @@
-/* ===== ライトテーマ（標準） =====
-   既存CSSはダーク基調のまま残し、html:is([data-theme="light"], [data-theme="paper"]) で上書きする。
-   ダーク系（dark／indigo）ではこのファイルは何も適用されない。 */
+/* ===== theme.css =====
+   かつての「ライトテーマ上書き（slate／blue／amber の旧パレット）」は Batch 38 で全て削除した。
+   色はトークン（css/tokens.css）と、各部品の CSS（brand／card／home／pages／path／battle／pro）が
+   html[data-theme] 付きで持つ。ここに残すのは、土台が game.css の旧パレットしか無く、
+   card.css を読まないページ（list.html の単語詳細など）で露出する部品のトークン穴埋めだけ。
+   新しい上書きをここに足さない。部品側（pages.css など）に移せたら、この規則は消す。 */
 
-/* ---- 汎用テキスト ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .account-menu__hint,
-html:is([data-theme="light"], [data-theme="paper"]) .account-menu__email {
-  color: #526070;
+/* 単語詳細の「覚え方を作る」（js/wordAi.js）: list.html では card.css が無い */
+html[data-theme] .word-ai__button {
+  border: 1px solid var(--line);
+  background: var(--paper-3);
+  color: var(--ink-2);
 }
 
-html:is([data-theme="light"], [data-theme="paper"]) .hidden-word {
-  color: #526070;
+html[data-theme] .word-ai__button:hover {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
 }
 
-/* ---- カード類（白背景＋淡い枠） ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .game-card,
-html:is([data-theme="light"], [data-theme="paper"]) .stat-card,
-html:is([data-theme="light"], [data-theme="paper"]) .daily,
-html:is([data-theme="light"], [data-theme="paper"]) .level-bar,
-html:is([data-theme="light"], [data-theme="paper"]) .result-card,
-html:is([data-theme="light"], [data-theme="paper"]) .mix-control,
-html:is([data-theme="light"], [data-theme="paper"]) .news-item,
-html:is([data-theme="light"], [data-theme="paper"]) .daily-rank,
-html:is([data-theme="light"], [data-theme="paper"]) .arena-panel,
-html:is([data-theme="light"], [data-theme="paper"]) .word-list-fold {
-  background: #ffffff;
-  border-color: #dbe2ec;
-  color: #0f172a;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+html[data-theme] .word-ai {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper-3);
+  color: var(--ink);
 }
 
-html:is([data-theme="light"], [data-theme="paper"]) .stat-card span,
-html:is([data-theme="light"], [data-theme="paper"]) .level-bar__xp {
-  color: #526070;
-}
+html[data-theme] .word-ai__mnemonic { color: var(--ink); }
+html[data-theme] .word-ai__example { color: var(--ink-2); }
+html[data-theme] .word-ai__ja { color: var(--ink-3); }
+html[data-theme] .word-ai__pitfall { color: var(--warn); }
+html[data-theme] .word-ai__error { color: var(--ink-3); }
 
-html:is([data-theme="light"], [data-theme="paper"]) .stat-card strong,
-html:is([data-theme="light"], [data-theme="paper"]) .level-bar__title {
-  color: #0f172a;
-}
-
-/* ---- 入力まわり ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .input-wrapper input,
-html:is([data-theme="light"], [data-theme="paper"]) .account-menu--login input {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #0f172a;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .input-wrapper input::placeholder,
-html:is([data-theme="light"], [data-theme="paper"]) .account-menu--login input::placeholder {
-  color: #94a3b8;
-}
-
-/* ---- ヘッダーメニュー・ボタン ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .account-menu {
-  background: #ffffff;
-  border-color: #dbe2ec;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .account-menu__item {
-  color: #334155;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .account-menu__item:hover {
-  background: rgba(15, 23, 42, 0.06);
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .account-menu__item--danger {
-  color: #dc2626;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .btn.btn--google {
-  border: 1px solid #cbd5e1;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .big-timer--danger {
-  border-color: rgba(220, 38, 38, 0.6);
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .correct {
-  color: #16a34a;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .wrong {
-  color: #dc2626;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .combo--on {
-  color: #d97706;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .combo--hot {
-  color: #ea580c;
-}
-
-/* ---- リザルトパネル ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .result-panel {
-  background: #f8fafc;
-  border-color: #dbe2ec;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .result-panel__action--ghost {
-  background: rgba(15, 23, 42, 0.06);
-  color: #334155;
-}
-
-/* ---- はちゃん ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .hasumi__bubble {
-  background: rgba(141, 112, 255, 0.1);
-  border-color: rgba(110, 96, 169, 0.35);
-  color: #4c3f8f;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .hasumi__avatar {
-  background: #ffffff;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .progress-bar {
-  background: #e2e8f0;
-}
-
-/* ---- Battleページ ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .battle-verdict--win { color: #16a34a; }
-html:is([data-theme="light"], [data-theme="paper"]) .battle-verdict--loss { color: #dc2626; }
-html:is([data-theme="light"], [data-theme="paper"]) .battle-verdict--draw { color: #d97706; }
-
-/* battle.cssの薄グレー文字を読める濃さに */
-html:is([data-theme="light"], [data-theme="paper"]) .arena-panel,
-html:is([data-theme="light"], [data-theme="paper"]) .arena-panel p,
-html:is([data-theme="light"], [data-theme="paper"]) .battle-hero p {
-  color: #334155;
-}
-
-/* ---- 視認性追修正（ライト） ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .logo {
-  background: rgba(59, 130, 246, 0.1);
-  color: #1d4ed8;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .word-count,
-html:is([data-theme="light"], [data-theme="paper"]) .word-filter {
-  color: #475569;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .preseason-tag {
-  border-color: #cbd5e1;
-  color: #526070;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .word-item {
-  background: #ffffff;
-  border-color: #dbe2ec;
-  color: #334155;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]) .combo--blaze { color: #d97706; }
-html:is([data-theme="light"], [data-theme="paper"]) .combo--max { color: #ca8a04; }
-
-html:is([data-theme="light"], [data-theme="paper"]) .my-word__status--learning { background: rgba(37, 99, 235, 0.1); }
-
-html:is([data-theme="light"], [data-theme="paper"]) .message.learned { color: #b45309; }
-html:is([data-theme="light"], [data-theme="paper"]) .hist__o { background: #16a34a; }
-html:is([data-theme="light"], [data-theme="paper"]) .hist__x { background: #dc2626; }
-html:is([data-theme="light"], [data-theme="paper"]) .known-words { color: #526070; }
-
-html:is([data-theme="light"], [data-theme="paper"]) .note-save { border-color: #cbd5e1; color: #475569; }
-html:is([data-theme="light"], [data-theme="paper"]) .note-save:hover { background: #f1f5f9; color: #0f172a; }
-html:is([data-theme="light"], [data-theme="paper"]) .note-input { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
-html:is([data-theme="light"], [data-theme="paper"]) .note-chip { border-color: #cbd5e1; color: #475569; }
-html:is([data-theme="light"], [data-theme="paper"]) .note-chip--has { border-color: #f59e0b; background: rgba(245, 158, 11, 0.08); color: #92400e; }
-html:is([data-theme="light"], [data-theme="paper"]) .leech-tag { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
-html:is([data-theme="light"], [data-theme="paper"]) .feedback-modal__backdrop { background: rgba(15, 23, 42, 0.35); }
-html:is([data-theme="light"], [data-theme="paper"]) .feedback-modal__panel { background: #ffffff; border-color: #dbe2ec; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2); }
-html:is([data-theme="light"], [data-theme="paper"]) .feedback-modal__head h3 { color: #0f172a; }
-html:is([data-theme="light"], [data-theme="paper"]) .feedback-modal__lead { color: #334155; }
-html:is([data-theme="light"], [data-theme="paper"]) .feedback-modal__panel textarea, html:is([data-theme="light"], [data-theme="paper"]) .feedback-modal__panel input { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
-html:is([data-theme="light"], [data-theme="paper"]) .feedback-modal__status { color: #15803d; }
-html:is([data-theme="light"], [data-theme="paper"]) .feedback-modal__note { color: #526070; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-item strong { color: #0f172a; }
-
-html:is([data-theme="light"], [data-theme="paper"]) .install__done { color: #15803d; }
-
-html:is([data-theme="light"], [data-theme="paper"]) button.learned-item__en { color: #0f172a; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-detail__status--learning { background: rgba(37, 99, 235, 0.1); }
-html:is([data-theme="light"], [data-theme="paper"]) .word-detail__status--known { background: rgba(245, 158, 11, 0.12); }
-
-html:is([data-theme="light"], [data-theme="paper"]) .rank-up { background: radial-gradient(circle at center, rgba(245, 158, 11, 0.18), rgba(255, 255, 255, 0.7) 70%); }
-html:is([data-theme="light"], [data-theme="paper"]) .rank-up__inner { background: #ffffff; border-color: #f59e0b; box-shadow: 0 0 60px rgba(245, 158, 11, 0.3); }
-html:is([data-theme="light"], [data-theme="paper"]) .rank-up__label { color: #92400e; }
-html:is([data-theme="light"], [data-theme="paper"]) .rank-up__title { color: #526070; }
-html:is([data-theme="light"], [data-theme="paper"]) .rank-up__title b { color: #b45309; text-shadow: none; }
-html:is([data-theme="light"], [data-theme="paper"]) .rank-up__sub { color: #334155; }
-html:is([data-theme="light"], [data-theme="paper"]) .offline-banner { background: #fffbeb; border-color: #f59e0b; color: #92400e; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15); }
-
-html:is([data-theme="light"], [data-theme="paper"]) .gcard__status--learning { background: rgba(37, 99, 235, 0.1); }
-html:is([data-theme="light"], [data-theme="paper"]) .gcard__status--known { background: rgba(245, 158, 11, 0.12); }
-
-html:is([data-theme="light"], [data-theme="paper"]) .my-tab--active { border-color: #2563eb; }
-html:is([data-theme="light"], [data-theme="paper"]) .mem { color: #526070; }
-html:is([data-theme="light"], [data-theme="paper"]) .mem__bar { background: #e2e8f0; }
-html:is([data-theme="light"], [data-theme="paper"]) .login-nudge__text b { color: #0f172a; }
-
-html:is([data-theme="light"], [data-theme="paper"]) :focus-visible { outline-color: #2563eb; }
-
-/* ---- ホーム v2（ライト） ---- */
-html:is([data-theme="light"], [data-theme="paper"]) .today { background: #ffffff; border-color: rgba(37, 99, 235, 0.3); }
-html:is([data-theme="light"], [data-theme="paper"]) .today .learned-card { border-top-color: #e2e8f0; }
-html:is([data-theme="light"], [data-theme="paper"]) .strip__chip { background: #f8fafc; border-color: #dbe2ec; color: #334155; }
-html:is([data-theme="light"], [data-theme="paper"]) .strip__chip b { color: #0f172a; }
-html:is([data-theme="light"], [data-theme="paper"]) .strip__chip--on { background: rgba(22, 163, 74, 0.08); border-color: #86efac; color: #15803d; }
-html:is([data-theme="light"], [data-theme="paper"]) .strip__chip--streak.strip__chip--on { background: rgba(249, 115, 22, 0.08); border-color: #fdba74; color: #c2410c; }
-html:is([data-theme="light"], [data-theme="paper"]) .setup { background: #f8fafc; border-color: #e2e8f0; }
-
-/* ===== Batch 7b: 覚え方AI・生成カード編集（ライト） ===== */
-html:is([data-theme="light"], [data-theme="paper"]) .word-ai__button { border-color: #a78bfa; background: #f5f3ff; color: #6d28d9; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-ai { border-color: #ddd6fe; background: #f5f3ff; color: #1e293b; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-ai__mnemonic { color: #5b21b6; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-ai__example { color: #334155; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-ai__ja { color: #526070; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-ai__pitfall { color: #b45309; }
-html:is([data-theme="light"], [data-theme="paper"]) .cardgen__field--answer { color: #1d4ed8; }
-html:is([data-theme="light"], [data-theme="paper"]) .cardgen__field--sub { color: #475569; }
-
-html:is([data-theme="light"], [data-theme="paper"]) .pack { border-color: #e2e8f0; background: #fff; }
-
-html:is([data-theme="light"], [data-theme="paper"]) .word-example__en b { color: #b45309; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-example__ja { color: #526070; }
-html:is([data-theme="light"], [data-theme="paper"]) .word-example__speak { border-color: #cbd5e1; color: #334155; }
-html:is([data-theme="light"], [data-theme="paper"]) .gcard__ex { color: #334155; }
-
-html:is([data-theme="light"], [data-theme="paper"]) .level-bar__remaining { color: #2f6fc4; }
+/* 単語帳カードの例文・「知ってた」一覧・ログイン案内の強調（土台は game.css の旧色） */
+html[data-theme] .gcard__ex { color: var(--ink-2); }
+html[data-theme] .known-words { color: var(--ink-3); }
+html[data-theme] .login-nudge__text b { color: var(--ink); }

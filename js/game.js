@@ -239,6 +239,9 @@ export function setMode(newMode) {
   localStorage.setItem(MODE_KEY, newMode);
 
   document.body.classList.toggle("mode-study", mode === "study");
+  // カード下の数字のラベル: Study は「思い出せた」、Challenge は「正解」（index.html の初期値は Study 側）
+  const scoreLabel = elements.score?.previousElementSibling;
+  if (scoreLabel && scoreLabel.tagName === "SPAN") scoreLabel.textContent = mode === "study" ? "思い出せた" : "正解";
 
   document.querySelectorAll(".mode-switch__btn").forEach((btn) => {
     btn.classList.toggle("mode-switch__btn--active", btn.dataset.mode === mode);
@@ -249,9 +252,9 @@ export function setMode(newMode) {
 
 function showIdleMessage() {
   if (mode === "study") {
-    showMessage("Enterで開始。分からない単語はEnterで答えを見る");
+    showMessage("Enter で開始");
   } else {
-    showMessage("Enterで開始（60秒チャレンジ）");
+    showMessage("Enter で開始（60秒）");
   }
 }
 
@@ -268,7 +271,9 @@ export function stopGame() {
   stopBgm();
   currentWord = null;
   dailyRun = null; // 中断したDailyはロックせず、カードからやり直せる
-  elements.japanese.textContent = mode === "study" ? "Study Mode" : "Challenge Mode";
+  document.body.classList.remove("set-done");
+  elements.japanese.textContent = ""; // 内部モード名（Study Mode 等）は出さない。完了の見出しは結果パネルの 1 つだけ
+  setPromptLabel("");
   renderPromptContext(null);
   showHiddenWordText("");
   updateCombo(0);
@@ -311,8 +316,8 @@ export function startGame(options = {}) {
   if (getWordsByCategory(activeCategory).length === 0) {
     showMessage(
       activeCategory === "my"
-        ? "マイ単語帳はまだ空です。学習データ → マイ単語帳 から追加できます"
-        : "単語データを読み込み中です…"
+        ? "マイ単語帳はまだ空。単語帳ページから追加する"
+        : "単語データを読み込み中"
     );
     return;
   }
@@ -322,6 +327,7 @@ export function startGame(options = {}) {
   // フォーカスモード: 時間制ラン中はスマホで周辺UIを畳む（1画面1目的）。
   // Studyは終了の概念がないため対象外（モード切替手段を奪わない）
   document.body.classList.toggle("is-playing", mode === "challenge");
+  document.body.classList.remove("set-done"); // 前回の結果画面の畳みを解く
   if (mode === "challenge") startBgm(); // 時間制ランのみBGM（Studyは静かに集中）
   hideResultPanel();
   score = 0;
@@ -352,13 +358,8 @@ export function startGame(options = {}) {
   updateBigTimer();
   renderPlayScore();
 
-  showMessage(
-    dailyRun
-      ? "Daily Dash。今日の問題は全員共通。60秒で何語打てるか"
-      : mode === "study"
-        ? "思い出してタイプ。分からなければEnter"
-        : "日本語訳を見てスペルを入力"
-  );
+  // 出題中の案内は入力欄の上の 1 本（#word の「分からないときは Enter で答えを表示」）だけ。下の行は結果にだけ使う
+  showMessage("");
 
   // Study: Recall Loopキューを構築（Unresolved → Mission Review → 復習期限 → Mission New → 通常）
   if (mode === "study") {
@@ -383,11 +384,11 @@ export function startGame(options = {}) {
   // セットの中身を先に伝える（何をやるか分かってから始める）
   if (mode === "study") {
     if (retry) {
-      showMessage(`思い出せなかった ${retry.length}語をもう一度。全部自力で打てたら回収完了`, "revealed");
+      showMessage(`思い出せなかった ${retry.length}語をもう一度`, "revealed");
     } else if (resume) {
       showMessage(`前回の続きから。あと ${Math.max(0, currentSetSize() - setRecalled.size)}語で今日のセット完了`, "revealed");
     } else if (isPlacementRun()) {
-      showMessage("まず腕試し10語。知ってる語はそのまま打って、知らない語はEnterで答えを見てOK", "revealed");
+      showMessage("腕試し 10語。知らない語は Enter", "revealed");
     } else {
       const c = composition ?? getQueueComposition();
       const parts = [];
@@ -462,7 +463,7 @@ function triggerEnter() {
       if (answerMatches(currentWord, typed)) {
         finishFreeWord();
       } else {
-        showMessage("違った。表示された答えのとおりに打つ", "wrong");
+        showMessage("違う。答えのとおりに打つ", "wrong");
         elements.input.value = "";
       }
       return;
@@ -485,7 +486,7 @@ function triggerEnter() {
       dailyRun.emoji.push("⬛");
     }
     setNewWord();
-    showMessage(mode === "study" ? "思い出してタイプ。分からなければEnter" : "");
+    showMessage("");
   }
 }
 
@@ -563,7 +564,7 @@ export function handleCompositionEnd() {
   if (/[^a-z\s]/i.test(elements.input.value)) {
     elements.input.value = typedSoFar;
     updateTypedPreview(typedSoFar);
-    showMessage("キーボードを英字モードにしてね", "wrong");
+    showMessage("キーボードを英字モードに", "wrong");
     return;
   }
   handleTextInput();
@@ -636,7 +637,7 @@ function markRecallFail() {
     if (consecutiveFails === 3 && insertBreather()) {
       const toast = document.getElementById("learnToast");
       if (toast) {
-        toast.innerHTML = hasumiBubbleHtml({ mood: "normal", text: "3つ続けて出てこないのは誰でもあるよ。次は思い出せる語を1つ挟むね！" }, "hasumi--result");
+        toast.innerHTML = hasumiBubbleHtml({ mood: "normal", text: "3つ続けて出てこないのは、よくある。次は思い出せる語を1つ挟む。" }, "hasumi--result");
         toast.hidden = false;
         clearTimeout(toast._timer);
         toast._timer = setTimeout(() => {
@@ -707,15 +708,21 @@ function revealAnswer(fromMiss = false) {
   showMessage(
     fromMiss
       ? freeMode
-        ? "違った。答えを見て、もう一度打ってみよう（Enterで判定）"
-        : "違った。正しいスペルを見て打ち直そう"
+        ? "違う。答えを見て打ち直す（Enter で判定）"
+        : "違う。答えを見て打ち直す"
       : leech
-        ? `答えを表示。${stat.recallFail}回目の難敵。覚え方をメモしておくと残る`
+        ? `${stat.recallFail}回目の難敵。覚え方をメモすると残る`
         : freeMode
-          ? "答えを表示。打って練習（Enterで判定）or 空のままEnterで次へ"
-          : "答えを表示。入力して練習 or Enterで次へ",
+          ? "打って練習するか、空のまま Enter で次へ"
+          : "打って練習するか、Enter で次へ",
     fromMiss ? "wrong" : "revealed"
   );
+
+  // 画面キーボードが出ていると、答え・例文・操作チップの分だけ入力欄が盤面の下に落ちる。見える位置へ戻す
+  // （html:has(body.osk-open) の scroll-padding-bottom が盤面の高さ分を確保している）
+  if (document.body.classList.contains("osk-open")) {
+    elements.input.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
 }
 
 // ===== 全文入力モードの判定 =====
@@ -742,7 +749,7 @@ function submitFreeAnswer(typed) {
         : diff.typed
           ? `${diff.index + 1}語目が違う: あなたは「${diff.typed}」、答えは「${diff.expected}」`
           : `${diff.index + 1}語目「${diff.expected}」から先が足りない`;
-      showMessage(`違った。${where}。答えを見て、もう一度打ってみよう（Enterで判定）`, "wrong");
+      showMessage(`違う。${where}。答えを見て打ち直す（Enter で判定）`, "wrong");
     }
   }
 }
@@ -1111,17 +1118,14 @@ function completeWord() {
   if (mode === "study") {
     applyStudyXp(earned, missionResult, loopResult, learnEvent);
     if (consumeBoostNote()) {
-      setTimeout(() => showMessage("知ってる語が多いみたい。少し難しい単語も混ぜていくね", "revealed"), 1200);
+      setTimeout(() => showMessage("知っている語が多い。少し難しい単語も混ぜる", "revealed"), 1200);
     }
     announcePlacement();
   } else {
     gainedXp += earned;
 
-    if (missionResult.justCompleted) {
-      showMessage(`MISSION COMPLETE +${missionResult.bonusXp} XP`, "correct");
-    } else {
-      showMessage(`正解 +${wordXp} XP`, "correct");
-    }
+    // Challenge 中の XP は結果パネルの 1 か所にまとめる（打っている最中に動く数字を増やさない）
+    showMessage(missionResult.justCompleted ? "ミッション達成" : "正解", "correct");
   }
 
   // Challenge/Daily: 待ち時間ゼロで次の単語へ（60秒×30語で7.5秒あった空白をなくす）。
@@ -1252,7 +1256,7 @@ function renderSetWordChips() {
   const group = (title, ids, cls) =>
     ids.length ? `<div class="word-chips"><span class="word-chips__title">${title}</span>${ids.map((id) => chip(id, cls)).join("")}</div>` : "";
   return (
-    group("覚えた！（前は出てこなかった語）", learned, "word-chip--learned") +
+    group("覚えた（前は出てこなかった語）", learned, "word-chip--learned") +
     group("思い出せた（さっき見た語）", recovered, "word-chip--recovered") +
     group("思い出せず（また出す）", failed, "word-chip--failed")
   );
@@ -1288,7 +1292,10 @@ function endStudySession() {
   pushSync();
   window.dispatchEvent(new CustomEvent("spelldash:session-end", { detail: { recalled, failed: failedIds.length, retry: isRetry } })); // ホームの道を描き直す
 
-  elements.japanese.textContent = "Study Mode";
+  // 完了画面: 出題 UI は畳む（body.set-done → css/card.css）。完了の事実は見出し 1 つ、数字は 1 行
+  document.body.classList.add("set-done");
+  elements.japanese.textContent = "";
+  setPromptLabel("");
   showHiddenWordText("");
   const meta = document.getElementById("wordMeta");
   if (meta) meta.textContent = "";
@@ -1305,33 +1312,28 @@ function endStudySession() {
   const dueWords = getDueReviewWords(activeCategory, tomorrow.getTime(), 3);
   const tomorrowLine =
     dueTomorrow > 0
-      ? `<div class="result-panel__tomorrow">明日は <b>${dueWords.map((w) => w.en).join("・")}</b>${dueTomorrow > dueWords.length ? ` など${dueTomorrow}語` : ""} の復習から</div>`
+      ? `<div class="result-panel__tomorrow">明日は <b>${dueWords.map((w) => w.en).join("・")}</b>${dueTomorrow > dueWords.length ? ` ほか${dueTomorrow - dueWords.length}語` : ""}から</div>`
       : `<div class="result-panel__tomorrow">明日の復習はまだ無い。新しい語から</div>`;
 
-  // 週の目標（学習日数）: ちょうど達成した日は一言添える
+  // 週の目標（学習日数）: ちょうど達成した日だけ一言添える（途中経過の数字は出さない。数字は 1 行の原則）
   const goal = getWeekGoal();
   const activeDays = getActiveDaysThisWeek();
-  const goalLine =
-    activeDays >= goal
-      ? `<div class="result-panel__goal">今週の目標 ${goal}日 達成（${activeDays}日目）</div>`
-      : `<div class="result-panel__goal result-panel__goal--progress">今週 ${activeDays} / ${goal}日 ・ 目標まであと${goal - activeDays}日</div>`;
+  const goalLine = activeDays === goal ? `<div class="result-panel__goal">今週の目標 ${goal}日 達成</div>` : "";
 
   const panel = document.getElementById("resultPanel");
   if (panel) {
     const hasumiLine = isRetry
       ? failed === 0
-        ? { mood: "happy", text: `${recalled}語ぜんぶ回収！さっき出てこなかった語が、もう自分のものだよ！` }
-        : { mood: "happy", text: `${recalled}語回収！残りはまた明日、一緒に確認しよう！` }
+        ? { mood: "happy", text: "全部回収した。" }
+        : { mood: "normal", text: "残りは明日また出す。" }
       : hasumiSetLine({ count: recalled, failed, sets: state.setsToday });
     panel.innerHTML = `
       <div class="result-panel__title">${isRetry ? "回収完了" : "今日のセット完了"}</div>
       ${hasumiBubbleHtml(hasumiLine, "hasumi--result")}
       <div class="result-panel__grid">
-        <div><span>思い出せた</span><strong>${recalled}語</strong></div>
-        ${isRetry ? "" : `<div><span>うち復習</span><strong>${setReviewCount}</strong></div>
-        <div><span>新しく覚えた</span><strong>${setNewCount}</strong></div>`}
+        <div><span>思い出せた</span><strong>${recalled}</strong></div>
         <div><span>思い出せず</span><strong>${failed}</strong></div>
-        <div><span>明日の復習予定</span><strong>${dueTomorrow}語</strong></div>
+        <div><span>明日の復習</span><strong>${dueTomorrow}語</strong></div>
       </div>
       ${renderSetWordChips()}
       ${tomorrowLine}
@@ -1339,13 +1341,12 @@ function endStudySession() {
       <div class="result-panel__actions">
         ${failed > 0 ? `<button type="button" class="result-panel__action" id="setRetry">思い出せなかった${failed}語をもう一度</button>` : ""}
         <button type="button" class="result-panel__action${failed > 0 ? " result-panel__action--ghost" : ""}" id="setAgain">もう1セット</button>
-        <button type="button" class="result-panel__action result-panel__action--ghost" id="setChallenge">Challengeで腕試し</button>
+        <button type="button" class="result-panel__action result-panel__action--ghost" id="setChallenge">Challenge（60秒）</button>
         ${canInstall() ? `<button type="button" class="result-panel__action result-panel__action--ghost" id="setInstall">ホーム画面に追加</button>` : ""}
       </div>
-      <div class="result-panel__tagline">今日も、はちゃんと少しだけ。</div>
     `;
     panel.hidden = false;
-    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
     panel.querySelectorAll("[data-speak]").forEach((chip) => chip.addEventListener("click", () => speak(chip.dataset.speak)));
     document.getElementById("setRetry")?.addEventListener("click", () => {
       clearInterval(timer);
@@ -1368,7 +1369,7 @@ function endStudySession() {
     });
   }
 
-  showMessage(isRetry ? `回収完了。${recalled}語をもう一度思い出せた` : `今日のぶん完了。${recalled}語思い出せた`, "finished");
+  showMessage(""); // 完了の事実はパネルの見出しが言う
 }
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
@@ -1395,24 +1396,25 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
   if (result.leveledUp) {
     playLevelUpEffect();
     sfxLevelUp();
-    celebrateRankUp(result);
-    showMessage(
-      `レベルアップ Lv.${result.after.level}「${result.after.title}」${unlockNoteForLevel(result.after.level)}`,
-      "finished"
-    );
+    // ランクが変わる節目はオーバーレイ 1 つ、それ以外は 1 行。両方は出さない
+    if (!celebrateRankUp(result)) {
+      showMessage(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}`, "finished");
+    } else {
+      showMessage("思い出せた", "correct");
+    }
     return;
   }
 
   if (streak.isFirstToday) {
     const shieldNote = streak.earnedShield ? " ・ シールド獲得" : "";
     if (streak.earnedShield) sfxSparkle();
-    showMessage(`${streak.current}日連続 +${earned} XP${shieldNote}`, "correct");
+    showMessage(`${streak.current}日連続${shieldNote}`, "correct");
     return;
   }
 
   if (missionResult.justCompleted) {
     sfxComplete();
-    showMessage(`MISSION COMPLETE +${missionResult.bonusXp} XP`, "correct");
+    showMessage(`ミッション達成 +${missionResult.bonusXp} XP`, "correct");
     return;
   }
 
@@ -1459,7 +1461,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     return;
   }
 
-  showMessage(earned > 0 ? `正解 +${earned} XP` : "正解", "correct");
+  showMessage("正解", "correct");
 }
 
 // 打ち間違い: 答えは表示しない（覚えていたかどうかとは別のデータとして記録）
@@ -1482,7 +1484,7 @@ function handleTypingMiss(expectedChar = currentWord?.en[currentIndex], typedCha
   }
 
   // 答え表示後の練習中のミスは表示のみ
-  showMessage("違った", "wrong");
+  showMessage("違う。もう一度", "wrong");
 }
 
 function setNewWord() {
@@ -1545,12 +1547,11 @@ function setNewWord() {
     ? "英文を入力してEnter"
     : currentWord.blank
       ? freeMode ? "空欄の英語を入力してEnter" : "空欄の英語を入力"
-      : freeMode ? "答えを入力してEnter（日本語OK）" : "英単語を入力";
+      : freeMode ? "答えを入力して Enter（日本語可）" : "英単語を入力";
 
-  const promptLabel = document.querySelector("#gameCard .label");
-  if (promptLabel) {
-    // 品詞（pos）があるレベル別パックの語は「日本語訳（動）」のように添える。訳の曖昧さを減らす
-    promptLabel.textContent = currentWord.calc
+  // 品詞（pos）があるレベル別パックの語は「日本語訳（動）」のように添える。訳の曖昧さを減らす
+  setPromptLabel(
+    currentWord.calc
       ? "計算（数字で答える）"
       : listenMode
         ? "音を聞いて打つ（Tab か 発音 でもう一度）"
@@ -1561,13 +1562,13 @@ function setNewWord() {
           : currentWord.school
             ? currentWord.kanjiOnly
               ? "説明に合う語を漢字で答える"
-              : "説明に合う語を答える（漢字でも、ひらがなでもOK）"
+              : "説明に合う語を答える（漢字でも、ひらがなでも可）"
             : isConceptWord(currentWord)
               ? "場面（これは何のこと？）"
             : currentWord.pos
               ? `日本語訳（${currentWord.pos}）`
-              : "日本語訳";
-  }
+              : "日本語訳"
+  );
   elements.japanese.textContent = listenMode ? "聞いて打つ" : promptOf(currentWord);
   renderPromptContext(listenMode ? null : currentWord);
   if (currentWord.calc) elements.input.placeholder = "数字を入力してEnter（例: 8000 / 5%）";
@@ -1577,7 +1578,7 @@ function setNewWord() {
       : currentWord.bank
         ? `並べ替え: ${bankWords.join(" / ")}`
         : currentWord.write
-          ? "英文を丸ごと打つ（大文字・句読点は気にしなくてOK）。分からないときは Enter"
+          ? "英文を打つ（大文字・句読点は不問）。分からないときは Enter"
       : currentWord.blank
         ? "空欄に入る語を英語で。分からないときは Enter で答えを表示"
         : freeMode
@@ -1611,6 +1612,12 @@ function isAmbiguousPrompt(word) {
   if (!word || isConceptWord(word) || word.write || word.blank || word.calc || word.school) return false;
   if (!String(word.ja ?? "").trim()) return false;
   return getWordsByCategory(activeCategory).some((w) => w.id !== word.id && w.en !== word.en && jaLooksSame(word.ja, w.ja));
+}
+
+// カード上部のラベル（「日本語訳（動）」など）。完了・停止時は空にする
+function setPromptLabel(text) {
+  const promptLabel = document.querySelector("#gameCard .label");
+  if (promptLabel) promptLabel.textContent = text;
 }
 
 function renderPromptContext(word) {
@@ -1685,9 +1692,10 @@ function chooseWord() {
     let weight = 3;
 
     if (data) {
-      weight += data.missCount * 3;
+      // 古い word_stats には missCount 等が無いことがある。NaN にすると Array(NaN) で落ちるので安全に読む
+      weight += (Number(data.missCount) || 0) * 3;
 
-      const accuracy = data.correctCount / Math.max(data.playCount, 1);
+      const accuracy = (Number(data.correctCount) || 0) / Math.max(Number(data.playCount) || 0, 1);
       if (accuracy < 0.5) weight += 5;
       if (data.mastered) weight = 1;
       // 復習期日が来ている語はChallengeでも優先（Challengeが復習にもなる）
@@ -1699,7 +1707,7 @@ function chooseWord() {
       weight += 8;
     }
 
-    return Array(weight).fill(word);
+    return Array(Math.max(1, Math.round(weight) || 1)).fill(word);
   });
 
   let selected = weightedWords[Math.floor(Math.random() * weightedWords.length)];
@@ -1718,10 +1726,15 @@ function endChallenge() {
   markActiveToday();
   snapshotGrowth();
   document.body.classList.remove("is-playing");
+  document.body.classList.add("set-done"); // 出題 UI を畳んで結果パネルだけにする（css/card.css）
   stopBgm();
   elements.input.disabled = true;
   updateBigTimer();
   renderPlayScore();
+  setPromptLabel("");
+  elements.japanese.textContent = "";
+  showHiddenWordText("");
+  renderExplain(null);
 
   const isDaily = !!dailyRun;
   const previousBest = getBestScore();
@@ -1790,14 +1803,10 @@ function endChallenge() {
   elements.bestScore.textContent = getBestScore();
   updateCombo(0);
 
-  // 今日最初のプレイならストリークボーナス
+  // 今日最初のプレイならストリークボーナス（XP の内訳は書かない。合計は結果パネルの 1 か所）
   const streak = updateStreak();
-  let bonusText = "";
-
   if (streak.isFirstToday) {
     gainedXp += 50;
-    const shieldNote = streak.earnedShield ? " ・ シールド獲得" : "";
-    bonusText = `（今日の初プレイ +50 XP ・ ${streak.current}日連続${shieldNote}）`;
     renderHeaderStreak();
     renderHasumiHome();
   }
@@ -1805,81 +1814,66 @@ function endChallenge() {
   const result = addXp(gainedXp);
   renderLevelBar();
 
+  // 結果の事実はパネルだけに書く（メッセージ行は空にして二重に言わない）
+  showMessage("");
+  let levelLine = "";
   if (result.leveledUp) {
     playLevelUpEffect();
     sfxLevelUp();
-    celebrateRankUp(result);
-    showMessage(
-      `レベルアップ Lv.${result.after.level}「${result.after.title}」 +${gainedXp} XP${unlockNoteForLevel(result.after.level)}`,
-      "finished"
-    );
-    renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun, categoryBestBefore, categoryBestUpdated });
-    return;
-  }
-
-  if (isDaily) {
+    // ランクが変わる節目はオーバーレイ 1 つ、それ以外はパネルに 1 行。両方は出さない
+    if (!celebrateRankUp(result)) levelLine = `Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}`;
+  } else if (isDaily) {
     sfxComplete();
-    showMessage(`Daily Dash 終了。スコア ${score} / +${gainedXp} XP（また明日）${bonusText}`, "finished");
-    renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun });
-    return;
   }
-
-  showMessage(`終了。スコア ${score} / +${gainedXp} XP ${bonusText}`, "finished");
-  renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun, categoryBestBefore, categoryBestUpdated });
+  renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun, categoryBestBefore, categoryBestUpdated, levelLine });
 }
 
 // ===== 終了リザルトパネル =====
 // メッセージ1行では終了の満足感と次のアクションが弱いため、
 // スコア・ベスト更新・次の一手（もう一回/シェア）をカード内に見せる
-function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0, previousRun = null, categoryBestBefore = 0, categoryBestUpdated = false }) {
+function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0, previousRun = null, categoryBestBefore = 0, categoryBestUpdated = false, levelLine = "" }) {
   const panel = document.getElementById("resultPanel");
   if (!panel) return;
 
-  // ベスト更新 or ベストまでの差分（次にもう一回押す理由を作る）
+  // 見出し 1 つ・数字 1 行。ベストの値は数字の行に入れるので、ここは「更新した」という事実と前回比だけ
   let bestBadge = "";
   if (isBest) {
-    bestBadge = `<div class="result-panel__best">ベスト更新${previousBest > 0 ? ` +${score - previousBest}` : ""}</div>`;
-  } else if (previousBest > 0) {
-    bestBadge = `<div class="result-panel__gap">ベスト ${previousBest} まであと <b>${previousBest + 1 - score}</b></div>`;
+    bestBadge = `<div class="result-panel__best">ベスト更新</div>`;
   }
   // 前回比（1回ごとの伸び）
-  if (previousRun != null) {
-    const diff = score - previousRun;
-    bestBadge += `<div class="result-panel__diff${diff > 0 ? " result-panel__diff--up" : diff < 0 ? " result-panel__diff--down" : ""}">前回 ${previousRun} → 今回 ${score}（${diff > 0 ? `+${diff}` : diff === 0 ? "同じ" : diff}）</div>`;
+  const diff = previousRun != null ? score - previousRun : null;
+  if (diff != null) {
+    bestBadge += `<div class="result-panel__diff${diff > 0 ? " result-panel__diff--up" : diff < 0 ? " result-panel__diff--down" : ""}">前回 ${previousRun} → ${score}（${diff > 0 ? `+${diff}` : diff === 0 ? "同じ" : diff}）</div>`;
   }
-  // カテゴリ別ベスト（「すべて」以外で挑戦した時）
-  if (!isDaily && activeCategory !== "all") {
+  // カテゴリ別ベスト: 全体ベストと同時には出さない。更新したときだけ、初回は「初記録」
+  if (!isDaily && !isBest && activeCategory !== "all" && categoryBestUpdated) {
     const label = getCategoryLabel(activeCategory);
-    bestBadge += categoryBestUpdated
-      ? `<div class="result-panel__cat">「${label}」のベスト更新 ${categoryBestBefore > 0 ? `${categoryBestBefore} → ` : ""}${score}</div>`
-      : `<div class="result-panel__cat">「${label}」のベスト ${categoryBestBefore}</div>`;
+    bestBadge += `<div class="result-panel__cat">このカテゴリでは${categoryBestBefore > 0 ? "ベスト更新" : "初めての記録"}</div>`;
   }
+  if (levelLine) bestBadge += `<div class="result-panel__level">${levelLine}</div>`;
   const title = isDaily ? "Daily Dash 結果" : "Challenge 結果";
 
   const actions = isDaily
-    ? `<button type="button" class="result-panel__action" id="resultStudy">苦手をStudyで復習</button>`
+    ? `<button type="button" class="result-panel__action" id="resultStudy">苦手を復習</button>`
     : `<button type="button" class="result-panel__action" id="resultRetry">もう一回</button>
-       <button type="button" class="result-panel__action result-panel__action--ghost" id="resultStudy">苦手をStudyで復習</button>`;
+       <button type="button" class="result-panel__action result-panel__action--ghost" id="resultStudy">苦手を復習</button>`;
 
   panel.innerHTML = `
     <div class="result-panel__title">${title}</div>
     ${bestBadge}
-    ${hasumiBubbleHtml(hasumiResultLine({ isBest, isDaily }), "hasumi--result")}
+    ${hasumiBubbleHtml(hasumiResultLine({ isBest, isDaily, diff }), "hasumi--result")}
     <div class="result-panel__grid">
       <div><span>スコア</span><strong>${score}</strong></div>
-      <div><span>思い出せず</span><strong>${recallFailCount}</strong></div>
-      <div><span>ミスタイプ</span><strong>${typingMissCount}</strong></div>
+      <div><span>ベスト</span><strong>${getBestScore()}</strong></div>
       <div><span>速度</span><strong>${(Math.round(speed * 10) / 10).toFixed(1)}打/秒</strong></div>
-      <div><span>獲得XP</span><strong>+${gainedXp}</strong></div>
+      <div><span>経験値</span><strong>+${gainedXp} XP</strong></div>
     </div>
     <div class="result-panel__actions">${actions}</div>
-    <div class="result-panel__tagline">今日も、はちゃんと少しだけ。</div>
   `;
   panel.hidden = false;
 
-  // モバイルではパネルが画面外（ゲームカードの下）に出るため、結果を見える位置へ。
-  // すでに見えていればblock:"nearest"は何もしない
-  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  // 結果は見出しから見せる（scroll-margin-top はヘッダー分。css/card.css）
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
 
   document.getElementById("resultRetry")?.addEventListener("click", () => {
     restartGame();
@@ -1908,15 +1902,23 @@ function celebrateRankUp(result) {
   overlay.setAttribute("role", "status");
   overlay.innerHTML = `
     <div class="rank-up__inner">
-      <div class="rank-up__label">RANK UP</div>
+      <div class="rank-up__label">ランクアップ</div>
       <div class="rank-up__title"><span>${beforeTitle}</span><i>→</i><b>${afterTitle}</b></div>
-      <div class="rank-up__sub">Lv.${result.after.level} 到達${unlockNoteForLevel(result.after.level)}</div>
+      <div class="rank-up__sub">${unlockNoteForLevel(result.after.level).replace(/^。/, "")}</div>
     </div>
   `;
   document.body.appendChild(overlay);
   sfxSparkle();
-  setTimeout(() => overlay.classList.add("rank-up--out"), 2200);
-  setTimeout(() => overlay.remove(), 2800);
+  // 1.2 秒で静かに消える。タップでも閉じられる（次の一手を待たせない）
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    overlay.classList.add("rank-up--out");
+    setTimeout(() => overlay.remove(), 220);
+  };
+  overlay.addEventListener("pointerdown", close);
+  setTimeout(close, 1200);
   return true;
 }
 

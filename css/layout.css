@@ -1,7 +1,7 @@
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-  background: linear-gradient(135deg, #0f172a, #1e293b, #111827);
-  color: #f8fafc;
+  font-family: var(--font-ui);
+  background: var(--paper);
+  color: var(--ink);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -94,29 +94,32 @@ body {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  color: #fff;
-  font-size: 16px;
-  font-weight: 800;
-  box-shadow: 0 0 0 2px transparent;
-  transition: box-shadow 0.15s ease;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: none;
+  transition: background var(--ease);
 }
 
 .avatar-button:hover .avatar,
 .avatar-button[aria-expanded="true"] .avatar {
-  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.6);
+  background: var(--ink-2);
 }
 
+/* ドロップダウンの面: 紙色＋1px 罫線。影・ぼかしは使わない */
 .account-menu {
   min-width: 220px;
   display: grid;
   gap: 2px;
   padding: 8px;
-  border-radius: 14px;
-  background: rgba(15, 23, 42, 0.96);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(14px);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  border: 1px solid var(--line-2);
+  box-shadow: none;
+  backdrop-filter: none;
+  color: var(--ink);
 }
 
 /* ログイン用パネル */
@@ -128,36 +131,40 @@ body {
 
 .account-menu__hint {
   margin: 0;
-  color: #94a3b8;
+  color: var(--ink-3);
   font-size: 12px;
+  line-height: 1.6;
 }
 
 .account-menu--login input {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.6);
-  color: #f8fafc;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-2);
+  background: var(--paper-2);
+  color: var(--ink);
   outline: none;
   font-size: 14px;
 }
 
 .account-menu--login input::placeholder {
-  color: #94a3b8;
+  color: var(--ink-4);
 }
 
 .account-menu--login input:focus {
-  border-color: #60a5fa;
+  border-color: var(--signal);
+  box-shadow: var(--focus);
 }
 
-.btn.btn--google {
-  background: #fff;
-  color: #1f2937;
+/* Google は副ボタンの見た目（罫線＋透明地）。brand.css の .btn（墨の塗り）に勝つ詳細度にする */
+html[data-theme] .btn.btn--google {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-2);
 }
 
-.btn.btn--google:hover {
-  background: #e2e8f0;
+html[data-theme] .btn.btn--google:hover {
+  background: var(--paper-3);
 }
 
 .account-menu__divider {
@@ -165,7 +172,7 @@ body {
   align-items: center;
   gap: 10px;
   margin: 2px 0;
-  color: #64748b;
+  color: var(--ink-3);
   font-size: 12px;
 }
 
@@ -174,16 +181,16 @@ body {
   content: "";
   flex: 1;
   height: 1px;
-  background: rgba(148, 163, 184, 0.25);
+  background: var(--line);
 }
 
 .account-menu__email {
   margin: 0 0 4px;
   padding: 8px 12px;
-  color: #94a3b8;
+  color: var(--ink-3);
   font-size: 13px;
   word-break: break-all;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-bottom: 1px solid var(--line);
 }
 
 .account-menu__item {
@@ -191,9 +198,9 @@ body {
   width: 100%;
   padding: 10px 12px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: none;
-  color: #e2e8f0;
+  color: var(--ink);
   font-size: 14px;
   font-weight: 600;
   text-align: left;
@@ -202,11 +209,12 @@ body {
 }
 
 .account-menu__item:hover {
-  background: rgba(148, 163, 184, 0.14);
+  background: var(--paper-3);
+  color: var(--ink);
 }
 
 .account-menu__item--danger {
-  color: #f87171;
+  color: var(--signal-ink);
 }
 
 /* ===== ボタン共通 ===== */
@@ -237,8 +245,8 @@ body {
   margin: 0 0 14px;
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(59, 130, 246, 0.18);
-  color: #93c5fd;
+  background: var(--paper-3);
+  color: var(--ink-3);
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -336,11 +344,7 @@ html.native-app .account-menu__native {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #cbd5e1;
-}
-
-html:is([data-theme="light"], [data-theme="paper"]).native-app .account-menu__native {
-  color: #334155;
+  color: var(--ink-2);
 }
 
 html.native-app #welcomeLogin {

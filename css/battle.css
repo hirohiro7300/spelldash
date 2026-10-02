@@ -8,7 +8,7 @@
   border: 1px solid var(--line-2);
   border-radius: 999px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -56,10 +56,13 @@
 }
 
 .battle-start-btn {
-  flex: 1;
-  padding: 12px 24px;
-  font-size: 15px;
+  flex: 0 0 auto;
+  min-width: 160px;
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 /* ページに1つの朱: スタート */

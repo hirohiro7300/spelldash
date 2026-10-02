@@ -12,7 +12,7 @@ const KEY = "spelldash_theme";
 
 export const THEMES = { light: "light", dark: "dark", paper: "light", indigo: "dark" };
 const PRO_THEMES = new Set(["paper", "indigo"]);
-const THEME_COLOR = { light: "#f4f6fb", dark: "#0f172a", paper: "#f3ecdd", indigo: "#121a2b" };
+const THEME_COLOR = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }; // tokens.css の --paper と同じ
 
 export function isProTheme(theme) {
   return PRO_THEMES.has(theme);

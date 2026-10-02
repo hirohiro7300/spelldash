@@ -245,7 +245,7 @@ function showResult(summary) {
   const promotion = $("resultPromotion");
   promotion.hidden = !outcome.promoted;
   if (outcome.promoted) {
-    promotion.textContent = `RANK UP — ${outcome.rankAfter.label}`;
+    promotion.textContent = `ランクアップ — ${outcome.rankAfter.label}`;
   }
 
   // Recall Loopへの接続: Passした単語はlastRecallFailAtによりUnresolved化済み。

@@ -33,6 +33,7 @@ export function renderLearnedCard() {
       : `${current.label}: 覚えた ${current.learned} / ${current.total} ・ 苦手 ${current.weak} ・ 知ってた ${current.known}`;
   // ジャンルで絞っている時は、そのジャンルの進みを見せる
   const genre = getGenre();
+  let genreNonZero = false;
   if (genre && current.id !== "all") {
     const stats = getWordStats();
     const words = applyGenre(getWordsByCategory(current.id), genre);
@@ -49,6 +50,7 @@ export function renderLearnedCard() {
       if (st === "weak") weakG++;
     }
     currentLine = `${genreLabel(genre)}: 覚えた ${learnedG} / ${totalG} ・ 苦手 ${weakG}${learnedG === totalG && totalG > 0 ? " ・ 制覇" : ""}`;
+    genreNonZero = learnedG + weakG > 0;
   }
 
   const learnedToday = getLearnedWordsToday();
@@ -69,12 +71,18 @@ export function renderLearnedCard() {
       ? `今週の目標達成 ${activeDays}/${goal}日 ${dots}`
       : `今週 <b>${activeDays}</b>/${goal}日 ${dots}`;
 
-  const showBreakdown = all.learning + all.mastered + all.weak + all.known > 0 || genre;
+  // 内訳の行は数字が全部 0 のときは出さない（0 の羅列は情報ではない）
+  const showBreakdown =
+    genre && current.id !== "all" ? genreNonZero : current.id === "all" ? all.learning + all.mastered + all.weak + all.known > 0 : current.learned + current.weak > 0;
+
+  // 折りたたみの見出しにも数字を出す（「覚えた単語 28 ・ Daily Dash」）
+  const summary = document.querySelector("#homeMore > summary > span");
+  if (summary) summary.textContent = `覚えた単語 ${all.learned} ・ Daily Dash`;
 
   el.innerHTML = `
     <div class="learned-card__main">
       <span class="learned-card__label">覚えた単語</span>
-      <span class="learned-card__num">${all.learned}<small> / ${all.total}</small></span>
+      <span class="learned-card__num">${all.learned}</span>
       ${week > 0 ? `<span class="learned-card__today">今週 +${week}</span>` : today > 0 ? `<span class="learned-card__today">今日 ${today}語</span>` : ""}
     </div>
     <div class="learned-card__today-words">${todayLine}</div>

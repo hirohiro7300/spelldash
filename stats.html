@@ -17,7 +17,8 @@
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
   <link rel="stylesheet" href="./css/pro.css" />
-  <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
+  <meta name="theme-color" content="#f7f6f2" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
 
 
   <meta name="description" content="スコア推移・思い出し成功率・習得の進捗。あなたの学習の記録。" />
@@ -30,7 +31,6 @@
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
@@ -105,7 +105,7 @@
           <div class="dropdown__panel">
             <div class="account-menu" id="accountMenu">
               <p class="account-menu__email" id="userStatus"></p>
-              <a class="account-menu__item" href="./profile.html">プロフィール</a>
+              <a class="account-menu__item" href="./profile.html">設定</a>
               <button
                 class="account-menu__item account-menu__item--danger"
                 id="logoutButton"
@@ -127,8 +127,6 @@
       <p class="subtitle">覚えた語と、続けた日。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
-
-    <section class="level-bar level-bar--line" id="levelBar"></section>
 
     <nav class="stats-tabs" id="statsTabs" aria-label="学習データの表示切替">
       <a href="#week" class="stats-tab" data-tab="week">今週</a>
@@ -207,6 +205,8 @@
       <h3>スコア推移</h3>
       <div id="scoreTrend"></div>
     </section>
+
+    <section class="level-bar level-bar--line" id="levelBar" data-tab="analysis"></section>
 
     <section data-tab="analysis" class="result-card">
       <h3>その他の数字</h3>

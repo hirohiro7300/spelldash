@@ -18,10 +18,10 @@
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
   <link rel="stylesheet" href="./css/admin.css" />
-  <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
+  <meta name="theme-color" content="#f7f6f2" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
 
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
@@ -96,7 +96,7 @@
           <div class="dropdown__panel">
             <div class="account-menu" id="accountMenu">
               <p class="account-menu__email" id="userStatus"></p>
-              <a class="account-menu__item" href="./profile.html">プロフィール</a>
+              <a class="account-menu__item" href="./profile.html">設定</a>
               <button
                 class="account-menu__item account-menu__item--danger"
                 id="logoutButton"

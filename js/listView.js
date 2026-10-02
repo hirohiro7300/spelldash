@@ -84,7 +84,9 @@ initWordStore().then(async () => {
     if (densityButton) densityButton.textContent = compact ? "詳しく表示" : "簡潔表示";
     localStorage.setItem(DENSITY_KEY, compact ? "1" : "0");
   };
-  applyDensity(localStorage.getItem(DENSITY_KEY) === "1");
+  // 既定: 560px 以下は簡潔表示（スマホで 1 語 4 行にしない）。保存値があればそれを優先
+  const savedDensity = localStorage.getItem(DENSITY_KEY);
+  applyDensity(savedDensity == null ? window.matchMedia("(max-width: 560px)").matches : savedDensity === "1");
   densityButton?.addEventListener("click", () => applyDensity(!document.body.classList.contains("list-compact")));
 
   // "/" で検索にフォーカス
@@ -333,8 +335,8 @@ function cardHtml(word, stat) {
         : hasExample(word) ? `<p class="gcard__ex">${exampleHtml(word, { speakButton: false, className: "gcard__ex" })}</p>` : ""}
       <div class="gcard__foot">
         ${historyDotsHtml(stat)}
-        ${memoryGaugeHtml(stat)}
-        ${noteChipHtml(word.id)}
+        ${status === "weak" ? memoryGaugeHtml(stat) : ""}
+        ${noteChipHtml(word.id, { onlyIfHas: true })}
       </div>
     </article>`;
 }

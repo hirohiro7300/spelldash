@@ -2,7 +2,7 @@ import { getCategories, getWordsByCategory, getPackCatalog, isConceptWord } from
 import { groupByGenre } from "./genres.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
-import { getCourse, sectionOf, listCourses, getCourseId } from "./course.js";
+import { getCourse, sectionOf, listCourses, getCourseId, PLACEMENT_NOTE } from "./course.js";
 import { getSetSize, isDailySetDone } from "./dailySet.js";
 import { getDueReviewCount } from "./studyQueue.js";
 import { resumableFor } from "./sessionResume.js";
@@ -69,24 +69,28 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 // 済みユニットの折りたたみを開いたか（この表示の間だけ）
 let doneExpanded = false;
 
-// コース選択パネル（見出しの「コースを変える」で開く）
+// コース選択パネル（見出しの「コースを変える」で開く）。
+// 各コースは1行（太字ラベル＋対象・セクション数）で、行全体がボタン。説明は「説明」で畳む。
+// 560px 以下は画面下から出るシート、それより広い画面は見出しの下に重ねる（どちらも道のスタートは動かない）。
 function courseChooserHtml(currentId) {
   return `
-    <div class="path__courses" id="pathCourses" hidden>
-      <div class="path__courses-head"><b>コースを選ぶ</b><span>進み具合は語ごとに残るので、いつでも戻れます</span></div>
+    <div class="path__courses-backdrop" id="pathCoursesBackdrop" hidden></div>
+    <div class="path__courses" id="pathCourses" role="dialog" aria-label="コースを選ぶ" hidden>
+      <div class="path__courses-head"><b>コースを選ぶ</b><button type="button" class="path__guide path__courses-close" id="pathCoursesClose">閉じる</button></div>
       <ul class="path__courses-list">
         ${listCourses()
-          .map(
-            (c) => `
-          <li class="path__course${c.id === currentId ? " path__course--current" : ""}">
-            <div class="path__course-text">
-              <b>${esc(c.label)}</b>
-              <span>${esc(c.blurb)}</span>
-              <small>${esc(c.audience)} ・ ${c.packs.length}セクション</small>
+          .map((c, i) => {
+            const now = c.id === currentId;
+            const text = `<b>${esc(c.label)}</b><small>${esc(c.audience)} ・ ${c.packs.length}セクション${now ? `<span class="path__course-now">いまのコース</span>` : ""}</small>`;
+            return `
+          <li class="path__course${now ? " path__course--current" : ""}">
+            <div class="path__course-row">
+              ${now ? `<div class="path__course-text">${text}</div>` : `<button type="button" class="path__course-pick" data-course="${esc(c.id)}">${text}</button>`}
+              <button type="button" class="path__course-info" aria-expanded="false" aria-controls="pathCourseBlurb${i}">説明</button>
             </div>
-            ${c.id === currentId ? `<span class="path__course-now">いまのコース</span>` : `<button type="button" class="path__course-pick" data-course="${esc(c.id)}">このコースにする</button>`}
-          </li>`
-          )
+            <p class="path__course-blurb" id="pathCourseBlurb${i}" hidden>${esc(c.blurb)}</p>
+          </li>`;
+          })
           .join("")}
       </ul>
     </div>`;
@@ -126,7 +130,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const startSub = resume
     ? `前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み・残り ${resume.queue.length}語）`
     : firstVisit
-    ? "まず腕試し10語（約2分）。知っている語はそのまま打ち、知らない語は Enter で答えを見る"
+    ? PLACEMENT_NOTE
     : isDailySetDone()
       ? `今日のぶんは完了。もう1セット（${setSize}語）`
       : `今日のセット ${setSize}語・約5分${due > 0 ? ` ・ 復習 ${due}語 待ち` : ""}`;
@@ -159,7 +163,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
         return `
           <li class="path__node path__node--current path__node--${lane}">
             <button type="button" class="path__start${resume ? " path__start--resume" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : "スタート"}: ${esc(u.label)}">
-              <span class="path__tip">${resume ? "途中のセット" : `${count} 語`}</span>${resume ? "続きから" : "スタート"}
+              ${resume ? `<span class="path__tip">途中のセット</span>続きから` : "スタート"}
             </button>
             <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${startSub}</span></div>
           </li>`;
@@ -168,7 +172,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
         return `
           <li class="path__node path__node--done path__node--${lane}">
             <button type="button" class="path__dot" data-unit="${esc(u.tag)}" data-review="1" aria-label="復習: ${esc(u.label)}">${icon("check", { size: 14 })}</button>
-            <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${count}${u.weak > 0 ? ` ・ 苦手 ${u.weak}` : ""} ・ タップで復習</span></div>
+            <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${count}${u.weak > 0 ? ` ・ 苦手 ${u.weak}` : ""} ・ 押して復習</span></div>
           </li>`;
       }
       return `
@@ -194,10 +198,9 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       <div class="path__head-text">
         <span class="path__kicker">${kicker}</span>
         <span class="path__title">${esc(label)}</span>
-        <span class="path__unit">${unitLine}${units.length > 0 && !allDone ? ` <small>・ ${doneCount}／${units.length} 済み</small>` : ""}</span>
+        <span class="path__unit">${unitLine}</span>
       </div>
       <div class="path__head-actions">
-        <a class="path__guide" href="./list.html?category=${encodeURIComponent(path.categoryId === "all" ? "" : path.categoryId)}">一覧</a>
         <button type="button" class="path__guide path__guide--course" id="pathCourse" aria-expanded="false" aria-controls="pathCourses">コースを変える</button>
       </div>
     </div>
@@ -227,16 +230,44 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     btn.addEventListener("click", () => {
       doneExpanded = true;
       renderPath({ onStart, onAdvance, onCourse });
+      // 開いた途端にスタートが画面外に出ないよう、現在地を画面の中央に
+      el.querySelector(".path__node--current")?.scrollIntoView({ block: "center", behavior: "smooth" });
     })
   );
   const courseBtn = el.querySelector("#pathCourse");
   const courses = el.querySelector("#pathCourses");
-  courseBtn?.addEventListener("click", () => {
-    const open = courses.hidden;
+  const backdrop = el.querySelector("#pathCoursesBackdrop");
+  const onEsc = (event) => {
+    if (event.key === "Escape") setCoursesOpen(false);
+  };
+  function setCoursesOpen(open) {
+    if (!courses) return;
     courses.hidden = !open;
-    courseBtn.setAttribute("aria-expanded", String(open));
-  });
-  el.querySelectorAll(".path__course-pick").forEach((btn) => btn.addEventListener("click", () => onCourse?.(btn.dataset.course)));
+    if (backdrop) backdrop.hidden = !open;
+    courseBtn?.setAttribute("aria-expanded", String(open));
+    document.body.classList.toggle("courses-open", open);
+    if (open) document.addEventListener("keydown", onEsc);
+    else document.removeEventListener("keydown", onEsc);
+    if (!open && document.activeElement && courses.contains(document.activeElement)) courseBtn?.focus();
+  }
+  courseBtn?.addEventListener("click", () => setCoursesOpen(courses.hidden));
+  el.querySelector("#pathCoursesClose")?.addEventListener("click", () => setCoursesOpen(false));
+  backdrop?.addEventListener("click", () => setCoursesOpen(false));
+  el.querySelectorAll(".path__course-info").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const blurb = document.getElementById(btn.getAttribute("aria-controls"));
+      if (!blurb) return;
+      const open = blurb.hidden;
+      blurb.hidden = !open;
+      btn.setAttribute("aria-expanded", String(open));
+    })
+  );
+  el.querySelectorAll(".path__course-pick").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      setCoursesOpen(false);
+      onCourse?.(btn.dataset.course);
+    })
+  );
   return path;
 }
 

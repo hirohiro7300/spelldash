@@ -8,12 +8,16 @@ html[data-theme] .path {
   margin: 0 0 16px;
 }
 
-/* ---- 見出し: 飾りのないブロック（キッカー・タイトル・ユニット1行・副ボタン2つ） ---- */
+/* ---- 見出し: 飾りのないブロック（キッカー・タイトル・ユニット1行・「コースを変える」） ---- */
+html[data-theme] #pathHead {
+  position: relative; /* コース選択パネルを見出しの下に重ねる基準 */
+}
+
 html[data-theme] .path__head {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 12px 16px;
+  gap: 8px 16px;
   padding: 4px 0 16px;
   border: 0;
   border-bottom: 1px solid var(--line);
@@ -47,9 +51,9 @@ html[data-theme] .path__title {
 }
 
 html[data-theme] .path__unit {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-3);
   opacity: 1;
 }
 
@@ -208,7 +212,18 @@ html[data-theme] .path__dot--goal {
 /* 現在地: 朱の円に「スタート」。下に語数を小さく */
 html[data-theme] .path__node--current {
   margin: 0;
-  padding: 12px 0 28px;
+  padding: 12px 0 16px;
+}
+
+/* 円の下に補助文（「途中のセット」）があるときだけ、その分の余白 */
+html[data-theme] .path__node--current:has(.path__tip),
+html[data-theme] .path__node--goal:has(.path__tip) {
+  padding-bottom: 28px;
+}
+
+/* 済み: 行を詰めて、開いたときに現在地が遠くならないように */
+html[data-theme] .path__node--done {
+  padding: 6px 0;
 }
 
 html[data-theme] .path__start {
@@ -262,7 +277,7 @@ html[data-theme] .path__tip {
   background: transparent;
   color: var(--ink-3);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
   animation: none;
@@ -387,51 +402,74 @@ html[data-theme] .path__node--goal {
   margin-top: 0;
 }
 
-/* ---- コース選択パネル（カードの規則: 紙2・罫線1px・角丸10） ---- */
+/* ---- コース選択パネル（カードの規則: 紙2・罫線1px・角丸10）。
+   見出しの下に重ねて出す（道のスタートは動かない）。560px 以下は画面下からのシート ---- */
+html[data-theme] .path__courses-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 69;
+  background: transparent;
+}
+
 html[data-theme] .path__courses {
-  margin: 12px 0 0;
-  padding: 16px;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 70;
+  width: min(480px, 100%);
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-2);
   background: var(--paper-2);
   box-shadow: none;
 }
 
 html[data-theme] .path__courses-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  margin-bottom: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-2);
 }
 
 html[data-theme] .path__courses-head b {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--ink);
 }
 
-html[data-theme] .path__courses-head span {
-  font-size: 12px;
-  color: var(--ink-3);
+html[data-theme] .path__courses-close {
+  min-height: 32px;
 }
 
 html[data-theme] .path__courses-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 16px 8px;
   display: block;
 }
 
 html[data-theme] .path__course {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
+  display: block;
+  margin: 0;
+  padding: 0;
   border: 0;
   border-top: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
+}
+
+html[data-theme] .path__course:first-child {
+  border-top: 0;
 }
 
 html[data-theme] .path__course--current {
@@ -439,65 +477,143 @@ html[data-theme] .path__course--current {
   padding-left: 10px;
 }
 
-html[data-theme] .path__course-text {
+html[data-theme] .path__course-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
 }
 
+/* 行全体がボタン: 太字ラベル＋対象・セクション数 */
+html[data-theme] .path__course-pick,
+html[data-theme] .path__course-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin: 0;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+html[data-theme] .path__course-text {
+  cursor: default;
+}
+
+html[data-theme] .path__course-pick:hover {
+  background: transparent;
+  color: var(--ink);
+}
+
+html[data-theme] .path__course-pick:hover b {
+  color: var(--signal-ink);
+}
+
+html[data-theme] .path__course-pick b,
 html[data-theme] .path__course-text b {
   font-size: 14px;
   font-weight: 600;
   color: var(--ink);
 }
 
-html[data-theme] .path__course-text span {
-  font-size: 13px;
-  color: var(--ink-2);
-  line-height: 1.5;
-}
-
+html[data-theme] .path__course-pick small,
 html[data-theme] .path__course-text small {
   font-size: 12px;
   color: var(--ink-3);
 }
 
-html[data-theme] .path__course-pick {
-  flex: none;
-  padding: 6px 12px;
-  border-radius: var(--radius);
-  border: 1px solid var(--line-2);
-  background: transparent;
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  box-shadow: none;
-}
-
-html[data-theme] .path__course-pick:hover {
-  background: var(--paper-3);
-  color: var(--ink);
-}
-
 html[data-theme] .path__course-now {
-  flex: none;
+  margin-left: 8px;
   font-size: 12px;
   font-weight: 600;
   color: var(--signal-ink);
   white-space: nowrap;
 }
 
-@media (max-width: 520px) {
-  html[data-theme] .path__course {
-    flex-direction: column;
-    align-items: stretch;
+/* 説明は畳む（「説明」で開く） */
+html[data-theme] .path__course-info {
+  flex: none;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+html[data-theme] .path__course-info:hover,
+html[data-theme] .path__course-info[aria-expanded="true"] {
+  background: transparent;
+  color: var(--ink);
+}
+
+html[data-theme] .path__course-blurb {
+  margin: 0;
+  padding: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .path__courses-backdrop {
+    background: var(--scrim);
   }
-  html[data-theme] .path__course-pick {
-    align-self: flex-end;
+  html[data-theme] .path__courses {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: 80vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: 0;
+  }
+  html[data-theme] .path__courses-list {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  html[data-theme] .path__courses-close {
+    min-height: 40px;
+  }
+  body.courses-open {
+    overflow: hidden;
+  }
+  /* 見出しの「コースを変える」はキッカー級のテキストリンク（ボタン行で道を下げない） */
+  html[data-theme] .path__head-actions {
+    flex-basis: 100%;
+    margin-left: 0;
+    gap: 12px;
+  }
+  html[data-theme] .path__head-actions .path__guide {
+    padding: 0;
+    border: 0;
+    min-height: 0;
+    font-weight: 500;
+    color: var(--ink-3);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  html[data-theme] .path__head-actions .path__guide:hover,
+  html[data-theme] .path__head-actions .path__guide[aria-expanded="true"] {
+    background: transparent;
+    color: var(--ink);
   }
 }
 
@@ -524,7 +640,8 @@ html[data-theme] .back-to-path {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 7px 12px;
+  min-height: 40px;
+  padding: 0 12px;
   border: 1px solid var(--line-2);
   border-radius: var(--radius);
   background: transparent;
@@ -650,6 +767,59 @@ html[data-theme] .play-modes__lock .icon {
 
 body.home--playing .path__list {
   display: none; /* プレイ中は道を畳んで、見出しの下にゲームカードが来るように */
+}
+
+/* プレイ中の見出し帯は1行: タイトル（14px）・「← 道に戻る」・「設定」だけ。
+   キッカー・ユニット行・コースを変える・チップ・はちゃん・「出題: …」は畳む（1画面1目的）。全幅で同じ */
+body.home--playing .path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+body.home--playing #pathHead {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+body.home--playing .path__head {
+  padding: 0;
+  border-bottom: 0;
+}
+
+body.home--playing .path__head-text {
+  gap: 0;
+}
+
+body.home--playing .path__kicker,
+body.home--playing .path__unit,
+body.home--playing .path__head-actions,
+body.home--playing .path__courses,
+body.home--playing .path__courses-backdrop {
+  display: none;
+}
+
+html[data-theme] body.home--playing .path__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+body.home--playing .play__bar {
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0;
+}
+
+body.home--playing .back-to-path {
+  padding: 0 10px;
 }
 
 body.returning .app--home .hero {

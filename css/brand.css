@@ -14,9 +14,16 @@ html[data-theme] body {
   color: inherit;
 }
 
+/* フォーカスは outline 方式に一本化（box-shadow を持つ部品でも消えない）。入力欄だけ --focus のリング */
 :where(html[data-theme]) :focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+html[data-theme] .input-wrapper :focus-visible,
+html[data-theme] .input-wrapper--battle :focus-visible {
   outline: none;
-  box-shadow: var(--focus);
 }
 
 /* ---- ヘッダー ---- */
@@ -184,7 +191,10 @@ html[data-theme] .typed-preview {
 
 :where(html[data-theme]) input:focus,
 :where(html[data-theme]) textarea:focus,
-:where(html[data-theme]) select:focus {
+:where(html[data-theme]) select:focus,
+:where(html[data-theme]) input:focus-visible,
+:where(html[data-theme]) textarea:focus-visible,
+:where(html[data-theme]) select:focus-visible {
   outline: none;
   border-color: var(--signal);
   box-shadow: var(--focus);
@@ -251,27 +261,42 @@ html[data-theme] .icon {
   color: var(--ink);
 }
 
-/* ---- ヘッダー（スマホ）: ナビが切れないように詰める ---- */
+/* ---- ヘッダー（スマホ）: 横スクロールにしない。詰めて 1 行に収める ---- */
 @media (max-width: 560px) {
   html[data-theme] .site-header__inner {
-    gap: 8px;
+    gap: 6px;
   }
   html[data-theme] .site-nav {
     gap: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  html[data-theme] .site-nav::-webkit-scrollbar {
-    display: none;
+    overflow: visible;
   }
   html[data-theme] .site-nav__link {
-    padding: 8px 7px;
+    padding: 8px 5px;
     font-size: 13px;
     white-space: nowrap;
   }
   html[data-theme] .account .btn--ghost {
-    padding: 6px 10px;
+    padding: 6px 8px;
     font-size: 12px;
+  }
+  /* 連続日数は数字だけ、アバターは 32px */
+  html[data-theme] .header-streak {
+    padding: 4px 7px;
+  }
+  html[data-theme] .header-streak span {
+    display: none;
+  }
+  html[data-theme] .avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+}
+
+/* 400px 未満は「バトル」タブを出さない（ホームの「ほかの遊び方」から入れる） */
+@media (max-width: 399.98px) {
+  html[data-theme] .site-nav__link[href$="battle.html"] {
+    display: none;
   }
 }
 
@@ -294,12 +319,12 @@ html[data-theme] .header-streak {
 
 html[data-theme] .header-streak .icon {
   margin-right: 2px;
-  color: var(--signal);
+  color: var(--ink-2);
 }
 
 html[data-theme] .header-streak span {
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--ink-3);
 }
@@ -323,4 +348,38 @@ html[data-theme] .voice-row {
 
 html[data-theme] .voice-row .setting-select {
   max-width: 260px;
+}
+
+/* ---- 指で押す端末: 副ボタン・チップの当たり判定を 40px（発音／メモは 36px）に。見た目（1px 罫線・13px）は変えない ---- */
+@media (pointer: coarse) {
+  html[data-theme] :is(.btn--sm, .play-modes__go, .path__guide, .path__guide--course, .path__course-pick, .back-to-path, .daily__button, .result-panel__action, .word-detail__close, .feedback-modal__close, .pack__actions .btn--sm, .category-chip, .filter-chip, .genre-chip, .stats-tab, .my-tab, .trend-range button, .packs-jump a, .pp-related a, [data-fold-open], .learned-item__en, .note-chip, .account-menu__item) {
+    min-height: 40px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  html[data-theme] a:is(.btn--sm, .play-modes__go, .path__guide, .pack__actions .btn--sm, .category-chip, .genre-chip, .stats-tab, .packs-jump a, .pp-related a) {
+    display: inline-flex;
+    align-items: center;
+  }
+  html[data-theme] :is(.speak-button, .hint-button, .word-note__edit, .word-ai__button) {
+    height: 36px;
+    min-height: 36px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  html[data-theme] .word-example .speak-button,
+  html[data-theme] .word-example__speak {
+    width: 36px;
+    height: 36px;
+  }
+  html[data-theme] .setting-select {
+    min-height: 44px;
+  }
+  html[data-theme] .voice-row .btn--sm {
+    min-height: 44px;
+    padding: 0 16px;
+  }
+  html[data-theme] .volume-row input[type="range"] {
+    height: 44px;
+  }
 }

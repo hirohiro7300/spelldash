@@ -22,6 +22,8 @@ import { setupUnloadSync } from "./sync.js";
 
 const overviewElement = document.getElementById("overview");
 const typingElement = document.getElementById("typingMetrics");
+let trendsReady = false; // 推移グラフは単語ストアの初期化後にだけ描く（growth log を空の値で上書きしないため）
+let resizeTimer = null;
 
 initializeAuth();
 renderLevelBar();
@@ -43,6 +45,7 @@ function initializeTabs() {
     });
     tabs.forEach((t) => t.classList.toggle("stats-tab--active", t.dataset.tab === tab));
     localStorage.setItem(TAB_KEY, tab);
+    rerenderTrends(); // 隠れていたタブのグラフは幅 0 で描かれているので描き直す
     if (scrollToId) {
       setTimeout(() => document.getElementById(scrollToId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     }
@@ -79,6 +82,7 @@ initWordStore().then(() => {
   renderLearnedWords();
   renderCategoryProgress();
   renderGrowthTrend();
+  trendsReady = true;
   renderWeeklyReport("weeklyReport");
   renderWeakWords();
   initializeWordList();
@@ -126,22 +130,21 @@ function renderOverview() {
   const s = computeSummary();
   const level = getLevelState();
   const streak = getStreak();
+  const all = computeCategoryProgress()[0];
 
-  // 概要は4枚だけ（同じ数字を2か所に出さない）。残りは「分析」タブの「その他の数字」へ
+  // 概要は2枚だけ: 覚えた語数と連続日数（CONCEPT 原則9）。残りは「分析」タブの「その他の数字」へ
   renderCards(overviewElement, [
-    { label: "連続", value: `${streak.current}日` },
-    { label: "学習した単語", value: `${s.learned} / ${s.total}` },
-    { label: "習得", value: s.mastered },
-    { label: "思い出せた率", value: computeRecallRateLabel() }
+    { label: "覚えた", value: `${all.learned}語` },
+    { label: "連続", value: `${streak.current}日` }
   ]);
   const more = document.getElementById("overviewMore");
   if (more) {
     renderCards(more, [
+      { label: "出会った語", value: `${s.learned} / ${s.total}` },
       { label: "ベストスコア", value: s.best },
-      { label: "総XP", value: level.totalXp.toLocaleString() },
+      { label: "経験値", value: level.totalXp.toLocaleString() },
       { label: "最長連続", value: `${streak.best}日` },
-      { label: "正答率", value: `${s.accuracy}%` },
-      { label: "総プレイ", value: s.totalPlays }
+      { label: "プレイ回数", value: s.totalPlays }
     ]);
   }
   renderStreakRepair();
@@ -194,21 +197,20 @@ function renderStreakRepair() {
   container.innerHTML = `<span class="streak-repair__text">連続 <b>${lost.count}</b> 日が ${when} に途切れました。</span>${action}`;
 }
 
-// 思い出し成功率 = 自力正解 / (自力正解 + 思い出せなかった回数)
-// タイピングの正確さではなく「記憶から取り出せた割合」を見る指標
-function computeRecallRateLabel() {
-  const stats = getWordStats();
-  let ok = 0;
-  let fail = 0;
-
-  for (const data of Object.values(stats)) {
-    ok += data.correctCount ?? 0;
-    fail += data.recallFail ?? 0;
-  }
-
-  const total = ok + fail;
-  return total > 0 ? `${Math.round((ok / total) * 100)}%` : "-";
+// 推移グラフは viewBox をカードの実寸に合わせて描く（縮小で軸の文字が 12px 未満にならないように）
+function trendWidth(container) {
+  return Math.max(320, Math.round(container.clientWidth || 640));
 }
+
+function rerenderTrends() {
+  if (!trendsReady) return;
+  renderScoreTrend();
+  renderGrowthTrend();
+}
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(rerenderTrends, 150);
+});
 
 // ===== スコア推移（Challenge / Daily Dashの直近履歴） =====
 
@@ -224,9 +226,9 @@ function renderScoreTrend() {
     return;
   }
 
-  const width = 640;
+  const width = trendWidth(container);
   const height = 180;
-  const pad = { top: 16, right: 12, bottom: 24, left: 30 };
+  const pad = { top: 16, right: 12, bottom: 24, left: 36 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
   const maxScore = Math.max(...log.map((e) => e.score), 1);
@@ -251,8 +253,8 @@ function renderScoreTrend() {
     <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="直近${log.length}回のスコア推移" style="width:100%;height:auto;display:block">
       <line x1="${pad.left}" y1="${baseY}" x2="${width - pad.right}" y2="${baseY}" stroke="var(--line-2)" stroke-width="1"/>
       <line x1="${pad.left}" y1="${gridY}" x2="${width - pad.right}" y2="${gridY}" stroke="var(--line)" stroke-width="1" stroke-dasharray="4 4"/>
-      <text x="${pad.left - 6}" y="${gridY + 4}" text-anchor="end" font-size="11" font-family="var(--font-mono)" fill="var(--ink-3)">${maxScore}</text>
-      <text x="${pad.left - 6}" y="${baseY + 4}" text-anchor="end" font-size="11" font-family="var(--font-mono)" fill="var(--ink-3)">0</text>
+      <text x="${pad.left - 6}" y="${gridY + 4}" text-anchor="end" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${maxScore}</text>
+      <text x="${pad.left - 6}" y="${baseY + 4}" text-anchor="end" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">0</text>
       ${bars}
     </svg>
     <div class="score-trend__legend">
@@ -270,8 +272,8 @@ function renderTyping() {
     { label: "平均タップ / 秒", value: t.tapsPerSecond.toFixed(1) },
     { label: "ミスタイプ率", value: `${t.mistypeRate.toFixed(1)}%` },
     { label: "最高速度（打/秒）", value: t.bestSpeed.toFixed(1) },
-    { label: "推定WPM", value: Math.round(t.wordsPerMinute) },
-    { label: "総タップ数", value: t.totalTaps.toLocaleString() }
+    { label: "1分あたりの語数", value: Math.round(t.wordsPerMinute) },
+    { label: "打った回数", value: t.totalTaps.toLocaleString() }
   ]);
 }
 
@@ -297,7 +299,7 @@ function renderCategoryProgress() {
             <i class="cat-bar__learning" style="width:${pct(r.learning, r.total)}%"></i>
             <i class="cat-bar__weak" style="width:${pct(r.weak, r.total)}%"></i>
           </div>
-          <div class="cat-row__legend">習得 ${r.mastered} ・ 覚えかけ ${r.learning} ・ 苦手 ${r.weak} ・ 未着手 ${r.untouched}</div>
+          <div class="cat-row__legend">${r.mastered + r.learning + r.weak === 0 ? `未着手 ${r.untouched}語` : `習得 ${r.mastered} ・ 覚えかけ ${r.learning} ・ 苦手 ${r.weak} ・ 未着手 ${r.untouched}`}</div>
         </button>
       `
       )
@@ -393,7 +395,7 @@ function renderGrowthTrend() {
     return;
   }
 
-  const width = 640;
+  const width = trendWidth(container);
   const height = 180;
   const pad = { top: 16, right: 12, bottom: 24, left: 36 };
   const innerW = width - pad.left - pad.right;
@@ -417,15 +419,15 @@ function renderGrowthTrend() {
     .join("");
 
   container.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="覚えた単語の推移">
-      <text x="${pad.left - 6}" y="${pad.top + 4}" text-anchor="end" font-size="11" font-family="var(--font-mono)" fill="var(--ink-3)">${max}</text>
-      <text x="${pad.left - 6}" y="${pad.top + innerH}" text-anchor="end" font-size="11" font-family="var(--font-mono)" fill="var(--ink-3)">${min}</text>
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="覚えた単語の推移" style="width:100%;height:auto;display:block">
+      <text x="${pad.left - 6}" y="${pad.top + 4}" text-anchor="end" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${max}</text>
+      <text x="${pad.left - 6}" y="${pad.top + innerH + 4}" text-anchor="end" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${min}</text>
       <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="var(--line-2)" />
       <path d="${area}" fill="var(--paper-3)" />
       <path d="${d}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round" />
       ${dots}
-      <text x="${pad.left}" y="${height - 6}" font-size="11" font-family="var(--font-mono)" fill="var(--ink-3)">${series[0].date.slice(5)}</text>
-      <text x="${width - pad.right}" y="${height - 6}" text-anchor="end" font-size="11" fill="var(--ink-3)">今日 ${all.learned}語</text>
+      <text x="${pad.left}" y="${height - 6}" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${series[0].date.slice(5)}</text>
+      <text x="${width - pad.right}" y="${height - 6}" text-anchor="end" font-size="12" fill="var(--ink-3)">今日 ${all.learned}語</text>
     </svg>
     <p class="score-trend__legend"><i class="score-trend__dot score-trend__dot--daily"></i>学習した日</p>
   `;
@@ -447,16 +449,21 @@ function renderLearnedWords() {
     container.innerHTML = '<p class="muted">まだありません。思い出せなかった語が、次に自力で打てた時にここへ入ります。</p>';
   } else {
     const shown = list.slice(0, 60);
+    // 1行＝1語: 語・訳（・メモがある語だけメモ）／右端にカテゴリと履歴の点
     container.innerHTML =
       shown
         .map(
           (w) => `
           <div class="learned-item">
-            <button type="button" class="learned-item__en mono" data-word-detail="${w.id}">${w.en}</button>
-            <span class="learned-item__ja">${w.ja}</span>
-            <span class="learned-item__meta">${w.label}${w.status === "mastered" ? " ・ 習得" : ""}</span>
-            ${historyDotsHtml(w.stat)}
-            <span class="learned-item__note">${noteChipHtml(w.id)}</span>
+            <span class="learned-item__main">
+              <button type="button" class="learned-item__en mono" data-word-detail="${w.id}">${w.en}</button>
+              <span class="learned-item__ja">${w.ja}</span>
+              <span class="learned-item__note">${noteChipHtml(w.id, { onlyIfHas: true })}</span>
+            </span>
+            <span class="learned-item__side">
+              <span class="learned-item__meta">${w.label}${w.status === "mastered" ? " ・ 習得" : ""}</span>
+              ${historyDotsHtml(w.stat)}
+            </span>
           </div>`
         )
         .join("") + (list.length > shown.length ? `<p class="muted">ほか ${list.length - shown.length} 語</p>` : "");
