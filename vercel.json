@@ -45,6 +45,9 @@
     },
     "api/explain-word.js": {
       "maxDuration": 30
+    },
+    "api/admin/players.js": {
+      "maxDuration": 30
     }
   },
   "headers": [

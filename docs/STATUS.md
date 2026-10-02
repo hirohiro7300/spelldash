@@ -1,5 +1,7 @@
 # SpellDash 現状スナップショット（2026-07-17 上流設計用・詳細版）
 
+> **2026-10-02追記（Batch 33: プレイヤー CRM）**: `/admin.html`（創業者専用）。`api/admin/*` が service role で集計、権限は `ADMIN_EMAILS`。使うには Vercel の環境変数 `SUPABASE_SERVICE_ROLE_KEY`・`ADMIN_EMAILS` と、メモ用に docs/SQL_CRM.md の SQL（創業者側）。sw.js は `/api/` を保存しない。E2E 443 件。
+
 > **2026-09-21追記（Batch 31: NAWL 完結）**: オープン教材は NGSL 24 + TSL 11 + BSL 15 + NAWL 8 = 58パック・6,814語。道のコースは10本（うち4本がオープン教材）。教材ライブラリは162パック・14,236枚。NGSL ファミリーのうち NGSL-Spoken と NDL は既存との重なりが大きく収録しない（根拠は data/sources/ngsl/LICENSE.md）。
 
 > **2026-09-21追記（Batch 30: TSL・BSL 完結）**: オープン教材は NGSL 24 + TSL 11 + BSL 15 = 50パック・5,857語。道のコースは9本（うち3本がオープン教材）。教材ライブラリは154パックで、分野グループは畳んで表示する。検証に「訳に見出し語を入れない」規則を追加（scripts/validate-words.mjs）。

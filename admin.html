@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>プレイヤー | SpellDash</title>
+
+  <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+  <link rel="stylesheet" href="./css/tokens.css" />
+  <link rel="stylesheet" href="./css/layout.css" />
+  <link rel="stylesheet" href="./css/game.css" />
+  <link rel="stylesheet" href="./css/responsive.css" />
+  <link rel="stylesheet" href="./css/theme.css" />
+  <link rel="stylesheet" href="./css/brand.css" />
+  <link rel="stylesheet" href="./css/pages.css" />
+  <link rel="stylesheet" href="./css/admin.css" />
+  <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
+
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link">プレイ</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
+        <a href="./list.html" class="site-nav__link">単語帳</a>
+        <a href="./battle.html" class="site-nav__link">バトル</a>
+      </nav>
+
+      <div class="account">
+        <div class="account__guest dropdown" id="accountGuest" hidden>
+          <button
+            class="btn btn--sm btn--ghost"
+            id="loginToggle"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+          >
+            ログイン
+          </button>
+
+          <div class="dropdown__panel">
+            <form class="account-menu account-menu--login" id="accountLogin">
+              <p class="account-menu__native">アプリ版のログインは準備中です。学習データはこの端末に保存されます（Web 版 www.spelldash.net ではログインできます）。</p>
+              <button
+                id="googleLoginButton"
+                type="button"
+                class="btn btn--sm btn--google"
+              >
+                Googleでログイン
+              </button>
+
+              <div class="account-menu__divider">または</div>
+
+              <p class="account-menu__hint">
+                ログインすると学習データがクラウドに保存され、機種変更や別の端末でも引き継げます。メールアドレスにログインリンクを送ります。
+              </p>
+              <input
+                id="emailInput"
+                type="email"
+                placeholder="メールアドレス"
+                autocomplete="email"
+              />
+              <button id="loginButton" type="submit" class="btn btn--sm">
+                リンクを送信
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="account__user dropdown" id="accountUser" hidden>
+          <button
+            class="avatar-button"
+            id="avatarButton"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="アカウントメニュー"
+          >
+            <span class="avatar" id="headerAvatar">?</span>
+          </button>
+
+          <div class="dropdown__panel">
+            <div class="account-menu" id="accountMenu">
+              <p class="account-menu__email" id="userStatus"></p>
+              <a class="account-menu__item" href="./profile.html">プロフィール</a>
+              <button
+                class="account-menu__item account-menu__item--danger"
+                id="logoutButton"
+                type="button"
+              >
+                ログアウト
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="app admin-app">
+    <section class="hero hero--compact">
+      <p class="logo">管理</p>
+      <h1>プレイヤー</h1>
+      <p class="subtitle">誰が、どれだけ、いつまで使っているか。見るとメモするだけ。プレイヤーには何も送らない。</p>
+      <p class="auth-message" id="authMessage" role="status"></p>
+    </section>
+
+    <section class="admin">
+      <p class="admin-state" id="adminState" role="status">読み込んでいます</p>
+
+      <div class="admin-bar" id="adminBar" hidden>
+        <p class="admin-summary" id="adminSummary"></p>
+        <div class="admin-actions">
+          <button type="button" class="btn btn--sm btn--ghost admin-refresh" id="adminRefresh">再取得</button>
+          <button type="button" class="btn btn--sm btn--ghost admin-export" id="adminExport">CSV を書き出す</button>
+        </div>
+      </div>
+
+      <div class="admin-main" id="adminMain" hidden>
+        <p class="admin-missing" id="adminMissing" hidden>メモとタグを保存するには docs/SQL_CRM.md のテーブルが必要です</p>
+
+        <div class="admin-controls">
+          <div class="admin-chips" id="adminSegment" role="group" aria-label="セグメントで絞り込み">
+            <button type="button" class="admin-chip admin-chip--active" data-segment="all" aria-pressed="true">すべて</button>
+            <button type="button" class="admin-chip" data-segment="active" aria-pressed="false">活動中</button>
+            <button type="button" class="admin-chip" data-segment="atRisk" aria-pressed="false">離れかけ</button>
+            <button type="button" class="admin-chip" data-segment="churned" aria-pressed="false">離脱</button>
+            <button type="button" class="admin-chip" data-segment="dormant" aria-pressed="false">登録のみ</button>
+          </div>
+          <label class="admin-field admin-field--grow">
+            <span>検索</span>
+            <input id="adminSearch" type="search" class="setting-select admin-search" placeholder="email・表示名・タグ" autocomplete="off" />
+          </label>
+          <label class="admin-field">
+            <span>並び</span>
+            <select id="adminSort" class="setting-select admin-sort">
+              <option value="lastActive">最終活動</option>
+              <option value="createdAt">登録日</option>
+              <option value="wordsMastered">覚えた語</option>
+              <option value="streakCurrent">連続</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="admin-table" id="adminTable"></div>
+      </div>
+
+      <aside class="admin-drawer" id="adminDrawer" hidden aria-label="プレイヤーの詳細">
+        <div class="admin-drawer__inner">
+          <div class="admin-drawer__top">
+            <div class="admin-drawer__who">
+              <h2 class="admin-drawer__name" id="adminDrawerName"></h2>
+              <p class="admin-drawer__email mono" id="adminDrawerEmail"></p>
+            </div>
+            <button type="button" class="btn btn--sm btn--ghost admin-drawer__close" id="adminDrawerClose" aria-label="閉じる"></button>
+          </div>
+          <p class="admin-facts" id="adminDrawerFacts"></p>
+          <p class="admin-facts admin-facts--numbers" id="adminDrawerNumbers"></p>
+
+          <section class="admin-section">
+            <h3 class="admin-section__title">30日の活動</h3>
+            <div class="admin-activity" id="adminActivity" role="img" aria-label="直近30日の活動"></div>
+            <p class="admin-activity__cap" id="adminActivityCap"></p>
+          </section>
+
+          <section class="admin-section">
+            <h3 class="admin-section__title">直近のプレイ</h3>
+            <div class="admin-list" id="adminSessions"></div>
+          </section>
+
+          <section class="admin-section">
+            <h3 class="admin-section__title">追加している分野</h3>
+            <div class="admin-tags admin-tags--packs" id="adminPacks"></div>
+          </section>
+
+          <section class="admin-section">
+            <h3 class="admin-section__title">最近覚えた語</h3>
+            <div class="admin-words" id="adminMastered"></div>
+          </section>
+
+          <section class="admin-section">
+            <h3 class="admin-section__title">ご意見</h3>
+            <div class="admin-list" id="adminFeedback"></div>
+          </section>
+
+          <section class="admin-section admin-note">
+            <h3 class="admin-section__title">メモ</h3>
+            <label class="admin-note__field">
+              <span>メモ（創業者だけが見る）</span>
+              <textarea id="adminNote" class="admin-note__text" rows="4" maxlength="2000" placeholder="例: 受験生。平日の夜にやっている"></textarea>
+            </label>
+            <label class="admin-note__field">
+              <span>タグ（カンマ区切り・20 個まで）</span>
+              <input id="adminTags" type="text" class="setting-select admin-note__tags" placeholder="例: TOEIC, ヘビーユーザー" autocomplete="off" />
+            </label>
+            <label class="admin-note__check">
+              <input id="adminPinned" type="checkbox" />
+              <span>ピン留め（一覧の先頭に出す）</span>
+            </label>
+            <div class="admin-note__actions">
+              <button type="button" class="btn btn--sm" id="adminSaveNote">保存</button>
+              <span class="admin-note__status" id="adminNoteStatus" role="status"></span>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </section>
+  </div>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="./news.html">お知らせ</a>
+        <a href="./privacy.html">プライバシー</a>
+        <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
+      </nav>
+
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
+    </div>
+  </footer>
+
+  <script type="module" src="./js/adminView.js"></script>
+</body>
+</html>

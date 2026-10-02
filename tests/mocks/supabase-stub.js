@@ -13,9 +13,14 @@ function chain() {
 }
 
 // localStorage に spelldash_test_session があればログイン済みとして振る舞う（覚え方を作る 等の検証用）
+// 値が "1" なら従来どおり access_token は "test-token"。それ以外の文字列ならその値をそのまま access_token にする
+// （偽 API が Bearer の値で 403／503 を返し分けるため。例: "forbidden-token", "unconfigured-token", "nonotes-token"）
 function fakeSession() {
   try {
-    return localStorage.getItem("spelldash_test_session") ? { access_token: "test-token", user: { id: "test-user", email: "test@example.com" } } : null;
+    const value = localStorage.getItem("spelldash_test_session");
+    if (!value) return null;
+    const token = value === "1" ? "test-token" : value;
+    return { access_token: token, user: { id: "test-user", email: "test@example.com" } };
   } catch {
     return null;
   }

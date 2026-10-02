@@ -82,6 +82,48 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // /api/admin/* の偽装（プレイヤー管理 CRM。本物の Supabase には接続しない）。
+  // Authorization の値で分岐: 無し／不明 → 401、forbidden-token → 403、unconfigured-token → 503、
+  // test-token と nonotes-token → 200（fixture は要求のたびにディスクから読む）。
+  // players / player は GET のみ、note は POST のみ（それ以外は 405）。
+  // note: 本文の userId が fixture の誰かなら {ok:true, note, tags, pinned} を返す。居なければ 404。
+  //       nonotes-token なら crm_notes が無い想定で 503 not_configured（message に docs/SQL_CRM.md）。
+  if (urlPath.startsWith("/api/admin/")) {
+    const json = (status, body) => res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify(body));
+    const fixture = (name) => JSON.parse(fs.readFileSync(path.join(ROOT, "tests", "fixtures", name), "utf8"));
+    const route = urlPath.slice("/api/admin/".length);
+    const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!["players", "player", "note"].includes(route)) return json(404, { error: "not_found", message: "そのAPIはありません。" });
+    if (req.method !== (route === "note" ? "POST" : "GET")) return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
+    if (!["test-token", "nonotes-token", "forbidden-token", "unconfigured-token"].includes(token)) return json(401, { error: "login_required", message: "ログインしてください。" });
+    if (token === "forbidden-token") return json(403, { error: "forbidden", message: "このアカウントには権限がありません。" });
+    if (token === "unconfigured-token") return json(503, { error: "not_configured", message: "管理画面の設定がまだです。SUPABASE_SERVICE_ROLE_KEY と ADMIN_EMAILS を設定してください（docs/CRM.md）。" });
+    if (route === "players") return json(200, fixture("admin-players.json"));
+    if (route === "player") {
+      const userId = new URL(req.url, "http://x").searchParams.get("userId") || "";
+      if (!UUID_RE.test(userId)) return json(400, { error: "bad_request", message: "userId が UUID ではありません。" });
+      if (!fixture("admin-players.json").players.some((p) => p.userId === userId)) return json(404, { error: "not_found", message: "該当するプレイヤーがいません。" });
+      return json(200, fixture("admin-player.json"));
+    }
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      const body = (() => { try { return JSON.parse(raw) ?? {}; } catch { return {}; } })();
+      if (token === "nonotes-token") return json(503, { error: "not_configured", message: "メモの保存先（crm_notes）がまだありません。docs/SQL_CRM.md の SQL を実行してください。" });
+      if (typeof body.userId !== "string" || !UUID_RE.test(body.userId)) return json(400, { error: "bad_request", message: "userId が UUID ではありません。" });
+      const known = fixture("admin-players.json").players.find((p) => p.userId === body.userId);
+      if (!known) return json(404, { error: "not_found", message: "該当するプレイヤーがいません。" });
+      json(200, {
+        ok: true,
+        note: typeof body.note === "string" ? body.note : known.note,
+        tags: Array.isArray(body.tags) ? body.tags : known.tags,
+        pinned: typeof body.pinned === "boolean" ? body.pinned : known.pinned
+      });
+    });
+    return;
+  }
+
   const file =
     urlPath === "/js/supabase.js" ? STUB : path.join(ROOT, urlPath.slice(1));
 
@@ -2348,6 +2390,179 @@ console.log("compact actions:");
   check("答え表示後: 入力欄が画面内（390×844）", inputTop < 844, `inputTop=${inputTop}`);
   check("1行化でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
+}
+
+// ===== 18. プレイヤー管理 CRM（創業者専用の管理画面）=====
+// 偽 API（/api/admin/*。上のローカルサーバー）と fixture（tests/fixtures/admin-*.json）に対して画面の契約を確かめる。
+// ログインは spelldash_test_session の値で作る: "1" → test-token、それ以外の文字列はそのまま access_token になる。
+console.log("admin crm:");
+{
+  const EMI = "11111111-1111-4111-8111-111111111111"; // pinned・active
+  const KEN = "22222222-2222-4222-8222-222222222222"; // active・isNew
+  const MIKE = "33333333-3333-4333-8333-333333333333"; // atRisk・タグ TOEIC（詳細 fixture の本人）
+  const FUMI = "44444444-4444-4444-8444-444444444444"; // churned・wordsMastered 95
+  const SIGNUP = "55555555-5555-4555-8555-555555555555"; // dormant・lastActiveDay null
+
+  const adminPage = async (token, init = {}) => {
+    const storage = { ...(init.storage ?? {}) };
+    if (token) storage.spelldash_test_session = token;
+    const page = await newPage({ ...init, storage });
+    await page.goto(BASE + "/admin.html", { waitUntil: "networkidle" });
+    return page;
+  };
+  const stateText = (page) => page.$eval("#adminState", (el) => (el.hidden ? "" : el.textContent.replace(/\s+/g, " ").trim()));
+  const waitState = (page, needle) => waitUntil(async () => (await stateText(page)).includes(needle), 5000);
+  const rowIds = (page) => page.$$eval(".admin-row[data-user-id]", (rows) => rows.map((r) => r.dataset.userId));
+  const rowText = (page, userId) => page.$eval(`.admin-row[data-user-id="${userId}"]`, (el) => el.textContent.replace(/\s+/g, " ").trim());
+  const listReady = (page) => waitUntil(async () => (await page.$eval("#adminState", (el) => el.hidden)) && (await rowIds(page)).length > 0, 6000);
+  const drawerShown = (page) => page.$eval("#adminDrawer", (el) => !el.hidden && el.getClientRects().length > 0);
+
+  // 1. 未ログイン → 「ログイン」の案内
+  {
+    const page = await adminPage(null);
+    check("CRM: 未ログインは「ログイン」の案内", await waitState(page, "ログイン"), await stateText(page));
+    check("CRM: 未ログインでは一覧を出さない", await page.$eval("#adminMain", (el) => el.hidden) && (await rowIds(page)).length === 0);
+    check("CRM: 未ログインでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // 2. ログイン済みだが管理者でない（403）→ 「権限」
+  {
+    const page = await adminPage("forbidden-token");
+    check("CRM: 管理者でないアカウントは「権限」の案内", await waitState(page, "権限"), await stateText(page));
+    check("CRM: 権限なしでは一覧を出さない", await page.$eval("#adminMain", (el) => el.hidden));
+    await page.close();
+  }
+
+  // 3. 未設定（503）→ API の message をそのまま＋「docs/CRM.md」
+  {
+    const page = await adminPage("unconfigured-token");
+    const ok = await waitState(page, "docs/CRM.md");
+    const text = await stateText(page);
+    check("CRM: 未設定は API の message と docs/CRM.md の案内", ok && text.includes("SUPABASE_SERVICE_ROLE_KEY"), text);
+    await page.close();
+  }
+
+  // 4〜10. 管理者（test-token）。同じページで一覧 → 絞り込み → 並び替え → 詳細 → メモ → CSV
+  {
+    const page = await adminPage("test-token", { viewport: { width: 1200, height: 900 } });
+    check("CRM: 管理者には一覧が表示される（#adminState は hidden）", await listReady(page), await stateText(page));
+
+    // 4. 要約行・行数・ピン留め先頭・セグメント表示・最終活動
+    const summary = (await page.textContent("#adminSummary")).replace(/\s+/g, " ").trim();
+    const wanted = ["全 6", "活動中 2", "離れかけ 1", "離脱 1", "登録のみ 2", "今週の新規 2"];
+    check("CRM: 要約行（全 6 ・ 活動中 2 ・ 離れかけ 1 ・ 離脱 1 ・ 登録のみ 2 ・ 今週の新規 2）", wanted.every((s) => summary.includes(s)), summary);
+    let ids = await rowIds(page);
+    check("CRM: 行が 6", ids.length === 6, `rows=${ids.length}`);
+    check("CRM: ピン留めの Emi が先頭", ids[0] === EMI && (await rowText(page, EMI)).includes("Emi"), `first=${ids[0]}`);
+    const segs = await page.$$eval(".admin-row[data-user-id] .admin-seg", (els) => els.map((e) => `${e.className.match(/admin-seg--(\w+)/)?.[1]}:${e.textContent.trim()}`));
+    check("CRM: セグメントの表示（active=活動中 / atRisk=離れかけ / churned=離脱 / dormant=登録のみ）", ["active:活動中", "atRisk:離れかけ", "churned:離脱", "dormant:登録のみ"].every((s) => segs.includes(s)) && segs.length === 6, JSON.stringify(segs));
+    check("CRM: 今週の新規には「新規」のチップ", (await rowText(page, KEN)).includes("新規") && !(await rowText(page, EMI)).includes("新規"), await rowText(page, KEN));
+    const last = { ken: await rowText(page, KEN), emi: await rowText(page, EMI), mike: await rowText(page, MIKE), signup: await rowText(page, SIGNUP) };
+    check("CRM: 最終活動は今日との差（今日 / 昨日 / 12日前 / まだ無し）", last.ken.includes("今日") && last.emi.includes("昨日") && last.mike.includes("12日前") && last.signup.includes("まだ無し"), JSON.stringify(last));
+    check("CRM: crm_notes が無い旨の案内（#adminMissing に docs/SQL_CRM.md）", await page.$eval("#adminMissing", (el) => !el.hidden && el.textContent.includes("docs/SQL_CRM.md")));
+
+    // 5. チップ atRisk → mike だけ
+    await page.click('.admin-chip[data-segment="atRisk"]');
+    ids = await rowIds(page);
+    check("CRM: チップ「離れかけ」で行が 1（mike のメール）", ids.length === 1 && ids[0] === MIKE && (await rowText(page, MIKE)).includes("mike@example.com"), JSON.stringify(ids));
+    await page.click('.admin-chip[data-segment="all"]');
+    check("CRM: チップ「すべて」で 6 に戻る", (await rowIds(page)).length === 6);
+
+    // 6. 検索 TOEIC → タグで mike だけ。消すと 6 に戻る
+    await page.fill("#adminSearch", "TOEIC");
+    ids = await rowIds(page);
+    check("CRM: 検索 TOEIC はタグで引っかかり行が 1（mike）", ids.length === 1 && ids[0] === MIKE, JSON.stringify(ids));
+    await page.fill("#adminSearch", "");
+    check("CRM: 検索を消すと 6 に戻る", (await rowIds(page)).length === 6);
+
+    // 7. 並び替え wordsMastered → ピン留めの Emi が先頭のまま、次が ふみ（95）
+    await page.selectOption("#adminSort", "wordsMastered");
+    ids = await rowIds(page);
+    check("CRM: 覚えた語で並べても先頭はピン留めの Emi、次が ふみ（95）", ids[0] === EMI && ids[1] === FUMI && (await rowText(page, FUMI)).includes("ふみ") && (await rowText(page, FUMI)).includes("95"), JSON.stringify(ids));
+
+    // 8. 行を押す → 詳細パネル
+    await page.click(`.admin-row[data-user-id="${MIKE}"]`);
+    check("CRM: 行を押すと詳細パネル（#adminDrawer）が見える", await waitUntil(() => drawerShown(page), 2000));
+    const detailLoaded = await waitUntil(async () => (await page.textContent("#adminFeedback")).includes("別解"), 5000);
+    check("CRM: 詳細のご意見に「別解」", detailLoaded, (await page.textContent("#adminFeedback")).replace(/\s+/g, " ").trim().slice(0, 80));
+    check("CRM: 詳細の追加している分野に toeic500", (await page.textContent("#adminPacks")).includes("toeic500"), (await page.textContent("#adminPacks")).trim());
+    const bars = await page.$$eval("#adminActivity > *", (els) => els.length);
+    check("CRM: 30 日の活動は棒が 30 本", bars === 30, `bars=${bars}`);
+    check("CRM: 詳細を開いても一覧は裏に残る", (await rowIds(page)).length === 6);
+
+    // 9. メモを書いて保存 → 「保存しました」、一覧の行のタグも更新
+    await page.fill("#adminNote", "テストのメモ");
+    await page.fill("#adminTags", "TOEIC, 要フォロー");
+    await page.click("#adminSaveNote");
+    const saved = await waitUntil(async () => (await page.textContent("#adminNoteStatus")).includes("保存しました"), 5000);
+    check("CRM: メモを保存すると「保存しました」", saved, (await page.textContent("#adminNoteStatus")).trim());
+    const rowAfter = await rowText(page, MIKE);
+    check("CRM: 保存後に一覧の行のタグが更新される（要フォロー）", rowAfter.includes("要フォロー") && rowAfter.includes("TOEIC"), rowAfter);
+    await page.keyboard.press("Escape");
+    check("CRM: Escape で詳細を閉じる", await waitUntil(() => page.$eval("#adminDrawer", (el) => el.hidden), 1000));
+    check("CRM: 一覧〜メモ保存でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+
+    // 10. buildCsv を import して直接試す（ヘッダ・6 行・" のエスケープ・数式インジェクション対策）
+    const fixturePlayers = JSON.parse(fs.readFileSync(path.join(ROOT, "tests", "fixtures", "admin-players.json"), "utf8")).players;
+    const csv = await page.evaluate(async (players) => {
+      const m = await import("/js/adminView.js");
+      if (typeof m.buildCsv !== "function") return { error: "buildCsv が export されていない" };
+      players[1].displayName = 'Ken "the" Sato';
+      players[2].note = "=SUM(A1:A9)";
+      players[3].note = "+81 @home";
+      const text = m.buildCsv(players);
+      const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l !== "");
+      return { bom: text.charCodeAt(0) === 0xfeff, header: lines[0], rows: lines.length - 1, text };
+    }, fixturePlayers);
+    const columns = ["email", "displayName", "segment", "lastActiveDay", "activeDays7", "activeDays30", "wordsMastered", "streakCurrent", "level", "tags", "note"];
+    check("CRM: buildCsv のヘッダ行（11 列）", !csv.error && String(csv.header).replace(/"/g, "").split(",").join("|") === columns.join("|"), csv.error ?? csv.header);
+    check("CRM: buildCsv はデータ 6 行・BOM 付き", csv.rows === 6 && csv.bom === true, `rows=${csv.rows} bom=${csv.bom}`);
+    check('CRM: buildCsv は " を "" に', !!csv.text && csv.text.includes('"Ken ""the"" Sato"'), (csv.text ?? "").split("\n")[2]);
+    check("CRM: buildCsv は = + @ 始まりの値に ' を前置（数式インジェクション対策）", !!csv.text && csv.text.includes("'=SUM(A1:A9)") && !csv.text.includes('"=SUM') && csv.text.includes("'+81 @home"), (csv.text ?? "").split("\n").slice(3, 5).join(" / "));
+    check("CRM: CSV の書き出しボタンがある", (await page.$("#adminExport")) !== null && (await page.$eval("#adminExport", (el) => !el.hidden)));
+    await page.close();
+  }
+
+  // 9b. crm_notes が無い環境（nonotes-token）: 一覧は出るが保存は docs/SQL_CRM.md の案内
+  {
+    const page = await adminPage("nonotes-token", { viewport: { width: 1200, height: 900 } });
+    check("CRM: crm_notes が無くても一覧は出る", await listReady(page), await stateText(page));
+    await page.click(`.admin-row[data-user-id="${MIKE}"]`);
+    await waitUntil(() => drawerShown(page), 2000);
+    await page.fill("#adminNote", "保存先が無いはず");
+    await page.click("#adminSaveNote");
+    const told = await waitUntil(async () => (await page.textContent("#adminNoteStatus")).includes("docs/SQL_CRM.md"), 5000);
+    check("CRM: crm_notes が無いときの保存は docs/SQL_CRM.md の案内", told, (await page.textContent("#adminNoteStatus")).trim());
+    check("CRM: nonotes でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // 11. 検索エンジンに出さない・ナビからリンクしない
+  {
+    const adminHtml = fs.readFileSync(path.join(ROOT, "admin.html"), "utf8");
+    check("CRM: admin.html に noindex, nofollow の meta", /<meta\s+name="robots"\s+content="[^"]*noindex[^"]*nofollow[^"]*"/i.test(adminHtml));
+    check("CRM: admin.html の title は「プレイヤー | SpellDash」", adminHtml.includes("<title>プレイヤー | SpellDash</title>"));
+    check("CRM: sitemap.xml に admin.html が無い", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("admin.html"));
+    check("CRM: robots.txt に Disallow: /admin.html", /^Disallow:\s*\/admin\.html\s*$/m.test(fs.readFileSync(path.join(ROOT, "robots.txt"), "utf8")));
+    const linked = ["index.html", "stats.html", "list.html", "battle.html", "profile.html", "news.html", "privacy.html"].filter((f) => fs.readFileSync(path.join(ROOT, f), "utf8").includes("admin.html"));
+    check("CRM: サイトのナビから admin.html にリンクしない", linked.length === 0, linked.join(","));
+  }
+
+  // 12. 390px（mobile）: 横スクロール無し・エラー 0（一覧でも詳細でも）
+  {
+    const page = await adminPage("test-token", { mobile: true, viewport: { width: 390, height: 844 } });
+    check("CRM（390px）: 一覧が表示される", await listReady(page), await stateText(page));
+    const widths = () => page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
+    let w = await widths();
+    check("CRM（390px）: 一覧で横スクロールしない", w.scrollWidth <= w.innerWidth, JSON.stringify(w));
+    await page.click(`.admin-row[data-user-id="${MIKE}"]`);
+    await waitUntil(async () => (await page.textContent("#adminFeedback")).includes("別解"), 5000);
+    w = await widths();
+    check("CRM（390px）: 詳細を開いても横スクロールしない", (await drawerShown(page)) && w.scrollWidth <= w.innerWidth, JSON.stringify(w));
+    check("CRM（390px）: エラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
 }
 
 await browser.close();
