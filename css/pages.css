@@ -1645,6 +1645,33 @@ html[data-theme] .policy a:hover {
   color: var(--signal-ink);
 }
 
+/* ===== 特定商取引法に基づく表記（tokushoho.html）。.policy に乗せる。墨と朱: トークンだけ・罫線で区切る */
+html[data-theme] .legal {
+  margin: 0 0 8px;
+  border-top: 1px solid var(--line);
+}
+html[data-theme] .legal > div {
+  display: grid;
+  grid-template-columns: 12em 1fr;
+  gap: 4px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+html[data-theme] .legal dt {
+  font-weight: 700;
+  color: var(--ink);
+}
+html[data-theme] .legal dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+@media (max-width: 560px) {
+  html[data-theme] .legal > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 /* ===== 単語詳細・ご意見（モーダル） ===== */
 html[data-theme] .word-detail__backdrop,
 html[data-theme] .feedback-modal__backdrop {

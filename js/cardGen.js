@@ -31,7 +31,8 @@ export async function requestCards(text) {
   }
   if (!response.ok) {
     const fallback = response.status === 401 ? "ログインすると使えます（無料）。" : response.status === 404 ? "この機能は準備中です。" : "うまく作れませんでした。時間をおいてお試しください。";
-    return { ok: false, status: response.status, error: body.error || "http", message: body.message || fallback };
+    // 429 で upgrade:true は「無料ぶんを使い切った」: Pro の案内を添える
+    return { ok: false, status: response.status, error: body.error || "http", message: body.message || fallback, upgrade: response.status === 429 && body.upgrade === true };
   }
   return { ok: true, cards: Array.isArray(body.cards) ? body.cards : [] };
 }
@@ -46,8 +47,15 @@ export function initializeCardGen(onChange = () => {}) {
 
   let cards = [];
 
-  const setStatus = (text, isError = false) => {
+  const setStatus = (text, isError = false, { upgrade = false } = {}) => {
     status.textContent = text;
+    if (upgrade) {
+      const link = document.createElement("a");
+      link.href = "./pro.html";
+      link.className = "pro-link";
+      link.textContent = "Pro について";
+      status.append(" ", link);
+    }
     status.className = `muted my-words__status${isError ? " my-words__status--error" : ""}`;
   };
 
@@ -72,7 +80,7 @@ export function initializeCardGen(onChange = () => {}) {
     run.textContent = "カードを作る";
     if (!result.ok) {
       cards = [];
-      return setStatus(result.message, true);
+      return setStatus(result.message, true, { upgrade: result.upgrade === true });
     }
     cards = result.cards;
     if (cards.length === 0) return setStatus("カードにできる用語が見つかりませんでした。用語や説明が含まれるテキストを貼ってみてください。", true);

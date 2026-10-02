@@ -58,7 +58,8 @@ export async function requestWordAi(word) {
   }
   if (!response.ok) {
     const fallback = response.status === 401 ? "ログインすると使えます（無料）。" : response.status === 404 ? "この機能は準備中です。" : "うまく作れませんでした。";
-    return { ok: false, status: response.status, message: body.message || fallback };
+    // 429 で upgrade:true は「無料ぶんを使い切った」: 表示側が Pro の案内を添える
+    return { ok: false, status: response.status, message: body.message || fallback, upgrade: response.status === 429 && body.upgrade === true };
   }
   if (!body.mnemonic) return { ok: false, message: "うまく作れませんでした。" };
   setWordAi(word.id, body);
@@ -122,7 +123,7 @@ function renderAiButton(container, word, onDone) {
     button.textContent = "作っています…";
     const result = await requestWordAi(word);
     if (!result.ok) {
-      container.innerHTML = `<span class="word-ai__error">${escapeHtml(result.message)}</span>`;
+      container.innerHTML = `<span class="word-ai__error">${escapeHtml(result.message)}</span>${result.upgrade ? ' <a class="ai-upgrade" href="./pro.html">Pro について</a>' : ""}`;
       return;
     }
     container.innerHTML = wordAiHtml(word.id);

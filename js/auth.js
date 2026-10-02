@@ -1,6 +1,7 @@
 import { authRedirectOrigin } from "./appEnv.js";
 import { supabase, isSupabaseConfigured } from "./supabase.js";
 import { initialSync } from "./sync.js";
+import { refreshPlan, clearPlan } from "./plan.js";
 
 const accountGuestElement = document.getElementById("accountGuest");
 const accountUserElement = document.getElementById("accountUser");
@@ -18,6 +19,7 @@ const googleLoginButtonElement = document.getElementById("googleLoginButton");
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
   updateAuthDisplay(data.session);
+  refreshPlan(); // Pro の状態（spelldash_plan）を更新
 
   // ログイン済みならクラウドと初回同期（マージ）
   if (data.session) {
@@ -26,6 +28,7 @@ export async function initializeAuth() {
 
   supabase.auth.onAuthStateChange((_event, session) => {
     updateAuthDisplay(session);
+    if (_event === "SIGNED_OUT") clearPlan(); else if (_event === "SIGNED_IN") refreshPlan();
 
     if (_event === "SIGNED_IN") {
       runInitialSync();

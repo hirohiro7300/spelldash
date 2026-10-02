@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-10-02 (SpellDash Pro)
+
+- 月額サブスクリプション「SpellDash Pro」（創業者が決済を解禁）。学習の核（Study／Challenge／Daily／Battle／今日のセット／復習／記録／ランキング）は無料のまま。覚えやすさ・判定・ランキングが有利になるものは売らない
+- Pro の特典: マイ単語帳 100 語 → 1,000 語（超えている人も閲覧・削除はできる）、AI（テキストからカード・覚え方の解説）の 1 日の回数、覚えた単語の推移 30 日 → 90 日、シールド最大 3 枚と連続記録の修復（月 1 回、途切れてから 7 日以内）、テーマ「紙」「藍」
+- `/pro.html`（比較表・価格・加入・状態・よくある質問）。価格はコードに書かず Stripe の Price から取る。アプリ版では価格と購入ボタンを出さず状態だけ（Web で加入すると同じアカウントで使える）
+- プロフィールに「プラン」の行（Free／Pro（次回の更新）／解約予定）と「お支払いの管理」（Stripe の Billing Portal）。`?pro=done` で反映を待って「Pro になりました」
+- API `/api/billing/{config,checkout,portal,webhook}`: Stripe は SDK を入れず fetch と Node の crypto で呼ぶ。Webhook は署名を検証し、`subscriptions` に upsert（古いイベントの逆順到着は無視）。AI の回数は本人のプランで変え、超えたら 429 に「Pro について」
+- entitlement は status が active／trialing／past_due で、期限 + 3 日まで（支払い失敗の再試行を待つ猶予）。サーバーとクライアント（`js/plan.js`）が同じ式
+- `/tokushoho.html`（特定商取引法に基づく表記。［ ］は公開前に創業者が記入）、privacy.html に「お支払い情報」（カード番号は Stripe が扱い SpellDash には渡らない。SpellDash が持つのは加入状態・更新日・プランの種別と Stripe の顧客／サブスクリプション／価格 ID）。全ページのフッターにリンク
+- CRM にプラン列（Pro のチップ・Pro だけに絞る・CSV の plan 列・要約の人数）
+- docs/BILLING.md（有効にする手順・entitlement・特典・アプリ・運用・セキュリティ・トラブルシューティング・API・告知文の下書き・価格の仮説）、docs/SQL_BILLING.md（実行は創業者側）。E2E に「pro:」84 件、pages に pro／tokushoho
+
 ## 2026-10-02 (プレイヤー CRM)
 
 - 創業者専用の管理画面 `/admin.html`（ナビには出さない・noindex・sitemap 外）。全プレイヤーを「活動中（7日以内）／離れかけ（8〜21日）／離脱（22日以上）／登録のみ」に分け、最終活動・7日/30日の活動日数・覚えた語・連続日数・Lv を一覧。検索・並び替え・CSV（ブラウザ内で生成、数式インジェクション対策つき）

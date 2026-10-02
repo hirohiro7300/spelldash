@@ -4,7 +4,8 @@ import { renderWeakWords } from "./ui.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
-import { getLevelState, getStreak } from "./level.js";
+import { getLevelState, getStreak, getLostStreak, canRepairStreak, repairStreak } from "./level.js";
+import { isPro } from "./plan.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
@@ -60,6 +61,9 @@ function initializeTabs() {
   resolve();
 }
 
+initializeTrendRange();
+initializeStreakRepair();
+
 initWordStore().then(() => {
   renderOverview();
   renderTyping();
@@ -84,6 +88,12 @@ initWordStore().then(() => {
     renderLearnedWords();
     renderOverview();
   });
+});
+
+// Pro の状態が届いたら（ページ表示直後は未確定）、期間と修復の表示を合わせる
+document.addEventListener("spelldash:plan", () => {
+  renderOverview();
+  renderGrowthTrend();
 });
 
 window.addEventListener("spelldash:synced", () => {
@@ -134,6 +144,54 @@ function renderOverview() {
       { label: "総プレイ", value: s.totalPlays }
     ]);
   }
+  renderStreakRepair();
+}
+
+// ===== 連続記録の修復（Pro・月1回・途切れてから7日以内） =====
+// 概要の数字の直後（#streakRepair）。途切れた記録が無ければ空のまま（CSS で非表示）
+let repairedCount = null; // 直前に修復した日数（成功文を再描画で消さないため）
+
+function initializeStreakRepair() {
+  const container = document.getElementById("streakRepair");
+  if (!container) return;
+  container.addEventListener("click", (event) => {
+    if (!event.target.closest("#streakRepairButton")) return;
+    const result = repairStreak();
+    if (!result.ok) {
+      renderStreakRepair();
+      return;
+    }
+    repairedCount = result.current;
+    renderOverview();
+    renderHeaderStreak();
+    renderWeeklyReport("weeklyReport");
+  });
+}
+
+function renderStreakRepair() {
+  const container = document.getElementById("streakRepair");
+  if (!container) return;
+  container.classList.toggle("streak-repair--done", repairedCount != null);
+  if (repairedCount != null) {
+    container.innerHTML = `<span class="streak-repair__text">連続 <b>${repairedCount}</b> 日に戻しました</span>`;
+    return;
+  }
+  const lost = getLostStreak();
+  if (!lost) {
+    container.innerHTML = "";
+    return;
+  }
+  const [, m, d] = lost.on.split("-");
+  const when = `${Number(m)}/${Number(d)}`;
+  let action;
+  if (!isPro()) {
+    action = `<span>Pro なら月 1 回、連続記録を修復できます。<a href="./pro.html">Pro について</a></span>`;
+  } else if (canRepairStreak()) {
+    action = `<button type="button" class="btn btn--sm" id="streakRepairButton">今月の修復を使う（月 1 回）</button>`;
+  } else {
+    action = `<span>今月の修復は使いました</span>`;
+  }
+  container.innerHTML = `<span class="streak-repair__text">連続 <b>${lost.count}</b> 日が ${when} に途切れました。</span>${action}`;
 }
 
 // 思い出し成功率 = 自力正解 / (自力正解 + 思い出せなかった回数)
@@ -278,14 +336,56 @@ function renderMonthlySummary() {
   container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月: 学習した日 <b>${activeDays}</b> / ${now.getDate()}日 ・ 覚えた語 <b>+${learnedDelta}</b> ・ セット完了 <b>${sets}</b>回 ・ Challenge/Daily <b>${runs.length}</b>回${best ? `（ベスト ${best}）` : ""}</p>`;
 }
 
-// ===== 覚えた単語の推移（30日） =====
+// ===== 覚えた単語の推移（無料 30日・Pro 90日） =====
+const TREND_RANGE_KEY = "spelldash_trend_range";
+
+// 表示する日数。90 は Pro だけ（無料の人の保存値が 90 でも 30 で描く）
+function getTrendRange() {
+  const saved = localStorage.getItem(TREND_RANGE_KEY);
+  return saved === "90" && isPro() ? 90 : 30;
+}
+
+function initializeTrendRange() {
+  const group = document.querySelector(".trend-range");
+  if (!group) return;
+  group.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-trend-range]");
+    if (!button) return;
+    const days = button.dataset.trendRange;
+    const card = group.closest(".result-card");
+    card?.querySelector(".trend-range__hint")?.remove();
+    if (days === "90" && !isPro()) {
+      // グラフは 30 日のまま、案内だけ出す
+      const hint = document.createElement("p");
+      hint.className = "trend-range__hint";
+      hint.innerHTML = '90 日の推移は Pro で見られます。<a href="./pro.html">Pro について</a>';
+      card?.querySelector(".card-head")?.after(hint);
+      return;
+    }
+    localStorage.setItem(TREND_RANGE_KEY, days === "90" ? "90" : "30");
+    renderGrowthTrend();
+  });
+}
+
+function syncTrendRangeButtons(days) {
+  document.querySelectorAll("[data-trend-range]").forEach((button) => {
+    const on = Number(button.dataset.trendRange) === days;
+    button.classList.toggle("is-active", on);
+    button.setAttribute("aria-pressed", String(on));
+  });
+  const label = document.getElementById("growthDays");
+  if (label) label.textContent = String(days);
+}
+
 function renderGrowthTrend() {
   const container = document.getElementById("growthTrend");
   if (!container) return;
 
+  const days = getTrendRange();
+  syncTrendRangeButtons(days);
   const all = computeCategoryProgress()[0];
   recordGrowthSnapshot({ learned: all.learned, mastered: all.mastered });
-  const series = getLearnedSeries(30);
+  const series = getLearnedSeries(days);
   const points = series.filter((p) => p.learned != null);
 
   if (points.length < 2) {

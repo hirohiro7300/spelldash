@@ -69,10 +69,13 @@
 | 連続 | 現在の連続日数（`streakCurrent`）。`streakBest` は最長 | user_progress.streak |
 | Lv | レベル（`level`）。`xp` も応答にある | user_progress |
 | タグ | 管理者が付けたタグ | crm_notes |
+| プラン | Pro なら `.admin-plan` のチップ（free は表示無し）。`plan` は `"pro"` / `"free"`。判定は docs/SQL_BILLING.md の式（active / trialing / past_due かつ 期限 + 3 日以内） | subscriptions |
 
-応答にだけある項目: `studyCorrect30`（30 日の Study 自力正解数）、`dailyDone30`（30 日の Daily 完走日数）、`battleRuns30`、`packs`（追加している分野パックの id）、`feedbackCount`（ご意見フォームの投稿数）、`lastSignInAt`（最終ログイン。活動とは別）、`note`、`pinned`。
+応答にだけある項目: `studyCorrect30`（30 日の Study 自力正解数）、`dailyDone30`（30 日の Daily 完走日数）、`battleRuns30`、`packs`（追加している分野パックの id）、`feedbackCount`（ご意見フォームの投稿数）、`lastSignInAt`（最終ログイン。活動とは別）、`note`、`pinned`、
+`planStatus`（Stripe の status をそのまま。行が無ければ null。`canceled` の人は `plan: "free"` だが status は残る）、`planPeriodEnd`（次回の更新日。ISO、無ければ null）、`planInterval`（`"month"` / `"year"` / null）。
+これら 4 つは `pinned` の直後に並ぶ。
 
-要約行: 「全 N ・ 活動中 a ・ 離れかけ b ・ 離脱 c ・ 登録のみ d ・ 今週の新規 e」。`summary.total` は Supabase Auth の全ユーザー数（データが 1 行も無い人も数える）。
+要約行: 「全 N ・ 活動中 a ・ 離れかけ b ・ 離脱 c ・ 登録のみ d ・ 今週の新規 e ・ Pro p」。`summary.total` は Supabase Auth の全ユーザー数（データが 1 行も無い人も数える）。`summary.pro` は `plan === "pro"` の人数。
 
 ## 5. 詳細パネル
 
@@ -96,7 +99,7 @@
 
 ## 7. CSV
 
-`#adminExport` でダウンロード。列: `email, displayName, segment, lastActiveDay, activeDays7, activeDays30, wordsMastered, streakCurrent, level, tags, note`。
+`#adminExport` でダウンロード。列: `email, displayName, segment, lastActiveDay, activeDays7, activeDays30, wordsMastered, streakCurrent, level, plan, tags, note`。
 ブラウザの中で文字列を組み立てて `spelldash-players-YYYY-MM-DD.csv` として保存するだけで、サーバーにも外部にも送らない。
 BOM 付き UTF-8（Excel で文字化けしない）。値はダブルクォートでくくり、`=` `+` `-` `@` で始まる値には `'` を前置する（表計算ソフトの数式として実行されないため）。
 
@@ -109,7 +112,9 @@ CSV には email が入る。保存先と共有相手に気をつける（第 9 
 - 一覧はまず RPC `admin_player_summary` を試し、無ければ profiles / user_progress / activity_days / word_progress を全件読んで同じ値を計算する。
   word_progress は「ユーザー数 × 語数」なので、プレイヤーが増えると REST 集計が数秒かかるようになる。そうなったら docs/SQL_CRM.md の関数を作る（API の変更は不要）。
   `api/admin/players.js` の maxDuration は 30 秒（vercel.json）
-- `feedback` / `user_items` / `crm_notes` は未作成でもよい。PostgREST の 404、または SQLSTATE 42P01 を「テーブルが無い」と見なし、空として扱って応答の `missing[]` に名前を入れる
+- `feedback` / `user_items` / `crm_notes` / `subscriptions` は未作成でもよい。PostgREST の 404、または SQLSTATE 42P01 を「テーブルが無い」と見なし、空として扱って応答の `missing[]` に名前を入れる（順は `feedback, user_items, crm_notes, subscriptions`）
+- `subscriptions`（docs/SQL_BILLING.md）は `user_id, status, plan_interval, current_period_end` だけを service role で全件読み、`plan` / `planStatus` / `planPeriodEnd` / `planInterval` と `summary.pro` を出す。RPC `admin_player_summary` はこの表を返さないので、RPC の経路でも REST で別に読んで合成する（どちらの経路でも同じ JSON）。
+  `stripe_customer_id` などの Stripe 側の id は CRM に出さない（Portal を開くのは本人だけ）
 
 ## 9. プライバシーとセキュリティ
 
@@ -144,7 +149,7 @@ CSV には email が入る。保存先と共有相手に気をつける（第 9 
 
 | エンドポイント | 応答 |
 |---|---|
-| `GET /api/admin/players` | `tests/fixtures/admin-players.json` と同じ形（`generatedAt, today, missing[], summary{total, bySegment{active,atRisk,churned,dormant}, newThisWeek}, players[]`） |
+| `GET /api/admin/players` | `tests/fixtures/admin-players.json` と同じ形（`generatedAt, today, missing[], summary{total, bySegment{active,atRisk,churned,dormant}, newThisWeek, pro}, players[]`。players[] の各要素は `pinned` の直後に `plan` / `planStatus` / `planPeriodEnd` / `planInterval`） |
 | `GET /api/admin/player?userId=<uuid>` | `tests/fixtures/admin-player.json` と同じ形。無ければ 404 |
 | `POST /api/admin/note` `{ userId, note?, tags?, pinned? }` | `{ ok: true, note, tags, pinned }` |
 

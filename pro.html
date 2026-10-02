@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>学習データ | SpellDash</title>
+  <title>SpellDash Pro | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -20,13 +20,13 @@
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
 
 
-  <meta name="description" content="スコア推移・思い出し成功率・習得の進捗。あなたの学習の記録。" />
+  <meta name="description" content="SpellDash Pro。学習の核は無料のまま、マイ単語帳の上限・AI の回数・90日の推移・連続記録の修復・追加テーマを。" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="SpellDash" />
-  <meta property="og:title" content="学習データ | SpellDash" />
-  <meta property="og:description" content="スコア推移・思い出し成功率・習得の進捗。あなたの学習の記録。" />
-<link rel="canonical" href="https://www.spelldash.net/stats.html" />
-  <meta property="og:url" content="https://www.spelldash.net/stats.html" />
+  <meta property="og:title" content="SpellDash Pro | SpellDash" />
+  <meta property="og:description" content="学習の核は無料のまま。Pro は、もっと自分向けに。" />
+<link rel="canonical" href="https://www.spelldash.net/pro.html" />
+  <meta property="og:url" content="https://www.spelldash.net/pro.html" />
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest" />
@@ -44,7 +44,7 @@
 
       <nav class="site-nav" aria-label="メインナビ">
         <a href="/" class="site-nav__link">プレイ</a>
-        <a href="./stats.html" class="site-nav__link" aria-current="page">学習データ</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
         <a href="./list.html" class="site-nav__link">単語帳</a>
         <a href="./battle.html" class="site-nav__link">バトル</a>
       </nav>
@@ -120,98 +120,87 @@
     </div>
   </header>
 
-  <div class="app">
+  <div class="app app--narrow pro">
     <section class="hero hero--compact">
-      <p class="logo">学習データ</p>
-      <h1>学習の記録</h1>
-      <p class="subtitle">覚えた語と、続けた日。</p>
+      <p class="logo">SpellDash Pro</p>
+      <h1>学習の核は無料のまま。Pro は、もっと自分向けに。</h1>
+      <p class="subtitle">思い出して打つ・今日のセット・復習・記録は、これからも無料。Pro は、自分の単語をもっと入れたい人、長く続けている人のための追加機能です。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
-    <section class="level-bar level-bar--line" id="levelBar"></section>
-
-    <nav class="stats-tabs" id="statsTabs" aria-label="学習データの表示切替">
-      <a href="#week" class="stats-tab" data-tab="week">今週</a>
-      <a href="#words" class="stats-tab" data-tab="words">記録</a>
-      <a href="#analysis" class="stats-tab" data-tab="analysis">分析</a>
-    </nav>
-
-    <section class="metric-grid" id="overview" data-tab="week"></section>
-    <div class="streak-repair" id="streakRepair" data-tab="week" role="status"></div>
-
-    <section data-tab="week" class="result-card weekly" id="weekly">
-      <div id="weeklyReport"></div>
+    <section class="settings pro-section">
+      <h2 class="settings__title">無料と Pro</h2>
+      <table class="pro-compare" id="proCompare">
+        <thead>
+          <tr>
+            <th scope="col"><span class="visually-hidden">項目</span></th>
+            <th scope="col">無料</th>
+            <th scope="col"><span class="pro-chip">Pro</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">マイ単語帳<span class="pro-compare__sub">自分の仕事・試験の単語を入れて、同じ仕組みで覚える</span></th>
+            <td><b class="mono">100</b> 語まで</td>
+            <td><b class="mono">1,000</b> 語まで</td>
+          </tr>
+          <tr>
+            <th scope="row">AI<span class="pro-compare__sub">テキストからカードを作る・覚え方の解説</span></th>
+            <td>1 日に数回</td>
+            <td>1 日に数十回</td>
+          </tr>
+          <tr>
+            <th scope="row">覚えた単語の推移<span class="pro-compare__sub">学習データのグラフ</span></th>
+            <td><b class="mono">30</b> 日</td>
+            <td><b class="mono">90</b> 日</td>
+          </tr>
+          <tr>
+            <th scope="row">連続記録<span class="pro-compare__sub">休んだ日を守るシールドと、途切れたときの修復</span></th>
+            <td>シールド 最大 <b class="mono">2</b> 枚</td>
+            <td>シールド 最大 <b class="mono">3</b> 枚<br />月 1 回、7 日以内なら前の連続日数を取り戻せる</td>
+          </tr>
+          <tr>
+            <th scope="row">テーマ<span class="pro-compare__sub">プロフィール →「見た目」</span></th>
+            <td>白・黒</td>
+            <td>白・黒・紙・藍</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="setting-hint pro-note">Study・Challenge・Daily・Battle・今日のセット・復習・ランキングは無料のまま。覚えやすさや判定が有利になるものは売りません。</p>
     </section>
 
-    <section data-tab="week" class="result-card" id="growth">
-      <div class="card-head">
-        <h3>覚えた単語の推移（<span id="growthDays">30</span>日）</h3>
-        <div class="trend-range" role="group" aria-label="期間">
-          <button type="button" data-trend-range="30" class="is-active" aria-pressed="true">30日</button>
-          <button type="button" data-trend-range="90" aria-pressed="false">90日</button>
-        </div>
-      </div>
-      <div id="growthTrend"></div>
+    <section class="settings pro-section" id="proPlansSection">
+      <h2 class="settings__title">料金</h2>
+      <div class="pro-plans" id="proPlans"><p class="pro-pending">読み込んでいます</p></div>
+      <p class="pro-state" id="proState" role="status"></p>
+      <p class="pro-message" id="proMessage" role="status"></p>
     </section>
 
-    <section data-tab="week" class="result-card" id="calendar">
-      <h3>学習カレンダー</h3>
-      <div id="monthlySummary"></div>
-      <div id="calendarGrid"></div>
-    </section>
-
-    <section data-tab="words" class="result-card" id="learnedWords">
-      <div class="card-head">
-        <h3>覚えた単語帳 <span class="muted" id="learnedWordsCount"></span></h3>
-        <button type="button" class="btn btn--sm btn--ghost learned-csv" id="learnedCsv">CSV書き出し</button>
-      </div>
-      <p class="muted">一度つまずいてから、自力で思い出せるようになった語。語を押すと詳細（メモ・発音）。</p>
-      <div id="learnedWordList"></div>
-      <details class="known-fold"><summary id="knownWordsSummary">もともと知っていた語</summary><div id="knownWordList"></div></details>
-    </section>
-
-    <section data-tab="words" class="result-card" id="categories">
-      <h3>カテゴリ別の進捗</h3>
-      <p class="muted">行を押すとそのカテゴリで練習を始めます。</p>
-      <div id="categoryProgress"></div>
-    </section>
-
-    <section data-tab="words" class="result-card">
-      <h3>苦手単語</h3>
-      <div id="weakWords">まだデータがありません。</div>
-    </section>
-
-    <section data-tab="words" class="result-card">
-      <details class="word-list-fold">
-        <summary>単語一覧を開く（検索・カテゴリで絞り込み）</summary>
-
-        <select id="wordCategoryFilter" class="word-filter"></select>
-
-        <input
-          id="wordSearch"
-          type="text"
-          placeholder="英単語・日本語・タグで検索"
-          autocomplete="off"
-        />
-
-        <div id="wordList"></div>
+    <section class="settings pro-section">
+      <h2 class="settings__title">よくある質問</h2>
+      <details class="pro-faq">
+        <summary>いつでも解約できますか</summary>
+        <p>はい。プロフィールの「お支払いの管理」からいつでも解約できます。解約しても、支払い済みの期間の終わりまで Pro を使えます。日割りの返金はありません。</p>
+      </details>
+      <details class="pro-faq">
+        <summary>支払いはどこで処理されますか</summary>
+        <p>決済は Stripe が処理します。カード番号は SpellDash のサーバーに渡らず、保存もされません。</p>
+      </details>
+      <details class="pro-faq">
+        <summary>アプリ版でも使えますか</summary>
+        <p>Web 版（www.spelldash.net）で加入すると、同じアカウントでログインしたアプリ版でも Pro になります。</p>
+      </details>
+      <details class="pro-faq">
+        <summary>領収書はもらえますか</summary>
+        <p>支払いのたびに Stripe からメールで領収書が届きます。「お支払いの管理」からも確認できます。</p>
+      </details>
+      <details class="pro-faq">
+        <summary>Pro をやめたら、入れた単語はどうなりますか</summary>
+        <p>消えません。100 語を超えているぶんも、そのまま見られて練習できます。新しく追加するのだけが 100 語までになります。</p>
       </details>
     </section>
 
-    <section data-tab="analysis" class="result-card">
-      <h3>タイピング</h3>
-      <div class="metric-grid" id="typingMetrics"></div>
-    </section>
-
-    <section data-tab="analysis" class="result-card">
-      <h3>スコア推移</h3>
-      <div id="scoreTrend"></div>
-    </section>
-
-    <section data-tab="analysis" class="result-card">
-      <h3>その他の数字</h3>
-      <div class="metric-grid" id="overviewMore"></div>
-    </section>
+    <p class="pro-legal"><a href="./tokushoho.html">特定商取引法に基づく表記</a></p>
   </div>
 
   <footer class="site-footer">
@@ -236,7 +225,7 @@
     </div>
   </footer>
 
-  <script type="module" src="./js/statsView.js"></script>
+  <script type="module" src="./js/proView.js"></script>
   <script>
     if ("serviceWorker" in navigator && !window.Capacitor) {
       navigator.serviceWorker.register("/sw.js");

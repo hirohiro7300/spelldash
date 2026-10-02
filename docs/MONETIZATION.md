@@ -1,5 +1,7 @@
 # SpellDash 課金設計ドラフト（Phase 2）
 
+> **2026-10-02 創業者が実装を解禁**（「もう月額の設定進めていいよ」）。実装は docs/BILLING.md（Stripe Checkout／Portal／Webhook、entitlement、特典のゲート、特商法ページ）、SQL は docs/SQL_BILLING.md。候補 1（マイ単語帳 1,000 語）・3（シールド 3 枚＋修復）・4（AI の回数）と、詳細統計のうち 90 日の推移、追加テーマ 2 種を Batch 34 で入れた。下の KPI ゲートは不採用（DECISIONS_V4 §9）。価格はコードに無く Stripe の Price で決める（仮説は ¥580/月・¥4,800/年のまま）。
+
 2026-07-15 版。実装前の設計ドキュメント。目標: 月間150万円（Phase 5）への第一歩。
 
 ## 大原則

@@ -58,7 +58,7 @@ Android Studio で ▶ Run（USB デバッグ ON の端末）。Play への配�
 | 教材・コードの更新 | dist を同梱しているので、更新のたびにビルドし直しが必要 | 内部テストなら数分。頻度が上がったら Capacitor の Live Updates か、教材だけ本番から取得する方式に |
 | Apple 審査 4.2（薄い Web ラッパー） | 公開申請時のリスク | 専用キーボード・触覚・オフライン動作・スプラッシュで「アプリらしさ」を用意済み。申請時の説明文は §5 |
 | 通知 | 方針で保留（DECISIONS_V4 §7） | 解禁するなら `@capacitor/push-notifications` か、まずローカル通知 |
-| 課金 | やらない（禁止事項） | ストア公開時も無料。将来は Stripe（Web）か StoreKit を別途判断 |
+| 課金 | Web だけ（SpellDash Pro、docs/BILLING.md） | アプリでは価格と購入ボタンを出さず、状態だけ出す（`isNativeApp`。Apple 3.1.1: アプリ内から外部決済へ誘導しない）。Web で加入すると同じアカウントでアプリも Pro。StoreKit／Play Billing は別途判断（`subscriptions` に source 列を足せば同じ判定式で動く） |
 
 ## 4. 専用キーボードの仕様（docs/KEYBOARD.md の実装）
 

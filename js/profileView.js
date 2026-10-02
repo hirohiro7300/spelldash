@@ -8,7 +8,9 @@ import { setupUnloadSync } from "./sync.js";
 import { getAudioSettings, saveAudioSettings, speak, getVolume, setVolume, getListenRatio, setListenRatio, getEnglishVoices, getPreferredVoiceURI, setPreferredVoiceURI, previewVoice, getSpeechRate, setSpeechRate, onVoicesReady, prettyVoiceName } from "./audio.js";
 import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./backup.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
-import { getTheme, setTheme } from "./theme.js";
+import { getTheme, setTheme, isProTheme } from "./theme.js";
+import { isNativeApp } from "./appEnv.js";
+import { getPlan, isPro, waitForPro, postBilling, planLabel } from "./plan.js";
 import { getSetSize, setSetSize } from "./dailySet.js";
 import { getWeekGoal, setWeekGoal } from "./growthLog.js";
 import { renderInstallCard } from "./installPrompt.js";
@@ -55,7 +57,7 @@ initWordStore();
 // ===== ホーム画面に追加 =====
 renderInstallCard("installCard");
 
-// ===== 見た目の設定（テーマ: 白/黒） =====
+// ===== 見た目の設定（テーマ: 白/黒＋Pro の紙/藍） =====
 initializeThemeSetting();
 
 function initializeThemeSetting() {
@@ -67,11 +69,87 @@ function initializeThemeSetting() {
 
   const themeSelect = document.getElementById("themeSelect");
   if (!themeSelect) return;
+  const hint = document.getElementById("themeHint");
 
   themeSelect.value = getTheme();
   themeSelect.addEventListener("change", () => {
+    // 紙・藍は Pro だけ。無料の人には案内を出して選択を戻す（適用しない）
+    if (isProTheme(themeSelect.value) && !isPro()) {
+      if (hint) {
+        hint.innerHTML = '紙・藍は Pro のテーマです。<a href="./pro.html">Pro について</a>';
+        hint.hidden = false;
+      }
+      themeSelect.value = getTheme();
+      return;
+    }
+    if (hint) hint.hidden = true;
     setTheme(themeSelect.value); // 即時反映＋ローカル保存
   });
+  // Pro の状態が変わったら（失効など）選択も現在値に合わせる
+  document.addEventListener("spelldash:plan", () => {
+    themeSelect.value = getTheme();
+  });
+}
+
+// ===== プラン（Free / Pro）の行と、加入直後の反映待ち =====
+initializePlanRow();
+
+function initializePlanRow() {
+  const value = document.getElementById("planValue");
+  const link = document.getElementById("planLink");
+  const portal = document.getElementById("planPortal");
+  if (!value) return;
+
+  const render = () => {
+    const plan = getPlan();
+    value.textContent = planLabel(plan);
+    // アプリでは加入・管理のボタンを出さない（Web 版で）
+    if (link) link.hidden = isNativeApp || plan.pro;
+    if (portal) portal.hidden = isNativeApp || !plan.pro;
+  };
+  render();
+  document.addEventListener("spelldash:plan", render);
+
+  portal?.addEventListener("click", async () => {
+    portal.disabled = true;
+    const label = portal.textContent;
+    portal.textContent = "準備中…";
+    const { status, body } = await postBilling("/api/billing/portal");
+    if (status === 200 && typeof body.url === "string" && body.url) {
+      location.href = body.url; // Stripe の Billing Portal へ
+      return;
+    }
+    portal.disabled = false;
+    portal.textContent = label;
+    const message = status === 404
+      ? "お支払いの記録が見つかりません。加入直後なら、少し待ってから開き直してください。"
+      : status === 401
+        ? "ログインしてください。"
+        : status === 0
+          ? "通信できませんでした。接続を確認してください。"
+          : body.message || "お支払いの管理を開けませんでした。時間をおいてお試しください。";
+    showProfileMessage(message, "error");
+  });
+
+  // Checkout から戻ってきた（?pro=done）: webhook の反映を待つ
+  if (new URLSearchParams(location.search).get("pro") === "done") {
+    showProfileMessage("お支払いを確認しています…");
+    waitForPro().then((ok) => {
+      showProfileMessage(
+        ok
+          ? "Pro になりました。ありがとうございます。"
+          : "お支払いは完了しています。反映まで少しお待ちください（数分後にこのページを開き直してください）。",
+        ok ? "success" : ""
+      );
+    });
+  }
+}
+
+function showProfileMessage(text, type = "") {
+  const el = document.getElementById("authMessage");
+  if (!el) return;
+  el.textContent = text;
+  el.className = `auth-message ${type}`.trim();
 }
 
 // ===== 発音の設定 =====

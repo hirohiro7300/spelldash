@@ -5,6 +5,7 @@
 // → tests/fixtures/admin-player.json と同じ形
 //   activityDays: 直近 90 日・日付降順 / playSessions・battleSessions・dailyScores: 最新 10 件
 //   recentMastered: mastered_at 降順 20 件 / feedback: そのユーザーの全件（新しい順）
+//   plan / planStatus / planPeriodEnd / planInterval: subscriptions（無ければ free）
 // userId が UUID でなければ 400、該当ユーザーが居なければ 404。
 
 import { send } from "../_lib/shared.js";
@@ -31,6 +32,7 @@ import {
   sortTexts,
   MESSAGES
 } from "../_lib/admin.js";
+import { planOf } from "../_lib/billing.js";
 
 function text(value) {
   return typeof value === "string" ? value : "";
@@ -48,7 +50,7 @@ export default async function handler(req, res) {
     const from90 = addDays(today, -89);
     const own = `user_id=eq.${userId}`;
 
-    const [profile, progress, lastDay, activity, words, mastered, plays, battles, daily, packs, feedback, notes] =
+    const [profile, progress, lastDay, activity, words, mastered, plays, battles, daily, packs, feedback, notes, subs] =
       await allOrThrow([
         restGet("profiles", `select=display_name&${own}&limit=1`),
         restGet("user_progress", `select=xp,level,streak&${own}&limit=1`),
@@ -64,7 +66,8 @@ export default async function handler(req, res) {
         restGet("daily_scores", `select=day,score,typing_speed&${own}&order=day.desc&limit=10`),
         restOptional("user_items", `select=key&${own}&kind=eq.pack&deleted=is.false`),
         restOptional("feedback", `select=id,message,contact,page,created_at&${own}&order=created_at.desc`),
-        restOptional("crm_notes", `select=note,tags,pinned&${own}&limit=1`, { all: false })
+        restOptional("crm_notes", `select=note,tags,pinned&${own}&limit=1`, { all: false }),
+        restOptional("subscriptions", `select=status,plan_interval,current_period_end&${own}&limit=1`, { all: false })
       ]);
 
     const streak = progress[0]?.streak;
@@ -144,7 +147,8 @@ export default async function handler(req, res) {
       })),
       tags: tagList(note?.tags),
       note: noteText(note?.note),
-      pinned: note?.pinned === true
+      pinned: note?.pinned === true,
+      ...planOf(subs.rows[0])
     });
   });
 }

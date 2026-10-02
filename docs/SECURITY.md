@@ -49,3 +49,18 @@ Supabase側設定の既知課題（STATUS.md記載）。Googleログインが主
 1. `supabase/schema.sql` 末尾の「セキュリティ強化」ブロックをSQL Editorで実行（CHECK制約＋delete_own）
 2. `vercel.json` をmainへマージ → 自動デプロイでヘッダー有効化
 3. 反映後の確認: `curl -sI https://www.spelldash.net | grep -iE "x-frame|content-security"` でヘッダー確認、CSP違反がコンソールに出ないか全ページ巡回
+
+## 2026-10-02 追記: 決済（SpellDash Pro、docs/BILLING.md）
+
+| 項目 | 対応 |
+|---|---|
+| 鍵の置き場 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `SUPABASE_SERVICE_ROLE_KEY` は Vercel の環境変数だけ。クライアント・応答・ログに出さない。リポジトリに Stripe の鍵（`sk_` や `whsec` で始まる文字列）は無い（受け入れ基準の grep） |
+| カード情報 | Stripe Checkout（Stripe のドメイン）で入力。SpellDash のサーバーには来ない。持つのは status・更新日・Stripe の顧客 id／subscription id／price id だけ（privacy.html「お支払い情報」） |
+| Webhook の署名 | `Stripe-Signature` の `t` と `v1` を分解し、生ボディで HMAC-SHA256 → `crypto.timingSafeEqual`（長さ違いは不一致）。`|now − t| > 300 秒` は拒否。`bodyParser: false` で生ボディを読む。未設定なら 503 |
+| 逆順到着・再送 | `subscriptions.event_created` に最後に反映した event の `created` を持ち、それ以下は書かない。Supabase に書けなければ 500 を返して Stripe の再送に任せる |
+| RLS | `subscriptions` は本人が自分の行を select するだけ（`auth.uid() = user_id`）。insert／update／delete は anon／authenticated から revoke。書くのは webhook（service role）だけ。checkout／portal／AI の回数判定は本人のトークン + anon key で読む |
+| 冪等性・二重課金 | Checkout 作成に `Idempotency-Key: checkout:<userId>:<interval>:<分>`。本人の行が Pro なら 409 で Checkout を作らない。Portal は `stripe_customer_id` が無ければ 404 |
+| リダイレクト先 | success／cancel／return の URL は `SITE_ORIGIN`（既定 本番）だけから作り、リクエストの Host／Origin ヘッダは使わない |
+| PII | ログは `billing/<label>: <種別> <状態>` だけ。メール・顧客 id・本文は書かない。CRM にも Stripe の id は出さない。応答は `Cache-Control: no-store`、sw.js は `/api/` を保存しない |
+| CSP | 外部へのリダイレクトは `location.href`（Stripe のドメイン）。スクリプト・接続先の許可は増やしていない（Stripe.js は使わない） |
+| 受容リスク | クライアントの `isPro()` は localStorage のキャッシュで、改ざんすれば単語帳の上限・テーマ・修復は端末内で外せる（学習に不公平は生まれない。AI の回数はサーバーで判定） |

@@ -2,7 +2,7 @@
 
 > 2026-09-07 起草。創業者指示「改善案を無限に出して実装まで。方向がずれたら止める」に基づく自走用リスト。
 > 実装済みは ✅、着手中は 🔧、未着手は ☐。**判断が要るもの・方針に触れるものは ⚠ を付け、実装前に創業者へ確認する。**
-> 禁止事項は据え置き: 決済／通貨／ガチャ／ショップ／通知／Battle改変／SQL実行と外部通知は創業者側。
+> 禁止事項は据え置き: 通貨／ガチャ／ショップ／通知／Battle改変／SQL実行と外部通知は創業者側。**決済は 2026-10-02 に創業者が解禁**（SpellDash Pro、docs/BILLING.md。学習の核は無料・Pay to Win 禁止は不変）。
 
 ## 選び方（優先順位の軸）
 
@@ -163,6 +163,7 @@
 - **Batch 31（学術英単語 NAWL）** ✅ 2026-09-21: NAWL 1.2（CC BY-SA 4.0）957語を8パックで収録（頻度順が公開されていないためアルファベット順）。道のコースに「学術英単語 960語（NAWL）」を追加（コースは10本）。同じ語でも学術パックでは学術の意味にする（derivative 導関数／null 帰無の／protocol 実験の手順／solvent 溶媒）。NGSL-Spoken（既存と100%重複）と NDL（新語48）は収録しない判断と根拠を data/sources/ngsl/LICENSE.md に記録
 - **Batch 32（別解を受け入れる）** ✅ 2026-09-24: 受験生の指摘「訳に対して別の正しい英単語があるので答えられない」への対応。打鍵判定を出題語1本から候補すべてに変え、別解は減点せず案内、つづり違いはそのまま正解に。初級7パック（中学1〜3年・小学英語・junior・daily・travel）に人手で別解 221語。残り: 英検・TOEIC など他パックへの書き足し、訳そのものが曖昧なカード（jump「とぶ」＝跳ぶ/飛ぶ など）の洗い出し
 - **Batch 33（プレイヤー CRM）** ✅ 2026-10-02: 創業者専用の管理画面 `/admin.html`。一覧（活動中／離れかけ／離脱／登録のみ、検索・並び替え・CSV）、詳細（30日の活動・直近のプレイ・分野・覚えた語・ご意見）、メモ／タグ／ピン留め。API は Vercel 関数が service role で集計し、`ADMIN_EMAILS` で権限。SQL は docs/SQL_CRM.md（crm_notes と任意の高速化関数）。通知・メール送信は作らない。**創業者側**: Vercel に `SUPABASE_SERVICE_ROLE_KEY` と `ADMIN_EMAILS` を設定 → Redeploy → /admin.html。メモを使うなら docs/SQL_CRM.md の 1 を実行
+- **Batch 34（SpellDash Pro）** ✅ 2026-10-02: 創業者の解禁で月額サブスク。Stripe Checkout／Billing Portal／Webhook（`api/billing/*`、SDK 無し・fetch と crypto）、`subscriptions` テーブル（docs/SQL_BILLING.md）と entitlement（active／trialing／past_due かつ 期限 + 3 日）、クライアントは `js/plan.js` のキャッシュで同期判定。特典: マイ単語帳 100 → 1,000 語、AI の回数（サーバーで判定、429 に Pro の案内）、推移 30 → 90 日、シールド 3 枚＋連続記録の修復（月 1 回・7 日以内）、テーマ 紙／藍。`/pro.html`（価格は Stripe から）、プロフィールのプラン行、`/tokushoho.html`、privacy.html にお支払い情報、CRM にプラン列。アプリでは購入導線を出さない。E2E 529 件（+86）。**創業者側**: docs/BILLING.md §2（Stripe の商品と Price → Vercel の環境変数 → Webhook → Redeploy → SQL → tokushoho.html の［ ］→ テストカードで一巡 → 本番キー → 告知）。残り: 年額の有無と価格の決定、マイ単語帳の端末間同期、1 年の推移
 - 以降はこの表から順に。創業者の「止めろ」があれば即中断。
 
 ## 実装しないと決めたもの（理由つき）

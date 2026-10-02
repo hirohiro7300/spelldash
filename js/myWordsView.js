@@ -94,6 +94,14 @@ function setStatus(text, isError) {
   const el = document.getElementById("myWordStatus");
   if (!el) return;
   el.textContent = text;
+  // 上限の案内（「Pro なら」を含む固定文）にだけ Pro へのリンクを足す。ユーザー入力は innerHTML に入れない
+  if (isError && text.includes("Pro なら")) {
+    const link = document.createElement("a");
+    link.href = "./pro.html";
+    link.className = "pro-link";
+    link.textContent = "Pro について";
+    el.append(" ", link);
+  }
   el.className = `muted my-words__status${isError ? " my-words__status--error" : ""}`;
 }
 

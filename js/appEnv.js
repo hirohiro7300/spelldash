@@ -47,7 +47,7 @@ export function openExternal(url) {
 if (isNativeApp) {
   document.documentElement.classList.add("native-app");
   document.documentElement.classList.add(`native-${window.Capacitor.getPlatform?.() ?? "app"}`);
-  syncNativeChrome(localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light");
+  syncNativeChrome(["dark", "indigo"].includes(localStorage.getItem("spelldash_theme")) ? "dark" : "light");
 
   // dist に含めていない /packs/ へのリンクは本番へ（WebView 内で開くと index.html が壊れて出る）
   document.addEventListener(

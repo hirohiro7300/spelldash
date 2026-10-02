@@ -1,6 +1,8 @@
 /* ===== SpellDash デザイントークン（docs/CONCEPT.md「墨と朱」） =====
    全ページの最初に読み込む。色・フォント・角丸はここだけで決め、各 CSS はこの変数を使う。
-   ライトが標準。ダークは html[data-theme="dark"] で反転。 */
+   ライトが標準。ダークは html[data-theme="dark"] で反転。
+   Pro の追加テーマ: 紙 html[data-theme="paper"]（温かい生成りのライト）／藍 html[data-theme="indigo"]（藍染めのダーク）。
+   どちらも白／黒と同じ役割のトークンを持つだけで、部品の CSS は変えない。 */
 
 :root {
   --paper: #f7f6f2;
@@ -49,6 +51,52 @@ html[data-theme="dark"] {
   --warn: #e0b84a;
   --warn-soft: #332a14;
   --focus: 0 0 0 3px rgba(255, 106, 69, 0.28);
+
+  color-scheme: dark;
+}
+
+/* ---- 紙（Pro）: 生成りの紙に、少し茶の入った墨。朱はわずかに深く ---- */
+html[data-theme="paper"] {
+  --paper: #f3ecdd;
+  --paper-2: #faf5ea;
+  --paper-3: #eadfca;
+  --ink: #2a2218;
+  --ink-2: #4c4134;
+  --ink-3: #736757;
+  --ink-4: #ada091;
+  --line: #dccfb7;
+  --line-2: #c4b497;
+  --signal: #c2411f;
+  --signal-ink: #9b3318;
+  --signal-soft: #f6dfd4;
+  --ok: #3e6b45;
+  --ok-soft: #e3ecdc;
+  --warn: #8a5a00;
+  --warn-soft: #f5e6c4;
+  --focus: 0 0 0 3px rgba(194, 65, 31, 0.24);
+
+  color-scheme: light;
+}
+
+/* ---- 藍（Pro）: 藍染めの紙に、生成りの文字。朱は明るめ ---- */
+html[data-theme="indigo"] {
+  --paper: #121a2b;
+  --paper-2: #182238;
+  --paper-3: #1f2b45;
+  --ink: #e8ecf4;
+  --ink-2: #c3cadb;
+  --ink-3: #8f9ab4;
+  --ink-4: #5f6a84;
+  --line: #273554;
+  --line-2: #35466b;
+  --signal: #ff7a52;
+  --signal-ink: #ffb09a;
+  --signal-soft: #3a2a2c;
+  --ok: #86c7a3;
+  --ok-soft: #1c3330;
+  --warn: #e6c05a;
+  --warn-soft: #343018;
+  --focus: 0 0 0 3px rgba(255, 122, 82, 0.3);
 
   color-scheme: dark;
 }

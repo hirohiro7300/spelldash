@@ -307,7 +307,10 @@ export async function initialSync() {
           current: cloudStreak.current,
           best: Math.max(cloudStreak.best ?? 0, localStreak.best ?? 0),
           shields: cloudStreak.shields ?? 0,
-          shieldSavedOn: cloudStreak.shieldSavedOn ?? null
+          shieldSavedOn: cloudStreak.shieldSavedOn ?? null,
+          // 途切れの記録と修復の使用月（Pro の連続記録の修復用）も最後にプレイした側に合わせる
+          lost: cloudStreak.lost ?? null,
+          repairedMonth: cloudStreak.repairedMonth ?? null
         })
       );
       changedLocal = true;

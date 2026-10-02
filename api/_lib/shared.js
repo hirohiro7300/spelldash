@@ -2,6 +2,7 @@
 //
 // - Supabaseのアクセストークン検証（ログイン必須の機能に使う）
 // - 1ユーザーの1日回数の目安（サーバーレスのインスタンス内メモリ: 厳密ではないが暴走の歯止め）
+//   上限は無料と Pro で変える（本人の subscriptions 行を 5 分キャッシュして判定。詳細は _lib/billing.js）
 // - JSON応答ヘルパー
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || "https://sujvgwozsnzjsjmkcrnk.supabase.co";
@@ -24,9 +25,13 @@ export function readBody(req) {
   }
 }
 
-// Supabaseのアクセストークンを検証し、ユーザーIDを返す（無効なら null）
-export async function verifyUser(authorization) {
-  const token = String(authorization || "").replace(/^Bearer\s+/i, "").trim();
+export function bearerToken(authorization) {
+  return String(authorization || "").replace(/^Bearer\s+/i, "").trim();
+}
+
+// Supabaseのアクセストークンを検証し、{ id, email, emailConfirmed } を返す（無効なら null）
+export async function verifyUserFull(authorization) {
+  const token = bearerToken(authorization);
   if (!token) return null;
   try {
     const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
@@ -34,13 +39,43 @@ export async function verifyUser(authorization) {
     });
     if (!response.ok) return null;
     const user = await response.json();
-    return user?.id || null;
+    if (!user?.id) return null;
+    return {
+      id: String(user.id),
+      email: typeof user.email === "string" ? user.email : "",
+      emailConfirmed: Boolean(user.email_confirmed_at || user.confirmed_at)
+    };
   } catch {
     return null;
   }
 }
 
+// ユーザーIDだけ要るとき（無効なら null）
+export async function verifyUser(authorization) {
+  const user = await verifyUserFull(authorization);
+  return user ? user.id : null;
+}
+
 const usage = new Map();
+
+// 本人が Pro かどうか（ユーザーごと 5 分のメモリキャッシュ。読めなければ無料として扱う）
+const PLAN_CACHE_MS = 5 * 60 * 1000;
+const planCache = new Map();
+
+async function isProUser(token, userId) {
+  const now = Date.now();
+  const cached = planCache.get(userId);
+  if (cached && now - cached.at < PLAN_CACHE_MS) return cached.pro;
+  let pro = false;
+  try {
+    const billing = await import("./billing.js");
+    pro = billing.isProRow(await billing.fetchOwnSubscription(token, userId), now);
+  } catch {
+    pro = false;
+  }
+  planCache.set(userId, { at: now, pro });
+  return pro;
+}
 
 export function overDailyLimit(scope, userId, limit) {
   const today = new Date().toISOString().slice(0, 10);
@@ -68,7 +103,8 @@ function allowAppOrigin(req, res) {
 }
 
 // 共通の前処理: メソッド／キー／ログイン／回数。問題があれば応答して true を返す
-export async function reject(req, res, { scope, limit }) {
+// limit は無料の 1 日上限、proLimit は Pro の上限（省略時は limit と同じ）
+export async function reject(req, res, { scope, limit, proLimit = limit }) {
   allowAppOrigin(req, res);
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
@@ -89,8 +125,13 @@ export async function reject(req, res, { scope, limit }) {
     send(res, 401, { error: "login_required", message: "ログインすると使えます（無料）。" });
     return true;
   }
-  if (overDailyLimit(scope, userId, limit)) {
-    send(res, 429, { error: "daily_limit", message: "今日の上限に達しました。また明日どうぞ。" });
+  const pro = await isProUser(bearerToken(req.headers.authorization), userId);
+  const max = pro ? proLimit : limit;
+  if (overDailyLimit(scope, userId, max)) {
+    const message = pro
+      ? `今日の上限（${max}回）に達しました。また明日どうぞ。`
+      : `今日の無料ぶん（${limit}回）を使い切りました。Pro なら 1 日 ${proLimit} 回まで使えます。`;
+    send(res, 429, { error: "daily_limit", upgrade: !pro, message });
     return true;
   }
   return false;
