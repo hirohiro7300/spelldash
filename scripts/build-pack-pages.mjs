@@ -123,6 +123,8 @@ ${body}
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="/news.html">お知らせ</a>
         <a href="/privacy.html">プライバシー</a>
+        <a href="/tokushoho.html">特定商取引法に基づく表記</a>
+        <a href="/terms.html">利用規約</a>
         <a href="/packs/">分野パック一覧</a>
       </nav>
       <p class="site-footer__copy">© 2026 SpellDash</p>
@@ -225,7 +227,10 @@ const urls = [
   ["/list.html?category=listing", "monthly", "0.6"],
   ["/news.html", "weekly", "0.5"],
   ["/battle.html", "monthly", "0.4"],
-  ["/privacy.html", "yearly", "0.2"]
+  ["/privacy.html", "yearly", "0.2"],
+  ["/pro.html", "monthly", "0.6"],
+  ["/tokushoho.html", "yearly", "0.2"],
+  ["/terms.html", "yearly", "0.2"]
 ];
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls
   .map(([u, f, pr]) => `  <url><loc>${SITE}${u.replace(/&/g, "&amp;")}</loc><changefreq>${f}</changefreq><priority>${pr}</priority></url>`)
