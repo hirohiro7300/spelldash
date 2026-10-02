@@ -49,13 +49,13 @@
     {"id": "english-institute", "en": "institute", "ja": "研究所", "pos": "名", "level": "hard", "accept": ["laboratory", "lab"], "tags": ["n"], "ex": "She works at a research institute in Kyoto.", "exJa": "彼女は京都の研究所で働いています。"},
     {"id": "english-kit", "en": "kit", "ja": "一式・キット", "pos": "名", "level": "normal", "accept": ["set"], "tags": ["n"], "ex": "Every car should carry a first aid kit.", "exJa": "どの車にも救急用具一式を積むべきです。"},
     {"id": "english-locally", "en": "locally", "ja": "地元で", "pos": "副", "level": "normal", "tags": ["adj"], "ex": "All the vegetables in this shop are grown locally.", "exJa": "この店の野菜はすべて地元で作られています。"},
-    {"id": "english-mentor", "en": "mentor", "ja": "指導者", "pos": "名", "level": "hard", "accept": ["leader", "instructor", "coach"], "tags": ["n"], "ex": "My mentor helped me prepare for the interview.", "exJa": "指導者が面接の準備を手伝ってくれました。"},
+    {"id": "english-mentor", "en": "mentor", "ja": "助言者・メンター", "pos": "名", "level": "hard", "accept": ["leader", "instructor", "coach"], "tags": ["n"], "ex": "My mentor helped me prepare for the interview.", "exJa": "指導者が面接の準備を手伝ってくれました。"},
     {"id": "english-nominate", "en": "nominate", "ja": "指名する", "pos": "動", "level": "easy", "accept": ["appoint", "designate", "name"], "tags": ["v"], "ex": "The committee will nominate three candidates for the award.", "exJa": "委員会は賞の候補者を3名指名します。"},
     {"id": "english-opt", "en": "opt", "ja": "選ぶ", "pos": "動", "level": "normal", "accept": ["choose", "select", "pick"], "tags": ["v"], "ex": "Many workers opt to take the train instead of driving.", "exJa": "多くの社員は車ではなく電車を選びます。"},
     {"id": "english-parade", "en": "parade", "ja": "パレード", "pos": "名", "level": "easy", "tags": ["n"], "ex": "The parade starts at noon in front of the station.", "exJa": "パレードは正午に駅前から始まります。"},
     {"id": "english-physician", "en": "physician", "ja": "医師", "pos": "名", "level": "hard", "accept": ["doctor"], "tags": ["n"], "ex": "The physician told him to rest for a week.", "exJa": "医師は彼に一週間休むように言いました。"},
     {"id": "english-polish", "en": "polish", "ja": "磨く", "pos": "動", "level": "hard", "accept": ["shine", "brush"], "tags": ["v"], "ex": "The staff polish the floor every morning.", "exJa": "係員は毎朝床を磨きます。"},
-    {"id": "english-postage", "en": "postage", "ja": "送料", "pos": "名", "level": "normal", "accept": ["shipping"], "tags": ["n"], "ex": "The postage for this package is five hundred yen.", "exJa": "この小包の送料は五百円です。"},
+    {"id": "english-postage", "en": "postage", "ja": "郵便料金・送料", "pos": "名", "level": "normal", "accept": ["shipping"], "tags": ["n"], "ex": "The postage for this package is five hundred yen.", "exJa": "この小包の送料は五百円です。"},
     {"id": "english-recreational", "en": "recreational", "ja": "娯楽の", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "The hotel has a large recreational area for guests.", "exJa": "そのホテルには客用の広い娯楽施設があります。"},
     {"id": "english-rehearse", "en": "rehearse", "ja": "練習する", "pos": "動", "level": "normal", "accept": ["practice", "practise"], "tags": ["v"], "ex": "The team will rehearse the presentation on Thursday.", "exJa": "チームは木曜に発表の練習をします。"},
     {"id": "english-removal", "en": "removal", "ja": "撤去・除去", "pos": "名", "level": "normal", "accept": ["elimination"], "tags": ["n"], "ex": "The removal of the old sign will take two hours.", "exJa": "古い看板の撤去には二時間かかります。"},
@@ -105,7 +105,7 @@
     {"id": "english-attorney", "en": "attorney", "ja": "弁護士", "pos": "名", "level": "normal", "accept": ["lawyer", "solicitor", "barrister"], "tags": ["n"], "ex": "Our attorney will check the contract this week.", "exJa": "当社の弁護士が今週契約書を確認します。"},
     {"id": "english-authorization", "en": "authorization", "ja": "許可", "pos": "名", "level": "normal", "accept": ["permission", "approval", "authorisation"], "tags": ["n"], "ex": "You need written authorization to enter this floor.", "exJa": "この階に入るには書面の許可が必要です。"},
     {"id": "english-campus", "en": "campus", "ja": "構内", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The library is on the north side of the campus.", "exJa": "図書館は構内の北側にあります。"},
-    {"id": "english-candy", "en": "candy", "ja": "あめ・菓子", "pos": "名", "level": "easy", "accept": ["sweet", "confectionery"], "tags": ["n"], "ex": "The shop sells candy near the front door.", "exJa": "その店は入口の近くであめを売っています。"},
+    {"id": "english-candy", "en": "candy", "ja": "キャンディー・あめ", "pos": "名", "level": "easy", "accept": ["sweet", "confectionery"], "tags": ["n"], "ex": "The shop sells candy near the front door.", "exJa": "その店は入口の近くであめを売っています。"},
     {"id": "english-certify", "en": "certify", "ja": "証明する", "pos": "動", "level": "hard", "accept": ["prove", "verify"], "tags": ["v"], "ex": "This letter certifies that he finished the course.", "exJa": "この書面は彼の課程修了を証明します。", "exForm": "certifies"},
     {"id": "english-checkout", "en": "checkout", "ja": "チェックアウト・精算", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Checkout at this hotel is at eleven in the morning.", "exJa": "このホテルのチェックアウトは午前十一時です。"},
     {"id": "english-chemistry", "en": "chemistry", "ja": "化学", "pos": "名", "level": "hard", "tags": ["n"], "ex": "She studied chemistry at a university in Tokyo.", "exJa": "彼女は東京の大学で化学を学びました。"},
@@ -129,7 +129,7 @@
     {"id": "english-overlook", "en": "overlook", "ja": "見落とす", "pos": "動", "level": "hard", "accept": ["miss"], "tags": ["v"], "ex": "Do not overlook the small print in the contract.", "exJa": "契約書の細かい文字を見落とさないように。"},
     {"id": "english-patent", "en": "patent", "ja": "特許", "pos": "名", "level": "hard", "tags": ["n"], "ex": "We applied for a patent on the new design.", "exJa": "新しいデザインの特許を申請しました。"},
     {"id": "english-payable", "en": "payable", "ja": "支払うべき", "pos": "形", "level": "hard", "accept": ["due"], "tags": ["adj"], "ex": "The full amount is payable within thirty days of the invoice date.", "exJa": "全額は請求書の日付から30日以内にお支払いください。"},
-    {"id": "english-preliminary", "en": "preliminary", "ja": "予備の", "pos": "形", "level": "hard", "accept": ["preparatory"], "tags": ["adj"], "ex": "The preliminary results of the survey will be shared on Friday.", "exJa": "調査の予備的な結果は金曜日に共有されます。"},
+    {"id": "english-preliminary", "en": "preliminary", "ja": "予備的な・事前の", "pos": "形", "level": "hard", "accept": ["preparatory"], "tags": ["adj"], "ex": "The preliminary results of the survey will be shared on Friday.", "exJa": "調査の予備的な結果は金曜日に共有されます。"},
     {"id": "english-salesman", "en": "salesman", "ja": "販売員", "pos": "名", "level": "hard", "accept": ["salesperson", "clerk"], "tags": ["n"], "ex": "The salesman explained the price of each model.", "exJa": "販売員は各機種の値段を説明しました。"}
   ]
 }

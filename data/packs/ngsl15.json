@@ -28,7 +28,7 @@
     {"id": "english-blame", "en": "blame", "ja": "責める・〜のせいにする", "pos": "動", "level": "normal", "tags": ["v"], "ex": "Don't blame me for the mistake.", "exJa": "その間違いを私のせいにしないで。"},
     {"id": "english-explanation", "en": "explanation", "ja": "説明", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Ken gave a clear explanation of the problem.", "exJa": "ケンはその問題について分かりやすい説明をした。"},
     {"id": "english-arise", "en": "arise", "ja": "生じる・起こる", "pos": "動", "level": "hard", "accept": ["happen", "occur"], "tags": ["v"], "ex": "Problems may arise if we start too late.", "exJa": "始めるのが遅すぎると問題が生じるかもしれない。"},
-    {"id": "english-musical", "en": "musical", "ja": "音楽の", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "Emi comes from a very musical family.", "exJa": "エミはとても音楽好きな家庭で育った。"},
+    {"id": "english-musical", "en": "musical", "ja": "音楽の・音楽好きな", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "Emi comes from a very musical family.", "exJa": "エミはとても音楽好きな家庭で育った。"},
     {"id": "english-recover", "en": "recover", "ja": "回復する", "pos": "動", "level": "normal", "tags": ["v"], "ex": "It took me a week to recover from the cold.", "exJa": "風邪が治るのに一週間かかった。"},
     {"id": "english-dad", "en": "dad", "ja": "お父さん・パパ", "pos": "名", "level": "easy", "accept": ["father", "daddy", "papa"], "tags": ["n"], "ex": "My dad drives me to school every morning.", "exJa": "父は毎朝、車で学校まで送ってくれる。"},
     {"id": "english-stretch", "en": "stretch", "ja": "伸ばす・伸びる", "pos": "動", "level": "hard", "accept": ["extend"], "tags": ["v"], "ex": "Stretch your arms and legs before you run.", "exJa": "走る前に腕と脚を伸ばしましょう。"},

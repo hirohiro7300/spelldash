@@ -19,7 +19,7 @@
   },
   "words": [
     {"id": "english-situation", "en": "situation", "ja": "状況", "pos": "名", "level": "normal", "tags": ["n"], "ex": "We are in a difficult situation right now.", "exJa": "私たちは今、難しい状況にある。"},
-    {"id": "english-staff", "en": "staff", "ja": "職員", "pos": "名", "level": "easy", "accept": ["employee"], "tags": ["n"], "ex": "The staff at this hotel are very kind.", "exJa": "このホテルのスタッフはとても親切です。"},
+    {"id": "english-staff", "en": "staff", "ja": "スタッフ・職員", "pos": "名", "level": "easy", "accept": ["employee"], "tags": ["n"], "ex": "The staff at this hotel are very kind.", "exJa": "このホテルのスタッフはとても親切です。"},
     {"id": "english-activity", "en": "activity", "ja": "活動", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Club activities start at four.", "exJa": "部活動は四時に始まる。", "exForm": "activities"},
     {"id": "english-film", "en": "film", "ja": "映画", "pos": "名", "level": "normal", "accept": ["movie"], "tags": ["n"], "ex": "We watched an old film last night.", "exJa": "昨日の夜、古い映画を見た。"},
     {"id": "english-morning", "en": "morning", "ja": "朝", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I go for a walk every morning.", "exJa": "毎朝、散歩に出かける。"},
@@ -31,7 +31,7 @@
     {"id": "english-above", "en": "above", "ja": "〜の上に・上記の", "pos": "前", "level": "easy", "tags": ["fn"], "ex": "There is a clock above the door.", "exJa": "ドアの上に時計がある。"},
     {"id": "english-design", "en": "design", "ja": "デザイン・設計", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I like the design of this chair.", "exJa": "このいすのデザインが好きだ。"},
     {"id": "english-event", "en": "event", "ja": "行事", "pos": "名", "level": "easy", "tags": ["n"], "ex": "The school event was held last Saturday.", "exJa": "学校行事は先週の土曜日に行われた。"},
-    {"id": "english-special", "en": "special", "ja": "特別な", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "Today is a special day for me.", "exJa": "今日は私にとって特別な日だ。"},
+    {"id": "english-special", "en": "special", "ja": "特別な", "pos": "形", "level": "normal", "accept": ["particular"], "tags": ["adj"], "ex": "Today is a special day for me.", "exJa": "今日は私にとって特別な日だ。"},
     {"id": "english-sometimes", "en": "sometimes", "ja": "ときどき", "pos": "副", "level": "easy", "accept": ["occasionally"], "tags": ["adj"], "ex": "I sometimes cook dinner.", "exJa": "ときどき夕ごはんを作る。"},
     {"id": "english-condition", "en": "condition", "ja": "状態・条件", "pos": "名", "level": "normal", "accept": ["state"], "tags": ["n"], "ex": "The car is old but in good condition.", "exJa": "その車は古いが、状態はいい。"},
     {"id": "english-carry", "en": "carry", "ja": "運ぶ", "pos": "動", "level": "normal", "accept": ["transport"], "tags": ["v"], "ex": "Ken carried the heavy bag for me.", "exJa": "ケンが重いかばんを運んでくれた。", "exForm": "carried"},

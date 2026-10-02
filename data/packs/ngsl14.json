@@ -44,7 +44,7 @@
     {"id": "english-amaze", "en": "amaze", "ja": "驚かせる", "pos": "動", "level": "hard", "accept": ["surprise", "astonish", "astound"], "tags": ["v"], "ex": "Her beautiful voice amazed everyone.", "exJa": "彼女の美しい声はみんなを驚かせた。", "exForm": "amazed"},
     {"id": "english-device", "en": "device", "ja": "機器・装置", "pos": "名", "level": "normal", "accept": ["equipment", "apparatus"], "tags": ["n"], "ex": "You can charge two devices at the same time.", "exJa": "同時に二台の機器を充電できます。", "exForm": "devices"},
     {"id": "english-birth", "en": "birth", "ja": "誕生・出産", "pos": "名", "level": "easy", "accept": ["childbirth", "delivery"], "tags": ["n"], "ex": "Please write your date of birth here.", "exJa": "ここに生年月日を書いてください。"},
-    {"id": "english-forest", "en": "forest", "ja": "森", "pos": "名", "level": "easy", "accept": ["wood", "woods"], "tags": ["n"], "ex": "We walked through the forest for two hours.", "exJa": "森の中を2時間歩きました。"},
+    {"id": "english-forest", "en": "forest", "ja": "森・森林", "pos": "名", "level": "easy", "accept": ["wood", "woods"], "tags": ["n"], "ex": "We walked through the forest for two hours.", "exJa": "森の中を2時間歩きました。"},
     {"id": "english-label", "en": "label", "ja": "ラベル", "pos": "名", "level": "normal", "accept": ["tag"], "tags": ["n"], "ex": "Please put a label on each box.", "exJa": "それぞれの箱にラベルを貼ってください。"},
     {"id": "english-root", "en": "root", "ja": "根・根源", "pos": "名", "level": "normal", "accept": ["origin", "source"], "tags": ["n"], "ex": "The roots of this tree are very deep.", "exJa": "この木の根はとても深い。", "exForm": "roots"},
     {"id": "english-factory", "en": "factory", "ja": "工場", "pos": "名", "level": "easy", "accept": ["plant"], "tags": ["n"], "ex": "The factory is closed on Sundays.", "exJa": "工場は日曜日は休みです。"},

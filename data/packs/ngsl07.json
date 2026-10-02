@@ -101,7 +101,7 @@
     {"id": "english-prove", "en": "prove", "ja": "証明する", "pos": "動", "level": "hard", "accept": ["demonstrate"], "tags": ["v"], "ex": "Can you prove that you were at home last night?", "exJa": "昨夜家にいたと証明できますか？"},
     {"id": "english-cent", "en": "cent", "ja": "セント", "pos": "名", "level": "normal", "tags": ["n"], "ex": "This pen costs ninety-nine cents.", "exJa": "このペンは99セントです。", "exForm": "cents"},
     {"id": "english-season", "en": "season", "ja": "季節", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Which season do you like best?", "exJa": "どの季節が一番好きですか？"},
-    {"id": "english-floor", "en": "floor", "ja": "階", "pos": "名", "level": "easy", "accept": ["story", "storey"], "tags": ["n"], "ex": "Which floor is the restaurant on?", "exJa": "レストランは何階ですか。"},
+    {"id": "english-floor", "en": "floor", "ja": "床・階", "pos": "名", "level": "easy", "accept": ["story", "storey"], "tags": ["n"], "ex": "Which floor is the restaurant on?", "exJa": "レストランは何階ですか。"},
     {"id": "english-stuff", "en": "stuff", "ja": "物・こと", "pos": "名", "level": "normal", "accept": ["thing"], "tags": ["n"], "ex": "Where can I put my stuff?", "exJa": "荷物はどこに置けばいい？"},
     {"id": "english-wide", "en": "wide", "ja": "広い・幅の広い", "pos": "形", "level": "normal", "accept": ["broad", "spacious"], "tags": ["adj"], "ex": "The river is very wide here.", "exJa": "川はここでとても幅が広い。"},
     {"id": "english-anyone", "en": "anyone", "ja": "誰か・誰でも", "pos": "代", "level": "easy", "accept": ["anybody"], "tags": ["fn"], "ex": "Does anyone know where Ken is?", "exJa": "ケンがどこにいるか誰か知ってる？"},
@@ -135,7 +135,7 @@
     {"id": "english-hospital", "en": "hospital", "ja": "病院", "pos": "名", "level": "easy", "tags": ["n"], "ex": "My grandfather is in the hospital now.", "exJa": "祖父は今、入院している。"},
     {"id": "english-quickly", "en": "quickly", "ja": "すばやく・急いで", "pos": "副", "level": "easy", "accept": ["fast", "rapidly", "swiftly"], "tags": ["adj"], "ex": "She answered the question quickly.", "exJa": "彼女はその質問にすばやく答えた。"},
     {"id": "english-interview", "en": "interview", "ja": "面接", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Your interview is scheduled for Monday at ten in the morning.", "exJa": "面接は月曜の午前10時に予定されています。"},
-    {"id": "english-agreement", "en": "agreement", "ja": "合意・契約", "pos": "名", "level": "easy", "accept": ["contract", "deal", "consensus"], "tags": ["n"], "ex": "Both companies signed the agreement after two long meetings.", "exJa": "両社は二度の長い会議の末、契約に署名しました。"},
+    {"id": "english-agreement", "en": "agreement", "ja": "合意・協定", "pos": "名", "level": "easy", "accept": ["contract", "deal", "consensus"], "tags": ["n"], "ex": "Both companies signed the agreement after two long meetings.", "exJa": "両社は二度の長い会議の末、契約に署名しました。"},
     {"id": "english-release", "en": "release", "ja": "発売する・解放する", "pos": "動", "level": "normal", "accept": ["free", "liberate", "launch"], "tags": ["v"], "ex": "The band will release a new song next month.", "exJa": "そのバンドは来月、新曲を発売する。"}
   ]
 }

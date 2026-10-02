@@ -76,7 +76,7 @@
     {"id": "english-anniversary", "en": "anniversary", "ja": "記念日", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The company will celebrate its twentieth anniversary in May.", "exJa": "会社は5月に創立20周年の記念日を迎えます。"},
     {"id": "english-buffet", "en": "buffet", "ja": "ビュッフェ", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The breakfast buffet had many kinds of fruit.", "exJa": "朝食ビュッフェにはいろいろな果物がありました。"},
     {"id": "english-defective", "en": "defective", "ja": "欠陥のある", "pos": "形", "level": "hard", "accept": ["faulty", "flawed"], "tags": ["adj"], "ex": "Defective products can be exchanged within thirty days.", "exJa": "欠陥のある製品は30日以内なら交換できます。"},
-    {"id": "english-leak", "en": "leak", "ja": "漏れる・漏れ", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Water is leaking from the ceiling in the meeting room.", "exJa": "会議室の天井から水が漏れています。", "exForm": "leaking"},
+    {"id": "english-leak", "en": "leak", "ja": "漏れる", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Water is leaking from the ceiling in the meeting room.", "exJa": "会議室の天井から水が漏れています。", "exForm": "leaking"},
     {"id": "english-occupancy", "en": "occupancy", "ja": "占有・入居率", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The occupancy rate of the apartment building reached ninety percent.", "exJa": "そのマンションの入居率は90%に達しました。"},
     {"id": "english-proficiency", "en": "proficiency", "ja": "熟達・習熟度", "pos": "名", "level": "normal", "accept": ["mastery"], "tags": ["n"], "ex": "The job requires proficiency in two languages.", "exJa": "その仕事は2言語の習熟度を求めます。"},
     {"id": "english-renewal", "en": "renewal", "ja": "更新", "pos": "名", "level": "hard", "accept": ["update"], "tags": ["n"], "ex": "We will send you a reminder one month before the renewal date.", "exJa": "更新日の1か月前にお知らせをお送りします。"},

@@ -96,7 +96,7 @@
     {"id": "english-tactic", "en": "tactic", "ja": "戦術", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Lower prices are a common tactic to win new customers.", "exJa": "値下げは新規の客を得るよくある戦術だ。"},
     {"id": "english-renovation", "en": "renovation", "ja": "改装", "pos": "名", "level": "hard", "accept": ["refurbishment", "remodeling"], "tags": ["n"], "ex": "The lobby will be closed for renovation until March.", "exJa": "ロビーは改装のため3月まで閉鎖されます。"},
     {"id": "english-upgrade", "en": "upgrade", "ja": "アップグレード", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The upgrade to the new server will take about an hour.", "exJa": "新サーバーへのアップグレードは1時間ほどかかります。"},
-    {"id": "english-precede", "en": "precede", "ja": "先に起こる", "pos": "動", "level": "hard", "tags": ["v"], "ex": "A short talk will precede the main speech.", "exJa": "本題の講演の前に短い話があります。"},
+    {"id": "english-precede", "en": "precede", "ja": "〜に先立つ", "pos": "動", "level": "hard", "tags": ["v"], "ex": "A short talk will precede the main speech.", "exJa": "本題の講演の前に短い話があります。"},
     {"id": "english-replacement", "en": "replacement", "ja": "交換・後任", "pos": "名", "level": "hard", "accept": ["exchange", "successor"], "tags": ["n"], "ex": "We are looking for a replacement for Ms. Sato.", "exJa": "佐藤さんの後任を探しています。"},
     {"id": "english-dine", "en": "dine", "ja": "食事をする", "pos": "動", "level": "normal", "accept": ["eat"], "tags": ["v"], "ex": "We dine out with our team once a month.", "exJa": "月に一度チームで外食します。"},
     {"id": "english-passport", "en": "passport", "ja": "パスポート", "pos": "名", "level": "easy", "tags": ["n"], "ex": "May I see your passport, please?", "exJa": "パスポートを見せていただけますか。"},

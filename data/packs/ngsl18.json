@@ -100,7 +100,7 @@
     {"id": "english-pitch", "en": "pitch", "ja": "売り込み", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Ken gave a short pitch for his idea at the meeting.", "exJa": "ケンは会議で自分のアイデアを短く売り込んだ。"},
     {"id": "english-arrival", "en": "arrival", "ja": "到着", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Upon arrival, please check in at the front desk.", "exJa": "到着したらフロントでチェックインをしてください。"},
     {"id": "english-contemporary", "en": "contemporary", "ja": "現代の", "pos": "形", "level": "normal", "accept": ["modern"], "tags": ["adj"], "ex": "The museum has a large collection of contemporary art.", "exJa": "その美術館は現代美術を数多く所蔵している。"},
-    {"id": "english-gate", "en": "gate", "ja": "搭乗口", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Which gate does my flight leave from?", "exJa": "私の便はどの搭乗口から出ますか。"},
+    {"id": "english-gate", "en": "gate", "ja": "門・搭乗口", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Which gate does my flight leave from?", "exJa": "私の便はどの搭乗口から出ますか。"},
     {"id": "english-ease", "en": "ease", "ja": "容易さ・気楽さ", "pos": "名", "level": "hard", "tags": ["n"], "ex": "She passed the driving test with ease.", "exJa": "彼女は運転試験に楽々と合格した。"},
     {"id": "english-beer", "en": "beer", "ja": "ビール", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Would you like a beer or a glass of wine?", "exJa": "ビールにしますか、それともワインにしますか。"},
     {"id": "english-specialist", "en": "specialist", "ja": "専門家・専門医", "pos": "名", "level": "hard", "accept": ["expert"], "tags": ["n"], "ex": "My doctor sent me to a heart specialist.", "exJa": "主治医に心臓の専門医を紹介された。"},
