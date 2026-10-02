@@ -1,0 +1,40 @@
+{
+  "userId": "33333333-3333-4333-8333-333333333333",
+  "email": "mike@example.com",
+  "displayName": null,
+  "createdAt": "2026-08-02T09:00:00.000Z",
+  "lastSignInAt": "2026-09-20T12:00:00.000Z",
+  "segment": "atRisk",
+  "isNew": false,
+  "xp": 900,
+  "level": 5,
+  "streakCurrent": 0,
+  "streakBest": 6,
+  "wordsPlayed": 150,
+  "wordsMastered": 22,
+  "packs": ["toeic500"],
+  "activityDays": [
+    { "day": "2026-09-20", "studyCorrect": 12, "challengeRuns": 0, "dailyDone": false, "battleRuns": 0 },
+    { "day": "2026-09-18", "studyCorrect": 9, "challengeRuns": 1, "dailyDone": false, "battleRuns": 0 },
+    { "day": "2026-09-12", "studyCorrect": 10, "challengeRuns": 0, "dailyDone": true, "battleRuns": 0 },
+    { "day": "2026-09-05", "studyCorrect": 7, "challengeRuns": 0, "dailyDone": false, "battleRuns": 0 }
+  ],
+  "playSessions": [
+    { "mode": "challenge", "score": 14, "typingSpeed": 3.1, "typingMiss": 2, "recallFail": 1, "durationSeconds": 60, "playedAt": "2026-09-18T12:30:00.000Z" }
+  ],
+  "battleSessions": [],
+  "dailyScores": [
+    { "day": "2026-09-12", "score": 11, "typingSpeed": 2.8 }
+  ],
+  "recentMastered": [
+    { "wordId": "english-invoice", "masteredAt": "2026-09-18T12:40:00.000Z" },
+    { "wordId": "english-schedule", "masteredAt": "2026-09-12T13:00:00.000Z" }
+  ],
+  "feedback": [
+    { "id": 12, "message": "TOEIC のパックに別解がほしい（例: 会議 meeting / conference）", "contact": "", "page": "/list.html", "createdAt": "2026-09-19T02:00:00.000Z" },
+    { "id": 7, "message": "ダークモードで入力欄が見づらい", "contact": "mike@example.com", "page": "/", "createdAt": "2026-08-30T10:00:00.000Z" }
+  ],
+  "tags": ["TOEIC"],
+  "note": "",
+  "pinned": false
+}
