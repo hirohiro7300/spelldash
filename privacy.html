@@ -16,7 +16,8 @@
   <link rel="stylesheet" href="./css/theme.css" />
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
-  <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
+  <meta name="theme-color" content="#f7f6f2" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
 
 
   <meta name="description" content="SpellDashのプライバシーポリシー。" />
@@ -29,7 +30,6 @@
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
@@ -83,7 +83,7 @@
       <p>
         ログイン状態でデイリーチャレンジ（Daily Dash）を完走すると、
         <strong>表示名とスコア</strong>が当日のランキングとして他のユーザーにも表示されます。
-        表示名はプロフィールページでいつでも変更できます。
+        表示名は設定ページでいつでも変更できます。
         メールアドレスなどその他の情報が公開されることはありません。
         ランキングからの記録削除を希望される場合は、下記の連絡先までご連絡ください。
       </p>
@@ -140,7 +140,7 @@
         <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
       </nav>
 
-      <p class="site-footer__copy">© 2026 SpellDash</p>
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
     </div>
   </footer>
   <script type="module">

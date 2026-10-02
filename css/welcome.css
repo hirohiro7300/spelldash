@@ -76,11 +76,6 @@
   transform: translateY(1px);
 }
 
-.welcome__start:focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
-}
-
 .welcome__login {
   color: var(--ink-2);
   font-size: 13px;
@@ -252,7 +247,7 @@
   color: var(--ink-2);
 }
 
-/* ---- 学べるもの（タイル） ---- */
+/* ---- 学べるもの（罫線のリスト） ---- */
 .welcome-content {
   margin-top: 40px;
 }
@@ -269,18 +264,17 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  border-top: 1px solid var(--line-2);
 }
 
 .welcome-content__grid li {
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--paper-2);
-  font-size: 12px;
-  line-height: 1.55;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.6;
   color: var(--ink-3);
 }
 
@@ -290,6 +284,18 @@
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
+}
+
+@media (min-width: 640px) {
+  .welcome-content__grid li {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 16px;
+    align-items: baseline;
+  }
+  .welcome-content__grid li b {
+    margin-bottom: 0;
+  }
 }
 
 .welcome-content__more {
@@ -308,12 +314,6 @@
   color: var(--signal-ink);
 }
 
-@media (min-width: 640px) {
-  .welcome-content__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
 /* ---- データについて ---- */
 .welcome-trust {
   margin: 28px 0 0;
@@ -324,9 +324,19 @@
   color: var(--ink-3);
 }
 
-/* ---- 最後のスタート ---- */
+/* ---- 最後のスタート（主ボタンはページに 1 つ。下は副ボタン） ---- */
 .welcome__bottom {
   margin-top: 32px;
+}
+
+.welcome__bottom .welcome__start {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+}
+
+.welcome__bottom .welcome__start:hover {
+  background: var(--paper-3);
 }
 
 .welcome__note {

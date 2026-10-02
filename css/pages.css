@@ -4,7 +4,7 @@
 
 /* ===== ページの器 ===== */
 html[data-theme] .app {
-  width: min(1000px, 100%);
+  width: min(820px, 100%);
   padding: 20px 16px 56px;
 }
 
@@ -60,12 +60,6 @@ html[data-theme] .hero .subtitle a:hover {
   color: var(--signal-ink);
 }
 
-@media (min-width: 720px) {
-  html[data-theme] .hero h1,
-  html[data-theme] .hero--compact h1 {
-    font-size: 32px;
-  }
-}
 
 /* ---- カード ---- */
 html[data-theme] .result-card,
@@ -150,7 +144,7 @@ html[data-theme] .stat-card strong {
   display: block;
   margin-top: 4px;
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
@@ -159,7 +153,11 @@ html[data-theme] .stat-card strong {
 
 @media (min-width: 720px) {
   html[data-theme] .metric-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* 今週の概要は「覚えた」「連続」の 2 枚だけ */
+  html[data-theme] #overview.metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -272,6 +270,24 @@ html[data-theme] .filter-chip--right {
   margin-left: auto;
 }
 
+@media (max-width: 560px) {
+  html[data-theme] .list-filters {
+    flex-wrap: wrap;
+  }
+  html[data-theme] .filter-chip--right {
+    order: -1;
+    margin-left: 0;
+  }
+  /* 密度チップの後ろで折り返す（::after は flex item。order:-1 で密度チップの直後に入る） */
+  html[data-theme] .list-filters::after {
+    content: "";
+    order: -1;
+    flex-basis: 100%;
+    height: 0;
+    margin-top: -6px;
+  }
+}
+
 /* 状態は文字色だけで表す */
 html[data-theme] .gcard__status--learning,
 html[data-theme] .word-detail__status--learning,
@@ -346,6 +362,11 @@ html[data-theme] .packs-fold__hint {
   margin-left: auto;
   font-size: 12px;
   color: var(--ink-3);
+}
+
+html[data-theme] .packs-fold:not([open]) .packs-fold__hint,
+html[data-theme] .my-fold:not([open]) .my-fold__hint {
+  display: none;
 }
 
 html[data-theme] .packs__head {
@@ -618,6 +639,10 @@ html[data-theme] .my-word__en {
   font-weight: 600;
 }
 
+html[data-theme] .my-word__status {
+  justify-self: start;
+}
+
 html[data-theme] .my-word--concept .my-word__en {
   color: var(--ink);
 }
@@ -696,7 +721,7 @@ html[data-theme] .list-summary {
 }
 
 html[data-theme] .list-review {
-  margin: 0 0 8px;
+  margin: 24px 0 0;
   font-size: 13px;
   color: var(--ink-3);
 }
@@ -720,6 +745,14 @@ html[data-theme] .genre-nav {
   background: var(--paper);
   background-image: none;
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+
+html[data-theme] body.modal-open .genre-nav {
+  position: static;
 }
 
 html[data-theme] .genre-chip {
@@ -730,7 +763,7 @@ html[data-theme] .genre-chip {
 html[data-theme] .genre-chip span {
   margin-left: 5px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-3);
 }
 
@@ -777,7 +810,7 @@ html[data-theme] .cat-row__clear {
   border-radius: 999px;
   background: var(--ok-soft);
   color: var(--ok);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   vertical-align: middle;
 }
@@ -855,7 +888,7 @@ html[data-theme] .gcard__ja {
 html[data-theme] .gcard__pos {
   margin-left: 4px;
   padding: 0 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-3);
   vertical-align: 1px;
 }
@@ -863,7 +896,7 @@ html[data-theme] .gcard__pos {
 html[data-theme] .gcard__status {
   margin-left: auto;
   padding: 1px 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 html[data-theme] .gcard__q {
@@ -901,7 +934,7 @@ html[data-theme] .gcard__ex__ja {
 
 html[data-theme] .gcard__explain {
   margin: 2px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--ink-3);
 }
@@ -941,7 +974,7 @@ html[data-theme] .hist__x { background: var(--signal); }
 html[data-theme] .mem {
   color: var(--ink-3);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 html[data-theme] .mem__bar {
@@ -1007,14 +1040,25 @@ html[data-theme] .note-save:hover {
 /* ---- レベル: 1行 ---- */
 html[data-theme] .level-bar {
   gap: 10px;
-  margin: 0 0 12px;
-  padding: 0 0 12px;
+  margin: 16px 0 0;
+  padding: 0;
   border: none;
-  border-bottom: 1px solid var(--line);
   border-radius: 0;
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .level-bar__line {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+html[data-theme] .level-bar__line .mono {
+  font-family: var(--font-mono);
 }
 
 html[data-theme] .level-bar__badge {
@@ -1078,6 +1122,10 @@ html[data-theme] .weekly__range {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--ink-3);
+}
+
+html[data-theme] .weekly__grid {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 
 html[data-theme] .weekly__grid div {
@@ -1215,6 +1263,11 @@ html[data-theme] .cal__legend {
 
 /* ---- 覚えた単語帳 ---- */
 html[data-theme] .learned-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  max-width: 640px;
   margin: 0;
   padding: 8px 0;
   border: none;
@@ -1222,6 +1275,29 @@ html[data-theme] .learned-item {
   border-radius: 0;
   background: transparent;
   font-size: 14px;
+}
+
+html[data-theme] .learned-item__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+html[data-theme] .learned-item__side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+html[data-theme] .learned-item__note {
+  grid-column: auto;
+}
+
+html[data-theme] .learned-item__note:empty {
+  display: none;
 }
 
 html[data-theme] .learned-item__en {
@@ -1363,7 +1439,7 @@ html[data-theme] .word-item__detail {
 html[data-theme] .leech-tag {
   background: var(--signal-soft);
   color: var(--signal-ink);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 html[data-theme] .word-count {
@@ -1548,6 +1624,17 @@ html[data-theme] .install__done {
     align-items: flex-start;
     text-align: left;
   }
+  html[data-theme] .setting-select {
+    min-height: 44px;
+  }
+  html[data-theme] .voice-row .btn--sm {
+    min-height: 44px;
+    padding: 0 16px;
+  }
+  html[data-theme] .volume-row input[type="range"] {
+    width: 160px;
+    height: 44px;
+  }
 }
 
 /* ===== お知らせ ===== */
@@ -1687,6 +1774,24 @@ html[data-theme] .feedback-modal__panel {
   background: var(--paper-2);
   box-shadow: none;
   color: var(--ink);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .word-detail,
+  html[data-theme] .feedback-modal {
+    align-items: flex-start;
+    padding-top: 16px;
+  }
+  html[data-theme] .feedback-modal__actions {
+    flex-wrap: wrap;
+  }
+  html[data-theme] .feedback-modal__actions .btn {
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 44px;
+  }
 }
 
 html[data-theme] .word-detail__close,
@@ -1883,4 +1988,24 @@ html[data-theme] .word-detail__ai {
   html[data-theme] .my-fold__summary::before {
     transition: none;
   }
+}
+
+/* 390 では長いパック名を折り返す（番号や範囲が切れないように）。入れ子の small も 12px を割らない */
+@media (max-width: 560px) {
+  html[data-theme] .pack__title {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+html[data-theme] .mem small {
+  font-size: 12px;
+}
+
+/* 分析タブの 1 行レベル表示をカードの内容と同じ左端に */
+html[data-theme] .level-bar--line {
+  padding: 4px 16px 0;
+  font-size: 12px;
+  color: var(--ink-3);
 }

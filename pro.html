@@ -17,7 +17,8 @@
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
   <link rel="stylesheet" href="./css/pro.css" />
-  <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
+  <meta name="theme-color" content="#f7f6f2" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
 
 
   <meta name="description" content="SpellDash Pro。学習の核は無料のまま、マイ単語帳の上限・AI の回数・90日の推移・連続記録の修復・追加テーマを。" />
@@ -30,7 +31,6 @@
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
@@ -105,7 +105,7 @@
           <div class="dropdown__panel">
             <div class="account-menu" id="accountMenu">
               <p class="account-menu__email" id="userStatus"></p>
-              <a class="account-menu__item" href="./profile.html">プロフィール</a>
+              <a class="account-menu__item" href="./profile.html">設定</a>
               <button
                 class="account-menu__item account-menu__item--danger"
                 id="logoutButton"
@@ -160,7 +160,7 @@
             <td>シールド 最大 <b class="mono">3</b> 枚<br />月 1 回、7 日以内なら前の連続日数を取り戻せる</td>
           </tr>
           <tr>
-            <th scope="row">テーマ<span class="pro-compare__sub">プロフィール →「見た目」</span></th>
+            <th scope="row">テーマ<span class="pro-compare__sub">設定 →「見た目」</span></th>
             <td>白・黒</td>
             <td>白・黒・紙・藍</td>
           </tr>
@@ -180,7 +180,7 @@
       <h2 class="settings__title">よくある質問</h2>
       <details class="pro-faq">
         <summary>いつでも解約できますか</summary>
-        <p>はい。プロフィールの「お支払いの管理」からいつでも解約できます。解約しても、支払い済みの期間の終わりまで Pro を使えます。日割りの返金はありません。</p>
+        <p>はい。設定の「お支払いの管理」からいつでも解約できます。解約しても、支払い済みの期間の終わりまで Pro を使えます。日割りの返金はありません。</p>
       </details>
       <details class="pro-faq">
         <summary>支払いはどこで処理されますか</summary>

@@ -2,7 +2,7 @@ import { exampleHtml, hasExample } from "./wordExample.js";
 import { findWord, findWordIn, getCategories } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
-import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
+import { historyDotsHtml } from "./learnedWords.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { renderWordAi } from "./wordAi.js";
 import { speak } from "./audio.js";
@@ -14,6 +14,7 @@ import { icon } from "./icons.js";
 // 語を中心に情報を束ねる（学習データページ用）。
 
 const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えかけ", mastered: "習得", known: "知ってた" };
+const LEVEL_LABEL = { easy: "やさしい", normal: "ふつう", hard: "むずかしい" };
 
 function ensureModal() {
   let modal = document.getElementById("wordDetail");
@@ -34,6 +35,7 @@ function ensureModal() {
 export function closeWordDetail() {
   const modal = document.getElementById("wordDetail");
   if (modal) modal.hidden = true;
+  document.body.classList.remove("modal-open");
 }
 
 // category を渡すと、そのカテゴリに入っている版の語を優先して引く。
@@ -62,16 +64,13 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
     ${word.explain ? `<div class="word-detail__q">${escapeHtml(word.explain)}</div>` : ""}
     ${hasExample(word) ? `<div class="word-detail__ex word-example">${exampleHtml(word)}</div>` : ""}
     <div class="word-detail__meta">
-      <span class="word-detail__status word-detail__status--${status}">${STATUS_LABEL[status]}</span>
+      <span class="word-detail__status word-detail__status--${status}"${stat ? ` title="思い出せた ${stat.correctCount ?? 0}回 ・ 思い出せず ${stat.recallFail ?? 0}回${stat.cleanCorrectStreak ? ` ・ ノーミス連続 ${stat.cleanCorrectStreak}/10` : ""}"` : ""}>${STATUS_LABEL[status]}</span>
       ${category ? `<span>${escapeHtml(category)}</span>` : ""}
-      ${word.pos ? `<span>品詞: ${escapeHtml(word.pos)}</span>` : ""}
-      ${word.level ? `<span>レベル ${word.level}</span>` : ""}
-      ${stat ? `<span>思い出せた ${stat.correctCount ?? 0}回 ・ 思い出せず ${stat.recallFail ?? 0}回</span>` : ""}
-      ${nextReview != null ? `<span>次の復習: ${nextReview === 0 ? "今日" : `${nextReview}日後`}</span>` : ""}
-      ${stat?.cleanCorrectStreak ? `<span>ノーミス連続 ${stat.cleanCorrectStreak}/10</span>` : ""}
+      ${word.pos ? `<span>${escapeHtml(word.pos)}</span>` : ""}
+      ${word.level ? `<span>${LEVEL_LABEL[word.level] ?? escapeHtml(word.level)}</span>` : ""}
+      ${nextReview != null ? `<span>次の復習 ${nextReview === 0 ? "今日" : `${nextReview}日後`}</span>` : ""}
     </div>
     ${historyDotsHtml(stat) ? `<div class="word-detail__history">履歴 ${historyDotsHtml(stat)}</div>` : ""}
-    ${memoryGaugeHtml(stat) ? `<div class="word-detail__history">記憶 ${memoryGaugeHtml(stat)}</div>` : ""}
     <div class="word-detail__note">
       <label for="wordDetailNote">覚え方のメモ</label>
       <div class="word-detail__note-row">
@@ -83,6 +82,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
     ${family.length ? `<div class="word-detail__family">同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${w.id}">${escapeHtml(w.en)}</button>`).join(" ")}</div>` : ""}
   `;
   modal.hidden = false;
+  document.body.classList.add("modal-open"); // 背後の sticky（ジャンル列）を止める
   panel.querySelector("[data-detail-close]").addEventListener("click", closeWordDetail);
   panel.querySelector("#wordDetailSpeak")?.addEventListener("click", () => speak(speechTextOf(word)));
   panel.querySelector("[data-example-speak]")?.addEventListener("click", () => speak(word.ex)); // 例文の読み上げ

@@ -49,8 +49,10 @@ export function escapeHtml(text) {
 }
 
 // 一覧用: メモの表示＋編集ボタン（クリック処理は bindNoteEditors で委譲）
-export function noteChipHtml(wordId) {
+// onlyIfHas: メモが無い語には何も出さない（一覧で「メモ」ボタンが模様にならないように）
+export function noteChipHtml(wordId, { onlyIfHas = false } = {}) {
   const note = getNote(wordId);
+  if (onlyIfHas && !note) return "";
   return `<button type="button" class="note-chip${note ? " note-chip--has" : ""}" data-note-word="${wordId}" title="${note ? "メモを編集" : "覚え方をメモ"}">${icon("note", { size: 14 })}${note ? escapeHtml(note) : "メモ"}</button>`;
 }
 

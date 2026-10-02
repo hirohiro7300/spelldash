@@ -7,8 +7,7 @@
 
 /* ===== スマホ ===== */
 @media (max-width: 560px) {
-  /* ヘッダーを1行に収める: brand名を隠してSDマークのみ、navは圧縮して
-     入り切らない極小画面では横スクロール（sticky headerの縦幅を最小化） */
+  /* ヘッダーを1行に収める: brand名を隠してSDマークのみ、navは詰める（横スクロールはしない。brand.css 参照） */
   .site-header__inner {
     flex-wrap: nowrap;
     width: 94%;
@@ -32,12 +31,19 @@
     font-size: 13px;
   }
 
+  /* ドロップダウン（ログイン／アカウント）は左右 12px の全幅に。片手で届く */
   .dropdown__panel {
-    right: -6px;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: calc(56px + env(safe-area-inset-top, 0px) + 8px);
+    padding-top: 0;
   }
 
+  .account-menu,
   .account-menu--login {
-    min-width: min(260px, 86vw);
+    min-width: 0;
+    width: 100%;
   }
 
   .app {

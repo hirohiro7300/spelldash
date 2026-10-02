@@ -87,24 +87,23 @@ html[data-theme] .queue-chip {
   background: var(--paper-3);
   border: 1px solid var(--line);
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
+/* 未解決（もう一度出す語）: 文字は出さず点の強調だけ（出題の日本語と二重になるため）。title／aria-label は残る */
 html[data-theme] .queue-chip--unresolved {
-  width: auto;
-  max-width: 96px;
-  padding: 0 8px;
+  width: 22px;
+  max-width: none;
+  padding: 0;
   gap: 0;
-  background: var(--paper-3);
-  border-color: var(--line);
+  background: var(--signal-soft);
+  border-color: var(--signal);
   color: var(--signal-ink);
 }
 
 html[data-theme] .queue-chip__ja {
-  color: var(--signal-ink);
-  font-size: 11px;
-  font-weight: 600;
+  display: none;
 }
 
 html[data-theme] .queue-chip--more {
@@ -114,7 +113,7 @@ html[data-theme] .queue-chip--more {
   border-color: transparent;
   color: var(--ink-3);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 html[data-theme] .queue-chip--recalled {
@@ -150,7 +149,7 @@ html[data-theme] .word-meta {
 }
 
 html[data-theme] #japanese {
-  margin: 10px 0 14px;
+  margin: 8px 0 12px;
   color: var(--ink);
   font-size: clamp(28px, 5vw, 40px);
   font-weight: 700;
@@ -310,7 +309,7 @@ html[data-theme] .word-family {
 /* ===== 答え表示後の操作: 3つの静かなチップ（メモ・覚え方を作る・発音／ヒント） ===== */
 html[data-theme] .word-actions {
   gap: 6px 8px;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 html[data-theme] .word-note {
@@ -494,10 +493,10 @@ html[data-theme] .combo--max {
 /* ===== メッセージ ===== */
 html[data-theme] .message {
   min-height: 24px;
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   color: var(--ink-2);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1.5;
   animation: none;
 }
@@ -538,6 +537,22 @@ html[data-theme] .big-timer--danger {
   animation: none;
 }
 
+/* 四隅の数字にラベル（残り／正解）。12px の補助文、数字は等幅のまま */
+html[data-theme] .big-timer::before,
+html[data-theme] .play-score__value::before {
+  content: "残り";
+  display: inline;
+  margin-right: 4px;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+html[data-theme] .play-score__value::before {
+  content: "正解";
+}
+
 html[data-theme] .play-score {
   top: 16px;
   right: 20px;
@@ -566,6 +581,11 @@ html[data-theme] .play-score__combo--max {
 /* Challenge 中は上の角に数字があるので、出題ラベルを少し下げる */
 html[data-theme] body.is-playing:not(.mode-study) .game-card .label {
   padding-top: 8px;
+}
+
+/* Challenge／Daily のプレイ中はカード下の数字を出さない（残り・正解は盤面に、結果はパネルに） */
+html[data-theme] body.is-playing:not(.mode-study) .stats--strip {
+  display: none;
 }
 
 /* ===== 覚えた: 墨の文字だけ。160ms で現れて消える ===== */
@@ -637,12 +657,41 @@ html[data-theme] .game-card .hasumi__bubble {
 /* ===== 完了パネル ===== */
 html[data-theme] .result-panel {
   margin-top: 16px;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--paper);
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
   text-align: left;
+  scroll-margin-top: 72px;
+}
+
+/* ===== 完了（今日のセット／Challenge／Daily）: 出題 UI とカード下の数字を畳み、結果パネルだけにする =====
+   要素は残す（id は E2E と他モジュールが参照する）。body.set-done は js/game.js が付け外しする */
+html[data-theme] body.set-done .game-card .label,
+html[data-theme] body.set-done #wordMeta,
+html[data-theme] body.set-done #japanese,
+html[data-theme] body.set-done #promptContext,
+html[data-theme] body.set-done #word,
+html[data-theme] body.set-done #wordHistory,
+html[data-theme] body.set-done #wordExplain,
+html[data-theme] body.set-done #wordExample,
+html[data-theme] body.set-done #wordFamily,
+html[data-theme] body.set-done .word-actions,
+html[data-theme] body.set-done .input-wrapper,
+html[data-theme] body.set-done #combo,
+html[data-theme] body.set-done .message,
+html[data-theme] body.set-done #learnToast,
+html[data-theme] body.set-done .game-card > #restart,
+html[data-theme] body.set-done .stats--strip {
+  display: none;
+}
+
+html[data-theme] body.set-done .result-panel {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 html[data-theme] .result-panel__title {
@@ -663,6 +712,7 @@ html[data-theme] .result-panel__best {
 html[data-theme] .result-panel__gap,
 html[data-theme] .result-panel__diff,
 html[data-theme] .result-panel__cat,
+html[data-theme] .result-panel__level,
 html[data-theme] .result-panel__tomorrow {
   margin: 4px 0 0;
   color: var(--ink-3);
@@ -748,7 +798,7 @@ html[data-theme] .word-chip b {
 
 html[data-theme] .word-chip small {
   color: var(--ink-3);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 html[data-theme] .word-chip--failed b {
@@ -869,7 +919,7 @@ html[data-theme] .stats--strip .stat-card strong.stat-pulse {
 
 html[data-theme] .stats--strip .stat-card__sub {
   margin-left: 4px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 html[data-theme] .stats--strip .stat-card__sub:empty {
@@ -884,6 +934,20 @@ html[data-theme] body.mode-study .stats--strip .stat-card--miss,
 html[data-theme] body:not(.mode-study) .stats--strip .stat-card--study,
 html[data-theme] .stats--strip .stat-card--time {
   display: none;
+}
+
+/* 390 でも 1 行に収める: 区切りの余白を詰め、ベストは結果パネルにあるので出さない */
+@media (max-width: 560px) {
+  html[data-theme] .stats--strip {
+    gap: 2px 0;
+    font-size: 12px;
+  }
+  html[data-theme] .stats--strip .stat-card + .stat-card::before {
+    margin: 0 4px;
+  }
+  html[data-theme] .stats--strip .stat-card--challenge:has(#bestScore) {
+    display: none;
+  }
 }
 
 /* ===== 動きを減らす設定 ===== */

@@ -56,7 +56,8 @@ function pageShell({ title, description, canonical, body }) {
   <link rel="stylesheet" href="/css/theme.css" />
   <link rel="stylesheet" href="/css/brand.css" />
   <link rel="stylesheet" href="/css/pages.css" />
-  <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
+  <meta name="theme-color" content="#f7f6f2" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
   <meta name="description" content="${esc(description)}" />
   <link rel="canonical" href="${canonical}" />
   <meta property="og:type" content="website" />
@@ -67,7 +68,6 @@ function pageShell({ title, description, canonical, body }) {
   <meta property="og:image" content="${SITE}/assets/images/og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <style>
     .pp { max-width: 720px; margin: 0 auto; padding: 8px 16px 56px; color: var(--ink); }
@@ -78,6 +78,8 @@ function pageShell({ title, description, canonical, body }) {
     .pp-meta { margin: 0 0 16px; font-size: 13px; color: var(--ink-3); }
     .pp-cta { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: var(--radius); background: var(--ink); color: var(--paper); font-size: 14px; font-weight: 700; text-decoration: none; }
     .pp-cta:hover { background: var(--ink-2); }
+    .pp-cta--ghost, .pp-cta--ghost:hover { background: transparent; color: var(--ink); border: 1px solid var(--line-2); }
+    .pp-cta--ghost:hover { background: var(--paper-3); }
     .pp-sub { margin-left: 12px; font-size: 13px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
     .pp-sub:hover { color: var(--signal-ink); }
     .pp h2 { margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-2); font-size: 16px; font-weight: 700; }
@@ -87,18 +89,24 @@ function pageShell({ title, description, canonical, body }) {
     .pp-cards { display: grid; gap: 0; padding: 0; margin: 0; list-style: none; border-top: 1px solid var(--line); }
     .pp-card { display: grid; gap: 2px; padding: 10px 0; border-bottom: 1px solid var(--line); }
     .pp-card__q { font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+    .pp-card__q small { font-size: 12px; }
     .pp-card__q small { margin-left: 4px; color: var(--ink-3); }
     .pp-card__a { font-weight: 600; color: var(--ink); }
     .pp-card--en .pp-card__a { font-family: var(--font-mono); font-size: 16px; }
-    .pp-card__ex { font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+    .pp-card__ex { font-size: 13px; line-height: 1.5; color: var(--ink-3); }
     .pp-how { padding-left: 18px; font-size: 14px; line-height: 1.7; color: var(--ink-2); }
     .pp-how li { margin: 4px 0; }
-    .pp-other { font-size: 13.5px; line-height: 1.9; color: var(--ink-2); }
-    .pp-other a, .pp-index a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
-    .pp-other a:hover, .pp-index a:hover { color: var(--signal-ink); }
-    .pp-index h2 { margin-top: 28px; }
+    .pp-index a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+    .pp-index a:hover { color: var(--signal-ink); }
+    .pp-index h2 { margin-top: 28px; scroll-margin-top: 72px; }
     .pp-index ul { padding-left: 18px; line-height: 1.9; }
     .pp-index small { color: var(--ink-3); }
+    /* チップ状のリンク（同じグループの分野・一覧のグループへのジャンプ）。指で押せる 40px */
+    .pp-related, .packs-jump { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; list-style: none; }
+    .packs-jump { margin: 16px 0 0; }
+    .pp-related a, .packs-jump a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 999px; background: var(--paper-3); color: var(--ink); font-size: 13px; font-weight: 600; text-decoration: none; }
+    .pp-related a:hover, .packs-jump a:hover { background: var(--line); }
+    .packs-jump a small { margin-left: 6px; font-family: var(--font-mono); font-weight: 500; font-size: 12px; color: var(--ink-3); }
   </style>
 </head>
 <body>
@@ -119,17 +127,21 @@ ${body}
   <footer class="site-footer">
     <div class="site-footer__inner">
       <div class="site-footer__brand"><span class="brand__mark">SD</span><span class="brand__name">SpellDash</span></div>
-      <p class="site-footer__tagline">思い出して打つから、残る。</p>
+      <p class="site-footer__tagline">タイピングで、英単語を体に覚えさせる。</p>
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="/news.html">お知らせ</a>
         <a href="/privacy.html">プライバシー</a>
         <a href="/tokushoho.html">特定商取引法に基づく表記</a>
         <a href="/terms.html">利用規約</a>
-        <a href="/packs/">分野パック一覧</a>
+        <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
       </nav>
-      <p class="site-footer__copy">© 2026 SpellDash</p>
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
     </div>
   </footer>
+  <script type="module">
+    import { setFooterYear } from "/js/footer.js";
+    setFooterYear();
+  </script>
 </body>
 </html>
 `;
@@ -190,9 +202,9 @@ ${sampleHtml(data, sample)}
         <li>自力で思い出せた語は復習の間隔が伸び、思い出せなかった語は近いうちにまた出ます（想起練習と間隔反復）。</li>
         <li>学習の記録は端末に保存され、ログインすると別の端末でも引き継げます。</li>
       </ul>
-      <p><a class="pp-cta" href="/list.html?add=${encodeURIComponent(p.id)}">このパックを追加して始める</a></p>
+      <p><a class="pp-cta pp-cta--ghost" href="/list.html?add=${encodeURIComponent(p.id)}">このパックを追加して始める</a></p>
     </section>
-    ${siblings.length ? `<section><h2>同じグループの分野</h2><p class="pp-other">${siblings.map((s) => `<a href="/packs/${s.id}.html">${esc(s.label)}</a>`).join(" ／ ")}</p></section>` : ""}
+    ${siblings.length ? `<section><h2>同じグループの分野</h2><ul class="pp-related">${siblings.map((s) => `<li><a href="/packs/${s.id}.html">${esc(s.label)}</a></li>`).join("")}</ul></section>` : ""}
     ${data.source ? `<section><h2>出典</h2><p class="pp-source">語彙リスト: <a href="${esc(data.source.url)}" rel="license noopener" target="_blank">${esc(data.source.list)}</a>（${esc(data.source.license)}${data.source.ranks ? ` ・ 頻度順位 ${esc(data.source.ranks)}` : ""}）。訳・品詞・例文は SpellDash が作成。</p></section>` : ""}
   `;
   fs.writeFileSync(path.join(OUT_DIR, `${p.id}.html`), pageShell({ title, description, canonical, body }));
@@ -208,9 +220,10 @@ const indexBody = `
       <p class="pp-lead">仕事の共通言語、試験の語彙、学校の暗記もの。追加した分野だけがホームに出て、思い出して打つ・復習の仕組みで覚えられます。</p>
       <p class="pp-meta">${packs.length}パック ・ ${packs.reduce((n, p) => n + p.count, 0).toLocaleString("ja-JP")}枚</p>
       <a class="pp-cta" href="/list.html#packs">単語帳ページで追加する</a>
+      <nav aria-label="グループへ移動"><ul class="packs-jump">${[...groups.entries()].map(([g, list], i) => `<li><a href="#group-${i + 1}">${esc(g)}<small>${list.length}</small></a></li>`).join("")}</ul></nav>
     </section>
     <section class="pp-index">
-${[...groups.entries()].map(([g, list]) => `      <h2>${esc(g)}</h2>\n      <ul>${list.map((p) => `<li><a href="/packs/${p.id}.html">${esc(p.label)}</a> <small>${p.count}枚 ・ ${esc(p.blurb)}</small></li>`).join("")}</ul>`).join("\n")}
+${[...groups.entries()].map(([g, list], i) => `      <h2 id="group-${i + 1}">${esc(g)}</h2>\n      <ul>${list.map((p) => `<li><a href="/packs/${p.id}.html">${esc(p.label)}</a> <small>${p.count}枚 ・ ${esc(p.blurb)}</small></li>`).join("")}</ul>`).join("\n")}
     </section>
   `;
 fs.writeFileSync(

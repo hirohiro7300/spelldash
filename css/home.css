@@ -75,7 +75,7 @@ html[data-theme] .strip__chip--streak.strip__chip--on {
 
 html[data-theme] .strip__chip small {
   margin-left: 2px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--ink-3);
 }
@@ -84,19 +84,13 @@ html[data-theme] .strip__chip--pop {
   animation: none;
 }
 
-/* スマホでプレイ中: 見出しを詰める（数字1行・はちゃん・見出しの操作は畳む。1画面1目的） */
-@media (max-width: 720px) {
-  html[data-theme] body.home--playing .today__strip,
-  html[data-theme] body.home--playing #hasumiHome,
-  html[data-theme] body.home--playing .path__head-actions {
-    display: none;
-  }
-  html[data-theme] body.home--playing .path__head {
-    padding-bottom: 12px;
-  }
-  html[data-theme] body.home--playing .path {
-    margin-bottom: 12px;
-  }
+/* プレイ中: 数字1行・はちゃん・「出題: …」は畳む（残るのは見出し1行＝タイトル・道に戻る・設定。css/path.css）。全幅で同じ */
+html[data-theme] body.home--playing .today__strip,
+html[data-theme] body.home--playing #hasumiHome,
+html[data-theme] body.home--playing .setup-toggle__label,
+html[data-theme] body.home--playing .setup-toggle__summary,
+html[data-theme] body.home--playing .setup-toggle__sep {
+  display: none;
 }
 
 /* ---- はちゃんの一言（ホーム）: 32px の丸アイコン＋紙色の吹き出し・罫線1px。紫は使わない ---- */
@@ -132,7 +126,7 @@ html[data-theme] .play__bar {
   align-items: center;
   justify-content: space-between;
   gap: 8px 12px;
-  margin: 0 0 8px;
+  margin: 4px 0 0;
 }
 
 html[data-theme] .setup-toggle {
@@ -140,7 +134,8 @@ html[data-theme] .setup-toggle {
   align-items: center;
   gap: 4px;
   max-width: 100%;
-  padding: 6px 0;
+  min-height: 40px;
+  padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -173,7 +168,14 @@ html[data-theme] .setup-toggle__sep {
   color: var(--ink-4);
 }
 
+/* 「設定」の当たり判定は 40×40（文字は 13px のまま） */
 html[data-theme] .setup-toggle__more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 8px;
+  margin: 0 -8px 0 0;
+  border-radius: var(--radius);
   color: var(--ink-3);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -234,15 +236,18 @@ html[data-theme] .category-chip--active:hover {
   color: var(--paper);
 }
 
+/* 語数は選択中のチップだけ（12個の数字を並べない） */
 html[data-theme] .category-chip__count {
+  display: none;
   margin-left: 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--ink-3);
 }
 
 html[data-theme] .category-chip--active .category-chip__count {
+  display: inline;
   color: var(--paper);
   opacity: 0.7;
 }
@@ -278,7 +283,7 @@ html[data-theme] .genre-bar__clear {
   border-radius: 999px;
   background: transparent;
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   box-shadow: none;
 }
@@ -366,18 +371,19 @@ html[data-theme] .mix-control__head {
   color: var(--ink-3);
 }
 
+/* スライダーは墨（朱はスタートだけ） */
 html[data-theme] #mixSlider {
-  accent-color: var(--signal);
+  accent-color: var(--ink);
 }
 
 html[data-theme] #mixLabel {
   font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 html[data-theme] .mix-control__hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--ink-3);
 }
 
@@ -488,7 +494,7 @@ html[data-theme] .learned-card__label {
 
 html[data-theme] .learned-card__num {
   font-family: var(--font-mono);
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -635,23 +641,25 @@ html[data-theme] .daily__note strong {
   color: var(--ink-2);
 }
 
+/* 副ボタン（主ボタンはホームにスタート1個だけ） */
 html[data-theme] .daily__button {
   margin-left: auto;
-  height: 36px;
+  height: 40px;
   padding: 0 14px;
-  border: 0;
+  border: 1px solid var(--line-2);
   border-radius: var(--radius);
-  background: var(--ink);
+  background: transparent;
   background-image: none;
-  color: var(--paper);
+  color: var(--ink);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   box-shadow: none;
   transition: background var(--ease);
 }
 
 html[data-theme] .daily__button:hover {
-  background: var(--ink-2);
+  background: var(--paper-3);
+  color: var(--ink);
   transform: none;
   box-shadow: none;
 }
@@ -702,4 +710,9 @@ html[data-theme] .daily-rank__name {
 html[data-theme] .daily-rank__score {
   font-weight: 600;
   color: var(--ink);
+}
+
+/* 完了画面では「ほかの遊び方」を畳む（結果パネルの Challenge と二重にしない） */
+html[data-theme] body.set-done #playModes {
+  display: none;
 }

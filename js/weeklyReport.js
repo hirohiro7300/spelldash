@@ -85,7 +85,7 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
       <div><span>学習した日</span><strong>${r.activeDays}<small> / 7</small></strong></div>
       <div><span>覚えた</span><strong>+${r.learnedDelta}<small> 語</small></strong></div>
       <div><span>思い出せた率</span><strong>${rate == null ? "–" : `${rate}<small>%</small>`}</strong></div>
-      <div><span>ベスト</span><strong>${r.bestScore || "–"}</strong></div>
+      ${r.bestScore ? `<div><span>ベスト</span><strong>${r.bestScore}</strong></div>` : ""}
     </div>
     ${r.retention != null ? `<p class="weekly__note">思い出せた率＝1日以上前に覚えた語を復習で思い出せた割合（${r.reviewCount}語）</p>` : ""}
     <div class="weekly__actions">
@@ -97,8 +97,8 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
   el.querySelector("[data-weekly-share]")?.addEventListener("click", async (event) => {
     const button = event.currentTarget;
     const outcome = await shareWeeklyReport().catch(() => "failed");
-    if (outcome === "copied") button.textContent = "コピーしました！SNSに貼り付けてね";
-    if (outcome === "failed") button.textContent = "シェアできませんでした";
+    if (outcome === "copied") button.textContent = "コピーした。SNSに貼り付けて使える";
+    if (outcome === "failed") button.textContent = "シェアできなかった";
   });
 }
 

@@ -20,7 +20,8 @@
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/home.css" />
   <link rel="stylesheet" href="./css/card.css" />
-  <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
+  <meta name="theme-color" content="#f7f6f2" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
 
 
   <meta name="description" content="思い出して打つから、英単語が残る。日本語を見て英単語をタイピング。1日少しずつ、英語とタイピングを同時に鍛える。" />
@@ -36,7 +37,6 @@
   <link rel="modulepreload" href="./js/main.js" />
   <link rel="modulepreload" href="./js/game.js" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#0f172a" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
 </head>
@@ -81,7 +81,7 @@
               <div class="account-menu__divider">または</div>
 
               <p class="account-menu__hint">
-                ログインすると学習データがクラウドに保存され、機種変更や別の端末でも引き継げます。メールアドレスにログインリンクを送ります。
+                別の端末でも続きから使える。メールにログインリンクを送る。
               </p>
               <input
                 id="emailInput"
@@ -90,7 +90,7 @@
                 autocomplete="email"
               />
               <button id="loginButton" type="submit" class="btn btn--sm">
-                リンクを送信
+                ログインリンクを送る
               </button>
             </form>
           </div>
@@ -111,7 +111,7 @@
           <div class="dropdown__panel">
             <div class="account-menu" id="accountMenu">
               <p class="account-menu__email" id="userStatus"></p>
-              <a class="account-menu__item" href="./profile.html">プロフィール</a>
+              <a class="account-menu__item" href="./profile.html">設定</a>
               <button
                 class="account-menu__item account-menu__item--danger"
                 id="logoutButton"
@@ -167,14 +167,14 @@
         <li><b>仕事の分野 48</b><span>不動産・会計・医療事務・看護・建築・広報。現場の共通言語を場面カードで</span></li>
         <li><b>小中高の暗記</b><span>歴史・地理・公民・理科・漢字・古文・漢文。説明を読んで日本語で答える</span></li>
       </ul>
-      <p class="welcome-content__more"><a href="./packs/">全104パックの紹介ページ</a></p>
+      <p class="welcome-content__more"><a href="./packs/">全162パックの紹介ページ</a></p>
     </section>
 
     <p class="welcome-trust" aria-label="データについて">学習データはこの端末に保存。ログインすると別の端末でも続きから。広告なし・課金なし。</p>
 
     <div class="welcome__bottom">
       <button type="button" class="welcome__start" data-welcome-start>無料で始める</button>
-      <p class="welcome__note">最初は腕試し10語（約2分）。知っている語はそのまま打ち、知らない語は Enter で答えを見る。</p>
+      <p class="welcome__note">腕試し10語（約2分）。知っている語はそのまま打ち、知らない語は Enter で答えを見る。</p>
     </div>
   </section>
 
@@ -189,10 +189,7 @@
       <div class="today__strip" id="todayStrip" aria-label="連続日数・今週の学習日"></div>
       <div id="hasumiHome" aria-label="はちゃんからの一言"></div>
       <div id="pathList"></div>
-    </section>
-
-    <!-- プレイ: ゲームカードは道でスタートしたときだけ出る。出題設定は折りたたみ -->
-    <section class="play" aria-label="プレイ">
+      <!-- 出題の要約行（出題: … ・ 設定）と「道に戻る」。プレイ中は見出しと同じ1行に畳む（body.home--playing） -->
       <div class="play__bar">
         <button type="button" class="back-to-path" id="backToPath" hidden>道に戻る</button>
         <button type="button" class="setup-toggle" id="setupToggle" aria-expanded="false" aria-controls="setupPanel">
@@ -202,7 +199,10 @@
           <span class="setup-toggle__more">設定</span>
         </button>
       </div>
+    </section>
 
+    <!-- プレイ: ゲームカードは道でスタートしたときだけ出る。出題設定は折りたたみ -->
+    <section class="play" aria-label="プレイ">
       <div class="setup" id="setupPanel" hidden>
         <div class="setup__row">
           <span class="setup__label">コース・カテゴリ</span>
@@ -226,7 +226,7 @@
             <input type="range" id="mixSlider" min="0" max="100" step="10" value="80" dir="rtl" />
             <div class="mix-control__foot">
               <span id="mixLabel">回答済み 80% / 未回答 20%</span>
-              <span class="mix-control__hint">回答済みを増やすとテンポよく、未回答を増やすと新しい語が多く出る</span>
+              <span class="mix-control__hint">右へ動かすほど新しい語が増える</span>
             </div>
           </section>
         </div>
@@ -288,9 +288,9 @@
 
       <!-- セッションの数字: 1行の静かなテキスト（正解 3 ・ 思い出せず 1 ・ 今日 20）。要素は残す -->
       <section class="stats stats--strip" aria-label="このセッションの数字">
-        <div class="stat-card"><span>正解</span><strong id="score">0</strong></div>
+        <div class="stat-card"><span>思い出せた</span><strong id="score">0</strong></div>
         <div class="stat-card"><span>思い出せず</span><strong id="recallFail">0</strong></div>
-        <div class="stat-card stat-card--study"><span>今日</span><strong id="recalledToday">0</strong><span class="stat-card__sub" id="securedToday"></span></div>
+        <div class="stat-card stat-card--study"><span>今日 思い出せた</span><strong id="recalledToday">0</strong><span class="stat-card__sub" id="securedToday"></span></div>
         <div class="stat-card stat-card--miss"><span>ミスタイプ</span><strong id="miss">0</strong></div>
         <div class="stat-card stat-card--challenge"><span>速度</span><strong><span id="typeSpeed">0.0</span>打/秒</strong></div>
         <div class="stat-card stat-card--challenge"><span>ベスト</span><strong id="bestScore">0</strong></div>

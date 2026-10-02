@@ -3,14 +3,14 @@
    pages.css の後に読み込む。html[data-theme] を頭に付けて同じ詳細度で後勝ちにする。
    対象: pro.html の比較表・価格・状態 / profile.html のプラン行とテーマの案内 / stats.html の期間切替と連続記録の修復 */
 
-/* ---- Pro のチップ（朱の線で囲む。塗りは薄い朱） ---- */
+/* ---- Pro のチップ（他のチップと同じ: paper-3 の面、太字だけ） ---- */
 html[data-theme] .pro-chip {
   display: inline-block;
   padding: 1px 8px;
-  border: 1px solid var(--signal);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--signal-soft);
-  color: var(--signal-ink);
+  background: var(--paper-3);
+  color: var(--ink);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
@@ -295,8 +295,8 @@ html[data-theme] .pro-faq[open] > summary::before {
 }
 
 html[data-theme] .pro-faq summary:focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
   border-radius: var(--radius);
 }
 
@@ -378,8 +378,8 @@ html[data-theme] .trend-range button.is-active:hover {
 }
 
 html[data-theme] .trend-range button:focus-visible {
-  outline: none;
-  box-shadow: inset var(--focus);
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
 }
 
 html[data-theme] .trend-range__hint {

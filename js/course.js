@@ -89,6 +89,9 @@ const COURSE_KEY = "spelldash_course";
 const CATEGORY_KEY = "spelldash_category";
 export const DEFAULT_COURSE = "jhs-redo";
 
+// 腕試し（初回10語）の案内。道のスタート下とトップページの末尾は同じ文を出す（game.js の .message は短い版）
+export const PLACEMENT_NOTE = "腕試し10語（約2分）。知っている語はそのまま打ち、知らない語は Enter で答えを見る。";
+
 export function listCourses() {
   return Object.values(COURSES);
 }

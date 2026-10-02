@@ -323,8 +323,7 @@ export function renderDailyCard(onStart) {
   container.classList.remove("daily--done");
   container.innerHTML = `
     <div class="daily__head">Daily Dash</div>
-    <span class="daily__desc">日替わりの60秒。問題は全員共通、1日1回</span>
-    <button type="button" class="daily__button" id="dailyStartButton">挑戦する</button>
+    <button type="button" class="daily__button" id="dailyStartButton">始める</button>
     <div class="daily-rank" id="dailyRankArea" hidden></div>
   `;
 
