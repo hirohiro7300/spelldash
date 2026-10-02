@@ -7,7 +7,8 @@
 // 必要な環境変数（Vercel → Settings → Environment Variables）:
 //   ANTHROPIC_API_KEY   … Claude APIキー（未設定なら 503 で「準備中」を返す）
 //   SUPABASE_URL / SUPABASE_ANON_KEY … 省略時はフロントと同じ公開値を使う
-//   CARD_GEN_DAILY_LIMIT … 1ユーザー1日の生成回数の目安（既定 20。インスタンス内メモリなので概算）
+//   CARD_GEN_DAILY_LIMIT … 無料の 1 日生成回数の目安（既定 2。インスタンス内メモリなので概算）
+//   CARD_GEN_DAILY_LIMIT_PRO … Pro の回数（既定 20）。超えたら 429 { error: "daily_limit", upgrade: 無料なら true }
 //
 // 秘密鍵はブラウザに出さない。ここ（サーバー側）だけで扱う。
 
@@ -17,7 +18,8 @@ import { send, readBody, reject, sendUpstreamError } from "./_lib/shared.js";
 const MIN_CHARS = 20;
 const MAX_CHARS = 4000;
 const MAX_CARDS = 20;
-const DAILY_LIMIT = Number(process.env.CARD_GEN_DAILY_LIMIT) || 20;
+const DAILY_LIMIT = Number(process.env.CARD_GEN_DAILY_LIMIT) || 2;
+const DAILY_LIMIT_PRO = Number(process.env.CARD_GEN_DAILY_LIMIT_PRO) || 20;
 
 const SYSTEM_PROMPT = `あなたは英単語×タイピング学習アプリ SpellDash の教材編集者です。
 ユーザーが貼り付けたテキスト（業務マニュアル・研修資料・会議メモ・教科書・記事など、日本語または英語）から、
@@ -79,7 +81,7 @@ function sanitizeCards(cards) {
 }
 
 export default async function handler(req, res) {
-  if (await reject(req, res, { scope: "cards", limit: DAILY_LIMIT })) return;
+  if (await reject(req, res, { scope: "cards", limit: DAILY_LIMIT, proLimit: DAILY_LIMIT_PRO })) return;
 
   const { text } = readBody(req);
   const source = String(text ?? "").replace(/\r\n/g, "\n").trim();

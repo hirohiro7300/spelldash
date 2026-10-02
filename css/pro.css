@@ -1,0 +1,434 @@
+/* ===== SpellDash Pro（/pro.html と、各ページに出る Pro の案内） =====
+   docs/CONCEPT.md「墨と朱」: トークンだけ、罫線で区切る、影なし、絵文字なし。
+   pages.css の後に読み込む。html[data-theme] を頭に付けて同じ詳細度で後勝ちにする。
+   対象: pro.html の比較表・価格・状態 / profile.html のプラン行とテーマの案内 / stats.html の期間切替と連続記録の修復 */
+
+/* ---- Pro のチップ（朱の線で囲む。塗りは薄い朱） ---- */
+html[data-theme] .pro-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--signal);
+  border-radius: 999px;
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+/* ---- 共通: 「Pro について」リンク（墨の下線、ホバーで朱） ---- */
+html[data-theme] .pro-link,
+html[data-theme] .ai-upgrade,
+html[data-theme] .trend-range__hint a,
+html[data-theme] .streak-repair a,
+html[data-theme] .setting-hint a,
+html[data-theme] .pro-legal a,
+html[data-theme] .pro-faq a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+html[data-theme] .pro-link:hover,
+html[data-theme] .ai-upgrade:hover,
+html[data-theme] .trend-range__hint a:hover,
+html[data-theme] .streak-repair a:hover,
+html[data-theme] .setting-hint a:hover,
+html[data-theme] .pro-legal a:hover,
+html[data-theme] .pro-faq a:hover {
+  color: var(--signal-ink);
+}
+
+/* ===== /pro.html ===== */
+html[data-theme] .pro .hero--compact h1 {
+  max-width: 560px;
+  font-size: 26px;
+  line-height: 1.3;
+}
+
+@media (min-width: 720px) {
+  html[data-theme] .pro .hero--compact h1 {
+    font-size: 30px;
+  }
+}
+
+html[data-theme] .pro-section {
+  margin-top: 28px;
+}
+
+html[data-theme] .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- 比較表（無料 / Pro の 2 列） ---- */
+html[data-theme] .pro-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+html[data-theme] .pro-compare th,
+html[data-theme] .pro-compare td {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+html[data-theme] .pro-compare thead th {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-2);
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+html[data-theme] .pro-compare tbody th {
+  width: 40%;
+  padding-left: 0;
+  font-weight: 600;
+}
+
+html[data-theme] .pro-compare tbody td {
+  width: 30%;
+  color: var(--ink-2);
+}
+
+html[data-theme] .pro-compare tbody td:last-child {
+  color: var(--ink);
+}
+
+html[data-theme] .pro-compare td:last-child,
+html[data-theme] .pro-compare thead th:last-child {
+  padding-right: 0;
+}
+
+html[data-theme] .pro-compare .mono {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-theme] .pro-compare__sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+html[data-theme] .pro-note {
+  margin-top: 12px;
+}
+
+/* 390px: 項目名を 1 行目に、無料 / Pro を 2 行目に並べる */
+@media (max-width: 560px) {
+  html[data-theme] .pro-compare,
+  html[data-theme] .pro-compare thead,
+  html[data-theme] .pro-compare tbody {
+    display: block;
+    width: 100%;
+  }
+
+  html[data-theme] .pro-compare thead th:first-child {
+    display: none;
+  }
+
+  html[data-theme] .pro-compare tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  html[data-theme] .pro-compare thead tr {
+    border-bottom-color: var(--line-2);
+  }
+
+  html[data-theme] .pro-compare tbody th {
+    grid-column: 1 / -1;
+    width: auto;
+    padding: 12px 0 4px;
+    border-bottom: 0;
+  }
+
+  html[data-theme] .pro-compare th,
+  html[data-theme] .pro-compare td {
+    width: auto;
+    padding-left: 0;
+    padding-right: 0;
+    border-bottom: 0;
+  }
+
+  html[data-theme] .pro-compare tbody td {
+    width: auto;
+    padding-top: 0;
+  }
+}
+
+/* ---- 価格と CTA ---- */
+html[data-theme] .pro-plans {
+  margin-top: 16px;
+}
+
+html[data-theme] .pro-plans:empty {
+  display: none;
+}
+
+html[data-theme] .pro-plans__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+html[data-theme] .pro-cta {
+  min-height: 40px;
+  padding: 10px 18px;
+  font-size: 14px;
+}
+
+html[data-theme] .pro-plans__hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+html[data-theme] .pro-pending {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* 状態（未ログイン／Pro 利用中） */
+html[data-theme] .pro-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 16px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+html[data-theme] .pro-state:empty {
+  display: none;
+}
+
+html[data-theme] .pro-state__text {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html[data-theme] .pro-state .pro-pending {
+  flex: 1 1 100%;
+}
+
+html[data-theme] .pro-message {
+  min-height: 0;
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+html[data-theme] .pro-message:empty {
+  display: none;
+}
+
+html[data-theme] .pro-message--error {
+  color: var(--signal-ink);
+}
+
+/* ---- よくある質問 ---- */
+html[data-theme] .pro-faq {
+  border-bottom: 1px solid var(--line);
+}
+
+html[data-theme] .pro-faq summary {
+  padding: 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+html[data-theme] .pro-faq summary::-webkit-details-marker {
+  display: none;
+}
+
+html[data-theme] .pro-faq summary::before {
+  content: "+";
+  display: inline-block;
+  width: 16px;
+  margin-right: 4px;
+  font-family: var(--font-mono);
+  color: var(--ink-3);
+}
+
+html[data-theme] .pro-faq[open] > summary::before {
+  content: "−";
+}
+
+html[data-theme] .pro-faq summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: var(--radius);
+}
+
+html[data-theme] .pro-faq p {
+  margin: 0 0 14px 20px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+html[data-theme] .pro-legal {
+  margin: 32px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ===== プロフィール: プラン行・テーマの案内 ===== */
+html[data-theme] .plan-row__value {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+}
+
+html[data-theme] #planValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .plan-row__value .btn {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .plan-row__value {
+    justify-content: flex-start;
+  }
+}
+
+/* ===== 学習データ: 推移の期間切替・連続記録の修復 ===== */
+html[data-theme] .trend-range {
+  display: inline-flex;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+html[data-theme] .trend-range button {
+  min-width: 56px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background var(--ease), color var(--ease);
+}
+
+html[data-theme] .trend-range button + button {
+  border-left: 1px solid var(--line-2);
+}
+
+html[data-theme] .trend-range button:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+html[data-theme] .trend-range button.is-active,
+html[data-theme] .trend-range button.is-active:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+html[data-theme] .trend-range button:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus);
+}
+
+html[data-theme] .trend-range__hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* 概要の数字の直後。中身が無ければ出さない */
+html[data-theme] .streak-repair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+html[data-theme] .streak-repair:empty {
+  display: none;
+}
+
+html[data-theme] .streak-repair__text {
+  color: var(--ink);
+}
+
+html[data-theme] .streak-repair__text b {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-theme] .streak-repair .btn {
+  white-space: nowrap;
+}
+
+html[data-theme] .streak-repair--done .streak-repair__text {
+  color: var(--ok);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] .trend-range button {
+    transition: none;
+  }
+}

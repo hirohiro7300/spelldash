@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/home.css" />
   <link rel="stylesheet" href="./css/card.css" />
-  <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
 
 
   <meta name="description" content="思い出して打つから、英単語が残る。日本語を見て英単語をタイピング。1日少しずつ、英語とタイピングを同時に鍛える。" />
@@ -329,6 +329,7 @@
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
+        <a href="./tokushoho.html">特定商取引法に基づく表記</a>
         <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
       </nav>
 

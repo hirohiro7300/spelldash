@@ -8,7 +8,8 @@
 //   - Supabase Auth admin API（全ページ）: userId / email / createdAt / lastSignInAt
 //   - RPC admin_player_summary があればそれ（docs/SQL_CRM.md）、無ければ
 //     profiles / user_progress / activity_days / word_progress を REST で全件取って同じ値を出す
-//   - user_items（pack）/ feedback / crm_notes は無ければ空として扱い、missing[] に名前を入れる
+//   - user_items（pack）/ feedback / crm_notes / subscriptions は無ければ空として扱い、missing[] に名前を入れる
+//     （subscriptions → plan / planStatus / planPeriodEnd / planInterval。RPC 経路でも REST で別に読んで合成する）
 // 必要な環境変数: SUPABASE_SERVICE_ROLE_KEY, ADMIN_EMAILS（または ADMIN_USER_IDS）。無ければ 503。
 
 import { send } from "../_lib/shared.js";
@@ -31,10 +32,11 @@ import {
   tagList,
   sortTexts
 } from "../_lib/admin.js";
+import { planOf } from "../_lib/billing.js";
 
 const RPC_NAME = "admin_player_summary";
 const SEGMENTS = ["active", "atRisk", "churned", "dormant"];
-const OPTIONAL_ORDER = ["feedback", "user_items", "crm_notes"];
+const OPTIONAL_ORDER = ["feedback", "user_items", "crm_notes", "subscriptions"];
 
 function emptyStats() {
   return {
@@ -138,12 +140,13 @@ async function loadStats(today) {
   return (await statsViaRpc(today)) || statsViaTables(today);
 }
 
-// --- 無いかもしれない 3 テーブル ---
+// --- 無いかもしれない 4 テーブル ---
 async function loadOptional() {
-  const [items, feedback, notes] = await allOrThrow([
+  const [items, feedback, notes, subs] = await allOrThrow([
     restOptional("user_items", "select=user_id,key&kind=eq.pack&deleted=is.false&order=user_id,key"),
     restOptional("feedback", "select=user_id&user_id=not.is.null&order=id"),
-    restOptional("crm_notes", "select=user_id,note,tags,pinned&order=user_id")
+    restOptional("crm_notes", "select=user_id,note,tags,pinned&order=user_id"),
+    restOptional("subscriptions", "select=user_id,status,plan_interval,current_period_end&order=user_id")
   ]);
   const packs = new Map();
   for (const row of items.rows) {
@@ -161,11 +164,17 @@ async function loadOptional() {
     if (typeof row?.user_id !== "string") continue;
     noteRows.set(row.user_id, row);
   }
+  const subRows = new Map();
+  for (const row of subs.rows) {
+    if (typeof row?.user_id !== "string") continue;
+    subRows.set(row.user_id, row);
+  }
   const missingSet = new Set();
   if (feedback.missing) missingSet.add("feedback");
   if (items.missing) missingSet.add("user_items");
   if (notes.missing) missingSet.add("crm_notes");
-  return { packs, feedbackCount, noteRows, missing: OPTIONAL_ORDER.filter((name) => missingSet.has(name)) };
+  if (subs.missing) missingSet.add("subscriptions");
+  return { packs, feedbackCount, noteRows, subRows, missing: OPTIONAL_ORDER.filter((name) => missingSet.has(name)) };
 }
 
 function comparePlayers(a, b) {
@@ -184,6 +193,7 @@ function comparePlayers(a, b) {
 export default async function handler(req, res) {
   await handleAdmin(req, res, { method: "GET", label: "players" }, async () => {
     const today = jstToday();
+    const now = Date.now();
     const [users, optional, stats] = await allOrThrow([listAuthUsers(), loadOptional(), loadStats(today)]);
 
     const players = [];
@@ -215,23 +225,26 @@ export default async function handler(req, res) {
         isNew: isNewSince(today, user.created_at),
         tags: tagList(note?.tags),
         note: noteText(note?.note),
-        pinned: note?.pinned === true
+        pinned: note?.pinned === true,
+        ...planOf(optional.subRows.get(user.id), now)
       });
     }
     players.sort(comparePlayers);
 
     const bySegment = Object.fromEntries(SEGMENTS.map((name) => [name, 0]));
     let newThisWeek = 0;
+    let pro = 0;
     for (const player of players) {
       bySegment[player.segment] += 1;
       if (player.isNew) newThisWeek += 1;
+      if (player.plan === "pro") pro += 1;
     }
 
     return send(res, 200, {
-      generatedAt: new Date(Date.now()).toISOString(),
+      generatedAt: new Date(now).toISOString(),
       today,
       missing: optional.missing,
-      summary: { total: players.length, bySegment, newThisWeek },
+      summary: { total: players.length, bySegment, newThisWeek, pro },
       players
     });
   });

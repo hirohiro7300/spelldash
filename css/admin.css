@@ -167,7 +167,7 @@ html[data-theme] .admin-table {
 html[data-theme] .admin-head-row,
 html[data-theme] .admin-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.5fr) 100px 76px 40px 40px 60px 44px 36px minmax(96px, 1fr);
+  grid-template-columns: minmax(150px, 1.5fr) 100px 44px 76px 40px 40px 60px 44px 36px minmax(96px, 1fr);
   gap: 12px;
   align-items: center;
   padding: 10px 14px;
@@ -276,6 +276,32 @@ html[data-theme] .admin-seg--active { color: var(--ok); }
 html[data-theme] .admin-seg--atRisk { background: var(--warn-soft); color: var(--warn); }
 html[data-theme] .admin-seg--churned { color: var(--signal-ink); }
 html[data-theme] .admin-seg--dormant { color: var(--ink-2); }
+
+/* プラン: Pro だけ朱の線のチップ（free は空） */
+html[data-theme] .admin-plan {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--signal);
+  border-radius: 999px;
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+html[data-theme] .admin-chip--plan {
+  margin-left: 4px;
+  border-color: var(--line-2);
+  background: transparent;
+}
+
+html[data-theme] .admin-chip--plan.admin-chip--active {
+  background: var(--ink);
+  border-color: var(--ink);
+}
 
 html[data-theme] .admin-new {
   display: inline-block;
@@ -639,14 +665,22 @@ html[data-theme] .admin-note__status:empty {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "player seg"
+      "player plan"
       "stats stats"
       "tags tags";
-    gap: 8px 12px;
+    gap: 0 12px;
     padding: 12px 14px;
+  }
+
+  html[data-theme] .admin-row .admin-stats,
+  html[data-theme] .admin-row .admin-cell--tags {
+    margin-top: 8px;
   }
 
   html[data-theme] .admin-row .admin-cell--player { grid-area: player; }
   html[data-theme] .admin-row .admin-cell--seg { grid-area: seg; justify-content: flex-end; align-self: start; }
+  html[data-theme] .admin-row .admin-cell--plan { grid-area: plan; justify-self: end; align-self: start; margin-top: 4px; }
+  html[data-theme] .admin-row .admin-cell--plan:empty { display: none; }
   html[data-theme] .admin-row .admin-cell--tags { grid-area: tags; padding-left: 0; }
 
   html[data-theme] .admin-row .admin-stats {
@@ -703,7 +737,7 @@ html[data-theme] .admin-note__status:empty {
 
   html[data-theme] .admin-head-row,
   html[data-theme] .admin-row {
-    min-width: 760px;
+    min-width: 810px;
   }
 }
 

@@ -48,6 +48,9 @@
     },
     "api/admin/players.js": {
       "maxDuration": 30
+    },
+    "api/billing/webhook.js": {
+      "maxDuration": 30
     }
   },
   "headers": [

@@ -6,10 +6,19 @@
 // ※単語定義そのものの端末間同期は未対応（将来 my_words テーブル: SQL承認案件）
 
 import { touchItem } from "./userItemsSync.js";
+import { isPro } from "./plan.js";
 
 const KEY = "spelldash_my_words";
-const MAX_WORDS = 500;
 const EN_PATTERN = /^[a-z][a-z-]*$/;
+
+// 登録できる語数の上限（無料 100 語・Pro 1,000 語）。上限を超えて持っている人も閲覧・削除はできる（追加だけ止まる）
+export function maxMyWords() {
+  return isPro() ? 1000 : 100;
+}
+
+function limitError() {
+  return isPro() ? "登録できるのは1,000語までです" : "無料で登録できるのは100語までです（Pro なら1,000語）。";
+}
 
 export function getMyWords() {
   try {
@@ -86,7 +95,7 @@ export function validateConcept({ q, answer, explain = "", accept = [] }, existi
   const key = conceptKey(a);
   if (!key) return { ok: false, error: "答えに使える文字がありません" };
   if (existing.some((w) => w.kind === "concept" && w.en === key)) return { ok: false, error: `「${a}」の場面カードはすでにあります` };
-  if (existing.length >= MAX_WORDS) return { ok: false, error: `登録できるのは${MAX_WORDS}語までです` };
+  if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
   return { ok: true, entry: { kind: "concept", en: key, answer: a, q: qq, explain: ex, accept: acc, ja: ex ? ex.slice(0, 40) : "" } };
 }
 
@@ -113,7 +122,7 @@ export function validateEntry(en, ja, existing = getMyWords()) {
   if (!j) return { ok: false, error: "日本語訳を入力してください" };
   if (j.length > 40) return { ok: false, error: "日本語訳が長すぎます（40文字まで）" };
   if (existing.some((w) => w.en === e)) return { ok: false, error: `「${e}」はすでに登録されています` };
-  if (existing.length >= MAX_WORDS) return { ok: false, error: `登録できるのは${MAX_WORDS}語までです` };
+  if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
   return { ok: true, en: e, ja: j };
 }
 

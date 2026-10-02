@@ -2,7 +2,7 @@
   "generatedAt": "2026-10-02T09:00:00.000Z",
   "today": "2026-10-02",
   "missing": ["crm_notes"],
-  "summary": { "total": 6, "bySegment": { "active": 2, "atRisk": 1, "churned": 1, "dormant": 2 }, "newThisWeek": 2 },
+  "summary": { "total": 6, "bySegment": { "active": 2, "atRisk": 1, "churned": 1, "dormant": 2 }, "newThisWeek": 2, "pro": 2 },
   "players": [
     {
       "userId": "11111111-1111-4111-8111-111111111111",
@@ -28,7 +28,11 @@
       "isNew": false,
       "tags": ["ヘビーユーザー"],
       "note": "受験生。平日の夜に毎日やっている",
-      "pinned": true
+      "pinned": true,
+      "plan": "pro",
+      "planStatus": "active",
+      "planPeriodEnd": "2026-10-20T01:00:00.000Z",
+      "planInterval": "month"
     },
     {
       "userId": "22222222-2222-4222-8222-222222222222",
@@ -54,7 +58,11 @@
       "isNew": true,
       "tags": [],
       "note": "",
-      "pinned": false
+      "pinned": false,
+      "plan": "free",
+      "planStatus": null,
+      "planPeriodEnd": null,
+      "planInterval": null
     },
     {
       "userId": "33333333-3333-4333-8333-333333333333",
@@ -80,7 +88,11 @@
       "isNew": false,
       "tags": ["TOEIC"],
       "note": "",
-      "pinned": false
+      "pinned": false,
+      "plan": "pro",
+      "planStatus": "past_due",
+      "planPeriodEnd": "2026-10-30T12:00:00.000Z",
+      "planInterval": "month"
     },
     {
       "userId": "44444444-4444-4444-8444-444444444444",
@@ -106,7 +118,11 @@
       "isNew": false,
       "tags": [],
       "note": "",
-      "pinned": false
+      "pinned": false,
+      "plan": "free",
+      "planStatus": null,
+      "planPeriodEnd": null,
+      "planInterval": null
     },
     {
       "userId": "55555555-5555-4555-8555-555555555555",
@@ -132,7 +148,11 @@
       "isNew": true,
       "tags": [],
       "note": "",
-      "pinned": false
+      "pinned": false,
+      "plan": "free",
+      "planStatus": null,
+      "planPeriodEnd": null,
+      "planInterval": null
     },
     {
       "userId": "66666666-6666-4666-8666-666666666666",
@@ -158,7 +178,11 @@
       "isNew": false,
       "tags": [],
       "note": "",
-      "pinned": false
+      "pinned": false,
+      "plan": "free",
+      "planStatus": null,
+      "planPeriodEnd": null,
+      "planInterval": null
     }
   ]
 }

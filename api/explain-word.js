@@ -7,11 +7,14 @@
 // 思い出せなかった語に対して、語源・音・分解に基づく覚え方、例文（実務の一文）、
 // 混同しやすい点を1回だけ作る。結果は端末に保存されるので、同じ語で何度も呼ばれない。
 // 必要な環境変数: ANTHROPIC_API_KEY（未設定なら 503）
+//   EXPLAIN_WORD_DAILY_LIMIT … 無料の 1 日回数（既定 3）/ EXPLAIN_WORD_DAILY_LIMIT_PRO … Pro の回数（既定 60）
+//   超えたら 429 { error: "daily_limit", upgrade: 無料なら true }
 
 import Anthropic from "@anthropic-ai/sdk";
 import { send, readBody, reject, sendUpstreamError } from "./_lib/shared.js";
 
-const DAILY_LIMIT = Number(process.env.EXPLAIN_WORD_DAILY_LIMIT) || 60;
+const DAILY_LIMIT = Number(process.env.EXPLAIN_WORD_DAILY_LIMIT) || 3;
+const DAILY_LIMIT_PRO = Number(process.env.EXPLAIN_WORD_DAILY_LIMIT_PRO) || 60;
 
 const SYSTEM_PROMPT = `あなたは英単語×タイピング学習アプリ SpellDash の学習コーチです。
 ユーザーが思い出せなかった語について、次の4つを日本語で作ります。
@@ -41,7 +44,7 @@ function clean(value, max) {
 }
 
 export default async function handler(req, res) {
-  if (await reject(req, res, { scope: "explain", limit: DAILY_LIMIT })) return;
+  if (await reject(req, res, { scope: "explain", limit: DAILY_LIMIT, proLimit: DAILY_LIMIT_PRO })) return;
 
   const { word } = readBody(req);
   const en = clean(word?.en, 60);

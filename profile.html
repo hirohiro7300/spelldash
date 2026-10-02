@@ -16,7 +16,8 @@
   <link rel="stylesheet" href="./css/theme.css" />
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
-  <script>document.documentElement.dataset.theme = localStorage.getItem("spelldash_theme") === "dark" ? "dark" : "light";</script>
+  <link rel="stylesheet" href="./css/pro.css" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); document.documentElement.dataset.theme = ["dark","paper","indigo"].includes(t) ? t : "light"; })();</script>
 
 
   <meta name="description" content="表示名・発音設定などのプロフィール設定。" />
@@ -219,7 +220,10 @@
         <select id="themeSelect" class="setting-select">
           <option value="light">白（標準）</option>
           <option value="dark">黒</option>
+          <option value="paper">紙（Pro）</option>
+          <option value="indigo">藍（Pro）</option>
         </select>
+        <p class="setting-hint" id="themeHint" hidden></p>
       </div>
 
       <div class="setting-row">
@@ -246,6 +250,14 @@
           <span class="setting-row__value">
             <span class="profile-email mono" id="profileEmail"></span>
             <span class="muted" id="profileJoined"></span>
+          </span>
+        </div>
+        <div class="setting-row" id="planRow">
+          <span class="setting-row__text">プラン</span>
+          <span class="setting-row__value plan-row__value">
+            <span id="planValue">Free</span>
+            <a class="btn btn--sm btn--ghost" id="planLink" href="./pro.html">Pro について</a>
+            <button type="button" class="btn btn--sm btn--ghost" id="planPortal" hidden>お支払いの管理</button>
           </span>
         </div>
         <div class="setting-row">
@@ -298,6 +310,7 @@
       <nav class="site-footer__nav" aria-label="フッターナビ">
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
+        <a href="./tokushoho.html">特定商取引法に基づく表記</a>
         <a href="#feedback" role="button" data-feedback-open>ご意見・不具合</a>
       </nav>
 

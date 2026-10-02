@@ -13,8 +13,9 @@ import { icon } from "./icons.js";
 export const SEGMENT_LABEL = { active: "活動中", atRisk: "離れかけ", churned: "離脱", dormant: "登録のみ" };
 export const CSV_COLUMNS = [
   "email", "displayName", "segment", "lastActiveDay", "activeDays7", "activeDays30",
-  "wordsMastered", "streakCurrent", "level", "tags", "note"
+  "wordsMastered", "streakCurrent", "level", "plan", "tags", "note"
 ];
+const PLAN_INTERVAL_LABEL = { month: "月額", year: "年額" };
 
 const DAY_MS = 86400000;
 
@@ -141,6 +142,7 @@ const state = {
   summary: null,
   missing: [],
   segment: "all",
+  plan: "all", // "all" | "pro"（Pro だけに絞る。セグメントとは独立）
   query: "",
   sort: "lastActive",
   openUserId: null,
@@ -227,7 +229,18 @@ function bindEvents() {
   els.refresh.addEventListener("click", () => load());
   els.exportBtn.addEventListener("click", downloadCsv);
 
+  // Pro フィルタ（セグメントのチップ列の末尾。押すたびに on/off）
+  els.segment.insertAdjacentHTML("beforeend", '<button type="button" class="admin-chip admin-chip--plan" data-plan="pro" aria-pressed="false">Pro</button>');
   els.segment.addEventListener("click", (event) => {
+    const planChip = event.target.closest(".admin-chip[data-plan]");
+    if (planChip) {
+      state.plan = state.plan === "pro" ? "all" : "pro";
+      const on = state.plan === "pro";
+      planChip.classList.toggle("admin-chip--active", on);
+      planChip.setAttribute("aria-pressed", String(on));
+      renderTable();
+      return;
+    }
     const chip = event.target.closest(".admin-chip[data-segment]");
     if (!chip) return;
     state.segment = chip.dataset.segment;
@@ -353,7 +366,8 @@ function summaryCounts() {
     atRisk: count("atRisk"),
     churned: count("churned"),
     dormant: count("dormant"),
-    newThisWeek: s?.newThisWeek != null ? s.newThisWeek : state.players.filter((p) => p.isNew).length
+    newThisWeek: s?.newThisWeek != null ? s.newThisWeek : state.players.filter((p) => p.isNew).length,
+    pro: s?.pro != null ? s.pro : state.players.filter((p) => p.plan === "pro").length
   };
 }
 
@@ -361,7 +375,7 @@ function renderSummary() {
   const c = summaryCounts();
   const items = [
     ["全", c.total], ["活動中", c.active], ["離れかけ", c.atRisk],
-    ["離脱", c.churned], ["登録のみ", c.dormant], ["今週の新規", c.newThisWeek]
+    ["離脱", c.churned], ["登録のみ", c.dormant], ["今週の新規", c.newThisWeek], ["Pro", c.pro]
   ];
   els.summary.innerHTML = items
     .map(([label, n]) => `<span class="admin-summary__item">${label} <b class="admin-n">${num(n)}</b></span>`)
@@ -370,7 +384,10 @@ function renderSummary() {
 
 function visiblePlayers() {
   const filtered = state.players.filter(
-    (p) => (state.segment === "all" || p.segment === state.segment) && matchesQuery(p, state.query)
+    (p) =>
+      (state.segment === "all" || p.segment === state.segment) &&
+      (state.plan === "all" || p.plan === "pro") &&
+      matchesQuery(p, state.query)
   );
   return sortPlayers(filtered, state.sort);
 }
@@ -379,6 +396,21 @@ function segmentChip(player) {
   const seg = SEGMENT_LABEL[player.segment] ? player.segment : "dormant";
   const extra = player.isNew ? ' <span class="admin-new">新規</span>' : "";
   return `<span class="admin-seg admin-seg--${seg}">${SEGMENT_LABEL[seg]}</span>${extra}`;
+}
+
+// プラン: Pro だけチップ（朱の線）。free は何も出さない
+function planChip(player) {
+  return player.plan === "pro" ? '<span class="admin-plan">Pro</span>' : "";
+}
+
+// ドロワー用: 「Pro ・ 月額 ・ active ・ 次回 2026-10-20」／「Free」
+function planFacts(player) {
+  if (player.plan !== "pro") return "プラン <b class=\"admin-n\">Free</b>";
+  const parts = [planChip(player)];
+  if (player.planInterval) parts.push(escapeHtml(PLAN_INTERVAL_LABEL[player.planInterval] || player.planInterval));
+  if (player.planStatus) parts.push(`<span class="mono">${escapeHtml(player.planStatus)}</span>`);
+  if (player.planPeriodEnd) parts.push(`次回 <b class="admin-n">${fmtDate(player.planPeriodEnd)}</b>`);
+  return parts.join(" ");
 }
 
 function lastActiveHtml(player) {
@@ -411,6 +443,7 @@ function rowHtml(player) {
         <span class="admin-email mono">${escapeHtml(player.email)}</span>
       </div>
       <div class="admin-cell admin-cell--seg">${segmentChip(player)}</div>
+      <div class="admin-cell admin-cell--plan">${planChip(player)}</div>
       <div class="admin-stats">
         <div class="admin-cell admin-cell--last" data-label="最終活動">${lastActiveHtml(player)}</div>
         ${numCell("7日", player.activeDays7)}
@@ -427,6 +460,7 @@ const HEAD_HTML = `
   <div class="admin-head-row" aria-hidden="true">
     <div class="admin-cell admin-cell--player">プレイヤー</div>
     <div class="admin-cell admin-cell--seg">セグメント</div>
+    <div class="admin-cell admin-cell--plan">プラン</div>
     <div class="admin-stats">
       <div class="admin-cell admin-cell--last">最終活動</div>
       <div class="admin-cell admin-cell--num">7日</div>
@@ -474,7 +508,8 @@ function fillHeader(player) {
   els.drawerFacts.innerHTML = [
     `登録 <b class="admin-n">${fmtDate(player.createdAt)}</b>`,
     `最終ログイン <b class="admin-n">${fmtDate(player.lastSignInAt)}</b>`,
-    segmentChip(player)
+    segmentChip(player),
+    planFacts(player)
   ].join('<span class="admin-summary__sep" aria-hidden="true"> ・ </span>');
   els.drawerNumbers.innerHTML = [
     `覚えた語 <b class="admin-n">${num(player.wordsMastered)}</b>`,

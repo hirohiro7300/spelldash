@@ -290,13 +290,15 @@ h1 {
 
 .site-footer__nav {
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: 8px 18px;
   margin-left: auto;
 }
 
 .site-footer__nav a {
   text-decoration: none;
   font-size: 14px;
+  white-space: nowrap;
 }
 
 .site-footer__copy {
@@ -337,7 +339,7 @@ html.native-app .account-menu__native {
   color: #cbd5e1;
 }
 
-html[data-theme="light"].native-app .account-menu__native {
+html:is([data-theme="light"], [data-theme="paper"]).native-app .account-menu__native {
   color: #334155;
 }
 

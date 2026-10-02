@@ -26,6 +26,20 @@ function fakeSession() {
   }
 }
 
+// subscriptions（Pro の加入状態）だけは localStorage の spelldash_test_plan を本人の行として返す（無ければ行なし）。
+// 例: {"status":"active","plan_interval":"month","current_period_end":"<今日+20日 ISO>","cancel_at_period_end":false}
+// js/plan.js の refreshPlan() は select().eq().maybeSingle() の形で読むので、その形だけ用意する
+function subscriptionsTable() {
+  const row = () => {
+    try {
+      return JSON.parse(localStorage.getItem("spelldash_test_plan") || "null");
+    } catch {
+      return null;
+    }
+  };
+  return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: row(), error: null }) }) }) };
+}
+
 export const supabase = {
   auth: {
     getSession: async () => ({ data: { session: fakeSession() } }),
@@ -34,5 +48,5 @@ export const supabase = {
     signInWithOAuth: asyncNull,
     signOut: asyncNull
   },
-  from: () => chain()
+  from: (table) => (table === "subscriptions" ? subscriptionsTable() : chain())
 };
