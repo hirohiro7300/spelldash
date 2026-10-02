@@ -1,5 +1,7 @@
 # SpellDash 現状スナップショット（2026-07-17 上流設計用・詳細版）
 
+> **2026-10-02追記（Batch 36: NGSL の別解）**: NGSL 24 パック 1,568 枚に別解 2,820 語。別解を人手で確かめた英単語パックは 47 本に。AMBIGUOUS_JA §5 に新候補 147 件（創業者判断待ち）。
+
 > **2026-10-02追記（Batch 35: 試験パックの別解・利用規約）**: 英検・TOEIC・高校・ビジネス・IT の 16 パックに別解 1,874 語（1,057 枚）。AMBIGUOUS_JA §1 の 14 組を反映、§4 に新候補 137 件（創業者判断待ち）。`/terms.html`。E2E 529 件（pages に terms）。
 
 > **2026-10-02追記（Batch 34: SpellDash Pro）**: 創業者が決済を解禁。月額（任意で年額）の Pro を Stripe Checkout／Billing Portal／Webhook で実装（`api/billing/*`、SDK 無し）。`subscriptions`（docs/SQL_BILLING.md）の行から entitlement（active／trialing／past_due かつ 期限 + 3 日）を判定し、クライアントは `js/plan.js` が `spelldash_plan` にキャッシュ。特典はマイ単語帳 1,000 語・AI の回数（サーバー判定）・90 日の推移・シールド 3 枚と月 1 回の修復・テーマ 紙／藍。`/pro.html`・`/tokushoho.html`・プロフィールのプラン行・CRM のプラン列。アプリでは購入導線を出さない。**受付開始は創業者側**: docs/BILLING.md §2（Stripe の商品と Price → Vercel の環境変数 → Webhook → Redeploy → SQL → tokushoho.html の［ ］→ テストカードで一巡 → 本番キー → 告知）。それまで /pro.html は「Pro はまだ受付前です」。E2E 529 件（+86: pro 84・pages 2）。
