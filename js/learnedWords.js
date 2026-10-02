@@ -49,6 +49,17 @@ export function getLearnedWordList() {
   return list.sort((a, b) => (b.stat.lastRecallSuccessAt ?? "").localeCompare(a.stat.lastRecallSuccessAt ?? ""));
 }
 
+// 覚えた（覚えかけ＋習得）が記録にあるのに、語が引けない id の数（外したパックの語）。
+// 覚えた単語帳には出せないので、件数だけ 1 行で添える
+export function getDroppedLearnedCount() {
+  let n = 0;
+  for (const [id, stat] of Object.entries(getWordStats())) {
+    const status = classifyWord(stat);
+    if ((status === "learning" || status === "mastered") && !findWord(id)) n++;
+  }
+  return n;
+}
+
 export function getKnownWordList() {
   const stats = getWordStats();
   const list = [];

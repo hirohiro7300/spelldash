@@ -75,7 +75,7 @@
               <div class="account-menu__divider">または</div>
 
               <p class="account-menu__hint">
-                ログインすると学習データがクラウドに保存され、機種変更や別の端末でも引き継げます。メールアドレスにログインリンクを送ります。
+                別の端末でも続きから使える。メールにログインリンクを送る。
               </p>
               <input
                 id="emailInput"
@@ -84,7 +84,7 @@
                 autocomplete="email"
               />
               <button id="loginButton" type="submit" class="btn btn--sm">
-                リンクを送信
+                ログインリンクを送る
               </button>
             </form>
           </div>
@@ -123,8 +123,8 @@
   <main class="app app--narrow pro" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <p class="logo">SpellDash Pro</p>
-      <h1>学習の核は無料のまま。Pro は、もっと自分向けに。</h1>
-      <p class="subtitle">思い出して打つ・今日のセット・復習・記録は、これからも無料。Pro は、自分の単語をもっと入れたい人、長く続けている人のための追加機能です。</p>
+      <h1>学習の核は無料のまま。<br />Pro は、もっと自分向けに。</h1>
+      <p class="subtitle">思い出して打つ・今日のセット・復習・記録は、これからも無料。Pro は、自分の単語をもっと入れたい人、長く続けている人のための追加機能。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
@@ -146,8 +146,9 @@
           </tr>
           <tr>
             <th scope="row">AI<span class="pro-compare__sub">テキストからカードを作る・覚え方の解説</span></th>
-            <td>1 日に数回</td>
-            <td>1 日に数十回</td>
+            <!-- 値は api/explain-word.js（3／60）と api/generate-cards.js（2／20）の既定。env を変えたらここも -->
+            <td>覚え方の解説 1 日 <b class="mono">3</b> 回・カード作成 1 日 <b class="mono">2</b> 回</td>
+            <td>1 日 <b class="mono">60</b> 回・<b class="mono">20</b> 回</td>
           </tr>
           <tr>
             <th scope="row">覚えた単語の推移<span class="pro-compare__sub">学習データのグラフ</span></th>
@@ -156,8 +157,8 @@
           </tr>
           <tr>
             <th scope="row">連続記録<span class="pro-compare__sub">休んだ日を守るシールドと、途切れたときの修復</span></th>
-            <td>シールド 最大 <b class="mono">2</b> 枚</td>
-            <td>シールド 最大 <b class="mono">3</b> 枚<br />月 1 回、7 日以内なら前の連続日数を取り戻せる</td>
+            <td>休んだ日を守るシールド 最大 <b class="mono">2</b> 枚</td>
+            <td>シールド 最大 <b class="mono">3</b> 枚＋月 <b class="mono">1</b> 回の修復<br />途切れて 7 日以内なら前の連続日数を取り戻せる</td>
           </tr>
           <tr>
             <th scope="row">テーマ<span class="pro-compare__sub">設定 →「見た目」</span></th>
@@ -166,12 +167,12 @@
           </tr>
         </tbody>
       </table>
-      <p class="setting-hint pro-note">Study・Challenge・Daily・Battle・今日のセット・復習・ランキングは無料のまま。覚えやすさや判定が有利になるものは売りません。</p>
+      <p class="setting-hint pro-note">Study・Challenge・Daily・Battle・今日のセット・復習・ランキングは無料のまま。覚えやすさや判定が有利になるものは売らない。</p>
     </section>
 
     <section class="settings pro-section" id="proPlansSection">
       <h2 class="settings__title">料金</h2>
-      <div class="pro-plans" id="proPlans"><p class="pro-pending">読み込んでいます</p></div>
+      <div class="pro-plans" id="proPlans"><p class="pro-pending">読み込み中</p></div>
       <p class="pro-state" id="proState" role="status"></p>
       <p class="pro-message" id="proMessage" role="status"></p>
     </section>

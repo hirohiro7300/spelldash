@@ -116,7 +116,7 @@ export default async function handler(req, res) {
     try {
       parsed = JSON.parse(textBlock?.text ?? "{}");
     } catch {
-      return send(res, 502, { error: "bad_output", message: "うまく作れませんでした。もう一度お試しください。" });
+      return send(res, 502, { error: "bad_output", message: "作れなかった。もう一度" });
     }
     const cards = sanitizeCards(parsed.cards);
     return send(res, 200, { cards, usage: { input: response.usage?.input_tokens ?? 0, output: response.usage?.output_tokens ?? 0 } });

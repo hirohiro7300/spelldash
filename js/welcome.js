@@ -50,7 +50,7 @@ function setupDemo(root, onDone) {
     typed = "";
     preview.innerHTML = "";
     input.value = "";
-    msg.textContent = index === 0 ? "キーボードで英単語を打つ。打てた文字から色が変わる" : "次の1語。思い出して打つ";
+    msg.textContent = index === 0 ? "打てた文字から色が変わる" : "次の1語。思い出して打つ";
     msg.className = "welcome-demo__msg";
     if (dots) dots.innerHTML = DEMO_WORDS.map((_, i) => `<i class="${i < index ? "on" : ""}"></i>`).join("");
   };

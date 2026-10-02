@@ -13,14 +13,14 @@ import { apiUrl, isNativeApp } from "./appEnv.js";
 import { getPlan, refreshPlan, postBilling, formatPlanDate } from "./plan.js";
 
 const MESSAGES = {
-  loginRequired: "加入にはログインが必要です。右上からログインしてください。",
-  notConfigured: "Pro はまだ受付前です。",
+  loginRequired: "加入にはログインが要る。",
+  notConfigured: "Pro はまだ受付前。",
   nativeOnly: "Pro の加入と管理は Web 版（www.spelldash.net）で。",
-  alreadyPro: "すでに Pro です。",
-  canceled: "手続きを中止しました。いつでも再開できます。",
-  failed: "手続きを始められませんでした。時間をおいてお試しください。",
-  network: "通信できませんでした。接続を確認してください。",
-  noSubscription: "お支払いの記録が見つかりません。加入直後なら、少し待ってから開き直してください。"
+  alreadyPro: "すでに Pro。",
+  canceled: "手続きを中止した。いつでも再開できる",
+  failed: "手続きを始められなかった。時間をおいてもう一度",
+  network: "通信できなかった。接続を確認",
+  noSubscription: "お支払いの記録が無い。加入直後なら少し待って開き直す"
 };
 
 const plansElement = document.getElementById("proPlans");
@@ -56,6 +56,12 @@ if (isNativeApp) render();
 else loadConfig().then(() => render());
 
 plansElement.addEventListener("click", (event) => {
+  // 未ログイン: ヘッダーのログインを開く（ログインが済むと onAuthStateChange で描き直す）
+  if (event.target.closest("[data-login]")) {
+    // この click が document まで上がると「外側クリック」で閉じられるので、上がり切ってから開く
+    setTimeout(() => document.getElementById("loginToggle")?.click(), 0);
+    return;
+  }
   const button = event.target.closest("[data-interval]");
   if (button) startCheckout(button.dataset.interval);
 });
@@ -102,7 +108,7 @@ function renderPlans(plan) {
     return;
   }
   if (!config) {
-    plansElement.innerHTML = '<p class="pro-pending">読み込んでいます</p>';
+    plansElement.innerHTML = '<p class="pro-pending">読み込み中</p>';
     return;
   }
   if (!config.configured) {
@@ -113,12 +119,14 @@ function renderPlans(plan) {
   const month = config.prices.find((p) => p.interval === "month");
   const year = config.prices.find((p) => p.interval === "year");
   const perMonth = year ? Math.round(Number(year.amount) / 12) : 0;
+  // 未ログイン: 主ボタンが「ログインして始める」。押すとヘッダーのログインが開く（動かないボタンを出さない）
+  const action = session ? (interval) => `data-interval="${interval}"` : () => "data-login";
   plansElement.innerHTML = `
     <div class="pro-plans__buttons">
-      <button type="button" class="btn pro-cta" id="proCheckoutMonth" data-interval="month">月額 ${yen(month.amount)} で始める</button>
-      ${year ? `<button type="button" class="btn btn--ghost pro-cta" id="proCheckoutYear" data-interval="year">年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）</button>` : ""}
+      <button type="button" class="btn pro-cta" id="${session ? "proCheckoutMonth" : "proLoginStart"}" ${action("month")}>${session ? `月額 ${yen(month.amount)} で始める` : `ログインして始める（月額 ${yen(month.amount)}）`}</button>
+      ${year ? `<button type="button" class="btn btn--ghost pro-cta" id="proCheckoutYear" ${action("year")}>年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）</button>` : ""}
     </div>
-    <p class="pro-plans__hint">${config.trialDays > 0 ? `最初の ${config.trialDays} 日間は無料。` : ""}税込。いつでも解約できます。解約後も期間の終わりまで使えます。</p>`;
+    <p class="pro-plans__hint">${config.trialDays > 0 ? `最初の ${config.trialDays} 日間は無料。` : ""}税込。いつでも解約できる。解約後も期間の終わりまで使える</p>`;
 }
 
 // 状態（#proState）
@@ -126,7 +134,7 @@ function renderState(plan) {
   if (plan.pro) {
     const date = formatPlanDate(plan.periodEnd);
     const text = plan.cancelAtPeriodEnd
-      ? `解約予定（${date || "期間末"} まで利用できます）`
+      ? `解約予定（${date || "期間末"} まで使える）`
       : `Pro をご利用中${date ? `（次回の更新 ${date}）` : ""}`;
     stateElement.innerHTML = `<span class="pro-state__text">${text}</span>${
       isNativeApp ? "" : ' <button type="button" class="btn btn--sm btn--ghost" id="proPortal">お支払いの管理</button>'
@@ -137,10 +145,7 @@ function renderState(plan) {
     stateElement.innerHTML = `<span class="pro-pending">${MESSAGES.nativeOnly}</span>`;
     return;
   }
-  if (!session) {
-    stateElement.textContent = MESSAGES.loginRequired;
-    return;
-  }
+  // 未ログインの案内は主ボタン（ログインして始める）が言うので、ここでは出さない
   stateElement.textContent = "";
 }
 

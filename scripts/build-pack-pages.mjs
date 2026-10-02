@@ -18,6 +18,9 @@ const packs = subject.categories.filter((c) => c.pack);
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// 単位: 英単語パックは「語」、場面カード・暗記もの（manifest の kind: concept）は「枚」（js/listView.js と同じ判定）
+const unit = (p) => (p.kind === "concept" ? "枚" : "語");
+
 const CARD_TYPE_LABEL = {
   word: "日本語訳を見て英単語を打つ",
   grammar: "英文の空欄に入る語を英語で打つ",
@@ -79,7 +82,7 @@ function pageShell({ title, description, canonical, body }) {
     .pp-cta:hover { background: var(--ink-2); }
     .pp-cta--ghost, .pp-cta--ghost:hover { background: transparent; color: var(--ink); border: 1px solid var(--line-2); }
     .pp-cta--ghost:hover { background: var(--paper-3); }
-    .pp-sub { margin-left: 12px; font-size: 13px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+    .pp-sub { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; margin: 0 -8px 0 4px; font-size: 13px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
     .pp-sub:hover { color: var(--signal-ink); }
     .pp h2 { margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-2); font-size: 16px; font-weight: 700; }
     .pp-genres { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0; list-style: none; }
@@ -95,17 +98,29 @@ function pageShell({ title, description, canonical, body }) {
     .pp-card__ex { font-size: 13px; line-height: 1.5; color: var(--ink-3); }
     .pp-how { padding-left: 18px; font-size: 14px; line-height: 1.7; color: var(--ink-2); }
     .pp-how li { margin: 4px 0; }
-    .pp-index a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
-    .pp-index a:hover { color: var(--signal-ink); }
     .pp-index h2 { margin-top: 28px; scroll-margin-top: 72px; }
-    .pp-index ul { padding-left: 18px; line-height: 1.9; }
-    .pp-index small { color: var(--ink-3); }
+    /* 一覧の 1 行＝1 パック。行全体がリンク（44px）。説明は 560px 以下では出さない（入口ページに同じ文がある） */
+    .pp-index ul { padding: 0; margin: 0; list-style: none; line-height: 1.5; }
+    .pp-index li { border-bottom: 1px solid var(--line); }
+    .pp-index .packs-item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 0; color: var(--ink); text-decoration: none; }
+    .pp-index .packs-item b { flex: 0 0 auto; max-width: 100%; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+    .pp-index .packs-item:hover b { color: var(--signal-ink); }
+    .pp-index .packs-item small { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--ink-3); }
+    .pp-index .packs-item__n { white-space: nowrap; font-family: var(--font-mono); }
     /* チップ状のリンク（同じグループの分野・一覧のグループへのジャンプ）。指で押せる 40px */
     .pp-related, .packs-jump { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; list-style: none; }
     .packs-jump { margin: 16px 0 0; }
     .pp-related a, .packs-jump a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 999px; background: var(--paper-3); color: var(--ink); font-size: 13px; font-weight: 600; text-decoration: none; }
     .pp-related a:hover, .packs-jump a:hover { background: var(--line); }
     .packs-jump a small { margin-left: 6px; font-family: var(--font-mono); font-weight: 500; font-size: 12px; color: var(--ink-3); }
+    /* 560px 以下: ジャンプチップは 2 列 grid（1 行 1 個の縦積みにしない）。一覧の説明は出さない（.packs-jump の flex より後に置く） */
+    @media (max-width: 560px) {
+      .packs-jump { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .packs-jump a { min-height: 40px; padding: 0 10px; font-size: 12px; }
+      .pp-index .packs-item__blurb { display: none; }
+      .pp-index .packs-item b { flex: 1 1 auto; }
+      .pp-index .packs-item small { flex: 0 0 auto; }
+    }
   </style>
 </head>
 <body>
@@ -119,8 +134,9 @@ function pageShell({ title, description, canonical, body }) {
         <a href="/list.html" class="site-nav__link">単語帳</a>
         <a href="/battle.html" class="site-nav__link">バトル</a>
       </nav>
+      <a id="headerStreak" class="header-streak" href="/stats.html" title="連続プレイ日数" hidden></a>
       <div class="account">
-        <a class="btn btn--sm btn--ghost account__home" href="/">ホームへ</a>
+        <a class="btn btn--sm btn--ghost account__home account__link" id="accountLink" href="/?login=1">ログイン</a>
       </div>
     </div>
   </header>
@@ -142,6 +158,7 @@ ${body}
     </div>
   </footer>
   <script type="module">
+    import "/js/staticHeader.js"; // ヘッダー右端（連続日数・ログイン／設定）
     import { setFooterYear } from "/js/footer.js";
     setFooterYear();
   </script>
@@ -175,18 +192,18 @@ for (const p of packs) {
     if (sample.length >= 8) break;
   }
   const genreCounts = [...byGenre.entries()].map(([tag, list]) => `<li>${esc(data.genres?.[tag] ?? tag)} <span>${list.length}</span></li>`).join("");
-  const title = `${p.label}（${p.count}枚）| SpellDash 分野パック`;
+  const title = `${p.label}（${p.count}${unit(p)}）| SpellDash 分野パック`;
   const description = `${p.blurb}。${p.audience}向け。${CARD_TYPE_LABEL[type]}。追加した人だけに出題され、思い出せなかった問題は復習の仕組みでまた出ます。`;
   const canonical = `${SITE}/packs/${p.id}.html`;
   const siblings = packs.filter((x) => x.group === p.group && x.id !== p.id).slice(0, 8);
   const body = `
     <section class="pp-hero">
-      <p class="pp-kicker">${esc(p.group)} ・ 分野パック</p>
+      <p class="pp-kicker">${esc(p.group)} ・ パック</p>
       <h1>${esc(p.label)}</h1>
       <p class="pp-lead">${esc(p.blurb)}</p>
-      <p class="pp-meta">${esc(p.audience)}向け ・ ${p.count}枚 ・ ${esc(CARD_TYPE_LABEL[type])}</p>
+      <p class="pp-meta">${esc(p.audience)}向け ・ ${p.count}${unit(p)} ・ ${esc(CARD_TYPE_LABEL[type])}</p>
       <a class="pp-cta" href="/list.html?add=${encodeURIComponent(p.id)}">このパックを追加して始める</a>
-      <a class="pp-sub" href="/packs/">他の分野を見る</a>
+      <a class="pp-sub" href="/packs/">他のパックを見る</a>
     </section>
     <section>
       <h2>収録ジャンル</h2>
@@ -201,13 +218,13 @@ ${sampleHtml(data, sample)}
     <section>
       <h2>どう覚えるか</h2>
       <ul class="pp-how">
-        <li>${esc(CARD_TYPE_LABEL[type])}。分からなければ Enter で答えを見て、数問後にもう一度出ます。</li>
-        <li>自力で思い出せた語は復習の間隔が伸び、思い出せなかった語は近いうちにまた出ます（想起練習と間隔反復）。</li>
-        <li>学習の記録は端末に保存され、ログインすると別の端末でも引き継げます。</li>
+        <li>${esc(CARD_TYPE_LABEL[type])}。分からなければ Enter で答えを見て、数問後にもう一度出る</li>
+        <li>自力で思い出せた語は復習の間隔が伸び、思い出せなかった語は近いうちにまた出る（想起練習と間隔反復）</li>
+        <li>学習の記録は端末に保存され、ログインすると別の端末でも続きから</li>
       </ul>
       <p><a class="pp-cta pp-cta--ghost" href="/list.html?add=${encodeURIComponent(p.id)}">このパックを追加して始める</a></p>
     </section>
-    ${siblings.length ? `<section><h2>同じグループの分野</h2><ul class="pp-related">${siblings.map((s) => `<li><a href="/packs/${s.id}.html">${esc(s.label)}</a></li>`).join("")}</ul></section>` : ""}
+    ${siblings.length ? `<section><h2>同じグループのパック</h2><ul class="pp-related">${siblings.map((s) => `<li><a href="/packs/${s.id}.html">${esc(s.label)}</a></li>`).join("")}</ul></section>` : ""}
     ${data.source ? `<section><h2>出典</h2><p class="pp-source">語彙リスト: <a href="${esc(data.source.url)}" rel="license noopener" target="_blank">${esc(data.source.list)}</a>（${esc(data.source.license)}${data.source.ranks ? ` ・ 頻度順位 ${esc(data.source.ranks)}` : ""}）。訳・品詞・例文は SpellDash が作成。</p></section>` : ""}
   `;
   fs.writeFileSync(path.join(OUT_DIR, `${p.id}.html`), pageShell({ title, description, canonical, body }));
@@ -220,18 +237,18 @@ const indexBody = `
     <section class="pp-hero">
       <p class="pp-kicker">SpellDash</p>
       <h1>分野パック一覧</h1>
-      <p class="pp-lead">仕事の共通言語、試験の語彙、学校の暗記もの。追加した分野だけがホームに出て、思い出して打つ・復習の仕組みで覚えられます。</p>
-      <p class="pp-meta">${packs.length}パック ・ ${packs.reduce((n, p) => n + p.count, 0).toLocaleString("ja-JP")}枚</p>
+      <p class="pp-lead">仕事の共通言語、試験の語彙、学校の暗記もの。追加したパックだけがホームに出て、思い出して打つ・復習の仕組みで覚える。</p>
+      <p class="pp-meta">${packs.length}パック ・ 英単語 ${packs.filter((p) => unit(p) === "語").reduce((n, p) => n + p.count, 0).toLocaleString("ja-JP")}語 ・ 場面カード ${packs.filter((p) => unit(p) === "枚").reduce((n, p) => n + p.count, 0).toLocaleString("ja-JP")}枚</p>
       <a class="pp-cta" href="/list.html#packs">単語帳ページで追加する</a>
-      <nav aria-label="グループへ移動"><ul class="packs-jump">${[...groups.entries()].map(([g, list], i) => `<li><a href="#group-${i + 1}">${esc(g)}<small>${list.length}</small></a></li>`).join("")}</ul></nav>
+      <nav aria-label="グループへ移動"><ul class="packs-jump">${[...groups.entries()].map(([g, list], i) => `<li><a href="#group-${i + 1}">${esc(g.split("（")[0])}<small>${list.length}</small></a></li>`).join("")}</ul></nav>
     </section>
     <section class="pp-index">
-${[...groups.entries()].map(([g, list], i) => `      <h2 id="group-${i + 1}">${esc(g)}</h2>\n      <ul>${list.map((p) => `<li><a href="/packs/${p.id}.html">${esc(p.label)}</a> <small>${p.count}枚 ・ ${esc(p.blurb)}</small></li>`).join("")}</ul>`).join("\n")}
+${[...groups.entries()].map(([g, list], i) => `      <h2 id="group-${i + 1}">${esc(g)}</h2>\n      <ul>${list.map((p) => `<li><a class="packs-item" href="/packs/${p.id}.html"><b>${esc(p.label)}</b><small><span class="packs-item__n">${p.count}${unit(p)}</span><span class="packs-item__blurb"> ・ ${esc(p.blurb)}</span></small></a></li>`).join("")}</ul>`).join("\n")}
     </section>
   `;
 fs.writeFileSync(
   path.join(OUT_DIR, "index.html"),
-  pageShell({ title: "分野パック一覧 | SpellDash", description: "不動産・会計・医療・SaaS・英検・TOEIC・中学高校の教科など、SpellDash の学習パック一覧。追加した分野だけがホームに出ます。", canonical: `${SITE}/packs/`, body: indexBody })
+  pageShell({ title: "分野パック一覧 | SpellDash", description: "不動産・会計・医療・SaaS・英検・TOEIC・中学高校の教科など、SpellDash の学習パック一覧。追加したパックだけがホームに出ます。", canonical: `${SITE}/packs/`, body: indexBody })
 );
 
 // sitemap.xml（基本ページ＋パックの入口ページ）

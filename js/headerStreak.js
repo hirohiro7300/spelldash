@@ -22,6 +22,9 @@ export function renderHeaderStreak() {
   const streak = getStreak();
   const done = hasPlayedToday();
 
+  // 初回（0日／ベスト 0日）は出さない。1 セット終わって連続日数が付いたら出る
+  el.hidden = streak.current === 0 && streak.best === 0;
+
   el.classList.toggle("header-streak--off", !done);
   el.innerHTML = `${icon("flame", { size: 14 })}<b>${streak.current}</b><span>日</span>`;
   el.setAttribute("aria-label", `連続 ${streak.current}日${done ? "" : "（今日はまだ）"}`);

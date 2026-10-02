@@ -4,6 +4,7 @@ import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { getCourse, sectionOf, listCourses, getCourseId, PLACEMENT_NOTE } from "./course.js";
 import { getSetSize, isDailySetDone } from "./dailySet.js";
+import { isPlacementPending, isPlacementRunning } from "./difficulty.js";
 import { getDueReviewCount } from "./studyQueue.js";
 import { resumableFor } from "./sessionResume.js";
 import { icon } from "./icons.js";
@@ -119,8 +120,13 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const doneCount = units.filter((u) => u.done).length;
 
   const category = getCategories().find((c) => c.id === path.categoryId);
+  // 腕試し前（まだ 1 語も答えていない。js/studyQueue.js の腕試し発動条件と同じ）: 進捗の数字（セクション 1／8・ユニット 1／11）は出さず、コース名だけ
+  const nothingAnswered = Object.values(getWordStats()).every((s) => !s?.lastRecallSuccessAt && !s?.lastRecallFailAt && !s?.known);
+  const beforePlacement = nothingAnswered && (isPlacementPending() || isPlacementRunning());
   const kicker = section
-    ? `${esc(course.label)} ・ セクション ${section.index + 1}／${section.total}`
+    ? beforePlacement
+      ? esc(course.label)
+      : `${esc(course.label)} ・ セクション ${section.index + 1}／${section.total}`
     : path.categoryId === "all"
       ? "コース: すべての単語"
       : path.categoryId === "my"
@@ -130,7 +136,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
           : "カテゴリ";
   const unitLine = allDone
     ? `${units.length}ユニット制覇`
-    : current
+    : current && !beforePlacement
       ? `ユニット ${currentIndex + 1}／${units.length} ・ ${esc(current.label)}`
       : "";
   const resume = firstVisit ? null : resumableFor(path.categoryId);
@@ -205,7 +211,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       <div class="path__head-text">
         <span class="path__kicker">${kicker}</span>
         <h1 class="path__title">${esc(label)}</h1>
-        <span class="path__unit">${unitLine}</span>
+        ${unitLine ? `<span class="path__unit">${unitLine}</span>` : ""}
       </div>
       <div class="path__head-actions">
         <button type="button" class="path__guide path__guide--course" id="pathCourse" aria-expanded="false" aria-controls="pathCourses">コースを変える</button>
@@ -216,10 +222,10 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   `;
   // 語が1つも無いカテゴリ（空のマイ単語帳など）: 道の代わりに次にやることを出す
   const empty = units.length === 0
-    ? `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("note", { size: 14 })}</span><div class="path__label"><b>まだ語がありません</b><span>${
+    ? `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("note", { size: 14 })}</span><div class="path__label"><b>まだ語が無い</b><span>${
         path.categoryId === "my"
-          ? `<a href="./list.html#myWords">マイ単語帳</a>に語を登録するか、上の「出題」から別のカテゴリを選んでください`
-          : `<a href="./list.html#packs">単語帳</a>から分野を追加するか、上の「出題」から別のカテゴリを選んでください`
+          ? `<a href="./list.html#myWords">マイ単語帳</a>に語を登録するか、上の「出題」から別のカテゴリを選ぶ`
+          : `<a href="./list.html#packs">単語帳</a>から分野を追加するか、上の「出題」から別のカテゴリを選ぶ`
       }</span></div></li>`
     : "";
   listEl.innerHTML = `<ol class="path__list">${nodes}${more}${units.length > 0 ? goal : empty}</ol>`;

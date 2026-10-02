@@ -74,10 +74,10 @@ export default async function handler(req, res) {
     try {
       parsed = JSON.parse(textBlock?.text ?? "{}");
     } catch {
-      return send(res, 502, { error: "bad_output", message: "うまく作れませんでした。もう一度お試しください。" });
+      return send(res, 502, { error: "bad_output", message: "作れなかった。もう一度" });
     }
     const mnemonic = clean(parsed.mnemonic, 120);
-    if (!mnemonic) return send(res, 502, { error: "bad_output", message: "うまく作れませんでした。もう一度お試しください。" });
+    if (!mnemonic) return send(res, 502, { error: "bad_output", message: "作れなかった。もう一度" });
     return send(res, 200, {
       mnemonic,
       example: clean(parsed.example, 160),

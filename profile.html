@@ -76,7 +76,7 @@
               <div class="account-menu__divider">または</div>
 
               <p class="account-menu__hint">
-                ログインすると学習データがクラウドに保存され、機種変更や別の端末でも引き継げます。メールアドレスにログインリンクを送ります。
+                別の端末でも続きから使える。メールにログインリンクを送る。
               </p>
               <input
                 id="emailInput"
@@ -86,7 +86,7 @@
                 autocomplete="email"
               />
               <button id="loginButton" type="submit" class="btn btn--sm">
-                リンクを送信
+                ログインリンクを送る
               </button>
             </form>
           </div>
@@ -126,7 +126,7 @@
   <main class="app app--narrow" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <h1>設定</h1>
-      <p class="subtitle">学習の記録は<a href="./stats.html">学習データ</a>に。</p>
+      <p class="subtitle">記録は<a href="./stats.html">学習データ</a>に。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
@@ -140,7 +140,7 @@
           <option value="15">15語（約5分・標準）</option>
           <option value="25">25語（約8分）</option>
         </select>
-        <p class="setting-hint">自力で思い出せた語数がこの数に達すると、今日のぶんは完了です。</p>
+        <p class="setting-hint">自力で思い出せた語がこの数に達したら、今日のぶんは完了</p>
       </div>
 
       <div class="setting-row">
@@ -169,16 +169,16 @@
       <div class="setting-row">
         <label for="voiceSelect">声</label>
         <span class="voice-row">
-          <select id="accentSelect" class="setting-select setting-select--accent" aria-label="アクセント">
+          <select id="accentSelect" class="setting-select setting-select--accent" aria-label="アクセント（US / UK）">
             <option value="us">US</option>
             <option value="uk">UK</option>
           </select>
           <select id="voiceSelect" class="setting-select">
-            <option value="">自動（この端末でいちばん自然な声）</option>
+            <option value="">自動（端末の声）</option>
           </select>
           <button type="button" class="btn btn--sm btn--ghost" id="voicePreview">試聴</button>
         </span>
-        <p class="setting-hint setting-hint--ios" id="voiceIosHint" hidden>設定 › アクセシビリティ › 読み上げコンテンツ › 声 で高品質の声を追加できます</p>
+        <p class="setting-hint setting-hint--ios" id="voiceIosHint" hidden>設定 › アクセシビリティ › 読み上げコンテンツ › 声 で高品質の声を追加できる</p>
       </div>
 
       <div class="setting-row">
@@ -242,8 +242,8 @@
       <h2 class="settings__title">アカウント・データ</h2>
 
       <div class="setting-row" id="profileLoggedOut">
-        <span class="setting-row__text">ログインしていません</span>
-        <p class="setting-hint">右上のログインから。学習データをクラウドに保存し、別の端末でも続けられます。</p>
+        <span class="setting-row__text">未ログイン</span>
+        <p class="setting-hint">右上のログインから。学習データをクラウドに保存し、別の端末でも続きから</p>
       </div>
 
       <div class="setting-block" id="profileCard" hidden>
@@ -275,21 +275,21 @@
             />
             <button id="displayNameSave" class="btn btn--sm btn--ghost" type="button">保存</button>
           </span>
-          <p class="setting-hint" id="displayNameStatus">Daily Dashのランキングに表示される名前です（次回の記録から）。</p>
+          <p class="setting-hint" id="displayNameStatus">Daily Dash のランキングに出る名前（次回の記録から）</p>
         </div>
       </div>
 
       <div class="setting-row setting-row--stack" id="backupCard">
         <span class="setting-row__text">バックアップ</span>
-        <p class="setting-hint">学習の記録・覚えた単語・マイ単語帳・メモ・設定をファイルに書き出せます。端末の買い替えや、ブラウザのデータ消去に備えて。</p>
+        <p class="setting-hint">学習の記録・覚えた単語・マイ単語帳・メモ・設定をファイルに書き出す。端末の買い替えや、ブラウザのデータ消去に備えて</p>
         <div class="backup-actions">
-          <button type="button" class="btn btn--sm btn--ghost" id="backupExport">書き出す（JSON）</button>
+          <button type="button" class="btn btn--sm btn--ghost" id="backupExport" title="JSON">ファイルに書き出す</button>
           <label class="btn btn--sm btn--ghost backup-import">
             読み込む
             <input type="file" id="backupImport" accept="application/json,.json" hidden />
           </label>
         </div>
-        <p class="setting-hint" id="backupStatus">読み込むと、この端末のデータはファイルの内容で置き換わります。</p>
+        <p class="setting-hint" id="backupStatus">読み込むと、この端末のデータはファイルの内容に置き換わる</p>
       </div>
 
       <div class="setting-row setting-row--stack setting-row--install" id="installSection">

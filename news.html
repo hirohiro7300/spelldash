@@ -47,17 +47,16 @@
         <a href="./battle.html" class="site-nav__link">バトル</a>
       </nav>
 
+      <a id="headerStreak" class="header-streak" href="/stats.html" title="連続プレイ日数" hidden></a>
       <div class="account">
-        <a class="btn btn--sm btn--ghost account__home" href="/">ホームへ</a>
+        <a class="btn btn--sm btn--ghost account__home account__link" id="accountLink" href="/?login=1">ログイン</a>
       </div>
     </div>
   </header>
 
   <main class="app app--narrow" id="main" tabindex="-1">
     <section class="hero hero--compact">
-      <p class="logo">お知らせ</p>
-      <h1>更新の記録</h1>
-      <p class="subtitle">新しい機能と直したこと。</p>
+      <h1>お知らせ</h1>
     </section>
 
     <section class="news-list" id="newsList" aria-label="お知らせ一覧"></section>
@@ -88,6 +87,7 @@
 
   <script type="module">
     import "./js/appEnv.js"; // アプリならセーフエリア
+    import "./js/staticHeader.js"; // ヘッダー右端（連続日数・ログイン／設定）
     import { renderNews } from "./js/news.js";
     import { setFooterYear } from "./js/footer.js";
     renderNews();

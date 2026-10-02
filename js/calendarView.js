@@ -82,10 +82,12 @@ export function renderCalendar(containerId) {
     return `<span>${m ? m.label : ""}</span>`;
   }).join("")}</div>`;
 
+  // 凡例は「少ない ■■■■ 多い」だけ。濃さの説明は summary の後ろに 1 文（1 回だけ）
   el.innerHTML = `
     <div class="cal__summary">直近${weeks}週で <b>${activeDays}日</b> 学習</div>
+    <p class="cal__note">濃さ＝セット完了と Challenge・Daily の回数</p>
     ${monthRow}
     <div class="cal" style="grid-template-columns: repeat(${weeks}, 1fr)" aria-hidden="true">${cells}</div>
-    <p class="cal__legend" aria-hidden="true">少ない <i class="cal__day cal__day--1"></i><i class="cal__day cal__day--2"></i><i class="cal__day cal__day--3"></i><i class="cal__day cal__day--4"></i> 多い（セット完了・Challenge・Dailyの回数）</p>
+    <p class="cal__legend" aria-hidden="true"><span>少ない</span><i class="cal__day cal__day--1"></i><i class="cal__day cal__day--2"></i><i class="cal__day cal__day--3"></i><i class="cal__day cal__day--4"></i><span>多い</span></p>
   `;
 }

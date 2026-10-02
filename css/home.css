@@ -84,12 +84,21 @@ html[data-theme] .strip__chip--pop {
   animation: none;
 }
 
-/* プレイ中: 数字1行・はちゃん・「出題: …」は畳む（残るのは見出し1行＝タイトル・道に戻る・設定。css/path.css）。全幅で同じ */
+/* プレイ中: 数字1行・はちゃん・「出題: …」・ほかの遊び方・ログイン案内・詳細（覚えた単語・Daily）は畳む
+   （残るのは見出し1行＝タイトル・道に戻る・設定。css/path.css）。全幅で同じ。要素は残す（id 不変） */
 html[data-theme] body.home--playing .today__strip,
 html[data-theme] body.home--playing #hasumiHome,
 html[data-theme] body.home--playing .setup-toggle__label,
 html[data-theme] body.home--playing .setup-toggle__summary,
-html[data-theme] body.home--playing .setup-toggle__sep {
+html[data-theme] body.home--playing .setup-toggle__sep,
+html[data-theme] body.home--playing #playModes,
+html[data-theme] body.home--playing #loginNudge,
+html[data-theme] body.home--playing #homeMore {
+  display: none;
+}
+
+/* 腕試し中（body.placement は js/game.js が開始時に付け、腕試し確定・終了・中断で外す）: 3 つの 0 を並べない */
+html[data-theme] body.home--playing.placement .stats--strip {
   display: none;
 }
 

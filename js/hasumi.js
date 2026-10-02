@@ -95,7 +95,7 @@ export function hasumiSetLine({ count = 0, failed = 0, sets = 1 } = {}) {
 
 // 週間レポートの一言（数字を一緒に見る。少ない週も責めない）
 export function hasumiWeeklyLine(r) {
-  if (r.learnedDelta > 0) return { mood: "happy", text: "増えた分は、来週の復習で残す。" };
+  if (r.learnedDelta > 0) return { mood: "happy", text: "増えた語は、来週の復習で定着する。" };
   if (r.activeDays >= 3) return { mood: "normal", text: "続いた週。来週も5分から。" };
   if (r.activeDays > 0) return { mood: "normal", text: "少しでも続いた。来週も5分から。" };
   return { mood: "normal", text: "今週は休み。今日から1セット、いこう。" };

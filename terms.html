@@ -48,8 +48,9 @@
         <a href="./battle.html" class="site-nav__link">バトル</a>
       </nav>
 
+      <a id="headerStreak" class="header-streak" href="/stats.html" title="連続プレイ日数" hidden></a>
       <div class="account">
-        <a class="btn btn--sm btn--ghost account__home" href="/">ホームへ</a>
+        <a class="btn btn--sm btn--ghost account__home account__link" id="accountLink" href="/?login=1">ログイン</a>
       </div>
     </div>
   </header>
@@ -77,7 +78,7 @@
 
       <h3>3. 無料で使える範囲</h3>
       <p>
-        単語の学習（Study・Challenge・Daily・Battle・今日のセット・復習）、学習記録、ランキング、教材ライブラリは無料で使えます。
+        単語の学習（Study・Challenge・Daily・Battle・今日のセット・復習）、学習記録、ランキング、単語帳（分野パック）は無料で使えます。
         これらを有料にすることはありません。
       </p>
 
@@ -168,6 +169,7 @@
   </footer>
   <script type="module">
     import "./js/appEnv.js"; // アプリならセーフエリア
+    import "./js/staticHeader.js"; // ヘッダー右端（連続日数・ログイン／設定）
     import { setFooterYear } from "./js/footer.js";
     setFooterYear();
   </script>

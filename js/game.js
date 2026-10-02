@@ -262,6 +262,7 @@ function showIdleMessage() {
 
 // ゲームが終わった／止まったことをホームに知らせる（専用キーボードを畳む等）
 function notifyGameEnd() {
+  document.body.classList.remove("placement"); // 腕試しの途中でやめても数字1行は戻す（css/home.css）
   window.dispatchEvent(new CustomEvent("spelldash:game-end", { detail: { mode } }));
 }
 
@@ -382,6 +383,9 @@ export function startGame(options = {}) {
   }
 
   setNewWord();
+
+  // 腕試し中は body.placement（css/home.css が「思い出せた 0 ・ 思い出せず 0 …」の行を畳む）。確定・終了・中断で外す
+  document.body.classList.toggle("placement", mode === "study" && isPlacementRun());
 
   // セットの中身を先に伝える（何をやるか分かってから始める）
   if (mode === "study") {
@@ -1268,6 +1272,7 @@ function renderSetWordChips() {
 function announcePlacement() {
   const p = consumePlacementNote();
   if (!p) return;
+  document.body.classList.remove("placement"); // 腕試しが確定した。ここから先の数字は本物（css/home.css）
   const line =
     p.boost >= 2
       ? `腕試し: ${p.total}語中 ${p.known}語 知ってた。難しい単語も最初から混ぜていく`

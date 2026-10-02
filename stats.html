@@ -76,7 +76,7 @@
               <div class="account-menu__divider">または</div>
 
               <p class="account-menu__hint">
-                ログインすると学習データがクラウドに保存され、機種変更や別の端末でも引き継げます。メールアドレスにログインリンクを送ります。
+                別の端末でも続きから使える。メールにログインリンクを送る。
               </p>
               <input
                 id="emailInput"
@@ -86,7 +86,7 @@
                 autocomplete="email"
               />
               <button id="loginButton" type="submit" class="btn btn--sm">
-                リンクを送信
+                ログインリンクを送る
               </button>
             </form>
           </div>
@@ -125,9 +125,7 @@
 
   <main class="app" id="main" tabindex="-1">
     <section class="hero hero--compact">
-      <p class="logo">学習データ</p>
-      <h1>学習の記録</h1>
-      <p class="subtitle">覚えた語と、続けた日。</p>
+      <h1>学習データ</h1>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
@@ -173,13 +171,14 @@
 
     <section data-tab="words" class="result-card" id="categories">
       <h3 role="heading" aria-level="2">カテゴリ別の進捗</h3>
-      <p class="muted">行を押すとそのカテゴリで練習を始めます。</p>
+      <p class="muted">カテゴリ名を押すと、そのカテゴリで練習を始める。「一覧」は単語帳へ。</p>
       <div id="categoryProgress"></div>
     </section>
 
     <section data-tab="words" class="result-card">
-      <h3 role="heading" aria-level="2">苦手単語</h3>
-      <div id="weakWords">まだデータがありません。</div>
+      <h3 role="heading" aria-level="2">いま苦手な語</h3>
+      <p class="muted">最後に思い出せなかったままの語。自力で思い出せると、覚えた単語帳へ移る。</p>
+      <div id="weakWords">まだデータがない。</div>
     </section>
 
     <section data-tab="words" class="result-card">

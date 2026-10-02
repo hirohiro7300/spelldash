@@ -57,11 +57,11 @@ export async function requestWordAi(word) {
     body = {};
   }
   if (!response.ok) {
-    const fallback = response.status === 401 ? "ログインすると使えます（無料）。" : response.status === 404 ? "この機能は準備中です。" : "うまく作れませんでした。";
+    const fallback = response.status === 401 ? "ログインすると使える（無料）" : response.status === 404 ? "この機能は準備中" : "作れなかった。";
     // 429 で upgrade:true は「無料ぶんを使い切った」: 表示側が Pro の案内を添える
     return { ok: false, status: response.status, message: body.message || fallback, upgrade: response.status === 429 && body.upgrade === true };
   }
-  if (!body.mnemonic) return { ok: false, message: "うまく作れませんでした。" };
+  if (!body.mnemonic) return { ok: false, message: "作れなかった。" };
   setWordAi(word.id, body);
   return { ok: true, entry: getWordAi(word.id) };
 }

@@ -83,7 +83,7 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
     ${compact ? "" : hasumiBubbleHtml(hasumiWeeklyLine(r), "hasumi--result")}
     <div class="weekly__grid">
       <div><span>学習した日</span><strong>${r.activeDays}<small> / 7</small></strong></div>
-      <div><span>覚えた</span><strong>+${r.learnedDelta}<small> 語</small></strong></div>
+      <div><span>今週 覚えた</span><strong>+${r.learnedDelta}<small> 語</small></strong></div>
       <div><span>思い出せた率</span><strong>${rate == null ? "–" : `${rate}<small>%</small>`}</strong></div>
       ${r.bestScore ? `<div><span>ベスト</span><strong>${r.bestScore}</strong></div>` : ""}
     </div>

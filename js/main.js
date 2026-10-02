@@ -286,7 +286,7 @@ const weakToggleButton = document.getElementById("weakToggleButton");
 if (weakToggleButton) {
   weakToggleButton.addEventListener("click", () => {
     if (weakToggleButton.getAttribute("aria-disabled") === "true") {
-      showMessage("苦手の語はまだありません。思い出せなかった語が出たら、ここで絞れます。");
+      showMessage("苦手な語はまだ無い。思い出せなかった語が出たら、ここで絞れる");
       return;
     }
     setWeakOnlyMode(!isWeakOnlyMode());
@@ -351,9 +351,27 @@ storeReady
         history.replaceState(null, "", location.pathname);
       }
     }
+
+    // 静的ページ（お知らせ・規約・パック入口）の「ログイン」から来た: ?login=1 でログインのドロップダウンを開く
+    const loginUrl = new URL(location.href);
+    if (loginUrl.searchParams.get("login") === "1") {
+      loginUrl.searchParams.delete("login");
+      history.replaceState(null, "", `${loginUrl.pathname}${loginUrl.search}${loginUrl.hash}`);
+      // auth.js はセッション確認（await）のあとで #accountGuest を出し、開閉のリスナーを付ける。それを待ってから開く（最大 6 秒）
+      const openLogin = (tries = 0) => {
+        const guest = document.getElementById("accountGuest");
+        if (guest && !guest.hidden) {
+          document.getElementById("loginToggle")?.click();
+          return;
+        }
+        if (document.getElementById("accountUser")?.hidden === false) return; // ログイン済み: 開くものが無い
+        if (tries < 40) setTimeout(() => openLogin(tries + 1), 150);
+      };
+      openLogin();
+    }
   })
   .catch(() => {
-    showMessage("単語データの読み込みに失敗しました。", "wrong");
+    showMessage("単語データを読み込めなかった", "wrong");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "reload-button";

@@ -78,20 +78,22 @@ initWordStore().then(async () => {
     });
     render();
   });
-  // 表示密度: 簡潔（用語＋意味だけ）／詳しく。選択を記憶
+  // 表示密度: 簡潔（用語＋意味だけ）／詳しく の 2 択セグメント（学習データの 30日／90日 と同じ部品）。選択を記憶
   const DENSITY_KEY = "spelldash_list_compact";
-  const densityButton = document.getElementById("listDensity");
+  const densityButtons = [...document.querySelectorAll(".list-density [data-density]")];
   const applyDensity = (compact) => {
     document.body.classList.toggle("list-compact", compact);
-    densityButton?.setAttribute("aria-pressed", String(compact));
-    densityButton?.classList.toggle("filter-chip--active", compact);
-    if (densityButton) densityButton.textContent = compact ? "詳しく表示" : "簡潔表示";
+    for (const button of densityButtons) {
+      const on = (button.dataset.density === "compact") === compact;
+      button.classList.toggle("is-active", on);
+      button.setAttribute("aria-pressed", String(on));
+    }
     localStorage.setItem(DENSITY_KEY, compact ? "1" : "0");
   };
   // 既定: 560px 以下は簡潔表示（スマホで 1 語 4 行にしない）。保存値があればそれを優先
   const savedDensity = localStorage.getItem(DENSITY_KEY);
   applyDensity(savedDensity == null ? window.matchMedia("(max-width: 560px)").matches : savedDensity === "1");
-  densityButton?.addEventListener("click", () => applyDensity(!document.body.classList.contains("list-compact")));
+  for (const button of densityButtons) button.addEventListener("click", () => applyDensity(button.dataset.density === "compact"));
 
   // "/" で検索にフォーカス
   document.addEventListener("keydown", (e) => {
@@ -119,7 +121,7 @@ function renderCategorySelect(categories) {
   });
 }
 
-// ===== 教材ライブラリ: 分野パックの追加／外す =====
+// ===== 単語帳の棚: パックの追加／外す =====
 let packKeyword = "";
 // 開いたグループを覚えておく（棚は検索や追加のたびに描き直されるので、
 // 覚えていないと開いた直後に閉じてしまう）
@@ -149,16 +151,18 @@ function renderPacks() {
   }
   const enabledCount = packs.filter((p) => p.enabled).length;
   const countEl = document.getElementById("packsCount");
-  if (countEl) countEl.textContent = `${packs.length}分野 ・ 追加済み ${enabledCount}`;
+  if (countEl) countEl.textContent = `${packs.length}パック ・ 追加済み ${enabledCount}`;
   const fold = grid.closest("#packsFold");
   if (fold && q && !fold.open) fold.open = true;
 
-  // 1行＝1分野: 名前・枚数・1行の説明・追加ボタン（対象者は title に）
+  // 1行＝1パック: 名前・数・1行の説明・追加ボタン（対象者は title に）
+  // 単位: 英単語パックは「語」、場面カード（kind: concept）は「枚」
+  const unit = (p) => (p.kind === "concept" ? "枚" : "語");
   const card = (p) => `
         <article class="pack${p.enabled ? " pack--on" : ""}" data-pack="${p.id}"${p.audience ? ` title="${escapeHtml(p.audience)}向け"` : ""}>
           <div class="pack__head">
             <h3 class="pack__title">${escapeHtml(p.label)}</h3>
-            <span class="pack__count mono">${p.count ?? ""}${p.count ? "枚" : ""}</span>
+            <span class="pack__count mono">${p.count ?? ""}${p.count ? unit(p) : ""}</span>
           </div>
           <p class="pack__blurb">${escapeHtml(p.blurb ?? "")}</p>
           <div class="pack__actions">
@@ -169,7 +173,7 @@ function renderPacks() {
 
   grid.innerHTML =
     groups.size === 0
-      ? `<p class="muted">該当する分野がありません。</p>`
+      ? `<p class="muted">該当するパックがない</p>`
       : [...groups.entries()]
           .map(([name, list]) => {
             // グループは畳んでおく（分野が140を超えて、開いたままだと延々スクロールになるため）。
@@ -198,7 +202,7 @@ function renderPacks() {
       const wasEnabled = getPackCatalog().find((p) => p.id === id)?.enabled;
       setPackEnabled(id, !wasEnabled);
       button.disabled = true;
-      button.textContent = wasEnabled ? "外しています" : "読み込み中";
+      button.textContent = wasEnabled ? "外している…" : "読み込み中";
       await initWordStore();
       const categories = getCategories();
       if (!wasEnabled) {
@@ -256,17 +260,18 @@ function render() {
   const activeGenre = getGenre();
   const label = getCategories().find((c) => c.id === categoryId)?.label ?? categoryId;
 
-  if (summary) summary.textContent = `${label} ・ ${groups.length}ジャンル ・ ${total}語 ・ 覚えた ${learned}`;
+  // 要約: カテゴリ名は残す（切り替えの確認に使う）。「覚えた」は 0 を並べない
+  if (summary) summary.textContent = `${label} ・ ${groups.length}ジャンル ・ ${total}語${learned > 0 ? ` ・ 覚えた ${learned}` : ""}`;
 
-  // 分野パックは業界の人のレビューで磨く: 気になる点をその場で送れる導線
+  // パックは使う人の指摘で磨く: 気になる点をその場で送れる導線
   const review = document.getElementById("listReview");
   if (review) {
     const isPack = getPackCatalog().some((p) => p.id === categoryId);
     review.hidden = !isPack;
     review.innerHTML = isPack
-      ? `<span>この分野に詳しい方へ:</span> <button type="button" class="list-review__button" data-pack-review>用語や説明の気になる点を送る</button>`
+      ? `<span>気になる訳や説明があれば:</span> <button type="button" class="list-review__button" data-pack-review>送る</button>`
       : "";
-    review.querySelector("[data-pack-review]")?.addEventListener("click", () => openFeedback({ prefill: `[分野パック: ${label}] ` }));
+    review.querySelector("[data-pack-review]")?.addEventListener("click", () => openFeedback({ prefill: `[パック: ${label}] ` }));
   }
 
   if (nav) {
@@ -276,7 +281,7 @@ function render() {
   }
 
   if (groups.length === 0) {
-    container.innerHTML = `<p class="muted">該当する語がありません。</p>`;
+    container.innerHTML = `<p class="muted">該当する語がない</p>`;
     return;
   }
 
@@ -289,9 +294,11 @@ function render() {
         <section class="genre" id="genre-${g.tag}">
           <div class="genre__head">
             <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count mono">${g.words.length}語</span>${done === g.words.length ? ` <span class="genre__clear">${icon("check", { size: 12 })}制覇</span>` : ""}</h2>
-            <div class="genre__meta">覚えた ${done}${weak > 0 ? ` ・ 苦手 ${weak}` : ""}</div>
-            ${weak > 0 ? `<button type="button" class="btn btn--sm btn--ghost genre__weak" data-practice-words="${g.words.filter((w) => classifyWord(stats[w.id]) === "weak").map((w) => w.id).join(",")}">苦手 ${weak}語だけ練習</button>` : ""}
-            <button type="button" class="btn btn--sm${practicing ? "" : " btn--ghost"} genre__practice" data-practice="${g.tag}">${practicing ? "このジャンルを練習中" : "このジャンルを練習"}</button>
+            ${done > 0 || weak > 0 ? `<div class="genre__meta">${done > 0 ? `覚えた ${done}` : ""}${done > 0 && weak > 0 ? " ・ " : ""}${weak > 0 ? `苦手 ${weak}` : ""}</div>` : ""}
+            <div class="genre__actions">
+              ${weak > 0 ? `<button type="button" class="btn btn--sm btn--ghost genre__weak" data-practice-words="${g.words.filter((w) => classifyWord(stats[w.id]) === "weak").map((w) => w.id).join(",")}">苦手 ${weak}語だけ練習</button>` : ""}
+              <button type="button" class="genre__practice${practicing ? " genre__practice--on" : ""}" data-practice="${g.tag}"${practicing ? ' aria-current="true"' : ""}>${practicing ? "このジャンルを練習中" : "このジャンルを練習"}</button>
+            </div>
           </div>
           <div class="genre__cards">
             ${g.words.map((w) => cardHtml(w, stats[w.id])).join("")}

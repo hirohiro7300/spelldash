@@ -271,6 +271,22 @@ html[data-theme] .welcome-demo__input::placeholder {
   box-shadow: var(--focus);
 }
 
+/* 検索欄の消去「×」: ブラウザ既定の青ではなく墨の線画（js/icons.js の x と同じ） */
+:where(html[data-theme]) input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--ink-3);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E") center / contain no-repeat;
+  cursor: pointer;
+}
+
+:where(html[data-theme]) input[type="search"]::-webkit-search-cancel-button:hover {
+  background: var(--ink);
+}
+
 /* ---- 文字 ---- */
 html[data-theme] .muted,
 html[data-theme] .subtitle,
@@ -319,6 +335,61 @@ html[data-theme] .message.correct { color: var(--ok); }
 html[data-theme] .message.wrong { color: var(--signal-ink); }
 html[data-theme] .message.revealed { color: var(--ink-2); }
 
+/* ---- 小さな部品: 発音（.speak-button／.word-detail__speak）・ヒント・メモ・覚え方。
+   28px の pill（paper-3 の面・1px --line）。プレイ画面（card.css）と単語詳細（pages.css）で同じ 1 つの定義 ---- */
+html[data-theme] .word-note__edit,
+html[data-theme] .word-ai__button,
+html[data-theme] .speak-button,
+html[data-theme] .word-detail__speak,
+html[data-theme] .hint-button,
+html[data-theme] .word-note__save {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: none;
+  animation: none;
+  cursor: pointer;
+  transition: background var(--ease), color var(--ease), border-color var(--ease);
+}
+
+html[data-theme] .word-note__edit .icon,
+html[data-theme] .word-ai__button .icon,
+html[data-theme] .speak-button .icon,
+html[data-theme] .word-detail__speak .icon,
+html[data-theme] .hint-button .icon {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  vertical-align: 0;
+}
+
+html[data-theme] .word-note__edit:hover,
+html[data-theme] .word-ai__button:hover,
+html[data-theme] .speak-button:hover,
+html[data-theme] .word-detail__speak:hover,
+html[data-theme] .hint-button:hover,
+html[data-theme] .word-note__save:hover {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+html[data-theme] .word-ai__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ---- 学習データ: カテゴリ別の行。行（div）の中の見出し部分だけが button（a と button の入れ子をやめた） ---- */
 html[data-theme] .cat-row__go,
 html[data-theme] .cat-row__go:hover {
@@ -356,8 +427,9 @@ html[data-theme] .icon {
     gap: 0;
     overflow: visible;
   }
+  /* 56px のヘッダーの縦の余白を当たり判定に使う（タブ 40px・連続日数 40px・アバターは見た目 32px のまま 44px） */
   html[data-theme] .site-nav__link {
-    padding: 8px 5px;
+    padding: 11px 5px;
     font-size: 13px;
     white-space: nowrap;
   }
@@ -367,10 +439,15 @@ html[data-theme] .icon {
   }
   /* 連続日数は数字だけ、アバターは 32px */
   html[data-theme] .header-streak {
+    min-height: 40px;
     padding: 4px 7px;
   }
   html[data-theme] .header-streak span {
     display: none;
+  }
+  html[data-theme] .avatar-button {
+    padding: 6px;
+    margin: -6px;
   }
   html[data-theme] .avatar {
     width: 32px;
@@ -436,6 +513,46 @@ html[data-theme] .voice-row .setting-select {
   max-width: 260px;
 }
 
+/* ---- 例文の発音（.word-example__speak）: 24px の丸。全ページ共通 ---- */
+html[data-theme] .word-example__speak {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  margin: 0 0 0 6px;
+  padding: 0;
+  justify-content: center;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  box-shadow: none;
+}
+
+html[data-theme] .word-example__speak .icon {
+  margin: 0;
+  vertical-align: 0;
+}
+
+html[data-theme] .word-example__speak:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+/* 指で押す端末は 36px。1 定義（card.css／pages.css には書かない） */
+@media (pointer: coarse) {
+  html[data-theme] .word-example__speak {
+    width: 36px;
+    height: 36px;
+  }
+  html[data-theme] .word-example__speak .icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
 /* ---- 指で押す端末: 副ボタン・チップの当たり判定を 40px（発音／メモは 36px）に。見た目（1px 罫線・13px）は変えない ---- */
 @media (pointer: coarse) {
   html[data-theme] :is(.btn--sm, .play-modes__go, .path__guide, .path__guide--course, .path__course-pick, .back-to-path, .daily__button, .result-panel__action, .word-detail__close, .feedback-modal__close, .pack__actions .btn--sm, .category-chip, .filter-chip, .genre-chip, .stats-tab, .my-tab, .trend-range button, .packs-jump a, .pp-related a, [data-fold-open], .learned-item__en, .note-chip, .account-menu__item) {
@@ -447,16 +564,24 @@ html[data-theme] .voice-row .setting-select {
     display: inline-flex;
     align-items: center;
   }
-  html[data-theme] :is(.speak-button, .hint-button, .word-note__edit, .word-ai__button) {
+  /* ログイン済みメニューの「設定」(a) と「ログアウト」(button) を同じ 40px の行に */
+  html[data-theme] .account-menu__item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+  html[data-theme] :is(.speak-button, .word-detail__speak, .hint-button, .word-note__edit, .word-ai__button) {
     height: 36px;
     min-height: 36px;
     padding-top: 0;
     padding-bottom: 0;
   }
-  html[data-theme] .word-example .speak-button,
-  html[data-theme] .word-example__speak {
-    width: 36px;
-    height: 36px;
+  /* 主線以外の入力欄も 16px に（iOS Safari は 16px 未満の入力欄にフォーカスすると拡大する） */
+  html[data-theme] :is(.setting-select, .note-input, .account-menu--login input, .feedback-modal__panel input, .feedback-modal__panel textarea, #wordSearch, .word-filter, .my-concept__form textarea, .cardgen textarea, .my-words__bulk textarea, #myWordBulk, .packs__tools input, #listSearch, #packsSearch, #emailInput) {
+    font-size: 16px;
+  }
+  html[data-theme] :is(#emailInput, #feedbackContact, #wordSearch, .word-filter) {
+    min-height: 44px;
   }
   /* 文字だけのリンク・ボタン: 見た目は変えず当たり判定だけ縦に広げる */
   html[data-theme] .gcard__term,
@@ -466,12 +591,19 @@ html[data-theme] .voice-row .setting-select {
     margin-top: -8px;
     margin-bottom: -8px;
   }
+  /* フッターのリンクは 40px の行（負マージンで広げると隣の行と重なる） */
+  html[data-theme] .site-footer__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 16px;
+  }
   html[data-theme] .site-footer__nav a,
   html[data-theme] .site-footer__linkbtn {
-    padding-top: 8px;
-    padding-bottom: 8px;
-    margin-top: -8px;
-    margin-bottom: -8px; /* 当たり判定だけ広げ、行間は据え置く */
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0;
+    margin: 0;
   }
   html[data-theme] .setting-select {
     min-height: 44px;

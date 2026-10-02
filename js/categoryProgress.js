@@ -27,10 +27,16 @@ export function computeCategoryProgress() {
   const categories = [{ id: "all", label: "すべて" }, ...getCategories()];
 
   return categories.map((c) => {
-    const words = getWordsByCategory(c.id);
+    // 「すべて」は同じ語が複数のカテゴリにいても 1 語として数える（覚えた数を二重に数えない）
+    const words = c.id === "all" ? dedupeById(getWordsByCategory(c.id)) : getWordsByCategory(c.id);
     const row = { id: c.id, label: c.label, total: words.length, untouched: 0, weak: 0, learning: 0, mastered: 0, known: 0 };
     for (const word of words) row[classifyWord(stats[word.id])]++;
     row.learned = row.learning + row.mastered;
     return row;
   });
+}
+
+function dedupeById(words) {
+  const seen = new Set();
+  return words.filter((w) => (seen.has(w.id) ? false : (seen.add(w.id), true)));
 }

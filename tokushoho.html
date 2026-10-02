@@ -49,8 +49,9 @@
         <a href="./battle.html" class="site-nav__link">バトル</a>
       </nav>
 
+      <a id="headerStreak" class="header-streak" href="/stats.html" title="連続プレイ日数" hidden></a>
       <div class="account">
-        <a class="btn btn--sm btn--ghost account__home" href="/">ホームへ</a>
+        <a class="btn btn--sm btn--ghost account__home account__link" id="accountLink" href="/?login=1">ログイン</a>
       </div>
     </div>
   </header>
@@ -141,6 +142,7 @@
   </footer>
   <script type="module">
     import "./js/appEnv.js"; // アプリならセーフエリア
+    import "./js/staticHeader.js"; // ヘッダー右端（連続日数・ログイン／設定）
     import { setFooterYear } from "./js/footer.js";
     setFooterYear();
   </script>
