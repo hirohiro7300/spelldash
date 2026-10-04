@@ -93,7 +93,7 @@ export function renderWeakWords() {
   const stats = getWordStats();
 
   const weakWords = Object.entries(stats)
-    .filter(([, data]) => classifyWord(data) === "weak")
+    .filter(([, data]) => classifyWord(data) === "weak" || (!data?.lastRecallFailAt && !data?.lastRecallSuccessAt && (data?.missCount ?? 0) > 0))
     .sort((a, b) => (b[1].recallFail ?? 0) - (a[1].recallFail ?? 0) || (b[1].missCount ?? 0) - (a[1].missCount ?? 0))
     .slice(0, 5);
 

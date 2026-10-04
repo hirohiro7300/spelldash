@@ -400,8 +400,7 @@ export function startStudyQueue(categoryId) {
   // 0. 初回体験＝腕試し: 学習履歴が全く無ければ、短くて易しい3語で成功体験を作ってから
   //    普通4語・難しい3語を混ぜた計10語で「どこから始めるか」を決める（2回目以降は発動しない）
   // （始めたが途中でやめた場合も、まだ1語も答えていなければもう一度）
-  const nothingAnswered = Object.values(stats).every((s) => !s?.lastRecallSuccessAt && !s?.lastRecallFailAt && !s?.known);
-  if (nothingAnswered && (isPlacementPending() || isPlacementRunning())) {
+  if (isBeforePlacement(stats)) {
     // 道のいまのユニットの語を優先する（無ければカテゴリ全体）
     const focusedWords = focusTag ? words.filter(inFocus) : words;
     const source = focusedWords.filter((w) => w.level === "easy").length >= PLACEMENT_MIX.easy && focusedWords.length >= 10 ? focusedWords : words;
@@ -603,4 +602,11 @@ export function getQueueSnapshot(limit = 5) {
     })),
     remaining: queue.length
   };
+}
+
+// 腕試し前か: まだ 1 語も答えていない（自力正解・思い出せず・「知ってた」のどれも無い）かつ 腕試しが保留中／進行中。
+// 出題（上）と道の見出し（js/pathView.js）が同じ判定を使う
+export function isBeforePlacement(stats = getWordStats()) {
+  const nothingAnswered = Object.values(stats).every((s) => !s?.lastRecallSuccessAt && !s?.lastRecallFailAt && !s?.knownOnSight);
+  return nothingAnswered && (isPlacementPending() || isPlacementRunning());
 }

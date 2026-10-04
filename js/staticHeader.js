@@ -21,14 +21,17 @@ function readStreak() {
   } catch {
     data = {};
   }
-  const current = Number(data.current ?? data.count ?? 0) || 0;
+  const current = Number(data.current ?? 0) || 0;
+  const shields = Number(data.shields ?? 0) || 0;
   const best = Math.max(current, Number(data.best ?? 0) || 0);
   const today = ymd(new Date());
   const y = new Date();
   y.setDate(y.getDate() - 1);
   const yesterday = ymd(y);
   const done = data.last === today;
-  const alive = data.last === today || data.last === yesterday;
+  // 空いた日がシールドの枚数以内なら連続は続いている扱い（js/level.js normalizeStreak と同じ。ここでは保存はしない）
+  const missed = data.last ? Math.round((new Date(today) - new Date(String(data.last).slice(0, 10))) / 86400000) - 1 : Infinity;
+  const alive = data.last === today || data.last === yesterday || (missed > 0 && missed <= shields);
   return { current: alive ? current : 0, best, done };
 }
 
