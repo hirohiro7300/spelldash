@@ -226,6 +226,8 @@ async function logout() {
 }
 
 function updateAuthDisplay(session) {
+  // 表示を切り替えたことを知らせる（js/main.js の ?login=1 など、ドロップダウンの準備を待つ側が使う）
+  queueMicrotask(() => window.dispatchEvent(new CustomEvent("spelldash:auth-ready", { detail: { loggedIn: Boolean(session) } })));
   if (!session) {
     accountGuestElement.hidden = false;
     accountUserElement.hidden = true;

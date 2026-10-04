@@ -4,8 +4,7 @@ import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { getCourse, sectionOf, listCourses, getCourseId, PLACEMENT_NOTE } from "./course.js";
 import { getSetSize, isDailySetDone } from "./dailySet.js";
-import { isPlacementPending, isPlacementRunning } from "./difficulty.js";
-import { getDueReviewCount } from "./studyQueue.js";
+import { getDueReviewCount, isBeforePlacement } from "./studyQueue.js";
 import { resumableFor } from "./sessionResume.js";
 import { icon } from "./icons.js";
 import { trapFocus } from "./focusTrap.js";
@@ -121,8 +120,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
 
   const category = getCategories().find((c) => c.id === path.categoryId);
   // 腕試し前（まだ 1 語も答えていない。js/studyQueue.js の腕試し発動条件と同じ）: 進捗の数字（セクション 1／8・ユニット 1／11）は出さず、コース名だけ
-  const nothingAnswered = Object.values(getWordStats()).every((s) => !s?.lastRecallSuccessAt && !s?.lastRecallFailAt && !s?.known);
-  const beforePlacement = nothingAnswered && (isPlacementPending() || isPlacementRunning());
+  const beforePlacement = isBeforePlacement();
   const kicker = section
     ? beforePlacement
       ? esc(course.label)

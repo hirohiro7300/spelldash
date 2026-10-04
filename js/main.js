@@ -357,17 +357,13 @@ storeReady
     if (loginUrl.searchParams.get("login") === "1") {
       loginUrl.searchParams.delete("login");
       history.replaceState(null, "", `${loginUrl.pathname}${loginUrl.search}${loginUrl.hash}`);
-      // auth.js はセッション確認（await）のあとで #accountGuest を出し、開閉のリスナーを付ける。それを待ってから開く（最大 6 秒）
-      const openLogin = (tries = 0) => {
+      // auth.js はセッション確認のあとで #accountGuest を出し、spelldash:auth-ready を投げる。それを待ってから開く
+      const openLogin = () => {
         const guest = document.getElementById("accountGuest");
-        if (guest && !guest.hidden) {
-          document.getElementById("loginToggle")?.click();
-          return;
-        }
-        if (document.getElementById("accountUser")?.hidden === false) return; // ログイン済み: 開くものが無い
-        if (tries < 40) setTimeout(() => openLogin(tries + 1), 150);
+        if (guest && !guest.hidden) document.getElementById("loginToggle")?.click();
       };
-      openLogin();
+      if (!document.getElementById("accountGuest")?.hidden) openLogin();
+      else window.addEventListener("spelldash:auth-ready", openLogin, { once: true });
     }
   })
   .catch(() => {

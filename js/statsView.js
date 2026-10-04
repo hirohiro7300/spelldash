@@ -472,11 +472,10 @@ function renderLearnedWords() {
             </span>
           </div>`
         )
-        .join("") +
-      (list.length > shown.length ? `<p class="muted">ほか ${list.length - shown.length}語</p>` : "") +
-      (dropped > 0 ? `<p class="muted learned-dropped">ほか ${dropped}語は外したパックの語</p>` : "");
+        .join("") + (list.length > shown.length ? `<p class="muted">ほか ${list.length - shown.length}語</p>` : "");
     bindNoteEditors(container, () => renderLearnedWords());
   }
+  if (dropped > 0) container.insertAdjacentHTML("beforeend", `<p class="muted learned-dropped">ほか ${dropped}語は外したパックの語</p>`);
 
   const knownContainer = document.getElementById("knownWordList");
   if (knownContainer) {

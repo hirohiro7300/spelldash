@@ -1498,7 +1498,7 @@ console.log("card generation:");
 
   // 覚え方を作る: ログイン中に答え表示でボタン → 生成 → 保存され、単語詳細にも出る（未ログインではボタンを出さない）
   const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
-  const pageOut = await newPage({ storage: { spelldash_placement: "done", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const pageOut = await newPage({ storage: { spelldash_placement: "done", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: today }) } });
   await pageOut.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await pageOut.waitForTimeout(900);
   await pageOut.press("#input", "Enter");
@@ -1507,7 +1507,7 @@ console.log("card generation:");
   await pageOut.waitForTimeout(300);
   check("未ログインでは覚え方ボタンを出さない", (await pageOut.$$("[data-word-ai-run]")).length === 0);
   await pageOut.close();
-  const page2 = await newPage({ storage: { spelldash_placement: "done", spelldash_test_session: "1", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const page2 = await newPage({ storage: { spelldash_placement: "done", spelldash_test_session: "1", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: today }) } });
   await page2.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
   await page2.press("#input", "Enter");
@@ -1662,7 +1662,7 @@ console.log("domain packs:");
 
   // 例文: 英単語カードは答え表示と正解時に例文（見出し語は太字）と訳が出る。単語帳・単語詳細にも
   const bizWords = JSON.parse(fs.readFileSync(path.join(ROOT, "data/english/business.json"), "utf8")).words;
-  const page6b = await newPage({ storage: { spelldash_category: "business", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const page6b = await newPage({ storage: { spelldash_category: "business", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: today }) } });
   await page6b.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page6b.waitForTimeout(900);
   await page6b.press("#input", "Enter"); // 開始
@@ -1709,7 +1709,7 @@ console.log("domain packs:");
   await page6c.close();
 
   // 文法パック（穴埋め）: 空欄つきの英文が出て、空欄の語を英語で打つ。発音は完成文
-  const page7 = await newPage({ storage: { spelldash_packs: JSON.stringify(["grammar-jhs1"]), spelldash_category: "grammar-jhs1", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const page7 = await newPage({ storage: { spelldash_packs: JSON.stringify(["grammar-jhs1"]), spelldash_category: "grammar-jhs1", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: today }) } });
   await page7.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page7.waitForTimeout(900);
   await page7.press("#input", "Enter");
@@ -1740,7 +1740,7 @@ console.log("domain packs:");
   await page8.close();
 
   // 義務教育パック: 日本語で答える。漢字の答えはひらがなの読みでも正解
-  const page9 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]), spelldash_category: "pref", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const page9 = await newPage({ storage: { spelldash_packs: JSON.stringify(["pref"]), spelldash_category: "pref", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: today }) } });
   await page9.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page9.waitForTimeout(900);
   await page9.press("#input", "Enter");
@@ -1766,7 +1766,7 @@ console.log("domain packs:");
   await page9b.close();
 
   // 英作文パック: 日本語文を見て英文を丸ごと打つ。語順が違うと何語目かを指摘。並べ替えは語をシャッフルして見せる
-  const page9c = await newPage({ storage: { spelldash_packs: JSON.stringify(["writing-jhs"]), spelldash_category: "writing-jhs", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const page9c = await newPage({ storage: { spelldash_packs: JSON.stringify(["writing-jhs"]), spelldash_category: "writing-jhs", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: today }) } });
   await page9c.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page9c.waitForTimeout(900);
   await page9c.press("#input", "Enter");
@@ -1797,7 +1797,7 @@ console.log("domain packs:");
   check("英作文カード: 語順が違うと何語目が違うかを指摘", (await page9c.textContent("#message")).includes("語目"), (await page9c.textContent("#message")).slice(0, 60));
   check("英作文カードでエラー0", page9c.errors.length === 0, page9c.errors[0] ?? "");
   await page9c.close();
-  const page9d = await newPage({ storage: { spelldash_packs: JSON.stringify(["writing-jhs-order"]), spelldash_category: "writing-jhs-order", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: today }) } });
+  const page9d = await newPage({ storage: { spelldash_packs: JSON.stringify(["writing-jhs-order"]), spelldash_category: "writing-jhs-order", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: today }) } });
   await page9d.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page9d.waitForTimeout(900);
   await page9d.press("#input", "Enter");
@@ -2042,6 +2042,24 @@ console.log("review fixes:");
   await pageG.waitForTimeout(900);
   check("道: 語が無いカテゴリ（空のマイ単語帳）には案内が出る", (await pageG.textContent("#pathList")).includes("まだ語が無い") && (await pageG.$("#pathList a[href*='myWords']")) !== null);
   await pageG.close();
+
+  // 静的ページのヘッダー右端（Batch 42）: 未ログインは「ログイン」→ /?login=1 でホームのログイン欄が開く。ログイン済みらしければ「設定」
+  const pageS1 = await newPage();
+  await pageS1.goto(BASE + "/news.html", { waitUntil: "networkidle" });
+  await pageS1.waitForTimeout(300);
+  check("静的ページ: 未ログインは「ログイン」リンクでチップは出ない", (await pageS1.textContent("#accountLink")).trim() === "ログイン" && (await pageS1.getAttribute("#accountLink", "href")).includes("login=1") && (await pageS1.$eval("#headerStreak", (el) => el.hidden)));
+  await pageS1.close();
+  const todayS = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const pageS2 = await newPage({ storage: { spelldash_test_session: "1", spelldash_streak: JSON.stringify({ current: 3, best: 3, last: todayS }) } });
+  await pageS2.goto(BASE + "/news.html", { waitUntil: "networkidle" });
+  await pageS2.waitForTimeout(300);
+  check("静的ページ: ログイン済みは「設定」と連続日数のチップ", (await pageS2.textContent("#accountLink")).trim() === "設定" && !(await pageS2.$eval("#headerStreak", (el) => el.hidden)) && (await pageS2.textContent("#headerStreak")).includes("3"));
+  await pageS2.close();
+  const pageS3 = await newPage({ storage: { spelldash_placement: "done" } });
+  await pageS3.goto(BASE + "/index.html?login=1", { waitUntil: "networkidle" });
+  await waitUntil(async () => (await pageS3.getAttribute("#loginToggle", "aria-expanded")) === "true", 4000);
+  check("/?login=1 でログインのドロップダウンが開き、URL から login が消える", (await pageS3.getAttribute("#loginToggle", "aria-expanded")) === "true" && !pageS3.url().includes("login=1"));
+  await pageS3.close();
 
   // 道（スマホ）: 制覇ノードの「次のセクションへ」で横にはみ出さない
   const allKnownR = Object.fromEntries(jhs1R.map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]));

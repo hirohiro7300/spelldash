@@ -288,7 +288,7 @@ const EXPANDED = 6; // 直近はそのまま。7 件目以降は月ごとに畳�
 
 function leadOf(item) {
   if (item.lead) return item.lead;
-  const first = item.body.split(/(?<=。)/)[0];
+  const first = (item.body.match(/^[^。]*。?/) || [""])[0];
   return first || item.body;
 }
 

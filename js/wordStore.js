@@ -30,7 +30,9 @@ export async function initWordStore(subjectId = "english") {
   allWords = await loadAllWords(subjectId);
 
   // 「すべて」= 基本カテゴリの英単語だけ（概念カードと、追加式のパックの語は含めない）
-  generalWords = allWords.filter((w) => !isConceptWord(w) && !w.pack);
+  // 同じ id の語が複数の基本カテゴリにあっても「すべて」では 1 語（数えるのも出すのも 1 回）
+  const seenGeneral = new Set();
+  generalWords = allWords.filter((w) => !isConceptWord(w) && !w.pack && !seenGeneral.has(w.id) && seenGeneral.add(w.id));
   wordIndex.clear();
   categoryIndex.clear();
   for (const word of allWords) {
