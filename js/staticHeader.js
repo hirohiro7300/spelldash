@@ -35,7 +35,7 @@ function readStreak() {
   return { current: alive ? current : 0, best, done };
 }
 
-// 連続日数チップ。初回（0日／ベスト 0日）は hidden のまま（アプリ側 js/headerStreak.js と同じ条件）
+// 連続日数チップ。連続 0 日（初回も、途切れた朝も）は hidden のまま（アプリ側 js/headerStreak.js と同じ条件）
 export function renderStaticHeaderStreak() {
   const el = document.getElementById("headerStreak");
   if (!el) return;

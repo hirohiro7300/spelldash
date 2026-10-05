@@ -374,6 +374,21 @@ console.log("home widgets:");
   });
   check("はちゃんアバター画像ロード", avatarLoaded);
   await page.close();
+
+  // 腕試しの途中で何語か答えて閉じた人（placement=started のまま）: 翌日のホームで「まず腕試し10語から。」を言い続けない
+  const yesterdayYmd = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  const midPlacement = await newPage({
+    storage: {
+      spelldash_placement: "started",
+      spelldash_streak: JSON.stringify({ last: yesterdayYmd, current: 1, best: 1, shields: 0 }),
+      spelldash_word_stats: JSON.stringify({ apple: { lastRecallSuccessAt: new Date(Date.now() - 86400000).toISOString(), recallSuccess: 1 } })
+    }
+  });
+  await midPlacement.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await midPlacement.waitForTimeout(600);
+  const midLine = await midPlacement.textContent("#hasumiHome .hasumi__bubble");
+  check("腕試し途中で答えた人のはちゃんは腕試しの話をしない", !midLine.includes("腕試し"), midLine);
+  await midPlacement.close();
 }
 
 // ===== 5. Challenge: 完走でリザルトパネル =====

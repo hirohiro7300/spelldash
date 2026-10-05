@@ -111,10 +111,11 @@ export function getActiveDaysLast7(endOffset = 0) {
 }
 
 // 直近7日の「覚えた」増分（7日前時点の値との差。基準が無ければ最古の行）
-export function getLearnedDelta7(currentLearned) {
+// endOffset=1 なら「昨日までの 7 日」（週間レポートの窓と合わせる）
+export function getLearnedDelta7(currentLearned, endOffset = 0) {
   const log = getGrowthLog();
   if (log.length === 0) return 0;
-  const cutoff = dateKeyDaysAgo(7);
+  const cutoff = dateKeyDaysAgo(7 + endOffset);
   const baseline = [...log].reverse().find((e) => e.date <= cutoff) ?? log[0];
   return Math.max(0, currentLearned - (baseline.learned ?? 0));
 }
