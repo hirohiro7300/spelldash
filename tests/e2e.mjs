@@ -2974,9 +2974,6 @@ console.log("pro:");
   }
 }
 
-await browser.close();
-server.close();
-
 // ===== チュートリアル（Batch 44）: 初回の 1 セットに 1 文ずつ（docs/SPEC_TUTORIAL.md） =====
 console.log("tutorial:");
 {
@@ -3068,6 +3065,9 @@ console.log("tutorial:");
   check("チュートリアル: 学習記録のある人には出ない", (await coach(page3)) === null && (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length)) === 6);
   await page3.close();
 }
+
+await browser.close();
+server.close();
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
