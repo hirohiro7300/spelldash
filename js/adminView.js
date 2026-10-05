@@ -156,7 +156,7 @@ let supabase = null;
 let apiUrl = (path) => path;
 let els = null;
 // 語とパックの名前引き（js/wordStore.js は window を触るので init() の中で読み込む）。無くても id で出す
-let wordStorePromise = Promise.resolve(null);
+let wordStorePromise = null; // 最初のドロワーで読む（loadWordStore）
 
 if (typeof document !== "undefined" && document.getElementById("adminTable")) {
   init();
@@ -211,13 +211,6 @@ async function init() {
   initializeAuth();
   setFooterYear();
   renderHeaderStreak();
-
-  wordStorePromise = import("./wordStore.js")
-    .then(async (m) => {
-      await m.initWordStore();
-      return m;
-    })
-    .catch(() => null);
 
   bindEvents();
   load();
@@ -565,13 +558,27 @@ async function openDrawer(userId, rowElement = null) {
     setSections(FAILED);
     return;
   }
-  const words = await wordStorePromise;
-  if (state.openUserId !== userId || els.drawer.hidden) return;
+  // 語データが要らない節を先に出し、パック名・語の綴りは語データ（最初のドロワーで 1 回だけ読む）が来てから
   renderActivity(body);
   renderSessions(body);
+  renderFeedback(body);
+  const words = await loadWordStore();
+  if (state.openUserId !== userId || els.drawer.hidden) return;
   renderPacks(body.packs ?? player.packs, words);
   renderMastered(body, words);
-  renderFeedback(body);
+}
+
+// 教材データはドロワーを初めて開いたときに 1 回だけ読む（一覧だけ見るときは読まない）
+function loadWordStore() {
+  if (!wordStorePromise) {
+    wordStorePromise = import("./wordStore.js")
+      .then(async (m) => {
+        await m.initWordStore();
+        return m;
+      })
+      .catch(() => null);
+  }
+  return wordStorePromise;
 }
 
 function closeDrawer() {

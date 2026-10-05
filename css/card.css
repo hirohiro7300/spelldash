@@ -925,3 +925,8 @@ html[data-theme] .stats--strip .stat-card--time {
     box-shadow: none;
   }
 }
+
+/* 発音・ヒントが全部 hidden のときは行の余白も消す（旧 game.css の規則の置き換え） */
+html[data-theme] .word-tools:not(:has(> :not([hidden]))) {
+  margin: 0;
+}
