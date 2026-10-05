@@ -1167,7 +1167,7 @@ function completeWord() {
 function snapshotGrowth() {
   try {
     const all = computeCategoryProgress()[0];
-    recordGrowthSnapshot({ learned: getLearnedCount(), mastered: all.mastered });
+    recordGrowthSnapshot({ learned: getLearnedCount(), mastered: all.mastered, legacyLearned: all.learned });
   } catch {
     // ログは装飾
   }
@@ -1337,7 +1337,7 @@ function endStudySession() {
       ? failed === 0
         ? { mood: "happy", text: "全部回収した。" }
         : { mood: "normal", text: "残りは明日また出す。" }
-      : hasumiSetLine({ count: recalled, failed, recovered: [...setLearnEvents].filter(([, e]) => e === "recovered").length, sets: state.setsToday });
+      : hasumiSetLine({ count: recalled, failed, recovered: [...setFailed].filter((id) => setRecalled.has(id)).length, sets: state.setsToday }); // 答えを見てから思い出せた語（再開後も残る setFailed から）
     panel.innerHTML = `
       <h2 class="result-panel__title" id="resultTitle" tabindex="-1">${isRetry ? "回収完了" : "今日のセット完了"}</h2>
       ${hasumiBubbleHtml(hasumiLine, "hasumi--result")}

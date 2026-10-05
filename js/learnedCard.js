@@ -1,8 +1,7 @@
 import { computeCategoryProgress } from "./categoryProgress.js";
-import { getLearnedCount } from "./learnedWords.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
 import { getLearnedDelta7, recordGrowthSnapshot, getWeekGoal, getThisWeekDays } from "./growthLog.js";
-import { getLearnedWordsToday } from "./learnedWords.js";
+import { getLearnedWordsToday, getLearnedCount } from "./learnedWords.js";
 import { getGenre, genreLabel, applyGenre } from "./genres.js";
 import { getWordsByCategory } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
@@ -26,7 +25,7 @@ export function renderLearnedCard() {
   const current = rows.find((r) => r.id === activeId) ?? all;
   const today = getRecalledTodayCount();
   const learnedTotal = getLearnedCount(); // パックの語も含む。学習データの概要と同じ数
-  recordGrowthSnapshot({ learned: learnedTotal, mastered: all.mastered });
+  recordGrowthSnapshot({ learned: learnedTotal, mastered: all.mastered, legacyLearned: all.learned });
   const week = getLearnedDelta7(learnedTotal);
 
   let currentLine =

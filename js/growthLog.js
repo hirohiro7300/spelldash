@@ -26,12 +26,19 @@ function save(list) {
 }
 
 // 今日の行を最新値で上書き（無ければ追加）。active は一度trueになったら保持
-export function recordGrowthSnapshot({ learned, mastered, active = false }) {
+// v2（2026-10）: learned は「覚えた語の数」（パックの語も含む、js/learnedWords.js getLearnedCount）。
+// それ以前の行は基本カテゴリだけの数だったので、最初の v2 を書くときに legacyLearned（同じ日の旧式の数）との差で
+// 古い行を底上げし、推移が段差にならないようにする（近似。失っても学習には影響しない）
+export function recordGrowthSnapshot({ learned, mastered, active = false, legacyLearned = null }) {
   const list = getGrowthLog();
   const today = localDateString();
+  if (list.length > 0 && !list.some((e) => e.v === 2) && legacyLearned != null) {
+    const offset = learned - legacyLearned;
+    if (offset !== 0) for (const e of list) e.learned = Math.max(0, (e.learned ?? 0) + offset);
+  }
   const idx = list.findIndex((e) => e.date === today);
   const prev = idx >= 0 ? list[idx] : null;
-  const row = { date: today, learned, mastered, active: !!(prev?.active || active) };
+  const row = { date: today, learned, mastered, active: !!(prev?.active || active), v: 2 };
   if (idx >= 0) list[idx] = row;
   else list.push(row);
   list.sort((a, b) => (a.date < b.date ? -1 : 1));
@@ -51,7 +58,7 @@ export function markActiveToday() {
     return;
   }
   const last = list[list.length - 1];
-  list.push({ date: today, learned: last?.learned ?? 0, mastered: last?.mastered ?? 0, active: true });
+  list.push({ date: today, learned: last?.learned ?? 0, mastered: last?.mastered ?? 0, active: true, v: last?.v });
   save(list);
 }
 

@@ -1,6 +1,6 @@
 import { getWordStats, getSessionLog } from "./storage.js";
+import { getLearnedCount } from "./learnedWords.js";
 import { getStreak } from "./level.js";
-import { computeCategoryProgress } from "./categoryProgress.js";
 import { getActiveDaysLast7, getLearnedDelta7 } from "./growthLog.js";
 import { hasumiWeeklyLine, hasumiBubbleHtml } from "./hasumi.js";
 
@@ -28,8 +28,8 @@ export function computeWeeklyReport() {
     }
   }
 
-  const all = computeCategoryProgress()[0];
-  const learnedDelta = getLearnedDelta7(all.learned);
+  const learnedTotal = getLearnedCount(); // ホーム・学習データ・推移の記録と同じ数（パックの語も含む）
+  const learnedDelta = getLearnedDelta7(learnedTotal);
   const activeDays = getActiveDaysLast7();
 
   const runs = getSessionLog().filter((e) => (Date.parse(e.at ?? 0) || 0) >= since);
@@ -46,7 +46,7 @@ export function computeWeeklyReport() {
     range: `${fmt(start)}〜${fmt(end)}`,
     activeDays,
     learnedDelta,
-    learnedTotal: all.learned,
+    learnedTotal,
     recalled,
     failed,
     recallRate,
