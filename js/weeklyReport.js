@@ -11,8 +11,13 @@ import { hasumiWeeklyLine, hasumiBubbleHtml } from "./hasumi.js";
 const DAY = 86400000;
 
 export function computeWeeklyReport() {
-  const now = Date.now();
-  const since = now - 7 * DAY;
+  // 今日まだやっていなければ「昨日までの 7 日」で数える（朝に開いても 6/7 にならない）
+  const includeToday = hasPlayedToday();
+  const endDay = new Date();
+  endDay.setHours(23, 59, 59, 999);
+  if (!includeToday) endDay.setDate(endDay.getDate() - 1);
+  const now = Math.min(Date.now(), endDay.getTime());
+  const since = endDay.getTime() - 7 * DAY + 1;
   const stats = getWordStats();
 
   let recalled = 0;
@@ -30,7 +35,7 @@ export function computeWeeklyReport() {
 
   const learnedTotal = getLearnedCount(); // ホーム・学習データ・推移の記録と同じ数（パックの語も含む）
   const learnedDelta = getLearnedDelta7(learnedTotal);
-  const activeDays = getActiveDaysLast7();
+  const activeDays = getActiveDaysLast7(includeToday ? 0 : 1);
 
   const runs = getSessionLog().filter((e) => (Date.parse(e.at ?? 0) || 0) >= since);
   const bestScore = runs.length ? Math.max(...runs.map((e) => e.score)) : 0;
@@ -39,7 +44,7 @@ export function computeWeeklyReport() {
   const recallRate = recalled + failed > 0 ? Math.round((recalled / (recalled + failed)) * 100) : null;
 
   const start = new Date(since);
-  const end = new Date(now);
+  const end = new Date(endDay);
   const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
 
   return {
@@ -83,7 +88,7 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
     ${compact ? "" : hasumiBubbleHtml(hasumiWeeklyLine(r), "hasumi--result")}
     <div class="weekly__grid">
       <div><span>学習した日</span><strong>${r.activeDays}<small> / 7</small></strong></div>
-      <div><span>今週 覚えた</span><strong>+${r.learnedDelta}<small> 語</small></strong></div>
+      <div><span>7日で 覚えた</span><strong>+${r.learnedDelta}<small> 語</small></strong></div>
       <div><span>思い出せた率</span><strong>${rate == null ? "–" : `${rate}<small>%</small>`}</strong></div>
       ${r.bestScore ? `<div><span>ベスト</span><strong>${r.bestScore}</strong></div>` : ""}
     </div>

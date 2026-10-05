@@ -843,7 +843,7 @@ console.log("first run & retention:");
   await page.press("#input", "Enter");
   await page.waitForTimeout(300);
   const startMsg = await page.textContent("#message");
-  check("開始時にセットの中身予告（復習1・苦手1）", startMsg.includes("復習 1") && startMsg.includes("苦手 1") && startMsg.endsWith("から"), startMsg);
+  check("開始時にセットの中身予告（復習1・もう一度1）", startMsg.includes("復習 1") && startMsg.includes("もう一度 1") && startMsg.endsWith("から"), startMsg);
   check("苦手（Unresolved）が先頭", (await page.textContent("#japanese")).trim() === "請求書");
   await page.press("#input", "Enter"); // invoice: 答えを見る（思い出せず）
   await page.waitForTimeout(200);

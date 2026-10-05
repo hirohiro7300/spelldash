@@ -84,7 +84,6 @@ export function renderCalendar(containerId) {
 
   // 凡例は「少ない ■■■■ 多い」だけ。濃さの説明は summary の後ろに 1 文（1 回だけ）
   el.innerHTML = `
-    <div class="cal__summary">直近${weeks}週で <b>${activeDays}日</b> 学習</div>
     <p class="cal__note">濃さ＝セット完了と Challenge・Daily の回数</p>
     ${monthRow}
     <div class="cal" style="grid-template-columns: repeat(${weeks}, 1fr)" aria-hidden="true">${cells}</div>

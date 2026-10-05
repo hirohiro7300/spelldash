@@ -103,9 +103,11 @@ export function getActiveDaysThisWeek() {
 }
 
 // 直近7日で「学習した日」の数
-export function getActiveDaysLast7() {
-  const since = dateKeyDaysAgo(6);
-  return getGrowthLog().filter((e) => e.active && e.date >= since).length;
+export function getActiveDaysLast7(endOffset = 0) {
+  // endOffset=1 なら「昨日までの 7 日」
+  const since = dateKeyDaysAgo(6 + endOffset);
+  const until = dateKeyDaysAgo(endOffset);
+  return getGrowthLog().filter((e) => e.active && e.date >= since && e.date <= until).length;
 }
 
 // 直近7日の「覚えた」増分（7日前時点の値との差。基準が無ければ最古の行）

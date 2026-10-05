@@ -82,7 +82,7 @@ export function renderLearnedCard() {
     <div class="learned-card__main">
       <span class="learned-card__label">覚えた単語</span>
       <span class="learned-card__num">${learnedTotal}</span>
-      ${week > 0 ? `<span class="learned-card__today">今週 +${week}</span>` : today > 0 ? `<span class="learned-card__today">今日 ${today}語</span>` : ""}
+      ${week > 0 ? `<span class="learned-card__today">7日で +${week}</span>` : today > 0 ? `<span class="learned-card__today">今日 ${today}語</span>` : ""}
     </div>
     <div class="learned-card__today-words">${todayLine}</div>
     ${showBreakdown ? `<div class="learned-card__cat">${currentLine}</div>` : ""}

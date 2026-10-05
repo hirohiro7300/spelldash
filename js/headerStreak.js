@@ -23,7 +23,7 @@ export function renderHeaderStreak() {
   const done = hasPlayedToday();
 
   // 初回（0日／ベスト 0日）は出さない。1 セット終わって連続日数が付いたら出る
-  el.hidden = streak.current === 0 && streak.best === 0;
+  el.hidden = streak.current === 0; // 0 は見せない（途切れた朝も）。1 セット終えれば戻る
 
   el.classList.toggle("header-streak--off", !done);
   el.innerHTML = `${icon("flame", { size: 14 })}<b>${streak.current}</b><span>日</span>`;
