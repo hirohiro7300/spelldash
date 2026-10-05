@@ -222,6 +222,7 @@ backToPath?.addEventListener("click", () => {
   stopGame(); // プレイ中のセットは中断する（setMode は同じモードだと止めない）
   showGame(false);
   renderHome();
+  window.dispatchEvent(new CustomEvent("spelldash:home")); // 道が見えた（チュートリアル js/tutorial.js）
   document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   document.getElementById("pathStart")?.focus({ preventScroll: true }); // 「道に戻る」は消えるので、焦点はスタートへ
 });

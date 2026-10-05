@@ -6,6 +6,21 @@ html[data-theme] .admin {
   position: relative;
 }
 
+/* 器は 1000px まで（表のため）。表以外のブロックは他のページと同じ 820px に中央で収める（100vw を使わない: スクロールバー分の横はみ出しを避ける） */
+html[data-theme] .admin-app {
+  width: min(1000px, 100%);
+  max-width: 1000px; /* .app の 820px を表のぶんだけ広げる */
+}
+
+html[data-theme] .admin-app > .hero,
+html[data-theme] .admin > :not(.admin-main):not(.admin-drawer),
+html[data-theme] .admin-main > :not(.admin-table) {
+  width: 100%;
+  max-width: 820px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* ---- 状態の文言 ---- */
 html[data-theme] .admin-state {
   margin: 0 0 16px;
@@ -150,8 +165,7 @@ html[data-theme] .admin-note__tags:focus {
 /* ---- 一覧（表。720px 以下はカード） ---- */
 /* 器は他のページと同じ .app（820px）。10 列の表だけ 1000px まで左右にはみ出して中央に置く */
 html[data-theme] .admin-table {
-  width: min(1000px, calc(100vw - 32px));
-  margin-left: calc((100% - min(1000px, calc(100vw - 32px))) / 2);
+  width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--paper-2);
@@ -190,6 +204,11 @@ html[data-theme] .admin-row {
   cursor: pointer;
   color: var(--ink);
   transition: background var(--ease);
+}
+
+/* 行の焦点の輪は内側に（表が overflow:hidden なので外側の輪は切れる） */
+html[data-theme] .admin-row:focus-visible {
+  outline-offset: -2px;
 }
 
 html[data-theme] .admin-row:hover,

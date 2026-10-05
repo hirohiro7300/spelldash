@@ -25,7 +25,8 @@
    アプリ（html.native-app body の safe-area 指定）より優先されるよう詳細度を合わせる */
 body.osk-open,
 html.native-app body.osk-open {
-  padding-bottom: calc(236px + env(safe-area-inset-bottom, 0px));
+  --osk-h: 236px; /* 盤面の高さ。brand.css の .coach など、盤面の上に出すものはこれを読む */
+  padding-bottom: calc(var(--osk-h) + env(safe-area-inset-bottom, 0px));
 }
 
 /* Enter や scrollIntoView で入力欄が盤面の下に隠れないように */
@@ -140,7 +141,8 @@ html:has(body.osk-open) {
   }
   body.osk-open,
   html.native-app body.osk-open {
-    padding-bottom: calc(210px + env(safe-area-inset-bottom, 0px));
+    --osk-h: 210px;
+    padding-bottom: calc(var(--osk-h) + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -162,7 +164,8 @@ html:has(body.osk-open) {
   }
   body.osk-open,
   html.native-app body.osk-open {
-    padding-bottom: calc(170px + env(safe-area-inset-bottom, 0px));
+    --osk-h: 170px;
+    padding-bottom: calc(var(--osk-h) + env(safe-area-inset-bottom, 0px));
   }
 }
 

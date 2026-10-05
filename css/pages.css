@@ -786,6 +786,15 @@ html[data-theme] .cardgen__field {
   color: var(--ink);
 }
 
+html[data-theme] .cardgen__field--sub {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .cardgen__card textarea.cardgen__field {
+  resize: vertical;
+}
+
 html[data-theme] .cardgen__dup {
   color: var(--warn);
 }

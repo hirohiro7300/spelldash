@@ -42,7 +42,7 @@
 
 ## 5. 実装
 
-- 新規 `js/tutorial.js`（`initTutorial()` を main.js から呼ぶ。index.html だけ）。きっかけは既存イベント `spelldash:game-start`／`spelldash:word`／`spelldash:session-end` と、game.js に 2 行だけ足す `spelldash:reveal`（答え表示）・`spelldash:recall`（自力正解）
+- 新規 `js/tutorial.js`（`initTutorial()` を main.js から呼ぶ。index.html だけ）。きっかけは既存イベント `spelldash:game-start`／`spelldash:word`／`spelldash:session-end`／`spelldash:game-end` と、game.js に 2 行だけ足す `spelldash:reveal`（答え表示）・`spelldash:recall`（自力正解）、main.js の「道に戻る」が投げる `spelldash:home`（道が見えた）
 - CSS は `css/brand.css` に「coach」節（全ページ共通部品として。使うのは index だけ）
 - 文言は tutorial.js の `STEPS` に集約（E2E が参照する）
 - E2E: 初回の流れで T1→T2→T3→T4→T5→T6 が順に 1 つずつ出ること、2 回目の訪問では出ないこと、設定の「もう一度」で T1 が戻ること、既存ユーザーの seed では一切出ないこと、Esc で閉じること

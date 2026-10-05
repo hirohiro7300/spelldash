@@ -373,7 +373,7 @@ html[data-theme] .input-wrapper--battle .typed-preview {
   margin: 0;
 }
 
-/* RP は 13px の 1 行（「RP +5  Bronze 0 → 5 RP」）。棒は出さない */
+/* RP は 13px の 1 行（「RP +5  Bronze 5 RP」）。棒は出さない */
 .battle-rp {
   display: flex;
   flex-wrap: wrap;
@@ -469,7 +469,7 @@ html[data-theme] .battle-review .btn--sm {
 
   html[data-theme] .arena-timer {
     position: sticky;
-    top: 61px;
+    top: calc(61px + env(safe-area-inset-top, 0px)); /* ヘッダー 56px＋罫線＋余白。アプリの切り欠き分は env で */
     z-index: 5;
   }
 

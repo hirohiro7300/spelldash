@@ -21,11 +21,11 @@ html[data-theme] body {
   box-shadow: none;
 }
 
-html[data-theme] .input-wrapper :focus,
-html[data-theme] .input-wrapper--battle :focus {
+html[data-theme] .input-wrapper #input:focus,
+html[data-theme] .input-wrapper--battle #battleInput:focus {
   outline: none;
   box-shadow: none;
-  border-color: transparent;
+  border-color: transparent; /* 文字は透明で、枠と輪は外側の wrapper が持つ（brand.css の .input-wrapper:focus-within） */
 }
 
 /* プログラムで焦点を置くだけの要素（本文の入口・結果の見出し）には枠を出さない */
@@ -758,15 +758,9 @@ html[data-theme] .coach__ok:hover {
   color: var(--ink);
 }
 
-/* 画面キーボードの上に出す（css/keyboard.css の高さと同じ） */
+/* 画面キーボードの上に出す（高さは css/keyboard.css の --osk-h を読む。幅・高さの分岐はそちらが持つ） */
 html[data-theme] body.osk-open .coach {
-  bottom: calc(236px + 8px + env(safe-area-inset-bottom, 0px));
-}
-
-@media (max-width: 480px) {
-  html[data-theme] body.osk-open .coach {
-    bottom: calc(210px + 8px + env(safe-area-inset-bottom, 0px));
-  }
+  bottom: calc(var(--osk-h, 236px) + 8px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (prefers-reduced-motion: reduce) {

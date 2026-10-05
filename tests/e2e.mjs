@@ -2555,6 +2555,7 @@ console.log("admin crm:");
     check("CRM: 行を押すと詳細パネル（#adminDrawer）が見える", await waitUntil(() => drawerShown(page), 2000));
     const detailLoaded = await waitUntil(async () => (await page.textContent("#adminFeedback")).includes("別解"), 5000);
     check("CRM: 詳細のご意見に「別解」", detailLoaded, (await page.textContent("#adminFeedback")).replace(/\s+/g, " ").trim().slice(0, 80));
+    await waitUntil(async () => (await page.$("#adminPacks .admin-tag")) !== null, 8000); // パック名は教材データ（ドロワーで初めて読む）が来てから
     check("CRM: 詳細の追加しているパックに TOEIC 500点（id は title 属性）", (await page.$$eval("#adminPacks .admin-tag", (els) => els.map((e) => e.title))).includes("toeic500") && (await page.textContent("#adminPacks")).includes("500点") && !(await page.textContent("#adminPacks")).includes("toeic500"), (await page.textContent("#adminPacks")).trim());
     const bars = await page.$$eval("#adminActivity > *", (els) => els.length);
     check("CRM: 30 日の活動は棒が 30 本", bars === 30, `bars=${bars}`);
