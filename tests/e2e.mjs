@@ -928,7 +928,7 @@ console.log("growth evidence:");
   await page2.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
   const calDays = await page2.$$eval("#calendarGrid .cal .cal__day", (els) => ({ total: els.length, active: els.filter((e) => /cal__day--[1-4]/.test(e.className)).length }));
-  check("学習カレンダー（13週×7日・学習日2）", calDays.total === 91 && calDays.active === 2 && (await page2.textContent("#calendarGrid")).includes("2日"), JSON.stringify(calDays));
+  check("学習カレンダー（13週×7日・学習日2）", calDays.total === 91 && calDays.active === 2, JSON.stringify(calDays)); // 「直近13週で N日」の行は Batch 46 で削除（カレンダーが見せる）
   const csv = await page2.evaluate(async () => (await import("/js/exportCsv.js")).buildLearnedCsv());
   check("覚えた単語帳CSVに見出しと語", csv.includes("english,japanese") && csv.includes("invoice,請求書") && csv.includes("xo"), csv.slice(0, 120));
   await page2.click("#learnedWordList [data-word-detail]");

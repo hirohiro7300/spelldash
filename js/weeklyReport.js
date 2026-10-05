@@ -1,6 +1,6 @@
 import { getWordStats, getSessionLog } from "./storage.js";
 import { getLearnedCount } from "./learnedWords.js";
-import { getStreak } from "./level.js";
+import { getStreak, hasPlayedToday } from "./level.js";
 import { getActiveDaysLast7, getLearnedDelta7 } from "./growthLog.js";
 import { hasumiWeeklyLine, hasumiBubbleHtml } from "./hasumi.js";
 
