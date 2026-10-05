@@ -685,6 +685,7 @@ function acceptAlternative(typed) {
 function revealAnswer(fromMiss = false) {
   isRevealed = true;
   hideHint();
+  window.dispatchEvent(new CustomEvent("spelldash:reveal", { detail: { id: currentWord?.id, fromMiss } })); // チュートリアル（js/tutorial.js）
   if (!fromMiss) sfxReveal(); // ミス起点ではsfxMissが鳴っているので重ねない
 
   // ヒントを見た時点で×は記録済み。二重に数えない
@@ -1074,6 +1075,7 @@ function completeWord() {
   if (selfRecall) {
     consecutiveFails = 0;
     recordRecallSuccess(currentWord.id);
+    window.dispatchEvent(new CustomEvent("spelldash:recall", { detail: { id: currentWord.id, mode } })); // チュートリアル（js/tutorial.js）
     if (mode === "study") bumpActivity("studyCorrect"); // KPI心拍
 
     if (mode === "study") {

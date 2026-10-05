@@ -1,4 +1,5 @@
 import { getOskMode, setOskMode } from "./keyboard.js";
+import { resetTutorial } from "./tutorial.js";
 import { supabase } from "./supabase.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
@@ -371,3 +372,10 @@ async function initializeDisplayName(session) {
     }, 3000);
   });
 }
+
+// チュートリアルをもう一度（docs/SPEC_TUTORIAL.md）: 次のセットから T1〜T3、次の完了で T5
+document.getElementById("tutorialReset")?.addEventListener("click", () => {
+  resetTutorial();
+  const status = document.getElementById("tutorialResetStatus");
+  if (status) status.textContent = "次のセットから出る";
+});

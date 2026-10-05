@@ -703,6 +703,99 @@ html[data-theme] .word-example__speak:hover {
   }
 }
 
+/* ---- チュートリアルの札（js/tutorial.js）: 画面下に 1 本。紙の面・1px 罫線・角丸 10。影・三角・動きなし ---- */
+html[data-theme] .coach {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+  transform: translateX(-50%);
+  opacity: 1;
+  transition: opacity var(--ease);
+  pointer-events: none; /* 札は何も遮らない。押せるのは「わかった」だけ */
+}
+
+html[data-theme] .coach--out {
+  opacity: 0;
+}
+
+html[data-theme] .coach__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html[data-theme] .coach__ok {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+html[data-theme] .coach__ok:hover {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+/* 画面キーボードの上に出す（css/keyboard.css の高さと同じ） */
+html[data-theme] body.osk-open .coach {
+  bottom: calc(236px + 8px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 480px) {
+  html[data-theme] body.osk-open .coach {
+    bottom: calc(210px + 8px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] .coach {
+    transition: none;
+  }
+}
+
+/* 設定の文字ボタン（「チュートリアルをもう一度」など）: 下線の文字リンクと同じ見た目 */
+html[data-theme] .setting-linkbtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+html[data-theme] .setting-linkbtn:hover {
+  color: var(--ink);
+}
+
 /* ---- 指で押す端末: 副ボタン・チップの当たり判定を 40px（発音／メモは 36px）に。見た目（1px 罫線・13px）は変えない ---- */
 @media (pointer: coarse) {
   html[data-theme] :is(.btn--sm, .play-modes__go, .path__guide, .path__guide--course, .path__course-pick, .back-to-path, .daily__button, .result-panel__action, .word-detail__close, .feedback-modal__close, .pack__actions .btn--sm, .category-chip, .filter-chip, .genre-chip, .stats-tab, .my-tab, .trend-range button, .packs-jump a, .pp-related a, [data-fold-open], .learned-item__en, .note-chip, .account-menu__item) {

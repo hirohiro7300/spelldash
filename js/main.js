@@ -38,6 +38,7 @@ import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
 import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
 import { renderLoginNudge } from "./loginNudge.js";
+import { initTutorial } from "./tutorial.js";
 import { getCategories } from "./wordStore.js";
 import { getGenre, genreLabel } from "./genres.js";
 import { getWordStats } from "./storage.js";
@@ -47,6 +48,7 @@ initializeAuth();
 setFooterYear();
 initializeKeyboard(); // 専用キーボード（スマホでプレイ中だけ出る）
 renderHeaderStreak();
+initTutorial(); // 初回の 1 セットに 1 文ずつ（docs/SPEC_TUTORIAL.md）。既存ユーザーには何も出ない
 renderLevelBar();
 renderHasumiHome();
 setupUnloadSync();

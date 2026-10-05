@@ -17,6 +17,7 @@
 - **教材**: 171 カテゴリ・15,464 枚（分野パック 162、`/packs/<id>.html` に入口ページ）。オープン教材は NGSL 24・TSL 11・BSL 15・NAWL 8 = 58 パック・6,814 語（CC BY-SA 4.0、出典表記あり）。英単語カードには例文（ex／exJa）。形式は docs/PACK_FORMAT.md、検証は `node scripts/validate-words.mjs`
 - **マイ単語帳**（1 語ずつ／まとめて／場面カード／AI でテキストから）、単語の詳細（履歴・メモ・覚え方を作る）、覚えた単語帳、学習データ（今週・記録・分析）、週間レポート、学習カレンダー
 - **音声**: 端末でいちばん自然な英語の声を自動選択、声の試聴、速さ、音で出題（0／25／50%）、効果音（短く小さく。BGM は無し）
+- **チュートリアル**: 初回の 1 セットに 1 文ずつ（6 ステップ、画面下の札、既存ユーザーには出ない。docs/SPEC_TUTORIAL.md）
 - **専用の画面キーボード**（スマホ。A〜Z＋⌫＋Enter、英文カードだけ空白）。Capacitor で iOS／Android の器もある（docs/APP.md。ストア未提出）
 
 ### 継続
@@ -65,4 +66,4 @@
 ## 7. 次の候補（docs/BACKLOG.md）
 
 - 創業者の判断待ち: 見出し語 18 件、カタカナ訳 225 語の方針、年額、AI の無料回数（docs/FOUNDER_TODO.md F）
-- コード側の候補: チュートリアル（docs/SPEC_TUTORIAL.md、着手中）、UI の残り（docs/BACKLOG.md F13 の残り）、単語帳の分野パック見出し、マイ単語帳の端末間同期（SQL が要る）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）
+- コード側の候補: UI の残り（docs/BACKLOG.md F13 の残り）、単語帳の分野パック見出し、マイ単語帳の端末間同期（SQL が要る）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）
