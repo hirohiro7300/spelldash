@@ -3045,7 +3045,8 @@ console.log("tutorial:");
   await page.close();
 
   // 設定の「チュートリアルをもう一度」→ 次のセットで T1 が戻る
-  const page2 = await newPage({ storage: { spelldash_tutorial: JSON.stringify({ seen: ["T1", "T2", "T3", "T5", "T4", "T6"], started: true }), spelldash_placement: "done" } });
+  // newPage の seed は遷移ごとに入れ直されるので、チュートリアルの状態は seed せず「腕試し済み」だけ渡す（初期化で全部 seen になる）
+  const page2 = await newPage({ storage: { spelldash_placement: "done" } });
   await page2.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
   await page2.click("#tutorialReset");
   check("設定: 「チュートリアルをもう一度」で案内文", (await page2.textContent("#tutorialResetStatus")).includes("次のセット"));
