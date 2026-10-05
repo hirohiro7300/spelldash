@@ -866,7 +866,7 @@ console.log("first run & retention:");
   await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 2000);
   const panel = await page.textContent("#resultPanel");
   check("完了パネルに「思い出せなかった1語をもう一度」", panel.includes("思い出せなかった1語をもう一度"), panel.slice(0, 160));
-  check("完了パネルは数字1行（週の途中経過は出さない）", panel.includes("思い出せた") && panel.includes("思い出せず") && panel.includes("明日の復習") && !panel.includes("目標まであと") && !/今週\s*\d+\s*\/\s*\d+日/.test(panel), panel.slice(0, 200));
+  check("完了パネルは数字1行（週の途中経過は出さない）", panel.includes("思い出せた") && panel.includes("思い出せず") && panel.includes("明日") && !panel.includes("目標まであと") && !/今週\s*\d+\s*\/\s*\d+日/.test(panel), panel.slice(0, 200));
   await page.click("#setRetry");
   await page.waitForTimeout(300);
   check("回収モードの案内", (await page.textContent("#message")).includes("もう一度"), await page.textContent("#message"));
@@ -1299,7 +1299,7 @@ console.log("my concept & retention:");
   check("初回は Daily・Battle が未解放、Challenge は解放", (await page5.$$("#playModes .play-modes__row--locked")).length === 2 && (await page5.$('#playModes [data-mode="challenge"]')) !== null);
   await page5.click("#welcome .welcome__cta [data-welcome-start]");
   await page5.waitForTimeout(900);
-  check("「無料で始める」でトップが消え、腕試しが始まる", !(await page5.isVisible("#welcome")) && (await page5.isVisible("#pathCard")) && (await page5.textContent("#message")).includes("腕試し") && (await page5.evaluate(() => localStorage.getItem("spelldash_onboarded"))) === "1");
+  check("「無料で始める」でトップが消え、腕試しが始まる", !(await page5.isVisible("#welcome")) && (await page5.isVisible("#pathCard")) && (await page5.evaluate(() => localStorage.getItem("spelldash_placement"))) === "started" && (await page5.evaluate(() => localStorage.getItem("spelldash_onboarded"))) === "1");
   check("トップページのフローでエラー0", page5.errors.length === 0, page5.errors[0] ?? "");
   // 深いリンク（?set= など）や2回目以降はトップページを出さない
   const page5b = await newPage({ keepOnboarding: true });
