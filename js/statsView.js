@@ -8,10 +8,10 @@ import { getStreak, getLostStreak, canRepairStreak, repairStreak } from "./level
 import { isPro } from "./plan.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
-import { computeCategoryProgress } from "./categoryProgress.js";
+import { computeCategoryProgress, computeLegacyLearnedCount } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
-import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCount } from "./learnedWords.js";
+import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCount, getMasteredCount } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
 import { downloadLearnedCsv } from "./exportCsv.js";
@@ -75,6 +75,8 @@ initializeStreakRepair();
 initWordStore().then(() => {
   renderOverview();
   renderTyping();
+  renderGrowthTrend(); // 今日の行のスナップショットを先に取る（カレンダー・今月のまとめが同じ行を読む）
+  trendsReady = true;
   renderCalendar("calendarGrid");
   renderMonthlySummary();
   bindWordDetail({ onNoteSaved: () => { renderLearnedWords(); renderWeakWords(); } });
@@ -86,8 +88,6 @@ initWordStore().then(() => {
   renderScoreTrend();
   renderLearnedWords();
   renderCategoryProgress();
-  renderGrowthTrend();
-  trendsReady = true;
   renderWeeklyReport("weeklyReport");
   renderWeakWords();
   initializeWordList();
@@ -99,21 +99,23 @@ initWordStore().then(() => {
   });
 });
 
-// Pro の状態が届いたら（ページ表示直後は未確定）、期間と修復の表示を合わせる
+// Pro の状態が届いたら（ページ表示直後は未確定）、期間と修復の表示を合わせる。
+// 推移は単語ストアの初期化後にだけ描く（先に描くと growth log の今日の行を 0 で上書きし、カレンダーの濃さが狂う）
 document.addEventListener("spelldash:plan", () => {
   renderOverview();
-  renderGrowthTrend();
+  if (trendsReady) renderGrowthTrend();
 });
 
 window.addEventListener("spelldash:synced", () => {
   renderLevelBar();
   renderOverview();
   renderTyping();
+  if (trendsReady) renderGrowthTrend(); // 単語ストアの初期化前に同期が届いても、今日の行を 0 で上書きしない
   renderCalendar("calendarGrid");
+  renderMonthlySummary();
   renderScoreTrend();
   renderLearnedWords();
   renderCategoryProgress();
-  renderGrowthTrend();
   renderWeeklyReport("weeklyReport");
   renderWeakWords();
 });
@@ -287,6 +289,15 @@ function renderCategoryProgress() {
 
   const rows = computeCategoryProgress();
   const pct = (v, total) => (total > 0 ? ((v / total) * 100).toFixed(1) : 0);
+  // 内訳の行: 何も学んでいなければ「未着手 N語」。習得か苦手が 1 以上の行だけ内訳を出す（0 の項目は出さない。
+  // 「覚えた」の数は見出しが持つ）
+  const legendOf = (r) => {
+    if (r.total === 0) return ""; // 語の無いカテゴリ（空のマイ単語帳）は内訳なし
+    if (r.mastered + r.learning + r.weak === 0) return `<div class="cat-row__legend">未着手 ${r.untouched}語</div>`;
+    if (r.mastered === 0 && r.weak === 0) return "";
+    const parts = [r.mastered > 0 && `習得 ${r.mastered}`, r.learning > 0 && `覚えた ${r.learning}`, r.weak > 0 && `苦手 ${r.weak}`, r.untouched > 0 && `未着手 ${r.untouched}`].filter(Boolean);
+    return `<div class="cat-row__legend">${parts.join(" ・ ")}</div>`;
+  };
 
   container.innerHTML =
     rows
@@ -295,19 +306,19 @@ function renderCategoryProgress() {
         <div class="cat-row" data-category="${r.id}">
           <div class="cat-row__head">
             <button type="button" class="cat-row__go" data-category="${r.id}" aria-label="${r.label} で練習を始める（覚えた ${r.learned} / ${r.total}）"><span class="cat-row__label">${r.label}<span class="cat-row__total mono">${r.total}語</span>${r.total > 0 && r.learned === r.total ? `<span class="cat-row__clear">全部済み</span>` : ""}</span></button>
-            <span class="cat-row__learned">覚えた <strong class="mono">${r.learned}</strong> / ${r.total}${r.id !== "all" ? ` <a class="cat-row__list" href="./list.html?category=${r.id}" data-stop>一覧</a>` : ""}</span>
+            <span class="cat-row__learned">覚えた <strong class="mono">${r.learned}</strong> / ${r.total} <a class="cat-row__list" href="./list.html?category=${r.id}" data-stop>一覧</a></span>
           </div>
           <div class="cat-bar" aria-hidden="true">
             <i class="cat-bar__mastered" style="width:${pct(r.mastered, r.total)}%"></i>
             <i class="cat-bar__learning" style="width:${pct(r.learning, r.total)}%"></i>
             <i class="cat-bar__weak" style="width:${pct(r.weak, r.total)}%"></i>
           </div>
-          <div class="cat-row__legend">${r.mastered + r.learning + r.weak === 0 ? `未着手 ${r.untouched}語` : `習得 ${r.mastered} ・ 覚えかけ ${r.learning} ・ 苦手 ${r.weak} ・ 未着手 ${r.untouched}`}</div>
+          ${legendOf(r)}
         </div>
       `
       )
       .join("") +
-    `<p class="cat-legend"><i class="cat-bar__mastered"></i>習得（10日以上かけてノーミス10回）<i class="cat-bar__learning"></i>覚えかけ（自力で思い出せた）<i class="cat-bar__weak"></i>苦手（最後に思い出せなかった）</p>`;
+    `<p class="cat-legend"><i class="cat-bar__mastered"></i>習得（10日以上かけてノーミス10回）<i class="cat-bar__learning"></i>覚えた（自力で思い出せた）<i class="cat-bar__weak"></i>苦手（最後に思い出せなかった）</p>`;
 
   // 練習開始はカテゴリ名のボタン（.cat-row__go）だけ。行全体は押しても何も起きない（「一覧」と押し分けられるように）
   container.querySelectorAll(".cat-row__go").forEach((button) => {
@@ -335,7 +346,7 @@ function renderMonthlySummary() {
   } catch {
     sets = 0;
   }
-  // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない（Challenge/Daily の回数はカレンダーの濃さで足りる）
+  // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない
   const parts = [`学習した日 <b>${activeDays}</b>日`];
   if (learnedDelta > 0) parts.push(`覚えた <b>+${learnedDelta}</b>`);
   if (sets > 0) parts.push(`セット <b>${sets}</b>回`);
@@ -389,8 +400,7 @@ function renderGrowthTrend() {
 
   const days = getTrendRange();
   syncTrendRangeButtons(days);
-  const all = computeCategoryProgress()[0];
-  recordGrowthSnapshot({ learned: getLearnedCount(), mastered: all.mastered, legacyLearned: all.learned });
+  recordGrowthSnapshot({ learned: getLearnedCount(), mastered: getMasteredCount(), legacyLearned: computeLegacyLearnedCount() });
   const series = getLearnedSeries(days);
   const points = series.filter((p) => p.learned != null);
 
@@ -404,9 +414,10 @@ function renderGrowthTrend() {
   const pad = { top: 16, right: 12, bottom: 24, left: 36 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
+  // 底は 0 に固定（増分の大きさが傾きに出る。数字を誇張しない）
   const values = series.map((p) => p.learned);
-  const min = Math.min(...values.filter((v) => v != null));
-  const max = Math.max(...values.filter((v) => v != null), min + 1);
+  const min = 0;
+  const max = Math.max(...values.filter((v) => v != null), 1);
   const x = (i) => pad.left + (i / (series.length - 1)) * innerW;
   const y = (v) => pad.top + innerH - ((v - min) / (max - min)) * innerH;
 
@@ -433,7 +444,6 @@ function renderGrowthTrend() {
       <text x="${pad.left}" y="${height - 6}" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${series[0].date.slice(5)}</text>
       <text x="${width - pad.right}" y="${height - 6}" text-anchor="end" font-size="12" fill="var(--ink-3)">今日</text>
     </svg>
-    <p class="score-trend__legend"><i class="score-trend__dot score-trend__dot--daily"></i>学習した日</p>
   `;
 }
 

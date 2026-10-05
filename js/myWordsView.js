@@ -1,4 +1,4 @@
-import { getMyWords, addMyWord, addMyConcept, addMyWordsBulk, removeMyWord } from "./myWords.js";
+import { getMyWords, addMyWord, addMyConcept, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage } from "./myWords.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { initializeCardGen } from "./cardGen.js";
@@ -6,9 +6,10 @@ import { icon } from "./icons.js";
 
 // ===== 学習データ: マイ単語帳の管理UI =====
 
-const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えかけ", mastered: "習得" };
+const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得" };
 
 export function initializeMyWordsView(onChange = () => {}) {
+  document.addEventListener("spelldash:plan", renderLimitState); // Pro の状態が後から届いたら上限（100 → 1,000）を引き直す
   const form = document.getElementById("myWordForm");
   const bulkButton = document.getElementById("myWordBulkAdd");
   if (!form) return;
@@ -80,6 +81,8 @@ export function initializeMyWordsView(onChange = () => {}) {
       textarea.value = "";
       renderMyWordsList();
       onChange();
+    } else {
+      renderLimitState(); // 上限で 1 語も入らなかったときは、理由（上限の文）を出し直す
     }
   });
 
@@ -97,16 +100,41 @@ export function initializeMyWordsView(onChange = () => {}) {
 function setStatus(text, isError) {
   const el = document.getElementById("myWordStatus");
   if (!el) return;
+  const limit = text === limitMessage();
   el.textContent = text;
-  // 上限の案内（「Pro なら」を含む固定文）にだけ Pro へのリンクを足す。ユーザー入力は innerHTML に入れない
-  if (isError && text.includes("Pro なら")) {
+  // 上限の案内（「Pro なら」を含む固定文）にだけ Pro へのリンクを「。」の直後に続ける。ユーザー入力は innerHTML に入れない
+  if (limit && text.includes("Pro なら")) {
     const link = document.createElement("a");
     link.href = "./pro.html";
     link.className = "pro-link";
     link.textContent = "Pro について";
-    el.append(" ", link);
+    el.append(link);
   }
-  el.className = `muted my-words__status${isError ? " my-words__status--error" : ""}`;
+  // 上限は仕様で失敗ではないので朱にしない（通常の色のまま）
+  el.className = `muted my-words__status${isError && !limit ? " my-words__status--error" : ""}`;
+  el.dataset.limit = limit ? "1" : "";
+}
+
+// 上限（maxMyWords 以上）: 「追加する」を disabled にし、上限の文を入力欄の直前（フォームの上）に出す。
+// 入力した語は消さない（Pro にした直後にそのまま押せる）。上限を下回ったら元の位置（一覧の上）に戻す
+function renderLimitState() {
+  const el = document.getElementById("myWordStatus");
+  const form = document.getElementById("myWordForm");
+  const list = document.getElementById("myWordList");
+  if (!el || !form) return;
+  const atLimit = getMyWords().length >= maxMyWords();
+  for (const button of document.querySelectorAll("#myWordForm button[type=submit], #myConceptForm button[type=submit]")) {
+    button.disabled = atLimit;
+  }
+  if (atLimit) {
+    setStatus(limitMessage(), false);
+    el.classList.add("my-words__status--limit");
+    if (el.nextElementSibling !== form) form.before(el);
+  } else {
+    el.classList.remove("my-words__status--limit");
+    if (el.dataset.limit === "1") setStatus("", false);
+    if (list && el.nextElementSibling !== list) list.before(el);
+  }
 }
 
 export function renderMyWordsList() {
@@ -117,6 +145,7 @@ export function renderMyWordsList() {
   const list = getMyWords().slice().reverse();
   const stats = getWordStats();
   if (count) count.textContent = `${list.length}語`;
+  renderLimitState();
 
   if (list.length === 0) {
     container.innerHTML = `<p class="muted">まだ無い。仕事や試験でよく見る語から</p>`;

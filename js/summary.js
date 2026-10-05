@@ -1,14 +1,17 @@
 import { getWordStats, getBestScore, getTypingStats } from "./storage.js";
-import { getAllWords } from "./wordStore.js";
+import { getAllWords, findWord } from "./wordStore.js";
 
 export function computeSummary() {
   const stats = getWordStats();
   const entries = Object.values(stats);
   const words = getAllWords();
 
-  const total = words.length;
-  const learned = words.filter((word) => (stats[word.id]?.playCount ?? 0) > 0).length;
-  const mastered = words.filter((word) => stats[word.id]?.mastered).length;
+  // 語は id で 1 回だけ数える（同じ id が基本カテゴリとパックに別々に入っている）。
+  // 分子も「いま読み込んでいる語」に限る（外したパックや消したマイ単語の記録を数えない＝分母と同じ母集団）
+  const total = new Set(words.map((word) => word.id)).size;
+  const loaded = Object.entries(stats).filter(([id]) => findWord(id)).map(([, data]) => data);
+  const learned = loaded.filter((data) => (data.playCount ?? 0) > 0).length;
+  const mastered = loaded.filter((data) => data.mastered).length;
 
   const totalCorrect = entries.reduce((sum, data) => sum + (data.correctCount ?? 0), 0);
   const totalMiss = entries.reduce((sum, data) => sum + (data.missCount ?? 0), 0);

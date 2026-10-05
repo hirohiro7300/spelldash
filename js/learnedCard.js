@@ -1,7 +1,7 @@
-import { computeCategoryProgress } from "./categoryProgress.js";
+import { computeCategoryProgress, computeLegacyLearnedCount } from "./categoryProgress.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
 import { getLearnedDelta7, recordGrowthSnapshot, getWeekGoal, getThisWeekDays } from "./growthLog.js";
-import { getLearnedWordsToday, getLearnedCount } from "./learnedWords.js";
+import { getLearnedWordsToday, getLearnedCount, getMasteredCount } from "./learnedWords.js";
 import { getGenre, genreLabel, applyGenre } from "./genres.js";
 import { getWordsByCategory } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
@@ -10,7 +10,7 @@ import { icon } from "./icons.js";
 
 // ===== ホーム「覚えた単語」カード =====
 // 「いくつ覚えたか」を一等地に常設する（覚えた実感 v1）。
-// 覚えた = 一度つまずいてから自力で思い出せた語（覚えかけ＋習得）。初見で知っていた語は別枠。
+// 覚えた = 一度つまずいてから自力で思い出せた語（learning＋習得）。初見で知っていた語は別枠。
 // 数字だけでなく「今日覚えた語」を語で見せる。
 
 export function renderLearnedCard() {
@@ -18,24 +18,23 @@ export function renderLearnedCard() {
   if (!el) return;
 
   const rows = computeCategoryProgress();
-  if (rows.length === 0) return;
-
-  const all = rows[0];
   const activeId = localStorage.getItem("spelldash_category") || "all";
-  const current = rows.find((r) => r.id === activeId) ?? all;
+  const current = rows.find((r) => r.id === activeId) ?? null; // 「すべて」のときは null（カテゴリの行は出さない）
   const today = getRecalledTodayCount();
   const learnedTotal = getLearnedCount(); // パックの語も含む。学習データの概要と同じ数
-  recordGrowthSnapshot({ learned: learnedTotal, mastered: all.mastered, legacyLearned: all.learned });
+  recordGrowthSnapshot({ learned: learnedTotal, mastered: getMasteredCount(), legacyLearned: computeLegacyLearnedCount() });
   const week = getLearnedDelta7(learnedTotal);
 
-  let currentLine =
-    current.id === "all"
-      ? `覚えかけ ${all.learning} ・ 習得 ${all.mastered} ・ 苦手 ${all.weak} ・ 知ってた ${all.known}`
-      : `${current.label}: 覚えた ${current.learned} / ${current.total} ・ 苦手 ${current.weak} ・ 知ってた ${current.known}`;
+  // 0 の項目は出さない（0 は情報ではない）
+  let currentLine = current
+    ? [`${current.label}: 覚えた ${current.learned} / ${current.total}`, current.weak > 0 && `苦手 ${current.weak}`, current.known > 0 && `知ってた ${current.known}`]
+        .filter(Boolean)
+        .join(" ・ ")
+    : "";
   // ジャンルで絞っている時は、そのジャンルの進みを見せる
   const genre = getGenre();
   let genreNonZero = false;
-  if (genre && current.id !== "all") {
+  if (genre && current) {
     const stats = getWordStats();
     const words = applyGenre(getWordsByCategory(current.id), genre);
     const seen = new Set();
@@ -50,7 +49,7 @@ export function renderLearnedCard() {
       if (st === "learning" || st === "mastered") learnedG++;
       if (st === "weak") weakG++;
     }
-    currentLine = `${genreLabel(genre)}: 覚えた ${learnedG} / ${totalG} ・ 苦手 ${weakG}${learnedG === totalG && totalG > 0 ? " ・ 全部済み" : ""}`;
+    currentLine = `${genreLabel(genre)}: 覚えた ${learnedG} / ${totalG}${weakG > 0 ? ` ・ 苦手 ${weakG}` : ""}${learnedG === totalG && totalG > 0 ? " ・ 全部済み" : ""}`;
     genreNonZero = learnedG + weakG > 0;
   }
 
@@ -71,8 +70,7 @@ export function renderLearnedCard() {
   const weekLine = `今週 <b>${activeDays}</b>日 ・ 目標 ${goal}日${activeDays >= goal ? " 達成" : ""} ${dots}`;
 
   // 内訳の行は数字が全部 0 のときは出さない（0 の羅列は情報ではない）
-  const showBreakdown =
-    genre && current.id !== "all" ? genreNonZero : current.id === "all" ? all.learning + all.mastered + all.weak + all.known > 0 : current.learned + current.weak > 0;
+  const showBreakdown = current ? (genre ? genreNonZero : current.learned + current.weak > 0) : false;
 
   // 折りたたみの見出しにも数字を出す（「覚えた単語 28」。Daily Dash の名前は入口のある #playModes だけに）
   const summary = document.querySelector("#homeMore > summary > span");

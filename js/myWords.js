@@ -11,13 +11,18 @@ import { isPro } from "./plan.js";
 const KEY = "spelldash_my_words";
 const EN_PATTERN = /^[a-z][a-z-]*$/;
 
-// 登録できる語数の上限（無料 100 語・Pro 1,000 語）。上限を超えて持っている人も閲覧・削除はできる（追加だけ止まる）
+// 追加できる語数の上限（無料 100 語・Pro 1,000 語）。上限を超えて持っている人も閲覧・削除はできる（追加だけ止まる）
 export function maxMyWords() {
   return isPro() ? 1000 : 100;
 }
 
+// 上限の文（表示側はこの文のときだけ「Pro について」のリンクを続ける）
+export function limitMessage() {
+  return isPro() ? "追加できるのは1,000語まで" : "無料で追加できるのは100語まで（Pro なら1,000語）。";
+}
+
 function limitError() {
-  return isPro() ? "登録できるのは1,000語までです" : "無料で登録できるのは100語までです（Pro なら1,000語）。";
+  return limitMessage();
 }
 
 export function getMyWords() {

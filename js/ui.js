@@ -86,7 +86,7 @@ export function clearTypedPreview() {
 }
 
 // いま苦手な語: 「最後に思い出せなかったまま」の語（単語帳・カテゴリ別と同じ定義 = classifyWord が weak）。
-// 覚えた単語帳（覚えかけ・習得）とは排他。思い出せなかった回数が多い順に 5 語、1 語 1 行
+// 覚えた単語帳（覚えた・習得）とは排他。思い出せなかった回数が多い順に 5 語、1 語 1 行
 export function renderWeakWords() {
   if (!elements.weakWords) return;
 

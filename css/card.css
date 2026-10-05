@@ -391,6 +391,11 @@ html[data-theme] .word-ai__error {
   font-size: 12px;
 }
 
+/* 上限の文の中の「Pro について」は語の途中で折らない */
+html[data-theme] .ai-upgrade {
+  white-space: nowrap;
+}
+
 /* ===== 入力欄（brand.css の枠に寸法だけ足す） ===== */
 html[data-theme] .input-wrapper {
   width: min(560px, 100%);

@@ -119,14 +119,23 @@ function renderPlans(plan) {
   const month = config.prices.find((p) => p.interval === "month");
   const year = config.prices.find((p) => p.interval === "year");
   const perMonth = year ? Math.round(Number(year.amount) / 12) : 0;
-  // 未ログイン: 主ボタンが「ログインして始める」。押すとヘッダーのログインが開く（動かないボタンを出さない）
-  const action = session ? (interval) => `data-interval="${interval}"` : () => "data-login";
+  const terms = `${config.trialDays > 0 ? `最初の ${config.trialDays} 日間は無料。` : ""}税込。いつでも解約できる（期間の終わりまで使える。日割りの返金はしない）`;
+  if (!session) {
+    // 未ログイン: ボタンは「ログインして始める」1 つ（押すとヘッダーのログインが開く。動かないボタンを出さない）。料金は注記の先頭で言う
+    const prices = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）` : ""}。`;
+    plansElement.innerHTML = `
+    <div class="pro-plans__buttons">
+      <button type="button" class="btn pro-cta" id="proLoginStart" data-login>ログインして始める</button>
+    </div>
+    <p class="pro-plans__hint">${prices}${terms}</p>`;
+    return;
+  }
   plansElement.innerHTML = `
     <div class="pro-plans__buttons">
-      <button type="button" class="btn pro-cta" id="${session ? "proCheckoutMonth" : "proLoginStart"}" ${action("month")}>${session ? `月額 ${yen(month.amount)} で始める` : `ログインして始める（月額 ${yen(month.amount)}）`}</button>
-      ${year ? `<button type="button" class="btn btn--ghost pro-cta" id="proCheckoutYear" ${action("year")}>年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）</button>` : ""}
+      <button type="button" class="btn pro-cta" id="proCheckoutMonth" data-interval="month">月額 ${yen(month.amount)} で始める</button>
+      ${year ? `<button type="button" class="btn btn--ghost pro-cta" id="proCheckoutYear" data-interval="year">年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）</button>` : ""}
     </div>
-    <p class="pro-plans__hint">${config.trialDays > 0 ? `最初の ${config.trialDays} 日間は無料。` : ""}税込。いつでも解約できる。解約後も期間の終わりまで使える</p>`;
+    <p class="pro-plans__hint">${terms}</p>`;
 }
 
 // 状態（#proState）

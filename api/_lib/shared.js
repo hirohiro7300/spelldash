@@ -130,7 +130,7 @@ export async function reject(req, res, { scope, limit, proLimit = limit }) {
   if (overDailyLimit(scope, userId, max)) {
     const message = pro
       ? `今日の上限（${max}回）に達した。また明日`
-      : `今日の無料ぶん（${limit}回）を使い切った。Pro なら 1 日 ${proLimit} 回まで使える`;
+      : `今日の無料ぶん（${limit}回）は使い切った。Pro なら1日${proLimit}回`;
     send(res, 429, { error: "daily_limit", upgrade: !pro, message });
     return true;
   }

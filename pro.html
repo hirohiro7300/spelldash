@@ -20,11 +20,11 @@
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
 
 
-  <meta name="description" content="SpellDash Pro。学習の核は無料のまま、マイ単語帳の上限・AI の回数・90日の推移・連続記録の修復・追加テーマを。" />
+  <meta name="description" content="SpellDash Pro。単語の学習は無料のまま、マイ単語帳の上限・AI の回数・90日の推移・連続記録の修復・追加テーマを。" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="SpellDash" />
   <meta property="og:title" content="SpellDash Pro | SpellDash" />
-  <meta property="og:description" content="学習の核は無料のまま。Pro は、もっと自分向けに。" />
+  <meta property="og:description" content="単語の学習は無料のまま。Pro は、もっと自分向けに。" />
 <link rel="canonical" href="https://www.spelldash.net/pro.html" />
   <meta property="og:url" content="https://www.spelldash.net/pro.html" />
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
@@ -123,7 +123,7 @@
   <main class="app app--narrow pro" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <p class="logo">SpellDash Pro</p>
-      <h1>学習の核は無料のまま。<br />Pro は、もっと自分向けに。</h1>
+      <h1>単語の学習は無料のまま。<br />Pro は、もっと自分向けに。</h1>
       <p class="subtitle">思い出して打つ・今日のセット・復習・記録は、これからも無料。Pro は、自分の単語をもっと入れたい人、長く続けている人のための追加機能。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
@@ -141,14 +141,14 @@
         <tbody>
           <tr>
             <th scope="row">マイ単語帳<span class="pro-compare__sub">自分の仕事・試験の単語を入れて、同じ仕組みで覚える</span></th>
-            <td><b class="mono">100</b> 語まで</td>
-            <td><b class="mono">1,000</b> 語まで</td>
+            <td><b class="mono">100</b>語まで</td>
+            <td><b class="mono">1,000</b>語まで</td>
           </tr>
           <tr>
             <th scope="row">AI<span class="pro-compare__sub">テキストからカードを作る・覚え方の解説</span></th>
             <!-- 値は api/explain-word.js（3／60）と api/generate-cards.js（2／20）の既定。env を変えたらここも -->
-            <td>覚え方の解説 1 日 <b class="mono">3</b> 回・カード作成 1 日 <b class="mono">2</b> 回</td>
-            <td>1 日 <b class="mono">60</b> 回・<b class="mono">20</b> 回</td>
+            <td>解説 <b class="mono">3</b> 回・カード <b class="mono">2</b> 回（1 日）</td>
+            <td>解説 <b class="mono">60</b> 回・カード <b class="mono">20</b> 回（1 日）</td>
           </tr>
           <tr>
             <th scope="row">覚えた単語の推移<span class="pro-compare__sub">学習データのグラフ</span></th>
@@ -158,7 +158,7 @@
           <tr>
             <th scope="row">連続記録<span class="pro-compare__sub">休んだ日を守るシールドと、途切れたときの修復</span></th>
             <td>休んだ日を守るシールド 最大 <b class="mono">2</b> 枚</td>
-            <td>シールド 最大 <b class="mono">3</b> 枚＋月 <b class="mono">1</b> 回の修復<br />途切れて 7 日以内なら前の連続日数を取り戻せる</td>
+            <td>シールド 最大 <b class="mono">3</b> 枚＋修復 月 <b class="mono">1</b> 回（途切れて 7 日以内）</td>
           </tr>
           <tr>
             <th scope="row">テーマ<span class="pro-compare__sub">設定 →「見た目」</span></th>
@@ -167,7 +167,7 @@
           </tr>
         </tbody>
       </table>
-      <p class="setting-hint pro-note">Study・Challenge・Daily・Battle・今日のセット・復習・ランキングは無料のまま。覚えやすさや判定が有利になるものは売らない。</p>
+      <p class="setting-hint pro-note">覚えやすさや判定が有利になるものは売らない。</p>
     </section>
 
     <section class="settings pro-section" id="proPlansSection">
@@ -180,24 +180,20 @@
     <section class="settings pro-section">
       <h2 class="settings__title">よくある質問</h2>
       <details class="pro-faq">
-        <summary>いつでも解約できますか</summary>
-        <p>はい。設定の「お支払いの管理」からいつでも解約できます。解約しても、支払い済みの期間の終わりまで Pro を使えます。日割りの返金はありません。</p>
+        <summary>支払いはどこで処理される</summary>
+        <p>決済は Stripe が処理する。カード番号は SpellDash のサーバーに渡らず、保存もしない。</p>
       </details>
       <details class="pro-faq">
-        <summary>支払いはどこで処理されますか</summary>
-        <p>決済は Stripe が処理します。カード番号は SpellDash のサーバーに渡らず、保存もされません。</p>
+        <summary>アプリ版でも使える</summary>
+        <p>Web 版（www.spelldash.net）で加入すると、同じアカウントでログインしたアプリ版でも Pro になる。</p>
       </details>
       <details class="pro-faq">
-        <summary>アプリ版でも使えますか</summary>
-        <p>Web 版（www.spelldash.net）で加入すると、同じアカウントでログインしたアプリ版でも Pro になります。</p>
+        <summary>領収書はもらえる</summary>
+        <p>支払いのたびに Stripe からメールで領収書が届く。「お支払いの管理」からも確認できる。</p>
       </details>
       <details class="pro-faq">
-        <summary>領収書はもらえますか</summary>
-        <p>支払いのたびに Stripe からメールで領収書が届きます。「お支払いの管理」からも確認できます。</p>
-      </details>
-      <details class="pro-faq">
-        <summary>Pro をやめたら、入れた単語はどうなりますか</summary>
-        <p>消えません。100 語を超えているぶんも、そのまま見られて練習できます。新しく追加するのだけが 100 語までになります。</p>
+        <summary>Pro をやめたら、入れた単語はどうなる</summary>
+        <p>消えない。100語を超えたぶんもそのまま見られて練習できる。新しく追加できるのが100語までに戻るだけ。</p>
       </details>
     </section>
 

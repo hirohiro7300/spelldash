@@ -1,5 +1,9 @@
 import { getWordsByCategory, getCategories } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
+import { classifyWord } from "./categoryProgress.js";
+
+// 状態の呼び名はカテゴリ別の進捗・語の詳細と同じ（打ち間違いの数は状態に使わない）
+const STATUS_LABEL = { mastered: "習得", learning: "覚えた", weak: "苦手", known: "知ってた", untouched: "未着手" };
 
 const wordSearchElement = document.getElementById("wordSearch");
 const wordListElement = document.getElementById("wordList");
@@ -64,13 +68,7 @@ function renderWordList(targetWords) {
         .map((word) => {
           const data = stats[word.id];
 
-          const status = data?.mastered
-            ? "習得済み"
-            : data?.missCount > 0
-              ? "苦手"
-              : data?.playCount > 0
-                ? "学習中"
-                : "未学習";
+          const status = STATUS_LABEL[classifyWord(data)];
 
           return `
             <div class="word-item">

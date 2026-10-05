@@ -706,6 +706,11 @@ html[data-theme] .my-words__status--error {
   color: var(--signal-ink);
 }
 
+/* 上限の文はフォームの上（入力欄の直前）に出る */
+html[data-theme] .my-words__status--limit {
+  margin: 0 0 8px;
+}
+
 /* 1 行＝1 語（<b>en</b> ja ・ 状態）。右端に × の 40×40 */
 html[data-theme] .my-word {
   display: grid;

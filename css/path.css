@@ -222,12 +222,6 @@ html[data-theme] .path__node--current {
   padding: 12px 0 16px;
 }
 
-/* 円の下に補助文（「途中のセット」）があるときだけ、その分の余白 */
-html[data-theme] .path__node--current:has(.path__tip),
-html[data-theme] .path__node--goal:has(.path__tip) {
-  padding-bottom: 28px;
-}
-
 /* 済み: 行を詰めて、開いたときに現在地が遠くならないように */
 html[data-theme] .path__node--done {
   padding: 6px 0;
@@ -271,23 +265,6 @@ html[data-theme] .path__start--resume:hover {
   background: var(--signal-fill);
   border: 0;
   font-size: 12px;
-}
-
-html[data-theme] .path__tip {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ink-3);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  animation: none;
 }
 
 /* 制覇したとき: 次のセクションへ（墨の主ボタン）。横長なのでラベルの列に置く */
@@ -630,22 +607,11 @@ html[data-theme] .path__course-blurb {
   }
 }
 
-/* ---- ユニット制覇のお知らせ（数秒で消える。カードの規則） ---- */
-html[data-theme] .path__toast {
-  margin: 12px 0 0;
-  padding: 10px 14px;
-  border-radius: var(--radius-lg);
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 600;
-  text-align: left;
-  box-shadow: none;
-}
-
-html[data-theme] .path__toast--in {
-  animation: path-fade var(--ease);
+/* ---- ユニット済みの節目: 完了パネルの見出しの直下に 1 行（js/main.js が挿す） ---- */
+html[data-theme] .result-panel__unit {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
 }
 
 /* ---- 道に戻る（副ボタン） ---- */

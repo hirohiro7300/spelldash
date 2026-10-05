@@ -12,7 +12,7 @@ function csvCell(value) {
 export function buildLearnedCsv() {
   const header = ["english", "japanese", "category", "status", "last_recalled", "history", "note"];
   const rows = [header];
-  const statusLabel = { learning: "覚えかけ", mastered: "習得", known: "知ってた" };
+  const statusLabel = { learning: "覚えた", mastered: "習得", known: "知ってた" };
   for (const w of getLearnedWordList()) {
     rows.push([
       w.en,

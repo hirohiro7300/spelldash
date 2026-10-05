@@ -1,5 +1,6 @@
 import { getWordStats } from "./storage.js";
 import { getWordsByCategory } from "./wordStore.js";
+import { getCourse, sectionOf } from "./course.js";
 import { getTodayMission } from "./mission.js";
 import { setDailyLearning, localDateString } from "./stats.js";
 import { getFamiliarRatio } from "./studyMix.js";
@@ -31,6 +32,8 @@ import {
 // 単語プール:
 //   Familiar = 過去に自力正解済み（lastRecallSuccessAtあり）かつ非Unresolved
 //   New      = 一度も回答していない（playCount === 0）
+//   3 の期日の復習だけは、コースなら「いまのセクションまでのパック全部」から出す（reviewPoolWords）。
+//   セクションを進めても前のセクションの語の復習は止まらない。他の手順はいまのカテゴリの語だけ
 //
 // New Word Learning Loop（Study限定）:
 //   New単語は導入時に「学習中」となり、同日に自力正解を重ねるごとに
@@ -164,6 +167,25 @@ export function isFamiliar(stat) {
   return !!stat?.lastRecallSuccessAt && !isUnresolved(stat);
 }
 
+// 復習のプール（id で重複除去）。コースの中なら「いまのセクションまでのパック全部」
+// （前のセクションの語も、期日が来ればスタートから出る）。コースが無い／いまのカテゴリが
+// コースに無いときはそのカテゴリだけ。読み込んでいないパックは getWordsByCategory が空を返す
+// （コースの既習パックは advanceSection が spelldash_packs に残すので読み込まれている）
+function reviewPoolWords(categoryId) {
+  const section = sectionOf(categoryId);
+  const packIds = section ? getCourse().packs.slice(0, section.index + 1) : [categoryId];
+  const seen = new Set();
+  const list = [];
+  for (const packId of packIds) {
+    for (const word of getWordsByCategory(packId)) {
+      if (seen.has(word.id)) continue;
+      seen.add(word.id);
+      list.push(word);
+    }
+  }
+  return list;
+}
+
 // SRSの復習期限が来ている（習得済みは対象外）
 export function isReviewDue(stat) {
   return !!stat && !stat.mastered && !!stat.nextReviewAt && Date.parse(stat.nextReviewAt) <= Date.now();
@@ -172,13 +194,11 @@ export function isReviewDue(stat) {
 let sessionReviewCount = 0;
 
 // 復習期日が来ていて、今日まだ片付いていない語の数（ホームCTA・完了パネル用）
+// プールは startStudyQueue の手順 3 と同じ（reviewPoolWords）: 道の「復習から」と完了パネルの「明日の復習」が同じ語を指す
 export function getDueReviewCount(categoryId = localStorage.getItem("spelldash_category") || "all", until = Date.now()) {
   const stats = getWordStats();
-  const seen = new Set();
   let count = 0;
-  for (const word of getWordsByCategory(categoryId)) {
-    if (seen.has(word.id)) continue;
-    seen.add(word.id);
+  for (const word of reviewPoolWords(categoryId)) {
     const s = stats[word.id];
     if (!s || s.mastered || !s.nextReviewAt) continue;
     if (Date.parse(s.nextReviewAt) > until) continue;
@@ -188,23 +208,22 @@ export function getDueReviewCount(categoryId = localStorage.getItem("spelldash_c
   return count;
 }
 
-// 期日が来る語そのもの（「明日は negotiate など5語の復習から」の材料）
+// 期日が来る語そのもの（「明日の復習: negotiate ほか4語」の材料）
 export function getDueReviewWords(categoryId = localStorage.getItem("spelldash_category") || "all", until = Date.now(), limit = 3) {
   const stats = getWordStats();
-  const seen = new Set();
   const list = [];
-  // 出題順（未解決 → 期日の復習）と同じ並びで名指しする（「明日は A・B・C から」が翌朝の 1 語目と合う）
+  // 出題順（いまのカテゴリの未解決 → 期日の復習）と同じ並びで名指しする（「明日の復習: A・B・C」が翌朝の 1 語目と合う）
   const due = [];
-  for (const word of getWordsByCategory(categoryId)) {
-    if (seen.has(word.id)) continue;
-    seen.add(word.id);
+  for (const word of reviewPoolWords(categoryId)) {
     const s = stats[word.id];
     if (!s || s.mastered || !s.nextReviewAt) continue;
     if (Date.parse(s.nextReviewAt) > until) continue;
     if (isDoneForToday(s)) continue;
     due.push(word);
   }
-  due.sort((a, b) => Number(isUnresolved(stats[b.id])) - Number(isUnresolved(stats[a.id])));
+  const inCategory = new Set(getWordsByCategory(categoryId).map((w) => w.id));
+  const first = (w) => Number(inCategory.has(w.id) && isUnresolved(stats[w.id]));
+  due.sort((a, b) => first(b) - first(a));
   for (const word of due) {
     list.push(word);
     if (list.length >= limit) break;
@@ -440,14 +459,23 @@ export function startStudyQueue(categoryId) {
   // 2. Today's Mission の Review（未達成分）
   mission.review.filter((id) => !mission.reviewDone.includes(id)).forEach(push);
 
-  // 3. SRSの復習期限が来ている単語（「今日の復習」として件数を控える）
+  // 3. SRSの復習期限が来ている単語（「今日の復習」として件数を控える）。
+  //    プールだけ reviewPoolWords（コースの既習セクションまで）に広げるので idsInCategory では絞らない。
+  //    出題は id → findWordIn（カテゴリに無ければ findWord）なので表示は問題ない
   const before = queue.length;
-  words
+  const pushReview = (id) => {
+    if (seen.has(id) || isDoneForToday(stats[id])) return;
+    seen.add(id);
+    queue.push(id);
+  };
+  const reviewStats = weakOnly ? stats : null;
+  applyGenre(reviewPoolWords(activeCategoryId))
     .filter((w) => {
       const s = stats[w.id];
+      if (reviewStats && !isWeakStat(reviewStats[w.id])) return false;
       return s && !s.mastered && s.nextReviewAt && Date.parse(s.nextReviewAt) <= now;
     })
-    .forEach((w) => push(w.id));
+    .forEach((w) => pushReview(w.id));
   sessionReviewCount = queue.length - before;
 
   // 4. 学習中New単語（同日の持ち越し。Today Secured前なら反復を続ける）
