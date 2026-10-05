@@ -98,6 +98,11 @@ html[data-theme] body.home--playing #homeMore {
 }
 
 /* Study のセット中: 「思い出せた 0 ・ 思い出せず 0 ・ 今日 0」の帯は出さない（数字は結果パネルが 1 行で出す。要素は残す） */
+/* 腕試し中は「今日のセット 0 / 15」と残りの丸を出さない（10 語の腕試しと数が食い違う） */
+html[data-theme] body.home--playing.placement :is(#setProgress, #studyQueue) {
+  display: none;
+}
+
 html[data-theme] body.home--playing .stats--strip {
   display: none;
 }

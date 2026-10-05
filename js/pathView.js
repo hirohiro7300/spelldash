@@ -173,7 +173,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       if (state === "current") {
         return `
           <li class="path__node path__node--current path__node--${lane}">
-            <button type="button" class="path__start${resume ? " path__start--resume" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : "スタート"}: ${esc(u.label)}">
+            <button type="button" class="path__start${resume ? " path__start--resume" : ""}${!resume && !firstVisit && isDailySetDone() ? " path__start--done" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : "スタート"}: ${esc(u.label)}">
               ${resume ? `<span class="path__tip">途中のセット</span>続きから` : "スタート"}
             </button>
             <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${startSub}</span></div>
@@ -198,7 +198,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     ? section?.next
       ? `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start path__start--next" id="pathNext">次のセクションへ${icon("arrowRight")}</button><div class="path__label"><b>このセクション 全ユニット済み</b><span>次は「${esc([...getCategories(), ...getPackCatalog()].find((c) => c.id === section.next)?.label ?? "次のパック")}」</span></div></li>`
       : `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start" id="pathStart" data-unit="" aria-label="復習を続ける"><span class="path__tip">全部覚えた</span>復習</button><div class="path__label"><b>このセクション 全ユニット済み</b><span>復習を続けるか、<a href="./list.html#packs">単語帳</a>から次の分野を追加</span></div></li>`
-    : `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("star", { size: 14 })}</span><div class="path__label"><b>このセクション 全ユニット済み</b><span>${section?.next ? "次のセクションが開く" : "全ユニットを覚えたら"}</span></div></li>`;
+    : `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("star", { size: 14 })}</span><div class="path__label"><b>${units.length}ユニットを終えると</b><span>${section?.next ? "次のセクションが開く" : "このコースは終わり"}</span></div></li>`;
 
   const more = hiddenLocked > 0
     ? `<li class="path__node path__node--locked path__node--more path__node--c"><span class="path__dot path__dot--more" aria-hidden="true"></span><div class="path__label"><b>あと${hiddenLocked}ユニット</b><span>${hiddenUnits.map((u) => esc(u.label)).join("・")}</span></div></li>`

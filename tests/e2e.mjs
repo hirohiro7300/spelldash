@@ -537,7 +537,7 @@ console.log("daily set:");
   }
   const panelText = await page.$eval("#resultPanel", (el) => (el.hidden ? "" : el.textContent));
   check("2語自力正解でセット完了パネル", panelText.includes("今日のセット完了"), panelText.slice(0, 60));
-  check("完了パネルに明日の復習（数字1行）", panelText.includes("明日の復習") && panelText.includes("思い出せた") && panelText.includes("思い出せず"), panelText.slice(0, 160));
+  check("完了パネルに明日の語と数字1行", panelText.includes("明日") && panelText.includes("思い出せた") && panelText.includes("思い出せず"), panelText.slice(0, 160));
   check("道のスタートが完了表示に切替", (await page.textContent("#pathCard")).includes("今日のぶんは完了"));
   check("今週ドットに今日が点灯", (await page.$$eval("#learnedCard .learned-card__week i.on", (els) => els.length)) >= 1);
   check("今日のセットフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
@@ -773,7 +773,7 @@ console.log("first run & retention:");
   await page.waitForTimeout(900);
   await page.press("#input", "Enter");
   await page.waitForTimeout(300);
-  check("初回は腕試しの案内から始まる", (await page.textContent("#message")).includes("腕試し"), await page.textContent("#message"));
+  check("初回の 1 語目: 案内は #word の Enter の 1 本だけ（#message は空）", (await page.textContent("#word")).includes("Enter") && (await page.textContent("#message")).trim() === "", await page.textContent("#message"));
   check("腕試し開始が記録される", (await page.evaluate(() => localStorage.getItem("spelldash_placement"))) === "started");
   const known = new Map();
   let placement = null;
@@ -843,7 +843,7 @@ console.log("first run & retention:");
   await page.press("#input", "Enter");
   await page.waitForTimeout(300);
   const startMsg = await page.textContent("#message");
-  check("開始時にセットの中身予告（復習1・苦手1）", startMsg.includes("復習 1") && startMsg.includes("苦手 1") && startMsg.includes("からスタート"), startMsg);
+  check("開始時にセットの中身予告（復習1・苦手1）", startMsg.includes("復習 1") && startMsg.includes("苦手 1") && startMsg.endsWith("から"), startMsg);
   check("苦手（Unresolved）が先頭", (await page.textContent("#japanese")).trim() === "請求書");
   await page.press("#input", "Enter"); // invoice: 答えを見る（思い出せず）
   await page.waitForTimeout(200);
@@ -2975,22 +2975,20 @@ console.log("pro:");
   }
 }
 
-// ===== チュートリアル（Batch 44）: 初回の 1 セットに 1 文ずつ（docs/SPEC_TUTORIAL.md） =====
+// ===== チュートリアル（Batch 44／45）: 初回の 1 セットに 1 文ずつ（docs/SPEC_TUTORIAL.md） =====
 console.log("tutorial:");
 {
   const coach = async (p) => {
     const el = await p.$(".coach:not(.coach--out)");
     return el ? { step: await el.getAttribute("data-step"), text: (await el.textContent()).trim() } : null;
   };
-  // 初回: ?set=3 で短いセット。T1（1 語目）→ T2（答えを見た）→ T3（自力正解）→ T5（完了）→ T4（道）→ T6（連続日数）
+  // 初回: ?set=3 で短いセット。T2（答えを見た）→ T3（自力正解）→ 完了 → 道に戻る → T4（道）
   const page = await newPage();
   await page.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
-  check("チュートリアル: 開始前は何も出ない", (await coach(page)) === null);
   await page.press("#input", "Enter");
   await page.waitForTimeout(300);
-  const t1 = await coach(page);
-  check("チュートリアル: 1 語目に T1「日本語を見て、英単語を打つ。」", t1?.step === "T1" && t1.text.includes("日本語を見て"), JSON.stringify(t1));
+  check("チュートリアル: 1 語目には札を出さない（#word の案内だけ）", (await coach(page)) === null);
   await page.press("#input", "Enter"); // 答えを見る
   await page.waitForTimeout(300);
   const t2 = await coach(page);
@@ -3018,34 +3016,29 @@ console.log("tutorial:");
     if (c?.step === "T3") t3 = c;
     panel = !(await page.$eval("#resultPanel", (el) => el.hidden));
   }
-  check("チュートリアル: 初めて自力で思い出せたら T3", t3 !== null && t3.text.includes("思い出せた"), JSON.stringify(t3));
-  await waitUntil(async () => (await coach(page))?.step === "T5", 4000);
-  const t5 = await coach(page);
-  check("チュートリアル: 1 セット目の完了で T5（明日の復習）＋「わかった」", panel && t5?.step === "T5" && t5.text.includes("明日の復習") && (await page.$(".coach__ok")) !== null, JSON.stringify(t5));
-  await page.click(".coach__ok");
-  await page.waitForTimeout(250);
+  check("チュートリアル: 初めて自力で思い出せたら T3（日をあけて）", t3 !== null && t3.text.includes("日をあけて"), JSON.stringify(t3));
+  await page.waitForTimeout(1800);
+  check("チュートリアル: 完了パネルには札を出さない", panel && (await coach(page)) === null);
   await page.click("#backToPath");
   await page.waitForTimeout(400);
   const t4 = await coach(page);
-  check("チュートリアル: 道に戻ると T4（ここがあなたの道）", t4?.step === "T4" && t4.text.includes("あなたの道"), JSON.stringify(t4));
+  check("チュートリアル: 道に戻ると T4（毎日スタート）＋「わかった」", t4?.step === "T4" && t4.text.includes("スタート") && (await page.$(".coach__ok")) !== null, JSON.stringify(t4));
   await page.click(".coach__ok");
-  await page.waitForTimeout(300);
-  const t6 = await coach(page);
-  check("チュートリアル: T4 を閉じると T6（連続日数）", t6?.step === "T6" && t6.text.includes("連続日数"), JSON.stringify(t6));
-  await page.keyboard.press("Escape");
   await page.waitForTimeout(250);
-  check("チュートリアル: Esc で閉じる", (await coach(page)) === null);
+  check("チュートリアル: 「わかった」で閉じる", (await coach(page)) === null);
   const seenAll = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length);
-  check("チュートリアル: 6 つとも seen に記録", seenAll === 6, String(seenAll));
+  check("チュートリアル: 3 つとも seen に記録", seenAll === 3, String(seenAll));
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForTimeout(500);
   await page.press("#input", "Enter");
+  await page.waitForTimeout(200);
+  await page.press("#input", "Enter");
   await page.waitForTimeout(300);
-  check("チュートリアル: 2 回目の訪問では出ない", (await coach(page)) === null);
+  check("チュートリアル: 2 回目の訪問では答えを見ても出ない", (await coach(page)) === null);
   check("チュートリアルでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
-  // 設定の「チュートリアルをもう一度」→ 次のセットで T1 が戻る
+  // 設定の「チュートリアルをもう一度」→ 次のセットで T2 が戻る
   // newPage の seed は遷移ごとに入れ直されるので、チュートリアルの状態は seed せず「腕試し済み」だけ渡す（初期化で全部 seen になる）
   const page2 = await newPage({ storage: { spelldash_placement: "done" } });
   await page2.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
@@ -3054,8 +3047,10 @@ console.log("tutorial:");
   await page2.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
   await page2.waitForTimeout(500);
   await page2.press("#input", "Enter");
+  await page2.waitForTimeout(200);
+  await page2.press("#input", "Enter");
   await page2.waitForTimeout(300);
-  check("設定: もう一度のあと T1 が出る", (await coach(page2))?.step === "T1");
+  check("設定: もう一度のあと、答えを見ると T2 が出る", (await coach(page2))?.step === "T2");
   await page2.close();
 
   // 既存ユーザー（学習記録あり）には出ない
@@ -3063,8 +3058,10 @@ console.log("tutorial:");
   await page3.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
   await page3.waitForTimeout(500);
   await page3.press("#input", "Enter");
+  await page3.waitForTimeout(200);
+  await page3.press("#input", "Enter");
   await page3.waitForTimeout(300);
-  check("チュートリアル: 学習記録のある人には出ない", (await coach(page3)) === null && (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length)) === 6);
+  check("チュートリアル: 学習記録のある人には出ない", (await coach(page3)) === null && (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length)) === 3);
   await page3.close();
 }
 

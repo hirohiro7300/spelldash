@@ -57,7 +57,7 @@ function setupDemo(root, onDone) {
 
   const finishWord = () => {
     locked = true;
-    msg.textContent = index === 0 ? "思い出せた。打てた語は「覚えた」に近づき、忘れそうな頃にまた出る" : index === 1 ? "思い出せた。分からない語は Enter で答えを見てよい。数問後にまた出る" : "3語できた。本番は中学英語の腕試し10語から";
+    msg.textContent = index === 0 ? "思い出せた。" : index === 1 ? "思い出せた。" : "3語できた。本番は中学英語の腕試し10語から";
     msg.className = "welcome-demo__msg welcome-demo__msg--ok";
     if (dots) dots.innerHTML = DEMO_WORDS.map((_, i) => `<i class="${i <= index ? "on" : ""}"></i>`).join("");
     setTimeout(() => {

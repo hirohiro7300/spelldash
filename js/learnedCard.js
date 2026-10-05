@@ -1,4 +1,5 @@
 import { computeCategoryProgress } from "./categoryProgress.js";
+import { getLearnedCount } from "./learnedWords.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
 import { getLearnedDelta7, recordGrowthSnapshot, getWeekGoal, getThisWeekDays } from "./growthLog.js";
 import { getLearnedWordsToday } from "./learnedWords.js";
@@ -24,8 +25,9 @@ export function renderLearnedCard() {
   const activeId = localStorage.getItem("spelldash_category") || "all";
   const current = rows.find((r) => r.id === activeId) ?? all;
   const today = getRecalledTodayCount();
-  recordGrowthSnapshot({ learned: all.learned, mastered: all.mastered });
-  const week = getLearnedDelta7(all.learned);
+  const learnedTotal = getLearnedCount(); // パックの語も含む。学習データの概要と同じ数
+  recordGrowthSnapshot({ learned: learnedTotal, mastered: all.mastered });
+  const week = getLearnedDelta7(learnedTotal);
 
   let currentLine =
     current.id === "all"
@@ -75,12 +77,12 @@ export function renderLearnedCard() {
 
   // 折りたたみの見出しにも数字を出す（「覚えた単語 28」。Daily Dash の名前は入口のある #playModes だけに）
   const summary = document.querySelector("#homeMore > summary > span");
-  if (summary) summary.textContent = `覚えた単語 ${all.learned}`;
+  if (summary) summary.textContent = `覚えた単語 ${learnedTotal}`;
 
   el.innerHTML = `
     <div class="learned-card__main">
       <span class="learned-card__label">覚えた単語</span>
-      <span class="learned-card__num">${all.learned}</span>
+      <span class="learned-card__num">${learnedTotal}</span>
       ${week > 0 ? `<span class="learned-card__today">今週 +${week}</span>` : today > 0 ? `<span class="learned-card__today">今日 ${today}語</span>` : ""}
     </div>
     <div class="learned-card__today-words">${todayLine}</div>

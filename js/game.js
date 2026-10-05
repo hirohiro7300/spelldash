@@ -3,7 +3,7 @@ import { jaLooksSame } from "./jaAmbiguity.js";
 import { viableAnswers, completedAnswer, isSpellingVariant } from "./answers.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
-import { historyDotsHtml } from "./learnedWords.js";
+import { historyDotsHtml, getLearnedCount } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
@@ -394,16 +394,16 @@ export function startGame(options = {}) {
     } else if (resume) {
       showMessage(`前回の続きから。あと ${Math.max(0, currentSetSize() - setRecalled.size)}語で今日のセット完了`, "revealed");
     } else if (isPlacementRun()) {
-      showMessage("腕試し 10語。知らない語は Enter", "revealed");
+      showMessage(""); // 腕試しの告知はトップの注記が済ませている。Enter の説明は #word の 1 本
     } else {
       const c = composition ?? getQueueComposition();
       const parts = [];
       if (c.review > 0) parts.push(`復習 ${c.review}`);
       if (c.weak > 0) parts.push(`苦手 ${c.weak}`);
       if (c.repeat > 0) parts.push(`反復 ${c.repeat}`);
-      if (c.fresh > 0) parts.push(`新しい語 ${c.fresh}`);
+      if (c.fresh > 0) parts.push(`新しい単語 ${c.fresh}`);
       if (c.review > 0 || c.weak > 0) {
-        showMessage(`${parts.join("・")} からスタート`, "revealed");
+        showMessage(`${parts.join("・")}から`, "revealed");
       }
     }
   }
@@ -1167,7 +1167,7 @@ function completeWord() {
 function snapshotGrowth() {
   try {
     const all = computeCategoryProgress()[0];
-    recordGrowthSnapshot({ learned: all.learned, mastered: all.mastered });
+    recordGrowthSnapshot({ learned: getLearnedCount(), mastered: all.mastered });
   } catch {
     // ログは装飾
   }
@@ -1265,7 +1265,7 @@ function renderSetWordChips() {
     ids.length ? `<div class="word-chips"><span class="word-chips__title">${title}</span>${ids.map((id) => chip(id, cls)).join("")}</div>` : "";
   return (
     group("覚えた（前は出てこなかった語）", learned, "word-chip--learned") +
-    group("思い出せた（さっき見た語）", recovered, "word-chip--recovered") +
+    group("思い出せた（2回目）", recovered, "word-chip--recovered") +
     group("思い出せず（また出す）", failed, "word-chip--failed")
   );
 }
@@ -1280,7 +1280,9 @@ function announcePlacement() {
       ? `腕試し: ${p.total}語中 ${p.known}語 知ってた。難しい単語も最初から混ぜていく`
       : p.boost === 1
         ? `腕試し: ${p.total}語中 ${p.known}語 知ってた。少し難しい単語も混ぜていく`
-        : `腕試し: ${p.total}語中 ${p.known}語 知ってた。まずは基本の単語から積み上げる`;
+        : p.known === 0
+          ? "腕試し終わり。基本の単語から積み上げる"
+          : `腕試し: ${p.total}語中 ${p.known}語 知ってた。まずは基本の単語から積み上げる`;
   setTimeout(() => showMessage(line, "revealed"), 1300);
 }
 
@@ -1335,14 +1337,13 @@ function endStudySession() {
       ? failed === 0
         ? { mood: "happy", text: "全部回収した。" }
         : { mood: "normal", text: "残りは明日また出す。" }
-      : hasumiSetLine({ count: recalled, failed, sets: state.setsToday });
+      : hasumiSetLine({ count: recalled, failed, recovered: recovered.length, sets: state.setsToday });
     panel.innerHTML = `
       <h2 class="result-panel__title" id="resultTitle" tabindex="-1">${isRetry ? "回収完了" : "今日のセット完了"}</h2>
       ${hasumiBubbleHtml(hasumiLine, "hasumi--result")}
       <div class="result-panel__grid">
         <div><span>思い出せた</span><strong>${recalled}</strong></div>
         <div><span>思い出せず</span><strong>${failed}</strong></div>
-        <div><span>明日の復習</span><strong>${dueTomorrow}語</strong></div>
       </div>
       ${renderSetWordChips()}
       ${tomorrowLine}
@@ -1407,7 +1408,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     playLevelUpEffect();
     sfxLevelUp();
     // ランクが変わる節目はオーバーレイ 1 つ、それ以外は 1 行。両方は出さない
-    if (!celebrateRankUp(result)) {
+    if (isPlacementRun() || !celebrateRankUp(result)) {
       showMessage(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}`, "finished");
     } else {
       showMessage("思い出せた", "correct");
@@ -1415,7 +1416,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     return;
   }
 
-  if (streak.isFirstToday) {
+  if (streak.isFirstToday && streak.current >= 2) {
     const shieldNote = streak.earnedShield ? " ・ シールド獲得" : "";
     if (streak.earnedShield) sfxSparkle();
     showMessage(`${streak.current}日連続${shieldNote}`, "correct");
@@ -1452,7 +1453,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     }
     if (learnEvent === "recovered") {
       sfxSparkle();
-      showMessage(`思い出せた。${currentWord.en} はさっき出てこなかった語${xp}`, "correct");
+      showMessage(`思い出せた。さっき思い出せなかった ${currentWord.en}`, "correct");
       return;
     }
     if (learnEvent === "retained") {

@@ -35,6 +35,11 @@ export function getLearnedWordsToday() {
   return list.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
 }
 
+// 覚えた語の数（ホームの見出し・学習データの概要・推移の記録が同じ数を使う。パックの語も含む）
+export function getLearnedCount() {
+  return getLearnedWordList().length;
+}
+
 // 覚えた単語帳: 覚えかけ＋習得（知ってた語は除く）、新しい順
 export function getLearnedWordList() {
   const stats = getWordStats();
