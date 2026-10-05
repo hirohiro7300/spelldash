@@ -193,6 +193,8 @@ export function getDueReviewWords(categoryId = localStorage.getItem("spelldash_c
   const stats = getWordStats();
   const seen = new Set();
   const list = [];
+  // 出題順（未解決 → 期日の復習）と同じ並びで名指しする（「明日は A・B・C から」が翌朝の 1 語目と合う）
+  const due = [];
   for (const word of getWordsByCategory(categoryId)) {
     if (seen.has(word.id)) continue;
     seen.add(word.id);
@@ -200,6 +202,10 @@ export function getDueReviewWords(categoryId = localStorage.getItem("spelldash_c
     if (!s || s.mastered || !s.nextReviewAt) continue;
     if (Date.parse(s.nextReviewAt) > until) continue;
     if (isDoneForToday(s)) continue;
+    due.push(word);
+  }
+  due.sort((a, b) => Number(isUnresolved(stats[b.id])) - Number(isUnresolved(stats[a.id])));
+  for (const word of due) {
     list.push(word);
     if (list.length >= limit) break;
   }

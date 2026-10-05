@@ -399,7 +399,7 @@ export function startGame(options = {}) {
       const c = composition ?? getQueueComposition();
       const parts = [];
       if (c.review > 0) parts.push(`復習 ${c.review}`);
-      if (c.weak > 0) parts.push(`苦手 ${c.weak}`);
+      if (c.weak > 0) parts.push(`もう一度 ${c.weak}`);
       if (c.repeat > 0) parts.push(`反復 ${c.repeat}`);
       if (c.fresh > 0) parts.push(`新しい単語 ${c.fresh}`);
       if (c.review > 0 || c.weak > 0) {
@@ -1266,7 +1266,7 @@ function renderSetWordChips() {
   return (
     group("覚えた（前は出てこなかった語）", learned, "word-chip--learned") +
     group("思い出せた（2回目）", recovered, "word-chip--recovered") +
-    group("思い出せず（また出す）", failed, "word-chip--failed")
+    group("思い出せず", failed, "word-chip--failed")
   );
 }
 
@@ -1416,8 +1416,8 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     return;
   }
 
-  if (streak.isFirstToday && streak.current >= 2) {
-    const shieldNote = streak.earnedShield ? " ・ シールド獲得" : "";
+  if (streak.isFirstToday && streak.current >= 2 && !isRevealed) {
+    const shieldNote = streak.earnedShield ? " ・ シールド獲得（1日休んでも切れない）" : "";
     if (streak.earnedShield) sfxSparkle();
     showMessage(`${streak.current}日連続${shieldNote}`, "correct");
     return;
@@ -1432,7 +1432,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
   // New単語を今日4回思い出せた → 静かに定着を伝える
   if (loopResult?.secured) {
     sfxComplete();
-    showMessage(`今日定着。もう今日は出ない +${earned} XP`, "correct");
+    showMessage("今日はもう出ない", "correct");
     return;
   }
 

@@ -34,7 +34,7 @@ export async function renderLoginNudge() {
   }
 
   el.innerHTML = `
-    <span class="login-nudge__text">${activeDaysTotal()}日分の記録がこの端末にあります。<a href="#login" id="loginNudgeGo">ログイン</a>すると別の端末でも続きから。データはそのまま引き継がれます。</span>
+    <span class="login-nudge__text">${activeDaysTotal()}日分の記録は、この端末だけにある。<a href="#login" id="loginNudgeGo">ログイン</a>すると別の端末でも続きから（記録はそのまま）。</span>
     <button type="button" class="login-nudge__later" id="loginNudgeLater">あとで</button>
   `;
   document.getElementById("loginNudgeGo")?.addEventListener("click", (event) => {

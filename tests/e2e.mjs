@@ -843,7 +843,7 @@ console.log("first run & retention:");
   await page.press("#input", "Enter");
   await page.waitForTimeout(300);
   const startMsg = await page.textContent("#message");
-  check("開始時にセットの中身予告（復習1・苦手1）", startMsg.includes("復習 1") && startMsg.includes("苦手 1") && startMsg.endsWith("から"), startMsg);
+  check("開始時にセットの中身予告（復習1・もう一度1）", startMsg.includes("復習 1") && startMsg.includes("もう一度 1") && startMsg.endsWith("から"), startMsg);
   check("苦手（Unresolved）が先頭", (await page.textContent("#japanese")).trim() === "請求書");
   await page.press("#input", "Enter"); // invoice: 答えを見る（思い出せず）
   await page.waitForTimeout(200);
@@ -928,7 +928,7 @@ console.log("growth evidence:");
   await page2.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
   const calDays = await page2.$$eval("#calendarGrid .cal .cal__day", (els) => ({ total: els.length, active: els.filter((e) => /cal__day--[1-4]/.test(e.className)).length }));
-  check("学習カレンダー（13週×7日・学習日2）", calDays.total === 91 && calDays.active === 2 && (await page2.textContent("#calendarGrid")).includes("2日"), JSON.stringify(calDays));
+  check("学習カレンダー（13週×7日・学習日2）", calDays.total === 91 && calDays.active === 2, JSON.stringify(calDays)); // 「直近13週で N日」の行は Batch 46 で削除（カレンダーが見せる）
   const csv = await page2.evaluate(async () => (await import("/js/exportCsv.js")).buildLearnedCsv());
   check("覚えた単語帳CSVに見出しと語", csv.includes("english,japanese") && csv.includes("invoice,請求書") && csv.includes("xo"), csv.slice(0, 120));
   await page2.click("#learnedWordList [data-word-detail]");

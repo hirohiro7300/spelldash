@@ -40,7 +40,7 @@ export function renderStaticHeaderStreak() {
   const el = document.getElementById("headerStreak");
   if (!el) return;
   const streak = readStreak();
-  el.hidden = streak.current === 0 && streak.best === 0;
+  el.hidden = streak.current === 0;
   if (el.hidden) return;
   el.classList.toggle("header-streak--off", !streak.done);
   el.innerHTML = `${icon("flame", { size: 14 })}<b>${streak.current}</b><span>日</span>`;
