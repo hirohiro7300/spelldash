@@ -173,6 +173,10 @@ const BASE = `http://127.0.0.1:${server.address().port}`;
 // ---- テストハーネス ----
 let passed = 0;
 let failed = 0;
+// YYYY-MM-DD（端末の日付）。seed の日付ずらしに使う
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const ymdDaysAgo = (days) => { const d = new Date(); d.setDate(d.getDate() - days); return ymd(d); };
+
 function check(name, ok, detail = "") {
   if (ok) {
     passed++;
@@ -376,18 +380,17 @@ console.log("home widgets:");
   await page.close();
 
   // 腕試しの途中で何語か答えて閉じた人（placement=started のまま）: 翌日のホームで「まず腕試し10語から。」を言い続けない
-  const yesterdayYmd = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   const midPlacement = await newPage({
     storage: {
       spelldash_placement: "started",
-      spelldash_streak: JSON.stringify({ last: yesterdayYmd, current: 1, best: 1, shields: 0 }),
+      spelldash_streak: JSON.stringify({ last: ymdDaysAgo(1), current: 1, best: 1, shields: 0 }),
       spelldash_word_stats: JSON.stringify({ apple: { lastRecallSuccessAt: new Date(Date.now() - 86400000).toISOString(), recallSuccess: 1 } })
     }
   });
   await midPlacement.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await midPlacement.waitForTimeout(600);
-  const midLine = await midPlacement.textContent("#hasumiHome .hasumi__bubble");
-  check("腕試し途中で答えた人のはちゃんは腕試しの話をしない", !midLine.includes("腕試し"), midLine);
+  const midLine = (await midPlacement.textContent("#hasumiHome .hasumi__bubble")) ?? "";
+  check("腕試し途中で答えた人のはちゃんは腕試しの話をしない", midLine && !midLine.includes("腕試し"), midLine);
   await midPlacement.close();
 }
 
@@ -2656,7 +2659,6 @@ console.log("admin crm:");
 console.log("pro:");
 {
   const isoDaysFromNow = (days) => new Date(Date.now() + days * 86400000).toISOString();
-  const ymdDaysAgo = (days) => { const d = new Date(); d.setDate(d.getDate() - days); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   // subscriptions の行（スタブが返す）と、js/plan.js のキャッシュ（spelldash_plan。ページ表示直後の同期判定用）を同じ内容で用意する
   const planRow = (over = {}) => ({ status: "active", plan_interval: "month", current_period_end: isoDaysFromNow(20), cancel_at_period_end: false, ...over });
   const planCache = (row) => ({ status: row.status, interval: row.plan_interval, periodEnd: row.current_period_end, cancelAtPeriodEnd: row.cancel_at_period_end, checkedAt: new Date().toISOString() });

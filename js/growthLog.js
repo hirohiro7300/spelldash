@@ -115,9 +115,11 @@ export function getActiveDaysLast7(endOffset = 0) {
 export function getLearnedDelta7(currentLearned, endOffset = 0) {
   const log = getGrowthLog();
   if (log.length === 0) return 0;
-  const cutoff = dateKeyDaysAgo(7 + endOffset);
-  const baseline = [...log].reverse().find((e) => e.date <= cutoff) ?? log[0];
-  return Math.max(0, currentLearned - (baseline.learned ?? 0));
+  const latestOnOrBefore = (key) => [...log].reverse().find((e) => e.date <= key);
+  const baseline = latestOnOrBefore(dateKeyDaysAgo(7 + endOffset)) ?? log[0];
+  // 窓の終わりが昨日なら「昨日時点の値」から引く（今日の分は窓の外）。記録が無ければ今の値
+  const current = endOffset > 0 ? (latestOnOrBefore(dateKeyDaysAgo(endOffset))?.learned ?? currentLearned) : currentLearned;
+  return Math.max(0, current - (baseline.learned ?? 0));
 }
 
 // 直近N日の系列（欠損日は直前の値で埋める）

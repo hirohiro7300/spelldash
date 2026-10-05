@@ -1197,7 +1197,7 @@ function renderSetProgress() {
 
 // ===== 「覚えた！」の瞬間 =====
 // 別の日に思い出せなかった語を今日自力で思い出せた＝学習成立。ここだけは大きく祝う
-function celebrateLearned(word, earned) {
+function celebrateLearned(word, earned, note = "") {
   sfxSparkle();
   sfxComplete();
 
@@ -1214,7 +1214,7 @@ function celebrateLearned(word, earned) {
   }
 
   const jaShort = word.ja.length > 22 ? `${word.ja.slice(0, 22)}…` : word.ja;
-  showMessage(`覚えた！ ${word.en}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}`, "learned");
+  showMessage(`覚えた！ ${word.en}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`, "learned");
 
   const toast = document.getElementById("learnToast");
   if (toast) {
@@ -1395,12 +1395,16 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     renderHasumiHome();
   }
 
+  // シールド獲得（5 日ごとに 1 回きり）: 「覚えた」「レベルアップ」の行が勝っても、音と注記は落とさない
+  const shieldNote = streak.earnedShield ? " ・ シールド獲得（1日休んでも切れない）" : "";
+  if (streak.earnedShield) sfxSparkle();
+
   const result = addXp(earned);
   renderLevelBar();
 
   // 「覚えた！」は他の何より先に祝う（学習が成立した瞬間）
   if (learnEvent === "learned") {
-    celebrateLearned(currentWord, earned);
+    celebrateLearned(currentWord, earned, shieldNote);
     return;
   }
 
@@ -1409,17 +1413,15 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     sfxLevelUp();
     // ランクが変わる節目はオーバーレイ 1 つ、それ以外は 1 行。両方は出さない
     if (isPlacementRun() || !celebrateRankUp(result)) {
-      showMessage(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}`, "finished");
+      showMessage(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}${shieldNote}`, "finished");
     } else {
-      showMessage("思い出せた", "correct");
+      showMessage(`思い出せた${shieldNote}`, "correct");
     }
     return;
   }
 
-  // 連続日数は自力正解のときだけ言う。ただしシールド獲得は 1 日 1 回きりなので、答えを見た語でも知らせる
+  // 連続日数は自力正解のときだけ言う。ただしシールド獲得は答えを見た語でも知らせる
   if (streak.isFirstToday && streak.current >= 2 && (!isRevealed || streak.earnedShield)) {
-    const shieldNote = streak.earnedShield ? " ・ シールド獲得（1日休んでも切れない）" : "";
-    if (streak.earnedShield) sfxSparkle();
     showMessage(`${streak.current}日連続${shieldNote}`, "correct");
     return;
   }
@@ -1826,6 +1828,13 @@ function endChallenge() {
   const result = addXp(gainedXp);
   renderLevelBar();
 
+  // シールド獲得（5 日ごとに 1 回きり）は、その日の最初のプレイが Challenge／Daily でも知らせる
+  let shieldLine = "";
+  if (streak.earnedShield) {
+    sfxSparkle();
+    shieldLine = `${streak.current}日連続 ・ シールド獲得（1日休んでも切れない）`;
+  }
+
   // 結果の事実はパネルだけに書く（メッセージ行は空にして二重に言わない）
   showMessage("");
   let levelLine = "";
@@ -1837,13 +1846,13 @@ function endChallenge() {
   } else if (isDaily) {
     sfxComplete();
   }
-  renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun, categoryBestBefore, categoryBestUpdated, levelLine });
+  renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest, previousRun, categoryBestBefore, categoryBestUpdated, levelLine, shieldLine });
 }
 
 // ===== 終了リザルトパネル =====
 // メッセージ1行では終了の満足感と次のアクションが弱いため、
 // スコア・ベスト更新・次の一手（もう一回/シェア）をカード内に見せる
-function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0, previousRun = null, categoryBestBefore = 0, categoryBestUpdated = false, levelLine = "" }) {
+function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0, previousRun = null, categoryBestBefore = 0, categoryBestUpdated = false, levelLine = "", shieldLine = "" }) {
   const panel = document.getElementById("resultPanel");
   if (!panel) return;
 
@@ -1862,6 +1871,7 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0,
     bestBadge += `<div class="result-panel__cat">このカテゴリのベスト更新</div>`;
   }
   if (levelLine) bestBadge += `<div class="result-panel__level">${levelLine}</div>`;
+  if (shieldLine) bestBadge += `<div class="result-panel__level">${shieldLine}</div>`;
   const title = isDaily ? "Daily Dash 結果" : "Challenge 結果";
 
   const actions = isDaily
