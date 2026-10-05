@@ -14,15 +14,12 @@ export function computeWeeklyReport() {
   const endDay = new Date();
   endDay.setHours(23, 59, 59, 999);
   if (!includeToday) endDay.setDate(endDay.getDate() - 1);
-  const until = endDay.getTime();
   const start = new Date(endDay); // 日付単位で 6 日戻す（夏時間の切り替え日でも 7 日ぶんになる）
   start.setDate(start.getDate() - 6);
   start.setHours(0, 0, 0, 0);
   const since = start.getTime();
-  const inWindow = (iso) => {
-    const t = Date.parse(iso ?? 0) || 0;
-    return t >= since && t <= until;
-  };
+  // 上限は付けない: 語の記録は「最後の 1 回」の日時しか持たないので、今日の 1 回で上書きされた語を窓から落とすと母数が偏る
+  const inWindow = (iso) => (Date.parse(iso ?? 0) || 0) >= since;
   const stats = getWordStats();
 
   let recalled = 0;
