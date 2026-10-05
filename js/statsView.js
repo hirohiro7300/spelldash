@@ -134,7 +134,6 @@ function renderCards(container, cards) {
 function renderOverview() {
   const s = computeSummary();
   const streak = getStreak();
-  const all = computeCategoryProgress()[0];
 
   // 概要は2枚だけ: 覚えた語数と連続日数（CONCEPT 原則9）。残りは「分析」タブの「その他の数字」へ
   renderCards(overviewElement, [
@@ -391,7 +390,7 @@ function renderGrowthTrend() {
   const days = getTrendRange();
   syncTrendRangeButtons(days);
   const all = computeCategoryProgress()[0];
-  recordGrowthSnapshot({ learned: getLearnedCount(), mastered: all.mastered });
+  recordGrowthSnapshot({ learned: getLearnedCount(), mastered: all.mastered, legacyLearned: all.learned });
   const series = getLearnedSeries(days);
   const points = series.filter((p) => p.learned != null);
 
@@ -432,7 +431,7 @@ function renderGrowthTrend() {
       <path d="${d}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round" />
       ${dots}
       <text x="${pad.left}" y="${height - 6}" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${series[0].date.slice(5)}</text>
-      <text x="${width - pad.right}" y="${height - 6}" text-anchor="end" font-size="12" fill="var(--ink-3)">今日 ${all.learned}語</text>
+      <text x="${width - pad.right}" y="${height - 6}" text-anchor="end" font-size="12" fill="var(--ink-3)">今日 ${getLearnedCount()}語</text>
     </svg>
     <p class="score-trend__legend"><i class="score-trend__dot score-trend__dot--daily"></i>学習した日</p>
   `;

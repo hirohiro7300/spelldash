@@ -138,11 +138,12 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       ? `ユニット ${currentIndex + 1}／${units.length} ・ ${esc(current.label)}`
       : "";
   const resume = firstVisit ? null : resumableFor(path.categoryId);
+  const doneToday = !resume && !firstVisit && isDailySetDone(); // 今日のぶんが済んだ（ラベルと円の見た目の両方で使う）
   const startSub = resume
     ? `前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み・残り ${resume.queue.length}語）`
     : firstVisit
     ? PLACEMENT_NOTE
-    : isDailySetDone()
+    : doneToday
       ? `今日のぶんは完了。もう1セット（${setSize}語）`
       : `今日のセット ${setSize}語・約5分${due > 0 ? ` ・ 復習 ${due}語 待ち` : ""}`;
 
@@ -173,7 +174,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       if (state === "current") {
         return `
           <li class="path__node path__node--current path__node--${lane}">
-            <button type="button" class="path__start${resume ? " path__start--resume" : ""}${!resume && !firstVisit && isDailySetDone() ? " path__start--done" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : "スタート"}: ${esc(u.label)}">
+            <button type="button" class="path__start${resume ? " path__start--resume" : ""}${doneToday ? " path__start--done" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : "スタート"}: ${esc(u.label)}">
               ${resume ? `<span class="path__tip">途中のセット</span>続きから` : "スタート"}
             </button>
             <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${startSub}</span></div>

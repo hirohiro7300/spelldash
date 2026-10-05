@@ -23,9 +23,13 @@
 
 /* 盤面が出ている間はコンテンツの下に余白（入力欄が隠れない）。
    アプリ（html.native-app body の safe-area 指定）より優先されるよう詳細度を合わせる */
+/* 盤面の高さ。html に置く（scroll-padding は html が読む。body と .coach は継承で読む） */
+html:has(body.osk-open) {
+  --osk-h: 236px;
+}
+
 body.osk-open,
 html.native-app body.osk-open {
-  --osk-h: 236px; /* 盤面の高さ。brand.css の .coach など、盤面の上に出すものはこれを読む */
   padding-bottom: calc(var(--osk-h) + env(safe-area-inset-bottom, 0px));
 }
 
@@ -139,9 +143,11 @@ html:has(body.osk-open) {
     height: 40px;
     font-size: 17px;
   }
+  html:has(body.osk-open) {
+    --osk-h: 210px;
+  }
   body.osk-open,
   html.native-app body.osk-open {
-    --osk-h: 210px;
     padding-bottom: calc(var(--osk-h) + env(safe-area-inset-bottom, 0px));
   }
 }
@@ -162,9 +168,11 @@ html:has(body.osk-open) {
   .osk__key--enter small {
     display: none;
   }
+  html:has(body.osk-open) {
+    --osk-h: 170px;
+  }
   body.osk-open,
   html.native-app body.osk-open {
-    --osk-h: 170px;
     padding-bottom: calc(var(--osk-h) + env(safe-area-inset-bottom, 0px));
   }
 }

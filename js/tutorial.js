@@ -27,9 +27,9 @@ const WITH_BUTTON = new Set(["T4"]); // 操作で消えないものだけ「わ�
 function load() {
   try {
     const data = JSON.parse(localStorage.getItem(KEY) || "{}");
-    return { seen: Array.isArray(data.seen) ? data.seen : [], started: Boolean(data.started) };
+    return { seen: Array.isArray(data.seen) ? data.seen : [], started: Boolean(data.started), setDone: Boolean(data.setDone) };
   } catch {
-    return { seen: [], started: false };
+    return { seen: [], started: false, setDone: false };
   }
 }
 
@@ -53,7 +53,7 @@ function markSeen(id) {
 
 // 設定「チュートリアルをもう一度」
 export function resetTutorial() {
-  state = { seen: [], started: true };
+  state = { seen: [], started: true, setDone: false };
   save(state);
 }
 
@@ -95,7 +95,7 @@ function show(id) {
 function decideEligibility() {
   if (state.started) return;
   const fresh = Object.keys(getWordStats()).length === 0 && isPlacementPending();
-  state = fresh ? { seen: [], started: true } : { seen: [...ALL], started: true };
+  state = fresh ? { seen: [], started: true, setDone: false } : { seen: [...ALL], started: true, setDone: true };
   save(state);
 }
 
@@ -117,6 +117,15 @@ export function initTutorial() {
     if (!seen("T3")) show("T3");
   });
 
+  // 1 セット目を終えた（やり直しのセットは除く）: 道に戻ったときに T4 を出せる
+  window.addEventListener("spelldash:session-end", (event) => {
+    if (event.detail?.retry) return;
+    if (!state.setDone) {
+      state.setDone = true;
+      save(state);
+    }
+  });
+
   // ゲームが止まった／次を始めた: 出ている札は消す
   window.addEventListener("spelldash:game-end", () => dismiss());
   window.addEventListener("spelldash:game-start", () => dismiss());
@@ -124,7 +133,7 @@ export function initTutorial() {
   // 道に戻った（js/main.js の「道に戻る」が投げる）: 1 セット目を終えていれば T4（道）
   window.addEventListener("spelldash:home", () => {
     dismiss();
-    if (!seen("T2") && !seen("T3")) return; // まだ何も起きていない（始めてすぐ戻った）
+    if (!state.setDone) return; // まだ 1 セット目を終えていない（途中で戻った）
     if (!seen("T4")) show("T4");
   });
 
