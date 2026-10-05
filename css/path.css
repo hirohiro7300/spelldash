@@ -372,8 +372,8 @@ html[data-theme] .path__label a:hover {
 
 html[data-theme] .path__unit-link {
   display: inline-flex;
-  padding: 10px; /* 14px のアイコンでも当たり判定 34px（見た目の位置は margin で据え置く） */
-  margin: -10px;
+  padding: 13px; /* 14px のアイコンでも当たり判定 40px（見た目の位置は margin で据え置く） */
+  margin: -13px;
   color: var(--ink-3);
   text-decoration: none;
   opacity: 1;
@@ -389,7 +389,8 @@ html[data-theme] .path__unit-link:hover {
 }
 
 html[data-theme] .path__linkbtn {
-  padding: 0;
+  padding: 0 8px; /* 「開く」2 文字でも当たり 40px 幅（見た目の位置は margin で据え置く） */
+  margin: 0 -8px;
   border: 0;
   background: transparent;
   color: var(--ink);
@@ -547,9 +548,13 @@ html[data-theme] .path__course-now {
   white-space: nowrap;
 }
 
-/* 説明は畳む（「説明」で開く） */
+/* 説明は畳む（「くわしく」で開く）。隣の行ボタンと押し分けるので当たりは 44px 幅 */
 html[data-theme] .path__course-info {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
   min-height: 40px;
   margin: 0;
   padding: 0 4px;

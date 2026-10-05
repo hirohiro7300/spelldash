@@ -127,9 +127,9 @@
     <!-- ===== ロビー ===== -->
     <section id="battleLobby">
       <section class="hero hero--compact">
-        <p class="logo">CPU Ranked <span class="preseason-tag">Preseason</span></p>
-        <h1>Battle</h1>
-        <p class="subtitle">60秒、CPUと同条件の別問題で実力を測る。パスした語はStudyの復習に戻る。</p>
+        <p class="logo">CPU 対戦 <span class="preseason-tag">プレシーズン</span></p>
+        <h1>バトル</h1>
+        <p class="subtitle">60秒、CPU と別の問題で競う。パスした語は Study の復習に戻る。</p>
         <p class="auth-message" id="authMessage" role="status"></p>
       </section>
 
@@ -151,20 +151,19 @@
         <div class="battle-start-row">
           <select id="battleCategory" class="setting-select" aria-label="出題カテゴリ"></select>
           <button id="startBattle" class="btn battle-start-btn" type="button">
-            Ranked Match
+            対戦を始める
           </button>
         </div>
-        <p class="muted battle-note">対戦相手はCPU（プレシーズン）。</p>
       </section>
     </section>
 
     <!-- ===== 対戦 ===== -->
     <section id="battleArena" hidden>
-      <div class="arena-panel arena-panel--cpu" aria-label="CPU側">
+      <div class="arena-panel arena-panel--cpu" aria-label="相手">
         <div class="arena-panel__head">
           <span class="arena-panel__who" id="cpuName">CPU</span>
           <span class="arena-panel__stats">
-            Score <strong id="cpuScore">0</strong>
+            スコア <strong id="cpuScore">0</strong>
             <span class="arena-combo" id="cpuCombo"></span>
           </span>
         </div>
@@ -175,11 +174,11 @@
 
       <div class="arena-timer mono" id="battleTimer" role="timer">60</div>
 
-      <div class="arena-panel arena-panel--you" aria-label="あなた側">
+      <div class="arena-panel arena-panel--you" aria-label="あなた">
         <div class="arena-panel__head">
-          <span class="arena-panel__who">YOU</span>
+          <span class="arena-panel__who">あなた</span>
           <span class="arena-panel__stats">
-            Score <strong id="playerScore">0</strong>
+            スコア <strong id="playerScore">0</strong>
             <span class="arena-combo" id="playerCombo"></span>
           </span>
         </div>
@@ -190,27 +189,27 @@
           <input
             id="battleInput"
             type="text"
-            placeholder="英単語を入力（Enter でパス）"
+            placeholder="英単語を入力"
             aria-label="英単語を入力"
             autocomplete="off"
             autocapitalize="none"
             autocorrect="off"
             spellcheck="false"
-            enterkeyhint="go"
+            enterkeyhint="next"
           />
         </div>
-        <p class="arena-status" id="playerStatus">分からなければ Enter でパス（答えは出ません）</p>
+        <p class="arena-status" id="playerStatus">分からなければ Enter（次へ）でパス。答えは出ない</p>
       </div>
     </section>
 
     <!-- ===== 結果 ===== -->
     <section id="battleResult" hidden>
       <section class="result-card battle-result-card">
-        <p class="battle-verdict" id="resultVerdict">VICTORY</p>
+        <p class="battle-verdict" id="resultVerdict"></p>
 
         <div class="battle-scores">
           <div class="battle-scores__row">
-            <span>You</span><strong id="resultPlayerScore">0</strong>
+            <span>あなた</span><strong id="resultPlayerScore">0</strong>
           </div>
           <div class="battle-scores__row battle-scores__row--cpu">
             <span id="resultCpuName">CPU</span><strong id="resultCpuScore">0</strong>
@@ -230,7 +229,7 @@
 
         <div class="battle-review" id="resultReview" hidden>
           <p id="resultUnresolvedText"></p>
-          <a href="/" class="btn btn--sm">復習する</a>
+          <a href="/" class="btn btn--sm btn--ghost">パスした語を復習する</a>
         </div>
 
         <div class="battle-actions">

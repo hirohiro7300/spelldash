@@ -100,7 +100,7 @@ function ensureModal() {
       <input id="feedbackContact" type="text" maxlength="120" placeholder="返信先（任意: メール / X など）" autocomplete="off" />
       <div class="feedback-modal__actions">
         <span class="feedback-modal__status" id="feedbackStatus" role="status"></span>
-        <button type="submit" class="btn btn--sm" id="feedbackSubmit">送信</button>
+        <button type="submit" class="btn btn--sm" id="feedbackSubmit">送る</button>
       </div>
       <p class="feedback-modal__note">送られるのは本文・返信先・ページ名・ブラウザ情報だけです。</p>
     </form>
@@ -120,7 +120,7 @@ function ensureModal() {
     try {
       const result = await submitFeedback({ message: message.value, contact: contact.value });
       status.textContent =
-        result.status === "sent" ? "ありがとうございます。届きました。" : "ありがとうございます。保存しました（次回接続時に送ります）。";
+        result.status === "sent" ? "ありがとうございます、届きました。" : "ありがとうございます。保存しました（次回接続時に送ります）。";
       message.value = "";
       setTimeout(closeFeedback, 1600);
     } catch (error) {

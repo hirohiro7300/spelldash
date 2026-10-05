@@ -97,8 +97,13 @@ html[data-theme] body.home--playing #homeMore {
   display: none;
 }
 
-/* 腕試し中（body.placement は js/game.js が開始時に付け、腕試し確定・終了・中断で外す）: 3 つの 0 を並べない */
-html[data-theme] body.home--playing.placement .stats--strip {
+/* Study のセット中: 「思い出せた 0 ・ 思い出せず 0 ・ 今日 0」の帯は出さない（数字は結果パネルが 1 行で出す。要素は残す） */
+html[data-theme] body.home--playing .stats--strip {
+  display: none;
+}
+
+/* 出題名が道の見出し（コース名）と同じとき: ラベル・名前・区切りを畳んで「設定」だけ残す（js/main.js の renderSetupSummary が付ける） */
+html[data-theme] .setup-toggle--same :is(.setup-toggle__label, .setup-toggle__summary, .setup-toggle__sep) {
   display: none;
 }
 
@@ -482,6 +487,11 @@ html[data-theme] .home-more__body .daily {
   margin: 0;
 }
 
+/* 未プレイの Daily Dash カードは畳む（入口は「ほかの遊び方」の 1 つ。プレイ済みはスコア・順位を出すので残す） */
+html[data-theme] .home-more__body .daily:not(.daily--done) {
+  display: none;
+}
+
 /* 覚えた単語 */
 html[data-theme] .learned-card {
   gap: 6px 16px;
@@ -595,6 +605,30 @@ html[data-theme] .learned-card__link .icon {
 }
 
 /* Daily Dash とランキング */
+/* レイアウト（旧 game.css から移動。色・枠・余白は下の規則が持つ） */
+html[data-theme] .daily {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+html[data-theme] .daily:empty {
+  display: none;
+}
+
+html[data-theme] .daily__head {
+  flex-shrink: 0;
+}
+
+html[data-theme] .daily__result strong {
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-theme] .daily__button {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 html[data-theme] .daily {
   gap: 10px 16px;
   padding: 16px;

@@ -11,7 +11,7 @@
 ## 2. いま入っているもの
 
 ### 学習
-- **4 モード（増やさない）**: Study（セット・Recall Loop・SRS）／Challenge（60 秒）／Daily Dash（全員同じ問題・ランキング）／Battle（CPU ランクマッチ。ロジックは凍結、色と面だけ触る）
+- **4 モード（増やさない）**: Study（セット・Recall Loop・SRS）／Challenge（60 秒）／Daily Dash（全員同じ問題・ランキング）／Battle（CPU ランクマッチ。ロジックは凍結、色・面・文字列だけ触る）
 - **道（ホーム）**: コース（10 本: 中学やり直し・ビジネス・会話・高校・英検・NGSL・TSL・BSL・NAWL・TOEIC）→ セクション → ユニット。済みは畳み、現在地のスタートが最初の画面に来る。前回の続きから再開
 - **判定**: 1 ミス＝不正解（Clean Correct）。**別解**: 同じ訳の別の英単語を打つと「talk も「話す」。この問題の語は speak」と案内して不正解にしない。パック内で訳のトークンを共有する語は自動で別解、加えて `accept` を人手で確認済み（英単語パック 81 本・4,914 枚・8,908 語）。つづり違い（favourite／favorite）はそのまま正解
 - **教材**: 171 カテゴリ・15,464 枚（分野パック 162、`/packs/<id>.html` に入口ページ）。オープン教材は NGSL 24・TSL 11・BSL 15・NAWL 8 = 58 パック・6,814 語（CC BY-SA 4.0、出典表記あり）。英単語カードには例文（ex／exJa）。形式は docs/PACK_FORMAT.md、検証は `node scripts/validate-words.mjs`
@@ -44,10 +44,10 @@
 
 ## 4. 品質・流れ
 
-- E2E `npm test`（playwright-core、Supabase はスタブ、約 6 分）: **535 件**。検証 `node scripts/validate-words.mjs`。CI は PR と main で検証を実行
+- E2E `npm test`（playwright-core、Supabase はスタブ、約 6 分）: **536 件**。検証 `node scripts/validate-words.mjs`。CI は PR と main で検証を実行
 - 本番反映: dev ブランチ → PR → main → Vercel（2 プロジェクトとも success を確認）。条件は E2E 全件＋validate OK。Supabase の SQL・外部への告知は創業者側
 - アクセシビリティ: キーボードだけで主線を一周できる（Tab の移動、モーダルの焦点管理、スキップリンク、aria-live、ラベル）。コントラストは AA（ink-3 5.1:1）
-- スマホ: 指の端末では入力欄 16px（自動ズームなし）、押せるものは 40〜44px。UI の見直しは 2 回（主線 78 件・主線以外 70 件）を監査 → 反映 → 査読で通した
+- スマホ: 指の端末では入力欄 16px（自動ズームなし）、押せるものは 40〜44px。UI の見直しは 3 回（主線 78 件・主線以外 70 件・Battle／管理画面／旧 CSS 49 件）を監査 → 反映 → 査読で通した。game.css の旧パレットは 0
 - 大きな変更の進め方: 監査（撮影・計測）→ 指摘を事実と直し方で列挙 → 所有ファイルを分けた並行実装 → 反証レビュー → E2E → PR。データの別解・訳は「提案 → 別の目で反証」の 2 段
 
 ## 5. 守っていること（創業者の規則）
@@ -59,10 +59,10 @@
 
 ## 6. 数字
 
-- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、E2E 535、マージ済み PR 101
+- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、E2E 536、マージ済み PR 102
 - **ユーザー系の数字はまだ無い**（10 人ローンチ前。CRM と activity_days は受け皿として用意済み）
 
 ## 7. 次の候補（docs/BACKLOG.md）
 
 - 創業者の判断待ち: 見出し語 18 件、カタカナ訳 225 語の方針、年額、AI の無料回数（docs/FOUNDER_TODO.md F）
-- コード側の候補: UI の残り（docs/BACKLOG.md F13）、単語帳の分野パック見出し、マイ単語帳の端末間同期（SQL が要る）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）
+- コード側の候補: チュートリアル（docs/SPEC_TUTORIAL.md、着手中）、UI の残り（docs/BACKLOG.md F13 の残り）、単語帳の分野パック見出し、マイ単語帳の端末間同期（SQL が要る）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）

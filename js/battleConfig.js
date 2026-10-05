@@ -48,10 +48,10 @@ export const CPU_BY_RANK = {
 
 // CPUタイプ（静かで知的な対戦相手。派手なキャラクター性は持たせない）
 export const CPU_TYPES = [
-  { id: "steady", label: "Steady", name: "アオイ", speedMul: 1.0, accuracyMod: 0.03, missMul: 0.8, passMul: 1.0 },
-  { id: "sprinter", label: "Sprinter", name: "ハヤテ", speedMul: 0.72, accuracyMod: -0.07, missMul: 1.6, passMul: 1.1 },
-  { id: "scholar", label: "Scholar", name: "シオン", speedMul: 1.3, accuracyMod: 0.09, missMul: 0.6, passMul: 0.7 },
-  { id: "rival", label: "Rival", name: "リン", speedMul: 1.0, accuracyMod: 0, missMul: 1.0, passMul: 1.0 }
+  { id: "steady", label: "安定型", name: "アオイ", speedMul: 1.0, accuracyMod: 0.03, missMul: 0.8, passMul: 1.0 },
+  { id: "sprinter", label: "速攻型", name: "ハヤテ", speedMul: 0.72, accuracyMod: -0.07, missMul: 1.6, passMul: 1.1 },
+  { id: "scholar", label: "堅実型", name: "シオン", speedMul: 1.3, accuracyMod: 0.09, missMul: 0.6, passMul: 0.7 },
+  { id: "rival", label: "互角", name: "リン", speedMul: 1.0, accuracyMod: 0, missMul: 1.0, passMul: 1.0 }
 ];
 
 export function rankFromRp(rp) {

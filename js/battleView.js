@@ -118,7 +118,7 @@ function renderLobby() {
 
   $("lobbyRank").textContent = rank.label;
   $("lobbyRp").textContent = rank.next
-    ? `${rank.intoRank} / ${rank.span} RP（${store.rp} RP）`
+    ? `${rank.intoRank} / ${rank.span} RP`
     : `${store.rp} RP`;
   $("lobbyRpFill").style.width = `${Math.round(rank.progress * 100)}%`;
   $("lobbyRecord").textContent = `${store.wins}勝 ${store.losses}敗 ${store.draws}分`;
@@ -152,31 +152,31 @@ function startMatch() {
       },
       onPlayerCorrect(player) {
         $("playerScore").textContent = player.score;
-        $("playerCombo").textContent = player.combo >= 2 ? `${player.combo} combo` : "";
+        $("playerCombo").textContent = player.combo >= 2 ? `${player.combo} 連続` : "";
         flash($("playerScore"), "score-pulse");
         $("playerStatus").textContent = "";
         sfxCorrect(player.combo);
       },
       onPlayerMiss() {
-        $("playerStatus").textContent = "Miss!";
+        $("playerStatus").textContent = "違う";
         sfxMiss();
       },
       onPlayerPass(player) {
         $("playerCombo").textContent = "";
-        $("playerStatus").textContent = "Pass（試合後にStudyで復習できます）";
+        $("playerStatus").textContent = "パス（試合後に Study で復習）";
         sfxReveal();
       },
       onCpuUpdate(cpuState, event) {
         $("cpuJa").textContent = cpuState.ja;
         $("cpuScore").textContent = cpuState.score;
-        $("cpuCombo").textContent = cpuState.combo >= 2 ? `${cpuState.combo} combo` : "";
+        $("cpuCombo").textContent = cpuState.combo >= 2 ? `${cpuState.combo} 連続` : "";
         renderCpuProgress(cpuState.done, cpuState.total);
 
         if (event.type === "correct") {
           $("cpuStatus").textContent = "正解";
           flash($("cpuScore"), "score-pulse");
         } else if (event.type === "pass") {
-          $("cpuStatus").textContent = "Pass";
+          $("cpuStatus").textContent = "パス";
         } else if (event.type === "word-start") {
           $("cpuStatus").textContent = "";
         }
@@ -193,7 +193,7 @@ function startMatch() {
   $("cpuScore").textContent = "0";
   $("playerCombo").textContent = "";
   $("cpuCombo").textContent = "";
-  $("playerStatus").textContent = "分からなければ Enter でパス（答えは出ません）";
+  $("playerStatus").textContent = "分からなければ Enter（次へ）でパス。答えは出ない";
   $("cpuStatus").textContent = "";
   $("battleTimer").textContent = durationOverride ?? BATTLE.durationSeconds;
 
@@ -222,7 +222,7 @@ function showResult(summary) {
   const outcome = applyMatchResult(summary.result);
   bumpActivity("battleRuns"); // KPI心拍
 
-  const verdict = summary.result === "win" ? "VICTORY" : summary.result === "loss" ? "DEFEAT" : "DRAW";
+  const verdict = summary.result === "win" ? "勝ち" : summary.result === "loss" ? "負け" : "引き分け";
   if (summary.result === "win") sfxComplete();
   $("resultVerdict").textContent = verdict;
   $("resultVerdict").className = `battle-verdict battle-verdict--${summary.result}`;
@@ -232,14 +232,14 @@ function showResult(summary) {
   $("resultCpuScore").textContent = summary.cpu.score;
 
   $("resultDetail").innerHTML = `
-    <div><span>Accuracy</span><strong>${summary.player.accuracy}%</strong></div>
-    <div><span>Typing Miss</span><strong>${summary.player.typingMiss}</strong></div>
-    <div><span>Passed</span><strong>${summary.player.passCount}</strong></div>
+    <div><span>正確さ</span><strong>${summary.player.accuracy}%</strong></div>
+    <div><span>打ち間違い</span><strong>${summary.player.typingMiss}</strong></div>
+    <div><span>パス</span><strong>${summary.player.passCount}</strong></div>
   `;
 
   const sign = outcome.rpChange >= 0 ? "+" : "";
-  $("resultRpChange").textContent = `Rank Points ${sign}${outcome.rpChange}`;
-  $("resultRankLine").textContent = `${outcome.rankAfter.label}  ${outcome.rpBefore} → ${outcome.rpAfter} RP`;
+  $("resultRpChange").textContent = `RP ${sign}${outcome.rpChange}`;
+  $("resultRankLine").textContent = `${outcome.rankAfter.label}  ${outcome.rpAfter} RP`;
   $("resultRpFill").style.width = `${Math.round(outcome.rankAfter.progress * 100)}%`;
 
   const promotion = $("resultPromotion");
@@ -253,7 +253,7 @@ function showResult(summary) {
   const unresolvedCount = summary.player.passes.length;
   $("resultReview").hidden = unresolvedCount === 0;
   if (unresolvedCount > 0) {
-    $("resultUnresolvedText").textContent = `未解決 ${unresolvedCount}語`;
+    $("resultUnresolvedText").textContent = `パスした ${unresolvedCount}語`;
   }
 
   showSection("battleResult");

@@ -21,9 +21,11 @@ html[data-theme] body {
   box-shadow: none;
 }
 
-html[data-theme] .input-wrapper :focus-visible,
-html[data-theme] .input-wrapper--battle :focus-visible {
+html[data-theme] .input-wrapper :focus,
+html[data-theme] .input-wrapper--battle :focus {
   outline: none;
+  box-shadow: none;
+  border-color: transparent;
 }
 
 /* プログラムで焦点を置くだけの要素（本文の入口・結果の見出し）には枠を出さない */
@@ -178,7 +180,19 @@ html[data-theme] .btn:hover {
   background: var(--ink-2);
 }
 
+/* 主ボタンの寸法（CONCEPT §4: 高さ 40px・太字 14px）。素の class="btn" でもこの寸法になる（旧 game.css の全称 button に落ちない） */
+html[data-theme] .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
 html[data-theme] .btn--sm {
+  min-height: 0;
   padding: 8px 14px;
   font-size: 13px;
   border-radius: var(--radius);
@@ -456,9 +470,13 @@ html[data-theme] .icon {
   }
 }
 
-/* 400px 未満は「バトル」タブを出さない（ホームの「ほかの遊び方」から入れる） */
+/* 400px 未満は「バトル」タブを出さない（ホームの「ほかの遊び方」から入れる）。Battle のページでは現在地の印として残す */
 @media (max-width: 399.98px) {
-  html[data-theme] .site-nav__link[href$="battle.html"] {
+  html[data-theme] .site-nav__link[href$="battle.html"]:not([aria-current]) {
+    display: none;
+  }
+  /* 4 つ目のタブが出る Battle のページでは連続日数の丸を出さない（4 タブ＋ログインで幅いっぱい。連続日数は学習データにもある） */
+  html[data-theme] .site-header__inner:has(.site-nav__link[aria-current][href$="battle.html"]) .header-streak {
     display: none;
   }
 }
@@ -501,6 +519,135 @@ html[data-theme] .header-streak--off .icon {
   color: var(--ink-3);
 }
 
+/* ---- はちゃん（全ページ共通の土台）: 丸いアバター＋吹き出し。色・寸法は home.css／card.css／pages.css の各場面 ---- */
+html[data-theme] .hasumi__avatar {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+html[data-theme] .hasumi__bubble {
+  position: relative;
+  align-self: center;
+}
+
+/* ---- ご意見・不具合モーダル（js/feedback.js が全ページのフッターから開く）: 1 定義。単語詳細（pages.css）と同じ暗幕・紙の面 ---- */
+html[data-theme] .feedback-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+html[data-theme] .feedback-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] .feedback-modal__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(480px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 18px 20px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+html[data-theme] .feedback-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+html[data-theme] .feedback-modal__head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+/* 閉じる: 40px の当たり・枠なし・ink-3 の線画 */
+html[data-theme] .feedback-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: -8px -8px -8px 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+html[data-theme] .feedback-modal__close .icon {
+  margin: 0;
+}
+
+html[data-theme] .feedback-modal__close:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] .feedback-modal__lead {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+html[data-theme] .feedback-modal__panel textarea,
+html[data-theme] .feedback-modal__panel input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+html[data-theme] .feedback-modal__panel :is(input, textarea):focus,
+html[data-theme] .feedback-modal__panel :is(input, textarea):focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: var(--focus);
+}
+
+html[data-theme] .feedback-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+html[data-theme] .feedback-modal__status {
+  color: var(--ok);
+  font-size: 13px;
+}
+
+html[data-theme] .feedback-modal__note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
 /* ---- プロフィール: 声の選択 ---- */
 html[data-theme] .voice-row {
   display: inline-flex;
@@ -513,21 +660,23 @@ html[data-theme] .voice-row .setting-select {
   max-width: 260px;
 }
 
-/* ---- 例文の発音（.word-example__speak）: 24px の丸。全ページ共通 ---- */
+/* ---- 例文の発音（.word-example__speak）: 28px の丸。「発音」pill と同じ素材（paper-3 の面・1px --line）。全ページ共通 ---- */
 html[data-theme] .word-example__speak {
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   min-height: 0;
   margin: 0 0 0 6px;
   padding: 0;
   justify-content: center;
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: transparent;
+  background: var(--paper-3);
   color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.6;
   box-shadow: none;
 }
 
@@ -537,7 +686,8 @@ html[data-theme] .word-example__speak .icon {
 }
 
 html[data-theme] .word-example__speak:hover {
-  background: var(--paper-3);
+  background: var(--paper-2);
+  border-color: var(--line-2);
   color: var(--ink);
 }
 
@@ -576,6 +726,16 @@ html[data-theme] .word-example__speak:hover {
     padding-top: 0;
     padding-bottom: 0;
   }
+  /* 完了パネルの語チップ（押すと発音）: 36px・間隔 8px。見た目（paper-3 の pill・13px 等幅）は変えない */
+  html[data-theme] .word-chip {
+    min-height: 36px;
+    padding-top: 0;
+    padding-bottom: 0;
+    align-items: center;
+  }
+  html[data-theme] .word-chips {
+    gap: 8px;
+  }
   /* 主線以外の入力欄も 16px に（iOS Safari は 16px 未満の入力欄にフォーカスすると拡大する） */
   html[data-theme] :is(.setting-select, .note-input, .account-menu--login input, .feedback-modal__panel input, .feedback-modal__panel textarea, #wordSearch, .word-filter, .my-concept__form textarea, .cardgen textarea, .my-words__bulk textarea, #myWordBulk, .packs__tools input, #listSearch, #packsSearch, #emailInput) {
     font-size: 16px;
@@ -584,12 +744,18 @@ html[data-theme] .word-example__speak:hover {
     min-height: 44px;
   }
   /* 文字だけのリンク・ボタン: 見た目は変えず当たり判定だけ縦に広げる */
-  html[data-theme] .gcard__term,
-  html[data-theme] .learned-card__link {
+  html[data-theme] .gcard__term {
     padding-top: 8px;
     padding-bottom: 8px;
     margin-top: -8px;
     margin-bottom: -8px;
+  }
+  /* 12px の文字でも当たり 40px 以上 */
+  html[data-theme] .learned-card__link {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-top: -12px;
+    margin-bottom: -12px;
   }
   /* フッターのリンクは 40px の行（負マージンで広げると隣の行と重なる） */
   html[data-theme] .site-footer__nav {
@@ -614,5 +780,21 @@ html[data-theme] .word-example__speak:hover {
   }
   html[data-theme] .volume-row input[type="range"] {
     height: 44px;
+  }
+}
+
+/* ご意見モーダル（390）: 上寄せ・「送る」は全幅 44px。coarse の .btn--sm 40px（同じ詳細度）より後に置く */
+@media (max-width: 560px) {
+  html[data-theme] .feedback-modal {
+    align-items: flex-start;
+    padding-top: 16px;
+  }
+  html[data-theme] .feedback-modal__actions {
+    flex-wrap: wrap;
+  }
+  html[data-theme] .feedback-modal__actions .btn {
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 44px;
   }
 }

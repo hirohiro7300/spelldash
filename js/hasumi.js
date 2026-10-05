@@ -72,7 +72,7 @@ export function hasumiResultLine({ isBest = false, isDaily = false, diff = null 
     return { mood: "normal", text: "思い出せなかった語を、ひとつ拾おう。" };
   }
   if (isDaily) {
-    return { mood: "normal", text: "Daily は1日1回。また明日。" };
+    return { mood: "normal", text: "Daily Dash は1日1回。また明日。" };
   }
   return { mood: "normal", text: "おつかれさま。" };
 }
