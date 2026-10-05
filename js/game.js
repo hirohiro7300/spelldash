@@ -1337,7 +1337,7 @@ function endStudySession() {
       ? failed === 0
         ? { mood: "happy", text: "全部回収した。" }
         : { mood: "normal", text: "残りは明日また出す。" }
-      : hasumiSetLine({ count: recalled, failed, recovered: recovered.length, sets: state.setsToday });
+      : hasumiSetLine({ count: recalled, failed, recovered: [...setLearnEvents].filter(([, e]) => e === "recovered").length, sets: state.setsToday });
     panel.innerHTML = `
       <h2 class="result-panel__title" id="resultTitle" tabindex="-1">${isRetry ? "回収完了" : "今日のセット完了"}</h2>
       ${hasumiBubbleHtml(hasumiLine, "hasumi--result")}

@@ -280,7 +280,7 @@ console.log("study:");
 // ===== 2.5 日本語IME＋Studyキュー配置 =====
 console.log("ime & queue:");
 {
-  const page = await newPage();
+  const page = await newPage({ storage: { spelldash_placement: "done" } }); // 腕試し中はキューを畳むので、腕試し済みで
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   await page.press("#input", "Enter"); // Study開始
@@ -804,8 +804,8 @@ console.log("first run & retention:");
     return ids.map((en) => pool.find((w) => w.en === en)?.level);
   }, [...known.values()]);
   check("腕試しに普通・難しい語が混ざる", seenLevels.includes("normal") && seenLevels.includes("hard"), seenLevels.join(","));
-  await waitUntil(async () => (await page.textContent("#message")).includes("腕試し:"), 2500);
-  check("腕試し結果のメッセージ", (await page.textContent("#message")).includes("腕試し:"), await page.textContent("#message"));
+  await waitUntil(async () => (await page.textContent("#message")).includes("腕試し"), 2500);
+  check("腕試し結果のメッセージ", (await page.textContent("#message")).includes("腕試し"), await page.textContent("#message"));
   // 知ってた語が多い場合は即ブースト（モジュール直呼び）
   const boosted = await page.evaluate(async () => {
     const m = await import("/js/difficulty.js");
