@@ -100,7 +100,7 @@ export function initializeMyWordsView(onChange = () => {}) {
 function setStatus(text, isError) {
   const el = document.getElementById("myWordStatus");
   if (!el) return;
-  const limit = text === limitMessage();
+  const limit = text.endsWith(limitMessage()); // 直前の結果（「追加済み: …」）を前に残して上限の文を続けることがある
   el.textContent = text;
   // 上限の案内（「Pro なら」を含む固定文）にだけ Pro へのリンクを「。」の直後に続ける。ユーザー入力は innerHTML に入れない
   if (limit && text.includes("Pro なら")) {
@@ -127,7 +127,9 @@ function renderLimitState() {
     button.disabled = atLimit;
   }
   if (atLimit) {
-    setStatus(limitMessage(), false);
+    // いま出ている結果（追加済み・まとめて追加の内訳）は消さず、その後ろに上限の文を続ける
+    const prev = el.dataset.limit === "1" ? "" : el.textContent.trim();
+    setStatus(prev ? `${prev}　${limitMessage()}` : limitMessage(), false);
     el.classList.add("my-words__status--limit");
     if (el.nextElementSibling !== form) form.before(el);
   } else {

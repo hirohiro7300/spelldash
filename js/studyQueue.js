@@ -194,7 +194,8 @@ export function isReviewDue(stat) {
 let sessionReviewCount = 0;
 
 // 復習期日が来ていて、今日まだ片付いていない語の数（ホームCTA・完了パネル用）
-// プールは startStudyQueue の手順 3 と同じ（reviewPoolWords）: 道の「復習から」と完了パネルの「明日の復習」が同じ語を指す
+// プールは startStudyQueue の手順 3 と同じ（reviewPoolWords）: 道の「復習から」と完了パネルの「明日の復習」が同じ範囲を指す。
+// ジャンルの絞り込みと「苦手のみ」は出題側だけに効く（ここは数だけなので掛けない）
 export function getDueReviewCount(categoryId = localStorage.getItem("spelldash_category") || "all", until = Date.now()) {
   const stats = getWordStats();
   let count = 0;
@@ -468,11 +469,10 @@ export function startStudyQueue(categoryId) {
     seen.add(id);
     queue.push(id);
   };
-  const reviewStats = weakOnly ? stats : null;
   applyGenre(reviewPoolWords(activeCategoryId))
     .filter((w) => {
       const s = stats[w.id];
-      if (reviewStats && !isWeakStat(reviewStats[w.id])) return false;
+      if (weakOnly && !isWeakStat(s)) return false;
       return s && !s.mastered && s.nextReviewAt && Date.parse(s.nextReviewAt) <= now;
     })
     .forEach((w) => pushReview(w.id));

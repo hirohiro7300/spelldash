@@ -23,9 +23,10 @@ export function classifyWord(stat) {
   return "untouched";
 }
 
-export function computeCategoryProgress() {
+// onlyId を渡すとそのカテゴリの行だけ（ホームのカードは現在のカテゴリ 1 行しか使わない）
+export function computeCategoryProgress(onlyId = null) {
   const stats = getWordStats();
-  return getCategories().map((c) => {
+  return getCategories().filter((c) => !onlyId || c.id === onlyId).map((c) => {
     const words = getWordsByCategory(c.id);
     const row = { id: c.id, label: c.label, total: words.length, untouched: 0, weak: 0, learning: 0, mastered: 0, known: 0 };
     for (const word of words) row[classifyWord(stats[word.id])]++;
