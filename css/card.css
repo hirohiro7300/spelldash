@@ -254,6 +254,7 @@ html[data-theme] .word-explain {
 
 html[data-theme] .word-example {
   margin: 0 auto 10px;
+  max-width: 620px;
   color: var(--ink-2);
   font-size: 14px;
   line-height: 1.6;
@@ -270,6 +271,7 @@ html[data-theme] .word-example__en b {
 }
 
 html[data-theme] .word-example__ja {
+  display: block;
   margin-top: 2px;
   color: var(--ink-3);
   font-size: 13px;
@@ -321,6 +323,8 @@ html[data-theme] .word-note__text .icon {
 }
 
 html[data-theme] .game-card .note-input {
+  flex: 1 1 220px;
+  min-width: 0;
   max-width: 320px;
   padding: 5px 10px;
   border: 1px solid var(--line-2);
@@ -346,9 +350,12 @@ html[data-theme] .game-card .note-input {
 
 /* 覚え方（AI）の本文 */
 html[data-theme] .word-ai {
+  display: grid;
+  gap: 4px;
   max-width: 520px;
   padding: 10px 12px;
   border: 0;
+  text-align: left;
   border-radius: var(--radius);
   background: var(--paper-3);
   color: var(--ink-2);
@@ -368,6 +375,7 @@ html[data-theme] .word-ai__example {
 }
 
 html[data-theme] .word-ai__ja {
+  display: block;
   color: var(--ink-3);
   font-family: var(--font-ui);
   font-size: 12px;
@@ -530,6 +538,11 @@ html[data-theme] body.is-playing:not(.mode-study) .stats--strip {
   display: none;
 }
 
+/* 同じく 60 秒の最中は読み物（仲間の語・例文の訳）と「もう一回」を出さない（要素は残す。やり直しは結果パネルの「もう一回」に一本化） */
+html[data-theme] body.is-playing:not(.mode-study) :is(#wordFamily, .game-card > #restart, .word-example__ja) {
+  display: none;
+}
+
 /* ===== 覚えた: 墨の文字だけ。160ms で現れて消える ===== */
 html[data-theme] .learn-stamp {
   top: 50%;
@@ -669,7 +682,7 @@ html[data-theme] .result-panel__tomorrow b {
 }
 
 html[data-theme] .result-panel__diff--up { color: var(--ok); }
-html[data-theme] .result-panel__diff--down { color: var(--signal-ink); }
+html[data-theme] .result-panel__diff--down { color: var(--ink-2); }
 
 /* 数字は1行の等幅 */
 html[data-theme] .result-panel__grid {
@@ -702,6 +715,12 @@ html[data-theme] .result-panel__grid strong {
 html[data-theme] .word-chips {
   gap: 6px;
   margin: 8px 0 0;
+}
+
+@media (pointer: coarse) {
+  html[data-theme] .word-chips {
+    gap: 8px; /* 36px のチップの間隔。brand.css の coarse 規則は読み込み順でここに負けるので同じ値を置く */
+  }
 }
 
 html[data-theme] .word-chips__title {
@@ -849,8 +868,12 @@ html[data-theme] .stats--strip .stat-card strong.stat-pulse {
 }
 
 html[data-theme] .stats--strip .stat-card__sub {
+  display: block;
+  margin-top: 4px;
   margin-left: 4px;
+  color: var(--ok);
   font-size: 12px;
+  font-weight: 700;
 }
 
 html[data-theme] .stats--strip .stat-card__sub:empty {
@@ -878,6 +901,13 @@ html[data-theme] .stats--strip .stat-card--time {
   }
   html[data-theme] .stats--strip .stat-card--challenge:has(#bestScore) {
     display: none;
+  }
+  /* 結果パネルの 4 枚（スコア・正確さ・最長・経験値）を 1 行に収める */
+  html[data-theme] .result-panel__grid {
+    gap: 2px 10px;
+  }
+  html[data-theme] .result-panel__grid strong {
+    font-size: 13px;
   }
 }
 

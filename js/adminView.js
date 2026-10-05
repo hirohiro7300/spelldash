@@ -16,6 +16,8 @@ export const CSV_COLUMNS = [
   "wordsMastered", "streakCurrent", "level", "plan", "tags", "note"
 ];
 const PLAN_INTERVAL_LABEL = { month: "月額", year: "年額" };
+// Stripe の状態は列挙値のまま出さない（past_due は「支払い遅延」）
+const PLAN_STATUS_LABEL = { active: "有効", trialing: "試用中", past_due: "支払い遅延", canceled: "解約済み", unpaid: "未払い", incomplete: "未完了" };
 
 const DAY_MS = 86400000;
 
@@ -59,7 +61,7 @@ export function shiftDay(day, delta) {
 
 export function lastActiveLabel(today, lastActiveDay) {
   const diff = dayDiff(today, lastActiveDay);
-  if (diff == null) return "まだ無し";
+  if (diff == null) return "まだなし";
   if (diff <= 0) return "今日";
   if (diff === 1) return "昨日";
   return `${diff}日前`;
@@ -153,6 +155,8 @@ const state = {
 let supabase = null;
 let apiUrl = (path) => path;
 let els = null;
+// 語とパックの名前引き（js/wordStore.js は window を触るので init() の中で読み込む）。無くても id で出す
+let wordStorePromise = Promise.resolve(null);
 
 if (typeof document !== "undefined" && document.getElementById("adminTable")) {
   init();
@@ -207,6 +211,13 @@ async function init() {
   initializeAuth();
   setFooterYear();
   renderHeaderStreak();
+
+  wordStorePromise = import("./wordStore.js")
+    .then(async (m) => {
+      await m.initWordStore();
+      return m;
+    })
+    .catch(() => null);
 
   bindEvents();
   load();
@@ -330,13 +341,13 @@ function setState(status, message = "") {
 }
 
 async function load() {
-  setState("loading", "読み込んでいます");
+  setState("loading", "読み込み中");
   const { status, body } = await apiFetch("/api/admin/players");
 
-  if (status === 401) return setState("login", "ログインしてください。右上からログインできます。");
-  if (status === 403) return setState("forbidden", "このアカウントには権限がありません。");
+  if (status === 401) return setState("login", "ログインが要る。右上から。");
+  if (status === 403) return setState("forbidden", "このアカウントには権限がない。");
   if (status === 503) {
-    const text = body.message || "管理画面の設定がまだです。";
+    const text = body.message || "管理画面の設定がまだ。";
     return setState("unconfigured", text.includes("docs/CRM.md") ? text : `${text} 設定の手順: docs/CRM.md`);
   }
   if (status !== 200 || !Array.isArray(body.players)) return setState("error", "取得できませんでした。");
@@ -403,19 +414,19 @@ function planChip(player) {
   return player.plan === "pro" ? '<span class="admin-plan">Pro</span>' : "";
 }
 
-// ドロワー用: 「Pro ・ 月額 ・ active ・ 次回 2026-10-20」／「Free」
+// ドロワー用: 「Pro ・ 月額 ・ 支払い遅延 ・ 次回 2026-10-20」／「無料」
 function planFacts(player) {
-  if (player.plan !== "pro") return "プラン <b class=\"admin-n\">Free</b>";
+  if (player.plan !== "pro") return "プラン <b class=\"admin-n\">無料</b>";
   const parts = [planChip(player)];
   if (player.planInterval) parts.push(escapeHtml(PLAN_INTERVAL_LABEL[player.planInterval] || player.planInterval));
-  if (player.planStatus) parts.push(`<span class="mono">${escapeHtml(player.planStatus)}</span>`);
+  if (player.planStatus) parts.push(escapeHtml(PLAN_STATUS_LABEL[player.planStatus] || player.planStatus));
   if (player.planPeriodEnd) parts.push(`次回 <b class="admin-n">${fmtDate(player.planPeriodEnd)}</b>`);
-  return parts.join(" ");
+  return parts.join(" ・ ");
 }
 
 function lastActiveHtml(player) {
   const diff = dayDiff(state.today, player.lastActiveDay);
-  if (diff == null) return '<span class="admin-last admin-last--none">まだ無し</span>';
+  if (diff == null) return '<span class="admin-last admin-last--none">まだなし</span>';
   if (diff <= 0) return '<span class="admin-last admin-last--today">今日</span>';
   if (diff === 1) return '<span class="admin-last">昨日</span>';
   return `<span class="admin-last"><b class="admin-n">${diff}</b>日前</span>`;
@@ -499,7 +510,7 @@ function downloadCsv() {
 
 // ---- 詳細（右側のパネル） ----
 
-const LOADING = '<p class="admin-none">読み込んでいます</p>';
+const LOADING = '<p class="admin-none">読み込み中</p>';
 const FAILED = '<p class="admin-none">取得できませんでした。</p>';
 
 function fillHeader(player) {
@@ -515,8 +526,8 @@ function fillHeader(player) {
     `覚えた語 <b class="admin-n">${num(player.wordsMastered)}</b>`,
     `打った語 <b class="admin-n">${num(player.wordsPlayed)}</b>`,
     `連続 <b class="admin-n">${num(player.streakCurrent)}</b>（最長 <b class="admin-n">${num(player.streakBest)}</b>）`,
-    `Lv <b class="admin-n">${num(player.level)}</b>`,
-    `XP <b class="admin-n">${num(player.xp)}</b>`
+    `レベル <b class="admin-n">${num(player.level)}</b>`,
+    `経験値 <b class="admin-n">${num(player.xp)}</b>`
   ].join('<span class="admin-summary__sep" aria-hidden="true"> ・ </span>');
 }
 
@@ -554,10 +565,12 @@ async function openDrawer(userId, rowElement = null) {
     setSections(FAILED);
     return;
   }
+  const words = await wordStorePromise;
+  if (state.openUserId !== userId || els.drawer.hidden) return;
   renderActivity(body);
   renderSessions(body);
-  els.packs.innerHTML = tagsHtml(body.packs ?? player.packs, { mono: true, empty: "なし" });
-  renderMastered(body);
+  renderPacks(body.packs ?? player.packs, words);
+  renderMastered(body, words);
   renderFeedback(body);
 }
 
@@ -601,11 +614,11 @@ function renderActivity(detail) {
     `正解 <b class="admin-n">${correct}</b>`,
     `Challenge <b class="admin-n">${challenges}</b>`,
     `今日のセット <b class="admin-n">${daily}</b>`,
-    `バトル <b class="admin-n">${battles}</b>`
+    `Battle <b class="admin-n">${battles}</b>`
   ].join('<span class="admin-summary__sep" aria-hidden="true"> ・ </span>');
 }
 
-const MODE_LABEL = { challenge: "Challenge", study: "Study", daily: "Daily", battle: "バトル" };
+const MODE_LABEL = { challenge: "Challenge", study: "Study", daily: "Daily Dash", battle: "Battle" };
 const RESULT_LABEL = { win: "勝ち", loss: "負け", lose: "負け", draw: "引き分け" };
 
 function speedText(speed) {
@@ -627,7 +640,7 @@ function renderSessions(detail) {
     items.push({
       at: s.day || "",
       when: escapeHtml(s.day || "—"),
-      kind: "Daily",
+      kind: "Daily Dash",
       value: [`${num(s.score)}点`, speedText(s.typingSpeed)].filter(Boolean).join(" ・ ")
     });
   }
@@ -640,14 +653,14 @@ function renderSessions(detail) {
     items.push({
       at: playedAt,
       when: fmtDateTime(playedAt),
-      kind: `バトル${opponent ? ` ・ ${escapeHtml(opponent)}` : ""}`,
+      kind: `Battle${opponent ? ` ・ ${escapeHtml(opponent)}` : ""}`,
       value: [result, mine != null && theirs != null ? `${num(mine)} - ${num(theirs)}` : ""].filter(Boolean).join(" ・ ")
     });
   }
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   const top = items.slice(0, 10);
   if (!top.length) {
-    els.sessions.innerHTML = '<p class="admin-none">まだ無し</p>';
+    els.sessions.innerHTML = '<p class="admin-none">まだなし</p>';
     return;
   }
   els.sessions.innerHTML = top
@@ -655,21 +668,41 @@ function renderSessions(detail) {
     .join("");
 }
 
-function renderMastered(detail) {
+// パック: id ではなく名前で出す（title に id）。カタログに無い id はそのまま
+function renderPacks(packs, words) {
+  const list = Array.isArray(packs) ? packs.filter(Boolean) : [];
+  if (!list.length) {
+    els.packs.innerHTML = '<span class="admin-none">なし</span>';
+    return;
+  }
+  const catalog = new Map((words?.getPackCatalog?.() ?? []).map((c) => [c.id, c.label]));
+  els.packs.innerHTML = list
+    .map((id) => `<span class="admin-tag" title="${escapeHtml(id)}">${escapeHtml(catalog.get(id) || id)}</span>`)
+    .join("");
+}
+
+// 覚えた語: id（english-invoice）ではなく綴り（invoice）。索引に無ければ id の教科の前置きを外す
+function wordLabel(wordId, words) {
+  const id = String(wordId ?? "");
+  const en = words?.findWord?.(id)?.en;
+  return en || id.slice(id.indexOf("-") + 1);
+}
+
+function renderMastered(detail, words) {
   const list = Array.isArray(detail.recentMastered) ? detail.recentMastered : [];
   if (!list.length) {
-    els.mastered.innerHTML = '<p class="admin-none">まだ無し</p>';
+    els.mastered.innerHTML = '<p class="admin-none">まだなし</p>';
     return;
   }
   els.mastered.innerHTML = list
-    .map((m) => `<span class="admin-word mono"><span class="admin-word__id">${escapeHtml(m.wordId)}</span><span class="admin-word__at">${fmtDate(m.masteredAt).slice(5)}</span></span>`)
+    .map((m) => `<span class="admin-word mono" title="${escapeHtml(m.wordId)}"><span class="admin-word__id">${escapeHtml(wordLabel(m.wordId, words))}</span><span class="admin-word__at">${fmtDate(m.masteredAt).slice(5)}</span></span>`)
     .join("");
 }
 
 function renderFeedback(detail) {
   const list = Array.isArray(detail.feedback) ? detail.feedback : [];
   if (!list.length) {
-    els.feedback.innerHTML = '<p class="admin-none">まだ無し</p>';
+    els.feedback.innerHTML = '<p class="admin-none">まだなし</p>';
     return;
   }
   els.feedback.innerHTML = list
@@ -700,7 +733,7 @@ async function saveNote() {
   };
 
   els.save.disabled = true;
-  setNoteStatus("保存しています");
+  setNoteStatus("保存中");
   const { status, body } = await apiFetch("/api/admin/note", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -713,12 +746,12 @@ async function saveNote() {
     player.tags = Array.isArray(body.tags) ? body.tags : payload.tags;
     player.pinned = typeof body.pinned === "boolean" ? body.pinned : payload.pinned;
     fillForm(player);
-    setNoteStatus("保存しました");
+    setNoteStatus("保存済み");
     renderTable();
     return;
   }
-  if (status === 503) return setNoteStatus(body.message || "メモの保存先がありません。docs/SQL_CRM.md のテーブルを作ってください。", true);
-  if (status === 401) return setNoteStatus("ログインしてください。", true);
-  if (status === 403) return setNoteStatus("このアカウントには権限がありません。", true);
-  setNoteStatus(body.message || "保存できませんでした。", true);
+  if (status === 503) return setNoteStatus("メモの保存先がまだない。docs/SQL_CRM.md のテーブルを作る。", true);
+  if (status === 401) return setNoteStatus("ログインが要る。右上から。", true);
+  if (status === 403) return setNoteStatus("このアカウントには権限がない。", true);
+  setNoteStatus(body.message || "保存できなかった。", true);
 }

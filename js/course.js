@@ -48,29 +48,29 @@ export const COURSES = {
   ngsl: {
     id: "ngsl",
     label: "基本英単語 2,800語（NGSL）",
-    blurb: "英文の約9割を作る基本語を頻度順に24セクション。数・曜日・月から始めて、よく出会う語から順に",
-    audience: "英語をゼロから体系的にやり直したい人（オープン教材 NGSL）",
+    blurb: "英文の約9割を作る基本語を頻度順に24セクション。数・曜日・月から始めて、よく出会う語から順に。出典はオープン教材の NGSL",
+    audience: "英語をゼロから体系的にやり直したい人",
     packs: Array.from({ length: 24 }, (_, i) => `ngsl${String(i + 1).padStart(2, "0")}`)
   },
   tsl: {
     id: "tsl",
     label: "TOEIC 英単語 1,250語（TSL）",
-    blurb: "基本2,800語の外側でTOEICによく出る語を頻度順に11セクション。基本語を終えた次に",
-    audience: "TOEIC の語彙を土台から埋めたい人（オープン教材 TSL）",
+    blurb: "基本2,800語の外側でTOEICによく出る語を頻度順に11セクション。基本語を終えた次に。出典はオープン教材の TSL",
+    audience: "TOEIC の語彙を土台から埋めたい人",
     packs: Array.from({ length: 11 }, (_, i) => `tsl${String(i + 1).padStart(2, "0")}`)
   },
   bsl: {
     id: "bsl",
     label: "ビジネス英単語 1,750語（BSL）",
-    blurb: "仕事の英語でよく出る語を頻度順に15セクション。契約・会計・会議の語まで",
-    audience: "仕事で英語を読む・書く人（オープン教材 BSL）",
+    blurb: "仕事の英語でよく出る語を頻度順に15セクション。契約・会計・会議の語まで。出典はオープン教材の BSL",
+    audience: "仕事で英語を読む・書く人",
     packs: Array.from({ length: 15 }, (_, i) => `bsl${String(i + 1).padStart(2, "0")}`)
   },
   nawl: {
     id: "nawl",
     label: "学術英単語 960語（NAWL）",
-    blurb: "論文・講義に出る語を8セクション。基本語とTOEIC語の次、英検準1級以上の読解に",
-    audience: "大学の英語・論文を読む人（オープン教材 NAWL）",
+    blurb: "論文・講義に出る語を8セクション。基本語とTOEIC語の次、英検準1級以上の読解に。出典はオープン教材の NAWL",
+    audience: "大学の英語・論文を読む人",
     packs: Array.from({ length: 8 }, (_, i) => `nawl${String(i + 1).padStart(2, "0")}`)
   },
   toeic: {

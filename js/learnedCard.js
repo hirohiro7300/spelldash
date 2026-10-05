@@ -49,7 +49,7 @@ export function renderLearnedCard() {
       if (st === "learning" || st === "mastered") learnedG++;
       if (st === "weak") weakG++;
     }
-    currentLine = `${genreLabel(genre)}: 覚えた ${learnedG} / ${totalG} ・ 苦手 ${weakG}${learnedG === totalG && totalG > 0 ? " ・ 制覇" : ""}`;
+    currentLine = `${genreLabel(genre)}: 覚えた ${learnedG} / ${totalG} ・ 苦手 ${weakG}${learnedG === totalG && totalG > 0 ? " ・ 全部済み" : ""}`;
     genreNonZero = learnedG + weakG > 0;
   }
 
@@ -66,18 +66,16 @@ export function renderLearnedCard() {
   const dots = days
     .map((d) => `<i class="${d.active ? "on" : ""}${d.isToday ? " today" : ""}${d.isFuture ? " future" : ""}" title="${d.date}"></i>`)
     .join("");
-  const weekLine =
-    activeDays >= goal
-      ? `今週の目標達成 ${activeDays}/${goal}日 ${dots}`
-      : `今週 <b>${activeDays}</b>/${goal}日 ${dots}`;
+  // 「5/4日」のような分母超えの分数は出さない。数字を先に、達成は末尾に 1 語
+  const weekLine = `今週 <b>${activeDays}</b>日 ・ 目標 ${goal}日${activeDays >= goal ? " 達成" : ""} ${dots}`;
 
   // 内訳の行は数字が全部 0 のときは出さない（0 の羅列は情報ではない）
   const showBreakdown =
     genre && current.id !== "all" ? genreNonZero : current.id === "all" ? all.learning + all.mastered + all.weak + all.known > 0 : current.learned + current.weak > 0;
 
-  // 折りたたみの見出しにも数字を出す（「覚えた単語 28 ・ Daily Dash」）
+  // 折りたたみの見出しにも数字を出す（「覚えた単語 28」。Daily Dash の名前は入口のある #playModes だけに）
   const summary = document.querySelector("#homeMore > summary > span");
-  if (summary) summary.textContent = `覚えた単語 ${all.learned} ・ Daily Dash`;
+  if (summary) summary.textContent = `覚えた単語 ${all.learned}`;
 
   el.innerHTML = `
     <div class="learned-card__main">

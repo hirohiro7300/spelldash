@@ -164,9 +164,9 @@ export function formatPlanDate(iso) {
 }
 
 // プランの表示文（プロフィール・Pro ページ共通）
-//   free → "Free" / pro → "Pro（次回の更新 YYYY/M/D）" / 解約予定 → "Pro（解約予定・YYYY/M/D まで）"
+//   free → "無料" / pro → "Pro（次回の更新 YYYY/M/D）" / 解約予定 → "Pro（解約予定・YYYY/M/D まで）"
 export function planLabel(plan = getPlan()) {
-  if (!plan.pro) return "Free";
+  if (!plan.pro) return "無料";
   const date = formatPlanDate(plan.periodEnd);
   if (plan.cancelAtPeriodEnd) return date ? `Pro（解約予定・${date} まで）` : "Pro（解約予定）";
   return date ? `Pro（次回の更新 ${date}）` : "Pro";

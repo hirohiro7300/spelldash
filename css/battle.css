@@ -2,16 +2,12 @@
 /* 方向性: ミニマル・静か・能力測定の緊張感。色と字体は css/tokens.css だけ。
    配置・タイマーの仕組み・js/battleEngine.js / js/battleView.js のロジックは変えない。 */
 
+/* 面・色・12px/600 は pages.css のチップ規則（.preseason-tag はその一員）。ここは位置と字体だけ */
 .preseason-tag {
   margin-left: 8px;
   padding: 1px 8px;
-  border: 1px solid var(--line-2);
-  border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  font-family: var(--font-ui);
+  letter-spacing: 0;
 }
 
 /* ===== ロビー ===== */
@@ -26,7 +22,7 @@
 .rank-card__rank {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
@@ -34,9 +30,14 @@
 
 .rank-card__rp {
   margin: 4px 0 0;
-  color: var(--ink-3);
   font-family: var(--font-mono);
-  font-size: 13px;
+}
+
+/* RP と戦績は 12px の補助（見出しはランク名 1 つ） */
+.rank-card__rp,
+#lobbyRecord {
+  font-size: 12px;
+  color: var(--ink-3);
 }
 
 .rank-card__record {
@@ -55,29 +56,39 @@
   margin-top: 20px;
 }
 
+/* 同じ行の select とボタンは同じ高さ（40px。指で押す端末は 44px） */
+html[data-theme] .battle-start-row .setting-select {
+  min-height: 40px;
+}
+
 .battle-start-btn {
   flex: 0 0 auto;
   min-width: 160px;
-  height: 40px;
+  height: auto;
+  min-height: 40px;
   padding: 0 20px;
   font-size: 14px;
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
-/* ページに1つの朱: スタート */
+/* ページに1つの朱: スタート（path.css の #pathStart と同じ塗りと文字色） */
 html[data-theme] .btn.battle-start-btn {
-  background: var(--signal);
-  color: #fff;
+  padding: 0 20px; /* brand.css の html[data-theme] .btn（padding 0 16px）より後に読まれるので .btn 付きで上書き */
+  background: var(--signal-fill);
+  color: var(--paper-2);
 }
 
 html[data-theme] .btn.battle-start-btn:hover {
   background: var(--signal-ink);
+  color: var(--paper-2);
 }
 
-.battle-note {
-  margin-top: 10px;
-  font-size: 12px;
+@media (pointer: coarse) {
+  html[data-theme] .battle-start-row .setting-select,
+  html[data-theme] .btn.battle-start-btn {
+    min-height: 44px;
+  }
 }
 
 /* ===== 対戦画面 ===== */
@@ -104,17 +115,19 @@ html[data-theme] .btn.battle-start-btn:hover {
 }
 
 .arena-panel--you .arena-ja {
-  font-size: clamp(30px, 5.5vw, 58px);
+  font-size: clamp(30px, 4vw, 40px);
   margin: 10px 0 18px;
 }
 
+/* 自分のスコアは相手側と同じ 16px（動く数字で目立つのはタイマーだけ） */
 .arena-panel--you .arena-panel__stats strong {
-  font-size: 24px;
+  font-size: 16px;
 }
 
+/* 案内は 1 行 13px。2 行分を常に確保して、ミス／パスの文に替わってもカードが揺れない */
 .arena-panel--you .arena-status {
-  font-size: 14px;
-  min-height: 22px;
+  font-size: 13px;
+  min-height: 40px;
 }
 
 /* CPU側はコンパクト: 「相手が進行している」と分かれば十分 */
@@ -150,12 +163,19 @@ html[data-theme] .btn.battle-start-btn:hover {
   margin-bottom: 8px;
 }
 
+/* 「あなた」「相手の名前」は日本語なので UI フォント・字間 0 */
 .arena-panel__who {
   color: var(--ink-3);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
+}
+
+#cpuName {
+  font-family: var(--font-ui);
+  letter-spacing: 0;
+  font-weight: 600;
 }
 
 .arena-panel__stats {
@@ -201,16 +221,16 @@ html[data-theme] .btn.battle-start-btn:hover {
   font-size: 13px;
 }
 
-/* タイマーはレイアウト内に収める（浮かせない） */
+/* タイマーはレイアウト内に収める（浮かせない）。Challenge の #bigTimer と同じ 20px */
 .arena-timer {
   order: -1; /* モバイル縦配置では一番上 */
   align-self: center;
-  padding: 4px 22px;
+  padding: 4px 18px;
   border-radius: 999px;
   background: var(--paper-2);
   border: 1px solid var(--line-2);
   font-family: var(--font-mono);
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -222,12 +242,13 @@ html[data-theme] .btn.battle-start-btn:hover {
 }
 
 /* Battleの入力欄も Study/Challenge と同じ「透明文字＋色付きレイヤー」方式にする
-   （既存CSSは #input へのID指定のため、ここで #battleInput に同じ規則を与える） */
+   （既存CSSは #input へのID指定のため、ここで #battleInput に同じ規則を与える）。
+   寸法は Study の #input（card.css: 12px 16px・22px）と同じ */
 #battleInput {
   width: 100%;
-  padding: 16px 20px;
+  padding: 12px 16px;
   font-family: var(--font-mono);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 500;
   letter-spacing: 0.04em;
   text-align: center;
@@ -241,11 +262,16 @@ html[data-theme] .btn.battle-start-btn:hover {
 }
 
 #battleInput::placeholder {
-  color: var(--ink-4);
+  color: var(--ink-3);
   font-family: var(--font-ui);
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 500;
   letter-spacing: 0;
+}
+
+html[data-theme] .input-wrapper--battle .typed-preview {
+  padding: 12px 16px;
+  font-size: 22px;
 }
 
 /* CPUの入力進捗ドット（文字は見せない） */
@@ -282,12 +308,13 @@ html[data-theme] .btn.battle-start-btn:hover {
   text-align: center;
 }
 
+/* 見出しは 1 つ（勝ち／負け／引き分け）。日本語なので UI フォント */
 .battle-verdict {
   margin: 4px 0 18px;
-  font-family: var(--font-mono);
-  font-size: 32px;
+  font-family: var(--font-ui);
+  font-size: 28px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   color: var(--ink);
 }
 
@@ -298,14 +325,15 @@ html[data-theme] .btn.battle-start-btn:hover {
 .battle-scores {
   display: grid;
   gap: 6px;
-  max-width: 340px;
+  max-width: 240px;
   margin: 0 auto 18px;
 }
 
 .battle-scores__row {
   display: flex;
   justify-content: space-between;
-  font-size: 18px;
+  gap: 16px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -319,39 +347,61 @@ html[data-theme] .btn.battle-start-btn:hover {
   color: var(--ink-3);
 }
 
+/* 内訳は 1 行（Study の .result-panel__grid と同じ形: 12px のラベル＋14px の数字） */
 .battle-detail {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 26px;
-  margin-bottom: 20px;
+  gap: 4px 16px;
+  margin-bottom: 16px;
   color: var(--ink-3);
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.battle-detail div {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
 }
 
 .battle-detail strong {
-  display: block;
+  display: inline;
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
-  margin-top: 2px;
+  margin: 0;
 }
 
+/* RP は 13px の 1 行（「RP +5  Bronze 0 → 5 RP」）。棒は出さない */
 .battle-rp {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
   max-width: 340px;
   margin: 0 auto 18px;
 }
 
 .battle-rp__change {
-  margin: 0 0 8px;
+  margin: 0;
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--ink);
+  color: var(--ink-2);
+}
+
+#resultRankLine {
+  margin: 0;
+}
+
+.battle-rp .progress-bar {
+  display: none;
 }
 
 .battle-promotion {
-  margin: 10px 0 0;
+  flex-basis: 100%;
+  margin: 4px 0 0;
   color: var(--signal-ink);
   font-family: var(--font-mono);
   font-weight: 600;
@@ -364,36 +414,102 @@ html[data-theme] .btn.battle-start-btn:hover {
   100% { opacity: 1; transform: translateY(0); }
 }
 
+/* パスした語の復習: 色面ではなく罫線の箱。主ボタンは「もう一回」1 つ */
 .battle-review {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
   margin: 0 auto 20px;
   padding: 12px 16px;
   max-width: 340px;
   border-radius: var(--radius-lg);
-  background: var(--warn-soft);
+  background: transparent;
   border: 1px solid var(--line);
 }
 
 .battle-review p {
   margin: 0;
-  color: var(--warn);
+  color: var(--ink-2);
   font-weight: 600;
 }
 
 .battle-actions {
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 12px;
 }
 
-/* デスクトップ: タイマーを上部中央、CPU 32% / YOU 68% */
+/* 結果のボタンは部品規則どおり 40px・14px（Study／Challenge の結果と同じ高さ） */
+html[data-theme] .battle-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+html[data-theme] .battle-actions .btn--sm,
+html[data-theme] .battle-review .btn--sm {
+  min-height: 40px;
+}
+
+/* ===== 390: 縦の予算（OS キーボードが重なっても残り秒数と入力欄が同時に見える） ===== */
+@media (max-width: 560px) {
+  body:has(#battleArena:not([hidden])) main {
+    padding-top: 8px;
+  }
+
+  #battleArena {
+    gap: 8px;
+  }
+
+  html[data-theme] .arena-timer {
+    position: sticky;
+    top: 61px;
+    z-index: 5;
+  }
+
+  html[data-theme] .arena-panel--cpu {
+    padding: 10px 16px;
+  }
+
+  html[data-theme] .arena-panel--cpu .arena-status:empty {
+    display: none;
+  }
+
+  /* 相手の訳は 1 行で切る（「進んでいる」が分かれば足りる） */
+  html[data-theme] .arena-panel--cpu .arena-ja--cpu {
+    min-height: 1.3em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  html[data-theme] .arena-panel--you {
+    padding: 16px 16px 14px;
+  }
+
+  /* 2 行の訳でも高さを固定して、入力欄が語ごとに上下しない */
+  html[data-theme] .arena-panel--you .arena-ja {
+    margin: 6px 0 12px;
+    font-size: 28px;
+    line-height: 1.25;
+    min-height: 2.5em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* デスクトップ: タイマーを上部中央、CPU 36% / YOU 64% */
 @media (min-width: 860px) {
   #battleArena {
     display: grid;
-    grid-template-columns: minmax(0, 32fr) minmax(0, 68fr);
+    grid-template-columns: minmax(0, 36fr) minmax(0, 64fr);
     grid-template-areas:
       "timer timer"
       "cpu you";
@@ -411,12 +527,17 @@ html[data-theme] .btn.battle-start-btn:hover {
     grid-area: cpu;
   }
 
+  .arena-panel--cpu .arena-panel__head {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
   .arena-panel--you {
     grid-area: you;
-    min-height: 340px;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
   }
 }
 
@@ -455,25 +576,8 @@ html[data-theme] .battle-verdict--win { color: var(--ok); }
 html[data-theme] .battle-verdict--loss { color: var(--signal-ink); }
 html[data-theme] .battle-verdict--draw { color: var(--ink-2); }
 
-html[data-theme] .preseason-tag {
-  border-color: var(--line-2);
-  background: transparent;
-  color: var(--ink-3);
-}
-
 html[data-theme] .arena-timer {
   background: var(--paper-2);
   border-color: var(--line-2);
   color: var(--ink);
-}
-
-html[data-theme] .input-wrapper--battle {
-  background: var(--paper-2);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-lg);
-}
-
-html[data-theme] .input-wrapper--battle:focus-within {
-  border-color: var(--signal);
-  box-shadow: var(--focus);
 }

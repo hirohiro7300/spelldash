@@ -1,15 +1,3 @@
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 14px;
-  margin-top: 20px;
-  margin-bottom: 20px;
-}
-
-.hero--compact h1 {
-  font-size: clamp(26px, 4vw, 40px);
-}
-
 .hero--compact .auth-message,
 .auth-message--home {
   margin-top: 6px;
@@ -32,10 +20,6 @@ body.osk-open .offline-banner {
   font-variant-numeric: tabular-nums;
   text-align: center;
   z-index: 2;
-}
-
-.big-timer--danger {
-  border-color: rgba(248, 113, 113, 0.7);
 }
 
 /* Challengeモードでは非表示（Study限定機能） */
@@ -71,14 +55,6 @@ body:not(.mode-study) .mix-control {
 
 .mix-control__hint {
   text-align: right;
-}
-
-.stat-card__sub {
-  display: block;
-  margin-top: 4px;
-  color: #4ade80;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 /* Studyモードでは時間・速度・ベスト・もう一回を隠す */
@@ -137,65 +113,6 @@ body:not(.mode-study) .study-queue {
   text-overflow: ellipsis;
 }
 
-.queue-chip--more {
-  border-style: dashed;
-}
-
-/* Reduced Motion: 移動アニメーションは行わず色だけで伝える */
-
-/* ===== Daily Dash ===== */
-.daily {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 18px;
-  margin-bottom: 14px;
-  border-radius: 20px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(250, 204, 21, 0.3);
-  backdrop-filter: blur(14px);
-}
-
-.daily:empty {
-  display: none;
-}
-
-.daily__head {
-  flex-shrink: 0;
-}
-
-.daily__result strong {
-  font-variant-numeric: tabular-nums;
-}
-
-.daily__button {
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-/* ===== マイクロアニメーション（正解の気持ちよさ） ===== */
-@keyframes msg-pop {
-  0% { transform: scale(0.92); opacity: 0.4; }
-  60% { transform: scale(1.04); }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.message.correct,
-.message.finished {
-  animation: msg-pop 0.22s ease-out;
-}
-
-@keyframes stat-pulse {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.18); color: #4ade80; }
-  100% { transform: scale(1); }
-}
-
-.stat-card strong.stat-pulse {
-  display: inline-block;
-  animation: stat-pulse 0.3s ease-out;
-}
-
 /* ===== 単語一覧の折りたたみ ===== */
 .word-list-fold summary {
   list-style: none;
@@ -218,14 +135,6 @@ body:not(.mode-study) .study-queue {
   margin-bottom: 12px;
 }
 
-.family-chip {
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  color: #64748b;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-}
-
 /* ===== 同じ仲間（Knowledge Map Phase A） ===== */
 .word-family {
   min-height: 20px;
@@ -236,14 +145,6 @@ body:not(.mode-study) .study-queue {
 }
 
 /* ===== リザルトパネル ===== */
-.result-panel {
-  margin-top: 16px;
-  padding: 16px 18px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  text-align: left;
-}
 
 .result-panel__grid {
   grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
@@ -256,23 +157,6 @@ body:not(.mode-study) .study-queue {
 .result-panel__actions {
   display: flex;
   flex-wrap: wrap;
-}
-
-.result-panel__action {
-  padding: 9px 18px;
-  font-size: 13px;
-  border-radius: 999px;
-}
-
-.result-panel__action--ghost {
-  background: transparent;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  color: #94a3b8;
-}
-
-.result-panel__action--ghost:hover {
-  background: rgba(148, 163, 184, 0.12);
-  color: #e2e8f0;
 }
 
 /* ===== ヘッダーの🔥ストリーク（.accountのmargin-left:autoの左隣） ===== */
@@ -307,11 +191,7 @@ body.mode-study .weak-toggle {
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
-.weak-toggle__btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
+/* 狭い幅では説明文を出さない（home.css には display の規則が無く、これが唯一の定義） */
 @media (max-width: 640px) {
   .weak-toggle__hint {
     display: none;
@@ -319,10 +199,6 @@ body.mode-study .weak-toggle {
 }
 
 /* ===== Daily ランキング ===== */
-.daily {
-  flex-wrap: wrap;
-}
-
 .daily-rank {
   flex-basis: 100%;
 }
@@ -398,27 +274,6 @@ body.mode-study .weak-toggle {
   margin-left: auto;
 }
 
-/* ===== レベルバー ===== */
-.level-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 18px;
-  margin-bottom: 20px;
-  border-radius: 20px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  backdrop-filter: blur(14px);
-}
-
-.level-bar:empty {
-  display: none;
-}
-
-.progress-bar--slim {
-  height: 8px;
-}
-
 /* ===== カテゴリ選択チップ ===== */
 .category-picker {
   display: flex;
@@ -429,101 +284,8 @@ body.mode-study .weak-toggle {
   display: none;
 }
 
-.category-chip {
-  cursor: pointer;
-}
-
-.word-filter {
-  border-radius: 14px;
-  border: none;
-  outline: none;
-}
-
-.word-count {
-  margin: 0 0 10px;
-}
-
-/* ===== コンボ表示 ===== */
-.combo {
-  min-height: 26px;
-  margin: 14px 0 0;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
-.combo--on {
-  color: #fb923c;
-}
-
-.combo--hot {
-  color: #f97316;
-  animation: combo-pulse 0.6s ease infinite alternate;
-}
-
-@keyframes combo-pulse {
-  from { transform: scale(1); text-shadow: 0 0 8px rgba(249, 115, 22, 0.4); }
-  to { transform: scale(1.08); text-shadow: 0 0 18px rgba(249, 115, 22, 0.8); }
-}
-
-.progress-bar {
-  height: 14px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.18);
-  overflow: hidden;
-}
-
-.progress-bar__fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #3b82f6, #6366f1);
-}
-
-.stat-card {
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(14px);
-}
-
-.stat-card {
-  padding: 18px;
-  border-radius: 20px;
-}
-
-.stat-card span {
-  display: block;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-.stat-card strong {
-  display: block;
-  margin-top: 6px;
-  font-size: 26px;
-}
-
 .game-card {
   text-align: center;
-}
-
-.label {
-  margin: 0;
-}
-
-#japanese {
-  margin: 10px 0 16px;
-  font-size: clamp(34px, 7vw, 76px);
-}
-
-.hidden-word {
-  min-height: 34px;
-  margin: 0 0 22px;
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
 }
 
 .hidden-word span {
@@ -532,11 +294,6 @@ body.mode-study .weak-toggle {
 }
 
 /* 英文（英作文）: 単語ごとに折り返し、少し小さく */
-.hidden-word--long {
-  font-size: 19px;
-  letter-spacing: 0.02em;
-  line-height: 1.5;
-}
 
 .hidden-word .cw {
   display: inline-block;
@@ -583,26 +340,10 @@ body.mode-study .weak-toggle {
   font-family: var(--font-mono);
 }
 
-.message {
-  min-height: 30px;
-  margin: 20px 0;
-}
-
-.message.finished {
-  color: #facc15;
-}
-
-/* 色・角丸は brand.css（トークン）。ここは寸法だけ */
+/* 全称 button の土台（枠なし・指カーソル）。寸法・文字は brand.css の .btn と各部品が持つ */
 button {
-  padding: 13px 24px;
   border: none;
-  font-size: 16px;
-  font-weight: 700;
   cursor: pointer;
-}
-
-.result-card h3 {
-  margin-top: 0;
 }
 
 .word-list {
@@ -610,32 +351,14 @@ button {
   gap: 10px;
 }
 
-.word-item {
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(30, 41, 59, 0.9);
-  color: #cbd5e1;
-}
-
-.word-item strong {
-  color: #f8fafc;
-}
-
 .muted {
   margin: 8px 0 0;
 }
 
 /* ===== 発音ボタン・設定 ===== */
-.speak-button {
-  cursor: pointer;
-}
 
 .setting-row {
   justify-content: space-between;
-}
-
-.setting-select {
-  outline: none;
 }
 
 .profile-email {
@@ -643,62 +366,17 @@ button {
   word-break: break-all;
 }
 
-@keyframes shake {
-  0% { transform: translateX(0); }
-  30% { transform: translateX(-8px); }
-  60% { transform: translateX(8px); }
-  100% { transform: translateX(0); }
-}
-
-#wordSearch {
-  border-radius: 14px;
-  border: none;
-  outline: none;
-}
 /* ===== はちゃん（学習パートナー）吹き出し ===== */
-/* キャラクターカラー: 紫 #8D70FF / #6E60A9（キャラシート準拠） */
 .hasumi {
   display: flex;
   align-items: flex-start;
   gap: 10px;
 }
 
-.hasumi--home {
-  margin: 14px 0 4px;
-}
-
-.hasumi__avatar {
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 2px solid rgba(141, 112, 255, 0.55);
-  background: #f5f0fa;
-  object-fit: cover;
-}
-
-.hasumi__bubble {
-  position: relative;
-  padding: 10px 14px;
-  border-radius: 4px 14px 14px 14px;
-  background: rgba(141, 112, 255, 0.14);
-  border: 1px solid rgba(141, 112, 255, 0.35);
-  color: #e2d9ff;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.5;
-  align-self: center;
-}
-
 /* 結果画面では中央寄せ・ひかえめに */
 .hasumi--result {
   justify-content: center;
   margin: 10px 0 2px;
-}
-
-.hasumi--result .hasumi__avatar {
-  width: 38px;
-  height: 38px;
 }
 
 /* ===== フォーカスモード（Challenge/Dailyプレイ中・スマホ） =====
@@ -868,24 +546,6 @@ button {
   transition: transform 0.15s ease;
 }
 
-/* コンボ表示の段階（5 / 10 / 20） */
-.combo--blaze {
-  color: #f59e0b;
-  font-size: 21px;
-  animation: combo-pulse 0.5s ease infinite alternate;
-}
-
-.combo--max {
-  color: #facc15;
-  font-size: 24px;
-  letter-spacing: 0.1em;
-  animation: combo-pulse 0.4s ease infinite alternate;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .combo--blaze, .combo--max { animation: none; }
-}
-
 /* ===== マイ単語帳 ===== */
 .my-words__form {
   display: grid;
@@ -894,16 +554,8 @@ button {
   margin: 10px 0;
 }
 
-.my-words__form input {
-  width: 100%;
-}
-
 .my-words__bulk {
   margin: 6px 0 8px;
-}
-
-.my-words__bulk summary {
-  font-weight: 700;
 }
 
 .my-words__bulk textarea {
@@ -977,20 +629,11 @@ button {
   display: inline-block;
 }
 
-@media (max-width: 600px) {
-  .weekly__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
 .learn-stamp {
   position: absolute;
   left: 50%;
   pointer-events: none;
   z-index: 3;
-}
-
-.message.learned {
-  color: #facc15;
-  font-weight: 800;
 }
 
 .learn-toast:empty {
@@ -1043,26 +686,12 @@ button {
 }
 
 /* 学習データ: 覚えた単語帳 */
-.learned-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
-  align-items: center;
-  gap: 10px;
-}
-
-.learned-item__meta { white-space: nowrap; }
 
 .known-fold summary { cursor: pointer; }
-
-.known-words {
-  color: #94a3b8;
-  font-size: 13px;
-}
 
 .known-words span { margin-right: 6px; }
 
 @media (max-width: 600px) {
-  .learned-item { grid-template-columns: minmax(0, 1fr) auto; }
   .learned-item__ja { grid-column: 1 / -1; }
 }
 
@@ -1073,15 +702,6 @@ button {
   gap: 10px;
   margin: 0 0 12px;
   min-height: 0;
-}
-
-.word-tools:has(> [hidden]:only-child),
-.word-tools:not(:has(> :not([hidden]))) {
-  margin: 0;
-}
-
-.word-tools .speak-button {
-  margin: 0;
 }
 
 /* 自分のメモ（ゲームカード内） */
@@ -1096,203 +716,9 @@ button {
   display: none;
 }
 
-.word-note__text {
-  border-radius: 8px;
-}
-
-.note-save {
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: transparent;
-  color: #94a3b8;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.note-save:hover {
-  background: rgba(148, 163, 184, 0.14);
-  color: #e2e8f0;
-}
-
-.note-input {
-  flex: 1 1 220px;
-  min-width: 0;
-  max-width: 360px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.6);
-  color: #f8fafc;
-  font-size: 13px;
-}
-
-/* 一覧内のメモチップ */
-.note-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px dashed rgba(148, 163, 184, 0.35);
-  background: transparent;
-  color: #94a3b8;
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-}
-
-.note-chip--has {
-  border-style: solid;
-  border-color: rgba(250, 204, 21, 0.4);
-  background: rgba(250, 204, 21, 0.08);
-  color: #fde68a;
-}
-
-.note-chip--editing {
-  border-style: solid;
-  cursor: default;
-  padding: 2px 4px;
-}
-
-.note-chip--editing .note-input {
-  flex-basis: 180px;
-  padding: 4px 8px;
-}
-
-.learned-item__note {
-  grid-column: 1 / -1;
-  min-width: 0;
-}
-
-.learned-item__note .note-chip {
-  white-space: normal;
-}
-
-.leech-tag {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: rgba(248, 113, 113, 0.15);
-  color: #fca5a5;
-  font-size: 12px;
-  font-weight: 700;
-  vertical-align: middle;
-}
-
-.word-item .note-chip {
-  margin-top: 6px;
-}
-
 .backup-import {
   display: inline-flex;
   align-items: center;
-}
-
-/* ご意見・不具合モーダル */
-.feedback-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-.feedback-modal__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(2, 6, 23, 0.6);
-  backdrop-filter: blur(2px);
-}
-
-.feedback-modal__panel {
-  position: relative;
-  width: min(480px, 100%);
-  padding: 18px 20px 14px;
-  border-radius: 16px;
-  background: #0f172a;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.feedback-modal__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.feedback-modal__head h3 {
-  margin: 0;
-  font-size: 17px;
-  color: #f8fafc;
-}
-
-.feedback-modal__close {
-  border: none;
-  background: transparent;
-  color: #94a3b8;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 4px 8px;
-}
-
-.feedback-modal__lead {
-  margin: 0;
-  color: #cbd5e1;
-  font-size: 13.5px;
-}
-
-.feedback-modal__panel textarea,
-.feedback-modal__panel input {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.6);
-  color: #f8fafc;
-  font-size: 14px;
-  font-family: inherit;
-  resize: vertical;
-}
-
-.feedback-modal__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.feedback-modal__status {
-  color: #86efac;
-  font-size: 13px;
-}
-
-.feedback-modal__note {
-  margin: 0;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.site-footer__nav [data-feedback-open] {
-  cursor: pointer;
-}
-
-.result-panel__goal {
-  border-radius: 10px;
-}
-
-.install__done {
-  margin: 0;
-  color: #86efac;
-  font-size: 14px;
-  font-weight: 600;
 }
 
 /* ===== Batch 3: 学習カレンダー・よく間違えるキー・単語詳細・CSV ===== */
@@ -1324,13 +750,6 @@ button {
   width: 100%;
 }
 
-.cal__legend {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin: 8px 0 0;
-}
-
 .cal__legend .cal__day {
   width: 11px;
   height: 11px;
@@ -1340,22 +759,6 @@ button {
   margin-left: 8px;
   vertical-align: middle;
 }
-
-/* 語のボタン（覚えた単語帳・苦手・知っていた語）: 文字だけのボタン。色・下線は pages.css */
-button.learned-item__en,
-.word-item__detail,
-.known-words__item {
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: inherit;
-  cursor: pointer;
-}
-
-button.learned-item__en { text-align: left; }
-.word-item__detail { font-weight: 700; }
 
 .word-detail {
   position: fixed;
@@ -1401,9 +804,6 @@ button.learned-item__en { text-align: left; }
   gap: 6px 10px;
 }
 
-.word-detail__status--learning { background: rgba(96, 165, 250, 0.18); }
-.word-detail__status--known { background: rgba(250, 204, 21, 0.14); }
-
 .word-detail__history {
   display: flex;
   align-items: center;
@@ -1418,11 +818,6 @@ button.learned-item__en { text-align: left; }
 .word-detail__note-row {
   display: flex;
   gap: 8px;
-}
-
-.word-detail__note-row .note-input {
-  flex: 1;
-  max-width: none;
 }
 
 .word-detail__family .family-chip {
@@ -1547,10 +942,6 @@ button.learned-item__en { text-align: left; }
 }
 
 /* 全文入力モード: 入力欄の文字をそのまま見せる（色付きプレビューは使わない） */
-body.free-answer #input {
-  color: #0f172a;
-  font-size: 24px;
-}
 
 body.free-answer .typed-preview {
   display: none;
@@ -1599,11 +990,6 @@ body.free-answer .typed-preview {
   flex-shrink: 0;
 }
 
-.genre {
-  margin-bottom: 26px;
-  scroll-margin-top: 110px;
-}
-
 .genre__cards {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 10px;
@@ -1627,9 +1013,6 @@ body.free-answer .typed-preview {
   flex-shrink: 0;
 }
 
-.gcard__status--learning { background: rgba(96, 165, 250, 0.18); }
-.gcard__status--known { background: rgba(250, 204, 21, 0.14); }
-
 .gcard__foot {
   display: flex;
   flex-wrap: wrap;
@@ -1652,21 +1035,9 @@ body.free-answer .typed-preview {
   cursor: pointer;
 }
 
-.genre-bar__link:hover {
-  text-decoration: underline;
-}
-
 .cat-row__list {
   font-size: 12px;
   font-weight: 600;
-}
-
-.cat-row__list:hover {
-  text-decoration: underline;
-}
-
-.my-tab--active {
-  border-color: #60a5fa;
 }
 
 .my-concept__form {
@@ -1684,30 +1055,6 @@ body.free-answer .typed-preview {
 .my-concept__form textarea {
   resize: vertical;
   font-family: inherit;
-}
-
-.mem {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.mem__bar {
-  display: inline-block;
-  width: 60px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.2);
-  overflow: hidden;
-}
-
-.mem__bar b {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #60a5fa, #4ade80);
 }
 
 @media (max-width: 600px) {
@@ -1729,110 +1076,6 @@ body.free-answer .typed-preview {
   }
 }
 
-/* 戻ってきた人にはキャッチコピーを小さく、説明文は出さない */
-body.returning .hero--compact h1 {
-  font-size: clamp(20px, 3vw, 26px);
-}
-
-body.returning .hero--compact .subtitle {
-  display: none;
-}
-
-body.returning .hero--compact {
-  margin-bottom: 12px;
-}
-
-/* 今日カード: 中のカード（はちゃん・CTA・覚えた）は枠を持たず、1枚にまとまる */
-.today {
-  padding: 14px 16px 12px;
-  margin-bottom: 18px;
-  border-radius: 20px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(96, 165, 250, 0.35);
-  backdrop-filter: blur(14px);
-}
-
-.today .hasumi--home {
-  margin: 0 0 10px;
-}
-
-.today .hasumi__avatar {
-  width: 36px;
-  height: 36px;
-}
-
-.today .learned-card {
-  margin: 8px 0 0;
-  padding: 10px 0 0;
-  border: none;
-  border-top: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 0;
-  background: transparent;
-  backdrop-filter: none;
-}
-
-.today .learned-card__week {
-  display: none; /* 週の進みは数字1行（📅）へ */
-}
-
-.today .login-nudge {
-  margin: 10px 0 0;
-}
-
-.strip__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.1);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #cbd5e1;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.strip__chip b {
-  color: #f8fafc;
-  font-weight: 800;
-}
-
-.strip__chip--on {
-  border-color: rgba(74, 222, 128, 0.45);
-  background: rgba(74, 222, 128, 0.1);
-  color: #bbf7d0;
-}
-
-.strip__chip--streak.strip__chip--on {
-  border-color: rgba(251, 146, 60, 0.5);
-  background: rgba(251, 146, 60, 0.12);
-  color: #fed7aa;
-}
-
-.setup {
-  padding: 12px 14px 4px;
-  margin-bottom: 12px;
-  border-radius: 16px;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.setup .category-picker {
-  margin-bottom: 6px;
-}
-
-.setup .genre-bar {
-  margin: 4px 0 0;
-}
-
-.setup .weak-toggle {
-  margin: 0;
-}
-
-.setup .mix-control {
-  margin: 0 0 8px;
-}
-
 .stats--strip .stat-card {
   min-width: 0;
 }
@@ -1844,10 +1087,6 @@ body.returning .hero--compact {
   gap: 8px;
   cursor: pointer;
   list-style: none;
-}
-
-.home-more > summary::-webkit-details-marker {
-  display: none;
 }
 
 .home-more > summary::after {
@@ -1872,10 +1111,6 @@ body.list-compact .gcard__explain,
 body.list-compact .gcard__accept,
 body.list-compact .gcard__foot {
   display: none;
-}
-
-body.list-compact .gcard {
-  gap: 2px;
 }
 
 body.list-compact .genre__cards {
@@ -1952,64 +1187,6 @@ body.list-compact .genre__cards {
   display: none;
 }
 
-.word-ai__button {
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 1px dashed rgba(167, 139, 250, 0.55);
-  background: rgba(139, 92, 246, 0.1);
-  color: #c4b5fd;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.word-ai__button:hover {
-  background: rgba(139, 92, 246, 0.2);
-}
-
-.word-ai__button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.word-ai {
-  display: grid;
-  gap: 4px;
-  max-width: 520px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  background: rgba(139, 92, 246, 0.08);
-  font-size: 13px;
-  line-height: 1.5;
-  text-align: left;
-  color: #e2e8f0;
-}
-
-.word-ai__mnemonic {
-  color: #ddd6fe;
-  font-weight: 600;
-}
-
-.word-ai__example {
-  color: #cbd5e1;
-}
-
-.word-ai__ja {
-  display: block;
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.word-ai__pitfall {
-  font-size: 12px;
-  color: #fcd34d;
-}
-
-.word-ai__error {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
 .word-detail__ai {
   margin-top: 8px;
 }
@@ -2029,21 +1206,6 @@ body.list-compact .genre__cards {
 
 .cardgen__field--answer {
   font-weight: 700;
-  color: #93c5fd;
-}
-
-.cardgen__field--sub {
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-.cardgen__field:focus {
-  outline: none;
-  border-color: rgba(96, 165, 250, 0.7);
-}
-
-.cardgen__card textarea.cardgen__field {
-  resize: vertical;
 }
 
 /* ===== Batch 8: 分野パック（教材ライブラリ） ===== */
@@ -2054,22 +1216,9 @@ body.list-compact .genre__cards {
   align-items: center;
 }
 
-.packs {
-  margin: 4px 0 18px;
-}
-
 .packs__grid {
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 10px;
-}
-
-.pack {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(15, 23, 42, 0.5);
 }
 
 /* ===== Batch 8b: ライブラリのグループ見出し・検索 ===== */
@@ -2093,23 +1242,12 @@ body.list-compact .genre__cards {
   gap: 10px;
 }
 
-.list-review__button {
-  border-radius: 999px;
-}
-
-.list-review__button:hover {
-  background: rgba(148, 163, 184, 0.12);
-}
-
 /* ===== Batch 9: レベル別パック（品詞タグ） ===== */
 .gcard__pos {
   display: inline-block;
 }
 
 /* ===== マイ単語帳を「単語帳」ページへ（教材を作る場所） ===== */
-.my-fold {
-  padding: 0;
-}
 
 .my-fold__summary {
   display: flex;
@@ -2120,65 +1258,14 @@ body.list-compact .genre__cards {
   list-style: none;
 }
 
-.my-fold__summary::-webkit-details-marker {
-  display: none;
-}
-
-.my-fold[open] .my-fold__summary::before {
-  content: "▾";
-}
-
 .my-fold__hint {
   flex-basis: 100%;
 }
 
 /* ===== 例文（英単語カード）: 答え表示・正解時 ===== */
-.word-example {
-  display: block;
-  text-align: center;
-  margin: 0 auto 8px;
-  max-width: 620px;
-  line-height: 1.55;
-}
 
 .word-example:empty {
   display: none;
-}
-
-.word-example__en b {
-  color: #facc15;
-  font-weight: 800;
-}
-
-.word-example__ja {
-  display: block;
-  margin-top: 2px;
-  color: #94a3b8;
-  font-size: 12.5px;
-}
-
-.word-example__speak {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: middle;
-  margin: 0 0 0 4px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: transparent;
-  border-radius: 999px;
-  padding: 0 8px;
-  min-height: 24px;
-  font-size: 12px;
-  cursor: pointer;
-  line-height: 1.6;
-}
-
-.word-example__speak:hover {
-  background: rgba(148, 163, 184, 0.16);
-}
-
-/* 単語帳のカードの例文 */
-.gcard__ex {
-  color: #cbd5e1;
 }
 
 /* 単語詳細の例文 */
@@ -2223,9 +1310,3 @@ body.list-compact .genre__cards {
   flex: 1 1 100%;
 }
 
-.word-actions .speak-button,
-.word-actions .hint-button {
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 700;
-}

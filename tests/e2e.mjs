@@ -341,7 +341,8 @@ console.log("daily:");
   await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   await page.$eval("#homeMore", (el) => { el.open = true; });
-  await page.click("#dailyStartButton");
+  // Batch 43: 未プレイの #dailyCard は home.css で display:none（.daily--done が付くまで畳む）なので Playwright の click は使えない。DOM 側で押す
+  await page.$eval("#dailyStartButton", (el) => el.click());
   await page.waitForTimeout(3800);
   const card = await page.textContent("#dailyCard");
   check("完走でロック（スコア表示）", card.includes("今日のスコア"));
@@ -838,7 +839,7 @@ console.log("first run & retention:");
   await page.goto(BASE + "/index.html?set=2", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   const card = await page.textContent("#learnedCard");
-  check("覚えたカードに週の目標（今週 1/3日）", /今週\s*1\s*\/\s*3日/.test(card.replace(/\s+/g, " ")), card.slice(0, 120));
+  check("覚えたカードに週の目標（今週 1日 ・ 目標 3日）", /今週\s*1\s*日 ・ 目標 3日/.test(card.replace(/\s+/g, " ")), card.slice(0, 120)); // Batch 43: 「今週 N／M日」→「今週 N日 ・ 目標 M日」
   await page.press("#input", "Enter");
   await page.waitForTimeout(300);
   const startMsg = await page.textContent("#message");
@@ -955,7 +956,7 @@ console.log("challenge & quality:");
   await page.press("#input", "Enter");
   await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 5000);
   const panel1 = await page.textContent("#resultPanel");
-  check("Challenge結果の数字は1行（スコア・ベスト・速度・XP）", panel1.includes("スコア") && panel1.includes("ベスト") && panel1.includes("速度") && panel1.includes("XP") && !panel1.includes("広告・マーケ"), panel1.slice(0, 160));
+  check("Challenge結果の数字は1行（スコア・ベスト・速度・経験値）", panel1.includes("スコア") && panel1.includes("ベスト") && panel1.includes("速度") && panel1.includes("経験値") && !panel1.includes("広告・マーケ"), panel1.slice(0, 160));
   check("1回目は前回比なし", !panel1.includes("前回"));
   await page.click("#resultRetry");
   await waitUntil(async () => !(await page.$eval("#resultPanel", (el) => el.hidden)), 5000);
@@ -1265,7 +1266,7 @@ console.log("my concept & retention:");
   await page4.waitForTimeout(800);
   const listText = await page4.textContent("#listBody");
   check("単語帳: 覚えかけの語には記憶ゲージが出ない", (await page4.$(".mem__bar")) === null && !listText.includes("/10"), listText.slice(0, 160));
-  check("ジャンル全部覚えたら「制覇」", listText.includes("制覇"));
+  check("ジャンル全部覚えたら「全部済み」", listText.includes("全部済み"));
   check("ログイン案内／ゲージでエラー0", page4.errors.length === 0, page4.errors[0] ?? "");
   await page4.close();
 
@@ -1438,14 +1439,14 @@ console.log("calc & listen:");
     }
     if (shown === "adapt" || shown === "adopt") {
       const fam = await page2.textContent("#wordFamily");
-      sawConfusable = fam.includes("混同注意") && fam.includes(shown === "adapt" ? "adopt" : "adapt");
+      sawConfusable = fam.includes("似た綴り") && fam.includes(shown === "adapt" ? "adopt" : "adapt");
     }
     for (const ch of shown) await page2.press("#input", ch);
     await page2.waitForTimeout(350);
   }
   check("音で出題が混ざる（50%設定）", !!sawListen);
-  check("紛らわしい語に「混同注意」（adapt ↔ adopt）", sawConfusable);
-  check("音で出題／混同注意でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  check("紛らわしい語に「似た綴り」（adapt ↔ adopt）", sawConfusable);
+  check("音で出題／似た綴りでエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 
   const page3 = await newPage();
@@ -1846,7 +1847,7 @@ console.log("domain packs:");
   const page9e = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(allKnown), spelldash_placement: "done" } });
   await page9e.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page9e.waitForTimeout(900);
-  check("道: 全ユニット済みで「次のセクションへ」", (await page9e.$("#pathNext")) !== null && (await page9e.textContent("#pathHead")).includes("制覇") && (await page9e.$$(".path__node--done")).length === 11);
+  check("道: 全ユニット済みで「次のセクションへ」", (await page9e.$("#pathNext")) !== null && (await page9e.textContent("#pathHead")).includes("ユニット済み") && (await page9e.$$(".path__node--done")).length === 11);
   await page9e.click("#pathNext");
   await page9e.waitForTimeout(1200);
   const advanced = await page9e.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]") }));
@@ -2166,7 +2167,7 @@ console.log("courses:");
   // お知らせは道の描き直しの後に出るので、固定待ちではなく中身が入るのを待つ
   await waitUntil(async () => (await page3.textContent("#pathToast")).trim().length > 0, 4000).catch(() => {});
   const toast = await page3.textContent("#pathToast");
-  check("制覇の演出: セット完了で🎉ユニット制覇のお知らせ、次のユニット名", sawLast && (await page3.isVisible("#pathToast")) && toast.includes("制覇") && (await page3.textContent("#pathHead")).includes("ユニット 2／11"), `sawLast=${sawLast} toast=${toast}`);
+  check("ユニット済みの演出: セット完了でユニット済みのお知らせ、次のユニット名", sawLast && (await page3.isVisible("#pathToast")) && toast.includes("済み") && toast.includes("次は") && (await page3.textContent("#pathHead")).includes("ユニット 2／11"), `sawLast=${sawLast} toast=${toast}`);
   check("制覇の演出: はちゃんは出さない", !(await page3.$eval("#pathToast", (el) => el.innerHTML.includes("hasumi"))));
   check("制覇の演出でエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
   await page3.close();
@@ -2527,7 +2528,7 @@ console.log("admin crm:");
     check("CRM: セグメントの表示（active=活動中 / atRisk=離れかけ / churned=離脱 / dormant=登録のみ）", ["active:活動中", "atRisk:離れかけ", "churned:離脱", "dormant:登録のみ"].every((s) => segs.includes(s)) && segs.length === 6, JSON.stringify(segs));
     check("CRM: 今週の新規には「新規」のチップ", (await rowText(page, KEN)).includes("新規") && !(await rowText(page, EMI)).includes("新規"), await rowText(page, KEN));
     const last = { ken: await rowText(page, KEN), emi: await rowText(page, EMI), mike: await rowText(page, MIKE), signup: await rowText(page, SIGNUP) };
-    check("CRM: 最終活動は今日との差（今日 / 昨日 / 12日前 / まだ無し）", last.ken.includes("今日") && last.emi.includes("昨日") && last.mike.includes("12日前") && last.signup.includes("まだ無し"), JSON.stringify(last));
+    check("CRM: 最終活動は今日との差（今日 / 昨日 / 12日前 / まだなし）", last.ken.includes("今日") && last.emi.includes("昨日") && last.mike.includes("12日前") && last.signup.includes("まだなし"), JSON.stringify(last));
     check("CRM: crm_notes が無い旨の案内（#adminMissing に docs/SQL_CRM.md）", await page.$eval("#adminMissing", (el) => !el.hidden && el.textContent.includes("docs/SQL_CRM.md")));
 
     // 5. チップ atRisk → mike だけ
@@ -2554,17 +2555,17 @@ console.log("admin crm:");
     check("CRM: 行を押すと詳細パネル（#adminDrawer）が見える", await waitUntil(() => drawerShown(page), 2000));
     const detailLoaded = await waitUntil(async () => (await page.textContent("#adminFeedback")).includes("別解"), 5000);
     check("CRM: 詳細のご意見に「別解」", detailLoaded, (await page.textContent("#adminFeedback")).replace(/\s+/g, " ").trim().slice(0, 80));
-    check("CRM: 詳細の追加している分野に toeic500", (await page.textContent("#adminPacks")).includes("toeic500"), (await page.textContent("#adminPacks")).trim());
+    check("CRM: 詳細の追加しているパックに TOEIC 500点（id は title 属性）", (await page.$$eval("#adminPacks .admin-tag", (els) => els.map((e) => e.title))).includes("toeic500") && (await page.textContent("#adminPacks")).includes("500点") && !(await page.textContent("#adminPacks")).includes("toeic500"), (await page.textContent("#adminPacks")).trim());
     const bars = await page.$$eval("#adminActivity > *", (els) => els.length);
     check("CRM: 30 日の活動は棒が 30 本", bars === 30, `bars=${bars}`);
     check("CRM: 詳細を開いても一覧は裏に残る", (await rowIds(page)).length === 6);
 
-    // 9. メモを書いて保存 → 「保存しました」、一覧の行のタグも更新
+    // 9. メモを書いて保存 → 「保存済み」、一覧の行のタグも更新
     await page.fill("#adminNote", "テストのメモ");
     await page.fill("#adminTags", "TOEIC, 要フォロー");
     await page.click("#adminSaveNote");
-    const saved = await waitUntil(async () => (await page.textContent("#adminNoteStatus")).includes("保存しました"), 5000);
-    check("CRM: メモを保存すると「保存しました」", saved, (await page.textContent("#adminNoteStatus")).trim());
+    const saved = await waitUntil(async () => (await page.textContent("#adminNoteStatus")).includes("保存済み"), 5000);
+    check("CRM: メモを保存すると「保存済み」", saved, (await page.textContent("#adminNoteStatus")).trim());
     const rowAfter = await rowText(page, MIKE);
     check("CRM: 保存後に一覧の行のタグが更新される（要フォロー）", rowAfter.includes("要フォロー") && rowAfter.includes("TOEIC"), rowAfter);
     await page.keyboard.press("Escape");
@@ -2724,7 +2725,7 @@ console.log("pro:");
     const page = await newPage({ storage: proStorage({ current_period_end: isoDaysFromNow(-10) }) });
     await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(800);
-    check("Pro: 失効（期限 + 3 日を過ぎた）は #planValue が「Free」", (await text(page, "#planValue")) === "Free", await text(page, "#planValue"));
+    check("Pro: 失効（期限 + 3 日を過ぎた）は #planValue が「無料」", (await text(page, "#planValue")) === "無料", await text(page, "#planValue"));
     check("Pro: 失効したら「Pro について」のリンクが出る", (await visible(page, "#planLink")) && !(await visible(page, "#planPortal")));
     await page.close();
     const page2 = await newPage({ storage: proStorage({ status: "past_due", current_period_end: isoDaysFromNow(-1) }) });

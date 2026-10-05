@@ -72,7 +72,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 let doneExpanded = false;
 
 // コース選択パネル（見出しの「コースを変える」で開く）。
-// 各コースは1行（太字ラベル＋対象・セクション数）で、行全体がボタン。説明は「説明」で畳む。
+// 各コースは1行（太字ラベル＋対象・セクション数）で、行全体がボタン。説明は「くわしく」で開く（開いたら「閉じる」）。
 // 560px 以下は画面下から出るシート、それより広い画面は見出しの下に重ねる（どちらも道のスタートは動かない）。
 function courseChooserHtml(currentId) {
   return `
@@ -88,7 +88,7 @@ function courseChooserHtml(currentId) {
           <li class="path__course${now ? " path__course--current" : ""}">
             <div class="path__course-row">
               ${now ? `<div class="path__course-text">${text}</div>` : `<button type="button" class="path__course-pick" data-course="${esc(c.id)}">${text}</button>`}
-              <button type="button" class="path__course-info" aria-expanded="false" aria-controls="pathCourseBlurb${i}">説明</button>
+              <button type="button" class="path__course-info" aria-expanded="false" aria-controls="pathCourseBlurb${i}">くわしく</button>
             </div>
             <p class="path__course-blurb" id="pathCourseBlurb${i}" hidden>${esc(c.blurb)}</p>
           </li>`;
@@ -133,7 +133,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
           ? "分野パック"
           : "カテゴリ";
   const unitLine = allDone
-    ? `${units.length}ユニット制覇`
+    ? `${units.length}ユニット済み`
     : current && !beforePlacement
       ? `ユニット ${currentIndex + 1}／${units.length} ・ ${esc(current.label)}`
       : "";
@@ -196,9 +196,9 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
 
   const goal = allDone
     ? section?.next
-      ? `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start path__start--next" id="pathNext">次のセクションへ${icon("arrowRight")}</button><div class="path__label"><b>${esc(label)} 制覇</b><span>次は「${esc([...getCategories(), ...getPackCatalog()].find((c) => c.id === section.next)?.label ?? "次のパック")}」</span></div></li>`
-      : `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start" id="pathStart" data-unit="" aria-label="復習を続ける"><span class="path__tip">全部覚えた</span>復習</button><div class="path__label"><b>${esc(label)} 制覇</b><span>復習を続けるか、<a href="./list.html#packs">単語帳</a>から次の分野を追加</span></div></li>`
-    : `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("star", { size: 14 })}</span><div class="path__label"><b>${esc(label)} 制覇</b><span>${section?.next ? "次のセクションが開く" : "全ユニットを覚えたら"}</span></div></li>`;
+      ? `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start path__start--next" id="pathNext">次のセクションへ${icon("arrowRight")}</button><div class="path__label"><b>このセクション 全ユニット済み</b><span>次は「${esc([...getCategories(), ...getPackCatalog()].find((c) => c.id === section.next)?.label ?? "次のパック")}」</span></div></li>`
+      : `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start" id="pathStart" data-unit="" aria-label="復習を続ける"><span class="path__tip">全部覚えた</span>復習</button><div class="path__label"><b>このセクション 全ユニット済み</b><span>復習を続けるか、<a href="./list.html#packs">単語帳</a>から次の分野を追加</span></div></li>`
+    : `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("star", { size: 14 })}</span><div class="path__label"><b>このセクション 全ユニット済み</b><span>${section?.next ? "次のセクションが開く" : "全ユニットを覚えたら"}</span></div></li>`;
 
   const more = hiddenLocked > 0
     ? `<li class="path__node path__node--locked path__node--more path__node--c"><span class="path__dot path__dot--more" aria-hidden="true"></span><div class="path__label"><b>あと${hiddenLocked}ユニット</b><span>${hiddenUnits.map((u) => esc(u.label)).join("・")}</span></div></li>`
@@ -285,6 +285,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       const open = blurb.hidden;
       blurb.hidden = !open;
       btn.setAttribute("aria-expanded", String(open));
+      btn.textContent = open ? "閉じる" : "くわしく";
     })
   );
   el.querySelectorAll(".path__course-pick").forEach((btn) =>
@@ -296,7 +297,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   return path;
 }
 
-// ユニット制覇の小さな演出（道の見出しの下に数秒）。はちゃんは出さない（登場は3場面だけ）。
+// ユニット済みの小さな演出（道の見出しの下に数秒）。はちゃんは出さない（登場は3場面だけ）。
 // 直後に同期などで道が描き直されても消えないよう、表示中の内容を覚えておいて再描画時に出し直す
 let toastState = null;
 const TOAST_MS = 5000;

@@ -203,7 +203,7 @@ function celebrateNewUnits(path) {
   const fresh = path.units.filter((u) => u.done && !doneUnitsAtStart.has(u.label)).map((u) => u.label);
   doneUnitsAtStart = null;
   if (fresh.length === 0) return;
-  showPathToast(path.allDone ? `${path.label} 制覇。${fresh.map((l) => `「${l}」`).join("")}も覚えた` : `ユニット${fresh.map((l) => `「${l}」`).join("")}を制覇。次は「${currentUnitOf(path)?.label ?? ""}」`);
+  showPathToast(path.allDone ? `${path.label} 全ユニット済み。${fresh.map((l) => `「${l}」`).join("")}も覚えた` : `ユニット${fresh.map((l) => `「${l}」`).join("")}済み。次は「${currentUnitOf(path)?.label ?? ""}」`);
 }
 
 function renderHome() {
@@ -245,7 +245,12 @@ function renderSetupSummary() {
   const parts = [label];
   if (getGenre()) parts.push(genreLabel(getGenre()));
   if (isWeakOnlyMode()) parts.push("苦手のみ");
-  el.textContent = parts.join(" › ");
+  const summary = parts.join(" › ");
+  el.textContent = summary;
+  // 出題名が道の見出し（コース名）と同じなら、行は「設定」だけに（同じ名前を 2 度言わない。css/home.css）
+  const toggle = document.getElementById("setupToggle");
+  const pathTitle = document.querySelector("#pathHead .path__title")?.textContent?.trim() ?? "";
+  toggle?.classList.toggle("setup-toggle--same", pathTitle !== "" && summary === pathTitle);
 }
 
 function setSetupOpen(open) {

@@ -935,11 +935,11 @@ function renderWordFamily(word) {
       .map((id) => findWord(id))
       .filter(Boolean)
       .map((w) => `${w.en}（${w.ja}）`);
-    if (names.length) lines.push(`同じ仲間: ${names.join(" / ")}`);
+    if (names.length) lines.push(`仲間の語: ${names.join("・")}`);
   }
   // 紛らわしい語（affect/effect, adapt/adopt …）: 綴りが1〜2文字違いの語を並べて混同を潰す
   const confusables = findConfusables(word);
-  if (confusables.length) lines.push(`混同注意: ${confusables.map((w) => `${w.en}（${w.ja}）`).join(" / ")}`);
+  if (confusables.length) lines.push(`似た綴り: ${confusables.map((w) => `${w.en}（${w.ja}）`).join("・")}`);
 
   elements.wordFamily.textContent = lines.join("　");
 }
@@ -1853,10 +1853,9 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0,
   if (diff != null) {
     bestBadge += `<div class="result-panel__diff${diff > 0 ? " result-panel__diff--up" : diff < 0 ? " result-panel__diff--down" : ""}">前回 ${previousRun} → ${score}（${diff > 0 ? `+${diff}` : diff === 0 ? "同じ" : diff}）</div>`;
   }
-  // カテゴリ別ベスト: 全体ベストと同時には出さない。更新したときだけ、初回は「初記録」
-  if (!isDaily && !isBest && activeCategory !== "all" && categoryBestUpdated) {
-    const label = getCategoryLabel(activeCategory);
-    bestBadge += `<div class="result-panel__cat">このカテゴリでは${categoryBestBefore > 0 ? "ベスト更新" : "初めての記録"}</div>`;
+  // カテゴリ別ベスト: 全体ベストと同時には出さない。前の記録を更新したときだけ（初回は何も言わない。「初めての記録」は「ベスト N」と並ぶと矛盾して読める）
+  if (!isDaily && !isBest && activeCategory !== "all" && categoryBestUpdated && categoryBestBefore > 0) {
+    bestBadge += `<div class="result-panel__cat">このカテゴリのベスト更新</div>`;
   }
   if (levelLine) bestBadge += `<div class="result-panel__level">${levelLine}</div>`;
   const title = isDaily ? "Daily Dash 結果" : "Challenge 結果";
@@ -1874,7 +1873,7 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0,
       <div><span>スコア</span><strong>${score}</strong></div>
       <div><span>ベスト</span><strong>${getBestScore()}</strong></div>
       <div><span>速度</span><strong>${(Math.round(speed * 10) / 10).toFixed(1)}打/秒</strong></div>
-      <div><span>経験値</span><strong>+${gainedXp} XP</strong></div>
+      <div><span>経験値</span><strong>+${gainedXp}</strong></div>
     </div>
     <div class="result-panel__actions">${actions}</div>
   `;
@@ -1900,7 +1899,7 @@ function getCategoryLabel(id) {
   return getCategories().find((c) => c.id === id)?.label ?? (id === "my" ? "マイ単語帳" : id);
 }
 
-// ランクアップ（F3→F2 等）はレベルアップの中でも節目。大きめのオーバーレイで祝う
+// 称号が変わるレベルアップ（F3→F2 等）は節目。大きめのオーバーレイで祝う（画面の語は「レベルアップ」。「ランク」は Battle の RP の制度に取っておく）
 function celebrateRankUp(result) {
   if (!result?.leveledUp) return false;
   const beforeTitle = getTitle(result.before.level);
@@ -1909,10 +1908,10 @@ function celebrateRankUp(result) {
   const overlay = document.createElement("div");
   overlay.className = "rank-up";
   overlay.setAttribute("aria-hidden", "true"); // 読み上げは静的な #srStatus（role=status）に流す。後から挿入した live 領域は読まれない
-  announce(`ランクアップ: ${beforeTitle} から ${afterTitle}`);
+  announce(`レベルアップ: ${beforeTitle} から ${afterTitle}`);
   overlay.innerHTML = `
     <div class="rank-up__inner">
-      <div class="rank-up__label">ランクアップ</div>
+      <div class="rank-up__label">レベルアップ</div>
       <div class="rank-up__title"><span>${beforeTitle}</span><i>→</i><b>${afterTitle}</b></div>
       <div class="rank-up__sub">${unlockNoteForLevel(result.after.level).replace(/^。/, "")}</div>
     </div>

@@ -293,7 +293,7 @@ function render() {
       return `
         <section class="genre" id="genre-${g.tag}">
           <div class="genre__head">
-            <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count mono">${g.words.length}語</span>${done === g.words.length ? ` <span class="genre__clear">${icon("check", { size: 12 })}制覇</span>` : ""}</h2>
+            <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count mono">${g.words.length}語</span>${done === g.words.length ? ` <span class="genre__clear">${icon("check", { size: 12 })}全部済み</span>` : ""}</h2>
             ${done > 0 || weak > 0 ? `<div class="genre__meta">${done > 0 ? `覚えた ${done}` : ""}${done > 0 && weak > 0 ? " ・ " : ""}${weak > 0 ? `苦手 ${weak}` : ""}</div>` : ""}
             <div class="genre__actions">
               ${weak > 0 ? `<button type="button" class="btn btn--sm btn--ghost genre__weak" data-practice-words="${g.words.filter((w) => classifyWord(stats[w.id]) === "weak").map((w) => w.id).join(",")}">苦手 ${weak}語だけ練習</button>` : ""}

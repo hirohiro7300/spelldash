@@ -295,7 +295,7 @@ function renderCategoryProgress() {
         (r) => `
         <div class="cat-row" data-category="${r.id}">
           <div class="cat-row__head">
-            <button type="button" class="cat-row__go" data-category="${r.id}" aria-label="${r.label} で練習を始める（覚えた ${r.learned} / ${r.total}）"><span class="cat-row__label">${r.label}<span class="cat-row__total mono">${r.total}語</span>${r.total > 0 && r.learned === r.total ? `<span class="cat-row__clear">制覇</span>` : ""}</span></button>
+            <button type="button" class="cat-row__go" data-category="${r.id}" aria-label="${r.label} で練習を始める（覚えた ${r.learned} / ${r.total}）"><span class="cat-row__label">${r.label}<span class="cat-row__total mono">${r.total}語</span>${r.total > 0 && r.learned === r.total ? `<span class="cat-row__clear">全部済み</span>` : ""}</span></button>
             <span class="cat-row__learned">覚えた <strong class="mono">${r.learned}</strong> / ${r.total}${r.id !== "all" ? ` <a class="cat-row__list" href="./list.html?category=${r.id}" data-stop>一覧</a>` : ""}</span>
           </div>
           <div class="cat-bar" aria-hidden="true">

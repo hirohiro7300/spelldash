@@ -2,10 +2,6 @@
    docs/CONCEPT.md「墨と朱」: トークンだけ、罫線で区切る、数字は等幅、影なし、絵文字なし。
    html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。 */
 
-html[data-theme] .admin-app {
-  width: min(1000px, 100%);
-}
-
 html[data-theme] .admin {
   position: relative;
 }
@@ -102,12 +98,6 @@ html[data-theme] .admin-chip {
   transition: background var(--ease), color var(--ease), border-color var(--ease);
 }
 
-html[data-theme] .admin-chip:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: 2px;
-  box-shadow: none;
-}
-
 html[data-theme] .admin-chip:hover {
   color: var(--ink);
   background: var(--paper-3);
@@ -158,7 +148,10 @@ html[data-theme] .admin-note__tags:focus {
 }
 
 /* ---- 一覧（表。720px 以下はカード） ---- */
+/* 器は他のページと同じ .app（820px）。10 列の表だけ 1000px まで左右にはみ出して中央に置く */
 html[data-theme] .admin-table {
+  width: min(1000px, calc(100vw - 32px));
+  margin-left: calc((100% - min(1000px, calc(100vw - 32px))) / 2);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--paper-2);
@@ -202,12 +195,6 @@ html[data-theme] .admin-row {
 html[data-theme] .admin-row:hover,
 html[data-theme] .admin-row--open {
   background: var(--paper-3);
-}
-
-html[data-theme] .admin-row:focus-visible {
-  outline: 2px solid var(--signal);
-  outline-offset: -2px;
-  box-shadow: none;
 }
 
 html[data-theme] .admin-cell {
@@ -275,19 +262,19 @@ html[data-theme] .admin-seg {
 }
 
 html[data-theme] .admin-seg--active { color: var(--ok); }
-html[data-theme] .admin-seg--atRisk { background: var(--warn-soft); color: var(--warn); }
+html[data-theme] .admin-seg--atRisk { color: var(--warn); }
 html[data-theme] .admin-seg--churned { color: var(--signal-ink); }
 html[data-theme] .admin-seg--dormant { color: var(--ink-2); }
 
-/* プラン: Pro だけ朱の線のチップ（free は空） */
+/* プラン: Pro だけチップ（free は空）。見た目はセグメント・タグと同じ 1 系統（paper-3 の面・透明枠・ink-2） */
 html[data-theme] .admin-plan {
   display: inline-block;
   padding: 1px 7px;
-  border: 1px solid var(--signal);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--signal-soft);
-  color: var(--signal-ink);
-  font-family: var(--font-mono);
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.5;
@@ -296,20 +283,14 @@ html[data-theme] .admin-plan {
 
 html[data-theme] .admin-chip--plan {
   margin-left: 4px;
-  border-color: var(--line-2);
-  background: transparent;
-}
-
-html[data-theme] .admin-chip--plan.admin-chip--active {
-  background: var(--ink);
-  border-color: var(--ink);
 }
 
 html[data-theme] .admin-new {
   display: inline-block;
   padding: 1px 6px;
-  border: 1px solid var(--line-2);
+  border: 1px solid transparent;
   border-radius: 999px;
+  background: var(--paper-3);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.5;
@@ -428,14 +409,30 @@ html[data-theme] .admin-drawer__email {
   word-break: break-all;
 }
 
+/* 閉じる: 単語詳細・ご意見モーダルの × と同じ（pages.css .word-detail__close と同じ値。32px・枠なし・ink-3 の線画） */
 html[data-theme] .admin-drawer__close {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  box-shadow: none;
+}
+
+html[data-theme] .admin-drawer__close .icon {
+  margin: 0;
+}
+
+html[data-theme] .admin-drawer__close:hover {
+  color: var(--ink);
+  background: var(--paper-3);
 }
 
 html[data-theme] .admin-facts {
@@ -729,6 +726,40 @@ html[data-theme] .admin-note__status:empty {
   html[data-theme] .admin-field--grow {
     max-width: none;
   }
+
+  /* 表の前の操作列を詰める: 説明は 1200 だけ、注意は枠なしの 1 行、チップは横スクロールの 1 行 */
+  html[data-theme] .admin-app .subtitle {
+    display: none;
+  }
+
+  html[data-theme] .admin-missing {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+
+  html[data-theme] .admin-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-right: 24px;
+    mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); /* 右端のフェードで続きがあることを見せる */
+  }
+
+  html[data-theme] .admin-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-theme] .admin-chip {
+    flex: 0 0 auto;
+  }
+
+  html[data-theme] .admin-bar {
+    gap: 8px;
+  }
+
 }
 
 /* 721〜900px: 列を全部出すと入り切らないので、表だけ横にスクロールさせる */
@@ -747,5 +778,38 @@ html[data-theme] .admin-note__status:empty {
   html[data-theme] .admin-chip,
   html[data-theme] .admin-row {
     transition: none;
+  }
+}
+
+/* ---- 指で押す端末: チップ・メモ欄・ピン留め・閉じるの当たりを 40px に（見た目は不変） ---- */
+@media (pointer: coarse) {
+  html[data-theme] .admin-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 14px;
+  }
+
+  html[data-theme] .admin-chips {
+    gap: 8px;
+  }
+
+  /* iOS Safari は 16px 未満の入力欄にフォーカスすると拡大する */
+  html[data-theme] .admin-note__text {
+    font-size: 16px;
+  }
+
+  html[data-theme] .admin-note__check {
+    min-height: 40px;
+  }
+
+  html[data-theme] .admin-note__check input {
+    width: 20px;
+    height: 20px;
+  }
+
+  html[data-theme] .admin-drawer__close {
+    width: 40px;
+    height: 40px;
   }
 }
