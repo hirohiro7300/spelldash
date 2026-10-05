@@ -850,3 +850,15 @@ body:not(.home--playing) .app--home .stats--strip {
   opacity: 0;
   pointer-events: none;
 }
+
+/* 今日のぶんが済んだ日のスタート: 朱の塗りをやめ、罫線の円（押せるが急かさない）。.path__start より後・高い詳細度 */
+html[data-theme] .path__start.path__start--done {
+  background: var(--paper-2);
+  color: var(--ink);
+  border: 2px solid var(--line-2);
+}
+
+html[data-theme] .path__start.path__start--done:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}

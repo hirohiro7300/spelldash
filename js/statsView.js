@@ -11,7 +11,7 @@ import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
-import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml } from "./learnedWords.js";
+import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCount } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
 import { downloadLearnedCsv } from "./exportCsv.js";
@@ -138,7 +138,7 @@ function renderOverview() {
 
   // 概要は2枚だけ: 覚えた語数と連続日数（CONCEPT 原則9）。残りは「分析」タブの「その他の数字」へ
   renderCards(overviewElement, [
-    { label: "覚えた", value: `${all.learned}語` },
+    { label: "覚えた", value: `${getLearnedCount()}語` },
     { label: "連続", value: `${streak.current}日` }
   ]);
   const more = document.getElementById("overviewMore");
@@ -391,7 +391,7 @@ function renderGrowthTrend() {
   const days = getTrendRange();
   syncTrendRangeButtons(days);
   const all = computeCategoryProgress()[0];
-  recordGrowthSnapshot({ learned: all.learned, mastered: all.mastered });
+  recordGrowthSnapshot({ learned: getLearnedCount(), mastered: all.mastered });
   const series = getLearnedSeries(days);
   const points = series.filter((p) => p.learned != null);
 

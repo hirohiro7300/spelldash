@@ -41,7 +41,7 @@ export function hasumiHomeLine() {
     return { mood: "happy", text: "今日のぶん、終わった。" };
   }
 
-  if (streak.current > 0 && streak.current + 1 > streak.best) {
+  if (streak.current > 0 && streak.best >= 2 && streak.current + 1 > streak.best) {
     return { mood: "normal", text: "今日やると、連続記録を更新。" };
   }
 
@@ -83,12 +83,12 @@ export function hasumiLearnedLine(en) {
 }
 
 // 今日のセット完了の一言（完了の事実だけ。次を急かさない）
-export function hasumiSetLine({ count = 0, failed = 0, sets = 1 } = {}) {
+export function hasumiSetLine({ count = 0, failed = 0, sets = 1, recovered = 0 } = {}) {
   if (sets > 1) {
     return { mood: "happy", text: `${sets}セット目、終わった。` };
   }
-  if (failed === 0) {
-    return { mood: "happy", text: "今日は全部、自力で出てきた。" };
+  if (failed === 0 && !recovered) {
+    return { mood: "happy", text: "今日は全部、自力で思い出せた。" };
   }
   return { mood: "normal", text: "今日のぶん、終わった。" };
 }

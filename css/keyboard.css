@@ -31,7 +31,7 @@ html.native-app body.osk-open {
 
 /* Enter や scrollIntoView で入力欄が盤面の下に隠れないように */
 html:has(body.osk-open) {
-  scroll-padding-bottom: 250px;
+  scroll-padding-bottom: calc(var(--osk-h, 236px) + 88px); /* 盤面＋チュートリアルの札（約 60px）の上に入力欄が来る */
 }
 
 .osk__rows {
