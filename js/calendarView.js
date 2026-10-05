@@ -56,14 +56,13 @@ export function computeCalendarDays(weeks = WEEKS) {
       month: d.getDate() === 1 || i === 0 ? d.getMonth() + 1 : null
     });
   }
-  const activeDays = days.filter((d) => d.level > 0).length;
-  return { days, activeDays, weeks };
+  return { days, weeks };
 }
 
 export function renderCalendar(containerId) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  const { days, activeDays, weeks } = computeCalendarDays();
+  const { days, weeks } = computeCalendarDays();
 
   // 列＝週、行＝曜日（月〜日）。CSS grid で列方向に流す
   const cells = days

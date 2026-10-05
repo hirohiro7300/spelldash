@@ -8,16 +8,21 @@ import { hasumiWeeklyLine, hasumiBubbleHtml } from "./hasumi.js";
 // 「自分は前進している」証拠を週に一度まとめて見せる。
 // 数字は端末内の学習記録から算出（サーバー不要）。
 
-const DAY = 86400000;
-
 export function computeWeeklyReport() {
   // 今日まだやっていなければ「昨日までの 7 日」で数える（朝に開いても 6/7 にならない）
   const includeToday = hasPlayedToday();
   const endDay = new Date();
   endDay.setHours(23, 59, 59, 999);
   if (!includeToday) endDay.setDate(endDay.getDate() - 1);
-  const now = Math.min(Date.now(), endDay.getTime());
-  const since = endDay.getTime() - 7 * DAY + 1;
+  const until = endDay.getTime();
+  const start = new Date(endDay); // 日付単位で 6 日戻す（夏時間の切り替え日でも 7 日ぶんになる）
+  start.setDate(start.getDate() - 6);
+  start.setHours(0, 0, 0, 0);
+  const since = start.getTime();
+  const inWindow = (iso) => {
+    const t = Date.parse(iso ?? 0) || 0;
+    return t >= since && t <= until;
+  };
   const stats = getWordStats();
 
   let recalled = 0;
@@ -25,25 +30,24 @@ export function computeWeeklyReport() {
   let reviewOk = 0;
   let reviewNg = 0;
   for (const s of Object.values(stats)) {
-    if (s.lastRecallSuccessAt && Date.parse(s.lastRecallSuccessAt) >= since) recalled++;
-    if (s.lastRecallFailAt && Date.parse(s.lastRecallFailAt) >= since) failed++;
-    if (s.lastReviewAt && Date.parse(s.lastReviewAt) >= since) {
+    if (s.lastRecallSuccessAt && inWindow(s.lastRecallSuccessAt)) recalled++;
+    if (s.lastRecallFailAt && inWindow(s.lastRecallFailAt)) failed++;
+    if (s.lastReviewAt && inWindow(s.lastReviewAt)) {
       if (s.lastReviewResult === "ok") reviewOk++;
       else if (s.lastReviewResult === "ng") reviewNg++;
     }
   }
 
   const learnedTotal = getLearnedCount(); // ホーム・学習データ・推移の記録と同じ数（パックの語も含む）
-  const learnedDelta = getLearnedDelta7(learnedTotal);
+  const learnedDelta = getLearnedDelta7(learnedTotal, includeToday ? 0 : 1);
   const activeDays = getActiveDaysLast7(includeToday ? 0 : 1);
 
-  const runs = getSessionLog().filter((e) => (Date.parse(e.at ?? 0) || 0) >= since);
+  const runs = getSessionLog().filter((e) => inWindow(e.at));
   const bestScore = runs.length ? Math.max(...runs.map((e) => e.score)) : 0;
 
   const retention = reviewOk + reviewNg > 0 ? Math.round((reviewOk / (reviewOk + reviewNg)) * 100) : null;
   const recallRate = recalled + failed > 0 ? Math.round((recalled / (recalled + failed)) * 100) : null;
 
-  const start = new Date(since);
   const end = new Date(endDay);
   const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
 

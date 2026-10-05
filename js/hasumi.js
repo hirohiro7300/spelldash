@@ -1,7 +1,6 @@
-import { getStreak, hasPlayedToday, SHIELD_EARN_EVERY } from "./level.js";
+import { getStreak, hasPlayedToday, SHIELD_EARN_EVERY, shieldMax } from "./level.js";
 import { localDateString } from "./stats.js";
-import { isPlacementPending, isPlacementRunning } from "./difficulty.js";
-import { getRecalledTodayCount } from "./studyQueue.js";
+import { getRecalledTodayCount, isBeforePlacement } from "./studyQueue.js";
 import { getLearnedWordsToday } from "./learnedWords.js";
 
 // ===== はちゃん（はすみ / Hasumi）: 学習パートナー =====
@@ -47,13 +46,16 @@ export function hasumiHomeLine() {
     return { mood: "normal", text: "昨日は休み。連続はそのまま。" };
   }
 
-  // 節目の前日だけ（4 日目・9 日目…）。毎日「記録更新」と言うと情報が無い
-  if (streak.current > 0 && (streak.current + 1) % SHIELD_EARN_EVERY === 0) {
-    return { mood: "normal", text: `今日やると${streak.current + 1}日。1日休んでも切れなくなる。` };
+  // 節目の前日だけ（4 日目・9 日目…）。毎日「記録更新」と言うと情報が無い。
+  // 言うのは「今日やると何が増えるか」。すでに持っている枚数で変える（上限なら増えないので言わない）
+  if (streak.current > 0 && (streak.current + 1) % SHIELD_EARN_EVERY === 0 && streak.shields < shieldMax()) {
+    const next = streak.current + 1;
+    if (streak.shields > 0) return { mood: "normal", text: `今日やると${next}日。休める日がもう1日増える。` };
+    return { mood: "normal", text: `今日やると${next}日。1日休んでも切れなくなる。` };
   }
 
-  // 腕試しが済んでいない人には、セットの語数ではなく腕試しの話をする（道のラベルと数字をそろえる）
-  if (isPlacementPending() || isPlacementRunning()) {
+  // 腕試し前の人（まだ 1 語も答えていない）には、セットの語数ではなく腕試しの話をする（道の見出しと同じ判定）
+  if (isBeforePlacement()) {
     return { mood: "normal", text: "まず腕試し10語から。" };
   }
 

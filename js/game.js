@@ -1416,7 +1416,8 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     return;
   }
 
-  if (streak.isFirstToday && streak.current >= 2 && !isRevealed) {
+  // 連続日数は自力正解のときだけ言う。ただしシールド獲得は 1 日 1 回きりなので、答えを見た語でも知らせる
+  if (streak.isFirstToday && streak.current >= 2 && (!isRevealed || streak.earnedShield)) {
     const shieldNote = streak.earnedShield ? " ・ シールド獲得（1日休んでも切れない）" : "";
     if (streak.earnedShield) sfxSparkle();
     showMessage(`${streak.current}日連続${shieldNote}`, "correct");
