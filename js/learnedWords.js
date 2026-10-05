@@ -38,14 +38,27 @@ export function getLearnedWordsToday() {
   return list.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
 }
 
-// 覚えた語の数（ホームの見出し・学習データの概要・推移の記録が同じ数を使う。パックの語も含む）
-export function getLearnedCount() {
-  return getLearnedWordList().length;
+// 覚えた語の数と習得の数を 1 回の走査で（ホームの見出し・学習データの概要・推移の記録が同じ数を使う。パックの語も含む）。
+// 一覧（getLearnedWordList）と同じ母集団＝記録があり、語が引ける id を 1 回ずつ
+export function getLearnedCounts() {
+  let learned = 0;
+  let mastered = 0;
+  for (const [id, stat] of Object.entries(getWordStats())) {
+    const status = classifyWord(stat);
+    if (status !== "learning" && status !== "mastered") continue;
+    if (!findWord(id)) continue;
+    learned++;
+    if (status === "mastered") mastered++;
+  }
+  return { learned, mastered };
 }
 
-// 習得の数（推移の記録用。覚えた数と同じ母集団＝id で 1 回）
+export function getLearnedCount() {
+  return getLearnedCounts().learned;
+}
+
 export function getMasteredCount() {
-  return getLearnedWordList().filter((w) => w.status === "mastered").length;
+  return getLearnedCounts().mastered;
 }
 
 // 覚えた単語帳: 覚えた＋習得（知ってた語は除く）、新しい順。

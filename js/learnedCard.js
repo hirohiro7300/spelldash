@@ -1,7 +1,7 @@
 import { computeCategoryProgress, computeLegacyLearnedCount } from "./categoryProgress.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
 import { getLearnedDelta7, recordGrowthSnapshot, getWeekGoal, getThisWeekDays } from "./growthLog.js";
-import { getLearnedWordsToday, getLearnedCount, getMasteredCount } from "./learnedWords.js";
+import { getLearnedWordsToday, getLearnedCounts } from "./learnedWords.js";
 import { getGenre, genreLabel, applyGenre } from "./genres.js";
 import { getWordsByCategory } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
@@ -17,12 +17,12 @@ export function renderLearnedCard() {
   const el = document.getElementById("learnedCard");
   if (!el) return;
 
-  const rows = computeCategoryProgress();
   const activeId = localStorage.getItem("spelldash_category") || "all";
-  const current = rows.find((r) => r.id === activeId) ?? null; // 「すべて」のときは null（カテゴリの行は出さない）
+  const current = activeId === "all" ? null : computeCategoryProgress(activeId)[0] ?? null; // 「すべて」のときは null（カテゴリの行は出さない）
   const today = getRecalledTodayCount();
-  const learnedTotal = getLearnedCount(); // パックの語も含む。学習データの概要と同じ数
-  recordGrowthSnapshot({ learned: learnedTotal, mastered: getMasteredCount(), legacyLearned: computeLegacyLearnedCount() });
+  const counts = getLearnedCounts(); // パックの語も含む。学習データの概要と同じ数
+  const learnedTotal = counts.learned;
+  recordGrowthSnapshot({ ...counts, legacyLearned: computeLegacyLearnedCount });
   const week = getLearnedDelta7(learnedTotal);
 
   // 0 の項目は出さない（0 は情報ではない）

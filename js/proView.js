@@ -118,6 +118,11 @@ function renderPlans(plan) {
 
   const month = config.prices.find((p) => p.interval === "month");
   const year = config.prices.find((p) => p.interval === "year");
+  if (!month) {
+    // 月額の価格が無い（Stripe の設定の入れ替え中など）: ボタンを出さず「準備中」
+    plansElement.innerHTML = `<p class="pro-pending">${MESSAGES.notConfigured}</p>`;
+    return;
+  }
   const perMonth = year ? Math.round(Number(year.amount) / 12) : 0;
   const terms = `${config.trialDays > 0 ? `最初の ${config.trialDays} 日間は無料。` : ""}税込。いつでも解約できる（期間の終わりまで使える。日割りの返金はしない）`;
   if (!session) {

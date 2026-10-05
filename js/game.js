@@ -3,7 +3,7 @@ import { jaLooksSame } from "./jaAmbiguity.js";
 import { viableAnswers, completedAnswer, isSpellingVariant } from "./answers.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
-import { historyDotsHtml, getLearnedCount, getMasteredCount } from "./learnedWords.js";
+import { historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
 import { computeLegacyLearnedCount } from "./categoryProgress.js";
@@ -1166,7 +1166,7 @@ function completeWord() {
 // 成長ログ: 覚えた語数のスナップショット（今週+N・30日推移の材料）
 function snapshotGrowth() {
   try {
-    recordGrowthSnapshot({ learned: getLearnedCount(), mastered: getMasteredCount(), legacyLearned: computeLegacyLearnedCount() });
+    recordGrowthSnapshot({ ...getLearnedCounts(), legacyLearned: computeLegacyLearnedCount });
   } catch {
     // ログは装飾
   }

@@ -11,7 +11,7 @@ import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress, computeLegacyLearnedCount } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
-import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCount, getMasteredCount } from "./learnedWords.js";
+import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
 import { downloadLearnedCsv } from "./exportCsv.js";
@@ -400,7 +400,7 @@ function renderGrowthTrend() {
 
   const days = getTrendRange();
   syncTrendRangeButtons(days);
-  recordGrowthSnapshot({ learned: getLearnedCount(), mastered: getMasteredCount(), legacyLearned: computeLegacyLearnedCount() });
+  recordGrowthSnapshot({ ...getLearnedCounts(), legacyLearned: computeLegacyLearnedCount });
   const series = getLearnedSeries(days);
   const points = series.filter((p) => p.learned != null);
 

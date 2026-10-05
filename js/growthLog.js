@@ -29,11 +29,13 @@ function save(list) {
 // v2（2026-10）: learned は「覚えた語の数」（パックの語も含む、js/learnedWords.js getLearnedCount）。
 // それ以前の行は基本カテゴリだけの数だったので、最初の v2 を書くときに legacyLearned（同じ日の旧式の数）との差で
 // 古い行を底上げし、推移が段差にならないようにする（近似。失っても学習には影響しない）
+// legacyLearned は数でも関数でもよい（旧式の数は v1 の行を直す初回だけ要るので、関数なら必要なときだけ呼ぶ）
 export function recordGrowthSnapshot({ learned, mastered, active = false, legacyLearned = null }) {
   const list = getGrowthLog();
   const today = localDateString();
-  if (list.length > 0 && !list.some((e) => e.v === 2) && legacyLearned != null) {
-    const offset = learned - legacyLearned;
+  const legacy = list.length > 0 && !list.some((e) => e.v === 2) ? (typeof legacyLearned === "function" ? legacyLearned() : legacyLearned) : null;
+  if (legacy != null) {
+    const offset = learned - legacy;
     if (offset !== 0) for (const e of list) e.learned = Math.max(0, (e.learned ?? 0) + offset);
   }
   const idx = list.findIndex((e) => e.date === today);
