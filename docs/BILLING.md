@@ -95,7 +95,7 @@ isProRow(row, now) =
 | 連続記録の修復 | なし | 月 1 回、途切れてから 7 日以内 | `js/level.js` `getLostStreak()` / `canRepairStreak()` / `repairStreak()`。`stats.html` の `#streakRepair`（`repairedMonth` を `spelldash_streak` に保存。sync.js はクラウド採用時に `lost` / `repairedMonth` も写す） |
 | テーマ | 白・黒 | 白・黒・紙（paper）・藍（indigo） | `js/theme.js`。free の保存値が紙・藍なら白・黒に落として保存し直す。プロフィールの `#themeHint`。head のスニペットは Pro 判定をしない（失効直後は 1 瞬だけ旧テーマ、theme.js が直す） |
 
-AI の上限の 429 メッセージ: 無料「今日の無料ぶん（N回）を使い切りました。Pro なら 1 日 M 回まで使えます。」/ Pro「今日の上限（M回）に達しました。また明日どうぞ。」。
+AI の上限の 429 メッセージ: 無料「今日の無料ぶん（N回）は使い切った。Pro なら1日M回」/ Pro「今日の上限（M回）に達した。また明日」。表示側（`js/wordAi.js`）は無料の文の末尾に「（Pro について）」のリンクを括弧で続ける。
 
 ## 5. アプリ版（Capacitor）の扱い
 

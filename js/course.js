@@ -128,7 +128,9 @@ export function startCourse(courseId, startId = null) {
   return start;
 }
 
-// 次のセクションへ進む: 次のパックを追加してカテゴリにする。無ければ null
+// 次のセクションへ進む: 次のパックを追加してカテゴリにする。無ければ null。
+// 前のセクションのパックは spelldash_packs に残す（setPackEnabled は足すだけ）: 復習のプール
+// （js/studyQueue.js reviewPoolWords）が既習セクションの語を引けるように
 export function advanceSection(categoryId) {
   const section = sectionOf(categoryId);
   if (!section?.next) return null;

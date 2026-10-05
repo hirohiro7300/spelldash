@@ -123,7 +123,8 @@ function renderAiButton(container, word, onDone) {
     button.textContent = "作っています…";
     const result = await requestWordAi(word);
     if (!result.ok) {
-      container.innerHTML = `<span class="word-ai__error">${escapeHtml(result.message)}</span>${result.upgrade ? ' <a class="ai-upgrade" href="./pro.html">Pro について</a>' : ""}`;
+      // Pro の案内は文の中に括弧で入れる（1 本の流し込み: 390 でリンクが語の途中で折れない）
+      container.innerHTML = `<span class="word-ai__error">${escapeHtml(result.message)}${result.upgrade ? '（<a class="ai-upgrade" href="./pro.html">Pro について</a>）' : ""}</span>`;
       return;
     }
     container.innerHTML = wordAiHtml(word.id);

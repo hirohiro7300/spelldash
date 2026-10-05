@@ -57,7 +57,7 @@ const server = http.createServer((req, res) => {
       if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
       if (String(word.en).includes("401")) return json(401, { error: "login_required", message: "ログインすると使える（無料）" });
       // "limit" を含む語なら無料ぶんを使い切った（429・upgrade:true → 表示側が「Pro について」を添える）
-      if (String(word.en).includes("limit")) return json(429, { error: "daily_limit", upgrade: true, message: "今日の無料ぶん（3回）を使い切った。Pro なら 1 日 60 回まで使える" });
+      if (String(word.en).includes("limit")) return json(429, { error: "daily_limit", upgrade: true, message: "今日の無料ぶん（3回）は使い切った。Pro なら1日60回" });
       json(200, { mnemonic: `${word.en} は「${word.ja}」。音で覚える`, example: `Example with ${word.en}.`, exampleJa: `${word.en} を使った例文`, pitfall: "似た綴りの語に注意" });
     });
     return;
@@ -576,9 +576,10 @@ console.log("category progress:");
   await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
   const rows = await page.$$eval("#categoryProgress .cat-row", (els) => els.map((e) => e.textContent));
-  check("カテゴリ行が11件（すべて＋9＋マイ単語帳）", rows.length === 11, `rows=${rows.length}`);
+  check("カテゴリ行が10件（9＋マイ単語帳。「すべて」の行は出さない）", rows.length === 10 && !rows.some((t) => t.startsWith("すべて")), `rows=${rows.length}`);
   check("広告・マーケの行がある", rows.some((t) => t.includes("広告・マーケ") && t.includes("101語")));
-  check("すべての行に語数990（同じ語は 1 回だけ数える）", rows[0]?.includes("990語") === true, rows[0]);
+  const zeroItem = (t) => /(習得|苦手|未着手) 0(?!\d)|覚えた 0(?! \/)/.test(t); // 見出しの「覚えた 0 / 160」は数字の事実なので除く
+  check("カテゴリ行の内訳は 0 の項目を出さない（覚えかけ・未学習の呼び名も使わない）", !rows.some((t) => zeroItem(t) || t.includes("覚えかけ") || t.includes("未学習")), rows.find(zeroItem)?.replace(/\s+/g, " ") ?? "");
   check("カテゴリ進捗でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
@@ -951,7 +952,7 @@ console.log("growth evidence:");
   check("覚えた単語帳CSVに見出しと語", csv.includes("english,japanese") && csv.includes("invoice,請求書") && csv.includes("xo"), csv.slice(0, 120));
   await page2.click("#learnedWordList [data-word-detail]");
   await page2.waitForTimeout(200);
-  check("単語詳細が開く（語・訳・状態・履歴）", !(await page2.$eval("#wordDetail", (el) => el.hidden)) && /invoice/.test(await page2.textContent("#wordDetailPanel")) && (await page2.textContent("#wordDetailPanel")).includes("請求書") && (await page2.textContent("#wordDetailPanel")).includes("覚えかけ") && (await page2.$("#wordDetailPanel .hist__x")) !== null, (await page2.textContent("#wordDetailPanel")).slice(0, 120));
+  check("単語詳細が開く（語・訳・状態・履歴）", !(await page2.$eval("#wordDetail", (el) => el.hidden)) && /invoice/.test(await page2.textContent("#wordDetailPanel")) && (await page2.textContent("#wordDetailPanel")).includes("請求書") && (await page2.textContent("#wordDetailPanel")).includes("覚えた") && (await page2.$("#wordDetailPanel .hist__x")) !== null, (await page2.textContent("#wordDetailPanel")).slice(0, 120));
   await page2.fill("#wordDetailNote", "in+voice");
   await page2.press("#wordDetailNote", "Enter");
   await page2.waitForTimeout(150);
@@ -1023,7 +1024,7 @@ console.log("challenge & quality:");
   }
   await waitUntil(async () => !(await page2.$eval("#resultPanel", (el) => el.hidden)), 2000);
   const panel = await page2.textContent("#resultPanel");
-  check("完了パネルに明日の予告（語つき）", panel.includes("明日は") && /明日は [a-z]/.test(panel) && panel.includes("から"), panel.slice(0, 220));
+  check("完了パネルに明日の復習（語つき）", panel.includes("明日の復習: ") && /明日の復習: [a-z]/.test(panel) && !panel.includes("明日は "), panel.slice(0, 220));
   check("Esc/Tab/ランクアップでエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 
@@ -1140,7 +1141,7 @@ console.log("genre list:");
   const cards = await page.$$eval(".gcard", (els) => els.length);
   check("127枚がジャンルごとに並ぶ", cards === 127 && (await page.$$eval(".genre", (els) => els.length)) === 15, `cards=${cards}`);
   const cpc = await page.$eval("#genre-metrics", (el) => el.textContent);
-  check("カードに場面・解説・状態・メモ", cpc.includes("CPC") && cpc.includes("100クリックで1万円") && cpc.includes("覚えかけ") && cpc.includes("Cost per Click"));
+  check("カードに場面・解説・状態・メモ", cpc.includes("CPC") && cpc.includes("100クリックで1万円") && cpc.includes("覚えた") && cpc.includes("Cost per Click"));
   check("一覧のまとめ行", (await page.textContent("#listSummary")).includes("15ジャンル") && (await page.textContent("#listSummary")).includes("127語"));
   await page.fill("#listSearch", "重量税");
   await page.waitForTimeout(150);
@@ -1283,7 +1284,7 @@ console.log("my concept & retention:");
   await page4.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
   await page4.waitForTimeout(800);
   const listText = await page4.textContent("#listBody");
-  check("単語帳: 覚えかけの語には記憶ゲージが出ない", (await page4.$(".mem__bar")) === null && !listText.includes("/10"), listText.slice(0, 160));
+  check("単語帳: 覚えた（習得前）の語には記憶ゲージが出ない", (await page4.$(".mem__bar")) === null && !listText.includes("/10"), listText.slice(0, 160));
   check("ジャンル全部覚えたら「全部済み」", listText.includes("全部済み"));
   check("ログイン案内／ゲージでエラー0", page4.errors.length === 0, page4.errors[0] ?? "");
   await page4.close();
@@ -1865,7 +1866,16 @@ console.log("domain packs:");
   const page9e = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(allKnown), spelldash_placement: "done" } });
   await page9e.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page9e.waitForTimeout(900);
-  check("道: 全ユニット済みで「次のセクションへ」", (await page9e.$("#pathNext")) !== null && (await page9e.textContent("#pathHead")).includes("ユニット済み") && (await page9e.$$(".path__node--done")).length === 11);
+  check("道: 全ユニット済みで「次のセクションへ」", (await page9e.$("#pathNext")) !== null && (await page9e.textContent("#pathHead")).includes("ユニット済み") && (await page9e.$$(".path__node--done")).length === 3);
+  // 全ユニット済みでも済みは「済み 9ユニット」＋直前の 2 つに畳まれ、goal は畳みと済み 2 つの直後（最初の画面内）
+  const nextNode = await page9e.evaluate(() => {
+    const fold = document.querySelector(".path__node--fold");
+    const next = document.getElementById("pathNext");
+    const doneOpen = [...document.querySelectorAll(".path__node--done:not(.path__node--fold)")];
+    return { fold: fold?.textContent ?? "", nextTop: next?.getBoundingClientRect().top ?? -1, foldTop: fold?.getBoundingClientRect().top ?? -1, lastDoneTop: doneOpen.at(-1)?.getBoundingClientRect().top ?? -1, open: doneOpen.length, inner: window.innerHeight, label: next?.closest(".path__node")?.textContent ?? "" };
+  });
+  check("道: 全ユニット済みの済みは「済み 9ユニット」＋2 つに畳まれ、「次のセクションへ」は最初の画面内", nextNode.fold.includes("済み 9ユニット") && nextNode.open === 2 && nextNode.foldTop < nextNode.lastDoneTop && nextNode.lastDoneTop < nextNode.nextTop && nextNode.nextTop < nextNode.inner, JSON.stringify(nextNode));
+  check("道: 全ユニット済みの goal は「次は「中学英語 2年」」だけ（「このセクション 全ユニット済み」は言わない）", nextNode.label.includes("次は「中学英語 2年") && !nextNode.label.includes("全ユニット済み"), nextNode.label);
   await page9e.click("#pathNext");
   await page9e.waitForTimeout(1200);
   const advanced = await page9e.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]") }));
@@ -2182,13 +2192,51 @@ console.log("courses:");
     await page3.waitForTimeout(400);
   }
   await waitUntil(async () => (await page3.$("#resultPanel:not([hidden])")) !== null, 4000).catch(() => {});
-  // お知らせは道の描き直しの後に出るので、固定待ちではなく中身が入るのを待つ
-  await waitUntil(async () => (await page3.textContent("#pathToast")).trim().length > 0, 4000).catch(() => {});
-  const toast = await page3.textContent("#pathToast");
-  check("ユニット済みの演出: セット完了でユニット済みのお知らせ、次のユニット名", sawLast && (await page3.isVisible("#pathToast")) && toast.includes("済み") && toast.includes("次は") && (await page3.textContent("#pathHead")).includes("ユニット 2／11"), `sawLast=${sawLast} toast=${toast}`);
-  check("制覇の演出: はちゃんは出さない", !(await page3.$eval("#pathToast", (el) => el.innerHTML.includes("hasumi"))));
+  // 行は session-end の次のフレームで見出しの直後に入るので、固定待ちではなく出るのを待つ（道のトースト #pathToast は Batch 47 で削除）
+  await waitUntil(async () => (await page3.$("#resultPanel .result-panel__unit")) !== null, 4000).catch(() => {});
+  const unitLine = (await page3.textContent("#resultPanel .result-panel__unit").catch(() => "")) ?? "";
+  const unitPrev = await page3.$eval("#resultPanel .result-panel__unit", (el) => el.previousElementSibling?.className ?? "").catch(() => "");
+  check("ユニット済みの演出: 完了パネルの見出し直下に「ユニット「…」済み」", sawLast && unitLine.includes("ユニット「") && unitLine.includes("」済み") && unitPrev.includes("result-panel__title") && (await page3.textContent("#pathHead")).includes("ユニット 2／11"), `sawLast=${sawLast} line=${unitLine} prev=${unitPrev}`);
+  check("制覇の演出: 道にトーストは出さず、はちゃんも出さない", (await page3.$("#pathToast")) === null && !unitLine.includes("次は") && !(await page3.$eval("#resultPanel .result-panel__unit", (el) => el.innerHTML.includes("hasumi")).catch(() => true)));
   check("制覇の演出でエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
   await page3.close();
+}
+
+// ===== 12.5 Batch 47: 「今日覚えた」の定義とコースをまたぐ復習 =====
+console.log("learned today / cross-section review:");
+{
+  // (1) 「今日覚えた」= 最後の x の直後の o が今日。覚えたあとの復習成功（x o o）は今日覚えたに入らない
+  const nowB = new Date().toISOString();
+  const statsB = {
+    "my-invoice": { playCount: 3, correctCount: 2, missCount: 0, recallFail: 1, mastered: false, lastPlayed: nowB, nextReviewAt: new Date(Date.now() + 3 * 86400000).toISOString(), lastRecallFailAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRecallSuccessAt: nowB, history: [{ d: ymdDaysAgo(3), r: "x" }, { d: ymdDaysAgo(2), r: "o" }, { d: ymdDaysAgo(0), r: "o" }] },
+    "my-negotiate": { playCount: 2, correctCount: 1, missCount: 0, recallFail: 1, mastered: false, lastPlayed: nowB, nextReviewAt: new Date(Date.now() + 86400000).toISOString(), lastRecallFailAt: new Date(Date.now() - 3 * 86400000).toISOString(), lastRecallSuccessAt: nowB, history: [{ d: ymdDaysAgo(3), r: "x" }, { d: ymdDaysAgo(0), r: "o" }] }
+  };
+  const pageB = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }]), spelldash_word_stats: JSON.stringify(statsB) } });
+  await pageB.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageB.waitForTimeout(900);
+  const cardB = await pageB.textContent("#learnedCard");
+  check("今日覚えた: x→o(今日) の語は入り、x→o(昔)→o(今日) の語は入らない", cardB.includes("今日覚えた: ") && cardB.includes("negotiate") && !cardB.includes("invoice"), cardB.slice(0, 160));
+  check("ホームのカード行に 0 の項目（苦手 0・知ってた 0）を出さない", !/苦手 0(?!\d)|知ってた 0(?!\d)/.test(cardB) && cardB.includes("覚えた 2 / 2"), cardB.slice(0, 160));
+  check("今日覚えたでエラー0", pageB.errors.length === 0, pageB.errors[0] ?? "");
+  await pageB.close();
+
+  // (2) コースをまたぐ復習: セクション 2（中学英語 2年）にいても、1年の語の期日が来れば「復習 N語から」でスタートの先頭に出る
+  const jhs1X = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
+  const dueIds = ["english-study", "english-read", "english-write"];
+  const dueJa = new Set(jhs1X.filter((w) => dueIds.includes(w.id)).map((w) => w.ja));
+  const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString();
+  const statsX = Object.fromEntries(dueIds.map((id) => [id, { playCount: 2, correctCount: 2, missCount: 0, recallFail: 0, cleanCorrectStreak: 1, mastered: false, lastPlayed: twoDaysAgo, nextReviewAt: new Date(Date.now() - 86400000).toISOString(), lastRecallSuccessAt: twoDaysAgo, lastRecallFailAt: null, dailyLearningDate: null, history: [{ d: ymdDaysAgo(2), r: "o" }] }]));
+  const pageX = await newPage({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1", "jhs-english2"]), spelldash_category: "jhs-english2", spelldash_word_stats: JSON.stringify(statsX), spelldash_placement: "done" } });
+  await pageX.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageX.waitForTimeout(900);
+  const labelX = await pageX.textContent(".path__node--current .path__label");
+  check("コースをまたぐ復習: セクション 2 の道のラベルに前セクションの期日「復習 3語から」", dueJa.size === 3 && labelX.includes("復習 3語から") && (await pageX.textContent("#pathHead")).includes("セクション 2／8"), labelX);
+  await pageX.click("#pathStart");
+  await waitUntil(async () => (await pageX.textContent("#japanese")).trim().length > 0, 2000);
+  const firstJa = (await pageX.textContent("#japanese")).trim();
+  check("コースをまたぐ復習: スタート後の 1 語目が中学英語 1年の期日の語", dueJa.has(firstJa), `ja=${firstJa}`);
+  check("コースをまたぐ復習でエラー0", pageX.errors.length === 0, pageX.errors[0] ?? "");
+  await pageX.close();
 }
 
 // ===== 13. 道: 済みユニットの折りたたみとユニットの一覧リンク =====
@@ -2678,14 +2726,15 @@ console.log("pro:");
     const loaded = await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
     const plans = await text(page, "#proPlans");
     check("Pro: 未ログインでも価格が 2 つ出る（580 と 4,800）", loaded && plans.includes("580") && plans.includes("4,800"), plans);
-    check("Pro: 年額ボタンに月あたりの額（400）", (await text(page, "#proCheckoutYear")).includes("400"), await text(page, "#proCheckoutYear"));
+    check("Pro: 未ログインは年額ボタンを出さず、注記の先頭に料金（月あたり ¥400）", (await page.$("#proCheckoutYear")) === null && /^月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）。/.test((await text(page, ".pro-plans__hint")).trim()), await text(page, ".pro-plans__hint"));
+    check("Pro: h1 は「単語の学習は無料のまま」（「学習の核」は使わない）", (await text(page, "h1")).includes("単語の学習は無料のまま") && !(await page.content()).includes("学習の核"), await text(page, "h1"));
     check("Pro: 比較表は 5 項目", (await page.$$("#proCompare tbody tr")).length === 5);
     check("Pro: 未ログインは #proState が空で、#proCheckoutMonth は無く #proLoginStart「ログインして始める」", (await text(page, "#proState")) === "" && (await page.$("#proCheckoutMonth")) === null && (await text(page, "#proLoginStart")).includes("ログインして始める"), await text(page, "#proState"));
     await page.click("#proLoginStart");
     await waitUntil(async () => (await page.getAttribute("#loginToggle", "aria-expanded")) === "true", 2000);
     check("Pro: 未ログインで「ログインして始める」を押すとヘッダーのログイン（#loginToggle）が開く", (await page.getAttribute("#loginToggle", "aria-expanded")) === "true" && (await text(page, "#proMessage")) === "", `aria-expanded=${await page.getAttribute("#loginToggle", "aria-expanded")} msg=${await text(page, "#proMessage")}`);
     check("Pro: ページ内に特商法のリンク", (await page.$$('a[href="./tokushoho.html"]')).length >= 2);
-    check("Pro: よくある質問が 5 つ以上", (await page.$$("details.pro-faq")).length >= 5);
+    check("Pro: よくある質問は 4 つ（「いつでも解約できますか」は料金の注記へ）、常体", (await page.$$("details.pro-faq")).length === 4 && !(await page.content()).includes("いつでも解約できますか") && !(await page.$$eval("details.pro-faq", (els) => els.map((e) => e.textContent).join(""))).includes("ますか"), String((await page.$$("details.pro-faq")).length));
     check("Pro: 未ログインでエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
@@ -2759,15 +2808,16 @@ console.log("pro:");
     const page = await newPage({ storage: { spelldash_my_words: hundred } });
     await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
     await page.waitForTimeout(800);
+    const status = await text(page, "#myWordStatus");
+    check("Pro: free は 100 語で「追加する」が disabled、上限の文は読み込み時から", (await page.$eval("#myWordForm button[type=submit]", (el) => el.disabled)) && (await page.$eval("#myConceptForm button[type=submit]", (el) => el.disabled)) && status.includes("無料で追加できるのは100語まで") && !status.includes("登録できる"), status);
+    check("Pro: 上限の文は入力欄の直前・朱ではない・「。」の直後に「Pro について」", (await page.$eval("#myWordStatus", (el) => el.nextElementSibling?.id === "myWordForm" && !el.classList.contains("my-words__status--error"))) && status.includes("）。Pro について"), status);
+    check("Pro: 上限の案内に「Pro について」のリンク", (await page.$$('#myWordStatus a[href="./pro.html"]')).length === 1 && status.includes("Pro について"), status);
     await page.fill("#myWordEn", "negotiate");
     await page.fill("#myWordJa", "交渉する");
-    await page.click("#myWordForm button[type=submit]");
+    await page.press("#myWordJa", "Enter"); // 送信ボタンが disabled なので Enter でも送らない
     await page.waitForTimeout(200);
-    const status = await text(page, "#myWordStatus");
-    check("Pro: free は 101 語目で「100語まで」", status.includes("100語まで"), status);
-    check("Pro: 上限の案内に「Pro について」のリンク", (await page.$$('#myWordStatus a[href="./pro.html"]')).length === 1 && status.includes("Pro について"), status);
     const count = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]").length);
-    check("Pro: free の 101 語目は保存されない", count === 100, `count=${count}`);
+    check("Pro: free の 101 語目は保存されず、入力した語は消えない", count === 100 && (await page.inputValue("#myWordEn")) === "negotiate", `count=${count}`);
     await page.close();
     const page2 = await newPage({ storage: proStorage({}, { spelldash_my_words: hundred }) });
     await page2.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
@@ -2932,7 +2982,7 @@ console.log("pro:");
     await page.click("[data-word-ai-run]");
     const told = await waitUntil(async () => (await text(page, "#wordAi")).includes("Pro について"), 3000);
     const ai = await text(page, "#wordAi");
-    check("Pro: 429（upgrade）は API の message と「Pro について」", told && ai.includes("使い切った") && ai.includes("60 回"), ai);
+    check("Pro: 429（upgrade）は API の message と「Pro について」", told && ai.includes("使い切った") && ai.includes("60回") && ai.includes("Pro について）"), ai);
     check("Pro: 「Pro について」は .ai-upgrade で pro.html へ", (await page.$$('#wordAi a.ai-upgrade[href="./pro.html"]')).length === 1);
     check("Pro: 上限の案内は端末に保存しない", (await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("spelldash_word_ai") || "{}")).length)) === 0);
     check("Pro: 覚え方の 429 でエラー0", page.errors.length === 0, page.errors[0] ?? "");

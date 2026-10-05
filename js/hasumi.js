@@ -1,7 +1,8 @@
 import { getStreak, hasPlayedToday, SHIELD_EARN_EVERY, shieldMax } from "./level.js";
 import { localDateString } from "./stats.js";
-import { getRecalledTodayCount, isBeforePlacement } from "./studyQueue.js";
+import { isBeforePlacement } from "./studyQueue.js";
 import { getLearnedWordsToday } from "./learnedWords.js";
+import { buildPath } from "./pathView.js";
 
 // ===== はちゃん（はすみ / Hasumi）: 学習パートナー =====
 //
@@ -34,10 +35,7 @@ export function hasumiHomeLine() {
       const extra = learned.length > 1 ? ` ほか${learned.length - 1}語` : "";
       return { mood: "happy", text: `今日は ${learned[0].en}${extra}を覚えた。` };
     }
-    const recalled = getRecalledTodayCount();
-    if (recalled > 0) {
-      return { mood: "happy", text: `今日は${recalled}語、思い出せた。` };
-    }
+    // 「思い出せた」の数は学習データが持つ。ここでは完了の事実だけ
     return { mood: "happy", text: "今日のぶん、終わった。" };
   }
 
@@ -57,6 +55,17 @@ export function hasumiHomeLine() {
   // 腕試し前の人（まだ 1 語も答えていない）には、セットの語数ではなく腕試しの話をする（道の見出しと同じ判定）
   if (isBeforePlacement()) {
     return { mood: "normal", text: "まず腕試し10語から。" };
+  }
+
+  // 道が全ユニット済みの朝: 押すものは「次のセクションへ」か「復習」なので、「まず1語から」とは言わない
+  // （語の読み込み後に呼ばれる前提。js/main.js）
+  try {
+    const path = buildPath();
+    if (path.allDone) {
+      return { mood: "normal", text: path.section?.next ? "セクションを終えた。次へ。" : "全部済み。復習は続く。" };
+    }
+  } catch {
+    // 道が作れないときは時間帯の文に落とす
   }
 
   if (hour >= 5 && hour < 11) {
@@ -103,7 +112,7 @@ export function hasumiSetLine({ count = 0, failed = 0, sets = 1, recovered = 0 }
 
 // 週間レポートの一言（数字を一緒に見る。少ない週も責めない）
 export function hasumiWeeklyLine(r) {
-  if (r.learnedDelta > 0) return { mood: "happy", text: "増えた語は、来週の復習で定着する。" };
+  if (r.learnedDelta > 0) return { mood: "happy", text: "増えた語は、来週も復習で出る。" };
   if (r.activeDays >= 3) return { mood: "normal", text: "続いた週。来週も5分から。" };
   if (r.activeDays > 0) return { mood: "normal", text: "少しでも続いた。来週も5分から。" };
   return { mood: "normal", text: "今週は休み。今日から1セット、いこう。" };

@@ -26,7 +26,8 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
-import { renderPath, currentUnitOf, buildPath, showPathToast } from "./pathView.js";
+import { renderPath, currentUnitOf, buildPath } from "./pathView.js";
+import { renderTodayStrip } from "./homeStrip.js";
 import { renderWelcome } from "./welcome.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { renderPlayModes } from "./playModes.js";
@@ -50,7 +51,6 @@ initializeKeyboard(); // 専用キーボード（スマホでプレイ中だけ�
 renderHeaderStreak();
 initTutorial(); // 初回の 1 セットに 1 文ずつ（docs/SPEC_TUTORIAL.md）。既存ユーザーには何も出ない
 renderLevelBar();
-renderHasumiHome();
 setupUnloadSync();
 
 // 同期で追加パックの選択が変わったら、語を読み直してカテゴリを作り直す
@@ -171,7 +171,9 @@ function goNextSection() {
   if (!next) return;
   initWordStore().then(() => {
     initializeCategoryPicker();
+    renderLearnedCard(); // カードの行を新しいカテゴリに（語ごとの進捗は残る）
     renderHome();
+    renderHasumiHome(); // 節目の一言（セクション全済み）は新しい道には合わないので描き直す
     document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   });
 }
@@ -185,12 +187,14 @@ function chooseCourse(courseId) {
   setGenre("");
   initWordStore().then(() => {
     initializeCategoryPicker();
+    renderLearnedCard(); // カードの行を新しいカテゴリに（語ごとの進捗は残る）
     renderHome();
+    renderHasumiHome(); // 節目の一言（セクション全済み）は新しい道には合わないので描き直す
     document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   });
 }
 
-// ユニット制覇の演出: セット開始時の済みユニットを控えて、終了時に増えていたら知らせる
+// ユニット済みの節目: セット開始時の済みユニットを控えて、終了時に増えていたら完了パネルの見出しの下に 1 行（道には出さない）
 let doneUnitsAtStart = null;
 window.addEventListener("spelldash:game-start", () => {
   try {
@@ -205,7 +209,17 @@ function celebrateNewUnits(path) {
   const fresh = path.units.filter((u) => u.done && !doneUnitsAtStart.has(u.label)).map((u) => u.label);
   doneUnitsAtStart = null;
   if (fresh.length === 0) return;
-  showPathToast(path.allDone ? `${path.label} 全ユニット済み。${fresh.map((l) => `「${l}」`).join("")}も覚えた` : `ユニット${fresh.map((l) => `「${l}」`).join("")}済み。次は「${currentUnitOf(path)?.label ?? ""}」`);
+  const text = path.allDone ? `${path.label} 全ユニット済み` : `ユニット${fresh.map((l) => `「${l}」`).join("")}済み`;
+  // 完了パネルは session-end のあとに描かれる（js/game.js）ので、次のフレームで見出しの直後に入れる
+  requestAnimationFrame(() => {
+    const title = document.querySelector("#resultPanel .result-panel__title");
+    if (!title) return;
+    title.parentElement.querySelector(".result-panel__unit")?.remove();
+    const line = document.createElement("p");
+    line.className = "result-panel__unit";
+    line.textContent = text;
+    title.insertAdjacentElement("afterend", line);
+  });
 }
 
 function renderHome() {
@@ -234,6 +248,7 @@ window.addEventListener("spelldash:game-start", () => showGame(true));
 window.addEventListener("spelldash:session-end", () => {
   const path = renderHome();
   renderLearnedCard();
+  renderTodayStrip(); // チップの「途中」を「済み」に
   celebrateNewUnits(path);
 });
 
@@ -334,6 +349,7 @@ storeReady
   .then(() => {
     initializeCategoryPicker();
     renderLearnedCard();
+    renderHasumiHome(); // 語の読み込み後に（「今日覚えた」の語を名指しするため）
     renderHome();
     renderLoginNudge();
     setSetupOpen(localStorage.getItem(SETUP_OPEN_KEY) === "1");

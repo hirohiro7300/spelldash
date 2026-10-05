@@ -14,7 +14,7 @@ import { trapFocus } from "./focusTrap.js";
 // 一覧のどこから押しても、その語の「状態・履歴・メモ・仲間・発音」を1か所で見られる。
 // 語を中心に情報を束ねる（学習データページ用）。
 
-const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えかけ", mastered: "習得", known: "知ってた" };
+const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得", known: "知ってた" };
 const LEVEL_LABEL = { easy: "やさしい", normal: "ふつう", hard: "むずかしい" };
 
 function ensureModal() {

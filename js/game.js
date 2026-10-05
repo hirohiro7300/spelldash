@@ -3,10 +3,10 @@ import { jaLooksSame } from "./jaAmbiguity.js";
 import { viableAnswers, completedAnswer, isSpellingVariant } from "./answers.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
-import { historyDotsHtml, getLearnedCount } from "./learnedWords.js";
+import { historyDotsHtml, getLearnedCount, getMasteredCount } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
-import { computeCategoryProgress } from "./categoryProgress.js";
+import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
 import { renderLearnedCard } from "./learnedCard.js";
 import {
@@ -1166,8 +1166,7 @@ function completeWord() {
 // 成長ログ: 覚えた語数のスナップショット（今週+N・30日推移の材料）
 function snapshotGrowth() {
   try {
-    const all = computeCategoryProgress()[0];
-    recordGrowthSnapshot({ learned: getLearnedCount(), mastered: all.mastered, legacyLearned: all.learned });
+    recordGrowthSnapshot({ learned: getLearnedCount(), mastered: getMasteredCount(), legacyLearned: computeLegacyLearnedCount() });
   } catch {
     // ログは装飾
   }
@@ -1323,7 +1322,7 @@ function endStudySession() {
   const dueWords = getDueReviewWords(activeCategory, tomorrow.getTime(), 3);
   const tomorrowLine =
     dueTomorrow > 0
-      ? `<div class="result-panel__tomorrow">明日は <b>${dueWords.map((w) => w.en).join("・")}</b>${dueTomorrow > dueWords.length ? ` ほか${dueTomorrow - dueWords.length}語` : ""}から</div>`
+      ? `<div class="result-panel__tomorrow">明日の復習: <b>${dueWords.map((w) => w.en).join("・")}</b>${dueTomorrow > dueWords.length ? ` ほか${dueTomorrow - dueWords.length}語` : ""}</div>`
       : `<div class="result-panel__tomorrow">明日の復習はまだ無い。新しい語から</div>`;
 
   // 週の目標（学習日数）: ちょうど達成した日だけ一言添える（途中経過の数字は出さない。数字は 1 行の原則）

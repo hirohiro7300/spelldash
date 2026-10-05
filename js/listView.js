@@ -19,7 +19,7 @@ import { scrollBehavior } from "./ui.js";
 // ===== 単語帳（ジャンルごとの一覧） =====
 // カテゴリ → ジャンル → カード。読み物として眺められて、そのジャンルだけ練習にも入れる。
 
-const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えかけ", mastered: "習得", known: "知ってた" };
+const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得", known: "知ってた" };
 const CATEGORY_KEY = "spelldash_category";
 
 const params = new URLSearchParams(location.search);
