@@ -2859,6 +2859,36 @@ console.log("pro:");
     await page.close();
   }
 
+  // 2a. ログインから戻って加入画面へ移っても「いまログインした」のまま: 持ち主の印が無い端末の記録は、足すかをたずねる
+  {
+    const page = await newPage();
+    page.dialogs = [];
+    page.on("dialog", async (d) => { page.dialogs.push(d.message()); await d.dismiss(); });
+    await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await page.evaluate(() => {
+      localStorage.setItem("spelldash_word_stats", JSON.stringify({ "zzz-guest": { playCount: 1, correctCount: 1, lastPlayed: new Date().toISOString() } }));
+      localStorage.setItem("spelldash_pro_intent", JSON.stringify({ at: Date.now() }));
+      localStorage.setItem("spelldash_test_session", "1");
+    });
+    await page.goto(BASE + "/index.html#access_token=test&type=magiclink", { waitUntil: "networkidle" });
+    await waitUntil(() => page.url().includes("/pro.html"), 5000);
+    const asked = await waitUntil(async () => page.dialogs.some((m) => m.startsWith("この端末の記録を、このアカウントの記録に足す。")), 5000);
+    check("動線: ログインから戻って加入画面へ移っても、端末の記録を足すかをたずねる", asked, JSON.stringify(page.dialogs));
+    await page.close();
+  }
+
+  // 2c. 支払いを終えて戻ったがログインが切れている: 支払い済みを伝える（購入ボタンだけの画面にしない）。旧い戻り先は加入画面へ
+  {
+    const page = await newPage();
+    await page.goto(BASE + "/pro.html?pro=done", { waitUntil: "networkidle" });
+    const told = await waitUntil(async () => (await text(page, "#proWelcome")).includes("お支払いは完了。加入したアカウントでログインすると Pro になる"), 5000);
+    check("動線: 加入直後にログインが切れていても「お支払いは完了。…ログインすると Pro になる」", told, await text(page, "#proWelcome"));
+    await page.goto(BASE + "/profile.html?pro=done", { waitUntil: "networkidle" });
+    const forwarded = await waitUntil(() => page.url().includes("/pro.html"), 5000);
+    check("動線: 旧い戻り先（profile.html?pro=done）は加入画面へ移る", forwarded, page.url());
+    await page.close();
+  }
+
   // 2b. 知る: フッターの「SpellDash Pro」（受付中のときだけ）と、7 日以上学んだ人の週間レポートの 1 行（Pro には出さない）
   {
     const page = await newPage();

@@ -4,7 +4,7 @@ import { initialSync, clearSyncedFlag } from "./sync.js";
 import { getWordStats } from "./storage.js";
 import { refreshPlan, clearPlan } from "./plan.js";
 import { trapFocus } from "./focusTrap.js";
-import { resumeProIntent } from "./proFunnel.js";
+import { resumeProIntent, takeLoginReturn } from "./proFunnel.js";
 
 const accountGuestElement = document.getElementById("accountGuest");
 const accountUserElement = document.getElementById("accountUser");
@@ -20,13 +20,14 @@ const headerAvatarElement = document.getElementById("headerAvatar");
 const googleLoginButtonElement = document.getElementById("googleLoginButton");
 
 // いまログインから戻ってきたか（メールのリンク・Google のリダイレクト）。Supabase が URL を片付ける前に読む
+// 加入画面へ移る前のページがログインから戻ったタブだった場合も同じに扱う（takeLoginReturn）
 const RETURNED_FROM_LOGIN = (() => {
   try {
     return /(?:^|[#&])(access_token|refresh_token)=/.test(location.hash) || new URLSearchParams(location.search).has("code");
   } catch {
     return false;
   }
-})();
+})() || takeLoginReturn();
 
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
@@ -46,7 +47,7 @@ export async function initializeAuth() {
     if (_event === "SIGNED_OUT") clearPlan(); else if (_event === "SIGNED_IN") refreshPlan();
 
     if (_event === "SIGNED_IN") {
-      if (!hadSessionAtLoad && resumeProIntent()) return;
+      // 加入画面へ戻すのはログインから戻ったタブだけ（上の getSession）。ほかのタブに届いた SIGNED_IN では移動しない
       runInitialSync({ freshLogin: !hadSessionAtLoad });
     }
   });
