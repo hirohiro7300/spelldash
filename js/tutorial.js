@@ -99,6 +99,16 @@ function decideEligibility() {
   save(state);
 }
 
+// 同期で記録が届いた端末（js/main.js の spelldash:synced）: まだ 1 枚も出していなければ既存ユーザー扱いに戻す。
+// 初期化は同期より先に走るので、空の端末では一度「新規」と決まっている（途中まで見た新規の人はそのまま）
+export function skipTutorialIfReturning() {
+  if (state.seen.length > 0 || state.setDone) return;
+  if (Object.keys(getWordStats()).length === 0) return;
+  state = { seen: [...ALL], started: true, setDone: true };
+  save(state);
+  dismiss();
+}
+
 export function initTutorial() {
   decideEligibility();
   if (isTutorialDone()) return;

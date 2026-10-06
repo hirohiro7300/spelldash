@@ -106,6 +106,16 @@ initWordStore().then(async () => {
 
 window.addEventListener("spelldash:synced", render);
 window.addEventListener("spelldash:notes", render);
+// 同期で追加パックの選択が変わった: 語を読み直してから一覧とパックの表を描き直す（読み直しの終わりを spelldash:store-ready で js/sync.js に知らせる。sync.js はそれを待ってから spelldash:synced を投げる）
+window.addEventListener("spelldash:packs", (event) => {
+  if (!event.detail?.synced) return;
+  initWordStore().then(() => {
+    renderPacks();
+    renderCategorySelect(getCategories());
+    render();
+    window.dispatchEvent(new CustomEvent("spelldash:store-ready"));
+  });
+});
 
 let selectBound = false;
 function renderCategorySelect(categories) {

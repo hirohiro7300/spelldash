@@ -7,6 +7,7 @@ import { getWordsByCategory } from "./wordStore.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { icon } from "./icons.js";
+import { isGrowthLogMissing } from "./weeklyReport.js";
 
 // ===== ホーム「覚えた単語」カード =====
 // 「いくつ覚えたか」を一等地に常設する（覚えた実感 v1）。
@@ -54,10 +55,13 @@ export function renderLearnedCard() {
   }
 
   const learnedToday = getLearnedWordsToday();
+  // 「今日はまだ」は今日 1 語も思い出していないときだけ（上の「今日 N語」と同じカードで矛盾させない）
   const todayLine =
     learnedToday.length > 0
       ? `今日覚えた: ${learnedToday.slice(0, 4).map((w) => `<b title="${w.ja}">${w.en}</b>`).join("・")}${learnedToday.length > 4 ? ` ほか${learnedToday.length - 4}語` : ""}`
-      : "今日はまだ。1セットで1語は増える";
+      : today > 0
+        ? ""
+        : "今日はまだ。1セットで1語は増える";
 
   // 今週の学習日（月〜日）と週の目標。毎日でなくてよい設計
   const goal = getWeekGoal();
@@ -68,6 +72,8 @@ export function renderLearnedCard() {
     .join("");
   // 「5/4日」のような分母超えの分数は出さない。数字を先に、達成は末尾に 1 語
   const weekLine = `今週 <b>${activeDays}</b>日 ・ 目標 ${goal}日${activeDays >= goal ? " 達成" : ""} ${dots}`;
+  // 成長ログの無い端末（2 台目）では今週の日数を数えられないので、行ごと出さない（js/weeklyReport.js）
+  const showWeek = !isGrowthLogMissing();
 
   // 内訳の行は数字が全部 0 のときは出さない（0 の羅列は情報ではない）
   const showBreakdown = current ? (genre ? genreNonZero : current.learned + current.weak > 0) : false;
@@ -82,9 +88,9 @@ export function renderLearnedCard() {
       <span class="learned-card__num">${learnedTotal}</span>
       ${week > 0 ? `<span class="learned-card__today">7日で +${week}</span>` : today > 0 ? `<span class="learned-card__today">今日 ${today}語</span>` : ""}
     </div>
-    <div class="learned-card__today-words">${todayLine}</div>
+    ${todayLine ? `<div class="learned-card__today-words">${todayLine}</div>` : ""}
     ${showBreakdown ? `<div class="learned-card__cat">${currentLine}</div>` : ""}
-    <div class="learned-card__week" aria-label="今週の学習日" title="週の目標はプロフィールの学習の設定で変えられます">${weekLine}</div>
+    ${showWeek ? `<div class="learned-card__week" aria-label="今週の学習日" title="週の目標はプロフィールの学習の設定で変えられます">${weekLine}</div>` : ""}
     <a class="learned-card__link" href="./stats.html#learnedWords">覚えた単語帳を見る${icon("arrowRight", { size: 14 })}</a>
   `;
 }

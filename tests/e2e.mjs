@@ -42,10 +42,100 @@ function findChromium() {
   throw new Error("Chromiumが見つかりません。CHROME_PATH を設定してください。");
 }
 
+// ---- 端末間同期の検証用「クラウド」（Supabase の表のつもり。このプロセスのメモリ） ----
+// スタブ（tests/mocks/supabase-stub.js）は localStorage の spelldash_test_cloud に id があるときだけ、from(table) を
+// POST /__cloud/query に投げる。id ごとに表・設定・呼び出しの記録を持つので、検査どうしが混ざらない。
+// 設定: failSelect { 表名: エラーの文 }（その表の select を失敗させる）、delayMs と delayTables（その表の select の応答を遅らせる）
+const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"] };
+const clouds = new Map();
+let cloudSeq = 0;
+function createCloud(tables = {}, config = {}) {
+  const id = `cloud-${++cloudSeq}`;
+  const cloud = {
+    id,
+    tables: Object.fromEntries(Object.entries(tables).map(([t, rows]) => [t, rows.map((r) => JSON.parse(JSON.stringify(r)))])),
+    log: [],
+    config: { failSelect: {}, delayMs: 0, delayTables: ["word_progress", "user_progress"], ...config },
+    rows(t) { return (this.tables[t] ??= []); },
+    writes(table, from = 0) { return this.log.slice(from).filter((e) => (!table || e.table === table) && e.kind !== "select" && !e.error); }
+  };
+  clouds.set(id, cloud);
+  return cloud;
+}
+function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
+  const cloud = clouds.get(cloudKey);
+  if (!cloud) return { data: null, error: { message: `unknown cloud ${cloudKey}` }, count: null };
+  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false;
+  const filters = [];
+  for (const [m, args] of ops) {
+    if (m === "select") { kind ??= "select"; cols = args[0] ?? "*"; if (args[1]?.count) countMode = args[1].count; if (args[1]?.head) head = true; }
+    else if (m === "upsert" || m === "insert" || m === "update") { kind = m; payload = args[0]; }
+    else if (m === "delete") kind = "delete";
+    else if (m === "eq") filters.push((r) => r[args[0]] === args[1]);
+    else if (m === "gte") filters.push((r) => r[args[0]] >= args[1]);
+    else if (m === "lte") filters.push((r) => r[args[0]] <= args[1]);
+    else if (m === "in") filters.push((r) => (args[1] ?? []).includes(r[args[0]]));
+    else if (m === "maybeSingle" || m === "single") single = true;
+  }
+  const entry = { table, kind, n: 0, userId };
+  cloud.log.push(entry);
+  if (kind === "select") {
+    const fail = cloud.config.failSelect[table];
+    if (fail) { entry.error = fail; return { data: null, error: { message: fail, code: "" }, count: null }; }
+    let rows = cloud.rows(table).filter((r) => userId && r.user_id === userId && filters.every((f) => f(r))); // RLS: 本人の行だけ
+    if (cols !== "*") { const names = cols.split(",").map((c) => c.trim()); rows = rows.map((r) => Object.fromEntries(names.map((k) => [k, r[k]]))); }
+    entry.n = rows.length;
+    const data = head ? null : single ? (rows[0] ?? null) : rows;
+    return { data: JSON.parse(JSON.stringify(data)), error: null, count: countMode ? rows.length : null };
+  }
+  if (kind === "upsert" || kind === "insert") {
+    const rows = Array.isArray(payload) ? payload : [payload];
+    entry.n = rows.length;
+    if (!userId || rows.some((r) => r.user_id !== userId)) { entry.error = "rls"; return { data: null, error: { message: "row-level security", code: "42501" }, count: null }; }
+    const pk = CLOUD_PK[table];
+    for (const r of rows) {
+      const list = cloud.rows(table);
+      const i = pk ? list.findIndex((x) => pk.every((k) => x[k] === r[k])) : -1;
+      if (i >= 0) list[i] = { ...list[i], ...r };
+      else list.push({ ...r });
+    }
+    return { data: null, error: null, count: null };
+  }
+  if (kind === "update") {
+    for (const r of cloud.rows(table)) if (r.user_id === userId && filters.every((f) => f(r))) { Object.assign(r, payload); entry.n++; }
+    return { data: null, error: null, count: null };
+  }
+  if (kind === "delete") {
+    const before = cloud.rows(table).length;
+    cloud.tables[table] = cloud.rows(table).filter((r) => !(r.user_id === userId && filters.every((f) => f(r))));
+    entry.n = before - cloud.tables[table].length;
+    return { data: null, error: null, count: null };
+  }
+  entry.error = "unsupported";
+  return { data: null, error: { message: `stub: unsupported query ${ops.map((o) => o[0]).join(".")}` }, count: null };
+}
+
 // ---- 静的サーバー（supabase.jsだけスタブ差し替え） ----
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (urlPath === "/") urlPath = "/index.html";
+
+  // 端末間同期の「クラウド」（上の createCloud。スタブが spelldash_test_cloud のあるときだけ投げてくる）
+  if (urlPath === "/__cloud/query" && req.method === "POST") {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      const json = (body) => res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify(body));
+      let q = null;
+      try { q = JSON.parse(raw); } catch { return json({ data: null, error: { message: "bad json" } }); }
+      const result = runCloudQuery(q);
+      const cloud = clouds.get(q.cloud);
+      const slow = cloud && cloud.config.delayMs > 0 && q.ops.some(([m]) => m === "select") && cloud.config.delayTables.includes(q.table);
+      if (slow) setTimeout(() => json(result), cloud.config.delayMs);
+      else json(result);
+    });
+    return;
+  }
 
   // /api/explain-word の偽装: 固定の覚え方を返す（"401" を含む語なら未ログイン）
   if (urlPath === "/api/explain-word") {
@@ -3130,6 +3220,314 @@ console.log("tutorial:");
   await page3.waitForTimeout(300);
   check("チュートリアル: 学習記録のある人には出ない", (await coach(page3)) === null && (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length)) === 3);
   await page3.close();
+}
+
+// ===== 20. Batch 48: 2 台目の端末（ログイン・同期・マージ） =====
+// 上の createCloud が「クラウド」。端末の localStorage に spelldash_test_cloud（クラウドの id）を入れるとスタブがそこへ読み書きする。
+// seed は 1 回だけ入れる（newPage と違い、再読み込みや同期の書き込みを seed で上書きしない）
+console.log("sync (2nd device):");
+{
+  const SYNC_USER = "test-user";
+  const todayY = ymd(new Date());
+  const isoDaysAgo = (days, hour = 9) => { const d = new Date(); d.setDate(d.getDate() - days); d.setHours(hour, 0, 0, 0); return d.toISOString(); };
+  const packRaw = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", "jhs-english1.json"), "utf8"));
+  const syncWords = (Array.isArray(packRaw) ? packRaw : packRaw.words).slice(0, 40);
+  // 先頭 10 語は端末 A が今日のセットで思い出した語（今日の day 行 set=true と矛盾しないように）
+  const wpRow = (w, i) => {
+    const ago = i < 10 ? 0 : 1;
+    const at = i < 10 ? new Date(Date.now() - 60 * 60 * 1000).toISOString() : isoDaysAgo(1);
+    return {
+      user_id: SYNC_USER, word_id: w.id, play_count: 2, correct_count: 2, typing_miss: 0, recall_fail: 0, clean_correct_streak: 2,
+      mastered: i >= 10 && i < 15, mastered_at: i >= 10 && i < 15 ? isoDaysAgo(1) : null, last_played: at, next_review_at: isoDaysAgo(-3),
+      last_recall_fail_at: null, last_recall_success_at: at, daily_learning_date: ymdDaysAgo(ago), daily_learning_stage: 0,
+      srs_advanced_on: ymdDaysAgo(ago), updated_at: at
+    };
+  };
+  const userProgress = (extra = {}) => ({
+    user_id: SYNC_USER, xp: 5240, level: 12, streak: { last: todayY, current: 5, best: 5, shields: 0 }, best_score: 3,
+    selected_category: "jhs-english2", selected_mode: "study", battle_rp: 0, battle_wins: 0, battle_losses: 0, battle_draws: 0,
+    battle_current_win_streak: 0, battle_best_win_streak: 0, study_familiar_ratio: 80, updated_at: isoDaysAgo(0, 0), ...extra
+  });
+  const dayRow = (date, payload) => ({ user_id: SYNC_USER, kind: "day", key: date, payload, deleted: false, updated_at: isoDaysAgo(0, 0) });
+  // 端末 A が送った体のクラウド: 語 40・現在地は中学英語 2年・今日のセット済み（day 行）・連続 5 日
+  const cloudTablesA = () => ({
+    word_progress: syncWords.map(wpRow),
+    user_progress: [userProgress()],
+    user_items: [
+      ...[4, 3, 2, 1].map((d) => dayRow(ymdDaysAgo(d), { learned: 8 * (5 - d), mastered: 0, active: true, set: true, sets: 1 })),
+      dayRow(todayY, { learned: 40, mastered: 5, active: true, set: true, sets: 1 })
+    ]
+  });
+  const localStat = { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: isoDaysAgo(2), lastRecallSuccessAt: isoDaysAgo(2) };
+
+  async function syncDevice(storage, { dialog = "dismiss" } = {}) {
+    const page = await browser.newPage();
+    page.errors = [];
+    page.dialogs = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    page.on("dialog", async (d) => {
+      page.dialogs.push(d.message());
+      if (dialog === "accept") await d.accept(); else await d.dismiss();
+    });
+    await page.addInitScript((seed) => {
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      localStorage.setItem("spelldash_schema_version", "6");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, storage);
+    return page;
+  }
+  const ls = (page, key) => page.evaluate((k) => localStorage.getItem(k), key);
+  const lsJson = async (page, key) => JSON.parse((await ls(page, key)) || "null");
+  const ss = (page, key) => page.evaluate((k) => sessionStorage.getItem(k), key);
+  const txt = (page, sel) => page.evaluate((s) => document.querySelector(s)?.textContent?.replace(/\s+/g, " ").trim() ?? "", sel);
+  const visible = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); return !!el && !el.hidden && el.getClientRects().length > 0; }, sel);
+  const ownerSet = (page, timeout = 10000) => waitUntil(async () => (await ls(page, "spelldash_owner")) === SYNC_USER, timeout);
+  const hidePage = (page) => page.evaluate(() => {
+    window.dispatchEvent(new Event("pagehide"));
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const login = (cloud, extra = {}) => ({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id, ...extra });
+
+  // (1) 空の端末にログインして開く: 語・現在地・今日のぶん・連続日数・解放が届き、トップページとチュートリアルは出ない
+  {
+    const cloud = createCloud(cloudTablesA());
+    const page = await syncDevice(login(cloud)); // onboarded も無い、まっさらな端末
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const synced = await ownerSet(page);
+    await waitUntil(async () => (await txt(page, "#authMessage")) === "記録を同期した。", 7000);
+    const stats = (await lsJson(page, "spelldash_word_stats")) || {};
+    const ds = (await lsJson(page, "spelldash_daily_set")) || {};
+    const gl = (await lsJson(page, "spelldash_growth_log")) || [];
+    check("同期: 空の端末で取り込みが終わり、持ち主が付く", synced, String(await ls(page, "spelldash_owner")));
+    check("同期: クラウドの語 40 が届く", Object.keys(stats).length === 40, String(Object.keys(stats).length));
+    check("同期: 30 語以上が届いたら veteran=1", (await ls(page, "spelldash_veteran")) === "1", String(await ls(page, "spelldash_veteran")));
+    check("同期: 現在地はクラウドの selected_category（中学英語 2年・jhs-redo）", (await ls(page, "spelldash_category")) === "jhs-english2" && (await ls(page, "spelldash_course")) === "jhs-redo", `${await ls(page, "spelldash_category")} / ${await ls(page, "spelldash_course")}`);
+    const pathHead = `${await txt(page, ".path__kicker")} | ${await txt(page, ".path__title")}`;
+    check("同期: 道が中学英語 2年になる（開き直さずに）", pathHead.includes("中学英語 2年") || pathHead.includes("セクション 2／"), pathHead);
+    check("同期: day 行で今日のぶんが済み（history・setsToday）", ds.history?.includes(todayY) && ds.setsTodayDate === todayY && ds.setsToday >= 1, JSON.stringify({ last: ds.history?.at(-1), setsToday: ds.setsToday, setsTodayDate: ds.setsTodayDate }));
+    check("同期: 成長ログが届く（過去の日・今日）", gl.some((e) => e.date === ymdDaysAgo(2)) && gl.some((e) => e.date === todayY), JSON.stringify(gl.map((e) => e.date)));
+    const up = cloud.rows("user_progress")[0];
+    check("同期: クラウドの user_progress を空の端末の値で上書きしない（xp・selected_category）", up.xp === 5240 && up.selected_category === "jhs-english2", JSON.stringify({ xp: up.xp, cat: up.selected_category }));
+    check("同期: ローカルの XP はクラウドの値", (await ls(page, "spelldash_xp")) === "5240", String(await ls(page, "spelldash_xp")));
+    check("同期: ログイン済みにはトップページを出さず道が見える", !(await visible(page, "#welcome")) && (await visible(page, "#pathCard")));
+    check("同期: 「すでに使っている方はログイン」は hidden", await page.evaluate(() => document.getElementById("welcomeLogin")?.hidden === true));
+    check("同期: 文「記録を同期した。」", (await txt(page, "#authMessage")) === "記録を同期した。", await txt(page, "#authMessage"));
+    const header = await page.evaluate(() => { const el = document.getElementById("headerStreak"); return el ? { hidden: el.hidden, text: el.textContent.trim() } : null; });
+    check("同期: ヘッダーの連続日数が開き直さずに出る", header && !header.hidden && header.text.includes("5"), JSON.stringify(header));
+    check("同期: チップが「途中」でなく済み（day 行）", !(await txt(page, "#todayStrip")).includes("途中") && (await page.$("#todayStrip .strip__chip--on")) !== null, await txt(page, "#todayStrip"));
+    check("同期: Daily／Battle に錠が無い（30 語以上が届いた）", (await page.$$(".play-modes__lock")).length === 0, await txt(page, "#playModes"));
+    check("同期: チュートリアルは既存の人として済み", (await lsJson(page, "spelldash_tutorial"))?.setDone === true, String(await ls(page, "spelldash_tutorial")));
+    check("同期: ログインの案内は空", (await txt(page, "#loginNudge")) === "", await txt(page, "#loginNudge"));
+    check("同期: 覚えた単語カードは今日思い出した語があるので「今日はまだ。1セットで1語は増える」を出さない", !(await txt(page, "#learnedCard")).includes("今日はまだ。1セットで1語は増える"), await txt(page, "#learnedCard"));
+    check("同期: 同じタブの 2 回目の initialSync は false", (await page.evaluate(async () => (await import("/js/sync.js")).initialSync())) === false);
+    await page.click("#pathStart");
+    await page.waitForTimeout(500);
+    await page.press("#input", "Enter"); // 1 語目で答えを見る
+    await page.waitForTimeout(500);
+    check("同期: 1 語目で答えを見てもチュートリアルの札が出ない", !(await visible(page, "body > .coach:not(.coach--out)")), await txt(page, "body > .coach"));
+
+    // (10) ログアウト → 文と同期済みの印 → 同じタブで再ログインすると、同期がもう一度走る
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    await page.click("#avatarButton");
+    await page.click("#logoutButton");
+    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログアウト"), 3000);
+    check("ログアウト: 文「ログアウトした。記録はこの端末に残る。」", (await txt(page, "#authMessage")) === "ログアウトした。記録はこの端末に残る。", await txt(page, "#authMessage"));
+    check("ログアウト: 同期済みの印（sessionStorage）が消える", (await ss(page, "spelldash_synced_this_session")) === null && (await ss(page, "spelldash_pulled_this_session")) === null);
+    check("ログアウト: 記録はこの端末に残る", Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length >= 40, String(Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length)); // 上で 1 語目を出したぶん増えうる
+    const mark = cloud.log.length;
+    await page.evaluate(() => window.__stubAuth.signIn());
+    const reselected = await waitUntil(async () => cloud.log.slice(mark).some((e) => e.table === "word_progress" && e.kind === "select"), 5000);
+    check("再ログイン: 同じタブで word_progress の取り込みがもう一度走る", reselected, JSON.stringify(cloud.log.slice(mark).map((e) => `${e.table}.${e.kind}`)));
+    await waitUntil(async () => (await ss(page, "spelldash_pulled_this_session")) === SYNC_USER, 5000);
+    check("再ログイン: ログアウトの文が消える", (await txt(page, "#authMessage")) !== "ログアウトした。記録はこの端末に残る。", await txt(page, "#authMessage"));
+    check("同期（空の端末・再ログイン）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // (1b) 取り込みに失敗（user_progress の select）: pagehide でも送らない・持ち主は付かない・空の端末には文
+  {
+    const cloud = createCloud(cloudTablesA(), { failSelect: { user_progress: "boom" } });
+    const page = await syncDevice(login(cloud));
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+    const mark = cloud.log.length;
+    await hidePage(page);
+    await page.waitForTimeout(800);
+    check("同期失敗: pagehide・visibilitychange でも user_progress と word_progress を送らない", cloud.writes("user_progress").length === 0 && cloud.writes("word_progress").length === 0, JSON.stringify(cloud.writes(null, mark).map((e) => e.table)));
+    check("同期失敗: 持ち主は付かず、同期済みの印は戻る", (await ls(page, "spelldash_owner")) === null && (await ss(page, "spelldash_synced_this_session")) === null);
+    check("同期失敗（空の端末）: 文「記録を取り込めなかった。開き直すともう一度試す。」", (await txt(page, "#authMessage")) === "記録を取り込めなかった。開き直すともう一度試す。", await txt(page, "#authMessage"));
+    check("同期失敗（空の端末）: トップページは畳まれ、文が見える", !(await visible(page, "#welcome")) && (await visible(page, "#authMessage")));
+    check("同期失敗でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+  {
+    // 記録のある端末で word_progress の select に失敗: 何も言わない（記録はそのまま）
+    const cloud = createCloud(cloudTablesA(), { failSelect: { word_progress: "boom" } });
+    const page = await syncDevice(login(cloud, { spelldash_onboarded: "1", spelldash_placement: "done", spelldash_owner: SYNC_USER, spelldash_word_stats: JSON.stringify({ [syncWords[0].id]: localStat }) }));
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+    check("同期失敗（記録のある端末）: #authMessage は空で記録はそのまま", (await txt(page, "#authMessage")) === "" && Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length === 1, await txt(page, "#authMessage"));
+    await page.close();
+  }
+
+  // (2) 取り込み中（select を 3 秒遅らせる）に pagehide: user_progress を送らない。遅延が終われば同期は完了
+  {
+    const cloud = createCloud(cloudTablesA(), { delayMs: 3000 });
+    const page = await syncDevice(login(cloud));
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await page.waitForTimeout(700);
+    await hidePage(page);
+    await page.waitForTimeout(500);
+    check("取り込み前の pagehide: user_progress.upsert が飛ばない", cloud.writes("user_progress").length === 0, JSON.stringify(cloud.writes().map((e) => e.table)));
+    cloud.config.delayMs = 0;
+    const done = await ownerSet(page, 12000);
+    check("取り込み前の pagehide: 遅延が終われば同期が終わり、クラウドの xp は 5240 のまま", done && cloud.rows("user_progress")[0].xp === 5240, JSON.stringify({ done, xp: cloud.rows("user_progress")[0].xp }));
+    await page.close();
+  }
+
+  // (3) 端末の持ち主が別人で記録がある: confirm が出る。キャンセル → 何も書かずログインをやめる／OK → 置き換え
+  const otherSeed = (cloud) => login(cloud, {
+    spelldash_onboarded: "1", spelldash_placement: "done", spelldash_owner: "other-user", spelldash_theme: "dark", spelldash_xp: "777",
+    spelldash_word_stats: JSON.stringify({ "zzz-only-other": localStat }), spelldash_my_words: JSON.stringify([{ en: "othersword", ja: "他人の語" }])
+  });
+  {
+    const cloud = createCloud(cloudTablesA());
+    const page = await syncDevice(otherSeed(cloud), { dialog: "dismiss" });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
+    check("持ち主が別人: confirm「この端末には別のアカウントの記録がある。…」が出る", page.dialogs.length >= 1 && page.dialogs[0] === "この端末には別のアカウントの記録がある。消して、このアカウントの記録に置き換える", JSON.stringify(page.dialogs));
+    check("持ち主が別人・キャンセル: 記録（語・XP・マイ単語帳・持ち主）はそのまま", (await lsJson(page, "spelldash_word_stats"))?.["zzz-only-other"] && (await ls(page, "spelldash_xp")) === "777" && (await ls(page, "spelldash_owner")) === "other-user" && (await ls(page, "spelldash_my_words")).includes("othersword"));
+    check("持ち主が別人・キャンセル: クラウドに書き込みが無い", cloud.writes().length === 0, JSON.stringify(cloud.writes().map((e) => e.table)));
+    check("持ち主が別人・キャンセル: 文「ログインをやめた。記録はこの端末に残る。」", (await txt(page, "#authMessage")) === "ログインをやめた。記録はこの端末に残る。", await txt(page, "#authMessage"));
+    check("持ち主が別人・キャンセル: ログアウトして未ログインの表示（#accountGuest）", (await ls(page, "spelldash_test_session")) === null && !(await page.$eval("#accountGuest", (el) => el.hidden)) && (await page.$eval("#accountUser", (el) => el.hidden)));
+    check("持ち主が別人（キャンセル）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+  {
+    // 語は無くても XP・マイ単語帳がある端末も確かめる（前の人の記録を確認なしに混ぜない）
+    const cloud = createCloud(cloudTablesA());
+    const page = await syncDevice(login(cloud, { spelldash_onboarded: "1", spelldash_owner: "other-user", spelldash_xp: "800", spelldash_my_words: JSON.stringify([{ en: "othersword", ja: "他人の語" }]) }), { dialog: "dismiss" });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
+    check("持ち主が別人（語なし・XP とマイ単語帳あり）: confirm が出て、キャンセルで何も書かない", page.dialogs.length >= 1 && cloud.writes().length === 0 && (await ls(page, "spelldash_xp")) === "800", JSON.stringify({ dialogs: page.dialogs.length, writes: cloud.writes().length }));
+    await page.close();
+  }
+  {
+    const cloud = createCloud(cloudTablesA());
+    const page = await syncDevice(otherSeed(cloud), { dialog: "accept" });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await ownerSet(page);
+    const stats = (await lsJson(page, "spelldash_word_stats")) || {};
+    const my = (await lsJson(page, "spelldash_my_words")) || [];
+    check("持ち主が別人・OK: 他人の語とマイ単語帳が消え、クラウドの記録（40 語）に置き換わる", !stats["zzz-only-other"] && Object.keys(stats).length === 40 && !my.some((w) => w.en === "othersword"), JSON.stringify({ words: Object.keys(stats).length, my: my.map((w) => w.en) }));
+    check("持ち主が別人・OK: 端末の設定（theme）は残る", (await ls(page, "spelldash_theme")) === "dark");
+    check("持ち主が別人・OK: 他人の語・マイ単語をクラウドへ上げない", !cloud.rows("word_progress").some((r) => r.word_id === "zzz-only-other") && !cloud.rows("user_items").some((r) => r.key === "othersword"));
+    check("持ち主が別人（OK）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // (5) XP の差分マージ: 基準 5100・この端末 5240・クラウド 5240 → 両方 5380
+  {
+    const cloud = createCloud({ word_progress: syncWords.map(wpRow), user_progress: [userProgress({ xp: 5240 })], user_items: [] });
+    const page = await syncDevice(login(cloud, { spelldash_onboarded: "1", spelldash_placement: "done", spelldash_owner: SYNC_USER, spelldash_xp: "5240", spelldash_xp_synced: "5100", spelldash_word_stats: JSON.stringify({ [syncWords[0].id]: localStat }) }));
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await ls(page, "spelldash_xp")) === "5380" && cloud.rows("user_progress")[0].xp === 5380, 8000);
+    check("XP: 基準 5100・端末 5240・クラウド 5240 → ローカルもクラウドも 5380", (await ls(page, "spelldash_xp")) === "5380" && cloud.rows("user_progress")[0].xp === 5380 && (await ls(page, "spelldash_xp_synced")) === "5380", JSON.stringify({ local: await ls(page, "spelldash_xp"), cloud: cloud.rows("user_progress")[0].xp, synced: await ls(page, "spelldash_xp_synced") }));
+    await page.close();
+  }
+
+  // (9 の補助) user_items の表が無い: 今日のぶんの済みは推測しない（連続日数は 1 語でも今日になるので「済み」と言わない）
+  {
+    const cloud = createCloud(cloudTablesA(), { failSelect: { user_items: "relation \"public.user_items\" does not exist" } });
+    const page = await syncDevice(login(cloud));
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await ownerSet(page);
+    const ds = (await lsJson(page, "spelldash_daily_set")) || {};
+    check("表なし: streak.last が今日でも今日のぶんを済みにしない（history・setsToday・累計は増えない）", !ds.history?.includes(todayY) && !(ds.setsToday > 0) && (await ls(page, "spelldash_sets_total")) === null, JSON.stringify({ ds, total: await ls(page, "spelldash_sets_total") }));
+    check("表なし: 学習記録の同期は終わる（語 40）", Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length === 40);
+    await page.close();
+  }
+
+  // (9) 端末 A（持ち主なし・成長ログ 30 日）がログインして開く: day 行がクラウドへ上がる
+  {
+    const cloud = createCloud({});
+    const growth = Array.from({ length: 30 }, (_, i) => ({ date: ymdDaysAgo(29 - i), learned: i + 1, mastered: Math.floor(i / 6), active: true, v: 2 }));
+    const history = growth.map((e) => e.date);
+    const statsA = Object.fromEntries(syncWords.slice(0, 30).map((w) => [w.id, localStat]));
+    const page = await syncDevice(login(cloud, {
+      spelldash_onboarded: "1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify(statsA), spelldash_growth_log: JSON.stringify(growth),
+      spelldash_daily_set: JSON.stringify({ history, last: { date: todayY, count: 15 }, setsToday: 1, setsTodayDate: todayY }),
+      spelldash_streak: JSON.stringify({ last: todayY, current: 30, best: 30, shields: 0 }), spelldash_xp: "3000"
+    }));
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await ownerSet(page);
+    await waitUntil(async () => cloud.rows("user_items").filter((r) => r.kind === "day").length >= 25, 5000);
+    const days = cloud.rows("user_items").filter((r) => r.kind === "day");
+    const todayRow = days.find((r) => r.key === todayY);
+    check("端末 A: 成長ログの日数ぶん day 行がクラウドへ上がる（約 30 件）", days.length >= 25 && days.length <= 31, String(days.length));
+    check("端末 A: 今日の day 行は set=true・sets≥1", todayRow?.payload?.set === true && todayRow.payload.sets >= 1, JSON.stringify(todayRow?.payload));
+    check("端末 A: クラウドの user_progress に端末の XP が上がる", cloud.rows("user_progress")[0]?.xp === 3000, JSON.stringify(cloud.rows("user_progress")[0]?.xp));
+    check("端末 A（送信）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+
+    // 別の端末が先に送った今日の行（2 セット目・語数）と XP（+200）を、開いたままのこのタブの送信が巻き戻さない
+    const cloudToday = cloud.rows("user_items").find((r) => r.kind === "day" && r.key === todayY);
+    cloudToday.payload = { ...cloudToday.payload, set: true, sets: 3, learned: 999 };
+    cloud.rows("user_progress")[0].xp = 3200;
+    await page.evaluate(async (today) => {
+      localStorage.setItem("spelldash_xp", "3140"); // この端末で +140
+      const items = await import("/js/userItemsSync.js");
+      items.touchItem("day", today);
+      const sync = await import("/js/sync.js");
+      await sync.pushSync();
+    }, todayY);
+    const after = cloud.rows("user_items").find((r) => r.kind === "day" && r.key === todayY)?.payload;
+    check("2 台で同じ日: 送る前にクラウドの行と合わせ、sets・語数を巻き戻さない", after?.sets === 3 && after?.learned === 999 && after?.set === true, JSON.stringify(after));
+    check("2 台で同じ日: XP は両方の増分を足す（3000 → 3200 と 3140 → 3340）", cloud.rows("user_progress")[0]?.xp === 3340 && (await ls(page, "spelldash_xp")) === "3340", JSON.stringify({ cloud: cloud.rows("user_progress")[0]?.xp, local: await ls(page, "spelldash_xp") }));
+    await page.close();
+  }
+
+  // (8) 成長ログの無い端末の学習データ（クラウドに day 行なし）: 週間レポートは「–」・はちゃん無し・注記
+  {
+    const cloud = createCloud({ word_progress: syncWords.map(wpRow), user_progress: [userProgress()], user_items: [] });
+    const page = await syncDevice(login(cloud));
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await ownerSet(page);
+    await waitUntil(async () => (await txt(page, "#weeklyReport")).includes("この端末での記録は明日から"), 5000);
+    const weekly = await txt(page, "#weeklyReport");
+    check("週間（成長ログなし）: 学習した日・7日で覚えた が「–」", /学習した日\s*–/.test(weekly) && /7日で\s*覚えた\s*–/.test(weekly), weekly);
+    check("週間（成長ログなし）: 注記「この端末での記録は明日から」", weekly.includes("この端末での記録は明日から"), weekly);
+    check("週間（成長ログなし）: はちゃんと「今週は休み」を出さない", !(await visible(page, "#weeklyReport .hasumi")) && !weekly.includes("今週は休み"), weekly);
+    check("学習データ: 同期の文「記録を同期した。」", (await txt(page, "#authMessage")) === "記録を同期した。", await txt(page, "#authMessage"));
+    check("学習データ（同期）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // 単語帳: クラウドのマイ単語 3 語が開き直さずに出る
+  {
+    const myItem = (en, ja, d) => ({ user_id: SYNC_USER, kind: "my_word", key: en, payload: { en, ja, addedAt: isoDaysAgo(d) }, deleted: false, updated_at: isoDaysAgo(d) });
+    const cloud = createCloud({ word_progress: syncWords.map(wpRow), user_progress: [userProgress()], user_items: [myItem("negotiate", "交渉する", 5), myItem("invoice", "請求書", 4), myItem("deadline", "締め切り", 3)] });
+    const page = await syncDevice(login(cloud));
+    await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
+    await ownerSet(page);
+    await waitUntil(async () => (await txt(page, "#myWordCount")) === "3語", 5000);
+    check("単語帳: 同期で届いたマイ単語 3 語が開き直さずに出る", (await txt(page, "#myWordCount")) === "3語", await txt(page, "#myWordCount"));
+    check("単語帳（同期）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // ログイン欄の並び（未ログイン）: 利点の 1 文が Google の上、メール側は操作だけ。トップの「すでに使っている方はログイン」は見える
+  {
+    const page = await newPage({ keepOnboarding: true });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const order = await page.evaluate(() => [...document.querySelectorAll("#accountLogin > *")].map((el) => el.id || el.textContent.replace(/\s+/g, " ").trim()));
+    check("ログイン欄: 2 番目が「記録を別の端末でも。」、3 番目が Google", order[1] === "記録を別の端末でも。" && order[2] === "googleLoginButton", order.join(" | "));
+    check("ログイン欄: メール側は「メールにログインリンクを送る」", order.includes("メールにログインリンクを送る"), order.join(" | "));
+    check("未ログイン: トップページに「すでに使っている方はログイン」が見える", (await visible(page, "#welcome")) && (await visible(page, "#welcomeLogin")));
+    await page.close();
+  }
 }
 
 await browser.close();

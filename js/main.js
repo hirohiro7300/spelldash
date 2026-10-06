@@ -28,7 +28,7 @@ import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
 import { renderPath, currentUnitOf, buildPath } from "./pathView.js";
 import { renderTodayStrip } from "./homeStrip.js";
-import { renderWelcome } from "./welcome.js";
+import { renderWelcome, dismissWelcome, shouldShowWelcome } from "./welcome.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { renderPlayModes } from "./playModes.js";
 import { ensureDefaultCourse, advanceSection, startCourse, COURSES } from "./course.js";
@@ -39,7 +39,7 @@ import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
 import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
 import { renderLoginNudge } from "./loginNudge.js";
-import { initTutorial } from "./tutorial.js";
+import { initTutorial, skipTutorialIfReturning } from "./tutorial.js";
 import { getCategories } from "./wordStore.js";
 import { getGenre, genreLabel } from "./genres.js";
 import { getWordStats } from "./storage.js";
@@ -53,13 +53,22 @@ initTutorial(); // 初回の 1 セットに 1 文ずつ（docs/SPEC_TUTORIAL.md�
 renderLevelBar();
 setupUnloadSync();
 
-// 同期で追加パックの選択が変わったら、語を読み直してカテゴリを作り直す
+// 同期で追加パックの選択が変わったら、語を読み直してカテゴリを作り直す。
+// 数える側（覚えた単語・はちゃん）も語が入ってから描き直し、読み直しの終わりを知らせる（js/sync.js は待ってから synced を投げる）
 window.addEventListener("spelldash:packs", (event) => {
   if (!event.detail?.synced) return;
   initWordStore().then(() => {
     initializeCategoryPicker();
     renderHome(); // 語が変わったので道も描き直す
+    renderLearnedCard();
+    renderHasumiHome();
+    window.dispatchEvent(new CustomEvent("spelldash:store-ready"));
   });
+});
+
+// ログイン済みの人にはトップページ（初めての人向け）を出さない。同期中は道と #authMessage が見える
+window.addEventListener("spelldash:auth-ready", (event) => {
+  if (event.detail?.loggedIn) dismissWelcome();
 });
 
 // 道が見えている間（プレイ前）の Enter は、見えない入力欄でゲームを始めず、道のスタートと同じ動きにする
@@ -77,6 +86,10 @@ elements.input.addEventListener("keydown", (event) => {
 
 // クラウド同期でローカルデータが更新されたら表示を作り直す
 window.addEventListener("spelldash:synced", () => {
+  if (!shouldShowWelcome()) dismissWelcome(); // 記録が届いたらトップページを畳む
+  skipTutorialIfReturning(); // 記録が届いた端末では初回の札を出さない
+  renderHeaderStreak();
+  renderLoginNudge(); // ログイン済みなら案内を消す（「この端末だけにある」を残さない）
   renderLearnedCard();
   renderHome();
   renderLevelBar();

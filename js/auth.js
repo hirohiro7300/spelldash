@@ -1,6 +1,7 @@
 import { authRedirectOrigin } from "./appEnv.js";
 import { supabase, isSupabaseConfigured, checkAuthReachable } from "./supabase.js";
-import { initialSync } from "./sync.js";
+import { initialSync, clearSyncedFlag } from "./sync.js";
+import { getWordStats } from "./storage.js";
 import { refreshPlan, clearPlan } from "./plan.js";
 import { trapFocus } from "./focusTrap.js";
 
@@ -116,11 +117,11 @@ function closeDropdown(dropdown, trigger) {
   if (wasOpen && dropdown.contains(document.activeElement) && document.activeElement !== trigger) trigger.focus();
 }
 
-const UNREACHABLE_MESSAGE = "ログインのサーバーにつながりません（停止中か、通信の問題です）。学習はこのまま続けられ、記録はこの端末に残ります。";
+const UNREACHABLE_MESSAGE = "ログインのサーバーにつながらない。学習はこのまま続けられ、記録はこの端末に残る。";
 
 async function signInWithGoogle() {
   googleLoginButtonElement.disabled = true;
-  showAuthMessage("Googleに移動します…");
+  showAuthMessage("Google に移動する…");
 
   // サーバーが止まっていると Google ではなく「このサイトにアクセスできません」へ飛ぶので、先に確かめる
   if (!(await checkAuthReachable())) {
@@ -139,14 +140,14 @@ async function signInWithGoogle() {
   // 成功時はGoogleへページ遷移するため、ここに戻るのはエラー時のみ
   if (error) {
     googleLoginButtonElement.disabled = false;
-    showAuthMessage(`Googleログインに失敗しました：${error.message}`, "error");
+    showAuthMessage(`Google ログインに失敗した: ${error.message}`, "error");
   }
 }
 
 async function sendLoginLink() {
   if (!isSupabaseConfigured) {
     showAuthMessage(
-      "ログイン設定が未完了です（Supabaseキー未設定）。管理者にお問い合わせください。",
+      "ログインの設定が済んでいない（Supabase のキーが無い）。管理者に知らせる。",
       "error"
     );
     return;
@@ -155,7 +156,7 @@ async function sendLoginLink() {
   const email = emailInputElement.value.trim();
 
   if (!email) {
-    showAuthMessage("メールアドレスを入力してください。", "error");
+    showAuthMessage("メールアドレスを入れる。", "error");
     return;
   }
 
@@ -210,24 +211,27 @@ function formatAuthError(error) {
   const message = error.message ?? "";
 
   if (message.includes("rate limit")) {
-    return "メール送信の上限に達しました。約1時間おいてから再度お試しください。";
+    return "メール送信の上限。約1時間あけてもう一度。";
   }
 
   if (message.includes("Invalid API key")) {
-    return "ログイン設定に問題があります（APIキーが無効）。管理者にお問い合わせください。";
+    return "ログインの設定に問題がある（API キーが無効）。管理者に知らせる。";
   }
 
-  return `ログインリンク送信に失敗しました：${message}`;
+  return `ログインリンクの送信に失敗した: ${message}`;
 }
 
 async function logout() {
+  clearSyncedFlag(); // 同じタブで（別のアカウントでも）ログインし直したら、もう一度同期する
   await supabase.auth.signOut();
-  showAuthMessage("ログアウトしました。");
+  showAuthMessage("ログアウトした。記録はこの端末に残る。");
 }
 
 function updateAuthDisplay(session) {
-  // 表示を切り替えたことを知らせる（js/main.js の ?login=1 など、ドロップダウンの準備を待つ側が使う）
+  // 表示を切り替えたことを知らせる（js/main.js の ?login=1・トップページを畳む など、ドロップダウンの準備を待つ側が使う）
   queueMicrotask(() => window.dispatchEvent(new CustomEvent("spelldash:auth-ready", { detail: { loggedIn: Boolean(session) } })));
+  const welcomeLogin = document.getElementById("welcomeLogin"); // トップページの「すでに使っている方はログイン」
+  if (welcomeLogin) welcomeLogin.hidden = Boolean(session);
   if (!session) {
     accountGuestElement.hidden = false;
     accountUserElement.hidden = true;
@@ -236,6 +240,8 @@ function updateAuthDisplay(session) {
     return;
   }
 
+  // ログイン中の画面に、未ログインのときの文（ログアウトした・送信中など）を残さない。同期の文は残す
+  if (authMessageElement.dataset.scope === "guest") showAuthMessage("", "", { scope: "" });
   const email = session.user.email ?? "";
   accountGuestElement.hidden = true;
   accountUserElement.hidden = false;
@@ -244,18 +250,38 @@ function updateAuthDisplay(session) {
   closeDropdown(accountGuestElement, loginToggleElement);
 }
 
+// initialSync の戻り値（js/sync.js）: "changed"（取り込んだ）／"same"（変化なし）／"cancelled"（別アカウントの記録の置き換えを断った）／false（未ログイン・このタブで同期済み）
 async function runInitialSync() {
   try {
-    const synced = await initialSync();
-    if (synced) {
-      showAuthMessage("学習データをクラウドと同期しました。", "success");
+    const result = await initialSync();
+    if (pageMessageShown()) return; // ほかのページの文（プロフィールの「Pro になった」など）は上書きしない
+    if (result === "changed") {
+      showAuthMessage("記録を同期した。", "success", { scope: "user" });
+    } else if (result === "cancelled") {
+      // 端末の記録は何も書き換えていない。ログインだけやめる（次にログインしたら、もう一度たずねる）
+      clearSyncedFlag();
+      await supabase.auth.signOut();
+      showAuthMessage("ログインをやめた。記録はこの端末に残る。");
     }
   } catch {
-    // 同期失敗してもローカルで動き続ける（Local First）
+    if (pageMessageShown()) return;
+    // 同期に失敗してもローカルで動き続ける（Local First）。記録のある端末では何も言わない。
+    // 空の端末だけ、記録が届いていないことを伝える（ここで新しく始めると、届くはずの記録と混ざる）
+    if (Object.keys(getWordStats()).length === 0) {
+      showAuthMessage("記録を取り込めなかった。開き直すともう一度試す。", "error", { scope: "user" });
+    }
   }
 }
 
-function showAuthMessage(text, type = "") {
+// ページが同じ欄に書いた文（js/profileView.js が scope="page" を付ける）が出ているか
+function pageMessageShown() {
+  return authMessageElement.dataset.scope === "page" && authMessageElement.textContent.trim() !== "";
+}
+
+// scope: "guest" は未ログインのときの文（ログアウトした・送信中など）で、ログインしたら消す（updateAuthDisplay）。
+// "user" はログイン中の文（同期の結果）。"page" はほかのページが同じ欄に書く文（プロフィールの Pro の反映など）で、auth は消さず上書きもしない
+function showAuthMessage(text, type = "", { scope = "guest" } = {}) {
   authMessageElement.textContent = text;
   authMessageElement.className = `auth-message ${type}`.trim();
+  authMessageElement.dataset.scope = scope;
 }

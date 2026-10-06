@@ -1,7 +1,9 @@
 # SQL: 自分のデータの端末間同期（user_items テーブル）
 
 > 実行は創業者側（Supabase ダッシュボード → SQL Editor）。未作成でもアプリは壊れず、これまで通り端末ローカルで動きます。
-> 作成すると、ログイン中のユーザーの **マイ単語帳（自分のカード）／単語メモ／追加した分野パック** が端末間で同期されます。
+> 作成すると、ログイン中のユーザーの **マイ単語帳（自分のカード）／単語メモ／追加した分野パック／日ごとの記録（今日のぶん・成長ログ）** が端末間で同期されます。
+>
+> **すでに 1. を流してある場合**: `day` を足すため、下の「1b. kind に day を足す」の 2 文を 1 回だけ流してください（流すまで `day` の行は送信に失敗し、日ごとの記録だけが端末ローカルのままになります。他は動きます）。
 
 ## 何が同期されるか
 
@@ -10,8 +12,10 @@
 | `my_word` | 英単語 or 場面カードのキー | カードの内容そのもの | `spelldash_my_words` |
 | `note` | 単語 id | `{ "text": "覚え方" }` | `spelldash_word_notes` |
 | `pack` | パック id | `{ "enabled": true }` | `spelldash_packs` |
+| `day` | 日付 `YYYY-MM-DD` | `{ "learned": 180, "mastered": 40, "active": true, "set": true, "sets": 2 }` | `spelldash_growth_log` の同じ日の行＋`spelldash_daily_set`（history・setsToday） |
 
 - 項目ごとに `updated_at` が新しい方が勝つ。削除は `deleted = true` の行（墓標）で他端末に伝わる
+- `day` だけは値で合わせる: learned・mastered・sets は大きい方、active・set はどちらかが true なら true。送る前にクラウドの同じ日の行を読んで合わせてから書くので、同じ日に 2 台で学んでも巻き戻らない（読めなかった日は送らずに次回へ回す）。削除は無い（120 日より古い日は端末に持たない）
 - 送信タイミングは学習記録と同じ（Challenge終了・Studyで10語ごと・ページ離脱・ログイン直後のマージ）
 - 未ログインの人は何も送らない（Local First）
 
@@ -20,7 +24,7 @@
 ```sql
 create table if not exists public.user_items (
   user_id uuid not null references auth.users (id) on delete cascade,
-  kind text not null check (kind in ('my_word', 'note', 'pack')),
+  kind text not null check (kind in ('my_word', 'note', 'pack', 'day')),
   key text not null check (char_length(key) <= 200),
   payload jsonb not null default '{}'::jsonb,
   deleted boolean not null default false,
@@ -44,6 +48,15 @@ grant select, insert, update, delete on public.user_items to authenticated;
 create index if not exists user_items_updated_idx
   on public.user_items (user_id, updated_at);
 ```
+
+## 1b. kind に day を足す（1. を以前の版で流してある人だけ・1 回）
+
+```sql
+alter table public.user_items drop constraint if exists user_items_kind_check;
+alter table public.user_items add constraint user_items_kind_check check (kind in ('my_word', 'note', 'pack', 'day'));
+```
+
+（制約名は 1. の書き方で Postgres が付ける既定の名前。違う名前で作った場合は、SQL Editor で `select conname from pg_constraint where conrelid = 'public.user_items'::regclass and contype = 'c';` を流して確かめ、置き換える）
 
 ## 2. 確認クエリ
 
