@@ -36,7 +36,7 @@ create policy "funnel_events_insert_anyone"
 
 ## 2. 管理画面の集計を軽くする関数（任意。行が増えてから）
 
-管理画面は、この関数があれば数十行の集計だけを受け取る（無ければ 30 日分の行を読んで数える）。
+管理画面は、この関数があれば数十行の集計だけを受け取る（無ければ 30 日分の行を読んで数える）。入口の行は source が空なら other にまとめる（段階の合計の行は source が空）。以前の版を流してあれば、同じ文をもう一度流すと置き換わる。
 
 ```sql
 create or replace function public.admin_funnel_counts(p_today date)
@@ -49,10 +49,10 @@ as $$
   from public.funnel_events e join w on e.day between p_today - w.back and p_today
   group by w.win, e.step
   union all
-  select w.win, 'entry', e.source, count(distinct e.device_id)
+  select w.win, 'entry', coalesce(nullif(e.source, ''), 'other'), count(distinct e.device_id)
   from public.funnel_events e join w on e.day between p_today - w.back and p_today
   where e.step = 'entry'
-  group by w.win, e.source;
+  group by w.win, coalesce(nullif(e.source, ''), 'other');
 $$;
 
 -- service role（管理画面の API）だけが呼べる

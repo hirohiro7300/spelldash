@@ -19,6 +19,7 @@ export function setFooterYear() {
   trackProEntries();
   flushFunnelQueue();
   trackFirstVisit();
-  flushPaidPending(isPro());
+  // 支払いの完了は、サーバーで確かめた Pro（spelldash:plan。js/plan.js の refreshPlan が投げる）だけで数える。
+  // 読み込み時のキャッシュでは数えない（期限切れ間近の past_due の人が払い直した直後に、確定前で数えてしまうため）
   document.addEventListener("spelldash:plan", () => flushPaidPending(isPro()));
 }

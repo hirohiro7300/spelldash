@@ -12,7 +12,7 @@ import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { getPlan, refreshPlan, postBilling, formatPlanDate, waitForPro } from "./plan.js";
 import { fetchBillingConfig, rememberBillingConfig, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
-import { logFunnel, logFunnelBeforeLeave, markPaidPending, flushPaidPending } from "./funnelLog.js";
+import { logFunnel, logFunnelBeforeLeave, markPaidPending } from "./funnelLog.js";
 
 const MESSAGES = {
   loginRequired: "加入にはログインが要る。",
@@ -242,7 +242,6 @@ function maybeWelcome() {
       welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いは完了。反映まで少し待つ（1 分たっても変わらなければ開き直す）</p>`;
       return;
     }
-    flushPaidPending(true);
     const items = UNLOCKED.map((u) => `<li>${u.href ? `<a href="${u.href}">${u.label}</a>` : u.label}</li>`).join("");
     welcomeElement.innerHTML = `
       <p class="pro-welcome__title" role="status">Pro になった。ありがとう</p>

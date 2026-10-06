@@ -11,11 +11,18 @@ import { send } from "../_lib/shared.js";
 import { handleAdmin, restOptional, rpcAllOrNull, jstToday, addDays } from "../_lib/admin.js";
 import { summarizeFunnel, summarizeFunnelCounts } from "../_lib/funnel.js";
 
+// 関数が無いと分かったら、このインスタンスでは 10 分間 RPC を呼ばない（無い環境で毎回 1 往復ふやさない）
+const RPC_RETRY_MS = 10 * 60 * 1000;
+let rpcMissingUntil = 0;
+
 export default async function handler(req, res) {
   await handleAdmin(req, res, { method: "GET", label: "funnel" }, async () => {
     const today = jstToday();
-    const counted = await rpcAllOrNull("admin_funnel_counts", { p_today: today });
-    if (counted) return send(res, 200, { missing: false, ...summarizeFunnelCounts(counted, today) });
+    if (Date.now() >= rpcMissingUntil) {
+      const counted = await rpcAllOrNull("admin_funnel_counts", { p_today: today });
+      if (counted) return send(res, 200, { missing: false, ...summarizeFunnelCounts(counted, today) });
+      rpcMissingUntil = Date.now() + RPC_RETRY_MS;
+    }
     const since = addDays(today, -29);
     const { rows, missing } = await restOptional("funnel_events", `select=device_id,step,source,day&day=gte.${since}&order=id`);
     if (missing) return send(res, 200, { missing: true, today });

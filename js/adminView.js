@@ -430,7 +430,7 @@ async function loadFunnel() {
       <tbody>${rows}</tbody>
     </table>
     <p class="admin-funnel__note">入口（30 日）: ${sources || "まだ無い"}</p>
-    <p class="admin-funnel__note">「7 日学んだ」には以前から使っている人も入る（その期間にホームを開いた端末）。ログイン済みの人はログインの 2 段を通らない。</p>`;
+    <p class="admin-funnel__note">「${escapeHtml(FUNNEL_LABEL.day7)}」には以前から使っている人も入る（その期間にホームを開いた端末）。ログイン済みの人はログインの 2 段を通らない。</p>`;
 }
 
 // ---- 一覧 ----
