@@ -27,8 +27,25 @@
 
 `/api/billing/config` の `configured` と月額の価格。全ページで毎回は取りに行かず、`spelldash_billing_open` に 12 時間キャッシュする（加入画面を開いたときは取り直して上書き）。
 
+## 計測（Batch 50）
+
+`funnel_events`（docs/SQL_FUNNEL.md）に、端末ごとのランダムな番号（`spelldash_device_id`）と段階だけを送る。メール・学習の中身は送らない。同じ端末・同じ段階・同じ入口は 1 日 1 行（`first_visit`・`day7` は端末で 1 回きり）。表が無ければ何もしない。
+
+| 段階 | いつ |
+|---|---|
+| first_visit | 学習記録の無い端末で、初めてページを開いた |
+| day7 | 学んだ日が 7 日になった（ホームを開いたとき） |
+| entry | 加入画面へのリンクを押した。入口（`data-funnel`）: footer・weekly・mywords・ai・cards・trend・repair・theme・profile・other。押した瞬間に移るので端末に積み、次のページで送る |
+| pro_view | 加入画面を開いた |
+| login_click | 「ログインして始める」 |
+| login_return | ログインして加入画面に戻った |
+| checkout_start | 支払いへ進んだ（入口は month／year。移る前に最大 0.8 秒待って送る） |
+| checkout_done | 加入が反映された |
+| checkout_cancel | 支払いを中止して戻った |
+
+管理画面（/admin.html）の「Pro までの動線」に、段階ごとの端末の数（7 日・30 日）と前の段からの割合、入口の内訳を出す（`/api/admin/funnel`、集計は api/_lib/funnel.js）。ログイン済みの人はログインの 2 段を通らない。プライバシーポリシーに「利用状況の集計」を足した。
+
 ## まだ無いもの（次の候補）
 
-- 段階ごとの数（フッター → 加入画面 → ログイン → Checkout → 加入）の計測。いまは Stripe のダッシュボード（Checkout の開始・完了）と CRM のプラン列だけ。計測するなら activity_days とは別の表が要る（SQL）
 - 無料期間の有無と日数の判断（創業者。`STRIPE_TRIAL_DAYS`）
 - Pro の中身そのもの（docs/PRO_VALUE.md）。動線は中身が弱いと数字に出ない

@@ -1,0 +1,10 @@
+{
+  "missing": false,
+  "today": "2026-10-06",
+  "steps": ["first_visit", "day7", "entry", "pro_view", "login_click", "login_return", "checkout_start", "checkout_done"],
+  "side": ["checkout_cancel"],
+  "days7": { "first_visit": 40, "day7": 12, "entry": 9, "pro_view": 8, "login_click": 4, "login_return": 3, "checkout_start": 3, "checkout_done": 2, "checkout_cancel": 1 },
+  "days30": { "first_visit": 120, "day7": 30, "entry": 20, "pro_view": 18, "login_click": 9, "login_return": 7, "checkout_start": 6, "checkout_done": 4, "checkout_cancel": 2 },
+  "sources7": [{ "source": "footer", "devices": 5 }, { "source": "weekly", "devices": 4 }],
+  "sources30": [{ "source": "footer", "devices": 11 }, { "source": "weekly", "devices": 7 }, { "source": "mywords", "devices": 2 }]
+}

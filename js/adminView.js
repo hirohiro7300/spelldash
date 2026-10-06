@@ -191,7 +191,9 @@ async function init() {
     tags: document.getElementById("adminTags"),
     pinned: document.getElementById("adminPinned"),
     save: document.getElementById("adminSaveNote"),
-    noteStatus: document.getElementById("adminNoteStatus")
+    noteStatus: document.getElementById("adminNoteStatus"),
+    funnel: document.getElementById("adminFunnel"),
+    funnelBody: document.getElementById("adminFunnelBody")
   };
 
   els.refresh.innerHTML = `${icon("refresh", { size: 14 })}<span>再取得</span>`;
@@ -356,6 +358,69 @@ async function load() {
   renderSummary();
   renderTable();
   setState("ready");
+  loadFunnel(); // 一覧を待たせない（失敗しても一覧はそのまま）
+}
+
+// ---- Pro までの動線（/api/admin/funnel、docs/SPEC_FUNNEL.md） ----
+
+const FUNNEL_LABEL = {
+  first_visit: "初めて来た",
+  day7: "7 日学んだ",
+  entry: "加入画面へのリンクを押した",
+  pro_view: "加入画面を開いた",
+  login_click: "「ログインして始める」",
+  login_return: "ログインして戻った",
+  checkout_start: "支払いへ進んだ",
+  checkout_done: "加入した",
+  checkout_cancel: "支払いを中止"
+};
+const FUNNEL_SOURCE_LABEL = {
+  footer: "フッター",
+  weekly: "週間レポート",
+  mywords: "マイ単語帳の上限",
+  ai: "AI の回数",
+  cards: "カード作成の回数",
+  trend: "推移 90 日",
+  repair: "連続の修復",
+  theme: "テーマ",
+  profile: "設定",
+  other: "その他"
+};
+
+async function loadFunnel() {
+  if (!els.funnel) return;
+  const { status, body } = await apiFetch("/api/admin/funnel");
+  if (status !== 200) {
+    els.funnel.hidden = true;
+    return;
+  }
+  els.funnel.hidden = false;
+  if (body.missing) {
+    els.funnelBody.innerHTML = '<p class="admin-missing">数えるには docs/SQL_FUNNEL.md のテーブルが要る</p>';
+    return;
+  }
+  const steps = Array.isArray(body.steps) ? body.steps : [];
+  const side = Array.isArray(body.side) ? body.side : [];
+  const d7 = body.days7 ?? {};
+  const d30 = body.days30 ?? {};
+  const ratio = (n, prev) => (prev > 0 ? `${Math.round((n / prev) * 100)}%` : "–");
+  const rows = steps
+    .map((step, i) => {
+      const prev = i > 0 ? d30[steps[i - 1]] ?? 0 : null;
+      return `<tr><th scope="row">${escapeHtml(FUNNEL_LABEL[step] || step)}</th><td class="mono">${num(d7[step] ?? 0)}</td><td class="mono">${num(d30[step] ?? 0)}</td><td class="mono">${prev == null ? "" : ratio(d30[step] ?? 0, prev)}</td></tr>`;
+    })
+    .concat(side.map((step) => `<tr class="admin-funnel__side"><th scope="row">${escapeHtml(FUNNEL_LABEL[step] || step)}</th><td class="mono">${num(d7[step] ?? 0)}</td><td class="mono">${num(d30[step] ?? 0)}</td><td></td></tr>`))
+    .join("");
+  const sources = (Array.isArray(body.sources30) ? body.sources30 : [])
+    .map((s) => `${escapeHtml(FUNNEL_SOURCE_LABEL[s.source] || s.source)} <b class="mono">${num(s.devices)}</b>`)
+    .join(" ・ ");
+  els.funnelBody.innerHTML = `
+    <table class="admin-funnel__table">
+      <thead><tr><th scope="col">段階（端末の数）</th><th scope="col">7 日</th><th scope="col">30 日</th><th scope="col">前の段から（30 日）</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="admin-funnel__note">入口（30 日）: ${sources || "まだ無い"}</p>
+    <p class="admin-funnel__note">ログイン済みの人はログインの 2 段を通らないので、「支払いへ進んだ」は「加入画面を開いた」と比べて見る。</p>`;
 }
 
 // ---- 一覧 ----

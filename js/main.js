@@ -20,6 +20,8 @@ import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
 import { isGamePlaying } from "./game.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
+import { logFunnel } from "./funnelLog.js";
+import { getGrowthLog } from "./growthLog.js";
 import { renderLevelBar } from "./levelUi.js";
 import { renderHasumiHome } from "./hasumi.js";
 import { renderHeaderStreak } from "./headerStreak.js";
@@ -360,6 +362,8 @@ renderWelcome({
 
 storeReady
   .then(() => {
+    // 動線の計測: 学んだ日が 7 日になった端末（1 回きり。docs/SQL_FUNNEL.md）
+    if (getGrowthLog().filter((e) => e.active).length >= 7) logFunnel("day7");
     initializeCategoryPicker();
     renderLearnedCard();
     renderHasumiHome(); // 語の読み込み後に（「今日覚えた」の語を名指しするため）

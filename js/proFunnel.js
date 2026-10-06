@@ -89,6 +89,7 @@ export function renderFooterPro() {
     const link = document.createElement("a");
     link.href = "./pro.html";
     link.dataset.footerPro = "";
+    link.dataset.funnel = "footer";
     link.textContent = "SpellDash Pro";
     nav.prepend(link);
   };

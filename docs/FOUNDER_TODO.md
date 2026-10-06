@@ -25,6 +25,7 @@
 
 - ☐ Vercel の環境変数 `SUPABASE_SERVICE_ROLE_KEY` と `ADMIN_EMAILS`（自分のメール。確認済みのアカウント）→ Redeploy → `/admin.html`
 - ☐ メモ・タグ・ピン留めを使うなら docs/SQL_CRM.md の 1（`crm_notes`）。人数が増えて一覧が遅くなったら 2（RPC）
+- ☐ Pro までの動線を数えるなら docs/SQL_FUNNEL.md の 1（`funnel_events`）。流すと管理画面に「Pro までの動線」の数が出る。受付を始める前に流しておくと、最初の加入から数えられる
 
 ## D. AI 機能（テキストからカード・覚え方の解説）を開けるなら
 

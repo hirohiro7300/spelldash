@@ -53,6 +53,7 @@ export function initializeCardGen(onChange = () => {}) {
     if (upgrade) {
       const link = document.createElement("a");
       link.href = "./pro.html";
+      link.dataset.funnel = "cards";
       link.className = "pro-link";
       link.textContent = "Pro について";
       status.append(" ", link);

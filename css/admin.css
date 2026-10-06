@@ -832,3 +832,57 @@ html[data-theme] .admin-note__status:empty {
     height: 40px;
   }
 }
+
+/* ---- Pro までの動線（段階ごとの端末の数） ---- */
+html[data-theme] .admin-funnel {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  max-width: 820px;
+}
+
+html[data-theme] .admin-funnel__title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .admin-funnel__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+html[data-theme] .admin-funnel__table th,
+html[data-theme] .admin-funnel__table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+html[data-theme] .admin-funnel__table th[scope="row"],
+html[data-theme] .admin-funnel__table thead th:first-child {
+  text-align: left;
+  color: var(--ink);
+}
+
+html[data-theme] .admin-funnel__table thead th {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .admin-funnel__side th,
+html[data-theme] .admin-funnel__side td {
+  color: var(--ink-3);
+}
+
+html[data-theme] .admin-funnel__note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}

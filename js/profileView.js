@@ -77,7 +77,7 @@ function initializeThemeSetting() {
     // 紙・藍は Pro だけ。無料の人には案内を出して選択を戻す（適用しない）
     if (isProTheme(themeSelect.value) && !isPro()) {
       if (hint) {
-        hint.innerHTML = '紙・藍は Pro のテーマ。<a href="./pro.html">Pro について</a>';
+        hint.innerHTML = '紙・藍は Pro のテーマ。<a href="./pro.html" data-funnel="theme">Pro について</a>';
         hint.hidden = false;
       }
       themeSelect.value = getTheme();
