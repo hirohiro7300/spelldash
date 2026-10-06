@@ -11,7 +11,7 @@ import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./ba
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme, isProTheme } from "./theme.js";
 import { isNativeApp } from "./appEnv.js";
-import { getPlan, isPro, waitForPro, postBilling, planLabel } from "./plan.js";
+import { getPlan, isPro, postBilling, planLabel } from "./plan.js";
 import { getSetSize, setSetSize } from "./dailySet.js";
 import { getWeekGoal, setWeekGoal } from "./growthLog.js";
 import { renderInstallCard } from "./installPrompt.js";
@@ -132,17 +132,9 @@ function initializePlanRow() {
     showProfileMessage(message, "error");
   });
 
-  // Checkout から戻ってきた（?pro=done）: webhook の反映を待つ
+  // 旧い戻り先（2026-10-06 より前に作った Checkout）: 加入直後の画面は加入画面に 1 つだけ（js/proView.js）
   if (new URLSearchParams(location.search).get("pro") === "done") {
-    showProfileMessage("お支払いを確認中…");
-    waitForPro().then((ok) => {
-      showProfileMessage(
-        ok
-          ? "Pro になった。ありがとう"
-          : "お支払いは完了。反映まで少し待つ（1 分たっても変わらなければ開き直す）",
-        ok ? "success" : ""
-      );
-    });
+    location.replace("./pro.html?pro=done");
   }
 }
 

@@ -11,7 +11,7 @@ import { setupUnloadSync } from "./sync.js";
 import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { getPlan, refreshPlan, postBilling, formatPlanDate, waitForPro } from "./plan.js";
-import { rememberBillingOpen, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
+import { fetchBillingConfig, rememberBillingConfig, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
 
 const MESSAGES = {
   loginRequired: "加入にはログインが要る。",
@@ -35,6 +35,9 @@ let busy = false;
 const params = new URLSearchParams(location.search);
 let resumePending = params.get("resume") === "1"; // ログインから戻った（加入の途中）。この画面でログインした場合は印（hasProIntent）で見る
 let donePending = params.get("pro") === "done"; // Checkout から戻った（支払い済み）
+let welcomeActive = donePending; // 反映を待つ間とその後は購入ボタンを出さない（二重の申し込みを防ぐ）
+let resumeShown = false;
+let sessionKnown = false; // getSession の結果が出たか（出るまでは「ログインしていない」と決めない）
 if (params.has("resume") || params.has("pro")) {
   // 開き直したときに同じ案内を繰り返さない
   history.replaceState(null, "", location.pathname + location.hash);
@@ -52,6 +55,7 @@ if (params.get("pro") === "cancel") {
 
 supabase.auth.getSession().then(({ data }) => {
   session = data?.session ?? null;
+  sessionKnown = true;
   render();
 });
 supabase.auth.onAuthStateChange((_event, nextSession) => {
@@ -80,19 +84,9 @@ stateElement.addEventListener("click", (event) => {
 });
 
 async function loadConfig() {
-  try {
-    const response = await fetch(apiUrl("/api/billing/config"), { cache: "no-store" });
-    const body = await response.json();
-    config = {
-      configured: response.ok && body?.configured === true,
-      prices: Array.isArray(body?.prices) ? body.prices.filter((p) => p && (p.interval === "month" || p.interval === "year") && Number.isFinite(Number(p.amount))) : [],
-      trialDays: Number(body?.trialDays) || 0
-    };
-  } catch {
-    config = { configured: false, prices: [], trialDays: 0 };
-  }
-  if (config.configured && !config.prices.some((p) => p.interval === "month")) config.configured = false;
-  rememberBillingOpen(config.configured); // フッターの「SpellDash Pro」と週間レポートの 1 行を出すか
+  const fetched = await fetchBillingConfig(); // 全ページのキャッシュと同じ規則（js/proFunnel.js）
+  rememberBillingConfig(fetched); // 取れなかったときは受付前と覚えない（前の値のまま 10 分後に取り直す）
+  config = { configured: fetched.configured, prices: fetched.prices, trialDays: fetched.trialDays };
 }
 
 function yen(amount) {
@@ -113,8 +107,8 @@ function renderPlans(plan) {
   }
   plansElement.hidden = false;
 
-  if (plan.pro) {
-    // 加入済み: CTA は出さない（状態欄に管理ボタン）
+  if (plan.pro || welcomeActive) {
+    // 加入済み・支払いの反映を待っている: CTA は出さない（状態欄に管理ボタン）
     plansElement.innerHTML = "";
     return;
   }
@@ -198,12 +192,16 @@ function render() {
 }
 
 // ログインから戻った（加入の途中）: 選ぶところから続ける
+// ?resume=1（ログインから戻ったタブがここへ移ってきた）なら印を消す。
+// この画面のまま別のタブでログインした（印だけある）場合は案内だけ出し、印は戻ってきたタブのために残す
 function maybeResume(plan) {
-  if (!(resumePending || hasProIntent()) || !session || !config) return;
+  if (resumeShown || !(resumePending || hasProIntent()) || !session || !config) return;
+  resumeShown = true;
+  if (resumePending) clearProIntent();
   resumePending = false;
-  clearProIntent();
-  if (plan.pro || !config.configured || isNativeApp) return;
-  setMessage("ログインした。月額か年額を選ぶ。");
+  if (plan.pro || !config.configured || isNativeApp || welcomeActive) return;
+  const hasYear = config.prices.some((p) => p.interval === "year");
+  setMessage(hasYear ? "ログインした。月額か年額を選ぶ。" : "ログインした。月額で始められる。");
   document.getElementById("proCheckoutMonth")?.focus({ preventScroll: false });
 }
 
@@ -217,13 +215,24 @@ const UNLOCKED = [
 ];
 
 function maybeWelcome() {
-  if (!donePending || !welcomeElement || !session) return;
+  if (!donePending || !welcomeElement) return;
+  if (!session) {
+    // ログインが切れている（別のブラウザ・期限切れ）: 支払いは Stripe で済んでいるので、ログインすれば反映されると伝える
+    if (!sessionKnown) return;
+    donePending = false;
+    welcomeElement.hidden = false;
+    welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いは完了。加入したアカウントでログインすると Pro になる</p>`;
+    welcomeActive = false;
+    render();
+    return;
+  }
   donePending = false;
   clearProIntent();
   welcomeElement.hidden = false;
   welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いを確認中…</p>`;
   waitForPro().then((ok) => {
     if (!ok) {
+      // 反映がまだ: 購入ボタンは出さないまま（もう一度押すと二重の申し込みになりうる）
       welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いは完了。反映まで少し待つ（1 分たっても変わらなければ開き直す）</p>`;
       return;
     }
