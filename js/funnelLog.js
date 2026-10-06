@@ -9,13 +9,15 @@ import { supabase } from "./supabase.js";
 const DEVICE_KEY = "spelldash_device_id";
 const SENT_KEY = "spelldash_funnel_sent"; // ["step:source:YYYY-MM-DD" | "step:source:once", ...]（新しい 200 件）
 const MISSING_KEY = "spelldash_funnel_missing"; // sessionStorage: このタブでは表が無いと分かった
+const FIRST_PENDING_KEY = "spelldash_funnel_first"; // 初めて来た日（送れたら消す。表が無い・オフラインでも、後で送れる）
+const PAID_PENDING_KEY = "spelldash_funnel_paid"; // 支払いを終えて戻った（Pro が反映されたら checkout_done を送って消す）
 const QUEUE_KEY = "spelldash_funnel_queue"; // ページを移る直前に押されたもの（次のページで送る）[{ step, source, day }]
 const ONCE_STEPS = new Set(["first_visit", "day7"]);
 export const FUNNEL_STEPS = ["first_visit", "day7", "entry", "pro_view", "login_click", "login_return", "checkout_start", "checkout_done", "checkout_cancel"];
 
+// 日付は JST（管理画面の 7 日・30 日の窓と、SQL の既定値と同じ。端末の時刻帯で日がずれないように）
 function today() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function randomId() {
@@ -150,4 +152,51 @@ export function trackProEntries() {
     },
     { capture: true }
   );
+}
+
+// 学習記録があるか（空の "{}" は無いとみなす。js/storage.js の移行が初回に "{}" を書くため）
+function hasLearningRecords() {
+  try {
+    const stats = JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}");
+    return stats && typeof stats === "object" && Object.keys(stats).length > 0;
+  } catch {
+    return true;
+  }
+}
+
+// 初めて来た端末: 番号を作ったときに学習記録が無ければ「初めて来た日」を控え、送れるまで毎回試す（js/footer.js が呼ぶ）
+export function trackFirstVisit() {
+  const { created } = deviceId();
+  try {
+    if (created && !hasLearningRecords()) localStorage.setItem(FIRST_PENDING_KEY, today());
+    const day = localStorage.getItem(FIRST_PENDING_KEY);
+    if (!day) return;
+    logFunnel("first_visit", "", day).then((sent) => {
+      if (sent) localStorage.removeItem(FIRST_PENDING_KEY);
+    });
+  } catch {
+    // 数えないだけ
+  }
+}
+
+// 支払いを終えて戻った（js/proView.js）。反映がすぐでなくても、後で Pro になったときに checkout_done を送る
+export function markPaidPending() {
+  try {
+    localStorage.setItem(PAID_PENDING_KEY, today());
+  } catch {
+    // 何もしない
+  }
+}
+
+// Pro になったら（全ページ。spelldash:plan のたびと読み込み時）控えてある支払いを checkout_done として送る
+export function flushPaidPending(isProNow) {
+  try {
+    const day = localStorage.getItem(PAID_PENDING_KEY);
+    if (!day || !isProNow) return;
+    logFunnel("checkout_done", "", day).then((sent) => {
+      if (sent) localStorage.removeItem(PAID_PENDING_KEY);
+    });
+  } catch {
+    // 何もしない
+  }
 }

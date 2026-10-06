@@ -1,7 +1,8 @@
 import { initFeedback } from "./feedback.js";
 import { initOfflineBanner } from "./offline.js";
 import { renderFooterPro } from "./proFunnel.js";
-import { trackProEntries, flushFunnelQueue, deviceId, logFunnel } from "./funnelLog.js";
+import { trackProEntries, flushFunnelQueue, trackFirstVisit, flushPaidPending } from "./funnelLog.js";
+import { isPro } from "./plan.js";
 
 export function setFooterYear() {
   const footerYearElement = document.getElementById("footerYear");
@@ -17,12 +18,7 @@ export function setFooterYear() {
   // 動線の計測（docs/SQL_FUNNEL.md）: 加入画面へのリンクの入口と、初めて来た端末（学習記録の無い端末で番号を作ったとき）
   trackProEntries();
   flushFunnelQueue();
-  const hadRecords = (() => {
-    try {
-      return Boolean(localStorage.getItem("spelldash_word_stats"));
-    } catch {
-      return true;
-    }
-  })();
-  if (deviceId().created && !hadRecords) logFunnel("first_visit");
+  trackFirstVisit();
+  flushPaidPending(isPro());
+  document.addEventListener("spelldash:plan", () => flushPaidPending(isPro()));
 }

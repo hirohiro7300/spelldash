@@ -886,3 +886,10 @@ html[data-theme] .admin-funnel__note {
   line-height: 1.6;
   color: var(--ink-3);
 }
+
+html[data-theme] .admin-funnel__base {
+  display: block;
+  font-family: var(--font-sans, inherit);
+  font-size: 11px;
+  color: var(--ink-4);
+}

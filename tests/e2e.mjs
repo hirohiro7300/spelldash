@@ -2651,7 +2651,7 @@ console.log("admin crm:");
     await listReady(page);
     const shown = await waitUntil(async () => (await page.$$("#adminFunnel tbody tr")).length === 9, 5000);
     const funnel = await page.$eval("#adminFunnel", (el) => el.textContent.replace(/\s+/g, " ").trim());
-    check("CRM: Pro までの動線が 9 段（加入した 4 = 30 日・前の段から 67%）と入口（フッター 11）", shown && funnel.includes("加入した") && funnel.includes("67%") && funnel.includes("フッター 11"), funnel.slice(0, 200));
+    check("CRM: Pro までの動線が 9 段（加入した 4 ÷ 支払いへ進んだ 6 = 67%）と入口（フッター 11）。割合は意味のある組だけ", shown && funnel.includes("加入した") && funnel.includes("67%") && funnel.includes("÷ 支払いへ進んだ") && funnel.includes("フッター 11") && (await page.$$("#adminFunnel .admin-funnel__base")).length === 4, funnel.slice(0, 240));
     await page.close();
     const noTable = await adminPage("nonotes-token");
     await waitUntil(async () => (await noTable.$eval("#adminFunnel", (el) => !el.hidden).catch(() => false)), 5000);
@@ -3678,6 +3678,19 @@ console.log("funnel log:");
   check("計測: 同じ端末の first_visit は 1 回きり（開き直しても増えない）", steps("first_visit").length === 1, String(steps("first_visit").length));
   check("計測でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
+
+  // 本当に初めてのブラウザ（保存形式の移行が spelldash_word_stats に "{}" を書く）でも first_visit を数える
+  {
+    const fresh = await browser.newPage();
+    fresh.errors = [];
+    fresh.on("pageerror", (e) => fresh.errors.push(e.message));
+    await fresh.addInitScript((id) => { if (!localStorage.getItem("spelldash_test_cloud")) localStorage.setItem("spelldash_test_cloud", id); }, cloud.id);
+    const before = steps("first_visit").length;
+    await fresh.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const counted = await waitUntil(async () => steps("first_visit").length === before + 1, 5000);
+    check("計測: 保存形式の移行が走る本当に初めてのブラウザでも first_visit", counted && (await fresh.evaluate(() => localStorage.getItem("spelldash_funnel_first"))) === null, String(steps("first_visit").length - before));
+    await fresh.close();
+  }
 
   // ログイン済み free: 月額で支払いへ進む → checkout_start（入口 month）、戻って反映 → checkout_done（本人の user_id 付き）
   const buyer = await newPage({ storage: { spelldash_test_cloud: cloud.id, spelldash_test_session: "1" } });

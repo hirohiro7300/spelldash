@@ -12,7 +12,7 @@ import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { getPlan, refreshPlan, postBilling, formatPlanDate, waitForPro } from "./plan.js";
 import { fetchBillingConfig, rememberBillingConfig, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
-import { logFunnel, logFunnelBeforeLeave } from "./funnelLog.js";
+import { logFunnel, logFunnelBeforeLeave, markPaidPending, flushPaidPending } from "./funnelLog.js";
 
 const MESSAGES = {
   loginRequired: "加入にはログインが要る。",
@@ -36,6 +36,7 @@ let busy = false;
 const params = new URLSearchParams(location.search);
 let resumePending = params.get("resume") === "1"; // ログインから戻った（加入の途中）。この画面でログインした場合は印（hasProIntent）で見る
 let donePending = params.get("pro") === "done"; // Checkout から戻った（支払い済み）
+if (donePending) markPaidPending(); // 反映が遅くても、後で Pro になったときに checkout_done を数える
 let welcomeActive = donePending; // 反映を待つ間とその後は購入ボタンを出さない（二重の申し込みを防ぐ）
 let resumeShown = false;
 let sessionKnown = false; // getSession の結果が出たか（出るまでは「ログインしていない」と決めない）
@@ -241,7 +242,7 @@ function maybeWelcome() {
       welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いは完了。反映まで少し待つ（1 分たっても変わらなければ開き直す）</p>`;
       return;
     }
-    logFunnel("checkout_done");
+    flushPaidPending(true);
     const items = UNLOCKED.map((u) => `<li>${u.href ? `<a href="${u.href}">${u.label}</a>` : u.label}</li>`).join("");
     welcomeElement.innerHTML = `
       <p class="pro-welcome__title" role="status">Pro になった。ありがとう</p>
