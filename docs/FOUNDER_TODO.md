@@ -39,6 +39,8 @@
 
 ## F. 判断してほしいこと（決まれば反映はこちらでやる）
 
+0. **Pro の次の中身と価格**（docs/PRO_VALUE.md §6）: 推奨は「受験日から逆算した計画」を Pro の柱にして、¥580 で受付開始。¥1,000 は計測を見てから
+
 1. **見出し語の変更 18 件**（docs/AMBIGUOUS_JA.md §7）: headquarter → headquarters、pant → pants、descendent → descendant、congratulation(s)、sightsee、unauthorize、stockmarket、品詞のずれ（cosmetic／overtime／capitalist）、接頭辞カード inter。id と学習記録に触るので方針が要る（例: 「英語として標準形に直す。id は据え置き」）
 2. **カタカナだけの訳 225 語の方針**（docs/AMBIGUOUS_JA.md §2 の案 A／B／C）
 3. **年額を出すか**（Stripe に Price を作るだけで画面に出る）、**無料の AI 回数**
