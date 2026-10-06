@@ -12,6 +12,7 @@ import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { getPlan, refreshPlan, postBilling, formatPlanDate, waitForPro } from "./plan.js";
 import { fetchBillingConfig, rememberBillingConfig, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
+import { logFunnel, logFunnelBeforeLeave } from "./funnelLog.js";
 
 const MESSAGES = {
   loginRequired: "加入にはログインが要る。",
@@ -51,7 +52,9 @@ setupUnloadSync();
 // Checkout から戻ってきた（中止）
 if (params.get("pro") === "cancel") {
   setMessage(MESSAGES.canceled);
+  logFunnel("checkout_cancel");
 }
+if (!isNativeApp && !params.has("pro")) logFunnel("pro_view"); // 動線の計測（docs/SQL_FUNNEL.md）
 
 supabase.auth.getSession().then(({ data }) => {
   session = data?.session ?? null;
@@ -72,6 +75,7 @@ plansElement.addEventListener("click", (event) => {
   // 未ログイン: ヘッダーのログインを開く（ログインが済むと onAuthStateChange で描き直す）
   if (event.target.closest("[data-login]")) {
     setProIntent(); // ログインから戻ったら、この画面へ戻して続きを出す（js/proFunnel.js・js/auth.js）
+    logFunnel("login_click");
     // この click が document まで上がると「外側クリック」で閉じられるので、上がり切ってから開く
     setTimeout(() => document.getElementById("loginToggle")?.click(), 0);
     return;
@@ -202,6 +206,7 @@ function maybeResume(plan) {
   if (plan.pro || !config.configured || isNativeApp || welcomeActive) return;
   const hasYear = config.prices.some((p) => p.interval === "year");
   setMessage(hasYear ? "ログインした。月額か年額を選ぶ。" : "ログインした。月額で始められる。");
+  logFunnel("login_return");
   document.getElementById("proCheckoutMonth")?.focus({ preventScroll: false });
 }
 
@@ -236,6 +241,7 @@ function maybeWelcome() {
       welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いは完了。反映まで少し待つ（1 分たっても変わらなければ開き直す）</p>`;
       return;
     }
+    logFunnel("checkout_done");
     const items = UNLOCKED.map((u) => `<li>${u.href ? `<a href="${u.href}">${u.label}</a>` : u.label}</li>`).join("");
     welcomeElement.innerHTML = `
       <p class="pro-welcome__title" role="status">Pro になった。ありがとう</p>
@@ -270,6 +276,7 @@ async function startCheckout(interval) {
   setBusy(true);
   const { status, body } = await postBilling("/api/billing/checkout", { interval });
   if (status === 200 && typeof body.url === "string" && body.url) {
+    await logFunnelBeforeLeave("checkout_start", interval); // 移る前に送る（長くても 0.8 秒）
     location.href = body.url; // Stripe Checkout へ
     return;
   }

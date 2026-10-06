@@ -210,7 +210,7 @@ function renderStreakRepair() {
   const when = `${Number(m)}/${Number(d)}`;
   let action;
   if (!isPro()) {
-    action = `<span>Pro なら月 1 回、連続記録を修復できる。<a href="./pro.html">Pro について</a></span>`;
+    action = `<span>Pro なら月 1 回、連続記録を修復できる。<a href="./pro.html" data-funnel="repair">Pro について</a></span>`;
   } else if (canRepairStreak()) {
     action = `<button type="button" class="btn btn--sm" id="streakRepairButton">今月の修復を使う（月 1 回）</button>`;
   } else {
@@ -392,7 +392,7 @@ function initializeTrendRange() {
       // グラフは 30 日のまま、案内だけ出す
       const hint = document.createElement("p");
       hint.className = "trend-range__hint";
-      hint.innerHTML = '90 日の推移は Pro で見られる。<a href="./pro.html">Pro について</a>';
+      hint.innerHTML = '90 日の推移は Pro で見られる。<a href="./pro.html" data-funnel="trend">Pro について</a>';
       card?.querySelector(".card-head")?.after(hint);
       return;
     }

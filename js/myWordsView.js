@@ -107,6 +107,7 @@ function setStatus(text, isError) {
   if (limit && text.includes("Pro なら")) {
     const link = document.createElement("a");
     link.href = "./pro.html";
+    link.dataset.funnel = "mywords";
     link.className = "pro-link";
     link.textContent = "Pro について";
     el.append(link);

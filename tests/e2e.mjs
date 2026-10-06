@@ -46,7 +46,8 @@ function findChromium() {
 // スタブ（tests/mocks/supabase-stub.js）は localStorage の spelldash_test_cloud に id があるときだけ、from(table) を
 // POST /__cloud/query に投げる。id ごとに表・設定・呼び出しの記録を持つので、検査どうしが混ざらない。
 // 設定: failSelect { 表名: エラーの文 }（その表の select を失敗させる）、delayMs と delayTables（その表の select の応答を遅らせる）
-const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"] };
+const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"], funnel_events: ["device_id", "step", "source", "day"] };
+const CLOUD_ANON_INSERT = new Set(["funnel_events"]); // 未ログインでも書ける表（RLS: user_id が空か本人。docs/SQL_FUNNEL.md）
 const clouds = new Map();
 let cloudSeq = 0;
 function createCloud(tables = {}, config = {}) {
@@ -91,7 +92,8 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
   if (kind === "upsert" || kind === "insert") {
     const rows = Array.isArray(payload) ? payload : [payload];
     entry.n = rows.length;
-    if (!userId || rows.some((r) => r.user_id !== userId)) { entry.error = "rls"; return { data: null, error: { message: "row-level security", code: "42501" }, count: null }; }
+    const allowed = CLOUD_ANON_INSERT.has(table) ? rows.every((r) => r.user_id == null || r.user_id === userId) : userId && rows.every((r) => r.user_id === userId);
+    if (!allowed) { entry.error = "rls"; return { data: null, error: { message: "row-level security", code: "42501" }, count: null }; }
     const pk = CLOUD_PK[table];
     for (const r of rows) {
       const list = cloud.rows(table);
@@ -215,12 +217,13 @@ const server = http.createServer((req, res) => {
     const route = urlPath.slice("/api/admin/".length);
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!["players", "player", "note"].includes(route)) return json(404, { error: "not_found", message: "そのAPIはありません。" });
+    if (!["players", "player", "note", "funnel"].includes(route)) return json(404, { error: "not_found", message: "そのAPIはありません。" });
     if (req.method !== (route === "note" ? "POST" : "GET")) return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
     if (!["test-token", "nonotes-token", "forbidden-token", "unconfigured-token"].includes(token)) return json(401, { error: "login_required", message: "ログインしてください。" });
     if (token === "forbidden-token") return json(403, { error: "forbidden", message: "このアカウントには権限がありません。" });
     if (token === "unconfigured-token") return json(503, { error: "not_configured", message: "管理画面の設定がまだです。SUPABASE_SERVICE_ROLE_KEY と ADMIN_EMAILS を設定してください（docs/CRM.md）。" });
     if (route === "players") return json(200, fixture("admin-players.json"));
+    if (route === "funnel") return json(200, token === "nonotes-token" ? { missing: true, today: "2026-10-06" } : fixture("admin-funnel.json"));
     if (route === "player") {
       const userId = new URL(req.url, "http://x").searchParams.get("userId") || "";
       if (!UUID_RE.test(userId)) return json(400, { error: "bad_request", message: "userId が UUID ではありません。" });
@@ -2642,6 +2645,20 @@ console.log("admin crm:");
   const listReady = (page) => waitUntil(async () => (await page.$eval("#adminState", (el) => el.hidden)) && (await rowIds(page)).length > 0, 6000);
   const drawerShown = (page) => page.$eval("#adminDrawer", (el) => !el.hidden && el.getClientRects().length > 0);
 
+  // 0. Pro までの動線（/api/admin/funnel）: 段階ごとの端末の数・前の段からの割合・入口。表が無ければ SQL の案内
+  {
+    const page = await adminPage("1");
+    await listReady(page);
+    const shown = await waitUntil(async () => (await page.$$("#adminFunnel tbody tr")).length === 9, 5000);
+    const funnel = await page.$eval("#adminFunnel", (el) => el.textContent.replace(/\s+/g, " ").trim());
+    check("CRM: Pro までの動線が 9 段（加入した 4 = 30 日・前の段から 67%）と入口（フッター 11）", shown && funnel.includes("加入した") && funnel.includes("67%") && funnel.includes("フッター 11"), funnel.slice(0, 200));
+    await page.close();
+    const noTable = await adminPage("nonotes-token");
+    await waitUntil(async () => (await noTable.$eval("#adminFunnel", (el) => !el.hidden).catch(() => false)), 5000);
+    check("CRM: 動線の表が無ければ docs/SQL_FUNNEL.md の案内", (await noTable.$eval("#adminFunnel", (el) => el.textContent)).includes("docs/SQL_FUNNEL.md"));
+    await noTable.close();
+  }
+
   // 1. 未ログイン → 「ログイン」の案内
   {
     const page = await adminPage(null);
@@ -3634,6 +3651,45 @@ console.log("sync (2nd device):");
     check("未ログイン: トップページに「すでに使っている方はログイン」が見える", (await visible(page, "#welcome")) && (await visible(page, "#welcomeLogin")));
     await page.close();
   }
+}
+
+
+// ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
+console.log("funnel log:");
+{
+  const cloud = createCloud({});
+  const steps = (step) => cloud.rows("funnel_events").filter((r) => r.step === step);
+  const page = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  const first = await waitUntil(async () => steps("first_visit").length === 1, 5000);
+  const row = steps("first_visit")[0] ?? {};
+  check("計測: 初めて来た端末で first_visit（端末の番号だけ・未ログインは user_id 空）", first && typeof row.device_id === "string" && row.device_id.length >= 8 && row.user_id == null && !("email" in row), JSON.stringify(row));
+  await waitUntil(async () => (await page.$(".site-footer__nav [data-footer-pro]")) !== null, 5000);
+  await page.click(".site-footer__nav [data-footer-pro]");
+  await page.waitForURL(/pro\.html/, { timeout: 5000 }).catch(() => {});
+  const entered = await waitUntil(async () => steps("entry").some((r) => r.source === "footer"), 5000);
+  check("計測: フッターから加入画面へ → entry（入口 footer）が次のページで届く", entered, JSON.stringify(cloud.rows("funnel_events").map((r) => `${r.step}:${r.source}`)));
+  check("計測: 加入画面を開いた → pro_view", await waitUntil(async () => steps("pro_view").length === 1, 5000));
+  await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
+  await page.click("#proLoginStart");
+  check("計測: 「ログインして始める」→ login_click", await waitUntil(async () => steps("login_click").length === 1, 5000));
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(400);
+  check("計測: 同じ端末の first_visit は 1 回きり（開き直しても増えない）", steps("first_visit").length === 1, String(steps("first_visit").length));
+  check("計測でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+
+  // ログイン済み free: 月額で支払いへ進む → checkout_start（入口 month）、戻って反映 → checkout_done（本人の user_id 付き）
+  const buyer = await newPage({ storage: { spelldash_test_cloud: cloud.id, spelldash_test_session: "1" } });
+  await buyer.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+  await waitUntil(async () => (await buyer.$("#proCheckoutMonth")) !== null, 5000);
+  await buyer.evaluate(() => localStorage.setItem("spelldash_test_plan", JSON.stringify({ status: "active", plan_interval: "month", current_period_end: new Date(Date.now() + 20 * 86400000).toISOString(), cancel_at_period_end: false })));
+  await buyer.click("#proCheckoutMonth");
+  const started = await waitUntil(async () => steps("checkout_start").some((r) => r.source === "month" && r.user_id), 5000);
+  check("計測: 支払いへ進む → checkout_start（month・ログイン中は user_id 付き）", started, JSON.stringify(steps("checkout_start")));
+  check("計測: 加入して戻る → checkout_done", await waitUntil(async () => steps("checkout_done").length === 1, 10000), JSON.stringify(steps("checkout_done")));
+  check("計測（加入）でエラー0", buyer.errors.length === 0, buyer.errors[0] ?? "");
+  await buyer.close();
 }
 
 await browser.close();
