@@ -332,6 +332,7 @@ function setState(status, message = "") {
   if (!ready) {
     closeDrawer();
     els.state.textContent = message;
+    if (els.funnel) els.funnel.hidden = true; // 取り直しに失敗したら古い数を残さない
   }
 }
 
@@ -365,7 +366,7 @@ async function load() {
 
 const FUNNEL_LABEL = {
   first_visit: "初めて来た",
-  day7: "7 日学んだ",
+  day7: "7 日以上学んだ",
   entry: "加入画面へのリンクを押した",
   pro_view: "加入画面を開いた",
   login_click: "「ログインして始める」",
@@ -387,9 +388,13 @@ const FUNNEL_SOURCE_LABEL = {
   other: "その他"
 };
 
+let funnelRequest = 0;
+
 async function loadFunnel() {
   if (!els.funnel) return;
+  const request = ++funnelRequest;
   const { status, body } = await apiFetch("/api/admin/funnel");
+  if (request !== funnelRequest || state.status !== "ready") return; // 後から始めた取得の結果を、古い結果で上書きしない
   if (status !== 200) {
     els.funnel.hidden = true;
     return;
@@ -403,12 +408,17 @@ async function loadFunnel() {
   const side = Array.isArray(body.side) ? body.side : [];
   const d7 = body.days7 ?? {};
   const d30 = body.days30 ?? {};
-  const ratio = (n, prev) => (prev > 0 ? `${Math.round((n / prev) * 100)}%` : "–");
+  // 割合は意味のある組だけ（並びの隣どうしは包含関係に無い）。分母の段階名を添える
+  const ratioBase = new Map((Array.isArray(body.ratios) ? body.ratios : []).map((r) => [r.step, r.base]));
+  const ratioCell = (step) => {
+    const base = ratioBase.get(step);
+    if (!base) return "";
+    const denominator = d30[base] ?? 0;
+    const value = denominator > 0 ? `${Math.round(((d30[step] ?? 0) / denominator) * 100)}%` : "–";
+    return `${value}<span class="admin-funnel__base">÷ ${escapeHtml(FUNNEL_LABEL[base] || base)}</span>`;
+  };
   const rows = steps
-    .map((step, i) => {
-      const prev = i > 0 ? d30[steps[i - 1]] ?? 0 : null;
-      return `<tr><th scope="row">${escapeHtml(FUNNEL_LABEL[step] || step)}</th><td class="mono">${num(d7[step] ?? 0)}</td><td class="mono">${num(d30[step] ?? 0)}</td><td class="mono">${prev == null ? "" : ratio(d30[step] ?? 0, prev)}</td></tr>`;
-    })
+    .map((step) => `<tr><th scope="row">${escapeHtml(FUNNEL_LABEL[step] || step)}</th><td class="mono">${num(d7[step] ?? 0)}</td><td class="mono">${num(d30[step] ?? 0)}</td><td class="mono">${ratioCell(step)}</td></tr>`)
     .concat(side.map((step) => `<tr class="admin-funnel__side"><th scope="row">${escapeHtml(FUNNEL_LABEL[step] || step)}</th><td class="mono">${num(d7[step] ?? 0)}</td><td class="mono">${num(d30[step] ?? 0)}</td><td></td></tr>`))
     .join("");
   const sources = (Array.isArray(body.sources30) ? body.sources30 : [])
@@ -416,11 +426,11 @@ async function loadFunnel() {
     .join(" ・ ");
   els.funnelBody.innerHTML = `
     <table class="admin-funnel__table">
-      <thead><tr><th scope="col">段階（端末の数）</th><th scope="col">7 日</th><th scope="col">30 日</th><th scope="col">前の段から（30 日）</th></tr></thead>
+      <thead><tr><th scope="col">段階（端末の数）</th><th scope="col">7 日</th><th scope="col">30 日</th><th scope="col">割合（30 日）</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <p class="admin-funnel__note">入口（30 日）: ${sources || "まだ無い"}</p>
-    <p class="admin-funnel__note">ログイン済みの人はログインの 2 段を通らないので、「支払いへ進んだ」は「加入画面を開いた」と比べて見る。</p>`;
+    <p class="admin-funnel__note">「7 日学んだ」には以前から使っている人も入る（その期間にホームを開いた端末）。ログイン済みの人はログインの 2 段を通らない。</p>`;
 }
 
 // ---- 一覧 ----
