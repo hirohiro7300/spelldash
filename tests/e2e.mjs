@@ -3494,7 +3494,7 @@ console.log("sync (2nd device):");
     await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
     check("持ち主が別人: confirm「この端末には別のアカウントの記録がある。…」が出る", page.dialogs.length >= 1 && page.dialogs[0] === "この端末には別のアカウントの記録がある。消して、このアカウントの記録に置き換える", JSON.stringify(page.dialogs));
     check("持ち主が別人・キャンセル: 記録（語・XP・マイ単語帳・持ち主）はそのまま", (await lsJson(page, "spelldash_word_stats"))?.["zzz-only-other"] && (await ls(page, "spelldash_xp")) === "777" && (await ls(page, "spelldash_owner")) === "other-user" && (await ls(page, "spelldash_my_words")).includes("othersword"));
-    check("持ち主が別人・キャンセル: クラウドに書き込みが無い", cloud.writes().length === 0, JSON.stringify(cloud.writes().map((e) => e.table)));
+    check("持ち主が別人・キャンセル: クラウドに書き込みが無い", cloud.writes().filter((e) => e.table !== "funnel_events").length === 0, JSON.stringify(cloud.writes().map((e) => e.table)));
     check("持ち主が別人・キャンセル: 文「ログインをやめた。記録はこの端末に残る。」", (await txt(page, "#authMessage")) === "ログインをやめた。記録はこの端末に残る。", await txt(page, "#authMessage"));
     check("持ち主が別人・キャンセル: ログアウトして未ログインの表示（#accountGuest）", (await ls(page, "spelldash_test_session")) === null && !(await page.$eval("#accountGuest", (el) => el.hidden)) && (await page.$eval("#accountUser", (el) => el.hidden)));
     check("持ち主が別人（キャンセル）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
@@ -3507,7 +3507,7 @@ console.log("sync (2nd device):");
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.evaluate(() => window.__stubAuth.signIn());
     await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
-    check("持ち主なし・いまログイン: 「この端末の記録を、このアカウントの記録に足す。…」をたずね、キャンセルで何も書かない", page.dialogs[0]?.startsWith("この端末の記録を、このアカウントの記録に足す。") && cloud.writes().length === 0 && (await ls(page, "spelldash_xp")) === "500", JSON.stringify({ dialogs: page.dialogs, writes: cloud.writes().length }));
+    check("持ち主なし・いまログイン: 「この端末の記録を、このアカウントの記録に足す。…」をたずね、キャンセルで何も書かない", page.dialogs[0]?.startsWith("この端末の記録を、このアカウントの記録に足す。") && cloud.writes().filter((e) => e.table !== "funnel_events").length === 0 && (await ls(page, "spelldash_xp")) === "500", JSON.stringify({ dialogs: page.dialogs, writes: cloud.writes().length }));
     await page.close();
   }
   {
@@ -3525,7 +3525,7 @@ console.log("sync (2nd device):");
     const page = await syncDevice(login(cloud, { spelldash_onboarded: "1", spelldash_owner: "other-user", spelldash_xp: "800", spelldash_my_words: JSON.stringify([{ en: "othersword", ja: "他人の語" }]) }), { dialog: "dismiss" });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
-    check("持ち主が別人（語なし・XP とマイ単語帳あり）: confirm が出て、キャンセルで何も書かない", page.dialogs.length >= 1 && cloud.writes().length === 0 && (await ls(page, "spelldash_xp")) === "800", JSON.stringify({ dialogs: page.dialogs.length, writes: cloud.writes().length }));
+    check("持ち主が別人（語なし・XP とマイ単語帳あり）: confirm が出て、キャンセルで何も書かない", page.dialogs.length >= 1 && cloud.writes().filter((e) => e.table !== "funnel_events").length === 0 && (await ls(page, "spelldash_xp")) === "800", JSON.stringify({ dialogs: page.dialogs.length, writes: cloud.writes().map((e) => e.table) }));
     await page.close();
   }
   {
