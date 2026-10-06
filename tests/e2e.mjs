@@ -3407,6 +3407,25 @@ console.log("sync (2nd device):");
     await page.close();
   }
   {
+    // 持ち主の印が無い端末（未ログインで使っていた）でいまログインした: 足すかをたずね、キャンセルならログインをやめる
+    const cloud = createCloud(cloudTablesA());
+    const page = await syncDevice({ spelldash_test_cloud: cloud.id, spelldash_onboarded: "1", spelldash_placement: "done", spelldash_xp: "500", spelldash_word_stats: JSON.stringify({ "zzz-offline": localStat }) }, { dialog: "dismiss" });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.evaluate(() => window.__stubAuth.signIn());
+    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
+    check("持ち主なし・いまログイン: 「この端末の記録を、このアカウントの記録に足す。…」をたずね、キャンセルで何も書かない", page.dialogs[0]?.startsWith("この端末の記録を、このアカウントの記録に足す。") && cloud.writes().length === 0 && (await ls(page, "spelldash_xp")) === "500", JSON.stringify({ dialogs: page.dialogs, writes: cloud.writes().length }));
+    await page.close();
+  }
+  {
+    // 開いた時点ですでにログインしていた端末（この版より前から使っている人）にはたずねない
+    const cloud = createCloud(cloudTablesA());
+    const page = await syncDevice(login(cloud, { spelldash_onboarded: "1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "zzz-offline": localStat }) }), { dialog: "dismiss" });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await ownerSet(page);
+    check("持ち主なし・ログイン済みで開いた: たずねずに足す（持ち主が付く）", page.dialogs.length === 0 && Boolean((await lsJson(page, "spelldash_word_stats"))?.["zzz-offline"]), JSON.stringify(page.dialogs));
+    await page.close();
+  }
+  {
     // 語は無くても XP・マイ単語帳がある端末も確かめる（前の人の記録を確認なしに混ぜない）
     const cloud = createCloud(cloudTablesA());
     const page = await syncDevice(login(cloud, { spelldash_onboarded: "1", spelldash_owner: "other-user", spelldash_xp: "800", spelldash_my_words: JSON.stringify([{ en: "othersword", ja: "他人の語" }]) }), { dialog: "dismiss" });
@@ -3486,6 +3505,16 @@ console.log("sync (2nd device):");
     const after = cloud.rows("user_items").find((r) => r.kind === "day" && r.key === todayY)?.payload;
     check("2 台で同じ日: 送る前にクラウドの行と合わせ、sets・語数を巻き戻さない", after?.sets === 3 && after?.learned === 999 && after?.set === true, JSON.stringify(after));
     check("2 台で同じ日: XP は両方の増分を足す（3000 → 3200 と 3140 → 3340）", cloud.rows("user_progress")[0]?.xp === 3340 && (await ls(page, "spelldash_xp")) === "3340", JSON.stringify({ cloud: cloud.rows("user_progress")[0]?.xp, local: await ls(page, "spelldash_xp") }));
+
+    // 返事が届く前にページが閉じた書き込み（クラウドには届いている）: 次の送信で二重に足さない
+    const landedAt = cloud.rows("user_progress")[0].updated_at;
+    await page.evaluate(async (at) => {
+      localStorage.setItem("spelldash_xp_synced", "3200"); // 返事を確かめる前の基準
+      localStorage.setItem("spelldash_xp_write", JSON.stringify({ value: 3340, at }));
+      const sync = await import("/js/sync.js");
+      await sync.pushSync();
+    }, landedAt);
+    check("返事の届かなかった書き込み: 届いていれば基準にして、XP を二重に足さない（3340 のまま）", cloud.rows("user_progress")[0]?.xp === 3340 && (await ls(page, "spelldash_xp")) === "3340", JSON.stringify({ cloud: cloud.rows("user_progress")[0]?.xp, local: await ls(page, "spelldash_xp") }));
     await page.close();
   }
 

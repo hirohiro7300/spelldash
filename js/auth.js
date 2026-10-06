@@ -18,14 +18,24 @@ const avatarButtonElement = document.getElementById("avatarButton");
 const headerAvatarElement = document.getElementById("headerAvatar");
 const googleLoginButtonElement = document.getElementById("googleLoginButton");
 
+// いまログインから戻ってきたか（メールのリンク・Google のリダイレクト）。Supabase が URL を片付ける前に読む
+const RETURNED_FROM_LOGIN = (() => {
+  try {
+    return /(?:^|[#&])(access_token|refresh_token)=/.test(location.hash) || new URLSearchParams(location.search).has("code");
+  } catch {
+    return false;
+  }
+})();
+
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
+  const hadSessionAtLoad = Boolean(data.session) && !RETURNED_FROM_LOGIN;
   updateAuthDisplay(data.session);
   refreshPlan(); // Pro の状態（spelldash_plan）を更新
 
   // ログイン済みならクラウドと初回同期（マージ）
   if (data.session) {
-    runInitialSync();
+    runInitialSync({ freshLogin: !hadSessionAtLoad });
   }
 
   supabase.auth.onAuthStateChange((_event, session) => {
@@ -33,7 +43,7 @@ export async function initializeAuth() {
     if (_event === "SIGNED_OUT") clearPlan(); else if (_event === "SIGNED_IN") refreshPlan();
 
     if (_event === "SIGNED_IN") {
-      runInitialSync();
+      runInitialSync({ freshLogin: !hadSessionAtLoad });
     }
   });
 
@@ -251,17 +261,20 @@ function updateAuthDisplay(session) {
 }
 
 // initialSync の戻り値（js/sync.js）: "changed"（取り込んだ）／"same"（変化なし）／"cancelled"（別アカウントの記録の置き換えを断った）／false（未ログイン・このタブで同期済み）
-async function runInitialSync() {
+async function runInitialSync(options = {}) {
   try {
-    const result = await initialSync();
+    const result = await initialSync(options);
+    if (result === "cancelled") {
+      // 端末の記録は何も書き換えていない。ログインだけやめる（次にログインしたら、もう一度たずねる）。
+      // ページの文が出ていても、ログアウトは必ず行う
+      clearSyncedFlag();
+      await supabase.auth.signOut();
+      if (!pageMessageShown()) showAuthMessage("ログインをやめた。記録はこの端末に残る。");
+      return;
+    }
     if (pageMessageShown()) return; // ほかのページの文（プロフィールの「Pro になった」など）は上書きしない
     if (result === "changed") {
       showAuthMessage("記録を同期した。", "success", { scope: "user" });
-    } else if (result === "cancelled") {
-      // 端末の記録は何も書き換えていない。ログインだけやめる（次にログインしたら、もう一度たずねる）
-      clearSyncedFlag();
-      await supabase.auth.signOut();
-      showAuthMessage("ログインをやめた。記録はこの端末に残る。");
     }
   } catch {
     if (pageMessageShown()) return;
