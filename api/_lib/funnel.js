@@ -16,6 +16,9 @@ export const FUNNEL_RATIOS = [
   { step: "checkout_done", base: "checkout_start" }
 ];
 
+const emptyCounts = () => Object.fromEntries([...FUNNEL_ORDER, ...FUNNEL_SIDE].map((s) => [s, 0]));
+const sortSources = (list) => list.sort((a, b) => b.devices - a.devices || a.source.localeCompare(b.source));
+
 export function summarizeFunnel(rows, today) {
   const since7 = addDays(today, -6);
   const since30 = addDays(today, -29);
@@ -36,9 +39,8 @@ export function summarizeFunnel(rows, today) {
       if (step === "entry") add(sources[w], String(row.source || "other"), device);
     }
   }
-  const counts = (map) => Object.fromEntries([...FUNNEL_ORDER, ...FUNNEL_SIDE].map((s) => [s, map.get(s)?.size ?? 0]));
-  const bySource = (map) =>
-    [...map.entries()].map(([source, set]) => ({ source, devices: set.size })).sort((a, b) => b.devices - a.devices || a.source.localeCompare(b.source));
+  const counts = (map) => Object.fromEntries(Object.keys(emptyCounts()).map((s) => [s, map.get(s)?.size ?? 0]));
+  const bySource = (map) => sortSources([...map.entries()].map(([source, set]) => ({ source, devices: set.size })));
   return {
     today,
     steps: FUNNEL_ORDER,
@@ -54,20 +56,29 @@ export function summarizeFunnel(rows, today) {
 // RPC admin_funnel_counts（docs/SQL_FUNNEL.md 2）の行 { win: "d7"|"d30", step, source, devices } を同じ形にする。
 // source が空の行は段階の端末数、step = entry で source のある行は入口ごとの端末数
 export function summarizeFunnelCounts(rows, today) {
-  const empty = () => Object.fromEntries([...FUNNEL_ORDER, ...FUNNEL_SIDE].map((s) => [s, 0]));
-  const out = { days7: empty(), days30: empty(), sources7: [], sources30: [] };
+  const days = { 7: emptyCounts(), 30: emptyCounts() };
+  const sources = { 7: [], 30: [] };
   for (const row of rows ?? []) {
-    const win = row?.win === "d7" ? "7" : row?.win === "d30" ? "30" : null;
+    const win = row?.win === "d7" ? 7 : row?.win === "d30" ? 30 : null;
     if (!win) continue;
     const devices = Number(row.devices) || 0;
     const step = String(row.step ?? "");
     const source = String(row.source ?? "");
+    // 段階の合計の行は source が空。入口ごとの行は SQL が空の入口を other にまとめるので、必ず source がある
     if (source) {
-      if (step === "entry") out[`sources${win}`].push({ source, devices });
-    } else if (step in out[`days${win}`]) {
-      out[`days${win}`][step] = devices;
+      if (step === "entry") sources[win].push({ source, devices });
+    } else if (step in days[win]) {
+      days[win][step] = devices;
     }
   }
-  const sort = (list) => list.sort((a, b) => b.devices - a.devices || a.source.localeCompare(b.source));
-  return { today, steps: FUNNEL_ORDER, side: FUNNEL_SIDE, ratios: FUNNEL_RATIOS, ...out, sources7: sort(out.sources7), sources30: sort(out.sources30) };
+  return {
+    today,
+    steps: FUNNEL_ORDER,
+    side: FUNNEL_SIDE,
+    ratios: FUNNEL_RATIOS,
+    days7: days[7],
+    days30: days[30],
+    sources7: sortSources(sources[7]),
+    sources30: sortSources(sources[30])
+  };
 }
