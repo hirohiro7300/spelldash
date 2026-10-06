@@ -391,3 +391,60 @@ html[data-theme] .streak-repair .btn {
 html[data-theme] .streak-repair--done .streak-repair__text {
   color: var(--ok);
 }
+
+/* ---- 申し込みの前に（料金・更新・解約・支払い）。ボタンの直下 ---- */
+html[data-theme] .pro-terms {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+html[data-theme] .pro-terms > div {
+  display: grid;
+  grid-template-columns: 4em 1fr;
+  gap: 8px;
+}
+
+html[data-theme] .pro-terms dt {
+  color: var(--ink-3);
+}
+
+html[data-theme] .pro-terms dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+html[data-theme] .pro-plans__hint a {
+  color: var(--ink-2);
+}
+
+/* ---- 加入直後（?pro=done）: 使えるようになったもの ---- */
+html[data-theme] .pro-welcome__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .pro-welcome__lead {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .pro-welcome__list {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--ink-2);
+}
+
+html[data-theme] .pro-welcome__list a {
+  color: var(--ink);
+}
