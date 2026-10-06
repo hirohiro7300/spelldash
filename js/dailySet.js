@@ -1,11 +1,13 @@
 import { localDateString } from "./stats.js";
 import { bumpTotalSets } from "./unlocks.js";
+import { touchItem } from "./userItemsSync.js";
 
 // ===== 今日のセット（Daily Set） =====
 //
 // 「N語を自力で思い出せたら今日のぶん完了」。無限に続くStudyに終わりを作り、
 // 「今日やることを決めてくれて5分で終わる」体験の中核にする。
 // 語数は設定（10/15/25、標準15）。完了日は端末に記録して7日ドットに使う。
+// ログイン中は完了日と今日のセット数を user_items の day 項目で端末間に合わせる（js/userItemsSync.js）。
 
 const SIZE_KEY = "spelldash_set_size";
 const STATE_KEY = "spelldash_daily_set";
@@ -57,6 +59,7 @@ export function markDailySetDone(count) {
   s.last = { date: today, count };
   saveState(s);
   bumpTotalSets(); // 遊び方の解放（Daily・Battle）に使う累計
+  touchItem("day", today);
   return s;
 }
 

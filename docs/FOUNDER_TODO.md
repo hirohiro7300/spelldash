@@ -31,7 +31,7 @@
 
 ## E. ずっと前からの保留（効くのは該当機能だけ）
 
-- ☐ docs/SQL_USER_ITEMS.md — 追加したパックの端末間同期（`user_items`）
+- ☐ docs/SQL_USER_ITEMS.md — マイ単語帳・メモ・追加したパック・日ごとの記録（今日のぶん・成長ログ）の端末間同期（`user_items`）。まだ流していなければ 1. をそのまま、以前の版を流してあれば 1b. の 2 文（kind に `day` を足す）を 1 回
 - ☐ docs/SQL_FEEDBACK.md — ご意見フォームの保存先（`feedback`）。未実行の間、フォームの送信は失敗する
 - ☐ アプリ版（Capacitor）: Mac／Xcode／TestFlight。docs/APP.md。コードは Web と同じものを `npm run app:build` で `dist/` に出す
 

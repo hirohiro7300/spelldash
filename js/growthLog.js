@@ -1,9 +1,11 @@
 import { localDateString } from "./stats.js";
+import { touchItem } from "./userItemsSync.js";
 
 // ===== 成長ログ =====
 // 1日1行 {date, learned, mastered, active} を端末に残し、
 // 「今週 +N語」「30日の推移」「学習日数 x/7」の材料にする（最大120日）。
 // 学習記録そのものではなく派生値のスナップショット。失っても学習には影響しない。
+// ログイン中は 1 日分を user_items の day 項目として端末間で合わせる（js/userItemsSync.js。変わった日だけ touchItem）。
 
 const KEY = "spelldash_growth_log";
 const MAX_DAYS = 120;
@@ -45,6 +47,8 @@ export function recordGrowthSnapshot({ learned, mastered, active = false, legacy
   else list.push(row);
   list.sort((a, b) => (a.date < b.date ? -1 : 1));
   save(list);
+  // 描画のたびに呼ばれるので、今日の行の値が変わったとき（または旧式の行を直したとき）だけ同期の印を付ける
+  if (legacy != null || !prev || prev.learned !== row.learned || prev.mastered !== row.mastered || !!prev.active !== row.active) touchItem("day", today);
   return row;
 }
 
@@ -56,12 +60,14 @@ export function markActiveToday() {
     if (!list[idx].active) {
       list[idx].active = true;
       save(list);
+      touchItem("day", today);
     }
     return;
   }
   const last = list[list.length - 1];
   list.push({ date: today, learned: last?.learned ?? 0, mastered: last?.mastered ?? 0, active: true, v: last?.v });
   save(list);
+  touchItem("day", today);
 }
 
 function dateKeyDaysAgo(days) {

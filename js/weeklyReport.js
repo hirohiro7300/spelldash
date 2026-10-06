@@ -1,12 +1,32 @@
 import { getWordStats, getSessionLog } from "./storage.js";
 import { getLearnedCount } from "./learnedWords.js";
 import { getStreak, hasPlayedToday } from "./level.js";
-import { getActiveDaysLast7, getLearnedDelta7 } from "./growthLog.js";
+import { getActiveDaysLast7, getLearnedDelta7, getGrowthLog } from "./growthLog.js";
+import { localDateString } from "./stats.js";
 import { hasumiWeeklyLine, hasumiBubbleHtml } from "./hasumi.js";
 
 // ===== 週間レポート（直近7日） =====
 // 「自分は前進している」証拠を週に一度まとめて見せる。
 // 数字は端末内の学習記録から算出（サーバー不要）。
+
+// この端末に成長ログ（日ごとの行、js/growthLog.js）が足りない: 今日より前の行が 1 つも無いのに、連続日数はそれより長い。
+// 2 台目の端末（ログインで語の記録だけ届いた）がこれ。学習した日・7日で覚えた はこの端末の行から数えるので、
+// 休んだ週と同じ「0 / 7」「+0」に見えてしまう。初めての人（連続 0〜1 日）は本当に記録が無いだけなので当てはまらない
+export function isGrowthLogMissing() {
+  const today = localDateString();
+  const log = getGrowthLog();
+  const streak = getStreak().current;
+  if (streak === 0) return false;
+  // 連続中なのに、この端末の記録に直近 7 日の「学習した日」が 1 日も無い（ほかの端末でだけ学んでいる）
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 6);
+  const since = localDateString(weekAgo);
+  if (!log.some((e) => e.active && e.date >= since && e.date <= today)) return true;
+  // この端末の記録が今日から始まったのに、連続日数はそれより長い（2 台目の初日）
+  if (log.some((e) => e.date < today)) return false;
+  const todayActive = log.some((e) => e.date === today && e.active);
+  return streak > (todayActive ? 1 : 0);
+}
 
 export function computeWeeklyReport() {
   // 今日まだやっていなければ「昨日までの 7 日」で数える（朝に開いても 6/7 にならない）
@@ -59,7 +79,8 @@ export function computeWeeklyReport() {
     retention,
     reviewCount: reviewOk + reviewNg,
     bestScore,
-    streak: getStreak().current
+    streak: getStreak().current,
+    noLog: isGrowthLogMissing()
   };
 }
 
@@ -80,24 +101,27 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
   if (!el) return;
   const r = computeWeeklyReport();
   const rate = r.retention ?? r.recallRate;
+  // 成長ログの無い端末: 学習した日・7日で覚えた は「–」、はちゃんは出さない（数字と矛盾しない）。注記 1 行。シェアも出さない
+  const noLog = r.noLog;
 
   el.innerHTML = `
     <div class="weekly__head">
       <span class="weekly__title">週間レポート</span>
       <span class="weekly__range">${r.range}</span>
     </div>
-    ${compact ? "" : hasumiBubbleHtml(hasumiWeeklyLine(r), "hasumi--result")}
+    ${compact || noLog ? "" : hasumiBubbleHtml(hasumiWeeklyLine(r), "hasumi--result")}
     <div class="weekly__grid">
-      <div><span>学習した日</span><strong>${r.activeDays}<small> / 7</small></strong></div>
-      <div><span>7日で 覚えた</span><strong>+${r.learnedDelta}<small> 語</small></strong></div>
+      <div><span>学習した日</span><strong>${noLog ? "–" : `${r.activeDays}<small> / 7</small>`}</strong></div>
+      <div><span>7日で 覚えた</span><strong>${noLog ? "–" : `+${r.learnedDelta}<small> 語</small>`}</strong></div>
       <div><span>思い出せた率</span><strong>${rate == null ? "–" : `${rate}<small>%</small>`}</strong></div>
       ${r.bestScore ? `<div><span>ベスト</span><strong>${r.bestScore}</strong></div>` : ""}
     </div>
+    ${noLog ? `<p class="weekly__note">この端末での記録は明日から</p>` : ""}
     ${r.retention != null ? `<p class="weekly__note">思い出せた率＝1日以上前に覚えた語を復習で思い出せた割合（${r.reviewCount}語）</p>` : ""}
-    <div class="weekly__actions">
-      <button type="button" class="result-panel__action" data-weekly-share>レポートをシェア</button>
+    ${noLog && !compact ? "" : `<div class="weekly__actions">
+      ${noLog ? "" : `<button type="button" class="result-panel__action" data-weekly-share>レポートをシェア</button>`}
       ${compact ? `<a class="result-panel__action result-panel__action--ghost" href="./stats.html#weekly">くわしく見る</a>` : ""}
-    </div>
+    </div>`}
   `;
 
   el.querySelector("[data-weekly-share]")?.addEventListener("click", async (event) => {

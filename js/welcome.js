@@ -149,6 +149,20 @@ function setupDemo(root, onDone) {
   show();
 }
 
+// トップページを畳んでアプリ（道）を出す。ログイン済みの人・同期で記録が届いた人に使う（js/main.js）。
+// 「無料で始める」と同じ切り替えから、腕試しの開始（onStart）を抜いたもの
+export function dismissWelcome() {
+  const root = document.getElementById("welcome");
+  const app = document.querySelector(".app--home");
+  if (!root || !app) return;
+  markOnboarded();
+  if (root.hidden && !document.body.classList.contains("welcome-open")) return;
+  root.hidden = true;
+  app.hidden = false;
+  document.body.classList.remove("welcome-open");
+  document.body.classList.add("returning");
+}
+
 // 表示して、始めるボタンで onStart を呼ぶ。戻り値: 表示したかどうか
 export function renderWelcome({ onStart } = {}) {
   const root = document.getElementById("welcome");

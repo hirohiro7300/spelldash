@@ -3,6 +3,7 @@ import { localDateString } from "./stats.js";
 import { isBeforePlacement } from "./studyQueue.js";
 import { getLearnedWordsToday } from "./learnedWords.js";
 import { buildPath } from "./pathView.js";
+import { isDailySetDone } from "./dailySet.js";
 
 // ===== はちゃん（はすみ / Hasumi）: 学習パートナー =====
 //
@@ -35,8 +36,9 @@ export function hasumiHomeLine() {
       const extra = learned.length > 1 ? ` ほか${learned.length - 1}語` : "";
       return { mood: "happy", text: `今日は ${learned[0].en}${extra}を覚えた。` };
     }
-    // 「思い出せた」の数は学習データが持つ。ここでは完了の事実だけ
-    return { mood: "happy", text: "今日のぶん、終わった。" };
+    // 「思い出せた」の数は学習データが持つ。ここでは今日のぶんが済んだかどうかの事実だけ（チップの「途中」と合わせる）
+    if (isDailySetDone()) return { mood: "happy", text: "今日のぶん、終わった。" };
+    return { mood: "normal", text: "今日は途中。続きから。" };
   }
 
   // 昨日休んだがシールドが守った朝: 何が起きたかを 1 文で（責めない。数字はチップが持つ）

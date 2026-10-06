@@ -13,6 +13,7 @@ export function initializeMyWordsView(onChange = () => {}) {
   const form = document.getElementById("myWordForm");
   const bulkButton = document.getElementById("myWordBulkAdd");
   if (!form) return;
+  window.addEventListener("spelldash:mywords", renderMyWordsList); // 同期で別の端末の語が届いた・消えたら一覧と上限を描き直す
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();

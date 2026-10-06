@@ -7,8 +7,10 @@
 const PREFIX = "spelldash_";
 export const BACKUP_VERSION = 1;
 
-// 端末固有・一時的なものは含めない
-const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session"]);
+// 端末固有・一時的なものは含めない（xp_synced は「この端末が最後にクラウドと一致した XP」。別の端末に持ち込むと差分がずれる）
+const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_owner"]);
+// 復元のときに必ず消すもの（復元した記録の持ち主と、クラウドとの差分の基準は分からないので、次の同期を初回の扱いにする）
+const RESET_ON_RESTORE = ["spelldash_xp_synced", "spelldash_owner"];
 
 export function buildBackup() {
   const data = {};
@@ -66,6 +68,7 @@ export function applyBackup(obj) {
     if (key && key.startsWith(PREFIX) && !EXCLUDE.has(key)) toRemove.push(key);
   }
   toRemove.forEach((key) => localStorage.removeItem(key));
+  RESET_ON_RESTORE.forEach((key) => localStorage.removeItem(key));
   for (const [key, value] of Object.entries(obj.data)) {
     if (!key.startsWith(PREFIX) || EXCLUDE.has(key) || typeof value !== "string") continue;
     localStorage.setItem(key, value);
@@ -78,6 +81,40 @@ export function applyBackup(obj) {
     // 無視
   }
   return summary;
+}
+
+// ===== この端末の記録を消す（別のアカウントでログインしたとき。js/sync.js initialSync が呼ぶ） =====
+// applyBackup と同じく spelldash_* を消す。残すのは端末の設定（人の記録ではないもの）だけ:
+//   theme（表示の色）・audio（音声の設定）・osk（専用キーボード）・list_compact／setup_open／stats_tab／trend_range／weak_only（画面の開き方）、
+//   installed（ホーム画面に追加の案内）・onboarded（この端末でトップページを見た）・schema_version（保存形式の版。消すと移行が走り直す）、
+//   test_*（E2E のスタブのログイン状態）
+// 消すもの（主なもの）: word_stats・xp・xp_synced・streak・best_score・best_by_category・battle・pending_battles・study_mix・
+//   growth_log・daily_set・daily・sets_total・veteran・course・category・mode・packs・my_words・word_notes・user_items_meta／dirty・
+//   dirty_words・session・session_log・mission・placement(_note)・first_sight・level_boost(_note)・tutorial・typing_stats・key_miss・
+//   word_ai・activity・feedback_queue・plan・display_name・login_nudge・week_goal・set_size・genre・owner
+const KEEP_ON_CLEAR = new Set([
+  "spelldash_theme",
+  "spelldash_audio",
+  "spelldash_osk",
+  "spelldash_list_compact",
+  "spelldash_setup_open",
+  "spelldash_stats_tab",
+  "spelldash_trend_range",
+  "spelldash_weak_only",
+  "spelldash_installed",
+  "spelldash_onboarded",
+  "spelldash_schema_version"
+]);
+
+export function clearLocalRecords() {
+  const toRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(PREFIX) || KEEP_ON_CLEAR.has(key) || key.startsWith("spelldash_test_")) continue;
+    toRemove.push(key);
+  }
+  toRemove.forEach((key) => localStorage.removeItem(key));
+  return toRemove.length;
 }
 
 export function readBackupFile(file) {

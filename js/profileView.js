@@ -151,6 +151,7 @@ function showProfileMessage(text, type = "") {
   if (!el) return;
   el.textContent = text;
   el.className = `auth-message ${type}`.trim();
+  el.dataset.scope = "page"; // js/auth.js の同期の文やログイン時の掃除で消されないように
 }
 
 // ===== 発音の設定 =====
