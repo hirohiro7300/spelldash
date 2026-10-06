@@ -47,8 +47,9 @@ export function recordGrowthSnapshot({ learned, mastered, active = false, legacy
   else list.push(row);
   list.sort((a, b) => (a.date < b.date ? -1 : 1));
   save(list);
-  // 描画のたびに呼ばれるので、今日の行の値が変わったとき（または旧式の行を直したとき）だけ同期の印を付ける
-  if (legacy != null || !prev || prev.learned !== row.learned || prev.mastered !== row.mastered || !!prev.active !== row.active) touchItem("day", today);
+  // 描画のたびに呼ばれるので、同期の印は「クラウドの値（大きい方で合わせる）を上げうる」ときだけ付ける。
+  // 語数が減った（覚えた語が苦手に戻った）だけなら送らない（送っても合わせると元の値に戻り、送り直しを繰り返すため）
+  if (legacy != null || !prev || row.learned > (prev.learned ?? 0) || row.mastered > (prev.mastered ?? 0) || (row.active && !prev.active)) touchItem("day", today);
   return row;
 }
 

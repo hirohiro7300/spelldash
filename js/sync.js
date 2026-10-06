@@ -13,7 +13,8 @@ import { pushUserItems, pullUserItems } from "./userItemsSync.js";
 import { clearLocalRecords } from "./backup.js";
 import { markVeteranIfReturning } from "./unlocks.js";
 import { COURSES, startCourse, ensureDefaultCourse } from "./course.js";
-import { getEnabledPackIds } from "./packs.js";
+import { getEnabledPackIds, setPackEnabled } from "./packs.js";
+import { getPackCatalog } from "./wordStore.js";
 
 // ===== Local First 同期 =====
 // プレイ中は localStorage のみに書き、以下のタイミングでSupabaseへ同期する:
@@ -23,7 +24,8 @@ import { getEnabledPackIds } from "./packs.js";
 
 const DIRTY_KEY = "spelldash_dirty_words";
 const XP_KEY = "spelldash_xp";
-const XP_SYNCED_KEY = "spelldash_xp_synced"; // 最後にクラウドと一致した XP（2 台で増えた分を足し合わせる基準）
+const XP_SYNCED_KEY = "spelldash_xp_synced"; // この端末の XP のうち、クラウドにあると分かっている分（2 台で増えた分を足し合わせる基準）
+const XP_WRITE_KEY = "spelldash_xp_write"; // 送ったが返事を確かめていない XP の書き込み { value, at }（次に読んだとき、届いていれば基準にする）
 const STREAK_KEY = "spelldash_streak";
 const OWNER_KEY = "spelldash_owner"; // この端末の記録の持ち主（最後に同期できたアカウントの user id）
 const CATEGORY_KEY = "spelldash_category";
@@ -127,7 +129,8 @@ export function clearSyncedFlag() {
   }
 }
 
-export async function pushSync() {
+// options.leaving: ページを離れるとき（pagehide・裏に回す）。往復を減らすため XP は送らない（次の送信・次の同期で送る）
+export async function pushSync(options = {}) {
   if (isPushing) return;
   // 取り込み（initialSync）が済むまで送らない: 空の端末の 0 でクラウドの user_progress を上書きしないため
   if (!sessionStorage.getItem(PULLED_FLAG)) return;
@@ -153,7 +156,7 @@ export async function pushSync() {
       }
     }
 
-    await pushUserProgress(userId);
+    await pushUserProgress(userId, options);
     await pushActivityDay(userId);
     await flushPendingBattleSessions(userId);
     await pushUserItems(supabase, userId); // マイ単語帳・メモ・パック（テーブル未作成なら何もしない）
@@ -174,31 +177,45 @@ async function pushActivityDay(userId) {
   }
 }
 
-// XP は 2 台で増えた分を足し合わせる（initialSync と同じ式）。開いたままのタブの送信が、別の端末で増えた分を消さないように
-// 送る前にクラウドの値を読む。読めなければ送らない（次の送信で再試行）
-function mergeXp(cloudXp, localXp) {
-  const syncedRaw = localStorage.getItem(XP_SYNCED_KEY);
-  const synced = syncedRaw === null ? null : Number(syncedRaw) || 0;
-  return synced === null ? Math.max(cloudXp, localXp) : Math.max(cloudXp, synced) + Math.max(0, localXp - synced);
+// ---- XP: 2 台で増えた分を足し合わせる ----
+// 基準 B ＝ この端末の XP のうち、クラウドにあると分かっている分。クラウドの値 C を読んだら
+//   この端末の XP ＝ max(C, B) ＋（いまの XP − B）、B ＝ max(C, B)
+// とする（基準が無い初回は大きい方。B ＝ C）。B を送った値に進めるのは、送信が成功したと分かったときだけ。
+// 返事が届かずにページが閉じた書き込みは、次に読んだクラウドの updated_at が送った時刻と同じなら届いていたとみなす。
+// 読み・計算・書き込みは await をはさまずに行う（その間に増えた XP を消さない）
+function readJsonKey(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch {
+    return null;
+  }
 }
 
-async function pushUserProgress(userId) {
-  const battle = getBattleStore();
-  let xp = getTotalXp();
-  try {
-    const current = await supabase.from("user_progress").select("xp").maybeSingle();
-    if (!current || current.error) return;
-    xp = mergeXp(Number(current.data?.xp) || 0, xp);
-  } catch {
-    return;
+function settleXpWrite(cloudRow) {
+  const pending = readJsonKey(XP_WRITE_KEY);
+  if (!pending) return;
+  if (cloudRow?.updated_at && Date.parse(cloudRow.updated_at) === Date.parse(pending.at)) {
+    localStorage.setItem(XP_SYNCED_KEY, String(Number(pending.value) || 0));
   }
-  if (xp !== getTotalXp()) localStorage.setItem(XP_KEY, String(xp));
-  const level = getLevelState(xp);
+  localStorage.removeItem(XP_WRITE_KEY);
+}
 
-  const { error } = await supabase.from("user_progress").upsert({
+// クラウドの XP を取り込む。戻り値: 合わせた後のこの端末の XP
+function absorbCloudXp(cloudXp) {
+  const localXp = getTotalXp();
+  const raw = localStorage.getItem(XP_SYNCED_KEY);
+  const base = raw === null ? null : Number(raw) || 0;
+  const merged = base === null ? Math.max(cloudXp, localXp) : Math.max(cloudXp, base) + Math.max(0, localXp - base);
+  const nextBase = base === null ? cloudXp : Math.max(cloudXp, base);
+  if (merged !== localXp) localStorage.setItem(XP_KEY, String(merged));
+  localStorage.setItem(XP_SYNCED_KEY, String(nextBase));
+  return merged;
+}
+
+async function pushUserProgress(userId, { leaving = false } = {}) {
+  const battle = getBattleStore();
+  const row = {
     user_id: userId,
-    xp,
-    level: level.level,
     streak: getStreak(),
     best_score: getBestScore(),
     selected_category: localStorage.getItem("spelldash_category") || "all",
@@ -209,10 +226,31 @@ async function pushUserProgress(userId) {
     battle_draws: battle.draws,
     battle_current_win_streak: battle.currentWinStreak,
     battle_best_win_streak: battle.bestWinStreak,
-    study_familiar_ratio: getStudyMix().familiarRatio,
-    updated_at: new Date().toISOString()
-  });
-  if (!error) localStorage.setItem(XP_SYNCED_KEY, String(xp));
+    study_familiar_ratio: getStudyMix().familiarRatio
+  };
+
+  if (leaving) {
+    // ページを離れるときは XP を読まずに、XP 以外の列だけ送る（upsert は渡した列だけを書き換える）
+    await supabase.from("user_progress").upsert({ ...row, updated_at: new Date().toISOString() });
+    return;
+  }
+
+  let current;
+  try {
+    current = await supabase.from("user_progress").select("xp,updated_at").maybeSingle();
+  } catch {
+    return;
+  }
+  if (!current || current.error) return; // 読めなければ送らない（次の送信で再試行）
+  settleXpWrite(current.data);
+  const xp = absorbCloudXp(Number(current.data?.xp) || 0);
+  const at = new Date().toISOString();
+  localStorage.setItem(XP_WRITE_KEY, JSON.stringify({ value: xp, at }));
+  const { error } = await supabase.from("user_progress").upsert({ ...row, xp, level: getLevelState(xp).level, updated_at: at });
+  if (!error) {
+    localStorage.setItem(XP_SYNCED_KEY, String(xp));
+    localStorage.removeItem(XP_WRITE_KEY);
+  }
 }
 
 // battle_sessionsの送信待ち行列を送る（失敗しても残り、次回再送）
@@ -254,7 +292,17 @@ export async function recordPlaySession(session) {
 //         "cancelled"（別のアカウントの記録があり、置き換えを断った。何も書いていない）／
 //         false（未ログイン、またはこのタブで同期済み）。取得の失敗は throw（ローカルは壊さない）
 
+const MERGE_CONFIRM_TEXT = "この端末の記録を、このアカウントの記録に足す。別の人の記録なら、キャンセルしてログインをやめる。";
 const OWNER_CONFIRM_TEXT = "この端末には別のアカウントの記録がある。消して、このアカウントの記録に置き換える";
+
+// 分野パックの一覧にある id か（基本カテゴリの id を「パック」として追加しない）
+function isKnownPack(id) {
+  try {
+    return getPackCatalog().some((c) => c.id === id);
+  } catch {
+    return false;
+  }
+}
 
 // 人の記録が 1 つでもあるか（語・XP・マイ単語帳・メモ・Battle・成長ログ・今日のセットの履歴）。持ち主の確認に使う
 function hasPersonalRecords() {
@@ -280,17 +328,18 @@ function hasPersonalRecords() {
 
 let syncInFlight = false; // 同じページで 2 回走らせない（auth-ready と SIGNED_IN が続けて来る）
 
-export async function initialSync() {
+// options.freshLogin: いまログインした（リンク・Google から戻った、ログイン操作の直後）。開いた時点ですでにログインしていた端末は false
+export async function initialSync(options = {}) {
   if (syncInFlight) return false;
   syncInFlight = true;
   try {
-    return await runInitialSyncOnce();
+    return await runInitialSyncOnce(options);
   } finally {
     syncInFlight = false;
   }
 }
 
-async function runInitialSyncOnce() {
+async function runInitialSyncOnce({ freshLogin = false } = {}) {
   const userId = await getUserId();
   if (!userId) return false;
   // このタブで最後まで済んでいれば何もしない（途中でページを移った場合は最初からやり直す）
@@ -306,6 +355,9 @@ async function runInitialSyncOnce() {
     }
     // 記録が無くても、前の持ち主の残り（基準の XP・設定以外のキー）は混ぜない
     clearLocalRecords();
+  } else if (!owner && freshLogin && hasPersonalRecords()) {
+    // 持ち主の印が無い端末（未ログインで使っていた・この版より前に同期した）にいまログインした: 足すかをたずねる
+    if (!window.confirm(MERGE_CONFIRM_TEXT)) return "cancelled";
   }
 
   sessionStorage.setItem(SYNCED_FLAG, userId);
@@ -390,15 +442,10 @@ async function runInitialSyncOnce() {
 
   // user_progress のマージ（XP は 2 台で増えた分を足す・ベスト・最長ストリークは大きい方を採用）
   if (cloudProgress) {
+    // 初回（基準なし）は大きい方。基準があれば「クラウドの値（か基準）＋この端末で基準から増えた分」（absorbCloudXp）
     const localXp = getTotalXp();
-    const cloudXp = Number(cloudProgress.xp) || 0;
-    // 初回（基準なし）は大きい方。基準があれば「クラウドの値（か基準）＋この端末で基準から増えた分」
-    const mergedXp = mergeXp(cloudXp, localXp);
-    if (mergedXp !== localXp) {
-      localStorage.setItem(XP_KEY, String(mergedXp));
-      changedLocal = true;
-    }
-    localStorage.setItem(XP_SYNCED_KEY, String(mergedXp));
+    settleXpWrite(cloudProgress);
+    if (absorbCloudXp(Number(cloudProgress.xp) || 0) !== localXp) changedLocal = true;
 
     if (cloudProgress.best_score > getBestScore()) {
       saveBestScore(cloudProgress.best_score);
@@ -480,8 +527,9 @@ async function runInitialSyncOnce() {
     if (course) {
       startCourse(course.id, adoptCategory);
     } else {
-      // コースに無いパック（分野パック 1 本が道）: コースは外してカテゴリだけ
+      // コースに無いパック（分野パック 1 本が道）: コースは外し、そのパックを追加して（読み込まれるように）カテゴリにする
       localStorage.removeItem(COURSE_KEY);
+      if (!getEnabledPackIds().includes(adoptCategory) && isKnownPack(adoptCategory)) setPackEnabled(adoptCategory, true);
       localStorage.setItem(CATEGORY_KEY, adoptCategory);
     }
     packAdded = getEnabledPackIds().some((id) => !packsBefore.includes(id));
@@ -561,12 +609,12 @@ async function ensureProfile(userId) {
 
 export function setupUnloadSync() {
   window.addEventListener("pagehide", () => {
-    pushSync();
+    pushSync({ leaving: true });
   });
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      pushSync();
+      pushSync({ leaving: true });
     }
   });
 }

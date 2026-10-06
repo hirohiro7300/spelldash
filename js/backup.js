@@ -8,9 +8,9 @@ const PREFIX = "spelldash_";
 export const BACKUP_VERSION = 1;
 
 // 端末固有・一時的なものは含めない（xp_synced は「この端末が最後にクラウドと一致した XP」。別の端末に持ち込むと差分がずれる）
-const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_owner"]);
+const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner"]);
 // 復元のときに必ず消すもの（復元した記録の持ち主と、クラウドとの差分の基準は分からないので、次の同期を初回の扱いにする）
-const RESET_ON_RESTORE = ["spelldash_xp_synced", "spelldash_owner"];
+const RESET_ON_RESTORE = ["spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner"];
 
 export function buildBackup() {
   const data = {};

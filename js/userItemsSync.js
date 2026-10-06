@@ -366,12 +366,18 @@ async function mergeDayRowsWithCloud(supabase, dayRows) {
 export async function pushUserItems(supabase, userId) {
   const all = buildDirtyRows(userId);
   if (all.length === 0) return;
+  const metaAtStart = getItemMeta(); // 送信中にまた変わった項目（印の時刻が変わった）は dirty に残す
   const days = await mergeDayRowsWithCloud(supabase, all.filter((r) => r.kind === "day"));
   const rows = [...all.filter((r) => r.kind !== "day"), ...days];
   if (rows.length === 0) return;
   const failed = await upsertRows(supabase, rows); // ベストエフォート
   const failedIds = new Set(failed.map((r) => `${r.kind}:${r.key}`));
-  const sentIds = new Set(rows.map((r) => `${r.kind}:${r.key}`).filter((id) => !failedIds.has(id)));
+  const metaNow = getItemMeta();
+  const sentIds = new Set(
+    rows
+      .map((r) => `${r.kind}:${r.key}`)
+      .filter((id) => !failedIds.has(id) && metaNow[id]?.updatedAt === metaAtStart[id]?.updatedAt)
+  );
   writeJson(DIRTY_KEY, [...getDirtyItems()].filter((id) => !sentIds.has(id))); // 送れた分だけ dirty から外す（読めなかった day は残る）
 }
 
