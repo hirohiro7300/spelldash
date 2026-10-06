@@ -176,7 +176,7 @@ const server = http.createServer((req, res) => {
 
   // /api/billing/* の偽装（SpellDash Pro。本物の Stripe・Supabase には接続しない）。
   // config は常に configured（月額 580・年額 4,800）。checkout は Bearer 無し → 401、pro-token → 409、他 → Checkout の代わりに
-  // profile.html?pro=done へ。portal は pro-token → profile.html、他 → 404 no_subscription。webhook は偽装しない（オフラインテストで検証）
+  // pro.html?pro=done へ。portal は pro-token → profile.html、他 → 404 no_subscription。webhook は偽装しない（オフラインテストで検証）
   if (urlPath.startsWith("/api/billing/")) {
     const json = (status, body) => res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify(body));
     const route = urlPath.slice("/api/billing/".length);
@@ -195,7 +195,7 @@ const server = http.createServer((req, res) => {
       if (route === "checkout") {
         if (body.interval !== "month" && body.interval !== "year") return json(400, { error: "bad_request", message: "プランの指定が正しくありません。" });
         if (token === "pro-token") return json(409, { error: "already_subscribed", message: "すでに Pro です。" });
-        return json(200, { url: BASE + "/profile.html?pro=done" });
+        return json(200, { url: BASE + "/pro.html?pro=done" });
       }
       if (token === "pro-token") return json(200, { url: BASE + "/profile.html" });
       json(404, { error: "no_subscription", message: "お支払いの情報がありません。Pro に加入すると使えます。" });
@@ -2816,20 +2816,29 @@ console.log("pro:");
     const loaded = await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
     const plans = await text(page, "#proPlans");
     check("Pro: 未ログインでも価格が 2 つ出る（580 と 4,800）", loaded && plans.includes("580") && plans.includes("4,800"), plans);
-    check("Pro: 未ログインは年額ボタンを出さず、注記の先頭に料金（月あたり ¥400）", (await page.$("#proCheckoutYear")) === null && /^月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）。/.test((await text(page, ".pro-plans__hint")).trim()), await text(page, ".pro-plans__hint"));
+    const terms = await text(page, ".pro-terms");
+    check("Pro: 未ログインは年額ボタンを出さず、申し込みの前に（料金・更新・解約・支払い）をボタンの直下に", (await page.$("#proCheckoutYear")) === null && terms.includes("月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）（税込）") && terms.includes("自動で更新") && terms.includes("お支払いの管理") && terms.includes("Stripe"), terms);
     check("Pro: h1 は「単語の学習は無料のまま」（「学習の核」は使わない）", (await text(page, "h1")).includes("単語の学習は無料のまま") && !(await page.content()).includes("学習の核"), await text(page, "h1"));
     check("Pro: 比較表は 5 項目", (await page.$$("#proCompare tbody tr")).length === 5);
     check("Pro: 未ログインは #proState が空で、#proCheckoutMonth は無く #proLoginStart「ログインして始める」", (await text(page, "#proState")) === "" && (await page.$("#proCheckoutMonth")) === null && (await text(page, "#proLoginStart")).includes("ログインして始める"), await text(page, "#proState"));
     await page.click("#proLoginStart");
     await waitUntil(async () => (await page.getAttribute("#loginToggle", "aria-expanded")) === "true", 2000);
     check("Pro: 未ログインで「ログインして始める」を押すとヘッダーのログイン（#loginToggle）が開く", (await page.getAttribute("#loginToggle", "aria-expanded")) === "true" && (await text(page, "#proMessage")) === "", `aria-expanded=${await page.getAttribute("#loginToggle", "aria-expanded")} msg=${await text(page, "#proMessage")}`);
+    check("Pro: 「ログインして始める」で加入の途中の印（spelldash_pro_intent）が付く", await page.evaluate(() => Boolean(JSON.parse(localStorage.getItem("spelldash_pro_intent") || "null")?.at)));
+    // ログインのリンクから戻った体（トップに戻る・URL に access_token）: 加入画面へ戻り、選ぶところから続く
+    await page.evaluate(() => localStorage.setItem("spelldash_test_session", "1"));
+    await page.goto(BASE + "/index.html#access_token=test&type=magiclink", { waitUntil: "networkidle" });
+    const back = await waitUntil(() => page.url().includes("/pro.html"), 5000);
+    const resumed = await waitUntil(async () => (await text(page, "#proMessage")) === "ログインした。月額か年額を選ぶ。", 5000);
+    check("動線: ログインから戻ると加入画面へ戻り「ログインした。月額か年額を選ぶ。」", back && resumed && !page.url().includes("resume="), `${page.url()} / ${await text(page, "#proMessage")}`);
+    check("動線: 戻ったら加入の途中の印を消し、月額のボタンに焦点", (await page.evaluate(() => localStorage.getItem("spelldash_pro_intent"))) === null && (await page.evaluate(() => document.activeElement?.id)) === "proCheckoutMonth");
     check("Pro: ページ内に特商法のリンク", (await page.$$('a[href="./tokushoho.html"]')).length >= 2);
     check("Pro: よくある質問は 4 つ（「いつでも解約できますか」は料金の注記へ）、常体", (await page.$$("details.pro-faq")).length === 4 && !(await page.content()).includes("いつでも解約できますか") && !(await page.$$eval("details.pro-faq", (els) => els.map((e) => e.textContent).join(""))).includes("ますか"), String((await page.$$("details.pro-faq")).length));
     check("Pro: 未ログインでエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
 
-  // 2. ログイン済み free: 月額ボタン → Checkout（偽: profile.html?pro=done）→ 反映されると「Pro になった」
+  // 2. ログイン済み free: 月額ボタン → Checkout（偽: pro.html?pro=done）→ 反映されると「Pro になった」と、使えるようになったもの
   {
     const page = await newPage({ storage: { spelldash_test_session: "1" } });
     await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
@@ -2838,13 +2847,51 @@ console.log("pro:");
     // Checkout を済ませたことにする（webhook が subscriptions に書いた状態をスタブに持たせる）
     await page.evaluate((row) => localStorage.setItem("spelldash_test_plan", row), JSON.stringify(planRow()));
     await page.click("#proCheckoutMonth");
-    const moved = await waitUntil(() => page.url().includes("/profile.html?pro=done"), 5000);
-    check("Pro: 月額ボタンで Checkout（偽）→ profile.html?pro=done に戻る", moved, page.url());
-    const thanked = await waitUntil(async () => (await text(page, "#authMessage")).includes("Pro になった"), 8000);
-    check("Pro: ?pro=done で反映を待ち「Pro になった」", thanked, await text(page, "#authMessage"));
+    const moved = await waitUntil(() => page.url().includes("/pro.html"), 5000);
+    check("Pro: 月額ボタンで Checkout（偽）→ 加入画面に戻る", moved, page.url());
+    const thanked = await waitUntil(async () => (await text(page, "#proWelcome")).includes("Pro になった"), 8000);
+    check("Pro: ?pro=done で反映を待ち「Pro になった」と、使えるようになったもの 5 つ（マイ単語帳・テーマへのリンク）", thanked && (await page.$$("#proWelcome li")).length === 5 && (await page.$('#proWelcome a[href="./list.html#myWords"]')) !== null && (await page.$('#proWelcome a[href="./profile.html#appearance"]')) !== null, await text(page, "#proWelcome"));
+    check("Pro: 加入直後は購入ボタンを出さず、URL の ?pro=done を消す", (await page.$("#proCheckoutMonth")) === null && !page.url().includes("pro=done"), page.url());
+    await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await text(page, "#planValue")).includes("Pro"), 5000);
     check("Pro: プラン行が Pro になる", (await text(page, "#planValue")).includes("Pro"), await text(page, "#planValue"));
     check("Pro: 加入フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
+  }
+
+  // 2b. 知る: フッターの「SpellDash Pro」（受付中のときだけ）と、7 日以上学んだ人の週間レポートの 1 行（Pro には出さない）
+  {
+    const page = await newPage();
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const linked = await waitUntil(async () => (await page.$(".site-footer__nav [data-footer-pro]")) !== null, 5000);
+    check("動線: 受付中ならフッターに「SpellDash Pro」", linked && (await text(page, ".site-footer__nav [data-footer-pro]")) === "SpellDash Pro");
+    await page.close();
+
+    const closed = await newPage({ storage: { spelldash_billing_open: JSON.stringify({ open: false, at: Date.now() }) } });
+    await closed.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await closed.waitForTimeout(400);
+    check("動線: 受付前（キャッシュが閉じている）ならフッターに出さない", (await closed.$(".site-footer__nav [data-footer-pro]")) === null);
+    await closed.close();
+
+    const week = Array.from({ length: 8 }, (_, i) => ({ date: ymdDaysAgo(7 - i), learned: 10 + i * 3, mastered: 0, active: true, v: 2 }));
+    const open = JSON.stringify({ open: true, at: Date.now() });
+    const free = await newPage({ storage: { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week), spelldash_placement: "done" } });
+    await free.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await text(free, "#weeklyReport")).includes("週間レポート"), 5000);
+    check("動線: 7 日以上学んだ free の週間レポートに「Pro なら、…」の 1 行", (await text(free, "#weeklyReport .weekly__pro")).startsWith("Pro なら、シールド 3 枚") && (await free.$('#weeklyReport .weekly__pro a[href="./pro.html"]')) !== null, await text(free, "#weeklyReport"));
+    await free.close();
+
+    const short = await newPage({ storage: { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week.slice(-3)), spelldash_placement: "done" } });
+    await short.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await text(short, "#weeklyReport")).includes("週間レポート"), 5000);
+    check("動線: 学んだ日が 7 日未満なら週間レポートに Pro の行を出さない", (await short.$("#weeklyReport .weekly__pro")) === null);
+    await short.close();
+
+    const pro = await newPage({ storage: proStorage({}, { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week), spelldash_placement: "done" }) });
+    await pro.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await text(pro, "#weeklyReport")).includes("週間レポート"), 5000);
+    check("動線: Pro の人の週間レポートには Pro の行を出さない", (await pro.$("#weeklyReport .weekly__pro")) === null);
+    await pro.close();
   }
 
   // 3. Pro（active）: pro.html は CTA 無し・ご利用中・お支払いの管理。profile.html のプラン行も Pro

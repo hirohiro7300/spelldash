@@ -56,7 +56,7 @@ export default async function handler(req, res) {
       client_reference_id: user.id,
       metadata: { user_id: user.id },
       subscription_data: { metadata: { user_id: user.id } },
-      success_url: `${origin}/profile.html?pro=done`,
+      success_url: `${origin}/pro.html?pro=done`, // 加入画面で反映を待ち、使えるようになったものを並べる（js/proView.js）
       cancel_url: `${origin}/pro.html?pro=cancel`,
       locale: "ja",
       allow_promotion_codes: "true"

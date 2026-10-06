@@ -4,6 +4,7 @@ import { initialSync, clearSyncedFlag } from "./sync.js";
 import { getWordStats } from "./storage.js";
 import { refreshPlan, clearPlan } from "./plan.js";
 import { trapFocus } from "./focusTrap.js";
+import { resumeProIntent } from "./proFunnel.js";
 
 const accountGuestElement = document.getElementById("accountGuest");
 const accountUserElement = document.getElementById("accountUser");
@@ -30,6 +31,8 @@ const RETURNED_FROM_LOGIN = (() => {
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
   const hadSessionAtLoad = Boolean(data.session) && !RETURNED_FROM_LOGIN;
+  // 加入画面で「ログインして始める」を押してログインから戻った: 加入画面へ戻す（ログインのリンクはトップに戻る）
+  if (data.session && RETURNED_FROM_LOGIN && resumeProIntent()) return;
   updateAuthDisplay(data.session);
   refreshPlan(); // Pro の状態（spelldash_plan）を更新
 
@@ -43,6 +46,7 @@ export async function initializeAuth() {
     if (_event === "SIGNED_OUT") clearPlan(); else if (_event === "SIGNED_IN") refreshPlan();
 
     if (_event === "SIGNED_IN") {
+      if (!hadSessionAtLoad && resumeProIntent()) return;
       runInitialSync({ freshLogin: !hadSessionAtLoad });
     }
   });

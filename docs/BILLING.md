@@ -57,7 +57,7 @@
    1. `/pro.html` を開く。価格が 2 つ（または月額だけ）出る
    2. ログインして「月額 ¥… で始める」→ Stripe Checkout
    3. カード番号 `4242 4242 4242 4242`、有効期限は未来の任意、CVC は任意の 3 桁、名前・住所は任意
-   4. 支払うと `/profile.html?pro=done` に戻り、「お支払いを確認しています…」→「Pro になりました。ありがとうございます。」
+   4. 支払うと `/pro.html?pro=done` に戻り、「お支払いを確認中…」→「Pro になった。ありがとう」と、使えるようになったもの（マイ単語帳・テーマ・推移・シールド・AI）が並ぶ
       プラン行が「Pro（次回の更新 YYYY/M/D）」になる。Stripe → Developers → Webhooks → 該当エンドポイントで 4 イベントが 200
    5. 「お支払いの管理」→ Billing Portal が開く。そこで「プランをキャンセル」→ プロフィールが「Pro（解約予定・YYYY/M/D まで）」
    6. 失敗のカード `4000 0000 0000 0002`（拒否）、`4000 0000 0000 3220`（3D セキュア）も試す
@@ -158,7 +158,7 @@ Stripe のダッシュボードで見る場所: Payments（支払い・返金）
 | `POST /api/billing/portal` | Bearer 必須 | `{ url }`（Billing Portal、return は `/profile.html`）。404 `no_subscription` / 503 / 401 / 502 |
 | `POST /api/billing/webhook` | `Stripe-Signature` | `{ received: true }`（200）。400 `bad_signature`（署名不正・300 秒超）/ 503（未設定）/ 500（Supabase 書き込み失敗 → Stripe が再送） |
 
-Checkout セッションの中身: `mode=subscription`、`line_items[0][price]`、`client_reference_id=<userId>`、既存の `stripe_customer_id` があれば `customer=`、無ければ `customer_email=`、`metadata[user_id]` と `subscription_data[metadata][user_id]`、`success_url=${SITE_ORIGIN}/profile.html?pro=done`、`cancel_url=${SITE_ORIGIN}/pro.html?pro=cancel`、`locale=ja`、`allow_promotion_codes=true`、`STRIPE_TRIAL_DAYS>0` なら `subscription_data[trial_period_days]`。
+Checkout セッションの中身: `mode=subscription`、`line_items[0][price]`、`client_reference_id=<userId>`、既存の `stripe_customer_id` があれば `customer=`、無ければ `customer_email=`、`metadata[user_id]` と `subscription_data[metadata][user_id]`、`success_url=${SITE_ORIGIN}/pro.html?pro=done`（旧 `/profile.html?pro=done` も引き続き反映を待つ）、`cancel_url=${SITE_ORIGIN}/pro.html?pro=cancel`、`locale=ja`、`allow_promotion_codes=true`、`STRIPE_TRIAL_DAYS>0` なら `subscription_data[trial_period_days]`。
 
 Webhook が扱うイベント: `checkout.session.completed`（`mode=subscription` のみ。`subscription` id で `GET /v1/subscriptions/{id}` を取り直して upsert）、`customer.subscription.created` / `updated` / `deleted`（`deleted` は `status=canceled`）。他は 200 で無視。upsert は `POST /rest/v1/subscriptions?on_conflict=user_id`、`Prefer: resolution=merge-duplicates`。
 
@@ -166,7 +166,7 @@ AI の回数（`api/_lib/shared.js` `reject(req, res, { scope, limit, proLimit }
 
 クライアント（`js/plan.js`）: `getPlan()` → `{ pro, status, interval, periodEnd, cancelAtPeriodEnd, checkedAt }`（`localStorage.spelldash_plan`）、`isPro(now)`、`refreshPlan()`（`document` に `spelldash:plan` イベント）、`waitForPro({ tries, interval })`、`clearPlan()`、`postBilling(path, payload)`。
 
-E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/billing/*` を偽装（config は常に configured。checkout は Bearer 無し 401・`pro-token` 409・他は `/profile.html?pro=done` へ。portal は `pro-token` だけ 200）。スタブの `from("subscriptions")` は `localStorage.spelldash_test_plan` を本人の行として返す。Webhook・署名・逆順・form の中身はネットワーク無しの `scratchpad/billing-test.mjs`（fetch 差し替え）で確かめる。
+E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/billing/*` を偽装（config は常に configured。checkout は Bearer 無し 401・`pro-token` 409・他は `/pro.html?pro=done` へ。portal は `pro-token` だけ 200）。スタブの `from("subscriptions")` は `localStorage.spelldash_test_plan` を本人の行として返す。Webhook・署名・逆順・form の中身はネットワーク無しの `scratchpad/billing-test.mjs`（fetch 差し替え）で確かめる。
 
 ## 10. 告知文の下書き（news.html 用。受付開始時に創業者が貼る）
 

@@ -10,7 +10,8 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
 import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
-import { getPlan, refreshPlan, postBilling, formatPlanDate } from "./plan.js";
+import { getPlan, refreshPlan, postBilling, formatPlanDate, waitForPro } from "./plan.js";
+import { rememberBillingOpen, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
 
 const MESSAGES = {
   loginRequired: "加入にはログインが要る。",
@@ -24,12 +25,20 @@ const MESSAGES = {
 };
 
 const plansElement = document.getElementById("proPlans");
+const welcomeElement = document.getElementById("proWelcome");
 const stateElement = document.getElementById("proState");
 const messageElement = document.getElementById("proMessage");
 
 let config = null; // { configured, prices, trialDays }（取得前は null）
 let session = null;
 let busy = false;
+const params = new URLSearchParams(location.search);
+let resumePending = params.get("resume") === "1"; // ログインから戻った（加入の途中）。この画面でログインした場合は印（hasProIntent）で見る
+let donePending = params.get("pro") === "done"; // Checkout から戻った（支払い済み）
+if (params.has("resume") || params.has("pro")) {
+  // 開き直したときに同じ案内を繰り返さない
+  history.replaceState(null, "", location.pathname + location.hash);
+}
 
 initializeAuth();
 setFooterYear();
@@ -37,7 +46,7 @@ renderHeaderStreak();
 setupUnloadSync();
 
 // Checkout から戻ってきた（中止）
-if (new URLSearchParams(location.search).get("pro") === "cancel") {
+if (params.get("pro") === "cancel") {
   setMessage(MESSAGES.canceled);
 }
 
@@ -58,6 +67,7 @@ else loadConfig().then(() => render());
 plansElement.addEventListener("click", (event) => {
   // 未ログイン: ヘッダーのログインを開く（ログインが済むと onAuthStateChange で描き直す）
   if (event.target.closest("[data-login]")) {
+    setProIntent(); // ログインから戻ったら、この画面へ戻して続きを出す（js/proFunnel.js・js/auth.js）
     // この click が document まで上がると「外側クリック」で閉じられるので、上がり切ってから開く
     setTimeout(() => document.getElementById("loginToggle")?.click(), 0);
     return;
@@ -82,6 +92,7 @@ async function loadConfig() {
     config = { configured: false, prices: [], trialDays: 0 };
   }
   if (config.configured && !config.prices.some((p) => p.interval === "month")) config.configured = false;
+  rememberBillingOpen(config.configured); // フッターの「SpellDash Pro」と週間レポートの 1 行を出すか
 }
 
 function yen(amount) {
@@ -124,15 +135,14 @@ function renderPlans(plan) {
     return;
   }
   const perMonth = year ? Math.round(Number(year.amount) / 12) : 0;
-  const terms = `${config.trialDays > 0 ? `最初の ${config.trialDays} 日間は無料。` : ""}税込。いつでも解約できる（期間の終わりまで使える。日割りの返金はしない）`;
+  const terms = termsHtml(month, year, perMonth);
   if (!session) {
-    // 未ログイン: ボタンは「ログインして始める」1 つ（押すとヘッダーのログインが開く。動かないボタンを出さない）。料金は注記の先頭で言う
-    const prices = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）` : ""}。`;
+    // 未ログイン: ボタンは「ログインして始める」1 つ（押すとヘッダーのログインが開く。動かないボタンを出さない）
     plansElement.innerHTML = `
     <div class="pro-plans__buttons">
       <button type="button" class="btn pro-cta" id="proLoginStart" data-login>ログインして始める</button>
     </div>
-    <p class="pro-plans__hint">${prices}${terms}</p>`;
+    ${terms}`;
     return;
   }
   plansElement.innerHTML = `
@@ -140,7 +150,23 @@ function renderPlans(plan) {
       <button type="button" class="btn pro-cta" id="proCheckoutMonth" data-interval="month">月額 ${yen(month.amount)} で始める</button>
       ${year ? `<button type="button" class="btn btn--ghost pro-cta" id="proCheckoutYear" data-interval="year">年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）</button>` : ""}
     </div>
-    <p class="pro-plans__hint">${terms}</p>`;
+    ${terms}`;
+}
+
+// 申し込みの前に確かめること（料金・更新・解約・支払い）。ボタンの直下に置く（次の Stripe の画面で確定する）
+function termsHtml(month, year, perMonth) {
+  const price = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）` : ""}（税込）`;
+  const renew = `${year ? "毎月（年額は毎年）" : "毎月"}、同じ料金で自動で更新${
+    config.trialDays > 0 ? `。最初の ${config.trialDays} 日は無料で、その間に解約すれば請求は無い` : ""
+  }`;
+  return `
+    <dl class="pro-terms" aria-label="申し込みの前に">
+      <div><dt>料金</dt><dd>${price}</dd></div>
+      <div><dt>更新</dt><dd>${renew}</dd></div>
+      <div><dt>解約</dt><dd>いつでも「お支払いの管理」から。期間の終わりまで使え、日割りの返金はしない</dd></div>
+      <div><dt>支払い</dt><dd>カード（次の Stripe の画面で入力して確定）</dd></div>
+    </dl>
+    <p class="pro-plans__hint"><a href="./tokushoho.html">特定商取引法に基づく表記</a> ・ <a href="./terms.html">利用規約</a></p>`;
 }
 
 // 状態（#proState）
@@ -167,6 +193,47 @@ function render() {
   const plan = getPlan();
   renderPlans(plan);
   renderState(plan);
+  maybeResume(plan);
+  maybeWelcome();
+}
+
+// ログインから戻った（加入の途中）: 選ぶところから続ける
+function maybeResume(plan) {
+  if (!(resumePending || hasProIntent()) || !session || !config) return;
+  resumePending = false;
+  clearProIntent();
+  if (plan.pro || !config.configured || isNativeApp) return;
+  setMessage("ログインした。月額か年額を選ぶ。");
+  document.getElementById("proCheckoutMonth")?.focus({ preventScroll: false });
+}
+
+// 支払いを終えて戻った: 反映を待って、使えるようになったものを並べる
+const UNLOCKED = [
+  { label: "マイ単語帳 1,000語まで", href: "./list.html#myWords" },
+  { label: "テーマ 紙・藍", href: "./profile.html#appearance" },
+  { label: "覚えた単語の推移 90日", href: "./stats.html#week" },
+  { label: "シールド 最大 3 枚＋修復 月 1 回", href: "" },
+  { label: "AI の解説 1 日 60 回・カード作成 20 回", href: "" }
+];
+
+function maybeWelcome() {
+  if (!donePending || !welcomeElement || !session) return;
+  donePending = false;
+  clearProIntent();
+  welcomeElement.hidden = false;
+  welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いを確認中…</p>`;
+  waitForPro().then((ok) => {
+    if (!ok) {
+      welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いは完了。反映まで少し待つ（1 分たっても変わらなければ開き直す）</p>`;
+      return;
+    }
+    const items = UNLOCKED.map((u) => `<li>${u.href ? `<a href="${u.href}">${u.label}</a>` : u.label}</li>`).join("");
+    welcomeElement.innerHTML = `
+      <p class="pro-welcome__title" role="status">Pro になった。ありがとう</p>
+      <p class="pro-welcome__lead">いまから使えるもの</p>
+      <ul class="pro-welcome__list">${items}</ul>`;
+    welcomeElement.scrollIntoView({ block: "start" });
+  });
 }
 
 function setBusy(on) {
