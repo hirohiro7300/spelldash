@@ -13,6 +13,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "playwright-core";
+import { syncModulePreload } from "../scripts/modulepreload.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STUB = path.join(ROOT, "tests", "mocks", "supabase-stub.js");
@@ -308,6 +309,13 @@ async function newPage(init = {}) {
 }
 
 // ===== 1. 全ページがエラーなく表示される =====
+// 各ページの <link rel="modulepreload">（scripts/modulepreload.mjs）が import の依存と揃っている（足した import の先読みを忘れない）
+console.log("modulepreload:");
+{
+  const stale = syncModulePreload();
+  check("modulepreload が import の依存と揃っている（ずれたら node scripts/modulepreload.mjs）", stale.length === 0, stale.join(", "));
+}
+
 console.log("pages:");
 for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html", "/list.html", "/pro.html", "/tokushoho.html", "/terms.html"]) {
   const page = await newPage();
