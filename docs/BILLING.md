@@ -26,6 +26,10 @@
 
 受付開始までは `/pro.html` に「Pro はまだ受付前です。」と出て、加入はできない（`GET /api/billing/config` が `configured:false`）。
 
+> **順番の注意**: 受付中かどうかは Stripe の鍵と月額の Price だけで決まり、特商法の表記（tokushoho.html の［ ］）が埋まったかは見ない。**特商法の表記を埋めてから鍵を入れる**（下の 7 を 3 より先に）。加入ボタンの直下から特商法の表記へリンクしている。
+> **無料期間**（`STRIPE_TRIAL_DAYS`）を付けると、加入画面に「無料期間」の行とボタンの「N 日無料で始める（その後 …）」が自動で出る。特商法の表記と利用規約には「無料期間の終わりに決済」の句を入れてある。
+> **領収書のメール**を約束するなら Stripe の Settings → Emails で「成功した支払いのメール」を ON（加入画面の FAQ は「解約・お支払いの管理」で見られる、とだけ書いている）。
+
 1. **Stripe アカウント**を作る（https://dashboard.stripe.com）。本人確認と銀行口座は本番キーに切り替える前までに済ませる。
 2. **商品と Price**: Products → Add product → 名前「SpellDash Pro」。Price は **定期（Recurring）・JPY・税込**で、
    - 月額（必須）: 例 ¥580 / month
@@ -101,7 +105,7 @@ AI の上限の 429 メッセージ: 無料「今日の無料ぶん（N回）は
 
 - `isNativeApp` のときは `/pro.html` の価格と購入ボタン（`#proPlans`）を出さず、「Pro の加入と管理は Web 版（www.spelldash.net）で。」と状態だけ出す。プロフィールのプラン行もボタン無し（値だけ）
 - 理由: App Store Review Guideline 3.1.1。アプリ内でデジタルコンテンツの購入へ誘導すると、アプリ内課金（StoreKit）が必要になり、Stripe への誘導は審査で落ちる。価格やリンクを出さない「リーダー型」なら、Web で加入した状態をアプリで使うのは可
-- Web で加入すると、同じアカウントでログインしたアプリでも Pro になる（`subscriptions` は user_id に紐づく。`refreshPlan()` は Supabase の本番 URL を使う）
+- Web で加入した状態は user_id に紐づく（`subscriptions`）。ただしアプリはまだログインできないので、アプリで Pro にはならない。アプリのログインができるまで「アプリでも使える」とは書かない（加入画面の FAQ からも外した）
 - 将来 StoreKit / Google Play Billing を入れるなら、`subscriptions` に `source`（stripe / apple / google）列を足し、`isProRow` はそのまま使える。いまは判断しない（docs/APP.md）
 - 審査の説明文に「購入はアプリ外。アプリ内に価格・購入導線は無い」と書く（docs/APP.md §5 と合わせる）
 
@@ -183,7 +187,7 @@ E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/bi
 >
 > 月額 ¥580（年額 ¥4,800）。いつでも解約でき、期間の終わりまで使えます。
 > 覚えやすさや判定が有利になるものは売りません。ランキングも無料のままです。
-> 詳しくは [SpellDash Pro](./pro.html) へ。アプリ版の方は Web 版（www.spelldash.net）で加入すると、同じアカウントで使えます。
+> 詳しくは [SpellDash Pro](./pro.html) へ。
 
 金額は Stripe で決めた額に直してから貼る。news.html の既存の書式（`<article>`、日付）に合わせる。
 

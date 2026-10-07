@@ -33,11 +33,14 @@ export function isBillingOpen() {
 
 // 加入画面が取った config をそのまま覚える（js/proView.js）
 export function rememberBillingOpen(open) {
+  const before = isBillingOpen();
   try {
     localStorage.setItem(OPEN_KEY, JSON.stringify({ open: !!open, at: Date.now() }));
   } catch {
     // 保存できなくても動線が出ないだけ
   }
+  // 受付中かが変わった: 上限の文などを描き直してもらう（初めて開いたページは、取り終える前に描いている）
+  if (before !== isBillingOpen()) document.dispatchEvent(new CustomEvent("spelldash:billing", { detail: { open: isBillingOpen() } }));
 }
 
 // /api/billing/config を取って整える（加入画面と全ページのキャッシュが同じ規則で「受付中」を決める）。
@@ -95,6 +98,11 @@ export function renderFooterPro() {
   };
   place();
   refreshBillingOpen().then(place);
+}
+
+// 「Pro なら…」の案内とリンクを出してよいか（受付中で、アプリではない）。上限に当たった場所も同じ条件で出す
+export function canOfferPro() {
+  return isBillingOpen();
 }
 
 // 週間レポートの 1 行を出すか: 受付中・Pro でない・7 日以上学んだ

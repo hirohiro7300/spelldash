@@ -6,6 +6,7 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getStreak, getLostStreak, canRepairStreak, repairStreak } from "./level.js";
 import { isPro } from "./plan.js";
+import { canOfferPro } from "./proFunnel.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress, computeLegacyLearnedCount } from "./categoryProgress.js";
@@ -210,7 +211,12 @@ function renderStreakRepair() {
   const when = `${Number(m)}/${Number(d)}`;
   let action;
   if (!isPro()) {
-    action = `<span>Pro なら月 1 回、連続記録を修復できる。<a href="./pro.html" data-funnel="repair">Pro について</a></span>`;
+    // 実際の期限（途切れた日＋7 日）を書く。受付前・アプリでは Pro の話をしない
+    const deadline = new Date(`${lost.on}T00:00:00`);
+    deadline.setDate(deadline.getDate() + 7);
+    action = canOfferPro()
+      ? `<span>Pro なら、${deadline.getMonth() + 1}/${deadline.getDate()} までこの ${lost.count} 日を戻せる（月 1 回）。<a href="./pro.html" data-funnel="repair">Pro について</a></span>`
+      : "";
   } else if (canRepairStreak()) {
     action = `<button type="button" class="btn btn--sm" id="streakRepairButton">今月の修復を使う（月 1 回）</button>`;
   } else {
@@ -389,10 +395,10 @@ function initializeTrendRange() {
     const card = group.closest(".result-card");
     card?.querySelector(".trend-range__hint")?.remove();
     if (days === "90" && !isPro()) {
-      // グラフは 30 日のまま、案内だけ出す
+      // グラフは 30 日のまま、案内だけ出す（受付前・アプリでは Pro へ送らない）
       const hint = document.createElement("p");
       hint.className = "trend-range__hint";
-      hint.innerHTML = '90 日の推移は Pro で見られる。<a href="./pro.html" data-funnel="trend">Pro について</a>';
+      hint.innerHTML = canOfferPro() ? '90日の推移は Pro で見られる。<a href="./pro.html" data-funnel="trend">Pro について</a>' : "90日の推移は Pro で見られる。";
       card?.querySelector(".card-head")?.after(hint);
       return;
     }
@@ -418,7 +424,10 @@ function renderGrowthTrend() {
   const days = getTrendRange();
   syncTrendRangeButtons(days);
   recordGrowthSnapshot({ ...getLearnedCounts(), legacyLearned: computeLegacyLearnedCount });
-  const series = getLearnedSeries(days);
+  // 90 日でも記録が短い人は、最初の記録の日から描く（左の空白で線が詰まらない）
+  const fullSeries = getLearnedSeries(days);
+  const firstRecorded = fullSeries.findIndex((p) => p.learned != null);
+  const series = days === 90 && firstRecorded > 0 ? fullSeries.slice(Math.max(0, Math.min(firstRecorded, fullSeries.length - 30))) : fullSeries;
   const points = series.filter((p) => p.learned != null);
 
   if (points.length < 2) {
@@ -446,7 +455,8 @@ function renderGrowthTrend() {
   const firstIdx = series.findIndex((p) => p.learned != null);
   const lastIdx = series.length - 1;
   const area = `${d}L${x(lastIdx).toFixed(1)},${(pad.top + innerH).toFixed(1)}L${x(firstIdx).toFixed(1)},${(pad.top + innerH).toFixed(1)}Z`;
-  const dots = series
+  // 90 日では点を打たない（点の間隔が 3px ほどになり、朱の帯に見える）
+  const dots = (days === 90 ? [] : series)
     .map((p, i) => (p.active && p.learned != null ? `<circle cx="${x(i).toFixed(1)}" cy="${y(p.learned).toFixed(1)}" r="3" fill="var(--signal)"><title>${p.date}: ${p.learned}語</title></circle>` : ""))
     .join("");
 

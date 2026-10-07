@@ -7,6 +7,7 @@
 
 import { touchItem } from "./userItemsSync.js";
 import { isPro } from "./plan.js";
+import { canOfferPro } from "./proFunnel.js";
 
 const KEY = "spelldash_my_words";
 const EN_PATTERN = /^[a-z][a-z-]*$/;
@@ -18,7 +19,9 @@ export function maxMyWords() {
 
 // 上限の文（表示側はこの文のときだけ「Pro について」のリンクを続ける）
 export function limitMessage() {
-  return isPro() ? "追加できるのは1,000語まで" : "無料で追加できるのは100語まで（Pro なら1,000語）。";
+  if (isPro()) return "追加できるのは1,000語まで";
+  // 受付前・アプリでは Pro の話をしない（買えないものを勧めない）
+  return canOfferPro() ? "無料で追加できるのは100語まで（Pro なら1,000語）。" : "無料で追加できるのは100語まで。";
 }
 
 function limitError() {

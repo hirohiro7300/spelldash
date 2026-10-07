@@ -119,7 +119,7 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
     </div>
     ${noLog ? `<p class="weekly__note">この端末での記録は明日から</p>` : ""}
     ${r.retention != null ? `<p class="weekly__note">思い出せた率＝1日以上前に覚えた語を復習で思い出せた割合（${r.reviewCount}語）</p>` : ""}
-    ${!compact && !noLog && shouldShowWeeklyPro(getGrowthLog().filter((e) => e.active).length) ? `<p class="weekly__note weekly__pro">Pro なら、シールド 3 枚・推移 90 日・マイ単語帳 1,000語。<a href="./pro.html" data-funnel="weekly">Pro について</a></p>` : ""}
+    ${!compact && !noLog && shouldShowWeeklyPro(getGrowthLog().filter((e) => e.active).length) ? `<p class="weekly__note weekly__pro">Pro なら、マイ単語帳 1,000語・連続記録の修復。<a href="./pro.html" data-funnel="weekly">Pro について</a></p>` : ""}
     ${noLog && !compact ? "" : `<div class="weekly__actions">
       ${noLog ? "" : `<button type="button" class="result-panel__action" data-weekly-share>レポートをシェア</button>`}
       ${compact ? `<a class="result-panel__action result-panel__action--ghost" href="./stats.html#weekly">くわしく見る</a>` : ""}

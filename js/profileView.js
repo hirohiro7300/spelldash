@@ -12,6 +12,7 @@ import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme, isProTheme } from "./theme.js";
 import { isNativeApp } from "./appEnv.js";
 import { getPlan, isPro, postBilling, planLabel } from "./plan.js";
+import { canOfferPro } from "./proFunnel.js";
 import { getSetSize, setSetSize } from "./dailySet.js";
 import { getWeekGoal, setWeekGoal } from "./growthLog.js";
 import { renderInstallCard } from "./installPrompt.js";
@@ -77,7 +78,7 @@ function initializeThemeSetting() {
     // 紙・藍は Pro だけ。無料の人には案内を出して選択を戻す（適用しない）
     if (isProTheme(themeSelect.value) && !isPro()) {
       if (hint) {
-        hint.innerHTML = '紙・藍は Pro のテーマ。<a href="./pro.html" data-funnel="theme">Pro について</a>';
+        hint.innerHTML = canOfferPro() ? '紙・藍は Pro のテーマ。<a href="./pro.html" data-funnel="theme">Pro について</a>' : "紙・藍は Pro のテーマ。";
         hint.hidden = false;
       }
       themeSelect.value = getTheme();
@@ -104,10 +105,14 @@ function initializePlanRow() {
   const render = () => {
     const plan = getPlan();
     value.textContent = planLabel(plan);
-    // アプリでは加入・管理のボタンを出さない（Web 版で）
-    if (link) link.hidden = isNativeApp || plan.pro;
-    if (portal) portal.hidden = isNativeApp || !plan.pro;
+    // アプリでは加入・管理のボタンを出さない（Web 版で）。受付前は「Pro について」も出さない
+    if (link) link.hidden = plan.pro || !canOfferPro();
+    if (portal) {
+      portal.hidden = isNativeApp || !plan.pro;
+      portal.textContent = plan.status === "past_due" ? "カードを更新する" : "解約・お支払いの管理";
+    }
   };
+  document.addEventListener("spelldash:billing", render); // 受付中かが分かったら「Pro について」を出し直す
   render();
   document.addEventListener("spelldash:plan", render);
 

@@ -175,8 +175,8 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       if (state === "current") {
         return `
           <li class="path__node path__node--current path__node--${lane}">
-            <button type="button" class="path__start${resume ? " path__start--resume" : ""}${doneToday ? " path__start--done" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : doneToday ? "もう1セット" : "スタート"}: ${esc(u.label)}">
-              ${resume ? "続きから" : doneToday ? "もう1セット" : "スタート"}
+            <button type="button" class="path__start${resume ? " path__start--resume" : ""}${doneToday ? " path__start--done" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : doneToday ? "もう1回" : "スタート"}: ${esc(u.label)}">
+              ${resume ? "続きから" : doneToday ? "もう1回" : "スタート"}
             </button>
             <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${startSub}</span></div>
           </li>`;

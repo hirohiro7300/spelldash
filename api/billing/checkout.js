@@ -42,6 +42,17 @@ export default async function handler(req, res) {
     const row = await fetchOwnSubscription(bearerToken(req.headers.authorization), user.id);
     if (isProRow(row)) return send(res, 409, { error: "already_subscribed", message: MESSAGES.alreadySubscribed });
     // webhook がまだ届いていない直後や、別のタブからの二重加入を防ぐ: 既知の顧客なら Stripe 側の生きている契約も見る
+    // 行がまだ無い（webhook の前）: Stripe 側を user_id で探す。検索の反映は遅れることがあるので、画面側の「支払い済み」の印と併せて使う
+    if (!row) {
+      try {
+        const found = await stripeFetch("/v1/subscriptions/search", { query: `metadata['user_id']:'${user.id}'`, limit: 10 }, { method: "GET" });
+        if ((Array.isArray(found?.data) ? found.data : []).some((s) => LIVE_STATUSES.has(s?.status))) {
+          return send(res, 409, { error: "already_subscribed", message: MESSAGES.alreadySubscribed });
+        }
+      } catch {
+        // 検索できなくても加入は止めない（行が無い初めての人）
+      }
+    }
     if (row?.stripe_customer_id) {
       const list = await stripeFetch("/v1/subscriptions", { customer: row.stripe_customer_id, status: "all", limit: 10 }, { method: "GET" });
       if ((Array.isArray(list?.data) ? list.data : []).some((s) => LIVE_STATUSES.has(s?.status))) {

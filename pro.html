@@ -64,7 +64,7 @@
           <div class="dropdown__panel">
             <form class="account-menu account-menu--login" id="accountLogin">
               <p class="account-menu__native">アプリ版のログインは準備中。記録はこの端末に保存（Web 版 www.spelldash.net ではログインできる）。</p>
-              <p class="account-menu__hint">記録を別の端末でも。</p>
+              <p class="account-menu__hint">Pro はアカウントに付く。ログインすると支払いへ進める。</p>
               <button
                 id="googleLoginButton"
                 type="button"
@@ -125,13 +125,13 @@
     <section class="hero hero--compact">
       <p class="logo">SpellDash Pro</p>
       <h1>単語の学習は無料のまま。<br />Pro は、もっと自分向けに。</h1>
-      <p class="subtitle">思い出して打つ・今日のセット・復習・記録は、これからも無料。Pro は、自分の単語をもっと入れたい人、長く続けている人のための追加機能。</p>
+      <p class="pro-price" id="proPrice" hidden></p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
     <section class="settings pro-section pro-welcome" id="proWelcome" hidden></section>
 
-    <section class="settings pro-section">
+    <section class="settings pro-section" id="proCompareSection">
       <h2 class="settings__title">無料と Pro</h2>
       <table class="pro-compare" id="proCompare">
         <thead>
@@ -148,10 +148,10 @@
             <td><b class="mono">1,000</b>語まで</td>
           </tr>
           <tr>
-            <th scope="row">AI<span class="pro-compare__sub">テキストからカードを作る・覚え方の解説</span></th>
+            <th scope="row">AI<span class="pro-compare__sub">1日の回数。覚え方の解説・テキストからカード</span></th>
             <!-- 値は api/explain-word.js（3／60）と api/generate-cards.js（2／20）の既定。env を変えたらここも -->
-            <td>解説 <b class="mono">3</b> 回・カード <b class="mono">2</b> 回（1 日）</td>
-            <td>解説 <b class="mono">60</b> 回・カード <b class="mono">20</b> 回（1 日）</td>
+            <td>解説 <b class="mono">3</b>・カード <b class="mono">2</b></td>
+            <td>解説 <b class="mono">60</b>・カード <b class="mono">20</b></td>
           </tr>
           <tr>
             <th scope="row">覚えた単語の推移<span class="pro-compare__sub">学習データのグラフ</span></th>
@@ -174,10 +174,10 @@
     </section>
 
     <section class="settings pro-section" id="proPlansSection">
-      <h2 class="settings__title">料金</h2>
+      <h2 class="settings__title" id="proPlansTitle">料金</h2>
+      <p class="pro-message" id="proMessage" role="status"></p>
       <div class="pro-plans" id="proPlans"><p class="pro-pending">読み込み中</p></div>
       <p class="pro-state" id="proState" role="status"></p>
-      <p class="pro-message" id="proMessage" role="status"></p>
     </section>
 
     <section class="settings pro-section">
@@ -187,12 +187,8 @@
         <p>決済は Stripe が処理する。カード番号は SpellDash のサーバーに渡らず、保存もしない。</p>
       </details>
       <details class="pro-faq">
-        <summary>アプリ版でも使える</summary>
-        <p>Web 版（www.spelldash.net）で加入すると、同じアカウントでログインしたアプリ版でも Pro になる。</p>
-      </details>
-      <details class="pro-faq">
         <summary>領収書はもらえる</summary>
-        <p>支払いのたびに Stripe からメールで領収書が届く。「お支払いの管理」からも確認できる。</p>
+        <p>「解約・お支払いの管理」で、過去の請求と領収書を見られる。</p>
       </details>
       <details class="pro-faq">
         <summary>Pro をやめたら、入れた単語はどうなる</summary>
@@ -200,7 +196,6 @@
       </details>
     </section>
 
-    <p class="pro-legal"><a href="./terms.html">利用規約</a> ・ <a href="./tokushoho.html">特定商取引法に基づく表記</a></p>
   </main>
 
   <footer class="site-footer">

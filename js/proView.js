@@ -10,16 +10,16 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
 import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
-import { getPlan, refreshPlan, postBilling, formatPlanDate, waitForPro } from "./plan.js";
+import { getPlan, refreshPlan, postBilling, waitForPro, planLabel } from "./plan.js";
 import { fetchBillingConfig, rememberBillingConfig, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
-import { logFunnel, logFunnelBeforeLeave, markPaidPending } from "./funnelLog.js";
+import { logFunnel, logFunnelBeforeLeave, markPaidPending, hasPaidPending } from "./funnelLog.js";
 
 const MESSAGES = {
   loginRequired: "加入にはログインが要る。",
   notConfigured: "Pro はまだ受付前。",
   nativeOnly: "Pro の加入と管理は Web 版（www.spelldash.net）で。",
   alreadyPro: "すでに Pro。",
-  canceled: "手続きを中止した。いつでも再開できる",
+  canceled: "支払いは中止した。請求は無い。",
   failed: "手続きを始められなかった。時間をおいてもう一度",
   network: "通信できなかった。接続を確認",
   noSubscription: "お支払いの記録が無い。加入直後なら少し待って開き直す"
@@ -27,6 +27,10 @@ const MESSAGES = {
 
 const plansElement = document.getElementById("proPlans");
 const welcomeElement = document.getElementById("proWelcome");
+const priceElement = document.getElementById("proPrice");
+const compareSection = document.getElementById("proCompareSection");
+const plansTitle = document.getElementById("proPlansTitle");
+const PAID_WAIT_TEXT = "手続きは完了。反映を待っている。もう一度申し込まない（数分たっても Pro にならなければ「ご意見・不具合」から知らせる）";
 const stateElement = document.getElementById("proState");
 const messageElement = document.getElementById("proMessage");
 
@@ -50,10 +54,11 @@ setFooterYear();
 renderHeaderStreak();
 setupUnloadSync();
 
-// Checkout から戻ってきた（中止）
+// Checkout から戻ってきた（中止）: 文が見える料金の欄まで送る
 if (params.get("pro") === "cancel") {
   setMessage(MESSAGES.canceled);
   logFunnel("checkout_cancel");
+  requestAnimationFrame(() => document.getElementById("proPlansSection")?.scrollIntoView({ block: "start" }));
 }
 if (!isNativeApp && !params.has("pro")) logFunnel("pro_view"); // 動線の計測（docs/SQL_FUNNEL.md）
 
@@ -112,9 +117,19 @@ function renderPlans(plan) {
   }
   plansElement.hidden = false;
 
-  if (plan.pro || welcomeActive) {
-    // 加入済み・支払いの反映を待っている: CTA は出さない（状態欄に管理ボタン）
+  // 加入済み・支払いの反映を待っている: 売り場（比較表・料金の 1 行）は出さず、見出しは「プラン」
+  const owned = plan.pro || welcomeActive;
+  if (compareSection) compareSection.hidden = owned;
+  if (plansTitle) plansTitle.textContent = owned ? "プラン" : "料金";
+  if (owned) {
+    if (priceElement) priceElement.hidden = true;
     plansElement.innerHTML = "";
+    return;
+  }
+  // 支払いを終えたのに、まだ Pro に反映されていない（開き直した）: 購入ボタンを出さない（二重の申し込みを防ぐ）
+  if (hasPaidPending()) {
+    if (priceElement) priceElement.hidden = true;
+    plansElement.innerHTML = `<p class="pro-pending">${PAID_WAIT_TEXT}</p>`;
     return;
   }
   if (!config) {
@@ -134,7 +149,13 @@ function renderPlans(plan) {
     return;
   }
   const perMonth = year ? Math.round(Number(year.amount) / 12) : 0;
-  const terms = termsHtml(month, year, perMonth);
+  const terms = termsHtml(month, year, perMonth, { withPerMonth: !session });
+  // 最初の画面で「いくらで、いつでもやめられるか」が分かるように、見出しの直下に 1 行
+  if (priceElement) {
+    priceElement.textContent = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}` : ""}（税込）。いつでも解約できる。`;
+    priceElement.hidden = false;
+  }
+  const trial = config.trialDays > 0 ? `${config.trialDays} 日無料で始める` : "";
   if (!session) {
     // 未ログイン: ボタンは「ログインして始める」1 つ（押すとヘッダーのログインが開く。動かないボタンを出さない）
     plansElement.innerHTML = `
@@ -146,23 +167,26 @@ function renderPlans(plan) {
   }
   plansElement.innerHTML = `
     <div class="pro-plans__buttons">
-      <button type="button" class="btn pro-cta" id="proCheckoutMonth" data-interval="month">月額 ${yen(month.amount)} で始める</button>
-      ${year ? `<button type="button" class="btn btn--ghost pro-cta" id="proCheckoutYear" data-interval="year">年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）</button>` : ""}
+      <button type="button" class="btn pro-cta" id="proCheckoutMonth" data-interval="month">${trial ? `${trial}（その後 月額 ${yen(month.amount)}）` : `月額 ${yen(month.amount)} で始める`}</button>
+      ${year ? `<button type="button" class="btn btn--ghost pro-cta" id="proCheckoutYear" data-interval="year">${trial ? `${trial}（その後 年額 ${yen(year.amount)}）` : `年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）`}</button>` : ""}
     </div>
     ${terms}`;
 }
 
-// 申し込みの前に確かめること（料金・更新・解約・支払い）。ボタンの直下に置く（次の Stripe の画面で確定する）
-function termsHtml(month, year, perMonth) {
-  const price = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}（月あたり ${yen(perMonth)}）` : ""}（税込）`;
-  const renew = `${year ? "毎月（年額は毎年）" : "毎月"}、同じ料金で自動で更新${
-    config.trialDays > 0 ? `。最初の ${config.trialDays} 日は無料で、その間に解約すれば請求は無い` : ""
-  }`;
+// 申し込みの前に確かめること（料金・無料期間・更新・解約・支払い）。ボタンの直下に置く（次の Stripe の画面で確定する）
+function termsHtml(month, year, perMonth, { withPerMonth = true } = {}) {
+  // 月あたりは年額のボタンが言うので、ボタンが出るとき（ログイン済み）は繰り返さない
+  const price = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}${withPerMonth ? `（月あたり ${yen(perMonth)}）` : ""}` : ""}（税込）`;
+  const trial =
+    config.trialDays > 0
+      ? `<div><dt>無料期間</dt><dd>最初の ${config.trialDays} 日は無料。${config.trialDays + 1} 日目に 月額 ${yen(month.amount)}${year ? `（年額なら ${yen(year.amount)}）` : ""}を請求。それまでに解約すれば請求は無い</dd></div>`
+      : "";
   return `
     <dl class="pro-terms" aria-label="申し込みの前に">
       <div><dt>料金</dt><dd>${price}</dd></div>
-      <div><dt>更新</dt><dd>${renew}</dd></div>
-      <div><dt>解約</dt><dd>いつでも「お支払いの管理」から。期間の終わりまで使え、日割りの返金はしない</dd></div>
+      ${trial}
+      <div><dt>更新</dt><dd>${year ? "毎月（年額は毎年）" : "毎月"}、同じ料金で自動で更新</dd></div>
+      <div><dt>解約</dt><dd>いつでも設定の「解約・お支払いの管理」から。期間の終わりまで使え、日割りの返金はしない</dd></div>
       <div><dt>支払い</dt><dd>カード（次の Stripe の画面で入力して確定）</dd></div>
     </dl>
     <p class="pro-plans__hint"><a href="./tokushoho.html">特定商取引法に基づく表記</a> ・ <a href="./terms.html">利用規約</a></p>`;
@@ -171,12 +195,10 @@ function termsHtml(month, year, perMonth) {
 // 状態（#proState）
 function renderState(plan) {
   if (plan.pro) {
-    const date = formatPlanDate(plan.periodEnd);
-    const text = plan.cancelAtPeriodEnd
-      ? `解約予定（${date || "期間末"} まで使える）`
-      : `Pro をご利用中${date ? `（次回の更新 ${date}）` : ""}`;
-    stateElement.innerHTML = `<span class="pro-state__text">${text}</span>${
-      isNativeApp ? "" : ' <button type="button" class="btn btn--sm btn--ghost" id="proPortal">お支払いの管理</button>'
+    // 文はプロフィールのプラン行と同じ（js/plan.js planLabel。支払い遅延・無料期間・解約予定で分ける）
+    const pastDue = plan.status === "past_due";
+    stateElement.innerHTML = `<span class="pro-state__text">${planLabel(plan)}</span>${
+      isNativeApp ? "" : ` <button type="button" class="btn btn--sm ${pastDue ? "" : "btn--ghost"}" id="proPortal">${pastDue ? "カードを更新する" : "解約・お支払いの管理"}</button>`
     }`;
     return;
   }
@@ -188,12 +210,19 @@ function renderState(plan) {
   stateElement.textContent = "";
 }
 
+let scrolledToPlans = false;
+
 function render() {
   const plan = getPlan();
   renderPlans(plan);
   renderState(plan);
   maybeResume(plan);
   maybeWelcome();
+  // 加入の途中でログインをやめた（記録を足す確認を断った）: 「ログインして始める」が見える位置へ 1 回だけ送る
+  if (!session && sessionKnown && config && !scrolledToPlans && hasProIntent()) {
+    scrolledToPlans = true;
+    document.getElementById("proPlansSection")?.scrollIntoView({ block: "start" });
+  }
 }
 
 // ログインから戻った（加入の途中）: 選ぶところから続ける
@@ -216,7 +245,7 @@ const UNLOCKED = [
   { label: "マイ単語帳 1,000語まで", href: "./list.html#myWords" },
   { label: "テーマ 紙・藍", href: "./profile.html#appearance" },
   { label: "覚えた単語の推移 90日", href: "./stats.html#week" },
-  { label: "シールド 最大 3 枚＋修復 月 1 回", href: "" },
+  { label: "連続記録の修復 月 1 回", href: "" },
   { label: "AI の解説 1 日 60 回・カード作成 20 回", href: "" }
 ];
 
@@ -227,7 +256,7 @@ function maybeWelcome() {
     if (!sessionKnown) return;
     donePending = false;
     welcomeElement.hidden = false;
-    welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いは完了。加入したアカウントでログインすると Pro になる</p>`;
+    welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">手続きは完了。加入したアカウントでログインすると Pro になる</p>`;
     welcomeActive = false;
     render();
     return;
@@ -235,11 +264,11 @@ function maybeWelcome() {
   donePending = false;
   clearProIntent();
   welcomeElement.hidden = false;
-  welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いを確認中…</p>`;
-  waitForPro().then((ok) => {
+  welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">手続きを確認中…</p>`;
+  waitForPro({ tries: 30 }).then((ok) => {
     if (!ok) {
-      // 反映がまだ: 購入ボタンは出さないまま（もう一度押すと二重の申し込みになりうる）
-      welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">お支払いは完了。反映まで少し待つ（1 分たっても変わらなければ開き直す）</p>`;
+      // 反映がまだ（約 1 分待った）: 購入ボタンは出さないまま。開き直しても「支払い済み」の印で出さない（renderPlans）
+      welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">${PAID_WAIT_TEXT}</p>`;
       return;
     }
     const items = UNLOCKED.map((u) => `<li>${u.href ? `<a href="${u.href}">${u.label}</a>` : u.label}</li>`).join("");
@@ -247,7 +276,6 @@ function maybeWelcome() {
       <p class="pro-welcome__title" role="status">Pro になった。ありがとう</p>
       <p class="pro-welcome__lead">いまから使えるもの</p>
       <ul class="pro-welcome__list">${items}</ul>`;
-    welcomeElement.scrollIntoView({ block: "start" });
   });
 }
 
