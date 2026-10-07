@@ -11,6 +11,7 @@ import { getStudyMix, adoptCloudRatio } from "./studyMix.js";
 import { buildActivityRow } from "./activity.js";
 import { pushUserItems, pullUserItems } from "./userItemsSync.js";
 import { clearLocalRecords } from "./backup.js";
+import { getGrowthLog } from "./growthLog.js";
 import { markVeteranIfReturning } from "./unlocks.js";
 import { COURSES, startCourse, ensureDefaultCourse } from "./course.js";
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
@@ -323,7 +324,7 @@ function hasPersonalRecords() {
     (Number(battle.wins) || 0) + (Number(battle.losses) || 0) + (Number(battle.draws) || 0) > 0 ||
     // 成長ログはホームを開いただけで 0 語の行が 1 つ書かれる（js/growthLog.js）。学んだ跡のある行だけ数える
     // （数えると、初めての人がログインしただけで「この端末の記録を足す」をたずね、キャンセルでログインが止まっていた）
-    (Array.isArray(json("spelldash_growth_log", [])) && json("spelldash_growth_log", []).some((row) => row && (row.active === true || Number(row.learned) > 0 || Number(row.mastered) > 0))) ||
+    getGrowthLog().some((row) => row && (row.active === true || Number(row.learned) > 0 || Number(row.mastered) > 0)) ||
     nonEmpty(json("spelldash_daily_set", {}).history ?? [])
   );
 }
