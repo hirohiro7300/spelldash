@@ -200,3 +200,15 @@ export function flushPaidPending(isProNow) {
     // 何もしない
   }
 }
+
+// 支払いを終えて戻ったが、まだ Pro に反映されていないか（印が 2 日以内）。加入画面は購入ボタンの代わりに「反映を待っている」を出す
+export function hasPaidPending() {
+  try {
+    const day = localStorage.getItem(PAID_PENDING_KEY);
+    if (!day) return false;
+    const age = (Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86400000;
+    return Number.isFinite(age) && age >= 0 && age <= 2;
+  } catch {
+    return false;
+  }
+}

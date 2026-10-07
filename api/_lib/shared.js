@@ -73,7 +73,8 @@ async function isProUser(token, userId) {
   } catch {
     pro = false;
   }
-  planCache.set(userId, { at: now, pro });
+  // Pro のときだけ覚える（無料を覚えると、加入した直後の 5 分間は無料の上限のまま「Pro について」を返してしまう）
+  if (pro) planCache.set(userId, { at: now, pro });
   return pro;
 }
 

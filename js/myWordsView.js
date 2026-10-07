@@ -9,7 +9,8 @@ import { icon } from "./icons.js";
 const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得" };
 
 export function initializeMyWordsView(onChange = () => {}) {
-  document.addEventListener("spelldash:plan", renderLimitState); // Pro の状態が後から届いたら上限（100 → 1,000）を引き直す
+  document.addEventListener("spelldash:plan", renderLimitState);
+  document.addEventListener("spelldash:billing", renderLimitState); // 受付中かが分かったら「Pro なら…」を付け直す // Pro の状態が後から届いたら上限（100 → 1,000）を引き直す
   const form = document.getElementById("myWordForm");
   const bulkButton = document.getElementById("myWordBulkAdd");
   if (!form) return;
@@ -141,6 +142,9 @@ function renderLimitState() {
   }
 }
 
+const MY_WORDS_FIRST = 50;
+let showAllMyWords = false;
+
 export function renderMyWordsList() {
   const container = document.getElementById("myWordList");
   const count = document.getElementById("myWordCount");
@@ -148,7 +152,7 @@ export function renderMyWordsList() {
 
   const list = getMyWords().slice().reverse();
   const stats = getWordStats();
-  if (count) count.textContent = `${list.length}語`;
+  if (count) count.textContent = `${list.length.toLocaleString("ja-JP")}語`;
   renderLimitState();
 
   if (list.length === 0) {
@@ -156,8 +160,10 @@ export function renderMyWordsList() {
     return;
   }
 
-  // 1 行＝1 語: 用語（太字）・意味 ・ 状態、右端に削除（40×40 のアイコン）。解説や別解は下の一覧（.gcard）に出る
-  container.innerHTML = list
+  // 1 行＝1 語: 用語（太字）・意味 ・ 状態、右端に削除（40×40 のアイコン）。解説や別解は下の一覧（.gcard）に出る。
+  // 多い人（Pro は 1,000 語まで）は新しい 50 語だけ描き、「すべて表示」で残りを出す（下の単語帳まで何万 px も送らせない）
+  const shown = showAllMyWords || list.length <= MY_WORDS_FIRST ? list : list.slice(0, MY_WORDS_FIRST);
+  container.innerHTML = shown
     .map((w) => {
       const concept = w.kind === "concept";
       const status = classifyWord(stats[concept ? `my-q-${w.en}` : `my-${w.en}`]);
@@ -168,7 +174,14 @@ export function renderMyWordsList() {
           <button type="button" class="my-word__remove" data-remove="${escapeHtml(w.en)}" aria-label="${escapeHtml(label)} を削除" title="削除">${icon("x", { size: 16 })}</button>
         </div>`;
     })
-    .join("");
+    .join("") +
+    (shown.length < list.length
+      ? `<button type="button" class="btn btn--sm btn--ghost my-words__more" id="myWordMore">すべて表示（${list.length.toLocaleString("ja-JP")}語）</button>`
+      : "");
+  container.querySelector("#myWordMore")?.addEventListener("click", () => {
+    showAllMyWords = true;
+    renderMyWordsList();
+  });
 }
 
 function escapeHtml(text) {

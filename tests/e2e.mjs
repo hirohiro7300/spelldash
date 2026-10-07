@@ -2835,6 +2835,7 @@ console.log("pro:");
     check("Pro: 未ログインでも価格が 2 つ出る（580 と 4,800）", loaded && plans.includes("580") && plans.includes("4,800"), plans);
     const terms = await text(page, ".pro-terms");
     check("Pro: 未ログインは年額ボタンを出さず、申し込みの前に（料金・更新・解約・支払い）をボタンの直下に", (await page.$("#proCheckoutYear")) === null && terms.includes("月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）（税込）") && terms.includes("自動で更新") && terms.includes("お支払いの管理") && terms.includes("Stripe"), terms);
+    check("Pro: 見出しの直下（最初の画面）に料金と「いつでも解約できる」の 1 行", (await text(page, "#proPrice")) === "月額 ¥580 ／ 年額 ¥4,800（税込）。いつでも解約できる。" && (await page.$eval("#proPrice", (el) => el.getBoundingClientRect().bottom < window.innerHeight)), await text(page, "#proPrice"));
     check("Pro: h1 は「単語の学習は無料のまま」（「学習の核」は使わない）", (await text(page, "h1")).includes("単語の学習は無料のまま") && !(await page.content()).includes("学習の核"), await text(page, "h1"));
     check("Pro: 比較表は 5 項目", (await page.$$("#proCompare tbody tr")).length === 5);
     check("Pro: 未ログインは #proState が空で、#proCheckoutMonth は無く #proLoginStart「ログインして始める」", (await text(page, "#proState")) === "" && (await page.$("#proCheckoutMonth")) === null && (await text(page, "#proLoginStart")).includes("ログインして始める"), await text(page, "#proState"));
@@ -2850,7 +2851,7 @@ console.log("pro:");
     check("動線: ログインから戻ると加入画面へ戻り「ログインした。月額か年額を選ぶ。」", back && resumed && !page.url().includes("resume="), `${page.url()} / ${await text(page, "#proMessage")}`);
     check("動線: 戻ったら加入の途中の印を消し、月額のボタンに焦点", (await page.evaluate(() => localStorage.getItem("spelldash_pro_intent"))) === null && (await page.evaluate(() => document.activeElement?.id)) === "proCheckoutMonth");
     check("Pro: ページ内に特商法のリンク", (await page.$$('a[href="./tokushoho.html"]')).length >= 2);
-    check("Pro: よくある質問は 4 つ（「いつでも解約できますか」は料金の注記へ）、常体", (await page.$$("details.pro-faq")).length === 4 && !(await page.content()).includes("いつでも解約できますか") && !(await page.$$eval("details.pro-faq", (els) => els.map((e) => e.textContent).join(""))).includes("ますか"), String((await page.$$("details.pro-faq")).length));
+    check("Pro: よくある質問は 3 つ（「アプリ版でも使える」はアプリのログインができるまで出さない）、常体", (await page.$$("details.pro-faq")).length === 3 && !(await page.content()).includes("アプリ版でも使える") && !(await page.content()).includes("いつでも解約できますか") && !(await page.$$eval("details.pro-faq", (els) => els.map((e) => e.textContent).join(""))).includes("ますか"), String((await page.$$("details.pro-faq")).length));
     check("Pro: 未ログインでエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
@@ -2898,8 +2899,8 @@ console.log("pro:");
   {
     const page = await newPage();
     await page.goto(BASE + "/pro.html?pro=done", { waitUntil: "networkidle" });
-    const told = await waitUntil(async () => (await text(page, "#proWelcome")).includes("お支払いは完了。加入したアカウントでログインすると Pro になる"), 5000);
-    check("動線: 加入直後にログインが切れていても「お支払いは完了。…ログインすると Pro になる」", told, await text(page, "#proWelcome"));
+    const told = await waitUntil(async () => (await text(page, "#proWelcome")).includes("手続きは完了。加入したアカウントでログインすると Pro になる"), 5000);
+    check("動線: 加入直後にログインが切れていても「手続きは完了。…ログインすると Pro になる」", told, await text(page, "#proWelcome"));
     await page.goto(BASE + "/profile.html?pro=done", { waitUntil: "networkidle" });
     const forwarded = await waitUntil(() => page.url().includes("/pro.html"), 5000);
     check("動線: 旧い戻り先（profile.html?pro=done）は加入画面へ移る", forwarded, page.url());
@@ -2925,7 +2926,7 @@ console.log("pro:");
     const free = await newPage({ storage: { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week), spelldash_placement: "done" } });
     await free.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await waitUntil(async () => (await text(free, "#weeklyReport")).includes("週間レポート"), 5000);
-    check("動線: 7 日以上学んだ free の週間レポートに「Pro なら、…」の 1 行", (await text(free, "#weeklyReport .weekly__pro")).startsWith("Pro なら、シールド 3 枚") && (await free.$('#weeklyReport .weekly__pro a[href="./pro.html"]')) !== null, await text(free, "#weeklyReport"));
+    check("動線: 7 日以上学んだ free の週間レポートに「Pro なら、…」の 1 行", (await text(free, "#weeklyReport .weekly__pro")).startsWith("Pro なら、マイ単語帳 1,000語・連続記録の修復。") && (await free.$('#weeklyReport .weekly__pro a[href="./pro.html"]')) !== null, await text(free, "#weeklyReport"));
     await free.close();
 
     const short = await newPage({ storage: { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week.slice(-3)), spelldash_placement: "done" } });
@@ -2941,14 +2942,48 @@ console.log("pro:");
     await pro.close();
   }
 
+  // 2d. 支払い遅延（past_due）: 「ご利用中」と過ぎた日付ではなく、カードの更新と期限を言う。ボタンは「カードを更新する」
+  {
+    const page = await newPage({ storage: proStorage({ status: "past_due", current_period_end: isoDaysFromNow(-1) }) });
+    await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    const told = await waitUntil(async () => (await text(page, "#proState")).includes("お支払いが確認できていない"), 5000);
+    check("Pro: past_due は「お支払いが確認できていない。M/D までにカードを更新しないと無料に戻る」と「カードを更新する」", told && (await text(page, "#proState")).includes("までにカードを更新しないと無料に戻る") && (await text(page, "#proPortal")) === "カードを更新する", await text(page, "#proState"));
+    await page.close();
+  }
+
+  // 2e. 支払い後に開き直した（まだ Pro に反映されていない）: 購入ボタンを出さない（二重の申し込みを防ぐ）
+  {
+    const page = await newPage({ storage: { spelldash_test_session: "1" } });
+    await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await page.evaluate(() => localStorage.setItem("spelldash_funnel_paid", new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)));
+    await page.reload({ waitUntil: "networkidle" });
+    const waiting = await waitUntil(async () => (await text(page, "#proPlans")).includes("手続きは完了。反映を待っている。もう一度申し込まない"), 5000);
+    check("Pro: 支払い後に開き直してもまだ反映されていなければ、購入ボタンの代わりに「反映を待っている。もう一度申し込まない」", waiting && (await page.$("#proCheckoutMonth")) === null, await text(page, "#proPlans"));
+    await page.close();
+  }
+
+  // 2f. 受付前（キャッシュが閉じている）: 上限の文に Pro の話とリンクを出さない
+  {
+    const hundred = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ en: `word${i}`, ja: `語${i}` })));
+    const page = await newPage({ storage: { spelldash_billing_open: JSON.stringify({ open: false, at: Date.now() }), spelldash_my_words: hundred } });
+    await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
+    const status = await waitUntil(async () => (await text(page, "#myWordStatus")).includes("100語まで"), 5000);
+    check("Pro: 受付前は上限の文が「無料で追加できるのは100語まで。」だけ（Pro の話もリンクも無い）", status && (await text(page, "#myWordStatus")) === "無料で追加できるのは100語まで。" && (await page.$('#myWordStatus a[href="./pro.html"]')) === null, await text(page, "#myWordStatus"));
+    check("マイ単語帳: 100 語でも描くのは新しい 50 行と「すべて表示（100語）」", (await page.$$("#myWordList .my-word")).length === 50 && (await text(page, "#myWordMore")) === "すべて表示（100語）");
+    await page.click("#myWordMore");
+    check("マイ単語帳: 「すべて表示」で 100 行", await waitUntil(async () => (await page.$$("#myWordList .my-word")).length === 100, 3000));
+    await page.close();
+  }
+
   // 3. Pro（active）: pro.html は CTA 無し・ご利用中・お支払いの管理。profile.html のプラン行も Pro
   {
     const page = await newPage({ storage: proStorage() });
     await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
-    const shown = await waitUntil(async () => (await text(page, "#proState")).includes("ご利用中"), 5000);
-    check("Pro: 加入済みは #proState に「ご利用中」と次回の更新", shown && (await text(page, "#proState")).includes("次回の更新"), await text(page, "#proState"));
+    const shown = await waitUntil(async () => (await text(page, "#proState")).includes("Pro（次回の更新"), 5000);
+    check("Pro: 加入済みは #proState に「Pro（次回の更新 …）」（プロフィールのプラン行と同じ文）", shown, await text(page, "#proState"));
+    check("Pro: 加入済みには比較表と料金の 1 行を出さず、見出しは「プラン」", !(await visible(page, "#proCompareSection")) && !(await visible(page, "#proPrice")) && (await text(page, "#proPlansTitle")) === "プラン");
     check("Pro: 加入済みには CTA を出さない", (await page.$("#proCheckoutMonth")) === null && (await page.$("#proCheckoutYear")) === null);
-    check("Pro: 加入済みには #proPortal「お支払いの管理」", (await text(page, "#proPortal")).includes("お支払いの管理"));
+    check("Pro: 加入済みには #proPortal「解約・お支払いの管理」", (await text(page, "#proPortal")) === "解約・お支払いの管理", await text(page, "#proPortal"));
     await page.click("#proPortal");
     const portal = await waitUntil(() => /\/profile\.html$/.test(page.url()), 5000);
     check("Pro: お支払いの管理 → Portal（偽: profile.html）", portal, page.url());
@@ -3329,7 +3364,8 @@ console.log("sync (2nd device):");
   // 先頭 10 語は端末 A が今日のセットで思い出した語（今日の day 行 set=true と矛盾しないように）
   const wpRow = (w, i) => {
     const ago = i < 10 ? 0 : 1;
-    const at = i < 10 ? new Date(Date.now() - 60 * 60 * 1000).toISOString() : isoDaysAgo(1);
+    // 「今日」の記録は 1 時間前。ただし日付が変わって 1 時間以内に走っても今日になるよう、今日の 0:01 より前にしない
+    const at = i < 10 ? new Date(Math.max(Date.now() - 60 * 60 * 1000, new Date().setHours(0, 1, 0, 0))).toISOString() : isoDaysAgo(1);
     return {
       user_id: SYNC_USER, word_id: w.id, play_count: 2, correct_count: 2, typing_miss: 0, recall_fail: 0, clean_correct_streak: 2,
       mastered: i >= 10 && i < 15, mastered_at: i >= 10 && i < 15 ? isoDaysAgo(1) : null, last_played: at, next_review_at: isoDaysAgo(-3),

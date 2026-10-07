@@ -27,11 +27,12 @@ html[data-theme] .ai-upgrade,
 html[data-theme] .trend-range__hint a,
 html[data-theme] .streak-repair a,
 html[data-theme] .setting-hint a,
-html[data-theme] .pro-legal a,
+html[data-theme] .weekly__pro a,
 html[data-theme] .pro-faq a {
   color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 2px;
+  white-space: nowrap; /* 「Pro について」を語の途中で折らない */
 }
 
 html[data-theme] .pro-link:hover,
@@ -39,7 +40,7 @@ html[data-theme] .ai-upgrade:hover,
 html[data-theme] .trend-range__hint a:hover,
 html[data-theme] .streak-repair a:hover,
 html[data-theme] .setting-hint a:hover,
-html[data-theme] .pro-legal a:hover,
+html[data-theme] .weekly__pro a:hover,
 html[data-theme] .pro-faq a:hover {
   color: var(--signal-ink);
 }
@@ -321,10 +322,21 @@ html[data-theme] .pro-faq p {
   color: var(--ink-2);
 }
 
-html[data-theme] .pro-legal {
-  margin: 32px 0 0;
-  font-size: 12px;
-  color: var(--ink-3);
+/* 見出しの直下の料金の 1 行（最初の画面で「いくらで、いつでもやめられるか」） */
+html[data-theme] .pro-price {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+html[data-theme] .pro-price[hidden] {
+  display: none;
+}
+
+/* マイ単語帳の「すべて表示」 */
+html[data-theme] .my-words__more {
+  margin-top: 8px;
 }
 
 /* ===== プロフィール: プラン行・テーマの案内 ===== */

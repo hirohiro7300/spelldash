@@ -1,4 +1,4 @@
-# SpellDash 現状スナップショット（2026-10-02）
+# SpellDash 現状スナップショット（2026-10-07）
 
 > 2026-07-17 版は docs/archive/STATUS_2026-07-17.md に移した（当時の設計論点と、9 月までの追記の履歴はそちら）。
 > 変更の履歴は docs/CHANGELOG.md、次にやることは docs/BACKLOG.md、**創業者側の作業と判断は docs/FOUNDER_TODO.md**。
@@ -28,6 +28,11 @@
 - entitlement: `subscriptions` 行が active／trialing／past_due かつ 期限＋3 日。クライアントは `js/plan.js` が `spelldash_plan` にキャッシュして同期判定
 - 特典: マイ単語帳 100 → 1,000 語、AI の 1 日の回数（2／3 → 20／60）、推移 30 → 90 日、シールド 3 枚＋修復、テーマ「紙」「藍」
 - 法務: `/terms.html`、`/tokushoho.html`（［ ］は創業者が記入。それまで noindex）、privacy の「お支払い情報」
+- 加入までの動線（docs/SPEC_FUNNEL.md）: フッターの「SpellDash Pro」と週間レポートの 1 行（受付中・7 日以上・Pro でない人だけ）、上限に当たった 5 か所の「Pro について」、加入ボタンの直下の「申し込みの前に」（料金・更新・解約・支払い）、加入の途中でログインしても加入画面へ戻る、加入直後に使えるようになったもの。完了パネル・道・はちゃんには Pro を出さない
+- 計測: `funnel_events`（端末のランダムな番号と段階だけ）と管理画面の「Pro までの動線」（docs/SQL_FUNNEL.md、**SQL は創業者側**）
+
+### 2 台で使う（Batch 48）
+- ログインすると、取り込みが済むまで送らない（空の端末の値でクラウドを上書きしない）。端末の持ち主を覚え、別のアカウントの記録があれば置き換えるかをたずねる。XP は 2 台の増分を足す。現在地（コース・セクション）をクラウドから採る。今日のぶんと成長ログは user_items の day 行で合わせる（docs/SQL_USER_ITEMS.md の 1b. が要る）
 
 ### 運営
 - **CRM** `/admin.html`（創業者専用。`ADMIN_EMAILS` で権限）: 全プレイヤーのセグメント（活動中／離れかけ／離脱／登録のみ）・活動・覚えた語・プラン、詳細、メモ／タグ／ピン、CSV。docs/CRM.md
@@ -45,7 +50,7 @@
 
 ## 4. 品質・流れ
 
-- E2E `npm test`（playwright-core、Supabase はスタブ、約 6 分）: **649 件**。検証 `node scripts/validate-words.mjs`。CI は PR と main で検証を実行
+- E2E `npm test`（playwright-core、Supabase はスタブ、約 6 分）: **656 件**。検証 `node scripts/validate-words.mjs`。CI は PR と main で検証を実行
 - 本番反映: dev ブランチ → PR → main → Vercel（2 プロジェクトとも success を確認）。条件は E2E 全件＋validate OK。Supabase の SQL・外部への告知は創業者側
 - アクセシビリティ: キーボードだけで主線を一周できる（Tab の移動、モーダルの焦点管理、スキップリンク、aria-live、ラベル）。コントラストは AA（ink-3 5.1:1）
 - スマホ: 指の端末では入力欄 16px（自動ズームなし）、押せるものは 40〜44px。UI の見直しは 6 回（主線 78 件・主線以外 70 件・Battle／管理画面／旧 CSS 49 件・初回 10 分 30 件・2〜8 日目 24 件・2〜4 週目 34 件）を監査 → 反映 → 査読で通した。game.css の旧パレットは 0
@@ -60,10 +65,11 @@
 
 ## 6. 数字
 
-- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、E2E 649、マージ済み PR 117
-- **ユーザー系の数字はまだ無い**（10 人ローンチ前。CRM と activity_days は受け皿として用意済み）
+- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、E2E 656、マージ済み PR 120
+- **ユーザー系の数字はまだ無い**（10 人ローンチ前。CRM・activity_days・funnel_events は受け皿として用意済み）
 
 ## 7. 次の候補（docs/BACKLOG.md）
 
-- 創業者の判断待ち: 見出し語 18 件、カタカナ訳 225 語の方針、年額、AI の無料回数（docs/FOUNDER_TODO.md F）
-- コード側の候補: UI の残り（docs/BACKLOG.md F13 の残り）、単語帳の分野パック見出し、マイ単語帳の端末間同期（SQL が要る）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）
+- 創業者の判断待ち: **Pro の次の中身と価格（docs/PRO_VALUE.md §6。推奨は受験日から逆算した計画・¥580 で開始）**、無料期間、見出し語 18 件、カタカナ訳 225 語の方針、AI の無料回数（docs/FOUNDER_TODO.md F）
+- 創業者側の作業で止まっているもの: Supabase の復旧、Pro の受付（Stripe・特商法の記入）、SQL（SQL_BILLING・SQL_USER_ITEMS・SQL_FUNNEL・SQL_FEEDBACK）
+- コード側の候補: 加入までの体験の点検（Batch 51）、UI の残り（docs/BACKLOG.md F13・F15 の残り）、word_progress の列追加（2 台目の履歴・「知ってた」）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）

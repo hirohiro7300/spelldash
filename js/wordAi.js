@@ -1,3 +1,4 @@
+import { canOfferPro } from "./proFunnel.js";
 import { apiUrl } from "./appEnv.js";
 import { supabase } from "./supabase.js";
 import { icon } from "./icons.js";
@@ -124,7 +125,10 @@ function renderAiButton(container, word, onDone) {
     const result = await requestWordAi(word);
     if (!result.ok) {
       // Pro の案内は文の中に括弧で入れる（1 本の流し込み: 390 でリンクが語の途中で折れない）
-      container.innerHTML = `<span class="word-ai__error">${escapeHtml(result.message)}${result.upgrade ? '（<a class="ai-upgrade" href="./pro.html" data-funnel="ai">Pro について</a>）' : ""}</span>`;
+      // 受付前・アプリでは Pro の話をしない（サーバーの文の「Pro なら…」も落とす）
+      const offer = result.upgrade && canOfferPro();
+      const message = offer ? result.message : String(result.message).replace(/Pro なら[^。]*。?$/, "");
+      container.innerHTML = `<span class="word-ai__error">${escapeHtml(message)}${offer ? '（<a class="ai-upgrade" href="./pro.html" data-funnel="ai">Pro について</a>）' : ""}</span>`;
       return;
     }
     container.innerHTML = wordAiHtml(word.id);

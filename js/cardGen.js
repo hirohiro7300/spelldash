@@ -1,3 +1,4 @@
+import { canOfferPro } from "./proFunnel.js";
 import { apiUrl } from "./appEnv.js";
 import { supabase } from "./supabase.js";
 import { addMyConcept, validateConcept, getMyWords } from "./myWords.js";
@@ -93,7 +94,8 @@ export function initializeCardGen(onChange = () => {}) {
     run.textContent = "カードを作る";
     if (!result.ok) {
       cards = [];
-      return setStatus(result.message, true, { upgrade: result.upgrade === true });
+      const offer = result.upgrade === true && canOfferPro(); // 受付前・アプリでは Pro の話をしない
+      return setStatus(offer ? result.message : String(result.message).replace(/Pro なら[^。]*。?$/, ""), true, { upgrade: offer });
     }
     cards = result.cards;
     if (cards.length === 0) return setStatus("用語が見つからなかった。説明文や会話文を貼る", true);
