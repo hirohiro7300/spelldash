@@ -91,7 +91,7 @@ export function initializeMyWordsView(onChange = () => {}) {
   document.getElementById("myWordList")?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-remove]");
     if (!button) return;
-    removeMyWord(button.dataset.remove);
+    removeMyWord(button.dataset.remove, button.dataset.removeKind);
     renderMyWordsList();
     onChange();
   });
@@ -145,11 +145,13 @@ function renderLimitState() {
 const MY_WORDS_FIRST = 50;
 let showAllMyWords = false;
 let listBelow = false; // 下の単語帳がマイ単語帳を出している（js/listView.js）: ここでは一覧を描かず、下を指す
+let listBelowFiltered = false; // 下は検索・状態で絞り込んでいる（全部は出ていない）
 
-// 下の単語帳がマイ単語帳を出しているか（同じ語を 2 回並べない）
-export function setMyWordsListBelow(value) {
-  if (listBelow === Boolean(value)) return;
+// 下の単語帳がマイ単語帳を出しているか（同じ語を 2 回並べない）。filtered: 下を絞り込んでいる
+export function setMyWordsListBelow(value, { filtered = false } = {}) {
+  if (listBelow === Boolean(value) && listBelowFiltered === Boolean(filtered)) return;
   listBelow = Boolean(value);
+  listBelowFiltered = Boolean(filtered);
   renderMyWordsList();
 }
 
@@ -168,7 +170,7 @@ export function renderMyWordsList() {
     return;
   }
   if (listBelow) {
-    container.innerHTML = `<p class="muted my-words__below">追加した ${list.length.toLocaleString("ja-JP")}語は下の一覧に。消すときは語の右の ×</p>`;
+    container.innerHTML = `<p class="muted my-words__below">追加した ${list.length.toLocaleString("ja-JP")}語は下の一覧に${listBelowFiltered ? "（いまは絞り込み中。検索と「すべて」で全部出る）" : ""}。消すときは語の右の ×</p>`;
     return;
   }
 
@@ -183,7 +185,7 @@ export function renderMyWordsList() {
       return `
         <div class="my-word${concept ? " my-word--concept" : ""}">
           <span class="my-word__text"><b class="my-word__en${concept ? "" : " mono"}">${escapeHtml(label)}</b> <span class="my-word__ja">${escapeHtml(concept ? w.q : w.ja)}</span> ・ <span class="my-word__status my-word__status--${status}">${STATUS_LABEL[status]}</span></span>
-          <button type="button" class="my-word__remove" data-remove="${escapeHtml(w.en)}" aria-label="${escapeHtml(label)} を削除" title="削除">${icon("x", { size: 16 })}</button>
+          <button type="button" class="my-word__remove" data-remove="${escapeHtml(w.en)}" data-remove-kind="${concept ? "concept" : "word"}" aria-label="${escapeHtml(label)} を削除" title="削除">${icon("x", { size: 16 })}</button>
         </div>`;
     })
     .join("") +

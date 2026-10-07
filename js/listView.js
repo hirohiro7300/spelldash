@@ -6,7 +6,7 @@ import { setupUnloadSync } from "./sync.js";
 import { initWordStore, getCategories, getPackCatalog, isConceptWord } from "./wordStore.js";
 import { setPackEnabled } from "./packs.js";
 import { openFeedback } from "./feedback.js";
-import { initializeMyWordsView, renderMyWordsList, setMyWordsListBelow } from "./myWordsView.js";
+import { initializeMyWordsView, setMyWordsListBelow } from "./myWordsView.js";
 import { removeMyWord } from "./myWords.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
@@ -272,7 +272,7 @@ function render() {
   const label = getCategories().find((c) => c.id === categoryId)?.label ?? categoryId;
   // マイ単語帳を一覧で見ているときは、上の「マイ単語帳」の行の一覧を畳む（同じ語を 2 回並べない）。削除は下のカードの ×
   const showingMy = categoryId === "my";
-  setMyWordsListBelow(showingMy);
+  setMyWordsListBelow(showingMy, { filtered: Boolean(keyword) || statusFilter !== "all" });
 
   // 要約: カテゴリ名は残す（切り替えの確認に使う）。「覚えた」は 0 を並べない
   if (summary) summary.textContent = `${label} ・ ${groups.length}ジャンル ・ ${total}語${learned > 0 ? ` ・ 覚えた ${learned}` : ""}`;
@@ -338,22 +338,20 @@ function render() {
   bindNoteEditors(container, render);
 }
 
-// マイ単語帳のカードの ×（js/myWords.js removeMyWord。id は my-<en> / my-q-<en>）
+// マイ単語帳のカードの ×（js/myWords.js removeMyWord。英単語と場面カードは同じ鍵になりうるので種類も渡す）。
+// 上の一覧は spelldash:mywords で描き直される（js/myWordsView.js）。語が 0 になってもカテゴリはマイ単語帳のまま
 document.getElementById("listBody")?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-my-remove]");
   if (!button) return;
-  removeMyWord(button.dataset.myRemove);
-  renderMyWordsList();
-  const categories = getCategories();
-  if (!categories.some((c) => c.id === categoryId)) categoryId = categories[0]?.id ?? "all"; // 最後の 1 語を消した
-  renderCategorySelect(categories);
+  removeMyWord(button.dataset.myRemove, button.dataset.myKind);
+  renderCategorySelect(getCategories());
   render();
 });
 
+// 保存してある鍵（toWordObjects: 英単語は en、場面カードは key）。マイ単語帳の語でなければ null
 function myWordKey(word) {
-  if (word.id?.startsWith("my-q-")) return word.id.slice(5);
-  if (word.id?.startsWith("my-")) return word.id.slice(3);
-  return null;
+  if (word.category !== "my") return null;
+  return word.kind === "concept" ? word.key : word.en;
 }
 
 function cardHtml(word, stat, { removable = false } = {}) {
@@ -370,7 +368,7 @@ function cardHtml(word, stat, { removable = false } = {}) {
           ? `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`
           : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}
         <span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span>
-        ${removable && myWordKey(word) ? `<button type="button" class="my-word__remove gcard__remove" data-my-remove="${escapeHtml(myWordKey(word))}" aria-label="${term} を削除" title="削除">${icon("x", { size: 16 })}</button>` : ""}
+        ${removable && myWordKey(word) ? `<button type="button" class="my-word__remove gcard__remove" data-my-remove="${escapeHtml(myWordKey(word))}" data-my-kind="${word.kind === "concept" ? "concept" : "word"}" aria-label="${term} を削除" title="削除">${icon("x", { size: 16 })}</button>` : ""}
       </div>
       ${concept
         ? `<p class="gcard__q">${escapeHtml(word.q)}</p>

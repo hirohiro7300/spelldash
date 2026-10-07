@@ -144,8 +144,10 @@ export function addMyWord(en, ja) {
   return { ok: true, en: v.en, ja: v.ja };
 }
 
-export function removeMyWord(en) {
-  const list = getMyWords().filter((w) => w.en !== en);
+// kind: "concept"（場面カード）／"word"（英単語）。省略時は鍵が同じものをすべて（英単語と場面カードの鍵は重なりうる）
+export function removeMyWord(en, kind) {
+  const same = (w) => w.en === en && (!kind || (w.kind === "concept") === (kind === "concept"));
+  const list = getMyWords().filter((w) => !same(w));
   save(list);
   touchItem("my_word", en, true); // 墓標: 他の端末からも消える
 }
