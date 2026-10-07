@@ -59,14 +59,16 @@ export async function verifyUser(authorization) {
 const usage = new Map();
 
 // 本人が Pro かどうか（ユーザーごと 5 分のメモリキャッシュ。読めなければ無料として扱う）。
-// 無料も覚える。加入した直後に無料の上限で断りそうになったときは、reject がキャッシュを使わずに読み直す（fresh）
+// 無料も覚える。無料の上限で断る前は、30 秒より古い答えなら読み直す（fresh。加入した直後の人を無料の上限で断らない。
+// 上限の人が連打しても、読み直すのは 30 秒に 1 回まで）
 const PLAN_CACHE_MS = 5 * 60 * 1000;
+const PLAN_FRESH_MS = 30 * 1000;
 const planCache = new Map();
 
 async function isProUser(token, userId, { fresh = false } = {}) {
   const now = Date.now();
   const cached = planCache.get(userId);
-  if (!fresh && cached && now - cached.at < PLAN_CACHE_MS) return cached.pro;
+  if (cached && now - cached.at < (fresh ? PLAN_FRESH_MS : PLAN_CACHE_MS)) return cached.pro;
   let pro = false;
   try {
     const billing = await import("./billing.js");
@@ -145,7 +147,7 @@ export async function reject(req, res, { scope, limit, proLimit = limit }) {
   }
   const token = bearerToken(req.headers.authorization);
   let pro = await isProUser(token, userId);
-  // 無料の上限で断る前に一度だけ読み直す（加入した直後に、覚えていた「無料」で断らない）
+  // 無料の上限で断る前に読み直す（加入した直後に、覚えていた「無料」で断らない。30 秒以内に読んでいればそのまま）
   if (!pro && proLimit > limit && usedToday(scope, userId) >= limit) pro = await isProUser(token, userId, { fresh: true });
   const max = pro ? proLimit : limit;
   if (overDailyLimit(scope, userId, max)) {

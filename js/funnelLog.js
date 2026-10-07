@@ -202,12 +202,30 @@ function readPaidPending() {
   return { day: raw, user: null };
 }
 
-// Pro になったら（全ページ。spelldash:plan のたびと読み込み時）「反映を待っている」の印は消し、checkout_done を送る。
-// 送れなかったぶん（テーブル未作成・オフライン）は PAID_SEND_KEY に残して次で送り直す。印は送れたかに関係なく消す
-export function flushPaidPending(isProNow) {
+// 加入画面がログインを知ったら、持ち主の無い印をそのアカウントに付ける（?pro=done で戻ったときはまだ分からないことがある）
+export function bindPaidPending(userId) {
   try {
     const pending = readPaidPending();
-    if (pending && isProNow) {
+    if (pending && !pending.user && userId) localStorage.setItem(PAID_PENDING_KEY, JSON.stringify({ day: pending.day, user: userId }));
+  } catch {
+    // 何もしない
+  }
+}
+
+const PAID_STALE_DAYS = 30; // これより古い印は Pro にならなかったものとして捨てる
+
+function paidAgeDays(day) {
+  return (Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86400000;
+}
+
+// Pro になったら（全ページ。spelldash:plan のたび）、そのアカウントの印を消して checkout_done を送る。
+// 別のアカウントの印には触らない（同じブラウザで別の人が Pro でログインしても、払った人の印を残す）。
+// 送れなかったぶん（テーブル未作成・オフライン）は PAID_SEND_KEY に残して次で送り直す。印は送れたかに関係なく消す
+export function flushPaidPending(isProNow, userId) {
+  try {
+    const pending = readPaidPending();
+    if (pending && !(paidAgeDays(pending.day) <= PAID_STALE_DAYS)) localStorage.removeItem(PAID_PENDING_KEY);
+    else if (pending && isProNow && userId && (!pending.user || pending.user === userId)) {
       localStorage.removeItem(PAID_PENDING_KEY);
       localStorage.setItem(PAID_SEND_KEY, pending.day);
     }
@@ -221,23 +239,21 @@ export function flushPaidPending(isProNow) {
   }
 }
 
-// 支払いを終えて戻ったが、まだ Pro に反映されていないか（このアカウントの印が 2 日以内）。加入画面は購入ボタンの代わりに「反映を待っている」を出す。
-// ログインしていなければ false（ログインのボタンを出す）。印にアカウントが無ければ、いまのアカウントのものとして付ける
-export function hasPaidPending(userId) {
+// 2 日以内の支払いの印があれば { user }（user は持ち主。まだ分からなければ null）、なければ null
+export function freshPaidPending() {
   try {
     const pending = readPaidPending();
-    if (!pending || !userId) return false;
-    const age = (Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${pending.day}T00:00:00Z`)) / 86400000;
-    if (!(Number.isFinite(age) && age >= 0 && age <= 2)) {
-      localStorage.removeItem(PAID_PENDING_KEY);
-      return false;
-    }
-    if (!pending.user) {
-      localStorage.setItem(PAID_PENDING_KEY, JSON.stringify({ day: pending.day, user: userId }));
-      return true;
-    }
-    return pending.user === userId;
+    if (!pending) return null;
+    const age = paidAgeDays(pending.day);
+    return Number.isFinite(age) && age >= 0 && age <= 2 ? { user: pending.user } : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+// このアカウントが、支払いを終えて戻ったがまだ Pro に反映されていないか。加入画面は購入ボタンの代わりに「反映を待っている」を出す。
+// ログインしていなければ false（ログインのボタンを出す）。持ち主がまだ分からない印は、いまのアカウントのものとみなす
+export function hasPaidPending(userId) {
+  const pending = freshPaidPending();
+  return Boolean(pending && userId && (!pending.user || pending.user === userId));
 }

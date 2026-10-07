@@ -2,7 +2,7 @@ import { initFeedback } from "./feedback.js";
 import { initOfflineBanner } from "./offline.js";
 import { renderFooterPro } from "./proFunnel.js";
 import { trackProEntries, flushFunnelQueue, trackFirstVisit, flushPaidPending } from "./funnelLog.js";
-import { isPro } from "./plan.js";
+import { isPro, getPlan } from "./plan.js";
 
 export function setFooterYear() {
   const footerYearElement = document.getElementById("footerYear");
@@ -21,5 +21,5 @@ export function setFooterYear() {
   trackFirstVisit();
   // 支払いの完了は、サーバーで確かめた Pro（spelldash:plan。js/plan.js の refreshPlan が投げる）だけで数える。
   // 読み込み時のキャッシュでは数えない（期限切れ間近の past_due の人が払い直した直後に、確定前で数えてしまうため）
-  document.addEventListener("spelldash:plan", () => flushPaidPending(isPro()));
+  document.addEventListener("spelldash:plan", () => flushPaidPending(isPro(), getPlan().user));
 }
