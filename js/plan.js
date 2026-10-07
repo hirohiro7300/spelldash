@@ -178,7 +178,7 @@ export function planLabel(plan = getPlan()) {
   const date = formatPlanDate(plan.periodEnd);
   if (plan.status === "past_due") {
     const grace = graceEndDate(plan);
-    return grace ? `お支払いが確認できていない。${grace} までにカードを更新しないと無料に戻る` : "お支払いが確認できていない。カードを更新しないと無料に戻る";
+    return grace ? `Pro（お支払いが確認できていない。${grace} までにカードを更新しないと無料に戻る）` : "Pro（お支払いが確認できていない。カードを更新しないと無料に戻る）";
   }
   if (plan.cancelAtPeriodEnd) return date ? `Pro（解約予定・${date} まで使える）` : "Pro（解約予定）";
   if (plan.status === "trialing") return date ? `Pro の無料期間中（${date} から有料で自動更新）` : "Pro の無料期間中";

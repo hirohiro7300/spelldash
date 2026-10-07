@@ -3364,7 +3364,8 @@ console.log("sync (2nd device):");
   // 先頭 10 語は端末 A が今日のセットで思い出した語（今日の day 行 set=true と矛盾しないように）
   const wpRow = (w, i) => {
     const ago = i < 10 ? 0 : 1;
-    const at = i < 10 ? new Date(Date.now() - 60 * 60 * 1000).toISOString() : isoDaysAgo(1);
+    // 「今日」の記録は 1 時間前。ただし日付が変わって 1 時間以内に走っても今日になるよう、今日の 0:01 より前にしない
+    const at = i < 10 ? new Date(Math.max(Date.now() - 60 * 60 * 1000, new Date().setHours(0, 1, 0, 0))).toISOString() : isoDaysAgo(1);
     return {
       user_id: SYNC_USER, word_id: w.id, play_count: 2, correct_count: 2, typing_miss: 0, recall_fail: 0, clean_correct_streak: 2,
       mastered: i >= 10 && i < 15, mastered_at: i >= 10 && i < 15 ? isoDaysAgo(1) : null, last_played: at, next_review_at: isoDaysAgo(-3),
