@@ -2973,6 +2973,17 @@ console.log("pro:");
     await page.close();
   }
 
+  // 2e''. 別のアカウントの支払いの印が残っているところへ、もう Pro の人がログインした: 印を消さない（払った人の二重の申し込みを防ぐ）
+  {
+    const day = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const page = await newPage({ storage: proStorage({}, { spelldash_funnel_paid: JSON.stringify({ day, user: "someone-else" }) }) });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    const mark = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_funnel_paid") || "null"));
+    check("Pro: 別のアカウントの支払いの印は、Pro の人が開いても消さない", mark?.user === "someone-else", JSON.stringify(mark));
+    await page.close();
+  }
+
   // 2f. 受付前（キャッシュが閉じている）: 上限の文に Pro の話とリンクを出さない
   {
     const hundred = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ en: `word${i}`, ja: `語${i}` })));

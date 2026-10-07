@@ -41,7 +41,8 @@ export function getPlan(now = Date.now()) {
     interval: cached.interval === "month" || cached.interval === "year" ? cached.interval : null,
     periodEnd: typeof cached.periodEnd === "string" ? cached.periodEnd : null,
     cancelAtPeriodEnd: cached.cancelAtPeriodEnd === true,
-    checkedAt: typeof cached.checkedAt === "string" ? cached.checkedAt : null
+    checkedAt: typeof cached.checkedAt === "string" ? cached.checkedAt : null,
+    user: typeof cached.user === "string" ? cached.user : null // 読み直したときのアカウント（支払いの印の持ち主と比べる）
   };
   return { pro: isProRow(plan, now), ...plan };
 }
@@ -60,8 +61,9 @@ function emit() {
   }
 }
 
-function savePlan(row) {
+function savePlan(row, user) {
   const plan = {
+    user: typeof user === "string" ? user : null,
     status: typeof row?.status === "string" ? row.status : "none",
     interval: row?.plan_interval === "month" || row?.plan_interval === "year" ? row.plan_interval : null,
     periodEnd: typeof row?.current_period_end === "string" ? row.current_period_end : null,
@@ -100,7 +102,7 @@ export async function refreshPlan() {
 
   // 読めなかった（テーブル無し・オフライン等）ときは既存のキャッシュを保つ
   if (result && typeof result === "object" && !result.error && typeof result.data !== "function") {
-    savePlan(result.data); // 行が無ければ data=null → free として保存
+    savePlan(result.data, session.user.id); // 行が無ければ data=null → free として保存
   }
   emit();
   return getPlan();

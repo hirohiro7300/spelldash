@@ -12,7 +12,7 @@ import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { getPlan, refreshPlan, postBilling, waitForPro, planLabel, planActionLabel } from "./plan.js";
 import { fetchBillingConfig, rememberBillingConfig, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
-import { logFunnel, logFunnelBeforeLeave, markPaidPending, hasPaidPending } from "./funnelLog.js";
+import { logFunnel, logFunnelBeforeLeave, markPaidPending, hasPaidPending, freshPaidPending, bindPaidPending } from "./funnelLog.js";
 
 const MESSAGES = {
   loginRequired: "加入にはログインが要る。",
@@ -65,10 +65,12 @@ if (!isNativeApp && !params.has("pro")) logFunnel("pro_view"); // 動線の計�
 supabase.auth.getSession().then(({ data }) => {
   session = data?.session ?? null;
   sessionKnown = true;
+  bindPaidPending(session?.user?.id); // 支払いの印をこのアカウントに付ける（持ち主がまだ無ければ）
   render();
 });
 supabase.auth.onAuthStateChange((_event, nextSession) => {
   session = nextSession ?? null;
+  if (sessionKnown) bindPaidPending(session?.user?.id);
   render();
 });
 document.addEventListener("spelldash:plan", render);
@@ -126,8 +128,9 @@ function renderPlans(plan) {
     plansElement.innerHTML = "";
     return;
   }
-  // 支払いを終えたのに、まだ Pro に反映されていない（開き直した）: 購入ボタンを出さない（二重の申し込みを防ぐ）
-  if (hasPaidPending(session?.user?.id)) {
+  // 支払いを終えたのに、まだ Pro に反映されていない（開き直した）: 購入ボタンを出さない（二重の申し込みを防ぐ）。
+  // ログインが分かるまでは、印があれば待つ側に倒す（購入ボタンを一瞬でも出さない）
+  if (freshPaidPending() && (!sessionKnown || hasPaidPending(session?.user?.id))) {
     if (priceElement) priceElement.hidden = true;
     plansElement.innerHTML = `<p class="pro-pending">${PAID_WAIT_TEXT}</p>`;
     return;
