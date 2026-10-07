@@ -483,8 +483,23 @@ console.log("home widgets:");
   await midPlacement.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await midPlacement.waitForTimeout(600);
   const midLine = (await midPlacement.textContent("#hasumiHome .hasumi__bubble")) ?? "";
-  check("腕試し途中で答えた人のはちゃんは腕試しの話をしない", midLine && !midLine.includes("腕試し"), midLine);
+  check("腕試し途中で答えた人のはちゃんは腕試しの話をしない", midLine && !midLine.includes("腕試し") && !midLine.includes("ちょうどいい所から"), midLine);
   await midPlacement.close();
+
+  // 腕試しを開いて 1 語も答えずに戻った人（出した語の記録だけある）: 道のスタートは「今日のセット 15語」ではなく腕試しの案内。はちゃんは同じことを言わない
+  const backFromPlacement = await newPage({
+    storage: {
+      spelldash_placement: "started",
+      spelldash_word_stats: JSON.stringify({ apple: { seen: 1 } })
+    }
+  });
+  await backFromPlacement.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await backFromPlacement.waitForTimeout(600);
+  const startLabel = (await backFromPlacement.textContent("#pathCard")) ?? "";
+  const backLine = (await backFromPlacement.textContent("#hasumiHome .hasumi__bubble").catch(() => "")) ?? "";
+  check("腕試し前に戻った人の道のスタートは「腕試し10語」（今日のセットの語数を言わない）", startLabel.includes("腕試し10語") && !startLabel.includes("今日のセット"), startLabel.slice(0, 200));
+  check("腕試し前に戻った人のはちゃんは道と同じ語数を繰り返さない", !backLine.includes("10語"), backLine);
+  await backFromPlacement.close();
 }
 
 // ===== 5. Challenge: 完走でリザルトパネル =====
@@ -767,6 +782,15 @@ console.log("my words:");
   const status = await page.textContent("#myWordStatus");
   check("まとめて追加: 2語追加＋1件スキップ", status.includes("2語") && status.includes("スキップ 1"), status);
   check("単語帳のカテゴリ選択にマイ単語帳", (await page.$$eval("#listCategory option", (els) => els.map((e) => e.value))).includes("my"));
+  // 単語帳でマイ単語帳を選ぶ: 上の一覧は畳んで下を指す（同じ語を 2 回並べない）。削除は下のカードの ×
+  await page.selectOption("#listCategory", "my");
+  await page.waitForTimeout(300);
+  check("マイ単語帳を選ぶと、上の一覧は「下の一覧に」の 1 行だけ", (await page.$$("#myWordList .my-word")).length === 0 && (await page.textContent("#myWordList")).includes("下の一覧"), await page.textContent("#myWordList"));
+  check("下の単語帳にマイ単語帳の語と ×", (await page.$$("#listBody [data-my-remove]")).length === 3 && (await page.textContent("#listBody")).includes("invoice"));
+  await page.click('#listBody [data-my-remove="invoice"]');
+  await page.waitForTimeout(300);
+  check("カードの × で消える（一覧と数）", !(await page.textContent("#listBody")).includes("invoice") && (await page.textContent("#myWordCount")).includes("2語"), await page.textContent("#myWordCount"));
+  await page.evaluate(() => { localStorage.setItem("spelldash_my_words", JSON.stringify([...JSON.parse(localStorage.getItem("spelldash_my_words")), { en: "invoice", ja: "請求書", addedAt: new Date().toISOString() }])); });
   await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
   check("カテゴリ進捗にマイ単語帳3語", (await page.textContent("#categoryProgress")).includes("マイ単語帳3語") || (await page.textContent("#categoryProgress")).includes("マイ単語帳") );

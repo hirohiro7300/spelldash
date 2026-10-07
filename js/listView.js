@@ -6,7 +6,8 @@ import { setupUnloadSync } from "./sync.js";
 import { initWordStore, getCategories, getPackCatalog, isConceptWord } from "./wordStore.js";
 import { setPackEnabled } from "./packs.js";
 import { openFeedback } from "./feedback.js";
-import { initializeMyWordsView } from "./myWordsView.js";
+import { initializeMyWordsView, renderMyWordsList, setMyWordsListBelow } from "./myWordsView.js";
+import { removeMyWord } from "./myWords.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
@@ -269,6 +270,9 @@ function render() {
   const learned = groups.reduce((n, g) => n + g.words.filter((w) => ["learning", "mastered"].includes(classifyWord(stats[w.id]))).length, 0);
   const activeGenre = getGenre();
   const label = getCategories().find((c) => c.id === categoryId)?.label ?? categoryId;
+  // マイ単語帳を一覧で見ているときは、上の「マイ単語帳」の行の一覧を畳む（同じ語を 2 回並べない）。削除は下のカードの ×
+  const showingMy = categoryId === "my";
+  setMyWordsListBelow(showingMy);
 
   // 要約: カテゴリ名は残す（切り替えの確認に使う）。「覚えた」は 0 を並べない
   if (summary) summary.textContent = `${label} ・ ${groups.length}ジャンル ・ ${total}語${learned > 0 ? ` ・ 覚えた ${learned}` : ""}`;
@@ -311,7 +315,7 @@ function render() {
             </div>
           </div>
           <div class="genre__cards">
-            ${g.words.map((w) => cardHtml(w, stats[w.id])).join("")}
+            ${g.words.map((w) => cardHtml(w, stats[w.id], { removable: showingMy })).join("")}
           </div>
         </section>`;
     })
@@ -334,7 +338,25 @@ function render() {
   bindNoteEditors(container, render);
 }
 
-function cardHtml(word, stat) {
+// マイ単語帳のカードの ×（js/myWords.js removeMyWord。id は my-<en> / my-q-<en>）
+document.getElementById("listBody")?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-my-remove]");
+  if (!button) return;
+  removeMyWord(button.dataset.myRemove);
+  renderMyWordsList();
+  const categories = getCategories();
+  if (!categories.some((c) => c.id === categoryId)) categoryId = categories[0]?.id ?? "all"; // 最後の 1 語を消した
+  renderCategorySelect(categories);
+  render();
+});
+
+function myWordKey(word) {
+  if (word.id?.startsWith("my-q-")) return word.id.slice(5);
+  if (word.id?.startsWith("my-")) return word.id.slice(3);
+  return null;
+}
+
+function cardHtml(word, stat, { removable = false } = {}) {
   const status = classifyWord(stat);
   const concept = isConceptWord(word);
   // 1行目: 見出し語（英語は等幅）＋訳＋状態、2行目: 例文または場面。足元に履歴・記憶・メモ
@@ -348,6 +370,7 @@ function cardHtml(word, stat) {
           ? `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`
           : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}
         <span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span>
+        ${removable && myWordKey(word) ? `<button type="button" class="my-word__remove gcard__remove" data-my-remove="${escapeHtml(myWordKey(word))}" aria-label="${term} を削除" title="削除">${icon("x", { size: 16 })}</button>` : ""}
       </div>
       ${concept
         ? `<p class="gcard__q">${escapeHtml(word.q)}</p>

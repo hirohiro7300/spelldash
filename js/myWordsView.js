@@ -144,6 +144,14 @@ function renderLimitState() {
 
 const MY_WORDS_FIRST = 50;
 let showAllMyWords = false;
+let listBelow = false; // 下の単語帳がマイ単語帳を出している（js/listView.js）: ここでは一覧を描かず、下を指す
+
+// 下の単語帳がマイ単語帳を出しているか（同じ語を 2 回並べない）
+export function setMyWordsListBelow(value) {
+  if (listBelow === Boolean(value)) return;
+  listBelow = Boolean(value);
+  renderMyWordsList();
+}
 
 export function renderMyWordsList() {
   const container = document.getElementById("myWordList");
@@ -157,6 +165,10 @@ export function renderMyWordsList() {
 
   if (list.length === 0) {
     container.innerHTML = `<p class="muted">まだ無い。仕事や試験でよく見る語から</p>`;
+    return;
+  }
+  if (listBelow) {
+    container.innerHTML = `<p class="muted my-words__below">追加した ${list.length.toLocaleString("ja-JP")}語は下の一覧に。消すときは語の右の ×</p>`;
     return;
   }
 

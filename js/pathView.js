@@ -141,7 +141,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const doneToday = !resume && !firstVisit && isDailySetDone(); // 今日のぶんが済んだ（ラベルと円の見た目の両方で使う）
   const startSub = resume
     ? `前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み）`
-    : firstVisit
+    : firstVisit || beforePlacement // 腕試しを開いて 1 語も答えずに戻った人も（「今日のセット 15語」と言わない）
     ? PLACEMENT_NOTE
     : doneToday
       ? "今日のぶんは完了"

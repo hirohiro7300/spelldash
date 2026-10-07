@@ -774,6 +774,12 @@ html[data-theme] .my-word__remove:hover {
   background: var(--paper-3);
 }
 
+/* 単語帳がマイ単語帳を出しているときのカードの ×（状態の右。行の高さは増やさない） */
+html[data-theme] .gcard__remove {
+  align-self: center;
+  margin: -10px -10px -10px 0;
+}
+
 html[data-theme] .cardgen__card {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
