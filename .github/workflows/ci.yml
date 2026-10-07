@@ -25,5 +25,8 @@ jobs:
       - name: 単語データ検証
         run: node scripts/validate-words.mjs
 
+      - name: モジュールの先読み（modulepreload）が最新か
+        run: node scripts/modulepreload.mjs --check
+
       - name: E2Eスモークテスト
         run: npm test
