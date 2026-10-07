@@ -60,7 +60,7 @@ export async function requestWordAi(word) {
   if (!response.ok) {
     const fallback = response.status === 401 ? "ログインすると使える（無料）" : response.status === 404 ? "この機能は準備中" : "作れなかった。";
     // 429 で upgrade:true は「無料ぶんを使い切った」: 表示側が Pro の案内を添える
-    return { ok: false, status: response.status, message: body.message || fallback, upgrade: response.status === 429 && body.upgrade === true };
+    return { ok: false, status: response.status, message: body.message || fallback, upgrade: response.status === 429 && body.upgrade === true, offer: typeof body.offer === "string" ? body.offer : "" };
   }
   if (!body.mnemonic) return { ok: false, message: "作れなかった。" };
   setWordAi(word.id, body);
@@ -125,9 +125,9 @@ function renderAiButton(container, word, onDone) {
     const result = await requestWordAi(word);
     if (!result.ok) {
       // Pro の案内は文の中に括弧で入れる（1 本の流し込み: 390 でリンクが語の途中で折れない）
-      // 受付前・アプリでは Pro の話をしない（サーバーの文の「Pro なら…」も落とす）
+      // 受付前・アプリでは Pro の話をしない（サーバーの別欄 offer「Pro なら…」を足すのは受付中だけ）
       const offer = result.upgrade && canOfferPro();
-      const message = offer ? result.message : String(result.message).replace(/Pro なら[^。]*。?$/, "");
+      const message = offer && result.offer ? `${result.message}${result.offer}` : result.message;
       container.innerHTML = `<span class="word-ai__error">${escapeHtml(message)}${offer ? '（<a class="ai-upgrade" href="./pro.html" data-funnel="ai">Pro について</a>）' : ""}</span>`;
       return;
     }

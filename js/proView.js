@@ -10,7 +10,7 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
 import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
-import { getPlan, refreshPlan, postBilling, waitForPro, planLabel } from "./plan.js";
+import { getPlan, refreshPlan, postBilling, waitForPro, planLabel, planActionLabel } from "./plan.js";
 import { fetchBillingConfig, rememberBillingConfig, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
 import { logFunnel, logFunnelBeforeLeave, markPaidPending, hasPaidPending } from "./funnelLog.js";
 
@@ -127,7 +127,7 @@ function renderPlans(plan) {
     return;
   }
   // 支払いを終えたのに、まだ Pro に反映されていない（開き直した）: 購入ボタンを出さない（二重の申し込みを防ぐ）
-  if (hasPaidPending()) {
+  if (hasPaidPending(session?.user?.id)) {
     if (priceElement) priceElement.hidden = true;
     plansElement.innerHTML = `<p class="pro-pending">${PAID_WAIT_TEXT}</p>`;
     return;
@@ -198,7 +198,7 @@ function renderState(plan) {
     // 文はプロフィールのプラン行と同じ（js/plan.js planLabel。支払い遅延・無料期間・解約予定で分ける）
     const pastDue = plan.status === "past_due";
     stateElement.innerHTML = `<span class="pro-state__text">${planLabel(plan)}</span>${
-      isNativeApp ? "" : ` <button type="button" class="btn btn--sm ${pastDue ? "" : "btn--ghost"}" id="proPortal">${pastDue ? "カードを更新する" : "解約・お支払いの管理"}</button>`
+      isNativeApp ? "" : ` <button type="button" class="btn btn--sm ${pastDue ? "" : "btn--ghost"}" id="proPortal">${planActionLabel(plan)}</button>`
     }`;
     return;
   }
@@ -233,7 +233,7 @@ function maybeResume(plan) {
   resumeShown = true;
   if (resumePending) clearProIntent();
   resumePending = false;
-  if (plan.pro || !config.configured || isNativeApp || welcomeActive) return;
+  if (plan.pro || !config.configured || isNativeApp || welcomeActive || hasPaidPending(session.user?.id)) return;
   const hasYear = config.prices.some((p) => p.interval === "year");
   setMessage(hasYear ? "ログインした。月額か年額を選ぶ。" : "ログインした。月額で始められる。");
   logFunnel("login_return");

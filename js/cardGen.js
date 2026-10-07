@@ -34,7 +34,7 @@ export async function requestCards(text) {
   if (!response.ok) {
     const fallback = response.status === 401 ? LOGIN_HINT : response.status === 404 ? "準備中" : "作れなかった。時間をおいてもう一度";
     // 429 で upgrade:true は「無料ぶんを使い切った」: Pro の案内を添える
-    return { ok: false, status: response.status, error: body.error || "http", message: body.message || fallback, upgrade: response.status === 429 && body.upgrade === true };
+    return { ok: false, status: response.status, error: body.error || "http", message: body.message || fallback, upgrade: response.status === 429 && body.upgrade === true, offer: typeof body.offer === "string" ? body.offer : "" };
   }
   return { ok: true, cards: Array.isArray(body.cards) ? body.cards : [] };
 }
@@ -94,8 +94,8 @@ export function initializeCardGen(onChange = () => {}) {
     run.textContent = "カードを作る";
     if (!result.ok) {
       cards = [];
-      const offer = result.upgrade === true && canOfferPro(); // 受付前・アプリでは Pro の話をしない
-      return setStatus(offer ? result.message : String(result.message).replace(/Pro なら[^。]*。?$/, ""), true, { upgrade: offer });
+      const offer = result.upgrade === true && canOfferPro(); // 受付前・アプリでは Pro の話をしない（サーバーの別欄 offer を足さない）
+      return setStatus(offer && result.offer ? `${result.message}${result.offer}` : result.message, true, { upgrade: offer });
     }
     cards = result.cards;
     if (cards.length === 0) return setStatus("用語が見つからなかった。説明文や会話文を貼る", true);

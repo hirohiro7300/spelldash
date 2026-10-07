@@ -58,14 +58,15 @@ export async function verifyUser(authorization) {
 
 const usage = new Map();
 
-// 本人が Pro かどうか（ユーザーごと 5 分のメモリキャッシュ。読めなければ無料として扱う）
+// 本人が Pro かどうか（ユーザーごと 5 分のメモリキャッシュ。読めなければ無料として扱う）。
+// 無料も覚える。加入した直後に無料の上限で断りそうになったときは、reject がキャッシュを使わずに読み直す（fresh）
 const PLAN_CACHE_MS = 5 * 60 * 1000;
 const planCache = new Map();
 
-async function isProUser(token, userId) {
+async function isProUser(token, userId, { fresh = false } = {}) {
   const now = Date.now();
   const cached = planCache.get(userId);
-  if (cached && now - cached.at < PLAN_CACHE_MS) return cached.pro;
+  if (!fresh && cached && now - cached.at < PLAN_CACHE_MS) return cached.pro;
   let pro = false;
   try {
     const billing = await import("./billing.js");
@@ -73,9 +74,25 @@ async function isProUser(token, userId) {
   } catch {
     pro = false;
   }
-  // Pro のときだけ覚える（無料を覚えると、加入した直後の 5 分間は無料の上限のまま「Pro について」を返してしまう）
-  if (pro) planCache.set(userId, { at: now, pro });
+  planCache.set(userId, { at: now, pro });
   return pro;
+}
+
+// 「Pro なら…」を添えてよいか: 受付中（Stripe の鍵と月額がある）で、アプリからの呼び出しではない（ストアの規約）
+async function canOfferPro(req) {
+  if (APP_ORIGINS.has(req.headers.origin)) return false;
+  try {
+    const billing = await import("./billing.js");
+    return billing.billingConfigured();
+  } catch {
+    return false;
+  }
+}
+
+// 今日すでに使った回数（数えない）
+function usedToday(scope, userId) {
+  const entry = usage.get(`${scope}:${userId}`);
+  return entry && entry.day === new Date().toISOString().slice(0, 10) ? entry.count : 0;
 }
 
 export function overDailyLimit(scope, userId, limit) {
@@ -126,13 +143,19 @@ export async function reject(req, res, { scope, limit, proLimit = limit }) {
     send(res, 401, { error: "login_required", message: "ログインすると使える（無料）" });
     return true;
   }
-  const pro = await isProUser(bearerToken(req.headers.authorization), userId);
+  const token = bearerToken(req.headers.authorization);
+  let pro = await isProUser(token, userId);
+  // 無料の上限で断る前に一度だけ読み直す（加入した直後に、覚えていた「無料」で断らない）
+  if (!pro && proLimit > limit && usedToday(scope, userId) >= limit) pro = await isProUser(token, userId, { fresh: true });
   const max = pro ? proLimit : limit;
   if (overDailyLimit(scope, userId, max)) {
-    const message = pro
-      ? `今日の上限（${max}回）に達した。また明日`
-      : `今日の無料ぶん（${limit}回）は使い切った。Pro なら1日${proLimit}回`;
-    send(res, 429, { error: "daily_limit", upgrade: !pro, message });
+    if (pro) {
+      send(res, 429, { error: "daily_limit", upgrade: false, message: `今日の上限（${max}回）に達した。また明日` });
+      return true;
+    }
+    // Pro の案内は別の欄（表示側は受付中のときだけ足す。文を削って消さない）
+    const upgrade = await canOfferPro(req);
+    send(res, 429, { error: "daily_limit", upgrade, message: `今日の無料ぶん（${limit}回）は使い切った。`, ...(upgrade ? { offer: `Pro なら1日${proLimit}回` } : {}) });
     return true;
   }
   return false;

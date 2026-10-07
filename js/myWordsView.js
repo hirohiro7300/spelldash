@@ -9,8 +9,8 @@ import { icon } from "./icons.js";
 const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得" };
 
 export function initializeMyWordsView(onChange = () => {}) {
-  document.addEventListener("spelldash:plan", renderLimitState);
-  document.addEventListener("spelldash:billing", renderLimitState); // 受付中かが分かったら「Pro なら…」を付け直す // Pro の状態が後から届いたら上限（100 → 1,000）を引き直す
+  document.addEventListener("spelldash:plan", renderLimitState); // Pro の状態が後から届いたら上限（100 → 1,000）を引き直す
+  document.addEventListener("spelldash:billing", renderLimitState); // 受付中かが分かったら「Pro なら…」を付け直す
   const form = document.getElementById("myWordForm");
   const bulkButton = document.getElementById("myWordBulkAdd");
   if (!form) return;
