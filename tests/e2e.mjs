@@ -13,7 +13,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "playwright-core";
-import { syncModulePreload } from "../scripts/modulepreload.mjs";
+import { syncModulePreload, baseDataFiles, WORD_PAGES } from "../scripts/modulepreload.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STUB = path.join(ROOT, "tests", "mocks", "supabase-stub.js");
@@ -314,6 +314,20 @@ console.log("modulepreload:");
 {
   const stale = syncModulePreload();
   check("modulepreload が import の依存と揃っている（ずれたら node scripts/modulepreload.mjs）", stale.length === 0, stale.join(", "));
+  // 教材の先読みが本当に使われる: 教材を読むページで、台帳と基本カテゴリの JSON はそれぞれ 1 回だけ取る（fetch と URL・CORS がずれると 2 回になる）
+  for (const pageName of WORD_PAGES) {
+    const page = await newPage();
+    const counts = new Map();
+    page.on("request", (req) => {
+      const p = new URL(req.url()).pathname.slice(1);
+      if (p.startsWith("data/")) counts.set(p, (counts.get(p) ?? 0) + 1);
+    });
+    await page.goto(BASE + "/" + pageName, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const wrong = baseDataFiles().filter((f) => counts.get(f) !== 1).map((f) => `${f}=${counts.get(f) ?? 0}`);
+    check(`${pageName}: 先読みした教材はそれぞれ 1 回だけ取る（先読みが fetch に使われる）`, wrong.length === 0, wrong.join(" "));
+    await page.close();
+  }
 }
 
 console.log("pages:");
