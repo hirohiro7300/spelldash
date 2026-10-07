@@ -101,6 +101,7 @@
 | F16 | ✅ | **2 台目の端末（Batch 48）**: ログイン・同期・マージを E2E のスタブで再現して監査（35 件）→ 反映。取り込み前に送らない、端末の持ち主（別アカウントの記録は置き換えるかをたずねる）、日ごとの記録（今日のぶん・成長ログ）を user_items で同期、XP は 2 台の増分を足す、現在地をクラウドから採る、同期直後の描き直し（docs/CHANGELOG.md 2026-10-06）。**残り（SQL が要る）**: word_progress に history／known_on_sight／last_review_at／last_review_result の列（2 台目で履歴ドット・「知ってた」・思い出せた率の定義が揃う）、user_progress の updated_at を「変更した時刻」に（Battle 戦績・出題比率のマージが「送った時刻」で決まる）、selected_course 列。user_items の表が無い環境では、2 台目の「今日のぶん」は済みにならない（推測はしない） | 2 台で使う人 |
 | F17 | ✅ | **Pro までの動線（Batch 49、docs/SPEC_FUNNEL.md）**: フッターの「SpellDash Pro」と週間レポートの 1 行（受付中・7 日以上・Pro でない）、加入画面の「申し込みの前に」、ログインから加入画面へ戻す、加入直後に使えるようになったもの。計測も Batch 50 で（funnel_events・管理画面の「Pro までの動線」。SQL は docs/SQL_FUNNEL.md）。残り: 無料期間の判断、Pro の中身（PRO_VALUE） | 加入まで迷わない |
 | F18 | ✅ | **読み込みの往復を減らす**: ビルドしないので、ブラウザは import を 1 段読むごとに次のファイルを知る（ホームは 16 段・68 ファイル）。各ページの head に依存のすべてを `<link rel="modulepreload">` で並べた（`scripts/modulepreload.mjs` が生成、E2E と CI がずれを止める）。1 リクエスト 80ms の遅延で DOMContentLoaded がホーム 1,576→1,309ms・単語帳 1,208→895ms・学習データ 1,405→1,067ms・加入画面 1,139→707ms。教材を読むページは台帳と基本 9 カテゴリの JSON も先読み。残り: 分野パックの JSON は main.js が動いてから | 開くまでの速さ |
+| F19 | ✅ | **等幅フォントを自前で配る**: Google Fonts の CSS が本番の CSP（style-src／font-src は self）で拒否され、IBM Plex Mono が読まれていなかった → assets/fonts に 400/500/600（ラテン、OFL）を置き tokens.css の @font-face で読む。CSP は広げない | 見た目の一貫性・外部への送信を減らす |
 
 ## G. データ・コンテンツ
 

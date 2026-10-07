@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-10-07 (等幅フォントを自前で配る — 本番で読み込みが止められていた)
+
+- **本番では IBM Plex Mono が一度も読み込まれていなかった**: 全ページ（174）が Google Fonts の CSS を読んでいたが、vercel.json の Content-Security-Policy は style-src・font-src を 'self' に限っているので、ブラウザが「CSP 違反」で拒否していた（英単語・数字は端末の等幅フォントで出ていた）。本番と同じ CSP を付けた手元のサーバーで、拒否と、直したあとに読み込まれることを確かめた
+- IBM Plex Mono（SIL Open Font License 1.1）のラテン文字 400／500／600 を `assets/fonts/` に置き、css/tokens.css の @font-face で読む（約 45KB、font-display: swap）。CSP は広げない。外部（Google）に閲覧者の IP を送らず、外部への接続 2 本（preconnect）も減った
+- パックの入口ページの生成（scripts/build-pack-pages.mjs）からも Google Fonts を外した
+
 ## 2026-10-07 (読み込みの往復を減らす — modulepreload)
 
 - ビルドしないので、ブラウザは import を 1 段読むごとに次のファイルを知る。ホームは 16 段・68 ファイルで、キャッシュの無い端末は往復 16 回ぶん待っていた → 各ページの head に、そのページの依存すべてを `<link rel="modulepreload">` で並べた（読むだけで実行はしないので、動きは変わらない）
