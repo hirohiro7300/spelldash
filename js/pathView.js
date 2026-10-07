@@ -5,6 +5,7 @@ import { classifyWord } from "./categoryProgress.js";
 import { getCourse, sectionOf, listCourses, getCourseId, PLACEMENT_NOTE } from "./course.js";
 import { getSetSize, isDailySetDone } from "./dailySet.js";
 import { getDueReviewCount, isBeforePlacement } from "./studyQueue.js";
+import { isPlacementRunning } from "./difficulty.js";
 import { resumableFor } from "./sessionResume.js";
 import { icon } from "./icons.js";
 import { trapFocus } from "./focusTrap.js";
@@ -141,7 +142,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const doneToday = !resume && !firstVisit && isDailySetDone(); // 今日のぶんが済んだ（ラベルと円の見た目の両方で使う）
   const startSub = resume
     ? `前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み）`
-    : firstVisit || beforePlacement // 腕試しを開いて 1 語も答えずに戻った人も（「今日のセット 15語」と言わない）
+    : firstVisit || (beforePlacement && isPlacementRunning()) // 腕試しを開いて 1 語も答えずに戻った人も（始まった腕試しだけ。組めずに通常のセットになる道では言わない）
     ? PLACEMENT_NOTE
     : doneToday
       ? "今日のぶんは完了"
