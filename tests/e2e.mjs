@@ -2919,11 +2919,13 @@ console.log("pro:");
     check("Pro: 未ログインで「ログインして始める」を押すとヘッダーのログイン（#loginToggle）が開く", (await page.getAttribute("#loginToggle", "aria-expanded")) === "true" && (await text(page, "#proMessage")) === "", `aria-expanded=${await page.getAttribute("#loginToggle", "aria-expanded")} msg=${await text(page, "#proMessage")}`);
     check("Pro: 「ログインして始める」で加入の途中の印（spelldash_pro_intent）が付く", await page.evaluate(() => Boolean(JSON.parse(localStorage.getItem("spelldash_pro_intent") || "null")?.at)));
     // ログインのリンクから戻った体（トップに戻る・URL に access_token）: 加入画面へ戻り、選ぶところから続く
+    const dialogs = [];
+    page.on("dialog", (d) => dialogs.push(d.message().slice(0, 60)));
     await page.evaluate(() => localStorage.setItem("spelldash_test_session", "1"));
     await page.goto(BASE + "/index.html#access_token=test&type=magiclink", { waitUntil: "networkidle" });
     const back = await waitUntil(() => page.url().includes("/pro.html"), 5000);
     const resumed = await waitUntil(async () => (await text(page, "#proMessage")) === "ログインした。月額か年額を選ぶ。", 5000);
-    check("動線: ログインから戻ると加入画面へ戻り「ログインした。月額か年額を選ぶ。」", back && resumed && !page.url().includes("resume="), `${page.url()} / ${await text(page, "#proMessage")} / plans=${(await text(page, "#proPlans")).slice(0, 80)} / state=${await text(page, "#proState")} / intent=${await page.evaluate(() => localStorage.getItem("spelldash_pro_intent"))} / paid=${await page.evaluate(() => localStorage.getItem("spelldash_funnel_paid"))} / plan=${await page.evaluate(() => localStorage.getItem("spelldash_plan"))} / errors=${page.errors.join("|")}`);
+    check("動線: ログインから戻ると加入画面へ戻り「ログインした。月額か年額を選ぶ。」", back && resumed && !page.url().includes("resume="), `${page.url()} / ${await text(page, "#proMessage")} / plans=${(await text(page, "#proPlans")).slice(0, 80)} / state=${await text(page, "#proState")} / intent=${await page.evaluate(() => localStorage.getItem("spelldash_pro_intent"))} / paid=${await page.evaluate(() => localStorage.getItem("spelldash_funnel_paid"))} / plan=${await page.evaluate(() => localStorage.getItem("spelldash_plan"))} / errors=${page.errors.join("|")} / dialogs=${dialogs.join("|")} / auth=${await text(page, "#authMessage")} / stats=${await page.evaluate(() => (localStorage.getItem("spelldash_word_stats") || "").slice(0, 80))}`);
     check("動線: 戻ったら加入の途中の印を消し、月額のボタンに焦点", (await page.evaluate(() => localStorage.getItem("spelldash_pro_intent"))) === null && (await page.evaluate(() => document.activeElement?.id)) === "proCheckoutMonth");
     check("Pro: ページ内に特商法のリンク", (await page.$$('a[href="./tokushoho.html"]')).length >= 2);
     check("Pro: よくある質問は 3 つ（「アプリ版でも使える」はアプリのログインができるまで出さない）、常体", (await page.$$("details.pro-faq")).length === 3 && !(await page.content()).includes("アプリ版でも使える") && !(await page.content()).includes("いつでも解約できますか") && !(await page.$$eval("details.pro-faq", (els) => els.map((e) => e.textContent).join(""))).includes("ますか"), String((await page.$$("details.pro-faq")).length));
