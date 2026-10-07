@@ -1,13 +1,13 @@
 // ===== Pro の価格（Vercel Serverless Function、ログイン不要） =====
 //
 // GET /api/billing/config
-// → { configured: boolean, prices: [{ interval: "month"|"year", amount, currency }], trialMonths, trialDays }（無料期間は初めての人だけ）
+// → { configured: boolean, prices: [{ interval: "month"|"year", amount, currency }], trialMonths, trialDays, trialEndsAt? }（無料期間は初めての人だけ）
 //   未設定（STRIPE_SECRET_KEY か STRIPE_PRICE_MONTHLY が無い）なら { configured: false, prices: [], trialDays: 0 }（200）。
 //   金額はコードに書かず Stripe の Price（GET /v1/prices/{id}）から取る。unit_amount をそのまま（JPY はゼロ小数）。
 //   Stripe の応答は 10 分メモリキャッシュ。月額の Price が取れなければ 502、年額が取れなければ年額だけ出さない。
 
 import { send } from "../_lib/shared.js";
-import { rejectMethod, billingConfigured, priceIdFor, trialDays, trialMonths, stripeFetch, logBilling, sendUpstream } from "../_lib/billing.js";
+import { rejectMethod, billingConfigured, priceIdFor, trialDays, trialMonths, trialEndUnix, stripeFetch, logBilling, sendUpstream } from "../_lib/billing.js";
 
 const CACHE_MS = 10 * 60 * 1000;
 const priceCache = new Map();
@@ -48,6 +48,8 @@ export default async function handler(req, res) {
     }
   }
   // 無料期間は初めての人だけ（checkout が判定する）。月で指定されていれば trialDays は 0 にして画面の文を 1 つにする
+  // trialEndsAt: いま加入したときの無料期間の終わり（ISO。月の指定があるとき）。画面は日付の計算をせず、これを表示するだけ
   const months = trialMonths();
-  return send(res, 200, { configured: true, prices, trialMonths: months, trialDays: months > 0 ? 0 : trialDays() });
+  const end = trialEndUnix();
+  return send(res, 200, { configured: true, prices, trialMonths: months, trialDays: months > 0 ? 0 : trialDays(), ...(end ? { trialEndsAt: new Date(end * 1000).toISOString() } : {}) });
 }

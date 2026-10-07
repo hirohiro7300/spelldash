@@ -18,6 +18,7 @@ import {
   billingConfigured,
   priceIdFor,
   trialEndUnix,
+  trialDays,
   siteOrigin,
   stripeFetch,
   fetchOwnSubscription,
@@ -81,11 +82,15 @@ export default async function handler(req, res) {
     // 既に Stripe の顧客なら同じ顧客に紐づける（Portal で履歴が 1 つにまとまる）。初めてならメールだけ渡す
     if (row?.stripe_customer_id) params.customer = row.stripe_customer_id;
     else if (user.email) params.customer_email = user.email;
-    const trialEnd = firstTime ? trialEndUnix() : 0;
-    if (trialEnd > 0) params.subscription_data.trial_end = trialEnd; // 初めての人だけ。暦の月（または日数）で終わりの時刻を渡す
+    // 無料期間は初めての人だけ。月は暦で終わりの時刻（trial_end）、日数は trial_period_days。
+    // 同じ分の再送は同じ冪等キーになるので、trial_end も分の頭から数えて同じ値にする（違う値だと Stripe が idempotency_error を返す）
+    const minute = Math.floor(Date.now() / 60000);
+    const trialEnd = firstTime ? trialEndUnix(new Date(minute * 60000)) : 0;
+    if (trialEnd > 0) params.subscription_data.trial_end = trialEnd;
+    else if (firstTime && trialDays() > 0) params.subscription_data.trial_period_days = trialDays();
 
     const session = await stripeFetch("/v1/checkout/sessions", params, {
-      idempotencyKey: `checkout:${user.id}:${interval}:${Math.floor(Date.now() / 60000)}`
+      idempotencyKey: `checkout:${user.id}:${interval}:${firstTime ? "trial" : "paid"}:${minute}`
     });
     if (typeof session?.url !== "string" || !session.url) throw new Error("checkout session has no url");
     return send(res, 200, { url: session.url });

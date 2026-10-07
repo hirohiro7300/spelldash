@@ -44,7 +44,7 @@ export function rememberBillingOpen(open) {
 }
 
 // /api/billing/config を取って整える（加入画面と全ページのキャッシュが同じ規則で「受付中」を決める）。
-// 戻り値: { ok, configured, prices, trialMonths, trialDays }。ok=false は取れなかった（受付前とは限らない）
+// 戻り値: { ok, configured, prices, trialMonths, trialDays, trialEndsAt }。ok=false は取れなかった（受付前とは限らない）
 export async function fetchBillingConfig() {
   try {
     const response = await fetch(apiUrl("/api/billing/config"), { cache: "no-store" });
@@ -53,7 +53,7 @@ export async function fetchBillingConfig() {
       ? body.prices.filter((p) => p && (p.interval === "month" || p.interval === "year") && Number.isFinite(Number(p.amount)))
       : [];
     const configured = response.ok && body?.configured === true && prices.some((p) => p.interval === "month");
-    return { ok: response.ok, configured, prices, trialMonths: Number(body?.trialMonths) || 0, trialDays: Number(body?.trialDays) || 0 };
+    return { ok: response.ok, configured, prices, trialMonths: Number(body?.trialMonths) || 0, trialDays: Number(body?.trialDays) || 0, trialEndsAt: typeof body?.trialEndsAt === "string" ? body.trialEndsAt : "" };
   } catch {
     return { ok: false, configured: false, prices: [], trialMonths: 0, trialDays: 0 };
   }

@@ -34,7 +34,7 @@ const PAID_WAIT_TEXT = "手続きは完了。反映を待っている。もう�
 const stateElement = document.getElementById("proState");
 const messageElement = document.getElementById("proMessage");
 
-let config = null; // { configured, prices, trialMonths, trialDays }（取得前は null）
+let config = null; // { configured, prices, trialMonths, trialDays, trialEndsAt }（取得前は null）
 let session = null;
 let busy = false;
 const params = new URLSearchParams(location.search);
@@ -98,31 +98,31 @@ stateElement.addEventListener("click", (event) => {
 async function loadConfig() {
   const fetched = await fetchBillingConfig(); // 全ページのキャッシュと同じ規則（js/proFunnel.js）
   rememberBillingConfig(fetched); // 取れなかったときは受付前と覚えない（前の値のまま 10 分後に取り直す）
-  config = { configured: fetched.configured, prices: fetched.prices, trialMonths: fetched.trialMonths, trialDays: fetched.trialDays };
+  config = { configured: fetched.configured, prices: fetched.prices, trialMonths: fetched.trialMonths, trialDays: fetched.trialDays, trialEndsAt: fetched.trialEndsAt };
 }
 
 // 無料期間（初めての方だけ。api/billing/checkout.js が判定する）。無ければ null
-//   label: 「1か月」「7日」／ endText: 無料期間の終わりの日（M/D。日本時間で n か月後・無い日は月末）
+//   label: 「1か月」「7日」／ endText: 無料期間の終わりの日（M/D。サーバーが計算した trialEndsAt を日本時間で出すだけ。日数のときは n 日後）
 function trialInfo() {
   const months = Number(config?.trialMonths) || 0;
   const days = Number(config?.trialDays) || 0;
   if (months <= 0 && days <= 0) return null;
-  const jst = new Date(Date.now() + 9 * 3600000);
-  let end;
-  if (months > 0) {
-    const day = jst.getUTCDate();
-    end = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth() + months, 1));
-    const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
-    end.setUTCDate(Math.min(day, lastDay));
-  } else {
-    end = new Date(jst.getTime() + days * 86400000);
-  }
-  return { label: months > 0 ? `${months}か月` : `${days}日`, endText: `${end.getUTCMonth() + 1}/${end.getUTCDate()}` };
+  const endMs = months > 0 ? Date.parse(config?.trialEndsAt ?? "") : Date.now() + days * 86400000;
+  const jst = Number.isNaN(endMs) ? null : new Date(endMs + 9 * 3600000);
+  return { label: months > 0 ? `${months}か月` : `${days}日`, endText: jst ? `${jst.getUTCMonth() + 1}/${jst.getUTCDate()}` : "" };
 }
 
-// この人に無料期間が付くか: 未ログインは「初めての方は」と案内だけ、ログイン済みは契約の行が一度も無い人（解約後も行は canceled で残る）
+// この人に無料期間が付くか: 未ログインは「初めての方は」と案内だけ、ログイン済みは契約の行を読めて、一度も契約が無い人
+// （解約後も行は canceled で残る）。行をまだ読めていない（checkedAt が無い）ときは、無料とは約束しない（ボタンは通常の文）
 function trialEligible() {
-  return !session || getPlan().status === "none";
+  if (!session) return true;
+  const plan = getPlan();
+  return Boolean(plan.checkedAt) && plan.status === "none";
+}
+
+// ログイン済みで、契約の行をまだ読めていない（無料期間が付くか分からない）
+function trialUnknown() {
+  return Boolean(session) && !getPlan().checkedAt;
 }
 
 function yen(amount) {
@@ -211,8 +211,10 @@ function termsHtml(month, year, perMonth, { withPerMonth = true } = {}) {
   const trial = !info
     ? ""
     : trialEligible()
-      ? `<div><dt>無料期間</dt><dd>初めての方だけ、最初の${info.label}は無料。${session ? `${info.endText} に` : "無料期間の終わりに"} ${charge}を請求。それまでに解約すれば請求は無い</dd></div>`
-      : `<div><dt>無料期間</dt><dd>初めての方だけ（以前に加入したことがあるので、今回は加入した日に ${charge}を請求）</dd></div>`;
+      ? `<div><dt>無料期間</dt><dd>初めての方だけ、最初の${info.label}は無料。${session && info.endText ? `${info.endText} に` : "無料期間の終わりに"} ${charge}を請求。それまでに解約すれば請求は無い</dd></div>`
+      : trialUnknown()
+        ? `<div><dt>無料期間</dt><dd>初めての方だけ、最初の${info.label}は無料（付くかどうかは次の Stripe の画面に出る）</dd></div>`
+        : `<div><dt>無料期間</dt><dd>初めての方だけ（以前に加入したことがあるので、今回は加入した日に ${charge}を請求）</dd></div>`;
   return `
     <dl class="pro-terms" aria-label="申し込みの前に">
       <div><dt>料金</dt><dd>${price}</dd></div>

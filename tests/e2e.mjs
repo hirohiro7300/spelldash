@@ -192,7 +192,7 @@ const server = http.createServer((req, res) => {
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
     if (route === "config") {
       if (req.method !== "GET") return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
-      return json(200, { configured: true, prices: [{ interval: "month", amount: 580, currency: "jpy" }, { interval: "year", amount: 4800, currency: "jpy" }], trialDays: 0, trialMonths: fakeTrialMonths });
+      return json(200, { configured: true, prices: [{ interval: "month", amount: 580, currency: "jpy" }, { interval: "year", amount: 4800, currency: "jpy" }], trialDays: 0, trialMonths: fakeTrialMonths, ...(fakeTrialMonths ? { trialEndsAt: "2026-11-07T03:00:00.000Z" } : {}) });
     }
     if (route !== "checkout" && route !== "portal") return json(404, { error: "not_found", message: "そのAPIはありません。" });
     if (req.method !== "POST") return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
@@ -3074,7 +3074,7 @@ console.log("pro:");
     await waitUntil(async () => (await first.$("#proCheckoutMonth")) !== null, 5000);
     const button = await text(first, "#proCheckoutMonth");
     check("無料期間: 初めての人のボタンは「1か月無料で始める（その後 月額 ¥580）」", button === "1か月無料で始める（その後 月額 ¥580）", button);
-    check("無料期間: 初めての人には終わりの日（M/D に 月額…を請求）", /\d+\/\d+ に 月額 ¥580/.test(await text(first, ".pro-terms")), await text(first, ".pro-terms"));
+    check("無料期間: 初めての人にはサーバーの終わりの日（11/7 に 月額…を請求）", (await text(first, ".pro-terms")).includes("11/7 に 月額 ¥580"), await text(first, ".pro-terms"));
     await first.close();
 
     const again = await newPage({ storage: proStorage({ status: "canceled", current_period_end: isoDaysFromNow(-40) }) });

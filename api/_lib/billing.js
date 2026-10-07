@@ -62,21 +62,19 @@ export function trialMonths() {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
-// 無料期間の終わり（UNIX 秒）。月なら日本時間で同じ日付の n か月後（無い日は月末に寄せる: 1/31 → 2/28）。無料期間が無ければ 0
+// 無料期間（月）の終わり（UNIX 秒）。日本時間で同じ日付の n か月後（無い日は月末に寄せる: 1/31 → 2/28）。月の指定が無ければ 0。
+// 日数（STRIPE_TRIAL_DAYS）は Checkout の trial_period_days で渡す（trial_end は 48 時間以上先でないと Stripe が断るため、短い日数に使わない）
 const JST_MS = 9 * 60 * 60 * 1000;
 export function trialEndUnix(now = new Date()) {
   const months = trialMonths();
-  if (months > 0) {
-    const end = new Date(now.getTime() + JST_MS); // 日本時間の暦で数える（UTC だと朝 9 時前の加入が 1 日ずれる）
-    const day = end.getUTCDate();
-    end.setUTCDate(1);
-    end.setUTCMonth(end.getUTCMonth() + months);
-    const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
-    end.setUTCDate(Math.min(day, lastDay));
-    return Math.floor((end.getTime() - JST_MS) / 1000);
-  }
-  const days = trialDays();
-  return days > 0 ? Math.floor(now.getTime() / 1000) + days * 86400 : 0;
+  if (months <= 0) return 0;
+  const end = new Date(now.getTime() + JST_MS); // 日本時間の暦で数える（UTC だと朝 9 時前の加入が 1 日ずれる）
+  const day = end.getUTCDate();
+  end.setUTCDate(1);
+  end.setUTCMonth(end.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  end.setUTCDate(Math.min(day, lastDay));
+  return Math.floor((end.getTime() - JST_MS) / 1000);
 }
 
 export function siteOrigin() {
