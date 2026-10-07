@@ -455,8 +455,8 @@ function renderGrowthTrend() {
   const firstIdx = series.findIndex((p) => p.learned != null);
   const lastIdx = series.length - 1;
   const area = `${d}L${x(lastIdx).toFixed(1)},${(pad.top + innerH).toFixed(1)}L${x(firstIdx).toFixed(1)},${(pad.top + innerH).toFixed(1)}Z`;
-  // 90 日では点を打たない（点の間隔が 3px ほどになり、朱の帯に見える）
-  const dots = (days === 90 ? [] : series)
+  // 点が多すぎると打たない（90 日分だと間隔が 3px ほどになり、朱の帯に見える）。記録が短く 30 日ほどに切った 90 日は打つ
+  const dots = (series.length > 45 ? [] : series)
     .map((p, i) => (p.active && p.learned != null ? `<circle cx="${x(i).toFixed(1)}" cy="${y(p.learned).toFixed(1)}" r="3" fill="var(--signal)"><title>${p.date}: ${p.learned}語</title></circle>` : ""))
     .join("");
 

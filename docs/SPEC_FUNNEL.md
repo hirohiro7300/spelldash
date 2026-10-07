@@ -15,13 +15,13 @@
 |---|---|---|---|
 | 0. 初回 | トップ → 腕試し → 1 セット | Pro は出さない | — |
 | 1. 知る（いつでも） | 全ページのフッター | 「SpellDash Pro」（受付中のときだけ。加入画面では出さない） | js/proFunnel.js renderFooterPro |
-| 1. 知る（続けた人） | 学習データの週間レポート | 学んだ日が 7 日以上・Pro でない人に 1 行「Pro なら、シールド 3 枚・推移 90 日・マイ単語帳 1,000語。Pro について」 | js/weeklyReport.js |
+| 1. 知る（続けた人） | 学習データの週間レポート | 学んだ日が 7 日以上・Pro でない人に 1 行「Pro なら、マイ単語帳 1,000語・連続記録の修復。Pro について」 | js/weeklyReport.js |
 | 1. 知る（上限に当たった） | マイ単語帳 100 語・AI の回数・推移 90 日・連続記録の修復・テーマ | それぞれの場所に「Pro について」 | 既存 |
 | 2. 比べる | /pro.html | 比較表 5 項目、料金、ボタンの直下に「申し込みの前に」（料金・更新・解約・支払い）と特商法・利用規約へのリンク | js/proView.js termsHtml |
 | 3. ログイン | /pro.html の「ログインして始める」 | 押すと加入の途中の印（`spelldash_pro_intent`、30 分）を付けてログインを開く。メールのリンク・Google から戻るとトップに着くので、印があれば /pro.html?resume=1 へ戻し「ログインした。月額か年額を選ぶ。」、月額のボタンに焦点 | js/proFunnel.js resumeProIntent、js/auth.js |
 | 4. 支払う | Stripe Checkout | 月額・年額。無料期間（`STRIPE_TRIAL_DAYS`）があれば申し込みの前にで言う | api/billing/checkout.js |
 | 5. 加入直後 | /pro.html?pro=done | 反映を待って「Pro になった。ありがとう」と、使えるようになったもの 5 つ（マイ単語帳・テーマへはリンク） | js/proView.js maybeWelcome |
-| 5'. 中止 | /pro.html?pro=cancel | 「手続きを中止した。いつでも再開できる」 | 既存 |
+| 5'. 中止 | /pro.html?pro=cancel | 「支払いは中止した。請求は無い。」（料金の欄まで送る） | 既存 |
 
 ## 加入画面の状態（Batch 51）
 

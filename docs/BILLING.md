@@ -144,7 +144,7 @@ AI の上限の 429 メッセージ: 無料「今日の無料ぶん（N回）は
 | 「すでに Pro です。」 | checkout 409 `already_subscribed` | 本人の行が isProRow | 正常。プロフィールの「お支払いの管理」へ |
 | 「お支払いの記録が見つかりません」 | portal 404 `no_subscription` | `stripe_customer_id` が無い（加入直後で webhook 未着、または一度も加入していない） | 数分待って開き直す。それでも無ければ webhook（上の行） |
 | 解約したのに Pro のまま | | 期間末まで Pro（解約予定）。期限 + 3 日の猶予 | 仕様。`#planValue` が「解約予定・YYYY/M/D まで」なら正常 |
-| 支払い失敗の人が Pro のまま／急に Free になった | status `past_due` | 期限 + 3 日は猶予（第 3 節）。過ぎると free | Portal でカードを更新してもらう。Stripe の Smart Retries が成功すれば `active` に戻る |
+| 支払い失敗の人が Pro のまま／急に Free になった | status `past_due` | 期限 + 3 日は猶予（第 3 節）。過ぎると free | Portal でカードを更新してもらう。Stripe の Smart Retries が成功すれば `active` に戻る。画面の文は「お支払いが確認できていない。カードを更新しないと無料に戻る」で日付を出さない（更新に失敗した時点で current_period_end は次の期間の終わりに進んでいて、無料に戻る日は Stripe の再試行と解約の設定が決める） |
 | テーマが白／黒に戻った | | 失効したので紙・藍を落とした（`getTheme()`） | 仕様。再加入で選び直せる |
 | ログインし直したら Pro の表示が消えた | | `spelldash_plan` のキャッシュをログアウトで消す。ログイン直後の `refreshPlan()` が終わる前 | 1〜2 秒待つ。続くなら `subscriptions` の RLS（本人 select）を docs/SQL_BILLING.md (a)(b) で確かめる |
 | CRM の `missing` に `subscriptions` | `GET /api/admin/players` | テーブル未作成 | docs/SQL_BILLING.md。無くても CRM は動く（全員 free 表示） |

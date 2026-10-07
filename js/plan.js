@@ -163,24 +163,19 @@ export function formatPlanDate(iso) {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-// プランの表示文（プロフィール・Pro ページ共通）
-//   free → "無料" / pro → "Pro（次回の更新 YYYY/M/D）" / 解約予定 → "Pro（解約予定・YYYY/M/D まで）"
-// 猶予の終わり（期限＋3 日。過ぎると無料に戻る）
-export function graceEndDate(plan = getPlan()) {
-  const end = Date.parse(plan.periodEnd ?? "");
-  if (Number.isNaN(end)) return "";
-  return formatPlanDate(new Date(end + GRACE_MS).toISOString());
-}
-
 // プランの 1 行（加入画面の状態欄とプロフィールのプラン行で同じ文）。status で分ける
+//   free → "無料" / pro → "Pro（次回の更新 YYYY/M/D）" / 解約予定 → "Pro（解約予定・YYYY/M/D まで使える）"
+//   支払い遅延は日付を出さない（更新に失敗した時点で期限は次の期間の終わりに進んでいて、無料に戻る日は Stripe の再試行が決める）
 export function planLabel(plan = getPlan()) {
   if (!plan.pro) return "無料";
   const date = formatPlanDate(plan.periodEnd);
-  if (plan.status === "past_due") {
-    const grace = graceEndDate(plan);
-    return grace ? `Pro（お支払いが確認できていない。${grace} までにカードを更新しないと無料に戻る）` : "Pro（お支払いが確認できていない。カードを更新しないと無料に戻る）";
-  }
+  if (plan.status === "past_due") return "Pro（お支払いが確認できていない。カードを更新しないと無料に戻る）";
   if (plan.cancelAtPeriodEnd) return date ? `Pro（解約予定・${date} まで使える）` : "Pro（解約予定）";
   if (plan.status === "trialing") return date ? `Pro の無料期間中（${date} から有料で自動更新）` : "Pro の無料期間中";
   return date ? `Pro（次回の更新 ${date}）` : "Pro";
+}
+
+// 支払いの管理ボタンの文（加入画面とプロフィールで同じ）
+export function planActionLabel(plan = getPlan()) {
+  return plan.status === "past_due" ? "カードを更新する" : "解約・お支払いの管理";
 }

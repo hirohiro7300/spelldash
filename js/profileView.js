@@ -11,7 +11,7 @@ import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./ba
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme, isProTheme } from "./theme.js";
 import { isNativeApp } from "./appEnv.js";
-import { getPlan, isPro, postBilling, planLabel } from "./plan.js";
+import { getPlan, isPro, postBilling, planLabel, planActionLabel } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
 import { getSetSize, setSetSize } from "./dailySet.js";
 import { getWeekGoal, setWeekGoal } from "./growthLog.js";
@@ -109,7 +109,7 @@ function initializePlanRow() {
     if (link) link.hidden = plan.pro || !canOfferPro();
     if (portal) {
       portal.hidden = isNativeApp || !plan.pro;
-      portal.textContent = plan.status === "past_due" ? "カードを更新する" : "解約・お支払いの管理";
+      portal.textContent = planActionLabel(plan);
     }
   };
   document.addEventListener("spelldash:billing", render); // 受付中かが分かったら「Pro について」を出し直す

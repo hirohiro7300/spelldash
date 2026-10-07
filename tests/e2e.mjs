@@ -149,7 +149,7 @@ const server = http.createServer((req, res) => {
       if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
       if (String(word.en).includes("401")) return json(401, { error: "login_required", message: "ログインすると使える（無料）" });
       // "limit" を含む語なら無料ぶんを使い切った（429・upgrade:true → 表示側が「Pro について」を添える）
-      if (String(word.en).includes("limit")) return json(429, { error: "daily_limit", upgrade: true, message: "今日の無料ぶん（3回）は使い切った。Pro なら1日60回" });
+      if (String(word.en).includes("limit")) return json(429, { error: "daily_limit", upgrade: true, message: "今日の無料ぶん（3回）は使い切った。", offer: "Pro なら1日60回" });
       json(200, { mnemonic: `${word.en} は「${word.ja}」。音で覚える`, example: `Example with ${word.en}.`, exampleJa: `${word.en} を使った例文`, pitfall: "似た綴りの語に注意" });
     });
     return;
@@ -2942,12 +2942,12 @@ console.log("pro:");
     await pro.close();
   }
 
-  // 2d. 支払い遅延（past_due）: 「ご利用中」と過ぎた日付ではなく、カードの更新と期限を言う。ボタンは「カードを更新する」
+  // 2d. 支払い遅延（past_due）: 「ご利用中」と日付ではなく、カードの更新を言う（無料に戻る日は Stripe の再試行が決めるので出さない）。ボタンは「カードを更新する」
   {
     const page = await newPage({ storage: proStorage({ status: "past_due", current_period_end: isoDaysFromNow(-1) }) });
     await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
     const told = await waitUntil(async () => (await text(page, "#proState")).includes("お支払いが確認できていない"), 5000);
-    check("Pro: past_due は「お支払いが確認できていない。M/D までにカードを更新しないと無料に戻る」と「カードを更新する」", told && (await text(page, "#proState")).includes("までにカードを更新しないと無料に戻る") && (await text(page, "#proPortal")) === "カードを更新する", await text(page, "#proState"));
+    check("Pro: past_due は「お支払いが確認できていない。カードを更新しないと無料に戻る」（日付は出さない）と「カードを更新する」", told && (await text(page, "#proState")).includes("お支払いが確認できていない。カードを更新しないと無料に戻る") && (await text(page, "#proPortal")) === "カードを更新する", await text(page, "#proState"));
     await page.close();
   }
 
@@ -2959,6 +2959,17 @@ console.log("pro:");
     await page.reload({ waitUntil: "networkidle" });
     const waiting = await waitUntil(async () => (await text(page, "#proPlans")).includes("手続きは完了。反映を待っている。もう一度申し込まない"), 5000);
     check("Pro: 支払い後に開き直してもまだ反映されていなければ、購入ボタンの代わりに「反映を待っている。もう一度申し込まない」", waiting && (await page.$("#proCheckoutMonth")) === null, await text(page, "#proPlans"));
+    check("Pro: 支払いの印は開いたアカウントに付く", (await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_funnel_paid") || "{}").user)) === "test-user");
+    await page.close();
+  }
+
+  // 2e'. 別のアカウントの支払いの印が残っている（同じブラウザで別の人がログイン）: 購入ボタンを隠さない
+  {
+    const day = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const page = await newPage({ storage: { spelldash_test_session: "1", spelldash_funnel_paid: JSON.stringify({ day, user: "someone-else" }) } });
+    await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    const shown = await waitUntil(async () => (await page.$("#proCheckoutMonth")) !== null, 5000);
+    check("Pro: 別のアカウントの支払いの印では「反映を待っている」を出さず、購入ボタンを出す", shown && !(await text(page, "#proPlans")).includes("反映を待っている"), await text(page, "#proPlans"));
     await page.close();
   }
 

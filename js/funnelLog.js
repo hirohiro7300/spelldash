@@ -10,7 +10,8 @@ const DEVICE_KEY = "spelldash_device_id";
 const SENT_KEY = "spelldash_funnel_sent"; // ["step:source:YYYY-MM-DD" | "step:source:once", ...]（新しい 200 件）
 const MISSING_KEY = "spelldash_funnel_missing"; // sessionStorage: このタブでは表が無いと分かった
 const FIRST_PENDING_KEY = "spelldash_funnel_first"; // 初めて来た日（送れたら消す。表が無い・オフラインでも、後で送れる）
-const PAID_PENDING_KEY = "spelldash_funnel_paid"; // 支払いを終えて戻った（Pro が反映されたら checkout_done を送って消す）
+const PAID_PENDING_KEY = "spelldash_funnel_paid"; // 支払いを終えて戻った { day, user }（Pro が反映されたら消す）
+const PAID_SEND_KEY = "spelldash_funnel_paid_send"; // Pro になったが checkout_done をまだ送れていない日
 const QUEUE_KEY = "spelldash_funnel_queue"; // ページを移る直前に押されたもの（次のページで送る）[{ step, source, day }]
 const ONCE_STEPS = new Set(["first_visit", "day7"]);
 export const FUNNEL_STEPS = ["first_visit", "day7", "entry", "pro_view", "login_click", "login_return", "checkout_start", "checkout_done", "checkout_cancel"];
@@ -179,35 +180,63 @@ export function trackFirstVisit() {
   }
 }
 
-// 支払いを終えて戻った（js/proView.js）。反映がすぐでなくても、後で Pro になったときに checkout_done を送る
+// 支払いを終えて戻った（js/proView.js）。反映がすぐでなくても、後で Pro になったときに checkout_done を送る。
+// 印は { day, user }。user は加入画面がログインを知った時点で付ける（別のアカウントに「反映を待っている」を出さない）
 export function markPaidPending() {
   try {
-    localStorage.setItem(PAID_PENDING_KEY, today());
+    localStorage.setItem(PAID_PENDING_KEY, JSON.stringify({ day: today(), user: null }));
   } catch {
     // 何もしない
   }
 }
 
-// Pro になったら（全ページ。spelldash:plan のたびと読み込み時）控えてある支払いを checkout_done として送る
+function readPaidPending() {
+  const raw = localStorage.getItem(PAID_PENDING_KEY);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (value && typeof value.day === "string") return { day: value.day, user: typeof value.user === "string" ? value.user : null };
+  } catch {
+    // 前の形（日付だけ）
+  }
+  return { day: raw, user: null };
+}
+
+// Pro になったら（全ページ。spelldash:plan のたびと読み込み時）「反映を待っている」の印は消し、checkout_done を送る。
+// 送れなかったぶん（テーブル未作成・オフライン）は PAID_SEND_KEY に残して次で送り直す。印は送れたかに関係なく消す
 export function flushPaidPending(isProNow) {
   try {
-    const day = localStorage.getItem(PAID_PENDING_KEY);
-    if (!day || !isProNow) return;
+    const pending = readPaidPending();
+    if (pending && isProNow) {
+      localStorage.removeItem(PAID_PENDING_KEY);
+      localStorage.setItem(PAID_SEND_KEY, pending.day);
+    }
+    const day = localStorage.getItem(PAID_SEND_KEY);
+    if (!day) return;
     logFunnel("checkout_done", "", day).then((sent) => {
-      if (sent) localStorage.removeItem(PAID_PENDING_KEY);
+      if (sent) localStorage.removeItem(PAID_SEND_KEY);
     });
   } catch {
     // 何もしない
   }
 }
 
-// 支払いを終えて戻ったが、まだ Pro に反映されていないか（印が 2 日以内）。加入画面は購入ボタンの代わりに「反映を待っている」を出す
-export function hasPaidPending() {
+// 支払いを終えて戻ったが、まだ Pro に反映されていないか（このアカウントの印が 2 日以内）。加入画面は購入ボタンの代わりに「反映を待っている」を出す。
+// ログインしていなければ false（ログインのボタンを出す）。印にアカウントが無ければ、いまのアカウントのものとして付ける
+export function hasPaidPending(userId) {
   try {
-    const day = localStorage.getItem(PAID_PENDING_KEY);
-    if (!day) return false;
-    const age = (Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86400000;
-    return Number.isFinite(age) && age >= 0 && age <= 2;
+    const pending = readPaidPending();
+    if (!pending || !userId) return false;
+    const age = (Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${pending.day}T00:00:00Z`)) / 86400000;
+    if (!(Number.isFinite(age) && age >= 0 && age <= 2)) {
+      localStorage.removeItem(PAID_PENDING_KEY);
+      return false;
+    }
+    if (!pending.user) {
+      localStorage.setItem(PAID_PENDING_KEY, JSON.stringify({ day: pending.day, user: userId }));
+      return true;
+    }
+    return pending.user === userId;
   } catch {
     return false;
   }
