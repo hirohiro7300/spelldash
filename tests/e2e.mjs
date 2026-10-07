@@ -119,11 +119,17 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
 }
 
 // ---- 静的サーバー（supabase.jsだけスタブ差し替え） ----
+let fakeTrialMonths = 0; // 偽の /api/billing/config が返す無料期間（月）。POST /__billing/trial?months=N で切り替える
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (urlPath === "/") urlPath = "/index.html";
 
   // 端末間同期の「クラウド」（上の createCloud。スタブが spelldash_test_cloud のあるときだけ投げてくる）
+  if (urlPath === "/__billing/trial" && req.method === "POST") {
+    fakeTrialMonths = Number(new URL(req.url, "http://x").searchParams.get("months")) || 0;
+    res.writeHead(204).end();
+    return;
+  }
   if (urlPath === "/__cloud/query" && req.method === "POST") {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
@@ -186,7 +192,7 @@ const server = http.createServer((req, res) => {
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
     if (route === "config") {
       if (req.method !== "GET") return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
-      return json(200, { configured: true, prices: [{ interval: "month", amount: 580, currency: "jpy" }, { interval: "year", amount: 4800, currency: "jpy" }], trialDays: 0 });
+      return json(200, { configured: true, prices: [{ interval: "month", amount: 580, currency: "jpy" }, { interval: "year", amount: 4800, currency: "jpy" }], trialDays: 0, trialMonths: fakeTrialMonths });
     }
     if (route !== "checkout" && route !== "portal") return json(404, { error: "not_found", message: "そのAPIはありません。" });
     if (req.method !== "POST") return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
@@ -328,6 +334,24 @@ console.log("modulepreload:");
     check(`${pageName}: 先読みした教材はそれぞれ 1 回だけ取る（先読みが fetch に使われる）`, wrong.length === 0, wrong.join(" "));
     await page.close();
   }
+}
+
+// 各ページが外から読む CSS・スクリプトは、本番の Content-Security-Policy（vercel.json）が許す先だけ（許されない先は本番で黙って拒否される。2026-10 の Google Fonts）
+console.log("csp:");
+{
+  const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+  const csp = vercel.headers.flatMap((h) => h.headers).find((h) => h.key === "Content-Security-Policy")?.value ?? "";
+  const directives = csp.split(";").map((d) => d.trim().split(/\s+/));
+  const directive = (name) => (directives.find((d) => d[0] === name) ?? directives.find((d) => d[0] === "default-src") ?? []).slice(1);
+  const allowed = (url, name) => directive(name).some((src) => src.startsWith("http") && url.startsWith(src));
+  const bad = [];
+  const htmlFiles = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html")), ...fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html")).map((f) => `packs/${f}`)];
+  for (const f of htmlFiles) {
+    const html = fs.readFileSync(path.join(ROOT, f), "utf8");
+    for (const m of html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="(https?:[^"]+)"/g)) if (!allowed(m[1], "style-src")) bad.push(`${f}: ${m[1]}`);
+    for (const m of html.matchAll(/<script[^>]+src="(https?:[^"]+)"/g)) if (!allowed(m[1], "script-src")) bad.push(`${f}: ${m[1]}`);
+  }
+  check("外から読む CSS・スクリプトは本番の CSP が許す先だけ", csp !== "" && bad.length === 0, bad.slice(0, 3).join(" | "));
 }
 
 console.log("pages:");
@@ -2899,7 +2923,7 @@ console.log("pro:");
     await page.goto(BASE + "/index.html#access_token=test&type=magiclink", { waitUntil: "networkidle" });
     const back = await waitUntil(() => page.url().includes("/pro.html"), 5000);
     const resumed = await waitUntil(async () => (await text(page, "#proMessage")) === "ログインした。月額か年額を選ぶ。", 5000);
-    check("動線: ログインから戻ると加入画面へ戻り「ログインした。月額か年額を選ぶ。」", back && resumed && !page.url().includes("resume="), `${page.url()} / ${await text(page, "#proMessage")}`);
+    check("動線: ログインから戻ると加入画面へ戻り「ログインした。月額か年額を選ぶ。」", back && resumed && !page.url().includes("resume="), `${page.url()} / ${await text(page, "#proMessage")} / plans=${(await text(page, "#proPlans")).slice(0, 60)} / auth=${await text(page, "#authMessage")}`);
     check("動線: 戻ったら加入の途中の印を消し、月額のボタンに焦点", (await page.evaluate(() => localStorage.getItem("spelldash_pro_intent"))) === null && (await page.evaluate(() => document.activeElement?.id)) === "proCheckoutMonth");
     check("Pro: ページ内に特商法のリンク", (await page.$$('a[href="./tokushoho.html"]')).length >= 2);
     check("Pro: よくある質問は 3 つ（「アプリ版でも使える」はアプリのログインができるまで出さない）、常体", (await page.$$("details.pro-faq")).length === 3 && !(await page.content()).includes("アプリ版でも使える") && !(await page.content()).includes("いつでも解約できますか") && !(await page.$$eval("details.pro-faq", (els) => els.map((e) => e.textContent).join(""))).includes("ますか"), String((await page.$$("details.pro-faq")).length));
@@ -3032,6 +3056,48 @@ console.log("pro:");
     await page.waitForTimeout(800);
     const mark = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_funnel_paid") || "null"));
     check("Pro: 別のアカウントの支払いの印は、Pro の人が開いても消さない", mark?.user === "someone-else", JSON.stringify(mark));
+    await page.close();
+  }
+
+  // 2g. 初めての方は 1 か月無料（STRIPE_TRIAL_MONTHS=1）: 未ログイン・初めての人・以前に加入した人で文を分ける
+  {
+    await fetch(BASE + "/__billing/trial?months=1", { method: "POST" });
+    const guest = await newPage();
+    await guest.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await text(guest, "#proPrice")).includes("¥580"), 5000);
+    check("無料期間: 未ログインの料金の行に「初めての方は最初の1か月無料」", (await text(guest, "#proPrice")).includes("初めての方は最初の1か月無料"), await text(guest, "#proPrice"));
+    check("無料期間: 未ログインの「申し込みの前に」に「初めての方だけ、最初の1か月は無料」", (await text(guest, ".pro-terms")).includes("初めての方だけ、最初の1か月は無料"), await text(guest, ".pro-terms"));
+    await guest.close();
+
+    const first = await newPage({ storage: { spelldash_test_session: "1" } });
+    await first.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await first.$("#proCheckoutMonth")) !== null, 5000);
+    const button = await text(first, "#proCheckoutMonth");
+    check("無料期間: 初めての人のボタンは「1か月無料で始める（その後 月額 ¥580）」", button === "1か月無料で始める（その後 月額 ¥580）", button);
+    check("無料期間: 初めての人には終わりの日（M/D に 月額…を請求）", /\d+\/\d+ に 月額 ¥580/.test(await text(first, ".pro-terms")), await text(first, ".pro-terms"));
+    await first.close();
+
+    const again = await newPage({ storage: proStorage({ status: "canceled", current_period_end: isoDaysFromNow(-40) }) });
+    await again.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await again.$("#proCheckoutMonth")) !== null, 5000);
+    check("無料期間: 以前に加入した人のボタンは「月額 ¥580 で始める」（無料と言わない）", (await text(again, "#proCheckoutMonth")) === "月額 ¥580 で始める" && !(await text(again, "#proPrice")).includes("無料"), `${await text(again, "#proCheckoutMonth")} / ${await text(again, "#proPrice")}`);
+    check("無料期間: 以前に加入した人には「今回は加入した日に…請求」", (await text(again, ".pro-terms")).includes("以前に加入したことがあるので"), await text(again, ".pro-terms"));
+    await again.close();
+    await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
+  }
+
+  // 2h. 初めての人がホームを開いただけ（成長ログに 0 語の行が 1 つ）でログインしても、「この端末の記録を足す」をたずねない
+  {
+    const page = await newPage();
+    const dialogs = [];
+    page.on("dialog", (d) => { dialogs.push(d.message()); d.dismiss().catch(() => {}); });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    const growth = await page.evaluate(() => localStorage.getItem("spelldash_growth_log") || "");
+    await page.evaluate(() => localStorage.setItem("spelldash_test_session", "1"));
+    await page.goto(BASE + "/index.html#access_token=test&type=magiclink", { waitUntil: "networkidle" });
+    await page.waitForTimeout(1200);
+    check("同期: 学んでいない端末（成長ログは 0 語の行だけ）でログインしても、記録を足すかをたずねない", dialogs.length === 0 && (await page.evaluate(() => localStorage.getItem("spelldash_test_session"))) === "1", `dialogs=${dialogs.join("|")} growth=${growth.slice(0, 80)}`);
     await page.close();
   }
 

@@ -56,6 +56,29 @@ export function trialDays() {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
+// 無料期間を暦の月で（STRIPE_TRIAL_MONTHS。「初めての方は 1 か月無料」）。日数（STRIPE_TRIAL_DAYS）より優先する
+export function trialMonths() {
+  const n = Number(process.env.STRIPE_TRIAL_MONTHS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+// 無料期間の終わり（UNIX 秒）。月なら日本時間で同じ日付の n か月後（無い日は月末に寄せる: 1/31 → 2/28）。無料期間が無ければ 0
+const JST_MS = 9 * 60 * 60 * 1000;
+export function trialEndUnix(now = new Date()) {
+  const months = trialMonths();
+  if (months > 0) {
+    const end = new Date(now.getTime() + JST_MS); // 日本時間の暦で数える（UTC だと朝 9 時前の加入が 1 日ずれる）
+    const day = end.getUTCDate();
+    end.setUTCDate(1);
+    end.setUTCMonth(end.getUTCMonth() + months);
+    const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+    end.setUTCDate(Math.min(day, lastDay));
+    return Math.floor((end.getTime() - JST_MS) / 1000);
+  }
+  const days = trialDays();
+  return days > 0 ? Math.floor(now.getTime() / 1000) + days * 86400 : 0;
+}
+
 export function siteOrigin() {
   return String(process.env.SITE_ORIGIN || DEFAULT_ORIGIN).trim().replace(/\/+$/, "") || DEFAULT_ORIGIN;
 }

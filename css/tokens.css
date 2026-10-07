@@ -4,6 +4,34 @@
    Pro の追加テーマ: 紙 html[data-theme="paper"]（温かい生成りのライト）／藍 html[data-theme="indigo"]（藍染めのダーク）。
    どちらも白／黒と同じ役割のトークンを持つだけで、部品の CSS は変えない。 */
 
+/* 等幅（英単語・数字）: IBM Plex Mono を自前で配る（assets/fonts、SIL Open Font License 1.1 は assets/fonts/OFL.txt）。
+   以前は Google Fonts から読んでいたが、vercel.json の Content-Security-Policy（style-src・font-src は 'self' だけ）で
+   本番では読み込みが止められていた。自前なら CSP を広げず、外部（Google）に閲覧者の IP も送らない。ラテン文字だけ・400/500/600 */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../assets/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../assets/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
 :root {
   --paper: #f7f6f2;
   --paper-2: #ffffff;

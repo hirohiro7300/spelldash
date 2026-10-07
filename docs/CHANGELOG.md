@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-10-07 (月額 ¥980・初めての方は 1 か月無料 — 創業者の決定)
+
+- **無料期間は初めての人だけ**: サーバー（api/billing/checkout.js）は、本人の契約の行が無く、Stripe 側にも user_id の契約が 1 つも無いときだけ無料期間を付ける（webhook は解約後も行を canceled で残すので、解約して入り直した人には付かない）。新しい環境変数 `STRIPE_TRIAL_MONTHS`（暦の月。日本時間で同じ日付の 1 か月後、無い日は月末）を `subscription_data[trial_end]` で渡す。日数の `STRIPE_TRIAL_DAYS` も残す（月が優先）
+- **加入画面**: 料金の行「月額 ¥980（税込）。初めての方は最初の1か月無料。いつでも解約できる。」、初めての人のボタン「1か月無料で始める（その後 月額 ¥980）」と「申し込みの前に」の無料期間の行（終わりの日 M/D と請求額、それまでに解約すれば請求なし）。以前に加入した人には無料と言わず「今回は加入した日に請求」
+- 特商法の表記（販売価格 月額 980 円・初回 1 か月無料・支払時期）と利用規約に無料期間を書いた。docs（BILLING・FOUNDER_TODO・PRO_VALUE・SPEC_FUNNEL）を決定に合わせた
+- **初めての人がログインすると「この端末の記録を足す」をたずねていた**: ホームを開くだけで成長ログに 0 語の行が 1 つ書かれ、同期はそれを「端末の記録」と数えていた（キャンセルするとログインが止まる）。学んだ跡のある行（学んだ日・覚えた語が 1 以上）だけ数える。ページが速くなって E2E で表に出た
+- 金額はコードに無い（Stripe の Price が画面に出る）。創業者側: Stripe で月額 ¥980 の Price、Vercel の環境変数 `STRIPE_PRICE_MONTHLY` と `STRIPE_TRIAL_MONTHS=1`
+
+## 2026-10-07 (等幅フォントを自前で配る — 本番で読み込みが止められていた)
+
+- **本番では IBM Plex Mono が一度も読み込まれていなかった**: 全ページ（174）が Google Fonts の CSS を読んでいたが、vercel.json の Content-Security-Policy は style-src・font-src を 'self' に限っているので、ブラウザが「CSP 違反」で拒否していた（英単語・数字は端末の等幅フォントで出ていた）。本番と同じ CSP を付けた手元のサーバーで、拒否と、直したあとに読み込まれることを確かめた
+- IBM Plex Mono（SIL Open Font License 1.1）のラテン文字 400／500／600 を `assets/fonts/` に置き、css/tokens.css の @font-face で読む（約 45KB、font-display: swap）。CSP は広げない。外部（Google）に閲覧者の IP を送らず、外部への接続 2 本（preconnect）も減った
+- パックの入口ページの生成（scripts/build-pack-pages.mjs）からも Google Fonts を外した
+
 ## 2026-10-07 (読み込みの往復を減らす — modulepreload)
 
 - ビルドしないので、ブラウザは import を 1 段読むごとに次のファイルを知る。ホームは 16 段・68 ファイルで、キャッシュの無い端末は往復 16 回ぶん待っていた → 各ページの head に、そのページの依存すべてを `<link rel="modulepreload">` で並べた（読むだけで実行はしないので、動きは変わらない）

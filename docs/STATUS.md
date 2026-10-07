@@ -50,7 +50,7 @@
 
 ## 4. 品質・流れ
 
-- E2E `npm test`（playwright-core、Supabase はスタブ、約 6 分）: **671 件**。検証 `node scripts/validate-words.mjs`。import を足した・data/manifest.json の基本カテゴリを変えたら `node scripts/modulepreload.mjs`（各ページの先読みを生成。ずれると E2E と CI が落ちる）。CI は PR と main で検証を実行
+- E2E `npm test`（playwright-core、Supabase はスタブ、約 6 分）: **679 件**。検証 `node scripts/validate-words.mjs`。import を足した・data/manifest.json の基本カテゴリを変えたら `node scripts/modulepreload.mjs`（各ページの先読みを生成。ずれると E2E と CI が落ちる）。CI は PR と main で検証を実行
 - 本番反映: dev ブランチ → PR → main → Vercel（2 プロジェクトとも success を確認）。条件は E2E 全件＋validate OK。Supabase の SQL・外部への告知は創業者側
 - アクセシビリティ: キーボードだけで主線を一周できる（Tab の移動、モーダルの焦点管理、スキップリンク、aria-live、ラベル）。コントラストは AA（ink-3 5.1:1）
 - スマホ: 指の端末では入力欄 16px（自動ズームなし）、押せるものは 40〜44px。UI の見直しは 6 回（主線 78 件・主線以外 70 件・Battle／管理画面／旧 CSS 49 件・初回 10 分 30 件・2〜8 日目 24 件・2〜4 週目 34 件）を監査 → 反映 → 査読で通した。game.css の旧パレットは 0
@@ -65,11 +65,12 @@
 
 ## 6. 数字
 
-- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、E2E 671、マージ済み PR 128
+- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、E2E 679、マージ済み PR 129
 - **ユーザー系の数字はまだ無い**（10 人ローンチ前。CRM・activity_days・funnel_events は受け皿として用意済み）
 
 ## 7. 次の候補（docs/BACKLOG.md）
 
-- 創業者の判断待ち: **Pro の次の中身と価格（docs/PRO_VALUE.md §6。推奨は受験日から逆算した計画・¥580 で開始）**、無料期間、見出し語 18 件、カタカナ訳 225 語の方針、AI の無料回数（docs/FOUNDER_TODO.md F）
+- 決定（2026-10-07）: **Pro は月額 ¥980、初めての方は 1 か月無料（随時）、年額なし**。創業者側の設定: Stripe の ¥980 の Price・`STRIPE_PRICE_MONTHLY`・`STRIPE_TRIAL_MONTHS=1`（docs/FOUNDER_TODO.md B）
+- 創業者の判断待ち: Pro の次の中身（docs/PRO_VALUE.md §6）、見出し語 18 件、カタカナ訳 225 語の方針、AI の無料回数（docs/FOUNDER_TODO.md F）
 - 創業者側の作業で止まっているもの: Supabase の復旧、Pro の受付（Stripe・特商法の記入）、SQL（SQL_BILLING・SQL_USER_ITEMS・SQL_FUNNEL・SQL_FEEDBACK）
 - コード側の候補: 加入までの体験の点検（Batch 51）、UI の残り（docs/BACKLOG.md F13・F15 の残り）、word_progress の列追加（2 台目の履歴・「知ってた」）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）

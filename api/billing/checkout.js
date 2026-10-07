@@ -6,6 +6,9 @@
 //   503 not_configured / 401 login_required / 400 bad_request（interval が不正、年額が未設定）
 //   409 already_subscribed（本人の行がすでに Pro）/ 502 upstream
 //
+// 無料期間（STRIPE_TRIAL_MONTHS／STRIPE_TRIAL_DAYS）は初めての人だけ: 本人の行が無く（webhook は解約後も行を canceled で残す）、
+// Stripe 側にも user_id の契約が 1 つも無いとき。解約して入り直した人には付けない
+//
 // 本人の行は本人のトークンで読む（RLS）。success / cancel の URL は SITE_ORIGIN からだけ作る（リクエストヘッダは使わない）。
 // Web 専用（アプリでは購入ボタンを出さない）なので CORS は許可しない。
 
@@ -14,7 +17,7 @@ import {
   rejectMethod,
   billingConfigured,
   priceIdFor,
-  trialDays,
+  trialEndUnix,
   siteOrigin,
   stripeFetch,
   fetchOwnSubscription,
@@ -43,12 +46,15 @@ export default async function handler(req, res) {
     if (isProRow(row)) return send(res, 409, { error: "already_subscribed", message: MESSAGES.alreadySubscribed });
     // webhook がまだ届いていない直後や、別のタブからの二重加入を防ぐ: 既知の顧客なら Stripe 側の生きている契約も見る
     // 行がまだ無い（webhook の前）: Stripe 側を user_id で探す。検索の反映は遅れることがあるので、画面側の「支払い済み」の印と併せて使う
+    let firstTime = !row; // 行が無い = まだ一度も契約していない（無料期間を付けてよい）
     if (!row) {
       try {
         const found = await stripeFetch("/v1/subscriptions/search", { query: `metadata['user_id']:'${user.id}'`, limit: 10 }, { method: "GET" });
-        if ((Array.isArray(found?.data) ? found.data : []).some((s) => LIVE_STATUSES.has(s?.status))) {
+        const subs = Array.isArray(found?.data) ? found.data : [];
+        if (subs.some((s) => LIVE_STATUSES.has(s?.status))) {
           return send(res, 409, { error: "already_subscribed", message: MESSAGES.alreadySubscribed });
         }
+        if (subs.length > 0) firstTime = false; // webhook の前に解約した契約がある
       } catch {
         // 検索できなくても加入は止めない（行が無い初めての人）
       }
@@ -75,8 +81,8 @@ export default async function handler(req, res) {
     // 既に Stripe の顧客なら同じ顧客に紐づける（Portal で履歴が 1 つにまとまる）。初めてならメールだけ渡す
     if (row?.stripe_customer_id) params.customer = row.stripe_customer_id;
     else if (user.email) params.customer_email = user.email;
-    const trial = trialDays();
-    if (trial > 0) params.subscription_data.trial_period_days = trial;
+    const trialEnd = firstTime ? trialEndUnix() : 0;
+    if (trialEnd > 0) params.subscription_data.trial_end = trialEnd; // 初めての人だけ。暦の月（または日数）で終わりの時刻を渡す
 
     const session = await stripeFetch("/v1/checkout/sessions", params, {
       idempotencyKey: `checkout:${user.id}:${interval}:${Math.floor(Date.now() / 60000)}`

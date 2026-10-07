@@ -34,7 +34,7 @@ const PAID_WAIT_TEXT = "手続きは完了。反映を待っている。もう�
 const stateElement = document.getElementById("proState");
 const messageElement = document.getElementById("proMessage");
 
-let config = null; // { configured, prices, trialDays }（取得前は null）
+let config = null; // { configured, prices, trialMonths, trialDays }（取得前は null）
 let session = null;
 let busy = false;
 const params = new URLSearchParams(location.search);
@@ -98,7 +98,31 @@ stateElement.addEventListener("click", (event) => {
 async function loadConfig() {
   const fetched = await fetchBillingConfig(); // 全ページのキャッシュと同じ規則（js/proFunnel.js）
   rememberBillingConfig(fetched); // 取れなかったときは受付前と覚えない（前の値のまま 10 分後に取り直す）
-  config = { configured: fetched.configured, prices: fetched.prices, trialDays: fetched.trialDays };
+  config = { configured: fetched.configured, prices: fetched.prices, trialMonths: fetched.trialMonths, trialDays: fetched.trialDays };
+}
+
+// 無料期間（初めての方だけ。api/billing/checkout.js が判定する）。無ければ null
+//   label: 「1か月」「7日」／ endText: 無料期間の終わりの日（M/D。日本時間で n か月後・無い日は月末）
+function trialInfo() {
+  const months = Number(config?.trialMonths) || 0;
+  const days = Number(config?.trialDays) || 0;
+  if (months <= 0 && days <= 0) return null;
+  const jst = new Date(Date.now() + 9 * 3600000);
+  let end;
+  if (months > 0) {
+    const day = jst.getUTCDate();
+    end = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth() + months, 1));
+    const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+    end.setUTCDate(Math.min(day, lastDay));
+  } else {
+    end = new Date(jst.getTime() + days * 86400000);
+  }
+  return { label: months > 0 ? `${months}か月` : `${days}日`, endText: `${end.getUTCMonth() + 1}/${end.getUTCDate()}` };
+}
+
+// この人に無料期間が付くか: 未ログインは「初めての方は」と案内だけ、ログイン済みは契約の行が一度も無い人（解約後も行は canceled で残る）
+function trialEligible() {
+  return !session || getPlan().status === "none";
 }
 
 function yen(amount) {
@@ -154,11 +178,13 @@ function renderPlans(plan) {
   const perMonth = year ? Math.round(Number(year.amount) / 12) : 0;
   const terms = termsHtml(month, year, perMonth, { withPerMonth: !session });
   // 最初の画面で「いくらで、いつでもやめられるか」が分かるように、見出しの直下に 1 行
+  const trialInfoNow = trialInfo();
   if (priceElement) {
-    priceElement.textContent = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}` : ""}（税込）。いつでも解約できる。`;
+    const offer = trialInfoNow && trialEligible() ? `初めての方は最初の${trialInfoNow.label}無料。` : "";
+    priceElement.textContent = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}` : ""}（税込）。${offer}いつでも解約できる。`;
     priceElement.hidden = false;
   }
-  const trial = config.trialDays > 0 ? `${config.trialDays} 日無料で始める` : "";
+  const trial = trialInfoNow && session && trialEligible() ? `${trialInfoNow.label}無料で始める` : "";
   if (!session) {
     // 未ログイン: ボタンは「ログインして始める」1 つ（押すとヘッダーのログインが開く。動かないボタンを出さない）
     plansElement.innerHTML = `
@@ -180,10 +206,13 @@ function renderPlans(plan) {
 function termsHtml(month, year, perMonth, { withPerMonth = true } = {}) {
   // 月あたりは年額のボタンが言うので、ボタンが出るとき（ログイン済み）は繰り返さない
   const price = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}${withPerMonth ? `（月あたり ${yen(perMonth)}）` : ""}` : ""}（税込）`;
-  const trial =
-    config.trialDays > 0
-      ? `<div><dt>無料期間</dt><dd>最初の ${config.trialDays} 日は無料。${config.trialDays + 1} 日目に 月額 ${yen(month.amount)}${year ? `（年額なら ${yen(year.amount)}）` : ""}を請求。それまでに解約すれば請求は無い</dd></div>`
-      : "";
+  const info = trialInfo();
+  const charge = `月額 ${yen(month.amount)}${year ? `（年額なら ${yen(year.amount)}）` : ""}`;
+  const trial = !info
+    ? ""
+    : trialEligible()
+      ? `<div><dt>無料期間</dt><dd>初めての方だけ、最初の${info.label}は無料。${session ? `${info.endText} に` : "無料期間の終わりに"} ${charge}を請求。それまでに解約すれば請求は無い</dd></div>`
+      : `<div><dt>無料期間</dt><dd>初めての方だけ（以前に加入したことがあるので、今回は加入した日に ${charge}を請求）</dd></div>`;
   return `
     <dl class="pro-terms" aria-label="申し込みの前に">
       <div><dt>料金</dt><dd>${price}</dd></div>
