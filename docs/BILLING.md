@@ -27,13 +27,13 @@
 受付開始までは `/pro.html` に「Pro はまだ受付前です。」と出て、加入はできない（`GET /api/billing/config` が `configured:false`）。
 
 > **順番の注意**: 受付中かどうかは Stripe の鍵と月額の Price だけで決まり、特商法の表記（tokushoho.html の［ ］）が埋まったかは見ない。**特商法の表記を埋めてから鍵を入れる**（下の 7 を 3 より先に）。加入ボタンの直下から特商法の表記へリンクしている。
-> **無料期間**（`STRIPE_TRIAL_DAYS`）を付けると、加入画面に「無料期間」の行とボタンの「N 日無料で始める（その後 …）」が自動で出る。特商法の表記と利用規約には「無料期間の終わりに決済」の句を入れてある。
+> **無料期間**（2026-10-07 決定: 初めての方は 1 か月無料・随時）は `STRIPE_TRIAL_MONTHS=1`。付くのは**初めての人だけ**（本人の `subscriptions` の行が無く、Stripe 側にも user_id の契約が 1 つも無い。webhook は解約後も行を canceled で残すので、入り直した人には付かない）。終わりは日本時間で同じ日付の 1 か月後（無い日は月末）。加入画面の料金の行（「初めての方は最初の1か月無料」）・ボタン「1か月無料で始める（その後 月額 ¥980）」・「申し込みの前に」の無料期間の行（終わりの日と請求額）が自動で出て、以前に加入した人には「今回は加入した日に請求」と出る。特商法の表記と利用規約にも書いてある。日数で付けたいときは `STRIPE_TRIAL_DAYS`（月が優先）。
 > **領収書のメール**を約束するなら Stripe の Settings → Emails で「成功した支払いのメール」を ON（加入画面の FAQ は「解約・お支払いの管理」で見られる、とだけ書いている）。
 
 1. **Stripe アカウント**を作る（https://dashboard.stripe.com）。本人確認と銀行口座は本番キーに切り替える前までに済ませる。
 2. **商品と Price**: Products → Add product → 名前「SpellDash Pro」。Price は **定期（Recurring）・JPY・税込**で、
-   - 月額（必須）: 例 ¥580 / month
-   - 年額（任意）: 例 ¥4,800 / year
+   - 月額（必須）: **¥980 / month**（2026-10-07 決定）
+   - 年額（任意）: 作らない（作ると画面に年額のボタンが出る）
    それぞれの Price ID（`price_...`）を控える。テストモードと本番モードで ID は別。
 3. **Vercel → Project → Settings → Environment Variables**（Production。Preview にも入れるならテストモードのキー）:
 
@@ -43,7 +43,8 @@
    | `STRIPE_PRICE_MONTHLY` | 月額の Price ID | 必須 |
    | `STRIPE_PRICE_YEARLY` | 年額の Price ID | 任意（無ければ年額ボタンを出さない） |
    | `STRIPE_WEBHOOK_SECRET` | 4 で作る Webhook の Signing secret（`whsec` で始まる） | webhook に必須 |
-   | `STRIPE_TRIAL_DAYS` | 無料トライアルの日数 | 任意（既定 0） |
+   | `STRIPE_TRIAL_MONTHS` | 初めての方の無料期間（暦の月）。**1** | 推奨（2026-10-07 決定） |
+   | `STRIPE_TRIAL_DAYS` | 無料期間を日数で（`STRIPE_TRIAL_MONTHS` が優先） | 任意（既定 0） |
    | `SITE_ORIGIN` | `https://www.spelldash.net` | 任意（既定がこの値。success / cancel / return の URL はこれだけから作る） |
    | `SUPABASE_SERVICE_ROLE_KEY` | Supabase の service_role key（CRM と共用） | webhook の書き込みに必須 |
 
@@ -157,12 +158,12 @@ Stripe のダッシュボードで見る場所: Payments（支払い・返金）
 
 | エンドポイント | 認証 | 応答 |
 |---|---|---|
-| `GET /api/billing/config` | 不要 | `{ configured: boolean, prices: [{ interval: "month"\|"year", amount: number, currency: "jpy" }], trialDays: number }`。未設定なら `{ configured:false, prices:[], trialDays:0 }`（200）。Price は 10 分メモリキャッシュ。`amount` は `unit_amount` そのまま（JPY はゼロ小数） |
+| `GET /api/billing/config` | 不要 | `{ configured: boolean, prices: [{ interval: "month"\|"year", amount: number, currency: "jpy" }], trialMonths: number, trialDays: number }`（無料期間は初めての人だけ。月が設定されていれば trialDays は 0）。未設定なら `{ configured:false, prices:[], trialDays:0, trialMonths:0 }`（200）。Price は 10 分メモリキャッシュ。`amount` は `unit_amount` そのまま（JPY はゼロ小数） |
 | `POST /api/billing/checkout` `{ interval }` | Bearer 必須 | `{ url }`（Stripe Checkout）。503 `not_configured` / 401 `login_required` / 400 `bad_request`（interval が month / year 以外、または year 未設定）/ 409 `already_subscribed` / 502 `upstream` |
 | `POST /api/billing/portal` | Bearer 必須 | `{ url }`（Billing Portal、return は `/profile.html`）。404 `no_subscription` / 503 / 401 / 502 |
 | `POST /api/billing/webhook` | `Stripe-Signature` | `{ received: true }`（200）。400 `bad_signature`（署名不正・300 秒超）/ 503（未設定）/ 500（Supabase 書き込み失敗 → Stripe が再送） |
 
-Checkout セッションの中身: `mode=subscription`、`line_items[0][price]`、`client_reference_id=<userId>`、既存の `stripe_customer_id` があれば `customer=`、無ければ `customer_email=`、`metadata[user_id]` と `subscription_data[metadata][user_id]`、`success_url=${SITE_ORIGIN}/pro.html?pro=done`（旧 `/profile.html?pro=done` も引き続き反映を待つ）、`cancel_url=${SITE_ORIGIN}/pro.html?pro=cancel`、`locale=ja`、`allow_promotion_codes=true`、`STRIPE_TRIAL_DAYS>0` なら `subscription_data[trial_period_days]`。
+Checkout セッションの中身: `mode=subscription`、`line_items[0][price]`、`client_reference_id=<userId>`、既存の `stripe_customer_id` があれば `customer=`、無ければ `customer_email=`、`metadata[user_id]` と `subscription_data[metadata][user_id]`、`success_url=${SITE_ORIGIN}/pro.html?pro=done`（旧 `/profile.html?pro=done` も引き続き反映を待つ）、`cancel_url=${SITE_ORIGIN}/pro.html?pro=cancel`、`locale=ja`、`allow_promotion_codes=true`、初めての人（行が無く、Stripe の検索でも契約が無い）だけ `subscription_data[trial_end]`（`STRIPE_TRIAL_MONTHS` なら日本時間で n か月後、`STRIPE_TRIAL_DAYS` なら n 日後の UNIX 秒）。
 
 Webhook が扱うイベント: `checkout.session.completed`（`mode=subscription` のみ。`subscription` id で `GET /v1/subscriptions/{id}` を取り直して upsert）、`customer.subscription.created` / `updated` / `deleted`（`deleted` は `status=canceled`）。他は 200 で無視。upsert は `POST /rest/v1/subscriptions?on_conflict=user_id`、`Prefer: resolution=merge-duplicates`。
 
@@ -185,7 +186,7 @@ E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/bi
 > - 連続記録: シールドが最大 3 枚。途切れても月 1 回、7 日以内なら前の連続日数を取り戻せます
 > - テーマ: 「紙」と「藍」
 >
-> 月額 ¥580（年額 ¥4,800）。いつでも解約でき、期間の終わりまで使えます。
+> 月額 ¥980。初めての方は最初の 1 か月無料で、その間に解約すれば料金はかかりません。いつでも解約でき、期間の終わりまで使えます。
 > 覚えやすさや判定が有利になるものは売りません。ランキングも無料のままです。
 > 詳しくは [SpellDash Pro](./pro.html) へ。
 
@@ -193,7 +194,8 @@ E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/bi
 
 ## 11. 価格の仮説
 
-- docs/MONETIZATION.md 由来: **¥580/月・¥4,800/年（月あたり ¥400）**。中高生が小遣いで払える上限を意識して低め。年払いで解約率を下げる
+- **決定（2026-10-07）: 月額 ¥980、初めての方は 1 か月無料（随時）。年額は出さない**
+- 以前の仮説: docs/MONETIZATION.md 由来の ¥580/月・¥4,800/年（中高生が小遣いで払える上限を意識して低め）
 - 比較: Duolingo Super 約 ¥1,100、mikan Premium 約 ¥600〜1,000、abceed 約 ¥1,400（2026-07 時点）。docs/PRO_VALUE.md の「月額 1,000 円払ってもやりたい」は価値設計の目標で、価格の決定ではない
 - 決めるのは創業者。コードに金額は無いので、Stripe の Price を作り直して環境変数を差し替えるだけで変えられる（既存の加入者は旧 Price のまま）
-- 最初の 10 人・20 人のうちは、価格より「何に払うか」の反応を見る（docs/PRO_VALUE.md §5）。無料トライアル（`STRIPE_TRIAL_DAYS`）は、必要になってから
+- 最初の 10 人・20 人のうちは、価格より「何に払うか」の反応を見る（docs/PRO_VALUE.md §5）。無料期間（1 か月）があるので、最初の数字は「無料期間からの継続率」で見る（管理画面の動線の checkout_done は無料期間の開始で数える）

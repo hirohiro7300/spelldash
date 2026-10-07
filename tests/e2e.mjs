@@ -119,11 +119,17 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
 }
 
 // ---- 静的サーバー（supabase.jsだけスタブ差し替え） ----
+let fakeTrialMonths = 0; // 偽の /api/billing/config が返す無料期間（月）。POST /__billing/trial?months=N で切り替える
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (urlPath === "/") urlPath = "/index.html";
 
   // 端末間同期の「クラウド」（上の createCloud。スタブが spelldash_test_cloud のあるときだけ投げてくる）
+  if (urlPath === "/__billing/trial" && req.method === "POST") {
+    fakeTrialMonths = Number(new URL(req.url, "http://x").searchParams.get("months")) || 0;
+    res.writeHead(204).end();
+    return;
+  }
   if (urlPath === "/__cloud/query" && req.method === "POST") {
     let raw = "";
     req.on("data", (chunk) => (raw += chunk));
@@ -186,7 +192,7 @@ const server = http.createServer((req, res) => {
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
     if (route === "config") {
       if (req.method !== "GET") return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
-      return json(200, { configured: true, prices: [{ interval: "month", amount: 580, currency: "jpy" }, { interval: "year", amount: 4800, currency: "jpy" }], trialDays: 0 });
+      return json(200, { configured: true, prices: [{ interval: "month", amount: 580, currency: "jpy" }, { interval: "year", amount: 4800, currency: "jpy" }], trialDays: 0, trialMonths: fakeTrialMonths });
     }
     if (route !== "checkout" && route !== "portal") return json(404, { error: "not_found", message: "そのAPIはありません。" });
     if (req.method !== "POST") return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
@@ -3051,6 +3057,33 @@ console.log("pro:");
     const mark = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_funnel_paid") || "null"));
     check("Pro: 別のアカウントの支払いの印は、Pro の人が開いても消さない", mark?.user === "someone-else", JSON.stringify(mark));
     await page.close();
+  }
+
+  // 2g. 初めての方は 1 か月無料（STRIPE_TRIAL_MONTHS=1）: 未ログイン・初めての人・以前に加入した人で文を分ける
+  {
+    await fetch(BASE + "/__billing/trial?months=1", { method: "POST" });
+    const guest = await newPage();
+    await guest.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await text(guest, "#proPrice")).includes("¥580"), 5000);
+    check("無料期間: 未ログインの料金の行に「初めての方は最初の1か月無料」", (await text(guest, "#proPrice")).includes("初めての方は最初の1か月無料"), await text(guest, "#proPrice"));
+    check("無料期間: 未ログインの「申し込みの前に」に「初めての方だけ、最初の1か月は無料」", (await text(guest, ".pro-terms")).includes("初めての方だけ、最初の1か月は無料"), await text(guest, ".pro-terms"));
+    await guest.close();
+
+    const first = await newPage({ storage: { spelldash_test_session: "1" } });
+    await first.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await first.$("#proCheckoutMonth")) !== null, 5000);
+    const button = await text(first, "#proCheckoutMonth");
+    check("無料期間: 初めての人のボタンは「1か月無料で始める（その後 月額 ¥580）」", button === "1か月無料で始める（その後 月額 ¥580）", button);
+    check("無料期間: 初めての人には終わりの日（M/D に 月額…を請求）", /\d+\/\d+ に 月額 ¥580/.test(await text(first, ".pro-terms")), await text(first, ".pro-terms"));
+    await first.close();
+
+    const again = await newPage({ storage: proStorage({ status: "canceled", current_period_end: isoDaysFromNow(-40) }) });
+    await again.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await again.$("#proCheckoutMonth")) !== null, 5000);
+    check("無料期間: 以前に加入した人のボタンは「月額 ¥580 で始める」（無料と言わない）", (await text(again, "#proCheckoutMonth")) === "月額 ¥580 で始める" && !(await text(again, "#proPrice")).includes("無料"), `${await text(again, "#proCheckoutMonth")} / ${await text(again, "#proPrice")}`);
+    check("無料期間: 以前に加入した人には「今回は加入した日に…請求」", (await text(again, ".pro-terms")).includes("以前に加入したことがあるので"), await text(again, ".pro-terms"));
+    await again.close();
+    await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
   }
 
   // 2f. 受付前（キャッシュが閉じている）: 上限の文に Pro の話とリンクを出さない
