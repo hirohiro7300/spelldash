@@ -70,6 +70,7 @@
 
 ## 7. 次の候補（docs/BACKLOG.md）
 
-- 創業者の判断待ち: **Pro の次の中身と価格（docs/PRO_VALUE.md §6。推奨は受験日から逆算した計画・¥580 で開始）**、無料期間、見出し語 18 件、カタカナ訳 225 語の方針、AI の無料回数（docs/FOUNDER_TODO.md F）
+- 決定（2026-10-07）: **Pro は月額 ¥980、初めての方は 1 か月無料（随時）、年額なし**。創業者側の設定: Stripe の ¥980 の Price・`STRIPE_PRICE_MONTHLY`・`STRIPE_TRIAL_MONTHS=1`（docs/FOUNDER_TODO.md B）
+- 創業者の判断待ち: Pro の次の中身（docs/PRO_VALUE.md §6）、見出し語 18 件、カタカナ訳 225 語の方針、AI の無料回数（docs/FOUNDER_TODO.md F）
 - 創業者側の作業で止まっているもの: Supabase の復旧、Pro の受付（Stripe・特商法の記入）、SQL（SQL_BILLING・SQL_USER_ITEMS・SQL_FUNNEL・SQL_FEEDBACK）
 - コード側の候補: 加入までの体験の点検（Batch 51）、UI の残り（docs/BACKLOG.md F13・F15 の残り）、word_progress の列追加（2 台目の履歴・「知ってた」）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）
