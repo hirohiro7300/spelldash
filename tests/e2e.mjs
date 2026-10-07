@@ -330,6 +330,24 @@ console.log("modulepreload:");
   }
 }
 
+// 各ページが外から読む CSS・スクリプトは、本番の Content-Security-Policy（vercel.json）が許す先だけ（許されない先は本番で黙って拒否される。2026-10 の Google Fonts）
+console.log("csp:");
+{
+  const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+  const csp = vercel.headers.flatMap((h) => h.headers).find((h) => h.key === "Content-Security-Policy")?.value ?? "";
+  const directives = csp.split(";").map((d) => d.trim().split(/\s+/));
+  const directive = (name) => (directives.find((d) => d[0] === name) ?? directives.find((d) => d[0] === "default-src") ?? []).slice(1);
+  const allowed = (url, name) => directive(name).some((src) => src.startsWith("http") && url.startsWith(src));
+  const bad = [];
+  const htmlFiles = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html")), ...fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html")).map((f) => `packs/${f}`)];
+  for (const f of htmlFiles) {
+    const html = fs.readFileSync(path.join(ROOT, f), "utf8");
+    for (const m of html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="(https?:[^"]+)"/g)) if (!allowed(m[1], "style-src")) bad.push(`${f}: ${m[1]}`);
+    for (const m of html.matchAll(/<script[^>]+src="(https?:[^"]+)"/g)) if (!allowed(m[1], "script-src")) bad.push(`${f}: ${m[1]}`);
+  }
+  check("外から読む CSS・スクリプトは本番の CSP が許す先だけ", csp !== "" && bad.length === 0, bad.slice(0, 3).join(" | "));
+}
+
 console.log("pages:");
 for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html", "/list.html", "/pro.html", "/tokushoho.html", "/terms.html"]) {
   const page = await newPage();
