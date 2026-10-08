@@ -850,8 +850,8 @@ console.log("bookshelf:");
     // 函を押す: 英検のコースへ（制覇していない最初の巻 eiken5 から）
     await page.click('#bookshelf button.box[data-course="eiken"]');
     const boxed = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_course"))) === "eiken" && (await page.textContent("#pathHead")).includes("英検5級"), 6000);
-    const st2 = await page.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), box: document.querySelector('#bookshelf button.box[data-course="eiken"]').className, label: document.querySelector('#bookshelf button.box[data-course="eiken"]').getAttribute("aria-label"), prev: document.querySelector('#bookshelf button.box[data-course="jhs-redo"]').className }));
-    check("本棚: 函を押すとコースが替わる（eiken → eiken5、函に「いまのコース」）", boxed && st2.cat === "eiken5" && st2.box.includes("box--reading") && st2.label.includes("いまのコース") && !st2.prev.includes("box--reading"), JSON.stringify(st2));
+    const st2 = await page.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), box: document.querySelector('#bookshelf button.box[data-course="eiken"]').className, label: document.querySelector('#bookshelf button.box[data-course="eiken"]').getAttribute("aria-label"), prev: document.querySelector('#bookshelf button.box[data-course="jhs-redo"]').className, focus: document.activeElement?.id }));
+    check("本棚: 函を押すとコースが替わる（eiken → eiken5、函に「いまのコース」、焦点は机のスタート）", boxed && st2.cat === "eiken5" && st2.box.includes("box--reading") && st2.label.includes("いまのコース") && !st2.prev.includes("box--reading") && st2.focus === "pathStart", JSON.stringify(st2));
     // 扉: 開くと 49 冊（8 段）。鍵穴は無い。最初の背に焦点。背の文字ははみ出さない
     const beforeDoors1200 = new Set(fontFiles); // ここから先（扉・本をさがす）で増えるフォント
     await page.click("#archiveDoors");
@@ -878,6 +878,14 @@ console.log("bookshelf:");
     await page.waitForTimeout(200);
     const f3 = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, focus: document.activeElement?.id }));
     check("本棚: 本をさがす（「歴史」で 6 冊以上、高校日本史・世界史も。「トーイック」で TOEIC。Esc で閉じて焦点は開いたボタンへ）", f.open && f.rows >= 6 && f.text.includes("高校日本史") && f.text.includes("高校世界史") && f2.includes("TOEIC") && !f3.open && f3.focus === "bookFinderOpen", JSON.stringify({ ...f, text: f.text.slice(0, 80), f2: f2.slice(0, 40), f3 }));
+    // 入力欄の Enter は最初の 1 冊（閉じるボタンがフォームの既定の submit になって閉じてしまわない）。古文単語はコース外: 鍵はそのまま
+    await page.click("#bookFinderOpen");
+    await page.fill("#bookFinderQ", "古文");
+    await page.waitForTimeout(100);
+    await page.keyboard.press("Enter");
+    const entered = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "hs-kobun", 6000);
+    const st3 = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, course: localStorage.getItem("spelldash_course"), focus: document.activeElement?.id, title: document.querySelector("#pathHead .path__title")?.textContent }));
+    check("本棚: 本をさがすの Enter は最初の 1 冊を机に（閉じるだけにならない。古文単語・コースの鍵はそのまま・焦点はスタート）", entered && !st3.open && st3.course === "eiken" && st3.focus === "pathStart" && st3.title?.includes("古文単語"), JSON.stringify(st3));
     // 本をさがすで選ぶ: コース外の本（都道府県）→ 机に出る。コースの鍵は触らず、柱は「社会の棚」、答えは日本語・60枚
     await page.click("#bookFinderOpen");
     await page.fill("#bookFinderQ", "都道府県");
@@ -929,14 +937,22 @@ console.log("bookshelf:");
     await page.waitForTimeout(1500);
     const p = await page.evaluate(() => ({ focus: document.activeElement?.id, cardTop: Math.round(document.getElementById("pathCard").getBoundingClientRect().top), kicker: document.querySelector("#pathHead .path__kicker")?.textContent, course: localStorage.getItem("spelldash_course"), meta: document.querySelector("#pathHead .path__meta")?.textContent, n: document.querySelectorAll("#pathStart").length }));
     check("本棚（390）: 背を押すと机へ戻り、焦点はスタート（柱は「社会の棚」、答えは日本語・75枚、コースはそのまま、スタートは 1 個）", picked && p.focus === "pathStart" && p.cardTop > -300 && p.cardTop < 300 && p.kicker.includes("社会の棚") && p.course === "jhs-redo" && p.meta.includes("75枚") && p.n === 1, JSON.stringify(p));
-    // プレイ中は本棚を畳み、机に戻ると出る
+    // プレイ中は本棚を畳み、机に戻ると出る。畳まれている間に組み直されても（同期）、出たときに段を測り直す（「あと N冊」が全冊にならない）
     await page.tap("#pathStart");
     await page.waitForTimeout(600);
     const hid = await page.evaluate(() => getComputedStyle(document.getElementById("bookshelf")).display);
+    await page.evaluate(() => import("/js/bookshelf.js").then((m) => m.renderBookshelf())); // 同期で組み直したのと同じ（畳まれたまま）
+    await page.waitForTimeout(100);
     await page.tap("#backToPath");
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(600);
     const shown = await page.evaluate(() => getComputedStyle(document.getElementById("bookshelf")).display);
+    const moreAfter = await page.evaluate(() => {
+      const btn = document.querySelector("#shelf-exam .more");
+      const spines = document.querySelectorAll("#shelf-exam .spine, #shelf-exam .slot").length;
+      return { hidden: btn?.hidden, txt: btn?.textContent.trim(), n: Number(btn?.querySelector("b")?.textContent), spines };
+    });
     check("本棚（390）: プレイ中は畳まれ、机に戻ると出る", hid === "none" && shown !== "none", `${hid} → ${shown}`);
+    check("本棚（390）: 畳まれている間に組み直されても、出たときに「あと N冊」を測り直す（N は全冊未満・ボタンは見える）", moreAfter.hidden === false && moreAfter.txt.includes("あと") && moreAfter.n >= 1 && moreAfter.n < moreAfter.spines, JSON.stringify(moreAfter));
     // 扉を開いても横スクロール無し・背の文字ははみ出さない・右端で切れるのは本物の背
     const beforeDoors390 = new Set(fontFiles); // 扉で増えるフォント（プレイの「続きから」の 700 はスタートの分）
     await page.click("#archiveDoors");
@@ -2992,6 +3008,8 @@ console.log("review fixes:");
   await pageG.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await pageG.waitForTimeout(900);
   check("道: 語が無いカテゴリ（空のマイ単語帳）には案内が出る（右頁）", (await pageG.textContent("#pathCard")).includes("まだ語が無い") && (await pageG.$("#pathCard a[href*='myWords']")) !== null);
+  const emptyToc = await pageG.textContent("#pathList");
+  check("道: 語が無い本の目次に「0章を終えると」の星は出ない", !emptyToc.includes("章を終えると") && (await pageG.$$("#pathList .path__node--goal")).length === 0, emptyToc.trim().slice(0, 80));
   await pageG.close();
 
   // 静的ページのヘッダー右端（Batch 42）: 未ログインは「ログイン」→ /?login=1 でホームのログイン欄が開く。ログイン済みらしければ「設定」

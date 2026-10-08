@@ -1,4 +1,5 @@
-import { getCategories, getPackCatalog, getWordsByCategory, MY_CATEGORY } from "./wordStore.js";
+import { getAllWords, getCategories, getPackCatalog, getWordsByCategory, MY_CATEGORY } from "./wordStore.js";
+import { esc, numHtml } from "./html.js";
 import { getWordStats } from "./storage.js";
 import { COURSES, getCourseId } from "./course.js";
 import { SHELVES, shelfIdOf, shelfOf } from "./shelves.js";
@@ -209,8 +210,6 @@ const COURSE_ALIAS = { eiken: ["eiken", "えいけん"], toeic: ["toeic", "ト�
 // 何も打っていないときの「よく開かれる本」
 const FINDER_DEFAULT = ["jhs-english1", "toeic500", "eiken3", "jhist1", "jsci1", "accounting"];
 
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const num = (s) => esc(s).replace(/\d+/g, '<span class="n">$&</span>');
 // 縦書きの背で 1〜2 桁の数字は縦中横
 const tcy = (s) => esc(s).replace(/(^|\D)(\d{1,2})(?!\d)/g, '$1<span class="tcy">$2</span>');
 // 本の題: 「中学英語 2年（教科書レベル）」の括弧書きは外す
@@ -289,6 +288,7 @@ function buildData() {
     BOOKS.set(c.id, book);
     byShelf[shelfId].push(book);
   }
+  // 棚の無い本は出せない（scripts/validate-words.mjs が manifest の全カテゴリに棚があることを確かめる）。見出しの冊数は棚に出た本だけ数える
   console.assert(unassigned.length === 0, "本棚: 棚の無い本", unassigned);
   // マイ単語帳は英単語の棚の末尾（171 冊には数えない）
   const my = bookOf({ id: MY_CATEGORY.id, label: MY_CATEGORY.label, kind: "" }, "eng");
@@ -344,7 +344,7 @@ function buildData() {
       keys: [c.label, c.blurb, c.audience, "コース", "こーす", ...(COURSE_ALIAS[c.id] ?? [])].map(norm).join("\n")
     }))
   ];
-  return { total: all.length, unassigned };
+  return { total: all.length - unassigned.length, unassigned };
 }
 
 // 題か副題が 6 字以上の背（文字を少し小さく組む。css .spine--long）
@@ -380,14 +380,14 @@ function courseOf(courseId) {
 // ---------- 状態 ----------
 const currentBookId = () => localStorage.getItem(CATEGORY_KEY) || "all";
 let readingSet = new Set();
+// 読みかけ（記録のある語を 1 つでも持つ本）。全語を 1 回だけ走る（本ごとに getWordsByCategory で絞ると 171 × 全語になる）。
+// 語の条件は getWordsByCategory と同じ（kanjiOnly は出さない）。マイ単語帳は数えない
 function computeReading() {
   const stats = getWordStats();
   readingSet = new Set();
   if (Object.keys(stats).length === 0) return;
-  for (const book of BOOKS.values()) {
-    if (book.id === "my") continue;
-    const words = getWordsByCategory(book.id);
-    if (words.length && words.some((w) => stats[w.id])) readingSet.add(book.id);
+  for (const w of getAllWords()) {
+    if (w.category && w.category !== "my" && !w.kanjiOnly && stats[w.id]) readingSet.add(w.category);
   }
 }
 
@@ -524,7 +524,7 @@ export function renderBookshelf() {
     <p class="sr-only" id="bookshelfStatus" role="status"></p>
     <dialog class="finder" id="bookFinder" aria-labelledby="bookFinderTitle">
       <form method="dialog" class="finder__card">
-        <div class="finder__head"><h2 id="bookFinderTitle">本をさがす</h2><button type="submit" class="finder__close" value="close" aria-label="閉じる">${ICON.close}</button></div>
+        <div class="finder__head"><h2 id="bookFinderTitle">本をさがす</h2><button type="button" class="finder__close" aria-label="閉じる">${ICON.close}</button></div>
         <label class="finder__field"><span class="sr-only">書名・教科・試験</span>${ICON.lens}<input id="bookFinderQ" type="search" placeholder="書名・教科・試験（例: 歴史、英検）" autocomplete="off" enterkeyhint="search" /></label>
         <p class="finder__hint" id="bookFinderHint">よく開かれる本</p>
         <ol class="finder__list" id="bookFinderList"></ol>
@@ -560,7 +560,10 @@ export function updateBookshelf() {
 }
 
 // ---------- 段の続き（スマホ）: 隠れている冊数と「あと N冊 →」。右端で切れるのは本物の背（のぞく幅を 30〜40% に） ----------
+// 本棚が畳まれている間（プレイ中。同期で組み直したとき）は測れない（矩形がぜんぶ 0 で、全冊が「隠れている」になる）ので何もしない。
+// 出たときに ResizeObserver（initBookshelf）が測り直す
 function setupRows() {
+  if (!root || root.getClientRects().length === 0) return;
   for (const ul of root.querySelectorAll(".books--scroll")) {
     fitPeek(ul);
     const btn = ul.closest(".shelf")?.querySelector(".more");
@@ -593,9 +596,10 @@ function setupRows() {
 // 右端で切れる 1 冊が本物の背で、30〜40% のぞくように、本の並びを 0〜1 冊ぶんの範囲でずらす（並べる幅は 360／375／390／414 で違う）。
 // ずらす量は、左の余白（14px まで）と本のあいだ（残りを等分）に分ける（左に大きな穴を開けない）
 function fitPeek(ul) {
+  if (ul.scrollLeft > 0) return; // 送った段はそのまま（測り直しで余白を消すと跳ねる）
   ul.style.paddingLeft = "";
   ul.style.gap = "";
-  if (ul.scrollWidth <= ul.clientWidth + 4 || ul.scrollLeft > 0) return;
+  if (ul.scrollWidth <= ul.clientWidth + 4) return;
   const base = parseFloat(getComputedStyle(ul).paddingLeft) || 8;
   const gap = parseFloat(getComputedStyle(ul).gap) || 2;
   const right = ul.clientWidth;
@@ -650,7 +654,7 @@ function showFinder(q) {
   hint.textContent = !norm(q) ? "よく開かれる本" : rows.length ? `${rows.length}${rows.every((r) => r.kind === "course") ? "コース" : "冊"}` : "見つからない。棚の名前でも探せる（社会、試験）";
   list.innerHTML = rows
     .slice(0, 16)
-    .map((r) => `<li><button type="button" class="finder__row" data-${r.kind === "course" ? "course" : "book"}="${esc(r.id)}"><span class="finder__t">${num(r.name)}</span><span class="finder__lead" aria-hidden="true"></span><span class="finder__m">${num(r.meta)}</span></button></li>`)
+    .map((r) => `<li><button type="button" class="finder__row" data-${r.kind === "course" ? "course" : "book"}="${esc(r.id)}"><span class="finder__t">${numHtml(r.name)}</span><span class="finder__lead" aria-hidden="true"></span><span class="finder__m">${numHtml(r.meta)}</span></button></li>`)
     .join("");
 }
 
@@ -711,13 +715,13 @@ function setDoors(open) {
   const inner = root.querySelector("#shelf-job");
   if (!doors || !inner) return;
   doorsOpen = open;
+  inner.hidden = !open; // 段を測る（setupRows）前に出す（hidden のままだと矩形が 0）
   if (open && !jobsRendered) {
     inner.innerHTML = jobsHtml();
     jobsRendered = true;
     setupRows();
     setupRoving();
   }
-  inner.hidden = !open;
   doors.setAttribute("aria-expanded", String(open));
   doors.classList.toggle("doors--open", open);
   const go = doors.querySelector(".doors__go-t");
@@ -761,6 +765,7 @@ export function initBookshelf({ onPick, onCourse } = {}) {
       if (row.dataset.course) return openCourse(row.dataset.course);
       return openBook(row.dataset.book);
     }
+    if (event.target.closest(".finder__close")) return root.querySelector("#bookFinder")?.close();
     const idx = event.target.closest(".shelf-index a");
     if (idx) {
       // 索引: その棚の上端を画面の上に（前の棚の札が上に残らない）。URL のハッシュは変えない
@@ -795,10 +800,10 @@ export function initBookshelf({ onPick, onCourse } = {}) {
   root.addEventListener("input", (event) => {
     if (event.target.id === "bookFinderQ") showFinder(event.target.value);
   });
+  // 入力欄の Enter（フォームに submit ボタンは置かない: 置くと Enter がそのボタンの click になり、閉じるボタンなら閉じてしまう）
   root.addEventListener("submit", (event) => {
     const dlg = event.target.closest("#bookFinder");
     if (!dlg) return;
-    if (event.submitter?.classList.contains("finder__close")) return;
     event.preventDefault();
     dlg.querySelector(".finder__row")?.click();
   });
@@ -822,9 +827,12 @@ export function initBookshelf({ onPick, onCourse } = {}) {
     true
   );
 
+  // 幅が変わった・畳まれていた本棚が出た（プレイ中 → 机に戻る。畳まれている間は測れない）ら段を測り直す
   let resizeTimer = null;
-  window.addEventListener("resize", () => {
+  const remeasure = () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(setupRows, 120);
-  });
+  };
+  window.addEventListener("resize", remeasure);
+  if (typeof ResizeObserver === "function") new ResizeObserver(remeasure).observe(root);
 }

@@ -5,7 +5,7 @@ import { icon } from "./icons.js";
 // データの ex（英文）／exJa（訳）／exForm（英文中の語形）を、答え表示・正解時・単語帳・単語詳細に出す。
 // 見出し語は太字にして「この文のどこがその語か」を一目で分かるようにする。
 
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+import { esc } from "./html.js";
 
 export function hasExample(word) {
   return !!(word && word.ex && word.exJa);
