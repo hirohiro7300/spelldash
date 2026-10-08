@@ -217,17 +217,6 @@
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
 }
 
-.shelf-index a:nth-child(n + 5)::after {
-  content: "";
-  position: absolute;
-  left: 10%;
-  right: 10%;
-  top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.5), transparent);
-  box-shadow: 0 1px 0 rgba(170, 186, 230, 0.1);
-}
-
 .shelf-index a:hover {
   color: #F6E2A8;
 }
@@ -261,9 +250,6 @@
     border-radius: 50%;
     background: radial-gradient(circle at 35% 35%, #F6E2A8, #8A6A30 70%);
     box-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
-  }
-  .cabinet__rail .shelf-index a:nth-child(n + 5)::after {
-    display: none;
   }
 }
 
@@ -1370,7 +1356,16 @@
 /* ---- 夜（dark／indigo）: 背の丸みの左に暖かい縁、題箋は沈め、背板はさらに暗く ---- */
 html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .spine::before,
 html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .box::before {
-  background: linear-gradient(90deg, rgba(255, 180, 100, 0.42) 0, rgba(255, 180, 100, 0.12) 1px, rgba(255, 180, 100, 0) 3px, rgba(4, 3, 2, 0.3) 4px, rgba(4, 3, 2, 0.4) 100%), linear-gradient(to bottom, rgba(255, 190, 120, 0.3) 0, transparent 2px);
+  background: linear-gradient(90deg, rgba(255, 184, 104, 0.62) 0, rgba(255, 184, 104, 0.26) 1.5px, rgba(255, 184, 104, 0.06) 4px, rgba(255, 184, 104, 0) 7px, rgba(4, 3, 2, 0.3) 8px, rgba(4, 3, 2, 0.44) 100%), linear-gradient(to bottom, rgba(255, 196, 128, 0.42) 0, rgba(255, 196, 128, 0.1) 2px, transparent 4px);
+}
+
+/* 夜: ろうそくに近い左の 4 冊は金がよく光る（右へ行くほど沈む） */
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .books > li:nth-child(-n + 4) .spine {
+  --t: #F8E6B0;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .books > li:nth-child(n + 9) .spine {
+  --t: #E3C98A;
 }
 
 html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .spine--label .spine__l,
