@@ -989,6 +989,75 @@ console.log("bookshelf:");
   }
 }
 
+// ===== 8.7 書斎の皮（ホーム以外のページ）: 帯のヘッダー・胡桃の幅木・羊皮紙の札・横スクロール無し・文字と帯のコントラスト（css/brand.css・pages.css・battle.css。Batch 56b） =====
+// 10 ページ × 390／1200 × light／dark。計測はページ内の getComputedStyle を 1 回でまとめて読み、check は項目ごと。ホームは room.css の透明な帯のまま
+console.log("pages (書斎の皮):");
+{
+  // トークンは span に var() を当てて rgb に解く。比は WCAG の相対輝度（sRGB → 線形、(L1+.05)/(L2+.05)）
+  const skin = () => {
+    const rgb = (s) => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+    const token = (name) => { const el = document.createElement("span"); el.style.color = `var(${name})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
+    const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const contrast = (a, b) => { const [hi, lo] = [lum(rgb(a)), lum(rgb(b))].sort((x, y) => y - x); return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100; };
+    const vault = token("--vault"), paper = token("--paper"), wood3 = token("--wood-3"), floor = token("--floor");
+    const header = document.querySelector(".site-header"), hs = getComputedStyle(header);
+    const nav = getComputedStyle(document.querySelector(".site-nav__link")).color;
+    const current = document.querySelector('.site-nav__link[aria-current="page"]');
+    const currentColor = current ? getComputedStyle(current).color : null;
+    const fs = getComputedStyle(document.querySelector(".site-footer"));
+    const footerLink = getComputedStyle(document.querySelector(".site-footer__nav a")).color;
+    const cards = [...document.querySelectorAll(".result-card")].map((el) => { const s = getComputedStyle(el); return { radius: s.borderRadius, shadow: s.boxShadow !== "none" }; });
+    return {
+      theme: document.documentElement.dataset.theme,
+      vault, paper, vaultLum: Math.round(lum(rgb(vault)) * 1000) / 1000,
+      header: { gradient: hs.backgroundImage.includes("linear-gradient"), onVault: hs.backgroundImage.includes(vault), bgColor: hs.backgroundColor, bgImage: hs.backgroundImage === "none" ? "none" : "image", border: hs.borderBottomWidth, position: hs.position, height: header.offsetHeight },
+      nav: { color: nav, ratio: contrast(nav, vault), current: currentColor, currentRatio: currentColor ? contrast(currentColor, vault) : null },
+      footer: { wood: fs.backgroundImage.includes("tile-wood.webp"), dark: fs.backgroundImage.includes(wood3) || fs.backgroundImage.includes(floor), link: footerLink, floor, ratio: contrast(footerLink, floor), hasNews: (document.querySelector(".site-footer__nav")?.textContent ?? "").includes("お知らせ") },
+      scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth,
+      cards
+    };
+  };
+  const SKIN_PAGES = ["/list.html", "/stats.html", "/profile.html", "/pro.html", "/battle.html", "/news.html", "/privacy.html", "/terms.html", "/tokushoho.html", "/packs/accounting.html"];
+  const SKIN_VIEWS = [[390, true], [1200, false]];
+  const skinPage = (w, mobile, theme) => newPage({ mobile, viewport: { width: w, height: mobile ? 844 : 900 }, storage: { spelldash_theme: theme, spelldash_placement: "done" } });
+  const themed = (page, theme) => waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
+
+  for (const [w, mobile] of SKIN_VIEWS) {
+    for (const theme of ["light", "dark"]) {
+      const page = await skinPage(w, mobile, theme);
+      const consoleErrors = [];
+      page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+      for (const p of SKIN_PAGES) {
+        const label = `${p.replace(/^\/|\.html$/g, "")}（${w}・${theme}）`;
+        const errFrom = page.errors.length, consoleFrom = consoleErrors.length;
+        await page.goto(BASE + p, { waitUntil: "networkidle" });
+        await themed(page, theme);
+        const s = await page.evaluate(skin);
+        // 帯: 紺のグラデーション（相対輝度 < .2）で、紙の色ではない。sticky・下端 1px・390 では高さ < 70
+        check(`${label}: ヘッダーは帯（紙でない）`, s.theme === theme && s.header.gradient && s.header.onVault && s.vaultLum < 0.2 && s.header.bgColor !== s.paper && s.header.position === "sticky" && s.header.border === "1px" && (w !== 390 || s.header.height < 70), JSON.stringify({ theme: s.theme, vault: s.vault, vaultLum: s.vaultLum, paper: s.paper, ...s.header }));
+        check(`${label}: ナビの文字と帯 ≥ 4.5（${s.nav.ratio.toFixed(1)}${s.nav.currentRatio ? `／現在地 ${s.nav.currentRatio.toFixed(1)}` : ""}）`, s.nav.ratio >= 4.5 && (s.nav.currentRatio === null || s.nav.currentRatio >= 4.5), JSON.stringify({ vault: s.vault, ...s.nav }));
+        check(`${label}: フッターは幅木`, s.footer.wood && s.footer.dark && s.footer.hasNews, JSON.stringify(s.footer));
+        check(`${label}: フッターの文字と床 ≥ 4.5（${s.footer.ratio.toFixed(1)}）`, s.footer.ratio >= 4.5, JSON.stringify({ link: s.footer.link, floor: s.footer.floor }));
+        check(`${label}: 横スクロールしない`, s.scrollWidth <= s.innerWidth, `${s.scrollWidth}/${s.innerWidth}`);
+        if (p === "/stats.html" || p === "/battle.html") check(`${label}: 札は羊皮紙（角 3px・影）`, s.cards.length > 0 && s.cards.every((c) => c.radius === "3px" && c.shadow), JSON.stringify(s.cards.slice(0, 3)));
+        check(`${label}: console エラー0`, page.errors.length === errFrom && consoleErrors.length === consoleFrom, [...page.errors.slice(errFrom), ...consoleErrors.slice(consoleFrom)][0] ?? "");
+      }
+      await page.close();
+    }
+  }
+
+  // ホーム: 帯は場面の上に透明で載ったまま（room.css）。幅木も既存のまま
+  for (const [w, mobile] of SKIN_VIEWS) {
+    const page = await skinPage(w, mobile, "light");
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await themed(page, "light");
+    const s = await page.evaluate(skin);
+    check(`書斎（${w}）: ヘッダーは透明のまま`, s.header.bgColor === "rgba(0, 0, 0, 0)" && s.header.bgImage === "none" && s.header.position === "absolute", JSON.stringify(s.header));
+    check(`書斎（${w}）: フッターは幅木のまま`, s.footer.wood && s.footer.ratio >= 4.5, JSON.stringify(s.footer));
+    await page.close();
+  }
+}
+
 // ===== 9. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
 console.log("difficulty gate:");
 {

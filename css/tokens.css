@@ -97,6 +97,12 @@
   --ease: 160ms ease;
 
   color-scheme: light;
+
+  /* ---- 読む机の紙（部屋以外のカード）。夜は机の上の暗い紙 ---- */
+  --sheet: #F6EEDC;
+  --sheet-2: #EFE5CF;
+  --sheet-edge: #D9CBAE;
+  --font-num-ui: "SD Num", var(--font-ui); /* 一覧・表の数字 */
 }
 
 @media (min-width: 1100px) {
@@ -172,6 +178,11 @@ html[data-theme="dark"] {
   --scrim: rgba(0, 0, 0, 0.6);
 
   color-scheme: dark;
+
+  /* 読む机の紙（部屋以外のカード）。夜は机の上の暗い紙 */
+  --sheet: #221B14;
+  --sheet-2: #1D1711;
+  --sheet-edge: #3A2F24;
 }
 
 /* ---- 紙（Pro）: 暖かい昼の部屋 ---- */
@@ -218,6 +229,11 @@ html[data-theme="paper"] {
   --focus: 0 0 0 3px rgba(184, 58, 32, 0.24);
 
   color-scheme: light;
+
+  /* 読む机の紙（部屋以外のカード） */
+  --sheet: #F7EFDC;
+  --sheet-2: #F1E6CC;
+  --sheet-edge: #DBCAA6;
 }
 
 /* ---- 藍（Pro）: 深い夜の部屋 ---- */
@@ -281,6 +297,11 @@ html[data-theme="indigo"] {
   --scrim: rgba(0, 0, 0, 0.6);
 
   color-scheme: dark;
+
+  /* 読む机の紙（部屋以外のカード）。夜は机の上の暗い紙 */
+  --sheet: #161D33;
+  --sheet-2: #121829;
+  --sheet-edge: #2B3452;
 }
 
 /* 英語（打つ対象）と数字は等幅 */

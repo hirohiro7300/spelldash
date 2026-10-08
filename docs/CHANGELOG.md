@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 2026-10-08 (Batch 56b: 部屋以外のページを書斎の皮に — 天井の帯・羊皮紙の札・胡桃の幅木)
+
+- **単語帳・学習データ・設定・Pro・バトル・お知らせ・プライバシー・規約・特商法・packs/ の入口（163 枚）が、ホームと同じ建物の「読む机」になった。** それまでは紙の色を羊皮紙にしただけで、ヘッダーは紙の上の帯・カードは「墨と朱」の薄い箱・フッターは罫線 1 本（美術の採点 3〜5／10）。直したあとは全ページ 8／10（ホーム 9）
+- **ヘッダー = 天井の帯**（css/brand.css）: `--vault` → `--vault-2` の紺に漆喰のタイル、下端に `--gold-dk` の 1px。文字・印・現在地の菱はホームの作法（css/room.css）をそのまま写した（箔 `--foil`・`--on-vault`、菱は朱→金で、朱は 1 画面 1 回に）。ナビの文字と帯 11.7〜16.4:1
+- **フッター = 胡桃の幅木**（css/brand.css）: ホームの幅木 5 層を写し、文字は床の帯の上に `--on-vault-2`（8.9〜11.1:1。板面の木目の上では 4.35 で落ちるので置かない）。html の背景は `--floor`（`:has(body:not(.page-room))`）
+- **札 = 羊皮紙の一枚**（css/pages.css・pro.css・battle.css）: 新トークン `--sheet`／`--sheet-2`／`--sheet-edge`（4 テーマ。夜は机の上の暗い紙 — 夜に `--parchment` を面にすると墨が 1.07:1 で全部品の再トークン化が要る）と 1 つのレシピ（角 3px・小口 2 段・`--shadow-rgb` の暖かい影）。夜の札の中の罫は `--line` が 1.2:1 で消えるので `--line-2`
+- **題箋・タブ・セグメント・表・畳みの見出し**: 角丸を 3px／題箋 2px の 2 種に一本化し 999px のピルを廃止。見出しは明朝 500・`--fs-title`、柱（kicker）は等幅 → Cormorant ＋ 金の短い罫 ＋ `--gold-ink`（5.3:1）。タブは金の下線、セグメントは紙 3 ＋ 金線、表頭と項目名は明朝 500、数は Cormorant（`--font-num-ui`）。利用者が打ったメモ（`.note-chip`）だけは本文の書体
+- **Battle**（css/battle.css だけ。ロジック・文言・id は不変）: 「対戦を始める」は dark／indigo で 3.4:1（不合格）だった → 漆の板（`--seal-1` → `--seal-2`・金の内枠・影、文字 `--seal-ink` 4.77 以上）。札・タイマー・Bronze（Cormorant）・結果の数を揃えた
+- **platform**: manifest.webmanifest の `theme_color` を帯の紺 `#1A2137`、`background_color` を紙 `#F4ECDA` に（旧 `#0f172a`）。sw.js は `spelldash-v4`（旧 v3 は activate で消える）、CORE_ASSETS に privacy／terms を追加。**css/fonts.css は間引かない**: 明朝に出うる文字（HTML 174 枚・js・manifest・packs のラベル）で当たらないサブセットは 23／120 = 19.2%（条件の 1/3 未満。scratchpad の fonts-usage.mjs・FONTS-REPORT.md）
+- **変えていないもの**: js/ 0 行、HTML 0 行（packs/ も再生成なし。pages.css の `.pp-*` がテンプレの `<style>` に詳細度で勝つ）、room.css・bookshelf.css・path.css・welcome.css・home.css・card.css・game.css・keyboard.css 0 行、tokens.css は追加だけ（削除 0 行）。ホームの画素差 0（はちゃんの一言の乱数とろうそくの揺らぎだけ）。新しい画像・フォント・外部リクエスト・animation なし
+- 進め方: 基準の撮影（11 ページ × 390／1200 × light／dark）→ アートディレクターの批評（必須 19・推奨 10）→ 4 レーン（shell／surfaces／battle／platform）の並行実装 → 美術の再採点と反証レビュー（禁止違反 0・本文コントラスト 4.5 未満 0・4 テーマ・ホームの画素）→ 必須 3 件の修正（Pro 390 の題の 3 行落ち、packs の「同じグループ」の箱格子、単語帳の sticky 分野ナビの透け）→ 再採点で必須 0
+- E2E +252 件（8.7 書斎の皮: 10 ページ × 2 幅 × 2 テーマで帯・幅木・コントラスト・横スクロール・札・console、ホームのヘッダーは透明のまま）
+- 残り（Batch 56c。docs/BACKLOG.md）: 帯の星図（任意）、Pro 390 の表頭の罫、分野ナビ末尾のフェード、夜の味付け Nocturne、批評の nice-to-have、CSS の棚卸し
+
 ## 2026-10-08 (PR #133 のコードレビュー 8 件の修正 — 本棚・机の本・初回)
 
 - **本をさがすの Enter が閉じるだけになっていた**: 閉じるボタンがフォーム唯一の submit だったので、入力欄の Enter はそのボタンの click になり、最初の 1 冊を開かず閉じていた。閉じるボタンは `type="button"`（click で閉じる）にし、submit は入力欄の Enter だけ → 最初の 1 冊を机に

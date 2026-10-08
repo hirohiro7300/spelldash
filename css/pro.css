@@ -46,16 +46,19 @@ html[data-theme] .pro-faq a:hover {
 }
 
 /* ===== /pro.html ===== */
+/* 題は他のページと同じ大きさ（--fs-title）。2 行に折れるので幅と balance だけここで持つ */
 html[data-theme] .pro .hero--compact h1 {
   max-width: 560px;
-  font-size: 26px;
+  font-size: var(--fs-title);
   line-height: 1.3;
   text-wrap: balance;
 }
 
-@media (min-width: 720px) {
-  html[data-theme] .pro .hero--compact h1 {
-    font-size: 30px;
+/* 720px 未満: 2 文目「Pro は、もっと自分向けに。」が 28px・字間 .04em で .app--narrow の内幅 358px を 3px 超え、「に。」だけが 3 行目に落ちる
+   （text-wrap: balance は <br> をまたがない）。26px なら約 335px。brand.css の (0,3,3) に勝つため body:not(.page-room) を挟む。他ページの題は --fs-title のまま */
+@media (max-width: 719px) {
+  html[data-theme] body:not(.page-room) .pro .hero--compact h1 {
+    font-size: 26px;
   }
 }
 
@@ -459,4 +462,98 @@ html[data-theme] .pro-welcome__list {
 
 html[data-theme] .pro-welcome__list a {
   color: var(--ink);
+}
+
+/* ===== 書斎の読む机（Batch 56b）: Pro の題箋・比較表・紙片・畳み =====
+   規則は全部 body:not(.page-room) を挟む（.pro-chip・.streak-repair はホームにも出うる）。詳細度 (0,3,2) で上の (0,2,1) に勝つ。
+   .pro-cta の皮は brand.css の .btn（墨・明朝 500・--radius-room）に従う: ここで background／color／font は書かない。文言・導線は凍結。 */
+
+/* ---- 「Pro」の題箋: 角丸 2px・縁なし・紙 3。ラテンは Cormorant 600（12px の Cormorant は小さいので 13px） ---- */
+html[data-theme] body:not(.page-room) .pro-chip {
+  border: 0;
+  border-radius: 2px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-family: var(--font-latin);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* ---- 比較表: 表頭と項目名は明朝 500、数は --font-num-ui（tokens.css の .mono (0,1,0) に勝つ）。台帳は紙の台に直接（札に載せない） ---- */
+html[data-theme] body:not(.page-room) .pro-compare thead th {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+html[data-theme] body:not(.page-room) .pro-compare tbody th {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* 補足は 12px ゴシック --ink-3 のまま（th の明朝を継がない） */
+html[data-theme] body:not(.page-room) .pro-compare__sub {
+  font-family: var(--font-ui);
+  letter-spacing: 0;
+}
+
+html[data-theme] body:not(.page-room) .pro-compare .mono {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+  font-size: 1.06em;
+  font-weight: 500;
+}
+
+/* 行の罫は --line、最終行の下だけ --line-2（390 では tr が罫を持つ） */
+html[data-theme] body:not(.page-room) .pro-compare tbody tr:last-child :is(th, td),
+html[data-theme] body:not(.page-room) .pro-compare tbody tr:last-child {
+  border-bottom-color: var(--line-2);
+}
+
+/* ---- 紙片（受付前の注意・連続記録の修復・申し込みの前に）: --sheet-2・縁なし・角丸 2px・小口 1 段 ---- */
+html[data-theme] body:not(.page-room) :is(.pro-pending, .streak-repair, .pro-terms) {
+  background: var(--sheet-2);
+  border: 0;
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--sheet-edge), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
+}
+
+html[data-theme] body:not(.page-room) .streak-repair__text b {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+}
+
+/* ---- よくある質問: 畳める見出しは明朝 500、+／− はラテンの書体 ---- */
+html[data-theme] body:not(.page-room) .pro-faq summary {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] body:not(.page-room) .pro-faq summary::before {
+  font-family: var(--font-latin);
+  font-weight: 600;
+}
+
+html[data-theme] body:not(.page-room) .pro-faq summary:focus-visible {
+  border-radius: var(--radius-room);
+}
+
+/* ---- 料金の 1 行の数字、加入直後の題 ---- */
+html[data-theme] body:not(.page-room) .pro-price {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+}
+
+html[data-theme] body:not(.page-room) .pro-welcome__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
