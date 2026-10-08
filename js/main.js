@@ -198,8 +198,9 @@ function goNextSection() {
   });
 }
 
-// コースの乗り換え: まだ制覇していない最初のセクションから（進捗は語ごとなので失われない）
-function chooseCourse(courseId) {
+// コースの乗り換え: まだ制覇していない最初のセクションから（進捗は語ごとなので失われない）。
+// focusStart: 本棚の函・本をさがすから来たとき、焦点を机のスタートへ（背を押したときの pickBook と同じ着地）
+function chooseCourse(courseId, { focusStart = false } = {}) {
   const course = COURSES[courseId];
   if (!course) return Promise.resolve();
   const start = course.packs.find((id) => !buildPath(id).allDone) ?? course.packs[0];
@@ -211,6 +212,7 @@ function chooseCourse(courseId) {
     renderHome();
     renderHasumiHome(); // 節目の一言（セクション全済み）は新しい道には合わないので描き直す
     document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+    if (focusStart) document.getElementById("pathStart")?.focus({ preventScroll: true });
   });
 }
 
@@ -408,7 +410,7 @@ storeReady
     renderLearnedCard();
     renderHasumiHome(); // 語の読み込み後に（「今日覚えた」の語を名指しするため）
     renderHome();
-    initBookshelf({ onPick: pickBook, onCourse: chooseCourse }); // 本棚（manifest が要るので語の読み込み後）
+    initBookshelf({ onPick: pickBook, onCourse: (id) => chooseCourse(id, { focusStart: true }) }); // 本棚（manifest が要るので語の読み込み後）
     renderLoginNudge();
     setSetupOpen(localStorage.getItem(SETUP_OPEN_KEY) === "1");
     initializeMixControl();

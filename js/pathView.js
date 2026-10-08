@@ -11,6 +11,7 @@ import { icon } from "./icons.js";
 import { trapFocus } from "./focusTrap.js";
 import { scrollBehavior } from "./ui.js";
 import { shelfOf } from "./shelves.js";
+import { esc, numHtml } from "./html.js";
 
 // ===== 机の上の本（ホームの 1 画面目） =====
 //
@@ -71,9 +72,6 @@ export function currentUnitOf(path) {
   return path.currentIndex >= 0 ? path.units[path.currentIndex] : null;
 }
 
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-// 数字は Cormorant の別名（.n）で組む。textContent は変わらない（E2E の includes はそのまま）
-const numHtml = (s) => esc(s).replace(/\d+/g, '<span class="n">$&</span>');
 // 本の題: 「中学英語 2年（教科書レベル）」の括弧書きは題から外し、答え方の行に添える
 const splitTitle = (label) => {
   const m = String(label).match(/^(.*?)（([^）]*)）$/);
@@ -245,7 +243,8 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
             </li>
           </ol>`;
   }
-  const goal = allDone
+  // 語が 1 つも無い本（右頁は「まだ語が無い」）には「0章を終えると」の星を出さない
+  const goal = allDone || units.length === 0
     ? ""
     : `<li class="path__node path__node--goal"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("star", { size: 14 })}</span><div class="path__label"><b>${units.length}章を終えると</b><span>${section?.next ? "次の巻が開く" : "このコースは終わり"}</span></div></li>`;
 

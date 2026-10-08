@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
+import { shelfIdOf } from "../js/shelves.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = path.join(ROOT, "data", "english");
@@ -16,6 +17,11 @@ const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.js
 const manifestCategories = manifest.subjects.flatMap((s) => s.categories);
 
 const problems = [];
+
+// 本棚: manifest の全カテゴリに棚があること（棚の無い本は本棚にも「本をさがす」にも出ない。js/shelves.js の ID_SHELF か GROUP_SHELF に足す）
+for (const c of manifestCategories) {
+  if (!shelfIdOf(c.id, c)) problems.push(`本棚の棚が無い ${c.id}（group=${c.group ?? ""}）: js/shelves.js の ID_SHELF か GROUP_SHELF に足す`);
+}
 
 // 日本語の答え（かな・漢字を含む）のカードは、答えか accept のどれかが「読み」になっていること（js/romaji.js readingCandidates）。
 //  ・読みが 1 つもない → ゲームはローマ字で打てず、IME の全文入力に戻ってしまう

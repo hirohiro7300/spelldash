@@ -3,6 +3,7 @@ import { getWordStats } from "./storage.js";
 import { getTotalXp } from "./level.js";
 import { PLACEMENT_NOTE } from "./course.js";
 import { renderHasumiHome } from "./hasumi.js"; // 紙片の文は body.welcome-open を見る: 畳んだら描き直す
+import { esc, numHtml } from "./html.js";
 
 // ===== 初めて来た人向けのトップページ（書斎の机に置いた最初の本） =====
 //
@@ -30,10 +31,6 @@ export const WELCOME_PILE = [
 ];
 
 let currentBook = FIRST_BOOK;
-
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-// 数字は Cormorant の別名（.n）で組む（textContent は変わらない）
-const numHtml = (s) => esc(s).replace(/\d+/g, '<span class="n">$&</span>');
 
 export function markOnboarded() {
   localStorage.setItem(ONBOARDED_KEY, "1");
@@ -182,7 +179,9 @@ export function pickWelcomeBook(id, meta = null) {
   const root = document.getElementById("welcome");
   const deskBook = root?.querySelector("#welcomeBook");
   if (!root || !deskBook) return;
-  const book = id === FIRST_BOOK.id ? FIRST_BOOK : WELCOME_PILE.find((b) => b.id === id) ?? (meta ? { id, lang: "ja", shelf: "", title: id, sub: "", cover: "#2B1F17", ...meta } : null);
+  // 知っている本（英単語・積んだ 4 冊）も、本棚の函から来たときは meta を重ねる（course・函の名前。英単語の巻を最初に持つコースを選んでも鍵が回る）
+  const known = id === FIRST_BOOK.id ? FIRST_BOOK : WELCOME_PILE.find((b) => b.id === id) ?? null;
+  const book = known ? (meta ? { ...known, ...meta } : known) : meta ? { id, lang: "ja", shelf: "", title: id, sub: "", cover: "#2B1F17", ...meta } : null;
   if (!book) return;
   currentBook = book;
   const swap = () => {
