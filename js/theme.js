@@ -5,17 +5,15 @@
 // このモジュールは設定画面からの切替と、meta theme-colorの追従、Pro でない人の紙／藍の巻き戻しを担当する。
 // 値は color-scheme の系統（light / dark）。紙はライト系、藍はダーク系の変種。
 
-import { syncNativeChrome } from "./appEnv.js";
+import { syncNativeChrome, THEME_COLOR } from "./appEnv.js";
 import { isPro } from "./plan.js";
 
 const KEY = "spelldash_theme";
 
 export const THEMES = { light: "light", dark: "dark", paper: "light", indigo: "dark" };
 const PRO_THEMES = new Set(["paper", "indigo"]);
-// meta theme-color（ブラウザの UI の色）。各ページの <head> のインラインの表と同じ値にする。
-// 紙のページ: tokens.css の --paper。書斎（index.html、meta に data-room）: ヘッダーが透明で載る天井の色 --vault
-const THEME_COLOR = { light: "#F4ECDA", dark: "#17120E", paper: "#F3E8CF", indigo: "#0E1322" };
-const THEME_COLOR_ROOM = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" };
+// meta theme-color（ブラウザの UI の色）は THEME_COLOR（js/appEnv.js）: どのページもヘッダーは天井の帯（--vault）なので 1 つの表。
+// 各ページの <head> のインラインの表と同じ値にする
 
 export function isProTheme(theme) {
   return PRO_THEMES.has(theme);
@@ -41,7 +39,6 @@ export function setTheme(theme) {
 export function applyTheme() {
   const theme = getTheme();
   document.documentElement.dataset.theme = theme;
-  syncNativeChrome(THEMES[theme]); // アプリではステータスバーの色も追従（系統で渡す）
-  const meta = document.querySelector('meta[name="theme-color"]');
-  meta?.setAttribute("content", (meta.hasAttribute("data-room") ? THEME_COLOR_ROOM : THEME_COLOR)[theme]);
+  syncNativeChrome(theme); // アプリではステータスバーの色も追従
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLOR[theme]);
 }

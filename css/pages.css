@@ -2445,11 +2445,7 @@ html[data-theme] body:not(.page-room) :is(.result-card, .packs, .my-fold, .cardg
   background: var(--sheet);
   border: 1px solid var(--sheet-edge);
   border-radius: var(--radius-room);
-  box-shadow:
-    0 1px 0 var(--sheet-edge),
-    0 3px 0 -1px var(--sheet-2),
-    0 4px 0 -1px var(--sheet-edge),
-    1px 10px 18px -12px rgba(var(--shadow-rgb), 0.5);
+  box-shadow: var(--sheet-shadow);
 }
 
 /* 紙片（短い注意書き・吹き出し・覚え方）: 縁なし・角丸 2px・小口 1 段 */
@@ -2457,7 +2453,7 @@ html[data-theme] body:not(.page-room) :is(.hasumi__bubble, .word-ai) {
   background: var(--sheet-2);
   border: 0;
   border-radius: 2px;
-  box-shadow: 0 1px 0 var(--sheet-edge), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
+  box-shadow: var(--slip-shadow);
 }
 
 /* はちゃんの枠は真鍮の縁 */
