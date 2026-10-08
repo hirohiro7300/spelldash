@@ -16,6 +16,7 @@
 | 実行環境の分岐 | `js/appEnv.js` | アプリなら `html.native-app`、API は `https://www.spelldash.net/api/...`、認証のリダイレクトも本番へ |
 | 専用キーボード | `js/keyboard.js` / `css/keyboard.css` | A〜Z＋⌫＋Enter（＋英文カードのみ空白）。タッチ端末で自動オン、設定で常時オン／オフ |
 | Service Worker | 各ページの登録スクリプト | `window.Capacitor` があるときは登録しない |
+| 自前フォント・部屋の絵（2026-10-08〜） | `assets/fonts/`（Shippori Mincho 500／700 の 242 サブセット＋Cormorant＋Plex Mono、7.9MB）、`assets/images/room/`（場面の WebP 6 枚・タイル・SVG、288KB）、`css/fonts.css`・`css/room.css`・`css/bookshelf.css` | `npm run app:build` は `assets` を丸ごと dist に入れるので、**次のビルドでアプリの容量が約 8MB 増える**（Web では画面に出た文字のサブセットだけ読む）。減らすなら `scripts/build-app.mjs` でフォントを間引く（ホームで実際に読まれるのは 33 本・477KB。`node scripts/room-budget.mjs --fonts` で一覧） |
 
 ## 2. 創業者側の手順（Mac が必要）
 
@@ -55,7 +56,7 @@ Android Studio で ▶ Run（USB デバッグ ON の端末）。Play への配�
 | ネイティブのプラグイン呼び出し | ビルド無しの ES modules なので `@capacitor/core` を読み込まず `Capacitor.Plugins` が無い | `js/appEnv.js` の `nativeCall(plugin, method, options)` が WebView に注入されたブリッジ `Capacitor.nativePromise` を直接呼ぶ。Haptics（専用キーボード）と StatusBar（テーマ追従）はこれ経由 |
 | `/packs/` の紹介ページ | dist に含めていないので WebView 内で開くと壊れる | アプリでは本番サイトを外部ブラウザで開く（appEnv.js のクリック委譲） |
 | 「ホーム画面に追加」・ログイン案内 | アプリ内では意味が無い | `isNativeApp` なら出さない（installPrompt.js／loginNudge.js） |
-| 教材・コードの更新 | dist を同梱しているので、更新のたびにビルドし直しが必要 | 内部テストなら数分。頻度が上がったら Capacitor の Live Updates か、教材だけ本番から取得する方式に |
+| 教材・コードの更新 | dist を同梱しているので、更新のたびにビルドし直しが必要 | 内部テストなら数分。頻度が上がったら Capacitor の Live Updates か、教材だけ本番から取得する方式に。**2026-10-08 の書斎（ホームの見た目・フォント・部屋の絵）は dist に未反映**（`dist/` は 2026-09 のまま。次に `npm run app:build` したときに入る） |
 | Apple 審査 4.2（薄い Web ラッパー） | 公開申請時のリスク | 専用キーボード・触覚・オフライン動作・スプラッシュで「アプリらしさ」を用意済み。申請時の説明文は §5 |
 | 通知 | 方針で保留（DECISIONS_V4 §7） | 解禁するなら `@capacitor/push-notifications` か、まずローカル通知 |
 | 課金 | Web だけ（SpellDash Pro、docs/BILLING.md） | アプリでは価格と購入ボタンを出さず、状態だけ出す（`isNativeApp`。Apple 3.1.1: アプリ内から外部決済へ誘導しない）。Web で加入すると同じアカウントでアプリも Pro。StoreKit／Play Billing は別途判断（`subscriptions` に source 列を足せば同じ判定式で動く） |

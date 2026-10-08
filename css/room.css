@@ -1,0 +1,2251 @@
+/* ===== 書斎（index.html だけ）: 部屋・天井・机・本・紙片・幕板・body.page-room のヘッダー／フッターの皮・プレイ中の延長・4 テーマの差分 =====
+   Builder B が書く。土台（フォント・トークン・全ページの見出し／ナビ／ボタン）は fonts.css・tokens.css・brand.css。
+   色・寸法はトークンだけ（tokens.css）。場面の絵は焼いた WebP（assets/images/room、scripts/room-art/render.mjs）。
+   昼 = light／paper、夜 = dark／indigo（html[data-theme]）。動きは夜のろうそくの明滅 1 つだけ（prefers-reduced-motion で止める）。
+   振る舞い（id・class・body の状態クラス）は変えない。html[data-theme] .page-room を頭に付けて brand.css／layout.css に後勝ちする。 */
+
+/* ---- 部屋の中の文字: 明朝（--font-display）。打つ画面（#gameCard）と設定の表は --font-ui のまま ---- */
+html[data-theme] .page-room :is(#welcome, .app--home, #bookshelf, .room__stage) {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+html[data-theme] .page-room :is(#gameCard, #setupPanel, .stats--strip, .home-more__body) {
+  font-family: var(--font-ui);
+  font-weight: 400;
+}
+
+.page-room .n,
+.page-room .tcy {
+  font-family: var(--font-num);
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+.page-room .lat {
+  font-family: var(--font-latin);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-size: 1.12em;
+}
+
+.page-room .nb {
+  white-space: nowrap;
+}
+
+/* 羽根ペン（インライン SVG）の色 */
+.page-room {
+  --s-quill: #EEE8DA;
+  --s-quill-lit: #FBF8F0;
+  --s-quill-dk: #ADA492;
+  --s-quill-rachis: #9D9381;
+  --s-ink-liquid: #0E1018;
+  /* 頁の上の光と、夜のろうそくの照り返し（夜だけ値が入る） */
+  --far-page: rgba(70, 50, 25, 0);
+  --cast-l: rgba(255, 190, 110, 0);
+  /* PC の机: 場面の下の天板の縁に落ちる窓の光（夜はろうそくの淡い暖かさ） */
+  --desk-band: rgba(255, 240, 216, 0.2);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .page-room {
+  --s-quill: #D2BE9C;
+  --s-quill-lit: #F6E0B4;
+  --s-quill-dk: #6E604C;
+  --s-quill-rachis: #8A7A60;
+  --far-page: rgba(70, 40, 12, 0.1);
+  --cast-l: rgba(255, 176, 96, 0.2);
+  --desk-band: rgba(255, 190, 120, 0.07);
+}
+
+/* 床の色はキャンバス（html）に。body は紙のまま（オーバースクロールで床が見える。E2E のテーマ検査は body の色を見る） */
+html[data-theme]:has(body.page-room) {
+  background: var(--floor);
+}
+
+/* ================= ヘッダー: 天井の藍の上に透明で載る（高さ 56px のまま。E2E: < 70px） ================= */
+html[data-theme] .page-room .site-header {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 20;
+  background: transparent;
+  border: 0;
+}
+
+html[data-theme] .page-room .brand,
+html[data-theme] .page-room .brand__name {
+  color: var(--foil);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme] .page-room .site-header .brand__mark {
+  border-color: rgba(230, 200, 135, 0.7);
+  color: var(--foil);
+  text-shadow: none;
+}
+
+html[data-theme] .page-room .site-nav__link {
+  color: var(--on-vault);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme] .page-room .site-nav__link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--foil);
+}
+
+html[data-theme] .page-room .site-nav__link[aria-current="page"] {
+  color: var(--foil);
+}
+
+html[data-theme] .page-room .site-nav__link[aria-current="page"]::after {
+  background: var(--foil);
+}
+
+html[data-theme] .page-room .account .btn--ghost {
+  color: var(--on-vault);
+  border-color: rgba(232, 220, 194, 0.5);
+}
+
+html[data-theme] .page-room .account .btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foil);
+}
+
+/* 連続日数: 「30日」。数字は Cormorant、炎は 1px の金の線画。丸い札（brand.css）は部屋では外す（天井の上に直に置く） */
+html[data-theme] .page-room .header-streak {
+  align-items: baseline; /* 「30日」は同じベースラインに */
+  gap: 2px;
+  padding: 4px 4px;
+  border: 0;
+  border-radius: 0;
+  color: var(--foil);
+  font-size: 19px;
+  line-height: 1;
+  font-variant-numeric: lining-nums proportional-nums;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme] .page-room .header-streak .icon,
+html[data-theme] .page-room .header-streak--off .icon {
+  width: 15px;
+  height: 15px;
+  margin-right: 1px;
+  color: var(--foil);
+}
+
+html[data-theme] .page-room .header-streak span {
+  display: inline; /* brand.css はスマホで「日」を消すが、部屋では「30日」で読む */
+  margin-left: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--on-vault-2);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme] .page-room .header-streak:hover {
+  color: #F6E2A8;
+}
+
+html[data-theme] .page-room .header-streak--off {
+  color: var(--on-vault-2);
+}
+
+/* ================= 部屋（壁・天井・光） ================= */
+.room {
+  --vault-h: 100px;
+  --stage-h: 262px;
+  --desk-top: 240px;
+  --sx: calc(50% - 195px);
+  position: relative;
+  isolation: isolate;
+  overflow: clip; /* clip: 机の列の sticky を殺さない */
+  flex: 1;
+  padding-top: env(safe-area-inset-top, 0px);
+  background-color: var(--stone);
+  background-image:
+    linear-gradient(to bottom, transparent 0, transparent 900px, rgba(30, 30, 34, 0.3) 1300px, rgba(30, 30, 34, 0.52) 100%),
+    url(../assets/images/room/ashlar.svg),
+    url(../assets/images/room/tile-stone.webp),
+    url(../assets/images/room/tile-plaster.webp),
+    linear-gradient(100deg, rgba(255, 250, 240, 0.08), rgba(255, 250, 240, 0) 38%, rgba(30, 32, 40, 0.04) 100%),
+    linear-gradient(to bottom, var(--stone-lit) 0, var(--stone) 320px, var(--stone) 820px, var(--stone-sh) 1400px);
+  background-size: auto, 720px 356px, 320px 320px, 384px 384px, auto, auto;
+  background-position: 0 0, calc(50% - 40px) 4px, 0 0, 0 0, 0 0, 0 0;
+  background-blend-mode: normal, normal, soft-light, soft-light, normal, normal;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .room {
+  background-image:
+    linear-gradient(to bottom, transparent 0, transparent 700px, rgba(0, 0, 0, 0.3) 1100px, rgba(0, 0, 0, 0.55) 100%),
+    url(../assets/images/room/ashlar-dark.svg),
+    url(../assets/images/room/tile-stone.webp),
+    linear-gradient(to bottom, var(--stone-lit) 0, var(--stone) 300px, var(--stone-sh) 900px);
+  background-size: auto, 720px 356px, 320px 320px, auto;
+  background-blend-mode: normal, normal, soft-light, normal;
+}
+
+/* 天井: 藍の漆喰に金の星図。スマホでは半月形の壁（ルネット）の外に見え、石の肋が縁取る */
+.room__vault {
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 auto 0;
+  height: calc(var(--vault-h) + env(safe-area-inset-top, 0px));
+  background-image: url(../assets/images/room/tile-plaster.webp), linear-gradient(to bottom, var(--vault), var(--vault-2));
+  background-size: 384px 384px, auto;
+  background-blend-mode: soft-light, normal;
+  -webkit-mask: url(../assets/images/room/lunette.svg) 0 0 / 100% 100% no-repeat;
+  mask: url(../assets/images/room/lunette.svg) 0 0 / 100% 100% no-repeat;
+}
+
+.room__vault::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url(../assets/images/room/vault.svg) center bottom / auto 150px no-repeat;
+  opacity: 0.78;
+  /* ヘッダーの文字の後ろでは星図の線を薄く */
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0, rgba(0, 0, 0, 0.22) 50px, #000 72px);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0, rgba(0, 0, 0, 0.22) 50px, #000 72px);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .room__vault::before {
+  opacity: 0.5;
+}
+
+/* 肋: 4 段の繰形（持ち送りは出さない。壁に柔らかな影） */
+.room__rib {
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 auto 0;
+  height: calc(var(--vault-h) + env(safe-area-inset-top, 0px));
+  pointer-events: none;
+  background: url(../assets/images/room/rib.svg) 0 0 / 100% 100% no-repeat;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .room__rib {
+  background-image: url(../assets/images/room/rib-dark.svg);
+}
+
+/* 周辺減光: 右と下の隅を 13% ほど沈める */
+.room__vignette {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  inset: 0 0 auto 0;
+  height: 980px;
+  mix-blend-mode: multiply;
+  -webkit-mask-image: linear-gradient(#000 60%, transparent 92%);
+  mask-image: linear-gradient(#000 60%, transparent 92%);
+  background: radial-gradient(ellipse 85% 70% at 32% 46%, transparent 40%, var(--vignette) 100%);
+}
+
+.room__in {
+  position: relative;
+}
+
+/* ================= 机の列: 部屋の帯（場面）＋机＋本 ================= */
+.nook {
+  position: relative;
+}
+
+.room__stage {
+  position: relative;
+  height: var(--stage-h);
+}
+
+/* 場面: 焼いた WebP。表示する 1 枚だけが読まれる（display:none の背景は取りに行かない） */
+.room__scene {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: var(--sx);
+  pointer-events: none;
+  background: no-repeat 0 0 / 100% 100%;
+}
+
+.room__scene--phone {
+  width: 390px;
+  height: 262px;
+  background-image: url(../assets/images/room/scene-phone-light.webp);
+}
+
+/* 表示しない場面には画像を与えない（display:none でも Chrome は背景画像を取りに行く）。幅と高さの分岐（下の @media）で 1 枚だけに URL を付ける */
+.room__scene--short {
+  display: none;
+  width: 390px;
+  height: 194px;
+}
+
+.room__scene--desk {
+  display: none;
+  width: 640px;
+  height: 430px;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .room__scene--phone { background-image: url(../assets/images/room/scene-phone-dark.webp); }
+
+/* 光の溜まり（非線形の減衰）。中心は場面の座標（scripts/room-art/scene.mjs の窓・炎） */
+.room__pool {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.room__pool--win {
+  left: calc(var(--sx) + 154px);
+  top: 178px;
+  width: 640px;
+  height: 580px;
+  mix-blend-mode: screen;
+  background: radial-gradient(closest-side, rgba(252, 248, 236, 0.44) 0%, rgba(252, 248, 236, 0.34) 10%, rgba(252, 248, 236, 0.2) 26%, rgba(252, 248, 236, 0.08) 48%, rgba(252, 248, 236, 0.02) 72%, transparent 100%);
+}
+
+.room__pool--candle {
+  display: none;
+  left: calc(var(--sx) + 180px);
+  top: 206px;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .room__pool--win {
+  width: 340px;
+  height: 400px;
+  background: radial-gradient(closest-side, rgba(120, 140, 210, 0.16), rgba(120, 140, 210, 0.06) 45%, transparent 100%);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .room__pool--candle {
+  display: block;
+  width: 760px;
+  height: 760px;
+  mix-blend-mode: screen;
+  background: radial-gradient(closest-side, rgba(255, 186, 100, 0.62) 0%, rgba(255, 170, 88, 0.44) 5%, rgba(250, 150, 72, 0.27) 12%, rgba(236, 128, 58, 0.14) 24%, rgba(220, 110, 50, 0.06) 42%, rgba(210, 100, 46, 0.02) 66%, transparent 100%);
+  animation: room-flicker 4.2s infinite;
+}
+
+/* 昼の光の筋: 窓から壁と机の天板へ落ちる（CSS の勾配。塵は入れない。夜は消す）。
+   机の天板の線（--desk-top）で切る: 本の表紙には掛けない（頁の上の光は .tome__page--l の --page-hot が担う） */
+.room__shaft {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  left: var(--sx);
+  width: 390px;
+  height: var(--desk-top);
+  overflow: hidden;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.room__shaft::before,
+.room__shaft::after {
+  content: "";
+  position: absolute;
+  left: 109px;
+  top: 147px;
+  width: 310px;
+  height: 72px;
+  transform-origin: 0 50%;
+  transform: rotate(38.4deg);
+  background: linear-gradient(90deg, rgba(255, 241, 214, 0.34) 0, rgba(255, 241, 214, 0.2) 35%, rgba(255, 241, 214, 0.08) 65%, rgba(255, 241, 214, 0) 100%);
+  filter: blur(4px);
+}
+
+.room__shaft::after {
+  left: 78px;
+  top: 203px;
+  width: 280px;
+  height: 24px;
+  transform: rotate(40.2deg);
+  background: linear-gradient(90deg, rgba(255, 241, 214, 0.26) 0, rgba(255, 241, 214, 0.14) 35%, rgba(255, 241, 214, 0.05) 65%, rgba(255, 241, 214, 0) 100%);
+  filter: blur(3px);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .room__shaft {
+  display: none;
+}
+
+/* ---- はちゃんの紙片: 窓の脇に真鍮の鋲で留める（少し反って、鋲の影が落ちる）。彼女本人は絵の中（窓辺で本を読んでいる） ---- */
+html[data-theme] .page-room .hasumi--home {
+  position: absolute;
+  z-index: 3;
+  left: calc(var(--sx) + 148px);
+  top: 100px;
+  margin: 0;
+  display: block;
+  gap: 0;
+  filter: drop-shadow(1px 2px 1.5px rgba(var(--shadow-rgb), 0.35)) drop-shadow(5px 8px 8px rgba(var(--shadow-rgb), 0.2));
+}
+
+html[data-theme] .page-room .hasumi--home:empty {
+  display: none;
+}
+
+html[data-theme] .page-room .hasumi--home::after {
+  /* 真鍮の鋲 */
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #FBE9B4 0, #D8B66E 30%, #8A6A30 70%, #3E2C12 100%);
+  box-shadow: 0.5px 1px 1px rgba(0, 0, 0, 0.45), 2px 3px 2px -1px rgba(var(--shadow-rgb), 0.3);
+}
+
+html[data-theme] .page-room .hasumi--home .slip {
+  position: relative;
+  margin: 0;
+  width: max-content;
+  min-width: 112px;
+  max-width: 166px; /* 句読点のあとで折って 9 字（5分だけ、いこう。= 実測 137px）が 1 行に入る幅（中身 142px） */
+  padding: 15px 11px 11px 13px;
+  transform: rotate(-1.6deg);
+  word-break: keep-all; /* 折るのは句読点のあと（<wbr>）だけ */
+  overflow-wrap: normal; /* 「。」だけを次の行に落とさない（anywhere だと禁則より溢れ防止が勝つ） */
+  line-break: strict;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font: 500 15.5px/1.6 var(--font-display);
+  letter-spacing: 0.02em;
+  color: var(--ink-page-2);
+  font-feature-settings: "palt";
+  text-wrap: balance; /* pretty は行数を増やして「、」でも折る。balance は行数を増やさずに行の長さだけそろえる（おかえり。／5分だけ、いこう。） */
+  background:
+    linear-gradient(160deg, rgba(255, 253, 244, 0.22) 0, rgba(255, 253, 244, 0) 32%),
+    linear-gradient(to bottom, transparent 66%, rgba(90, 70, 40, 0.12) 100%),
+    linear-gradient(90deg, transparent 80%, rgba(90, 70, 40, 0.08) 100%),
+    radial-gradient(ellipse at 50% 4px, rgba(60, 40, 20, 0.2), transparent 18px),
+    url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px,
+    #E4DAC4;
+  background-blend-mode: normal, normal, normal, normal, soft-light, normal;
+  clip-path: polygon(0% 3%, 7% 1%, 15% 2.5%, 24% 0.5%, 33% 2%, 41% 0%, 52% 1.8%, 60% 0.4%, 69% 2.2%, 78% 0.6%, 87% 2%, 94% 0.3%, 100% 2.4%, 99.2% 14%, 100% 30%, 99% 47%, 100% 63%, 99.3% 80%, 99% 94%, 96% 99.4%, 88% 97.6%, 75% 99.6%, 66% 98%, 57% 100%, 47% 98.2%, 38% 99.8%, 29% 98%, 20% 99.6%, 11% 97.8%, 3% 99.4%, 0% 96%, 0.8% 80%, 0% 64%, 0.6% 47%, 0% 30%, 0.7% 15%);
+}
+
+html[data-theme] .page-room .hasumi--home .slip--long {
+  max-width: 164px;
+  margin-left: -14px; /* 長い文は少し窓の側へ（額に重ならない） */
+  font-size: 14.5px;
+  line-height: 1.5;
+  letter-spacing: 0.03em;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .page-room .hasumi--home {
+  filter: drop-shadow(1px -1px 1.5px rgba(0, 0, 0, 0.5)) drop-shadow(6px -6px 9px rgba(0, 0, 0, 0.45));
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .page-room .hasumi--home .slip {
+  background: linear-gradient(to top, rgba(255, 170, 86, 0.3) 0, rgba(255, 170, 86, 0.08) 50%, rgba(0, 0, 0, 0.18) 100%), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #A48C66;
+  background-blend-mode: normal, soft-light, normal;
+  color: #1A120C;
+}
+
+/* ================= 机: 天板（上から見た胡桃の横の木目。木目は 58% 鈍らせて、2 段の勾配で奥へ沈む）→ 手前の縁（光る唇）→ 幕板 ================= */
+.desk {
+  position: relative;
+  margin-top: calc(var(--desk-top) - var(--stage-h));
+  padding: 16px 12px 20px;
+  background:
+    linear-gradient(to bottom, rgba(20, 12, 6, 0.62) 0, rgba(20, 12, 6, 0) 2px),
+    linear-gradient(to bottom, rgba(var(--shadow-rgb), 0.42) 0, rgba(var(--shadow-rgb), 0) 14px),
+    radial-gradient(ellipse 70% 220px at 18% 0, rgba(255, 246, 228, 0.2), transparent 100%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.16), transparent 16%, transparent 84%, rgba(0, 0, 0, 0.2)),
+    linear-gradient(to bottom, color-mix(in srgb, var(--wood-top) 58%, transparent), color-mix(in srgb, var(--wood) 58%, transparent) 70%, color-mix(in srgb, var(--wood-2) 58%, transparent)),
+    url(../assets/images/room/tile-wood.webp) 0 0 / 640px 256px,
+    linear-gradient(to bottom, var(--wood-top), var(--wood) 70%, var(--wood-2));
+  background-blend-mode: normal, normal, normal, normal, normal, soft-light, normal;
+}
+
+/* 机の上の全幅ラッパーを打ち消す（layout.css の .app・responsive.css） */
+html[data-theme] .page-room .app--home {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  flex: none;
+}
+
+html[data-theme] .page-room .app--home .hero {
+  display: none;
+}
+
+html[data-theme] .page-room .auth-message--home {
+  margin: 0 auto 10px;
+  max-width: 560px;
+  min-height: 0;
+  font-size: 13.5px;
+  letter-spacing: 0.04em;
+  color: var(--on-vault);
+}
+
+html[data-theme] .page-room .auth-message--home:empty {
+  display: none;
+}
+
+/* 手前の縁と幕板（ほかの遊び方の 1 行） */
+.desk__front {
+  position: relative;
+  margin: 20px -12px -20px;
+  padding: 13px 16px 14px;
+  text-align: center;
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.35) 0, rgba(0, 0, 0, 0.35) 1px, rgba(255, 232, 196, 0.42) 1px, rgba(255, 232, 196, 0.16) 3px, rgba(0, 0, 0, 0) 4px),
+    linear-gradient(to bottom, transparent 4px, rgba(0, 0, 0, 0.45) 4px, rgba(0, 0, 0, 0) 12px),
+    linear-gradient(to bottom, transparent 5px, rgba(201, 163, 90, 0.5) 5px, rgba(201, 163, 90, 0.5) 6px, transparent 6px),
+    linear-gradient(rgba(30, 20, 12, 0.22), rgba(30, 20, 12, 0.22)),
+    url(../assets/images/room/tile-wood.webp) 37px 0 / 640px 256px,
+    linear-gradient(to bottom, var(--wood-2), var(--wood-3));
+  background-blend-mode: normal, normal, normal, normal, soft-light, normal;
+  box-shadow: 0 12px 16px -8px rgba(0, 0, 0, 0.6);
+}
+
+.desk__front::after {
+  /* 机の下（膝の入る奥）は陰に沈む */
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 110px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(var(--shadow-rgb), 0.55), rgba(var(--shadow-rgb), 0.18) 50%, rgba(var(--shadow-rgb), 0));
+}
+
+/* 机の下: ログインの案内と「覚えた単語」（静かな 2 枚の紙） */
+.desk__under {
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 36px 4px 8px;
+}
+
+.desk__under:empty {
+  display: none;
+}
+
+html[data-theme] .page-room .login-nudge {
+  color: var(--on-vault-2);
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] .page-room .login-nudge__text a,
+html[data-theme] .page-room .login-nudge__later {
+  color: var(--on-vault);
+  text-decoration-color: rgba(230, 200, 135, 0.6);
+}
+
+html[data-theme] .page-room .home-more {
+  border-top: 0;
+  margin-bottom: 8px;
+}
+
+html[data-theme] .page-room .home-more > summary {
+  color: var(--on-vault-2);
+  letter-spacing: 0.08em;
+}
+
+html[data-theme] .page-room .home-more > summary:hover {
+  color: var(--on-vault);
+}
+
+html[data-theme] .page-room .home-more > summary::after {
+  color: var(--on-vault-2);
+}
+
+/* 夜: ろうそくの光が机と本に落ちる（炎を中心に非線形の減衰）。暖かい光（soft-light）と、遠い所の暗がり（multiply）。スタートより下の層 */
+.desk__candle {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  --fx: calc(50% - 195px + 180px);
+  --fy: -34px;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .desk__candle--l {
+  display: block;
+  mix-blend-mode: soft-light;
+  background: radial-gradient(circle at var(--fx) var(--fy), rgba(255, 176, 92, 0.95) 0, rgba(255, 168, 84, 0.7) 70px, rgba(250, 150, 70, 0.4) 150px, rgba(240, 130, 60, 0.16) 260px, rgba(230, 120, 50, 0.04) 400px, transparent 520px);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .desk__candle--s {
+  display: block;
+  mix-blend-mode: multiply;
+  background: radial-gradient(circle at var(--fx) var(--fy), transparent 0, transparent 220px, rgba(30, 16, 6, 0.1) 360px, rgba(20, 10, 4, 0.22) 540px, rgba(14, 7, 3, 0.34) 780px);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .desk__front,
+html:is([data-theme="dark"], [data-theme="indigo"]) .pile,
+html:is([data-theme="dark"], [data-theme="indigo"]) .desk__under {
+  z-index: 6;
+}
+
+/* ================= 机の上の本（スマホ: 頁を縦に積む） ================= */
+.tome {
+  position: relative;
+  z-index: 3;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 10px 10px 13px;
+  border-radius: var(--radius-room);
+  background:
+    radial-gradient(circle at 0 0, rgba(255, 240, 214, 0.2), transparent 13px),
+    radial-gradient(circle at 100% 0, rgba(255, 240, 214, 0.14), transparent 13px),
+    radial-gradient(circle at 0 100%, rgba(255, 240, 214, 0.14), transparent 13px),
+    radial-gradient(circle at 100% 100%, rgba(255, 240, 214, 0.1), transparent 13px),
+    radial-gradient(ellipse at 18% 0%, rgba(200, 214, 255, 0.16), transparent 55%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0) 30%, rgba(0, 0, 0, 0.2)),
+    url(../assets/images/room/tile-leather.webp) 0 0 / 80px 80px,
+    linear-gradient(160deg, var(--lapis-2), var(--lapis));
+  background-blend-mode: normal, normal, normal, normal, normal, normal, soft-light, normal;
+  /* 接地の影（きつく 1px）＋右下へ落ちる柔らかい影（光は左上の窓） */
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.55), 0 0 0 0.5px rgba(0, 0, 0, 0.6), 1px 2px 2px rgba(0, 0, 0, 0.45), 6px 12px 16px -6px rgba(var(--shadow-rgb), 0.55), 14px 26px 34px -16px rgba(var(--shadow-rgb), 0.5);
+}
+
+/* 表紙の金の細線は頁の下（z -1。.tome が重なりの文脈なので表紙の上には出る）。頁には z-index を付けない:
+   頁の中のコース選択パネル（z 70）が目次の頁の下に沈まないように。開いている間は本ごと最前面（body.courses-open） */
+.tome::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 4px;
+  border: 0.75px solid rgba(230, 200, 135, 0.6);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.tome::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 6.5px;
+  border: 0.75px solid rgba(230, 200, 135, 0.26);
+  border-radius: 1.5px;
+  pointer-events: none;
+}
+
+html[data-theme] body.courses-open #pathCard {
+  z-index: 70;
+}
+
+/* .room は isolation: isolate の重ね合わせ文脈なので、中の固定の暗幕（.path__courses-backdrop z 69）は外のヘッダー（z 20）を覆えない。
+   開いている間だけ部屋ごとヘッダーより前に出す（旧ホームと同じく、暗幕がナビも覆い、ナビを押すと閉じる） */
+html[data-theme] body.courses-open .room {
+  z-index: 30;
+}
+
+.tome__block {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.tome__page {
+  position: relative;
+  padding: 18px 20px;
+  color: var(--ink-page);
+  background:
+    radial-gradient(ellipse 90% 70% at 12% 0%, var(--page-hot), transparent 70%),
+    linear-gradient(var(--far-page), var(--far-page)),
+    url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px 256px,
+    var(--parchment);
+  background-blend-mode: normal, normal, soft-light, normal;
+  box-shadow: inset 0 0 30px rgba(120, 80, 30, 0.09);
+}
+
+/* スマホ: 上の頁（左頁）→ 右頁 → 目次の頁。綴じ目は頁のあいだの横の溝。小口の段が見える */
+.tome__page--l {
+  border-radius: 1px 1px 0 0;
+  background-image: linear-gradient(200deg, var(--cast-l), transparent 60%), radial-gradient(ellipse 90% 70% at 12% 0%, var(--page-hot), transparent 70%), linear-gradient(to top, rgba(100, 70, 36, 0.3), rgba(100, 70, 36, 0.14) 8px, rgba(100, 70, 36, 0.05) 20px, rgba(100, 70, 36, 0) 36px), url(../assets/images/room/tile-paper-soft.webp);
+  background-blend-mode: normal, normal, normal, soft-light;
+  background-size: auto, auto, auto, 256px 256px;
+  box-shadow: inset 0 0 30px rgba(120, 80, 30, 0.09), 0 -1px 0 #E9DFC8, 0 -2px 0 var(--parchment-gap), 0 -3px 0 #E4D8BE, 0 -4px 0 var(--parchment-gap);
+}
+
+.tome__page--r,
+.tome__page--toc {
+  background-image: linear-gradient(to bottom, rgba(100, 70, 36, 0.32), rgba(100, 70, 36, 0.15) 8px, rgba(100, 70, 36, 0.05) 20px, rgba(100, 70, 36, 0) 36px), url(../assets/images/room/tile-paper-soft.webp), linear-gradient(var(--far-page), var(--far-page));
+  background-blend-mode: normal, soft-light, normal;
+  background-size: auto, 256px 256px, auto;
+}
+
+.tome__page--toc {
+  border-radius: 0 0 1px 1px;
+  box-shadow: inset 0 0 30px rgba(120, 80, 30, 0.09), 0 1px 0 #ECE2CB, 0 2px 0 var(--parchment-gap), 0 3px 0 #E5D9BF, 0 4px 0 var(--parchment-gap), 0 5px 0 #DED1B5, 0 6px 0 var(--parchment-gap), 0 7px 0 #D6C8AA;
+}
+
+.tome__page--r::before,
+.tome__page--toc::before {
+  /* 綴じ目から頁が立ち上がる細い光（ノド） */
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 2px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 252, 240, 0.8) 18%, rgba(255, 252, 240, 0.8) 82%, transparent);
+}
+
+.tome__page--l::after,
+.tome__page--r::after {
+  /* ノドの谷: 線ではなく、両頁が暗くなる柔らかな溝 */
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 4px;
+  background: linear-gradient(to bottom, rgba(70, 48, 22, 0), rgba(70, 48, 22, 0.28) 50%, rgba(70, 48, 22, 0));
+}
+
+/* 柱: 金の細線 + 文字。線は 1px（スマホでも見える）。字頭は題とそろう */
+.runhead {
+  text-wrap: balance;
+  word-break: keep-all;
+  margin: 0 0 8px;
+  font: 500 var(--fs-meta) / 1.5 var(--font-display);
+  letter-spacing: 0.12em;
+  color: var(--ink-page-3);
+}
+
+.runhead::before {
+  content: "";
+  display: inline-block;
+  vertical-align: middle;
+  width: 14px;
+  height: 1px;
+  margin: -2px 8px 0 0;
+  background: linear-gradient(90deg, var(--gold-dk), var(--gold));
+}
+
+.runhead .n {
+  letter-spacing: 0.04em;
+  margin: 0 0.1em;
+}
+
+.tome__title {
+  margin: 0;
+  font: 500 var(--fs-title) / 1.3 var(--font-display);
+  letter-spacing: 0.06em;
+  font-feature-settings: "palt";
+  color: var(--ink-page);
+}
+
+.tome__title .n {
+  font-family: var(--font-num);
+  font-weight: 600;
+}
+
+.tome__meta {
+  margin: 4px 0 0;
+  font: 500 var(--fs-small) / 1.7 var(--font-display);
+  color: var(--ink-page-3);
+  letter-spacing: 0.04em;
+}
+
+.tome__meta .n {
+  font-size: 1.07em;
+  color: var(--ink-page-2);
+}
+
+.progress {
+  margin-top: 10px;
+}
+
+.progress__rule {
+  position: relative;
+  height: 5px;
+}
+
+.progress__rule::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 1px;
+  background: rgba(42, 33, 25, 0.35);
+}
+
+.progress__rule i {
+  position: absolute;
+  left: 0;
+  top: 1px;
+  height: 3px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #F1D99C, #B98A3E 60%, #8A6A30);
+  box-shadow: 0 0 0 0.5px rgba(62, 44, 18, 0.5);
+}
+
+.progress__rule i::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: -2px;
+  width: 7px;
+  height: 7px;
+  background: linear-gradient(135deg, #F3D58A, #A97A32);
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 0.5px rgba(62, 44, 18, 0.6);
+}
+
+.progress__txt {
+  margin: 6px 0 0;
+  font: 500 var(--fs-small) / 1.4 var(--font-display);
+  color: var(--ink-page-3);
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* 数字は Cormorant（600 の 1 面だけなので 500 を指定しても同じ面。「／」の代替の明朝が 700 を読みに行かないように 500） */
+.progress__txt b {
+  font: 500 30px/1 var(--font-latin);
+  color: var(--ink-page);
+  letter-spacing: 0;
+}
+
+.progress__txt .of {
+  font: 500 17px/1 var(--font-latin);
+  color: var(--ink-page-2);
+}
+
+/* 右頁: 章のキッカー → 「仕事」の章 → 今日のセットの 1 行 → スタート（1 列。左端は頁の余白にそろえる） */
+.chap__k {
+  margin: 0;
+  font: 500 var(--fs-meta) / 1.5 var(--font-display);
+  letter-spacing: 0.12em;
+  color: var(--ink-page-3);
+}
+
+.chap__k .n {
+  font-size: 1.12em;
+  color: var(--ink-page-2);
+  letter-spacing: 0.04em;
+}
+
+.chap__t {
+  margin: 2px 0 0;
+  font: 500 var(--fs-h3) / 1.35 var(--font-display);
+  letter-spacing: 0.04em;
+  font-feature-settings: "palt";
+  color: var(--ink-page);
+}
+
+.chap__q {
+  color: var(--ink-page-3);
+}
+
+.todays {
+  display: block;
+  margin: 8px 0 0;
+  font: 500 var(--fs-body) / 1.6 var(--font-display);
+  color: var(--ink-page-2);
+  letter-spacing: 0.02em;
+  text-wrap: pretty;
+}
+
+.todays .n {
+  font-size: 1.1em;
+  color: var(--ink-page);
+}
+
+/* スタート: 朱漆の板。画面で唯一の朱。アイコンは付けない（textContent は「スタート」） */
+.start {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  width: 100%;
+  height: 54px;
+  margin: 16px 0 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-room);
+  cursor: pointer;
+  color: var(--seal-ink);
+  font: 700 20px/1 var(--font-display);
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
+  background: linear-gradient(180deg, var(--seal-1) 0%, #B8361F 55%, var(--seal-2) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 190, 0.35), inset 0 -1px 0 rgba(60, 10, 0, 0.4), 0 2px 0 rgba(60, 20, 10, 0.35), 0 8px 16px -6px rgba(60, 20, 10, 0.5);
+  text-shadow: 0 -1px 0 rgba(90, 20, 5, 0.45);
+  transition: transform 120ms, box-shadow 120ms;
+}
+
+.start::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 0.75px solid rgba(230, 200, 135, 0.55);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.start:hover {
+  background: linear-gradient(180deg, #CB4127 0%, #BC3820 55%, #AC321C 100%);
+  color: var(--seal-ink);
+}
+
+.start:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 190, 0.3), inset 0 -1px 0 rgba(60, 10, 0, 0.4), 0 1px 0 rgba(60, 20, 10, 0.35), 0 4px 8px -4px rgba(60, 20, 10, 0.5);
+}
+
+.start:focus-visible {
+  outline: 2px solid var(--ink-page);
+  outline-offset: 3px;
+}
+
+/* 一覧と本棚へのリンク（押せる高さ 44px） */
+.tome__links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 -8px;
+}
+
+.tome__links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font: 500 var(--fs-small) / 1 var(--font-display);
+  letter-spacing: 0.06em;
+  color: var(--ink-page-2);
+  text-decoration: underline;
+  text-decoration-color: rgba(169, 122, 50, 0.7);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+}
+
+.tome__links a:hover {
+  color: var(--ink-page);
+  text-decoration-color: var(--gold-dk);
+}
+
+.tome__links .path__shelf-link::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-right: 1px solid var(--gold-dk);
+  border-bottom: 1px solid var(--gold-dk);
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.tome__ribbon {
+  position: absolute;
+  z-index: 4;
+  left: 70%;
+  bottom: -34px;
+  width: 9px;
+  height: 56px;
+  pointer-events: none;
+  background: linear-gradient(90deg, var(--lapis), var(--lapis-2) 30%, var(--lapis-3) 48%, var(--lapis-2) 64%, var(--lapis));
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 88%, 0 100%);
+  filter: drop-shadow(2px 3px 2px rgba(0, 0, 0, 0.4));
+}
+
+.tome__ribbon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 2px);
+}
+
+.fore-quill {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  right: 10px;
+  top: -18px;
+  width: 68px;
+  height: 34px;
+}
+
+/* 出題の行（出題: … ・ 設定／机に戻る）: 本の足元の表紙の縁に、小さく */
+html[data-theme] .page-room .play__bar {
+  position: relative;
+  z-index: 1;
+  justify-content: flex-end;
+  gap: 4px 12px;
+  margin: 10px 0 -8px;
+  padding: 0 6px;
+}
+
+html[data-theme] .page-room .setup-toggle,
+html[data-theme] .page-room .setup-toggle__label {
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+  color: var(--on-vault-2);
+}
+
+html[data-theme] .page-room .setup-toggle__summary {
+  color: var(--on-vault);
+}
+
+html[data-theme] .page-room .setup-toggle__sep {
+  color: rgba(205, 191, 159, 0.6);
+}
+
+html[data-theme] .page-room .setup-toggle__more,
+html[data-theme] .page-room .setup-toggle:hover .setup-toggle__more {
+  color: var(--on-vault);
+  text-decoration-color: rgba(230, 200, 135, 0.6);
+  text-underline-offset: 4px;
+}
+
+html[data-theme] .page-room .setup-toggle--open .setup-toggle__more {
+  color: var(--foil);
+}
+
+html[data-theme] .page-room .back-to-path {
+  border-color: rgba(232, 220, 194, 0.45);
+  color: var(--on-vault);
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+html[data-theme] .page-room .back-to-path:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--foil);
+}
+
+/* ================= 幕板: ほかの遊び方（静かな 1 行。押せる高さ 44px） ================= */
+html[data-theme] .page-room .play-modes {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0 6px;
+  font: 500 14px/1.6 var(--font-display);
+  letter-spacing: 0.06em;
+  color: #D9CDB4;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme] .page-room .play-modes__title {
+  margin: 0 2px 0 0;
+  font: inherit;
+  letter-spacing: inherit;
+  color: #DACEB6;
+  white-space: nowrap;
+}
+
+html[data-theme] .page-room .play-modes__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .page-room .play-modes__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+}
+
+html[data-theme] .page-room .play-modes__row + .play-modes__row::before {
+  content: "・";
+  margin: 0 2px;
+  color: #8E806A;
+}
+
+html[data-theme] .page-room .play-modes__go {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--on-vault);
+  font: inherit;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 200, 135, 0.55);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+html[data-theme] .page-room .play-modes__go:hover {
+  background: transparent;
+  color: var(--foil);
+  text-decoration-color: var(--foil);
+}
+
+html[data-theme] .page-room .play-modes__go:focus-visible {
+  outline: 2px solid var(--on-vault);
+  outline-offset: -2px;
+}
+
+html[data-theme] .page-room .play-modes__go--ghost {
+  color: var(--on-vault-2);
+}
+
+html[data-theme] .page-room .play-modes__text {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 0 4px;
+  font: inherit;
+  color: var(--on-vault-2);
+}
+
+html[data-theme] .page-room .play-modes__text b {
+  font: inherit;
+  color: inherit;
+}
+
+html[data-theme] .page-room .play-modes__text b.lat {
+  font-family: var(--font-latin);
+  font-weight: 600;
+  font-size: 1.12em;
+}
+
+html[data-theme] .page-room .play-modes__lock {
+  font: 500 12px/1 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--on-vault-2);
+  opacity: 0.9;
+}
+
+/* ================= 初回: 机に積んだ最初の本 ================= */
+.welcome__kicker {
+  margin-bottom: 10px;
+}
+
+.welcome__title {
+  font-size: 27px;
+  line-height: 1.42;
+}
+
+.welcome__lead {
+  margin: 8px 0 0;
+  font: 500 15px/1.8 var(--font-display);
+  color: var(--ink-page-2);
+  letter-spacing: 0.06em;
+}
+
+.pick-k {
+  margin: 0;
+  font: 500 var(--fs-meta) / 1.5 var(--font-display);
+  letter-spacing: 0.14em;
+  color: var(--ink-page-3);
+}
+
+.pick-t {
+  margin: 2px 0 0;
+  font: 500 24px/1.35 var(--font-display);
+  letter-spacing: 0.08em;
+  color: var(--ink-page);
+  transition: opacity 180ms;
+}
+
+.pick-s {
+  margin: 2px 0 0;
+  font: 500 var(--fs-small) / 1.6 var(--font-display);
+  color: var(--ink-page-3);
+  letter-spacing: 0.06em;
+  transition: opacity 180ms;
+}
+
+.welcome__note {
+  margin: 10px 0 0;
+  font: 500 13px/1.7 var(--font-display);
+  color: var(--ink-page-3);
+  letter-spacing: 0.04em;
+  word-break: keep-all; /* 「答え」のような語の途中で折らない（折るのは空白・句読点のあと） */
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+  transition: opacity 180ms;
+}
+
+.swapping :is(.pick-t, .pick-s, .welcome__note) {
+  opacity: 0;
+}
+
+.login-line {
+  margin: 4px 0 -8px;
+  font: 500 13px/1.6 var(--font-display);
+  color: var(--ink-page-3);
+  letter-spacing: 0.06em;
+}
+
+.login-line a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
+  color: var(--ink-page-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(169, 122, 50, 0.7);
+}
+
+.login-line a:hover {
+  color: var(--ink-page);
+}
+
+/* 積んだ本の見出し: 木の上に直に書かず、紙の小札に */
+.pile {
+  position: relative;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.stack-k {
+  display: inline-block;
+  margin: 20px 4px 10px;
+  padding: 4px 12px 3px;
+  transform: rotate(-1deg);
+  font: 500 13px/1.5 var(--font-display);
+  letter-spacing: 0.1em;
+  color: var(--ink-page-2);
+  background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #EFE6D2;
+  background-blend-mode: soft-light, normal;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), 2px 3px 5px -2px rgba(0, 0, 0, 0.4);
+  clip-path: polygon(0 6%, 12% 0, 30% 5%, 52% 0, 74% 4%, 100% 0, 99% 50%, 100% 100%, 80% 95%, 58% 100%, 36% 95%, 14% 100%, 0 96%, 1% 50%);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .stack-k {
+  /* 札の紙は机の多重の陰（.desk__candle--s の multiply）で 3 割ほど沈むので、素の色は明るめに（実測: #A48E6C だと 3.4:1、#C9B48E で 5:1 以上） */
+  background: linear-gradient(to right, rgba(255, 170, 86, 0.18), rgba(0, 0, 0, 0.06)), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #C9B48E;
+  background-blend-mode: normal, soft-light, normal;
+  color: #120C08;
+}
+
+.stack {
+  list-style: none;
+  margin: 0;
+  padding: 0 2px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.stack li {
+  width: 100%;
+  margin-top: -1px;
+}
+
+.stack li[hidden] {
+  display: none;
+}
+
+/* 横に寝かせた本（背を手前に。題は横書きで読める）。押すと机の本が替わる */
+.flatbook {
+  --c: #2B1F17;
+  --x: 0px;
+  --r: 0deg;
+  --wd: 92%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: var(--wd);
+  height: var(--hh, 44px);
+  margin-left: var(--x);
+  padding: 0 16px 0 14px;
+  border: 0;
+  border-radius: 2px 3px 3px 2px;
+  cursor: pointer;
+  transform: rotate(var(--r));
+  text-align: left;
+  color: var(--foil);
+  font: inherit;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.55) 0, rgba(255, 238, 205, 0.22) 2px, rgba(0, 0, 0, 0.1) 4px, transparent 8px, transparent calc(100% - 9px), rgba(0, 0, 0, 0.12) calc(100% - 6px), rgba(255, 238, 205, 0.14) calc(100% - 4px), rgba(0, 0, 0, 0.5) 100%),
+    linear-gradient(to bottom, rgba(255, 238, 205, 0.2) 0, rgba(255, 238, 205, 0.04) 28%, rgba(0, 0, 0, 0.06) 55%, rgba(0, 0, 0, 0.5) 100%),
+    linear-gradient(90deg, transparent 12px, rgba(230, 200, 135, 0.7) 12px, rgba(230, 200, 135, 0.7) 12.8px, transparent 12.8px 14.6px, rgba(230, 200, 135, 0.7) 14.6px, rgba(230, 200, 135, 0.7) 15.4px, transparent 15.4px),
+    url(../assets/images/room/tile-leather.webp) 0 0 / 80px 80px,
+    var(--c);
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), 3px 5px 8px -3px rgba(0, 0, 0, 0.5);
+  transition: transform 160ms, filter 160ms;
+}
+
+.flatbook::after {
+  /* 頁の小口（右端） */
+  content: "";
+  position: absolute;
+  right: -4px;
+  top: 3px;
+  bottom: 3px;
+  width: 5px;
+  border-radius: 0 2px 2px 0;
+  background: repeating-linear-gradient(to bottom, #EFE5CF 0 1px, #CDBF9F 1px 2px);
+  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.3);
+}
+
+.flatbook:hover {
+  filter: brightness(1.1);
+  transform: rotate(var(--r)) translateX(6px);
+  color: var(--foil);
+  background-color: var(--c);
+}
+
+/* 机に出ている本: 少し引き出して、絹のしおり */
+.flatbook[aria-pressed="true"] {
+  transform: rotate(var(--r)) translateX(10px);
+}
+
+.flatbook[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  right: 22px;
+  top: -2px;
+  width: 6px;
+  height: 18px;
+  background: linear-gradient(90deg, var(--lapis), var(--lapis-3) 45%, var(--lapis-2) 70%, var(--lapis));
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
+  filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+.flatbook:focus-visible {
+  outline: 2px solid var(--on-vault);
+  outline-offset: 2px;
+}
+
+.flatbook__k {
+  padding-left: 10px;
+  min-width: 64px;
+  font: 500 12.5px/1 var(--font-display);
+  letter-spacing: 0.1em;
+  color: #EBD6A6;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}
+
+.flatbook__t {
+  font: 500 16px/1 var(--font-display);
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55), 0 -0.5px 0 rgba(255, 240, 200, 0.2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flatbook__s {
+  display: none;
+  margin-left: auto;
+  font: 500 12px/1 var(--font-display);
+  letter-spacing: 0.04em;
+  color: #EBD6A6;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* データの約束: 木の上に直に書かず、積んだ本の下の紙片に（.stack-k と同じ紙） */
+html[data-theme] .page-room .welcome-trust {
+  position: relative;
+  margin: 18px 4px 0;
+  padding: 9px 14px 8px;
+  border: 0;
+  transform: rotate(0.4deg);
+  font: 500 12.5px/1.7 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--ink-page-2);
+  text-shadow: none;
+  text-wrap: pretty;
+  background: linear-gradient(to bottom, transparent 70%, rgba(90, 70, 40, 0.1) 100%), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #EFE6D2;
+  background-blend-mode: normal, soft-light, normal;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), 2px 3px 5px -2px rgba(0, 0, 0, 0.4);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .page-room .welcome-trust {
+  background: linear-gradient(to right, rgba(255, 170, 86, 0.18), rgba(0, 0, 0, 0.06)), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #C9B48E;
+  background-blend-mode: normal, soft-light, normal;
+  color: #120C08;
+}
+
+/* 初回は幕板を低く（ほかの遊び方は机の本が出てから） */
+html[data-theme] body.welcome-open .desk__front {
+  display: none;
+}
+
+/* ================= 床・フッター: 胡桃の幅木と床板（頁は部屋の中で終わる） ================= */
+html[data-theme] .page-room .site-footer {
+  position: relative;
+  margin: 0;
+  border: 0;
+  color: var(--on-vault-2);
+  background:
+    linear-gradient(to bottom, rgba(255, 226, 186, 0.3) 0, rgba(255, 226, 186, 0.3) 1px, rgba(0, 0, 0, 0.25) 1px, transparent 4px),
+    linear-gradient(to bottom, transparent 18px, rgba(0, 0, 0, 0.55) 18px, rgba(0, 0, 0, 0.55) 19px, rgba(255, 226, 186, 0.1) 19px, transparent 21px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0) 20px, rgba(0, 0, 0, 0.35) 60px, rgba(0, 0, 0, 0.6) 100%),
+    url(../assets/images/room/tile-wood.webp) 0 0 / 640px 256px,
+    linear-gradient(to bottom, var(--wood), var(--wood-2) 18px, var(--wood-3) 19px, var(--floor) 100%);
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+}
+
+html[data-theme] .page-room .site-footer__inner {
+  padding: 36px 0 30px;
+}
+
+html[data-theme] .page-room .site-footer .brand__name,
+html[data-theme] .page-room .site-footer .brand__mark {
+  color: var(--on-vault);
+  border-color: rgba(232, 220, 194, 0.5);
+}
+
+html[data-theme] .page-room .site-footer__tagline,
+html[data-theme] .page-room .site-footer__copy,
+html[data-theme] .page-room .site-footer__nav a,
+html[data-theme] .page-room .site-footer__linkbtn {
+  color: var(--on-vault-2);
+}
+
+html[data-theme] .page-room .site-footer__nav a,
+html[data-theme] .page-room .site-footer__linkbtn {
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 200, 135, 0.4);
+  text-underline-offset: 4px;
+}
+
+html[data-theme] .page-room .site-footer__nav a:hover,
+html[data-theme] .page-room .site-footer__linkbtn:hover {
+  color: var(--on-vault);
+}
+
+/* ================= プレイ中（body.home--playing）: 部屋の帯と本棚を畳む。本は 1 行の柱（running head）に、盤面は机の上の 1 枚の羊皮紙に。机は盤面の下で終わり、その下は床 ================= */
+html[data-theme] body.home--playing .room {
+  --vault-h: 64px;
+  --stage-h: 64px;
+  --desk-top: 64px;
+  /* 机の下は床板（横の木目・板の継ぎ目・奥ほど暗い）。部屋が畳まれて内容が短くても、机がフッターまで伸びて見えない */
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0) 160px, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.32) 100%),
+    repeating-linear-gradient(to bottom, transparent 0 69px, rgba(0, 0, 0, 0.5) 69px 70px, rgba(255, 226, 186, 0.06) 70px 71px, transparent 71px 72px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.22), transparent 18%, transparent 82%, rgba(0, 0, 0, 0.28)),
+    linear-gradient(color-mix(in srgb, var(--floor) 50%, transparent), color-mix(in srgb, var(--floor) 50%, transparent)),
+    url(../assets/images/room/tile-wood.webp) 0 0 / 640px 256px,
+    linear-gradient(to bottom, var(--wood-3), var(--floor) 420px);
+  background-blend-mode: normal, normal, normal, normal, soft-light, normal;
+}
+
+html[data-theme] body.home--playing :is(.room__scene, .room__pool, .room__shaft, #hasumiHome, .room__rib, .desk__candle, .desk__under, #bookshelf, #todayStrip, .tome__page--r, .tome__page--toc, .path__meta, .path__progress, .path__kicker, .path__head-actions, .path__courses, .path__courses-backdrop, .tome__ribbon, .fore-quill, .play-modes) {
+  display: none;
+}
+
+html[data-theme] body.home--playing .room__vault {
+  -webkit-mask: none;
+  mask: none;
+}
+
+html[data-theme] body.home--playing .desk {
+  padding-top: 8px;
+  padding-bottom: 24px;
+}
+
+/* 柱の後ろ: 天井の帯の下で机の奥の縁は陰に沈む（紙の色の題と下線の語が、窓の光の溜まる天板の上で 4.5:1 を切らない） */
+html[data-theme] body.home--playing .desk::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 104px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(24, 14, 6, 0.52) 0, rgba(24, 14, 6, 0.46) 48px, rgba(24, 14, 6, 0) 104px);
+}
+
+/* 机の手前の縁（幕板）はプレイ中も見せる: 机は盤面の 24px 下で終わり、その下は床（中の「ほかの遊び方」は畳んだまま。影は床に落ちる） */
+html[data-theme] body.home--playing .desk__front {
+  margin: 0 -12px -24px;
+  padding: 7px 16px 8px;
+}
+
+/* 本は 1 行の柱: 題（14px・紙の色）・「机に戻る」・「設定」。革の表紙と金の細線の額は畳み、下に金の罫を 1 本 */
+html[data-theme] body.home--playing #pathCard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 auto 12px;
+  padding: 8px 2px;
+  border-radius: 0;
+  background: none;
+  box-shadow: 0 1px 0 rgba(230, 200, 135, 0.5), 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme] body.home--playing #pathCard::before,
+html[data-theme] body.home--playing #pathCard::after {
+  display: none;
+}
+
+html[data-theme] body.home--playing #pathCard .tome__page--l {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
+html[data-theme] body.home--playing #pathCard .tome__page--l::after {
+  display: none;
+}
+
+html[data-theme] body.home--playing #pathCard .path__title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: var(--parchment);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme] body.home--playing .page-room .play__bar,
+html[data-theme] body.home--playing #pathCard .play__bar {
+  flex: none;
+  flex-wrap: nowrap;
+  margin: 0;
+  padding: 0;
+}
+
+/* 「机に戻る」は枠の付いた札ではなく、柱の中の下線の付いた語 */
+html[data-theme] body.home--playing .back-to-path {
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--on-vault);
+  font-size: 13px;
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 200, 135, 0.6);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme] body.home--playing .back-to-path:hover {
+  background: transparent;
+  color: var(--foil);
+  text-decoration-color: var(--foil);
+}
+
+/* 盤面: 机の上に置いた 1 枚の羊皮紙（角 2px・小口の段・右下へ落ちる影）。中身（card.css）は変えない */
+html[data-theme] body.home--playing #gameCard {
+  border-radius: 2px;
+  border: 1px solid transparent;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% 0%, var(--page-hot), transparent 70%),
+    linear-gradient(var(--far-page), var(--far-page)),
+    url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px 256px,
+    var(--parchment);
+  background-blend-mode: normal, normal, soft-light, normal;
+  box-shadow:
+    inset 0 0 36px rgba(120, 80, 30, 0.1),
+    0 1px 0 var(--parchment-edge),
+    1px 2px 0 var(--parchment-gap),
+    2px 3px 0 var(--parchment-2),
+    3px 4px 0 rgba(0, 0, 0, 0.28),
+    5px 10px 18px -8px rgba(var(--shadow-rgb), 0.55);
+  /* 部屋の中に緑は無い: 正解・済みは金 */
+  --ok: var(--gold-ink);
+  --ok-soft: #EEE3C4;
+}
+
+html[data-theme] body.home--playing #gameCard.game-card--recalled,
+html[data-theme] body.home--playing #gameCard.game-card--learned {
+  border-color: var(--gold);
+}
+
+html[data-theme] body.home--playing #gameCard.game-card--failed {
+  border-color: var(--signal);
+}
+
+/* 夜も紙は明るく、墨は濃い（§3.13: 頁は L* 88 のろうそくの紙）。盤面の中の紙と墨のトークンだけを昼の値に戻す */
+html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard {
+  --paper: #E8DCC2;
+  --paper-2: var(--parchment);
+  --paper-3: var(--parchment-2);
+  --ink: #2A2119;
+  --ink-2: #4A3D30;
+  --ink-3: #5E5040;
+  --ink-4: #8A7B66;
+  --line: #C4B48E;
+  --line-2: #9A8864;
+  --signal: #C73E24;
+  --signal-ink: #A9301B;
+  --signal-soft: #ECCFBC;
+  --ok: #6B4E1E;
+  --ok-soft: #E0D2AE;
+  --warn: #7A4E0C;
+  --warn-soft: #E6D6AE;
+}
+
+/* ================= 動き（環境だけ。reduce で止める） ================= */
+@keyframes room-flicker {
+  0%, 100% { opacity: 1; }
+  18% { opacity: 0.93; }
+  31% { opacity: 0.99; }
+  47% { opacity: 0.92; }
+  63% { opacity: 1; }
+  79% { opacity: 0.95; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room *,
+  .room *::before,
+  .room *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ================= 背の低いスマホ（高さ 700px 以下）: 部屋の帯を詰め、スタートを 1 画面目に ================= */
+@media (max-width: 1099px) and (max-height: 700px) {
+  html[data-theme] body:not(.home--playing) .room {
+    --vault-h: 84px;
+    --stage-h: 194px;
+    --desk-top: 172px;
+  }
+  .room__scene--phone {
+    display: none;
+    background-image: none !important;
+  }
+  .room__scene--short {
+    display: block;
+    background-image: url(../assets/images/room/scene-short-light.webp);
+  }
+  html:is([data-theme="dark"], [data-theme="indigo"]) .room__scene--short {
+    background-image: url(../assets/images/room/scene-short-dark.webp);
+  }
+  .room__pool--win {
+    left: calc(var(--sx) + 112px);
+    top: 130px;
+  }
+  .room__pool--candle {
+    left: calc(var(--sx) + 171px);
+    top: 142px;
+  }
+  .desk__candle {
+    --fx: calc(50% - 195px + 171px);
+    --fy: -30px;
+  }
+  html[data-theme] .page-room .hasumi--home {
+    left: calc(var(--sx) + 148px);
+    top: 66px;
+  }
+  html[data-theme] .page-room .hasumi--home .slip {
+    max-width: 160px;
+    padding: 12px 12px 9px 14px;
+    font-size: 14.5px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+  }
+  .room__shaft::before {
+    top: 100px;
+    left: 96px;
+    height: 56px;
+  }
+  .room__shaft::after {
+    top: 150px;
+    left: 70px;
+  }
+  .tome__page {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .progress {
+    margin-top: 8px;
+  }
+  .start {
+    margin-top: 12px;
+  }
+}
+
+/* 幅 380px 未満: 字間を詰める */
+@media (max-width: 379px) {
+  .runhead {
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+  }
+  .tome__page {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .chap__t {
+    font-size: 18px;
+    letter-spacing: 0;
+  }
+  .todays {
+    font-size: 14.5px;
+    letter-spacing: 0;
+  }
+  html[data-theme] .page-room .play-modes {
+    font-size: 13.5px;
+    letter-spacing: 0.04em;
+  }
+}
+
+@media (max-width: 359px) {
+  .room {
+    --sx: 0px;
+  }
+  .desk__candle {
+    --fx: 180px;
+  }
+  .tome__title {
+    font-size: 25px;
+  }
+  /* 紙片は少し小さく（「。」だけが 3 行目に落ちない） */
+  html[data-theme] .page-room .hasumi--home .slip {
+    max-width: 160px;
+    padding: 13px 12px 10px 14px;
+    font-size: 14.5px;
+    line-height: 1.55;
+    letter-spacing: 0.02em;
+  }
+  html[data-theme] .page-room .hasumi--home .slip--long {
+    font-size: 14px;
+  }
+  /* 320px のヘッダーは 3 タブ＋ログインで幅いっぱい: 数字だけ（炎と単位は畳む。aria-label は残る） */
+  html[data-theme] .page-room .header-streak span,
+  html[data-theme] .page-room .header-streak .icon {
+    display: none;
+  }
+  html[data-theme] .page-room .header-streak {
+    padding: 4px 2px;
+  }
+}
+
+/* タブレット: 机の本は中央に、幅 560 */
+@media (min-width: 600px) and (max-width: 1099px) {
+  .desk__under,
+  .pile {
+    max-width: 560px;
+  }
+}
+
+/* ================= PC（机は左、本棚は右） ================= */
+@media (min-width: 1100px) {
+  html[data-theme] .page-room .site-header__inner {
+    width: min(1120px, 100% - 80px);
+  }
+  html[data-theme] body:not(.home--playing) .room {
+    --vault-h: 84px;
+    --stage-h: 430px;
+    --desk-top: 398px;
+  }
+  .room {
+    --sx: 0px;
+  }
+  .room__vault {
+    -webkit-mask: none;
+    mask: none;
+  }
+  .room__vault::before {
+    background-size: auto 100%;
+  }
+  .room__vault::after {
+    /* PC: まっすぐのコーニス（平縁・反曲・歯飾り・金の細線・壁への影） */
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 16px;
+    background:
+      linear-gradient(to bottom, rgba(230, 200, 135, 0.75) 0, rgba(230, 200, 135, 0.75) 1px, transparent 1px),
+      linear-gradient(to bottom, transparent 1px, var(--stone-lit) 1px, var(--stone) 4px, var(--stone-lit) 5px, var(--stone-sh) 8px, transparent 8px),
+      linear-gradient(to bottom, transparent 8px, var(--stone-sh) 8px, var(--stone-dk) 12px, transparent 12px),
+      linear-gradient(to bottom, transparent 12px, rgba(var(--shadow-rgb), 0.35) 12px, rgba(var(--shadow-rgb), 0) 16px);
+    box-shadow: 0 6px 12px -4px rgba(var(--shadow-rgb), 0.35);
+  }
+  html[data-theme] body.home--playing .room__vault::after {
+    display: none;
+  }
+  .room__rib {
+    display: none;
+  }
+  .room__in {
+    --gut: max(0px, calc((100vw - 1200px) / 2));
+    display: grid;
+    grid-template-columns: 640px minmax(0, 1fr);
+    gap: 0 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 40px;
+    align-items: start;
+  }
+  html[data-theme] body.home--playing .room__in {
+    display: block;
+    max-width: 900px;
+  }
+  .nook {
+    z-index: 3;
+  }
+  .room__scene--phone,
+  .room__scene--short {
+    display: none !important;
+    background-image: none !important;
+  }
+  .room__scene--desk {
+    display: block;
+    background-image: url(../assets/images/room/scene-desk-light.webp);
+  }
+  html:is([data-theme="dark"], [data-theme="indigo"]) .room__scene--desk {
+    background-image: url(../assets/images/room/scene-desk-dark.webp);
+  }
+  .room__pool--win {
+    left: calc(var(--sx) + 257px);
+    top: 284px;
+    width: 980px;
+    height: 860px;
+  }
+  .room__pool--candle {
+    left: calc(var(--sx) + 291px);
+    top: 320px;
+  }
+  .desk__candle {
+    --fx: calc(40px + var(--gut, 0px) + 291px);
+    --fy: -78px;
+  }
+  .room__shaft {
+    width: 640px;
+  }
+  .room__shaft::before {
+    left: 187px;
+    top: 301px;
+    width: 420px;
+    height: 110px;
+    transform: rotate(37deg);
+  }
+  .room__shaft::after {
+    left: 134px;
+    top: 353px;
+    width: 360px;
+    height: 36px;
+    transform: rotate(36deg);
+  }
+  html[data-theme] .page-room .hasumi--home {
+    left: calc(var(--sx) + 266px);
+    top: 228px;
+  }
+  html[data-theme] .page-room .hasumi--home .slip,
+  html[data-theme] .page-room .hasumi--home .slip--long {
+    width: auto;
+    margin-left: 0;
+    max-width: 348px; /* 14 字（おかえり。5分だけ、いこう。）が 1 行に */
+    padding: 16px 22px 13px 22px;
+    font-size: 20px;
+    line-height: 1.5;
+    letter-spacing: 0.06em;
+    transform: rotate(-1.2deg);
+    white-space: nowrap;
+  }
+  html[data-theme] body.welcome-open .page-room .hasumi--home .slip,
+  html[data-theme] .page-room .hasumi--home .slip--long {
+    font-size: 19px;
+    white-space: normal;
+  }
+  html[data-theme] body.welcome-open .hasumi--home .slip {
+    max-width: 234px; /* 「はじめまして、見習いの／はちゃん。」の 1 行目の幅に合わせる（紙が余らない。body が .page-room なので body の後に .page-room は置けない） */
+  }
+  /* 机: 左は窓の下から、右は本棚の脇まで（板が宙に浮かない） */
+  .desk {
+    padding: 18px 60px 26px calc(40px + var(--gut));
+    margin-left: calc(-40px - var(--gut));
+    margin-right: -40px;
+    box-shadow: 0 14px 22px -10px rgba(var(--shadow-rgb), 0.5);
+    /* 天板の奥の縁（場面の下）は窓の光を受けて少し明るい帯（約 24px）: 本が面の上に載って見える */
+    background:
+      linear-gradient(to bottom, rgba(20, 12, 6, 0.55) 0, rgba(20, 12, 6, 0) 1.5px),
+      linear-gradient(to bottom, var(--desk-band) 0, var(--desk-band) 16px, transparent 34px),
+      radial-gradient(ellipse 60% 260px at 24% 0, rgba(255, 246, 228, 0.2), transparent 100%),
+      linear-gradient(90deg, rgba(0, 0, 0, 0.14), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.18)),
+      linear-gradient(to bottom, color-mix(in srgb, var(--wood-top) 58%, transparent), color-mix(in srgb, var(--wood) 58%, transparent) 70%, color-mix(in srgb, var(--wood-2) 58%, transparent)),
+      url(../assets/images/room/tile-wood.webp) 0 0 / 640px 256px,
+      linear-gradient(to bottom, var(--wood-top), var(--wood) 70%, var(--wood-2));
+    background-blend-mode: normal, normal, normal, normal, normal, soft-light, normal;
+  }
+  html[data-theme] body.home--playing .desk {
+    margin: 0;
+    padding: 8px 20px 24px;
+  }
+  html[data-theme] body.home--playing .desk__front {
+    margin: 0 -20px -24px;
+    padding: 7px 20px 8px;
+  }
+  .desk::after {
+    /* 本棚に突き当たる端の木口 */
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 6px;
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0.5), rgba(255, 228, 190, 0.18) 2px, rgba(0, 0, 0, 0.35) 6px);
+  }
+  html[data-theme] body.home--playing .desk::after {
+    display: none;
+  }
+  .desk__front {
+    margin: 26px -60px -26px calc(-40px - var(--gut));
+    padding: 4px 20px 6px calc(20px + var(--gut));
+  }
+  .desk__under {
+    max-width: none;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .tome {
+    max-width: none;
+    padding: 9px;
+  }
+  html[data-theme] body:not(.home--playing) #pathCard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "l r" "toc r" "bar bar";
+  }
+  #pathCard .tome__page--l { grid-area: l; }
+  #pathCard .tome__page--toc { grid-area: toc; }
+  #pathCard .tome__page--r { grid-area: r; }
+  #pathCard .play__bar { grid-area: bar; }
+  .tome__block {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .tome__page {
+    padding: 24px 32px 26px;
+  }
+  .tome--first .tome__page,
+  #pathCard .tome__page--r {
+    min-height: 330px;
+  }
+  /* 左頁と目次の頁は 1 枚の紙（継ぎ目を消す）。左に小口の段 */
+  .tome__page--l,
+  .tome__page--toc {
+    border-radius: 1px 0 0 1px;
+    background-image: linear-gradient(225deg, var(--cast-l), transparent 55%), radial-gradient(ellipse 100% 70% at 0% 0%, var(--page-hot), transparent 75%), linear-gradient(to left, rgba(110, 78, 40, 0.24), rgba(110, 78, 40, 0.06) 30px, rgba(110, 78, 40, 0) 60px), url(../assets/images/room/tile-paper-soft.webp);
+    background-blend-mode: normal, normal, normal, soft-light;
+    background-size: auto, auto, auto, 256px 256px;
+    box-shadow: inset 0 0 32px rgba(120, 80, 30, 0.09), -1px 0 0 #E9DFC8, -2px 0 0 var(--parchment-gap), -3px 1px 0 #E4D8BE, -4px 1px 0 var(--parchment-gap), -5px 2px 0 #DDD0B4, 0 1px 0 #E9DFC8, 0 2px 0 var(--parchment-gap);
+  }
+  .tome__page--toc {
+    padding-top: 0;
+    background-image: linear-gradient(to left, rgba(110, 78, 40, 0.24), rgba(110, 78, 40, 0.06) 30px, rgba(110, 78, 40, 0) 60px), url(../assets/images/room/tile-paper-soft.webp);
+    background-blend-mode: normal, soft-light;
+    background-size: auto, 256px 256px;
+  }
+  .tome__page--l {
+    padding-bottom: 8px;
+    box-shadow: inset 0 0 32px rgba(120, 80, 30, 0.09), -1px 0 0 #E9DFC8, -2px 0 0 var(--parchment-gap), -3px 1px 0 #E4D8BE, -4px 1px 0 var(--parchment-gap), -5px 2px 0 #DDD0B4;
+  }
+  .tome--first .tome__page--l {
+    padding-bottom: 26px;
+    box-shadow: inset 0 0 32px rgba(120, 80, 30, 0.09), -1px 0 0 #E9DFC8, -2px 0 0 var(--parchment-gap), -3px 1px 0 #E4D8BE, -4px 1px 0 var(--parchment-gap), -5px 2px 0 #DDD0B4, 0 1px 0 #E9DFC8, 0 2px 0 var(--parchment-gap);
+  }
+  .tome__page--toc::before,
+  .tome__page--l::after {
+    display: none;
+  }
+  .tome__page--r {
+    border-radius: 0 1px 1px 0;
+    background-image: radial-gradient(ellipse 80% 60% at 0% 0%, rgba(255, 253, 244, 0.25), transparent 70%), linear-gradient(to right, rgba(110, 78, 40, 0.26), rgba(110, 78, 40, 0.06) 30px, rgba(110, 78, 40, 0) 60px), url(../assets/images/room/tile-paper-soft.webp), linear-gradient(var(--far-page), var(--far-page));
+    background-blend-mode: normal, normal, soft-light, normal;
+    background-size: auto, auto, 256px 256px, auto;
+    box-shadow: inset 0 0 32px rgba(120, 80, 30, 0.09), 1px 0 0 #E9DFC8, 2px 0 0 var(--parchment-gap), 3px 1px 0 #E2D6BB, 4px 1px 0 var(--parchment-gap), 5px 2px 0 #DCCFB2, 0 1px 0 #E9DFC8, 0 2px 0 var(--parchment-gap);
+  }
+  .tome__page--r::before {
+    left: 0;
+    right: auto;
+    top: 6px;
+    bottom: 6px;
+    width: 1px;
+    height: auto;
+    background: linear-gradient(180deg, transparent, rgba(255, 252, 240, 0.9) 20%, rgba(255, 252, 240, 0.9) 80%, transparent);
+  }
+  .tome__page--r::after {
+    left: 0;
+    right: auto;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    height: auto;
+    background: rgba(90, 64, 34, 0.35);
+  }
+  .runhead {
+    margin-bottom: 14px;
+    white-space: nowrap;
+  }
+  #pathCard .tome__meta {
+    font-size: 14.5px; /* 「教科書レベル・答えは英語・120語」が左頁の幅（237px）で 1 行に（実測 228px） */
+    letter-spacing: 0;
+  }
+  .todays {
+    margin-top: 14px;
+  }
+  .start {
+    height: 56px;
+    margin-top: 26px;
+  }
+  .tome__links {
+    margin-top: 8px;
+  }
+  .tome__links .path__shelf-link {
+    display: none; /* PC は本棚が右に見えている */
+  }
+  .progress__txt b {
+    font-size: 38px;
+  }
+  .tome__ribbon {
+    left: 50%;
+    margin-left: 30px;
+    bottom: -40px;
+    height: 62px;
+  }
+  .fore-quill {
+    right: 26px;
+    top: -22px;
+    width: 84px;
+    height: 42px;
+  }
+  html[data-theme] .page-room .play__bar {
+    margin-top: 6px;
+  }
+  /* 初回（PC）: 積んだ本は開いた本の脇（机の上）に。4 冊すべてが 1 画面目に入る */
+  html[data-theme] .page-room #welcome:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 138px;
+    column-gap: 12px;
+    align-items: end;
+  }
+  .tome--first {
+    grid-column: 1;
+  }
+  .tome--first .tome__page {
+    padding-left: 16px;
+    padding-right: 16px;
+    min-height: 360px;
+  }
+  .welcome__title {
+    font-size: 23px;
+    letter-spacing: 0.04em;
+  }
+  .welcome__kicker {
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    white-space: nowrap; /* 「登録なし・無料・ブラウザで動く」は 1 行に（頁の中身 194px に対して約 187px。<wbr> は nowrap でも折れるので幅で保証） */
+  }
+  .welcome__kicker::before {
+    width: 12px;
+    margin-right: 6px;
+  }
+  .welcome__lead {
+    font-size: 14px;
+    letter-spacing: 0.02em;
+  }
+  .pick-s {
+    font-size: 13px;
+    letter-spacing: 0.02em;
+  }
+  .welcome__note {
+    letter-spacing: 0;
+  }
+  .pile {
+    grid-column: 2;
+    align-self: start;
+    max-width: none;
+    padding-top: 30px;
+  }
+  .stack-k {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    padding: 4px 9px 3px;
+  }
+  .flatbook {
+    --wd: 100%;
+    height: 54px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 8px 0 22px;
+  }
+  .flatbook__k {
+    padding-left: 0;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .flatbook__t {
+    font-size: 13.5px;
+    letter-spacing: 0;
+    max-width: 100%;
+  }
+  .stack li:nth-child(odd) .flatbook {
+    margin-left: 6px;
+    width: calc(100% - 6px);
+  }
+  html[data-theme] .page-room .welcome-trust {
+    grid-column: 1 / -1;
+    margin: 14px 0 0;
+  }
+  .tome--first .fore-quill {
+    right: 24px;
+  }
+  html[data-theme] .page-room .play-modes {
+    font-size: 14px;
+  }
+  /* 夜（PC）: 右端と左上の壁を深く沈める */
+  html:is([data-theme="dark"], [data-theme="indigo"]) .room__vignette {
+    height: 1100px;
+    background: radial-gradient(ellipse 70% 75% at 30% 52%, transparent 35%, rgba(0, 0, 0, 0.55) 85%, rgba(0, 0, 0, 0.78) 100%), linear-gradient(90deg, transparent 80%, rgba(0, 0, 0, 0.45) 100%);
+  }
+  html:is([data-theme="dark"], [data-theme="indigo"]) .room__vault::after {
+    filter: brightness(0.3) sepia(0.4);
+  }
+}
+
+/* PC の背の低い画面: 部屋の帯を縮めて、スタートを 1 画面目に */
+@media (min-width: 1100px) and (max-height: 820px) {
+  html[data-theme] body:not(.home--playing) .room {
+    --stage-h: 370px;
+    --desk-top: 338px;
+  }
+  .room__scene--desk,
+  .room__pool,
+  .room__shaft,
+  html[data-theme] .page-room .hasumi--home {
+    transform-origin: 320px 100px;
+  }
+  .room__scene--desk,
+  .room__shaft {
+    transform: scale(0.8);
+  }
+  .room__shaft {
+    height: calc(100px + (var(--desk-top) - 100px) / 0.8); /* 縮めても机の天板の線で終わる */
+  }
+  .room__pool {
+    transform: translate(-50%, -50%) scale(0.8);
+    transform-origin: 50% 50%;
+  }
+  .room__pool--win {
+    left: calc(var(--sx) + 320px + (257px - 320px) * 0.8);
+    top: calc(100px + (284px - 100px) * 0.8);
+  }
+  .room__pool--candle {
+    left: calc(var(--sx) + 320px + (291px - 320px) * 0.8);
+    top: calc(100px + (320px - 100px) * 0.8);
+  }
+  html[data-theme] .page-room .hasumi--home {
+    left: calc(var(--sx) + 320px + (266px - 320px) * 0.8);
+    top: calc(100px + (228px - 100px) * 0.8);
+    transform-origin: 0 0;
+    transform: scale(0.9);
+  }
+  .desk__candle {
+    --fy: calc(-78px * 0.8 - 10px);
+  }
+  .tome__page {
+    padding-top: 20px;
+    padding-bottom: 22px;
+  }
+  .tome--first .tome__page,
+  #pathCard .tome__page--r {
+    min-height: 300px;
+  }
+  .todays {
+    margin-top: 10px;
+  }
+  .start {
+    margin-top: 18px;
+  }
+}
+
+@media (min-width: 1100px) and (max-height: 700px) {
+  html[data-theme] body:not(.home--playing) .room {
+    --stage-h: 330px;
+    --desk-top: 298px;
+  }
+  .room__scene--desk,
+  .room__shaft {
+    transform: scale(0.7);
+  }
+  .room__shaft {
+    height: calc(100px + (var(--desk-top) - 100px) / 0.7);
+  }
+}
+
+/* ================= 初回の 1 語体験の頁（スマホ: 右頁の下、PC: 左頁の下半分） ================= */
+@media (min-width: 1100px) {
+  .tome--first .tome__block {
+    grid-template-areas: "l r" "demo r";
+  }
+  .tome--first .tome__page--l { grid-area: l; }
+  .tome--first .tome__page--demo { grid-area: demo; }
+  .tome--first .tome__page--r { grid-area: r; }
+  .tome--first .tome__page {
+    min-height: 0;
+  }
+  .tome--first .tome__page--r {
+    min-height: 360px;
+  }
+  .tome--first .tome__page--l {
+    padding-bottom: 8px;
+    box-shadow: inset 0 0 32px rgba(120, 80, 30, 0.09), -1px 0 0 #E9DFC8, -2px 0 0 var(--parchment-gap), -3px 1px 0 #E4D8BE, -4px 1px 0 var(--parchment-gap), -5px 2px 0 #DDD0B4;
+  }
+  .tome--first .tome__page--demo {
+    border-radius: 1px 0 0 1px;
+    padding-top: 14px;
+    padding-left: 20px;
+    padding-right: 20px;
+    background-image: linear-gradient(to left, rgba(110, 78, 40, 0.24), rgba(110, 78, 40, 0.06) 30px, rgba(110, 78, 40, 0) 60px), url(../assets/images/room/tile-paper-soft.webp);
+    background-blend-mode: normal, soft-light;
+    background-size: auto, 256px 256px;
+    box-shadow: inset 0 0 32px rgba(120, 80, 30, 0.09), -1px 0 0 #E9DFC8, -2px 0 0 var(--parchment-gap), -3px 1px 0 #E4D8BE, -4px 1px 0 var(--parchment-gap), -5px 2px 0 #DDD0B4, 0 1px 0 #E9DFC8, 0 2px 0 var(--parchment-gap);
+  }
+  .tome--first .tome__page--demo::before {
+    display: none;
+  }
+  .welcome-demo {
+    padding-top: 12px;
+    border-top: 0.75px solid rgba(42, 33, 25, 0.25);
+  }
+}
+
+/* ================= 読み込み中の頁: 語が届く前から本の高さを取っておく（下の幕板とフッターが跳ばない。CLS） ================= */
+.tome__page--l:has(> #pathHead:empty) {
+  min-height: 250px;
+}
+
+.tome__page--r:has(> #pathNow:empty) {
+  min-height: 210px;
+}
+
+.tome__page--toc:has(> #pathList:empty) {
+  min-height: 320px;
+}
+
+#welcomeStack:empty {
+  min-height: 190px;
+}
+
+html[data-theme] body.home--playing #pathCard .tome__page--l:has(> #pathHead:empty) {
+  min-height: 0;
+}

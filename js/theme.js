@@ -12,7 +12,10 @@ const KEY = "spelldash_theme";
 
 export const THEMES = { light: "light", dark: "dark", paper: "light", indigo: "dark" };
 const PRO_THEMES = new Set(["paper", "indigo"]);
-const THEME_COLOR = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }; // tokens.css の --paper と同じ
+// meta theme-color（ブラウザの UI の色）。各ページの <head> のインラインの表と同じ値にする。
+// 紙のページ: tokens.css の --paper。書斎（index.html、meta に data-room）: ヘッダーが透明で載る天井の色 --vault
+const THEME_COLOR = { light: "#F4ECDA", dark: "#17120E", paper: "#F3E8CF", indigo: "#0E1322" };
+const THEME_COLOR_ROOM = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" };
 
 export function isProTheme(theme) {
   return PRO_THEMES.has(theme);
@@ -39,5 +42,6 @@ export function applyTheme() {
   const theme = getTheme();
   document.documentElement.dataset.theme = theme;
   syncNativeChrome(THEMES[theme]); // アプリではステータスバーの色も追従（系統で渡す）
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLOR[theme]);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  meta?.setAttribute("content", (meta.hasAttribute("data-room") ? THEME_COLOR_ROOM : THEME_COLOR)[theme]);
 }

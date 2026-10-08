@@ -1,135 +1,284 @@
-/* ===== SpellDash デザイントークン（docs/CONCEPT.md「墨と朱」） =====
-   全ページの最初に読み込む。色・フォント・角丸はここだけで決め、各 CSS はこの変数を使う。
-   ライトが標準。ダークは html[data-theme="dark"] で反転。
-   Pro の追加テーマ: 紙 html[data-theme="paper"]（温かい生成りのライト）／藍 html[data-theme="indigo"]（藍染めのダーク）。
-   どちらも白／黒と同じ役割のトークンを持つだけで、部品の CSS は変えない。 */
-
-/* 等幅（英単語・数字）: IBM Plex Mono を自前で配る（assets/fonts、SIL Open Font License 1.1 は assets/fonts/OFL.txt）。
-   以前は Google Fonts から読んでいたが、vercel.json の Content-Security-Policy（style-src・font-src は 'self' だけ）で
-   本番では読み込みが止められていた。自前なら CSP を広げず、外部（Google）に閲覧者の IP も送らない。ラテン文字だけ・400/500/600 */
-@font-face {
-  font-family: "IBM Plex Mono";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("../assets/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
-}
-@font-face {
-  font-family: "IBM Plex Mono";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("../assets/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
-}
-@font-face {
-  font-family: "IBM Plex Mono";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("../assets/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
-}
+/* ===== SpellDash デザイントークン（docs/CONCEPT.md「墨と朱」→「魔法使いの書斎 — 星図と羊皮紙」） =====
+   全ページの最初（fonts.css の次）に読み込む。色・フォント・角丸はここだけで決め、各 CSS はこの変数を使う。
+   既存のトークン名は役割を変えずに値だけ羊皮紙と墨に寄せた（触っていないページも同じ紙と墨で揃う）。
+   ライトが標準 = 昼の部屋。ダークは html[data-theme="dark"] = 夜の部屋。
+   Pro の追加テーマ: 紙 html[data-theme="paper"]（暖かい昼）／藍 html[data-theme="indigo"]（深い夜）。
+   同じトークン名で値だけ変える。部品の CSS はテーマを見ない。
+   コントラストは計測済み（計画 §1.4）。--ink-4 だけは装飾用（未入力の文字・無効）で AA の対象外。
+   @font-face は css/fonts.css（自前の Shippori Mincho 500／700・Cormorant Garamond 600・IBM Plex Mono）。 */
 
 :root {
-  --paper: #f7f6f2;
-  --paper-2: #ffffff;
-  --paper-3: #efede7;
-  --ink: #16171b;
-  --ink-2: #3d4048;
-  --ink-3: #656972; /* 紙の上で 5.1:1、paper-3 の上で 4.7:1 */
-  --ink-4: #a9acb3;
-  --line: #e2e0d9;
-  --line-2: #cbc9c1;
-  --signal: #d9482b;
-  --signal-ink: #b03a21;
-  --signal-soft: #fbe9e4;
-  --signal-fill: #c73e24; /* 白文字を載せる塗り（スタート）。--signal より一段濃く 4.5:1 を超える */
-  --ok: #2f6f4e;
-  --ok-soft: #e4f0e9;
-  --warn: #9a6700;
-  --warn-soft: #fbf1dc;
+  /* ---- 紙と墨（部屋以外のページ・カード・表・フォーム） ---- */
+  --paper: #F4ECDA;
+  --paper-2: #FAF4E6;
+  --paper-3: #EADFC6;
+  --ink: #2A2119;
+  --ink-2: #4A3D30;
+  --ink-3: #5E5040; /* paper の上 6.6:1、paper-3 の上 5.9:1 */
+  --ink-4: #9A8B75; /* 装飾（未入力の文字・無効） */
+  --line: #DACBAE;
+  --line-2: #B9A988;
+  --signal: #C73E24;        /* 朱: 打った文字・現在地・フォーカス枠 */
+  --signal-ink: #A9301B;    /* 朱の文字（paper の上 5.7:1） */
+  --signal-soft: #F3DCCB;   /* 朱の面 */
+  --signal-fill: #B8361F;   /* 白文字（#FFF7EA）を載せる朱 5.5:1 */
+  --ok: #4E6A44;            /* 済み・正解（部屋の中では使わない。済みは金の点） */
+  --ok-soft: #E4E7D1;
+  --warn: #8A5A12;          /* 注意（苦手） */
+  --warn-soft: #F2E3C3;
 
-  --font-ui: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* ---- 部屋の素材 ---- */
+  --parchment: #F6EEDC;       /* 本の頁 */
+  --parchment-2: #EFE5CF;     /* 頁の陰側・紙片 */
+  --parchment-edge: #D9CBAE;  /* 小口 */
+  --parchment-gap: #B9A988;   /* 綴じ目・頁の段 */
+  --ink-page: #2A2119;        /* 頁の上の文字 */
+  --ink-page-2: #4A3D30;
+  --ink-page-3: #5E5040;
+  --page-hot: rgba(255, 253, 244, 0.62); /* 頁の上の光 */
+  --stone-lit: #DCD6C9;       /* 壁の切石（昼は色相のある石灰岩） */
+  --stone: #C4BEB2;
+  --stone-sh: #A6A69F;
+  --stone-dk: #6E6B63;
+  --vault: #1A2137;           /* 天井の藍 */
+  --vault-2: #28324F;
+  --on-vault: #E8DCC2;        /* 天井の上の文字（ヘッダー・ナビ・棚札） 9.3:1 */
+  --on-vault-2: #CDBF9F;      /* 7.0:1 */
+  --foil: #E6C887;            /* 金箔（現在地の印・背の文字） */
+  --gold: #C9A35A;            /* 真鍮 */
+  --gold-hi: #F3DDA4;
+  --gold-dk: #8A6A30;
+  --gold-ink: #7A5C28;        /* 紙の上の金の文字 5.3:1 */
+  --wood-top: #7A5940;        /* 机（胡桃） */
+  --wood: #6A4C36;
+  --wood-2: #553D2B;
+  --wood-3: #2E2118;
+  --wood-lip: rgba(255, 228, 190, 0.34); /* 天板の縁の光 */
+  --lacquer: #27304C;         /* 本棚（藍漆） */
+  --lacquer-2: #1A2036;
+  --lacquer-3: #0E1222;
+  --lacquer-lit: rgba(170, 186, 230, 0.22);
+  --lapis: #1E2436;           /* 表紙・絹のしおり */
+  --lapis-2: #2C3550;
+  --lapis-3: #6474A0;
+  --leather-walnut: #2B1F17;  /* 背表紙（テーマ共通。夜は本棚の重ね層で沈める） */
+  --leather-oxblood: #4A2320;
+  --leather-cognac: #5E361C;
+  --leather-indigo: #1E2436;
+  --leather-slate: #2C3550;
+  --leather-cloth: #3F4A6B;
+  --leather-vellum: #E2D3B4;
+  --leather-umber: #3A2A1E;
+  --seal-1: #C73E24;          /* スタート（漆の印の板） */
+  --seal-2: #A9301B;
+  --seal-ink: #FFF7EA;
+  --shadow-rgb: 50, 34, 20;   /* 影の色 */
+  --vignette: rgba(44, 44, 50, 0.13); /* 周辺減光 */
+  --floor: #2A2018;           /* 床（フッターの幅木の下） */
+
+  /* ---- 文字 ---- */
+  --font-ui: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Meiryo", sans-serif; /* 表・フォーム・一覧・ゲームカードの説明文 */
+  --font-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif; /* 見出し・ナビ・ボタン・はちゃん・部屋の中の全文 */
+  --font-latin: "Cormorant Garamond", var(--font-display);  /* 部屋の中のラテン文字（TOEIC・NGSL・Daily Dash・ワードマーク） */
+  --font-num: "SD Num", var(--font-display);                 /* 数字（Cormorant 600 を 112% に合わせた別名。fonts.css） */
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; /* 打つ対象だけ */
+  --fs-meta: 12px;
+  --fs-small: 13.5px;
+  --fs-body: 16px;
+  --fs-h3: 21px;
+  --fs-title: 28px;
+  --fs-num: 37px;
 
   --radius: 6px;
   --radius-lg: 10px;
-  --focus: 0 0 0 3px rgba(217, 72, 43, 0.22);
-  --scrim: rgba(22, 23, 27, 0.45); /* モーダル・シートの暗幕 */
+  --radius-room: 3px; /* 部屋の中の角丸 */
+  --focus: 0 0 0 3px rgba(199, 62, 36, 0.24);
+  --scrim: rgba(28, 20, 12, 0.55); /* モーダル・シートの暗幕（暖かく） */
   --ease: 160ms ease;
 
   color-scheme: light;
 }
 
+@media (min-width: 1100px) {
+  :root {
+    --fs-meta: 13px;
+    --fs-small: 15px;
+    --fs-body: 17px;
+    --fs-h3: 23px;
+    --fs-title: 34px;
+    --fs-num: 46px;
+  }
+}
+
+/* ---- 夜の部屋 ---- */
 html[data-theme="dark"] {
-  --paper: #131417;
-  --paper-2: #1a1b1f;
-  --paper-3: #212228;
-  --ink: #eceae4;
-  --ink-2: #c9c7c0;
-  --ink-3: #9a9891;
-  --ink-4: #6c6b68;
-  --line: #2b2c31;
-  --line-2: #3b3c42;
-  --signal: #ff6a45;
-  --signal-ink: #ffa48d;
-  --signal-soft: #3a2119;
-  --signal-fill: #ff6a45;
-  --ok: #7bc29a;
-  --ok-soft: #1d2b24;
-  --warn: #e0b84a;
-  --warn-soft: #332a14;
-  --focus: 0 0 0 3px rgba(255, 106, 69, 0.28);
+  --paper: #17120E;
+  --paper-2: #1F1912;
+  --paper-3: #2A221A;
+  --ink: #E8DCC2;
+  --ink-2: #CDBF9F;
+  --ink-3: #A99B82; /* paper の上 6.8:1、paper-3 の上 5.7:1 */
+  --ink-4: #6E6252;
+  --line: #33291F;
+  --line-2: #4A3D2F;
+  --signal: #E8714E;
+  --signal-ink: #F2A784;
+  --signal-soft: #3A2218;
+  --signal-fill: #C73E24; /* #FFF7EA が 4.77:1 */
+  --ok: #9DB58A;
+  --ok-soft: #22301F;
+  --warn: #DDB65C;
+  --warn-soft: #332A14;
+
+  --parchment: #E2D5BA; /* 夜も紙は明るい */
+  --parchment-2: #D6C7A8;
+  --parchment-edge: #BAAA8A;
+  --parchment-gap: #8A7757;
+  /* 夜の頁の墨は昼より濃く: ろうそくから遠い目次の頁は multiply で L*54（約 #8E826F）まで沈むので、12.5px の文字でも 4.5:1 を切らない値（実測 4.6〜4.9） */
+  --ink-page: #17110D;
+  --ink-page-2: #1C1510;
+  --ink-page-3: #1E1712;
+  --page-hot: rgba(255, 196, 120, 0.26);
+  --stone-lit: #3B342D;
+  --stone: #26211C;
+  --stone-sh: #17130F;
+  --stone-dk: #0A0807;
+  --vault: #04060B;
+  --vault-2: #0B101D;
+  --on-vault: #E8DCC2;
+  --on-vault-2: #B9AC95;
+  --foil: #F0D79E;
+  --gold: #D2A050;
+  --gold-hi: #FFE0A0;
+  --gold-dk: #8A6328;
+  --gold-ink: #E6C887;
+  --wood-top: #4A3524;
+  --wood: #3E2C1F;
+  --wood-2: #2C1F15;
+  --wood-3: #120C08;
+  --wood-lip: rgba(255, 190, 120, 0.26);
+  --lacquer: #161C30;
+  --lacquer-2: #0D1222;
+  --lacquer-3: #05070F;
+  --lacquer-lit: rgba(255, 190, 120, 0.16);
+  --lapis: #12172A;
+  --lapis-2: #222A42;
+  --lapis-3: #4E5B82;
+  --shadow-rgb: 6, 4, 2;
+  --vignette: rgba(0, 0, 0, 0.5);
+  --floor: #070605;
+
+  --focus: 0 0 0 3px rgba(232, 113, 78, 0.3);
+  --scrim: rgba(0, 0, 0, 0.6);
 
   color-scheme: dark;
 }
 
-/* ---- 紙（Pro）: 生成りの紙に、少し茶の入った墨。朱はわずかに深く ---- */
+/* ---- 紙（Pro）: 暖かい昼の部屋 ---- */
 html[data-theme="paper"] {
-  --paper: #f3ecdd;
-  --paper-2: #faf5ea;
-  --paper-3: #eadfca;
-  --ink: #2a2218;
-  --ink-2: #4c4134;
-  --ink-3: #736757;
-  --ink-4: #ada091;
-  --line: #dccfb7;
-  --line-2: #c4b497;
-  --signal: #c2411f;
-  --signal-ink: #9b3318;
-  --signal-soft: #f6dfd4;
-  --signal-fill: #b8391a;
-  --ok: #3e6b45;
-  --ok-soft: #e3ecdc;
-  --warn: #8a5a00;
-  --warn-soft: #f5e6c4;
-  --focus: 0 0 0 3px rgba(194, 65, 31, 0.24);
+  --paper: #F3E8CF;
+  --paper-2: #FAF2DF;
+  --paper-3: #E8DBBC;
+  --ink: #2A2018;
+  --ink-2: #4A3A2A;
+  --ink-3: #5E4C38; /* paper の上 6.7:1、paper-3 の上 6.0:1 */
+  --ink-4: #9C8A70;
+  --line: #D6C49F;
+  --line-2: #B5A07A;
+  --signal: #B83A20;
+  --signal-ink: #9B3118;
+  --signal-soft: #F1D9C4;
+  --signal-fill: #AE3519;
+  --ok: #4E6A44;
+  --ok-soft: #E2E5CB;
+  --warn: #84560F;
+  --warn-soft: #F0DFBB;
+
+  --parchment: #F7EFDC;
+  --parchment-2: #F1E6CC;
+  --parchment-edge: #DBCAA6;
+  --parchment-gap: #B9A47C;
+  --page-hot: rgba(255, 250, 236, 0.6);
+  --stone-lit: #E2D8C3;
+  --stone: #CCC0A8;
+  --stone-sh: #ADA38E;
+  --stone-dk: #746A58;
+  --vault: #20243A;
+  --vault-2: #2E3552;
+  --gold-ink: #765526;
+  --wood-top: #7E5A3E;
+  --wood: #6D4D34;
+  --wood-2: #573E2A;
+  --wood-3: #2F2218;
+  --seal-1: #B83A20;
+  --seal-2: #9B3118;
+  --vignette: rgba(60, 44, 30, 0.12);
+  --floor: #2C2118;
+
+  --focus: 0 0 0 3px rgba(184, 58, 32, 0.24);
 
   color-scheme: light;
 }
 
-/* ---- 藍（Pro）: 藍染めの紙に、生成りの文字。朱は明るめ ---- */
+/* ---- 藍（Pro）: 深い夜の部屋 ---- */
 html[data-theme="indigo"] {
-  --paper: #121a2b;
-  --paper-2: #182238;
-  --paper-3: #1f2b45;
-  --ink: #e8ecf4;
-  --ink-2: #c3cadb;
-  --ink-3: #8f9ab4;
-  --ink-4: #5f6a84;
-  --line: #273554;
-  --line-2: #35466b;
-  --signal: #ff7a52;
-  --signal-ink: #ffb09a;
-  --signal-soft: #3a2a2c;
-  --signal-fill: #ff7a52;
-  --ok: #86c7a3;
-  --ok-soft: #1c3330;
-  --warn: #e6c05a;
-  --warn-soft: #343018;
-  --focus: 0 0 0 3px rgba(255, 122, 82, 0.3);
+  --paper: #0E1322;
+  --paper-2: #141A2E;
+  --paper-3: #1C2440;
+  --ink: #E4E6EE;
+  --ink-2: #C3C9DA;
+  --ink-3: #9AA4BE; /* paper の上 7.4:1、paper-3 の上 6.1:1 */
+  --ink-4: #5F6A84;
+  --line: #273152;
+  --line-2: #384368;
+  --signal: #E8714E;
+  --signal-ink: #F2A784;
+  --signal-soft: #3A2A2C;
+  --signal-fill: #C73E24;
+  --ok: #9DB58A;
+  --ok-soft: #1F2E2C;
+  --warn: #E0BE62;
+  --warn-soft: #33301A;
+
+  --parchment: #DED4BE;
+  --parchment-2: #D0C5A8;
+  --parchment-edge: #B8AC90;
+  --parchment-gap: #8A8068;
+  --ink-page: #17110D; /* 夜と同じ理由（目次の頁が沈む） */
+  --ink-page-2: #1C1510;
+  --ink-page-3: #1E1712;
+  --page-hot: rgba(200, 210, 255, 0.14);
+  --stone-lit: #1E2438;
+  --stone: #131829;
+  --stone-sh: #0A0D18;
+  --stone-dk: #05070E;
+  --vault: #03050C;
+  --vault-2: #080C18;
+  --on-vault: #E4E6EE;
+  --on-vault-2: #B9BFCF;
+  --foil: #E6C887;
+  --gold: #C9A35A;
+  --gold-hi: #F3DDA4;
+  --gold-dk: #8A6A30;
+  --gold-ink: #E6C887;
+  --wood-top: #3E3028;
+  --wood: #2C221C;
+  --wood-2: #1E1712;
+  --wood-3: #0E0B09;
+  --wood-lip: rgba(255, 190, 120, 0.26);
+  --lacquer: #141A30;
+  --lacquer-2: #0B1024;
+  --lacquer-3: #04060F;
+  --lacquer-lit: rgba(170, 186, 230, 0.18);
+  --lapis: #12172A;
+  --lapis-2: #222A42;
+  --lapis-3: #4E5B82;
+  --shadow-rgb: 4, 4, 8;
+  --vignette: rgba(0, 0, 0, 0.55);
+  --floor: #06070C;
+
+  --focus: 0 0 0 3px rgba(232, 113, 78, 0.32);
+  --scrim: rgba(0, 0, 0, 0.6);
 
   color-scheme: dark;
 }

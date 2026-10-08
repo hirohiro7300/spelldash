@@ -10,12 +10,16 @@ import { resumableFor } from "./sessionResume.js";
 import { icon } from "./icons.js";
 import { trapFocus } from "./focusTrap.js";
 import { scrollBehavior } from "./ui.js";
+import { shelfOf } from "./shelves.js";
 
-// ===== ホームの「道」 =====
+// ===== 机の上の本（ホームの 1 画面目） =====
 //
-// いま選んでいるカテゴリ（セクション）のジャンル（ユニット）を縦の道にして、
-// 「次に押すもの」をスタート1個に絞る。ユニットは全部の語を覚えた（知ってた含む）ら済み。
-// 「すべて」を選んでいる人は、カテゴリを1つずつノードにした道になる。
+// いま選んでいるカテゴリ（＝本。spelldash_category）のジャンル（＝章）を本の目次にして、「次に押すもの」をスタート 1 個に絞る。
+// 左頁（#pathHead）: 柱（コース名と巻）・題・答え方と語数・覚えた n／N・コースを変える。
+// 右頁（#pathNow）: 今の章（第 n 章／全 N 章・「…」の章・今日のセット・スタート）。節目（次の巻へ・復習）と「語が無い」もここ。
+// 目次（#pathList）: 済みの畳み・済み・先の章・あと N 章・星の節目。
+// 章は全部の語を覚えた（知ってた含む）ら済み。「すべて」を選んでいる人は、カテゴリを 1 つずつ章にした目次になる。
+// #pathStart は右頁にだけ、ちょうど 1 個。
 
 const CATEGORY_KEY = "spelldash_category";
 
@@ -68,13 +72,20 @@ export function currentUnitOf(path) {
 }
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// 数字は Cormorant の別名（.n）で組む。textContent は変わらない（E2E の includes はそのまま）
+const numHtml = (s) => esc(s).replace(/\d+/g, '<span class="n">$&</span>');
+// 本の題: 「中学英語 2年（教科書レベル）」の括弧書きは題から外し、答え方の行に添える
+const splitTitle = (label) => {
+  const m = String(label).match(/^(.*?)（([^）]*)）$/);
+  return m ? { title: m[1].trim(), note: m[2] } : { title: String(label), note: "" };
+};
 
 // 済みユニットの折りたたみを開いたか（この表示の間だけ）
 let doneExpanded = false;
 
 // コース選択パネル（見出しの「コースを変える」で開く）。
-// 各コースは1行（太字ラベル＋対象・セクション数）で、行全体がボタン。説明は「くわしく」で開く（開いたら「閉じる」）。
-// 560px 以下は画面下から出るシート、それより広い画面は見出しの下に重ねる（どちらも道のスタートは動かない）。
+// 各コースは1行（太字ラベル＋対象・巻数）で、行全体がボタン。説明は「くわしく」で開く（開いたら「閉じる」）。
+// 560px 以下は画面下から出るシート、それより広い画面は見出しの下に重ねる（どちらも本のスタートは動かない）。
 function courseChooserHtml(currentId) {
   return `
     <div class="path__courses-backdrop" id="pathCoursesBackdrop" hidden></div>
@@ -84,7 +95,7 @@ function courseChooserHtml(currentId) {
         ${listCourses()
           .map((c, i) => {
             const now = c.id === currentId;
-            const text = `<b>${esc(c.label)}</b><small>${esc(c.audience)} ・ ${c.packs.length}セクション${now ? `<span class="path__course-now">いまのコース</span>` : ""}</small>`;
+            const text = `<b>${esc(c.label)}</b><small>${esc(c.audience)} ・ 全${c.packs.length}巻${now ? `<span class="path__course-now">いまのコース</span>` : ""}</small>`;
             return `
           <li class="path__course${now ? " path__course--current" : ""}">
             <div class="path__course-row">
@@ -99,14 +110,15 @@ function courseChooserHtml(currentId) {
     </div>`;
 }
 
-// 描画。onStart(unit|null) はスタート／復習、onAdvance() は次のセクションへ、onCourse(courseId) はコースの乗り換え
+// 描画。onStart(unit|null) はスタート／復習、onAdvance() は次の巻へ、onCourse(courseId) はコースの乗り換え
 export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const el = document.getElementById("pathCard");
   const headEl = document.getElementById("pathHead");
   const listEl = document.getElementById("pathList");
+  const nowEl = document.getElementById("pathNow"); // 右頁（無いページでは目次の先頭に出す）
   if (!el || !headEl || !listEl) return null;
 
-  // 描き直しで焦点を失わない: 道の中に焦点があれば同じ id の要素へ戻す（畳みを開いたときは最初の済みユニットへ）
+  // 描き直しで焦点を失わない: 本の中に焦点があれば同じ id の要素へ戻す（畳みを開いたときは最初の済みの章へ）
   const active = document.activeElement;
   const activeId = active && el.contains(active) ? active.id : "";
   const wasFold = activeId === "pathDoneFold" || (active && el.contains(active) && active.hasAttribute("data-fold-open"));
@@ -117,29 +129,38 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const firstVisit = Object.keys(getWordStats()).length === 0;
   const setSize = getSetSize();
   const due = getDueReviewCount(path.categoryId);
-  const doneCount = units.filter((u) => u.done).length;
 
   const category = getCategories().find((c) => c.id === path.categoryId);
-  // 腕試し前（まだ 1 語も答えていない。js/studyQueue.js の腕試し発動条件と同じ）: 進捗の数字（セクション 1／8・ユニット 1／11）は出さず、コース名だけ
+  const shelf = shelfOf(path.categoryId, category);
+  const words = path.categoryId === "all" ? [] : getWordsByCategory(path.categoryId);
+  const unit = category?.kind === "concept" || isConceptWord(words[0]) ? "枚" : "語"; // 概念カード（日本語で答える）の本は「枚」
+  const total = units.reduce((n, u) => n + u.total, 0);
+  const learned = units.reduce((n, u) => n + u.learned, 0);
+  // 腕試し前（まだ 1 語も答えていない。js/studyQueue.js の腕試し発動条件と同じ）: 進捗の数字（第 1 巻／全 8 巻・第 1 章／全 11 章・覚えた n／N）は出さず、コース名だけ
   const beforePlacement = isBeforePlacement();
   const kicker = section
     ? beforePlacement
       ? esc(course.label)
-      : `${esc(course.label)} ・ セクション ${section.index + 1}／${section.total}`
+      : `${esc(course.label)}　第<span class="n">${section.index + 1}</span>巻／全<span class="n">${section.total}</span>巻`
     : path.categoryId === "all"
-      ? "コース: すべての単語"
+      ? "すべての単語"
       : path.categoryId === "my"
-        ? "自分で登録した語"
-        : category?.pack
-          ? "分野パック"
-          : "カテゴリ";
-  const unitLine = allDone
-    ? `${units.length}ユニット済み`
-    : current && !beforePlacement
-      ? `ユニット ${currentIndex + 1}／${units.length} ・ ${esc(current.label)}`
+        ? "自分で書いた本"
+        : shelf.name
+          ? `${esc(shelf.name)}の棚`
+          : "分野パック";
+  const { title, note } = splitTitle(label);
+  // 「教科書レベル・答えは英語・120語」: 折り返しは「・」の後だけ（各部分は nowrap）
+  const metaParts = [];
+  if (note) metaParts.push(`<span class="nb">${esc(note)}</span>`);
+  metaParts.push(`<span class="nb">答えは${esc(path.categoryId === "all" ? "英語" : shelf.lang)}</span>`);
+  if (total > 0) metaParts.push(`<span class="nb"><span class="n">${total}</span>${unit}</span>`);
+  const progress =
+    !beforePlacement && total > 0
+      ? `<div class="path__progress progress" role="img" aria-label="${total}${unit}中${learned}${unit}を覚えた"><div class="progress__rule"><i style="width:${Math.round((learned / total) * 100)}%"></i></div><p class="progress__txt">覚えた <b class="n">${learned}</b><span class="of">／${total}</span></p></div>`
       : "";
   const resume = firstVisit ? null : resumableFor(path.categoryId);
-  const doneToday = !resume && !firstVisit && isDailySetDone(); // 今日のぶんが済んだ（ラベルと円の見た目の両方で使う）
+  const doneToday = !resume && !firstVisit && isDailySetDone(); // 今日のぶんが済んだ（ラベルと板の見た目の両方で使う）
   const startSub = resume
     ? `前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み）`
     : firstVisit || (beforePlacement && isPlacementRunning()) // 腕試しを開いて 1 語も答えずに戻った人も（始まった腕試しだけ。組めずに通常のセットになる道では言わない）
@@ -148,71 +169,97 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
       ? "今日のぶんは完了"
       : `今日のセット ${setSize}語・約5分${due >= setSize ? " ・ 復習から" : due > 0 ? ` ・ 復習 ${due}語から` : ""}`;
 
-  // 現在地より先の未着手ユニットは3つまで見せ、残りは「あとNユニット」にまとめる（道が長くなりすぎない）
+  // 現在地より先の未着手の章は3つまで見せ、残りは「あとN章」にまとめる（目次が長くなりすぎない）
   const lockedLimit = currentIndex >= 0 ? currentIndex + 3 : units.length;
   const hiddenUnits = units.filter((u, i) => !u.done && i !== currentIndex && i > lockedLimit);
   const hiddenLocked = hiddenUnits.length;
-  // 現在地より前の済みユニットは直前の2つだけ見せ、それより前は「済み Nユニット」1つに畳む（開くと全部出る）。
+  // 現在地より前の済みの章は直前の2つだけ見せ、それより前は「済み N章」1つに畳む（開くと全部出る）。
   // 毎日開くたびに済みの列をスクロールしなくていいように、現在地が最初の画面に来る。
-  // 全ユニット済みのときも畳む（「次のセクションへ」が最初の画面に来る）
+  // 全章済みのときも畳む（「次の巻へ」が最初の画面に来る）
   const doneBefore = currentIndex >= 0 ? units.slice(0, currentIndex).filter((u) => u.done) : units.filter((u) => u.done);
   const foldDone = !doneExpanded && doneBefore.length > 3 ? doneBefore.slice(0, doneBefore.length - 2) : [];
   const foldedSet = new Set(foldDone);
   const listHref = (tag) => `./list.html?category=${encodeURIComponent(path.categoryId === "all" ? "" : path.categoryId)}${tag && !tag.startsWith("category:") ? `#genre-${encodeURIComponent(tag)}` : ""}`;
+  const chapterK = !beforePlacement && currentIndex >= 0 ? `<p class="path__chapter chap__k">第<span class="n">${currentIndex + 1}</span>章／全<span class="n">${units.length}</span>章</p>` : "";
+
+  let nowHtml = "";
   const nodes = units
     .map((u, i) => {
       const state = u.done ? "done" : i === currentIndex ? "current" : "locked";
-      const lane = ["c", "r", "c", "l"][i % 4];
       if (state === "locked" && i > lockedLimit) return "";
       if (foldedSet.has(u)) {
         if (u !== foldDone[0]) return "";
         return `
-          <li class="path__node path__node--done path__node--fold path__node--c">
-            <button type="button" class="path__dot" id="pathDoneFold" aria-expanded="false" aria-label="済みのユニットを開く">${icon("check", { size: 14 })}</button>
-            <div class="path__label"><b>済み ${foldDone.length}ユニット</b><span>${foldDone.map((d) => esc(d.label)).join("・")} ・ <button type="button" class="path__linkbtn" data-fold-open>開く</button></span></div>
+          <li class="path__node path__node--done path__node--fold">
+            <button type="button" class="path__dot" id="pathDoneFold" aria-expanded="false" aria-label="済みの章を開く">${icon("check", { size: 14 })}</button>
+            <div class="path__label"><b>済み ${foldDone.length}章</b><span>${foldDone.map((d) => esc(d.label)).join("・")} ・ <button type="button" class="path__linkbtn" data-fold-open>開く</button></span></div>
           </li>`;
       }
       const count = `${u.learned}／${u.total}`;
       if (state === "current") {
-        return `
-          <li class="path__node path__node--current path__node--${lane}">
-            <button type="button" class="path__start${resume ? " path__start--resume" : ""}${doneToday ? " path__start--done" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : doneToday ? "もう1回" : "スタート"}: ${esc(u.label)}">
-              ${resume ? "続きから" : doneToday ? "もう1回" : "スタート"}
-            </button>
-            <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${startSub}</span></div>
-          </li>`;
+        // 右頁: 今の章（1 列。章のキッカー → 「…」の章 → 今日のセットの 1 行 → スタート → 一覧と本棚）
+        nowHtml = `
+          <ol class="path__list path__list--now">
+            <li class="path__node path__node--current path__node--now">
+              ${chapterK}
+              <div class="path__label"><b class="chap__t"><span class="chap__q">「</span>${esc(u.label)}<span class="chap__q">」</span>の章</b><span class="todays">${numHtml(startSub)}</span></div>
+              <button type="button" class="path__start start${resume ? " path__start--resume" : ""}${doneToday ? " path__start--done" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : doneToday ? "もう1回" : "スタート"}: ${esc(u.label)}">${resume ? "続きから" : doneToday ? "もう1回" : "スタート"}</button>
+              <p class="path__links tome__links"><a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">この章の一覧</a><a class="path__shelf-link" href="#bookshelf">本棚・本をさがす</a></p>
+            </li>
+          </ol>`;
+        return "";
       }
       if (state === "done") {
         return `
-          <li class="path__node path__node--done path__node--${lane}">
+          <li class="path__node path__node--done">
             <button type="button" class="path__dot" data-unit="${esc(u.tag)}" data-review="1" aria-label="復習: ${esc(u.label)}">${icon("check", { size: 14 })}</button>
             <div class="path__label"><b>${esc(u.label)}<a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">${icon("book", { size: 14 })}</a></b><span>${count}${u.weak > 0 ? ` ・ 苦手 ${u.weak}` : ""} ・ 押して復習</span></div>
           </li>`;
       }
       return `
-        <li class="path__node path__node--locked path__node--${lane}">
+        <li class="path__node path__node--locked">
           <span class="path__dot" aria-hidden="true"></span>
-          <div class="path__label"><b>${esc(u.label)}</b><span>${u.learned > 0 ? count : `${u.total}語`}</span></div>
+          <div class="path__label"><b>${esc(u.label)}</b><span>${u.learned > 0 ? count : `${u.total}${unit}`}</span></div>
         </li>`;
     })
     .join("");
 
+  // 節目: 全章済みなら右頁（次の巻へ／復習）、まだなら目次の末尾に星
+  const nextLabel = section?.next ? splitTitle([...getCategories(), ...getPackCatalog()].find((c) => c.id === section.next)?.label ?? "次の本").title : "";
+  if (allDone) {
+    nowHtml = section?.next
+      ? `
+          <ol class="path__list path__list--now">
+            <li class="path__node path__node--goal path__node--now">
+              <p class="path__chapter chap__k">全<span class="n">${units.length}</span>章 済み</p>
+              <div class="path__label"><b class="chap__t">次は<span class="chap__q">「</span>${esc(nextLabel)}<span class="chap__q">」</span></b></div>
+              <button type="button" class="path__start start path__start--next" id="pathNext">次の巻へ${icon("arrowRight")}</button>
+            </li>
+          </ol>`
+      : `
+          <ol class="path__list path__list--now">
+            <li class="path__node path__node--goal path__node--now">
+              <p class="path__chapter chap__k">全<span class="n">${units.length}</span>章 済み</p>
+              <div class="path__label"><b class="chap__t">${section ? "このコースは終わり" : "全部済み"}</b><span>復習を続けるか、<button type="button" class="path__linkbtn" data-open-course>${section ? "コースを変える" : "コースを選ぶ"}</button></span></div>
+              <button type="button" class="path__start start" id="pathStart" data-unit="" aria-label="復習">復習</button>
+            </li>
+          </ol>`;
+  }
   const goal = allDone
-    ? section?.next
-      ? `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start path__start--next" id="pathNext">次のセクションへ${icon("arrowRight")}</button><div class="path__label"><span>次は「${esc([...getCategories(), ...getPackCatalog()].find((c) => c.id === section.next)?.label ?? "次のパック")}」</span></div></li>`
-      : `<li class="path__node path__node--goal path__node--c"><button type="button" class="path__start" id="pathStart" data-unit="" aria-label="復習">復習</button><div class="path__label"><b>${section ? "このコースは終わり" : "全部済み"}</b><span>復習を続けるか、<button type="button" class="path__linkbtn" data-open-course>${section ? "コースを変える" : "コースを選ぶ"}</button></span></div></li>`
-    : `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("star", { size: 14 })}</span><div class="path__label"><b>${units.length}ユニットを終えると</b><span>${section?.next ? "次のセクションが開く" : "このコースは終わり"}</span></div></li>`;
+    ? ""
+    : `<li class="path__node path__node--goal"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("star", { size: 14 })}</span><div class="path__label"><b>${units.length}章を終えると</b><span>${section?.next ? "次の巻が開く" : "このコースは終わり"}</span></div></li>`;
 
   const more = hiddenLocked > 0
-    ? `<li class="path__node path__node--locked path__node--more path__node--c"><span class="path__dot path__dot--more" aria-hidden="true"></span><div class="path__label"><b>あと${hiddenLocked}ユニット</b><span>${hiddenUnits.map((u) => esc(u.label)).join("・")}</span></div></li>`
+    ? `<li class="path__node path__node--locked path__node--more"><span class="path__dot path__dot--more" aria-hidden="true"></span><div class="path__label"><b>あと${hiddenLocked}章</b><span>${hiddenUnits.map((u) => esc(u.label)).join("・")}</span></div></li>`
     : "";
 
   headEl.innerHTML = `
     <div class="path__head">
       <div class="path__head-text">
-        <span class="path__kicker">${kicker}</span>
-        <h1 class="path__title">${esc(label)}</h1>
-        ${unitLine ? `<span class="path__unit">${unitLine}</span>` : ""}
+        <p class="path__kicker runhead">${kicker}</p>
+        <h1 class="path__title tome__title">${numHtml(title)}</h1>
+        <p class="path__meta tome__meta">${metaParts.join("・")}</p>
+        ${progress}
       </div>
       <div class="path__head-actions">
         <button type="button" class="path__guide path__guide--course" id="pathCourse" aria-expanded="false" aria-controls="pathCourses">コースを変える</button>
@@ -220,15 +267,24 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     </div>
     ${courseChooserHtml(getCourseId())}
   `;
-  // 語が1つも無いカテゴリ（空のマイ単語帳など）: 道の代わりに次にやることを出す
-  const empty = units.length === 0
-    ? `<li class="path__node path__node--goal path__node--c"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("note", { size: 14 })}</span><div class="path__label"><b>まだ語が無い</b><span>${
-        path.categoryId === "my"
-          ? `<a href="./list.html#myWords">マイ単語帳</a>に語を登録するか、上の「出題」から別のカテゴリを選ぶ`
-          : `<a href="./list.html#packs">単語帳</a>から分野を追加するか、上の「出題」から別のカテゴリを選ぶ`
-      }</span></div></li>`
-    : "";
-  listEl.innerHTML = `<ol class="path__list">${nodes}${more}${units.length > 0 ? goal : empty}</ol>`;
+  // 語が1つも無い本（空のマイ単語帳など）: 章の代わりに次にやることを右頁に出す
+  if (units.length === 0) {
+    nowHtml = `
+      <ol class="path__list path__list--now">
+        <li class="path__node path__node--goal path__node--now"><span class="path__dot path__dot--goal" aria-hidden="true">${icon("note", { size: 14 })}</span><div class="path__label"><b class="chap__t">まだ語が無い</b><span>${
+          path.categoryId === "my"
+            ? `<a href="./list.html#myWords">マイ単語帳</a>に語を登録するか、下の「出題」から別の本を選ぶ`
+            : `<a href="./list.html#packs">単語帳</a>から分野を追加するか、下の「出題」から別の本を選ぶ`
+        }</span></div></li>
+      </ol>`;
+  }
+  const tocHtml = `${units.length > 0 ? `<p class="path__toc-k">目次</p>` : ""}<ol class="path__list">${nodes}${more}${goal}</ol>`;
+  if (nowEl) {
+    nowEl.innerHTML = nowHtml;
+    listEl.innerHTML = tocHtml;
+  } else {
+    listEl.innerHTML = nowHtml + tocHtml;
+  }
   if (wasFold) {
     (el.querySelector(".path__node--done .path__dot[data-review]") ?? el.querySelector("#pathStart"))?.focus({ preventScroll: true });
   } else if (activeId) {
@@ -247,8 +303,8 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     btn.addEventListener("click", () => {
       doneExpanded = true;
       renderPath({ onStart, onAdvance, onCourse });
-      // 開いた途端にスタートが画面外に出ないよう、現在地を画面の中央に
-      el.querySelector(".path__node--current")?.scrollIntoView({ block: "center", behavior: scrollBehavior() });
+      // 開いた済みの章が画面の外に出ないように（スタートは右頁にあるので動かない）
+      el.querySelector(".path__node--done")?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
     })
   );
   const courseBtn = el.querySelector("#pathCourse");
@@ -256,7 +312,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
   const backdrop = el.querySelector("#pathCoursesBackdrop");
   // 開いている間はフォーカストラップ（Tab は中で循環・Esc で閉じる）。閉じたら必ず「コースを変える」へ戻す
   let releaseCourses = null;
-  let courseOpener = null; // 道の末尾の「コースを変える」から開いたときは、閉じたらそこへ戻す
+  let courseOpener = null; // 右頁の「コースを変える」から開いたときは、閉じたらそこへ戻す
   function setCoursesOpen(open) {
     if (!courses) return;
     courses.hidden = !open;
