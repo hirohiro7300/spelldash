@@ -1,7 +1,7 @@
 import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord, answersFor } from "./wordStore.js";
 import { jaLooksSame } from "./jaAmbiguity.js";
 import { viableAnswers, completedAnswer, isSpellingVariant } from "./answers.js";
-import { createRomajiMatcher, readingEntries, primaryReading, romajiKeyOf, hasJapaneseScript } from "./romaji.js";
+import { createRomajiMatcher, readingEntries, primaryReading, romajiKeyOf, hasJapaneseScript, hasKana } from "./romaji.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWords.js";
@@ -164,19 +164,24 @@ function isFreeAnswer(word) {
 }
 
 // ローマ字モード（日本語の答え: 鎌倉幕府 など）: 漢字に変換せず、読みをローマ字で打つ（2026-10 創業者指示。js/romaji.js）。
-// 1打ずつ判定し（英単語の綴り入力と同じ 1 ミス＝不正解）、読みを打ち終えたら Enter なしで正解。
+// 1打ずつ判定し（英単語の綴り入力と同じ 1 ミス＝不正解）、どれかの読みを打ち終えたら Enter なしで正解。
 // 入力欄は読み取り専用にして IME・OS キーボードを開かせない（keydown は届く）。打ったかなと、その下に打ったキーを出す。
-// 読みが 1 つもないカード（自分で作った場面カードなど）は従来どおり全文入力（IME で打って Enter）
+// かなの読みが 1 つもないカード（自分で作った場面カードなど）は従来どおり全文入力（IME で打って Enter）
 let romajiMode = false;
 let romaji = null; // いまの読みの判定（createRomajiMatcher）。答えを見た後は主な読みだけ
 let romajiEntries = [];
-let romajiConfirmShown = false; // 「Enter で確定」を出しているか（短い読みを打ち終えて、長い読みもまだあり得るとき）
-let swallowNUntil = 0; // 語末の ん を n 1 つで打ち終えた直後、癖で打つ 2 つ目の n を次の語に持ち越さない
+// 読みを打ち終えた直後の打鍵の持ち越し止め: 終えた語の判定（matcher）と最後の打鍵の時刻。
+// 終えた語の読みの続き（語末の ん の 2 つ目の n、いわじゅく で終えた後の いせき）を、
+// 間を空けずに打ったキーは次の語の打鍵にしない（Challenge は次の語がすぐ出る。Study は正解後の待ちが飲み込む）
+let romajiSpill = null;
+const ROMAJI_SPILL_GAP_MS = 600;
 
 function romajiEntriesFor(word) {
   if (!word || word.calc || word.kanjiOnly || word.write || word.blank || !isConceptWord(word)) return [];
   if (!hasJapaneseScript(word.en)) return [];
-  return readingEntries(word);
+  const entries = readingEntries(word);
+  // かなの読みが無い（英字の別解だけの自分の場面カード）は、答えを打てないので全文入力に戻す
+  return entries.some((e) => hasKana(e.reading)) ? entries : [];
 }
 
 // 入力欄: ローマ字モードでは読み取り専用（IME も OS キーボードも開かない。keydown は届く）
@@ -198,7 +203,7 @@ function resetRomajiMode() {
   romajiMode = false;
   romaji = null;
   romajiEntries = [];
-  romajiConfirmShown = false;
+  romajiSpill = null;
   document.body.classList.remove("romaji-answer");
   setInputRomaji(false);
 }
@@ -399,6 +404,7 @@ export function startGame(options = {}) {
   correctChars = 0;
   combo = 0;
   gainedXp = 0;
+  romajiSpill = null;
   startTime = Date.now();
   updateCombo(0);
 
@@ -511,17 +517,11 @@ function triggerEnter() {
     return;
   }
 
-  // ローマ字モード: 読みを打ち終えて止まっている（めいん と めいんこんばーじょん の めいん）なら確定。
-  // 打ち終えていなければ、英単語と同じく 1 回目は答え表示、答えを見た後はスキップ（下の通常処理）
-  if (romajiMode && romaji) {
-    if (romaji.keys && romaji.state().finished !== null) {
-      finishRomajiWord();
-      return;
-    }
-    if (!isRevealed) {
-      revealAnswer();
-      return;
-    }
+  // ローマ字モード: 読みは打ち終えた時点で正解になっている。Enter は英単語と同じく 1 回目は答え表示、
+  // 答えを見た後はスキップ（下の通常処理）
+  if (romajiMode && romaji && !isRevealed) {
+    revealAnswer();
+    return;
   }
 
   // 全文入力モード: 入力があれば判定、空なら「分からない」
@@ -594,13 +594,19 @@ export function handleKeydown(event) {
     return;
   }
 
-  // 語末の ん を n 1 つで打ち終えた直後の n は、次の語の 1 打目にしない（nn と打つ癖）
-  if (swallowNUntil) {
-    const swallow = performance.now() < swallowNUntil && (event.key === "n" || event.key === "N" || romajiKeyOf(event) === "n");
-    swallowNUntil = 0;
-    if (swallow) {
-      event.preventDefault();
-      return;
+  // 読みを打ち終えた直後、終えた語の読みの続きを間を空けずに打ったキー（語末の ん の 2 つ目の n、
+  // いわじゅく で終えた後の いせき）は、次の語の打鍵にしない。Shift などローマ字でないキーでは途切れさせない
+  if (romajiSpill) {
+    const key = romajiKeyOf(event);
+    if (key) {
+      const spill = romajiSpill;
+      romajiSpill = null;
+      const now = performance.now();
+      if (now - spill.at <= ROMAJI_SPILL_GAP_MS && spill.matcher.feed(key).ok) {
+        event.preventDefault();
+        if (spill.matcher.state().canContinue) romajiSpill = { matcher: spill.matcher, at: now };
+        return;
+      }
     }
   }
 
@@ -646,29 +652,17 @@ function handleRomajiKey(event) {
   if (romaji.keys.length === 1 && document.body.classList.contains("osk-open")) {
     elements.input.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
   }
-  if (result.done) {
-    finishRomajiWord();
-    return;
-  }
-  // 短い読みを打ち終えたが、長い読みもまだあり得る: Enter で確定できると伝える
-  const confirmable = result.finished !== null;
-  if (confirmable !== romajiConfirmShown) {
-    romajiConfirmShown = confirmable;
-    showMessage(confirmable ? "Enter で確定" : "", confirmable ? "info" : "");
-  }
+  if (result.done) finishRomajiWord();
 }
 
-// 読みを打ち終えた（自動で、または Enter で確定）。速度はかなの数で数える
+// 読みを打ち終えた（Enter なし・変換なし）。速度はかなの数で数える
 function finishRomajiWord() {
   const state = romaji.state();
   const entry = romaji.entries[state.finished] ?? romaji.entries[0];
-  if (romajiConfirmShown) {
-    romajiConfirmShown = false;
-    showMessage("");
-  }
   correctChars += [...(entry?.reading ?? "")].length;
   updateTypeSpeed();
-  if (state.endedWithSingleN) swallowNUntil = performance.now() + 500;
+  // まだ続けて打てる（長い読み・語末の ん の nn）なら、直後の続きの打鍵を次の語に持ち越さない
+  romajiSpill = state.canContinue ? { matcher: romaji, at: performance.now() } : null;
   completeWord();
 }
 
@@ -855,10 +849,7 @@ function revealAnswer(fromMiss = false) {
   typedSoFar = "";
   elements.input.value = "";
   clearTypedPreview();
-  if (romajiMode) {
-    romaji = createRomajiMatcher([primaryRomajiEntry()]); // 答えを見た後は、見せた読みだけを打って練習
-    romajiConfirmShown = false;
-  }
+  if (romajiMode) romaji = createRomajiMatcher([primaryRomajiEntry()]); // 答えを見た後は、見せた読みだけを打って練習
 
   const stat = getWordStats()[currentWord.id];
   const leech = (stat?.recallFail ?? 0) >= LEECH_FAILS;
@@ -923,7 +914,7 @@ function advanceNow() {
   clearTimeout(advanceTimer);
   advanceTimer = null;
   awaitingNext = false;
-  swallowNUntil = 0; // 待ちの間の n は待ちが飲み込んだ。次の語の 1 打目は飲み込まない
+  romajiSpill = null; // 待ちの間の続きの打鍵は待ちが飲み込んだ。次の語の 1 打目は飲み込まない
   if (!isPlaying) return;
   if (mode === "study" && setCompletePending) {
     endStudySession();
@@ -1003,7 +994,6 @@ export function useHint() {
       "revealed"
     );
     hintChars++;
-    romajiConfirmShown = false;
     if (state.done) finishRomajiWord();
     return;
   }
@@ -1729,7 +1719,6 @@ function setNewWord() {
   romajiEntries = romajiEntriesFor(currentWord);
   romajiMode = romajiEntries.length > 0;
   romaji = romajiMode ? createRomajiMatcher(romajiEntries) : null;
-  romajiConfirmShown = false;
   freeMode = !romajiMode && isFreeAnswer(currentWord);
   document.body.classList.toggle("romaji-answer", romajiMode);
   setInputRomaji(romajiMode);

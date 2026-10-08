@@ -19,16 +19,19 @@
 //     .feed(key)   1 打鍵。→ { ok, ignored, done, finished, expected, key }
 //                    ok:false & ignored:true … ローマ字のキーではない（空白・記号・Shift など）。ミスにしない
 //                    ok:false & ignored:false … どの読みのどの綴りにも続かない＝ミス。状態は変えない
-//                    done      … 読みを打ち終え、より長い読みも残っていない。ここで即終了してよい
-//                    finished  … 打ち終えた読みの番号（より長い読みが残っていても入る。Enter で確定する用）
+//                    done      … どれかの読みを打ち終えた。ここで即終了する（Enter も変換も無し）
+//                    finished  … 打ち終えた読みの番号（done のときだけ入る）
 //                    expected  … ミスのとき、正しい綴りなら次に来たキー（キーミス記録用。分からなければ ""）
 //     .type(keys)  文字列をまとめて feed。最初のミスで止まる。→ 最後の結果 + { missAt }（ミスなしは -1）
-//     .state()     → { keys, committed:[{kana, keys}], pending, done, finished, canGrow, endedWithSingleN,
+//     .state()     → { keys, committed:[{kana, keys}], pending, done, finished, canGrow, canContinue, endedWithSingleN,
 //                      expected, candidate }
 //                    committed … 確定したかなと、その下に出す打鍵（2 段表示用）。kana は読みの表記どおり
 //                                （カタカナの読みならカタカナ）。きゃ・ふぁ などは 1 つにまとまる
 //                    pending   … まだかなにならない打鍵（末尾に出す）。読みのまだ打っていない部分は含まない
-//                    endedWithSingleN … 末尾の ん を n 1 つで打ち終えた（直後の n を飲み込む判断用）
+//                    canGrow   … 打ち終えていない、より長い読みがまだ残っている（いわじゅく の後の いわじゅくいせき）
+//                    canContinue … まだ続けて打てるキーがある（canGrow に加え、語末の ん を n 1 つで終えた後の 2 つ目の n）。
+//                                打ち終えた直後の打鍵を次の語に持ち越さない判断用（js/game.js）
+//                    endedWithSingleN … 末尾の ん を n 1 つで打ち終えた
 //                    candidate … 表示が追っている読みの番号
 //     .hint()      次の 1 かなを打つためのキー → { kana, keys } | null（終わっていれば null）
 //     .firstKana() 主な読みの最初のかな（拗音は 2 文字。例「きょ」「ファ」）
@@ -45,7 +48,8 @@
 //
 // ── 綴りの規則 ───────────────────────────────────────────────
 //  ・ヘボン式と訓令式の両方: shi/si/ci, chi/ti, tsu/tu, fu/hu, ji/zi, sha/sya, cha/tya/cya, ja/zya/jya,
-//    ka/ca, ku/cu/qu, ko/co, se/ce, ぢ di, づ du, を wo, ゐ wi/wyi, ゑ we/wye, ゔ vu
+//    ka/ca, ku/cu/qu, ko/co, se/ce, ぢ di/ji/zi, づ du/zu, を wo/o, ゐ wi/wyi, ゑ we/wye, ゔ vu
+//    （ぢ・づ・を は IME と違い ji・zu・o も受ける。書院造＝しょいんづくり を shoinzukuri と打った人は読みを思い出せている）
 //  ・拗音・外来音: kya…, ふぁ fa/fwa, てぃ thi, でぃ dhi, とぅ twu, どぅ dwu, うぃ wi/whi, うぇ we/whe, うぉ who,
 //    いぇ ye, ゔぁ va, つぁ tsa, くぁ qa/kwa/qwa, ぐぁ gwa, すぃ swi など。き+ゃ を ki+xya と分けても可
 //  ・小さいかな: x か l + 母音（xa la xi li xya lya xwa xka xke）
@@ -58,9 +62,10 @@
 //  ・読みの中の空白・記号（・ = & / ( ) 、 。 - など）は打たなくてよい（正規化で落ちる）
 //
 // ── 終わりの判定 ─────────────────────────────────────────────
-//  英単語の completedAnswer（answers.js）と同じ: 打ち終えた読みがあっても、別の読みがまだ伸びる
-//  （めいん と めいんこんばーじょん）間は done にしない。finished が入るので Enter で確定できる。
-//  同じ読みの別の打ち方が残っているだけ（にほん を nihon と打ち、nihonn もあり得る）なら done にする。
+//  どれかの読みを打ち終えたら done（即終了。創業者指示「打ち終わったら変換もなく終了」）。
+//  長い読み（いわじゅくいせき）の手前に短い読み（いわじゅく）があれば短い方で終わる。どちらも正解なので構わない。
+//  長い読みを打ち続けていた人の残りの打鍵（いせき）や、語末の ん の 2 つ目の n は、canContinue を見て
+//  呼ぶ側（js/game.js）が次の語に持ち越さない。
 
 // 読みに書かれていても打たなくてよい文字（記号・句読点・空白・制御）。ー（U+30FC）は文字（Lm）なので残る
 const IGNORABLE = /[\p{P}\p{S}\p{Z}\p{Cc}\p{Cf}\s]/gu;
@@ -163,10 +168,10 @@ const ONE = {
   ま: ["ma"], み: ["mi"], む: ["mu"], め: ["me"], も: ["mo"],
   や: ["ya"], ゆ: ["yu"], よ: ["yo"],
   ら: ["ra"], り: ["ri"], る: ["ru"], れ: ["re"], ろ: ["ro"],
-  わ: ["wa"], ゐ: ["wi", "wyi"], ゑ: ["we", "wye"], を: ["wo"],
+  わ: ["wa"], ゐ: ["wi", "wyi"], ゑ: ["we", "wye"], を: ["wo", "o"],
   が: ["ga"], ぎ: ["gi"], ぐ: ["gu"], げ: ["ge"], ご: ["go"],
   ざ: ["za"], じ: ["ji", "zi"], ず: ["zu"], ぜ: ["ze"], ぞ: ["zo"],
-  だ: ["da"], ぢ: ["di"], づ: ["du"], で: ["de"], ど: ["do"],
+  だ: ["da"], ぢ: ["di", "ji", "zi"], づ: ["du", "zu"], で: ["de"], ど: ["do"],
   ば: ["ba"], び: ["bi"], ぶ: ["bu"], べ: ["be"], ぼ: ["bo"],
   ぱ: ["pa"], ぴ: ["pi"], ぷ: ["pu"], ぺ: ["pe"], ぽ: ["po"],
   ゔ: ["vu"],
@@ -190,6 +195,7 @@ for (const [small, v] of Object.entries(SMALL_Y)) {
   addTwo(`し${small}`, v === "i" ? ["syi"] : [`sh${v}`, `sy${v}`]);
   addTwo(`ち${small}`, v === "i" ? ["tyi", "cyi"] : [`ch${v}`, `ty${v}`, `cy${v}`]);
   addTwo(`じ${small}`, v === "i" ? ["zyi", "jyi"] : [`j${v}`, `zy${v}`, `jy${v}`]);
+  addTwo(`ぢ${small}`, v === "i" ? ["zyi", "jyi"] : [`j${v}`, `zy${v}`, `jy${v}`]); // dy… の後に（ぢゃ も じゃ と同じに打てる）
   addTwo(`て${small}`, [`th${v}`]);
   addTwo(`で${small}`, [`dh${v}`]);
 }
@@ -385,6 +391,7 @@ function summarize(cands, states, keys, primary) {
   const finishedState = doneSet.has(primary) ? doneStates.find((s) => s.c === primary) : doneStates.sort((a, b) => a.c - b.c)[0];
   const finished = finishedState ? finishedState.c : null;
   const canGrow = states.some((s) => !isDoneState(cands, s) && !doneSet.has(s.c));
+  const canContinue = states.some((s) => liveOptions(cands, s).length > 0);
   let expected = "";
   for (const { s } of ranked) {
     const o = liveOptions(cands, s)[0];
@@ -393,14 +400,15 @@ function summarize(cands, states, keys, primary) {
       break;
     }
   }
-  const best = finishedState && !canGrow ? { s: finishedState, view: viewOf(cands, finishedState) } : ranked[0];
+  const best = finishedState ? { s: finishedState, view: viewOf(cands, finishedState) } : ranked[0];
   return {
     keys,
     committed: best ? best.view.committed.map((seg) => ({ ...seg })) : [],
     pending: best ? best.view.pending : keys,
-    done: finished !== null && !canGrow,
+    done: finished !== null,
     finished,
     canGrow,
+    canContinue,
     endedWithSingleN: !!finishedState?.guard,
     expected,
     candidate: best ? best.s.c : null

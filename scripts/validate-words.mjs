@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { readingCandidates, hasKana, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
+import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = path.join(ROOT, "data", "english");
@@ -22,18 +22,30 @@ const problems = [];
 //  ・ひらがなを含む読みがない（search のような英字だけ）→ 「読みをローマ字で」の案内と合わない。答えを見せるときの読みも無い
 //  ・a-z と ー だけで打てる読みがない（f2 など数字が要る）→ スマホの画面キーボードには数字が無い
 //  ・各読みの標準の綴り（canonicalRomaji）で打ち終えられること（綴りの表の抜けを見つける）
+//  ・主な読み（答えの下に出す読み。かなを含む最初の候補）が答えそのものの読みであること。
+//    答えより短い（略語・言い換えが先頭: 浸潤麻酔 → しんま）、答えにカタカナが無いのにカタカナ（領収書 → レシート）は NG。
+//    答えの読みが無いと、答えを思い出した人が打てない（りょうしゅうしょ の r で 1 ミス）
+//  ・読み（3 字以上）が問題文に出ていないこと（カタカナとひらがなを同じに見る。q を写すだけで正解できる）
 // kanjiOnly（漢字の書き分けが目的のカード）は学習に出さないので対象外（docs/PACK_FORMAT.md）
 let readingCards = 0;
 let readingCount = 0;
 function checkReadings(w, where) {
   readingCards++;
-  const cands = readingCandidates(w);
+  const entries = readingEntries(w);
+  const cands = entries.map((e) => e.reading);
   readingCount += cands.length;
   if (cands.length === 0) {
     problems.push(`読みがない（ローマ字で打てない） ${where} (${w.answer})`);
     return;
   }
   if (!cands.some(hasKana)) problems.push(`ひらがなの読みがない ${where} (${w.answer}: ${cands.join("/")})`);
+  const primary = primaryReading(entries);
+  const answerChars = [...displayReading(w.answer)];
+  if (primary && [...primary.reading].length < answerChars.length) problems.push(`主な読みが答えより短い（答えの読みを先頭に） ${where} (${w.answer}: ${primary.display})`);
+  if (primary && !/[ァ-ヺ]/.test(w.answer) && /[ァ-ヺ]/.test(primary.display)) problems.push(`主な読みがカタカナの別の語（答えの読みを先頭に） ${where} (${w.answer}: ${primary.display})`);
+  const q = normalizeReading(w.q ?? "");
+  const leaked = cands.find((r) => hasKana(r) && [...r].length >= 3 && q.includes(r));
+  if (leaked) problems.push(`読みが問題文に含まれる ${where} (${leaked})`);
   if (!cands.some((r) => /^[ぁ-ゖーa-z]+$/.test(r))) problems.push(`数字なしで打てる読みがない ${where} (${cands.join("/")})`);
   for (const r of cands) {
     const keys = canonicalRomaji(r, { finalN: true });

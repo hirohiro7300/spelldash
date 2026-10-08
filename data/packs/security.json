@@ -109,6 +109,7 @@
       "kind": "concept",
       "answer": "脆弱性",
       "accept": [
+        "ぜいじゃくせい",
         "セキュリティホール",
         "vulnerability",
         "ぜいじゃく性"
@@ -348,6 +349,7 @@
       "answer": "DDoS攻撃",
       "accept": [
         "DDoS",
+        "DDoSこうげき",
         "ディードス",
         "分散型サービス妨害攻撃"
       ],
@@ -405,6 +407,7 @@
       "kind": "concept",
       "answer": "サプライチェーン攻撃",
       "accept": [
+        "さぷらいちぇーんこうげき",
         "サプライチェーンアタック",
         "supply chain attack",
         "供給網攻撃"
@@ -667,6 +670,7 @@
       "answer": "パッチ管理",
       "accept": [
         "パッチ適用",
+        "ぱっちかんり",
         "セキュリティパッチ",
         "更新プログラムの適用",
         "patch management"

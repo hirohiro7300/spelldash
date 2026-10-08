@@ -1247,10 +1247,9 @@ console.log("concept cards:");
       const cands = entries.map((e) => e.reading);
       const keysOf = (reading) => r.canonicalRomaji(reading, { finalN: true });
       const primary = r.primaryReading(entries);
-      // 自力で打つ読み: ほかの読みが伸びない（打ち終えたら Enter なしで終わる）もの。無ければ主な読み＋Enter
-      const self = cands.find((c) => r.matchRomaji(cands, keysOf(c)).done) ?? primary?.reading;
       const miss = [..."qxvlzjcfw"].find((k) => !r.matchRomaji(cands, k).alive) ?? "q";
-      const romaji = entries.length > 0 ? { keys: keysOf(primary.reading), self: keysOf(self), selfEnter: !r.matchRomaji(cands, keysOf(self)).done, miss } : null;
+      // 自力で打つ読み = 主な読み。打ち終えたら Enter なしで終わる（手前の短い読みで先に終われば、残りの打鍵は正解後の待ちが飲み込む）
+      const romaji = entries.length > 0 ? { keys: keysOf(primary.reading), self: keysOf(primary.reading), miss } : null;
       return { en: w.en, accept: w.accept, explain: w.explain, free: !romaji && !/^[a-z-]+$/.test(w.en), romaji };
     }, prompt);
   };
@@ -1278,7 +1277,6 @@ console.log("concept cards:");
   const typed = card.romaji ? card.romaji.self : card.free ? (card.accept[0] ?? card.en) : card.en;
   if (card.romaji) {
     await pressAll(typed);
-    if (card.romaji.selfEnter) await page.press("#input", "Enter"); // 長い読みもあり得る読み（めいん／めいんこんばーじょん）は Enter で確定
   } else if (card.free) {
     await page.fill("#input", typed);
     await page.press("#input", "Enter");
@@ -2223,15 +2221,18 @@ console.log("romaji answers:");
   check("(c) kenzuisi で 遣隋使 が正解（ん=n・し=si）", (await num(page, "#score")) === 3 && (await num(page, "#miss")) === 0);
   await page.press("#input", "Enter");
 
-  // 岩宿遺跡: 読み いわじゅく は いわじゅくいせき の手前。打ち終えても長い読みがあり得るので Enter で確定
+  // 岩宿遺跡: 読み いわじゅく は いわじゅくいせき の手前。手前の読みでも打ち終えたら Enter なしで正解。
+  // 長い読みを打ち続けた残り（iseki）は正解後の待ちが飲み込む（ミスにならない）
   const w4 = W["concept-jh1-iwajuku"];
   await waitUntil(() => promptIs(page, w4), 3000);
   await pressAll(page, "iwajuku");
-  await page.waitForTimeout(150);
-  const notYet = (await num(page, "#score")) === 3 && (await page.textContent("#message")).includes("Enter で確定");
-  await page.press("#input", "Enter");
   await waitUntil(async () => (await num(page, "#score")) === 4, 2000);
-  check("ローマ字: 長い読みの手前の読み（いわじゅく）は「Enter で確定」→ Enter で正解", notYet && (await num(page, "#score")) === 4 && (await num(page, "#recallFail")) === 0);
+  const shortDone = (await num(page, "#score")) === 4;
+  await pressAll(page, "iseki");
+  await page.waitForTimeout(100);
+  check("ローマ字: 長い読みの手前の読み（いわじゅく）でも打ち終えたら Enter なしで正解。続けて打った いせき はミスにしない",
+    shortDone && (await num(page, "#score")) === 4 && (await num(page, "#recallFail")) === 0 && (await num(page, "#miss")) === 0,
+    `${await num(page, "#score")} / ${await page.textContent("#message")}`);
   await page.press("#input", "Enter");
 
   // (d) 解体新書: どの読みにも続かないキー = 1 ミスで不正解（英単語と同じ）。答えと読みが出て、見せた読みを打って練習
@@ -2298,10 +2299,11 @@ console.log("romaji answers:");
       ja: ok(["じゃま"], "zyama") && ok(["じゃま"], "jyama") && ok(["じゃま"], "jama"),
       kata: ok(["ファシズム"], "fasizumu"),
       dash: ok(["らーめん"], "ra-men") && !alive(["らーめん"], "raam"),
-      prefix: (() => { const m = r.matchRomaji(["めいん", "めいんこんばーじょん"], "meinn"); return m.alive && !m.done && m.finished === 0; })()
+      prefix: (() => { const m = r.matchRomaji(["めいん", "めいんこんばーじょん"], "meinn"); return m.alive && m.done && m.finished === 0 && m.canGrow; })(),
+      dzu: ok(["しょいんづくり"], "shoinzukuri") && ok(["しょいんづくり"], "shoindukuri") && ok(["あづちじょう"], "azuchijou")
     };
   });
-  check("ローマ字の判定（shi/si・tsu/tu・っ・cha/tya・ん の nn/n'/n・fu/hu・ja/zya・カタカナ・ー・長い読みの手前）", Object.values(unit).every(Boolean), JSON.stringify(unit));
+  check("ローマ字の判定（shi/si・tsu/tu・っ・cha/tya・ん の nn/n'/n・fu/hu・ja/zya・カタカナ・ー・長い読みの手前・づ を zu）", Object.values(unit).every(Boolean), JSON.stringify(unit));
   check("ローマ字（中学歴史）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
@@ -2397,14 +2399,48 @@ console.log("romaji answers:");
     const m = matchRomaji(readingEntries(w), keys);
     const endsN = m.done && m.endedWithSingleN;
     const missBefore = await num(pageC, "#miss");
-    await pressAll(pageC, endsN ? keys + "n" : keys);
-    if (!m.done) await pageC.press("#input", "Enter"); // 長い読みもあり得る読みは Enter で確定
+    await pressAll(pageC, endsN ? keys + "n" : keys); // 手前の短い読みで先に終われば、残りの打鍵は次の語に持ち越さない
     await pageC.waitForTimeout(80);
     if (endsN) swallowed = (await num(pageC, "#miss")) === missBefore && (await pageC.textContent("#typedPreview")) === "" && (await pageC.textContent("#japanese")).trim() !== q;
   }
   check("Challenge: 語末の ん を n で終えた直後の n は次の語に持ち越さない", swallowed === true, String(swallowed));
   check("Challenge（ローマ字）でエラー0", pageC.errors.length === 0, pageC.errors[0] ?? "");
   await pageC.close();
+
+  // Challenge（次の語がすぐ出る）: 手前の短い読み（いわじゅく）で終えた直後、長い読みの続き（iseki）を間を空けずに打っても
+  // 次の語の打鍵にしない。間が空いたキーは次の語の 1 打目。英字の別解しか無い自分の場面カードは全文入力（IME）のまま
+  const myCards = [
+    { kind: "concept", en: "iwajukuiseki", answer: "岩宿遺跡", q: "群馬県で関東ローム層から打製石器が見つかり、日本に旧石器時代があったと分かった遺跡", explain: "", accept: ["いわじゅくいせき", "いわじゅく"], ja: "" }
+  ];
+  const pageS = await newPage({ storage: { spelldash_my_words: JSON.stringify(myCards), spelldash_category: "my", spelldash_mode: "challenge", spelldash_placement: "done", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: todayR }) } });
+  await pageS.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageS.waitForTimeout(900);
+  await pageS.press("#input", "Enter");
+  await waitUntil(async () => (await pageS.textContent("#japanese")).trim() === myCards[0].q, 3000);
+  await pressAll(pageS, "iwajukuiseki");
+  await pageS.waitForTimeout(100);
+  const spill1 = { score: await num(pageS, "#score"), miss: await num(pageS, "#miss"), preview: await pageS.textContent("#typedPreview") };
+  check("Challenge: いわじゅく で正解、続けて打った iseki は次の語に持ち越さない（ミス 0・次の語は未入力）",
+    spill1.score === 1 && spill1.miss === 0 && spill1.preview === "", JSON.stringify(spill1));
+  await pressAll(pageS, "iwajuku");
+  await waitUntil(async () => (await num(pageS, "#score")) === 2, 2000);
+  await pageS.waitForTimeout(800); // 間が空いたら、次の語の打鍵として扱う
+  await pressAll(pageS, "i");
+  await pageS.waitForTimeout(100);
+  const spill2 = { score: await num(pageS, "#score"), miss: await num(pageS, "#miss"), kana: (await preview(pageS)).kana };
+  check("Challenge: 間を空けて打ったキーは次の語の 1 打目（い）", spill2.score === 2 && spill2.miss === 0 && same(spill2.kana, ["い"]), JSON.stringify(spill2));
+  check("Challenge（持ち越し）でエラー0", pageS.errors.length === 0, pageS.errors[0] ?? "");
+  await pageS.close();
+
+  const pageL = await newPage({ storage: { spelldash_my_words: JSON.stringify([{ kind: "concept", en: "seo-x", answer: "検索エンジン最適化", q: "検索結果の上位に出るよう、サイトの構成や文章を整えること", explain: "", accept: ["SEO"], ja: "" }]), spelldash_category: "my", spelldash_placement: "done", spelldash_streak: JSON.stringify({ current: 1, best: 1, last: todayR }) } });
+  await pageL.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageL.waitForTimeout(900);
+  await pageL.press("#input", "Enter");
+  await waitUntil(async () => (await pageL.textContent("#japanese")).trim().startsWith("検索結果の上位"), 3000);
+  check("ローマ字: かなの読みが無い自分の場面カード（英字の別解だけ）は全文入力（入力欄は書ける）",
+    (await pageL.getAttribute("#input", "readonly")) === null && !(await pageL.evaluate(() => document.body.classList.contains("romaji-answer"))) && (await pageL.evaluate(() => document.body.classList.contains("free-answer"))));
+  check("全文入力の場面カードでエラー0", pageL.errors.length === 0, pageL.errors[0] ?? "");
+  await pageL.close();
 }
 
 console.log("ads category:");

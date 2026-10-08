@@ -95,7 +95,7 @@ const SEION = {
   ま: ["ma"], み: ["mi"], む: ["mu"], め: ["me"], も: ["mo"],
   や: ["ya"], ゆ: ["yu"], よ: ["yo"],
   ら: ["ra"], り: ["ri"], る: ["ru"], れ: ["re"], ろ: ["ro"],
-  わ: ["wa"], を: ["wo"], ゐ: ["wi", "wyi"], ゑ: ["we", "wye"], ん: ["nn", "n'", "xn", "n"]
+  わ: ["wa"], を: ["wo", "o"], ゐ: ["wi", "wyi"], ゑ: ["we", "wye"], ん: ["nn", "n'", "xn", "n"]
 };
 for (const [kana, list] of Object.entries(SEION)) accepts(kana, ...list);
 // カタカナで書いた読みも同じ
@@ -106,14 +106,23 @@ accepts("シチツフ", "shichitsufu", "sitituhu");
 const DAKUON = {
   が: ["ga"], ぎ: ["gi"], ぐ: ["gu"], げ: ["ge"], ご: ["go"],
   ざ: ["za"], じ: ["ji", "zi"], ず: ["zu"], ぜ: ["ze"], ぞ: ["zo"],
-  だ: ["da"], ぢ: ["di"], づ: ["du"], で: ["de"], ど: ["do"],
+  だ: ["da"], ぢ: ["di", "ji", "zi"], づ: ["du", "zu"], で: ["de"], ど: ["do"],
   ば: ["ba"], び: ["bi"], ぶ: ["bu"], べ: ["be"], ぼ: ["bo"],
   ぱ: ["pa"], ぴ: ["pi"], ぷ: ["pu"], ぺ: ["pe"], ぽ: ["po"],
   ゔ: ["vu"]
 };
 for (const [kana, list] of Object.entries(DAKUON)) accepts(kana, ...list);
-rejects("ぢ", "ji", 0); // ぢ は di（じ と打つと別の字）
-rejects("づ", "zu", 0);
+// ぢ・づ は IME と違い ji・zu でも受ける（書院造 しょいんづくり を shoinzukuri と打った人は読みを思い出せている）。表示は読みの字のまま
+accepts("しょいんづくり", "shoinzukuri", "shoinndukuri");
+accepts("はなぢ", "hanaji", "hanadi", "hanazi");
+accepts("かぶをまもる", "kabuwomamoru", "kabuomamoru");
+{
+  const m = createRomajiMatcher(["あづち"]);
+  m.type("azuchi");
+  eq("zu と打っても づ と見せる", cells(m.state()), "あ:a づ:zu ち:chi");
+}
+rejects("ず", "du", 0); // 逆（ず を du）は受けない
+rejects("じ", "di", 0);
 
 // ── 5. 拗音 ────────────────────────────────────────────────
 for (const [head, c] of [["き", "k"], ["ぎ", "g"], ["に", "n"], ["ひ", "h"], ["び", "b"], ["ぴ", "p"], ["み", "m"], ["り", "r"]]) {
@@ -125,7 +134,7 @@ accepts("ちゃちゅちょ", "chachucho", "tyatyutyo", "cyacyucyo");
 accepts("ちぇ", "che", "tye", "cye");
 accepts("じゃじゅじょ", "jajujo", "zyazyuzyo", "jyajyujyo");
 accepts("じぇ", "je", "zye", "jye");
-accepts("ぢゃ", "dya");
+accepts("ぢゃ", "dya", "ja", "zya", "jya");
 // 小さいかなを分けて打つ
 accepts("きゃ", "kixya", "kilya");
 accepts("しょう", "shixyou", "silyou");
@@ -197,8 +206,9 @@ accepts("ほんー", "hon-"); // ー の前の n 1 つは ん
   const r = matchRomaji(["にほん"], "nihon");
   ok("語末の ん は n 1 つで終わる", r.done);
   ok("endedWithSingleN（n 1 つで終わった）", r.endedWithSingleN);
+  ok("n 1 つで終えた後は 2 つ目の n を続けられる（canContinue）。長い読みは無い（canGrow でない）", r.canContinue && !r.canGrow);
   const r2 = matchRomaji(["にほん"], "nihonn");
-  ok("語末の ん は nn でも終わる", r2.done && !r2.endedWithSingleN);
+  ok("語末の ん は nn でも終わる", r2.done && !r2.endedWithSingleN && !r2.canContinue);
   const m = createRomajiMatcher(["にほん"]);
   m.type("nihon");
   ok("nihon の後の n は nihonn として受ける（呼ぶ側は done で止める）", m.feed("n").done);
@@ -251,9 +261,13 @@ eq("全角数字のキー", normalizeRomajiKey("２"), "2");
 {
   const rs = ["めいん", "めいんこんばーじょん"];
   const a = matchRomaji(rs, "mein");
-  ok("短い読みを打ち終えても、長い読みが残る間は done にしない", !a.done && a.finished === 0 && a.canGrow);
+  ok("短い読みを打ち終えたら done（長い読みが残っていても即終了。canGrow で分かる）", a.done && a.finished === 0 && a.canGrow && a.canContinue);
   const b = matchRomaji(rs, "meinn");
-  ok("nn でも同じ", !b.done && b.finished === 0);
+  ok("nn でも同じ", b.done && b.finished === 0 && b.canGrow);
+  eq("終えた短い読みの表示", cells(a), "め:me い:i ん:n");
+  const m = createRomajiMatcher(rs);
+  m.type("mein");
+  ok("終えた後も長い読みの続きは打てる（呼ぶ側が次の語に持ち越さない判断に使う）", m.type("konba-jonn").done && m.state().finished === 1 && !m.state().canContinue);
   ok("長い読みで終わる", types(rs, "meinkonba-jon") && matchRomaji(rs, "meinkonba-jon").finished === 1);
   ok("長い読み（nn）", types(rs, "meinnkonnba-jonn"));
 }
