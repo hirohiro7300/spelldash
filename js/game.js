@@ -923,6 +923,7 @@ function advanceNow() {
   clearTimeout(advanceTimer);
   advanceTimer = null;
   awaitingNext = false;
+  swallowNUntil = 0; // 待ちの間の n は待ちが飲み込んだ。次の語の 1 打目は飲み込まない
   if (!isPlaying) return;
   if (mode === "study" && setCompletePending) {
     endStudySession();

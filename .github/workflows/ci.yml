@@ -25,6 +25,9 @@ jobs:
       - name: 単語データ検証
         run: node scripts/validate-words.mjs
 
+      - name: ローマ字の判定（日本語の答えの読み。js/romaji.js）
+        run: node scripts/test-romaji.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 
