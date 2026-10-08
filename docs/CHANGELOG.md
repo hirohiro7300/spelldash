@@ -12,6 +12,7 @@
 - **変えていないもの**: js/ 0 行、HTML 0 行（packs/ も再生成なし。pages.css の `.pp-*` がテンプレの `<style>` に詳細度で勝つ）、room.css・bookshelf.css・path.css・welcome.css・home.css・card.css・game.css・keyboard.css 0 行、tokens.css は追加だけ（削除 0 行）。ホームの画素差 0（はちゃんの一言の乱数とろうそくの揺らぎだけ）。新しい画像・フォント・外部リクエスト・animation なし
 - 進め方: 基準の撮影（11 ページ × 390／1200 × light／dark）→ アートディレクターの批評（必須 19・推奨 10）→ 4 レーン（shell／surfaces／battle／platform）の並行実装 → 美術の再採点と反証レビュー（禁止違反 0・本文コントラスト 4.5 未満 0・4 テーマ・ホームの画素）→ 必須 3 件の修正（Pro 390 の題の 3 行落ち、packs の「同じグループ」の箱格子、単語帳の sticky 分野ナビの透け）→ 再採点で必須 0
 - E2E +252 件（8.7 書斎の皮: 10 ページ × 2 幅 × 2 テーマで帯・幅木・コントラスト・横スクロール・札・console、ホームのヘッダーは透明のまま）
+- ついでの修正（js/statsView.js の 1 か所）: 学習データの「連続記録の修復」の案内と週間レポートの「Pro なら…」が、受付中かの返事（/api/billing/config）より先に描かれると出ないままだった → `spelldash:billing` で描き直す（マイ単語帳・設定と同じ作法。E2E で 1 回だけ落ちて見つかった競合）
 - 残り（Batch 56c。docs/BACKLOG.md）: 帯の星図（任意）、Pro 390 の表頭の罫、分野ナビ末尾のフェード、夜の味付け Nocturne、批評の nice-to-have、CSS の棚卸し
 
 ## 2026-10-08 (PR #133 のコードレビュー 8 件の修正 — 本棚・机の本・初回)

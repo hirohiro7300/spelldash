@@ -195,6 +195,12 @@ function initializeStreakRepair() {
     renderHeaderStreak();
     renderWeeklyReport("weeklyReport");
   });
+  // 受付中かが分かったら「Pro なら…」の案内（修復の 1 行と週間レポートの 1 行）を出し直す（js/myWordsView.js・profileView.js と同じ。
+  // 初めて開いた端末は /api/billing/config の返事が最初の描画より遅れることがある）
+  document.addEventListener("spelldash:billing", () => {
+    renderStreakRepair();
+    renderWeeklyReport("weeklyReport");
+  });
 }
 
 function renderStreakRepair() {
