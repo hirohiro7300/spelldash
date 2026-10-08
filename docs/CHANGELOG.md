@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-10-08 (PR #136 のコードレビュー — アプリの起動時の色・theme-color の表のずれを E2E で守る)
+
+- `capacitor.config.json` の起動時の色が旧パレットのままだった（StatusBar は LIGHT／白、WebView の背景 #f4f6fb、スプラッシュ #0f172a）→ ステータスバーは DARK／帯の紺 #1A2137、背景は紙 #F4ECDA、スプラッシュは帯の紺。アプリ側は創業者の `npx cap sync` で反映（docs/APP.md）
+- theme-color の表（js/appEnv.js `THEME_COLOR`）が 11 ページ・packs/ 163 枚の `<head>`・manifest.webmanifest に手で写されているので、E2E がずれを見張る（全 HTML に同じ表と同じ meta、manifest の theme_color は light の値）
+- 片付け: room.css の `:has(body.page-room)` の床（brand.css の全ページ共通の規則に含まれる）、index.html の meta の `data-room`（theme.js が読まなくなった）、battle.css の古い注釈
+
 ## 2026-10-08 (PR #135 のコードレビュー — ブラウザの UI の色・アプリのステータスバー・CSS の重複)
 
 - **meta theme-color が紙のままだった**: ヘッダーはどのページも天井の帯（紺）になったのに、ブラウザの UI の色（各ページの `<head>` のインラインの表と js/theme.js）は紙の色のままで、Android の Chrome では紙のツールバーの下に紺の帯が来ていた（manifest の theme_color は meta に隠れて使われない）。表を 1 つ（js/appEnv.js `THEME_COLOR`: light #1A2137・dark #04060B・paper #20243A・indigo #03050C = tokens.css の `--vault`）にして、10 ページと packs/ のテンプレート（163 枚を生成し直し）・js/theme.js が同じ値を使う

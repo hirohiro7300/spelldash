@@ -8,23 +8,23 @@
   },
   "ios": {
     "contentInset": "never",
-    "backgroundColor": "#f4f6fb",
+    "backgroundColor": "#F4ECDA",
     "preferredContentMode": "mobile"
   },
   "android": {
-    "backgroundColor": "#f4f6fb",
+    "backgroundColor": "#F4ECDA",
     "allowMixedContent": false
   },
   "plugins": {
     "SplashScreen": {
       "launchShowDuration": 600,
       "launchAutoHide": true,
-      "backgroundColor": "#0f172a",
+      "backgroundColor": "#1A2137",
       "showSpinner": false
     },
     "StatusBar": {
-      "style": "LIGHT",
-      "backgroundColor": "#ffffff"
+      "style": "DARK",
+      "backgroundColor": "#1A2137"
     }
   }
 }

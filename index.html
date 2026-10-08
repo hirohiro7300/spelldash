@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>SpellDash - 思い出して打つ、英単語タイピング学習</title>
   <!-- テーマと場面の先読みは CSS より前（後ろに置くと、インラインの script が CSS の読み込みを待たされる） -->
-  <meta name="theme-color" content="#1A2137" data-room />
+  <meta name="theme-color" content="#1A2137" />
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme];
     /* 部屋の場面（LCP）の先読み: css/room.css の分岐（≥1100 = desk、高さ ≤700 = short、それ以外 = phone。dark／indigo = 夜）と同じ 1 枚だけ。CSS が同じ URL を参照するので要求は 1 回 */
     try { const bp = matchMedia("(min-width: 1100px)").matches ? "desk" : matchMedia("(max-height: 700px)").matches ? "short" : "phone"; const l = document.createElement("link"); l.rel = "preload"; l.as = "image"; l.fetchPriority = "high"; l.href = `./assets/images/room/scene-${bp}-${theme === "dark" || theme === "indigo" ? "dark" : "light"}.webp`; document.head.appendChild(l); } catch {} })();</script>

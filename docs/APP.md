@@ -8,7 +8,7 @@
 
 | もの | 場所 | 備考 |
 |---|---|---|
-| Capacitor 設定 | `capacitor.config.json` | appId `net.spelldash.app`、webDir `dist` |
+| Capacitor 設定 | `capacitor.config.json` | appId `net.spelldash.app`、webDir `dist`。起動時の色は書斎に合わせてある（StatusBar は DARK＝白い文字・背景は帯の紺 `#1A2137`、WebView の背景は紙 `#F4ECDA`、スプラッシュは帯の紺。js/appEnv.js の `THEME_COLOR` と同じ値）。変えたら `npx cap sync` |
 | Web → dist の組み立て | `scripts/build-app.mjs`（`npm run app:build`） | index/list/stats/profile/battle/news/privacy ＋ css/js/data/assets。api・packs/・sitemap は入れない |
 | iOS プロジェクト | `ios/App/App.xcodeproj` | Swift Package Manager（CocoaPods 不要）。`ios/App/App/public` は生成物（git 管理外） |
 | Android プロジェクト | `android/` | `android/app/src/main/assets/public` は生成物（git 管理外） |

@@ -19,7 +19,7 @@
   margin-bottom: 12px;
 }
 
-/* ランク名「Bronze」はラテン（Cormorant 600）。tokens.css の .mono には同じ詳細度で後勝ち。末尾の面の節でも (0,3,2) で再指定 */
+/* ランク名「Bronze」はラテン（Cormorant 600）。tokens.css の .mono には同じ詳細度で後勝ち（brand.css／pages.css はこれを触らないので、この規則で確定） */
 .rank-card__rank {
   margin: 0;
   font-family: var(--font-latin);

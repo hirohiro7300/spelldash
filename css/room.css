@@ -57,10 +57,7 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .page-room {
   --desk-band: rgba(255, 190, 120, 0.07);
 }
 
-/* 床の色はキャンバス（html）に。body は紙のまま（オーバースクロールで床が見える。E2E のテーマ検査は body の色を見る） */
-html[data-theme]:has(body.page-room) {
-  background: var(--floor);
-}
+/* 床の色はキャンバス（html）に: css/brand.css の html[data-theme] { background: var(--floor) }（全ページ共通）。body は紙のまま */
 
 /* ================= ヘッダー: 天井の藍の上に透明で載る（高さ 56px のまま。E2E: < 70px） ================= */
 html[data-theme] .page-room .site-header {
