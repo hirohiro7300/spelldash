@@ -2530,7 +2530,7 @@ html[data-theme] body:not(.page-room) .genre-nav::after {
   position: sticky;
   right: 0;
   flex: 0 0 28px;
-  margin-left: -28px;
+  margin-left: 0; /* 末尾では最後の題箋の右の空き 28px に収まる（-28px だと最後の題箋の右 28px に乗って薄くなる） */
   align-self: stretch;
   background: linear-gradient(90deg, transparent, var(--paper));
   pointer-events: none;

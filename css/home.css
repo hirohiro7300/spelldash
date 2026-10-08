@@ -79,9 +79,7 @@ html[data-theme] .strip__chip small {
   color: var(--ink-page-3);
 }
 
-html[data-theme] .strip__chip--pop {
-  animation: none;
-}
+/* .strip__chip--pop は index.html・js/ のどこにも付かない（homeStrip.js は --streak／--on だけ）ので animation: none の規則は消した */
 
 /* プレイ中: 数字1行・はちゃん・「出題: …」・ほかの遊び方・ログイン案内・詳細（覚えた単語・Daily）は畳む
    （残るのは見出し1行＝タイトル・道に戻る・設定。css/path.css）。全幅で同じ。要素は残す（id 不変） */
