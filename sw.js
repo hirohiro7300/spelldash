@@ -1,7 +1,7 @@
 // SpellDash Service Worker
 // 方針: Network First（デプロイが即反映される）＋オフライン時はキャッシュへフォールバック。
 // Supabase等のクロスオリジンには一切触らない。
-const CACHE_NAME = "spelldash-v3";
+const CACHE_NAME = "spelldash-v4";
 
 const CORE_ASSETS = [
   "/",
@@ -12,6 +12,8 @@ const CORE_ASSETS = [
   "/news.html",
   "/list.html",
   "/pro.html",
+  "/privacy.html",
+  "/terms.html",
   "/tokushoho.html"
 ];
 

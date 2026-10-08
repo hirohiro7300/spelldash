@@ -148,6 +148,107 @@ html[data-theme] .site-nav__link[aria-current="page"]::after {
   transform: translateX(-50%) rotate(45deg);
 }
 
+/* ---- 帯（部屋以外のページ）: ホームの天井と同じ藍の漆喰を、紙の上の 1 本の帯として描く。文字と印は room.css 66〜150 行の作法をそのまま写す
+   （.page-room → body:not(.page-room)。ホームの画素は変えない）。高さ 56px・position: sticky・html.native-app の padding-top は layout.css のまま
+   （背景は padding-box に描かれるので切り欠きも藍）。dark／indigo は帯が紙より暗いので、下端の金線が帯と紙の境を担う（落とさない） ---- */
+html[data-theme] body:not(.page-room) .site-header {
+  background:
+    url(../assets/images/room/tile-plaster.webp) 0 0 / 384px 384px,
+    linear-gradient(to bottom, var(--vault), var(--vault-2));
+  background-blend-mode: soft-light, normal;
+  border-bottom: 1px solid var(--gold-dk);
+  box-shadow: 0 2px 6px -3px rgba(var(--shadow-rgb), 0.45); /* 帯が紙に落とす影。主光源（左上）と向きが合う */
+}
+
+html[data-theme] body:not(.page-room) .brand,
+html[data-theme] body:not(.page-room) .brand__name {
+  color: var(--foil);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme] body:not(.page-room) .site-header .brand__mark {
+  border-color: rgba(230, 200, 135, 0.7);
+  color: var(--foil);
+  text-shadow: none;
+}
+
+html[data-theme] body:not(.page-room) .site-nav__link {
+  color: var(--on-vault);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme] body:not(.page-room) .site-nav__link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--foil);
+}
+
+/* 現在地の菱は金（朱は 1 画面 1 回。Battle の「対戦を始める」だけ） */
+html[data-theme] body:not(.page-room) .site-nav__link[aria-current="page"] {
+  color: var(--foil);
+}
+
+html[data-theme] body:not(.page-room) .site-nav__link[aria-current="page"]::after {
+  background: var(--foil);
+}
+
+html[data-theme] body:not(.page-room) .account :is(.btn--ghost, .account__link, .account__home) {
+  color: var(--on-vault);
+  border-color: rgba(232, 220, 194, 0.5);
+}
+
+html[data-theme] body:not(.page-room) .account :is(.btn--ghost, .account__link, .account__home):hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foil);
+}
+
+/* 連続日数: 「30日」。数字は Cormorant、炎は 1px の金の線画。下線の札は外して帯の上に直に置く */
+html[data-theme] body:not(.page-room) .header-streak {
+  align-items: baseline;
+  gap: 2px;
+  padding: 4px 4px;
+  border: 0;
+  border-radius: 0;
+  color: var(--foil);
+  font-size: 19px;
+  line-height: 1;
+  font-variant-numeric: lining-nums proportional-nums;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme] body:not(.page-room) .header-streak .icon,
+html[data-theme] body:not(.page-room) .header-streak--off .icon {
+  width: 15px;
+  height: 15px;
+  margin-right: 1px;
+  color: var(--foil);
+}
+
+html[data-theme] body:not(.page-room) .header-streak span {
+  display: inline; /* スマホでも「30日」で読む */
+  margin-left: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--on-vault-2);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme] body:not(.page-room) .header-streak:hover {
+  color: #F6E2A8;
+}
+
+html[data-theme] body:not(.page-room) .header-streak--off {
+  color: var(--on-vault-2);
+}
+
+/* 帯から下がる紙片（ログイン／アカウントのメニュー）: 読む机の紙に机への影。layout.css の定義はホームも使うので部屋以外だけ */
+html[data-theme] body:not(.page-room) .account-menu,
+html[data-theme] body:not(.page-room) .account-menu--login {
+  border-radius: var(--radius-room);
+  border-color: var(--sheet-edge);
+  background: var(--sheet);
+  box-shadow: 0 10px 20px -12px rgba(var(--shadow-rgb), 0.55);
+}
+
 /* ---- フッター ---- */
 html[data-theme] .site-footer {
   background: var(--paper);
@@ -197,6 +298,54 @@ html[data-theme] .site-footer__linkbtn {
 html[data-theme] .site-footer__linkbtn:hover {
   background: none;
   color: var(--ink);
+}
+
+/* ---- 幅木（部屋以外のページ）: ホームの床と同じ胡桃の板 18px ＋ 床板（room.css 1390〜1431 行を写す。margin-top 40px は layout.css のまま＝紙の余白）。
+   文字は床の帯（--wood-3 に黒 .35〜.6。--on-vault-2 で 8.9:1 以上）に置く。板面の明るい木目の上では 4.35:1 まで落ちるので板面に文字を置かない ---- */
+html[data-theme] body:not(.page-room) .site-footer {
+  border: 0;
+  color: var(--on-vault-2);
+  background:
+    linear-gradient(to bottom, rgba(255, 226, 186, 0.3) 0, rgba(255, 226, 186, 0.3) 1px, rgba(0, 0, 0, 0.25) 1px, transparent 4px),
+    linear-gradient(to bottom, transparent 18px, rgba(0, 0, 0, 0.55) 18px, rgba(0, 0, 0, 0.55) 19px, rgba(255, 226, 186, 0.1) 19px, transparent 21px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0) 20px, rgba(0, 0, 0, 0.35) 60px, rgba(0, 0, 0, 0.6) 100%),
+    url(../assets/images/room/tile-wood.webp) 0 0 / 640px 256px,
+    linear-gradient(to bottom, var(--wood), var(--wood-2) 18px, var(--wood-3) 19px, var(--floor) 100%);
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+}
+
+html[data-theme] body:not(.page-room) .site-footer__inner {
+  padding: 36px 0 30px;
+}
+
+html[data-theme] body:not(.page-room) .site-footer .brand__name,
+html[data-theme] body:not(.page-room) .site-footer .brand__mark {
+  color: var(--on-vault);
+  border-color: rgba(232, 220, 194, 0.5);
+}
+
+html[data-theme] body:not(.page-room) .site-footer__tagline,
+html[data-theme] body:not(.page-room) .site-footer__copy,
+html[data-theme] body:not(.page-room) .site-footer__nav a,
+html[data-theme] body:not(.page-room) .site-footer__linkbtn {
+  color: var(--on-vault-2);
+}
+
+html[data-theme] body:not(.page-room) .site-footer__nav a,
+html[data-theme] body:not(.page-room) .site-footer__linkbtn {
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 200, 135, 0.4);
+  text-underline-offset: 4px;
+}
+
+html[data-theme] body:not(.page-room) .site-footer__nav a:hover,
+html[data-theme] body:not(.page-room) .site-footer__linkbtn:hover {
+  color: var(--on-vault);
+}
+
+/* オーバースクロールの床: 幅木の下に紙が見えない。body は紙のまま（E2E のテーマ検査は body の色を見る） */
+html[data-theme]:has(body:not(.page-room)) {
+  background: var(--floor);
 }
 
 /* ---- ボタン ---- */
@@ -255,6 +404,44 @@ html[data-theme] .weak-toggle__btn[aria-disabled="true"] {
   background: var(--paper-3);
   border-color: var(--line);
   cursor: default;
+}
+
+/* ---- ボタンと入力欄の皮（部屋以外）: 角丸は部品・札とも --radius-room の 1 種（6／10px をやめる）。主は墨の板に紙の字（明朝 500・字間 .06em）、副は 1px の罫だけ。
+   下の .btn は (0,3,2) なので、変種（hover・ghost・google・disabled）も同じ節で (0,3,2) 以上に再指定する。
+   触らないもの: 28px の共有ピル（.speak-button・.hint-button・.word-note__edit・.word-ai__button・.word-chip・.coach__ok）はホームのプレイ中にも出る ---- */
+html[data-theme] body:not(.page-room) :is(.btn, .btn--sm, .btn--ghost, .btn--google, .skip-link, .feedback-modal__close, .account-menu__item),
+html[data-theme] body:not(.page-room) :is(input[type="text"], input[type="email"], input[type="search"], input[type="number"], textarea, select) {
+  border-radius: var(--radius-room);
+}
+
+html[data-theme] body:not(.page-room) .btn {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+html[data-theme] body:not(.page-room) .btn:hover {
+  background: var(--ink-2);
+}
+
+html[data-theme] body:not(.page-room) .btn--ghost,
+html[data-theme] body:not(.page-room) .btn--google {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+}
+
+html[data-theme] body:not(.page-room) .btn--ghost:hover,
+html[data-theme] body:not(.page-room) .btn--google:hover {
+  background: var(--paper-3);
+}
+
+html[data-theme] body:not(.page-room) .btn:disabled {
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border-color: var(--line);
 }
 
 /* ---- 入力欄（ゲーム） ---- */
@@ -356,6 +543,34 @@ html[data-theme] .auth-message {
   font-weight: 500;
   letter-spacing: 0.04em;
   font-feature-settings: "palt";
+}
+
+/* ---- 題と柱（部屋以外）: 題は明朝 500・--fs-title（1200 で 34px。ホームの題と同じ段）。柱（kicker）は短い金の罫＋小さな字＋字間
+   （ホームの「— 第1巻／全8巻」と同じ作法）。ラテンは Cormorant 500（600 にしない: かなで Shippori 700 が読まれる）、かなは --font-display に落ちる。
+   --gold-ink / --paper = light 5.27・paper 5.57・dark 11.5・indigo 11.4 ---- */
+html[data-theme] body:not(.page-room) :is(.hero, .hero--compact, .pp-hero) h1 {
+  font-size: var(--fs-title);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+html[data-theme] body:not(.page-room) :is(.logo, .pp-kicker) {
+  font-family: var(--font-latin);
+  font-weight: 500;
+  font-size: var(--fs-meta);
+  letter-spacing: 0.14em;
+  color: var(--gold-ink);
+}
+
+html[data-theme] body:not(.page-room) :is(.logo, .pp-kicker)::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 1px;
+  margin-right: 8px;
+  vertical-align: middle;
+  background: var(--gold);
 }
 
 html[data-theme] .auth-message.success { color: var(--ok); }
@@ -611,6 +826,14 @@ html[data-theme] .feedback-modal__panel {
   box-shadow: none;
 }
 
+/* 部屋以外では読む机の紙の一枚（小口 2 段＋机への影。カードの共通レシピと同じ値） */
+html[data-theme] body:not(.page-room) .feedback-modal__panel {
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  box-shadow: 0 1px 0 var(--sheet-edge), 0 3px 0 -1px var(--sheet-2), 0 4px 0 -1px var(--sheet-edge), 1px 10px 18px -12px rgba(var(--shadow-rgb), .5);
+}
+
 html[data-theme] .feedback-modal__head {
   display: flex;
   align-items: center;
@@ -772,6 +995,14 @@ html[data-theme] .coach {
   opacity: 1;
   transition: opacity var(--ease);
   pointer-events: none; /* 札は何も遮らない。押せるのは「わかった」だけ */
+}
+
+/* 部屋以外では読む机の紙の一枚（カードの共通レシピと同じ値） */
+html[data-theme] body:not(.page-room) .coach {
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  box-shadow: 0 1px 0 var(--sheet-edge), 0 3px 0 -1px var(--sheet-2), 0 4px 0 -1px var(--sheet-edge), 1px 10px 18px -12px rgba(var(--shadow-rgb), .5);
 }
 
 html[data-theme] .coach--out {

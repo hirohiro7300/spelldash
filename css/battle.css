@@ -19,25 +19,38 @@
   margin-bottom: 12px;
 }
 
+/* ランク名「Bronze」はラテン（Cormorant 600）。tokens.css の .mono には同じ詳細度で後勝ち。末尾の面の節でも (0,3,2) で再指定 */
 .rank-card__rank {
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: 20px;
+  font-family: var(--font-latin);
+  font-size: 26px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
   color: var(--ink);
 }
 
+/* 「0 / 100 RP」も同じラテン。数字は lining（旧式数字の 0 は o に見える） */
 .rank-card__rp {
   margin: 4px 0 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-latin);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: lining-nums proportional-nums;
 }
 
-/* RP と戦績は 12px の補助（見出しはランク名 1 つ） */
+/* RP と戦績は補助の色（見出しはランク名 1 つ） */
 .rank-card__rp,
 #lobbyRecord {
-  font-size: 12px;
   color: var(--ink-3);
+}
+
+/* 戦績「0勝 0敗 0分」の数は一覧の数字の書体（数字は Cormorant、かなはゴシック） */
+#lobbyRecord {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums;
+  font-size: 12px;
 }
 
 .rank-card__record {
@@ -72,16 +85,42 @@ html[data-theme] .battle-start-row .setting-select {
   white-space: nowrap;
 }
 
-/* ページに1つの朱: スタート（path.css の #pathStart と同じ塗りと文字色） */
-html[data-theme] .btn.battle-start-btn {
-  padding: 0 20px; /* brand.css の html[data-theme] .btn（padding 0 16px）より後に読まれるので .btn 付きで上書き */
-  background: var(--signal-fill);
-  color: var(--paper-2);
+/* ページに 1 つの朱: 対戦を始める（ホームのスタートと同じ漆の印の板。勾配・内側の光・金の内枠 .75px・机への影）。
+   battle.css は brand.css より前に読まれるので、brand.css の主ボタンの皮 html[data-theme] body:not(.page-room) .btn (0,3,2) に (0,4,2) で勝つ。
+   文字は --seal-ink（--paper-2 は dark で 3.44:1。--seal-1 の上 4.77、--seal-2 の上 6.32）。outline は brand.css の :focus-visible のまま。
+   動きは brand.css の既存 transition（--ease、reduced motion で 0）に任せる。:active の 1px 沈みだけ */
+html[data-theme] body:not(.page-room) .btn.battle-start-btn {
+  position: relative;
+  padding: 0 20px;
+  border-radius: var(--radius-room);
+  background: linear-gradient(to bottom, var(--seal-1), var(--seal-2));
+  color: var(--seal-ink);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 190, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 2px 0 rgba(60, 20, 10, 0.35),
+    0 8px 16px -6px rgba(60, 20, 10, 0.45);
 }
 
-html[data-theme] .btn.battle-start-btn:hover {
-  background: var(--signal-ink);
-  color: var(--paper-2);
+html[data-theme] body:not(.page-room) .btn.battle-start-btn::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  pointer-events: none;
+  border: 0.75px solid rgba(230, 200, 135, 0.55);
+  border-radius: 1px;
+}
+
+html[data-theme] body:not(.page-room) .btn.battle-start-btn:hover {
+  background: linear-gradient(to bottom, var(--seal-2), var(--seal-2));
+  color: var(--seal-ink);
+}
+
+html[data-theme] body:not(.page-room) .btn.battle-start-btn:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 190, 0.35),
+    0 1px 0 rgba(60, 20, 10, 0.35);
 }
 
 @media (pointer: coarse) {
@@ -98,18 +137,23 @@ html[data-theme] .btn.battle-start-btn:hover {
   gap: 12px;
 }
 
+/* 札は紙の一枚（羊皮紙の面・小口 2 段・机への暖かい影。夜は --sheet の暗い紙）。色と面の確定値は末尾の節（(0,3,2)） */
 .arena-panel {
   padding: 20px 24px;
-  border-radius: var(--radius-lg);
-  background: var(--paper-2);
-  border: 1px solid var(--line);
+  border-radius: var(--radius-room);
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
   backdrop-filter: none;
-  box-shadow: none;
+  box-shadow:
+    0 1px 0 var(--sheet-edge),
+    0 3px 0 -1px var(--sheet-2),
+    0 4px 0 -1px var(--sheet-edge),
+    1px 10px 18px -12px rgba(var(--shadow-rgb), 0.5);
 }
 
 /* YOU側が主役: Study/Challengeのゲームカードと同程度のサイズ感 */
 .arena-panel--you {
-  border-color: var(--line-2);
+  border-color: var(--sheet-edge);
   padding: 32px 28px;
   text-align: center;
 }
@@ -226,9 +270,9 @@ html[data-theme] .btn.battle-start-btn:hover {
   order: -1; /* モバイル縦配置では一番上 */
   align-self: center;
   padding: 4px 18px;
-  border-radius: 999px;
-  background: var(--paper-2);
-  border: 1px solid var(--line-2);
+  border-radius: var(--radius-room);
+  background: var(--sheet);
+  border: 1px solid var(--gold-dk); /* 真鍮の縁。数字は等幅のまま（打っている最中の数） */
   font-family: var(--font-mono);
   font-size: 20px;
   font-weight: 600;
@@ -289,7 +333,7 @@ html[data-theme] .input-wrapper--battle .typed-preview {
 }
 
 .cpu-dot--done {
-  background: var(--ink-3);
+  background: var(--gold-dk);
 }
 
 /* スコア加算の小さな脈動（短く） */
@@ -308,13 +352,13 @@ html[data-theme] .input-wrapper--battle .typed-preview {
   text-align: center;
 }
 
-/* 見出しは 1 つ（勝ち／負け／引き分け）。日本語なので UI フォント */
+/* 見出しは 1 つ（勝ち／負け／引き分け）。結果は読む紙なので明朝 500・題と同じ段（--fs-title） */
 .battle-verdict {
   margin: 4px 0 18px;
-  font-family: var(--font-ui);
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  font-weight: 500;
+  letter-spacing: 0.04em;
   color: var(--ink);
 }
 
@@ -338,8 +382,10 @@ html[data-theme] .input-wrapper--battle .typed-preview {
   color: var(--ink);
 }
 
+/* 結果の数は一覧の数字の書体（数字は Cormorant、かなはゴシック）。等幅はアリーナ（打つ層）だけ */
 .battle-scores__row strong {
-  font-family: var(--font-mono);
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums;
   font-weight: 600;
 }
 
@@ -367,7 +413,8 @@ html[data-theme] .input-wrapper--battle .typed-preview {
 .battle-detail strong {
   display: inline;
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums;
   font-size: 14px;
   font-weight: 600;
   margin: 0;
@@ -385,7 +432,8 @@ html[data-theme] .input-wrapper--battle .typed-preview {
 
 .battle-rp__change {
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums;
   font-size: 13px;
   font-weight: 600;
   color: var(--ink-2);
@@ -403,7 +451,8 @@ html[data-theme] .input-wrapper--battle .typed-preview {
   flex-basis: 100%;
   margin: 4px 0 0;
   color: var(--signal-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums;
   font-weight: 600;
   letter-spacing: 0.08em;
   animation: promotion-in 0.2s ease;
@@ -414,7 +463,7 @@ html[data-theme] .input-wrapper--battle .typed-preview {
   100% { opacity: 1; transform: translateY(0); }
 }
 
-/* パスした語の復習: 色面ではなく罫線の箱。主ボタンは「もう一回」1 つ */
+/* パスした語の復習: 札の上に置いた紙片（縁なし・角丸 2px・小口 1 段）。主ボタンは「もう一回」1 つ */
 .battle-review {
   display: flex;
   align-items: center;
@@ -424,9 +473,10 @@ html[data-theme] .input-wrapper--battle .typed-preview {
   margin: 0 auto 20px;
   padding: 12px 16px;
   max-width: 340px;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--sheet-2);
+  border: 0;
+  box-shadow: 0 1px 0 var(--sheet-edge), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
 }
 
 .battle-review p {
@@ -548,36 +598,76 @@ html[data-theme] .battle-review .btn--sm {
   }
 }
 
-/* 旧パレットの上書きに勝つため、同じ詳細度で色だけ再指定 */
-html[data-theme] .arena-panel {
-  background: var(--paper-2);
-  border-color: var(--line);
+/* ===== 色と面の確定値（Batch 56b「読む机」）=====
+   battle.html では battle.css が brand.css／pages.css より前に読まれるので、同じ詳細度では負ける。
+   body:not(.page-room) を挟んで (0,3,2) 以上で書く（Battle の部品はホームに無いので、ホームの画素は変わらない）。
+   紙の一枚のレシピは pages.css の札（.result-card）と 1 字も違えない。影は常に rgba(var(--shadow-rgb), …) */
+html[data-theme] body:not(.page-room) :is(.arena-panel, .battle-result-card) {
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  box-shadow:
+    0 1px 0 var(--sheet-edge),
+    0 3px 0 -1px var(--sheet-2),
+    0 4px 0 -1px var(--sheet-edge),
+    1px 10px 18px -12px rgba(var(--shadow-rgb), 0.5);
   color: var(--ink);
 }
 
-html[data-theme] .arena-panel--you {
-  border-color: var(--line-2);
+html[data-theme] body:not(.page-room) .arena-panel--you {
+  border-color: var(--sheet-edge);
 }
 
-html[data-theme] .arena-panel p,
-html[data-theme] .arena-status {
+/* 紙片（復習の箱） */
+html[data-theme] body:not(.page-room) .battle-review {
+  background: var(--sheet-2);
+  border: 0;
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--sheet-edge), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
+}
+
+html[data-theme] body:not(.page-room) .arena-panel p,
+html[data-theme] body:not(.page-room) .arena-status {
   color: var(--ink-3);
 }
 
-html[data-theme] .arena-panel .arena-ja {
+html[data-theme] body:not(.page-room) .arena-panel .arena-ja {
   color: var(--ink);
 }
 
-html[data-theme] .arena-panel .arena-ja--cpu {
+html[data-theme] body:not(.page-room) .arena-panel .arena-ja--cpu {
   color: var(--ink-2);
 }
 
-html[data-theme] .battle-verdict--win { color: var(--ok); }
-html[data-theme] .battle-verdict--loss { color: var(--signal-ink); }
-html[data-theme] .battle-verdict--draw { color: var(--ink-2); }
+html[data-theme] body:not(.page-room) .battle-verdict--win { color: var(--ok); }
+html[data-theme] body:not(.page-room) .battle-verdict--loss { color: var(--signal-ink); }
+html[data-theme] body:not(.page-room) .battle-verdict--draw { color: var(--ink-2); }
 
-html[data-theme] .arena-timer {
-  background: var(--paper-2);
-  border-color: var(--line-2);
+/* タイマー: 真鍮の縁の札。数字は等幅のまま（.mono）。sticky の top: 61px は上の節のまま */
+html[data-theme] body:not(.page-room) .arena-timer {
+  border-radius: var(--radius-room);
+  background: var(--sheet);
+  border: 1px solid var(--gold-dk);
   color: var(--ink);
+}
+
+/* ロビーの字: tokens.css の .mono (0,1,0) に確実に勝つ */
+html[data-theme] body:not(.page-room) .rank-card__rank {
+  font-family: var(--font-latin);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+html[data-theme] body:not(.page-room) .rank-card__rp {
+  font-family: var(--font-latin);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+/* CPU の済みの点は金の押し点 */
+html[data-theme] body:not(.page-room) .cpu-dot--done {
+  background: var(--gold-dk);
 }

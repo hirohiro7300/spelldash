@@ -2434,3 +2434,333 @@ html[data-theme] .level-bar--line {
   font-size: 12px;
   color: var(--ink-3);
 }
+
+/* ===== 書斎の読む机（Batch 56b）: 部屋以外のページの札・題箋・タブ・セグメント・数字 =====
+   規則は全部 body:not(.page-room) を挟む（.result-card・.stat-card・.hasumi__bubble・.progress-bar・.filter-chip・.word-ai はホームのプレイ中にも出る）。
+   詳細度 (0,3,2) で上の html[data-theme] .x (0,2,1) に勝つ。battle.css の .arena-*・.battle-*・.rank-card__* はここに書かない（.rank-card は .result-card を併せ持つので札の規則が当たる）。
+   角丸は 2 種だけ: 部品・札 = var(--radius-room)、題箋 = 2px。影は常に rgba(var(--shadow-rgb), …)。新しい animation／transition は書かない。 */
+
+/* ---- 紙の一枚（札）: 羊皮紙の面・小口 2 段・机への暖かい影。夜は机より一段明るい暗い紙（--sheet） ---- */
+html[data-theme] body:not(.page-room) :is(.result-card, .packs, .my-fold, .cardgen__card, .word-detail__panel) {
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  box-shadow:
+    0 1px 0 var(--sheet-edge),
+    0 3px 0 -1px var(--sheet-2),
+    0 4px 0 -1px var(--sheet-edge),
+    1px 10px 18px -12px rgba(var(--shadow-rgb), 0.5);
+}
+
+/* 紙片（短い注意書き・吹き出し・覚え方）: 縁なし・角丸 2px・小口 1 段 */
+html[data-theme] body:not(.page-room) :is(.hasumi__bubble, .word-ai) {
+  background: var(--sheet-2);
+  border: 0;
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--sheet-edge), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
+}
+
+/* はちゃんの枠は真鍮の縁 */
+html[data-theme] body:not(.page-room) .hasumi__avatar {
+  border-color: var(--gold-dk);
+  background: var(--sheet);
+}
+
+/* 夜の札の中の罫: --line は --sheet の上で 1.20:1 で消えるので --line-2（1.62） */
+html:is([data-theme="dark"], [data-theme="indigo"]) body:not(.page-room) :is(.result-card .stat-card, .result-card .learned-item, .result-card .cat-row, .result-card .word-item, .weekly__grid div, .pack, .my-word, .my-fold .my-tabs) {
+  border-color: var(--line-2);
+}
+
+/* ---- 見出し（700 → 500・+.04em）。3 段: 節の h2 = --fs-h3、札／記事の題 = --fs-body ---- */
+html[data-theme] body:not(.page-room) :is(.result-card > h3, .card-head h3, .packs__title, .my-fold__title, .weekly__title, .news-item__title, .policy h3) {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+html[data-theme] body:not(.page-room) :is(.settings__title, .genre__title) {
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+/* 題の中の数（「覚えた単語帳 12」）は一覧の数字の書体 */
+html[data-theme] body:not(.page-room) .result-card > h3 .muted {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+  font-weight: 500;
+}
+
+/* ---- 題箋（ピルをやめる）: 角丸 2px・縁なし・紙 3 の面・500。活性は墨の塗りでなく 1px の内側の線 ---- */
+html[data-theme] body:not(.page-room) :is(.filter-chip, .genre-chip, .gcard__status, .gcard__pos, .word-detail__status, .known-words__item, .preseason-tag, .leech-tag, .genre__clear, .cat-row__clear, .family-chip, .note-chip) {
+  border: 0;
+  border-radius: 2px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+html[data-theme] body:not(.page-room) :is(.filter-chip, .genre-chip, .note-chip, .known-words__item):hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+html[data-theme] body:not(.page-room) :is(.filter-chip--active, .genre-chip--active),
+html[data-theme] body:not(.page-room) :is(.filter-chip--active, .genre-chip--active):hover {
+  background: var(--paper-3);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink-2);
+}
+
+html[data-theme] body:not(.page-room) .genre-chip--active span {
+  color: var(--ink-2);
+  opacity: 1;
+}
+
+/* 分野ナビ（sticky の横スクロール）: mask-image は背景ごと透かすので、下を通る札の「未着手」が題箋に重なって読めない。
+   右端のフェードは要素を透かさず、紙の色を上に重ねる（横スクロールの中で右に貼り付く擬似要素）。body.modal-open の position: static はそのまま */
+html[data-theme] body:not(.page-room) .genre-nav {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+html[data-theme] body:not(.page-room) .genre-nav::after {
+  content: "";
+  position: sticky;
+  right: 0;
+  flex: 0 0 28px;
+  margin-left: -28px;
+  align-self: stretch;
+  background: linear-gradient(90deg, transparent, var(--paper));
+  pointer-events: none;
+}
+
+/* 状態色はそのまま（mastered = --ok、weak = --signal-ink）。済みは金の押し点 */
+html[data-theme] body:not(.page-room) :is(.gcard__status--learning, .word-detail__status--learning) { color: var(--ink); }
+html[data-theme] body:not(.page-room) :is(.gcard__status--mastered, .word-detail__status--mastered) { color: var(--ok); background: var(--ok-soft); }
+html[data-theme] body:not(.page-room) :is(.gcard__status--weak, .word-detail__status--weak, .leech-tag) { color: var(--signal-ink); background: var(--signal-soft); }
+html[data-theme] body:not(.page-room) :is(.gcard__status--known, .word-detail__status--known) { color: var(--ink-3); }
+html[data-theme] body:not(.page-room) :is(.genre__clear, .cat-row__clear, .pack__toggle--on) { color: var(--gold-ink); }
+html[data-theme] body:not(.page-room) .pack__toggle--on:hover { color: var(--signal-ink); }
+
+/* ---- 操作部品の角丸を一本化（--radius／--radius-lg → --radius-room） ---- */
+html[data-theme] body:not(.page-room) :is(.setting-select, .list-controls__field .setting-select, .note-input, .note-save, .trend-range, .word-detail__close, .my-word__remove, .packs__tools input, .my-words__form input, .my-concept__form input, .my-concept__form textarea, .cardgen textarea, .my-words__bulk textarea, .cardgen__field, .word-filter) {
+  border-radius: var(--radius-room);
+}
+
+html[data-theme] body:not(.page-room) #listSearch,
+html[data-theme] body:not(.page-room) #wordSearch {
+  border-radius: var(--radius-room);
+}
+
+/* ---- タブ: 明朝 500・現在地は金の下線 ---- */
+html[data-theme] body:not(.page-room) :is(.stats-tab, .my-tab) {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  border-bottom: 2px solid transparent;
+}
+
+html[data-theme] body:not(.page-room) :is(.stats-tab, .my-tab):hover {
+  color: var(--ink);
+}
+
+html[data-theme] body:not(.page-room) :is(.stats-tab--active, .my-tab--active),
+html[data-theme] body:not(.page-room) :is(.stats-tab--active, .my-tab--active):hover {
+  color: var(--ink);
+  border-bottom-color: var(--gold-dk);
+}
+
+/* ---- セグメント（30日／90日・簡潔／詳しく）: 墨の塗りを捨てる。活性は紙 3 の面＋金の下線 ---- */
+html[data-theme] body:not(.page-room) .trend-range {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-room);
+}
+
+html[data-theme] body:not(.page-room) .trend-range button {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+html[data-theme] body:not(.page-room) .trend-range button.is-active,
+html[data-theme] body:not(.page-room) .trend-range button.is-active:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--gold-dk);
+}
+
+/* ---- 畳める見出し: 明朝 500 ---- */
+html[data-theme] body:not(.page-room) :is(.packs-fold__summary .packs__title, .my-fold__title, .news-month > summary, .word-list-fold summary, .my-words__bulk summary) {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+/* 分野のグループの三角は装飾（--ink-4）・小さく */
+html[data-theme] body:not(.page-room) .pack-group__title::before {
+  border-left: 4px solid var(--ink-4);
+  border-top-width: 3px;
+  border-bottom-width: 3px;
+}
+
+/* ---- 一覧の数: 等幅をやめて --font-num-ui（数字は Cormorant、かなはゴシック）。英単語・例文は等幅のまま ---- */
+html[data-theme] body:not(.page-room) :is(.packs__count, .pack-group__count, .pack__count, .my-fold__count, .list-summary, .genre__count, .genre__meta, .genre-chip span, .word-count, .mem, .cat-row__total, .cat-row__learned strong, .score-trend__latest, .weekly__range, .monthly-line b, .cal__summary b, .cal__months, .level-bar__line .mono, .volume-row__value) {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+}
+
+/* ---- 学習データの数字: 概要は Cormorant の大きい数（ホームの「覚えた 0／120」と同じ）、札の中は 28px ---- */
+html[data-theme] body:not(.page-room) :is(.weekly__grid strong, .stat-card strong) {
+  font-family: var(--font-num);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+html[data-theme] body:not(.page-room) #overview .stat-card strong {
+  font-family: var(--font-num);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+  font-size: var(--fs-num);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+html[data-theme] body:not(.page-room) #overview .stat-card span {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 500;
+}
+
+/* 進捗の棒: 1px の罫に箔の塗り（2px・角丸なし）。.cat-bar の 3 色（済み・学習中・苦手）はデータなので残す */
+html[data-theme] body:not(.page-room) :is(.progress-bar, .mem__bar, .cat-bar) {
+  height: 2px;
+  border-radius: 0;
+  background: var(--line);
+}
+
+html[data-theme] body:not(.page-room) :is(.progress-bar__fill, .mem__bar b) {
+  border-radius: 0;
+  background: var(--gold-dk);
+  background-image: none;
+}
+
+/* ---- 設定: 台帳のまま。節の間 32px、節の題は --fs-h3、US／UK はラテンの書体 ---- */
+html[data-theme] body:not(.page-room) .settings:not(.pro-section) {
+  margin-top: 32px;
+}
+
+html[data-theme] body:not(.page-room) .setting-select--accent {
+  font-family: var(--font-latin);
+  font-weight: 600;
+}
+
+/* ---- お知らせ: 日付は Cormorant の数字 ---- */
+html[data-theme] body:not(.page-room) .news-item__date {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+  font-size: var(--fs-small);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+/* ---- パックの入口（packs/*.html）: テンプレの <style> (0,1,0) をここで上書きする（163 枚を再生成しない） ---- */
+html[data-theme] body:not(.page-room) .pp-cta {
+  border-radius: var(--radius-room);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+html[data-theme] body:not(.page-room) .pp-cta:hover {
+  background: var(--ink-2);
+  color: var(--paper);
+}
+
+html[data-theme] body:not(.page-room) .pp-cta--ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+}
+
+html[data-theme] body:not(.page-room) .pp-cta--ghost:hover {
+  background: var(--paper-3);
+  color: var(--ink);
+}
+
+html[data-theme] body:not(.page-room) .pp h2 {
+  font-size: var(--fs-h3);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] body:not(.page-room) .pp-genres li {
+  border: 0;
+  border-radius: 2px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+html[data-theme] body:not(.page-room) :is(.pp-genres li span, .pp-index .packs-item__n, .packs-jump a small) {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+}
+
+/* 「同じグループのパック」と一覧のジャンプ: テンプレの 999px・600 ゴシックの箱をやめ、押せる題箋（角丸 2px・紙 3 の面・明朝 500）。
+   40px の当たりは min-height で確保済み。--ink-2／--paper-3 = light 7.93・dark 8.60・paper 7.92・indigo 9.22 */
+html[data-theme] body:not(.page-room) :is(.pp-related a, .packs-jump a) {
+  border-radius: 2px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] body:not(.page-room) :is(.pp-related a, .packs-jump a):hover {
+  background: var(--paper-3);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink-2); /* 活性の題箋と同じ作法。--line の塗り（テンプレ）をやめる */
+}
+
+/* 反証レビュー・再採点の推奨（Batch 56b）: 群の題は 700 の最も黒い行になるので 600 に、三角は --sheet の上で 2.9:1 だった --ink-4 を --ink-3（6.2〜7.1）に。
+   メモの題箋（.note-chip）は利用者が打った文なので本文の書体（--font-ui）。CONCEPT §3.5 */
+html[data-theme] body:not(.page-room) .pack-group__title {
+  font-weight: 600;
+}
+
+html[data-theme] body:not(.page-room) .pack-group__title::before {
+  color: var(--ink-3);
+  border-left-color: var(--ink-3);
+}
+
+html[data-theme] body:not(.page-room) .note-chip {
+  font-family: var(--font-ui);
+}
+
+/* 再採点の推奨 S2・S3: packs の「カードの例」は h2 の下罫と一覧の上罫が 7px で二重 → 上罫を消す。法務の dt は 700 の唯一の見出し → 600 */
+html[data-theme] body:not(.page-room) .pp-cards {
+  border-top: 0;
+}
+
+html[data-theme] body:not(.page-room) .legal dt {
+  font-weight: 600;
+}
