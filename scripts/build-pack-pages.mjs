@@ -25,8 +25,8 @@ const CARD_TYPE_LABEL = {
   word: "日本語訳を見て英単語を打つ",
   grammar: "英文の空欄に入る語を英語で打つ",
   writing: "日本語の文を見て、英文を丸ごと打つ（語順まで身につく）",
-  school: "説明を読んで用語・人名・地名を日本語で答える（ひらがなでもOK）",
-  concept: "場面の説明を読んで用語で答える（日本語OK）"
+  school: "説明を読んで用語・人名・地名を答える（読みをローマ字で打つ。漢字への変換なし）",
+  concept: "場面の説明を読んで用語で答える（日本語の用語は読みをローマ字で）"
 };
 
 function sampleHtml(data, words) {
@@ -182,7 +182,7 @@ for (const p of packs) {
   const order = ["easy", "normal", "hard"];
   for (const lv of order) {
     for (const list of byGenre.values()) {
-      const w = list.find((x) => x.level === lv && !sample.includes(x));
+      const w = list.find((x) => x.level === lv && !x.kanjiOnly && !sample.includes(x)); // 漢字の書き分けのカードは学習に出さないので見本にもしない
       if (w) sample.push(w);
       if (sample.length >= 8) break;
     }

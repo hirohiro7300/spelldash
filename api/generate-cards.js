@@ -30,6 +30,7 @@ const SYSTEM_PROMPT = `あなたは英単語×タイピング学習アプリ Spe
 - answer（答え）: テキスト中の用語・略語・キーワード。40文字以内。略語は大文字（例: CPC）、英単語は小文字、日本語の用語は日本語のまま。
 - explain（解説）: 日本語。1文・100文字以内。答えを見た後に読んで腑に落ちる補足（定義・なぜ重要か・式など）。
 - accept（別解）: 0〜4個。正解として受け付ける別表記（略語の正式名称、カタカナ表記、同義語、日本語訳／英語訳）。answer と同じ文字列は入れない。
+  answer が日本語（漢字・かなを含む）なら、answer の読みをひらがなで1つ必ず加える（アプリは漢字に変換させず、読みをローマ字で打たせる。読みは 4 個に数えない）。
 
 選び方:
 - テキストの中で覚える価値が高い用語を優先。一般的すぎる語（する、こと、会社 など）は入れない。
@@ -70,7 +71,7 @@ function sanitizeCards(cards) {
     const accept = (Array.isArray(card?.accept) ? card.accept : [])
       .map((s) => String(s).trim())
       .filter((s) => s && s.toLowerCase() !== answer.toLowerCase())
-      .slice(0, 4);
+      .slice(0, 5); // 別解 4 個＋日本語の答えの読み 1 個
     const key = answer.normalize("NFKC").toLowerCase();
     if (q.length < 4 || !answer || seen.has(key)) continue;
     seen.add(key);

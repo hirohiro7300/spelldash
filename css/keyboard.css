@@ -107,6 +107,15 @@ html:has(body.osk-open) {
   font-weight: 600;
 }
 
+/* 長音 ー（ローマ字で読みを打つカードだけ。js/keyboard.js） */
+.osk__key--dash {
+  flex: 1 1 0;
+  background: var(--paper-3);
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 600;
+}
+
 .osk__key--enter {
   flex: 1.6 1 0;
   border-color: var(--ink);

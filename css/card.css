@@ -416,6 +416,71 @@ html[data-theme] body.free-answer #input {
   font-size: 20px;
 }
 
+/* ローマ字で読みを打つカード（日本語の答え。js/romaji.js）: 打ったかなの下に、打ったキーを小さく（2 段）。
+   長い読みでも折り返せるように、打った表示を流れの中に置き、入力欄（読み取り専用・文字は透明）をその上に重ねる */
+html[data-theme] body.romaji-answer .typed-preview {
+  position: relative;
+  inset: auto;
+  min-height: 64px;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: 2px 1px;
+  padding: 8px 12px;
+  letter-spacing: 0;
+}
+
+html[data-theme] body.romaji-answer #input {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+
+.typed-preview .rk {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 1em;
+}
+
+.typed-preview .rk__kana {
+  color: var(--signal);
+  font-family: var(--font-ui);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.typed-preview .rk__keys {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.typed-preview .rk--pending .rk__keys {
+  color: var(--signal);
+}
+
+/* 答えの下の読み（鎌倉幕府 ／ かまくらばくふ） */
+html[data-theme] .hidden-word .hidden-word__reading {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+}
+
+@media (max-width: 560px) {
+  .typed-preview .rk__kana {
+    font-size: 20px;
+  }
+}
+
 /* ===== コンボ（Study では出さない。Challenge は小さな等幅） ===== */
 html[data-theme] .combo {
   min-height: 0;

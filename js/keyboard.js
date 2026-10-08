@@ -7,7 +7,9 @@ import { isNativeApp, nativeCall } from "./appEnv.js";
 //
 // - 既定は「自動」: タッチ端末（pointer: coarse）でオン。PCではオフ。設定で強制オン／オフ
 // - 英単語の綴り入力と、英文を丸ごと打つカード（writing）で使う。日本語で答えるカード（場面・義務教育）は
-//   A〜Z では打てないので OS キーボードに戻す
+//   読みをローマ字で打つ（body.romaji-answer。js/romaji.js）ので A〜Z ＋ ー で打てる。入力欄は読み取り専用で
+//   OS キーボードが出ないため、ローマ字のカードではタッチ端末なら設定が「オフ」でも盤面を出す
+//   読みのない日本語のカード（自分で作った場面カードなど。全文入力）だけは OS キーボードに戻す
 // - 文字は #input に keydown を合成して送る（game.js の処理をそのまま通す）。英文カードは値を直接編集
 // - 触覚: Capacitor の Haptics があればそれ、無ければ navigator.vibrate
 
@@ -59,6 +61,7 @@ function haptic() {
 let container = null;
 let input = null;
 let spaceKey = null;
+let dashKey = null;
 
 function sendKey(key) {
   if (!input) return;
@@ -110,7 +113,12 @@ function pressEnter() {
   sendKey("Enter");
 }
 
-// 今のカードで盤面を使えるか: 日本語で答えるカードは不可
+// ローマ字で読みを打つカード（日本語の答え）
+function isRomaji() {
+  return document.body.classList.contains("romaji-answer");
+}
+
+// 今のカードで盤面を使えるか: 読みのない日本語のカード（全文入力）は不可
 function usableNow() {
   const write = document.body.classList.contains("write-answer");
   return !isFreeText() || write;
@@ -122,12 +130,15 @@ let playing = false;
 export function refreshKeyboard() {
   if (!container || !input) return;
   // プレイ中だけ。セット／チャレンジが終わって結果パネルが出ている間は畳む（ボタンを隠さない）
-  const on = oskEnabled() && usableNow() && document.body.classList.contains("home--playing") && playing;
+  // ローマ字のカードは入力欄が読み取り専用（OS キーボードが出ない）。タッチ端末では設定によらず盤面を出す
+  const romaji = isRomaji();
+  const on = (oskEnabled() || (romaji && isTouchDevice())) && usableNow() && document.body.classList.contains("home--playing") && playing;
   container.hidden = !on;
   document.body.classList.toggle("osk-open", on);
   if (on) {
     input.setAttribute("inputmode", "none"); // OS キーボードを出さない（入力欄はフォーカス可能のまま）
     if (spaceKey) spaceKey.hidden = !document.body.classList.contains("write-answer");
+    if (dashKey) dashKey.hidden = !romaji; // 長音 ー（読みの ー は - で打つ）。ローマ字のカードでは常に出す（ー がある語だけに出すと答えの手がかりになる）
   } else {
     input.removeAttribute("inputmode");
   }
@@ -148,11 +159,13 @@ export function initializeKeyboard() {
       ).join("")}
       <div class="osk__row osk__row--3">
         <button type="button" class="osk__key osk__key--space" data-action="space" hidden aria-label="空白" tabindex="-1">空白</button>
+        <button type="button" class="osk__key osk__key--dash" data-action="dash" hidden aria-label="長音（ー）" tabindex="-1">ー</button>
         <button type="button" class="osk__key osk__key--enter" data-action="enter" aria-label="答えを見る／次へ" tabindex="-1">Enter<small>答え／次へ</small></button>
       </div>
     </div>
   `;
   spaceKey = container.querySelector('[data-action="space"]');
+  dashKey = container.querySelector('[data-action="dash"]');
 
   // pointerdown で反応（click だと 300ms 遅れる端末がある）。入力欄のフォーカスは奪わない
   container.addEventListener("pointerdown", (event) => {
@@ -164,6 +177,7 @@ export function initializeKeyboard() {
     if (key.dataset.key) pressChar(key.dataset.key);
     else if (key.dataset.action === "bs") pressBackspace();
     else if (key.dataset.action === "space") pressChar(" ");
+    else if (key.dataset.action === "dash") pressChar("ー");
     else if (key.dataset.action === "enter") pressEnter();
   });
   // 盤面をタップしても入力欄からフォーカスが外れないように
