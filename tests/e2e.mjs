@@ -805,6 +805,104 @@ console.log("growth:");
   await page.close();
 }
 
+// ===== 9.56 記憶の保持率（7 日・30 日、復習なし／あり、学習時間と効率。docs/SPEC_RETENTION.md） =====
+// 時計のモックは無いので seed は相対日付（固定日付は使わない）。記録は word_stats と別のキー spelldash_retention / spelldash_study_time
+console.log("retention:");
+{
+  const isoDaysAgo = (days, hour = 9) => { const d = new Date(); d.setDate(d.getDate() - days); d.setHours(hour, 0, 0, 0); return d.toISOString(); };
+  const today = ymdDaysAgo(0);
+  const sinceLabel = (() => { const d = new Date(); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`; })();
+
+  // (1) 記録なし: 案内の 1 文と「測定は 今日 以降に覚えた語」
+  {
+    const page = await newPage();
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(900);
+    const card = (await page.textContent("#retention")).replace(/\s+/g, " ");
+    check("保持率: 今週タブに「記憶の保持率」の 1 枚（推移の直後）", card.includes("記憶の保持率") && !(await page.$eval("#retention", (el) => el.hidden)) && (await page.$("#growth + #retention")) !== null);
+    check("保持率: 説明は実測の 1 文", card.includes("覚えた日から 7 日後・30 日後に、最初に答えたとき思い出せた割合。実測。"), card);
+    check("保持率: 記録が無ければ案内（測定は今日以降に覚えた語）", card.includes(`覚えた語が 7 日たつと、保持率がここに出る。測定は ${sinceLabel} 以降に覚えた語。`), card);
+    check("保持率: 「予測」の数字は出さない", !card.includes("予測"), card);
+    check("保持率（空）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // (2) seed → 表示。A 7 日後○復習なし／B 窓を過ぎて未回答／C 到達前／D 7 日後○復習あり／E 30 日後×復習あり／F 30 日窓を過ぎて未回答
+  {
+    const retention = {
+      "english-a": { f: isoDaysAgo(7), d: today, n: 1, w7: { t: today, r: "o", rv: 0 } },
+      "english-b": { f: isoDaysAgo(9), d: ymdDaysAgo(9), n: 0 },
+      "english-c": { f: isoDaysAgo(3), d: ymdDaysAgo(3), n: 0 },
+      "english-d": { f: isoDaysAgo(7), d: today, n: 3, w7: { t: today, r: "o", rv: 2 } },
+      "english-e": { f: isoDaysAgo(31), d: ymdDaysAgo(1), n: 2, w7: { t: ymdDaysAgo(25), r: "o", rv: 0 }, w30: { t: ymdDaysAgo(1), r: "x", rv: 1 } },
+      "english-f": { f: isoDaysAgo(40), d: ymdDaysAgo(33), n: 2, w7: { t: ymdDaysAgo(33), r: "x", rv: 1 } }
+    };
+    const studyTime = { [ymdDaysAgo(8)]: 1800, [ymdDaysAgo(7)]: 3600, [ymdDaysAgo(2)]: 7200, [today]: 300 }; // 7 日前までの合計 1.5 時間（直近は分母に入れない）
+    const page = await newPage({ storage: { spelldash_retention: JSON.stringify(retention), spelldash_study_time: JSON.stringify(studyTime) } });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(900);
+    const t = (await page.textContent("#retentionReport")).replace(/\s+/g, " ");
+    check("保持率: 7 日後（復習なし）= A○・E○ → 100%", /7 日後（復習なし） ?100%/.test(t), t);
+    check("保持率: 7 日後（復習あり）= D○・F× → 50%", /7 日後（復習あり） ?50%/.test(t), t);
+    check("保持率: 30 日後（復習なし）は 0 語なので行を出さない", !t.includes("30 日後（復習なし）"), t);
+    check("保持率: 30 日後（復習あり）= E× → 0%", /30 日後（復習あり） ?0%/.test(t), t);
+    check("保持率: 測定した語 4 語（30 日 1 語）", /測定した語 ?4 語（30 日 1 語）/.test(t), t);
+    check("保持率: 未測定 1 語（B）・30 日 1 語（F）。到達前の C は数えない", /未測定 ?1 語（30 日 1 語）/.test(t), t);
+    check("保持率: 1 時間で定着 = 7 日後○ 3 語 ÷ 7 日前までの 1.5 時間 = 2 語", /1 時間で定着 ?2 語/.test(t), t);
+    check("保持率: 注記に窓と復習の定義、週間レポートとの区別", t.includes("7 日後＝覚えた日の 6〜8 日後、30 日後＝27〜33 日後の最初の回答。復習＝その前に別の日に答えた日数。窓に出題されなかった語は未測定。週間レポートの思い出せた率（今週の復習の成功率）とは別。復習の予定は翌日から入るので、続けた人の語は復習ありに寄る。"), t);
+    check("保持率: 混ぜた 1 本の率と「予測」は出さない", !/7 日後 ?\d+%/.test(t) && !/30 日後 ?\d+%/.test(t) && !t.includes("予測"), t);
+    check("保持率（表示）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // (3) 書き込み: 7 日前に覚えた語（マイ単語帳）を出題 → 自力正解 → w7 = { 今日, o, 復習なし }。同じ日の 2 回目は上書きしない。
+  //     知ってた語（初見ノーミス）と、測定の開始前に覚えていた語（lastRecallSuccessAt あり・記録なし）には f が付かない
+  {
+    const learnedAt = isoDaysAgo(7);
+    const page = await newPage({ storage: {
+      spelldash_category: "my", spelldash_placement: "done",
+      spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "contract", ja: "契約" }]),
+      // contract = 測定の開始前に覚えていた語（lastRecallSuccessAt はあるが spelldash_retention に記録が無い）。t0 を立ててはいけない
+      spelldash_word_stats: JSON.stringify({
+        "my-invoice": { playCount: 3, correctCount: 2, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 1, mastered: false, lastPlayed: learnedAt, nextReviewAt: isoDaysAgo(6), lastRecallFailAt: isoDaysAgo(8), lastRecallSuccessAt: learnedAt, srsAdvancedOn: ymdDaysAgo(7), history: [{ d: ymdDaysAgo(8), r: "x" }, { d: ymdDaysAgo(7), r: "o" }] },
+        "my-contract": { playCount: 6, correctCount: 5, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 3, mastered: false, lastPlayed: isoDaysAgo(20), nextReviewAt: isoDaysAgo(1), lastRecallFailAt: isoDaysAgo(40), lastRecallSuccessAt: isoDaysAgo(20), srsAdvancedOn: ymdDaysAgo(20), history: [{ d: ymdDaysAgo(40), r: "x" }, { d: ymdDaysAgo(39), r: "o" }, { d: ymdDaysAgo(30), r: "o" }, { d: ymdDaysAgo(20), r: "o" }] }
+      }),
+      spelldash_retention: JSON.stringify({ "my-invoice": { f: learnedAt, d: ymdDaysAgo(7), n: 0 } })
+    } });
+    await page.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+    await page.waitForTimeout(900);
+    await page.press("#input", "Enter");
+    await page.waitForTimeout(300);
+    const answers = { 請求書: "invoice", 交渉する: "negotiate", 契約: "contract" };
+    const done = new Set();
+    for (let i = 0; i < 12 && done.size < 3; i++) {
+      const ja = (await page.textContent("#japanese")).trim();
+      if (answers[ja] && !done.has(ja)) {
+        for (const ch of answers[ja]) await page.press("#input", ch); // 答えを見ずに打つ＝自力正解
+        done.add(ja);
+        await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja, 2500);
+      }
+      await page.waitForTimeout(150);
+    }
+    const stats = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}"));
+    const ret = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_retention") || "{}"));
+    check("保持率（書き込み）: 3 語とも自力で答えた（invoice・contract は復習、negotiate は初見ノーミス）", done.size === 3 && stats["my-invoice"]?.lastRecallSuccessAt > learnedAt && stats["my-contract"]?.lastRecallSuccessAt > isoDaysAgo(1) && stats["my-negotiate"]?.knownOnSight === true, JSON.stringify({ done: [...done], invoice: stats["my-invoice"]?.lastRecallSuccessAt, contract: stats["my-contract"]?.lastRecallSuccessAt, negotiate: stats["my-negotiate"]?.knownOnSight }));
+    check("保持率（書き込み）: 7 日目の最初の回答が w7 = { 今日, o, 復習なし }", JSON.stringify(ret["my-invoice"]?.w7) === JSON.stringify({ t: today, r: "o", rv: 0 }), JSON.stringify(ret["my-invoice"]));
+    check("保持率（書き込み）: f は変わらず、今日が復習 1 日として残る", ret["my-invoice"]?.f === learnedAt && ret["my-invoice"]?.d === today && ret["my-invoice"]?.n === 1, JSON.stringify(ret["my-invoice"]));
+    check("保持率（書き込み）: 知ってた語（初見ノーミス）には f が付かない", ret["my-negotiate"] === undefined, JSON.stringify(ret["my-negotiate"]));
+    check("保持率（書き込み）: 測定の開始前に覚えていた語（以前の自力正解あり・記録なし）には f を立てない", ret["my-contract"] === undefined, JSON.stringify(ret["my-contract"]));
+    check("保持率（書き込み）: word_stats に新しい項目を足していない", stats["my-invoice"] && !("f" in stats["my-invoice"]) && !("w7" in stats["my-invoice"]), Object.keys(stats["my-invoice"] ?? {}).join(","));
+    const st = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_study_time") || "{}"));
+    check("学習時間: 出題→正解の間が今日の秒数に積まれる（1 回の空きは 60 秒まで）", typeof st[today] === "number" && st[today] > 0 && st[today] <= 240, JSON.stringify(st));
+    // 同じ日の 2 回目（思い出せず）: 窓の回答は上書きしない（write-once）、復習日数も増えない（同日）
+    await page.evaluate(async () => { const m = await import("/js/stats.js"); m.recordRecallFail("my-invoice"); });
+    const ret2 = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_retention") || "{}"));
+    check("保持率（書き込み）: 同じ日の 2 回目（×）でも w7 と復習日数は変わらない", JSON.stringify(ret2["my-invoice"]?.w7) === JSON.stringify({ t: today, r: "o", rv: 0 }) && ret2["my-invoice"]?.n === 1, JSON.stringify(ret2["my-invoice"]));
+    check("保持率（書き込み）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+}
+
 // ===== 9.6 マイ単語帳: 追加→一覧→ホームで出題 =====
 console.log("my words:");
 {

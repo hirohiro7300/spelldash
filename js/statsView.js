@@ -11,6 +11,7 @@ import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
 import { computeCategoryProgress, computeLegacyLearnedCount } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
+import { renderRetention } from "./retention.js";
 import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
@@ -90,6 +91,7 @@ initWordStore().then(() => {
   renderLearnedWords();
   renderCategoryProgress();
   renderWeeklyReport("weeklyReport");
+  renderRetention("retentionReport");
   renderWeakWords();
   initializeWordList();
   // マイ単語帳の作成・管理は「単語帳」ページ（教材）へ移動。ここは記録だけ
@@ -135,6 +137,7 @@ window.addEventListener("spelldash:synced", () => {
   renderLearnedWords();
   renderCategoryProgress();
   renderWeeklyReport("weeklyReport");
+  renderRetention("retentionReport");
   renderWeakWords();
 });
 
