@@ -103,6 +103,9 @@
   --sheet-2: #EFE5CF;
   --sheet-edge: #D9CBAE;
   --font-num-ui: "SD Num", var(--font-ui); /* 一覧・表の数字 */
+  /* 札（紙の一枚: 小口 2 段＋机への暖かい影）と紙片（小口 1 段）の影。中の変数はテーマごとの値で解ける（同じ html 要素で上書きされる） */
+  --sheet-shadow: 0 1px 0 var(--sheet-edge), 0 3px 0 -1px var(--sheet-2), 0 4px 0 -1px var(--sheet-edge), 1px 10px 18px -12px rgba(var(--shadow-rgb), 0.5);
+  --slip-shadow: 0 1px 0 var(--sheet-edge), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
 }
 
 @media (min-width: 1100px) {

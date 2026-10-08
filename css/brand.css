@@ -343,8 +343,9 @@ html[data-theme] body:not(.page-room) .site-footer__linkbtn:hover {
   color: var(--on-vault);
 }
 
-/* オーバースクロールの床: 幅木の下に紙が見えない。body は紙のまま（E2E のテーマ検査は body の色を見る） */
-html[data-theme]:has(body:not(.page-room)) {
+/* オーバースクロールの床: 幅木の下に紙が見えない。body は紙のまま（E2E のテーマ検査は body の色を見る）。
+   書斎（room.css の :has(body.page-room)）と同じ値なので、:has を使わずに html 全体に当てる（:has の無いブラウザでも床が出る） */
+html[data-theme] {
   background: var(--floor);
 }
 
@@ -831,7 +832,7 @@ html[data-theme] body:not(.page-room) .feedback-modal__panel {
   background: var(--sheet);
   border: 1px solid var(--sheet-edge);
   border-radius: var(--radius-room);
-  box-shadow: 0 1px 0 var(--sheet-edge), 0 3px 0 -1px var(--sheet-2), 0 4px 0 -1px var(--sheet-edge), 1px 10px 18px -12px rgba(var(--shadow-rgb), .5);
+  box-shadow: var(--sheet-shadow);
 }
 
 html[data-theme] .feedback-modal__head {
@@ -995,14 +996,6 @@ html[data-theme] .coach {
   opacity: 1;
   transition: opacity var(--ease);
   pointer-events: none; /* 札は何も遮らない。押せるのは「わかった」だけ */
-}
-
-/* 部屋以外では読む机の紙の一枚（カードの共通レシピと同じ値） */
-html[data-theme] body:not(.page-room) .coach {
-  background: var(--sheet);
-  border: 1px solid var(--sheet-edge);
-  border-radius: var(--radius-room);
-  box-shadow: 0 1px 0 var(--sheet-edge), 0 3px 0 -1px var(--sheet-2), 0 4px 0 -1px var(--sheet-edge), 1px 10px 18px -12px rgba(var(--shadow-rgb), .5);
 }
 
 html[data-theme] .coach--out {

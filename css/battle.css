@@ -144,11 +144,7 @@ html[data-theme] body:not(.page-room) .btn.battle-start-btn:active {
   background: var(--sheet);
   border: 1px solid var(--sheet-edge);
   backdrop-filter: none;
-  box-shadow:
-    0 1px 0 var(--sheet-edge),
-    0 3px 0 -1px var(--sheet-2),
-    0 4px 0 -1px var(--sheet-edge),
-    1px 10px 18px -12px rgba(var(--shadow-rgb), 0.5);
+  box-shadow: var(--sheet-shadow);
 }
 
 /* YOU側が主役: Study/Challengeのゲームカードと同程度のサイズ感 */
@@ -476,7 +472,7 @@ html[data-theme] .input-wrapper--battle .typed-preview {
   border-radius: 2px;
   background: var(--sheet-2);
   border: 0;
-  box-shadow: 0 1px 0 var(--sheet-edge), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
+  box-shadow: var(--slip-shadow);
 }
 
 .battle-review p {
@@ -606,11 +602,7 @@ html[data-theme] body:not(.page-room) :is(.arena-panel, .battle-result-card) {
   background: var(--sheet);
   border: 1px solid var(--sheet-edge);
   border-radius: var(--radius-room);
-  box-shadow:
-    0 1px 0 var(--sheet-edge),
-    0 3px 0 -1px var(--sheet-2),
-    0 4px 0 -1px var(--sheet-edge),
-    1px 10px 18px -12px rgba(var(--shadow-rgb), 0.5);
+  box-shadow: var(--sheet-shadow);
   color: var(--ink);
 }
 
@@ -623,7 +615,7 @@ html[data-theme] body:not(.page-room) .battle-review {
   background: var(--sheet-2);
   border: 0;
   border-radius: 2px;
-  box-shadow: 0 1px 0 var(--sheet-edge), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
+  box-shadow: var(--slip-shadow);
 }
 
 html[data-theme] body:not(.page-room) .arena-panel p,
@@ -651,23 +643,5 @@ html[data-theme] body:not(.page-room) .arena-timer {
   color: var(--ink);
 }
 
-/* ロビーの字: tokens.css の .mono (0,1,0) に確実に勝つ */
-html[data-theme] body:not(.page-room) .rank-card__rank {
-  font-family: var(--font-latin);
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-html[data-theme] body:not(.page-room) .rank-card__rp {
-  font-family: var(--font-latin);
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  font-variant-numeric: lining-nums proportional-nums;
-}
-
-/* CPU の済みの点は金の押し点 */
-html[data-theme] body:not(.page-room) .cpu-dot--done {
-  background: var(--gold-dk);
-}
+/* ロビーの字（.rank-card__rank・__rp）と CPU の済みの点（.cpu-dot--done）は上の基本の規則で足りる:
+   tokens.css の .mono (0,1,0) より battle.css が後に読まれ、brand.css／pages.css はこれらを触らない */
