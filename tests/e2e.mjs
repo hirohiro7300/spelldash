@@ -1201,6 +1201,26 @@ console.log("study (finish):");
   const CSS_56B = { room: 70594, bookshelf: 46477 };
   check("書斎の仕上げ: css/room.css・bookshelf.css の応答は 56b（70,594・46,477 B）から +8KB 以内", cssBytes.room > 0 && cssBytes.bookshelf > 0 && cssBytes.room <= CSS_56B.room + 8 * 1024 && cssBytes.bookshelf <= CSS_56B.bookshelf + 8 * 1024, JSON.stringify(cssBytes));
 
+  // 56d: 段の見出し行（名札・答え方・「あと N冊 →」）は細い端末でも框に収まる（扉を開いた仕事の段も。320・360・390。≤599 は仕事の段の答え方、≤374 は送る段の答え方と仕事の冊数、≤359 は「あと N冊」の文字を畳む）
+  const boardsFit = async (w) => {
+    const page = await newPage({ mobile: true, viewport: { width: w, height: 844 }, storage: { spelldash_placement: "done", spelldash_onboarded: "1" } });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => document.querySelectorAll("#bookshelf .shelf__board").length >= 8));
+    await page.click("#archiveDoors");
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => [...document.querySelectorAll(".shelf__board")].map((b) => {
+      const cs = getComputedStyle(b), rect = b.getBoundingClientRect();
+      const kids = [...b.children].filter((k) => !k.hidden && getComputedStyle(k).display !== "none");
+      const inner = rect.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const need = kids.reduce((n, k) => n + k.getBoundingClientRect().width, 0) + (kids.length - 1) * (parseFloat(cs.columnGap) || 0);
+      return { name: b.querySelector(".plate")?.textContent.trim().slice(0, 12), over: Math.round(need - inner) };
+    }).filter((x) => x.over > 0));
+    await done(page);
+    return r;
+  };
+  const fit320 = await boardsFit(320), fit360 = await boardsFit(360), fit390 = await boardsFit(390);
+  check("56d: 段の見出し行（名札・答え方・あと N冊）は 320・360・390 で框に収まる（扉の中の仕事の段も）", fit320.length === 0 && fit360.length === 0 && fit390.length === 0, JSON.stringify({ 320: fit320, 360: fit360, 390: fit390 }));
+
   // 56b の残り: Pro 390 の表頭の罫は 1 本（th の罫を落とし thead tr の 1px だけ）、単語帳 390 の分野ナビ末尾のフェードは最後の題箋に乗らない
   const proRule = async (w, mobile) => {
     const page = await newPage({ mobile, viewport: { width: w, height: mobile ? 844 : 900 }, storage: { spelldash_placement: "done" } });

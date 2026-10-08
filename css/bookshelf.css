@@ -1707,3 +1707,28 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
     animation: none !important;
   }
 }
+
+/* ---- 段の見出し行（名札・答え方・「あと N冊 →」）が細い端末で収まらないとき（Batch 56d）。
+   実測（扉を開いた状態）: 390 で 営業・マーケ・メディア 55px・医療・福祉・保育 13px はみ出し、360 で 文法・英作文／理科・数学も 1〜5px、320 はコースも含め 11 段。
+   仕事の言葉の段の「答えは日本語」は扉の札が言うので ≤599px で隠す。374px 以下は送る段の答え方を隠し、仕事の段の冊数も畳む。359px 以下は「あと N冊」を矢印だけに（aria-label はそのまま） ---- */
+@media (max-width: 599px) {
+  .shelf--job .shelf__board .shelf__lang {
+    display: none;
+  }
+}
+
+@media (max-width: 374px) {
+  .shelf__board:has(.more) .shelf__lang,
+  .shelf--job .plate small {
+    display: none;
+  }
+}
+
+@media (max-width: 359px) {
+  .bookshelf .more .more__n {
+    display: none;
+  }
+  .bookshelf .more {
+    padding: 0 6px;
+  }
+}

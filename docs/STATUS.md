@@ -50,7 +50,7 @@
 
 ## 4. 品質・流れ
 
-- E2E `npm test`（playwright-core、Supabase はスタブ、約 8 分）: **1,071 件**。検証 `node scripts/validate-words.mjs`。import を足した・data/manifest.json の基本カテゴリを変えたら `node scripts/modulepreload.mjs`（各ページの先読みを生成。ずれると E2E と CI が落ちる）。CI は PR と main で検証を実行
+- E2E `npm test`（playwright-core、Supabase はスタブ、約 8 分）: **1,072 件**。検証 `node scripts/validate-words.mjs`。import を足した・data/manifest.json の基本カテゴリを変えたら `node scripts/modulepreload.mjs`（各ページの先読みを生成。ずれると E2E と CI が落ちる）。CI は PR と main で検証を実行
 - 本番反映: dev ブランチ → PR → main → Vercel（2 プロジェクトとも success を確認）。条件は E2E 全件＋validate OK。Supabase の SQL・外部への告知は創業者側
 - アクセシビリティ: キーボードだけで主線を一周できる（Tab の移動、モーダルの焦点管理、スキップリンク、aria-live、ラベル、本棚の段は roving tabindex）。コントラストは AA（ink-3 6.6:1、スタートの文字 4.77:1 以上）。reduced motion で動き 0。320／390 で横スクロール無し
 - スマホ: 指の端末では入力欄 16px（自動ズームなし）、押せるものは 40〜44px。UI の見直しは 6 回（主線 78 件・主線以外 70 件・Battle／管理画面／旧 CSS 49 件・初回 10 分 30 件・2〜8 日目 24 件・2〜4 週目 34 件）を監査 → 反映 → 査読で通した。game.css の旧パレットは 0
@@ -65,7 +65,7 @@
 
 ## 6. 数字
 
-- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、本棚 9 段、E2E 1,071、マージ済み PR 139
+- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、本棚 9 段、E2E 1,072、マージ済み PR 140
 - **ユーザー系の数字はまだ無い**（10 人ローンチ前。CRM・activity_days・funnel_events は受け皿として用意済み）
 
 ## 7. 次の候補（docs/BACKLOG.md）
