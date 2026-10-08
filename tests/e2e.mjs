@@ -722,8 +722,9 @@ console.log("study (room):");
     check(`書斎（390・${theme}）: スタートは 1 個・全幅・1 画面目（下端 ≤ 700px）`, start.n === 1 && start.width >= 300 && start.bottom <= 700 && start.text === "スタート", JSON.stringify(start));
     check(`書斎（390・${theme}）: 目次（#pathList）はスタートの下に見えている`, (await page.isVisible("#pathList .path__list")) && (await page.evaluate(() => document.querySelector("#pathList").getBoundingClientRect().top > document.getElementById("pathStart").getBoundingClientRect().bottom)));
     check(`書斎（390・${theme}）: 横スクロールしない`, await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), String(await page.evaluate(() => document.documentElement.scrollWidth)));
-    const anims = await page.evaluate(() => document.getAnimations().length);
-    check(`書斎（390・${theme}）: 動きは${theme === "dark" ? "ろうそくの明滅 1 つまで" : "無し"}`, theme === "dark" ? anims <= 1 : anims === 0, String(anims));
+    // 夜に動くのはろうそくの明滅だけ（壁の溜まり .room__pool--candle と机の光 .desk__candle--l は同じ room-flicker・同位相 = 1 つの炎）。昼は 0
+    const anims = await page.evaluate(() => document.getAnimations().map((a) => { const t = a.effect.target; return ([...t.classList].pop() || t.id) + (a.effect.pseudoElement || ""); }).sort());
+    check(`書斎（390・${theme}）: 動きは${theme === "dark" ? "ろうそくの明滅 2 つ（壁の溜まりと机のろうそく）" : "無し"}`, theme === "dark" ? anims.join(",") === "desk__candle--l,room__pool--candle" : anims.length === 0, anims.join(",") || "0");
     if (theme === "dark") {
       check("書斎（夜）: 夜の絵と天井の色", sc.url.includes("-dark") && (await page.$eval('meta[name="theme-color"]', (el) => el.content)) === "#04060B", sc.url);
     }
@@ -1065,6 +1066,169 @@ console.log("pages (書斎の皮):");
     check(`書斎（${w}）: フッターは幅木のまま`, s.footer.wood && s.footer.ratio >= 4.5, JSON.stringify(s.footer));
     await page.close();
   }
+}
+
+// ===== 8.8 書斎の仕上げ（夜の味付け・机の本・本棚の索引・CLS）: 夜だけ味付け・昼は 56b の計算値・reduced motion 0・索引の帯は 1 行・CLS・読み込み中の最小高さ・場面の拡大と位置の規律・CSS の増分・56b の残り・夜の層はスタートに掛からない（css/room.css・bookshelf.css・pro.css・pages.css。Batch 56c） =====
+console.log("study (finish):");
+{
+  // 戻ってきた人（連続 3 日 = #todayStrip あり。Pro = 紙／藍が効く）。scratchpad/b56c/shoot-home.mjs の returning() と同じ種
+  const finishSeed = (theme) => ({ storage: {
+    spelldash_theme: theme, spelldash_placement: "done", spelldash_course: "jhs-redo", spelldash_category: "jhs-english1",
+    spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 2, correct: 2, lastRecallSuccessAt: Date.now() - 86400000 } }),
+    spelldash_streak: JSON.stringify({ last: ymd(new Date()), current: 3, best: 3, shields: 0 }),
+    spelldash_plan: JSON.stringify({ status: "active", interval: "month", periodEnd: new Date(Date.now() + 30 * 86400000).toISOString(), checkedAt: new Date().toISOString() }),
+    spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", interval: "month", current_period_end: new Date(Date.now() + 30 * 86400000).toISOString() })
+  } });
+  const errs = [];
+  const openRoom = async (init, theme) => {
+    const page = await newPage(init);
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
+    await page.waitForTimeout(600);
+    return page;
+  };
+  const done = async (page) => { errs.push(...page.errors); await page.close(); };
+  // 1 回の evaluate で読む計算値: 机の本の影・本棚の揺らぎ（.cabinet::after）・.page-room の夜の変数・動いている物・スタートの朱と墨・名札・場面の拡大・索引の帯
+  const finish = () => {
+    const cs = (sel, pseudo) => getComputedStyle(document.querySelector(sel), pseudo);
+    const room = cs(".page-room"), tome = cs(".tome"), cab = cs(".cabinet", "::after"), start = cs("#pathStart"), plateEl = document.querySelector(".plate"), plate = getComputedStyle(plateEl);
+    const ink = document.createElement("span"); ink.style.color = "var(--ink-page)"; plateEl.appendChild(ink); const inkPage = getComputedStyle(ink).color; ink.remove();
+    const idx = document.querySelector(".shelf-index");
+    const a = document.querySelector("#hasumiHome .hasumi__bubble")?.getBoundingClientRect(), b = document.getElementById("pathStart").getBoundingClientRect();
+    return {
+      theme: document.documentElement.dataset.theme,
+      tome: tome.boxShadow, cabinet: cab.backgroundImage, flicker: cab.animationName,
+      far: room.getPropertyValue("--far-page"), cast: room.getPropertyValue("--cast-l"), band: room.getPropertyValue("--desk-band"),
+      anims: document.getAnimations().map((x) => { const t = x.effect.target; return ([...t.classList].pop() || t.id) + (x.effect.pseudoElement || ""); }).sort(),
+      start: { bg: start.backgroundImage, color: start.color, bottom: Math.round(b.bottom), n: document.querySelectorAll("#pathStart").length },
+      plate: { color: plate.color, inkPage, filter: plate.filter, blend: plate.mixBlendMode, inSink: document.querySelectorAll(".shelf__in .plate").length },
+      scene: { transform: cs(".room__scene--phone").transform, stage: Math.round(document.querySelector(".room__stage").getBoundingClientRect().height), slipOverlap: a ? a.bottom > b.top && a.top < b.bottom && a.right > b.left && a.left < b.right : null },
+      index: { height: Math.round(idx.getBoundingClientRect().height), rows: new Set([...idx.querySelectorAll("a")].map((x) => Math.round(x.getBoundingClientRect().top))).size, scrollW: idx.scrollWidth, clientW: idx.clientWidth },
+      scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth
+    };
+  };
+
+  // 1200×900 × 4 テーマ。room.css・bookshelf.css の応答サイズも拾う（56b: 70,594・46,477 B）
+  const at1200 = {}, cssBytes = {};
+  for (const theme of ["light", "dark", "indigo", "paper"]) {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...finishSeed(theme) });
+    page.on("response", async (r) => { const m = r.url().match(/\/css\/(room|bookshelf)\.css$/); if (m) { try { cssBytes[m[1]] = (await r.body()).length; } catch {} } });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
+    await page.waitForTimeout(600);
+    at1200[theme] = await page.evaluate(finish);
+    if (theme === "dark") {
+      // 盤面は沈めない: プレイ中の #gameCard は --far-page を 390 の夜の値（.1）に戻す
+      await page.click("#pathStart");
+      await waitUntil(() => page.evaluate(() => document.body.classList.contains("home--playing")));
+      at1200.playingFar = await page.evaluate(() => getComputedStyle(document.getElementById("gameCard")).getPropertyValue("--far-page"));
+    }
+    await done(page);
+  }
+  const L = at1200.light, D = at1200.dark, I = at1200.indigo, P = at1200.paper;
+  check("書斎の仕上げ（1200）: 夜だけ味付け（机の本の影と本棚の揺らぎは dark ≠ light。dark は room-flicker・light は none。indigo は dark と同じ）", D.tome !== L.tome && D.cabinet !== L.cabinet && D.flicker === "room-flicker" && L.flicker === "none" && L.cabinet === "none" && I.tome === D.tome && I.cabinet === D.cabinet && I.flicker === D.flicker, JSON.stringify({ light: [L.tome, L.cabinet, L.flicker], dark: [D.tome, D.cabinet, D.flicker], indigo: [I.tome, I.cabinet, I.flicker] }));
+  // 昼の計算値は 56b のまま（--desk-band だけ .2 → .3 が 56c の唯一の昼の変更）。夜の --far-page は PC で .15、盤面は .1
+  const DAY = { tome: "rgba(0, 0, 0, 0.55) 0px 1px 0px 0px, rgba(0, 0, 0, 0.6) 0px 0px 0px 0.5px, rgba(0, 0, 0, 0.45) 1px 2px 2px 0px, rgba(50, 34, 20, 0.55) 6px 12px 16px -6px, rgba(50, 34, 20, 0.5) 14px 26px 34px -16px", far: "rgba(70, 50, 25, 0)", cast: "rgba(255, 190, 110, 0)", band: "rgba(255, 240, 216, 0.3)" };
+  const isDay = (v) => v.tome === DAY.tome && v.far === DAY.far && v.cast === DAY.cast && v.band === DAY.band;
+  check("書斎の仕上げ（1200）: 昼の計算値は 56b のまま（.tome の影・--far-page 0・--cast-l 0・--desk-band .3。paper も同じ）、夜の --far-page は .15 で盤面は .1 に戻る", isDay(L) && isDay(P) && D.far === "rgba(60, 34, 10, 0.15)" && at1200.playingFar === "rgba(70, 40, 12, 0.1)", JSON.stringify({ light: [L.tome, L.far, L.cast, L.band], paper: [P.tome, P.far, P.cast, P.band], darkFar: D.far, playingFar: at1200.playingFar }));
+
+  // reduced motion: 1200 dark・390 light で動く物は 0（390 dark は 8.6）。通常の 1200 dark は 3 = 壁の溜まり・机の光・本棚の揺らぎ
+  const stillCount = async (init, theme) => {
+    const page = await newPage(init);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
+    await page.waitForTimeout(500);
+    const n = await page.evaluate(() => document.getAnimations().length);
+    await done(page);
+    return n;
+  };
+  const still = { "1200 dark": await stillCount({ viewport: { width: 1200, height: 900 }, ...finishSeed("dark") }, "dark"), "390 light": await stillCount({ mobile: true, viewport: { width: 390, height: 844 }, ...finishSeed("light") }, "light") };
+  check("書斎の仕上げ: reduced motion では動く物が 0（1200 dark・390 light）、通常の 1200 dark は 3（壁の溜まり・机の光・本棚の揺らぎ）、light は 0", still["1200 dark"] === 0 && still["390 light"] === 0 && D.anims.join(",") === "cabinet::after,desk__candle--l,room__pool--candle" && L.anims.length === 0, JSON.stringify({ still, dark: D.anims, light: L.anims }));
+
+  // 390×844 light／dark・320×568 light: 索引の帯・場面の拡大・スタートの位置・夜の層
+  const phone = {};
+  for (const [w, h, theme] of [[390, 844, "light"], [390, 844, "dark"], [320, 568, "light"]]) {
+    const page = await openRoom({ mobile: true, viewport: { width: w, height: h }, ...finishSeed(theme) }, theme);
+    const v = await page.evaluate(finish);
+    // 帯を末尾まで送っても動くのは帯の中だけ（頁の幅は増えない）
+    v.sent = await page.evaluate(() => { const el = document.querySelector(".shelf-index"); el.scrollLeft = 9999; return { left: el.scrollLeft, scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth }; });
+    phone[`${w}-${theme}`] = v;
+    await done(page);
+  }
+  const oneRow = (v) => v.index.height <= 48 && v.index.rows === 1 && v.index.scrollW > v.index.clientW && v.sent.left > 0 && v.scrollW <= v.innerW && v.sent.scrollW <= v.sent.innerW;
+  check("書斎の仕上げ（390・320）: 索引の帯は 1 行で横に送る（高さ ≤ 48・末尾まで送っても頁は横スクロールしない）、1200 は 8 列 1 行のまま", oneRow(phone["390-light"]) && oneRow(phone["390-dark"]) && oneRow(phone["320-light"]) && L.index.rows === 1 && L.index.scrollW <= L.index.clientW + 1, JSON.stringify({ 390: { ...phone["390-light"].index, sent: phone["390-light"].sent }, 320: { ...phone["320-light"].index, sent: phone["320-light"].sent }, 1200: L.index }));
+
+  // 場面は 1.08 倍（390。帯の高さは変わらないのでスタートの位置は動かない）。初回のスタート（390）と 1200 の位置も固定
+  const first = await (async () => {
+    const page = await newPage({ keepOnboarding: true, mobile: true, viewport: { width: 390, height: 844 } });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    const r = await page.evaluate(() => { const b = document.querySelector("#welcome .welcome__cta [data-welcome-start]").getBoundingClientRect(); return { bottom: Math.round(b.bottom), width: Math.round(b.width), transform: getComputedStyle(document.querySelector(".room__scene--phone")).transform }; });
+    await done(page);
+    return r;
+  })();
+  const scaled = (v) => /^matrix\(1\.08, 0, 0, 1\.08, /.test(v.transform) && v.stage === 262 && v.slipOverlap === false;
+  check("書斎の仕上げ: 場面は 390 で 1.08 倍（帯の高さ 262 のまま・紙片はスタートに重ならない）、スタートの下端は 390 ≤ 651・初回 ≤ 567・1200 は 617〜621、#pathStart は 1 個", scaled(phone["390-light"].scene) && scaled(phone["390-dark"].scene) && phone["390-light"].start.bottom <= 651 && phone["390-dark"].start.bottom <= 651 && first.bottom <= 567 && first.width >= 300 && L.start.bottom >= 617 && L.start.bottom <= 621 && D.start.bottom >= 617 && D.start.bottom <= 621 && [L, D, phone["390-light"], phone["390-dark"]].every((v) => v.start.n === 1), JSON.stringify({ scene: phone["390-light"].scene, start390: phone["390-light"].start.bottom, first, start1200: L.start.bottom }));
+
+  // CLS: 全応答を 80ms 遅らせ（scratchpad/perf-delay.mjs の作法）、連続 3 日の帯ありで読む。読み込み中（DOMContentLoaded）の最小高さも同じ頁で拾う
+  const slow = async (w, h, mobile) => {
+    const page = await newPage({ mobile, viewport: { width: w, height: h }, ...finishSeed("light") });
+    await page.addInitScript(() => {
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls = (window.__cls || 0) + e.value; }).observe({ type: "layout-shift", buffered: true });
+      document.addEventListener("DOMContentLoaded", () => {
+        const min = (s) => getComputedStyle(document.querySelector(s)).minHeight;
+        window.__loading = { headEmpty: document.getElementById("pathHead").childNodes.length === 0, head: min("#pathHead"), l: min("#pathCard .tome__page--l"), r: min("#pathCard .tome__page--r"), toc: min("#pathCard .tome__page--toc") };
+      });
+    });
+    await page.route("**/*", (r) => setTimeout(() => r.continue(), 80));
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+    const r = await page.evaluate(() => {
+      const h = (s) => Math.round(document.querySelector(s).getBoundingClientRect().height * 10) / 10;
+      return { cls: Math.round((window.__cls || 0) * 10000) / 10000, loading: window.__loading, final: { head: h("#pathHead"), l: h("#pathCard .tome__page--l"), r: h("#pathCard .tome__page--r"), toc: h("#pathCard .tome__page--toc") }, strip: (document.getElementById("todayStrip")?.textContent ?? "").includes("3日連続") };
+    });
+    await done(page);
+    return r;
+  };
+  const cls390 = await slow(390, 844, true), cls320 = await slow(320, 568, true), cls1200 = await slow(1200, 900, false);
+  check("書斎の仕上げ: CLS（全応答 80ms 遅延・連続 3 日の帯あり）は 390 < 0.05・320 < 0.05・1200 < 0.02", cls390.strip && cls390.cls < 0.05 && cls320.cls < 0.05 && cls1200.cls < 0.02, JSON.stringify({ 390: cls390.cls, 320: cls320.cls, 1200: cls1200.cls, strip: cls390.strip }));
+  const near = (a, b) => Math.abs(a - b) <= 2;
+  const lo = cls390.loading, fi = cls390.final;
+  check("書斎の仕上げ（390）: 読み込み中の最小高さ（#pathHead 182・左頁 218・右頁 225・目次 333）は語の入った最終の高さと差 ≤ 2px", lo.headEmpty && lo.head === "182px" && lo.l === "218px" && lo.r === "225px" && lo.toc === "333px" && near(fi.head, 182) && near(fi.l, 218) && near(fi.r, 225) && near(fi.toc, 333), JSON.stringify({ loading: lo, final: fi }));
+
+  // CSS の増分の見張り: room.css・bookshelf.css の応答は 56b から +6KB 以内
+  const CSS_56B = { room: 70594, bookshelf: 46477 };
+  check("書斎の仕上げ: css/room.css・bookshelf.css の応答は 56b（70,594・46,477 B）から +8KB 以内", cssBytes.room > 0 && cssBytes.bookshelf > 0 && cssBytes.room <= CSS_56B.room + 8 * 1024 && cssBytes.bookshelf <= CSS_56B.bookshelf + 8 * 1024, JSON.stringify(cssBytes));
+
+  // 56b の残り: Pro 390 の表頭の罫は 1 本（th の罫を落とし thead tr の 1px だけ）、単語帳 390 の分野ナビ末尾のフェードは最後の題箋に乗らない
+  const proRule = async (w, mobile) => {
+    const page = await newPage({ mobile, viewport: { width: w, height: mobile ? 844 : 900 }, storage: { spelldash_placement: "done" } });
+    await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    const r = await page.evaluate(() => ({ th: getComputedStyle(document.querySelector(".pro-compare thead th:last-child")).borderBottomWidth, tr: getComputedStyle(document.querySelector(".pro-compare thead tr")).borderBottomWidth }));
+    await done(page);
+    return r;
+  };
+  const pro390 = await proRule(390, true), pro1200 = await proRule(1200, false);
+  const genre = await (async () => {
+    const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_placement: "done" } });
+    await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => document.querySelectorAll(".genre-nav a").length > 3));
+    const r = await page.evaluate(() => {
+      const nav = document.querySelector(".genre-nav"), marginLeft = getComputedStyle(nav, "::after").marginLeft;
+      nav.scrollLeft = nav.scrollWidth;
+      const links = nav.querySelectorAll("a"), last = links[links.length - 1].getBoundingClientRect();
+      return { n: links.length, marginLeft, left: nav.scrollLeft, gap: Math.round(nav.getBoundingClientRect().right - last.right), scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth };
+    });
+    await done(page);
+    return r;
+  })();
+  check("56b の残り: Pro（390）の表頭の罫は 1 本（th 0・thead tr 1px、1200 は th 1px のまま）、単語帳（390）の分野ナビは末尾まで送ると最後の題箋の右に 28px 以上の空き（::after の margin-left 0）、横スクロール無し", pro390.th === "0px" && pro390.tr === "1px" && pro1200.th === "1px" && genre.marginLeft === "0px" && genre.left > 0 && genre.gap >= 28 && genre.scrollW <= genre.innerW, JSON.stringify({ pro390, pro1200, genre }));
+
+  // 夜の層はスタートと名札に掛からない: #pathStart の朱（--seal-1 系）と墨（--seal-ink）は dark でも light と同じ文字列。名札は --ink-page のまま、沈みの層（.shelf__in::after）の外で、filter も blend も無い
+  const outside = (night, day) => night.start.bg === day.start.bg && night.start.color === day.start.color && night.plate.color === night.plate.inkPage && day.plate.color === day.plate.inkPage && night.plate.filter === "none" && night.plate.blend === "normal" && night.plate.inSink === 0;
+  check("書斎の仕上げ（夜）: 夜の層はスタートと名札に掛からない（#pathStart の朱と墨は昼と同じ・名札は --ink-page のまま沈みの層の外。390・1200）", outside(D, L) && outside(phone["390-dark"], phone["390-light"]) && D.start.bg.includes("rgb(199, 62, 36)"), JSON.stringify({ 1200: { start: D.start, plate: D.plate }, 390: { start: phone["390-dark"].start, plate: phone["390-dark"].plate }, light: L.start }));
+  check("書斎の仕上げでエラー0", errs.length === 0, errs[0] ?? "");
 }
 
 // ===== 9. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====

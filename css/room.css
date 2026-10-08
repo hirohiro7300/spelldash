@@ -44,7 +44,7 @@ html[data-theme] .page-room :is(#gameCard, #setupPanel, .stats--strip, .home-mor
   --far-page: rgba(70, 50, 25, 0);
   --cast-l: rgba(255, 190, 110, 0);
   /* PC の机: 場面の下の天板の縁に落ちる窓の光（夜はろうそくの淡い暖かさ） */
-  --desk-band: rgba(255, 240, 216, 0.2);
+  --desk-band: rgba(255, 240, 216, 0.3);
 }
 
 html:is([data-theme="dark"], [data-theme="indigo"]) .page-room {
@@ -52,9 +52,9 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .page-room {
   --s-quill-lit: #F6E0B4;
   --s-quill-dk: #6E604C;
   --s-quill-rachis: #8A7A60;
-  --far-page: rgba(70, 40, 12, 0.1);
-  --cast-l: rgba(255, 176, 96, 0.2);
-  --desk-band: rgba(255, 190, 120, 0.07);
+  --far-page: rgba(70, 40, 12, 0.1); /* 390 はこのまま（目次は炎から 1000px 下で、これ以上沈めると墨が 4.5:1 を切る）。見開きの PC は 1100px 以上の節で深く */
+  --cast-l: rgba(255, 176, 96, 0.26); /* 左頁の綴じ目の上（炎の側）を暖かく */
+  --desk-band: rgba(255, 190, 120, 0.12);
 }
 
 /* 床の色はキャンバス（html）に: css/brand.css の html[data-theme] { background: var(--floor) }（全ページ共通）。body は紙のまま */
@@ -511,6 +511,11 @@ html[data-theme] .page-room .auth-message--home:empty {
   background: linear-gradient(to bottom, rgba(var(--shadow-rgb), 0.55), rgba(var(--shadow-rgb), 0.18) 50%, rgba(var(--shadow-rgb), 0));
 }
 
+html:is([data-theme="dark"], [data-theme="indigo"]) .desk__front::after {
+  /* 夜の机の下は炎が届かない（前板の唇は昼の勾配のまま） */
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.25) 50%, rgba(0, 0, 0, 0));
+}
+
 /* 机の下: ログインの案内と「覚えた単語」（静かな 2 枚の紙） */
 .desk__under {
   position: relative;
@@ -568,6 +573,7 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .desk__candle--l {
   display: block;
   mix-blend-mode: soft-light;
   background: radial-gradient(circle at var(--fx) var(--fy), rgba(255, 176, 92, 0.95) 0, rgba(255, 168, 84, 0.7) 70px, rgba(250, 150, 70, 0.4) 150px, rgba(240, 130, 60, 0.16) 260px, rgba(230, 120, 50, 0.04) 400px, transparent 520px);
+  animation: room-flicker 4.2s infinite; /* 壁の溜まり（.room__pool--candle）と同じ名前・長さ・遅延なし＝同位相。陰（--s）は揺らさない */
 }
 
 html:is([data-theme="dark"], [data-theme="indigo"]) .desk__candle--s {
@@ -626,6 +632,17 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .desk__under {
   pointer-events: none;
 }
 
+/* 夜: 近い点光源（左上の炎）なので、机に落ちる影は長く・柔らかく・濃く（向きは昼と同じ右下。層の数は同じ）。表紙の金の細線は炎の側（上・左）が照る */
+html:is([data-theme="dark"], [data-theme="indigo"]) .page-room .tome {
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(0, 0, 0, 0.65), 2px 3px 3px rgba(0, 0, 0, 0.5), 10px 16px 18px -6px rgba(0, 0, 0, 0.6), 22px 40px 44px -16px rgba(0, 0, 0, 0.55);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .page-room .tome::before {
+  border-color: rgba(240, 215, 158, 0.55);
+  border-top-color: rgba(240, 215, 158, 0.85);
+  border-left-color: rgba(240, 215, 158, 0.8);
+}
+
 html[data-theme] body.courses-open #pathCard {
   z-index: 70;
 }
@@ -661,7 +678,7 @@ html[data-theme] body.courses-open .room {
   background-image: linear-gradient(200deg, var(--cast-l), transparent 60%), radial-gradient(ellipse 90% 70% at 12% 0%, var(--page-hot), transparent 70%), linear-gradient(to top, rgba(100, 70, 36, 0.3), rgba(100, 70, 36, 0.14) 8px, rgba(100, 70, 36, 0.05) 20px, rgba(100, 70, 36, 0) 36px), url(../assets/images/room/tile-paper-soft.webp);
   background-blend-mode: normal, normal, normal, soft-light;
   background-size: auto, auto, auto, 256px 256px;
-  box-shadow: inset 0 0 30px rgba(120, 80, 30, 0.09), 0 -1px 0 #E9DFC8, 0 -2px 0 var(--parchment-gap), 0 -3px 0 #E4D8BE, 0 -4px 0 var(--parchment-gap);
+  box-shadow: inset 0 0 30px rgba(120, 80, 30, 0.09), 0 -1px 0 #E9DFC8, 0 -2px 0 var(--parchment-gap), 0 -3px 0 #E4D8BE, 0 -4px 0 var(--parchment-gap), 1px 0 0 #E9DFC8, 2px 0 0 var(--parchment-gap), 3px 0 0 #E4D8BE;
 }
 
 .tome__page--r,
@@ -671,9 +688,15 @@ html[data-theme] body.courses-open .room {
   background-size: auto, 256px 256px, auto;
 }
 
+/* 小口（右側の 3 本）: 縦に積んだ頁の右の縁が 1 本の小口に見える（3 頁とも同じ値。初回の 1 語体験の頁も）。1100px 以上は左右の段で丸ごと上書き */
+.tome__page--r,
+.tome__page--demo {
+  box-shadow: inset 0 0 30px rgba(120, 80, 30, 0.09), 1px 0 0 #E9DFC8, 2px 0 0 var(--parchment-gap), 3px 0 0 #E4D8BE;
+}
+
 .tome__page--toc {
   border-radius: 0 0 1px 1px;
-  box-shadow: inset 0 0 30px rgba(120, 80, 30, 0.09), 0 1px 0 #ECE2CB, 0 2px 0 var(--parchment-gap), 0 3px 0 #E5D9BF, 0 4px 0 var(--parchment-gap), 0 5px 0 #DED1B5, 0 6px 0 var(--parchment-gap), 0 7px 0 #D6C8AA;
+  box-shadow: inset 0 0 30px rgba(120, 80, 30, 0.09), 0 1px 0 #ECE2CB, 0 2px 0 var(--parchment-gap), 0 3px 0 #E5D9BF, 0 4px 0 var(--parchment-gap), 0 5px 0 #DED1B5, 0 6px 0 var(--parchment-gap), 0 7px 0 #D6C8AA, 1px 0 0 #E9DFC8, 2px 0 0 var(--parchment-gap), 3px 0 0 #E4D8BE;
 }
 
 .tome__page--r::before,
@@ -1062,7 +1085,8 @@ html[data-theme] .page-room .play-modes__row {
   white-space: nowrap;
 }
 
-html[data-theme] .page-room .play-modes__row + .play-modes__row::before {
+/* 区切りの「・」は前の項目の末尾に（2 行に折れても行頭に「・」が来ない。content は textContent に入らない） */
+html[data-theme] .page-room .play-modes__row:not(:last-child)::after {
   content: "・";
   margin: 0 2px;
   color: #8E806A;
@@ -1576,6 +1600,7 @@ html[data-theme] body.home--playing #gameCard.game-card--failed {
 
 /* 夜も紙は明るく、墨は濃い（§3.13: 頁は L* 88 のろうそくの紙）。盤面の中の紙と墨のトークンだけを昼の値に戻す */
 html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard {
+  --far-page: rgba(70, 40, 12, 0.1); /* 盤面の紙は沈めない（.page-room の夜の値より前の値） */
   --paper: #E8DCC2;
   --paper-2: var(--parchment);
   --paper-3: var(--parchment-2);
@@ -1730,6 +1755,35 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
   }
 }
 
+/* スマホの場面を 1 割大きく（はちゃんが約 75px → 81px）: 下辺の 30% を軸に拡大し（窓枠も額も収まる）、上にはみ出す 21px（局所 19.5px）は切る。高さは変わらないのでスタートの位置は動かない。
+   炎・窓の光・紙片・光の筋も同じ写像（x → 1.08x − 9.4、y → 1.08y − 21）に合わせる。背の低いスマホ（scene-short）と PC（scene-desk）には掛けない */
+@media (max-width: 1099px) and (min-height: 701px) {
+  .room__scene--phone {
+    transform: scale(1.08);
+    transform-origin: 30% 100%;
+    clip-path: inset(19.5px 0 0 0);
+  }
+  .room__shaft {
+    transform: scale(1.08);
+    transform-origin: 30% var(--stage-h);
+  }
+  .room__pool--win {
+    left: calc(var(--sx) + 157px);
+    top: 171px;
+  }
+  .room__pool--candle {
+    left: calc(var(--sx) + 185px);
+    top: 201px;
+  }
+  .desk__candle {
+    --fx: calc(var(--sx) + 185px);
+    --fy: -39px;
+  }
+  html[data-theme] .page-room .hasumi--home {
+    left: calc(var(--sx) + 147px);
+  }
+}
+
 /* タブレット: 机の本は中央に、幅 560 */
 @media (min-width: 600px) and (max-width: 1099px) {
   .desk__under,
@@ -1869,10 +1923,10 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
     margin-left: calc(-40px - var(--gut));
     margin-right: -40px;
     box-shadow: 0 14px 22px -10px rgba(var(--shadow-rgb), 0.5);
-    /* 天板の奥の縁（場面の下）は窓の光を受けて少し明るい帯（約 24px）: 本が面の上に載って見える */
+    /* 天板の奥の縁（場面の下）は窓の光を受けて明るい帯（10px）→ 6px で消え → 本の手前で 1px の暗い段: 天板の面が本の下に潜る（本が板に貼り付かない） */
     background:
       linear-gradient(to bottom, rgba(20, 12, 6, 0.55) 0, rgba(20, 12, 6, 0) 1.5px),
-      linear-gradient(to bottom, var(--desk-band) 0, var(--desk-band) 16px, transparent 34px),
+      linear-gradient(to bottom, var(--desk-band) 0, var(--desk-band) 10px, transparent 16px, transparent 17px, rgba(20, 12, 6, 0.28) 17px, rgba(20, 12, 6, 0) 18px),
       radial-gradient(ellipse 60% 260px at 24% 0, rgba(255, 246, 228, 0.2), transparent 100%),
       linear-gradient(90deg, rgba(0, 0, 0, 0.14), transparent 12%, transparent 88%, rgba(0, 0, 0, 0.18)),
       linear-gradient(to bottom, color-mix(in srgb, var(--wood-top) 58%, transparent), color-mix(in srgb, var(--wood) 58%, transparent) 70%, color-mix(in srgb, var(--wood-2) 58%, transparent)),
@@ -1887,6 +1941,10 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
   html[data-theme] body.home--playing .desk__front {
     margin: 0 -20px -24px;
     padding: 7px 20px 8px;
+  }
+  /* 羊皮紙は画面の 2/3 まで（床は細い帯・中身は上寄せ） */
+  html[data-theme] body.home--playing #gameCard {
+    min-height: min(560px, calc(100vh - 300px));
   }
   .desk::after {
     /* 本棚に突き当たる端の木口 */
@@ -1984,6 +2042,26 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
     width: 1px;
     height: auto;
     background: rgba(90, 64, 34, 0.35);
+  }
+  /* 頁の上辺は綴じ目へ反る: 外の角で 0、綴じ目で 3px 沈む楕円の弧（弧の外は表紙の革の陰）。空いている擬似要素だけを使う（#pathNow・.welcome__cta は position を持たないので基準は右頁）。文字は padding-top 24px の中に来ない */
+  .tome__page--l::before,
+  #pathNow::before,
+  .welcome__cta::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 4px;
+    pointer-events: none;
+    background: radial-gradient(ellipse 130% 8.3px at 0 8.3px, transparent calc(100% - 2.5px), color-mix(in srgb, var(--lapis) 70%, #000) 100%);
+  }
+  #pathNow::before,
+  .welcome__cta::before {
+    background: radial-gradient(ellipse 130% 8.3px at 100% 8.3px, transparent calc(100% - 2.5px), color-mix(in srgb, var(--lapis) 70%, #000) 100%);
+  }
+  html[data-theme] body.home--playing #pathCard .tome__page--l::before {
+    content: none; /* プレイ中の柱（1 行）には反りは無い */
   }
   .runhead {
     margin-bottom: 14px;
@@ -2109,6 +2187,10 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
   html[data-theme] .page-room .play-modes {
     font-size: 14px;
   }
+  /* 夜（PC）: 見開きの遠い側（右頁）を 8% ほど沈める。盤面は夜の #gameCard の節で旧値に戻る */
+  html:is([data-theme="dark"], [data-theme="indigo"]) .page-room {
+    --far-page: rgba(60, 34, 10, 0.15);
+  }
   /* 夜（PC）: 右端と左上の壁を深く沈める */
   html:is([data-theme="dark"], [data-theme="indigo"]) .room__vignette {
     height: 1100px;
@@ -2217,32 +2299,72 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
     background-size: auto, 256px 256px;
     box-shadow: inset 0 0 32px rgba(120, 80, 30, 0.09), -1px 0 0 #E9DFC8, -2px 0 0 var(--parchment-gap), -3px 1px 0 #E4D8BE, -4px 1px 0 var(--parchment-gap), -5px 2px 0 #DDD0B4, 0 1px 0 #E9DFC8, 0 2px 0 var(--parchment-gap);
   }
-  .tome--first .tome__page--demo::before {
-    display: none;
-  }
+  /* .tome__page--demo::before は content を与える規則が無く生成されない（display: none の規則は消した） */
   .welcome-demo {
     padding-top: 12px;
     border-top: 0.75px solid rgba(42, 33, 25, 0.25);
   }
+  /* 初回の足元: 両頁の足元の余白に金の菱を 1 つ（進みの菱と同じ CSS の形。記号ではない）。絶対配置なので頁の高さは動かない（基準は右頁・1 語体験の頁） */
+  .login-line::after,
+  .welcome-demo::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 11px;
+    width: 7px;
+    height: 7px;
+    margin-left: -3.5px;
+    pointer-events: none;
+    background: linear-gradient(135deg, #F3D58A, #A97A32);
+    box-shadow: 0 0 0 0.5px rgba(62, 44, 18, 0.6);
+    transform: rotate(45deg);
+  }
 }
 
-/* ================= 読み込み中の頁: 語が届く前から本の高さを取っておく（下の幕板とフッターが跳ばない。CLS） ================= */
+/* ================= 読み込み中の頁: 語が届く前から最終の高さを取っておく（下の幕板とフッターが跳ばない。CLS）。
+   値は 390 の実測（#pathHead 182・左頁 218・右頁 225・目次 333）。連続日数の帯（#todayStrip）は #pathHead の直後に margin-top -38px で重なるので、見出しの高さも先に取る（帯が頁の上端に浮いて 182px 落ちない） ================= */
+#pathHead:empty {
+  min-height: 182px;
+}
+
 .tome__page--l:has(> #pathHead:empty) {
-  min-height: 250px;
+  min-height: 218px;
 }
 
 .tome__page--r:has(> #pathNow:empty) {
-  min-height: 210px;
+  min-height: 225px;
 }
 
 .tome__page--toc:has(> #pathList:empty) {
-  min-height: 320px;
+  min-height: 333px;
 }
 
 #welcomeStack:empty {
   min-height: 190px;
 }
 
-html[data-theme] body.home--playing #pathCard .tome__page--l:has(> #pathHead:empty) {
+html[data-theme] body.home--playing #pathCard .tome__page--l:has(> #pathHead:empty),
+html[data-theme] body.home--playing #pathHead:empty {
   min-height: 0;
+}
+
+@media (max-width: 359px) {
+  #pathHead:empty {
+    min-height: 175px;
+  }
+  .tome__page--l:has(> #pathHead:empty) {
+    min-height: 203px;
+  }
+  .tome__page--r:has(> #pathNow:empty) {
+    min-height: 210px;
+  }
+  .tome__page--toc:has(> #pathList:empty) {
+    min-height: 344px;
+  }
+}
+
+@media (min-width: 1100px) {
+  #pathHead:empty {
+    min-height: 202px;
+  }
 }

@@ -557,3 +557,11 @@ html[data-theme] body:not(.page-room) .pro-welcome__title {
   font-weight: 500;
   letter-spacing: 0.04em;
 }
+
+/* ---- 390 の表頭の罫を 1 本に: ≤560px では 177〜182 行の `th, td { border-bottom: 0 }`（0,2,2）が 98 行の `thead th`（0,2,3）に負けて
+   「無料」「Pro」の下に th の罫と thead tr の罫が 2 本出る。(0,3,3) で th の罫を落とし、thead tr の --line-2 1 本だけを残す ---- */
+@media (max-width: 560px) {
+  html[data-theme] body:not(.page-room) .pro-compare thead th {
+    border-bottom: 0;
+  }
+}
