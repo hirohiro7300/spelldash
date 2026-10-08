@@ -1178,7 +1178,7 @@ console.log("study (finish):");
       new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls = (window.__cls || 0) + e.value; }).observe({ type: "layout-shift", buffered: true });
       document.addEventListener("DOMContentLoaded", () => {
         const min = (s) => getComputedStyle(document.querySelector(s)).minHeight;
-        window.__loading = { headEmpty: document.getElementById("pathHead").childNodes.length === 0, head: min("#pathHead"), l: min("#pathCard .tome__page--l"), r: min("#pathCard .tome__page--r"), toc: min("#pathCard .tome__page--toc") };
+        window.__loading = { headEmpty: document.getElementById("pathHead").childNodes.length === 0, head: min("#pathHead"), now: min("#pathNow"), list: min("#pathList") };
       });
     });
     await page.route("**/*", (r) => setTimeout(() => r.continue(), 80));
@@ -1195,9 +1195,9 @@ console.log("study (finish):");
   check("書斎の仕上げ: CLS（全応答 80ms 遅延・連続 3 日の帯あり）は 390 < 0.05・320 < 0.05・1200 < 0.02", cls390.strip && cls390.cls < 0.05 && cls320.cls < 0.05 && cls1200.cls < 0.02, JSON.stringify({ 390: cls390.cls, 320: cls320.cls, 1200: cls1200.cls, strip: cls390.strip }));
   const near = (a, b) => Math.abs(a - b) <= 2;
   const lo = cls390.loading, fi = cls390.final;
-  check("書斎の仕上げ（390）: 読み込み中の最小高さ（#pathHead 182・左頁 218・右頁 225・目次 333）は語の入った最終の高さと差 ≤ 2px", lo.headEmpty && lo.head === "182px" && lo.l === "218px" && lo.r === "225px" && lo.toc === "333px" && near(fi.head, 182) && near(fi.l, 218) && near(fi.r, 225) && near(fi.toc, 333), JSON.stringify({ loading: lo, final: fi }));
+  check("書斎の仕上げ（390）: 読み込み中の最小高さ（#pathHead 182・#pathNow 189・#pathList 297。頁の padding は段ごとに足す）で、頁は語の入った最終の高さ（218・225・333）と差 ≤ 2px", lo.headEmpty && lo.head === "182px" && lo.now === "189px" && lo.list === "297px" && near(fi.head, 182) && near(fi.l, 218) && near(fi.r, 225) && near(fi.toc, 333), JSON.stringify({ loading: lo, final: fi }));
 
-  // CSS の増分の見張り: room.css・bookshelf.css の応答は 56b から +6KB 以内
+  // CSS の増分の見張り: room.css・bookshelf.css の応答は 56b から +8KB 以内
   const CSS_56B = { room: 70594, bookshelf: 46477 };
   check("書斎の仕上げ: css/room.css・bookshelf.css の応答は 56b（70,594・46,477 B）から +8KB 以内", cssBytes.room > 0 && cssBytes.bookshelf > 0 && cssBytes.room <= CSS_56B.room + 8 * 1024 && cssBytes.bookshelf <= CSS_56B.bookshelf + 8 * 1024, JSON.stringify(cssBytes));
 

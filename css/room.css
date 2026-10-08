@@ -573,6 +573,8 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .desk__candle--l {
   display: block;
   mix-blend-mode: soft-light;
   background: radial-gradient(circle at var(--fx) var(--fy), rgba(255, 176, 92, 0.95) 0, rgba(255, 168, 84, 0.7) 70px, rgba(250, 150, 70, 0.4) 150px, rgba(240, 130, 60, 0.16) 260px, rgba(230, 120, 50, 0.04) 400px, transparent 520px);
+  clip-path: circle(520px at var(--fx) var(--fy)); /* 光は 520px で透明になる: 混ぜ合わせ（soft-light）を毎フレーム机いっぱいにしない */
+  will-change: opacity;
   animation: room-flicker 4.2s infinite; /* 壁の溜まり（.room__pool--candle）と同じ名前・長さ・遅延なし＝同位相。陰（--s）は揺らさない */
 }
 
@@ -1765,7 +1767,7 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
   }
   .room__shaft {
     transform: scale(1.08);
-    transform-origin: 30% var(--stage-h);
+    transform-origin: 30% 100%; /* 筋の箱の下端 = 机の天板の線。場面と同じ --stage-h を軸にすると切り口が 1.8px 浮いて壁の筋が見える */
   }
   .room__pool--win {
     left: calc(var(--sx) + 157px);
@@ -1780,7 +1782,8 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
     --fy: -39px;
   }
   html[data-theme] .page-room .hasumi--home {
-    left: calc(var(--sx) + 147px);
+    left: calc(var(--sx) + 150px); /* 基準 (148, 100) を同じ写像で: x 1.08×148 − 9.4 = 150.4、y 1.08×100 − 21 = 87 */
+    top: 87px;
   }
 }
 
@@ -2327,24 +2330,21 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
   min-height: 182px;
 }
 
-.tome__page--l:has(> #pathHead:empty) {
-  min-height: 218px;
+/* 右頁と目次は中身（#pathNow・#pathList）に取る: 頁の padding（390 は 18px・背の低い端末と 359 以下は 14px）は各段の規則が足すので、
+   頁ごとの定数（218・225・333）を置くと padding 14px の端末で 8px 余って縮む（CLS が戻る）。189 = 225 − 36、297 = 333 − 36 */
+#pathNow:empty {
+  min-height: 189px;
 }
 
-.tome__page--r:has(> #pathNow:empty) {
-  min-height: 225px;
-}
-
-.tome__page--toc:has(> #pathList:empty) {
-  min-height: 333px;
+#pathList:empty {
+  min-height: 297px;
 }
 
 #welcomeStack:empty {
   min-height: 190px;
 }
 
-html[data-theme] body.home--playing #pathCard .tome__page--l:has(> #pathHead:empty),
-html[data-theme] body.home--playing #pathHead:empty {
+html[data-theme] body.home--playing :is(#pathHead, #pathNow, #pathList):empty {
   min-height: 0;
 }
 
@@ -2352,14 +2352,11 @@ html[data-theme] body.home--playing #pathHead:empty {
   #pathHead:empty {
     min-height: 175px;
   }
-  .tome__page--l:has(> #pathHead:empty) {
-    min-height: 203px;
+  #pathNow:empty {
+    min-height: 182px;
   }
-  .tome__page--r:has(> #pathNow:empty) {
-    min-height: 210px;
-  }
-  .tome__page--toc:has(> #pathList:empty) {
-    min-height: 344px;
+  #pathList:empty {
+    min-height: 316px;
   }
 }
 

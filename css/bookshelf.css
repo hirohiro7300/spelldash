@@ -267,6 +267,27 @@
   }
 }
 
+/* 1100〜1179px の PC: 本棚の列は 340〜419px で、上の @container（420px）の 8 列に届かない。横に送る行はマウスでは送れない
+   （縦のホイールは頁を送り、スクロールバーも無い）ので、56b までの 2×4 の格子に戻す。1180px 以上は 8 列 */
+@media (min-width: 1100px) and (max-width: 1179px) {
+  .cabinet__rail .shelf-index {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    overflow: visible;
+    padding: 2px 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.18) 6px, rgba(0, 0, 0, 0.1) 60%, rgba(0, 0, 0, 0.22));
+  }
+  .cabinet__rail .shelf-index::before,
+  .cabinet__rail .shelf-index::after {
+    display: block;
+  }
+  .cabinet__rail .shelf-index a + a::before {
+    display: none;
+  }
+}
+
 /* 框（左右の柱）: 漆の艶と縦の木目、内側に金の細線 */
 .cabinet__body {
   position: relative;
@@ -687,7 +708,10 @@
   bottom: 18px;
 }
 
-/* 巻つき（vol:）で 6 字以上の題を足すときは .spine--long.spine--vol .spine__l の bottom を調整 */
+/* 巻つき（vol:）で 6 字以上の題: 題を巻数（.spine__v、bottom 21px）の上に。いまのデータには無いが、SPINE に足したとき重ならないための保険 */
+.spine--long.spine--vol .spine__l {
+  bottom: 36px;
+}
 .spine--long .spine__t {
   font-size: 13.5px;
   letter-spacing: 0;
