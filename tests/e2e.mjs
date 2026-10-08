@@ -354,6 +354,15 @@ console.log("csp:");
     for (const m of html.matchAll(/<script[^>]+src="(https?:[^"]+)"/g)) if (!allowed(m[1], "script-src")) bad.push(`${f}: ${m[1]}`);
   }
   check("外から読む CSS・スクリプトは本番の CSP が許す先だけ", csp !== "" && bad.length === 0, bad.slice(0, 3).join(" | "));
+  // theme-color（ヘッダーの帯の色）の表は js/appEnv.js THEME_COLOR が元で、各ページの <head> のインラインの表・meta・manifest に手で写してある: ずれを見張る
+  const THEME_TABLE = '{ light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }';
+  const themeBad = htmlFiles.filter((f) => {
+    const html = fs.readFileSync(path.join(ROOT, f), "utf8");
+    return !html.includes(THEME_TABLE) || !html.includes('<meta name="theme-color" content="#1A2137" />');
+  });
+  check("全ページの <head> の theme-color の表と meta は js/appEnv.js THEME_COLOR と同じ（帯の色）", themeBad.length === 0 && fs.readFileSync(path.join(ROOT, "js", "appEnv.js"), "utf8").includes(`THEME_COLOR = ${THEME_TABLE}`), themeBad.slice(0, 3).join(" | "));
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.webmanifest"), "utf8"));
+  check("manifest.webmanifest の theme_color は帯の色（light）、background_color は紙", manifest.theme_color === "#1A2137" && manifest.background_color === "#F4ECDA", `${manifest.theme_color} ${manifest.background_color}`);
 }
 
 console.log("pages:");
