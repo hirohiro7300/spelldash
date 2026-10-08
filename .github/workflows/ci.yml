@@ -28,6 +28,9 @@ jobs:
       - name: ローマ字の判定（日本語の答えの読み。js/romaji.js）
         run: node scripts/test-romaji.mjs
 
+      - name: 記憶の保持率の集計と記録（js/retentionCalc.js・retentionLog.js・studyTime.js）
+        run: node scripts/test-retention.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 

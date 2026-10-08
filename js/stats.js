@@ -1,5 +1,7 @@
 import { getWordStats, saveWordStats } from "./storage.js";
 import { markWordDirty } from "./sync.js";
+import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
+import { touchStudyTime } from "./studyTime.js";
 
 // 簡易SRS: 連続ノーミス正解数 → 次の復習までの日数
 // 1回→1日後、3連続→3日後、10連続→30日後（それ以上は30日固定）
@@ -31,6 +33,7 @@ export function recordPlay(word) {
   stats[word].lastPlayed = new Date().toISOString();
   saveWordStats(stats);
   markWordDirty(word);
+  touchStudyTime(); // 学習時間（js/studyTime.js）。計測は装飾: 失敗しても記録は済んでいる
 }
 
 export function recordCorrect(word, wasClean) {
@@ -79,6 +82,7 @@ export function recordCorrect(word, wasClean) {
 
   saveWordStats(stats);
   markWordDirty(word);
+  touchStudyTime();
 }
 
 // New Word Learning Loop: 同日の学習段階を保存（ローカル日付基準）
@@ -141,6 +145,8 @@ export function recordRecallFail(word) {
 
   saveWordStats(stats);
   markWordDirty(word);
+  noteAnswer(word, "x", stats[word]); // 記憶の保持率（js/retentionLog.js）。別キーに書く。word_stats は変えない
+  touchStudyTime();
 }
 
 // 答えを見ずに自力で正解した（打ち間違いはあってもよい）。
@@ -149,6 +155,8 @@ export function recordRecallSuccess(word) {
   const stats = getWordStats();
 
   if (!stats[word]) return;
+
+  const prevRecallSuccessAt = stats[word].lastRecallSuccessAt ?? null; // 記憶の保持率の t0 判定にだけ使う（上書きの前に読む。Recall Loop には使わない）
 
   if (isReviewAttempt(stats[word])) {
     stats[word].lastReviewResult = "ok";
@@ -160,6 +168,10 @@ export function recordRecallSuccess(word) {
 
   saveWordStats(stats);
   markWordDirty(word);
+  // 記憶の保持率: 初めての自力正解を t0 に（知ってた語・以前に自力正解のある語は除く。recordCorrect が先に走り knownOnSight は確定している）→ 窓の回答
+  noteFirstRecall(word, stats[word], prevRecallSuccessAt);
+  noteAnswer(word, "o", stats[word]);
+  touchStudyTime();
 }
 
 function createInitialWordStats() {

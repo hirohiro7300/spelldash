@@ -35,6 +35,7 @@
 
 - ☐ docs/SQL_USER_ITEMS.md — マイ単語帳・メモ・追加したパック・日ごとの記録（今日のぶん・成長ログ）の端末間同期（`user_items`）。まだ流していなければ 1. をそのまま、以前の版を流してあれば 1b. の 2 文（kind に `day` を足す）を 1 回
 - ☐ docs/SQL_FEEDBACK.md — ご意見フォームの保存先（`feedback`）。未実行の間、フォームの送信は失敗する
+- （いまは何も要らない）記憶の保持率（docs/SPEC_RETENTION.md、2026-10-08）は Phase 1 がこの端末の記録だけで動く。**Phase 2（2 台目への同期）に進むときに SQL が 1 本**（user_items の kind に `ret` を足す check 制約の ALTER か、新テーブル）。そのときに docs/SQL_USER_ITEMS.md の隣に書く
 - ☐ アプリ版（Capacitor）: Mac／Xcode／TestFlight。docs/APP.md。コードは Web と同じものを `npm run app:build` で `dist/` に出す
 
 ## F. 判断してほしいこと（決まれば反映はこちらでやる）
