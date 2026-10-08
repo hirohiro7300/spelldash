@@ -1,6 +1,6 @@
-/* home — 「墨と朱」領域別スタイル（docs/CONCEPT.md）。brand.css の後に読み込む。
-   ホームの1画面目（見出し・道・ほかの遊び方・道に戻る）は css/path.css。ここはそれ以外のホーム部品:
-   数字1行、はちゃんの一言、出題の要約行と設定パネル、ログイン案内、詳細（覚えた単語・Daily Dash）。
+/* home — 書斎のホームの部品（docs/CONCEPT.md）。brand.css の後、room.css の前に読み込む。
+   机の本（見出し・今の章・目次）は css/path.css、部屋・机・本の装丁は css/room.css。ここはそれ以外のホーム部品:
+   数字1行、出題の要約行と設定パネル、ログイン案内、詳細（覚えた単語・Daily Dash）。
    すべて html[data-theme] を頭に付け、(0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。色は tokens.css の変数だけ。 */
 
 html[data-theme] .app--home {
@@ -25,12 +25,16 @@ html[data-theme] .auth-message--home {
   color: var(--ink-3);
 }
 
-/* ---- 数字1行: 連続日数・今週。静かなチップ2つ ---- */
+/* ---- 数字1行: 連続日数。左頁の末尾に、チップではなく 1 行の文字（金の小さな炎） ---- */
 html[data-theme] .today__strip {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 8px;
-  margin: 14px 0 0;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 38px;
+  margin: -38px 0 0; /* 「コースを変える」（左）と同じ行の右側に */
+  pointer-events: none;
 }
 
 html[data-theme] .today__strip:empty {
@@ -39,45 +43,40 @@ html[data-theme] .today__strip:empty {
 
 html[data-theme] .strip__chip {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: var(--paper-3);
-  color: var(--ink-2);
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-page-2);
+  font: 500 var(--fs-small) / 1.5 var(--font-display);
+  letter-spacing: 0.06em;
   box-shadow: none;
 }
 
 html[data-theme] .strip__chip .icon {
   margin: 0;
-  color: var(--ink-3);
+  align-self: center;
+  color: var(--gold-dk);
 }
 
-html[data-theme] .strip__chip--on {
-  background: var(--paper-3);
+html[data-theme] .strip__chip--on,
+html[data-theme] .strip__chip--streak.strip__chip--on {
+  background: transparent;
   border: 0;
-  color: var(--ink);
+  color: var(--ink-page);
 }
 
 html[data-theme] .strip__chip--on .icon {
   color: var(--signal);
 }
 
-/* 旧パレットの炎チップ（橙の面）に勝つ */
-html[data-theme] .strip__chip--streak.strip__chip--on {
-  background: var(--paper-3);
-  border: 0;
-  color: var(--ink);
-}
-
 html[data-theme] .strip__chip small {
   margin-left: 2px;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   font-weight: 500;
-  color: var(--ink-3);
+  color: var(--ink-page-3);
 }
 
 html[data-theme] .strip__chip--pop {
@@ -112,31 +111,7 @@ html[data-theme] .setup-toggle--same :is(.setup-toggle__label, .setup-toggle__su
   display: none;
 }
 
-/* ---- はちゃんの一言（ホーム）: 32px の丸アイコン＋紙色の吹き出し・罫線1px。紫は使わない ---- */
-html[data-theme] .hasumi--home {
-  margin: 12px 0 4px;
-  gap: 8px;
-  align-items: center;
-}
-
-html[data-theme] .hasumi--home .hasumi__avatar {
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--line-2);
-  background: var(--paper-2);
-}
-
-html[data-theme] .hasumi--home .hasumi__bubble {
-  padding: 8px 12px;
-  border-radius: 4px var(--radius-lg) var(--radius-lg) var(--radius-lg);
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  color: var(--ink-2);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.5;
-  box-shadow: none;
-}
+/* はちゃんの一言（ホーム）は窓の脇の紙片（css/room.css の .hasumi--home .slip） */
 
 /* ---- 出題: 「出題: 中学英語 1年 ・ 設定」の1行。設定パネルは畳む ---- */
 html[data-theme] .play__bar {
@@ -179,7 +154,7 @@ html[data-theme] .setup-toggle__summary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 500; /* 明朝は 500 と 700 だけ（600 だと 700 の漢字のサブセットを読みに行く） */
   color: var(--ink);
 }
 
@@ -429,7 +404,7 @@ html[data-theme] .login-nudge:empty {
 
 html[data-theme] .login-nudge__text a {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -469,8 +444,10 @@ html[data-theme] .home-more {
 
 html[data-theme] .home-more > summary {
   padding: 12px 0;
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   color: var(--ink-3);
 }
 

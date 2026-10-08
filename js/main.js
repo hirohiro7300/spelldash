@@ -42,13 +42,17 @@ import { initializeMixControl } from "./studyMix.js";
 import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
 import { renderLoginNudge } from "./loginNudge.js";
 import { initTutorial, skipTutorialIfReturning } from "./tutorial.js";
-import { getCategories } from "./wordStore.js";
+import { initRoom } from "./room.js";
+import { initBookshelf, renderBookshelf, updateBookshelf } from "./bookshelf.js";
+import { getEnabledPackIds, setPackEnabled } from "./packs.js";
+import { getCategories, getPackCatalog } from "./wordStore.js";
 import { getGenre, genreLabel } from "./genres.js";
 import { getWordStats } from "./storage.js";
 import { icon } from "./icons.js";
 
 initializeAuth();
 setFooterYear();
+initRoom(); // 書斎: PC で机の列を sticky に（js/room.js）
 initializeKeyboard(); // 専用キーボード（スマホでプレイ中だけ出る）
 renderHeaderStreak();
 initTutorial(); // 初回の 1 セットに 1 文ずつ（docs/SPEC_TUTORIAL.md）。既存ユーザーには何も出ない
@@ -64,6 +68,7 @@ window.addEventListener("spelldash:packs", (event) => {
     renderHome(); // 語が変わったので道も描き直す
     renderLearnedCard();
     renderHasumiHome();
+    renderBookshelf(); // 追加済みの本（読みかけ）が変わったので本棚も組み直す
     window.dispatchEvent(new CustomEvent("spelldash:store-ready"));
   });
 });
@@ -196,11 +201,11 @@ function goNextSection() {
 // コースの乗り換え: まだ制覇していない最初のセクションから（進捗は語ごとなので失われない）
 function chooseCourse(courseId) {
   const course = COURSES[courseId];
-  if (!course) return;
+  if (!course) return Promise.resolve();
   const start = course.packs.find((id) => !buildPath(id).allDone) ?? course.packs[0];
   startCourse(courseId, start);
   setGenre("");
-  initWordStore().then(() => {
+  return initWordStore().then(() => {
     initializeCategoryPicker();
     renderLearnedCard(); // カードの行を新しいカテゴリに（語ごとの進捗は残る）
     renderHome();
@@ -224,7 +229,7 @@ function celebrateNewUnits(path) {
   const fresh = path.units.filter((u) => u.done && !doneUnitsAtStart.has(u.label)).map((u) => u.label);
   doneUnitsAtStart = null;
   if (fresh.length === 0) return;
-  const text = path.allDone ? `${path.label} 全ユニット済み` : `ユニット${fresh.map((l) => `「${l}」`).join("")}済み`;
+  const text = path.allDone ? `${path.label} 全章 済み` : `${fresh.map((l) => `「${l}」`).join("")}の章 済み`;
   // 完了パネルは session-end のあとに描かれる（js/game.js）ので、次のフレームで見出しの直後に入れる
   requestAnimationFrame(() => {
     const title = document.querySelector("#resultPanel .result-panel__title");
@@ -241,19 +246,45 @@ function renderHome() {
   const path = renderPath({ onStart: startUnit, onAdvance: goNextSection, onCourse: chooseCourse });
   renderPlayModes({ onChallenge: startChallenge, onDaily: startDaily });
   renderSetupSummary();
+  updateBookshelf(); // 机の上の本の空きと読みかけを本棚に（js/bookshelf.js）
   return path;
 }
 
+// 本棚の背を押した: その本を机に出す（分野パックはその場で読み込む。追加の手続きは要らない）。
+// コースの鍵: 今のコースにその本があれば今のコースのまま、別のコースにだけあれば最初に見つかったコースへ。どのコースにも無い本はコースを触らない
+// （柱が棚の名前になるだけ。js/pathView.js）。終わったら机の本へスクロールし、焦点はスタートへ
+async function pickBook(id) {
+  if (isGamePlaying()) return;
+  const category = [...getCategories(), ...getPackCatalog()].find((c) => c.id === id);
+  if (!category) return;
+  const needsLoad = !!category.pack && !getEnabledPackIds().includes(id);
+  if (needsLoad) setPackEnabled(id, true);
+  localStorage.setItem("spelldash_category", id);
+  const current = COURSES[localStorage.getItem("spelldash_course") || ""];
+  const course = current?.packs.includes(id) ? current : Object.values(COURSES).find((c) => c.packs.includes(id));
+  if (course) startCourse(course.id, id);
+  setGenre("");
+  setFocusGenre("");
+  if (needsLoad) await initWordStore();
+  initializeCategoryPicker(); // 保存したカテゴリを出題側（setActiveCategory）にも反映する
+  renderLearnedCard();
+  renderHome();
+  renderHasumiHome();
+  refreshWeakToggle();
+  document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+  document.getElementById("pathStart")?.focus({ preventScroll: true });
+}
+
 const backToPath = document.getElementById("backToPath");
-if (backToPath) backToPath.innerHTML = `${icon("arrowLeft")}道に戻る`;
+if (backToPath) backToPath.innerHTML = `${icon("arrowLeft")}机に戻る`;
 backToPath?.addEventListener("click", () => {
   setMode("study");
   stopGame(); // プレイ中のセットは中断する（setMode は同じモードだと止めない）
   showGame(false);
   renderHome();
-  window.dispatchEvent(new CustomEvent("spelldash:home")); // 道が見えた（チュートリアル js/tutorial.js）
+  window.dispatchEvent(new CustomEvent("spelldash:home")); // 机の本が見えた（チュートリアル js/tutorial.js）
   document.getElementById("pathCard")?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
-  document.getElementById("pathStart")?.focus({ preventScroll: true }); // 「道に戻る」は消えるので、焦点はスタートへ
+  document.getElementById("pathStart")?.focus({ preventScroll: true }); // 「机に戻る」は消えるので、焦点はスタートへ
 });
 
 // どの入口から始まっても（Enter キー含む）ゲームカードを出す
@@ -351,11 +382,20 @@ ensureDefaultCourse();
 
 // 単語データを読み込んでからゲームを有効化
 // 初めての人にはトップページ（語の読み込みを待たずに出す。アプリのホームが一瞬見えないように）。
-// 「無料で始める」でそのまま腕試し（道の最初のユニット）へ
+// スタートでそのまま腕試し（机の本の最初の章）へ。積んだ本（または本棚の本）を選んでいたら、その本をパックに足して机に出してから始める。
+// spelldash_course は触らない（コース外の本は柱が棚の名前になるだけ。js/pathView.js）。本棚の函（コース）を選んでいたときだけ、そのコースの鍵を回す
 const storeReady = initWordStore();
 renderWelcome({
-  onStart: () => storeReady.then(() => {
+  onStart: ({ bookId, courseId } = {}) => storeReady.then(async () => {
+    if (courseId && COURSES[courseId]) startCourse(courseId, bookId);
+    if (bookId && bookId !== "jhs-english1") {
+      if (getPackCatalog().some((c) => c.id === bookId) && !getEnabledPackIds().includes(bookId)) setPackEnabled(bookId, true);
+      localStorage.setItem("spelldash_category", bookId);
+      await initWordStore();
+      initializeCategoryPicker();
+    }
     const path = renderHome();
+    renderHasumiHome(); // 紙片の「はじめまして」を、机の本に合う文へ
     startUnit(path ? currentUnitOf(path) : null);
   })
 });
@@ -368,6 +408,7 @@ storeReady
     renderLearnedCard();
     renderHasumiHome(); // 語の読み込み後に（「今日覚えた」の語を名指しするため）
     renderHome();
+    initBookshelf({ onPick: pickBook, onCourse: chooseCourse }); // 本棚（manifest が要るので語の読み込み後）
     renderLoginNudge();
     setSetupOpen(localStorage.getItem(SETUP_OPEN_KEY) === "1");
     initializeMixControl();

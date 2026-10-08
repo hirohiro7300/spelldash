@@ -1,0 +1,1608 @@
+/* ===== 本棚（index.html だけ）: 藍漆の造りつけ書架。見出しの欄・彫りこんだ索引・棚板と背板・背表紙・函・机の本の空き・扉・本をさがす =====
+   Builder C が書く。中身は js/bookshelf.js が描く。色はトークン（tokens.css: --lacquer*・--lapis*・--foil・--gold*・--parchment・--ink-page*・--on-vault*・--leather-*）。
+   素材のタイルは assets/images/room（scripts/room-art/tiles.mjs）。昼 = light／paper、夜 = dark／indigo。
+   スマホ: 机の下、段は横にスクロール（右端で切れるのは本物の背）。PC（1100px 以上）: 右の列 440px、1 段に収めて背の幅を配る。
+   文字は明朝 500 だけ（700 はスタートの分しか無い）。ラテン文字と数字は Cormorant 600。動きは無い（hover の 3px だけ、reduced motion で 0）。 */
+
+.bookshelf {
+  --brass-1: #B08A46;
+  --brass-2: #DCBC76;
+  --brass-3: #F3DDA4;
+  --brass-4: #D2AE66;
+  --brass-5: #B08844;
+  position: relative;
+  z-index: 2;
+  margin: 12px 8px 0;
+  padding-bottom: 28px;
+  container-type: inline-size;
+  color: var(--on-vault);
+}
+
+.bookshelf[hidden] {
+  display: none;
+}
+
+.bookshelf .n,
+.bookshelf .tcy {
+  font-family: var(--font-num);
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+.bookshelf .tcy {
+  text-combine-upright: all;
+}
+
+.bookshelf .lat {
+  font-family: var(--font-latin);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ---- 書架の箱 ---- */
+.cabinet {
+  position: relative;
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 10px 18px 30px -10px rgba(var(--shadow-rgb), 0.55);
+}
+
+/* コーニス: 冠の縁・金の平縁・反曲・中央に線刻（子午線の弧と菱と三日月）・歯飾り */
+.cabinet__cornice {
+  position: relative;
+  height: 64px;
+  border-radius: 2px 2px 0 0;
+  background:
+    linear-gradient(to bottom, var(--lacquer-lit) 0, var(--lacquer-lit) 1px, transparent 1px),
+    linear-gradient(to bottom, transparent 5px, rgba(230, 200, 135, 0.7) 5px, rgba(230, 200, 135, 0.7) 6px, transparent 6px),
+    linear-gradient(to bottom, #36416A 0, var(--lacquer) 5px, transparent 5px),
+    linear-gradient(to bottom, transparent 6px, #3E4A70 6px, var(--lacquer-2) 13px, transparent 13px),
+    linear-gradient(to bottom, transparent 47px, rgba(230, 200, 135, 0.6) 47px, rgba(230, 200, 135, 0.6) 48px, transparent 48px),
+    url(../assets/images/room/dentil.svg) 0 49px / 12px 10px repeat-x,
+    linear-gradient(to bottom, transparent 59px, #2E385A 59px, var(--lacquer-2) 63px, rgba(230, 200, 135, 0.45) 63px),
+    linear-gradient(to bottom, var(--lacquer) 13px, var(--lacquer-2) 47px);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat-x, no-repeat, no-repeat;
+}
+
+.cabinet__frieze {
+  position: absolute;
+  left: 50%;
+  top: 13px;
+  width: 340px;
+  max-width: calc(100% - 16px);
+  height: 34px;
+  transform: translateX(-50%);
+  background: url(../assets/images/room/frieze.svg) center / contain no-repeat;
+}
+
+/* 見出しの欄: 本棚の名と冊数・本をさがす・棚の索引。藍の漆（なめらかな艶、ごく弱い木目が透ける） */
+.cabinet__rail {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0 8px;
+  padding: 8px 12px 10px 16px;
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent 9px),
+    linear-gradient(to top, rgba(230, 200, 135, 0.55) 0, rgba(230, 200, 135, 0.55) 1px, rgba(0, 0, 0, 0.5) 1px, transparent 4px),
+    linear-gradient(100deg, rgba(190, 206, 245, 0) 8%, rgba(190, 206, 245, 0.07) 22%, rgba(190, 206, 245, 0) 40%, rgba(0, 0, 0, 0) 70%, rgba(0, 0, 0, 0.14) 100%),
+    url(../assets/images/room/tile-lacqh.webp) 0 0 / 512px 128px,
+    linear-gradient(to bottom, var(--lacquer), var(--lacquer-2));
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+}
+
+.bookshelf__title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font: 500 21px/1.3 var(--font-display);
+  letter-spacing: 0.14em;
+  color: var(--on-vault);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.bookshelf__title small {
+  font: 500 13px/1 var(--font-display);
+  letter-spacing: 0.06em;
+  color: var(--on-vault-2);
+}
+
+.bookshelf__title .n {
+  font: 600 18px/1 var(--font-latin);
+  color: var(--foil);
+  letter-spacing: 0;
+  margin-right: 2px;
+}
+
+.bookshelf .find {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+  color: var(--on-vault);
+  font: 500 14px/1 var(--font-display);
+  letter-spacing: 0.1em;
+}
+
+.find span {
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 200, 135, 0.6);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+}
+
+.find svg {
+  width: 17px;
+  height: 17px;
+  color: var(--foil);
+}
+
+.bookshelf .find:hover {
+  background: none;
+}
+
+.find:hover span {
+  text-decoration-color: var(--foil);
+}
+
+.find:focus-visible {
+  outline: 2px solid var(--on-vault);
+  outline-offset: 2px;
+}
+
+/* 棚の索引: 彫りこんだ索引の帯（くぼんだ漆の面に金を入れた文字、区切りは真鍮の鋲）。押せる高さ 44px。狭い幅は 2 行の格子 */
+.shelf-index {
+  grid-column: 1 / -1;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 6px -4px 0;
+  padding: 2px 0;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.18) 6px, rgba(0, 0, 0, 0.1) 60%, rgba(0, 0, 0, 0.22));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), inset 0 -1px 0 rgba(170, 186, 230, 0.14), 0 1px 0 rgba(170, 186, 230, 0.1);
+}
+
+.shelf-index::before,
+.shelf-index::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #6E4E1E, #C9A35A 12%, #F3D58A 30%, #B98A3E 50%, #8A6A30 80%, #6E4E1E);
+  opacity: 0.75;
+}
+
+.shelf-index::before {
+  top: -4px;
+}
+
+.shelf-index::after {
+  bottom: -4px;
+  opacity: 0.45;
+}
+
+.shelf-index a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  color: var(--foil);
+  text-decoration: none;
+  font: 500 14px/1 var(--font-display);
+  letter-spacing: 0.08em;
+  text-indent: 0.08em;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 0 rgba(170, 186, 230, 0.16);
+}
+
+.shelf-index a:not(:nth-child(4n + 1))::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #F6E2A8, #8A6A30 70%);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+
+.shelf-index a:nth-child(n + 5)::after {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.5), transparent);
+  box-shadow: 0 1px 0 rgba(170, 186, 230, 0.1);
+}
+
+.shelf-index a:hover {
+  color: #F6E2A8;
+}
+
+.shelf-index a:focus-visible {
+  outline: 2px solid var(--on-vault);
+  outline-offset: -3px;
+}
+
+@container (min-width: 420px) {
+  .cabinet__rail .shelf-index {
+    grid-template-columns: repeat(8, auto);
+    justify-content: space-between;
+    padding: 0 6px;
+  }
+  .cabinet__rail .shelf-index a {
+    padding: 0 6px;
+  }
+  .cabinet__rail .shelf-index a::before {
+    display: none;
+  }
+  .cabinet__rail .shelf-index a:not(:first-child)::before {
+    content: "";
+    display: block;
+    position: absolute;
+    left: -2px;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    margin-top: -2px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #F6E2A8, #8A6A30 70%);
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+  }
+  .cabinet__rail .shelf-index a:nth-child(n + 5)::after {
+    display: none;
+  }
+}
+
+/* 框（左右の柱）: 漆の艶と縦の木目、内側に金の細線 */
+.cabinet__body {
+  position: relative;
+  padding: 0 12px;
+  background:
+    linear-gradient(90deg, rgba(190, 206, 245, 0.12) 0, rgba(190, 206, 245, 0) 2px, transparent 9px, rgba(230, 200, 135, 0.5) 9px, rgba(230, 200, 135, 0.5) 9.75px, rgba(0, 0, 0, 0.6) 10.5px, transparent 12px),
+    linear-gradient(270deg, rgba(0, 0, 0, 0.45) 0, transparent 3px, transparent 9px, rgba(230, 200, 135, 0.4) 9px, rgba(230, 200, 135, 0.4) 9.75px, rgba(0, 0, 0, 0.6) 10.5px, transparent 12px),
+    linear-gradient(90deg, rgba(190, 206, 245, 0.06), transparent 6px, transparent calc(100% - 6px), rgba(0, 0, 0, 0.2)),
+    url(../assets/images/room/tile-lacqv.webp) 0 0 / 128px 512px,
+    linear-gradient(90deg, var(--lacquer), var(--lacquer-2) 50%, var(--lacquer-2));
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+}
+
+.cabinet__plinth {
+  height: 30px;
+  background:
+    linear-gradient(to bottom, rgba(230, 200, 135, 0.55) 0, rgba(230, 200, 135, 0.55) 1px, rgba(190, 206, 245, 0.2) 1px, transparent 3px),
+    linear-gradient(to bottom, transparent 10px, rgba(0, 0, 0, 0.5) 10px, rgba(0, 0, 0, 0.5) 11px, rgba(190, 206, 245, 0.12) 11px, transparent 13px),
+    url(../assets/images/room/tile-lacqh.webp) 0 0 / 512px 128px,
+    linear-gradient(to bottom, var(--lacquer), var(--lacquer-2) 12px, var(--lacquer-3));
+  background-blend-mode: normal, normal, soft-light, normal;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- 段 ---- */
+.shelf {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  scroll-margin-top: 12px;
+}
+
+/* 背板: 棚板より暗い。縦の板の継ぎ目（暗い 1px＋明るい 1px）、上と左右の隅に強い陰。DOM は本 → 棚板（札）の順、見た目は同じ */
+.shelf__in {
+  order: 1;
+  position: relative;
+  z-index: 1;
+  padding: 0;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 63px, rgba(0, 0, 0, 0.55) 63px 64px, rgba(160, 175, 220, 0.05) 64px 65px),
+    linear-gradient(to bottom, #04060D, var(--lacquer-3) 34px, #0A0E1C);
+  background-size: 100% calc(100% - 16px);
+  background-repeat: no-repeat;
+  box-shadow: inset 0 18px 22px -8px rgba(0, 0, 0, 0.8), inset 12px 0 14px -8px rgba(0, 0, 0, 0.65), inset -12px 0 14px -8px rgba(0, 0, 0, 0.65);
+}
+
+.books {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 0;
+  padding: 36px 8px 16px;
+  list-style: none;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.books::-webkit-scrollbar {
+  display: none;
+}
+
+/* 続きがある段: 右端は消し切らず、のぞく背が見えるように */
+.books--scroll {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), rgba(0, 0, 0, 0.4));
+  mask-image: linear-gradient(90deg, #000 calc(100% - 26px), rgba(0, 0, 0, 0.4));
+  padding-right: 30px;
+}
+
+.books > li {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* 棚板: 2 つの面。上面（4px、光を受ける）＋前面（名札・答える言葉・続き）。前面の上に暖かい光、下の縁は暗く、背板へ影を落とす。
+   名札は自分の本のすぐ下（棚板の前面）にあり、次の段の本までは背板が 36px あく */
+.shelf__board {
+  order: 2;
+  position: relative;
+  z-index: 2;
+  height: 38px;
+  margin-top: -16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 5px 8px 0;
+  background:
+    linear-gradient(to bottom, #5A6794 0, #45507E 4px, rgba(4, 6, 12, 0.8) 4px, rgba(4, 6, 12, 0.8) 5px, rgba(255, 226, 186, 0.3) 5px, rgba(255, 226, 186, 0.3) 6px, rgba(255, 226, 186, 0.07) 6px, transparent 12px),
+    linear-gradient(to top, rgba(0, 0, 0, 0.6) 0, rgba(0, 0, 0, 0.6) 1.5px, rgba(0, 0, 0, 0.18) 1.5px, transparent 8px),
+    linear-gradient(90deg, rgba(190, 206, 245, 0.07), transparent 26%, transparent 70%, rgba(0, 0, 0, 0.2)),
+    url(../assets/images/room/tile-lacqh.webp) 0 0 / 512px 128px,
+    linear-gradient(to bottom, var(--lacquer) 6px, var(--lacquer-2));
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+  box-shadow: 0 9px 10px -3px rgba(0, 0, 0, 0.6);
+}
+
+.shelf__label {
+  margin: 0;
+  display: flex;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* 真鍮の名札。小さなラベルの字間は広げない（.08em まで） */
+.plate {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 14px 3px;
+  border-radius: 2px;
+  color: var(--ink-page);
+  font: 500 13px/1.45 var(--font-display);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  background: linear-gradient(100deg, var(--brass-1) 0%, var(--brass-2) 7%, var(--brass-3) 24%, var(--brass-2) 44%, var(--brass-4) 88%, var(--brass-5) 100%);
+  box-shadow: inset 0 0 0 0.75px rgba(62, 44, 18, 0.6), inset 0 1px 0 rgba(255, 244, 210, 0.55), inset 0 -1px 0 rgba(62, 44, 18, 0.35), 0 1px 1.5px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.35);
+}
+
+.plate::before,
+.plate::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #F6E2A8, #6E4E1E);
+  box-shadow: 0 0 0 0.5px rgba(62, 44, 18, 0.5);
+}
+
+.plate::before {
+  left: 5px;
+}
+
+.plate::after {
+  right: 5px;
+}
+
+.plate .n {
+  font: 600 14.5px/1 var(--font-latin);
+  letter-spacing: 0.02em;
+}
+
+.plate small {
+  font: 500 12px/1 var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.shelf__lang {
+  font: 500 12.5px/1.3 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--on-vault-2);
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* 続き: 「あと N冊 →」。押せる高さ 44px（棚板の上下にはみ出す透明な余白） */
+.bookshelf .more {
+  margin: -6px 0 -6px auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 2px 0 6px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+  color: var(--on-vault);
+  font: 500 13px/1 var(--font-display);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.more b {
+  font: 600 16px/1 var(--font-latin);
+  color: var(--foil);
+  margin: 0 2px;
+}
+
+.more svg {
+  width: 14px;
+  height: 9px;
+  color: var(--foil);
+}
+
+.bookshelf .more:hover {
+  background: none;
+  color: var(--foil);
+}
+
+.more--back svg {
+  transform: scaleX(-1);
+}
+
+.more:focus-visible {
+  outline: 2px solid var(--on-vault);
+  outline-offset: 2px;
+}
+
+.bookshelf .more[hidden] {
+  display: none;
+}
+
+.shelf__board:has(.more) {
+  justify-content: flex-start;
+  padding-left: 10px;
+}
+
+/* ---- 背表紙: 丸背の陰影・しぼ・バンド・金箔の題。幅は 44／48／52（押せる幅 44 以上）、押せる高さは背の全高 ---- */
+.bookshelf .spine {
+  --w: 44px;
+  --h: 130px;
+  --c: var(--leather-walnut);
+  --t: var(--foil);
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2.5px 2.5px 1px 1px;
+  cursor: pointer;
+  color: var(--t);
+  font: 500 15px/1.1 var(--font-display);
+  background:
+    linear-gradient(to bottom, rgba(255, 240, 210, 0.22) 0, rgba(255, 240, 210, 0) 3px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.1) 15%, rgba(255, 238, 205, 0.09) 36%, rgba(255, 238, 205, 0) 56%, rgba(0, 0, 0, 0.22) 80%, rgba(0, 0, 0, 0.66) 100%),
+    linear-gradient(to bottom, transparent 7px, rgba(230, 200, 135, 0.78) 7px, rgba(230, 200, 135, 0.78) 7.8px, transparent 7.8px, transparent 9.4px, rgba(230, 200, 135, 0.78) 9.4px, rgba(230, 200, 135, 0.78) 10.2px, transparent 10.2px),
+    linear-gradient(to bottom, transparent 15px, rgba(255, 235, 200, 0.3) 15px, rgba(255, 235, 200, 0.3) 16px, rgba(0, 0, 0, 0.15) 16px, rgba(0, 0, 0, 0.15) 18px, rgba(0, 0, 0, 0.55) 18px, rgba(0, 0, 0, 0.55) 19px, transparent 19px),
+    linear-gradient(to top, transparent 15px, rgba(0, 0, 0, 0.55) 15px, rgba(0, 0, 0, 0.55) 16px, rgba(0, 0, 0, 0.15) 16px, rgba(0, 0, 0, 0.15) 18px, rgba(255, 235, 200, 0.3) 18px, rgba(255, 235, 200, 0.3) 19px, transparent 19px),
+    linear-gradient(to top, transparent 7px, rgba(230, 200, 135, 0.78) 7px, rgba(230, 200, 135, 0.78) 7.8px, transparent 7.8px, transparent 9.4px, rgba(230, 200, 135, 0.78) 9.4px, rgba(230, 200, 135, 0.78) 10.2px, transparent 10.2px),
+    url(../assets/images/room/tile-leather-soft.webp) 0 0 / 80px 80px,
+    linear-gradient(to bottom, color-mix(in srgb, var(--c), #fff 4%), var(--c) 30%, color-mix(in srgb, var(--c), #000 18%));
+  background-blend-mode: normal, normal, normal, normal, normal, normal, soft-light, normal;
+  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.55), 0 -1px 0 rgba(0, 0, 0, 0.3);
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.bookshelf .spine:hover {
+  transform: translateY(-3px);
+  filter: brightness(1.08);
+}
+
+.spine::before,
+.box::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: transparent;
+}
+
+.spine__l,
+.spine__v,
+.box__l,
+.box__n {
+  z-index: 1;
+}
+
+.spine:focus-visible,
+.box:focus-visible,
+.doors:focus-visible {
+  outline: 2px solid var(--on-vault);
+  outline-offset: 2px;
+  transform: translateY(-3px);
+}
+
+/* 読み込み中（押した本のパックを読んでいる）: 薄い金の光 */
+.bookshelf .spine[aria-busy="true"],
+.bookshelf .box[aria-busy="true"] {
+  filter: brightness(1.12) saturate(0.9);
+  box-shadow: 0 0 0 1px rgba(243, 213, 138, 0.6), 0 0 14px rgba(243, 213, 138, 0.45);
+}
+
+.spine__l {
+  position: absolute;
+  top: 22px;
+  bottom: 22px;
+  left: 0;
+  right: 0;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  color: var(--t);
+}
+
+.spine__t {
+  font: 500 15px/1.1 var(--font-display);
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55), 0 -0.5px 0 rgba(255, 240, 200, 0.22);
+  white-space: nowrap;
+}
+
+/* 巻・学年・上下巻を分ける副題: 13px（本を見分ける文字なので小さくしない） */
+.spine__s {
+  font: 500 13px/1.1 var(--font-display);
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}
+
+.spine .lat,
+.box .lat {
+  font: 600 15px/1 var(--font-latin);
+  letter-spacing: 0.08em;
+}
+
+.spine--vol .spine__l {
+  bottom: 38px;
+}
+
+.spine__v {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 21px;
+  text-align: center;
+  font: 600 14px/1 var(--font-latin);
+  letter-spacing: 0.04em;
+  color: #F0D9A0;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* 細い背（PC で段に詰めたとき）: 題と副題を 1 本の縦の行に */
+@container (max-width: 35px) {
+  .spine__l {
+    flex-direction: row;
+    gap: 3px;
+    top: 16px;
+    bottom: 16px;
+  }
+  .spine--vol .spine__l {
+    bottom: 34px;
+  }
+  .spine__t {
+    font-size: 14px;
+    letter-spacing: 0.02em;
+  }
+  .spine__s {
+    font-size: 12.5px;
+  }
+  .spine--label .spine__l {
+    left: 3px;
+    right: 3px;
+    padding: 5px 0;
+    max-height: calc(100% - 22px);
+  }
+}
+
+/* 布装（細かな綾）と、背の題箋（紙ラベル） */
+.bookshelf .spine--cloth {
+  background-image:
+    linear-gradient(to bottom, rgba(255, 240, 210, 0.18) 0, rgba(255, 240, 210, 0) 3px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.06) 15%, rgba(255, 238, 205, 0.12) 36%, rgba(255, 238, 205, 0) 56%, rgba(0, 0, 0, 0.18) 80%, rgba(0, 0, 0, 0.6) 100%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.07) 0 1px, transparent 1px 3px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--c), #fff 5%), var(--c) 40%, color-mix(in srgb, var(--c), #000 15%));
+  background-blend-mode: normal;
+}
+
+.spine--label .spine__l {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  max-height: calc(100% - 28px);
+  padding: 6px 0;
+  left: 4px;
+  right: 4px;
+  color: var(--ink-page);
+  border-radius: 1px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.08), transparent 30%, transparent 70%, rgba(0, 0, 0, 0.1)), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 128px, #EEE5D0;
+  background-blend-mode: normal, soft-light, normal;
+  box-shadow: inset 0 0 0 0.75px rgba(90, 64, 34, 0.45), 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+.spine--label .spine__t,
+.spine--label .spine__s {
+  text-shadow: none;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.bookshelf .spine--vellum {
+  --c: var(--leather-vellum);
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.3) 0, rgba(255, 255, 255, 0) 3px),
+    linear-gradient(90deg, rgba(60, 40, 20, 0.4) 0%, rgba(60, 40, 20, 0.04) 12%, rgba(255, 252, 240, 0.3) 36%, rgba(255, 252, 240, 0) 56%, rgba(60, 40, 20, 0.08) 86%, rgba(60, 40, 20, 0.45) 100%),
+    linear-gradient(to bottom, transparent 8px, rgba(110, 78, 30, 0.55) 8px, rgba(110, 78, 30, 0.55) 8.8px, transparent 8.8px),
+    linear-gradient(to top, transparent 8px, rgba(110, 78, 30, 0.55) 8px, rgba(110, 78, 30, 0.55) 8.8px, transparent 8.8px),
+    url(../assets/images/room/tile-paper-soft.webp) 0 0 / 128px 128px,
+    linear-gradient(to bottom, #E9DCBE, #D6C4A0);
+  background-blend-mode: normal, normal, normal, normal, soft-light, normal;
+}
+
+.spine--vellum .spine__l {
+  background: transparent;
+  box-shadow: inset 0 0 0 0.75px rgba(90, 64, 34, 0.5);
+}
+
+/* 長い題（6 字以上）: 少し小さく、字間 0。背の上下の余白も詰める */
+.spine--long .spine__l {
+  top: 18px;
+  bottom: 18px;
+}
+
+.spine--long.spine--vol .spine__l {
+  bottom: 36px;
+}
+
+.spine--long .spine__t {
+  font-size: 13.5px;
+  letter-spacing: 0;
+}
+
+.spine--long .spine__s {
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+/* 題箋つきの長い題（英検 ライティング・漢文 句法と重要語）: ラベルは中央のまま。.spine--long の top/bottom だけが勝つと translateY(-50%) が残り、背の上にはみ出していた */
+.spine--label.spine--long .spine__l {
+  top: 50%;
+  bottom: auto;
+  max-height: calc(100% - 20px);
+}
+
+/* マイ単語帳: 仔牛皮紙の薄い帳面（背の文字は墨） */
+.spine--my .spine__t {
+  font-size: 13px;
+}
+
+/* 読みかけ: 藍の絹のしおりが棚板の上に長く垂れ、背の小口に淡い金の光 */
+.bookshelf .spine--reading {
+  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.55), 0 -1px 0 rgba(0, 0, 0, 0.3), inset 0 2px 0 rgba(243, 213, 138, 0.55), 0 -3px 8px -2px rgba(243, 213, 138, 0.35);
+}
+
+.spine--reading::after,
+.box--reading::after {
+  content: "";
+  position: absolute;
+  left: 56%;
+  bottom: -17px;
+  width: 6px;
+  height: 21px;
+  z-index: 2;
+  background: linear-gradient(90deg, var(--lapis), var(--lapis-3) 45%, var(--lapis-2) 70%, var(--lapis));
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%);
+  filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, 0.5));
+}
+
+.box--reading::after {
+  left: 30%;
+}
+
+/* 机の本の空き: 背板より暗い穴（左右の背の陰が落ちる）。棚板には本の立っていた跡の、ごく淡い埃の線だけ */
+.slot {
+  --w: 40px;
+  --h: 128px;
+  position: relative;
+  display: block;
+  width: var(--w);
+  height: var(--h);
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.35) 30%, rgba(0, 0, 0, 0.4) 70%, rgba(0, 0, 0, 0.8)), linear-gradient(to bottom, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.25) 40%, rgba(0, 0, 0, 0.45));
+  box-shadow: inset 0 14px 16px -6px rgba(0, 0, 0, 0.7);
+}
+
+.slot::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: -2px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200, 190, 170, 0.22) 15%, rgba(200, 190, 170, 0.22) 85%, transparent);
+}
+
+/* 真鍮の本立て（L 字の板、光の側に鋭い反射） */
+.bookend {
+  position: relative;
+  display: block;
+  width: 26px;
+  height: 74px;
+  margin: 0 4px 0 2px;
+}
+
+.bookend::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 26px;
+  height: 4px;
+  border-radius: 1px;
+  background: linear-gradient(to bottom, #F3D58A, #A97A32 60%, #5A3E16);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.bookend::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 3px;
+  width: 7px;
+  height: 70px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(90deg, #F6E2A8 0, #C9A35A 18%, #8A6A30 60%, #3E2C12 100%);
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.55);
+  clip-path: polygon(0 0, 100% 10%, 100% 100%, 0 100%);
+}
+
+/* 寝かせた本の山（段の途中は PC だけ。スマホの 1 画面目の右端で切れるのは本物の背） */
+.flat {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0;
+  margin: 0 4px 0 6px;
+}
+
+.flat i {
+  display: block;
+  height: 12px;
+  border-radius: 1px 2px 2px 1px;
+  box-shadow: inset 0 1px 0 rgba(255, 235, 200, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.5), 0 1px 0 rgba(0, 0, 0, 0.5);
+  background-image: linear-gradient(90deg, transparent 8px, rgba(230, 200, 135, 0.6) 8px, rgba(230, 200, 135, 0.6) 9px, transparent 9px, transparent calc(100% - 5px), #E9DFC8 calc(100% - 5px), #CDBF9F calc(100% - 1px), rgba(0, 0, 0, 0.4) 100%);
+}
+
+.books > li.fill {
+  display: none;
+}
+
+.shelf--box .books > li.fill {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.shelf--box .books > li.fill .flat {
+  display: none;
+}
+
+@media (max-width: 1099px) {
+  .books > li.mid--pc {
+    display: none;
+  }
+}
+
+/* ---- 函（コース）: 布張りの箱＋貼り題箋。上の口から巻の頭が段になってのぞく（花布と金の帯）。縁は左上に 1px の光 ---- */
+.bookshelf .box {
+  --w: 68px;
+  --h: 148px;
+  --c: var(--leather-slate);
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  margin: 9px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 1.5px;
+  cursor: pointer;
+  flex: none;
+  color: var(--ink-page);
+  font: 500 15px/1.1 var(--font-display);
+  background:
+    linear-gradient(90deg, rgba(255, 238, 205, 0.2) 0, rgba(255, 238, 205, 0.2) 1px, rgba(255, 255, 255, 0.05) 1px, transparent 6px, transparent calc(100% - 7px), rgba(0, 0, 0, 0.3) calc(100% - 3px), rgba(0, 0, 0, 0.55) 100%),
+    linear-gradient(to bottom, rgba(255, 238, 205, 0.22) 0, rgba(255, 238, 205, 0.22) 1px, transparent 1px),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.07) 0 1px, transparent 1px 3px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--c), #fff 8%), var(--c) 40%, color-mix(in srgb, var(--c), #000 22%));
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.4), 1px 0 0 rgba(0, 0, 0, 0.6), 3px 0 5px -2px rgba(0, 0, 0, 0.5);
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.bookshelf .box:hover {
+  transform: translateY(-3px);
+  filter: brightness(1.08);
+}
+
+/* 巻の頭: 平らな段（花布の光と金の帯）。くすんだ革 */
+.box__vols {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: -9px;
+  height: 10px;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  z-index: 0;
+}
+
+.box__vols i {
+  flex: 1;
+  border-radius: 1px 1px 0 0;
+  background:
+    linear-gradient(to bottom, rgba(255, 238, 205, 0.32) 0, rgba(255, 238, 205, 0) 2px),
+    linear-gradient(to bottom, transparent 4px, rgba(230, 200, 135, 0.8) 4px, rgba(230, 200, 135, 0.8) 4.8px, transparent 4.8px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.5), rgba(255, 238, 205, 0.08) 40%, rgba(0, 0, 0, 0.45)),
+    var(--v, #4A2320);
+  box-shadow: 0 -0.5px 0 rgba(0, 0, 0, 0.5);
+}
+
+.box__vols i:nth-child(1) { height: 7px; --v: #4A2320; }
+.box__vols i:nth-child(2) { height: 9px; --v: #2B1F17; }
+.box__vols i:nth-child(3) { height: 6px; --v: #5E361C; }
+.box__vols i:nth-child(4) { height: 8px; --v: #1E2436; }
+
+.box__l {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 12px;
+  bottom: 32px;
+  padding: 6px 0;
+  writing-mode: vertical-rl;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink-page);
+  border-radius: 1px;
+  background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 128px, #EEE5D0;
+  background-blend-mode: soft-light, normal;
+  box-shadow: inset 0 0 0 0.75px rgba(90, 64, 34, 0.5), inset 0 0 0 2.5px #EEE5D0, inset 0 0 0 3.25px rgba(90, 64, 34, 0.35), 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+.box__l .spine__t {
+  text-shadow: none;
+  font-size: 15px;
+}
+
+.box__l .spine__s {
+  text-shadow: none;
+}
+
+.box__n {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 9px;
+  text-align: center;
+  white-space: nowrap;
+  font: 500 13px/1 var(--font-display);
+  color: var(--foil);
+  letter-spacing: 0;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.box__n b {
+  font: 600 16px/1 var(--font-latin);
+  margin: 0 1px;
+}
+
+.box .lat {
+  font: 600 13px/1 var(--font-latin);
+  letter-spacing: 0.08em;
+}
+
+.box--long .spine__t {
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+/* ---- 仕事の言葉の扉: 半開きのガラス戸（框＋ガラスの向こうに数冊の背が見える。鍵穴は無い）。名札は「仕事の言葉 49冊」、下に「49冊を見る」 ---- */
+.archive {
+  position: relative;
+  scroll-margin-top: 12px;
+}
+
+.bookshelf .doors {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  width: 100%;
+  height: 188px;
+  margin: 0;
+  padding: 16px 10px 14px;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  text-align: center;
+  color: var(--on-vault);
+  font: 500 14px/1.4 var(--font-display);
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 16px), linear-gradient(var(--lacquer-2), var(--lacquer-3));
+}
+
+.door {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1px;
+  background:
+    linear-gradient(135deg, rgba(190, 206, 245, 0.1), transparent 40%, rgba(0, 0, 0, 0.25)),
+    url(../assets/images/room/tile-lacqv.webp) 0 0 / 128px 512px,
+    linear-gradient(to bottom, #252E4C, var(--lacquer-2));
+  background-blend-mode: normal, soft-light, normal;
+  box-shadow: inset 1px 1px 0 rgba(190, 206, 245, 0.28), inset -1px -1px 0 rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+/* 左の戸は手前へ少し開いている（蝶番は左） */
+.door--l {
+  transform: perspective(520px) rotateY(-16deg);
+  transform-origin: 0 50%;
+  box-shadow: inset 1px 1px 0 rgba(190, 206, 245, 0.28), inset -1px -1px 0 rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(0, 0, 0, 0.55), 6px 0 12px -2px rgba(0, 0, 0, 0.6);
+}
+
+/* ガラス: 框の内側。向こうに背が数冊、手前に斜めの映り込み */
+.door__glass {
+  position: absolute;
+  inset: 14px 12px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 8px 10px;
+  border-radius: 1px;
+  overflow: hidden;
+  background: linear-gradient(to bottom, #0A0E1C, #05070F);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7), inset 2px 2px 0 rgba(190, 206, 245, 0.2), inset -2px -2px 0 rgba(0, 0, 0, 0.5), 0 0 0 0.75px rgba(230, 200, 135, 0.22);
+}
+
+.door__glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(112deg, rgba(220, 230, 255, 0.02) 0, rgba(220, 230, 255, 0.16) 28%, rgba(220, 230, 255, 0.02) 36%, rgba(220, 230, 255, 0) 60%, rgba(220, 230, 255, 0.08) 100%);
+}
+
+.door__glass i {
+  display: block;
+  width: 14px;
+  height: 52px;
+  border-radius: 1.5px 1.5px 0 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.5), rgba(255, 238, 205, 0.1) 40%, rgba(0, 0, 0, 0.4)), linear-gradient(to bottom, transparent 6px, rgba(230, 200, 135, 0.6) 6px, rgba(230, 200, 135, 0.6) 7px, transparent 7px), var(--v, #2B1F17);
+  opacity: 0.85;
+}
+
+.door__glass i:nth-child(1) { --v: #2B1F17; height: 50px; }
+.door__glass i:nth-child(2) { --v: #4A2320; height: 56px; }
+.door__glass i:nth-child(3) { --v: #5E361C; height: 48px; }
+.door__glass i:nth-child(4) { --v: #2C3550; height: 54px; }
+
+/* 吊り輪の引き手: 丸い座金（ロゼット）から下がる輪。輪は扉に影を落とす */
+.pull {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 22px;
+  margin-top: 8px;
+}
+
+.pull::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 34%, #FBE9B4 0, #D8B66E 30%, #8A6A30 72%, #3E2C12 100%);
+  box-shadow: 1px 1.5px 1.5px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(62, 44, 18, 0.6);
+}
+
+.pull::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.8px solid #B08A46;
+  border-top-color: #E4C47E;
+  border-left-color: #F3DDA4;
+  border-bottom-color: #7A5C26;
+  box-shadow: 2px 3px 2px -1px rgba(0, 0, 0, 0.65), inset 1px 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+.door--l .pull {
+  right: 3px;
+}
+
+.door--r .pull {
+  left: 3px;
+}
+
+.doors__plate {
+  position: absolute;
+  left: 50%;
+  top: 24px;
+  transform: translateX(-50%);
+  padding: 6px 16px 7px;
+  border-radius: 2px;
+  color: var(--ink-page);
+  white-space: nowrap;
+  background: linear-gradient(100deg, var(--brass-1) 0%, var(--brass-2) 9%, var(--brass-3) 24%, var(--brass-2) 40%, var(--brass-4) 78%, var(--brass-5) 100%);
+  box-shadow: inset 0 0 0 0.75px rgba(62, 44, 18, 0.6), inset 0 1px 0 rgba(255, 244, 210, 0.55), 0 2px 3px rgba(0, 0, 0, 0.7);
+}
+
+.doors__plate b {
+  display: block;
+  font: 500 16px/1.35 var(--font-display);
+  letter-spacing: 0.08em;
+}
+
+.doors__plate b .n {
+  font: 600 18px/1 var(--font-latin);
+}
+
+.doors__plate small {
+  display: block;
+  margin-top: 1px;
+  font: 500 12px/1.4 var(--font-display);
+  letter-spacing: 0.06em;
+  color: var(--ink-page-2);
+}
+
+.doors__go {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 3px;
+  font: 500 14px/1.4 var(--font-display);
+  letter-spacing: 0.1em;
+  color: var(--foil);
+  border-bottom: 0.75px solid rgba(230, 200, 135, 0.55);
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.75), 0 1px 0 rgba(255, 240, 200, 0.14);
+  white-space: nowrap;
+}
+
+.doors__go svg {
+  width: 14px;
+  height: 9px;
+}
+
+.bookshelf .doors:hover {
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 16px), linear-gradient(var(--lacquer-2), var(--lacquer-3));
+}
+
+.doors:hover .doors__plate {
+  filter: brightness(1.05);
+}
+
+/* 開いた扉: 戸は畳み、名札と「閉じる」だけの 1 行 */
+.bookshelf .doors--open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: auto;
+  min-height: 64px;
+  padding: 14px 10px 10px;
+}
+
+.doors--open .door {
+  display: none;
+}
+
+.doors--open .doors__plate,
+.doors--open .doors__go {
+  position: static;
+  transform: none;
+}
+
+.doors--open .doors__go svg {
+  transform: rotate(90deg);
+}
+
+.archive__in {
+  position: relative;
+}
+
+.archive__in[hidden] {
+  display: none;
+}
+
+/* ---- 本をさがす（索引カードの引き出し） ---- */
+.bookshelf .finder {
+  width: min(560px, calc(100% - 20px));
+  max-height: min(640px, calc(100% - 40px));
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-page);
+  overflow: visible;
+}
+
+.finder::backdrop {
+  background: radial-gradient(ellipse 80% 70% at 50% 42%, rgba(20, 14, 8, 0.5), rgba(20, 14, 8, 0.82));
+}
+
+.finder__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  margin: 0;
+  padding: 18px 20px 14px;
+  border-radius: 2px;
+  background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, var(--parchment);
+  background-blend-mode: soft-light, normal;
+  box-shadow: inset 0 0 0 0.75px rgba(169, 122, 50, 0.55), inset 0 0 0 4px var(--parchment), inset 0 0 0 4.75px rgba(169, 122, 50, 0.35), 0 30px 60px -20px rgba(0, 0, 0, 0.8), 0 12px 24px -8px rgba(0, 0, 0, 0.6);
+}
+
+.finder__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 0.75px solid rgba(42, 33, 25, 0.3);
+}
+
+.finder__head h2 {
+  margin: 0;
+  font: 500 21px/1.3 var(--font-display);
+  letter-spacing: 0.14em;
+  color: var(--ink-page);
+}
+
+.bookshelf .finder__close {
+  width: 44px;
+  height: 44px;
+  margin: 0 -10px 0 0;
+  padding: 0;
+  display: grid;
+  place-content: center;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-page-2);
+}
+
+.finder__close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.finder__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 4px;
+  border-bottom: 1px solid rgba(42, 33, 25, 0.55);
+}
+
+.finder__field svg {
+  width: 17px;
+  height: 17px;
+  color: var(--ink-page-3);
+  flex: none;
+}
+
+.finder__field input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-page);
+  font: 500 16px/1 var(--font-display);
+  letter-spacing: 0.04em;
+  box-shadow: none;
+}
+
+.finder__field input::placeholder {
+  color: #7A6B58;
+}
+
+.finder__field input:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.finder__field:focus-within {
+  border-bottom-color: var(--ink-page);
+  box-shadow: 0 1px 0 var(--ink-page);
+}
+
+.finder__field input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.finder__hint {
+  margin: 8px 0 2px;
+  font: 500 12.5px/1.5 var(--font-display);
+  letter-spacing: 0.08em;
+  color: var(--ink-page-3);
+}
+
+.finder__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.bookshelf .finder__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  width: 100%;
+  min-height: 46px;
+  margin: 0;
+  padding: 9px 0 8px;
+  border: 0;
+  border-bottom: 0.75px solid rgba(42, 33, 25, 0.14);
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-page);
+  font: 500 15px/1.45 var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.finder__t {
+  flex: 1 1 100%;
+}
+
+.finder__lead {
+  display: none;
+}
+
+.finder__m {
+  flex: 1 1 100%;
+  font-size: 12.5px;
+  color: var(--ink-page-3);
+  letter-spacing: 0.04em;
+}
+
+.bookshelf .finder__row:hover,
+.bookshelf .finder__row:focus-visible {
+  background: rgba(201, 163, 90, 0.12);
+}
+
+.finder__row:hover .finder__t,
+.finder__row:focus-visible .finder__t {
+  text-decoration: underline;
+  text-decoration-color: rgba(169, 122, 50, 0.7);
+  text-underline-offset: 4px;
+}
+
+.finder__row:focus-visible,
+.finder__close:focus-visible {
+  outline: 2px solid var(--ink-page);
+  outline-offset: -2px;
+}
+
+@media (min-width: 560px) {
+  .finder__row {
+    flex-wrap: nowrap;
+  }
+  .finder__t {
+    flex: 0 1 auto;
+  }
+  .finder__lead {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 12px;
+    height: 4px;
+    align-self: center;
+    margin-top: 6px;
+    background: radial-gradient(circle, rgba(42, 33, 25, 0.4) 0.75px, transparent 1.15px) 0 50% / 6px 4px repeat-x;
+  }
+  .finder__m {
+    flex: none;
+    white-space: nowrap;
+  }
+}
+
+/* ---- 夜（dark／indigo）: 背の丸みの左に暖かい縁、題箋は沈め、背板はさらに暗く ---- */
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .spine::before,
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .box::before {
+  background: linear-gradient(90deg, rgba(255, 180, 100, 0.42) 0, rgba(255, 180, 100, 0.12) 1px, rgba(255, 180, 100, 0) 3px, rgba(4, 3, 2, 0.3) 4px, rgba(4, 3, 2, 0.4) 100%), linear-gradient(to bottom, rgba(255, 190, 120, 0.3) 0, transparent 2px);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .spine--label .spine__l,
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .box__l {
+  filter: brightness(0.86) sepia(0.15);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .shelf__in {
+  background: repeating-linear-gradient(90deg, transparent 0 63px, rgba(0, 0, 0, 0.6) 63px 64px, rgba(255, 190, 120, 0.03) 64px 65px), linear-gradient(to bottom, #020306, #04060C 30px, #070A14);
+  background-size: 100% calc(100% - 16px);
+  background-repeat: no-repeat;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .spine--vellum::before {
+  background: linear-gradient(90deg, rgba(255, 176, 96, 0.2) 0, transparent 3px, rgba(30, 18, 8, 0.16) 3px, rgba(30, 18, 8, 0.2) 100%);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .shelf__board {
+  background:
+    linear-gradient(to bottom, #4A3E30 0, #2A2C40 4px, rgba(0, 0, 0, 0.85) 4px, rgba(0, 0, 0, 0.85) 5px, rgba(255, 186, 112, 0.3) 5px, rgba(255, 186, 112, 0.3) 6px, rgba(255, 186, 112, 0.05) 6px, transparent 12px),
+    linear-gradient(to top, rgba(0, 0, 0, 0.65) 0, rgba(0, 0, 0, 0.65) 1.5px, rgba(0, 0, 0, 0.2) 1.5px, transparent 8px),
+    linear-gradient(90deg, rgba(255, 176, 96, 0.08), transparent 30%, transparent 70%, rgba(0, 0, 0, 0.3)),
+    url(../assets/images/room/tile-lacqh.webp) 0 0 / 512px 128px,
+    linear-gradient(to bottom, var(--lacquer) 6px, var(--lacquer-2));
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .cabinet__cornice,
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .cabinet__plinth {
+  filter: brightness(0.62);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
+  background: linear-gradient(135deg, rgba(255, 176, 96, 0.06), transparent 40%, rgba(0, 0, 0, 0.3)), url(../assets/images/room/tile-lacqv.webp) 0 0 / 128px 512px, linear-gradient(to bottom, #161C30, #0B0F1D);
+  background-blend-mode: normal, soft-light, normal;
+}
+
+/* 夜（スマホ）: 本棚は机のろうそくの下にあり、下へ行くほど暗い。背板と本だけを沈める（名札は沈めない） */
+@media (max-width: 1099px) {
+  html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .shelf__in::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.1));
+  }
+}
+
+/* ---- 中くらいの幅（タブレット）: 本棚は机と同じ幅に ---- */
+@media (min-width: 600px) and (max-width: 1099px) {
+  .bookshelf {
+    max-width: 620px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* ---- PC（机は左、本棚は右の列 440px）: 1 段に収め、背の幅を段の幅に合わせて配る。余りは寝かせた本の山と本立てで閉じる ---- */
+@media (min-width: 1100px) {
+  .bookshelf {
+    margin: 88px 0 0; /* 最初の棚板の上面を机の天板の線（--desk-top 398px）に */
+    padding-bottom: 40px;
+  }
+  .shelf--course .books,
+  .shelf--freq .books {
+    padding-top: 14px;
+  }
+  .bookshelf .shelf--course .box {
+    --h: 134px;
+  }
+  .shelf--course .box__l {
+    bottom: 28px;
+    top: 10px;
+  }
+  .shelf--course .box__n {
+    bottom: 7px;
+  }
+  .cabinet__rail {
+    padding-top: 6px;
+    padding-bottom: 4px;
+  }
+  .bookshelf .find {
+    min-height: 40px;
+  }
+  .shelf-index a {
+    min-height: 40px;
+  }
+  .cabinet__cornice {
+    height: 58px;
+    background-position: 0 0, 0 0, 0 0, 0 0, 0 -8px, 0 41px, 0 -8px, 0 0;
+  }
+  .cabinet__frieze {
+    top: 12px;
+    height: 30px;
+  }
+  .books {
+    flex-wrap: nowrap;
+    overflow: visible;
+    gap: 1px;
+    padding: 30px 10px 16px;
+    background: none;
+  }
+  .books > li {
+    flex: var(--g, 44) 1 0;
+    min-width: var(--min, 24px);
+    max-width: 46px;
+  }
+  .books > li > .spine {
+    width: 100%;
+    height: calc(var(--h) * 1.1);
+    container-type: inline-size;
+  }
+  .books > li > .slot {
+    width: 100%;
+  }
+  .books > li > .bookend {
+    margin: 0 3px;
+  }
+  .books > li:has(> .bookend),
+  .books > li.mid {
+    flex: none;
+    max-width: none;
+  }
+  .shelf--social .books > li.mid,
+  .shelf--grammar .books > li.mid,
+  .shelf--kokugo .books > li.mid {
+    display: none;
+  }
+  /* 題箋の背は 2 行が要る（理科の 4 冊） */
+  .shelf--science .books > li:has(> .spine--label) {
+    min-width: 40px;
+  }
+  .shelf--box .books > li {
+    flex: none;
+    max-width: none;
+  }
+  /* コースの函は 6 つ: 段の幅に合わせて少し細く */
+  .shelf--course .books > li[data-course] {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 68px;
+  }
+  .bookshelf .shelf--course .box {
+    width: 100%;
+  }
+  .shelf--box .books > li.fill {
+    flex: 1 1 0;
+    justify-content: flex-start;
+  }
+  .shelf--box .books > li.fill .flat {
+    display: flex;
+  }
+  .books > li.fill {
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 170px;
+    align-items: flex-end;
+    gap: 2px;
+    padding-left: 4px;
+    container-type: inline-size;
+  }
+  .flat--fill {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 136px;
+    margin: 0;
+  }
+  .flat--fill i {
+    height: 13px;
+  }
+  .books > li.fill .bookend {
+    flex: none;
+    margin: 0 0 0 2px;
+  }
+  @container (max-width: 60px) {
+    .books > li.fill .bookend {
+      display: none;
+    }
+  }
+  .books--scroll {
+    -webkit-mask-image: none;
+    mask-image: none;
+    padding-right: 10px;
+  }
+  .bookshelf .more {
+    display: none;
+  }
+  .bookshelf .doors {
+    height: 190px;
+  }
+  .bookshelf .doors--open {
+    height: auto;
+  }
+  /* 夜: 本棚はろうそく（左の机）から照らされる。近い背は明るく、遠い背は暗く落ちる */
+  html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .cabinet::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    mix-blend-mode: soft-light;
+    background: linear-gradient(90deg, rgba(255, 176, 96, 0.55) 0, rgba(255, 176, 96, 0.14) 22%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.45) 100%);
+  }
+  html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .cabinet::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    z-index: 3;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(255, 170, 90, 0.1), rgba(255, 170, 90, 0.5) 30%, rgba(255, 170, 90, 0.35) 55%, rgba(255, 170, 90, 0.08));
+  }
+}
+
+/* PC の背の低い画面: 部屋の帯が縮むぶん、棚板の上面を机の天板に合わせ直す */
+@media (min-width: 1100px) and (max-height: 820px) {
+  .bookshelf {
+    margin-top: 100px;
+  }
+}
+
+/* 動き: hover の持ち上がりだけ。reduced motion で 0 */
+@media (prefers-reduced-motion: reduce) {
+  .bookshelf *,
+  .bookshelf *::before,
+  .bookshelf *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

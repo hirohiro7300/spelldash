@@ -19,6 +19,10 @@ const AVATAR = {
   normal: "./assets/images/hasumi.png",
   happy: "./assets/images/hasumi-happy.png"
 };
+const AVATAR_2X = {
+  normal: "./assets/images/hasumi@2x.png",
+  happy: "./assets/images/hasumi-happy@2x.png"
+};
 
 function pick(lines) {
   return lines[Math.floor(Math.random() * lines.length)];
@@ -28,6 +32,11 @@ function pick(lines) {
 export function hasumiHomeLine() {
   const hour = new Date().getHours();
   const streak = getStreak();
+
+  // 初めて来た人（トップページが開いている間）: 名乗るだけ。語数も時間も言わない（本のスタートが言う）
+  if (document.body.classList.contains("welcome-open")) {
+    return { mood: "normal", text: "はじめまして、見習いのはちゃん。", html: "はじめまして、<wbr>見習いの<wbr>はちゃん。" };
+  }
 
   if (hasPlayedToday()) {
     // 今日覚えた語があれば、語を名指しで（数字より語）
@@ -64,7 +73,7 @@ export function hasumiHomeLine() {
   try {
     const path = buildPath();
     if (path.allDone) {
-      return { mood: "normal", text: path.section?.next ? "セクションを終えた。次へ。" : "全部済み。復習は続く。" };
+      return { mood: "normal", text: path.section?.next ? "この巻は終えた。次へ。" : "全部済み。復習は続く。" };
     }
   } catch {
     // 道が作れないときは時間帯の文に落とす
@@ -137,15 +146,20 @@ export function hasumiStreakLine() {
 export function hasumiBubbleHtml({ mood, text }, extraClass = "") {
   return `
     <div class="hasumi ${extraClass}">
-      <img class="hasumi__avatar" src="${AVATAR[mood] ?? AVATAR.normal}" alt="はちゃん" width="32" height="32" />
+      <img class="hasumi__avatar" src="${AVATAR[mood] ?? AVATAR.normal}" srcset="${AVATAR_2X[mood] ?? AVATAR_2X.normal} 2x" alt="はちゃん" width="32" height="32" />
       <div class="hasumi__bubble">${text}</div>
     </div>
   `;
 }
 
-// ホームの吹き出しを描画
+// ホームの一言: 窓の脇に真鍮の鋲で留めた紙片（はちゃん本人は部屋の絵の中、窓辺で本を読んでいる。隣に 2 人目のアバターは置かない）。
+// 気分（happy）は紙片では表さない。長い文は字を少し小さく（紙片の幅は 128px）
 export function renderHasumiHome() {
   const container = document.getElementById("hasumiHome");
   if (!container) return;
-  container.innerHTML = hasumiBubbleHtml(hasumiHomeLine(), "hasumi--home");
+  const line = hasumiHomeLine();
+  const { text } = line;
+  // 句読点のあとでだけ折り返す（<wbr>。textContent は変わらない）。文が自分で折る位置を持っていればそれ（html）
+  const html = line.html ?? text.replace(/([。、])/g, "$1<wbr>");
+  container.innerHTML = `<p class="hasumi__bubble slip${text.length > 14 ? " slip--long" : ""}">${html}</p><figcaption class="sr-only">はちゃん（見習い）</figcaption>`;
 }

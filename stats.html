@@ -6,6 +6,7 @@
   <title>学習データ | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="stylesheet" href="./css/fonts.css" />
   <link rel="stylesheet" href="./css/tokens.css" />
   <link rel="stylesheet" href="./css/layout.css" />
   <link rel="stylesheet" href="./css/game.css" />
@@ -13,8 +14,8 @@
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
   <link rel="stylesheet" href="./css/pro.css" />
-  <meta name="theme-color" content="#f7f6f2" />
-  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#f7f6f2", dark: "#131417", paper: "#f3ecdd", indigo: "#121a2b" }[theme]; })();</script>
+  <meta name="theme-color" content="#F4ECDA" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#F4ECDA", dark: "#17120E", paper: "#F3E8CF", indigo: "#0E1322" }[theme]; })();</script>
 
 
   <meta name="description" content="スコア推移・思い出し成功率・習得の進捗。あなたの学習の記録。" />
@@ -85,6 +86,7 @@
   <link rel="modulepreload" href="./js/hasumi.js" />
   <link rel="modulepreload" href="./js/pathView.js" />
   <link rel="modulepreload" href="./js/sessionResume.js" />
+  <link rel="modulepreload" href="./js/shelves.js" />
   <link rel="modulepreload" href="./js/retention.js" />
   <link rel="modulepreload" href="./js/calendarView.js" />
   <link rel="modulepreload" href="./js/exportCsv.js" />
@@ -114,7 +116,7 @@
       </a>
 
       <nav class="site-nav" aria-label="メインナビ">
-        <a href="/" class="site-nav__link">プレイ</a>
+        <a href="/" class="site-nav__link">書斎</a>
         <a href="./stats.html" class="site-nav__link" aria-current="page">学習データ</a>
         <a href="./list.html" class="site-nav__link">単語帳</a>
         <a href="./battle.html" class="site-nav__link">バトル</a>

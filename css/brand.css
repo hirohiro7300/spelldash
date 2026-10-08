@@ -1,7 +1,10 @@
-/* ===== 「墨と朱」共通レイヤー（docs/CONCEPT.md） =====
+/* ===== 「墨と朱」→「書斎」共通レイヤー（docs/CONCEPT.md） =====
    全ページの最後に読み込む。土台（ページ・ヘッダー・ナビ・ボタン・入力欄・カード・文字色）をトークンで統一し、
    既存 CSS のダーク基調＋ライト上書きを両方まとめて置き換える。
-   html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。 */
+   html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。
+   文字の使い分け（tokens.css）: 見出し・ナビ・ワードマーク・ボタン・はちゃん・チュートリアルの札・フッターのリンクは --font-display（明朝、500。
+   700 はスタートだけ）。本文・表・フォーム・一覧は --font-ui のまま（13px の可読性）。ラテン文字のワードマークは --font-latin、数字は --font-num。
+   部屋の中（index.html の body.page-room）の規則はここに書かない（css/room.css）。 */
 
 html[data-theme] body {
   font-family: var(--font-ui);
@@ -57,8 +60,10 @@ html[data-theme] .skip-link {
   border-radius: var(--radius);
   background: var(--ink);
   color: var(--paper);
+  font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   text-decoration: none;
 }
 
@@ -86,31 +91,38 @@ html[data-theme] .site-footer .brand__name {
   color: var(--ink);
 }
 
+/* 印は黒いタイルではなく 1px の枠に「SD」（書斎では金の枠。room.css）。ワードマークは Cormorant 600 */
 html[data-theme] .brand__mark {
   width: 28px;
   height: 28px;
-  border-radius: var(--radius);
-  background: var(--ink);
-  color: var(--paper);
-  font-family: var(--font-mono);
+  border: 1px solid var(--ink-2);
+  border-radius: var(--radius-room);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-latin);
   font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 html[data-theme] .brand__name {
-  font-family: var(--font-mono);
+  font-family: var(--font-latin);
   font-weight: 600;
-  font-size: 17px;
-  letter-spacing: -0.01em;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 html[data-theme] .site-nav__link {
+  position: relative;
   padding: 8px 10px;
   border-radius: var(--radius);
-  color: var(--ink-3);
+  color: var(--ink-2);
+  font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.08em;
   background: transparent;
 }
 
@@ -119,11 +131,21 @@ html[data-theme] .site-nav__link:hover {
   background: var(--paper-3);
 }
 
+/* 現在地: 下線の帯ではなく 5px の菱の印（朱。書斎では金。room.css） */
 html[data-theme] .site-nav__link[aria-current="page"] {
   color: var(--ink);
   background: transparent;
-  box-shadow: inset 0 -2px 0 var(--ink);
-  border-radius: 0;
+}
+
+html[data-theme] .site-nav__link[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  width: 5px;
+  height: 5px;
+  background: var(--signal);
+  transform: translateX(-50%) rotate(45deg);
 }
 
 /* ---- フッター ---- */
@@ -138,6 +160,20 @@ html[data-theme] .site-footer__tagline,
 html[data-theme] .site-footer__copy,
 html[data-theme] .site-footer__nav a {
   color: var(--ink-3);
+}
+
+html[data-theme] .site-footer__tagline,
+html[data-theme] .site-footer__nav a,
+html[data-theme] .site-footer__linkbtn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] .site-footer__copy {
+  font-family: var(--font-latin);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 html[data-theme] .site-footer__nav a:hover {
@@ -169,8 +205,9 @@ html[data-theme] .btn {
   border-radius: var(--radius);
   background: var(--ink);
   color: var(--paper);
-  font-family: inherit;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
   box-shadow: none;
   transition: background var(--ease), color var(--ease), border-color var(--ease), transform var(--ease);
 }
@@ -310,11 +347,15 @@ html[data-theme] .auth-message {
   color: var(--ink-3);
 }
 
+/* 見出しは明朝 500（太字にしない: 700 はスタートだけ）。字間 +.04em、「palt」は見出しだけ */
 :where(html[data-theme]) h1,
 :where(html[data-theme]) h2,
 :where(html[data-theme]) h3 {
   color: var(--ink);
-  letter-spacing: -0.01em;
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  font-feature-settings: "palt";
 }
 
 html[data-theme] .auth-message.success { color: var(--ok); }
@@ -491,8 +532,8 @@ html[data-theme] .header-streak {
   border-radius: 999px;
   background: transparent;
   color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 13px;
+  font-family: var(--font-num);
+  font-size: 14px;
   font-weight: 600;
   text-decoration: none;
   box-shadow: none;
@@ -504,9 +545,10 @@ html[data-theme] .header-streak .icon {
 }
 
 html[data-theme] .header-streak span {
-  font-family: var(--font-ui);
+  font-family: var(--font-display);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   color: var(--ink-3);
 }
 
@@ -529,6 +571,8 @@ html[data-theme] .hasumi__avatar {
 html[data-theme] .hasumi__bubble {
   position: relative;
   align-self: center;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
 }
 
 /* ---- ご意見・不具合モーダル（js/feedback.js が全ページのフッターから開く）: 1 定義。単語詳細（pages.css）と同じ暗幕・紙の面 ---- */
@@ -719,7 +763,9 @@ html[data-theme] .coach {
   border-radius: var(--radius-lg);
   background: var(--paper-2);
   color: var(--ink);
+  font-family: var(--font-display);
   font-size: 13px;
+  letter-spacing: 0.02em;
   line-height: 1.5;
   transform: translateX(-50%);
   opacity: 1;
@@ -744,9 +790,9 @@ html[data-theme] .coach__ok {
   border-radius: 999px;
   background: var(--paper-3);
   color: var(--ink-2);
-  font-family: var(--font-ui);
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
   cursor: pointer;
   pointer-events: auto;

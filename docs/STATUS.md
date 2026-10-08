@@ -1,18 +1,18 @@
-# SpellDash 現状スナップショット（2026-10-07）
+# SpellDash 現状スナップショット（2026-10-08）
 
 > 2026-07-17 版は docs/archive/STATUS_2026-07-17.md に移した（当時の設計論点と、9 月までの追記の履歴はそちら）。
 > 変更の履歴は docs/CHANGELOG.md、次にやることは docs/BACKLOG.md、**創業者側の作業と判断は docs/FOUNDER_TODO.md**。
 
 ## 1. ひとことで
 
-**SpellDash**（https://www.spelldash.net）— 日本語の訳を見て英単語を記憶から打つ「思い出して打つ」学習サービス。Local-First（学習記録は端末が正、ログインでクラウド同期）。デザインは「墨と朱」（docs/CONCEPT.md）。
-対象は社会人の英語学び直し層を中心に、中高生・受験生も。公式キャラクター はちゃん は伴走者で、出るのは 3 場面だけ（docs/CHARACTER.md）。
+**SpellDash**（https://www.spelldash.net）— 日本語の訳を見て英単語を記憶から打つ「思い出して打つ」学習サービス。Local-First（学習記録は端末が正、ログインでクラウド同期）。デザインは「魔法使いの書斎 — 星図と羊皮紙」（ホームは部屋と机の本と本棚、打つ画面は「墨と朱」のまま。docs/CONCEPT.md）。
+対象は社会人の英語学び直し層を中心に、中高生・受験生も。公式キャラクター はちゃん はとんがり帽子の見習いで、出るのは 3 場面だけ（docs/CHARACTER.md）。
 
 ## 2. いま入っているもの
 
 ### 学習
 - **4 モード（増やさない）**: Study（セット・Recall Loop・SRS）／Challenge（60 秒）／Daily Dash（全員同じ問題・ランキング）／Battle（CPU ランクマッチ。ロジックは凍結、色・面・文字列だけ触る）
-- **道（ホーム）**: コース（10 本: 中学やり直し・ビジネス・会話・高校・英検・NGSL・TSL・BSL・NAWL・TOEIC）→ セクション → ユニット。済みは畳み、現在地のスタートが最初の画面に来る。前回の続きから再開
+- **書斎（ホーム）**: 机の上の本 = コース（10 本: 中学やり直し・ビジネス・会話・高校・英検・NGSL・TSL・BSL・NAWL・TOEIC）→ 巻 → 章。左頁に書名と進み、右頁に今の章と全幅のスタート（390 で 1 画面目）、3 枚目に目次（済みは畳む）。前回の続きから再開。**本棚**（171 冊を 9 段）から背を押すと机の本が替わる、函でコース、本をさがす（別名つき）。初回は同じ部屋で 英単語 のスタート（腕試し）＋ 社会・理科・国語・仕事 の 4 冊を積む
 - **判定**: 1 ミス＝不正解（Clean Correct）。**別解**: 同じ訳の別の英単語を打つと「talk も「話す」。この問題の語は speak」と案内して不正解にしない。パック内で訳のトークンを共有する語は自動で別解、加えて `accept` を人手で確認済み（英単語パック 81 本・4,914 枚・8,908 語）。つづり違い（favourite／favorite）はそのまま正解
 - **教材**: 171 カテゴリ・15,464 枚（分野パック 162、`/packs/<id>.html` に入口ページ）。オープン教材は NGSL 24・TSL 11・BSL 15・NAWL 8 = 58 パック・6,814 語（CC BY-SA 4.0、出典表記あり）。英単語カードには例文（ex／exJa）。形式は docs/PACK_FORMAT.md、検証は `node scripts/validate-words.mjs`
 - **マイ単語帳**（1 語ずつ／まとめて／場面カード／AI でテキストから）、単語の詳細（履歴・メモ・覚え方を作る）、覚えた単語帳、学習データ（今週・記録・分析）、週間レポート、学習カレンダー
@@ -42,30 +42,30 @@
 ## 3. 技術
 
 - フロント: 素の HTML／CSS／ES modules、ビルド無し。ページ: index／list／stats／profile／battle／news／privacy／terms／tokushoho／pro／admin ＋ packs/（生成）
-- デザイン: `css/tokens.css` が唯一の色・角丸・フォントの基準。テーマは 白／黒（＋Pro の 紙／藍）。影・グラデーション・絵文字は UI に使わない。英語と数字は等幅（IBM Plex Mono）
+- デザイン: `css/tokens.css` が唯一の色・角丸・フォントの基準（昼 light／紙 paper・夜 dark／藍 indigo。同じ名前で値だけ変える）。部屋は `css/room.css`・`css/bookshelf.css`、場面の絵は `scripts/room-art/` から `assets/images/room/` に焼いた WebP。フォントは自前（`css/fonts.css`: Shippori Mincho 500／700・Cormorant Garamond 600・IBM Plex Mono。外部リクエスト 0）。打つ対象の英語と数字は等幅、部屋の中は明朝。絵文字は UI に使わない
 - サーバー: Vercel Node 関数 `api/explain-word`・`api/generate-cards`（Claude、`ANTHROPIC_API_KEY` 未設定なら「準備中」）、`api/admin/*`、`api/billing/*`、`api/cron/keepalive`。秘密鍵はすべて Vercel の環境変数（docs/SECURITY.md）
 - Supabase: Auth（メールリンク・Google）、テーブル profiles／word_progress／user_progress／battle_sessions／play_sessions／daily_scores／activity_days（RLS）。任意: user_items／feedback／crm_notes／subscriptions（docs/SQL_*.md、**実行は創業者**）
 - 環境変数（Vercel）: `ANTHROPIC_API_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_EMAILS`／`ADMIN_USER_IDS`、`STRIPE_SECRET_KEY`／`STRIPE_PRICE_MONTHLY`／`STRIPE_PRICE_YEARLY`／`STRIPE_TRIAL_DAYS`／`STRIPE_WEBHOOK_SECRET`、`SITE_ORIGIN`、`CRON_SECRET`、AI の回数 `CARD_GEN_DAILY_LIMIT(_PRO)`／`EXPLAIN_WORD_DAILY_LIMIT(_PRO)`
-- 性能: 初回表示 約 1 MB・88 リクエスト（JSON 440 KB・JS 370 KB・CSS 130 KB）、読み込むのは有効なパックだけ。別解索引の構築 27 ms
+- 性能（ホーム 390・非圧縮）: 初回表示 約 2.2 MB・161 リクエスト（フォント 479 KB・JS 577 KB・CSS 420 KB・JSON 441 KB・画像 87 KB）、読み込むのは有効なパックと画面に出た文字のフォントだけ。DOMContentLoaded 0.4 秒・LCP 0.4 秒（手元）、1 リクエスト 80ms の遅延で 1.7 秒・2.0 秒。予算: フォント ≤ 520 KB・場面の画像 ≤ 260 KB（E2E が守る）。別解索引の構築 27 ms
 
 ## 4. 品質・流れ
 
-- E2E `npm test`（playwright-core、Supabase はスタブ、約 6 分）: **739 件**。検証 `node scripts/validate-words.mjs`。import を足した・data/manifest.json の基本カテゴリを変えたら `node scripts/modulepreload.mjs`（各ページの先読みを生成。ずれると E2E と CI が落ちる）。CI は PR と main で検証を実行
+- E2E `npm test`（playwright-core、Supabase はスタブ、約 8 分）: **802 件**。検証 `node scripts/validate-words.mjs`。import を足した・data/manifest.json の基本カテゴリを変えたら `node scripts/modulepreload.mjs`（各ページの先読みを生成。ずれると E2E と CI が落ちる）。CI は PR と main で検証を実行
 - 本番反映: dev ブランチ → PR → main → Vercel（2 プロジェクトとも success を確認）。条件は E2E 全件＋validate OK。Supabase の SQL・外部への告知は創業者側
-- アクセシビリティ: キーボードだけで主線を一周できる（Tab の移動、モーダルの焦点管理、スキップリンク、aria-live、ラベル）。コントラストは AA（ink-3 5.1:1）
+- アクセシビリティ: キーボードだけで主線を一周できる（Tab の移動、モーダルの焦点管理、スキップリンク、aria-live、ラベル、本棚の段は roving tabindex）。コントラストは AA（ink-3 6.6:1、スタートの文字 4.77:1 以上）。reduced motion で動き 0。320／390 で横スクロール無し
 - スマホ: 指の端末では入力欄 16px（自動ズームなし）、押せるものは 40〜44px。UI の見直しは 6 回（主線 78 件・主線以外 70 件・Battle／管理画面／旧 CSS 49 件・初回 10 分 30 件・2〜8 日目 24 件・2〜4 週目 34 件）を監査 → 反映 → 査読で通した。game.css の旧パレットは 0
 - 大きな変更の進め方: 監査（撮影・計測）→ 指摘を事実と直し方で列挙 → 所有ファイルを分けた並行実装 → 反証レビュー → E2E → PR。データの別解・訳は「提案 → 別の目で反証」の 2 段
 
 ## 5. 守っていること（創業者の規則）
 
 - 学習の核は無料。Pay to Win 禁止。通貨／ガチャ／ショップ／通知は作らない。新しいゲームモードを増やさない。Battle のロジックを変えない
-- はちゃんは 3 場面（ホーム・完了・週間）。台詞は 1 文・「！」は多くて 1 つ・盛り上げ語なし・数字と矛盾しない・依存や罪悪感を作らない
+- はちゃんは 3 場面（ホーム・完了・週間）。台詞は 1 文・「！」は多くて 1 つ・盛り上げ語なし・数字と矛盾しない・依存や罪悪感を作らない。部屋に Pro の文言を出さない
 - 文言は短く断定。UI は日本語、英語は打つ対象だけ。数字を誇張しない
 - 秘密鍵をクライアント・ログ・リポジトリに置かない。PII をログに書かない。CRM からプレイヤーには何も届かない
 
 ## 6. 数字
 
-- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、E2E 739、マージ済み PR 132
+- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、本棚 9 段、E2E 802、マージ済み PR 132
 - **ユーザー系の数字はまだ無い**（10 人ローンチ前。CRM・activity_days・funnel_events は受け皿として用意済み）
 
 ## 7. 次の候補（docs/BACKLOG.md）
@@ -73,4 +73,4 @@
 - 決定（2026-10-07）: **Pro は月額 ¥980、初めての方は 1 か月無料（随時）、年額なし**。創業者側の設定: Stripe の ¥980 の Price・`STRIPE_PRICE_MONTHLY`・`STRIPE_TRIAL_MONTHS=1`（docs/FOUNDER_TODO.md B）
 - 創業者の判断待ち: Pro の次の中身（docs/PRO_VALUE.md §6）、見出し語 18 件、カタカナ訳 225 語の方針、AI の無料回数（docs/FOUNDER_TODO.md F）
 - 創業者側の作業で止まっているもの: Supabase の復旧、Pro の受付（Stripe・特商法の記入）、SQL（SQL_BILLING・SQL_USER_ITEMS・SQL_FUNNEL・SQL_FEEDBACK）
-- コード側の候補: 加入までの体験の点検（Batch 51）、UI の残り（docs/BACKLOG.md F13・F15 の残り）、word_progress の列追加（2 台目の履歴・「知ってた」）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）
+- コード側の候補: 書斎の続き（Batch 56b: 部屋以外のページの皮・夜の味付け・批評の nice-to-have・アプリの dist 再生成）、word_progress の列追加（2 台目の履歴・「知ってた」）、1 年の推移、PACK_REVIEW の要確認 id、ランディング（SPEC_ACQUISITION）

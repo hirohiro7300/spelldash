@@ -1,10 +1,10 @@
 import { isUnlocked, setsUntil } from "./unlocks.js";
 import { isDailyPlayedToday } from "./dailyChallenge.js";
-import { icon } from "./icons.js";
 
 // ===== ほかの遊び方（Challenge・Daily Dash・Battle） =====
-// 1画面目のモード切替をやめ、道の下に解放式の一覧として置く。
+// 机の幕板に、静かな 1 行（ほかの遊び方 チャレンジ ・ Daily Dash ・ バトル）。
 // Challenge は最初から、Daily は2セット、Battle は5セットで解放（既存ユーザーは最初から全部）。
+// 錠は文字だけ（あと1セットで解放）。鍵のアイコンは出さない（部屋の中で錠に見せない）。
 
 export function renderPlayModes({ onChallenge, onDaily } = {}) {
   const el = document.getElementById("playModes");
@@ -13,23 +13,19 @@ export function renderPlayModes({ onChallenge, onDaily } = {}) {
   const rows = [
     {
       id: "challenge",
-      label: "Challenge",
-      desc: "60秒で何語打てるか",
-      action: `<button type="button" class="play-modes__go" data-mode="challenge">始める</button>`
+      action: `<button type="button" class="play-modes__go" data-mode="challenge">チャレンジ<span class="sr-only">: 60秒で何語打てるか</span></button>`
     },
     {
       id: "daily",
-      label: "Daily Dash",
-      desc: "毎日同じ問題で60秒。順位が出る",
       action: isDailyPlayedToday()
-        ? `<button type="button" class="play-modes__go play-modes__go--ghost" data-mode="daily">今日の結果</button>`
-        : `<button type="button" class="play-modes__go" data-mode="daily">始める</button>`
+        ? `<button type="button" class="play-modes__go play-modes__go--ghost" data-mode="daily"><span class="lat">Daily Dash</span><span class="sr-only">: 今日の結果を見る</span></button>`
+        : `<button type="button" class="play-modes__go" data-mode="daily"><span class="lat">Daily Dash</span><span class="sr-only">: 毎日同じ問題で60秒。順位が出る</span></button>`,
+      locked: `<span class="play-modes__text"><b class="lat">Daily Dash</b></span>`
     },
     {
       id: "battle",
-      label: "Battle",
-      desc: "CPU・友だちと対戦",
-      action: `<a class="play-modes__go" href="./battle.html">始める</a>`
+      action: `<a class="play-modes__go" href="./battle.html">バトル<span class="sr-only">: CPU・友だちと対戦</span></a>`,
+      locked: `<span class="play-modes__text"><b>バトル</b></span>`
     }
   ];
 
@@ -40,10 +36,9 @@ export function renderPlayModes({ onChallenge, onDaily } = {}) {
         .map((r) => {
           const unlocked = isUnlocked(r.id);
           const left = setsUntil(r.id);
-          return `<li class="play-modes__row${unlocked ? "" : " play-modes__row--locked"}" data-play-mode="${r.id}">
-            <span class="play-modes__text"><b>${r.label}</b><span>${r.desc}</span></span>
-            ${unlocked ? r.action : `<span class="play-modes__lock">${icon("lock", { size: 14 })}あと${left}セットで解放</span>`}
-          </li>`;
+          return `<li class="play-modes__row${unlocked ? "" : " play-modes__row--locked"}" data-play-mode="${r.id}">${
+            unlocked ? r.action : `${r.locked}<span class="play-modes__lock">あと${left}セットで解放</span>`
+          }</li>`;
         })
         .join("")}
     </ul>
