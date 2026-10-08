@@ -4,7 +4,7 @@ import { getAllWords } from "./wordStore.js";
 export function computeSummary() {
   const stats = getWordStats();
   const entries = Object.values(stats);
-  const words = getAllWords();
+  const words = getAllWords().filter((word) => !word.kanjiOnly); // 漢字の書き分けのカードは学習に出さないので数えない
 
   // 語は id で 1 回だけ数える（同じ id が基本カテゴリとパックに別々に入っている）。
   // 分子も「いま読み込んでいる語」に限る（外したパックや消したマイ単語の記録を数えない＝分母と同じ母集団）

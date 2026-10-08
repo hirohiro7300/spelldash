@@ -3,6 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = path.join(ROOT, "data", "english");
@@ -15,6 +16,44 @@ const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.js
 const manifestCategories = manifest.subjects.flatMap((s) => s.categories);
 
 const problems = [];
+
+// 日本語の答え（かな・漢字を含む）のカードは、答えか accept のどれかが「読み」になっていること（js/romaji.js readingCandidates）。
+//  ・読みが 1 つもない → ゲームはローマ字で打てず、IME の全文入力に戻ってしまう
+//  ・ひらがなを含む読みがない（search のような英字だけ）→ 「読みをローマ字で」の案内と合わない。答えを見せるときの読みも無い
+//  ・a-z と ー だけで打てる読みがない（f2 など数字が要る）→ スマホの画面キーボードには数字が無い
+//  ・各読みの標準の綴り（canonicalRomaji）で打ち終えられること（綴りの表の抜けを見つける）
+//  ・主な読み（答えの下に出す読み。かなを含む最初の候補）が答えそのものの読みであること。
+//    答えより短い（略語・言い換えが先頭: 浸潤麻酔 → しんま）、答えにカタカナが無いのにカタカナ（領収書 → レシート）は NG。
+//    答えの読みが無いと、答えを思い出した人が打てない（りょうしゅうしょ の r で 1 ミス）
+//  ・読み（3 字以上）が問題文に出ていないこと（カタカナとひらがなを同じに見る。q を写すだけで正解できる）
+// kanjiOnly（漢字の書き分けが目的のカード）は学習に出さないので対象外（docs/PACK_FORMAT.md）
+let readingCards = 0;
+let readingCount = 0;
+function checkReadings(w, where) {
+  readingCards++;
+  const entries = readingEntries(w);
+  const cands = entries.map((e) => e.reading);
+  readingCount += cands.length;
+  if (cands.length === 0) {
+    problems.push(`読みがない（ローマ字で打てない） ${where} (${w.answer})`);
+    return;
+  }
+  if (!cands.some(hasKana)) problems.push(`ひらがなの読みがない ${where} (${w.answer}: ${cands.join("/")})`);
+  const primary = primaryReading(entries);
+  const answerChars = [...displayReading(w.answer)];
+  if (primary && [...primary.reading].length < answerChars.length) problems.push(`主な読みが答えより短い（答えの読みを先頭に） ${where} (${w.answer}: ${primary.display})`);
+  if (primary && !/[ァ-ヺ]/.test(w.answer) && /[ァ-ヺ]/.test(primary.display)) problems.push(`主な読みがカタカナの別の語（答えの読みを先頭に） ${where} (${w.answer}: ${primary.display})`);
+  const q = normalizeReading(w.q ?? "");
+  const leaked = cands.find((r) => hasKana(r) && [...r].length >= 3 && q.includes(r));
+  if (leaked) problems.push(`読みが問題文に含まれる ${where} (${leaked})`);
+  if (!cands.some((r) => /^[ぁ-ゖーa-z]+$/.test(r))) problems.push(`数字なしで打てる読みがない ${where} (${cands.join("/")})`);
+  for (const r of cands) {
+    const keys = canonicalRomaji(r, { finalN: true });
+    const m = createRomajiMatcher(cands);
+    const res = keys ? m.type(keys) : null;
+    if (!res || res.missAt !== -1 || res.finished === null) problems.push(`読みを打ち終えられない ${where} (${r} / ${keys})`);
+  }
+}
 const allIds = new Set();
 const entries = [];
 let total = 0;
@@ -114,6 +153,8 @@ for (const fullPath of files) {
       }
     }
     if (!["easy", "normal", "hard"].includes(w.level)) problems.push(`level不正 ${where}`);
+    // 日本語の答え: 漢字に変換せず、読みをローマ字で打つ（js/romaji.js）。読み（ひらがな）が accept に必要
+    if (w.kind === "concept" && !w.calc && !w.kanjiOnly && hasJapaneseScript(w.answer)) checkReadings(w, where);
     // 訳に見出し語そのものを書かない（出題文に答えが出てしまい、思い出す練習にならない）。
     // 連語を示したいときは「〜に代わって（on ___ of）」のように見出し語を伏せる。
     if (w.en && String(w.ja ?? "").toLowerCase().includes(String(w.en).toLowerCase())) {
@@ -187,7 +228,7 @@ for (const [file, w] of entries) {
   }
 }
 
-console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${familyById.size}`);
+console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${familyById.size} / 日本語の答え: ${readingCards}枚（読み ${readingCount}）`);
 if (problems.length === 0) {
   console.log("OK: 問題なし");
 } else {

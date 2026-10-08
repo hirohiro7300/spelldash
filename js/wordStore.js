@@ -86,7 +86,9 @@ export function getWordsByCategory(categoryId) {
   if (categoryId === MY_CATEGORY.id) {
     return myWords;
   }
-  return allWords.filter((word) => word.category === categoryId);
+  // 漢字の書き分けが目的のカード（kanjiOnly: 問題文に読みが書いてある）は、ローマ字で読みを打つ方式では問えないので出さない。
+  // データは残す（findWord では引ける。記録・単語帳の古い行のため）。docs/PACK_FORMAT.md
+  return allWords.filter((word) => word.category === categoryId && !word.kanjiOnly);
 }
 
 export function findWord(wordId) {

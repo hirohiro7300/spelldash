@@ -64,6 +64,7 @@ function pickNewWords(excludeSet) {
   const candidates = getAllWords().filter((word) => {
     if ((stats[word.id]?.playCount ?? 0) > 0) return false;
     if (excludeSet.has(word.id) || seen.has(word.id)) return false;
+    if (word.kanjiOnly) return false; // 漢字の書き分けのカードは学習に出さない（js/wordStore.js getWordsByCategory）
     if (!isWordLevelAllowed(word, allowed)) return false;
     seen.add(word.id);
     return true;

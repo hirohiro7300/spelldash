@@ -3,6 +3,7 @@ import { getBestScore, getWordStats } from "./storage.js";
 import { findWord } from "./wordStore.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { classifyWord } from "./categoryProgress.js";
+import { normalizeReading } from "./romaji.js";
 
 export const elements = {
   time: document.getElementById("time"),
@@ -75,6 +76,37 @@ export function showColoredAnswer(word) {
   elements.word.setAttribute("aria-live", "polite"); // 答えのスペルだけ読み上げる
   elements.word.classList.toggle("hidden-word--long", String(word).length > 24); // 英文は小さめに
   elements.word.innerHTML = renderColoredWord(word);
+}
+
+// 答え（鎌倉幕府）の下に読み（かまくらばくふ）を添える。答えがかなだけ（読みと同じ）なら添えない
+export function showAnswerWithReading(answer, reading) {
+  showColoredAnswer(answer);
+  const shown = String(reading ?? "");
+  if (!shown || normalizeReading(answer) === normalizeReading(shown)) return;
+  const small = document.createElement("small");
+  small.className = "hidden-word__reading";
+  small.textContent = shown;
+  elements.word.appendChild(small);
+}
+
+// ローマ字で打つカード: 打ったかなを上、その下に打ったキーを出す（2 段）。まだかなにならないキーは末尾に。
+// 読みのまだ打っていない部分は出さない（思い出す練習なので、写させない）
+export function updateRomajiPreview({ committed = [], pending = "" } = {}) {
+  const cell = (kana, keys, cls = "") => {
+    const el = document.createElement("span");
+    el.className = `rk${cls}`;
+    const top = document.createElement("span");
+    top.className = "rk__kana";
+    top.textContent = kana;
+    const bottom = document.createElement("span");
+    bottom.className = "rk__keys";
+    bottom.textContent = keys;
+    el.append(top, bottom);
+    return el;
+  };
+  const cells = committed.map((seg) => cell(seg.kana, seg.keys));
+  if (pending) cells.push(cell("\u00a0", pending, " rk--pending"));
+  elements.typedPreview.replaceChildren(...cells);
 }
 
 export function updateTypedPreview(text) {

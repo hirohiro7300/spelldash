@@ -76,6 +76,7 @@
   <link rel="modulepreload" href="./js/wordAi.js" />
   <link rel="modulepreload" href="./js/ui.js" />
   <link rel="modulepreload" href="./js/colors.js" />
+  <link rel="modulepreload" href="./js/romaji.js" />
   <link rel="preload" href="./data/manifest.json" as="fetch" crossorigin="anonymous" />
   <link rel="preload" href="./data/english/junior.json" as="fetch" crossorigin="anonymous" />
   <link rel="preload" href="./data/english/highschool.json" as="fetch" crossorigin="anonymous" />
@@ -224,7 +225,7 @@
         <textarea id="myConceptQ" class="setting-select" rows="2" placeholder="場面・意味（例: ユーザーが「車 買取」「廃車」等を検索する）" aria-label="場面・意味" required></textarea>
         <input id="myConceptAnswer" class="setting-select" type="text" placeholder="答え・用語（例: 検索需要。日本語でもよい）" aria-label="答え・用語" autocomplete="off" required />
         <input id="myConceptExplain" class="setting-select" type="text" placeholder="解説（任意。答えの後に1行出る）" aria-label="解説（任意）" autocomplete="off" />
-        <input id="myConceptAccept" class="setting-select" type="text" placeholder="別解（任意。/ 区切り。例: 検索ニーズ/需要）" aria-label="別解（任意）" autocomplete="off" />
+        <input id="myConceptAccept" class="setting-select" type="text" placeholder="別解（/ 区切り。日本語の答えは読みも。例: 需要/けんさくじゅよう）" aria-label="別解（任意）" autocomplete="off" />
         <button type="submit" class="btn btn--sm">追加する</button>
       </form>
       <div class="cardgen" id="myCardGen" role="tabpanel" hidden>
