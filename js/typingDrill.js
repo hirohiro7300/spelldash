@@ -71,15 +71,14 @@ function englishWord(pair) {
 }
 
 // かなの単位（済み・今・まだ）と、まだの打鍵（data-rest）。
-// 済みは matcher の state().committed、今とまだは写しの matcher で hint() の綴りを 1 打ずつ流して作る（打った人の綴りに合わせて替わる）
+// 済みは matcher の state().committed、今とまだはその matcher を hint() の綴りで 1 打ずつ先へ流して作る（打った人の綴りに合わせて替わる）
 export function japaneseUnits(reading, keys) {
   const m = createRomajiMatcher([reading]);
   m.type(keys);
   const st = m.state();
   const units = st.committed.map(({ kana, keys: typed }) => ({ kana, typed, rest: "", state: "done" }));
   if (st.done) return { units, rest: "" };
-  const copy = createRomajiMatcher([reading]);
-  copy.type(keys);
+  const copy = m; // 済みの state は読み終えたので、同じ matcher を先へ流して今とまだを作る（作り直して打ち直さない）
   let rest = "";
   let first = true;
   const ahead = [];
