@@ -558,6 +558,15 @@ html[data-theme] body:not(.page-room) .pro-welcome__title {
   letter-spacing: 0.04em;
 }
 
+/* ---- 状態の 1 行（加入画面の .pro-state__text・設定のプラン行 #planValue）: 数字だけ Cormorant、かなはゴシック 500。
+   :is() が #planValue の (1,0,0) を取るので (1,2,2) → 上の `html[data-theme] #planValue`（1,1,1）と `.pro-state__text`（0,2,1）に勝つ。
+   "SD Num" は size-adjust 済みなので font-size は足さない。色 --ink・14px はそのまま ---- */
+html[data-theme] body:not(.page-room) :is(.pro-state__text, #planValue) {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums;
+  font-weight: 500;
+}
+
 /* ---- 390 の表頭の罫を 1 本に: ≤560px では 177〜182 行の `th, td { border-bottom: 0 }`（0,2,2）が 98 行の `thead th`（0,2,3）に負けて
    「無料」「Pro」の下に th の罫と thead tr の罫が 2 本出る。(0,3,3) で th の罫を落とし、thead tr の --line-2 1 本だけを残す ---- */
 @media (max-width: 560px) {

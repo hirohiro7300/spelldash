@@ -1258,6 +1258,385 @@ console.log("study (finish):");
   check("書斎の仕上げでエラー0", errs.length === 0, errs[0] ?? "");
 }
 
+// ===== 8.9 Batch 57: 途中の部品の皮（結果パネル・コーチ・OSK・ログイン・モーダル・コース選択・緑→金）: 札 3px・明朝 500・数は SD Num・緑は金・盤面の寸法は 56d のまま・reduced motion 0・予算（css/card.css・keyboard.css・brand.css・pages.css・battle.css・pro.css。Batch 57） =====
+// 状態の作り方は scratchpad/b57/shoot-flows.mjs（?set=3・jhs-english1 の en を打つ・spelldash_test_session・spelldash_test_plan・statsSeed）。計測は 8.7 の skin() と同じ:
+// トークンは span に var() を当てて rgb に解き、比は WCAG の相対輝度。全状態を reduced motion で開き、動き・横スクロール・エラーは最後にまとめて見る
+console.log("parts (途中の部品の皮):");
+{
+  // 直す前（56d の時点 = 4bb22a7）の盤面と 1 画面目の寸法。git archive HEAD を scratchpad/b57/baseline に展開し、serve-api.mjs の ROOT を差し替えて 8806 番で配り、
+  // 同じ種・同じ操作で測った値（文書座標 = getBoundingClientRect + scroll、整数）。390 は isMobile（指の端末: 操作部品は 36／40px）、1200 は PC。
+  // input・wrapper・osk はスタート直後、speak は答えを見た直後（#speakButton が出る）。結果パネルの語チップとボタンは出た語で位置が変わるので、
+  // 文に依らない値（高さ・左端・「もう1セット」「Challenge（60秒）」の幅）だけ。--osk-h は html の変数（osk-open 中 236px。1200 では出ない）
+  const B57_GEOMETRY = {
+    390: { input: { x: 30, y: 378, w: 330, h: 53 }, wrapper: { x: 29, y: 377, w: 332, h: 55 }, osk: { x: 0, y: 626, w: 390, h: 218 }, speak: { x: 225, y: 465, w: 65, h: 36 }, fontSize: "22px", oskH: "236px", actionH: 40, again: 110, challenge: 162, chip: { x: 29, h: 36 }, start: { bottom: 651, width: 306 }, stage: 262 },
+    1200: { input: { x: 321, y: 397, w: 558, h: 53 }, wrapper: { x: 320, y: 396, w: 560, h: 55 }, osk: null, speak: { x: 630, y: 487, w: 65, h: 28 }, fontSize: "22px", oskH: "", actionH: 38, again: 110, challenge: 162, chip: { x: 235, h: 28 }, start: { bottom: 619, width: 237 }, stage: 430 },
+    themeColor: "#1A2137",
+    // css/*.css の中の旧い書き方の数（56d の時点）。増えないことだけ見る（999px の残りは .queue-chip・.hasumi__avatar・.cpu-dot・.hist i・.avatar など本当に丸い物。#fff は bookshelf.css の color-mix）
+    css: { pill: 26, radius: 36, radiusLg: 24, black: 232, white: 5 }
+  };
+  const jhs1P = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
+  const findByJaP = (list, ja) => list.filter((w) => w.ja === ja || w.ja.split("・").includes(ja));
+  const uniqueJaP = (w) => findByJaP(jhs1P, w.ja).length === 1 && w.ja.split("・").every((j) => findByJaP(jhs1P, j).length === 1);
+  const isoDaysAgoP = (n) => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(9, 0, 0, 0); return d.toISOString(); };
+  const isoFromNowP = (n) => new Date(Date.now() + n * 86400000).toISOString();
+  // 種: 戻ってきた人（腕試し済み・中学英語 1 年・連続 3 日）。unit = 第 1 章を残り 1 語（訳が一意）まで覚えた人（結果パネルに「章 済み」の行）。free／pro = ログイン済み（Supabase はスタブ）
+  const returningP = (theme, extra = {}) => ({
+    spelldash_theme: theme, spelldash_placement: "done", spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_level_boost: "2",
+    spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 2, correctCount: 2, recallFail: 0, cleanCorrectStreak: 2, lastPlayed: isoDaysAgoP(1), lastRecallSuccessAt: isoDaysAgoP(1), history: [{ d: ymdDaysAgo(1), r: "o" }] } }),
+    spelldash_streak: JSON.stringify({ last: ymdDaysAgo(0), current: 3, best: 3, shields: 0 }),
+    ...extra
+  });
+  const unitWordsP = jhs1P.filter((w) => w.tags[0] === jhs1P[0].tags[0]);
+  const lastWordP = unitWordsP.slice().reverse().find(uniqueJaP) ?? unitWordsP[unitWordsP.length - 1];
+  const unitSeedP = (theme) => returningP(theme, { spelldash_word_stats: JSON.stringify(Object.fromEntries(unitWordsP.filter((w) => w.id !== lastWordP.id).map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]))) });
+  const freeLoginP = (theme) => returningP(theme, { spelldash_test_session: "1", spelldash_plan: JSON.stringify({ status: "none", interval: null, periodEnd: null, cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) });
+  const proLoginP = (theme) => returningP(theme, { spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: isoFromNowP(20), cancel_at_period_end: false }), spelldash_plan: JSON.stringify({ status: "active", interval: "month", periodEnd: isoFromNowP(20), cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) });
+  // 学習データ: 30 語（覚えた・学習中・苦手を 3 語ずつ回す。履歴の点 ○ が出る）＋ マイ単語帳の negotiate は習得
+  const statsStorageP = () => {
+    const stats = {};
+    jhs1P.slice(0, 30).forEach((w, i) => {
+      const kind = i % 3, days = (i % 7) + 1;
+      stats[w.id] = { playCount: 3 + (i % 4), correctCount: kind === 2 ? 1 : 3 + (i % 3), missCount: kind === 2 ? 2 : 0, typingMiss: i % 2, recallFail: kind === 2 ? 2 : kind === 1 ? 1 : 0, cleanCorrectStreak: kind === 0 ? 3 : kind === 1 ? 1 : 0, mastered: kind === 0, lastPlayed: isoDaysAgoP(days), ...(kind === 2 ? { lastRecallFailAt: isoDaysAgoP(days) } : { lastRecallSuccessAt: isoDaysAgoP(days) }), history: [{ d: ymdDaysAgo(days + 2), r: kind === 0 ? "o" : "x" }, { d: ymdDaysAgo(days + 1), r: "o" }, { d: ymdDaysAgo(days), r: kind === 2 ? "x" : "o" }] };
+    });
+    stats["my-negotiate"] = { playCount: 12, correctCount: 12, recallFail: 0, cleanCorrectStreak: 10, mastered: true, lastPlayed: isoDaysAgoP(1), lastRecallSuccessAt: isoDaysAgoP(1), history: [{ d: ymdDaysAgo(2), r: "o" }, { d: ymdDaysAgo(1), r: "o" }] };
+    return { spelldash_word_stats: JSON.stringify(stats), spelldash_growth_log: JSON.stringify(Array.from({ length: 12 }, (_, i) => ({ date: ymdDaysAgo(11 - i), learned: 4 + i * 2, mastered: Math.floor(i * 0.8), active: i % 3 !== 1 }))), spelldash_study_time: JSON.stringify({ [ymdDaysAgo(8)]: 1800, [ymdDaysAgo(7)]: 3600, [ymdDaysAgo(2)]: 7200, [ymdDaysAgo(0)]: 300 }) };
+  };
+  const statsSeedP = (theme) => returningP(theme, statsStorageP());
+  const myWordsSeedP = (theme) => ({ ...freeLoginP(theme), ...statsStorageP(), spelldash_my_words: JSON.stringify([{ kind: "word", en: "negotiate", ja: "交渉する", accept: [] }, { kind: "word", en: "invoice", ja: "請求書", accept: [] }]) });
+
+  // 1 回の evaluate で読む計算値。kind ごとに部品を選ぶ。face() = 角丸・面・縁・影・字（書体・太さ・大きさ）・外寸
+  const part = (kind) => {
+    const q = (s) => document.querySelector(s);
+    const rgb = (s) => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+    const token = (name) => { const el = document.createElement("span"); el.style.color = `var(${name})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
+    const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const contrast = (a, b) => { const [hi, lo] = [lum(rgb(a)), lum(rgb(b))].sort((x, y) => y - x); return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100; };
+    const cs = (sel) => { const el = typeof sel === "string" ? q(sel) : sel; return el ? getComputedStyle(el) : null; };
+    const shown = (el) => !!el && !el.hidden && el.getClientRects().length > 0;
+    const rect = (el) => { if (!shown(el)) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY), w: Math.round(r.width), h: Math.round(r.height) }; };
+    const face = (el) => { const s = cs(el); return s ? { radius: s.borderRadius, bg: s.backgroundColor, border: s.borderTopWidth, borderColor: s.borderTopColor, shadow: s.boxShadow !== "none", color: s.color, family: s.fontFamily.split(",")[0].replace(/"/g, ""), weight: s.fontWeight, size: s.fontSize, w: Math.round(el.getBoundingClientRect().width), h: Math.round(el.getBoundingClientRect().height) } : null; };
+    const T = Object.fromEntries(["--sheet", "--ink", "--ink-2", "--paper", "--paper-3", "--gold-ink", "--ok", "--ok-soft", "--signal", "--signal-ink", "--signal-fill"].map((n) => [n, token(n)]));
+    const K = {
+      quiet: () => ({}),
+      board: () => ({ input: rect(q("#input")), wrapper: rect(q(".input-wrapper")), osk: rect(q("#osk")), speak: rect(q("#speakButton")), speakRadius: cs("#speakButton")?.borderRadius, fontSize: cs("#input")?.fontSize, oskH: getComputedStyle(document.documentElement).getPropertyValue("--osk-h").trim() }),
+      result: () => ({
+        title: face(q(".result-panel__title")), action: face(q(".result-panel__action")), grid: face(q(".result-panel__grid strong")), bubble: face(q("#resultPanel .hasumi__bubble")), chip: face(q(".word-chip")),
+        pro: /Pro/.test(q("#resultPanel")?.textContent ?? ""), unit: !!q("#resultPanel .result-panel__unit"),
+        actionsH: [...document.querySelectorAll(".result-panel__action")].map((el) => Math.round(el.getBoundingClientRect().height)), again: rect(q("#setAgain")), challenge: rect(q("#setChallenge")), chips: [...document.querySelectorAll(".word-chip")].map(rect),
+        mincho700: document.fonts.check('700 13px "Shippori Mincho"', "完了"), mincho500: document.fonts.check('500 13px "Shippori Mincho"', "完了"), loaded700: [...document.fonts].filter((f) => f.family.includes("Shippori") && f.weight === "700" && f.status === "loaded").length
+      }),
+      osk: () => { const k = face(q('#osk [data-key="a"]')), e = face(q('#osk [data-action="enter"]')), oskBg = cs("#osk").backgroundColor; return { key: k, enter: e, oskBg, keyLum: Math.round(lum(rgb(k.bg)) * 1000) / 1000, oskLum: Math.round(lum(rgb(oskBg)) * 1000) / 1000, keyRatio: contrast(k.color, k.bg), enterRatio: contrast(e.color, e.bg), nKeys: document.querySelectorAll("#osk [data-key]").length }; },
+      coach: () => { const c = q(".coach:not(.coach--out)"), f = face(c); return { coach: f, step: c?.dataset.step, ok: face(q(".coach__ok")), okText: q(".coach__ok")?.textContent.trim(), ratio: f ? contrast(f.color, f.bg) : null, bottom: c ? Math.round(c.getBoundingClientRect().bottom) : null, innerH: innerHeight, oskH: parseInt(getComputedStyle(document.documentElement).getPropertyValue("--osk-h")) || 0, oskOpen: document.body.classList.contains("osk-open") }; },
+      login: () => {
+        const sig = [T["--signal"], T["--signal-ink"], T["--signal-fill"]];
+        const hits = [...document.querySelectorAll("body *")].filter(shown).map((el) => { const s = getComputedStyle(el); const props = ["color", "borderTopColor", "backgroundColor"].filter((p) => sig.includes(s[p])); if (sig.some((c) => s.backgroundImage.includes(c))) props.push("backgroundImage"); return props.length ? { el, props } : null; }).filter(Boolean);
+        const tops = hits.filter((h) => !hits.some((o) => o !== h && o.el.contains(h.el) && o.props.some((p) => h.props.includes(p)))); // 継承で同じ色になった子は数えない
+        return { menu: face(q("#accountLogin")), input: face(q("#accountLogin input")), google: face(q(".btn--google")), send: face(q("#loginButton")), focused: document.activeElement?.id, signals: tops.map((h) => `${h.el.tagName.toLowerCase()}#${h.el.id}[${h.props.join(",")}]`) };
+      },
+      menu: () => ({ menu: face(q("#accountMenu")), items: [...document.querySelectorAll("#accountMenu .account-menu__item")].map(face), danger: face(q(".account-menu__item--danger")) }),
+      course: () => ({ panel: face(q("#pathCourses")), now: face(q(".path__course-now")), nStart: document.querySelectorAll("#pathStart").length, open: shown(q("#pathCourses")) }),
+      feedback: () => ({ panel: face(q(".feedback-modal__panel")), textarea: face(q(".feedback-modal__panel textarea")), close: face(q(".feedback-modal__close")) }),
+      detail: () => ({ panel: face(q(".word-detail__panel")), speak: face(q(".word-detail__speak")), exSpeak: face(q(".word-detail__panel .word-example__speak")), status: face(q(".word-detail__status--mastered")), hist: cs(".word-detail__panel .hist__o")?.backgroundColor, noteSave: face(q(".word-detail__panel .note-save")), gcard: face(q(".gcard__status--mastered")), myWord: face(q(".my-word__status--mastered")) }),
+      stats: () => ({ hist: cs(".hist__o")?.backgroundColor, nHist: document.querySelectorAll(".hist__o").length, cal: [1, 2, 3, 4].map((i) => cs(`.cal__day--${i}`)?.backgroundColor), catBar: cs(".cat-bar__mastered")?.backgroundColor, gcard: face(q(".gcard__status--mastered")), statSpan: face(q(".result-card .stat-card span")) }),
+      battle: () => { const v = q("#resultVerdict"), f = face(v); return { verdict: f, cls: v?.className, ratio: f ? contrast(f.color, T["--sheet"]) : null }; },
+      fonts: () => ({ packsB: face(q(".pp-index .packs-item b")), email: face(q(".profile-email")), plan: face(q("#planValue")), proState: face(q(".pro-state__text")), checkbox: cs('.cardgen__card > input[type="checkbox"]')?.accentColor, nCards: document.querySelectorAll(".cardgen__card").length }),
+      home: () => { const r = q("#pathStart")?.getBoundingClientRect(); return { start: r ? { bottom: Math.round(r.bottom), width: Math.round(r.width) } : null, nStart: document.querySelectorAll("#pathStart").length, stage: Math.round(q(".room__stage")?.getBoundingClientRect().height ?? 0), themeColor: q('meta[name="theme-color"]')?.content }; },
+      // 4 テーマのトークンの比（data-theme を切り替えて読み、元に戻す）
+      themes: () => { const was = document.documentElement.dataset.theme, out = {}; for (const t of ["light", "dark", "paper", "indigo"]) { document.documentElement.dataset.theme = t; out[t] = { goldOnPaper3: contrast(token("--gold-ink"), token("--paper-3")), goldOnSheet: contrast(token("--gold-ink"), token("--sheet")), inkOnSheet: contrast(token("--ink"), token("--sheet")) }; } document.documentElement.dataset.theme = was; return out; }
+    };
+    return { theme: document.documentElement.dataset.theme, anims: document.getAnimations().length, scrollW: document.documentElement.scrollWidth, innerW: innerWidth, T, ...K[kind]() };
+  };
+
+  // 状態を開く（reduced motion・console のエラーも拾う）／閉じる（閉じる直前に動き・横スクロール・エラーを quiet に積む）
+  const quiet = [];
+  const openPart = async (label, init, url, theme) => {
+    const page = await newPage(init);
+    page.label = label;
+    page.consoleErrors = [];
+    page.on("console", (m) => { if (m.type() === "error") page.consoleErrors.push(m.text()); });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(BASE + url, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
+    await page.waitForTimeout(500);
+    return page;
+  };
+  const donePart = async (page) => {
+    const v = await page.evaluate(part, "quiet");
+    quiet.push({ label: page.label, anims: v.anims, overflow: v.scrollW > v.innerW ? `${v.scrollW}/${v.innerW}` : null, errs: [...page.errors, ...page.consoleErrors] });
+    await page.close();
+  };
+  const viewP = (w, theme, seed) => ({ mobile: w < 700, viewport: { width: w, height: w < 700 ? 844 : 900 }, storage: seed(theme) });
+  const visibleP = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); return !!el && !el.hidden && el.getClientRects().length > 0; }, sel);
+  const revealed = (page) => waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 1000);
+  // 1 セットを終える（12. 制覇の演出と同じ: 訳が一意なら打つ、そうでなければ Enter で答えを見て打つ）
+  const playSetP = async (page) => {
+    for (let i = 0; i < 16 && (await page.$("#resultPanel[hidden]")) !== null; i++) {
+      const ja = (await page.textContent("#japanese")).trim();
+      const cand = findByJaP(jhs1P, ja);
+      let ans;
+      if (cand.length === 1) ans = cand[0].en;
+      else { await page.press("#input", "Enter"); await revealed(page); ans = (await page.textContent("#word")).trim(); }
+      for (const ch of ans) await page.press("#input", ch);
+      await page.waitForTimeout(150);
+      await page.press("#input", "Enter");
+      await page.waitForTimeout(400);
+    }
+    return waitUntil(async () => (await page.$("#resultPanel:not([hidden])")) !== null, 4000);
+  };
+  // 初回の 1 セット目（チュートリアルの流れ）: 答えを見た語が戻ってきたら自力で打つ
+  const playFreshP = async (page) => {
+    const known = new Map();
+    for (let i = 0; i < 40; i++) {
+      if ((await page.$("#resultPanel:not([hidden])")) !== null) return true;
+      const ja = (await page.textContent("#japanese")).trim();
+      if (known.has(ja)) {
+        for (const ch of known.get(ja)) await page.press("#input", ch);
+        await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja || (await page.$("#resultPanel:not([hidden])")) !== null, 1500);
+        await page.waitForTimeout(100);
+        continue;
+      }
+      await page.press("#input", "Enter");
+      await revealed(page);
+      const shown = (await page.textContent("#word")).trim();
+      if (!/^[a-z]+$/.test(shown)) continue;
+      known.set(ja, shown);
+      for (const ch of shown) await page.press("#input", ch);
+      await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja, 1500);
+      await page.waitForTimeout(100);
+    }
+    return false;
+  };
+  const sameP = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const combos = [[390, "light"], [390, "dark"], [1200, "light"], [1200, "dark"]];
+
+  // ---- 1・2・6（発音ボタン）・9（明朝 700）: 結果パネルと盤面 ----
+  const results = {};
+  for (const [w, theme] of combos) {
+    const page = await openPart(`result ${w} ${theme}`, viewP(w, theme, unitSeedP), "/index.html?set=3", theme);
+    await page.click("#pathStart");
+    await page.waitForTimeout(700);
+    const board = await page.evaluate(part, "board");
+    await page.press("#input", "Enter"); // 答えを見る → #speakButton が出る
+    await revealed(page);
+    await page.waitForTimeout(200);
+    const reveal = await page.evaluate(part, "board");
+    const done = await playSetP(page);
+    await waitUntil(async () => (await page.$("#resultPanel .result-panel__unit")) !== null, 3000);
+    await page.waitForTimeout(400);
+    results[`${w}-${theme}`] = { done, board, reveal, result: await page.evaluate(part, "result") };
+    await donePart(page);
+  }
+  const resultOk = (r, w) => r.done && r.result.title.weight === "500" && r.result.action.radius === "3px" && r.result.action.family === "Shippori Mincho" && r.result.action.weight === "500" && r.result.actionsH.every((h) => h === B57_GEOMETRY[w].actionH) && r.result.grid.family === "SD Num" && r.result.bubble.radius === "2px" && r.result.bubble.borderColor === "rgba(0, 0, 0, 0)" && r.result.bubble.shadow && r.result.chip.radius === "3px" && !r.result.pro;
+  check("Batch 57 結果パネル（390・1200 × 昼・夜）: 題は明朝 500、「もう1セット」は札の角 3px・明朝 500・高さ 390 40／1200 38、数は SD Num、はちゃんは縁なし 2px の紙片（1px は透明）、語チップ 3px、Pro の文言なし", combos.every(([w, theme]) => resultOk(results[`${w}-${theme}`], w)), JSON.stringify(Object.fromEntries(combos.map(([w, theme]) => { const r = results[`${w}-${theme}`].result; return [`${w}-${theme}`, { done: results[`${w}-${theme}`].done, title: r.title?.weight, action: [r.action?.radius, r.action?.family, r.action?.weight, r.actionsH], grid: r.grid?.family, bubble: [r.bubble?.radius, r.bubble?.borderColor, r.bubble?.shadow], chip: r.chip?.radius, pro: r.pro, unit: r.unit }]; }))));
+  // 盤面の寸法は 56d のまま（±0）: 入力欄・その枠・OSK・発音ボタンの位置と大きさ、打つ文字 22px、--osk-h 236px。結果のボタンは高さと固定の文の幅、語チップは左端と高さ
+  const geomDiff = (r, w) => {
+    const G = B57_GEOMETRY[w], d = [];
+    for (const k of ["input", "wrapper", "osk"]) if (!sameP(r.board[k], G[k])) d.push(`${k}=${JSON.stringify(r.board[k])}`);
+    if (!sameP(r.reveal.speak, G.speak)) d.push(`speak=${JSON.stringify(r.reveal.speak)}`);
+    if (r.board.fontSize !== G.fontSize) d.push(`fontSize=${r.board.fontSize}`);
+    if (r.board.oskH !== G.oskH) d.push(`oskH=${r.board.oskH}`);
+    if (!r.result.actionsH.length || r.result.actionsH.some((h) => h !== G.actionH)) d.push(`actionsH=${r.result.actionsH}`);
+    if (r.result.again?.w !== G.again) d.push(`again=${JSON.stringify(r.result.again)}`);
+    if (r.result.challenge?.w !== G.challenge) d.push(`challenge=${JSON.stringify(r.result.challenge)}`);
+    if (!r.result.chips.length || r.result.chips[0].x !== G.chip.x || r.result.chips.some((c) => c.h !== G.chip.h)) d.push(`chips=${JSON.stringify(r.result.chips)}`);
+    return d;
+  };
+  const geomDiffs = Object.fromEntries(combos.map(([w, theme]) => [`${w}-${theme}`, geomDiff(results[`${w}-${theme}`], w)]));
+  check("Batch 57 盤面の寸法は 56d のまま（±0。390・1200 × 昼・夜）: #input・.input-wrapper・#osk・#speakButton の位置と大きさ、#input 22px、--osk-h 236px、結果のボタンの高さと「もう1セット」110／「Challenge」162 の幅、語チップの左端と高さ", Object.values(geomDiffs).every((d) => d.length === 0), JSON.stringify(geomDiffs));
+
+  // ---- 3. 画面キーボード（390 × 昼・夜） ----
+  const osk = {};
+  for (const theme of ["light", "dark"]) {
+    const page = await openPart(`osk 390 ${theme}`, viewP(390, theme, returningP), "/index.html?set=3", theme);
+    await page.tap("#pathStart");
+    await page.waitForTimeout(900);
+    osk[theme] = await page.evaluate(part, "osk");
+    await donePart(page);
+  }
+  const oskOk = (o, theme) => o.key.radius === "3px" && o.key.h === 46 && o.nKeys === 26 && o.enter.bg === o.T["--ink"] && o.enter.color === o.T["--paper"] && o.enterRatio >= 4.5 && o.key.color === o.T["--ink"] && o.keyRatio >= 4.5 && (theme === "dark" ? o.keyLum > o.oskLum : o.key.bg === o.T["--sheet"]);
+  check(`Batch 57 画面キーボード（390 × 昼・夜）: キーは 3px・46px・26 個、昼のキーは --sheet、夜はキーが盤面より明るい、Enter は --ink の塗りに --paper の字（比 ${osk.light.enterRatio}／${osk.dark.enterRatio}）、キーの字 --ink（比 ${osk.light.keyRatio}／${osk.dark.keyRatio}）`, oskOk(osk.light, "light") && oskOk(osk.dark, "dark"), JSON.stringify({ light: { key: osk.light.key, enter: osk.light.enter, oskBg: osk.light.oskBg }, dark: { key: osk.dark.key, enter: osk.dark.enter, oskBg: osk.dark.oskBg, lum: [osk.dark.keyLum, osk.dark.oskLum] } }));
+
+  // ---- 4. チュートリアルの札（初回: spelldash_onboarded を入れずに ?set=3。390 × 昼・夜。T2 は OSK の上、T4（道に戻る）に「わかった」） ----
+  const coach = {};
+  for (const theme of ["light", "dark"]) {
+    const page = await openPart(`coach 390 ${theme}`, { keepOnboarding: true, mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_theme: theme } }, "/index.html?set=3", theme);
+    await page.click("#pathStart");
+    await page.waitForTimeout(700);
+    await page.press("#input", "Enter"); // 答えを見る → T2
+    await waitUntil(() => visibleP(page, ".coach:not(.coach--out)"), 2500);
+    await page.waitForTimeout(400);
+    const t2 = await page.evaluate(part, "coach");
+    const finished = await playFreshP(page);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { const b = document.getElementById("backToPath"); if (b && !b.hidden) b.click(); });
+    await waitUntil(() => visibleP(page, ".coach__ok"), 2500);
+    await page.waitForTimeout(300);
+    coach[theme] = { t2, finished, t4: await page.evaluate(part, "coach") };
+    await donePart(page);
+  }
+  const coachOk = (c) => c.t2.step === "T2" && c.t2.coach.radius === "3px" && c.t2.coach.bg === c.t2.T["--sheet"] && c.t2.coach.shadow && c.t2.coach.color === c.t2.T["--ink"] && c.t2.ratio >= 4.5 && c.t2.oskOpen && c.t2.oskH === 236 && Math.abs(c.t2.bottom - (c.t2.innerH - c.t2.oskH - 8)) <= 2 && c.finished && c.t4.step === "T4" && c.t4.ok?.radius === "3px" && c.t4.okText === "わかった";
+  check(`Batch 57 チュートリアルの札（390 × 昼・夜）: 札は --sheet・3px・影あり、文字 --ink と --sheet の比 ≥ 4.5（昼 ${coach.light.t2.ratio}・夜 ${coach.dark.t2.ratio}）、OSK の上 --osk-h + 8px（下端 ${coach.light.t2.bottom} = 844 − 236 − 8）、T4 の「わかった」も 3px`, coachOk(coach.light) && coachOk(coach.dark), JSON.stringify({ light: { t2: { ...coach.light.t2.coach, step: coach.light.t2.step, bottom: coach.light.t2.bottom, oskH: coach.light.t2.oskH }, finished: coach.light.finished, t4: [coach.light.t4.step, coach.light.t4.ok?.radius, coach.light.t4.okText] }, dark: { t2: { ...coach.dark.t2.coach, step: coach.dark.t2.step, bottom: coach.dark.t2.bottom }, finished: coach.dark.finished, t4: [coach.dark.t4.step, coach.dark.t4.ok?.radius, coach.dark.t4.okText] } }));
+
+  // ---- 5. ログインの紙とメニュー（ホーム 390・1200 × 昼・夜。朱は #pathStart と focus 中の入力欄だけ） ----
+  const login = {}, menu = {};
+  for (const [w, theme] of combos) {
+    const page = await openPart(`login ${w} ${theme}`, viewP(w, theme, returningP), "/index.html", theme);
+    await waitUntil(() => visibleP(page, "#loginToggle"), 3000);
+    await page.click("#loginToggle");
+    await page.waitForTimeout(400);
+    login[`${w}-${theme}`] = await page.evaluate(part, "login");
+    await donePart(page);
+    const page2 = await openPart(`menu ${w} ${theme}`, viewP(w, theme, freeLoginP), "/index.html", theme);
+    await waitUntil(() => visibleP(page2, "#avatarButton"), 3000);
+    await page2.click("#avatarButton");
+    await page2.waitForTimeout(400);
+    menu[`${w}-${theme}`] = await page2.evaluate(part, "menu");
+    await donePart(page2);
+  }
+  const paperOk = (f, T) => !!f && f.radius === "3px" && f.bg === T["--sheet"] && f.shadow;
+  const loginOk = (l) => paperOk(l.menu, l.T) && l.input?.radius === "3px" && l.google?.radius === "3px" && l.send?.radius === "3px" && l.signals.length <= 2 && l.signals.every((s) => /^(input#emailInput|button#pathStart)\[/.test(s));
+  const menuOk = (m) => paperOk(m.menu, m.T) && m.items.length >= 2 && m.items.every((i) => i.radius === "3px" && i.family === "Shippori Mincho" && i.weight === "500") && m.danger?.color === m.T["--ink-2"];
+  check("Batch 57 ログインの紙とメニュー（ホーム 390・1200 × 昼・夜）: 紙は --sheet・3px・影あり、入力・Google・項目は 3px、項目は明朝 500、「ログアウト」は --ink-2（朱でない）、朱の色を持つ要素はスタートと focus 中の入力欄だけ（≤ 2）", combos.every(([w, theme]) => loginOk(login[`${w}-${theme}`]) && menuOk(menu[`${w}-${theme}`])), JSON.stringify(Object.fromEntries(combos.map(([w, theme]) => { const l = login[`${w}-${theme}`], m = menu[`${w}-${theme}`]; return [`${w}-${theme}`, { paper: [l.menu?.radius, l.menu?.bg, l.menu?.shadow], parts: [l.input?.radius, l.google?.radius, l.send?.radius], signals: l.signals, items: m.items.map((i) => [i.radius, i.family, i.weight]), danger: m.danger?.color, ink2: m.T["--ink-2"] }]; }))));
+
+  // ---- 6. ご意見のモーダル（ホームのフッター）と単語の詳細（list.html の習得の語。390・1200 × 昼・夜） ----
+  const feedback = {}, detail = {};
+  for (const [w, theme] of combos) {
+    const page = await openPart(`feedback ${w} ${theme}`, viewP(w, theme, returningP), "/index.html", theme);
+    await page.evaluate(() => document.querySelector("[data-feedback-open]")?.click());
+    await waitUntil(() => visibleP(page, ".feedback-modal__panel"), 2000);
+    await page.waitForTimeout(300);
+    feedback[`${w}-${theme}`] = await page.evaluate(part, "feedback");
+    await donePart(page);
+    const page2 = await openPart(`detail ${w} ${theme}`, viewP(w, theme, statsSeedP), "/list.html?category=jhs-english1", theme);
+    await waitUntil(() => page2.evaluate(() => !!document.querySelector(".gcard__status--mastered")), 4000);
+    await page2.evaluate(() => document.querySelector(".gcard__status--mastered")?.closest(".gcard")?.querySelector("[data-word-detail]")?.click());
+    await waitUntil(() => visibleP(page2, ".word-detail__panel"), 2000);
+    await page2.waitForTimeout(300);
+    detail[`${w}-${theme}`] = await page2.evaluate(part, "detail");
+    await donePart(page2);
+  }
+  const square = (f, n) => !!f && f.radius === "3px" && f.w === n && f.h === n;
+  const modalOk = (w, theme) => { const f = feedback[`${w}-${theme}`], d = detail[`${w}-${theme}`], r = results[`${w}-${theme}`].reveal; return paperOk(f.panel, f.T) && f.textarea?.radius === "3px" && f.close?.radius === "3px" && paperOk(d.panel, d.T) && d.speak?.radius === "3px" && square(d.exSpeak, w === 390 ? 36 : 28) && r.speakRadius === "3px"; };
+  check("Batch 57 ご意見のモーダルと単語の詳細（390・1200 × 昼・夜）: 紙は --sheet・3px・影あり、ご意見の textarea と閉じる、詳細の「発音」、盤面の発音ボタンは 3px、例文の発音は正方形（1200 28×28・390 36×36）", combos.every(([w, theme]) => modalOk(w, theme)), JSON.stringify(Object.fromEntries(combos.map(([w, theme]) => { const f = feedback[`${w}-${theme}`], d = detail[`${w}-${theme}`]; return [`${w}-${theme}`, { feedback: [f.panel?.radius, f.panel?.bg, f.panel?.shadow, f.textarea?.radius, f.close?.radius], detail: [d.panel?.radius, d.panel?.bg, d.panel?.shadow, d.speak?.radius, d.exSpeak && `${d.exSpeak.radius} ${d.exSpeak.w}×${d.exSpeak.h}`], board: results[`${w}-${theme}`].reveal.speakRadius }]; }))));
+
+  // ---- 7. 緑が 0（済みは金）: 詳細・stats の記録と分析・マイ単語帳の習得・battle の勝ち。「習得」の題箋 --gold-ink / --paper-3 は 4 テーマで ≥ 4.68 ----
+  const green = {};
+  for (const [w, theme] of [[390, "light"], [1200, "dark"]]) {
+    const page = await openPart(`stats ${w} ${theme}`, viewP(w, theme, statsSeedP), "/stats.html", theme);
+    await page.click('#statsTabs [data-tab="words"]');
+    await page.waitForTimeout(600);
+    const words = await page.evaluate(part, "stats");
+    await page.click('#statsTabs [data-tab="analysis"]');
+    await page.waitForTimeout(600);
+    const analysis = await page.evaluate(part, "stats");
+    await donePart(page);
+    // バトル: 4 秒の対戦で 1 語答える（CPU は 0 のまま → 勝ち）。tests の作法どおりロジックは触らない
+    const page2 = await openPart(`battle ${w} ${theme}`, viewP(w, theme, returningP), "/battle.html?t=4", theme);
+    await page2.click("#startBattle");
+    await waitUntil(() => visibleP(page2, "#battleArena"), 3000);
+    await page2.waitForTimeout(300);
+    for (let i = 0; i < 4; i++) {
+      const ja = (await page2.textContent("#playerJa")).trim();
+      const en = await page2.evaluate(async (q) => { const ws = await import("/js/wordStore.js"); const list = ws.getWordsByCategory(document.getElementById("battleCategory").value) ?? []; return list.find((x) => typeof x.en === "string" && /^[a-z]+$/.test(x.en) && (x.ja === q || String(x.ja ?? "").split("・").includes(q)))?.en ?? null; }, ja);
+      if (!en) { await page2.press("#battleInput", "Enter"); await page2.waitForTimeout(200); continue; }
+      await page2.focus("#battleInput");
+      for (const ch of en) await page2.press("#battleInput", ch);
+      if (await waitUntil(async () => (await page2.textContent("#playerScore")).trim() !== "0", 1500)) break;
+    }
+    await waitUntil(() => visibleP(page2, "#battleResult"), 8000);
+    await page2.waitForTimeout(300);
+    const battle = await page2.evaluate(part, "battle");
+    await donePart(page2);
+    const page3 = await openPart(`mywords ${w} ${theme}`, viewP(w, theme, myWordsSeedP), "/list.html#myWords", theme);
+    await page3.evaluate(() => { const d = document.getElementById("myWords"); if (d) d.open = true; });
+    await waitUntil(() => page3.evaluate(() => !!document.querySelector(".my-word__status--mastered")), 3000);
+    const myWords = await page3.evaluate(part, "detail");
+    await donePart(page3);
+    green[`${w}-${theme}`] = { words, analysis, battle, myWords, detail: detail[`${w}-${theme}`] };
+  }
+  const themesP = await (async () => { const page = await openPart("themes", viewP(1200, "light", returningP), "/index.html", "light"); const t = await page.evaluate(part, "themes"); await donePart(page); return t; })();
+  const greenColors = (g) => {
+    const T = g.words.T, d = g.detail, m = g.myWords, w = g.words;
+    return { gold: T["--gold-ink"], ok: T["--ok"], okSoft: T["--ok-soft"], seen: { detailStatus: [d.status?.color, d.status?.bg], detailHist: d.hist, gcard: [w.gcard?.color, w.gcard?.bg], myWord: m.myWord?.color, hist: [w.hist, w.nHist], cal: w.cal, catBar: w.catBar, verdict: [g.battle.cls, g.battle.verdict?.color, g.battle.verdict?.size, g.battle.ratio] } };
+  };
+  const greenOk = (g) => {
+    const c = greenColors(g), flat = JSON.stringify(c.seen);
+    return !flat.includes(c.ok) && !flat.includes(c.okSoft) && g.detail.status?.color === c.gold && g.detail.hist === c.gold && g.words.gcard?.color === c.gold && g.myWords.myWord?.color === c.gold && g.words.nHist > 0 && g.words.hist !== undefined && g.words.cal.every(Boolean) && !!g.words.catBar && /battle-verdict--win/.test(g.battle.cls ?? "") && g.battle.verdict?.color === c.gold && g.battle.ratio >= 3;
+  };
+  const minGold = Math.min(...["light", "dark", "paper", "indigo"].map((t) => themesP[t].goldOnPaper3));
+  check(`Batch 57 緑が 0（済みは金）: 詳細・一覧・stats の「習得」、履歴の点、今週の濃淡、分野の棒、マイ単語帳の習得、battle の「勝ち」（--gold-ink / --sheet 390 昼 ${green["390-light"].battle.ratio}・1200 夜 ${green["1200-dark"].battle.ratio} ≥ 3）に --ok 系の色が無い。「習得」の題箋 --gold-ink / --paper-3 は 昼 ${themesP.light.goldOnPaper3}・夜 ${themesP.dark.goldOnPaper3}・紙 ${themesP.paper.goldOnPaper3}・藍 ${themesP.indigo.goldOnPaper3}（最低 ${minGold} ≥ 4.68）`, greenOk(green["390-light"]) && greenOk(green["1200-dark"]) && minGold >= 4.68, JSON.stringify({ "390-light": greenColors(green["390-light"]), "1200-dark": greenColors(green["1200-dark"]), themes: themesP }));
+
+  // ---- 8. コース選択（ホーム 390・1200 × 昼・夜。「コースを変える」→ #pathCourses） ----
+  const course = {};
+  for (const [w, theme] of combos) {
+    const page = await openPart(`course ${w} ${theme}`, viewP(w, theme, returningP), "/index.html", theme);
+    await waitUntil(() => page.evaluate(() => !!document.getElementById("pathCourse")), 3000);
+    await page.click("#pathCourse");
+    await waitUntil(() => visibleP(page, "#pathCourses"), 2000);
+    await page.waitForTimeout(300);
+    course[`${w}-${theme}`] = await page.evaluate(part, "course");
+    await donePart(page);
+  }
+  const courseOk = (c, w) => c.open && c.panel?.bg === c.T["--sheet"] && c.panel.radius === (w === 390 ? "3px 3px 0px 0px" : "3px") && c.now?.color === c.T["--gold-ink"] && c.nStart === 1;
+  check("Batch 57 コース選択（ホーム 390・1200 × 昼・夜）: 面は --sheet、390 の上角は 3px（下から出るシート）、「いまのコース」は --gold-ink（朱でない）、#pathStart は 1 個", combos.every(([w, theme]) => courseOk(course[`${w}-${theme}`], w)), JSON.stringify(Object.fromEntries(combos.map(([w, theme]) => { const c = course[`${w}-${theme}`]; return [`${w}-${theme}`, { open: c.open, panel: [c.panel?.radius, c.panel?.bg], now: c.now?.color, gold: c.T["--gold-ink"], nStart: c.nStart }]; }))));
+
+  // ---- 9. 字の規則: メモの「保存」（詳細）・分析の見出し語・パックの入口の題・設定のメールアドレスとプラン・Pro の状態・カード候補のチェック・明朝 700 は「スタート」だけ ----
+  const fontsP = {};
+  {
+    const page = await openPart("fonts profile", viewP(1200, "light", proLoginP), "/profile.html", "light");
+    await waitUntil(() => page.evaluate(() => (document.querySelector(".profile-email")?.textContent ?? "").length > 0), 4000);
+    fontsP.profile = await page.evaluate(part, "fonts");
+    await donePart(page);
+    const page2 = await openPart("fonts pro", viewP(1200, "light", proLoginP), "/pro.html", "light");
+    await waitUntil(() => page2.evaluate(() => !!document.querySelector(".pro-state__text")), 5000);
+    fontsP.pro = await page2.evaluate(part, "fonts");
+    await donePart(page2);
+    const page3 = await openPart("fonts packs", viewP(390, "light", returningP), "/packs/index.html", "light");
+    fontsP.packs = await page3.evaluate(part, "fonts");
+    await donePart(page3);
+    const page4 = await openPart("fonts cardgen", viewP(1200, "light", myWordsSeedP), "/list.html#myWords", "light");
+    await page4.evaluate(() => { const d = document.getElementById("myWords"); if (d) d.open = true; });
+    await page4.waitForTimeout(300);
+    await page4.click('[data-my-tab="ai"]');
+    await page4.fill("#cardGenText", "リスティング広告は検索結果に連動して表示される広告で、クリックごとに費用（CPC）が発生する。");
+    await page4.click("#cardGenRun");
+    await waitUntil(async () => (await page4.$$(".cardgen__card")).length >= 2, 4000);
+    fontsP.cardgen = await page4.evaluate(part, "fonts");
+    await donePart(page4);
+  }
+  const mincho500 = (f) => !!f && f.family === "Shippori Mincho" && f.weight === "500";
+  const fontsOk = () => mincho500(detail["1200-light"].noteSave) && mincho500(detail["390-light"].noteSave) && mincho500(green["390-light"].analysis.statSpan) && mincho500(green["1200-dark"].analysis.statSpan) && mincho500(fontsP.packs.packsB) && fontsP.profile.email?.family !== "Shippori Mincho" && fontsP.profile.email?.weight === "500" && fontsP.profile.plan?.family === "SD Num" && fontsP.pro.proState?.family === "SD Num" && fontsP.cardgen.nCards >= 2 && fontsP.cardgen.checkbox === fontsP.cardgen.T["--ink"] && combos.every(([w, theme]) => results[`${w}-${theme}`].result.mincho700 === false && results[`${w}-${theme}`].result.mincho500 === true);
+  check("Batch 57 字の規則: メモの「保存」・分析の見出し語・パックの入口の題は明朝 500、メールアドレスは明朝でない 500、#planValue と .pro-state__text は SD Num、カード候補のチェックは --ink、結果パネルを出しても明朝 700 の漢字は読まれない（700 は「スタート」のかなだけ）", fontsOk(), JSON.stringify({ noteSave: [detail["1200-light"].noteSave?.family, detail["1200-light"].noteSave?.weight], statSpan: [green["390-light"].analysis.statSpan?.family, green["390-light"].analysis.statSpan?.weight], packsB: [fontsP.packs.packsB?.family, fontsP.packs.packsB?.weight], email: [fontsP.profile.email?.family, fontsP.profile.email?.weight], plan: fontsP.profile.plan?.family, proState: fontsP.pro.proState?.family, checkbox: [fontsP.cardgen.checkbox, fontsP.cardgen.nCards], mincho: combos.map(([w, theme]) => { const r = results[`${w}-${theme}`].result; return [r.mincho700, r.mincho500, r.loaded700]; }) }));
+
+  // ---- 11. ホームの 1 画面目は 56d のまま（390・1200 昼。8.6／8.8 と重なる値は detail に出す） ----
+  const home = {};
+  for (const w of [390, 1200]) {
+    const page = await openPart(`home ${w}`, viewP(w, "light", returningP), "/index.html", "light");
+    await page.waitForTimeout(300);
+    home[w] = await page.evaluate(part, "home");
+    await donePart(page);
+  }
+  const homeOk = (w) => sameP(home[w].start, B57_GEOMETRY[w].start) && home[w].stage === B57_GEOMETRY[w].stage && home[w].themeColor === B57_GEOMETRY.themeColor && home[w].nStart === 1;
+  check(`Batch 57 ホームの 1 画面目は 56d のまま（390・1200 昼）: #pathStart の下端と幅（390 ${B57_GEOMETRY[390].start.bottom}・${B57_GEOMETRY[390].start.width}／1200 ${B57_GEOMETRY[1200].start.bottom}・${B57_GEOMETRY[1200].start.width}）、.room__stage の高さ（262／430）、theme-color #1A2137`, homeOk(390) && homeOk(1200), JSON.stringify(home));
+
+  // ---- 10. 動きと静けさ: 上の全状態（reduced motion）で動く物 0・横スクロール無し・pageerror と console のエラー 0 ----
+  const noisy = quiet.filter((s) => s.anims !== 0 || s.overflow || s.errs.length);
+  check(`Batch 57 動きと静けさ（${quiet.length} 状態・reduced motion）: 動く物 0・横スクロール無し・エラー 0`, quiet.length >= 36 && noisy.length === 0, JSON.stringify(noisy.slice(0, 5)));
+
+  // ---- 12. 予算と CSS の規律: scripts/room-budget.mjs が緑（フォント ≤ 520KB・場面 ≤ 260KB。外部 0 は 8.5）。css/ の旧い書き方（999px・var(--radius)・var(--radius-lg)・rgba(0,0,0・#FFF）は 56d の数から増えない ----
+  const { spawnSync } = await import("child_process");
+  const budget = spawnSync("node", [path.join(ROOT, "scripts/room-budget.mjs")], { encoding: "utf8", timeout: 240000, env: { ...process.env, CHROME_PATH: findChromium() } });
+  const budgetText = `${budget.stdout ?? ""}${budget.stderr ?? ""}`;
+  const CSS_RE = { pill: /\b999px/g, radius: /var\(--radius\)/g, radiusLg: /var\(--radius-lg\)/g, black: /rgba\(0,\s*0,\s*0/g, white: /#(?:FFF|fff)(?:FFF|fff)?(?![0-9A-Fa-f])/g };
+  const cssText = fs.readdirSync(path.join(ROOT, "css")).filter((f) => f.endsWith(".css")).map((f) => fs.readFileSync(path.join(ROOT, "css", f), "utf8")).join("\n");
+  const cssCounts = Object.fromEntries(Object.entries(CSS_RE).map(([k, re]) => [k, (cssText.match(re) || []).length]));
+  // 作業中の木なら、足した行（git diff HEAD -- css/ の + 行）にも無いことを見る。注釈は除く（行内の /* */ を消し、複数行の注釈の行は読まず、宣言か選択子の行だけ）。コミット後は差分が無いので数の見張りだけ
+  const diff = spawnSync("git", ["diff", "HEAD", "--", "css/"], { cwd: ROOT, encoding: "utf8" });
+  const added = diff.status === 0 ? diff.stdout.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1).replace(/\/\*.*?\*\//g, "")).filter((l) => !/\/\*|\*\//.test(l) && /[:{]/.test(l)) : [];
+  const addedBad = added.filter((l) => Object.values(CSS_RE).some((re) => (l.match(re) || []).length > 0)).map((l) => l.trim().slice(0, 80));
+  check(`Batch 57 予算と CSS の規律: room-budget が緑（フォント ≤ 520KB・場面 ≤ 260KB）、css/ の 999px・var(--radius)・var(--radius-lg)・rgba(0,0,0・#FFF は 56d（${Object.values(B57_GEOMETRY.css).join("・")}）から増えない、足した行にも無い`, budget.status === 0 && !budgetText.includes("予算を超えた") && Object.keys(CSS_RE).every((k) => cssCounts[k] <= B57_GEOMETRY.css[k]) && addedBad.length === 0, JSON.stringify({ budget: budget.status, tail: budgetText.trim().split("\n").slice(-3).map((l) => l.slice(0, 120)), cssCounts, addedBad }));
+}
+
 // ===== 9. 難易度ゲート: easy 0語のカテゴリ（IT）でもLv1で出題が枯渇しない =====
 console.log("difficulty gate:");
 {

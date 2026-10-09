@@ -240,13 +240,47 @@ html[data-theme] body:not(.page-room) .header-streak--off {
   color: var(--on-vault-2);
 }
 
-/* 帯から下がる紙片（ログイン／アカウントのメニュー）: 読む机の紙に机への影。layout.css の定義はホームも使うので部屋以外だけ */
-html[data-theme] body:not(.page-room) .account-menu,
-html[data-theme] body:not(.page-room) .account-menu--login {
+/* 帯から下がる紙片（ログイン／アカウントのメニュー）: 読む机の紙に机への影。ホームの帯からも同じ紙が下がる
+   （layout.css の素の箱 = --paper-2・10px・影なし を全ページで置き換える。--ink / --sheet = 昼 13.67・夜 12.51、説明 --ink-3 / --sheet = 6.74・6.23） */
+html[data-theme] .account-menu,
+html[data-theme] .account-menu--login {
   border-radius: var(--radius-room);
   border-color: var(--sheet-edge);
   background: var(--sheet);
   box-shadow: 0 10px 20px -12px rgba(var(--shadow-rgb), 0.55);
+}
+
+/* 紙の中の部品も札の角（layout.css の --radius と Google ボタンの 6px に (0,3,1) で勝つ）。入力は紙の上の一段くぼんだ欄 --paper-2（--ink / --paper-2 = 14.40・12.81） */
+html[data-theme] .account-menu--login input,
+html[data-theme] .account-menu .btn,
+html[data-theme] .account-menu__item {
+  border-radius: var(--radius-room);
+}
+
+/* 項目はナビの字（明朝 500・字間 .04em）。ログアウトは危険な操作ではない（記録は端末に残る）ので朱を使わない: 朱は 1 画面 1 回（スタート）。
+   --ink-2 / --sheet = 昼 9.08・夜 9.35。14px・padding 10px 12px・coarse の 40px は layout.css と下の coarse のまま */
+html[data-theme] .account-menu__item {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] .account-menu__item--danger {
+  color: var(--ink-2);
+}
+
+html[data-theme] .account-menu__item--danger:hover {
+  color: var(--ink);
+}
+
+/* 夜の紙の中の罫: --line は --sheet の上で 1.2:1 で消えるので --line-2（56b の「夜の札の中の罫」と同じ理屈）。擬似要素は :is() に入れられないので 2 つ書く */
+html:is([data-theme="dark"], [data-theme="indigo"]) .account-menu .account-menu__divider::before,
+html:is([data-theme="dark"], [data-theme="indigo"]) .account-menu .account-menu__divider::after {
+  background: var(--line-2);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .account-menu .account-menu__email {
+  border-bottom-color: var(--line-2);
 }
 
 /* ---- フッター ---- */
@@ -574,7 +608,7 @@ html[data-theme] body:not(.page-room) :is(.logo, .pp-kicker)::before {
   background: var(--gold);
 }
 
-html[data-theme] .auth-message.success { color: var(--ok); }
+html[data-theme] .auth-message.success { color: var(--gold-ink); } /* 済みは金（緑は使わない）。ホームの .auth-message--home は room.css が --on-vault に差し替える */
 html[data-theme] .auth-message.error { color: var(--signal-ink); }
 
 /* ---- カード（ゲームカードと結果） ---- */
@@ -827,8 +861,8 @@ html[data-theme] .feedback-modal__panel {
   box-shadow: none;
 }
 
-/* 部屋以外では読む机の紙の一枚（小口 2 段＋机への影。カードの共通レシピと同じ値） */
-html[data-theme] body:not(.page-room) .feedback-modal__panel {
+/* 読む机の紙の一枚（小口 2 段＋机への影。カードの共通レシピと同じ値）。ホームのフッターから開いても同じ紙（上の素の定義を後勝ちで置き換える） */
+html[data-theme] .feedback-modal__panel {
   background: var(--sheet);
   border: 1px solid var(--sheet-edge);
   border-radius: var(--radius-room);
@@ -857,7 +891,7 @@ html[data-theme] .feedback-modal__close {
   margin: -8px -8px -8px 0;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--radius);
+  border-radius: var(--radius-room);
   background: transparent;
   color: var(--ink-3);
   font-size: 16px;
@@ -884,12 +918,19 @@ html[data-theme] .feedback-modal__panel input {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--line-2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-room);
   background: var(--paper-2);
   color: var(--ink);
   font-family: inherit;
   font-size: 14px;
   resize: vertical;
+}
+
+/* プレースホルダは説明文（例文・返信先）。ブラウザ既定の #757575 は夜 3.78・藍 3.75 で本文 4.5:1 を割る。
+   単語の詳細のメモ欄（#wordDetailNote）も同じ面（--paper-2）なのでここで揃える。--ink-3 / --paper-2 = 昼 7.10・夜 6.38・紙 7.34・藍 6.93 */
+html[data-theme] :is(.feedback-modal__panel textarea, .feedback-modal__panel input, #wordDetailNote)::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
 }
 
 html[data-theme] .feedback-modal__panel :is(input, textarea):focus,
@@ -907,7 +948,7 @@ html[data-theme] .feedback-modal__actions {
 }
 
 html[data-theme] .feedback-modal__status {
-  color: var(--ok);
+  color: var(--gold-ink); /* 送れた、は金（緑は使わない）。--gold-ink / --sheet = 昼 5.36・夜 10.51 */
   font-size: 13px;
 }
 
@@ -972,7 +1013,14 @@ html[data-theme] .word-example__speak:hover {
   }
 }
 
-/* ---- チュートリアルの札（js/tutorial.js）: 画面下に 1 本。紙の面・1px 罫線・角丸 10。影・三角・動きなし ---- */
+/* ---- 共有の 28px ピルは札の角（999px をやめる。56b S5 の先送り分）。上の 2 定義と同じ詳細度なので必ずこの後に置く。
+   高さ 28px（coarse 36px）・padding・字は変えない。.word-example__speak は 28×28 の正方形になる（円は本当に丸い物だけ）。ホームのプレイ中（発音・ヒント）にも効く ---- */
+html[data-theme] :is(.word-note__edit, .word-ai__button, .speak-button, .word-detail__speak, .hint-button, .word-note__save, .word-example__speak) {
+  border-radius: var(--radius-room);
+}
+
+/* ---- チュートリアルの札（js/tutorial.js）: 画面下に 1 本。読む机の紙片（--sheet・1px の小口・札の角・--slip-shadow）。三角・動きなし。
+   --ink / --sheet = 昼 13.67・夜 12.51。「わかった」 --ink-2 / --paper-3 = 昼 7.93・夜 8.60 ---- */
 html[data-theme] .coach {
   position: fixed;
   left: 50%;
@@ -984,14 +1032,15 @@ html[data-theme] .coach {
   width: max-content;
   max-width: min(480px, calc(100vw - 32px));
   padding: 10px 14px;
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius-lg);
-  background: var(--paper-2);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  background: var(--sheet);
   color: var(--ink);
   font-family: var(--font-display);
   font-size: 13px;
   letter-spacing: 0.02em;
   line-height: 1.5;
+  box-shadow: var(--slip-shadow);
   transform: translateX(-50%);
   opacity: 1;
   transition: opacity var(--ease);
@@ -1011,8 +1060,8 @@ html[data-theme] .coach__ok {
   flex: 0 0 auto;
   min-height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-room);
   background: var(--paper-3);
   color: var(--ink-2);
   font-family: var(--font-display);
@@ -1154,5 +1203,35 @@ html[data-theme] .setting-linkbtn:hover {
     flex: 1 1 100%;
     width: 100%;
     min-height: 44px;
+  }
+}
+
+/* ---- 机の本のコース選択（#pathCourses。path.css は凍結なので、ここで (0,3,1) の後勝ち。index.html では brand.css が path.css より後に読まれる。
+   room.css は .path__courses をプレイ中に隠すだけ）: 面は読む机の紙 --sheet（夜の頁の上で浮く --paper-2 をやめる）、390 の上角は札の角、
+   現在地は金（朱は 1 画面 1 回: スタート。--gold-ink / --paper-2 = 昼 5.65・夜 10.76・紙 6.08・藍 10.66）、hover は墨＋金の下線（朱を足さない） ---- */
+html[data-theme] .page-room .path__course-now {
+  color: var(--gold-ink);
+  font-weight: 500;
+}
+
+html[data-theme] .page-room .path__courses {
+  background: var(--sheet);
+  border-color: var(--sheet-edge);
+}
+
+html[data-theme] .page-room .path__courses-head {
+  background: var(--sheet);
+}
+
+html[data-theme] .page-room .path__course-pick:hover b {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--gold);
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .page-room .path__courses {
+    border-radius: var(--radius-room) var(--radius-room) 0 0;
   }
 }

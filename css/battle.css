@@ -358,7 +358,7 @@ html[data-theme] .input-wrapper--battle .typed-preview {
   color: var(--ink);
 }
 
-.battle-verdict--win { color: var(--ok); }
+.battle-verdict--win { color: var(--gold-ink); } /* 勝ちは金（済みの印と同じ）。緑は使わない */
 .battle-verdict--loss { color: var(--signal-ink); }
 .battle-verdict--draw { color: var(--ink-2); }
 
@@ -631,7 +631,7 @@ html[data-theme] body:not(.page-room) .arena-panel .arena-ja--cpu {
   color: var(--ink-2);
 }
 
-html[data-theme] body:not(.page-room) .battle-verdict--win { color: var(--ok); }
+html[data-theme] body:not(.page-room) .battle-verdict--win { color: var(--gold-ink); } /* --gold-ink／--sheet 昼 5.36・夜 10.51・紙 5.92・藍 10.32 */
 html[data-theme] body:not(.page-room) .battle-verdict--loss { color: var(--signal-ink); }
 html[data-theme] body:not(.page-room) .battle-verdict--draw { color: var(--ink-2); }
 
@@ -641,6 +641,27 @@ html[data-theme] body:not(.page-room) .arena-timer {
   background: var(--sheet);
   border: 1px solid var(--gold-dk);
   color: var(--ink);
+}
+
+/* 結果の字（読む層）: 「あなた／相手」の行は明朝 500、数は一覧の数字の書体のまま。
+   「RP +20」「Bronze 20 RP」はロビーの Bronze と同じラテン（Cormorant 600）で 13px → 14px（結果の紙の寸法。盤面の凍結の対象外）。
+   :is(…, #resultRankLine) は (1,2,2) で上の #resultRankLine (1,0,0) と pages.css の .muted に勝つ。色は変えない（--ink-2／--ink-3 のまま） */
+html[data-theme] body:not(.page-room) .battle-scores__row {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] body:not(.page-room) .battle-scores__row strong {
+  font-family: var(--font-num-ui);
+  font-weight: 600;
+}
+
+html[data-theme] body:not(.page-room) :is(.battle-rp__change, #resultRankLine) {
+  font-family: var(--font-latin);
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: lining-nums proportional-nums; /* ロビーの RP と同じ lining（Cormorant の旧式数字は 0 が o に見える） */
 }
 
 /* ロビーの字（.rank-card__rank・__rp）と CPU の済みの点（.cpu-dot--done）は上の基本の規則で足りる:

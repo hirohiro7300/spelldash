@@ -1,6 +1,6 @@
 /* ===== 専用キーボード（A〜Z＋⌫） =====
    スマホでプレイ中だけ画面下に固定。OS キーボードの代わりなので、押しやすさ最優先。
-   見た目は「墨と朱」（docs/CONCEPT.md）: 紙の盤面に 1px の罫線、キーは等幅の墨、Enter だけ墨の塗り。
+   見た目は書斎の道具（docs/CONCEPT.md §4）: 紙の盤面に 1px の罫線・3px の角、キーは等幅の墨、Enter だけ墨の塗り。
    色はすべて css/tokens.css の変数（ダークは自動で反転）。高さ・data-key／data-action は変えない。 */
 
 .osk {
@@ -64,8 +64,8 @@ html:has(body.osk-open) {
   margin: 0;
   box-sizing: border-box;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--paper-2);
+  border-radius: var(--radius-room);
+  background: var(--sheet);
   color: var(--ink);
   font-family: var(--font-mono);
   font-size: 20px;
@@ -104,7 +104,7 @@ html:has(body.osk-open) {
   background: var(--paper-3);
   font-family: var(--font-ui);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* 長音 ー（ローマ字で読みを打つカードだけ。js/keyboard.js） */
@@ -113,7 +113,7 @@ html:has(body.osk-open) {
   background: var(--paper-3);
   font-family: var(--font-ui);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .osk__key--enter {
@@ -121,14 +121,14 @@ html:has(body.osk-open) {
   border-color: var(--ink);
   background: var(--ink);
   color: var(--paper);
-  font-weight: 600;
+  font-weight: 500;
   text-transform: none;
 }
 
 .osk__key--enter small {
   font-family: var(--font-ui);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   opacity: 0.8;
   margin-top: 2px;
 }
@@ -184,6 +184,39 @@ html:has(body.osk-open) {
   html.native-app body.osk-open {
     padding-bottom: calc(var(--osk-h) + env(safe-area-inset-bottom, 0px));
   }
+}
+
+/* 夜（dark／indigo）: 盤面 --paper-2（L* 9）の上にキー --paper-3（L* 14）。昼と同じく「キーが盤面より明るい」向きにする。
+   ⌫・空白・ー は盤面と同じ面、押下は --line-2。#osk は body 直下で #gameCard の外なので、グローバルの夜トークンで計算する。
+   Enter は昼夜とも --ink の塗り・--paper の字（上の .osk__key の新規則 (0,2,1) が .osk__key--enter (0,1,0) に勝つので、ここで明示する） */
+html:is([data-theme="dark"], [data-theme="indigo"]) .osk {
+  background: var(--paper-2);
+  border-top-color: var(--line-2);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .osk__key {
+  background: var(--paper-3);
+  border-color: var(--line-2);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) :is(.osk__key--bs, .osk__key--space, .osk__key--dash) {
+  background: var(--paper-2);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .osk__key.osk__key--down,
+html:is([data-theme="dark"], [data-theme="indigo"]) .osk__key:active {
+  background: var(--line-2);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .osk__key--enter {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .osk__key.osk__key--enter.osk__key--down,
+html:is([data-theme="dark"], [data-theme="indigo"]) .osk__key.osk__key--enter:active {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
 }
 
 @media (prefers-reduced-motion: reduce) {
