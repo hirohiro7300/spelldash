@@ -903,7 +903,8 @@ console.log("bookshelf:");
     await page.fill("#bookFinderQ", "古文");
     await page.waitForTimeout(100);
     await page.keyboard.press("Enter");
-    const entered = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "hs-kobun", 6000);
+    const entered = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "hs-kobun" &&
+      (await page.evaluate(() => !document.getElementById("bookFinder").open && document.activeElement?.id === "pathStart" && !!document.querySelector("#pathHead .path__title")?.textContent.includes("古文単語"))), 6000);
     const st3 = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, course: localStorage.getItem("spelldash_course"), focus: document.activeElement?.id, title: document.querySelector("#pathHead .path__title")?.textContent }));
     check("本棚: 本をさがすの Enter は最初の 1 冊を机に（閉じるだけにならない。古文単語・コースの鍵はそのまま・焦点はスタート）", entered && !st3.open && st3.course === "eiken" && st3.focus === "pathStart" && st3.title?.includes("古文単語"), JSON.stringify(st3));
     // 本をさがすで選ぶ: コース外の本（都道府県）→ 机に出る。コースの鍵は触らず、柱は「社会の棚」、答えは日本語・60枚
@@ -1538,13 +1539,14 @@ console.log("parts (途中の部品の皮):");
     await page2.click("#startBattle");
     await waitUntil(() => visibleP(page2, "#battleArena"), 3000);
     await page2.waitForTimeout(300);
-    for (let i = 0; i < 4; i++) {
+    // 結果が出るまで打ち続ける（1 回の得点で止めると、混んだ端末・CI で CPU に追いつかれて引き分けになる）
+    for (let i = 0; i < 16 && !(await visibleP(page2, "#battleResult")); i++) {
       const ja = (await page2.textContent("#playerJa")).trim();
       const en = await page2.evaluate(async (q) => { const ws = await import("/js/wordStore.js"); const list = ws.getWordsByCategory(document.getElementById("battleCategory").value) ?? []; return list.find((x) => typeof x.en === "string" && /^[a-z]+$/.test(x.en) && (x.ja === q || String(x.ja ?? "").split("・").includes(q)))?.en ?? null; }, ja);
       if (!en) { await page2.press("#battleInput", "Enter"); await page2.waitForTimeout(200); continue; }
       await page2.focus("#battleInput");
       for (const ch of en) await page2.press("#battleInput", ch);
-      if (await waitUntil(async () => (await page2.textContent("#playerScore")).trim() !== "0", 1500)) break;
+      await waitUntil(async () => (await visibleP(page2, "#battleResult")) || (await page2.textContent("#playerJa")).trim() !== ja, 1500);
     }
     await waitUntil(() => visibleP(page2, "#battleResult"), 8000);
     await page2.waitForTimeout(300);
@@ -3376,6 +3378,8 @@ console.log("after correct（入力完了から次の問題まで）:");
     setTimeout(finish, timeout);
   }), { key, probeMs: null, afterMs: null, keys: [], afterChange: [], settle: 50, timeout: 4000, via: "key", firstLetterOf, ...opts });
   const typeAllButLast = async (p, keys) => { for (const ch of [...keys].slice(0, -1)) await p.press("#input", ch); };
+  // 最後の 1 打を入力欄へ直に送る（焦点がメモ欄にあっても届く。待ちの短い語で、打ち終えた後のクリックが間に合わない端末のため）
+  const finishWord = (p, key) => p.evaluate((k) => document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true })), key);
 
   // ---- W1: 待ちの表（node で全組み合わせ） ----
   {
@@ -3756,9 +3760,11 @@ console.log("after correct（入力完了から次の問題まで）:");
     const ja = await jaOf(p);
     await p.press("#input", "Enter"); // 答えを見る
     await waitUntil(async () => revealedEn(await wordOf(p)), 1500, 20);
-    for (const ch of await wordOf(p)) await p.press("#input", ch);
+    const enM = await wordOf(p);
+    await typeAllButLast(p, enM);
     await p.click("#noteEdit");
     await p.keyboard.type("nego");
+    await finishWord(p, enM.at(-1)); // 打ち終える（メモ欄に焦点があるまま待ちに入る）
     await p.waitForTimeout(800);
     const held = (await jaOf(p)) === ja && (await p.$("#noteInput")) !== null && (await p.inputValue("#noteInput")) === "nego";
     check("メモ: 覚え方を書いている間は次の語へ進まない（書きかけが残る）", held, `ja=${await jaOf(p)}`);
@@ -3776,9 +3782,11 @@ console.log("after correct（入力完了から次の問題まで）:");
     const ja = await jaOf(p);
     await p.press("#input", "Enter"); // 答えを見る
     await waitUntil(async () => revealedEn(await wordOf(p)), 1500, 20);
-    for (const ch of await wordOf(p)) await p.press("#input", ch);
+    const enM3 = await wordOf(p);
+    await typeAllButLast(p, enM3);
     await p.click("#noteEdit");
     await p.keyboard.type("budget の b");
+    await finishWord(p, enM3.at(-1)); // 打ち終える（メモ欄に焦点があるまま待ちに入る）
     const box = await (await p.$("#noteSave")).boundingBox();
     await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await p.mouse.down();
@@ -3805,8 +3813,8 @@ console.log("after correct（入力完了から次の問題まで）:");
       await p.press("#input", "Enter"); // 答えを見る
       await waitUntil(async () => revealedEn(await wordOf(p)) && (await p.$("[data-word-ai-run]")) !== null, 3000, 20);
       const en = await wordOf(p);
-      for (const ch of en) await p.press("#input", ch);
-      await p.click("[data-word-ai-run]");
+      await typeAllButLast(p, en);
+      await p.evaluate((k) => { document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true })); document.querySelector("[data-word-ai-run]").click(); }, en.at(-1)); // 打ち終えた直後（待ちの間）に押す
       await p.waitForTimeout(800);
       const heldInFlight = (await jaOf(p)) === ja;
       await waitUntil(async () => (await p.textContent("#wordAi")).includes("音で覚える"), 3000, 20);
@@ -3827,8 +3835,8 @@ console.log("after correct（入力完了から次の問題まで）:");
       await p.press("#input", "Enter"); // 答えを見る
       await waitUntil(async () => revealedEn(await wordOf(p)) && (await p.$("[data-word-ai-run]")) !== null, 3000, 20);
       const en = await wordOf(p);
-      for (const ch of en) await p.press("#input", ch);
-      await p.click("[data-word-ai-run]");
+      await typeAllButLast(p, en);
+      await p.evaluate((k) => { document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true })); document.querySelector("[data-word-ai-run]").click(); }, en.at(-1)); // 打ち終えた直後（待ちの間）に押す
       await p.focus("#input");
       await p.press("#input", "Enter"); // 待たずに次へ
       await waitUntil(async () => (await jaOf(p)) !== ja, 1500, 20);
@@ -3864,8 +3872,9 @@ console.log("after correct（入力完了から次の問題まで）:");
       const ja = await jaOf(p);
       await p.press("#input", "Enter"); // 答えを見る
       await waitUntil(async () => revealedEn(await wordOf(p)) && (await p.$("[data-word-ai-run]")) !== null, 3000, 20);
-      for (const ch of await wordOf(p)) await p.press("#input", ch);
-      await p.click("[data-word-ai-run]");
+      const en = await wordOf(p);
+      await typeAllButLast(p, en);
+      await p.evaluate((k) => { document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true })); document.querySelector("[data-word-ai-run]").click(); }, en.at(-1)); // 打ち終えた直後（待ちの間）に押す
       await waitUntil(async () => (await p.textContent("#wordAi")).includes("使い切った"), 3000, 20);
       await p.waitForTimeout(1200);
       const held = (await jaOf(p)) === ja && (await p.textContent("#wordAi")).includes("使い切った");
