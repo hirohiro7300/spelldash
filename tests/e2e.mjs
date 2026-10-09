@@ -3340,7 +3340,8 @@ console.log("after correct（入力完了から次の問題まで）:");
       word: document.getElementById("word").textContent.trim(),
       example: document.getElementById("wordExample").textContent.trim(),
       explain: document.getElementById("wordExplain").textContent.trim(),
-      message: document.getElementById("message").textContent.trim(),
+      message: document.getElementById("message").classList.contains("message--stale") ? "" : document.getElementById("message").textContent.trim(),
+      stale: document.getElementById("message").classList.contains("message--stale") ? document.getElementById("message").textContent.trim() : "",
       input: input.value,
       preview: document.getElementById("typedPreview")?.textContent.trim() ?? "",
       coach: document.querySelector(".coach:not(.coach--out)")?.getAttribute("data-step") ?? null,
@@ -3557,6 +3558,26 @@ console.log("after correct（入力完了から次の問題まで）:");
     await p.close();
   }
 
+  // ---- K3: 次の語が出て 0.2 秒より前の打鍵は、次の語の頭と同じでも前の語の続き（親鸞 shinran の 2 つ目の n → 日米和親条約） ----
+  {
+    const J = Object.fromEntries(packA("jhist1").map((w) => [w.id, w]));
+    const ids = ["concept-jh1-shinran", "concept-jh1-washinjoyaku", "concept-jh1-yoritomo"];
+    const p = await openPlay(resumeA("jhist1", ids), { url: "/index.html?hintms=600000" });
+    const [w1, w2] = ids.map((id) => J[id]);
+    check("ローマ字の準備（反応より早い続き）: 親鸞が先頭", (await jaOf(p)) === w1.q, await jaOf(p));
+    await p.press("#input", "Enter"); // 答えを見る（練習は 0.25 秒で次へ）
+    await waitUntil(async () => (await wordOf(p)).includes(w1.answer), 1500, 20);
+    await p.waitForTimeout(100);
+    const miss0 = await numOf(p, "#miss");
+    const rf0 = await numOf(p, "#recallFail");
+    const k1 = keysOfA(w1);
+    await typeAllButLast(p, k1);
+    const r = await finishTimed(p, k1.at(-1), { afterChange: [{ at: 50, key: "n" }, { at: 450, key: "n" }, { at: 540, key: "i" }], afterMs: 620 });
+    check("ローマ字: 次の語が出て 0.2 秒より前の n は前の語の続き（次の語は 1 打目から打てる。ミス・思い出せず 同じ）", k1.endsWith("n") && r.ms !== null && r.after?.ja === w2.q && Number(r.after.miss) === miss0 && Number(r.after.recallFail) === rf0 && r.after.preview.endsWith("ni"), JSON.stringify({ ms: r.ms, miss: `${miss0}→${r.after?.miss}`, rf: `${rf0}→${r.after?.recallFail}`, preview: r.after?.preview }));
+    check("ローマ字（反応より早い続き）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+
   // ---- 打ち終えたら Enter で次への癖・前の語の結果の行（中学歴史・ローマ字） ----
   // タイマーで進んだときは、前の語を打ち終えてから 1.2 秒の、次の語にまだ打っていない Enter も飲む（次の語の「分からない」にしない）。
   // 次の語が出たら、語の名を含まない前の語の結果の行（「正解」）は消す。語の名を含む行（「知ってた。源頼朝 は…」）は残す
@@ -3582,6 +3603,9 @@ console.log("after correct（入力完了から次の問題まで）:");
     const rB = await finishTimed(p, kB.at(-1), { probeMs: 100, afterMs: 100, keys: [{ at: 800, key: "Enter" }], settle: 750 });
     check("答えを見た概念カードの練習のあと 0.8 秒の Enter は次のカードの答えを開かない（思い出せず 同じ）", rB.ms !== null && rB.ms <= 600 && rB.words === 1 && rB.end.ja === wC.q && !rB.end.word.includes(wC.answer) && Number(rB.end.recallFail) === rfB, JSON.stringify({ ms: rB.ms, words: rB.words, word: rB.end.word, rf: `${rfB}→${rB.end.recallFail}` }));
     check("答えを見た語を打って次の語が出たら、前の語の「正解」は残らない", rB.probe?.message === "正解" && rB.after?.ja === wC.q && rB.after.message !== "正解" && rB.end.message === "", JSON.stringify({ probe: rB.probe?.message, after: rB.after?.message, end: rB.end.message }));
+    check("前の語の「正解」は見えなくするだけで、読み上げの途中で文を消さない（aria-live）", rB.after?.stale === "正解" && (await p.evaluate(() => getComputedStyle(document.getElementById("message")).opacity)) === "0", JSON.stringify({ stale: rB.after?.stale }));
+    await p.waitForTimeout(1600);
+    check("見えなくした前の語の行は 1.5 秒で文も消す（あとで辿っても前の語の結果が出ない）", (await p.textContent("#message")).trim() === "", (await p.textContent("#message")).trim());
     // 1.5 秒あけた Enter は次のカードの答えを開く
     await p.waitForTimeout(300);
     await p.press("#input", "Enter"); // 卑弥呼の答えを見る
@@ -3742,6 +3766,77 @@ console.log("after correct（入力完了から次の問題まで）:");
     await p.close();
   }
 
+  // ---- M3: マウスで「保存」を押し下げている間（焦点が欄から離れる）に待ちの見直しが来ても、書きかけを失わない ----
+  {
+    const p = await openPlay({ spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsA, spelldash_audio: JSON.stringify({ mode: "off" }) }, { url: "/index.html?set=10&hintms=600000" });
+    const ja = await jaOf(p);
+    await p.press("#input", "Enter"); // 答えを見る
+    await waitUntil(async () => revealedEn(await wordOf(p)), 1500, 20);
+    for (const ch of await wordOf(p)) await p.press("#input", ch);
+    await p.click("#noteEdit");
+    await p.keyboard.type("budget の b");
+    const box = await (await p.$("#noteSave")).boundingBox();
+    await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await p.mouse.down();
+    await p.evaluate(() => document.activeElement?.blur()); // Safari: ボタンは焦点を取らない
+    await p.waitForTimeout(1200); // 待ちの見直し（0.5 秒ごと）を 2 回またぐ
+    const heldDown = (await jaOf(p)) === ja && (await p.$("#noteSave")) !== null;
+    await p.mouse.up();
+    const notes = await p.evaluate(() => localStorage.getItem("spelldash_word_notes") || "");
+    const moved = await waitUntil(async () => (await jaOf(p)) !== ja, 1500, 20);
+    check("メモ: 保存を押し下げている間（焦点が欄から離れても）次の語へ進まず、離すと保存される", heldDown && notes.includes("budget の b") && moved, JSON.stringify({ heldDown, notes: notes.slice(0, 60), moved }));
+    check("メモ（マウスで保存）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+
+  // ---- A1: 待ちの間に「覚え方を作る」: 返事を待つ間は進めない・返事が出たら Enter まで待つ・先へ進んだら前の語の覚え方を次の語に出さない ----
+  {
+    const seedAi = { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsA, spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_test_session: "1" };
+    const slowAi = async (p, ms) => p.route("**/api/explain-word", async (route) => { await new Promise((r) => setTimeout(r, ms)); await route.continue(); });
+    // (a) 待ちの間に押す → 返事（1.2 秒）まで進まない → 覚え方が同じ語の下に出る → 自動では進まない → Enter で次へ
+    {
+      const p = await openPlay(seedAi, { url: "/index.html?set=10&hintms=600000" });
+      await slowAi(p, 1200);
+      const ja = await jaOf(p);
+      await p.press("#input", "Enter"); // 答えを見る
+      await waitUntil(async () => revealedEn(await wordOf(p)) && (await p.$("[data-word-ai-run]")) !== null, 3000, 20);
+      const en = await wordOf(p);
+      for (const ch of en) await p.press("#input", ch);
+      await p.click("[data-word-ai-run]");
+      await p.waitForTimeout(800);
+      const heldInFlight = (await jaOf(p)) === ja;
+      await waitUntil(async () => (await p.textContent("#wordAi")).includes("音で覚える"), 3000, 20);
+      await p.waitForTimeout(1200);
+      const heldReading = (await jaOf(p)) === ja && (await p.textContent("#wordAi")).includes(`${en} は`);
+      await p.press("#input", "Enter");
+      const moved = await waitUntil(async () => (await jaOf(p)) !== ja, 1500, 20);
+      check("覚え方を作る（待ちの間）: 返事を待つ間は次の語へ進まない", heldInFlight, `ja=${await jaOf(p)}`);
+      check("覚え方を作る（待ちの間）: 返事が出たら読み終えるまで待ち、Enter で次へ", heldReading && moved, JSON.stringify({ heldReading, moved }));
+      check("覚え方（待ちの間）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+      await p.close();
+    }
+    // (b) 押してすぐ Enter で先へ → 返事が来ても、前の語の覚え方を次の語の下に出さない（保存はする）
+    {
+      const p = await openPlay(seedAi, { url: "/index.html?set=10&hintms=600000" });
+      await slowAi(p, 900);
+      const ja = await jaOf(p);
+      await p.press("#input", "Enter"); // 答えを見る
+      await waitUntil(async () => revealedEn(await wordOf(p)) && (await p.$("[data-word-ai-run]")) !== null, 3000, 20);
+      const en = await wordOf(p);
+      for (const ch of en) await p.press("#input", ch);
+      await p.click("[data-word-ai-run]");
+      await p.focus("#input");
+      await p.press("#input", "Enter"); // 待たずに次へ
+      await waitUntil(async () => (await jaOf(p)) !== ja, 1500, 20);
+      await p.waitForTimeout(1300); // 返事が来る
+      const aiNow = (await p.textContent("#wordAi")).trim();
+      const saved = await p.evaluate(() => localStorage.getItem("spelldash_word_ai") || "");
+      check("覚え方を作る: 返事の前に次の語へ進んだら、前の語の覚え方を次の語の下に出さない（保存はする）", !aiNow.includes(`${en} は`) && saved.includes("音で覚える"), JSON.stringify({ aiNow: aiNow.slice(0, 40), saved: saved.length }));
+      check("覚え方（先へ進んだ）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+      await p.close();
+    }
+  }
+
   // ---- T1: チュートリアル T3 を出した語は 1.5 秒置いて次へ。札は次の語で消える ----
   {
     const p = await newPage();
@@ -3776,6 +3871,25 @@ console.log("after correct（入力完了から次の問題まで）:");
     }
     check("チュートリアル: T3 を出した語は 1.5 秒置いて次へ。札は次の語で消える", t3 && t3.ms >= 1400 && t3.ms <= 3000 && t3.after && t3.after.coach !== "T3", JSON.stringify(t3 && { ms: t3.ms, after: t3.after?.coach }));
     check("チュートリアル（T3 の待ち）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+  // ---- T2: Challenge・Daily は正解と同じタスクで次の語が出る → T3 はその語では消さない（出したのに見えないまま済みにしない） ----
+  {
+    const p = await newPage();
+    await p.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
+    await p.waitForTimeout(600);
+    const r = await p.evaluate(async () => {
+      const fire = (mode) => {
+        dispatchEvent(new CustomEvent("spelldash:recall", { detail: { id: "x", mode } }));
+        dispatchEvent(new CustomEvent("spelldash:word", { detail: { id: "y" } })); // 同じタスクで次の語
+      };
+      fire("challenge");
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      const el = document.querySelector('.coach[data-step="T3"]');
+      return { shown: !!el && !el.classList.contains("coach--out"), text: el?.textContent.trim() ?? "" };
+    });
+    check("チュートリアル: Challenge で T3 を出した語の直後の語では札を消さない（文が出る）", r.shown && r.text.length > 0, JSON.stringify(r));
+    check("チュートリアル（Challenge の T3）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
     await p.close();
   }
 

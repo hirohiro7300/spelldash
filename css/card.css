@@ -528,6 +528,8 @@ html[data-theme] .message.info { color: var(--ink); animation: none; }
 html[data-theme] .message.revealed { color: var(--ink-2); }
 html[data-theme] .message.finished { color: var(--ink); animation: none; }
 html[data-theme] .message.learned { color: var(--ink); font-weight: 700; }
+/* 前の語の結果の行（次の語が出た後）: 見えなくするが、読み上げの途中で文を消さない（js/game.js hideStaleMessage）。場所は保つ */
+html[data-theme] .message.message--stale { opacity: 0; }
 
 /* もう一回（Challenge のみ表示。結果パネルにも同じ操作があるので控えめに） */
 html[data-theme] .game-card > #restart {

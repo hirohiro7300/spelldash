@@ -103,13 +103,13 @@ async function isLoggedIn() {
 // 未ログインではボタンを出さない（生成 API がログイン必須のため）
 export function renderWordAi(container, word, { onDone } = {}) {
   if (!container || !word) return;
+  container.dataset.wordAiFor = word.id;
   const cached = getWordAi(word.id);
   if (cached) {
     container.innerHTML = wordAiHtml(word.id);
     return;
   }
   container.innerHTML = "";
-  container.dataset.wordAiFor = word.id;
   isLoggedIn().then((ok) => {
     if (!ok || container.dataset.wordAiFor !== word.id || container.innerHTML !== "") return;
     renderAiButton(container, word, onDone);
@@ -123,6 +123,8 @@ function renderAiButton(container, word, onDone) {
     button.disabled = true;
     button.textContent = "作っています…";
     const result = await requestWordAi(word);
+    // 返事を待つ間に次の語へ進んだ（欄が空になった・別の語を描いた）: 前の語の覚え方を次の語の下に出さない（保存は済んでいる）
+    if (!button.isConnected || container.dataset.wordAiFor !== word.id) return;
     if (!result.ok) {
       // Pro の案内は文の中に括弧で入れる（1 本の流し込み: 390 でリンクが語の途中で折れない）
       // 受付前・アプリでは Pro の話をしない（サーバーの別欄 offer「Pro なら…」を足すのは受付中だけ）

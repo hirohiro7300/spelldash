@@ -114,9 +114,11 @@ export function initTutorial() {
   decideEligibility();
   if (isTutorialDone()) return;
 
-  // T2／T3 は次の語で消える（T3 を出した語は game.js が 1.5 秒待ってから次の語を出す。Enter で先へ進んだときもその次の語で消す）
+  // T2／T3 は次の語で消える。T3 を出した語は Study なら game.js が 1.5 秒待ってから次の語を出す（Enter で先へ進んだときもその次の語で消す）。
+  // Challenge・Daily は正解と同じタスクで次の語が出るので、出してから 1.5 秒たった後の語で消す（長くても 5 秒）
   window.addEventListener("spelldash:word", () => {
-    if (current?.id === "T2" || current?.id === "T3") dismiss();
+    if (current?.id === "T2") dismiss();
+    if (current?.id === "T3" && (current.held || Date.now() - current.shownAt >= T3_MIN_MS)) dismiss();
   });
 
   // T2: 初めて答えを見た。T3: 初めて自力で思い出せた（js/game.js が投げる）
@@ -127,6 +129,7 @@ export function initTutorial() {
     if (seen("T3")) return;
     show("T3");
     if (event.detail) event.detail.hold = T3_MIN_MS; // 札の「この語」が次の語を指さないように、この語の待ちを延ばす
+    if (current?.id === "T3") current.held = event.detail?.mode === "study"; // 待ちを延ばせるのは Study だけ
   });
 
   // 1 セット目を終えた（やり直しのセットは除く）: 道に戻ったときに T4 を出せる
