@@ -14,7 +14,8 @@ const CORE_ASSETS = [
   "/pro.html",
   "/privacy.html",
   "/terms.html",
-  "/tokushoho.html"
+  "/tokushoho.html",
+  "/typing.html"
 ];
 
 self.addEventListener("install", (event) => {

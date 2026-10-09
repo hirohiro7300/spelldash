@@ -82,3 +82,38 @@ order by devices desc;
 ```sql
 delete from public.funnel_events where day < ((now() at time zone 'Asia/Tokyo')::date - 180);
 ```
+
+## 5. タイピング練習から来た端末（SQL の変更なし。Batch 59、docs/SPEC_TYPING.md §7）
+
+`/typing.html` から**初めて来た端末だけ**（開いた時点で端末の番号 `spelldash_device_id` が無く、学習記録も無い）、`first_visit` の `source` に段階を入れて各 1 回送る。`day` は**来た日**（あとで打ち始めても、その行の日は来た日。30 日の窓で「初めて来た」に入る日がずれない）。テーブル・check・RPC・管理画面は変えない。
+
+| source | 意味 |
+|---|---|
+| `typing` | タイピング練習を開いた（送れるまで開くたびに試す） |
+| `typing_start` | 最初の 1 回を打ち始めた |
+| `typing_done` | 結果が初めて出た（1 回目を途中でやめても、後の回で結果が出れば送る。打っている途中でやめた・ページを離れた回では送らない） |
+| `typing_study` | 「思い出して打つ」か本文の本体へのリンクを押した（端末に積み、次のページで送る） |
+
+- `funnel_events.source` の `typing*` は**段階**で、docs/SPEC_ACQUISITION.md（DESIGN ONLY・未実装）が設計している流入元（UTM の source）とは別物。
+- 管理画面の段階の数（RPC も行を読む経路も）は段階ごとに端末の重複を数えないので、`first_visit` の数は変わらない（typing の行を送る端末は、必ず source が空の first_visit も送る）。1 端末に first_visit が最大 5 行になる（source が空の行が「初めて来た」端末の数）。
+- 既存の端末・ほかのページから来た端末は送らない。回数・既存の人の利用は数えない。
+
+```sql
+-- タイピング練習から初めて来た端末の段階（直近 30 日。端末の数）
+select source, count(distinct device_id) as devices
+from public.funnel_events
+where step = 'first_visit' and source like 'typing%'
+  and day >= ((now() at time zone 'Asia/Tokyo')::date - 29)
+group by source
+order by devices desc;
+
+-- そのうち 7 日以上学んだ端末
+select count(distinct f.device_id) as devices
+from public.funnel_events f
+join public.funnel_events d on d.device_id = f.device_id and d.step = 'day7'
+where f.step = 'first_visit' and f.source = 'typing';
+```
+
+- 見る割合: typing_start ÷ typing（すぐ打てたか）、typing_done ÷ typing_start（1 分を打ち切るところまで行ったか。最初の回とは限らない）、typing_study ÷ typing_done（導線が効いたか）、day7 ÷ typing_study（学習になったか）。
+- **分母の `typing` には検索エンジンの描画（ボット）が混ざりうる**（JS を動かして描画し、新しい端末として送るなら typing_start ÷ typing が実際より低く出る。書き込みまで行うかは未確認）。比は 1 回の値でなく**週ごとの推移**で見る。ボットを除く仕組みは v1 では入れない（BACKLOG D16）。
+- 取れないもの: 既存の端末が使った数・1 台の回数・日ごとの回数。要るなら check に段階（例 `typing_view`）を足す SQL が先（check に無い段階を先に送ると表が断り、送り直し続ける。**SQL より先にコードを入れない**）。来た数の全体・検索語は Google Search Console のページ別。

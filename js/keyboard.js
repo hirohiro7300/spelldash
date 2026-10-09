@@ -12,6 +12,8 @@ import { isNativeApp, nativeCall } from "./appEnv.js";
 //   読みのない日本語のカード（自分で作った場面カードなど。全文入力）だけは OS キーボードに戻す
 // - 文字は #input に keydown を合成して送る（game.js の処理をそのまま通す）。英文カードは値を直接編集
 // - 触覚: Capacitor の Haptics があればそれ、無ければ navigator.vibrate
+// - タイピング練習（/typing.html）も借りる: initializeKeyboard({ playingClass: "typing--live", forceOnTouch: true })。
+//   引数なし（Study の js/main.js）は今のまま（home--playing・タッチの強制はローマ字のカードだけ）
 
 const OSK_KEY = "spelldash_osk"; // "auto" | "on" | "off"
 const ROWS = [
@@ -21,7 +23,12 @@ const ROWS = [
 ];
 
 export function getOskMode() {
-  const v = localStorage.getItem(OSK_KEY);
+  let v = null;
+  try {
+    v = localStorage.getItem(OSK_KEY);
+  } catch {
+    return "auto"; // サイトのデータを拒否した端末（getItem が投げる）でも盤面の判定を止めない
+  }
   return v === "on" || v === "off" ? v : "auto";
 }
 
@@ -126,13 +133,16 @@ function usableNow() {
 
 // プレイ中か（game.js のイベントで追う。profile.html 等でも読み込まれるので game.js は import しない）
 let playing = false;
+// プレイ中の印の class（Study は home--playing、タイピング練習は typing--live）と、設定が「オフ」でもタッチ端末なら出すか
+let playingClass = "home--playing";
+let forceOnTouch = false;
 
 export function refreshKeyboard() {
   if (!container || !input) return;
   // プレイ中だけ。セット／チャレンジが終わって結果パネルが出ている間は畳む（ボタンを隠さない）
   // ローマ字のカードは入力欄が読み取り専用（OS キーボードが出ない）。タッチ端末では設定によらず盤面を出す
   const romaji = isRomaji();
-  const on = (oskEnabled() || (romaji && isTouchDevice())) && usableNow() && document.body.classList.contains("home--playing") && playing;
+  const on = (oskEnabled() || ((romaji || forceOnTouch) && isTouchDevice())) && usableNow() && document.body.classList.contains(playingClass) && playing;
   container.hidden = !on;
   document.body.classList.toggle("osk-open", on);
   if (on) {
@@ -144,7 +154,9 @@ export function refreshKeyboard() {
   }
 }
 
-export function initializeKeyboard() {
+export function initializeKeyboard(options = {}) {
+  playingClass = options.playingClass || "home--playing";
+  forceOnTouch = options.forceOnTouch === true;
   container = document.getElementById("osk");
   input = document.getElementById("input");
   if (!container || !input) return;

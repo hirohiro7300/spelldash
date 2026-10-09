@@ -1,7 +1,8 @@
 // ===== Pro までの動線の計測（docs/SPEC_FUNNEL.md「計測」、docs/SQL_FUNNEL.md） =====
 //
 // 端末ごとのランダムな番号（spelldash_device_id）と段階だけを funnel_events に送る。メール・学習の中身は送らない。
-// 同じ段階・同じ入口は 1 日 1 回（端末で覚え、サーバーも unique で重ねない）。first_visit と day7 は端末で 1 回きり。
+// 同じ段階・同じ入口は 1 日 1 回（端末で覚え、サーバーも unique で重ねない）。first_visit は source ごとに、day7 は端末で 1 回きり
+// （first_visit の source が空の行が「初めて来た」端末。typing* はタイピング練習から初めて来た端末の段階: docs/SQL_FUNNEL.md 5）。
 // 表が無い（SQL 未実行）・オフラインなら何もしない。学習の動きを待たせない（送信は待たずに進む。加入の直前だけ短く待つ）。
 
 import { supabase } from "./supabase.js";
@@ -13,6 +14,8 @@ const FIRST_PENDING_KEY = "spelldash_funnel_first"; // 初めて来た日（送�
 const PAID_PENDING_KEY = "spelldash_funnel_paid"; // 支払いを終えて戻った { day, user }（Pro が反映されたら消す）
 const PAID_SEND_KEY = "spelldash_funnel_paid_send"; // Pro になったが checkout_done をまだ送れていない日
 const QUEUE_KEY = "spelldash_funnel_queue"; // ページを移る直前に押されたもの（次のページで送る）[{ step, source, day }]
+const TYPING_KEY = "spelldash_funnel_typing"; // タイピング練習（/typing.html）から初めて来た端末の、来た日（JST）。消さない（docs/SQL_FUNNEL.md 5）
+const TYPING_SOURCES = { arrive: "typing", start: "typing_start", done: "typing_done", study: "typing_study" };
 const ONCE_STEPS = new Set(["first_visit", "day7"]);
 export const FUNNEL_STEPS = ["first_visit", "day7", "entry", "pro_view", "login_click", "login_return", "checkout_start", "checkout_done", "checkout_cancel"];
 
@@ -117,11 +120,11 @@ export function logFunnelBeforeLeave(step, source = "", ms = 800) {
   return Promise.race([logFunnel(step, source), new Promise((resolve) => setTimeout(() => resolve(false), ms))]);
 }
 
-// ページを移る直前に押されたものは、送り切れずに切れることがあるので端末に積み、次のページで送る
-function queueFunnel(step, source) {
+// ページを移る直前に押されたものは、送り切れずに切れることがあるので端末に積み、次のページで送る（day: 行の日。既定は今日）
+function queueFunnel(step, source, day = today()) {
   try {
     const list = JSON.parse(localStorage.getItem(QUEUE_KEY)) || [];
-    list.push({ step, source: String(source || "").slice(0, 32), day: today() });
+    list.push({ step, source: String(source || "").slice(0, 32), day });
     localStorage.setItem(QUEUE_KEY, JSON.stringify(list.slice(-20)));
   } catch {
     // 積めなければ数えないだけ
@@ -178,6 +181,32 @@ export function trackFirstVisit() {
   } catch {
     // 数えないだけ
   }
+}
+
+// タイピング練習を開いた: 番号がまだ無く学習記録も無い端末（＝ここが初めて）なら来た日を控える。
+// js/footer.js の trackFirstVisit が番号を作る前に呼ぶ（作ったあとでは初めてか分からない）
+export function markTypingArrival() {
+  try {
+    if (localStorage.getItem(TYPING_KEY) || localStorage.getItem(DEVICE_KEY) || hasLearningRecords()) return;
+    localStorage.setItem(TYPING_KEY, today());
+  } catch {
+    // 数えないだけ
+  }
+}
+
+// タイピング練習から初めて来た端末だけ、段階を first_visit の source に入れて 1 回だけ送る（day は来た日）。
+// 管理画面の「初めて来た」は端末の重複を数えないので数は変わらない。study はページを移る直前なので積んで次のページで送る
+export function logTypingStage(stage) {
+  const source = TYPING_SOURCES[stage];
+  let day = null;
+  try {
+    day = localStorage.getItem(TYPING_KEY);
+  } catch {
+    return;
+  }
+  if (!source || !day) return;
+  if (stage === "study") queueFunnel("first_visit", source, day);
+  else logFunnel("first_visit", source, day);
 }
 
 // 支払いを終えて戻った（js/proView.js）。反映がすぐでなくても、後で Pro になったときに checkout_done を送る。

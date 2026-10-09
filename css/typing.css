@@ -1,0 +1,476 @@
+/* タイピング練習（/typing.html。docs/SPEC_TYPING.md）。書斎の読む机の皮（pages.css の札・タブ）に、見本と結果だけを足す。
+   角丸は札の --radius-room と、ミスの単位・間違えたキーの題箋の 2px だけ。animation／transition は書かない。色は tokens.css の変数だけ。
+   すべて html[data-theme] body.page-typing を頭に付ける（pages.css の札の規則 body:not(.page-room) :is(.result-card…) に勝ち、ほかのページに漏らさない）。
+   例外は行の高さを残す visibility の 2 つ（.tp-tabnote--off・.tp-upnext--empty）だけで、JS なしでも効くよう body.page-typing から書く。 */
+
+/* 入力欄は見せない（画面キーボードの宛先と焦点の置き場。game.css の #input (1,0,0) に勝つため id で書く） */
+html[data-theme] body.page-typing #input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* タブ（.stats-tabs の下線タブを使う。390 は 2 等分、720 以上は中身の幅） */
+html[data-theme] body.page-typing .tp-tabs {
+  margin: 0 0 8px;
+}
+
+html[data-theme] body.page-typing .tp-tabs .stats-tab {
+  white-space: nowrap;
+}
+
+html[data-theme] body.page-typing .tp-tabnote {
+  margin: 0 0 4px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 英単語では補足を見せないが行の高さは残す（種類を替えても札が上下しない）。JS なしでも効くように html[data-theme] を頭に付けない */
+body.page-typing .tp-tabnote--off {
+  visibility: hidden;
+}
+
+/* 札 */
+html[data-theme] body.page-typing .tp-board {
+  margin-top: 8px;
+  min-height: 216px;
+  text-align: center;
+  cursor: text;
+}
+
+/* 結果は打つ場所ではない（カーソルを I ビームにしない） */
+html[data-theme] body.page-typing .tp-board[data-state="result"] {
+  cursor: auto;
+}
+
+/* 焦点の印: Study の .input-wrapper:focus-within（brand.css）と同じ --focus の輪。transition は書かない。
+   枠は朱でなく墨（--ink-3、地に 6.6:1）: 札は 688×240px と大きく、朱の枠だと開いた直後から朱が下線と 2 か所になり「入力の誤り」にも見える。
+   結果では出さない（焦点は結果の数の行に置くだけで、打つ場所ではない） */
+html[data-theme] body.page-typing .tp-board:not([data-state="result"]):focus-within {
+  border-color: var(--ink-3);
+  box-shadow: var(--sheet-shadow), var(--focus);
+}
+
+html[data-theme] body.page-typing .tp-timer {
+  margin: 0;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+html[data-theme] body.page-typing .tp-term {
+  margin: 8px 0 4px;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+html[data-theme] body.page-typing .tp-gloss {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+html[data-theme] body.page-typing .tp-word {
+  margin: 16px 0 0;
+  min-height: 1.25em;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] body.page-typing .tp-word .tp-done {
+  color: var(--signal);
+}
+
+/* 太さは longhand（既存の css/ と同じ書き方。shorthand の太さを受けない古い Safari で宣言ごと捨てられない）。
+   skip-ink は none: 既定の auto だと g・j・p・q・y の下に伸びる所で線が抜け、点が 2 つ残るだけになる */
+html[data-theme] body.page-typing .tp-word .tp-now {
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--signal);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 6px;
+}
+
+/* ミスの印: 正しいキーを打つまで残す（時間で消さない＝点滅にしない）。面（--signal-soft）は地との差が 1.15:1 しかないので、
+   下線を朱の波線にして形で知らせる（朱は今の字の所だけ。新しい場所に朱を置かない） */
+html[data-theme] body.page-typing .tp-word.tp-miss .tp-now {
+  background: var(--signal-soft);
+  text-decoration-style: wavy;
+}
+
+html[data-theme] body.page-typing .tp-loading {
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+/* 日本語: かなの単位を 2 段（かな／キー） */
+html[data-theme] body.page-typing .tp-word--ja {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 4px;
+  letter-spacing: 0;
+}
+
+/* 単位の幅はかなとキーの広い方で決まる（min-width を em で書くと親の 34／44px で解け、かなの右に 10〜17px 空いて 390 で 2 割の語が折れた） */
+html[data-theme] body.page-typing .tp-unit {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+
+html[data-theme] body.page-typing .tp-unit__kana {
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+html[data-theme] body.page-typing .tp-unit__keys {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+html[data-theme] body.page-typing .tp-unit--done .tp-unit__kana {
+  color: var(--signal);
+}
+
+html[data-theme] body.page-typing .tp-unit--done .tp-unit__keys,
+html[data-theme] body.page-typing .tp-unit__keys b {
+  color: var(--signal-ink);
+  font-weight: 500;
+}
+
+html[data-theme] body.page-typing .tp-unit__keys .tp-now {
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--signal);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+/* 日本語のミスの印: 目が向いているかなの段にも出るよう、今の単位（かな＋キー）ごと面と朱の細い内枠で囲む（キーの下線は上の規則で波線）。
+   内枠は box-shadow なので単位の大きさは変わらない（ミスのたびに語の並びが動かない） */
+html[data-theme] body.page-typing .tp-word.tp-miss .tp-unit--now {
+  border-radius: 2px;
+  background: var(--signal-soft);
+  box-shadow: inset 0 0 0 1px var(--signal);
+}
+
+html[data-theme] body.page-typing .tp-upnext {
+  margin: 16px 0 0;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+html[data-theme] body.page-typing .tp-upnext b {
+  margin-left: 8px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+html[data-theme] body.page-typing .tp-board[data-kind="ja"] .tp-upnext b {
+  font-family: var(--font-ui);
+}
+
+html[data-theme] body.page-typing .tp-hint,
+html[data-theme] body.page-typing .tp-error {
+  margin: 8px 0 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+html[data-theme] body.page-typing .tp-error a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+/* 次の語の行: 語が届く前・語が無いときも高さを残す（教材が届いた瞬間に始まる前の一文が下がらない）。JS なしでも効くように html[data-theme] を頭に付けない */
+body.page-typing .tp-upnext--empty {
+  visibility: hidden;
+}
+
+/* 結果 */
+html[data-theme] body.page-typing .tp-result {
+  text-align: left;
+}
+
+html[data-theme] body.page-typing .tp-result__kind {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] body.page-typing .tp-result__kpm {
+  margin: 4px 0 0;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+/* 主の数 1 行（docs/CONCEPT.md §4-7 の例外: タイピング練習の結果だけ）。
+   太さは 500: SD Num は 400〜700 を 1 本（Cormorant 600）で受けるので数字の見た目は 600 と同じ。600 にすると行の高さを測る
+   後ろの明朝（--font-display）が 700 で選ばれ、明朝 700 の latin を余分に読む（700 は「スタート」だけ: fonts.css） */
+html[data-theme] body.page-typing .tp-result__kpm b {
+  font-family: var(--font-num);
+  font-size: 36px;
+  font-weight: 500;
+}
+
+/* 結果の数は lining（Cormorant の既定の旧式数字は 0 が o、1 が ı に見え「150」が「I5o」になる）。ほかのページの SD Num と同じ */
+html[data-theme] body.page-typing :is(.tp-result__kpm b, .tp-result__line b) {
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+/* プログラムで焦点を置くだけ（tabindex="-1"。Tab では止まらない）。brand.css の #main・.result-panel__title と同じ扱い */
+html[data-theme] body.page-typing .tp-result__kpm:focus {
+  outline: none;
+}
+
+html[data-theme] body.page-typing .tp-result__kpm small {
+  margin-left: 6px;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+html[data-theme] body.page-typing .tp-result__line {
+  margin: 6px 0 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+html[data-theme] body.page-typing .tp-result__line b {
+  color: var(--ink);
+  font-family: var(--font-num-ui);
+  font-weight: 600;
+}
+
+/* 間違えたキーは題箋（細い枠・角 2px）で囲む: 回数と形で分かれ、ー の打ち間違い（-）が「-1」と負の数に見えない */
+html[data-theme] body.page-typing .tp-key {
+  margin-left: 10px;
+  padding: 0 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+/* 間違えたキーの回数は数の書体（SD Num の lining。上の規則）。キーは等幅・題箋、回数は数の書体で切れ目が見える */
+html[data-theme] body.page-typing #typingKeys b {
+  margin-left: 2px;
+  color: var(--ink-2);
+}
+
+/* 自己ベストの句は 1 かたまりで折る（括弧の中で「はじめての／記録」と折れない） */
+html[data-theme] body.page-typing #typingBest {
+  display: inline-block;
+}
+
+html[data-theme] body.page-typing .tp-result__again {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 14px;
+}
+
+html[data-theme] body.page-typing .tp-result__again small {
+  margin-left: 4px;
+  font-size: 12px;
+}
+
+html[data-theme] body.page-typing .tp-result__next {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+html[data-theme] body.page-typing .tp-result__next h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] body.page-typing .tp-result__next p {
+  margin: 6px 0 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+html[data-theme] body.page-typing .tp-result__cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+
+html[data-theme] body.page-typing .tp-result__cta .btn {
+  min-height: 44px;
+  padding: 0 20px;
+}
+
+/* このページについて */
+html[data-theme] body.page-typing .tp-about {
+  margin: 32px 0 0;
+}
+
+html[data-theme] body.page-typing .tp-about h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] body.page-typing .tp-about ul {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+html[data-theme] body.page-typing .tp-about a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 画面キーボード: Enter は使わない（始めるのは最初の 1 打、もう一度はボタン）。data-action は keyboard.css が「変えない」と約束している */
+html[data-theme] body.page-typing .osk [data-action="enter"] {
+  display: none;
+}
+
+/* 英単語では 3 段目（空白・ー・Enter）が全部隠れて空の行になるので段ごと隠す（高さの予約 --osk-h は変えない） */
+html[data-theme] body.page-typing:not(.romaji-answer) .osk__row--3 {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  html[data-theme] body.page-typing .tp-kbdhint {
+    display: none;
+  }
+}
+
+@media (max-width: 359.98px) {
+  html[data-theme] body.page-typing .tp-tabs .stats-tab {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 13px;
+  }
+
+  html[data-theme] body.page-typing .tp-word {
+    font-size: 30px;
+  }
+}
+
+@media (min-width: 720px) {
+  html[data-theme] body.page-typing .tp-tabs .stats-tab {
+    flex: 0 0 auto;
+  }
+
+  html[data-theme] body.page-typing .tp-board {
+    min-height: 240px;
+  }
+
+  html[data-theme] body.page-typing .tp-word {
+    font-size: 44px;
+  }
+
+  html[data-theme] body.page-typing .tp-unit__kana {
+    font-size: 30px;
+  }
+
+  html[data-theme] body.page-typing .tp-result__kpm b {
+    font-size: 44px;
+  }
+
+  html[data-theme] body.page-typing .tp-result__again {
+    width: auto;
+  }
+}
+
+/* 横向きのスマホ（盤面 170px、keyboard.css）: 札を低くする。今の語と訳は残し、次の語と始まる前の一文を隠す。
+   幅 720 以上の規則（札の最小の高さ）より後に置く（横向きは幅も 720 を超える） */
+@media (max-height: 480px) {
+  html[data-theme] body.page-typing .tp-upnext,
+  html[data-theme] body.page-typing .tp-hint {
+    display: none;
+  }
+
+  html[data-theme] body.page-typing .tp-board {
+    min-height: 0;
+  }
+
+  html[data-theme] body.page-typing .tp-word {
+    margin-top: 8px;
+  }
+
+  /* 表示域が 340px ほどの横向き（iPhone）: 残り時間を札の右上に重ね、用語の上の余白を 0 にして、
+     日本語のキーの行（ローマ字の手本）を画面キーボードの上に収める */
+  html[data-theme] body.page-typing .tp-board {
+    position: relative;
+  }
+
+  html[data-theme] body.page-typing .tp-timer {
+    position: absolute;
+    top: 6px;
+    right: 12px;
+  }
+
+  html[data-theme] body.page-typing .tp-term {
+    margin-top: 0;
+  }
+}
+
+/* 360・320 幅: 日本語の長い読み（なかのおおえのおうじ など）が 2 行に折れて札が跳ばないように詰める */
+@media (max-width: 389.98px) {
+  html[data-theme] body.page-typing .tp-word--ja {
+    column-gap: 2px;
+  }
+}
+
+@media (max-width: 359.98px) {
+  html[data-theme] body.page-typing .tp-unit__kana {
+    font-size: 22px;
+  }
+}
+
+/* 日本語のミスの印は今の単位の内枠で足りる。キーの下線は実線のまま（波線が枠の下にはみ出さない） */
+html[data-theme] body.page-typing .tp-word--ja.tp-miss .tp-now {
+  text-decoration-style: solid;
+}

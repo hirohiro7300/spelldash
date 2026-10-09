@@ -82,10 +82,10 @@ export async function refreshBillingOpen() {
   return isBillingOpen();
 }
 
-// フッターの「SpellDash Pro」（受付中のときだけ。加入画面そのものでは出さない）
+// フッターの「SpellDash Pro」（受付中のときだけ。加入画面そのもの・data-no-pro の印のあるフッター（タイピング練習）では出さない）
 export function renderFooterPro() {
   const nav = document.querySelector(".site-footer__nav");
-  if (!nav || nav.querySelector("[data-footer-pro]")) return;
+  if (!nav || nav.hasAttribute("data-no-pro") || nav.querySelector("[data-footer-pro]")) return;
   if (location.pathname.endsWith("/pro.html")) return;
   const place = () => {
     if (!isBillingOpen() || nav.querySelector("[data-footer-pro]")) return;

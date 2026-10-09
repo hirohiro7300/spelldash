@@ -40,11 +40,11 @@
 
 ## 計測（Batch 50）
 
-`funnel_events`（docs/SQL_FUNNEL.md）に、端末ごとのランダムな番号（`spelldash_device_id`）と段階だけを送る。メール・学習の中身は送らない。同じ端末・同じ段階・同じ入口は 1 日 1 行（`first_visit`・`day7` は端末で 1 回きり）。表が無ければ何もしない。
+`funnel_events`（docs/SQL_FUNNEL.md）に、端末ごとのランダムな番号（`spelldash_device_id`）と段階だけを送る。メール・学習の中身は送らない。同じ端末・同じ段階・同じ入口は 1 日 1 行（`first_visit` は source ごとに端末で 1 回きり（source が空の行が端末の数。`typing*` はタイピング練習の段階）・`day7` は端末で 1 回きり）。表が無ければ何もしない。
 
 | 段階 | いつ |
 |---|---|
-| first_visit | 学習記録の無い端末で、初めてページを開いた |
+| first_visit | 学習記録の無い端末で、初めてページを開いた。source が空でないのは `typing*`（タイピング練習から初めて来た端末の段階。docs/SQL_FUNNEL.md 5） |
 | day7 | 学んだ日が 7 日になった（ホームを開いたとき） |
 | entry | 加入画面へのリンクを押した。入口（`data-funnel`）: footer・weekly・mywords・ai・cards・trend・repair・theme・profile・other。押した瞬間に移るので端末に積み、次のページで送る |
 | pro_view | 加入画面を開いた |
