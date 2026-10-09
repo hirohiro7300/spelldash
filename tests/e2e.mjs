@@ -861,12 +861,15 @@ console.log("bookshelf:");
     const firstFonts1200 = new Set(fontFiles); // 初回表示で読んだフォント（扉と本をさがすを開く前）
     // 背を押す: 未追加の巻（jhs-english3、今のコースの巻）→ パックに足され、机に出る。コースはそのまま、第3巻／全8巻、焦点はスタート。元の本は棚に戻って読みかけ
     await page.click('#bookshelf button.spine[data-book="jhs-english3"]');
-    const picked = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhs-english3" && (await page.textContent("#pathCard")).includes("第3巻／全8巻"), 6000);
+    const picked = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhs-english3" && (await page.textContent("#pathCard")).includes("第3巻／全8巻") &&
+      (await page.evaluate(() => !!document.querySelector('#bookshelf .slot')?.getAttribute("aria-label")?.includes("中学英語 3年") && document.activeElement?.id === "pathStart")), 6000);
     const st = await page.evaluate(() => ({ packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), course: localStorage.getItem("spelldash_course"), focus: document.activeElement?.id, title: document.querySelector("#pathHead .path__title")?.textContent, slot: document.querySelector("#bookshelf .slot")?.getAttribute("aria-label"), back: document.querySelector('#bookshelf button.spine[data-book="jhs-english1"]')?.className, status: document.getElementById("bookshelfStatus")?.textContent }));
     check("本棚: 背を押すと机の本が替わる（未追加の巻はその場で読み込み、コースはそのまま、第3巻／全8巻、焦点はスタート、元の本は棚に戻って読みかけ）", picked && st.packs.includes("jhs-english3") && st.course === "jhs-redo" && st.focus === "pathStart" && st.title.includes("中学英語 3年") && st.slot?.includes("中学英語 3年") && st.back?.includes("spine--reading") && st.status.includes("机に出した"), JSON.stringify(st));
     // 函を押す: 英検のコースへ（制覇していない最初の巻 eiken5 から）
     await page.click('#bookshelf button.box[data-course="eiken"]');
-    const boxed = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_course"))) === "eiken" && (await page.textContent("#pathHead")).includes("英検5級"), 6000);
+    // コースの保存・机の見出しのあとに本棚の描き直しと焦点が来る（遅い端末・CI では間が空く）。全部そろうまで待つ
+    const boxed = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_course"))) === "eiken" && (await page.textContent("#pathHead")).includes("英検5級") &&
+      (await page.evaluate(() => !!document.querySelector('#bookshelf button.box--reading[data-course="eiken"]') && document.activeElement?.id === "pathStart")), 6000);
     const st2 = await page.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), box: document.querySelector('#bookshelf button.box[data-course="eiken"]').className, label: document.querySelector('#bookshelf button.box[data-course="eiken"]').getAttribute("aria-label"), prev: document.querySelector('#bookshelf button.box[data-course="jhs-redo"]').className, focus: document.activeElement?.id }));
     check("本棚: 函を押すとコースが替わる（eiken → eiken5、函に「いまのコース」、焦点は机のスタート）", boxed && st2.cat === "eiken5" && st2.box.includes("box--reading") && st2.label.includes("いまのコース") && !st2.prev.includes("box--reading") && st2.focus === "pathStart", JSON.stringify(st2));
     // 扉: 開くと 49 冊（8 段）。鍵穴は無い。最初の背に焦点。背の文字ははみ出さない
