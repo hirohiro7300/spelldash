@@ -185,8 +185,6 @@ let romajiEntries = [];
 // タイマーで進んだときは次の語へ持ち越す。Enter で自分から進んだときは捨てる）
 let romajiSpill = null;
 const ROMAJI_SPILL_GAP_MS = 600;
-// 次の語が出てからこれより早い打鍵は、次の語を読んで打ったものではない（前の語の続き。swallowRomajiSpill を先に見る）
-const NEXT_WORD_REACTION_MS = 200;
 
 function romajiEntriesFor(word) {
   if (!word || word.calc || word.kanjiOnly || word.write || word.blank || !isConceptWord(word)) return [];
@@ -622,14 +620,6 @@ function swallowRomajiSpill(event) {
   return false;
 }
 
-// まだ何も打っていない今の語の 1 打目として通るキーか（ローマ字・英単語）
-function startsCurrentWord(event) {
-  const key = romajiKeyOf(event);
-  if (!key) return false;
-  if (romajiMode) return !!romaji && !romaji.keys && createRomajiMatcher(romaji.entries).feed(key).ok;
-  return !freeMode && typedSoFar === "" && viableAnswers(activeCandidates(), key).length > 0;
-}
-
 export function handleKeydown(event) {
   // IME変換確定のEnter（isComposing / keyCode 229）はゲーム操作にしない
   if (event.key === "Enter" && (event.isComposing || event.keyCode === 229)) return;
@@ -663,10 +653,9 @@ export function handleKeydown(event) {
     return;
   }
 
-  // Study: 次の語が出て 0.2 秒を過ぎたら、次の語の頭として通るキーを続きの止めより先に見る（速く打つ人の 1 打目を食わない）。
-  // それより早い打鍵は次の語を読む前の指（前の語の続き。ゆっくり打つ人の 2 つ目の n）
-  if (romajiSpill && mode === "study" && performance.now() - advancedAt >= NEXT_WORD_REACTION_MS && startsCurrentWord(event)) romajiSpill = null;
-  // 読みを打ち終えた直後の、終えた語の読みの続き（swallowRomajiSpill）は次の語の打鍵にしない
+  // 読みを打ち終えた直後の、終えた語の読みの続き（swallowRomajiSpill）は次の語の打鍵にしない。
+  // 次の語の頭と同じキーでも続きが先（続きの窓は最後の打鍵から 0.6 秒＝次の語が出て長くて 0.35 秒。
+  // 思い出して打つ語の 1 打目はその間には来ないが、ゆっくり打つ人の 2 つ目の n は来る）
   if (swallowRomajiSpill(event)) {
     event.preventDefault();
     return;
@@ -1117,18 +1106,22 @@ export function useHint() {
 }
 
 // ===== 自分のメモ（覚え方）: 答え表示・ヒント後に表示＋編集 =====
-// 覚え方のメモを書いている途中か: 欄か保存ボタンに焦点がある、または保存していない書きかけがある
+// 覚え方のメモを書いている途中か: 欄か保存ボタンに焦点がある、または欄の中を押し下げている
 // （マウスで「保存」を押すと、押し下げで焦点が欄から離れる。Safari はボタンに焦点を移さない）
+let notePressed = false;
+function releaseNote() {
+  notePressed = false;
+}
 function isEditingNote() {
-  const input = document.getElementById("noteInput");
-  if (!input) return false;
-  if (document.getElementById("wordNote")?.contains(document.activeElement)) return true;
-  return input.value.trim() !== (getNote(currentWord?.id) ?? "").trim();
+  if (!document.getElementById("noteInput")) return false;
+  return notePressed || !!document.getElementById("wordNote")?.contains(document.activeElement);
 }
 
-// 覚え方を作る（AI）の返事を待っている
+// 覚え方を作る（AI）の返事を待っている（待ちを止めるのは長くて AI_HOLD_MAX_MS。返事が来なくても先へ進める）
+const AI_HOLD_MAX_MS = 10000;
+let aiStartedAt = -Infinity;
 function isMakingWordAi() {
-  return !!document.querySelector("#wordAi [data-word-ai-run]:disabled");
+  return !!document.querySelector("#wordAi [data-word-ai-run]:disabled") && performance.now() - aiStartedAt < AI_HOLD_MAX_MS;
 }
 
 function renderWordNote(word) {
@@ -1137,13 +1130,21 @@ function renderWordNote(word) {
   const aiSlot = document.getElementById("wordAi");
   if (!word || mode !== "study") {
     el.innerHTML = "";
-    if (aiSlot) aiSlot.innerHTML = "";
+    if (aiSlot) {
+      aiSlot.innerHTML = "";
+      delete aiSlot.dataset.wordAiFor; // ログインの確かめが後から返っても、前の語のボタンを描かない
+    }
     return;
   }
   // 覚え方を作る（AI）: 保存済みなら表示、ログイン中ならボタン。生成後は入力欄へ戻す
   renderWordAi(aiSlot, word, {
-    onDone: () => {
-      if (awaitingNext && currentWord === word) readingHold = true; // 待ちの間に作った覚え方は読み終えるまで待つ（Enter で次へ）
+    onStart: () => {
+      aiStartedAt = performance.now();
+      elements.input.focus(); // 押したボタンは返事まで押せない。焦点を入力欄へ戻し、Enter で次へ進めるようにする
+    },
+    // 返事（覚え方・断りの文）が出た: 待ちの間なら読み終えるまで待つ（Enter で次へ）
+    onSettled: () => {
+      if (awaitingNext && currentWord === word) readingHold = true;
       elements.input.focus();
     }
   });
@@ -1165,6 +1166,14 @@ function renderWordNote(word) {
       elements.input.focus();
     };
     document.getElementById("noteSave")?.addEventListener("click", save);
+    // 欄・保存ボタンを押し下げている間は待ちを止める（離したら次の見直しで進む。click は離した直後に同じ流れで来る）
+    for (const target of [input, document.getElementById("noteSave")]) {
+      target?.addEventListener("pointerdown", () => {
+        notePressed = true;
+        document.addEventListener("pointerup", releaseNote, { once: true });
+        document.addEventListener("pointercancel", releaseNote, { once: true });
+      });
+    }
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();

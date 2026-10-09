@@ -112,8 +112,21 @@ function untrust() {
   trusted = false;
 }
 
+// E2E だけ: 書いている途中の表（凍らせていない写し）を読み手に渡すときは、書き換えると例外になる口を渡す
+let readGuard = null; // { table, view }
+const READ_ONLY = {
+  set() { throw new TypeError("spelldash_word_stats: 読み手は書き換えない（js/stats.js の書き手を使う）"); },
+  defineProperty() { throw new TypeError("spelldash_word_stats: 読み手は書き換えない"); },
+  deleteProperty() { throw new TypeError("spelldash_word_stats: 読み手は書き換えない"); }
+};
+function forReaders(table) {
+  if (!FREEZE || !table || Object.isFrozen(table)) return table;
+  if (readGuard?.table !== table) readGuard = { table, view: new Proxy(table, READ_ONLY) };
+  return readGuard.view;
+}
+
 export function getWordStats() {
-  if (memoStats && (pending || trusted)) return memoStats;
+  if (memoStats && (pending || trusted)) return forReaders(memoStats);
   const raw = localStorage.getItem(STORAGE_KEY);
   if (memoStats === null || raw !== memoRaw) {
     memoStats = (raw && JSON.parse(raw)) || {};
@@ -129,7 +142,7 @@ export function getWordStats() {
 // 語ごとの記録は共有のままなので、書く語は写してから書く（stats[id] = { ...stats[id] }）
 export function editWordStats() {
   if (draft) return draft;
-  draft = { ...getWordStats() };
+  draft = { ...(memoStats && (pending || trusted) ? memoStats : getWordStats()) };
   queueMicrotask(dropDraft);
   return draft;
 }

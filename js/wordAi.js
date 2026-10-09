@@ -99,9 +99,12 @@ async function isLoggedIn() {
   return loggedIn;
 }
 
-// 「覚え方を作る」ボタン＋結果。container 内に描画し、生成後は onDone を呼ぶ。
+// 返事を待っている依頼（語の id → Promise）。同じ語の欄を描き直しても（答え表示・メモの保存）1 回の依頼を共有する
+const inFlight = new Map();
+
+// 「覚え方を作る」ボタン＋結果。container 内に描画する。onStart: 依頼を出した、onSettled: 返事（覚え方・断りの文）を描いた。
 // 未ログインではボタンを出さない（生成 API がログイン必須のため）
-export function renderWordAi(container, word, { onDone } = {}) {
+export function renderWordAi(container, word, { onStart, onSettled } = {}) {
   if (!container || !word) return;
   container.dataset.wordAiFor = word.id;
   const cached = getWordAi(word.id);
@@ -109,31 +112,45 @@ export function renderWordAi(container, word, { onDone } = {}) {
     container.innerHTML = wordAiHtml(word.id);
     return;
   }
+  if (inFlight.has(word.id)) {
+    showPending(container, word, onSettled);
+    return;
+  }
   container.innerHTML = "";
   isLoggedIn().then((ok) => {
     if (!ok || container.dataset.wordAiFor !== word.id || container.innerHTML !== "") return;
-    renderAiButton(container, word, onDone);
+    renderAiButton(container, word, { onStart, onSettled });
   });
 }
 
-function renderAiButton(container, word, onDone) {
+function renderAiButton(container, word, { onStart, onSettled }) {
   container.innerHTML = `<button type="button" class="word-ai__button" data-word-ai-run>${icon("spark")}覚え方を作る</button>`;
-  container.querySelector("[data-word-ai-run]").addEventListener("click", async (event) => {
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.textContent = "作っています…";
-    const result = await requestWordAi(word);
-    // 返事を待つ間に次の語へ進んだ（欄が空になった・別の語を描いた）: 前の語の覚え方を次の語の下に出さない（保存は済んでいる）
-    if (!button.isConnected || container.dataset.wordAiFor !== word.id) return;
+  container.querySelector("[data-word-ai-run]").addEventListener("click", () => {
+    if (!inFlight.has(word.id)) {
+      const request = requestWordAi(word)
+        .catch(() => ({ ok: false, message: "通信できませんでした。" }))
+        .finally(() => inFlight.delete(word.id));
+      inFlight.set(word.id, request);
+    }
+    showPending(container, word, onSettled);
+    if (onStart) onStart();
+  });
+}
+
+// 返事を待つ間のボタン（押せない）。返事が来たら、欄がまだこの語なら描く（別の語に移っていたら描かない。保存は済んでいる）
+function showPending(container, word, onSettled) {
+  container.innerHTML = `<button type="button" class="word-ai__button" data-word-ai-run disabled>作っています…</button>`;
+  inFlight.get(word.id).then((result) => {
+    if (container.dataset.wordAiFor !== word.id || !container.querySelector("[data-word-ai-run]:disabled")) return;
     if (!result.ok) {
       // Pro の案内は文の中に括弧で入れる（1 本の流し込み: 390 でリンクが語の途中で折れない）
       // 受付前・アプリでは Pro の話をしない（サーバーの別欄 offer「Pro なら…」を足すのは受付中だけ）
       const offer = result.upgrade && canOfferPro();
       const message = offer && result.offer ? `${result.message}${result.offer}` : result.message;
       container.innerHTML = `<span class="word-ai__error">${escapeHtml(message)}${offer ? '（<a class="ai-upgrade" href="./pro.html" data-funnel="ai">Pro について</a>）' : ""}</span>`;
-      return;
+    } else {
+      container.innerHTML = wordAiHtml(word.id);
     }
-    container.innerHTML = wordAiHtml(word.id);
-    if (onDone) onDone(result.entry);
+    if (onSettled) onSettled(result);
   });
 }
