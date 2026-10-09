@@ -3538,7 +3538,8 @@ console.log("after correct（入力完了から次の問題まで）:");
     await p.close();
   }
 
-  // ---- K2: 待ち 0.25 秒のあと、次の語の頭が前の語の続きと同じキー（鑑真 gannjin → 日米和親条約 ni…）でも、速く打った 1 打目は次の語に入る ----
+  // ---- K2: 待ち 0.25 秒のあと、続きの窓（最後の打鍵から 0.6 秒）の中の n は、次の語の頭（鑑真 gannjin → 日米和親条約 ni…）と同じでも前の語の続き ----
+  // （思い出して打つ語の 1 打目は次の語が出て 0.35 秒以内には来ない。ゆっくり打つ人の 2 つ目の n は来る）
   {
     const J = Object.fromEntries(packA("jhist1").map((w) => [w.id, w]));
     const ids = ["concept-jh1-ganjin", "concept-jh1-washinjoyaku", "concept-jh1-yoritomo"];
@@ -3552,13 +3553,13 @@ console.log("after correct（入力完了から次の問題まで）:");
     const rf0 = await numOf(p, "#recallFail");
     const k1 = keysOfA(w1);
     await typeAllButLast(p, k1);
-    const r = await finishTimed(p, k1.at(-1), { afterChange: [{ at: 250, key: "n" }, { at: 340, key: "i" }], afterMs: 420 });
-    check("ローマ字: 待ち 0.25 秒のあと、次の語の頭が続きと同じ n でも 1 打目は次の語に入る（ミス・思い出せず 同じ）", k1.endsWith("n") && keysOfA(w2).startsWith("ni") && r.ms !== null && r.ms <= 600 && r.after?.ja === w2.q && Number(r.after.miss) === miss0 && Number(r.after.recallFail) === rf0 && r.after.preview.endsWith("ni"), JSON.stringify({ ms: r.ms, miss: `${miss0}→${r.after?.miss}`, rf: `${rf0}→${r.after?.recallFail}`, preview: r.after?.preview }));
+    const r = await finishTimed(p, k1.at(-1), { keys: [{ at: 500, key: "n" }], afterChange: [{ at: 700, key: "n" }, { at: 790, key: "i" }], afterMs: 870 });
+    check("ローマ字: 待ち 0.25 秒のあと、最後の打鍵から 0.5 秒の n（次の語が出た後）は前の語の続き。次の語は 1 打目から打てる（ミス・思い出せず 同じ）", k1.endsWith("n") && keysOfA(w2).startsWith("ni") && r.ms !== null && r.ms <= 450 && r.after?.ja === w2.q && Number(r.after.miss) === miss0 && Number(r.after.recallFail) === rf0 && r.after.preview.endsWith("ni"), JSON.stringify({ ms: r.ms, miss: `${miss0}→${r.after?.miss}`, rf: `${rf0}→${r.after?.recallFail}`, preview: r.after?.preview }));
     check("ローマ字（続きと次の語の頭）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
     await p.close();
   }
 
-  // ---- K3: 次の語が出て 0.2 秒より前の打鍵は、次の語の頭と同じでも前の語の続き（親鸞 shinran の 2 つ目の n → 日米和親条約） ----
+  // ---- K3: 次の語が出た直後の打鍵は、次の語の頭と同じでも前の語の続き（親鸞 shinran の 2 つ目の n → 日米和親条約） ----
   {
     const J = Object.fromEntries(packA("jhist1").map((w) => [w.id, w]));
     const ids = ["concept-jh1-shinran", "concept-jh1-washinjoyaku", "concept-jh1-yoritomo"];
@@ -3573,7 +3574,7 @@ console.log("after correct（入力完了から次の問題まで）:");
     const k1 = keysOfA(w1);
     await typeAllButLast(p, k1);
     const r = await finishTimed(p, k1.at(-1), { afterChange: [{ at: 50, key: "n" }, { at: 450, key: "n" }, { at: 540, key: "i" }], afterMs: 620 });
-    check("ローマ字: 次の語が出て 0.2 秒より前の n は前の語の続き（次の語は 1 打目から打てる。ミス・思い出せず 同じ）", k1.endsWith("n") && r.ms !== null && r.after?.ja === w2.q && Number(r.after.miss) === miss0 && Number(r.after.recallFail) === rf0 && r.after.preview.endsWith("ni"), JSON.stringify({ ms: r.ms, miss: `${miss0}→${r.after?.miss}`, rf: `${rf0}→${r.after?.recallFail}`, preview: r.after?.preview }));
+    check("ローマ字: 次の語が出た直後の n は前の語の続き（次の語は 1 打目から打てる。ミス・思い出せず 同じ）", k1.endsWith("n") && r.ms !== null && r.after?.ja === w2.q && Number(r.after.miss) === miss0 && Number(r.after.recallFail) === rf0 && r.after.preview.endsWith("ni"), JSON.stringify({ ms: r.ms, miss: `${miss0}→${r.after?.miss}`, rf: `${rf0}→${r.after?.recallFail}`, preview: r.after?.preview }));
     check("ローマ字（反応より早い続き）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
     await p.close();
   }
@@ -3835,6 +3836,42 @@ console.log("after correct（入力完了から次の問題まで）:");
       check("覚え方（先へ進んだ）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
       await p.close();
     }
+    // (c) 返事を待つ間に同じ語の欄を描き直す（メモを保存）→ 依頼は 1 回、返事はその語の下に出る
+    {
+      const p = await openPlay(seedAi, { url: "/index.html?set=10&hintms=600000" });
+      let calls = 0;
+      await p.route("**/api/explain-word", async (route) => { calls++; await new Promise((r) => setTimeout(r, 900)); await route.continue(); });
+      await p.press("#input", "Enter"); // 答えを見る（まだ打たない）
+      await waitUntil(async () => revealedEn(await wordOf(p)) && (await p.$("[data-word-ai-run]")) !== null, 3000, 20);
+      const en = await wordOf(p);
+      await p.click("[data-word-ai-run]");
+      await p.click("#noteEdit");
+      await p.keyboard.type("memo");
+      await p.press("#noteInput", "Enter"); // 保存 → 欄を描き直す
+      await waitUntil(async () => (await p.textContent("#wordAi")).includes("音で覚える"), 3000, 20);
+      const ai = (await p.textContent("#wordAi")).trim();
+      check("覚え方を作る: 返事を待つ間に同じ語の欄を描き直しても、依頼は 1 回で返事はその語の下に出る", calls === 1 && ai.includes(`${en} は`) && (await p.$("[data-word-ai-run]")) === null, JSON.stringify({ calls, ai: ai.slice(0, 40) }));
+      check("覚え方（描き直し）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+      await p.close();
+    }
+    // (d) 待ちの間に押して断り（無料ぶんを使い切った）が出たら、読めるように Enter まで待つ
+    {
+      const limitWords = JSON.stringify([{ en: "limit", ja: "限度" }, { en: "limited", ja: "限られた" }, { en: "limitation", ja: "制限" }]);
+      const p = await openPlay({ ...seedAi, spelldash_my_words: limitWords }, { url: "/index.html?set=10&hintms=600000" });
+      const ja = await jaOf(p);
+      await p.press("#input", "Enter"); // 答えを見る
+      await waitUntil(async () => revealedEn(await wordOf(p)) && (await p.$("[data-word-ai-run]")) !== null, 3000, 20);
+      for (const ch of await wordOf(p)) await p.press("#input", ch);
+      await p.click("[data-word-ai-run]");
+      await waitUntil(async () => (await p.textContent("#wordAi")).includes("使い切った"), 3000, 20);
+      await p.waitForTimeout(1200);
+      const held = (await jaOf(p)) === ja && (await p.textContent("#wordAi")).includes("使い切った");
+      await p.press("#input", "Enter");
+      const moved = await waitUntil(async () => (await jaOf(p)) !== ja, 1500, 20);
+      check("覚え方を作る: 待ちの間の断りの文も読めるように Enter まで待つ", held && moved, JSON.stringify({ held, moved }));
+      check("覚え方（断り）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+      await p.close();
+    }
   }
 
   // ---- T1: チュートリアル T3 を出した語は 1.5 秒置いて次へ。札は次の語で消える ----
@@ -3889,6 +3926,8 @@ console.log("after correct（入力完了から次の問題まで）:");
       return { shown: !!el && !el.classList.contains("coach--out"), text: el?.textContent.trim() ?? "" };
     });
     check("チュートリアル: Challenge で T3 を出した語の直後の語では札を消さない（文が出る）", r.shown && r.text.length > 0, JSON.stringify(r));
+    await p.waitForTimeout(1700);
+    check("チュートリアル: 次の語が先に出た T3 は、出してから 1.5 秒で消す", (await p.$('.coach[data-step="T3"]:not(.coach--out)')) === null);
     check("チュートリアル（Challenge の T3）でエラー0", p.errors.length === 0, p.errors[0] ?? "");
     await p.close();
   }
