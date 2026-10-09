@@ -89,6 +89,7 @@ import { pushSync, recordPlaySession } from "./sync.js";
 import { speak, autoSpeak, speakOnCorrect, getListenRatio } from "./audio.js";
 import { renderWordExample, hasExample } from "./wordExample.js";
 import { saveSession, clearSession } from "./sessionResume.js";
+import { getAfterCorrect, waitAfterCorrect, MILESTONE_MS, ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS, NOTE_RECHECK_MS } from "./afterCorrect.js";
 import { generateCalc } from "./calcCards.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { renderWordAi } from "./wordAi.js";
@@ -158,6 +159,12 @@ let freeMode = false;
 let hintChars = 0; // 全文入力モードでヒントで見せた文字数
 let awaitingNext = false; // 正解後、次の語へ進むまでの待ち（Enterで即進行）
 let advanceTimer = null;
+let advancedAt = -Infinity; // 正解後の待ちを終えて次の語を出した時刻（直後の Enter／Esc の守り。isAdvanceEcho）
+let advancedBy = null; // 次の語へ進んだきっかけ（"timer" = 待ちが終わった／"key" = Enter）
+let completedAt = -Infinity; // Study で前の語を打ち終えた時刻（タイマーで進んだときの守り。isAdvanceEcho）
+let milestoneThisWord = false; // この語で節目の演出（覚えた のスタンプ・レベルアップの幕）を出した
+let learnedCardStale = false; // プレイ中は覚えた単語カードを描かない（畳まれて見えない）。終わったら描く
+let keepMessage = false; // この語の節目の行（Lv・連続日数・シールド・ミッション）は次の語が出ても残す（advanceNow）
 
 function isFreeAnswer(word) {
   return !!word && !/^[a-z-]+$/.test(word.en);
@@ -172,7 +179,8 @@ let romaji = null; // いまの読みの判定（createRomajiMatcher）。答え
 let romajiEntries = [];
 // 読みを打ち終えた直後の打鍵の持ち越し止め: 終えた語の判定（matcher）と最後の打鍵の時刻。
 // 終えた語の読みの続き（語末の ん の 2 つ目の n、いわじゅく で終えた後の いせき）を、
-// 間を空けずに打ったキーは次の語の打鍵にしない（Challenge は次の語がすぐ出る。Study は正解後の待ちが飲み込む）
+// 間を空けずに打ったキーは次の語の打鍵にしない（Study・Challenge とも 0.6 秒。Study は正解後の待ちの間も続きの判定に食わせ、
+// タイマーで進んだときは次の語へ持ち越す。Enter で自分から進んだときは捨てる）
 let romajiSpill = null;
 const ROMAJI_SPILL_GAP_MS = 600;
 
@@ -320,6 +328,10 @@ function showIdleMessage() {
 
 // ゲームが終わった／止まったことをホームに知らせる（専用キーボードを畳む等）
 function notifyGameEnd() {
+  if (learnedCardStale) {
+    learnedCardStale = false;
+    renderLearnedCard();
+  }
   document.body.classList.remove("placement"); // 腕試しの途中でやめても数字1行は戻す（css/home.css）
   resetRomajiMode(); // 入力欄を読み取り専用のままにしない（道のスタートの Enter・他の画面の入力に戻す）
   window.dispatchEvent(new CustomEvent("spelldash:game-end", { detail: { mode } }));
@@ -349,6 +361,10 @@ export function stopGame() {
   renderExplain(null);
   clearTimeout(advanceTimer);
   awaitingNext = false;
+  advancedAt = -Infinity;
+  advancedBy = null;
+  completedAt = -Infinity;
+  milestoneThisWord = false;
   document.body.classList.remove("free-answer");
   document.getElementById("gameCard")?.classList.remove("game-card--concept");
   const meta = document.getElementById("wordMeta");
@@ -405,6 +421,10 @@ export function startGame(options = {}) {
   combo = 0;
   gainedXp = 0;
   romajiSpill = null;
+  advancedAt = -Infinity;
+  advancedBy = null;
+  completedAt = -Infinity;
+  milestoneThisWord = false;
   startTime = Date.now();
   updateCombo(0);
 
@@ -513,9 +533,10 @@ function triggerEnter() {
 
   // 正解直後の待ち: Enterで待たずに次へ
   if (awaitingNext) {
-    advanceNow();
+    advanceNow("key");
     return;
   }
+  if (isAdvanceEcho()) return; // 次の語が出た直後の、前の語に向けた Enter／Esc（答えを開かない＝×にしない）
 
   // ローマ字モード: 読みは打ち終えた時点で正解になっている。Enter は英単語と同じく 1 回目は答え表示、
   // 答えを見た後はスキップ（下の通常処理）
@@ -563,6 +584,46 @@ function triggerEnter() {
   }
 }
 
+// 次の語が出てから ADVANCE_GUARD_MS（0.3 秒）の、その語にまだ何も打っていない Enter／Esc か。
+// タイマーで進んだときは、前の語を打ち終えてから ECHO_AFTER_DONE_MS（1.2 秒）の間も同じ。
+// 待ちの終わり際に「次へ」と押した指・二度押し・打ち終えたら Enter で次への癖が、次の語の「分からない」にならないようにする
+function isAdvanceEcho() {
+  const now = performance.now();
+  return (
+    mode === "study" &&
+    !isRevealed &&
+    (now - advancedAt < ADVANCE_GUARD_MS || (advancedBy === "timer" && now - completedAt < ECHO_AFTER_DONE_MS)) &&
+    typedSoFar === "" &&
+    !elements.input.value &&
+    !romaji?.keys
+  );
+}
+
+// 読みを打ち終えた直後、終えた語の読みの続きを間を空けずに打ったキー（語末の ん の 2 つ目の n、
+// いわじゅく で終えた後の いせき）か。続きとして通れば時刻を進めて true（呼び元が飲む）。
+// Shift などローマ字でないキーでは途切れさせない
+function swallowRomajiSpill(event) {
+  if (!romajiSpill) return false;
+  const key = romajiKeyOf(event);
+  if (!key) return false;
+  const spill = romajiSpill;
+  romajiSpill = null;
+  const now = performance.now();
+  if (now - spill.at <= ROMAJI_SPILL_GAP_MS && spill.matcher.feed(key).ok) {
+    if (spill.matcher.state().canContinue) romajiSpill = { matcher: spill.matcher, at: now };
+    return true;
+  }
+  return false;
+}
+
+// まだ何も打っていない今の語の 1 打目として通るキーか（ローマ字・英単語）
+function startsCurrentWord(event) {
+  const key = romajiKeyOf(event);
+  if (!key) return false;
+  if (romajiMode) return !!romaji && !romaji.keys && createRomajiMatcher(romaji.entries).feed(key).ok;
+  return !freeMode && typedSoFar === "" && viableAnswers(activeCandidates(), key).length > 0;
+}
+
 export function handleKeydown(event) {
   // IME変換確定のEnter（isComposing / keyCode 229）はゲーム操作にしない
   if (event.key === "Enter" && (event.isComposing || event.keyCode === 229)) return;
@@ -575,8 +636,10 @@ export function handleKeydown(event) {
 
   if (!isPlaying || !currentWord) return;
 
-  // 正解直後の待ち（次の語が出る前）: 文字キーは判定しない（次の語の1文字目をミス扱いにしない）
+  // 正解直後の待ち（次の語が出る前）: 文字キーは判定しない（次の語の1文字目をミス扱いにしない）。
+  // ローマ字の続きは判定に食わせて時刻を進める（待ちが短くても、続きの打鍵が次の語に入らない）
   if (awaitingNext) {
+    swallowRomajiSpill(event);
     event.preventDefault();
     return;
   }
@@ -594,20 +657,12 @@ export function handleKeydown(event) {
     return;
   }
 
-  // 読みを打ち終えた直後、終えた語の読みの続きを間を空けずに打ったキー（語末の ん の 2 つ目の n、
-  // いわじゅく で終えた後の いせき）は、次の語の打鍵にしない。Shift などローマ字でないキーでは途切れさせない
-  if (romajiSpill) {
-    const key = romajiKeyOf(event);
-    if (key) {
-      const spill = romajiSpill;
-      romajiSpill = null;
-      const now = performance.now();
-      if (now - spill.at <= ROMAJI_SPILL_GAP_MS && spill.matcher.feed(key).ok) {
-        event.preventDefault();
-        if (spill.matcher.state().canContinue) romajiSpill = { matcher: spill.matcher, at: now };
-        return;
-      }
-    }
+  // Study: 次の語が出た後は、次の語の頭として通るキーを続きの止めより先に見る（速く打つ人の 1 打目を食わない）
+  if (romajiSpill && mode === "study" && startsCurrentWord(event)) romajiSpill = null;
+  // 読みを打ち終えた直後の、終えた語の読みの続き（swallowRomajiSpill）は次の語の打鍵にしない
+  if (swallowRomajiSpill(event)) {
+    event.preventDefault();
+    return;
   }
 
   // ローマ字モード: 読みを 1 打ずつ判定（IME は通さない）
@@ -909,18 +964,26 @@ function finishFreeWord() {
   completeWord();
 }
 
-// 正解後の待ちを終えて次へ（Enter または タイマー）
-function advanceNow() {
+// 正解後の待ちを終えて次へ（by: "key" = Enter で自分から／"timer" = 待ちが終わった）
+function advanceNow(by = "key") {
   clearTimeout(advanceTimer);
   advanceTimer = null;
+  if (!awaitingNext) return; // タイマーと Enter が重なっても 1 回だけ進む
   awaitingNext = false;
-  romajiSpill = null; // 待ちの間の続きの打鍵は待ちが飲み込んだ。次の語の 1 打目は飲み込まない
+  if (by !== "timer") romajiSpill = null; // Enter で自分から進んだ: 次の語の 1 打目から受け付ける
   if (!isPlaying) return;
   if (mode === "study" && setCompletePending) {
     endStudySession();
     return;
   }
+  const prev = currentWord;
   setNewWord();
+  // 前の語の結果の行（「正解」「思い出せた +N XP」など語の名を含まない行）を次の語の下に残さない。
+  // 語の名を含む行（「知ってた。business は…」「X を習得」）と節目の行（Lv・連続日数・シールド・ミッション）は残す。
+  // 節目の行は次の語を正解に見せない
+  if (isPlaying && prev && !keepMessage && !elements.message.textContent.includes(prev.en)) showMessage("");
+  advancedAt = performance.now();
+  advancedBy = by;
 }
 
 // ===== ヒント（Study） =====
@@ -1178,6 +1241,8 @@ function finishTypedAnswer(typed) {
 let studyWordsSinceSync = 0;
 
 function completeWord() {
+  keepMessage = false;
+  let holdMs = 0; // チュートリアル T3 を出した語の最低の待ち（js/tutorial.js が spelldash:recall の detail.hold に書く）
   score++;
   elements.score.textContent = score;
   pulseScore();
@@ -1238,7 +1303,9 @@ function completeWord() {
   if (selfRecall) {
     consecutiveFails = 0;
     recordRecallSuccess(currentWord.id);
-    window.dispatchEvent(new CustomEvent("spelldash:recall", { detail: { id: currentWord.id, mode } })); // チュートリアル（js/tutorial.js）
+    const recallDetail = { id: currentWord.id, mode };
+    window.dispatchEvent(new CustomEvent("spelldash:recall", { detail: recallDetail })); // チュートリアル（js/tutorial.js）
+    holdMs = Number(recallDetail.hold) || 0;
     if (mode === "study") bumpActivity("studyCorrect"); // KPI心拍
 
     if (mode === "study") {
@@ -1307,23 +1374,39 @@ function completeWord() {
     return;
   }
 
-  // Study: 正解演出の後に次へ。概念カードは答えと解説を、例文のある語は例文を読む時間を置く（Enterで即進行）
+  // Study: 正解の手応えのあと次へ。自力で正解した例文つきの語・概念カードは、答えと例文・解説を少しだけ見せる（Enter で即進行）。
+  // 長さは設定「正解のあと」（js/afterCorrect.js）。答えを見た語・腕試しは手応えだけ（表示の時に読んでいる／テンポ優先）
   const concept = isConceptWord(currentWord);
-  // 例文を読む間を置くのは、自力で思い出した語だけ（答えを見た語は表示時に例文を読んでいるので従来どおり即次へ）
-  const withExample = !concept && !isRevealed && !isPlacementRun() && hasExample(currentWord); // 腕試し中はテンポ優先
-  if (concept || withExample) {
+  const { ms, glance } = waitAfterCorrect({
+    concept,
+    withExample: hasExample(currentWord),
+    revealed: isRevealed,
+    placement: isPlacementRun(),
+    pace: getAfterCorrect()
+  });
+  if (glance) {
     renderExplain(currentWord);
     showAnswer();
+  } else if (concept && !isRevealed) {
+    showAnswer(); // 読みを打った語は答えの漢字を一目（すぐ次へ・腕試し）
   }
   if (listenMode) elements.japanese.textContent = promptOf(currentWord);
+  // 節目（覚えた・レベルアップの幕）とチュートリアル T3 の語は、演出・札が次の語に重ならない長さまで待つ
+  const wait = Math.max(ms, milestoneThisWord ? MILESTONE_MS : 0, holdMs);
   const serialAtComplete = wordSerial;
   awaitingNext = true;
+  completedAt = performance.now();
   clearTimeout(advanceTimer);
-  advanceTimer = setTimeout(() => {
-    if (!isPlaying) return;
-    if (wordSerial !== serialAtComplete) return;
-    advanceNow();
-  }, concept ? 2600 : withExample ? 2200 : 250);
+  const tick = () => {
+    if (!isPlaying || wordSerial !== serialAtComplete) return;
+    // 覚え方のメモを書いている間は進めない（次の語の renderWordNote(null) が書きかけを消す）
+    if (document.activeElement?.id === "noteInput") {
+      advanceTimer = setTimeout(tick, NOTE_RECHECK_MS);
+      return;
+    }
+    advanceNow("timer");
+  };
+  advanceTimer = setTimeout(tick, wait);
 }
 
 // 成長ログ: 覚えた語数のスナップショット（今週+N・30日推移の材料）
@@ -1360,6 +1443,7 @@ function renderSetProgress() {
 // ===== 「覚えた！」の瞬間 =====
 // 別の日に思い出せなかった語を今日自力で思い出せた＝学習成立。ここだけは大きく祝う
 function celebrateLearned(word, earned, note = "") {
+  milestoneThisWord = true; // スタンプ（1.4 秒）が消えるまで次の語を出さない
   sfxSparkle();
   sfxComplete();
 
@@ -1449,6 +1533,7 @@ function announcePlacement() {
 }
 
 function endStudySession() {
+  learnedCardStale = false; // 下で自分で描く（notifyGameEnd で二重に描かない）
   clearInterval(timer);
   isPlaying = false;
   notifyGameEnd();
@@ -1549,7 +1634,7 @@ function endStudySession() {
 function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
   markActiveToday();
   snapshotGrowth();
-  renderLearnedCard(); // 覚えた単語数を即時更新
+  learnedCardStale = true; // プレイ中は畳まれて見えない（css/room.css の body.home--playing）。終わったら notifyGameEnd が描く
   const streak = updateStreak();
   if (streak.isFirstToday) {
     earned += 50;
@@ -1575,8 +1660,10 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     sfxLevelUp();
     // ランクが変わる節目はオーバーレイ 1 つ、それ以外は 1 行。両方は出さない
     if (isPlacementRun() || !celebrateRankUp(result)) {
+      keepMessage = true;
       showMessage(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}${shieldNote}`, "finished");
     } else {
+      keepMessage = !!shieldNote; // 幕が節目。1 行の「思い出せた」は次の語で消す
       showMessage(`思い出せた${shieldNote}`, "correct");
     }
     return;
@@ -1584,12 +1671,14 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
 
   // 連続日数は自力正解のときだけ言う。ただしシールド獲得は答えを見た語でも知らせる
   if (streak.isFirstToday && streak.current >= 2 && (!isRevealed || streak.earnedShield)) {
+    keepMessage = true;
     showMessage(`${streak.current}日連続${shieldNote}`, "correct");
     return;
   }
 
   if (missionResult.justCompleted) {
     sfxComplete();
+    keepMessage = true;
     showMessage(`ミッション達成 +${missionResult.bonusXp} XP`, "correct");
     return;
   }
@@ -1710,6 +1799,7 @@ function setNewWord() {
   hintUsed = false;
   hintChars = 0;
   awaitingNext = false;
+  milestoneThisWord = false;
   clearTimeout(advanceTimer);
   hideHint();
   renderWordNote(null);
@@ -1776,7 +1866,13 @@ function setNewWord() {
   if (elements.speakButton) {
     elements.speakButton.hidden = !listenMode;
   }
-  if (listenMode) setTimeout(() => speak(speechTextOf(currentWord)), 150);
+  if (listenMode) {
+    // 150ms のうちに次の語へ進んだら読まない（前の語の発音で答えが漏れない）
+    const serial = wordSerial;
+    setTimeout(() => {
+      if (serial === wordSerial && isPlaying && listenMode) speak(speechTextOf(currentWord));
+    }, 150);
+  }
   if (elements.wordFamily) {
     elements.wordFamily.textContent = "";
   }
@@ -2104,6 +2200,7 @@ function celebrateRankUp(result) {
     </div>
   `;
   document.body.appendChild(overlay);
+  milestoneThisWord = true; // 幕（1.2 秒＋消える 0.22 秒）が消えるまで次の語を出さない
   sfxSparkle();
   // 1.2 秒で静かに消える。タップでも閉じられる（次の一手を待たせない）
   let closed = false;

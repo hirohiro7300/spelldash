@@ -14,6 +14,7 @@ import { isNativeApp } from "./appEnv.js";
 import { getPlan, isPro, postBilling, planLabel, planActionLabel } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
 import { getSetSize, setSetSize } from "./dailySet.js";
+import { getAfterCorrect, setAfterCorrect } from "./afterCorrect.js";
 import { getWeekGoal, setWeekGoal } from "./growthLog.js";
 import { renderInstallCard } from "./installPrompt.js";
 
@@ -35,6 +36,15 @@ initWordStore();
   if (select) {
     select.value = String(getSetSize());
     select.addEventListener("change", () => setSetSize(select.value));
+  }
+}
+
+// ===== 正解のあと（次の語までに答え・例文・解説を見せる長さ。端末ごと・同期しない） =====
+{
+  const select = document.getElementById("afterCorrectSelect");
+  if (select) {
+    select.value = getAfterCorrect();
+    select.addEventListener("change", () => setAfterCorrect(select.value));
   }
 }
 

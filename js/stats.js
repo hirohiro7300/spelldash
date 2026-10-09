@@ -22,12 +22,10 @@ function reviewIntervalFor(streak) {
   return REVIEW_INTERVAL_DAYS[index];
 }
 
+// 書き手は写して書く（js/storage.js の中身は読み手と共有。表は浅く、書く語だけ写す）
 export function recordPlay(word) {
-  const stats = getWordStats();
-
-  if (!stats[word]) {
-    stats[word] = createInitialWordStats();
-  }
+  const stats = { ...getWordStats() };
+  stats[word] = stats[word] ? { ...stats[word] } : createInitialWordStats();
 
   stats[word].playCount += 1;
   stats[word].lastPlayed = new Date().toISOString();
@@ -37,9 +35,10 @@ export function recordPlay(word) {
 }
 
 export function recordCorrect(word, wasClean) {
-  const stats = getWordStats();
+  const stats = { ...getWordStats() };
 
   if (!stats[word]) return;
+  stats[word] = { ...stats[word] };
 
   stats[word].correctCount += 1;
 
@@ -87,11 +86,8 @@ export function recordCorrect(word, wasClean) {
 
 // New Word Learning Loop: 同日の学習段階を保存（ローカル日付基準）
 export function setDailyLearning(word, stage) {
-  const stats = getWordStats();
-
-  if (!stats[word]) {
-    stats[word] = createInitialWordStats();
-  }
+  const stats = { ...getWordStats() };
+  stats[word] = stats[word] ? { ...stats[word] } : createInitialWordStats();
 
   stats[word].dailyLearningDate = localDateString();
   stats[word].dailyLearningStage = stage;
@@ -102,9 +98,10 @@ export function setDailyLearning(word, stage) {
 
 // 打ち間違い（覚えていたがタイプをミスした）。苦手判定には使わない
 export function recordTypingMiss(word) {
-  const stats = getWordStats();
+  const stats = { ...getWordStats() };
 
   if (!stats[word]) return;
+  stats[word] = { ...stats[word] };
 
   stats[word].typingMiss += 1;
   saveWordStats(stats);
@@ -126,9 +123,10 @@ export function isReviewAttempt(stat) {
 }
 
 export function recordRecallFail(word) {
-  const stats = getWordStats();
+  const stats = { ...getWordStats() };
 
   if (!stats[word]) return;
+  stats[word] = { ...stats[word] };
 
   if (isReviewAttempt(stats[word])) {
     stats[word].lastReviewResult = "ng";
@@ -152,9 +150,10 @@ export function recordRecallFail(word) {
 // 答えを見ずに自力で正解した（打ち間違いはあってもよい）。
 // 答え表示後の入力練習ではこの関数を呼ばないこと。
 export function recordRecallSuccess(word) {
-  const stats = getWordStats();
+  const stats = { ...getWordStats() };
 
   if (!stats[word]) return;
+  stats[word] = { ...stats[word] };
 
   const prevRecallSuccessAt = stats[word].lastRecallSuccessAt ?? null; // 記憶の保持率の t0 判定にだけ使う（上書きの前に読む。Recall Loop には使わない）
 

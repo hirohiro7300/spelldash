@@ -63,6 +63,7 @@
   <link rel="modulepreload" href="./js/proFunnel.js" />
   <link rel="modulepreload" href="./js/answers.js" />
   <link rel="modulepreload" href="./js/jaAmbiguity.js" />
+  <link rel="modulepreload" href="./js/jaScript.js" />
   <link rel="modulepreload" href="./js/focusTrap.js" />
   <link rel="modulepreload" href="./js/footer.js" />
   <link rel="modulepreload" href="./js/feedback.js" />
@@ -74,6 +75,7 @@
   <link rel="modulepreload" href="./js/sfx.js" />
   <link rel="modulepreload" href="./js/theme.js" />
   <link rel="modulepreload" href="./js/dailySet.js" />
+  <link rel="modulepreload" href="./js/afterCorrect.js" />
   <link rel="modulepreload" href="./js/installPrompt.js" />
   <link rel="preload" href="./data/manifest.json" as="fetch" crossorigin="anonymous" />
   <link rel="preload" href="./data/english/junior.json" as="fetch" crossorigin="anonymous" />
@@ -196,6 +198,16 @@
           <option value="25">25語（約8分）</option>
         </select>
         <p class="setting-hint">自力で思い出せた語がこの数に達したら、今日のぶんは完了</p>
+      </div>
+
+      <div class="setting-row">
+        <label for="afterCorrectSelect">正解のあと</label>
+        <select id="afterCorrectSelect" class="setting-select">
+          <option value="quick">すぐ次へ</option>
+          <option value="standard">少し見せる（標準）</option>
+          <option value="long">長く見せる（例文・解説を読む）</option>
+        </select>
+        <p class="setting-hint">自力で正解した語の答え・例文・解説を見せる長さ。Enter で待たずに次へ</p>
       </div>
 
       <div class="setting-row">
