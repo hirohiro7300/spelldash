@@ -1,4 +1,4 @@
-import { getWordStats, saveWordStats } from "./storage.js";
+import { saveWordStats, editWordStats } from "./storage.js";
 import { markWordDirty } from "./sync.js";
 import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
 import { touchStudyTime } from "./studyTime.js";
@@ -22,9 +22,9 @@ function reviewIntervalFor(streak) {
   return REVIEW_INTERVAL_DAYS[index];
 }
 
-// 書き手は写して書く（js/storage.js の中身は読み手と共有。表は浅く、書く語だけ写す）
+// 書き手は editWordStats の表に書く（js/storage.js の中身は読み手と共有。表の写しは 1 タスク 1 回、書く語は写してから書く）
 export function recordPlay(word) {
-  const stats = { ...getWordStats() };
+  const stats = editWordStats();
   stats[word] = stats[word] ? { ...stats[word] } : createInitialWordStats();
 
   stats[word].playCount += 1;
@@ -35,7 +35,7 @@ export function recordPlay(word) {
 }
 
 export function recordCorrect(word, wasClean) {
-  const stats = { ...getWordStats() };
+  const stats = editWordStats();
 
   if (!stats[word]) return;
   stats[word] = { ...stats[word] };
@@ -86,7 +86,7 @@ export function recordCorrect(word, wasClean) {
 
 // New Word Learning Loop: 同日の学習段階を保存（ローカル日付基準）
 export function setDailyLearning(word, stage) {
-  const stats = { ...getWordStats() };
+  const stats = editWordStats();
   stats[word] = stats[word] ? { ...stats[word] } : createInitialWordStats();
 
   stats[word].dailyLearningDate = localDateString();
@@ -98,7 +98,7 @@ export function setDailyLearning(word, stage) {
 
 // 打ち間違い（覚えていたがタイプをミスした）。苦手判定には使わない
 export function recordTypingMiss(word) {
-  const stats = { ...getWordStats() };
+  const stats = editWordStats();
 
   if (!stats[word]) return;
   stats[word] = { ...stats[word] };
@@ -123,7 +123,7 @@ export function isReviewAttempt(stat) {
 }
 
 export function recordRecallFail(word) {
-  const stats = { ...getWordStats() };
+  const stats = editWordStats();
 
   if (!stats[word]) return;
   stats[word] = { ...stats[word] };
@@ -150,7 +150,7 @@ export function recordRecallFail(word) {
 // 答えを見ずに自力で正解した（打ち間違いはあってもよい）。
 // 答え表示後の入力練習ではこの関数を呼ばないこと。
 export function recordRecallSuccess(word) {
-  const stats = { ...getWordStats() };
+  const stats = editWordStats();
 
   if (!stats[word]) return;
   stats[word] = { ...stats[word] };

@@ -90,12 +90,14 @@ migrateStorage();
 // ===== 語の記録（spelldash_word_stats）: 読みは 1 タスク 1 回、書きは 1 タスク 1 回 =====
 // 同じタスクの中では前に読んだ中身を返す。タスクが変わったら保存の文字列と比べ、同じなら parse しない
 // （他のタブ・バックアップの復元・E2E の直の書き込みは文字列が変わるので拾う）。
-// 中身は共有する。書き換えてよいのは js/stats.js の書き手だけで、写してから書く（読んだ人の手元の値は変わらない）。
+// 中身は共有する。書き換えてよいのは js/stats.js の書き手だけで、editWordStats の写しに書く（タスクの初めに読んだ人の手元の値は変わらない）。
+// 表の写しは 1 タスク 1 回（15,000 語の表の丸写しは 1 回 約 10ms。正解 1 回で書き手が 2〜3 回呼ぶ）。同じタスクの書き手どうしは同じ写しを使う。
 // 書き込みは同じタスクの終わり（マイクロタスク）に必ず済む。次のタスク（閉じる・移る・裏に回る・タイマー）より前なので取りこぼさない
 let memoRaw = null; // 最後に parse した／書いた保存の文字列
 let memoStats = null; // その中身
 let trusted = false; // いまのタスクの中では保存を読み直さない
 let pending = false; // いまのタスクの中でまだ setItem していない書き込みがある
+let draft = null; // このタスクで書き手が写した表（同じタスクの書き手が使い回す。タスクの終わりに捨てる）
 // E2E だけ: 共有の中身を凍らせ、読み手の書き換えを例外（strict mode の TypeError → pageerror）で見つける
 const FREEZE = typeof navigator !== "undefined" && navigator.webdriver === true;
 
@@ -123,9 +125,24 @@ export function getWordStats() {
   return memoStats;
 }
 
+// 書き手（js/stats.js）が書いてよい表。同じタスクの中では同じ写しを返す（表を写すのは 1 タスク 1 回）。
+// 語ごとの記録は共有のままなので、書く語は写してから書く（stats[id] = { ...stats[id] }）
+export function editWordStats() {
+  if (draft) return draft;
+  draft = { ...getWordStats() };
+  queueMicrotask(dropDraft);
+  return draft;
+}
+
+function dropDraft() {
+  if (!pending) draft = null; // 書かずに終えた（書いたなら flushWordStats が捨てる）
+}
+
 export function saveWordStats(stats) {
   memoStats = stats;
-  if (FREEZE) deepFreeze(memoStats);
+  draft = stats; // 同じタスクの次の書き手はこの表に書く
+  // E2E: 語ごとの記録はすぐ凍らせる。表そのものは同じタスクの書き手が使い回すので、書き込みのときに凍らせる
+  if (FREEZE) for (const value of Object.values(memoStats)) deepFreeze(value);
   if (pending) return;
   pending = true;
   queueMicrotask(flushWordStats); // このタスクの JS が終わった直後・描画の前・次のタスクより前に必ず走る
@@ -134,6 +151,8 @@ export function saveWordStats(stats) {
 export function flushWordStats() {
   if (!pending) return;
   pending = false;
+  draft = null;
+  if (FREEZE) deepFreeze(memoStats);
   try {
     const raw = JSON.stringify(memoStats);
     localStorage.setItem(STORAGE_KEY, raw);
@@ -149,6 +168,7 @@ export function flushWordStats() {
 export function forgetWordStats() {
   pending = false;
   trusted = false;
+  draft = null;
   memoRaw = null;
   memoStats = null;
 }

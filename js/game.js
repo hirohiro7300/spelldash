@@ -164,7 +164,9 @@ let advancedBy = null; // 次の語へ進んだきっかけ（"timer" = 待ち�
 let completedAt = -Infinity; // Study で前の語を打ち終えた時刻（タイマーで進んだときの守り。isAdvanceEcho）
 let milestoneThisWord = false; // この語で節目の演出（覚えた のスタンプ・レベルアップの幕）を出した
 let learnedCardStale = false; // プレイ中は覚えた単語カードを描かない（畳まれて見えない）。終わったら描く
-let keepMessage = false; // この語の節目の行（Lv・連続日数・シールド・ミッション）は次の語が出ても残す（advanceNow）
+let keepMessage = false; // この語の結果の行を次の語が出ても残すか（語の名を含む行・節目の行。showResult が決める。advanceNow）
+let readingHold = false; // 待ちの間に作った覚え方を読んでいる（自動では進めない。Enter で次へ）
+let staleMessageTimer = null;
 
 function isFreeAnswer(word) {
   return !!word && !/^[a-z-]+$/.test(word.en);
@@ -183,6 +185,8 @@ let romajiEntries = [];
 // タイマーで進んだときは次の語へ持ち越す。Enter で自分から進んだときは捨てる）
 let romajiSpill = null;
 const ROMAJI_SPILL_GAP_MS = 600;
+// 次の語が出てからこれより早い打鍵は、次の語を読んで打ったものではない（前の語の続き。swallowRomajiSpill を先に見る）
+const NEXT_WORD_REACTION_MS = 200;
 
 function romajiEntriesFor(word) {
   if (!word || word.calc || word.kanjiOnly || word.write || word.blank || !isConceptWord(word)) return [];
@@ -364,6 +368,7 @@ export function stopGame() {
   advancedAt = -Infinity;
   advancedBy = null;
   completedAt = -Infinity;
+  readingHold = false;
   milestoneThisWord = false;
   document.body.classList.remove("free-answer");
   document.getElementById("gameCard")?.classList.remove("game-card--concept");
@@ -424,6 +429,7 @@ export function startGame(options = {}) {
   advancedAt = -Infinity;
   advancedBy = null;
   completedAt = -Infinity;
+  readingHold = false;
   milestoneThisWord = false;
   startTime = Date.now();
   updateCombo(0);
@@ -657,8 +663,9 @@ export function handleKeydown(event) {
     return;
   }
 
-  // Study: 次の語が出た後は、次の語の頭として通るキーを続きの止めより先に見る（速く打つ人の 1 打目を食わない）
-  if (romajiSpill && mode === "study" && startsCurrentWord(event)) romajiSpill = null;
+  // Study: 次の語が出て 0.2 秒を過ぎたら、次の語の頭として通るキーを続きの止めより先に見る（速く打つ人の 1 打目を食わない）。
+  // それより早い打鍵は次の語を読む前の指（前の語の続き。ゆっくり打つ人の 2 つ目の n）
+  if (romajiSpill && mode === "study" && performance.now() - advancedAt >= NEXT_WORD_REACTION_MS && startsCurrentWord(event)) romajiSpill = null;
   // 読みを打ち終えた直後の、終えた語の読みの続き（swallowRomajiSpill）は次の語の打鍵にしない
   if (swallowRomajiSpill(event)) {
     event.preventDefault();
@@ -970,6 +977,7 @@ function advanceNow(by = "key") {
   advanceTimer = null;
   if (!awaitingNext) return; // タイマーと Enter が重なっても 1 回だけ進む
   awaitingNext = false;
+  readingHold = false;
   if (by !== "timer") romajiSpill = null; // Enter で自分から進んだ: 次の語の 1 打目から受け付ける
   if (!isPlaying) return;
   if (mode === "study" && setCompletePending) {
@@ -978,12 +986,29 @@ function advanceNow(by = "key") {
   }
   const prev = currentWord;
   setNewWord();
-  // 前の語の結果の行（「正解」「思い出せた +N XP」など語の名を含まない行）を次の語の下に残さない。
-  // 語の名を含む行（「知ってた。business は…」「X を習得」）と節目の行（Lv・連続日数・シールド・ミッション）は残す。
-  // 節目の行は次の語を正解に見せない
-  if (isPlaying && prev && !keepMessage && !elements.message.textContent.includes(prev.en)) showMessage("");
+  // 前の語の結果の行（「正解」「思い出せた +N XP」など語の名を含まない行）を次の語の下に見せない。
+  // 語の名を含む行（「知ってた。business は…」「X を習得」）と節目の行（Lv・連続日数・シールド・ミッション）は残す（showResult の keep）。
+  if (isPlaying && prev && !keepMessage) hideStaleMessage();
   advancedAt = performance.now();
   advancedBy = by;
+}
+
+// 前の語の結果の行を見えなくする。文はすぐには消さない（aria-live の読み上げを途中で落とさない）。
+// 次の showMessage が置き換える。1.5 秒たっても置き換わらなければ文も消す（あとで読み上げで辿っても前の語の結果が出ない）
+function hideStaleMessage() {
+  const el = elements.message;
+  if (!el.textContent) return;
+  el.classList.add("message--stale");
+  clearTimeout(staleMessageTimer);
+  staleMessageTimer = setTimeout(() => {
+    if (el.classList.contains("message--stale")) showMessage("");
+  }, 1500);
+}
+
+// この語の結果の行。keep: 次の語が出ても残す（語の名を含む行・節目の行）。最後に出した行が決める
+function showResult(text, type, keep = false) {
+  keepMessage = keep;
+  showMessage(text, type);
 }
 
 // ===== ヒント（Study） =====
@@ -1092,6 +1117,20 @@ export function useHint() {
 }
 
 // ===== 自分のメモ（覚え方）: 答え表示・ヒント後に表示＋編集 =====
+// 覚え方のメモを書いている途中か: 欄か保存ボタンに焦点がある、または保存していない書きかけがある
+// （マウスで「保存」を押すと、押し下げで焦点が欄から離れる。Safari はボタンに焦点を移さない）
+function isEditingNote() {
+  const input = document.getElementById("noteInput");
+  if (!input) return false;
+  if (document.getElementById("wordNote")?.contains(document.activeElement)) return true;
+  return input.value.trim() !== (getNote(currentWord?.id) ?? "").trim();
+}
+
+// 覚え方を作る（AI）の返事を待っている
+function isMakingWordAi() {
+  return !!document.querySelector("#wordAi [data-word-ai-run]:disabled");
+}
+
 function renderWordNote(word) {
   const el = document.getElementById("wordNote");
   if (!el) return;
@@ -1102,7 +1141,12 @@ function renderWordNote(word) {
     return;
   }
   // 覚え方を作る（AI）: 保存済みなら表示、ログイン中ならボタン。生成後は入力欄へ戻す
-  renderWordAi(aiSlot, word, { onDone: () => elements.input.focus() });
+  renderWordAi(aiSlot, word, {
+    onDone: () => {
+      if (awaitingNext && currentWord === word) readingHold = true; // 待ちの間に作った覚え方は読み終えるまで待つ（Enter で次へ）
+      elements.input.focus();
+    }
+  });
 
   const note = getNote(word.id);
   el.innerHTML = note
@@ -1232,7 +1276,7 @@ function finishTypedAnswer(typed) {
   // つづり違い（favourite / favorite）は同じ語。打ち直させずにそのまま正解にする
   if (isSpellingVariant(typed, currentWord.en)) {
     completeWord();
-    showMessage(`${typed} も正解（この教材では ${currentWord.en}）`, "info");
+    showResult(`${typed} も正解（この教材では ${currentWord.en}）`, "info", true);
     return;
   }
   acceptAlternative(typed);
@@ -1363,7 +1407,7 @@ function completeWord() {
     gainedXp += earned;
 
     // Challenge 中の XP は結果パネルの 1 か所にまとめる（打っている最中に動く数字を増やさない）
-    showMessage(missionResult.justCompleted ? "ミッション達成" : "正解", "correct");
+    showResult(missionResult.justCompleted ? "ミッション達成" : "正解", "correct");
   }
 
   // Challenge/Daily: 待ち時間ゼロで次の単語へ（60秒×30語で7.5秒あった空白をなくす）。
@@ -1399,8 +1443,10 @@ function completeWord() {
   clearTimeout(advanceTimer);
   const tick = () => {
     if (!isPlaying || wordSerial !== serialAtComplete) return;
-    // 覚え方のメモを書いている間は進めない（次の語の renderWordNote(null) が書きかけを消す）
-    if (document.activeElement?.id === "noteInput") {
+    // 待ちの間に作った覚え方を読んでいる: 自動では進めない（Enter で次へ）
+    if (readingHold) return;
+    // 覚え方のメモを書いている間・覚え方を作っている間は進めない（次の語の renderWordNote(null) が書きかけを消す）
+    if (isEditingNote() || isMakingWordAi()) {
       advanceTimer = setTimeout(tick, NOTE_RECHECK_MS);
       return;
     }
@@ -1460,7 +1506,7 @@ function celebrateLearned(word, earned, note = "") {
   }
 
   const jaShort = word.ja.length > 22 ? `${word.ja.slice(0, 22)}…` : word.ja;
-  showMessage(`覚えた！ ${word.en}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`, "learned");
+  showResult(`覚えた！ ${word.en}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`, "learned", true);
 
   const toast = document.getElementById("learnToast");
   if (toast) {
@@ -1660,39 +1706,35 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     sfxLevelUp();
     // ランクが変わる節目はオーバーレイ 1 つ、それ以外は 1 行。両方は出さない
     if (isPlacementRun() || !celebrateRankUp(result)) {
-      keepMessage = true;
-      showMessage(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}${shieldNote}`, "finished");
+      showResult(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}${shieldNote}`, "finished", true);
     } else {
-      keepMessage = !!shieldNote; // 幕が節目。1 行の「思い出せた」は次の語で消す
-      showMessage(`思い出せた${shieldNote}`, "correct");
+      showResult(`思い出せた${shieldNote}`, "correct", !!shieldNote); // 幕が節目。1 行の「思い出せた」は次の語で消す
     }
     return;
   }
 
   // 連続日数は自力正解のときだけ言う。ただしシールド獲得は答えを見た語でも知らせる
   if (streak.isFirstToday && streak.current >= 2 && (!isRevealed || streak.earnedShield)) {
-    keepMessage = true;
-    showMessage(`${streak.current}日連続${shieldNote}`, "correct");
+    showResult(`${streak.current}日連続${shieldNote}`, "correct", true);
     return;
   }
 
   if (missionResult.justCompleted) {
     sfxComplete();
-    keepMessage = true;
-    showMessage(`ミッション達成 +${missionResult.bonusXp} XP`, "correct");
+    showResult(`ミッション達成 +${missionResult.bonusXp} XP`, "correct", true);
     return;
   }
 
   // New単語を今日4回思い出せた → 静かに定着を伝える
   if (loopResult?.secured) {
     sfxComplete();
-    showMessage("今日はもう出ない", "correct");
+    showResult("今日はもう出ない", "correct");
     return;
   }
 
   // ヒントを見て打てた: 自力ではないが、次に自力で打てる準備はできた
   if (hintUsed && !isRevealed) {
-    showMessage(`ヒントありで打てた。数問後にもう一度、今度は自力で${earned > 0 ? `  +${earned} XP` : ""}`, "revealed");
+    showResult(`ヒントありで打てた。数問後にもう一度、今度は自力で${earned > 0 ? `  +${earned} XP` : ""}`, "revealed");
     return;
   }
 
@@ -1702,31 +1744,31 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     const stat = getWordStats()[currentWord.id];
     if (stat?.mastered) {
       sfxComplete();
-      showMessage(`${currentWord.en} を習得。10回連続で思い出せた${xp}`, "learned");
+      showResult(`${currentWord.en} を習得。10回連続で思い出せた${xp}`, "learned", true);
       return;
     }
     if (learnEvent === "recovered") {
       sfxSparkle();
-      showMessage(`思い出せた。さっき思い出せなかった ${currentWord.en}`, "correct");
+      showResult(`思い出せた。さっき思い出せなかった ${currentWord.en}`, "correct", true);
       return;
     }
     if (learnEvent === "retained") {
       const days = stat?.lastReviewAt && stat?.history?.length > 1
         ? Math.max(1, Math.round((Date.now() - Date.parse(stat.history[stat.history.length - 2]?.d ?? stat.lastReviewAt)) / 86400000))
         : null;
-      showMessage(`定着。${days ? `${days}日ぶりでも` : ""}思い出せた${xp}`, "correct");
+      showResult(`定着。${days ? `${days}日ぶりでも` : ""}思い出せた${xp}`, "correct");
       return;
     }
     if (learnEvent === "known") {
-      showMessage(`知ってた。${currentWord.en} は2週間後にもう一度だけ確認${xp}`, "correct");
+      showResult(`知ってた。${currentWord.en} は2週間後にもう一度だけ確認${xp}`, "correct", true);
       return;
     }
     const streakCount = stat?.cleanCorrectStreak ?? 0;
-    showMessage(`思い出せた${streakCount >= 2 ? `（${streakCount}回目）` : ""}${xp}`, "correct");
+    showResult(`思い出せた${streakCount >= 2 ? `（${streakCount}回目）` : ""}${xp}`, "correct");
     return;
   }
 
-  showMessage("正解", "correct");
+  showResult("正解", "correct");
 }
 
 // 打ち間違い: 答えは表示しない（覚えていたかどうかとは別のデータとして記録）
