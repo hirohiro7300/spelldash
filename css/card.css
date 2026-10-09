@@ -663,15 +663,18 @@ html[data-theme] .result-panel .hasumi {
 html[data-theme] .game-card .hasumi__avatar {
   width: 32px;
   height: 32px;
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--gold-dk);
   background: var(--paper-3);
 }
 
+/* 紙片（鋲なし）: 縁なし・2px・小口 1 段。縁の 1px は透明で残す（外寸と下の部品の位置を変えない）。
+   盤面の中なので --paper-3（夜は room.css が --parchment-2 に差し替える）。--sheet*・--slip-shadow は使わない */
 html[data-theme] .game-card .hasumi__bubble {
   padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 4px var(--radius-lg) var(--radius-lg) var(--radius-lg);
-  background: var(--paper-2);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: var(--paper-3);
+  box-shadow: 0 1px 0 var(--line-2), 0 4px 10px -8px rgba(var(--shadow-rgb), 0.5);
   color: var(--ink-2);
   font-size: 13px;
   font-weight: 500;
@@ -723,8 +726,8 @@ html[data-theme] .result-panel__title {
   margin: 0 0 8px;
   color: var(--ink);
   font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 html[data-theme] .result-panel__best {
@@ -776,7 +779,8 @@ html[data-theme] .result-panel__grid span {
 
 html[data-theme] .result-panel__grid strong {
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums;
   font-size: 14px;
   font-weight: 600;
 }
@@ -808,7 +812,7 @@ html[data-theme] .word-chip--failed {
   gap: 6px;
   padding: 4px 10px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-room);
   background: var(--paper-3);
   color: var(--ink);
   box-shadow: none;
@@ -865,11 +869,13 @@ html[data-theme] .result-panel__action {
   height: 38px;
   padding: 0 16px;
   border: 1px solid var(--ink);
-  border-radius: var(--radius);
+  border-radius: var(--radius-room);
   background: var(--ink);
   color: var(--paper);
+  font-family: var(--font-display);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   box-shadow: none;
 }
 

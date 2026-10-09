@@ -2410,6 +2410,7 @@ html[data-theme] .word-ai__error {
 @media (prefers-reduced-motion: reduce) {
   html[data-theme] .packs-fold__summary::before,
   html[data-theme] .my-fold__summary::before,
+  html[data-theme] body:not(.page-room) .my-words__bulk summary::before,
   html[data-theme] .trend-range button {
     transition: none;
   }
@@ -2759,4 +2760,121 @@ html[data-theme] body:not(.page-room) .pp-cards {
 
 html[data-theme] body:not(.page-room) .legal dt {
   font-weight: 600;
+}
+
+/* ===== 書斎の読む机（Batch 57）: 主線の途中の部品。緑 → 金、700 → 500、既定の三角 → シェブロン、システム青 → 墨。すべて body:not(.page-room) の門付き =====
+   計測（WCAG 相対輝度。昼・夜・紙・藍）: --gold-ink / --paper-3 = 4.68・9.67・4.94・9.43（12px の題箋で AA。この 4.68 が最低値）、
+   --gold-ink / --sheet = 5.36・10.51・5.92・10.32（履歴の点。非文字 3:1）、--gold-dk / --sheet = 4.34・3.15・4.38・3.33（今週の点。非文字） */
+
+/* ---- 済みは金（M12）: 「習得」の題箋・マイ単語帳の状態・履歴の点。「苦手」の朱はそのまま（一覧の中でいちばん大事な印）。
+   盤面（card.css の .hist__o）は触らない: room.css が --ok を金に差し替える ---- */
+html[data-theme] body:not(.page-room) :is(.gcard__status--mastered, .word-detail__status--mastered) {
+  color: var(--gold-ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] body:not(.page-room) .my-word__status--mastered {
+  color: var(--gold-ink);
+}
+
+html[data-theme] body:not(.page-room) .hist__o {
+  background: var(--gold-ink);
+}
+
+/* 緑の残り（S9）: 今週の濃淡（opacity の 4 段はそのまま）・分野の棒の済み・インストール済みの文 */
+html[data-theme] body:not(.page-room) :is(.cal__day--1, .cal__day--2, .cal__day--3, .cal__day--4) {
+  background: var(--gold-dk);
+}
+
+html[data-theme] body:not(.page-room) .cat-bar__mastered {
+  background: var(--gold-dk);
+}
+
+html[data-theme] body:not(.page-room) .install__done {
+  color: var(--gold-ink);
+}
+
+/* ---- テキストからカード（M14・S12）: チェックは墨（ブラウザ既定の青をやめる。home.css・admin.css の accent-color と同じ）。
+   候補は札の中の札ではなく、畳みの札の上に置く「下書きの紙片」（--sheet-2・縁なし・2px・小口 1 段）。答えの欄は 600 ---- */
+html[data-theme] body:not(.page-room) .cardgen__card > input[type="checkbox"] {
+  accent-color: var(--ink);
+}
+
+html[data-theme] body:not(.page-room) .cardgen__card {
+  background: var(--sheet-2);
+  border: 0;
+  border-radius: 2px;
+  box-shadow: var(--slip-shadow);
+}
+
+html[data-theme] body:not(.page-room) .cardgen__field--answer {
+  font-weight: 600;
+}
+
+html[data-theme] body:not(.page-room) .cardgen__done a {
+  font-weight: 600;
+}
+
+/* ---- 分析タブの見出し語（S2）: #overview と同じ明朝 500（56b は #overview だけ直した） ---- */
+html[data-theme] body:not(.page-room) .result-card .stat-card span {
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* ---- 利用者の文は本文の書体（S3）: メールアドレスは等幅 600 をやめる（tokens.css の .mono (0,1,0) に (0,3,2) で勝つ） ---- */
+html[data-theme] body:not(.page-room) .profile-email {
+  font-family: var(--font-ui);
+  font-weight: 500;
+}
+
+/* ---- メモの「保存」はボタンの字（S4）: 明朝 500。12px／coarse 13px はそのまま ---- */
+html[data-theme] body:not(.page-room) .note-save {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* ---- 「まとめて追加」の畳み（S5）: ブラウザ既定の三角をやめ、他の畳み（.my-fold__summary::before）と同じ 1.5px --ink-3 のシェブロン。開くと下向き ---- */
+html[data-theme] body:not(.page-room) .my-words__bulk summary {
+  list-style: none;
+}
+
+html[data-theme] body:not(.page-room) .my-words__bulk summary::-webkit-details-marker {
+  display: none;
+}
+
+html[data-theme] body:not(.page-room) .my-words__bulk summary::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: translateY(-2px) rotate(-45deg);
+  transition: transform var(--ease);
+  color: transparent;
+}
+
+html[data-theme] body:not(.page-room) .my-words__bulk[open] > summary::before {
+  transform: translateY(-3px) rotate(45deg);
+}
+
+/* ---- パックの入口の一覧の題（S8）: テンプレの 600 ゴシックの下線 → news の記事の題と同じ明朝 500、下線は罫の色 ---- */
+html[data-theme] body:not(.page-room) .pp-index .packs-item b {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 3px;
+}
+
+/* ---- 空の欄の例文（プレースホルダ）は説明文の色（M-r2-1）: マイ単語帳の追加・CSV 取り込み・テキストからカード・候補の任意欄・一覧のメモ編集・検索・表示名。
+   ブラウザ既定の #757575 は --paper-2 の上で 昼 4.20・夜 3.78・紙 4.13・藍 3.75（本文 4.5:1 未満）。--ink-3 / --paper-2 = 昼 7.10・夜 6.38・紙 7.34・藍 6.93。
+   盤面の #noteInput は門の外（brand.css の #input::placeholder と同じ --ink-3 に既になっている）。brand.css のご意見・詳細の規則はそのまま ---- */
+html[data-theme] body:not(.page-room) :is(.setting-select, .note-input, #myWordBulk, .cardgen__field, #displayNameInput)::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
 }
