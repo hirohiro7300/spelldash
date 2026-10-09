@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>タイピング練習（英単語・ローマ字）無料・1分 | SpellDash</title>
+
+  <link rel="stylesheet" href="./css/reset.css" />
+  <link rel="stylesheet" href="./css/fonts.css" />
+  <link rel="stylesheet" href="./css/tokens.css" />
+  <link rel="stylesheet" href="./css/layout.css" />
+  <link rel="stylesheet" href="./css/game.css" />
+  <link rel="stylesheet" href="./css/responsive.css" />
+  <link rel="stylesheet" href="./css/brand.css" />
+  <link rel="stylesheet" href="./css/pages.css" />
+  <link rel="stylesheet" href="./css/keyboard.css" />
+  <link rel="stylesheet" href="./css/typing.css" />
+  <meta name="theme-color" content="#1A2137" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
+
+  <meta name="description" content="登録なし・無料で、開いてすぐ1分のタイピング練習。英単語は日本語の訳つき、日本語は小・中学校の用語の読みをローマ字で打つ。結果は打/分・正確さ・間違えたキー。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SpellDash" />
+  <meta property="og:title" content="タイピング練習（英単語・ローマ字）無料・1分 | SpellDash" />
+  <meta property="og:description" content="登録なし・無料で、開いてすぐ1分のタイピング練習。英単語は日本語の訳つき、日本語は小・中学校の用語の読みをローマ字で打つ。結果は打/分・正確さ・間違えたキー。" />
+  <link rel="canonical" href="https://www.spelldash.net/typing.html" />
+  <meta property="og:url" content="https://www.spelldash.net/typing.html" />
+  <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+  <!-- 教材（scripts/build-typing.mjs の生成物）。fetch と同じ URL・CORS（modulepreload のブロックの外に置く: ブロックは丸ごと書き換わる） -->
+  <link rel="preload" href="./data/typing.json" as="fetch" crossorigin="anonymous" />
+  <!-- modulepreload:start -->
+  <link rel="modulepreload" href="./js/typingPage.js" />
+  <link rel="modulepreload" href="./js/appEnv.js" />
+  <link rel="modulepreload" href="./js/staticHeader.js" />
+  <link rel="modulepreload" href="./js/icons.js" />
+  <link rel="modulepreload" href="./js/footer.js" />
+  <link rel="modulepreload" href="./js/feedback.js" />
+  <link rel="modulepreload" href="./js/supabase.js" />
+  <link rel="modulepreload" href="./js/focusTrap.js" />
+  <link rel="modulepreload" href="./js/offline.js" />
+  <link rel="modulepreload" href="./js/proFunnel.js" />
+  <link rel="modulepreload" href="./js/plan.js" />
+  <link rel="modulepreload" href="./js/funnelLog.js" />
+  <link rel="modulepreload" href="./js/keyboard.js" />
+  <link rel="modulepreload" href="./js/romaji.js" />
+  <link rel="modulepreload" href="./js/jaScript.js" />
+  <link rel="modulepreload" href="./js/typingDrill.js" />
+  <!-- modulepreload:end -->
+</head>
+<body class="page-typing">
+  <a class="skip-link" href="#main">本文へ</a>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark" aria-hidden="true">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link">書斎</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
+        <a href="./list.html" class="site-nav__link">単語帳</a>
+        <a href="./battle.html" class="site-nav__link">バトル</a>
+      </nav>
+
+      <a id="headerStreak" class="header-streak" href="/stats.html" title="連続プレイ日数" hidden></a>
+      <div class="account">
+        <a class="btn btn--sm btn--ghost account__home account__link" id="accountLink" href="/?login=1">ログイン</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="app app--narrow typing" id="main" tabindex="-1">
+    <section class="hero hero--compact">
+      <h1>タイピング練習</h1>
+      <p class="subtitle">英単語は訳つき。登録なし・無料。</p>
+    </section>
+
+    <div class="stats-tabs tp-tabs" id="typingTabs" role="group" aria-label="打つもの">
+      <button type="button" class="stats-tab stats-tab--active" data-kind="en" aria-pressed="true">英単語</button>
+      <button type="button" class="stats-tab" data-kind="ja" aria-pressed="false">日本語（ローマ字）</button>
+    </div>
+    <p class="tp-tabnote tp-tabnote--off" id="typingTabNote">小・中学校の用語。読みをローマ字で打つ。</p>
+
+    <section class="result-card tp-board" id="typingBoard" data-kind="en" data-state="ready" aria-label="タイピング練習">
+      <p class="tp-timer" id="typingTimer">残り 60秒</p>
+      <div class="tp-play" id="typingPlay">
+        <p class="tp-term" id="typingTerm" hidden></p>
+        <p class="tp-word" id="typingWord" lang="en" data-rest="apple"><span class="tp-now">a</span>pple</p>
+        <p class="tp-gloss" id="typingGloss">りんご</p>
+        <p class="tp-upnext tp-upnext--empty" id="typingNext">次<b></b></p>
+        <p class="tp-hint" id="typingHint">打ち始めると、1分を測る。</p>
+        <p class="tp-error" id="typingError" hidden>単語を読み込めなかった。通信を確かめて、<a href="./typing.html">開き直す</a>。</p>
+        <input id="input" type="text" readonly aria-label="見本の語を打つ" aria-describedby="typingTerm typingWord typingGloss" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      </div>
+      <div class="tp-result" id="typingResult" hidden>
+        <p class="tp-result__kind" id="typingKind">英単語・1分</p>
+        <p class="tp-result__kpm" id="typingKpmLine" tabindex="-1"><b id="typingKpm">0</b><small>打/分</small></p>
+        <p class="tp-result__line" id="typingAcc">正確さ <b>0%</b> ・ ミス <b>0</b><span id="typingBest" hidden></span></p>
+        <p class="tp-result__line" id="typingKeys" hidden></p>
+        <button type="button" class="btn btn--ghost tp-result__again" id="typingAgain">もう一度<small class="tp-kbdhint">（Enter）</small></button>
+        <div class="tp-result__next">
+          <h2>次は、見本なしで。</h2>
+          <p id="typingStudyText">日本語の訳だけを見て、英単語を思い出して打つ。1日5分から。</p>
+          <p class="tp-result__cta"><a class="btn" id="typingStudy" href="/?from=typing" data-typing-study>思い出して打つ</a></p>
+        </div>
+      </div>
+      <noscript><p class="tp-hint">タイピング練習は JavaScript をオンにすると使える。</p></noscript>
+    </section>
+    <p class="sr-only" id="typingLive" role="status"></p>
+    <div class="osk" id="osk" hidden></div>
+
+    <section class="tp-about" aria-labelledby="typingAbout">
+      <h2 id="typingAbout">このページについて</h2>
+      <ul>
+        <li>1分間、見本の語をそのまま打つタイピング練習。登録なし・無料・広告なし。</li>
+        <li>英単語は日本語の訳つき（中学・高校・日常・旅行・仕事などの3〜8字の語）。日本語は小・中学校の社会・理科・国語・算数の用語を、読みのローマ字で打つ（し は si でも shi でも）。</li>
+        <li>打ち間違えても語は止まらない。正しいキーを打てば進む。スマホとタブレットは、画面の下に出るキーボードで打つ。</li>
+        <li>打/分は、1分で正しく打ったキーの数。正確さは、正しく打った数を打った数で割ったもの。間違えたキー（苦手なキーの手がかり）と自己ベストも出る。自己ベストはこの端末に保存する。</li>
+        <li>英単語を覚えるなら、訳だけを見て思い出して打つ <a href="/?from=typing" data-typing-study>SpellDash の英単語学習</a>へ。</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark" aria-hidden="true">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ" data-no-pro>
+        <a href="./typing.html" aria-current="page">タイピング練習</a>
+        <a href="./news.html">お知らせ</a>
+        <a href="./privacy.html">プライバシー</a>
+        <a href="./tokushoho.html">特定商取引法に基づく表記</a>
+        <a href="./terms.html">利用規約</a>
+        <button type="button" class="site-footer__linkbtn" data-feedback-open>ご意見・不具合</button>
+      </nav>
+
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
+    </div>
+  </footer>
+
+  <script type="module" src="./js/typingPage.js"></script>
+</body>
+</html>

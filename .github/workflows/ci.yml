@@ -34,5 +34,8 @@ jobs:
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 
+      - name: タイピング練習の教材（data/typing.json）が最新か
+        run: node scripts/build-typing.mjs --check
+
       - name: E2Eスモークテスト
         run: npm test

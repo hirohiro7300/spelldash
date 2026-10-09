@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
 
-const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html"];
+const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html", "typing.html"];
 const DIRS = ["css", "js", "data", "assets"];
 
 fs.rmSync(DIST, { recursive: true, force: true });
