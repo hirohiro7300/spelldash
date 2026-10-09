@@ -137,7 +137,6 @@ function renderWord() {
   const current = run?.current ?? null;
   const w = el.word;
   w.replaceChildren();
-  w.classList.toggle("tp-miss", Boolean(run?.missPending));
   if (!current) {
     w.className = "tp-word";
     w.setAttribute("lang", "ja");
@@ -238,13 +237,11 @@ function tick() {
 
 // ---- 状態 ----
 
-function wordsFor(k) {
-  if (k === "en" && firstRun) {
-    fillOnLoad = !data;
+function wordsFor(k, first) {
+  if (k === "en" && first) {
     const rest = data ? shuffle(data.en.filter((p) => p[0] !== FIRST_WORD[0])) : [];
     return [FIRST_WORD, ...rest];
   }
-  fillOnLoad = false;
   return data ? shuffle(data[k]) : [];
 }
 
@@ -262,17 +259,21 @@ function toReady(k = kind) {
   stopTimers();
   clearGuard();
   kind = k;
-  run = createRun(k, wordsFor(k));
+  run = createRun(k, wordsFor(k, firstRun));
+  fillOnLoad = k === "en" && firstRun && !data; // 教材が届く前に始めた最初の英単語の回: 届いたら列の後ろに足す
   firstRun = false;
   phase = run.current ? "ready" : data === false ? "error" : "loading";
-  document.body.classList.add("typing--live");
-  document.body.classList.toggle("romaji-answer", k === "ja");
-  window.dispatchEvent(new CustomEvent("spelldash:game-start")); // 画面キーボードを出す（タッチ端末）
+  if (phase === "error") closeKeyboard(); // 打てない画面では盤面を出さない
+  else {
+    document.body.classList.add("typing--live");
+    document.body.classList.toggle("romaji-answer", k === "ja");
+    window.dispatchEvent(new CustomEvent("spelldash:game-start")); // 画面キーボードを出す（タッチ端末）
+  }
   syncTabs();
   setLive("");
   el.hint.textContent = `打ち始めると、${span}を測る。`;
   render();
-  focusInput();
+  if (!modalOpen()) focusInput(); // ご意見の窓が開いているときは、窓の焦点を取らない
   setTimeout(fitAboveKeyboard, 50);
 }
 
@@ -340,6 +341,11 @@ function renderResult(s, cmp) {
 
 function finish() {
   if (phase !== "running") return;
+  // ご意見の窓が開いたまま時間が切れた回は、打っていない時間を含むので捨てる（結果・ベスト・計測なし）
+  if (modalOpen()) {
+    abandon();
+    return;
+  }
   stopTimers();
   phase = "result";
   const s = summarize(run.stats, seconds);
@@ -373,10 +379,6 @@ function finish() {
 
 // Esc・ページが裏に回った（打っている間）: 結果・ベスト・計測なしで始まる前へ
 function abandon() {
-  toReady(kind);
-}
-
-function again() {
   toReady(kind);
 }
 
@@ -423,6 +425,7 @@ async function loadData() {
     if (phase === "running") toError();
     else if (phase === "loading" || phase === "ready") {
       phase = "error";
+      closeKeyboard(); // 打てない画面では盤面を出さない
       render();
     }
   }
@@ -430,8 +433,9 @@ async function loadData() {
 
 // ---- キー ----
 
+// ご意見の窓（aria-modal。開け閉めは hidden）が開いているか。打鍵ごとに呼ぶので、レイアウトを読まない
 function modalOpen() {
-  return [...document.querySelectorAll('[aria-modal="true"]')].some((node) => !node.closest("[hidden]") && node.getClientRects().length > 0);
+  return [...document.querySelectorAll('[aria-modal="true"]')].some((node) => !node.closest("[hidden]"));
 }
 
 function editable(target) {
@@ -463,7 +467,7 @@ function onKey(event) {
     if (phase === "running" || phase === "result") {
       event.preventDefault();
       if (phase === "running") abandon();
-      else again();
+      else toReady(kind);
     }
     return;
   }
@@ -478,7 +482,7 @@ function onKey(event) {
     event.preventDefault();
     if (event.repeat) return;
     if (phase === "ready") start(now);
-    else if (phase === "result" && now - resultAt >= RESULT_GUARD_MS) again();
+    else if (phase === "result" && now - resultAt >= RESULT_GUARD_MS) toReady(kind);
     return;
   }
 
@@ -513,12 +517,19 @@ function onKeyUp(event) {
 
 // キーで押されたクリック（detail 0）が打っている間のタブ・ご意見のボタンに届いたら止める（keydown を止め損ねたときの保険）
 function onClickCapture(event) {
-  if (phase !== "running" || event.detail !== 0) return;
+  if (phase !== "running") return;
   const target = event.target;
-  if (target instanceof Element && target.closest(".tp-tabs button, [data-feedback-open]")) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
+  if (!(target instanceof Element)) return;
+  if (event.detail === 0) {
+    // 打っている間の Space／Enter が、焦点のあるタブ・ご意見のボタンを押さない
+    if (target.closest(".tp-tabs button, [data-feedback-open]")) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+    return;
   }
+  // マウス・タップでご意見の窓を開いた: その回は捨てる（窓の裏で時間が切れて結果とベストが残らないように）
+  if (target.closest("[data-feedback-open]")) abandon();
 }
 
 function onVisibility() {
@@ -549,7 +560,7 @@ for (const tab of el.tabs) {
     else focusInput();
   });
 }
-el.again.addEventListener("click", () => again());
+el.again.addEventListener("click", () => toReady(kind));
 el.board.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof Element && target.closest("button, a[href]")) return;

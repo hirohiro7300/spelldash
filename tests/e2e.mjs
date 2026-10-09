@@ -935,6 +935,34 @@ console.log("typing:");
   check("typing: 教材が読めなくても apple は打て、尽きたら「読み込めなかった」（残り時間は出さない）", failed && errVisible && jaFailed && page.errors.length === 0, JSON.stringify({ failed, errVisible, jaFailed, errors: page.errors.slice(0, 2), pageErrors9 }));
   await page.close();
 
+  // T20b: タッチ端末で教材が読めない → 打てない画面では画面キーボードを出さない
+  {
+    const p = await newPage({ mobile: true, viewport: { width: 390, height: 844 } });
+    await p.route("**/data/typing.json", (route) => route.abort());
+    await p.goto(BASE + "/typing.html?t=5", { waitUntil: "load" });
+    await p.waitForTimeout(400);
+    await p.tap('.tp-tabs [data-kind="ja"]');
+    const err = await waitState(p, "error", 3000);
+    await p.waitForTimeout(200);
+    const osk = await p.evaluate(() => ({ shown: !document.getElementById("osk")?.hidden, open: document.body.classList.contains("osk-open"), live: document.body.classList.contains("typing--live") }));
+    check("typing: タッチ端末で教材が読めないときは画面キーボードを出さない（読み込めなかった の画面）", err && !osk.shown && !osk.open && !osk.live && p.errors.length === 0, JSON.stringify({ err, osk, errors: p.errors.slice(0, 2) }));
+    await p.close();
+  }
+
+  // T20c: 打っている間にマウスでご意見の窓を開いた回は捨てる（窓の裏で時間が切れて結果・自己ベストが残らない）
+  {
+    const p = await newPage({ viewport: { width: 1200, height: 900 } });
+    await p.goto(BASE + "/typing.html?t=3", { waitUntil: "networkidle" });
+    await p.waitForTimeout(300);
+    await p.keyboard.type("a"); // apple の頭で始まる
+    const running = await waitState(p, "running", 2000);
+    await p.click("[data-feedback-open]");
+    await p.waitForTimeout(3600);
+    const st = await p.evaluate(() => ({ state: document.getElementById("typingBoard").dataset.state, best: localStorage.getItem("spelldash_typing_practice"), modal: !document.getElementById("feedbackModal")?.hidden, focusInModal: !!document.activeElement?.closest("#feedbackModal") }));
+    check("typing: 打っている間にご意見の窓を開いた回は捨てる（結果・自己ベストなし、窓の焦点は取らない）", running && st.state === "ready" && st.best === null && st.modal && st.focusInModal && p.errors.length === 0, JSON.stringify(st));
+    await p.close();
+  }
+
   // T21: localStorage が投げる端末
   {
     const p = await newPage({ viewport: { width: 1200, height: 900 } });
