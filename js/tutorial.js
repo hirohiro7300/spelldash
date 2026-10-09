@@ -22,6 +22,7 @@ export const STEPS = {
   T4: "毎日、スタートを押すだけ。約5分。",
 };
 const ALL = Object.keys(STEPS);
+export const T3_MIN_MS = 1500; // T3 を出した語は、次の語まで最低これだけ置く（js/game.js が spelldash:recall の detail.hold で受け取る）
 const WITH_BUTTON = new Set(["T4"]); // 操作で消えないものだけ「わかった」を付ける
 
 function load() {
@@ -87,7 +88,7 @@ function show(id) {
     }`;
     el.querySelector(".coach__ok")?.addEventListener("click", () => dismiss());
   });
-  const autoHide = id === "T3" ? 5000 : 0; // T3 は次の語が来ても最低 1.5 秒、長くても 5 秒
+  const autoHide = id === "T3" ? 5000 : 0; // T3 は最低 1.5 秒（その語の待ちも 1.5 秒にする）、長くても 5 秒
   current = { id, el, shownAt: Date.now(), timer: autoHide ? setTimeout(() => dismiss(), autoHide) : null };
 }
 
@@ -113,18 +114,19 @@ export function initTutorial() {
   decideEligibility();
   if (isTutorialDone()) return;
 
-  // T2／T3 は次の語で消える（T3 は正解の直後に次の語が来るので、1.5 秒は残す）
+  // T2／T3 は次の語で消える（T3 を出した語は game.js が 1.5 秒待ってから次の語を出す。Enter で先へ進んだときもその次の語で消す）
   window.addEventListener("spelldash:word", () => {
-    if (current?.id === "T2") dismiss();
-    if (current?.id === "T3" && Date.now() - current.shownAt > 1500) dismiss();
+    if (current?.id === "T2" || current?.id === "T3") dismiss();
   });
 
   // T2: 初めて答えを見た。T3: 初めて自力で思い出せた（js/game.js が投げる）
   window.addEventListener("spelldash:reveal", () => {
     if (!seen("T2")) show("T2");
   });
-  window.addEventListener("spelldash:recall", () => {
-    if (!seen("T3")) show("T3");
+  window.addEventListener("spelldash:recall", (event) => {
+    if (seen("T3")) return;
+    show("T3");
+    if (event.detail) event.detail.hold = T3_MIN_MS; // 札の「この語」が次の語を指さないように、この語の待ちを延ばす
   });
 
   // 1 セット目を終えた（やり直しのセットは除く）: 道に戻ったときに T4 を出せる

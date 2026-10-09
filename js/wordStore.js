@@ -2,6 +2,7 @@ import { loadAllWords, loadManifest } from "./wordData.js";
 import { toWordObjects } from "./myWords.js";
 import { isCategoryLoaded, packsOf } from "./packs.js";
 import { buildAlternativeIndex, acceptedAnswers } from "./answers.js";
+import { hasJapaneseScript } from "./jaScript.js";
 
 // 読み込んだ単語をページ内で共有するストア。
 // ゲームはここからカテゴリで絞った出題リストを取り出す。
@@ -65,9 +66,11 @@ export function isConceptWord(word) {
   return word?.kind === "concept";
 }
 
-// 発音に使う英語（概念カードは say があればそれ、無ければ英語キー。日本語なら読まない）
+// 発音に使う英語（概念カードは say があればそれ、無ければ英語キー。日本語なら読まない）。
+// 答えが日本語のカード（鎌倉幕府・車検 など）は say があっても読まない（Batch 58。日本語で答える問題に英語の音は要らない）
 export function speechTextOf(word) {
   if (!word) return "";
+  if (hasJapaneseScript(word.en)) return "";
   if (word.say) return word.say;
   return /^[\x00-\x7f]+$/.test(word.en) ? word.en : "";
 }

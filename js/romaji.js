@@ -67,6 +67,8 @@
 //  長い読みを打ち続けていた人の残りの打鍵（いせき）や、語末の ん の 2 つ目の n は、canContinue を見て
 //  呼ぶ側（js/game.js）が次の語に持ち越さない。
 
+import { hasJapaneseScript } from "./jaScript.js";
+
 // 読みに書かれていても打たなくてよい文字（記号・句読点・空白・制御）。ー（U+30FC）は文字（Lm）なので残る
 const IGNORABLE = /[\p{P}\p{S}\p{Z}\p{Cc}\p{Cf}\s]/gu;
 const VOWELS = "aiueo";
@@ -103,11 +105,8 @@ export function isJapaneseAnswer(card) {
   return a !== "" && !/^[\x00-\x7f]*$/.test(a);
 }
 
-// かな（ひらがな・カタカナ・半角カナ）か漢字を含む
-const JAPANESE_SCRIPT_RE = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uff66-\uff9f々〆]/;
-export function hasJapaneseScript(text) {
-  return JAPANESE_SCRIPT_RE.test(String(text ?? ""));
-}
+// かな（ひらがな・カタカナ・半角カナ）か漢字を含む（js/jaScript.js。ここからも使えるように出し直す）
+export { hasJapaneseScript };
 
 function entryOf(text) {
   if (text && typeof text === "object") {

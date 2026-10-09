@@ -1,3 +1,5 @@
+import { forgetWordStats } from "./storage.js";
+
 // ===== 学習データのバックアップ / 復元 =====
 //
 // Local First のため、未ログインの人のデータは端末にしかない。
@@ -80,12 +82,13 @@ export function applyBackup(obj) {
   } catch {
     // 無視
   }
+  forgetWordStats(); // 語の記録を直に書き換えた。持っている中身と書きかけを捨てる（js/storage.js）
   return summary;
 }
 
 // ===== この端末の記録を消す（別のアカウントでログインしたとき。js/sync.js initialSync が呼ぶ） =====
 // applyBackup と同じく spelldash_* を消す。残すのは端末の設定（人の記録ではないもの）だけ:
-//   theme（表示の色）・audio（音声の設定）・osk（専用キーボード）・list_compact／setup_open／stats_tab／trend_range／weak_only（画面の開き方）、
+//   theme（表示の色）・audio（音声の設定）・osk（専用キーボード）・after_correct（正解のあとの長さ）・list_compact／setup_open／stats_tab／trend_range／weak_only（画面の開き方）、
 //   installed（ホーム画面に追加の案内）・onboarded（この端末でトップページを見た）・schema_version（保存形式の版。消すと移行が走り直す）、
 //   test_*（E2E のスタブのログイン状態）
 // 消すもの（主なもの）: word_stats・xp・xp_synced・streak・best_score・best_by_category・battle・pending_battles・study_mix・
@@ -96,6 +99,7 @@ const KEEP_ON_CLEAR = new Set([
   "spelldash_theme",
   "spelldash_audio",
   "spelldash_osk",
+  "spelldash_after_correct",
   "spelldash_list_compact",
   "spelldash_setup_open",
   "spelldash_stats_tab",
@@ -114,6 +118,7 @@ export function clearLocalRecords() {
     toRemove.push(key);
   }
   toRemove.forEach((key) => localStorage.removeItem(key));
+  forgetWordStats(); // 語の記録を直に消した。持っている中身と書きかけを捨てる（js/storage.js）
   return toRemove.length;
 }
 
