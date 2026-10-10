@@ -11,7 +11,7 @@ import { createRomajiMatcher } from "./romaji.js";
 
 export const SECONDS = 60;
 export const RESULT_GUARD_MS = 600; // 結果が出てからこの間は Enter／Space を無視し、画面キーボードを出したまま・結果のボタンを inert にする
-export const SPILL_GAP_MS = 600; // 語末の ん の 2 つ目の n を飲む間（js/game.js の ROMAJI_SPILL_GAP_MS と同じ値。game.js は import しない）
+export const SPILL_GAP_MS = 600; // 語末の ん の 2 つ目の n を飲む間（js/game.js の SPILL_GAP_MS と同じ値。game.js は import しない）
 export const TOP_KEYS = 3;
 export const BEST_KEY = "spelldash_typing_practice"; // 自己ベスト（Study の spelldash_typing_stats とは別物）
 export const FIRST_WORD = ["apple", "りんご"]; // typing.html に直書きした最初の語
