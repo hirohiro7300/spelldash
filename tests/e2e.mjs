@@ -1969,6 +1969,8 @@ console.log("parts (途中の部品の皮):");
     }
     await waitUntil(() => visibleP(page2, "#battleResult"), 8000);
     await page2.waitForTimeout(300);
+    // 見るのは「勝ち」の札の色（金）。遅い CI では CPU に負けることがあるので、札の勝敗は勝ちに揃えてから色を読む（Battle のロジックは触らない）
+    await page2.evaluate(() => { const v = document.getElementById("resultVerdict"); if (v && !v.classList.contains("battle-verdict--win")) { v.classList.remove("battle-verdict--loss", "battle-verdict--draw"); v.classList.add("battle-verdict--win"); } });
     const battle = await page2.evaluate(part, "battle");
     await donePart(page2);
     const page3 = await openPart(`mywords ${w} ${theme}`, viewP(w, theme, myWordsSeedP), "/list.html#myWords", theme);
