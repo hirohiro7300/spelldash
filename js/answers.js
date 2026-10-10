@@ -83,15 +83,25 @@ export function isSpellingVariant(a, b) {
   return prev[y.length] <= limit;
 }
 
-// いま打ち終わっているか。出題語を優先し、まだ伸びる綴りが残っている間は完成としない
-// （出題語が advertisement で別解が ad のとき、"ad" で止めない）
+// いま打ち終わっているか。出題語（candidates[0]）を優先する:
+// - 出題語を打ち切ったら、それより長い候補が残っていてもその場で完成（gym に対して gymnasium、a に対して an、sport に対して sports。
+//   以前は「まだ伸びる」として止め、Enter で答えが開いて×になっていた。K0-1）
+// - 出題語でない候補（別解）は、まだ伸びる綴りが残っている間は完成としない（出題語が advertisement で別解が ad のとき、"ad" で止めない）。
+//   force（Enter）のときは、打った綴りに一致する候補で確定する
 export function completedAnswer(candidates, typed, { force = false } = {}) {
   const prefix = String(typed ?? "").toLowerCase();
   const viable = viableAnswers(candidates, prefix);
   const exact = viable.filter((c) => c === prefix);
   if (exact.length === 0) return null;
+  if (exact.includes(candidates[0])) return candidates[0];
   const canGrow = viable.some((c) => c.length > prefix.length);
   if (canGrow && !force) return null;
-  // 出題語（candidates[0]）に一致しているならそれを返す
-  return exact.includes(candidates[0]) ? candidates[0] : exact[0];
+  return exact[0];
+}
+
+// 打ち終えた綴りの続きになる候補の残り（gym で完成したときの gymnasium → "nasium"、a → an の "n"）。
+// 続けて打たれたキーを次の語の打鍵にしないために使う（js/game.js の打ち越し止め）
+export function continuationsOf(candidates, typed) {
+  const prefix = String(typed ?? "").toLowerCase();
+  return candidates.filter((c) => c.length > prefix.length && c.startsWith(prefix)).map((c) => c.slice(prefix.length));
 }
