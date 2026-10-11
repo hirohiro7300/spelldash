@@ -12,10 +12,10 @@ import "./staticHeader.js"; // ヘッダー右端（連続日数・ログイン�
 import { setFooterYear } from "./footer.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { markTypingArrival, logTypingStage } from "./funnelLog.js";
+import { localDay } from "./retentionCalc.js";
 import {
   touch,
   storage,
-  localDay,
   eventTime,
   make,
   fill,
@@ -96,7 +96,6 @@ let data = null; // null = まだ届いていない／false = 取れなかった
 let firstRun = true;
 let run = null;
 let fillOnLoad = false; // 教材が届く前に始めた最初の回（最初の文だけ）: 届いたら列の後ろに足す
-let resultAt = 0;
 let shownSecs = -1;
 let shownRatio = -1;
 let clockTimer = 0;
@@ -188,7 +187,7 @@ function render() {
 
 // ---- 時計（状態は run.settle だけが変える） ----
 // rAF 1 本: 毎フレーム settle → 持ち時間の線と残り秒を書く。タイムアウト 1 本: 次の締切（文の持ち時間と回の終わりの早い方）＋余白
-// （rAF が止まったときの保険）。張り直すのも止めるのも syncClock だけ
+// （rAF が止まったときの保険。起きたら syncClock が線と残り秒も描き直すので、rAF が止まっていても締切ごとに表示が進む）。張り直すのも止めるのも syncClock だけ
 
 // → 回が終わった・止まったか（結果・読み込めない）。時計は締切に気づいてから SETTLE_SLACK_MS の余白で流す
 // （その間に届いた締切前のキーを、押した瞬間で数える）
@@ -203,8 +202,8 @@ function onClock() {
   return phase !== "running";
 }
 
-// 時計を今の状態に合わせる（始めた・文が替わった・列に足した・終えた・止めた・始まる前に戻ったら呼ぶ）。
-// running: 線を描き直し、タイムアウトを次の締切に張り直し、rAF が止まっていれば動かす。それ以外: 両方止める
+// 時計を今の状態に合わせる（始めた・文が替わった・列に足した・終えた・止めた・始まる前に戻った・タイムアウトが起きたら呼ぶ）。
+// running: 線と残り秒を描き直し、タイムアウトを次の締切に張り直し、rAF が止まっていれば動かす。それ以外: 両方止める
 function syncClock() {
   clearTimeout(clockTimer);
   clockTimer = 0;
@@ -214,6 +213,7 @@ function syncClock() {
     rafId = 0;
     return;
   }
+  paint(performance.now());
   const next = run.current && run.deadline < run.endAt ? run.deadline : run.endAt;
   clockTimer = setTimeout(() => {
     clockTimer = 0;
@@ -223,33 +223,38 @@ function syncClock() {
 }
 
 // 持ち時間の線は transform: scaleX で書く（CSS の transition は書かない。reduced motion は 10 段）。残り秒は変わったときだけ書く
-function frame() {
-  rafId = 0;
-  if (onClock()) return;
-  const now = performance.now();
+function paint(now) {
   let ratio = run.remainingRatio(now);
   if (reduced) ratio = Math.ceil(ratio * 10) / 10;
   if (ratio !== shownRatio) setBar(ratio);
   if (Math.ceil((run.endAt - now) / 1000) !== shownSecs) renderTimer();
+}
+
+function frame() {
+  rafId = 0;
+  if (onClock()) return;
+  paint(performance.now());
   if (!rafId) rafId = requestAnimationFrame(frame); // このフレームで流れたときは syncClock が次を頼んでいる（2 本にしない）
 }
 
 // 列が尽きたら次の文を出す（キーで取れた・キーで流れた・時計で流れたの 3 か所で同じ）→ 続けるか。
 // 教材が取れなかった → 読み込めなかったの画面（時間を止める。結果・自己ベスト・計測なし）／届いている → 混ぜ直して後ろに足す（?s= の回）／
-// まだ届いていない → 「読み込み中」のまま（時間は進む）
-function nextSentence(now) {
+// まだ届いていない → 「読み込み中」のまま（時間は進む）。
+// 足した文の持ち時間は列が尽きた瞬間から（run.sentenceStartedAt: 流れた文の締切・取れたキーの時刻。js/typingGame.js settle・press が張る）。
+// 時計・キーが締切に気づいた時刻からにすると、列の途中の文（settle が締切から張る）より持ち時間が延びる
+function nextSentence() {
   if (run.current) return true;
   if (data === false) {
     toError();
     return false;
   }
-  if (data) run.add(shuffleCourse(data[course]), now);
+  if (data) run.add(shuffleCourse(data[course]), run.sentenceStartedAt);
   return true;
 }
 
 // 時計が文を流した（取れたときは書かない。見た目・音は変えない）
 function onFlowed() {
-  if (!nextSentence(performance.now())) return;
+  if (!nextSentence()) return;
   render();
   announce("次の文");
   syncClock();
@@ -360,7 +365,7 @@ function finish() {
   const store = limitSec == null ? storage() : null; // ?s= の回は書かない・比べない
   if (store) {
     cmp = compareGameBest(readGameBest(store, course, seconds), s.got, s.kpm);
-    if (["first", "new", "faster"].includes(cmp.status) && !writeGameBest(store, course, seconds, { got: s.got, lost: s.lost, kpm: s.kpm, acc: s.accuracy, day: localDay() })) cmp = { status: "none" };
+    if (["first", "new", "faster"].includes(cmp.status) && !writeGameBest(store, course, seconds, { got: s.got, lost: s.lost, kpm: s.kpm, acc: s.accuracy, day: localDay(new Date()) })) cmp = { status: "none" };
   }
   renderResult(s, cmp);
   render();
@@ -373,8 +378,7 @@ function finish() {
       // 何もしない
     }
   }
-  resultAt = performance.now();
-  // 守り（js/typingKeys.js。typing.html と同じ）: 盤面は出したまま、盤面の外は押させない。0.6 秒後に盤面を畳む
+  // 守り（js/typingKeys.js。typing.html と同じ）: 盤面は出したまま、盤面の外は押させない・結果の Enter／Space を捨てる。0.6 秒後に盤面を畳む
   guard.arm(closeKeyboard);
   logTypingStage("done", "tgame");
 }
@@ -391,7 +395,7 @@ function press(key, now) {
     finish(); // そのキーは捨てる
     return;
   }
-  if (!nextSentence(now)) return;
+  if (!nextSentence()) return;
   render();
   if (run.current !== before) syncClock();
   if (r.flowed) announce("次の文");
@@ -464,7 +468,7 @@ wireTyping({
   phase: () => phase,
   timeOf: eventTime, // 押した瞬間（文の締切・90 秒の終わりと比べる。docs/SPEC_TYPING_GAME.md「キー」）
   endAt: () => run.endAt,
-  resultAt: () => resultAt,
+  guard,
   start,
   press,
   finish,

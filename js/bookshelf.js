@@ -17,11 +17,14 @@ import { SHELF_KEY, parseShelf, serializeShelf, migrateShelf, reconcileShelf, no
 // 何を保存し何を並べるかの規則は js/shelfStore.js（純粋な関数。scripts/test-shelf.mjs）。ここは状態を集めて描くだけ。
 //   initBookshelf({ onPick, onCourse }) … 1 回。描いて配線する。onPick(id) は本を机に出す、onCourse(id) はコースの乗り換え（js/main.js）
 //   renderBookshelf()                   … 目録を組み直して描く（同期でパックが変わったとき）
-//   updateBookshelf()                   … 照合して描き直す（renderHome から毎回。焦点を奪わない。入力が前回と同じなら何もしない・プレイ中は描かない）
+//   updateBookshelf()                   … 照合して描き直す（renderHome から毎回。焦点を奪わない。入力が前回と同じなら何もしない・プレイ中は描かない。
+//                                         書けなかった棚は入力が同じでも書き直しを試みる）
+//   holdShelf()                         … 初回のスタートを押した（js/main.js の onStart の頭）: startShelf まで本棚は見せるだけで保存しない
 //   startChoiceChanges(choice)          … 初回のスタートが替える状態（js/main.js の onStart が書く。下見の棚と同じ規則 js/shelfStore.js applyStartChoice）
-//   startShelf()                        … 初回のスタート（状態を替えた後）: 下見の棚と同じ棚を保存する（保存した棚があればそれに足す）
+//   startShelf()                        … 初回のスタート（状態を替えた後）: 下見の棚と同じ棚を保存する（保存した棚があればそれに足す。スタートの保存はこの 1 回）
 //   rememberCourse(id)                  … 函・「コースを変える」でコースを選んだ: その函を棚に
-// 初回（body.welcome-open）は「いまスタートしたら並ぶ物」を描くだけで保存しない（下見の棚）。
+// 初回（body.welcome-open）は「いまスタートしたら並ぶ物」を描くだけで保存しない（下見の棚）。閉じた直後の描き直しも見せるだけ
+// （スタートで閉じたなら保存は startShelf、ログインの行・同期で閉じたなら次の描き直しが移行して保存する）。
 // 見た目は css/bookshelf.css。動きは hover の持ち上がりだけ（prefers-reduced-motion では 0）。
 
 const CATEGORY_KEY = "spelldash_category";
@@ -415,6 +418,7 @@ function snapNow() {
     defaultCourse: DEFAULT_COURSE,
     freqCourseOf,
     isBase: (id) => BASE.has(id),
+    isPack: (id) => getPackCatalog().some((c) => c.id === id), // manifest の分野パック（棚の割り付けが無く目録に入らないパックも。初回のスタートが packs に足すか）
     known: KNOWN,
     hasRecords: (ids) => ids.some((id) => getWordsByCategory(id).some((w) => stats[w.id])),
     baseRecordCounts: () => [...BASE].map((id) => ({ id, n: getWordsByCategory(id).filter((w) => stats[w.id]).length }))
@@ -447,11 +451,15 @@ function saveShelf(shelf) {
   }
 }
 
-// 描くための棚: 普段は保存した棚を照合して（無ければ移行して）保存する。取り込みの途中（js/sync.js isPulling）は保存せずに組み立てるだけ。
-// 取り込みの途中は、記録だけ届いてコース・机の本・パックがまだ前の値（既定のコース）のことがあるので、その間は移行・照合を保存しない
-// （保存すると、2 台目で使っていない中学英語やり直しの函が棚に残る）。取り込みが終わると spelldash:synced／spelldash:packs で描き直して保存する
+// 描くための棚: 普段は保存した棚を照合して（無ければ移行して）保存する。次の間は保存せずに組み立てるだけ（peekShelf）:
+//   取り込みの途中（js/sync.js isPulling）… 記録だけ届いてコース・机の本・パックがまだ前の値（既定のコース）のことがあるので、移行・照合を保存しない
+//     （保存すると、2 台目で使っていない中学英語やり直しの函が棚に残る）。取り込みが終わると spelldash:synced／spelldash:packs で描き直して保存する
+//   初回のスタートを押してから startShelf まで（holdShelf）… 状態がスタートで替わる前の値なので、移行・照合を保存しない（保存はスタートの 1 回）
 function viewShelf(snap) {
-  if (!isPulling()) return currentShelf(snap);
+  return isPulling() || startHeld ? peekShelf(snap) : currentShelf(snap);
+}
+
+function peekShelf(snap) {
   const stored = loadShelf();
   return stored ? reconcileShelf(stored, snap).shelf : migrateShelf(snap);
 }
@@ -583,7 +591,7 @@ let lastWelcome = false;
 let lastHtml = "";
 let lastPlan = null;
 let activeKey = "";
-let lastInput = ""; // updateBookshelf の前回の入力（inputOf）
+let lastInput = ""; // 前回の描き直しの入力（stateInput＋shelfInput）。保存しない描き直しの後は空（次の描き直しで組み直して保存する）
 let drawPending = false; // 畳まれている間（プレイ中）に替わった: 開いたときに描く
 
 function draw(items, welcome) {
@@ -726,25 +734,40 @@ function show() {
 }
 
 // ---------- 普段の棚・初回の下見の棚 ----------
-// 描き直すかの入力: snap の要点・保存した棚の文字列（書けなかった棚）・取り込みの途中か・整理の形と下ろした物・目録の版。
+// 描き直すかの入力（snap を組む前に、安い物だけで比べる）: 学習の状態の要点（packs・コース・机の本・マイ単語帳の数・記録が空か・カテゴリ別の最高）・
+// 取り込みの途中か・整理の形と下ろした物・目録の版（stateInput）＋保存した棚の文字列と書けなかった棚（shelfInput）。
 // 前回と同じなら何もしない（renderHome は操作のたびに呼ぶ。同期の後の renderHome → renderBookshelf の 2 回目もここで吸収する）。
-// 移行・照合が使う記録の細部（hasRecords）は、保存した棚が無いか仮の棚のときだけ効き、そのときは保存した棚の文字列が替わるか statsEmpty が替わる
+// 移行・照合が使う記録の細部（hasRecords）は、保存した棚が無いか仮の棚のときだけ効き、そのときは保存した棚の文字列が替わるか記録が空かが替わる。
+// 記録が空かは、前に組んだ snap で空でなかったら読まない（記録は増えるだけ。消す所 js/backup.js clearLocalRecords は保存した棚も消すので、棚の文字列で替わる）
 const folded = () => document.body.classList.contains("home--playing");
-const inputOf = (snap) => JSON.stringify([snap.packs, snap.course, snap.desk, snap.myCount, snap.statsEmpty, snap.best, rawShelf(), memShelf ? serializeShelf(memShelf) : "", isPulling(), mode, [...tidyDropped], catalogGen]);
+let lastStatsEmpty = true;
+const stateInput = () => JSON.stringify([getEnabledPackIds(), getCourseId(), deskId(), myCount(), lastStatsEmpty && Object.keys(getWordStats()).length === 0, getCategoryBests(), isPulling(), mode, [...tidyDropped], catalogGen]);
+const shelfInput = () => JSON.stringify([rawShelf(), memShelf ? serializeShelf(memShelf) : ""]);
 
 export function updateBookshelf() {
+  refresh(true);
+}
+
+// save: false は見せるだけ（初回の画面を閉じた直後の描き直し）。スタートの保留中（holdShelf）も保存しない。
+// 保存しない描き直しは入力を覚えない（次の描き直しは前回と同じ入力でも組み直して保存する）
+function refresh(save) {
   if (!root?.isConnected) return;
   if (isWelcome()) return drawWelcome();
   if (!BOOKS.size) return;
   if (lastWelcome) mode = "normal";
   show();
-  const snap = snapNow();
-  if (inputOf(snap) === lastInput) {
+  const keep = save && !startHeld;
+  // 書けなかった棚（容量・プライベートモード）: 描き直すたびに書き直しを試みる（入力が同じでも）。書けたら memShelf は消え、棚の文字列が替わるので下で描き直す
+  if (keep && memShelf) saveShelf(memShelf);
+  const state = stateInput();
+  if (keep && state + shelfInput() === lastInput) {
     if (drawPending && !folded()) draw(lastItems, false);
     return;
   }
+  const snap = snapNow();
+  lastStatsEmpty = snap.statsEmpty;
   BOOKS.get("my").count = snap.myCount;
-  const shelf = viewShelf(snap);
+  const shelf = keep ? viewShelf(snap) : peekShelf(snap);
   let items = displayItems(shelf, snap, CATALOG);
   if (mode === "tidy" && tidyDropped.size) {
     // 整理の形で下ろした物は「終わる」まで同じ場所に（目録の順なので、足し戻した棚で並べると元の位置になる）。ほかで足し戻された物は外す
@@ -752,7 +775,7 @@ export function updateBookshelf() {
     const ghost = [...tidyDropped].reduce((sh, key) => addKey(sh, key), shelf);
     items = displayItems(ghost, snap, CATALOG).map((it) => (tidyDropped.has(it.key) && it.droppable ? { ...it, dropped: true } : it));
   }
-  lastInput = inputOf(snap); // 照合で書いた後の文字列で覚える（次に同じ状態で呼ばれたら何もしない）
+  lastInput = keep ? state + shelfInput() : ""; // 照合で書いた後の棚の文字列で覚える（次に同じ状態で呼ばれたら何もしない）
   if (folded()) {
     // プレイ中は本棚が畳まれている（display: none）: 段の割り付けに要る幅・高さを読まない。開いたとき（机に戻る・ResizeObserver）に描く
     lastItems = items;
@@ -804,15 +827,25 @@ export function startChoiceChanges(choice) {
   return startChanges(snapNow(), choice);
 }
 
-// 初回のスタート（js/main.js onStart: 状態を替えた後・renderHome の前）: 下見の棚と同じ棚を保存する。
+// 初回のスタートを押した（js/main.js onStart の頭。語の読み込みを待つ前に同期で呼ぶ）: startShelf までは本棚を見せるだけで保存しない。
+// スタートで替わる前の状態（コース・机の本・packs）で移行した棚を書かない（語の読み込みの前に押したときは、その間にできる本棚 initBookshelf の描き直しも）
+let startHeld = false;
+export function holdShelf() {
+  startHeld = true;
+}
+
+// スタートの処理が startShelf の前に失敗した（語の読み込みの失敗など）: 保留を解いて、次の描き直しから普通に移行・照合して保存する
+export function releaseShelf() {
+  startHeld = false;
+}
+
+// 初回のスタート（js/main.js onStart: 状態を替えた後・renderHome の前）: 下見の棚と同じ棚を保存する（スタートの保存はこの 1 回）。
 // 保存した棚があれば（深いリンクで来て本を足してから初回の画面に来た人）それに足す（足した本・函を消さない。js/shelfStore.js shelfAtStart）。
-// 足す先は初回の画面を閉じた時点の棚（shelfAtClose）: 閉じた直後の描き直しは閉じる前の状態で移行して書くので、それには足さない（下見の材料と同じ）
-let shelfAtClose; // undefined = 記録なし
+// 初回の画面を閉じてからここまでは何も保存しない（閉じた直後の描き直しは見せるだけ・holdShelf）ので、保存した棚は下見の材料と同じ
 export function startShelf() {
+  startHeld = false;
   if (!BOOKS.size) buildData();
-  const saved = shelfAtClose !== undefined ? shelfAtClose : loadShelf();
-  shelfAtClose = undefined;
-  saveShelf(shelfAtStart(snapNow(), saved));
+  saveShelf(shelfAtStart(snapNow(), loadShelf()));
 }
 
 // 函を押した・「コースを変える」で選んだ（js/main.js chooseCourse）: その函を棚に
@@ -1285,16 +1318,13 @@ document.getElementById("welcomeFind")?.addEventListener("click", () => openFind
     const now = isWelcome();
     if (now === wasWelcome) return;
     wasWelcome = now;
-    if (now) {
-      shelfAtClose = undefined;
-      return drawWelcome();
-    }
+    if (now) return drawWelcome();
     pendingFind = false; // 初回の画面を閉じた（スタート・ログインの行・同期）: 準備前に押された「171冊から選ぶ」は忘れる
-    shelfAtClose = loadShelf(); // スタートが足す先（下の描き直しが書く前）。onStart（startShelf）はこの後に走る
     // welcome が畳まれた（ログインの行・auth-ready・同期）: 初回の形の窓（本をさがす・机に出す）が開いていたら閉じる
     const dlg = root?.querySelector("#bookFinder");
     if (dlg?.open && finderMode === "welcome") dlg.close();
-    if (root?.querySelector("#shelfRun")) updateBookshelf();
+    // 閉じた直後の描き直しは見せるだけ（保存しない）。スタートで閉じたなら保存は startShelf の 1 回、ほかで閉じたなら次の描き直しが移行して保存する
+    if (root?.querySelector("#shelfRun")) refresh(false);
   }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   const startBtn = document.querySelector("#welcome [data-welcome-start]");
   if (startBtn) {

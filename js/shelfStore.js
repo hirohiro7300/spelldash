@@ -12,6 +12,7 @@
 //   packs: string[], course: string, desk: string, myCount: number, statsEmpty: boolean, best: { [id]: number },
 //   courses: { [id]: { packs: string[] } }, defaultCourse: string,
 //   freqCourseOf(id) → コース id | null（頻度順の巻 → その全集）, isBase(id) → bool（基本カテゴリ）,
+//   isPack(id) → bool（manifest の分野パック。棚の割り付けが無く known に入らないパックも。初回のスタートが packs に足すか。無ければ known で見分ける）,
 //   known: Set<"b:id" | "c:id">（目録にあるキー）, hasRecords(bookIds) → bool（読み込まれた巻の語に記録があるか）,
 //   baseRecordCounts() → [{ id, n }]（基本カテゴリごとの、自分の語で記録のある数。移行の M5' だけが呼ぶ）
 // }
@@ -155,7 +156,8 @@ export function shelfAtStart(snap, saved = null) {
 //   既定の本（既定のコースの 1 巻目）以外の本: 分野パックなら packs に足し、机に出す
 export function applyStartChoice(snap, { bookId = "", courseId = "" } = {}) {
   let { packs, course, desk } = snap;
-  const isPack = (id) => snap.known.has(`b:${id}`) && !snap.isBase(id) && id !== MY;
+  // 分野パック（packs に足す本）: 目録の本か manifest の分野パック（snap.isPack: 棚の割り付けが無いパックも足す。机が読み込まれていないパックを指さない）のうち、基本カテゴリ・マイ単語帳でないもの
+  const isPack = (id) => id !== MY && !snap.isBase(id) && (snap.known.has(`b:${id}`) || !!snap.isPack?.(id));
   if (courseId && snap.courses[courseId]) {
     const list = coursePacks(snap, courseId);
     const start = bookId && list.includes(bookId) ? bookId : list[0];
