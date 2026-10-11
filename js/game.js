@@ -183,79 +183,371 @@ let romajiEntries = [];
 // 語を打ち終えた直後の打鍵の持ち越し止め（打ち越し防止）。ローマ字と英単語で共通:
 // - ローマ字: 終えた語の読みの続き（語末の ん の 2 つ目の n、いわじゅく で終えた後の いせき）
 // - 英単語: 出題語で完成したときの、より長い候補の続き（gym で完成した後の nasium、a の後の n、sport の後の s。K0-1）
-// 続きとして打ったキーは次の語の打鍵にしない。Study・Challenge・Daily とも、物理キー・画面キーボード・Android の input 経路とも:
-// 1. 正解後の待ちの間（Study）: 続きのキーは間がいくら空いても続きの判定に食わせる（このキーはどのみち次の語に入らない）。
-//    続きを打っている間（最後の続きの打鍵から SPILL_HOLD_MS）はタイマーで次の語を出さない（打ち終えるか、手が止まってから出す）
-// 2. 次の語が出た後、最後の打鍵から SPILL_GAP_MS の窓: 次の語の頭と同じキーでも続きが先。ただし窓の中で飲んだキー＋次のキーで
-//    次の語に続き、次のキーだけではミスになるなら、飲んだキーは次の語の頭だったとして次の語に戻す（spillEaten・rescueFirstMiss）
-// 3. 窓の外、最後の打鍵から SPILL_LATE_MS まで: 次の語の 1 打目がミスになるときだけ、続きの次の字なら続きとして飲む
-//    （ゆっくり打つ人の続き。rescueFirstMiss）。次の語の頭として通る字はそのまま次の語へ入れるが、それが続きの次の字でもあれば
-//    続きとしての見方を写しで残し（spillLent）、次の語でミスになったときに「続きだった」と分かれば次の語から外して続きとして飲む（withdrawLent）
-// Enter で自分から次へ進んだときは捨てる（次の語の 1 打目から受け付ける）。2・3 はミスになるはずの打鍵だけを救うので、×を増やさない。
+// 記録は 1 つ（spill）。Study・Challenge・Daily とも、物理キー・画面キーボード・Android の input 経路とも同じ:
+// 1. Study の正解後の待ちの間（次の語はまだ無い）: 続きのキーは間がいくら空いても続きに食わせる（takeSpill）。続きを打っている間は
+//    タイマーで次の語を出さない（completeWord の tick: 次の語を出す時刻 = max(本来の待ちの終わり, 最後の続きの打鍵 + SPILL_HOLD_MS〔まだ続く〕
+//    ／+ SPILL_TAIL_MS〔打ち切った・読みを閉じた。2 打以上のときだけ。語末の ん の 2 つ目の n・an の n のような 1 打の続きは本来の待ちを変えない〕））
+// 2. 次の語が出た後（judgeKey）: 完成後の 1 打を「続きの見方」と「次の語」の両方に食わせ、どちらかが拒んだ時点で 1 回だけ解決する
+//    - 続きだけが受ける → 続きとして飲む（次の語の打鍵にしない。ミスにしない。1 打 0.9 秒の gymnasium の続き、an の n）
+//    - 次の語だけが受ける → 次の語の打鍵（続きは終える）
+//    - 両方が受ける（引き分け）→ 次の語に入れて見せたまま（入力欄・typedPreview）記録し（spill.shared）、次の打鍵で決める。
+//      次の語がその字で出題語として完成したら次の語の正解（in → inside の続きが次の語 side そのもの、another → another one の one）。
+//      ただし続きがまだ続くのに次の語が完成するとき（out → outdoors の続き do|ors と次の語 do）はここでは決めず保留する（shared.hold "finish"。
+//      字は次の語に見せるが受理しない）。別解としての完成（hall → hallway の way と次の語 manner の別解 way）は続きが勝つ
+//      （別解は答えを見た扱いで自力にならないので、続きを打った人の次の語に付けない）
+//    - 両方が拒む → 普通のミス。ただし引き分けの字を外せばこの字が次の語の 1 打目として通るなら、外して 1 打目にする
+//      （an の n をあけて打ち、次の語 not を n から打つ。gym の後の n・a を打ちかけて止め、name を n から打つ）。黙って外せないとき
+//      （下の取り消しの規則。窓の外で 2 字以上）は、打ち直しか打ち間違いかをその場で決めず保留する（shared.hold "restart"。字は見せない）:
+//      次の打鍵で、保留の字 ＋ その字が次の語の頭から通れば打ち直しだった（引き分けの字を外し、保留の字を 1 打目に。name の n・a）、
+//      通らなければ保留の字が打ち間違い（「違う」・1 ミス。in → six の s・i のあと x を s と打ち間違えた → 黙って消さない）
+//    - 引き分けの字を次の語から外す（取り消す）のは、字が窓（最後の打鍵から SPILL_GAP_MS）の中で打たれた・続きがすでに始まっていた
+//      （続きだけが受けた字がある）・1 字・この字で続きを打ち切った のどれかなら黙って行う。それ以外（窓の外で 2 字以上）はここでは決めず
+//      保留する（shared.hold "typo"。字は続きにだけ食わせ、次の語には見せない）: 続きを打ち切れば全部が続きだった（黙って外す。
+//      1 打 0.9 秒の inside と次の語 six）、続きが拒めば次の語を打ち続けていた（保留の字は打ち間違い＝「違う」・1 ミス。
+//      in のあと six の s・i をゆっくり打ってから d → x）。続きが拒んだ字が次の語の 1 打目として通るなら（gym の後の n・a・s → name の n）、
+//      続きを打ちかけてやめて打ち直したのかもしれないので、保留 restart に切り替えて次の打鍵で決める
+//    - 保留は次の打鍵・Enter・時間切れ（finish は SPILL_HOLD_MS、typo・restart は SPILL_LATE_MS）で決まる（時間切れは次の語の勝ち: finish は保留の字で完成、
+//      typo・restart は打ち間違い）。finish を時間切れで決めたときは、続きの残り（outdoors の ors）も echo として飲む（1 打 1.5 秒より遅く
+//      outdoors を打つ人の残りを次の次の語の×にしない）。引き分けの字そのものは時間で消さない（見せている字を本人の操作なしに消さない）。
+//      最後の打鍵から SPILL_LATE_MS を過ぎたら続きの見方は終える（引き分けの字の記録だけ残り、次の語を 1 打目から打ち直せば外して 1 打目にする）
+//    - 続きで次の語が完成したら（another one の one、保留 finish の do）、同じ語をもう一度なぞる打鍵は飲む（echo: 完成した語を続きとして
+//      張り直す。another one と打った人が出題が one に変わったのを見て one をもう一度打っても、3 語目に流れない）
+//    Enter は引き分けの字を次の語に入っているものとして普通に判定する（候補に一致していればその語で確定、そうでなければ答えを開く）。
+//    ただし保留 finish は保留の字で確定（打った語で確定）。保留 typo・restart の字は捨てる（見せていない。ミスに数えない）。続きが終わっていて直後（続きの最後の打鍵から ECHO_AFTER_DONE_MS）の Study の Enter は、
+//    「打ち終えたら Enter で次へ」の癖として字を外して 1 回だけ飲む（窓の内外によらない。2 回目は見えている字で普通に判定＝答えが開く）
+//    Enter で自分から次へ進んだとき・答えを見たとき・本当のミス・ヒントのときは捨てる
 // spill = { kind: "romaji" | "spelling", keyOf(event) → 続きと比べるキー（null = 比べない。Shift など）,
-//           take(key) → "more"（まだ続く）| "end"（続きを打ち切った）| null（続きでない。状態は変えない）,
-//           fork() → 同じところまで続きを打った { take, fork } の写し（spillLent。元の状態は変えない）,
-//           at = 最後の打鍵の時刻, typed = 続きを 1 字でも打った }
+//           take(key) → "more"（まだ続く）| "closed"（読みを閉じた〔語末の ん の 2 つ目の n〕が、長い読みにまだ続けられる）| "end"（続きを打ち切った）
+//                       | null（続きでない。状態は変えない）,
+//           rest() → 続きの残りの綴り（英単語だけ。ローマ字は null）,
+//           at: 最後に食わせた打鍵の時刻, n: 完成後に食わせた打鍵の数, live: まだ続けて打てる, ended: 最後の打鍵で打ち切った・閉じた（待ちを延ばさない）,
+//           shared: null | { serial: 次の語の wordSerial, keys, typed: 受理した後の次の語の打鍵, inWindow: 全部が窓の中, underway: 続きがすでに始まっていた,
+//                            hold: null | { why: "finish" | "typo" | "restart", key: 保留の字, next: その打鍵の判定,
+//                                           echo（finish: 完成した語をなぞる打鍵を飲む記録）, rest（finish: 保留にした時点の続きの残り） } } }
 let spill = null;
-let spillEaten = null; // 次の語が出た後に窓の中で続きとして飲んだキー { serial: 次の語の wordSerial, keys, at }
-// 窓の外で次の語の頭として受理したキーが、前の語の続きの字でもあったときの写し
-// { serial: 次の語の wordSerial, typed: 受理した後の次の語の打鍵（typedSoFar／romaji.keys）, spill: そこまで続きとして食わせた写し（続きを打ち切ったら null）, at }
-let spillLent = null;
-let spillDoneAt = -Infinity; // Study: 正解後の待ちの間に前の語の続きを打ち切った時刻（普通の待ちをここから数え直す。completeWord の tick）
+let spillTimer = null; // 保留（shared.hold）の時間切れ（resolveHoldByTime）
 let waitInputBase = ""; // 正解後の待ちに入ったときに入力欄に残っている打ち終えた綴り（Android の input 経路。待ちの 1 回目の入力だけ比べる）
-const SPILL_GAP_MS = 600; // 続きが先の窓（js/typingDrill.js の SPILL_GAP_MS と同じ値）
+const SPILL_GAP_MS = 600; // 窓（js/typingDrill.js の SPILL_GAP_MS と同じ値）。引き分けの字をこの中で打っていれば黙って外せる
 const SPILL_HOLD_MS = 1500; // Study: 続きを打っている間、タイマーで次の語を出さない長さ（最後の続きの打鍵から）
-const SPILL_LATE_MS = 4000; // 窓の外でも、次の語でミスになるときに続きとして見る長さ（最後の打鍵から。綴りを思い出しながらの 2〜3 秒の迷いも入る）
-const SPILL_RECHECK_MS = 100;
+const SPILL_TAIL_MS = 250; // Study: 続きを打ち切った後、次の語を出すまで置く長さ（直後の余分な 1 打＝空白・gymnasiums の s を待ちの間に捨てる）
+const SPILL_LATE_MS = 4000; // 続きの見方と保留を残す長さ（最後の打鍵から。綴りを思い出しながらの 2〜3 秒の迷いも入る）
+const SPILL_RECHECK_MS = 100; // Study: 続きを打っている間、タイマーで次の語を出すかを見直す間隔
 
-function startSpill(kind, keyOf, taker) {
-  spill = { kind, keyOf, ...taker, at: performance.now(), typed: false };
-  spillEaten = null;
-  spillLent = null;
+function clearSpill() {
+  const hold = spill?.shared?.hold;
+  if (hold?.why === "finish") hold.next.show(false); // 次の語に見せていた保留の字は入力欄から戻す（受理はしていない）
+  spill = null;
+  clearTimeout(spillTimer);
+  spillTimer = null;
+  waitInputBase = "";
 }
 
-function forkSpill(s) {
-  return { ...s, ...s.fork() };
+function startSpill(kind, keyOf, take, rest = () => null) {
+  clearSpill();
+  spill = { kind, keyOf, take, rest, at: performance.now(), n: 0, live: true, ended: false, shared: null };
 }
 
-// ローマ字: 終えた語の判定（matcher）に続きのキーを食わせる。写しは同じ読みの判定を作って同じキーを打ち直す
-function romajiTaker(matcher) {
-  return {
-    take: (key) => (!matcher.feed(key).ok ? null : matcher.state().canContinue ? "more" : "end"),
-    fork: () => {
-      const copy = createRomajiMatcher(matcher.entries);
-      copy.type(matcher.keys);
-      return romajiTaker(copy);
-    }
-  };
-}
-
+// ローマ字: 終えた語の判定（matcher）に続きのキーを食わせる。語末の ん を n 1 つで終えた後の 2 つ目の n は、読みを閉じただけ
+// （長い読み〔荘園 → 荘園制〕にまだ続けられても "closed"。nn で ん を終える人の待ちを延ばさない）
 function startRomajiSpill(matcher) {
-  startSpill("romaji", romajiKeyOf, romajiTaker(matcher));
+  startSpill("romaji", romajiKeyOf, (key) => {
+    const singleN = matcher.state().endedWithSingleN;
+    if (!matcher.feed(key).ok) return null;
+    const st = matcher.state();
+    return !st.canContinue ? "end" : singleN && st.done && !st.endedWithSingleN ? "closed" : "more";
+  });
 }
 
 // 英単語: 続きの綴りの残り（left）を 1 字ずつ減らす。キーは綴り入力と同じく event.key の 1 文字（小文字）。
 // a-z のキーは、続きの頭の a-z 以外（空白・ハイフン・スラッシュ・数字）を読み飛ばして比べる
 // （Android の input 経路は a-z しか届かない。a → a large の " large"、rest → rest api の " api"）
-function spellingTaker(left) {
-  return {
-    take: (key) => {
+function startSpellingSpill(rests) {
+  let left = rests;
+  startSpill(
+    "spelling",
+    (event) => (!event.ctrlKey && !event.metaKey && !event.altKey && [...String(event.key ?? "")].length === 1 ? event.key.toLowerCase() : null),
+    (key) => {
       const skip = /^[a-z]$/.test(key);
       const next = left.map((r) => (skip ? r.replace(/^[^a-z]+/, "") : r)).filter((r) => r[0] === key).map((r) => r.slice(1));
       if (next.length === 0) return null;
       left = next.filter(Boolean);
       return left.length > 0 ? "more" : "end";
     },
-    fork: () => spellingTaker(left)
-  };
+    () => left
+  );
 }
 
-function startSpellingSpill(rests) {
-  startSpill(
-    "spelling",
-    (event) => (!event.ctrlKey && !event.metaKey && !event.altKey && [...String(event.key ?? "")].length === 1 ? event.key.toLowerCase() : null),
-    spellingTaker(rests)
-  );
+// 続きで次の語が完成した後: 同じ語をもう一度なぞる打鍵を飲むために、完成した語を続きとして張り直す（上の 2 の echo）。
+// 完成の側が新しい持ち越し止め（完成した語のさらに長い候補）を始めていれば、そちらを優先する
+function startEchoSpill(echo) {
+  if (spill || !echo) return;
+  if (echo.kind === "spelling") startSpellingSpill(echo.rests);
+  else startRomajiSpill(createRomajiMatcher(echo.entries));
+}
+
+// 続きに 1 打を食わせた結果を記録する。「打ち終えた」時刻（isAdvanceEcho の 1.2 秒）もここから数える
+function advanceSpill(s, result, now = performance.now()) {
+  s.at = now;
+  s.n++;
+  s.live = result !== "end";
+  s.ended = result !== "more";
+  completedAt = now;
+}
+
+// 続きに 1 打を食わせる。受けたら時刻・数・live を進める
+function feedSpill(key) {
+  if (!spill?.live || !key) return null;
+  const result = spill.take(key);
+  if (!result) return null;
+  advanceSpill(spill, result);
+  return result;
+}
+
+// Study の正解後の待ちの間・続きを完成させた入力と同じ入力の残り（次の語はまだ無い）: 続きのキーは間が空いても飲む。
+// 続きでないキーは持ち越し止めを終える（打ち切った後に来たキーは捨てるだけ。次の語を出す時刻は変えない）
+function takeSpill(key) {
+  if (!spill?.live || !key) return false;
+  if (feedSpill(key)) return true;
+  clearSpill();
+  return false;
+}
+
+// Study の待ちの tick: 続きを打っている間は次の語を出さない。残りの ms（0 以下なら出してよい）
+function spillHoldLeft() {
+  const s = spill;
+  if (!s || s.n === 0) return 0;
+  const until = s.live && !s.ended ? s.at + SPILL_HOLD_MS : s.n >= 2 ? s.at + SPILL_TAIL_MS : -Infinity;
+  return until - performance.now();
+}
+
+// 引き分けの記録がいまの次の語の打鍵と合っているか（別の語・答えを見た・ヒントで足した字があれば合わない）
+function sharedValid(s) {
+  return !!s.shared && s.shared.serial === wordSerial && !isRevealed && s.shared.typed === nextTyped();
+}
+
+// 引き分けの字を次の語から黙って外して続きとしてよいか（上の「取り消し」の規則）
+function canWithdraw(shared) {
+  return shared.inWindow || shared.underway || shared.keys.length === 1;
+}
+
+// 次の語の入力欄に見せている字: 受理した字 ＋ 保留 finish の字（Android の input 経路が値と比べる基準）
+function shownTyped() {
+  const hold = spill?.shared?.hold;
+  return typedSoFar + (hold?.why === "finish" && sharedValid(spill) ? hold.key : "");
+}
+
+// 保留を始める（finish: この字で次の語が完成するが続きもまだ続く。typo: 続きだけが受けたが引き分けの字を黙って外せない）
+function startHold(s, next, why, result, inWindow, underway) {
+  if (!s.shared) s.shared = { serial: wordSerial, keys: "", typed: nextTyped(), inWindow, underway, hold: null };
+  s.shared.hold = { why, key: next.key, next, echo: why === "finish" ? next.echo() : null, rest: why === "finish" ? s.rest() : null };
+  advanceSpill(s, result);
+  if (why === "finish") next.show(true);
+  clearTimeout(spillTimer);
+  // finish の時間切れは SPILL_HOLD_MS（続きを打つ人の次の 1 打を待つ長さ。Study の「続きを打っている間は次の語を出さない」と同じ）。
+  // 次の語を正しく打った人（out の後の do）をそれ以上待たせない（REVIEW-keys M2）。typo は SPILL_LATE_MS（迷いながら続きを打つ人を待つ）
+  spillTimer = setTimeout(resolveHoldByTime, why === "finish" ? SPILL_HOLD_MS : SPILL_LATE_MS);
+}
+
+// 保留 restart を始める: 両方が拒むが、この字は次の語の 1 打目として通り、引き分けの字を黙って外せない（窓の外で 2 字以上）。
+// 打ち直し（引き分けの字は続きの打ちかけだった。gym の後の n・a → name）か打ち間違い（次の語を打ち続けていた。in の後の s・i → x のつもりの s）かを
+// 次の打鍵で決める。字は次の語に見せず、続きにも食わせない（typo の保留から切り替えるときは、typo の保留の字は続きの打ちかけとして捨てる）
+function startRestartHold(s, next) {
+  s.shared.hold = { why: "restart", key: next.key, next, echo: null, rest: null };
+  clearTimeout(spillTimer);
+  spillTimer = setTimeout(resolveHoldByTime, SPILL_LATE_MS);
+}
+
+// 保留を次の語の勝ちで決める: finish は保留の字で次の語を完成（同じ語をなぞる打鍵は echo で飲む）、typo・restart は保留の字を打ち間違いに。
+// 完成したら true（この後に届いた字は新しい語のもの）。byTime = 時間切れで決めた
+function resolveHoldToNext(s, byTime = false) {
+  const { hold } = s.shared;
+  clearSpill();
+  if (hold.why !== "finish") {
+    hold.next.miss(hold.key);
+    return false;
+  }
+  if (hold.next.tryAccept() !== "done") {
+    hold.next.miss(hold.key); // 保留の間に状態が変わって完成しなくなった（まず無い）: 打ち間違いとして数える
+    return false;
+  }
+  // 時間切れで決めたときは、続きの残り（outdoors の ors）もなぞる打鍵として飲む（1 打 1.5 秒より遅く outdoors を打つ人の残りを
+  // 次の次の語の×にしない。Study は待ちの間に飲み、続きを打つ間は次の語を待たせる）。Enter で確定したときは打った語で終わり
+  const rest = byTime && hold.echo?.kind === "spelling" ? hold.rest ?? [] : [];
+  startEchoSpill(rest.length > 0 ? { ...hold.echo, rests: [...hold.echo.rests, ...rest] } : hold.echo);
+  return true;
+}
+
+// 保留のまま打鍵が止まった（最後の打鍵から finish は SPILL_HOLD_MS、typo・restart は SPILL_LATE_MS）: 次の語が勝つ
+function resolveHoldByTime() {
+  spillTimer = null;
+  const s = spill;
+  if (!isPlaying || !s?.shared?.hold || !sharedValid(s)) return;
+  resolveHoldToNext(s, true);
+}
+
+// Enter／Esc のとき: 引き分け・保留の決着。true ならこの Enter はここで消費した（答えは開かない）。
+// 保留 finish は保留の字で確定（Enter は打った語で確定）。続きが終わっていて直後（続きの最後の打鍵から ECHO_AFTER_DONE_MS）の Study の Enter は
+// 「打ち終えたら Enter で次へ」の癖＝字を外して 1 回だけ飲む（2 回目は字が消えた状態で普通に判定）。それ以外は見せている字のまま普通に判定する
+// （保留 typo・restart の字は捨てる。見せていない字なのでミスにはしない）。どれも続きの見方はここで終える（Enter の先は確定か答え表示）
+function resolveSharedForEnter() {
+  const s = spill;
+  if (!s?.shared || !sharedValid(s)) return false;
+  const { hold } = s.shared;
+  if (hold?.why === "finish") return resolveHoldToNext(s);
+  const echo = !hold && !s.live && mode === "study" && performance.now() - s.at <= ECHO_AFTER_DONE_MS;
+  if (echo) {
+    clearNextTyped();
+    advancedAt = -Infinity; // 飲むのは 1 回だけ（isAdvanceEcho にも 2 回目を飲ませない）
+    completedAt = -Infinity;
+  }
+  clearSpill();
+  return echo;
+}
+
+// 次の語の 1 打（keydown・画面キーボード・Android の input・ローマ字で共通）。前の語の続き（spill）があれば両方に食わせて解決する（上の 2）。
+// next = { key: 次の語に食わせるキー, contKey: 続きに食わせるキー（null = 続きとは比べない）,
+//          tryAccept() → "done"（受理して完成）| "more"（受理）| null（拒む。状態は変えない）,
+//          finishes() → この字で次の語が完成する綴り（null = 完成しない。状態は変えない）, own(done) → その完成が出題語（別解でない）か,
+//          firstFits() → このキーが次の語の 1 打目として通るか（状態は変えない）, fitsFromStart(keys) → この打鍵の列が次の語の頭から通るか（状態は変えない）,
+//          show(on) → 保留 finish の字を入力欄に見せる／戻す,
+//          echo() → 完成した語をなぞる打鍵を飲むための記録, miss(typed = key) → ミス（typed は打ち間違えた字） }
+// 返り値 "again" = 保留の字で前の語が完成したので、この字は新しい語に食わせ直す（呼び元が同じ event をもう一度流す）
+function judgeKey(next) {
+  const now = performance.now();
+  let s = spill;
+  if (s && (s.shared ? !sharedValid(s) : now - s.at > SPILL_LATE_MS || !s.live)) {
+    clearSpill();
+    s = null;
+  }
+  if (!s) {
+    if (!next.tryAccept()) next.miss();
+    return;
+  }
+  const late = now - s.at > SPILL_LATE_MS; // 続きの見方は終わっている（引き分けの字の記録だけ残る）
+  const hold = s.shared?.hold;
+  if (hold?.why === "restart") {
+    // 保留 restart: 保留の字 ＋ この字が次の語の頭から通れば打ち直しだった（引き分けの字を外し、保留の字を 1 打目に受理。この字は流し直す）。
+    // 通らなければ保留の字が打ち間違い（「違う」・1 ミス。この字は捨てる。typo の保留と同じ）
+    if (!next.fitsFromStart(hold.key + next.key)) {
+      resolveHoldToNext(s);
+      return;
+    }
+    clearNextTyped();
+    clearSpill();
+    if (!hold.next.tryAccept()) {
+      hold.next.miss(hold.key); // 外した後の 1 打目が通らない（まず無い）: 打ち間違いとして数える
+      return;
+    }
+    return "again";
+  }
+  if (hold) {
+    const cont = !late && next.contKey ? s.take(next.contKey) : null;
+    if (cont) {
+      // 続きがまだ受ける: finish の保留の字も続きだった（引き分けの字を外して続きに戻る）。typo はまだ決めない。続きを打ち切れば全部が続きだった
+      if (hold.why === "finish") {
+        clearNextTyped();
+        s.shared = null;
+      }
+      advanceSpill(s, cont, now);
+      clearTimeout(spillTimer);
+      spillTimer = null;
+      if (cont === "end") {
+        if (s.shared) clearNextTyped();
+        clearSpill();
+      } else if (s.shared) spillTimer = setTimeout(resolveHoldByTime, SPILL_LATE_MS); // 保留の時間切れは最後の打鍵から数える
+      return;
+    }
+    // 続きが拒む（または 4 秒過ぎ）。typo の保留中で、この字が次の語の 1 打目として通るなら、続きを打ちかけてやめて次の語を打ち直したのかもしれない
+    // （gym の後の n・a・s → name の n）: 保留 restart に切り替えて次の打鍵で決める
+    if (hold.why === "typo" && next.firstFits()) {
+      startRestartHold(s, next);
+      return;
+    }
+    // 次の語が勝つ。finish なら保留の字で完成し、この字は新しい語へ。typo なら打ち間違い（この字は捨てる）
+    return resolveHoldToNext(s) ? "again" : undefined;
+  }
+  const inWindow = now - s.at <= SPILL_GAP_MS;
+  const underway = s.shared ? s.shared.underway : s.n > 0;
+  const cont = s.live && !late && next.contKey ? s.take(next.contKey) : null;
+  let accepted = null;
+  let echo = null;
+  if (cont) {
+    const done = next.finishes();
+    if (done && !next.own(done)) {
+      // 別解としての完成: 続きが勝つ（下の「続きだけが受ける」へ）
+    } else if (done && cont === "more") {
+      // 次の語はこの字で完成するが、続きもまだ続く（out → outdoors の do と次の語 do）: 決めずに保留。字は見せる
+      startHold(s, next, "finish", cont, inWindow, underway);
+      return;
+    } else {
+      if (done) echo = next.echo();
+      accepted = next.tryAccept();
+    }
+  } else accepted = next.tryAccept();
+  if (cont && !accepted) {
+    // 続きだけが受ける: 引き分けだった字は続きだったので次の語から外す。黙って外せないとき（窓の外で 2 字以上）は保留（この字で打ち切ったなら全部が続き）
+    if (s.shared && !canWithdraw(s.shared) && cont !== "end") {
+      startHold(s, next, "typo", cont, inWindow, underway);
+      return;
+    }
+    if (s.shared) clearNextTyped();
+    s.shared = null;
+    advanceSpill(s, cont, now);
+    return;
+  }
+  if (!cont && accepted) {
+    // 次の語だけが受ける: 続きは終える（引き分けだった字は次の語のもの）。完成して新しい持ち越し止めに替わっていたら触らない
+    if (spill === s) clearSpill();
+    return;
+  }
+  if (!cont && !accepted) {
+    // 両方が拒む: 引き分けの字を外せばこの字が 1 打目として通るなら、外して 1 打目にする（an の n → not の n、gym の n を打ちかけて name の n）。
+    // 黙って外せないとき（窓の外で 2 字以上）は、打ち直し（gym の後の n・a → name）か打ち間違い（in の後の s・i → x のつもりの s）かを次の打鍵で決める
+    if (s.shared && next.firstFits()) {
+      if (!canWithdraw(s.shared)) {
+        startRestartHold(s, next);
+        return;
+      }
+      clearNextTyped();
+      clearSpill();
+      if (!next.tryAccept()) next.miss();
+      return;
+    }
+    clearSpill();
+    next.miss();
+    return;
+  }
+  // 引き分け: 次の語がこの字で完成したら次の語の正解（持ち越し止めは完成の側が替えてある。同じ語をなぞる打鍵は echo で飲む）。
+  // そうでなければ記録して次の打鍵を待つ
+  if (accepted === "done") {
+    if (spill === s) clearSpill();
+    startEchoSpill(echo);
+    return;
+  }
+  s.shared = { serial: wordSerial, keys: (s.shared?.keys ?? "") + next.key, typed: "", inWindow: (s.shared?.inWindow ?? true) && inWindow, underway, hold: null };
+  advanceSpill(s, cont, now);
+  s.shared.typed = nextTyped();
+}
+
+// 綴り入力の次の語の 1 打（keydown と Android の input 経路で共通）。accept(typedChar) は受理（完成なら true を返す）
+function judgeSpellingKey(typedChar, contKey, accept) {
+  const fits = (typed) => viableAnswers(activeCandidates(), typed).length > 0;
+  return judgeKey({
+    key: typedChar,
+    contKey,
+    tryAccept: () => (fits(typedSoFar + typedChar) ? (accept(typedChar) ? "done" : "more") : null),
+    finishes: () => (fits(typedSoFar + typedChar) ? completedAnswer(activeCandidates(), typedSoFar + typedChar) : null),
+    own: (done) => done === currentWord.en || isSpellingVariant(done, currentWord.en),
+    firstFits: () => fits(typedChar),
+    fitsFromStart: (keys) => fits(keys),
+    show: (on) => {
+      const shown = typedSoFar + (on ? typedChar : "");
+      elements.input.value = shown;
+      updateTypedPreview(shown);
+    },
+    echo: () => ({ kind: "spelling", rests: [typedSoFar + typedChar] }),
+    miss: (typed = typedChar) => handleTypingMiss(currentWord.en[currentIndex], typed)
+  });
 }
 
 function romajiEntriesFor(word) {
@@ -285,9 +577,7 @@ function resetRomajiMode() {
   romajiMode = false;
   romaji = null;
   romajiEntries = [];
-  spill = null;
-  spillEaten = null;
-  spillLent = null;
+  clearSpill();
   document.body.classList.remove("romaji-answer");
   setInputRomaji(false);
 }
@@ -497,10 +787,7 @@ export function startGame(options = {}) {
   correctChars = 0;
   combo = 0;
   gainedXp = 0;
-  spill = null;
-  spillEaten = null;
-  spillLent = null;
-  spillDoneAt = -Infinity;
+  clearSpill();
   advancedAt = -Infinity;
   advancedBy = null;
   completedAt = -Infinity;
@@ -617,7 +904,12 @@ function triggerEnter() {
     advanceNow("key");
     return;
   }
-  if (isAdvanceEcho() || isEchoAfterLentEnd()) return; // 次の語が出た直後の、前の語に向けた Enter／Esc（答えを開かない＝×にしない）
+  // 前の語の続きと引き分け・保留の字（次の語に見せている字）の決着（resolveSharedForEnter）: 保留 finish は保留の字で確定、続きが終わった直後
+  // （1.2 秒）の Enter は「打ち終えたら Enter で次へ」の癖として字を外して 1 回だけ飲む、それ以外は見せている字のまま普通に判定する
+  // （下: 候補に一致していればその語で確定、そうでなければ答えを開く）
+  if (resolveSharedForEnter()) return;
+  // 次の語が出た直後の、前の語に向けた Enter／Esc（答えを開かない＝×にしない）
+  if (isAdvanceEcho()) return;
 
   // ローマ字モード: 読みは打ち終えた時点で正解になっている。Enter は英単語と同じく 1 回目は答え表示、
   // 答えを見た後はスキップ（下の通常処理）
@@ -680,77 +972,12 @@ function isAdvanceEcho() {
   );
 }
 
-// 窓の外で次の語の頭として通した字が、前の語の続きの最後の字でもあった（1 打 0.9 秒の gymnasium の m と次の語 music）直後の Enter／Esc か。
-// 続きを打ち終えてからの Enter（isAdvanceEcho の ECHO_AFTER_DONE_MS と同じ考え方。Study のタイマーで進んだときだけ）: 入れた字を次の語から外し、答えは開かない
-function isEchoAfterLentEnd() {
-  const lent = spillLent;
-  if (!lent || lent.spill || lent.serial !== wordSerial || isRevealed || lent.typed !== nextTyped()) return false;
-  if (mode !== "study" || advancedBy !== "timer" || performance.now() - lent.at >= ECHO_AFTER_DONE_MS) return false;
-  spillLent = null;
-  clearNextTyped();
-  completedAt = lent.at;
-  return true;
-}
-
-// 終えた語の続き（語末の ん の 2 つ目の n、いわじゅく の後の いせき、gym の後の nasium、a の後の n）のキーか。
-// 続きとして通れば時刻を進めて true（呼び元が飲む）。続きでないキーは持ち越し止めを終える。
-// - waiting: 正解後の待ちの間・続きを完成させた入力と同じ入力の残り（時刻を見ない。次の語にはどのみち入らない）
-// - late: 窓の外で、次の語の 1 打目がミスになるときの見直し（rescueFirstMiss から。SPILL_LATE_MS まで）
-// それ以外（次の語が出た後）は窓（SPILL_GAP_MS）の中だけ飲む。窓の外のキーは持ち越し止めを残したまま false（次の語の打鍵として見る）
-function takeSpill(key, { waiting = false, late = false } = {}) {
-  if (!spill || !key) return false;
-  const now = performance.now();
-  if (!waiting) {
-    const gap = now - spill.at;
-    if (gap > SPILL_LATE_MS) {
-      spill = null;
-      return false;
-    }
-    if (gap > SPILL_GAP_MS && !late) return false;
-  }
-  const result = spill.take(key);
-  if (!result) {
-    spill = null;
-    return false;
-  }
-  spill = result === "more" ? { ...spill, at: now, typed: true } : null;
-  // Study の正解後の待ちの間に続きを打ち切った: 普通の待ちをこの打鍵から数え直す（続きの直後の余分な 1 打＝空白・語形の s を待ちの間に捨てる）
-  if (result === "end" && awaitingNext) spillDoneAt = now;
-  // 次の語が出た後に窓の中で飲んだキーは控える（実は次の語の頭だったと分かったら戻す。rescueFirstMiss）
-  if (!waiting && !late) spillEaten = { serial: wordSerial, keys: (spillEaten?.serial === wordSerial ? spillEaten.keys : "") + key, at: now };
-  // 続きの最後の打鍵を「打ち終えた」時刻にする（isAdvanceEcho の 1.2 秒をここから数える。続きを打ち終えてから Enter で次への癖）
-  completedAt = now;
-  return true;
-}
-
-// keydown 版（物理キー・画面キーボードの合成 keydown）。Shift など比べないキーでは途切れさせない
-function swallowSpill(event, options) {
-  if (!spill) return false;
-  return takeSpill(spill.keyOf(event), options);
-}
-
-// 次の語の打鍵がミスになるとき（その語にまだ何も受理しておらず、答えを見る前だけ）、前の語の続きの扱いを見直す。
-// fits(keys): 次の語の頭から keys を打ったとき、ミスにならず、最後のキーより前で語が終わらないか
-// - { replay: keys } … 窓の中で続きとして飲んだキー（次の語が出た後の分）＋このキーで次の語に続く: 飲んだキーは次の語の頭だった。
-//                      呼び元が keys を次の語に入れてから、このキーを判定し直す（a の後の not の n、in の後の six の s・i）
-// - "late"           … 窓の外でも SPILL_LATE_MS 以内で、このキーが続きの次の字: 続きとして飲んだ（ゆっくり打つ人の gymnasium の続き）
-// - null             … どちらでもない（ふつうのミス）
-// どちらもミスになるはずの打鍵だけを救うので、×を増やす方向には働かない
-function rescueFirstMiss(typedKey, spillKey, fits) {
-  const e = spillEaten;
-  spillEaten = null;
-  if (isRevealed || typedSoFar !== "" || romaji?.keys) return null;
-  if (e && e.serial === wordSerial && performance.now() - e.at <= SPILL_LATE_MS && fits(e.keys + typedKey)) return { replay: e.keys };
-  if (takeSpill(spillKey, { late: true })) return "late";
-  return null;
-}
-
 // 次の語にいま受理している打鍵（綴り入力は typedSoFar、ローマ字は打ったキー）
 function nextTyped() {
   return romajiMode ? (romaji?.keys ?? "") : typedSoFar;
 }
 
-// 次の語に受理した打鍵を空に戻す（withdrawLent。ミス・答え表示・記録は触らない）
+// 次の語に受理した打鍵を空に戻す（引き分けの字が前の語の続きだったとき。ミス・答え表示・記録は触らない）
 function clearNextTyped() {
   if (romajiMode) {
     romaji?.reset();
@@ -763,77 +990,6 @@ function clearNextTyped() {
   elements.input.value = "";
   updateTypedPreview("");
   updateTypeSpeed();
-}
-
-// 窓の外で次の語の頭として受理するキーが、前の語の続きの次の字でもあるか（ゆっくり打つ人の gymnasium の s と次の語 subject）。
-// そうなら続きとしての見方を写しで返す（受理する前に呼ぶ。受理して語が終わらなければ keepLent で spillLent に残す）。
-// 1 打目は前の語の持ち越し止め（spill。窓の外なので swallowSpill が飲まなかった）から、2 打目からは残してある写し（spillLent）から作る。
-// 次の語に受理したキーがどれも続きとしても通る間だけ続く（SPILL_LATE_MS まで）
-function lendSpill(event) {
-  if (isRevealed) return null;
-  const now = performance.now();
-  const typed = nextTyped();
-  const lent = spillLent?.serial === wordSerial && spillLent.typed === typed ? spillLent : null;
-  const base = typed === "" ? spill : lent?.spill;
-  const at = typed === "" ? spill?.at : lent?.at;
-  if (!base || now - at > SPILL_LATE_MS) return null;
-  const copy = forkSpill(base);
-  const key = copy.keyOf(event);
-  const result = key ? copy.take(key) : null;
-  if (!result) return null;
-  return { serial: wordSerial, spill: result === "more" ? { ...copy, at: now, typed: true } : null, at: now };
-}
-
-function keepLent(lent) {
-  spillLent = lent ? { ...lent, typed: nextTyped() } : null;
-}
-
-// 次の語の打鍵がミスになるとき、その前に次の語へ受理したキーが続きとしても通るもの（spillLent）だけなら、続きとして見直す:
-// - "took"  … このキーも続きとして通る: 受理したキーを次の語から外し、このキーも続きとして飲んだ（gymnasium の s・i と次の語 subject）
-// - "retry" … 続きはそこで終わっている／このキーは続きでないが、次の語の 1 打目としては通る: 受理したキーを外した。
-//             呼び元がこのキーを次の語の 1 打目として判定し直す（an の n を 0.9 秒あけて打ち、次の語 not を n から打つ）
-// - null    … どちらでもない（ふつうのミス。何も変えない）
-// どちらもミスになるはずの打鍵だけを救うので、×を増やす方向には働かない
-function withdrawLent(event, fits) {
-  const lent = spillLent;
-  spillLent = null;
-  if (!lent || lent.serial !== wordSerial || isRevealed || lent.typed !== nextTyped()) return null;
-  const now = performance.now();
-  if (now - lent.at > SPILL_LATE_MS) return null;
-  if (lent.spill) {
-    const copy = forkSpill(lent.spill);
-    const key = copy.keyOf(event);
-    const result = key ? copy.take(key) : null;
-    if (result) {
-      clearNextTyped();
-      spill = result === "more" ? { ...copy, at: now, typed: true } : null;
-      completedAt = now;
-      return "took";
-    }
-  }
-  const key = romajiMode ? romajiKeyOf(event) : String(event.key ?? "").toLowerCase();
-  if (!key || !fits(key)) return null;
-  clearNextTyped();
-  spill = null;
-  return "retry";
-}
-
-// 綴り入力の次の語に keys を頭から打ったとき、ミスにならず、最後のキーより前で語が終わらないか
-function spellingFits(keys) {
-  const cands = activeCandidates();
-  if (viableAnswers(cands, keys).length === 0) return false;
-  for (let i = 1; i < keys.length; i++) if (completedAnswer(cands, keys.slice(0, i))) return false;
-  return true;
-}
-
-// ローマ字の次の語に keys を頭から打ったとき、ミスにならず、最後のキーより前で読みが終わらないか
-function romajiFits(keys) {
-  const m = createRomajiMatcher(romajiEntries);
-  const list = [...keys];
-  return list.every((k, i) => {
-    const r = m.feed(k);
-    return r.ok && (!r.done || i === list.length - 1);
-  });
 }
 
 export function handleKeydown(event) {
@@ -852,7 +1008,7 @@ export function handleKeydown(event) {
   // 打ち終えた語の続き（ローマ字の読みの続き・英単語の長い候補の続き）は判定に食わせて時刻を進める
   // （続きを打っている間はタイマーで次の語を出さない。completeWord の tick）
   if (awaitingNext) {
-    swallowSpill(event, { waiting: true });
+    takeSpill(spill?.keyOf(event));
     event.preventDefault();
     return;
   }
@@ -870,49 +1026,33 @@ export function handleKeydown(event) {
     return;
   }
 
-  // 語を打ち終えた直後の、終えた語の続き（swallowSpill。ローマ字の読みの続き・英単語の長い候補の続き）は次の語の打鍵にしない。
-  // 窓（最後の打鍵から 0.6 秒）の中では次の語の頭と同じキーでも続きが先。窓は Study では次の語が出て 0.6 秒から待ち（0.25〜）を引いた長さ、
-  // Challenge・Daily（待ちなし）では次の語が出て 0.6 秒まるごと、続きを打つたびに延びる。速い人の次の語の 1 打目を飲んでも、
-  // 次のキーで分かれば戻す（rescueFirstMiss）。窓の外の続きは、次の語の 1 打目がミスになるときだけ飲む。窓の外で次の語の頭として通した
-  // 続きの字は写しを残し、次のキーで次の語がミスになり続きだったと分かれば外す（lendSpill・withdrawLent）
-  if (swallowSpill(event)) {
-    event.preventDefault();
-    return;
-  }
-
-  // ローマ字モード: 読みを 1 打ずつ判定（IME は通さない）
+  // ローマ字モード: 読みを 1 打ずつ判定（IME は通さない）。前の語の続き（読みの続き・英単語の長い候補の続き）との突き合わせは judgeKey
   if (romajiMode) {
     handleRomajiKey(event);
     return;
   }
 
-  // 全文入力モード: 文字入力はブラウザ／IMEに任せる（Enterで判定）
-  if (freeMode) return;
+  // 全文入力モード: 文字入力はブラウザ／IMEに任せる（Enterで判定）。前の語がローマ字なら、読みの続きは窓の中だけ飲む（以前のまま。
+  // 英単語の続きは setNewWord で捨ててある）
+  if (freeMode) {
+    const key = spill?.keyOf(event);
+    if (key) {
+      if (performance.now() - spill.at <= SPILL_GAP_MS && feedSpill(key)) {
+        event.preventDefault();
+        return;
+      }
+      clearSpill();
+    }
+    return;
+  }
 
   if (event.key.length !== 1) return;
 
   event.preventDefault();
 
-  const typedChar = event.key.toLowerCase();
-
-  if (viableAnswers(activeCandidates(), typedSoFar + typedChar).length === 0) {
-    // 次の語でミスになる: 窓の外で次の語に受理したキーが前の語の続きだったと分かれば外す（withdrawLent）。
-    // 1 打目なら、前の語の続きとして飲んだキーを戻すか、遅れて来た続きとして飲む（rescueFirstMiss）
-    const back = withdrawLent(event, spellingFits);
-    if (back === "took") return;
-    if (!back) {
-      const rescued = rescueFirstMiss(typedChar, spill?.keyOf(event), spellingFits);
-      if (rescued === "late") return;
-      if (rescued?.replay) for (const ch of rescued.replay) handleCorrectChar(ch);
-    }
-  }
-  if (viableAnswers(activeCandidates(), typedSoFar + typedChar).length > 0) {
-    // 窓の外で受理するキーが前の語の続きの字でもあれば、続きとしての見方を残す（lendSpill）
-    const lent = lendSpill(event);
-    if (!handleCorrectChar(typedChar)) keepLent(lent);
-  } else {
-    handleTypingMiss(currentWord.en[currentIndex], typedChar);
-  }
+  // 語を打ち終えた直後の、終えた語の続き（gym の後の nasium、a の後の n）は次の語の打鍵にしない（judgeKey。前の語の続きと次の語の両方に食わせて解決）。
+  // 保留の字で前の語が完成したら（"again"）、このキーは新しい語のものとして流し直す（新しい語が Study の待ち・ローマ字・全文入力でも正しい先へ）
+  if (judgeSpellingKey(event.key.toLowerCase(), spill?.keyOf(event), handleCorrectChar) === "again") handleKeydown(event);
 }
 
 // ローマ字モードの 1 打。ローマ字のキーでないもの（空白・記号・Backspace）は判定しない（ミスにもしない）
@@ -925,38 +1065,37 @@ function handleRomajiKey(event) {
     return;
   }
   event.preventDefault();
-  // 窓の外で受理するキーが前の語の続きの字でもあれば、続きとしての見方を残す（lendSpill。受理する前に写しを作る）
-  let lent = lendSpill(event);
-  let result = romaji.feed(key);
-  if (!result.ok) {
-    lent = null;
-    // 次の語でミスになる: 窓の外で次の語に受理したキーが前の語の続きだったと分かれば外す（withdrawLent）。
-    // 1 打目なら、前の語の続きとして飲んだキーを戻すか、遅れて来た続きとして飲む（rescueFirstMiss。ミスの feed は状態を変えない）
-    const back = withdrawLent(event, romajiFits);
-    if (back === "took") return;
-    if (back === "retry") result = romaji.feed(key);
-    else {
-      const rescued = rescueFirstMiss(key, spill?.keyOf(event), romajiFits);
-      if (rescued === "late") return;
-      if (rescued?.replay) {
-        for (const k of rescued.replay) romaji.feed(k);
-        result = romaji.feed(key);
+  let expected = null;
+  const verdict = judgeKey({
+    key,
+    contKey: spill?.keyOf(event),
+    tryAccept: () => {
+      const result = romaji.feed(key);
+      if (!result.ok) {
+        expected = result.expected;
+        return null; // ミスの feed は状態を変えない
       }
-    }
-  }
-  if (!result.ok) {
-    handleTypingMiss(result.expected, key);
-    return;
-  }
-  spill = null; // 次の語を打ち始めた
-  spillEaten = null;
-  keepLent(result.done ? null : lent);
-  renderRomaji();
-  // 画面キーボードが出ていると、長い問題文の下の入力欄が盤面に隠れることがある。打ち始めに見える位置へ
-  if (romaji.keys.length === 1 && document.body.classList.contains("osk-open")) {
-    elements.input.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
-  }
-  if (result.done) finishRomajiWord();
+      renderRomaji();
+      // 画面キーボードが出ていると、長い問題文の下の入力欄が盤面に隠れることがある。打ち始めに見える位置へ
+      if (romaji.keys.length === 1 && document.body.classList.contains("osk-open")) {
+        elements.input.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
+      }
+      if (result.done) finishRomajiWord();
+      return result.done ? "done" : "more";
+    },
+    // この字で読みを打ち終えるか（状態は変えない: 写しの判定に打った字 ＋ この字を食わせる）
+    finishes: () => {
+      const r = createRomajiMatcher(romajiEntries).type(romaji.keys + key);
+      return r.missAt === -1 && r.done ? "done" : null;
+    },
+    own: () => true, // どの読みで打ち終えても正解（別解の案内は無い）
+    firstFits: () => createRomajiMatcher(romajiEntries).feed(key).ok,
+    fitsFromStart: (keys) => createRomajiMatcher(romajiEntries).type(keys).missAt === -1,
+    show: () => {}, // 入力欄の字は見えない（かなの 2 段表示は判定に食わせた打鍵だけ）。保留の字は見せない
+    echo: () => ({ kind: "romaji", entries: romajiEntries }),
+    miss: (typed = key) => handleTypingMiss(expected ?? romaji.state().expected, typed)
+  });
+  if (verdict === "again") handleKeydown(event); // 保留の字で前の語が完成した: このキーは新しい語のもの
 }
 
 // 読みを打ち終えた（Enter なし・変換なし）。速度はかなの数で数える
@@ -967,7 +1106,7 @@ function finishRomajiWord() {
   updateTypeSpeed();
   // まだ続けて打てる（長い読み・語末の ん の nn）なら、直後の続きの打鍵を次の語に持ち越さない
   if (state.canContinue) startRomajiSpill(romaji);
-  else spill = null;
+  else clearSpill();
   completeWord();
 }
 
@@ -1021,18 +1160,18 @@ export function handleTextInput() {
 
   if (awaitingNext) {
     // 正解直後の待ち: 入力は捨てる（次の語の判定に持ち越さない）。打ち終えた語の続き（gym の後の nasium）は
-    // 続きの判定に食わせて時刻を進める（keydown の swallowSpill と同じ。続きを打っている間はタイマーで次の語を出さない）。
+    // 続きの判定に食わせて時刻を進める（keydown の takeSpill と同じ。続きを打っている間はタイマーで次の語を出さない）。
     // 入力欄には打ち終えた綴りが残っている（待ちに入って 1 回目。waitInputBase）か、前の回で空にしてある
     // （2 回目からは打ち終えた綴りと比べない。a の続き a large の a を、残っている a と取り違えない）
     const base = waitInputBase;
     waitInputBase = "";
     const extra = base && raw.startsWith(base) ? raw.slice(base.length) : raw;
-    for (const ch of extra) if (!takeSpill(ch, { waiting: true })) break;
+    for (const ch of extra) if (!takeSpill(ch)) break;
     elements.input.value = "";
     return;
   }
 
-  const accepted = typedSoFar;
+  const accepted = shownTyped(); // 受理した字 ＋ 保留 finish で見せている字
 
   if (raw === accepted) return;
 
@@ -1046,42 +1185,38 @@ export function handleTextInput() {
   const fresh = [...raw.slice(accepted.length)];
   for (let i = 0; i < fresh.length; i++) {
     const typedChar = fresh[i];
-    // 打ち終えた前の語の続き（a の後の n、gym の後の nasium）は次の語の打鍵にしない（keydown と同じく、窓の中は次の語の頭と同じ字でも続きが先）
-    if (takeSpill(typedChar)) continue;
-    if (viableAnswers(activeCandidates(), typedSoFar + typedChar).length === 0) {
-      // 次の語でミスになる: 窓の外で次の語に受理したキーが前の語の続きだったと分かれば外す（withdrawLent）。
-      // 1 打目なら、前の語の続きとして飲んだキーを戻すか、遅れて来た続きとして飲む（rescueFirstMiss）
-      const back = withdrawLent({ key: typedChar }, spellingFits);
-      if (back === "took") continue;
-      if (!back) {
-        const rescued = rescueFirstMiss(typedChar, typedChar, spellingFits);
-        if (rescued === "late") continue;
-        if (rescued?.replay) for (const ch of rescued.replay) acceptChar(ch);
-      }
-    }
-    if (viableAnswers(activeCandidates(), typedSoFar + typedChar).length > 0) {
-      const willFinish = completedAnswer(activeCandidates(), typedSoFar + typedChar) !== null;
-      if (willFinish) {
-        elements.input.value = typedSoFar + typedChar;
+    const missBefore = typingMissCount;
+    let finished = false;
+    // 打ち終えた前の語の続き（a の後の n、gym の後の nasium）は次の語の打鍵にしない（keydown と同じ judgeKey。続きと次の語の両方に食わせて解決）
+    const verdict = judgeSpellingKey(typedChar, typedChar, (ch) => {
+      if (completedAnswer(activeCandidates(), typedSoFar + ch) !== null) {
+        elements.input.value = typedSoFar + ch;
         updateTypedPreview(elements.input.value);
       }
-      // 窓の外で受理するキーが前の語の続きの字でもあれば、続きとしての見方を残す（lendSpill）
-      const lent = lendSpill({ key: typedChar });
-      if (acceptChar(typedChar)) {
-        // 単語完成。同じ入力で一度に入った残り（予測変換で gymnasium と入ったときの nasium）は捨てる（setNewWord が入力欄をリセットする）。
-        // 続きなら続きの判定に食わせて、次の入力で来る続きも飲めるようにする（同じ入力の残りは前の語の打鍵。次の語に戻す控えにはしない）
-        for (const rest of fresh.slice(i + 1)) if (!takeSpill(rest, { waiting: true })) break;
+      finished = acceptChar(ch);
+      return finished;
+    });
+    if (verdict === "again") {
+      // 保留の字で前の語が完成した: この字から先は新しい語のもの。Study の待ちの間・新しい語が綴り入力でないときは続き（echo）に食わせるだけ
+      if (awaitingNext || romajiMode || freeMode) {
+        for (const rest of fresh.slice(i)) if (!takeSpill(rest)) break;
         return;
       }
-      keepLent(lent);
-    } else {
-      handleTypingMiss(currentWord.en[currentIndex], typedChar);
-      break; // 1イベントにつきミスは1回まで（予測変換の一括挿入対策）
+      i--;
+      continue;
     }
+    if (finished) {
+      // 単語完成。同じ入力で一度に入った残り（予測変換で gymnasium と入ったときの nasium）は捨てる（setNewWord が入力欄をリセットする）。
+      // 続きなら続きの判定に食わせて、次の入力で来る続きも飲めるようにする（同じ入力の残りは前の語の打鍵）
+      for (const rest of fresh.slice(i + 1)) if (!takeSpill(rest)) break;
+      return;
+    }
+    if (typingMissCount !== missBefore) break; // 1イベントにつきミスは1回まで（予測変換の一括挿入対策）
   }
 
-  elements.input.value = typedSoFar;
-  updateTypedPreview(typedSoFar);
+  const shown = shownTyped();
+  elements.input.value = shown;
+  updateTypedPreview(shown);
 }
 
 // ソフトキーボードのEnter（Go/実行）はkeydownではなくinsertLineBreakとして来る環境がある
@@ -1160,9 +1295,7 @@ function showAnswer() {
 
 function revealAnswer(fromMiss = false) {
   isRevealed = true;
-  spill = null; // 答えを見た: 前の語の続きの持ち越し止めは終える
-  spillEaten = null;
-  spillLent = null;
+  clearSpill(); // 答えを見た: 前の語の続きの持ち越し止めは終える
   hideHint();
   window.dispatchEvent(new CustomEvent("spelldash:reveal", { detail: { id: currentWord?.id, fromMiss } })); // チュートリアル（js/tutorial.js）
   if (!fromMiss) sfxReveal(); // ミス起点ではsfxMissが鳴っているので重ねない
@@ -1255,7 +1388,7 @@ function advanceNow(by = "key") {
   if (!awaitingNext) return; // タイマーと Enter が重なっても 1 回だけ進む
   awaitingNext = false;
   readingHold = false;
-  if (by !== "timer") spill = null; // Enter で自分から進んだ: 次の語の 1 打目から受け付ける
+  if (by !== "timer") clearSpill(); // Enter で自分から進んだ: 次の語の 1 打目から受け付ける
   if (!isPlaying) return;
   if (mode === "study" && setCompletePending) {
     endStudySession();
@@ -1319,6 +1452,7 @@ export function useHint() {
     renderWordNote(currentWord);
     sfxReveal();
   }
+  clearSpill(); // ヒントで足す字は次の語のもの。前の語の続きとの突き合わせは終える
 
   // 計算カード: 頭文字ではなく式を見せる
   if (currentWord.calc) {
@@ -1550,11 +1684,6 @@ function handleCorrectChar(typedChar) {
 
 // 1文字受理の共通処理（DOMの入力欄には触れない）。単語完成ならtrueを返す
 function acceptChar(typedChar) {
-  // 次の語を打ち始めた: 前の語の続きの持ち越し止めは終える（窓の外の続きを飲むのは次の語でミスになるときだけ。
-  // 続きの字でもあったキーの写しは、呼び元が受理の後に残す＝keepLent。ヒントで足した字では残さない）
-  spill = null;
-  spillEaten = null;
-  spillLent = null;
   typedSoFar += typedChar ?? currentWord.en[currentIndex];
   currentIndex = typedSoFar.length;
   correctChars++;
@@ -1565,7 +1694,7 @@ function acceptChar(typedChar) {
     // 打った綴りより長い候補が残っている（gym → gymnasium、a → an、sport → sports）: 続けて打たれた続きを次の語の打鍵にしない
     const rests = continuationsOf(activeCandidates(), typedSoFar);
     if (rests.length > 0) startSpellingSpill(rests);
-    else spill = null;
+    else clearSpill();
     finishTypedAnswer(done);
     return true;
   }
@@ -1746,7 +1875,6 @@ function completeWord() {
   const serialAtComplete = wordSerial;
   awaitingNext = true;
   waitInputBase = elements.input.value.toLowerCase().replace(/[^a-z]/g, "");
-  spillDoneAt = -Infinity;
   completedAt = performance.now();
   clearTimeout(advanceTimer);
   const tick = () => {
@@ -1758,17 +1886,12 @@ function completeWord() {
       advanceTimer = setTimeout(tick, NOTE_RECHECK_MS);
       return;
     }
-    // 前の語の続き（gymnasium の nasium・いわじゅくいせき の いせき）を打っている最中: 打ち終える（spill が消える）か、
-    // 最後の続きの打鍵から SPILL_HOLD_MS 手が止まるまで次の語を出さない（ゆっくり打つ人の続きが次の語の打鍵にならない）。続きを打たない人の待ちは変わらない
-    if (spill?.typed && performance.now() - spill.at < SPILL_HOLD_MS) {
-      advanceTimer = setTimeout(tick, SPILL_RECHECK_MS);
-      return;
-    }
-    // 待ちの間に続きを打ち切った（gymnasium の m）: 普通の待ち（ms）を続きの最後の打鍵から数え直す。
-    // 続きの直後の余分な 1 打（空白・gymnasiums の s）を、続きを打たない人と同じ長さだけ待ちの間に捨てる
-    const sinceDone = performance.now() - spillDoneAt;
-    if (sinceDone < ms) {
-      advanceTimer = setTimeout(tick, Math.max(10, ms - sinceDone));
+    // 前の語の続き（gymnasium の nasium・いわじゅくいせき の いせき）を打っている: 次の語を出す時刻 = max(本来の待ちの終わり,
+    // 最後の続きの打鍵 + SPILL_HOLD_MS〔まだ続く〕／+ SPILL_TAIL_MS〔2 打以上で打ち切った〕)。続きを打たない人・1 打の続き（語末の ん の 2 つ目の n）の待ちは変わらない
+    const hold = spillHoldLeft();
+    if (hold > 0) {
+      // まだ続きを打っている間は 100ms ごとに見直す（打ち切ったら時刻が縮む）。打ち切った後は残りをそのまま待つ
+      advanceTimer = setTimeout(tick, spill?.live ? Math.min(SPILL_RECHECK_MS, hold) : Math.max(10, hold));
       return;
     }
     advanceNow("timer");
@@ -2094,9 +2217,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
 
 // 打ち間違い: 答えは表示しない（覚えていたかどうかとは別のデータとして記録）
 function handleTypingMiss(expectedChar = currentWord?.en[currentIndex], typedChar = "") {
-  spill = null; // この語の本当のミス。前の語の続きとしては見ない
-  spillEaten = null;
-  spillLent = null;
+  clearSpill(); // この語の本当のミス。前の語の続きとしては見ない
   typingMissCount++;
   elements.miss.textContent = typingMissCount;
   hasMissedCurrentWord = true;
@@ -2178,7 +2299,7 @@ function setNewWord() {
   freeMode = !romajiMode && isFreeAnswer(currentWord);
   // 全文入力の語は 1 打ずつ判定しない（入力欄の字はブラウザ・IME が入れる）。英単語の長い候補の続きは持ち越さない
   // （物理キーだけ飲んで Android の input 経路では飲まない、という食い違いを作らない。ローマ字の続きの扱いは以前のまま）
-  if (freeMode && spill?.kind === "spelling") spill = null;
+  if (freeMode && spill?.kind === "spelling") clearSpill();
   document.body.classList.toggle("romaji-answer", romajiMode);
   setInputRomaji(romajiMode);
   document.body.classList.toggle("free-answer", freeMode);
