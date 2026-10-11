@@ -8,7 +8,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 25 # E2E だけで約 9〜10 分（1,175 件）。10 分では毎回打ち切られていた
+    timeout-minutes: 45 # E2E 1,509 件で 25 分を超えて打ち切られた（2026-10-11。1,435 件で約 22〜23 分）。件数が増えても余裕を残す
     steps:
       - uses: actions/checkout@v4
 
