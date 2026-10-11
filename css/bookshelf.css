@@ -1,21 +1,19 @@
-/* ===== 本棚（index.html だけ）: 藍漆の造りつけ書架。見出しの欄・彫りこんだ索引・棚板と背板・背表紙・函・机の本の空き・扉・本をさがす =====
-   Builder C が書く。中身は js/bookshelf.js が描く。色はトークン（tokens.css: --lacquer*・--lapis*・--foil・--gold*・--parchment・--ink-page*・--on-vault*・--leather-*）。
+/* ===== わたしの本棚（index.html だけ）: 藍漆の造りつけ書架。見出しの欄・棚板と背板・背表紙・函・机の本の空き・本立て・整理の札・本を足す =====
+   中身は js/bookshelf.js が描く（段は JS がデータの幅で割る: js/shelfStore.js packRows）。色はトークン（tokens.css: --lacquer*・--lapis*・--foil・--gold*・--parchment・--ink-page*・--on-vault*・--leather-*）。
    素材のタイルは assets/images/room（scripts/room-art/tiles.mjs）。昼 = light／paper、夜 = dark／indigo。
-   スマホ: 机の下、段は横にスクロール（右端で切れるのは本物の背）。PC（1100px 以上）: 右の列 440px、1 段に収めて背の幅を配る。
+   スマホ: 机の下、段は折り返す（横に送らない）。PC（1100px 以上）: 右の列 440px、背は 1.1 倍、空の段で机の列の下端まで。
    文字は明朝 500 だけ（700 はスタートの分しか無い）。ラテン文字と数字は Cormorant 600。動きは無い（hover の 3px だけ、reduced motion で 0）。 */
 
 .bookshelf {
-  --brass-1: #B08A46;
-  --brass-2: #DCBC76;
-  --brass-3: #F3DDA4;
-  --brass-4: #D2AE66;
-  --brass-5: #B08844;
   position: relative;
   z-index: 2;
   margin: 12px 8px 0;
   padding-bottom: 28px;
   container-type: inline-size;
   color: var(--on-vault);
+  --books-px: 8px; /* .books の左右の余白（js/bookshelf.js が段の中の幅を測るのにも使う） */
+  --row-h: 169px; /* 段の中身の高さ（一番高い物: 頻度順の函 160＋巻の頭 9） */
+  --pad-t: 36px; /* 段の上の余白（整理の札が収まる） */
 }
 
 .bookshelf[hidden] {
@@ -74,7 +72,7 @@
   background: url(../assets/images/room/frieze.svg) center / contain no-repeat;
 }
 
-/* 見出しの欄: 本棚の名と冊数・本をさがす・棚の索引。藍の漆（なめらかな艶、ごく弱い木目が透ける） */
+/* 見出しの欄: 「わたしの本棚」・整理・本を足す（2 行目は整理の形の一文）。藍の漆（なめらかな艶、ごく弱い木目が透ける） */
 .cabinet__rail {
   position: relative;
   display: grid;
@@ -100,19 +98,6 @@
   letter-spacing: 0.14em;
   color: var(--on-vault);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-}
-
-.bookshelf__title small {
-  font: 500 13px/1 var(--font-display);
-  letter-spacing: 0.06em;
-  color: var(--on-vault-2);
-}
-
-.bookshelf__title .n {
-  font: 600 18px/1 var(--font-latin);
-  color: var(--foil);
-  letter-spacing: 0;
-  margin-right: 2px;
 }
 
 .bookshelf .find {
@@ -157,135 +142,37 @@
   outline-offset: 2px;
 }
 
-/* 棚の索引: 彫りこんだ索引の帯（くぼんだ漆の面に金を入れた文字、区切りは真鍮の鋲）。押せる高さ 44px。
-   狭い幅（本棚 420px 未満）は 1 行の横スクロール: 右端で切れるのは本物の項目（送る合図）。帯の中だけが動き、頁の幅は増えない。
-   真鍮の線 2 本は箱の外（top:-4px）だと overflow で切れるので背景の層に。420px 以上は 8 列（下の @container で元に戻す） */
-.shelf-index {
-  scroll-padding-inline-end: 28px; /* 横に送る行（<420px）で、焦点の項目が右端のフェードの下に止まらない */
-  grid-column: 1 / -1;
-  position: relative;
-  display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  scroll-snap-type: x proximity;
-  margin: 6px -4px 0;
-  padding: 2px 28px 2px 4px; /* 高さ 48px = a の 44 + 4。右 28px で末尾の「仕事」がフェードの外まで来る */
-  border-radius: 2px;
-  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), rgba(0, 0, 0, 0.35));
-  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), rgba(0, 0, 0, 0.35));
-  background:
-    linear-gradient(90deg, #6E4E1E, #C9A35A 12%, #F3D58A 30%, #B98A3E 50%, #8A6A30 80%, #6E4E1E) 6px 1px / calc(100% - 12px) 2px no-repeat,
-    linear-gradient(90deg, #6E4E1E, #C9A35A 12%, #F3D58A 30%, #B98A3E 50%, #8A6A30 80%, #6E4E1E) 6px calc(100% - 3px) / calc(100% - 12px) 2px no-repeat,
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.18) 6px, rgba(0, 0, 0, 0.1) 60%, rgba(0, 0, 0, 0.22));
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), inset 0 -1px 0 rgba(170, 186, 230, 0.14), 0 1px 0 rgba(170, 186, 230, 0.1);
-}
-
-.shelf-index::-webkit-scrollbar {
-  display: none;
-}
-
-.shelf-index::before,
-.shelf-index::after {
-  content: "";
-  display: none;
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  height: 2px;
-  border-radius: 1px;
-  background: linear-gradient(90deg, #6E4E1E, #C9A35A 12%, #F3D58A 30%, #B98A3E 50%, #8A6A30 80%, #6E4E1E);
-  opacity: 0.75;
-}
-
-.shelf-index::before {
-  top: -4px;
-}
-
-.shelf-index::after {
-  bottom: -4px;
-  opacity: 0.45;
-}
-
-.shelf-index a {
-  position: relative;
-  flex: none;
+/* 見出しの欄の右: 整理・本を足す（文字の下線ボタン）。2 行目（#shelfNote）は整理の形の一文と「元に戻す」 */
+.rail__acts {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 10px;
-  scroll-snap-align: start;
-  color: var(--foil);
-  text-decoration: none;
-  font: 500 14px/1 var(--font-display);
-  letter-spacing: 0.08em;
-  text-indent: 0.08em;
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 0 rgba(170, 186, 230, 0.16);
+  gap: 4px;
 }
 
-.shelf-index a + a::before {
-  content: "";
-  position: absolute;
-  left: -2px;
-  top: 50%;
-  width: 4px;
-  height: 4px;
-  margin-top: -2px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #F6E2A8, #8A6A30 70%);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+#bookFinderOpen svg {
+  width: 12px;
+  height: 12px;
 }
 
-.shelf-index a:hover {
-  color: #F6E2A8;
+.rail__note {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 10px;
+  margin: 0;
+  font: 500 13px/1.5 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--on-vault-2);
 }
 
-.shelf-index a:focus-visible {
-  outline: 2px solid var(--on-vault);
-  outline-offset: -3px;
+.rail__note .find {
+  font-size: 13px;
 }
 
-@container (min-width: 420px) {
-  .cabinet__rail .shelf-index {
-    display: grid;
-    grid-template-columns: repeat(8, auto);
-    justify-content: space-between;
-    overflow: visible;
-    padding: 0 6px;
-    -webkit-mask-image: none;
-    mask-image: none;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.18) 6px, rgba(0, 0, 0, 0.1) 60%, rgba(0, 0, 0, 0.22));
-  }
-  .cabinet__rail .shelf-index::before,
-  .cabinet__rail .shelf-index::after {
-    display: block;
-  }
-  .cabinet__rail .shelf-index a {
-    padding: 0 6px;
-  }
-}
-
-/* 1100〜1179px の PC: 本棚の列は 340〜419px で、上の @container（420px）の 8 列に届かない。横に送る行はマウスでは送れない
-   （縦のホイールは頁を送り、スクロールバーも無い）ので、56b までの 2×4 の格子に戻す。1180px 以上は 8 列 */
-@media (min-width: 1100px) and (max-width: 1179px) {
-  .cabinet__rail .shelf-index {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    overflow: visible;
-    padding: 2px 0;
-    -webkit-mask-image: none;
-    mask-image: none;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.18) 6px, rgba(0, 0, 0, 0.1) 60%, rgba(0, 0, 0, 0.22));
-  }
-  .cabinet__rail .shelf-index::before,
-  .cabinet__rail .shelf-index::after {
-    display: block;
-  }
-  .cabinet__rail .shelf-index a + a::before {
-    display: none;
-  }
+/* 整理の形: 2 行目は 2 行ぶんの高さを最初から取る（下ろした・戻したの一文で段が動かない） */
+.bookshelf[data-mode="tidy"] .rail__note {
+  min-height: 3em;
 }
 
 /* 框（左右の柱）: 漆の艶と縦の木目、内側に金の細線 */
@@ -339,45 +226,33 @@
   display: flex;
   align-items: flex-end;
   gap: 2px;
+  box-sizing: content-box;
+  height: var(--row-h);
   margin: 0;
-  padding: 36px 8px 16px;
+  padding: var(--pad-t) var(--books-px) 16px;
   list-style: none;
-  overflow-x: auto;
-  overflow-y: visible;
-  scrollbar-width: none;
-  overscroll-behavior-x: contain;
-}
-
-.books::-webkit-scrollbar {
-  display: none;
-}
-
-/* 続きがある段: 右端は消し切らず、のぞく背が見えるように */
-.books--scroll {
-  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), rgba(0, 0, 0, 0.4));
-  mask-image: linear-gradient(90deg, #000 calc(100% - 26px), rgba(0, 0, 0, 0.4));
-  padding-right: 30px;
 }
 
 .books > li {
+  position: relative;
   flex: none;
   display: flex;
   align-items: flex-end;
 }
 
-/* 棚板: 2 つの面。上面（4px、光を受ける）＋前面（名札・答える言葉・続き）。前面の上に暖かい光、下の縁は暗く、背板へ影を落とす。
-   名札は自分の本のすぐ下（棚板の前面）にあり、次の段の本までは背板が 36px あく */
+/* 群の境目（函・目録の棚割り）は間を 10px に（段の頭は 0。js/shelfStore.js packRows と同じ値） */
+.books > li.g {
+  margin-left: 8px;
+}
+
+/* 棚板: 2 つの面。上面（4px、光を受ける）＋前面（16px。名札は無い）。前面の上に暖かい光、下の縁は暗く、背板へ影を落とす。
+   次の段の本までは背板が 36px（PC は 30px）あく。段の高さは中身に依らず一定（--row-h） */
 .shelf__board {
   order: 2;
   position: relative;
   z-index: 2;
-  height: 38px;
+  height: 20px;
   margin-top: -16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 5px 8px 0;
   background:
     linear-gradient(to bottom, #5A6794 0, #45507E 4px, rgba(4, 6, 12, 0.8) 4px, rgba(4, 6, 12, 0.8) 5px, rgba(255, 226, 186, 0.3) 5px, rgba(255, 226, 186, 0.3) 6px, rgba(255, 226, 186, 0.07) 6px, transparent 12px),
     linear-gradient(to top, rgba(0, 0, 0, 0.6) 0, rgba(0, 0, 0, 0.6) 1.5px, rgba(0, 0, 0, 0.18) 1.5px, transparent 8px),
@@ -386,123 +261,6 @@
     linear-gradient(to bottom, var(--lacquer) 6px, var(--lacquer-2));
   background-blend-mode: normal, normal, normal, soft-light, normal;
   box-shadow: 0 9px 10px -3px rgba(0, 0, 0, 0.6);
-}
-
-.shelf__label {
-  margin: 0;
-  display: flex;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-/* 真鍮の名札。小さなラベルの字間は広げない（.08em まで） */
-.plate {
-  position: relative;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 2px 14px 3px;
-  border-radius: 2px;
-  color: var(--ink-page);
-  font: 500 13px/1.45 var(--font-display);
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-  background: linear-gradient(100deg, var(--brass-1) 0%, var(--brass-2) 7%, var(--brass-3) 24%, var(--brass-2) 44%, var(--brass-4) 88%, var(--brass-5) 100%);
-  box-shadow: inset 0 0 0 0.75px rgba(62, 44, 18, 0.6), inset 0 1px 0 rgba(255, 244, 210, 0.55), inset 0 -1px 0 rgba(62, 44, 18, 0.35), 0 1px 1.5px rgba(0, 0, 0, 0.7);
-  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.35);
-}
-
-.plate::before,
-.plate::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: 3px;
-  height: 3px;
-  margin-top: -1.5px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #F6E2A8, #6E4E1E);
-  box-shadow: 0 0 0 0.5px rgba(62, 44, 18, 0.5);
-}
-
-.plate::before {
-  left: 5px;
-}
-
-.plate::after {
-  right: 5px;
-}
-
-.plate .n {
-  font: 600 14.5px/1 var(--font-latin);
-  letter-spacing: 0.02em;
-}
-
-.plate small {
-  font: 500 12px/1 var(--font-display);
-  letter-spacing: 0.04em;
-}
-
-.shelf__lang {
-  font: 500 12.5px/1.3 var(--font-display);
-  letter-spacing: 0.04em;
-  color: var(--on-vault-2);
-  white-space: nowrap;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-}
-
-/* 続き: 「あと N冊 →」。押せる高さ 44px（棚板の上下にはみ出す透明な余白） */
-.bookshelf .more {
-  margin: -6px 0 -6px auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0 2px 0 6px;
-  border: 0;
-  border-radius: 2px;
-  background: none;
-  cursor: pointer;
-  color: var(--on-vault);
-  font: 500 13px/1 var(--font-display);
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-}
-
-.more b {
-  font: 600 16px/1 var(--font-latin);
-  color: var(--foil);
-  margin: 0 2px;
-}
-
-.more svg {
-  width: 14px;
-  height: 9px;
-  color: var(--foil);
-}
-
-.bookshelf .more:hover {
-  background: none;
-  color: var(--foil);
-}
-
-.more--back svg {
-  transform: scaleX(-1);
-}
-
-.more:focus-visible {
-  outline: 2px solid var(--on-vault);
-  outline-offset: 2px;
-}
-
-.bookshelf .more[hidden] {
-  display: none;
-}
-
-.shelf__board:has(.more) {
-  justify-content: flex-start;
-  padding-left: 10px;
 }
 
 /* ---- 背表紙: 丸背の陰影・しぼ・バンド・金箔の題。幅は 44／48／52（押せる幅 44 以上）、押せる高さは背の全高 ---- */
@@ -559,8 +317,7 @@
 }
 
 .spine:focus-visible,
-.box:focus-visible,
-.doors:focus-visible {
+.box:focus-visible {
   outline: 2px solid var(--on-vault);
   outline-offset: 2px;
   transform: translateY(-3px);
@@ -624,32 +381,6 @@
   letter-spacing: 0.04em;
   color: #F0D9A0;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
-}
-
-/* 細い背（PC で段に詰めたとき）: 題と副題を 1 本の縦の行に */
-@container (max-width: 35px) {
-  .spine__l {
-    flex-direction: row;
-    gap: 3px;
-    top: 16px;
-    bottom: 16px;
-  }
-  .spine--vol .spine__l {
-    bottom: 34px;
-  }
-  .spine__t {
-    font-size: 14px;
-    letter-spacing: 0.02em;
-  }
-  .spine__s {
-    font-size: 12.5px;
-  }
-  .spine--label .spine__l {
-    left: 3px;
-    right: 3px;
-    padding: 5px 0;
-    max-height: calc(100% - 22px);
-  }
 }
 
 /* 布装（細かな綾）と、背の題箋（紙ラベル） */
@@ -734,27 +465,17 @@
   font-size: 13px;
 }
 
-/* 読みかけ: 藍の絹のしおりが棚板の上に長く垂れ、背の小口に淡い金の光 */
-.bookshelf .spine--reading {
-  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.55), 0 -1px 0 rgba(0, 0, 0, 0.3), inset 0 2px 0 rgba(243, 213, 138, 0.55), 0 -3px 8px -2px rgba(243, 213, 138, 0.35);
-}
-
-.spine--reading::after,
+/* いまのコースの函: 藍の絹のしおりが巻の頭から出て、題箋の右の縁（文字の箱に掛からない）に垂れる。紙の上なので見える（机の本のしおりと同じ藍） */
 .box--reading::after {
   content: "";
   position: absolute;
-  left: 56%;
-  bottom: -17px;
-  width: 6px;
-  height: 21px;
+  right: 7px;
+  top: -6px;
+  width: 5px;
+  height: 50px;
   z-index: 2;
   background: linear-gradient(90deg, var(--lapis), var(--lapis-3) 45%, var(--lapis-2) 70%, var(--lapis));
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%);
-  filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, 0.5));
-}
-
-.box--reading::after {
-  left: 30%;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 88%, 0 100%);
 }
 
 /* 机の本の空き: 背板より暗い穴（左右の背の陰が落ちる）。棚板には本の立っていた跡の、ごく淡い埃の線だけ */
@@ -777,6 +498,50 @@
   bottom: -2px;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(200, 190, 170, 0.22) 15%, rgba(200, 190, 170, 0.22) 85%, transparent);
+}
+
+/* 代本板: 空きに立つ仔牛皮紙の薄い板（本より低い・空きの幅いっぱい。明朝の字の箱は字より広いので、2 列の字が板の紙の上に収まる幅に）。
+   縦書きで右に短い題、左に「机の上」（墨。紙の上で約 10:1）。夜は一段沈めた地で、夜の層（z 3）の上の z 4 */
+.slot__card {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 16px;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  writing-mode: vertical-rl;
+  border-radius: 1px 1px 0 0;
+  color: var(--ink-page);
+  background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 128px, var(--leather-vellum);
+  background-blend-mode: soft-light, normal;
+  box-shadow: inset 0 0 0 0.75px rgba(90, 64, 34, 0.45), 1px 0 3px rgba(4, 6, 12, 0.6);
+}
+
+.slot__t {
+  font: 500 12px/1.1 var(--font-display);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.slot__s {
+  margin-inline-start: 0.3em;
+  font-size: 11px;
+}
+
+.slot__k {
+  font: 500 13px/1.1 var(--font-display);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.slot__card .lat {
+  font: 600 12px/1 var(--font-latin);
+  letter-spacing: 0.04em;
 }
 
 /* 真鍮の本立て（L 字の板、光の側に鋭い反射） */
@@ -811,45 +576,6 @@
   background: linear-gradient(90deg, #F6E2A8 0, #C9A35A 18%, #8A6A30 60%, #3E2C12 100%);
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.55);
   clip-path: polygon(0 0, 100% 10%, 100% 100%, 0 100%);
-}
-
-/* 寝かせた本の山（段の途中は PC だけ。スマホの 1 画面目の右端で切れるのは本物の背） */
-.flat {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 0;
-  margin: 0 4px 0 6px;
-}
-
-.flat i {
-  display: block;
-  height: 12px;
-  border-radius: 1px 2px 2px 1px;
-  box-shadow: inset 0 1px 0 rgba(255, 235, 200, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.5), 0 1px 0 rgba(0, 0, 0, 0.5);
-  background-image: linear-gradient(90deg, transparent 8px, rgba(230, 200, 135, 0.6) 8px, rgba(230, 200, 135, 0.6) 9px, transparent 9px, transparent calc(100% - 5px), #E9DFC8 calc(100% - 5px), #CDBF9F calc(100% - 1px), rgba(0, 0, 0, 0.4) 100%);
-}
-
-.books > li.fill {
-  display: none;
-}
-
-.shelf--box .books > li.fill {
-  display: flex;
-  flex: 1 1 0;
-  min-width: 0;
-  align-items: flex-end;
-  justify-content: flex-end;
-}
-
-.shelf--box .books > li.fill .flat {
-  display: none;
-}
-
-@media (max-width: 1099px) {
-  .books > li.mid--pc {
-    display: none;
-  }
 }
 
 /* ---- 函（コース）: 布張りの箱＋貼り題箋。上の口から巻の頭が段になってのぞく（花布と金の帯）。縁は左上に 1px の光 ---- */
@@ -970,224 +696,7 @@
   letter-spacing: 0;
 }
 
-/* ---- 仕事の言葉の扉: 半開きのガラス戸（框＋ガラスの向こうに数冊の背が見える。鍵穴は無い）。名札は「仕事の言葉 49冊」、下に「49冊を見る」 ---- */
-.archive {
-  position: relative;
-  scroll-margin-top: 12px;
-}
-
-.bookshelf .doors {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3px;
-  width: 100%;
-  height: 188px;
-  margin: 0;
-  padding: 16px 10px 14px;
-  border: 0;
-  border-radius: 0;
-  cursor: pointer;
-  text-align: center;
-  color: var(--on-vault);
-  font: 500 14px/1.4 var(--font-display);
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 16px), linear-gradient(var(--lacquer-2), var(--lacquer-3));
-}
-
-.door {
-  position: relative;
-  overflow: hidden;
-  border-radius: 1px;
-  background:
-    linear-gradient(135deg, rgba(190, 206, 245, 0.1), transparent 40%, rgba(0, 0, 0, 0.25)),
-    url(../assets/images/room/tile-lacqv.webp) 0 0 / 128px 512px,
-    linear-gradient(to bottom, #252E4C, var(--lacquer-2));
-  background-blend-mode: normal, soft-light, normal;
-  box-shadow: inset 1px 1px 0 rgba(190, 206, 245, 0.28), inset -1px -1px 0 rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(0, 0, 0, 0.55);
-}
-
-/* 左の戸は手前へ少し開いている（蝶番は左） */
-.door--l {
-  transform: perspective(520px) rotateY(-16deg);
-  transform-origin: 0 50%;
-  box-shadow: inset 1px 1px 0 rgba(190, 206, 245, 0.28), inset -1px -1px 0 rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(0, 0, 0, 0.55), 6px 0 12px -2px rgba(0, 0, 0, 0.6);
-}
-
-/* ガラス: 框の内側。向こうに背が数冊、手前に斜めの映り込み */
-.door__glass {
-  position: absolute;
-  inset: 14px 12px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 3px;
-  padding: 0 8px 10px;
-  border-radius: 1px;
-  overflow: hidden;
-  background: linear-gradient(to bottom, #0A0E1C, #05070F);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7), inset 2px 2px 0 rgba(190, 206, 245, 0.2), inset -2px -2px 0 rgba(0, 0, 0, 0.5), 0 0 0 0.75px rgba(230, 200, 135, 0.22);
-}
-
-.door__glass::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(112deg, rgba(220, 230, 255, 0.02) 0, rgba(220, 230, 255, 0.16) 28%, rgba(220, 230, 255, 0.02) 36%, rgba(220, 230, 255, 0) 60%, rgba(220, 230, 255, 0.08) 100%);
-}
-
-.door__glass i {
-  display: block;
-  width: 14px;
-  height: 52px;
-  border-radius: 1.5px 1.5px 0 0;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.5), rgba(255, 238, 205, 0.1) 40%, rgba(0, 0, 0, 0.4)), linear-gradient(to bottom, transparent 6px, rgba(230, 200, 135, 0.6) 6px, rgba(230, 200, 135, 0.6) 7px, transparent 7px), var(--v, #2B1F17);
-  opacity: 0.85;
-}
-
-.door__glass i:nth-child(1) { --v: #2B1F17; height: 50px; }
-.door__glass i:nth-child(2) { --v: #4A2320; height: 56px; }
-.door__glass i:nth-child(3) { --v: #5E361C; height: 48px; }
-.door__glass i:nth-child(4) { --v: #2C3550; height: 54px; }
-
-/* 吊り輪の引き手: 丸い座金（ロゼット）から下がる輪。輪は扉に影を落とす */
-.pull {
-  position: absolute;
-  top: 50%;
-  width: 16px;
-  height: 22px;
-  margin-top: 8px;
-}
-
-.pull::before {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 38% 34%, #FBE9B4 0, #D8B66E 30%, #8A6A30 72%, #3E2C12 100%);
-  box-shadow: 1px 1.5px 1.5px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(62, 44, 18, 0.6);
-}
-
-.pull::after {
-  content: "";
-  position: absolute;
-  left: 1px;
-  top: 5px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1.8px solid #B08A46;
-  border-top-color: #E4C47E;
-  border-left-color: #F3DDA4;
-  border-bottom-color: #7A5C26;
-  box-shadow: 2px 3px 2px -1px rgba(0, 0, 0, 0.65), inset 1px 1px 1px rgba(0, 0, 0, 0.35);
-}
-
-.door--l .pull {
-  right: 3px;
-}
-
-.door--r .pull {
-  left: 3px;
-}
-
-.doors__plate {
-  position: absolute;
-  left: 50%;
-  top: 24px;
-  transform: translateX(-50%);
-  padding: 6px 16px 7px;
-  border-radius: 2px;
-  color: var(--ink-page);
-  white-space: nowrap;
-  background: linear-gradient(100deg, var(--brass-1) 0%, var(--brass-2) 9%, var(--brass-3) 24%, var(--brass-2) 40%, var(--brass-4) 78%, var(--brass-5) 100%);
-  box-shadow: inset 0 0 0 0.75px rgba(62, 44, 18, 0.6), inset 0 1px 0 rgba(255, 244, 210, 0.55), 0 2px 3px rgba(0, 0, 0, 0.7);
-}
-
-.doors__plate b {
-  display: block;
-  font: 500 16px/1.35 var(--font-display);
-  letter-spacing: 0.08em;
-}
-
-.doors__plate b .n {
-  font: 600 18px/1 var(--font-latin);
-}
-
-.doors__plate small {
-  display: block;
-  margin-top: 1px;
-  font: 500 12px/1.4 var(--font-display);
-  letter-spacing: 0.06em;
-  color: var(--ink-page-2);
-}
-
-.doors__go {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 0 3px;
-  font: 500 14px/1.4 var(--font-display);
-  letter-spacing: 0.1em;
-  color: var(--foil);
-  border-bottom: 0.75px solid rgba(230, 200, 135, 0.55);
-  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.75), 0 1px 0 rgba(255, 240, 200, 0.14);
-  white-space: nowrap;
-}
-
-.doors__go svg {
-  width: 14px;
-  height: 9px;
-}
-
-.bookshelf .doors:hover {
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 16px), linear-gradient(var(--lacquer-2), var(--lacquer-3));
-}
-
-.doors:hover .doors__plate {
-  filter: brightness(1.05);
-}
-
-/* 開いた扉: 戸は畳み、名札と「閉じる」だけの 1 行 */
-.bookshelf .doors--open {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  height: auto;
-  min-height: 64px;
-  padding: 14px 10px 10px;
-}
-
-.doors--open .door {
-  display: none;
-}
-
-.doors--open .doors__plate,
-.doors--open .doors__go {
-  position: static;
-  transform: none;
-}
-
-.doors--open .doors__go svg {
-  transform: rotate(90deg);
-}
-
-.archive__in {
-  position: relative;
-}
-
-.archive__in[hidden] {
-  display: none;
-}
-
-/* ---- 本をさがす（索引カードの引き出し） ---- */
+/* ---- 本を足す（索引カードの引き出し）: 検索と棚ごとの畳んだ見出し。見出しと入力欄は固定、中身（.finder__body）だけ縦に送る ---- */
 .bookshelf .finder {
   width: min(560px, calc(100% - 20px));
   max-height: min(640px, calc(100% - 40px));
@@ -1207,13 +716,14 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  max-height: inherit;
+  max-height: min(640px, calc(100vh - 40px));
+  max-height: min(640px, calc(100dvh - 40px)); /* 中身（.finder__body）だけ縦に送る */
   margin: 0;
   padding: 18px 20px 14px;
   border-radius: 2px;
   background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, var(--parchment);
   background-blend-mode: soft-light, normal;
-  box-shadow: inset 0 0 0 0.75px rgba(169, 122, 50, 0.55), inset 0 0 0 4px var(--parchment), inset 0 0 0 4.75px rgba(169, 122, 50, 0.35), 0 30px 60px -20px rgba(0, 0, 0, 0.8), 0 12px 24px -8px rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 0 0 0.75px rgba(169, 122, 50, 0.55), inset 0 0 0 4px var(--parchment), inset 0 0 0 4.75px rgba(169, 122, 50, 0.35), 0 30px 60px -20px rgba(4, 6, 12, 0.8), 0 12px 24px -8px rgba(4, 6, 12, 0.6);
 }
 
 .finder__head {
@@ -1281,7 +791,7 @@
 }
 
 .finder__field input::placeholder {
-  color: #7A6B58;
+  color: #5E5040; /* 昼夜とも羊皮紙の上で 4.5:1 以上（例はここにしか書いていない） */
 }
 
 .finder__field input:focus-visible {
@@ -1307,86 +817,178 @@
   color: var(--ink-page-3);
 }
 
-.finder__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.finder__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 -6px;
+  padding: 0 6px 2px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.bookshelf .finder__row {
+/* 棚ごとの見出し（畳んだ details。開いた見出しは、閉じて開き直したら畳む） */
+.cat {
+  border-bottom: 0.75px solid rgba(42, 33, 25, 0.22);
+}
+
+.cat > summary {
   display: flex;
-  flex-wrap: wrap;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 2px 10px;
-  width: 100%;
-  min-height: 46px;
-  margin: 0;
-  padding: 9px 0 8px;
-  border: 0;
-  border-bottom: 0.75px solid rgba(42, 33, 25, 0.14);
-  border-radius: 0;
-  background: none;
+  min-height: 48px;
+  padding: 13px 22px 10px 2px;
+  position: relative;
+  list-style: none;
   cursor: pointer;
-  text-align: left;
-  color: var(--ink-page);
-  font: 500 15px/1.45 var(--font-display);
-  letter-spacing: 0.04em;
 }
 
-.finder__t {
-  flex: 1 1 100%;
-}
-
-.finder__lead {
+.cat > summary::-webkit-details-marker {
   display: none;
 }
 
-.finder__m {
-  flex: 1 1 100%;
-  font-size: 12.5px;
-  color: var(--ink-page-3);
+.cat__n {
+  font: 500 16px/1.4 var(--font-display);
+  letter-spacing: 0.06em;
+  color: var(--ink-page);
+}
+
+.cat__m {
+  font: 500 13px/1.4 var(--font-display);
   letter-spacing: 0.04em;
+  color: var(--ink-page-3);
 }
 
-.bookshelf .finder__row:hover,
-.bookshelf .finder__row:focus-visible {
-  background: rgba(201, 163, 90, 0.12);
+.cat > summary svg {
+  position: absolute;
+  right: 4px;
+  top: 20px;
+  width: 14px;
+  height: 9px;
+  color: var(--ink-page-3);
+  transition: transform 160ms ease;
 }
 
-.finder__row:hover .finder__t,
-.finder__row:focus-visible .finder__t {
+.cat[open] > summary svg {
+  transform: rotate(90deg);
+}
+
+.cat > summary:hover .cat__n {
   text-decoration: underline;
   text-decoration-color: rgba(169, 122, 50, 0.7);
   text-underline-offset: 4px;
 }
 
-.finder__row:focus-visible,
-.finder__close:focus-visible {
+.cat > summary:focus-visible {
   outline: 2px solid var(--ink-page);
   outline-offset: -2px;
 }
 
-@media (min-width: 560px) {
-  .finder__row {
-    flex-wrap: nowrap;
-  }
-  .finder__t {
-    flex: 0 1 auto;
-  }
-  .finder__lead {
-    display: block;
-    flex: 1 1 auto;
-    min-width: 12px;
-    height: 4px;
-    align-self: center;
-    margin-top: 6px;
-    background: radial-gradient(circle, rgba(42, 33, 25, 0.4) 0.75px, transparent 1.15px) 0 50% / 6px 4px repeat-x;
-  }
-  .finder__m {
-    flex: none;
-    white-space: nowrap;
-  }
+.cat__h {
+  margin: 10px 0 0;
+  font: 500 12.5px/1.5 var(--font-display);
+  letter-spacing: 0.08em;
+  color: var(--ink-page-3);
+}
+
+.finder__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cat .finder__list {
+  padding-bottom: 6px;
+}
+
+/* 行: 左に題と meta の 2 行、右に「棚に足す」（縮まない）。行のどこを押してもボタンと同じ（Tab で止まるのはボタン） */
+.finder__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 0;
+  border-top: 0.75px solid rgba(42, 33, 25, 0.12);
+  cursor: pointer;
+}
+
+.finder__txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.finder__t {
+  font: 500 15px/1.4 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--ink-page);
+}
+
+.finder__m {
+  font: 500 12.5px/1.4 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--ink-page-3);
+}
+
+.finder__row:hover .finder__t {
+  text-decoration: underline;
+  text-decoration-color: rgba(169, 122, 50, 0.7);
+  text-underline-offset: 4px;
+}
+
+/* 「棚に足す」: 0.75px の金の罫・角 2px（題箋）・左に ＋（線 1.15）。「棚にある」は罫を外し、金の押し点 */
+.bookshelf .finder__act {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  box-shadow: inset 0 0 0 0.75px rgba(169, 122, 50, 0.55);
+  cursor: pointer;
+  color: var(--ink-page);
+  font: 500 14px/1 var(--font-display);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.finder__act svg {
+  width: 11px;
+  height: 11px;
+}
+
+.bookshelf .finder__act:hover {
+  background: rgba(201, 163, 90, 0.14);
+}
+
+.bookshelf .finder__act--on {
+  box-shadow: none;
+  cursor: default;
+  color: var(--ink-page-3);
+  font-size: 13px;
+}
+
+.bookshelf .finder__act--on:hover {
+  background: none;
+}
+
+.finder__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #E9C979, #8A6A30 75%);
+}
+
+.finder__act:focus-visible,
+.finder__close:focus-visible {
+  outline: 2px solid var(--ink-page);
+  outline-offset: 2px;
 }
 
 /* ---- 夜（dark／indigo）: 炎は左上（机のろうそく）、月は左上の窓の高み。背 1 本ごとに 3 層 = 頭に月光の 1px（冷）・左の丸みにろうそくの縁（暖、1px の芯＋6px の裾）・右へ行くほど沈む（li の位置）。
@@ -1471,11 +1073,6 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .cabinet__cornice
   background: linear-gradient(90deg, rgba(143, 163, 217, 0.18), rgba(143, 163, 217, 0.55) 35%, rgba(143, 163, 217, 0.3) 100%);
 }
 
-html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
-  background: linear-gradient(135deg, rgba(255, 176, 96, 0.06), transparent 40%, rgba(0, 0, 0, 0.3)), url(../assets/images/room/tile-lacqv.webp) 0 0 / 128px 512px, linear-gradient(to bottom, #161C30, #0B0F1D);
-  background-blend-mode: normal, soft-light, normal;
-}
-
 /* 夜（スマホ）: 本棚は机のろうそくの下にあり、下へ行くほど暗い。背板と本だけを沈める（名札は沈めない）。左はろうそくで暖かく、右は沈む。炎から 700px 下なので揺らさない */
 @media (max-width: 1099px) {
   html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .shelf__in::after {
@@ -1508,34 +1105,20 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
   }
 }
 
-/* ---- PC（机は左、本棚は右の列 440px）: 1 段に収め、背の幅を段の幅に合わせて配る。余りは寝かせた本の山と本立てで閉じる ---- */
+/* ---- PC（机は左、本棚は右の列 440px）: 最初の棚板の上面を机の天板の線に。背は 1.1 倍。空の段で机の列の下端まで伸ばす（段の数は js/bookshelf.js） ---- */
 @media (min-width: 1100px) {
   .bookshelf {
-    margin: 88px 0 0; /* 最初の棚板の上面を机の天板の線（--desk-top 398px）に */
+    --books-px: 10px;
+    --row-h: 176px;
+    --pad-t: 30px;
+    margin: 84px 0 0; /* 最初の棚板の上面を机の天板の線（--desk-top 398px）に */
     padding-bottom: 40px;
-  }
-  .shelf--course .books,
-  .shelf--freq .books {
-    padding-top: 14px;
-  }
-  .bookshelf .shelf--course .box {
-    --h: 134px;
-  }
-  .shelf--course .box__l {
-    bottom: 28px;
-    top: 10px;
-  }
-  .shelf--course .box__n {
-    bottom: 7px;
   }
   .cabinet__rail {
     padding-top: 6px;
     padding-bottom: 4px;
   }
   .bookshelf .find {
-    min-height: 40px;
-  }
-  .shelf-index a {
     min-height: 40px;
   }
   .cabinet__cornice {
@@ -1546,104 +1129,8 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
     top: 12px;
     height: 30px;
   }
-  .books {
-    flex-wrap: nowrap;
-    overflow: visible;
-    gap: 1px;
-    padding: 30px 10px 16px;
-    background: none;
-  }
-  .books > li {
-    flex: var(--g, 44) 1 0;
-    min-width: var(--min, 24px);
-    max-width: 46px;
-  }
   .books > li > .spine {
-    width: 100%;
     height: calc(var(--h) * 1.1);
-    container-type: inline-size;
-  }
-  .books > li > .slot {
-    width: 100%;
-  }
-  .books > li > .bookend {
-    margin: 0 3px;
-  }
-  .books > li:has(> .bookend),
-  .books > li.mid {
-    flex: none;
-    max-width: none;
-  }
-  .shelf--social .books > li.mid,
-  .shelf--grammar .books > li.mid,
-  .shelf--kokugo .books > li.mid {
-    display: none;
-  }
-  /* 題箋の背は 2 行が要る（理科の 4 冊） */
-  .shelf--science .books > li:has(> .spine--label) {
-    min-width: 40px;
-  }
-  .shelf--box .books > li {
-    flex: none;
-    max-width: none;
-  }
-  /* コースの函は 6 つ: 段の幅に合わせて少し細く */
-  .shelf--course .books > li[data-course] {
-    flex: 1 1 0;
-    min-width: 0;
-    max-width: 68px;
-  }
-  .bookshelf .shelf--course .box {
-    width: 100%;
-  }
-  .shelf--box .books > li.fill {
-    flex: 1 1 0;
-    justify-content: flex-start;
-  }
-  .shelf--box .books > li.fill .flat {
-    display: flex;
-  }
-  .books > li.fill {
-    display: flex;
-    flex: 1 1 0;
-    min-width: 0;
-    max-width: 170px;
-    align-items: flex-end;
-    gap: 2px;
-    padding-left: 4px;
-    container-type: inline-size;
-  }
-  .flat--fill {
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: 136px;
-    margin: 0;
-  }
-  .flat--fill i {
-    height: 13px;
-  }
-  .books > li.fill .bookend {
-    flex: none;
-    margin: 0 0 0 2px;
-  }
-  @container (max-width: 60px) {
-    .books > li.fill .bookend {
-      display: none;
-    }
-  }
-  .books--scroll {
-    -webkit-mask-image: none;
-    mask-image: none;
-    padding-right: 10px;
-  }
-  .bookshelf .more {
-    display: none;
-  }
-  .bookshelf .doors {
-    height: 190px;
-  }
-  .bookshelf .doors--open {
-    height: auto;
   }
   /* 夜: 本棚はろうそく（左の机）から照らされる。暖める層だけを箱全体に掛けて揺らす（壁の溜まり・机の本と同じ room-flicker、同位相。黒は掛けない = 名札は昼と同じ） */
   html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .cabinet::after {
@@ -1656,7 +1143,7 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
     background: linear-gradient(90deg, rgba(255, 176, 96, 0.62) 0, rgba(255, 176, 96, 0.22) 18%, rgba(255, 176, 96, 0) 40%);
     animation: room-flicker 4.2s infinite;
   }
-  /* 夜: 沈みは段ごとの背板の中（.shelf__in は z 1 の重ね合わせ文脈。棚板と名札 z 2 は外）。右へ沈み、炎から遠い下の段ほど沈む（--sink）。書庫の中は nth-child が振り出しに戻るので別に */
+  /* 夜: 沈みは段ごとの背板の中（.shelf__in は z 1 の重ね合わせ文脈。棚板 z 2 は外）。右へ沈み、炎から遠い下の段ほど沈む（--sink。自分の本をたくさん足すと下が暗い） */
   html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .shelf__in::after {
     content: "";
     position: absolute;
@@ -1674,8 +1161,7 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
   html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .shelf:nth-child(n + 4) {
     --sink: 0.08;
   }
-  html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .shelf:nth-child(n + 7),
-  html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .archive .shelf {
+  html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .shelf:nth-child(n + 7) {
     --sink: 0.16;
   }
   html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .cabinet::before {
@@ -1694,7 +1180,7 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
 /* PC の背の低い画面: 部屋の帯が縮むぶん、棚板の上面を机の天板に合わせ直す */
 @media (min-width: 1100px) and (max-height: 820px) {
   .bookshelf {
-    margin-top: 100px;
+    margin-top: 24px;
   }
 }
 
@@ -1708,27 +1194,226 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .door {
   }
 }
 
-/* ---- 段の見出し行（名札・答え方・「あと N冊 →」）が細い端末で収まらないとき（Batch 56d）。
-   実測（扉を開いた状態）: 390 で 営業・マーケ・メディア 55px・医療・福祉・保育 13px はみ出し、360 で 文法・英作文／理科・数学も 1〜5px、320 はコースも含め 11 段。
-   仕事の言葉の段の「答えは日本語」は扉の札が言うので ≤599px で隠す。374px 以下は送る段の答え方を隠し、仕事の段の冊数も畳む。359px 以下は「あと N冊」を矢印だけに（aria-label はそのまま） ---- */
-@media (max-width: 599px) {
-  .shelf--job .shelf__board .shelf__lang {
-    display: none;
-  }
+/* ---- 少ない棚の一文（3 点以下）: リストの外。最後の段の本立ての右の残り（≥1100 は最初の空の段の中央）に js/bookshelf.js が置く ---- */
+.shelf-hint {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  height: var(--row-h);
+  margin: 0;
+  padding: 0 2px;
+  font: 500 14px/1.7 var(--font-display);
+  letter-spacing: 0.04em;
+  color: var(--on-vault-2);
+  text-shadow: 0 1px 0 rgba(4, 6, 12, 0.6);
 }
 
-@media (max-width: 374px) {
-  .shelf__board:has(.more) .shelf__lang,
-  .shelf--job .plate small {
-    display: none;
-  }
+.shelf-hint > span {
+  display: block;
+  width: 100%;
+  text-wrap: pretty;
+  word-break: auto-phrase; /* 日本語は文節で折る（「ここ／に並ぶ」にしない） */
 }
 
-@media (max-width: 359px) {
-  .bookshelf .more .more__n {
-    display: none;
+.shelf-hint--center > span {
+  text-align: center;
+}
+
+.bookshelf .shelf-hint__add {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -10px 0;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  vertical-align: baseline;
+  color: var(--on-vault);
+  font: inherit;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 200, 135, 0.6);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+}
+
+.bookshelf .shelf-hint__add:hover {
+  background: none;
+  text-decoration-color: var(--foil);
+}
+
+.shelf-hint__add:focus-visible {
+  outline: 2px solid var(--on-vault);
+  outline-offset: 2px;
+}
+
+/* ---- 整理の形: 背・函は押せない絵（名前は残す）。下ろせる物の頭に、仔牛皮紙の細い札「下ろす」 ----
+   札は背（函）の頭から 24px 上に出て 22px 差し込む（段の上の余白の中に収まる）。押せる範囲は札の高さ 46px × その背の幅（隣の背には掛けない）。
+   夜の層（.shelf__in::before／::after の z 3）より上の z 4 */
+.bookshelf[data-mode="tidy"] .spine,
+.bookshelf[data-mode="tidy"] .box {
+  cursor: default;
+}
+
+.bookshelf[data-mode="tidy"] .spine:hover,
+.bookshelf[data-mode="tidy"] .box:hover {
+  transform: none;
+  filter: none;
+}
+
+.bookshelf .slip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% - 22px);
+  z-index: 4;
+  height: 46px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  transition: transform 160ms ease;
+}
+
+.books > li[data-course] > .slip {
+  bottom: calc(100% - 31px); /* 函は巻の頭の 9px 下から */
+}
+
+.slip__paper {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 28px;
+  height: 46px;
+  margin-left: -14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  font: 500 13px/1 var(--font-display);
+  letter-spacing: 0.02em;
+  color: var(--ink-page);
+  border-radius: 1px;
+  background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 128px, var(--leather-vellum);
+  background-blend-mode: soft-light, normal;
+  box-shadow: inset 0 0 0 0.75px rgba(90, 64, 34, 0.45), 1px 2px 3px rgba(var(--shadow-rgb), 0.5);
+  transform: rotate(-2deg);
+}
+
+.bookshelf .slip:hover {
+  background: none;
+  transform: translateY(-3px);
+}
+
+.slip:focus-visible {
+  outline: none;
+}
+
+.slip:focus-visible .slip__paper {
+  outline: 2px solid var(--on-vault);
+  outline-offset: 2px;
+}
+
+/* 下ろした物: 「終わる」まで同じ場所に暗く残る（札は「戻す」）。名前は札と img の読み上げが言う */
+.books > li.is-dropped > .spine,
+.books > li.is-dropped > .box {
+  filter: brightness(0.34) saturate(0.6);
+}
+
+/* 窓で足した物: 背（函）の頭に金の押し点（次に棚を描き直すまで。動きは無い） */
+.books > li.is-new::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -12px;
+  z-index: 4;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #F3D58A, #8A6A30 75%);
+  box-shadow: 0 0 0 1px rgba(4, 6, 12, 0.45);
+}
+
+/* ---- 腰の扉（≥1100 の少ない棚）: 空の段 1 枚より下を、書架の腰の閉じた扉 2 枚で机の列の下端まで（藍漆の框・沈んだ鏡板と金の細線・真鍮の取っ手）。飾り（aria-hidden）。
+   高さは js/bookshelf.js が机の列の下端までの残りで入れる ---- */
+.shelf-doors {
+  position: relative;
+  display: flex;
+  gap: 3px;
+  box-sizing: border-box;
+  padding: 9px 1px 6px;
+  background: linear-gradient(to bottom, rgba(4, 6, 12, 0.75), rgba(4, 6, 12, 0.2) 9px, transparent 9px), var(--lacquer-3);
+}
+
+.shelf-doors > i {
+  position: relative;
+  flex: 1;
+  border-radius: 1px;
+  background:
+    linear-gradient(90deg, rgba(190, 206, 245, 0.12) 0, transparent 2px, transparent calc(100% - 3px), rgba(4, 6, 12, 0.55)),
+    linear-gradient(to bottom, rgba(190, 206, 245, 0.14) 0, transparent 2px, transparent calc(100% - 3px), rgba(4, 6, 12, 0.6)),
+    url(../assets/images/room/tile-lacqv.webp) 0 0 / 128px 512px,
+    linear-gradient(100deg, var(--lacquer), var(--lacquer-2) 70%);
+  background-blend-mode: normal, normal, soft-light, normal;
+  box-shadow: 0 1px 0 rgba(4, 6, 12, 0.7);
+}
+
+.shelf-doors > i::before {
+  content: "";
+  position: absolute;
+  inset: 18px 14px;
+  border-radius: 1px;
+  background: linear-gradient(to bottom, rgba(4, 6, 12, 0.4), rgba(4, 6, 12, 0.1) 24px, rgba(190, 206, 245, 0.04) 60%, rgba(4, 6, 12, 0.25));
+  box-shadow: inset 0 0 0 0.75px rgba(230, 200, 135, 0.45), inset 2px 3px 6px rgba(4, 6, 12, 0.55), 0 1px 0 rgba(190, 206, 245, 0.1);
+}
+
+.shelf-doors > i::after {
+  content: "";
+  position: absolute;
+  top: 26px;
+  width: 6px;
+  height: 26px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #F6E2A8 0, #C9A35A 30%, #8A6A30 70%, #3E2C12);
+  box-shadow: 1px 2px 3px rgba(4, 6, 12, 0.6);
+}
+
+.shelf-doors > i:first-child::after {
+  right: 5px;
+}
+
+.shelf-doors > i:last-child::after {
+  left: 5px;
+}
+
+/* 夜: 代本板の地を一段落とす（紙の質感の暗い点でも墨が 4.5:1 を切らない明るさ） */
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .slot__card {
+  background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 128px, #B3A68D;
+  background-blend-mode: soft-light, normal;
+}
+
+/* 夜: 札の地を一段落とす（背が沈むのに札だけ昼の明るさで光らない）。字は夜の --ink-page（約 6.9:1） */
+html:is([data-theme="dark"], [data-theme="indigo"]) .bookshelf .slip__paper {
+  background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 128px, #A99C84;
+  background-blend-mode: soft-light, normal;
+}
+
+/* ---- 細い幅（320〜359）と PC の細い列（1100〜1179: 列 340〜419px）: 見出しの欄を 1 行に（見出し 19px・字間 .06em・ボタンの余白 4px・「本を足す」の ＋ を隠す） ---- */
+@media (max-width: 359px), (min-width: 1100px) and (max-width: 1179px) {
+  .bookshelf__title {
+    font-size: 19px;
+    letter-spacing: 0.06em;
   }
-  .bookshelf .more {
-    padding: 0 6px;
+  .bookshelf .find {
+    padding: 0 4px;
+  }
+  #bookFinderOpen svg {
+    display: none;
   }
 }

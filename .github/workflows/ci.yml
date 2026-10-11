@@ -31,6 +31,9 @@ jobs:
       - name: 記憶の保持率の集計と記録（js/retentionCalc.js・retentionLog.js・studyTime.js）
         run: node scripts/test-retention.mjs
 
+      - name: わたしの本棚の規則（移行・照合・段の割り付け。js/shelfStore.js）
+        run: node scripts/test-shelf.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 

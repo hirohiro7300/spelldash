@@ -16,6 +16,7 @@ import { chromium } from "playwright-core";
 import { syncModulePreload, baseDataFiles, WORD_PAGES } from "../scripts/modulepreload.mjs";
 import { canonicalRomaji, readingEntries, primaryReading, matchRomaji } from "../js/romaji.js";
 import { FEEDBACK_MS, ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS, GLANCE_MS, MILESTONE_MS, waitAfterCorrect } from "../js/afterCorrect.js";
+import { shelfIdOf } from "../js/shelves.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STUB = path.join(ROOT, "tests", "mocks", "supabase-stub.js");
@@ -1813,7 +1814,7 @@ console.log("study (room):");
     check("書斎（1200）: 場面は机の 1 枚だけ・スタートは 1 画面目", sc.shown === 1 && sc.url.includes("scene-desk") && sceneRequests.length === 1 && start.bottom < 900 && start.bottom > 0, JSON.stringify({ ...sc, sceneRequests, bottom: start.bottom }));
     check("書斎（1200）: 横スクロールしない", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     // 本棚は右の列（#bookshelf の left ≥ 640）。最初の棚板の上面は机の天板の線（--desk-top 398px）にそろう
-    const shelfPos = await page.evaluate(() => ({ left: document.getElementById("bookshelf").getBoundingClientRect().left, hidden: document.getElementById("bookshelf").hidden, board: Math.round(document.querySelector("#shelf-course .shelf__board")?.getBoundingClientRect().top ?? -1), desk: Math.round(document.querySelector(".desk").getBoundingClientRect().top) }));
+    const shelfPos = await page.evaluate(() => ({ left: document.getElementById("bookshelf").getBoundingClientRect().left, hidden: document.getElementById("bookshelf").hidden, board: Math.round(document.querySelector("#bookshelf .shelf__board")?.getBoundingClientRect().top ?? -1), desk: Math.round(document.querySelector(".desk").getBoundingClientRect().top) }));
     check("書斎（1200）: 本棚は右の列（left ≥ 640）で、最初の棚板が机の天板の線にそろう", !shelfPos.hidden && shelfPos.left >= 640 && Math.abs(shelfPos.board - shelfPos.desk) <= 3, JSON.stringify(shelfPos));
     // Pro の文言は部屋に無い（#welcome を除く #room の文）
     const roomText = await page.evaluate(() => { const r = document.getElementById("room").cloneNode(true); r.querySelector("#welcome")?.remove(); return r.textContent; });
@@ -1834,10 +1835,15 @@ console.log("study (room):");
     await page.waitForTimeout(400);
     const picked = await page.evaluate(() => ({ t: document.querySelector('#welcomeBook [data-f="t"]').textContent, pressed: document.querySelector('.flatbook[data-book="jhist1"]').getAttribute("aria-pressed"), book: document.querySelector("#welcome [data-welcome-start]").dataset.book, back: !document.querySelector(".flatbook--back").closest("li").hidden }));
     check("初回: 積んだ本（社会）を押すと机の本が替わる（英単語は積みに降りる）", picked.t.includes("社会") && picked.pressed === "true" && picked.book === "jhist1" && picked.back, JSON.stringify(picked));
+    const shelfKeysF = () => page.evaluate(() => [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => (li.dataset.state === "slot" ? "slot:" : "") + li.dataset.key));
+    const previewF = await shelfKeysF(); // 下見の棚（スタート前・保存しない）
     await page.click("#welcome .welcome__cta [data-welcome-start]");
     await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhist1" && (await page.isVisible("#backToPath")), 6000);
     const after = await page.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), course: localStorage.getItem("spelldash_course"), welcome: !document.getElementById("welcome").offsetParent }));
-    check("初回: スタートで選んだ本がパックに足され、机に出て、腕試しが始まる", after.cat === "jhist1" && after.packs.includes("jhist1") && (await page.isVisible("#backToPath")) && after.welcome, JSON.stringify(after));
+    const shelfF = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_shelf") || "null"));
+    const postF = await shelfKeysF();
+    check("初回: スタートで選んだ本がパックに足され、机に出て、腕試しが始まる。スタート前の下見の棚は空き 中学歴史だけで、スタート後の spelldash_shelf は books [jhist1]・courses []・prov false、棚は下見と同じ（函・背 0）",
+      after.cat === "jhist1" && after.packs.includes("jhist1") && (await page.isVisible("#backToPath")) && after.welcome && JSON.stringify(previewF) === JSON.stringify(["slot:b:jhist1"]) && JSON.stringify(shelfF?.books) === JSON.stringify(["jhist1"]) && shelfF?.courses.length === 0 && shelfF?.prov === false && JSON.stringify(postF) === JSON.stringify(previewF), JSON.stringify({ after, previewF, shelfF, postF }));
     check("初回の本選びでエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
@@ -1856,7 +1862,9 @@ console.log("study (room):");
   }
 }
 
-// ===== 8.6 書斎の本棚（js/bookshelf.js）: 171 冊が 9 つの棚に。背を押すと机の本が替わる、函はコース、扉の奥は仕事の言葉、本をさがす =====
+// ===== 8.6 わたしの本棚（js/bookshelf.js・js/shelfStore.js。Batch 61）: 自分で足した本と函だけ（机の本は空き）。171 冊の目録は「本を足す」の窓、下ろすのは「整理」 =====
+// 種: shelfSeed（中学英語やり直し・中学英語 1年・最初の 3 章を覚えた）、shelfJson（spelldash_shelf の文字列）、countSeed(n)（目録の順の先頭 n 点・机は「すべて」・コースなし）、
+// heavySeed（全部足した棚 = 函 10＋本 113＋マイ単語帳 = 124 点。頻度順の巻 58 は除く）。移行・照合の規則の分岐は scripts/test-shelf.mjs（node の単体）
 console.log("bookshelf:");
 {
   const jhs1S = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
@@ -1864,127 +1872,280 @@ console.log("bookshelf:");
   const doneS = new Set(tagsS.slice(0, 3));
   const statsS = Object.fromEntries(jhs1S.filter((w) => doneS.has(w.tags[0])).map((w) => [w.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]));
   const shelfSeed = (extra = {}) => ({ storage: { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(statsS), spelldash_placement: "done", ...extra } });
+  const shelfJson = (obj = {}) => JSON.stringify({ v: 1, books: [], courses: [], seen: ["jhs-english1"], prov: false, ...obj });
   const fontBytesOf = (names) => names.reduce((n, f) => { try { return n + fs.statSync(path.join(ROOT, "assets/fonts", f)).size; } catch { return n; } }, 0);
-
+  const wordsOf = (cat) => { const raw = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs", `${cat}.json`), "utf8")); return (Array.isArray(raw) ? raw : raw.words).filter((w) => !w.kanjiOnly); };
+  // 目録（data/manifest.json と js/shelves.js）: 棚ごとの冊数と、全部足した棚のキー（頻度順の巻は除く）
+  const catsS = JSON.parse(fs.readFileSync(path.join(ROOT, "data/manifest.json"), "utf8")).subjects.find((s) => s.id === "english").categories;
+  const perShelf = catsS.reduce((m, c) => ({ ...m, [shelfIdOf(c.id, c)]: (m[shelfIdOf(c.id, c)] ?? 0) + 1 }), {});
+  // 種は 1 回だけ入れる（newPage と違い、開き直し・別のページへの移動で種を上書きしない）
+  async function seededPage(init = {}) {
+    const opts = {};
+    if (init.viewport) opts.viewport = init.viewport;
+    if (init.mobile) Object.assign(opts, { isMobile: true, hasTouch: true });
+    const page = await browser.newPage(opts);
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => {
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      localStorage.setItem("spelldash_schema_version", "6");
+      if (!seed.keepOnboarding) localStorage.setItem("spelldash_onboarded", "1");
+      for (const [k, v] of Object.entries(seed.storage ?? {})) localStorage.setItem(k, v);
+    }, init);
+    return page;
+  }
+  const openHome = async (page, url = "/index.html") => {
+    await page.goto(BASE + url, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => !!document.querySelector("#shelfRun .shelf")), 6000);
+    await page.waitForTimeout(300);
+  };
+  // 表示の並び（空きは "slot:" を付ける）・保存した棚
+  const shelfKeys = (pg) => pg.evaluate(() => [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => (li.dataset.state === "slot" ? "slot:" : "") + li.dataset.key));
+  const savedShelf = (pg) => pg.evaluate(() => JSON.parse(localStorage.getItem("spelldash_shelf") || "null"));
+  // 学習の状態: spelldash_* を全部（本棚の保存 spelldash_shelf と、開いた時刻・端末で変わるキーは除く）＋カテゴリの並び（出題の範囲）。下ろす・足すの前後でこれが同じなら学習は変わっていない
+  const LEARN_SKIP = ["spelldash_shelf", "spelldash_billing_open", "spelldash_device_id", "spelldash_user_items_meta"];
+  const learning = (pg) => pg.evaluate(async (skip) => ({
+    store: Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith("spelldash_") && !skip.includes(k)).sort().map((k) => [k, localStorage.getItem(k)])),
+    cats: (await import("/js/wordStore.js")).getCategories().map((c) => c.id).join(",")
+  }), LEARN_SKIP);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   // 背の文字（題・副題・巻数）の矩形が背のボタンの上下から 2px より出ていないか（scrollHeight では transform のずれを拾えない）
   const spineGeo = (pg) => pg.evaluate(() => [...document.querySelectorAll("#bookshelf button.spine, #bookshelf button.box")].map((b) => { const br = b.getBoundingClientRect(); const ts = [...b.querySelectorAll(".spine__t, .spine__s, .box__n")].map((t) => t.getBoundingClientRect()).filter((r) => r.height > 0); if (!ts.length) return null; const over = Math.round(Math.max(br.top - Math.min(...ts.map((r) => r.top)), Math.max(...ts.map((r) => r.bottom)) - br.bottom)); return over > 2 ? `${b.dataset.book || b.dataset.course}:${over}` : null; }).filter(Boolean));
+  // 段の割り付け: 物は段の内側・貪欲（次の段の最初の物はこの段の残りに入らない）・本立てと一文だけの段が無い・本立ては最後の段の残りに入るときだけ・一文の位置
+  const rowsOf = (pg) => pg.evaluate(() => {
+    const run = document.getElementById("shelfRun");
+    const rows = [...run.querySelectorAll(":scope > .shelf")].map((s) => {
+      const ul = s.querySelector(".books"), ub = ul.getBoundingClientRect(), cs = getComputedStyle(ul);
+      const left = ub.left + parseFloat(cs.paddingLeft), right = ub.right - parseFloat(cs.paddingRight);
+      const items = [...ul.querySelectorAll(":scope > li[data-key]")].map((li) => { const r = li.getBoundingClientRect(); return { key: li.dataset.key, group: li.dataset.group, left: r.left, right: r.right, w: r.width }; });
+      const end = ul.querySelector(":scope > li.shelf-end");
+      return { empty: s.classList.contains("shelf--empty"), left, right, inner: right - left, items, end: !!end, endRight: end ? end.getBoundingClientRect().right : null, top: s.getBoundingClientRect().top, bottom: s.getBoundingClientRect().bottom, h: s.offsetHeight };
+    });
+    const hintEl = document.getElementById("shelfHint");
+    const hint = hintEl.hidden ? null : (() => { const r = hintEl.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, text: hintEl.textContent }; })();
+    const nook = document.getElementById("nook").getBoundingClientRect(), plinth = document.querySelector(".cabinet__plinth").getBoundingClientRect();
+    const doorsEl = run.querySelector(":scope > .shelf-doors");
+    return { rows, hint, doors: doorsEl ? Math.round(doorsEl.getBoundingClientRect().height) : 0, nookBottom: nook.bottom, plinthBottom: plinth.bottom, listitems: run.querySelectorAll("li[data-key]").length, scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth, booksScroll: [...run.querySelectorAll(".books")].some((u) => u.scrollWidth > u.clientWidth + 1), more: document.querySelectorAll("#bookshelf .more").length };
+  });
+  const layoutBad = (v, n) => {
+    const bad = [];
+    const filled = v.rows.filter((r) => r.items.length);
+    if (n > 0 && filled.length === 0) bad.push("no-rows");
+    v.rows.forEach((r, i) => {
+      if (!r.empty && r.items.length === 0 && n > 0) bad.push(`row${i}:only-deco`);
+      for (const it of r.items) if (it.left < r.left - 0.5 || it.right > r.right + 0.5) bad.push(`over:${it.key}`);
+      if (r.end && r.endRight > r.right + 0.5) bad.push(`end-over:${i}`);
+      const next = v.rows[i + 1];
+      if (r.items.length && next?.items.length) {
+        const last = r.items[r.items.length - 1], first = next.items[0];
+        const gap = first.group !== last.group ? 10 : 2;
+        if (r.right - last.right >= gap + first.w - 0.5) bad.push(`not-greedy:${i}`);
+      }
+    });
+    const lastFilled = filled[filled.length - 1];
+    v.rows.forEach((r, i) => { if (r.end && r !== lastFilled) bad.push(`end-not-last:${i}`); });
+    if (lastFilled) {
+      const rest = lastFilled.right - lastFilled.items[lastFilled.items.length - 1].right;
+      if (rest >= 2 + 32 + 0.5 && !lastFilled.end) bad.push(`end-missing:${Math.round(rest)}`);
+      if (rest < 2 + 32 - 0.5 && lastFilled.end) bad.push("end-no-room");
+    }
+    if (n <= 3 && !v.hint) bad.push("hint-missing");
+    if (n > 3 && v.hint) bad.push("hint-extra");
+    if (v.hint) {
+      const r = v.rows.find((row) => v.hint.top >= row.top - 1 && v.hint.bottom <= row.bottom + 1);
+      if (!r) bad.push("hint-out-of-row");
+      else if (r.items.length && v.hint.left < r.items[r.items.length - 1].right) bad.push("hint-on-items");
+    }
+    if (v.listitems !== n) bad.push(`items:${v.listitems}`);
+    if (v.scrollW > v.innerW || v.booksScroll || v.more) bad.push("scroll");
+    return bad;
+  };
+  // 目録の順のキー（ページの shelfCatalogKeys）。全部足した棚は頻度順の巻を除く 124 点
+  let catalog124 = null;
+  const catalog = async () => {
+    if (catalog124) return catalog124;
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
+    await openHome(page);
+    const keys = await page.evaluate(() => import("/js/bookshelf.js").then((m) => m.shelfCatalogKeys()));
+    await page.close();
+    catalog124 = keys.filter((k) => !/^b:(ngsl|tsl|bsl|nawl)\d/.test(k));
+    return catalog124;
+  };
+  const countSeed = (keys, n, extra = {}) => { const pick = keys.slice(0, n); return shelfSeed({ spelldash_course: "", spelldash_category: "all", spelldash_packs: "[]", spelldash_shelf: JSON.stringify({ v: 1, books: pick.filter((k) => k.startsWith("b:")).map((k) => k.slice(2)), courses: pick.filter((k) => k.startsWith("c:")).map((k) => k.slice(2)), seen: [], prov: false }), ...extra }); };
 
-  // 1200: 本は名前のあるボタン、背を押すと机の本が替わる、函でコース、扉、矢印キー、本をさがす
+  // 1200: 移行した棚・窓の見出し・窓で足す → 背を押すと机・函でコース・仕事の言葉・検索・Enter・フォント
   {
     const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
     const fontFiles = new Set();
     page.on("response", (r) => { if (r.request().resourceType() === "font") fontFiles.add(new URL(r.url()).pathname.split("/").pop()); });
-    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await page.waitForTimeout(600);
+    await openHome(page);
     const n = await page.evaluate(() => ({
-      spines: document.querySelectorAll("#bookshelf button.spine").length, boxes: document.querySelectorAll("#bookshelf button.box").length, slots: document.querySelectorAll("#bookshelf .slot").length,
-      unlabeled: [...document.querySelectorAll("#bookshelf button.spine, #bookshelf button.box")].filter((b) => !b.getAttribute("aria-label")).length,
-      slot: document.querySelector("#bookshelf .slot")?.getAttribute("aria-label"), title: document.getElementById("bookshelfTitle")?.textContent.replace(/\s+/g, ""), shelves: document.querySelectorAll("#bookshelf .shelf").length
+      unlabeled: [...document.querySelectorAll("#shelfRun button")].filter((b) => !b.getAttribute("aria-label")).length,
+      title: document.getElementById("bookshelfTitle")?.textContent.trim(), add: !document.getElementById("bookFinderOpen").hidden && document.getElementById("bookFinderOpen").textContent.trim(),
+      current: document.querySelector('#shelfRun button.box[data-course="jhs-redo"]')?.className, slot: document.querySelector("#shelfRun .slot")?.getAttribute("aria-label")
     }));
-    check("本棚: 本は名前のあるボタン（背 64＋マイ単語帳・函 10・机の上の本は空き 1）、見出しは「本棚 171冊」、扉を開く前は 8 段", n.spines >= 60 && n.boxes === 10 && n.slots === 1 && n.unlabeled === 0 && n.slot?.includes("中学英語 1年") && n.title === "本棚171冊" && n.shelves === 8, JSON.stringify(n));
-    const plates = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#bookshelf .shelf")].map((s) => [s.id.replace("shelf-", ""), s.querySelector(".shelf__lang")?.textContent.trim()])));
-    check("本棚: 札の答え方（社会・理科・国語 = 答えは日本語、英単語・試験・文法・頻度順 = 答えは英語、コース = 順に進むコース）", plates.social === "答えは日本語" && plates.science === "答えは日本語" && plates.kokugo === "答えは日本語" && plates.eng === "答えは英語" && plates.exam === "答えは英語" && plates.grammar === "答えは英語" && plates.freq === "答えは英語" && plates.course === "順に進むコース", JSON.stringify(plates));
-    const firstFonts1200 = new Set(fontFiles); // 初回表示で読んだフォント（扉と本をさがすを開く前）
-    // 背を押す: 未追加の巻（jhs-english3、今のコースの巻）→ パックに足され、机に出る。コースはそのまま、第3巻／全8巻、焦点はスタート。元の本は棚に戻って読みかけ
-    await page.click('#bookshelf button.spine[data-book="jhs-english3"]');
-    const picked = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhs-english3" && (await page.textContent("#pathCard")).includes("第3巻／全8巻") &&
-      (await page.evaluate(() => !!document.querySelector('#bookshelf .slot')?.getAttribute("aria-label")?.includes("中学英語 3年") && document.activeElement?.id === "pathStart")), 6000);
-    const st = await page.evaluate(() => ({ packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), course: localStorage.getItem("spelldash_course"), focus: document.activeElement?.id, title: document.querySelector("#pathHead .path__title")?.textContent, slot: document.querySelector("#bookshelf .slot")?.getAttribute("aria-label"), back: document.querySelector('#bookshelf button.spine[data-book="jhs-english1"]')?.className, status: document.getElementById("bookshelfStatus")?.textContent }));
-    check("本棚: 背を押すと机の本が替わる（未追加の巻はその場で読み込み、コースはそのまま、第3巻／全8巻、焦点はスタート、元の本は棚に戻って読みかけ）", picked && st.packs.includes("jhs-english3") && st.course === "jhs-redo" && st.focus === "pathStart" && st.title.includes("中学英語 3年") && st.slot?.includes("中学英語 3年") && st.back?.includes("spine--reading") && st.status.includes("机に出した"), JSON.stringify(st));
-    // 函を押す: 英検のコースへ（制覇していない最初の巻 eiken5 から）
-    await page.click('#bookshelf button.box[data-course="eiken"]');
-    // コースの保存・机の見出しのあとに本棚の描き直しと焦点が来る（遅い端末・CI では間が空く）。全部そろうまで待つ
-    const boxed = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_course"))) === "eiken" && (await page.textContent("#pathHead")).includes("英検5級") &&
-      (await page.evaluate(() => !!document.querySelector('#bookshelf button.box--reading[data-course="eiken"]') && document.activeElement?.id === "pathStart")), 6000);
-    const st2 = await page.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), box: document.querySelector('#bookshelf button.box[data-course="eiken"]').className, label: document.querySelector('#bookshelf button.box[data-course="eiken"]').getAttribute("aria-label"), prev: document.querySelector('#bookshelf button.box[data-course="jhs-redo"]').className, focus: document.activeElement?.id }));
-    check("本棚: 函を押すとコースが替わる（eiken → eiken5、函に「いまのコース」、焦点は机のスタート）", boxed && st2.cat === "eiken5" && st2.box.includes("box--reading") && st2.label.includes("いまのコース") && !st2.prev.includes("box--reading") && st2.focus === "pathStart", JSON.stringify(st2));
-    // 扉: 開くと 49 冊（8 段）。鍵穴は無い。最初の背に焦点。背の文字ははみ出さない
-    const beforeDoors1200 = new Set(fontFiles); // ここから先（扉・本をさがす）で増えるフォント
-    await page.click("#archiveDoors");
-    await page.waitForTimeout(300);
-    const d = await page.evaluate(() => ({ exp: document.getElementById("archiveDoors").getAttribute("aria-expanded"), n: document.querySelectorAll("#shelf-job button.spine").length, rows: document.querySelectorAll("#shelf-job .shelf").length, keyhole: document.querySelectorAll("#bookshelf [class*=keyhole], #bookshelf [class*=lock]").length, focus: document.activeElement?.dataset.book, go: document.querySelector("#archiveDoors .doors__go")?.textContent.trim(), overflow: [...document.querySelectorAll("#bookshelf .spine__l")].filter((l) => l.scrollHeight > l.clientHeight + 2 || l.scrollWidth > l.clientWidth + 2).map((l) => l.closest("button").dataset.book) }));
-    check("本棚: 扉を開くと仕事の言葉 49 冊（8 段）。鍵穴は無く、最初の背に焦点、背の文字ははみ出さない", d.exp === "true" && d.n === 49 && d.rows === 8 && d.keyhole === 0 && d.focus === "accounting" && d.go.includes("閉じる") && d.overflow.length === 0, JSON.stringify(d));
-    const geo1200 = await spineGeo(page);
-    check("本棚（1200）: 背の文字が背の上下からはみ出さない（扉の中・題箋つきの長い題を含む）", geo1200.length === 0, geo1200.join(" "));
-    // 段の中は ←→ で動き、Tab で止まるのは 1 本だけ
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowRight");
-    const kb = await page.evaluate(() => ({ focus: document.activeElement?.dataset.book, tab0: [...document.activeElement.closest(".books").querySelectorAll("button")].filter((b) => b.tabIndex === 0).map((b) => b.dataset.book) }));
-    check("本棚: 段の中は ←→ で動き、Tab で止まるのは 1 本だけ（roving tabindex）", kb.focus === "hr" && kb.tab0.length === 1 && kb.tab0[0] === "hr", JSON.stringify(kb));
-    // 本をさがす: 「歴史」で高校日本史・世界史も（別名）、「トーイック」で TOEIC。Esc で閉じて焦点は開いたボタンへ
+    const keys0 = await shelfKeys(page);
+    const saved0 = await savedShelf(page);
+    check("本棚（移行・1200）: shelfSeed の棚は函 中学英語やり直し（いまのコース）と、その直後の空き 中学英語 1年の 2 点だけ。押せる物は名前つき、見出しは「わたしの本棚」、本を足すがある、spelldash_shelf は v1（courses [jhs-redo]・books []・prov false）",
+      same(keys0, ["c:jhs-redo", "slot:b:jhs-english1"]) && n.unlabeled === 0 && n.title === "わたしの本棚" && n.add === "本を足す" && n.current?.includes("box--reading") && n.slot?.includes("中学英語 1年") && saved0?.v === 1 && same(saved0.courses, ["jhs-redo"]) && saved0.books.length === 0 && saved0.prov === false, JSON.stringify({ keys0, n, saved0 }));
+    const firstFonts1200 = new Set(fontFiles); // 初回表示で読んだフォント（窓を開く前）
+    // 窓: 入力が空なら棚ごとの見出し 9 つ（全部畳んである）。数はデータの数
     await page.click("#bookFinderOpen");
     await page.waitForTimeout(200);
+    const cats = await page.evaluate(() => ({ title: document.getElementById("bookFinderTitle").textContent, hint: document.getElementById("bookFinderHint").textContent, list: [...document.querySelectorAll("#bookFinderBrowse details.cat")].map((d) => ({ id: d.dataset.shelf, open: d.open, text: d.querySelector("summary").textContent.replace(/\s+/g, " ").trim() })) }));
+    const cat = Object.fromEntries(cats.list.map((c) => [c.id, c.text]));
+    check("本を足す: 入力が空なら見出し 9 つ（コース 順に進むコース／英単語・試験・文法・英作文・頻度順の全集 答えは英語／社会・理科・数学・国語・漢字 答えは日本語／仕事の言葉 経理・医療・ITなど）で全部畳んである。数はデータの数",
+      cats.title === "本を足す" && cats.hint === "棚ごとの一覧" && cats.list.length === 9 && cats.list.every((c) => !c.open) &&
+      cat.course === "コース 6組 順に進むコース" && cat.eng === `英単語 ${perShelf.eng + 1}冊 答えは英語` && cat.exam === `試験 ${perShelf.exam}冊 答えは英語` && cat.grammar === `文法・英作文 ${perShelf.grammar}冊 答えは英語` && cat.freq === "頻度順の全集 4組 答えは英語" &&
+      cat.social === `社会 ${perShelf.social}冊 答えは日本語` && cat.science === `理科・数学 ${perShelf.science}冊 答えは日本語` && cat.kokugo === `国語・漢字 ${perShelf.kokugo}冊 答えは日本語` && cat.job === `仕事の言葉 ${perShelf.job}冊 経理・医療・ITなど`, JSON.stringify(cats));
+    // 窓で中学英語 3年を棚に足す → packs は変わらない → 閉じると焦点は足した背 → 押すと机に出る（未追加の巻はその場で読み込み、コースはそのまま、第3巻／全8巻、焦点はスタート）。空きは函の直後で、中学英語 1年は棚に無い（函の中）
+    await page.fill("#bookFinderQ", "中学英語 3年");
+    await page.waitForTimeout(100);
+    await page.click('#bookFinderList .finder__act[data-key="b:jhs-english3"]');
+    const packsAfterAdd = await page.evaluate(() => localStorage.getItem("spelldash_packs"));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const focus3 = await page.evaluate(() => document.activeElement?.dataset.book);
+    await page.keyboard.press("Enter");
+    const picked = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhs-english3" && (await page.textContent("#pathCard")).includes("第3巻／全8巻") &&
+      (await page.evaluate(() => !!document.querySelector("#shelfRun .slot")?.getAttribute("aria-label")?.includes("中学英語 3年") && document.activeElement?.id === "pathStart")), 6000);
+    const st = await page.evaluate(() => ({ packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), course: localStorage.getItem("spelldash_course"), focus: document.activeElement?.id, title: document.querySelector("#pathHead .path__title")?.textContent, status: document.getElementById("bookshelfStatus")?.textContent }));
+    const keys3 = await shelfKeys(page);
+    check("本棚: 窓で棚に足しただけでは packs は変わらず、閉じると焦点は足した背。押すと机の本が替わる（未追加の巻はその場で読み込み、コースはそのまま、第3巻／全8巻、焦点はスタート、空きは函の直後、中学英語 1年は函の中で背は無い）",
+      packsAfterAdd === JSON.stringify(["jhs-english1"]) && focus3 === "jhs-english3" && picked && st.packs.includes("jhs-english3") && st.course === "jhs-redo" && st.focus === "pathStart" && st.title.includes("中学英語 3年") && same(keys3, ["c:jhs-redo", "slot:b:jhs-english3"]) && st.status.includes("机に出した"), JSON.stringify({ packsAfterAdd, focus3, st, keys3 }));
+    // 窓で英検の函を足す → 函を押す: 英検のコースへ（制覇していない最初の巻 eiken5 から）。中学英語やり直しの函は印なしで残る
+    await page.click("#bookFinderOpen");
+    await page.fill("#bookFinderQ", "英検");
+    await page.waitForTimeout(100);
+    await page.click('#bookFinderList .finder__act[data-key="c:eiken"]');
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    await page.click('#shelfRun button.box[data-course="eiken"]');
+    const boxed = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_course"))) === "eiken" && (await page.textContent("#pathHead")).includes("英検5級") &&
+      (await page.evaluate(() => !!document.querySelector('#shelfRun button.box--reading[data-course="eiken"]') && document.activeElement?.id === "pathStart")), 6000);
+    const st2 = await page.evaluate(() => ({ cat: localStorage.getItem("spelldash_category"), label: document.querySelector('#shelfRun button.box[data-course="eiken"]').getAttribute("aria-label"), prev: document.querySelector('#shelfRun button.box[data-course="jhs-redo"]')?.className, focus: document.activeElement?.id }));
+    check("本棚: 窓で足した函を押すとコースが替わる（eiken → eiken5、函に「いまのコース」、中学英語やり直しの函は印なしで残る、焦点は机のスタート）", boxed && st2.cat === "eiken5" && st2.label.includes("いまのコース") && !!st2.prev && !st2.prev.includes("box--reading") && st2.focus === "pathStart", JSON.stringify(st2));
+    // 仕事の言葉: 見出しを開くと小見出し 8 つ・49 行（扉の代わり）。鍵穴は無い
+    await page.click("#bookFinderOpen");
+    await page.waitForTimeout(150);
+    await page.click('#bookFinderBrowse details[data-shelf="job"] > summary');
+    await page.waitForTimeout(150);
+    const d = await page.evaluate(() => { const job = document.querySelector('#bookFinderBrowse details[data-shelf="job"]'); return { open: job.open, heads: [...job.querySelectorAll(".cat__h")].map((h) => h.textContent), rows: job.querySelectorAll(".finder__row").length, keyhole: document.querySelectorAll("#bookshelf [class*=keyhole], #bookshelf [class*=lock], #archiveDoors").length }; });
+    check("本を足す: 仕事の言葉の見出しを開くと小見出し 8 つ・49 行（経理・法務・人事・総務 … 不動産・自動車）。鍵穴・錠・扉は無い", d.open && d.heads.length === 8 && d.heads[0] === "経理・法務・人事・総務" && d.heads[7] === "不動産・自動車" && d.rows === perShelf.job && d.keyhole === 0, JSON.stringify(d));
+    // 検索: 「歴史」で高校日本史・世界史も（別名）、「トーイック」で TOEIC。足していない回は Esc で閉じて焦点は本を足す
     await page.fill("#bookFinderQ", "歴史");
     await page.waitForTimeout(100);
-    const f = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, rows: document.querySelectorAll("#bookFinderList .finder__row").length, text: document.getElementById("bookFinderList").textContent, focus: document.activeElement?.id }));
+    const f = await page.evaluate(() => ({ rows: document.querySelectorAll("#bookFinderList .finder__row").length, text: document.getElementById("bookFinderList").textContent, hint: document.getElementById("bookFinderHint").textContent, browse: document.getElementById("bookFinderBrowse").hidden }));
     await page.fill("#bookFinderQ", "トーイック");
     await page.waitForTimeout(100);
     const f2 = await page.evaluate(() => document.getElementById("bookFinderList").textContent);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
     const f3 = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, focus: document.activeElement?.id }));
-    check("本棚: 本をさがす（「歴史」で 6 冊以上、高校日本史・世界史も。「トーイック」で TOEIC。Esc で閉じて焦点は開いたボタンへ）", f.open && f.rows >= 6 && f.text.includes("高校日本史") && f.text.includes("高校世界史") && f2.includes("TOEIC") && !f3.open && f3.focus === "bookFinderOpen", JSON.stringify({ ...f, text: f.text.slice(0, 80), f2: f2.slice(0, 40), f3 }));
-    // 入力欄の Enter は最初の 1 冊（閉じるボタンがフォームの既定の submit になって閉じてしまわない）。古文単語はコース外: 鍵はそのまま
+    check("本を足す: 検索（「歴史」で 6 冊以上、高校日本史・世界史も。「トーイック」で TOEIC。入力があると見出しは隠れる）。足していない回は Esc で閉じて焦点は本を足す", f.rows >= 6 && f.text.includes("高校日本史") && f.text.includes("高校世界史") && f.hint === `${f.rows}冊` && f.browse && f2.includes("TOEIC") && !f3.open && f3.focus === "bookFinderOpen", JSON.stringify({ ...f, text: f.text.slice(0, 80), f2: f2.slice(0, 40), f3 }));
+    // 入力欄の Enter は最初の行のボタンへ焦点を移すだけ（足さない・閉じない）。もう一度 Enter で足す。足した物をもう一度押すと「棚にある」
+    const before9 = await learning(page);
     await page.click("#bookFinderOpen");
     await page.fill("#bookFinderQ", "古文");
     await page.waitForTimeout(100);
     await page.keyboard.press("Enter");
-    const entered = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "hs-kobun" &&
-      (await page.evaluate(() => !document.getElementById("bookFinder").open && document.activeElement?.id === "pathStart" && !!document.querySelector("#pathHead .path__title")?.textContent.includes("古文単語"))), 6000);
-    const st3 = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, course: localStorage.getItem("spelldash_course"), focus: document.activeElement?.id, title: document.querySelector("#pathHead .path__title")?.textContent }));
-    check("本棚: 本をさがすの Enter は最初の 1 冊を机に（閉じるだけにならない。古文単語・コースの鍵はそのまま・焦点はスタート）", entered && !st3.open && st3.course === "eiken" && st3.focus === "pathStart" && st3.title?.includes("古文単語"), JSON.stringify(st3));
-    // 本をさがすで選ぶ: コース外の本（都道府県）→ 机に出る。コースの鍵は触らず、柱は「社会の棚」、答えは日本語・60枚
+    const e1 = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, focus: document.activeElement?.getAttribute("aria-label"), saved: JSON.parse(localStorage.getItem("spelldash_shelf")).books.includes("hs-kobun") }));
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(100);
+    const e2 = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, focus: document.activeElement?.getAttribute("aria-label"), disabled: document.activeElement?.getAttribute("aria-disabled"), text: document.activeElement?.textContent.trim(), saved: JSON.parse(localStorage.getItem("spelldash_shelf")).books.includes("hs-kobun"), status: document.getElementById("bookFinderStatus").textContent }));
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(100);
+    const e3 = await page.evaluate(() => document.getElementById("bookFinderStatus").textContent);
+    check("本を足す: 入力欄の Enter は最初の行のボタンへ焦点を移すだけ（閉じない・足さない）。もう一度 Enter で足す（高校 古文単語が「棚にある」に・packs・机・コースは変わらない）。もう一度押すと「高校 古文単語は棚にある」",
+      e1.open && e1.focus === "高校 古文単語を棚に足す" && !e1.saved && e2.open && e2.focus === "高校 古文単語は棚にある" && e2.disabled === "true" && e2.text === "棚にある" && e2.saved && e2.status === "棚に足した: 高校 古文単語" && e3 === "高校 古文単語は棚にある" && same(before9, await learning(page)), JSON.stringify({ e1, e2, e3 }));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    // 本を足す → 棚 → 机: 都道府県を足して Esc → 焦点は都道府県の背 → Enter で机に出る（コース外: 柱は社会の棚・答えは日本語・60枚・コースの鍵はそのまま）。続けて中学英語 3年の背を押すと、都道府県は背として棚に戻る
     await page.click("#bookFinderOpen");
     await page.fill("#bookFinderQ", "都道府県");
     await page.waitForTimeout(100);
-    await page.click("#bookFinderList .finder__row");
-    const found = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "pref", 6000);
-    const st4 = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, kicker: document.querySelector("#pathHead .path__kicker")?.textContent, course: localStorage.getItem("spelldash_course"), focus: document.activeElement?.id, meta: document.querySelector("#pathHead .path__meta")?.textContent }));
-    check("本棚: 本をさがすで選ぶと机に出る（コース外の本はコースの鍵を触らない: 柱は「社会の棚」、答えは日本語・60枚）", found && !st4.open && st4.kicker.includes("社会の棚") && st4.course === "eiken" && st4.focus === "pathStart" && st4.meta.includes("日本語") && st4.meta.includes("60枚"), JSON.stringify(st4));
-    // フォント: 初回表示は ≤ 520KB。扉と本をさがすを開いたあとに増えるのは Shippori 500 のサブセットだけ（700 はスタートの分だけ。A の重さの規律）
-    const added1200 = [...fontFiles].filter((f) => !beforeDoors1200.has(f));
-    check("本棚（1200）: フォントは自前の明朝だけで初回表示 ≤ 520KB、扉と本をさがすで増えるのは Shippori 500 のサブセットだけ", [...fontFiles].every((f) => /^(shippori-mincho|cormorant-garamond|ibm-plex-mono)/.test(f)) && fontBytesOf([...firstFonts1200]) <= 520 * 1024 && added1200.every((f) => f.includes("shippori-mincho") && f.includes("-500-")), `first=${firstFonts1200.size} files ${Math.round(fontBytesOf([...firstFonts1200]) / 1024)}KB, after doors+finder=${fontFiles.size} files ${Math.round(fontBytesOf([...fontFiles]) / 1024)}KB, added=${added1200.join(" ")}`);
+    await page.click('#bookFinderList .finder__act[data-key="b:pref"]');
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const focusPref = await page.evaluate(() => document.activeElement?.dataset.book);
+    await page.keyboard.press("Enter");
+    const found = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "pref" && (await page.evaluate(() => document.activeElement?.id === "pathStart")), 6000);
+    const st4 = await page.evaluate(() => ({ kicker: document.querySelector("#pathHead .path__kicker")?.textContent, course: localStorage.getItem("spelldash_course"), meta: document.querySelector("#pathHead .path__meta")?.textContent }));
+    await page.click('#shelfRun button.spine[data-book="jhs-english3"]');
+    await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhs-english3", 6000);
+    await page.waitForTimeout(300);
+    const back = await page.evaluate(() => !!document.querySelector('#shelfRun button.spine[data-book="pref"]'));
+    check("本を足す → 棚 → 机: 都道府県を足して閉じると焦点はその背、Enter で机に出る（柱は「社会の棚」、答えは日本語・60枚、コースの鍵はそのまま、焦点はスタート）。机から下りると背として棚に戻る", focusPref === "pref" && found && st4.kicker.includes("社会の棚") && st4.course === "eiken" && st4.meta.includes("日本語") && st4.meta.includes("60枚") && back, JSON.stringify({ focusPref, st4, back }));
+    // フォント: 典型の棚（shelfSeed）の初回表示は ≤ 520KB。窓（仕事の言葉の見出しまで）を開いて増えるのは Shippori 500 のサブセットだけ（700 はスタートの分だけ）
+    const added1200 = [...fontFiles].filter((x) => !firstFonts1200.has(x));
+    check("本棚（1200）: フォントは自前の明朝だけで初回表示 ≤ 520KB、本を足すと仕事の言葉の見出しで増えるのは Shippori 500 のサブセットだけ", [...fontFiles].every((x) => /^(shippori-mincho|cormorant-garamond|ibm-plex-mono)/.test(x)) && fontBytesOf([...firstFonts1200]) <= 520 * 1024 && added1200.every((x) => x.includes("shippori-mincho") && x.includes("-500-")), `first=${firstFonts1200.size} files ${Math.round(fontBytesOf([...firstFonts1200]) / 1024)}KB, after finder=${fontFiles.size} files ${Math.round(fontBytesOf([...fontFiles]) / 1024)}KB, added=${added1200.join(" ")}`);
     check("本棚（1200）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
 
-  // 390: 段の右端で切れているのは本物の背、DOM は本 → 札、横スクロール無し、続きのボタン、索引、背を押すと机へ、プレイ中は畳む、扉
+  // 1200: 全部足した棚（124 点）: 名前・答え方・背の文字・roving（段をまたいでも Tab で止まるのは 1 つ）・フォント ≤ 600KB
+  const keys124 = await catalog();
+  for (const [w, h, mobile] of [[1200, 900, false], [390, 844, true]]) {
+    const page = await newPage({ mobile, viewport: { width: w, height: h }, ...countSeed(keys124, keys124.length) });
+    let fontBytes = 0;
+    const seenFont = new Set();
+    page.on("response", async (r) => { try { const u = new URL(r.url()).pathname; if (r.request().resourceType() !== "font" || seenFont.has(u)) return; seenFont.add(u); fontBytes += (await r.body()).length; } catch {} });
+    await openHome(page);
+    if (w === 1200) {
+      const lab = await page.evaluate(() => [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => ({ key: li.dataset.key, group: li.dataset.group, label: li.querySelector("button")?.getAttribute("aria-label") ?? "" })));
+      const ja = lab.filter((x) => ["social", "science", "kokugo", "job"].includes(x.group));
+      const en = lab.filter((x) => ["eng", "exam"].includes(x.group));
+      const kanji = lab.filter((x) => x.key === "b:jkokugo2" || x.key === "b:hs-kanbun");
+      check("本棚（全部足した棚・1200）: 押せる物 124 点が全部名前つき。社会・理科・国語・仕事の背は「答えは日本語」、英単語・試験の背は「答えは英語」、漢字の読み（中学）・漢文は「一部は漢字で答える」",
+        lab.length === 124 && lab.every((x) => x.label) && ja.length === perShelf.social + perShelf.science + perShelf.kokugo + perShelf.job && ja.every((x) => x.label.includes("答えは日本語")) && en.length === perShelf.eng + perShelf.exam + 1 && en.every((x) => x.label.includes("答えは英語")) && kanji.length === 2 && kanji.every((x) => x.label.includes("一部は漢字で答える")), JSON.stringify({ n: lab.length, unlabeled: lab.filter((x) => !x.label).map((x) => x.key), ja: ja.length, en: en.length, badJa: ja.filter((x) => !x.label.includes("答えは日本語")).map((x) => x.key), kanji }));
+      // roving: 最初の物から End で最後（別の段）へ、← で 1 つ戻る。Tab で止まるのは #shelfRun の中で 1 つ
+      await page.evaluate(() => document.querySelector("#shelfRun button.box, #shelfRun button.spine").focus());
+      await page.keyboard.press("ArrowRight");
+      const k1 = await page.evaluate(() => document.activeElement?.closest("li")?.dataset.key);
+      await page.keyboard.press("End");
+      await page.keyboard.press("ArrowLeft");
+      const kb = await page.evaluate(() => ({ key: document.activeElement?.closest("li")?.dataset.key, rowOfFocus: [...document.querySelectorAll("#shelfRun > .shelf")].indexOf(document.activeElement.closest(".shelf")), tab0: [...document.querySelectorAll("#shelfRun button")].filter((b) => b.tabIndex === 0).length }));
+      const keysNow = await shelfKeys(page);
+      check("本棚: roving tabindex（→ で隣、End で最後の物、← で 1 つ戻る。段をまたいでも Tab で止まるのは #shelfRun の中で 1 つ）", k1 === keysNow[1] && kb.key === keysNow[keysNow.length - 2] && kb.rowOfFocus > 0 && kb.tab0 === 1, JSON.stringify({ k1, kb, second: keysNow[1], beforeLast: keysNow[keysNow.length - 2] }));
+    }
+    const geo = await spineGeo(page);
+    check(`本棚（${w}）: 全部足した棚で背の文字が背の上下からはみ出さない（題箋つきの長い題・仕事の言葉を含む）`, geo.length === 0, geo.join(" "));
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(400);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(300);
+    check(`本棚（全部足した棚・${w}）: フォントは ≤ 600KB（一番下まで送って）`, fontBytes > 0 && fontBytes <= 600 * 1024, `font=${Math.round(fontBytes / 1024)}KB`);
+    await page.close();
+  }
+
+  // 390: 段は折り返す（20 点）・背を押すと机へ・プレイ中は畳む・畳まれている間の組み直し・窓は画面に収まる・典型の棚のフォント
   {
-    const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, ...shelfSeed() });
+    const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, ...countSeed(keys124, 20) });
+    await openHome(page);
+    const v = await rowsOf(page);
+    const order = await page.evaluate(() => [...document.querySelectorAll("#shelfRun .shelf")].every((s) => { const a = s.querySelector(".books"), b = s.querySelector(".shelf__board"); return a && b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }));
+    const bad = layoutBad(v, 20);
+    check("本棚（390）: 20 点の棚は段が折り返す（.books の横スクロール・「あと N冊」は無い）、どの物も段の内側、DOM は本 → 棚板の順、頁の横スクロール無し", v.rows.filter((r) => r.items.length).length >= 3 && bad.length === 0 && order, JSON.stringify({ rows: v.rows.length, bad, order }));
+    await page.close();
+  }
+  {
+    const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, ...shelfSeed({ spelldash_shelf: shelfJson({ books: ["jhist1", "eiken3", "jsci1", "jgeo1", "toeic500", "hs-kobun", "jkokugo1", "accounting"], courses: ["jhs-redo"] }) }) });
     const fontFiles = new Set();
     page.on("response", (r) => { if (r.request().resourceType() === "font") fontFiles.add(new URL(r.url()).pathname.split("/").pop()); });
-    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await page.waitForTimeout(600);
-    const r = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll("#bookshelf .books--scroll")].map((ul) => { const box = ul.getBoundingClientRect(); const li = [...ul.children].find((l) => getComputedStyle(l).display !== "none" && l.getBoundingClientRect().right > box.right); if (!li) return "none"; const lr = li.getBoundingClientRect(); return `${li.querySelector(".spine, .slot, .box") ? "real" : li.className}:${Math.round(((box.right - lr.left) / lr.width) * 100)}%`; });
-      const order = [...document.querySelectorAll("#bookshelf .shelf")].every((s) => { const a = s.querySelector(".books"), b = s.querySelector(".shelf__board"); return a && b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); });
-      return { rows, order, scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth, more: document.querySelectorAll("#bookshelf .more:not([hidden])").length };
-    });
-    check("本棚（390）: 段の右端で切れているのは本物の背（本立て・寝かせた本でない）、DOM は本 → 札の順、横スクロール無し", r.rows.length >= 5 && r.rows.every((x) => x.startsWith("real:")) && r.order && r.scrollW <= r.innerW && r.more >= 5, JSON.stringify(r));
+    await openHome(page);
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await page.waitForTimeout(500);
-    const firstFonts390 = new Set(fontFiles); // 初回表示（一番下までスクロール）で読んだフォント。扉を開く前
+    const firstFonts390 = new Set(fontFiles); // 初回表示（一番下までスクロール）で読んだフォント。窓を開く前
     await page.evaluate(() => window.scrollTo(0, 0));
-    // 「あと N冊 →」: 段を右へ送る。端に着いたら「はじめへ」で戻る
-    await page.click("#shelf-exam .more");
-    await page.waitForTimeout(700);
-    const m1 = await page.evaluate(() => ({ sl: document.querySelector("#shelf-exam .books").scrollLeft, txt: document.querySelector("#shelf-exam .more").textContent.trim() }));
-    await page.click("#shelf-exam .more");
-    await page.waitForTimeout(700);
-    const m2 = await page.evaluate(() => ({ sl: document.querySelector("#shelf-exam .books").scrollLeft, txt: document.querySelector("#shelf-exam .more").textContent.trim() }));
-    check("本棚（390）: 「あと N冊 →」で段が送られ、端で「はじめへ」になり、押すと戻る", m1.sl > 100 && (m1.txt.includes("はじめへ") ? m2.sl === 0 && m2.txt.includes("あと") : m2.sl > m1.sl), JSON.stringify({ m1, m2 }));
-    // 索引: 棚の上端が画面の上に（前の棚の札が上に残らない）。URL のハッシュは変えない
-    await page.click('.shelf-index a[href="#shelf-social"]');
-    await page.waitForTimeout(1500);
-    const j = await page.evaluate(() => ({ top: Math.round(document.getElementById("shelf-social").getBoundingClientRect().top), hash: location.hash }));
-    check("本棚（390）: 索引で棚へ（その棚の上端が画面の上、URL のハッシュは変えない）", j.top >= -2 && j.top <= 40 && j.hash === "", JSON.stringify(j));
     // 背を押す（社会の本）: 机へ戻って焦点はスタート。柱は「社会の棚」、答えは日本語・75枚、コースの鍵はそのまま
-    await page.click('#bookshelf button.spine[data-book="jhist1"]');
+    await page.click('#shelfRun button.spine[data-book="jhist1"]');
     const picked = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "jhist1", 6000);
     await page.waitForTimeout(1500);
     const p = await page.evaluate(() => ({ focus: document.activeElement?.id, cardTop: Math.round(document.getElementById("pathCard").getBoundingClientRect().top), kicker: document.querySelector("#pathHead .path__kicker")?.textContent, course: localStorage.getItem("spelldash_course"), meta: document.querySelector("#pathHead .path__meta")?.textContent, n: document.querySelectorAll("#pathStart").length }));
     check("本棚（390）: 背を押すと机へ戻り、焦点はスタート（柱は「社会の棚」、答えは日本語・75枚、コースはそのまま、スタートは 1 個）", picked && p.focus === "pathStart" && p.cardTop > -300 && p.cardTop < 300 && p.kicker.includes("社会の棚") && p.course === "jhs-redo" && p.meta.includes("75枚") && p.n === 1, JSON.stringify(p));
-    // プレイ中は本棚を畳み、机に戻ると出る。畳まれている間に組み直されても（同期）、出たときに段を測り直す（「あと N冊」が全冊にならない）
+    // プレイ中は本棚を畳み、机に戻ると出る。畳まれている間に組み直されても（同期）、出たときの段は幅から貪欲に詰めた形
+    const rowsBefore = (await rowsOf(page)).rows.map((r) => r.items.map((x) => x.key));
     await page.tap("#pathStart");
     await page.waitForTimeout(600);
     const hid = await page.evaluate(() => getComputedStyle(document.getElementById("bookshelf")).display);
@@ -1993,45 +2154,456 @@ console.log("bookshelf:");
     await page.tap("#backToPath");
     await page.waitForTimeout(600);
     const shown = await page.evaluate(() => getComputedStyle(document.getElementById("bookshelf")).display);
-    const moreAfter = await page.evaluate(() => {
-      const btn = document.querySelector("#shelf-exam .more");
-      const spines = document.querySelectorAll("#shelf-exam .spine, #shelf-exam .slot").length;
-      return { hidden: btn?.hidden, txt: btn?.textContent.trim(), n: Number(btn?.querySelector("b")?.textContent), spines };
-    });
+    const after = await rowsOf(page);
+    const badAfter = layoutBad(after, 9);
     check("本棚（390）: プレイ中は畳まれ、机に戻ると出る", hid === "none" && shown !== "none", `${hid} → ${shown}`);
-    check("本棚（390）: 畳まれている間に組み直されても、出たときに「あと N冊」を測り直す（N は全冊未満・ボタンは見える）", moreAfter.hidden === false && moreAfter.txt.includes("あと") && moreAfter.n >= 1 && moreAfter.n < moreAfter.spines, JSON.stringify(moreAfter));
-    // 扉を開いても横スクロール無し・背の文字ははみ出さない・右端で切れるのは本物の背
-    const beforeDoors390 = new Set(fontFiles); // 扉で増えるフォント（プレイの「続きから」の 700 はスタートの分）
-    await page.click("#archiveDoors");
-    await page.waitForTimeout(400);
-    const jo = await page.evaluate(() => ({ n: document.querySelectorAll("#shelf-job button.spine").length, overflow: [...document.querySelectorAll("#bookshelf .spine__l")].filter((l) => l.scrollHeight > l.clientHeight + 2 || l.scrollWidth > l.clientWidth + 2).map((l) => l.closest("button").dataset.book), rows: [...document.querySelectorAll("#shelf-job .books--scroll")].map((ul) => { const box = ul.getBoundingClientRect(); const li = [...ul.children].find((l) => getComputedStyle(l).display !== "none" && l.getBoundingClientRect().right > box.right); return li ? (li.querySelector(".spine") ? "spine" : li.className) : "none"; }), scrollW: document.documentElement.scrollWidth }));
-    check("本棚（390）: 扉を開いても 49 冊がはみ出さず、横スクロール無し、段の右端は本物の背", jo.n === 49 && jo.overflow.length === 0 && jo.rows.every((x) => x === "spine" || x === "none") && jo.scrollW <= 390, JSON.stringify(jo));
-    const geo390 = await spineGeo(page);
-    check("本棚（390）: 背の文字が背の上下からはみ出さない（扉の中・題箋つきの長い題を含む）", geo390.length === 0, geo390.join(" "));
-    const added390 = [...fontFiles].filter((f) => !beforeDoors390.has(f));
-    check("本棚（390）: 初回表示（本棚を一番下まで）のフォント ≤ 520KB、扉で増えるのは Shippori 500 のサブセットだけ", fontBytesOf([...firstFonts390]) <= 520 * 1024 && added390.every((f) => f.includes("shippori-mincho") && f.includes("-500-")), `first=${firstFonts390.size} files ${Math.round(fontBytesOf([...firstFonts390]) / 1024)}KB, after doors=${fontFiles.size} files ${Math.round(fontBytesOf([...fontFiles]) / 1024)}KB`);
+    check("本棚（390）: 畳まれている間に renderBookshelf() しても、出たときの段は幅から貪欲に詰めた形で（畳む前と同じ段）、どの物も段からはみ出さない", badAfter.length === 0 && after.rows.filter((r) => r.items.length).length >= 2 && same(after.rows.map((r) => r.items.map((x) => x.key)), rowsBefore), JSON.stringify({ badAfter, rows: after.rows.map((r) => r.items.length), before: rowsBefore.map((r) => r.length) }));
+    // 窓は画面に収まり、仕事の言葉を開くと 49 行に届き窓の中で縦に送れる
+    const beforeFinder390 = new Set(fontFiles); // ここから先（本を足す）で増えるフォント（プレイの「続きから」の 700・盤面の mono はスタートの分）
+    await page.click("#bookFinderOpen");
+    await page.waitForTimeout(200);
+    await page.click('#bookFinderBrowse details[data-shelf="job"] > summary');
+    await page.waitForTimeout(200);
+    const fd = await page.evaluate(() => { const r = document.querySelector("#bookFinder .finder__card").getBoundingClientRect(); const body = document.querySelector("#bookFinder .finder__body"); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, rows: document.querySelectorAll('#bookFinderBrowse details[data-shelf="job"] .finder__row').length, scrolls: body.scrollHeight > body.clientHeight + 10, scrollW: document.documentElement.scrollWidth }; });
+    check("本を足す（390）: 窓は画面に収まり（左 ≥ 0・右 ≤ 390）、仕事の言葉を開くと 49 行に届き窓の中で縦に送れる、頁の横スクロール無し", fd.left >= 0 && fd.right <= 390 && fd.top >= 0 && fd.bottom <= 844 && fd.rows === perShelf.job && fd.scrolls && fd.scrollW <= 390, JSON.stringify(fd));
+    await page.keyboard.press("Escape");
+    const added390 = [...fontFiles].filter((x) => !beforeFinder390.has(x));
+    check("本棚（390）: 典型の棚の初回表示（本棚を一番下まで）のフォント ≤ 520KB、本を足すで増えるのは Shippori 500 のサブセットだけ", fontBytesOf([...firstFonts390]) <= 520 * 1024 && added390.every((x) => x.includes("shippori-mincho") && x.includes("-500-")), `first=${firstFonts390.size} files ${Math.round(fontBytesOf([...firstFonts390]) / 1024)}KB, after finder=${fontFiles.size} files, added=${added390.join(" ")}`);
     check("本棚（390）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
 
-  // 初回: 本棚は見えている。背を押すと机の本が替わるだけ（始めない・パックも足さない）。函は最初の巻を机に。スタートでコースの鍵が回り、その巻で始まる
+  // 初回: 本棚は下見の棚（いまスタートしたら並ぶ物。保存しない）。「171冊から選ぶ」は語の読み込みの前から見え、窓（本をさがす・コースだけ開いて始める）で机の本を替える。スタートで下見と同じ棚になる
   {
-    const page = await newPage({ keepOnboarding: true, viewport: { width: 390, height: 844 } });
+    const page = await seededPage({ keepOnboarding: true, viewport: { width: 390, height: 844 } });
+    await page.addInitScript(() => document.addEventListener("DOMContentLoaded", () => { const b = document.getElementById("welcomeFind"); window.__findEarly = b ? { hidden: b.hidden, text: b.textContent.trim() } : null; }));
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await page.waitForTimeout(600);
-    const v = await page.evaluate(() => ({ shown: !document.getElementById("bookshelf").hidden && getComputedStyle(document.getElementById("bookshelf")).display !== "none", welcome: document.body.classList.contains("welcome-open"), spines: document.querySelectorAll("#bookshelf button.spine").length }));
-    await page.click('#bookshelf button.spine[data-book="hs-kobun"]');
-    await page.waitForTimeout(400);
-    const w = await page.evaluate(() => ({ t: document.querySelector('#welcomeBook [data-f="t"]').textContent, s: document.querySelector('#welcomeBook [data-f="s"]').textContent, book: document.querySelector("#welcome [data-welcome-start]").dataset.book, cat: localStorage.getItem("spelldash_category"), packs: localStorage.getItem("spelldash_packs") || "", welcome: !document.getElementById("welcome").hidden }));
-    check("初回: 本棚が見え、背を押すと机の本が替わるだけ（国語・古文単語。始めない・パックも足さない）", v.shown && v.welcome && v.spines >= 60 && w.t.includes("国語") && w.s.includes("古文単語") && w.book === "hs-kobun" && w.cat === "jhs-english1" && !w.packs.includes("hs-kobun") && w.welcome, JSON.stringify({ v, w }));
-    await page.click('#bookshelf button.box[data-course="toeic"]');
-    await page.waitForTimeout(400);
-    const b = await page.evaluate(() => ({ t: document.querySelector('#welcomeBook [data-f="t"]').textContent, book: document.querySelector("#welcome [data-welcome-start]").dataset.book, course: localStorage.getItem("spelldash_course") }));
+    await waitUntil(() => page.evaluate(() => document.querySelectorAll("#shelfRun li[data-key]").length > 0), 6000);
+    await page.waitForTimeout(300);
+    const v0 = await page.evaluate(() => ({ early: window.__findEarly, find: document.getElementById("welcomeFind")?.textContent.trim(), findVisible: !!document.getElementById("welcomeFind")?.offsetParent, hint: document.getElementById("shelfHint").hidden ? null : document.getElementById("shelfHint").textContent, add: document.getElementById("bookFinderOpen").hidden, tidy: document.getElementById("shelfTidy").hidden, welcome: document.body.classList.contains("welcome-open") }));
+    const keysW = await shelfKeys(page);
+    await page.click("#welcomeFind");
+    await page.waitForTimeout(200);
+    const dlg = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, title: document.getElementById("bookFinderTitle").textContent, opened: [...document.querySelectorAll("#bookFinderBrowse details[open]")].map((x) => x.dataset.shelf), my: !!document.querySelector('#bookFinder [data-key="b:my"]'), acts: [...new Set([...document.querySelectorAll("#bookFinder .finder__act")].map((b) => b.textContent.trim()))] }));
+    await page.fill("#bookFinderQ", "古文");
+    await page.waitForTimeout(100);
+    await page.click('#bookFinderList .finder__act[data-key="b:hs-kobun"]');
+    await page.waitForTimeout(500);
+    const w = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, t: document.querySelector('#welcomeBook [data-f="t"]').textContent, s: document.querySelector('#welcomeBook [data-f="s"]').textContent, book: document.querySelector("#welcome [data-welcome-start]").dataset.book, cat: localStorage.getItem("spelldash_category"), packs: localStorage.getItem("spelldash_packs") || "", shelf: localStorage.getItem("spelldash_shelf"), focus: document.activeElement?.matches("#welcome .welcome__cta [data-welcome-start]") }));
+    const keysK = await shelfKeys(page);
+    check("初回: 本棚は下見の棚（函 中学英語やり直し＋空き 中学英語 1年）と一文「ほかの本は、あとから足せる。」で、本を足す・整理は無い。「171冊から選ぶ」は読み込みの前から見え（数は目録の本の数）、押すと窓（本をさがす・コースだけ開いている・行は「机に出す」）。古文単語の「机に出す」で窓が閉じ、机の本と下見の棚が空き 古文単語だけに替わる（始めない・packs も spelldash_shelf も書かない・焦点はスタート）",
+      v0.welcome && same(keysW, ["c:jhs-redo", "slot:b:jhs-english1"]) && v0.hint === "ほかの本は、あとから足せる。" && v0.add && v0.tidy && v0.early && !v0.early.hidden && v0.find === `${catsS.length}冊から選ぶ` && v0.findVisible &&
+      dlg.open && dlg.title === "本をさがす" && same(dlg.opened, ["course"]) && !dlg.my && same(dlg.acts, ["机に出す"]) &&
+      !w.open && w.t.includes("国語") && w.s.includes("古文単語") && w.book === "hs-kobun" && w.cat === "jhs-english1" && !w.packs.includes("hs-kobun") && w.shelf === null && w.focus && same(keysK, ["slot:b:hs-kobun"]), JSON.stringify({ v0, keysW, dlg, w, keysK }));
+    // 窓のコースの見出しの TOEIC 500→990 の「机に出す」→ 最初の巻が机に、下見は函 TOEIC＋空き TOEIC 500点。スタートでコースの鍵が回り、棚は下見と同じ
+    await page.click("#welcomeFind");
+    await page.waitForTimeout(200);
+    await page.click('#bookFinderBrowse .finder__act[data-key="c:toeic"]');
+    await page.waitForTimeout(500);
+    const pre = await shelfKeys(page);
+    const b = await page.evaluate(() => ({ book: document.querySelector("#welcome [data-welcome-start]").dataset.book, course: localStorage.getItem("spelldash_course") }));
     await page.click("#welcome .welcome__cta [data-welcome-start]");
     const started = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === "toeic500" && (await page.isVisible("#backToPath")), 8000);
-    const a = await page.evaluate(() => ({ course: localStorage.getItem("spelldash_course"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]") }));
-    check("初回: 函を押すと最初の巻（TOEIC 500点）が机に出て、スタートでコースの鍵が回りその巻で始まる", b.book === "toeic500" && b.course === "jhs-redo" && b.t.includes("TOEIC") && started && a.course === "toeic" && a.packs.includes("toeic500"), JSON.stringify({ b, a }));
+    await page.click("#backToPath").catch(() => {});
+    await page.waitForTimeout(500);
+    const a = await page.evaluate(() => ({ course: localStorage.getItem("spelldash_course"), packs: JSON.parse(localStorage.getItem("spelldash_packs") || "[]"), shelf: JSON.parse(localStorage.getItem("spelldash_shelf") || "null") }));
+    const post = await shelfKeys(page);
+    check("初回: 窓のコースの TOEIC 500→990 の「机に出す」で最初の巻が机に、下見の棚は函 TOEIC＋空き TOEIC 500点。スタートでコースの鍵が回り、棚は下見と同じ（spelldash_shelf は courses [toeic]・books []・prov false）",
+      b.book === "toeic500" && b.course === "jhs-redo" && same(pre, ["c:toeic", "slot:b:toeic500"]) && started && a.course === "toeic" && a.packs.includes("toeic500") && same(a.shelf?.courses, ["toeic"]) && a.shelf?.books.length === 0 && a.shelf?.prov === false && same(post, pre), JSON.stringify({ b, pre, a, post }));
     check("初回（本棚）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+  {
+    // 初回の窓（本をさがす）を開いている間に welcome が畳まれる（ログインの行・auth-ready）: 窓は閉じ、机の本も保存も替わらない（REVIEW-logic S3）
+    const page = await seededPage({ keepOnboarding: true, viewport: { width: 390, height: 844 } });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => document.querySelectorAll("#shelfRun li[data-key]").length > 0), 6000);
+    await page.click("#welcomeFind");
+    await page.waitForTimeout(200);
+    const opened = await page.evaluate(() => document.getElementById("bookFinder").open);
+    await page.evaluate(() => document.getElementById("welcomeLogin").click());
+    await page.waitForTimeout(400);
+    const w = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, welcome: document.body.classList.contains("welcome-open"), add: !document.getElementById("bookFinderOpen").hidden, cat: localStorage.getItem("spelldash_category") }));
+    check("初回: 本をさがすの窓を開いている間に welcome が畳まれると窓は閉じ、本棚は普段の形（本を足すが出る）。机の本は替わらない", opened && !w.open && !w.welcome && w.add && (w.cat === null || w.cat === "jhs-english1") && page.errors.length === 0, JSON.stringify({ opened, w, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+
+  // ---- 移行（既存の人）: 明示の印から組み立ち、記録だけの本は入らない ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed({ spelldash_packs: JSON.stringify(["jhs-english1", "jhs-english2", "jhist1", "eiken3", "ngsl02"]), spelldash_my_words: JSON.stringify([{ en: "quill", ja: "羽ペン" }]), spelldash_best_by_category: JSON.stringify({ toeic: 30, all: 50 }) }) });
+    await openHome(page);
+    const keys = await shelfKeys(page);
+    check("本棚（移行）: 明示の印から組み立つ（函 中学英語やり直し・空き 中学英語 1年・函 NGSL・背 マイ単語帳・英検3級・TOEIC・中学歴史）。記録だけの英単語の本（中学英語 基本・高校英語・日常・旅行・IT）・中学英語 2年・NGSL の巻の背は無い",
+      same(keys, ["c:jhs-redo", "slot:b:jhs-english1", "c:ngsl", "b:my", "b:eiken3", "b:toeic", "b:jhist1"]) && page.errors.length === 0, JSON.stringify({ keys, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+  {
+    const hist = Object.fromEntries(wordsOf("jhist1").slice(0, 10).map((x) => [x.id, { playCount: 1, knownOnSight: true, recallFail: 0 }]));
+    const page = await newPage({ viewport: { width: 390, height: 844 }, ...shelfSeed({ spelldash_category: "jhist1", spelldash_packs: JSON.stringify(["jhs-english1", "jhist1"]), spelldash_word_stats: JSON.stringify(hist) }) });
+    await openHome(page);
+    const keys = await shelfKeys(page);
+    const saved = await savedShelf(page);
+    check("本棚（移行）: 旧版の初回で歴史を選んだ人に、使っていない中学英語やり直しは出ない（空き 中学歴史だけ・courses は空）", same(keys, ["slot:b:jhist1"]) && saved?.courses.length === 0 && same(saved?.books, ["jhist1"]), JSON.stringify({ keys, saved }));
+    await page.close();
+  }
+  {
+    // 既定のコースで学んだ人が、移行した瞬間に机をチップ（TOEIC）にしていても、中学英語やり直しの函は落ちない（REVIEW-logic M1）
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed({ spelldash_category: "toeic" }) });
+    await openHome(page);
+    const keys = await shelfKeys(page);
+    const saved = await savedShelf(page);
+    check("本棚（移行）: 既定のコースのまま机がチップ TOEIC の人は、函 中学英語やり直し（印なし）と空き TOEIC（courses [jhs-redo]・books [toeic]）", same(keys, ["c:jhs-redo", "slot:b:toeic"]) && same(saved?.courses, ["jhs-redo"]) && same(saved?.books, ["toeic"]) && page.errors.length === 0, JSON.stringify({ keys, saved }));
+    await page.close();
+  }
+
+  // ---- 整理: 下ろしても学習は変わらない・下ろした物はその場に暗く残り札は「戻す」・連打しても隣は下りない・終わる・窓で棚に足すに戻る ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed({ spelldash_shelf: shelfJson({ books: ["jhist1", "eiken3"], courses: ["jhs-redo", "eiken"] }) }) });
+    await openHome(page);
+    const before = await learning(page);
+    await page.click("#shelfTidy");
+    await page.waitForTimeout(200);
+    const t1 = await page.evaluate(() => ({ slips: [...document.querySelectorAll("#shelfRun .slip")].map((s) => s.dataset.key), mode: document.getElementById("bookshelf").dataset.mode, tidy: document.getElementById("shelfTidy").textContent.trim(), add: document.getElementById("bookFinderOpen").hidden, note: document.getElementById("shelfNote").textContent, buttons: document.querySelectorAll("#shelfRun button.spine, #shelfRun button.box").length, focus: document.activeElement?.classList.contains("slip"), keys: [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => li.dataset.key) }));
+    // 段の位置は文書の座標で比べる（画面がほかの理由で送られても「段が動かない」を見られる）
+    const runH0 = await page.evaluate(() => Math.round(document.getElementById("shelfRun").getBoundingClientRect().top + scrollY));
+    // 同じ札を続けて 2 回押す（連打）: 中学歴史だけが下り（2 回目は読み捨て）、隣（英検3級）は下りない。並びは変わらず、中学歴史は暗く残って札は「戻す」
+    // 同じ座標をマウスで 2 回押す（利用者の「同じ所を 2 回押す」そのもの）。page.click を 2 回だと、描き直した札の :hover の動きで 2 回目が
+    // 「element is not stable」の再試行に入り、送り方を替えながら画面を送るので、段の位置の比べ・0.45 秒の読み捨てが揺れる（VERIFY M-new-1）
+    {
+      const slip = page.locator('#shelfRun .slip[data-key="b:jhist1"]');
+      await slip.scrollIntoViewIfNeeded();
+      const bb = await slip.boundingBox();
+      const x = bb.x + bb.width / 2, y = bb.y + bb.height * 0.7;
+      await page.mouse.click(x, y);
+      await page.mouse.click(x, y);
+    }
+    await page.waitForTimeout(200);
+    const t2 = await page.evaluate(() => ({ dropped: document.querySelector('#shelfRun li[data-key="b:jhist1"]')?.classList.contains("is-dropped"), slip: document.querySelector('#shelfRun .slip[data-key="b:jhist1"]')?.textContent.trim(), label: document.querySelector('#shelfRun .slip[data-key="b:jhist1"]')?.getAttribute("aria-label"), neighbour: !document.querySelector('#shelfRun li[data-key="b:eiken3"]')?.classList.contains("is-dropped"), saved: JSON.parse(localStorage.getItem("spelldash_shelf")), note: document.getElementById("shelfNote").textContent, undo: !!document.getElementById("shelfUndo"), focus: document.activeElement?.classList.contains("slip") ? document.activeElement.dataset.key : document.activeElement?.id, keys: [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => li.dataset.key), runTop: Math.round(document.getElementById("shelfRun").getBoundingClientRect().top + scrollY) }));
+    await page.waitForTimeout(500);
+    await page.click('#shelfRun .slip[data-key="c:eiken"]');
+    await page.waitForTimeout(200);
+    const course = await page.evaluate(() => localStorage.getItem("spelldash_course"));
+    const after = await learning(page);
+    check("本棚（整理）: 札は英検の函・英検3級・中学歴史の 3 枚（いまのコースの函と空きには無い）。中学歴史の札を続けて 2 回押しても下りるのは中学歴史だけ（隣の英検3級は下りない）。下ろした背はその場に暗く残り札は「戻す」（並びも段の位置も変わらない）、「中学歴史 古代〜近世を下ろした。」、焦点は同じ札。函 英検を下ろしてもコースは jhs-redo。spelldash_*（本棚の保存を除く）とカテゴリの並びは前後で同じ",
+      same(t1.slips, ["c:eiken", "b:eiken3", "b:jhist1"]) && t1.mode === "tidy" && t1.tidy === "終わる" && t1.add && t1.note === "下ろす本の札を押す。記録は消えない。" && t1.buttons === 0 && t1.focus &&
+      t2.dropped && t2.slip === "戻す" && t2.label === "中学歴史 古代〜近世を棚に戻す" && t2.neighbour && !t2.saved.books.includes("jhist1") && t2.saved.books.includes("eiken3") && t2.note === "中学歴史 古代〜近世を下ろした。" && !t2.undo && t2.focus === "b:jhist1" && same(t2.keys, t1.keys) && t2.runTop === runH0 &&
+      course === "jhs-redo" && same(before, after), JSON.stringify({ runH0, t1, t2, course, same: same(before, after) }));
+    // 戻す: 函 英検の札「戻す」で棚に戻り、札は「下ろす」に（同じ札の 0.45 秒以内の 2 回目は読み捨てるので、間を空けて押す）。もう一度下ろして「終わる」→ 下ろした 2 点が消え、背はボタンに戻り焦点は「整理」
+    await page.waitForTimeout(500);
+    await page.click('#shelfRun .slip[data-key="c:eiken"]');
+    await page.waitForTimeout(200);
+    const u = await page.evaluate(() => ({ back: !document.querySelector('#shelfRun li[data-key="c:eiken"]')?.classList.contains("is-dropped"), slip: document.querySelector('#shelfRun .slip[data-key="c:eiken"]')?.textContent.trim(), saved: JSON.parse(localStorage.getItem("spelldash_shelf")).courses.includes("eiken"), focus: document.activeElement?.dataset.key, note: document.getElementById("shelfNote").textContent }));
+    await page.waitForTimeout(500);
+    await page.click('#shelfRun .slip[data-key="c:eiken"]');
+    await page.waitForTimeout(200);
+    await page.click("#shelfTidy");
+    await page.waitForTimeout(200);
+    const end = await page.evaluate(() => ({ slips: document.querySelectorAll("#shelfRun .slip").length, buttons: document.querySelectorAll("#shelfRun button.spine, #shelfRun button.box").length, keys: [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => li.dataset.key), focus: document.activeElement?.id, note: document.getElementById("shelfNote").hidden, mode: document.getElementById("bookshelf").dataset.mode }));
+    await page.click("#bookFinderOpen");
+    await page.fill("#bookFinderQ", "歴史");
+    await page.waitForTimeout(100);
+    const row = await page.evaluate(() => { const b = document.querySelector('#bookFinderList .finder__act[data-key="b:jhist1"]'); return { text: b?.textContent.trim(), disabled: b?.getAttribute("aria-disabled") }; });
+    check("本棚（整理）: 函 英検の「戻す」で棚に戻り（札は「下ろす」・焦点はその札・「英検 5級→1級を棚に戻した。」）。もう一度下ろして「終わる」→ 下ろした中学歴史と英検が棚から消え、札が消えて背はボタンに戻り焦点は「整理」。窓で「歴史」→ 中学歴史 古代〜近世の行は「棚に足す」（押せる）",
+      u.back && u.slip === "下ろす" && u.saved && u.focus === "c:eiken" && u.note === "英検 5級→1級を棚に戻した。" && end.slips === 0 && end.buttons >= 2 && same(end.keys, ["c:jhs-redo", "b:jhs-english1", "b:eiken3"]) && end.focus === "shelfTidy" && end.note && end.mode === "" && row.text === "棚に足す" && row.disabled === null, JSON.stringify({ u, end, row }));
+    check("本棚（整理）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // ---- 机の本と 1 セット: 机の本は棚に無くても空きで出る。1 セット始めた本は机から下りても背で残る。チップを見て回るだけでは増えない ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
+    await openHome(page);
+    const saved0 = await page.evaluate(() => localStorage.getItem("spelldash_shelf"));
+    await page.click("#setupToggle");
+    await page.waitForTimeout(150);
+    const seen = [];
+    for (const id of ["toeic", "it", "ads", "jhs-english1"]) {
+      await page.click(`#categoryPicker .category-chip[data-category="${id}"]`);
+      await page.waitForTimeout(250);
+      seen.push((await shelfKeys(page)).join(","));
+    }
+    const saved1 = await page.evaluate(() => localStorage.getItem("spelldash_shelf"));
+    const keysEnd = await shelfKeys(page);
+    check("本棚: チップを見て回るだけでは棚が増えない（TOEIC → IT → 広告 → 中学英語 1年。そのたびに空きが替わるが spelldash_shelf は同じ、最後は 2 点）", seen[0].includes("slot:b:toeic") && seen[1].includes("slot:b:it") && seen[2].includes("slot:b:ads") && saved0 === saved1 && same(keysEnd, ["c:jhs-redo", "slot:b:jhs-english1"]), JSON.stringify({ seen, saved0, saved1, keysEnd }));
+    await page.click('#categoryPicker .category-chip[data-category="toeic"]');
+    await page.waitForTimeout(250);
+    const k1 = await shelfKeys(page);
+    const reading = await page.evaluate(() => document.querySelector('#shelfRun button.box[data-course="jhs-redo"]')?.className);
+    const saved2 = await page.evaluate(() => localStorage.getItem("spelldash_shelf"));
+    await page.click("#pathStart");
+    await waitUntil(() => page.evaluate(() => document.body.classList.contains("home--playing")), 4000);
+    const savedPlay = await savedShelf(page);
+    await page.click("#backToPath");
+    await page.waitForTimeout(400);
+    await page.click('#shelfRun button.box[data-course="jhs-redo"]');
+    await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) !== "toeic", 6000);
+    await page.waitForTimeout(400);
+    const k2 = await shelfKeys(page);
+    check("本棚: 机の本は棚に無くても空きで出て（チップ TOEIC → 試験の群に空き、中学英語やり直しから「いまのコース」が外れる、spelldash_shelf は変わらない）、1 セット始める（study）と保存され、机から下りても背として残る",
+      k1.includes("slot:b:toeic") && !reading.includes("box--reading") && saved2 === saved0 && savedPlay?.books.includes("toeic") && k2.includes("b:toeic") && !k2.includes("slot:b:toeic"), JSON.stringify({ k1, reading, savedPlay, k2 }));
+    check("本棚（机の本と 1 セット）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+  {
+    // 次の巻に進む（advanceSection と同じ状態）: 空きが函の直後で次の巻に替わり、巻の背は増えない
+    const page = await seededPage({ viewport: { width: 390, height: 844 }, ...shelfSeed() });
+    await openHome(page);
+    await page.evaluate(() => { localStorage.setItem("spelldash_category", "jhs-english2"); localStorage.setItem("spelldash_packs", JSON.stringify(["jhs-english1", "jhs-english2"])); });
+    await openHome(page);
+    const keys = await shelfKeys(page);
+    check("本棚: 次の巻に進むと空きが函の直後で次の巻に替わり、巻の背は増えない（函 中学英語やり直し・空き 中学英語 2年の 2 点）", same(keys, ["c:jhs-redo", "slot:b:jhs-english2"]), JSON.stringify(keys));
+    await page.close();
+  }
+
+  // ---- 段の形: 320・390（N7）／1100・1200（N8）× 0・1・2・5・20・60 点 ----
+  for (const [w, h, mobile] of [[320, 640, true], [390, 844, true], [1100, 900, false], [1200, 900, false]]) {
+    const results = [];
+    for (const n of [0, 1, 2, 5, 20, 60]) {
+      const seed = n === 2 ? shelfSeed() : countSeed(keys124, n);
+      const page = await newPage({ mobile, viewport: { width: w, height: h }, ...seed });
+      await openHome(page);
+      const v = await rowsOf(page);
+      const bad = layoutBad(v, n);
+      const wide = w >= 1100;
+      // ≥1100: 段（空の段は 1 枚まで）＋腰の扉で 2 段ぶん以上。扉があれば台輪は机の列の下端に立つ（±1px）。扉が無ければ今までどおり 1 段未満の上
+      if (wide && v.rows.length * v.rows[0].h + v.doors < 2 * v.rows[0].h - 1) bad.push("rows<2");
+      const filled = v.rows.filter((r) => r.items.length).length;
+      if (wide && v.doors && v.rows.length - filled > 1) bad.push(`empty-rows:${v.rows.length - filled}`);
+      if (wide && v.doors && Math.abs(v.plinthBottom - v.nookBottom) > 1) bad.push(`doors-plinth:${Math.round(v.plinthBottom)}/${Math.round(v.nookBottom)}`);
+      if (wide && !v.doors && filled < v.rows.length && !(v.plinthBottom <= v.nookBottom + 1 && v.nookBottom - v.plinthBottom < v.rows[0].h)) bad.push(`plinth:${Math.round(v.plinthBottom)}/${Math.round(v.nookBottom)}`);
+      if (!wide && v.doors) bad.push("doors-narrow");
+      if (w === 320 && n === 2 && (filled !== 1 || v.rows.length !== 1 || !v.hint)) bad.push("320-2pt");
+      if (page.errors.length) bad.push(`err:${page.errors[0]}`);
+      results.push({ n, rows: v.rows.length, filled, doors: v.doors, inner: Math.round(v.rows[0]?.inner ?? 0), bad });
+      await page.close();
+    }
+    const label = w >= 1100 ? `本棚（${w}、昼）: 0・1・2・5・20・60 点の形（空の段は 1 枚まで、その下は腰の扉で机の列の下端まで＝台輪は机の列の下端に立つ。少ない棚（0・1・2・5 点）には扉がある${w === 1100 ? "・段の内側 296px 前後" : ""}）` : `本棚（${w}、昼）: 0・1・2・5・20・60 点の形（腰の扉は無い）`;
+    const ok = results.every((r) => r.bad.length === 0) && (w !== 1100 || Math.abs(results[0].inner - 296) <= 2) && (w < 1100 || results.filter((r) => r.n <= 5).every((r) => r.doors > 0));
+    check(`${label}: どの物も段の内側・貪欲・本立てと一文だけの段が無い・本立ては最後の段の残りに入るときだけ・一文は 3 点以下のときだけ・${w === 320 ? "2 点（函＋空き）は 1 段で一文も同じ段・" : ""}頁の横スクロール無し・項目数 = 点数`, ok, JSON.stringify(results.filter((r) => r.bad.length || w === 1100).slice(0, 4)));
+  }
+
+  // ---- 夜: 390・1200 × 5 点・60 点。整理の札は夜の地（#A99C84）で字との比 ≥ 4.5:1 ----
+  {
+    const night = [];
+    for (const [w, h, mobile] of [[390, 844, true], [1200, 900, false]]) for (const n of [5, 60]) {
+      const page = await newPage({ mobile, viewport: { width: w, height: h }, ...countSeed(keys124, n, { spelldash_theme: "dark" }) });
+      await openHome(page);
+      const v = await page.evaluate(() => {
+        const rail = document.querySelector(".cabinet__rail").getBoundingClientRect(), t = document.getElementById("bookshelfTitle").getBoundingClientRect();
+        const acts = [...document.querySelectorAll(".rail__acts .find:not([hidden])")].map((b) => b.getBoundingClientRect());
+        return { theme: document.documentElement.dataset.theme, scrollW: document.documentElement.scrollWidth, innerW: innerWidth, oneLine: acts.every((a) => Math.abs((a.top + a.bottom) / 2 - (t.top + t.bottom) / 2) <= 8 && a.left >= t.right && a.right <= rail.right), acts: acts.length };
+      });
+      let slip = null;
+      if (n === 5) {
+        await page.click("#shelfTidy");
+        await page.waitForTimeout(200);
+        slip = await page.evaluate(() => {
+          const el = document.querySelector("#shelfRun .slip__paper"), cs = getComputedStyle(el);
+          const rgb = (s) => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+          const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+          const bg = rgb(cs.backgroundColor), fg = rgb(cs.color);
+          const [l1, l2] = [lum(bg), lum(fg)].sort((a, b) => b - a);
+          return { bg: cs.backgroundColor, ratio: Math.round(((l1 + 0.05) / (l2 + 0.05)) * 10) / 10 };
+        });
+      }
+      night.push({ w, n, ...v, slip, errors: page.errors.length });
+      await page.close();
+    }
+    check("本棚（夜）: 390・1200 で 5 点と 60 点の棚がエラー 0・横スクロール無し・見出しの欄が 1 行。整理の札の地は夜の色（#A99C84）で字との比 ≥ 4.5:1", night.every((x) => x.theme === "dark" && x.errors === 0 && x.scrollW <= x.innerW && x.oneLine && x.acts === 2) && night.filter((x) => x.slip).every((x) => x.slip.bg === "rgb(169, 156, 132)" && x.slip.ratio >= 4.5), JSON.stringify(night));
+  }
+
+  // ---- 壊れた spelldash_shelf でもエラー 0 で作り直す ----
+  {
+    const out = [];
+    for (const raw of ["{", JSON.stringify({ v: 2 })]) {
+      const page = await newPage({ viewport: { width: 390, height: 844 }, ...shelfSeed({ spelldash_shelf: raw }) });
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      await waitUntil(() => page.evaluate(() => !!document.querySelector("#shelfRun li[data-key]")), 6000);
+      out.push({ raw, keys: await shelfKeys(page), saved: await savedShelf(page), errors: page.errors.length });
+      await page.close();
+    }
+    check("本棚: 壊れた spelldash_shelf（「{」・v 2）でもエラー 0 で、shelfSeed と同じ 2 点が出て v1 で書き直される", out.every((x) => x.errors === 0 && same(x.keys, ["c:jhs-redo", "slot:b:jhs-english1"]) && x.saved?.v === 1 && same(x.saved.courses, ["jhs-redo"])), JSON.stringify(out));
+  }
+
+  // ---- 単語帳との関係: 追加したパックは棚に並び、外したパックは棚からも下りる（list.html は触らない。ホームで packs の差分を見る） ----
+  {
+    const page = await seededPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
+    await openHome(page);
+    const toggle = async () => {
+      await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
+      await waitUntil(() => page.evaluate(() => !!document.querySelector('[data-pack-toggle="realestate"]')), 6000);
+      const was = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_packs") || "[]").includes("realestate"));
+      await page.evaluate(() => { const b = document.querySelector('[data-pack-toggle="realestate"]'); document.getElementById("packsFold")?.setAttribute("open", ""); b.closest("details")?.setAttribute("open", ""); b.click(); });
+      await waitUntil(() => page.evaluate((w) => JSON.parse(localStorage.getItem("spelldash_packs") || "[]").includes("realestate") !== w, was), 6000);
+      await page.waitForTimeout(300);
+    };
+    await toggle();
+    await openHome(page);
+    const k1 = await shelfKeys(page);
+    const s1 = await savedShelf(page);
+    check("本棚: 単語帳で追加したパック（不動産）はホームの棚に並び（机の本になっているので空き）、spelldash_shelf.books に入る", k1.includes("slot:b:realestate") && s1?.books.includes("realestate"), JSON.stringify({ k1, s1 }));
+    await toggle();
+    await openHome(page);
+    const k2 = await shelfKeys(page);
+    const s2 = await savedShelf(page);
+    check("本棚: 単語帳で外したパックは棚からも下りる（背も空きも無く、spelldash_shelf.books にも無い）", !k2.some((k) => k.includes("realestate")) && !s2?.books.includes("realestate") && page.errors.length === 0, JSON.stringify({ k2, s2, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+
+  // ---- 窓の名前と文言・行のどこを押しても足せる・閉じると焦点は最後に足した背 ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
+    await openHome(page);
+    const packs0 = await page.evaluate(() => localStorage.getItem("spelldash_packs"));
+    await page.click("#bookFinderOpen");
+    await page.waitForTimeout(150);
+    await page.evaluate(() => document.querySelectorAll("#bookFinderBrowse details").forEach((x) => { x.removeAttribute("name"); x.open = true; })); // 見出しは 1 つずつ開く（name）。全部開くために外す
+    const nm = await page.evaluate(() => { const dlg = document.getElementById("bookFinder"); return { title: document.getElementById(dlg.getAttribute("aria-labelledby"))?.textContent, acts: dlg.querySelectorAll(".finder__act").length, unlabeled: [...dlg.querySelectorAll(".finder__act, button")].filter((b) => !b.getAttribute("aria-label") && !b.textContent.trim()).length, text: dlg.textContent }; });
+    check("本を足す: 窓の見出しは「本を足す」（aria-labelledby）、行のボタンは全部名前つき、窓の文に絵文字・Pro・¥・無料で が無い", nm.title === "本を足す" && nm.acts === 6 + perShelf.eng + 1 + perShelf.exam + perShelf.grammar + 4 + perShelf.social + perShelf.science + perShelf.kokugo + perShelf.job && nm.unlabeled === 0 && !/\p{Extended_Pictographic}|Pro|¥|無料で/u.test(nm.text), JSON.stringify({ ...nm, text: nm.text.length }));
+    await page.fill("#bookFinderQ", "古文");
+    await page.waitForTimeout(100);
+    await page.click('#bookFinderList .finder__act[data-key="b:hs-kobun"]');
+    await page.fill("#bookFinderQ", "都道府県");
+    await page.waitForTimeout(100);
+    await page.click('#bookFinderList .finder__row[data-book="pref"] .finder__t');
+    await page.waitForTimeout(100);
+    const st = await page.evaluate(() => ({ pref: document.querySelector('#bookFinderList .finder__act[data-key="b:pref"]')?.textContent.trim() }));
+    await page.fill("#bookFinderQ", "古文");
+    await page.waitForTimeout(100);
+    const kob = await page.evaluate(() => document.querySelector('#bookFinderList .finder__act[data-key="b:hs-kobun"]')?.textContent.trim());
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const focus = await page.evaluate(() => document.activeElement?.dataset.book);
+    const keys = await shelfKeys(page);
+    const fresh = await page.evaluate(() => [...document.querySelectorAll("#shelfRun li.is-new")].map((li) => li.dataset.key));
+    check("本棚: 足すと「棚にある」になり（行の題を押しても足せる）、閉じると焦点は最後に足した背（都道府県）、表示は 4 点（函・空き・都道府県・古文単語）、足した 2 点の頭に金の押し点（is-new）、packs は前と同じ",
+      st.pref === "棚にある" && kob === "棚にある" && focus === "pref" && same(keys, ["c:jhs-redo", "slot:b:jhs-english1", "b:pref", "b:hs-kobun"]) && same([...fresh].sort(), ["b:hs-kobun", "b:pref"]) && packs0 === (await page.evaluate(() => localStorage.getItem("spelldash_packs"))), JSON.stringify({ st, kob, focus, keys, fresh }));
+    await page.close();
+  }
+
+  // ---- 窓の見出しは 1 つずつ開き、開いた見出しは窓の上端へ（下の見出しを開いても中身が見える）。検索は書名の一致が先 ----
+  {
+    const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, ...shelfSeed() });
+    await openHome(page);
+    await page.click("#bookFinderOpen");
+    await page.waitForTimeout(200);
+    const heads = [];
+    for (const id of ["course", "eng", "exam", "grammar", "freq", "social", "science", "kokugo", "job"]) {
+      await page.click(`#bookFinderBrowse details[data-shelf="${id}"] > summary`);
+      await page.waitForTimeout(450);
+      heads.push(await page.evaluate((sid) => {
+        const body = document.querySelector("#bookFinder .finder__body").getBoundingClientRect();
+        const d = document.querySelector(`#bookFinderBrowse details[data-shelf="${sid}"]`);
+        const first = d.querySelector(".finder__row")?.getBoundingClientRect();
+        return { id: sid, open: d.open, opened: document.querySelectorAll("#bookFinderBrowse details[open]").length, firstIn: !!first && first.top >= body.top - 1 && first.bottom <= body.bottom + 1 };
+      }, id));
+    }
+    check("本を足す（390）: 9 つの見出しをどれを開いても、開いた見出しの最初の行が窓の中に見え（下の見出しは窓の上端へ送る）、開いている見出しは 1 つだけ", heads.every((x) => x.open && x.opened === 1 && x.firstIn), JSON.stringify(heads.filter((x) => !(x.open && x.opened === 1 && x.firstIn))));
+    const firsts = {};
+    for (const q of ["英検準2級", "文法", "漢字", "TOEIC 600", "古文", "ngsl"]) {
+      await page.fill("#bookFinderQ", q);
+      await page.waitForTimeout(120);
+      firsts[q] = await page.evaluate(() => { const r = document.querySelector("#bookFinderList .finder__row"); return r ? r.dataset.book || `c:${r.dataset.course}` : null; });
+    }
+    check("本を足す: 検索は照合の強さの順（書名と一致 → 書名の頭 → 書名に含む → 棚名・別名 → 紹介文）。1 行目は「英検準2級」で英検準2級、「文法」で中学英文法 1年、「漢字」で小学 漢字の読み、「TOEIC 600」で TOEIC 600点、「古文」で古文単語、「ngsl」で NGSL の函",
+      firsts["英検準2級"] === "eikenp2" && firsts["文法"] === "grammar-jhs1" && firsts["漢字"] === "elem-kanji" && firsts["TOEIC 600"] === "toeic600" && firsts["古文"] === "hs-kobun" && firsts.ngsl === "c:ngsl", JSON.stringify(firsts));
+    check("本を足す（見出し・検索）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // ---- 机の本だけの棚（初めての人がスタートした後）: 空きに代本板（短い題と「机の上」）が立ち、黒い穴に見えない ----
+  {
+    const out = [];
+    for (const [w, h, mobile] of [[390, 844, true], [1200, 900, false]]) for (const theme of ["light", "dark"]) {
+      const page = await newPage({ mobile, viewport: { width: w, height: h }, ...shelfSeed({ spelldash_theme: theme, spelldash_course: "", spelldash_category: "jhist1", spelldash_packs: JSON.stringify(["jhist1"]), spelldash_word_stats: "{}", spelldash_shelf: shelfJson({ books: ["jhist1"], seen: ["jhist1"] }) }) });
+      await openHome(page);
+      out.push(await page.evaluate(() => {
+        const slot = document.querySelector("#shelfRun .slot"), card = slot?.querySelector(".slot__card");
+        const sr = slot?.getBoundingClientRect(), cr = card?.getBoundingClientRect();
+        const rgb = (s) => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+        const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+        const k = card?.querySelector(".slot__k"), cs = card && getComputedStyle(card), ks = k && getComputedStyle(k);
+        const [l1, l2] = card ? [lum(rgb(cs.backgroundColor)), lum(rgb(ks.color))].sort((a, b) => b - a) : [0, 0];
+        return { keys: [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => (li.dataset.state === "slot" ? "slot:" : "") + li.dataset.key), label: slot?.getAttribute("aria-label"), text: card?.textContent, hidden: card?.getAttribute("aria-hidden"), inside: !!cr && cr.width >= 28 && cr.height >= 80 && cr.left >= sr.left - 0.5 && cr.right <= sr.right + 0.5 && cr.bottom <= sr.bottom + 0.5, ratio: Math.round(((l1 + 0.05) / (l2 + 0.05)) * 10) / 10, errors: 0 };
+      }));
+      out[out.length - 1].errors = page.errors.length;
+      await page.close();
+    }
+    check("本棚: 机の本だけの棚（390・1200 × 昼夜）は空き 1 点で、空きに代本板（「中学歴史 上巻」と「机の上」・読み上げは空きの「…は机の上」だけ）が空きの中に立つ。紙と「机の上」の比 ≥ 4.5:1",
+      out.every((x) => same(x.keys, ["slot:b:jhist1"]) && x.label === "中学歴史 古代〜近世は机の上" && x.text === "中学歴史上巻机の上" && x.hidden === "true" && x.inside && x.ratio >= 4.5 && x.errors === 0), JSON.stringify(out));
+  }
+
+  // ---- 読み上げ: list の項目数は表示する物の数（一文・本立ては数えない）。整理の形でも項目に名前がある ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed({ spelldash_shelf: shelfJson({ books: ["jhist1"], courses: ["jhs-redo"] }) }) });
+    await openHome(page);
+    const items = (snap) => snap.split("\n").filter((l) => /^\s*- listitem/.test(l)).length;
+    const named = (snap) => { const lines = snap.split("\n"); return lines.every((l, i) => !/^\s*- listitem:?$/.test(l) || /"[^"]+"/.test(lines[i + 1] ?? "")); };
+    const s1 = await page.locator("#shelfRun").ariaSnapshot();
+    const hint = await page.evaluate(() => !document.getElementById("shelfHint").hidden);
+    await page.click("#shelfTidy");
+    await page.waitForTimeout(200);
+    const s2 = await page.locator("#shelfRun").ariaSnapshot();
+    check("本棚（読み上げ）: 3 点の棚（一文あり）の list の listitem は 3、整理の形でも 3 で、どの項目にも名前がある。list の名前は「棚の本」（region の「わたしの本棚」と重ねない）", hint && items(s1) === 3 && items(s2) === 3 && named(s1) && named(s2) && /list "棚の本"/.test(s1) && !/list "わたしの本棚"/.test(s1), JSON.stringify({ s1, s2 }));
+    await page.close();
+  }
+
+  // ---- 整理（キーボードだけ）: 見出しの欄は「本を足す → 整理」の順。下ろす・戻す（同じ札で Enter）・→ で次の札・終わる。全部下ろして終わる → 焦点は本を足す ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed({ spelldash_shelf: shelfJson({ books: ["jhist1", "eiken3"], courses: ["jhs-redo"] }) }) });
+    await openHome(page);
+    const at = () => page.evaluate(() => { const a = document.activeElement; return a?.classList.contains("slip") ? `slip:${a.dataset.key}:${a.textContent.trim()}` : a?.id || a?.tagName; });
+    await page.evaluate(() => { const t = document.getElementById("bookshelfTitle"); t.tabIndex = -1; t.focus(); });
+    await page.keyboard.press("Tab");
+    const a0 = await at();
+    await page.keyboard.press("Tab");
+    const a0b = await at();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    const a1 = await at();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    const a2 = await at();
+    const dropped = await page.evaluate(() => document.querySelector('#shelfRun li[data-key="b:eiken3"]')?.classList.contains("is-dropped") && !JSON.parse(localStorage.getItem("spelldash_shelf")).books.includes("eiken3"));
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    const a3 = await at();
+    const back = await page.evaluate(() => !document.querySelector('#shelfRun li[data-key="b:eiken3"]')?.classList.contains("is-dropped") && JSON.parse(localStorage.getItem("spelldash_shelf")).books.includes("eiken3"));
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    await page.keyboard.press("ArrowRight");
+    const a4 = await at();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    await page.keyboard.press("Shift+Tab");
+    const a5 = await at();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    const a6 = await at();
+    const tidyHidden = await page.evaluate(() => document.getElementById("shelfTidy").hidden);
+    const keysEnd = await shelfKeys(page);
+    check("本棚（整理・キーボードだけ）: Tab で「本を足す」→ Tab で「整理」→ Enter で焦点は最初の札 → Enter で英検3級が下りて札は「戻す」（焦点はそのまま）→ Enter で戻る → もう一度下ろして → で中学歴史の札 → Enter で下ろす → Shift+Tab で「終わる」→ Enter で焦点は「本を足す」（「整理」は隠れる・棚は函と空きの 2 点）",
+      a0 === "bookFinderOpen" && a0b === "shelfTidy" && a1 === "slip:b:eiken3:下ろす" && a2 === "slip:b:eiken3:戻す" && dropped && a3 === "slip:b:eiken3:下ろす" && back && a4 === "slip:b:jhist1:下ろす" && a5 === "shelfTidy" && a6 === "bookFinderOpen" && tidyHidden && same(keysEnd, ["c:jhs-redo", "slot:b:jhs-english1"]) && page.errors.length === 0, JSON.stringify({ a0, a0b, a1, a2, dropped, a3, back, a4, a5, a6, tidyHidden, keysEnd }));
+    await page.close();
+  }
+
+  // ---- 初回: パックの紹介頁から来た人の棚に、足したパックが入る ----
+  {
+    const page = await seededPage({ keepOnboarding: true, viewport: { width: 390, height: 844 } });
+    await page.goto(BASE + "/list.html?add=accounting", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_packs") || "[]").includes("accounting")), 6000);
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => document.querySelectorAll("#shelfRun li[data-key]").length > 0), 6000);
+    await page.waitForTimeout(300);
+    const pre = await shelfKeys(page);
+    const welcome = await page.evaluate(() => document.body.classList.contains("welcome-open"));
+    await page.click("#welcome .welcome__cta [data-welcome-start]");
+    await waitUntil(() => page.isVisible("#backToPath"), 8000);
+    await page.click("#backToPath");
+    await page.waitForTimeout(500);
+    const post = await shelfKeys(page);
+    const saved = await savedShelf(page);
+    check("初回: 紹介頁（list.html?add=accounting）から来た人の下見の棚に経理・会計の背があり、スタート後も同じ（spelldash_shelf.books に accounting、中学英語 1年は棚にも保存にも無い）", welcome && pre.includes("b:accounting") && same(pre, post) && saved?.books.includes("accounting") && !saved?.books.includes("jhs-english1") && !post.some((k) => k.includes("jhs-english1")) && page.errors.length === 0, JSON.stringify({ welcome, pre, post, saved }));
     await page.close();
   }
 }
@@ -2114,7 +2686,8 @@ console.log("study (finish):");
     spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 2, correct: 2, lastRecallSuccessAt: Date.now() - 86400000 } }),
     spelldash_streak: JSON.stringify({ last: ymd(new Date()), current: 3, best: 3, shields: 0 }),
     spelldash_plan: JSON.stringify({ status: "active", interval: "month", periodEnd: new Date(Date.now() + 30 * 86400000).toISOString(), checkedAt: new Date().toISOString() }),
-    spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", interval: "month", current_period_end: new Date(Date.now() + 30 * 86400000).toISOString() })
+    spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", interval: "month", current_period_end: new Date(Date.now() + 30 * 86400000).toISOString() }),
+    spelldash_shelf: JSON.stringify({ v: 1, books: ["jhist1"], courses: ["jhs-redo"], seen: [], prov: false }) // 見出しの欄に「整理」と「本を足す」が並ぶ棚（Batch 61）
   } });
   const errs = [];
   const openRoom = async (init, theme) => {
@@ -2125,12 +2698,13 @@ console.log("study (finish):");
     return page;
   };
   const done = async (page) => { errs.push(...page.errors); await page.close(); };
-  // 1 回の evaluate で読む計算値: 机の本の影・本棚の揺らぎ（.cabinet::after）・.page-room の夜の変数・動いている物・スタートの朱と墨・名札・場面の拡大・索引の帯
+  // 1 回の evaluate で読む計算値: 机の本の影・本棚の揺らぎ（.cabinet::after）・.page-room の夜の変数・動いている物・スタートの朱と墨・棚の見出し・場面の拡大・見出しの欄
   const finish = () => {
     const cs = (sel, pseudo) => getComputedStyle(document.querySelector(sel), pseudo);
-    const room = cs(".page-room"), tome = cs(".tome"), cab = cs(".cabinet", "::after"), start = cs("#pathStart"), plateEl = document.querySelector(".plate"), plate = getComputedStyle(plateEl);
-    const ink = document.createElement("span"); ink.style.color = "var(--ink-page)"; plateEl.appendChild(ink); const inkPage = getComputedStyle(ink).color; ink.remove();
-    const idx = document.querySelector(".shelf-index");
+    const room = cs(".page-room"), tome = cs(".tome"), cab = cs(".cabinet", "::after"), start = cs("#pathStart"), plateEl = document.getElementById("bookshelfTitle"), plate = getComputedStyle(plateEl);
+    const ink = document.createElement("span"); ink.style.color = "var(--on-vault)"; plateEl.appendChild(ink); const onVault = getComputedStyle(ink).color; ink.remove();
+    const rail = document.querySelector(".cabinet__rail").getBoundingClientRect(), tr = plateEl.getBoundingClientRect();
+    const acts = [...document.querySelectorAll(".rail__acts .find:not([hidden])")].map((x) => x.getBoundingClientRect());
     const a = document.querySelector("#hasumiHome .hasumi__bubble")?.getBoundingClientRect(), b = document.getElementById("pathStart").getBoundingClientRect();
     return {
       theme: document.documentElement.dataset.theme,
@@ -2138,9 +2712,9 @@ console.log("study (finish):");
       far: room.getPropertyValue("--far-page"), cast: room.getPropertyValue("--cast-l"), band: room.getPropertyValue("--desk-band"),
       anims: document.getAnimations().map((x) => { const t = x.effect.target; return ([...t.classList].pop() || t.id) + (x.effect.pseudoElement || ""); }).sort(),
       start: { bg: start.backgroundImage, color: start.color, bottom: Math.round(b.bottom), n: document.querySelectorAll("#pathStart").length },
-      plate: { color: plate.color, inkPage, filter: plate.filter, blend: plate.mixBlendMode, inSink: document.querySelectorAll(".shelf__in .plate").length },
+      plate: { color: plate.color, onVault, filter: plate.filter, blend: plate.mixBlendMode, inSink: document.querySelectorAll(".shelf__in #bookshelfTitle").length },
       scene: { transform: cs(".room__scene--phone").transform, stage: Math.round(document.querySelector(".room__stage").getBoundingClientRect().height), slipOverlap: a ? a.bottom > b.top && a.top < b.bottom && a.right > b.left && a.left < b.right : null },
-      index: { height: Math.round(idx.getBoundingClientRect().height), rows: new Set([...idx.querySelectorAll("a")].map((x) => Math.round(x.getBoundingClientRect().top))).size, scrollW: idx.scrollWidth, clientW: idx.clientWidth },
+      rail: { acts: acts.length, oneLine: acts.every((x) => Math.abs((x.top + x.bottom) / 2 - (tr.top + tr.bottom) / 2) <= 8), inside: tr.left >= rail.left && acts.every((x) => x.left >= tr.right && x.right <= rail.right + 0.5), height: Math.round(rail.height) },
       scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth
     };
   };
@@ -2183,18 +2757,18 @@ console.log("study (finish):");
   const still = { "1200 dark": await stillCount({ viewport: { width: 1200, height: 900 }, ...finishSeed("dark") }, "dark"), "390 light": await stillCount({ mobile: true, viewport: { width: 390, height: 844 }, ...finishSeed("light") }, "light") };
   check("書斎の仕上げ: reduced motion では動く物が 0（1200 dark・390 light）、通常の 1200 dark は 3（壁の溜まり・机の光・本棚の揺らぎ）、light は 0", still["1200 dark"] === 0 && still["390 light"] === 0 && D.anims.join(",") === "cabinet::after,desk__candle--l,room__pool--candle" && L.anims.length === 0, JSON.stringify({ still, dark: D.anims, light: L.anims }));
 
-  // 390×844 light／dark・320×568 light: 索引の帯・場面の拡大・スタートの位置・夜の層
+  // 390×844 light／dark・320×568 light: 見出しの欄・場面の拡大・スタートの位置・夜の層
   const phone = {};
   for (const [w, h, theme] of [[390, 844, "light"], [390, 844, "dark"], [320, 568, "light"]]) {
     const page = await openRoom({ mobile: true, viewport: { width: w, height: h }, ...finishSeed(theme) }, theme);
     const v = await page.evaluate(finish);
-    // 帯を末尾まで送っても動くのは帯の中だけ（頁の幅は増えない）
-    v.sent = await page.evaluate(() => { const el = document.querySelector(".shelf-index"); el.scrollLeft = 9999; return { left: el.scrollLeft, scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth }; });
     phone[`${w}-${theme}`] = v;
     await done(page);
   }
-  const oneRow = (v) => v.index.height <= 48 && v.index.rows === 1 && v.index.scrollW > v.index.clientW && v.sent.left > 0 && v.scrollW <= v.innerW && v.sent.scrollW <= v.sent.innerW;
-  check("書斎の仕上げ（390・320）: 索引の帯は 1 行で横に送る（高さ ≤ 48・末尾まで送っても頁は横スクロールしない）、1200 は 8 列 1 行のまま", oneRow(phone["390-light"]) && oneRow(phone["390-dark"]) && oneRow(phone["320-light"]) && L.index.rows === 1 && L.index.scrollW <= L.index.clientW + 1, JSON.stringify({ 390: { ...phone["390-light"].index, sent: phone["390-light"].sent }, 320: { ...phone["320-light"].index, sent: phone["320-light"].sent }, 1200: L.index }));
+  // 1100（右の列 340px。詰めた見出しの欄）
+  const at1100 = await (async () => { const page = await openRoom({ viewport: { width: 1100, height: 900 }, ...finishSeed("light") }, "light"); const v = await page.evaluate(finish); await done(page); return v; })();
+  const railOk = (v) => v.rail.acts === 2 && v.rail.oneLine && v.rail.inside && v.scrollW <= v.innerW;
+  check("書斎の仕上げ（390・320・1100・1200）: 見出しの欄（わたしの本棚・整理・本を足す）は 1 行で框に収まり、頁は横スクロールしない", railOk(phone["390-light"]) && railOk(phone["390-dark"]) && railOk(phone["320-light"]) && railOk(at1100) && railOk(L), JSON.stringify({ 390: phone["390-light"].rail, 320: phone["320-light"].rail, 1100: at1100.rail, 1200: L.rail }));
 
   // 場面は 1.08 倍（390。帯の高さは変わらないのでスタートの位置は動かない）。初回のスタート（390）と 1200 の位置も固定
   const first = await (async () => {
@@ -2238,25 +2812,45 @@ console.log("study (finish):");
   const CSS_56B = { room: 70594, bookshelf: 46477 };
   check("書斎の仕上げ: css/room.css・bookshelf.css の応答は 56b（70,594・46,477 B）から +8KB 以内", cssBytes.room > 0 && cssBytes.bookshelf > 0 && cssBytes.room <= CSS_56B.room + 8 * 1024 && cssBytes.bookshelf <= CSS_56B.bookshelf + 8 * 1024, JSON.stringify(cssBytes));
 
-  // 56d: 段の見出し行（名札・答え方・「あと N冊 →」）は細い端末でも框に収まる（扉を開いた仕事の段も。320・360・390。≤599 は仕事の段の答え方、≤374 は送る段の答え方と仕事の冊数、≤359 は「あと N冊」の文字を畳む）
-  const boardsFit = async (w) => {
-    const page = await newPage({ mobile: true, viewport: { width: w, height: 844 }, storage: { spelldash_placement: "done", spelldash_onboarded: "1" } });
+  // 細い端末（320・360・390）: 全部足した棚（124 点）で整理の札は背の幅の中・前の段の棚板の下に潜らない。窓の行は題と meta の 2 行＋右にボタン（Batch 61。56d の段の見出し行は名札ごと無くなった）
+  const catsF = JSON.parse(fs.readFileSync(path.join(ROOT, "data/manifest.json"), "utf8")).subjects.find((x) => x.id === "english").categories;
+  const heavyShelf = JSON.stringify({ v: 1, books: [...catsF.filter((c) => shelfIdOf(c.id, c) !== "freq").map((c) => c.id), "my"], courses: ["jhs-redo", "biz", "conversation", "hs", "eiken", "toeic", "ngsl", "tsl", "bsl", "nawl"], seen: [], prov: false });
+  const slipsFit = async (w) => {
+    const page = await newPage({ mobile: true, viewport: { width: w, height: 844 }, storage: { spelldash_placement: "done", spelldash_onboarded: "1", spelldash_category: "all", spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 1 } }), spelldash_shelf: heavyShelf } });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await waitUntil(() => page.evaluate(() => document.querySelectorAll("#bookshelf .shelf__board").length >= 8));
-    await page.click("#archiveDoors");
-    await page.waitForTimeout(400);
-    const r = await page.evaluate(() => [...document.querySelectorAll(".shelf__board")].map((b) => {
-      const cs = getComputedStyle(b), rect = b.getBoundingClientRect();
-      const kids = [...b.children].filter((k) => !k.hidden && getComputedStyle(k).display !== "none");
-      const inner = rect.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-      const need = kids.reduce((n, k) => n + k.getBoundingClientRect().width, 0) + (kids.length - 1) * (parseFloat(cs.columnGap) || 0);
-      return { name: b.querySelector(".plate")?.textContent.trim().slice(0, 12), over: Math.round(need - inner) };
-    }).filter((x) => x.over > 0));
+    await waitUntil(() => page.evaluate(() => document.querySelectorAll("#shelfRun li[data-key]").length >= 100), 6000);
+    await page.click("#shelfTidy");
+    await page.waitForTimeout(300);
+    const slips = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll("#shelfRun > .shelf")];
+      const bad = [];
+      rows.forEach((row, ri) => {
+        const prevBoard = ri > 0 ? rows[ri - 1].querySelector(".shelf__board").getBoundingClientRect().bottom : -Infinity;
+        for (const li of row.querySelectorAll("li[data-key]")) {
+          const slip = li.querySelector(".slip");
+          if (!slip) continue;
+          const item = li.querySelector(".spine, .box").getBoundingClientRect(), paper = slip.querySelector(".slip__paper").getBoundingClientRect(), hit = slip.getBoundingClientRect(), lr = li.getBoundingClientRect();
+          if (paper.left < item.left - 8 || paper.right > item.right + 8) bad.push(`wide:${li.dataset.key}`);
+          if (hit.left < lr.left - 0.5 || hit.right > lr.right + 0.5) bad.push(`hit:${li.dataset.key}`);
+          if (paper.top < prevBoard - 0.5) bad.push(`under-board:${li.dataset.key}:${Math.round(prevBoard - paper.top)}`);
+        }
+      });
+      return { n: document.querySelectorAll("#shelfRun .slip").length, bad: bad.slice(0, 6) };
+    });
+    await page.click("#shelfTidy");
+    await page.click("#bookFinderOpen");
+    await page.waitForTimeout(200);
+    await page.evaluate(() => document.querySelectorAll("#bookFinderBrowse details").forEach((x) => { x.removeAttribute("name"); x.open = true; })); // 見出しは 1 つずつ開く（name）。全部開くために外す
+    await page.waitForTimeout(200);
+    const rows = await page.evaluate(() => [...document.querySelectorAll("#bookFinderBrowse .finder__row")].map((r) => {
+      const rr = r.getBoundingClientRect(), a = r.querySelector(".finder__act").getBoundingClientRect(), t = r.querySelector(".finder__t").getBoundingClientRect(), m = r.querySelector(".finder__m").getBoundingClientRect(), x = r.querySelector(".finder__txt").getBoundingClientRect();
+      return a.right > rr.right + 0.5 || a.left < x.right - 0.5 || m.top < t.bottom - 1 || a.top < rr.top - 0.5 || a.bottom > rr.bottom + 0.5 ? r.dataset.book || r.dataset.course : null;
+    }).filter(Boolean));
     await done(page);
-    return r;
+    return { slips, rows: rows.slice(0, 6) };
   };
-  const fit320 = await boardsFit(320), fit360 = await boardsFit(360), fit390 = await boardsFit(390);
-  check("56d: 段の見出し行（名札・答え方・あと N冊）は 320・360・390 で框に収まる（扉の中の仕事の段も）", fit320.length === 0 && fit360.length === 0 && fit390.length === 0, JSON.stringify({ 320: fit320, 360: fit360, 390: fit390 }));
+  const fit320 = await slipsFit(320), fit360 = await slipsFit(360), fit390 = await slipsFit(390);
+  check("細い端末（320・360・390）: 全部足した棚で整理の札は背の幅の中（札の左右が背の左右から 8px 以上出ない・押せる範囲は背の幅）、札の上端は前の段の棚板より下。窓の行のボタンは行の中に収まり、題と meta は 2 行の組み", [fit320, fit360, fit390].every((f) => f.slips.n >= 120 && f.slips.bad.length === 0 && f.rows.length === 0), JSON.stringify({ 320: fit320, 360: fit360, 390: fit390 }));
 
   // 56b の残り: Pro 390 の表頭の罫は 1 本（th の罫を落とし thead tr の 1px だけ）、単語帳 390 の分野ナビ末尾のフェードは最後の題箋に乗らない
   const proRule = async (w, mobile) => {
@@ -2282,9 +2876,9 @@ console.log("study (finish):");
   })();
   check("56b の残り: Pro（390）の表頭の罫は 1 本（th 0・thead tr 1px、1200 は th 1px のまま）、単語帳（390）の分野ナビは末尾まで送ると最後の題箋の右に 28px 以上の空き（::after の margin-left 0）、横スクロール無し", pro390.th === "0px" && pro390.tr === "1px" && pro1200.th === "1px" && genre.marginLeft === "0px" && genre.left > 0 && genre.gap >= 28 && genre.scrollW <= genre.innerW, JSON.stringify({ pro390, pro1200, genre }));
 
-  // 夜の層はスタートと名札に掛からない: #pathStart の朱（--seal-1 系）と墨（--seal-ink）は dark でも light と同じ文字列。名札は --ink-page のまま、沈みの層（.shelf__in::after）の外で、filter も blend も無い
-  const outside = (night, day) => night.start.bg === day.start.bg && night.start.color === day.start.color && night.plate.color === night.plate.inkPage && day.plate.color === day.plate.inkPage && night.plate.filter === "none" && night.plate.blend === "normal" && night.plate.inSink === 0;
-  check("書斎の仕上げ（夜）: 夜の層はスタートと名札に掛からない（#pathStart の朱と墨は昼と同じ・名札は --ink-page のまま沈みの層の外。390・1200）", outside(D, L) && outside(phone["390-dark"], phone["390-light"]) && D.start.bg.includes("rgb(199, 62, 36)"), JSON.stringify({ 1200: { start: D.start, plate: D.plate }, 390: { start: phone["390-dark"].start, plate: phone["390-dark"].plate }, light: L.start }));
+  // 夜の層はスタートと棚の見出しに掛からない: #pathStart の朱（--seal-1 系）と墨（--seal-ink）は dark でも light と同じ文字列。見出し（わたしの本棚）は --on-vault のまま、沈みの層（.shelf__in::after）の外で、filter も blend も無い
+  const outside = (night, day) => night.start.bg === day.start.bg && night.start.color === day.start.color && night.plate.color === night.plate.onVault && day.plate.color === day.plate.onVault && night.plate.filter === "none" && night.plate.blend === "normal" && night.plate.inSink === 0;
+  check("書斎の仕上げ（夜）: 夜の層はスタートと棚の見出しに掛からない（#pathStart の朱と墨は昼と同じ・見出しは --on-vault のまま沈みの層の外。390・1200）", outside(D, L) && outside(phone["390-dark"], phone["390-light"]) && D.start.bg.includes("rgb(199, 62, 36)"), JSON.stringify({ 1200: { start: D.start, plate: D.plate }, 390: { start: phone["390-dark"].start, plate: phone["390-dark"].plate }, light: L.start }));
   check("書斎の仕上げでエラー0", errs.length === 0, errs[0] ?? "");
 }
 
@@ -7718,6 +8312,38 @@ console.log("sync (2nd device):");
     check("単語帳: 同期で届いたマイ単語 3 語が開き直さずに出る", (await txt(page, "#myWordCount")) === "3語", await txt(page, "#myWordCount"));
     check("単語帳（同期）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
+  }
+
+  // 本棚（Batch 61）: 2 台目の棚は届いた机の本とパックから組み立つ（移行が同期の前でも後でも同じ）。使っていない中学英語やり直しは出ない。shelf の行はクラウドに送らない
+  {
+    const wordsIn = (cat) => { const raw = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", `${cat}.json`), "utf8")); return (Array.isArray(raw) ? raw : raw.words).filter((w) => !w.kanjiOnly); };
+    const packRow = (id) => ({ user_id: SYNC_USER, kind: "pack", key: id, payload: { enabled: true }, deleted: false, updated_at: isoDaysAgo(1) });
+    const shelfOn = async (page) => {
+      await waitUntil(async () => (await page.evaluate(() => [...document.querySelectorAll("#shelfRun li[data-key]")].some((li) => li.dataset.key === "b:jhist1" && li.dataset.state === "slot"))), 8000);
+      await page.waitForTimeout(400);
+      return page.evaluate(() => ({ keys: [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => (li.dataset.state === "slot" ? "slot:" : "") + li.dataset.key), saved: JSON.parse(localStorage.getItem("spelldash_shelf") || "null") }));
+    };
+    {
+      const cloud = createCloud({ word_progress: wordsIn("jhist1").slice(0, 3).map(wpRow), user_progress: [userProgress({ selected_category: "jhist1" })], user_items: [packRow("jhist1"), packRow("eiken3")] });
+      const page = await syncDevice(login(cloud));
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      await ownerSet(page);
+      const r = await shelfOn(page);
+      await page.waitForTimeout(600);
+      const shelfRows = cloud.rows("user_items").filter((x) => x.kind === "shelf").length;
+      check("2 台目（ログイン）: 届いた机の本とパックから棚が組み立つ（背 英検3級・空き 中学歴史）。既定の中学英語やり直し・中学英語 1年は出ない。クラウドに shelf の行を送らない", JSON.stringify(r.keys) === JSON.stringify(["b:eiken3", "slot:b:jhist1"]) && shelfRows === 0 && page.errors.length === 0, JSON.stringify({ ...r, shelfRows, errors: page.errors.slice(0, 2) }));
+      await page.close();
+    }
+    {
+      const cloud = createCloud({ word_progress: [...wordsIn("eiken5").slice(0, 20), ...wordsIn("jhist1").slice(0, 3)].map(wpRow), user_progress: [userProgress({ selected_category: "jhist1" })], user_items: [packRow("eiken5"), packRow("jhist1")] });
+      const page = await syncDevice(login(cloud));
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      await ownerSet(page);
+      const r = await shelfOn(page);
+      const shared = wordsIn("eiken5").slice(0, 20).filter((w) => wordsIn("jhs-english1").some((x) => x.id === w.id)).length;
+      check("2 台目（ログイン）: 英語の記録（英検5級 20 語。中学英語 1年と同じ id の語を含む）が届いても、使っていない中学英語やり直し・中学英語 1年は出ない（背 英検5級・空き 中学歴史、移行し直して prov false）", shared > 0 && JSON.stringify(r.keys) === JSON.stringify(["b:eiken5", "slot:b:jhist1"]) && r.saved?.prov === false && page.errors.length === 0, JSON.stringify({ ...r, shared, errors: page.errors.slice(0, 2) }));
+      await page.close();
+    }
   }
 
   // ログイン欄の並び（未ログイン）: 利点の 1 文が Google の上、メール側は操作だけ。トップの「すでに使っている方はログイン」は見える

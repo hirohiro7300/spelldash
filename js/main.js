@@ -43,7 +43,7 @@ import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホー�
 import { renderLoginNudge } from "./loginNudge.js";
 import { initTutorial, skipTutorialIfReturning } from "./tutorial.js";
 import { initRoom } from "./room.js";
-import { initBookshelf, renderBookshelf, updateBookshelf } from "./bookshelf.js";
+import { initBookshelf, renderBookshelf, updateBookshelf, startShelf, rememberCourse } from "./bookshelf.js";
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
 import { getCategories, getPackCatalog } from "./wordStore.js";
 import { getGenre, genreLabel } from "./genres.js";
@@ -68,7 +68,7 @@ window.addEventListener("spelldash:packs", (event) => {
     renderHome(); // 語が変わったので道も描き直す
     renderLearnedCard();
     renderHasumiHome();
-    renderBookshelf(); // 追加済みの本（読みかけ）が変わったので本棚も組み直す
+    renderBookshelf(); // 届いたパック・外したパックを本棚にも（js/bookshelf.js が照合する）
     window.dispatchEvent(new CustomEvent("spelldash:store-ready"));
   });
 });
@@ -199,12 +199,13 @@ function goNextSection() {
 }
 
 // コースの乗り換え: まだ制覇していない最初のセクションから（進捗は語ごとなので失われない）。
-// focusStart: 本棚の函・本をさがすから来たとき、焦点を机のスタートへ（背を押したときの pickBook と同じ着地）
+// focusStart: 本棚の函から来たとき、焦点を机のスタートへ（背を押したときの pickBook と同じ着地）。選んだコースの函は本棚に（rememberCourse）
 function chooseCourse(courseId, { focusStart = false } = {}) {
   const course = COURSES[courseId];
   if (!course) return Promise.resolve();
   const start = course.packs.find((id) => !buildPath(id).allDone) ?? course.packs[0];
   startCourse(courseId, start);
+  rememberCourse(courseId);
   setGenre("");
   return initWordStore().then(() => {
     initializeCategoryPicker();
@@ -248,11 +249,11 @@ function renderHome() {
   const path = renderPath({ onStart: startUnit, onAdvance: goNextSection, onCourse: chooseCourse });
   renderPlayModes({ onChallenge: startChallenge, onDaily: startDaily });
   renderSetupSummary();
-  updateBookshelf(); // 机の上の本の空きと読みかけを本棚に（js/bookshelf.js）
+  updateBookshelf(); // 本棚を照合して描き直す（机の本の空き・いまのコース・届いたパック。js/bookshelf.js）
   return path;
 }
 
-// 本棚の背を押した: その本を机に出す（分野パックはその場で読み込む。追加の手続きは要らない）。
+// 本棚の背を押した: その本を机に出す（分野パックはその場で読み込む。「本を足す」で棚に足しただけでは読み込まない）。
 // コースの鍵: 今のコースにその本があれば今のコースのまま、別のコースにだけあれば最初に見つかったコースへ。どのコースにも無い本はコースを触らない
 // （柱が棚の名前になるだけ。js/pathView.js）。終わったら机の本へスクロールし、焦点はスタートへ
 async function pickBook(id) {
@@ -384,8 +385,9 @@ ensureDefaultCourse();
 
 // 単語データを読み込んでからゲームを有効化
 // 初めての人にはトップページ（語の読み込みを待たずに出す。アプリのホームが一瞬見えないように）。
-// スタートでそのまま腕試し（机の本の最初の章）へ。積んだ本（または本棚の本）を選んでいたら、その本をパックに足して机に出してから始める。
-// spelldash_course は触らない（コース外の本は柱が棚の名前になるだけ。js/pathView.js）。本棚の函（コース）を選んでいたときだけ、そのコースの鍵を回す
+// スタートでそのまま腕試し（机の本の最初の章）へ。積んだ本（または「171冊から選ぶ」の本）を選んでいたら、その本をパックに足して机に出してから始める。
+// spelldash_course は触らない（コース外の本は柱が棚の名前になるだけ。js/pathView.js）。函（コース）を選んでいたときだけ、そのコースの鍵を回す。
+// 状態を替えたあとで本棚を作る（startShelf: その時の移行＋机の本。js/bookshelf.js）
 const storeReady = initWordStore();
 renderWelcome({
   onStart: ({ bookId, courseId } = {}) => storeReady.then(async () => {
@@ -396,6 +398,7 @@ renderWelcome({
       await initWordStore();
       initializeCategoryPicker();
     }
+    startShelf();
     const path = renderHome();
     renderHasumiHome(); // 紙片の「はじめまして」を、机の本に合う文へ
     startUnit(path ? currentUnitOf(path) : null);
