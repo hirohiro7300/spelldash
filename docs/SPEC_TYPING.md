@@ -18,7 +18,7 @@
 | 入口 | 全ページのフッターの先頭（battle.html を除く 10 ページ＋packs の生成器）・お知らせ 1 件・sitemap |
 | 計測 | 新しい端末だけ、`first_visit` の source に `typing`／`typing_start`／`typing_done`／`typing_study`（SQL は変えない） |
 
-入れないもの: 学習記録への書き込み（`spelldash_word_stats`・SRS・Recall Loop・保持率・XP・連続日数・ミッション・`spelldash_typing_stats`・セッション履歴・`spelldash_key_miss`）、ランク・称号・全国ランキング、時間・語数・難しさの設定、3 つ目の種類、キーボードの図・指の色分け、進み具合の棒・カウントダウン・打っている間の速さ表示、グラフ・履歴、コンボ・効果音・BGM、はちゃん・Pro・課金・広告・通貨、結果のシェア、タブの記憶・`?kind=`、管理画面への表示（BACKLOG D9〜D16）。
+入れないもの: 学習記録への書き込み（`spelldash_word_stats`・SRS・Recall Loop・保持率・XP・連続日数・ミッション・`spelldash_typing_stats`・セッション履歴・`spelldash_key_miss`）、ランク・称号・全国ランキング、時間・語数・難しさの設定、3 つ目の種類（文を次々と打つのはタイピングゲームの役: docs/SPEC_TYPING_GAME.md）、キーボードの図・指の色分け、進み具合の棒・カウントダウン・打っている間の速さ表示、グラフ・履歴、コンボ・効果音・BGM、はちゃん・Pro・課金・広告・通貨、結果のシェア、タブの記憶・`?kind=`、管理画面への表示（BACKLOG D9〜D16）。
 
 ## 2. 画面と状態
 
@@ -101,3 +101,4 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 - アプリ: docs/APP.md の表（PAGES に typing.html）
 - 計測: docs/SQL_FUNNEL.md 5、docs/SPEC_FUNNEL.md（first_visit は source ごとに端末で 1 回きり）
 - 書斎の規則の例外: docs/CONCEPT.md §4-7（結果の打/分だけ主の数 1 行）
+- 文を次々と打つタイピングゲーム（/typing-game.html）は docs/SPEC_TYPING_GAME.md。かなの単位・判定・数え方の部品（js/typingDrill.js。ゲームのために `createRun` に `skip()` を足した。既定の挙動は変わらない）を共有する。typing.html の札の下の 1 行がそこへの導線（時間切れの守りの inert にも入る: js/typingPage.js の `guarded()`）

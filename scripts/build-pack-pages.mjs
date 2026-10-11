@@ -256,6 +256,7 @@ const urls = [
   ["/list.html", "weekly", "0.8"],
   ["/packs/", "weekly", "0.8"],
   ["/typing.html", "monthly", "0.8"],
+  ["/typing-game.html", "monthly", "0.8"],
   ...packs.map((p) => [`/packs/${p.id}.html`, "monthly", "0.7"]),
   ["/list.html?category=listing", "monthly", "0.6"],
   ["/news.html", "weekly", "0.5"],

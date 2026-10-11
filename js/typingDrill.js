@@ -1,4 +1,5 @@
 // ===== タイピング練習（/typing.html）の判定・数え方・自己ベスト（docs/SPEC_TYPING.md） =====
+// タイピングゲーム（/typing-game.html。js/typingGame.js）も、かなの単位・判定（createRun と skip）・数え方を借りる。
 //
 // 見本を見てそのまま打つ（写し打ち）。DOM・localStorage に直接触らない（Node から import して E2E が確かめる）。
 // 学習記録（spelldash_word_stats・SRS・XP・連続日数・spelldash_key_miss など）は一切読まない・書かない。
@@ -175,6 +176,12 @@ export function createRun(kind, pairs = []) {
     add(more) {
       list.push(...more);
       if (!current && index < list.length) current = createWord(kind, list[index]);
+    },
+    // 今の語を数えずに飛ばす（タイピングゲームで文の持ち時間が尽きた）。stats は触らない。続き（spill）とミスの印は消す
+    skip() {
+      if (!current) return;
+      spill = null;
+      advance(); // index++、current = 次の語 or null、missPending = false
     },
     press(key, now) {
       if (!key) return { type: "ignored" };

@@ -44,7 +44,7 @@
 
 | 段階 | いつ |
 |---|---|
-| first_visit | 学習記録の無い端末で、初めてページを開いた。source が空でないのは `typing*`（タイピング練習から初めて来た端末の段階。docs/SQL_FUNNEL.md 5） |
+| first_visit | 学習記録の無い端末で、初めてページを開いた。source が空でないのは `typing*`（タイピング練習から初めて来た端末の段階）・`tgame*`（タイピングゲームから初めて来た端末の段階）・`typing_game`（タイピング練習から来た端末がゲームを開いた）。docs/SQL_FUNNEL.md 5 |
 | day7 | 学んだ日が 7 日になった（ホームを開いたとき） |
 | entry | 加入画面へのリンクを押した。入口（`data-funnel`）: footer・weekly・mywords・ai・cards・trend・repair・theme・profile・other。押した瞬間に移るので端末に積み、次のページで送る |
 | pro_view | 加入画面を開いた |

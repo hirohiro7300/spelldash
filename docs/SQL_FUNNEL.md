@@ -93,9 +93,19 @@ delete from public.funnel_events where day < ((now() at time zone 'Asia/Tokyo'):
 | `typing_start` | 最初の 1 回を打ち始めた |
 | `typing_done` | 結果が初めて出た（1 回目を途中でやめても、後の回で結果が出れば送る。打っている途中でやめた・ページを離れた回では送らない） |
 | `typing_study` | 「思い出して打つ」か本文の本体へのリンクを押した（端末に積み、次のページで送る） |
+| `typing_game` | タイピング練習から初めて来た端末が、タイピングゲーム（/typing-game.html）を開いた（typing.html → ゲームの導線。Batch 60） |
+
+タイピングゲーム（`/typing-game.html`、Batch 60、docs/SPEC_TYPING_GAME.md §7）から**初めて来た端末**も同じ仕組みで、鍵を分けて（`spelldash_funnel_tgame`）送る。1 端末に付く印は最初の 1 ページ分だけ（番号が無いときにしか印は付かないので、typing と tgame は混ざらない）。
+
+| source | 意味 |
+|---|---|
+| `tgame` | タイピングゲームを開いた（送れるまで開くたびに試す） |
+| `tgame_start` | 最初の 1 回を打ち始めた |
+| `tgame_done` | 結果が初めて出た（途中でやめた回では送らない） |
+| `tgame_study` | 「思い出して打つ」か本文の本体へのリンクを押した（`/?from=tgame`。端末に積み、次のページで送る） |
 
 - `funnel_events.source` の `typing*` は**段階**で、docs/SPEC_ACQUISITION.md（DESIGN ONLY・未実装）が設計している流入元（UTM の source）とは別物。
-- 管理画面の段階の数（RPC も行を読む経路も）は段階ごとに端末の重複を数えないので、`first_visit` の数は変わらない（typing の行を送る端末は、必ず source が空の first_visit も送る）。1 端末に first_visit が最大 5 行になる（source が空の行が「初めて来た」端末の数）。
+- 管理画面の段階の数（RPC も行を読む経路も）は段階ごとに端末の重複を数えないので、`first_visit` の数は変わらない（typing の行を送る端末は、必ず source が空の first_visit も送る）。1 端末に first_visit が最大 6 行になる（typing の族: 空＋typing・typing_start・typing_done・typing_study＋typing_game。tgame の族は 空＋4 = 5 行。source が空の行が「初めて来た」端末の数）。
 - 既存の端末・ほかのページから来た端末は送らない。回数・既存の人の利用は数えない。
 
 ```sql
@@ -112,8 +122,17 @@ select count(distinct f.device_id) as devices
 from public.funnel_events f
 join public.funnel_events d on d.device_id = f.device_id and d.step = 'day7'
 where f.step = 'first_visit' and f.source = 'typing';
+
+-- タイピングゲームから初めて来た端末の段階（直近 30 日。端末の数）。typing と同じ週で並べる
+select source, count(distinct device_id) as devices
+from public.funnel_events
+where step = 'first_visit' and (source like 'tgame%' or source = 'typing_game')
+  and day >= ((now() at time zone 'Asia/Tokyo')::date - 29)
+group by source
+order by devices desc;
 ```
 
+- タイピングゲームの割合: tgame_start ÷ tgame（開いてすぐ打てたか）、tgame_done ÷ tgame_start（90 秒もったか）、tgame_study ÷ tgame_done（本体への導線）、day7 ÷ tgame_study、typing_game ÷ typing（1 分のドリル → ゲームの導線）。コースの内訳・目標に届いた割合・流れた率は取れない（要るなら step を足す SQL が先）。
 - 見る割合: typing_start ÷ typing（すぐ打てたか）、typing_done ÷ typing_start（1 分を打ち切るところまで行ったか。最初の回とは限らない）、typing_study ÷ typing_done（導線が効いたか）、day7 ÷ typing_study（学習になったか）。
 - **分母の `typing` には検索エンジンの描画（ボット）が混ざりうる**（JS を動かして描画し、新しい端末として送るなら typing_start ÷ typing が実際より低く出る。書き込みまで行うかは未確認）。比は 1 回の値でなく**週ごとの推移**で見る。ボットを除く仕組みは v1 では入れない（BACKLOG D16）。
 - 取れないもの: 既存の端末が使った数・1 台の回数・日ごとの回数。要るなら check に段階（例 `typing_view`）を足す SQL が先（check に無い段階を先に送ると表が断り、送り直し続ける。**SQL より先にコードを入れない**）。来た数の全体・検索語は Google Search Console のページ別。
