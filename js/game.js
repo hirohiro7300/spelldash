@@ -93,6 +93,7 @@ import { getAfterCorrect, waitAfterCorrect, GLANCE_MS, MILESTONE_MS, ADVANCE_GUA
 import { generateCalc } from "./calcCards.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { renderWordAi } from "./wordAi.js";
+import { editAtCaret } from "./keyboard.js";
 import {
   elements,
   showMessage,
@@ -159,9 +160,11 @@ let freeMode = false;
 let hintChars = 0; // 全文入力モードでヒントで見せた文字数
 let awaitingNext = false; // 正解後、次の語へ進むまでの待ち（Enterで即進行）
 let advanceTimer = null;
+// 次の語が出た直後の 2 つの守り（寿命と使い切りの規則は isAdvanceEcho の上の注釈にまとめる）
 let advancedAt = -Infinity; // 正解後の待ちを終えて次の語を出した時刻（直後の Enter／Esc の守り。isAdvanceEcho）
 let advancedBy = null; // 次の語へ進んだきっかけ（"timer" = 待ちが終わった／"key" = Enter）
 let completedAt = -Infinity; // Study で前の語を打ち終えた時刻（タイマーで進んだときの守り。isAdvanceEcho）
+let tailUntil = -Infinity; // 待ちを縮めて次の語を出したときの、次の語の 1 打目の守りの終わり（-Infinity = 守らない。advanceNow が置く。spendTailGuard）
 let milestoneThisWord = false; // この語で節目の演出（覚えた のスタンプ・レベルアップの幕）を出した
 let learnedCardStale = false; // プレイ中は覚えた単語カードを描かない（畳まれて見えない）。終わったら描く
 let keepMessage = false; // この語の結果の行を次の語が出ても残すか（語の名を含む行・節目の行。showResult が決める。advanceNow）
@@ -170,6 +173,19 @@ let staleMessageTimer = null;
 
 function isFreeAnswer(word) {
   return !!word && !/^[a-z-]+$/.test(word.en);
+}
+
+// Study の待ちの間: 次に出す語（setNewWord と同じ選び方: キューの先頭から、漢字の書き分けのカードを飛ばす）が全文入力か（計算カードも全文入力）。
+// キューが空・語が見つからない（setNewWord が埋める語・抽選の語）は分からないので false（待ちを縮めてよい側。そのときは advanceNow が全文入力の語に
+// 1 打目の守りを置かない）。セットを終えて次の語を出さないときも false
+function nextStudyWordIsFree() {
+  if (setCompletePending) return false;
+  for (const id of getUpcomingIds()) {
+    const word = findWordIn(activeCategory, id);
+    if (word?.kanjiOnly) continue;
+    return !!word && (!!word.calc || (romajiEntriesFor(word).length === 0 && isFreeAnswer(word)));
+  }
+  return false;
 }
 
 // ローマ字モード（日本語の答え: 鎌倉幕府 など）: 漢字に変換せず、読みをローマ字で打つ（2026-10 創業者指示。js/romaji.js）。
@@ -187,10 +203,10 @@ let romajiEntries = [];
 // 1. Study の正解後の待ちの間（次の語はまだ無い）: 続きのキーは間がいくら空いても続きに食わせる（takeSpill）。続きを打っている間は
 //    タイマーで次の語を出さない（completeWord の tick: 次の語を出す時刻 = max(本来の待ちの終わり, 最後の続きの打鍵 + SPILL_HOLD_MS〔まだ続く〕
 //    ／+ SPILL_TAIL_MS〔打ち切った・読みを閉じた。2 打以上のときだけ。語末の ん の 2 つ目の n・an の n のような 1 打の続きは本来の待ちを変えない〕））。
-//    次の語を出す時刻が本当に SPILL_TAIL_MS で決まった（本来の待ちの終わりより後だった）ときだけ、続きの最後の打鍵から本来の待ちの長さ
-//    （js/afterCorrect.js の表。ただし標準のペースの値まで）までの次の語の 1 打目で、次の語が拒む字（続きの直後の空白・gymnasiums の s）は
-//    ミスにせず捨てる（tailGuard。1 打目だけ。次の語が受ける字・2 打目からは普通に判定）。続きを速く打ち切って本来の待ちで出たとき・
-//    この幅を過ぎた字は、gym とだけ打った人と同じく普通に判定する（本物の打ち間違いは捨てない。1 ミス＝不正解）
+//    ただし次の語が全文入力のときは、2 打以上の続きを打ち切った後も待ちを縮めない（+ SPILL_TAIL_MS の代わりに + 本来の待ちの長さ。PR #153 より前の数え直し。
+//    全文入力の語は 1 打ずつ判定しないので、続きの直後の余分な 1 打が入力欄に入ってしまう。全文入力の語は稀でテンポへの影響は小さい。REVIEW-155 の 1）。
+//    次の語を出す時刻が本当に SPILL_TAIL_MS で決まった（本来の待ちの終わりより後だった＝待ちを縮めた）ときだけ、次の語の 1 打目の守りを置く
+//    （続きの直後の余分な 1 打＝空白・gymnasiums の s を、待ちの間に捨てられたのと同じくミスにせず捨てる。幅と使い切りの規則は isAdvanceEcho の上の注釈）
 // 2. 次の語が出た後（judgeKey）: 完成後の 1 打を「続きの見方」と「次の語」の両方に食わせ、どちらかが拒んだ時点で 1 回だけ解決する
 //    - 続きだけが受ける → 続きとして飲む（次の語の打鍵にしない。ミスにしない。1 打 0.9 秒の gymnasium の続き、an の n）
 //    - 次の語だけが受ける → 次の語の打鍵（続きは終える）
@@ -228,6 +244,7 @@ let romajiEntries = [];
 //                       | null（続きでない。状態は変えない）,
 //           rest() → 続きの残りの綴り（英単語だけ。ローマ字は null）,
 //           at: 最後に食わせた打鍵の時刻, n: 完成後に食わせた打鍵の数, live: まだ続けて打てる, ended: 最後の打鍵で打ち切った・閉じた（待ちを延ばさない）,
+//           extra: 打ち切った・閉じた後に、続きでない打鍵が待ちの間に来て捨てた（続きの直後の余分な 1 打はもう来た。次の語の 1 打目の守りを置かない）,
 //           shared: null | { serial: 次の語の wordSerial, keys, typed: 受理した後の次の語の打鍵, inWindow: 全部が窓の中, underway: 続きがすでに始まっていた,
 //                            hold: null | { why: "finish" | "typo" | "restart", key: 保留の字, next: その打鍵の判定,
 //                                           echo（finish: 完成した語をなぞる打鍵を飲む記録）, rest（finish: 保留にした時点の続きの残り） } } }
@@ -236,9 +253,6 @@ let spillTimer = null; // 保留（shared.hold）の時間切れ（resolveHoldBy
 // 正解後の待ちに入ったときに入力欄に残っている打ち終えた綴り（Android の input 経路。待ちの 1 回目の入力だけ比べる）。
 // 続きの記録（spill）とは別に持つ: 完成の後に続き（エコー）を始め直しても消さず、入力欄を空にしたときだけ消す（REVIEW-153 の 1）
 let waitInputBase = "";
-// Study: 2 打以上の続きを打ち切って、次の語を SPILL_TAIL_MS で出した（本来の待ちの終わりより後）ときの、次の語の 1 打目の守り
-// （{ serial: 次の語の wordSerial, until }。judgeKey）
-let tailGuard = null;
 const SPILL_GAP_MS = 600; // 窓（js/typingDrill.js の SPILL_GAP_MS と同じ値）。引き分けの字をこの中で打っていれば黙って外せる
 const SPILL_HOLD_MS = 1500; // Study: 続きを打っている間、タイマーで次の語を出さない長さ（最後の続きの打鍵から）
 const SPILL_TAIL_MS = 250; // Study: 続きを打ち切った後、次の語を出すまで置く長さ（直後の余分な 1 打＝空白・gymnasiums の s を待ちの間に捨てる）
@@ -255,7 +269,27 @@ function clearSpill() {
 
 function startSpill(kind, keyOf, take, rest = () => null) {
   clearSpill();
-  spill = { kind, keyOf, take, rest, at: performance.now(), n: 0, live: true, ended: false, shared: null };
+  spill = { kind, keyOf, take, rest, at: performance.now(), n: 0, live: true, ended: false, extra: false, shared: null };
+}
+
+// 待ちの間に来て捨てた打鍵が続きでなかった（続きに食わせなかった字・空白）: 打ち切った・閉じた後なら、続きの直後の余分な 1 打はもう来た
+// （次の語の 1 打目の守りを置かない。まだ続く途中なら、続きの記録はそのまま＝ローマ字の読みの間の空白は続きを終えない）
+function noteWaitExtra() {
+  if (spill?.ended) spill.extra = true;
+}
+
+// 印字できる 1 字の打鍵（修飾キー〔Ctrl・⌘・Alt〕なしの 1 文字。空白を含む）なら event.key、そうでなければ null（Shift・Backspace・Enter など）
+function printableKey(event) {
+  return !event.ctrlKey && !event.metaKey && !event.altKey && [...String(event.key ?? "")].length === 1 ? event.key : null;
+}
+
+// 入力欄の値の、頭から n 個目の英字（a-z。大文字も数える）より後ろ（Android の input 経路: 判定は小文字の a-z だけを見るが、
+// 入力欄には打たれたとおりの字〔大文字・空白・記号〕が入っている）
+function afterLetters(text, n) {
+  if (n <= 0) return text;
+  let seen = 0;
+  for (let i = 0; i < text.length; i++) if (/[a-z]/i.test(text[i]) && ++seen === n) return text.slice(i + 1);
+  return "";
 }
 
 // ローマ字: 終えた語の判定（matcher）に続きのキーを食わせる。語末の ん を n 1 つで終えた後の 2 つ目の n は、読みを閉じただけ
@@ -282,7 +316,7 @@ function startSpellingSpill(rests) {
   let left = rests;
   startSpill(
     "spelling",
-    (event) => (!event.ctrlKey && !event.metaKey && !event.altKey && [...String(event.key ?? "")].length === 1 ? event.key.toLowerCase() : null),
+    (event) => printableKey(event)?.toLowerCase() ?? null,
     (key) => {
       const skip = /^[a-z]$/.test(key);
       const next = left.map((r) => (skip ? r.replace(/^[^a-z]+/, "") : r)).filter((r) => r[0] === key).map((r) => r.slice(1));
@@ -309,6 +343,7 @@ function advanceSpill(s, result, now = performance.now()) {
   s.n++;
   s.live = result !== "end";
   s.ended = result !== "more";
+  s.extra = false; // 閉じた読みの続き（長い読み）を打ち足した: 余分な 1 打はまだ来ていない
   completedAt = now;
 }
 
@@ -330,12 +365,27 @@ function takeSpill(key) {
   return false;
 }
 
-// Study の待ちの tick: 続きを打っている間は次の語を出さない。残りの ms（0 以下なら出してよい）
-function spillHoldLeft() {
+// Android の input 経路の、待ちの間・続きを完成させた入力と同じ入力の残り: 字（a-z）は 1 字ずつ続きに食わせる（takeSpill）。
+// 続きでない字が来た・最後の字の後ろに字でない打鍵（空白・記号。a-z だけを比べるので続きには食わせない）があれば、打ち切った後の余分な 1 打
+// （keydown の待ちの枝と同じ。noteWaitExtra）
+function takeSpillText(letters, trailing) {
+  let taken = true;
+  for (const ch of letters) if (!(taken = takeSpill(ch))) break;
+  if (!taken || trailing) noteWaitExtra();
+}
+
+// Study の待ちの tick: 続きを打っている間は次の語を出さない。残りの ms（0 以下なら出してよい）。
+// endedMs = 2 打以上の続きを打ち切った・閉じた後に置く長さ（SPILL_TAIL_MS。次の語が全文入力なら本来の待ちの長さ）
+function spillHoldLeft(endedMs) {
   const s = spill;
   if (!s || s.n === 0) return 0;
-  const until = s.live && !s.ended ? s.at + SPILL_HOLD_MS : s.n >= 2 ? s.at + SPILL_TAIL_MS : -Infinity;
+  const until = s.live && !s.ended ? s.at + SPILL_HOLD_MS : s.n >= 2 ? s.at + endedMs : -Infinity;
   return until - performance.now();
+}
+
+// 引き分けの記録（spill.shared。上の spill の形）を作る。serial はいまの次の語、保留はまだ無い
+function makeShared(keys, typed, inWindow, underway) {
+  return { serial: wordSerial, keys, typed, inWindow, underway, hold: null };
 }
 
 // 引き分けの記録がいまの次の語の打鍵と合っているか（別の語・答えを見た・ヒントで足した字があれば合わない）
@@ -432,11 +482,9 @@ function resolveSharedForEnter() {
 // 返り値 "again" = 保留の字で前の語が完成したので、この字は新しい語に食わせ直す（呼び元が同じ event をもう一度流す）
 function judgeKey(next) {
   const now = performance.now();
-  // Study で 2 打以上の続きを打ち切って次の語を SPILL_TAIL_MS で出した後の、次の語の 1 打目（tailGuard。completeWord の tick が置く）:
-  // 続きの最後の打鍵から本来の待ちの長さ（標準のペースの値まで）までに打たれ、次の語が拒む字（続きの直後の空白・複数形の s）はミスにせず捨てる。
-  // 1 打目だけ（判定のたびに外す）
-  const tail = !!tailGuard && tailGuard.serial === wordSerial && now < tailGuard.until && !isRevealed && nextTyped() === "";
-  tailGuard = null;
+  // 次の語の 1 打目の守り（待ちを縮めて出したときだけ。isAdvanceEcho の上の注釈）: 次の語が拒む字（続きの直後の空白・複数形の s）はミスにせず捨てる。
+  // 守りは最初の打鍵で使い切る（この打鍵が次の語に受けられても、続きに飲まれても）
+  const tail = spendTailGuard();
   let s = spill;
   if (s && (s.shared ? !sharedValid(s) : now - s.at > SPILL_LATE_MS || !s.live)) {
     clearSpill();
@@ -502,7 +550,7 @@ function judgeKey(next) {
       altDone = true;
     } else if (done && cont === "more") {
       // 次の語はこの字で完成するが、続きもまだ続く（out → outdoors の do と次の語 do）: 決めずに保留。字は見せる
-      if (!s.shared) s.shared = { serial: wordSerial, keys: "", typed: nextTyped(), inWindow, underway, hold: null };
+      if (!s.shared) s.shared = makeShared("", nextTyped(), inWindow, underway);
       startHold(s, next, "finish", cont);
       return;
     } else {
@@ -551,7 +599,7 @@ function judgeKey(next) {
     startEchoSpill(echo); // 完成の側（acceptChar・finishRomajiWord）が持ち越し止めを替えるか消してある
     return;
   }
-  s.shared = { serial: wordSerial, keys: (s.shared?.keys ?? "") + next.key, typed: "", inWindow: (s.shared?.inWindow ?? true) && inWindow, underway, hold: null };
+  s.shared = makeShared((s.shared?.keys ?? "") + next.key, "", (s.shared?.inWindow ?? true) && inWindow, underway);
   advanceSpill(s, cont, now);
   s.shared.typed = nextTyped();
 }
@@ -757,6 +805,7 @@ export function stopGame() {
   advancedAt = -Infinity;
   advancedBy = null;
   completedAt = -Infinity;
+  tailUntil = -Infinity;
   readingHold = false;
   milestoneThisWord = false;
   document.body.classList.remove("free-answer");
@@ -818,6 +867,7 @@ export function startGame(options = {}) {
   advancedAt = -Infinity;
   advancedBy = null;
   completedAt = -Infinity;
+  tailUntil = -Infinity;
   readingHold = false;
   milestoneThisWord = false;
   startTime = Date.now();
@@ -984,9 +1034,24 @@ function triggerEnter() {
   }
 }
 
-// 次の語が出てから ADVANCE_GUARD_MS（0.3 秒）の、その語にまだ何も打っていない Enter／Esc か。
-// タイマーで進んだときは、前の語を打ち終えてから ECHO_AFTER_DONE_MS（1.2 秒）の間も同じ。
-// 待ちの終わり際に「次へ」と押した指・二度押し・打ち終えたら Enter で次への癖が、次の語の「分からない」にならないようにする
+// ===== 次の語が出た直後の 2 つの守り（Study。寿命と使い切りの規則はここにまとめる） =====
+// どちらも前の語に向けた打鍵が次の語の×にならないようにするもので、次の語を出したとき（advanceNow）に始まり、ゲームの開始・中断（startGame・stopGame）で消える。
+// 本物の打ち間違い・本当の「分からない」は捨てない（1 ミス＝不正解）。
+// - Enter／Esc の守り（isAdvanceEcho。advancedAt・advancedBy・completedAt）: 待ちの終わり際に「次へ」と押した指・二度押し・打ち終えたら Enter で次への癖
+//   寿命: 次の語が出てから ADVANCE_GUARD_MS（0.3 秒）。タイマーで進んだときは、前の語を打ち終えてから（続きを打っていれば続きの最後の打鍵から。advanceSpill）
+//         ECHO_AFTER_DONE_MS（1.2 秒）の間も
+//   使い切り: 次の語に字が入ったら効かない（受理した字・入力欄の字・ローマ字の打鍵がどれも空のときだけ）。引き分けの字を外して Enter を飲んだら
+//         その場で使い切る（resolveSharedForEnter。2 回目の Enter は普通に判定）
+// - 1 打目の守り（spendTailGuard。tailUntil）: 続きの直後の余分な 1 打（空白・gymnasiums の s）
+//   置くとき: 2 打以上の続きを打ち切り、次の語を出す時刻が SPILL_TAIL_MS で決まった（本来の待ちの終わりより後＝待ちを縮めた）ときだけ（completeWord の tick）。
+//         余分な 1 打がもう待ちの間に来て捨てていれば置かない（spill.extra）。次の語が全文入力なら待ちを縮めないので置かない
+//   寿命: 続きの最後の打鍵から min(本来の待ち〔節目・チュートリアルの保持を含む〕, 標準のペースの表の値〔語の種類の値: 英単語 0.7 秒・概念カード 0.9 秒。
+//         例文の有無によらない〕)。長いペースの表の値（2.2 秒・2.6 秒）まで広げると、次の語が見えて 2 秒近くたってからの本物の打ち間違いまで捨てる
+//         （余分な 1 打が来るのは打ち切ってすぐ）。次の語が変わったら消える（setNewWord）
+//   使い切り: 次の語が出た後の最初の打鍵（印字できる 1 字。字でも空白でも、どの経路でも: keydown・画面キーボード・Android の input・ローマ字。
+//         judgeKey を通らない Android の空白・ローマ字の空白も）。その打鍵が次の語に拒まれたらミスにせず捨てる。2 打目からは普通に判定
+//
+// 次の語が出てから ADVANCE_GUARD_MS（0.3 秒）の、その語にまだ何も打っていない Enter／Esc か（タイマーで進んだときは打ち終えてから 1.2 秒も）
 function isAdvanceEcho() {
   const now = performance.now();
   return (
@@ -997,6 +1062,13 @@ function isAdvanceEcho() {
     !elements.input.value &&
     !romaji?.keys
   );
+}
+
+// 次の語の 1 打目の守りを使う（上の注釈）。この打鍵を守るなら true。どの打鍵でも 1 回で消える
+function spendTailGuard() {
+  const on = performance.now() < tailUntil && !isRevealed && nextTyped() === "";
+  tailUntil = -Infinity;
+  return on;
 }
 
 // 次の語にいま受理している打鍵（綴り入力は typedSoFar、ローマ字は打ったキー）
@@ -1033,9 +1105,10 @@ export function handleKeydown(event) {
 
   // 正解直後の待ち（次の語が出る前）: 文字キーは判定しない（次の語の1文字目をミス扱いにしない）。
   // 打ち終えた語の続き（ローマ字の読みの続き・英単語の長い候補の続き）は判定に食わせて時刻を進める
-  // （続きを打っている間はタイマーで次の語を出さない。completeWord の tick）
+  // （続きを打っている間はタイマーで次の語を出さない。completeWord の tick）。続きを打ち切った後に来た余分な 1 打（空白・s）は捨て、
+  // 次の語の 1 打目の守りはもう使ったものとする（noteWaitExtra）
   if (awaitingNext) {
-    takeSpill(spill?.keyOf(event));
+    if (!takeSpill(spill?.keyOf(event)) && printableKey(event)) noteWaitExtra();
     event.preventDefault();
     return;
   }
@@ -1071,8 +1144,9 @@ export function handleKeydown(event) {
       clearSpill();
     }
     // 保留の字で前の語が完成して流し直したキー（"again"）は、前の語の判定で preventDefault 済みでブラウザが入力欄に入れない。
-    // 黙って消さず、ここで入力欄（カーソルの位置）に入れる（画面キーボードの合成キーも同じ。REVIEW-153 の 5）
-    if (event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.altKey && [...String(event.key ?? "")].length === 1) insertTyped(event.key);
+    // 黙って消さず、ここで入力欄（カーソルの位置）に入れる（画面キーボードの合成キーも同じ。REVIEW-153 の 5）。
+    // ブラウザが字を入れたのと同じにするので input イベントは出さない（全文入力の判定は Enter）
+    if (event.defaultPrevented && printableKey(event)) editAtCaret(elements.input, event.key, 0, { notify: false });
     return;
   }
 
@@ -1086,23 +1160,16 @@ export function handleKeydown(event) {
   if (judgeSpellingKey(event.key.toLowerCase(), spill?.keyOf(event), handleCorrectChar) === "again") handleKeydown(event);
 }
 
-// 入力欄のカーソルの位置に字を入れる（全文入力の語に流し直したキー。ブラウザは preventDefault 済みのキーの字を入れない）
-function insertTyped(text) {
-  const input = elements.input;
-  try {
-    input.setRangeText(text, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, "end");
-  } catch {
-    input.value += text;
-  }
-}
-
 // ローマ字モードの 1 打。ローマ字のキーでないもの（空白・記号・Backspace）は判定しない（ミスにもしない）
 function handleRomajiKey(event) {
   if (!romaji) return;
   if (event.ctrlKey || event.metaKey || event.altKey) return; // 再読み込み・コピーなどブラウザの操作は止めない
   const key = romajiKeyOf(event);
   if (!key) {
-    if ([...String(event.key ?? "")].length === 1 || ["Backspace", "Delete", "Process", "Unidentified"].includes(event.key)) event.preventDefault();
+    // 判定しない字（空白・記号）でも、次の語の 1 打目の守りは使い切る（物理キーの綴り入力で空白が守りを使うのと同じ。REVIEW-155 の 2）
+    const printable = printableKey(event);
+    if (printable) spendTailGuard();
+    if (printable || ["Backspace", "Delete", "Process", "Unidentified"].includes(event.key)) event.preventDefault();
     return;
   }
   event.preventDefault();
@@ -1197,7 +1264,8 @@ export function handleTextInput() {
   }
   if (freeMode) return; // 全文入力モードは Enter で判定
   if (composing) return; // 変換確定はhandleCompositionEndで処理する
-  const raw = elements.input.value.toLowerCase().replace(/[^a-z]/g, "");
+  const value = elements.input.value; // 打たれたとおりの字（大文字・空白・記号を含む）
+  const raw = value.toLowerCase().replace(/[^a-z]/g, "");
 
   if (awaitingNext) {
     // 正解直後の待ち: 入力は捨てる（次の語の判定に持ち越さない）。打ち終えた語の続き（gym の後の nasium）は
@@ -1206,13 +1274,16 @@ export function handleTextInput() {
     // （2 回目からは打ち終えた綴りと比べない。a の続き a large の a を、残っている a と取り違えない）
     const base = waitInputBase;
     waitInputBase = "";
-    const extra = base && raw.startsWith(base) ? raw.slice(base.length) : raw;
-    for (const ch of extra) if (!takeSpill(ch)) break;
+    takeSpillText(base && raw.startsWith(base) ? raw.slice(base.length) : raw, afterLetters(value, raw.length) !== "");
     elements.input.value = "";
     return;
   }
 
   const accepted = shownTyped(); // 受理した字 ＋ 保留 finish で見せている字
+
+  // 字（a-z）でない打鍵（空白・記号）は判定に入らない（raw から落ちる）が、次の語の 1 打目の守りは使い切る
+  // （物理キーで空白が judgeKey を通って守りを使うのと同じ結果にする。REVIEW-155 の 2）
+  if (raw.startsWith(accepted) && /^[^a-z]/i.test(afterLetters(value, accepted.length))) spendTailGuard();
 
   if (raw === accepted) return;
 
@@ -1243,14 +1314,15 @@ export function handleTextInput() {
       if (awaitingNext || romajiMode) {
         // Study の待ちの間・ローマ字の語: 続き（echo）に食わせるだけ。入力欄は空にして待ちの基準もそろえる
         // （待ちの通常の道と同じ。次の入力は空の欄からの差分だけを比べる。REVIEW-153 の 3）
-        for (const ch of rest) if (!takeSpill(ch)) break;
+        takeSpillText(rest, afterLetters(value, raw.length) !== "");
         elements.input.value = "";
         waitInputBase = "";
         return;
       }
       if (freeMode) {
-        // 全文入力の語: 字は入力欄に入れる（判定は Enter。setNewWord が空にした欄に、この字から先を戻す。REVIEW-153 の 5）
-        elements.input.value = rest.join("");
+        // 全文入力の語: 字は入力欄に入れる（判定は Enter。setNewWord が空にした欄に、この字から先を戻す。REVIEW-153 の 5）。
+        // 戻すのは入力欄に実際に打たれた字（受け付け済みの部分より後ろ。大文字・空白もそのまま）。物理キーが event.key をそのまま入れるのと同じ（REVIEW-155 の 4）
+        elements.input.value = afterLetters(value, accepted.length + i);
         return;
       }
       i--;
@@ -1259,7 +1331,7 @@ export function handleTextInput() {
     if (finished) {
       // 単語完成。同じ入力で一度に入った残り（予測変換で gymnasium と入ったときの nasium）は捨てる（setNewWord が入力欄をリセットする）。
       // 続きなら続きの判定に食わせて、次の入力で来る続きも飲めるようにする（同じ入力の残りは前の語の打鍵）
-      for (const rest of fresh.slice(i + 1)) if (!takeSpill(rest)) break;
+      takeSpillText(fresh.slice(i + 1), afterLetters(value, raw.length) !== "");
       return;
     }
     if (typingMissCount !== missBefore) break; // 1イベントにつきミスは1回まで（予測変換の一括挿入対策）
@@ -1432,8 +1504,9 @@ function finishFreeWord() {
   completeWord();
 }
 
-// 正解後の待ちを終えて次へ（by: "key" = Enter で自分から／"timer" = 待ちが終わった）
-function advanceNow(by = "key") {
+// 正解後の待ちを終えて次へ（by: "key" = Enter で自分から／"timer" = 待ちが終わった）。
+// tail = 次の語の 1 打目の守りの終わり（待ちを縮めて出したときだけ。isAdvanceEcho の上の注釈。全文入力の語は 1 打ずつ判定しないので置かない）
+function advanceNow(by = "key", tail = -Infinity) {
   clearTimeout(advanceTimer);
   advanceTimer = null;
   if (!awaitingNext) return; // タイマーと Enter が重なっても 1 回だけ進む
@@ -1452,6 +1525,7 @@ function advanceNow(by = "key") {
   if (isPlaying && prev && !keepMessage) hideStaleMessage();
   advancedAt = performance.now();
   advancedBy = by;
+  tailUntil = isPlaying && !freeMode && tail > advancedAt ? tail : -Infinity;
 }
 
 // 前の語の結果の行を見えなくする。文はすぐには消さない（aria-live の読み上げを途中で落とさない）。
@@ -1927,11 +2001,12 @@ function completeWord() {
   awaitingNext = true;
   waitInputBase = elements.input.value.toLowerCase().replace(/[^a-z]/g, "");
   completedAt = performance.now();
-  // 本来の待ちの終わり（completedAt は続きの打鍵で進む〔advanceSpill〕ので、待ちを始めた時刻からここで決めて取っておく。tailGuard）
+  // 本来の待ちの終わり（completedAt は続きの打鍵で進む〔advanceSpill〕ので、待ちを始めた時刻からここで決めて取っておく。1 打目の守り）
   const waitEnd = completedAt + wait;
-  // tailGuard の幅: 表の値（ms）。ただし標準のペースの値（例文つき 0.7 秒・概念カード 0.9 秒）まで。長いペースの表の値（2.2 秒・2.6 秒）のままだと、
-  // 次の語が見えて 2 秒近くたってからの本物の打ち間違いまで捨てる（続きの直後の余分な 1 打が来るのは打ち切ってすぐ）
-  const tailMs = Math.min(ms, GLANCE_MS.standard[concept ? "concept" : "example"]);
+  // 1 打目の守りの幅（続きの最後の打鍵から）: 本来の待ち（節目・チュートリアルの保持を含む）。ただし標準のペースの表の、この語の種類の値まで
+  // （英単語 0.7 秒・概念カード 0.9 秒。例文の無い語の表の値 0.25 秒では、覚えた の 1.4 秒の待ちでも幅が 0 になる。REVIEW-155 の 3）。
+  // 長いペースの表の値（2.2 秒・2.6 秒）のままだと、次の語が見えて 2 秒近くたってからの本物の打ち間違いまで捨てる（isAdvanceEcho の上の注釈）
+  const tailMs = Math.min(wait, GLANCE_MS.standard[concept ? "concept" : "example"]);
   clearTimeout(advanceTimer);
   const tick = () => {
     if (!isPlaying || wordSerial !== serialAtComplete) return;
@@ -1943,22 +2018,22 @@ function completeWord() {
       return;
     }
     // 前の語の続き（gymnasium の nasium・いわじゅくいせき の いせき）を打っている: 次の語を出す時刻 = max(本来の待ちの終わり,
-    // 最後の続きの打鍵 + SPILL_HOLD_MS〔まだ続く〕／+ SPILL_TAIL_MS〔2 打以上で打ち切った〕)。続きを打たない人・1 打の続き（語末の ん の 2 つ目の n）の待ちは変わらない
-    const hold = spillHoldLeft();
+    // 最後の続きの打鍵 + SPILL_HOLD_MS〔まだ続く〕／+ SPILL_TAIL_MS〔2 打以上で打ち切った〕)。続きを打たない人・1 打の続き（語末の ん の 2 つ目の n）の待ちは変わらない。
+    // 次の語が全文入力なら、打ち切った後も待ちを縮めない（+ SPILL_TAIL_MS の代わりに + 本来の待ちの長さ。続きの直後の余分な 1 打が入力欄に入らない。REVIEW-155 の 1）
+    const nextFree = nextStudyWordIsFree();
+    const hold = spillHoldLeft(nextFree ? wait : SPILL_TAIL_MS);
     if (hold > 0) {
       // まだ続きを打っている間は 100ms ごとに見直す（打ち切ったら時刻が縮む）。打ち切った後は残りをそのまま待つ
       advanceTimer = setTimeout(tick, spill?.live ? Math.min(SPILL_RECHECK_MS, hold) : Math.max(10, hold));
       return;
     }
-    // 2 打以上の続きを打ち切り、次の語を出す時刻が SPILL_TAIL_MS で決まった（最後の続きの打鍵 + SPILL_TAIL_MS が本来の待ちの終わりより後）:
-    // 出す時刻はそのまま（テンポは変えない）。続きの最後の打鍵から本来の待ちの長さ（tailMs。js/afterCorrect.js の表、ただし標準のペースの値まで。
-    // 標準・例文つきの語は 0.7 秒）までの次の語の 1 打目で、次の語が拒む字（続きの直後の空白・gymnasiums の s）はミスにせず捨てる（judgeKey の tailGuard。
-    // gym と打って空白を打つ人は本来の待ちの間に空白が捨てられるのと同じ扱い。REVIEW-153 の 6）。続きを速く打ち切って本来の待ちの終わりに出したときは
-    // 待ちは縮んでいないので守らない（gym とだけ打った人と同じく、次の語が出た後の字は普通に判定）
+    // 2 打以上の続きを打ち切り、次の語を出す時刻が SPILL_TAIL_MS で決まった（最後の続きの打鍵 + SPILL_TAIL_MS が本来の待ちの終わりより後＝待ちを縮めた）:
+    // 出す時刻はそのまま（テンポは変えない）。続きの最後の打鍵から tailMs までの次の語の 1 打目で、次の語が拒む字（続きの直後の空白・gymnasiums の s）は
+    // ミスにせず捨てる（gym と打って空白を打つ人は本来の待ちの間に空白が捨てられるのと同じ扱い。REVIEW-153 の 6）。続きを速く打ち切って本来の待ちの終わりに
+    // 出したとき（待ちは縮んでいない）・余分な 1 打がもう待ちの間に来たとき（spill.extra）・次の語が全文入力のときは守らない（isAdvanceEcho の上の注釈）
     const s = spill;
-    const tailUntil = s && s.n >= 2 && (!s.live || s.ended) && s.at + SPILL_TAIL_MS > waitEnd ? s.at + tailMs : -Infinity;
-    advanceNow("timer");
-    if (wordSerial !== serialAtComplete && tailUntil > performance.now()) tailGuard = { serial: wordSerial, until: tailUntil };
+    const shortened = !nextFree && !!s && s.n >= 2 && s.ended && !s.extra && s.at + SPILL_TAIL_MS > waitEnd;
+    advanceNow("timer", shortened ? s.at + tailMs : -Infinity);
   };
   advanceTimer = setTimeout(tick, wait);
 }
@@ -2351,6 +2426,7 @@ function setNewWord() {
   hintChars = 0;
   awaitingNext = false;
   milestoneThisWord = false;
+  tailUntil = -Infinity; // 1 打目の守りはこの語を出した advanceNow だけが置く（前の語の守りを持ち越さない）
   clearTimeout(advanceTimer);
   hideHint();
   renderWordNote(null);
