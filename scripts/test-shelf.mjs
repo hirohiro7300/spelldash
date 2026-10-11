@@ -169,7 +169,20 @@ eq("11 移行 M1-② 既定のコース以外の前のコースは記録で（�
   }
 }
 
-// 13. applyStartChoice（main.js onStart の写し）と下見
+// 12b. shelfAtStart（保存した棚がある: 深いリンクで来て本と函を足してから、初回の画面でスタートした。REVIEW B2）: 足した物を消さずに机の本のキーを足す
+{
+  const saved = shelfOf(["jhist1", "pref"], ["eiken"], { seen: [DEF1] });
+  const kept = S.shelfAtStart(snapOf(fresh()), saved);
+  eq("12b shelfAtStart 保存した棚＋机の本のキー（足した本 2 冊と函は残り、中学英語やり直しが足される）", { ...bc(kept), prov: kept.prov }, { books: ["jhist1", "pref"], courses: ["eiken", "jhs-redo"], prov: false });
+  const hist = S.shelfAtStart(snapOf({ course: DEFAULT_COURSE, desk: "jhist1", packs: [DEF1, "jhist1"] }), shelfOf(["pref"], ["eiken"], { seen: [DEF1] }));
+  eq("12b shelfAtStart 保存した棚＋歴史を選んだスタート（届いたパックの歴史は本として 1 つ）", bc(hist), { books: ["jhist1", "pref"], courses: ["eiken"] });
+  const prov = S.shelfAtStart(snapOf(fresh()), S.migrateShelf(snapOf(fresh())));
+  eq("12b shelfAtStart 保存した棚が仮の棚（何も足していない）なら、保存した棚が無いときと同じ", { ...bc(prov), prov: prov.prov }, { ...bc(S.shelfAtStart(snapOf(fresh()))), prov: false });
+  const gone = S.shelfAtStart(snapOf({ course: DEFAULT_COURSE, desk: DEF1, packs: [DEF1] }), shelfOf(["accounting", "pref"], [], { seen: [DEF1, "accounting"] }));
+  eq("12b shelfAtStart 保存した棚の後に単語帳で外したパックは照合どおり下りる（足しただけの本は残る）", bc(gone), { books: ["pref"], courses: ["jhs-redo"] });
+}
+
+// 13. applyStartChoice（js/main.js onStart は startChanges でこの結果を書く）と下見
 {
   const before = (packs = [DEF1], course = DEFAULT_COURSE, desk = DEF1) => snapOf({ course, desk, packs });
   const preview = (snap, choice) => bc(S.shelfAtStart(S.applyStartChoice(snap, choice)));
@@ -183,6 +196,26 @@ eq("11 移行 M1-② 既定のコース以外の前のコースは記録で（�
   eq("13 applyStartChoice 基本カテゴリ（旅行）は packs に足さない", { desk: base.desk, packs: base.packs }, { desk: "travel", packs: [DEF1] });
   const keep = S.applyStartChoice(before(["accounting"], "", "all"), { bookId: DEF1 });
   eq("13 applyStartChoice 中学英語 1年は何も替えない", { desk: keep.desk, packs: keep.packs, course: keep.course }, { desk: "all", packs: ["accounting"], course: "" });
+}
+
+// 13b. startChanges（js/main.js onStart が書く欄）と「下見＝保存」（REVIEW B4）: 書いた後の状態で作る棚が、下見の棚（applyStartChoice の結果で作る棚）と同じ
+{
+  const state = (packs = [DEF1], course = DEFAULT_COURSE, desk = DEF1) => ({ course, desk, packs });
+  eq("13b startChanges そのまま（中学英語 1年）は何も書かない", S.startChanges(snapOf(state()), { bookId: DEF1 }), { course: "", desk: "", packs: [] });
+  eq("13b startChanges 函 TOEIC: コース・机・packs", S.startChanges(snapOf(state()), { bookId: "toeic500", courseId: "toeic" }), { course: "toeic", desk: "toeic500", packs: ["toeic500"] });
+  eq("13b startChanges 中学歴史: 机と packs（コースはそのまま）", S.startChanges(snapOf(state()), { bookId: "jhist1" }), { course: "", desk: "jhist1", packs: ["jhist1"] });
+  eq("13b startChanges 基本カテゴリ（旅行）: 机だけ", S.startChanges(snapOf(state()), { bookId: "travel" }), { course: "", desk: "travel", packs: [] });
+  eq("13b startChanges 函の巻が既に packs にある: packs は足さない", S.startChanges(snapOf(state([DEF1, "eiken5"])), { bookId: "eiken5", courseId: "eiken" }), { course: "eiken", desk: "eiken5", packs: [] });
+  eq("13b startChanges 目録に無いコースは無視（本だけ）", S.startChanges(snapOf(state()), { bookId: "jhist1", courseId: "zzz-none" }), { course: "", desk: "jhist1", packs: ["jhist1"] });
+  const write = (st, ch) => ({ ...st, course: ch.course || st.course, desk: ch.desk || st.desk, packs: [...st.packs, ...ch.packs] });
+  const savedCases = [null, shelfOf(["pref"], ["eiken"], { seen: [DEF1] })];
+  const choices = [{ bookId: DEF1 }, { bookId: "jhist1" }, { bookId: "travel" }, { bookId: "accounting" }, { bookId: "toeic500", courseId: "toeic" }, { bookId: DEF1, courseId: DEFAULT_COURSE }, { bookId: "ngsl01", courseId: "ngsl" }];
+  for (const st of [state(), state(["accounting"], "", "all")]) for (const saved of savedCases) for (const choice of choices) {
+    const snap = snapOf(st);
+    const preview = S.shelfAtStart(S.applyStartChoice(snap, choice), saved);
+    const stored = S.shelfAtStart(snapOf(write(st, S.startChanges(snap, choice))), saved);
+    ok(`13b 下見＝保存 ${JSON.stringify(st)} ${saved ? "保存した棚あり" : "保存した棚なし"} ${JSON.stringify(choice)}`, S.sameShelf(preview, stored), JSON.stringify({ preview, stored }));
+  }
 }
 
 // 14. 照合 段 1（仮の棚）
@@ -323,6 +356,12 @@ eq("11 移行 M1-② 既定のコース以外の前のコースは記録で（�
 {
   const raw = S.serializeShelf({ v: 1, books: ["zzz-new-pack", "jhist1", "jhist1"], courses: ["eiken"], seen: ["zzz-new-pack"], prov: false });
   eq("23 serializeShelf 目録に無い id も残す（重なりは 1 つ）", S.parseShelf(raw), { v: 1, books: ["zzz-new-pack", "jhist1"], courses: ["eiken"], seen: ["zzz-new-pack"], prov: false });
+}
+
+// savedHas（窓の「棚にある」・整理の「戻す」）
+{
+  const sh = shelfOf(["jhist1", "my"], ["eiken"]);
+  eq("savedHas 本・函・無い物・同じ id の本と函を取り違えない", [S.savedHas(sh, "b:jhist1"), S.savedHas(sh, "b:my"), S.savedHas(sh, "c:eiken"), S.savedHas(sh, "b:pref"), S.savedHas(sh, "b:eiken"), S.savedHas(sh, "c:jhist1")], [true, true, true, false, false, false]);
 }
 
 // addKey・dropKey

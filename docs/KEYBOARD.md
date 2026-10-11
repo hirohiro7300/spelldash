@@ -83,7 +83,7 @@
 | Backspace・Delete | `preventDefault` だけ | 同左（打った字は消せない） | 何もしない | 何もしない |
 | Esc | 何もしない | 始まる前に戻す（結果・自己ベスト・計測なし） | もう一度 | 何もしない |
 | Enter・Space | 時間を測り始める（判定しない） | 数えない（語のあとの癖の空白を減点しない） | 結果から 0.6 秒以降なら もう一度 | 何もしない |
-| Enter・Space（焦点がボタン・リンク） | 既定（押す） | 既定。ただし種類のタブ・「ご意見・不具合」の上では押させない（keydown・keyup・キーで起きた click を止める） | 既定（守りの 0.6 秒は結果のボタンが `inert`） | 既定 |
+| Enter・Space（焦点がボタン・リンク） | 既定（押す） | 既定。ただし種類のタブ・「ご意見・不具合」の上では押させない（keydown・keyup・キーで起きた click を止める） | 既定（守りの 0.6 秒は盤面の外のクリックを捨てる） | 既定 |
 | IME 確定の Enter（`isComposing`・`keyCode 229`）・押しっぱなし（`repeat`） | 数えない | 同左 | 同左 | 何もしない |
 | Ctrl・Cmd・Alt つき | 既定（再読み込み・コピーを止めない） | 同左 | 同左 | 同左 |
 | ページが裏に回る（`visibilitychange`） | 何もしない | 始まる前に戻す（離れていた時間で打/分が下がった結果を出さない） | 何もしない | 何もしない |
@@ -91,6 +91,6 @@
 - 扱わない場所: `[aria-modal="true"]` が見えている（ご意見の窓）、対象が `#input` 以外の入力できる要素。Tab は閉じ込めない（文字のキーは焦点がどこにあっても数える）
 - **画面キーボードを借りる**: `initializeKeyboard({ playingClass: "typing--live", forceOnTouch: true })`。`playingClass` は「プレイ中」の印の body の class（既定 `home--playing`）、`forceOnTouch` は設定が「オフ」でもタッチ端末なら盤面を出す（入力欄が読み取り専用で OS キーボードが出ないため。既定 `false` で、今までどおりローマ字のカードだけ）。引数なしの Study（js/main.js）は 1 文字も変わらない。Enter は CSS で隠し、英単語では 3 段目（空白・ー・Enter）ごと隠す（高さの予約 `--osk-h` は変えない）。日本語では `body.romaji-answer` で ー を出す
 - `getOskMode()` は `localStorage.getItem` が投げる端末（サイトのデータを拒否した端末）では `"auto"` を返す（以前は投げていた: Study は js/main.js の頭の `initializeKeyboard()` で止まってホームが描かれず、refreshKeyboard のたびにも uncaught の例外になっていた。Study も同じ直しが効く）
-- **結果の 0.6 秒の守り**: 時間切れの瞬間に盤面を畳むと、盤面を叩いていた指の次のタップが下から現れた本体へのボタンに落ちる。結果が出てから 0.6 秒は盤面を出したまま・結果のボタン群を `inert` にし、0.6 秒後に畳む。keyboard.js は `spelldash:game-end` だけでなく **body の class の変化でも**盤面を畳む（MutationObserver）ので、守りの間は `typing--live`・`romaji-answer` も外さない
+- **結果の 0.6 秒の守り**: 時間切れの瞬間に盤面を畳むと、盤面を叩いていた指の次のタップが下から現れた本体へのボタンに落ちる。結果が出てから 0.6 秒は盤面を出したまま・盤面（`#osk`）の外のクリックをすべて捨て（js/typingKeys.js `createResultGuard`。一覧で持たない）、0.6 秒後に畳む。keyboard.js は `spelldash:game-end` だけでなく **body の class の変化でも**盤面を畳む（MutationObserver）ので、守りの間は `typing--live`・`romaji-answer` も外さない
 - **語末の ん の扱いが Study と違う**: 手本が語末の ん を n 1 つで見せるので、手本どおりに打つ人の次のキーを飲まないよう、次の語の 1 打目として通るキーを先に取る。通らず 0.6 秒以内で終えた語の続き（nn の 2 つ目の n）として通るなら飲む。Study は続きの窓の中では続きが先（速い人の次の語の 1 打目を飲んでも、次のキーで分かれば次の語に戻す。上の「英単語: 出題語が別の正解の先頭部分のとき」）
-- **タイピングゲーム（/typing-game.html。2026-10-11、Batch 60。docs/SPEC_TYPING_GAME.md）も同じ呼び方・同じ表**（js/typingGamePage.js は js/typingPage.js の写し）。違いは文ごとの持ち時間: 締切のあとに届いたキーは捨てる、流れてから 0.6 秒の間は新しい文として通らないキーを捨てる（時間だけで切る。通るキーは進む）、キーの時刻は `event.timeStamp`（押した瞬間で締切と比べる。時計の側は締切から 50ms の余白で流す）。Space は打っている間は何もしない（文に空白は無い）。盤面は常に日本語（ー を出す）
+- **タイピングゲーム（/typing-game.html。2026-10-11、Batch 60。docs/SPEC_TYPING_GAME.md）も同じ呼び方・同じ表**（キーの振り分けは 2 枚で共通の js/typingKeys.js `wireTyping`）。違いは文ごとの持ち時間: 締切のあとに届いたキーは捨てる、流れてから 0.6 秒の間は新しい文として通らないキーを捨てる（時間だけで切る。通るキーは進む）、キーの時刻は `event.timeStamp`（押した瞬間で締切と比べる。時計の側は締切から 50ms の余白で流す）。Space は打っている間は何もしない（文に空白は無い）。盤面は常に日本語（ー を出す）

@@ -1,12 +1,13 @@
 import { getCategories, getPackCatalog, getWordsByCategory, MY_CATEGORY } from "./wordStore.js";
 import { esc, numHtml } from "./html.js";
-import { getWordStats } from "./storage.js";
+import { getWordStats, getCategoryBests } from "./storage.js";
 import { COURSES, DEFAULT_COURSE, getCourseId } from "./course.js";
 import { SHELVES, shelfIdOf, shelfOf } from "./shelves.js";
 import { getEnabledPackIds } from "./packs.js";
 import { pickWelcomeBook } from "./welcome.js";
 import { scrollBehavior } from "./ui.js";
-import { SHELF_KEY, parseShelf, serializeShelf, migrateShelf, reconcileShelf, noteStudyStart, shelfAtStart, applyStartChoice, addKey, dropKey, displayItems, packRows } from "./shelfStore.js";
+import { isPulling } from "./sync.js";
+import { SHELF_KEY, parseShelf, serializeShelf, migrateShelf, reconcileShelf, noteStudyStart, shelfAtStart, applyStartChoice, startChanges, effectiveCourse, savedHas, addKey, dropKey, displayItems, packRows } from "./shelfStore.js";
 
 // ===== わたしの本棚（書斎の右の列。スマホは机の下） =====
 //
@@ -16,14 +17,14 @@ import { SHELF_KEY, parseShelf, serializeShelf, migrateShelf, reconcileShelf, no
 // 何を保存し何を並べるかの規則は js/shelfStore.js（純粋な関数。scripts/test-shelf.mjs）。ここは状態を集めて描くだけ。
 //   initBookshelf({ onPick, onCourse }) … 1 回。描いて配線する。onPick(id) は本を机に出す、onCourse(id) はコースの乗り換え（js/main.js）
 //   renderBookshelf()                   … 目録を組み直して描く（同期でパックが変わったとき）
-//   updateBookshelf()                   … 照合して描き直す（renderHome から毎回。焦点を奪わない）
-//   startShelf()                        … 初回のスタート（状態を替えた後）: その時の移行＋机の本を棚にする
+//   updateBookshelf()                   … 照合して描き直す（renderHome から毎回。焦点を奪わない。入力が前回と同じなら何もしない・プレイ中は描かない）
+//   startChoiceChanges(choice)          … 初回のスタートが替える状態（js/main.js の onStart が書く。下見の棚と同じ規則 js/shelfStore.js applyStartChoice）
+//   startShelf()                        … 初回のスタート（状態を替えた後）: 下見の棚と同じ棚を保存する（保存した棚があればそれに足す）
 //   rememberCourse(id)                  … 函・「コースを変える」でコースを選んだ: その函を棚に
 // 初回（body.welcome-open）は「いまスタートしたら並ぶ物」を描くだけで保存しない（下見の棚）。
 // 見た目は css/bookshelf.css。動きは hover の持ち上がりだけ（prefers-reduced-motion では 0）。
 
 const CATEGORY_KEY = "spelldash_category";
-const BEST_KEY = "spelldash_best_by_category";
 
 // 革の色（tokens.css の --leather-*）。初回の机の本（js/welcome.js）には値で渡す
 const LEATHER = { walnut: "#2B1F17", oxblood: "#4A2320", cognac: "#5E361C", indigo: "#1E2436", slate: "#2C3550", cloth: "#3F4A6B", vellum: "#E2D3B4", umber: "#3A2A1E" };
@@ -243,6 +244,8 @@ let BROWSE = []; // 窓の見出し 9 つ [{ id, name, unit, note, rows: [key], 
 let SEARCH = []; // 検索の行 [{ key, title: [書名], alias: [棚名・別名], rest: [紹介文・対象] }]（目録の順。norm 済み）
 let handlers = {};
 let root = null;
+let catalogSig = ""; // 目録の中身（本・函の id と数）。変わったときだけ catalogGen を進める（同期の後の 2 回目の renderBookshelf を吸収する）
+let catalogGen = 0;
 
 // 1 冊ぶんのデータ。category は manifest の 1 行（基本カテゴリは count が無いので読み込んだ語を数える）
 function bookOf(category, shelfId) {
@@ -377,6 +380,11 @@ function buildData() {
     // manifest の group（「中学校（社会・理科・国語・数学）」など）は教科を束ねた名前なので、棚名と同じ強さにせず紹介文と同じ 4 に（「理科」で社会の本が理科の本より先に来ない）
     return { key, title: normed([b.full, b.label, b.t + b.s]), alias: normed([shelfName(b.shelfId), ...(SHELF_ALIAS[b.shelfId] ?? []), ...(BOOK_ALIAS[id] ?? [])]), rest: normed([b.group, b.blurb, b.audience]) };
   });
+  const sig = JSON.stringify([CATALOG.map((x) => x.key), [...BOOKS.values()].map((b) => b.count), [...BOXES.values()].map((b) => b.words)]);
+  if (sig !== catalogSig) {
+    catalogSig = sig;
+    catalogGen++;
+  }
   updateFindCount();
 }
 
@@ -393,15 +401,6 @@ const isWelcome = () => document.body.classList.contains("welcome-open");
 const deskId = () => localStorage.getItem(CATEGORY_KEY) || "all";
 const myCount = () => getWordsByCategory(MY_CATEGORY.id).length;
 
-function readBest() {
-  try {
-    const best = JSON.parse(localStorage.getItem(BEST_KEY) || "{}");
-    return best && typeof best === "object" && !Array.isArray(best) ? best : {};
-  } catch {
-    return {};
-  }
-}
-
 // いまの状態（js/shelfStore.js の snap）
 function snapNow() {
   const stats = getWordStats();
@@ -411,7 +410,7 @@ function snapNow() {
     desk: deskId(),
     myCount: myCount(),
     statsEmpty: Object.keys(stats).length === 0,
-    best: readBest(),
+    best: getCategoryBests(),
     courses: COURSES,
     defaultCourse: DEFAULT_COURSE,
     freqCourseOf,
@@ -425,12 +424,16 @@ function snapNow() {
 // 保存した棚は毎回 localStorage から読み直す（別のタブの単語帳・本棚の書き込みを古い値で上書きしない）。
 // 書けなかった（容量・プライベートモード）ときだけ、その値をメモリに持って描き、次の照合で書き直しを試みる
 let memShelf = null;
-function loadShelf() {
-  let raw = null;
+function rawShelf() {
   try {
-    raw = localStorage.getItem(SHELF_KEY);
-  } catch {}
-  const shelf = parseShelf(raw);
+    return localStorage.getItem(SHELF_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function loadShelf() {
+  const shelf = parseShelf(rawShelf());
   if (shelf && !memShelf) return shelf;
   return memShelf ?? shelf;
 }
@@ -444,26 +447,11 @@ function saveShelf(shelf) {
   }
 }
 
-// ログインした直後の取り込み（js/sync.js）の途中か。sync.js の sessionStorage の印を読むだけ（「始めた」があり「取り込み終えた」がまだ）。
+// 描くための棚: 普段は保存した棚を照合して（無ければ移行して）保存する。取り込みの途中（js/sync.js isPulling）は保存せずに組み立てるだけ。
 // 取り込みの途中は、記録だけ届いてコース・机の本・パックがまだ前の値（既定のコース）のことがあるので、その間は移行・照合を保存しない
 // （保存すると、2 台目で使っていない中学英語やり直しの函が棚に残る）。取り込みが終わると spelldash:synced／spelldash:packs で描き直して保存する
-// 逃げ道: このタブで「取り込みの途中」を初めて見てから 2 分たっても終わらない（取り込みの途中でセッションが切れて印が残ったタブ）なら、途中とみなさない
-const PULL_GIVE_UP_MS = 120000;
-let pullSeen = { id: "", at: 0 };
-function syncPulling() {
-  try {
-    const started = sessionStorage.getItem("spelldash_synced_this_session");
-    if (!started || sessionStorage.getItem("spelldash_pulled_this_session") === started) return false;
-    if (pullSeen.id !== started) pullSeen = { id: started, at: Date.now() };
-    return Date.now() - pullSeen.at < PULL_GIVE_UP_MS;
-  } catch {
-    return false;
-  }
-}
-
-// 描くための棚: 普段は保存した棚を照合して（無ければ移行して）保存する。取り込みの途中は保存せずに組み立てるだけ
 function viewShelf(snap) {
-  if (!syncPulling()) return currentShelf(snap);
+  if (!isPulling()) return currentShelf(snap);
   const stored = loadShelf();
   return stored ? reconcileShelf(stored, snap).shelf : migrateShelf(snap);
 }
@@ -595,10 +583,13 @@ let lastWelcome = false;
 let lastHtml = "";
 let lastPlan = null;
 let activeKey = "";
+let lastInput = ""; // updateBookshelf の前回の入力（inputOf）
+let drawPending = false; // 畳まれている間（プレイ中）に替わった: 開いたときに描く
 
 function draw(items, welcome) {
   lastItems = items;
   lastWelcome = welcome;
+  drawPending = false;
   const run = root.querySelector("#shelfRun");
   if (!run) return;
   const tidy = mode === "tidy" && !welcome;
@@ -735,6 +726,12 @@ function show() {
 }
 
 // ---------- 普段の棚・初回の下見の棚 ----------
+// 描き直すかの入力: snap の要点・保存した棚の文字列（書けなかった棚）・取り込みの途中か・整理の形と下ろした物・目録の版。
+// 前回と同じなら何もしない（renderHome は操作のたびに呼ぶ。同期の後の renderHome → renderBookshelf の 2 回目もここで吸収する）。
+// 移行・照合が使う記録の細部（hasRecords）は、保存した棚が無いか仮の棚のときだけ効き、そのときは保存した棚の文字列が替わるか statsEmpty が替わる
+const folded = () => document.body.classList.contains("home--playing");
+const inputOf = (snap) => JSON.stringify([snap.packs, snap.course, snap.desk, snap.myCount, snap.statsEmpty, snap.best, rawShelf(), memShelf ? serializeShelf(memShelf) : "", isPulling(), mode, [...tidyDropped], catalogGen]);
+
 export function updateBookshelf() {
   if (!root?.isConnected) return;
   if (isWelcome()) return drawWelcome();
@@ -742,6 +739,10 @@ export function updateBookshelf() {
   if (lastWelcome) mode = "normal";
   show();
   const snap = snapNow();
+  if (inputOf(snap) === lastInput) {
+    if (drawPending && !folded()) draw(lastItems, false);
+    return;
+  }
   BOOKS.get("my").count = snap.myCount;
   const shelf = viewShelf(snap);
   let items = displayItems(shelf, snap, CATALOG);
@@ -751,9 +752,17 @@ export function updateBookshelf() {
     const ghost = [...tidyDropped].reduce((sh, key) => addKey(sh, key), shelf);
     items = displayItems(ghost, snap, CATALOG).map((it) => (tidyDropped.has(it.key) && it.droppable ? { ...it, dropped: true } : it));
   }
-  draw(items, false);
+  lastInput = inputOf(snap); // 照合で書いた後の文字列で覚える（次に同じ状態で呼ばれたら何もしない）
+  if (folded()) {
+    // プレイ中は本棚が畳まれている（display: none）: 段の割り付けに要る幅・高さを読まない。開いたとき（机に戻る・ResizeObserver）に描く
+    lastItems = items;
+    lastWelcome = false;
+    drawPending = true;
+  } else {
+    draw(items, false);
+  }
   updateRail(items, false);
-  syncFinderStates(shelf);
+  syncFinderStates(shelf, snap);
 }
 
 // 初回の棚（下見）: welcome がいま机に載せている本（と、窓で選んだ函）でスタートしたら並ぶ物。保存しない
@@ -769,11 +778,12 @@ function drawWelcome() {
   show();
   mode = "normal";
   root.dataset.mode = "";
+  lastInput = ""; // 普段の棚に戻ったら描き直す
   let items = [];
   if (BOOKS.size) {
     const snap = snapNow();
     const next = applyStartChoice(snap, welcomeChoice());
-    items = displayItems(shelfAtStart(next), next, CATALOG);
+    items = displayItems(shelfAtStart(next, loadShelf()), next, CATALOG);
   }
   draw(items, true);
   updateRail(items, true);
@@ -781,17 +791,28 @@ function drawWelcome() {
   if (note) note.hidden = true;
 }
 
+// 目録を組み直して描く。目録も入力も前と同じなら何もしない（updateBookshelf）
 export function renderBookshelf() {
   if (!ensureSkeleton()) return;
   buildData();
-  lastHtml = "";
   updateBookshelf();
 }
 
-// 初回のスタート（js/main.js onStart: 状態を替えた後・renderHome の前）。既にある棚は上書きする（welcome が出るのは記録の無い人だけ）
+// 初回のスタートが替える状態 { course, desk, packs }（js/main.js onStart がこのとおりに書く）。下見の棚（drawWelcome）と同じ規則で求める
+export function startChoiceChanges(choice) {
+  if (!BOOKS.size) buildData();
+  return startChanges(snapNow(), choice);
+}
+
+// 初回のスタート（js/main.js onStart: 状態を替えた後・renderHome の前）: 下見の棚と同じ棚を保存する。
+// 保存した棚があれば（深いリンクで来て本を足してから初回の画面に来た人）それに足す（足した本・函を消さない。js/shelfStore.js shelfAtStart）。
+// 足す先は初回の画面を閉じた時点の棚（shelfAtClose）: 閉じた直後の描き直しは閉じる前の状態で移行して書くので、それには足さない（下見の材料と同じ）
+let shelfAtClose; // undefined = 記録なし
 export function startShelf() {
   if (!BOOKS.size) buildData();
-  saveShelf(shelfAtStart(snapNow()));
+  const saved = shelfAtClose !== undefined ? shelfAtClose : loadShelf();
+  shelfAtClose = undefined;
+  saveShelf(shelfAtStart(snapNow(), saved));
 }
 
 // 函を押した・「コースを変える」で選んだ（js/main.js chooseCourse）: その函を棚に
@@ -943,9 +964,7 @@ let finderMode = "add"; // "add" | "welcome"
 let lastAdded = "";
 const addedKeys = new Set(); // この窓で足した物（閉じたあと棚の背の頭に金の押し点。次に棚を描き直すまで）
 let picked = false;
-let pendingFind = false;
-
-const savedHas = (shelf, key) => (key.startsWith("c:") ? shelf.courses.includes(key.slice(2)) : shelf.books.includes(key.slice(2)));
+let pendingFind = false; // 初回の「171冊から選ぶ」を目録の準備前に押した。届いた時点でまだ初回の画面なら窓を開く（スタートしたら忘れる）
 
 function actHtml(key, name, on) {
   if (finderMode === "welcome") return `<button type="button" class="finder__act" data-key="${esc(key)}" aria-label="${esc(name)}を机に出す">机に出す</button>`;
@@ -973,11 +992,12 @@ function rowHtml(key, search, ctx) {
   return `<li class="finder__row" ${attr}><span class="finder__txt"><span class="finder__t">${numHtml(name)}</span><span class="finder__m">${numHtml(rowMeta(key, search, ctx))}</span></span>${actHtml(key, name, ctx.shelf && savedHas(ctx.shelf, key))}</li>`;
 }
 
-function finderCtx() {
-  const welcome = finderMode === "welcome";
-  const snap = BOOKS.size ? snapNow() : null;
-  const eff = snap && COURSES[snap.course]?.packs.includes(snap.desk) ? snap.course : "";
-  return { shelf: welcome || !snap ? null : viewShelf(snap), eff: welcome ? "" : eff, desk: welcome ? "" : deskId() };
+// 窓の行の状態（棚にあるか・いまのコース・机の上）。窓を開いたときと棚が替わったとき（足した・同期: syncFinderStates）に作り、打つたびには作らない
+let finderCtxNow = null;
+function finderCtx(snap = null, shelf = null) {
+  if (finderMode === "welcome" || !BOOKS.size) return { shelf: null, eff: "", desk: "" };
+  const s = snap ?? snapNow();
+  return { shelf: shelf ?? viewShelf(s), eff: effectiveCourse(s), desk: s.desk };
 }
 
 function renderBrowse(ctx) {
@@ -1015,7 +1035,7 @@ function searchRows(q) {
     .map((r) => r.key);
 }
 
-function showSearch(q, ctx = finderCtx()) {
+function showSearch(q, ctx) {
   const list = root.querySelector("#bookFinderList");
   const browse = root.querySelector("#bookFinderBrowse");
   const hint = root.querySelector("#bookFinderHint");
@@ -1053,18 +1073,19 @@ function openFinder(welcome = isWelcome()) {
   const q = root.querySelector("#bookFinderQ");
   q.value = "";
   finderStatus("");
-  const ctx = finderCtx();
-  renderBrowse(ctx);
-  showSearch("", ctx);
+  finderCtxNow = finderCtx();
+  renderBrowse(finderCtxNow);
+  showSearch("", finderCtxNow);
   root.querySelector(".finder__body").scrollTop = 0;
   dlg.showModal();
   q.focus();
 }
 
-// 窓が開いている間に棚が変わった（同期など）: 行のボタンの状態だけ合わせる（窓は描き直さない）
-function syncFinderStates(shelf) {
+// 窓が開いている間に棚が変わった（同期など）: 行のボタンの状態と、次に打ったときの行の状態（ctx）だけ合わせる（窓は描き直さない）
+function syncFinderStates(shelf, snap) {
   const dlg = root?.querySelector("#bookFinder");
   if (!dlg?.open || finderMode !== "add") return;
+  finderCtxNow = finderCtx(snap, shelf);
   for (const btn of dlg.querySelectorAll(".finder__act")) {
     const on = savedHas(shelf, btn.dataset.key);
     if ((btn.getAttribute("aria-disabled") === "true") !== on) btn.outerHTML = actHtml(btn.dataset.key, nameOf(btn.dataset.key), on);
@@ -1084,7 +1105,9 @@ function act(btn) {
     finderStatus(`${name}は棚にある`);
     return;
   }
-  saveShelf(addKey(viewShelf(snapNow()), key));
+  const next = addKey(viewShelf(snapNow()), key);
+  saveShelf(next);
+  if (finderCtxNow) finderCtxNow = { ...finderCtxNow, shelf: next }; // 足した後に打った検索の行も「棚にある」に
   lastAdded = key;
   addedKeys.add(key);
   // 押したボタンは同じ要素のまま「棚にある」に（焦点を残す）。ほかの行（一覧と検索の両方にある）も合わせる。棚を描き直すのはその後
@@ -1100,6 +1123,7 @@ function act(btn) {
 }
 
 function onFinderClosed() {
+  finderCtxNow = null;
   if (finderMode === "welcome") {
     if (!isWelcome()) return root.querySelector("#bookFinderOpen")?.focus({ preventScroll: true }); // welcome が畳まれて閉じた
     const target = picked ? document.querySelector("#welcome .welcome__cta [data-welcome-start]") : document.getElementById("welcomeFind");
@@ -1183,7 +1207,7 @@ function bind() {
   // 窓: 打つたびに絞る。入力欄の Enter（submit）は最初の行のボタンへ焦点を移すだけ（足さない・閉じない）。
   // IME の確定の Enter では submit は起きない。フォームに submit ボタンは置かない（置くと Enter がそのボタンの click になる）
   root.addEventListener("input", (event) => {
-    if (event.target.id === "bookFinderQ") showSearch(event.target.value);
+    if (event.target.id === "bookFinderQ") showSearch(event.target.value, finderCtxNow ?? (finderCtxNow = finderCtx()));
   });
   root.addEventListener("submit", (event) => {
     const dlg = event.target.closest("#bookFinder");
@@ -1244,9 +1268,10 @@ export function initBookshelf({ onPick, onCourse } = {}) {
   bind();
   lastHtml = "";
   updateBookshelf();
+  // 準備前に押された「171冊から選ぶ」: まだ初回の画面なら開く。スタート（またはログインの行）で初回の画面を閉じていたら開かない（ゲームの入力欄から焦点を奪わない）
   if (pendingFind) {
     pendingFind = false;
-    openFinder(isWelcome());
+    if (isWelcome()) openFinder(true);
   }
 }
 
@@ -1260,7 +1285,12 @@ document.getElementById("welcomeFind")?.addEventListener("click", () => openFind
     const now = isWelcome();
     if (now === wasWelcome) return;
     wasWelcome = now;
-    if (now) return drawWelcome();
+    if (now) {
+      shelfAtClose = undefined;
+      return drawWelcome();
+    }
+    pendingFind = false; // 初回の画面を閉じた（スタート・ログインの行・同期）: 準備前に押された「171冊から選ぶ」は忘れる
+    shelfAtClose = loadShelf(); // スタートが足す先（下の描き直しが書く前）。onStart（startShelf）はこの後に走る
     // welcome が畳まれた（ログインの行・auth-ready・同期）: 初回の形の窓（本をさがす・机に出す）が開いていたら閉じる
     const dlg = root?.querySelector("#bookFinder");
     if (dlg?.open && finderMode === "welcome") dlg.close();

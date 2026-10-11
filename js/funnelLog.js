@@ -16,7 +16,7 @@ const PAID_PENDING_KEY = "spelldash_funnel_paid"; // 支払いを終えて戻っ
 const PAID_SEND_KEY = "spelldash_funnel_paid_send"; // Pro になったが checkout_done をまだ送れていない日
 const QUEUE_KEY = "spelldash_funnel_queue"; // ページを移る直前に押されたもの（次のページで送る）[{ step, source, day }]
 // 入口のページの族: 鍵（その入口から初めて来た端末の、来た日（JST）。消さない）と、段階 → first_visit の source（docs/SQL_FUNNEL.md 5）。
-// 鍵を族ごとに分ける: 番号が無いときにしか印は付かないので、1 端末に付く印は最初の 1 ページ分だけ（2 枚のページの数が混ざらない）
+// 鍵を族ごとに分ける: 1 端末に付く印は最初の 1 ページ分だけ（markTypingArrival がもう一方の族の印を見る。2 枚のページの数が混ざらない）
 const TYPING_FAMILIES = {
   typing: { key: "spelldash_funnel_typing", sources: { arrive: "typing", start: "typing_start", done: "typing_done", study: "typing_study", game: "typing_game" } }, // /typing.html
   tgame: { key: "spelldash_funnel_tgame", sources: { arrive: "tgame", start: "tgame_start", done: "tgame_done", study: "tgame_study" } } // /typing-game.html
@@ -189,12 +189,14 @@ export function trackFirstVisit() {
 }
 
 // タイピング練習（family "typing"）・タイピングゲーム（"tgame"）を開いた: 番号がまだ無く学習記録も無い端末（＝ここが初めて）なら来た日を控える。
+// 1 端末に立つ印は 1 族だけ: 自分の族の印・もう一方の族の印があれば立てない（番号が消された・作れなかった端末でも 2 族が混ざらない）。
 // js/footer.js の trackFirstVisit が番号を作る前に呼ぶ（作ったあとでは初めてか分からない）
 export function markTypingArrival(family = "typing") {
   const f = TYPING_FAMILIES[family];
   if (!f) return;
   try {
-    if (localStorage.getItem(f.key) || localStorage.getItem(DEVICE_KEY) || hasLearningRecords()) return;
+    if (Object.values(TYPING_FAMILIES).some((g) => localStorage.getItem(g.key))) return;
+    if (localStorage.getItem(DEVICE_KEY) || hasLearningRecords()) return;
     localStorage.setItem(f.key, today());
   } catch {
     // 数えないだけ

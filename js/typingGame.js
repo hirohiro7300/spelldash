@@ -4,10 +4,11 @@
 // DOM・localStorage に直接触らない（Node から import して E2E と scripts/build-typing-game.mjs が使う）。
 // 判定・かなの単位・語末の ん の持ち越し・数え方は js/typingDrill.js（typing.html と同じ部品）を借りる。
 // 学習記録（単語の記録・SRS・XP・連続日数・苦手なキーなど）は一切読まない・書かない。
-// RESULT_GUARD_MS はここで定義も再 export もしない（js/typingGamePage.js が typingDrill.js から直接 import する）。
+// ?t=・?s= の読み取りと自己ベストの保存の読み書きも typingDrill.js の共通の関数（intParam・readBestRecord・writeBestRecord）。
+// RESULT_GUARD_MS はここで定義も再 export もしない（2 枚のページの配線 js/typingKeys.js が typingDrill.js から import する）。
 
 import { createRomajiMatcher, canonicalRomaji } from "./romaji.js";
-import { createRun, shuffle, summarize, BEST_KPM_MAX } from "./typingDrill.js";
+import { createRun, shuffle, summarize, intParam, readBestRecord, writeBestRecord, BEST_KPM_MAX } from "./typingDrill.js";
 
 export const SECONDS = 90;
 export const FLOW_GRACE_MS = 600; // 流れてからこの間は、新しい文として通らないキーを数えない（SPILL_GAP_MS と同じ長さ。別の意味なので別の定数）
@@ -28,18 +29,6 @@ export const COURSES = {
   long: { name: "長い文", unit: "文", band: [17, 30], note: "かな17〜30字の文", baseMs: 1500, perKeyMs: 420, goal: 4 }
 };
 export const COURSE_IDS = Object.keys(COURSES);
-
-function intParam(search, name, min, max) {
-  let raw = null;
-  try {
-    raw = new URLSearchParams(String(search ?? "")).get(name);
-  } catch {
-    raw = null;
-  }
-  if (raw == null || !/^\d{1,2}$/.test(raw)) return null;
-  const n = Number(raw);
-  return n >= min && n <= max ? n : null;
-}
 
 // "?t=6" → 6。1〜90 の整数以外・無し → 90（E2E が時間を縮める。typing.html の ?t= と同じ流儀）
 export function secondsFrom(search) {
@@ -84,15 +73,8 @@ export function pickFirst(list) {
   return out;
 }
 
-// 混ぜる。first があればそれを除いて先頭に置く（ページを開いた最初の 1 回のふつうの文）。無ければ pickFirst
-export function shuffleCourse(list, first = null, random = Math.random) {
-  if (first) {
-    const rest = shuffle(
-      list.filter((p) => !(p[0] === first[0] && p[1] === first[1])),
-      random
-    );
-    return [first, ...rest];
-  }
+// 混ぜて pickFirst（ページを開いた最初の回の内蔵の文 FIRST_SENTENCE は js/typingGamePage.js が列の頭に置く）
+export function shuffleCourse(list, random = Math.random) {
   return pickFirst(shuffle(list, random));
 }
 
@@ -245,27 +227,9 @@ function validRecord(rec) {
   return { got: rec.got, lost: rec.lost, kpm: rec.kpm, acc: Number.isFinite(rec.acc) ? rec.acc : null, day: typeof rec.day === "string" ? rec.day : "" };
 }
 
-function parseAll(raw) {
-  try {
-    const data = JSON.parse(raw);
-    if (data && typeof data === "object" && data.v === 1 && data.best && typeof data.best === "object") return data;
-  } catch {
-    // 壊れている → 無い扱い
-  }
-  return null;
-}
-
 // → { got, lost, kpm, acc, day } | null（読めない・壊れている・範囲の外 → null）
 export function readGameBest(storage, course, seconds = SECONDS) {
-  let raw = null;
-  try {
-    raw = storage?.getItem(BEST_KEY) ?? null;
-  } catch {
-    return null;
-  }
-  const data = parseAll(raw);
-  if (!data || !COURSES[course]) return null;
-  return validRecord(data.best?.[course]?.[String(seconds)]);
+  return COURSES[course] ? readBestRecord(storage, BEST_KEY, course, seconds, validRecord) : null;
 }
 
 // 取れた文の数で比べ、同数のときだけ打/分で比べる → { status: "first"|"new"|"faster"|"same"|"below"|"none", prev, diff }
@@ -281,28 +245,12 @@ export function compareGameBest(prev, got, kpm) {
 
 // 保存の直前に読み直し、best[course][秒数] だけ差し替えて書く（ほかのコース・秒数を消さない）→ 書けたか
 export function writeGameBest(storage, course, seconds, rec) {
-  if (!storage || !COURSES[course]) return false;
-  let raw = null;
-  try {
-    raw = storage.getItem(BEST_KEY);
-  } catch {
-    return false; // 読めない端末では書かない（読めないまま丸ごと上書きしない）
-  }
-  const data = parseAll(raw) ?? { v: 1, best: {} };
-  const best = { ...data.best };
-  const forCourse = best[course] && typeof best[course] === "object" ? { ...best[course] } : {};
-  forCourse[String(seconds)] = {
+  if (!COURSES[course]) return false;
+  return writeBestRecord(storage, BEST_KEY, course, seconds, {
     got: Number(rec?.got) || 0,
     lost: Number(rec?.lost) || 0,
     kpm: Number(rec?.kpm) || 0,
     acc: Number.isFinite(rec?.acc) ? rec.acc : null,
     day: typeof rec?.day === "string" ? rec.day : ""
-  };
-  best[course] = forCourse;
-  try {
-    storage.setItem(BEST_KEY, JSON.stringify({ v: 1, best }));
-    return true;
-  } catch {
-    return false;
-  }
+  });
 }

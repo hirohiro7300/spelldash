@@ -735,6 +735,13 @@ console.log("typing:");
       broken.en === null && broken.ja === null && huge.en === null && huge.ja === null &&
       T.readBest(throwing, 60).en === null && T.readBest(throwing, 60).ja === null && T.writeBest(throwing, "en", 60, { kpm: 1 }) === false;
     check("typing: 自己ベストは種類・秒数ごと、書く直前に読み直す、壊れた値（桁外れ・小数の打/分を含む）・投げる storage でも落ちない", ok, JSON.stringify({ cmp, both, broken, huge }));
+    // 2 枚のページで共通の小さな関数（タイピングゲームの ?t=・?s=・自己ベストもこれを使う）: 鍵と記録の検証は呼ぶ側
+    const ints = [T.intParam("?s=7", "s", 1, 9), T.intParam("?s=0", "s", 1, 9), T.intParam("?s=07", "s", 1, 9), T.intParam("?s=123", "s", 1, 99), T.intParam("?s=2.5", "s", 1, 9), T.intParam("", "s", 1, 9)];
+    const sx = fake({ other: "keep", k: JSON.stringify({ v: 1, best: { a: { 5: { n: 1 } }, b: { 9: { n: 2 } } } }) });
+    const wx = T.writeBestRecord(sx, "k", "a", 9, { n: 3 });
+    const valid = (r) => (r && Number.isInteger(r.n) ? { n: r.n } : null);
+    const rx = [T.readBestRecord(sx, "k", "a", 5, valid)?.n, T.readBestRecord(sx, "k", "a", 9, valid)?.n, T.readBestRecord(sx, "k", "b", 9, valid)?.n, T.readBestRecord(sx, "k", "c", 9, valid), T.readBestRecord(fake({ k: "[1]" }), "k", "a", 5, valid), T.readBestRecord(throwing, "k", "a", 5, valid)];
+    check("typing: 共通の関数 — intParam は 1〜2 桁の整数で範囲の中だけ、readBestRecord／writeBestRecord は best[種類][秒数] だけを読み書きし（ほかの鍵・種類・秒数を残す）、壊れた値・投げる storage は null／false", JSON.stringify(ints) === "[7,null,7,null,null,null]" && wx && JSON.stringify(rx) === "[1,3,2,null,null,null]" && sx.map.get("other") === "keep" && T.writeBestRecord(throwing, "k", "a", 5, { n: 1 }) === false && T.writeBestRecord(null, "k", "a", 5, { n: 1 }) === false, JSON.stringify({ ints, rx, stored: sx.map.get("k") }));
   }
 
   // ---- 1200 × 900 の 1 枚を使い回す（学習データと受付中の印を入れ、reduced motion。要求と pageerror を最初から記録） ----
@@ -980,6 +987,41 @@ console.log("typing:");
     await p.close();
   }
 
+  // T22: 結果の守り（js/typingKeys.js）は一覧でなく「盤面の外すべて」: 時間切れの直後、前の一覧に無かったフッターのリンク・ご意見のボタン・
+  // ヘッダーのリンクを押しても（結果を出した同じタスクのクリックと、本物のマウスのクリック）移動も窓も焦点の移りも無い。0.6 秒を過ぎたら届く
+  {
+    const p = await newPage({ viewport: { width: 1200, height: 900 } });
+    await p.addInitScript(() => {
+      window.__clicks = [];
+      window.addEventListener("click", (e) => { if (e.isTrusted) window.__clicks.push(performance.now()); }, true); // ページの配線より先（届いた時刻だけ記録）
+    });
+    await p.goto(BASE + "/typing.html?t=1", { waitUntil: "networkidle" });
+    await p.waitForTimeout(300);
+    await p.keyboard.press("a");
+    const FOOT = '.site-footer__nav a[href="./news.html"]';
+    const g = await p.evaluate((foot) => new Promise((resolve) => {
+      const board = document.getElementById("typingBoard");
+      const reach = (sel) => { const n = document.querySelector(sel); let hit = false; const h = (e) => { hit = true; e.preventDefault(); }; n.addEventListener("click", h); n.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 })); n.removeEventListener("click", h); return hit; };
+      const mo = new MutationObserver(() => {
+        if (board.dataset.state !== "result") return;
+        mo.disconnect();
+        window.__resultAt = performance.now();
+        const reached = [reach(foot), reach("[data-feedback-open]"), reach(".tp-about a"), reach(".site-header a.brand")];
+        document.querySelector(foot).scrollIntoView({ block: "center" }); // 結果で札の高さが替わるので、ここで窓の中に
+        const r = document.querySelector(foot).getBoundingClientRect();
+        resolve({ reached, x: r.left + r.width / 2, y: r.top + r.height / 2, visible: r.top >= 0 && r.bottom <= innerHeight });
+      });
+      mo.observe(board, { attributes: true, attributeFilter: ["data-state"] });
+    }), FOOT);
+    await p.mouse.click(g.x, g.y); // 本物のクリック（守りの中）
+    await p.waitForTimeout(150);
+    const mid = await p.evaluate(() => { const m = document.getElementById("feedbackModal"); return { path: location.pathname, state: document.getElementById("typingBoard").dataset.state, modal: Boolean(m && !m.hidden), active: document.activeElement?.id, dt: window.__clicks.length ? Math.round(window.__clicks[0] - window.__resultAt) : null }; });
+    await p.waitForTimeout(600);
+    const later = await p.evaluate((foot) => { const n = document.querySelector(foot); let hit = false; const h = (e) => { hit = true; e.preventDefault(); }; n.addEventListener("click", h); n.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 })); n.removeEventListener("click", h); return { hit, path: location.pathname }; }, FOOT);
+    check("typing: 時間切れの直後 0.6 秒はフッターのリンク・ご意見・このページについて・ヘッダーのリンクを押しても届かず（本物のクリックでも移動しない・焦点は結果のまま）、過ぎたら届く", g.reached.every((r) => r === false) && g.visible && mid.dt !== null && mid.dt < 600 && mid.path === "/typing.html" && mid.state === "result" && !mid.modal && mid.active === "typingKpmLine" && later.hit && later.path === "/typing.html" && p.errors.length === 0, JSON.stringify({ g, mid, later, errors: p.errors.slice(0, 2) }));
+    await p.close();
+  }
+
   // ---- タッチ端末（390 × 844・mobile の 1 枚。設定は「オフ」） ----
   {
     const p = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_osk: "off" } });
@@ -998,14 +1040,16 @@ console.log("typing:");
     check("typing（390）: 設定が「オフ」でも画面キーボードが出て、Enter と 3 段目は出さない・a で始まり札は盤面に隠れない", o0.osk && o0.open && !o0.enter && !o0.row3 && run390.state === "running" && run390.rest === "pple" && o1.board.bottom <= o1.keys.top, JSON.stringify({ o0, run390: run390.state, o1 }));
     const guard = await p.evaluate(() => new Promise((resolve) => {
       const board = document.getElementById("typingBoard");
-      const snap = () => ({ osk: !document.getElementById("osk").hidden, open: document.body.classList.contains("osk-open"), inert: Boolean(document.getElementById("typingStudy").closest("[inert]")), more: Boolean(document.querySelector(".tp-more")?.closest("[inert]")), inertCount: document.querySelectorAll("[inert]").length });
-      const done = () => { const out = {}; setTimeout(() => (out.at300 = snap()), 300); setTimeout(() => { out.at700 = snap(); resolve(out); }, 700); };
+      // 押した先まで届いたか（届いたら既定の動きは止める: 移動しない）。守りの間は盤面の外のどこにも届かない（js/typingKeys.js）
+      const reach = (sel) => { const n = document.querySelector(sel); let hit = false; const h = (e) => { hit = true; e.preventDefault(); }; n.addEventListener("click", h); n.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 })); n.removeEventListener("click", h); return hit; };
+      const snap = (sels) => ({ osk: !document.getElementById("osk").hidden, open: document.body.classList.contains("osk-open"), reached: sels.map(reach), inertCount: document.querySelectorAll("[inert]").length });
+      const done = () => { const out = {}; setTimeout(() => (out.at300 = snap(["#typingStudy", ".tp-more a", '.site-footer__nav a[href="./news.html"]', ".tp-tabs button"])), 300); setTimeout(() => { out.at700 = snap(['.site-footer__nav a[href="./news.html"]']); resolve(out); }, 700); };
       if (board.dataset.state === "result") { done(); return; }
       const mo = new MutationObserver(() => { if (board.dataset.state === "result") { mo.disconnect(); done(); } });
       mo.observe(board, { attributes: true, attributeFilter: ["data-state"] });
     }));
     const result390 = await state(p);
-    check("typing（390）: 時間切れの直後 0.6 秒は盤面を出したまま・結果のボタンとタイピングゲームへの 1 行は inert、その後に畳む", guard.at300.osk && guard.at300.inert && guard.at300.more && !guard.at700.osk && !guard.at700.open && guard.at700.inertCount === 0, JSON.stringify(guard));
+    check("typing（390）: 時間切れの直後 0.6 秒は盤面を出したまま・盤面の外（結果の導線・タイピングゲームへの 1 行・フッターのリンク・タブ）は押しても届かない、その後に畳んで押せる（inert は使わない）", guard.at300.osk && guard.at300.reached.every((r) => r === false) && !guard.at700.osk && !guard.at700.open && guard.at700.reached[0] === true && guard.at700.inertCount === 0, JSON.stringify(guard));
     await p.click('.tp-tabs [data-kind="ja"]');
     await waitState(p, "ready", 3000);
     await p.waitForTimeout(150);
@@ -1352,14 +1396,15 @@ console.log("typing game:");
       const wrong = "vqxzl".split("").find((k) => !R.createRomajiMatcher([reading]).feed(k).ok) ?? "v";
       const t0 = performance.now();
       document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key: wrong, code: `Key${wrong.toUpperCase()}`, bubbles: true, cancelable: true }));
-      resolve({ wrong, term0, term1: document.getElementById("tgTerm").textContent, rest0: rest, rest1: document.getElementById("tgWord").dataset.rest, miss: document.getElementById("tgWord").classList.contains("tp-miss"), live: document.getElementById("tgLive").textContent, dt: Math.round(performance.now() - t0) });
+      const out = { wrong, term0, term1: document.getElementById("tgTerm").textContent, rest0: rest, rest1: document.getElementById("tgWord").dataset.rest, miss: document.getElementById("tgWord").classList.contains("tp-miss"), live0: document.getElementById("tgLive").textContent, dt: Math.round(performance.now() - t0) };
+      setTimeout(() => resolve({ ...out, live: document.getElementById("tgLive").textContent }), 150); // 読み上げは空にしてから次のタスクで書く
     });
     mo.observe(board, { attributes: true, attributeFilter: ["data-lost"] });
     });
   });
   const g14s = await st(page);
   anims.push(["flowed", await motion(page)]);
-  check("typing game: 持ち時間が尽きると流れて次の文（取れたは増えない）・読み上げに「次の文」、直後の外れたキーは数えない、始まる前の 3 文は見えないが行の高さは残る、札と箱は動かない", g14s.lost >= 1 && g14s.got === 1 && g14.term1 !== g14.term0 && g14.live === "次の文" && g14.rest1 === g14.rest0 && !g14.miss && !g14s.hintShown && g14s.hintH === g11.hintH && same(g14s.board, g11.board) && same(g14s.stage, g11.stage), JSON.stringify({ g14, g14s: { lost: g14s.lost, got: g14s.got, hintH: g14s.hintH, board: g14s.board } }));
+  check("typing game: 持ち時間が尽きると流れて次の文（取れたは増えない）・読み上げに「次の文」、直後の外れたキーは数えない、始まる前の 3 文は見えないが行の高さは残る、札と箱は動かない", g14s.lost >= 1 && g14s.got === 1 && g14.term1 !== g14.term0 && g14.live0 === "" && g14.live === "次の文" && g14.rest1 === g14.rest0 && !g14.miss && !g14s.hintShown && g14s.hintH === g11.hintH && same(g14s.board, g11.board) && same(g14s.stage, g11.stage), JSON.stringify({ g14, g14s: { lost: g14s.lost, got: g14s.got, hintH: g14s.hintH, board: g14s.board } }));
 
   // G15: 結果（流れた数は 1 文目を打ち切った時刻で 1 か 2。ページの data-lost から作る）
   await waitGame(page, "result", 8000);
@@ -1502,6 +1547,61 @@ console.log("typing game:");
     await p.close();
   }
 
+  // G37: 2 回続けて時間切れ（?t=3&s=1。押さずに流す）: 読み上げの行は一度空になってから「次の文」（MutationObserver の 1 回ごとの中身。
+  // 同じタスクで空にして書き直すと 2 回目が読まれない環境がある）。時計は rAF の 1 本: 300ms 以上のタイムアウトを 300ms 遅らせて rAF に流させ、
+  // 流れたフレームでも待っている rAF は 1 本のまま・残り秒も rAF で書き替わる（200ms の tick は無い）
+  {
+    const p = await newPage({ viewport: { width: 1200, height: 900 } });
+    await p.addInitScript(() => {
+      const raf = window.requestAnimationFrame.bind(window);
+      const caf = window.cancelAnimationFrame.bind(window);
+      const st0 = window.setTimeout.bind(window);
+      const pending = new Set();
+      window.__rafMax = 0;
+      window.requestAnimationFrame = (cb) => { const id = raf((t) => { pending.delete(id); cb(t); }); pending.add(id); window.__rafMax = Math.max(window.__rafMax, pending.size); return id; };
+      window.cancelAnimationFrame = (id) => { pending.delete(id); caf(id); };
+      window.setTimeout = (fn, ms, ...args) => st0(fn, Number(ms) >= 300 ? Number(ms) + 300 : ms, ...args);
+    });
+    await p.goto(BASE + "/typing-game.html?t=3&s=1", { waitUntil: "networkidle" });
+    await p.waitForTimeout(300);
+    await p.evaluate(() => {
+      window.__live = [];
+      const live = document.getElementById("tgLive");
+      new MutationObserver(() => window.__live.push(live.textContent)).observe(live, { childList: true, characterData: true, subtree: true });
+    });
+    await p.keyboard.press("k");
+    await p.waitForTimeout(1300);
+    const timer37 = await p.evaluate(() => document.getElementById("tgTimer").textContent);
+    const ended37 = await waitGame(p, "result", 6000);
+    const seq37 = await p.evaluate(() => window.__live);
+    const lost37 = (await st(p)).lost;
+    const rafMax37 = await p.evaluate(() => window.__rafMax);
+    check("typing game: 2 回続けて流れると、読み上げの行は「次の文」→ 空 → 「次の文」（2 回目も読まれる）・時計の rAF は流れたフレームでも 1 本・残り秒は打っている間に減る", ended37 && lost37 === 2 && seq37.length >= 3 && seq37[0] === "次の文" && seq37[1] === "" && seq37[2] === "次の文" && rafMax37 === 1 && (timer37 === "残り 2秒" || timer37 === "残り 1秒") && p.errors.length === 0, JSON.stringify({ seq37, timer37, lost37, rafMax37, errors: p.errors.slice(0, 2) }));
+    await p.close();
+  }
+
+  // G38: rAF が止まっても（時計のタイムアウトは次の締切に 1 本: その保険）文は締切ごとに流れ、回は終わる（?t=3&s=1 → 1 秒・2 秒で流れて流れた 2・結果）
+  {
+    const p = await newPage({ viewport: { width: 1200, height: 900 } });
+    await p.addInitScript(() => {
+      window.requestAnimationFrame = () => 1;
+      window.cancelAnimationFrame = () => {};
+    });
+    await p.goto(BASE + "/typing-game.html?t=3&s=1", { waitUntil: "networkidle" });
+    await p.waitForTimeout(300);
+    await p.evaluate(() => {
+      window.__flows = [];
+      const board = document.getElementById("tgBoard");
+      document.addEventListener("keydown", () => { window.__t0 ??= performance.now(); }, true);
+      new MutationObserver(() => { if (Number(board.dataset.lost) > window.__flows.length) window.__flows.push(Math.round(performance.now() - window.__t0)); }).observe(board, { attributes: true, attributeFilter: ["data-lost"] });
+    });
+    await p.keyboard.press("k");
+    const ended38 = await waitGame(p, "result", 6000);
+    const r38 = await p.evaluate(() => ({ flows: window.__flows, lost: Number(document.getElementById("tgBoard").dataset.lost), got: Number(document.getElementById("tgBoard").dataset.got) }));
+    check("typing game: rAF が止まっても文は締切ごとに流れ（1 秒・2 秒の締切のあと、次の締切より前）、回は終わる（流れた 2）", ended38 && r38.lost === 2 && r38.got === 0 && r38.flows.length === 2 && r38.flows[0] >= 1000 && r38.flows[0] < 2000 && r38.flows[1] >= 2000 && r38.flows[1] < 3000 && p.errors.length === 0, JSON.stringify({ r38, errors: p.errors.slice(0, 2) }));
+    await p.close();
+  }
+
   // ---- タッチ端末（390 × 844・mobile の 1 枚。設定は「オフ」）。320・360 も同じ 1 枚 ----
   {
     const p = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_osk: "off" } });
@@ -1525,21 +1625,23 @@ console.log("typing game:");
     await p.click('.tp-tabs [data-course="normal"]');
     await p.waitForTimeout(150);
     check("typing game（390）: 設定が「オフ」でも画面キーボードが出て、Enter と空白は出さず ー は出す・札は盤面の上に寄せられて隠れない・コースを替えても箱の上端と高さは同じ", o0.osk && o0.open && !o0.enter && o0.dash && !o0.space && o0.board.bottom <= o0.keys.top && o0.board.top >= o0.header.bottom && ol.board.bottom <= ol.keys.top && same(l390.stage, n390.stage) && same(s390.stage, n390.stage), JSON.stringify({ o0, ol: ol.board, n: n390.stage, l: l390.stage, s: s390.stage }));
-    // G26: 盤面のキー（pointerdown）で始まり、最初の文を打ち切る。時間切れの直後 0.6 秒は盤面を出したまま・結果のボタンは inert
+    // G26: 盤面のキー（pointerdown）で始まり、最初の文を打ち切る。時間切れの直後 0.6 秒は盤面を出したまま・盤面の外は押しても届かない（盤面の中は届く）
     const first390 = (await st(p)).rest;
     for (const k of first390) await p.dispatchEvent(k === "-" ? '#osk [data-action="dash"]' : `#osk [data-key="${k}"]`, "pointerdown");
     const run390 = await st(p);
     const guard = await p.evaluate(() => new Promise((resolve) => {
       const board = document.getElementById("tgBoard");
-      const snap = () => ({ osk: !document.getElementById("osk").hidden, inert: Boolean(document.getElementById("tgStudy").closest("[inert]")), inertCount: document.querySelectorAll("[inert]").length });
-      const done = () => { const out = {}; setTimeout(() => (out.at300 = snap()), 300); setTimeout(() => { out.at700 = snap(); resolve(out); }, 700); };
+      // 押した先まで届いたか（届いたら既定の動きは止める: 移動しない）
+      const reach = (sel) => { const n = document.querySelector(sel); let hit = false; const h = (e) => { hit = true; e.preventDefault(); }; n.addEventListener("click", h); n.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 })); n.removeEventListener("click", h); return hit; };
+      const snap = (sels) => ({ osk: !document.getElementById("osk").hidden, reached: sels.map(reach), inertCount: document.querySelectorAll("[inert]").length });
+      const done = () => { const out = {}; setTimeout(() => (out.at300 = { ...snap(["#tgStudy", "#tgAgain", '.site-footer__nav a[href="./news.html"]', ".tp-about a"]), oskKey: reach('#osk [data-key="a"]') }), 300); setTimeout(() => { out.at700 = snap(['.site-footer__nav a[href="./news.html"]']); resolve(out); }, 700); };
       if (board.dataset.state === "result") { done(); return; }
       const mo = new MutationObserver(() => { if (board.dataset.state === "result") { mo.disconnect(); done(); } });
       mo.observe(board, { attributes: true, attributeFilter: ["data-state"] });
     }));
     const r390 = await st(p);
     const pairs390 = await p.evaluate(() => [...document.querySelectorAll("#tgLine .tg-pair")].every((n) => new Set([...n.getClientRects()].map((r) => Math.round(r.top))).size === 1));
-    check("typing game（390）: 盤面のキー（pointerdown）で打て、時間切れの直後 0.6 秒は盤面を出したまま・結果のボタンは inert、その後に畳む・結果は箱に収まり箱の高さは同じ", run390.got === 1 && guard.at300.osk && guard.at300.inert && !guard.at700.osk && guard.at700.inertCount === 0 && same(r390.stage, n390.stage) && r390.result.bottom <= r390.stage.bottom && pairs390, JSON.stringify({ got: run390.got, guard, r390: { stage: r390.stage, result: r390.result }, n: n390.stage }));
+    check("typing game（390）: 盤面のキー（pointerdown）で打て、時間切れの直後 0.6 秒は盤面を出したまま・盤面の外（結果のボタン・導線・フッターのリンク・このページについて）は押しても届かず盤面の中は届く、その後に畳んで押せる（inert は使わない）・結果は箱に収まり箱の高さは同じ", run390.got === 1 && guard.at300.osk && guard.at300.reached.every((r) => r === false) && guard.at300.oskKey === true && !guard.at700.osk && guard.at700.reached[0] === true && guard.at700.inertCount === 0 && same(r390.stage, n390.stage) && r390.result.bottom <= r390.stage.bottom && pairs390, JSON.stringify({ got: run390.got, guard, r390: { stage: r390.stage, result: r390.result }, n: n390.stage }));
     const scroll390 = [n390, l390, s390, run390, r390].every((s) => s.scroll <= s.inner);
     // 320・360: 長い文で横スクロールしない・結果が箱に収まる・結果の組（流れた 2 など）が名前と数の間で割れない
     const narrow = {};
@@ -1646,7 +1748,7 @@ console.log("typing game:");
   const gameFooter = gameHtml.match(/<nav class="site-footer__nav"[^>]*>[\s\S]*?<\/nav>/)?.[0] ?? "";
   const docsText = fs.readdirSync(path.join(ROOT, "docs")).filter((f) => f.endsWith(".md")).map((f) => fs.readFileSync(path.join(ROOT, "docs", f), "utf8")).join("\n");
   const RIVAL = String.fromCodePoint(0x5bff, 0x53f8, 0x6253); // よく知られたタイピングゲームの名（リポジトリは public。木に字面を入れないため符号で持つ）
-  const noRival = [gameHtml, fs.readFileSync(path.join(ROOT, "css", "typing-game.css"), "utf8"), fs.readFileSync(path.join(ROOT, "js", "typingGame.js"), "utf8"), fs.readFileSync(path.join(ROOT, "js", "typingGamePage.js"), "utf8"), fs.readFileSync(path.join(ROOT, "scripts", "build-typing-game.mjs"), "utf8"), fs.readFileSync(path.join(ROOT, "scripts", "typing-game", "deny.txt"), "utf8"), docsText].every((t) => !t.includes(RIVAL));
+  const noRival = [gameHtml, fs.readFileSync(path.join(ROOT, "css", "typing-game.css"), "utf8"), fs.readFileSync(path.join(ROOT, "js", "typingGame.js"), "utf8"), fs.readFileSync(path.join(ROOT, "js", "typingGamePage.js"), "utf8"), fs.readFileSync(path.join(ROOT, "js", "typingKeys.js"), "utf8"), fs.readFileSync(path.join(ROOT, "scripts", "build-typing-game.mjs"), "utf8"), fs.readFileSync(path.join(ROOT, "scripts", "typing-game", "deny.txt"), "utf8"), docsText].every((t) => !t.includes(RIVAL));
   check("typing game: title・og:title・canonical・og:url・og:image・twitter:card、description は og と同じで「登録なし」「90秒」「スマホ」を前半に含む、h1・lead・このページについて 5 行・最初の文と補足（目標は定数と同じ）、木（docs も）に他社の固有名が無い、フッターの先頭は typing.html で現在地でない・Pro を出さない印",
     gameHtml.includes(`<title>${TITLE}</title>`) && gmeta(/<meta property="og:title" content="([^"]*)"/) === TITLE && gameHtml.includes('<link rel="canonical" href="https://www.spelldash.net/typing-game.html" />') && gameHtml.includes('<meta property="og:url" content="https://www.spelldash.net/typing-game.html" />') && gameHtml.includes('<meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />') && gameHtml.includes('<meta name="twitter:card" content="summary_large_image" />') &&
     gdesc !== "" && gdesc === gmeta(/<meta property="og:description" content="([^"]*)"/) && gdesc.includes("登録なし") && gdesc.includes("90秒") && gdesc.indexOf("スマホ") >= 0 && gdesc.indexOf("スマホ") < 70 && !/noindex/i.test(gameHtml) &&
@@ -2604,6 +2706,161 @@ console.log("bookshelf:");
     const post = await shelfKeys(page);
     const saved = await savedShelf(page);
     check("初回: 紹介頁（list.html?add=accounting）から来た人の下見の棚に経理・会計の背があり、スタート後も同じ（spelldash_shelf.books に accounting、中学英語 1年は棚にも保存にも無い）", welcome && pre.includes("b:accounting") && same(pre, post) && saved?.books.includes("accounting") && !saved?.books.includes("jhs-english1") && !post.some((k) => k.includes("jhs-english1")) && page.errors.length === 0, JSON.stringify({ welcome, pre, post, saved }));
+    await page.close();
+  }
+
+  // ---- PR #152 レビュー B1: 目録の準備前に押した「171冊から選ぶ」は、届いた時点でまだ初回の画面のときだけ窓を開く。スタートした後には開かない（焦点はゲームの入力欄） ----
+  {
+    const page = await seededPage({ keepOnboarding: true, viewport: { width: 390, height: 844 } });
+    let release = null;
+    const gate = new Promise((r) => (release = r));
+    await page.route("**/data/manifest.json", async (route) => { await gate; await route.continue(); }); // 語の読み込み（目録）を止めておく
+    await page.goto(BASE + "/index.html", { waitUntil: "domcontentloaded" });
+    await waitUntil(() => page.evaluate(() => document.body.classList.contains("welcome-open") && !!document.getElementById("welcomeFind")?.offsetParent), 6000);
+    await page.click("#welcomeFind");
+    await page.waitForTimeout(150);
+    const wait = await page.evaluate(() => ({ open: !!document.getElementById("bookFinder")?.open, status: document.getElementById("bookshelfStatus")?.textContent ?? "" }));
+    await page.click("#welcome .welcome__cta [data-welcome-start]");
+    await page.waitForTimeout(150);
+    release();
+    const started = await waitUntil(() => page.evaluate(() => document.body.classList.contains("home--playing") && document.querySelectorAll("#shelfRun li[data-key]").length > 0), 8000);
+    await page.waitForTimeout(800);
+    const after = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, focus: document.activeElement?.id, welcome: document.body.classList.contains("welcome-open") }));
+    await page.keyboard.press("Enter"); // 入力欄に打てる: Enter で答えが出る
+    const typed = await waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 3000);
+    check("本棚（B1）: 目録の準備前に「171冊から選ぶ」を押すと「読み込み中」（窓はまだ無い）。そのままスタートしてから目録が届いても窓は開かず、焦点はゲームの入力欄で Enter が効く（答えが出る）",
+      !wait.open && wait.status === "読み込み中" && started && !after.open && !after.welcome && after.focus === "input" && typed && page.errors.length === 0, JSON.stringify({ wait, started, after, typed, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+
+  // ---- PR #152 レビュー B2・B4: 深いリンクで来て記録なしのまま本 2 冊と函 1 つを足した人が、素の / の初回の画面でスタートしても、足した物は棚に残る（下見にも出て、下見＝保存） ----
+  {
+    const page = await seededPage({ keepOnboarding: true, viewport: { width: 1200, height: 900 } });
+    await openHome(page, "/index.html?category=jhs-english1");
+    const deep = await page.evaluate(() => document.body.classList.contains("welcome-open"));
+    for (const [q, key] of [["古文", "b:hs-kobun"], ["都道府県", "b:pref"], ["英検", "c:eiken"]]) {
+      await page.click("#bookFinderOpen");
+      await page.fill("#bookFinderQ", q);
+      await page.waitForTimeout(100);
+      await page.click(`#bookFinderList .finder__act[data-key="${key}"]`);
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(150);
+    }
+    const saved0 = await savedShelf(page);
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => document.body.classList.contains("welcome-open") && document.querySelectorAll("#shelfRun li[data-key]").length > 0), 6000);
+    await page.waitForTimeout(300);
+    const pre = await shelfKeys(page);
+    await page.click("#welcome .welcome__cta [data-welcome-start]");
+    await waitUntil(() => page.isVisible("#backToPath"), 8000);
+    await page.click("#backToPath");
+    await page.waitForTimeout(500);
+    const post = await shelfKeys(page);
+    const saved = await savedShelf(page);
+    const want = ["c:jhs-redo", "slot:b:jhs-english1", "c:eiken", "b:pref", "b:hs-kobun"];
+    check("本棚（B2・B4）: 深いリンク（?category=）で初回の画面を飛ばし、記録なしで古文単語・都道府県・函 英検を足す → 素の / の初回の画面の下見の棚に足した 3 点が出て、スタート後の棚も下見と同じ（spelldash_shelf は books [hs-kobun, pref]・courses [eiken, jhs-redo]・prov false）",
+      !deep && same([...(saved0?.books ?? [])].sort(), ["hs-kobun", "pref"]) && same(saved0?.courses, ["eiken"]) && same(pre, want) && same(post, pre) &&
+      same([...(saved?.books ?? [])].sort(), ["hs-kobun", "pref"]) && same([...(saved?.courses ?? [])].sort(), ["eiken", "jhs-redo"]) && saved?.prov === false && page.errors.length === 0, JSON.stringify({ deep, saved0, pre, post, saved, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+
+  // ---- B2 の直しの守り: スタートが足すのは初回の画面を閉じる前の保存した棚（閉じた直後の描き直しが閉じる前の状態で移行して書いた棚ではない）。下見＝保存 ----
+  // 既定のコースが敷かれた後に単語帳で経理を足した（机は中学英語 1年のまま）人が、積んだ本の中学歴史でスタート: 使っていない中学英語やり直しの函は下見にも棚にも出ない
+  {
+    const page = await seededPage({ keepOnboarding: true, viewport: { width: 390, height: 844 }, storage: { spelldash_course: "jhs-redo", spelldash_category: "jhs-english1", spelldash_packs: JSON.stringify(["jhs-english1", "accounting"]) } });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => document.body.classList.contains("welcome-open") && document.querySelectorAll("#shelfRun li[data-key]").length > 0), 6000);
+    await page.click('#welcomeStack .flatbook[data-book="jhist1"]');
+    await page.waitForTimeout(500);
+    const pre = await shelfKeys(page);
+    const book = await page.evaluate(() => document.querySelector("#welcome [data-welcome-start]").dataset.book);
+    await page.click("#welcome .welcome__cta [data-welcome-start]");
+    await waitUntil(() => page.isVisible("#backToPath"), 8000);
+    await page.click("#backToPath");
+    await page.waitForTimeout(500);
+    const post = await shelfKeys(page);
+    const saved = await savedShelf(page);
+    check("初回（B2 の守り）: 既定のコースのまま単語帳で経理を足した人が積んだ本の中学歴史でスタートすると、棚は下見と同じ（背 経理・会計・空き 中学歴史。中学英語やり直しの函は下見にも棚にも保存にも無い）",
+      book === "jhist1" && same(pre, ["slot:b:jhist1", "b:accounting"]) && same(post, pre) && !!saved && !saved.courses.includes("jhs-redo") && saved.books.includes("accounting") && saved.prov === false && page.errors.length === 0, JSON.stringify({ book, pre, post, saved, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+
+  // ---- PR #152 レビュー B5・B7: 窓の検索は打つたびに棚を読み直さない（開いたとき・足した後だけ）。足した後に打った検索の行も「棚にある」。行の「いまのコース・」「机の上・」 ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
+    await openHome(page);
+    await page.click("#bookFinderOpen");
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      window.__shelfReads = 0;
+      const get = Storage.prototype.getItem;
+      Storage.prototype.getItem = function (k) { if (k === "spelldash_shelf") window.__shelfReads++; return get.call(this, k); };
+    });
+    await page.locator("#bookFinderQ").pressSequentially("eiken", { delay: 30 });
+    await page.waitForTimeout(100);
+    const r1 = await page.evaluate(() => ({ reads: window.__shelfReads, rows: document.querySelectorAll("#bookFinderList .finder__row").length }));
+    await page.fill("#bookFinderQ", "");
+    await page.locator("#bookFinderQ").pressSequentially("中学英語", { delay: 30 });
+    await page.waitForTimeout(100);
+    const meta = await page.evaluate(() => ({ box: document.querySelector('#bookFinderList .finder__row[data-course="jhs-redo"] .finder__m')?.textContent, desk: document.querySelector('#bookFinderList .finder__row[data-book="jhs-english1"] .finder__m')?.textContent, other: document.querySelector('#bookFinderList .finder__row[data-book="jhs-english2"] .finder__m')?.textContent }));
+    await page.click('#bookFinderList .finder__act[data-key="b:jhs-english3"]');
+    await page.waitForTimeout(100);
+    const readsAdded = await page.evaluate(() => window.__shelfReads);
+    await page.fill("#bookFinderQ", "");
+    await page.locator("#bookFinderQ").pressSequentially("3年", { delay: 30 });
+    await page.waitForTimeout(100);
+    const r2 = await page.evaluate(() => ({ reads: window.__shelfReads, act: document.querySelector('#bookFinderList .finder__act[data-key="b:jhs-english3"]')?.textContent.trim() }));
+    await page.keyboard.press("Escape");
+    check("本を足す（B5・B7）: 打つたびに棚（spelldash_shelf）を読み直さない（「eiken」の 5 回の入力で 0 回）。足した後に打った検索でも足した本は「棚にある」で、その入力でも読み直さない。行の頭は函 中学英語やり直しが「いまのコース・」、中学英語 1年が「机の上・」、ほかの巻には付かない",
+      r1.reads === 0 && r1.rows > 0 && meta.box?.startsWith("いまのコース・") && meta.desk?.startsWith("机の上・") && !!meta.other && !/^(いまのコース|机の上)・/.test(meta.other) && r2.act === "棚にある" && r2.reads === readsAdded && page.errors.length === 0, JSON.stringify({ r1, meta, readsAdded, r2, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+
+  // ---- PR #152 レビュー B6: 入力が前回と同じなら描き直さない（同期の後の renderHome → renderBookshelf の 2 回目も）。プレイ中（畳まれている間）は幅・高さを読まず、机に戻ったときに描く ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed({ spelldash_shelf: shelfJson({ books: ["jhist1"], courses: ["jhs-redo"] }) }) });
+    await openHome(page);
+    // 測る道具: #shelfRun の DOM の変化と、レイアウトを読む呼び出しの回数（updateBookshelf は同期で走るので、呼ぶ前後の差がその分）
+    await page.evaluate(() => {
+      window.__layoutReads = 0;
+      const wrap = (obj, name) => {
+        const d = Object.getOwnPropertyDescriptor(obj, name);
+        if (d.get) Object.defineProperty(obj, name, { ...d, get() { window.__layoutReads++; return d.get.call(this); } });
+        else { const f = d.value; obj[name] = function (...a) { window.__layoutReads++; return f.apply(this, a); }; }
+      };
+      wrap(window, "getComputedStyle");
+      for (const n of ["getBoundingClientRect", "getClientRects"]) wrap(Element.prototype, n);
+      for (const n of ["clientWidth", "clientHeight"]) wrap(Element.prototype, n);
+      for (const n of ["offsetHeight", "offsetWidth", "offsetTop", "offsetLeft"]) wrap(HTMLElement.prototype, n);
+      window.__shelfMut = 0;
+      new MutationObserver((list) => (window.__shelfMut += list.length)).observe(document.getElementById("shelfRun"), { childList: true, subtree: true, attributes: true, characterData: true });
+    });
+    // shelf を渡したら、呼ぶ直前に spelldash_shelf をその文字列にする（別のタブで棚が替わった）
+    const measure = (shelf = null) => page.evaluate(async (raw) => {
+      const m = await import("/js/bookshelf.js");
+      await new Promise((r) => setTimeout(r, 150));
+      window.__shelfMut = 0;
+      window.__layoutReads = 0;
+      if (raw) localStorage.setItem("spelldash_shelf", raw);
+      m.updateBookshelf();
+      m.updateBookshelf();
+      m.renderBookshelf();
+      const reads = window.__layoutReads;
+      await new Promise((r) => setTimeout(r, 50));
+      return { reads, mut: window.__shelfMut, keys: [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => (li.dataset.state === "slot" ? "slot:" : "") + li.dataset.key) };
+    }, shelf);
+    const sameIn = await measure();
+    await page.click("#pathStart");
+    await waitUntil(() => page.evaluate(() => document.body.classList.contains("home--playing")), 4000);
+    await page.waitForTimeout(300);
+    // プレイ中に別のタブで都道府県を足した（保存した棚の文字列が替わる）
+    const folded = await measure(shelfJson({ books: ["jhist1", "pref"], courses: ["jhs-redo"] }));
+    await page.click("#backToPath");
+    await page.waitForTimeout(500);
+    const back = await shelfKeys(page);
+    const v = await rowsOf(page);
+    check("本棚（B6）: 入力が同じなら updateBookshelf・renderBookshelf を続けて呼んでも #shelfRun は変わらず、幅・高さも読まない。プレイ中に棚が替わっても描かず（読む回数 0・DOM そのまま）、机に戻ると都道府県が並ぶ（段は貪欲に詰めた形）",
+      sameIn.reads === 0 && sameIn.mut === 0 && folded.reads === 0 && folded.mut === 0 && !folded.keys.includes("b:pref") && same(back, ["c:jhs-redo", "slot:b:jhs-english1", "b:pref", "b:jhist1"]) && layoutBad(v, 4).length === 0 && page.errors.length === 0, JSON.stringify({ sameIn, folded, back, bad: layoutBad(v, 4), errors: page.errors.slice(0, 2) }));
     await page.close();
   }
 }
@@ -8780,6 +9037,54 @@ console.log("sync (2nd device):");
       check("2 台目（ログイン）: 英語の記録（英検5級 20 語。中学英語 1年と同じ id の語を含む）が届いても、使っていない中学英語やり直し・中学英語 1年は出ない（背 英検5級・空き 中学歴史、移行し直して prov false）", shared > 0 && JSON.stringify(r.keys) === JSON.stringify(["b:eiken5", "slot:b:jhist1"]) && r.saved?.prov === false && page.errors.length === 0, JSON.stringify({ ...r, shared, errors: page.errors.slice(0, 2) }));
       await page.close();
     }
+    {
+      // PR #152 レビュー B3・B8: 取り込みの途中かは js/sync.js の isPulling() が答え、時刻はその取り込みを始めた時（SYNCED_FLAG を立てた時）。
+      // 同じタブで同じアカウントの 2 回目の取り込みが 1 回目から 2 分以上たって始まっても、その途中では棚を保存しない。止まった印は始めてから 2 分で諦める
+      const cloud = createCloud({ word_progress: wordsIn("jhist1").slice(0, 3).map(wpRow), user_progress: [userProgress({ selected_category: "jhist1" })], user_items: [packRow("jhist1"), packRow("eiken3")] }, { delayMs: 2500 });
+      const page = await syncDevice(login(cloud));
+      const probe = () => page.evaluate(async () => {
+        const b = await import("/js/bookshelf.js");
+        const s = await import("/js/sync.js");
+        b.updateBookshelf();
+        b.renderBookshelf();
+        return { pulling: typeof s.isPulling === "function" ? s.isPulling() : null, shelf: localStorage.getItem("spelldash_shelf") };
+      });
+      await page.goto(BASE + "/index.html", { waitUntil: "domcontentloaded" });
+      // 1 回目の取り込みの途中に本棚を描く（直す前の本棚は、ここで「途中を初めて見た時刻」を覚えていた）
+      const during1 = await waitUntil(() => page.evaluate(() => sessionStorage.getItem("spelldash_synced_this_session") === "test-user" && !sessionStorage.getItem("spelldash_pulled_this_session") && !!document.querySelector("#shelfRun .shelf")), 8000);
+      const p1 = await probe();
+      await ownerSet(page);
+      await shelfOn(page);
+      // ログアウト → 時計を 130 秒進める → 同じアカウントでもう一度ログイン（2 回目の取り込みは 3 秒かかる）。棚は消しておき、途中で保存されたら分かるように
+      await page.click("#avatarButton");
+      await page.click("#logoutButton");
+      await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログアウト"), 3000);
+      await page.evaluate(() => {
+        const real = Date.now.bind(Date);
+        window.__nowOffset = 130000;
+        Date.now = () => real() + window.__nowOffset;
+        localStorage.removeItem("spelldash_shelf");
+      });
+      cloud.config.delayMs = 3000;
+      await page.evaluate(() => window.__stubAuth.signIn());
+      const during2 = await waitUntil(async () => (await ss(page, "spelldash_synced_this_session")) === SYNC_USER && (await ss(page, "spelldash_pulled_this_session")) === null, 3000);
+      const p2 = await probe();
+      const stale = await page.evaluate(async () => {
+        const s = await import("/js/sync.js");
+        if (typeof s.isPulling !== "function") return null;
+        window.__nowOffset += 121000; // 2 回目を始めてから 2 分を過ぎた（止まった印とみなす）
+        const late = s.isPulling();
+        window.__nowOffset -= 121000;
+        return { late, back: s.isPulling() };
+      });
+      const pulled = await waitUntil(async () => (await ss(page, "spelldash_pulled_this_session")) === SYNC_USER, 8000);
+      const p3 = await probe();
+      const saved3 = JSON.parse(p3.shelf || "null");
+      check("同期（本棚・B3・B8）: 取り込みの途中かは sync.js の isPulling()。ログアウトして時計を 130 秒進め、同じアカウントの 2 回目の取り込みが始まっても、その途中は棚を保存しない（updateBookshelf・renderBookshelf を呼んでも spelldash_shelf は空のまま）。2 回目を始めてから 2 分を過ぎた印は途中とみなさない。取り込み終えたら保存する（背 英検3級・空き 中学歴史の棚）",
+        during1 && p1.pulling === true && during2 && p2.pulling === true && p2.shelf === null && stale?.late === false && stale?.back === true && pulled && p3.pulling === false && saved3?.v === 1 && !!saved3?.books.includes("eiken3") && page.errors.length === 0,
+        JSON.stringify({ during1, p1, during2, p2, stale, pulled, p3: { pulling: p3.pulling, saved3 }, errors: page.errors.slice(0, 2) }));
+      await page.close();
+    }
   }
 
   // ログイン欄の並び（未ログイン）: 利点の 1 文が Google の上、メール側は操作だけ。トップの「すでに使っている方はログイン」は見える
@@ -8914,6 +9219,23 @@ console.log("typing funnel:");
   await leaver.close();
   check("計測: 学習記録のある端末・ほかのページから来た端末は typing の行を送らない／途中で離れた回は typing_done を送らない", learnerRows.length === 0 && visitorRows.length === 0 && of(leaverId, "typing_start").length === 1 && of(leaverId, "typing_done").length === 0 && leaverState === "ready", JSON.stringify({ learnerRows, visitorRows, leaver: of(leaverId).map((r) => r.source), leaverState }));
 
+  // T30: 2 つの族は排他（js/funnelLog.js markTypingArrival は番号だけに頼らない）。タイピングゲームの印だけがある端末（番号なし: 消された・作れなかった）が
+  // タイピング練習を開いて打っても、typing の印は立たず typing* の first_visit を送らない
+  {
+    const day = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const p = await newPage({ storage: { spelldash_test_cloud: cloud.id, spelldash_funnel_tgame: day } });
+    await p.goto(BASE + "/typing.html?t=2", { waitUntil: "networkidle" });
+    const id = await deviceOf(p);
+    const first = await waitUntil(async () => of(id, "").length === 1, 5000);
+    await p.keyboard.press("a");
+    await waitUntil(async () => (await stateOf(p)) === "result", 5000);
+    await p.waitForTimeout(600);
+    const mark = await p.evaluate(() => localStorage.getItem("spelldash_funnel_typing"));
+    const sent = rows().filter((r) => r.device_id === id && r.source.startsWith("typing"));
+    check("計測: タイピングゲームの印だけがある端末（番号なし）がタイピング練習を開いて打っても typing の印は立たず、typing* を送らない", Boolean(id) && first && mark === null && sent.length === 0 && p.errors.length === 0, JSON.stringify({ id: Boolean(id), first, mark, sent: sent.map((r) => r.source), errors: p.errors.slice(0, 2) }));
+    await p.close();
+  }
+
   // T29: 管理画面の「初めて来た」は端末の数のまま
   const { summarizeFunnel } = await import("../api/_lib/funnel.js");
   const todayJst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -8998,6 +9320,41 @@ console.log("typing game funnel:");
   const leaverState = await stateOf(leaver);
   await leaver.close();
   check("計測: 学習記録のある端末・ほかのページから来た端末は tgame の行を送らない／typing.html から初めて来た端末がゲームを開くと typing_game だけ（tgame は無い）／途中で離れた回は tgame_done を送らない", learnerRows.length === 0 && visitorRows.length === 0 && viaTyping && typistTgame.length === 0 && of(leaverId, "tgame_start").length === 1 && of(leaverId, "tgame_done").length === 0 && leaverState === "ready", JSON.stringify({ learnerRows, visitorRows, typist: of(typistId).map((r) => r.source), leaver: of(leaverId).map((r) => r.source), leaverState }));
+
+  // G39: 2 つの族は排他（js/funnelLog.js markTypingArrival は番号だけに頼らない）。タイピング練習の印だけがある端末（番号なし）が
+  // タイピングゲームを開いて打っても、tgame の印は立たず tgame* の first_visit を送らない（typing_game は送る）
+  {
+    const day = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const p = await newPage({ storage: { spelldash_test_cloud: cloud.id, spelldash_funnel_typing: day } });
+    await p.goto(BASE + "/typing-game.html?t=2", { waitUntil: "networkidle" });
+    const id = await deviceOf(p);
+    const first = await waitUntil(async () => of(id, "").length === 1 && of(id, "typing_game").length === 1, 5000);
+    await p.keyboard.press("k");
+    await waitUntil(async () => (await stateOf(p)) === "result", 5000);
+    await p.waitForTimeout(600);
+    const mark = await p.evaluate(() => localStorage.getItem("spelldash_funnel_tgame"));
+    const sent = rows().filter((r) => r.device_id === id && r.source.startsWith("tgame"));
+    check("計測: タイピング練習の印だけがある端末（番号なし）がタイピングゲームを開いて打っても tgame の印は立たず、tgame* を送らない（typing_game は送る）", Boolean(id) && first && mark === null && sent.length === 0 && p.errors.length === 0, JSON.stringify({ id: Boolean(id), first, mark, sent: sent.map((r) => r.source), errors: p.errors.slice(0, 2) }));
+    await p.close();
+  }
+
+  // G40: 教材が読めない（500）まま最初の内蔵の文が時間切れ（?t=4&s=1）→ 読み込めなかったの画面。空の列のまま 4 秒の終わりまで走って
+  // 結果・自己ベスト・tgame_done を出さない（?s= の回は自己ベストを書かないので、結果に行かないことで見る）
+  {
+    const p = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+    await p.route("**/data/typing-game.json", (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+    await p.goto(BASE + "/typing-game.html?t=4&s=1", { waitUntil: "load" });
+    const id = await deviceOf(p);
+    await waitUntil(async () => of(id, "tgame").length === 1, 5000);
+    await p.waitForTimeout(300);
+    await p.keyboard.press("k");
+    const started = await waitUntil(async () => of(id, "tgame_start").length === 1, 5000);
+    const errored = await waitUntil(async () => (await stateOf(p)) === "error", 3000);
+    await p.waitForTimeout(3500); // 4 秒の回の終わりを過ぎても結果にならない
+    const after = await p.evaluate(() => ({ state: document.getElementById("tgBoard").dataset.state, error: !document.getElementById("tgError").hidden, result: !document.getElementById("tgResult").hidden, best: localStorage.getItem("spelldash_typing_game"), osk: document.body.classList.contains("typing--live") }));
+    check("計測: 教材が読めないまま最初の文が時間切れ → 読み込めなかったの画面（結果にならない・自己ベストを書かない・tgame_done を送らない。tgame_start は送る）", started && errored && after.state === "error" && after.error && !after.result && after.best === null && !after.osk && of(id, "tgame_done").length === 0 && p.errors.length === 0, JSON.stringify({ started, errored, after, rows: of(id).map((r) => r.source), errors: p.errors.slice(0, 2) }));
+    await p.close();
+  }
 
   // G35: 管理画面の「初めて来た」は端末の数のまま
   const { summarizeFunnel } = await import("../api/_lib/funnel.js");

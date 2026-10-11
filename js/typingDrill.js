@@ -11,23 +11,28 @@
 import { createRomajiMatcher } from "./romaji.js";
 
 export const SECONDS = 60;
-export const RESULT_GUARD_MS = 600; // 結果が出てからこの間は Enter／Space を無視し、画面キーボードを出したまま・結果のボタンを inert にする
+export const RESULT_GUARD_MS = 600; // 結果が出てからこの間は Enter／Space を無視し、画面キーボードを出したまま・盤面の外を押させない（js/typingKeys.js）
 export const SPILL_GAP_MS = 600; // 語末の ん の 2 つ目の n を飲む間（js/game.js の SPILL_GAP_MS と同じ値。game.js は import しない）
 export const TOP_KEYS = 3;
 export const BEST_KEY = "spelldash_typing_practice"; // 自己ベスト（Study の spelldash_typing_stats とは別物）
 export const FIRST_WORD = ["apple", "りんご"]; // typing.html に直書きした最初の語
 
-// "?t=3" → 3。1〜60 の整数以外・無し → 60（E2E が時間を縮める。js/game.js の ?t= と同じ流儀）
-export function secondsFrom(search) {
+// URL の ?name= の 1〜2 桁の整数で min〜max のもの → その数。ほか・無し → null（js/typingGame.js の ?t=・?s= も使う）
+export function intParam(search, name, min, max) {
   let raw = null;
   try {
-    raw = new URLSearchParams(String(search ?? "")).get("t");
+    raw = new URLSearchParams(String(search ?? "")).get(name);
   } catch {
     raw = null;
   }
-  if (raw == null || !/^\d{1,2}$/.test(raw)) return SECONDS;
+  if (raw == null || !/^\d{1,2}$/.test(raw)) return null;
   const n = Number(raw);
-  return n >= 1 && n <= 60 ? n : SECONDS;
+  return n >= min && n <= max ? n : null;
+}
+
+// "?t=3" → 3。1〜60 の整数以外・無し → 60（E2E が時間を縮める。js/game.js の ?t= と同じ流儀）
+export function secondsFrom(search) {
+  return intParam(search, "t", 1, SECONDS) ?? SECONDS;
 }
 
 // 新しい配列（Fisher–Yates）
@@ -240,16 +245,7 @@ export function summarize(stats, seconds = SECONDS) {
   };
 }
 
-// ---- 自己ベスト（種類ごと・秒数ごと） ----
-// 形: { v: 1, best: { en: { "60": { kpm, acc, day } }, ja: { … } } }。storage は localStorage と同じ形（getItem／setItem）
-
-// 打/分は Math.round の整数で書く。整数でない・上限（2000 打/分 = 33 打/秒。人の打鍵では届かない）を超える値は壊れた値として無い扱い
-// （1e300 などを受けると「あと 1e+300」と出て以後ずっと更新できない）。次の結果が「はじめての記録」として上書きする
-export const BEST_KPM_MAX = 2000;
-
-function validRecord(rec) {
-  return rec && typeof rec === "object" && Number.isInteger(rec.kpm) && rec.kpm >= 0 && rec.kpm <= BEST_KPM_MAX ? { kpm: rec.kpm, acc: Number.isFinite(rec.acc) ? rec.acc : null, day: typeof rec.day === "string" ? rec.day : "" } : null;
-}
+// ---- 自己ベストの保存の読み書き（2 枚のページで共通。形は { v: 1, best: { 種類: { 秒数: 記録 } } }、鍵と記録の検証は呼ぶ側） ----
 
 function parseAll(raw) {
   try {
@@ -261,19 +257,60 @@ function parseAll(raw) {
   return null;
 }
 
-// → { en: {kpm, acc, day} | null, ja: … }（その秒数の記録だけ）。読めない・壊れている → 両方 null
-export function readBest(storage, seconds = SECONDS) {
-  const out = { en: null, ja: null };
+// → best の表 | null（読めない・壊れている・形が違う）
+function readBestTable(storage, key) {
   let raw = null;
   try {
-    raw = storage?.getItem(BEST_KEY) ?? null;
+    raw = storage?.getItem(key) ?? null;
   } catch {
-    return out;
+    return null;
   }
-  const data = parseAll(raw);
-  if (!data) return out;
-  for (const k of ["en", "ja"]) out[k] = validRecord(data.best?.[k]?.[String(seconds)]);
-  return out;
+  return parseAll(raw)?.best ?? null;
+}
+
+// best[group][秒数] を valid で確かめた記録 | null（読めない・壊れている・valid が null を返す）
+export function readBestRecord(storage, key, group, seconds, valid) {
+  const best = readBestTable(storage, key);
+  return best ? valid(best[group]?.[String(seconds)]) : null;
+}
+
+// 保存の直前に読み直し、best[group][秒数] だけ rec に差し替えて書く（ほかの種類・秒数を消さない）→ 書けたか
+export function writeBestRecord(storage, key, group, seconds, rec) {
+  if (!storage) return false;
+  let raw = null;
+  try {
+    raw = storage.getItem(key);
+  } catch {
+    return false; // 読めない端末では書かない（読めないまま丸ごと上書きしない）
+  }
+  const best = { ...(parseAll(raw)?.best ?? {}) };
+  const forGroup = best[group] && typeof best[group] === "object" ? { ...best[group] } : {};
+  forGroup[String(seconds)] = rec;
+  best[group] = forGroup;
+  try {
+    storage.setItem(key, JSON.stringify({ v: 1, best }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ---- 自己ベスト（種類ごと・秒数ごと） ----
+// 形: { v: 1, best: { en: { "60": { kpm, acc, day } }, ja: { … } } }。storage は localStorage と同じ形（getItem／setItem）
+
+// 打/分は Math.round の整数で書く。整数でない・上限（2000 打/分 = 33 打/秒。人の打鍵では届かない）を超える値は壊れた値として無い扱い
+// （1e300 などを受けると「あと 1e+300」と出て以後ずっと更新できない）。次の結果が「はじめての記録」として上書きする
+export const BEST_KPM_MAX = 2000;
+
+function validRecord(rec) {
+  return rec && typeof rec === "object" && Number.isInteger(rec.kpm) && rec.kpm >= 0 && rec.kpm <= BEST_KPM_MAX ? { kpm: rec.kpm, acc: Number.isFinite(rec.acc) ? rec.acc : null, day: typeof rec.day === "string" ? rec.day : "" } : null;
+}
+
+// → { en: {kpm, acc, day} | null, ja: … }（その秒数の記録だけ）。読めない・壊れている → 両方 null
+export function readBest(storage, seconds = SECONDS) {
+  const best = readBestTable(storage, BEST_KEY);
+  const pick = (k) => (best ? validRecord(best[k]?.[String(seconds)]) : null);
+  return { en: pick("en"), ja: pick("ja") };
 }
 
 // → { status: "first" | "new" | "same" | "below" | "none", prev, diff }
@@ -286,24 +323,8 @@ export function compareBest(prev, kpm) {
   return { status: "below", prev: before, diff: before - now };
 }
 
-// 保存の直前に読み直し、best[kind][秒数] だけ差し替えて書く（ほかの種類・秒数を消さない）。→ 書けたか
+// best[kind][秒数] だけ差し替えて書く → 書けたか
 export function writeBest(storage, kind, seconds, rec) {
-  if (!storage || (kind !== "en" && kind !== "ja")) return false;
-  let raw = null;
-  try {
-    raw = storage.getItem(BEST_KEY);
-  } catch {
-    return false; // 読めない端末では書かない（読めないまま丸ごと上書きしない）
-  }
-  const data = parseAll(raw) ?? { v: 1, best: {} };
-  const best = { ...data.best };
-  const forKind = best[kind] && typeof best[kind] === "object" ? { ...best[kind] } : {};
-  forKind[String(seconds)] = { kpm: Number(rec?.kpm) || 0, acc: Number.isFinite(rec?.acc) ? rec.acc : null, day: typeof rec?.day === "string" ? rec.day : "" };
-  best[kind] = forKind;
-  try {
-    storage.setItem(BEST_KEY, JSON.stringify({ v: 1, best }));
-    return true;
-  } catch {
-    return false;
-  }
+  if (kind !== "en" && kind !== "ja") return false;
+  return writeBestRecord(storage, BEST_KEY, kind, seconds, { kpm: Number(rec?.kpm) || 0, acc: Number.isFinite(rec?.acc) ? rec.acc : null, day: typeof rec?.day === "string" ? rec.day : "" });
 }

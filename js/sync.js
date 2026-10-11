@@ -34,6 +34,8 @@ const COURSE_KEY = "spelldash_course";
 const SYNCED_FLAG = "spelldash_synced_this_session"; // sessionStorage: このタブで同期を始めた（値は user id）
 const PULLED_FLAG = "spelldash_pulled_this_session"; // sessionStorage: このタブでクラウドの記録を取り込み終えた（値は user id）
 const DONE_FLAG = "spelldash_sync_done_this_session"; // sessionStorage: このタブで同期を最後まで終えた（値は user id）
+const PULL_AT_FLAG = "spelldash_pull_started_at"; // sessionStorage: SYNCED_FLAG を立てた時刻（ms）。取り込みを始めるたびに新しくする
+const PULL_GIVE_UP_MS = 120000; // 取り込みを始めてから 2 分たっても取り込み終えない印は止まったものとみなす（isPulling）
 const STORE_READY_TIMEOUT_MS = 5000;
 
 let isPushing = false;
@@ -125,8 +127,23 @@ export function clearSyncedFlag() {
     sessionStorage.removeItem(SYNCED_FLAG);
     sessionStorage.removeItem(PULLED_FLAG);
     sessionStorage.removeItem(DONE_FLAG);
+    sessionStorage.removeItem(PULL_AT_FLAG);
   } catch {
     // sessionStorage が使えない環境では何もしない
+  }
+}
+
+// このタブでクラウドの記録の取り込みを始めて、まだ取り込み終えていないか（本棚 js/bookshelf.js が、その間は棚を保存しない）。
+// 取り込みの途中は記録だけ届いて現在地・パックがまだ前の値のことがある。逃げ道: 取り込みを始めてから 2 分たっても終わらない
+// （途中でセッションが切れて印が残ったタブ）なら途中とみなさない。時刻はその取り込みを始めた時なので、同じアカウントの 2 回目の取り込みでも測り直す
+export function isPulling() {
+  try {
+    const started = sessionStorage.getItem(SYNCED_FLAG);
+    if (!started || sessionStorage.getItem(PULLED_FLAG) === started) return false;
+    const at = Number(sessionStorage.getItem(PULL_AT_FLAG));
+    return at > 0 && Date.now() - at < PULL_GIVE_UP_MS;
+  } catch {
+    return false;
   }
 }
 
@@ -364,6 +381,7 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   }
 
   sessionStorage.setItem(SYNCED_FLAG, userId);
+  sessionStorage.setItem(PULL_AT_FLAG, String(Date.now()));
   sessionStorage.removeItem(PULLED_FLAG);
 
   const [wordResult, progressResult] = await Promise.all([
@@ -374,6 +392,7 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   // どちらかの取得に失敗したらフラグを戻して次回再試行（データを壊さない。user_progress の上書きにも進まない）
   if (wordResult.error || progressResult.error) {
     sessionStorage.removeItem(SYNCED_FLAG);
+    sessionStorage.removeItem(PULL_AT_FLAG);
     const error = wordResult.error || progressResult.error;
     throw new Error(`sync pull failed: ${error?.message ?? error}`);
   }
