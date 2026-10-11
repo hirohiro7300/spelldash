@@ -142,14 +142,17 @@ function withKey(shelf, key) {
   return shelf.books.includes(id) ? shelf : { ...shelf, books: [...shelf.books, id] };
 }
 
-// 初回のスタートの棚: その時の状態での移行＋机の本のキー（仮の棚にしない）
-export function shelfAtStart(snap) {
-  return withKey({ ...migrateShelf(snap), prov: false }, deskKey(snap));
+// 初回のスタートの棚（下見の棚も保存する棚もこれ。js/bookshelf.js drawWelcome・startShelf）: 机の本のキーを足す（仮の棚にしない）。
+//   保存した棚が無い（普通の初回）: その時の状態での移行＋机の本のキー
+//   保存した棚がある（深いリンクで来て本を足してから、初回の画面でスタートした）: その棚を照合したもの＋机の本のキー（足した本・函を消さない）
+export function shelfAtStart(snap, saved = null) {
+  const base = saved ? reconcileShelf(saved, snap).shelf : migrateShelf(snap);
+  return withKey({ ...base, prov: false }, deskKey(snap));
 }
 
-// 初回のスタートが状態をどう替えるか（js/main.js の onStart の写し。welcome 中の下見の棚に使う）
+// 初回のスタートが状態をどう替えるか（下見の棚はこの結果で描き、js/main.js の onStart は startChanges でこの結果を書く。規則はここだけ）
 //   函を選んだ: コースの鍵を回し、選んだ巻（無ければ最初の巻）を読み込んで机に
-//   既定の本（中学英語 1年）以外の本: 分野パックなら packs に足し、机に出す
+//   既定の本（既定のコースの 1 巻目）以外の本: 分野パックなら packs に足し、机に出す
 export function applyStartChoice(snap, { bookId = "", courseId = "" } = {}) {
   let { packs, course, desk } = snap;
   const isPack = (id) => snap.known.has(`b:${id}`) && !snap.isBase(id) && id !== MY;
@@ -165,6 +168,12 @@ export function applyStartChoice(snap, { bookId = "", courseId = "" } = {}) {
     desk = bookId;
   }
   return { ...snap, packs, course, desk };
+}
+
+// applyStartChoice が替える欄だけ（js/main.js の onStart がこのとおりに書く）: { course, desk, packs }。替わらない欄は ""、packs は足す物だけ
+export function startChanges(snap, choice) {
+  const next = applyStartChoice(snap, choice);
+  return { course: next.course !== snap.course ? next.course : "", desk: next.desk !== snap.desk ? next.desk : "", packs: next.packs.filter((id) => !snap.packs.includes(id)) };
 }
 
 // 照合（描くたびに 1 回）: 仮の棚の移行し直し → 新しく届いたパック（P3）→ 外したパック → 控え
@@ -206,6 +215,12 @@ export function noteStudyStart(shelf, snap) {
   const base = shelf.prov && !isDefaultState(snap) ? migrateShelf(snap) : shelf;
   const next = { ...withKey(base, deskKey(snap)), prov: false };
   return { shelf: next, changed: !sameShelf(shelf, next) };
+}
+
+// 保存した棚にそのキー（"b:id" | "c:id"）があるか（窓の「棚にある」・整理の「戻す」）
+export function savedHas(shelf, key) {
+  const id = key.slice(2);
+  return key.startsWith("c:") ? shelf.courses.includes(id) : shelf.books.includes(id);
 }
 
 export function addKey(shelf, key) {

@@ -26,7 +26,7 @@
 - 最初の語 `apple`／`りんご` は HTML に直書き（教材が届く前から見え、打てる）。
 - `#typingBoard[data-state]`: `ready`（始まる前）→ `running`（打っている間）→ `result`（結果。同じ札の中で入れ替える）。`loading`（日本語を選んだが教材が未着）・`error`（教材が取れず、次の語が無い）。
 - 打っている間に Esc／ページが裏に回った（`visibilitychange`）／種類のタブ → その回は捨てて `ready`（結果・自己ベスト・計測なし）。
-- 結果が出てから **0.6 秒（`RESULT_GUARD_MS`）の守り**: 画面キーボードを出したまま、結果のボタン群（もう一度・本体への札・このページについて）を `inert`、Enter／Space は無視。0.6 秒後に盤面を畳む（keyboard.js は body の class の変化でも盤面を畳むので、守りの間は `typing--live`・`romaji-answer` を外さない）。
+- 結果が出てから **0.6 秒（`RESULT_GUARD_MS`）の守り**: 画面キーボードを出したまま、盤面（`#osk`）の外のクリックをすべて捨てる（結果のボタン・札・このページについて・タブ・ヘッダー・フッター。一覧で持たず、盤面の内か外かで決める。js/typingKeys.js `createResultGuard`。`inert` は使わない＝札の焦点と読み上げの行を外さないため）、Enter／Space は無視。0.6 秒後に盤面を畳む（keyboard.js は body の class の変化でも盤面を畳むので、守りの間は `typing--live`・`romaji-answer` を外さない）。
 - 英単語: 打った字＝朱、まだ＝薄墨、次の 1 字に朱の下線（`text-decoration-skip-ink: none`。g・j・p・q・y でも線が切れない）。ミスの印（次の字の下線を朱の**波線**に、背景 `--signal-soft`）は**正しいキーを打つまで残す**（時間で消さない＝点滅にしない。面だけでは地との差が 1.15:1 で見えないので形で知らせる）。
 - 日本語: かなの単位を 2 段（かな／キー）。済み＝朱、今＝打った分（朱の文字）＋残りの手本、まだ＝手本。手本は各かなの最初の綴りで、打った人が別の綴り（si など）を選ぶとその後の手本も替わる。手本の ん は途中 `nn`・語末だけ `n`。っ を子音の重ねで打った直後（がっこう を gakk）は、済みの っ と今の こ に分ける（かなの行は打っている途中も読みと同じ）。単位の幅はかなとキーの広い方（`min-width: 0`）。ミスの印は今の単位ごと面と朱の細い内枠（`box-shadow: inset`。単位の大きさは変えない）＋キーの下線の波線。
 - 種類の補足（「小・中学校の用語。…」）と次の語の行は、見せないときも行の高さを残す（`visibility: hidden`。種類を替えたとき・教材が届いたときに札や一文が上下しない）。読み込めない（error）ときは残り時間を出さない。
@@ -84,7 +84,7 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 
 ## 7. 計測（SQL を変えない）
 
-- 「このページから初めて来た端末」= typing.html を開いた時点で `spelldash_device_id` が無く、学習記録（`spelldash_word_stats` が空でない）も無い端末。その日を `spelldash_funnel_typing` に控える（消さない。js/funnelLog.js `markTypingArrival`。必ず `setFooterYear` の前に呼ぶ）。
+- 「このページから初めて来た端末」= typing.html を開いた時点で `spelldash_device_id` が無く、学習記録（`spelldash_word_stats` が空でない）も無い端末。その日を `spelldash_funnel_typing` に控える（消さない。js/funnelLog.js `markTypingArrival`。必ず `setFooterYear` の前に呼ぶ）。タイピングゲームの印（`spelldash_funnel_tgame`）が既にある端末には立てない（番号が作れなかった端末でも 2 つの組が混ざらない）。
 - その端末だけ、`first_visit` の source に段階を入れて各 1 回（`logTypingStage`。day は**来た日**）: `typing`（開いた）・`typing_start`（最初の 1 回を打ち始めた）・`typing_done`（結果が初めて出た。1 回目を途中でやめても、後の回で結果が出れば送る。途中でやめた回では送らない）・`typing_study`（本体へのリンクを押した。端末に積み、次のページで送る）。
 - 管理画面の「初めて来た」は段階ごとに端末の重複を数えないので、数は変わらない（E2E が `summarizeFunnel` で確かめる）。`entry` には入れない（加入の割合が崩れる）。見方は docs/SQL_FUNNEL.md 5（SELECT だけ）。
 
@@ -101,4 +101,4 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 - アプリ: docs/APP.md の表（PAGES に typing.html）
 - 計測: docs/SQL_FUNNEL.md 5、docs/SPEC_FUNNEL.md（first_visit は source ごとに端末で 1 回きり）
 - 書斎の規則の例外: docs/CONCEPT.md §4-7（結果の打/分だけ主の数 1 行）
-- 文を次々と打つタイピングゲーム（/typing-game.html）は docs/SPEC_TYPING_GAME.md。かなの単位・判定・数え方の部品（js/typingDrill.js。ゲームのために `createRun` に `skip()` を足した。既定の挙動は変わらない）を共有する。typing.html の札の下の 1 行がそこへの導線（時間切れの守りの inert にも入る: js/typingPage.js の `guarded()`）
+- 文を次々と打つタイピングゲーム（/typing-game.html）は docs/SPEC_TYPING_GAME.md。かなの単位・判定・数え方の部品（js/typingDrill.js。ゲームのために `createRun` に `skip()` を足した。既定の挙動は変わらない）を共有する。typing.html の札の下の 1 行がそこへの導線（盤面の外なので時間切れの守りに入る）。キーの振り分け・結果の守り・画面キーボードの寄せ方は 2 枚で共通の js/typingKeys.js

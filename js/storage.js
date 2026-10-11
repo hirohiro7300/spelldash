@@ -210,6 +210,16 @@ export function getCategoryBest(categoryId) {
   }
 }
 
+// カテゴリ別ベストの表 { [categoryId]: score }（壊れている・表でないなら空。本棚の移行 js/bookshelf.js が読む）
+export function getCategoryBests() {
+  try {
+    const all = JSON.parse(localStorage.getItem(CATEGORY_BEST_KEY) || "{}");
+    return all && typeof all === "object" && !Array.isArray(all) ? all : {};
+  } catch {
+    return {};
+  }
+}
+
 // 更新したら true
 export function saveCategoryBest(categoryId, score) {
   const best = getCategoryBest(categoryId);

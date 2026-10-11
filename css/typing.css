@@ -343,7 +343,7 @@ html[data-theme] body.page-typing .tp-result__cta .btn {
   padding: 0 20px;
 }
 
-/* タイピングゲームへの 1 行（typing.html の札の下・「このページについて」の上。結果の時間切れの守り（inert）にも入る） */
+/* タイピングゲームへの 1 行（typing.html の札の下・「このページについて」の上。結果の時間切れの守りでは盤面の外なので押せない） */
 html[data-theme] body.page-typing .tp-more {
   margin: 16px 0 0;
   color: var(--ink-3);

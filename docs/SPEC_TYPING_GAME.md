@@ -29,21 +29,21 @@
 - 最初の文 `今日はいい天気だ`／`きょうはいいてんきだ` は HTML に直書き（教材が届く前から打てる）。ページを開いた最初の 1 回のふつうの文だけ先頭に固定する。
 - `#tgBoard[data-state]`: `ready` → `running` → `result`。`loading`（教材の未着のコース）・`error`（教材が取れず次の文が無い）。`data-course`・`data-got`・`data-lost` は E2E が読む印。
 - 打っている間に Esc／ページが裏に回った／コースのタブ → その回は捨てて ready。bfcache から戻ったときも ready。
-- 結果が出てから 0.6 秒（`RESULT_GUARD_MS`）の守りは typing.html と同じ（盤面を出したまま、もう一度・導線・このページについてを `inert`）。
+- 結果が出てから 0.6 秒（`RESULT_GUARD_MS`）の守りは typing.html と同じ（盤面を出したまま、盤面の外のクリックをすべて捨てる。js/typingKeys.js `createResultGuard`）。
 - **高さの予約は箱（`.tg-stage`）**: 箱が結果の最悪の高さ（390: 404px／≤389: 446／≤359: 490／≥720: 302）を始めから取り、札は中身の高さ（紙が半分空いた札にしない）。結果は 90 秒の時計で出る（入力の直後とは限らない）が、札は下に伸びるだけで箱の下は動かない（CLS 0）。札の中は、コースごとに見出しと単位の行数を予約する（390: 見出し 1／1／2 行・単位 1／2／3 行、320: 単位 1／2／3 行、≥720: 単位 1／1／2 行）。文が替わっても（流れた＝入力なしでも）札は上下しない。始まる前の 3 文は打っている間も行の高さを残す（`visibility: hidden`）。
 - 持ち時間の線: 地は `--line`、塗りは `--gold-line`（tokens.css。地にも札にも 3:1 以上: 昼 3.9／5.4・夜 6.0／7.2・紙 4.0／5.9・藍 5.4／7.1）。残り比は rAF で `transform: scaleX(r)`（CSS の transition・animation は書かない）。reduced motion は 10 段。残り 2 割で色を変えない・点滅しない。
 - 結果: 柱（「ふつうの文・90秒」）・主の数（取れた N＋単位＋目標の句「目標 8文に届いた」／「目標 8文まで あと 2文」。目標の数字は 14px）・補足 1 行目（流れた・打/分・正確さ・ミス。名前と数の組 `.tg-pair` は折らず、区切りの「 ・ 」でだけ折る）・自己ベスト・勧め（流れた > 取れた かつ短い語句以外:「短い語句のコースから始めると取りやすい。」）・もう一度・導線。
-- 読み上げ: 流れた瞬間に `#tgLive`（`role="status"`）へ「次の文」。結果は「10 文。目標に届いた。流れた 2、打/分 168、正確さ 95%、ミス 9。」。`#input` の `aria-describedby` は見出しと読み（`#tgReading`）。
+- 読み上げ: 流れた瞬間に `#tgLive`（`role="status"`）を空にし、次のタスク（50ms 後）で「次の文」と書く（2 回続けて流れても読み上げが黙らない。結果・始まる前・読み込めない画面に替わったら予約を捨てる）。結果は「10 文。目標に届いた。流れた 2、打/分 168、正確さ 95%、ミス 9。」。`#input` の `aria-describedby` は見出しと読み（`#tgReading`）。
 - タッチ端末: 画面キーボード（A〜Z＋ー＋⌫。Enter は隠す）を typing.html と同じ呼び方で出す。ready に入ったとき・コースを替えたとき、札が盤面に隠れるなら札の上端をヘッダーの下 8px に寄せる。
 - 横向き（高さ ≤480px）: 箱の予約を外し、取れた・残りを札の上の角に重ね、かな 22px、長い文は見出しを隠す。高さ ≤360px（844×340 など）は見出しをどのコースでも隠し、線を札の上の縁に重ね、札の上下の余白を詰める。単位の予約は横向きで 短い・ふつう 1 行（43px、≤360px は 40px）・長い 2 行（88px／80px）。短い・ふつうの規則はコースつきで書き、縦向き（ふつう 101px）と ≥720 の予約に勝たせる（負けると 667×375 でふつうの文が 2 行分を取り、線が画面キーボードの下に入る）。
 - 制約（このまま）: 流れた瞬間の見た目の印は無い（文が替わり線が満に戻るだけ。読み上げは「次の文」。打っている間の「流れた N」の表示は創業者の試し打ちで決める: BACKLOG D25）。横向きの結果は札が伸びる（盤面が畳まれてから出る 1 回だけ）。
 
 ## 3. キー（typing.html との差分）
 
-キーの取り方・扱わない場所・焦点・Space／Enter・語末の ん の持ち越しは docs/SPEC_TYPING.md §3 と同じ（js/typingGamePage.js は js/typingPage.js の写し）。違いは次のとおり。
+キーの取り方・扱わない場所・焦点・Space／Enter・語末の ん の持ち越しは docs/SPEC_TYPING.md §3 と同じ（キーの振り分け・結果の守り・自己ベストの読み書きは typing.html と共通の js/typingKeys.js・js/typingDrill.js）。違いは次のとおり。
 
 - 状態を変えるのは `run.settle(now)` と `run.press(key, now)` だけ（js/typingGame.js `createGameRun`）。`settle` は今の文の締切（90 秒の中）を過ぎていれば流して次の文へ（次の文の締切も過ぎていれば繰り返す。次の文の持ち時間は締切の瞬間から）、90 秒が切れていれば終える。締切が 90 秒の終わりと同じ文（打ちかけ）は流さない。冪等・単調（状態を変えた時刻より前には戻らない）。
-- キーの時刻は `event.timeStamp`（`performance.now()` と同じ時計。5 秒以上ずれていれば今の時刻）。keydown は押した瞬間で締切と厳密に比べる。時計（文ごとの timer・全体の timer・rAF・200ms の tick）は締切に気づいてから **50ms の余白**（`SETTLE_SLACK_MS`）で流す: 締切の前に押したキーが少し遅れて届いても数える。
+- キーの時刻は `event.timeStamp`（`performance.now()` と同じ時計。5 秒以上ずれていれば今の時刻）。keydown は押した瞬間で締切と厳密に比べる。時計（rAF の 1 本が毎フレーム締切を見て残り秒を書く。rAF が止まったときの保険に、次の締切〔文の持ち時間と回の終わりの早い方〕のタイムアウトを 1 本だけ置く。張り直しと止めるのは `syncClock` だけ）は締切に気づいてから **50ms の余白**（`SETTLE_SLACK_MS`）で流す: 締切の前に押したキーが少し遅れて届いても数える。
 - 締切のあとに届いたキーは数えない（流してから捨てる）。
 - 流れてから 0.6 秒（`FLOW_GRACE_MS`）は、新しい文として通らないキーを数えない（時間だけで切る。通るキーはそのまま進む）。古い文の続きを打っていた指のキーを新しい文のミスにしない。取れた直後には置かない。
 - 流れた文は `createRun` の `skip()`（js/typingDrill.js。typing.html の挙動は変わらない）で飛ばす: 続き（語末の ん）とミスの印を消す。打ちかけの正しい打鍵は打/分に残る。
@@ -77,13 +77,13 @@
 
 ## 6. 入口・SEO・アプリ
 
-- 入口: typing.html の札の下・「このページについて」の上に 1 行（`.tp-more`「文を次々と打つ 90秒の タイピングゲーム」）。時間切れの守り（inert）にも入れる（js/typingPage.js の `guarded()` に 1 語）。お知らせ 1 件（本文に typing.html も）。フッターの「タイピング練習」は typing.html のまま。ヘッダー・ホームには足さない。
+- 入口: typing.html の札の下・「このページについて」の上に 1 行（`.tp-more`「文を次々と打つ 90秒の タイピングゲーム」）。盤面の外なので時間切れの守りに入る（一覧に足す必要はない）。お知らせ 1 件（本文に typing.html も）。フッターの「タイピング練習」は typing.html のまま。ヘッダー・ホームには足さない。
 - SEO: title「タイピングゲーム（日本語の文・ローマ字）無料・90秒 | SpellDash」、description（「登録なし」「90秒」、スマホの画面キーボードで打てることを前半に）、canonical／og:url `https://www.spelldash.net/typing-game.html`、本文は静的な HTML。sitemap は `scripts/build-pack-pages.mjs` の `urls`。og:image は共通のまま（BACKLOG D10）。
 - アプリ: `scripts/build-app.mjs` の PAGES、`sw.js` の CORE_ASSETS（CACHE_NAME は上げない）。typing-game.html は Service Worker を登録しない。外部への要求は共通の js/supabase.js の SDK 1 本だけ（ほかの静的ページと同じ）。
 
 ## 7. 計測（SQL を変えない）
 
-- js/funnelLog.js の族の表 `TYPING_FAMILIES`（typing／tgame）。`markTypingArrival("tgame")`: 開いた時点で番号も学習記録も無い端末なら来た日を `spelldash_funnel_tgame` に控える（必ず `setFooterYear` の前）。`logTypingStage(stage, "tgame")`: その端末だけ `tgame`・`tgame_start`・`tgame_done`・`tgame_study`（積んで次のページで送る）を `first_visit` の source に各 1 回（day は来た日）。
+- js/funnelLog.js の族の表 `TYPING_FAMILIES`（typing／tgame）。`markTypingArrival("tgame")`: 開いた時点で番号も学習記録も無く、タイピング練習の印（`spelldash_funnel_typing`）も無い端末なら来た日を `spelldash_funnel_tgame` に控える（必ず `setFooterYear` の前。2 つの組は印でも排他）。`logTypingStage(stage, "tgame")`: その端末だけ `tgame`・`tgame_start`・`tgame_done`・`tgame_study`（積んで次のページで送る）を `first_visit` の source に各 1 回（day は来た日）。
 - `logTypingStage("game", "typing")`: typing.html から初めて来た端末（`spelldash_funnel_typing` がある）がゲームを開いたら `typing_game`。鍵が族ごとに分かれているので、1 端末に付く印は最初の 1 ページ分だけ（2 枚のページの数が混ざらない）。既定の引数のままなら typing.html の呼び方は変わらない。
 - 管理画面の「初めて来た」は端末の重複を数えないので数は変わらない。見方は docs/SQL_FUNNEL.md 5。コースの内訳・目標に届いた割合は取れない（要るなら `step` を足す SQL が先）。
 

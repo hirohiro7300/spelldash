@@ -43,7 +43,7 @@ import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホー�
 import { renderLoginNudge } from "./loginNudge.js";
 import { initTutorial, skipTutorialIfReturning } from "./tutorial.js";
 import { initRoom } from "./room.js";
-import { initBookshelf, renderBookshelf, updateBookshelf, startShelf, rememberCourse } from "./bookshelf.js";
+import { initBookshelf, renderBookshelf, updateBookshelf, startShelf, startChoiceChanges, rememberCourse } from "./bookshelf.js";
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
 import { getCategories, getPackCatalog } from "./wordStore.js";
 import { getGenre, genreLabel } from "./genres.js";
@@ -387,14 +387,16 @@ ensureDefaultCourse();
 // 初めての人にはトップページ（語の読み込みを待たずに出す。アプリのホームが一瞬見えないように）。
 // スタートでそのまま腕試し（机の本の最初の章）へ。積んだ本（または「171冊から選ぶ」の本）を選んでいたら、その本をパックに足して机に出してから始める。
 // spelldash_course は触らない（コース外の本は柱が棚の名前になるだけ。js/pathView.js）。函（コース）を選んでいたときだけ、そのコースの鍵を回す。
-// 状態を替えたあとで本棚を作る（startShelf: その時の移行＋机の本。js/bookshelf.js）
+// 何を替えるかは本棚が下見の棚と同じ規則で求める（startChoiceChanges → js/shelfStore.js applyStartChoice）。ここはそのとおりに書くだけ。
+// 状態を替えたあとで本棚を作る（startShelf: 下見と同じ棚。js/bookshelf.js）
 const storeReady = initWordStore();
 renderWelcome({
-  onStart: ({ bookId, courseId } = {}) => storeReady.then(async () => {
-    if (courseId && COURSES[courseId]) startCourse(courseId, bookId);
-    if (bookId && bookId !== "jhs-english1") {
-      if (getPackCatalog().some((c) => c.id === bookId) && !getEnabledPackIds().includes(bookId)) setPackEnabled(bookId, true);
-      localStorage.setItem("spelldash_category", bookId);
+  onStart: (choice = {}) => storeReady.then(async () => {
+    const change = startChoiceChanges(choice);
+    if (change.course) localStorage.setItem("spelldash_course", change.course);
+    for (const id of change.packs) setPackEnabled(id, true);
+    if (change.desk) localStorage.setItem("spelldash_category", change.desk);
+    if (change.packs.length || change.desk) {
       await initWordStore();
       initializeCategoryPicker();
     }
