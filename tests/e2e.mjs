@@ -1633,7 +1633,7 @@ console.log("typing game:");
       }
       await p.close();
     }
-    check(`typing game: 教材の全文が 390／320／844×390／667×375 で予約した行数に収まり、文を替えても札の高さが変わらない・横向きは単位と線が盤面の上（${measured} 回）`, over.length === 0 && measured === allRows.length * 4, over.slice(0, 10).join(" | "));
+    check(`typing game: 教材の全文が 390／320／844×390／667×375／320×460 で予約した行数に収まり、文を替えても札の高さが変わらない・横向きと背の低い窓は単位と線が盤面の上（${measured} 回）`, over.length === 0 && measured === allRows.length * 5, over.slice(0, 10).join(" | "));
   }
 
   // ---- 静的（ファイルを読むだけ） ----
