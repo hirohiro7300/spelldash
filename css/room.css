@@ -1254,8 +1254,8 @@ html[data-theme] .page-room .play-modes__lock {
 }
 
 html:is([data-theme="dark"], [data-theme="indigo"]) .stack-k {
-  /* 札の紙は机の多重の陰（.desk__candle--s の multiply）で 3 割ほど沈むので、素の色は明るめに（実測: #A48E6C だと 3.4:1、#C9B48E で 5:1 以上） */
-  background: linear-gradient(to right, rgba(255, 170, 86, 0.18), rgba(0, 0, 0, 0.06)), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #C9B48E;
+  /* 札の紙は机の多重の陰（.desk__candle--s の multiply）で 3 割ほど沈むので、素の色は明るめに（実測: #A48E6C だと 3.4:1、#C9B48E は 390 で最小 4.4:1 → #E0D2B2・橙 .12。Batch 61） */
+  background: linear-gradient(to right, rgba(255, 170, 86, 0.12), rgba(4, 6, 12, 0.06)), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #E0D2B2;
   background-blend-mode: normal, soft-light, normal;
   color: #120C08;
 }
@@ -1399,7 +1399,7 @@ html[data-theme] .page-room .welcome-trust {
 }
 
 html:is([data-theme="dark"], [data-theme="indigo"]) .page-room .welcome-trust {
-  background: linear-gradient(to right, rgba(255, 170, 86, 0.18), rgba(0, 0, 0, 0.06)), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #C9B48E;
+  background: linear-gradient(to right, rgba(255, 170, 86, 0.12), rgba(4, 6, 12, 0.06)), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #E0D2B2;
   background-blend-mode: normal, soft-light, normal;
   color: #120C08;
 }

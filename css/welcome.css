@@ -160,3 +160,57 @@
     animation: none;
   }
 }
+
+/* ---- 初回の「171冊から選ぶ」: 積んだ本の下の紙の付箋に下線の文字（見出しの札 .stack-k とは下線で見分ける）。押すと本棚の目録の窓（js/bookshelf.js）。
+   最初から見せる（読み込み後に押し下げない）。木の上に直に字を置かない（夜に読めない）ので .welcome-trust と同じ紙 ---- */
+html[data-theme] .page-room .pile__find {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 12px 4px 0;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 1px;
+  cursor: pointer;
+  transform: rotate(0.6deg);
+  font: 500 14px/1.4 var(--font-display);
+  letter-spacing: 0.08em;
+  color: var(--ink-page);
+  background: url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #EFE6D2;
+  background-blend-mode: soft-light, normal;
+  box-shadow: 0 1px 1px rgba(var(--shadow-rgb), 0.35), 2px 3px 5px -2px rgba(var(--shadow-rgb), 0.4);
+  text-decoration: underline;
+  text-decoration-color: rgba(169, 122, 50, 0.7);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+}
+
+html[data-theme] .page-room .pile__find:hover {
+  text-decoration-color: var(--ink-page);
+}
+
+html[data-theme] .page-room .pile__find:focus-visible {
+  outline: 2px solid var(--foil);
+  outline-offset: 2px;
+}
+
+/* 夜の紙: 390 では部屋の暗がりがこの列にも落ちて指定の色より暗く写る（実測: #C9B48E・橙 .18 で最小 4.1:1）。明るめの紙と弱い橙で 5:1 前後に（.stack-k・.welcome-trust も同じ紙。css/room.css） */
+html:is([data-theme="dark"], [data-theme="indigo"]) .page-room .pile__find {
+  background: linear-gradient(to right, rgba(255, 170, 86, 0.12), rgba(4, 6, 12, 0.06)), url(../assets/images/room/tile-paper-soft.webp) 0 0 / 256px, #E0D2B2;
+  background-blend-mode: normal, soft-light, normal;
+  color: #120C08;
+}
+
+@media (min-width: 1100px) {
+  /* 積んだ本の列（開いた本より高い。格子は下揃え）が「171冊から選ぶ」の分だけ伸びて机の本を押し下げないように、列の上の余白 30px を詰める（css/room.css .pile） */
+  html[data-theme] .page-room .pile {
+    padding-top: 0;
+  }
+  html[data-theme] .page-room .pile__find {
+    min-height: 32px; /* PC はマウス（24px 以上）。積んだ本の列が開いた本より高くなって机の本を押し下げないように */
+    margin: 8px 0 0;
+    padding: 0 10px;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+  }
+}

@@ -120,6 +120,7 @@
   <link rel="modulepreload" href="./js/tutorial.js" />
   <link rel="modulepreload" href="./js/room.js" />
   <link rel="modulepreload" href="./js/bookshelf.js" />
+  <link rel="modulepreload" href="./js/shelfStore.js" />
   <link rel="preload" href="./data/manifest.json" as="fetch" crossorigin="anonymous" />
   <link rel="preload" href="./data/english/junior.json" as="fetch" crossorigin="anonymous" />
   <link rel="preload" href="./data/english/highschool.json" as="fetch" crossorigin="anonymous" />
@@ -283,6 +284,8 @@
             <div class="pile">
               <p class="stack-k" id="welcomeStackK">ほかの本から始める</p>
               <ul class="stack" id="welcomeStack" aria-labelledby="welcomeStackK"></ul>
+              <!-- 171 冊の目録（本棚の「本を足す」の窓を「本をさがす」の形で開く。js/bookshelf.js）。最初から見せる（読み込み後に押し下げない）。数は読み込み後にデータの数で書き直す -->
+              <button type="button" class="pile__find" id="welcomeFind"><span class="n">171</span>冊から選ぶ</button>
               <p class="welcome-trust" aria-label="データについて">記録はこの端末に保存。ログインすると別の端末でも続きから。広告なし。単語の学習はずっと無料。</p>
             </div>
           </section>
@@ -437,7 +440,7 @@
         </div>
       </div>
 
-      <!-- 本棚: 171 冊を 9 つの棚に。js/bookshelf.js が manifest から描いて hidden を外す（スマホは机の下、PC は右の列 440px）。見た目は css/bookshelf.css -->
+      <!-- わたしの本棚: 自分で足した本と函（＋机の本の空き）。171 冊の目録は「本を足す」の窓。js/bookshelf.js が描いて hidden を外す（スマホは机の下、PC は右の列 440px）。見た目は css/bookshelf.css -->
       <section class="bookshelf" id="bookshelf" aria-labelledby="bookshelfTitle" hidden></section>
     </div>
   </div>

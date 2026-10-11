@@ -202,7 +202,7 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
               ${chapterK}
               <div class="path__label"><b class="chap__t"><span class="chap__q">「</span>${esc(u.label)}<span class="chap__q">」</span>の章</b><span class="todays">${numHtml(startSub)}</span></div>
               <button type="button" class="path__start start${resume ? " path__start--resume" : ""}${doneToday ? " path__start--done" : ""}" id="pathStart" data-unit="${esc(u.tag)}" aria-label="${resume ? "続きから" : doneToday ? "もう1回" : "スタート"}: ${esc(u.label)}">${resume ? "続きから" : doneToday ? "もう1回" : "スタート"}</button>
-              <p class="path__links tome__links"><a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">この章の一覧</a><a class="path__shelf-link" href="#bookshelf">本棚・本をさがす</a></p>
+              <p class="path__links tome__links"><a class="path__unit-link" href="${listHref(u.tag)}" aria-label="${esc(u.label)} の一覧">この章の一覧</a><a class="path__shelf-link" href="#bookshelf">本棚へ</a></p>
             </li>
           </ol>`;
         return "";
