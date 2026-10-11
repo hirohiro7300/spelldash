@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node tests/e2e.mjs",
+    "test:shard": "node scripts/e2e-shard.mjs --shard",
     "app:build": "node scripts/build-app.mjs",
     "app:sync": "node scripts/build-app.mjs && npx cap sync",
     "app:ios": "node scripts/build-app.mjs && npx cap sync ios && npx cap open ios",

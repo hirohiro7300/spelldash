@@ -7356,7 +7356,8 @@ console.log("judge (出題語が別の正解の先頭部分):");
 
   // ---- 続きの打ち方のゆれ（REVIEW の M1・M2・S1・S3、回帰の S2）: どれも次の語に×・ミスを付けない ----
   // ページの中でキーを時刻どおりに送る。plan の at は最初のキーから、afterChange の at は出題文が変わってから（次の語が出てから）。
-  // via: "key"（keydown）／"input"（Android の input イベント。入力欄の値に 1 字ずつ足す。Enter は keydown）
+  // via: "key"（keydown）／"input"（Android の input イベント。入力欄の値に 1 字ずつ足す。Enter は keydown）／
+  // "type"（keydown。止められなかった字は実キーと同じく入力欄に入れる。全文入力の語に字が入るかを見る）
   const sendPlanJ = (p, { plan = [], afterChange = [], via = "key", settleMs = 600 }) => p.evaluate(({ plan, afterChange, via, settleMs }) => new Promise((resolve) => {
     const input = document.getElementById("input");
     const ja = document.getElementById("japanese");
@@ -7370,7 +7371,15 @@ console.log("judge (出題語が別の正解の先頭部分):");
       if (key !== "Enter" && via === "input") {
         input.value += key;
         input.dispatchEvent(new Event("input", { bubbles: true }));
-      } else input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+        return;
+      }
+      const ev = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      input.dispatchEvent(ev);
+      // via "type": 実キーと同じく、止められなかった 1 字は入力欄（カーソルの位置）に入り input イベントが出る（合成の keydown はブラウザが字を入れない）
+      if (via === "type" && !ev.defaultPrevented && key.length === 1 && !input.readOnly) {
+        input.setRangeText(key, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, "end");
+        input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: key }));
+      }
     };
     let pending = afterChange.length ? 2 : 1;
     const done = () => {
@@ -8228,6 +8237,113 @@ console.log("judge (出題語が別の正解の先頭部分):");
       r.changedAt >= 760 && r.log.at(-1)?.key === "f" && r.log.at(-1)?.ja === door.ja && r.ja === door.ja && r.score === "1" && r.miss === "1" && r.recallFail === "1" && r.word === door.en,
       JSON.stringify({ ...r, log: logJ(r, namesGym) }));
     check(`判定 (32f) ${label} でエラー0`, p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+
+  // ---- PR #155 のレビュー（REVIEW-155）: 待ちを短くしたときの次の語が全文入力・1 打目の守りの使い切り・節目の待ちの守りの幅・全文入力の語へ戻す字 ----
+  // (33) 待ちを短くして出す次の語が全文入力のとき（REVIEW-155 の 1）: マイ単語帳の gym（accept gymnasium）の次が全文入力の句（a lot of）。標準（概念カード 0.9 秒）で
+  // gym を打ち、待ちの間に nasium を打ち切って（最後の m は gym を打ち終えて 0.85 秒）、m の 0.4 秒後に余分な s。次の語が全文入力なら待ちを短くしない
+  // （次の語を出す時刻 = max(本来の待ちの終わり, 続きの最後の打鍵 + 本来の待ち) = m + 0.9 秒）ので、s は待ちの間に捨てる（gym とだけ打つ人の s と同じ）。
+  // 以前は m + 0.25 秒に句が出て、s が入力欄に入り「sa lot of」で Enter → 思い出せず。物理キー（止められなかった字は入力欄に入る）・Android の input 経路
+  const myLotJ = myConceptJ("a lot of", "たくさんの（数えられる名詞にも、数えられない名詞にも）");
+  const planGymMyJ = [..."gym"].map((key, i) => ({ at: i * 60, key })).concat([..."nasium"].map((key, i) => ({ at: 220 + i * 150, key }))); // m は 970（gym を打ち終えて 0.85 秒）
+  for (const [label, via] of [["物理キー", "type"], ["Android の input 経路", "input"]]) {
+    const cards = [myGymJ, myLotJ, myDoorJ];
+    const p = await openJ({ ...seedMyJ(cards), spelldash_after_correct: "standard" }, cards[0]);
+    const r = await sendPlanJ(p, { plan: planGymMyJ.concat([{ at: 1370, key: "s" }]), via, settleMs: 1300 });
+    const shown = { ja: r.ja, input: r.input, free: await p.evaluate(() => document.body.classList.contains("free-answer")), sAt: r.log.at(-1)?.ja === myGymJ.q ? "gym" : r.log.at(-1)?.ja };
+    if (via === "type") await p.keyboard.type("a lot of");
+    else for (const ch of "a lot of") await pressJ(p, ch, "input");
+    await p.press("#input", "Enter");
+    // 句の正解の後は本来の待ち（概念カード 0.9 秒）の後に door が出る。×なら答えが開いてそこで止まる
+    await waitUntil(async () => (await jaJ(p)) === myDoorJ.q || (await numJ(p, "#recallFail")) > 0, 3000);
+    const end = { score: await numJ(p, "#score"), miss: await numJ(p, "#miss"), rf: await numJ(p, "#recallFail"), ja: await jaJ(p) };
+    check(`判定 (33) ${label}: gym の続きを打ち切って次の語が全文入力のとき、待ちは短くしない（続きの直後の s は待ちの間に捨てる。句の入力欄は空）`,
+      shown.sAt === "gym" && shown.ja === myLotJ.q && shown.free && shown.input === "" && r.score === "1" && r.miss === "0" && r.recallFail === "0",
+      JSON.stringify({ ...shown, changedAt: r.changedAt, log: logJ(r, { [myGymJ.q]: "gym", [myLotJ.q]: "lot" }) }));
+    check(`判定 (33) ${label}: そのあと a lot of と打って Enter で句の正解（思い出せず 0・ミス 0）`, end.score === 2 && end.miss === 0 && end.rf === 0 && end.ja === myDoorJ.q, JSON.stringify(end));
+    check(`判定 (33) ${label} でエラー0`, p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+
+  // (34) 1 打目の守りは、次の語が出た後の最初の打鍵で使い切る（どの経路でも、文字でも空白でも。REVIEW-155 の 2）。待ちの間に飲んだ余分な打鍵でも使い切る
+  // (34a) Study・標準で gymnasium を打ち切り（m は 720）、door が m + 0.25 秒に出た後に空白 → 0.2 秒後に打ち間違い f（守りの幅 m + 0.7 秒の中）: 空白で守りを使ったので f は door のミス。
+  //       以前は Android の input 経路の空白（a-z だけを見るので判定に入らない）では守りが残り、f が黙って捨てられて door が自力の正解になった。物理キーと同じ結果
+  for (const [label, via] of [["keydown", "key"], ["Android の input 経路", "input"]]) {
+    const p = await openJ(seedJ("jhs-english1", [gym.id, door.id], { spelldash_after_correct: "standard" }), gym);
+    const r = await sendPlanJ(p, { plan: planGymJ, afterChange: [{ at: 50, key: " " }, { at: 250, key: "f" }], via, settleMs: 400 });
+    check(`判定 (34a) ${label}: door が出た後の空白で 1 打目の守りを使い、その後の打ち間違い f は door のミス（ミス 1・思い出せず 1）`,
+      r.log.at(-2)?.key === " " && r.log.at(-2)?.ja === door.ja && r.ja === door.ja && r.score === "1" && r.miss === "1" && r.recallFail === "1" && r.word === door.en,
+      JSON.stringify({ ...r, log: logJ(r, namesGym) }));
+    check(`判定 (34a) ${label} でエラー0`, p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+  // (34b) ローマ字の語でも同じ: マイ単語帳の gym の次が 遺跡（読みをローマ字で打つ。空白は判定に入らない）。標準（概念カード 0.9 秒）で nasium を打ち切り（m は 970）、
+  //       遺跡 が出た後に空白 → f: 空白で守りを使ったので f は 遺跡 のミス（以前は守りが残り、f が黙って捨てられた）
+  {
+    const isekiJ = myConceptJ("遺跡", "昔の人の生活の跡", ["いせき"]);
+    const cards = [myGymJ, isekiJ, myDoorJ];
+    const p = await openJ({ ...seedMyJ(cards), spelldash_after_correct: "standard" }, cards[0]);
+    const r = await sendPlanJ(p, { plan: planGymMyJ, afterChange: [{ at: 50, key: " " }, { at: 250, key: "f" }], settleMs: 400 });
+    check("判定 (34b) ローマ字の語: 次の語が出た後の空白で 1 打目の守りを使い、その後の打ち間違い f はミス（ミス 1・思い出せず 1）",
+      r.log.at(-2)?.ja === isekiJ.q && r.ja === isekiJ.q && r.score === "1" && r.miss === "1" && r.recallFail === "1", JSON.stringify({ ...r, log: logJ(r, { [myGymJ.q]: "gym", [isekiJ.q]: "遺跡" }) }));
+    check("判定 (34b) でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+  // (34c) 続きを打ち切った後の余分な 1 打（空白）が待ちの間に来て捨てられたら、守りはもう使った: door が出た後の打ち間違い f は door のミス（keydown・input 経路）
+  for (const [label, via] of [["keydown", "key"], ["Android の input 経路", "input"]]) {
+    const p = await openJ(seedJ("jhs-english1", [gym.id, door.id], { spelldash_after_correct: "standard" }), gym);
+    const r = await sendPlanJ(p, { plan: planGymJ.concat([{ at: 820, key: " " }]), afterChange: [{ at: 100, key: "f" }], via, settleMs: 400 });
+    check(`判定 (34c) ${label}: 続きの直後の空白が待ちの間に捨てられた後、door が出てから打ち間違えた f は door のミス（ミス 1・思い出せず 1）`,
+      r.log.at(-2)?.key === " " && r.log.at(-2)?.ja === gym.ja && r.log.at(-1)?.ja === door.ja && r.score === "1" && r.miss === "1" && r.recallFail === "1" && r.word === door.en,
+      JSON.stringify({ ...r, log: logJ(r, namesGym) }));
+    check(`判定 (34c) ${label} でエラー0`, p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+
+  // (35) 節目（覚えた の印）で待ちが長いときの守りの幅（REVIEW-155 の 3）: マイ単語帳の gym（すぐ次へ＝表の値 0.25 秒）が覚えた の印を取り、待ちは 1.4 秒。
+  // 続きの nasium を gym の 1.3 秒後に打ち切ると次の語は m + 0.25 秒に出る。守りの終わりは m + min(本来の待ち 1.4 秒, 概念カードの標準の値 0.9 秒)。
+  // (35a) 次の語が出た直後の余分な s は捨てる（以前は守りの幅が表の値 0.25 秒で 0 になり、s が door のミス・×）。(35b) 守りを過ぎた打ち間違い f は door のミス
+  const yJ = new Date(Date.now() - 86400000);
+  const learnedSeedJ = (cards) => ({
+    ...seedMyJ(cards),
+    spelldash_word_stats: JSON.stringify({ "my-q-gym": { playCount: 1, correctCount: 0, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 0, mastered: false, lastPlayed: yJ.toISOString(), nextReviewAt: yJ.toISOString(), lastRecallFailAt: yJ.toISOString(), lastRecallSuccessAt: null, history: [{ d: ymd(yJ), r: "x" }] } })
+  });
+  const planGymLearnedJ = [..."gym"].map((key, i) => ({ at: i * 60, key })).concat([..."nasium"].map((key, i) => ({ at: 420 + i * 200, key }))); // m は 1420（gym を打ち終えて 1.3 秒）
+  for (const [label, extra, at] of [["(35a) 次の語が出た直後（0.05 秒）の s は捨てる（door は未入力・ミス 0・×なし）", "s", 50], ["(35b) 守り（m + 0.9 秒）を過ぎてから打った f は door のミス（ミス 1・思い出せず 1）", "f", 800]]) {
+    const cards = [myGymJ, myDoorJ];
+    const p = await openJ(learnedSeedJ(cards), cards[0]);
+    const r = await sendPlanJ(p, { plan: planGymLearnedJ, afterChange: [{ at, key: extra }], settleMs: 400 });
+    const msg = (await p.textContent("#message")).trim();
+    const missed = extra === "f";
+    check(`判定 ${label}`,
+      r.changedAt >= 1600 && r.log.at(-1)?.ja === myDoorJ.q && r.ja === myDoorJ.q && r.score === "1" &&
+      (missed ? r.miss === "1" && r.recallFail === "1" && r.word === "door" : msg.includes("覚えた") && r.miss === "0" && r.recallFail === "0" && r.input === "" && r.preview === ""),
+      JSON.stringify({ ...r, msg, log: logJ(r, { [myGymJ.q]: "gym", [myDoorJ.q]: "door" }) }));
+    if (!missed) check("判定 (35a) そのあと door は普通に正解", await typeNextJ(p, myDoorJ, 1));
+    check(`判定 ${label.slice(0, 5)} でエラー0`, p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+
+  // (36) Android の input 経路で、保留の決着の後に全文入力の語の入力欄へ戻す字は、入力欄に実際に打たれた字のまま（REVIEW-155 の 4）: Challenge で out の次の語 do の保留中に、
+  // 3 語目（全文入力の in which）の頭を 1 回の input で「In wh」（候補の確定・スワイプ）と入れる → do の正解、3 語目の入力欄は「In wh」（大文字も空白も残す）。
+  // 以前は小文字にして a-z 以外を落とした「inwh」になっていた。物理キー（event.key をそのまま入れる）と同じ
+  for (const via of ["key", "input"]) {
+    const cards = [myConceptJ("out", "外へ・外に", ["outside", "outdoors"]), myConceptJ("do", "する"), myFreeJ];
+    const p = await openOrderedChallengeJ(cards);
+    for (const ch of "out") await pressJ(p, ch, via);
+    const onDo = await waitUntil(async () => (await jaJ(p)) === cards[1].q, 1500);
+    await pressJ(p, "d", via);
+    await pressJ(p, "o", via);
+    await pickLastJ(p);
+    if (via === "key") await p.keyboard.type("In wh");
+    else await p.evaluate(() => { const input = document.getElementById("input"); input.value += "In wh"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await p.waitForTimeout(200);
+    const s = await snapFreeJ(p);
+    const label = via === "key" ? "物理キー" : "Android の input 経路";
+    check(`判定 (36) ${label}: do の保留中に 3 語目（全文入力）へ「In wh」と入れると、do の正解・3 語目の入力欄は打ったとおりの「In wh」（ミス 0・×なし）`,
+      onDo && s.ja === myFreeJ.q && s.free && s.input === "In wh" && s.score === 2 && s.miss === 0 && s.rf === 0, JSON.stringify(s));
+    check(`判定 (36) ${label} でエラー0`, p.errors.length === 0, p.errors[0] ?? "");
     await p.close();
   }
 }

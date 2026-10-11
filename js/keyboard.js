@@ -82,26 +82,28 @@ function isFreeText() {
   return document.body.classList.contains("free-answer");
 }
 
-// 英文カードの値編集はカーソル位置を尊重する（文の途中をタップして直せる）
-function editAtCaret(insert, deleteBefore = 0) {
-  const value = input.value;
-  const start = input.selectionStart ?? value.length;
-  const end = input.selectionEnd ?? start;
+// 入力欄の値をカーソルの位置で編集する（選んだ範囲は置き換え、カーソルは入れた字の後ろへ）。英文カードの文の途中をタップして直せる。
+// notify: input イベントを出すか（画面キーボードは出す＝打ったのと同じ。js/game.js が全文入力の語へ流し直したキーの字を入れるときは出さない
+// ＝ブラウザが字を入れたのと同じ）。文字の処理をする側（game.js）は import してよいが、この部品は game.js を import しない
+export function editAtCaret(field, insert, deleteBefore = 0, { notify = true } = {}) {
+  const value = field.value;
+  const start = field.selectionStart ?? value.length;
+  const end = field.selectionEnd ?? start;
   const from = start === end ? Math.max(0, start - deleteBefore) : start;
-  input.value = value.slice(0, from) + insert + value.slice(end);
+  field.value = value.slice(0, from) + insert + value.slice(end);
   const caret = from + insert.length;
   try {
-    input.setSelectionRange(caret, caret);
+    field.setSelectionRange(caret, caret);
   } catch {
     // 一部の input type では不可
   }
-  input.dispatchEvent(new Event("input", { bubbles: true }));
+  if (notify) field.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function pressChar(ch) {
   haptic();
   if (isFreeText()) {
-    editAtCaret(ch);
+    editAtCaret(input, ch);
     return;
   }
   sendKey(ch);
@@ -110,7 +112,7 @@ function pressChar(ch) {
 function pressBackspace() {
   haptic();
   if (isFreeText()) {
-    editAtCaret("", 1);
+    editAtCaret(input, "", 1);
   }
   // 綴り入力では受理済みの文字は消せない（1ミス＝不正解の方針）。何もしない
 }

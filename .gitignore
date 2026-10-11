@@ -1,7 +1,10 @@
 .DS_Store
-node_modules/
+node_modules
 package-lock.json
 dist/
 
 # エージェントの作業ツリー（一時）
 .claude/worktrees/
+
+# E2E の組の一時台本（scripts/e2e-shard.mjs。止められると残ることがある）
+tests/.e2e-shard-*.mjs

@@ -6,9 +6,10 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # 単体の検査（ブラウザは要らない）。E2E の 4 組と並列に流れる
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 45 # E2E 1,509 件で 25 分を超えて打ち切られた（2026-10-11。1,435 件で約 22〜23 分）。件数が増えても余裕を残す
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -18,9 +19,6 @@ jobs:
 
       - name: 依存インストール
         run: npm install
-
-      - name: Chromiumインストール
-        run: npx playwright-core install --with-deps chromium
 
       - name: 単語データ検証
         run: node scripts/validate-words.mjs
@@ -43,5 +41,31 @@ jobs:
       - name: タイピングゲームの教材（data/typing-game.json）が最新か
         run: node scripts/build-typing-game.mjs --check
 
-      - name: E2Eスモークテスト
-        run: npm test
+      - name: E2E の組分け（どの節もちょうど 1 つの組に入り、どの組の台本も構文が通る）
+        run: node scripts/e2e-shard.mjs --check 4
+
+  # E2E（tests/e2e.mjs）を 4 組に分けて並列に流す（scripts/e2e-shard.mjs。節の重さ＝CI で測った秒で釣り合わせ、毎回同じ分け方）。
+  # 1 本だと CI で約 29 分かかり、上限 45 分で時間を稼いでいた（2026-10-11。1,571 件）。組はどれも頭（偽のサーバー・ブラウザ）から立ち上げ、単独で動く
+  e2e:
+    name: e2e (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 依存インストール
+        run: npm install
+
+      - name: Chromiumインストール
+        run: npx playwright-core install --with-deps chromium
+
+      - name: E2Eスモークテスト（組 ${{ matrix.shard }}/4）
+        run: node scripts/e2e-shard.mjs --shard ${{ matrix.shard }}/4
