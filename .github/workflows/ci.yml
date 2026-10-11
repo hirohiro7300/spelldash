@@ -37,5 +37,8 @@ jobs:
       - name: タイピング練習の教材（data/typing.json）が最新か
         run: node scripts/build-typing.mjs --check
 
+      - name: タイピングゲームの教材（data/typing-game.json）が最新か
+        run: node scripts/build-typing-game.mjs --check
+
       - name: E2Eスモークテスト
         run: npm test

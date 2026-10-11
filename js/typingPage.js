@@ -53,7 +53,7 @@ const el = {
   tabNote: $("typingTabNote"),
   tabs: [...document.querySelectorAll("#typingTabs [data-kind]")]
 };
-const guarded = () => [el.again, document.querySelector(".tp-result__next"), document.querySelector(".tp-about")].filter(Boolean);
+const guarded = () => [el.again, document.querySelector(".tp-result__next"), document.querySelector(".tp-about"), document.querySelector(".tp-more")].filter(Boolean);
 
 const KIND_NAME = { en: "英単語", ja: "日本語" };
 const STUDY_TEXT = {

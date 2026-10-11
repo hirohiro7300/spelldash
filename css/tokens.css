@@ -49,6 +49,7 @@
   --gold-hi: #F3DDA4;
   --gold-dk: #8A6A30;
   --gold-ink: #7A5C28;        /* 紙の上の金の文字 5.3:1 */
+  --gold-line: #7A5C28;       /* 動く線の箔（タイピングゲームの持ち時間の線）。地 --line にも札 --sheet にも 3:1 以上（3.9／5.4） */
   --wood-top: #7A5940;        /* 机（胡桃） */
   --wood: #6A4C36;
   --wood-2: #553D2B;
@@ -161,6 +162,7 @@ html[data-theme="dark"] {
   --gold-hi: #FFE0A0;
   --gold-dk: #8A6328;
   --gold-ink: #E6C887;
+  --gold-line: #D2A050; /* 地に 6.0、札に 7.2 */
   --wood-top: #4A3524;
   --wood: #3E2C1F;
   --wood-2: #2C1F15;
@@ -220,6 +222,7 @@ html[data-theme="paper"] {
   --vault: #20243A;
   --vault-2: #2E3552;
   --gold-ink: #765526;
+  --gold-line: #765526; /* 地に 4.0、札に 5.9 */
   --wood-top: #7E5A3E;
   --wood: #6D4D34;
   --wood-2: #573E2A;
@@ -280,6 +283,7 @@ html[data-theme="indigo"] {
   --gold-hi: #F3DDA4;
   --gold-dk: #8A6A30;
   --gold-ink: #E6C887;
+  --gold-line: #C9A35A; /* 地に 5.4、札に 7.1 */
   --wood-top: #3E3028;
   --wood: #2C221C;
   --wood-2: #1E1712;
