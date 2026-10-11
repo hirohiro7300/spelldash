@@ -43,7 +43,7 @@ import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホー�
 import { renderLoginNudge } from "./loginNudge.js";
 import { initTutorial, skipTutorialIfReturning } from "./tutorial.js";
 import { initRoom } from "./room.js";
-import { initBookshelf, renderBookshelf, updateBookshelf, startShelf, startChoiceChanges, rememberCourse } from "./bookshelf.js";
+import { initBookshelf, renderBookshelf, updateBookshelf, holdShelf, releaseShelf, startShelf, startChoiceChanges, rememberCourse } from "./bookshelf.js";
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
 import { getCategories, getPackCatalog } from "./wordStore.js";
 import { getGenre, genreLabel } from "./genres.js";
@@ -388,23 +388,29 @@ ensureDefaultCourse();
 // スタートでそのまま腕試し（机の本の最初の章）へ。積んだ本（または「171冊から選ぶ」の本）を選んでいたら、その本をパックに足して机に出してから始める。
 // spelldash_course は触らない（コース外の本は柱が棚の名前になるだけ。js/pathView.js）。函（コース）を選んでいたときだけ、そのコースの鍵を回す。
 // 何を替えるかは本棚が下見の棚と同じ規則で求める（startChoiceChanges → js/shelfStore.js applyStartChoice）。ここはそのとおりに書くだけ。
-// 状態を替えたあとで本棚を作る（startShelf: 下見と同じ棚。js/bookshelf.js）
+// 状態を替えたあとで本棚を作る（startShelf: 下見と同じ棚。js/bookshelf.js）。押してからそれまで本棚は保存しない（holdShelf。語の読み込みを待つ間も）
 const storeReady = initWordStore();
 renderWelcome({
-  onStart: (choice = {}) => storeReady.then(async () => {
-    const change = startChoiceChanges(choice);
-    if (change.course) localStorage.setItem("spelldash_course", change.course);
-    for (const id of change.packs) setPackEnabled(id, true);
-    if (change.desk) localStorage.setItem("spelldash_category", change.desk);
-    if (change.packs.length || change.desk) {
-      await initWordStore();
-      initializeCategoryPicker();
-    }
-    startShelf();
-    const path = renderHome();
-    renderHasumiHome(); // 紙片の「はじめまして」を、机の本に合う文へ
-    startUnit(path ? currentUnitOf(path) : null);
-  })
+  onStart: (choice = {}) => {
+    holdShelf();
+    return storeReady.then(async () => {
+      const change = startChoiceChanges(choice);
+      if (change.course) localStorage.setItem("spelldash_course", change.course);
+      for (const id of change.packs) setPackEnabled(id, true);
+      if (change.desk) localStorage.setItem("spelldash_category", change.desk);
+      if (change.packs.length || change.desk) {
+        await initWordStore();
+        initializeCategoryPicker();
+      }
+      startShelf();
+      const path = renderHome();
+      renderHasumiHome(); // 紙片の「はじめまして」を、机の本に合う文へ
+      startUnit(path ? currentUnitOf(path) : null);
+    }).catch((err) => {
+      releaseShelf(); // startShelf の前に落ちたら保留を解く（自動の保存が再読み込みまで止まらないように）
+      throw err;
+    });
+  }
 });
 
 storeReady

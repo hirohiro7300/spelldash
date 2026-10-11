@@ -10,10 +10,10 @@ import "./staticHeader.js"; // ヘッダー右端（連続日数・ログイン�
 import { setFooterYear } from "./footer.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { markTypingArrival, logTypingStage } from "./funnelLog.js";
+import { localDay } from "./retentionCalc.js";
 import {
   touch,
   storage,
-  localDay,
   make,
   fill,
   appendUnits,
@@ -83,7 +83,6 @@ let firstRun = true;
 let run = null;
 let fillOnLoad = false; // 教材が届く前に始めた回（最初の英単語）: 届いたら列の後ろに足す
 let endAt = 0;
-let resultAt = 0;
 let shownSecs = -1;
 let finishTimer = 0;
 let tickTimer = 0;
@@ -296,7 +295,7 @@ function finish() {
   let cmp = { status: "none" };
   if (store) {
     cmp = compareBest(readBest(store, seconds)[kind], s.kpm);
-    if ((cmp.status === "first" || cmp.status === "new") && !writeBest(store, kind, seconds, { kpm: s.kpm, acc: s.accuracy, day: localDay() })) cmp = { status: "none" };
+    if ((cmp.status === "first" || cmp.status === "new") && !writeBest(store, kind, seconds, { kpm: s.kpm, acc: s.accuracy, day: localDay(new Date()) })) cmp = { status: "none" };
   }
   renderResult(s, cmp);
   render();
@@ -308,8 +307,7 @@ function finish() {
       // 何もしない
     }
   }
-  resultAt = performance.now();
-  // 守り（js/typingKeys.js）: 盤面は出したまま（typing--live・romaji-answer を外さず、game-end も投げない）、盤面の外は押させない。
+  // 守り（js/typingKeys.js）: 盤面は出したまま（typing--live・romaji-answer を外さず、game-end も投げない）、盤面の外は押させない・結果の Enter／Space を捨てる。
   // 盤面を叩いていた指の次のタップが、下から現れたボタンやリンクに落ちないように。0.6 秒後に盤面を畳む
   guard.arm(closeKeyboard);
   logTypingStage("done");
@@ -386,7 +384,7 @@ wireTyping({
   phase: () => phase,
   timeOf: () => performance.now(), // 受けた時刻（start・press・時間切れの比べもこの時計）
   endAt: () => endAt,
-  resultAt: () => resultAt,
+  guard,
   start,
   press,
   finish,

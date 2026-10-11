@@ -2,7 +2,7 @@
 //
 // 状態（phase・run・時計）はページが持つ（js/typingPage.js・js/typingGamePage.js）。ここは 2 枚で同じ振る舞いの部品と、キーの振り分け（wireTyping）だけ。
 // 2 枚で違うのはキーの時刻だけで、引数（timeOf）で表す: ゲームは押した瞬間（event.timeStamp。文の締切と比べる）、練習は受けた時刻。
-// 結果の守りの Enter は 2 枚とも受けた時刻（performance.now()。結果を出した時刻と同じ時計）で測る（練習の側に合わせた）。
+// 結果の守り（createResultGuard）の時刻は守りのタイマー 1 つだけ。結果の Enter／Space は守りが効いている間（guard.active）は無視する。
 // 学習記録は読まない・書かない。
 
 import { isTouchDevice } from "./keyboard.js";
@@ -28,11 +28,6 @@ export function storage() {
   } catch {
     return null;
   }
-}
-
-export function localDay() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // keydown の時刻は押した瞬間（performance.now() と同じ時計）。古い実装の epoch ms などは今の時刻に落とす
@@ -121,7 +116,8 @@ export function fitAboveKeyboard(board) {
 // ---- 結果の守り ----
 // 結果を出してから RESULT_GUARD_MS の間、盤面（#osk）の外は押させない（クリック・タップ・キーで押すクリックを捨てる。mousedown は焦点を動かさない）。
 // 守る物を一覧にしない: 内か外かは closest(#osk) だけで決める（札の中のボタン・導線・フッターのリンク・タブ・ヘッダーも外）。
-// inert は使わない（札の中の焦点と読み上げの行を残す）。盤面は出したまま、終わったら onEnd（盤面を畳む）
+// inert は使わない（札の中の焦点と読み上げの行を残す）。盤面は出したまま、終わったら onEnd（盤面を畳む）。
+// 守りの間は active（wireTyping が結果の Enter／Space を捨てる。時刻は ms のタイマー 1 つだけで持つ）
 export function createResultGuard(ms = RESULT_GUARD_MS) {
   let timer = 0;
   const block = (event) => {
@@ -160,7 +156,7 @@ function editable(target, input) {
 //   phase()                   … "ready" | "running" | "result" | "loading" | "error"
 //   timeOf(event)             … キーの時刻（練習: performance.now()、ゲーム: eventTime）
 //   endAt()                   … 打っている回の終わりの時刻（timeOf と同じ時計）
-//   resultAt()                … 結果を出した時刻（performance.now()）
+//   guard                     … 結果の守り（createResultGuard。結果を出したときに arm する。active の間は結果の Enter／Space を捨てる）
 //   start(now)・press(key, now)・finish()・reset()（始まる前へ。結果・ベスト・計測なし）
 export function wireTyping(page) {
   function onKey(event) {
@@ -201,7 +197,7 @@ export function wireTyping(page) {
       event.preventDefault();
       if (event.repeat) return;
       if (phase === "ready") page.start(now);
-      else if (phase === "result" && performance.now() - page.resultAt() >= RESULT_GUARD_MS) page.reset();
+      else if (phase === "result" && !page.guard.active) page.reset();
       return; // 打っている間の Space／Enter は数えない
     }
 

@@ -36,6 +36,7 @@ for (const c of cats) {
   WORDS[c.id] = (Array.isArray(raw) ? raw : raw.words).filter((w) => !w.kanjiOnly).map((w) => w.id);
 }
 const BASE = new Set(cats.filter((c) => !c.pack).map((c) => c.id));
+const PACKS = new Set(cats.filter((c) => c.pack).map((c) => c.id)); // manifest の分野パック（js/bookshelf.js snapNow の isPack は getPackCatalog）
 const FREQ = ["ngsl", "tsl", "bsl", "nawl"];
 const freqCourseOf = (id) => FREQ.find((c) => COURSES[c].packs.includes(id)) ?? null;
 const known = new Set([...cats.map((c) => `b:${c.id}`), "b:my", ...Object.keys(COURSES).map((c) => `c:${c}`)]);
@@ -49,7 +50,7 @@ function snapOf({ course = "", desk = "all", packs = [], stats = [], my = 0, bes
   const loaded = (id) => (BASE.has(id) || packs.includes(id) ? WORDS[id] ?? [] : []);
   return {
     packs, course, desk, myCount: my, statsEmpty: statSet.size === 0, best,
-    courses: COURSES, defaultCourse: DEFAULT_COURSE, freqCourseOf, isBase: (id) => BASE.has(id), known,
+    courses: COURSES, defaultCourse: DEFAULT_COURSE, freqCourseOf, isBase: (id) => BASE.has(id), isPack: (id) => PACKS.has(id), known,
     hasRecords: (ids) => ids.some((id) => loaded(id).some((w) => statSet.has(w))),
     baseRecordCounts: () => [...BASE].map((id) => ({ id, n: (WORDS[id] ?? []).filter((w) => statSet.has(w)).length }))
   };
@@ -215,6 +216,26 @@ eq("11 移行 M1-② 既定のコース以外の前のコースは記録で（�
     const preview = S.shelfAtStart(S.applyStartChoice(snap, choice), saved);
     const stored = S.shelfAtStart(snapOf(write(st, S.startChanges(snap, choice))), saved);
     ok(`13b 下見＝保存 ${JSON.stringify(st)} ${saved ? "保存した棚あり" : "保存した棚なし"} ${JSON.stringify(choice)}`, S.sameShelf(preview, stored), JSON.stringify({ preview, stored }));
+  }
+}
+
+// 13c. 棚の目録に無い分野パック（manifest の getPackCatalog にはあるが棚の割り付けが無い: js/bookshelf.js buildData の「棚の無い本」）でスタート（PR #154 レビュー 2）:
+//      パックかどうかは snap.isPack（manifest）でも見分ける。packs に足して机に出し（spelldash_category が読み込まれていないパックを指さない）、下見＝保存も同じ規則
+{
+  const NEW = "zzz-unassigned-pack";
+  const state = (packs = [DEF1], course = DEFAULT_COURSE, desk = DEF1) => ({ course, desk, packs });
+  const snapNew = (st) => ({ ...snapOf(st), isPack: (id) => id === NEW || PACKS.has(id) }); // known には無い
+  ok("13c 前提: 目録（known）に無い", !snapNew(state()).known.has(`b:${NEW}`));
+  eq("13c startChanges 棚の目録に無いパック: packs に足して机に出す", S.startChanges(snapNew(state()), { bookId: NEW }), { course: "", desk: NEW, packs: [NEW] });
+  eq("13c startChanges 既に packs にあれば机だけ", S.startChanges(snapNew(state([DEF1, NEW])), { bookId: NEW }), { course: "", desk: NEW, packs: [] });
+  eq("13c applyStartChoice 目録にあるパックは今までどおり（中学歴史）", S.startChanges(snapNew(state()), { bookId: "jhist1" }), { course: "", desk: "jhist1", packs: ["jhist1"] });
+  eq("13c applyStartChoice 基本カテゴリ（旅行）・マイ単語帳は packs に足さない", [S.startChanges(snapNew(state()), { bookId: "travel" }).packs, S.startChanges(snapNew(state()), { bookId: "my" }).packs], [[], []]);
+  const write = (st, ch) => ({ ...st, course: ch.course || st.course, desk: ch.desk || st.desk, packs: [...st.packs, ...ch.packs] });
+  for (const saved of [null, shelfOf(["pref"], ["eiken"], { seen: [DEF1] })]) {
+    const snap = snapNew(state());
+    const preview = S.shelfAtStart(S.applyStartChoice(snap, { bookId: NEW }), saved);
+    const stored = S.shelfAtStart(snapNew(write(state(), S.startChanges(snap, { bookId: NEW }))), saved);
+    ok(`13c 下見＝保存（棚の目録に無いパック・${saved ? "保存した棚あり" : "保存した棚なし"}）: 足したパックは本として保存に残る`, S.sameShelf(preview, stored) && stored.books.includes(NEW), JSON.stringify({ preview, stored }));
   }
 }
 
