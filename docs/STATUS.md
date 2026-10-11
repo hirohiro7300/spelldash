@@ -13,6 +13,7 @@
 ### 学習
 - **4 モード（増やさない）**: Study（セット・Recall Loop・SRS）／Challenge（60 秒）／Daily Dash（全員同じ問題・ランキング）／Battle（CPU ランクマッチ。ロジックは凍結、色・面・文字列だけ触る）
 - **タイピング練習**（`/typing.html`、2026-10 創業者指示で足した集客の入口のページ。**学習のモードではない・学習記録を変えない**）: 見本を見て 1 分打つ。英単語（訳つき）／日本語（小・中学校の用語の読みをローマ字で）。結果は打/分・正確さ・間違えたキー・自己ベスト（端末）、本体へ「思い出して打つ」。入口は全ページのフッターの先頭・お知らせ・sitemap。計測は first_visit の source に typing*（docs/SPEC_TYPING.md）
+- **タイピングゲーム**（`/typing-game.html`、2026-10 創業者指示。学習のモードではない・学習記録を変えない）: 日本語の文を読みとローマ字の手本つきで 90 秒打つ。3 コース（短い語句・ふつうの文・長い文）・文ごとの持ち時間（尽きると「流れた」）・取れた文・目標・自己ベスト（端末、コース×秒数）。教材は創作の 654 文（`scripts/typing-game/*.jsonl` → `data/typing-game.json`）。入口は typing.html の札の下の 1 行・お知らせ・sitemap。計測は first_visit の source に tgame*・typing_game（docs/SPEC_TYPING_GAME.md）
 - **書斎（ホーム）**: 机の上の本 = コース（10 本: 中学やり直し・ビジネス・会話・高校・英検・NGSL・TSL・BSL・NAWL・TOEIC）→ 巻 → 章。左頁に書名と進み、右頁に今の章と全幅のスタート（390 で 1 画面目）、3 枚目に目次（済みは畳む）。前回の続きから再開。**わたしの本棚**（自分で足した本と函。机の本は空き）から背を押すと机の本が替わる、函でコース。「本を足す」の窓で 171 冊の目録（検索・棚ごとの見出し 9 つ）。整理で下ろす（記録は消えない）。棚は端末ごと（Batch 61）。初回は同じ部屋で 英単語 のスタート（腕試し）＋ 社会・理科・国語・仕事 の 4 冊を積み、「171冊から選ぶ」で目録から選べる
 - **判定**: 1 ミス＝不正解（Clean Correct）。出題語を打ち切ったらその場で正解（gym に対して gymnasium のような長い候補が残っていても止めない）、Enter は打った語で確定、続けて打った長い候補の続きは次の語に入れない。ローマ字の短い漢字の別解に読みが無い約 400 枚は判断待ち（FOUNDER_TODO F-10）（Study は続きを打つ間は次の語を待たせる。次の語が出た後は最後の打鍵から 0.6 秒の窓、窓の外は 4 秒まで次の語でミスになるときだけ。K0-1、2026-10-10。docs/SPEC_CLEAN_CORRECT.md §8・docs/KEYBOARD.md）。**別解**: 同じ訳の別の英単語を打つと「talk も「話す」。この問題の語は speak」と案内して不正解にしない。パック内で訳のトークンを共有する語は自動で別解、加えて `accept` を人手で確認済み（英単語パック 81 本・4,914 枚・8,908 語）。つづり違い（favourite／favorite）はそのまま正解
 - **教材**: 171 カテゴリ・15,464 枚（分野パック 162、`/packs/<id>.html` に入口ページ）。オープン教材は NGSL 24・TSL 11・BSL 15・NAWL 8 = 58 パック・6,814 語（CC BY-SA 4.0、出典表記あり）。英単語カードには例文（ex／exJa）。形式は docs/PACK_FORMAT.md、検証は `node scripts/validate-words.mjs`
@@ -42,7 +43,7 @@
 
 ## 3. 技術
 
-- フロント: 素の HTML／CSS／ES modules、ビルド無し。ページ: index／list／stats／profile／battle／news／privacy／terms／tokushoho／pro／admin／typing ＋ packs/（生成）
+- フロント: 素の HTML／CSS／ES modules、ビルド無し。ページ: index／list／stats／profile／battle／news／privacy／terms／tokushoho／pro／admin／typing／typing-game ＋ packs/（生成）
 - デザイン: `css/tokens.css` が唯一の色・角丸・フォントの基準（昼 light／紙 paper・夜 dark／藍 indigo。同じ名前で値だけ変える）。部屋は `css/room.css`・`css/bookshelf.css`、場面の絵は `scripts/room-art/` から `assets/images/room/` に焼いた WebP。フォントは自前（`css/fonts.css`: Shippori Mincho 500／700・Cormorant Garamond 600・IBM Plex Mono。外部リクエスト 0）。打つ対象の英語と数字は等幅、部屋の中は明朝。絵文字は UI に使わない
 - サーバー: Vercel Node 関数 `api/explain-word`・`api/generate-cards`（Claude、`ANTHROPIC_API_KEY` 未設定なら「準備中」）、`api/admin/*`、`api/billing/*`、`api/cron/keepalive`。秘密鍵はすべて Vercel の環境変数（docs/SECURITY.md）
 - Supabase: Auth（メールリンク・Google）、テーブル profiles／word_progress／user_progress／battle_sessions／play_sessions／daily_scores／activity_days（RLS）。任意: user_items／feedback／crm_notes／subscriptions（docs/SQL_*.md、**実行は創業者**）
@@ -59,14 +60,14 @@
 
 ## 5. 守っていること（創業者の規則）
 
-- 学習の核は無料。Pay to Win 禁止。通貨／ガチャ／ショップ／通知は作らない。新しいゲームモードを増やさない（入口のタイピング練習は例外: 2026-10 創業者指示。モードではなく別ページ）。Battle のロジックを変えない
+- 学習の核は無料。Pay to Win 禁止。通貨／ガチャ／ショップ／通知は作らない。新しいゲームモードを増やさない（入口のタイピング練習・タイピングゲームは例外: 2026-10 創業者指示。モードではなく別ページ）。Battle のロジックを変えない
 - はちゃんは 3 場面（ホーム・完了・週間）。台詞は 1 文・「！」は多くて 1 つ・盛り上げ語なし・数字と矛盾しない・依存や罪悪感を作らない。部屋に Pro の文言を出さない
 - 文言は短く断定。UI は日本語、英語は打つ対象だけ。数字を誇張しない
 - 秘密鍵をクライアント・ログ・リポジトリに置かない。PII をログに書かない。CRM からプレイヤーには何も届かない
 
 ## 6. 数字
 
-- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、目録の棚 9、タイピング練習の教材 英 942・日 663 語、E2E 1,369、マージ済み PR 149
+- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、目録の棚 9、タイピング練習の教材 英 942・日 663 語、タイピングゲームの教材 654 文（短い語句 225・ふつうの文 277・長い文 152）、E2E 1,404、マージ済み PR 151
 - **ユーザー系の数字はまだ無い**（10 人ローンチ前。CRM・activity_days・funnel_events は受け皿として用意済み）
 
 ## 7. 次の候補（docs/BACKLOG.md）
