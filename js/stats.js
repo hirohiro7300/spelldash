@@ -2,12 +2,12 @@ import { saveWordStats, editWordStats } from "./storage.js";
 import { markWordDirty } from "./sync.js";
 import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
 import { touchStudyTime } from "./studyTime.js";
-import { answerContext, nextRank, isFirstAnswer, intervalAfter, keepLaterDue, unseenFailCap } from "./mastery.js";
+import { answerContext, nextRank, isFirstAnswer, intervalAfter, keepLaterDue, unseenFailCap, SRS_STEPS } from "./mastery.js";
 import { noteRankCheck, tickMasteryMeta } from "./masteryMeta.js";
 
 // 簡易SRS: 連続ノーミス正解数 → 次の復習までの日数
-// 1回→1日後、3連続→3日後、10連続→30日後（それ以上は30日固定）
-const REVIEW_INTERVAL_DAYS = [1, 2, 3, 5, 7, 10, 14, 21, 30];
+// 1回→1日後、3連続→3日後、10連続→30日後（それ以上は30日固定）。表は js/mastery.js の SRS_STEPS の 1 か所（習熟度の S2 も同じ表を読む）
+const REVIEW_INTERVAL_DAYS = SRS_STEPS;
 
 function daysFromNow(days, nowMs = Date.now()) {
   const d = new Date(nowMs);

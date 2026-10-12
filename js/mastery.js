@@ -77,14 +77,21 @@ export function isFirstAnswer(stat) {
   );
 }
 
+// 期日が最後の自力正解から 13 日以上先か（知ってたの初見の答えが置く 14 日後の期日の形）。期日・自力正解の日時のどちらかが無ければ null（読めない）。
+// knownWaitingShape（真のときだけ形）と isKnownWaiting（偽のときだけ確認待ちでない。読めない古い行は streak だけで読む）が使う
+function dueFarFromLastOk(s) {
+  const due = ms(s?.nextReviewAt);
+  const okAt = ms(s?.lastRecallSuccessAt);
+  if (!(due > 0 && okAt > 0)) return null;
+  return due - okAt >= (KNOWN_CHECK_DAYS - 1) * DAY_MS;
+}
+
 // 確認待ちの形（同期する欄だけで読む）: streak 1・recallFail 0・最後の自力正解があり、期日が最後の自力正解から 13 日以上先。
 // 書き手がこの形を作るのは知ってたの初見の答え（期日 14 日後）だけ（js/stats.js extendInterval は、答えの後が streak 1・recallFail 0 になる
 // 答えの間隔を伸ばさない）。knownOnSight は端末だけの欄で 2 台目には届かない（js/sync.js rowToStat）ので、2 台目はこの形で知ってた語と読む
 function knownWaitingShape(s) {
   if ((s?.cleanCorrectStreak ?? 0) !== 1 || (s.recallFail ?? 0) !== 0) return false;
-  const due = ms(s.nextReviewAt);
-  const okAt = ms(s.lastRecallSuccessAt);
-  return due > 0 && okAt > 0 && due - okAt >= (KNOWN_CHECK_DAYS - 1) * DAY_MS;
+  return dueFarFromLastOk(s) === true;
 }
 
 // 知ってた語（初見でノーミス正解し、そのあと一度も思い出せなかったことが無い）。印（knownOnSight）が無くても確認待ちの形なら知ってた語
@@ -102,13 +109,23 @@ export function isKnownWord(stat) {
 // 2 台目（knownOnSight が届かない）では isKnownWord が確認待ちの形で読むので、同じ語が同じに読める（期日・自力正解・streak・recallFail は同期する欄）
 export function isKnownWaiting(stat) {
   if (!isKnownWord(stat) || (stat.cleanCorrectStreak ?? 0) !== 1) return false;
-  const due = ms(stat.nextReviewAt);
-  const okAt = ms(stat.lastRecallSuccessAt);
-  return !(due > 0 && okAt > 0 && due - okAt < (KNOWN_CHECK_DAYS - 1) * 86400000);
+  return dueFarFromLastOk(stat) !== false;
 }
 
 function hasRankField(s) {
   return Number.isInteger(s?.masteryRank) && s.masteryRank >= 1 && s.masteryRank <= RANK_MAX;
+}
+
+// ===== 同じ日の扱い =====
+// 時刻 t（ms）の出来事が、今（nowMs。そのローカル日 today）から見て同じ日の扱いか: ローカル日が今日か、6 時間未満（時計が戻って先に見える時刻も）。
+// answerContext の failedToday・downToday と、語の詳細の次の条件（rankNext の段 1）が使う（答えの判定と文を食い違わせない）
+function sameDayAs(t, nowMs, today = localDay(new Date(nowMs))) {
+  return t > 0 && (localDay(new Date(t)) === today || nowMs - t < MIN_GAP_MS);
+}
+
+// 今日の × で段を下げた語か（masteryDownAt が同じ日の扱い）。同じ日の ○ では上げない（nextRank）
+function downTodayOf(s, nowMs, today) {
+  return sameDayAs(ms(s?.masteryDownAt), nowMs, today);
 }
 
 // ===== 1 回の答えの文脈 =====
@@ -143,8 +160,7 @@ export function answerContext(stat, nowMs = Date.now()) {
     sameDay = prevDay === today || nowMs - prevAt < MIN_GAP_MS || !(d >= 1);
     if (!sameDay) gap = d;
   }
-  const isToday = (t) => t > 0 && (localDay(new Date(t)) === today || nowMs - t < MIN_GAP_MS);
-  const failedToday = isToday(failAt);
+  const failedToday = sameDayAs(failAt, nowMs, today);
   const rank = rankOf(s);
   const known = isKnownWord(s);
   const saw = sawAnswer(s);
@@ -159,7 +175,7 @@ export function answerContext(stat, nowMs = Date.now()) {
     firstAnswer: prevDay === null && rank === 0 && !saw,
     unknownDays: prevDay === null && rank >= 1,
     failedToday,
-    downToday: isToday(ms(s.masteryDownAt)),
+    downToday: downTodayOf(s, nowMs, today),
     rank,
     known,
     knownCheck: isKnownWaiting(s)
@@ -296,9 +312,10 @@ export function rankBasis(stat, today = localDay(new Date())) {
 
 // 次の段の条件。段 5・段 0 は空文字。日付は前の答えの日から数え、今日以前なら「次に」と言う。
 // 前の答えの日が分からない古い行は日付を言わず「N日以上あけて」と言う（次の答えでは上がらず、その答えから数え直すため）
-// 段 1 は同じ日の ○ でも上がるので日付なし。ただし今日の × で下げた語（masteryDownAt の日が今日。answerContext の downToday と同じ印）は
-// 今日の ○ では上がらない（nextRank）ので、前の答えの日＋1 日を言う（§11.6 の 5）。日付はほかの段と同じくローカル日で数える
-export function rankNext(stat, today = localDay(new Date())) {
+// 段 1 は同じ日の ○ でも上がるので日付なし。ただし今日の × で下げた語は、その扱いが続く間の ○ では上がらない（nextRank）ので、
+// 下げた日＋1 日を言う（§11.6 の 5）。「今日下げた」は answerContext の downToday と同じ判定（downTodayOf: ローカル日が今日か 6 時間未満）で見る
+// （23 時に下げた語を 1 時に見ても「下げた日＋1 日以降に」。§11.7 の 4）。nowMs は today と同じ時点（既定はどちらも今）
+export function rankNext(stat, today = localDay(new Date()), nowMs = Date.now()) {
   const s = stat;
   const r = rankOf(s);
   if (r === 0 || r >= RANK_MAX) return "";
@@ -309,9 +326,9 @@ export function rankNext(stat, today = localDay(new Date())) {
     return d && d > today ? `${mdOf(d)}以降に` : "次に";
   };
   if (r === 1) {
-    const downDay = dayOfIso(s.masteryDownAt);
-    // 時計が戻って下げた日が今日より先に見えるときも、answerContext と同じく今日の扱い
-    return downDay && downDay >= today ? `${after(1, "日をあけて")} 自力で思い出せると あやふや` : "自力で思い出せると あやふや";
+    if (!downTodayOf(s, nowMs, today)) return "自力で思い出せると あやふや";
+    const d = shiftDay(dayOfIso(s.masteryDownAt), 1); // 時計が戻って下げた日が先に見えるときも、その日＋1 日
+    return `${d ? `${mdOf(d)}以降に` : "日をあけて"} 自力で思い出せると あやふや`;
   }
   if (isKnownWaiting(s) && (r === 3 || r === 4)) {
     const checkDay = dayOfIso(s.nextReviewAt) ?? (prevDay ? shiftDay(prevDay, KNOWN_CHECK_DAYS) : null);
@@ -326,7 +343,9 @@ export function rankNext(stat, today = localDay(new Date())) {
 
 // ===== 期日前に出さない（S6） =====
 // 補充の既習（js/studyQueue.js pickFillers）・息抜き（insertBreather）・ミッションの復習（js/mission.js pickReviewWords）から外す語:
-//   (a) 段 4 以上で nextReviewAt が未来、(b) 確認待ちの知ってた語（知ってた語で streak 1、nextReviewAt が未来。段に関係なく）。
+//   (a) 段 4 以上で nextReviewAt が未来、(b) 知ってた語（isKnownWord: 印 knownOnSight か 2 台目の確認待ちの形）で、まだ一度も × が無く、
+//   nextReviewAt が未来（段・streak に関係なく）。確認待ち（streak 1）の語だけにすると、14 日の確認の前に Challenge などで正解した語が
+//   streak 2 で外れ、S1 で期日は 14 日目のまま残るのに、6〜13 日目の補充に毎日出ていた（§11.7 の 2）。
 //   includeRank3（ミッションだけ）: 段 3 で nextReviewAt が未来の語も外す（missCount > 0 の語は期日を見ずに毎日出るので、
 //   段 3 のまま gap 1 が続いて習得に届き、6 日休む機会が無い）。
 //   苦手（未解決。最後が ×）は外さない: Study の × は答えを見た打ち直し（recordCorrect の非 clean の枝）で期日が翌日になるので、
@@ -335,7 +354,7 @@ export function holdBeforeDue(stat, nowMs = Date.now(), { includeRank3 = false }
   if (!stat || isUnresolved(stat)) return false; // 苦手（最後が ×）は出す。Study の × は打ち直しで期日が翌日になるので、期日では判断しない
   const due = ms(stat.nextReviewAt);
   if (!(due > nowMs)) return false;
-  if (isKnownWaiting(stat)) return true;
+  if (isKnownWord(stat) && !ms(stat.lastRecallFailAt)) return true; // 知ってた語で × が一度も無い（recallFail 0 は isKnownWord が見る）
   const r = rankOf(stat);
   return r >= 4 || (includeRank3 && r === 3);
 }
@@ -347,8 +366,8 @@ export function holdBeforeDue(stat, nowMs = Date.now(), { includeRank3 = false }
 // 1 日しか違わず、gap 2 → 3・gap 3 → 5 と表を 1 段飛ばして戻らない（保持率の 7 日窓にも問われなくなる）。間隔 5 以上の段は
 // 1 日遅れても表で gap より長い最初の値が streak の次の間隔と同じなので、予定どおり・1 日遅れの人の間隔は今と同じ（1→2→3→5→7→10→14→21→30）。
 
-// js/stats.js REVIEW_INTERVAL_DAYS の写し（ここは retentionCalc 以外を import しない。同じ値であることは scripts/test-mastery.mjs が守る）
-export const SRS_STEPS = [1, 2, 3, 5, 7, 10, 14, 21, 30];
+// 復習の間隔の表（連続ノーミス正解数 → 次の復習までの日数）。ここ 1 か所に置き、js/stats.js の REVIEW_INTERVAL_DAYS はこれを指す
+export const SRS_STEPS = Object.freeze([1, 2, 3, 5, 7, 10, 14, 21, 30]);
 export const MAX_INTERVAL_DAYS = 30; // S2・S3 で伸ばす上限（表の最後の値）
 export const RANK_FLOOR_DAYS = { 4: 7, 5: 30 }; // S3: 段ごとの下限（身についた 7 日・即答 30 日）
 

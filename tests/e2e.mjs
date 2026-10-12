@@ -6631,6 +6631,77 @@ console.log("mastery writers:");
     await p60.close();
   }
 
+  // ---- PR #161 のレビュー対応 2（docs/SPEC_MASTERY.md §11.7）: 確認待ちの知ってた語を 14 日の確認の前に（Challenge などで）正解すると streak 2 で
+  // 確認待ちでなくなるが、× が一度も無い知ってた語なので、期日（14 日目）の前は補充・息抜き・ミッションに出さない。14 日目からは出る ----
+  {
+    const fresh = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet"];
+    const k5 = at(5 * DAY); // 初見の答え（0 日目）は 5 日前・期日は 9 日後（14 日目）・段 3（初見でふつうの速さ）
+    const stats = {
+      "my-known": { ...B, playCount: 1, correctCount: 1, cleanCorrectStreak: 1, knownOnSight: true, masteryRank: 3, masteryAt: k5, lastPlayed: k5, lastRecallSuccessAt: k5, srsAdvancedOn: dayOf(k5), nextReviewAt: at(-9 * DAY), dailyLearningDate: null, dailyLearningStage: 0, history: [{ d: dayOf(k5), r: "o" }] }
+    };
+    const words = [["known", "既知"], ...fresh.map((en, i) => [en, `新${i}`])].map(([en, ja]) => ({ en, ja }));
+    const page = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: JSON.stringify(words), spelldash_word_stats: JSON.stringify(stats) } });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    const res = await page.evaluate(async () => {
+      const st = await import("/js/stats.js");
+      const sq = await import("/js/studyQueue.js");
+      const ms = await import("/js/mission.js");
+      const m = await import("/js/mastery.js");
+      const read = () => JSON.parse(localStorage.getItem("spelldash_word_stats"))["my-known"];
+      const seededDue = read().nextReviewAt;
+      // 5 日目: Challenge と同じ書き手の呼び方でノーミス正解
+      st.recordCorrect("my-known", true);
+      st.recordRecallSuccess("my-known", { clean: true, speed: "normal" });
+      await new Promise((r) => setTimeout(r, 0));
+      const after = read();
+      // 6・9・13・14 日目: 時計を N 日ずらして（同じ時刻）補充・息抜き・ミッションを組む（ずらす間は待たない）
+      const RealDate = Date;
+      const DAY = 86400000;
+      const days = {};
+      try {
+        for (const n of [1, 4, 8, 9]) {
+          const off = n * DAY + (n === 9 ? 60000 : 0); // 14 日目は期日の 1 分後
+          globalThis.Date = class extends RealDate {
+            constructor(...a) {
+              if (a.length === 0) super(RealDate.now() + off);
+              else super(...a);
+            }
+            static now() {
+              return RealDate.now() + off;
+            }
+          };
+          const runs = [];
+          for (let i = 0; i < 8; i++) {
+            sq.startStudyQueue("my");
+            runs.push(sq.getUpcomingIds());
+          }
+          const breathers = [];
+          for (let i = 0; i < 8; i++) {
+            sq.startStudyQueue("my");
+            sq.insertBreather();
+            breathers.push(sq.getUpcomingIds()[0]);
+          }
+          localStorage.removeItem("spelldash_mission");
+          const review = ms.getTodayMission().review;
+          days[5 + n] = { queue: runs.filter((r) => r.includes("my-known")).length, breather: breathers.filter((id) => id === "my-known").length, mission: review.includes("my-known"), held: m.holdBeforeDue(after, Date.now()) };
+        }
+      } finally {
+        globalThis.Date = RealDate;
+      }
+      return { seededDue, after: { due: after.nextReviewAt, streak: after.cleanCorrectStreak, rank: after.masteryRank, waiting: m.isKnownWaiting(after) }, days };
+    });
+    check("習熟度 PR161-2: 確認待ちの知ってた語を 5 日目に正解 → streak 2・段 3 のまま・期日は 14 日目のまま（S1）・確認待ちでなくなる", res.after.due === res.seededDue && res.after.streak === 2 && res.after.rank === 3 && res.after.waiting === false, JSON.stringify(res.after));
+    check(
+      "習熟度 PR161-2: その語は 6・9・13 日目の補充（Study の列 8 回）・息抜き（8 回）・ミッションの復習に出ない",
+      [6, 9, 13].every((d) => res.days[d].queue === 0 && res.days[d].breather === 0 && !res.days[d].mission && res.days[d].held),
+      JSON.stringify(res.days)
+    );
+    check("習熟度 PR161-2: 14 日目（期日の後）は Study の列に出て（期日の復習）、ミッションの復習にも入る", res.days[14].queue === 8 && res.days[14].mission && !res.days[14].held, JSON.stringify(res.days[14]));
+    check("習熟度 PR161-2: エラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
   // ---- §9.1-7 タイピングの 2 ページは mastery.js・masteryMeta.js を読まない ----
   for (const url of ["/typing.html", "/typing-game.html"]) {
     const page = await newPage();

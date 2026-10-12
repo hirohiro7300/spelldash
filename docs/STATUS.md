@@ -53,7 +53,7 @@
 
 ## 4. 品質・流れ
 
-- E2E `npm test`（playwright-core、Supabase はスタブ、手元で 1 本約 20 分）: **1,828 件**。CI は 4 組に分けて並列のジョブで流す（`node scripts/e2e-shard.mjs --shard k/4`。節の重さ＝CI で測った秒で釣り合わせ、毎回同じ分け方。いちばん重い組は 16.5 判定だけで約 7.5 分、ジョブは準備を入れて約 9 分〔見積もり〕・各ジョブの上限 20 分。1 本では CI で約 29 分かかり、上限 45 分で時間を稼いでいた。2026-10-11）。手元で 1 組だけ流すのは `npm run test:shard -- 2/4`、分け方の表は `node scripts/e2e-shard.mjs --plan 4`。節を足しても組は自動で分かれる（表に無い節は行数から見積もる）。偏ってきたら CI の組のログの最後の「節ごとの秒」を scripts/e2e-shard.mjs の SECONDS に写す。検証 `node scripts/validate-words.mjs`、単体: 習熟度の規則 `node scripts/test-mastery.mjs`（336 件）・保持率 `node scripts/test-retention.mjs`（93 件）・ローマ字 `node scripts/test-romaji.mjs`（406 件）・本棚の規則 `node scripts/test-shelf.mjs`（144 件）。import を足した・data/manifest.json の基本カテゴリを変えたら `node scripts/modulepreload.mjs`（各ページの先読みを生成。ずれると E2E と CI が落ちる）。パックの語・訳・読みを直したら `node scripts/build-typing.mjs`（タイピング練習の教材 data/typing.json を作り直す。ずれると E2E と CI が落ちる）。タイピング練習の長文の文章（`scripts/typing-long/*.jsonl`）を直したら `node scripts/build-typing-long.mjs`（data/typing-long.json）。**タイピングゲームの教材やパックを直したときも `node scripts/build-typing-long.mjs --check`（ゲームの文との重複）と `--report`（許す漢字 kanji.txt と今のパック・ゲームの字の差）を流す**。CI は PR と main で検証を実行
+- E2E `npm test`（playwright-core、Supabase はスタブ、手元で 1 本約 20 分）: **1,832 件**。CI は 4 組に分けて並列のジョブで流す（`node scripts/e2e-shard.mjs --shard k/4`。節の重さ＝CI で測った秒で釣り合わせ、毎回同じ分け方。いちばん重い組は 16.5 判定だけで約 7.5 分、ジョブは準備を入れて約 9 分〔見積もり〕・各ジョブの上限 20 分。1 本では CI で約 29 分かかり、上限 45 分で時間を稼いでいた。2026-10-11）。手元で 1 組だけ流すのは `npm run test:shard -- 2/4`、分け方の表は `node scripts/e2e-shard.mjs --plan 4`。節を足しても組は自動で分かれる（表に無い節は行数から見積もる）。偏ってきたら CI の組のログの最後の「節ごとの秒」を scripts/e2e-shard.mjs の SECONDS に写す。検証 `node scripts/validate-words.mjs`、単体: 習熟度の規則 `node scripts/test-mastery.mjs`（336 件）・保持率 `node scripts/test-retention.mjs`（93 件）・ローマ字 `node scripts/test-romaji.mjs`（406 件）・本棚の規則 `node scripts/test-shelf.mjs`（144 件）。import を足した・data/manifest.json の基本カテゴリを変えたら `node scripts/modulepreload.mjs`（各ページの先読みを生成。ずれると E2E と CI が落ちる）。パックの語・訳・読みを直したら `node scripts/build-typing.mjs`（タイピング練習の教材 data/typing.json を作り直す。ずれると E2E と CI が落ちる）。タイピング練習の長文の文章（`scripts/typing-long/*.jsonl`）を直したら `node scripts/build-typing-long.mjs`（data/typing-long.json）。**タイピングゲームの教材やパックを直したときも `node scripts/build-typing-long.mjs --check`（ゲームの文との重複）と `--report`（許す漢字 kanji.txt と今のパック・ゲームの字の差）を流す**。CI は PR と main で検証を実行
 - 本番反映: dev ブランチ → PR → main → Vercel（2 プロジェクトとも success を確認）。条件は E2E 全件＋validate OK。Supabase の SQL・外部への告知は創業者側
 - アクセシビリティ: キーボードだけで主線を一周できる（Tab の移動、モーダルの焦点管理、スキップリンク、aria-live、ラベル、本棚は 1 つの roving tabindex）。コントラストは AA（ink-3 6.6:1、スタートの文字 4.77:1 以上）。reduced motion で動き 0。320／390 で横スクロール無し
 - スマホ: 指の端末では入力欄 16px（自動ズームなし）、押せるものは 40〜44px。UI の見直しは 6 回（主線 78 件・主線以外 70 件・Battle／管理画面／旧 CSS 49 件・初回 10 分 30 件・2〜8 日目 24 件・2〜4 週目 34 件）を監査 → 反映 → 査読で通した。game.css の旧パレットは 0
@@ -68,7 +68,7 @@
 
 ## 6. 数字
 
-- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、目録の棚 9、タイピング練習の教材 英 942・日 663 語、長文 20 編（日本語・短め 8・長め 4、英語・短め 5・長め 3。275 行・11,495 打）、タイピングゲームの教材 654 文（短い語句 225・ふつうの文 277・長い文 152）、E2E 1,828、マージ済み PR 161
+- 教材 171 カテゴリ・15,464 枚、別解 8,908 語、コース 10、目録の棚 9、タイピング練習の教材 英 942・日 663 語、長文 20 編（日本語・短め 8・長め 4、英語・短め 5・長め 3。275 行・11,495 打）、タイピングゲームの教材 654 文（短い語句 225・ふつうの文 277・長い文 152）、E2E 1,832、マージ済み PR 162
 - **ユーザー系の数字はまだ無い**（10 人ローンチ前。CRM・activity_days・funnel_events は受け皿として用意済み）
 
 ## 7. 次の候補（docs/BACKLOG.md）

@@ -448,9 +448,8 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
 
 // ── 14. 復習の間隔とのつなぎ（段階 2: S2・S3 の intervalAfter、S1 の keepLaterDue）──────────
 {
-  const src = readFileSync(new URL("../js/stats.js", import.meta.url), "utf8");
-  const table = /const REVIEW_INTERVAL_DAYS = \[([^\]]+)\]/.exec(src);
-  eq("SRS_STEPS は js/stats.js の REVIEW_INTERVAL_DAYS の写し（同じ値）", SRS_STEPS, table ? table[1].split(",").map((n) => Number(n.trim())) : null);
+  // 間隔の表は js/mastery.js の SRS_STEPS の 1 か所（js/stats.js の REVIEW_INTERVAL_DAYS はこれを指す。PR #161 のレビュー 6 で写しをやめた）
+  eq("間隔の表 SRS_STEPS は 1・2・3・5・7・10・14・21・30（今の SRS のまま）・書き換えられない", [[...SRS_STEPS], Object.isFrozen(SRS_STEPS)], [[1, 2, 3, 5, 7, 10, 14, 21, 30], true]);
   eq("上限 30 日・下限 身についた 7 日／即答 30 日", [MAX_INTERVAL_DAYS, RANK_FLOOR_DAYS[4], RANK_FLOOR_DAYS[5], RANK_FLOOR_DAYS[3] ?? 0], [30, 7, 30, 0]);
   // 予定どおり続ける人: gap ＝ 前の間隔、streakDays ＝ streak の間隔。段はその列で実際に付く段（gap 6 以上で 4、gap 21 ですぐなら 5）
   const sched = [];
@@ -735,7 +734,8 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
       eq("その語はもう確認待ちでない（knownCheck 偽・isKnownWaiting 偽）", [answerContext(kb, clock + 3600 * 1000).knownCheck, isKnownWaiting(kb)], [false, false]);
       ok(`根拠の文に「初めて答えて」が無い（${rankBasis(kb, today)}）`, !rankBasis(kb, today).includes("初めて答えて"));
       ok(`次の条件に「の確認で」が無い（${rankNext(kb, today)}）`, !rankNext(kb, today).includes("の確認で"));
-      eq("期日が翌日の間も補充・息抜きから外さない（段 3・確認待ちでない）", holdBeforeDue(kb, clock + 3600 * 1000), false);
+      // 確認待ちでなくても、× が一度も無い知ってた語は期日（翌日）までは補充・息抜きに出さない（PR #161 のレビュー 2。streak によらない）
+      eq("確認待ちでない知ってた語も、× が無ければ期日（翌日）の前は補充・息抜きに出さない（段 3）", holdBeforeDue(kb, clock + 3600 * 1000), true);
       clock = at("2026-10-18", 10); // 14 日あけて、すぐ打てる
       study("kb", "fast");
       study("kp", "fast");
@@ -1092,7 +1092,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
     eq("PR159-5: 期日・streak は今と同じ（同じ日の ○ は伸ばさない: streak 1・翌日）", [pm.dn.cleanCorrectStreak, daysTo(pm.dn.nextReviewAt), pm.nw.cleanCorrectStreak, daysTo(pm.nw.nextReviewAt)], [1, 1, 1, 1]);
     eq("PR159-5: 書いた直後も rankOf === masteryRank", ["dn", "nw", "r1"].every((id) => rankOf(pm[id]) === pm[id].masteryRank), true);
     eq("PR159-5: 朝 × → 夕方 ○ の後も次の条件は「10月13日以降に」（今日もう一度思い出せても上がらない）・根拠は「10月12日に思い出せた」", [rankNext(pm.dn, "2026-10-12"), rankBasis(pm.dn, "2026-10-12")], ["10月13日以降に 自力で思い出せると あやふや", "10月12日に思い出せた"]);
-    eq("PR159-5: その語の翌日の次の条件は日付なし（翌日の ○ で上がる）", rankNext(pm.dn, "2026-10-13"), "自力で思い出せると あやふや");
+    eq("PR159-5: その語の翌日の次の条件は日付なし（翌日の ○ で上がる）", rankNext(pm.dn, "2026-10-13", at("2026-10-13", 9)), "自力で思い出せると あやふや");
     // 文の約束を書き手で確かめる: 今日のもう一度の ○ では上がらない（文のとおり）
     {
       const c = answerContext(pm.dn, at("2026-10-12", 21));
@@ -1119,9 +1119,9 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
     ["kbd", "kbd", "kbd", "kbd", "kbd"]
   );
   eq(
-    "PR159-3: 画面のキーボード（信頼された keydown でも code が空・Unidentified・無い・keyCode 229）→ touch",
-    [kin({ isTrusted: true, key: "a", code: "", keyCode: 65 }), kin({ isTrusted: true, key: "Unidentified", code: "Unidentified", keyCode: 229 }), kin({ isTrusted: true, key: "a", code: "KeyA", keyCode: 229 }), kin({ isTrusted: true, key: "a", keyCode: 65 })],
-    ["touch", "touch", "touch", "touch"]
+    "PR159-3: 画面のキーボード（信頼された keydown でも code が空・Unidentified・無い）→ touch（code のある keyCode 229 は IME オンの物理キー: §17 の PR161-1）",
+    [kin({ isTrusted: true, key: "a", code: "", keyCode: 65 }), kin({ isTrusted: true, key: "Unidentified", code: "Unidentified", keyCode: 229 }), kin({ isTrusted: true, key: "a", keyCode: 65 })],
+    ["touch", "touch", "touch"]
   );
   eq("PR159-3: 専用の画面キーボード（#osk の合成 keydown。isTrusted 偽）は今どおり touch", kin({ isTrusted: false, key: "a", code: "KeyA", keyCode: 65 }), "touch");
 
@@ -1170,6 +1170,190 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
     const t40 = stored()?.speed?.[BOX]?.t1 ?? [];
     eq("PR159-4: 見本は箱ごとに最新 40 件（A の後ろ 10 件 → B の 30 件）・最初の中央値は先に書いた A が 20 件で決めた値のまま", [t40.length, t40[0], t40.at(-1), stored()?.check?.firstMedian?.[BOX]], [40, 1020, 5029, 1009.5]);
     eq("PR159-4: 変わっていなければ書かない", [A.flushMasteryMeta(), B.flushMasteryMeta()], [false, false]);
+    store.delete(KEY);
+    A.forgetMasteryMeta();
+    B.forgetMasteryMeta();
+  }
+  console.warn = quiet;
+}
+
+// ── 17. PR #161 のレビュー対応（1〜4）: IME オンの物理キー・14 日の確認の前に正解した知ってた語・別のタブの消去／復元の後の基準・
+// 6 時間の窓をまたぐ語の詳細の次の条件。書き手は §15 と同じ js/stats.js（偽の時計で日をまたぐ）。2 つのタブは js/masteryMeta.js を別のモジュールとして読む ──
+{
+  const W = await import("../js/stats.js");
+  const MM = await import("../js/masteryMeta.js");
+  const RealDate = Date;
+  let clock = at("2026-01-05", 12);
+  class FakeDate extends RealDate {
+    constructor(...a) {
+      if (a.length === 0) super(clock);
+      else super(...a);
+    }
+    static now() {
+      return clock;
+    }
+  }
+  const D0 = "2026-01-05";
+  const dayAt = (n, h = 12, m = 0) => {
+    const d = new RealDate(at(D0, h, m));
+    d.setDate(d.getDate() + n);
+    return d.getTime();
+  };
+  const dayOfDue = (st) => dayDiff(D0, localDay(new RealDate(Date.parse(st.nextReviewAt))));
+  const blank = (over = {}) => ({ playCount: 1, correctCount: 0, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 0, mastered: false, masteredAt: null, lastPlayed: null, nextReviewAt: null, lastRecallFailAt: null, lastRecallSuccessAt: null, dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: null, ...over });
+  const seed = (map) => {
+    store.set("spelldash_word_stats", JSON.stringify(map));
+    forgetMasteryMeta();
+  };
+  const read = () => JSON.parse(store.get("spelldash_word_stats"));
+  const nextTask = () => new Promise((r) => setTimeout(r, 0));
+  const study = (id, speed = "normal") => {
+    W.recordCorrect(id, true);
+    W.recordRecallSuccess(id, { clean: true, speed });
+  };
+  const quiet = console.warn;
+  console.warn = () => {};
+
+  // ---- 1. 日本語入力（IME）オンの物理キーボード: keydown は keyCode 229・key "Process" だが code は物理キーの名前 → 物理キーの箱 ----
+  const kin = MM.keyInputOf;
+  eq(
+    "PR161-1: IME オンの物理キー（信頼された keydown・keyCode 229・key Process・code KeyA／Digit1／Minus）→ kbd（物理キーの名前を keyCode より先に見る）",
+    [kin({ isTrusted: true, keyCode: 229, key: "Process", code: "KeyA" }), kin({ isTrusted: true, keyCode: 229, key: "Process", code: "Digit1" }), kin({ isTrusted: true, keyCode: 229, key: "Process", code: "Minus" })],
+    ["kbd", "kbd", "kbd"]
+  );
+  eq(
+    "PR161-1: code が空・Unidentified・無い keyCode 229（画面キーボード）は今どおり touch",
+    [kin({ isTrusted: true, keyCode: 229, key: "Unidentified", code: "" }), kin({ isTrusted: true, keyCode: 229, key: "Unidentified", code: "Unidentified" }), kin({ isTrusted: true, keyCode: 229, key: "Process" })],
+    ["touch", "touch", "touch"]
+  );
+  eq("PR161-1: 合成の keydown（#osk。isTrusted 偽）は code があっても touch", kin({ isTrusted: false, keyCode: 229, key: "Process", code: "KeyA" }), "touch");
+
+  globalThis.Date = FakeDate;
+  try {
+    // ---- 2. 確認待ちの知ってた語を 14 日の確認の前に（Challenge などで）正解しても、期日（14 日目）の前は補充・息抜き・ミッションに出さない ----
+    clock = dayAt(0);
+    seed({ kc: blank(), kf: blank(), kx: blank(), kt: blank() });
+    await nextTask();
+    study("kc", "normal"); // 初見のノーミス・ふつう → 知ってた・思い出せる・14 日後
+    study("kf", "fast"); // 初見のノーミス・すぐ → 知ってた・身についた・14 日後
+    study("kx", "normal");
+    study("kt", "normal");
+    await nextTask();
+    clock = dayAt(5);
+    study("kc", "normal"); // 5 日目: Challenge と同じ書き手の呼び方でノーミス正解（S1: 期日は 14 日目のまま。streak 2 で確認待ちでなくなる）
+    study("kf", "normal");
+    await nextTask();
+    const kc = read().kc;
+    const kf = read().kf;
+    eq("PR161-2: 5 日目の正解の後: streak 2・段 3（思い出せる）のまま・期日は 14 日目のまま・確認待ちでない（isKnownWaiting 偽）・知ってた語のまま", [kc.cleanCorrectStreak, kc.masteryRank, dayOfDue(kc), isKnownWaiting(kc), isKnownWord(kc)], [2, 3, 14, false, true]);
+    const span = [6, 7, 8, 9, 10, 11, 12, 13];
+    eq("PR161-2: 6〜13 日目は補充・息抜きに出さない（holdBeforeDue 真。段 3 でも）", span.map((d) => holdBeforeDue(kc, dayAt(d))), span.map(() => true));
+    eq("PR161-2: 6〜13 日目はミッション（includeRank3）にも出さない", span.map((d) => holdBeforeDue(kc, dayAt(d), { includeRank3: true })), span.map(() => true));
+    eq("PR161-2: 14 日目（期日の時刻）以降は出す", [holdBeforeDue(kc, dayAt(14)), holdBeforeDue(kc, dayAt(14), { includeRank3: true }), holdBeforeDue(kc, dayAt(20))], [false, false, false]);
+    eq("PR161-2: 初見ですぐだった語（段 4）も同じ（6〜13 日目は出さない・14 日目から出す）", [...span.map((d) => holdBeforeDue(kf, dayAt(d))), holdBeforeDue(kf, dayAt(14))], [...span.map(() => true), false]);
+    // 14 日目の答えは「知ってた語の最初の確認」にならない（前の答えの日が 5 日目に動いた。§3.7 のとおり）: gap 9 の ○ は段 3 のまま
+    clock = dayAt(14);
+    study("kc", "fast");
+    await nextTask();
+    eq("PR161-2: 14 日目の答えは知ってた語の確認ではない（今のまま: gap 9 のすぐは 3 → 4 で即答にしない）・期日は今どおり 10 日後（S2）", [read().kc.masteryRank, dayOfDue(read().kc) - 14], [4, 10]);
+    // × のあった知ってた語（Recall Loop で解決済み）は段で読む（知ってた語の守りは × が一度も無い語だけ）
+    clock = dayAt(3, 11);
+    W.recordRecallFail("kx"); // 3 日目に × → 答えを見て打ち直す → Recall Loop で打てる
+    W.recordCorrect("kx", false);
+    await nextTask();
+    clock = dayAt(3, 11, 10);
+    study("kx", "normal");
+    await nextTask();
+    const kx = read().kx;
+    eq("PR161-2: × のあった知ってた語（解決済み・段 2・期日は翌日）は × が一度もある語なので守らない（補充に出す）", [kx.knownOnSight, kx.recallFail, kx.masteryRank, holdBeforeDue(kx, dayAt(3, 18))], [true, 1, 2, false]);
+    // 打ち間違いありの正解（Battle。streak 0・期日は翌日）の後も × は無いので、期日（翌日）までは出さない
+    clock = dayAt(4);
+    W.recordCorrect("kt", false);
+    W.recordRecallSuccess("kt");
+    await nextTask();
+    const kt = read().kt;
+    eq("PR161-2: 打ち間違いありの正解の後（streak 0・期日は翌日・× なし）は期日まで出さず、翌日から出す", [kt.cleanCorrectStreak, dayOfDue(kt), holdBeforeDue(kt, dayAt(4, 18)), holdBeforeDue(kt, dayAt(5))], [0, 5, true, false]);
+
+    // ---- 4. 語の詳細の次の条件（rankNext）も、答えの判定（answerContext の downToday）と同じ 6 時間の窓で「今日下げた」を見る ----
+    clock = at("2026-10-12", 23);
+    const r2 = () => blank({ masteryRank: 2, masteryAt: iso("2026-10-09", 8), lastRecallSuccessAt: iso("2026-10-09", 8), cleanCorrectStreak: 1, correctCount: 1, srsAdvancedOn: "2026-10-09", nextReviewAt: iso("2026-10-10", 8) });
+    seed({ lt: r2(), lo: r2() });
+    await nextTask();
+    for (const id of ["lt", "lo"]) {
+      W.recordRecallFail(id); // 23:00 答え表示（×）
+      W.recordCorrect(id, false); // 答えを見て打ち直す
+      await nextTask();
+    }
+    clock = at("2026-10-13", 0, 30);
+    study("lo", "normal"); // 00:30 Recall Loop で自力で打てる（下げた日の扱いなので 1 のまま）
+    await nextTask();
+    const late = read();
+    eq("PR161-4: 23:00 の × で 2 → 1（masteryDownAt）・00:30 の ○ でも 1 のまま", [late.lt.masteryRank, late.lt.masteryDownAt === late.lt.lastRecallFailAt, late.lo.masteryRank], [1, true, 1]);
+    const t1 = at("2026-10-13", 1);
+    const t6 = at("2026-10-13", 6);
+    for (const id of ["lt", "lo"]) {
+      const c1 = answerContext(late[id], t1);
+      eq(`PR161-4（${id}）: 01:00 は下げた日の扱い（downToday 真）で、今の ○ では上がらない`, [c1.downToday, nextRank(c1.rank, okA(), c1)], [true, 1]);
+      eq(`PR161-4（${id}）: 01:00 の次の条件は日付つき（10月13日以降に。答えの判定と同じ扱い）`, rankNext(late[id], "2026-10-13", t1), "10月13日以降に 自力で思い出せると あやふや");
+      const c6 = answerContext(late[id], t6);
+      eq(`PR161-4（${id}）: 下げてから 6 時間たった 06:00 は今の ○ で上がり、次の条件は日付なし`, [c6.downToday, nextRank(c6.rank, okA(), c6), rankNext(late[id], "2026-10-13", t6)], [false, 2, "自力で思い出せると あやふや"]);
+    }
+    // 時計が戻って下げた時刻が先に見えるときも今日の扱い（今どおり）
+    const ahead = { masteryRank: 1, masteryAt: iso("2026-10-13", 9), masteryDownAt: iso("2026-10-13", 9), lastRecallFailAt: iso("2026-10-13", 9), lastRecallSuccessAt: iso("2026-10-09", 8), recallFail: 1 };
+    eq("PR161-4: 下げた時刻が先に見える（時計の戻り）ときも今日の扱い（日付つき）・answerContext も同じ", [rankNext(ahead, "2026-10-12", at("2026-10-12", 20)), answerContext(ahead, at("2026-10-12", 20)).downToday], ["10月14日以降に 自力で思い出せると あやふや", true]);
+  } finally {
+    globalThis.Date = RealDate;
+  }
+
+  // ---- 3. 別のタブで「端末の記録を消す」「復元」をした後、このタブの書き込みで速さの基準（firstMedian）・数え始めた日（since）を戻さない ----
+  {
+    const KEY = "spelldash_mastery_meta";
+    const BOX = "en.kbd.study";
+    const A = await import("../js/masteryMeta.js?tab=c");
+    const B = await import("../js/masteryMeta.js?tab=d");
+    const stored = () => JSON.parse(store.get(KEY) || "null");
+    const old = { v: 1, speed: { [BOX]: { t1: Array(20).fill(1500), pc: [] } }, check: { since: "2026-09-01", rank: { 3: { "2-5": [4, 1] } }, firstFast: { prior: [0, 0], own: [0, 0] }, pending: {}, firstMedian: { [BOX]: 1500 } } };
+    const now = at("2026-10-12", 9);
+    store.set(KEY, JSON.stringify(old));
+    A.forgetMasteryMeta();
+    B.forgetMasteryMeta();
+    const la = A.getMasteryMeta(); // タブ A が読み込む
+    eq("PR161-3: タブ A が読み込んだ中身には基準と数え始めた日がある", [la.check.firstMedian[BOX], la.check.since], [1500, "2026-09-01"]);
+    // タブ B が「端末の記録を消す」（js/backup.js clearLocalRecords: キーを消してメモリーを捨てる）
+    store.delete(KEY);
+    B.forgetMasteryMeta();
+    A.noteSpeedSample(BOX, { t1: 1200, pc: null });
+    A.noteRankCheck({ id: "x1", rankBefore: 3, gap: 2, ok: true }, now);
+    A.flushMasteryMeta();
+    let s = stored();
+    eq("PR161-3: 消した後に A が書いても、読み込んだ時からあった基準（firstMedian）と数え始めた日（9月1日）は戻らない", [s?.check?.firstMedian?.[BOX], s?.check?.since === "2026-09-01"], [undefined, false]);
+    eq("PR161-3: A が足した分（見本 1 件・集計 1 件）だけを書く（消す前の見本・集計も戻らない）", [s?.speed?.[BOX]?.t1, s?.check?.rank], [[1200], { 3: { "2-5": [1, 0] } }]);
+    eq("PR161-3: 数え始めた日は、A が消した後の保存へ足した集計を数えた日（10月12日）", s?.check?.since, "2026-10-12");
+    for (let i = 0; i < 19; i++) A.noteSpeedSample(BOX, { t1: 1300, pc: null });
+    A.flushMasteryMeta();
+    s = stored();
+    eq("PR161-3: その後に A が新しく決めた最初の中央値（20 件目。1300）は書く", [s?.speed?.[BOX]?.t1?.length, s?.check?.firstMedian?.[BOX]], [20, 1300]);
+    // タブ B が since の遅い・基準の無いバックアップを復元（js/backup.js applyBackup）
+    store.set(KEY, JSON.stringify(old));
+    A.forgetMasteryMeta();
+    B.forgetMasteryMeta();
+    A.getMasteryMeta();
+    store.set(KEY, JSON.stringify({ v: 1, speed: {}, check: { since: "2026-10-05", rank: {}, firstFast: { prior: [0, 0], own: [0, 0] }, pending: {}, firstMedian: {} } }));
+    B.forgetMasteryMeta();
+    A.noteSpeedSample(BOX, { t1: 1100, pc: null });
+    A.noteRankCheck({ id: "x2", rankBefore: 2, gap: 1, ok: false }, now);
+    A.flushMasteryMeta();
+    s = stored();
+    eq("PR161-3: 復元の後に A が書いても、A の読み込んだ時の基準・数え始めた日は戻らない（復元した 10月5日のまま・基準なし）", [s?.check?.firstMedian?.[BOX], s?.check?.since, s?.speed?.[BOX]?.t1], [undefined, "2026-10-05", [1100]]);
+    // 消していない保存（読み込んだ時の基準がまだある）には今どおり（先に書いた値のまま）
+    store.set(KEY, JSON.stringify(old));
+    A.forgetMasteryMeta();
+    A.getMasteryMeta();
+    A.noteSpeedSample(BOX, { t1: 900, pc: null });
+    A.noteRankCheck({ id: "x3", rankBefore: 3, gap: 2, ok: true }, now);
+    A.flushMasteryMeta();
+    s = stored();
+    eq("PR161-3: 消していなければ基準・数え始めた日は保存のまま（1500・9月1日）・集計は足し算", [s?.check?.firstMedian?.[BOX], s?.check?.since, s?.check?.rank?.["3"]?.["2-5"]], [1500, "2026-09-01", [5, 1]]);
     store.delete(KEY);
     A.forgetMasteryMeta();
     B.forgetMasteryMeta();

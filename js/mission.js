@@ -31,7 +31,7 @@ function saveMission(mission) {
 }
 
 // Reviewの選定: 未習得 かつ（ミスあり or 復習期限が来ている）
-// 期日前の思い出せる以上の語と、確認待ちの知ってた語は外す（習熟度の S6。js/mastery.js holdBeforeDue）:
+// 期日前の思い出せる以上の語と、× の無い知ってた語は外す（習熟度の S6。js/mastery.js holdBeforeDue）:
 // ミスのある語は期日を見ずに毎日出るので、段 3 のまま 1 日あけの正解が続いて習得に届き、6 日休む機会が無くなる。
 // 苦手（未解決。最後が ×）は期日が先でも外さない（× の後の打ち直しで期日が翌日になるため。holdBeforeDue が見る）
 // 優先順位: missCount 多い → lastPlayed が古い
