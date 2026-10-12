@@ -16,6 +16,8 @@
 //
 // 答えごとには書かない。メモリーに持ち、変わったとき（dirty）だけ、10 答えごと（tickMasteryMeta）・回の終わり・stopGame・pagehide で
 // 1 回書く（flushMasteryMeta）。変わっていなければ書かない。読み書きはすべて try/catch（失敗しても学習は続く。js/retentionLog.js と同じ作法）。
+// 2 つのタブで同時に学んでも互いに消さない: 書く直前に保存を読み直し、このタブで足した分（速さの見本・集計の増分。delta）だけを足して書く
+// （見本は各箱の最新 40 件、集計は足し算）。書いた後のメモリーは保存と同じ中身（もう一方のタブの見本も基準に入る）。
 
 import { localDay } from "./retentionCalc.js";
 
@@ -67,9 +69,15 @@ export function median(list) {
 
 // ===== メモリーの中身 =====
 
-let meta = null; // 読んだ中身（無ければ空）
+let meta = null; // 読んだ中身（無ければ空）＋このタブで足した分
 let dirty = false; // 保存していない変化がある
 let answersSinceFlush = 0;
+// 前に書いてから（読んでから）このタブで足した分。flush で保存を読み直した中身に足す
+let delta = emptyDelta();
+
+function emptyDelta() {
+  return { speed: {}, rank: {}, firstFast: { prior: [0, 0], own: [0, 0] }, pendingAdd: new Map(), pendingDel: new Set() };
+}
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const nums = (v) => (Array.isArray(v) ? v.filter((n) => Number.isFinite(n) && n >= 0) : []);
@@ -110,14 +118,49 @@ function normalize(raw) {
   return m;
 }
 
-function load() {
-  if (meta) return meta;
+function readStored() {
   try {
-    meta = normalize(JSON.parse(localStorage.getItem(KEY) || "null"));
+    return normalize(JSON.parse(localStorage.getItem(KEY) || "null"));
   } catch {
-    meta = emptyMeta();
+    return emptyMeta();
   }
+}
+
+function load() {
+  if (!meta) meta = readStored();
   return meta;
+}
+
+// 保存を読み直した中身 base に、このタブで足した分 d を足す（base を書き換えて返す）。mem = このタブのメモリー（数え始めた日・最初の中央値の控え）
+function mergeDelta(base, d, mem) {
+  const m = base;
+  for (const [box, add] of Object.entries(d.speed)) {
+    const b = m.speed[box] ?? { t1: [], pc: [] };
+    m.speed[box] = { t1: [...b.t1, ...add.t1].slice(-KEEP), pc: [...b.pc, ...add.pc].slice(-KEEP) };
+  }
+  for (const box of BOX_KEYS) {
+    if (Number.isFinite(m.check.firstMedian[box])) continue; // 先に書いたタブの値のまま（1 回だけ書く）
+    if (Number.isFinite(mem?.check.firstMedian[box])) m.check.firstMedian[box] = mem.check.firstMedian[box];
+    else if ((m.speed[box]?.t1.length ?? 0) >= MIN_SAMPLES) m.check.firstMedian[box] = median(m.speed[box].t1); // 足して初めて 20 件
+  }
+  const since = mem?.check.since;
+  if (since && (!m.check.since || since < m.check.since)) m.check.since = since;
+  for (const [r, row] of Object.entries(d.rank)) {
+    const mrow = m.check.rank[r] ?? (m.check.rank[r] = {});
+    for (const [band, [o, x]] of Object.entries(row)) {
+      const c = mrow[band] ?? [0, 0];
+      mrow[band] = [c[0] + o, c[1] + x];
+    }
+  }
+  for (const k of ["prior", "own"]) m.check.firstFast[k] = [m.check.firstFast[k][0] + d.firstFast[k][0], m.check.firstFast[k][1] + d.firstFast[k][1]];
+  for (const id of d.pendingDel) delete m.check.pending[id];
+  for (const [id, code] of d.pendingAdd) {
+    delete m.check.pending[id];
+    m.check.pending[id] = code;
+  }
+  const ids = Object.keys(m.check.pending);
+  for (let i = 0; i < ids.length - PENDING_MAX; i++) delete m.check.pending[ids[i]];
+  return m;
 }
 
 function touch() {
@@ -144,6 +187,18 @@ export function getSpeedBox(box) {
 }
 
 // ===== 速さ =====
+
+// 物理キーボードの印字キーの KeyboardEvent.code（US・JIS 配列の文字・数字・記号・空白・テンキー）
+const PHYSICAL_CODE = /^(?:Key[A-Z]|Digit[0-9]|Numpad\w+|Minus|Equal|Space|Quote|Backquote|Comma|Period|Slash|Semicolon|Backslash|BracketLeft|BracketRight|IntlBackslash|IntlRo|IntlYen)$/;
+
+// keydown が来た入力の経路（速さの箱の input）: 物理キーとみなすのは、信頼されたイベントで code が物理キーの名前のときだけ（"kbd"）。
+// iPhone・Android の画面キーボードの keydown は信頼されたイベントでも code が空・"Unidentified"・keyCode 229 なので "touch"。
+// 専用の画面キーボード（#osk のボタンが合成する keydown。isTrusted 偽）も "touch"
+export function keyInputOf(event) {
+  if (!event || event.isTrusted === false) return "touch";
+  if (event.keyCode === 229) return "touch";
+  return PHYSICAL_CODE.test(event.code ?? "") ? "kbd" : "touch";
+}
 
 // sample = { t1, pc }（ms）。t1 が数で 200ms 以上なら測れた答え。pc は字数 3 以上のときだけ数（ほかは null）
 export function isMeasured(sample) {
@@ -186,11 +241,15 @@ export function noteSpeedSample(box, sample) {
     if (!BOX_SET.has(box) || !isMeasured(sample)) return false;
     const m = load();
     const b = m.speed[box] ?? { t1: [], pc: [] };
-    b.t1 = [...b.t1, Math.min(sample.t1, T1_CAP)].slice(-KEEP);
+    const t1 = Math.min(sample.t1, T1_CAP);
+    b.t1 = [...b.t1, t1].slice(-KEEP);
     const pc = pcOf(sample);
     if (pc !== null) b.pc = [...b.pc, pc].slice(-KEEP);
     m.speed[box] = b;
     if (b.t1.length >= MIN_SAMPLES && !Number.isFinite(m.check.firstMedian[box])) m.check.firstMedian[box] = median(b.t1);
+    const db = delta.speed[box] ?? (delta.speed[box] = { t1: [], pc: [] });
+    db.t1 = [...db.t1, t1].slice(-KEEP);
+    if (pc !== null) db.pc = [...db.pc, pc].slice(-KEEP);
     touch();
     return true;
   } catch {
@@ -212,10 +271,16 @@ export function noteRankCheck({ id, rankBefore, gap, ok }, nowMs = Date.now()) {
     const row = m.check.rank[String(r)] ?? (m.check.rank[String(r)] = {});
     const cell = row[band] ?? (row[band] = [0, 0]);
     cell[ok ? 0 : 1]++;
+    const drow = delta.rank[String(r)] ?? (delta.rank[String(r)] = {});
+    (drow[band] ?? (drow[band] = [0, 0]))[ok ? 0 : 1]++;
     const code = id ? m.check.pending[id] : undefined;
     if (code === "p" || code === "o") {
-      m.check.firstFast[code === "p" ? "prior" : "own"][ok ? 0 : 1]++;
+      const kind = code === "p" ? "prior" : "own";
+      m.check.firstFast[kind][ok ? 0 : 1]++;
       delete m.check.pending[id];
+      delta.firstFast[kind][ok ? 0 : 1]++;
+      delta.pendingAdd.delete(id);
+      delta.pendingDel.add(id);
     }
     touch();
   } catch {
@@ -234,6 +299,9 @@ export function notePendingFirstFast(id, basis, nowMs = Date.now()) {
     m.check.pending[id] = code;
     const ids = Object.keys(m.check.pending);
     for (let i = 0; i < ids.length - PENDING_MAX; i++) delete m.check.pending[ids[i]];
+    delta.pendingDel.delete(id);
+    delta.pendingAdd.delete(id);
+    delta.pendingAdd.set(id, code);
     touch();
   } catch {
     // 集計は学習を止めない
@@ -242,16 +310,20 @@ export function notePendingFirstFast(id, basis, nowMs = Date.now()) {
 
 // ===== 保存 =====
 
-// 変わっていれば 1 回書く。変わっていなければ何もしない（読むだけのページ・机に戻るたびの stopGame でも書かない）
+// 変わっていれば 1 回書く。変わっていなければ何もしない（読むだけのページ・机に戻るたびの stopGame でも書かない）。
+// 書く直前に保存を読み直し、このタブで足した分だけを足す（もう一方のタブが書いた見本・集計を消さない）。書いた中身をメモリーにする
 export function flushMasteryMeta() {
   answersSinceFlush = 0;
   if (!dirty || !meta) return false;
   try {
-    localStorage.setItem(KEY, JSON.stringify(meta));
+    const merged = mergeDelta(readStored(), delta, meta);
+    localStorage.setItem(KEY, JSON.stringify(merged));
+    meta = merged;
+    delta = emptyDelta();
     dirty = false;
     return true;
   } catch {
-    return false; // 書けなかった（容量など）: 次の機会にもう一度
+    return false; // 書けなかった（容量など）: 足した分は持ったまま、次の機会にもう一度
   }
 }
 
@@ -267,6 +339,7 @@ export function forgetMasteryMeta() {
   meta = null;
   dirty = false;
   answersSinceFlush = 0;
+  delta = emptyDelta();
 }
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {

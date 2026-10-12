@@ -2,15 +2,15 @@ import { saveWordStats, editWordStats } from "./storage.js";
 import { markWordDirty } from "./sync.js";
 import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
 import { touchStudyTime } from "./studyTime.js";
-import { rankOf, answerContext, nextRank, isFirstAnswer, isKnownWaiting } from "./mastery.js";
+import { answerContext, nextRank, isFirstAnswer, intervalAfter, keepLaterDue, unseenFailCap } from "./mastery.js";
 import { noteRankCheck, tickMasteryMeta } from "./masteryMeta.js";
 
 // 簡易SRS: 連続ノーミス正解数 → 次の復習までの日数
 // 1回→1日後、3連続→3日後、10連続→30日後（それ以上は30日固定）
 const REVIEW_INTERVAL_DAYS = [1, 2, 3, 5, 7, 10, 14, 21, 30];
 
-function daysFromNow(days) {
-  const d = new Date();
+function daysFromNow(days, nowMs = Date.now()) {
+  const d = new Date(nowMs);
   d.setDate(d.getDate() + days);
   return d.toISOString();
 }
@@ -38,18 +38,22 @@ export function recordPlay(word) {
 
 // 答える前の stat の控え（習熟度。js/mastery.js）。○ は recordCorrect が先に streak・mastered を書き換えるので、
 // recordCorrect の先頭（写す前）で控え、同じタスクの recordRecallSuccess（id が同じとき）が使う。メモリーだけ（word_stats には書かない）。
-// マイクロタスクで捨てる（答え表示の後の打ち直しで recordCorrect だけが呼ばれたとき、次の答えへ持ち越さない。js/storage.js の draft と同じ作法）
-let pendingAnswer = null; // { id, rankBefore, streakBefore, knownBefore, clean, ctx }
+// マイクロタスクで捨てる（答え表示の後の打ち直しで recordCorrect だけが呼ばれたとき、次の答えへ持ち越さない。js/storage.js の draft と同じ作法）。
+// Battle（凍結）は recordCorrect(id, wasClean) → recordRecallSuccess(id) の今の呼び方なので、この控えの仕組みで答える前の段を渡す
+let pendingAnswer = null; // { id, rankBefore, knownBefore, clean, ctx, streakDays }
 
-function holdPendingAnswer(word, stat, wasClean) {
+// ctx = 答える前の stat の answerContext。js/game.js は速さの分類のために同じ値を持っているので渡す（二重に計算しない）。
+// 渡さない呼び方（Battle・答えを見た後の打ち直し）はここで計算する。段と確認待ちは ctx から読む（rank = rankOf、knownCheck = isKnownWaiting）
+function holdPendingAnswer(word, stat, wasClean, ctx = null) {
   try {
+    const c = ctx ?? answerContext(stat, Date.now());
     const held = {
       id: word,
-      rankBefore: rankOf(stat),
-      streakBefore: stat.cleanCorrectStreak ?? 0,
-      knownBefore: isKnownWaiting(stat), // 確認待ちの知ってた語か（js/mastery.js。streak 1 だけでなく期日でも見る）
+      rankBefore: c.rank,
+      knownBefore: c.knownCheck, // 確認待ちの知ってた語か（js/mastery.js isKnownWaiting。streak 1 だけでなく期日でも見る）
       clean: !!wasClean,
-      ctx: answerContext(stat, Date.now())
+      ctx: c,
+      streakDays: 0 // この答えで recordCorrect が streak から決めた日数（進まなければ 0）。S2・S3 が伸ばす起点（段階 2）
     };
     pendingAnswer = held;
     queueMicrotask(() => {
@@ -60,25 +64,34 @@ function holdPendingAnswer(word, stat, wasClean) {
   }
 }
 
+// recordCorrect が streak から決めた日数を控えに足す（同じタスクの recordRecallSuccess が S2・S3 の起点に使う）
+function noteStreakDays(word, days) {
+  if (pendingAnswer?.id === word) pendingAnswer.streakDays = days;
+}
+
 const SPEEDS = new Set(["fast", "normal", "slow", "unknown"]);
 
-export function recordCorrect(word, wasClean) {
+// ctx（省略可）: 答える前の stat の answerContext（js/game.js が持っている値。holdPendingAnswer）
+export function recordCorrect(word, wasClean, ctx = null) {
   const stats = editWordStats();
 
   if (!stats[word]) return;
-  holdPendingAnswer(word, stats[word], wasClean);
+  holdPendingAnswer(word, stats[word], wasClean, ctx);
+  // 初見 = まだ一度も答えておらず、答えの綴りも見ていない（js/mastery.js isFirstAnswer。correctCount を足す前に読む）
+  const firstAnswer = isFirstAnswer(stats[word]);
   stats[word] = { ...stats[word] };
 
   stats[word].correctCount += 1;
 
   // 初見でノーミス自力正解 = もともと知っていた語。学習ではないので「覚えた」に数えず、
   // 復習も薄く（2週間後に1回確認）。知っている語で時間を使わせない。
-  // 初見 = まだ一度も答えていない（js/mastery.js isFirstAnswer）。出題の回数は見ない（出題だけされて答えなかった語も知ってたになれる）
-  if (wasClean && isFirstAnswer(stats[word])) {
+  // 出題の回数は見ない（出題だけされて答えなかった語も知ってたになれる）。別解を打って答えを見た語はなれない
+  if (wasClean && firstAnswer) {
     stats[word].knownOnSight = true;
     stats[word].cleanCorrectStreak = 1;
     stats[word].srsAdvancedOn = localDateString();
     stats[word].nextReviewAt = daysFromNow(14);
+    noteStreakDays(word, 14);
     saveWordStats(stats);
     markWordDirty(word);
     return;
@@ -100,9 +113,11 @@ export function recordCorrect(word, wasClean) {
         stats[word].masteredAt = new Date().toISOString();
       }
 
-      stats[word].nextReviewAt = daysFromNow(
-        reviewIntervalFor(stats[word].cleanCorrectStreak)
-      );
+      // 正解で期日を早めない（習熟度の S1。js/mastery.js keepLaterDue）: 期日が先の語を期日前に答えても、その期日より前にしない
+      const nowMs = Date.now();
+      const interval = reviewIntervalFor(stats[word].cleanCorrectStreak);
+      stats[word].nextReviewAt = keepLaterDue(stats[word].nextReviewAt, daysFromNow(interval, nowMs), nowMs);
+      noteStreakDays(word, interval);
     }
   } else {
     stats[word].cleanCorrectStreak = 0;
@@ -112,6 +127,18 @@ export function recordCorrect(word, wasClean) {
   saveWordStats(stats);
   markWordDirty(word);
   touchStudyTime();
+}
+
+// 別解を打って答えの綴りを見た（js/game.js acceptAlternative。× は記録しない）。初見の語にだけ印 answerSeenAt を書く
+// （端末だけの欄。打ち直せば correctCount が足されるが、打ち直す前に時間切れ・離れた語も、次の答えを「知ってた」にしない。js/mastery.js isFirstAnswer）。
+// 答えの記録がある語・印のある語には書かない（語ごとに多くて 1 回）
+export function recordAnswerSeen(word) {
+  const stats = editWordStats();
+
+  if (!stats[word] || !isFirstAnswer(stats[word])) return;
+  stats[word] = { ...stats[word], answerSeenAt: new Date().toISOString() };
+  saveWordStats(stats);
+  markWordDirty(word);
 }
 
 // New Word Learning Loop: 同日の学習段階を保存（ローカル日付基準）
@@ -193,14 +220,35 @@ function readRank(stat, nowMs) {
   }
 }
 
-// 段と段を決めた時刻を、書き手の写し（同じ 1 回の保存）に書く。masteryAt は書いた lastRecall*At と同じ文字列
+// 段と段を決めた時刻を、書き手の写し（同じ 1 回の保存）に書く。masteryAt は書いた lastRecall*At と同じ文字列。
+// × で段を下げたら masteryDownAt にも同じ時刻（端末だけの欄。同じ日の ○ で戻さない: js/mastery.js answerContext の downToday）
 function writeRank(stat, before, answer, ctx, nowIso) {
   if (!before || !ctx) return;
   try {
     stat.masteryRank = nextRank(before.rank, answer, ctx);
     stat.masteryAt = nowIso;
+    if (!answer.ok && stat.masteryRank < before.rank) stat.masteryDownAt = nowIso;
   } catch {
     // 段は次の答えで書き直す
+  }
+}
+
+// 日をあけた正解の後、復習の間隔を伸ばす（習熟度の S2・S3。段階 2。js/mastery.js intervalAfter）。書き手の写しに書く（同じ 1 回の保存）。
+// 当てるのはその日の最初の答え（前の答えの日があり、同じ日の扱いでない gap ≥ 1）のノーミス正解だけ。初めての答え（知ってたの 14 日）・
+// 同じ日の答え・打ち間違いありの正解（recordCorrect が期日を翌日にする）には当てない。期日は伸ばすだけ（keepLaterDue）。
+// 答えの後が streak 1・recallFail 0 になる答え（打ち間違いありの正解で streak 0 に戻った後の、別の日のノーミス。知ってた語でも、そうでない語でも）
+// にも当てない: 確認待ちの知ってた語は同期する欄だけで「streak 1・recallFail 0・期日が最後の自力正解から 13 日以上先」の形で見分ける
+// （js/mastery.js isKnownWord・isKnownWaiting。2 台目には knownOnSight が届かない）ので、ここで 13 日以上に伸ばすと確認待ちと読み違える。
+// rankCap: 答える前の stat にこの端末の段が見ていない × があれば 1 段下の段（js/mastery.js unseenFailCap）。下限はそれより上の段で見ない
+function extendInterval(stat, ctx, clean, speed, streakDays, nowMs, rankCap = null) {
+  if (!clean || !ctx?.firstOfDay) return;
+  if ((stat.cleanCorrectStreak ?? 0) === 1 && (stat.recallFail ?? 0) === 0) return;
+  try {
+    const rank = rankCap ? Math.min(stat.masteryRank, rankCap) : stat.masteryRank;
+    const days = intervalAfter({ streakDays, gap: ctx.gap, rank, speed });
+    if (days > 0) stat.nextReviewAt = keepLaterDue(stat.nextReviewAt, daysFromNow(days, nowMs), nowMs);
+  } catch {
+    // 間隔は recordCorrect が決めたまま
   }
 }
 
@@ -231,6 +279,8 @@ export function recordRecallSuccess(word, answer) {
   const nowIso = new Date(nowMs).toISOString(); // 自力正解の日時と段を決めた時刻は同じ文字列
 
   const prevRecallSuccessAt = stats[word].lastRecallSuccessAt ?? null; // 記憶の保持率の t0 判定にだけ使う（上書きの前に読む。Recall Loop には使わない）
+  // 見ていない × の段の上限（S3 の下限だけに使う）。段と段を決めた時刻を書く前に読む（recordCorrect はこの 3 つの欄を書かないので、答える前の値と同じ）
+  const rankCap = unseenFailCap(stats[word]);
 
   if (isReviewAttempt(stats[word])) {
     stats[word].lastReviewResult = "ok";
@@ -245,6 +295,7 @@ export function recordRecallSuccess(word, answer) {
     // 知ってた語の最初の確認は、答える前に確認待ちだったときだけ（recordCorrect の控え。isKnownWaiting は streak 1 を含む。控えが無ければ立てない）
     const ctx = { ...before.ctx, knownCheck: !!(p && p.knownBefore) };
     writeRank(stats[word], before, { ok: true, clean, speed }, ctx, nowIso);
+    extendInterval(stats[word], ctx, clean, speed, p?.streakDays ?? 0, nowMs, rankCap); // S2・S3（段を書いた後。下限は答えた後の段。見ていない × があれば 1 段下まで）
   }
 
   saveWordStats(stats);

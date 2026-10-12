@@ -1,6 +1,6 @@
 # 単語ごとの習熟度と Study の 60 秒 — 仕様（Batch 63）
 
-> 確定版（2026-10-12）。**段階 1 は実装済み**（§2 の A〜K1。§11 に実装で決めたこと）。**段階 2（§6 の S1〜S5）はまだ**。創業者の指示（2026-10-11）:「習熟度ランクがあってもいいと思うんだよね。りんごをappleって言えない人っていないじゃん？ど忘れでもないものやん。その単語に対してどれぐらいの記憶認識しているのかを可視化できるようにしたい。60秒間のタイム制はやっぱり学習モードでもあった方がよくて、その時点での各単語の習熟度を出すべきだと思うんだよね。」
+> 確定版（2026-10-12）。**段階 1・段階 2 とも実装済み**（段階 1 = §2 の A〜K1、段階 2 = §6 の S1〜S5。§11 に実装で決めたこと。段階 2 は §11.5、PR #159 のレビュー対応は §11.6）。創業者の指示（2026-10-11）:「習熟度ランクがあってもいいと思うんだよね。りんごをappleって言えない人っていないじゃん？ど忘れでもないものやん。その単語に対してどれぐらいの記憶認識しているのかを可視化できるようにしたい。60秒間のタイム制はやっぱり学習モードでもあった方がよくて、その時点での各単語の習熟度を出すべきだと思うんだよね。」
 > 学習の本体（Study ほか）の話として扱う。集客の /typing.html・/typing-game.html は触らない（別の作業）。
 > 起草は 2026-10-12。3 つの案（学習科学・体験・最小）を採点して学習科学の案を土台に選び（付録 C）、同日 3 つの視点（段の論理・60 秒の回と画面と E2E・創業者の指示）の反証を受けて改訂した（付録 D）。
 > 文中の行番号は実装前の木（d079352）のもの。実装後の場所は関数名で引く。
@@ -15,7 +15,7 @@
 5. 60 秒は**今日のセットの長さ**の選び方の 1 つ（10語／15語／25語／60秒）。入口・出題・記録は Study のまま。回の種類と長さは始めるときに 1 度だけ決める。スコア・ベスト・BGM・赤い秒読みは持たない。時間切れの語は × にしない。
 6. 60 秒の終わりは完了パネルの形で、**答えた語を段ごとの語チップ**に並べ、「初めて」「上がった」「下がった」「時間がかかった」を文字で付ける。
 7. 単語帳・語の詳細・学習データ・語数のセットの完了パネル・Challenge／Daily の結果に同じ物差しを出す。語の詳細では、段の名前に**その語の事実**（いつ・何日あけて思い出せたか）と**次の段の条件**を添える。段ごとの決まり文句で経緯を言わない。常に 0/10 だった記憶ゲージは外す。
-8. 記録は word_stats に**端末だけの欄 2 つ**（`masteryRank`・`masteryAt`）と別キー `spelldash_mastery_meta` 1 つ。schema 6 のまま、SQL は要らない。
+8. 記録は word_stats に**端末だけの欄 2 つ**（`masteryRank`・`masteryAt`。PR #159 のレビューで `masteryDownAt`・`answerSeenAt` を足した。§7.1・§11.6）と別キー `spelldash_mastery_meta` 1 つ。schema 6 のまま、SQL は要らない。
 9. 期日前の身についた以上の語と、2 週間後の確認を待つ知ってた語は、補充・ミッション・息抜きに出さない（S6、**段階 1**）。段階 2 で間隔とつなぐ（正解で期日を早めない・日をあけた正解は間隔を伸ばす・身についた 7 日／即答 30 日の下限）。apple が 106 日までに出る回数は、今の 10 回＋期日を見ない補充から、段階 1 で 10 回（補充なし）、段階 2 で 5 回になる（Challenge・Daily・Battle で答えなければ）。予定どおり続ける人の間隔は今と同じ。
 
 ---
@@ -51,7 +51,7 @@
 | I | 事実と合わない文の直し 3 件と小さな不具合 2 件（§5.10） | 1 | game.js・wordDetail.js・myWordsView.js・stats.js・studyQueue.js |
 | J | 段階 1 の E2E・単体・docs | 1 | tests/e2e.mjs・scripts/test-mastery.mjs・docs |
 | K1 | 期日前の強い語と確認待ちの知ってた語を補充・ミッション・息抜きに出さない（S6） | 1 | js/studyQueue.js・js/mission.js |
-| K | SRS の間隔とのつなぎ S1〜S5 | 2 | js/stats.js |
+| K | SRS の間隔とのつなぎ S1〜S5（入った） | 2 | js/stats.js・js/mastery.js（`intervalAfter`・`keepLaterDue`） |
 
 ### 入れないもの
 
@@ -97,18 +97,19 @@
 |---|---|
 | 答え | `recordRecallSuccess`（○）か `recordRecallFail`（×）。答え表示の後の打ち直し・別解を打った後の打ち直しは答えに数えない（今と同じ） |
 | ×（思い出せず） | Enter／Esc の答え表示・ヒント・1 打ミス・Battle のパス（今の `recordRecallFail` と同じ。保持率と同じ基準） |
-| 答える前の stat（`pendingAnswer`） | ○ は `recordCorrect` が先に streak・mastered を書き換える（game.js:1902-1909、battleEngine.js:190-191 はどちらも `recordCorrect` → `recordRecallSuccess` の順）。そこで `recordCorrect` の**先頭（写す前）**で `{ id, rankBefore, streakBefore, knownBefore, clean, ctx }` をモジュール変数に控え、同じタスクの `recordRecallSuccess` は id が同じならこれを使う。`queueMicrotask` で捨てる（storage.js の draft と同じ作法。答え表示の後の打ち直しで `recordCorrect` だけが呼ばれたとき、次の答えへ持ち越さない）。× は `recordRecallFail` の先頭で書く前の stat を読む |
+| 答える前の stat（`pendingAnswer`） | ○ は `recordCorrect` が先に streak・mastered を書き換える（game.js:1902-1909、battleEngine.js:190-191 はどちらも `recordCorrect` → `recordRecallSuccess` の順）。そこで `recordCorrect` の**先頭（写す前）**で `{ id, rankBefore, knownBefore, clean, ctx, streakDays }` をモジュール変数に控え、同じタスクの `recordRecallSuccess` は id が同じならこれを使う（`ctx` は game.js が速さの分類のために出した `answerContext` を `recordCorrect(id, clean, ctx)` で渡す。渡さない Battle はここで計算し、`rankBefore = ctx.rank`・`knownBefore = ctx.knownCheck`。§11.6 の 6）。`queueMicrotask` で捨てる（storage.js の draft と同じ作法。答え表示の後の打ち直しで `recordCorrect` だけが呼ばれたとき、次の答えへ持ち越さない）。× は `recordRecallFail` の先頭で書く前の stat を読む |
 | ○ノーミス（clean） | `answer.clean`（game.js が `completeWord` の `isClean` を渡す）→ 無ければ `pendingAnswer.clean`（Battle。`recordCorrect` の `wasClean`）→ どちらも無ければ打ち間違いありとみなす（控えめ） |
 | 前の答えの時刻 `prevAt`・日 `prevDay` | 答える前の `max(lastRecallSuccessAt, lastRecallFailAt)` と、そのローカル日。どちらも無ければ `null` |
 | 同じ日の扱い `sameDay` | `prevDay === today`、または `今 − prevAt < MIN_GAP_MS`（6 時間）、または `dayDiff(prevDay, today)` が 1 未満・数でない（時計の戻り・別の端末の時計の進み） |
 | 間隔 `gap` | `sameDay` でないときだけ `dayDiff(prevDay, today)`（js/retentionCalc.js の `localDay`・`dayDiff`。整数日）。× のあとは答えを見ているので × の日から数え直す |
 | その日の最初の答え | `prevDay !== null && !sameDay`。段が上がる・速さを基準に入れる・§3.8 で数える・S2／S3 を当てるのはこの答えだけ |
-| 初めての答え（段の枝） | `prevDay === null && rankBefore === 0` |
+| 初めての答え（段の枝） | `prevDay === null && rankBefore === 0`、かつ答えの綴りを見ていない（`correctCount` 0・`answerSeenAt` なし。§11.6 の 1） |
 | 日数が分からない答え | `prevDay === null && rankBefore >= 1`（時刻の欄が無いのに段がある古い行。mastered だけ持つ語など） |
-| 初見の判定（知ってたを立てる条件） | `isFirstAnswer(stat)` = `!lastRecallSuccessAt && !lastRecallFailAt && (recallFail ?? 0) === 0`。`playCount` は見ない（§5.10 の直し） |
-| 知ってた語 | `knownOnSight === true && (recallFail ?? 0) === 0` |
+| 初見の判定（知ってたを立てる条件） | `isFirstAnswer(stat)` = `!lastRecallSuccessAt && !lastRecallFailAt && (recallFail ?? 0) === 0`、かつ答えの綴りを見ていない（`correctCount` 0・`answerSeenAt` なし。別解を打つと答えを見せるが × を記録しないため。§11.6 の 1）。`playCount` は見ない（§5.10 の直し） |
+| 知ってた語 | `(recallFail ?? 0) === 0` で、`knownOnSight === true`、または確認待ちの形（streak 1・最後の自力正解があり、期日が最後の自力正解から 13 日以上先。同期する欄だけで読めるので 2 台目でも同じ。§11.6 の 2） |
 | 知ってた語の最初の確認 `knownCheck` | 知ってた語で、答える前の streak が 1（`pendingAnswer.streakBefore === 1`）。初見の日のあと、別の日のノーミス正解（streak 2）・打ち間違いありの正解（streak 0）・×（recallFail 1）のどれも無い。streak 0 から別の日のノーミスで 1 に戻った語と見分けるため、期日が最後の自力正解から 13 日以上先であることも要る（`isKnownWaiting`。§11.1 の 9） |
 | 今日もう × がある `failedToday` | 答える前の `lastRecallFailAt` が同じ日の扱い（ローカル日が今日、または 6 時間未満） |
+| 今日の × で下げた `downToday` | 答える前の `masteryDownAt`（× で段を下げた答えの時刻。端末だけ）が同じ日の扱い。同じ日の ○ で戻さない（§11.6 の 5） |
 
 - これらは `answerContext(stat, nowMs)`（mastery.js の純関数）が 1 か所で出す。stats.js の書き手と game.js（速さの分類・基準に入れるか・60 秒のパネル）が同じ関数を呼ぶ。
 - 2 つの日時は同期する欄で、マージは欄ごとに新しい方（sync.js:434-437）。**取り込んだ後は**、2 台で使っても `gap` と「その日の最初の答え」は同じに出る。取り込む前（タブごとの initialSync、sync.js:362-450 の前）の答えは、この端末の答えとして扱う（段は端末ごと、§7.3 とそろえる）。
@@ -119,7 +120,7 @@
 |---|---|
 | `tShow` | `setNewWord` で出題の文を書いた後の、最初の `requestAnimationFrame` の中の `performance.now()`（重い端末で `recordPlay` の同期の書き込み、Batch 58 の計測で約 135ms を数えないため）。これより前に最初のキーが来た語は測らない |
 | `tFirst` | この語の最初のキー: `acceptChar`（英単語）／`handleTypingMiss`／ローマ字の受理と miss。ヒントで足した字（`useHint`）は入れない |
-| 入力の種類 `input` | その語の最初のキーが来た経路: 物理キーの keydown（`handleKeydown` で受けた印字できるキー）→ `kbd`。画面キーボード（`#osk` のボタン → `editAtCaret`）・ソフトウェアキーボードの beforeinput／input（`handleBeforeInput`・`handleTextInput`）→ `touch`。タブレットに外付けキーボードをつなぐ人、タッチ式のノート PC で画面キーボードを出す人も、実際の打ち方の箱に入る |
+| 入力の種類 `input` | その語の最初のキーが来た経路: 物理キーの keydown（`handleKeydown` で受けた印字できるキーで、信頼されたイベントかつ `event.code` が物理キーの名前〔`KeyA`〜`KeyZ`・`Digit`・`Minus` など〕のとき。`masteryMeta.js` の `keyInputOf`）→ `kbd`。iPhone・Android の画面キーボードの keydown（信頼されたイベントでも `code` が空・`Unidentified`・keyCode 229）→ `touch`（§11.6 の 3）。画面キーボード（`#osk` のボタン → `editAtCaret`）・ソフトウェアキーボードの beforeinput／input（`handleBeforeInput`・`handleTextInput`）→ `touch`。タブレットに外付けキーボードをつなぐ人、タッチ式のノート PC で画面キーボードを出す人も、実際の打ち方の箱に入る |
 | `tDone` | `completeWord` の頭 |
 | T1 | `tFirst − tShow`（ms）。速さの本体 |
 | 1 字あたり pc | `(tDone − tFirst) ÷ (打った字数 − 1)`。字数 3 以上のときだけ。綴りで迷った語の見張り |
@@ -155,13 +156,13 @@
 // a = { ok, clean, speed }、c = answerContext の値 { prevDay, sameDay, gap, knownCheck, failedToday }
 export const SOLID_GAP_DAYS = 6, TOP_GAP_DAYS = 20, KNOWN_CHECK_DAYS = 14, MIN_GAP_MS = 6 * 60 * 60 * 1000;
 export function nextRank(r, a, c) {
-  if (c.prevDay === null && r === 0) {                        // 初めての答え
+  if (c.prevDay === null && r === 0 && !c.sawAnswer) {        // 初めての答え（答えの綴りを見た語は通らない。§11.6 の 1）
     if (!a.ok) return 1;
     if (!a.clean) return 2;
     return a.speed === "fast" ? 4 : 3;                        // 遅くても 3（遅さは 2 週間後の確認で見る）
   }
   if (!a.ok) return c.failedToday ? r : Math.max(1, r - 1);   // × はその日の最初の 1 回だけ 1 段（○ との順は問わない）
-  if (c.prevDay === null || c.sameDay) return r <= 1 ? 2 : r;  // 日数が分からない・同じ日の ○: まだ → あやふや だけ
+  if (c.prevDay === null || c.sameDay) return r <= 1 && !c.downToday ? 2 : r; // 日数が分からない・同じ日の ○: まだ → あやふや だけ。今日の × で下げた語は戻さない（§11.6 の 5）
   if (!a.clean) return Math.max(r, 2);                        // 打ち間違いあり（Battle）は 2 より上げない。正解で下げない
   if (c.knownCheck && (r === 3 || r === 4) && c.gap >= KNOWN_CHECK_DAYS) return a.speed === "fast" ? 5 : 4;
   if (r === 5) return a.speed === "slow" ? 4 : 5;             // 遅い答えのまま「即答」と言わない
@@ -181,6 +182,8 @@ export function nextRank(r, a, c) {
 7. 日数が分からない答え・時計が戻った答えでは上げない（同じ日の扱い）。
 
 下げすぎないための守り: × は 1 段だけ・1 日 1 回（同じ日の 2 回目の × では下がらない。その日の最初の × は ○ の後でも下がる）・最低は 1・時間では下げない・正解で下げるのは即答の遅い答え（5 → 4）だけ・初めての答えは遅くても 3。
+
+その日の × で下がった語（下がる前が 2 以上。`masteryDownAt`）は、同じ日の ○（Recall Loop）で上げない（あやふや → まだ と下がった語が Recall Loop で すぐ あやふや に戻り、「思い出せなかった日は 1 段下がる」が成り立たなかった）。翌日以降の規則で上がる。新しい語の × → ○（0 → 1 → 2）と、前の日から まだ の語の今日の × → ○（1 → 1 → 2）は今どおり（§11.6 の 5）。
 
 ### 3.6 読み方（`rankOf`）と古い記録・ほかの端末・古い版
 
@@ -213,11 +216,11 @@ export function rankOf(s) {
 - 「6 日以上あいた ○」: 端末の `history`（直近 8 件の `{ d, r }`）で、`r === "o"` の項目とその前の項目の日の差が 6 以上の組がある。ミッションの復習（missCount > 0 の語を期日を見ずに出す）で 10 日続けて答えて習得になった語は、6 日あけた証拠が無いので 3。
 - history が 2 件未満の語（2 台目の取り込みなど。history は同期しない）は判断できないので、今の表のまま 4。
 - 知ってた語の行を先に置く（`knownOnSight` だけで `lastRecallSuccessAt` の無い種でも「まだ」にしない）。
-- 2 台目の初回の取り込みでは `knownOnSight` が届かない（sync.js:424）ので、知ってた語は streak から 2〜4 に見える（控えめな側）。
+- 2 台目の初回の取り込みでは `knownOnSight` が届かない（sync.js:424）。確認待ちの知ってた語は同期する欄だけの形（streak 1・recallFail 0・期日が最後の自力正解から 13 日以上先）で知ってた語と読むので、`initialRank` は 3、補充に出さない（S6）、14 日後の答えは最初の確認（§11.6 の 2）。確認の後の語は streak から 2〜4 に見える（控えめな側）。
 - 2 台目・古い版で答えた ○ はこの端末の段を上げない。× は `unseenFail` で 1 段として数える。どちらも次にこの端末で答えたとき `masteryAt` が今に揃う。自分で書いた × で `unseenFail` が立たないよう、`masteryAt` は書いた `lastRecall*At` と同じ文字列にする（§7.2）。
-- `isUnresolved` は studyQueue.js:94-98 と同じ 4 行を mastery.js に持つ（mastery.js は js/retentionCalc.js 以外を import しない。単体テストで読むため）。
+- `isUnresolved` は mastery.js に 1 つだけ置き、studyQueue.js はそれを import して export し直す（game.js・categoryProgress.js は今どおり studyQueue.js から読む）。mastery.js の import は js/retentionCalc.js と js/html.js（`esc`）だけで、どちらも DOM なし（単体テストが Node から読む。§11.6 の 7）。
 
-### 3.7 りんご → apple の道（S6 は段階 1、S1〜S3 は段階 2）
+### 3.7 りんご → apple の道（S6 は段階 1、S1〜S3 は段階 2。どちらも入った）
 
 | 日 | 起きること | 段 | 次の確認 |
 |---|---|---|---|
@@ -226,7 +229,7 @@ export function rankOf(s) {
 | 14 | ノーミス・すぐ（知ってた語の最初の確認。本人の基準 20 件以上で測る） | 即答 | 30 日後（S3） |
 | 44・74・104 | ノーミス（遅くない） | 即答 | 30 日ごと |
 
-- 106 日までに出るのは 0・14・44・74・104 日の 5 回（Challenge・Daily・Battle で答えなければ。0 日目の速さによらない）。今は 0・14・16・19・24・31・41・55・76・106 日の 10 回に、期日を見ない補充が加わる。段階 1 だけの間は、S6 で補充が消え、間隔は今の 10 回のまま。
+- 106 日までに出るのは 0・14・44・74・104 日の 5 回（Challenge・Daily・Battle で答えなければ。0 日目の速さによらない）。段階 1 より前は 0・14・16・19・24・31・41・55・76・106 日の 10 回に、期日を見ない補充が加わっていた。段階 1 だけの間は、S6 で補充が消え、間隔は 10 回のままだった。段階 2 で 5 回になった（単体 `node scripts/test-mastery.mjs` が偽の時計で書き手を回して、この表と下の 2 つの道を守る）。
 - 14 日目がふつうの速さ（または本人の基準が 20 件未満）なら身についた、次は 21 日後（S2）。35 日目（gap 21）にすぐなら即答、ふつうなら身についたのまま次は 30 日後。0・14・35・65・95 日の 5 回。
 - 1〜13 日に Challenge などで答えると、streak が動いて `knownCheck` が外れ、前の答えの日も動く。14 日目以降は通常の規則（6 日あけて身についた、20 日あけてすぐで即答）。
 - 初見で 1 打ミス（appel）なら まだ（1）。Recall Loop で打てたら あやふや（2）。その後は条件を満たした日に 1 段ずつ（翌日以降のノーミスで 思い出せる、その 6 日以上あとで 身についた、20 日以上あとにすぐで 即答）。
@@ -424,7 +427,8 @@ export function rankOf(s) {
 
   | 段 | 文 |
   |---|---|
-  | 1 | 自力で思い出せると あやふや |
+  | 1 | 自力で思い出せると あやふや（同じ日の ○ でも上がるので日付なし） |
+  | 1 で、今日の × で下げた語（`masteryDownAt` の日が今日。`downToday` と同じ印） | M月D日以降に（prevDay＋1） 自力で思い出せると あやふや（今日の ○ では上がらない。§11.6 の 5） |
   | 2 | M月D日以降に（prevDay＋1） 間違えずに思い出せると 思い出せる |
   | 3・4 の確認待ちの知ってた語 | M月D日の確認で（`nextReviewAt` の日。無ければ prevDay＋14） すぐ打てると 即答 |
   | 3 | M月D日以降に（prevDay＋6） 間違えずに思い出せると 身についた |
@@ -482,22 +486,24 @@ myWordsView.js:9 の表に `known: "知ってた"` を足す（「・ undefined�
 
 ## 6. SRS との関係（S6 は段階 1、S1〜S5 は段階 2）
 
+**入った**（2026-10-12。段階 1 = S6、段階 2 = S1〜S5。実装で決めたことは §11.1 の 10 と §11.5）。
+
 段は SRS の上に載る別の値。`REVIEW_INTERVAL_DAYS = [1,2,3,5,7,10,14,21,30]`・streak は 1 日 1 回だけ進む・習得＝streak 10・`isReviewDue` は変えない。次の 6 つを入れる（Q3 の既定）。
 
 | # | 規則 | 段階 | 中身 | 置く所 |
 |---|---|---|---|---|
 | S6 | 期日前に出さない | 1 | 対象: (a) 段 4 以上で `nextReviewAt` が未来の語、(b) 確認待ちの知ってた語（知ってた語で streak 1、`nextReviewAt` が未来。段に関係なく）。補充の既習（`pickFillers` の `familiarPool`）・ミッションの復習（mission.js `pickReviewWords`）・息抜き（`insertBreather`、studyQueue.js:237）から外す。苦手（未解決。最後が ×）の語は期日を見ずに外さない（§11.1 の 10）。補充が足りないときの埋め（「それでも足りなければ」）では最後に戻す。息抜きとミッションには戻さない（息抜きの候補が無ければ今と同じく挟まない。確認と 20 日の間隔を崩さないほうを取る）。ミッションに限り、段 3 で `nextReviewAt` が未来の語も外す（missCount > 0 の語は期日を見ずに毎日出るので、段 3 のまま gap 1 が続いて習得に届き、6 日休む機会が無い）。Challenge の抽選は変えない | studyQueue.js・mission.js |
-| S1 | 正解で期日を早めない | 2 | ノーミスで streak が進んだとき `next = max(今の期日（未来なら）, 今日 + streak の間隔)`。知ってたの 14 日は今のまま。例外: Battle の打ち間違いありの正解は `recordCorrect` の非 clean の枝で期日を翌日にする（stats.js:79-81。今のまま。翌日の答えで S3 の下限に戻るので害は小さい） | stats.js `recordCorrect` |
-| S2 | 日をあけた正解は間隔を伸ばす | 2 | その日の最初の答え（`prevDay !== null` かつ `sameDay` でない、`gap ≥ 1`）のノーミス正解で、速さが `slow` でないとき `credit = REVIEW_INTERVAL_DAYS.find(d => d > gap) ?? 30`。初めての答え・`gap` が数でないときは credit なし（`dayDiff(null, …)` の NaN で 30 日にならない） | stats.js `recordRecallSuccess` |
-| S3 | 段ごとの下限 | 2 | S2 と同じ条件の答えの後、段 4 なら 7 日、段 5 なら 30 日 | 同上 |
-| — | 当て方 | 2 | `nextReviewAt = max(recordCorrect が決めた期日, 今 + max(credit, 下限) 日)`（伸ばすだけ。30 日が上限） | 同上 |
-| S4 | × の後 | — | 今と同じ（streak 0・習得の取り消し・期日は今・Recall Loop）。翌日のノーミス正解から S2・S3 が効く | 変えない |
+| S1 | 正解で期日を早めない | 2（入った） | ノーミスで streak が進んだとき `next = max(今の期日（未来なら）, 今日 + streak の間隔)`。知ってたの 14 日は今のまま。例外: Battle の打ち間違いありの正解は `recordCorrect` の非 clean の枝で期日を翌日にする（stats.js:79-81。今のまま。翌日の答えで S3 の下限に戻るので害は小さい） | stats.js `recordCorrect` |
+| S2 | 日をあけた正解は間隔を伸ばす | 2（入った） | その日の最初の答え（`prevDay !== null` かつ `sameDay` でない、`gap ≥ 1`）のノーミス正解で、速さが `slow` でなく、**`gap ≥ 6`（`SOLID_GAP_DAYS`。日をあけたと言える答え）のとき** `credit = REVIEW_INTERVAL_DAYS.find(d => d > gap) ?? 30`。gap 6 未満は credit なし（1 日遅れで表を飛ばさないため。下の 2 つ目の注）。初めての答え・`gap` が数でないときも credit なし（`dayDiff(null, …)` の NaN で 30 日にならない） | stats.js `recordRecallSuccess` |
+| S3 | 段ごとの下限 | 2（入った） | S2 と同じ条件の答え（gap は 1 以上なら足りる）の後、段 4 なら 7 日、段 5 なら 30 日。この端末の段が見ていない ×（2 台目・古い版で答えた）がある語は 1 段下の段で見る（§11.5 の 7） | 同上 |
+| — | 当て方 | 2（入った） | `nextReviewAt = max(recordCorrect が決めた期日, 今 + max(credit, 下限) 日)`（伸ばすだけ。30 日が上限） | 同上 |
+| S4 | × の後 | — | 今と同じ（streak 0・習得の取り消し・期日は今・Recall Loop）。翌日のノーミス正解から S3 の下限が効き（段 4・5 の語だけ）、gap 6 以上の答えから S2 が効く。段 3 以下の語の × の後の間隔は今と同じ（Recall Loop が回の始まりより後でも、Loop が無くても） | 変えない |
 | S5 | 知ってた | — | 初見は今と同じく 14 日後（S2 は当てない）。確認の後は即答なら 30 日、身についたなら 21 日（S2）、その次は 30 日 | §3.7 の結果 |
 
 - S6 を段階 1 に置くのは、間隔の計算を変えず補充などの中身だけを変えるため（保持率の 7 日窓は期日の復習で測るので影響は小さい）。段階 1 だけの間に、補充で出た apple が毎回「即答」と出て、創業者の不満（apple を何度も出す）がかえって目立つのを防ぐ。今の「知っている語で時間を使わせない」という決定（stats.js:47 の注記）にも合う。
-- 予定どおり続ける人では `gap` ＝ 前の間隔なので、S2 の `credit` は streak の次の間隔と同じ（1→2→3→5→7→10→14→21→30）。段 4 に届くのは早くて学んで 7 日目（0・1・7 日）で、S3 の 7 日も streak 5 の間隔と同じ。**保持率の 7 日窓（+6〜+8 日）の測り方はほぼ変わらない**。変わるのは遅れて戻った人の語・強い語のつまずきの後・知ってた語・即答の語。SPEC_RETENTION §4 に偏りの注記を 1 行足す（段階 1:「2026-10 から、身についた以上の語と確認待ちの知ってた語は期日前の補充に出ない」、段階 2:「日をあけて思い出せた語と身についた以上の語は間隔が延びる」）。
+- 予定どおり続ける人の `gap` は前の間隔か、その 1 日あと。期日には前の答えの時刻が付き、Study の復習の列は回を始めた時点で期日が来た語だけを積む（studyQueue.js の手順 3）ので、毎日ほぼ同じ時刻に学ぶ人でも、前の日より数分早く始めた・× の後の Recall Loop が回の始まりより後だった・Challenge／Daily の × で Loop が無かった、のどれでも 1 日遅れ（gap ＝ 間隔 + 1）がふつうに起きる。間隔 1・2 の段は表の隣の値と 1 日しか違わないので、gap 1〜5 にも credit を当てると 1 日遅れで表を 1 段飛ばし（gap 2 → 3、gap 3 → 5）、その後も戻らない（毎日 12:00 に学ぶ人で、12:10 の Recall Loop の語が 0・2・4・7・12・19 日 → 0・2・5・10・17・27 日になり 7 日窓に問われない）。そこで credit は gap 6 以上だけに当てる。間隔 5 以上の段は 1 日遅れても「表で gap より長い最初の値」が streak の次の間隔と同じ（gap 6 → 7、8 → 10、11 → 14、15 → 21、22 → 30）なので、**予定どおり・1 日遅れの人の間隔（1→2→3→5→7→10→14→21→30）と保持率の 7 日窓（+6〜+8 日）の測り方は今と同じ**（単体 14 の筋書きと、300 語を毎日 12 時・20 時前後・7〜23 時のどこか・補充あり・15% で × を挟む・2 割の日を休む、のそれぞれで偽の時計で回して、語ごとの答える日と 7 日窓・30 日窓・習得の数が今の書き手と同じ。休む日と × を重ねると、2 日以上遅れた語だけが伸び、30 日窓 164 → 161 語・習得 79 → 82 語とわずかに違う）。S3 の 7 日も、ふつうの語が段 4 に届く答え（gap 6 以上。streak 5 以上）では streak の間隔を超えない。変わるのは遅れて戻った人の語（2 日以上の遅れ）・強い語のつまずきの後・知ってた語・即答の語。SPEC_RETENTION §4 に偏りの注記を 1 行足す（段階 1:「2026-10 から、身についた以上の語と確認待ちの知ってた語は期日前の補充に出ない」、段階 2:「日をあけて思い出せた語と身についた以上の語は間隔が延びる」）。
 - 習得の語は今どおり期日の復習に出ない。補充には S6 で期日（最後の間隔）を過ぎてから戻る。
-- S2・S3 は純関数 `intervalAfter({ streakDays, gap, rank, speed })` と `keepLaterDue(prevIso, nextIso, nowMs)` として mastery.js に置き、単体テストで表を守る。`intervalAfter` は `gap` が数でない・1 未満のとき credit なしを返す。S6 の判定は `holdBeforeDue(stat, nowMs, { includeRank3 })` として mastery.js に置き、studyQueue.js と mission.js が呼ぶ。
+- S2・S3 は純関数 `intervalAfter({ streakDays, gap, rank, speed })` と `keepLaterDue(prevIso, nextIso, nowMs)` として mastery.js に置き、単体テストで表を守る。`intervalAfter` は `gap` が数でない・1 未満のとき credit も下限も無し、gap 1〜5 は下限だけを返す。見ていない × の段の上限は `unseenFailCap(stat)`（§11.5 の 7）。S6 の判定は `holdBeforeDue(stat, nowMs, { includeRank3 })` として mastery.js に置き、studyQueue.js と mission.js が呼ぶ。
 
 ## 7. 記録と同期
 
@@ -507,8 +513,10 @@ myWordsView.js:9 の表に `known: "知ってた"` を足す（「・ undefined�
 |---|---|---|---|
 | `spelldash_word_stats[id]` | `masteryRank`（1〜5 の整数） | `recordRecallSuccess`・`recordRecallFail` の中（同じ写し） | しない（`statToRow` は 15 列のまま） |
 | 同上 | `masteryAt`（ISO。段を決めた答えの時刻。書いた `lastRecall*At` と同じ文字列） | 同上（答えごとに必ず書く。段が変わらなくても） | しない |
+| 同上 | `masteryDownAt`（ISO。× で段を下げた答えの時刻。書いた `lastRecallFailAt` と同じ文字列。PR #159 のレビュー） | `recordRecallFail` の中（段を下げたときだけ） | しない |
+| 同上 | `answerSeenAt`（ISO。別解を打って答えの綴りを見た時刻。PR #159 のレビュー） | `recordAnswerSeen`（game.js `acceptAlternative` から。初見の語だけ・語ごとに多くて 1 回） | しない |
 | `spelldash_mastery_meta`（新しいキー） | 下の JSON | js/masteryMeta.js | しない（入力の速さは端末と指に固有） |
-| メモリー（タスクの中だけ） | `pendingAnswer = { id, rankBefore, streakBefore, knownBefore, clean, ctx }` | stats.js `recordCorrect` の先頭。`queueMicrotask` で捨てる | — |
+| メモリー（タスクの中だけ） | `pendingAnswer = { id, rankBefore, knownBefore, clean, ctx, streakDays }` | stats.js `recordCorrect` の先頭。`queueMicrotask` で捨てる | — |
 | メモリー（回の中だけ） | `runKind`・`runSize`、`runRankBefore: Map<id, { before, seenToday, slowDown }>`、60 秒の `deadline`・`hiddenAt`、語ごとの `{ tShow, tFirst, input, invalid }` | game.js | — |
 | `spelldash_set_size` | `"60s"` を足す（キーは今のまま。バックアップの対象） | dailySet.js | しない（今と同じ） |
 
@@ -532,7 +540,7 @@ spelldash_mastery_meta = {
 ### 7.2 書く順序と回数
 
 - 書き手の引数: `recordRecallSuccess(word, answer?)`。`answer = { clean: boolean, speed: "fast" | "normal" | "slow" | "unknown" }`。省略（Battle）は §3.3 のとおり（`pendingAnswer.clean`）。`recordRecallFail(word)` は今のまま（× はどこからでも同じに扱う）。Battle の呼び方の意味は変わらない。
-- `recordCorrect(word, wasClean)`: 先頭（`{ ...stats[word] }` で写す前）で `pendingAnswer` を置く（`rankBefore = rankOf(s)`・`streakBefore = s.cleanCorrectStreak ?? 0`・`knownBefore`・`clean = wasClean`・`ctx = answerContext(s, now)`）→ 今の処理（知ってたの枝も含む）。
+- `recordCorrect(word, wasClean, ctx?)`: 先頭（`{ ...stats[word] }` で写す前）で `pendingAnswer` を置く（`ctx` = game.js が渡した答える前の `answerContext`、無ければ `answerContext(s, now)`。`rankBefore = ctx.rank`・`knownBefore = ctx.knownCheck`・`clean = wasClean`）→ 初見の判定（`correctCount` を足す前に読む）→ 今の処理（知ってたの枝も含む）。
 - `recordRecallSuccess`: `p = pendingAnswer?.id === word ? pendingAnswer : null`。`r = p?.rankBefore ?? rankOf(s)`、`ctx = p?.ctx ?? answerContext(s, now)`、`knownCheck = !!p?.knownBefore`（`knownBefore` は `recordCorrect` の先頭で控えた `isKnownWaiting(stat)`。streak 1 を含む。§11.1 の 9） → 今の処理 → `const nowIso = new Date().toISOString()` を 1 回だけ取り、`lastRecallSuccessAt = nowIso` → `nextRank` → `masteryRank`・`masteryAt = nowIso` を同じ写しに書く → （段階 2）S2・S3 → `noteRankCheck({ id, rankBefore: r, gap, ok: true })`（その日の最初の答えのとき）。
 - `recordRecallFail`: 先頭で `ctx = answerContext(s, now)`・`r = rankOf(s)` を読む（書く前）→ `nowIso` を 1 回だけ取り、`nextReviewAt`・`lastRecallFailAt`・`masteryAt` に同じ値を使う（今は `new Date()` を 2 回呼んでいる。stats.js:141-142）→ `nextRank(r, { ok: false }, ctx)` → `noteRankCheck({ id, rankBefore: r, gap, ok: false })`。
 - 書いた直後は `rankOf(stat) === masteryRank`（`masteryAt` と `lastRecall*At` が同じ文字列なので `unseenFail` が立たない）。単体と E2E で守る。
@@ -547,9 +555,9 @@ spelldash_mastery_meta = {
 |---|---|
 | 古い版（オフラインのキャッシュ・アプリの dist）が答えた | 古い書き手も `{ ...stats[id] }` で写して書くので欄は消えない。段は動かず `masteryAt` は古いまま。× は `rankOf` の `unseenFail` で 1 段として読む。`gap` は同期する日時から出すので短く見積もる側に倒れる（不当に上げない） |
 | 古い版が読む `"60s"` | NaN → 15 語で走る |
-| 2 台目の初回の取り込み | クラウドだけの語は端末だけの欄が無い（sync.js:423-427）→ 初期値（控えめ）。取り込む前に答えた語は、この端末の答えとして段が動く |
-| 両方にある語のマージ | `{ ...l, ...rowToStat(c, l), ...recallFields }` で端末の欄は残る（sync.js:446）。段は端末ごと。もう 1 台の × は `unseenFail` で効き、○ は効かない |
-| 2 つのタブで同時に学ぶ | `spelldash_mastery_meta` はメモリーから書くので後勝ち。§3.8 の集計が少しずれるだけ（段は word_stats なので今の作法のまま） |
+| 2 台目の初回の取り込み | クラウドだけの語は端末だけの欄が無い（sync.js:423-427）→ 初期値（控えめ）。確認待ちの知ってた語は同期する欄の形で知ってた語と読む（§3.6・§11.6 の 2）。取り込む前に答えた語は、この端末の答えとして段が動く |
+| 両方にある語のマージ | `{ ...l, ...rowToStat(c, l), ...recallFields }` で端末の欄は残る（sync.js:446）。段は端末ごと。もう 1 台の × は `unseenFail` で効き（もう 1 台で打ち直して解決済みの × も、この端末の次の答えの S3 の下限では 1 段として効く。§11.5 の 7）、○ は効かない |
+| 2 つのタブで同時に学ぶ | `spelldash_mastery_meta` は書く直前に保存を読み直し、このタブで足した分（速さの見本・集計の増分）だけを足して書く（見本は各箱の最新 40 件・集計は足し算・控えの語は足した／数えた分だけ）。書いた中身をメモリーにするので、もう一方のタブの見本も基準に入る（§11.6 の 4。段は word_stats なので今の作法のまま） |
 | バックアップ・復元 | `spelldash_*` を丸ごと持ち出す。新しい欄も新しいキーも入る。復元（backup.js:85 の `applyBackup`）でも `forgetMasteryMeta()` を `forgetWordStats()` の隣で呼ぶ（メモリーの古い基準が後から復元した中身を上書きしない） |
 | 端末の記録を消す（`clearLocalRecords`） | `spelldash_mastery_meta` も消える（KEEP_ON_CLEAR に入れない）。メモリーの基準も捨てる（`forgetMasteryMeta()` を `forgetWordStats()` の隣で呼ぶ） |
 
@@ -610,7 +618,7 @@ spelldash_mastery_meta = {
 
 ### 9.3 足すもの
 
-**単体 `node scripts/test-mastery.mjs`**（test-retention.mjs と同じ作り。`TZ=Asia/Tokyo`。CI の ci.yml に 1 行。STATUS §4 に件数。段階 1 は 1〜13 と書き手〔js/stats.js を Node で読む〕の節で 227 件。14 は段階 2 で足す）:
+**単体 `node scripts/test-mastery.mjs`**（test-retention.mjs と同じ作り。`TZ=Asia/Tokyo`。CI の ci.yml に 1 行。STATUS §4 に件数。段階 1 は 1〜13 と書き手〔js/stats.js を Node で読む〕の節で 227 件。段階 2 で 14 と、偽の時計で書き手を回す筋書きを足して 298 件。PR #159 のレビューで 15 を足して 336 件）:
 
 1. `nextRank` 初めての答え: × → 1、ノーミス fast → 4、normal → 3、unknown → 3、slow → 3、打ち間違いあり → 2。
 2. 同じ日の扱い: ○ で r 1 → 2、r 3 → 3。朝 ○ の後の × → r 4 → 3（`failedToday` 偽）、同じ日の 2 回目の × → 3 のまま（`failedToday` 真）。23:56 の × → 00:03 の ○ は同じ日の扱い（r 2 → 2）。gap −1（時計の戻り）で ○ r 2 → 2、× r 4 → 3。
@@ -625,9 +633,10 @@ spelldash_mastery_meta = {
 11. `classifySpeed`: 19 件・初めての答え・en.kbd・1,400ms → fast（prior）／1,600ms → unknown／en.touch・2,000ms → fast／初めてでない → unknown／ja → unknown／2,500ms → unknown（既定から slow・normal は出ない）。20 件: 200ms 未満 → unknown、0.75 倍ちょうど → fast（own）、1.5 倍ちょうど → normal、1.5 倍超 → slow、pc の箱 19 件なら pc を見ない（fast も slow も）、pc の箱 20 件で 2 倍超は fast にしない・2.5 倍超で slow。入れるとき 7,000 で丸める、41 件目で古い 1 件を捨てる、箱のキー 8 つ（en／ja × kbd／touch × study／play）。
 12. `rankBasis`・`rankNext`: 表の各枝（初期値・未解決・確認待ちの段 3／4・N日あけて・history 不足で括弧なし・日付が過去なら「次に」・段 5 は無し）。初めての答えで入った語の文に「日をあけ」「6日以上」が無い。
 13. `holdBeforeDue`: 段 4・期日が未来 → 真、期日が過去 → 偽、確認待ちの知ってた語・段 3 → 真、段 3・`includeRank3` で期日が未来 → 真、段 4・段 5 から × と打ち直しをした苦手の語（期日は翌日）→ 偽（`includeRank3` でも）。
-14. 段階 2: `intervalAfter` — 予定どおりの列 1・2・3・5・7・10・14・21・30 が今と同じ、初見の知ってた語 → 14（credit なし）、確認 → fast 30／normal 21、段 4 の × の翌日 → 7、gap 40 → 30（上限）、slow → credit なし、gap が NaN・0 → credit なし。`keepLaterDue` — 未来の期日は早めない・過去の期日は新しい方。
+14. 段階 2: `intervalAfter` — 予定どおりの列 1・2・3・5・7・10・14・21・30 が今と同じ、1 日遅れ（gap 2・3・4・6・8・11・15・22）でも 2・3・5・7・10・14・21・30（表を飛ばさない）、credit は gap 6 から（gap 5 → なし・gap 6 → 7。段 2・3 の gap 1 → streak の間隔のまま）、初見の知ってた語 → 14（credit なし）、確認 → fast 30／normal 21、段 4 の × の翌日 → 7、gap 40 → 30（上限）、slow → credit なし、gap が NaN・0 → credit なし。`keepLaterDue` — 未来の期日は早めない・過去の期日は新しい方。`unseenFailCap` — 見ていない × のある段 5 の語は解決済みでも 4、自分で書いた ×・段の欄が無い語は null。`SRS_STEPS` が js/stats.js の `REVIEW_INTERVAL_DAYS` と同じ値。書き手の筋書き（偽の時計。毎日 12:00 に期日が来た語にだけ答える人）: apple の道（0・14・44・74・104 日。0 日目の速さによらない）、14 日目がふつうの道（0・14・35・65・95 日）、1〜13 日の正解で期日が早まらない（S1）と打ち間違いありの正解は翌日（S1 の例外）、即答の語の 44 日目の appel（45・52・62・76・97 日、97 日目にすぐで即答）、appel の後の道（1・3・6・11・18・28・42・63・93 日。どの答えでも期日は「今日 + streak の間隔」＝今と同じ、93 日目に習得）、遅れて戻った語（37 日あけて 30 日後）、知ってた語が打ち間違いの後に streak 1 に戻る答えは伸ばさない（§11.5 の 2）、即答の語の遅い正解（credit も下限も無し）、23:50 の × → 00:03 の ○（同じ日の扱いなので伸ばさない）。回の始まりより後の Recall Loop（12:00 の × → 12:10 に打てる）で毎日 12:00 に学ぶ人は 0・2・4・7・12・19・29・43 日で 7 日窓を 7 日目に測る、Recall Loop の無い ×（Challenge・Daily）の後は 1・2・4・7・12… 日で 7 日窓は 7 日目、毎日違う時刻に学ぶ人は 1・2・5・8・13… 日で 7 日窓は 8 日目（どれも今の書き手で回した値と同じ）。2 台目で × → Recall Loop の翌日、この端末でノーミス → 段 5 の語は 7 日後（未解決のままなら段 4・7 日後、段 4 の語は 2 日後。その次の答えは段 5 の下限 30 日）。
+15. PR #159 のレビュー（§11.6）: 別解の道（答えを見せ・× なし・打ち直しで `recordCorrect(id, false)`）の翌日のノーミス・すぐでも知ってたにならず段 2（初めての答えの枝を通らない）・印 `answerSeenAt` だけの語も同じ・出題だけの語は今どおり知ってた／2 台目の写し（`knownOnSight`・段の欄・history なし）で `isKnownWord`・`isKnownWaiting`・`holdBeforeDue` が真、`initialRank`・`rankOf` が 3、14 日後の確認ですぐ → 即答・30 日後、打ち間違いありの正解の後に streak 1・recallFail 0 になる答えは伸ばさない（確認待ちの形にしない）／`keyInputOf`（code のある信頼された keydown → kbd、code が空・`Unidentified`・無い・keyCode 229・合成 → touch）／2 つのタブ（`masteryMeta.js` を 2 回読む）が交互に書いても両方の見本と集計・控えの語が残る、最新 40 件、最初の中央値は先に書いた値／段 2 の語の朝 × → 夕方 ○ は 1 のまま（`masteryDownAt`）、新しい語の × → ○ と昨日 × の段 1 の語の × → ○ は 2、期日・streak は今と同じ、翌日の ○ で 2、23:50 に下げて 00:03 の ○ も 1、語の詳細の次の条件は × の後・夕方の ○ の後とも「10月13日以降に 自力で思い出せると あやふや」（下げていない段 1 の語と翌日は日付なし）。
 
-**E2E 節「mastery: 9.565」（1〜3・11 と CSV。画面）と「mastery writers: 9.566」（4〜10・12・13 とタイピングの 2 ページ。書き手・速さ・同期・S6）**（どちらも「9.56 記憶の保持率」の節の後。`newPage` から単独で動く。§9.1-3 の mastery_meta の 0 回は Batch 58 の R3 に足した）:
+**E2E 節「mastery: 9.565」（1〜3・11 と CSV。画面）と「mastery writers: 9.566」（4〜10・12・13・14・15 とタイピングの 2 ページ。書き手・速さ・同期・S6・段階 2・PR #159 のレビュー）**（どちらも「9.56 記憶の保持率」の節の後。`newPage` から単独で動く。§9.1-3 の mastery_meta の 0 回は Batch 58 の R3 に足した）:
 
 1. 単語帳: `initialRank` の各行を種にした語で `.rank[data-rank]` の値・aria-label の名前・`.rank__name` の文字・`title` に根拠の文。`.mem__bar`・「/10」なし。題箋と段の組み合わせ（覚えた＋あやふや・習得＋思い出せる・苦手＋身についた）の種を入れて 390／1200 × 昼・夜を撮る。320／390 で横スクロールなし。
 2. 語の詳細: 習熟度の行（根拠の文）・段の梯子（今の段が太字）・次の段の条件・畳んだ「習熟度の決まり」（Enter で開くと規則の文）。初めての答えで段 4 の語に「日をあけ」「6日以上」が無く「初めて答えて」がある。未解決の語に「思い出せなかった」がある。title に「思い出せた」が無い。aria-label に「習熟度」が重ならない。
@@ -642,6 +651,8 @@ spelldash_mastery_meta = {
 11. マイ単語帳: 知ってた語に「知ってた」、「undefined」が無い。
 12. 同期: 送る行が 15 列。`schema_version` "6"。エラー 0。
 13. S6（段階 1）: 段 4・期日が先の語と確認待ちの知ってた語（段 3）は、ほかの候補があれば補充に出ない／期日が来たら出る／ミッションの復習に出ない（段 3・期日が先の語も）／息抜きに出ない／補充の候補が足りないときは出る／× の後に打ち直した苦手の語（段 3・段 4。期日は翌日）はミッションの復習に入る。保持率の節が通る。
+14. 段階 2（S1〜S5。9 件）: Study で打つ回 — 期日が 10 日先の段 3 の語（補充に出る）を期日前にノーミス → 期日は同じ文字列のまま（streak は進む）、8 日あけた段 3 の語 → 段 4・10 日後（今なら 5 日後）、予定どおりの語（streak 4・5 日前・期日が今日）→ 7 日後（今と同じ）。書き手の直呼び — 確認待ちの知ってた語を 5 日目に正解しても 14 日目の期日のまま、知ってた語の 14 日後の確認ですぐ → 即答・30 日後／ふつう → 身についた・21 日後、即答の語（30 日あけた正解）→ 30 日後で正解の 1 打の word_stats の書き込みは 1 回、期日が先の語の打ち間違いありの正解（Battle）は翌日（今のまま）、schema 6・エラー 0。保持率の節（9.56）が通る。
+15. PR #159 のレビュー（10 件）: CDP で送る code の無い信頼された keydown（画面キーボード）で打った初めての答えは `en.touch.study` の箱（code のある keydown は `en.kbd.study`）／別解（talk）で答えを見た印が付き × なし・打ち直しは答えに数えず、次のノーミス・すぐでも知ってたにならず段 2／段 2 の語の × → 打ち直し → Recall Loop の ○ で段 1 のまま、語数の回（`?words=`）の完了パネルに「習熟度が下がった: cloud（まだ）」、60 秒の回の語チップは まだ の群で「下がった」。各エラー 0。
 
 **E2E 節「study 60s」**（「9.4 今日のセット」の節の後。`spelldash_set_size: "60s"` の種。時間切れだけを見る回は `?t=3`、答える回は `?t=8`）:
 
@@ -669,7 +680,7 @@ spelldash_mastery_meta = {
 
 ---
 
-## 11. 実装で決めたこと（仕様の穴を控えめに埋めた所。段階 1）
+## 11. 実装で決めたこと（仕様の穴を控えめに埋めた所。段階 1。段階 2 は §11.5）
 
 ### 11.1 段の規則と記録（js/mastery.js・js/masteryMeta.js・js/stats.js・js/studyQueue.js）
 
@@ -681,7 +692,7 @@ spelldash_mastery_meta = {
 6. `check.since` は最初に確かめの記録を書いた日。`check.pending` に同じ語を入れ直すと新しい側へ移す。pc は丸めない（丸めは T1 だけ）。
 7. `recordRecallSuccess` は `pendingAnswer` を使ったら消す（同じタスクで 2 回使わない）。
 8. `spelldash_mastery_meta` の 10 答えごとの保存は stats.js の書き手の中で数える（Battle の答えも数える）。10 答え目の 1 打では 1 回書く。E2E の「正解の 1 打で 0 回」はその 1 打が 10 答え目でないときに測る。
-9. 確認待ちの知ってた語（`isKnownWaiting`。`knownCheck`・`rankBasis`・`rankNext`・S6 が読む）は、streak 1 に加えて「期日と最後の自力正解の両方があれば、期日が最後の自力正解から 13 日以上先」とした。streak だけだと、知ってた語が打ち間違いありの正解（Battle。streak 0）のあと別の日のノーミスで streak 1 に戻ったとき、もう一度確認待ちと読み、語の詳細に「M月D日に初めて答えて…」（事実と違う）、次の条件に「M月D日の確認で すぐ打てると 即答」（翌日は gap 1 で守られない）と出て、14 日あけると 3 → 5 と飛んだ（打ち間違いの無い同じ流れは 3 → 4）。初見の知ってたは期日を 14 日後に置き、同じ日の答えは期日を動かさない。別の日の答えがあると期日は streak の間隔（1〜2 日）に戻るので見分けられる。期日は同期する欄なので 2 台目でも同じに読める。日時の欄の無い古い行は streak だけで読む（今までどおり）。stats.js の控えの `knownBefore` もこの関数で取る。
+9. 確認待ちの知ってた語（`isKnownWaiting`。`knownCheck`・`rankBasis`・`rankNext`・S6 が読む）は、streak 1 に加えて「期日と最後の自力正解の両方があれば、期日が最後の自力正解から 13 日以上先」とした。streak だけだと、知ってた語が打ち間違いありの正解（Battle。streak 0）のあと別の日のノーミスで streak 1 に戻ったとき、もう一度確認待ちと読み、語の詳細に「M月D日に初めて答えて…」（事実と違う）、次の条件に「M月D日の確認で すぐ打てると 即答」（翌日は gap 1 で守られない）と出て、14 日あけると 3 → 5 と飛んだ（打ち間違いの無い同じ流れは 3 → 4）。初見の知ってたは期日を 14 日後に置き、同じ日の答えは期日を動かさない。別の日の答えがあると期日は streak の間隔（1〜2 日）に戻るので見分けられる。日時の欄の無い古い行は streak だけで読む（今までどおり）。stats.js の控えの `knownBefore` もこの関数で取る。（段階 1 では「期日は同期する欄なので 2 台目でも同じに読める」と書いたが、知ってた語の印 `knownOnSight` が 2 台目に届かないので事実でなかった。§11.6 の 2 で同期する欄だけの形から読むようにした）
 10. S6（`holdBeforeDue`）は苦手（未解決。最後の × が最後の自力正解より新しい）の語を外さない。Study の × は答えを見た打ち直し（`recordCorrect` の非 clean の枝。今の処理）で期日が翌日になるので、期日で判断すると、身についた・即答の語が × で苦手になったとき 24 時間ミッションの復習から外れていた。§6 S4「× の後、期日は今」と L5（苦手の語を毎日見直すミッションの役目は変えない）に合わせた。
 
 ### 11.2 60 秒の回と速さ（js/game.js ほか）
@@ -717,14 +728,35 @@ spelldash_mastery_meta = {
 4. Challenge の結果の検査は `?t=4`（出てから 0.3 秒の Enter は飲まれるので、答えを見るまでの余裕をとる）。
 5. 7.5・7.6 のお知らせの検査は、先頭の 1 件でなくリンク（./typing.html・./typing-game.html）で項目を探す（お知らせは新しい順に先頭へ足すので、2026.10.12 の項で位置がずれて落ちていた）。
 
+### 11.5 段階 2（復習の間隔とのつなぎ S1〜S5。js/mastery.js・js/stats.js）
+
+1. `intervalAfter({ streakDays, gap, rank, speed })` は「伸ばした後の日数」を返す（streak の間隔 `streakDays` より短くしない）。書き手は `recordCorrect` が streak から決めた日数を答える前の控え（`pendingAnswer.streakDays`。メモリーだけ）で渡し、`nextReviewAt = keepLaterDue(今の期日, 今 + intervalAfter(…) 日)` とする（§6 の当て方と同じ: 今の期日は `recordCorrect` が S1 で決めたもの）。日の足し方は今の `daysFromNow` と同じ（ローカルの暦で N 日後の同じ時刻）。S3 の下限は答えた後の段（`nextRank` が書いた段）で見る。slow の答えは S2 の credit に加えて S3 の下限も当てない（「S2 と同じ条件の答えの後」を字のとおりに読んだ。即答の語の遅い正解は 身についた に下がり、streak の間隔で早めに確かめる側）。ノーミスでない答え・その日の最初の答えでない答え（`answerContext` の `firstOfDay` が偽: 初めての答え・同じ日の扱い・日数が分からない答え）には当てない。
+2. 知ってた語で、この答えの後の streak が 1 になる答え（打ち間違いありの正解〔Battle〕で streak 0 に戻った後の、別の日のノーミス）には S2・S3 を当てない（期日は streak 1 の翌日のまま。その次の答え〔streak 2〕からは当てる）。確認待ちの知ってた語は「streak 1 で、期日が最後の自力正解から 13 日以上先」で見分ける（§11.1 の 9）ので、ここで 14 日以上に伸ばすと、もう一度確認待ちと読み、語の詳細に「M月D日に初めて答えて…」（事実と違う）と出て、次の確認で 3 → 5 と飛べてしまう（gap 10 以上で credit 14 以上、段 5 なら下限 30 日）。代わりに 1 回だけ翌日に確かめる（復習が 1 回増える側）。
+3. `REVIEW_INTERVAL_DAYS` は js/stats.js のまま。js/mastery.js は js/retentionCalc.js 以外を import しないので、同じ値の写し `SRS_STEPS` を持ち、単体が js/stats.js の文字から値を読んで同じであることを守る。
+4. S1 は `recordCorrect` の streak が進む枝だけ（期日が過ぎていれば今と同じ「今日 + streak の間隔」）。知ってた語の初見の 14 日・打ち間違いありの正解の翌日（例外）・× の後の「期日は今」（S4）は今のまま。
+5. 正解の 1 打の word_stats の書き込みは 1 回のまま（S2・S3 は `recordRecallSuccess` の同じ写しに書く。R3）。送る列・schema・`isReviewDue`・習得（streak 10）・判定は変えていない。
+6. S2 の credit は gap 6 以上（`SOLID_GAP_DAYS`）だけに当てる（反証の指摘。gap 6 未満は credit なし: 1 日遅れで表を飛ばさないため）。期日には前の答えの時刻が付き、Study は回を始めた時点で期日が来た語だけを積むので、毎日同じ時刻に学ぶ人でも 1 日遅れがふつうに起きる（12:10 の Recall Loop・Challenge の ×・前の日より早く始めた回）。gap 1〜5 に credit を当てると、間隔 1・2 の段で gap 2 → 3・gap 3 → 5 と 1 段先へ進み、その後ずっと 1 段先のまま（7 日窓に問われない・習得が遅れる）。間隔 5 以上の段は 1 日遅れても表の次の値が streak の次の間隔と同じなので、gap 6 からは今までどおり当てる。S3 の下限は gap 1 から（強い語のつまずきの翌日に 7／30 日。§3.7 の 2 つ目の表）。
+7. 見ていない ×（`lastRecallFailAt` が `masteryAt` より後。2 台目・古い版で答えた）がある語は、S3 の下限を 1 段下の段で見る（`unseenFailCap`。反証の指摘）。`rankOf` が見ていない × で段を下げるのは未解決の間だけなので、2 台目で × → Recall Loop と進むと、この端末では段 5 のまま読め、翌日のノーミスが 30 日の下限に飛んでいた（同じ端末なら × で段 4 に下がり 7 日）。書く段・見える段は変えない（段階 1 の読み方と「正解で下げない」をそのまま。下限だけ）。この答えで `masteryAt` が今に揃うので、その次の答えからは書いた段で見る（段 5 なら 30 日。同じ端末で × をした語は段 4 から 10・14・21 日と上るので、2 台目の × の語のほうが 1 回目の後は早く 30 日に戻る）。段の欄が無い語は `initialRank` が控えめに読むので下げない。
+
+### 11.6 PR #159 のレビュー対応（8 件。js/mastery.js・js/stats.js・js/masteryMeta.js・js/game.js・js/studyQueue.js）
+
+1. **別解の道の後の初見**: 別解を打つと `acceptAlternative` が答えの綴りを見せ、× を記録せず、打ち直しは `recordCorrect(id, false)`（答えに数えない）なので、日時の欄が空のまま残り、翌日のノーミスで「知ってた」・初めての答えの枝（3／4）になっていた。答えの綴りを見たことがある語（`correctCount` 1 以上、または印 `answerSeenAt`）は `isFirstAnswer` も `answerContext` の `firstAnswer` も偽にし、`nextRank` の初めての答えの枝を通さない（`c.sawAnswer`。日数が分からない枝で ○ → 2・× → 1）。打ち直さずに時間切れ・離れた語のために、`acceptAlternative` が `recordAnswerSeen(id)` で端末だけの印 `answerSeenAt` を書く（初見の語だけ・語ごとに多くて 1 回の保存）。`recordCorrect` は初見の判定を `correctCount` を足す前に読む。出題だけされて答えなかった語（時間切れ・途中で離れた）は今どおり初めての答え。game.js の learnEvent の known・速さの既定の線（初めての答えだけ）も同じ判定に従う。
+2. **2 台目の確認待ち**: `knownOnSight` は端末だけの欄で 2 台目に届かないので、確認待ちの知ってた語が補充に出て、段も 2 に読まれていた（§11.1 の 9 の「期日は同期する欄なので 2 台目でも同じに読める」は事実でなかった）。同期する欄だけの形（streak 1・recallFail 0・最後の自力正解があり、期日が最後の自力正解から 13 日以上先）を確認待ちの知ってた語と読む（`isKnownWord` が印か形を見る。`isKnownWaiting`・`holdBeforeDue`・`initialRank`・`knownCheck` はそれを通して同じに読む）。この形を作るのが知ってたの初見の答え（14 日後）だけになるよう、`extendInterval` は答えの後が streak 1・recallFail 0 になる答え（打ち間違いありの正解〔Battle〕で streak 0 に戻った後の別の日のノーミス）を、知ってた語に限らず伸ばさない（§11.5 の 2 を広げた。翌日に 1 回確かめ、その次の答えから S2・S3 が効く）。題箋の「知ってた」（categoryProgress.js）と保持率の除外（retentionLog.js）は今どおり印だけで読む（2 台目では題箋に「知ってた」が出ない。Phase 2 の `known_on_sight` の列で揃う）。
+3. **画面キーボードの keydown**: iPhone の画面キーボードの keydown は信頼されたイベントなので、`event.isTrusted` で決めると物理キーボードの箱に入っていた。物理キーとみなすのは、信頼されたイベントで `event.code` が物理キーの名前（`KeyA`〜`KeyZ`・`Digit`・テンキー・`Minus`・`Space` などの印字キー）のときだけ。`code` が空・`Unidentified`・無い、keyCode 229 なら touch。専用の画面キーボード（合成イベント）は今どおり touch。判定は `masteryMeta.js` の純関数 `keyInputOf(event)`（Node の単体で確かめる）。
+4. **2 つのタブの mastery_meta**: `load()` は 1 回だけ読み、flush でメモリーの全体を書くので、2 つのタブで互いに上書きしていた。各タブは前に書いてから足した分（速さの見本・集計の増分・控えの語の足し／消し）を別に持ち、flush の直前に保存を読み直して、それに足して書く（見本は各箱の最新 40 件、集計は足し算、最初の中央値は保存にあればそれ、無ければこのタブの値か、足して初めて 20 件になったときの中央値、数え始めた日は早い方）。書いた中身をメモリーにする（もう一方のタブの見本もこのタブの基準に入る）。書けなかったときは足した分を持ったまま次の機会に。
+5. **その日の × の後の ○**: 同じ日の ○ は まだ → あやふや に上げるので、あやふや の語を × で まだ に下げても Recall Loop の ○ ですぐ戻り、「思い出せなかった日は 1 段下がる」が成り立たなかった（完了パネルにも「下がった」が出ない）。× で段を下げたら端末だけの欄 `masteryDownAt` に同じ時刻を書き（`writeRank`）、`answerContext` の `downToday`（同じ日の扱い: ローカル日が今日か 6 時間未満）が真なら同じ日の ○ で上げない。翌日以降は今の規則（gap 1 で 1 → 2）。新しい語の × → ○（0 → 1 → 2）と、前の日から まだ の語の今日の × → ○（下げていないので印なし）は今どおり 2。段 4・5 の × は下がった後の同じ日の ○ でも上がらない（今と同じ）ので、変わるのは あやふや → まだ の語だけ。段は S3 の下限（段 4・5）にしか効かず、同じ日の ○ は S2・S3 を当てないので、段階 2 の間隔は変わらない（単体 14 の筋書きはそのまま通る）。語の詳細の次の条件（`rankNext`）も同じ印を読む: 段 1 の語は同じ日の ○ でも上がるので日付を言わないが、`masteryDownAt` の日が今日（時計が戻って先に見えるときも）なら今日の ○ では上がらないので「M月D日以降に（前の答えの日＋1） 自力で思い出せると あやふや」と言う（× の直後の未解決の間も、夕方の ○ の後も。翌日は日付なしに戻る）。日付はほかの段と同じくローカル日で数え、6 時間未満の同じ日の扱いは文に出さない（23:50 に下げた語は 0 時を過ぎると日付なしに戻るが、下げてから 6 時間未満の ○ では上がらない。段 2 の「次に」が 6 時間未満の答えを言わないのと同じ近似）。（反証で、直した後も段 1 の文が「自力で思い出せると あやふや」のままで、今日もう一度思い出せても上がらないのに語の詳細が事実でない条件を出していたので足した）
+6. **片付け: 答える前の控え**: 使われない `streakBefore` を消した。game.js は速さの分類のために出した `answerContext` を `recordCorrect(id, clean, ctx)` で渡し、控えはその値の `rank`・`knownCheck` を使う（`rankOf`・`isKnownWaiting`・`answerContext` を二重に計算しない）。Battle（凍結）は今の呼び方のままで、控えの仕組みもそのまま（`recordCorrect` がここで計算する）。振る舞いは変えない。
+7. **片付け: 写しを 1 つに**: `esc` は js/html.js から import する。`isUnresolved` は mastery.js に 1 つ置き、studyQueue.js はそれを import して export し直す（game.js・categoryProgress.js の import は変えない）。mastery.js は Node から読めるまま（html.js も DOM なし）。import を足したので各ページの先読みを作り直した（`node scripts/modulepreload.mjs`）。
+8. **片付け: 補充の S6**: `pickFillers` の頭で 1 回だけ、期日前に出さない語（`holdBeforeDue`）の id の Set をカテゴリの語から作り、既習の枠と「それでも足りなければ」の埋めはそれを見る。振る舞いは変えない。
+
 ## 付録 A. 変えるファイル
 
 | ファイル | 段階 | 変更 |
 |---|---|---|
-| js/mastery.js（新） | 1・2 | `RANK_NAMES`・`RANK_GLOSS`・`RANK_RULE`・`isFirstAnswer`・`answered`・`isUnresolved`（写し）・`answerContext`・`nextRank`・`initialRank`（history の判定込み）・`rankOf`・`rankHtml`・`rankBasis`・`rankNext`・`holdBeforeDue`・定数。段階 2 で `intervalAfter`・`keepLaterDue`。import は js/retentionCalc.js だけ |
-| js/masteryMeta.js（新） | 1 | 速さの箱（`boxKey`・`classifySpeed`・`noteSpeedSample`・`COLD_FAST_MS`）、確かめの集計（`noteRankCheck`・`notePendingFirstFast`・`firstMedian`）、`flushMasteryMeta`（dirty のときだけ）・`forgetMasteryMeta`、pagehide で書く |
-| js/stats.js | 1・2 | `recordCorrect` の先頭で `pendingAnswer`。`recordRecallSuccess(word, answer?)`・`recordRecallFail` で段を書く（`nowIso` を 1 回だけ取る）。知ってたの条件を `isFirstAnswer`。段階 2 で S1〜S3 |
-| js/game.js | 1 | `runKind`・`runSize` と `currentSetSize()`、語ごとの時刻（`setNewWord` の後の rAF・`acceptChar`・`handleTypingMiss`・ローマ字の受理と miss・spill の字・visibilitychange）と最初のキーの経路、`answerContext`・`classifySpeed` と `answer`、`runRankBefore`（prevStat から）、60 秒（`timer` に載せた時計・止める・時間切れ・待ち・スタンプと `#learnToast` のはちゃんを出さない・幕なし・続きを触らない）、`renderSetProgress` の 60 秒、`endStudySession({ timed })` のパネル、`#setAgain` の「もう60秒」、§5.4・§5.5 の行、`applyStudyXp` の文 2 つ、learnEvent の known の条件、`showIdleMessage` |
+| js/mastery.js（新） | 1・2 | `RANK_NAMES`・`RANK_GLOSS`・`RANK_RULE`・`isFirstAnswer`・`answered`・`isUnresolved`（写し）・`answerContext`・`nextRank`・`initialRank`（history の判定込み）・`rankOf`・`rankHtml`・`rankBasis`・`rankNext`・`holdBeforeDue`・定数。段階 2 で `intervalAfter`・`keepLaterDue`。PR #159 のレビューで確認待ちの形・`sawAnswer`・`downToday`、`isUnresolved` は写しでなく 1 か所に。import は js/retentionCalc.js と js/html.js（`esc`）だけ |
+| js/masteryMeta.js（新） | 1 | 速さの箱（`boxKey`・`classifySpeed`・`noteSpeedSample`・`COLD_FAST_MS`）、確かめの集計（`noteRankCheck`・`notePendingFirstFast`・`firstMedian`）、`flushMasteryMeta`（dirty のときだけ。PR #159 のレビューで、書く直前に読み直してこのタブで足した分だけを足す）・`forgetMasteryMeta`、pagehide で書く。入力の経路 `keyInputOf`（PR #159 のレビュー） |
+| js/stats.js | 1・2 | `recordCorrect` の先頭で `pendingAnswer`。`recordRecallSuccess(word, answer?)`・`recordRecallFail` で段を書く（`nowIso` を 1 回だけ取る）。知ってたの条件を `isFirstAnswer`。段階 2 で S1〜S3。PR #159 のレビューで `recordCorrect(word, wasClean, ctx?)`・`recordAnswerSeen`・`masteryDownAt` |
+| js/game.js | 1 | `runKind`・`runSize` と `currentSetSize()`、語ごとの時刻（`setNewWord` の後の rAF・`acceptChar`・`handleTypingMiss`・ローマ字の受理と miss・spill の字・visibilitychange）と最初のキーの経路、`answerContext`・`classifySpeed` と `answer`、`runRankBefore`（prevStat から）、60 秒（`timer` に載せた時計・止める・時間切れ・待ち・スタンプと `#learnToast` のはちゃんを出さない・幕なし・続きを触らない）、`renderSetProgress` の 60 秒、`endStudySession({ timed })` のパネル、`#setAgain` の「もう60秒」、§5.4・§5.5 の行、`applyStudyXp` の文 2 つ、learnEvent の known の条件、`showIdleMessage`。PR #159 のレビューで経路を `keyInputOf`・`acceptAlternative` で `recordAnswerSeen`・`recordCorrect` に `answerContext` を渡す |
 | js/dailySet.js | 1 | `SET_LENGTHS`・`getSetLength`・`isTimedSet`（数の `?set=` が勝つ）・`?set=60s`・`setSetSize` |
 | js/tutorial.js | 1 | `isTutorialRunPending()` を export |
 | profile.html・js/profileView.js | 1 | 「今日のセットの長さ」・選択肢「60秒」・注記・初期値を `getSetLength()`・meta description と og:description |
@@ -735,7 +767,7 @@ spelldash_mastery_meta = {
 | js/wordDetail.js | 1 | 習熟度の行（根拠）・段の梯子・次の段の条件・畳んだ「習熟度の決まり」・title |
 | js/statsView.js・stats.html | 1 | 習熟度の節（説明・うち知ってた・規則の文） |
 | js/exportCsv.js・js/myWordsView.js | 1 | `mastery` 列・`known` の名前 |
-| js/studyQueue.js | 1 | 初見の条件（:565）。S6（`pickFillers`・`insertBreather`） |
+| js/studyQueue.js | 1 | 初見の条件（:565）。S6（`pickFillers`・`insertBreather`）。PR #159 のレビューで `isUnresolved` を mastery.js から import、`pickFillers` の S6 の語の Set を 1 回だけ作る |
 | js/mission.js | 1 | S6（`pickReviewWords`。段 3 で期日が未来の語も外す） |
 | js/backup.js | 1 | `clearLocalRecords` と `applyBackup` の後に `forgetMasteryMeta()` |
 | css/brand.css | 1 | `.rank`・`.rank__name`・目盛りの 5 行（全ページが読む） |
@@ -756,7 +788,7 @@ spelldash_mastery_meta = {
 7. 全文入力・音で出題・例文の訳つきの語は速さを測らないので、即答に届くのは綴りを打つ語とローマ字の答えが主になる（ローマ字の答えは本人の基準ができてから）。
 8. E2E の打鍵は速すぎて T1 が 200ms を割る。速さを見る節は出題から 400ms 以上待って打ち、基準は種で入れる。既定の線の境目（1.5／2.1 秒）を跨ぐ待ちは 300ms 以上の余裕をとる。
 9. 本人の基準は相対なので漂う（強い語ばかり答える人ほど中央値が下がり、即答が出にくくなる）。§3.8 で段 5 の割合の推移を見る。代案は、知ってた語の初見の T1 の中央値を「考えずに出る速さ」の基準にすること。
-10. 2 つのタブで同時に学ぶと `spelldash_mastery_meta` は後勝ち。集計が少しずれるだけ。
+10. 2 つのタブで同時に学ぶと、`spelldash_mastery_meta` は書く直前に読み直して足し合わせる（§11.6 の 4）。同じ語の控え（`check.pending`）を両方のタブが同じ日に数えると二重に数えることがある（集計が少しずれるだけ）。
 11. 題箋（何が起きたか）と段（どれだけ強いか）は別の物差しなので、同じカードで食い違って見える組み合わせが残る（覚えた＋あやふや・習得＋思い出せる・苦手＋身についた）。語の詳細の根拠の文で説明し、呼び名の表は BACKLOG。
 
 ---
