@@ -239,7 +239,7 @@ export function insertBreather() {
   const candidates = categoryWordsDeduped().filter((w) => {
     const s = stats[w.id];
     // 今日導入した学習中の語は自前の反復予定があるので使わない（前に回すと反復が崩れる）。
-    // 期日前の身についた以上の語・確認待ちの知ってた語も使わない（習熟度の S6。js/mastery.js holdBeforeDue）。候補が無ければ挟まない
+    // 期日前の身についた以上の語・× の無い知ってた語も使わない（習熟度の S6。js/mastery.js holdBeforeDue）。候補が無ければ挟まない
     return isFamiliar(s) && !isDoneForToday(s) && !isLearningToday(s) && !recalledThisSession.has(w.id) && (s.recallFail ?? 0) <= 1 && !holdBeforeDue(s, now);
   });
   if (candidates.length === 0) return false;
@@ -294,12 +294,18 @@ function pickFillers(count, excludeSet) {
   const mission = getTodayMission();
 
   const all = categoryWordsDeduped();
-  // 期日前の身についた以上の語と、2 週間後の確認を待つ知ってた語（習熟度の S6。js/mastery.js holdBeforeDue）の id。ここで 1 回だけ数え、
-  // 既習の枠からは外し、下の「それでも足りなければ」の埋めでは最後に戻す
+  // 期日前の身についた以上の語と、× の無い知ってた語（習熟度の S6。js/mastery.js holdBeforeDue）。語ごとに初めて聞かれたときに 1 回だけ数えて覚え
+  // （既習の枠の候補と「それでも足りなければ」の埋めで聞く語だけ。カテゴリの全語を先に数えない）、既習の枠からは外し、埋めでは最後に戻す
   const now = Date.now();
-  const heldIds = new Set();
-  for (const w of all) if (holdBeforeDue(stats[w.id], now)) heldIds.add(w.id);
-  const held = (w) => heldIds.has(w.id);
+  const heldMemo = new Map();
+  const held = (w) => {
+    let v = heldMemo.get(w.id);
+    if (v === undefined) {
+      v = holdBeforeDue(stats[w.id], now);
+      heldMemo.set(w.id, v);
+    }
+    return v;
+  };
   const focused = focusTag ? all.filter(inFocus) : all;
   const pool = focused.length > 0 ? focused : all;
   const usable = pool.filter((word) => {

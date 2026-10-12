@@ -1267,8 +1267,9 @@ export function handleKeydown(event) {
 
   if (!isPlaying || !currentWord) return;
 
-  // 速さの箱の入力の経路（js/masteryMeta.js keyInputOf）: 信頼された keydown で code が物理キーの名前（KeyA・Digit1・Minus など）なら kbd。
-  // iPhone・Android の画面キーボード（信頼された keydown でも code が空・Unidentified・keyCode 229）と #osk のボタンが合成する keydown は touch
+  // 速さの箱の入力の経路（js/masteryMeta.js keyInputOf）: 信頼された keydown で code が物理キーの名前（KeyA・Digit1・Minus など）なら kbd
+  // （日本語入力オンの物理キーの keyCode 229・key Process も code で kbd）。iPhone・Android の画面キーボード（信頼された keydown でも
+  // code が空・Unidentified）と #osk のボタンが合成する keydown は touch
   keyPath = keyInputOf(event);
 
   // 正解直後の待ち（次の語が出る前）: 文字キーは判定しない（次の語の1文字目をミス扱いにしない）。

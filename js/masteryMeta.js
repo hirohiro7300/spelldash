@@ -18,6 +18,8 @@
 // 1 回書く（flushMasteryMeta）。変わっていなければ書かない。読み書きはすべて try/catch（失敗しても学習は続く。js/retentionLog.js と同じ作法）。
 // 2 つのタブで同時に学んでも互いに消さない: 書く直前に保存を読み直し、このタブで足した分（速さの見本・集計の増分。delta）だけを足して書く
 // （見本は各箱の最新 40 件、集計は足し算）。書いた後のメモリーは保存と同じ中身（もう一方のタブの見本も基準に入る）。
+// 最初の中央値（firstMedian）と数え始めた日（since）も、このタブが読み込んだ（前に書いた）後に新しく決めたものだけを delta に持って足す
+// （別のタブで「端末の記録を消す」「復元」をした後に、このタブが読み込んだ時の古い基準を書き戻さない）。
 
 import { localDay } from "./retentionCalc.js";
 
@@ -75,8 +77,9 @@ let answersSinceFlush = 0;
 // 前に書いてから（読んでから）このタブで足した分。flush で保存を読み直した中身に足す
 let delta = emptyDelta();
 
+// firstMedian: このタブで新しく決めた最初の中央値（箱ごと）。since: このタブが前に読み書きしてから最初に数えた日（足す集計の始まり）
 function emptyDelta() {
-  return { speed: {}, rank: {}, firstFast: { prior: [0, 0], own: [0, 0] }, pendingAdd: new Map(), pendingDel: new Set() };
+  return { speed: {}, rank: {}, firstFast: { prior: [0, 0], own: [0, 0] }, pendingAdd: new Map(), pendingDel: new Set(), firstMedian: {}, since: undefined };
 }
 
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -131,8 +134,10 @@ function load() {
   return meta;
 }
 
-// 保存を読み直した中身 base に、このタブで足した分 d を足す（base を書き換えて返す）。mem = このタブのメモリー（数え始めた日・最初の中央値の控え）
-function mergeDelta(base, d, mem) {
+// 保存を読み直した中身 base に、このタブで足した分 d を足す（base を書き換えて返す）。
+// 最初の中央値と数え始めた日は d の値だけを見る（このタブのメモリーにある値は、読み込んだ時からあったものかもしれないので書き戻さない:
+// 別のタブが消した・復元した保存に古い基準が戻る）
+function mergeDelta(base, d) {
   const m = base;
   for (const [box, add] of Object.entries(d.speed)) {
     const b = m.speed[box] ?? { t1: [], pc: [] };
@@ -140,11 +145,11 @@ function mergeDelta(base, d, mem) {
   }
   for (const box of BOX_KEYS) {
     if (Number.isFinite(m.check.firstMedian[box])) continue; // 先に書いたタブの値のまま（1 回だけ書く）
-    if (Number.isFinite(mem?.check.firstMedian[box])) m.check.firstMedian[box] = mem.check.firstMedian[box];
+    if (Number.isFinite(d.firstMedian[box])) m.check.firstMedian[box] = d.firstMedian[box]; // このタブで新しく決めた値
     else if ((m.speed[box]?.t1.length ?? 0) >= MIN_SAMPLES) m.check.firstMedian[box] = median(m.speed[box].t1); // 足して初めて 20 件
   }
-  const since = mem?.check.since;
-  if (since && (!m.check.since || since < m.check.since)) m.check.since = since;
+  // 保存に無ければ、このタブが足す集計を数え始めた日。あれば早い方（足した集計はその日から数えている）
+  if (d.since && (!m.check.since || d.since < m.check.since)) m.check.since = d.since;
   for (const [r, row] of Object.entries(d.rank)) {
     const mrow = m.check.rank[r] ?? (m.check.rank[r] = {});
     for (const [band, [o, x]] of Object.entries(row)) {
@@ -167,8 +172,11 @@ function touch() {
   dirty = true;
 }
 
+// 集計を数える答えのたびに呼ぶ: 数え始めた日がメモリーに無ければ今日に。delta には、前に読み書きしてから最初に数えた日を控える
 function startCheck(m, nowMs) {
-  if (!m.check.since) m.check.since = localDay(new Date(nowMs)) ?? undefined;
+  const day = localDay(new Date(nowMs)) ?? undefined;
+  if (!m.check.since) m.check.since = day;
+  if (!delta.since) delta.since = day;
 }
 
 // 読むだけの写し（検証・バックアップの確かめ用）
@@ -192,12 +200,13 @@ export function getSpeedBox(box) {
 const PHYSICAL_CODE = /^(?:Key[A-Z]|Digit[0-9]|Numpad\w+|Minus|Equal|Space|Quote|Backquote|Comma|Period|Slash|Semicolon|Backslash|BracketLeft|BracketRight|IntlBackslash|IntlRo|IntlYen)$/;
 
 // keydown が来た入力の経路（速さの箱の input）: 物理キーとみなすのは、信頼されたイベントで code が物理キーの名前のときだけ（"kbd"）。
-// iPhone・Android の画面キーボードの keydown は信頼されたイベントでも code が空・"Unidentified"・keyCode 229 なので "touch"。
-// 専用の画面キーボード（#osk のボタンが合成する keydown。isTrusted 偽）も "touch"
+// code を keyCode より先に見る: 日本語入力（IME）オンの物理キーボードの keydown は keyCode 229・key "Process" だが code は物理キーの名前
+// （"KeyA" など）なので "kbd"。iPhone・Android の画面キーボードの keydown は信頼されたイベントでも code が空・"Unidentified"・無い
+// （keyCode 229 のことが多い）ので "touch"。専用の画面キーボード（#osk のボタンが合成する keydown。isTrusted 偽）も "touch"
 export function keyInputOf(event) {
   if (!event || event.isTrusted === false) return "touch";
-  if (event.keyCode === 229) return "touch";
-  return PHYSICAL_CODE.test(event.code ?? "") ? "kbd" : "touch";
+  if (PHYSICAL_CODE.test(event.code ?? "")) return "kbd";
+  return "touch"; // code が空・Unidentified・物理キーの名前でない（keyCode 229 の画面キーボードはここ）
 }
 
 // sample = { t1, pc }（ms）。t1 が数で 200ms 以上なら測れた答え。pc は字数 3 以上のときだけ数（ほかは null）
@@ -246,7 +255,10 @@ export function noteSpeedSample(box, sample) {
     const pc = pcOf(sample);
     if (pc !== null) b.pc = [...b.pc, pc].slice(-KEEP);
     m.speed[box] = b;
-    if (b.t1.length >= MIN_SAMPLES && !Number.isFinite(m.check.firstMedian[box])) m.check.firstMedian[box] = median(b.t1);
+    if (b.t1.length >= MIN_SAMPLES && !Number.isFinite(m.check.firstMedian[box])) {
+      m.check.firstMedian[box] = median(b.t1);
+      delta.firstMedian[box] = m.check.firstMedian[box]; // このタブで新しく決めた（flush で保存に無ければ足す）
+    }
     const db = delta.speed[box] ?? (delta.speed[box] = { t1: [], pc: [] });
     db.t1 = [...db.t1, t1].slice(-KEEP);
     if (pc !== null) db.pc = [...db.pc, pc].slice(-KEEP);
@@ -316,7 +328,7 @@ export function flushMasteryMeta() {
   answersSinceFlush = 0;
   if (!dirty || !meta) return false;
   try {
-    const merged = mergeDelta(readStored(), delta, meta);
+    const merged = mergeDelta(readStored(), delta);
     localStorage.setItem(KEY, JSON.stringify(merged));
     meta = merged;
     delta = emptyDelta();
