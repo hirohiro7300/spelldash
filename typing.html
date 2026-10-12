@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>タイピング練習（英単語・ローマ字）無料・1分 | SpellDash</title>
+  <title>タイピング練習（英単語・ローマ字・長文）無料 | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
   <link rel="stylesheet" href="./css/fonts.css" />
@@ -18,11 +18,11 @@
   <meta name="theme-color" content="#1A2137" />
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
 
-  <meta name="description" content="登録なし・無料で、開いてすぐ1分のタイピング練習。英単語は日本語の訳つき、日本語は小・中学校の用語の読みをローマ字で打つ。結果は打/分・正確さ・間違えたキー。" />
+  <meta name="description" content="登録なし・無料のタイピング練習。英単語（日本語の訳つき）と日本語（ローマ字）は1分、長文は日本語と英語の文章を最後まで打つ（英文は訳つき）。スマホは画面のキーボードで打てる。結果は打/分・正確さ・間違えたキー、長文はスコアと時間も。" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="SpellDash" />
-  <meta property="og:title" content="タイピング練習（英単語・ローマ字）無料・1分 | SpellDash" />
-  <meta property="og:description" content="登録なし・無料で、開いてすぐ1分のタイピング練習。英単語は日本語の訳つき、日本語は小・中学校の用語の読みをローマ字で打つ。結果は打/分・正確さ・間違えたキー。" />
+  <meta property="og:title" content="タイピング練習（英単語・ローマ字・長文）無料 | SpellDash" />
+  <meta property="og:description" content="登録なし・無料のタイピング練習。英単語（日本語の訳つき）と日本語（ローマ字）は1分、長文は日本語と英語の文章を最後まで打つ（英文は訳つき）。スマホは画面のキーボードで打てる。結果は打/分・正確さ・間違えたキー、長文はスコアと時間も。" />
   <link rel="canonical" href="https://www.spelldash.net/typing.html" />
   <meta property="og:url" content="https://www.spelldash.net/typing.html" />
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
@@ -47,10 +47,11 @@
   <link rel="modulepreload" href="./js/funnelLog.js" />
   <link rel="modulepreload" href="./js/keyboard.js" />
   <link rel="modulepreload" href="./js/retentionCalc.js" />
-  <link rel="modulepreload" href="./js/typingKeys.js" />
   <link rel="modulepreload" href="./js/romaji.js" />
   <link rel="modulepreload" href="./js/jaScript.js" />
+  <link rel="modulepreload" href="./js/typingKeys.js" />
   <link rel="modulepreload" href="./js/typingDrill.js" />
+  <link rel="modulepreload" href="./js/typingLong.js" />
   <!-- modulepreload:end -->
 </head>
 <body class="page-typing">
@@ -79,16 +80,24 @@
   <main class="app app--narrow typing" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <h1>タイピング練習</h1>
-      <p class="subtitle">英単語は訳つき。登録なし・無料。</p>
+      <p class="subtitle">英単語は訳つき。長文も打てる。登録なし・無料。</p>
     </section>
 
     <div class="stats-tabs tp-tabs" id="typingTabs" role="group" aria-label="打つもの">
       <button type="button" class="stats-tab stats-tab--active" data-kind="en" aria-pressed="true">英単語</button>
       <button type="button" class="stats-tab" data-kind="ja" aria-pressed="false">日本語（ローマ字）</button>
+      <button type="button" class="stats-tab" data-kind="long" aria-pressed="false">長文</button>
     </div>
     <p class="tp-tabnote tp-tabnote--off" id="typingTabNote">小・中学校の用語。読みをローマ字で打つ。</p>
 
     <section class="result-card tp-board" id="typingBoard" data-kind="en" data-state="ready" aria-label="タイピング練習">
+      <!-- 長文の 1 行目（長文だけ出す。高さは 44px を予約し、状態で中身だけ替える: 始まる前は文章の select、打っている間は題・残り・やめる） -->
+      <div class="tp-head" id="typingHead" hidden>
+        <label class="sr-only" for="typingText">文章</label>
+        <select class="setting-select tp-head__select" id="typingText" disabled><option>読み込み中</option></select>
+        <p class="tp-head__title" id="typingTitle" hidden></p>
+        <p class="tp-head__right" id="typingHeadRight" hidden><span class="tp-head__left" id="typingLeft"></span><span class="tp-head__paused">止めた</span><button type="button" class="btn btn--ghost btn--sm tp-head__stop" id="typingStop" data-run-control>やめる<small class="tp-kbdhint">（Esc）</small></button></p>
+      </div>
       <p class="tp-timer" id="typingTimer">残り 60秒</p>
       <div class="tp-play" id="typingPlay">
         <p class="tp-term" id="typingTerm" hidden></p>
@@ -96,15 +105,19 @@
         <p class="tp-gloss" id="typingGloss">りんご</p>
         <p class="tp-upnext tp-upnext--empty" id="typingNext">次<b></b></p>
         <p class="tp-hint" id="typingHint">打ち始めると、1分を測る。</p>
-        <p class="tp-error" id="typingError" hidden>単語を読み込めなかった。通信を確かめて、<a href="./typing.html">開き直す</a>。</p>
+        <p class="tp-error" id="typingError" hidden><span id="typingErrorWhat">単語</span>を読み込めなかった。通信を確かめて、<a href="./typing.html">開き直す</a>。</p>
+        <p class="sr-only" id="typingLine"></p>
         <input id="input" type="text" readonly aria-label="見本の語を打つ" aria-describedby="typingTerm typingWord typingGloss" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
       </div>
       <div class="tp-result" id="typingResult" hidden>
         <p class="tp-result__kind" id="typingKind">英単語・1分</p>
-        <p class="tp-result__kpm" id="typingKpmLine" tabindex="-1"><b id="typingKpm">0</b><small>打/分</small></p>
+        <p class="tp-result__kpm" id="typingKpmLine" tabindex="-1"><small class="tp-result__pre" id="typingKpmPre" hidden>スコア</small><b id="typingKpm">0</b><small id="typingKpmUnit">打/分</small></p>
         <p class="tp-result__line" id="typingAcc">正確さ <b>0%</b> ・ ミス <b>0</b><span id="typingBest" hidden></span></p>
         <p class="tp-result__line" id="typingKeys" hidden></p>
-        <button type="button" class="btn btn--ghost tp-result__again" id="typingAgain">もう一度<small class="tp-kbdhint">（Enter）</small></button>
+        <div class="tp-result__btns">
+          <button type="button" class="btn btn--ghost tp-result__again" id="typingAgain">もう一度<small class="tp-kbdhint">（Enter）</small></button>
+          <button type="button" class="btn btn--ghost tp-result__again tp-result__nexttext" id="typingNextText" hidden>次の文</button>
+        </div>
         <div class="tp-result__next">
           <h2>次は、見本なしで。</h2>
           <p id="typingStudyText">日本語の訳だけを見て、英単語を思い出して打つ。1日5分から。</p>
@@ -120,10 +133,12 @@
     <section class="tp-about" aria-labelledby="typingAbout">
       <h2 id="typingAbout">このページについて</h2>
       <ul>
-        <li>1分間、見本の語をそのまま打つタイピング練習。登録なし・無料・広告なし。</li>
+        <li>英単語と日本語は1分間、見本の語をそのまま打つ。長文は文章を最後の行まで打つ。登録なし・無料・広告なし。</li>
         <li>英単語は日本語の訳つき（中学・高校・日常・旅行・仕事などの3〜8字の語）。日本語は小・中学校の社会・理科・国語・算数の用語を、読みのローマ字で打つ（し は si でも shi でも）。</li>
         <li>打ち間違えても語は止まらない。正しいキーを打てば進む。スマホとタブレットは、画面の下に出るキーボードで打つ。</li>
-        <li>打/分は、1分で正しく打ったキーの数。正確さは、正しく打った数を打った数で割ったもの。間違えたキー（苦手なキーの手がかり）と自己ベストも出る。自己ベストはこの端末に保存する。</li>
+        <li>打/分は、1分あたりに正しく打ったキーの数。正確さは、正しく打った数を打った数で割ったもの。間違えたキー（苦手なキーの手がかり）と自己ベストも出る。自己ベストはこの端末に保存する。</li>
+        <li>長文タイピングは、日本語（昔話・暮らし・季節）と英語（短い話。1行ごとに日本語の訳つき）の文章を1本選んで、最後まで打つ。短めは6〜14行、長めは16〜30行。読点「、」は ,（カンマ）、句点「。」は .（ピリオド）で打つ。英語は空白と . , ' ? も打ち、大文字は小文字のままでも通る。</li>
+        <li>長文の結果は、スコア・時間・打/分・正確さ。スコアは打/分に正確さの2乗を掛けた数で、ミスが無ければ打/分と同じ。Esc（スマホは「やめる」）でやめると、そこまでの結果が出る。自己ベストは最後まで打った回を文章ごとに残す。</li>
         <li>英単語を覚えるなら、訳だけを見て思い出して打つ <a href="/?from=typing" data-typing-study>SpellDash の英単語学習</a>へ。</li>
       </ul>
     </section>

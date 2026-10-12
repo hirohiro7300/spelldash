@@ -128,18 +128,20 @@ export const kanaCount = (r) => [...String(r ?? "")].length;
 const toHiragana = (s) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
 const where = (row) => `${path.basename(row.file)}:${row.line}`;
 
-// V2: 手本（語末の ん は n 1 つ）で打ち終えられる
-function typeable(r, canon) {
+// V2: 手本（語末の ん は n 1 つ）で打ち終えられる。opts は createRomajiMatcher にそのまま渡す（既定は空。タイピング練習の長文の生成器
+// scripts/build-typing-long.mjs が { punct: true } で使う。ゲームの呼び方は引数なしのまま）
+export function typeable(r, canon, opts = {}) {
   if (!canon) return false;
-  const m = createRomajiMatcher([{ reading: r, display: r }]);
+  const m = createRomajiMatcher([{ reading: r, display: r }], opts);
   return m.type(canon).missAt === -1 && m.state().done;
 }
 
-// V7: 手本どおりに 1 打ずつ打ちながら、かなの単位をつないだものが常に読みと同じ（tests/e2e.mjs の drift と同じ）
-function unitsDrift(r, canon) {
+// V7: 手本どおりに 1 打ずつ打ちながら、かなの単位をつないだものが常に読みと同じ（tests/e2e.mjs の drift と同じ）。
+// opts は japaneseUnits にそのまま渡す（既定は空。長文の生成器が { punct: true } で使う）
+export function unitsDrift(r, canon, opts = {}) {
   let typed = "";
   for (let i = 0; ; i++) {
-    const kana = T.japaneseUnits(r, typed).units.map((u) => u.kana).join("");
+    const kana = T.japaneseUnits(r, typed, opts).units.map((u) => u.kana).join("");
     if (kana !== r) return `${typed === "" ? "0 打" : typed} まで打ったときのかなの行が「${kana}」`;
     if (i >= canon.length) return null;
     typed += canon[i];
@@ -410,8 +412,9 @@ export function lintFile(file, course, dir = SRC_DIR) {
 
 // ---- --report ----
 
-// 小・中学校のパック（concept の群で group が 小学校／中学校 で始まる）の q・answer・ja に出る漢字（scripts/build-typing.mjs の jaGroup と同じ選び方）
-function schoolKanji() {
+// 小・中学校のパック（concept の群で group が 小学校／中学校 で始まる）の q・answer・ja に出る漢字（scripts/build-typing.mjs の jaGroup と同じ選び方）。
+// 読めなければ null（長文の生成器の --write-kanji・--report は null で落ちる）
+export function schoolKanji() {
   const set = new Set();
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));

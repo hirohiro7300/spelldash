@@ -1085,7 +1085,7 @@ console.log("typing:");
   const meta = (re) => typingHtml.match(re)?.[1] ?? "";
   const desc = meta(/<meta name="description" content="([^"]*)"/);
   const ogDesc = meta(/<meta property="og:description" content="([^"]*)"/);
-  check("typing: title・canonical は決めた文、description は「登録なし」「1分」を含む、本文の静的な文（検索に出す）", typingHtml.includes("<title>タイピング練習（英単語・ローマ字）無料・1分 | SpellDash</title>") && typingHtml.includes('<link rel="canonical" href="https://www.spelldash.net/typing.html" />') && typingHtml.includes('<meta property="og:url" content="https://www.spelldash.net/typing.html" />') && desc !== "" && desc === ogDesc && desc.includes("登録なし") && desc.includes("1分") && !/noindex/i.test(typingHtml) && ["残り 60秒", "打ち始めると、1分を測る。", "apple", "りんご", "このページについて"].every((s) => typingHtml.includes(s)), desc);
+  check("typing: title・canonical は決めた文、description は「登録なし」「1分」を含む、本文の静的な文（検索に出す）", typingHtml.includes("<title>タイピング練習（英単語・ローマ字・長文）無料 | SpellDash</title>") && typingHtml.includes('<link rel="canonical" href="https://www.spelldash.net/typing.html" />') && typingHtml.includes('<meta property="og:url" content="https://www.spelldash.net/typing.html" />') && desc !== "" && desc === ogDesc && desc.includes("登録なし") && desc.includes("1分") && !/noindex/i.test(typingHtml) && ["残り 60秒", "打ち始めると、1分を測る。", "apple", "りんご", "このページについて"].every((s) => typingHtml.includes(s)), desc);
   const footerNav = (html) => html.match(/<nav class="site-footer__nav"[^>]*>[\s\S]*?<\/nav>/)?.[0] ?? "";
   const firstLink = (html) => footerNav(html).match(/<a [^>]*>/)?.[0] ?? "";
   const noTyping = ["index.html", "stats.html", "profile.html", "news.html", "list.html", "pro.html", "privacy.html", "terms.html", "tokushoho.html", "admin.html", "typing-game.html"].filter((f) => !firstLink(fs.readFileSync(path.join(ROOT, f), "utf8")).includes('href="./typing.html"'));
@@ -1093,10 +1093,1116 @@ console.log("typing:");
   const packNoTyping = packFiles.filter((f) => !firstLink(fs.readFileSync(path.join(ROOT, "packs", f), "utf8")).includes('href="/typing.html"'));
   check(`typing: フッターの先頭に「タイピング練習」（静的 11 ページと packs の全 ${packFiles.length} 枚、battle.html は除く）・typing.html のフッターは Pro を出さない印を持つ`, noTyping.length === 0 && packFiles.length >= 160 && packNoTyping.length === 0 && /<nav class="site-footer__nav"[^>]*data-no-pro/.test(typingHtml) && firstLink(typingHtml).includes('aria-current="page"') && !footerNav(fs.readFileSync(path.join(ROOT, "battle.html"), "utf8")).includes("typing.html"), JSON.stringify({ noTyping, packNoTyping: packNoTyping.slice(0, 5) }));
   const newsSrc = fs.readFileSync(path.join(ROOT, "js", "news.js"), "utf8");
-  const firstNews = newsSrc.slice(newsSrc.indexOf("const NEWS = ["), newsSrc.indexOf("},", newsSrc.indexOf("const NEWS = [")));
-  check("typing: sitemap・sw の precache・アプリの PAGES・お知らせに typing.html、ci.yml に教材の --check", fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing.html") && fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing.html"') && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing.mjs --check"));
+  // お知らせは題で探す（並行の別の作業が先頭に 1 件足しても落ちない。検査の強さは同じ: その 1 件に ./typing.html）
+  const newsItemOf = (title) => { const i = newsSrc.indexOf(`title: "${title}"`); return i < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", i), newsSrc.indexOf("},", i)); };
+  const firstNews = newsItemOf("タイピング練習に長文");
+  check("typing: sitemap・sw の precache・アプリの PAGES・お知らせ（題「タイピング練習に長文」の 1 件）に typing.html、ci.yml に教材の --check", fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing.html") && fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing.html"') && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing.mjs --check"));
   const typingCss = fs.readFileSync(path.join(ROOT, "css", "typing.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   check("typing: typing.css は太さを longhand で書き、新しい animation／transition を持たない", !/text-decoration\s*:[^;]*\d+px/.test(typingCss) && !/\b(animation|transition)(-[a-z]+)?\s*:/.test(typingCss) && !typingCss.includes("@keyframes") && typingCss.includes("text-decoration-thickness: 2px"));
+}
+
+// ===== 7.55 タイピング練習の長文（typing.html の 3 つ目の種類「長文」。docs/SPEC_TYPING.md「長文」。Batch 62）: 判定（romaji.js の { punct }・englishLine）・
+// キーの読み方・時計・スコア・自己ベスト・教材の生成器（Node）。既定（オプションなしの判定・ゲームの生成器）が変わらないことも見る。
+// ページ（1200 の 1 枚・完走と自己ベスト・英語・教材が読めない組・投げる storage・タッチ端末 390・全 20 編の全行・静的）は節の後半 =====
+console.log("typing long:");
+{
+  const T = await import("../js/typingDrill.js");
+  const L = await import("../js/typingLong.js");
+  const R = await import("../js/romaji.js");
+  const BL = await import("../scripts/build-typing-long.mjs");
+  const BG = await import("../scripts/build-typing-game.mjs");
+  const J = (v) => JSON.stringify(v);
+  const P = { punct: true };
+
+  // ---- romaji.js の既定は変わらない（オプションなし・{}・数・{ punct: false }。句読点のキーは読み飛ばす） ----
+  {
+    const typingJson = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "typing.json"), "utf8"));
+    const gameJson = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "typing-game.json"), "utf8"));
+    const readings = [...new Set([...typingJson.ja.map((p) => p[1]), ...Object.values(gameJson.courses).flatMap((c) => c.map((p) => p[1]))])];
+    const bad = [];
+    for (const r of readings) {
+      const c0 = R.canonicalRomaji(r);
+      const c1 = R.canonicalRomaji(r, { finalN: true });
+      if ([R.canonicalRomaji(r, {}), R.canonicalRomaji(r, 1), R.canonicalRomaji(r, null), R.canonicalRomaji(r, { punct: false }), R.canonicalRomaji(r, P)].some((c) => c !== c0) || R.canonicalRomaji(r, { finalN: true, punct: false }) !== c1 || R.canonicalRomaji(r, { finalN: true, punct: true }) !== c1) { bad.push(`手本 ${r}`); continue; }
+      const ms = [R.createRomajiMatcher([r]), R.createRomajiMatcher([r], {}), R.createRomajiMatcher([r], 1), R.createRomajiMatcher([r], { punct: false })];
+      const mp = R.createRomajiMatcher([r], P); // 句読点の無い読みでは、句読点のキーのほかは同じ
+      let same = true;
+      for (const k of c1) {
+        const out = ms.map((m) => J([m.feed(k), m.state(), m.hint()]));
+        const outP = J([mp.feed(k), mp.state(), mp.hint()]);
+        if (out.some((o) => o !== out[0]) || outP !== out[0]) { same = false; break; }
+      }
+      const done = ms[0].state().done;
+      const comma = ms.map((m) => m.feed(","));
+      if (!same || !done || comma.some((f) => !f.ignored || f.ok)) bad.push(`判定 ${r}`);
+    }
+    const keys = [R.normalizeRomajiKey(","), R.normalizeRomajiKey("."), R.normalizeRomajiKey("、"), R.romajiKeyOf({ key: "," }), R.romajiKeyOf({ key: "." }), R.romajiKeyOf({ key: "Process", code: "Comma" }), R.romajiKeyOf({ key: "ね", code: "Comma" }), R.romajiKeyOf({ key: "せ", code: "KeyP" })];
+    // 書き出した関数に添字が渡っても既定のまま（[…].map(f) の形）
+    const mapped = ["きた、かぜ。", "みかんと、ぱん。"].map(R.canonicalRomaji);
+    const mappedM = ["きた、かぜ。", "みかんと、ぱん。"].map((r, i) => R.createRomajiMatcher([r], i).readings[0]);
+    const norm = ["きた、かぜ。", "み、か"].map(R.normalizeReading);
+    check(`typing long: romaji.js の既定は変わらない — typing.json・typing-game.json の全読み（${readings.length}）で、オプションなし・{}・数・null・{ punct: false } の手本と判定が同じ（{ punct: true } も句読点の無い読みでは同じ）、, . は読み飛ばす、romajiKeyOf・normalizeRomajiKey は , . を返さない、添字を渡しても既定`, bad.length === 0 && J(keys) === '[null,null,null,null,null,null,null,"p"]' && J(mapped) === '["kitakaze","mikanntopann"]' && J(mappedM) === '["きたかぜ","みかんとぱん"]' && J(norm) === '["きたかぜ","みか"]', J({ bad: bad.slice(0, 5), keys, mapped, mappedM, norm }));
+  }
+  // ---- { punct: true }: 「、」は ,、「。」は .。句読点の前の ん の手本は nn、n 1 つ・nn・n'・xn でも通る ----
+  {
+    const r = "みかんと、ぱん。";
+    const canon = R.canonicalRomaji(r, P);
+    const u0 = T.japaneseUnits(r, "", P);
+    const typedOk = ["mikanto,pan.", "mikannto,pann.", "mikan'to,pan'.", "mikaxnto,paxn.", "mikannto、pann。"].map((k) => { const m = R.createRomajiMatcher([r], P); return m.type(k).missAt === -1 && m.state().done; });
+    const noComma = R.createRomajiMatcher([r], P).type("mikanntopann.").missAt;
+    // 1 打ずつ: かなの行・キーの行が崩れず、かなが空の単位が無い（V7 の (a)(b)(c)）
+    const drift = [];
+    for (const k of ["mikannto,pann.", "mikanto,pan.", "mikan'to,pan'."]) {
+      for (let i = 0; i <= k.length; i++) {
+        const { units } = T.japaneseUnits(r, k.slice(0, i), P);
+        if (units.map((u) => u.kana).join("") !== r || units.some((u) => u.kana === "")) { drift.push(`${k.slice(0, i)}`); break; }
+      }
+    }
+    const w = T.createWord("ja_text", ["蜜柑と、パン。", r]);
+    const steps = [..."mikannto,pann."].map((k) => w.feed(k).ok);
+    const tsu = R.canonicalRomaji("あっ、いや。", P); // 句読点の前の っ は xtu（教材で避ける: V14）
+    check("typing long: { punct: true } — 手本 mikannto,pann.（句読点の前の ん も nn）、n 1 つ・nn・n'・xn・かなの「、」「。」でも通る、, を抜くとミス、打っている途中もかなの行が読みと同じで空の単位なし、ja_text の語は kind ja で句読点も単位 1 つ、っ、は xtu", canon === "mikannto,pann." && u0.rest === "mikannto,pann." && u0.units[4]?.kana === "、" && u0.units[4]?.rest === "," && typedOk.every(Boolean) && noComma === 8 && drift.length === 0 && w.kind === "ja" && steps.every(Boolean) && w.matcher.state().done && tsu === "axtu,iya.", J({ canon, u0, typedOk, noComma, drift, steps, tsu }));
+  }
+  // ---- 生成器の検査が空回りしない（V2・V7・L10・V8・L1）とゲームの生成器の既定 ----
+  {
+    const r = "みかんと、ぱん。";
+    const v2 = [BG.typeable(r, "mikannto,pann.", P), BG.typeable(r, "mikanntopann.", P), BG.typeable(r, "mikanntopann."), BG.typeable(r, "mikannto;;pann")]; // オプションなしの matcher は , . ; を読み飛ばすので、でたらめな手本でも通る
+    const v7 = [BG.unitsDrift(r, "mikannto,pann.", P), BL.unitKeysDrift(r, "mikannto,pann."), BL.unitKeysDrift(r, "mikanto,pan.")];
+    // ゲームの文に句読点を差し込んだ行（ん、・ん。を含む）で V2・V7・V14 が 0 件
+    const gameRows = BG.loadSources().rows;
+    const small = /^[ぁぃぅぇぉゃゅょゎ]$/;
+    const synth = [];
+    for (const { r: gr } of gameRows) {
+      const ch = [...gr];
+      const cut = Math.floor(ch.length / 2);
+      synth.push(gr + "。");
+      if (!small.test(ch[cut]) && ch[cut - 1] !== "っ" && ch[cut] !== "ー") synth.push(ch.slice(0, cut).join("") + "、" + ch.slice(cut).join("") + "。");
+    }
+    const synthBad = synth.filter((x) => { const c = BL.canonOf(x); return !c || /[xl]/.test(c) || !BG.typeable(x, c, P) || BG.unitsDrift(x, c, P) || BL.unitKeysDrift(x, c); });
+    const nBefore = synth.filter((x) => /ん[、。]/.test(x)).length;
+    const aux = BL.loadAux();
+    const mk = (lang, id, title, lines) => ({ id, title, len: id.includes("-s") ? "short" : "long", lang, file: `${lang}.jsonl`, line: 1, lines: lines.map((row, i) => ({ ...row, line: i + 2 })) });
+    const g0 = gameRows[0];
+    const l10 = BL.validateTexts([mk("ja", "ja-s01", "北風と太陽", [{ t: `${g0.t}。`, r: `${g0.r}。` }])], { aux }).filter((p) => p.check.startsWith("L10"));
+    const skill = BL.validateTexts([mk("en", "en-s01", "小さな庭", [{ t: "She has the skill to sing well.", ja: "彼女は上手に歌える。" }])], { aux }).filter((p) => p.check.startsWith("V8"));
+    const kill = BL.validateTexts([mk("en", "en-s01", "小さな庭", [{ t: "They killed time by the river.", ja: "川で時間をつぶした。" }])], { aux }).filter((p) => p.check.startsWith("V8"));
+    const title = BL.validateTexts([mk("ja", "ja-s01", "嫁の朝", [{ t: "朝の光が、まどから入る。", r: "あさのひかりが、まどからはいる。" }])], { aux }).filter((p) => p.check.startsWith("L1"));
+    const builtGame = BG.buildTypingGameData();
+    const gameOk = builtGame.text === fs.readFileSync(path.join(ROOT, "data", "typing-game.json"), "utf8") && BG.validateTypingGameData(builtGame).length === 0;
+    check(`typing long: 生成器の検査が空回りしない — , を抜いた手本で V2 が落ちる（オプションなしでは通ってしまう）、句読点の行（ゲームの文に差し込んだ ${synth.length} 行。ん の直後 ${nBefore}）で V7 が 0 件、n 1 つの手本ではキーの行のずれを見る、ゲームの文に「。」で L10、deny-en の kill で skill は落ちず killed は落ちる、題に kanji.txt に無い字で L1、ゲームの --check は同じ`, J(v2) === "[true,false,true,true]" && v7[0] === null && v7[1] === null && typeof v7[2] === "string" && synthBad.length === 0 && nBefore > 0 && l10.length === 2 && skill.length === 0 && kill.length === 1 && title.some((p) => p.reason.includes("嫁")) && gameOk, J({ v2, v7, synthBad: synthBad.slice(0, 3), l10, skill, kill, title }));
+  }
+  // ---- キーの読み方（punctKeyOf・textKeyOf） ----
+  {
+    const ev = (o) => ({ key: "", code: "", ...o });
+    const pk = [ev({ key: "," }), ev({ key: "、" }), ev({ key: "Process", code: "Comma" }), ev({ key: "ね", code: "Comma" }), ev({ key: "る", code: "Period" }), ev({ key: "せ", code: "KeyP" }), ev({ key: "。" }), ev({ key: "，" }), ev({ key: ",", ctrlKey: true }), ev({ key: "Enter" }), ev({ key: " " }), ev({ key: "/" })].map(L.punctKeyOf);
+    const tk = [ev({ key: "せ", code: "KeyP" }), ev({ key: "A", shiftKey: true }), ev({ key: "Process", code: "KeyA" }), ev({ key: "Process", code: "Quote" }), ev({ key: "Process", code: "Digit7", shiftKey: true }), ev({ key: "Dead", code: "Quote" }), ev({ key: "Process", code: "Space" }), ev({ key: "Process", code: "Space", isComposing: true }), ev({ key: "　" }), ev({ key: "?", code: "Slash", shiftKey: true }), ev({ key: "Process", code: "Slash", shiftKey: true }), ev({ key: "a", ctrlKey: true }), ev({ key: "Process", code: "Backquote" }), ev({ key: "Enter" }), ev({ key: "Shift", shiftKey: true }), ev({ key: "’" }), ev({ key: "Ａ" }), ev({ key: "." }), ev({ key: "Process", code: "Digit3" })].map(L.textKeyOf);
+    check("typing long: キーの読み方 — punctKeyOf（, 、 Process＋Comma・かな配列の ね／る → , .・せ＝KeyP → p・Ctrl つき・Enter・空白は null）、textKeyOf（大小はそのまま・Process は code で読む・Quote／Shift＋Digit7／Dead → '・Process の Space は空白（変換中は null）・全角の空白・Shift＋Slash → ?・Ctrl つき・ほかの code・名前のキーは null）", J(pk) === '[",",",",",",",",".","p",".",",",null,null,null,null]' && J(tk) === `["p","A","a","'","'","'"," ",null," ","?","?",null,null,null,null,"'","A",".","3"]`, J({ pk, tk }));
+  }
+  // ---- englishLine（en_text） ----
+  {
+    const run = T.createRun("en_text", [["I'm here, Tom?", "訳"], ["Yes.", "はい。"]]);
+    const types = [];
+    let t = 0;
+    for (const k of [" ", "i", "'", "M", "x", " ", "h", "e", "r", "e", ",", "a", " ", "t", "o", "m", "?", " ", "Y", "e", "s", "."]) types.push(run.press(k, (t += 100)).type);
+    const w = T.createWord("en_text", ["A b?", "訳"]);
+    const view = w.view();
+    const fed = [w.startsWith("a"), w.feed("a").ok, w.feed("b"), w.feed(" ").ok, w.feed("?"), w.feed("B").ok, w.feed("."), w.feed("?").done];
+    const view2 = w.view();
+    check("typing long: englishLine — 大文字に小文字・Shift つきが通る、行の頭の空白は飲む（数えない）、空白の所に字・字の所に空白はミスで打つはずだったキーは空白／小文字、' ? は完全一致、最後の記号で行が済む、語の kind は en（描く側の英語の分岐に乗る）", J(types) === J(["ignored", "correct", "correct", "correct", "miss", "correct", "correct", "correct", "correct", "correct", "correct", "miss", "correct", "correct", "correct", "correct", "correct", "ignored", "correct", "correct", "correct", "correct"]) && run.stats.correct === 18 && run.stats.miss === 2 && J([...run.stats.missKeys]) === '[[" ",2]]' && run.stats.words === 2 && run.current === null && w.kind === "en" && view.now === "A" && fed[0] === true && fed[1] === true && fed[2].ok === false && fed[2].expected === " " && fed[3] === true && fed[4].ok === false && fed[4].expected === "b" && fed[5] === true && fed[6].ok === false && fed[6].expected === "?" && fed[7] === true && view2.done === "A b?" && view2.now === "", J({ types, stats: { ...run.stats, missKeys: [...run.stats.missKeys] }, view, fed, view2 }));
+  }
+  // ---- 時計とスコア ----
+  {
+    const s = L.summarizeLong({ correct: 450, miss: 12, missKeys: new Map() }, 120000);
+    const perfect = L.summarizeLong({ correct: 300, miss: 0, missKeys: new Map() }, 90000);
+    const fast = L.summarizeLong({ correct: 3, miss: 0, missKeys: new Map() }, 300);
+    const zero = L.summarizeLong({ correct: 0, miss: 0, missKeys: new Map() }, 8000);
+    // 止めていた分を引く・最初に判定したキーから・止める → Space で続き → 判定せずに Esc で lastAt まで（負にならない）
+    const c1 = L.createLongClock();
+    c1.pause(0); // 判定したキーの前に止めた間は数えない
+    c1.resume(5000);
+    c1.count(6000);
+    c1.count(16000);
+    c1.pause(17000);
+    c1.resume(106000);
+    const e1 = c1.elapsedMs(); // 10 秒（止める → 続き → 判定なしで Esc）
+    c1.count(107000);
+    const e2 = c1.elapsedMs(); // 107 − 6 − 89 = 12 秒
+    const c2 = L.createLongClock();
+    c2.count(0);
+    c2.count(150);
+    c2.count(300); // 3 打を 0.3 秒、5 秒待って Esc → ready
+    const outs = [L.stopOutcome(c2), L.stopOutcome(L.createLongClock()), L.stopOutcome(c1)];
+    const c3 = L.createLongClock();
+    c3.count(0);
+    c3.count(4999);
+    const c4 = L.createLongClock();
+    c4.count(0);
+    c4.count(5000);
+    const times = [48, 108, 62, 120, 0, 59.9, 3599].map(L.formatLongTime);
+    check("typing long: 時計とスコア — 450・12・120 秒 → 打/分 225・正確さ 97・スコア 213、ミス 0 はスコア＝打/分、1 秒未満と 0 打は「―」（null）、止めていた分を引き、最初に判定したキーから測り、止めた後の判定なしの Esc でも lastAt まで（負にならない）、5 秒は出す時間で見る、時間の書き方（48秒・1分48秒・1分02秒・2分）", s.kpm === 225 && s.accuracy === 97 && s.score === 213 && perfect.score === perfect.kpm && perfect.kpm === 200 && fast.kpm === null && fast.score === null && fast.accuracy === 100 && zero.score === null && zero.accuracy === null && e1 === 10000 && e2 === 12000 && J(outs) === '["ready","ready","result"]' && L.stopOutcome(c3) === "ready" && L.stopOutcome(c4) === "result" && J(times) === '["48秒","1分48秒","1分02秒","2分","0秒","59秒","59分59秒"]', J({ s, perfect, fast, zero, e1, e2, outs, times }));
+  }
+  // ---- 自己ベスト（best.long[id]） ----
+  {
+    const fake = (init = {}) => {
+      const map = new Map(Object.entries(init));
+      return { getItem: (k) => (map.has(k) ? map.get(k) : null), setItem: (k, v) => map.set(k, String(v)), map };
+    };
+    const text = { id: "ja-s01", keys: 260, title: "北風と太陽", lines: [["a", "b"]] };
+    const rec = (o) => ({ score: 200, kpm: 210, acc: 97, sec: 75, day: "2026-10-12", ...o });
+    const st = fake({ [T.BEST_KEY]: J({ v: 1, best: { en: { 60: { kpm: 77, acc: 90, day: "2026-10-01" } }, ja: { 60: { kpm: 55, acc: 80, day: "2026-10-01" } } } }) });
+    const first = L.recordLongBest(st, text, rec());
+    const below = L.recordLongBest(st, text, rec({ score: 180, kpm: 300 }));
+    const same = L.recordLongBest(st, text, rec({ kpm: 200 }));
+    const faster = L.recordLongBest(st, text, rec({ kpm: 240 }));
+    const newer = L.recordLongBest(st, text, rec({ score: 230, kpm: 100 }));
+    const saved = JSON.parse(st.map.get(T.BEST_KEY));
+    const outOfRange = [L.recordLongBest(fake(), text, rec({ kpm: 2001 })), L.recordLongBest(fake(), text, rec({ sec: 0 })), L.recordLongBest(fake(), text, rec({ score: null })), L.recordLongBest(fake(), text, rec({ sec: 3601 }))].map((c) => c.status);
+    const broken = [{ score: 1e300, kpm: 1, acc: 1, sec: 9, keys: 260, day: "" }, { score: 1.5, kpm: 1, acc: 1, sec: 9, keys: 260, day: "" }, { score: 1, kpm: 1, acc: 1, sec: -3, keys: 260, day: "" }, { score: 1, kpm: 1, acc: 1, sec: 3601, keys: 260, day: "" }, { score: 1, kpm: 1, acc: 101, sec: 9, keys: 260, day: "" }, { score: 1, kpm: 1, acc: 1, sec: 9, keys: 259, day: "" }, { score: 1, kpm: 1, acc: 1, sec: 9, keys: 260 }].map((b) => L.readLongBest(fake({ [T.BEST_KEY]: J({ v: 1, best: { long: { "ja-s01": b } } }) }), "ja-s01", 260));
+    const ok = L.readLongBest(fake({ [T.BEST_KEY]: J({ v: 1, best: { long: { "ja-s01": { score: 1, kpm: 1, acc: null, sec: 9, keys: 260, day: "" } } } }) }), "ja-s01", 260);
+    const throwing = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); } };
+    const texts = [{ id: "ja-s01", keys: 260 }, { id: "ja-s02", keys: 330 }, { id: "en-s01", keys: 340 }];
+    const doneOf = (best) => L.doneLongIds(fake({ [T.BEST_KEY]: J({ v: 1, best: { long: best } }) }), texts);
+    const r1 = { score: 1, kpm: 1, acc: 1, sec: 9, day: "" };
+    const defs = [L.defaultLongId(texts, doneOf({})), L.defaultLongId(texts, doneOf({ "ja-s01": { ...r1, keys: 260 } })), L.defaultLongId(texts, doneOf({ "ja-s01": { ...r1, keys: 260 }, "ja-s02": { ...r1, keys: 330 }, "en-s01": { ...r1, keys: 340 } })), L.defaultLongId(texts, doneOf({ "ja-s01": { ...r1, keys: 259 } })), L.defaultLongId(texts, L.doneLongIds(throwing, texts))];
+    const phrases = [first, newer, faster, same, below].map(L.longBestPhrase);
+    check("typing long: 自己ベスト — best.long[id] だけ差し替え en・ja を消さない、スコアで比べ同点は打/分（faster は書いて句、same は書かない）、書く keys は教材の keys、範囲外（打/分 2001・sec 0・null・3601）は書かず句なし（none）、壊れた値と keys の違う記録は無い扱い、既定の文章（記録なし → ja-s01、ja-s01 済み → 次、全部済み → ja-s01、keys が違えば済みでない、読めない端末 → ja-s01）、句の文", first.status === "first" && below.status === "below" && below.prev === 200 && below.diff === 20 && same.status === "same" && faster.status === "faster" && faster.prev === 210 && newer.status === "new" && newer.prev === 200 && saved.best.en["60"].kpm === 77 && saved.best.ja["60"].kpm === 55 && J(saved.best.long["ja-s01"]) === J({ score: 230, kpm: 100, acc: 97, sec: 75, keys: 260, day: "2026-10-12" }) && J(outOfRange) === '["none","none","none","none"]' && broken.every((b) => b === null) && ok?.acc === null && J(defs) === '["ja-s01","ja-s02","ja-s01","ja-s01","ja-s01"]' && L.recordLongBest(throwing, text, rec()).status === "none" && L.writeLongBest(throwing, "ja-s01", { ...rec(), keys: 260 }) === false && J(phrases) === J(["自己ベスト（はじめての記録）", "自己ベストを更新（前 200）", "自己ベストと同じスコア・打/分を更新（前 210）", "自己ベストと同じ", "自己ベスト 200（あと 20）"]), J({ first, below, same, faster, newer, saved, outOfRange, broken, defs, phrases }));
+  }
+  // ---- 教材の形・?l=・次の文・項目・間違えたキーの表示 ----
+  {
+    const good = { v: 1, texts: [{ id: "ja-s01", lang: "ja", len: "short", title: "北風と太陽", keys: 260, lines: [["見出し。", "みだし。"]] }, { id: "en-s01", lang: "en", len: "short", title: "小さな庭", keys: 30, lines: [["A b.", "訳。"]] }] };
+    const shapes = [good, { ...good, v: 2 }, { v: 1, texts: [] }, { v: 1, texts: [{ ...good.texts[0], lang: "en" }] }, { v: 1, texts: [{ ...good.texts[0], lines: [["a"]] }] }, { v: 1, texts: [good.texts[0], good.texts[0]] }, { v: 1, texts: [{ ...good.texts[0], keys: 0 }] }].map((d) => L.parseLongData(d) !== null);
+    const ls = ["?l=2", "?l=99", "?l=0", "?l=100", "", "?l=2.5"].map(L.linesFrom);
+    const labels = [L.longOptionLabel({ title: "北風と太陽", lines: new Array(12).fill(["a", "b"]) }), L.longOptionLabel({ title: "北風と太陽", lines: new Array(12).fill(["a", "b"]) }, true)];
+    const keyNames = [L.longKeyLabel(",", "ja"), L.longKeyLabel(".", "ja"), L.longKeyLabel("i", "ja"), L.longKeyLabel(" ", "en"), L.longKeyLabel("s", "en"), L.longKeyLabel(",", "en")];
+    check("typing long: 教材の形（v・各欄・validPairs・id の重複・lang と id の頭）、?l= は 1〜99、次の文は最後なら先頭、select の項目「北風と太陽 12行」「済み 北風と太陽 12行」、間違えたキーの表示（、。・空白）", J(shapes) === "[true,false,false,false,false,false,false]" && J(ls) === "[2,99,null,null,null,null]" && L.nextLongId(good.texts, "ja-s01") === "en-s01" && L.nextLongId(good.texts, "en-s01") === "ja-s01" && J(labels) === '["北風と太陽 12行","済み 北風と太陽 12行"]' && J(keyNames) === '["、","。","i","空白","s",","]' && J(L.trimLongLines([1, 2, 3], 2)) === "[1,2]" && J(L.trimLongLines([1, 2, 3], null)) === "[1,2,3]", J({ shapes, ls, labels, keyNames }));
+  }
+  // ---- 教材（data/typing-long.json）: 生成物と一致・違反 0・本数と帯・全行が手本で打ち切れ途中で崩れない・英語の字種と折り返し・訳・重複なし・先頭 ----
+  {
+    const built = BL.buildTypingLongData();
+    const file = path.join(ROOT, "data", "typing-long.json");
+    const text = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+    const data = text ? JSON.parse(text) : null;
+    const problems = data ? BL.validateTypingLongData(data) : ["data/typing-long.json が無い（教材を書いて node scripts/build-typing-long.mjs）"];
+    const texts = L.parseLongData(data) ?? [];
+    const groups = Object.fromEntries(L.LONG_GROUPS.map((g) => [`${g.lang}:${g.len}`, texts.filter((t) => t.lang === g.lang && t.len === g.len).length]));
+    const bad = [];
+    for (const t of texts) {
+      if (t.lang === "ja") {
+        let keys = 0;
+        for (const [, r] of t.lines) {
+          const canon = R.canonicalRomaji(r, { finalN: true, punct: true });
+          if (!canon || /[xl]/.test(canon) || !BG.typeable(r, canon, P) || BG.unitsDrift(r, canon, P) || BL.unitKeysDrift(r, canon)) bad.push(`${t.id} ${r}`);
+          keys += canon?.length ?? 0;
+        }
+        if (keys !== t.keys) bad.push(`${t.id} keys`);
+      } else {
+        for (const [s, ja] of t.lines) if (!/^[A-Za-z .,'?]{20,52}$/.test(s) || BL.wrapCount(s, 21) > 3 || BL.wrapCount(s, 41) > 2 || !ja || [...ja].length > 32) bad.push(`${t.id} ${s}`);
+        if (t.lines.reduce((n, [s]) => n + s.length, 0) !== t.keys) bad.push(`${t.id} keys`);
+      }
+    }
+    const first = texts.find((t) => t.id === "ja-s01");
+    check(`typing long: 教材は生成物と同じ（node scripts/build-typing-long.mjs）・違反 0・本数（日 8／4・英 5／3: ${J(groups)}）・ja-s01 が先頭で 240〜280 打・全行が手本で打ち切れ、かなの行もキーの行も途中で崩れない・英語の字種と折り返し・訳・keys・ゲームの文と重複なし（L10）・ci.yml に --check`, built.text === text && problems.length === 0 && J(groups) === J({ "ja:short": 8, "ja:long": 4, "en:short": 5, "en:long": 3 }) && texts[0]?.id === "ja-s01" && first?.keys >= 240 && first?.keys <= 280 && bad.length === 0 && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing-long.mjs --check"), J({ problems: problems.slice(0, 5), bad: bad.slice(0, 5) }));
+  }
+}
+
+// ---- ページ（typing.html の長文のタブ）: 1200 の 1 枚（?t=5&l=2。reduced motion・CLS）／完走と自己ベスト／英語の長文／教材が読めない組・投げる storage／
+// タッチ端末 390／全 20 編の全行の行数と札の高さ（390・360・320・1200・横向き・背の低い縦向き）／静的
+// 打鍵は合成の keydown（焦点のある要素に送る。js/typingKeys.js は document で受ける）。合成のキーは「直前の入力」に数えられないので、行の送りで札が動けば CLS に入る。
+// 結果を出す最後の 1 打だけは本物のキー（結果で札の高さが替わるのは入力の直後: SPEC §2.6）。時間は performance.now() に足す __skew で進める（5 秒・止めていた間を待たない）
+{
+  const longFile = path.join(ROOT, "data", "typing-long.json");
+  const LONG = fs.existsSync(longFile) ? JSON.parse(fs.readFileSync(longFile, "utf8")).texts : null;
+  if (!LONG) check("typing long: ページの検査には教材（data/typing-long.json）が要る", false);
+  else {
+    const J = (v) => JSON.stringify(v);
+    const byId = Object.fromEntries(LONG.map((t) => [t.id, t]));
+    const R = await import("../js/romaji.js");
+    const canonOf = (r) => R.canonicalRomaji(r, { finalN: true, punct: true });
+    const lineOf = (t, i) => (t.lang === "ja" ? `${t.lines[i][0]}（${t.lines[i][1]}）` : `${t.lines[i][0]} ${t.lines[i][1]}`);
+    const PROBE = () => {
+      window.__skew = 0;
+      const now0 = performance.now.bind(performance);
+      performance.now = () => now0() + window.__skew;
+      window.__cls = 0;
+      window.__shifts = [];
+      try {
+        new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) { window.__cls += e.value; window.__shifts.push(...(e.sources ?? []).map((s) => s.node?.id || s.node?.className || s.node?.nodeName || "?")); } }).observe({ type: "layout-shift", buffered: true });
+      } catch {
+        // 読めないブラウザは数えない
+      }
+      window.__keys = [];
+      document.addEventListener("keydown", (e) => window.__keys.push(e.key), true);
+    };
+    const ls = (page) => page.evaluate(() => {
+      const $ = (id) => document.getElementById(id);
+      const shown = (n) => Boolean(n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== "hidden");
+      const box = (n) => { const x = n.getBoundingClientRect(); return { top: Math.round(x.top + scrollY), h: Math.round(x.height), bottom: Math.round(x.bottom) }; };
+      const b = $("typingBoard");
+      return {
+        state: b.dataset.state, kind: b.dataset.kind, lang: b.dataset.lang ?? null, text: b.dataset.text ?? null, line: b.dataset.line ?? null, lines: b.dataset.lines ?? null, partial: b.dataset.partial ?? null,
+        rest: $("typingWord").dataset.rest, miss: $("typingWord").classList.contains("tp-miss"),
+        head: shown($("typingHead")), headH: Math.round($("typingHead").getBoundingClientRect().height),
+        select: shown($("typingText")), selectValue: $("typingText").value, selectText: $("typingText").selectedOptions[0]?.textContent ?? "", selectDisabled: $("typingText").disabled,
+        title: shown($("typingTitle")) ? $("typingTitle").textContent : "", left: shown($("typingLeft")) ? $("typingLeft").textContent : "", stop: shown($("typingStop")), stopH: Math.round($("typingStop").getBoundingClientRect().height),
+        timer: shown($("typingTimer")) ? $("typingTimer").textContent : "",
+        term: shown($("typingTerm")) ? $("typingTerm").textContent : null, gloss: shown($("typingGloss")) ? $("typingGloss").textContent : null,
+        next: $("typingNext").classList.contains("tp-upnext--empty") || !shown($("typingNext")) ? "" : $("typingNext").querySelector("b")?.textContent ?? "",
+        hint: shown($("typingHint")) ? $("typingHint").textContent : "",
+        error: shown($("typingError")) ? $("typingError").textContent : "",
+        live: $("typingLive").textContent, lineText: $("typingLine").textContent,
+        aria: $("input").getAttribute("aria-label"), desc: $("input").getAttribute("aria-describedby"),
+        active: document.activeElement?.id || document.activeElement?.tagName.toLowerCase() || "",
+        board: box(b), word: box($("typingWord")),
+        note: shown($("typingTabNote")) ? $("typingTabNote").textContent : "",
+        kindText: $("typingKind").textContent, kpm: $("typingKpm").textContent, pre: shown($("typingKpmPre")), unit: shown($("typingKpmUnit")),
+        acc: $("typingAcc").textContent, best: shown($("typingBest")) ? $("typingBest").textContent : "",
+        keys: shown($("typingKeys")) ? $("typingKeys").textContent : "", nextBtn: shown($("typingNextText")), study: $("typingStudyText").textContent,
+        body: [...document.body.classList].filter((c) => /^(tp-long|romaji-answer|typing--live)/.test(c)).sort().join(" "),
+        modal: Boolean(document.getElementById("feedbackModal") && !document.getElementById("feedbackModal").hidden),
+        path: location.pathname, scroll: document.documentElement.scrollWidth, inner: innerWidth
+      };
+    });
+    // 今の手本（#typingWord の data-rest）の頭を 1 打ずつ合成の keydown で送る（焦点のある要素へ）。n 打まで／その行の終わりまで（line）／結果まで。
+    // leaveLast: 最後の行の最後の 1 打を残す。lower: 英字は小文字で送る（Shift なしの大文字）。map: 手本の字 → keydown の中身。gap: 打鍵の間（実時間 ms）。skewEach: 打鍵ごとに時計を進める ms
+    const typeRest = (page, opts = {}) => page.evaluate(async ({ n = 1e9, line = false, leaveLast = false, lower = false, map = {}, gap = 0, skewEach = 0 }) => {
+      const word = document.getElementById("typingWord");
+      const board = document.getElementById("typingBoard");
+      const startLine = board.dataset.line;
+      let sent = 0;
+      while (sent < n && board.dataset.state !== "result") {
+        const rest = word.dataset.rest ?? "";
+        if (!rest || (line && board.dataset.line !== startLine)) break;
+        if (leaveLast && rest.length === 1 && Number(board.dataset.line) === Number(board.dataset.lines) - 1) break;
+        const ch = rest[0];
+        const init = map[ch] ?? { key: lower ? ch.toLowerCase() : ch };
+        (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+        sent++;
+        if (skewEach) window.__skew += skewEach;
+        if (gap) await new Promise((r) => setTimeout(r, gap));
+      }
+      return sent;
+    }, opts);
+    const key = (page, init) => page.evaluate((o) => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...o })), init);
+    const finishByKey = async (page, opts = {}) => {
+      await typeRest(page, { ...opts, leaveLast: true });
+      const last = (await ls(page)).rest;
+      await page.keyboard.press(last.length === 1 ? (opts.lower ? last.toLowerCase() : last) : "x");
+      await waitUntil(async () => (await ls(page)).state === "result", 3000);
+    };
+    const hide = (page) => page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    const unhide = (page) => page.evaluate(() => {
+      delete document.visibilityState;
+      delete document.hidden;
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    const skew = (page, ms) => page.evaluate((v) => { window.__skew += v; }, ms);
+    const clsOf = (page) => page.evaluate(() => ({ cls: Math.round(window.__cls * 10000) / 10000, shifts: window.__shifts.slice(-6) }));
+    const waitL = (page, s, timeout = 5000) => waitUntil(async () => (await page.evaluate(() => document.getElementById("typingBoard").dataset.state)) === s, timeout);
+    const bestStored = (page) => page.evaluate(() => { try { return JSON.parse(localStorage.getItem("spelldash_typing_practice")); } catch { return null; } });
+    const snap = (page) => page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith("spelldash_")).sort().map((k) => [k, localStorage.getItem(k)])));
+    const motion = (page) => page.evaluate(() => new Promise((resolve) => {
+      const t0 = performance.now();
+      const names = () => document.getAnimations().map((a) => { const t = a.effect?.target; return t ? `${t.tagName.toLowerCase()}${t.id ? "#" + t.id : ""}.${[...t.classList].join(".")}` : "?"; });
+      const step = () => { const list = names(); if (list.length === 0 || performance.now() - t0 > 500) resolve(list); else requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    }));
+    const PRACTICE = JSON.stringify({ v: 1, best: { en: { 60: { kpm: 77, acc: 90, day: "2026-10-01" } }, ja: { 60: { kpm: 55, acc: 80, day: "2026-10-01" } } } });
+    const LEARN = {
+      spelldash_word_stats: JSON.stringify({ apple: { attempts: 3, correct: 2, misses: 1, lastSeen: "2026-10-01" } }),
+      spelldash_typing_stats: JSON.stringify({ sessions: 2, keys: 120 }),
+      spelldash_xp: "120",
+      spelldash_key_miss: JSON.stringify({ l: 3 }),
+      spelldash_typing_practice: PRACTICE
+    };
+    const s01 = byId["ja-s01"];
+    const s02 = byId["ja-s02"];
+    const anims = [];
+
+    // ---- 1200 × 900 の 1 枚（?t=5&l=2）。長文の教材は 1 秒遅らせて届ける（遅い到着でも札が動かない） ----
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: LEARN });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript(PROBE);
+    const hosts = new Set();
+    const reqs = { typing: 0, long: 0 };
+    page.on("request", (req) => {
+      const u = new URL(req.url());
+      hosts.add(u.host);
+      if (u.pathname === "/data/typing.json") reqs.typing++;
+      if (u.pathname === "/data/typing-long.json") reqs.long++;
+    });
+    await page.route("**/data/typing-long.json", async (route) => { await new Promise((r) => setTimeout(r, 1000)); await route.continue(); });
+    await page.goto(BASE + "/typing.html?t=5&l=2", { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    const before = await snap(page);
+    const o0 = await ls(page);
+    check("typing long（1200）: 開いた直後は今のまま（英単語・apple・残り 5秒・始まる前の一文・焦点は入力欄・1 行目は出ない・入力欄の名前は語）、長文の教材はまだ取らない", o0.kind === "en" && o0.state === "ready" && o0.rest === "apple" && o0.timer === "残り 5秒" && o0.hint === "打ち始めると、5秒を測る。" && o0.active === "input" && !o0.head && o0.lang === null && o0.aria === "見本の語を打つ" && o0.desc === "typingTerm typingWord typingGloss" && reqs.long === 0, J({ o0, reqs }));
+
+    // 長文のタブ → loading（高さは予約のまま）→ ready
+    await page.click('.tp-tabs [data-kind="ja"]');
+    await waitL(page, "ready");
+    const ja0 = await ls(page);
+    const cls0 = (await clsOf(page)).cls;
+    await page.click('.tp-tabs [data-kind="long"]');
+    const loadingSeen = await waitUntil(async () => (await ls(page)).state === "loading", 800, 20);
+    await page.waitForTimeout(80); // reduced motion の 0.01ms の transition（game.css。欄の min-height も）が描き終えてから測る（教材は 1 秒後）
+    const l0 = await ls(page);
+    await waitL(page, "ready", 5000);
+    await page.waitForTimeout(200); // 題と今の行の読み上げ（50ms 後）
+    const l1 = await ls(page);
+    const cls1 = await clsOf(page);
+    const opts = await page.evaluate(() => [...document.querySelectorAll("#typingText optgroup")].map((g) => [g.label, [...g.querySelectorAll("option")].map((o) => [o.value, o.textContent])]));
+    const optList = opts.flatMap(([, list]) => list);
+    check("typing long（1200）: 長文のタブ → loading は無効の select「読み込み中」で、札の高さと今の行の位置は ready と同じ（1 秒遅れて届いても CLS 0）、英単語 → 日本語 → 長文で札の上端が同じ（T14 を 3 つのタブに）",
+      loadingSeen && l0.kind === "long" && l0.lang === "ja" && l0.head && l0.select && l0.selectDisabled && l0.selectText === "読み込み中" && l0.headH === 44 && l0.board.h === l1.board.h && l0.word.top === l1.word.top && o0.board.top === ja0.board.top && ja0.board.top === l1.board.top && cls1.cls - cls0 < 0.001,
+      J({ l0: { ...l0, live: undefined }, l1: { h: l1.board.h, word: l1.word }, tops: [o0.board.top, ja0.board.top, l1.board.top], cls0, cls1 }));
+    check("typing long（1200）: ready — data-kind long・data-lang ja・data-text ja-s01、select の既定と 4 つの群（打鍵の少ない順の教材の並び）、項目は「題 N行」（行の数は教材の行の数。?l= でも替えない）・済みなし、1 行目の右は空、補足の行・今の行の見出し・次の行・始まる前の一文（17 字）",
+      l1.state === "ready" && l1.kind === "long" && l1.lang === "ja" && l1.text === "ja-s01" && l1.line === "0" && l1.lines === "2" && l1.select && !l1.selectDisabled && l1.selectValue === "ja-s01" && l1.headH === 44 &&
+      J(opts.map(([g]) => g)) === J(["日本語・短め", "日本語・長め", "英語・短め", "英語・長め"]) && J(optList.map(([v]) => v)) === J(LONG.map((t) => t.id)) && optList.every(([v, label]) => label === `${byId[v].title} ${byId[v].lines.length}行`) &&
+      l1.left === "" && !l1.stop && l1.title === "" && l1.note === "文章を最後まで打つ。やめても結果が出る。" && l1.term === s01.lines[0][0] && l1.gloss === null && l1.next === s01.lines[1][0] && l1.hint === "打ち始めると、最後まで時間を測る。" && [...l1.hint].length === 17 && !l1.timer,
+      J({ l1: { ...l1, live: undefined }, opts: opts.map(([g, list]) => [g, list.length]) }));
+    check("typing long（1200）: 読み上げ — 入力欄の名前は「見本の文を打つ」・describedby は今の行（#typingLine「見出し（読み）」）、loading → ready で「題。」と今の行を 1 回、焦点は入力欄、長文の教材は 1 回だけ取る（typing.json も 1 回）",
+      l1.aria === "見本の文を打つ" && l1.desc === "typingLine" && l1.lineText === lineOf(s01, 0) && l1.live === `${s01.title}。${lineOf(s01, 0)}` && l1.active === "input" && reqs.long === 1 && reqs.typing === 1,
+      J({ aria: l1.aria, desc: l1.desc, lineText: l1.lineText, live: l1.live, active: l1.active, reqs }));
+    anims.push(["ready", await motion(page)]);
+
+    // 手本どおりに打つ（句読点は , .）。最初の 1 打で running、行を打ち切ると次の行、最後のキーですぐ結果
+    const g0 = await ls(page);
+    await page.keyboard.press(g0.rest[0]);
+    await page.waitForTimeout(60); // reduced motion の 0.01ms の transition（game.css）が visibility を描き替え終えてから読む
+    const r1 = await ls(page);
+    check("typing long（1200）: 最初の 1 打で running、1 行目が題・残り（残り 2行）・やめる（Esc）に替わり、始まる前の一文は行の高さを残して隠れ、札の上端・高さと #typingWord の上端・1 行目の高さが前後で同じ",
+      r1.state === "running" && r1.title === s01.title && r1.left === "残り 2行" && r1.stop && !r1.select && r1.hint === "" && r1.headH === 44 && r1.board.top === g0.board.top && r1.board.h === g0.board.h && r1.word.top === g0.word.top && r1.rest === g0.rest.slice(1),
+      J({ r1: { ...r1, live: undefined }, g0: { board: g0.board, word: g0.word } }));
+    await typeRest(page, { n: g0.rest.indexOf(",") - 1 });
+    const atComma = await ls(page);
+    await key(page, { key: "x" }); // 「、」の所で x はミス（打つはずだったキーは ,）
+    const missed = await ls(page);
+    const missMark = await page.evaluate(() => { const u = document.querySelector("#typingWord .tp-unit--now"); return u ? getComputedStyle(u).boxShadow : ""; });
+    await typeRest(page, { line: true });
+    const r2 = await ls(page);
+    await page.waitForTimeout(150);
+    const r2live = (await ls(page)).live;
+    anims.push(["running", await motion(page)]);
+    check("typing long（1200）: 「、」は , で打つ・「、」の所の x はミスで進まず印が残る、行を打ち切ると data-line・今の見出し・次の行・残り 1行が替わり、札も #typingWord の上端も動かない、読み上げは「次の行。」＋今の行",
+      atComma.rest[0] === "," && missed.miss && missed.rest === atComma.rest && missMark !== "none" && missMark !== "" && r2.line === "1" && r2.term === s01.lines[1][0] && r2.next === "" && r2.left === "残り 1行" && r2.board.top === g0.board.top && r2.board.h === g0.board.h && r2.word.top === g0.word.top && r2.lineText === lineOf(s01, 1) && r2live === `次の行。${lineOf(s01, 1)}`,
+      J({ atComma: atComma.rest.slice(0, 3), missed: [missed.miss, missed.rest.slice(0, 3)], missMark, r2: { ...r2, live: undefined }, r2live }));
+    await skew(page, 20000);
+    await finishByKey(page);
+    const res = await ls(page);
+    const stored1 = await bestStored(page);
+    const resExtra = await page.evaluate(() => ({ lining: [...document.querySelectorAll("#typingKpm, #typingAcc b")].every((b) => getComputedStyle(b).fontVariantNumeric.includes("lining-nums")), order: [...document.querySelector(".tp-result__btns").children].map((n) => n.id), focusRing: getComputedStyle(document.getElementById("typingBoard")).boxShadow }));
+    const correct1 = canonOf(s01.lines[0][1]).length + canonOf(s01.lines[1][1]).length;
+    const acc1 = Math.floor((correct1 * 100) / (correct1 + 1));
+    const kpm1 = Number(res.acc.match(/打\/分 (\d+)/)?.[1]);
+    check("typing long（1200）: 最後のキーですぐ結果 — 柱は「題・時間」、主の数は「スコア N」（ラベルが先・lining）、補足は「打/分 N ・ 正確さ N% ・ ミス 1」、間違えたキーは「、」で出す、?l= の回なので自己ベストの句も記録も無い、ボタンは もう一度 → 次の文、焦点は主の数の行、読み上げの 1 文",
+      res.state === "result" && res.partial === null && /^北風と太陽・2\d秒$/.test(res.kindText) && res.pre && !res.unit && /^\d+$/.test(res.kpm) && kpm1 > 0 && Number(res.kpm) < kpm1 && res.acc.includes(`正確さ ${acc1}%`) && res.acc.includes("ミス 1") && res.keys === "間違えたキー 、 1" && res.best === "" && stored1?.best?.long === undefined && resExtra.lining && J(resExtra.order) === J(["typingAgain", "typingNextText"]) && res.nextBtn && res.active === "typingKpmLine" && res.live === `スコア ${res.kpm}。${res.kindText.split("・")[1]}、打/分 ${kpm1}、正確さ ${acc1}%、ミス 1。` && res.study === "英単語も、打って覚える。日本語の訳だけを見て思い出して打つ。1日5分から。",
+      J({ res: { ...res, live: res.live }, stored1, resExtra, correct1, acc1 }));
+    const cls2 = await clsOf(page);
+    anims.push(["result", await motion(page)]);
+    await page.keyboard.press("Enter"); // 守りの 0.6 秒の中
+    const gd1 = (await ls(page)).state;
+    await page.waitForTimeout(700);
+    await page.keyboard.press("Enter");
+    const gd2 = await ls(page);
+    await page.keyboard.press("Escape"); // 始まる前の Esc は何もしない
+    const gd3 = await ls(page);
+    await finishByKey(page);
+    await page.waitForTimeout(700);
+    await page.click("#typingNextText");
+    const gd4 = await ls(page);
+    check("typing long（1200）: 守りの 0.6 秒は Enter でやり直さず、過ぎた Enter で同じ文章の始まる前・始まる前の Esc は何もしない、次の文で select の次の文章（ja-s02）、行の送りと結果で CLS 0",
+      gd1 === "result" && gd2.state === "ready" && gd2.text === "ja-s01" && gd2.line === "0" && gd2.active === "input" && gd3.state === "ready" && gd4.state === "ready" && gd4.text === "ja-s02" && gd4.selectValue === "ja-s02" && gd4.term === s02.lines[0][0] && cls2.cls - cls1.cls < 0.001,
+      J({ gd1, gd2: [gd2.state, gd2.text, gd2.line, gd2.active], gd3: gd3.state, gd4: [gd4.state, gd4.text, gd4.selectValue], cls1, cls2 }));
+
+    // Esc・やめる: 出す時間（最初に判定したキーから最後に判定したキーまで）が 5 秒未満なら始まる前、5 秒以上は途中の結果
+    await typeRest(page, { n: 1 });
+    await page.keyboard.press("Escape");
+    const e1 = await ls(page);
+    await typeRest(page, { n: 3 });
+    await skew(page, 5000);
+    await page.keyboard.press("Escape");
+    const e2 = await ls(page);
+    await typeRest(page, { n: 1 });
+    await skew(page, 6000);
+    await typeRest(page, { n: 1 });
+    await page.keyboard.press("Escape");
+    const e3 = await ls(page);
+    const stored2 = await bestStored(page);
+    await key(page, { key: "Escape", repeat: true });
+    const e4 = (await ls(page)).state;
+    await page.keyboard.press("Escape");
+    const e5 = (await ls(page)).state;
+    await page.waitForTimeout(700);
+    await page.keyboard.press("Escape");
+    const e6 = await ls(page);
+    check("typing long（1200）: Esc — 1 打で Esc・3 打を一瞬で打って 5 秒待って Esc は始まる前（5 秒は出す時間で見る）、6 秒の 2 打で Esc は途中の結果（柱「途中まで 0／2行・6秒」・data-partial・句なし・記録なし・読み上げ）、押しっぱなしと守りの間の 2 回目の Esc では消えず、0.6 秒後の Esc で同じ文章の始まる前",
+      e1.state === "ready" && e2.state === "ready" && e3.state === "result" && e3.partial === "1" && e3.kindText === `${s02.title}・途中まで 0／2行・6秒` && e3.best === "" && stored2?.best?.long === undefined && e3.live.startsWith("途中まで、2行のうち 0行。スコア ") && e4 === "result" && e5 === "result" && e6.state === "ready" && e6.text === "ja-s02" && e6.partial === null,
+      J({ e1: e1.state, e2: e2.state, e3: [e3.state, e3.partial, e3.kindText, e3.best, e3.live], e4, e5, e6: [e6.state, e6.text] }));
+
+    // 裏に回る → 止める（次の 1 打で続きから判定・止めていた間は時間に入らない）。止める → Space で続き → 判定せずに Esc は最後に判定したキーまで
+    await typeRest(page, { n: 1 });
+    await skew(page, 3000);
+    await typeRest(page, { n: 1 });
+    const clsP0 = (await clsOf(page)).cls;
+    await hide(page);
+    await page.waitForTimeout(60); // reduced motion の 0.01ms の transition（visibility）が描き替え終えてから読む
+    const p1 = await ls(page);
+    anims.push(["paused", await motion(page)]);
+    await unhide(page);
+    const clsP1 = (await clsOf(page)).cls;
+    await skew(page, 60000);
+    await typeRest(page, { n: 1 });
+    const p2 = await ls(page);
+    await skew(page, 3000);
+    await typeRest(page, { n: 1 });
+    await page.keyboard.press("Escape");
+    const p3 = await ls(page);
+    await page.waitForTimeout(700);
+    await page.keyboard.press("Enter");
+    await typeRest(page, { n: 1 });
+    await skew(page, 6000);
+    await typeRest(page, { n: 1 });
+    await hide(page);
+    await unhide(page);
+    await skew(page, 60000);
+    const q0 = await ls(page);
+    await page.keyboard.press(" ");
+    const q1 = await ls(page);
+    await skew(page, 5000);
+    await page.keyboard.press("Escape");
+    const q2 = await ls(page);
+    check("typing long（1200）: 裏に回ると止まり（paused・始まる前の一文の場所に「止めた。打つと続きから。」・読み上げ・札は動かない）、次の 1 打で続きからそのキーも判定、止めていた 60 秒は時間に入らない（6秒）／止める → Space で続き（判定しない）→ 判定せずに Esc で、時間は最後に判定したキーまで（6秒。負にならない）",
+      p1.state === "paused" && p1.hint === "止めた。打つと続きから。" && p1.live === "止めた。打つと続きから。" && p1.left === "残り 2行" && clsP1 - clsP0 < 0.001 && p2.state === "running" && p2.rest === p1.rest.slice(1) && p3.state === "result" && p3.kindText === `${s02.title}・途中まで 0／2行・6秒` &&
+      q0.state === "paused" && q1.state === "running" && q1.rest === q0.rest && q2.state === "result" && q2.kindText === `${s02.title}・途中まで 0／2行・6秒`,
+      J({ p1: [p1.state, p1.hint, p1.live, p1.left], cls: [clsP0, clsP1], p2: [p2.state, p2.rest.slice(0, 4), p1.rest.slice(0, 4)], p3: p3.kindText, q: [q0.state, q1.state, q1.rest === q0.rest, q2.kindText] }));
+
+    // ご意見の窓をマウスで開く → 止める。閉じると焦点は窓を開いたボタン → 字で続きから（焦点は入力欄へ）
+    await page.waitForTimeout(700);
+    await page.keyboard.press("Enter");
+    await typeRest(page, { n: 1 });
+    await page.click("[data-feedback-open]");
+    const f1 = await ls(page);
+    await page.keyboard.press("Escape");
+    const f2 = await ls(page);
+    await page.keyboard.press(f2.rest[0]);
+    const f3 = await ls(page);
+    check("typing long（1200）: ご意見の窓をマウスで開くと止まる、閉じても止めたまま（焦点は窓を開いたボタン）、字で続きからそのキーも判定し焦点は入力欄へ",
+      f1.state === "paused" && f1.modal && f2.state === "paused" && !f2.modal && f2.active !== "input" && f3.state === "running" && f3.rest === f2.rest.slice(1) && f3.active === "input",
+      J({ f1: [f1.state, f1.modal], f2: [f2.state, f2.modal, f2.active], f3: [f3.state, f3.active] }));
+
+    // 打っている間: タブ・ご意見の上の Space／Enter は押させない。日本語の長文で「やめる」の上の Space は押させず、Enter・detail 0 のクリックはやめる（5 秒以上 → 途中の結果）
+    await page.focus('.tp-tabs [data-kind="en"]');
+    await page.keyboard.press(" ");
+    await page.keyboard.press("Enter");
+    const t1 = await ls(page);
+    await page.focus("[data-feedback-open]");
+    await page.keyboard.press(" ");
+    await page.keyboard.press("Enter");
+    const t2 = await ls(page);
+    await page.focus("#typingStop");
+    await page.keyboard.press(" ");
+    const t3 = await ls(page);
+    await skew(page, 6000);
+    await typeRest(page, { n: 1 }); // 焦点が「やめる」の上でも字は数える
+    const t3b = await ls(page);
+    await page.focus("#typingStop");
+    await page.keyboard.press("Enter");
+    const t4 = await ls(page);
+    await page.waitForTimeout(700);
+    await page.keyboard.press("Enter");
+    await typeRest(page, { n: 1 });
+    await skew(page, 6000);
+    await typeRest(page, { n: 1 });
+    await page.evaluate(() => document.getElementById("typingStop").click()); // detail 0（Tab で来て Enter・支援技術が出すクリック）
+    const t5 = await ls(page);
+    check("typing long（1200）: 打っている間、焦点がタブ・ご意見の上の Space／Enter では回が消えず窓も開かない、「やめる」の上の Space は押させない（日本語）・字は数える、「やめる」の上の Enter と detail 0 のクリックは途中の結果",
+      t1.state === "running" && t1.kind === "long" && t2.state === "running" && !t2.modal && t3.state === "running" && t3b.rest === t3.rest.slice(1) && t4.state === "result" && t4.partial === "1" && t5.state === "result" && t5.partial === "1",
+      J({ t1: [t1.state, t1.kind], t2: [t2.state, t2.modal], t3: t3.state, t3b: t3b.rest === t3.rest.slice(1), t4: [t4.state, t4.partial], t5: [t5.state, t5.partial] }));
+
+    // タブ（マウス）で回を捨てる・英単語に戻ると入力欄の名前と describedby が元に戻る・長文に戻ると選んだ文章のまま（教材は取り直さない）
+    await page.waitForTimeout(700);
+    await page.keyboard.press("Enter");
+    await typeRest(page, { n: 1 });
+    await page.click('.tp-tabs [data-kind="en"]');
+    const t6 = await ls(page);
+    await page.click('.tp-tabs [data-kind="long"]');
+    const t7 = await ls(page);
+    check("typing long（1200）: 打っている間に英単語のタブで回を捨てて英単語の始まる前（入力欄の名前・describedby は語に戻る・長文の class は外れる・1 行目は出ない）、長文のタブに戻ると同じ文章の始まる前（教材は 1 回だけ）",
+      t6.kind === "en" && t6.state === "ready" && t6.aria === "見本の語を打つ" && t6.desc === "typingTerm typingWord typingGloss" && !t6.body.includes("tp-long") && !t6.head && t6.lang === null && t7.kind === "long" && t7.state === "ready" && t7.text === "ja-s02" && t7.aria === "見本の文を打つ" && reqs.long === 1,
+      J({ t6: [t6.kind, t6.state, t6.aria, t6.desc, t6.body, t6.head], t7: [t7.kind, t7.state, t7.text], reqs }));
+
+    // select: 押しても焦点を奪わない、矢印 2 回で 2 つ先（焦点は select のまま）、select の上の Enter で札へ、ポインタで選ぶと焦点は札へ
+    await page.focus("#typingText");
+    await page.evaluate(() => document.getElementById("typingText").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 })));
+    const s1 = await ls(page);
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    const s2 = await ls(page);
+    await page.keyboard.press("Enter");
+    const s3 = await ls(page);
+    await page.evaluate(() => {
+      const s = document.getElementById("typingText");
+      s.focus();
+      s.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
+      s.value = "ja-s01";
+      s.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const s4 = await ls(page);
+    const ids = LONG.map((t) => t.id);
+    check("typing long（1200）: select を押しても焦点を奪わない、ArrowDown 2 回で 2 つ先の文章の始まる前（焦点は select のまま）、select の上の Enter で焦点は入力欄、ポインタで選ぶと焦点は入力欄",
+      s1.active === "typingText" && s2.state === "ready" && s2.text === ids[ids.indexOf("ja-s02") + 2] && s2.active === "typingText" && s3.active === "input" && s3.text === s2.text && s4.text === "ja-s01" && s4.active === "input",
+      J({ s1: s1.active, s2: [s2.state, s2.text, s2.active], s3: [s3.active, s3.text], s4: [s4.text, s4.active] }));
+    check("typing long（1200）: reduced motion で動きが 0（始まる前・打っている間・止めた・結果）", anims.length >= 4 && anims.every(([, list]) => list.length === 0), J(anims));
+    const after = await snap(page);
+    const ALLOWED = (k) => k === "spelldash_typing_practice" || k === "spelldash_device_id" || k.startsWith("spelldash_funnel_") || k === "spelldash_billing_open";
+    const changed = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((k) => before[k] !== after[k] && !ALLOWED(k));
+    const mainText = await page.evaluate(() => document.querySelector("main").textContent);
+    const own = new URL(BASE).host;
+    check("typing long（1200）: 学習記録を変えない（変わってよいのは自己ベストと計測のキーだけ。?l= の回なので自己ベストも同じ）・Pro とはちゃんを出さない・要求はすべて同一オリジン・エラー 0",
+      changed.length === 0 && after.spelldash_typing_practice === PRACTICE && !mainText.includes("Pro") && !mainText.includes("はちゃん") && [...hosts].every((h) => h === own) && page.errors.length === 0,
+      J({ changed, practice: after.spelldash_typing_practice, hosts: [...hosts], errors: page.errors.slice(0, 3) }));
+    await page.close();
+
+    // ---- 完走と自己ベスト（?l= なし）: 待ちなしの完走（1 秒未満）は「―」で記録なし、1 打 40ms で打ち切ると「はじめての記録」と best.long["ja-s01"] だけ ----
+    {
+      const p = await newPage({ viewport: { width: 1200, height: 900 } });
+      await p.addInitScript(PROBE);
+      await p.goto(BASE + "/typing.html", { waitUntil: "networkidle" });
+      await p.evaluate((v) => localStorage.setItem("spelldash_typing_practice", v), PRACTICE); // newPage の storage は読み込み直しのたびに書き戻すので、開いたあとに入れる
+      await p.click('.tp-tabs [data-kind="long"]');
+      await waitL(p, "ready");
+      await finishByKey(p);
+      const fast = await ls(p);
+      const storedFast = await bestStored(p);
+      await p.waitForTimeout(700);
+      await p.keyboard.press("Enter");
+      await finishByKey(p, { gap: 40 });
+      const full = await ls(p);
+      const storedFull = await bestStored(p);
+      await p.waitForTimeout(700);
+      await p.keyboard.press("Enter");
+      const done = await ls(p);
+      await p.reload({ waitUntil: "networkidle" });
+      await p.click('.tp-tabs [data-kind="long"]');
+      await waitL(p, "ready");
+      const reopened = await ls(p);
+      const rec = storedFull?.best?.long?.["ja-s01"];
+      check("typing long: 待ちなしで打ち切った回（1 秒未満）はスコア・打/分が「―」で記録を書かない",
+        fast.state === "result" && fast.kpm === "―" && fast.acc.startsWith("打/分 ― ・ 正確さ 100% ・ ミス 0") && fast.best === "" && storedFast?.best?.long === undefined && fast.keys === "",
+        J({ fast: [fast.state, fast.kpm, fast.acc, fast.best], storedFast }));
+      check("typing long: ?l= なしで ja-s01 を 1 打 40ms で打ち切ると「自己ベスト（はじめての記録）」、増えるのは best.long[\"ja-s01\"] だけ（keys は教材の keys・打/分は検証の範囲）・best.en／best.ja は同じ、select に「済み」、読み込み直して長文のタブを押すと既定は次の文章",
+        full.state === "result" && full.best === " ・ 自己ベスト（はじめての記録）" && J(Object.keys(storedFull?.best?.long ?? {})) === '["ja-s01"]' && rec?.keys === s01.keys && Number.isInteger(rec?.score) && rec.score > 0 && rec.kpm <= 2000 && rec.sec >= 1 && J(storedFull.best.en) === J(JSON.parse(PRACTICE).best.en) && J(storedFull.best.ja) === J(JSON.parse(PRACTICE).best.ja) &&
+        done.state === "ready" && done.selectText === `済み ${s01.title} ${s01.lines.length}行` && reopened.text === "ja-s02" && reopened.selectValue === "ja-s02" && p.errors.length === 0,
+        J({ full: [full.state, full.kpm, full.best], storedFull, done: done.selectText, reopened: [reopened.text, reopened.selectValue], errors: p.errors.slice(0, 2) }));
+      await p.close();
+    }
+
+    // ---- 英語の長文（?l=16 で en-l01）: Shift なしの大文字・IME オンの Space・Quote・Shift＋Digit7・Shift＋Slash、行の頭の空白は飲む、間違えたキーの「空白」、
+    // ご意見の窓を閉じたあと・.tp-more の上でも Space は空白として判定 ----
+    {
+      const en = byId["en-l01"];
+      const p = await newPage({ viewport: { width: 1200, height: 900 } });
+      await p.addInitScript(PROBE);
+      await p.goto(BASE + "/typing.html?l=16", { waitUntil: "networkidle" });
+      await p.click('.tp-tabs [data-kind="long"]');
+      await waitL(p, "ready");
+      await p.focus("#typingText");
+      await p.selectOption("#typingText", "en-l01");
+      const a0 = await ls(p);
+      await p.keyboard.press("Enter");
+      const a1 = await ls(p);
+      const css = await p.evaluate(() => { const s = getComputedStyle(document.getElementById("typingWord")); return { ws: s.whiteSpace, ow: s.overflowWrap, ls: s.letterSpacing, ff: s.fontFamily }; });
+      const PROCESS = { key: "Process", keyCode: 229 };
+      await typeRest(p, { n: 3, lower: true }); // How → h o w（Shift なし）
+      await key(p, { ...PROCESS, code: "Space" }); // IME オンの Space
+      const a2 = await ls(p);
+      await typeRest(p, { line: true, lower: true, map: { "?": { ...PROCESS, code: "Slash", shiftKey: true } } });
+      const a3 = await ls(p);
+      await key(p, { key: " " }); // 行の頭の空白は飲む
+      const a4 = await ls(p);
+      await typeRest(p, { n: 4, lower: true }); // When
+      await key(p, { key: "x" }); // 空白の所に字はミス（打つはずだったキーは空白）
+      const a5 = await ls(p);
+      await typeRest(p, { line: true });
+      // 3 行目: 字の後ろに空白が来る所まで → ご意見の窓をマウスで開いて閉じる → 字で続きから → 焦点がボタンでも Space は空白 → Tab で .tp-more へ → Space は空白
+      await typeRest(p, { n: 1, lower: true }); // I（次は空白）
+      await typeRest(p, { n: 1 }); // 空白
+      await typeRest(p, { n: 3 }); // kee（次は p、その次が空白）
+      await p.click("[data-feedback-open]");
+      const b1 = await ls(p);
+      await p.keyboard.press("Escape");
+      const b2 = await ls(p);
+      await p.keyboard.press(b2.rest[0]);
+      const b3 = await ls(p);
+      await p.focus("[data-feedback-open]");
+      await p.keyboard.press(" ");
+      const b4 = await ls(p);
+      await typeRest(p, { n: 1 }); // a
+      await p.focus("#input");
+      await p.keyboard.press("Tab");
+      const b5 = await ls(p);
+      const onMore = await p.evaluate(() => document.activeElement?.matches(".tp-more a") ?? false);
+      await p.keyboard.press(" ");
+      const b6 = await ls(p);
+      await p.focus("#input");
+      // 8 行目の can't は Process＋Quote、15 行目の don't は Process＋Shift＋Digit7 で ' を打つ
+      for (let i = 0; i < 16 && (await ls(p)).state !== "result"; i++) {
+        const lineNo = Number((await ls(p)).line);
+        const apos = lineNo === 15 ? { ...PROCESS, code: "Digit7", shiftKey: true } : { ...PROCESS, code: "Quote" };
+        if (lineNo === 15) {
+          await finishByKey(p, { lower: true, map: { "'": apos } });
+          break;
+        }
+        await typeRest(p, { line: true, lower: true, map: { "'": apos } });
+      }
+      const a6 = await ls(p);
+      check("typing long（英語）: select で英語の文章（焦点は select のまま、Enter で入力欄）、data-lang en・英語の class（3 段目つき・ローマ字の class なし）、訳が出て見出しは出ない、#typingWord は等幅・語の途中で折らない（pre-wrap・break-word）・字間 0、本体への文は英単語の文",
+        a0.lang === "en" && a0.text === "en-l01" && a0.active === "typingText" && a1.active === "input" && a0.body === "tp-long-en typing--live" && a0.gloss === en.lines[0][1] && a0.term === null && a0.next === en.lines[1][0] && css.ws === "pre-wrap" && css.ow === "break-word" && (css.ls === "0px" || css.ls === "normal") && /Plex Mono/.test(css.ff) && a0.study === "日本語の訳だけを見て、英単語を思い出して打つ。1日5分から。" && a0.lineText === lineOf(en, 0),
+        J({ a0: [a0.lang, a0.text, a0.active, a0.body, a0.gloss, a0.term, a0.next], a1: a1.active, css }));
+      check("typing long（英語）: 大文字は Shift なしの小文字で通る、IME オンの Space（Process＋Space）・Shift＋Slash の ? が通る、行の頭の空白は数えない（ミスにもしない）、空白の所の字はミス",
+        a2.state === "running" && a2.rest === en.lines[0][0].slice(4) && a3.line === "1" && a4.rest === en.lines[1][0] && !a4.miss && a5.miss && a5.rest === en.lines[1][0].slice(4),
+        J({ a2: a2.rest, a3: a3.line, a4: [a4.rest, a4.miss], a5: [a5.miss, a5.rest] }));
+      check("typing long（英語）: ご意見の窓をマウスで開いて閉じた（焦点はボタン）→ 字で続きから（焦点は入力欄）→ 焦点がご意見のボタンでも Space は空白として判定（窓は開かない）→ Tab で .tp-more に移しても Space は空白（移動しない）",
+        b1.state === "paused" && b1.modal && b2.state === "paused" && b2.active !== "input" && b3.state === "running" && b3.active === "input" && b3.rest === b2.rest.slice(1) && b3.rest[0] === " " && b4.rest === b3.rest.slice(1) && !b4.modal && b4.state === "running" && onMore && b6.rest === b5.rest.slice(1) && b5.rest[0] === " " && b6.path === "/typing.html" && b6.state === "running",
+        J({ b1: [b1.state, b1.modal], b2: [b2.state, b2.active], b3: [b3.state, b3.active, b3.rest.slice(0, 5)], b4: [b4.rest.slice(0, 5), b4.modal], onMore, b5: b5.rest.slice(0, 5), b6: [b6.rest.slice(0, 5), b6.path] }));
+      check("typing long（英語）: Process＋Quote・Process＋Shift＋Digit7 の ' で打ち切れ、結果の間違えたキーは「空白 1」・ミス 1",
+        a6.state === "result" && a6.keys === "間違えたキー 空白 1" && a6.acc.includes("ミス 1") && p.errors.length === 0,
+        J({ a6: [a6.state, a6.keys, a6.acc, a6.kindText], errors: p.errors.slice(0, 2) }));
+      await p.close();
+    }
+
+    // ---- typing.json が読めず長文は読める組: 長文の loading が英単語の error に書き替わらず、長文を完走すると結果（error に落ちない）。英単語のタブは今どおり error ----
+    {
+      const p = await newPage({ viewport: { width: 1200, height: 900 } });
+      await p.route("**/data/typing.json", async (route) => { await new Promise((r) => setTimeout(r, 1200)); await route.abort(); });
+      await p.route("**/data/typing-long.json", async (route) => { await new Promise((r) => setTimeout(r, 2400)); await route.continue(); });
+      await p.goto(BASE + "/typing.html?l=1", { waitUntil: "domcontentloaded" });
+      await p.click('.tp-tabs [data-kind="long"]');
+      await p.waitForTimeout(1800);
+      const w1 = await ls(p);
+      await waitL(p, "ready", 5000);
+      await finishByKey(p);
+      const w2 = await ls(p);
+      await p.waitForTimeout(700);
+      await p.click('.tp-tabs [data-kind="en"]');
+      const w3 = await ls(p);
+      check("typing long: typing.json が読めず長文は読める組 — 長文の loading は「単語を読み込めなかった」に書き替わらず、長文を完走すると結果、英単語のタブは今どおり error",
+        w1.state === "loading" && w1.kind === "long" && w1.error === "" && w2.state === "result" && w3.kind === "en" && w3.state === "error" && w3.error.startsWith("単語を読み込めなかった") && p.errors.length === 0,
+        J({ w1: [w1.state, w1.kind, w1.error], w2: w2.state, w3: [w3.kind, w3.state, w3.error], errors: p.errors.slice(0, 2) }));
+      await p.close();
+    }
+    // ---- 長文の教材が読めない: 長文だけ error（1 行目は出さない・開き直すのリンク）、英単語は打てる ----
+    {
+      const p = await newPage({ viewport: { width: 1200, height: 900 } });
+      await p.route("**/data/typing-long.json", (route) => route.abort());
+      await p.goto(BASE + "/typing.html", { waitUntil: "networkidle" });
+      await p.click('.tp-tabs [data-kind="long"]');
+      await waitL(p, "error", 3000);
+      const x1 = await ls(p);
+      const link = await p.evaluate(() => document.querySelector("#typingError a")?.getAttribute("href"));
+      await p.click('.tp-tabs [data-kind="en"]');
+      const x2a = await ls(p);
+      await p.keyboard.press(x2a.rest[0]);
+      const x2 = await ls(p);
+      check("typing long: 長文の教材が読めないと長文だけ「長文を読み込めなかった。通信を確かめて、開き直す。」（1 行目・始まる前の一文は出さない）、英単語のタブは打てる",
+        x1.state === "error" && x1.kind === "long" && x1.error === "長文を読み込めなかった。通信を確かめて、開き直す。" && link === "./typing.html" && !x1.head && x1.hint === "" && !x1.body.includes("tp-long") && x2a.state === "ready" && x2.kind === "en" && x2.state === "running" && x2.rest === x2a.rest.slice(1) && p.errors.length === 0,
+        J({ x1: [x1.state, x1.kind, x1.error, x1.head, x1.hint, x1.body], link, x2: [x2.kind, x2.state, x2.rest], errors: p.errors.slice(0, 2) }));
+      await p.close();
+    }
+    // ---- localStorage が投げる端末: 長文を打てる（自己ベストの句・済みは出ない） ----
+    {
+      const p = await newPage({ viewport: { width: 1200, height: 900 } });
+      await p.addInitScript(PROBE);
+      await p.addInitScript(() => {
+        Storage.prototype.getItem = () => { throw new Error("denied"); };
+        Storage.prototype.setItem = () => { throw new Error("denied"); };
+      });
+      await p.goto(BASE + "/typing.html", { waitUntil: "networkidle" });
+      const errors0 = p.errors.length; // head の theme の 1 行（ほかのページと同じ）が投げる分。長文の流れでは増えない
+      await p.click('.tp-tabs [data-kind="long"]');
+      await waitL(p, "ready");
+      const y0 = await ls(p);
+      await finishByKey(p, { skewEach: 40 });
+      const y1 = await ls(p);
+      const noDone = await p.evaluate(() => [...document.querySelectorAll("#typingText option")].every((o) => !o.textContent.startsWith("済み")));
+      check("typing long: localStorage が投げる端末でも長文を最後まで打て、結果は出るが自己ベストの句と「済み」は出ない（ページのエラーは増えない）",
+        y0.state === "ready" && y0.text === "ja-s01" && y1.state === "result" && /^\d+$/.test(y1.kpm) && y1.best === "" && noDone && p.errors.length === errors0,
+        J({ y0: [y0.state, y0.text], y1: [y1.state, y1.kpm, y1.best], noDone, errors: p.errors.slice(0, 2) }));
+      await p.close();
+    }
+
+    // ---- タッチ端末 390 × 844（設定は「オフ」）: 盤面・足したキー・やめる・1 行目の高さ ----
+    {
+      const p = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_osk: "off" } });
+      await p.addInitScript(PROBE);
+      await p.route("**/data/typing-long.json", async (route) => { await new Promise((r) => setTimeout(r, 800)); await route.continue(); });
+      await p.goto(BASE + "/typing.html", { waitUntil: "networkidle" });
+      await p.waitForTimeout(300);
+      const osk = () => p.evaluate(() => {
+        const shown = (sel) => { const n = document.querySelector(sel); return Boolean(n && n.getClientRects().length > 0 && getComputedStyle(n).display !== "none" && !n.closest("[hidden]")); };
+        const list = (sel) => [...document.querySelectorAll(sel)].filter((n) => n.getClientRects().length > 0).map((n) => n.dataset.key ?? n.dataset.action);
+        const box = document.getElementById("osk").getBoundingClientRect();
+        return { osk: shown("#osk"), open: document.body.classList.contains("osk-open"), row3: shown("#osk .osk__row--3"), dash: shown('#osk [data-action="dash"]'), ja: list("#osk .tp-osk-key--ja"), en: list("#osk .tp-osk-key--en"), row3keys: list("#osk .osk__row--3 .osk__key"), h: Math.round(box.height), top: Math.round(box.top), labels: [...document.querySelectorAll("#osk .tp-osk-key")].map((n) => n.getAttribute("aria-label")) };
+      });
+      const k0 = await osk();
+      await p.tap('.tp-tabs [data-kind="long"]');
+      await p.waitForTimeout(150);
+      const k1 = await osk();
+      const st1 = (await ls(p)).state;
+      await waitL(p, "ready", 4000);
+      await p.waitForTimeout(200);
+      const k2 = await osk();
+      const m0 = await ls(p);
+      await p.dispatchEvent(`#osk [data-key="${m0.rest[0]}"]`, "pointerdown");
+      const m1 = await ls(p);
+      await typeRest(p, { n: m0.rest.indexOf(",") - 1 });
+      const m2 = await ls(p);
+      await p.dispatchEvent('#osk .tp-osk-key--ja[data-key=","]', "pointerdown");
+      const m3 = await ls(p);
+      await p.evaluate(() => { window.__keys = []; });
+      await p.dispatchEvent('#osk .tp-osk-key--ja[data-key="."]', "pointerdown");
+      const jaSent = await p.evaluate(() => window.__keys.slice());
+      check("typing long（390）: 長文のタブで盤面が出る（設定「オフ」でも）、英単語から替えても loading で盤面を畳まない、日本語の長文は 3 段目に ー・、・。（読点・句点）、、は , を送り、。は . を送る",
+        k0.osk && st1 === "loading" && k1.osk && k1.open && k2.osk && k2.row3 && k2.dash && J(k2.ja) === '[",","."]' && k2.en.length === 0 && m1.state === "running" && m2.rest[0] === "," && m3.rest === m2.rest.slice(1) && J(jaSent) === '["."]',
+        J({ k0: k0.osk, st1, k1: [k1.osk, k1.open], k2, m1: m1.state, m2: m2.rest.slice(0, 3), m3: m3.rest.slice(0, 3), jaSent }));
+      check("typing long（390）: 最初の 1 打の前後で 1 行目の高さ（44px）と #typingWord の上端が同じ（select 44px → やめる 40px）、札は盤面の上",
+        m0.headH === 44 && m1.headH === 44 && m0.word.top === m1.word.top && m0.board.top === m1.board.top && m1.stop && m1.stopH === 40 && m0.board.bottom <= k2.top,
+        J({ m0: [m0.headH, m0.word, m0.board], m1: [m1.headH, m1.word, m1.board, m1.stopH], oskTop: k2.top }));
+      // やめる（タップ・5 秒以上）→ 途中の結果。守りの 0.6 秒は盤面を出したまま・タブは押せない
+      await skew(p, 6000);
+      await typeRest(p, { n: 1 });
+      await p.tap("#typingStop");
+      const v1 = await ls(p);
+      const guard = await p.evaluate(() => new Promise((resolve) => {
+        const reach = (sel) => { const n = document.querySelector(sel); let hit = false; const h = (e) => { hit = true; e.preventDefault(); }; n.addEventListener("click", h); n.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 })); n.removeEventListener("click", h); return hit; };
+        const out = {};
+        setTimeout(() => (out.at300 = { osk: !document.getElementById("osk").hidden, tab: reach(".tp-tabs button"), next: reach("#typingNextText") }), 300);
+        setTimeout(() => { out.at700 = { osk: !document.getElementById("osk").hidden }; resolve(out); }, 700);
+      }));
+      await p.tap("#typingAgain");
+      const v2 = await ls(p);
+      check("typing long（390）: 「やめる」をタップ（5 秒以上）で途中の結果、守りの 0.6 秒は盤面を出したまま・盤面の外（タブ・次の文）は押しても届かない、その後に畳む",
+        v1.state === "result" && v1.partial === "1" && guard.at300.osk && !guard.at300.tab && !guard.at300.next && !guard.at700.osk && v2.state === "ready",
+        J({ v1: [v1.state, v1.partial], guard, v2: v2.state }));
+      // 英語の長文: 3 段目に ' , 空白 . ?（空白は data-key=" "）。押すとその字が打たれる
+      await p.selectOption("#typingText", "en-s01");
+      await p.waitForTimeout(150);
+      const k3 = await osk();
+      const n0 = await ls(p);
+      await p.dispatchEvent('#osk [data-key="a"]', "pointerdown"); // After の A を小文字で
+      for (const c of "fter") await p.dispatchEvent(`#osk [data-key="${c}"]`, "pointerdown");
+      await p.dispatchEvent('#osk .tp-osk-key--en[data-key=" "]', "pointerdown");
+      const n1 = await ls(p);
+      await p.evaluate(() => { window.__keys = []; });
+      for (const c of ["'", ",", ".", "?"]) await p.dispatchEvent(`#osk .tp-osk-key--en[data-key="${c}"]`, "pointerdown");
+      const enSent = await p.evaluate(() => window.__keys.slice());
+      check("typing long（390）: 英語の長文は 3 段目に ' , 空白 . ?（名前つき・ー と 、。は出ない）、a f t e r と空白のキーで After と空白が打たれ、ほかの記号のキーもその字を送る",
+        n0.lang === "en" && k3.row3 && !k3.dash && J(k3.en) === `["'",","," ",".","?"]` && k3.ja.length === 0 && J(k3.labels) === J(["読点", "句点", "アポストロフィ", "カンマ", "空白", "ピリオド", "疑問符"]) && n1.state === "running" && n1.rest === byId["en-s01"].lines[0][0].slice(6) && J(enSent) === `["'",",",".","?"]`,
+        J({ k3, n1: [n1.state, n1.rest.slice(0, 6)], enSent }));
+      // 英単語に戻ると長文の class が外れ 3 段目が出ない、日本語は今のまま（ー あり・、。なし）、盤面の高さは日本語の長文と同じ
+      await p.tap('.tp-tabs [data-kind="en"]');
+      await p.waitForTimeout(150);
+      const k4 = await osk();
+      const body4 = (await ls(p)).body;
+      await p.tap('.tp-tabs [data-kind="ja"]');
+      await p.waitForTimeout(150);
+      const k5 = await osk();
+      check("typing long（390）: 英単語のタブに戻ると tp-long-ja・tp-long-en が外れ 3 段目が出ない、日本語のタブは今のまま（ー あり・長文のキーなし）、盤面の高さは日本語の 1 分と日本語の長文で同じ（--osk-h は変えない）",
+        !body4.includes("tp-long") && k4.osk && !k4.row3 && k5.row3 && k5.dash && k5.ja.length === 0 && k5.en.length === 0 && k5.h === k2.h && p.errors.length === 0,
+        J({ body4, k4: [k4.osk, k4.row3], k5: [k5.row3, k5.dash, k5.ja, k5.en, k5.h], k2h: k2.h, errors: p.errors.slice(0, 2) }));
+      await p.close();
+    }
+
+    // ---- 全 20 編の全行を 1 行ずつ描く（ゲームの「全文の行数と札の高さ」と同じ作り）: 行数の上限・札の高さが文章と行と言語によらず同じ・#typingWord の上端が同じ。
+    // 盤面のある窓では、寄せたあと札の下端と今の行の下端が盤面の上端以下。390・360・320 ではタブ 3 つと補足と始まる前の一文が 1 行・横スクロールなし ----
+    {
+      const VIEWS = [
+        ["390", { width: 390, height: 844 }, { units: 3, term: 2, en: 3, gloss: 2 }],
+        ["360", { width: 360, height: 740 }, { units: 3, term: 2, en: 3, gloss: 2 }],
+        ["320", { width: 320, height: 720 }, { units: 3, term: 2, en: 3, gloss: 2 }],
+        ["1200", { width: 1200, height: 900 }, { units: 2, term: 1, en: 2, gloss: 1 }],
+        ["844x390", { width: 844, height: 390 }, { units: 2, term: 0, en: 2, gloss: 0 }],
+        ["667x375", { width: 667, height: 375 }, { units: 2, term: 0, en: 2, gloss: 0 }],
+        ["375x667", { width: 375, height: 667 }, { units: 3, term: 2, en: 3, gloss: 2 }],
+        ["360x640", { width: 360, height: 640 }, { units: 3, term: 2, en: 3, gloss: 2 }],
+        ["375x560", { width: 375, height: 560 }, { units: 3, term: 2, en: 3, gloss: 2 }],
+        ["320x568", { width: 320, height: 568 }, { units: 3, term: 2, en: 3, gloss: 2 }]
+      ];
+      const over = [];
+      const fit = [];
+      const narrow = [];
+      const heads = [];
+      let measured = 0;
+      let alt = 0;
+      let spaces = 0;
+      const kinsoku = []; // 句読点の単位が行の頭に来た行・句読点の単位の幅と入れ物の違反
+      const livePunct = []; // ページが描いた今の行（ready の ja-s01 の 1 行目）の句読点の単位
+      let punctSeen = 0;
+      let jaMeasured = 0;
+      for (const [name, viewport, lim] of VIEWS) {
+        const mobile = name !== "1200";
+        const p = await newPage({ mobile, viewport });
+        await p.goto(BASE + "/typing.html", { waitUntil: "networkidle" });
+        await p.waitForTimeout(200);
+        await (mobile ? p.tap('.tp-tabs [data-kind="long"]') : p.click('.tp-tabs [data-kind="long"]'));
+        await waitL(p, "ready");
+        await p.waitForTimeout(250); // 寄せ（50ms 後）
+        const fitOf = () => p.evaluate(() => {
+          const osk = document.getElementById("osk");
+          const top = osk && !osk.hidden ? osk.getBoundingClientRect().top : Infinity;
+          const word = document.getElementById("typingWord");
+          const inner = word.classList.contains("tp-word--ja") ? Math.max(...[...word.querySelectorAll(".tp-unit")].map((u) => u.getBoundingClientRect().bottom)) : (() => { const r = document.createRange(); r.selectNodeContents(word); return Math.max(...[...r.getClientRects()].map((x) => x.bottom)); })();
+          return { board: Math.round(document.getElementById("typingBoard").getBoundingClientRect().bottom), line: Math.round(inner), osk: Math.round(top), header: Math.round(document.querySelector(".site-header").getBoundingClientRect().bottom), boardTop: Math.round(document.getElementById("typingBoard").getBoundingClientRect().top) };
+        });
+        const fja = await fitOf();
+        livePunct.push([name, await p.evaluate(() => {
+          const word = document.getElementById("typingWord");
+          const units = [...word.querySelectorAll(".tp-unit")];
+          const punct = units.filter((u) => /^[、。]$/.test(u.querySelector(".tp-unit__kana").textContent));
+          return { punct: punct.length, paired: punct.filter((u) => u.classList.contains("tp-unit--punct") && u.parentElement.classList.contains("tp-unit-pair") && u.previousElementSibling?.classList.contains("tp-unit") && u.parentElement.parentElement === word).length, pairs: word.querySelectorAll(".tp-unit-pair").length };
+        })]);
+        if (name === "390" || name === "360" || name === "320") {
+          narrow.push([name, await p.evaluate(() => {
+            const lines = (n) => { const r = document.createRange(); r.selectNodeContents(n); return new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size; };
+            const tabs = [...document.querySelectorAll(".tp-tabs .stats-tab")].map((t) => Math.round(t.getBoundingClientRect().top));
+            return { tabs: new Set(tabs).size, tabLines: [...document.querySelectorAll(".tp-tabs .stats-tab")].map(lines), note: lines(document.getElementById("typingTabNote")), hint: lines(document.getElementById("typingHint")), scroll: document.documentElement.scrollWidth <= innerWidth };
+          })]);
+        }
+        const res = await p.evaluate(async ({ texts, lim }) => {
+          const D = await import("/js/typingDrill.js");
+          const K = await import("/js/typingKeys.js");
+          const R = await import("/js/romaji.js");
+          const board = document.getElementById("typingBoard");
+          const word = document.getElementById("typingWord");
+          const term = document.getElementById("typingTerm");
+          const gloss = document.getElementById("typingGloss");
+          const osk = document.getElementById("osk");
+          const oskTop = osk && !osk.hidden ? osk.getBoundingClientRect().top : Infinity;
+          const tops = (rects) => new Set([...rects].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size;
+          const textLines = (n) => { if (getComputedStyle(n).display === "none" || n.hidden) return 0; const r = document.createRange(); r.selectNodeContents(n); return tops(r.getClientRects()); };
+          const pageTop = (n) => Math.round(n.getBoundingClientRect().top + scrollY);
+          const bad = [];
+          const kin = [];
+          const h0 = Math.round(board.getBoundingClientRect().height);
+          const wordTop = {};
+          let n = 0;
+          let altN = 0;
+          let spaceN = 0;
+          let punctN = 0;
+          let jaN = 0;
+          const drawJa = (t, r, typed) => {
+            word.className = "tp-word tp-word--ja";
+            word.setAttribute("lang", "ja"); // ページの renderWord と同じ（字の選び方が lang で替わりうる）
+            word.replaceChildren();
+            K.appendUnits(word, D.japaneseUnits(r, typed, { punct: true }).units, { punct: true }); // ページと同じ（句読点の単位を直前の単位とつなぐ）
+            term.hidden = false;
+            term.textContent = t;
+            gloss.hidden = true;
+          };
+          // 行頭禁則: 句読点の単位（、。）の上端は直前の単位の上端と同じ（行の頭に来ない）。幅はかなの字の大きさの 0.6 倍以下（全角の箱でない）、
+          // キーの , . はかなの下の中央（±1px）、直前の単位と 1 つの入れ物（.tp-unit-pair）
+          const checkPunct = (id, label) => {
+            const units = [...word.querySelectorAll(".tp-unit")];
+            units.forEach((u, i) => {
+              const kana = u.querySelector(".tp-unit__kana");
+              if (!/^[、。]$/.test(kana.textContent)) return;
+              punctN++;
+              const r = u.getBoundingClientRect();
+              const kr = kana.getBoundingClientRect();
+              const yr = u.querySelector(".tp-unit__keys").getBoundingClientRect();
+              const size = parseFloat(getComputedStyle(kana).fontSize);
+              const prev = units[i - 1];
+              const head = !prev || Math.round(prev.getBoundingClientRect().top) !== Math.round(r.top);
+              const paired = u.classList.contains("tp-unit--punct") && u.parentElement.classList.contains("tp-unit-pair") && u.previousElementSibling === prev;
+              if (head || !paired || r.width > size * 0.6 || Math.abs((kr.left + kr.right) / 2 - (yr.left + yr.right) / 2) > 1) kin.push(`${id} ${label}（${head ? "行の頭" : ""}${paired ? "" : "入れ物なし"} 幅 ${Math.round(r.width)}／字 ${size}）`);
+            });
+          };
+          for (const text of texts) {
+            board.dataset.lang = text.lang;
+            for (const [a, b] of text.lines) {
+              let u = 0;
+              let tl = 0;
+              let low = 0;
+              if (text.lang === "ja") {
+                drawJa(a, b, "");
+                checkPunct(text.id, b);
+                jaN++;
+                u = tops([...word.querySelectorAll(".tp-unit")].map((x) => x.getBoundingClientRect()));
+                tl = textLines(term);
+                low = Math.max(...[...word.querySelectorAll(".tp-unit")].map((x) => x.getBoundingClientRect().bottom));
+              } else {
+                word.className = "tp-word";
+                word.setAttribute("lang", "en");
+                word.replaceChildren(Object.assign(document.createElement("span"), { className: "tp-now", textContent: a[0] }), document.createTextNode(a.slice(1)));
+                term.hidden = true;
+                gloss.hidden = false;
+                gloss.textContent = b;
+                u = textLines(word);
+                tl = textLines(gloss);
+                const r = document.createRange();
+                r.selectNodeContents(word);
+                low = Math.max(...[...r.getClientRects()].map((x) => x.bottom));
+                // 語の途中で折れない: 各語の矩形の上端が 1 つ
+                const node = word.lastChild;
+                let pos = 0;
+                for (const w of a.slice(1).split(" ")) {
+                  const range = document.createRange();
+                  const start = Math.max(0, pos);
+                  range.setStart(node, start);
+                  range.setEnd(node, Math.min(node.length, start + w.length));
+                  if (w && tops(range.getClientRects()) > 1) bad.push(`${text.id} 語が折れた「${w}」`);
+                  pos = start + w.length + 1;
+                }
+              }
+              const h = Math.round(board.getBoundingClientRect().height);
+              const wt = pageTop(word);
+              wordTop[text.lang] ??= wt;
+              const limU = text.lang === "ja" ? lim.units : lim.en;
+              const limT = text.lang === "ja" ? lim.term : lim.gloss;
+              if (u > limU || tl > limT || Math.abs(h - h0) > 1 || Math.abs(wt - wordTop[text.lang]) > 1 || low > oskTop + 0.5) bad.push(`${text.id} ${a}（行 ${u}・${text.lang === "ja" ? "見出し" : "訳"} ${tl}・札 ${h0}→${h}・上端 ${wordTop[text.lang]}→${wt}${oskTop < Infinity ? `・下端 ${Math.round(low)}／盤面 ${Math.round(oskTop)}` : ""}）`);
+              // 英語で今の字が空白（行の折り目の空白も）: 行数は上限のまま、下線の付く空白に幅があって札の中（pre-wrap。SPEC §2.4）
+              if (text.lang === "en") {
+                for (let i = 1; i < a.length; i++) {
+                  if (a[i] !== " ") continue;
+                  word.replaceChildren(Object.assign(document.createElement("span"), { className: "tp-done", textContent: a.slice(0, i) }), Object.assign(document.createElement("span"), { className: "tp-now", textContent: " " }), document.createTextNode(a.slice(i + 1)));
+                  const nb = word.querySelector(".tp-now").getBoundingClientRect();
+                  const bb = board.getBoundingClientRect();
+                  const lines = textLines(word);
+                  if (lines > lim.en || nb.width < 1 || nb.left < bb.left || nb.right > bb.right - 1 || Math.abs(Math.round(bb.height) - h0) > 1) bad.push(`${text.id} 空白の位置 ${i}（行 ${lines}・下線 ${Math.round(nb.left)}〜${Math.round(nb.right)}／札 ${Math.round(bb.left)}〜${Math.round(bb.right)}）`);
+                  spaceN++;
+                }
+              }
+              n++;
+              // 別の綴り（きょ を kixyo・し を si）で途中まで打った単位の行数
+              if (text.lang === "ja" && /きょ|し/.test(b)) {
+                const canon = R.canonicalRomaji(b, { finalN: true, punct: true });
+                const other = canon.replace("kyo", "kixyo").replace("shi", "si");
+                const m = R.createRomajiMatcher([b], { punct: true });
+                if (other !== canon && m.type(other).missAt === -1) {
+                  const cut = other.slice(0, Math.ceil(other.length / 2));
+                  drawJa(a, b, cut);
+                  checkPunct(text.id, cut);
+                  const u2 = tops([...word.querySelectorAll(".tp-unit")].map((x) => x.getBoundingClientRect()));
+                  const h2 = Math.round(board.getBoundingClientRect().height);
+                  if (u2 > lim.units || Math.abs(h2 - h0) > 1) bad.push(`${text.id} ${cut}（別の綴りの途中で行 ${u2}・札 ${h0}→${h2}）`);
+                  altN++;
+                }
+              }
+            }
+          }
+          return { bad, kin, n, altN, spaceN, punctN, jaN, h0 };
+        }, { texts: LONG, lim });
+        kinsoku.push(...res.kin.map((b) => `${name}: ${b}`));
+        punctSeen += res.punctN;
+        jaMeasured += res.jaN;
+        measured += res.n;
+        alt += res.altN;
+        spaces += res.spaceN;
+        over.push(...res.bad.map((b) => `${name}: ${b}`));
+        // 英語の文章に替えて（toReady・寄せ）、札の下端と今の行の下端
+        await p.selectOption("#typingText", "en-s04");
+        await p.waitForTimeout(250);
+        const fen = await fitOf();
+        const hEn = await p.evaluate(() => Math.round(document.getElementById("typingBoard").getBoundingClientRect().height));
+        if (fja.osk < Infinity || fen.osk < Infinity) fit.push([name, fja, fen]);
+        if (Math.abs(hEn - res.h0) > 1) over.push(`${name}: 英語の文章の札 ${hEn}（日本語 ${res.h0}）`);
+        // 横向き（高さ ≤480）・背の低い縦向き（481〜650）: 始まる前 → 最初の 1 打 → 裏に回って止める → 続き の 4 つで、1 行目の高さ（34px／44px）・札の高さ・今の行の上端が同じ。
+        // 止めたは始まる前の一文の行が無いので「残り N行」の場所に「止めた」（SPEC §2.8）。始まる前の一文と次の行は出さない
+        if (viewport.height <= 650) {
+          const headOf = () => p.evaluate(() => {
+            const $ = (id) => document.getElementById(id);
+            const shown = (n) => Boolean(n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== "hidden");
+            const pausedEl = document.querySelector("#typingHead .tp-head__paused");
+            const h = (n) => (shown(n) ? Math.round(n.getBoundingClientRect().height) : 0);
+            return { state: $("typingBoard").dataset.state, head: h($("typingHead")), select: h($("typingText")), stop: h($("typingStop")), left: shown($("typingLeft")) ? $("typingLeft").textContent : "", paused: shown(pausedEl) ? pausedEl.textContent : "", hint: shown($("typingHint")), next: shown($("typingNext")), word: Math.round($("typingWord").getBoundingClientRect().top + scrollY), board: Math.round($("typingBoard").getBoundingClientRect().height) };
+          });
+          const h0 = await headOf();
+          await typeRest(p, { n: 1 });
+          const h1 = await headOf();
+          await hide(p);
+          const h2 = await headOf();
+          await unhide(p);
+          await typeRest(p, { n: 1 });
+          const h3 = await headOf();
+          heads.push([name, viewport.height <= 480 ? 34 : 44, h0, h1, h2, h3]);
+        }
+        if (p.errors.length) over.push(`${name}: ${p.errors[0]}`);
+        await p.close();
+      }
+      const total = LONG.reduce((s, t) => s + t.lines.length, 0);
+      check(`typing long: 全 20 編の全行（${total} 行 × ${VIEWS.length} の窓 = ${measured} 回、別の綴りの途中 ${alt} 回、英語の今の字が空白 ${spaces} 回）が予約した行数に収まる（390・360・320・背の低い縦向き: 単位 ≤3・見出し ≤2・英語 ≤3・訳 ≤2／1200: 2・1・2・1／横向き: 単位・英語 ≤2）、札の高さは文章・行・言語によらず同じ、#typingWord の上端が同じ、英語は語の途中で折れず、今の字が空白（行の折り目も）でも下線に幅があって札の中、盤面のある窓では今の行が盤面の上`,
+        over.length === 0 && measured === total * VIEWS.length && alt > 0 && spaces > 0, over.slice(0, 8).join(" | "));
+      const jaTotal = LONG.filter((t) => t.lang === "ja").reduce((s, t) => s + t.lines.length, 0);
+      const badLive = livePunct.filter(([, v]) => !(v.punct === 2 && v.paired === 2 && v.pairs === 2));
+      check(`typing long: どの行も句読点の単位（、。）が行の頭に来ない（行頭禁則。全 20 編の日本語 ${jaTotal} 行 × ${VIEWS.length} の窓・別の綴りの途中も、句読点 ${punctSeen} か所）: 句読点の単位は直前の単位と 1 つの入れ物（.tp-unit-pair）で、幅はかなの字の大きさの 0.6 倍以下（全角の箱でない）、キーの , . はかなの下の中央。ページが描く今の行（ja-s01 の 1 行目の 、 と 。）も同じ入れ物`,
+        kinsoku.length === 0 && jaMeasured === jaTotal * VIEWS.length && punctSeen > jaMeasured && livePunct.length === VIEWS.length && badLive.length === 0, (kinsoku.slice(0, 6).join(" | ") || "") + (badLive.length ? ` live ${J(badLive)}` : ""));
+      const badFit = fit.filter(([, a, b]) => !(a.board <= a.osk && a.line <= a.osk && b.board <= b.osk && b.line <= b.osk && a.boardTop >= a.header && b.boardTop >= b.header));
+      check("typing long: 寄せたあと、札の下端と今の行の下端が盤面の上端以下・札の上端はヘッダーの下（390×844・375×667・360×640・375×560・320×568・844×390・667×375・360×740・320×720、日本語と英語）",
+        fit.length === VIEWS.length - 1 && badFit.length === 0, J(badFit.length ? badFit : fit.map(([n]) => n)));
+      check("typing long（390・360・320）: タブ 3 つが 1 行（どのタブも 1 行）・補足の行が 1 行・始まる前の一文が 1 行・横スクロールなし",
+        narrow.length === 3 && narrow.every(([, v]) => v.tabs === 1 && v.tabLines.every((x) => x === 1) && v.note === 1 && v.hint === 1 && v.scroll), J(narrow));
+      const badHead = heads.filter(([, want, h0, h1, h2, h3]) => {
+        const all = [h0, h1, h2, h3];
+        return !(h0.state === "ready" && h1.state === "running" && h2.state === "paused" && h3.state === "running" &&
+          all.every((h) => h.head === want && !h.hint && !h.next && h.word === h0.word && h.board === h0.board) &&
+          h0.select > 0 && h0.select <= want && h1.stop > 0 && h1.stop <= want && h2.stop > 0 && h2.stop <= want &&
+          /^残り \d+行$/.test(h1.left) && h1.paused === "" && h2.left === "" && h2.paused === "止めた" && h3.left === h1.left && h3.paused === "");
+      });
+      check("typing long（横向き 844×390・667×375／背の低い縦向き 375×560・320×568・360×640）: 1 行目は横向き 34px・背の低い縦向き 44px（select・やめる もその中）、始まる前・最初の 1 打・止めた・続きで 1 行目と札の高さ・今の行の上端が同じ、止めたは「残り N行」の場所に「止めた」、始まる前の一文と次の行は出さない",
+        heads.length === 5 && badHead.length === 0, J(badHead.length ? badHead : heads.map(([n, w, h0]) => [n, w, h0.head, h0.select])));
+    }
+
+    // ---- 静的（ファイルを読むだけ） ----
+    {
+      const html = fs.readFileSync(path.join(ROOT, "typing.html"), "utf8");
+      const meta = (re) => html.match(re)?.[1] ?? "";
+      const TITLE = "タイピング練習（英単語・ローマ字・長文）無料 | SpellDash";
+      const desc = meta(/<meta name="description" content="([^"]*)"/);
+      const about = html.match(/<section class="tp-about"[\s\S]*?<\/section>/)?.[0] ?? "";
+      const newsSrc = fs.readFileSync(path.join(ROOT, "js", "news.js"), "utf8");
+      const newsItem = (title) => { const i = newsSrc.indexOf(`title: "${title}"`); return i < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", i), newsSrc.indexOf("}", i)); };
+      const longNews = newsItem("タイピング練習に長文");
+      check("typing long: title・og:title・description（登録なし・1分・長文・文章・スマホ）と og が同じ・canonical、lead、このページについて（長文タイピング・読点「、」は ,（カンマ）・本体への導線は 1 つ）、お知らせは題「タイピング練習に長文」の 1 件に ./typing.html（ゲームへのリンクなし）",
+        html.includes(`<title>${TITLE}</title>`) && meta(/<meta property="og:title" content="([^"]*)"/) === TITLE && desc === meta(/<meta property="og:description" content="([^"]*)"/) && ["登録なし", "1分", "長文", "文章", "スマホ"].every((w) => desc.includes(w)) && html.includes('<link rel="canonical" href="https://www.spelldash.net/typing.html" />') &&
+        html.includes('<p class="subtitle">英単語は訳つき。長文も打てる。登録なし・無料。</p>') && about.includes("長文タイピングは") && about.includes("読点「、」は ,（カンマ）") && about.includes("打/分は、1分あたりに正しく打ったキーの数。") && (about.match(/data-typing-study/g) ?? []).length === 1 &&
+        longNews.includes('href=\\"./typing.html\\"') && !longNews.includes("typing-game.html") && longNews.includes('lead: "日本語と英語の文章を最後まで打つ長文を足した。"'),
+        J({ desc, longNews: longNews.slice(0, 80) }));
+      const css = fs.readFileSync(path.join(ROOT, "css", "typing.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      // 規則ごとのセレクタ（@media の中も）。長文だけの部品（1 行目・組・句読点の単位とその入れ物・始まる前の一文の隠し・結果のボタン・画面キーボードのキー）を指すのに長文の頭が無いものを漏れとする
+      const splitSel = (x) => { const out = []; let depth = 0; let cur = ""; for (const ch of x) { if (ch === "(") depth++; if (ch === ")") depth--; if (ch === "," && depth === 0) { out.push(cur); cur = ""; } else cur += ch; } out.push(cur); return out.map((y) => y.trim()); };
+      const sels = css.split("}").map((r) => { const parts = r.split("{"); return parts.length >= 2 ? parts[parts.length - 2] : ""; }).flatMap(splitSel).filter(Boolean);
+      const PREFIX = /\.tp-board\[data-kind="long"\]|\.tp-long-(ja|en)/;
+      const LONG_ONLY = /tp-head|tp-pair|tp-unit-pair|tp-unit--punct|tp-hint--off|tp-result__btns|tp-result__pre|tp-osk-key/;
+      const longRules = sels.filter((x) => PREFIX.test(x));
+      const leak = sels.filter((x) => LONG_ONLY.test(x) && !PREFIX.test(x));
+      check("typing long: typing.css の長文の規則は .tp-board[data-kind=\"long\"] か tp-long-ja／tp-long-en を挟む（英単語・日本語に漏らさない）、animation／transition／@keyframes なし、999px・var(--radius)・rgba(0,0,0・#FFF なし、visibility の例外の注釈は 3 つ",
+        longRules.length >= 20 && leak.length === 0 && !/\b(animation|transition)(-[a-z]+)?\s*:/.test(css) && !css.includes("@keyframes") && ![/\b999px/, /var\(--radius\)/, /var\(--radius-lg\)/, /rgba\(0,\s*0,\s*0/, /#(?:FFF|fff)(?![0-9A-Fa-f])/].some((re) => re.test(css)) && fs.readFileSync(path.join(ROOT, "css", "typing.css"), "utf8").includes("visibility の 3 つ"),
+        J(leak.slice(0, 3)));
+      const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+      const kb = fs.readFileSync(path.join(ROOT, "js", "keyboard.js"), "utf8") + fs.readFileSync(path.join(ROOT, "css", "keyboard.css"), "utf8");
+      const funnelSrc = fs.readFileSync(path.join(ROOT, "js", "funnelLog.js"), "utf8");
+      check("typing long: typing.html は js/typingLong.js を先読み（modulepreload）、data/typing-long.json は head で先読みせず sw の precache にも入れない、keyboard.js・keyboard.css に tp-osk-key が無い（ページが足す）、計測の source に typing_long・typing_long_start・typing_long_done（32 字以内）",
+        html.includes('<link rel="modulepreload" href="./js/typingLong.js" />') && !html.includes("typing-long.json") && !sw.includes("typing-long.json") && !kb.includes("tp-osk-key") && ["typing_long", "typing_long_start", "typing_long_done"].every((s) => funnelSrc.includes(`"${s}"`) && s.length <= 32));
+      // 木によく知られたタイピングサイトの名前が無い（名前は符号で持つ。英字の名は class 名 page-typing に部分一致するので、語の前の境目を後読みで見る。片仮名の名も見る）
+      const NAME = String.fromCodePoint(0x65, 0x2d, 0x74, 0x79, 0x70, 0x69, 0x6e, 0x67);
+      const KANA = String.fromCodePoint(0x30a4, 0x30fc, 0x30bf, 0x30a4, 0x30d4, 0x30f3, 0x30b0);
+      const NAME_RE = new RegExp(`(?<![a-z])${NAME.replace("-", "\\-")}`, "i");
+      const files = [];
+      const walk = (dir, exts) => { for (const f of fs.readdirSync(dir)) { const full = path.join(dir, f); const st = fs.statSync(full); if (st.isDirectory()) { if (!["node_modules", ".git", "sources", "packs", "english", "android", "ios"].includes(f)) walk(full, exts); } else if (exts.test(f)) files.push(full); } };
+      for (const f of fs.readdirSync(ROOT)) if (/\.html$/.test(f)) files.push(path.join(ROOT, f));
+      walk(path.join(ROOT, "css"), /\.css$/);
+      walk(path.join(ROOT, "js"), /\.js$/);
+      walk(path.join(ROOT, "scripts"), /\.(mjs|js|jsonl|txt|json)$/);
+      walk(path.join(ROOT, "docs"), /\.md$/);
+      walk(path.join(ROOT, "tests"), /\.mjs$/);
+      const named = files.filter((f) => { const t = fs.readFileSync(f, "utf8"); return NAME_RE.test(t) || t.includes(KANA); });
+      check(`typing long: 木（html・css・js・scripts の jsonl・txt も・docs・tests）によく知られたタイピングサイトの名前が無い（${files.length} ファイル）`, files.length > 100 && named.length === 0, named.slice(0, 5).map((f) => path.relative(ROOT, f)).join(" "));
+    }
+  }
 }
 
 // ===== 7.6 タイピングゲーム（/typing-game.html。docs/SPEC_TYPING_GAME.md。Batch 60）: 教材・進行・持ち時間・数え方・自己ベスト（Node）／
@@ -1823,10 +2929,12 @@ console.log("typing game:");
     ["残り 90秒", "打ち始めると、90秒を測る。文ごとに持ち時間がある。尽きると次の文へ。", "今日はいい天気だ", "きょうはいいてんきだ", "取れた", "このページについて", `${G.COURSES.normal.note} ・ 目標 ${G.goalFor("normal")}文`].every((s) => gameHtml.includes(s)) &&
     noRival && /<nav class="site-footer__nav"[^>]*data-no-pro/.test(gameHtml) && (gameFooter.match(/<a [^>]*>/)?.[0] ?? "").includes('href="./typing.html"') && !gameFooter.includes("aria-current"), gdesc);
   const newsSrc = fs.readFileSync(path.join(ROOT, "js", "news.js"), "utf8");
-  const firstNews = newsSrc.slice(newsSrc.indexOf("const NEWS = ["), newsSrc.indexOf("},", newsSrc.indexOf("const NEWS = [")));
+  // お知らせは題で探す（タイピング練習の長文など、あとから先頭に足したお知らせで落ちない。検査の強さは同じ: その 1 件に 2 つのリンク）
+  const newsAt = newsSrc.indexOf('title: "文を次々と打つ、90秒のタイピングゲーム"');
+  const firstNews = newsAt < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", newsAt), newsSrc.indexOf("},", newsAt));
   const typingHtml = fs.readFileSync(path.join(ROOT, "typing.html"), "utf8");
   const typingAbout = typingHtml.match(/<section class="tp-about"[\s\S]*?<\/section>/)?.[0] ?? "";
-  check("typing game: sitemap・sw の precache・アプリの PAGES・お知らせ（先頭）に typing-game.html、ci.yml に教材の --check、typing.html の札の下から導線（このページについての外）", fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing-game.html") && fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing-game.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing-game.html"') && firstNews.includes("./typing-game.html") && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing-game.mjs --check") && /<p class="tp-more">[^<]*<a href="\.\/typing-game\.html">タイピングゲーム<\/a><\/p>/.test(typingHtml) && !typingAbout.includes("typing-game.html"));
+  check("typing game: sitemap・sw の precache・アプリの PAGES・お知らせ（題「文を次々と打つ、90秒のタイピングゲーム」の 1 件）に typing-game.html、ci.yml に教材の --check、typing.html の札の下から導線（このページについての外）", fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing-game.html") && fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing-game.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing-game.html"') && firstNews.includes("./typing-game.html") && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing-game.mjs --check") && /<p class="tp-more">[^<]*<a href="\.\/typing-game\.html">タイピングゲーム<\/a><\/p>/.test(typingHtml) && !typingAbout.includes("typing-game.html"));
   const gameCss = fs.readFileSync(path.join(ROOT, "css", "typing-game.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   check("typing game: typing-game.css は animation／transition／@keyframes を持たず、太さは longhand、旧い書き方（999px・var(--radius)・rgba(0,0,0・#FFF）が無い", !/\b(animation|transition)(-[a-z]+)?\s*:/.test(gameCss) && !gameCss.includes("@keyframes") && !/text-decoration\s*:[^;]*\d+px/.test(gameCss) && ![/\b999px/, /var\(--radius\)/, /var\(--radius-lg\)/, /rgba\(0,\s*0,\s*0/, /#(?:FFF|fff)(?![0-9A-Fa-f])/].some((re) => re.test(gameCss)));
 }
@@ -9716,6 +10824,93 @@ console.log("typing funnel:");
     const sent = rows().filter((r) => r.device_id === id && r.source.startsWith("typing"));
     check("計測: タイピングゲームの印だけがある端末（番号なし）がタイピング練習を開いて打っても typing の印は立たず、typing* を送らない", Boolean(id) && first && mark === null && sent.length === 0 && p.errors.length === 0, JSON.stringify({ id: Boolean(id), first, mark, sent: sent.map((r) => r.source), errors: p.errors.slice(0, 2) }));
     await p.close();
+  }
+
+  // T31: 長文（docs/SPEC_TYPING.md「長文」）。新しい端末が長文のタブを押す → typing_long、長文を打ち始める（最初に判定したキー）→ typing_long_start
+  // （typing_start も長文の回で入る）、最後まで打つ → typing_long_done と typing_done（どれも来た日で 1 回だけ）。途中までの結果（Esc・出す時間 5 秒以上）では
+  // typing_long_done・typing_done を送らない。学習記録のある端末・ほかのページから来た端末には送らない
+  {
+    const SKEW = () => {
+      window.__skew = 0;
+      const now0 = performance.now.bind(performance);
+      performance.now = () => now0() + window.__skew;
+    };
+    const longKeys = (p, n = 5000) => p.evaluate((max) => {
+      const word = document.getElementById("typingWord");
+      const board = document.getElementById("typingBoard");
+      for (let i = 0; i < max && board.dataset.state !== "result"; i++) {
+        const k = word.dataset.rest?.[0];
+        if (!k) break;
+        (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+      }
+    }, n);
+    const openLong = async (p) => {
+      await p.click('.tp-tabs [data-kind="long"]');
+      await waitUntil(async () => (await stateOf(p)) === "ready", 5000);
+    };
+    const p = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+    await p.goto(BASE + "/typing.html?l=1", { waitUntil: "networkidle" });
+    const id = await deviceOf(p);
+    await waitUntil(async () => of(id, "typing").length === 1, 5000);
+    await openLong(p);
+    const tabbed = await waitUntil(async () => of(id, "typing_long").length === 1, 5000);
+    const before = of(id, "typing_long_start").length + of(id, "typing_start").length;
+    await longKeys(p, 1);
+    const started = await waitUntil(async () => of(id, "typing_long_start").length === 1 && of(id, "typing_start").length === 1, 5000);
+    await longKeys(p);
+    await waitUntil(async () => (await stateOf(p)) === "result", 5000);
+    const done = await waitUntil(async () => of(id, "typing_long_done").length === 1 && of(id, "typing_done").length === 1, 5000);
+    await p.waitForTimeout(700);
+    await p.keyboard.press("Enter");
+    await longKeys(p);
+    await waitUntil(async () => (await stateOf(p)) === "result", 5000);
+    await p.waitForTimeout(800);
+    const once = ["typing_long", "typing_long_start", "typing_long_done", "typing_start", "typing_done"].every((s) => of(id, s).length === 1);
+    const day = of(id, "typing")[0]?.day;
+    check("計測（長文）: タイピング練習から初めて来た端末が長文のタブを押すと typing_long、最初に判定したキーで typing_long_start（typing_start も）、最後まで打つと typing_long_done と typing_done（来た日で 1 回だけ。2 回目の完走でも増えない）",
+      tabbed && before === 0 && started && done && once && ["typing_long", "typing_long_start", "typing_long_done"].every((s) => of(id, s)[0]?.day === day) && p.errors.length === 0,
+      JSON.stringify({ rows: of(id).map((r) => `${r.source}:${r.day}`), errors: p.errors.slice(0, 2) }));
+    await p.close();
+
+    // 途中までの結果（Esc・出す時間 6 秒）は typing_long_done・typing_done を送らない
+    const q = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+    await q.addInitScript(SKEW);
+    await q.goto(BASE + "/typing.html?l=2", { waitUntil: "networkidle" });
+    const qid = await deviceOf(q);
+    await openLong(q);
+    await longKeys(q, 1);
+    await q.evaluate(() => { window.__skew += 6000; });
+    await longKeys(q, 1);
+    await q.keyboard.press("Escape");
+    const partial = await q.evaluate(() => document.getElementById("typingBoard").dataset.partial === "1" && document.getElementById("typingBoard").dataset.state === "result");
+    await waitUntil(async () => of(qid, "typing_long_start").length === 1, 5000);
+    await q.waitForTimeout(1200);
+    check("計測（長文）: 途中までの結果（Esc）では typing_long_done・typing_done を送らない（typing_long・typing_long_start は送る）",
+      partial && of(qid, "typing_long").length === 1 && of(qid, "typing_long_start").length === 1 && of(qid, "typing_long_done").length === 0 && of(qid, "typing_done").length === 0 && q.errors.length === 0,
+      JSON.stringify({ partial, rows: of(qid).map((r) => r.source), errors: q.errors.slice(0, 2) }));
+    await q.close();
+
+    // 学習記録のある端末・ほかのページから来た端末は長文を打ち切っても送らない
+    const learnerL = await newPage({ storage: { spelldash_test_cloud: cloud.id, spelldash_word_stats: JSON.stringify({ apple: { attempts: 1, correct: 1 } }) } });
+    await learnerL.goto(BASE + "/typing.html?l=1", { waitUntil: "networkidle" });
+    await openLong(learnerL);
+    await longKeys(learnerL);
+    await waitUntil(async () => (await stateOf(learnerL)) === "result", 5000);
+    await learnerL.waitForTimeout(800);
+    const learnerLId = await deviceOf(learnerL);
+    await learnerL.close();
+    const visitorL = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+    await visitorL.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const visitorLId = await deviceOf(visitorL);
+    await waitUntil(async () => of(visitorLId, "").length === 1, 5000);
+    await visitorL.goto(BASE + "/typing.html?l=1", { waitUntil: "networkidle" });
+    await openLong(visitorL);
+    await longKeys(visitorL);
+    await waitUntil(async () => (await stateOf(visitorL)) === "result", 5000);
+    await visitorL.waitForTimeout(800);
+    await visitorL.close();
+    const sentL = rows().filter((r) => (r.device_id === learnerLId || r.device_id === visitorLId) && r.source.startsWith("typing"));
+    check("計測（長文）: 学習記録のある端末・ほかのページから来た端末は長文を打ち切っても typing_long* を送らない", Boolean(visitorLId) && sentL.length === 0, JSON.stringify(sentL.map((r) => r.source)));
   }
 
   // T29: 管理画面の「初めて来た」は端末の数のまま

@@ -1,7 +1,8 @@
 /* タイピング練習（/typing.html。docs/SPEC_TYPING.md）。書斎の読む机の皮（pages.css の札・タブ）に、見本と結果だけを足す。
    角丸は札の --radius-room と、ミスの単位・間違えたキーの題箋の 2px だけ。animation／transition は書かない。色は tokens.css の変数だけ。
    すべて html[data-theme] body.page-typing を頭に付ける（pages.css の札の規則 body:not(.page-room) :is(.result-card…) に勝ち、ほかのページに漏らさない）。
-   例外は行の高さを残す visibility の 2 つ（.tp-tabnote--off・.tp-upnext--empty）だけで、JS なしでも効くよう body.page-typing から書く。 */
+   例外は行の高さを残す visibility の 3 つ（.tp-tabnote--off・.tp-upnext--empty・長文の始まる前の一文 .tp-hint--off）だけで、JS なしでも効くよう body.page-typing から書く。
+   長文（3 つ目の種類。docs/SPEC_TYPING.md「長文」）の規則は、すべて .tp-board[data-kind="long"] か body.page-typing.tp-long-ja／.tp-long-en を挟む（英単語と日本語に漏らさない）。 */
 
 /* 入力欄は見せない（画面キーボードの宛先と焦点の置き場。game.css の #input (1,0,0) に勝つため id で書く） */
 html[data-theme] body.page-typing #input {
@@ -51,9 +52,16 @@ html[data-theme] body.page-typing .tp-board[data-state="result"] {
 }
 
 /* 焦点の印: Study の .input-wrapper:focus-within（brand.css）と同じ --focus の輪。transition は書かない。
+   長文は入力欄に焦点があるときだけ（1 行目の select・やめる に焦点があるとき札全体の輪を出さない。select 自身の枠はキーボードの人の目印として残す）。
    枠は朱でなく墨（--ink-3、地に 6.6:1）: 札は 688×240px と大きく、朱の枠だと開いた直後から朱が下線と 2 か所になり「入力の誤り」にも見える。
    結果では出さない（焦点は結果の数の行に置くだけで、打つ場所ではない） */
-html[data-theme] body.page-typing .tp-board:not([data-state="result"]):focus-within {
+html[data-theme] body.page-typing .tp-board:not([data-state="result"]):not([data-kind="long"]):focus-within {
+  border-color: var(--ink-3);
+  box-shadow: var(--sheet-shadow), var(--focus);
+}
+
+/* :has() を読めない古いブラウザで上の規則まで捨てられないよう、別の規則に分ける */
+html[data-theme] body.page-typing .tp-board[data-kind="long"]:not([data-state="result"]):has(#input:focus) {
   border-color: var(--ink-3);
   box-shadow: var(--sheet-shadow), var(--focus);
 }
@@ -195,7 +203,8 @@ html[data-theme] body.page-typing .tp-upnext b {
   font-weight: 500;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="ja"] .tp-upnext b {
+html[data-theme] body.page-typing .tp-board[data-kind="ja"] .tp-upnext b,
+html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-upnext b {
   font-family: var(--font-ui);
 }
 
@@ -390,8 +399,15 @@ html[data-theme] body.page-typing .osk [data-action="enter"] {
   display: none;
 }
 
-/* 英単語では 3 段目（空白・ー・Enter）が全部隠れて空の行になるので段ごと隠す（高さの予約 --osk-h は変えない） */
-html[data-theme] body.page-typing:not(.romaji-answer) .osk__row--3 {
+/* 英単語では 3 段目（空白・ー・Enter）が全部隠れて空の行になるので段ごと隠す（高さの予約 --osk-h は変えない）。
+   英語の長文は 3 段目に ' , 空白 . ? を出す（3 段目のある日本語と同じ高さなので --osk-h は変えない） */
+html[data-theme] body.page-typing:not(.romaji-answer):not(.tp-long-en) .osk__row--3 {
+  display: none;
+}
+
+/* 長文の画面キーボードのキー（js/typingPage.js が 3 段目に差し込む。keyboard.js・keyboard.css は変えない）: 日本語の長文は 、。、英語の長文は ' , 空白 . ? */
+html[data-theme] body.page-typing:not(.tp-long-ja) .tp-osk-key--ja,
+html[data-theme] body.page-typing:not(.tp-long-en) .tp-osk-key--en {
   display: none;
 }
 
@@ -488,4 +504,282 @@ html[data-theme] body.page-typing:not(.romaji-answer) .osk__row--3 {
 /* 日本語のミスの印は今の単位の内枠で足りる。キーの下線は実線のまま（波線が枠の下にはみ出さない） */
 html[data-theme] body.page-typing .tp-word--ja.tp-miss .tp-now {
   text-decoration-style: solid;
+}
+
+/* ===== 長文（3 つ目の種類。docs/SPEC_TYPING.md「長文」）=====
+   札の中は欄ごとに高さを予約する（1 行目 44px・見出し・単位・文・訳）。行が替わって中身の行数が変わっても、札も今の行も上下しない。
+   英語の欄の和（文＋訳）は日本語の欄の和（見出し＋単位）にそろえる（訳の欄の min-height で差を埋める）。次の行と始まる前の一文の位置も日英で同じ。
+   欄の和: 日本語 = 見出しの上 8 ＋ 見出しの欄 ＋ 単位の上 8 ＋ 単位の欄、英語 = 文の上 8 ＋ 文の欄 ＋ 訳の上 4 ＋ 訳の欄 */
+
+/* 1 行目: 始まる前は文章の select、打っている間は題・残り・やめる。高さは幅とポインタによらず 44px（横向き 34px）、中の部品は縦の中央 */
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  text-align: left;
+}
+
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__select {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__right {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__left {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* 「止めた」は横向き・背の低い縦向きだけ（始まる前の一文の行が無いので「残り」の場所に出す） */
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__paused {
+  display: none;
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__stop small {
+  margin-left: 2px;
+  font-size: 12px;
+}
+
+/* 見出し（日本語）: 15px・2 行の欄。打った所は塗らない（見出しの字と読みの対応が無い） */
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-term {
+  margin: 8px 0 0;
+  min-height: 3em;
+  font-family: var(--font-ui);
+}
+
+/* 長文の札の字間は 0（読み込み中の 1 行も。英単語の字間 0.04em が単位のかなに継がれたまま描かれると、届いた瞬間に単位の並びが替わる） */
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-word {
+  letter-spacing: 0;
+}
+
+/* かなの単位（日本語）: 3 行の欄（かな 26px × 1.25 ＋ キー 13px × 1.3 ＋ 行の間 2px）。読み込み中の 1 行もこの欄に入る */
+html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-word {
+  margin-top: 8px;
+  min-height: 152px;
+  align-content: flex-start;
+}
+
+/* 句読点の単位は直前の単位と 1 つの入れ物（js/typingKeys.js の appendUnits の { punct }）。入れ物の中では折れない（行頭禁則）。
+   中の単位の間は札の単位どうしの間と同じ（390 未満の 2px も継ぐ） */
+html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-unit-pair {
+  display: flex;
+  column-gap: inherit;
+}
+
+/* 句読点のかなは字形に合った幅（全角の箱の左半分に字が載り、右半分は空き）。キーの行の , . はその下の中央 */
+html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-unit--punct .tp-unit__kana {
+  width: 0.5em;
+  text-align: left;
+}
+
+/* 英語の文: 等幅 22px・3 行の欄。語の途中で折らない・今の字が空白でも下線が見える。字間は 0（今の英単語の字間 0.04em と anywhere は変えない） */
+html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+  margin-top: 8px;
+  min-height: 3.75em;
+  font-size: 22px;
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* 英語の訳: 15px・2 行。欄は日本語の欄の和との差（8 + 45 + 8 + 152 − 8 − 82.5 − 4） */
+html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-gloss {
+  margin-top: 4px;
+  min-height: 118.5px;
+  font-family: var(--font-ui);
+}
+
+/* 次の行は 1 行（はみ出しは …） */
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-upnext {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 始まる前の一文は打っている間も行の高さを残す。JS なしでも効くように html[data-theme] を頭に付けない */
+body.page-typing .tp-board[data-kind="long"] .tp-hint--off {
+  visibility: hidden;
+}
+
+/* 結果: 主の数はスコア（ラベルが先）。名前と数の組は折らず、区切りの「 ・ 」でだけ折る */
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__kpm .tp-result__pre {
+  margin: 0 6px 0 0;
+}
+
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-pair {
+  white-space: nowrap;
+}
+
+/* もう一度・次の文: 390 は 1 行に 2 等分（どちらも 44px）、720 以上は中身の幅 */
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns .tp-result__again {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+}
+
+/* 320〜359: かな 22px（上の規則）・英語 20px・訳 14px */
+@media (max-width: 359.98px) {
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-word {
+    min-height: 137px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+    font-size: 20px;
+  }
+
+  /* 8 + 45 + 8 + 137 − 8 − 75 − 4 */
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-gloss {
+    min-height: 111px;
+    font-size: 14px;
+  }
+}
+
+/* 720 以上: 見出し 1 行・単位 2 行（かな 30px）・英語 26px で 2 行・訳 1 行 */
+@media (min-width: 720px) {
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-term {
+    min-height: 1.5em;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-word {
+    min-height: 111px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+    min-height: 2.5em;
+    font-size: 26px;
+  }
+
+  /* 8 + 22.5 + 8 + 111 − 8 − 65 − 4 */
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-gloss {
+    min-height: 72.5px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns .tp-result__again {
+    flex: 0 0 auto;
+  }
+}
+
+/* 背の低い縦向き（幅 ≤719・高さ 481〜650。320×568・375×560・360×640 など。3 段目つきの盤面 218px の上に札を収める）:
+   次の行と始まる前の一文を隠し（止めたは「残り」の場所）、札の上下の余白 8px・単位の上 8px・かなは幅によらず 22px */
+@media (max-width: 719.98px) and (min-height: 480.02px) and (max-height: 650.98px) {
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] :is(.tp-upnext, .tp-hint) {
+    display: none;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-state="paused"] .tp-head__left {
+    display: none;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-state="paused"] .tp-head__paused {
+    display: inline;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-unit__kana {
+    font-size: 22px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-word {
+    min-height: 137px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+    font-size: 20px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-gloss {
+    min-height: 111px;
+    font-size: 14px;
+  }
+}
+
+/* 横向き（高さ ≤480。盤面 161px）: 見出し・訳・次の行・始まる前の一文を隠し、単位（英語は文）を 2 行。
+   札の上下の余白 8px、1 行目 34px（select・やめる も 34px・上下の padding 4px。select の字は iOS の拡大を避けて 16px のまま）、単位の上 4px、キーの字 12px */
+@media (max-height: 480px) {
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head {
+    min-height: 34px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] :is(.tp-head__select, .tp-head__stop) {
+    min-height: 34px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] :is(.tp-term, .tp-gloss, .tp-upnext, .tp-hint) {
+    display: none;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-state="paused"] .tp-head__left {
+    display: none;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-state="paused"] .tp-head__paused {
+    display: inline;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-unit__kana {
+    font-size: 22px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-unit__keys {
+    font-size: 12px;
+  }
+
+  /* 2 行: かな 22 × 1.25 ＋ キー 12 × 1.3 ＋ 行の間 2px。英語の文の欄も同じ高さ（札の高さは言語によらず 1 つ） */
+  html[data-theme] body.page-typing .tp-board[data-kind="long"]:is([data-lang="ja"], [data-lang="en"]) .tp-word {
+    margin-top: 4px;
+    min-height: 88px;
+  }
+
+  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+    font-size: 20px;
+  }
 }
