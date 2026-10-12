@@ -99,7 +99,7 @@
 
 ## タイピング練習の長文（/typing.html の 3 つ目の種類）のキー（2026-10-12、Batch 62。docs/SPEC_TYPING.md §9）
 
-- 文章を 1 本選んで最後の行まで打つ。キーの読み方だけ長文の関数に替える（`wireTyping` の口 `keyOf`）: 日本語は `punctKeyOf`（`romajiKeyOf` に「、」＝`,`・「。」＝`.` を足した読み方。key の `,` `、` `，`／`.` `。` `．`、IME オンの `Process` とかな配列のかな（「ね」「る」）は code の `Comma`・`Period`）、英語は `textKeyOf`（印字できる ASCII をそのまま。全角は半角に、`’` `‘` は `'` に。`Process`／`Unidentified`／`Dead`／かな は code で読み、`Quote` と Shift＋`Digit7` の両方を `'`、Shift＋`Slash` を `?`）。どちらも Ctrl・Cmd・Alt つきは読まない（Shift は読む）。**`romajiKeyOf`・`normalizeRomajiKey` の既定は変えていない**（Study の答えの判定で `,` `.` がミスに変わるため）。英単語・日本語の 1 分とタイピングゲームは上の表のまま
+- 文章を 1 本選んで最後の行まで打つ。キーの読み方だけ長文の関数に替える（`wireTyping` の口 `keyOf`）: 日本語は `punctKeyOf`（`romajiKeyOf` に「、」＝`,`・「。」＝`.` を足した読み方。key の `,` `、` `，` `､`／`.` `。` `．` `｡` は js/romaji.js の `punctKeyOfChar`（句読点の表 `PUNCT_KEYS` の 1 か所）、IME オンの `Process` とかな配列のかな（「ね」「る」）は code の `Comma`・`Period`）、英語は `textKeyOf`（印字できる ASCII をそのまま。全角は半角に、`’` `‘` は `'` に。`Process`／`Unidentified`／`Dead`／かな は code で読み、`Quote`（Shift なし）と Shift＋`Digit7` の両方を `'`、Shift＋`Slash` を `?`。`Process`／`Unidentified`／`Dead` の Shift つきの `Comma`・`Period`・`Quote`・`Digit1`〜`9`／`0`（7 を除く）・`Minus`・`Semicolon` は US 配列の Shift の字 `<` `>` `"` `!@#$%^*()` `_` `:` で読む＝必ずミス）。どちらも Ctrl・Cmd・Alt つきは読まない（Shift は読む）。**`romajiKeyOf`・`normalizeRomajiKey` の既定は変えていない**（Study の答えの判定で `,` `.` がミスに変わるため）。英単語・日本語の 1 分とタイピングゲームは上の表のまま
 - ミスは数え、正しいキーを打つまで進まない。英語の大文字は小文字のままでも Shift つきでも通る。英語の行の頭の空白は飲む（行の終わりに空白を打つ癖を咎めない）
 
 | キー・出来事 | 始まる前 | 打っている間 | 止めた（paused） | 結果 |
@@ -109,12 +109,13 @@
 | Space（英語。`" "`・全角の空白・`Process`／`Unidentified` の code `Space`。`keyCode 229` でも変換中でなければ） | 始める（焦点がボタン・リンクなら既定） | **焦点がどこでも**空白として判定し `preventDefault`（タブ・ご意見・やめる・`.tp-more` の上でも。編集できる要素を除く。変換中は数えない） | 続きから（判定しない） | 0.6 秒以降 もう一度 |
 | Enter | 始める | 数えない | 続きから | 0.6 秒以降 もう一度 |
 | Esc・「やめる」 | 何もしない | そこまでの結果（出す時間が 5 秒未満、または判定したキーが無ければ始まる前） | 同左 | もう一度（守りの 0.6 秒の間と押しっぱなし（`repeat`）の Esc は何もしない） |
-| 「やめる」の上の Space／Enter・detail 0 のクリック | — | 日本語の Space は押させない。Enter と detail 0 のクリック（Tab で来て Enter・支援技術のクリック）はやめる | 同左 | — |
+| タブ・ご意見の上の Space／Enter | 既定 | 押させない（英語の Space は上の行のとおり空白） | 押させず続きから（判定しない。ご意見の窓を閉じると焦点は窓を開いたボタンに戻る） | 既定 |
+| 「やめる」の上の Space／Enter・detail 0 のクリック | — | 日本語の Space は押させない。Enter と detail 0 のクリック（Tab で来て Enter・支援技術のクリック）はやめる | Space は押させず続きから（判定しない）。Enter と detail 0 のクリックはやめる | — |
 | ページが裏に回る・ご意見の窓をマウスで開く | 何もしない | 止める（時計を止める。次の 1 打で続きから。止めていた間は数えない） | 何もしない | 何もしない |
 | Backspace・Delete／ほかの 1 文字のキー | 上の表と同じ | 同左 | 同左 | 同左 |
 
 - 「やめる」（`[data-run-control]`）は `RUN_CONTROLS` に入れない。Space の keydown／keyup の守りだけ同じに扱い（日本語で癖の Space が回を消さない）、Enter と detail 0 のクリックは通す（スマホで回を止める手段はこれだけ）。止めた所から続きに戻ると焦点を `#input` に戻す（ご意見の窓を閉じると焦点は窓を開いたボタンに戻るので。タッチ端末を除く）。札のクリックで焦点を移すときは `select`・`label` を除く
-- 文章の select: ポインタで選ぶと焦点を札へ、キーボードの矢印で選ぶと焦点は select のまま（選ぶたびにその文章の始まる前）。select の上の Enter か Tab で札へ。select の上の字のキーは数えない（入力できる要素と同じ扱い）
+- 文章の select: ポインタで選ぶと焦点を札へ、キーボードの矢印で選ぶと焦点は select のまま（選ぶたびにその文章の始まる前）。select の上の Enter か Tab で札へ（タッチ端末の Enter は select の焦点を外す: 入力欄に焦点を当てない端末なので、外付けキーボードの次の字で回が始まる）。select の上の字のキーは数えない（入力できる要素と同じ扱い）
 - **画面キーボード**: keyboard.js・keyboard.css は変えない。typing のページが `initializeKeyboard` の後に 1 回だけ、3 段目にボタンを差し込む（`<button type="button" class="osk__key tp-osk-key tp-osk-key--ja|--en" tabindex="-1" data-key="…">`。`.osk__row--3` が無ければ何もしない。keyboard.js の pointerdown は `data-key` をそのまま送る）。出し入れは body の class と typing.css だけ
   - 日本語の長文（`romaji-answer`＋`tp-long-ja`）: a〜z・⌫・ー に「、」（`data-key=","`・名前「読点」）と「。」（`data-key="."`・「句点」）
   - 英語の長文（`tp-long-en`）: 3 段目を出し、`'`（アポストロフィ）・`,`（カンマ）・幅広の空白（`data-key=" "`・「空白」。keyboard.js の隠れた空白キーと印が重ならないよう `data-action="space"` は使わない）・`.`（ピリオド）・`?`（疑問符）。ー と Enter は隠したまま。Shift は足さない

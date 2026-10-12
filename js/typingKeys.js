@@ -9,7 +9,7 @@ import { isTouchDevice } from "./keyboard.js";
 import { romajiKeyOf } from "./romaji.js";
 import { RESULT_GUARD_MS, validPairs } from "./typingDrill.js";
 
-// 打っている間、Space／Enter とキーで押すクリックを止めるボタン（タブ・ご意見）。語のあとの癖の Space で回が消えない
+// 打っている間、Space／Enter とキーで押すクリックを止めるボタン（タブ・ご意見）。語のあとの癖の Space で回が消えない（止めた回では続きから）
 const RUN_CONTROLS = ".tp-tabs button, [data-feedback-open]";
 // Space の keydown／keyup だけ止めるボタン: 上に「やめる」（長文の [data-run-control]）を足す。Enter と detail 0 のクリックでは押せる
 // （タッチ端末で回を止める手段は「やめる」だけなので、焦点は来るのに押せないボタンにしない）
@@ -193,8 +193,9 @@ function isWideSpace(event) {
 //   pause()                   … running で裏に回った・ご意見の窓をマウスで開いた（既定 reset）
 //   stop(now)                 … running・paused の Esc（既定 reset）
 //   holdResult()              … true のとき、result の Esc は守りの間（guard.active）と押しっぱなし（repeat）では何もしない（既定 () => false）
-// paused: 守り（タブ・ご意見の上の Space／Enter、「やめる」の上の Space、Backspace、ほかの 1 文字）は running と同じ。判定するキー・Space・Enter は
-// 先に start(now)（続きから）を呼ぶ（Space・Enter はそこで止め、判定するキーはそのあと press）。続きに戻ったら焦点を入力欄へ（タッチ端末を除く）
+// paused: 守り（Backspace、ほかの 1 文字）は running と同じ。判定するキー・Space・Enter は先に start(now)（続きから）を呼ぶ（Space・Enter はそこで止め、
+// 判定するキーはそのあと press）。焦点がタブ・ご意見の上の Space／Enter と「やめる」の上の Space も、ボタンは押させずに続きから（判定しない。
+// 「やめる」の上の Enter はやめる）。続きに戻ったら焦点を入力欄へ（タッチ端末を除く）
 export function wireTyping(page) {
   const keyOf = typeof page.keyOf === "function" ? page.keyOf : romajiKeyOf;
   const spaceIsKey = typeof page.spaceIsKey === "function" ? page.spaceIsKey : () => false;
@@ -253,7 +254,11 @@ export function wireTyping(page) {
 
     if (isEnter || isSpace) {
       if (onControl) {
-        if (live(phase) && target.closest(isSpace ? RUN_SPACE : RUN_CONTROLS)) event.preventDefault();
+        if (live(phase) && target.closest(isSpace ? RUN_SPACE : RUN_CONTROLS)) {
+          event.preventDefault();
+          // 止めた回（長文だけ）: ボタンは押させず続きから（判定しない）。ご意見の窓を閉じると焦点は窓を開いたボタンに戻るため
+          if (phase === "paused" && !mod && !event.repeat) resume(now);
+        }
         return;
       }
       if (mod) return;

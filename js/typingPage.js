@@ -573,7 +573,7 @@ function finishLong(isPartial) {
   partial = isPartial;
   let cmp = { status: "none" };
   if (!isPartial && linesLimit === null && text) {
-    cmp = recordLongBest(storage(), text, { score: s.score, kpm: s.kpm, acc: s.accuracy, sec: s.sec, day: localDay(new Date()) });
+    cmp = recordLongBest(storage(), text, { score: s.score, kpm: s.kpm, acc: s.accuracy, sec: s.sec, ms: s.ms, day: localDay(new Date()) }); // 1 時間の上限は ms で見る
     if (cmp.write) selectBuilt = false; // 「済み」を付け直す
   }
   renderLongResult(s, cmp, text);
@@ -753,7 +753,7 @@ el.nextText.addEventListener("click", () => {
   toReady("long");
 });
 // select: ポインタで選んだら焦点を札へ（タッチ端末を除く）。キーボードの矢印（閉じた select で change が出る）は焦点を select に残す。
-// select の上の Enter で札へ。タッチ端末は選んだら blur（外付けキーボードの字が select の頭文字探しに渡らないように）
+// select の上の Enter で札へ（タッチ端末は焦点を当てない端末なので blur）。タッチ端末は選んだら blur（外付けキーボードの字が select の頭文字探しに渡らないように）
 el.select.addEventListener("pointerdown", () => {
   selectPointer = true;
 });
@@ -761,7 +761,8 @@ el.select.addEventListener("keydown", (event) => {
   selectPointer = false;
   if (event.key === "Enter" && !event.isComposing) {
     event.preventDefault();
-    focusInput();
+    if (touch) el.select.blur(); // focusInput はタッチ端末では何もしないので、select に焦点が残って次の字が回を始めない
+    else focusInput();
   }
 });
 el.select.addEventListener("change", () => {

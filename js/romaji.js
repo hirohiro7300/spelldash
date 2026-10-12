@@ -48,6 +48,9 @@
 //   romajiKeyOf(event)       KeyboardEvent 風の {key, code, ctrlKey, metaKey, altKey} からキーを得る。
 //                            key が Process／Unidentified／かな（JIS かな配列）のときは code（KeyA／Digit1／Minus）を使う。
 //                            修飾キー付き・Enter・Backspace・空白・ASCII 記号は null
+//   PUNCT_KEYS               句読点の字 → キーの表 { "、": ",", "。": "." }（{ punct: true } の読みと長文のキー。js/typingLong.js も読む）
+//   punctKeyOfChar(key)      1 文字が句読点なら , か .（NFKC の後に「、」「。」か , . のもの: ， ． ､ ｡ も）、ほかは null。
+//                            { punct: true } の feed と長文の punctKeyOf（js/typingLong.js）が同じ表で読む。既定の判定は使わない
 //
 // ── 綴りの規則 ───────────────────────────────────────────────
 //  ・ヘボン式と訓令式の両方: shi/si/ci, chi/ti, tsu/tu, fu/hu, ji/zi, sha/sya, cha/tya/cya, ja/zya/jya,
@@ -81,7 +84,8 @@ const VOWELS = "aiueo";
 const READING_RE = /^[ぁ-ゖーa-z0-9]+$/;
 // { punct: true } のとき: 読みに残す句読点（NFKC の後。半角の ､ ｡ も NFKC で 、。になる）と、それを足した読みの字種
 const PUNCT_READING_RE = /^[ぁ-ゖーa-z0-9、。]+$/;
-const PUNCT_KEYS = { "、": ",", "。": "." };
+// 句読点の字 → キー（この 1 か所だけ。読みの「、」「。」の綴りも、打たれた字の読み方も、長文の間違えたキーの表示もここから引く）
+export const PUNCT_KEYS = Object.freeze({ "、": ",", "。": "." });
 const KANA_RE = /[ぁ-ゖ]/;
 const SMALL_KANA = /^[ぁぃぅぇぉゃゅょゎァィゥェォャュョヮ]$/;
 
@@ -448,14 +452,17 @@ function summarize(cands, states, keys, primary) {
   };
 }
 
-// { punct: true } の feed: ローマ字のキーに加えて `,` `.`（「、」「。」と全角の ，．も同じ）
-function punctKey(key) {
-  const k = normalizeRomajiKey(key);
-  if (k || typeof key !== "string" || [...key].length !== 1) return k;
+// 1 文字の句読点 → `,` `.` | null。NFKC の後で PUNCT_KEYS の字（「、」「。」。半角の ､ ｡ も）かそのキー（, .。全角の ，．も）なら、そのキー
+export function punctKeyOfChar(key) {
+  if (typeof key !== "string" || [...key].length !== 1) return null;
   const c = key.normalize("NFKC");
-  if (c === "," || c === "、") return ",";
-  if (c === "." || c === "。") return ".";
-  return null;
+  if (Object.hasOwn(PUNCT_KEYS, c)) return PUNCT_KEYS[c];
+  return Object.values(PUNCT_KEYS).includes(c) ? c : null;
+}
+
+// { punct: true } の feed: ローマ字のキーに加えて `,` `.`（「、」「。」と全角の ，．も同じ。punctKeyOfChar）
+function punctKey(key) {
+  return normalizeRomajiKey(key) ?? punctKeyOfChar(key);
 }
 
 export function createRomajiMatcher(candidates, opts) {
