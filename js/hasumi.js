@@ -3,7 +3,8 @@ import { localDateString } from "./stats.js";
 import { isBeforePlacement } from "./studyQueue.js";
 import { getLearnedWordsToday } from "./learnedWords.js";
 import { buildPath } from "./pathView.js";
-import { isDailySetDone } from "./dailySet.js";
+import { isDailySetDone, isTimedSet } from "./dailySet.js";
+import { resumableFor } from "./sessionResume.js";
 
 // ===== はちゃん（はすみ / Hasumi）: 学習パートナー =====
 //
@@ -47,6 +48,9 @@ export function hasumiHomeLine() {
     }
     // 「思い出せた」の数は学習データが持つ。ここでは今日のぶんが済んだかどうかの事実だけ（チップの「途中」と合わせる）
     if (isDailySetDone()) return { mood: "happy", text: "今日のぶん、終わった。" };
+    // 「続きから。」と言うのは、続き（前回の続きから）が残っていて、長さが語数のときだけ（60 秒の回は続きの地点を残さない）
+    const resume = resumableFor(localStorage.getItem("spelldash_category") || "all");
+    if (!resume || isTimedSet()) return { mood: "normal", text: "今日はまだ途中。" };
     return { mood: "normal", text: "今日は途中。続きから。" };
   }
 
@@ -110,8 +114,12 @@ export function hasumiLearnedLine(en) {
   return { mood: "happy", text: pick([`${en}、残ってた。`, `前は出てこなかった ${en}、いまは出る。`]) };
 }
 
-// 今日のセット完了の一言（完了の事実だけ。次を急かさない）
-export function hasumiSetLine({ count = 0, failed = 0, sets = 1, recovered = 0 } = {}) {
+// 今日のセット完了の一言（完了の事実だけ。次を急かさない）。
+// timedEmpty: 60 秒の回で、自力で思い出せた語が 0 の回（今日のぶんにならない）。思い出せなかった語はキューの先頭に戻る／何も答えずに時間が切れた
+export function hasumiSetLine({ count = 0, failed = 0, sets = 1, recovered = 0, timedEmpty = false } = {}) {
+  if (timedEmpty) {
+    return { mood: "normal", text: failed > 0 ? "思い出せなかった語は、次の回の最初に出る。" : "時間切れの語は、記録していない。" };
+  }
   if (sets > 1) {
     return { mood: "happy", text: `${sets}セット目、終わった。` };
   }

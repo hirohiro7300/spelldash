@@ -46,11 +46,13 @@
   <link rel="modulepreload" href="./js/activity.js" />
   <link rel="modulepreload" href="./js/userItemsSync.js" />
   <link rel="modulepreload" href="./js/backup.js" />
+  <link rel="modulepreload" href="./js/masteryMeta.js" />
+  <link rel="modulepreload" href="./js/retentionCalc.js" />
   <link rel="modulepreload" href="./js/growthLog.js" />
   <link rel="modulepreload" href="./js/stats.js" />
   <link rel="modulepreload" href="./js/retentionLog.js" />
-  <link rel="modulepreload" href="./js/retentionCalc.js" />
   <link rel="modulepreload" href="./js/studyTime.js" />
+  <link rel="modulepreload" href="./js/mastery.js" />
   <link rel="modulepreload" href="./js/unlocks.js" />
   <link rel="modulepreload" href="./js/course.js" />
   <link rel="modulepreload" href="./js/packs.js" />
@@ -86,6 +88,7 @@
   <link rel="modulepreload" href="./js/learnedWords.js" />
   <link rel="modulepreload" href="./js/hasumi.js" />
   <link rel="modulepreload" href="./js/pathView.js" />
+  <link rel="modulepreload" href="./js/tutorial.js" />
   <link rel="modulepreload" href="./js/sessionResume.js" />
   <link rel="modulepreload" href="./js/shelves.js" />
   <link rel="modulepreload" href="./js/html.js" />
@@ -232,6 +235,11 @@
     <section data-tab="week" class="result-card" id="retention">
       <h3 role="heading" aria-level="2">記憶の保持率</h3>
       <div id="retentionReport"></div>
+    </section>
+
+    <section data-tab="words" class="result-card" id="mastery" data-tab-empty hidden>
+      <h3 role="heading" aria-level="2">習熟度</h3>
+      <div id="masteryReport"></div>
     </section>
 
     <section data-tab="words" class="result-card" id="learnedWords">

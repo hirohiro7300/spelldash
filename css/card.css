@@ -840,6 +840,55 @@ html[data-theme] .word-chip--failed b {
   color: var(--signal-ink);
 }
 
+/* 60 秒の終わりのパネル: この回に答えた語を段ごとに（群の題は目盛り＋段の名前 = .rank は brand.css。js/game.js renderRankGroups）。
+   語チップは長い訳でも箱をはみ出さない（中で折り返す。語数のセットの語チップの寸法は変えない） */
+html[data-theme] .rank-groups__title {
+  margin: 14px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+html[data-theme] .rank-group .word-chips__title {
+  display: flex;
+  align-items: center;
+}
+
+html[data-theme] .rank-group .word-chip {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+html[data-theme] .rank-group .word-chip small {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 語チップの中の変化（初めて／上がった／下がった／時間がかかった）。文字だけ（矢印・記号・色の信号は使わない） */
+html[data-theme] .word-chip__move {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 段が動いた語の行（語数のセットの完了パネル・Challenge／Daily の結果）と、同じ日の 2 回目では上がらないことの注記 */
+html[data-theme] .rank-moves,
+html[data-theme] .rank-groups__note {
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .rank-groups__note {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
 /* 明日の予定・週の目標 */
 html[data-theme] .result-panel__tomorrow {
   margin-top: 12px;

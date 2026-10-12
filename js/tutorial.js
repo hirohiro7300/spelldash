@@ -62,6 +62,12 @@ export function isTutorialDone() {
   return ALL.every(seen);
 }
 
+// 次の回がチュートリアルの回か（始まっていて、1 セット目を終えておらず、まだ見ていない札がある）。初回のセットと、
+// 設定の「チュートリアルをもう一度」の後の回。js/game.js はこの回を 60 秒にしない（語数で走る。T3 の待ち延ばしを 60 秒の回に入れない）
+export function isTutorialRunPending() {
+  return state.started && !state.setDone && !isTutorialDone();
+}
+
 function dismiss() {
   if (!current) return;
   const { el, timer } = current;

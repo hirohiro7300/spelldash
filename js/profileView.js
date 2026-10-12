@@ -13,7 +13,7 @@ import { getTheme, setTheme, isProTheme } from "./theme.js";
 import { isNativeApp } from "./appEnv.js";
 import { getPlan, isPro, postBilling, planLabel, planActionLabel } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
-import { getSetSize, setSetSize } from "./dailySet.js";
+import { getSetLength, setSetSize } from "./dailySet.js";
 import { getAfterCorrect, setAfterCorrect } from "./afterCorrect.js";
 import { getWeekGoal, setWeekGoal } from "./growthLog.js";
 import { renderInstallCard } from "./installPrompt.js";
@@ -30,12 +30,31 @@ renderHeaderStreak();
 setupUnloadSync();
 initWordStore();
 
-// ===== 学習の設定（今日のセットの語数） =====
+// ===== 学習の設定（今日のセットの長さ: 10／15／25 語・60 秒。ホームの出題設定の #setLengthSelect と同じ値） =====
 {
   const select = document.getElementById("setSizeSelect");
+  const hint = document.getElementById("setSizeHint");
+  const renderHint = () => {
+    if (!hint) return;
+    hint.textContent =
+      select.value === "60s"
+        ? "60秒たつと終わり。自力で思い出せた語が1語以上あれば、今日のぶんは完了"
+        : "自力で思い出せた語がこの数に達したら、今日のぶんは完了";
+  };
   if (select) {
-    select.value = String(getSetSize());
-    select.addEventListener("change", () => setSetSize(select.value));
+    select.value = getSetLength(); // 保存値そのまま（60 秒を選んで開き直しても「15語」に見えない）
+    renderHint();
+    select.addEventListener("change", () => {
+      setSetSize(select.value);
+      renderHint();
+    });
+    // 履歴で戻ったとき（ホームの出題設定で替えてから戻る）: autocomplete="off"（profile.html）でフォームの復元を止め、
+    // bfcache で戻すブラウザでは保存値に合わせ直す
+    window.addEventListener("pageshow", (e) => {
+      if (!e.persisted || select.value === getSetLength()) return;
+      select.value = getSetLength();
+      renderHint();
+    });
   }
 }
 

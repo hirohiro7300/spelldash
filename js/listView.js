@@ -10,7 +10,9 @@ import { initializeMyWordsView, setMyWordsListBelow } from "./myWordsView.js";
 import { removeMyWord } from "./myWords.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
-import { historyDotsHtml, memoryGaugeHtml } from "./learnedWords.js";
+import { historyDotsHtml } from "./learnedWords.js";
+import { rankHtml, rankOf, rankBasis } from "./mastery.js";
+import { localDay } from "./retentionCalc.js";
 import { noteChipHtml, bindNoteEditors, escapeHtml } from "./wordNotes.js";
 import { bindWordDetail } from "./wordDetail.js";
 import { groupByGenre, setGenre, getGenre, genreLabel } from "./genres.js";
@@ -263,6 +265,7 @@ function render() {
   if (!container) return;
 
   const stats = getWordStats();
+  const today = localDay(new Date()); // 習熟度の根拠の文（カードの title）の「今日」。描くたびに 1 回
   const groups = groupByGenre(categoryId)
     .map((g) => ({ ...g, words: g.words.filter((w) => matches(w) && matchesStatus(w, stats)) }))
     .filter((g) => g.words.length > 0);
@@ -315,7 +318,7 @@ function render() {
             </div>
           </div>
           <div class="genre__cards">
-            ${g.words.map((w) => cardHtml(w, stats[w.id], { removable: showingMy })).join("")}
+            ${g.words.map((w) => cardHtml(w, stats[w.id], { removable: showingMy, today })).join("")}
           </div>
         </section>`;
     })
@@ -354,10 +357,12 @@ function myWordKey(word) {
   return word.kind === "concept" ? word.key : word.en;
 }
 
-function cardHtml(word, stat, { removable = false } = {}) {
+function cardHtml(word, stat, { removable = false, today = localDay(new Date()) } = {}) {
   const status = classifyWord(stat);
   const concept = isConceptWord(word);
-  // 1行目: 見出し語（英語は等幅）＋訳＋状態、2行目: 例文または場面。足元に履歴・記憶・メモ
+  // 1行目: 見出し語（英語は等幅）＋訳＋状態、2行目: 例文または場面。足元に履歴・習熟度・メモ。
+  // 習熟度は答えたことのある語だけ（段 0 は空文字）。title に根拠の文（マウスで見る補足。読み上げは aria-label の 1 文のまま）。
+  // 簡潔表示（390 の既定）は足元ごと隠れる（game.css body.list-compact .gcard__foot）。「詳しく」で出る
   const term = escapeHtml(word.answer ?? word.en);
   const termClass = concept && !/^[A-Za-z0-9 .,'’/&()-]+$/.test(word.answer ?? word.en ?? "") ? "gcard__term" : "gcard__term mono";
   return `
@@ -377,7 +382,7 @@ function cardHtml(word, stat, { removable = false } = {}) {
         : hasExample(word) ? `<p class="gcard__ex">${exampleHtml(word, { speakButton: false, className: "gcard__ex" })}</p>` : ""}
       <div class="gcard__foot">
         ${historyDotsHtml(stat)}
-        ${status === "weak" ? memoryGaugeHtml(stat) : ""}
+        ${rankHtml(rankOf(stat), { title: rankBasis(stat, today) })}
         ${noteChipHtml(word.id, { onlyIfHas: true })}
       </div>
     </article>`;

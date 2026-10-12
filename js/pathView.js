@@ -3,7 +3,8 @@ import { groupByGenre } from "./genres.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { getCourse, sectionOf, listCourses, getCourseId, PLACEMENT_NOTE } from "./course.js";
-import { getSetSize, isDailySetDone } from "./dailySet.js";
+import { getSetSize, isDailySetDone, isTimedSet } from "./dailySet.js";
+import { isTutorialRunPending } from "./tutorial.js";
 import { getDueReviewCount, isBeforePlacement } from "./studyQueue.js";
 import { isPlacementRunning } from "./difficulty.js";
 import { resumableFor } from "./sessionResume.js";
@@ -157,15 +158,19 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     !beforePlacement && total > 0
       ? `<div class="path__progress progress" role="img" aria-label="${total}${unit}中${learned}${unit}を覚えた"><div class="progress__rule"><i style="width:${Math.round((learned / total) * 100)}%"></i></div><p class="progress__txt">覚えた <b class="n">${learned}</b><span class="of">／${total}</span></p></div>`
       : "";
-  const resume = firstVisit ? null : resumableFor(path.categoryId);
+  // 今日のセットの長さが 60 秒（チュートリアルの回は語数で走るので除く。js/game.js startGame の runKind と同じ判定。腕試しは下の PLACEMENT_NOTE が先）:
+  // 続きからの文とボタンは出さない（スタートは続きを見ずに 60 秒の回を始める。js/main.js startUnit）。「約5分」は付けない
+  const timed = isTimedSet() && !isTutorialRunPending();
+  const resume = firstVisit || timed ? null : resumableFor(path.categoryId);
   const doneToday = !resume && !firstVisit && isDailySetDone(); // 今日のぶんが済んだ（ラベルと板の見た目の両方で使う）
+  const reviewNote = due >= setSize ? " ・ 復習から" : due > 0 ? ` ・ 復習 ${due}語から` : "";
   const startSub = resume
     ? `前回の続きから（${resume.recalled.length}／${resume.setSize}語 済み）`
     : firstVisit || (beforePlacement && isPlacementRunning()) // 腕試しを開いて 1 語も答えずに戻った人も（始まった腕試しだけ。組めずに通常のセットになる道では言わない）
     ? PLACEMENT_NOTE
     : doneToday
-      ? "今日のぶんは完了"
-      : `今日のセット ${setSize}語・約5分${due >= setSize ? " ・ 復習から" : due > 0 ? ` ・ 復習 ${due}語から` : ""}`;
+      ? timed ? "今日のぶんは完了 ・ 次は60秒" : "今日のぶんは完了"
+      : timed ? `今日のセット 60秒${reviewNote}` : `今日のセット ${setSize}語・約5分${reviewNote}`;
 
   // 現在地より先の未着手の章は3つまで見せ、残りは「あとN章」にまとめる（目次が長くなりすぎない）
   const lockedLimit = currentIndex >= 0 ? currentIndex + 3 : units.length;

@@ -6,7 +6,7 @@ import { icon } from "./icons.js";
 
 // ===== 学習データ: マイ単語帳の管理UI =====
 
-const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得" };
+const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得", known: "知ってた" }; // known が無いと知ってた語が「undefined」と出ていた
 
 export function initializeMyWordsView(onChange = () => {}) {
   document.addEventListener("spelldash:plan", renderLimitState); // Pro の状態が後から届いたら上限（100 → 1,000）を引き直す
