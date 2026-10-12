@@ -9,6 +9,8 @@ import { speak } from "./audio.js";
 import { speechTextOf } from "./wordStore.js";
 import { icon } from "./icons.js";
 import { trapFocus } from "./focusTrap.js";
+import { rankHtml, rankOf, rankBasis, rankNext, RANK_NAMES, RANK_RULE } from "./mastery.js";
+import { localDay } from "./retentionCalc.js";
 
 // ===== 単語詳細ポップアップ =====
 // 一覧のどこから押しても、その語の「状態・履歴・メモ・仲間・発音」を1か所で見られる。
@@ -16,6 +18,25 @@ import { trapFocus } from "./focusTrap.js";
 
 const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得", known: "知ってた" };
 const LEVEL_LABEL = { easy: "やさしい", normal: "ふつう", hard: "むずかしい" };
+
+// 習熟度（docs/SPEC_MASTERY.md §5.2）: meta の行の下に 2 行と畳んだ決まり。段 0（答えの記録が無い）は 3 つとも出さない。
+//   1 行目: 習熟度 [目盛り] 名前 ・ その語の事実（rankBasis）。見出しに「習熟度」があるので目盛りの aria-label には重ねない（label: ""）
+//   2 行目: 段の梯子（今の段だけ太字。読み上げない）と次の段の条件（rankNext。読み上げる。段 5 は無し）
+//   その下: 畳んだ「習熟度の決まり」（開くと規則の文。閉じていれば 1 行で、毎語に規則の 4 文が並ばない）
+// 文はどれも mastery.js が記録から作る固定の文（利用者の入力を含まない）。stat は読むだけ
+function masteryHtml(stat, today = localDay(new Date())) {
+  const r = rankOf(stat);
+  if (r === 0) return "";
+  const next = rankNext(stat, today);
+  const ladder = RANK_NAMES.slice(1)
+    .map((name, i) => (i + 1 === r ? `<b>${name}</b>` : name))
+    .join(" ・ ");
+  return `<div class="word-detail__rank">
+      <p class="word-detail__rank-line"><span class="word-detail__rank-label">習熟度</span> ${rankHtml(r, { label: "" })} ・ <span class="word-detail__rank-basis">${rankBasis(stat, today)}</span></p>
+      <p class="rank-ladder"><span aria-hidden="true">${ladder}${next ? " ・ " : ""}</span>${next ? `<span class="rank-ladder__next">${next}</span>` : ""}</p>
+      <details class="rank-rule"><summary>習熟度の決まり</summary><p>${RANK_RULE}</p></details>
+    </div>`;
+}
 
 function ensureModal() {
   let modal = document.getElementById("wordDetail");
@@ -59,6 +80,8 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
   const note = getNote(wordId);
   const family = (Array.isArray(word.family) ? word.family : []).map((id) => findWord(id)).filter(Boolean);
   const nextReview = stat?.nextReviewAt && !stat.mastered ? Math.max(0, Math.ceil((Date.parse(stat.nextReviewAt) - Date.now()) / 86400000)) : null;
+  // 題箋の title: 思い出せず・ノーミス連続。「思い出せた N回」（correctCount は答えを見た後の打ち直しも数えて多めに出る）は出さない
+  const statusTitle = stat ? `思い出せず ${stat.recallFail ?? 0}回${stat.cleanCorrectStreak ? ` ・ ノーミス連続 ${stat.cleanCorrectStreak}/10` : ""}` : "";
 
   panel.innerHTML = `
     <button type="button" class="word-detail__close" data-detail-close aria-label="閉じる">${icon("x")}</button>
@@ -71,12 +94,13 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
     ${word.explain ? `<div class="word-detail__q">${escapeHtml(word.explain)}</div>` : ""}
     ${hasExample(word) ? `<div class="word-detail__ex word-example">${exampleHtml(word)}</div>` : ""}
     <div class="word-detail__meta">
-      <span class="word-detail__status word-detail__status--${status}"${stat ? ` title="思い出せた ${stat.correctCount ?? 0}回 ・ 思い出せず ${stat.recallFail ?? 0}回${stat.cleanCorrectStreak ? ` ・ ノーミス連続 ${stat.cleanCorrectStreak}/10` : ""}"` : ""}>${STATUS_LABEL[status]}</span>
+      <span class="word-detail__status word-detail__status--${status}"${statusTitle ? ` title="${statusTitle}"` : ""}>${STATUS_LABEL[status]}</span>
       ${category ? `<span>${escapeHtml(category)}</span>` : ""}
       ${word.pos ? `<span>${escapeHtml(word.pos)}</span>` : ""}
       ${word.level ? `<span>${LEVEL_LABEL[word.level] ?? escapeHtml(word.level)}</span>` : ""}
       ${nextReview != null ? `<span>次の復習 ${nextReview === 0 ? "今日" : `${nextReview}日後`}</span>` : ""}
     </div>
+    ${masteryHtml(stat)}
     ${historyDotsHtml(stat) ? `<div class="word-detail__history">履歴 ${historyDotsHtml(stat)}</div>` : ""}
     <div class="word-detail__note">
       <label for="wordDetailNote">覚え方のメモ</label>

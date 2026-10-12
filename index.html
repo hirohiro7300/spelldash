@@ -66,6 +66,8 @@
   <link rel="modulepreload" href="./js/mission.js" />
   <link rel="modulepreload" href="./js/difficulty.js" />
   <link rel="modulepreload" href="./js/level.js" />
+  <link rel="modulepreload" href="./js/mastery.js" />
+  <link rel="modulepreload" href="./js/retentionCalc.js" />
   <link rel="modulepreload" href="./js/stats.js" />
   <link rel="modulepreload" href="./js/sync.js" />
   <link rel="modulepreload" href="./js/battleRank.js" />
@@ -74,10 +76,10 @@
   <link rel="modulepreload" href="./js/studyConfig.js" />
   <link rel="modulepreload" href="./js/activity.js" />
   <link rel="modulepreload" href="./js/backup.js" />
+  <link rel="modulepreload" href="./js/masteryMeta.js" />
   <link rel="modulepreload" href="./js/growthLog.js" />
   <link rel="modulepreload" href="./js/unlocks.js" />
   <link rel="modulepreload" href="./js/retentionLog.js" />
-  <link rel="modulepreload" href="./js/retentionCalc.js" />
   <link rel="modulepreload" href="./js/studyTime.js" />
   <link rel="modulepreload" href="./js/genres.js" />
   <link rel="modulepreload" href="./js/romaji.js" />
@@ -86,6 +88,7 @@
   <link rel="modulepreload" href="./js/learnedWords.js" />
   <link rel="modulepreload" href="./js/pathView.js" />
   <link rel="modulepreload" href="./js/dailySet.js" />
+  <link rel="modulepreload" href="./js/tutorial.js" />
   <link rel="modulepreload" href="./js/sessionResume.js" />
   <link rel="modulepreload" href="./js/focusTrap.js" />
   <link rel="modulepreload" href="./js/shelves.js" />
@@ -117,7 +120,6 @@
   <link rel="modulepreload" href="./js/welcome.js" />
   <link rel="modulepreload" href="./js/playModes.js" />
   <link rel="modulepreload" href="./js/loginNudge.js" />
-  <link rel="modulepreload" href="./js/tutorial.js" />
   <link rel="modulepreload" href="./js/room.js" />
   <link rel="modulepreload" href="./js/bookshelf.js" />
   <link rel="modulepreload" href="./js/shelfStore.js" />
@@ -336,6 +338,15 @@
             </button>
             <span class="weak-toggle__hint">思い出せなかった・打ち間違いが多い単語だけを出題</span>
           </section>
+        </div>
+        <div class="setup__row setup__row--inline setup__row--length">
+          <label for="setLengthSelect" class="setup__label">今日のセットの長さ</label>
+          <select id="setLengthSelect" class="setting-select" autocomplete="off">
+            <option value="10">10語（約3分）</option>
+            <option value="15">15語（約5分・標準）</option>
+            <option value="25">25語（約8分）</option>
+            <option value="60s">60秒（時間で区切る）</option>
+          </select>
         </div>
         <div class="setup__row">
           <section class="mix-control" id="mixControl">

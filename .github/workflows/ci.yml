@@ -29,6 +29,9 @@ jobs:
       - name: 記憶の保持率の集計と記録（js/retentionCalc.js・retentionLog.js・studyTime.js）
         run: node scripts/test-retention.mjs
 
+      - name: 単語ごとの習熟度（段の規則・速さの基準・期日前に出さない・書き手。js/mastery.js・masteryMeta.js・stats.js）
+        run: node scripts/test-mastery.mjs
+
       - name: わたしの本棚の規則（移行・照合・段の割り付け。js/shelfStore.js）
         run: node scripts/test-shelf.mjs
 

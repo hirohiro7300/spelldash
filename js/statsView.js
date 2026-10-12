@@ -9,7 +9,7 @@ import { isPro } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
 import { getWordStats, getSessionLog } from "./storage.js";
 import { renderLevelBar } from "./levelUi.js";
-import { computeCategoryProgress, computeLegacyLearnedCount } from "./categoryProgress.js";
+import { computeCategoryProgress, computeLegacyLearnedCount, classifyWord } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { renderRetention } from "./retention.js";
 import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
@@ -17,9 +17,10 @@ import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDo
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
 import { downloadLearnedCsv } from "./exportCsv.js";
+import { rankHtml, rankOf, RANK_GLOSS, RANK_RULE } from "./mastery.js";
 import { bindWordDetail } from "./wordDetail.js";
 
-import { initWordStore } from "./wordStore.js";
+import { initWordStore, findWord } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
 
 const overviewElement = document.getElementById("overview");
@@ -43,7 +44,7 @@ function initializeTabs() {
 
   const show = (tab, scrollToId = null) => {
     sections.forEach((el) => {
-      el.hidden = el.dataset.tab !== tab;
+      el.hidden = el.dataset.tab !== tab || el.hasAttribute("data-tab-empty"); // 中身の無い節（習熟度の 0 語）はタブを開いても出さない
     });
     tabs.forEach((t) => {
       const on = t.dataset.tab === tab;
@@ -88,6 +89,7 @@ initWordStore().then(() => {
     setTimeout(() => (event.target.textContent = "CSV書き出し"), 2500);
   });
   renderScoreTrend();
+  renderMastery();
   renderLearnedWords();
   renderCategoryProgress();
   renderWeeklyReport("weeklyReport");
@@ -97,6 +99,7 @@ initWordStore().then(() => {
   // マイ単語帳の作成・管理は「単語帳」ページ（教材）へ移動。ここは記録だけ
   window.addEventListener("spelldash:mywords", () => {
     renderCategoryProgress();
+    renderMastery();
     renderLearnedWords();
     renderOverview();
   });
@@ -114,6 +117,7 @@ window.addEventListener("spelldash:packs", (event) => {
   if (!event.detail?.synced) return;
   initWordStore().then(() => {
     renderOverview();
+    renderMastery();
     renderLearnedWords();
     renderCategoryProgress();
     window.dispatchEvent(new CustomEvent("spelldash:store-ready"));
@@ -134,6 +138,7 @@ window.addEventListener("spelldash:synced", () => {
   renderCalendar("calendarGrid");
   renderMonthlySummary();
   renderScoreTrend();
+  renderMastery();
   renderLearnedWords();
   renderCategoryProgress();
   renderWeeklyReport("weeklyReport");
@@ -481,6 +486,46 @@ function renderGrowthTrend() {
       <text x="${width - pad.right}" y="${height - 6}" text-anchor="end" font-size="12" fill="var(--ink-3)">今日</text>
     </svg>
   `;
+}
+
+// ===== 習熟度（docs/SPEC_MASTERY.md §5.3）: 段ごとの語数 =====
+// 行は段 5 → 1。目盛りと名前（見出しが「習熟度」なので aria-label には重ねない）・語数・入り方によらず真の短い説明（RANK_GLOSS）。
+// 数えるのは語が引ける（findWord）語のうち段 1 以上（知ってた語・苦手の語も含む。外したパックの語は数えない）。0 の行は出さず、
+// 1 語も無ければ節ごと出さない。その段に知ってた語（題箋と同じ「知ってた」= classifyWord が known。ホームの「覚えた N語」が除く語）が
+// あるときだけ「（うち知ってた M語）」。率・合計・推移は出さない。段は rankOf で読むだけ（記録を書き換えない）
+function renderMastery() {
+  const section = document.getElementById("mastery");
+  const container = document.getElementById("masteryReport");
+  if (!section || !container) return;
+  const counts = [0, 0, 0, 0, 0, 0];
+  const known = [0, 0, 0, 0, 0, 0];
+  for (const [id, stat] of Object.entries(getWordStats())) {
+    const r = rankOf(stat);
+    if (r < 1 || !findWord(id)) continue;
+    counts[r]++;
+    if (classifyWord(stat) === "known") known[r]++;
+  }
+  const empty = counts.every((n) => n === 0);
+  section.toggleAttribute("data-tab-empty", empty);
+  const activeTab = document.querySelector(".stats-tab--active")?.dataset.tab;
+  section.hidden = empty || (activeTab != null && activeTab !== section.dataset.tab);
+  if (empty) {
+    container.innerHTML = "";
+    return;
+  }
+  const rows = [5, 4, 3, 2, 1]
+    .filter((r) => counts[r] > 0)
+    .map(
+      (r) => `
+        <li class="mastery-row">
+          ${rankHtml(r, { label: "" })}
+          <span class="mastery-row__count"><b>${counts[r]}</b><small> 語</small>${known[r] ? `<small class="mastery-row__known">（うち知ってた ${known[r]}語）</small>` : ""}</span>
+          <span class="mastery-row__gloss">${RANK_GLOSS[r]}</span>
+        </li>`
+    )
+    .join("");
+  container.innerHTML = `<ul class="mastery-rows" role="list">${rows}</ul>
+    <p class="mastery-note">答えた記録から決める（予測ではない）。${RANK_RULE}最後に答えた時点の段。この端末の記録から。</p>`;
 }
 
 // ===== 覚えた単語帳（語で見せる） =====

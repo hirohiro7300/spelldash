@@ -185,7 +185,8 @@
 ## 9. 残すこと・変えないこと
 
 - 学習の中身（思い出して打つ、答え表示、例文、Recall Loop・SRS、道＝目次、コース、続きから、腕試し、チュートリアル）、記録（覚えた語・カレンダー・週間レポート）、同期、Pro の判定。
-- Battle（ロジック凍結）。`js/game.js`・`studyQueue.js`・`sync.js`・`romaji.js`・`stats.js`・`retention*.js`・`api/`・`data/`・`supabase/` は触らない。
+- Battle（ロジック凍結）。`js/game.js`・`studyQueue.js`・`sync.js`・`romaji.js`・`stats.js`・`retention*.js`・`api/`・`data/`・`supabase/` は触らない。この行は**書斎の皮の作業**（見た目・部屋・ページの皮）の範囲の決まり。
+- 学習の本体の作業は別に扱う: Batch 63（単語ごとの習熟度と Study の 60 秒。docs/SPEC_MASTERY.md）は学習の本体として `js/game.js`・`studyQueue.js`・`stats.js`・`mission.js` を触った（新しい `js/mastery.js`・`js/masteryMeta.js`）。Battle のロジック・`sync.js`（送る列）・判定（1 ミス＝不正解）は変えていない。
 - E2E が見る id／class（`#pathStart` はちょうど 1 つ、`#welcome`、`#pathCard`、`#pathList`、`#playModes`、ヘッダー／フッターの id と特商法リンクの位置）。
 
 ## 10. 音

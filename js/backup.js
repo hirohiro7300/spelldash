@@ -1,4 +1,5 @@
 import { forgetWordStats } from "./storage.js";
+import { forgetMasteryMeta } from "./masteryMeta.js";
 
 // ===== 学習データのバックアップ / 復元 =====
 //
@@ -83,6 +84,7 @@ export function applyBackup(obj) {
     // 無視
   }
   forgetWordStats(); // 語の記録を直に書き換えた。持っている中身と書きかけを捨てる（js/storage.js）
+  forgetMasteryMeta(); // 習熟度の速さの基準と集計も（メモリーの古い中身が、復元した中身を後から上書きしない。js/masteryMeta.js）
   return summary;
 }
 
@@ -119,6 +121,7 @@ export function clearLocalRecords() {
   }
   toRemove.forEach((key) => localStorage.removeItem(key));
   forgetWordStats(); // 語の記録を直に消した。持っている中身と書きかけを捨てる（js/storage.js）
+  forgetMasteryMeta(); // spelldash_mastery_meta も消した（KEEP_ON_CLEAR に入れない）。メモリーの基準も捨てる
   return toRemove.length;
 }
 

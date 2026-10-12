@@ -14,6 +14,7 @@ import {
   PLACEMENT_MIX
 } from "./difficulty.js";
 import { applyGenre } from "./genres.js";
+import { holdBeforeDue } from "./mastery.js";
 import {
   MAX_ACTIVE_NEW_WORDS,
   NEW_WORD_DAILY_SUCCESS_TARGET,
@@ -237,10 +238,12 @@ export function getDueReviewWords(categoryId = localStorage.getItem("spelldash_c
 export function insertBreather() {
   if (restricted) return false;
   const stats = getWordStats();
+  const now = Date.now();
   const candidates = categoryWordsDeduped().filter((w) => {
     const s = stats[w.id];
-    // 今日導入した学習中の語は自前の反復予定があるので使わない（前に回すと反復が崩れる）
-    return isFamiliar(s) && !isDoneForToday(s) && !isLearningToday(s) && !recalledThisSession.has(w.id) && (s.recallFail ?? 0) <= 1;
+    // 今日導入した学習中の語は自前の反復予定があるので使わない（前に回すと反復が崩れる）。
+    // 期日前の身についた以上の語・確認待ちの知ってた語も使わない（習熟度の S6。js/mastery.js holdBeforeDue）。候補が無ければ挟まない
+    return isFamiliar(s) && !isDoneForToday(s) && !isLearningToday(s) && !recalledThisSession.has(w.id) && (s.recallFail ?? 0) <= 1 && !holdBeforeDue(s, now);
   });
   if (candidates.length === 0) return false;
   // キューの先頭にすでに居るなら何もしない。後ろに居るなら前へ持ってくる
@@ -302,7 +305,11 @@ function pickFillers(count, excludeSet) {
     return !isDoneForToday(stats[word.id]);
   });
 
-  const familiarPool = shuffle(usable.filter((w) => isFamiliar(stats[w.id])));
+  // 期日前の身についた以上の語と、2 週間後の確認を待つ知ってた語は既習の枠に出さない（習熟度の S6。js/mastery.js holdBeforeDue）。
+  // 下の「それでも足りなければ」の埋めでは最後に戻す
+  const now = Date.now();
+  const held = (w) => holdBeforeDue(stats[w.id], now);
+  const familiarPool = shuffle(usable.filter((w) => isFamiliar(stats[w.id]) && !held(w)));
 
   // 新出単語はプレイヤーレベルで解放（既習語には適用しない）。
   // カテゴリに解放難易度が無い場合は最易難易度で救済（IT等のeasy 0語対策）
@@ -358,8 +365,8 @@ function pickFillers(count, excludeSet) {
   }
 
   // それでも足りなければ「今日済み」も許可して埋める（出題停止を防ぐ）。
-  // 順番: いまのユニットの語（学習済み → 未出題）→ カテゴリ全体の学習済みの語 → 残り。
-  // 別ユニットの未出題語は最後（道の「いまの場所」を飛び越えて新語を出さない）
+  // 順番: いまのユニットの語（学習済み → 未出題）→ カテゴリ全体の学習済みの語 → 残り → 期日前に出さない語（S6）。
+  // 別ユニットの未出題語は S6 の語の前（道の「いまの場所」を飛び越えて新語を出さない）
   // 苦手のみモードでは埋めない: 尽きたら「全部クリア」で気持ちよく終わるのが正
   if (picks.length < count && !weakOnly) {
     const taken = new Set(picks);
@@ -367,10 +374,12 @@ function pickFillers(count, excludeSet) {
     const touched = (w) => !isNew(stats[w.id]);
     const focusedSet = new Set(pool.map((w) => w.id));
     const ordered = [
-      ...free(pool.filter(touched)),
+      ...free(pool.filter((w) => touched(w) && !held(w))),
       ...free(filterByAllowedLevels(pool.filter((w) => !touched(w)), allowed)),
-      ...free(all.filter((w) => !focusedSet.has(w.id) && touched(w))),
-      ...free(all.filter((w) => !focusedSet.has(w.id) && !touched(w)))
+      ...free(all.filter((w) => !focusedSet.has(w.id) && touched(w) && !held(w))),
+      ...free(all.filter((w) => !focusedSet.has(w.id) && !touched(w))),
+      ...free(pool.filter(held)),
+      ...free(all.filter((w) => !focusedSet.has(w.id) && held(w)))
     ];
     for (const w of ordered) {
       if (picks.length >= count) break;
@@ -561,8 +570,9 @@ export function onRecallFail(wordId) {
   const stats = getWordStats();
   const stat = stats[wordId];
 
-  // 初見で思い出せなかった = 学ぶべき語。難易度ブーストの材料に「知らなかった」を記録
-  if (stat && (stat.playCount ?? 0) <= 1 && (stat.recallFail ?? 0) <= 1 && !stat.lastRecallSuccessAt) {
+  // 初見で思い出せなかった = 学ぶべき語。難易度ブーストの材料に「知らなかった」を記録。
+  // × を書いた後に呼ばれるので「初めての × で、自力正解が無い」。出題の回数は見ない（出題だけされて答えなかった語も初見に数える。js/mastery.js isFirstAnswer）
+  if (stat && (stat.recallFail ?? 0) <= 1 && !stat.lastRecallSuccessAt) {
     recordFirstSight(false);
   }
 

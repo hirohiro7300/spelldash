@@ -5,7 +5,10 @@ import { createRomajiMatcher, readingEntries, primaryReading, romajiKeyOf, hasJa
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWords.js";
-import { getSetSize, markDailySetDone, getSetsToday } from "./dailySet.js";
+import { getSetSize, markDailySetDone, getSetsToday, isTimedSet } from "./dailySet.js";
+import { isTutorialRunPending } from "./tutorial.js";
+import { rankOf, answerContext, isFirstAnswer, rankHtml, RANK_NAMES } from "./mastery.js";
+import { boxKey, classifySpeed, noteSpeedSample, notePendingFirstFast, flushMasteryMeta } from "./masteryMeta.js";
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
 import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
@@ -49,7 +52,8 @@ import {
   getUpcomingIds,
   getFocusGenre,
   getQueueComposition,
-  insertBreather
+  insertBreather,
+  isBeforePlacement
 } from "./studyQueue.js";
 import { getWeekGoal, getActiveDaysThisWeek } from "./growthLog.js";
 import { canInstall, promptInstall } from "./installPrompt.js";
@@ -110,9 +114,11 @@ import {
 
 const MODE_KEY = "spelldash_mode";
 
-// デバッグ用: ?t=10 でChallenge/Dailyの時間を短縮できる（battle.htmlと同じ流儀）
+// デバッグ用: ?t=10 でChallenge/Dailyの時間を短縮できる（battle.htmlと同じ流儀）。Study に効くのは 60 秒の回だけ（既定の語数の Study には効かない）
 const durationOverride = Number(new URLSearchParams(location.search).get("t")) || null;
 const CHALLENGE_SECONDS = durationOverride ?? 60;
+const TIMED_SECONDS = durationOverride ?? 60; // Study の 60 秒の回の長さ（今日のセットの長さ「60秒」。docs/SPEC_MASTERY.md §4）
+const TIMED_TICK_MS = 250; // 60 秒の回の時計を描く間隔（既存の timer に載せる）
 
 let mode = localStorage.getItem(MODE_KEY) || "study";
 let currentWord = null;
@@ -142,6 +148,26 @@ let setNewCount = 0;
 let setReviewCount = 0;
 let setCompletePending = false;
 let currentWordKind = ""; // new / review / weak / repeat / ""
+
+// 回の種類と長さ（Study。startGame で 1 度だけ決める。回の途中で設定が変わっても、この回には効かない）:
+//   timed  = 今日のセットの長さが 60 秒（時計で終わる。15 語に届いても終わらない・続きからの地点を残さない・語数のセットの続きを消さない）
+//   words  = 語数のセット（腕試し・チュートリアルの回を含む）、retry = 決めた語だけ（もう一度・単語帳の ?words=）、resume = 前回の続きから
+let runKind = "words";
+let runSize = 15; // 語数（currentSetSize）。timed のときは使わない（getSetSize() の 15）
+// 60 秒の回の時計（performance.now の ms）。裏に回った間・覚え方のメモ／覚え方を作る・読む間は止める（期限を後ろへずらす）
+let timedDeadline = 0;
+let timedHiddenAt = null; // 裏に回った時刻（null = 表）
+let timedLastTick = 0; // 前の描画の時刻（止まっていた分を足すため）
+let timedWarned = false; // 「残り10秒」を読み上げた
+// 回で最初に答えた語の、答える直前の段（習熟度。js/mastery.js）。Study（語数・60 秒）・Challenge・Daily とも。保存しない。
+// id -> { before: 段, seenToday: その答えが同じ日の扱いだった（今日もう答えていた）, slowDown: 回の最初の答えが遅い正解で 5 → 4 になった（この回で × があれば偽） }
+let runRankBefore = new Map();
+// 1 問ごとの速さ（docs/SPEC_MASTERY.md §3.4）: tShow = 出題の文を書いた後の最初の rAF、tFirst = この語の最初のキー、input = その経路（kbd／touch）、
+// spill = 前の語の続きが残っていた間に来たキー（測らない）、invalid = 測らない語（音・例文の訳つき・全文入力・計算・英文・空欄・並べ替え・ページの最初の語・裏に回った）
+let wordTiming = null;
+let keyPath = "kbd"; // いま処理している打鍵の経路（物理キーの keydown = kbd／画面キーボードの合成キー・ソフトウェアキーボードの input = touch）
+let pageWordsShown = 0; // このページで出した語の数（ページを開いて最初の語は測らない）
+const ambiguousCache = new Map(); // `${カテゴリ}|${id}` -> isAmbiguousPrompt（カテゴリの全語を走査するので、測るときだけ・語ごとに 1 回）
 let wordSerial = 0; // setNewWordごとに増える。正解直後の二重進行防止に使う
 
 // ヒント（Study）: 迷ったら次の1文字だけ見せる。見た時点で「自力」ではなくなる（×扱い）
@@ -490,6 +516,8 @@ function judgeKey(next) {
     clearSpill();
     s = null;
   }
+  // 前の語の続きが残っている間に来た打鍵がこの語の最初の字になったら、この語の速さは測らない（markFirstKey）
+  if (s && wordTiming && wordTiming.tFirst === null) wordTiming.spill = true;
   if (!s) {
     if (!next.tryAccept() && !tail) next.miss();
     return;
@@ -761,10 +789,20 @@ export function setMode(newMode) {
 
 function showIdleMessage() {
   if (mode === "study") {
-    showMessage("Enter で開始");
+    showMessage(nextRunIsTimed() ? "Enter で開始（60秒）" : "Enter で開始");
   } else {
     showMessage("Enter で開始（60秒）");
   }
+}
+
+// 次に始まる Study の回が 60 秒か（今日のセットの長さが 60 秒で、腕試し前でもチュートリアルの回でもない）。待ち受けの文と完了パネルの「もう60秒」に使う。
+// 回の種類そのものは startGame が決める（腕試しは組めたときだけ語数で走る: isPlacementRun）
+function nextRunIsTimed() {
+  return isTimedSet() && !isBeforePlacement() && !isTutorialRunPending();
+}
+
+function timedRun() {
+  return mode === "study" && runKind === "timed";
 }
 
 // ゲームが終わった／止まったことをホームに知らせる（専用キーボードを畳む等）
@@ -781,6 +819,9 @@ function notifyGameEnd() {
 export function stopGame() {
   clearInterval(timer);
   isPlaying = false;
+  timedHiddenAt = null;
+  wordTiming = null;
+  flushMasteryMeta(); // 速さの基準・確かめの集計（変わっていなければ書かない。机に戻るたびに走る）
   notifyGameEnd();
   document.body.classList.remove("is-playing");
   stopBgm();
@@ -863,6 +904,11 @@ export function startGame(options = {}) {
   correctChars = 0;
   combo = 0;
   gainedXp = 0;
+  runKind = "words";
+  runRankBefore = new Map();
+  timedDeadline = 0;
+  timedHiddenAt = null;
+  timedWarned = false;
   clearSpill();
   advancedAt = -Infinity;
   advancedBy = null;
@@ -897,6 +943,17 @@ export function startGame(options = {}) {
     else if (resume) startResumedQueue(resume.queue, resume.recalled);
     else startStudyQueue(activeCategory);
     composition = getQueueComposition(); // 最初の1語を取り出す前に構成を控える
+    // 回の種類と長さ（ここで 1 度だけ。腕試しかどうかは startStudyQueue の後で決まる）。60 秒にしないのは決めた語だけの回・続きから・腕試し・チュートリアルの回
+    if (retry) {
+      runKind = "retry";
+      runSize = retry.length;
+    } else if (resume) {
+      runKind = "resume";
+      runSize = Number(resume.setSize) || getSetSize();
+    } else {
+      runKind = isTimedSet() && !isPlacementRun() && !isTutorialRunPending() ? "timed" : "words";
+      runSize = getSetSize();
+    }
     updateRecalledToday();
     setRecalled = new Set(resume?.recalled ?? []);
     setFailed = new Set(resume?.failed ?? []);
@@ -908,6 +965,9 @@ export function startGame(options = {}) {
   }
 
   setNewWord();
+
+  // 60 秒の回: 最初の語を出した時に時計を始める（苦手のみで出題が無く止まったときは始めない）
+  if (isPlaying && timedRun()) startTimedClock();
 
   // 腕試し中は body.placement（css/home.css が「思い出せた 0 ・ 思い出せず 0 …」の行を畳む）。確定・終了・中断で外す
   document.body.classList.toggle("placement", mode === "study" && isPlacementRun());
@@ -961,6 +1021,109 @@ function updateBigTimer() {
   el.classList.toggle("big-timer--danger", time <= 10);
   setBgmIntensity(time <= 10 ? 2 : 1); // 終盤はBGMも前のめりに
 }
+
+// ===== Study の 60 秒の回の時計（docs/SPEC_MASTERY.md §4.5） =====
+// 既存の timer に載せる（stopGame・restartGame・endStudySession・#setRetry・endChallenge の clearInterval がどれも効く）。250ms ごとに描く。
+// 止める間: タブが裏（visibilitychange で裏に回った時刻を控え、表に戻ったら期限をその分ずらす。裏ではブラウザが interval を間引くので tick の差では数えない）／
+// 覚え方のメモを書いている間・覚え方を作っている間・作った覚え方を読んでいる間（描画ごとに見て、前の描画からの経過を期限に足す）。答え表示の後の打ち直しの間も進む
+function isPageHidden() {
+  return document.visibilityState === "hidden" || document.hidden === true;
+}
+
+function prefersReducedMotion() {
+  try {
+    return !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
+function startTimedClock() {
+  const now = performance.now();
+  timedDeadline = now + TIMED_SECONDS * 1000;
+  timedLastTick = now;
+  timedHiddenAt = isPageHidden() ? now : null;
+  timedWarned = false;
+  clearInterval(timer);
+  timer = setInterval(tickTimedClock, TIMED_TICK_MS);
+  announce(`${TIMED_SECONDS}秒`); // 読み上げは始めと残り 10 秒の 2 回だけ（#setProgress は aria-live にしない）
+  renderSetProgress();
+}
+
+// 残りの ms（裏に回っている間は止まったまま）。時計を始める前は全部
+function timedRemainingMs(now = performance.now()) {
+  if (!timedDeadline) return TIMED_SECONDS * 1000;
+  return Math.max(0, timedDeadline - (timedHiddenAt ?? now));
+}
+
+function tickTimedClock() {
+  if (!isPlaying || !timedRun()) return;
+  const now = performance.now();
+  // visibilitychange を取りこぼしても、裏の間は数えず、表に戻ったらずらす
+  if (timedHiddenAt === null && isPageHidden()) timedHiddenAt = now;
+  else if (timedHiddenAt !== null && !isPageHidden()) resumeTimedClock(now);
+  if (timedHiddenAt !== null) {
+    timedLastTick = now;
+    return;
+  }
+  if (isEditingNote() || isMakingWordAi() || readingHold) timedDeadline += now - timedLastTick;
+  timedLastTick = now;
+  const left = timedRemainingMs(now);
+  if (!timedWarned && TIMED_SECONDS > 10 && left <= 10000) {
+    timedWarned = true;
+    announce("残り10秒");
+  }
+  renderTimedClock(left);
+  if (left <= 0) endTimedRun();
+}
+
+function resumeTimedClock(now = performance.now()) {
+  if (timedHiddenAt === null) return;
+  timedDeadline += now - timedHiddenAt;
+  timedHiddenAt = null;
+  timedLastTick = now;
+}
+
+// 時計の数字と棒だけを替える（#setProgress の 3 つの要素はそのまま。高さは変わらず、入力欄は動かない）。残り 10 秒でも朱にしない・点滅しない。
+// 動きを減らす設定では棒は動かさない（数字だけが減る）
+function renderTimedClock(left = timedRemainingMs()) {
+  const el = document.getElementById("setProgress");
+  const count = el?.querySelector(".set-progress__count b");
+  const bar = el?.querySelector(".set-progress__bar i");
+  if (!el || el.dataset.timed !== "1" || !count || !bar) {
+    renderSetProgress();
+    return;
+  }
+  count.textContent = String(Math.ceil(left / 1000));
+  if (!prefersReducedMotion()) bar.style.width = `${(left / (TIMED_SECONDS * 1000)) * 100}%`;
+}
+
+// 時間切れ: その場で止める（次の語へ進む待ち・ヒントの時計も）。画面の語にまだ答えていなければ何も記録しない（× にしない。T1 も捨てる）。
+// 答え表示の後の打ち直しの途中・正解のあとの待ちの途中は、答えは記録済みのまま終わる
+function endTimedRun() {
+  clearInterval(timer);
+  timer = null;
+  clearTimeout(advanceTimer);
+  advanceTimer = null;
+  awaitingNext = false;
+  hideHint();
+  clearSpill();
+  endStudySession({ timed: true });
+}
+
+// 裏に回った: 出題から最初のキーまでに裏に回った語は速さを測らない。60 秒の回の時計は止める（表に戻ったら期限をずらす）
+document.addEventListener("visibilitychange", () => {
+  const now = performance.now();
+  if (isPageHidden()) {
+    if (wordTiming && wordTiming.tFirst === null) wordTiming.invalid = true;
+    if (isPlaying && timedRun() && timedHiddenAt === null) timedHiddenAt = now;
+    return;
+  }
+  if (timedHiddenAt !== null) {
+    resumeTimedClock(now);
+    if (isPlaying && timedRun()) renderTimedClock();
+  }
+});
 
 export function restartGame() {
   clearInterval(timer);
@@ -1103,6 +1266,9 @@ export function handleKeydown(event) {
 
   if (!isPlaying || !currentWord) return;
 
+  // 速さの箱の入力の経路: 物理キーの keydown（信頼された打鍵）は kbd、画面キーボード（#osk のボタンが合成する keydown）は touch
+  keyPath = event.isTrusted === false ? "touch" : "kbd";
+
   // 正解直後の待ち（次の語が出る前）: 文字キーは判定しない（次の語の1文字目をミス扱いにしない）。
   // 打ち終えた語の続き（ローマ字の読みの続き・英単語の長い候補の続き）は判定に食わせて時刻を進める
   // （続きを打っている間はタイマーで次の語を出さない。completeWord の tick）。続きを打ち切った後に来た余分な 1 打（空白・s）は捨て、
@@ -1183,6 +1349,7 @@ function handleRomajiKey(event) {
         expected = result.expected;
         return null; // ミスの feed は状態を変えない
       }
+      markFirstKey();
       renderRomaji();
       // 画面キーボードが出ていると、長い問題文の下の入力欄が盤面に隠れることがある。打ち始めに見える位置へ
       if (romaji.keys.length === 1 && document.body.classList.contains("osk-open")) {
@@ -1295,6 +1462,7 @@ export function handleTextInput() {
   }
 
   const fresh = [...raw.slice(accepted.length)];
+  keyPath = "touch"; // ソフトウェアキーボードの input 経路（速さの箱）
   for (let i = 0; i < fresh.length; i++) {
     const typedChar = fresh[i];
     const missBefore = typingMissCount;
@@ -1357,7 +1525,11 @@ function markRecallFail() {
   recallFailCount++;
   if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
 
+  // 習熟度: 回で最初の答えなら、書く前の stat の段と同じ日の扱いを控える（完了パネル・結果の「段が動いた語」）
+  const prevStat = getWordStats()[currentWord.id];
+  const failCtx = prevStat ? answerContext(prevStat, Date.now()) : null;
   recordRecallFail(currentWord.id);
+  noteRunAnswer(currentWord.id, { before: failCtx?.rank ?? 0, ok: false, sameDay: !!failCtx?.sameDay });
 
   // Study: Unresolved（赤）としてキューへ戻す。数問後に再出題される
   if (mode === "study") {
@@ -1369,7 +1541,8 @@ function markRecallFail() {
     // 3連続で思い出せなかったら、次に「思い出せる語」を1つ挟んで立て直す
     consecutiveFails++;
     if (consecutiveFails === 3 && insertBreather()) {
-      const toast = document.getElementById("learnToast");
+      // 60 秒の回は息抜きの語を挟むだけ（時計の進む盤面に、はちゃんの知らせを出さない）
+      const toast = timedRun() ? null : document.getElementById("learnToast");
       if (toast) {
         toast.innerHTML = hasumiBubbleHtml({ mood: "normal", text: "3つ続けて出てこないのは、よくある。次は思い出せる語を1つ挟む。" }, "hasumi--result");
         toast.hidden = false;
@@ -1809,6 +1982,7 @@ function handleCorrectChar(typedChar) {
 
 // 1文字受理の共通処理（DOMの入力欄には触れない）。単語完成ならtrueを返す
 function acceptChar(typedChar) {
+  if (typedChar !== undefined) markFirstKey(); // ヒントで足した字（useHint は字を渡さない）はこの語の最初のキーにしない
   typedSoFar += typedChar ?? currentWord.en[currentIndex];
   currentIndex = typedSoFar.length;
   correctChars++;
@@ -1842,9 +2016,54 @@ function finishTypedAnswer(typed) {
   acceptAlternative(typed);
 }
 
+// ===== 習熟度: 1 問ごとの速さと、回で最初に答えた語の段（docs/SPEC_MASTERY.md §3.4・§4.7） =====
+
+// この語の最初のキー（英単語の受理・打ち間違い・ローマ字の受理）。出題の rAF より前に来た・前の語の続きが残っていた間に来たら測らない
+function markFirstKey() {
+  const t = wordTiming;
+  if (!t || t.serial !== wordSerial || t.tFirst !== null) return;
+  t.tFirst = performance.now();
+  t.input = keyPath;
+  if (t.tShow === null || t.spill) t.invalid = true;
+}
+
+// 同じ訳の語があり、例文の訳を添えて出す問い（例文の有無によらず、訳だけで決まらない問いは測らない）
+function isAmbiguousCached(word) {
+  const key = `${activeCategory}|${word.id}`;
+  if (!ambiguousCache.has(key)) ambiguousCache.set(key, isAmbiguousPrompt(word));
+  return ambiguousCache.get(key);
+}
+
+// 今の語の速さの見本 { t1, pc }（ms）。測らない語は null。t1 = 出題から最初のキー、pc = 1 字あたり（打った字数 3 以上のときだけ）。
+// 200ms 未満（先打ちの疑い）は js/masteryMeta.js が測らない答えとして扱う
+function speedSample(tDone) {
+  const t = wordTiming;
+  if (!t || t.serial !== wordSerial || t.invalid || t.tShow === null || t.tFirst === null) return null;
+  if (isAmbiguousCached(currentWord)) return null;
+  const chars = romajiMode ? String(romaji?.keys ?? "").length : typedSoFar.length;
+  return { t1: t.tFirst - t.tShow, pc: chars >= 3 ? (tDone - t.tFirst) / (chars - 1) : null };
+}
+
+// 速さの箱: 答えの種類（英語の綴り／ローマ字の答え）× 最初のキーの経路 × Study／遊び（Challenge・Daily）
+function speedBox() {
+  return boxKey({ lang: romajiMode ? "ja" : "en", input: wordTiming?.input, ctx: mode === "study" ? "study" : "play" });
+}
+
+// 答えを 1 つ控える（○ は recordRecallSuccess、× は recordRecallFail のとき）。回で最初の答えなら答える前の段と同じ日の扱いを、
+// 遅い正解で 5 → 4 になったら slowDown を。この回で × があれば slowDown は外す（「時間がかかった」ではなく「下がった」）
+function noteRunAnswer(id, { before = 0, ok, speed = "unknown", sameDay = false, after = null }) {
+  const entry = runRankBefore.get(id);
+  if (!entry) {
+    runRankBefore.set(id, { before, seenToday: !!sameDay, slowDown: !!ok && speed === "slow" && before === 5 && after === 4 });
+    return;
+  }
+  if (!ok) entry.slowDown = false;
+}
+
 let studyWordsSinceSync = 0;
 
 function completeWord() {
+  const tDone = performance.now(); // 速さ: 打ち終えた時刻（1 字あたりの見張り）
   keepMessage = false;
   let holdMs = 0; // チュートリアル T3 を出した語の最低の待ち（js/tutorial.js が spelldash:recall の detail.hold に書く）
   score++;
@@ -1892,12 +2111,20 @@ function completeWord() {
     if (isUnresolved(prevStat)) {
       const failDay = prevStat.lastRecallFailAt ? localDateString(new Date(prevStat.lastRecallFailAt)) : null;
       learnEvent = failDay && failDay !== localDateString() ? "learned" : "recovered";
-    } else if (isClean && prevStat.playCount === 1 && (prevStat.recallFail ?? 0) === 0 && !prevStat.lastRecallSuccessAt) {
+    } else if (isClean && isFirstAnswer(prevStat)) {
+      // 初見 = まだ一度も答えていない（js/mastery.js。出題の回数は見ない: 出題だけされて答えなかった語も知ってたになれる）
       learnEvent = "known";
     } else if (isReviewAttempt(prevStat)) {
       learnEvent = "retained";
     }
   }
+
+  // 習熟度（自力正解のときだけ。書き手の前に、答える前の stat から）: 答えの文脈・速さの分類（入れる前の箱と比べる）
+  const answerCtx = selfRecall && prevStat ? answerContext(prevStat, Date.now()) : null;
+  const sample = answerCtx && isClean ? speedSample(tDone) : null;
+  const box = sample ? speedBox() : null;
+  const { speed, basis } = sample && box ? classifySpeed(sample, box, { firstAnswer: answerCtx.firstAnswer }) : { speed: "unknown", basis: null };
+  let ranks = null; // { before, after }（盤面の文の「習熟度 …」）
 
   recordCorrect(currentWord.id, isClean);
 
@@ -1906,7 +2133,14 @@ function completeWord() {
   let loopResult = null;
   if (selfRecall) {
     consecutiveFails = 0;
-    recordRecallSuccess(currentWord.id);
+    recordRecallSuccess(currentWord.id, { clean: isClean, speed });
+    if (answerCtx) {
+      // 本人の基準に入れるのは、初めての答えかその日の最初の答えで、ノーミス・測れた答えだけ（分類は上で済ませた）
+      if (sample && box && (answerCtx.firstAnswer || answerCtx.firstOfDay)) noteSpeedSample(box, sample);
+      if (answerCtx.firstAnswer && speed === "fast") notePendingFirstFast(currentWord.id, basis);
+      ranks = { before: answerCtx.rank, after: rankOf(getWordStats()[currentWord.id]) };
+      noteRunAnswer(currentWord.id, { before: ranks.before, ok: true, speed, sameDay: answerCtx.sameDay, after: ranks.after });
+    }
     const recallDetail = { id: currentWord.id, mode };
     window.dispatchEvent(new CustomEvent("spelldash:recall", { detail: recallDetail })); // チュートリアル（js/tutorial.js）
     holdMs = Number(recallDetail.hold) || 0;
@@ -1929,7 +2163,8 @@ function completeWord() {
         if (currentWordKind === "new") setNewCount++;
         if (currentWordKind === "review") setReviewCount++;
         renderSetProgress();
-        if (setRecalled.size >= currentSetSize()) setCompletePending = true;
+        // 60 秒の回は語数で終わらない（時計で終わる）
+        if (runKind !== "timed" && setRecalled.size >= currentSetSize()) setCompletePending = true;
         saveResumePoint();
       }
     }
@@ -1958,7 +2193,7 @@ function completeWord() {
   renderMission();
 
   if (mode === "study") {
-    applyStudyXp(earned, missionResult, loopResult, learnEvent);
+    applyStudyXp(earned, missionResult, loopResult, learnEvent, ranks);
     if (consumeBoostNote()) {
       setTimeout(() => showMessage("知っている語が多い。少し難しい単語も混ぜる", "revealed"), 1200);
     }
@@ -1986,7 +2221,7 @@ function completeWord() {
     withExample: hasExample(currentWord),
     revealed: isRevealed,
     placement: isPlacementRun(),
-    pace: getAfterCorrect()
+    pace: timedRun() ? "quick" : getAfterCorrect() // 60 秒の回は「すぐ次へ」（250ms・例文は見せない）
   });
   if (glance) {
     renderExplain(currentWord);
@@ -2050,16 +2285,30 @@ function snapshotGrowth() {
 // ===== 今日のセット: 進捗と完了 =====
 // セットの目標語数（回収モードではその語数）
 function currentSetSize() {
-  return retryIds ? retryIds.length : getSetSize();
+  return runSize; // startGame が回の始めに決めた語数（もう一度は語の数、続きからは保存した語数）
 }
 
 function renderSetProgress() {
   const el = document.getElementById("setProgress");
   if (!el) return;
   if (!isPlaying || mode !== "study") {
+    delete el.dataset.timed;
     el.innerHTML = "";
     return;
   }
+  if (runKind === "timed") {
+    // 60 秒の回: 同じ 3 つの要素で残りの秒（高さは語数のときと同じ）。数字と棒は tick ごとに renderTimedClock が替える
+    const total = TIMED_SECONDS * 1000;
+    const left = timedRemainingMs();
+    el.dataset.timed = "1";
+    el.innerHTML = `
+    <span class="set-progress__label">${TIMED_SECONDS}秒</span>
+    <span class="set-progress__count">残り <b>${Math.ceil(left / 1000)}</b>秒</span>
+    <span class="set-progress__bar"><i style="width:${prefersReducedMotion() ? 100 : (left / total) * 100}%"></i></span>
+  `;
+    return;
+  }
+  delete el.dataset.timed;
   const size = currentSetSize();
   const done = Math.min(setRecalled.size, size);
   el.innerHTML = `
@@ -2072,6 +2321,14 @@ function renderSetProgress() {
 // ===== 「覚えた！」の瞬間 =====
 // 別の日に思い出せなかった語を今日自力で思い出せた＝学習成立。ここだけは大きく祝う
 function celebrateLearned(word, earned, note = "") {
+  const jaShort = word.ja.length > 22 ? `${word.ja.slice(0, 22)}…` : word.ja;
+  const line = `覚えた！ ${word.en}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`;
+  if (timedRun()) {
+    // 60 秒の回: メッセージ行の「覚えた！ X」だけ（スタンプ・はちゃんの知らせは出さない。待ちも延ばさない）
+    sfxSparkle();
+    showResult(line, "learned", true);
+    return;
+  }
   milestoneThisWord = true; // スタンプ（1.4 秒）が消えるまで次の語を出さない
   sfxSparkle();
   sfxComplete();
@@ -2088,8 +2345,7 @@ function celebrateLearned(word, earned, note = "") {
     setTimeout(() => stamp.remove(), 1400);
   }
 
-  const jaShort = word.ja.length > 22 ? `${word.ja.slice(0, 22)}…` : word.ja;
-  showResult(`覚えた！ ${word.en}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`, "learned", true);
+  showResult(line, "learned", true);
 
   const toast = document.getElementById("learnToast");
   if (toast) {
@@ -2145,6 +2401,69 @@ function renderSetWordChips() {
   );
 }
 
+// 回で最初に答えた直前の段（before）と今の段（after）から、語チップに添える 1 語。同じなら無し（矢印・記号は使わない）。
+// 正解の遅さだけで 5 → 4 になった語は「時間がかかった」（正解したのに「下がった」と出て不具合に見えないように）
+function rankMoveLabel({ before, slowDown }, after) {
+  if (before === 0) return "初めて";
+  if (after > before) return "上がった";
+  if (after === before - 1 && slowDown) return "時間がかかった";
+  if (after < before) return "下がった";
+  return "";
+}
+
+// 60 秒の終わりのパネル: この回に答えた語を、終わりの時点の段ごとに（5 → 1。0 語の群は出さない。群の中は回で最初に答えた順）。
+// 答えた語が 0 なら題も群も出さない。今日もう答えていた語があれば「習熟度が上がるのは…」の行（同じ日の 2 回目では上がらない）
+function renderRankGroups() {
+  const stats = getWordStats();
+  const rows = [];
+  for (const [id, entry] of runRankBefore) {
+    const word = findWord(id);
+    const after = rankOf(stats[id]);
+    if (word && after >= 1) rows.push({ word, entry, after });
+  }
+  if (rows.length === 0) return "";
+  let html = `<p class="rank-groups__title">習熟度（この回に答えた語）</p>`;
+  for (let n = RANK_NAMES.length - 1; n >= 1; n--) {
+    const group = rows.filter((r) => r.after === n);
+    if (group.length === 0) continue;
+    const chips = group
+      .map(({ word, entry, after }) => {
+        const move = rankMoveLabel(entry, after);
+        // ボタンの名前は「budget 予算 上がった」と読まれる（flex の中の空白は見た目に影響しない）
+        return `<button type="button" class="word-chip" data-speak="${escapeHtml(word.en)}"><b>${escapeHtml(word.en)}</b> <small>${escapeHtml(word.ja)}</small>${move ? ` <span class="word-chip__move">${move}</span>` : ""}</button>`;
+      })
+      .join("");
+    html += `<div class="word-chips rank-group" role="group" aria-labelledby="rankGroup${n}"><span class="word-chips__title" id="rankGroup${n}">${rankHtml(n)}</span>${chips}</div>`;
+  }
+  if (rows.some((r) => r.entry.seenToday)) html += `<p class="rank-groups__note">習熟度が上がるのは、各語その日の最初の答えだけ。</p>`;
+  return html;
+}
+
+// 語数のセットの完了パネル・Challenge／Daily の結果: 回の前が段 1 以上で段が動いた語だけ、1〜2 行（無ければ何も足さない）。
+// 「習熟度が上がった: budget（身についた）・ invoice（思い出せる）」。1 行 8 語まで、残りは「ほか N語」。exclude = 「覚えた」のチップの語（必ず 1 → 2 で上がっている）
+const RANK_MOVES_PER_LINE = 8;
+function renderRankMoves(exclude = new Set()) {
+  const stats = getWordStats();
+  const ups = [];
+  const downs = [];
+  for (const [id, entry] of runRankBefore) {
+    if (entry.before < 1) continue;
+    const after = rankOf(stats[id]);
+    const word = findWord(id);
+    if (!word || after < 1 || after === entry.before) continue;
+    if (after > entry.before) {
+      if (!exclude.has(id)) ups.push(`${escapeHtml(word.en)}（${RANK_NAMES[after]}）`);
+    } else {
+      downs.push(`${escapeHtml(word.en)}（${RANK_NAMES[after]}${rankMoveLabel(entry, after) === "時間がかかった" ? "・時間がかかった" : ""}）`);
+    }
+  }
+  const line = (label, items) =>
+    items.length
+      ? `<p class="rank-moves">${label}: ${items.slice(0, RANK_MOVES_PER_LINE).join("・ ")}${items.length > RANK_MOVES_PER_LINE ? ` ほか${items.length - RANK_MOVES_PER_LINE}語` : ""}</p>`
+      : "";
+  return line("習熟度が上がった", ups) + line("習熟度が下がった", downs);
+}
+
 // 腕試し（初回10語）の結果を1回だけ伝える。答え表示後にも出るよう、少し遅らせて上書きする
 function announcePlacement() {
   const p = consumePlacementNote();
@@ -2161,23 +2480,29 @@ function announcePlacement() {
   setTimeout(() => showMessage(line, "revealed"), 1300);
 }
 
-function endStudySession() {
+// timed = 60 秒の回の終わり（時間切れ・苦手のみで出題が尽きた）。続きからの地点は残さず、語数のセットの続きも消さない。
+// 自力で思い出せた語が 1 語以上の回だけ今日のぶん（7 日のドット・解放の累計・user_items の day）に数える（時間を流すだけで進む抜け道を塞ぐ）
+function endStudySession({ timed = false } = {}) {
   learnedCardStale = false; // 下で自分で描く（notifyGameEnd で二重に描かない）
   clearInterval(timer);
   isPlaying = false;
+  timedHiddenAt = null;
+  wordTiming = null; // 時間切れの語の T1 は捨てる
   notifyGameEnd();
   setCompletePending = false;
   currentWord = null;
-  if (!retryIds) clearSession(); // セットを終えたので「前回の続き」は消す
+  if (!retryIds && !timed) clearSession(); // セットを終えたので「前回の続き」は消す
+  flushMasteryMeta(); // 速さの基準・確かめの集計（変わっていれば 1 回だけ書く）
 
   const isRetry = !!retryIds;
   retryIds = null;
   const recalled = setRecalled.size;
   const failedIds = [...setFailed].filter((id) => !setRecalled.has(id));
   const failed = failedIds.length;
-  const state = isRetry ? { setsToday: getSetsToday() } : markDailySetDone(recalled);
+  const countsAsSet = !isRetry && (!timed || recalled >= 1);
+  const state = countsAsSet ? markDailySetDone(recalled) : { setsToday: getSetsToday() };
   pushSync();
-  window.dispatchEvent(new CustomEvent("spelldash:session-end", { detail: { recalled, failed: failedIds.length, retry: isRetry } })); // ホームの道を描き直す
+  window.dispatchEvent(new CustomEvent("spelldash:session-end", { detail: { recalled, failed: failedIds.length, retry: isRetry, ...(timed ? { timed: true } : {}) } })); // ホームの道を描き直す
 
   // 完了画面: 出題 UI は畳む（body.set-done → css/card.css）。完了の事実は見出し 1 つ、数字は 1 行
   document.body.classList.add("set-done");
@@ -2209,25 +2534,33 @@ function endStudySession() {
 
   const panel = document.getElementById("resultPanel");
   if (panel) {
-    const hasumiLine = isRetry
-      ? failed === 0
-        ? { mood: "happy", text: "全部回収した。" }
-        : { mood: "normal", text: "残りは明日また出す。" }
-      : hasumiSetLine({ count: recalled, failed, recovered: [...setFailed].filter((id) => setRecalled.has(id)).length, sets: state.setsToday }); // 答えを見てから思い出せた語（再開後も残る setFailed から）
+    const hasumiLine = timed && recalled === 0
+      ? hasumiSetLine({ timedEmpty: true, failed }) // 60 秒の回で思い出せた 0 語: 今日のぶんにはならない（2 通りの事実だけ）
+      : isRetry
+        ? failed === 0
+          ? { mood: "happy", text: "全部回収した。" }
+          : { mood: "normal", text: "残りは明日また出す。" }
+        : hasumiSetLine({ count: recalled, failed, recovered: [...setFailed].filter((id) => setRecalled.has(id)).length, sets: state.setsToday }); // 答えを見てから思い出せた語（再開後も残る setFailed から）
+    const title = timed ? (recalled > 0 ? "今日のセット完了" : "60秒 終わり") : isRetry ? "回収完了" : "今日のセット完了";
+    // 語: 60 秒の回は段ごとの語チップ（この回に答えた語）。語数の回は今の語チップと、その下に段が動いた語の行（「覚えた」のチップの語は除く）
+    const learnedIds = new Set([...setLearnEvents].filter(([, e]) => e === "learned").map(([id]) => id));
+    const wordsHtml = timed ? renderRankGroups() : `${renderSetWordChips()}${renderRankMoves(learnedIds)}`;
+    // 次に「もう…」で始まる回が 60 秒なら「もう60秒」（腕試し・もう一度・続きからの回の後も）。60 秒の回では Challenge のボタンを並べない（60 秒が 2 つで紛れる）
+    const againLabel = nextRunIsTimed() ? "もう60秒" : "もう1セット";
     panel.innerHTML = `
-      <h2 class="result-panel__title" id="resultTitle" tabindex="-1">${isRetry ? "回収完了" : "今日のセット完了"}</h2>
+      <h2 class="result-panel__title" id="resultTitle" tabindex="-1">${title}</h2>
       ${hasumiBubbleHtml(hasumiLine, "hasumi--result")}
       <div class="result-panel__grid">
         <div><span>思い出せた</span><strong>${recalled}</strong></div>
         <div><span>思い出せず</span><strong>${failed}</strong></div>
       </div>
-      ${renderSetWordChips()}
+      ${wordsHtml}
       ${tomorrowLine}
       ${goalLine}
       <div class="result-panel__actions">
         ${failed > 0 ? `<button type="button" class="result-panel__action" id="setRetry">思い出せなかった${failed}語をもう一度</button>` : ""}
-        <button type="button" class="result-panel__action${failed > 0 ? " result-panel__action--ghost" : ""}" id="setAgain">もう1セット</button>
-        <button type="button" class="result-panel__action result-panel__action--ghost" id="setChallenge">Challenge（60秒）</button>
+        <button type="button" class="result-panel__action${failed > 0 ? " result-panel__action--ghost" : ""}" id="setAgain">${againLabel}</button>
+        ${timed ? "" : `<button type="button" class="result-panel__action result-panel__action--ghost" id="setChallenge">Challenge（60秒）</button>`}
         ${canInstall() ? `<button type="button" class="result-panel__action result-panel__action--ghost" id="setInstall">ホーム画面に追加</button>` : ""}
       </div>
     `;
@@ -2260,7 +2593,8 @@ function endStudySession() {
 }
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
-function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
+// ranks = { before, after }（この答えの前後の習熟度。自力正解のときだけ）
+function applyStudyXp(earned, missionResult, loopResult, learnEvent = null, ranks = null) {
   markActiveToday();
   snapshotGrowth();
   learnedCardStale = true; // プレイ中は畳まれて見えない（css/room.css の body.home--playing）。終わったら notifyGameEnd が描く
@@ -2288,7 +2622,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
     playLevelUpEffect();
     sfxLevelUp();
     // ランクが変わる節目はオーバーレイ 1 つ、それ以外は 1 行。両方は出さない
-    if (isPlacementRun() || !celebrateRankUp(result)) {
+    if (isPlacementRun() || timedRun() || !celebrateRankUp(result)) {
       showResult(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}${shieldNote}`, "finished", true);
     } else {
       showResult(`思い出せた${shieldNote}`, "correct", !!shieldNote); // 幕が節目。1 行の「思い出せた」は次の語で消す
@@ -2339,11 +2673,18 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
       const days = stat?.lastReviewAt && stat?.history?.length > 1
         ? Math.max(1, Math.round((Date.now() - Date.parse(stat.history[stat.history.length - 2]?.d ?? stat.lastReviewAt)) / 86400000))
         : null;
-      showResult(`定着。${days ? `${days}日ぶりでも` : ""}思い出せた${xp}`, "correct");
+      // 「定着」は保持率（7 日窓）の言葉なので使わない。この答えで段が 身についた・即答 に上がったときだけ添える
+      const promo = ranks && ranks.after >= 4 && ranks.after > ranks.before ? `。習熟度 ${RANK_NAMES[ranks.after]}` : "";
+      showResult(`${days ? `${days}日ぶりでも` : ""}思い出せた${promo}${xp}`, "correct");
       return;
     }
     if (learnEvent === "known") {
-      showResult(`知ってた。${currentWord.en} は2週間後にもう一度だけ確認${xp}`, "correct", true);
+      // 初見の日なので「身についた」と過去形で言わない。確認待ちの間は補充に出ない（S6）ので「2週間後に確認」は事実
+      showResult(
+        ranks?.after === 4 ? `知ってた。${currentWord.en} はもう身についている。2週間後に確認${xp}` : `知ってた。${currentWord.en} は2週間後に確認${xp}`,
+        "correct",
+        true
+      );
       return;
     }
     const streakCount = stat?.cleanCorrectStreak ?? 0;
@@ -2356,6 +2697,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null) {
 
 // 打ち間違い: 答えは表示しない（覚えていたかどうかとは別のデータとして記録）
 function handleTypingMiss(expectedChar = currentWord?.en[currentIndex], typedChar = "") {
+  markFirstKey();
   clearSpill(); // この語の本当のミス。前の語の続きとしては見ない
   typingMissCount++;
   elements.miss.textContent = typingMissCount;
@@ -2390,6 +2732,11 @@ function setNewWord() {
     while (wordId && findWordIn(activeCategory, wordId)?.kanjiOnly) wordId = nextStudyWordId();
 
     // 苦手のみモードで出題が尽きた = 全部クリア。達成感を演出して終了
+    // （60 秒の回で 1 語以上答えていれば、時間切れと同じ終わりのパネル）
+    if (!wordId && isWeakOnlyMode() && timedRun() && isPlaying && runRankBefore.size > 0) {
+      endTimedRun();
+      return;
+    }
     if (!wordId && isWeakOnlyMode()) {
       stopGame();
       showMessage("苦手単語をすべてクリア。明日また確認", "finished");
@@ -2515,9 +2862,35 @@ function setNewWord() {
   const hist = document.getElementById("wordHistory");
   if (hist) hist.innerHTML = "";
   recordPlay(currentWord.id);
+  startWordTiming();
   scheduleHint();
   window.dispatchEvent(new CustomEvent("spelldash:word", { detail: { id: currentWord.id } })); // 画面キーボード等が盤面を更新する
   saveResumePoint();
+}
+
+// 速さの計測を始める（docs/SPEC_MASTERY.md §3.4）。tShow は出題の文を書いた後の最初の rAF の中（recordPlay の同期の書き込みを数えない）。
+// 測らない語: ページを開いて最初の語・音で出題・全文入力（概念カード・IME）・計算・英文を打つ・空欄・並べ替え・裏に回っている。
+// ローマ字の答えは測る（ja の箱）。例文の訳を添える問い（同じ訳の語がある）は、測るときに見る（speedSample。カテゴリの全語を走査するため）
+function startWordTiming() {
+  pageWordsShown++;
+  const w = currentWord;
+  const timing = {
+    serial: wordSerial,
+    tShow: null,
+    tFirst: null,
+    input: null,
+    spill: false,
+    invalid:
+      pageWordsShown === 1 ||
+      listenMode ||
+      (!romajiMode && (freeMode || isConceptWord(w))) ||
+      !!(w.calc || w.write || w.blank || w.bank) ||
+      isPageHidden()
+  };
+  wordTiming = timing;
+  requestAnimationFrame(() => {
+    if (wordTiming === timing && timing.tFirst === null) timing.tShow = performance.now();
+  });
 }
 
 // 同じ訳の語が同じカテゴリに複数あるとき（見る: see／look／watch など）は、例文の訳を文脈として添える。
@@ -2542,7 +2915,8 @@ function renderPromptContext(word) {
 
 // 「前回の続きから」用に、いまの語と残りの語・セットの進みを保存（通常の Study セットだけ）
 function saveResumePoint() {
-  if (mode !== "study" || !isPlaying || !currentWord || retryIds || isPlacementRun()) return;
+  // 60 秒の回は続きからの地点を残さない（語数のセットの続きも消さない）
+  if (mode !== "study" || !isPlaying || !currentWord || retryIds || isPlacementRun() || runKind === "timed") return;
   saveSession({
     category: activeCategory,
     focus: getFocusGenre(),
@@ -2636,6 +3010,8 @@ function chooseWord() {
 function endChallenge() {
   clearInterval(timer);
   isPlaying = false;
+  wordTiming = null;
+  flushMasteryMeta(); // 速さの基準・確かめの集計（変わっていれば 1 回だけ書く）
   notifyGameEnd();
   markActiveToday();
   snapshotGrowth();
@@ -2789,6 +3165,7 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0,
       <div><span>速度</span><strong>${(Math.round(speed * 10) / 10).toFixed(1)}打/秒</strong></div>
       <div><span>経験値</span><strong>+${gainedXp}</strong></div>
     </div>
+    ${renderRankMoves()}
     <div class="result-panel__actions">${actions}</div>
   `;
   panel.hidden = false;

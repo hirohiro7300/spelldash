@@ -41,7 +41,8 @@ import { setupUnloadSync } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
 import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
 import { renderLoginNudge } from "./loginNudge.js";
-import { initTutorial, skipTutorialIfReturning } from "./tutorial.js";
+import { initTutorial, skipTutorialIfReturning, isTutorialRunPending } from "./tutorial.js";
+import { getSetLength, setSetSize, isTimedSet } from "./dailySet.js";
 import { initRoom } from "./room.js";
 import { initBookshelf, renderBookshelf, updateBookshelf, holdShelf, releaseShelf, startShelf, startChoiceChanges, rememberCourse } from "./bookshelf.js";
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
@@ -147,8 +148,11 @@ function showGame(show) {
 // 道のスタート／復習: 新しく出す語をそのユニットに絞ってStudyを始める（復習はカテゴリ全体から）
 function startUnit(unit, opts = {}) {
   setGenre(""); // 手動のジャンル絞り込みは解除（道が代わりに絞る）
-  // 今日、同じカテゴリで途中だったセットがあれば続きから（復習ボタンからは新しく）
-  const resume = opts.review ? null : resumableFor(localStorage.getItem("spelldash_category") || "all");
+  // 今日、同じカテゴリで途中だったセットがあれば続きから（復習ボタンからは新しく）。
+  // 今日のセットの長さが 60 秒なら続きを見ずに 60 秒の回を始める（spelldash_session には触れない。長さを語数に戻すと続きが出る。
+  // チュートリアルの回は語数で走るので続きを見る。js/pathView.js の右頁の文と同じ判定）
+  const timed = isTimedSet() && !isTutorialRunPending();
+  const resume = opts.review || timed ? null : resumableFor(localStorage.getItem("spelldash_category") || "all");
   setFocusGenre(resume ? resume.focus ?? "" : unit?.tag ?? "");
   setMode("study");
   stopGame(); // すでに Study 中でも仕切り直す（setMode は同じモードだと何もしない）
@@ -312,6 +316,7 @@ function renderSetupSummary() {
   const parts = [label];
   if (getGenre()) parts.push(genreLabel(getGenre()));
   if (isWeakOnlyMode()) parts.push("苦手のみ");
+  if (isTimedSet()) parts.push("60秒"); // 今日のセットの長さが 60 秒（すべて › 60秒）
   const summary = parts.join(" › ");
   el.textContent = summary;
   // 出題名が道の見出し（コース名）と同じなら、行は「設定」だけに（同じ名前を 2 度言わない。css/home.css）
@@ -334,6 +339,31 @@ document.getElementById("setupToggle")?.addEventListener("click", () => {
   const panel = document.getElementById("setupPanel");
   setSetupOpen(panel?.hidden !== false);
 });
+
+// 今日のセットの長さ（設定ページの #setSizeSelect と同じ値を読み書きする）。変えたら道の右頁と要約、はちゃんの紙片を描き直す
+// （60 秒に替えると続きの文とボタンは消えるので、紙片も「続きから。」と言わない。SPEC_MASTERY §4.8）。
+// プレイ中に変えても今の回は変わらない（js/game.js が回の始めに 1 度だけ決める）。次の回から効く。
+// 履歴で戻ったとき: select の autocomplete="off"（index.html）でブラウザのフォームの復元を止め、bfcache で戻すブラウザでは
+// pageshow で保存値と見比べて描き直す（設定ページで長さを替えてから戻ると、古い値が出ていた）
+{
+  const select = document.getElementById("setLengthSelect");
+  if (select) {
+    const renderLength = () => {
+      renderHome();
+      renderHasumiHome();
+    };
+    select.value = getSetLength();
+    select.addEventListener("change", () => {
+      setSetSize(select.value);
+      renderLength();
+    });
+    window.addEventListener("pageshow", (e) => {
+      if (!e.persisted || select.value === getSetLength()) return;
+      select.value = getSetLength();
+      renderLength();
+    });
+  }
+}
 window.addEventListener("spelldash:genre", renderSetupSummary);
 
 // 戻ってきた人にはキャッチコピーの説明文を出さない（1画面目を「今日のセット」に寄せる）

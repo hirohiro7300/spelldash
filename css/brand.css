@@ -1110,6 +1110,56 @@ html[data-theme] .setting-linkbtn:hover {
   color: var(--ink);
 }
 
+/* ---- 習熟度（js/mastery.js rankHtml。docs/SPEC_MASTERY.md §3.2）: 墨の目盛り 5 つ＋段の名前。単語帳・語の詳細・学習データ・完了パネルが同じ 1 定義を読む
+   （index.html は card.css だけ、list.html・stats.html は pages.css だけを読むので、全ページが読むここに置く）。
+   目盛りは幅 5px・高さ 6〜14px（左から 2px ずつ高く、並びの向きを形でも伝える）・間 2px・下揃え・角 1px。塗りは --ink-3、空きは --line-2 の 1px の枠。
+   名前が主（12px・390 でも省かない）、目盛りは添え。緑・朱・金・信号の色は使わない。読み上げは外側の role="img" の aria-label の 1 文 ---- */
+html[data-theme] .rank {
+  display: inline-flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 2px;
+  line-height: 14px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+html[data-theme] .rank i {
+  display: block;
+  flex: none;
+  box-sizing: border-box;
+  width: 5px;
+  height: 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 1px;
+  background: transparent;
+  font-style: normal;
+}
+
+html[data-theme] .rank i:nth-child(2) { height: 8px; }
+html[data-theme] .rank i:nth-child(3) { height: 10px; }
+html[data-theme] .rank i:nth-child(4) { height: 12px; }
+html[data-theme] .rank i:nth-child(5) { height: 14px; }
+
+html[data-theme] .rank[data-rank="1"] i:nth-child(-n+1),
+html[data-theme] .rank[data-rank="2"] i:nth-child(-n+2),
+html[data-theme] .rank[data-rank="3"] i:nth-child(-n+3),
+html[data-theme] .rank[data-rank="4"] i:nth-child(-n+4),
+html[data-theme] .rank[data-rank="5"] i:nth-child(-n+5) {
+  border-color: var(--ink-3);
+  background: var(--ink-3);
+}
+
+html[data-theme] .rank__name {
+  margin-left: 4px;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+  letter-spacing: 0;
+}
+
 /* ---- 指で押す端末: 副ボタン・チップの当たり判定を 40px（発音／メモは 36px）に。見た目（1px 罫線・13px）は変えない ---- */
 @media (pointer: coarse) {
   html[data-theme] :is(.btn--sm, .play-modes__go, .path__guide, .path__guide--course, .path__course-pick, .back-to-path, .daily__button, .result-panel__action, .word-detail__close, .feedback-modal__close, .pack__actions .btn--sm, .category-chip, .filter-chip, .genre-chip, .stats-tab, .my-tab, .trend-range button, .packs-jump a, .pp-related a, [data-fold-open], .learned-item__en, .note-chip, .account-menu__item) {

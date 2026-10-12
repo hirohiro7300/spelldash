@@ -1181,7 +1181,7 @@ html[data-theme] body.list-compact .gcard__ex {
   display: none;
 }
 
-/* ---- 履歴・記憶ゲージ・メモ ---- */
+/* ---- 履歴・メモ（習熟度の目盛り .rank は brand.css。記憶ゲージ .mem は Batch 63 で外した。下の :is() の並びの .mem・.mem__bar は特定度を変えないため残す） ---- */
 html[data-theme] .hist i {
   width: 8px;
   height: 8px;
@@ -1189,32 +1189,6 @@ html[data-theme] .hist i {
 
 html[data-theme] .hist__o { background: var(--ok); }
 html[data-theme] .hist__x { background: var(--signal); }
-
-html[data-theme] .mem {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink-3);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
-html[data-theme] .mem__bar {
-  display: inline-block;
-  width: 60px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--paper-3);
-  overflow: hidden;
-}
-
-html[data-theme] .mem__bar b {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--ink);
-  background-image: none;
-}
 
 html[data-theme] .note-chip {
   display: inline-flex;
@@ -1613,6 +1587,69 @@ html[data-theme] .known-fold {
   margin-top: 12px;
   color: var(--ink-3);
   font-size: 13px;
+}
+
+/* ---- 学習データの習熟度（js/statsView.js。docs/SPEC_MASTERY.md §5.3）: 段 5 → 1 の行に目盛りと名前・語数・短い説明。
+   覚えた単語帳の行と同じ罫だけの行。目盛りと名前の幅をそろえて語数の列を合わせる（「思い出せる」5 字＋目盛り 33px で約 97px）。
+   390 では説明が次の行へ折り返す。率・合計・推移は出さない ---- */
+html[data-theme] .mastery-rows {
+  max-width: 640px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .mastery-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+html[data-theme] .mastery-row .rank {
+  min-width: 104px;
+}
+
+html[data-theme] .mastery-row__count {
+  color: var(--ink);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+html[data-theme] .mastery-row__count b {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums proportional-nums; /* 旧式数字（o に見える 0）を使わない。ホームの .n と同じ */
+  font-size: 16px;
+  font-weight: 600;
+}
+
+html[data-theme] .mastery-row__count small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .mastery-row__gloss {
+  flex: 1 1 14em;
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+html[data-theme] .mastery-note {
+  max-width: 640px;
+  margin: 10px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* 夜の札の中の罫: --line は --sheet の上で消えるので --line-2（覚えた単語帳の行と同じ） */
+html:is([data-theme="dark"], [data-theme="indigo"]) .result-card .mastery-row {
+  border-color: var(--line-2);
 }
 
 html[data-theme] .known-words {
@@ -2312,6 +2349,80 @@ html[data-theme] .word-detail__history {
   font-size: 12px;
 }
 
+/* ---- 語の詳細の習熟度（js/wordDetail.js。docs/SPEC_MASTERY.md §5.2）: 1 行目「習熟度 [目盛り] 名前 ・ その語の事実」、
+   2 行目は段の梯子（今の段だけ太字・読み上げない）と次の段の条件（読み上げる）、その下に畳んだ「習熟度の決まり」。
+   meta の行と同じ小さな字で、390 では文の中で折り返す（目盛りと名前は .rank の nowrap で離れない） ---- */
+html[data-theme] .word-detail__rank {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+html[data-theme] .word-detail__rank-line {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+html[data-theme] .word-detail__rank-label {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .rank-ladder {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+html[data-theme] .rank-ladder b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+html[data-theme] .rank-ladder__next {
+  color: var(--ink-2);
+}
+
+html[data-theme] .rank-rule {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .rank-rule > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  list-style: none;
+  cursor: pointer;
+}
+
+html[data-theme] .rank-rule > summary::-webkit-details-marker {
+  display: none;
+}
+
+html[data-theme] .rank-rule[open] > summary {
+  color: var(--ink-2);
+}
+
+html[data-theme] .rank-rule > p {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@media (pointer: coarse) {
+  html[data-theme] .rank-rule > summary {
+    min-height: 40px;
+  }
+}
+
 html[data-theme] .word-detail__note label {
   color: var(--ink-2);
   font-size: 13px;
@@ -2423,10 +2534,6 @@ html[data-theme] .word-ai__error {
     overflow: visible;
     text-overflow: clip;
   }
-}
-
-html[data-theme] .mem small {
-  font-size: 12px;
 }
 
 /* 分析タブの 1 行レベル表示をカードの内容と同じ左端に */

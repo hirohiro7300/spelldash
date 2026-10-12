@@ -18,11 +18,11 @@
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
 
 
-  <meta name="description" content="今日のセットの語数・発音・テーマ・アカウントの設定。" />
+  <meta name="description" content="今日のセットの長さ・発音・テーマ・アカウントの設定。" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="SpellDash" />
   <meta property="og:title" content="設定 | SpellDash" />
-  <meta property="og:description" content="今日のセットの語数・発音・テーマ・アカウントの設定。" />
+  <meta property="og:description" content="今日のセットの長さ・発音・テーマ・アカウントの設定。" />
 <link rel="canonical" href="https://www.spelldash.net/profile.html" />
   <meta property="og:url" content="https://www.spelldash.net/profile.html" />
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
@@ -49,11 +49,13 @@
   <link rel="modulepreload" href="./js/activity.js" />
   <link rel="modulepreload" href="./js/userItemsSync.js" />
   <link rel="modulepreload" href="./js/backup.js" />
+  <link rel="modulepreload" href="./js/masteryMeta.js" />
+  <link rel="modulepreload" href="./js/retentionCalc.js" />
   <link rel="modulepreload" href="./js/growthLog.js" />
   <link rel="modulepreload" href="./js/stats.js" />
   <link rel="modulepreload" href="./js/retentionLog.js" />
-  <link rel="modulepreload" href="./js/retentionCalc.js" />
   <link rel="modulepreload" href="./js/studyTime.js" />
+  <link rel="modulepreload" href="./js/mastery.js" />
   <link rel="modulepreload" href="./js/unlocks.js" />
   <link rel="modulepreload" href="./js/course.js" />
   <link rel="modulepreload" href="./js/packs.js" />
@@ -191,13 +193,14 @@
       <h2 class="settings__title">学習</h2>
 
       <div class="setting-row">
-        <label for="setSizeSelect">今日のセットの語数</label>
-        <select id="setSizeSelect" class="setting-select">
+        <label for="setSizeSelect">今日のセットの長さ</label>
+        <select id="setSizeSelect" class="setting-select" autocomplete="off">
           <option value="10">10語（約3分）</option>
           <option value="15">15語（約5分・標準）</option>
           <option value="25">25語（約8分）</option>
+          <option value="60s">60秒（時間で区切る）</option>
         </select>
-        <p class="setting-hint">自力で思い出せた語がこの数に達したら、今日のぶんは完了</p>
+        <p class="setting-hint" id="setSizeHint">自力で思い出せた語がこの数に達したら、今日のぶんは完了</p>
       </div>
 
       <div class="setting-row">

@@ -198,6 +198,25 @@ html[data-theme] .setup__label {
   color: var(--ink-3);
 }
 
+/* 今日のセットの長さ（#setLengthSelect）。select の見た目は pages.css にしか無い（index.html は読まない）ので、出題設定の中だけに置く。
+   畳まれている（#setupPanel[hidden]）ので盤面の寸法は変わらない */
+html[data-theme] .setup .setting-select {
+  max-width: 100%;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-room);
+  background: var(--paper-3);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+html[data-theme] .setup .setting-select:focus,
+html[data-theme] .setup .setting-select:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: var(--focus);
+}
+
 /* カテゴリのチップ: 紙3の面、選択中は墨の塗り */
 html[data-theme] .category-picker {
   gap: 6px;
