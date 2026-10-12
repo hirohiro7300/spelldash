@@ -7,6 +7,8 @@
 // - 英単語: 見本の次の字と同じキーなら正しい打鍵、違えばミス（語は止めない。正しいキーを打てば進む）
 // - 日本語: 読みをローマ字で打つ（js/romaji.js の matcher。shi／si・tsu／tu・ん の nn／n' などを受ける）。候補は主な読み 1 つ
 // - 語末の ん を手本どおり n 1 つで終えたあと、nn と打つ癖の 2 つ目の n は、次の語の 1 打目として通らなければ飲む（数えない）
+// - 長文（docs/SPEC_TYPING.md「長文」。js/typingLong.js）の行: kind "ja_text"（読みの「、」「。」も `,` `.` で打つ。romaji.js の { punct: true }）と
+//   "en_text"（englishLine。英字は大文字も小文字で通る・空白と . , ' ? も打つ・行の頭の空白は飲む）。createRun はそのまま使う
 
 import { createRomajiMatcher } from "./romaji.js";
 
@@ -77,9 +79,10 @@ function englishWord(pair) {
 }
 
 // かなの単位（済み・今・まだ）と、まだの打鍵（data-rest）。
-// 済みは matcher の state().committed、今とまだはその matcher を hint() の綴りで 1 打ずつ先へ流して作る（打った人の綴りに合わせて替わる）
-export function japaneseUnits(reading, keys) {
-  const m = createRomajiMatcher([reading]);
+// 済みは matcher の state().committed、今とまだはその matcher を hint() の綴りで 1 打ずつ先へ流して作る（打った人の綴りに合わせて替わる）。
+// opts は createRomajiMatcher にそのまま渡す（長文の行は { punct: true }。句読点も単位 1 つ）。既定の呼び方は今と同じ
+export function japaneseUnits(reading, keys, opts = {}) {
+  const m = createRomajiMatcher([reading], opts);
   m.type(keys);
   const st = m.state();
   const units = st.committed.map(({ kana, keys: typed }) => ({ kana, typed, rest: "", state: "done" }));
@@ -111,13 +114,13 @@ export function japaneseUnits(reading, keys) {
   return { units: [...units, ...ahead], rest };
 }
 
-function japaneseWord(pair) {
+function japaneseWord(pair, opts = {}) {
   const term = String(pair[0]);
   const reading = String(pair[1] ?? "");
-  const matcher = createRomajiMatcher([reading]);
+  const matcher = createRomajiMatcher([reading], opts);
   let cache = null;
   const view = () => {
-    if (!cache || cache.keys !== matcher.keys) cache = { keys: matcher.keys, ...japaneseUnits(reading, matcher.keys) };
+    if (!cache || cache.keys !== matcher.keys) cache = { keys: matcher.keys, ...japaneseUnits(reading, matcher.keys, opts) };
     return { units: cache.units, rest: cache.rest };
   };
   return {
@@ -131,7 +134,7 @@ function japaneseWord(pair) {
       return { ok: r.ok, ignored: false, done: r.done, expected: r.expected ?? "", canContinue: r.ok && r.done ? matcher.state().canContinue : false };
     },
     startsWith(key) {
-      return matcher.keys === "" && createRomajiMatcher([reading]).feed(key).ok;
+      return matcher.keys === "" && createRomajiMatcher([reading], opts).feed(key).ok;
     },
     rest() {
       return view().rest;
@@ -140,9 +143,55 @@ function japaneseWord(pair) {
   };
 }
 
-// kind: "en" | "ja"、pair: [見本, 訳] | [用語, 読み]
+// 長文の英語の 1 行（englishWord と同じ形: view() の 3 つの節・rest()・startsWith）。
+// 見本の字が英字なら小文字にそろえて比べ（大文字は小文字のままでも Shift つきでも通る）、ほかの字（空白・. , ' ?）は完全一致。
+// 行の頭（pos 0）の空白は飲む（ignored。行の終わりに空白を打つ癖を咎めない）。ミスの「打つはずだったキー」は英字なら小文字、空白は " "
+const LETTER = /^[A-Za-z]$/;
+const lineKeyOf = (ch) => (LETTER.test(ch ?? "") ? ch.toLowerCase() : ch ?? "");
+const sameKey = (key, ch) => typeof key === "string" && key.length === 1 && ch !== undefined && (LETTER.test(ch) ? key.toLowerCase() === ch.toLowerCase() : key === ch);
+
+export function englishLine(pair) {
+  const text = String(pair[0]);
+  const gloss = String(pair[1] ?? "");
+  let pos = 0;
+  return {
+    kind: "en",
+    text,
+    gloss,
+    get pos() {
+      return pos;
+    },
+    feed(key) {
+      if (!key || pos >= text.length) return { ok: false, ignored: true, done: pos >= text.length, expected: "" };
+      if (pos === 0 && key === " " && text[0] !== " ") return { ok: false, ignored: true, done: false, expected: "" };
+      if (!sameKey(key, text[pos])) return { ok: false, ignored: false, done: false, expected: lineKeyOf(text[pos]) };
+      pos++;
+      return { ok: true, ignored: false, done: pos === text.length, expected: lineKeyOf(text[pos]), canContinue: false };
+    },
+    startsWith(key) {
+      return pos === 0 && sameKey(key, text[0]);
+    },
+    rest() {
+      return text.slice(pos);
+    },
+    view() {
+      return { done: text.slice(0, pos), now: text[pos] ?? "", rest: text.slice(pos + 1) };
+    }
+  };
+}
+
+// kind: "en" | "ja" | "ja_text" | "en_text"、pair: [見本, 訳] | [用語, 読み]（長文は [見出し, 読み] | [文, 訳]）。
+// ja_text の語の kind は "ja"、en_text は "en"（描く側の分岐はそのまま乗る）
 export function createWord(kind, pair) {
-  return kind === "ja" ? japaneseWord(pair) : englishWord(pair);
+  if (kind === "ja") return japaneseWord(pair);
+  if (kind === "ja_text") return japaneseWord(pair, { punct: true });
+  if (kind === "en_text") return englishLine(pair);
+  return englishWord(pair);
+}
+
+// 教材の [見本, 訳] の列（空でない文字列の 2 つ組だけ）。js/typingKeys.js が出し直す（長文の生成物の検査 js/typingLong.js も使う）
+export function validPairs(list) {
+  return Array.isArray(list) && list.length > 0 && list.every((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === "string" && typeof p[1] === "string" && p[0] && p[1]);
 }
 
 // ---- 1 回 ----

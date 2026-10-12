@@ -3,7 +3,7 @@
 // 端末ごとのランダムな番号（spelldash_device_id）と段階だけを funnel_events に送る。メール・学習の中身は送らない。
 // 同じ段階・同じ入口は 1 日 1 回（端末で覚え、サーバーも unique で重ねない）。first_visit は source ごとに、day7 は端末で 1 回きり
 // （first_visit の source が空の行が「初めて来た」端末。typing* はタイピング練習、tgame* はタイピングゲームから初めて来た端末の段階、
-//   typing_game はタイピング練習から初めて来た端末がタイピングゲームを開いた印: docs/SQL_FUNNEL.md 5）。
+//   typing_game はタイピング練習から初めて来た端末がタイピングゲームを開いた印、typing_long* はその端末の長文の 3 段階: docs/SQL_FUNNEL.md 5）。
 // 表が無い（SQL 未実行）・オフラインなら何もしない。学習の動きを待たせない（送信は待たずに進む。加入の直前だけ短く待つ）。
 
 import { supabase } from "./supabase.js";
@@ -18,7 +18,9 @@ const QUEUE_KEY = "spelldash_funnel_queue"; // ページを移る直前に押さ
 // 入口のページの族: 鍵（その入口から初めて来た端末の、来た日（JST）。消さない）と、段階 → first_visit の source（docs/SQL_FUNNEL.md 5）。
 // 鍵を族ごとに分ける: 1 端末に付く印は最初の 1 ページ分だけ（markTypingArrival がもう一方の族の印を見る。2 枚のページの数が混ざらない）
 const TYPING_FAMILIES = {
-  typing: { key: "spelldash_funnel_typing", sources: { arrive: "typing", start: "typing_start", done: "typing_done", study: "typing_study", game: "typing_game" } }, // /typing.html
+  // /typing.html。長文（3 つ目の種類）は long（長文のタブを初めて押した）・long_start（初めて打ち始めた）・long_done（初めて最後まで打った）。
+  // done は長文でも最後まで打った回だけ（途中までの結果では送らない）
+  typing: { key: "spelldash_funnel_typing", sources: { arrive: "typing", start: "typing_start", done: "typing_done", study: "typing_study", game: "typing_game", long: "typing_long", long_start: "typing_long_start", long_done: "typing_long_done" } },
   tgame: { key: "spelldash_funnel_tgame", sources: { arrive: "tgame", start: "tgame_start", done: "tgame_done", study: "tgame_study" } } // /typing-game.html
 };
 const ONCE_STEPS = new Set(["first_visit", "day7"]);

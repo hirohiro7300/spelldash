@@ -15,7 +15,9 @@
 //   primaryReading(list)    答えを見せるときの読み。ひらがなを含む最初のもの、なければ先頭（list は文字列でも entry でも可）
 //
 // ── 判定 ────────────────────────────────────────────────────
-//   createRomajiMatcher(candidates)  candidates: 文字列（生でも正規化済みでも可）か {reading, display} の配列
+//   createRomajiMatcher(candidates, opts)  candidates: 文字列（生でも正規化済みでも可）か {reading, display} の配列
+//                    opts: { punct: true } のときだけ、読みの「、」「。」を消さずに残し、`,` `.` の 1 打で打つ
+//                    （タイピング練習の長文。js/typingLong.js）。オブジェクトでなければ無いものとする（既定は今のまま）
 //     .feed(key)   1 打鍵。→ { ok, ignored, done, finished, expected, key }
 //                    ok:false & ignored:true … ローマ字のキーではない（空白・記号・Shift など）。ミスにしない
 //                    ok:false & ignored:false … どの読みのどの綴りにも続かない＝ミス。状態は変えない
@@ -38,7 +40,8 @@
 //     .reset()     打鍵を消す
 //     .readings / .entries / .primary  正規化済みの読み・表示形・主な読みの番号
 //   matchRomaji(candidates, keys)    状態を持たない版。→ state() と同じ + { alive, missAt }
-//   canonicalRomaji(reading, {finalN})  各かなの最初の綴りで作った打鍵列（ん は nn。finalN:true なら末尾の ん だけ n）
+//   canonicalRomaji(reading, {finalN, punct})  各かなの最初の綴りで作った打鍵列（ん は nn。finalN:true なら末尾の ん だけ n。
+//                                       punct:true なら「、」→ `,`・「。」→ `.`。句読点の前の ん も nn のまま）
 //
 // ── キー ────────────────────────────────────────────────────
 //   normalizeRomajiKey(key)  1 文字を判定用のキーに（a-z 0-9 ' -）。ー・全角は変換、それ以外は null
@@ -60,6 +63,9 @@
 //    ヘボン式の m（shimbun）は受け付けない。IME も m を ん にしないので、IME と同じ打ち方に揃える
 //  ・ー は -。ラテン文字・数字は読みに書いてあるとおりに打つ（大文字小文字は区別しない）
 //  ・読みの中の空白・記号（・ = & / ( ) 、 。 - など）は打たなくてよい（正規化で落ちる）
+//  ・{ punct: true } のときだけ「、」は `,`、「。」は `.` を打つ（ほかの記号は今どおり落ちる）。っ の重ねは次がかなのときだけなので
+//    「っ、」は xtu。ん の n 1 つは `,` `.` の前でも通る（止めるのは母音と y の前だけ）。書き出した関数（normalizeReading など）の
+//    引数は替えない（[…].map(normalizeReading) が 2 つ目に添字を渡すため）。punct の道は中の関数だけに通す
 //
 // ── 終わりの判定 ─────────────────────────────────────────────
 //  どれかの読みを打ち終えたら done（即終了。創業者指示「打ち終わったら変換もなく終了」）。
@@ -73,6 +79,9 @@ import { hasJapaneseScript } from "./jaScript.js";
 const IGNORABLE = /[\p{P}\p{S}\p{Z}\p{Cc}\p{Cf}\s]/gu;
 const VOWELS = "aiueo";
 const READING_RE = /^[ぁ-ゖーa-z0-9]+$/;
+// { punct: true } のとき: 読みに残す句読点（NFKC の後。半角の ､ ｡ も NFKC で 、。になる）と、それを足した読みの字種
+const PUNCT_READING_RE = /^[ぁ-ゖーa-z0-9、。]+$/;
+const PUNCT_KEYS = { "、": ",", "。": "." };
 const KANA_RE = /[ぁ-ゖ]/;
 const SMALL_KANA = /^[ぁぃぅぇぉゃゅょゎァィゥェォャュョヮ]$/;
 
@@ -92,6 +101,28 @@ export function isReading(s) {
   return typeof s === "string" && READING_RE.test(s);
 }
 
+// ---- { punct: true } の道（書き出さない。既定の関数の引数を替えない） ----
+// opts はオブジェクトのときだけ読む（[…].map(f) の添字・null などは無いものとする）
+function punctOf(opts) {
+  return Boolean(opts) && typeof opts === "object" && opts.punct === true;
+}
+
+// 「、」「。」だけを残して displayReading と同じ形に（ほかの記号・空白は今どおり落とす）
+function displayReadingWith(text, punct) {
+  if (!punct) return displayReading(text);
+  let out = "";
+  for (const ch of String(text ?? "").normalize("NFKC")) out += ch === "、" || ch === "。" ? ch : ch.replace(IGNORABLE, "");
+  return out;
+}
+
+function normalizeReadingWith(text, punct) {
+  return punct ? toHiragana(displayReadingWith(text, true)).toLowerCase() : normalizeReading(text);
+}
+
+function isReadingWith(s, punct) {
+  return punct ? typeof s === "string" && PUNCT_READING_RE.test(s) : isReading(s);
+}
+
 export function hasKana(s) {
   return KANA_RE.test(String(s ?? ""));
 }
@@ -108,24 +139,24 @@ export function isJapaneseAnswer(card) {
 // かな（ひらがな・カタカナ・半角カナ）か漢字を含む（js/jaScript.js。ここからも使えるように出し直す）
 export { hasJapaneseScript };
 
-function entryOf(text) {
+function entryOf(text, punct = false) {
   if (text && typeof text === "object") {
-    const reading = normalizeReading(text.reading);
-    const display = text.display != null ? displayReading(text.display) : reading;
+    const reading = normalizeReadingWith(text.reading, punct);
+    const display = text.display != null ? displayReadingWith(text.display, punct) : reading;
     return { reading, display: display.length === reading.length ? display : reading };
   }
-  const reading = normalizeReading(text);
-  const display = displayReading(text);
+  const reading = normalizeReadingWith(text, punct);
+  const display = displayReadingWith(text, punct);
   // 表示形は 1 文字ずつ読みと対応させる（ずれる文字があれば読みをそのまま見せる）
   return { reading, display: display.length === reading.length ? display : reading };
 }
 
-function uniqueEntries(list) {
+function uniqueEntries(list, punct = false) {
   const out = [];
   const seen = new Set();
   for (const item of list) {
-    const e = entryOf(item);
-    if (!isReading(e.reading) || seen.has(e.reading)) continue;
+    const e = entryOf(item, punct);
+    if (!isReadingWith(e.reading, punct) || seen.has(e.reading)) continue;
     seen.add(e.reading);
     out.push(e);
   }
@@ -233,6 +264,7 @@ function buildOptions(r, i, memo) {
   if (ch === undefined) out = [];
   else if (/[a-z0-9]/.test(ch)) out = [simple(ch, 1)];
   else if (ch === "ん") out = N_OPTIONS;
+  else if (Object.hasOwn(PUNCT_KEYS, ch)) out = [simple(PUNCT_KEYS[ch], 1)]; // 「、」「。」（{ punct: true } の読みにだけ残る。既定の読みには無い）
   else {
     for (const k of TWO[r.slice(i, i + 2)] ?? []) out.push(simple(k, 2));
     if (ch === "っ" && KANA_RE.test(r[i + 1] ?? "")) {
@@ -249,9 +281,11 @@ function buildOptions(r, i, memo) {
   return out;
 }
 
-export function canonicalRomaji(reading, { finalN = false } = {}) {
-  const r = normalizeReading(reading);
-  if (!isReading(r)) return null;
+export function canonicalRomaji(reading, opts) {
+  const { finalN = false } = opts && typeof opts === "object" ? opts : {};
+  const punct = punctOf(opts);
+  const r = normalizeReadingWith(reading, punct);
+  if (!isReadingWith(r, punct)) return null;
   const memo = [];
   let out = "";
   let i = 0;
@@ -298,8 +332,8 @@ export function romajiKeyOf(event) {
 // 状態 = { c: 読みの番号, i: 読みの位置, buf: まだかなにならない打鍵, guard: 直前が n 1 つの ん, segs: 確定したかな }
 // 打鍵ごとに、生き残っている状態をすべて進める（読み 1 つあたり数個。毎打鍵やり直しても軽い）
 
-function compile(candidates) {
-  const entries = uniqueEntries(Array.isArray(candidates) ? candidates : []);
+function compile(candidates, punct = false) {
+  const entries = uniqueEntries(Array.isArray(candidates) ? candidates : [], punct);
   return entries.map((e) => ({ ...e, memo: [] }));
 }
 
@@ -414,8 +448,20 @@ function summarize(cands, states, keys, primary) {
   };
 }
 
-export function createRomajiMatcher(candidates) {
-  const cands = compile(candidates);
+// { punct: true } の feed: ローマ字のキーに加えて `,` `.`（「、」「。」と全角の ，．も同じ）
+function punctKey(key) {
+  const k = normalizeRomajiKey(key);
+  if (k || typeof key !== "string" || [...key].length !== 1) return k;
+  const c = key.normalize("NFKC");
+  if (c === "," || c === "、") return ",";
+  if (c === "." || c === "。") return ".";
+  return null;
+}
+
+export function createRomajiMatcher(candidates, opts) {
+  const punct = punctOf(opts);
+  const keyOf = punct ? punctKey : normalizeRomajiKey;
+  const cands = compile(candidates, punct);
   const primary = primaryIndex(cands);
   const start = () => cands.map((_, c) => ({ c, i: 0, buf: "", guard: false, segs: [] }));
   let states = start();
@@ -424,7 +470,7 @@ export function createRomajiMatcher(candidates) {
   const state = () => summarize(cands, states, keys, primary);
 
   function feed(rawKey) {
-    const k = normalizeRomajiKey(rawKey);
+    const k = keyOf(rawKey);
     if (!k) {
       const s = state();
       return { ok: false, ignored: true, done: s.done, finished: s.finished, expected: s.expected, key: null };

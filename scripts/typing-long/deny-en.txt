@@ -1,0 +1,33 @@
+# 長文の英語の文に置かない語（scripts/build-typing-long.mjs の V8）。英小文字の語を 1 行に 1 つ。# の行は注釈。
+# 文を英小文字の語に分け（L7 と同じ分け方: don't → do、the mouse's → mouse）、語ごとに完全一致で見る（規則の活用を外した語幹も見る: killed・betting）。
+# 部分一致にはしない（kill⊂skill・war⊂warm／toward／award・bet⊂between／better／alphabet・die⊂diet／soldier・gun⊂begun が誤って当たる）。
+# 英語の訳（日本語）は scripts/typing-game/deny.txt が見る（L8）。話題の規則はタイピングゲームと同じ。
+
+# 暴力・死
+war
+kill
+dead
+die
+blood
+gun
+fight
+hurt
+# 宗教
+church
+god
+pray
+# 金銭
+money
+dollar
+rich
+poor
+# 酒・たばこ・賭け事
+beer
+wine
+drunk
+cigarette
+smoke
+bet
+# 病気
+sick
+hospital
