@@ -124,7 +124,7 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 
 - タブの下の補足（`#typingTabNote`）: 「文章を最後まで打つ。やめても結果が出る。」。英単語 → 日本語 → 長文で札の上端が同じ。
 - **札の 1 行目** `#typingHead`（長文だけ）: `min-height` 44px（横向き 34px）を幅とポインタによらず 1 つで予約し、中の部品は縦の中央。始まる前は select `#typingText`（皮は `.setting-select`）、打っている間・止めた間は題 `#typingTitle`（1 行で …）・「残り N行」`#typingLeft`・「やめる」`#typingStop`（`btn--ghost btn--sm`・`data-run-control`。PC は（Esc）を添える）。loading は無効の select「読み込み中」、result・error は行ごと隠す。状態で中身だけ替えるので、最初の 1 打で札の中が上下しない。長文では `#typingTimer` を隠す。
-- select の焦点: ポインタで選んだら（タッチ端末を除き）焦点を `#input` へ。キーボードの矢印で選んだら select に残す（閉じた select で矢印ごとに change が出る環境でも 2 つ先へ進める）。select の上の Enter か Tab で札へ。タッチ端末は change のあと blur。
+- select の焦点: ポインタで選んだら（タッチ端末を除き）焦点を `#input` へ。キーボードの矢印で選んだら select に残す（閉じた select で矢印ごとに change が出る環境でも 2 つ先へ進める）。select の上の Enter か Tab で札へ（タッチ端末の Enter は select の焦点を外す（blur）: 焦点を当てない端末なので、外付けキーボードの次の字が select の頭文字探しに渡らず回が始まる）。タッチ端末は change のあと blur。
 
 | 状態（`#typingBoard[data-kind="long"][data-lang][data-state]`） | 中身 | 行き先 |
 |---|---|---|
@@ -164,19 +164,19 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 | Space（英語。`" "`・全角の空白・`Process`／`Unidentified` の code `Space`。変換中は数えない） | 始める（焦点がボタン・リンクの上なら既定） | **焦点がどこでも**（タブ・ご意見・やめる・`.tp-more` の上でも。編集できる要素を除く）空白として判定 | 続きから（判定しない） | 0.6 秒以降 もう一度 |
 | Enter | 始める | 数えない | 続きから | 0.6 秒以降 もう一度 |
 | Esc・「やめる」 | 何もしない | 途中の結果（出す時間が 5 秒未満、または判定したキーが無ければ ready） | 同左 | もう一度（Esc は守りの 0.6 秒の間と `repeat` では何もしない） |
-| Space・Enter（焦点がタブ・ご意見） | 既定 | 押させない（英語の Space は上の行のとおり空白） | 同左 | 既定 |
-| 「やめる」の上の Space・Enter・detail 0 のクリック | — | 日本語の Space は押させない。Enter と detail 0 のクリック（Tab で来て Enter・支援技術）はやめる | 同左 | — |
+| Space・Enter（焦点がタブ・ご意見） | 既定 | 押させない（英語の Space は上の行のとおり空白） | 押させず続きから（判定しない。ご意見の窓を閉じると焦点は窓を開いたボタンに戻る） | 既定 |
+| 「やめる」の上の Space・Enter・detail 0 のクリック | — | 日本語の Space は押させない。Enter と detail 0 のクリック（Tab で来て Enter・支援技術）はやめる | Space は押させず続きから（判定しない）。Enter と detail 0 のクリックはやめる | — |
 | ページが裏に回る・ご意見の窓をマウスで開く | 何もしない | **paused** | 何もしない | 何もしない |
 | 種類のタブ | その種類 | 回を捨ててその種類の ready | 同左 | その種類 |
 | 最後の行の最後の正しいキー | — | すぐ結果（完走） | — | — |
 | 時間切れ | 無い（`endAt()` は常に `Infinity`、タイマーを張らない） | | | |
 
-- 判定: 日本語の句読点は 1 打（IME オンの `Process`＋Comma・Period、JIS かな配列のキー（key が「ね」「る」）、かなの「、」「。」も同じ）。英語の比べは英字だけ小文字にそろえ、ほかは完全一致。英語の行の頭の空白は飲む（数えない・ミスにしない）。行の途中の空白の所に字・字の所に空白はミス。英語の `'` は IME オンの `Quote` と Shift＋`Digit7` の両方で打てる。日本語の別の綴り・ん・っ の扱いは今の matcher のまま（各行が句読点で終わるので、行をまたぐ ん の持ち越しは起きない）。日本語の長文で IME オンの Space・全角の空白は Space として読まない（paused からは字のキーで続きに戻る）。
-- `punctKeyOf(event)`: `romajiKeyOf` が返せばそれ。返さなければ key `,` `、` `，` → `,`、`.` `。` `．` → `.`、key が `Process`／`Unidentified`／かな配列のかなら code の `Comma`・`Period`。`textKeyOf(event)`: 1 字の key は NFKC（全角 → 半角）と `’` `‘` → `'` で、印字できる ASCII ならその字（大小そのまま）。key が `Process`／`Unidentified`／`Dead`／かなら code で読む（`KeyA`〜`KeyZ` → 小文字、`Space`、`Comma`、`Period`、Shift＋`Slash` → `?`、`Quote`・Shift＋`Digit7` → `'` など）。どちらも Ctrl・Cmd・Alt つきは null（Shift は含めない）。**`romajiKeyOf`・`normalizeRomajiKey` の既定は広げていない**（Study の答えの判定が同じ関数を使い、`,` `.` がミスに変わるため）。
+- 判定: 日本語の句読点は 1 打（IME オンの `Process`＋Comma・Period、JIS かな配列のキー（key が「ね」「る」）、かなの「、」「。」も同じ）。英語の比べは英字だけ小文字にそろえ、ほかは完全一致。英語の行の頭の空白は飲む（数えない・ミスにしない）。行の途中の空白の所に字・字の所に空白はミス。英語の `'` は IME オンの `Quote`（Shift なし）と Shift＋`Digit7` の両方で打てる。IME オンの Shift つきの記号（`Comma`・`Period`・`Quote`・`Digit1`〜`9`／`0`（7 を除く）・`Minus`・`Semicolon`）は位置だけで読まず、US 配列の Shift の字で読む（教材に無い字なので必ずミス。打ち間違いを正しい字にしない）。日本語の別の綴り・ん・っ の扱いは今の matcher のまま。語末の ん の 2 つ目の n の持ち越しは今の語の kind で見る（`ja_text` の語も `"ja"`。教材は各行が句読点で終わるので起きないが、句読点で終わらない行でも 1 分の日本語と同じに飲む）。日本語の長文で IME オンの Space・全角の空白は Space として読まない（paused からは字のキーで続きに戻る）。
+- `punctKeyOf(event)`: `romajiKeyOf` が返せばそれ。返さなければ 1 字の key を js/romaji.js の `punctKeyOfChar` で読み（`,` `、` `，` `､` → `,`、`.` `。` `．` `｡` → `.`。句読点の字 → キーの表 `PUNCT_KEYS` はここ 1 か所で、`{ punct: true }` の matcher と結果の「、」「。」の表示も同じ表を引く）、key が `Process`／`Unidentified`／かな配列のかなら code の `Comma`・`Period`。`textKeyOf(event)`: 1 字の key は NFKC（全角 → 半角）と `’` `‘` → `'` で、印字できる ASCII ならその字（大小そのまま）。key が `Process`／`Unidentified`／`Dead`／かなら code で読む（`KeyA`〜`KeyZ` → 小文字、`Space`、`Comma`、`Period`、Shift＋`Slash` → `?`、`Quote`（Shift なし）・Shift＋`Digit7` → `'` など）。key が `Process`／`Unidentified`／`Dead` で Shift つきの `Comma` → `<`・`Period` → `>`・`Quote` → `"`・`Digit1`〜`9`／`0`（7 を除く）→ `!@#$%^*()`・`Minus` → `_`・`Semicolon` → `:`（US 配列の Shift の字。かな配列のかなは今どおり位置で読む）。どちらも Ctrl・Cmd・Alt つきは null（Shift は含めない）。**`romajiKeyOf`・`normalizeRomajiKey` の既定は広げていない**（Study の答えの判定が同じ関数を使い、`,` `.` がミスに変わるため）。
 - 実装の口（どれも既定の振る舞いは変えない。渡さなければ今どおり）:
-  - js/romaji.js: `createRomajiMatcher(candidates, opts)`・`canonicalRomaji(reading, { finalN, punct })` に `{ punct: true }`（読みの「、」「。」を残し、`,` `.` の 1 打で受ける）。opts はオブジェクトでなければ無いものとする（`[…].map(f)` の添字が来ても既定のまま）。書き出した関数の引数の並びは替えていない。
-  - js/typingDrill.js: `japaneseUnits(reading, keys, opts = {})`、`createWord` の kind `"ja_text"`（語の kind は `"ja"`）・`"en_text"`（新しい `englishLine`）。`createRun`・`englishWord`・`summarize`・`readBest`・`writeBest` は変えていない。`validPairs` はここへ移した（typingKeys.js は同じ名前で出し直す）。
-  - js/typingKeys.js `wireTyping(page)` の口 5 つ: `keyOf(event)`（既定 `romajiKeyOf`）・`spaceIsKey()`（既定 false）・`pause()`（既定 `reset`）・`stop(now)`（既定 `reset`）・`holdResult()`（既定 false）と phase `paused`。「やめる」の `[data-run-control]` は `RUN_CONTROLS` に入れず、Space の keydown／keyup の守りだけ同じに扱う。札のクリックで焦点を移す処理は `select`・`label` を除き、paused でも移す。paused から続きに戻ると焦点を `#input` へ（タッチ端末を除く）。
+  - js/romaji.js: `createRomajiMatcher(candidates, opts)`・`canonicalRomaji(reading, { finalN, punct })` に `{ punct: true }`（読みの「、」「。」を残し、`,` `.` の 1 打で受ける）。opts はオブジェクトでなければ無いものとする（`[…].map(f)` の添字が来ても既定のまま）。書き出した関数の引数の並びは替えていない。句読点の字 → キーの表 `PUNCT_KEYS`（凍結）と `punctKeyOfChar(key)` を書き出した（表はここ 1 か所。js/typingLong.js の `punctKeyOf`・`longKeyLabel` が読む。既定の判定は使わない）。
+  - js/typingDrill.js: `japaneseUnits(reading, keys, opts = {})`、`createWord` の kind `"ja_text"`（語の kind は `"ja"`）・`"en_text"`（新しい `englishLine`）。`englishWord`・`summarize`・`readBest`・`writeBest` は変えていない。`createRun` は語末の ん の持ち越しを回の kind でなく今の語の kind で見る（ja・en・ゲームは同じ結果）。`readBestGroup(storage, key, group)`（`best[group]` の表。長文の「済み」を 1 回の読みで確かめる）を足した。`validPairs` はここへ移した（typingKeys.js は同じ名前で出し直す）。
+  - js/typingKeys.js `wireTyping(page)` の口 5 つ: `keyOf(event)`（既定 `romajiKeyOf`）・`spaceIsKey()`（既定 false）・`pause()`（既定 `reset`）・`stop(now)`（既定 `reset`）・`holdResult()`（既定 false）と phase `paused`。「やめる」の `[data-run-control]` は `RUN_CONTROLS` に入れず、Space の keydown／keyup の守りだけ同じに扱う。札のクリックで焦点を移す処理は `select`・`label` を除き、paused でも移す。paused ではタブ・ご意見の上の Space／Enter と「やめる」の上の Space もボタンを押させずに続きから（「やめる」の上の Enter はやめる）。paused から続きに戻ると焦点を `#input` へ（タッチ端末を除く）。
   - scripts/build-typing-game.mjs: `typeable`・`unitsDrift` に既定が空のオプション引数、`typeable`・`unitsDrift`・`schoolKanji` に export（ゲームの `--check` は同じ結果）。
 
 ### 9.4 時計と数え方
@@ -215,7 +215,7 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 
 - 鍵は今の `spelldash_typing_practice` のまま: `best.long[id] = { score, kpm, acc, sec, keys, day }`。書く直前に読み直し、`best.long[id]` だけ差し替える（en・ja を消さない）。今の `readBest`／`writeBest` は変えていない。
 - 比べるのはスコア、同じなら打/分: はじめて（「自己ベスト（はじめての記録）」）・更新（「自己ベストを更新（前 198）」）・同じスコアで打/分が上（「自己ベストと同じスコア・打/分を更新（前 225）」。書く）・同じ（「自己ベストと同じ」。書かない）・下（「自己ベスト 230（あと 17）」。書かない）。
-- 書くのは完走した回だけ。途中までの結果・`?l=N` の回（E2E 用。どの文章も先頭の N 行に切る。1〜99。select の項目の行の数は替えない）・止めていた間を除いて 1 時間を超えた回は書かない・比べない。書く `keys` は教材のその文章の `keys`（その回の打鍵数ではない。si・n で打っても「済み」が付く）。範囲外（score・kpm は整数 0〜2000、sec は 1〜3600）は書かず句も出さない（1 秒未満の完走など）。
+- 書くのは完走した回だけ。途中までの結果・`?l=N` の回（E2E 用。どの文章も先頭の N 行に切る。1〜99。select の項目の行の数は替えない）・止めていた間を除いた経過の ms が 3,600,000 を超えた回は書かない・比べない（秒の切り捨てでは見ない: 1 時間 0.7 秒の完走は時間の表示は「60分」のまま書かない。`LONG_MS_MAX`）。書く `keys` は教材のその文章の `keys`（その回の打鍵数ではない。si・n で打っても「済み」が付く）。範囲外（score・kpm は整数 0〜2000、sec は 1〜3600）は書かず句も出さない（1 秒未満の完走など）。
 - 検証: 範囲・acc は整数 0〜100 か null・keys が今の教材の keys と同じ・day は文字列。外れは壊れた記録として無い扱い。select の「済み」と既定の文章は検証に通る記録だけから作る。読めない・書けない端末では句と「済み」を出さない。
 
 ### 9.7 計測（SQL を変えない）
@@ -238,6 +238,7 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 
 - 節「typing long:」（7.55）: Node（romaji.js の既定が変わらない・`{ punct }`・生成器の検査が空回りしない・キーの読み方・`englishLine`・時計とスコア・自己ベスト・教材の形・教材が生成物と同じで全行が打ち切れる）／1200 の 1 枚（`?t=5&l=2`。reduced motion・CLS: loading の高さ・3 つのタブで札の上端が同じ・ready・読み上げ・最初の 1 打・行の送り・結果・守り・次の文・Esc の 5 秒と途中の結果・止める → 続き・ご意見の窓・タブ／ご意見／やめる の上のキー・select の焦点・学習記録を変えない）／完走と自己ベスト（1 秒未満は「―」・1 打 40ms で「はじめての記録」と「済み」）／英語の長文（Shift なしの大文字・IME オンの Space・`'`・`?`・行の頭の空白・空白のミス・ご意見の窓のあとや `.tp-more` の上の Space）／教材が読めない組・localStorage が投げる端末／390（設定「オフ」でも盤面・足したキー・やめる・1 行目 44px）／全 20 編の全行 × 10 の窓（390・360・320・1200・844×390・667×375・375×667・360×640・375×560・320×568）の行数・札の高さ・今の行の上端と盤面の上・別の綴りの途中・英語の今の字が空白（行の折り目も）の下線が札の中／どの行も句読点の単位が行の頭に来ない（全 20 編の日本語の全行 × 10 の窓・別の綴りの途中も。句読点の幅と入れ物、ページの描く今の行も）／横向き・背の低い縦向きの 1 行目と止めた／静的（SEO・本文・お知らせ・typing.css の規律・先読み・木によく知られたタイピングサイトの名前が無い）。
 - 節「typing funnel:」に 3 件（長文の 3 段階・途中までの結果では `typing_long_done`・`typing_done` を送らない）。7.5 の title と、7.5・7.6 のお知らせの検査を題で探す形に替えた（強さは同じ）。共有の部品を触ったので「typing game:」「typing game funnel:」と Study の判定の節（16.5・ローマ字の答え・Batch 58）も流す。
+- PR #158 のレビュー対応（2026-10-12）で 7.55 に足した検査: Node（IME オンの Shift つきの記号の表・句読点で終わらない行の ん の持ち越し・3,600,700ms の完走は書かない・句読点の表が 1 か所で 2 つの道が同じに読む・`doneLongIds` は保存を 1 回だけ読む）／1200（止めた回で焦点がご意見のボタン・タブの上の Space／Enter で続きから）／1 時間 0.4 秒の完走（「60分」で句も記録もなし）／英語（止めた回でご意見のボタンの上の Enter で続きから）／390（タッチ端末の select の上の Enter で焦点が外れ、次の字で回が始まる）。
 
 ### 9.11 仕様の穴を埋めた所（いちばん控えめな形）
 

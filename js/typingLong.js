@@ -2,19 +2,22 @@
 // 文章を 1 本選び、最後の行まで打つ（制限時間なし）。判定（かなの単位・英語の 1 行）は js/typingDrill.js の createRun（kind "ja_text"／"en_text"）。
 // DOM・localStorage に直接触らない（Node から import して E2E が確かめる）。学習記録は読まない・書かない。書くのは自己ベストの best.long だけ。
 //
-// - キー: 日本語は punctKeyOf（ローマ字のキー＋句読点 `,` `.`）、英語は textKeyOf（印字できる ASCII。大小はそのまま）。修飾キーは Ctrl・Cmd・Alt（Shift は含めない）
+// - キー: 日本語は punctKeyOf（ローマ字のキー＋句読点 `,` `.`。句読点の字の表は js/romaji.js の PUNCT_KEYS・punctKeyOfChar の 1 か所）、
+//   英語は textKeyOf（印字できる ASCII。大小はそのまま）。修飾キーは Ctrl・Cmd・Alt（Shift は含めない）
 // - 時計: 最初に判定したキーから最後に判定したキーまで、止めていた間を除く（createLongClock）。時間 = lastAt − firstAt − pausedAtLast
 // - スコア: 打/分×正確さの 2 乗（丸める前の値どうし）。速さと正確さを 1 つの数で言うため、正確さを重く見る。押したキー全部の速さに正確さの 3 乗を
 //   掛けた値と同じで、この打/分は正しいキーだけを数えるので「打/分×正確さの 2 乗」になる。ミスが無ければ打/分と同じ。ミスが 1% 増えるとおよそ 3% 下がる
 // - 自己ベスト: spelldash_typing_practice の best.long[文章の id]（鍵は増やさない）。比べるのはスコア、同じなら打/分。最後まで打った回だけ書く
+//   （止めていた間を除いた経過の ms が 1 時間を超えた回は書かない・比べない）
 
-import { romajiKeyOf } from "./romaji.js";
-import { BEST_KEY, BEST_KPM_MAX, SECONDS, intParam, summarize, readBestRecord, writeBestRecord, validPairs } from "./typingDrill.js";
+import { romajiKeyOf, PUNCT_KEYS, punctKeyOfChar } from "./romaji.js";
+import { BEST_KEY, BEST_KPM_MAX, SECONDS, intParam, summarize, readBestRecord, readBestGroup, writeBestRecord, validPairs } from "./typingDrill.js";
 
 export const LONG_GROUP = "long"; // best.long
 export const DEFAULT_LONG_ID = "ja-s01"; // 初めての端末の既定（日本語・短めでいちばん打鍵が少ない 1 編）
 export const LONG_PARTIAL_MIN_MS = 5000; // Esc・やめる: 出す時間がこれ未満（または判定したキーが無い）なら始まる前へ戻すだけ
-export const LONG_SEC_MAX = 3600; // 止めていた間を除いて 1 時間を超えた完走は結果を出すが、自己ベストに書かない（記録の sec の上限）
+export const LONG_SEC_MAX = 3600; // 記録の sec の上限（秒の切り捨て）
+export const LONG_MS_MAX = LONG_SEC_MAX * 1000; // 止めていた間を除いた経過の ms がこれを超えた完走は結果を出すが、自己ベストに書かない・比べない（秒の切り捨てで見ない）
 export const LONG_LINES_PARAM_MAX = 99; // E2E 用の ?l=N（1〜99）
 export const LONG_ID_RE = /^(ja|en)-[sl]\d{2}$/;
 export const LONG_LANGS = ["ja", "en"];
@@ -33,15 +36,15 @@ const modified = (event) => Boolean(event.ctrlKey || event.metaKey || event.altK
 // 1 字で、NFKC にしても ASCII にならない字（JIS かな配列のかな: Comma のキーは「ね」、Period のキーは「る」）
 const nonAsciiChar = (key) => [...key].length === 1 && !/^[\x00-\x7f]+$/.test(key.normalize("NFKC"));
 
-// 日本語の長文: ローマ字のキー（romajiKeyOf のまま）＋読点 `,`・句点 `.`。romajiKeyOf・normalizeRomajiKey の既定は広げない
-// （Study の答えの判定が同じ関数を使い、`,` `.` がミスに変わるため）
+// 日本語の長文: ローマ字のキー（romajiKeyOf のまま）＋読点 `,`・句点 `.`（字の表は romaji.js の punctKeyOfChar。{ punct: true } の matcher と同じ）。
+// romajiKeyOf・normalizeRomajiKey の既定は広げない（Study の答えの判定が同じ関数を使い、`,` `.` がミスに変わるため）
 export function punctKeyOf(event) {
   if (!event || modified(event)) return null;
   const romaji = romajiKeyOf(event);
   if (romaji) return romaji;
   const key = typeof event.key === "string" ? event.key : "";
-  if (key === "," || key === "、" || key === "，") return ",";
-  if (key === "." || key === "。" || key === "．") return ".";
+  const punct = punctKeyOfChar(key);
+  if (punct) return punct;
   if (key === "Process" || key === "Unidentified" || nonAsciiChar(key)) {
     const code = String(event.code ?? "");
     if (code === "Comma") return ",";
@@ -49,6 +52,10 @@ export function punctKeyOf(event) {
   }
   return null;
 }
+
+// IME オン（key が Process／Unidentified／Dead）の Shift つきの記号: 位置だけで読むと打ち間違いが正しい字になるので、US 配列の Shift の字で読む
+// （どれも教材に無い字なので必ずミス）。Shift＋Slash（?）・Shift＋Digit7（JIS の位置の '）は表に入れず textKeyOf が読む
+const SHIFTED_US = Object.freeze({ Comma: "<", Period: ">", Quote: '"', Minus: "_", Semicolon: ":", Digit1: "!", Digit2: "@", Digit3: "#", Digit4: "$", Digit5: "%", Digit6: "^", Digit8: "*", Digit9: "(", Digit0: ")" });
 
 // 英語の長文: 1 字の key は NFKC（全角 → 半角。全角の空白も " "）、’ ‘ → '、印字できる ASCII（空白〜~）ならその字（大小はそのまま）。
 // key が Process／Unidentified／Dead、または 1 字で NFKC でも ASCII にならない字（JIS かな配列のかな）なら code で読む。名前のキーは null
@@ -65,13 +72,15 @@ export function textKeyOf(event) {
   }
   const code = String(event.code ?? "");
   const shift = Boolean(event.shiftKey);
+  const ime = key === "Process" || key === "Unidentified" || key === "Dead"; // かな配列のかな（1 字）は今どおり位置で読む
+  if (shift && ime && Object.hasOwn(SHIFTED_US, code)) return SHIFTED_US[code];
   let m;
   if ((m = /^Key([A-Z])$/.exec(code))) return m[1].toLowerCase();
   if (code === "Space") return event.isComposing ? null : " ";
   if (code === "Comma") return ",";
   if (code === "Period") return ".";
   if (code === "Slash") return shift ? "?" : null;
-  if (code === "Quote") return "'"; // US の位置（Shift つきも ' と読む: 教材に " は無い）
+  if (code === "Quote") return "'"; // US の位置（Shift なし。IME オンの Shift つきは " で読む）
   if (code === "Digit7" && shift) return "'"; // JIS の位置
   if ((m = /^Digit(\d)$/.exec(code))) return m[1];
   if (code === "Minus") return "-";
@@ -79,9 +88,11 @@ export function textKeyOf(event) {
   return null;
 }
 
-// 間違えたキーの表示: 日本語の句読点はキーの `,` `.` でなく「、」「。」、英語の空白は「空白」（英字は englishLine が小文字にそろえて数える）
+// 間違えたキーの表示: 日本語の句読点はキーの `,` `.` でなく「、」「。」（romaji.js の PUNCT_KEYS を逆に引く）、英語の空白は「空白」
+// （英字は englishLine が小文字にそろえて数える）
+const PUNCT_LABELS = Object.freeze(Object.fromEntries(Object.entries(PUNCT_KEYS).map(([ch, k]) => [k, ch])));
 export function longKeyLabel(key, lang) {
-  if (lang === "ja") return key === "," ? "、" : key === "." ? "。" : key;
+  if (lang === "ja") return Object.hasOwn(PUNCT_LABELS, key) ? PUNCT_LABELS[key] : key;
   return key === " " ? "空白" : key;
 }
 
@@ -232,20 +243,24 @@ export function longBestPhrase(cmp) {
 }
 
 // 最後まで打った回の自己ベストを決めて書く（呼ぶのは完走で ?l= の無い回だけ。途中までの結果は呼ばない）。
-// rec = { score, kpm, acc, sec, day }。書く keys はその回の打鍵数でなく教材の text.keys（shi を si、nn を n で打った回も検証に通り「済み」が付く）。
-// 範囲の外（1 秒未満の完走・打/分 2001 以上・1 時間を超えた回）は書かず句も出さない（none）。書くはずが書けなかった端末も none
+// rec = { score, kpm, acc, sec, ms, day }（ms は止めていた間を除いた経過。書かない）。書く keys はその回の打鍵数でなく教材の text.keys
+// （shi を si、nn を n で打った回も検証に通り「済み」が付く）。範囲の外（1 秒未満の完走・打/分 2001 以上・経過の ms が 1 時間を超えた回。
+// 秒の切り捨てで 3600 秒に見える 1 時間 0.7 秒も）は書かず句も出さない（none）。書くはずが書けなかった端末も none
 export function recordLongBest(storage, text, rec) {
   const full = { score: rec?.score, kpm: rec?.kpm, acc: rec?.acc ?? null, sec: rec?.sec, keys: text?.keys, day: rec?.day };
-  if (!storage || !text || !validLongRecord(full, text.keys)) return { status: "none", prev: null, diff: 0, write: false };
+  if (!storage || !text || Number(rec?.ms) > LONG_MS_MAX || !validLongRecord(full, text.keys)) return { status: "none", prev: null, diff: 0, write: false };
   const cmp = compareLongBest(readLongBest(storage, text.id, text.keys), full);
   if (cmp.write && !writeLongBest(storage, text.id, full)) return { status: "none", prev: null, diff: 0, write: false };
   return cmp;
 }
 
-// 最後まで打った文章の id（検証に通る記録だけ。select の「済み」と既定の文章に使う）。読めない端末は空
+// 最後まで打った文章の id（検証に通る記録だけ。select の「済み」と既定の文章に使う）。読めない端末は空。
+// 保存は 1 回だけ読み、best.long の各 id を validLongRecord で確かめる（文章ごとに readLongBest で読んだのと同じ結果）
 export function doneLongIds(storage, texts) {
   const out = new Set();
-  for (const t of Array.isArray(texts) ? texts : []) if (readLongBest(storage, t.id, t.keys)) out.add(t.id);
+  const group = readBestGroup(storage, BEST_KEY, LONG_GROUP);
+  if (!group) return out;
+  for (const t of Array.isArray(texts) ? texts : []) if (validLongRecord(group[t.id], t.keys)) out.add(t.id);
   return out;
 }
 

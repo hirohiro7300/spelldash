@@ -6,7 +6,8 @@
 //
 // - 英単語: 見本の次の字と同じキーなら正しい打鍵、違えばミス（語は止めない。正しいキーを打てば進む）
 // - 日本語: 読みをローマ字で打つ（js/romaji.js の matcher。shi／si・tsu／tu・ん の nn／n' などを受ける）。候補は主な読み 1 つ
-// - 語末の ん を手本どおり n 1 つで終えたあと、nn と打つ癖の 2 つ目の n は、次の語の 1 打目として通らなければ飲む（数えない）
+// - 語末の ん を手本どおり n 1 つで終えたあと、nn と打つ癖の 2 つ目の n は、次の語の 1 打目として通らなければ飲む（数えない）。
+//   持ち越すかは今の語の kind（"ja"。長文の ja_text の語も "ja"）で見る
 // - 長文（docs/SPEC_TYPING.md「長文」。js/typingLong.js）の行: kind "ja_text"（読みの「、」「。」も `,` `.` で打つ。romaji.js の { punct: true }）と
 //   "en_text"（englishLine。英字は大文字も小文字で通る・空白と . , ' ? も打つ・行の頭の空白は飲む）。createRun はそのまま使う
 
@@ -259,7 +260,8 @@ export function createRun(kind, pairs = []) {
       missPending = false;
       if (r.done) {
         stats.words++;
-        spill = kind === "ja" && r.canContinue ? { matcher: current.matcher, at: now } : null;
+        // 持ち越すかは今の語の kind で見る（ja_text の語も "ja"。回の kind で見ると長文の句読点で終わらない行で効かない。ja・en・ゲームは同じ結果）
+        spill = current.kind === "ja" && r.canContinue ? { matcher: current.matcher, at: now } : null;
         advance();
         return { type: "correct", done: true };
       }
@@ -321,6 +323,12 @@ function readBestTable(storage, key) {
 export function readBestRecord(storage, key, group, seconds, valid) {
   const best = readBestTable(storage, key);
   return best ? valid(best[group]?.[String(seconds)]) : null;
+}
+
+// best[group] の表 | null（読めない・壊れている・オブジェクトでない）。保存を 1 回だけ読んで群の中の記録をまとめて確かめる（長文の「済み」。js/typingLong.js）
+export function readBestGroup(storage, key, group) {
+  const g = readBestTable(storage, key)?.[group];
+  return g && typeof g === "object" && !Array.isArray(g) ? g : null;
 }
 
 // 保存の直前に読み直し、best[group][秒数] だけ rec に差し替えて書く（ほかの種類・秒数を消さない）→ 書けたか
