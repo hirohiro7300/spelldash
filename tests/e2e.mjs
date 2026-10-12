@@ -5999,14 +5999,15 @@ console.log("mastery writers:");
   // 今の語を打つ（wait = 出題から打ち始めるまで。出題の時刻から数えるので、この関数に来るまでの間も wait に入る。
   // via = "kbd" 物理キー／"osk" 画面キーボードのボタン。page.press は物理キーの経路）。
   // skip = 頭から飛ばす字数（ヒントが足した字）。盤面の文と、次の語か完了パネルを待つ
-  async function typeCurrent(page, { wait = 0, via = "kbd", skip = 0 } = {}) {
+  async function typeCurrent(page, { wait = 0, via = "kbd", skip = 0, key = null } = {}) {
     const id = await curId(page);
     const n = await shown(page);
     const m = await msgCount(page);
     if (wait) await page.waitForTimeout(Math.max(0, wait - (await page.evaluate(() => performance.now() - window.__shownAt))));
     const en = enOf(id);
     for (let k = skip; k < en.length; k++) {
-      if (via === "osk") await page.click(`#osk .osk__key[data-key="${en[k]}"]`);
+      if (key) await key(en[k]); // 打鍵を自分で送る（CDP の信頼された keydown など）
+      else if (via === "osk") await page.click(`#osk .osk__key[data-key="${en[k]}"]`);
       else await page.press("#input", en[k]);
     }
     await waitUntil(async () => (await msgCount(page)) > m, 2000);
@@ -6442,6 +6443,192 @@ console.log("mastery writers:");
     );
     check("習熟度 13 S6（苦手の語）: エラー0", p3.errors.length === 0, p3.errors[0] ?? "");
     await p3.close();
+  }
+
+  // ---- 段階 2（§6 の S1〜S3）: 期日が先の語は正解で早まらない・日をあけた正解は間隔が伸びる・予定どおりの語は今と同じ ----
+  {
+    const daysAhead = (st) => (st?.nextReviewAt ? Math.round((Date.parse(st.nextReviewAt) - Date.now()) / DAY) : null);
+    // Study の流れ（打つ）: 期日が 10 日先の段 3 の語（補充に出る）・8 日あけた段 3 の語（期日は昨日）・予定どおりの語（streak 4・5 日前・期日は今日）
+    const stats = {
+      ...KEEP,
+      "my-stone": okStat(3, 3 * DAY, -10 * DAY), // streak 3
+      "my-river": okStat(3, 8 * DAY, DAY), // streak 3 → 4（今なら 5 日後）
+      "my-cloud": okStat(3, 5 * DAY, HOUR, { cleanCorrectStreak: 4 }) // streak 4 → 5（7 日後。gap 5 は credit なし: 1 日遅れで表を飛ばさないため gap 6 から）
+    };
+    const page = await open(seed(stats, { words: ["stone", "river", "cloud", "tiger"] }), { url: "/index.html?set=3&hintms=600000" });
+    const order = [];
+    for (let i = 0; i < 8 && !(await panelOpen(page)); i++) {
+      order.push(enOf(await curId(page)));
+      await typeCurrent(page);
+      await page.waitForTimeout(80);
+    }
+    await waitUntil(() => panelOpen(page), 4000);
+    const st = { stone: await statOf(page, "my-stone"), river: await statOf(page, "my-river"), cloud: await statOf(page, "my-cloud") };
+    check("習熟度 段階 2 S1: 期日が 10 日先の語を Study で期日前にノーミス → 期日は同じ文字列のまま（streak 3 → 4・段 3 のまま）", order.includes("stone") && st.stone?.nextReviewAt === stats["my-stone"].nextReviewAt && st.stone.cleanCorrectStreak === 4 && st.stone.masteryRank === 3, JSON.stringify({ order, due: st.stone?.nextReviewAt, seeded: stats["my-stone"].nextReviewAt, streak: st.stone?.cleanCorrectStreak, rank: st.stone?.masteryRank }));
+    check("習熟度 段階 2 S2・S3: 8 日あけたノーミス → 段 4・期日は 10 日後（streak 4 の 5 日より長い）", order.includes("river") && st.river?.masteryRank === 4 && daysAhead(st.river) === 10, JSON.stringify({ order, rank: st.river?.masteryRank, days: daysAhead(st.river) }));
+    check("習熟度 段階 2: 予定どおりの語（streak 4・5 日前・期日が今日）→ 7 日後（今と同じ）", order.includes("cloud") && st.cloud?.cleanCorrectStreak === 5 && daysAhead(st.cloud) === 7, JSON.stringify({ order, streak: st.cloud?.cleanCorrectStreak, days: daysAhead(st.cloud) }));
+    check("習熟度 段階 2（Study）: エラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+
+    // 書き手の直呼び（Challenge・Battle と同じ呼び方）: 知ってた語の確認・下限・打ち間違いありの正解・正解の 1 打の書き込み 1 回
+    const k5 = at(5 * DAY);
+    const d14 = at(14 * DAY);
+    const s2 = {
+      "my-paper": { ...B, playCount: 1, correctCount: 1, cleanCorrectStreak: 1, knownOnSight: true, masteryRank: 4, masteryAt: k5, lastPlayed: k5, lastRecallSuccessAt: k5, srsAdvancedOn: dayOf(k5), nextReviewAt: at(-9 * DAY), history: [{ d: dayOf(k5), r: "o" }] }, // 確認待ち（期日は 9 日先）→ 5 日目の正解で早まらない
+      "my-money": { ...B, playCount: 1, correctCount: 1, cleanCorrectStreak: 1, knownOnSight: true, masteryRank: 3, masteryAt: d14, lastPlayed: d14, lastRecallSuccessAt: d14, srsAdvancedOn: dayOf(d14), nextReviewAt: at(HOUR), history: [{ d: dayOf(d14), r: "o" }] }, // 14 日後の確認・すぐ → 即答・30 日後
+      "my-music": { ...B, playCount: 1, correctCount: 1, cleanCorrectStreak: 1, knownOnSight: true, masteryRank: 3, masteryAt: d14, lastPlayed: d14, lastRecallSuccessAt: d14, srsAdvancedOn: dayOf(d14), nextReviewAt: at(HOUR), history: [{ d: dayOf(d14), r: "o" }] }, // 14 日後の確認・ふつう → 身についた・21 日後
+      "my-dream": okStat(5, 30 * DAY, HOUR, { srsAdvancedOn: "2000-01-01" }), // 即答・30 日前（streak 3 → 4）→ 30 日後（下限）
+      "my-field": okStat(3, 3 * DAY, -10 * DAY, { srsAdvancedOn: "2000-01-01" }) // 期日が先の語の打ち間違いありの正解（Battle）→ 翌日（今のまま）
+    };
+    const p2 = await newPage({ storage: seed(s2) });
+    await p2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await p2.waitForTimeout(300);
+    const r2 = await p2.evaluate(async () => {
+      const s = await import("/js/stats.js");
+      const tick = () => new Promise((res) => setTimeout(res, 0));
+      const read = (id) => JSON.parse(localStorage.getItem("spelldash_word_stats"))[id];
+      let writes = 0;
+      const setItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (k === "spelldash_word_stats") writes++; return setItem.call(this, k, v); };
+      await tick();
+      writes = 0;
+      s.recordCorrect("my-dream", true);
+      s.recordRecallSuccess("my-dream", { clean: true, speed: "normal" });
+      await tick();
+      const dreamWrites = writes;
+      s.recordCorrect("my-paper", true);
+      s.recordRecallSuccess("my-paper", { clean: true, speed: "normal" });
+      s.recordCorrect("my-money", true);
+      s.recordRecallSuccess("my-money", { clean: true, speed: "fast" });
+      s.recordCorrect("my-music", true);
+      s.recordRecallSuccess("my-music", { clean: true, speed: "normal" });
+      s.recordCorrect("my-field", false);
+      s.recordRecallSuccess("my-field");
+      await tick();
+      Storage.prototype.setItem = setItem;
+      return { dreamWrites, ...Object.fromEntries(["paper", "money", "music", "dream", "field"].map((w) => [w, read(`my-${w}`)])) };
+    });
+    check("習熟度 段階 2 S1: 確認待ちの知ってた語を 5 日目に正解しても 14 日目の期日は早まらない（streak 2・段 4 のまま）", r2.paper?.nextReviewAt === s2["my-paper"].nextReviewAt && r2.paper.cleanCorrectStreak === 2 && r2.paper.masteryRank === 4, JSON.stringify({ due: r2.paper?.nextReviewAt, seeded: s2["my-paper"].nextReviewAt, streak: r2.paper?.cleanCorrectStreak, rank: r2.paper?.masteryRank }));
+    check("習熟度 段階 2 S5: 知ってた語の 14 日後の確認 → すぐなら 即答・30 日後、ふつうなら 身についた・21 日後", r2.money?.masteryRank === 5 && daysAhead(r2.money) === 30 && r2.music?.masteryRank === 4 && daysAhead(r2.music) === 21, JSON.stringify({ money: [r2.money?.masteryRank, daysAhead(r2.money)], music: [r2.music?.masteryRank, daysAhead(r2.music)] }));
+    check("習熟度 段階 2 S3: 即答の語（30 日あけたノーミス）→ 30 日後（streak 4 の 5 日ではない）・正解の 1 打の word_stats の書き込みは 1 回", r2.dream?.masteryRank === 5 && daysAhead(r2.dream) === 30 && r2.dreamWrites === 1, JSON.stringify({ rank: r2.dream?.masteryRank, days: daysAhead(r2.dream), writes: r2.dreamWrites }));
+    check("習熟度 段階 2 S1 の例外: 期日が先の語でも打ち間違いありの正解（Battle）は期日を翌日に（今のまま）", r2.field?.cleanCorrectStreak === 0 && daysAhead(r2.field) === 1, JSON.stringify({ streak: r2.field?.cleanCorrectStreak, days: daysAhead(r2.field) }));
+    check("習熟度 段階 2（書き手の直呼び）: schema_version は \"6\" のまま・エラー0", (await p2.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "6" && p2.errors.length === 0, p2.errors[0] ?? "");
+    await p2.close();
+  }
+
+  // ---- PR #159 のレビュー対応（docs/SPEC_MASTERY.md §11.6）: 信頼された keydown でも code の無いキーは画面キーボードの箱（3）・
+  // 別解の道の後の初見（1）・その日の × で下がった語を同じ日の Recall Loop の ○ で戻さない（5。語数の回と 60 秒の回のパネル） ----
+  {
+    // 3. iPhone・Android の画面キーボードの keydown は信頼されたイベントでも code が空。CDP で同じ形の keydown を送る → 箱は en.touch.study（物理キーの箱に入れない）。
+    // 比べる: code のある信頼された keydown（KeyR など。page.press と同じ）は en.kbd.study
+    const page = await open(seed(KEEP));
+    const cdp = await page.context().newCDPSession(page);
+    const sendKey = (code) => async (ch) => {
+      const vk = ch.toUpperCase().charCodeAt(0);
+      await page.focus("#input");
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: ch, code: code(ch), text: ch, unmodifiedText: ch, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: ch, code: code(ch), windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+    };
+    const boxes = async () => ({ touch: await boxLen(page, "en.touch.study"), kbd: await boxLen(page, "en.kbd.study") });
+    const id1 = await toFirstAnswer(page);
+    const b0 = await boxes();
+    const r1 = id1 ? await typeCurrent(page, { wait: 400, key: sendKey(() => "") }) : null;
+    const b1 = await boxes();
+    const st1 = id1 ? await statOf(page, id1) : null;
+    check("習熟度 PR159-3: code の無い信頼された keydown（画面キーボード）で打った初めての答え → 箱は en.touch.study（物理キーの箱は増えない）・段 4（画面キーボードの線 2,100ms）", !!r1 && b1.touch - b0.touch === 1 && b1.kbd === b0.kbd && st1?.masteryRank === 4, JSON.stringify({ id: id1, b0, b1, rank: st1?.masteryRank, msg: r1?.msg }));
+    const id2 = await toFirstAnswer(page);
+    const r2 = id2 ? await typeCurrent(page, { wait: 400, key: sendKey((ch) => `Key${ch.toUpperCase()}`) }) : null;
+    const b2 = await boxes();
+    check("習熟度 PR159-3: code のある信頼された keydown（物理キー KeyR など）→ 箱は en.kbd.study", !!r2 && b2.kbd - b1.kbd === 1 && b2.touch === b1.touch, JSON.stringify({ id: id2, b1, b2 }));
+    check("習熟度 PR159-3: エラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+  {
+    // 1. 別解の道: 「話す」に talk（別解）→ 答えを見せるが × は記録しない（答えを見た印だけ）→ speak を打ち直す（答えに数えない・correctCount 1）。
+    // その語のノーミス・すぐの次の答えでも知ってたにならず、段は初めての答えの枝を通らない（日時の無い語なので翌日の答えと同じ）
+    const sp = await newPage({ storage: { spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" } });
+    await sp.goto(BASE + "/index.html?words=english-speak", { waitUntil: "networkidle" });
+    await sp.waitForTimeout(900);
+    for (const ch of "talk") await sp.press("#input", ch);
+    await sp.waitForTimeout(400);
+    const msg = (await sp.textContent("#message")).trim();
+    const seen = await sp.evaluate(async () => {
+      const m = await import("/js/mastery.js");
+      const s = JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")["english-speak"] ?? {};
+      return { s, first: m.isFirstAnswer(s), ctxFirst: m.answerContext(s, Date.now() + 86400000).firstAnswer };
+    });
+    check("習熟度 PR159-1: 別解（talk）を打つと答えを見た印（answerSeenAt）が付き、× は記録しない・初見でなくなる", msg.includes("talk") && msg.includes("speak") && typeof seen.s.answerSeenAt === "string" && (seen.s.recallFail ?? 0) === 0 && !seen.s.lastRecallFailAt && !seen.s.lastRecallSuccessAt && seen.first === false && seen.ctxFirst === false, JSON.stringify({ msg, ...seen }));
+    for (const ch of "speak") await sp.press("#input", ch);
+    await sp.waitForTimeout(400);
+    const after = await sp.evaluate(async () => {
+      const read = () => JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")["english-speak"] ?? {};
+      const retype = read();
+      const s = await import("/js/stats.js");
+      s.recordCorrect("english-speak", true);
+      s.recordRecallSuccess("english-speak", { clean: true, speed: "fast" });
+      await new Promise((r) => setTimeout(r, 0));
+      return { retype, next: read() };
+    });
+    check("習熟度 PR159-1: 打ち直しは答えに数えない（correctCount 1・自力正解の日時なし）。次のノーミス・すぐでも知ってたにならず段 2・期日は翌日（streak 1）", after.retype.correctCount === 1 && !after.retype.lastRecallSuccessAt && after.next.knownOnSight !== true && after.next.masteryRank === 2 && after.next.cleanCorrectStreak === 1, JSON.stringify(after));
+    check("習熟度 PR159-1: エラー0", sp.errors.length === 0, sp.errors[0] ?? "");
+    await sp.close();
+  }
+  {
+    // 5. その日の × で段が下がった語（段 2 → 1）は、同じ日の Recall Loop の ○ で 2 に戻さない → パネルに「下がった」
+    const cloud2 = { "my-cloud": okStat(2, 3 * DAY, DAY, { cleanCorrectStreak: 1 }) }; // 段 2・3 日前・期日は昨日
+    const revealed = (page) => page.evaluate(() => /^[a-z]/i.test(document.getElementById("word")?.textContent.trim() ?? ""));
+    // 今の語を答え表示（×）→ 見せた綴りを打ち直す。次の語（か完了パネル）を待つ
+    async function failCurrent(page) {
+      const n = await shown(page);
+      for (let k = 0; k < 10 && !(await revealed(page)) && !(await panelOpen(page)); k++) {
+        await page.press("#input", "Enter");
+        await waitUntil(() => revealed(page), 400);
+      }
+      const en = enOf(await curId(page));
+      for (const ch of en) await page.press("#input", ch);
+      await waitUntil(async () => (await shown(page)) > n || (await panelOpen(page)), 5000);
+    }
+    // 語数の回（?words=my-cloud。決めた語だけの回なので Recall Loop の後もその語が出る）
+    const page = await newPage({ storage: seed({ ...KEEP, ...cloud2 }, { words: ["cloud", "tiger"] }) });
+    await page.addInitScript(PROBE);
+    await page.goto(BASE + "/index.html?words=my-cloud&hintms=600000", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await shown(page)) >= 1, 5000);
+    await page.waitForTimeout(600);
+    await failCurrent(page);
+    const again = await curId(page);
+    if (again === "my-cloud" && !(await panelOpen(page))) await typeCurrent(page);
+    await waitUntil(() => panelOpen(page), 5000);
+    const lines = await page.$$eval("#resultPanel .rank-moves", (els) => els.map((e) => e.textContent.trim()));
+    const st = await statOf(page, "my-cloud");
+    check("習熟度 PR159-5 語数の回: 段 2 の語を × → 打ち直し → Recall Loop で自力で打てる → 段 1 のまま、完了パネルに「習熟度が下がった: cloud（まだ）」", again === "my-cloud" && st?.masteryRank === 1 && !!st.lastRecallSuccessAt && st.masteryDownAt === st.lastRecallFailAt && lines.some((l) => l.startsWith("習熟度が下がった:") && l.includes("cloud（まだ）")), JSON.stringify({ again, rank: st?.masteryRank, downAt: st?.masteryDownAt, failAt: st?.lastRecallFailAt, lines }));
+    check("習熟度 PR159-5 語数の回: エラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+
+    // 60 秒の回（?t=10）: 同じ流れ → 語チップは まだ の群で「下がった」
+    const p60 = await open(seed({ ...KEEP, ...cloud2 }, { words: ["cloud", "tiger"], spelldash_set_size: "60s" }), { url: "/index.html?t=10&hintms=600000" });
+    const order = [];
+    let failed = false;
+    for (let i = 0; i < 6 && !(await panelOpen(p60)); i++) {
+      const id = await curId(p60);
+      order.push(enOf(id));
+      if (id === "my-cloud" && !failed) {
+        failed = true;
+        await failCurrent(p60);
+      } else {
+        await typeCurrent(p60);
+        if (id === "my-cloud") break; // Recall Loop で打てた。あとは時間切れを待つ
+      }
+      await p60.waitForTimeout(80);
+    }
+    await waitUntil(() => panelOpen(p60), 14000);
+    const chip = await p60.evaluate(() => {
+      const el = document.querySelector('#resultPanel .rank-group .word-chip[data-speak="cloud"]');
+      return { text: el?.textContent.replace(/\s+/g, " ").trim() ?? "", group: el?.closest(".rank-group")?.querySelector(".rank__name")?.textContent.trim() ?? "" };
+    });
+    const st60 = await statOf(p60, "my-cloud");
+    check("習熟度 PR159-5 60 秒の回: 段 2 の語を × → Recall Loop で打てても段 1、語チップは まだ の群で「下がった」", order.filter((w) => w === "cloud").length === 2 && st60?.masteryRank === 1 && chip.group === "まだ" && chip.text.endsWith("下がった"), JSON.stringify({ order, rank: st60?.masteryRank, chip }));
+    check("習熟度 PR159-5 60 秒の回: エラー0", p60.errors.length === 0, p60.errors[0] ?? "");
+    await p60.close();
   }
 
   // ---- §9.1-7 タイピングの 2 ページは mastery.js・masteryMeta.js を読まない ----

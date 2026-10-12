@@ -1,6 +1,6 @@
 // 単語ごとの習熟度（js/mastery.js・js/masteryMeta.js と、js/stats.js の書き手）の単体テスト。ブラウザなしで数秒で終わる:
 //   node scripts/test-mastery.mjs
-// 失敗が 1 つでもあれば終了コード 1。定義は docs/SPEC_MASTERY.md（§3・§7・§9.3）。
+// 失敗が 1 つでもあれば終了コード 1。定義は docs/SPEC_MASTERY.md（§3・§6・§7・§9.3）。
 // 日付は固定値、ローカル日の境界は時間帯を Asia/Tokyo に固定して確かめる（書き手の節だけは今の時刻からの相対で種を作る）。
 process.env.TZ = "Asia/Tokyo";
 
@@ -25,8 +25,15 @@ import {
   rankHtml,
   rankBasis,
   rankNext,
-  holdBeforeDue
+  holdBeforeDue,
+  SRS_STEPS,
+  MAX_INTERVAL_DAYS,
+  RANK_FLOOR_DAYS,
+  intervalAfter,
+  keepLaterDue,
+  unseenFailCap
 } from "../js/mastery.js";
+import { localDay, dayDiff } from "../js/retentionCalc.js";
 import {
   BOX_KEYS,
   COLD_FAST_MS,
@@ -439,6 +446,73 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   eq("記録なし → 出す", holdBeforeDue(undefined, NOW), false);
 }
 
+// ── 14. 復習の間隔とのつなぎ（段階 2: S2・S3 の intervalAfter、S1 の keepLaterDue）──────────
+{
+  const src = readFileSync(new URL("../js/stats.js", import.meta.url), "utf8");
+  const table = /const REVIEW_INTERVAL_DAYS = \[([^\]]+)\]/.exec(src);
+  eq("SRS_STEPS は js/stats.js の REVIEW_INTERVAL_DAYS の写し（同じ値）", SRS_STEPS, table ? table[1].split(",").map((n) => Number(n.trim())) : null);
+  eq("上限 30 日・下限 身についた 7 日／即答 30 日", [MAX_INTERVAL_DAYS, RANK_FLOOR_DAYS[4], RANK_FLOOR_DAYS[5], RANK_FLOOR_DAYS[3] ?? 0], [30, 7, 30, 0]);
+  // 予定どおり続ける人: gap ＝ 前の間隔、streakDays ＝ streak の間隔。段はその列で実際に付く段（gap 6 以上で 4、gap 21 ですぐなら 5）
+  const sched = [];
+  for (let k = 1; k < SRS_STEPS.length; k++) {
+    const gap = SRS_STEPS[k - 1];
+    const rank = gap >= 20 ? 5 : gap >= 6 ? 4 : 3;
+    sched.push(intervalAfter({ streakDays: SRS_STEPS[k], gap, rank, speed: rank === 5 ? "fast" : "normal" }));
+  }
+  eq("予定どおりの列 1→2→3→5→7→10→14→21→30 は今と同じ（credit も下限も streak の間隔を超えない）", [1, ...sched], SRS_STEPS);
+  eq("予定どおりの列（段 3 のまま・速さ unknown でも同じ）", SRS_STEPS.slice(1).map((d, i) => intervalAfter({ streakDays: d, gap: SRS_STEPS[i], rank: 3, speed: "unknown" })), SRS_STEPS.slice(1));
+  eq("習得の後（streak 10・gap 30）→ 30", intervalAfter({ streakDays: 30, gap: 30, rank: 5, speed: "normal" }), 30);
+  eq("知ってた語の初見（gap なし）→ 14（credit なし）", intervalAfter({ streakDays: 14, gap: null, rank: 4, speed: "fast" }), 14);
+  eq("知ってた語の確認（gap 14）: すぐ → 即答 → 30 日", intervalAfter({ streakDays: 2, gap: 14, rank: 5, speed: "fast" }), 30);
+  eq("知ってた語の確認（gap 14）: ふつう → 身についた → 21 日", intervalAfter({ streakDays: 2, gap: 14, rank: 4, speed: "normal" }), 21);
+  eq("その次（gap 21）→ 30 日", intervalAfter({ streakDays: 3, gap: 21, rank: 4, speed: "normal" }), 30);
+  eq("段 4 の語の × の翌日（streak 1・gap 1）→ 7 日（下限）", intervalAfter({ streakDays: 1, gap: 1, rank: 4, speed: "normal" }), 7);
+  eq("即答から × で 身についた の語の翌日（Recall Loop で streak 1 → 2）→ 7 日", intervalAfter({ streakDays: 2, gap: 1, rank: 4, speed: "unknown" }), 7);
+  eq("段 5 の下限 30 日（gap 1 でも）", intervalAfter({ streakDays: 2, gap: 1, rank: 5, speed: "normal" }), 30);
+  eq("段 2・段 3 には下限が無く、gap 6 未満は credit も無い（gap 1 → streak の間隔 1 のまま）", intervalAfter({ streakDays: 1, gap: 1, rank: 2, speed: "normal" }), 1);
+  eq("credit は gap 6 から（gap 5 → credit なし・gap 6 → 7）", [intervalAfter({ streakDays: 1, gap: 5, rank: 3, speed: "normal" }), intervalAfter({ streakDays: 1, gap: 6, rank: 3, speed: "normal" })], [1, 7]);
+  // 1 日遅れ（期日には前の答えの時刻が付き、回を始めた時点で期日が来た語だけを積むので、毎日同じ時刻に学ぶ人でもふつうに起きる）: gap ＝ 間隔 + 1
+  const late1 = [];
+  for (let k = 1; k < SRS_STEPS.length; k++) {
+    const gap = SRS_STEPS[k - 1] + 1;
+    const rank = gap >= 20 ? 5 : gap >= 6 ? 4 : 3;
+    late1.push(intervalAfter({ streakDays: SRS_STEPS[k], gap, rank, speed: rank === 5 ? "fast" : "normal" }));
+  }
+  eq("1 日遅れ（gap 2・3・4・6・8・11・15・22）でも表を飛ばさない（2→3→5→7→10→14→21→30。今と同じ）", late1, SRS_STEPS.slice(1));
+  eq("× の後に Recall Loop が無い語（streak 0 → 翌日のノーミスで streak 1・gap 1）→ 1 日（今と同じ。2 日にしない）", intervalAfter({ streakDays: 1, gap: 1, rank: 2, speed: "normal" }), 1);
+  eq("gap 40（遅れて戻った）→ 30（上限）", intervalAfter({ streakDays: 3, gap: 40, rank: 3, speed: "normal" }), 30);
+  eq("gap 30 → 30（表の最後より長い gap は 30）", intervalAfter({ streakDays: 5, gap: 30, rank: 4, speed: "unknown" }), 30);
+  eq("slow → credit も下限も無し（streak の間隔のまま）", intervalAfter({ streakDays: 3, gap: 30, rank: 4, speed: "slow" }), 3);
+  eq("速さ unknown（測らない答え・Battle）は credit あり", intervalAfter({ streakDays: 3, gap: 8, rank: 4, speed: "unknown" }), 10);
+  eq("gap が NaN → credit なし", intervalAfter({ streakDays: 2, gap: NaN, rank: 4, speed: "normal" }), 2);
+  eq("gap 0 → credit なし", intervalAfter({ streakDays: 2, gap: 0, rank: 4, speed: "normal" }), 2);
+  eq("gap −1（時計の戻り）→ credit なし", intervalAfter({ streakDays: 2, gap: -1, rank: 5, speed: "fast" }), 2);
+  eq("gap が null・文字・欠けている → credit なし", [intervalAfter({ streakDays: 2, gap: null, rank: 4 }), intervalAfter({ streakDays: 2, gap: "14", rank: 4 }), intervalAfter({ streakDays: 2, rank: 4 })], [2, 2, 2]);
+  eq("streak が進まなかった答え（streakDays 0）でも credit（gap 6 → 7）・gap 5 なら 0（recordCorrect が決めた期日のまま）", [intervalAfter({ streakDays: 0, gap: 6, rank: 3, speed: "normal" }), intervalAfter({ streakDays: 0, gap: 5, rank: 3, speed: "normal" })], [7, 0]);
+  eq("streak の間隔より短くしない（期日前の答え: streakDays 21・gap 2 → 21）", intervalAfter({ streakDays: 21, gap: 2, rank: 3, speed: "normal" }), 21);
+  eq("引数なし・崩れた引数 → 0", [intervalAfter(), intervalAfter({ streakDays: NaN, gap: NaN })], [0, 0]);
+
+  const NOW = at("2026-10-12", 9);
+  const fut10 = iso("2026-10-22", 9);
+  const fut5 = iso("2026-10-17", 9);
+  const past = iso("2026-10-10", 9);
+  eq("keepLaterDue: 未来の期日（10 日後）は新しい期日（5 日後）より早めない", keepLaterDue(fut10, fut5, NOW), fut10);
+  eq("keepLaterDue: 未来の期日（5 日後）より新しい期日（10 日後）が後なら新しい方", keepLaterDue(fut5, fut10, NOW), fut10);
+  eq("keepLaterDue: 過ぎた期日は新しい方", keepLaterDue(past, fut5, NOW), fut5);
+  eq("keepLaterDue: 今ちょうどの期日は新しい方", keepLaterDue(new Date(NOW).toISOString(), fut5, NOW), fut5);
+  eq("keepLaterDue: 前の期日が無い・読めない → 新しい方", [keepLaterDue(null, fut5, NOW), keepLaterDue(undefined, fut5, NOW), keepLaterDue("x", fut5, NOW)], [fut5, fut5, fut5]);
+  eq("keepLaterDue: 新しい期日が読めなければ前の期日を残す（どちらも読めなければ新しい方）", [keepLaterDue(fut10, "x", NOW), keepLaterDue(null, null, NOW)], [fut10, null]);
+
+  // unseenFailCap: この端末の段が見ていない ×（2 台目・古い版で答えた）がある語は、S3 の下限を 1 段下の段で見る（解決済みでも）
+  const at30 = iso("2026-09-12", 12);
+  const failY = iso("2026-10-11", 12);
+  const okY = iso("2026-10-11", 12, 10);
+  eq("unseenFailCap: 段 5・masteryAt より後の × を 2 台目で打ち直した（解決済み）→ 4（rankOf は 5 のまま）", [unseenFailCap({ masteryRank: 5, masteryAt: at30, lastRecallFailAt: failY, lastRecallSuccessAt: okY }), rankOf({ masteryRank: 5, masteryAt: at30, lastRecallFailAt: failY, lastRecallSuccessAt: okY })], [4, 5]);
+  eq("unseenFailCap: 未解決（最後が ×）でも 1 段下（rankOf と同じ段）", unseenFailCap({ masteryRank: 5, masteryAt: at30, lastRecallFailAt: failY, lastRecallSuccessAt: at30 }), 4);
+  eq("unseenFailCap: 自分で書いた ×（masteryAt と同じ文字列）・× なし → null", [unseenFailCap({ masteryRank: 4, masteryAt: failY, lastRecallFailAt: failY }), unseenFailCap({ masteryRank: 5, masteryAt: at30, lastRecallSuccessAt: okY })], [null, null]);
+  eq("unseenFailCap: 段 1 は 1 のまま・段の欄が無い語（initialRank で読む）・記録なし → null", [unseenFailCap({ masteryRank: 1, masteryAt: at30, lastRecallFailAt: failY }), unseenFailCap({ lastRecallFailAt: failY, lastRecallSuccessAt: okY }), unseenFailCap(undefined)], [1, null, null]);
+}
+
 // ── 15. 書き手（js/stats.js）: 同じ写しに段を書く・答える前の stat の控え・確かめの集計 ─────────
 // js/stats.js は js/sync.js などを通じて window を読むので、読み込む前に最小の代わりを置く（DOM は使わない）
 {
@@ -505,6 +579,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   await nextTask();
   let s = read().w;
   eq("8 日あけたノーミス: 3 → 4", s.masteryRank, 4);
+  eq("8 日あけたノーミス: 期日は 10 日後（S2: gap 8 → 10。streak 4 の 5 日より長い。段 4 の下限 7 日）", Math.round((Date.parse(s.nextReviewAt) - Date.now()) / DAY), 10);
   ok("masteryAt は書いた lastRecallSuccessAt と同じ文字列", s.masteryAt === s.lastRecallSuccessAt);
   ok("書いた直後は rankOf === masteryRank", consistent(s));
   eq("正解の 1 打で word_stats の保存は 1 回・mastery_meta は 0 回", [writesOf("spelldash_word_stats"), writesOf("spelldash_mastery_meta")], [1, 0]);
@@ -535,7 +610,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   eq("× も確かめに数える", getMasteryMeta().check.rank, { 4: { 1: [0, 1] } });
 
   // 初見の直し: 出題 2 回・答えなしでノーミス → 知ってた
-  seed({ k: base({ playCount: 2, cleanCorrectStreak: 0 }), f: base({ playCount: 1, cleanCorrectStreak: 0 }) });
+  seed({ k: base({ playCount: 2, correctCount: 0, cleanCorrectStreak: 0 }), f: base({ playCount: 1, correctCount: 0, cleanCorrectStreak: 0 }) }); // 出題だけの語は答えの綴りを見ていない（correctCount 0）
   await nextTask();
   study("k", "fast");
   study("f", "unknown");
@@ -591,6 +666,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   await nextTask();
   eq("知ってた語の最初の確認ですぐ → 即答", read().kc.masteryRank, 5);
   eq("確認の前に別の日の答えがある知ってた語（streak 2）は 14 日では即答にしない", read().k2.masteryRank, 4);
+  eq("確認の後の期日: 即答 → 30 日後（S3）・身についた（gap 14）→ 21 日後（S2）", [read().kc, read().k2].map((x) => Math.round((Date.parse(x.nextReviewAt) - Date.now()) / DAY)), [30, 21]);
 
   // 初めてで「すぐ」だった語の次の答え（firstFast）
   seed({ ff: base({ masteryRank: 4, masteryAt: ago(2), knownOnSight: true, cleanCorrectStreak: 1, lastRecallSuccessAt: ago(2) }) });
@@ -670,6 +746,218 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
     }
   }
 
+  // ── 段階 2（S1〜S5）: 偽の時計で書き手を何日も回す。毎日 12:00 に、期日が来ている語（isReviewDue と同じ「期日 ≤ 今」）にだけ答える人 ──
+  {
+    const RealDate = Date;
+    let clock = 0;
+    class FakeDate extends RealDate {
+      constructor(...a) {
+        if (a.length === 0) super(clock);
+        else super(...a);
+      }
+      static now() {
+        return clock;
+      }
+    }
+    const D0 = "2026-01-05";
+    const dayAt = (n, h = 12, m = 0) => {
+      const d = new RealDate(at(D0, h, m));
+      d.setDate(d.getDate() + n);
+      return d.getTime();
+    };
+    const dayOfDue = (st) => dayDiff(D0, localDay(new RealDate(Date.parse(st.nextReviewAt))));
+    const fresh = () => base({ playCount: 1, correctCount: 0, cleanCorrectStreak: 0, lastPlayed: null });
+    const answer = (id, how) => {
+      if (how === "x") {
+        recordRecallFail(id); // 答え表示（×）
+        recordCorrect(id, false); // 答えを見て打ち直す（答えに数えない。期日は翌日）
+      } else if (how === "typo") {
+        recordCorrect(id, false); // Battle の打ち間違いありの正解（引数なし）
+        recordRecallSuccess(id);
+      } else study(id, how);
+    };
+    // from 日の翌日から last 日まで、期日が来た日にだけ答える。plan(day) → 答え方（"fast" | "normal" | "slow" | "x" | "typo"）。答えた日・段・次の期日の日を返す
+    const follow = async (id, from, last, plan = () => "normal") => {
+      const log = [];
+      for (let d = from + 1; d <= last; d++) {
+        clock = dayAt(d);
+        if (!(Date.parse(read()[id].nextReviewAt) <= clock)) continue;
+        const how = plan(d);
+        if (how === "x") clock = dayAt(d, 11); // × の日は 11:00 に × → 11:10 に Recall Loop（翌日 12:00 には期日が来ている）
+        answer(id, how);
+        await nextTask();
+        if (how === "x") {
+          clock = dayAt(d, 11, 10); // Recall Loop: 同じ回の後で、自力で打てる
+          study(id, "normal");
+          await nextTask();
+        }
+        const st = read()[id];
+        log.push({ d, rank: st.masteryRank, next: dayOfDue(st), streak: st.cleanCorrectStreak });
+      }
+      return log;
+    };
+    globalThis.Date = FakeDate;
+    try {
+      // apple: 初見でノーミス・すぐ（既定の線）→ 身についた・14 日後。14 日目にすぐ（本人の基準）→ 即答・30 日後。あとは 30 日ごと
+      clock = dayAt(0);
+      seed({ apple: fresh(), apple3: fresh(), apple4: fresh(), early: fresh(), slip: fresh(), kt: fresh() });
+      await nextTask();
+      for (const id of ["apple", "apple3", "early", "slip", "kt"]) study(id, "fast");
+      study("apple4", "normal"); // 初見でふつうの速さ → 思い出せる
+      await nextTask();
+      eq("apple 0 日目: 知ってた・身についた・14 日後（初見に S2 は当てない）", [read().apple.knownOnSight, read().apple.masteryRank, dayOfDue(read().apple)], [true, 4, 14]);
+      const apple = await follow("apple", 0, 106, (d) => (d === 14 ? "fast" : "normal"));
+      eq("apple の道: 106 日までに出るのは 0・14・44・74・104 日の 5 回", [0, ...apple.map((e) => e.d)], [0, 14, 44, 74, 104]);
+      eq("apple の道: 14 日目から即答のまま、次はいつも 30 日後", apple.map((e) => [e.rank, e.next - e.d]), [[5, 30], [5, 30], [5, 30], [5, 30]]);
+      const apple4 = await follow("apple4", 0, 106, (d) => (d === 14 ? "fast" : "normal"));
+      eq("0 日目の速さによらない（初見で 思い出せる → 14 日目にすぐで即答。同じ 5 回）", [read().apple4.masteryRank, 0, ...apple4.map((e) => e.d)], [5, 0, 14, 44, 74, 104]);
+      const apple3 = await follow("apple3", 0, 100, (d) => (d === 35 ? "fast" : "normal"));
+      eq("14 日目がふつうの速さ → 身についた・21 日後（S2）、35 日目にすぐで即答・30 日後: 0・14・35・65・95 日", [0, ...apple3.map((e) => e.d)], [0, 14, 35, 65, 95]);
+      eq("14 日目がふつう → 4・21 日後、35 日目 → 5・30 日後", apple3.slice(0, 2).map((e) => [e.rank, e.next - e.d]), [[4, 21], [5, 30]]);
+
+      // S1: 1〜13 日に Challenge などで答えても期日は早まらない（streak は進む。確認待ちではなくなる）
+      clock = dayAt(5);
+      const dueBefore = read().early.nextReviewAt;
+      study("early", "normal");
+      await nextTask();
+      eq("S1: 5 日目に正解しても 14 日目の期日のまま（同じ文字列）・streak 2・段 4 のまま", [read().early.nextReviewAt === dueBefore, read().early.cleanCorrectStreak, read().early.masteryRank, isKnownWaiting(read().early)], [true, 2, 4, false]);
+      // S1 の例外: 打ち間違いありの正解（Battle）は今のまま期日を翌日に
+      clock = dayAt(6);
+      answer("early", "typo");
+      await nextTask();
+      eq("S1 の例外: 期日が先でも、打ち間違いありの正解は期日を翌日に（今のまま）", [dayOfDue(read().early), read().early.cleanCorrectStreak], [7, 0]);
+
+      // 即答の語が 44 日目に 1 打ミス（appel）: 身についた → 翌日から 7・10・14・21 日（S2・S3）→ 97 日目にすぐで即答・30 日後
+      const slipLog = await follow("slip", 0, 130, (d) => (d === 14 || d === 97 ? "fast" : d === 44 ? "x" : "normal"));
+      eq("即答の語の 44 日目の appel: 答える日は 0・14・44・45・52・62・76・97・127", [0, ...slipLog.map((e) => e.d)], [0, 14, 44, 45, 52, 62, 76, 97, 127]);
+      eq("44 日目に 即答 → 身についた（Recall Loop は同じ日なので動かない）、97 日目にすぐで 即答", slipLog.map((e) => e.rank), [5, 4, 4, 4, 4, 4, 5, 5]);
+      eq("44 日目の翌日は 1 日後、45 日目から 7・10・14・21 日後、97 日目から 30 日後", slipLog.slice(1).map((e) => e.next - e.d), [1, 7, 10, 14, 21, 30, 30]);
+
+      // 知ってた語 → 即答 → 打ち間違いありの正解（streak 0）→ 10 日あけたノーミス（streak 1）: 伸ばさない（確認待ちと読み違えない）→ 翌日から 30 日
+      clock = dayAt(14);
+      study("kt", "fast");
+      await nextTask();
+      clock = dayAt(20);
+      answer("kt", "typo");
+      await nextTask();
+      clock = dayAt(30);
+      study("kt", "normal");
+      await nextTask();
+      const kt30 = read().kt;
+      eq("知ってた語が打ち間違いの後に streak 1 に戻る答えは伸ばさない（翌日）・確認待ちと読まない・段 5 のまま", [kt30.cleanCorrectStreak, dayOfDue(kt30) - 30, isKnownWaiting(kt30), kt30.masteryRank], [1, 1, false, 5]);
+      clock = dayAt(31);
+      study("kt", "normal");
+      await nextTask();
+      eq("その翌日（streak 2）から即答の下限 30 日", [dayOfDue(read().kt) - 31, isKnownWaiting(read().kt), read().kt.masteryRank], [30, false, 5]);
+
+      // appel（初見で 1 打ミス）の後の道: 予定どおり来る人の期日は今と同じ（どの答えでも「今日 + streak の間隔」）
+      clock = dayAt(0, 9);
+      seed({ appel: fresh(), late: fresh() });
+      await nextTask();
+      for (const id of ["appel", "late"]) {
+        answer(id, "x");
+        await nextTask();
+        clock = dayAt(0, 9, 10);
+        study(id, "normal"); // Recall Loop で打てる
+        await nextTask();
+        clock = dayAt(0, 9);
+      }
+      eq("appel 0 日目: まだ → Recall Loop で あやふや・翌日", [read().appel.masteryRank, dayOfDue(read().appel), read().appel.cleanCorrectStreak], [2, 1, 1]);
+      const appel = await follow("appel", 0, 100, (d) => (d === 63 ? "fast" : "normal"));
+      eq("appel の後の道: 1・3・6・11・18・28・42・63・93 日（間隔 1→2→3→5→7→10→14→21→30。今と同じ）", appel.map((e) => e.d), [1, 3, 6, 11, 18, 28, 42, 63, 93]);
+      eq("appel の後の道: どの答えでも次の期日は「今日 + streak の間隔」（今の SRS と同じ）", appel.every((e) => e.next - e.d === SRS_STEPS[Math.min(e.streak, SRS_STEPS.length) - 1]), true);
+      eq("appel の後の道の段: 翌日に 思い出せる、18 日目（gap 7）に 身についた、63 日目（gap 21・すぐ）に 即答", appel.map((e) => e.rank), [3, 3, 3, 3, 4, 4, 4, 5, 5]);
+      eq("appel の後の道: 93 日目に習得（streak 10。今と同じ）", [read().appel.cleanCorrectStreak, read().appel.mastered], [10, true]);
+      // 遅れて戻った人の語は伸びる（今は streak の間隔のまま）
+      const lateBack = [];
+      clock = dayAt(1);
+      study("late", "normal"); // 1 日目は予定どおり（期日は 3 日目）
+      await nextTask();
+      clock = dayAt(40); // 37 日あけて戻る
+      study("late", "normal");
+      await nextTask();
+      lateBack.push(read().late.cleanCorrectStreak, dayOfDue(read().late) - 40, read().late.masteryRank);
+      eq("遅れて戻った語（37 日あけた正解）: streak 3 の 3 日ではなく 30 日後（S2）・段 4", lateBack, [3, 30, 4]);
+
+      // 回の始まりより後の Recall Loop（12:00 の × → 12:10 に打てる）→ 毎日 12:00 に始める人: 期日（12:10）はまだ来ていないので翌日に回る
+      // （1 日遅れ。gap ＝ 間隔 + 1）。答える日も保持率の 7 日窓も今と同じ（gap 6 未満は credit なし。表を飛ばさない）。
+      // Challenge・Daily の ×（Recall Loop が無い）の後も今と同じ 1・2・4・7 日。毎日違う時刻に学ぶ人も同じ（値は今の書き手で回した結果）
+      clock = dayAt(0);
+      seed({ lp: fresh(), cx: fresh(), jt: fresh() });
+      await nextTask();
+      for (const id of ["lp", "cx", "jt"]) answer(id, "x");
+      await nextTask();
+      clock = dayAt(0, 12, 10);
+      study("lp", "normal");
+      await nextTask();
+      const route = { lp: [0], cx: [0], jt: [0] };
+      for (let d = 1; d <= 50; d++) {
+        for (const id of ["lp", "cx", "jt"]) {
+          clock = id === "jt" ? dayAt(d, 7 + ((d * 7) % 16), (d * 13) % 60) : dayAt(d);
+          if (!(Date.parse(read()[id].nextReviewAt) <= clock)) continue;
+          study(id, "normal");
+          await nextTask();
+          route[id].push(d);
+        }
+      }
+      const ret = JSON.parse(store.get("spelldash_retention") || "{}");
+      const w7day = (id) => (ret[id]?.w7 ? [dayDiff(D0, ret[id].w7.t), ret[id].w7.r] : null);
+      eq("12:10 の Recall Loop・毎日 12:00 に学ぶ人: 0・2・4・7・12・19・29・43 日（今と同じ。1 日遅れで表を飛ばさない）", route.lp, [0, 2, 4, 7, 12, 19, 29, 43]);
+      eq("その語の保持率の 7 日窓は 7 日目に測る（今と同じ）", w7day("lp"), [7, "o"]);
+      eq("Recall Loop の無い ×（Challenge・Daily）の後: 1・2・4・7・12・19・29・43 日（間隔 1→2→3→5→7→10→14。今と同じ）", route.cx, [0, 1, 2, 4, 7, 12, 19, 29, 43]);
+      eq("その語の 7 日窓（初めての自力正解は 1 日目）は 7 日目に測る（今と同じ）", w7day("cx"), [7, "o"]);
+      eq("毎日 7〜23 時のどこかで学ぶ人（Recall Loop の無い ×）: 1・2・5・8・13・20・31・45 日・7 日窓は 8 日目（今と同じ）", [route.jt, w7day("jt")], [[0, 1, 2, 5, 8, 13, 20, 31, 45], [8, "o"]]);
+
+      // 2 台目で × → Recall Loop（同期で解決済み）→ この端末で翌日ノーミス: 段 5 のまま読めても、S3 の下限は 1 段下（身についた の 7 日）
+      const yFail = new Date(dayAt(-1)).toISOString();
+      const yLoop = new Date(dayAt(-1, 12, 10)).toISOString();
+      const old30 = new Date(dayAt(-30)).toISOString();
+      const fromB = (over = {}) =>
+        base({ masteryRank: 5, masteryAt: old30, recallFail: 1, missCount: 1, cleanCorrectStreak: 1, srsAdvancedOn: localDay(new Date(dayAt(-1))), lastRecallFailAt: yFail, lastRecallSuccessAt: yLoop, nextReviewAt: new Date(dayAt(0, 12, 10)).toISOString(), history: [{ d: localDay(new Date(dayAt(-30))), r: "o" }], ...over });
+      clock = dayAt(0, 13);
+      seed({ dv: fromB(), dvx: fromB({ lastRecallSuccessAt: old30, cleanCorrectStreak: 0, nextReviewAt: yFail }), dv4: fromB({ masteryRank: 4 }) });
+      await nextTask();
+      eq("2 台目の × → Recall Loop の語は rankOf では段 5 のまま（解決済み。段階 1 の読み方）", rankOf(read().dv), 5);
+      for (const id of ["dv", "dvx", "dv4"]) study(id, "normal");
+      await nextTask();
+      const dueIn = (id) => Math.round((Date.parse(read()[id].nextReviewAt) - clock) / DAY);
+      eq("2 台目の × → Loop の翌日、この端末でノーミス: 段 5 の語は 7 日後（30 日にしない。同じ端末の × の後と同じ）", [dueIn("dv"), read().dv.cleanCorrectStreak], [7, 2]);
+      eq("2 台目の × のまま（未解決）の翌日: rankOf が 1 段下げて 身についた・7 日後", [read().dvx.masteryRank, dueIn("dvx")], [4, 7]);
+      eq("段 4 の語なら下限は段 3（無し）→ streak の間隔 2 日（同じ端末の × の後と同じ）", dueIn("dv4"), 2);
+      clock = dayAt(7, 13);
+      study("dv", "normal");
+      await nextTask();
+      eq("その次の答え（masteryAt が揃い、見ていない × は無い）は段 5 の下限 30 日", dueIn("dv"), 30);
+
+      // slow: 即答の語が遅い正解 → 身についた、credit も下限も無し（streak の間隔）
+      clock = dayAt(0);
+      seed({ sw: base({ masteryRank: 5, masteryAt: new Date(dayAt(-30)).toISOString(), lastRecallSuccessAt: new Date(dayAt(-30)).toISOString(), cleanCorrectStreak: 3, srsAdvancedOn: "2000-01-01", nextReviewAt: new Date(dayAt(-1)).toISOString() }) });
+      await nextTask();
+      study("sw", "slow");
+      await nextTask();
+      eq("即答の語の遅い正解（gap 30）: 身についた・streak 4 の 5 日後のまま（S2・S3 は当てない）", [read().sw.masteryRank, dayOfDue(read().sw)], [4, 5]);
+
+      // 同じ日の扱い（23:50 の × → 00:03 の ○）: その日の最初の答えではないので伸ばさない
+      clock = dayAt(0, 23, 50);
+      seed({ nt: base({ masteryRank: 4, masteryAt: new Date(dayAt(-10)).toISOString(), lastRecallSuccessAt: new Date(dayAt(-10)).toISOString(), cleanCorrectStreak: 5, srsAdvancedOn: "2000-01-01", nextReviewAt: new Date(dayAt(-1)).toISOString() }) });
+      await nextTask();
+      answer("nt", "x");
+      await nextTask();
+      clock = dayAt(1, 0, 3);
+      study("nt", "normal");
+      await nextTask();
+      eq("23:50 の × → 00:03 の ○ は同じ日の扱い: 段 3 のまま・期日は streak 1 の翌日（下限 7 日は当てない）", [read().nt.masteryRank, read().nt.cleanCorrectStreak, Math.round((Date.parse(read().nt.nextReviewAt) - clock) / DAY)], [3, 1, 1]);
+      clock = dayAt(2);
+      study("nt", "normal");
+      await nextTask();
+      eq("その翌日（gap 1。段 3）→ 段 3・2 日後（S2 の credit 2。段 3 に下限は無い）", [read().nt.masteryRank, dayOfDue(read().nt) - 2], [3, 2]);
+    } finally {
+      globalThis.Date = RealDate;
+      store.delete("spelldash_mastery_meta"); // この筋書きの確かめの集計（10 答えごとに保存された分）を次の節へ持ち越さない
+      forgetMasteryMeta();
+    }
+  }
+
   // 10 答えごとに 1 回だけ保存（変わっていれば）
   seed(Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`t${i}`, base({ masteryRank: 2, masteryAt: ago(2), lastRecallSuccessAt: ago(2), cleanCorrectStreak: 1 })])));
   await nextTask();
@@ -682,6 +970,210 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   eq("10 答え目で 1 回書く", writesOf("spelldash_mastery_meta"), 1);
   eq("その 10 答えの確かめ（段 2 × 帯 2-5 で 10 件）", JSON.parse(store.get("spelldash_mastery_meta")).check.rank, { 2: { "2-5": [10, 0] } });
   ok("段の欄は端末だけ: 同期の行を作る js/sync.js は mastery の欄を読まない（送る行は 15 列のまま）", Object.keys(read().t0).includes("masteryRank") && !readFileSync(new URL("../js/sync.js", import.meta.url), "utf8").includes("mastery"));
+  console.warn = quiet;
+}
+
+// ── 16. PR #159 のレビュー対応（1〜5）: 別解の道の後の初見・2 台目の確認待ち・物理キーの判定・2 つのタブの mastery_meta・同じ日の × の後の ○ ──
+// 書き手は §15 と同じ js/stats.js（同じモジュール）。偽の時計で日をまたぐ。2 つのタブは js/masteryMeta.js を別のモジュールとして 2 回読む（localStorage は共有）
+{
+  const W = await import("../js/stats.js");
+  const MM = await import("../js/masteryMeta.js");
+  const DAY = 86400000;
+  const RealDate = Date;
+  let clock = at("2026-10-01", 9);
+  class FakeDate extends RealDate {
+    constructor(...a) {
+      if (a.length === 0) super(clock);
+      else super(...a);
+    }
+    static now() {
+      return clock;
+    }
+  }
+  const blank = (over = {}) => ({ playCount: 1, correctCount: 0, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 0, mastered: false, masteredAt: null, lastPlayed: null, nextReviewAt: null, lastRecallFailAt: null, lastRecallSuccessAt: null, dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: null, ...over });
+  const seed = (map) => {
+    store.set("spelldash_word_stats", JSON.stringify(map));
+    forgetMasteryMeta();
+  };
+  const read = () => JSON.parse(store.get("spelldash_word_stats"));
+  const nextTask = () => new Promise((r) => setTimeout(r, 0));
+  const study = (id, speed = "normal") => {
+    W.recordCorrect(id, true);
+    W.recordRecallSuccess(id, { clean: true, speed });
+  };
+  const daysTo = (isoStr) => Math.round((RealDate.parse(isoStr) - clock) / DAY);
+  const quiet = console.warn;
+  console.warn = () => {};
+
+  // ---- 1. 別解を打って答えを見た語（acceptAlternative が答えを見せ、× を記録せず、打ち直しで recordCorrect(id, false)）は、翌日のノーミスでも知ってたにしない ----
+  eq("PR159-1: 答えの綴りを見た語（correctCount 1・答えの日時なし）は初見でない", isFirstAnswer(blank({ correctCount: 1 })), false);
+  eq("PR159-1: 答えを見た印（answerSeenAt）だけの語も初見でない", isFirstAnswer(blank({ answerSeenAt: iso("2026-10-01") })), false);
+  eq("PR159-1: 出題だけされて答えなかった語（correctCount 0・印なし）は今どおり初見", isFirstAnswer(blank({ playCount: 3 })), true);
+  const cAlt = answerContext(blank({ correctCount: 1 }), at("2026-10-02", 12));
+  eq("PR159-1: その語の answerContext は初めての答えでない（段 0・前の答えの日なし）", [cAlt.firstAnswer, cAlt.rank, cAlt.prevDay], [false, 0, null]);
+  eq("PR159-1: 段は初めての答えの枝を通らない（ノーミス・すぐでも 4 にせず 2、× は 1）", [nextRank(0, okA("fast"), cAlt), nextRank(0, NG, cAlt)], [2, 1]);
+  globalThis.Date = FakeDate;
+  try {
+    clock = at("2026-10-01", 9);
+    seed({ alt: blank(), seen: blank(), plain: blank({ playCount: 2 }), done: blank({ correctCount: 3, lastRecallSuccessAt: iso("2026-09-20"), cleanCorrectStreak: 2 }) });
+    await nextTask();
+    W.recordCorrect("alt", false); // 別解を打った後、見せた出題語を打ち直す（答えに数えない）
+    const seenFn = typeof W.recordAnswerSeen === "function" ? W.recordAnswerSeen : null;
+    seenFn?.("seen"); // 別解を打って答えを見たが、打ち直す前に時間切れ・離れた
+    seenFn?.("done"); // 答えの記録がある語には印を書かない（初見でないので要らない）
+    await nextTask();
+    eq("PR159-1: 別解の打ち直しは答えに数えない（日時なし・段なし・correctCount 1）", [read().alt.lastRecallSuccessAt, read().alt.masteryRank, read().alt.correctCount], [null, undefined, 1]);
+    eq("PR159-1: recordAnswerSeen は初見の語にだけ印を書く（答えの記録がある語には書かない）", [typeof read().seen.answerSeenAt, read().done.answerSeenAt], ["string", undefined]);
+    clock = at("2026-10-02", 12);
+    for (const id of ["alt", "seen", "plain"]) study(id, "fast");
+    await nextTask();
+    const r = read();
+    eq("PR159-1: 別解の道の翌日のノーミス・すぐ: 知ってたにならない・段 2（初めての答えの枝を通らない）・期日は翌日（streak 1）", [r.alt.knownOnSight === true, r.alt.masteryRank, r.alt.cleanCorrectStreak, daysTo(r.alt.nextReviewAt)], [false, 2, 1, 1]);
+    eq("PR159-1: 答えを見て打ち直さなかった語（印あり）も同じ（知ってたにならない・段 2）", [r.seen.knownOnSight === true, r.seen.masteryRank], [false, 2]);
+    eq("PR159-1: 出題だけの語は今どおり知ってた・段 4・14 日後", [r.plain.knownOnSight, r.plain.masteryRank, daysTo(r.plain.nextReviewAt)], [true, 4, 14]);
+
+    // ---- 2. 2 台目: knownOnSight（端末だけの欄）が届かない写しでも、同期する欄だけで確認待ちと読む ----
+    clock = at("2026-10-01", 9);
+    seed({ k1: blank() });
+    await nextTask();
+    study("k1", "fast"); // 初見のノーミス・すぐ → 知ってた・段 4・14 日後
+    await nextTask();
+    const dev1 = read().k1;
+    // 2 台目の写し（js/sync.js rowToStat は同期する 15 列だけを写す。knownOnSight・段の欄・history は届かない）
+    const { knownOnSight: _k, masteryRank: _r, masteryAt: _a, history: _h, ...dev2 } = dev1;
+    clock = at("2026-10-05", 9);
+    eq("PR159-2: 2 台目の写しでも確認待ち（isKnownWord・isKnownWaiting・holdBeforeDue が真、initialRank・rankOf が 3）", [isKnownWord(dev2), isKnownWaiting(dev2), holdBeforeDue(dev2, clock), initialRank(dev2), rankOf(dev2)], [true, true, true, 3, 3]);
+    eq("PR159-2: 2 台目の 14 日後の答えは知ってた語の最初の確認（knownCheck）", answerContext(dev2, at("2026-10-15", 9)).knownCheck, true);
+    clock = at("2026-10-15", 9);
+    seed({ k1: dev2 });
+    await nextTask();
+    study("k1", "fast");
+    await nextTask();
+    eq("PR159-2: 2 台目でも 14 日後の確認ですぐ → 即答・30 日後（1 台目と同じ）", [read().k1.masteryRank, daysTo(read().k1.nextReviewAt)], [5, 30]);
+    // 知ってたでない語は確認待ちの形（streak 1・recallFail 0・期日が最後の自力正解から 13 日以上先）にしない:
+    // 初めての答えが打ち間違いありの正解（Battle）→ 13 日あけたノーミス（streak 0 → 1・recallFail 0）は伸ばさない
+    clock = at("2026-10-01", 9);
+    seed({ bt: blank() });
+    await nextTask();
+    W.recordCorrect("bt", false);
+    W.recordRecallSuccess("bt");
+    await nextTask();
+    clock = at("2026-10-14", 9);
+    study("bt", "normal");
+    await nextTask();
+    const bt = read().bt;
+    eq("PR159-2: 打ち間違いありの正解の後に streak 1・recallFail 0 になる答えは伸ばさない（翌日）・知ってた／確認待ちと読まない・補充から外さない", [bt.cleanCorrectStreak, bt.recallFail, daysTo(bt.nextReviewAt), isKnownWord(bt), isKnownWaiting(bt), holdBeforeDue(bt, clock + 3600000)], [1, 0, 1, false, false, false]);
+
+    // ---- 5. その日の × で段が下がった語は、同じ日の ○（Recall Loop）で上げない。新しい語の × → ○ は今どおり 2 ----
+    clock = at("2026-10-12", 8);
+    seed({
+      dn: blank({ masteryRank: 2, masteryAt: iso("2026-10-09", 8), lastRecallSuccessAt: iso("2026-10-09", 8), cleanCorrectStreak: 1, correctCount: 1, srsAdvancedOn: "2026-10-09", nextReviewAt: iso("2026-10-10", 8) }),
+      nw: blank(),
+      r1: blank({ masteryRank: 1, masteryAt: iso("2026-10-11", 8), lastRecallFailAt: iso("2026-10-11", 8), recallFail: 1, missCount: 1, nextReviewAt: iso("2026-10-11", 8) })
+    });
+    await nextTask();
+    for (const id of ["dn", "nw", "r1"]) {
+      W.recordRecallFail(id); // 08:00 答え表示（×）
+      W.recordCorrect(id, false); // 答えを見て打ち直す（答えに数えない）
+      await nextTask();
+    }
+    const am = read();
+    eq("PR159-5: 段 2 の語の朝の × → 1（段を下げた答えの日時を masteryDownAt に）、新しい語の × → 1・段 1 の語の × → 1（下げていないので印なし）", [am.dn.masteryRank, am.dn.masteryDownAt === am.dn.lastRecallFailAt, am.nw.masteryRank, am.nw.masteryDownAt, am.r1.masteryRank, am.r1.masteryDownAt], [1, true, 1, undefined, 1, undefined]);
+    // 語の詳細の次の条件（rankNext）: 今日の × で下げた語は今日の ○ では上がらないので、前の答えの日＋1 日を言う（打ち直す前の未解決の間も）。
+    // 下げていない語（新しい語の × → 1・前の日から 1 の語の × → 1）は今日の ○ で上がるので日付なし（今どおり）
+    eq("PR159-5: 朝 × で下げた語の次の条件は「10月13日以降に 自力で思い出せると あやふや」（今日の ○ では上がらない）", rankNext(am.dn, "2026-10-12"), "10月13日以降に 自力で思い出せると あやふや");
+    eq("PR159-5: 下げていない段 1 の語（新しい語・前の日から 1 の語）の次の条件は今どおり日付なし", [rankNext(am.nw, "2026-10-12"), rankNext(am.r1, "2026-10-12")], ["自力で思い出せると あやふや", "自力で思い出せると あやふや"]);
+    clock = at("2026-10-12", 18);
+    for (const id of ["dn", "nw", "r1"]) study(id, "normal"); // 夕方 Recall Loop で自力で打てる
+    await nextTask();
+    const pm = read();
+    eq("PR159-5: 段 2 の語の朝 × → 夕方 ○ は 1 のまま（思い出せなかった日は 1 段下がる）", pm.dn.masteryRank, 1);
+    eq("PR159-5: 新しい語の × → ○ は今どおり 2・昨日の × の段 1 の語の今日の × → ○ も今どおり 2", [pm.nw.masteryRank, pm.r1.masteryRank], [2, 2]);
+    eq("PR159-5: 期日・streak は今と同じ（同じ日の ○ は伸ばさない: streak 1・翌日）", [pm.dn.cleanCorrectStreak, daysTo(pm.dn.nextReviewAt), pm.nw.cleanCorrectStreak, daysTo(pm.nw.nextReviewAt)], [1, 1, 1, 1]);
+    eq("PR159-5: 書いた直後も rankOf === masteryRank", ["dn", "nw", "r1"].every((id) => rankOf(pm[id]) === pm[id].masteryRank), true);
+    eq("PR159-5: 朝 × → 夕方 ○ の後も次の条件は「10月13日以降に」（今日もう一度思い出せても上がらない）・根拠は「10月12日に思い出せた」", [rankNext(pm.dn, "2026-10-12"), rankBasis(pm.dn, "2026-10-12")], ["10月13日以降に 自力で思い出せると あやふや", "10月12日に思い出せた"]);
+    eq("PR159-5: その語の翌日の次の条件は日付なし（翌日の ○ で上がる）", rankNext(pm.dn, "2026-10-13"), "自力で思い出せると あやふや");
+    // 文の約束を書き手で確かめる: 今日のもう一度の ○ では上がらない（文のとおり）
+    {
+      const c = answerContext(pm.dn, at("2026-10-12", 21));
+      eq("PR159-5: 次の条件の文のとおり、今日（21:00）もう一度の ○ では上がらない", [c.downToday, nextRank(c.rank, okA(), c)], [true, 1]);
+    }
+    clock = at("2026-10-13", 19);
+    study("dn", "normal");
+    await nextTask();
+    eq("PR159-5: 翌日のノーミス（gap 1）で 1 → 2（翌日以降の規則で上がる）・期日は streak 2 の 2 日後", [read().dn.masteryRank, daysTo(read().dn.nextReviewAt)], [2, 2]);
+    const cDown = answerContext({ masteryRank: 1, masteryAt: iso("2026-10-12", 8), masteryDownAt: iso("2026-10-12", 8), lastRecallFailAt: iso("2026-10-12", 8), lastRecallSuccessAt: iso("2026-10-09", 8), recallFail: 1 }, at("2026-10-12", 18));
+    eq("PR159-5: answerContext の downToday（今日 × で下げた）→ nextRank は同じ日の ○ で 1 のまま", [cDown.downToday, nextRank(1, okA(), cDown)], [true, 1]);
+    const cDown6 = answerContext({ masteryRank: 1, masteryAt: iso("2026-10-11", 23, 50), masteryDownAt: iso("2026-10-11", 23, 50), lastRecallFailAt: iso("2026-10-11", 23, 50), recallFail: 1 }, at("2026-10-12", 0, 3));
+    eq("PR159-5: 23:50 に下げて 00:03 の ○（6 時間未満は同じ日の扱い）も 1 のまま", [cDown6.downToday, nextRank(1, okA(), cDown6)], [true, 1]);
+    eq("PR159-5: 前の日に下げた語の今日の最初の ○（gap 1）は今どおり 2", nextRank(1, okA(), answerContext({ masteryRank: 1, masteryAt: iso("2026-10-11", 8), masteryDownAt: iso("2026-10-11", 8), lastRecallFailAt: iso("2026-10-11", 8), recallFail: 1 }, at("2026-10-12", 18))), 2);
+  } finally {
+    globalThis.Date = RealDate;
+  }
+
+  // ---- 3. 入力の経路: 物理キーとみなすのは、信頼された keydown で code が物理キーの名前のときだけ（iPhone・Android の画面キーボードは code が空・Unidentified・keyCode 229） ----
+  const kin = typeof MM.keyInputOf === "function" ? MM.keyInputOf : () => "missing";
+  eq(
+    "PR159-3: 物理キー（信頼された keydown・code が KeyA／Digit1／Minus／Space／Numpad1）→ kbd",
+    [kin({ isTrusted: true, key: "a", code: "KeyA", keyCode: 65 }), kin({ isTrusted: true, key: "1", code: "Digit1", keyCode: 49 }), kin({ isTrusted: true, key: "-", code: "Minus", keyCode: 189 }), kin({ isTrusted: true, key: " ", code: "Space", keyCode: 32 }), kin({ isTrusted: true, key: "1", code: "Numpad1", keyCode: 97 })],
+    ["kbd", "kbd", "kbd", "kbd", "kbd"]
+  );
+  eq(
+    "PR159-3: 画面のキーボード（信頼された keydown でも code が空・Unidentified・無い・keyCode 229）→ touch",
+    [kin({ isTrusted: true, key: "a", code: "", keyCode: 65 }), kin({ isTrusted: true, key: "Unidentified", code: "Unidentified", keyCode: 229 }), kin({ isTrusted: true, key: "a", code: "KeyA", keyCode: 229 }), kin({ isTrusted: true, key: "a", keyCode: 65 })],
+    ["touch", "touch", "touch", "touch"]
+  );
+  eq("PR159-3: 専用の画面キーボード（#osk の合成 keydown。isTrusted 偽）は今どおり touch", kin({ isTrusted: false, key: "a", code: "KeyA", keyCode: 65 }), "touch");
+
+  // ---- 4. 2 つのタブ: flush の直前に保存を読み直し、このタブで足した分（見本・集計の増分）だけを足して書く ----
+  {
+    const KEY = "spelldash_mastery_meta";
+    const BOX = "en.kbd.study";
+    store.delete(KEY);
+    const A = await import("../js/masteryMeta.js?tab=a");
+    const B = await import("../js/masteryMeta.js?tab=b");
+    A.forgetMasteryMeta();
+    B.forgetMasteryMeta();
+    const stored = () => JSON.parse(store.get(KEY) || "null");
+    A.noteSpeedSample(BOX, { t1: 1000, pc: 100 }); // どちらのタブも空の保存を読んだ後で足す
+    B.noteSpeedSample(BOX, { t1: 2000, pc: 200 });
+    A.noteRankCheck({ id: "a1", rankBefore: 3, gap: 2, ok: true });
+    B.noteRankCheck({ id: "b1", rankBefore: 3, gap: 2, ok: false });
+    A.notePendingFirstFast("pa", "prior");
+    B.notePendingFirstFast("pb", "own");
+    A.flushMasteryMeta();
+    B.flushMasteryMeta();
+    let s1 = stored();
+    eq("PR159-4: 2 つのタブが交互に書いても両方の見本が残る（A 1000・B 2000）", [s1?.speed?.[BOX]?.t1, s1?.speed?.[BOX]?.pc], [[1000, 2000], [100, 200]]);
+    eq("PR159-4: 集計は足し算（段 3 × 帯 2-5 で ○ 1・× 1）・控えの語も両方", [s1?.check?.rank?.["3"]?.["2-5"], Object.keys(s1?.check?.pending ?? {})], [[1, 1], ["pa", "pb"]]);
+    B.noteSpeedSample(BOX, { t1: 3000, pc: 300 });
+    B.flushMasteryMeta();
+    A.noteSpeedSample(BOX, { t1: 4000, pc: 400 });
+    A.noteRankCheck({ id: "a2", rankBefore: 3, gap: 3, ok: true });
+    A.flushMasteryMeta();
+    s1 = stored();
+    eq("PR159-4: もう 1 巡（B → A）でも 4 件とも残り、集計は ○ 2・× 1", [s1?.speed?.[BOX]?.t1, s1?.check?.rank?.["3"]?.["2-5"]], [[1000, 2000, 3000, 4000], [2, 1]]);
+    eq("PR159-4: 書いた後のメモリーは保存と同じ（A の基準にも B の見本が入る）", A.getSpeedBox(BOX).t1, [1000, 2000, 3000, 4000]);
+    // B の控えの語（pb）を A が数える（A は書いたときに読み直したので pb を知っている）→ 保存からも消える
+    A.noteRankCheck({ id: "pb", rankBefore: 4, gap: 1, ok: true });
+    A.flushMasteryMeta();
+    s1 = stored();
+    eq("PR159-4: もう一方のタブの控えの語を数えると firstFast に足して控えから消す（A の控え pa は残る）", [s1?.check?.firstFast?.own, Object.keys(s1?.check?.pending ?? {})], [[1, 0], ["pa"]]);
+    // 見本は各箱の最新 40 件: A が 30 件・B が 30 件を足して A → B の順に書くと、A の後ろ 10 件と B の 30 件
+    store.delete(KEY);
+    A.forgetMasteryMeta();
+    B.forgetMasteryMeta();
+    for (let i = 0; i < 30; i++) A.noteSpeedSample(BOX, { t1: 1000 + i, pc: null });
+    for (let i = 0; i < 30; i++) B.noteSpeedSample(BOX, { t1: 5000 + i, pc: null });
+    A.flushMasteryMeta();
+    B.flushMasteryMeta();
+    const t40 = stored()?.speed?.[BOX]?.t1 ?? [];
+    eq("PR159-4: 見本は箱ごとに最新 40 件（A の後ろ 10 件 → B の 30 件）・最初の中央値は先に書いた A が 20 件で決めた値のまま", [t40.length, t40[0], t40.at(-1), stored()?.check?.firstMedian?.[BOX]], [40, 1020, 5029, 1009.5]);
+    eq("PR159-4: 変わっていなければ書かない", [A.flushMasteryMeta(), B.flushMasteryMeta()], [false, false]);
+    store.delete(KEY);
+    A.forgetMasteryMeta();
+    B.forgetMasteryMeta();
+  }
   console.warn = quiet;
 }
 

@@ -8,7 +8,7 @@ import { historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWor
 import { getSetSize, markDailySetDone, getSetsToday, isTimedSet } from "./dailySet.js";
 import { isTutorialRunPending } from "./tutorial.js";
 import { rankOf, answerContext, isFirstAnswer, rankHtml, RANK_NAMES } from "./mastery.js";
-import { boxKey, classifySpeed, noteSpeedSample, notePendingFirstFast, flushMasteryMeta } from "./masteryMeta.js";
+import { boxKey, classifySpeed, noteSpeedSample, notePendingFirstFast, flushMasteryMeta, keyInputOf } from "./masteryMeta.js";
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
 import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
@@ -26,6 +26,7 @@ import {
 import {
   recordPlay,
   recordCorrect,
+  recordAnswerSeen,
   recordTypingMiss,
   recordRecallFail,
   recordRecallSuccess,
@@ -165,7 +166,7 @@ let runRankBefore = new Map();
 // 1 問ごとの速さ（docs/SPEC_MASTERY.md §3.4）: tShow = 出題の文を書いた後の最初の rAF、tFirst = この語の最初のキー、input = その経路（kbd／touch）、
 // spill = 前の語の続きが残っていた間に来たキー（測らない）、invalid = 測らない語（音・例文の訳つき・全文入力・計算・英文・空欄・並べ替え・ページの最初の語・裏に回った）
 let wordTiming = null;
-let keyPath = "kbd"; // いま処理している打鍵の経路（物理キーの keydown = kbd／画面キーボードの合成キー・ソフトウェアキーボードの input = touch）
+let keyPath = "kbd"; // いま処理している打鍵の経路（物理キーの keydown = kbd／画面キーボードの合成キー・ソフトウェアキーボードの keydown と input = touch）
 let pageWordsShown = 0; // このページで出した語の数（ページを開いて最初の語は測らない）
 const ambiguousCache = new Map(); // `${カテゴリ}|${id}` -> isAmbiguousPrompt（カテゴリの全語を走査するので、測るときだけ・語ごとに 1 回）
 let wordSerial = 0; // setNewWordごとに増える。正解直後の二重進行防止に使う
@@ -1266,8 +1267,9 @@ export function handleKeydown(event) {
 
   if (!isPlaying || !currentWord) return;
 
-  // 速さの箱の入力の経路: 物理キーの keydown（信頼された打鍵）は kbd、画面キーボード（#osk のボタンが合成する keydown）は touch
-  keyPath = event.isTrusted === false ? "touch" : "kbd";
+  // 速さの箱の入力の経路（js/masteryMeta.js keyInputOf）: 信頼された keydown で code が物理キーの名前（KeyA・Digit1・Minus など）なら kbd。
+  // iPhone・Android の画面キーボード（信頼された keydown でも code が空・Unidentified・keyCode 229）と #osk のボタンが合成する keydown は touch
+  keyPath = keyInputOf(event);
 
   // 正解直後の待ち（次の語が出る前）: 文字キーは判定しない（次の語の1文字目をミス扱いにしない）。
   // 打ち終えた語の続き（ローマ字の読みの続き・英単語の長い候補の続き）は判定に食わせて時刻を進める
@@ -1566,6 +1568,7 @@ function markRecallFail() {
 function acceptAlternative(typed) {
   sfxSoftCorrect();
   isRevealed = true;
+  recordAnswerSeen(currentWord.id); // 答えの綴りを見た印（初見の語だけ。打ち直さずに終わっても、次の答えを「知ってた」にしない。js/stats.js）
   hideHint();
   showColoredAnswer(currentWord.en);
   if (listenMode) elements.japanese.textContent = promptOf(currentWord);
@@ -2126,7 +2129,7 @@ function completeWord() {
   const { speed, basis } = sample && box ? classifySpeed(sample, box, { firstAnswer: answerCtx.firstAnswer }) : { speed: "unknown", basis: null };
   let ranks = null; // { before, after }（盤面の文の「習熟度 …」）
 
-  recordCorrect(currentWord.id, isClean);
+  recordCorrect(currentWord.id, isClean, answerCtx); // 答える前の文脈は上で出したものを渡す（書き手で二重に計算しない。答えを見た後の打ち直しは null）
 
   // 答えを見ずに正解 = 自力で思い出せた（打ち間違いは許容）
   // ※答え表示後の入力練習では lastRecallSuccessAt を更新しない

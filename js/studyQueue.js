@@ -14,7 +14,7 @@ import {
   PLACEMENT_MIX
 } from "./difficulty.js";
 import { applyGenre } from "./genres.js";
-import { holdBeforeDue } from "./mastery.js";
+import { holdBeforeDue, isUnresolved } from "./mastery.js";
 import {
   MAX_ACTIVE_NEW_WORDS,
   NEW_WORD_DAILY_SUCCESS_TARGET,
@@ -92,11 +92,8 @@ function localDateOf(iso) {
 
 // ===== 状態判定 =====
 
-export function isUnresolved(stat) {
-  if (!stat?.lastRecallFailAt) return false;
-  if (!stat.lastRecallSuccessAt) return true;
-  return Date.parse(stat.lastRecallFailAt) > Date.parse(stat.lastRecallSuccessAt);
-}
+// 未解決（最後の × が最後の自力正解より新しい）。定義は js/mastery.js の 1 か所。ここから読む所（game.js・categoryProgress.js）のために export し直す
+export { isUnresolved };
 
 export function isRecalledToday(stat) {
   return !!stat?.lastRecallSuccessAt && localDateOf(stat.lastRecallSuccessAt) === todayString();
@@ -297,6 +294,12 @@ function pickFillers(count, excludeSet) {
   const mission = getTodayMission();
 
   const all = categoryWordsDeduped();
+  // 期日前の身についた以上の語と、2 週間後の確認を待つ知ってた語（習熟度の S6。js/mastery.js holdBeforeDue）の id。ここで 1 回だけ数え、
+  // 既習の枠からは外し、下の「それでも足りなければ」の埋めでは最後に戻す
+  const now = Date.now();
+  const heldIds = new Set();
+  for (const w of all) if (holdBeforeDue(stats[w.id], now)) heldIds.add(w.id);
+  const held = (w) => heldIds.has(w.id);
   const focused = focusTag ? all.filter(inFocus) : all;
   const pool = focused.length > 0 ? focused : all;
   const usable = pool.filter((word) => {
@@ -305,10 +308,6 @@ function pickFillers(count, excludeSet) {
     return !isDoneForToday(stats[word.id]);
   });
 
-  // 期日前の身についた以上の語と、2 週間後の確認を待つ知ってた語は既習の枠に出さない（習熟度の S6。js/mastery.js holdBeforeDue）。
-  // 下の「それでも足りなければ」の埋めでは最後に戻す
-  const now = Date.now();
-  const held = (w) => holdBeforeDue(stats[w.id], now);
   const familiarPool = shuffle(usable.filter((w) => isFamiliar(stats[w.id]) && !held(w)));
 
   // 新出単語はプレイヤーレベルで解放（既習語には適用しない）。
