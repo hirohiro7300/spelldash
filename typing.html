@@ -17,6 +17,9 @@
   <link rel="stylesheet" href="./css/typing.css" />
   <meta name="theme-color" content="#1A2137" />
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
+  <!-- 開く種類（Batch 65 P1）: ?kind=en|ja|long（#long も）→ この端末に覚えた種類（spelldash_typing_kind。タブを押したときだけ書く）→ 英単語。不正な値は指定なしと同じ。
+       最初の描画の前に html[data-typing-kind] に置き、css/typing.css がタブ・札・文を出し分ける（js/typingPage.js の kindFromUrl・startKind と同じ順。js はこの値から始める） -->
+  <script>(() => { const K = ["en","ja","long"]; let k = null; try { const q = new URLSearchParams(location.search).get("kind"); k = K.includes(q) ? q : location.hash === "#long" ? "long" : null; if (!k) { const s = localStorage.getItem("spelldash_typing_kind"); if (K.includes(s)) k = s; } } catch {} document.documentElement.dataset.typingKind = k || "en"; })();</script>
 
   <meta name="description" content="登録なし・無料のタイピング練習。英単語（日本語の訳つき）と日本語（ローマ字）は1分、長文は日本語と英語の文章を最後まで打つ（英文は訳つき）。スマホは画面のキーボードで打てる。結果は打/分・正確さ・間違えたキー、長文はスコアと時間も。" />
   <meta property="og:type" content="website" />
@@ -88,26 +91,29 @@
       <button type="button" class="stats-tab" data-kind="ja" aria-pressed="false">日本語（ローマ字）</button>
       <button type="button" class="stats-tab" data-kind="long" aria-pressed="false">長文</button>
     </div>
-    <p class="tp-tabnote tp-tabnote--off" id="typingTabNote">小・中学校の用語。読みをローマ字で打つ。</p>
+    <p class="tp-tabnote tp-tabnote--off" id="typingTabNote"><span class="tp-tabnote__ja">小・中学校の用語。読みをローマ字で打つ。</span><span class="tp-tabnote__long">文章を最後まで打つ。やめても結果が出る。</span></p>
 
     <!-- 箱（.tp-stage）が 1 分の結果の高さを始めから取っておく。札は中身の高さ（60 秒の時計で結果が出て札が下に伸びても、箱の下の要素は動かない＝CLS に入らない）。長文は取らない（結果は打鍵か Esc で出る）。
          data-state は札と同じ（js/typingPage.js）。箱の中の導線（.tp-stage__more）の出し入れに使う -->
     <div class="tp-stage" id="typingStage" data-kind="en" data-state="ready">
-      <section class="result-card tp-board" id="typingBoard" data-kind="en" data-state="ready" aria-label="タイピング練習">
-        <!-- 長文の 1 行目（長文だけ出す。高さは 44px を予約し、状態で中身だけ替える: 始まる前は文章の select、打っている間は題・残り・やめる） -->
-        <div class="tp-head" id="typingHead" hidden>
+      <section class="result-card tp-board" id="typingBoard" data-kind="en" data-lang="ja" data-state="ready" aria-label="タイピング練習">
+        <!-- 長文の 1 行目（長文だけ出す。高さは 44px を予約し、状態で中身だけ替える: 始まる前は文章の select、打っている間は題・残り・やめる）。
+             長文で開いたとき js が描く前から出すため hidden は持たない（長文のほかは css/typing.css が隠す）。札の data-lang="ja" は長文の既定の言語（js は長文のほかで外す） -->
+        <div class="tp-head" id="typingHead">
           <label class="sr-only" for="typingText">文章</label>
           <select class="setting-select tp-head__select" id="typingText" disabled><option>読み込み中</option></select>
+          <!-- 始まる前の導線（BACKLOG D37）: スマホで画面キーボードが出ている始まる前だけ select の右に出す（札の下の 1 行は盤面の裏になる。select の幅を残すため見える字は「ゲーム」、名前はタイピングゲーム。css/typing.css） -->
+          <a class="tp-head__more" href="./typing-game.html" aria-label="タイピングゲーム">ゲーム</a>
           <p class="tp-head__title" id="typingTitle" hidden></p>
           <p class="tp-head__right" id="typingHeadRight" hidden><span class="tp-head__left" id="typingLeft"></span><span class="tp-head__paused">止めた</span><button type="button" class="btn btn--ghost btn--sm tp-head__stop" id="typingStop" data-run-control>やめる<small class="tp-kbdhint">（Esc）</small></button></p>
         </div>
         <p class="tp-timer" id="typingTimer">残り 60秒</p>
         <div class="tp-play" id="typingPlay">
-          <p class="tp-term" id="typingTerm" hidden></p>
+          <p class="tp-term" id="typingTerm"></p>
           <p class="tp-word" id="typingWord" lang="en" data-rest="apple"><span class="tp-now">a</span>pple</p>
           <p class="tp-gloss" id="typingGloss">りんご</p>
           <p class="tp-upnext tp-upnext--empty" id="typingNext">次<b></b></p>
-          <p class="tp-hint" id="typingHint">打ち始めると、1分を測る。</p>
+          <p class="tp-hint" id="typingHint"><span class="tp-hint__word">打ち始めると、1分を測る。</span><span class="tp-hint__long">打ち始めると、最後まで時間を測る。</span></p>
           <p class="tp-error" id="typingError" hidden><span id="typingErrorWhat">単語</span>を読み込めなかった。通信を確かめて、<a href="./typing.html">開き直す</a>。</p>
           <p class="sr-only" id="typingLine"></p>
           <input id="input" type="text" readonly aria-label="見本の語を打つ" aria-describedby="typingTerm typingWord typingGloss" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />

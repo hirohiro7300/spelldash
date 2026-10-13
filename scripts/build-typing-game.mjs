@@ -284,10 +284,11 @@ export function validateRows(rows, { full = false, deny = [], origin = (course) 
         }
       }
     }
-    // V11 最初の 1 文
-    const [ft, fr] = GAME.FIRST_SENTENCE;
-    if (!rows.some((row) => row.course === "normal" && row.t === ft && row.r === fr)) {
-      out.push({ file: origin("normal"), line: 0, course: "normal", check: "V11 最初の文", reason: `FIRST_SENTENCE「${ft}」（${fr}）が normal に無い` });
+    // V11 最初の 1 文（コースごと。typing-game.html に直書きした 3 つ。Batch 65 P2）
+    for (const [course, [ft, fr]] of Object.entries(GAME.FIRST_SENTENCES)) {
+      if (!rows.some((row) => row.course === course && row.t === ft && row.r === fr)) {
+        out.push({ file: origin(course), line: 0, course, check: "V11 最初の文", reason: `FIRST_SENTENCES.${course}「${ft}」（${fr}）が ${course} に無い` });
+      }
     }
   }
   return sortProblems(out);

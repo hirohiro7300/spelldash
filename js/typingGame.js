@@ -18,7 +18,15 @@ export const LIMIT_MAX_MS = 30000;
 export const GOAL_REF_KEYS_PER_SEC = 2.5; // 目標の参照の速さ（打/秒）。持ち時間の係数とは別の数（docs/SPEC_TYPING_GAME.md「目標」）
 export const GOAL_GAP_SEC = 0.4; // 文の切り替えと読み始めの間
 export const DEFAULT_COURSE = "normal";
-export const FIRST_SENTENCE = ["今日はいい天気だ", "きょうはいいてんきだ"]; // typing-game.html に直書きした最初の文
+export const FIRST_SENTENCE = ["今日はいい天気だ", "きょうはいいてんきだ"]; // typing-game.html に直書きした最初の文（ふつうの文）
+// コースごとの最初の文（typing-game.html に 3 つとも直書き。開いたコースの 1 つだけを CSS が見せる。教材にある文。
+// 何も指定せずに開いたときはふつうの文の FIRST_SENTENCE のまま。?course= か覚えたコースで開いたときの最初の回が使う。Batch 65 P2）
+export const FIRST_SENTENCES = {
+  short: ["おはよう", "おはよう"],
+  normal: FIRST_SENTENCE,
+  long: ["植木に水をやって、新しい芽を数える", "うえきにみずをやってあたらしいめをかぞえる"]
+};
+export const COURSE_KEY = "spelldash_typing_game_course"; // 選んだコース（タブを押したときだけ書く。値は short／normal／long。学習記録・同期・CSV・バックアップに入れない）
 export const BEST_KEY = "spelldash_typing_game"; // 自己ベスト（タイピング練習 typing.html の自己ベストとは別の鍵）
 export const BEST_GOT_MAX = 200; // 90 秒に 200 文は人の手では届かない（超えた値は壊れた記録）
 

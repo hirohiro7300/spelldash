@@ -28,11 +28,12 @@ export function focusableIn(container) {
   return [...container.querySelectorAll(FOCUSABLE)].filter((el) => !el.closest("[inert]") && isVisible(el));
 }
 
-// 開いている間、背後（container を含まない body 直下の要素）を inert にする。戻す関数を返す
+// 開いている間、背後（container を含まない body 直下の要素）を inert にする。戻す関数を返す。
+// data-keep-live の付いた読み上げの行（index.html の #srStatusTop。焦点を取る物を持たない）は inert にしない（窓の間の時間切れの文を読む: js/ui.js announce）
 export function inertOthers(container) {
   const touched = [];
   for (const child of document.body.children) {
-    if (child === container || child.contains(container) || child.tagName === "SCRIPT") continue;
+    if (child === container || child.contains(container) || child.tagName === "SCRIPT" || child.hasAttribute("data-keep-live")) continue;
     if (child.hasAttribute("inert")) continue;
     child.setAttribute("inert", "");
     touched.push(child);

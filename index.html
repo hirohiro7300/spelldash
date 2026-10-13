@@ -483,6 +483,9 @@
     </div>
   </footer>
 
+  <!-- 窓の間の読み上げの行（js/ui.js announce）。背後を inert にする窓（ご意見・語の詳細）が開いている間は #srStatus も inert の中で読まれないので、
+       そのときだけここに書く（60 秒・Challenge の時間切れの見出しの文など）。body の直下に置き、js/focusTrap.js の inertOthers が inert にしない（焦点を取る物を持たない） -->
+  <p id="srStatusTop" class="sr-only" role="status" data-keep-live></p>
 
   <script type="module" src="./js/main.js"></script>
   <script>

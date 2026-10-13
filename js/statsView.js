@@ -22,6 +22,7 @@ import { bindWordDetail } from "./wordDetail.js";
 
 import { initWordStore, findWord } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
+import { logTypingStage } from "./funnelLog.js";
 
 const overviewElement = document.getElementById("overview");
 const typingElement = document.getElementById("typingMetrics");
@@ -34,6 +35,18 @@ setFooterYear();
 renderHeaderStreak();
 setupUnloadSync();
 initializeTabs();
+trackTypingEntry();
+
+// 息抜きの入口（本文の最後の「息抜きに タイピング練習」。Batch 65 P3）: 押したら、タイピング練習・タイピングゲームから初めて来た端末だけ
+// first_visit の typing_stats／tgame_stats を積む（移る直前なので次のページで送る。来た日で 1 回。js/funnelLog.js logTypingStage）。移動は止めない
+function trackTypingEntry() {
+  document.addEventListener("click", (event) => {
+    const link = event.target instanceof Element ? event.target.closest("[data-typing-entry]") : null;
+    if (!link) return;
+    logTypingStage("stats", "typing");
+    logTypingStage("stats", "tgame");
+  });
+}
 
 // ===== 3タブ（今週／単語帳／分析）。#learnedWords 等の深いリンクは所属タブを開いてスクロール =====
 function initializeTabs() {

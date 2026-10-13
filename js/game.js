@@ -3236,7 +3236,7 @@ function celebrateRankUp(result) {
 // ただし時間切れ（60 秒の回・Challenge）や正解のあとの待ちで終わった瞬間に、盤面の外で作業中（focusOnBoard の下の 3 つ:
 // 盤面の外の書ける欄・開いている窓・メモ／覚え方の欄）なら動かさない（打っている文を奪わない。Batch 64 M3）。そのときは見出しの文を
 // #srStatus で読み上げる（焦点を移したときと同じく、読み上げで終わりが分かる。直前のレベルアップの文とは 1 つの文につながる: js/ui.js announce。
-// 背後を inert にする窓〔ご意見・語の詳細〕の間は、今も見出しへ焦点を移せず読まれない）。
+// 背後を inert にする窓〔ご意見・語の詳細〕の間は #srStatus も inert の中なので、announce が窓の外の inert でない行 #srStatusTop に書く。Batch 65 Q3）。
 // 焦点を移したら true（呼び手はそのときだけ見出しへ寄せる。寄せないので窓の背後も動かない）
 function focusResultTitle(panel) {
   const title = panel.querySelector("#resultTitle");

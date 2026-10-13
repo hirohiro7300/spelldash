@@ -10,8 +10,9 @@ import { forgetMasteryMeta } from "./masteryMeta.js";
 const PREFIX = "spelldash_";
 export const BACKUP_VERSION = 1;
 
-// 端末固有・一時的なものは含めない（xp_synced は「この端末が最後にクラウドと一致した XP」。別の端末に持ち込むと差分がずれる）
-const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner"]);
+// 端末固有・一時的なものは含めない（xp_synced は「この端末が最後にクラウドと一致した XP」。別の端末に持ち込むと差分がずれる）。
+// タイピング練習の種類・タイピングゲームのコースの記憶（この端末の開き方の好み。Batch 65 P1・P2）も入れない
+const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course"]);
 // 復元のときに必ず消すもの（復元した記録の持ち主と、クラウドとの差分の基準は分からないので、次の同期を初回の扱いにする）
 const RESET_ON_RESTORE = ["spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner"];
 
@@ -91,6 +92,7 @@ export function applyBackup(obj) {
 // ===== この端末の記録を消す（別のアカウントでログインしたとき。js/sync.js initialSync が呼ぶ） =====
 // applyBackup と同じく spelldash_* を消す。残すのは端末の設定（人の記録ではないもの）だけ:
 //   theme（表示の色）・audio（音声の設定）・osk（専用キーボード）・after_correct（正解のあとの長さ）・list_compact／setup_open／stats_tab／trend_range／weak_only（画面の開き方）、
+//   typing_kind／typing_game_course（タイピング練習の種類・タイピングゲームのコースの記憶。この端末の開き方の好みで、バックアップにも入れない。Batch 65）、
 //   installed（ホーム画面に追加の案内）・onboarded（この端末でトップページを見た）・schema_version（保存形式の版。消すと移行が走り直す）、
 //   test_*（E2E のスタブのログイン状態）
 // 消すもの（主なもの）: word_stats・xp・xp_synced・streak・best_score・best_by_category・battle・pending_battles・study_mix・
@@ -109,7 +111,9 @@ const KEEP_ON_CLEAR = new Set([
   "spelldash_weak_only",
   "spelldash_installed",
   "spelldash_onboarded",
-  "spelldash_schema_version"
+  "spelldash_schema_version",
+  "spelldash_typing_kind",
+  "spelldash_typing_game_course"
 ]);
 
 export function clearLocalRecords() {

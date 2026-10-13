@@ -97,6 +97,8 @@ delete from public.funnel_events where day < ((now() at time zone 'Asia/Tokyo'):
 | `typing_long` | タイピング練習から初めて来た端末が、長文のタブを初めて押した（Batch 62。docs/SPEC_TYPING.md §9.7） |
 | `typing_long_start` | その端末が長文を初めて打ち始めた（最初に判定したキー） |
 | `typing_long_done` | その端末が長文を初めて最後まで打った（途中までの結果では送らない） |
+| `typing_link` | その端末の**最初の 1 ページ**が `?kind=`・`#long` の深いリンクだった（Batch 65。種類ごとには分けない。この端末の記憶から開いた回は入れない。タブを押すと URL が `?kind=` に替わる〔replaceState〕ので、その URL の再読み込み・戻る・タブの復元・ブックマーク・同じ端末があとから深いリンクで開いた回も入れない。送れなかった回は送り直さない〔少なく出る側〕。長文で開いた回は `typing_long` も送る） |
+| `typing_stats` | その端末が学習データ（stats.html）の「息抜きに タイピング練習」を押した（Batch 65。押した瞬間に移るので端末に積み、次のページで送る） |
 
 タイピングゲーム（`/typing-game.html`、Batch 60、docs/SPEC_TYPING_GAME.md §7）から**初めて来た端末**も同じ仕組みで、鍵を分けて（`spelldash_funnel_tgame`）送る。1 端末に付く印は最初の 1 ページ分だけ（番号が無いときにしか印は付かないので、typing と tgame は混ざらない）。
 
@@ -106,10 +108,12 @@ delete from public.funnel_events where day < ((now() at time zone 'Asia/Tokyo'):
 | `tgame_start` | 最初の 1 回を打ち始めた |
 | `tgame_done` | 結果が初めて出た（途中でやめた回では送らない） |
 | `tgame_study` | 「思い出して打つ」か本文の本体へのリンクを押した（`/?from=tgame`。端末に積み、次のページで送る） |
+| `tgame_link` | その端末の**最初の 1 ページ**が `?course=` の深いリンクだった（Batch 65。コースごとには分けない。記憶から開いた回・タブで書き替えた `?course=` の URL を開き直した回は入れない。`typing_link` と同じ形） |
+| `tgame_stats` | その端末が学習データの「息抜きに タイピング練習」を押した（Batch 65。端末に積み、次のページで送る） |
 
 - `funnel_events.source` の `typing*` は**段階**で、docs/SPEC_ACQUISITION.md（DESIGN ONLY・未実装）が設計している流入元（UTM の source）とは別物。
-- 管理画面の段階の数（RPC も行を読む経路も）は段階ごとに端末の重複を数えないので、`first_visit` の数は変わらない（typing の行を送る端末は、必ず source が空の first_visit も送る）。1 端末に first_visit が最大 9 行になる（typing の族: 空＋typing・typing_start・typing_done・typing_study＋typing_game＋長文の typing_long・typing_long_start・typing_long_done。tgame の族は 空＋4 = 5 行。source が空の行が「初めて来た」端末の数）。`typing_start` は長文の回も入る（どの種類でも最初の回を打ち始めた）。
-- 既存の端末・ほかのページから来た端末は送らない。回数・既存の人の利用は数えない。
+- 管理画面の段階の数（RPC も行を読む経路も）は段階ごとに端末の重複を数えないので、`first_visit` の数は変わらない（typing の行を送る端末は、必ず source が空の first_visit も送る）。1 端末に first_visit が最大 11 行になる（typing の族: 空＋typing・typing_start・typing_done・typing_study＋typing_game＋長文の typing_long・typing_long_start・typing_long_done＋typing_link・typing_stats。tgame の族は 空＋6 = 7 行。source が空の行が「初めて来た」端末の数）。`typing_start` は長文の回も入る（どの種類でも最初の回を打ち始めた）。
+- 既存の端末・ほかのページから来た端末は送らない。回数・既存の人の利用は数えない（学習データの 1 行を本体から来た既存の学習者が押した数も取れない。取るなら下の「取れないもの」と同じく段階を足す SQL が先）。
 
 ```sql
 -- タイピング練習から初めて来た端末の段階（直近 30 日。端末の数）
@@ -138,5 +142,6 @@ order by devices desc;
 - タイピングゲームの割合: tgame_start ÷ tgame（開いてすぐ打てたか）、tgame_done ÷ tgame_start（90 秒もったか）、tgame_study ÷ tgame_done（本体への導線）、day7 ÷ tgame_study、typing_game ÷ typing（1 分のドリル → ゲームの導線）。コースの内訳・目標に届いた割合・流れた率は取れない（要るなら step を足す SQL が先）。
 - 見る割合: typing_start ÷ typing（すぐ打てたか）、typing_done ÷ typing_start（1 分を打ち切るところまで行ったか。最初の回とは限らない）、typing_study ÷ typing_done（導線が効いたか）、day7 ÷ typing_study（学習になったか）。
 - 長文の割合: typing_long ÷ typing（来た人のうち長文を選ぶ割合。専用ページを作るかの材料）、typing_long_start ÷ typing_long（選んだが打たない＝題や長さが合わない）、typing_long_done ÷ typing_long_start（低ければ短めをさらに短く）。`typing_long_start` が 50 件ほど貯まるまで決めない（docs/FOUNDER_TODO.md F-13）。上の `like 'typing%'` の SELECT がそのまま拾う。文章ごと・言語ごとの内訳は取れない（要るなら step を足す SQL が先）。
+- 深いリンクと学習データの入口（Batch 65）: typing_link ÷ typing・tgame_link ÷ tgame（初めて来た端末のうち、最初の 1 ページが種類・コースを指したリンクだった割合。分子と分母は同じ端末の集まり）、typing_stats・tgame_stats は件数（タイピングの 2 ページから来て本体に入り、学習データから戻った端末だけ。上の SELECT がそのまま拾う）。
 - **分母の `typing` には検索エンジンの描画（ボット）が混ざりうる**（JS を動かして描画し、新しい端末として送るなら typing_start ÷ typing が実際より低く出る。書き込みまで行うかは未確認）。比は 1 回の値でなく**週ごとの推移**で見る。ボットを除く仕組みは v1 では入れない（BACKLOG D16）。
 - 取れないもの: 既存の端末が使った数・1 台の回数・日ごとの回数。要るなら check に段階（例 `typing_view`）を足す SQL が先（check に無い段階を先に送ると表が断り、送り直し続ける。**SQL より先にコードを入れない**）。来た数の全体・検索語は Google Search Console のページ別。

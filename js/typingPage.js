@@ -101,6 +101,7 @@ const el = {
 };
 
 const KINDS = ["en", "ja", "long"];
+const KIND_KEY = "spelldash_typing_kind"; // この端末に覚えた種類（タブを押したときだけ書く。学習記録・同期・CSV・バックアップには入れない）
 const KIND_NAME = { en: "英単語", ja: "日本語" };
 // タブの下の補足（英単語では見せないが行の高さは残す）
 const TAB_NOTE = {
@@ -145,6 +146,66 @@ let textId = null; // 選んだ文章（ページを開いている間だけ覚�
 let selectBuilt = false; // select の項目を今の記録（済み）で作ったか
 let selectPointer = false; // select で pointerdown を見た直後か（ポインタで選んだ change だけ焦点を札へ移す）
 let partial = false; // 今の結果が途中まで（Esc・やめる）か
+
+// ---- 開く種類（Batch 65 P1。docs/SPEC_TYPING.md）----
+// 順は URL（?kind=en|ja|long、#long）→ この端末の記憶（spelldash_typing_kind）→ 英単語。不正な値は指定なしと同じ。typing.html の head の 1 行が同じ順で
+// html[data-typing-kind] に置き（最初の描画の前。css/typing.css がタブ・札・文を出し分ける）、ここはその値から始める（head の 1 行が動かなかったときだけ自分で読む）。
+// 書くのはタブを押したときだけ: URL で開いただけでは書かない（共有されたリンク・検索から来た 1 回で、その人が選んだ種類を替えない。開いた URL にはパラメータが残るので再読み込みは同じ種類）
+
+function kindFromUrl() {
+  try {
+    const q = new URLSearchParams(location.search).get("kind");
+    if (KINDS.includes(q)) return q;
+  } catch {
+    // 読めない URL は指定なし
+  }
+  return location.hash === "#long" ? "long" : null;
+}
+
+function startKind() {
+  const set = document.documentElement.dataset.typingKind;
+  if (KINDS.includes(set)) return set;
+  const fromUrl = kindFromUrl();
+  if (fromUrl) return fromUrl;
+  try {
+    const saved = storage()?.getItem(KIND_KEY);
+    if (KINDS.includes(saved)) return saved;
+  } catch {
+    // 読めない端末は既定
+  }
+  return "en";
+}
+
+// タブを押した: 種類を端末に覚え、URL を今の種類に合わせる（history.replaceState。履歴は増やさない: 戻るはタブを 1 つずつ戻らずページを離れる。
+// 再読み込みは今のタブで開き、記憶が書けない端末でも同じ。アドレスを共有すると今の種類で開く。ほかのパラメータ〔?t= など〕は残し、#long は ?kind= に替える）。canonical は変えない
+function chooseKind(k) {
+  try {
+    storage()?.setItem(KIND_KEY, k);
+  } catch {
+    // 覚えられない端末でも URL で今の種類を保つ
+  }
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set("kind", k);
+    if (url.hash === "#long") url.hash = "";
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  } catch {
+    // 書き替えられない環境（古い WebView など）は URL をそのまま
+  }
+}
+
+// 「読み込めなかった」の「開き直す」は今の種類で開き直す（静的な HTML は ./typing.html。深いリンクで開いて記憶が無い端末でも、英単語に戻らない）
+function reopenHref() {
+  const a = el.error.querySelector("a");
+  if (!a) return;
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set("kind", kind);
+    a.setAttribute("href", url.pathname + url.search);
+  } catch {
+    // 静的な ./typing.html のまま
+  }
+}
 
 function stopTimers() {
   clearTimeout(finishTimer);
@@ -325,6 +386,7 @@ function renderBoardData() {
 }
 
 function render() {
+  document.documentElement.dataset.typingKind = kind; // css/typing.css の種類の規則（タブ・1 行目・箱の高さ・長文の欄）は html の値で書く。札・箱の data-kind と同じ値に保つ
   el.board.dataset.state = phase;
   el.board.dataset.kind = kind;
   el.stage.dataset.kind = kind; // 箱（.tp-stage）は英単語・日本語の 1 分の結果の高さを取る。長文では取らない（css/typing.css）
@@ -343,6 +405,7 @@ function render() {
   el.error.hidden = phase !== "error";
   el.line.textContent = isLong() ? lineText() : "";
   if (phase === "error") {
+    reopenHref();
     el.next.hidden = true;
     el.word.replaceChildren();
     el.word.dataset.rest = "";
@@ -401,7 +464,7 @@ function toReady(k = kind, opts = {}) {
   } else {
     run = createRun(k, wordsFor(k, firstRun));
     fillOnLoad = k === "en" && firstRun && !data; // 教材が届く前に始めた最初の英単語の回: 届いたら列の後ろに足す
-    firstRun = false;
+    if (k === "en") firstRun = false; // 最初の英単語の回は apple から（日本語・長文で開いたときも、英単語のタブを初めて押した回が apple から）
     phase = run.current ? "ready" : data === false ? "error" : "loading";
   }
   // 長文の画面キーボードのキー（、。・' , 空白 . ?）は body の class で出し入れする。種類が long 以外・読めない画面では必ず外す
@@ -453,11 +516,28 @@ function toError() {
   render();
 }
 
+// 結果の行の区切り「 ・ 」: 「・」は前の語と折らない（nowrap の「 ・」）。折れてよいのは後ろの空白だけなので、行の頭に「・」が来ない（Batch 65 Q1）
+const sep = () => [make("span", "tp-sep", " ・"), document.createTextNode(" ")];
+
+// 自己ベストの句（#typingBest）: 区切り＋句（.tp-best__phrase は 1 かたまりで折る: 括弧の中で「はじめての／記録」と折れない）。
+// 区切りを句の外に置くので、句が 2 行目に送られても「・」は 1 行目の終わりに残る。parts は fill の形（null なら出さない）
+function renderBest(parts) {
+  if (!parts) {
+    el.best.replaceChildren();
+    el.best.hidden = true;
+    return;
+  }
+  const phrase = make("span", "tp-best__phrase");
+  fill(phrase, parts);
+  el.best.replaceChildren(...sep(), phrase);
+  el.best.hidden = false;
+}
+
 function bestText(cmp) {
-  if (cmp.status === "first") return [" ・ 自己ベスト（はじめての記録）"];
-  if (cmp.status === "new") return [" ・ 自己ベストを更新（前 ", ["b", cmp.prev], "）"];
-  if (cmp.status === "same") return [" ・ 自己ベストと同じ"];
-  if (cmp.status === "below") return [" ・ 自己ベスト ", ["b", cmp.prev], `（あと ${cmp.diff}）`];
+  if (cmp.status === "first") return ["自己ベスト（はじめての記録）"];
+  if (cmp.status === "new") return ["自己ベストを更新（前 ", ["b", cmp.prev], "）"];
+  if (cmp.status === "same") return ["自己ベストと同じ"];
+  if (cmp.status === "below") return ["自己ベスト ", ["b", cmp.prev], `（あと ${cmp.diff}）`];
   return null;
 }
 
@@ -482,21 +562,17 @@ function renderResult(s, cmp) {
   el.nextText.hidden = true;
   el.kpm.textContent = String(s.kpm);
   // 正確さ・ミス（行の頭）＋自己ベスト（同じ行の続き #typingBest）
-  const best = el.best;
-  fill(el.acc, ["正確さ ", ["b", s.accuracy === null ? "―" : `${s.accuracy}%`], " ・ ミス ", ["b", s.miss]]);
-  el.acc.append(best);
-  const parts = bestText(cmp);
-  if (parts) fill(best, parts);
-  else best.replaceChildren();
-  best.hidden = !parts;
+  fill(el.acc, ["正確さ ", ["b", s.accuracy === null ? "―" : `${s.accuracy}%`]]);
+  el.acc.append(...sep(), "ミス ", make("b", "", String(s.miss)), el.best);
+  renderBest(bestText(cmp));
   renderKeys(s.topKeys);
 }
 
-// 名前と数の組を 1 つの span（.tp-pair: 折らない）に。区切りの「 ・ 」でだけ折れる
+// 名前と数の組を 1 つの span（.tp-pair: 折らない）に。区切りの「 ・ 」の後ろでだけ折れる（「・」は前の組の終わりに残る）
 function pairs(list) {
   const out = [];
   list.forEach(([name, value], i) => {
-    if (i) out.push(document.createTextNode(" ・ "));
+    if (i) out.push(...sep());
     const pair = make("span", "tp-pair", `${name} `);
     pair.append(make("b", "", String(value)));
     out.push(pair);
@@ -516,9 +592,8 @@ function renderLongResult(s, cmp, text) {
   el.kpm.textContent = String(dash(s.score));
   el.acc.replaceChildren(...pairs([["打/分", dash(s.kpm)], ["正確さ", s.accuracy === null ? "―" : `${s.accuracy}%`], ["ミス", s.miss]]));
   const phrase = longBestPhrase(cmp);
-  el.best.textContent = phrase ? ` ・ ${phrase}` : "";
-  el.best.hidden = !phrase;
   el.acc.append(el.best);
+  renderBest(phrase ? [phrase] : null);
   const lang = text?.lang ?? "ja";
   renderKeys(s.topKeys, (k) => longKeyLabel(k, lang));
   el.nextText.hidden = false;
@@ -741,6 +816,7 @@ for (const tab of el.tabs) {
   tab.addEventListener("click", () => {
     const k = tab.dataset.kind;
     if (!KINDS.includes(k)) return;
+    chooseKind(k); // 端末に覚え、URL を合わせる（押したときだけ）
     if (k === "long") {
       openLong();
       return;
@@ -809,13 +885,21 @@ try {
   // 借り物の初期化で投げても、打鍵の配線は済んでいる
 }
 
-toReady("en");
+// 開く種類（Batch 65 P1）: head の 1 行が置いた html[data-typing-kind] から始める（英単語を描いてから替えない）。長文は教材をここで取りに行く
+const linkKind = kindFromUrl(); // 深いリンク（?kind=・#long）で開いた種類。記憶から開いたときは null
+const firstKind = startKind();
+if (firstKind === "long") loadLong();
+toReady(firstKind);
 loadData();
 
-markTypingArrival(); // 必ず setFooterYear（trackFirstVisit が端末の番号を作る）より前
+const arrivedNow = markTypingArrival(); // 必ず setFooterYear（trackFirstVisit が端末の番号を作る）より前。true: この端末の最初の 1 ページ
 try {
   setFooterYear();
 } catch {
   // フッターの借り物が投げても打鍵は止めない
 }
 logTypingStage("arrive");
+// 深いリンクで初めて来た（first_visit の source typing_link。タイピングゲームの tgame_link と同じ形。js/funnelLog.js）。最初の 1 ページだけ:
+// タブを押すと URL が ?kind= になるので、そのあとの再読み込み・戻る・タブの復元・ブックマークは URL だけでは外からの深いリンクと区別できない
+if (linkKind && arrivedNow) logTypingStage("link");
+if (firstKind === "long") logTypingStage("long"); // 長文で開いた（長文のタブを押したのと同じ印。来た日に 1 回だけ）

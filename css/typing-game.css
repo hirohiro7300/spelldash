@@ -2,7 +2,41 @@
    取れた・持ち時間の線・結果の高さの予約（箱 .tg-stage）・結果の主の数・≥720 の結果 2 列・横向きの詰めを足す。
    animation／transition は書かない（線は JS が transform を書く）。色は tokens.css の変数だけ。角丸は札の --radius-room だけ。
    すべて html[data-theme] body.page-typing-game を頭に付ける（typing.css より後に読むので、同じ詳細度で勝つ）。
-   例外は行の高さを残す visibility の 1 つ（.tg-hint--off）だけで、JS なしでも効くよう body.page-typing-game から書く。 */
+   例外は行の高さを残す visibility の 1 つ（.tg-hint--off）と、最初の描画の出し分け（[data-tg-first]）で、JS なしでも効くよう html／body.page-typing-game から書く。
+   コースごとの規則（タブの現在地・見出しと単位の行の予約・長い文の字）は html[data-typing-course] で書く（Batch 65 P2。札の data-course ではない）:
+   head の inline script が最初の描画の前に置き（?course= → 覚えたコース → ふつうの文）、js/typingGamePage.js がコースを替えるたびに合わせる。
+   html に data-typing-course="normal" を直書きしてあるので、script が動かないときもふつうの文の形になる */
+
+/* 最初の描画（module の js が動く前）: 3 コースの最初の文・読み・補足を HTML に直書きし、開いたコースの 1 つだけを見せる。
+   js は始めに中身を書き替えるので、この印の付いた要素は残らない */
+html:not([data-typing-course="short"]) [data-tg-first="short"],
+html:not([data-typing-course="normal"]) [data-tg-first="normal"],
+html:not([data-typing-course="long"]) [data-tg-first="long"] {
+  display: none;
+}
+
+/* 単位の組は #tgWord の flex の子として並べる（見せない組は上の規則が勝つ: (0,2,1) ＞ (0,1,0)） */
+.tg-first {
+  display: contents;
+}
+
+/* タブの現在地（金の下線）も html[data-typing-course] で出す（静的な HTML の .stats-tab--active はふつうの文に付いていて、最初の描画で別のタブが光らないように使わない。
+   class と aria-pressed は js が合わせる）。pages.css の現在地の規則（(0,4,2) まで）に、後から読む同じ詳細度で勝つ */
+html[data-theme] body.page-typing-game .tp-tabs .stats-tab {
+  color: var(--ink-3);
+  border-bottom-color: transparent;
+}
+
+html[data-theme] body.page-typing-game .tp-tabs .stats-tab:hover {
+  color: var(--ink);
+}
+
+html[data-theme][data-typing-course="short"] body.page-typing-game .tp-tabs [data-course="short"],
+html[data-theme][data-typing-course="normal"] body.page-typing-game .tp-tabs [data-course="normal"],
+html[data-theme][data-typing-course="long"] body.page-typing-game .tp-tabs [data-course="long"] {
+  color: var(--ink);
+  border-bottom-color: var(--gold-dk);
+}
 
 /* 取れた N と 残り N秒 を 1 行に */
 html[data-theme] body.page-typing-game .tg-head {
@@ -56,7 +90,7 @@ html[data-theme] body.page-typing-game .tp-term {
   min-height: 1.5em;
 }
 
-html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-term {
+html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-term {
   min-height: 3em; /* 長い文の見出し（≤30 字）は 390 で 2 行になる */
 }
 
@@ -65,15 +99,15 @@ html[data-theme] body.page-typing-game .tp-word--ja {
   align-content: flex-start;
 }
 
-html[data-theme] body.page-typing-game .tg-board[data-course="short"] .tp-word--ja {
+html[data-theme][data-typing-course="short"] body.page-typing-game .tg-board .tp-word--ja {
   min-height: 50px; /* 1 行: かな 26px × 1.25 ＋ キー 13px × 1.3 */
 }
 
-html[data-theme] body.page-typing-game .tg-board[data-course="normal"] .tp-word--ja {
+html[data-theme][data-typing-course="normal"] body.page-typing-game .tg-board .tp-word--ja {
   min-height: 101px; /* 2 行 */
 }
 
-html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-word--ja {
+html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-word--ja {
   min-height: 152px; /* 3 行（全文が 3 行に収まることは E2E が守る） */
 }
 
@@ -156,15 +190,15 @@ html[data-theme] body.page-typing-game .tg-nudge {
     min-height: 490px; /* 320: 485px（補足 1 行目と導線の文が 2 行） */
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="short"] .tp-word--ja {
+  html[data-theme][data-typing-course="short"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 45px;
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="normal"] .tp-word--ja {
+  html[data-theme][data-typing-course="normal"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 91px;
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-word--ja {
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 137px; /* 3 行（教材の長い文は 320 でも 3 行。別の綴りで打っても 3 行。E2E が ≤3 行を守る） */
   }
 }
@@ -175,16 +209,16 @@ html[data-theme] body.page-typing-game .tg-nudge {
     min-height: 302px; /* 1200: 2 列の結果 299px（短い語句の目標の句が 2 行）。長い文の始まる前は 257px */
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="short"] .tp-word--ja,
-  html[data-theme] body.page-typing-game .tg-board[data-course="normal"] .tp-word--ja {
+  html[data-theme][data-typing-course="short"] body.page-typing-game .tg-board .tp-word--ja,
+  html[data-theme][data-typing-course="normal"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 55px;
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-word--ja {
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 111px;
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-term {
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-term {
     min-height: 1.5em;
   }
 
@@ -242,15 +276,15 @@ html[data-theme] body.page-typing-game .tg-nudge {
 
   /* 短い・ふつうはコースつきで書く（(0,5,2)）。コースなし（(0,4,2)）だと、上の縦向きの 50／101px と ≥720 の 55px に負け、
      幅 720 未満の横向き（667×375 など）でふつうの文が 2 行分を取り、線が画面キーボードの下に押し出される */
-  html[data-theme] body.page-typing-game .tg-board:is([data-course="short"], [data-course="normal"]) .tp-word--ja {
+  html[data-theme]:is([data-typing-course="short"], [data-typing-course="normal"]) body.page-typing-game .tg-board .tp-word--ja {
     min-height: 43px;
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-word--ja {
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 88px;
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-term {
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-term {
     display: none;
   }
 
@@ -282,11 +316,11 @@ html[data-theme] body.page-typing-game .tg-nudge {
 
 /* 背が低くて幅の狭い窓（縦向きの 320×460 など）: かな 22px でもふつうの文は 2 行・長い文は 3 行になるので、行の分を取っておく（札の高さを文ごとに変えない） */
 @media (max-height: 480px) and (max-width: 519.98px) {
-  html[data-theme] body.page-typing-game .tg-board[data-course="normal"] .tp-word--ja {
+  html[data-theme][data-typing-course="normal"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 88px;
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-word--ja {
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 133px;
   }
 }
@@ -326,11 +360,45 @@ html[data-theme] body.page-typing-game .tg-nudge {
     line-height: 1.2;
   }
 
-  html[data-theme] body.page-typing-game .tg-board:is([data-course="short"], [data-course="normal"]) .tp-word--ja {
+  html[data-theme]:is([data-typing-course="short"], [data-typing-course="normal"]) body.page-typing-game .tg-board .tp-word--ja {
     min-height: 40px; /* 1 行: 22 × 1.15 ＋ 12 × 1.2。コースつき（(0,5,2)）で縦向き・≥720・≤480 の規則に勝つ */
   }
 
-  html[data-theme] body.page-typing-game .tg-board[data-course="long"] .tp-word--ja {
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-word--ja {
     min-height: 80px; /* 2 行 */
+  }
+}
+
+/* 表示域が 330px 以下の横向き（568×320・667×320。iPhone SE など。D23）: 盤面の上に札に使えるのは 82〜94px
+   （568 はヘッダーが 2 行に折れて 69px。ヘッダーは全ページ共通なのでここでは変えない）。長い文の 2 行が盤面の上に収まるよう、
+   取れた・残り を 12px にして上の角に寄せ（4〜18px）、単位の上を 19px に詰め、長い文だけかな 17px・キー 10px にする（短い語句・ふつうの文は 22px のまま）。
+   E2E が 568×320・667×320 で 3 コースのいちばん長い文と教材の全文の単位と線が盤面の上にあることを守る */
+@media (max-height: 330px) {
+  html[data-theme] body.page-typing-game .tp-board {
+    padding-top: 8px;
+  }
+
+  html[data-theme] body.page-typing-game :is(.tg-got, .tp-timer) {
+    top: 4px;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  html[data-theme] body.page-typing-game .tp-word--ja {
+    margin-top: 11px;
+  }
+
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-unit__kana {
+    font-size: 17px;
+    line-height: 1.1;
+  }
+
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-unit__keys {
+    font-size: 10px;
+    line-height: 1.15;
+  }
+
+  html[data-theme][data-typing-course="long"] body.page-typing-game .tg-board .tp-word--ja {
+    min-height: 61px; /* 2 行: 17 × 1.1 ＋ 10 × 1.15 */
   }
 }
