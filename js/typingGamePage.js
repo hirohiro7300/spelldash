@@ -26,7 +26,12 @@ import {
   closeKeyboard,
   fitAboveKeyboard,
   createResultGuard,
-  wireTyping
+  wireTyping,
+  sep,
+  choiceFromUrl,
+  startChoice,
+  rememberChoice,
+  reopenLink
 } from "./typingKeys.js";
 import {
   SETTLE_SLACK_MS,
@@ -34,6 +39,8 @@ import {
   COURSE_KEY,
   DEFAULT_COURSE,
   COURSES,
+  COURSE_IDS,
+  isCourse,
   secondsFrom,
   limitSecondsFrom,
   limitMs,
@@ -92,16 +99,12 @@ const reduced = (() => {
 })();
 
 // 開くコース: head の inline script が決めた html[data-typing-course]（?course= → 覚えたコース → ふつうの文。Batch 65 P2）から始める
-// （ふつうの文を一度描いてから替えない。不正な値はふつうの文）。courseParam: ?course= の正しい値（深いリンクで来た回の計測。覚えない）
-const courseParam = (() => {
-  try {
-    const c = new URLSearchParams(location.search).get("course");
-    return COURSES[c] ? c : null;
-  } catch {
-    return null;
-  }
-})();
-const START_COURSE = COURSES[document.documentElement.dataset.typingCourse] ? document.documentElement.dataset.typingCourse : DEFAULT_COURSE;
+// （ふつうの文を一度描いてから替えない。不正な値は飛ばす。head の 1 行が動かなかったときだけ同じ順で自分で読む。js/typingKeys.js startChoice）。
+// courseParam: ?course= の正しい値（深いリンクで来た回の計測。覚えない）。値はコースの id の一覧で見る（PR #166 のレビュー 4: COURSES[c] の引きは
+// ?course=constructor・__proto__ を正しい値と読み、tgame_link を送っていた）
+const COURSE_CHOICE = { key: COURSE_KEY, param: "course" };
+const courseParam = choiceFromUrl(COURSE_IDS, "course");
+const START_COURSE = startChoice({ ids: COURSE_IDS, preset: document.documentElement.dataset.typingCourse, fromUrl: courseParam, key: COURSE_KEY, fallback: DEFAULT_COURSE });
 
 let phase = "ready"; // ready | running | result | loading | error
 let course = START_COURSE;
@@ -190,6 +193,7 @@ function render() {
   el.hint.classList.toggle("tg-hint--off", phase === "running"); // 打っている間は見せないが行の高さは残す（札が上下しない）
   el.error.hidden = phase !== "error";
   if (phase === "error") {
+    reopenLink(el.error.querySelector("a"), "course", course); // 「開き直す」は今のコースで（PR #166 のレビュー 2。練習の ?kind= と同じ形）
     el.word.replaceChildren();
     el.word.dataset.rest = "";
     el.term.textContent = "";
@@ -287,7 +291,7 @@ function syncTabs() {
 
 function toReady(c = course) {
   guard.clear();
-  course = COURSES[c] ? c : DEFAULT_COURSE;
+  course = isCourse(c) ? c : DEFAULT_COURSE;
   document.documentElement.dataset.typingCourse = course; // コースの規則（css/typing-game.css）は html の印で当たる
   // ページを開いた最初の回は、開いたコースの内蔵の文（typing-game.html に 3 つ直書き。FIRST_SENTENCES）だけで始め、教材が届いたら残りを後ろに足す（loadData）。
   // 最初の toReady は起動の同期の処理なので、教材はまだ届いていない。何も指定せずに開いたときはふつうの文の FIRST_SENTENCE（今までどおり）
@@ -339,11 +343,12 @@ function bestParts(cmp, unit) {
   return null;
 }
 
-// 名前と数の組を 1 つの span（.tg-pair: 折らない）に。区切りの「 ・ 」でだけ折れる
+// 名前と数の組を 1 つの span（.tg-pair: 折らない）に。区切りの「 ・ 」の後ろでだけ折れる（「・」は前の組の終わりに残る。js/typingKeys.js の sep。
+// 練習の結果の行と同じ。PR #166 のレビュー 5: ふつうの文字の「 ・ 」は「・」の前の空白で折れ、2 行目が「・ ミス …」で始まる幅があった）
 function pairs(list) {
   const out = [];
   list.forEach(([name, value], i) => {
-    if (i) out.push(document.createTextNode(" ・ "));
+    if (i) out.push(...sep());
     const pair = make("span", "tg-pair", `${name} `);
     pair.append(make("b", "", String(value)));
     out.push(pair);
@@ -464,31 +469,14 @@ function onPageShow(event) {
 
 // ---- 起動（打てるようにする配線を先に。計測とフッターは最後） ----
 
-// タブで選んだコース: この端末に覚え（次に何も指定せずに開いたときのコース）、URL の ?course= を合わせる（replaceState: 履歴は増やさない。
-// 再読み込みでも共有でも、今のコースで開く。?course= は覚えた値より先に読むので、合わせないと再読み込みで前のコースに戻る）。
+// タブで選んだコース: この端末に覚え（次に何も指定せずに開いたときのコース）、URL の ?course= を合わせる（js/typingKeys.js rememberChoice。
+// replaceState で履歴は増やさない・URL が替わるときだけ書く。再読み込みでも共有でも、今のコースで開く）。
 // ?course= で開いただけでは覚えない（貼られたリンク・検索から来た 1 回で、その人が選んだコースを上書きしない）
-function rememberCourse(c) {
-  try {
-    localStorage.setItem(COURSE_KEY, c);
-  } catch {
-    // 覚えられない端末でも URL で今のコースは保てる
-  }
-  try {
-    const url = new URL(location.href);
-    if (url.searchParams.get("course") !== c) {
-      url.searchParams.set("course", c);
-      history.replaceState(history.state, "", url);
-    }
-  } catch {
-    // 何もしない
-  }
-}
-
 for (const tab of el.tabs) {
   tab.addEventListener("click", () => {
     const c = tab.dataset.course;
-    if (!COURSES[c]) return;
-    rememberCourse(c);
+    if (!isCourse(c)) return;
+    rememberChoice(COURSE_CHOICE, c);
     if (c !== course || phase === "result" || phase === "error") toReady(c);
     else focusInput();
   });

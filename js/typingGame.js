@@ -37,6 +37,10 @@ export const COURSES = {
   long: { name: "長い文", unit: "文", band: [17, 30], note: "かな17〜30字の文", baseMs: 1500, perKeyMs: 420, goal: 4 }
 };
 export const COURSE_IDS = Object.keys(COURSES);
+// コースの id か（許す一覧の includes。COURSES[c] の引きは constructor・__proto__・toString などを正しい値と読む: PR #166 のレビュー 4）
+export const isCourse = (c) => COURSE_IDS.includes(c);
+// コースの定数（不正な id はふつうの文）
+const courseOf = (c) => COURSES[isCourse(c) ? c : DEFAULT_COURSE];
 
 // "?t=6" → 6。1〜90 の整数以外・無し → 90（E2E が時間を縮める。typing.html の ?t= と同じ流儀）
 export function secondsFrom(search) {
@@ -56,13 +60,13 @@ export function keysOf(reading) {
 // 文の持ち時間（ms）: 1.5 秒＋係数×打鍵を 4〜30 秒に丸める。overrideSec があればそれ（?s=）
 export function limitMs(course, reading, overrideSec = null) {
   if (overrideSec != null) return overrideSec * 1000;
-  const c = COURSES[course] ?? COURSES[DEFAULT_COURSE];
+  const c = courseOf(course);
   return Math.min(LIMIT_MAX_MS, Math.max(LIMIT_MIN_MS, c.baseMs + c.perKeyMs * keysOf(reading)));
 }
 
 // 目標（取れた文の数）。?t= の回は秒数に比例（1 以上）
 export function goalFor(course, seconds = SECONDS) {
-  const goal = (COURSES[course] ?? COURSES[DEFAULT_COURSE]).goal;
+  const goal = courseOf(course).goal;
   return seconds === SECONDS ? goal : Math.max(1, Math.round((goal * seconds) / SECONDS));
 }
 
@@ -221,7 +225,7 @@ export function createGameRun({ sentences = [], seconds = SECONDS, limit = () =>
 export function summarizeGame(run, course, seconds = SECONDS) {
   const goal = goalFor(course, seconds);
   const got = Number(run?.got) || 0;
-  return { ...summarize(run?.stats, seconds), got, lost: Number(run?.lost) || 0, goal, reached: got >= goal, unit: (COURSES[course] ?? COURSES[DEFAULT_COURSE]).unit };
+  return { ...summarize(run?.stats, seconds), got, lost: Number(run?.lost) || 0, goal, reached: got >= goal, unit: courseOf(course).unit };
 }
 
 // ---- 自己ベスト（コースごと・秒数ごと） ----
@@ -237,7 +241,7 @@ function validRecord(rec) {
 
 // → { got, lost, kpm, acc, day } | null（読めない・壊れている・範囲の外 → null）
 export function readGameBest(storage, course, seconds = SECONDS) {
-  return COURSES[course] ? readBestRecord(storage, BEST_KEY, course, seconds, validRecord) : null;
+  return isCourse(course) ? readBestRecord(storage, BEST_KEY, course, seconds, validRecord) : null;
 }
 
 // 取れた文の数で比べ、同数のときだけ打/分で比べる → { status: "first"|"new"|"faster"|"same"|"below"|"none", prev, diff }
@@ -253,7 +257,7 @@ export function compareGameBest(prev, got, kpm) {
 
 // 保存の直前に読み直し、best[course][秒数] だけ差し替えて書く（ほかのコース・秒数を消さない）→ 書けたか
 export function writeGameBest(storage, course, seconds, rec) {
-  if (!COURSES[course]) return false;
+  if (!isCourse(course)) return false;
   return writeBestRecord(storage, BEST_KEY, course, seconds, {
     got: Number(rec?.got) || 0,
     lost: Number(rec?.lost) || 0,

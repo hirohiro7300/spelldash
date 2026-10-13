@@ -1291,8 +1291,8 @@ console.log("typing:");
       !dcl || !shows(dcl, want) || dcl.board !== want || dcl.stageKind !== want || dcl.pressed !== want ||
       !shows(post, want) || post.board !== want || post.stageKind !== want || post.pressed !== want || post.state !== "ready" ||
       post.boardR.top !== pre.boardR.top || post.stageR.h !== pre.stageR.h || post.more !== pre.more || (want === "long" && post.boardR.h !== pre.boardR.h) ||
-      cls.cls >= 0.05 || post.canon !== "https://www.spelldash.net/typing.html" || post.saved !== mem || post.url !== url || errors > 0);
-    check("typing（P1）: 深いリンク（?kind=ja・?kind=long・#long）と記憶で開いた種類が、js が描く前・DOMContentLoaded・読み込みのあとで同じ（タブの下線と aria-pressed・札と箱の data-kind・補足・始まる前の一文・1 行目・札の上端と箱の高さ・札の下の 1 行）、英単語の見本を描かない、CLS < 0.05、canonical は 1 つ、URL が記憶より先・不正な値（?kind=xx）は指定なし、開いただけでは記憶も URL も替えない（390 の 11 通り・1200 の 4 通り）",
+      cls.cls >= 0.05 || post.canon !== "https://www.spelldash.net/typing.html" || post.saved !== mem || post.url !== (url === "/typing.html#long" ? "/typing.html?kind=long" : url) || errors > 0); // #long は ?kind=long に替わる（PR #166 の 3）
+    check("typing（P1）: 深いリンク（?kind=ja・?kind=long・#long）と記憶で開いた種類が、js が描く前・DOMContentLoaded・読み込みのあとで同じ（タブの下線と aria-pressed・札と箱の data-kind・補足・始まる前の一文・1 行目・札の上端と箱の高さ・札の下の 1 行）、英単語の見本を描かない、CLS < 0.05、canonical は 1 つ、URL が記憶より先・不正な値（?kind=xx）は指定なし、開いただけでは記憶も URL も替えない（#long だけ ?kind=long に替える: PR #166 の 3。390 の 11 通り・1200 の 4 通り）",
       runs.length === 15 && bad.length === 0,
       JSON.stringify({ bad: bad.slice(0, 3).map((r) => ({ w: r.w, url: r.url, mem: r.mem, want: r.want, pre: r.pre, dcl: r.dcl, post: r.post, cls: r.cls, errors: r.errors })) }));
   }
@@ -1328,14 +1328,14 @@ console.log("typing:");
     const a7 = await at();
     const errors = p.errors.length;
     await p.close();
-    check("typing（P1）: タブを押すと記憶に書き URL を ?kind= に合わせる（?t= は残る・#long は ?kind= に・履歴は増えない）、再読み込みは押した種類、何も指定しない URL は覚えた種類、#long で開いても記憶は替わらない",
+    check("typing（P1）: タブを押すと記憶に書き URL を ?kind= に合わせる（?t= は残る・#long は ?kind= に・履歴は増えない）、再読み込みは押した種類、何も指定しない URL は覚えた種類、#long で開いても記憶は替わらない（URL は ?kind=long）",
       a0.kind === "en" && a0.saved === null && a0.url === "/typing.html?t=5" &&
       a1.kind === "ja" && a1.html === "ja" && a1.saved === "ja" && a1.url === "/typing.html?t=5&kind=ja" && a1.len === a0.len &&
       a2.kind === "long" && a2.saved === "long" && a2.url === "/typing.html?t=5&kind=long" && a2.len === a0.len &&
       a3.kind === "long" && a3.html === "long" && a3.url === "/typing.html?t=5&kind=long" &&
       a4.kind === "en" && a4.html === "en" && a4.saved === "en" && a4.url === "/typing.html?t=5&kind=en" &&
       a5.kind === "en" && a5.url === "/typing.html" &&
-      a6.kind === "long" && a6.saved === "en" && a6.url === "/typing.html#long" &&
+      a6.kind === "long" && a6.saved === "en" && a6.url === "/typing.html?kind=long" && // #long は読み込みのときに ?kind=long に替わる（記憶は替えない。PR #166 の 3）
       a7.kind === "ja" && a7.saved === "ja" && a7.url === "/typing.html?kind=ja" && errors === 0,
       JSON.stringify({ a0, a1, a2, a3, a4, a5, a6, a7, errors }));
     // localStorage が投げる端末（head の 1 行は try で既定に落ちる。URL の種類は読める）
@@ -1411,6 +1411,88 @@ console.log("typing:");
     await p.close();
     check("typing（反証）: 日本語のタブを押してオフラインで再読み込みしても、sw が保存した typing.html を返して日本語のタブで開く（書斎に落ちない。URL は ?kind=ja のまま）",
       sw && url === "/typing.html?kind=ja" && off.controlled && off.url === "/typing.html?kind=ja" && off.title.startsWith("タイピング練習") && off.html === "ja" && off.kind === "ja" && off.state === "ready" && off.page.includes("page-typing"), JSON.stringify({ sw, url, off }));
+  }
+
+  // PR #166 レビューの 1: オフラインのページ遷移の代わりは、まずパラメータなしの同じパスの保存を返す（パラメータを見ない一致は最初に保存された項目を返すので、
+  // 何週間も前に ?kind=ja で開いた古い版の HTML が、毎日 /typing.html を開いて新しくなった css／js と組み合わさっていた）。逆向き（パラメータ付きの URL でだけ開く人）も、
+  // sw がページ遷移の応答をパラメータなしのパスにも保存するので、入れた時の古いパラメータなしの保存を返さない。古い版は cache を直に書いて作る（sw.js）
+  {
+    const STALE = '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>古い版</title></head><body class="page-stale"><p id="staleMark">古い版のタイピング練習</p></body></html>';
+    // seed の URL に古い版を書く → open をオンラインで開く（sw が保存する）→ tab を押して URL を ?kind= に替える → オフラインで再読み込み
+    const offlineReload = async (seed, open, tab) => {
+      const p = await newPage({ viewport: { width: 1200, height: 900 } });
+      await p.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      const sw = await p.evaluate(() => navigator.serviceWorker.ready.then((r) => Boolean(r.active)));
+      await p.evaluate(async ([url, html]) => {
+        const c = await caches.open((await caches.keys()).find((k) => k.startsWith("spelldash-")));
+        await c.put(url, new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }));
+      }, [seed, STALE]);
+      await p.goto(BASE + open, { waitUntil: "networkidle" });
+      // sw は応答を返したあとに保存する: open の保存（古い版でない）が古い版より後ろに並ぶか、古い版の URL が新しい版で書き替わるまで待つ
+      const saved = await waitUntil(() => p.evaluate(async ([seedUrl, openUrl]) => {
+        const c = await caches.open((await caches.keys()).find((k) => k.startsWith("spelldash-")));
+        const keys = (await c.keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search);
+        const fresh = async (u) => { const r = await c.match(u); return !!r && !(await r.text()).includes("staleMark"); };
+        return (await fresh(openUrl)) && (keys.indexOf(openUrl) > keys.indexOf(seedUrl) || (await fresh(seedUrl)));
+      }, [seed, open]), 4000);
+      await p.click(`.tp-tabs [data-kind="${tab}"]`);
+      await p.waitForTimeout(300);
+      const url = await p.evaluate(() => location.pathname + location.search);
+      await p.context().setOffline(true);
+      await p.reload({ waitUntil: "load" }).catch(() => {});
+      await waitUntil(async () => (await p.evaluate(() => document.getElementById("typingBoard")?.dataset.kind ?? document.getElementById("staleMark")?.id ?? null)) !== null, 5000);
+      await p.waitForTimeout(300);
+      const off = await p.evaluate(() => ({ url: location.pathname + location.search, title: document.title, stale: !!document.getElementById("staleMark"), html: document.documentElement.dataset.typingKind ?? null, kind: document.getElementById("typingBoard")?.dataset.kind ?? null, page: document.body.className, controlled: Boolean(navigator.serviceWorker.controller) }));
+      await p.context().setOffline(false);
+      await p.close();
+      return { sw, saved, url, off };
+    };
+    const a = await offlineReload("/typing.html?kind=ja", "/typing.html", "long");
+    check("typing（PR #166 の 1）: 古い版を ?kind=ja で保存した端末が、新しい /typing.html の保存のあと長文のタブ（?kind=long）をオフラインで再読み込みしても、パラメータなしの新しい保存を返す（古い版を返さない）",
+      a.sw && a.saved && a.url === "/typing.html?kind=long" && a.off.controlled && !a.off.stale && a.off.url === "/typing.html?kind=long" && a.off.title.startsWith("タイピング練習") && a.off.html === "long" && a.off.kind === "long" && a.off.page.includes("page-typing"), JSON.stringify(a));
+    const b = await offlineReload("/typing.html", "/typing.html?kind=long", "ja");
+    check("typing（PR #166 の 1・逆向き）: パラメータなしの保存が古い版のまま ?kind=long で開いた端末が、日本語のタブ（?kind=ja）をオフラインで再読み込みしても、新しく開いた版を返す（ページ遷移の応答はパラメータなしのパスにも保存する）",
+      b.sw && b.saved && b.url === "/typing.html?kind=ja" && b.off.controlled && !b.off.stale && b.off.url === "/typing.html?kind=ja" && b.off.title.startsWith("タイピング練習") && b.off.html === "ja" && b.off.kind === "ja" && b.off.page.includes("page-typing"), JSON.stringify(b));
+    // 反証: 古い版と同じ ?kind=ja に戻る形。パラメータ込みの完全一致を先に見ると、その古い保存が返る（sw はパスだけの保存を先に見る）
+    const c = await offlineReload("/typing.html?kind=ja", "/typing.html", "ja");
+    check("typing（PR #166 の 1・反証）: 古い版を ?kind=ja で保存した端末が、新しい /typing.html の保存のあと日本語のタブ（同じ ?kind=ja）をオフラインで再読み込みしても、パラメータなしの新しい保存を返す（パラメータまで同じ古い保存を先に返さない）",
+      c.sw && c.saved && c.url === "/typing.html?kind=ja" && c.off.controlled && !c.off.stale && c.off.url === "/typing.html?kind=ja" && c.off.title.startsWith("タイピング練習") && c.off.html === "ja" && c.off.kind === "ja" && c.off.page.includes("page-typing"), JSON.stringify(c));
+  }
+
+  // PR #166 のレビュー 3: #long の深いリンクは読み込みのときに ?kind=long に替える（history.replaceState。hash は消す・履歴は増えない・記憶は書かない）。
+  // 前は #long を読み込みのときに 1 回だけ読んで URL はそのままだったので、「本文へ」（#main）で hash が替わると再読み込みで英単語に戻っていた。
+  // ?kind= に正しい値があるときの #long は読まない（そのまま）。?kind=xx（不正）#long は ?kind=long に
+  {
+    const p = await newPage({ viewport: { width: 1200, height: 900 } });
+    const at = () => p.evaluate(() => ({ kind: document.getElementById("typingBoard").dataset.kind, html: document.documentElement.dataset.typingKind, state: document.getElementById("typingBoard").dataset.state, url: location.pathname + location.search + location.hash, len: history.length, saved: localStorage.getItem("spelldash_typing_kind") }));
+    await p.goto(BASE + "/news.html", { waitUntil: "load" });
+    const len0 = await p.evaluate(() => history.length);
+    await p.goto(BASE + "/typing.html#long", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await at()).state === "ready", 5000);
+    const b0 = await at();
+    await p.focus(".skip-link");
+    await p.keyboard.press("Enter"); // 本文へ（#main）
+    await p.waitForTimeout(150);
+    const b1 = await at();
+    await p.reload({ waitUntil: "networkidle" });
+    await waitUntil(async () => (await at()).state === "ready", 5000);
+    const b2 = await at();
+    await p.goto(BASE + "/news.html", { waitUntil: "load" });
+    await p.goto(BASE + "/typing.html?t=5&kind=xx#long", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await at()).state === "ready", 5000);
+    const b3 = await at();
+    await p.goto(BASE + "/news.html", { waitUntil: "load" });
+    await p.goto(BASE + "/typing.html?kind=ja#long", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await at()).state === "ready", 5000);
+    const b4 = await at();
+    const errors = p.errors.length;
+    await p.close();
+    check("typing（PR #166 の 3）: #long で開くと URL を ?kind=long に替え（hash は消える・履歴は増えない・記憶は書かない）、「本文へ」で #main になっても再読み込みは長文、?kind=xx#long は ?kind=long（?t= は残す）、?kind=ja#long は日本語でそのまま",
+      b0.kind === "long" && b0.html === "long" && b0.url === "/typing.html?kind=long" && b0.len === len0 + 1 && b0.saved === null &&
+      b1.url === "/typing.html?kind=long#main" && b2.kind === "long" && b2.html === "long" && b2.state === "ready" && b2.saved === null &&
+      b3.kind === "long" && b3.url === "/typing.html?t=5&kind=long" && b3.saved === null &&
+      b4.kind === "ja" && b4.url === "/typing.html?kind=ja#long" && b4.saved === null && errors === 0,
+      JSON.stringify({ len0, b0, b1, b2, b3, b4, errors }));
   }
 
   // Batch 65 Q1: 1 分の結果の「正確さ … ・ ミス N ・ 自己ベスト（…）」が 2 行に折れても、区切りの「・」は前の行の終わりに残る（2 行目の頭に来ない）。
@@ -1504,6 +1586,24 @@ console.log("typing:");
       (typingHtml.match(/rel="canonical"/g) ?? []).length === 1 && (typingHtml.match(/property="og:url"/g) ?? []).length === 1 && !/canonical"[^>]*\?kind/.test(typingHtml) &&
       !sitemap.includes("kind=") && !sitemap.includes("#long") && csp.includes("script-src 'self' 'unsafe-inline' https://esm.sh;") && !/<script[^>]+src=/.test(head),
       kindLine.slice(0, 120));
+  }
+  // PR #166 のレビュー 6: 開く種類の読む順と値は head の inline の 1 行（CSP・速さのため残す）と js（typingPage.js の KINDS・KIND_KEY と js/typingKeys.js の
+  // choiceFromUrl・startChoice）で同じ: ?kind= → #long → 記憶 → 英単語。タブで覚える・URL を合わせるのは rememberChoice（ゲームのコースと同じ関数）
+  {
+    const head = typingHtml.slice(0, typingHtml.indexOf("</head>"));
+    const src = head.match(/<script>\(\(\) => \{ const K = (\[[^\]]*\]);[^<]*<\/script>/);
+    const line = src?.[0] ?? "";
+    const pageSrc = fs.readFileSync(path.join(ROOT, "js", "typingPage.js"), "utf8");
+    const jsKinds = pageSrc.match(/const KINDS = (\[[^\]]*\]);/)?.[1] ?? "null";
+    const jsKey = pageSrc.match(/const KIND_KEY = "([^"]+)"/)?.[1] ?? "";
+    const iUrl = line.indexOf('get("kind")');
+    const iHash = line.indexOf('location.hash === "#long"');
+    const iMem = line.indexOf(`localStorage.getItem("${jsKey}")`);
+    check("typing（PR #166 の 6）: head の 1 行と js の開く種類の読む順・許す一覧・記憶の鍵・既定が同じ（?kind= → #long → 記憶 → 英単語）、覚えて URL を合わせるのはゲームと同じ rememberChoice",
+      JSON.stringify(JSON.parse(src?.[1] ?? "null")) === JSON.stringify(JSON.parse(jsKinds)) && jsKey === "spelldash_typing_kind" && iUrl > 0 && iHash > iUrl && iMem > iHash && line.includes('k || "en"') &&
+      pageSrc.includes('choiceFromUrl(KINDS, "kind") ?? (location.hash === "#long" ? "long" : null)') && /startChoice\(\{ ids: KINDS, preset: document\.documentElement\.dataset\.typingKind, fromUrl: kindFromUrl\(\), key: KIND_KEY, fallback: "en" \}\)/.test(pageSrc) &&
+      pageSrc.includes("rememberChoice(KIND_CHOICE, k)") && fs.readFileSync(path.join(ROOT, "js", "typingGamePage.js"), "utf8").includes("rememberChoice(COURSE_CHOICE, c)") && !/history\.replaceState\(/.test(pageSrc),
+      JSON.stringify({ head: src?.[1], jsKinds, jsKey, iUrl, iHash, iMem }));
   }
 }
 
@@ -2894,6 +2994,22 @@ console.log("typing game:");
   const gameBad = BG.validateTypingGameData(gameJson);
   const counts = Object.fromEntries(["short", "normal", "long"].map((c) => [c, gameJson.courses[c].length]));
   check(`typing game: 教材は生成物と同じ（node scripts/build-typing-game.mjs）・条件を満たす（目標の定数も）・数（短 ≥200／ふつう ≥250／長 ≥150。${counts.short}／${counts.normal}／${counts.long}）`, built.text === gameText && gameBad.length === 0 && counts.short >= 200 && counts.normal >= 250 && counts.long >= 150, gameBad.slice(0, 5).join(" | "));
+  // PR #166 レビューの 8: typing-game.html に手で書いた 3 コースの最初の文の印（[data-tg-first]）は、FIRST_SENTENCES から作った題・読み・かなの単位・補足・data-rest と
+  // --check が突き合わせる（前は各文が教材にあるかだけで、HTML のかな・ローマ字を 1 字いじっても通った）。今の HTML は 0 件、1 字ずつのずれはどれも落ちる
+  {
+    const html = fs.readFileSync(path.join(ROOT, "typing-game.html"), "utf8");
+    const MUT = {
+      keys: ['<span class="tp-unit__kana">き</span><span class="tp-unit__keys">ki</span></span><span class="tp-unit tp-unit--todo"><span class="tp-unit__kana">に</span>', (x) => x.replace(">ki<", ">gi<")],
+      kana: ['<span class="tp-unit__kana">きょ</span>', (x) => x.replace("きょ", "きよ")],
+      title: ['<span data-tg-first="long">植木に水をやって、新しい芽を数える</span>', (x) => x.replace("、", "")],
+      reading: ['<span data-tg-first="normal">きょうはいいてんきだ</span>', (x) => x.replace("てんき", "でんき")],
+      note: ["目標 8文", (x) => x.replace("8", "9")],
+      rest: ['data-rest="kyouhaiitennkida"', (x) => x.replace("nn", "n")]
+    };
+    const caught = Object.fromEntries(Object.entries(MUT).map(([k, [from, f]]) => [k, html.includes(from) ? BG.firstMarkupProblems(html.replace(from, f(from))).length : "no-anchor"]));
+    check("typing game（PR #166 の 8）: --check は typing-game.html の最初の文の印を FIRST_SENTENCES と突き合わせる（今の HTML は 0 件。手本のキー・かな・題・読み・補足・data-rest を 1 字ずらすとどれも落ちる）",
+      BG.firstMarkupProblems().length === 0 && Object.values(caught).every((n) => typeof n === "number" && n > 0), JSON.stringify({ now: BG.firstMarkupProblems().map((p) => p.reason), caught }));
+  }
   const allRows = ["short", "normal", "long"].flatMap((c) => gameJson.courses[c].map(([t, r]) => ({ c, t, r })));
   {
     const bad = [];
@@ -3730,6 +3846,39 @@ console.log("typing game:");
       check("typing game（反証）: 長い文のタブを押してオフラインで再読み込みしても、sw が保存した typing-game.html を返して長い文で開く（書斎に落ちない。URL は ?course=long のまま）",
         sw && url === "/typing-game.html?course=long" && off.controlled && off.url === "/typing-game.html?course=long" && off.title.startsWith("タイピングゲーム") && off.html === "long" && off.course === "long" && off.state === "ready" && off.page.includes("page-typing"), JSON.stringify({ sw, url, off }));
     }
+    // PR #166 のレビュー 1 の反証: 何週間も前に ?course=long で開いた古い版の保存があっても、今日 /typing-game.html を開いてから長い文のタブ（同じ ?course=long）を
+    // オフラインで再読み込みすると、パラメータなしの新しい保存を返す（sw はパラメータ込みの完全一致より先にパスだけの保存を見る）。古い版は cache を直に書いて作る（sw.js）
+    {
+      const STALE = '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>古い版</title></head><body class="page-stale"><p id="staleMark">古い版のタイピングゲーム</p></body></html>';
+      const seed = "/typing-game.html?course=long";
+      const q = await newPage({ viewport: { width: 1200, height: 900 } });
+      await q.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      const sw = await q.evaluate(() => navigator.serviceWorker.ready.then((r) => Boolean(r.active)));
+      await q.evaluate(async ([url, html]) => {
+        const c = await caches.open((await caches.keys()).find((k) => k.startsWith("spelldash-")));
+        await c.put(url, new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }));
+      }, [seed, STALE]);
+      await q.goto(BASE + "/typing-game.html", { waitUntil: "networkidle" });
+      // sw は応答を返したあとに保存する: /typing-game.html の新しい保存が古い版より後ろに並ぶまで待つ
+      const saved = await waitUntil(() => q.evaluate(async (seedUrl) => {
+        const c = await caches.open((await caches.keys()).find((k) => k.startsWith("spelldash-")));
+        const keys = (await c.keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search);
+        const r = await c.match("/typing-game.html");
+        return !!r && !(await r.text()).includes("staleMark") && keys.indexOf("/typing-game.html") > keys.indexOf(seedUrl);
+      }, seed), 4000);
+      await q.click('.tp-tabs [data-course="long"]');
+      await q.waitForTimeout(300);
+      const url = await q.evaluate(() => location.pathname + location.search);
+      await q.context().setOffline(true);
+      await q.reload({ waitUntil: "load" }).catch(() => {});
+      await waitUntil(async () => (await q.evaluate(() => document.getElementById("tgBoard")?.dataset.course ?? document.getElementById("staleMark")?.id ?? null)) !== null, 5000);
+      await q.waitForTimeout(300);
+      const off = await q.evaluate(() => ({ url: location.pathname + location.search, title: document.title, stale: !!document.getElementById("staleMark"), html: document.documentElement.dataset.typingCourse ?? null, course: document.getElementById("tgBoard")?.dataset.course ?? null, page: document.body.className, controlled: Boolean(navigator.serviceWorker.controller) }));
+      await q.context().setOffline(false);
+      await q.close();
+      check("typing game（PR #166 の 1・反証）: 古い版を ?course=long で保存した端末が、新しい /typing-game.html の保存のあと長い文のタブ（同じ ?course=long）をオフラインで再読み込みしても、パラメータなしの新しい保存を返す（パラメータまで同じ古い保存を先に返さない）",
+        sw && saved && url === seed && off.controlled && !off.stale && off.url === seed && off.title.startsWith("タイピングゲーム") && off.html === "long" && off.course === "long" && off.page.includes("page-typing"), JSON.stringify({ sw, saved, url, off }));
+    }
     // 練習（typing.html）の種類の規則が漏れない（Batch 65 の仕上げ）: typing-game.html も body.page-typing で css/typing.css を読み、html に data-typing-kind が無い。
     // 練習の「長文のほかでは空の見出しを出さない」をクラスで書くと、ゲームの読み込み中の空の見出し（#tgTerm。行の高さを残す）が消えて単位の行が上がる
     {
@@ -3752,6 +3901,115 @@ console.log("typing game:");
         JSON.stringify({ ready, loading, after, errors: q.errors.slice(0, 2) }));
       await q.close();
     }
+  }
+
+  // ---- PR #166 のレビュー 4（Node）: コースの引きはコースの id の一覧（COURSE_IDS）で見る。constructor・__proto__・toString・hasOwnProperty は
+  // ふつうの文と同じ持ち時間・目標・単位（NaN にならない）、自己ベストは読まない・書かない（__proto__ に書くと JSON の形が壊れる） ----
+  {
+    const GG = await import("../js/typingGame.js");
+    const mem = new Map();
+    const store = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+    const rec = { got: 3, lost: 1, kpm: 120, acc: 90, day: "2026-10-13" };
+    const bad = [];
+    for (const c of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+      if (GG.goalFor(c) !== GG.goalFor("normal") || GG.goalFor(c, 6) !== GG.goalFor("normal", 6)) bad.push(`${c}: goal ${GG.goalFor(c)}`);
+      if (GG.limitMs(c, "きょうはいいてんきだ") !== GG.limitMs("normal", "きょうはいいてんきだ")) bad.push(`${c}: limit ${GG.limitMs(c, "きょうはいいてんきだ")}`);
+      const s = GG.summarizeGame({ got: 1, lost: 0, stats: null }, c, 90);
+      if (s.unit !== "文" || s.goal !== GG.goalFor("normal")) bad.push(`${c}: summary ${s.unit}/${s.goal}`);
+      if (GG.writeGameBest(store, c, 90, rec) !== false) bad.push(`${c}: wrote`);
+      if (GG.readGameBest(store, c, 90) !== null) bad.push(`${c}: read`);
+    }
+    const kept = GG.writeGameBest(store, "normal", 90, rec) && GG.readGameBest(store, "normal", 90)?.got === 3;
+    check("typing game（PR #166 の 4・Node）: constructor・__proto__・toString・hasOwnProperty・valueOf のコースはふつうの文の持ち時間・目標・単位で、自己ベストは読まない・書かない（正しいコースは今どおり）",
+      bad.length === 0 && kept && GG.COURSE_IDS.join() === "short,normal,long", JSON.stringify({ bad, kept, stored: mem.get(GG.BEST_KEY) ?? null }));
+  }
+
+  // ---- PR #166 のレビュー 2: 深いリンク（?course=long。記憶なし）で来て教材が読めないとき、「開き直す」は今のコースで開き直す（?t= などは残す。
+  // 静的な ./typing-game.html のままだとふつうの文に戻る。練習の「開き直す」〔?kind=〕と同じ形）。押すと長い文で開く（開いただけでは覚えない） ----
+  {
+    const p = await newPage({ viewport: { width: 1200, height: 900 } });
+    await p.route("**/data/typing-game.json", (route) => route.abort());
+    await p.goto(BASE + "/typing-game.html?t=6&s=1&course=long", { waitUntil: "load" });
+    await p.waitForTimeout(300);
+    const rest = await p.evaluate(() => document.getElementById("tgWord").dataset.rest);
+    await p.keyboard.press(rest[0]); // 内蔵の最初の文で始め、1 秒で流れて列が尽きる → 読み込めなかった
+    const errored = await waitUntil(() => p.evaluate(() => document.getElementById("tgBoard").dataset.state === "error"), 4000);
+    const at = () => p.evaluate(() => ({ state: document.getElementById("tgBoard").dataset.state, course: document.getElementById("tgBoard").dataset.course, html: document.documentElement.dataset.typingCourse, href: document.querySelector("#tgError a")?.getAttribute("href") ?? null, stored: localStorage.getItem("spelldash_typing_game_course"), url: location.pathname + location.search }));
+    const e0 = await at();
+    await p.click("#tgError a");
+    await p.waitForLoadState("load");
+    await p.waitForTimeout(300);
+    const e1 = await at();
+    const errors = p.errors.length;
+    await p.close();
+    check("typing game（PR #166 の 2）: ?course=long で来て教材が読めないとき「開き直す」は今のコース（/typing-game.html?t=6&s=1&course=long）を開き直し、押すと長い文で開く（覚えない）",
+      errored && e0.state === "error" && e0.course === "long" && e0.href === "/typing-game.html?t=6&s=1&course=long" && e1.url === "/typing-game.html?t=6&s=1&course=long" && e1.html === "long" && e1.course === "long" && e1.stored === null && errors === 0,
+      JSON.stringify({ errored, e0, e1, errors }));
+  }
+
+  // ---- PR #166 のレビュー 5: 結果の補足 1（流れた N ・ 打/分 N ・ 正確さ N% ・ ミス N）が折れても「・」は行の頭に来ない（区切りは練習と同じ js/typingKeys.js の sep:
+  // 折れない「 ・」と折れてよい空白）。3 つの結果（ふつうの文 1 打＋ミス・長い文 3 打・短い語句 2 打）を 390・360・320 で見て、さらに行の幅を 120〜340px で 1px ずつ
+  // 替えて折り目を全部見る（「・」がちょうど行の端に来る幅だけで起きる。数の桁〔打/分 168・ミス 12 など〕が替わると起きる幅もずれるので、幅を全部なめる）。
+  // 行は Range の字の矩形で分ける（7.5 の Q1 と同じ形: 字の縦の中央が 8px 以内なら同じ行）。直す前は区切りがふつうの文字の「 ・ 」で、「・」の前の空白で折れて
+  // 2 行目が「・ミス 1」で始まる幅があった（ふつうの文の結果で行の幅 227〜245px）。textContent は前と同じ ----
+  {
+    // widths が空なら今の幅で 1 回。行の幅を替えたら戻す
+    const linesOf = (p, widths = []) => p.evaluate((widths) => {
+      const root = document.getElementById("tgLine");
+      const measure = () => {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const chars = [];
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          for (let i = 0; i < n.length; i++) {
+            if (/\s/.test(n.data[i])) continue;
+            const r = document.createRange();
+            r.setStart(n, i);
+            r.setEnd(n, i + 1);
+            const b = [...r.getClientRects()].find((x) => x.width > 0);
+            if (b) chars.push({ ch: n.data[i], y: (b.top + b.bottom) / 2, x: b.left });
+          }
+        }
+        const lines = [];
+        for (const c of chars.sort((a, b) => a.y - b.y)) {
+          const line = lines.find((l) => Math.abs(l.y - c.y) < 8);
+          if (line) line.chars.push(c);
+          else lines.push({ y: c.y, chars: [c] });
+        }
+        return lines.map((l) => l.chars.sort((a, b) => a.x - b.x).map((c) => c.ch).join(""));
+      };
+      if (!widths.length) return [{ w: Math.round(root.getBoundingClientRect().width), lines: measure(), text: root.textContent }];
+      const out = widths.map((w) => {
+        root.style.width = `${w}px`;
+        return { w, lines: measure(), text: root.textContent };
+      });
+      root.style.width = "";
+      return out;
+    }, widths);
+    const runs = [];
+    const SWEEP = Array.from({ length: 221 }, (_, i) => 120 + i);
+    const p = await newPage({ viewport: { width: 390, height: 844 } });
+    for (const [course, keys] of [["normal", 1], ["long", 3], ["short", 2]]) {
+      await p.setViewportSize({ width: 390, height: 844 });
+      await p.goto(BASE + `/typing-game.html?t=2&s=1&course=${course}`, { waitUntil: "networkidle" });
+      await p.waitForTimeout(300);
+      const rest = await p.evaluate(() => document.getElementById("tgWord").dataset.rest);
+      const miss = rest[0] === "q" ? "z" : "q";
+      for (const k of [...rest.slice(0, keys), ...(keys === 1 ? [miss] : [])]) await p.keyboard.press(k); // ふつうの文は 1 打＋ミス 1（正確さ 50%）、ほかはミスなし（100%）
+      await waitUntil(() => p.evaluate(() => document.getElementById("tgBoard").dataset.state === "result"), 5000);
+      await p.waitForTimeout(700);
+      for (const vw of [390, 360, 320]) {
+        await p.setViewportSize({ width: vw, height: 844 });
+        for (const r of await linesOf(p)) runs.push({ course, vw, ...r });
+      }
+      for (const r of await linesOf(p, SWEEP)) runs.push({ course, vw: "sweep", ...r });
+    }
+    const errors = p.errors.slice(0, 2);
+    await p.close();
+    const bad = runs.filter((r) => !r.lines.length || r.lines.some((l) => l.startsWith("・")) || !/^流れた \d+ ・ 打\/分 \d+ ・ 正確さ (\d+%|―) ・ ミス \d+$/.test(r.text));
+    const wrapped = runs.filter((r) => r.lines.length >= 2);
+    check("typing game（PR #166 の 5）: 結果の補足 1 が折れても「・」は行の頭に来ない（ふつうの文・長い文・短い語句の結果を 390・360・320 と行の幅 120〜340px の 1px ごとで。区切りは前の行の終わりに残る・textContent は「流れた N ・ 打/分 N ・ 正確さ N% ・ ミス N」のまま）",
+      runs.length === 3 * (3 + SWEEP.length) && bad.length === 0 && wrapped.length > 0 && errors.length === 0,
+      JSON.stringify({ bad: bad.length, first: bad.slice(0, 4).map((r) => `${r.course}@${r.vw}/${r.w}:${r.lines.join("|")}`), natural: runs.filter((r) => r.vw !== "sweep").map((r) => `${r.course}@${r.vw}:${r.lines.join("|")}`), errors }));
   }
 
   // ---- 静的（ファイルを読むだけ） ----
@@ -3779,6 +4037,23 @@ console.log("typing game:");
   check("typing game: sitemap・sw の precache・アプリの PAGES・お知らせ（題「文を次々と打つ、90秒のタイピングゲーム」の 1 件）に typing-game.html、ci.yml に教材の --check、typing.html の札の下から導線（このページについての外）", fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing-game.html") && fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing-game.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing-game.html"') && firstNews.includes("./typing-game.html") && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing-game.mjs --check") && /<p class="tp-more">[^<]*<a href="\.\/typing-game\.html">タイピングゲーム<\/a><\/p>/.test(typingHtml) && !typingAbout.includes("typing-game.html"));
   const gameCss = fs.readFileSync(path.join(ROOT, "css", "typing-game.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   check("typing game: typing-game.css は animation／transition／@keyframes を持たず、太さは longhand、旧い書き方（999px・var(--radius)・rgba(0,0,0・#FFF）が無い", !/\b(animation|transition)(-[a-z]+)?\s*:/.test(gameCss) && !gameCss.includes("@keyframes") && !/text-decoration\s*:[^;]*\d+px/.test(gameCss) && ![/\b999px/, /var\(--radius\)/, /var\(--radius-lg\)/, /rgba\(0,\s*0,\s*0/, /#(?:FFF|fff)(?![0-9A-Fa-f])/].some((re) => re.test(gameCss)));
+  // PR #166 のレビュー 6: 開くコースの読む順と値は head の inline の 1 行（CSP・速さのため残す）と js（js/typingKeys.js の choiceFromUrl・startChoice）で同じ:
+  // ?course= → 覚えたコース（COURSE_KEY）→ 既定（DEFAULT_COURSE）、許す一覧は COURSE_IDS、値は一覧の includes で見る（COURSES[c] の引きをしない: PR #166 の 4）
+  {
+    const head = gameHtml.slice(0, gameHtml.indexOf("</head>"));
+    const line = head.match(/<script>\(\(\) => \{ const ok = (\[[^\]]*\]);[^<]*<\/script>/);
+    const src = line?.[0] ?? "";
+    const ids = (() => { try { return JSON.parse(line?.[1] ?? "null"); } catch { return null; } })();
+    const pageSrc = fs.readFileSync(path.join(ROOT, "js", "typingGamePage.js"), "utf8");
+    const keysSrc = fs.readFileSync(path.join(ROOT, "js", "typingKeys.js"), "utf8");
+    const iUrl = src.indexOf('get("course")');
+    const iMem = src.indexOf(`localStorage.getItem("${G.COURSE_KEY}")`);
+    check("typing game（PR #166 の 6）: head の 1 行と js の開くコースの読む順・許す一覧・記憶の鍵・既定が同じ（?course= → 記憶 → 既定。一覧の includes で見て、URL の値を COURSES[c] で引かない）",
+      JSON.stringify(ids) === JSON.stringify(G.COURSE_IDS) && iUrl > 0 && iMem > iUrl && src.includes("try {") && src.includes("ok.includes(c)") && src.includes(`typingCourse = ok.includes(c) ? c : "${G.DEFAULT_COURSE}"`) &&
+      pageSrc.includes('choiceFromUrl(COURSE_IDS, "course")') && /startChoice\(\{ ids: COURSE_IDS, preset: document\.documentElement\.dataset\.typingCourse, fromUrl: courseParam, key: COURSE_KEY, fallback: DEFAULT_COURSE \}\)/.test(pageSrc) &&
+      !/COURSES\[(c|document\.[^\]]+|tab\.[^\]]+)\]/.test(pageSrc.replace(/\/\/.*$/gm, "")) && !pageSrc.includes("localStorage.setItem") && keysSrc.includes("return ids.includes(value) ? value : null;"),
+      JSON.stringify({ ids, iUrl, iMem, line: src.slice(0, 160) }));
+  }
 }
 
 // ===== 8. テーマ: 標準は白、プロフィールで黒に切替→永続化 =====
@@ -4933,6 +5208,32 @@ console.log("bookshelf:");
     await page.close();
   }
 
+  // ---- PR #166 レビューの 7: 本を足すの窓（<dialog>.showModal()。外は属性なしで inert になり、#srStatus も読まれない）が開いている間の announce（js/ui.js）は、
+  //      窓の中の読み上げの行（role=status・aria-live=polite・sr-only。窓の markup に最初からある）に書く。前は [inert] の属性だけを見て窓の外の #srStatus に書いていた。
+  //      閉じたあとは #srStatus に戻る（ページの関数を直に呼ぶ） ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
+    await openHome(page);
+    await page.click("#bookFinderOpen");
+    await page.waitForTimeout(200);
+    const pre = await page.evaluate(() => { const dlg = document.getElementById("bookFinder"); return { open: dlg.open, modal: dlg.matches(":modal"), line: !!dlg.querySelector('[data-sr-live][role="status"][aria-live="polite"].sr-only'), attrInert: !!document.getElementById("srStatus").closest("[inert]") }; });
+    const said = (text) => page.evaluate(async (t) => {
+      (await import("/js/ui.js")).announce(t);
+      await new Promise((r) => setTimeout(r, 120));
+      const dlg = document.getElementById("bookFinder");
+      const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === t);
+      return { open: dlg.open, inside: lines.filter((n) => dlg.contains(n) && n.hasAttribute("data-sr-live")).length, outside: lines.filter((n) => !dlg.contains(n)).map((n) => n.id || n.className), finderStatus: document.getElementById("bookFinderStatus").textContent };
+    }, text);
+    const a = await said("残り10秒");
+    const focusIn = await page.evaluate(() => document.getElementById("bookFinder").contains(document.activeElement));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const b = await said("60秒 終わり");
+    check("本を足すの窓（showModal）を開いている間の announce は窓の中の読み上げの行（role=status・aria-live=polite・sr-only・最初からある）に 1 つだけ入り（窓の外の #srStatus には入らない）、閉じたあとは #srStatus（PR #166 の 7）",
+      pre.open && pre.modal && pre.line && !pre.attrInert && a.open && a.inside === 1 && a.outside.length === 0 && a.finderStatus === "" && focusIn && !b.open && b.inside === 0 && b.outside.length === 1 && b.outside[0] === "srStatus" && page.errors.length === 0, JSON.stringify({ pre, a, focusIn, b, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+
   // ---- PR #154 レビュー 1: 書けなかった棚（localStorage が満杯で setItem が投げた）は、容量が空いたら次の描き直しで書き直す（入力が前回と同じでも）。開き直しても足した本が残る ----
   {
     const page = await seededPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed({ spelldash_shelf: shelfJson({ books: ["jhist1"], courses: ["jhs-redo"] }) }) }); // 開き直しで種を入れ直さない
@@ -6025,23 +6326,56 @@ console.log("study 60s:");
     await fb.waitForTimeout(300);
     await fb.click("[data-feedback-open]");
     await fb.waitForTimeout(150);
+    const preLine = await fb.evaluate(() => !!document.querySelector('#feedbackForm [data-sr-live][role="status"]')); // 窓の中の読み上げの行は窓を開いた時からある（後から差し込んだ live 領域は読まれないことがある）
     const y1 = await typeElsewhere(fb, "#feedbackMessage", "訳が分かりにくい");
     await waitUntil(() => panelOpenT(fb), 8000);
     await fb.waitForTimeout(250);
     const s2 = await after(fb, "feedbackMessage");
     check("60 秒: ご意見の窓で打っている間に時間切れでも、焦点と打った文はそのまま・背後のページを寄せない", (await panelOpenT(fb)) && s2.active === "feedbackMessage" && s2.value === "訳が分かりにくい" && s2.y === y1 && !(await fb.$eval("#feedbackModal", (el) => el.hidden)), JSON.stringify({ ...s2, y1 }));
-    // Batch 65 Q3: 背後が inert の間（#srStatus も inert の中）でも、見出しの文は窓の外の inert でない読み上げの行（role=status）で読む。
+    // Batch 65 Q3 → PR #166 レビューの 7: 背後が inert の間（#srStatus も inert の中）でも、見出しの文は開いている窓の中の読み上げの行
+    // （role=status・aria-live=polite・sr-only。aria-modal の窓の外を読まない読み上げでも読まれる）で読む。窓の外の行（前の #srStatusTop）は無い。
     // 焦点は窓の中のまま。窓を閉じたら焦点は開いたボタンへ戻る（今のまま。見出しへ移さない: Batch 64 M3）
-    const live2 = await fb.evaluate((title) => ({
-      outside: [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => !n.closest("[inert]") && !n.closest("#feedbackModal") && title && n.textContent.trim().includes(title)).map((n) => n.id || n.className),
-      srInert: !!document.getElementById("srStatus").closest("[inert]")
-    }), s2.title);
-    check("60 秒: ご意見の窓（背後は inert）を開いたまま時間切れ → 窓の外の inert でない読み上げの行に見出しの文（60秒 終わり）が 1 つ入り、焦点は窓の中のまま（Batch 65 Q3）", s2.title === "60秒 終わり" && live2.srInert && live2.outside.length === 1 && s2.active === "feedbackMessage", JSON.stringify({ ...live2, title: s2.title, active: s2.active }));
+    const live2 = await fb.evaluate((title) => {
+      const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => !n.closest("[inert]") && title && n.textContent.trim().includes(title));
+      return {
+        inside: lines.filter((n) => n.closest("#feedbackForm")).map((n) => ({ role: n.getAttribute("role"), live: n.getAttribute("aria-live"), sr: n.classList.contains("sr-only"), own: n.hasAttribute("data-sr-live") })),
+        outside: lines.filter((n) => !n.closest("#feedbackModal")).map((n) => n.id || n.className),
+        top: !!document.getElementById("srStatusTop") || document.querySelectorAll("[data-keep-live]").length > 0,
+        srInert: !!document.getElementById("srStatus").closest("[inert]")
+      };
+    }, s2.title);
+    check("60 秒: ご意見の窓（背後は inert）を開いたまま時間切れ → 窓の中の読み上げの行（role=status・aria-live=polite・sr-only。窓を開いた時からある）に見出しの文（60秒 終わり）が 1 つ入り、窓の外の行には入らず、焦点は窓の中のまま（Batch 65 Q3・PR #166 の 7）",
+      s2.title === "60秒 終わり" && preLine && live2.srInert && live2.inside.length === 1 && live2.inside[0].role === "status" && live2.inside[0].live === "polite" && live2.inside[0].sr && live2.inside[0].own && live2.outside.length === 0 && !live2.top && s2.active === "feedbackMessage", JSON.stringify({ ...live2, preLine, title: s2.title, active: s2.active }));
     await fb.keyboard.press("Escape");
     await fb.waitForTimeout(150);
     const closed2 = await fb.evaluate(() => ({ active: document.activeElement?.matches("[data-feedback-open]") ?? false, id: document.activeElement?.id ?? "", inert: document.querySelectorAll("[inert]").length, hidden: document.getElementById("feedbackModal").hidden }));
     check("60 秒: 時間切れのあとご意見の窓を閉じると、焦点は開いたボタンへ戻り（見出しへ移さない）、inert は残らない（Batch 65 Q3）", closed2.hidden && closed2.active && closed2.id !== "resultTitle" && closed2.inert === 0 && fb.errors.length === 0, JSON.stringify({ closed2, errors: fb.errors.slice(0, 2) }));
     await fb.close();
+
+    // PR #166 レビューの 7: 語の詳細（背後は inert）を開いている間の announce も、窓の中の読み上げの行（札 #wordDetailPanel の中。開いた時からある）に書く。閉じたら #srStatus
+    {
+      const wd = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedT() });
+      await wd.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      await wd.waitForTimeout(600);
+      const said = (text) => wd.evaluate(async (t) => {
+        (await import("/js/ui.js")).announce(t);
+        await new Promise((r) => setTimeout(r, 120));
+        const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === t);
+        return { inPanel: lines.filter((n) => n.closest("#wordDetailPanel") && n.hasAttribute("data-sr-live")).length, sr: document.getElementById("srStatus").textContent === t, lines: lines.length };
+      }, text);
+      const opened = await wd.evaluate(async () => {
+        const id = (await import("/js/wordStore.js")).getAllWords()[0]?.id;
+        (await import("/js/wordDetail.js")).openWordDetail(id);
+        return { id, pre: !!document.querySelector('#wordDetailPanel [data-sr-live][role="status"][aria-live="polite"].sr-only'), inert: !!document.getElementById("srStatus").closest("[inert]") };
+      });
+      const a = await said("残り10秒");
+      await wd.keyboard.press("Escape");
+      await wd.waitForTimeout(150);
+      const b = await said("60秒 終わり");
+      check("語の詳細（背後は inert）を開いている間の読み上げは窓の中の行（開いた時からある）に 1 つだけ入り、閉じたあとは #srStatus（PR #166 の 7）",
+        !!opened.id && opened.pre && opened.inert && a.inPanel === 1 && a.lines === 1 && !a.sr && b.sr && b.lines === 1 && b.inPanel === 0 && wd.errors.length === 0, JSON.stringify({ opened, a, b, errors: wd.errors.slice(0, 2) }));
+      await wd.close();
+    }
 
     const ch = await newPage({ viewport: { width: 1200, height: 480 }, storage: seedT() });
     await ch.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
@@ -13584,6 +13918,30 @@ console.log("typing funnel:");
       tabbed === "?t=3&kind=ja" && of(id, "typing_link").length === 0 && of(id, "typing").length === 1 && of(id, "typing_long").length === 1 && p.errors.length === 0, JSON.stringify({ tabbed, sources, errors: p.errors.slice(0, 2) }));
     await p.close();
   }
+  // PR #166 のレビュー 4（練習の側も確かめる）: ?kind= の値は種類の一覧（KINDS.includes）で見る。初めての端末が ?kind=constructor・__proto__・toString で開くと、
+  // 英単語で開き typing は送るが typing_link は送らない（記憶も URL も替えない）。#long で開くと typing_link（URL は ?kind=long に替わる: PR #166 の 3）
+  {
+    const out = [];
+    for (const v of ["constructor", "__proto__", "toString"]) {
+      const p = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+      await p.goto(BASE + `/typing.html?t=3&kind=${v}`, { waitUntil: "networkidle" });
+      const id = await deviceOf(p);
+      await waitUntil(async () => of(id, "typing").length === 1, 5000);
+      await p.waitForTimeout(500);
+      const at = await p.evaluate(() => ({ html: document.documentElement.dataset.typingKind, kind: document.getElementById("typingBoard").dataset.kind, stored: localStorage.getItem("spelldash_typing_kind"), url: location.search }));
+      out.push({ v, ...at, typing: of(id, "typing").length, link: of(id, "typing_link").length, errors: p.errors.length });
+      await p.close();
+    }
+    const h = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+    await h.goto(BASE + "/typing.html#long", { waitUntil: "networkidle" });
+    const hid = await deviceOf(h);
+    const hashLinked = await waitUntil(async () => of(hid, "typing_link").length === 1 && of(hid, "typing_long").length === 1, 5000);
+    const hashUrl = await h.evaluate(() => location.pathname + location.search + location.hash);
+    await h.close();
+    check("計測（PR #166 の 4・3）: 初めての端末が ?kind=constructor・__proto__・toString で開くと英単語で開き typing_link を送らない（記憶も URL も替えない）、#long で開くと typing_link と typing_long（URL は ?kind=long）",
+      out.length === 3 && out.every((r) => r.html === "en" && r.kind === "en" && r.stored === null && r.url === `?t=3&kind=${r.v}` && r.typing === 1 && r.link === 0 && r.errors === 0) && hashLinked && hashUrl === "/typing.html?kind=long",
+      JSON.stringify({ out, hashLinked, hashUrl }));
+  }
 
   // T28: 学習記録のある端末・ほかのページから来た端末・途中で離れた回
   const typed = async (p) => {
@@ -13796,6 +14154,23 @@ console.log("typing game funnel:");
     check("計測（反証）: 何も指定しない URL で来た端末は、タブで URL が ?course= になったあとの再読み込み・戻る・その URL の開き直しでも tgame_link を送らない（tgame は 1 行）",
       tabbed === "?t=2&course=short" && of(id, "tgame_link").length === 0 && of(id, "tgame").length === 1 && p.errors.length === 0, JSON.stringify({ tabbed, sources: of(id).map((r) => r.source).sort(), errors: p.errors.slice(0, 2) }));
     await p.close();
+  }
+  // PR #166 のレビュー 4: ?course= の値はコースの id の一覧で見る（ふつうのオブジェクトの引き COURSES[c] は constructor・__proto__・toString などを正しい値と読み、
+  // 初めての端末に tgame_link を送っていた）。初めての端末が ?course=constructor などで開くと、ふつうの文で開き tgame は送るが tgame_link は送らない（覚えない）
+  {
+    const out = [];
+    for (const v of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      const p = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+      await p.goto(BASE + `/typing-game.html?t=2&course=${v}`, { waitUntil: "networkidle" });
+      const id = await deviceOf(p);
+      await waitUntil(async () => of(id, "tgame").length === 1, 5000);
+      await p.waitForTimeout(500);
+      const at = await p.evaluate(() => ({ html: document.documentElement.dataset.typingCourse, course: document.getElementById("tgBoard").dataset.course, state: document.getElementById("tgBoard").dataset.state, stored: localStorage.getItem("spelldash_typing_game_course") }));
+      out.push({ v, ...at, tgame: of(id, "tgame").length, link: of(id, "tgame_link").length, errors: p.errors.length });
+      await p.close();
+    }
+    check("計測（PR #166 の 4）: 初めての端末が ?course=constructor・__proto__・toString・hasOwnProperty で開くと、ふつうの文で開き tgame は送るが tgame_link は送らない（覚えない）",
+      out.length === 4 && out.every((r) => r.html === "normal" && r.course === "normal" && r.state === "ready" && r.stored === null && r.tgame === 1 && r.link === 0 && r.errors === 0), JSON.stringify(out));
   }
 
   // G34: 学習記録のある端末・ほかのページから来た端末・typing.html から来た端末・途中で離れた回

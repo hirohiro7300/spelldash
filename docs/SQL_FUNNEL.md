@@ -97,7 +97,7 @@ delete from public.funnel_events where day < ((now() at time zone 'Asia/Tokyo'):
 | `typing_long` | タイピング練習から初めて来た端末が、長文のタブを初めて押した（Batch 62。docs/SPEC_TYPING.md §9.7） |
 | `typing_long_start` | その端末が長文を初めて打ち始めた（最初に判定したキー） |
 | `typing_long_done` | その端末が長文を初めて最後まで打った（途中までの結果では送らない） |
-| `typing_link` | その端末の**最初の 1 ページ**が `?kind=`・`#long` の深いリンクだった（Batch 65。種類ごとには分けない。この端末の記憶から開いた回は入れない。タブを押すと URL が `?kind=` に替わる〔replaceState〕ので、その URL の再読み込み・戻る・タブの復元・ブックマーク・同じ端末があとから深いリンクで開いた回も入れない。送れなかった回は送り直さない〔少なく出る側〕。長文で開いた回は `typing_long` も送る） |
+| `typing_link` | その端末の**最初の 1 ページ**が `?kind=`・`#long` の深いリンクだった（Batch 65。種類ごとには分けない。`?kind=` は正しい値〔en・ja・long〕だけで、`?kind=constructor` などは入れない。`#long` で開いた回は読み込みのときに URL が `?kind=long` に替わるが、替える前の URL で決めるので入る〔PR #166 のレビュー 3〕。この端末の記憶から開いた回は入れない。タブを押すと URL が `?kind=` に替わる〔replaceState〕ので、その URL の再読み込み・戻る・タブの復元・ブックマーク・同じ端末があとから深いリンクで開いた回も入れない。送れなかった回は送り直さない〔少なく出る側〕。長文で開いた回は `typing_long` も送る） |
 | `typing_stats` | その端末が学習データ（stats.html）の「息抜きに タイピング練習」を押した（Batch 65。押した瞬間に移るので端末に積み、次のページで送る） |
 
 タイピングゲーム（`/typing-game.html`、Batch 60、docs/SPEC_TYPING_GAME.md §7）から**初めて来た端末**も同じ仕組みで、鍵を分けて（`spelldash_funnel_tgame`）送る。1 端末に付く印は最初の 1 ページ分だけ（番号が無いときにしか印は付かないので、typing と tgame は混ざらない）。
@@ -108,7 +108,7 @@ delete from public.funnel_events where day < ((now() at time zone 'Asia/Tokyo'):
 | `tgame_start` | 最初の 1 回を打ち始めた |
 | `tgame_done` | 結果が初めて出た（途中でやめた回では送らない） |
 | `tgame_study` | 「思い出して打つ」か本文の本体へのリンクを押した（`/?from=tgame`。端末に積み、次のページで送る） |
-| `tgame_link` | その端末の**最初の 1 ページ**が `?course=` の深いリンクだった（Batch 65。コースごとには分けない。記憶から開いた回・タブで書き替えた `?course=` の URL を開き直した回は入れない。`typing_link` と同じ形） |
+| `tgame_link` | その端末の**最初の 1 ページ**が `?course=` の深いリンクだった（Batch 65。コースごとには分けない。`?course=` は正しいコースの id〔short・normal・long〕だけ。`?course=constructor`・`__proto__`・`toString` などは入れない〔PR #166 のレビュー 4。前はふつうのオブジェクトの引きで、これらでも送っていた〕。記憶から開いた回・タブで書き替えた `?course=` の URL を開き直した回は入れない。`typing_link` と同じ形） |
 | `tgame_stats` | その端末が学習データの「息抜きに タイピング練習」を押した（Batch 65。端末に積み、次のページで送る） |
 
 - `funnel_events.source` の `typing*` は**段階**で、docs/SPEC_ACQUISITION.md（DESIGN ONLY・未実装）が設計している流入元（UTM の source）とは別物。

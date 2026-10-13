@@ -1,4 +1,4 @@
-// ===== タイピングの 2 枚のページ（/typing.html・/typing-game.html）が共有する配線: 保存・描く部品・焦点・画面キーボード・結果の守り・キー =====
+// ===== タイピングの 2 枚のページ（/typing.html・/typing-game.html）が共有する配線: 保存・描く部品・開く値（種類・コース）・焦点・画面キーボード・結果の守り・キー =====
 //
 // 状態（phase・run・時計）はページが持つ（js/typingPage.js・js/typingGamePage.js）。ここは 2 枚で同じ振る舞いの部品と、キーの振り分け（wireTyping）だけ。
 // 2 枚で違うのはキーの時刻だけで、引数（timeOf）で表す: ゲームは押した瞬間（event.timeStamp。文の締切と比べる）、練習は受けた時刻。
@@ -98,8 +98,81 @@ export function appendUnits(node, units, opts = {}) {
   }
 }
 
+// 結果の行の区切り「 ・ 」: 「・」は前の語と折らない（nowrap の「 ・」。css/typing.css の .tp-sep）。折れてよいのは後ろの空白だけなので、
+// 行の頭に「・」が来ない（Batch 65 Q1・PR #166 のレビュー 5）。2 枚の結果の行（練習の正確さ・ミス・自己ベストと長文の組、ゲームの流れた・打/分・正確さ・ミス）で同じ。
+// textContent は「 ・ 」のまま
+export const sep = () => [make("span", "tp-sep", " ・"), document.createTextNode(" ")];
+
 // 教材の [見本, 訳] の列（空でない文字列の 2 つ組だけ）。中身は js/typingDrill.js（Node から import できる所に 1 つだけ置く）
 export { validPairs };
+
+// ---- 開く値（練習の種類 ?kind=・ゲームのコース ?course=。Batch 65 P1・P2。docs/SPEC_TYPING.md・docs/SPEC_TYPING_GAME.md） ----
+// 順は URL のパラメータ → この端末の記憶 → 既定。値は許す一覧（ids）の includes で見る（ふつうのオブジェクトの引きは constructor・__proto__・toString を
+// 正しい値と読む: PR #166 のレビュー 4）。head の inline の 1 行が同じ順で html の data 属性に置き（最初の描画の前。CSP・速さのため js を待たない）、
+// ページはその値から始める。書くのはタブを押したときだけ（rememberChoice）: URL で開いただけでは記憶を書かない
+
+// URL の ?param= の正しい値（無い・不正・読めない URL は null）
+export function choiceFromUrl(ids, param) {
+  try {
+    const value = new URLSearchParams(location.search).get(param);
+    return ids.includes(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+// 開く値: head の 1 行が置いた値（preset）→ URL の値（fromUrl。ページが choiceFromUrl などで読んだもの）→ 記憶（key）→ fallback。
+// preset が正しければそれ（head の 1 行が動かなかったときだけ、ここで読む）
+export function startChoice({ ids, preset, fromUrl, key, fallback }) {
+  if (ids.includes(preset)) return preset;
+  if (ids.includes(fromUrl)) return fromUrl;
+  try {
+    const saved = storage()?.getItem(key);
+    if (ids.includes(saved)) return saved;
+  } catch {
+    // 読めない端末は既定
+  }
+  return fallback;
+}
+
+// URL の ?param= を value に合わせる（history.replaceState: 履歴は増やさない。ほかのパラメータは残す）。dropHash（練習の "#long"）が今の hash なら消す
+// （?param= に替えたので要らない）。URL が替わるときだけ書く（同じなら何もしない）。canonical は替えない。書き替えられない環境（古い WebView など）は URL をそのまま
+export function syncUrlParam(param, value, dropHash = null) {
+  try {
+    const url = new URL(location.href);
+    const drop = Boolean(dropHash) && url.hash === dropHash;
+    if (url.searchParams.get(param) === value && !drop) return;
+    url.searchParams.set(param, value);
+    if (drop) url.hash = "";
+    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
+  } catch {
+    // URL はそのまま
+  }
+}
+
+// タブで選んだ値: この端末に覚え（key。次に何も指定せずに開いたときの値）、URL の ?param= を合わせる（再読み込み・共有でも今の値で開く。
+// ?param= は記憶より先に読むので、合わせないと再読み込みで前の値に戻る）。覚えられない端末でも URL で今の値は保てる
+export function rememberChoice({ key, param, dropHash = null }, value) {
+  try {
+    storage()?.setItem(key, value);
+  } catch {
+    // URL だけ合わせる
+  }
+  syncUrlParam(param, value, dropHash);
+}
+
+// 「読み込めなかった」の「開き直す」（anchor）は今の値で開き直す（静的な href は ./typing.html・./typing-game.html。深いリンクで開いて記憶が無い端末でも、
+// 既定の種類・コースに戻らない: PR #166 のレビュー 2）。ほかのパラメータは残し、hash は落とす
+export function reopenLink(anchor, param, value) {
+  if (!anchor) return;
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set(param, value);
+    anchor.setAttribute("href", url.pathname + url.search);
+  } catch {
+    // 静的な href のまま
+  }
+}
 
 // ---- 焦点・画面キーボード ----
 
