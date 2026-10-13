@@ -2340,8 +2340,16 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
   min-height: 297px;
 }
 
+/* 初回の積んだ本（js/welcome.js が積む）の空き: 初回の本は index.html のインラインで最初の描画から出るので、積むまでの高さを積んだあとと同じに
+   （1099px 以下 187・1100px 以上は 54px の本で 216。差があると「171冊から選ぶ」と紙片、PC では下揃えの開いた本も動いた。Batch 66） */
 #welcomeStack:empty {
-  min-height: 190px;
+  min-height: 187px;
+}
+
+@media (min-width: 1100px) {
+  #welcomeStack:empty {
+    min-height: 216px;
+  }
 }
 
 html[data-theme] body.home--playing :is(#pathHead, #pathNow, #pathList):empty {

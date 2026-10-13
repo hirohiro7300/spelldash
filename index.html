@@ -84,6 +84,7 @@
   <link rel="modulepreload" href="./js/studyTime.js" />
   <link rel="modulepreload" href="./js/genres.js" />
   <link rel="modulepreload" href="./js/romaji.js" />
+  <link rel="modulepreload" href="./js/srLive.js" />
   <link rel="modulepreload" href="./js/game.js" />
   <link rel="modulepreload" href="./js/hasumi.js" />
   <link rel="modulepreload" href="./js/learnedWords.js" />
@@ -448,6 +449,10 @@
               </details>
             </div>
           </main>
+          <!-- 初回（学習記録の無い端末）は最初の描画から初回の本を出す。module の js/main.js を待つと、戻ってきた人の机（1200 で 723px）が約 0.3 秒描かれてから
+               初回の本（429px）に替わり、背の高い画面ではフッターが動いた（Batch 66）。判定は js/welcome.js の shouldShowWelcome と同じ（E2E が見張る）。
+               食い違ったときは renderWelcome が机に戻す -->
+          <script>(() => { const P = ["set","words","t","weekly","category","genre","mode"]; try { const s = localStorage, q = new URLSearchParams(location.search); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys(JSON.parse(s.getItem("spelldash_word_stats")) || {}).length > 0 || P.some((k) => q.has(k)) || location.hash === "#play") return; document.getElementById("welcome").hidden = false; document.getElementById("main").hidden = true; document.body.classList.add("welcome-open"); } catch {} })();</script>
         </div>
       </div>
 

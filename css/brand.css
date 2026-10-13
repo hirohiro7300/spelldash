@@ -723,8 +723,9 @@ html[data-theme] .icon {
   color: var(--ink);
 }
 
-/* ---- ヘッダー（スマホ）: 横スクロールにしない。詰めて 1 行に収める ---- */
-@media (max-width: 560px) {
+/* ---- ヘッダー（スマホ・横向き・細い窓）: 横スクロールにしない。詰めて 1 行に収める。切り替えは responsive.css と同じ 720px
+   （560px では 561〜680px でナビの字が途中で折れた。Batch 66） ---- */
+@media (max-width: 720px) {
   html[data-theme] .site-header__inner {
     gap: 6px;
   }

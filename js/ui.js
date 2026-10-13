@@ -4,6 +4,7 @@ import { findWord } from "./wordStore.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { classifyWord } from "./categoryProgress.js";
 import { normalizeReading } from "./romaji.js";
+import { liveTarget, clearLive } from "./srLive.js";
 
 export const elements = {
   time: document.getElementById("time"),
@@ -29,43 +30,13 @@ export function scrollBehavior() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 }
 
-// 開いている窓（読み上げをその中に書く）。無ければ null。1 つの判定で 2 つの開き方を見る（PR #166 レビューの 7）:
-//   - <dialog>.showModal()（本棚の「本を足す」js/bookshelf.js）: 外を属性なしで inert にするので [inert] では分からない。:modal で見る
-//   - 背後に [inert] を付ける窓（ご意見・語の詳細。js/focusTrap.js inertOthers）: #srStatus が [inert] の中なら、inert でも hidden でもない aria-modal の札
-// （#srStatus が inert でないときの aria-modal の札〔コースを選ぶ。背後を inert にしない〕は見ない: #srStatus がそのまま読まれる）
-function openModal() {
-  let dialog = null;
-  try {
-    dialog = document.querySelector("dialog:modal");
-  } catch {
-    dialog = document.querySelector("dialog[open]"); // :modal を知らない古いブラウザ（show() で開く <dialog> は使っていない）
-  }
-  if (dialog) return dialog;
-  if (!document.getElementById("srStatus")?.closest("[inert]")) return null;
-  return [...document.querySelectorAll('[aria-modal="true"]')].find((node) => !node.closest("[inert], [hidden]")) ?? null;
-}
-
-// 窓の中の読み上げの行（[data-sr-live]）。3 つの窓（ご意見・語の詳細・本を足す）は markup に最初から置く（後から差し込んだ live 領域は
-// 読まれないことがある）。置いていない窓には作って足す（role=status・aria-live=polite・sr-only）
-function liveLineIn(box) {
-  let line = box.querySelector("[data-sr-live]");
-  if (!line) {
-    line = document.createElement("p");
-    line.className = "sr-only";
-    line.setAttribute("role", "status");
-    line.setAttribute("aria-live", "polite");
-    line.setAttribute("data-sr-live", "");
-    box.append(line);
-  }
-  return line;
-}
-
 // 読み上げ専用のステータス行（index.html の #srStatus）。見た目の演出と切り離して SR に一言伝える。
 // 一度空にしてから 30ms 後に書く（同じ文の続けての読み上げも拾われる）。その待ちの間に次の announce が来たら、前の文を消さずに
 // 1 つの文につなげる（時間切れでレベルアップと見出しの文が同じ tick に来る: js/game.js celebrateRankUp → focusResultTitle。PR #164 レビューの 3）。
-// 窓が開いている間（openModal）は #srStatus が窓の外で読まれないので、書く瞬間に開いている窓の中の読み上げの行に書く
+// 窓が開いている間は #srStatus が窓の外で読まれないので、書く瞬間に開いている窓の中の読み上げの行に書く
 // （窓の中なので、aria-modal の窓の外を読まない読み上げでも読まれる。Batch 65 Q3 の窓の外の行 #srStatusTop は PR #166 レビューの 7 で窓の中の行に替えた）。
-// 書く前は #srStatus と窓の中の行を全部空にする（窓を開け閉めしても、前の文が残った行で同じ文が読まれないことがない）
+// 書く前は #srStatus と窓の中の行を全部空にする（窓を開け閉めしても、前の文が残った行で同じ文が読まれないことがない）。
+// 開いている窓の判定と窓の中の行は js/srLive.js（タイピングの 2 ページの読み上げも同じ判定を通る。Batch 66 R1）
 let pendingText = "";
 let pendingTimer = 0;
 export function announce(text) {
@@ -73,11 +44,9 @@ export function announce(text) {
   if (!el) return;
   pendingText = pendingTimer && pendingText ? `${pendingText}${/[。．.!?！？]$/.test(pendingText) ? "" : "。"}${text}` : text;
   clearTimeout(pendingTimer);
-  el.textContent = "";
-  for (const line of document.querySelectorAll("[data-sr-live]")) line.textContent = "";
+  clearLive(el);
   pendingTimer = setTimeout(() => {
-    const box = openModal();
-    (box ? liveLineIn(box) : el).textContent = pendingText;
+    liveTarget(el).textContent = pendingText;
     pendingText = "";
     pendingTimer = 0;
   }, 30);
