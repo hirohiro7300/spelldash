@@ -11,7 +11,7 @@ import { removeMyWord } from "./myWords.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml } from "./learnedWords.js";
-import { rankHtml, rankOf, rankBasis } from "./mastery.js";
+import { rankHtml, rankOf, rankBasis, RANK_NAMES } from "./mastery.js";
 import { localDay } from "./retentionCalc.js";
 import { noteChipHtml, bindNoteEditors, escapeHtml } from "./wordNotes.js";
 import { bindWordDetail } from "./wordDetail.js";
@@ -341,6 +341,16 @@ function render() {
   bindNoteEditors(container, render);
 }
 
+// 簡潔表示の 1 行目の目盛り（語のボタンの覆いの上に出してある。マウスで title の「段の名前 ・ 根拠の文」を見せるため。css/pages.css）: 押したら語のボタンと同じ
+// （詳細を開く。焦点も語のボタンに置くので、詳細を閉じると語のボタンへ戻る）。目盛りは焦点を取らない（Tab の順・読み上げは今のまま）
+document.getElementById("listBody")?.addEventListener("click", (event) => {
+  const mark = event.target.closest(".gcard__marks > .rank");
+  const term = mark?.closest(".gcard")?.querySelector(".gcard__term");
+  if (!term) return;
+  term.focus({ preventScroll: true });
+  term.click();
+});
+
 // マイ単語帳のカードの ×（js/myWords.js removeMyWord。英単語と場面カードは同じ鍵になりうるので種類も渡す）。
 // 上の一覧は spelldash:mywords で描き直される（js/myWordsView.js）。語が 0 になってもカテゴリはマイ単語帳のまま
 document.getElementById("listBody")?.addEventListener("click", (event) => {
@@ -361,11 +371,13 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
   const status = classifyWord(stat);
   const concept = isConceptWord(word);
   // 1行目: 見出し語（英語は等幅）＋訳＋状態、2行目: 例文または場面。足元に履歴・習熟度・メモ。
-  // 習熟度は答えたことのある語だけ（段 0 は空文字）。title に根拠の文（マウスで見る補足。読み上げは aria-label の 1 文のまま）。
+  // 習熟度は答えたことのある語だけ（段 0 は空文字）。title はマウスで見る補足（読み上げは aria-label の 1 文のまま）。
+  // 足元の目盛り（詳しい表示）は名前が見えているので title は根拠の文だけ。
   // 簡潔表示（390 の既定）は足元ごと隠れる（game.css body.list-compact .gcard__foot）ので、1 行目の題箋の左に目盛りだけを置く
   // （.gcard__marks の .rank。名前は aria-label で読む。名前まで置くと 320 で 1 冊 140〜160 語のうち 82〜117 行が 2 行に折れる。目盛りだけなら
-  // 390 で 0 行・320 で 8 行まで。Batch 64 M1）。
-  // 2 つは同時に見えない（詳しい表示では 1 行目の目盛りを隠す。css/pages.css）ので、読み上げも 1 回
+  // 390 で 0 行・320 で 8 行まで。Batch 64 M1）。名前が見えないので、title は「段の名前 ・ 根拠の文」（語の詳細の行と同じ形）。
+  // 2 つは同時に見えない（詳しい表示では 1 行目の目盛りを隠す。css/pages.css）ので、読み上げも 1 回。
+  // 1 行目の目盛りは語のボタンの覆いの上（マウスで title が出る）。押すと語のボタンと同じ（上の listBody の click）
   const term = escapeHtml(word.answer ?? word.en);
   const rank = rankOf(stat);
   const basis = rank ? rankBasis(stat, today) : "";
@@ -377,7 +389,7 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
         ${concept
           ? `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`
           : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}
-        <span class="gcard__marks">${rankHtml(rank, { name: false, title: basis })}<span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span></span>
+        <span class="gcard__marks">${rankHtml(rank, { name: false, title: rank ? `${RANK_NAMES[rank]} ・ ${basis}` : "" })}<span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span></span>
         ${removable && myWordKey(word) ? `<button type="button" class="my-word__remove gcard__remove" data-my-remove="${escapeHtml(myWordKey(word))}" data-my-kind="${word.kind === "concept" ? "concept" : "word"}" aria-label="${term} を削除" title="削除">${icon("x", { size: 16 })}</button>` : ""}
       </div>
       ${concept

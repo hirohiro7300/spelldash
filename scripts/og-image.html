@@ -5,6 +5,7 @@
   docs/CONCEPT.md の書斎: 天井の藍（--vault）に箔の文字（--foil）、灯った羊皮紙の札（--parchment）が 1 枚、朱（--signal）は打った字と次の字の印だけ。
   中身は名前と 1 行の説明と、札の見本（訳「りんご」を見て apple を打っている途中。本体と同じく綴りの見本は出さない）。数・絵文字・ほかの名前は書かない。
   scripts/ は配信しない（.vercelignore）。
+  絵を変えたら版を上げる（全ページ・E2E）: SNS は絵を URL で覚えるので、og:image の ?v=N を全ページ（packs は scripts/build-pack-pages.mjs）と tests/e2e.mjs の OG_URL で 1 つ上げる。
 -->
 <html lang="ja">
 <head>

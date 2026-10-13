@@ -358,3 +358,16 @@ html.native-app .account-menu__native {
 html.native-app #welcomeLogin {
   display: none;
 }
+
+/* ===== ネイティブアプリ: 加入画面・特商法（Web だけのページ。scripts/build-app.mjs の PAGES に入れない）へのリンクは出さない =====
+   アプリに Pro を出さない（ストアの決済の方針でも、アプリから外の決済へ誘わない）。フッターの特商法・SpellDash Pro、設定の「Pro について」、
+   あとから差し込む「Pro について」もここで消える（reset.css の [hidden] と同じく !important: 皮の display に負けない）。
+   利用規約の本文の 2 つ（data-app-text）は js/appEnv.js が文字だけにする（文は残す） */
+html.native-app a[href$="/pro.html"],
+html.native-app a[href*="/pro.html?"],
+html.native-app a[href*="/pro.html#"],
+html.native-app a[href$="/tokushoho.html"],
+html.native-app a[href*="/tokushoho.html?"],
+html.native-app a[href*="/tokushoho.html#"] {
+  display: none !important;
+}

@@ -1,6 +1,7 @@
 // og-image（SNS などに貼られたときの絵。1200×630 の PNG）を作り直す。
-//   node scripts/build-og-image.mjs            → assets/images/og-image.png を上書き（全ページの og:image が指すファイル。URL は変えない）
+//   node scripts/build-og-image.mjs            → assets/images/og-image.png を上書き（全ページの og:image が指すファイル。ファイル名は変えない）
 //   node scripts/build-og-image.mjs --out x.png → 別の場所に書く（見比べる用）
+// 絵を変えたら版を上げる（全ページ・E2E）: SNS は絵を URL で覚えるので、og:image の ?v=N を全ページ（packs は scripts/build-pack-pages.mjs）と tests/e2e.mjs の OG_URL で 1 つ上げる。
 // 型は scripts/og-image.html（色は css/tokens.css、字は css/fonts.css の自前のフォント）。このスクリプトは木をその場で配る小さな
 // サーバーを立て、Chromium（CHROME_PATH、無ければ Playwright の置き場）で 1200×630・倍率 1 で撮る。自前のフォントが 3 つとも
 // 読めていなければ撮らずに止める（代わりの書体で撮った絵を書かない）。大きさの目安は 300KB 以下（超えたら止める）。

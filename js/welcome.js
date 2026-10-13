@@ -1,7 +1,7 @@
 import { renderColoredWord } from "./colors.js";
 import { getWordStats } from "./storage.js";
 import { getTotalXp } from "./level.js";
-import { PLACEMENT_NOTE } from "./course.js";
+import { PLACEMENT_NOTE, PLACEMENT_MINUTES } from "./course.js";
 import { renderHasumiHome } from "./hasumi.js"; // 紙片の文は body.welcome-open を見る: 畳んだら描き直す
 import { esc, numHtml } from "./html.js";
 
@@ -165,9 +165,9 @@ function setupDemo(root, onDone) {
   show();
 }
 
-// 右頁の「最初の 1 冊」の文（本ごと）。英単語は腕試しの案内（道のスタート下と同じ文）
+// 右頁の「最初の 1 冊」の文（本ごと）。英単語は腕試しの案内（道のスタート下と同じ文）。日本語で答える本も同じ目安の分（js/course.js PLACEMENT_MINUTES）
 function bookCap(book) {
-  return book.lang === "en" ? PLACEMENT_NOTE : "最初は腕試し10枚（約5分）。分からなければ Enter で答えを見る。";
+  return book.lang === "en" ? PLACEMENT_NOTE : `最初は腕試し10枚（約${PLACEMENT_MINUTES}分）。分からなければ Enter で答えを見る。`;
 }
 
 function flatbookHtml(book, { back = false } = {}) {

@@ -29,13 +29,21 @@ export function scrollBehavior() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 }
 
-// 読み上げ専用のステータス行（index.html の #srStatus）。見た目の演出と切り離して SR に一言伝える
+// 読み上げ専用のステータス行（index.html の #srStatus）。見た目の演出と切り離して SR に一言伝える。
+// 一度空にしてから 30ms 後に書く（同じ文の続けての読み上げも拾われる）。その待ちの間に次の announce が来たら、前の文を消さずに
+// 1 つの文につなげる（時間切れでレベルアップと見出しの文が同じ tick に来る: js/game.js celebrateRankUp → focusResultTitle。PR #164 レビューの 3）
+let pendingText = "";
+let pendingTimer = 0;
 export function announce(text) {
   const el = document.getElementById("srStatus");
   if (!el) return;
+  pendingText = pendingTimer && pendingText ? `${pendingText}${/[。．.!?！？]$/.test(pendingText) ? "" : "。"}${text}` : text;
+  clearTimeout(pendingTimer);
   el.textContent = "";
-  setTimeout(() => {
-    el.textContent = text;
+  pendingTimer = setTimeout(() => {
+    el.textContent = pendingText;
+    pendingText = "";
+    pendingTimer = 0;
   }, 30);
 }
 

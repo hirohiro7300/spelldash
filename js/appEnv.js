@@ -52,6 +52,10 @@ if (isNativeApp) {
   document.documentElement.classList.add(`native-${window.Capacitor.getPlatform?.() ?? "app"}`);
   syncNativeChrome(localStorage.getItem("spelldash_theme") || "light");
 
+  // 加入画面・特商法は Web だけのページ（scripts/build-app.mjs の PAGES に無い）。リンクは css/layout.css が消す。
+  // 文の途中の言及（利用規約の本文。data-app-text）はリンクを外して文字だけ残す（module はページを読み終えてから走る）
+  for (const a of document.querySelectorAll("a[data-app-text]")) a.replaceWith(a.textContent);
+
   // dist に含めていない /packs/ へのリンクは本番へ（WebView 内で開くと index.html が壊れて出る）
   document.addEventListener(
     "click",

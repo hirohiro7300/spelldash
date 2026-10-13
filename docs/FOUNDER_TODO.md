@@ -47,6 +47,7 @@
     add column if not exists known_on_sight boolean;
   ```
 - ☐ アプリ版（Capacitor）: Mac／Xcode／TestFlight。docs/APP.md。コードは Web と同じものを `npm run app:build` で `dist/` に出す
+- ☐ 任意: 貼られたときの絵（og-image）の再取得 — 2026-10-13 に絵を作り直し、全ページの og:image の URL に版 `?v=2` を付けた（SNS は絵を URL で覚える）。新しく貼られたリンクは新しい絵になる。前に貼られたページで古い絵（1000語・7カテゴリ・絵文字）が出続けるなら、各 SNS の投稿の確かめ・再取得の画面でページの URL を取り直す（コードの変更は要らない。docs/SPEC_TYPING.md §6）
 
 ## F. 判断してほしいこと（決まれば反映はこちらでやる）
 

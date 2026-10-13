@@ -1,9 +1,10 @@
 // アプリ（Capacitor）用に、静的ファイルを dist/ にまとめる。
 //   node scripts/build-app.mjs   → dist/ を作り直す（その後 npx cap sync）
 // ビルド工程は無い（素の HTML/JS/CSS）。アプリに要らないもの（api/ 入口ページ packs/ sitemap 等）は入れない。
-// PAGES はアプリの中から辿れるページを全部（フッターの特商法・利用規約、設定・規約・特商法からの加入画面）。
-// アプリの中のページ・js が指す「./X.html」「/X.html」はどれも PAGES にあること（tests/e2e.mjs の節 15 が守る）。
-// 加入画面はアプリでは価格と加入のボタンを出さず、Web 版の案内だけ（js/proView.js の isNativeApp）。
+// PAGES はアプリの中から辿れるページを全部（10 ページ。フッターのタイピング練習・お知らせ・プライバシー・利用規約も）。
+// 加入画面（pro.html）と特商法（tokushoho.html）は Web だけのページで、アプリに入れない（アプリに Pro を出さない。ストアの決済の方針でも、
+// アプリから外の決済へ誘わない）。アプリではそこへのリンクを出さない（css/layout.css の html.native-app・js/appEnv.js。利用規約の本文は文字だけ）。
+// アプリの中で見えるリンクの行き先はどれも PAGES にあること（tests/e2e.mjs の節 15 がアプリの状態で全ページを開いて守る）。
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -11,7 +12,7 @@ import { fileURLToPath } from "url";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
 
-export const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html", "terms.html", "tokushoho.html", "pro.html", "typing.html", "typing-game.html"];
+export const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html", "terms.html", "typing.html", "typing-game.html"];
 export const DIRS = ["css", "js", "data", "assets"];
 
 function build() {

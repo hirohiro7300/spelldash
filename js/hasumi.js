@@ -67,7 +67,7 @@ export function hasumiHomeLine() {
     return { mood: "normal", text: `今日やると${next}日。1日休んでも切れなくなる。` };
   }
 
-  // 腕試し前の人（まだ 1 語も答えていない）: 語数と時間は道のスタートが言う（腕試し10語・約5分）。ここでは何のためかだけ
+  // 腕試し前の人（まだ 1 語も答えていない）: 語数と時間は道のスタートが言う（js/course.js PLACEMENT_NOTE「腕試し10語（約3分）」）。ここでは何のためかだけ
   if (isBeforePlacement()) {
     return { mood: "normal", text: "知っている語が分かると、ちょうどいい所から始められる。" };
   }

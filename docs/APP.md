@@ -9,7 +9,7 @@
 | もの | 場所 | 備考 |
 |---|---|---|
 | Capacitor 設定 | `capacitor.config.json` | appId `net.spelldash.app`、webDir `dist`。起動時の色は書斎に合わせてある（StatusBar は DARK＝白い文字・背景は帯の紺 `#1A2137`、WebView の背景は紙 `#F4ECDA`、スプラッシュは帯の紺。js/appEnv.js の `THEME_COLOR` と同じ値）。変えたら `npx cap sync` |
-| Web → dist の組み立て | `scripts/build-app.mjs`（`npm run app:build`） | index/list/stats/profile/battle/news/privacy/terms/tokushoho/pro/typing/typing-game（`PAGES`。フッターの特商法・利用規約と、規約・特商法・設定から辿る加入画面がアプリの中で切れない。加入画面はアプリでは価格と加入のボタンを出さず Web 版の案内だけ。ページと js が指す `./X.html` がどれも `PAGES` にあることは E2E の節 15 が守る）＋ css/js/data/assets（タイピング練習の教材 data/typing.json・タイピングゲームの教材 data/typing-game.json は data ごと入る）。api・packs/・sitemap は入れない |
+| Web → dist の組み立て | `scripts/build-app.mjs`（`npm run app:build`） | index/list/stats/profile/battle/news/privacy/terms/typing/typing-game の 10 ページ（`PAGES`。フッターの利用規約はアプリの中で切れない）。加入画面 pro.html と特商法 tokushoho.html は Web だけのページで入れず、アプリではそこへのリンクを出さない（アプリに Pro を出さない。下の課金の行。2026-10-13、PR #164 のレビュー）。アプリの状態で全 `PAGES` を開き、加入画面・特商法へ見えるリンクが 0 件・見える内部リンクの行き先がどれも `PAGES` であることは E2E の節 15 が守る＋ css/js/data/assets（タイピング練習の教材 data/typing.json・タイピングゲームの教材 data/typing-game.json は data ごと入る）。api・packs/・sitemap は入れない |
 | iOS プロジェクト | `ios/App/App.xcodeproj` | Swift Package Manager（CocoaPods 不要）。`ios/App/App/public` は生成物（git 管理外） |
 | Android プロジェクト | `android/` | `android/app/src/main/assets/public` は生成物（git 管理外） |
 | アイコン・スプラッシュの元 | `assets/app/`（icon.png 1024 / splash.png 2732） | `npx @capacitor/assets generate --assetPath assets/app --ios --android` で各サイズを生成済み |
@@ -59,7 +59,7 @@ Android Studio で ▶ Run（USB デバッグ ON の端末）。Play への配�
 | 教材・コードの更新 | dist を同梱しているので、更新のたびにビルドし直しが必要 | 内部テストなら数分。頻度が上がったら Capacitor の Live Updates か、教材だけ本番から取得する方式に。**2026-10-08 の書斎（ホームの見た目・フォント・部屋の絵）は dist に未反映**（`dist/` は 2026-09 のまま。次に `npm run app:build` したときに入る） |
 | Apple 審査 4.2（薄い Web ラッパー） | 公開申請時のリスク | 専用キーボード・触覚・オフライン動作・スプラッシュで「アプリらしさ」を用意済み。申請時の説明文は §5 |
 | 通知 | 方針で保留（DECISIONS_V4 §7） | 解禁するなら `@capacitor/push-notifications` か、まずローカル通知 |
-| 課金 | Web だけ（SpellDash Pro、docs/BILLING.md） | アプリでは価格と購入ボタンを出さず、状態だけ出す（`isNativeApp`。Apple 3.1.1: アプリ内から外部決済へ誘導しない）。Web で加入すると同じアカウントでアプリも Pro。2026-10-13（Batch 64）から特商法・利用規約・加入画面も dist に入る: 特商法と規約の本文には価格と加入画面へのリンクがあり、加入画面はアプリでは価格もボタンも出さず「Pro の加入と管理は Web 版（www.spelldash.net）で。」の 1 文だけ。ストアの審査での扱いは申請の前に創業者が確かめる（docs/BACKLOG.md J2）。StoreKit／Play Billing は別途判断（`subscriptions` に source 列を足せば同じ判定式で動く） |
+| 課金 | Web だけ（SpellDash Pro、docs/BILLING.md） | アプリでは価格と購入ボタンを出さず、状態だけ出す（`isNativeApp`。Apple 3.1.1: アプリ内から外部決済へ誘導しない）。Web で加入すると同じアカウントでアプリも Pro。**加入画面と特商法はアプリに入れない**（2026-10-13、PR #164 のレビュー。Batch 64 で一度 dist に入れたが、Web の価格・カード払い・「Pro の加入と管理は Web 版で」が見え、アプリから外の決済へ誘う形になり、アプリに Pro を出さない決まりにも反するので外した）。アプリ（`html.native-app`）では両ページへのリンクを出さない（フッターの特商法・SpellDash Pro、設定の「Pro について」、あとから差し込む「Pro について」。css/layout.css の `display: none !important`）。利用規約は入り、本文の「加入画面」「特定商取引法に基づく表記」は `data-app-text` で、js/appEnv.js がリンクを外して文だけ残す。設定の旧い戻り先 `?pro=done` から加入画面へは移らない（js/profileView.js）。Web の振る舞いは変えていない。ストアの審査での扱いは申請の前に創業者が確かめる（docs/BACKLOG.md J2）。StoreKit／Play Billing は別途判断（`subscriptions` に source 列を足せば同じ判定式で動く） |
 
 ## 4. 専用キーボードの仕様（docs/KEYBOARD.md の実装）
 

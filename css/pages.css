@@ -1182,8 +1182,10 @@ html[data-theme] body.list-compact .gcard__ex {
 }
 
 /* 題箋と、簡潔表示の 1 行目に置く習熟度の目盛り（js/listView.js cardHtml。Batch 64 M1）: 2 つで 1 組（折り返すときも離れない）、題箋の列は今のまま右寄せ。
-   目盛りは名前を出さない（読み上げは .rank の aria-label の 1 文、マウスでは title の根拠の文）。詳しい表示では隠す
-   （足元の .rank が名前つきで出る。同時に 2 つ見えないので読み上げも 1 回）。目盛りの形は brand.css の .rank のまま */
+   目盛りは名前を出さない（読み上げは .rank の aria-label の 1 文、マウスでは title の「段の名前 ・ 根拠の文」。js/listView.js）。詳しい表示では隠す
+   （足元の .rank が名前つきで出る。同時に 2 つ見えないので読み上げも 1 回）。目盛りの形は brand.css の .rank のまま。
+   簡潔表示の目盛りは語のボタンの覆い（.gcard__term::after）の上に置く: × のある行・4 字の題箋（知ってた）の行では目盛りが覆いの範囲に入り、
+   下にあると title にマウスが届かない。押したら語のボタンと同じく詳細を開く（js/listView.js。当たりの範囲・行の高さ・読み上げ・Tab の順は今のまま。PR #164 レビューの 7） */
 html[data-theme] .gcard__marks {
   display: inline-flex;
   flex: none;
@@ -1202,6 +1204,9 @@ html[data-theme] .gcard__marks > .rank {
 
 html[data-theme] body.list-compact .gcard__marks > .rank {
   display: inline-flex;
+  position: relative;
+  z-index: 1;
+  cursor: pointer;
 }
 
 /* ---- 履歴・メモ（習熟度の目盛り .rank は brand.css。記憶ゲージ .mem は Batch 63 で外した。下の :is() の並びの .mem・.mem__bar は特定度を変えないため残す） ---- */
