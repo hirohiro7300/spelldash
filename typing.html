@@ -90,42 +90,45 @@
     </div>
     <p class="tp-tabnote tp-tabnote--off" id="typingTabNote">小・中学校の用語。読みをローマ字で打つ。</p>
 
-    <section class="result-card tp-board" id="typingBoard" data-kind="en" data-state="ready" aria-label="タイピング練習">
-      <!-- 長文の 1 行目（長文だけ出す。高さは 44px を予約し、状態で中身だけ替える: 始まる前は文章の select、打っている間は題・残り・やめる） -->
-      <div class="tp-head" id="typingHead" hidden>
-        <label class="sr-only" for="typingText">文章</label>
-        <select class="setting-select tp-head__select" id="typingText" disabled><option>読み込み中</option></select>
-        <p class="tp-head__title" id="typingTitle" hidden></p>
-        <p class="tp-head__right" id="typingHeadRight" hidden><span class="tp-head__left" id="typingLeft"></span><span class="tp-head__paused">止めた</span><button type="button" class="btn btn--ghost btn--sm tp-head__stop" id="typingStop" data-run-control>やめる<small class="tp-kbdhint">（Esc）</small></button></p>
-      </div>
-      <p class="tp-timer" id="typingTimer">残り 60秒</p>
-      <div class="tp-play" id="typingPlay">
-        <p class="tp-term" id="typingTerm" hidden></p>
-        <p class="tp-word" id="typingWord" lang="en" data-rest="apple"><span class="tp-now">a</span>pple</p>
-        <p class="tp-gloss" id="typingGloss">りんご</p>
-        <p class="tp-upnext tp-upnext--empty" id="typingNext">次<b></b></p>
-        <p class="tp-hint" id="typingHint">打ち始めると、1分を測る。</p>
-        <p class="tp-error" id="typingError" hidden><span id="typingErrorWhat">単語</span>を読み込めなかった。通信を確かめて、<a href="./typing.html">開き直す</a>。</p>
-        <p class="sr-only" id="typingLine"></p>
-        <input id="input" type="text" readonly aria-label="見本の語を打つ" aria-describedby="typingTerm typingWord typingGloss" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
-      </div>
-      <div class="tp-result" id="typingResult" hidden>
-        <p class="tp-result__kind" id="typingKind">英単語・1分</p>
-        <p class="tp-result__kpm" id="typingKpmLine" tabindex="-1"><small class="tp-result__pre" id="typingKpmPre" hidden>スコア</small><b id="typingKpm">0</b><small id="typingKpmUnit">打/分</small></p>
-        <p class="tp-result__line" id="typingAcc">正確さ <b>0%</b> ・ ミス <b>0</b><span id="typingBest" hidden></span></p>
-        <p class="tp-result__line" id="typingKeys" hidden></p>
-        <div class="tp-result__btns">
-          <button type="button" class="btn btn--ghost tp-result__again" id="typingAgain">もう一度<small class="tp-kbdhint">（Enter）</small></button>
-          <button type="button" class="btn btn--ghost tp-result__again tp-result__nexttext" id="typingNextText" hidden>次の文</button>
+    <!-- 箱（.tp-stage）が 1 分の結果の高さを始めから取っておく。札は中身の高さ（60 秒の時計で結果が出て札が下に伸びても、箱の下の要素は動かない＝CLS に入らない）。長文は取らない（結果は打鍵か Esc で出る） -->
+    <div class="tp-stage" id="typingStage" data-kind="en">
+      <section class="result-card tp-board" id="typingBoard" data-kind="en" data-state="ready" aria-label="タイピング練習">
+        <!-- 長文の 1 行目（長文だけ出す。高さは 44px を予約し、状態で中身だけ替える: 始まる前は文章の select、打っている間は題・残り・やめる） -->
+        <div class="tp-head" id="typingHead" hidden>
+          <label class="sr-only" for="typingText">文章</label>
+          <select class="setting-select tp-head__select" id="typingText" disabled><option>読み込み中</option></select>
+          <p class="tp-head__title" id="typingTitle" hidden></p>
+          <p class="tp-head__right" id="typingHeadRight" hidden><span class="tp-head__left" id="typingLeft"></span><span class="tp-head__paused">止めた</span><button type="button" class="btn btn--ghost btn--sm tp-head__stop" id="typingStop" data-run-control>やめる<small class="tp-kbdhint">（Esc）</small></button></p>
         </div>
-        <div class="tp-result__next">
-          <h2>次は、見本なしで。</h2>
-          <p id="typingStudyText">日本語の訳だけを見て、英単語を思い出して打つ。1日5分から。</p>
-          <p class="tp-result__cta"><a class="btn" id="typingStudy" href="/?from=typing" data-typing-study>思い出して打つ</a></p>
+        <p class="tp-timer" id="typingTimer">残り 60秒</p>
+        <div class="tp-play" id="typingPlay">
+          <p class="tp-term" id="typingTerm" hidden></p>
+          <p class="tp-word" id="typingWord" lang="en" data-rest="apple"><span class="tp-now">a</span>pple</p>
+          <p class="tp-gloss" id="typingGloss">りんご</p>
+          <p class="tp-upnext tp-upnext--empty" id="typingNext">次<b></b></p>
+          <p class="tp-hint" id="typingHint">打ち始めると、1分を測る。</p>
+          <p class="tp-error" id="typingError" hidden><span id="typingErrorWhat">単語</span>を読み込めなかった。通信を確かめて、<a href="./typing.html">開き直す</a>。</p>
+          <p class="sr-only" id="typingLine"></p>
+          <input id="input" type="text" readonly aria-label="見本の語を打つ" aria-describedby="typingTerm typingWord typingGloss" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
         </div>
-      </div>
-      <noscript><p class="tp-hint">タイピング練習は JavaScript をオンにすると使える。</p></noscript>
-    </section>
+        <div class="tp-result" id="typingResult" hidden>
+          <p class="tp-result__kind" id="typingKind">英単語・1分</p>
+          <p class="tp-result__kpm" id="typingKpmLine" tabindex="-1"><small class="tp-result__pre" id="typingKpmPre" hidden>スコア</small><b id="typingKpm">0</b><small id="typingKpmUnit">打/分</small></p>
+          <p class="tp-result__line" id="typingAcc">正確さ <b>0%</b> ・ ミス <b>0</b><span id="typingBest" hidden></span></p>
+          <p class="tp-result__line" id="typingKeys" hidden></p>
+          <div class="tp-result__btns">
+            <button type="button" class="btn btn--ghost tp-result__again" id="typingAgain">もう一度<small class="tp-kbdhint">（Enter）</small></button>
+            <button type="button" class="btn btn--ghost tp-result__again tp-result__nexttext" id="typingNextText" hidden>次の文</button>
+          </div>
+          <div class="tp-result__next">
+            <h2>次は、見本なしで。</h2>
+            <p id="typingStudyText">日本語の訳だけを見て、英単語を思い出して打つ。1日5分から。</p>
+            <p class="tp-result__cta"><a class="btn" id="typingStudy" href="/?from=typing" data-typing-study>思い出して打つ</a></p>
+          </div>
+        </div>
+        <noscript><p class="tp-hint">タイピング練習は JavaScript をオンにすると使える。</p></noscript>
+      </section>
+    </div>
     <p class="sr-only" id="typingLive" role="status"></p>
     <div class="osk" id="osk" hidden></div>
     <p class="tp-more">文を次々と打つ 90秒の <a href="./typing-game.html">タイピングゲーム</a></p>

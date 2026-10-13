@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<!--
+  og-image の型（1200×630）。scripts/build-og-image.mjs がこのファイルを撮って assets/images/og-image.png に書く（手で撮らない）。
+  色は css/tokens.css の変数、字は css/fonts.css の自前のフォント（Cormorant Garamond 600・Shippori Mincho 500・IBM Plex Mono 500）だけ。
+  docs/CONCEPT.md の書斎: 天井の藍（--vault）に箔の文字（--foil）、灯った羊皮紙の札（--parchment）が 1 枚、朱（--signal）は打った字と次の字の印だけ。
+  中身は名前と 1 行の説明と、札の見本（訳「りんご」を見て apple を打っている途中。本体と同じく綴りの見本は出さない）。数・絵文字・ほかの名前は書かない。
+  scripts/ は配信しない（.vercelignore）。
+-->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>og-image の型</title>
+  <link rel="stylesheet" href="../css/fonts.css" />
+  <link rel="stylesheet" href="../css/tokens.css" />
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 1200px;
+      height: 630px;
+      overflow: hidden;
+      background: var(--vault);
+    }
+
+    .og {
+      position: relative;
+      width: 1200px;
+      height: 630px;
+      overflow: hidden;
+      /* 天井: 上が深い藍、下へ少し明るい（ヘッダーの帯と同じ向き）。面いっぱいの放射の勾配は PNG が 300KB を超えるので使わない */
+      background: linear-gradient(to bottom, var(--vault) 0%, var(--vault-2) 100%);
+    }
+
+    /* 札のまわりだけ灯りの溜まり（札が主光源。溜まりは札の周りに限る） */
+    .og__glow {
+      position: absolute;
+      left: 640px;
+      top: 90px;
+      width: 600px;
+      height: 500px;
+      background: radial-gradient(closest-side, rgba(243, 221, 164, 0.13), rgba(243, 221, 164, 0.06) 45%, rgba(243, 221, 164, 0.015) 75%, rgba(243, 221, 164, 0) 100%);
+    }
+
+    /* 星図（天井の飾り）: 細い線と小さな箔の点。字の後ろには置かない */
+    .og__sky {
+      position: absolute;
+      inset: 0;
+    }
+
+    .og__brand {
+      position: absolute;
+      left: 96px;
+      top: 122px;
+      display: flex;
+      align-items: center;
+      gap: 22px;
+    }
+
+    .og__mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 60px;
+      height: 60px;
+      box-sizing: border-box;
+      border: 2px solid rgba(230, 200, 135, 0.7);
+      border-radius: var(--radius-room);
+      color: var(--foil);
+      font-family: var(--font-latin);
+      font-weight: 600;
+      font-size: 27px;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+
+    .og__name {
+      color: var(--foil);
+      font-family: var(--font-latin);
+      font-weight: 600;
+      font-size: 84px;
+      letter-spacing: 0.01em;
+      line-height: 1;
+      text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+    }
+
+    /* 金の平縁と菱（ヘッダーの帯の下の縁と現在地の菱と同じ形） */
+    .og__rule {
+      position: absolute;
+      left: 96px;
+      top: 244px;
+      width: 560px;
+      height: 1px;
+      background: linear-gradient(to right, var(--gold) 0%, rgba(201, 163, 90, 0.55) 70%, rgba(201, 163, 90, 0) 100%);
+    }
+
+    .og__rule::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: -5px;
+      width: 9px;
+      height: 9px;
+      background: var(--foil);
+      transform: rotate(45deg);
+    }
+
+    .og__line {
+      position: absolute;
+      left: 96px;
+      top: 292px;
+      margin: 0;
+      color: var(--on-vault);
+      font-family: var(--font-display);
+      font-weight: 500;
+      font-size: 50px;
+      line-height: 1.5;
+      letter-spacing: 0.04em;
+      text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+    }
+
+    /* 灯った札（羊皮紙の一枚: 小口 2 段＋暖かい影。tokens.css の --sheet-shadow を大きくした形） */
+    .og__sheet {
+      position: absolute;
+      left: 770px;
+      top: 196px;
+      width: 334px;
+      height: 286px;
+      box-sizing: border-box;
+      padding: 40px 32px 0;
+      border-radius: var(--radius-room);
+      background:
+        radial-gradient(ellipse 220px 140px at 30% 18%, var(--page-hot), rgba(255, 253, 244, 0) 80%),
+        linear-gradient(to bottom, var(--parchment) 0%, var(--parchment-2) 100%);
+      box-shadow:
+        inset 0 0 40px rgba(120, 80, 30, 0.12),
+        0 2px 0 var(--parchment-edge),
+        0 5px 0 -1px var(--parchment-2),
+        0 7px 0 -1px var(--parchment-edge),
+        6px 26px 40px -14px rgba(4, 6, 11, 0.75);
+      text-align: center;
+    }
+
+    .og__ja {
+      margin: 0;
+      color: var(--ink-page-2);
+      font-family: var(--font-display);
+      font-weight: 500;
+      font-size: 46px;
+      line-height: 1.3;
+      letter-spacing: 0.08em;
+    }
+
+    .og__sep {
+      width: 180px;
+      height: 1px;
+      margin: 26px auto 0;
+      background: var(--line-2);
+    }
+
+    .og__typed {
+      margin: 26px 0 0;
+      color: var(--signal);
+      font-family: var(--font-mono);
+      font-weight: 500;
+      font-size: 66px;
+      line-height: 1.2;
+      letter-spacing: 0.04em;
+      white-space: pre;
+    }
+
+    /* 打っている所の印（朱の縦の線。次の字は出さない＝綴りの見本は無い） */
+    .og__caret {
+      display: inline-block;
+      width: 4px;
+      height: 0.92em;
+      margin-left: 0.08em;
+      vertical-align: -0.1em;
+      background: var(--signal);
+    }
+
+    /* 胡桃の幅木（全ページのフッターの下の木） */
+    .og__board {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 26px;
+      background: linear-gradient(to bottom, var(--wood-top) 0%, var(--wood) 30%, var(--wood-2) 100%);
+      box-shadow: inset 0 1px 0 var(--wood-lip), 0 -1px 0 var(--gold-dk);
+    }
+  </style>
+</head>
+<body>
+  <main class="og">
+    <svg class="og__sky" width="1200" height="630" viewBox="0 0 1200 630" aria-hidden="true">
+      <g fill="none" stroke="#E6C887" stroke-opacity="0.22" stroke-width="1">
+        <path d="M712 70 L792 44 L866 82 L948 58 L1030 96 L1108 72" />
+        <path d="M866 82 L884 126" />
+        <path d="M1030 96 L1050 134" />
+        <circle cx="1078" cy="560" r="150" stroke-opacity="0.08" />
+        <path d="M640 600 A 520 520 0 0 1 1180 300" stroke-opacity="0.08" />
+      </g>
+      <g fill="#E6C887">
+        <circle cx="712" cy="70" r="2" fill-opacity="0.55" />
+        <circle cx="792" cy="44" r="2.6" fill-opacity="0.75" />
+        <circle cx="866" cy="82" r="2" fill-opacity="0.6" />
+        <circle cx="884" cy="126" r="1.6" fill-opacity="0.45" />
+        <circle cx="948" cy="58" r="3" fill-opacity="0.8" />
+        <circle cx="1030" cy="96" r="2.2" fill-opacity="0.6" />
+        <circle cx="1050" cy="134" r="1.6" fill-opacity="0.45" />
+        <circle cx="1108" cy="72" r="2.4" fill-opacity="0.7" />
+        <circle cx="1150" cy="190" r="1.4" fill-opacity="0.4" />
+        <circle cx="690" cy="140" r="1.3" fill-opacity="0.35" />
+        <circle cx="1160" cy="420" r="1.5" fill-opacity="0.35" />
+        <circle cx="560" cy="60" r="1.3" fill-opacity="0.35" />
+      </g>
+    </svg>
+    <div class="og__glow"></div>
+    <div class="og__brand"><span class="og__mark">SD</span><span class="og__name">SpellDash</span></div>
+    <div class="og__rule"></div>
+    <p class="og__line">日本語の訳を見て、<br />英単語を思い出して打つ。</p>
+    <div class="og__sheet">
+      <p class="og__ja" lang="ja">りんご</p>
+      <div class="og__sep"></div>
+      <p class="og__typed" lang="en">app<span class="og__caret"></span></p>
+    </div>
+    <div class="og__board"></div>
+  </main>
+</body>
+</html>

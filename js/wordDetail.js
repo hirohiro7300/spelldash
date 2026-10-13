@@ -9,7 +9,7 @@ import { speak } from "./audio.js";
 import { speechTextOf } from "./wordStore.js";
 import { icon } from "./icons.js";
 import { trapFocus } from "./focusTrap.js";
-import { rankHtml, rankOf, rankBasis, rankNext, RANK_NAMES, RANK_RULE } from "./mastery.js";
+import { rankHtml, rankOf, rankBasis, rankNext, statusScaleNote, RANK_NAMES, RANK_RULE } from "./mastery.js";
 import { localDay } from "./retentionCalc.js";
 
 // ===== 単語詳細ポップアップ =====
@@ -22,18 +22,21 @@ const LEVEL_LABEL = { easy: "やさしい", normal: "ふつう", hard: "むず�
 // 習熟度（docs/SPEC_MASTERY.md §5.2）: meta の行の下に 2 行と畳んだ決まり。段 0（答えの記録が無い）は 3 つとも出さない。
 //   1 行目: 習熟度 [目盛り] 名前 ・ その語の事実（rankBasis）。見出しに「習熟度」があるので目盛りの aria-label には重ねない（label: ""）
 //   2 行目: 段の梯子（今の段だけ太字。読み上げない）と次の段の条件（rankNext。読み上げる。段 5 は無し）
+//   題箋と段が食い違って見える組（苦手＋身についた など）だけ: 題箋の意味と「習熟度とは別の物差し」の 1 文（statusScaleNote。Batch 64 M4）
 //   その下: 畳んだ「習熟度の決まり」（開くと規則の文。閉じていれば 1 行で、毎語に規則の 4 文が並ばない）
 // 文はどれも mastery.js が記録から作る固定の文（利用者の入力を含まない）。stat は読むだけ
-function masteryHtml(stat, today = localDay(new Date())) {
+function masteryHtml(stat, status, today = localDay(new Date())) {
   const r = rankOf(stat);
   if (r === 0) return "";
   const next = rankNext(stat, today);
+  const scale = statusScaleNote(status, r);
   const ladder = RANK_NAMES.slice(1)
     .map((name, i) => (i + 1 === r ? `<b>${name}</b>` : name))
     .join(" ・ ");
   return `<div class="word-detail__rank">
       <p class="word-detail__rank-line"><span class="word-detail__rank-label">習熟度</span> ${rankHtml(r, { label: "" })} ・ <span class="word-detail__rank-basis">${rankBasis(stat, today)}</span></p>
       <p class="rank-ladder"><span aria-hidden="true">${ladder}${next ? " ・ " : ""}</span>${next ? `<span class="rank-ladder__next">${next}</span>` : ""}</p>
+      ${scale ? `<p class="rank-scale">${scale}</p>` : ""}
       <details class="rank-rule"><summary>習熟度の決まり</summary><p>${RANK_RULE}</p></details>
     </div>`;
 }
@@ -100,7 +103,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
       ${word.level ? `<span>${LEVEL_LABEL[word.level] ?? escapeHtml(word.level)}</span>` : ""}
       ${nextReview != null ? `<span>次の復習 ${nextReview === 0 ? "今日" : `${nextReview}日後`}</span>` : ""}
     </div>
-    ${masteryHtml(stat)}
+    ${masteryHtml(stat, status)}
     ${historyDotsHtml(stat) ? `<div class="word-detail__history">履歴 ${historyDotsHtml(stat)}</div>` : ""}
     <div class="word-detail__note">
       <label for="wordDetailNote">覚え方のメモ</label>

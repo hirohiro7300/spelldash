@@ -341,6 +341,27 @@ export function rankNext(stat, today = localDay(new Date()), nowMs = Date.now())
   return `${after(TOP_GAP_DAYS, `${TOP_GAP_DAYS}日以上あけて`)} すぐ打てると 即答`;
 }
 
+// ===== 題箋と段が食い違って見える組（語の詳細。Batch 64 M4。呼び名の表は docs/SPEC_MASTERY.md 付録 E） =====
+// 題箋（js/categoryProgress.js classifyWord の 未着手／苦手／覚えた／習得／知ってた）は「何が起きたか」、段は「どれだけ強いか」で、別の物差し。
+// 並べて矛盾に見える組（苦手＋思い出せる以上・覚えた＋あやふや以下・習得＋思い出せる以下・知ってた＋あやふや以下）にだけ、題箋の意味と
+// 「習熟度とは別の物差し」を 1 文で添える。ほかの組・段 0 は空文字。status は classifyWord の値（weak・learning・mastered・known・untouched）
+export const STATUS_SCALE_NOTE = {
+  weak: "苦手 は最後の答えで思い出せなかった語の印で、習熟度とは別の物差し。",
+  learning: "覚えた は最後の答えで自力で思い出せた語の印で、習熟度とは別の物差し。",
+  mastered: "習得 は別の日に10回続けて間違えずに打てた語の印で、習熟度とは別の物差し。",
+  known: "知ってた は初めて見て打てた語の印で、習熟度とは別の物差し。"
+};
+
+export function statusScaleNote(status, rank) {
+  const r = clampRank(rank);
+  if (r === 0) return "";
+  const odd =
+    (status === "weak" && r >= 3) ||
+    ((status === "learning" || status === "known") && r <= 2) ||
+    (status === "mastered" && r <= 3);
+  return odd ? STATUS_SCALE_NOTE[status] : "";
+}
+
 // ===== 期日前に出さない（S6） =====
 // 補充の既習（js/studyQueue.js pickFillers）・息抜き（insertBreather）・ミッションの復習（js/mission.js pickReviewWords）から外す語:
 //   (a) 段 4 以上で nextReviewAt が未来、(b) 知ってた語（isKnownWord: 印 knownOnSight か 2 台目の確認待ちの形）で、まだ一度も × が無く、

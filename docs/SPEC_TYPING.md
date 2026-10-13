@@ -25,13 +25,14 @@
 
 - 1 列・最大 720px（`.app--narrow`）。h1「タイピング練習」＋lead「英単語は訳つき。長文も打てる。登録なし・無料。」→ タブ 3 つ（`.stats-tabs`。英単語・日本語（ローマ字）・長文）→ 札（`.result-card`）→「このページについて」（静的な 7 行。検索にも出す）。
 - 最初の語 `apple`／`りんご` は HTML に直書き（教材が届く前から見え、打てる）。
+- 札は箱 `#typingStage`（`.tp-stage`。`data-kind` は札と同じ）に入れる。英単語・日本語では箱が 1 分の結果の最悪の高さを始めから取る（`min-height`: 390〜719 は 396px〔結果の最悪 390.5px〕、≤389 は 418px〔日本語の勧めの文が 3 行で 412.9px〕、≥720 は 254px〔2 列の結果の最悪 248.6px〕）。札そのものは中身の高さのまま（始まる前・打っている間 216／240px）で、60 秒の時計で結果が出て札が伸びても箱の下（タイピングゲームへの 1 行・このページについて）は動かない（CLS に入らない。BACKLOG D24、Batch 64。タイピングゲームの `.tg-stage` と同じ作法）。長文（`data-kind="long"`）は箱を取らない（結果は最後の打鍵か Esc・やめる で出る＝入力の直後。札の高さは §9.2 の欄の予約のまま）。横向き（高さ 480px 以下）でも箱は幅の規則で高さを取る（時間切れの CLS も 0 にするため。空きは画面キーボードの裏）。
 - `#typingBoard[data-state]`: `ready`（始まる前）→ `running`（打っている間）→ `result`（結果。同じ札の中で入れ替える）。`loading`（日本語を選んだが教材が未着）・`error`（教材が取れず、次の語が無い）。長文だけ `paused`（§9.2）。
 - 打っている間に Esc／ページが裏に回った（`visibilitychange`）／種類のタブ → その回は捨てて `ready`（結果・自己ベスト・計測なし）。長文は §9 のとおり（Esc・「やめる」はそこまでの結果、裏に回る・ご意見の窓は止めて続きから。タブは捨てる）。
 - 結果が出てから **0.6 秒（`RESULT_GUARD_MS`）の守り**: 画面キーボードを出したまま、盤面（`#osk`）の外のクリックをすべて捨てる（結果のボタン・札・このページについて・タブ・ヘッダー・フッター。一覧で持たず、盤面の内か外かで決める。js/typingKeys.js `createResultGuard`。`inert` は使わない＝札の焦点と読み上げの行を外さないため）、Enter／Space は無視。0.6 秒後に盤面を畳む（keyboard.js は body の class の変化でも盤面を畳むので、守りの間は `typing--live`・`romaji-answer` を外さない）。
 - 英単語: 打った字＝朱、まだ＝薄墨、次の 1 字に朱の下線（`text-decoration-skip-ink: none`。g・j・p・q・y でも線が切れない）。ミスの印（次の字の下線を朱の**波線**に、背景 `--signal-soft`）は**正しいキーを打つまで残す**（時間で消さない＝点滅にしない。面だけでは地との差が 1.15:1 で見えないので形で知らせる）。
 - 日本語: かなの単位を 2 段（かな／キー）。済み＝朱、今＝打った分（朱の文字）＋残りの手本、まだ＝手本。手本は各かなの最初の綴りで、打った人が別の綴り（si など）を選ぶとその後の手本も替わる。手本の ん は途中 `nn`・語末だけ `n`。っ を子音の重ねで打った直後（がっこう を gakk）は、済みの っ と今の こ に分ける（かなの行は打っている途中も読みと同じ）。単位の幅はかなとキーの広い方（`min-width: 0`）。ミスの印は今の単位ごと面と朱の細い内枠（`box-shadow: inset`。単位の大きさは変えない）＋キーの下線の波線。
 - 種類の補足（「小・中学校の用語。…」）と次の語の行は、見せないときも行の高さを残す（`visibility: hidden`。種類を替えたとき・教材が届いたときに札や一文が上下しない）。読み込めない（error）ときは残り時間を出さない。
-- 文言の全文と CSS は `typing.html`・`css/typing.css`。数の行は 3 行まで（打/分／正確さ・ミス・自己ベスト／間違えたキー。ミス 0 なら間違えたキーの行は出さない）。打/分だけを主の数 1 行（SD Num 36px、720 以上 44px）にする（docs/CONCEPT.md §4-7 の例外）。結果の数は `lining-nums`（Cormorant の旧式数字は 0 が o・1 が ı に見える。ほかのページの SD Num と同じ）。間違えたキーは題箋（細い枠・角 2px）、回数は数の書体。自己ベストの句は 1 かたまりで折る（`inline-block`）。
+- 文言の全文と CSS は `typing.html`・`css/typing.css`。数の行は 3 行まで（打/分／正確さ・ミス・自己ベスト／間違えたキー。ミス 0 なら間違えたキーの行は出さない）。打/分だけを主の数 1 行（SD Num 36px、720 以上 44px）にする（docs/CONCEPT.md §4-7 の例外）。結果の数は `lining-nums`（Cormorant の旧式数字は 0 が o・1 が ı に見える。ほかのページの SD Num と同じ）。間違えたキーは題箋（細い枠・角 2px）、回数は数の書体。自己ベストの句は 1 かたまりで折る（`inline-block`）。720 以上の英単語・日本語の結果は 2 列（左に種類・主の数・正確さ・間違えたキー・もう一度、右に「次は、見本なしで。」と導線。縦の細い罫で分ける。タイピングゲームの 720 以上と同じ規則。Batch 64）。結果の高さが 363px → 248.6px になり、始まる前の札 240px との差が小さい。長文の結果は 1 列のまま。
 - 札の焦点の印は墨の枠（`--ink-3`）＋ `--focus` の輪（朱の枠にしない: 札が大きく、開いた直後から朱が下線と 2 か所になる）。結果では出さない。
 - 読み上げ: 結果は常に DOM にある sr-only の `#typingLive`（`role="status"`）に 1 文（「312 打/分。正確さ 96%、ミス 13。」）。PC は結果の数の行（`#typingKpmLine`、`tabindex="-1"`）へ焦点。`#input`（sr-only・読み取り専用）の `aria-describedby` で今の語が読まれる。
 - タッチ端末: 既存の画面キーボード（A〜Z＋⌫、日本語では ー）を使う。設定が「オフ」でも出す。Enter は CSS で隠す、英単語では 3 段目ごと隠す。ready に入ったとき札が盤面に隠れるなら札を盤面の上に寄せる（`scrollBy`）。横向き（高さ 480px 以下）は次の語・始まる前の一文を隠し、札の最小の高さを外す。タッチ端末では `#input` に焦点を当てない。
@@ -79,8 +80,8 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 ## 6. 入口・SEO・アプリ
 
 - 入口: フッターの nav の先頭に「タイピング練習」（index・stats・profile・news・list・pro・privacy・terms・tokushoho・admin と packs の生成器。battle.html は Battle の凍結で触らない）。typing.html 自身は `aria-current="page"`、nav に `data-no-pro`（js/proFunnel.js がフッターの「SpellDash Pro」を出さない）。ヘッダーのナビには足さない（390〜430 幅で崩れる）。ホームの「ほかの遊び方」・初回にも足さない（5 つ目のモードに見える）。お知らせ 1 件（js/news.js）。
-- SEO: title「タイピング練習（英単語・ローマ字・長文）無料 | SpellDash」（長文は 1 分ではないので「1分」を外した。Batch 62）、description（「登録なし」「1分」「長文」「文章」「スマホ」）、canonical／og:url `https://www.spelldash.net/typing.html`、本文は静的な HTML。sitemap は `scripts/build-pack-pages.mjs` の `urls`（生成物）。og:image は共通のまま（作り直しは BACKLOG D10）。
-- アプリ: `scripts/build-app.mjs` の PAGES に typing.html（全ページのフッターからリンクするため）。`sw.js` の CORE_ASSETS に `/typing.html`（CACHE_NAME は上げない）。typing.html は Service Worker を登録しない（news.html・admin.html と同じ。検索から来た 1 ページ目で precache を走らせない）。
+- SEO: title「タイピング練習（英単語・ローマ字・長文）無料 | SpellDash」（長文は 1 分ではないので「1分」を外した。Batch 62）、description（「登録なし」「1分」「長文」「文章」「スマホ」）、canonical／og:url `https://www.spelldash.net/typing.html`、本文は静的な HTML。sitemap は `scripts/build-pack-pages.mjs` の `urls`（生成物）。og:image は全ページ共通の `https://www.spelldash.net/assets/images/og-image.png`（1200×630。Batch 64 で作り直した: 天井の藍に箔の「SpellDash」と金の菱、1 行の説明「日本語の訳を見て、英単語を思い出して打つ。」、羊皮紙の札〔訳「りんご」と打ちかけの「app」〕と胡桃の幅木。数字・絵文字・ほかの名前は無い。型は `scripts/og-image.html`〔色は css/tokens.css、字は自前の 3 書体〕、生成器は `node scripts/build-og-image.mjs`〔ヘッドレスのブラウザ（CHROME_PATH）で撮る。3 書体が読めていない・読めないファイルがある・型が 1200×630 でない・PNG が 300KB を超えるときは書かずに止める〕。中身を変えたら型を直して流し、絵を目で確かめてからコミットする。CI で撮り直して一致を見る検査は無い〔CI と手元で字の描き方が 1 画素単位でずれるため〕。twitter:image を持つページは無い〔summary_large_image は og:image を使う〕）。
+- アプリ: `scripts/build-app.mjs` の PAGES に typing.html（全ページのフッターからリンクするため）。PAGES は 12 ページ（index・list・stats・profile・battle・news・privacy・terms・tokushoho・pro・typing・typing-game。Batch 64 で terms・tokushoho・pro を足し、フッターの特商法・利用規約がアプリの中で切れない。ページと js が指す `./X.html` がどれも PAGES にあることは E2E の節 15 が守る。docs/APP.md）。`sw.js` の CORE_ASSETS に `/typing.html`（CACHE_NAME は上げない）。typing.html は Service Worker を登録しない（news.html・admin.html と同じ。検索から来た 1 ページ目で precache を走らせない）。
 - 外部: typing のファイル・フォント・画像はすべて同一オリジン。外部への要求は、共通の js/supabase.js がページを開いたとき（モジュールの読み込み時）に読む Supabase の SDK（esm.sh）1 本だけ（ほかの静的ページと同じ。打鍵は待たない。esm.sh が止まっても打てる）。E2E は supabase.js をスタブに替えるので、この 1 本は E2E の「要求はすべて同一オリジン」には出ない。
 
 ## 7. 計測（SQL を変えない）
@@ -95,6 +96,7 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 - 節「typing funnel:」（「funnel log:」の後）: first_visit の空と typing の 2 行・typing_start・typing_done（1 回だけ）、typing_study、学習記録のある端末・ほかのページから来た端末・途中で離れた回、管理画面の数。
 - 既存の節に足したもの: 「pages:」、「pages (書斎の皮)」の SKIN_PAGES、「CRM: サイトのナビから admin.html にリンクしない」、「Pro: 全 11 ページのフッターにプライバシーの直後の特商法リンク」。
 - 長文は節「typing long:」（7.55。「typing:」の後）と「typing funnel:」の追記（§9.9）。
+- Batch 64: 節「typing:」の T23（390 英・390 日・320 日〔mobile〕・1200 英・1200 日 の時間切れの回で、箱の top と高さ・タイピングゲームへの 1 行の top が始まる前 → 打っている間 → 結果で同じ、結果の下端 ≤ 箱の下端、入力なしの CLS < 0.05、長文のタブでは箱＝札の高さで札の上端も同じ）。節 1 の「og image:」（全ページの og:image が同じ URL・PNG が 1200×630・300KB 以下、型が 3 書体で描け外への要求が無く文に数字・絵文字が無い）。節 15 の頭（アプリの PAGES・フッターのリンク先・ページと js が指す ./X.html）。
 
 ## 9. 長文（文章を最後まで打つ。typing.html の 3 つ目の種類。Batch 62）
 

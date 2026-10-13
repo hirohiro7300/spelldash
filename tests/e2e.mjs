@@ -382,6 +382,44 @@ for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", 
   await page.close();
 }
 
+// og-image（SNS に貼られたときの絵。BACKLOG D10）: og:image・twitter:image のあるページはどれも同じ URL（assets/images/og-image.png）を指し、
+// ファイルは 1200×630 の PNG・300KB 以下。絵は scripts/build-og-image.mjs が型（scripts/og-image.html）から撮る: 型は自前の 3 書体で描け・
+// 外への要求が無く・見える文に数字と絵文字が無い（「1000語・7カテゴリ」と絵文字の旧い絵に戻さない）
+console.log("og image:");
+{
+  const OG_URL = "https://www.spelldash.net/assets/images/og-image.png";
+  const files = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html") && f !== "admin.html"), ...fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html")).map((f) => `packs/${f}`)];
+  const ogBad = [];
+  for (const f of files) {
+    const html = fs.readFileSync(path.join(ROOT, f), "utf8");
+    const og = [...html.matchAll(/<meta property="og:image" content="([^"]*)"/g)].map((m) => m[1]);
+    const tw = [...html.matchAll(/<meta name="twitter:image" content="([^"]*)"/g)].map((m) => m[1]);
+    if (og.length !== 1 || og[0] !== OG_URL || tw.some((u) => u !== OG_URL)) ogBad.push(`${f}: ${[...og, ...tw].join(",") || "なし"}`);
+  }
+  const png = fs.readFileSync(path.join(ROOT, "assets", "images", "og-image.png"));
+  const isPng = png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const dims = [png.readUInt32BE(16), png.readUInt32BE(20)];
+  check(`og-image: 全 ${files.length} ページ（admin を除く・packs を含む）の og:image（twitter:image も）は同じ URL、ファイルは 1200×630 の PNG・300KB 以下（${Math.round(png.length / 1024)}KB）`,
+    files.length > 100 && ogBad.length === 0 && isPng && dims[0] === 1200 && dims[1] === 630 && png.length <= 300 * 1024, JSON.stringify({ ogBad: ogBad.slice(0, 3), isPng, dims, kb: Math.round(png.length / 1024) }));
+  const page = await newPage({ viewport: { width: 1200, height: 630 } });
+  const hosts = new Set();
+  page.on("request", (req) => hosts.add(new URL(req.url()).host));
+  await page.goto(BASE + "/scripts/og-image.html", { waitUntil: "networkidle" });
+  const tpl = await page.evaluate(async () => {
+    const list = [['600 84px "Cormorant Garamond"', "SpellDash"], ['500 50px "Shippori Mincho"', "日本語の訳を見て、英単語を思い出して打つ。りんご"], ['500 66px "IBM Plex Mono"', "app"]];
+    await Promise.all(list.map(([font, text]) => document.fonts.load(font, text)));
+    await document.fonts.ready;
+    const og = document.querySelector(".og").getBoundingClientRect();
+    const text = document.body.innerText;
+    return { fonts: list.map(([font, text]) => document.fonts.check(font, text)), size: [og.width, og.height], text, digits: /[0-9０-９]/.test(text), emoji: /\p{Extended_Pictographic}/u.test(text) };
+  });
+  const own = new URL(BASE).host;
+  check("og-image: 型（scripts/og-image.html）は 1200×630・自前の 3 書体（Cormorant・明朝・Plex Mono）で描け、外への要求なし、文は名前と 1 行の説明と札の見本だけ（数字・絵文字なし）、生成器がある",
+    tpl.fonts.every(Boolean) && tpl.size[0] === 1200 && tpl.size[1] === 630 && [...hosts].every((h) => h === own) && !tpl.digits && !tpl.emoji && tpl.text.includes("SpellDash") && tpl.text.includes("英単語を思い出して打つ") && page.errors.length === 0 && fs.existsSync(path.join(ROOT, "scripts", "build-og-image.mjs")),
+    JSON.stringify({ fonts: tpl.fonts, size: tpl.size, hosts: [...hosts], text: tpl.text.replace(/\s+/g, " ").trim(), errors: page.errors.slice(0, 2) }));
+  await page.close();
+}
+
 // ===== 2. Study: デスクトップ入力＋モバイル入力 =====
 console.log("study:");
 {
@@ -1078,6 +1116,58 @@ console.log("typing:");
     });
     check("typing（375×560・mobile）: 盤面が開いたら札を盤面の上に寄せる", fit.osk.shown && fit.board.bottom <= fit.osk.top && fit.board.top >= fit.header, JSON.stringify(fit));
     await p.close();
+  }
+
+  // T23: 1 分の結果の高さは箱（#typingStage）が始めから取る（BACKLOG D24）。結果は時計で出る（最後の打鍵から 1 秒以上あと＝入力の直後ではない）ので、
+  // 札が伸びて箱の下が動くと CLS に入る。390・320（mobile）・1200 の英単語と日本語で、始まる前 → 打っている間 → 時間切れの結果の箱の top と height・
+  // タイピングゲームへの 1 行の top が同じ、結果の下端 ≤ 箱の下端、入力なしの CLS < 0.05（打ち始めてから）。長文は箱を取らない（箱の高さ＝札の高さ）
+  {
+    const CLS_INIT = () => {
+      window.__cls = 0;
+      window.__shifts = [];
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) { window.__cls += e.value; window.__shifts.push(...(e.sources ?? []).map((s) => s.node?.id || s.node?.className || s.node?.nodeName || "?")); } }).observe({ type: "layout-shift", buffered: true });
+    };
+    const boxes = (p) => p.evaluate(() => {
+      const r = (sel) => { const b = document.querySelector(sel).getBoundingClientRect(); return { top: Math.round(b.top + scrollY), h: Math.round(b.height * 10) / 10, bottom: Math.round((b.bottom + scrollY) * 10) / 10 }; };
+      return { state: document.getElementById("typingBoard").dataset.state, kind: document.getElementById("typingStage").dataset.kind, stage: r("#typingStage"), board: r("#typingBoard"), more: r(".tp-more").top, cls: Math.round(window.__cls * 10000) / 10000, shifts: window.__shifts.slice(-4) };
+    });
+    const runs = [];
+    for (const [w, h, mobile, kind] of [[390, 844, true, "en"], [390, 844, true, "ja"], [320, 568, true, "ja"], [1200, 900, false, "en"], [1200, 900, false, "ja"]]) {
+      const p = await newPage({ mobile, viewport: { width: w, height: h } });
+      await p.addInitScript(CLS_INIT);
+      await p.goto(BASE + "/typing.html?t=2", { waitUntil: "networkidle" });
+      await p.waitForTimeout(400);
+      if (kind === "ja") {
+        await p.evaluate(() => document.querySelector('.tp-tabs [data-kind="ja"]').click());
+        await waitState(p, "ready", 3000);
+        await p.waitForTimeout(300);
+      }
+      const b0 = await boxes(p);
+      const rest = (await state(p)).rest;
+      await p.keyboard.press(rest[0]);
+      await p.keyboard.press("q"); // ミス 1: 間違えたキーの行も出る
+      await p.waitForTimeout(100);
+      const b1 = await boxes(p);
+      const ended = await waitState(p, "result", 6000);
+      await p.waitForTimeout(800); // 守りの 0.6 秒のあと（タッチ端末は盤面も畳む）
+      const b2 = await boxes(p);
+      let long = null;
+      if (kind === "en") { // 長文のタブ（英単語は 390 と 1200 の 2 回）
+        await p.waitForTimeout(100);
+        await p.evaluate(() => document.querySelector('.tp-tabs [data-kind="long"]').click());
+        await p.waitForTimeout(600);
+        long = await boxes(p);
+      }
+      runs.push({ w, kind, ended, b0, b1, b2, long, errors: p.errors.length });
+      await p.close();
+    }
+    const bad = runs.filter(({ ended, b0, b1, b2, errors }) => !ended || b2.state !== "result" || b0.kind === "long" ||
+      [b1, b2].some((b) => b.stage.top !== b0.stage.top || b.stage.h !== b0.stage.h || b.more !== b0.more) ||
+      b2.board.bottom > b2.stage.bottom + 0.5 || b0.board.top !== b0.stage.top || b2.cls - b1.cls >= 0.05 || errors > 0);
+    const longBad = runs.filter((r) => r.long && (r.long.kind !== "long" || Math.abs(r.long.stage.h - r.long.board.h) > 0.5 || r.long.board.top !== r.b0.board.top));
+    check("typing: 1 分の結果は箱が高さを取る（390・320・1200 の英単語と日本語: 始まる前・打っている間・時間切れの結果で箱の top と高さ・タイピングゲームへの 1 行が動かず、結果は箱の中、入力なしの CLS < 0.05）・長文は箱を取らず札の上端も同じ",
+      runs.length === 5 && bad.length === 0 && longBad.length === 0 && runs.filter((r) => r.long).length === 2,
+      JSON.stringify({ bad: bad.map((r) => ({ w: r.w, kind: r.kind, ended: r.ended, b0: r.b0, b1: { stage: r.b1.stage, more: r.b1.more, cls: r.b1.cls }, b2: r.b2 })), longBad: longBad.map((r) => ({ w: r.w, long: r.long })) }));
   }
 
   // ---- 静的（ファイルを読むだけ） ----
@@ -5015,7 +5105,32 @@ console.log("daily set:");
   check("セット語数の設定が保存される", (await page.$eval("#setSizeSelect", (el) => el.value)) === "25");
   const lengthOpts = await page.$$eval("#setSizeSelect option", (els) => els.map((o) => o.value).join(","));
   check("今日のセットの長さは 4 択（10・15・25 語と 60秒）", lengthOpts === "10,15,25,60s", lengthOpts);
+  // 道の右頁の「約N分」は語数に合わせる（10語 約3分・15語 約5分・25語 約8分）。数は設定とホームの出題設定の選択肢の文と同じ（js/dailySet.js setMinutes。Batch 64 M2）
+  const minutesOf = (texts) => texts.map((t) => /^(\d+)語（約(\d+)分/.exec(t)).filter(Boolean).map((m) => [Number(m[1]), Number(m[2])]);
+  const profileMins = minutesOf(await page.$$eval("#setSizeSelect option", (els) => els.map((o) => o.textContent.trim())));
+  const fnMins = await page.evaluate(async () => { const { setMinutes } = await import("/js/dailySet.js"); return [10, 15, 25].map((n) => [n, setMinutes(n)]); });
+  check("約N分: 設定の選択肢の文（10語（約3分）・15語（約5分・標準）・25語（約8分））と setMinutes が同じ数", JSON.stringify(profileMins) === "[[10,3],[15,5],[25,8]]" && JSON.stringify(fnMins) === JSON.stringify(profileMins), JSON.stringify({ profileMins, fnMins }));
   await page.close();
+  {
+    // 戻ってきた人（腕試し済み・記録 1 語・期日はまだ）: 道の右頁は「今日のセット N語・約M分」
+    const jw = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words[9];
+    const iso2 = new Date(Date.now() - 2 * 86400000).toISOString();
+    const seed = { spelldash_placement: "done", spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify({ [jw.id]: { playCount: 1, correctCount: 1, recallFail: 0, cleanCorrectStreak: 1, lastPlayed: iso2, lastRecallSuccessAt: iso2, nextReviewAt: new Date(Date.now() + 86400000).toISOString(), history: [{ d: ymdDaysAgo(2), r: "o" }] } }) };
+    const home = await newPage({ storage: seed });
+    await home.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await home.waitForTimeout(900);
+    const homeMins = minutesOf(await home.$$eval("#setLengthSelect option", (els) => els.map((o) => o.textContent.trim())));
+    if (await home.$eval("#setupPanel", (el) => el.hidden)) await home.click("#setupToggle");
+    const lines = {};
+    for (const v of ["25", "10", "15"]) {
+      await home.selectOption("#setLengthSelect", v);
+      await home.waitForTimeout(250);
+      lines[v] = (await home.textContent("#pathNow .todays")).trim();
+    }
+    check("約N分: 道の右頁は語数に合わせる（今日のセット 25語・約8分／10語・約3分／15語・約5分）、ホームの選択肢の文も同じ数", lines["25"].startsWith("今日のセット 25語・約8分") && lines["10"].startsWith("今日のセット 10語・約3分") && lines["15"].startsWith("今日のセット 15語・約5分") && JSON.stringify(homeMins) === JSON.stringify(profileMins), JSON.stringify({ lines, homeMins }));
+    check("約N分の道の文でエラー0", home.errors.length === 0, home.errors[0] ?? "");
+    await home.close();
+  }
 }
 
 // ===== study 60s: Study の 60 秒（今日のセットの長さ「60秒」。docs/SPEC_MASTERY.md §4・§9.3）: 設定と入口・時計・時間切れは記録しない・終わりのパネル（段ごとの語チップ）・0 語の回・止める・同じ日の 2 回目・語数で走る回・キーボードだけ・390／320／1200・回の長さ・途中で長さを変える =====
@@ -5087,7 +5202,7 @@ console.log("study 60s:");
     const summary = (await page.textContent("#setupSummary")).trim();
     const todays = (await page.textContent("#pathNow .todays")).trim();
     check("60 秒: 開き直しても設定は 60秒（「15語」に戻らない）、ホームの出題設定の #setLengthSelect も 60秒（同じ 4 択）、要約の最後に「60秒」", reopened === "60s" && homeLen === "60s" && homeOpts === "10,15,25,60s" && summary.endsWith(" › 60秒"), JSON.stringify({ reopened, homeLen, homeOpts, summary }));
-    check("60 秒: 道の 1 行は「今日のセット 60秒」（約5分を付けない）、スタートはちょうど 1 つ、ほかの遊び方の行数は同じ、待ち受けは「Enter で開始（60秒）」", todays.startsWith("今日のセット 60秒") && !todays.includes("約5分") && (await page.$$("#pathStart")).length === 1 && (await page.$$eval(".play-modes__list > li", (els) => els.length)) === modesBefore && (await page.textContent("#message")).trim() === "Enter で開始（60秒）", JSON.stringify({ todays, modesBefore, msg: await page.textContent("#message") }));
+    check("60 秒: 道の 1 行は「今日のセット 60秒」（約N分を付けない）、スタートはちょうど 1 つ、ほかの遊び方の行数は同じ、待ち受けは「Enter で開始（60秒）」", todays.startsWith("今日のセット 60秒") && !/約\d+分/.test(todays) && (await page.$$("#pathStart")).length === 1 && (await page.$$eval(".play-modes__list > li", (els) => els.length)) === modesBefore && (await page.textContent("#message")).trim() === "Enter で開始（60秒）", JSON.stringify({ todays, modesBefore, msg: await page.textContent("#message") }));
     await page.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     await page.click("#pathStart");
@@ -5248,6 +5363,62 @@ console.log("study 60s:");
     check("60 秒: 机に戻ったホームのはちゃんは「続きから。」と言わない（「今日はまだ途中。」）", home === "今日はまだ途中。", home);
     check("60 秒の 0 語の回でエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
+  }
+
+  // ---- 13. 時間切れの瞬間に焦点が盤面の外なら、焦点も位置も動かさない（Batch 64 M3）: ヘッダーのログインの欄でメールを打っている間に時間切れ →
+  //          焦点と打った文はそのまま・ページを寄せない・見出しの文は #srStatus で読む。ご意見の窓（背後は inert）でも打った文と位置はそのまま。
+  //          Challenge の時間切れも同じ。焦点が入力欄にあれば今どおり見出しへ（2・4・7 の検査） ----
+  {
+    const typeElsewhere = async (page, sel, text) => {
+      await page.focus(sel);
+      await page.keyboard.type(text);
+      return page.evaluate(() => scrollY);
+    };
+    const after = (page, id) => page.evaluate((i) => ({ active: document.activeElement?.id ?? "", value: document.getElementById(i)?.value ?? "", y: scrollY, sr: document.getElementById("srStatus").textContent.trim(), title: document.getElementById("resultTitle")?.textContent.trim() ?? "" }), id);
+    // 高さ 480: 終わりのパネルは画面の下に出るので、守りが無ければ見出しへ寄せて scrollY も変わる（焦点と位置の両方を見る）
+    const page = await newPage({ viewport: { width: 1200, height: 480 }, storage: seedT() });
+    await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+    await page.waitForTimeout(900);
+    await page.click("#pathStart");
+    await page.waitForTimeout(300);
+    await page.click("#loginToggle");
+    await page.waitForTimeout(150);
+    const y0 = await typeElsewhere(page, "#emailInput", "hachan@example.jp");
+    await waitUntil(() => panelOpenT(page), 8000);
+    await page.waitForTimeout(250);
+    const s1 = await after(page, "emailInput");
+    check("60 秒: 時間切れの瞬間にヘッダーのログインの欄で打っていると、焦点と打った文はそのまま・ページを寄せない・見出しの文（60秒 終わり）は読み上げる", (await panelOpenT(page)) && s1.active === "emailInput" && s1.value === "hachan@example.jp" && s1.y === y0 && s1.title === "60秒 終わり" && s1.sr === s1.title, JSON.stringify({ ...s1, y0 }));
+    check("60 秒: 焦点を奪わない終わりでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+
+    const fb = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedT() }); // 高さ 900: 短い画面では完了で出題の UI を畳んだ分だけ scrollY が詰まる（寄せたのではない）
+    await fb.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+    await fb.waitForTimeout(900);
+    await fb.click("#pathStart");
+    await fb.waitForTimeout(300);
+    await fb.click("[data-feedback-open]");
+    await fb.waitForTimeout(150);
+    const y1 = await typeElsewhere(fb, "#feedbackMessage", "訳が分かりにくい");
+    await waitUntil(() => panelOpenT(fb), 8000);
+    await fb.waitForTimeout(250);
+    const s2 = await after(fb, "feedbackMessage");
+    check("60 秒: ご意見の窓で打っている間に時間切れでも、焦点と打った文はそのまま・背後のページを寄せない", (await panelOpenT(fb)) && s2.active === "feedbackMessage" && s2.value === "訳が分かりにくい" && s2.y === y1 && !(await fb.$eval("#feedbackModal", (el) => el.hidden)), JSON.stringify({ ...s2, y1 }));
+    await fb.close();
+
+    const ch = await newPage({ viewport: { width: 1200, height: 480 }, storage: seedT() });
+    await ch.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+    await ch.waitForTimeout(900);
+    await ch.click('#playModes [data-mode="challenge"]');
+    await ch.waitForTimeout(300);
+    await ch.click("#loginToggle");
+    await ch.waitForTimeout(150);
+    const y2 = await typeElsewhere(ch, "#emailInput", "hachan@example.jp");
+    await waitUntil(() => panelOpenT(ch), 8000);
+    await ch.waitForTimeout(250);
+    const s3 = await after(ch, "emailInput");
+    check("Challenge の時間切れも同じ: ログインの欄の焦点と打った文はそのまま・ページを寄せない・見出しの文は読み上げる", (await panelOpenT(ch)) && s3.active === "emailInput" && s3.value === "hachan@example.jp" && s3.y === y2 && !!s3.title && s3.sr === s3.title, JSON.stringify({ ...s3, y2 }));
+    check("Challenge の焦点を奪わない終わりでエラー0", ch.errors.length === 0, ch.errors[0] ?? "");
+    await ch.close();
   }
 
   // ---- 6. 止める（?t=8）: 裏に回る（document.hidden と visibilityState を偽装）と残りが減らない。戻すと減り始め、戻した直後に一気に減らない ----
@@ -5631,7 +5802,7 @@ console.log("retention:");
 // 種はマイ単語帳の語（カテゴリ my）。段の欄の無い語は initialRank の各行、欄のある語は根拠の文と次の段の条件の枝。時計のモックは無いので日付は相対
 console.log("mastery views:");
 {
-  const { RANK_NAMES, RANK_GLOSS, RANK_RULE } = await import("../js/mastery.js");
+  const { RANK_NAMES, RANK_GLOSS, RANK_RULE, STATUS_SCALE_NOTE } = await import("../js/mastery.js");
   const DAY = 86400000;
   const at = (days, hours = 0) => new Date(Date.now() - days * DAY - hours * 3600000).toISOString(); // days 日前（負なら先）の ISO
   const dk = (days) => ymd(new Date(Date.now() - days * DAY)); // その日のローカル日（history の d）
@@ -5680,19 +5851,22 @@ console.log("mastery views:");
   const ALL = WORDS.map(([en]) => en);
   const statsJson = seedOf(ALL).spelldash_word_stats;
 
-  // (1) 単語帳: 足元の段（initialRank の各行・段の欄・題箋との組み合わせ）。「詳しく」表示（簡潔表示は足元ごと隠れる）
+  // (1) 単語帳: 足元の段（initialRank の各行・段の欄・題箋との組み合わせ）。「詳しく」表示（足元に目盛り＋名前。1 行目の目盛りは隠れる。簡潔表示は (1c)）
   {
     const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedOf(ALL, { spelldash_category: "my", spelldash_list_compact: "0" }) });
     await page.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
     await page.waitForSelector(".gcard .rank", { state: "attached", timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(300);
     const cards = await page.$$eval(".gcard", (els) => els.map((el) => {
-      const r = el.querySelector(".rank");
+      const r = el.querySelector(".gcard__foot .rank");
+      const head = el.querySelector(".gcard__marks .rank");
       return {
         en: el.querySelector(".gcard__term")?.textContent.trim(),
         status: el.querySelector(".gcard__status")?.textContent.trim(),
         rank: r ? Number(r.dataset.rank) : 0,
-        n: el.querySelectorAll(".rank").length,
+        n: el.querySelectorAll(".gcard__foot .rank").length,
+        shown: [...el.querySelectorAll(".rank")].filter((x) => x.checkVisibility()).length,
+        headHidden: head ? getComputedStyle(head).display === "none" : null,
         role: r?.getAttribute("role") ?? null,
         aria: r?.getAttribute("aria-label") ?? null,
         name: r?.querySelector(".rank__name")?.textContent ?? null,
@@ -5707,6 +5881,7 @@ console.log("mastery views:");
     const ranked = cards.filter((c) => c.rank > 0);
     const badShape = ranked.filter((c) => c.n !== 1 || c.role !== "img" || c.aria !== `習熟度 ${RANK_NAMES[c.rank]}（5段のうち${c.rank}）` || c.name !== RANK_NAMES[c.rank] || c.ticks !== 5 || !c.inFoot || !c.title);
     check("習熟度 単語帳: role=img・aria-label「習熟度 名前（5段のうちN）」・名前の文字・目盛り 5 つ・足元・title に根拠の文", ranked.length === ALL.length - 1 && badShape.length === 0 && by.apple.n === 0, JSON.stringify(badShape.slice(0, 3)));
+    check("習熟度 単語帳（詳しく）: 1 行目の目盛りは隠れ、見える段は足元の 1 つだけ（読み上げも 1 回）", ranked.every((c) => c.headHidden === true && c.shown === 1) && by.apple.shown === 0 && by.apple.headHidden === null, JSON.stringify(ranked.filter((c) => c.headHidden !== true || c.shown !== 1).slice(0, 3)));
     check("習熟度 単語帳: title は語の事実（仮の段・思い出せなかった・N日あけて・初めて答えて）", by.orange.title === `これまでの記録から決めた仮の段（最後の答え ${md(at(2))}）` && by.fig.title === `${md(F)}は思い出せなかった` && by.lime.title === `${md(L)}に思い出せた（22日あけて）` && by.mango.title === `${md(M)}に初めて答えて、すぐ打てた`, JSON.stringify([by.orange.title, by.fig.title, by.lime.title, by.mango.title]));
     check("習熟度 単語帳: 題箋と段の組み合わせ（覚えた＋あやふや・習得＋思い出せる・苦手＋身についた）", by.pear.status === "覚えた" && by.pear.rank === 2 && by.banana.status === "習得" && by.banana.rank === 3 && by.fig.status === "苦手" && by.fig.rank === 4, JSON.stringify([by.pear, by.banana, by.fig].map((c) => [c.status, c.rank])));
     const listText = await page.textContent("#listBody");
@@ -5726,7 +5901,7 @@ console.log("mastery views:");
         const ink3 = getComputedStyle(document.documentElement).getPropertyValue("--ink-3").trim();
         const toRgb = (c) => { const d = document.createElement("i"); d.style.color = c; document.body.append(d); const v = getComputedStyle(d).color; d.remove(); return v; };
         const ink3Rgb = toRgb(ink3);
-        const ranks = [...document.querySelectorAll(".gcard .rank")];
+        const ranks = [...document.querySelectorAll(".gcard__foot .rank")];
         const bad = [];
         for (const r of ranks) {
           const n = Number(r.dataset.rank);
@@ -5751,13 +5926,64 @@ console.log("mastery views:");
       await page.close();
     }
   }
-  // 390 の既定（簡潔表示）でも横スクロールしない（足元は隠れる）
-  {
-    const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: seedOf(ALL, { spelldash_category: "my" }) });
+  // (1c) 簡潔表示（560px 以下の既定）: 1 行目の題箋の左に目盛りだけ（名前は出さず aria-label で読む・title に根拠の文）、足元は隠れて見える段は 1 つ。
+  //      目盛りの形と塗りは詳しい表示と同じ・題箋と同じ行で左に 6px・題箋の列は右寄せのまま・1 行の語の行は段の無い語と同じ高さ・
+  //      行のどこを押しても詳細（右の 96px の列は今のまま）・横スクロールなし。390／360／320 × 昼・夜と、1200 で「簡潔」を選んだとき（Batch 64 M1）
+  for (const [w, h, theme, mobile] of [[390, 844, "light", true], [390, 844, "dark", true], [360, 780, "light", true], [360, 780, "dark", true], [320, 640, "light", true], [320, 640, "dark", true], [1200, 900, "light", false]]) {
+    const page = await newPage({ mobile, viewport: { width: w, height: h }, storage: seedOf(ALL, { spelldash_category: "my", spelldash_theme: theme, ...(mobile ? {} : { spelldash_list_compact: "1" }) }) });
     await page.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
-    await page.waitForTimeout(600);
-    const s = await page.evaluate(() => ({ compact: document.body.classList.contains("list-compact"), scroll: document.documentElement.scrollWidth, inner: window.innerWidth }));
-    check("習熟度 単語帳（390 簡潔表示）: 横スクロールなし", s.compact && s.scroll <= s.inner, JSON.stringify(s));
+    await page.waitForSelector(".gcard .rank", { state: "attached", timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const s = await page.evaluate(() => {
+      const toRgb = (c) => { const d = document.createElement("i"); d.style.color = c; document.body.append(d); const v = getComputedStyle(d).color; d.remove(); return v; };
+      const ink3 = toRgb(getComputedStyle(document.documentElement).getPropertyValue("--ink-3").trim());
+      const cards = [...document.querySelectorAll(".gcard")].map((el) => {
+        el.scrollIntoView({ block: "center" });
+        const term = el.querySelector(".gcard__term");
+        const head = el.querySelector(".gcard__marks .rank");
+        const chip = el.querySelector(".gcard__status");
+        const er = el.getBoundingClientRect();
+        const cr = chip.getBoundingClientRect();
+        const hr = head?.getBoundingClientRect();
+        const ticks = head ? [...head.querySelectorAll("i")].map((i) => ({ r: i.getBoundingClientRect(), bg: getComputedStyle(i).backgroundColor })) : [];
+        const hits = (x) => document.elementFromPoint(x, er.top + er.height / 2) === term; // 語のボタン（::after が行に広がる）＝詳細が開く
+        return {
+          en: term.textContent.trim(),
+          rank: head ? Number(head.dataset.rank) : 0,
+          shown: [...el.querySelectorAll(".rank")].filter((x) => x.checkVisibility()).length,
+          headShown: head ? head.checkVisibility() : null,
+          footShown: el.querySelector(".gcard__foot").checkVisibility(),
+          named: head ? !!head.querySelector(".rank__name") : null,
+          role: head?.getAttribute("role") ?? null,
+          aria: head?.getAttribute("aria-label") ?? null,
+          title: head?.getAttribute("title") ?? null,
+          footTitle: el.querySelector(".gcard__foot .rank")?.getAttribute("title") ?? null,
+          shape: ticks.map((t) => `${Math.round(t.r.width)}x${Math.round(t.r.height)}`).join(","),
+          bottoms: new Set(ticks.map((t) => Math.round(t.r.bottom))).size,
+          filled: ticks.filter((t) => t.bg === ink3).length,
+          sameLine: head ? hr.bottom > cr.top && hr.top < cr.bottom : null,
+          gap: head ? Math.round(cr.left - hr.right) : null,
+          inCard: head ? hr.left >= er.left - 0.5 && hr.right <= er.right + 0.5 : null,
+          chipRight: Math.round(cr.right),
+          h: Math.round(er.height),
+          // 押して詳細が開く所: 左端・中ほど・目盛り（無ければ題箋）のすぐ左。目盛りの中ほどが 96px の列より左なら、目盛りの上でも開く（目盛りが当たりを塞がない）
+          hit: [hits(er.left + 4), hits(er.left + er.width / 2), hits(Math.min(er.right - 97, (hr ?? cr).left - 3)), ...(hr && (hr.left + hr.right) / 2 < er.right - 96 ? [hits((hr.left + hr.right) / 2)] : [])]
+        };
+      });
+      return { compact: document.body.classList.contains("list-compact"), cards, scroll: document.documentElement.scrollWidth, inner: window.innerWidth };
+    });
+    const ranked = s.cards.filter((c) => c.rank > 0);
+    const apple = s.cards.find((c) => c.en === "apple");
+    const wrongRank = s.cards.filter((c) => c.rank !== RANK[c.en]).map((c) => `${c.en}:${c.rank}`);
+    const badMark = ranked.filter((c) => c.shown !== 1 || !c.headShown || c.footShown || c.named || c.role !== "img" || c.aria !== `習熟度 ${RANK_NAMES[c.rank]}（5段のうち${c.rank}）` || !c.title || c.title !== c.footTitle);
+    check(`習熟度 単語帳（簡潔表示 ${w}・${theme}）: 1 行目に目盛りだけ（名前なし・aria-label「習熟度 名前（5段のうちN）」・title に根拠の文）・足元は隠れて見える段は 1 つ・段は記録のとおり`, s.compact && ranked.length === ALL.length - 1 && wrongRank.length === 0 && badMark.length === 0 && apple?.shown === 0, JSON.stringify({ compact: s.compact, wrongRank, bad: badMark.slice(0, 2) }));
+    const badShape = ranked.filter((c) => c.shape !== "5x6,5x8,5x10,5x12,5x14" || c.bottoms !== 1 || c.filled !== c.rank || !c.sameLine || Math.abs(c.gap - 6) > 1 || !c.inCard);
+    check(`習熟度 単語帳（簡潔表示 ${w}・${theme}）: 目盛りの形と塗りは詳しい表示と同じ・題箋と同じ行で左に 6px・カードに収まる`, badShape.length === 0, JSON.stringify(badShape.slice(0, 2)));
+    const rights = new Set(s.cards.map((c) => c.chipRight));
+    const tall = ranked.filter((c) => c.h !== apple?.h).map((c) => `${c.en}:${c.h}`);
+    const missHit = s.cards.filter((c) => c.hit.some((x) => !x)).map((c) => `${c.en}:${c.hit.join("/")}`);
+    check(`習熟度 単語帳（簡潔表示 ${w}・${theme}）: 題箋の列は右寄せのまま・行の高さは段の無い語と同じ・行のどこを押しても詳細（右の 96px の列は今のまま）・横スクロールなし`, Math.max(...rights) - Math.min(...rights) <= 1 && tall.length === 0 && missHit.length === 0 && s.scroll <= s.inner, JSON.stringify({ rights: [...rights], tall, appleH: apple?.h, missHit, scroll: s.scroll, inner: s.inner }));
+    check(`習熟度 単語帳（簡潔表示 ${w}・${theme}）でエラー0・読むだけ`, page.errors.length === 0 && (await page.evaluate(() => localStorage.getItem("spelldash_word_stats"))) === statsJson, page.errors[0] ?? "");
     await page.close();
   }
 
@@ -5787,6 +6013,8 @@ console.log("mastery views:");
           nextHidden: !!q(".rank-ladder__next")?.closest('[aria-hidden="true"]'),
           ladderText: ladder?.textContent.replace(/\s+/g, " ").trim() ?? null,
           rule: !!q("details.rank-rule"),
+          scale: q(".rank-scale")?.textContent ?? null,
+          scaleOrder: q(".rank-scale") ? q(".rank-ladder")?.nextElementSibling === q(".rank-scale") && !!q(".rank-scale").nextElementSibling?.matches("details.rank-rule") : null,
           ruleOpen: q("details.rank-rule")?.open ?? null,
           summary: q(".rank-rule > summary")?.textContent ?? null,
           title: q(".word-detail__status")?.getAttribute("title") ?? null,
@@ -5823,6 +6051,11 @@ console.log("mastery views:");
     check("習熟度 語の詳細: 段 1 は「自力で思い出せると あやふや」", cherry.line === `習熟度 まだ ・ これまでの記録から決めた仮の段（最後の答え ${md(at(1))}）` && cherry.next === "自力で思い出せると あやふや" && cherry.bold.join() === "まだ", JSON.stringify(cherry));
     const apple = await open("apple");
     check("習熟度 語の詳細: 段 0（出題だけ）は習熟度の行・梯子・決まりを出さない", apple.line === null && apple.ladderText === null && apple.rule === false, JSON.stringify(apple));
+    // 題箋と段が食い違って見える組（覚えた＋あやふや・習得＋思い出せる・苦手＋身についた）だけ、梯子の下・決まりの上に 1 文（題箋の意味と「習熟度とは別の物差し」。Batch 64 M4）
+    const pear = await open("pear");
+    const banana = await open("banana");
+    check("習熟度 語の詳細: 覚えた＋あやふや・習得＋思い出せる・苦手＋身についた に「…の印で、習熟度とは別の物差し。」の 1 文（梯子の下・決まりの上）", pear.scale === STATUS_SCALE_NOTE.learning && banana.scale === STATUS_SCALE_NOTE.mastered && fig.scale === STATUS_SCALE_NOTE.weak && [pear, banana, fig].every((d) => d.scaleOrder === true) && pear.scale.startsWith("覚えた ") && banana.scale.startsWith("習得 ") && fig.scale.startsWith("苦手 "), JSON.stringify([pear.scale, banana.scale, fig.scale, fig.scaleOrder]));
+    check("習熟度 語の詳細: 食い違って見えない組（知ってた＋身についた・覚えた＋即答・苦手＋まだ）と段 0 には 1 文を出さない", mango.scale === null && lime.scale === null && cherry.scale === null && apple.scale === null, JSON.stringify([mango.scale, lime.scale, cherry.scale, apple.scale]));
     check("習熟度 語の詳細: 読むだけ（word_stats を書き換えない）・エラー0", (await page.evaluate(() => localStorage.getItem("spelldash_word_stats"))) === statsJson && page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
@@ -9663,9 +9896,28 @@ console.log("resume:");
   await page2.close();
 }
 
-// ===== 15. ネイティブアプリ（Capacitor を偽装）: ログイン非表示・packs リンク・StatusBar・Haptics・インストール案内 =====
+// ===== 15. ネイティブアプリ（Capacitor を偽装）: ログイン非表示・packs リンク・StatusBar・Haptics・インストール案内・アプリの PAGES とリンク先 =====
 console.log("native app:");
 {
+  // アプリに入れるページ（scripts/build-app.mjs の PAGES。BACKLOG D15）: アプリの中のページと js（js/ は丸ごと入る）が指す
+  // 「./X.html」「/X.html」はどれも PAGES にある。フッターの特商法・利用規約、規約・特商法・設定からの加入画面がアプリの中で切れない
+  const { PAGES: APP_PAGES } = await import("../scripts/build-app.mjs");
+  const appHtml = Object.fromEntries(APP_PAGES.map((p) => [p, fs.existsSync(path.join(ROOT, p)) ? fs.readFileSync(path.join(ROOT, p), "utf8") : null]));
+  check("アプリ: PAGES に pro.html・terms.html・tokushoho.html があり、PAGES のファイルはどれもある", ["pro.html", "terms.html", "tokushoho.html"].every((p) => APP_PAGES.includes(p)) && Object.values(appHtml).every((t) => t !== null), APP_PAGES.filter((p) => appHtml[p] === null).join(","));
+  const footerOut = [];
+  for (const [p, t] of Object.entries(appHtml)) {
+    const nav = /<nav class="site-footer__nav"[\s\S]*?<\/nav>/.exec(t ?? "")?.[0] ?? "";
+    if (!nav) footerOut.push(`${p}: フッターが無い`);
+    for (const m of nav.matchAll(/href="(?:\.\/|\/)([a-z][\w-]*\.html)/g)) if (!APP_PAGES.includes(m[1])) footerOut.push(`${p} → ${m[1]}`);
+  }
+  check("アプリ: どのページのフッターのリンク先（タイピング練習・お知らせ・プライバシー・特商法・利用規約）も PAGES にある", footerOut.length === 0, footerOut.join(" / "));
+  const linkOut = new Set();
+  for (const [p, t] of Object.entries(appHtml)) for (const m of (t ?? "").matchAll(/href="(?:\.\/|\/)([a-z][\w-]*\.html)/g)) if (!APP_PAGES.includes(m[1])) linkOut.add(`${p} → ${m[1]}`);
+  for (const f of fs.readdirSync(path.join(ROOT, "js")).filter((f) => f.endsWith(".js"))) {
+    for (const m of fs.readFileSync(path.join(ROOT, "js", f), "utf8").matchAll(/["'`(]\.?\/([a-z][\w-]*\.html)/g)) if (!APP_PAGES.includes(m[1])) linkOut.add(`js/${f} → ${m[1]}`);
+  }
+  check("アプリ: PAGES のページと js が指す ./X.html・/X.html はどれも PAGES にある（加入画面・設定・学習データへの js のリンクも）", linkOut.size === 0, [...linkOut].join(" / "));
+
   const NATIVE = () => {
     window.__native = [];
     window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: (plugin, method, options) => { window.__native.push({ plugin, method, options }); return Promise.resolve({}); } };

@@ -46,6 +46,30 @@ html[data-theme] body.page-typing .tp-board {
   cursor: text;
 }
 
+/* 1 分の結果の高さは箱（.tp-stage）が始めから取っておく（タイピングゲームの .tg-stage と同じ作法。BACKLOG D24）。札は中身の高さのまま
+   （始まる前・打っている間は 216px／240px。紙が半分空いた札にしない）。結果は 60 秒の時計で出る（入力の直後とは限らない）が、
+   札は箱の中で下に伸びるだけで、箱の下の要素（タイピングゲームへの 1 行・このページについて）は動かない（CLS に入らない）。
+   長文は箱を取らない（結果は最後の打鍵か Esc・やめる で出る＝入力の直後。札の高さは長文の欄の予約のまま）。
+   数は結果の最悪（自己ベストの句が折れる・間違えたキーの行あり・日本語の勧めの文）の実測に数 px を足したもの。
+   E2E（7.5）が「結果の下端 ≤ 箱の下端」「箱の top と height が状態で変わらない」「時間切れの結果で CLS < 0.05」を守る */
+html[data-theme] body.page-typing .tp-stage {
+  margin-top: 8px;
+}
+
+html[data-theme] body.page-typing .tp-stage > .tp-board {
+  margin-top: 0;
+}
+
+html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) {
+  min-height: 396px; /* 390〜719: 結果の最悪 390.5px（自己ベストの句が 2 行目に折れる。500〜719 は 368px） */
+}
+
+@media (max-width: 389.98px) {
+  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) {
+    min-height: 418px; /* 320〜389: 412.9px（日本語の勧めの文が 3 行） */
+  }
+}
+
 /* 結果は打つ場所ではない（カーソルを I ビームにしない） */
 html[data-theme] body.page-typing .tp-board[data-state="result"] {
   cursor: auto;
@@ -452,6 +476,34 @@ html[data-theme] body.page-typing:not(.tp-long-en) .tp-osk-key--en {
 
   html[data-theme] body.page-typing .tp-result__again {
     width: auto;
+  }
+
+  /* 箱: 2 列の結果の最悪 248.6px（始まる前の札は 240px） */
+  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) {
+    min-height: 254px;
+  }
+
+  /* 英単語・日本語の結果は 2 列（タイピングゲームと同じ）: 左 柱・主の数・正確さ・間違えたキー・もう一度、右 次は、見本なしで（導線）。
+     始まる前の札（240px）に近い高さに収め、箱の空きを小さくする。長文の結果は 1 列のまま。hidden のときは display:none のまま */
+  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) .tp-result:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) .tp-result > * {
+    grid-column: 1;
+  }
+
+  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) .tp-result__next {
+    grid-column: 2;
+    grid-row: 1 / span 5;
+    align-self: stretch;
+    margin-top: 0;
+    padding: 0 0 0 24px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
   }
 }
 
