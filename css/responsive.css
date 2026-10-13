@@ -3,11 +3,9 @@
   .stats {
     grid-template-columns: repeat(2, 1fr);
   }
-}
 
-/* ===== スマホ ===== */
-@media (max-width: 560px) {
-  /* ヘッダーを1行に収める: brand名を隠してSDマークのみ、navは詰める（横スクロールはしない。brand.css 参照） */
+  /* ヘッダーを1行に収める: brand名を隠してSDマークのみ、navは詰める（横スクロールはしない。brand.css 参照）。
+     切り替えは 720px: 560px では 561〜680px（ログイン・Pro の 3 桁の連続日数・アプリ）でナビの字が途中で折れ、帯が 56〜57 → 68〜89px に伸びた（Batch 66） */
   .site-header__inner {
     flex-wrap: nowrap;
     width: 94%;
@@ -30,7 +28,10 @@
     padding: 6px 10px;
     font-size: 13px;
   }
+}
 
+/* ===== スマホ ===== */
+@media (max-width: 560px) {
   /* ドロップダウン（ログイン／アカウント）は左右 12px の全幅に。片手で届く */
   .dropdown__panel {
     position: fixed;

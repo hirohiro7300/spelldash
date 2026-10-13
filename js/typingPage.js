@@ -13,6 +13,7 @@ import { setFooterYear } from "./footer.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { markTypingArrival, logTypingStage } from "./funnelLog.js";
 import { localDay } from "./retentionCalc.js";
+import { writeLive } from "./srLive.js";
 import { romajiKeyOf } from "./romaji.js";
 import {
   touch,
@@ -185,9 +186,10 @@ function cancelAnnounce() {
   announceTimer = 0;
 }
 
+// 読み上げの行に書く（js/srLive.js: ご意見の窓が開いている間は窓の中の行へ。背後は inert で #typingLive は読まれない。js/ui.js announce と同じ判定。Batch 66 R1）
 function setLive(text) {
   cancelAnnounce();
-  if (el.live) el.live.textContent = text;
+  if (el.live) writeLive(el.live, text);
 }
 
 // 空にしてから次のタスクで書く（同じ文が続いても黙らない）
@@ -195,7 +197,7 @@ function announce(text) {
   setLive("");
   announceTimer = setTimeout(() => {
     announceTimer = 0;
-    if (el.live) el.live.textContent = text;
+    if (el.live) writeLive(el.live, text);
   }, ANNOUNCE_GAP_MS);
 }
 

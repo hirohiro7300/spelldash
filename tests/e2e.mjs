@@ -1011,6 +1011,24 @@ console.log("typing:");
     await p.waitForTimeout(3600);
     const st = await p.evaluate(() => ({ state: document.getElementById("typingBoard").dataset.state, best: localStorage.getItem("spelldash_typing_practice"), modal: !document.getElementById("feedbackModal")?.hidden, focusInModal: !!document.activeElement?.closest("#feedbackModal") }));
     check("typing: 打っている間にご意見の窓を開いた回は捨てる（結果・自己ベストなし、窓の焦点は取らない）", running && st.state === "ready" && st.best === null && st.modal && st.focusInModal && p.errors.length === 0, JSON.stringify(st));
+    // Batch 66 R1: 1 分（ここは ?t=3）の時間切れをご意見の窓を開いたまま迎える形。マウス・タップ・キーでは打っている間に窓を開けない（開くと回を捨てる・
+    // キーはボタンを押させない）ので、窓はページの関数で開く。時間切れの回は捨てる（結果・自己ベストなし。打っていない時間を含む）ので結果の 1 文は無く、
+    // 窓の中の読み上げの行にも窓の外の #typingLive にも文は残らない（読み上げの行き先は js/srLive.js。js/ui.js announce と同じ判定）
+    await p.keyboard.press("Escape");
+    await p.keyboard.type("a");
+    const running2 = await waitState(p, "running", 2000);
+    await p.evaluate(async () => {
+      const own = document.getElementById("typingLive");
+      own.textContent = "前の文"; // 古い文が残らないこと（時間切れで始まる前に戻すときに行を空にする）も見る
+      (await import("/js/feedback.js")).openFeedback();
+    });
+    await p.waitForTimeout(3600);
+    const st2 = await p.evaluate(() => ({
+      state: document.getElementById("typingBoard").dataset.state, best: localStorage.getItem("spelldash_typing_practice"), modal: !document.getElementById("feedbackModal")?.hidden,
+      inside: [...document.querySelectorAll("#feedbackForm [data-sr-live]")].map((n) => n.textContent), own: document.getElementById("typingLive").textContent, ownInert: !!document.getElementById("typingLive").closest("[inert]")
+    }));
+    check("typing: ご意見の窓を開いたまま時間切れ（窓はページの関数で開く）→ 回は捨てて始まる前（結果・自己ベストなし）、窓の中の読み上げの行・#typingLive に文は残らない（Batch 66 R1）",
+      running2 && st2.state === "ready" && st2.best === null && st2.modal && st2.ownInert && st2.inside.length === 1 && st2.inside[0] === "" && st2.own === "" && p.errors.length === 0, JSON.stringify(st2));
     await p.close();
   }
 
@@ -2167,13 +2185,29 @@ console.log("typing long:");
     await typeRest(page, { n: 1 });
     await page.click("[data-feedback-open]");
     const f1 = await ls(page);
+    // Batch 66 R1: 止めた文（「止めた。打つと続きから。」）は窓が開く前（クリックの capture）に書くので、窓が開いたら窓の中の読み上げの行
+    // （role=status・aria-live=polite・sr-only）に書き直す（背後は inert で #typingLive は読まれない。js/ui.js announce と同じ判定: js/srLive.js）
+    await page.waitForTimeout(150);
+    const liveLines = (page) => page.evaluate(() => {
+      const own = document.getElementById("typingLive");
+      return {
+        inside: [...document.querySelectorAll("#feedbackForm [data-sr-live]")].map((n) => ({ text: n.textContent, role: n.getAttribute("role"), live: n.getAttribute("aria-live"), sr: n.classList.contains("sr-only") })),
+        own: own.textContent, ownInert: !!own.closest("[inert]"), focusIn: !!document.activeElement?.closest("#feedbackForm")
+      };
+    });
+    const f1live = await liveLines(page);
     await page.keyboard.press("Escape");
     const f2 = await ls(page);
     await page.keyboard.press(f2.rest[0]);
     const f3 = await ls(page);
+    const f3live = await liveLines(page);
     check("typing long（1200）: ご意見の窓をマウスで開くと止まる、閉じても止めたまま（焦点は窓を開いたボタン）、字で続きからそのキーも判定し焦点は入力欄へ",
       f1.state === "paused" && f1.modal && f2.state === "paused" && !f2.modal && f2.active !== "input" && f3.state === "running" && f3.rest === f2.rest.slice(1) && f3.active === "input",
       J({ f1: [f1.state, f1.modal], f2: [f2.state, f2.modal, f2.active], f3: [f3.state, f3.active] }));
+    check("typing long（1200）: ご意見の窓をマウスで開いて止めた文「止めた。打つと続きから。」は窓の中の読み上げの行（role=status・aria-live=polite・sr-only）に 1 つ入り、窓の外の #typingLive（inert）は空、焦点は窓の中。続きから打つと行はどれも空（Batch 66 R1）",
+      f1live.ownInert && f1live.inside.length === 1 && f1live.inside[0].text === "止めた。打つと続きから。" && f1live.inside[0].role === "status" && f1live.inside[0].live === "polite" && f1live.inside[0].sr && f1live.own === "" && f1live.focusIn &&
+      !f3live.ownInert && f3live.own === "" && f3live.inside.every((n) => n.text === ""),
+      J({ f1live, f3live }));
 
     // 止めた回で焦点がご意見のボタン（窓を閉じると焦点はボタンに戻る）・タブの上: Space・Enter はボタンを押さず（窓は開かない・タブは替わらない）続きから。
     // そのキーは判定せず、焦点は入力欄へ
@@ -2274,6 +2308,33 @@ console.log("typing long:");
       changed.length === 0 && after.spelldash_typing_practice === PRACTICE && !mainText.includes("Pro") && !mainText.includes("はちゃん") && [...hosts].every((h) => h === own) && page.errors.length === 0,
       J({ changed, practice: after.spelldash_typing_practice, hosts: [...hosts], errors: page.errors.slice(0, 3) }));
     await page.close();
+
+    // ---- Batch 66 R1: 長文の教材が届く前（読み込み中。回はまだ無いので窓を開いても捨てない）にご意見の窓を開いた → 届いたときの「題。」と今の行の読み上げは
+    //      窓の中の読み上げの行に入る（背後は inert で #typingLive は読まれない。js/ui.js announce と同じ判定: js/srLive.js）。窓を閉じたあとは #typingLive に戻る（裏に回って止めた文） ----
+    {
+      const p = await newPage({ viewport: { width: 1200, height: 900 } });
+      let release = () => {};
+      const gate = new Promise((r) => { release = r; });
+      await p.route("**/data/typing-long.json", async (route) => { await gate; await route.continue(); });
+      await p.goto(BASE + "/typing.html?kind=long", { waitUntil: "load" });
+      const loading = await waitL(p, "loading", 3000);
+      await p.click("[data-feedback-open]");
+      release();
+      await waitL(p, "ready", 5000);
+      await p.waitForTimeout(200); // 題と今の行の読み上げ（50ms 後）
+      const w1 = { ...(await liveLines(p)), state: (await ls(p)).state };
+      await p.keyboard.press("Escape");
+      const w2 = await ls(p);
+      await p.keyboard.press(w2.rest[0]);
+      await hide(p);
+      await p.waitForTimeout(150);
+      const w3 = { ...(await liveLines(p)), state: (await ls(p)).state };
+      check("typing long（1200）: 教材の読み込み中にご意見の窓を開くと、届いたときの「題。」と今の行の読み上げは窓の中の読み上げの行に 1 つ入り、窓の外の #typingLive（inert）は空・焦点は窓の中。閉じたあと裏に回って止めた文は #typingLive（窓の中の行は空）（Batch 66 R1）",
+        loading && w1.state === "ready" && w1.ownInert && w1.inside.length === 1 && w1.inside[0].text === `${s01.title}。${lineOf(s01, 0)}` && w1.own === "" && w1.focusIn &&
+        w2.state === "ready" && w3.state === "paused" && !w3.ownInert && w3.own === "止めた。打つと続きから。" && w3.inside.every((n) => n.text === "") && p.errors.length === 0,
+        J({ loading, w1, w2: w2.state, w3, errors: p.errors.slice(0, 2) }));
+      await p.close();
+    }
 
     // ---- 完走と自己ベスト（?l= なし）: 待ちなしの完走（1 秒未満）は「―」で記録なし、1 打 40ms で打ち切ると「はじめての記録」と best.long["ja-s01"] だけ ----
     {
@@ -3476,6 +3537,35 @@ console.log("typing game:");
     await p.close();
   }
 
+  // Batch 66 R1: ご意見の窓（背後は inert）が開いている間の読み上げは窓の中の読み上げの行（role=status・aria-live=polite・sr-only）に書く
+  // （js/srLive.js。js/ui.js announce と同じ判定）。マウス・タップで窓を開くと回を捨てる（今のまま）ので、窓はページの関数で開いて打っている回を窓の裏で続ける。
+  // ?t=3&s=1: 1 秒で流れた「次の文」は窓の中の行に入り（#tgLive は空）、窓を開いたまま時間が切れた回は捨てる（始まる前・自己ベストなし）・行はどれも空
+  {
+    const p = await newPage({ viewport: { width: 1200, height: 900 } });
+    await p.goto(BASE + "/typing-game.html?t=3&s=1", { waitUntil: "networkidle" });
+    await p.waitForTimeout(300);
+    await p.keyboard.press("k");
+    await p.evaluate(async () => (await import("/js/feedback.js")).openFeedback());
+    await p.waitForTimeout(1400); // 1 秒の締切で流れ、50ms 後に「次の文」
+    const lines = () => p.evaluate(() => {
+      const own = document.getElementById("tgLive");
+      return {
+        state: document.getElementById("tgBoard").dataset.state, lost: Number(document.getElementById("tgBoard").dataset.lost), best: localStorage.getItem("spelldash_typing_game"),
+        inside: [...document.querySelectorAll("#feedbackForm [data-sr-live]")].map((n) => ({ text: n.textContent, role: n.getAttribute("role"), live: n.getAttribute("aria-live"), sr: n.classList.contains("sr-only") })),
+        own: own.textContent, ownInert: !!own.closest("[inert]"), focusIn: !!document.activeElement?.closest("#feedbackForm")
+      };
+    });
+    const g1 = await lines();
+    const back = await waitGame(p, "ready", 4000);
+    await p.waitForTimeout(100);
+    const g2 = await lines();
+    check("typing game: ご意見の窓を開いている間に流れた「次の文」は窓の中の読み上げの行（role=status・aria-live=polite・sr-only）に 1 つ入り、窓の外の #tgLive（inert）は空・焦点は窓の中。窓を開いたまま時間が切れた回は捨てて始まる前（自己ベストなし）・行はどれも空（Batch 66 R1）",
+      g1.state === "running" && g1.lost >= 1 && g1.ownInert && g1.inside.length === 1 && g1.inside[0].text === "次の文" && g1.inside[0].role === "status" && g1.inside[0].live === "polite" && g1.inside[0].sr && g1.own === "" && g1.focusIn &&
+      back && g2.state === "ready" && g2.best === null && g2.inside.every((n) => n.text === "") && g2.own === "" && p.errors.length === 0,
+      JSON.stringify({ g1, back, g2, errors: p.errors.slice(0, 2) }));
+    await p.close();
+  }
+
   // G38: rAF が止まっても（時計のタイムアウトは次の締切に 1 本: その保険）文は締切ごとに流れ、回は終わる（?t=3&s=1 → 1 秒・2 秒で流れて流れた 2・結果）
   {
     const p = await newPage({ viewport: { width: 1200, height: 900 } });
@@ -3630,7 +3720,7 @@ console.log("typing game:");
 
   // ---- 横向き（844×390・844×340・667×375・568×320・667×320・mobile）: 札・線・単位が盤面の上に収まる（いちばん単位の多い文で）。
   // 667×375 は幅 720 未満・高さ 361〜480 の横向き（縦向きのコースの予約に負けると、ふつうの文が 2 行分を取り線が盤面の下に入る）。
-  // 568×320・667×320 は表示域が 330px 以下（D23。568 はヘッダーが 2 行の 69px で、盤面の上に札に使えるのは 82px）。長い文のかなは小さくしてよい（16px 以上）。
+  // 568×320・667×320 は表示域が 330px 以下（D23。盤面の上に札に使えるのは 94px。568 はヘッダーが 2 行の 69px で 82px だったが、Batch 66 でヘッダーが 1 行の 57px に）。長い文のかなは小さくしてよい（16px 以上）。
   // 札の下の余白は盤面にかかってよい（844×340 は 6px、667×375 は 14px）。単位の中身（.tp-unit）と線は盤面の上。
   // 高さ 320 はタブがヘッダーの下に隠れる（寄せたあと）ので、タブは要素の click で押す ----
   {
@@ -4012,6 +4102,75 @@ console.log("typing game:");
       JSON.stringify({ bad: bad.length, first: bad.slice(0, 4).map((r) => `${r.course}@${r.vw}/${r.w}:${r.lines.join("|")}`), natural: runs.filter((r) => r.vw !== "sweep").map((r) => `${r.course}@${r.vw}:${r.lines.join("|")}`), errors }));
   }
 
+  // ---- Batch 66 R2: タブの下の補足（#tgTabNote「かな8〜16字の文 ・ 目標 8文」）の区切りも結果の行と同じ js/typingKeys.js の sep（折れない「 ・」と折れてよい空白）。
+  // 3 コースの補足を、js が描いたあと（390・360・320）と、js が動く前の HTML の印（[data-tg-first]。js/typingGamePage.js を読ませない）で見て、さらに行の幅を
+  // 60〜340px で 1px ずつ替えて「・」が行の頭に来ない（PR #166 の 5 と同じ形。行は Range の字の矩形で分ける）。見える字は前と同じ「note ・ 目標 N単位」
+  // （build-typing-game --check の V11 は区切りの span でも通る）。直す前はふつうの文字の「 ・ 」で、「・」の前の空白で折れる幅があった ----
+  {
+    const notesOf = (p, widths = []) => p.evaluate((widths) => {
+      const root = document.getElementById("tgTabNote");
+      const shown = () => [...root.querySelectorAll("[data-tg-first]")].find((s) => s.getClientRects().length > 0) ?? root;
+      const measure = () => {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const chars = [];
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          for (let i = 0; i < n.length; i++) {
+            if (/\s/.test(n.data[i])) continue;
+            const r = document.createRange();
+            r.setStart(n, i);
+            r.setEnd(n, i + 1);
+            const b = [...r.getClientRects()].find((x) => x.width > 0);
+            if (b) chars.push({ ch: n.data[i], y: (b.top + b.bottom) / 2, x: b.left });
+          }
+        }
+        const lines = [];
+        for (const c of chars.sort((a, b) => a.y - b.y)) {
+          const line = lines.find((l) => Math.abs(l.y - c.y) < 8);
+          if (line) line.chars.push(c);
+          else lines.push({ y: c.y, chars: [c] });
+        }
+        return lines.map((l) => l.chars.sort((a, b) => a.x - b.x).map((c) => c.ch).join(""));
+      };
+      const sepOk = [...root.querySelectorAll(".tp-sep")].every((s) => getComputedStyle(s).whiteSpace === "nowrap");
+      const one = (w) => ({ w, lines: measure(), text: shown().textContent.replace(/\s+/g, " ").trim(), seps: shown().querySelectorAll(".tp-sep").length, sepOk });
+      if (!widths.length) return [one(Math.round(root.getBoundingClientRect().width))];
+      const out = widths.map((w) => {
+        root.style.width = `${w}px`;
+        return one(w);
+      });
+      root.style.width = "";
+      return out;
+    }, widths);
+    const runs = [];
+    const SWEEP = Array.from({ length: 281 }, (_, i) => 60 + i);
+    const NOTE = /^かな\d+〜\d+字の(語句|文) ・ 目標 \d+(語句|文)$/;
+    const p = await newPage({ viewport: { width: 390, height: 844 } });
+    for (const course of ["short", "normal", "long"]) {
+      for (const js of [true, false]) {
+        await p.unrouteAll();
+        if (!js) await p.route("**/js/typingGamePage.js", (route) => route.abort()); // js が動く前の HTML の印のまま
+        await p.setViewportSize({ width: 390, height: 844 });
+        await p.goto(BASE + `/typing-game.html?course=${course}`, { waitUntil: "networkidle" });
+        await p.waitForTimeout(200);
+        const drawn = await p.evaluate(() => !document.querySelector("#tgTabNote [data-tg-first]")); // js が描くと印の span は消える
+        for (const vw of [390, 360, 320]) {
+          await p.setViewportSize({ width: vw, height: 844 });
+          for (const r of await notesOf(p)) runs.push({ course, js, drawn, vw, ...r });
+        }
+        for (const r of await notesOf(p, SWEEP)) runs.push({ course, js, drawn, vw: "sweep", ...r });
+      }
+    }
+    await p.unrouteAll();
+    const errors = p.errors.filter((e) => !/typingGamePage/.test(e)).slice(0, 2);
+    await p.close();
+    const bad = runs.filter((r) => !r.lines.length || r.lines.some((l) => l.startsWith("・")) || !NOTE.test(r.text) || r.drawn !== r.js);
+    const wrapped = runs.filter((r) => r.lines.length >= 2);
+    const noSep = runs.filter((r) => r.seps !== 1 || !r.sepOk);
+    check("typing game（Batch 66 R2）: タブの下の補足（3 コース・js が描いたあとと HTML の印）は 390・360・320 と行の幅 60〜340px の 1px ごとで「・」が行の頭に来ない（区切りは折れない「 ・」の span 1 つ＝ js/typingKeys.js の sep・見える字は「note ・ 目標 N単位」のまま）",
+      runs.length === 3 * 2 * (3 + SWEEP.length) && bad.length === 0 && noSep.length === 0 && wrapped.length > 0 && errors.length === 0,
+      JSON.stringify({ bad: bad.length, first: bad.slice(0, 4).map((r) => `${r.course}/${r.js ? "js" : "html"}@${r.vw}/${r.w}:${r.lines.join("|")}`), noSep: noSep.length, natural: runs.filter((r) => r.vw !== "sweep").map((r) => `${r.course}/${r.js ? "js" : "html"}@${r.vw}:${r.lines.join("|")}`), errors }));
+  }
+
   // ---- 静的（ファイルを読むだけ） ----
   const gameHtml = fs.readFileSync(path.join(ROOT, "typing-game.html"), "utf8");
   const gmeta = (re) => gameHtml.match(re)?.[1] ?? "";
@@ -4026,7 +4185,7 @@ console.log("typing game:");
     gameHtml.includes(`<title>${TITLE}</title>`) && gmeta(/<meta property="og:title" content="([^"]*)"/) === TITLE && gameHtml.includes('<link rel="canonical" href="https://www.spelldash.net/typing-game.html" />') && gameHtml.includes('<meta property="og:url" content="https://www.spelldash.net/typing-game.html" />') && gameHtml.includes('<meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png?v=2" />') && gameHtml.includes('<meta name="twitter:card" content="summary_large_image" />') &&
     gdesc !== "" && gdesc === gmeta(/<meta property="og:description" content="([^"]*)"/) && gdesc.includes("登録なし") && gdesc.includes("90秒") && gdesc.indexOf("スマホ") >= 0 && gdesc.indexOf("スマホ") < 70 && !/noindex/i.test(gameHtml) &&
     gameHtml.includes("<h1>タイピングゲーム</h1>") && gameHtml.includes('<p class="subtitle">日本語の文を次々と打つ。登録なし・無料。</p>') && (about.match(/<li>/g) ?? []).length === 5 &&
-    ["残り 90秒", "打ち始めると、90秒を測る。文ごとに持ち時間がある。尽きると次の文へ。", "今日はいい天気だ", "きょうはいいてんきだ", "取れた", "このページについて", `${G.COURSES.normal.note} ・ 目標 ${G.goalFor("normal")}文`].every((s) => gameHtml.includes(s)) &&
+    ["残り 90秒", "打ち始めると、90秒を測る。文ごとに持ち時間がある。尽きると次の文へ。", "今日はいい天気だ", "きょうはいいてんきだ", "取れた", "このページについて", `${G.COURSES.normal.note}<span class="tp-sep"> ・</span> 目標 ${G.goalFor("normal")}文`].every((s) => gameHtml.includes(s)) && // 補足の区切りは sep の span（Batch 66 R2）
     noRival && /<nav class="site-footer__nav"[^>]*data-no-pro/.test(gameHtml) && (gameFooter.match(/<a [^>]*>/)?.[0] ?? "").includes('href="./typing.html"') && !gameFooter.includes("aria-current"), gdesc);
   const newsSrc = fs.readFileSync(path.join(ROOT, "js", "news.js"), "utf8");
   // お知らせは題で探す（タイピング練習の長文など、あとから先頭に足したお知らせで落ちない。検査の強さは同じ: その 1 件に 2 つのリンク）
@@ -5337,6 +5496,67 @@ console.log("pages (書斎の皮):");
     check(`書斎（${w}）: フッターは幅木のまま`, s.footer.wood && s.footer.ratio >= 4.5, JSON.stringify(s.footer));
     await page.close();
   }
+
+  // ---- Batch 66 H1: ヘッダーの字はどの幅でも 1 行。直す前は 560px の切り替えの上で、未ログインは 561〜595・ログインは〜629（静的ページは〜651）・
+  // Pro（3 桁の連続日数）は〜662・アプリ（連続日数＋ログイン）は〜680 でナビの字が途中で折れ、ヘッダーが 56〜57 → 68〜89px に伸びた（スマホの横向き 568×320 も）。
+  // 詰めた 1 行（印だけ・13px のナビ）への切り替えを 720px に（css/responsive.css・brand.css）。全ページ × 幅（320〜1400、切り替えの前後）× 4 つの形
+  // （未ログイン＋連続日数・ログイン＋連続日数・Pro＋3 桁の連続日数・アプリ〔mobile〕）で、ナビの各リンク・連続日数・ログイン／設定の字が 1 行、
+  // ヘッダーの中身が内枠からはみ出さない、ヘッダーの高さはそのページで幅によらず同じ（書斎 56・ほか 57）
+  {
+    const todayH = ymd(new Date());
+    const isoH = (d) => new Date(Date.now() + d * 86400000).toISOString();
+    const streakH = (n) => JSON.stringify({ current: n, best: n, last: todayH });
+    const FORMS = [
+      ["未ログイン", { spelldash_streak: streakH(12) }, false],
+      ["ログイン", { spelldash_test_session: "1", spelldash_streak: streakH(12), spelldash_plan: JSON.stringify({ status: "none", interval: null, periodEnd: null, cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) }, false],
+      ["Pro", { spelldash_test_session: "pro-token", spelldash_streak: streakH(128), spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: isoH(20), cancel_at_period_end: false }), spelldash_plan: JSON.stringify({ status: "active", interval: "month", periodEnd: isoH(20), cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) }, false],
+      ["アプリ", { spelldash_streak: streakH(12) }, true]
+    ];
+    const HEADER_WIDTHS = [320, 360, 390, 480, 560, 561, 568, 580, 599, 600, 620, 640, 660, 680, 700, 720, 721, 768, 1024, 1200, 1400];
+    const headerRow = () => {
+      const inner = document.querySelector(".site-header__inner").getBoundingClientRect();
+      const shown = (el) => el && el.offsetParent !== null && !el.closest("[hidden]");
+      // 行の数: 字（テキストノード）の矩形を上から並べ、縦の中心が今の行の下端より下なら次の行（炎の線画は数えない。連続日数の「12」19px と「日」12px は
+      // ベースライン揃えで上端が違っても同じ行。line-height: 1 の行の重なりも中心で分ける）
+      const lines = (el) => {
+        const rects = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          if (!n.data.trim()) continue;
+          const r = document.createRange();
+          r.selectNodeContents(n);
+          rects.push(...[...r.getClientRects()].filter((x) => x.width > 0));
+        }
+        let count = 0, bottom = -Infinity;
+        for (const x of rects.sort((a, b) => a.top - b.top)) {
+          if ((x.top + x.bottom) / 2 > bottom) { count++; bottom = x.bottom; } else bottom = Math.max(bottom, x.bottom);
+        }
+        return count;
+      };
+      const texts = [...document.querySelectorAll(".site-nav__link, #headerStreak, #loginToggle, .account__link")].filter(shown);
+      const kids = [...document.querySelector(".site-header__inner").children].filter(shown).map((c) => c.getBoundingClientRect());
+      return { h: document.querySelector(".site-header").offsetHeight, broken: texts.filter((el) => lines(el) > 1).map((el) => el.textContent.trim()), over: kids.some((k) => k.right > inner.right + 1 || k.left < inner.left - 1) };
+    };
+    for (const [form, storage, mobile] of FORMS) {
+      const page = await newPage({ mobile, viewport: { width: 1200, height: 800 }, storage: { spelldash_placement: "done", ...storage } });
+      if (form === "アプリ") await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
+      const bad = [], heights = {};
+      for (const p of ["/index.html", ...SKIN_PAGES]) {
+        await page.goto(BASE + p, { waitUntil: "networkidle" });
+        await page.waitForTimeout(200);
+        for (const w of HEADER_WIDTHS) {
+          await page.setViewportSize({ width: w, height: mobile && w >= 560 && w < 900 ? 320 : 800 });
+          const r = await page.evaluate(headerRow);
+          (heights[p] ??= new Set()).add(r.h);
+          if (r.broken.length || r.over) bad.push(`${p}@${w}: ${JSON.stringify(r)}`);
+        }
+      }
+      const uneven = Object.entries(heights).filter(([p, hs]) => hs.size !== 1 || [...hs][0] !== (p === "/index.html" ? 56 : 57)).map(([p, hs]) => `${p}: ${[...hs].join("/")}`);
+      const native = form !== "アプリ" || (await page.evaluate(() => document.documentElement.classList.contains("native-app")));
+      check(`ヘッダーの字は 1 行・高さは幅によらず同じ（${form}: 全 ${1 + SKIN_PAGES.length} ページ × 320〜1400 の ${HEADER_WIDTHS.length} 幅。560・561・568・580・599・600・640・680・720・721 を含む）`, bad.length === 0 && uneven.length === 0 && native && page.errors.length === 0, JSON.stringify({ bad: bad.slice(0, 4), n: bad.length, uneven, native, errors: page.errors.slice(0, 1) }));
+      await page.close();
+    }
+  }
 }
 
 // ===== 8.8 書斎の仕上げ（夜の味付け・机の本・本棚の索引・CLS）: 夜だけ味付け・昼は 56b の計算値・reduced motion 0・索引の帯は 1 行・CLS・読み込み中の最小高さ・場面の拡大と位置の規律・CSS の増分・56b の残り・夜の層はスタートに掛からない（css/room.css・bookshelf.css・pro.css・pages.css。Batch 56c） =====
@@ -5469,6 +5689,66 @@ console.log("study (finish):");
   const near = (a, b) => Math.abs(a - b) <= 2;
   const lo = cls390.loading, fi = cls390.final;
   check("書斎の仕上げ（390）: 読み込み中の最小高さ（#pathHead 182・#pathNow 189・#pathList 297。頁の padding は段ごとに足す）で、頁は語の入った最終の高さ（218・225・333）と差 ≤ 2px", lo.headEmpty && lo.head === "182px" && lo.now === "189px" && lo.list === "297px" && near(fi.head, 182) && near(fi.l, 218) && near(fi.r, 225) && near(fi.toc, 333), JSON.stringify({ loading: lo, final: fi }));
+
+  // ---- Batch 66 H2: 初回（学習記録の無い端末）の書斎の CLS。56c の 0.055（1200×900）は、戻ってきた人の机（#main、1200 で 723px）が先に描かれ、
+  // main.js の renderWelcome で初回の本（#welcome、429px）に替わって部屋が縮み（フッターが画面に入る）、そのあと本棚（171 冊、2,149px）が描かれて
+  // フッターがまた押し出されたもの（js/footer.js ではない。56d の木で 1200×900 0.054〜0.058・1200×1100 0.13〜0.18）。Batch 61 で本棚が同じ描画に入り
+  // 1200×900 は 0.0001 になったが、机 → 初回の本の差し替えは残り、背の高い画面（1200×1000 0.023・1200×1100 0.030・1920×1080 0.020）ではフッターが動き、
+  // 空の机が約 0.3 秒見えてから初回の本に替わっていた → 最初の描画から初回の本（index.html の </main> の直後のインライン。js/welcome.js と同じ判定）、
+  // 積んだ本の空きは積んだあとと同じ高さ（css/room.css #welcomeStack:empty。1100px 以上 216）。残るのはフォントの差し替え（紙片の行数）と本棚が描かれる分で 0.006 前後。
+  // 全応答 80ms 遅延・受付中（フッターの「SpellDash Pro」は取れてから足す）で、最初の描画（rAF）から初回の本・机はどの描画にも出ない・
+  // CLS < 0.02（目標 0.05。1200×900・1200×1100・390）。#play（アプリ内の深いリンク）と戻ってきた人は机のまま（初回の本は出ない）
+  const firstVisit = async (w, h, mobile, { url = "/index.html", onboarded = false } = {}) => {
+    const page = await newPage({ mobile, keepOnboarding: !onboarded, viewport: { width: w, height: h }, storage: { spelldash_theme: "light" } });
+    await page.addInitScript(() => {
+      window.__cls = 0; window.__src = []; window.__frames = [];
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) { window.__cls += e.value; for (const s of e.sources ?? []) window.__src.push(s.node?.id || (typeof s.node?.className === "string" ? s.node.className : "") || s.node?.nodeName || "?"); } }).observe({ type: "layout-shift", buffered: true });
+      // 描画ごと（rAF は描画の直前）に、どちらの頁が出ているか。2 つとも読めるようになってから 2.5 秒
+      const tick = () => {
+        const wl = document.getElementById("welcome"), m = document.getElementById("main");
+        if (wl && m) window.__frames.push((wl.hidden ? "" : "W") + (m.hidden ? "" : "M"));
+        if (!wl || !m || performance.now() < 2500) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await page.route("**/*", (r) => setTimeout(() => r.continue(), 80));
+    await page.goto(BASE + url, { waitUntil: "networkidle" });
+    await page.waitForTimeout(1500);
+    const r = await page.evaluate(() => ({
+      cls: Math.round(window.__cls * 10000) / 10000, footer: window.__src.includes("site-footer"), src: [...new Set(window.__src)].slice(0, 6),
+      frames: [...new Set(window.__frames)], first: window.__frames[0], pro: !!document.querySelector(".site-footer__nav [data-footer-pro]"), open: document.body.classList.contains("welcome-open")
+    }));
+    await done(page);
+    return r;
+  };
+  const fv = { "1200×900": await firstVisit(1200, 900, false), "1200×1100": await firstVisit(1200, 1100, false), "390×844": await firstVisit(390, 844, true) };
+  check("初回の書斎（Batch 66 H2）: 1200×900・1200×1100・390（全応答 80ms 遅延・受付中）で最初の描画から初回の本（机はどの描画にも出ない）・CLS < 0.02（目標 0.05）・フッターの「SpellDash Pro」は出る",
+    Object.values(fv).every((r) => r.first === "W" && r.frames.length === 1 && r.open && r.cls < 0.02 && r.pro), JSON.stringify(fv));
+  const deep = await firstVisit(1200, 900, false, { url: "/index.html#play" }), back = await firstVisit(390, 844, true, { onboarded: true });
+  check("初回の書斎（Batch 66 H2）: 学習記録の無い端末でも #play で来たときと、戻ってきた人（onboarded）は最初の描画から机のまま（初回の本はどの描画にも出ない）",
+    deep.first === "M" && deep.frames.length === 1 && !deep.open && back.first === "M" && back.frames.length === 1 && !back.open, JSON.stringify({ deep, back }));
+  // 判定の見張り: index.html のインラインと js/welcome.js の shouldShowWelcome は同じパラメータ・同じ鍵（onboarded・xp・word_stats）・#play。
+  // 食い違ったとき（インラインは初回、js は戻ってきた人）は renderWelcome が机に戻す
+  {
+    const idx = fs.readFileSync(path.join(ROOT, "index.html"), "utf8"), wjs = fs.readFileSync(path.join(ROOT, "js/welcome.js"), "utf8");
+    const keyOf = (file, re) => fs.readFileSync(path.join(ROOT, file), "utf8").match(re)?.[1];
+    const inl = idx.match(/<script>\(\(\) => \{ const P = (\[[^\]]*\]);[^<]*<\/script>/);
+    const jsP = wjs.match(/export function shouldShowWelcome\(\) \{[\s\S]*?(\[[^\]]*\])\.some\(\(k\) => params\.has\(k\)\)/);
+    const keys = [keyOf("js/welcome.js", /const ONBOARDED_KEY = "([^"]+)"/), keyOf("js/level.js", /const XP_KEY = "([^"]+)"/), keyOf("js/storage.js", /const STORAGE_KEY = "([^"]+)"/)];
+    const sameP = !!(inl && jsP) && JSON.stringify(JSON.parse(inl[1])) === JSON.stringify(JSON.parse(jsP[1]));
+    const keysIn = !!inl && keys.every((k) => k && inl[0].includes(`"${k}"`)) && inl[0].includes('location.hash === "#play"') && wjs.includes('location.hash === "#play"');
+    const fb = await newPage({ viewport: { width: 1200, height: 900 } });
+    await fb.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const fbr = await fb.evaluate(async () => {
+      const wl = document.getElementById("welcome"), m = document.getElementById("main");
+      wl.hidden = false; m.hidden = true; document.body.classList.add("welcome-open"); // インラインが初回と見たのに js は戻ってきた人と見た形
+      const shown = (await import("/js/welcome.js")).renderWelcome();
+      return { shown, welcome: !wl.hidden, main: !m.hidden, open: document.body.classList.contains("welcome-open") };
+    });
+    await done(fb);
+    check("初回の書斎（Batch 66 H2）: index.html のインラインの判定は js/welcome.js の shouldShowWelcome と同じ（深いリンクのパラメータ・onboarded／xp／word_stats の鍵・#play）、食い違ったら renderWelcome が机に戻す",
+      sameP && keysIn && !fbr.shown && !fbr.welcome && fbr.main && !fbr.open, JSON.stringify({ inline: inl?.[1], js: jsP?.[1], keys, keysIn, fbr }));
+  }
 
   // CSS の増分の見張り: room.css・bookshelf.css の応答は 56b から +8KB 以内
   const CSS_56B = { room: 70594, bookshelf: 46477 };
@@ -9107,6 +9387,48 @@ console.log("domain packs:");
   check("不動産の場面カードが出題される", prompt.length > 20, `prompt=${prompt.slice(0, 40)}`);
   check("ホーム（パック）でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
+
+  // Batch 66 R3: 出題の設定の「分野を追加」の行き先は単語帳の分野パック（list.html#packs）のまま（本棚の「本を足す」の窓には寄せない）。
+  // 窓の「棚に足す」は棚（spelldash_shelf）にだけ足し、出題のチップ（spelldash_packs）には出ない（8.6 わたしの本棚）。窓は本棚の中の <dialog> で、
+  // Study・Challenge の途中は本棚ごと隠れて開いても見えない。単語帳の「追加する」は packs に足して机の本にもするので、戻るとチップに出て選ばれ、本棚にも並ぶ。
+  // 往復: コースのある端末で チップ → 分野パックの棚（開いている・検索欄）→ 検索して「追加する」→ 戻る。種は最初の 1 回だけ（newPage の storage は読み込みのたびに入り直す）
+  {
+    const page = await newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(BASE + "/news.html", { waitUntil: "load" });
+    await page.evaluate(() => {
+      const seed = { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ apple: { attempts: 3, correct: 2, misses: 1, lastSeen: "2026-10-01" } }) };
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    });
+    const openSetup = async () => {
+      await waitUntil(() => page.evaluate(() => !!document.querySelector("#shelfRun li[data-key]")), 8000);
+      await page.waitForTimeout(300);
+      if (await page.$eval("#setupPanel", (el) => el.hidden)) await page.click("#setupToggle");
+      await page.waitForTimeout(150);
+    };
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await openSetup();
+    const chipLast = await page.evaluate(() => [...document.querySelectorAll("#categoryPicker .category-chip")].at(-1)?.id);
+    await page.click("#packsLink");
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(400);
+    const dest = await page.evaluate(() => ({ url: location.pathname + location.hash, fold: !!document.getElementById("packsFold")?.open, search: !!document.getElementById("packsSearch")?.getClientRects().length }));
+    await page.fill("#packsSearch", "不動産");
+    await page.waitForTimeout(200);
+    await page.click('button[data-pack-toggle="realestate"]');
+    await waitUntil(() => page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_packs") || "[]").includes("realestate")), 6000);
+    await page.goBack({ waitUntil: "networkidle" });
+    await openSetup();
+    const back = await page.evaluate(() => ({
+      url: location.pathname, category: localStorage.getItem("spelldash_category"), course: localStorage.getItem("spelldash_course"),
+      chip: document.querySelector('#categoryPicker [data-category="realestate"]')?.getAttribute("aria-pressed") ?? null,
+      shelf: [...document.querySelectorAll("#shelfRun li[data-key]")].map((li) => li.dataset.key)
+    }));
+    check("分野を追加（Batch 66 R3）: 出題の設定のチップは単語帳の分野パックへ（棚は開き検索欄がある）。検索して「追加する」→ 戻ると、足した分野がチップに出て選ばれ（机の本）、本棚にも並ぶ（コースは替えない）",
+      chipLast === "packsLink" && dest.url === "/list.html#packs" && dest.fold && dest.search && back.url === "/index.html" && back.category === "realestate" && back.chip === "true" &&
+      back.shelf.includes("b:realestate") && back.course === "jhs-redo" && page.errors.length === 0,
+      JSON.stringify({ chipLast, dest, back, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
 
   // 外す: カテゴリ選択から消え、ホームの保存カテゴリは「すべて」へ
   const page3 = await newPage({ storage: { spelldash_packs: packsRaw, spelldash_category: "realestate" } });

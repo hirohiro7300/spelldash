@@ -232,7 +232,10 @@ export function renderWelcome({ onStart } = {}) {
   const app = document.querySelector(".app--home");
   if (!root || !app) return false;
   if (!shouldShowWelcome()) {
+    // index.html のインライン（最初の描画から初回の本を出す。判定は同じ）と食い違ったときは机に戻す（ふだんは何も変わらない）
     root.hidden = true;
+    app.hidden = false;
+    document.body.classList.remove("welcome-open");
     return false;
   }
 

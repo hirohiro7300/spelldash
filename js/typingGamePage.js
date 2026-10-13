@@ -13,6 +13,7 @@ import { setFooterYear } from "./footer.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { markTypingArrival, logTypingStage } from "./funnelLog.js";
 import { localDay } from "./retentionCalc.js";
+import { writeLive } from "./srLive.js";
 import {
   touch,
   storage,
@@ -126,9 +127,10 @@ function cancelAnnounce() {
   announceTimer = 0;
 }
 
+// 読み上げの行に書く（js/srLive.js: ご意見の窓が開いている間は窓の中の行へ。背後は inert で #tgLive は読まれない。js/ui.js announce と同じ判定。Batch 66 R1）
 function setLive(text) {
   cancelAnnounce();
-  if (el.live) el.live.textContent = text;
+  if (el.live) writeLive(el.live, text);
 }
 
 // 同じ文が続けて書かれると読まれない読み上げ環境があるので、空にしてから次のタスクで書く（2 回目以降の「次の文」も読まれる）
@@ -136,7 +138,7 @@ function announce(text) {
   setLive("");
   announceTimer = setTimeout(() => {
     announceTimer = 0;
-    if (el.live) el.live.textContent = text;
+    if (el.live) writeLive(el.live, text);
   }, ANNOUNCE_GAP_MS);
 }
 
@@ -286,7 +288,8 @@ function syncTabs() {
     tab.setAttribute("aria-pressed", on ? "true" : "false");
   }
   const c = COURSES[course];
-  el.tabNote.textContent = `${c.note} ・ 目標 ${goalFor(course, seconds)}${c.unit}`;
+  // 区切りは結果の行と同じ sep（折れない「 ・」と折れてよい空白。行の頭に「・」が来ない。Batch 66 R2）。textContent は「note ・ 目標 N単位」のまま
+  el.tabNote.replaceChildren(c.note, ...sep(), `目標 ${goalFor(course, seconds)}${c.unit}`);
 }
 
 function toReady(c = course) {
