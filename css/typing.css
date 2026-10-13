@@ -1,8 +1,12 @@
 /* タイピング練習（/typing.html。docs/SPEC_TYPING.md）。書斎の読む机の皮（pages.css の札・タブ）に、見本と結果だけを足す。
    角丸は札の --radius-room と、ミスの単位・間違えたキーの題箋の 2px だけ。animation／transition は書かない。色は tokens.css の変数だけ。
    すべて html[data-theme] body.page-typing を頭に付ける（pages.css の札の規則 body:not(.page-room) :is(.result-card…) に勝ち、ほかのページに漏らさない）。
-   例外は行の高さを残す visibility の 3 つ（.tp-tabnote--off・.tp-upnext--empty・長文の始まる前の一文 .tp-hint--off）だけで、JS なしでも効くよう body.page-typing から書く。
-   長文（3 つ目の種類。docs/SPEC_TYPING.md「長文」）の規則は、すべて .tp-board[data-kind="long"] か body.page-typing.tp-long-ja／.tp-long-en を挟む（英単語と日本語に漏らさない）。 */
+   例外は行の高さを残す visibility の 3 つ（.tp-tabnote--off・.tp-upnext--empty・長文の始まる前の一文 .tp-hint--off）と、長文のほかで長文の 1 行目と空の見出しの欄を
+   出さない 1 つ（静的な HTML の 1 行目と見出しは hidden を持たない）だけで、JS なしでも効くよう body.page-typing から書く。
+   種類（英単語・日本語・長文）で替わる規則は html[data-typing-kind] で書く（Batch 65 P1）。typing.html の head の 1 行が URL（?kind=・#long）→ この端末の記憶 → 英単語の順に
+   最初の描画の前に置き、js/typingPage.js は種類を替えるたびに書き直す（札・箱の data-kind と同じ値）。札の data-kind は js が描くまで静的な en のままなので、
+   「html の種類 ≠ 札の data-kind」は js が描く前だけ（その間だけ英単語の見本を隠す規則に使う）。最初の描画から種類どおりのタブ・札・文になり、英単語を描いてから替えない。
+   長文（3 つ目の種類。docs/SPEC_TYPING.md「長文」）の規則は、すべて html[data-typing-kind="long"] か body.page-typing.tp-long-ja／.tp-long-en を挟む（英単語と日本語に漏らさない）。 */
 
 /* 入力欄は見せない（画面キーボードの宛先と焦点の置き場。game.css の #input (1,0,0) に勝つため id で書く） */
 html[data-theme] body.page-typing #input {
@@ -26,6 +30,20 @@ html[data-theme] body.page-typing .tp-tabs .stats-tab {
   white-space: nowrap;
 }
 
+/* 現在地のタブ（墨の字・金の下線。pages.css の .stats-tab--active と同じ色）は html[data-typing-kind] で決める（Batch 65 P1）。静的な HTML は英単語に
+   stats-tab--active を持つが、js が描く前から開いた種類のタブに付く。js はクラスと aria-pressed を同じ種類に合わせる */
+html[data-theme][data-typing-kind] body.page-typing .tp-tabs .stats-tab--active {
+  color: var(--ink-3);
+  border-bottom-color: transparent;
+}
+
+html[data-theme][data-typing-kind="en"] body.page-typing .tp-tabs [data-kind="en"],
+html[data-theme][data-typing-kind="ja"] body.page-typing .tp-tabs [data-kind="ja"],
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-tabs [data-kind="long"] {
+  color: var(--ink);
+  border-bottom-color: var(--gold-dk);
+}
+
 html[data-theme] body.page-typing .tp-tabnote {
   margin: 0 0 4px;
   color: var(--ink-3);
@@ -38,12 +56,64 @@ body.page-typing .tp-tabnote--off {
   visibility: hidden;
 }
 
+/* 補足の字は種類ごと: 静的な HTML は日本語と長文の 2 つを持ち、js が描く前は html[data-typing-kind] で 1 つを出す（js は字を書き替える）。
+   日本語・長文で開いたときは js が描く前から見せる（js は英単語のときだけ tp-tabnote--off を付ける） */
+html[data-theme] body.page-typing .tp-tabnote__long,
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-tabnote__ja {
+  display: none;
+}
+
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-tabnote__long {
+  display: inline;
+}
+
+html[data-theme]:is([data-typing-kind="ja"], [data-typing-kind="long"]) body.page-typing .tp-tabnote--off {
+  visibility: visible;
+}
+
 /* 札 */
 html[data-theme] body.page-typing .tp-board {
   margin-top: 8px;
   min-height: 216px;
   text-align: center;
   cursor: text;
+}
+
+/* 札の中で種類によって出し入れするもの（Batch 65 P1）: js の描き方（hidden）と同じ結果を html[data-typing-kind] でも決め、js が描く前の静的な札にも効かせる。
+   長文のほか: 長文の 1 行目・空の見出しの欄は出さない（JS なしでも効くよう html[data-theme] を頭に付けない）。
+   typing.html の札だけ（id で書く）: typing-game.html も body.page-typing で typing.css を読み、html に data-typing-kind が無いので、クラスで書くと
+   ゲームの読み込み中の空の見出し（#tgTerm。行の高さを残す）まで消えてしまう */
+html:not([data-typing-kind="long"]) body.page-typing #typingHead,
+html:not([data-typing-kind="long"]) body.page-typing #typingTerm:empty {
+  display: none;
+}
+
+/* 長文: 残り時間の行は出さない（残りは 1 行目）。日本語・日本語の長文: 訳の欄は出さない */
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-timer,
+html[data-theme][data-typing-kind="ja"] body.page-typing .tp-board .tp-gloss,
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="ja"] .tp-gloss {
+  display: none;
+}
+
+/* js が描く前（札の data-kind は静的な en のまま）に日本語・長文で開いたら、英単語の見本（apple）と 1 分の始まる前の一文は見せない（js の読み込み中と同じ。
+   日本語は一文なし、長文は長文の一文）。見本は場所を残す（visibility）ので、js が「読み込み中」を描いても札の高さは変わらない。js が描いたあとは札の data-kind が
+   html の種類と同じになり、この 2 つは効かない */
+html[data-theme]:is([data-typing-kind="ja"], [data-typing-kind="long"]) body.page-typing .tp-board[data-kind="en"] .tp-word {
+  visibility: hidden;
+}
+
+html[data-theme][data-typing-kind="ja"] body.page-typing .tp-board[data-kind="en"] .tp-hint {
+  display: none;
+}
+
+/* 始まる前の一文の字も種類ごと（静的な HTML に 1 分と長文の 2 つ。js は字を書き替える） */
+html[data-theme] body.page-typing .tp-hint__long,
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-hint__word {
+  display: none;
+}
+
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-hint__long {
+  display: inline;
 }
 
 /* 1 分の結果の高さは箱（.tp-stage）が始めから取っておく（タイピングゲームの .tg-stage と同じ作法。BACKLOG D24）。札は中身の高さのまま
@@ -60,12 +130,12 @@ html[data-theme] body.page-typing .tp-stage > .tp-board {
   margin-top: 0;
 }
 
-html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) {
+html[data-theme]:not([data-typing-kind="long"]) body.page-typing .tp-stage {
   min-height: 396px; /* 390〜719: 結果の最悪 390.5px（自己ベストの句が 2 行目に折れる。500〜719 は 368px） */
 }
 
 @media (max-width: 389.98px) {
-  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) {
+  html[data-theme]:not([data-typing-kind="long"]) body.page-typing .tp-stage {
     min-height: 418px; /* 320〜389: 412.9px（日本語の勧めの文が 3 行） */
   }
 }
@@ -79,13 +149,13 @@ html[data-theme] body.page-typing .tp-board[data-state="result"] {
    長文は入力欄に焦点があるときだけ（1 行目の select・やめる に焦点があるとき札全体の輪を出さない。select 自身の枠はキーボードの人の目印として残す）。
    枠は朱でなく墨（--ink-3、地に 6.6:1）: 札は 688×240px と大きく、朱の枠だと開いた直後から朱が下線と 2 か所になり「入力の誤り」にも見える。
    結果では出さない（焦点は結果の数の行に置くだけで、打つ場所ではない） */
-html[data-theme] body.page-typing .tp-board:not([data-state="result"]):not([data-kind="long"]):focus-within {
+html[data-theme]:not([data-typing-kind="long"]) body.page-typing .tp-board:not([data-state="result"]):focus-within {
   border-color: var(--ink-3);
   box-shadow: var(--sheet-shadow), var(--focus);
 }
 
 /* :has() を読めない古いブラウザで上の規則まで捨てられないよう、別の規則に分ける */
-html[data-theme] body.page-typing .tp-board[data-kind="long"]:not([data-state="result"]):has(#input:focus) {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board:not([data-state="result"]):has(#input:focus) {
   border-color: var(--ink-3);
   box-shadow: var(--sheet-shadow), var(--focus);
 }
@@ -227,8 +297,8 @@ html[data-theme] body.page-typing .tp-upnext b {
   font-weight: 500;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="ja"] .tp-upnext b,
-html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-upnext b {
+html[data-theme][data-typing-kind="ja"] body.page-typing .tp-board .tp-upnext b,
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="ja"] .tp-upnext b {
   font-family: var(--font-ui);
 }
 
@@ -325,8 +395,13 @@ html[data-theme] body.page-typing #typingKeys b {
   color: var(--ink-2);
 }
 
-/* 自己ベストの句は 1 かたまりで折る（括弧の中で「はじめての／記録」と折れない） */
-html[data-theme] body.page-typing #typingBest {
+/* 結果の行の区切り「 ・ 」（js/typingPage.js の sep）: 「・」は前の語と折らない。折れるのは「・」の後ろの空白だけで、行の頭に「・」が来ない（Batch 65 Q1） */
+html[data-theme] body.page-typing .tp-sep {
+  white-space: nowrap;
+}
+
+/* 自己ベストの句は 1 かたまりで折る（括弧の中で「はじめての／記録」と折れない）。区切りは句の外（#typingBest の頭）なので、句が 2 行目に送られても「・」は 1 行目の終わりに残る */
+html[data-theme] body.page-typing .tp-best__phrase {
   display: inline-block;
 }
 
@@ -415,11 +490,11 @@ html[data-theme] body.page-typing .tp-stage__more a {
 }
 
 @media (max-width: 719.98px), (max-height: 480px) {
-  html[data-theme] body.page-typing.osk-open .tp-stage:not([data-kind="long"]):is([data-state="ready"], [data-state="loading"]) > .tp-stage__more {
+  html[data-theme]:not([data-typing-kind="long"]) body.page-typing.osk-open .tp-stage:is([data-state="ready"], [data-state="loading"]) > .tp-stage__more {
     display: block;
   }
 
-  html[data-theme] body.page-typing.osk-open .tp-stage:not([data-kind="long"]):is([data-state="ready"], [data-state="loading"]) ~ .tp-more {
+  html[data-theme]:not([data-typing-kind="long"]) body.page-typing.osk-open .tp-stage:is([data-state="ready"], [data-state="loading"]) ~ .tp-more {
     visibility: hidden;
   }
 }
@@ -512,24 +587,24 @@ html[data-theme] body.page-typing:not(.tp-long-en) .tp-osk-key--en {
   }
 
   /* 箱: 2 列の結果の最悪 248.6px（始まる前の札は 240px） */
-  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) {
+  html[data-theme]:not([data-typing-kind="long"]) body.page-typing .tp-stage {
     min-height: 254px;
   }
 
   /* 英単語・日本語の結果は 2 列（タイピングゲームと同じ）: 左 柱・主の数・正確さ・間違えたキー・もう一度、右 次は、見本なしで（導線）。
      始まる前の札（240px）に近い高さに収め、箱の空きを小さくする。長文の結果は 1 列のまま。hidden のときは display:none のまま */
-  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) .tp-result:not([hidden]) {
+  html[data-theme]:not([data-typing-kind="long"]) body.page-typing .tp-stage .tp-result:not([hidden]) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 24px;
     align-items: start;
   }
 
-  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) .tp-result > * {
+  html[data-theme]:not([data-typing-kind="long"]) body.page-typing .tp-stage .tp-result > * {
     grid-column: 1;
   }
 
-  html[data-theme] body.page-typing .tp-stage:not([data-kind="long"]) .tp-result__next {
+  html[data-theme]:not([data-typing-kind="long"]) body.page-typing .tp-stage .tp-result__next {
     grid-column: 2;
     grid-row: 1 / span 5;
     align-self: stretch;
@@ -597,7 +672,7 @@ html[data-theme] body.page-typing .tp-word--ja.tp-miss .tp-now {
    欄の和: 日本語 = 見出しの上 8 ＋ 見出しの欄 ＋ 単位の上 8 ＋ 単位の欄、英語 = 文の上 8 ＋ 文の欄 ＋ 訳の上 4 ＋ 訳の欄 */
 
 /* 1 行目: 始まる前は文章の select、打っている間は題・残り・やめる。高さは幅とポインタによらず 44px（横向き 34px）、中の部品は縦の中央 */
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -606,13 +681,42 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head {
   text-align: left;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__select {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head__select {
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__title {
+/* 始まる前の導線（BACKLOG D37。Batch 65 Q4）: 長文は箱を取らないので D36 の箱の空きが無く、スマホで画面キーボードが出ていると札の下の 1 行（.tp-more）が
+   盤面の裏に来る（390×844 で盤面の上端に 8px かかり、横向きは札の下端と盤面の間が 5px）。そのときだけ（幅 719 以下か高さ 480 以下・body.osk-open・
+   札が始まる前か読み込み中）1 行目の select の右に同じ行き先のリンクを出し、札の下の 1 行は visibility で隠す（場所は残す。同じリンクを 2 つ読ませない）。
+   当たり判定は 1 行目の高さ（44px、横向き 34px）で、1 行目は伸びない。見える字は「ゲーム」の 3 字（名前は aria-label の「タイピングゲーム」）で、select に残りの幅
+   （320 で 199px。既定の「北風と太陽 6行」が切れない）を残す。打ち始めると消える（1 行目は題・残り・やめる に替わる） */
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head__more {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 719.98px), (max-height: 480px) {
+  html[data-theme][data-typing-kind="long"] body.page-typing.osk-open .tp-board:is([data-state="ready"], [data-state="loading"]) .tp-head__more {
+    display: inline-flex;
+  }
+
+  html[data-theme][data-typing-kind="long"] body.page-typing.osk-open .tp-stage:is([data-state="ready"], [data-state="loading"]) ~ .tp-more {
+    visibility: hidden;
+  }
+}
+
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head__title {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
@@ -625,7 +729,7 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__title {
   text-overflow: ellipsis;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__right {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head__right {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -633,7 +737,7 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__right {
   margin: 0;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__left {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head__left {
   color: var(--ink-3);
   font-family: var(--font-mono);
   font-size: 13px;
@@ -642,7 +746,7 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__left {
 }
 
 /* 「止めた」は横向き・背の低い縦向きだけ（始まる前の一文の行が無いので「残り」の場所に出す） */
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__paused {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head__paused {
   display: none;
   color: var(--ink-3);
   font-family: var(--font-ui);
@@ -651,25 +755,25 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__paused {
   white-space: nowrap;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head__stop small {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head__stop small {
   margin-left: 2px;
   font-size: 12px;
 }
 
 /* 見出し（日本語）: 15px・2 行の欄。打った所は塗らない（見出しの字と読みの対応が無い） */
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-term {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-term {
   margin: 8px 0 0;
   min-height: 3em;
   font-family: var(--font-ui);
 }
 
 /* 長文の札の字間は 0（読み込み中の 1 行も。英単語の字間 0.04em が単位のかなに継がれたまま描かれると、届いた瞬間に単位の並びが替わる） */
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-word {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-word {
   letter-spacing: 0;
 }
 
 /* かなの単位（日本語）: 3 行の欄（かな 26px × 1.25 ＋ キー 13px × 1.3 ＋ 行の間 2px）。読み込み中の 1 行もこの欄に入る */
-html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-word {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="ja"] .tp-word {
   margin-top: 8px;
   min-height: 152px;
   align-content: flex-start;
@@ -677,19 +781,19 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .t
 
 /* 句読点の単位は直前の単位と 1 つの入れ物（js/typingKeys.js の appendUnits の { punct }）。入れ物の中では折れない（行頭禁則）。
    中の単位の間は札の単位どうしの間と同じ（390 未満の 2px も継ぐ） */
-html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-unit-pair {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="ja"] .tp-unit-pair {
   display: flex;
   column-gap: inherit;
 }
 
 /* 句読点のかなは字形に合った幅（全角の箱の左半分に字が載り、右半分は空き）。キーの行の , . はその下の中央 */
-html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-unit--punct .tp-unit__kana {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="ja"] .tp-unit--punct .tp-unit__kana {
   width: 0.5em;
   text-align: left;
 }
 
 /* 英語の文: 等幅 22px・3 行の欄。語の途中で折らない・今の字が空白でも下線が見える。字間は 0（今の英単語の字間 0.04em と anywhere は変えない） */
-html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-word {
   margin-top: 8px;
   min-height: 3.75em;
   font-size: 22px;
@@ -699,41 +803,41 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .t
 }
 
 /* 英語の訳: 15px・2 行。欄は日本語の欄の和との差（8 + 45 + 8 + 152 − 8 − 82.5 − 4） */
-html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-gloss {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-gloss {
   margin-top: 4px;
   min-height: 118.5px;
   font-family: var(--font-ui);
 }
 
 /* 次の行は 1 行（はみ出しは …） */
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-upnext {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-upnext {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 /* 始まる前の一文は打っている間も行の高さを残す。JS なしでも効くように html[data-theme] を頭に付けない */
-body.page-typing .tp-board[data-kind="long"] .tp-hint--off {
+html[data-typing-kind="long"] body.page-typing .tp-board .tp-hint--off {
   visibility: hidden;
 }
 
 /* 結果: 主の数はスコア（ラベルが先）。名前と数の組は折らず、区切りの「 ・ 」でだけ折る */
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__kpm .tp-result__pre {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-result__kpm .tp-result__pre {
   margin: 0 6px 0 0;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-pair {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-pair {
   white-space: nowrap;
 }
 
 /* もう一度・次の文: 390 は 1 行に 2 等分（どちらも 44px）、720 以上は中身の幅 */
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-result__btns {
   display: flex;
   gap: 8px;
   margin-top: 14px;
 }
 
-html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns .tp-result__again {
+html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-result__btns .tp-result__again {
   flex: 1 1 0;
   width: auto;
   min-width: 0;
@@ -742,16 +846,16 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns .
 
 /* 320〜359: かな 22px（上の規則）・英語 20px・訳 14px */
 @media (max-width: 359.98px) {
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-word {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="ja"] .tp-word {
     min-height: 137px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-word {
     font-size: 20px;
   }
 
   /* 8 + 45 + 8 + 137 − 8 − 75 − 4 */
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-gloss {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-gloss {
     min-height: 111px;
     font-size: 14px;
   }
@@ -759,25 +863,25 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns .
 
 /* 720 以上: 見出し 1 行・単位 2 行（かな 30px）・英語 26px で 2 行・訳 1 行 */
 @media (min-width: 720px) {
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-term {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-term {
     min-height: 1.5em;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-word {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="ja"] .tp-word {
     min-height: 111px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-word {
     min-height: 2.5em;
     font-size: 26px;
   }
 
   /* 8 + 22.5 + 8 + 111 − 8 − 65 − 4 */
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-gloss {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-gloss {
     min-height: 72.5px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns .tp-result__again {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-result__btns .tp-result__again {
     flex: 0 0 auto;
   }
 }
@@ -785,36 +889,36 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns .
 /* 背の低い縦向き（幅 ≤719・高さ 481〜650。320×568・375×560・360×640 など。3 段目つきの盤面 218px の上に札を収める）:
    次の行と始まる前の一文を隠し（止めたは「残り」の場所）、札の上下の余白 8px・単位の上 8px・かなは幅によらず 22px */
 @media (max-width: 719.98px) and (min-height: 480.02px) and (max-height: 650.98px) {
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board {
     padding-top: 8px;
     padding-bottom: 8px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] :is(.tp-upnext, .tp-hint) {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board :is(.tp-upnext, .tp-hint) {
     display: none;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-state="paused"] .tp-head__left {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-state="paused"] .tp-head__left {
     display: none;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-state="paused"] .tp-head__paused {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-state="paused"] .tp-head__paused {
     display: inline;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-unit__kana {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-unit__kana {
     font-size: 22px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="ja"] .tp-word {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="ja"] .tp-word {
     min-height: 137px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-word {
     font-size: 20px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-gloss {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-gloss {
     min-height: 111px;
     font-size: 14px;
   }
@@ -823,48 +927,52 @@ html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-result__btns .
 /* 横向き（高さ ≤480。盤面 161px）: 見出し・訳・次の行・始まる前の一文を隠し、単位（英語は文）を 2 行。
    札の上下の余白 8px、1 行目 34px（select・やめる も 34px・上下の padding 4px。select の字は iOS の拡大を避けて 16px のまま）、単位の上 4px、キーの字 12px */
 @media (max-height: 480px) {
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board {
     padding-top: 8px;
     padding-bottom: 8px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-head {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head {
     min-height: 34px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] :is(.tp-head__select, .tp-head__stop) {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board :is(.tp-head__select, .tp-head__stop) {
     min-height: 34px;
     padding-top: 4px;
     padding-bottom: 4px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] :is(.tp-term, .tp-gloss, .tp-upnext, .tp-hint) {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-head__more {
+    min-height: 34px;
+  }
+
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board :is(.tp-term, .tp-gloss, .tp-upnext, .tp-hint) {
     display: none;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-state="paused"] .tp-head__left {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-state="paused"] .tp-head__left {
     display: none;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-state="paused"] .tp-head__paused {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-state="paused"] .tp-head__paused {
     display: inline;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-unit__kana {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-unit__kana {
     font-size: 22px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"] .tp-unit__keys {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board .tp-unit__keys {
     font-size: 12px;
   }
 
   /* 2 行: かな 22 × 1.25 ＋ キー 12 × 1.3 ＋ 行の間 2px。英語の文の欄も同じ高さ（札の高さは言語によらず 1 つ） */
-  html[data-theme] body.page-typing .tp-board[data-kind="long"]:is([data-lang="ja"], [data-lang="en"]) .tp-word {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board:is([data-lang="ja"], [data-lang="en"]) .tp-word {
     margin-top: 4px;
     min-height: 88px;
   }
 
-  html[data-theme] body.page-typing .tp-board[data-kind="long"][data-lang="en"] .tp-word {
+  html[data-theme][data-typing-kind="long"] body.page-typing .tp-board[data-lang="en"] .tp-word {
     font-size: 20px;
   }
 }

@@ -30,7 +30,8 @@ import {
 } from "./typingKeys.js";
 import {
   SETTLE_SLACK_MS,
-  FIRST_SENTENCE,
+  FIRST_SENTENCES,
+  COURSE_KEY,
   DEFAULT_COURSE,
   COURSES,
   secondsFrom,
@@ -90,8 +91,20 @@ const reduced = (() => {
   }
 })();
 
+// 開くコース: head の inline script が決めた html[data-typing-course]（?course= → 覚えたコース → ふつうの文。Batch 65 P2）から始める
+// （ふつうの文を一度描いてから替えない。不正な値はふつうの文）。courseParam: ?course= の正しい値（深いリンクで来た回の計測。覚えない）
+const courseParam = (() => {
+  try {
+    const c = new URLSearchParams(location.search).get("course");
+    return COURSES[c] ? c : null;
+  } catch {
+    return null;
+  }
+})();
+const START_COURSE = COURSES[document.documentElement.dataset.typingCourse] ? document.documentElement.dataset.typingCourse : DEFAULT_COURSE;
+
 let phase = "ready"; // ready | running | result | loading | error
-let course = DEFAULT_COURSE;
+let course = START_COURSE;
 let data = null; // null = まだ届いていない／false = 取れなかった／{ short, normal, long }
 let firstRun = true;
 let run = null;
@@ -275,10 +288,11 @@ function syncTabs() {
 function toReady(c = course) {
   guard.clear();
   course = COURSES[c] ? c : DEFAULT_COURSE;
-  // ページを開いた最初の回（ふつうの文）は内蔵の文（typing-game.html に直書き）だけで始め、教材が届いたら残りを後ろに足す（loadData）。
-  // 最初の toReady は起動の同期の処理なので、教材はまだ届いていない
-  const first = course === "normal" && firstRun;
-  const list = first ? [FIRST_SENTENCE] : data ? shuffleCourse(data[course]) : [];
+  document.documentElement.dataset.typingCourse = course; // コースの規則（css/typing-game.css）は html の印で当たる
+  // ページを開いた最初の回は、開いたコースの内蔵の文（typing-game.html に 3 つ直書き。FIRST_SENTENCES）だけで始め、教材が届いたら残りを後ろに足す（loadData）。
+  // 最初の toReady は起動の同期の処理なので、教材はまだ届いていない。何も指定せずに開いたときはふつうの文の FIRST_SENTENCE（今までどおり）
+  const first = firstRun;
+  const list = first ? [FIRST_SENTENCES[course]] : data ? shuffleCourse(data[course]) : [];
   const cur = course;
   run = createGameRun({ sentences: list, seconds, limit: (r) => limitMs(cur, r, limitSec) });
   fillOnLoad = first;
@@ -422,7 +436,8 @@ async function loadData() {
     if (fillOnLoad && run && (phase === "ready" || phase === "running")) {
       fillOnLoad = false;
       const before = run.current;
-      run.add(shuffleCourse(data.normal.filter((p) => !(p[0] === FIRST_SENTENCE[0] && p[1] === FIRST_SENTENCE[1]))), performance.now()); // 最初の回の残り（内蔵の文を除く）
+      const [ft, fr] = FIRST_SENTENCES[course]; // 最初の回のコース（教材が届く前にタブを押すと fillOnLoad は落ちる）
+      run.add(shuffleCourse(data[course].filter((p) => !(p[0] === ft && p[1] === fr))), performance.now()); // 最初の回の残り（内蔵の文を除く）
       if (run.current !== before) {
         render();
         syncClock();
@@ -449,10 +464,31 @@ function onPageShow(event) {
 
 // ---- 起動（打てるようにする配線を先に。計測とフッターは最後） ----
 
+// タブで選んだコース: この端末に覚え（次に何も指定せずに開いたときのコース）、URL の ?course= を合わせる（replaceState: 履歴は増やさない。
+// 再読み込みでも共有でも、今のコースで開く。?course= は覚えた値より先に読むので、合わせないと再読み込みで前のコースに戻る）。
+// ?course= で開いただけでは覚えない（貼られたリンク・検索から来た 1 回で、その人が選んだコースを上書きしない）
+function rememberCourse(c) {
+  try {
+    localStorage.setItem(COURSE_KEY, c);
+  } catch {
+    // 覚えられない端末でも URL で今のコースは保てる
+  }
+  try {
+    const url = new URL(location.href);
+    if (url.searchParams.get("course") !== c) {
+      url.searchParams.set("course", c);
+      history.replaceState(history.state, "", url);
+    }
+  } catch {
+    // 何もしない
+  }
+}
+
 for (const tab of el.tabs) {
   tab.addEventListener("click", () => {
     const c = tab.dataset.course;
     if (!COURSES[c]) return;
+    rememberCourse(c);
     if (c !== course || phase === "result" || phase === "error") toReady(c);
     else focusInput();
   });
@@ -482,14 +518,16 @@ try {
   // 借り物の初期化で投げても、打鍵の配線は済んでいる
 }
 
-toReady(DEFAULT_COURSE);
+toReady(START_COURSE);
 loadData();
 
-markTypingArrival("tgame"); // 必ず setFooterYear（trackFirstVisit が端末の番号を作る）より前
+const arrivedNow = markTypingArrival("tgame"); // 必ず setFooterYear（trackFirstVisit が端末の番号を作る）より前。true: この端末の最初の 1 ページ
 try {
   setFooterYear();
 } catch {
   // フッターの借り物が投げても打鍵は止めない
 }
 logTypingStage("arrive", "tgame");
+// ?course= の深いリンクで初めて来た端末（tgame_link。docs/SQL_FUNNEL.md 5）。最初の 1 ページだけ（タブが replaceState で書いた ?course= の開き直しは数えない。練習の typing_link と同じ）
+if (courseParam && arrivedNow) logTypingStage("link", "tgame");
 logTypingStage("game", "typing"); // タイピング練習から初めて来た端末がゲームを開いた（その端末だけ送る）

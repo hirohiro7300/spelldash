@@ -3021,3 +3021,18 @@ html[data-theme] body:not(.page-room) :is(.setting-select, .note-input, #myWordB
   color: var(--ink-3);
   opacity: 1;
 }
+
+/* ---- 学習データの最後の 1 行「息抜きに タイピング練習」（Batch 65 P3・BACKLOG D14）: 札の外の控えめな 1 行。タブに属さず、どのタブでも本文の最後。
+   字と色は .muted（13px・--ink-3）。リンクは typing.html の札の下の 1 行（.tp-more）と同じ墨と下線、当たり判定は上下 6px 足して 33px ---- */
+html[data-theme] .stats-break {
+  margin: 22px 0 0;
+  text-align: center;
+}
+
+html[data-theme] .stats-break a {
+  display: inline-block;
+  padding: 6px 2px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

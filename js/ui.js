@@ -31,17 +31,22 @@ export function scrollBehavior() {
 
 // 読み上げ専用のステータス行（index.html の #srStatus）。見た目の演出と切り離して SR に一言伝える。
 // 一度空にしてから 30ms 後に書く（同じ文の続けての読み上げも拾われる）。その待ちの間に次の announce が来たら、前の文を消さずに
-// 1 つの文につなげる（時間切れでレベルアップと見出しの文が同じ tick に来る: js/game.js celebrateRankUp → focusResultTitle。PR #164 レビューの 3）
+// 1 つの文につなげる（時間切れでレベルアップと見出しの文が同じ tick に来る: js/game.js celebrateRankUp → focusResultTitle。PR #164 レビューの 3）。
+// 背後を inert にする窓（ご意見・語の詳細。js/focusTrap.js inertOthers）が開いている間は #srStatus も inert の中で読まれないので、
+// 書く瞬間に #srStatus が inert の中なら、窓の外の inert でない行（#srStatusTop。body の直下・data-keep-live）に書く（Batch 65 Q3）。
+// 書く前は 2 つの行とも空にする（窓を開け閉めしても、前の文が残った行で同じ文が読まれないことがない）
 let pendingText = "";
 let pendingTimer = 0;
 export function announce(text) {
   const el = document.getElementById("srStatus");
   if (!el) return;
+  const top = document.getElementById("srStatusTop");
   pendingText = pendingTimer && pendingText ? `${pendingText}${/[。．.!?！？]$/.test(pendingText) ? "" : "。"}${text}` : text;
   clearTimeout(pendingTimer);
   el.textContent = "";
+  if (top) top.textContent = "";
   pendingTimer = setTimeout(() => {
-    el.textContent = pendingText;
+    (top && el.closest("[inert]") ? top : el).textContent = pendingText;
     pendingText = "";
     pendingTimer = 0;
   }, 30);

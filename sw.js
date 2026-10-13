@@ -60,8 +60,9 @@ self.addEventListener("fetch", (event) => {
       .catch(() =>
         caches.match(request).then((hit) => {
           if (hit) return hit;
-          // ページ遷移のオフラインフォールバック
-          if (request.mode === "navigate") return caches.match("/index.html");
+          // ページ遷移のオフラインフォールバック: 同じページの保存をパラメータを見ずに探し（タイピングの 2 枚はタブで URL を ?kind=／?course= に
+          // 書き替えるので、今のページの再読み込みでもその URL は保存に無い。パラメータは画面の js が読む）、無ければ書斎
+          if (request.mode === "navigate") return caches.match(request, { ignoreSearch: true }).then((page) => page || caches.match("/index.html"));
           return Response.error();
         })
       )
