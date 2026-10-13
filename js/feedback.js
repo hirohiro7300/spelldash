@@ -86,6 +86,7 @@ function ensureModal() {
   modal.id = "feedbackModal";
   modal.className = "feedback-modal";
   modal.hidden = true;
+  // 札（aria-modal）の最後の [data-sr-live] は窓の間の読み上げの行（js/ui.js announce。背後は inert なので、60 秒の時間切れの見出しの文などはここに書く。PR #166 レビューの 7）
   modal.innerHTML = `
     <div class="feedback-modal__backdrop" data-feedback-close></div>
     <form class="feedback-modal__panel" id="feedbackForm" role="dialog" aria-modal="true" aria-labelledby="feedbackTitle">
@@ -103,6 +104,7 @@ function ensureModal() {
         <button type="submit" class="btn btn--sm" id="feedbackSubmit">送る</button>
       </div>
       <p class="feedback-modal__note">送られるのは本文・返信先・ページ名・ブラウザ情報だけです。</p>
+      <p class="sr-only" role="status" aria-live="polite" data-sr-live></p>
     </form>
   `;
   document.body.appendChild(modal);

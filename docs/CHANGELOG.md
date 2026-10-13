@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 2026-10-13 (PR #166 のレビュー対応 — オフラインの代わりの古いページ・ゲームの「開き直す」のコース・#long を ?kind=long に・?course=constructor・ゲームの結果の「・」・開く値の共通化・窓の中の読み上げの行・最初の文の印の検査)
+
+- 対象: PR #166（Batch 65）のコードレビュー 8 件。正しさの 6 件（1〜5・7）は、まず失敗を再現する検査（E2E の節 7.5・7.6・21.5・21.6・本棚・study 60s と Node）を書き、直す前のコードで落ちることを確かめてから直した。8 は木の写しで HTML を 1 字いじっても今の `--check` が通ることを確かめてから直した
+- **オフラインの代わりが古いページを返しうる**（sw.js。レビュー 1）: ページ遷移の代わりを、パラメータなしの同じパス（`url.pathname`）の保存 → URL の完全一致 → パラメータを見ない一致 → 書斎、の順にした。パラメータを見ない一致は最初に保存された項目を返すので、何週間も前に `?kind=ja` で開いた古い HTML が、新しく保存した css／js と組み合わさっていた（`/typing.html?kind=ja` に古い版を保存した端末が、新しい `/typing.html` を開いたあと長文のタブをオフラインで再読み込みすると古い版が出た）
+  - パラメータなしの保存は完全一致よりも先に見る（反証の対応）。前の直しは完全一致を先に見ていたので、古い版と同じ URL（日本語のタブの `?kind=ja`・ゲームの長い文のタブの `?course=long`）にタブで戻ってオフラインで再読み込みすると、その古い保存が当たった（タブは replaceState なので取り直しは起きない。前の版が `spelldash-v4` に残した `?kind=`／`?course=` の項目も同じ）。パラメータなしの保存は、ページ遷移のたび（パラメータがあっても無くても）と install で書くので、パラメータ付きの項目より古くならない。ページ遷移でない要求（css・js・データ）は前のまま完全一致だけ
+  - あわせて、パラメータ付きのページ遷移の応答はパラメータなしのパスにも保存する（ページの HTML はパラメータで変わらない。`/api/` は前のまま保存しない）。順を替えただけだと、`?kind=long` でだけ開く人（ブックマーク・外からの深いリンク）は sw を入れた時の古いパラメータなしの保存を引く（逆向きの検査は順を替えただけでは落ち、保存を足して通った）
+  - 保存の版 `spelldash-v4` と precache の一覧は替えていない（版を替えると端末のオフラインの保存が全部消える。sw.js が替わったので、入れ直しのときに主なページは取り直される）
+- **タイピングゲームの「開き直す」が `?course=` を落とす**（js/typingGamePage.js・js/typingKeys.js。レビュー 2）: 教材が読めないときの「開き直す」は今のコースで開き直す（`/typing-game.html?…&course=<コース>`。ほかのパラメータは残し、hash は落とす。練習の `?kind=` と同じ共通の `reopenLink`）。前は静的な `./typing-game.html` のままで、深いリンク（記憶は書かない）で来た人がふつうの文に戻っていた
+- **`#long` を読み込みのときに `?kind=long` に替える**（js/typingPage.js。レビュー 3）: `#long` で種類が決まったとき（`?kind=` に正しい値が無いとき）だけ、読み込みのときに URL を `?kind=long` に替える（replaceState。hash は消す・履歴は増えない・記憶は書かない）。前は `#long` を読み込みのときに 1 回だけ読むので、「本文へ」（`#main`）で hash が替わると再読み込みで英単語に戻っていた。`?kind=ja#long` はそのまま（`?kind=` が先）、`?kind=xx#long` は `?kind=long`。計測は替える前の URL で決めるので `typing_link`・`typing_long` は今どおり
+- **`?course=constructor` などを正しいコースと読んでいた**（js/typingGamePage.js・js/typingGame.js。レビュー 4）: コースの値はコースの id の一覧（`COURSE_IDS`。js/typingGame.js `isCourse`）で見る。前はふつうのオブジェクトの引き `COURSES[c]` で、`?course=constructor`・`__proto__`・`toString`・`hasOwnProperty` で来た初めての端末が `tgame_link` を送り（札はふつうの文）、js/typingGame.js の同じ形の引きでは目標が undefined・持ち時間が NaN になり、自己ベストを `best.constructor` などに書いた。持ち時間・目標・単位・自己ベストの読み書きも同じ一覧で引く（不正な id はふつうの文、自己ベストは読まない・書かない）。typing.html の種類はもとから `KINDS.includes` で同じ形は無い（確かめの検査を足した）
+- **ゲームの結果の行の「・」**（js/typingGamePage.js・js/typingKeys.js・typing-game.html・typing.html・css/typing.css の注記。レビュー 5）: 区切りの小さな関数 `sep()`（折れない「 ・」〔`.tp-sep`〕と折れてよい空白）を js/typingPage.js から js/typingKeys.js に移し、ゲームの結果の補足 1（流れた・打/分・正確さ・ミス）も使う。前はふつうの文字の「 ・ 」で、行の幅によっては「・」の前の空白で折れ、2 行目が「・ミス N」で始まった（E2E の結果の数では 390・360・320 の 3 幅でちょうど端に来なかったので、行の幅を 120〜340px で 1px ずつ替えても見る形にした。直す前は 112 か所で行の頭が「・」）。textContent は同じ。両 HTML の結果の行の静的な中身も同じ形にそろえた。タブの下の補足（「かな8〜16字の文 ・ 目標 8文」）は短い 1 行で 320 でも折れないので替えていない
+- **片付け: 開く値を読む・覚える・URL を合わせる処理を 1 か所に**（js/typingKeys.js・js/typingPage.js・js/typingGamePage.js。レビュー 6）: `choiceFromUrl`（URL の正しい値）・`startChoice`（head の 1 行の値 → URL → 記憶 → 既定）・`syncUrlParam`・`rememberChoice`（記憶に書き URL を合わせる）を js/typingKeys.js に置き、練習の種類とゲームのコースが使う（ゲームの `rememberCourse` は消した）。食い違っていた所は安全な側にそろえた
+  - 記憶の書き込みは両方 `storage()?.setItem` を try の中で（ゲームは localStorage を直に書いていた）
+  - replaceState は両方「URL が替わるときだけ」（練習はタブを押すたびに呼んでいた。同じ URL への replaceState は何もしないのと同じで、見える違いは無い）
+  - head の 1 行が動かなかったときのゲームの開くコースは、練習と同じく URL → 記憶 → 既定（前は既定だけ）
+  - head の inline の 1 行は CSP・速さのため 2 ページとも残した。読む順・許す一覧・記憶の鍵・既定が js と同じことを守る静的な検査は練習の側の一部だけだったので、両ページに足した
+- **窓の間の読み上げを窓の中の行に**（js/ui.js・js/focusTrap.js・js/feedback.js・js/wordDetail.js・js/bookshelf.js・index.html・js/game.js の注記。レビュー 7）: `announce` は書く瞬間に開いている窓を 1 つの判定で見る（`dialog:modal`、または `#srStatus` が `[inert]` の中のときの inert でも hidden でもない aria-modal の札）。窓があればその中の読み上げの行 `[data-sr-live]`（`role="status"`・`aria-live="polite"`・sr-only）に書く。前は `[inert]` の属性だけを見ていたので、`showModal()` の窓（本棚の「本を足す」。外を属性なしで inert にする）の間は窓の外の `#srStatus` に書いて読まれなかった
+  - ご意見・語の詳細・本を足すの 3 つの窓は行を markup に最初から置く（後から差し込んだ live 領域は読まれないことがある）。ほかの窓には無ければ作る。書く前は `#srStatus` と全部の窓の行を空にする
+  - Batch 65 の窓の外の行 `#srStatusTop` と `inertOthers` の `data-keep-live` の特例は消した（窓の中なので、aria-modal の窓の外を読まない読み上げでも読まれる）。ご意見の窓を開いたまま 60 秒が切れると「60秒 終わり」は窓の中の行で読まれ、焦点は窓の中のまま。閉じたときの戻り先と inert は今のまま
+  - typing の 2 ページの読み上げ（`#tpLive`・`#tgLive`）は js/ui.js を通らないので変えていない（ご意見の窓の間は打鍵も止まる）
+- **typing-game.html の最初の文の印を `--check` で突き合わせる**（scripts/build-typing-game.mjs。レビュー 8）: `firstMarkupProblems()`（検査名「V11 最初の文の印」）を足し、`validateTypingGameData`（`--check`・build・E2E が呼ぶ）から呼ぶ。`[data-tg-first]` の題・読み・補足（「note ・ 目標 N単位」）・かなの単位（`FIRST_SENTENCES` の読みから `japaneseUnits` で作り、js/typingKeys.js `appendUnits` と同じ形の HTML と完全一致）・`#tgWord` の `data-rest`・印の欠けを見る。前は各文が教材にあるかだけで、長い文の手本 `ki` を `gi` に 1 字いじっても exit 0 だった。今は「typing-game.html:105: … 3 つ目の単位が HTML「き gi」・FIRST_SENTENCES.long から「き ki」」で exit 1
+- **docs**: SPEC_TYPING §2・§7・§8、SPEC_TYPING_GAME §2・§5・§7・§8、SPEC_MASTERY §4.7・§11.8・§11.10、SQL_FUNNEL 5（`typing_link`・`tgame_link`）、STATUS、BACKLOG（Batch 64・65 の項）
+- **検査**: E2E 1,933 → 1,947（足した検査 15 件。前の回に走った条件つきの検査 1 件〔calc & listen の「音で出題: 答え表示で意味が出る」〕はこの回は走らなかった）
+  - 7.5 +5: オフラインの代わりが古い版を返さない 3 件（`?kind=ja` に古い版を保存した端末の `?kind=long`、逆向きのパラメータなしが古い版の端末の `?kind=ja`、反証の `?kind=ja` に古い版を保存した端末が同じ `?kind=ja` に戻る形）・`#long` → `?kind=long`（hash は消える・履歴は増えない・記憶は書かない・「本文へ」のあとの再読み込みで長文・`?kind=xx#long`・`?kind=ja#long`）・head の 1 行と js の読む順の静的な検査
+  - 7.6 +6: オフラインの代わりが古い版を返さない 1 件（反証。`?course=long` に古い版を保存した端末が `/typing-game.html` を開いたあと長い文のタブで同じ `?course=long` に戻る形）・`--check` が最初の文の印を突き合わせる（今の HTML は 0 件・6 つの 1 字ずらしがどれも落ちる）・不正なコースの id の引き（Node）・`?course=long` で教材が読めないときの「開き直す」・結果の補足 1 の行の頭に「・」が無い（3 コース × 390／360／320 と行の幅 120〜340px）・head の 1 行と js の読む順の静的な検査
+  - 本棚 +1（本を足すの窓の間の announce が窓の中の行に）・study 60s +1（語の詳細の間の announce が窓の中の行に、閉じたら `#srStatus`）・21.5 +1（`?kind=constructor`・`__proto__`・`toString` で `typing_link` を送らない、`#long` は送る）・21.6 +1（`?course=constructor`・`__proto__`・`toString`・`hasOwnProperty` で `tgame_link` を送らない）
+  - 書き換えた検査: study 60s の Batch 65 Q3（窓の外の行 → 窓の中の行に 1 つ・窓の外の行には入らない・`#srStatusTop`／`data-keep-live` は無い・行は窓を開いた時からある）、7.5 の P1 の 2 件（`#long` で開いた URL の期待を `/typing.html?kind=long` に）
+- 変えていないもの: 判定・学習記録の形（schema 6・送る列 15・SQL なし）・Battle のロジック・keyboard.js と keyboard.css・何も指定しない URL で開いたときの振る舞い・最初の描画・canonical・CSP・sw の保存の版と precache の一覧。js のファイルは足していない（先読みは変わらない）
+
 ## 2026-10-13 (Batch 65 — タイピングの入口の残りと小さな直し: 種類とコースへの深いリンクと記憶・学習データからの入口・自己ベストの句の折れ・高さ 320 の横向き・inert の窓の間の読み上げ・長文の始まる前の導線)
 
 - 対象: BACKLOG に残った、創業者の判断が要らない小さな項目 7 件（P1〜P3・Q1〜Q4。BACKLOG D13・D28・D19・D14・D23・D37 と Batch 64 の残り 2 件）。Q1〜Q4 は、まず失敗する検査を書き、直す前のコードで落ちることを確かめてから直した（7.5 と 7.55 の Q1 が 2 件・7.55 の Q4 が 1 件・7.6 の Q2 が 3 件・study 60s の Q3 が 1 件落ちた）

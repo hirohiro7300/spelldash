@@ -86,6 +86,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
   // 題箋の title: 思い出せず・ノーミス連続。「思い出せた N回」（correctCount は答えを見た後の打ち直しも数えて多めに出る）は出さない
   const statusTitle = stat ? `思い出せず ${stat.recallFail ?? 0}回${stat.cleanCorrectStreak ? ` ・ ノーミス連続 ${stat.cleanCorrectStreak}/10` : ""}` : "";
 
+  // 最後の [data-sr-live] は窓の間の読み上げの行（js/ui.js announce。背後は inert なので、60 秒の時間切れの見出しの文などはここに書く。PR #166 レビューの 7）
   panel.innerHTML = `
     <button type="button" class="word-detail__close" data-detail-close aria-label="閉じる">${icon("x")}</button>
     <div class="word-detail__head">
@@ -114,6 +115,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
     </div>
     <div class="word-detail__ai" id="wordDetailAi"></div>
     ${family.length ? `<div class="word-detail__family">同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${w.id}">${escapeHtml(w.en)}</button>`).join(" ")}</div>` : ""}
+    <p class="sr-only" role="status" aria-live="polite" data-sr-live></p>
   `;
   modal.hidden = false;
   document.body.classList.add("modal-open"); // 背後の sticky（ジャンル列）を止める

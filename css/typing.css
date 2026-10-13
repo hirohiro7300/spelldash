@@ -395,7 +395,7 @@ html[data-theme] body.page-typing #typingKeys b {
   color: var(--ink-2);
 }
 
-/* 結果の行の区切り「 ・ 」（js/typingPage.js の sep）: 「・」は前の語と折らない。折れるのは「・」の後ろの空白だけで、行の頭に「・」が来ない（Batch 65 Q1） */
+/* 結果の行の区切り「 ・ 」（js/typingKeys.js の sep。練習とタイピングゲームの結果の行）: 「・」は前の語と折らない。折れるのは「・」の後ろの空白だけで、行の頭に「・」が来ない（Batch 65 Q1・PR #166 のレビュー 5） */
 html[data-theme] body.page-typing .tp-sep {
   white-space: nowrap;
 }

@@ -1,13 +1,16 @@
 // タイピングゲーム（/typing-game.html）の教材 data/typing-game.json を、元データ scripts/typing-game/*.jsonl から作る（docs/SPEC_TYPING_GAME.md「教材」）。
 //   node scripts/build-typing-game.mjs            書き直す（検査に落ちたら書かずに exit 1）
-//   node scripts/build-typing-game.mjs --check    生成物と一致・違反 0・目標の定数が合うか（CI と E2E）。違えば一覧を出して exit 1
+//   node scripts/build-typing-game.mjs --check    生成物と一致・違反 0・目標の定数が合うか・typing-game.html の最初の文の印が FIRST_SENTENCES と同じか（CI と E2E）。
+//                                                 違えば一覧を出して exit 1
 //   node scripts/build-typing-game.mjs --lint <file.jsonl> [--course short|normal|long]
 //                                                 木の外の 1 ファイルだけを同じ検査にかけ、行ごとの NG を「行番号: 検査名: 理由」で出す（書かない。NG があれば exit 1）。
 //                                                 --course を省くとファイル名の short／normal／long から読む。木の .jsonl との重複・ことわざの重なりも見る
 //   node scripts/build-typing-game.mjs --report   topic ごとの数・かな数の分布・打鍵の平均と目標の計算値・漢字の一覧（頻度順。小・中学校のパックに出ない字に *）
 //   import { buildTypingGameData, validateTypingGameData } from "./build-typing-game.mjs"
 //     buildTypingGameData()        → { text, courses: { short, normal, long }, stats: { avgKeys, goal, courses }, rows, problems, origin }（書かない）
-//     validateTypingGameData(data) → 違反の一覧（文字列。空なら合格）。build の戻り値でも、生成物（JSON.parse した data/typing-game.json）でもよい
+//     validateTypingGameData(data) → 違反の一覧（文字列。空なら合格）。build の戻り値でも、生成物（JSON.parse した data/typing-game.json）でもよい。
+//                                    typing-game.html の最初の文の印（firstMarkupProblems）も見る
+//     firstMarkupProblems(html?)   → typing-game.html（または渡した文字列）の [data-tg-first] の題・読み・かなの単位・補足・data-rest のずれ（V11 最初の文の印）
 //
 // 元データ: 1 文 1 行の JSON {"t":"見出し","r":"よみ","topic":"話題"}。空行と # で始まる行は読み飛ばす。
 // 避ける語: scripts/typing-game/deny.txt（1 行 1 語。漢字・カタカナ語だけ。見出しに対する部分一致。読みには当てない）。
@@ -386,13 +389,119 @@ function rowsFromGenerated(data) {
   return { rows, problems };
 }
 
-// 違反の一覧（文字列。空なら合格）。E2E は生成物に対して呼ぶ
+// ---- typing-game.html の最初の文の印（V11 の続き。PR #166 レビューの 8） ----
+// 3 コースの最初の文は typing-game.html に手で書いた印（[data-tg-first]）で最初の描画に出る（js を待たない。Batch 65 P2）。
+// FIRST_SENTENCES から作った題（#tgTerm）・読み（#tgReading）・かなの単位（#tgWord。japaneseUnits の今・まだの単位を js/typingKeys.js の
+// appendUnits と同じ形の文字列にしたもの: かな・ローマ字の手本・今の単位の頭のキー）・補足（#tgTabNote。js/typingGamePage.js と同じ「note ・ 目標 N単位」）・
+// 既定のコースの data-rest と突き合わせ、ずれていたら落とす（前は各文が教材にあるかだけを見ていたので、FIRST_SENTENCES を直しても HTML の誤りが残った）
+export const GAME_HTML = path.join(ROOT, "typing-game.html");
+const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const textOf = (html) => html.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+
+// かなの単位（japaneseUnits の形）→ js/typingKeys.js appendUnits（punct なし）が作る DOM と同じ HTML
+export function unitsHtml(units) {
+  return units
+    .map((u) => {
+      let keys;
+      if (u.state === "done") keys = escHtml(u.typed);
+      else {
+        keys = u.typed ? `<b>${escHtml(u.typed)}</b>` : "";
+        if (u.state === "now" && u.rest) keys += `<span class="tp-now">${escHtml(u.rest[0])}</span>${escHtml(u.rest.slice(1))}`;
+        else keys += escHtml(u.rest);
+      }
+      return `<span class="tp-unit tp-unit--${u.state}"><span class="tp-unit__kana">${escHtml(u.kana)}</span><span class="tp-unit__keys">${keys}</span></span>`;
+    })
+    .join("");
+}
+
+// HTML の id の <p> → { inner, line, attrs }（中身に <p> は無い）。無ければ null
+function paragraph(html, id) {
+  const m = new RegExp(`<p\\b([^>]*\\bid="${id}"[^>]*)>([\\s\\S]*?)</p>`).exec(html);
+  return m ? { attrs: m[1], inner: m[2], line: html.slice(0, m.index).split("\n").length } : null;
+}
+
+// <p> の中身 → Map(コース → 印の <span data-tg-first="…"> の中身)。印は並んだ兄弟（入れ子にしない）なので、次の印の開きタグで区切り、最後の </span> を外す
+function firstParts(inner) {
+  const out = new Map();
+  const re = /<span\b[^>]*\bdata-tg-first="([^"]*)"[^>]*>/g;
+  const heads = [...inner.matchAll(re)];
+  heads.forEach((m, i) => {
+    const seg = inner.slice(m.index + m[0].length, i + 1 < heads.length ? heads[i + 1].index : inner.length).trimEnd();
+    out.set(m[1], seg.endsWith("</span>") ? seg.slice(0, -"</span>".length) : null);
+  });
+  return out;
+}
+
+// → 問題の一覧（validateRows の形）。html を渡さなければ typing-game.html を読む
+export function firstMarkupProblems(html = null, file = GAME_HTML) {
+  const out = [];
+  const bad = (line, course, reason) => out.push({ file, line, course, check: "V11 最初の文の印", reason });
+  if (html == null) {
+    if (!fs.existsSync(file)) return [{ file, line: 0, course: null, check: "V11 最初の文の印", reason: "typing-game.html が無い" }];
+    html = fs.readFileSync(file, "utf8");
+  }
+  const want = {};
+  for (const course of COURSE_IDS) {
+    const pair = GAME.FIRST_SENTENCES[course];
+    const c = GAME.COURSES[course];
+    if (!pair || !c) {
+      bad(0, course, `FIRST_SENTENCES.${course} か COURSES.${course} が無い`);
+      continue;
+    }
+    const [ft, fr] = pair;
+    const view = T.japaneseUnits(fr, "");
+    want[course] = { tgTerm: ft, tgReading: fr, tgTabNote: `${c.note} ・ 目標 ${GAME.goalFor(course)}${c.unit}`, tgWord: unitsHtml(view.units), rest: view.rest, units: view.units };
+  }
+  const label = { tgTerm: "題", tgReading: "読み", tgTabNote: "補足", tgWord: "かなの単位" };
+  for (const id of ["tgTerm", "tgReading", "tgTabNote", "tgWord"]) {
+    const p = paragraph(html, id);
+    if (!p) {
+      bad(0, null, `#${id} が無い`);
+      continue;
+    }
+    const parts = firstParts(p.inner);
+    for (const key of parts.keys()) if (!COURSE_IDS.includes(key)) bad(p.line, null, `#${id} に知らないコースの印 data-tg-first="${key}"`);
+    for (const course of Object.keys(want)) {
+      const w = want[course];
+      const got = parts.get(course);
+      if (got === undefined) {
+        bad(p.line, course, `#${id} に ${course} の印（data-tg-first="${course}"）が無い`);
+        continue;
+      }
+      if (got === null) {
+        bad(p.line, course, `#${id} の ${course} の印が </span> で閉じていない`);
+        continue;
+      }
+      if (id === "tgWord") {
+        if (got === w.tgWord) continue;
+        // ずれた単位を探して読める形で出す（i 番目の単位のかな・手本）
+        const pieces = (s) => s.split(/(?=<span class="tp-unit )/).filter(Boolean);
+        const have = pieces(got);
+        const need = pieces(w.tgWord);
+        const i = need.findIndex((s, k) => s !== have[k]);
+        const at = i < 0 ? need.length : i;
+        const show = (s) => (s ? textOf(s.replace(/<\/span><span class="tp-unit__keys">/, " ")) : "（無い）");
+        bad(p.line, course, `#${id} の ${course} の ${at + 1} つ目の単位が HTML「${show(have[at])}」・FIRST_SENTENCES.${course} から「${show(need[at])}」（単位 ${have.length}／${need.length}。今の単位は tp-unit--now で頭のキーを .tp-now に）`);
+      } else if (textOf(got) !== w[id]) {
+        bad(p.line, course, `#${id} の ${course} の${label[id]}が HTML「${textOf(got)}」・FIRST_SENTENCES／COURSES から「${w[id]}」`);
+      }
+    }
+    // 既定のコースの手本の残り（data-rest。js が最初の文を描き直すまでの値）
+    if (id === "tgWord" && want[GAME.DEFAULT_COURSE]) {
+      const rest = /\bdata-rest="([^"]*)"/.exec(p.attrs)?.[1];
+      if (rest !== want[GAME.DEFAULT_COURSE].rest) bad(p.line, GAME.DEFAULT_COURSE, `#tgWord の data-rest が「${rest ?? "（無い）"}」・FIRST_SENTENCES.${GAME.DEFAULT_COURSE} の手本は「${want[GAME.DEFAULT_COURSE].rest}」`);
+    }
+  }
+  return out;
+}
+
+// 違反の一覧（文字列。空なら合格）。E2E は生成物に対して呼ぶ。typing-game.html の最初の文の印も見る
 export function validateTypingGameData(data) {
   const deny = loadDeny();
   const built = data && Array.isArray(data.rows) && Array.isArray(data.problems);
   const src = built ? data : rowsFromGenerated(data);
   const origin = built && typeof data.origin === "function" ? data.origin : () => OUT;
-  const problems = [...src.problems, ...deny.problems, ...validateRows(src.rows, { full: true, deny: deny.words, origin })];
+  const problems = [...src.problems, ...deny.problems, ...validateRows(src.rows, { full: true, deny: deny.words, origin }), ...firstMarkupProblems()];
   return sortProblems(problems).map(formatProblem);
 }
 

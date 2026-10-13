@@ -26,7 +26,13 @@ import {
   closeKeyboard,
   fitAboveKeyboard,
   createResultGuard,
-  wireTyping
+  wireTyping,
+  sep,
+  choiceFromUrl,
+  startChoice,
+  rememberChoice,
+  syncUrlParam,
+  reopenLink
 } from "./typingKeys.js";
 import {
   FIRST_WORD,
@@ -150,62 +156,19 @@ let partial = false; // 今の結果が途中まで（Esc・やめる）か
 // ---- 開く種類（Batch 65 P1。docs/SPEC_TYPING.md）----
 // 順は URL（?kind=en|ja|long、#long）→ この端末の記憶（spelldash_typing_kind）→ 英単語。不正な値は指定なしと同じ。typing.html の head の 1 行が同じ順で
 // html[data-typing-kind] に置き（最初の描画の前。css/typing.css がタブ・札・文を出し分ける）、ここはその値から始める（head の 1 行が動かなかったときだけ自分で読む）。
-// 書くのはタブを押したときだけ: URL で開いただけでは書かない（共有されたリンク・検索から来た 1 回で、その人が選んだ種類を替えない。開いた URL にはパラメータが残るので再読み込みは同じ種類）
+// 書くのはタブを押したときだけ: URL で開いただけでは書かない（共有されたリンク・検索から来た 1 回で、その人が選んだ種類を替えない。開いた URL にはパラメータが残るので再読み込みは同じ種類）。
+// 読む・覚える・URL を合わせる・開き直すの形はタイピングゲームのコースと同じ（js/typingKeys.js の choiceFromUrl・startChoice・rememberChoice・reopenLink）。
+// #long だけは練習の口: 読み込みのときに ?kind=long に替える（下の起動。PR #166 のレビュー 3）
+const KIND_CHOICE = { key: KIND_KEY, param: "kind", dropHash: "#long" };
 
-function kindFromUrl() {
-  try {
-    const q = new URLSearchParams(location.search).get("kind");
-    if (KINDS.includes(q)) return q;
-  } catch {
-    // 読めない URL は指定なし
-  }
-  return location.hash === "#long" ? "long" : null;
-}
+const kindFromUrl = () => choiceFromUrl(KINDS, "kind") ?? (location.hash === "#long" ? "long" : null);
 
-function startKind() {
-  const set = document.documentElement.dataset.typingKind;
-  if (KINDS.includes(set)) return set;
-  const fromUrl = kindFromUrl();
-  if (fromUrl) return fromUrl;
-  try {
-    const saved = storage()?.getItem(KIND_KEY);
-    if (KINDS.includes(saved)) return saved;
-  } catch {
-    // 読めない端末は既定
-  }
-  return "en";
-}
+const startKind = () => startChoice({ ids: KINDS, preset: document.documentElement.dataset.typingKind, fromUrl: kindFromUrl(), key: KIND_KEY, fallback: "en" });
 
 // タブを押した: 種類を端末に覚え、URL を今の種類に合わせる（history.replaceState。履歴は増やさない: 戻るはタブを 1 つずつ戻らずページを離れる。
-// 再読み込みは今のタブで開き、記憶が書けない端末でも同じ。アドレスを共有すると今の種類で開く。ほかのパラメータ〔?t= など〕は残し、#long は ?kind= に替える）。canonical は変えない
-function chooseKind(k) {
-  try {
-    storage()?.setItem(KIND_KEY, k);
-  } catch {
-    // 覚えられない端末でも URL で今の種類を保つ
-  }
-  try {
-    const url = new URL(location.href);
-    url.searchParams.set("kind", k);
-    if (url.hash === "#long") url.hash = "";
-    history.replaceState(history.state, "", url.pathname + url.search + url.hash);
-  } catch {
-    // 書き替えられない環境（古い WebView など）は URL をそのまま
-  }
-}
-
-// 「読み込めなかった」の「開き直す」は今の種類で開き直す（静的な HTML は ./typing.html。深いリンクで開いて記憶が無い端末でも、英単語に戻らない）
-function reopenHref() {
-  const a = el.error.querySelector("a");
-  if (!a) return;
-  try {
-    const url = new URL(location.href);
-    url.searchParams.set("kind", kind);
-    a.setAttribute("href", url.pathname + url.search);
-  } catch {
-    // 静的な ./typing.html のまま
-  }
-}
+// 再読み込みは今のタブで開き、記憶が書けない端末でも同じ。アドレスを共有すると今の種類で開く。ほかのパラメータ〔?t= など〕は残し、#long は ?kind= に替える。
+// URL が替わるときだけ書く）。canonical は変えない
+const chooseKind = (k) => rememberChoice(KIND_CHOICE, k);
 
 function stopTimers() {
   clearTimeout(finishTimer);
@@ -405,7 +368,7 @@ function render() {
   el.error.hidden = phase !== "error";
   el.line.textContent = isLong() ? lineText() : "";
   if (phase === "error") {
-    reopenHref();
+    reopenLink(el.error.querySelector("a"), "kind", kind); // 「開き直す」は今の種類で（深いリンクで開いて記憶が無い端末でも英単語に戻らない）
     el.next.hidden = true;
     el.word.replaceChildren();
     el.word.dataset.rest = "";
@@ -516,9 +479,6 @@ function toError() {
   render();
 }
 
-// 結果の行の区切り「 ・ 」: 「・」は前の語と折らない（nowrap の「 ・」）。折れてよいのは後ろの空白だけなので、行の頭に「・」が来ない（Batch 65 Q1）
-const sep = () => [make("span", "tp-sep", " ・"), document.createTextNode(" ")];
-
 // 自己ベストの句（#typingBest）: 区切り＋句（.tp-best__phrase は 1 かたまりで折る: 括弧の中で「はじめての／記録」と折れない）。
 // 区切りを句の外に置くので、句が 2 行目に送られても「・」は 1 行目の終わりに残る。parts は fill の形（null なら出さない）
 function renderBest(parts) {
@@ -568,7 +528,7 @@ function renderResult(s, cmp) {
   renderKeys(s.topKeys);
 }
 
-// 名前と数の組を 1 つの span（.tp-pair: 折らない）に。区切りの「 ・ 」の後ろでだけ折れる（「・」は前の組の終わりに残る）
+// 名前と数の組を 1 つの span（.tp-pair: 折らない）に。区切りの「 ・ 」の後ろでだけ折れる（「・」は前の組の終わりに残る。js/typingKeys.js の sep）
 function pairs(list) {
   const out = [];
   list.forEach(([name, value], i) => {
@@ -887,6 +847,9 @@ try {
 
 // 開く種類（Batch 65 P1）: head の 1 行が置いた html[data-typing-kind] から始める（英単語を描いてから替えない）。長文は教材をここで取りに行く
 const linkKind = kindFromUrl(); // 深いリンク（?kind=・#long）で開いた種類。記憶から開いたときは null
+// #long の深いリンクは ?kind=long に替える（replaceState。hash は消す・記憶は書かない。PR #166 のレビュー 3）: #long は読み込みのときに 1 回だけ読むので、
+// 「本文へ」（#main）などで hash が替わると再読み込みで英単語に戻っていた。?kind= に正しい値があるときの #long は読まないのでそのまま
+if (linkKind === "long" && !choiceFromUrl(KINDS, "kind")) syncUrlParam("kind", "long", "#long");
 const firstKind = startKind();
 if (firstKind === "long") loadLong();
 toReady(firstKind);

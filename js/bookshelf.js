@@ -688,6 +688,8 @@ function roveTo(btn, view = btn) {
 function ensureSkeleton() {
   root = document.getElementById("bookshelf");
   if (!root || root.querySelector("#shelfRun")) return root;
+  // 窓（#bookFinder。showModal）の [data-sr-live] は窓の間の読み上げの行（js/ui.js announce。外は inert になり #srStatus が読まれない。PR #166 レビューの 7）。
+  // #bookFinderStatus は窓の操作の結果（棚に足した など）の行
   root.innerHTML = `
     <div class="cabinet">
       <div class="cabinet__cornice" aria-hidden="true"><i class="cabinet__frieze"></i></div>
@@ -716,6 +718,7 @@ function ensureSkeleton() {
           <ol class="finder__list" id="bookFinderList" hidden></ol>
         </div>
         <p class="sr-only" id="bookFinderStatus" role="status"></p>
+        <p class="sr-only" role="status" aria-live="polite" data-sr-live></p>
       </form>
     </dialog>`;
   return root;

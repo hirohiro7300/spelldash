@@ -112,8 +112,8 @@
         <div class="tp-result" id="tgResult" hidden>
           <p class="tp-result__kind" id="tgKind">ふつうの文・90秒</p>
           <p class="tp-result__kpm tg-result__main" id="tgMainLine" tabindex="-1"><b id="tgGotNum">0</b><small id="tgUnit">文</small><span class="tg-result__goal" id="tgGoal"></span></p>
-          <!-- 名前と数の組（.tg-pair）は折らない。区切りの「 ・ 」でだけ折れる -->
-          <p class="tp-result__line" id="tgLine"><span class="tg-pair">流れた <b>0</b></span> ・ <span class="tg-pair">打/分 <b>0</b></span> ・ <span class="tg-pair">正確さ <b>―</b></span> ・ <span class="tg-pair">ミス <b>0</b></span></p>
+          <!-- 名前と数の組（.tg-pair）は折らない。区切りは折れない「 ・」（.tp-sep）と折れてよい空白で、「・」は前の行の終わりに残る（js/typingKeys.js の sep と同じ形） -->
+          <p class="tp-result__line" id="tgLine"><span class="tg-pair">流れた <b>0</b></span><span class="tp-sep"> ・</span> <span class="tg-pair">打/分 <b>0</b></span><span class="tp-sep"> ・</span> <span class="tg-pair">正確さ <b>―</b></span><span class="tp-sep"> ・</span> <span class="tg-pair">ミス <b>0</b></span></p>
           <p class="tp-result__line" id="tgBest" hidden></p>
           <p class="tp-hint tg-nudge" id="tgNudge" hidden>短い語句のコースから始めると取りやすい。</p>
           <button type="button" class="btn btn--ghost tp-result__again" id="tgAgain">もう一度<small class="tp-kbdhint">（Enter）</small></button>

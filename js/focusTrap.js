@@ -29,11 +29,11 @@ export function focusableIn(container) {
 }
 
 // 開いている間、背後（container を含まない body 直下の要素）を inert にする。戻す関数を返す。
-// data-keep-live の付いた読み上げの行（index.html の #srStatusTop。焦点を取る物を持たない）は inert にしない（窓の間の時間切れの文を読む: js/ui.js announce）
+// 窓の間の読み上げ（60 秒の時間切れの見出しの文など）は窓の中の行に書くので、背後に特例は無い（js/ui.js announce。PR #166 レビューの 7）
 export function inertOthers(container) {
   const touched = [];
   for (const child of document.body.children) {
-    if (child === container || child.contains(container) || child.tagName === "SCRIPT" || child.hasAttribute("data-keep-live")) continue;
+    if (child === container || child.contains(container) || child.tagName === "SCRIPT") continue;
     if (child.hasAttribute("inert")) continue;
     child.setAttribute("inert", "");
     touched.push(child);
