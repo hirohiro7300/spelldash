@@ -65,7 +65,7 @@ function pageShell({ title, description, canonical, body }) {
   <meta property="og:title" content="${esc(title)}" />
   <meta property="og:description" content="${esc(description)}" />
   <meta property="og:url" content="${canonical}" />
-  <meta property="og:image" content="${SITE}/assets/images/og-image.png" />
+  <meta property="og:image" content="${SITE}/assets/images/og-image.png?v=2" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />

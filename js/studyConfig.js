@@ -15,3 +15,10 @@ export const NEW_WORD_REVIEW_GAPS = [3, 5, 8];
 
 // 同日2回目以降の自力正解に与えるXP（初回はフルXP。反復の目的は定着でありXPではない）
 export const REPEAT_SUCCESS_XP = 3;
+
+// 語数の回の目安の分（1 語 約 20 秒。最短 1 分）。今日のセットの選択肢の文「10語（約3分）／15語（約5分・標準）／25語（約8分）」と同じ数
+// （profile.html・index.html の option の文は静的なので、E2E 9.4 が突き合わせる）。js/dailySet.js setMinutes（今日のセット）と
+// js/course.js PLACEMENT_NOTE（腕試しの 10 語）が使う。import の無いこの file に置く（course.js を軽いまま保つ。PR #164 レビューの 8）
+export function minutesForWords(words) {
+  return Math.max(1, Math.round(Number(words) / 3) || 1);
+}

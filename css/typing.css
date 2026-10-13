@@ -391,6 +391,39 @@ html[data-theme] body.page-typing .tp-more a {
   text-underline-offset: 2px;
 }
 
+/* 始まる前の導線（BACKLOG D36。PR #164 のレビュー 4）: 箱が 1 分の結果の高さを取るので、スマホで画面キーボードが出ている始まる前は、
+   札の下の 1 行が盤面の裏か画面の外に来る（縦 390×844 の日本語・360×740、横 667×375・844×390）。そのときだけ箱の空き（札のすぐ下）に
+   同じ文の 1 行を出す（幅 719 以下か高さ 480 以下・body.osk-open・箱の data-state が始まる前か読み込み中・長文でない）。
+   箱の中の流れに置き、箱の min-height（396／418／254px）に収まるので箱の高さは変わらない。打ち始めると消えるだけ（消える要素は CLS に入らない。
+   結果では出ないので箱の中で動かない）。その間、札の下の 1 行は visibility で隠す（場所は残すので入れ替わっても箱の下は動かない。同じリンクを 2 つ読ませない）。
+   長文は箱を取らない（横向きは札が盤面の上端まで来て置く所が無い）ので出さない。行とリンクの高さは 26px（当たり判定。横向き 667×375 の日本語で札と盤面の間 35px に上の 4px と収まる） */
+html[data-theme] body.page-typing .tp-stage__more {
+  display: none;
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 26px;
+  text-align: center;
+}
+
+html[data-theme] body.page-typing .tp-stage__more a {
+  display: inline-block;
+  padding: 0 4px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 719.98px), (max-height: 480px) {
+  html[data-theme] body.page-typing.osk-open .tp-stage:not([data-kind="long"]):is([data-state="ready"], [data-state="loading"]) > .tp-stage__more {
+    display: block;
+  }
+
+  html[data-theme] body.page-typing.osk-open .tp-stage:not([data-kind="long"]):is([data-state="ready"], [data-state="loading"]) ~ .tp-more {
+    visibility: hidden;
+  }
+}
+
 /* このページについて */
 html[data-theme] body.page-typing .tp-about {
   margin: 32px 0 0;

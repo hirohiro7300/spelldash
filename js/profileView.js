@@ -166,8 +166,8 @@ function initializePlanRow() {
     showProfileMessage(message, "error");
   });
 
-  // 旧い戻り先（2026-10-06 より前に作った Checkout）: 加入直後の画面は加入画面に 1 つだけ（js/proView.js）
-  if (new URLSearchParams(location.search).get("pro") === "done") {
+  // 旧い戻り先（2026-10-06 より前に作った Checkout）: 加入直後の画面は加入画面に 1 つだけ（js/proView.js）。アプリに加入画面は無い（scripts/build-app.mjs の PAGES）
+  if (!isNativeApp && new URLSearchParams(location.search).get("pro") === "done") {
     location.replace("./pro.html?pro=done");
   }
 }

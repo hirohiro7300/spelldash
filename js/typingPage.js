@@ -328,6 +328,7 @@ function render() {
   el.board.dataset.state = phase;
   el.board.dataset.kind = kind;
   el.stage.dataset.kind = kind; // 箱（.tp-stage）は英単語・日本語の 1 分の結果の高さを取る。長文では取らない（css/typing.css）
+  el.stage.dataset.state = phase; // 箱の中の導線（.tp-stage__more）はスマホの始まる前だけ出す（css/typing.css。BACKLOG D36）
   renderBoardData();
   const result = phase === "result";
   el.timer.hidden = isLong() || result || phase === "error"; // 読み込めないときは「残り 60秒」を残さない。長文の残りは 1 行目

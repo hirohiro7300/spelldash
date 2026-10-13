@@ -1,5 +1,6 @@
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
 import { getWordStats } from "./storage.js";
+import { minutesForWords } from "./studyConfig.js";
 
 // ===== コース（道の並び） =====
 //
@@ -89,8 +90,13 @@ const COURSE_KEY = "spelldash_course";
 const CATEGORY_KEY = "spelldash_category";
 export const DEFAULT_COURSE = "jhs-redo";
 
-// 腕試し（初回10語）の案内。道のスタート下とトップページの末尾は同じ文を出す（game.js の .message は短い版）
-export const PLACEMENT_NOTE = "腕試し10語（約5分）。知らない語は Enter で答えを見る。";
+// 腕試し（初回10語）の案内。道のスタート下とトップページの末尾は同じ文を出す（game.js の .message は短い版）。
+// 目安の分は今日のセットの選択肢の文「10語（約3分）」と同じ割合（js/studyConfig.js minutesForWords。js/dailySet.js setMinutes と同じ）から作る
+// （同じホームで食い違わない。PR #164 レビューの 8）。語数 10 は js/difficulty.js PLACEMENT_WORDS と同じ（difficulty.js は Supabase まで
+// 読み込むので import しない）。index.html の #welcomeBook の静的な文も同じ文。E2E 9.4 が 3 つを突き合わせる
+const PLACEMENT_SIZE = 10;
+export const PLACEMENT_MINUTES = minutesForWords(PLACEMENT_SIZE);
+export const PLACEMENT_NOTE = `腕試し${PLACEMENT_SIZE}語（約${PLACEMENT_MINUTES}分）。知らない語は Enter で答えを見る。`;
 
 export function listCourses() {
   return Object.values(COURSES);

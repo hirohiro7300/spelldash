@@ -1,6 +1,7 @@
 import { localDateString } from "./stats.js";
 import { bumpTotalSets } from "./unlocks.js";
 import { touchItem } from "./userItemsSync.js";
+import { minutesForWords } from "./studyConfig.js";
 
 // ===== 今日のセット（Daily Set） =====
 //
@@ -51,9 +52,10 @@ export function getSetSize() {
 }
 
 // 語数の回の目安の分。設定とホームの出題設定の選択肢の文「10語（約3分）／15語（約5分・標準）／25語（約8分）」と同じ数（1 語 約 20 秒。
-// profile.html・index.html の option の文は静的なので、E2E の 9.4 がこの関数と突き合わせる）。?set=N の語数も同じ割合（最短 1 分）
+// profile.html・index.html の option の文は静的なので、E2E の 9.4 がこの関数と突き合わせる）。?set=N の語数も同じ割合（最短 1 分）。
+// 割合は js/studyConfig.js minutesForWords（腕試しの案内と共有）
 export function setMinutes(size = getSetSize()) {
-  return Math.max(1, Math.round(Number(size) / 3) || 1);
+  return minutesForWords(size);
 }
 
 export function setSetSize(size) {

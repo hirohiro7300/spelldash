@@ -25,7 +25,7 @@
   <meta property="og:description" content="登録なし・無料のタイピング練習。英単語（日本語の訳つき）と日本語（ローマ字）は1分、長文は日本語と英語の文章を最後まで打つ（英文は訳つき）。スマホは画面のキーボードで打てる。結果は打/分・正確さ・間違えたキー、長文はスコアと時間も。" />
   <link rel="canonical" href="https://www.spelldash.net/typing.html" />
   <meta property="og:url" content="https://www.spelldash.net/typing.html" />
-  <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png" />
+  <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png?v=2" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
@@ -90,8 +90,9 @@
     </div>
     <p class="tp-tabnote tp-tabnote--off" id="typingTabNote">小・中学校の用語。読みをローマ字で打つ。</p>
 
-    <!-- 箱（.tp-stage）が 1 分の結果の高さを始めから取っておく。札は中身の高さ（60 秒の時計で結果が出て札が下に伸びても、箱の下の要素は動かない＝CLS に入らない）。長文は取らない（結果は打鍵か Esc で出る） -->
-    <div class="tp-stage" id="typingStage" data-kind="en">
+    <!-- 箱（.tp-stage）が 1 分の結果の高さを始めから取っておく。札は中身の高さ（60 秒の時計で結果が出て札が下に伸びても、箱の下の要素は動かない＝CLS に入らない）。長文は取らない（結果は打鍵か Esc で出る）。
+         data-state は札と同じ（js/typingPage.js）。箱の中の導線（.tp-stage__more）の出し入れに使う -->
+    <div class="tp-stage" id="typingStage" data-kind="en" data-state="ready">
       <section class="result-card tp-board" id="typingBoard" data-kind="en" data-state="ready" aria-label="タイピング練習">
         <!-- 長文の 1 行目（長文だけ出す。高さは 44px を予約し、状態で中身だけ替える: 始まる前は文章の select、打っている間は題・残り・やめる） -->
         <div class="tp-head" id="typingHead" hidden>
@@ -128,6 +129,8 @@
         </div>
         <noscript><p class="tp-hint">タイピング練習は JavaScript をオンにすると使える。</p></noscript>
       </section>
+      <!-- 始まる前の導線（BACKLOG D36）: スマホで画面キーボードが出ている始まる前だけ、箱の空き（札のすぐ下）に出す。打ち始めると消え、箱の下の 1 行（.tp-more）に替わる（css/typing.css） -->
+      <p class="tp-stage__more" id="typingMoreReady">文を次々と打つ 90秒の <a href="./typing-game.html">タイピングゲーム</a></p>
     </div>
     <p class="sr-only" id="typingLive" role="status"></p>
     <div class="osk" id="osk" hidden></div>

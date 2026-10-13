@@ -12,15 +12,28 @@
 
 import { getWordStats } from "./storage.js";
 import { isPlacementPending } from "./difficulty.js";
+import { getSetLength, setMinutes } from "./dailySet.js";
 
 const KEY = "spelldash_tutorial";
 
-// 文は 1 つの表に集約（E2E が参照する）。常体・20 字以内・「！」なし
+// 文は 1 つの表に集約（E2E が参照する。出す文は stepText）。常体・20 字以内・「！」なし。
+// T4 の長さはその人の今日のセットの長さ（設定の保存値。?set= は見ない）に合わせる: 10／15／25 語 → 約3／5／8分（js/dailySet.js setMinutes。
+// 設定の選択肢の文と同じ数）、60 秒 → 60秒（PR #164 レビューの 8）
 export const STEPS = {
   T2: "この語は数問後にもう一度出る。",
   T3: "この語は、次は日をあけて出る。",
-  T4: "毎日、スタートを押すだけ。約5分。",
+  T4: () => `毎日、スタートを押すだけ。${dailyLength()}。`,
 };
+
+function dailyLength() {
+  const length = getSetLength();
+  return length === "60s" ? "60秒" : `約${setMinutes(Number(length))}分`;
+}
+
+export function stepText(id) {
+  const step = STEPS[id];
+  return typeof step === "function" ? step() : step;
+}
 const ALL = Object.keys(STEPS);
 export const T3_MIN_MS = 1500; // T3 を出した語は、次の語まで最低これだけ置く（js/game.js が spelldash:recall の detail.hold で受け取る）
 const WITH_BUTTON = new Set(["T4"]); // 操作で消えないものだけ「わかった」を付ける
@@ -89,7 +102,7 @@ function show(id) {
   document.body.appendChild(el); // 先に空の live region を置き、次のフレームで文を入れる（読み上げが拾う）
   requestAnimationFrame(() => {
     if (current?.el !== el) return;
-    el.innerHTML = `<span class="coach__text">${STEPS[id]}</span>${
+    el.innerHTML = `<span class="coach__text">${stepText(id)}</span>${
       WITH_BUTTON.has(id) ? `<button type="button" class="coach__ok">わかった</button>` : ""
     }`;
     el.querySelector(".coach__ok")?.addEventListener("click", () => dismiss());

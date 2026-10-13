@@ -104,7 +104,7 @@ AI の上限の 429 メッセージ: 無料「今日の無料ぶん（N回）は
 
 ## 5. アプリ版（Capacitor）の扱い
 
-- `isNativeApp` のときは `/pro.html` の価格と購入ボタン（`#proPlans`）を出さず、「Pro の加入と管理は Web 版（www.spelldash.net）で。」と状態だけ出す。プロフィールのプラン行もボタン無し（値だけ）
+- 加入画面 `/pro.html` と特商法 `/tokushoho.html` はアプリに入れず（scripts/build-app.mjs の PAGES に無い）、アプリではそこへのリンクも出さない（2026-10-13、PR #164 のレビュー。docs/APP.md の課金の行）。`/pro.html` に残る `isNativeApp` の分岐（価格と購入ボタン `#proPlans` を出さず「Pro の加入と管理は Web 版（www.spelldash.net）で。」と状態だけ）は、通らない経路の守りとして残す。プロフィールのプラン行もボタン無し（値だけ）
 - 理由: App Store Review Guideline 3.1.1。アプリ内でデジタルコンテンツの購入へ誘導すると、アプリ内課金（StoreKit）が必要になり、Stripe への誘導は審査で落ちる。価格やリンクを出さない「リーダー型」なら、Web で加入した状態をアプリで使うのは可
 - Web で加入した状態は user_id に紐づく（`subscriptions`）。ただしアプリはまだログインできないので、アプリで Pro にはならない。アプリのログインができるまで「アプリでも使える」とは書かない（加入画面の FAQ からも外した）
 - 将来 StoreKit / Google Play Billing を入れるなら、`subscriptions` に `source`（stripe / apple / google）列を足し、`isProRow` はそのまま使える。いまは判断しない（docs/APP.md）

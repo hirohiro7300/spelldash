@@ -3233,10 +3233,11 @@ function celebrateRankUp(result) {
 }
 
 // 結果パネルが出たら見出しに焦点（SR に「今日のセット完了」等が伝わり、Tab で次の操作に届く）。
-// ただし時間切れ（60 秒の回・Challenge）や正解のあとの待ちで終わった瞬間に、焦点が入力欄・盤面の外
-// （ご意見の窓・メモ・覚え方・出題設定など）にあれば動かさない（打っている文を奪わない。Batch 64 M3）。そのときは見出しの文を
-// #srStatus で読み上げる（焦点を移したときと同じく、読み上げで終わりが分かる。背後を inert にする窓〔ご意見・語の詳細〕の間は、
-// 今も見出しへ焦点を移せず読まれない）。焦点を移したら true（呼び手はそのときだけ見出しへ寄せる。寄せないので窓の背後も動かない）
+// ただし時間切れ（60 秒の回・Challenge）や正解のあとの待ちで終わった瞬間に、盤面の外で作業中（focusOnBoard の下の 3 つ:
+// 盤面の外の書ける欄・開いている窓・メモ／覚え方の欄）なら動かさない（打っている文を奪わない。Batch 64 M3）。そのときは見出しの文を
+// #srStatus で読み上げる（焦点を移したときと同じく、読み上げで終わりが分かる。直前のレベルアップの文とは 1 つの文につながる: js/ui.js announce。
+// 背後を inert にする窓〔ご意見・語の詳細〕の間は、今も見出しへ焦点を移せず読まれない）。
+// 焦点を移したら true（呼び手はそのときだけ見出しへ寄せる。寄せないので窓の背後も動かない）
 function focusResultTitle(panel) {
   const title = panel.querySelector("#resultTitle");
   if (!title) return false;
@@ -3252,14 +3253,28 @@ function focusResultTitle(panel) {
   return true;
 }
 
-// 焦点が盤面にある: どこにも無い（body）・入力欄・盤面（#gameCard。メモ・覚え方の欄は除く）・画面キーボード。
-// 隠れた要素に残った焦点（完了で畳んだ出題の UI）も「無い」と同じに扱う
+// 焦点が盤面にある（見出しへ移してよい）か。「盤面の外で作業中」（false）は次の 3 つのときだけ（PR #164 レビューの 1・2）:
+//   (a) 盤面（#gameCard・#osk）の外の書ける欄（input・textarea・select・contenteditable。ヘッダーのログインの欄・出題設定の select など）
+//   (b) 開いている窓（aria-modal・role=dialog。ご意見・語の詳細・コースを選ぶ）の中
+//   (c) 盤面の中のメモ・覚え方の欄（#wordNote・#wordAi）
+// ほかは「盤面にある」と同じ: どこにも無い（body）・盤面の祖先（盤面の空いた所をクリックすると Chromium は <main tabindex="-1"> に、
+// 「本文へ」も #main に焦点を置く）・入力欄・画面キーボード・押したあとに焦点が残ったボタン／リンク／summary（「出題: … ・ 設定」など）、
+// 隠れた要素に残った焦点（完了で畳んだ出題の UI）
 function focusOnBoard() {
   const active = document.activeElement;
   if (!active || active === document.body || active === document.documentElement) return true;
   if (!active.getClientRects().length) return true;
   if (active.closest("#wordNote, #wordAi")) return false;
-  return !!active.closest("#gameCard, #osk");
+  if (active.closest('[aria-modal="true"], [role="dialog"]')) return false;
+  return !!active.closest("#gameCard, #osk") || !isWritableField(active);
+}
+
+// 書ける欄（input の押すだけの種類〔button・submit・reset・image・checkbox・radio〕は除く。値を動かしている range〔出題設定の配分〕は欄と同じ）
+const NON_WRITABLE_INPUT = new Set(["button", "submit", "reset", "image", "checkbox", "radio"]);
+function isWritableField(el) {
+  if (el.isContentEditable) return true;
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;
+  return el instanceof HTMLInputElement && !NON_WRITABLE_INPUT.has(el.type);
 }
 
 function hideResultPanel() {
