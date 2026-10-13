@@ -25,6 +25,8 @@ import {
   rankHtml,
   rankBasis,
   rankNext,
+  statusScaleNote,
+  STATUS_SCALE_NOTE,
   holdBeforeDue,
   SRS_STEPS,
   MAX_INTERVAL_DAYS,
@@ -416,6 +418,16 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   ok("rankHtml: name false で名前を出さない", !rankHtml(5, { name: false }).includes("rank__name"));
   ok("rankHtml: title は属性に入れて実体にする", rankHtml(3, { title: 'a"<b>' }).includes('title="a&quot;&lt;b&gt;"'));
   ok("rankHtml: 分数・「/10」を出さない", !/\/10|\d\/\d/.test(rankHtml(3)));
+}
+
+// ── 12b. 題箋と段が食い違って見える組の 1 文（語の詳細。Batch 64 M4）──────────────
+{
+  // 組（覚えた＋あやふや・習得＋思い出せる・苦手＋身についた ほか）だけに 1 文。ほかの組・段 0・未着手は空
+  const pairs = [];
+  for (const st of ["untouched", "weak", "learning", "mastered", "known"]) for (let r = 0; r <= 5; r++) if (statusScaleNote(st, r)) pairs.push(`${st}${r}`);
+  eq("食い違って見える組: 苦手＋3〜5・覚えた／知ってた＋1〜2・習得＋1〜3", pairs.join(" "), "weak3 weak4 weak5 learning1 learning2 mastered1 mastered2 mastered3 known1 known2");
+  eq("BACKLOG の 3 組の文（題箋の意味＋「習熟度とは別の物差し」）", [statusScaleNote("learning", 2), statusScaleNote("mastered", 3), statusScaleNote("weak", 4)], [STATUS_SCALE_NOTE.learning, STATUS_SCALE_NOTE.mastered, STATUS_SCALE_NOTE.weak]);
+  ok("どの文も 1 文・題箋の名前で始まり「習熟度とは別の物差し。」で終わる・段の名前を含まない", Object.entries(STATUS_SCALE_NOTE).every(([k, t]) => t.split("。").filter(Boolean).length === 1 && t.endsWith("習熟度とは別の物差し。") && t.startsWith({ weak: "苦手 ", learning: "覚えた ", mastered: "習得 ", known: "知ってた " }[k]) && !RANK_NAMES.slice(1).some((n) => t.includes(n))));
 }
 
 // ── 13. 期日前に出さない（S6）────────────────────────────

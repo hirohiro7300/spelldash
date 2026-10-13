@@ -1181,6 +1181,29 @@ html[data-theme] body.list-compact .gcard__ex {
   display: none;
 }
 
+/* 題箋と、簡潔表示の 1 行目に置く習熟度の目盛り（js/listView.js cardHtml。Batch 64 M1）: 2 つで 1 組（折り返すときも離れない）、題箋の列は今のまま右寄せ。
+   目盛りは名前を出さない（読み上げは .rank の aria-label の 1 文、マウスでは title の根拠の文）。詳しい表示では隠す
+   （足元の .rank が名前つきで出る。同時に 2 つ見えないので読み上げも 1 回）。目盛りの形は brand.css の .rank のまま */
+html[data-theme] .gcard__marks {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  gap: 6px;
+  margin-left: auto;
+}
+
+html[data-theme] .gcard__marks > .gcard__status {
+  margin-left: 0;
+}
+
+html[data-theme] .gcard__marks > .rank {
+  display: none;
+}
+
+html[data-theme] body.list-compact .gcard__marks > .rank {
+  display: inline-flex;
+}
+
 /* ---- 履歴・メモ（習熟度の目盛り .rank は brand.css。記憶ゲージ .mem は Batch 63 で外した。下の :is() の並びの .mem・.mem__bar は特定度を変えないため残す） ---- */
 html[data-theme] .hist i {
   width: 8px;
@@ -2384,6 +2407,14 @@ html[data-theme] .rank-ladder b {
 
 html[data-theme] .rank-ladder__next {
   color: var(--ink-2);
+}
+
+/* 題箋と段が食い違って見える組だけの 1 文（js/mastery.js statusScaleNote。Batch 64 M4）: 梯子と同じ小さな字 */
+html[data-theme] .rank-scale {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 html[data-theme] .rank-rule {

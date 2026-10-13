@@ -2569,8 +2569,7 @@ function endStudySession({ timed = false } = {}) {
       </div>
     `;
     panel.hidden = false;
-    focusResultTitle(panel);
-    panel.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+    if (focusResultTitle(panel)) panel.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     panel.querySelectorAll("[data-speak]").forEach((chip) => chip.addEventListener("click", () => speak(chip.dataset.speak)));
     document.getElementById("setRetry")?.addEventListener("click", () => {
       clearInterval(timer);
@@ -3173,10 +3172,8 @@ function renderResultPanel({ isDaily, isBest, gainedXp, speed, previousBest = 0,
     <div class="result-panel__actions">${actions}</div>
   `;
   panel.hidden = false;
-  focusResultTitle(panel);
-
-  // 結果は見出しから見せる（scroll-margin-top はヘッダー分。css/card.css）
-  panel.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+  // 結果は見出しから見せる（scroll-margin-top はヘッダー分。css/card.css）。焦点が盤面の外にあれば、焦点も位置も動かさない
+  if (focusResultTitle(panel)) panel.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
 
   document.getElementById("resultRetry")?.addEventListener("click", () => {
     restartGame();
@@ -3235,15 +3232,34 @@ function celebrateRankUp(result) {
   return true;
 }
 
-// 結果パネルが出たら見出しに焦点（SR に「今日のセット完了」等が伝わり、Tab で次の操作に届く）
+// 結果パネルが出たら見出しに焦点（SR に「今日のセット完了」等が伝わり、Tab で次の操作に届く）。
+// ただし時間切れ（60 秒の回・Challenge）や正解のあとの待ちで終わった瞬間に、焦点が入力欄・盤面の外
+// （ご意見の窓・メモ・覚え方・出題設定など）にあれば動かさない（打っている文を奪わない。Batch 64 M3）。そのときは見出しの文を
+// #srStatus で読み上げる（焦点を移したときと同じく、読み上げで終わりが分かる。背後を inert にする窓〔ご意見・語の詳細〕の間は、
+// 今も見出しへ焦点を移せず読まれない）。焦点を移したら true（呼び手はそのときだけ見出しへ寄せる。寄せないので窓の背後も動かない）
 function focusResultTitle(panel) {
   const title = panel.querySelector("#resultTitle");
-  if (!title) return;
+  if (!title) return false;
+  if (!focusOnBoard()) {
+    announce(title.textContent.trim());
+    return false;
+  }
   try {
     title.focus({ preventScroll: true });
   } catch {
     // 無視
   }
+  return true;
+}
+
+// 焦点が盤面にある: どこにも無い（body）・入力欄・盤面（#gameCard。メモ・覚え方の欄は除く）・画面キーボード。
+// 隠れた要素に残った焦点（完了で畳んだ出題の UI）も「無い」と同じに扱う
+function focusOnBoard() {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!active.getClientRects().length) return true;
+  if (active.closest("#wordNote, #wordAi")) return false;
+  return !!active.closest("#gameCard, #osk");
 }
 
 function hideResultPanel() {

@@ -362,8 +362,13 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
   const concept = isConceptWord(word);
   // 1行目: 見出し語（英語は等幅）＋訳＋状態、2行目: 例文または場面。足元に履歴・習熟度・メモ。
   // 習熟度は答えたことのある語だけ（段 0 は空文字）。title に根拠の文（マウスで見る補足。読み上げは aria-label の 1 文のまま）。
-  // 簡潔表示（390 の既定）は足元ごと隠れる（game.css body.list-compact .gcard__foot）。「詳しく」で出る
+  // 簡潔表示（390 の既定）は足元ごと隠れる（game.css body.list-compact .gcard__foot）ので、1 行目の題箋の左に目盛りだけを置く
+  // （.gcard__marks の .rank。名前は aria-label で読む。名前まで置くと 320 で 1 冊 140〜160 語のうち 82〜117 行が 2 行に折れる。目盛りだけなら
+  // 390 で 0 行・320 で 8 行まで。Batch 64 M1）。
+  // 2 つは同時に見えない（詳しい表示では 1 行目の目盛りを隠す。css/pages.css）ので、読み上げも 1 回
   const term = escapeHtml(word.answer ?? word.en);
+  const rank = rankOf(stat);
+  const basis = rank ? rankBasis(stat, today) : "";
   const termClass = concept && !/^[A-Za-z0-9 .,'’/&()-]+$/.test(word.answer ?? word.en ?? "") ? "gcard__term" : "gcard__term mono";
   return `
     <article class="gcard gcard--${status}">
@@ -372,7 +377,7 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
         ${concept
           ? `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`
           : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}
-        <span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span>
+        <span class="gcard__marks">${rankHtml(rank, { name: false, title: basis })}<span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span></span>
         ${removable && myWordKey(word) ? `<button type="button" class="my-word__remove gcard__remove" data-my-remove="${escapeHtml(myWordKey(word))}" data-my-kind="${word.kind === "concept" ? "concept" : "word"}" aria-label="${term} を削除" title="削除">${icon("x", { size: 16 })}</button>` : ""}
       </div>
       ${concept
@@ -382,7 +387,7 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
         : hasExample(word) ? `<p class="gcard__ex">${exampleHtml(word, { speakButton: false, className: "gcard__ex" })}</p>` : ""}
       <div class="gcard__foot">
         ${historyDotsHtml(stat)}
-        ${rankHtml(rankOf(stat), { title: rankBasis(stat, today) })}
+        ${rankHtml(rank, { title: basis })}
         ${noteChipHtml(word.id, { onlyIfHas: true })}
       </div>
     </article>`;
