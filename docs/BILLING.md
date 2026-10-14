@@ -171,7 +171,7 @@ AI の回数（`api/_lib/shared.js` `reject(req, res, { scope, limit, proLimit }
 
 クライアント（`js/plan.js`）: `getPlan()` → `{ pro, status, interval, periodEnd, cancelAtPeriodEnd, checkedAt }`（`localStorage.spelldash_plan`）、`isPro(now)`、`refreshPlan()`（`document` に `spelldash:plan` イベント）、`waitForPro({ tries, interval })`、`clearPlan()`、`postBilling(path, payload)`。
 
-E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/billing/*` を偽装（config は常に configured。checkout は Bearer 無し 401・`pro-token` 409・他は `/pro.html?pro=done` へ。portal は `pro-token` だけ 200）。スタブの `from("subscriptions")` は `localStorage.spelldash_test_plan` を本人の行として返す。Webhook・署名・逆順・form の中身はネットワーク無しの `scratchpad/billing-test.mjs`（fetch 差し替え）で確かめる。
+E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/billing/*` を偽装（config は常に configured。checkout は Bearer 無し 401・`pro-token` 409・他は `/pro.html?pro=done` へ。portal は `pro-token` だけ 200）。スタブの `from("subscriptions")` は `localStorage.spelldash_test_plan` を本人の行として返す。`localStorage.spelldash_test_delay`（`{"session": ms, "plan": ms}`）があれば、getSession と subscriptions の読みをページを開いてからその時刻まで返さない（加入画面の読み込みの検査。2026-10-14 PR #170 のレビュー）。Webhook・署名・逆順・form の中身はネットワーク無しの `scratchpad/billing-test.mjs`（fetch 差し替え）で確かめる。
 
 ## 10. 告知文の下書き（news.html 用。受付開始時に創業者が貼る）
 

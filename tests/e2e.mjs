@@ -4501,7 +4501,8 @@ console.log("study (room):");
   // 学習データ・単語帳も止まらない。ログインした端末: 壊れた値は送らず、クラウドの記録は空の端末と同じく取り込む（退避の鍵は残る）
   {
     const BROKEN = '{"english-apple":{"playCount":3,"correctCount":2,"lastPlayed":"2026-'; // 書いている途中で切れた体
-    const corrupt = (p) => p.evaluate(() => ({ stats: localStorage.getItem("spelldash_word_stats"), kept: localStorage.getItem("spelldash_word_stats_corrupt") }));
+    // 退避は日時つきの包み {"at","size","head"}（PR #170 のレビュー 1）。kept は元の値（包みの head）
+    const corrupt = (p) => p.evaluate(() => ({ stats: localStorage.getItem("spelldash_word_stats"), kept: (() => { try { return JSON.parse(localStorage.getItem("spelldash_word_stats_corrupt")).head; } catch { return null; } })() }));
     const runs = [];
     for (const who of ["onboarded", "notOnboarded"]) {
       // newPage の種は読み込みのたびに入れ直すので、この検査では読み込みは 1 回だけ
@@ -4564,7 +4565,7 @@ console.log("study (room):");
       await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
       const pulled = await waitUntil(async () => (await page.evaluate(() => { try { return Object.keys(JSON.parse(localStorage.getItem("spelldash_word_stats"))).length; } catch { return 0; } })) === jhs.length, 8000);
       const sent = cloud.writes("word_progress").map((e) => e.n);
-      const state = await page.evaluate(() => ({ kept: localStorage.getItem("spelldash_word_stats_corrupt"), keys: (() => { try { return Object.keys(JSON.parse(localStorage.getItem("spelldash_word_stats"))).length; } catch { return -1; } })() }));
+      const state = await page.evaluate(() => ({ kept: (() => { try { return JSON.parse(localStorage.getItem("spelldash_word_stats_corrupt")).head; } catch { return null; } })(), keys: (() => { try { return Object.keys(JSON.parse(localStorage.getItem("spelldash_word_stats"))).length; } catch { return -1; } })() }));
       const backupKeys = await page.evaluate(async () => Object.keys((await import("/js/backup.js")).buildBackup().data));
       const cloudIds = cloud.rows("word_progress").map((r) => r.word_id);
       check("壊れた学習記録（Batch 67 C3）: ログインした端末はクラウドの 5 語を空の端末と同じく取り込み、壊れた値（english-apple）は送らない（word_progress の送信 0 行）。退避の鍵は残り、バックアップには入る",
@@ -4572,6 +4573,102 @@ console.log("study (room):");
         JSON.stringify({ pulled, state: { ...state, kept: state.kept === BROKEN }, sent, cloudIds: cloudIds.length, backup: backupKeys.includes("spelldash_word_stats_corrupt"), errors: page.errors.slice(0, 1) }));
       await page.close();
     }
+  }
+
+  // ---- PR #170 のレビュー 1: 退避の鍵 spelldash_word_stats_corrupt が消えずに残り、端末の保存の上限（Chromium は鍵と値の合計 5,242,880 字）を食っていた
+  // （読む所が無く、別のアカウントでログインしたときしか消えない。2M 字の表が壊れると同じ大きさの写しが残り、学び直すうちに合わせて上限を超え、flushWordStats が投げて
+  // 以後の答えが黙って保存されない）。退避は日時つきの包み {"at","size","head","cut"}（js/storage.js）: (a) 30 日たったら読み込みのときに消す、
+  // (b) word_stats を書くときに上限の誤りが出たら、退避の鍵を消してから 1 回だけ書き直す、(c) 包みは 512K 字まで（超えたら元の値の頭と元の字数だけ）。
+  // Batch 67 の形（元の値そのまま）は読み込みのときに今の日時で包み直す（上限で切る）。同じ壊れた値を読み直しても日時は変えない。
+  // storage.js は場合ごとに別の写し（?case=）を import して読み込みの処理を走らせ、保存の上限は setItem の偽装（鍵と値の合計の字数で数える）で小さくする
+  {
+    const page = await newPage({ viewport: { width: 800, height: 600 } });
+    await page.route(BASE + "/__blank.html", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>storage</title>" })); // 書き手の居ないページ
+    await page.goto(BASE + "/__blank.html");
+    const r = await page.evaluate(async () => {
+      const K = "spelldash_word_stats", C = "spelldash_word_stats_corrupt", DAY = 86400000, MAX = 512 * 1024;
+      const realSet = Storage.prototype.setItem;
+      let quota = Infinity;
+      Storage.prototype.setItem = function (key, value) {
+        let total = 0;
+        for (let i = 0; i < this.length; i++) { const k = this.key(i); if (k !== key) total += k.length + this.getItem(k).length; }
+        if (total + key.length + String(value).length > quota) throw new DOMException("quota", "QuotaExceededError");
+        return realSet.call(this, key, String(value));
+      };
+      const errors = [];
+      window.addEventListener("error", (e) => errors.push(String(e.error?.name ?? e.message)));
+      let n = 0;
+      const load = () => import(`/js/storage.js?case=${++n}`);
+      const tick = () => new Promise((res) => setTimeout(res, 0));
+      const env = () => { const v = localStorage.getItem(C); if (v === null) return null; try { return { len: v.length, ...JSON.parse(v) }; } catch { return { len: v.length, legacy: true }; } };
+      const reset = (seed) => { quota = Infinity; errors.length = 0; localStorage.removeItem(K); localStorage.removeItem(C); for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); };
+      const wrap = (at, raw) => JSON.stringify({ at: new Date(at).toISOString(), size: raw.length, head: raw });
+      const words = () => { try { return Object.keys(JSON.parse(localStorage.getItem(K))); } catch { return null; } };
+      const near = (iso) => Math.abs(Date.parse(iso) - Date.now()) < 60000;
+      const out = {};
+      // (b) 退避（30 万字・新しい）があり、表が伸びて上限（100 万字）を超える: 退避を消して書き直す（直す前は投げて、答えが保存されない）
+      reset({ [C]: wrap(Date.now(), "x".repeat(300000)), [K]: JSON.stringify({ "english-apple": { playCount: 1, pad: "p".repeat(400000) } }) });
+      quota = 1000000;
+      let S = await load();
+      let t = S.editWordStats();
+      t["english-zz"] = { playCount: 1, pad: "q".repeat(350000) };
+      S.saveWordStats(t);
+      await tick();
+      out.retry = { words: words(), corrupt: env() === null, errors: [...errors] };
+      // 退避が無いのに上限を超える: 書き直さず 1 回だけ知らせる（記録は前のまま）
+      reset({ [K]: JSON.stringify({ "english-apple": { playCount: 1 } }) });
+      quota = 200000;
+      S = await load();
+      t = S.editWordStats();
+      t["english-zz"] = { playCount: 1, pad: "q".repeat(250000) };
+      S.saveWordStats(t);
+      await tick();
+      out.noCopy = { words: words(), errors: [...errors] };
+      // (a) 30 日たった退避は読み込みのときに消す。29 日はまだ残す（中身も日時も変えない）
+      reset({ [C]: wrap(Date.now() - 31 * DAY, '{"english-apple":') });
+      await load();
+      out.old = env();
+      const young = wrap(Date.now() - 29 * DAY, '{"english-apple":');
+      reset({ [C]: young });
+      await load();
+      out.young = localStorage.getItem(C) === young;
+      // (c) 150 万字の壊れた表: 包みは 512K 字まで。元の字数・頭・切った印・今の日時。表は空として読む
+      const big = '{"english-apple":{"playCount":3,"note":"' + "a\"b".repeat(500000);
+      reset({ [K]: big });
+      S = await load();
+      const empty = Object.keys(S.getWordStats()).length === 0;
+      const e = env();
+      out.cap = { empty, len: e?.len, max: e ? e.len <= MAX : false, size: e?.size === big.length, head: !!e?.head && big.startsWith(e.head) && e.head.length > 100000, cut: e?.cut === true, at: !!e?.at && near(e.at) };
+      // Batch 67 の形（元の値そのまま 200 万字）: 読み込みのときに今の日時で包み直し、上限で切る
+      const legacy = '{"english-apple":{"playCount":3,' + "z".repeat(2000000);
+      reset({ [C]: legacy });
+      await load();
+      const l = env();
+      out.legacy = { len: l?.len, max: l ? l.len <= MAX : false, size: l?.size === legacy.length, head: !!l?.head && legacy.startsWith(l.head), cut: l?.cut === true, at: !!l?.at && near(l.at) };
+      // 小さい壊れた値は切らずにそのまま（cut なし）。同じ壊れた値を読み直しても日時を変えない（10 日前のまま）
+      const small = '{"english-apple":{"playCount":3,"correctCount":2,"lastPlayed":"2026-';
+      reset({ [K]: small });
+      S = await load();
+      S.getWordStats();
+      const s1 = env();
+      const tenDays = wrap(Date.now() - 10 * DAY, small);
+      reset({ [K]: small, [C]: tenDays });
+      S = await load();
+      S.getWordStats();
+      out.small = { head: s1?.head === small, size: s1?.size === small.length, cut: s1?.cut, at: !!s1?.at && near(s1.at), same: localStorage.getItem(C) === tenDays };
+      Storage.prototype.setItem = realSet;
+      localStorage.removeItem(K);
+      localStorage.removeItem(C);
+      return out;
+    });
+    await page.close();
+    check("PR #170 の 1: 退避の鍵があっても word_stats の書き込みは失敗しない（上限を超えたら退避を消して 1 回だけ書き直す・誤りを知らせない）。退避が無ければ書き直さず 1 回知らせる",
+      JSON.stringify(r.retry.words) === JSON.stringify(["english-apple", "english-zz"]) && r.retry.corrupt && r.retry.errors.length === 0 &&
+      JSON.stringify(r.noCopy.words) === JSON.stringify(["english-apple"]) && r.noCopy.errors.length === 1, JSON.stringify({ retry: r.retry, noCopy: r.noCopy }));
+    check("PR #170 の 1: 退避は 30 日たったら読み込みのときに消え、29 日なら残る。512K 字を超える壊れた値は頭と元の字数だけ（切った印・今の日時）。Batch 67 の形（日時なし 200 万字）は包み直して上限で切る。同じ壊れた値を読み直しても日時は変わらない",
+      r.old === null && r.young && r.cap.empty && r.cap.max && r.cap.size && r.cap.head && r.cap.cut && r.cap.at &&
+      r.legacy.max && r.legacy.size && r.legacy.head && r.legacy.cut && r.legacy.at && r.small.head && r.small.size && r.small.cut === undefined && r.small.at && r.small.same,
+      JSON.stringify({ old: r.old && { ...r.old, head: undefined }, young: r.young, cap: r.cap, legacy: r.legacy, small: r.small }));
   }
 }
 
@@ -5777,9 +5874,13 @@ console.log("pages (書斎の皮):");
   console.log("header (narrow, Batch 67 N1):");
   // 細い幅の検査を速くする台: 1 つのタブに複数のページを同じオリジンの iframe で並べ、iframe の幅を変えて中を測る（iframe の中のメディアクエリと resize は
   // iframe の幅で動く）。1 幅ごとに setViewportSize すると N1（16 形 × 5 ページ × 68 幅）だけで 3 分かかった。台の頁は page.route で返す（ファイルは足さない）
-  const openFrames = async (page, paths, w, h) => {
+  // 待ち方: load の後、networkidle を 10 秒まで待ち（来ないことがある: 手元では直す前の木〔06cf345〕の節 8.7 でも 30 秒待って落ちた。中断したフォントの先読み・
+  // sw.js の取得が数えられたままになるらしい）、各頁の読み込みとフォントの終わり（読めた／読めない）を待つ。idle: false は networkidle を待たない（フォントを 404 にする形）
+  const openFrames = async (page, paths, w, h, idle = true) => {
     await page.route(BASE + "/__frames", (route) => route.fulfill({ contentType: "text/html", body: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0">${paths.map((p) => `<iframe src="${p}" style="display:block;border:0;width:${w}px;height:${h}px"></iframe>`).join("")}</body></html>` }));
-    await page.goto(BASE + "/__frames", { waitUntil: "networkidle" });
+    await page.goto(BASE + "/__frames", { waitUntil: "load" });
+    if (idle) await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    await page.waitForFunction(() => [...document.querySelectorAll("iframe")].every((f) => f.contentDocument?.readyState === "complete" && f.contentDocument.fonts.status === "loaded"));
   };
   {
     const todayN = ymd(new Date());
@@ -5792,30 +5893,36 @@ console.log("pages (書斎の皮):");
     ];
     const N1_PAGES = ["/index.html", "/stats.html", "/battle.html", "/news.html", "/packs/index.html"];
     const N1_WIDTHS = [...Array.from({ length: 41 }, (_, i) => 320 + i), 361, 375, 384, 390, 393, 399, 400, 402, 404, 408, 411, 412, 414, 420, 428, 430, 440, 449, 450, 480, 540, 560, 561, 600, 640, 680, 720];
-    // iframe ごと・幅ごとに: 部品の箱の重なり・画面の外・字の行数（8.7 の H1 と同じ数え方）・帯の高さ・見えるタブの数・連続日数の字
-    const headerBoxes = (widths) => {
+    // 幅ごと・iframe ごとに: 部品の箱の重なり・画面の外・字の行数（8.7 の H1 と同じ数え方）・帯の高さ・見えるタブの数・連続日数の字。
+    // settle: 幅を変えたら 1 コマ待ってから測る（js/headerFit.js の ResizeObserver が「収まらないときの形」を決めるのはその描画の中。requestAnimationFrame の後の
+    // setTimeout = そのコマの配置と ResizeObserver の後）。待たないと CSS だけの形を測る（N1: Web フォントで入るときは畳まない = タブの字が「…」にならないこと
+    // 〔headerFit.js が畳むのは、縮めないリンクがナビに入らないとき = 縮めると字が「…」になるとき〕を、待たずに速く見る）
+    const headerBoxes = async ({ widths, settle }) => {
       const out = [];
-      for (const frame of document.querySelectorAll("iframe")) {
-        const win = frame.contentWindow, doc = frame.contentDocument;
-        const shown = (el) => !!el && el.getClientRects().length > 0 && win.getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden]");
-        const lines = (el) => {
-          const rects = [];
-          const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-            if (!n.data.trim() || !shown(n.parentElement)) continue;
-            const r = doc.createRange();
-            r.selectNodeContents(n);
-            rects.push(...[...r.getClientRects()].filter((x) => x.width > 0));
-          }
-          let count = 0, bottom = -Infinity;
-          for (const x of rects.sort((a, b) => a.top - b.top)) {
-            if ((x.top + x.bottom) / 2 > bottom) { count++; bottom = x.bottom; } else bottom = Math.max(bottom, x.bottom);
-          }
-          return count;
-        };
-        for (const w of widths) {
-          frame.style.width = `${w}px`;
-          frame.getBoundingClientRect(); // 台の配置を確定（iframe の幅 → 中のメディアクエリ）
+      const frames = [...document.querySelectorAll("iframe")];
+      // 明朝・SD Num の面が読めているか（フォントの終わりを待ってから呼ぶので 1 頁 1 回。面は 250 近くあり、幅ごとに数えると遅い）
+      const webfonts = new Map(frames.map((f) => [f, [...f.contentDocument.fonts].some((face) => face.status === "loaded" && /Shippori|SD Num/.test(face.family))]));
+      for (const w of widths) {
+        for (const frame of frames) frame.style.width = `${w}px`;
+        if (settle) await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+        for (const frame of frames) {
+          const win = frame.contentWindow, doc = frame.contentDocument;
+          const shown = (el) => !!el && el.getClientRects().length > 0 && win.getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden]");
+          const lines = (el) => {
+            const rects = [];
+            const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+              if (!n.data.trim() || !shown(n.parentElement)) continue;
+              const r = doc.createRange();
+              r.selectNodeContents(n);
+              rects.push(...[...r.getClientRects()].filter((x) => x.width > 0));
+            }
+            let count = 0, bottom = -Infinity;
+            for (const x of rects.sort((a, b) => a.top - b.top)) {
+              if ((x.top + x.bottom) / 2 > bottom) { count++; bottom = x.bottom; } else bottom = Math.max(bottom, x.bottom);
+            }
+            return count;
+          };
           const parts = [...doc.querySelectorAll(".site-header .brand__mark, .site-header .site-nav__link, #headerStreak, #loginToggle, #avatarButton, .site-header .account__link")].filter(shown);
           const boxes = parts.map((el) => { const b = el.getBoundingClientRect(); return { n: el.id || el.textContent.trim().slice(0, 6), l: b.left, r: b.right, t: b.top, b: b.bottom }; });
           const overlap = [];
@@ -5828,12 +5935,23 @@ console.log("pages (書斎の皮):");
           }
           const vw = doc.documentElement.clientWidth;
           const streak = doc.getElementById("headerStreak");
+          // タブ: 字が省略（…）されたもの・当たり判定（幅 24px・≤720 は高さ 40px）より小さいもの・焦点の輪（2px＋間 2px）がナビの切り取り（overflow）の外に出るもの
+          const nav = doc.querySelector(".site-header .site-nav"), nb = nav.getBoundingClientRect(), clips = win.getComputedStyle(nav).overflowX !== "visible";
+          const tabs = parts.filter((el) => el.matches(".site-nav__link"));
+          const tabBox = (el) => el.getBoundingClientRect();
           out.push({
             p: new URL(frame.src).pathname, w, vw, overlap,
             out: boxes.filter((x) => x.l < -0.5 || x.r > vw + 0.5).map((x) => x.n),
             broken: parts.filter((el) => el.id !== "avatarButton" && !el.matches(".brand__mark") && lines(el) > 1).map((el) => el.textContent.trim()),
             h: doc.querySelector(".site-header").offsetHeight,
-            tabs: parts.filter((el) => el.matches(".site-nav__link")).length,
+            tabs: tabs.length,
+            links: tabs.map((el) => el.textContent.trim()),
+            trunc: tabs.filter((el) => el.scrollWidth > el.clientWidth).map((el) => el.textContent.trim()),
+            small: tabs.filter((el) => tabBox(el).width < 24 || (w <= 720 && tabBox(el).height < 40)).map((el) => el.textContent.trim()),
+            ring: clips ? tabs.filter((el) => { const b = tabBox(el); return b.left - 4 < nb.left - 0.5 || b.right + 4 > nb.right + 0.5 || b.top - 4 < nb.top - 0.5 || b.bottom + 4 > nb.bottom + 0.5; }).map((el) => el.textContent.trim()) : [],
+            fit: doc.querySelector(".site-header__inner").dataset.fit ?? null,
+            fs: tabs[0] ? win.getComputedStyle(tabs[0]).fontSize : null,
+            webfont: webfonts.get(frame),
             streak: shown(streak) ? streak.innerText.replace(/\s+/g, "") : null,
             native: doc.documentElement.classList.contains("native-app")
           });
@@ -5847,16 +5965,71 @@ console.log("pages (書斎の皮):");
         if (app) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
         await openFrames(page, N1_PAGES, 1200, 800);
         await page.waitForTimeout(150);
-        const rows = await page.evaluate(headerBoxes, N1_WIDTHS);
+        const rows = await page.evaluate(headerBoxes, { widths: N1_WIDTHS, settle: false });
         const bad = rows.filter((r) => {
           const battle = r.p === "/battle.html";
           const wantStreak = !days || (battle && r.w < 400) ? null : r.w <= 359 ? String(days) : `${days}日`;
-          return r.vw !== r.w || r.overlap.length || r.out.length || r.broken.length || r.h !== (r.p === "/index.html" ? 56 : 57) || r.tabs !== (battle || r.w >= 400 ? 4 : 3) || r.streak !== wantStreak || r.native !== app;
+          // PR #170 のレビュー 5 の直し（構造で止める）の後も、Web フォントで入るときは今の形のまま: タブの字は省略しない・細い形（data-fit="tight"）にしない・当たり判定と焦点の輪は保つ
+          return r.vw !== r.w || r.overlap.length || r.out.length || r.broken.length || r.h !== (r.p === "/index.html" ? 56 : 57) || r.tabs !== (battle || r.w >= 400 ? 4 : 3) || r.streak !== wantStreak || r.native !== app ||
+            r.trunc.length || r.fit || r.small.length || r.ring.length;
         }).map((r) => JSON.stringify(r));
-        check(`N1 ヘッダーの部品は重ならない（${form}・連続 ${days} 日: ${N1_PAGES.length} ページ × 320〜360 の各幅と 361〜720 の 27 幅。箱が重ならない・画面の内・字は 1 行・高さ 56／57・連続日数は ≤359 で数字だけ・タブは 400 未満 3〔Battle は 4〕）`,
+        check(`N1 ヘッダーの部品は重ならない（${form}・連続 ${days} 日: ${N1_PAGES.length} ページ × 320〜360 の各幅と 361〜720 の 27 幅。箱が重ならない・画面の内・字は 1 行・高さ 56／57・連続日数は ≤359 で数字だけ・タブは 400 未満 3〔Battle は 4〕・タブの字を省略しない・当たり判定と焦点の輪）`,
           rows.length === N1_PAGES.length * N1_WIDTHS.length && bad.length === 0 && page.errors.length === 0, JSON.stringify({ rows: rows.length, n: bad.length, bad: bad.slice(0, 3), errors: page.errors.slice(0, 1) }));
         await page.close();
       }
+    }
+
+    // ---- PR #170 のレビュー 5: N1 の直しは幅の帯ごとの余白と字間で、Web フォント（明朝・Cormorant の数字）の寸法が前提だった。フォントが読めない・
+    // 代わりの字が広い・Android の文字の拡大（端末の文字の大きさ。アプリの WebView も同じ掛け算）では、ナビがまた連続日数・ログインの下に潜った
+    // （直す前: 代わりの字が広いと未ログイン 1234 日で 320〜325・360〜371・400〜420・450〜452 に最大 11.6px。1.3 倍では 320〜460 のほぼ全幅で最大 64px、
+    // ナビのリンクの高さが伸びて帯が 59／60px。どちらも 721px はナビの字が 2 行に折れて 66〜81px）。直し（css/brand.css・css/responsive.css・js/headerFit.js）:
+    // 構造で止める — 印・連続日数・ログインは縮めず、ナビは残りの幅だけ・はみ出しは切る（リンクは縮んで字を「…」で省略。焦点の輪の 4px はナビの内側に取る）。
+    // リンクの中身が入らないと測ったら（字の寸法によらない）畳むものを軽い順に足す（data-fit: name 名前 → num 連続日数は数字だけ・ナビ 3px／0.02em →
+    // battle バトルのタブ〔Battle では連続日数〕 → streak 連続日数・ナビ 2px／0）。≤720 のタブの高さは 41px に固定（拡大しても帯は 56／57）。
+    // 3 つの見た目 × 形 × 連続日数（下の R5_CASES）× 5 ページ × 320〜449 の各幅＋450〜1200 の 8 幅で: 部品の箱が重ならない・画面の内・字は 1 行・高さ 56／57・
+    // タブの当たり判定（幅 24px・≤720 は高さ 40px 以上）・焦点の輪はナビの切り取りの内・書斎／学習データ／単語帳は出る（バトルは 400 以上で畳んでいないとき、Battle では出る）・
+    // 連続日数は畳んだ形のときだけ出ない・見た目の模擬が効いている（フォントは読めていない／差し替えた字が読めている／字が 1.3 倍）
+    console.log("header (no web fonts / text zoom, PR #170 review 5):");
+    const R5_WIDTHS = [...Array.from({ length: 130 }, (_, i) => 320 + i), 450, 480, 560, 600, 720, 721, 800, 1200];
+    // 見た目の模擬: nofont = フォントの取得を 404（この環境の代わりの字は IPA ゴシック）。wide = フォントの中身を幅の広い等幅の字（IBM Plex Mono 500）に差し替える
+    // （代わりの字が広い端末の模擬。数字・印・ラテン文字が広くなり、和字は代わりの字のまま）。zoom = 文字 1.3 倍
+    const R5_WIDE = fs.readFileSync(path.join(ROOT, "assets", "fonts", "ibm-plex-mono-latin-500-normal.woff2"));
+    // 連続日数: 字が広くなるのは数字なので、フォントの 2 つの形は 12・1234 日（ログインは 1234 日だけ）。1.3 倍は 0 日も（Battle の 4 タブ＋ログイン）
+    const R5_CASES = [["Web フォントなし", "nofont", FORMS_N1[0], [12, 1234]], ["代わりの字が広い", "wide", FORMS_N1[0], [12, 1234]], ["代わりの字が広い", "wide", FORMS_N1[1], [1234]], ["文字 1.3 倍", "zoom", FORMS_N1[3], [0, 12, 1234]], ["文字 1.3 倍", "zoom", FORMS_N1[1], [0, 12, 1234]]];
+    for (const [modeName, mode, [form, storage, app], R5_DAYS] of R5_CASES) {
+      const bad = [], errors = [];
+      let rowsN = 0, tightN = 0, truncN = 0, swapped = 0; // tightN = 畳んだ形の行・truncN = 字が「…」のタブがある行（どちらも失敗ではない。数を出す）
+      for (const days of R5_DAYS) {
+        const page = await newPage({ mobile: app || mode === "zoom", viewport: { width: 1200, height: 800 }, storage: { spelldash_placement: "done", ...storage, ...(days ? { spelldash_streak: JSON.stringify({ current: days, best: days, last: todayN }) } : {}) } });
+        if (app) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
+        if (mode === "nofont" || mode === "wide") {
+          await page.route("**/assets/fonts/**", (route) => { swapped++; return mode === "wide" ? route.fulfill({ contentType: "font/woff2", body: R5_WIDE }) : route.fulfill({ status: 404, body: "" }); });
+          await page.addInitScript(() => { delete Navigator.prototype.serviceWorker; }); // sw.js を通る取得は page.route に掛からない（clients.claim の後のフォントが読めてしまう）ので登録させない
+        }
+        // 文字の拡大の模擬: mobile の Chromium は text-size-adjust の % を px の字にも掛ける（端末の文字の大きさの設定と同じ掛け算）。<html> ができた時点で掛ける（js が測る前）
+        if (mode === "zoom") await page.addInitScript(() => { const set = () => document.documentElement?.style.setProperty("-webkit-text-size-adjust", "130%"); if (document.documentElement) set(); else new MutationObserver((_, o) => { if (document.documentElement) { set(); o.disconnect(); } }).observe(document, { childList: true }); });
+        // networkidle は待たない（来ないことがある）。各頁のフォントの終わりの後、ヘッダーの右端（ログイン／アバター／設定）が出るまで待つ（ログインの状態が決まった後）
+        await openFrames(page, N1_PAGES, 1200, 800, false);
+        await page.waitForFunction(() => [...document.querySelectorAll("iframe")].every((f) => [...f.contentDocument.querySelectorAll("#loginToggle, #avatarButton, .site-header .account__link")].some((el) => el.getClientRects().length > 0)));
+        await page.waitForTimeout(150);
+        const rows = await page.evaluate(headerBoxes, { widths: R5_WIDTHS, settle: true });
+        rowsN += rows.length;
+        for (const r of rows) {
+          const battle = r.p === "/battle.html";
+          if (r.fit) tightN++;
+          if (r.trunc.length) truncN++;
+          const fold = (r.fit ?? "").split(" ");
+          const wantLinks = ["書斎", "学習データ", "単語帳", ...(battle || (r.w >= 400 && !fold.includes("battle")) ? ["バトル"] : [])].join();
+          const streakOff = !days || fold.includes("streak") || (battle && (r.w < 400 || fold.includes("battle")));
+          const streakOk = streakOff ? r.streak === null : r.streak?.replace(/日$/, "") === String(days);
+          const looks = mode === "zoom" ? parseFloat(r.fs) >= 16.8 : mode === "nofont" ? !r.webfont : r.webfont; // 13px／14px の 1.3 倍 = 16.9／18.2px。フォントなしは明朝・SD Num の面が 1 つも読めていない（wide は差し替えた中身が読めている）
+          if (r.vw !== r.w || r.overlap.length || r.out.length || r.broken.length || r.h !== (r.p === "/index.html" ? 56 : 57) || r.small.length || r.ring.length || r.links.join() !== wantLinks || !streakOk || r.native !== app || !looks) bad.push(JSON.stringify({ days, ...r }));
+        }
+        errors.push(...page.errors);
+        await page.close();
+      }
+      check(`PR #170 のレビュー 5: ${modeName}（${form}）でもヘッダーの部品は重ならない（連続 ${R5_DAYS.join("／")} 日 × ${N1_PAGES.length} ページ × 320〜449 の各幅＋450〜1200 の 8 幅。箱が重ならない・画面の内・字は 1 行・高さ 56／57・タブの当たり判定・焦点の輪はナビの内・書斎／学習データ／単語帳は出る・連続日数は畳んだ形でだけ消える）`,
+        rowsN === R5_DAYS.length * N1_PAGES.length * R5_WIDTHS.length && bad.length === 0 && errors.length === 0 && (mode === "zoom" || swapped > 0), JSON.stringify({ rows: rowsN, n: bad.length, fit: tightN, trunc: truncN, swapped, bad: bad.slice(0, 3), errors: errors.slice(0, 1) }));
     }
   }
 
@@ -6250,6 +6423,13 @@ console.log("study (finish):");
     check(`PR #168 の 4: 初回の判定は <head> の 1 行（最初の stylesheet より前・</main> の後に無い）が html[data-first-visit] を置き CSS が #main を隠し #welcome を出す。head の 1 行と shouldShowWelcome の答えは ${cases.length} 通り（鍵の値 ${STORES.length} × URL ${URLS.length}）で表と同じ。食い違ったら renderWelcome が机に戻して印を外す`,
       placed && rows.srcLen > 0 && rows.out.length === cases.length && bad.length === 0 && fbr.css.welcome && !fbr.css.main && fbr.css.isOpen && !fbr.shown && !fbr.welcome && fbr.main && !fbr.open && !fbr.attr && !fbr.isOpen,
       JSON.stringify({ placed, iScript, iCss, srcLen: rows.srcLen, n: bad.length, bad: bad.slice(0, 6), fbr }));
+    // PR #170 のレビュー 8: js/welcome.js は語の記録の鍵と生の読み方を写さない（js/storage.js の STORAGE_KEY と hasWordRecords を使う）。
+    // 写しは head の 1 行だけ（CSP と速さのため。上の 144 通りで同じ答えを守る）
+    const welcomeSrc = fs.readFileSync(path.join(ROOT, "js/welcome.js"), "utf8").replace(/\/\/.*$/gm, "");
+    const storageSrc = fs.readFileSync(path.join(ROOT, "js/storage.js"), "utf8");
+    check("PR #170 の 8: js/welcome.js は 'spelldash_word_stats' の鍵と JSON.parse の読み方を持たず、js/storage.js の hasWordRecords を使う（storage.js が鍵 STORAGE_KEY と関数を export）",
+      !welcomeSrc.includes("spelldash_word_stats") && !/JSON\.parse/.test(welcomeSrc) && /import \{[^}]*\bhasWordRecords\b[^}]*\} from "\.\/storage\.js"/.test(welcomeSrc) && /hasWordRecords\(\)/.test(welcomeSrc) &&
+      /export const STORAGE_KEY = "spelldash_word_stats"/.test(storageSrc) && /export function hasWordRecords\(\)/.test(storageSrc));
   }
 
   // PR #168 のレビュー 8: 初回の積んだ本は index.html に静的に置く（直す前は空の #welcomeStack に js が積み、空きの高さ 187・216px を WELCOME_PILE の --hh から手で数えていた。
@@ -9494,6 +9674,64 @@ console.log("genre list:");
   ]) runs[label] = await loadCls("/list.html", opts);
   check("単語帳（Batch 67 C1）: 読み込みの CLS < 0.05（1200×900・390×844 mobile・学習記録あり（棚は畳む）／なし（棚が開く）・昼夜・全応答 80ms 遅延と遅延なし）・エラー 0",
     Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
+
+  // PR #170 のレビュー 6: revealPendingPage（js/footer.js）は描き終えた単語帳・学習データ・加入画面を、Web フォントが届くまで最大 1 秒透明にしていた。
+  // 3 ページの LCP は帯のヘッダーか題（透明にしない所）で出す時刻に動かないが、字だけが遅いと中身が 1 秒見えない。待つのは長くても FONT_WAIT_MS（300ms）。
+  // 縮めると字が後から届くことが増えるので、差し替えで動く所を直した: 単語帳の分野パックの見出しの行（320 で代わりの字では数が次の行・明朝で 1 行に戻り、
+  // 下の一覧が 23px 上がった。CLS 0.10）。測り方: 字（woff2）だけ 1.5 秒遅らせ、描き終えて字を待ち始めてから（offsetHeight の直後に印）出すまで・CLS
+  {
+    const footerSrc = fs.readFileSync(path.join(ROOT, "js/footer.js"), "utf8");
+    const marked = footerSrc.replace("void document.body.offsetHeight;", (m) => `${m} window.__waitFrom ??= Math.round(performance.now());`);
+    const fontSlow = async (url, size, storage) => {
+      const page = await newPage({ mobile: size.width < 500, viewport: size, storage });
+      await page.addInitScript(() => {
+        window.__cls = 0;
+        window.__rv = null;
+        new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });
+        document.addEventListener("DOMContentLoaded", () => {
+          document.fonts.ready.then(() => { window.__fonts = Math.round(performance.now()); });
+          new MutationObserver(() => { if (!window.__rv && !document.body.hasAttribute("data-pending")) window.__rv = Math.round(performance.now()); }).observe(document.body, { attributes: true, attributeFilter: ["data-pending"] });
+        });
+      });
+      await page.route("**/js/footer.js", (route) => route.fulfill({ contentType: "text/javascript", body: marked }));
+      await page.route("**/*.woff2", async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.fallback(); });
+      await page.goto(BASE + url, { waitUntil: "load" });
+      await page.waitForTimeout(2800);
+      const r = await page.evaluate(() => ({ from: window.__waitFrom ?? null, rv: window.__rv, fonts: window.__fonts ?? null, cls: Math.round(window.__cls * 10000) / 10000 }));
+      r.wait = r.rv !== null && r.from !== null ? r.rv - r.from : null;
+      r.errors = page.errors.slice(0, 1);
+      await page.close();
+      return r;
+    };
+    const slow = {};
+    for (const [url, storage] of [["/list.html", clsRecords()], ["/stats.html", clsRecords()], ["/pro.html", {}]]) {
+      for (const size of [{ width: 1200, height: 900 }, { width: 390, height: 844 }]) slow[`${url} ${size.width}`] = await fontSlow(url, size, storage);
+    }
+    check("PR #170 の 6: 字（woff2）だけが 1.5 秒遅くても、単語帳・学習データ・加入画面は描き終えてから 450ms 以内に出す（字を待つのは長くても 300ms。前は 1,000ms）・エラー 0（1200／390）",
+      Object.values(slow).every((r) => r.wait !== null && r.wait <= 450 && r.fonts > r.rv && r.errors.length === 0), JSON.stringify(slow));
+    const narrow = {};
+    for (const [label, storage] of [["記録あり（棚は畳む）", clsRecords()], ["記録なし（棚が開く）", {}]]) narrow[label] = await fontSlow("/list.html", { width: 320, height: 700 }, storage);
+    // 字が揃ったあとの数の行: 320／390 で題と同じ 1 行・省かずに全部見える
+    const fit = {};
+    for (const w of [320, 390]) {
+      const page = await newPage({ mobile: true, viewport: { width: w, height: 800 }, storage: clsRecords() });
+      await page.goto(BASE + "/list.html", { waitUntil: "networkidle" });
+      await page.evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(200);
+      fit[w] = await page.evaluate(() => {
+        const c = document.getElementById("packsCount"), t = document.querySelector("#packsFold .packs__title");
+        const a = c.getBoundingClientRect(), b = t.getBoundingClientRect();
+        return { text: c.textContent, sameLine: Math.abs(a.top - b.top) < b.height, full: c.scrollWidth <= c.clientWidth + 1 };
+      });
+      await page.close();
+    }
+    // PR #170 のレビュー 7: 単語帳・学習データは then の最後と .finally の両方で呼んでいた（2 回目は何もしないが紛らわしい）。.finally の 1 か所だけ
+    const once = Object.fromEntries(["js/listView.js", "js/statsView.js"].map((f) => { const src = fs.readFileSync(path.join(ROOT, f), "utf8"); return [f, { calls: (src.match(/revealPendingPage\(/g) ?? []).length, fin: (src.match(/\.finally\(revealPendingPage\)/g) ?? []).length }]; }));
+    check("PR #170 の 7: 単語帳・学習データは読み込みの間を .finally(revealPendingPage) の 1 か所で終える（then の最後でも呼ばない）",
+      Object.values(once).every((o) => o.calls === 0 && o.fin === 1), JSON.stringify(once));
+    check("PR #170 の 6: 単語帳 320 で字が後から届いても下が動かない（分野パックの見出しの行は題と数が 1 行のまま。CLS < 0.05・記録あり／なし）。字が揃うと数は省かずに見える（320／390）",
+      Object.values(narrow).every((r) => r.cls < 0.05 && r.errors.length === 0) && Object.values(fit).every((f) => f.sameLine && f.full && /パック/.test(f.text)), JSON.stringify({ narrow, fit }));
+  }
 }
 
 // ===== 9.99 Batch 5a: マイ場面カード／まとめて追加／記憶ゲージ／救済／今月／制覇／ログイン案内 =====
@@ -13879,8 +14117,9 @@ console.log("pro:");
   }
 
   // 2g. 初めての方は 1 か月無料（STRIPE_TRIAL_MONTHS=1）: 未ログイン・初めての人・以前に加入した人で文を分ける
-  {
-    await fetch(BASE + "/__billing/trial?months=1", { method: "POST" });
+  // 偽のサーバーの無料期間は途中で落ちても必ず戻す（PR #170 のレビュー 4）
+  await fetch(BASE + "/__billing/trial?months=1", { method: "POST" });
+  try {
     const guest = await newPage();
     await guest.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
     await waitUntil(async () => (await text(guest, "#proPrice")).includes("¥580"), 5000);
@@ -13902,6 +14141,7 @@ console.log("pro:");
     check("無料期間: 以前に加入した人のボタンは「月額 ¥580 で始める」（無料と言わない）", (await text(again, "#proCheckoutMonth")) === "月額 ¥580 で始める" && !(await text(again, "#proPrice")).includes("無料"), `${await text(again, "#proCheckoutMonth")} / ${await text(again, "#proPrice")}`);
     check("無料期間: 以前に加入した人には「今回は加入した日に…請求」", (await text(again, ".pro-terms")).includes("以前に加入したことがあるので"), await text(again, ".pro-terms"));
     await again.close();
+  } finally {
     await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
   }
 
@@ -14263,19 +14503,116 @@ console.log("pro:");
     const first = await reserveRun({ width: 1200, height: 900 }, false, {});
     check("Pro（Batch 67 反証）: config が遅い間は料金の 1 行の場所を空け（字は見せない）、届いたら同じ高さで本当の 1 行が入る（1200・初めて開いた）", first.ok, JSON.stringify(first));
     // 無料期間ありの config（最初の 1 か月無料）を前に取って覚えた人: 480 では 1 行が 2 行になる（覚えた形が無いと 1 行ぶん足りず 0.02 動く）
+    // 偽のサーバーの無料期間は途中で落ちても必ず戻す（PR #170 のレビュー 4: 戻さないと後の節の料金の文が変わる）
+    let remembered = null, shaped = null;
     await fetch(BASE + "/__billing/trial?months=1", { method: "POST" });
-    const seen = await newPage({ mobile: true, viewport: { width: 480, height: 844 } });
-    await seen.goto(BASE + "/pro.html", { waitUntil: "load" });
-    await waitUntil(async () => (await seen.evaluate(() => !document.getElementById("proPrice").hidden)), 5000);
-    const remembered = await seen.evaluate(() => localStorage.getItem("spelldash_billing_open"));
-    await seen.close();
-    const shaped = await reserveRun({ width: 480, height: 844 }, true, { spelldash_billing_open: remembered });
-    await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
+    try {
+      const seen = await newPage({ mobile: true, viewport: { width: 480, height: 844 } });
+      await seen.goto(BASE + "/pro.html", { waitUntil: "load" });
+      await waitUntil(async () => (await seen.evaluate(() => !document.getElementById("proPrice").hidden)), 5000);
+      remembered = await seen.evaluate(() => localStorage.getItem("spelldash_billing_open"));
+      await seen.close();
+      shaped = await reserveRun({ width: 480, height: 844 }, true, { spelldash_billing_open: remembered });
+    } finally {
+      await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
+    }
     let price = null;
     try { price = JSON.parse(remembered).price; } catch {}
     check("Pro（Batch 67 反証）: 取れた config の形（月額・年額・無料期間）を覚え、次に config が遅いときはその形で 1 行の場所を空ける（480・無料期間ありで 2 行）",
       JSON.stringify(price) === JSON.stringify({ month: 580, year: 4800, trialMonths: 1, trialDays: 0 }) && shaped.ok && shaped.after.text.includes("1か月無料") && shaped.after.h > first.after.h,
       JSON.stringify({ remembered, shaped }));
+  }
+
+  // PR #170 のレビュー 2: 料金の 1 行の予約（config が遅いとき 1.2 秒で出す）は、その時点の trialEligible() で無料期間の文を入れるかを決めていた。ログインや Pro の状態が
+  // まだ分からないと高さが食い違う: (例 1) spelldash_plan のキャッシュが無いログイン中の人で、Pro の状態の問い合わせが 1.2 秒より遅い → 文なしで予約し、届くと文つき
+  // （480 で 1→2 行。下が動く）。(例 2) getSession の待ちの間は「未ログイン＝無料期間あり」で予約し、前に加入していた人は短くなる（2→1 行）。
+  // 直し: ログインと無料期間が付くかが分かるまで（長くても js/proView.js PENDING_HARD_MS）待ってから出す。待ちきれずに出すときは無料期間の文を入れうる最大の形で取り、後で縮めない。
+  // 測り方: 出した瞬間（body[data-pending] が外れたとき）と load の 3.2 秒後で、料金の 1 行の高さと比較表の位置が同じ・CLS < 0.05。config は 2.5 秒遅らせ、
+  // 前に取れた config の形（spelldash_billing_open）は今の config と同じ。4 つの組（Pro の状態のキャッシュあり／なし〔なしは問い合わせが 1.8 秒〕× 無料期間あり／なし）
+  // × 390／480／1200 ＋ 例 2（getSession 1.7 秒・以前に加入した人・無料期間あり）× 3 幅。遅れは tests/mocks/supabase-stub.js の spelldash_test_delay。
+  // 1 枚ずつ開く（並べて開くと読み込みが遅れ、1.2 秒の時点の状態が変わる）
+  {
+    const proLoad = async (size, storage, { config = 2500, wait = 3200, waitConfig = false } = {}) => {
+      const page = await newPage({ mobile: !!size.mobile, viewport: { width: size.width ?? 1200, height: size.height ?? 900 }, storage });
+      await page.addInitScript(() => {
+        window.__cls = 0;
+        window.__rv = null;
+        // js/proView.js の PENDING_MAX_MS（1.2 秒で出す）の setTimeout を作った時刻。出した時刻をこれと比べる（ナビゲーションからの絶対値は負荷で揺れる）
+        window.__t1200 = null;
+        const st = window.setTimeout;
+        window.setTimeout = function (fn, ms, ...a) { if (ms === 1200 && window.__t1200 === null) window.__t1200 = Math.round(performance.now()); return st.call(this, fn, ms, ...a); };
+        new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });
+        window.__snap = () => {
+          const p = document.getElementById("proPrice"), c = document.getElementById("proCompareSection");
+          return { t: Math.round(performance.now()), y: c && !c.hidden ? Math.round(c.getBoundingClientRect().y) : null, h: p && !p.hidden ? Math.round(p.getBoundingClientRect().height) : 0 };
+        };
+        // body[data-pending] が外れた時。文書の始めから見る（支払いの反映待ちは getSession とスタブの契約の読みがマイクロタスクで済み、DOMContentLoaded より前に出すことがある。
+        // DOMContentLoaded で付けていたときは、そのとき rv が null のままになり 3 の検査が揺れた: PR #170 の反証）
+        new MutationObserver(() => { if (!window.__rv && document.body && !document.body.hasAttribute("data-pending")) window.__rv = window.__snap(); }).observe(document, { subtree: true, attributes: true, attributeFilter: ["data-pending"] });
+      });
+      await page.route("**/api/billing/config", async (route) => { await new Promise((r) => setTimeout(r, config)); await route.fallback(); });
+      await page.goto(BASE + "/pro.html", { waitUntil: "load" });
+      await page.waitForTimeout(wait);
+      // config の応答が届くまで待つ（届いた時刻〔resource timing の responseEnd〕と出した時刻を比べる・届いた後の形を end で見る）
+      if (waitConfig) await waitUntil(() => page.evaluate(() => performance.getEntriesByType("resource").some((e) => e.name.includes("/api/billing/config"))), 5000);
+      if (waitConfig) await page.waitForTimeout(300);
+      const r = await page.evaluate(() => ({ cls: Math.round(window.__cls * 10000) / 10000, rv: window.__rv, end: window.__snap(), price: document.getElementById("proPrice").textContent, plans: document.getElementById("proPlans").textContent.trim().slice(0, 30),
+        t1200: window.__t1200, dcl: Math.round(performance.getEntriesByType("navigation")[0]?.domContentLoadedEventStart ?? -1), cfg: Math.round(performance.getEntriesByType("resource").find((e) => e.name.includes("/api/billing/config"))?.responseEnd ?? -1) }));
+      r.errors = page.errors.slice(0, 1);
+      await page.close();
+      return r;
+    };
+    const fresh = () => createCloud({}).id; // 1 回ごとに空のクラウド（使い回すと前の回が送った記録を取り込み、題の下に「記録を同期した。」が後から入って比較表が下がる。この検査の外の動き）
+    const shapeOf = (trial) => JSON.stringify({ open: true, at: Date.now(), price: { month: 580, year: 4800, trialMonths: trial, trialDays: 0 } });
+    const planNone = JSON.stringify({ user: "test-user", status: "none", interval: null, periodEnd: null, cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() });
+    const sizes = [["390", { width: 390, height: 844, mobile: true }], ["480", { width: 480, height: 844, mobile: true }], ["1200", {}]];
+    const runs = {};
+    try {
+      for (const trial of [1, 0]) {
+        await fetch(BASE + `/__billing/trial?months=${trial}`, { method: "POST" });
+        for (const cache of ["あり", "なし"]) {
+          const storage = () => ({ spelldash_test_session: "1", spelldash_test_cloud: fresh(), spelldash_billing_open: shapeOf(trial), ...(cache === "あり" ? { spelldash_plan: planNone } : { spelldash_test_delay: JSON.stringify({ plan: 1800 }) }) });
+          for (const [w, size] of sizes) runs[`無料期間${trial ? "あり" : "なし"}・キャッシュ${cache}・${w}`] = await proLoad(size, storage());
+        }
+      }
+      await fetch(BASE + "/__billing/trial?months=1", { method: "POST" });
+      // クラウドは付ける（無いと同期が失敗し、題の下の #authMessage に「記録を取り込めなかった」が後から入る）
+      const again = () => ({ ...proStorage({ status: "canceled", current_period_end: isoDaysFromNow(-40) }), spelldash_test_cloud: fresh(), spelldash_billing_open: shapeOf(1), spelldash_test_delay: JSON.stringify({ session: 1700 }) });
+      for (const [w, size] of sizes) runs[`例 2 以前に加入・getSession 1.7 秒・${w}`] = await proLoad(size, again());
+    } finally {
+      await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
+    }
+    const bad = Object.entries(runs).filter(([, r]) => !(r.rv && r.rv.h > 0 && r.rv.h === r.end.h && r.rv.y === r.end.y && r.cls < 0.05 && r.errors.length === 0));
+    check(`PR #170 の 2: config が遅い加入画面は、ログインと無料期間が付くかが分かってから出す。出した瞬間と後で料金の 1 行の高さ・比較表の位置が同じで CLS < 0.05（Pro の状態のキャッシュあり／なし × 無料期間あり／なし × 390／480／1200・getSession が遅い以前に加入した人 × 3 幅の ${Object.keys(runs).length} 通り）`,
+      Object.keys(runs).length === 15 && bad.length === 0, JSON.stringify(Object.fromEntries(bad.slice(0, 6))));
+    const fin = (k) => runs[k]?.price ?? "";
+    check("PR #170 の 2: 文は確定した人のもの（無料期間ありで一度も契約が無い人は「初めての方は最初の1か月無料」、以前に加入した人は無料期間の文なし）",
+      fin("無料期間あり・キャッシュなし・480").includes("1か月無料") && fin("無料期間あり・キャッシュあり・480").includes("1か月無料") && !fin("例 2 以前に加入・getSession 1.7 秒・480").includes("無料") && fin("例 2 以前に加入・getSession 1.7 秒・480").includes("¥580"),
+      JSON.stringify(Object.fromEntries(Object.entries(runs).map(([k, r]) => [k, r.price]))));
+
+    // 待ちきれない（Pro の状態の問い合わせが 3.5 秒）: PENDING_HARD_MS で最大の形（無料期間の文つき）で出し、確定して文が短くなっても縮めない（以前に加入した人）
+    const slowPlan = { ...proStorage({ status: "canceled", current_period_end: isoDaysFromNow(-40) }), spelldash_test_cloud: fresh(), spelldash_billing_open: shapeOf(1), spelldash_test_delay: JSON.stringify({ plan: 3500 }) };
+    delete slowPlan.spelldash_plan;
+    let hard = null;
+    await fetch(BASE + "/__billing/trial?months=1", { method: "POST" });
+    try {
+      hard = await proLoad({ width: 480, height: 844, mobile: true }, slowPlan, { wait: 4600 });
+    } finally {
+      await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
+    }
+    check("PR #170 の 2: Pro の状態が 3.5 秒かかっても 4 秒の保険より前に出し（料金の 1 行は最大の形）、確定して文が短くなっても高さは縮めない（比較表は動かない・CLS < 0.05。480）",
+      !!hard.rv && hard.rv.t < 3800 && hard.rv.h === 48 && hard.end.h === 48 && hard.rv.y === hard.end.y && !hard.price.includes("無料") && hard.cls < 0.05 && hard.errors.length === 0, JSON.stringify(hard));
+
+    // PR #170 のレビュー 3: 支払い済みで webhook の前（freshPaidPending）の加入画面は料金の 1 行を出さない（「反映を待っている」）。config を待たずに出す
+    // （直す前は config を待って透明のまま。config が遅いと 1.2 秒まで透明）
+    // 出した時刻は、ナビゲーションからの絶対値でなく、1.2 秒の打ち切り（setTimeout を作った時刻 + 1.1 秒より前）・DOMContentLoaded から 600ms 未満・config の応答
+    // （resource timing の responseEnd）より前で見る（PR #170 の反証: 絶対値の 600ms は負荷で揺れた。直す前の木は 1.2 秒の打ち切りで出すので、打ち切りと DOMContentLoaded の 2 つで落ちる）
+    const day = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const paid = {};
+    for (const [w, size] of sizes) paid[w] = await proLoad(size, { spelldash_test_session: "1", spelldash_test_cloud: fresh(), spelldash_funnel_paid: JSON.stringify({ day, user: "test-user" }) }, { wait: 2000, waitConfig: true });
+    const early = (r) => !!r.rv && r.t1200 !== null && r.rv.t < r.t1200 + 1100 && r.dcl > 0 && r.rv.t - r.dcl < 600 && r.cfg > 0 && r.rv.t < r.cfg;
+    check("PR #170 の 3: 支払いの反映待ち（freshPaidPending）の加入画面は config が 2.5 秒遅くても待たずに出す（1.2 秒の打ち切りより前・DOMContentLoaded から 600ms 未満・config の応答より前・料金の 1 行なし・「反映を待っている」・CLS < 0.05。390／480／1200）",
+      Object.values(paid).every((r) => early(r) && r.rv.h === 0 && r.end.h === 0 && r.plans.startsWith("手続きは完了。反映を待っている") && r.cls < 0.05 && r.errors.length === 0), JSON.stringify(paid));
   }
 }
 

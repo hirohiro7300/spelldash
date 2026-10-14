@@ -25,13 +25,11 @@
     border: 0;
   }
 
+  /* ナビは残りの幅を取る。リンクは縮めてよい（前は flex-shrink: 0 で、入らないとリンクがほかの部品の下にはみ出した）: はみ出しを切る・字の省略・
+     入らないときの形は css/brand.css のヘッダーの節と js/headerFit.js（PR #170 のレビュー 5） */
   .site-nav {
     flex: 1;
     min-width: 0;
-  }
-
-  .site-nav__link {
-    flex-shrink: 0;
   }
 
   .account .btn {
