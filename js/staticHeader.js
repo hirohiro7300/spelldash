@@ -1,4 +1,5 @@
 import { icon } from "./icons.js";
+import { watchHeaderFit } from "./headerFit.js";
 
 // ===== 静的ページ（news／privacy／terms／tokushoho／packs）のヘッダー右端 =====
 // アプリと同じ並び（連続日数チップ＋ログイン／設定）にする。Supabase は読み込まない
@@ -72,6 +73,7 @@ export function renderStaticAccountLink() {
 export function initStaticHeader() {
   renderStaticHeaderStreak();
   renderStaticAccountLink();
+  watchHeaderFit(); // 1 行に入らなければ細い形に（アプリの頁の js/headerStreak.js と同じ）
 }
 
 initStaticHeader();

@@ -1,7 +1,15 @@
-const STORAGE_KEY = "spelldash_word_stats";
-// 読めなかった語の記録（壊れた JSON・表でない値）の写し。上書きする前に 1 つだけ残す（端末だけ: 同期しない・読み手は無い。
-// バックアップには入る＝端末を替えても持ち出せる。別のアカウントでログインしたときは前の持ち主の記録として消す。js/backup.js）
+// 語の記録の保存の鍵。index.html の <head> の 1 行（初回の判定）は CSP と速さのため写しを持つ（下の hasWordRecords と同じ読み方。E2E 8.8 が突き合わせる）
+export const STORAGE_KEY = "spelldash_word_stats";
+// 読めなかった語の記録（壊れた JSON・表でない値）の写し。上書きする前に 1 つだけ残す（端末だけ: 同期しない・読み手は無い。PR #170 のレビュー 1）。
+// 形は包み {"at": 退避した日時, "size": 元の字数, "head": 元の値（の頭）, "cut": 切ったら true}（at を先頭に置く: 読み込みのときに頭だけ見る）。
+//   - 30 日（CORRUPT_KEEP_MS）たったら読み込みのときに消す（読む所が無いので、端末の保存の上限〔Chromium は鍵と値の合計 5,242,880 字〕を食い続けない）
+//   - 包みは CORRUPT_MAX 字まで。超える値は頭と元の字数だけ残す（2M 字の表が壊れても写しは 512K 字）
+//   - word_stats を書くときに上限の誤りが出たら、まず退避を消して 1 回だけ書き直す（flushWordStats。答えの記録が写しより先）
+// バックアップには上限つきのまま入れる（端末を替える・送って見てもらうときに持ち出せる唯一の口。増えても 512K 字。復元すると at もそのままなので同じ日に消える）。
+// 別のアカウントでログインしたときは前の持ち主の記録として消す（js/backup.js）
 const CORRUPT_KEY = "spelldash_word_stats_corrupt";
+const CORRUPT_KEEP_MS = 30 * 86400000;
+const CORRUPT_MAX = 512 * 1024;
 const BEST_SCORE_KEY = "spelldash_best_score";
 const TYPING_KEY = "spelldash_typing_stats";
 const SCHEMA_VERSION_KEY = "spelldash_schema_version";
@@ -95,6 +103,19 @@ function migrateStorage() {
   localStorage.setItem(SCHEMA_VERSION_KEY, String(version));
 }
 
+// 語の記録があるか（初回の判定。js/welcome.js shouldShowWelcome）。index.html の <head> の 1 行（id="firstVisit"。CSP と速さのため写しを持つ）と
+// 同じ読み方: 保存の文字列を JSON として読み、鍵が 1 つ以上なら true。無い・""・"{}"・"null"・"[]" は false。読めない値（壊れた JSON）は true
+// （初回と見ない。1 行は catch で何もしない）。getWordStats は使わない（壊れた値を退避して空の表として返す。Batch 67 C3）。
+// 1 行と答えが同じことは E2E 8.8 の 144 通りの突き合わせで守る（読み方を変えるときは 1 行も変える）
+export function hasWordRecords() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return Object.keys((raw && JSON.parse(raw)) || {}).length > 0;
+  } catch {
+    return true;
+  }
+}
+
 // 保存の文字列を表にする。空・null は空の表。壊れた JSON と表でない値（配列・数・文字列）は、退避の鍵に写してから空の表として読む
 // （止めない: 書斎・出題・学習データ・単語帳が使える。黙って捨てない: 最初の書き込みで上書きされる前に写しが残る）
 function readStats(raw) {
@@ -111,14 +132,16 @@ function readStats(raw) {
 }
 
 function keepCorrupt(raw) {
+  let text;
   try {
-    if (localStorage.getItem(CORRUPT_KEY) === raw) return;
-    localStorage.setItem(CORRUPT_KEY, raw);
+    if (sameCorrupt(localStorage.getItem(CORRUPT_KEY), raw)) return; // 同じ壊れた値を読み直した: 退避した日時を変えない
+    text = corruptEnvelope(raw, new Date().toISOString());
+    localStorage.setItem(CORRUPT_KEY, text);
   } catch (error) {
-    // 容量で写せない: 元の鍵を退避の鍵へ移す（消してから書くので同じ大きさで足りる）。それも書けなければ元に戻して知らせる
+    // 容量で写せない: 元の鍵を退避の鍵へ移す（消してから書く。包みは 512K 字までなので大きい表ほど空きが増える）。それも書けなければ元に戻して知らせる
     try {
       localStorage.removeItem(STORAGE_KEY);
-      localStorage.setItem(CORRUPT_KEY, raw);
+      localStorage.setItem(CORRUPT_KEY, text ?? corruptEnvelope(raw, new Date().toISOString()));
     } catch {
       try { localStorage.setItem(STORAGE_KEY, raw); } catch {}
     }
@@ -126,6 +149,72 @@ function keepCorrupt(raw) {
   }
 }
 
+// 退避の包みの文字列（CORRUPT_MAX 字まで）。収まらなければ元の値の頭だけにして cut を付ける（JSON の escape で伸びる分も含めて量る）
+function corruptEnvelope(raw, at) {
+  if (raw.length < CORRUPT_MAX) {
+    const whole = JSON.stringify({ at, size: raw.length, head: raw });
+    if (whole.length <= CORRUPT_MAX) return whole;
+  }
+  let n = Math.min(raw.length, CORRUPT_MAX);
+  for (let i = 0; i < 8 && n > 0; i++) {
+    const text = JSON.stringify({ at, size: raw.length, head: raw.slice(0, n), cut: true });
+    if (text.length <= CORRUPT_MAX) return text;
+    n = Math.floor((n * CORRUPT_MAX) / text.length) - 64; // escape の割合で縮める（2〜3 回で収まる）
+  }
+  return JSON.stringify({ at, size: raw.length, head: "", cut: true });
+}
+
+// 退避の文字列から包みを読む。包みでない（Batch 67 の形＝元の値そのまま・読めない）なら null
+function readCorrupt(text) {
+  if (typeof text !== "string" || !text.startsWith('{"at":"')) return null;
+  try {
+    const value = JSON.parse(text);
+    return typeof value?.at === "string" && typeof value.head === "string" && Number.isFinite(value.size) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function sameCorrupt(text, raw) {
+  const kept = readCorrupt(text);
+  return Boolean(kept) && kept.size === raw.length && (kept.cut ? raw.startsWith(kept.head) : kept.head === raw);
+}
+
+// 読み込みのとき: 30 日たった退避を消す。Batch 67 の形（日時が無い・大きさの上限が無い）は今の日時で包み直す（上限で切る）。
+// 日時は文字列の頭だけで読む（包みは 512K 字まであり、毎回の読み込みで parse しない）
+function expireCorrupt() {
+  try {
+    const text = localStorage.getItem(CORRUPT_KEY);
+    if (text === null) return;
+    const at = /^\{"at":"([^"]{1,40})"/.exec(text);
+    if (!at) {
+      localStorage.setItem(CORRUPT_KEY, corruptEnvelope(text, new Date().toISOString()));
+      return;
+    }
+    const age = Date.now() - Date.parse(at[1]);
+    if (!(age < CORRUPT_KEEP_MS && age > -CORRUPT_KEEP_MS)) localStorage.removeItem(CORRUPT_KEY); // 読めない日時・先の日時も消す
+  } catch {
+    // 包み直せない（容量）: 写しは捨てる（読む所は無い。語の記録の書き込みを優先する）
+    try { localStorage.removeItem(CORRUPT_KEY); } catch {}
+  }
+}
+
+function isQuotaError(error) {
+  return error?.name === "QuotaExceededError" || error?.name === "NS_ERROR_DOM_QUOTA_REACHED" || error?.code === 22 || error?.code === 1014;
+}
+
+// 上限で書けなかったとき: 退避があれば消す（消したら true）
+function dropCorrupt() {
+  try {
+    if (localStorage.getItem(CORRUPT_KEY) === null) return false;
+    localStorage.removeItem(CORRUPT_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+expireCorrupt();
 migrateStorage();
 
 // ===== 語の記録（spelldash_word_stats）: 読みは 1 タスク 1 回、書きは 1 タスク 1 回 =====
@@ -207,11 +296,20 @@ export function flushWordStats() {
   pending = false;
   draft = null;
   if (FREEZE) deepFreeze(memoStats);
+  let raw = null;
   try {
-    const raw = JSON.stringify(memoStats);
+    raw = JSON.stringify(memoStats);
     localStorage.setItem(STORAGE_KEY, raw);
     memoRaw = raw;
   } catch (error) {
+    // 上限: 壊れた記録の写し（読む所は無い）を消して 1 回だけ書き直す。答えの記録を写しより先にする（PR #170 のレビュー 1）
+    if (raw !== null && isQuotaError(error) && dropCorrupt()) {
+      try {
+        localStorage.setItem(STORAGE_KEY, raw);
+        memoRaw = raw;
+        return;
+      } catch {}
+    }
     memoRaw = null; // 書けなかった（容量）: 次の読みで保存の中身から作り直す
     memoStats = null;
     (globalThis.reportError ?? console.error)(error);

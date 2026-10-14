@@ -3,6 +3,7 @@ import { getTotalXp } from "./level.js";
 import { PLACEMENT_NOTE, PLACEMENT_MINUTES } from "./course.js";
 import { renderHasumiHome } from "./hasumi.js"; // 紙片の文は body.welcome-open を見る: 畳んだら描き直す
 import { esc, numHtml } from "./html.js";
+import { hasWordRecords } from "./storage.js";
 
 // ===== 初めて来た人向けのトップページ（書斎の机に置いた最初の本） =====
 //
@@ -12,7 +13,6 @@ import { esc, numHtml } from "./html.js";
 // 戻ってきた人・深いリンク（?set= ?words= ?t= #play など）で来た人には出さない。
 
 const ONBOARDED_KEY = "spelldash_onboarded";
-const STATS_KEY = "spelldash_word_stats";
 
 const DEMO_WORDS = [
   { ja: "りんご", en: "apple" },
@@ -41,13 +41,8 @@ export function markOnboarded() {
 export function shouldShowWelcome() {
   if (localStorage.getItem(ONBOARDED_KEY)) return false;
   if (getTotalXp() > 0) return false;
-  // 語の記録は保存の文字列を 1 行と同じ読み方で見る（js/storage.js の getWordStats は壊れた値を退避して空の表として返すので使わない。Batch 67 C3）
-  try {
-    const raw = localStorage.getItem(STATS_KEY);
-    if (Object.keys((raw && JSON.parse(raw)) || {}).length > 0) return false;
-  } catch {
-    return false;
-  }
+  // 語の記録は保存の文字列を 1 行と同じ読み方で見る（js/storage.js hasWordRecords。鍵と読み方は storage.js が持つ）
+  if (hasWordRecords()) return false;
   // アプリ内への深いリンク（?set= ?words= ?t= など）で来た人には出さない。それ以外のパラメータ（計測用等）では出す
   const params = new URLSearchParams(location.search);
   if (["set", "words", "t", "weekly", "category", "genre", "mode"].some((k) => params.has(k))) return false;

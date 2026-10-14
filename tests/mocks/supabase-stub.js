@@ -37,6 +37,19 @@ function fakeSession() {
   return { access_token: token, user: { id: "test-user", email: "test@example.com" } };
 }
 
+// 読み込みの遅れの模擬（加入画面の読み込みの検査。PR #170 のレビュー 2）: localStorage の spelldash_test_delay = {"session": ms, "plan": ms} があれば、
+// getSession（session）と subscriptions の読み（plan）を、ページを開いてから ms たつまで返さない（同じページの何度目の呼び出しも同じ時刻に返る。
+// 本物ではトークンの更新・Pro の状態の問い合わせが遅いとき）。無ければ待たない（今までと同じ順で返す）
+function testDelay(kind) {
+  try {
+    const ms = Number(JSON.parse(readStorage("spelldash_test_delay") || "{}")?.[kind]) || 0;
+    const left = ms - performance.now();
+    return left > 0 ? new Promise((resolve) => setTimeout(resolve, left)) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ログイン状態の変化を購読者へ流す（ログアウト → 同じタブで再ログイン の検証用）
 const listeners = [];
 function emit(event, session) {
@@ -60,7 +73,7 @@ function subscriptionsTable() {
       return null;
     }
   };
-  return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: row(), error: null }) }) }) };
+  return { select: () => ({ eq: () => ({ maybeSingle: async () => { const wait = testDelay("plan"); if (wait) await wait; return { data: row(), error: null }; } }) }) };
 }
 
 async function runCloudQuery(cloud, table, ops) {
@@ -96,7 +109,11 @@ export const checkAuthReachable = async () => true;
 
 export const supabase = {
   auth: {
-    getSession: async () => ({ data: { session: fakeSession() } }),
+    getSession: async () => {
+      const wait = testDelay("session");
+      if (wait) await wait;
+      return { data: { session: fakeSession() } };
+    },
     onAuthStateChange: (cb) => {
       listeners.push(cb);
       return {

@@ -1,5 +1,6 @@
 import { getStreak, hasPlayedToday } from "./level.js";
 import { icon } from "./icons.js";
+import { watchHeaderFit } from "./headerFit.js";
 
 // 全ページのヘッダーに連続日数を常時表示する（線画の炎＋日数。絵文字は使わない）。
 // 「今日まだやっていない」がどのページでも目に入る＝損失回避の常時提示
@@ -27,4 +28,5 @@ export function renderHeaderStreak() {
   el.classList.toggle("header-streak--off", !done);
   el.innerHTML = `${icon("flame", { size: 14 })}<b>${streak.current}</b><span>日</span>`;
   el.setAttribute("aria-label", `連続 ${streak.current}日${done ? "" : "（今日はまだ）"}`);
+  watchHeaderFit(); // 1 行に入らなければ細い形に（字の寸法によらず測って決める。以後の変化は js/headerFit.js が見張る）
 }

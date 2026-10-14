@@ -106,8 +106,7 @@ initWordStore().then(async () => {
     }
   });
   // 読み込みの間は題より下とフッターを透明にしている（body[data-pending]。css/pages.css）。棚の開閉・カテゴリ・一覧・表示密度を描き終えてから出す
-  revealPendingPage();
-}).finally(revealPendingPage); // 語が読めなかったときも出す
+}).finally(revealPendingPage); // 語が読めなかったときも出す（描いた then と同じタスクのマイクロタスク＝描画の前に走る）
 
 window.addEventListener("spelldash:synced", render);
 window.addEventListener("spelldash:notes", render);

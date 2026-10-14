@@ -25,9 +25,14 @@ export function setFooterYear() {
 }
 
 // 読み込みの間は題より下とフッターを透明にしているページ（body[data-pending]。単語帳・学習データ・加入画面。css/pages.css。Batch 67 C1）を出す。
-// 描き終えた同じタスクで呼ぶ。描いた字の形（明朝・数字の woff2）がまだ届いていなければ待つ（差し替えで折り返しが変わると、出した後に下が動く。
-// 320 で全応答 300ms 遅延のとき 0.11）。待つのは長くても fontWait ms（届かない字のために中身を出さないことはしない。0 なら待たない）
-export function revealPendingPage({ fontWait = 1000 } = {}) {
+// 描き終えた同じタスクで呼ぶ。描いた字の形（明朝・数字の woff2）がまだ届いていなければ待つ（差し替えで折り返しが変わると、出した後に下が動く）。
+// 待つのは長くても fontWait ms（届かない字のために中身を出さないことはしない。0 なら待たない）。既定は FONT_WAIT_MS
+export const FONT_WAIT_MS = 300;
+// 300ms にした理由（PR #170 のレビュー 6。前は 1,000ms）: 3 ページの LCP は帯のヘッダーか題（透明にしない所）で、出す時刻に動かない（全応答 0／80／300ms 遅延 ×
+// 1200／390／320 で待ち 1,000・300・150・0 の差は計測の揺れの内）。全応答が遅いときは字も描き終えて 300ms 以内に届くので、待ち 300 でも 1,000 と同じく
+// 出した後の差し替えは無い（CLS 0.0003〜0.0014）。字だけが遅い（+500・+1,500ms）ときは 1,000 だと中身を最大 1 秒透明にする。待たない（0）と全応答 300ms 遅延でも
+// 差し替えが見える（単語帳 320 で 0.10 → 分野パックの見出しの行を 1 行に固定して直した。学習データ 390 で 0.009）ので 0 にはしない
+export function revealPendingPage({ fontWait = FONT_WAIT_MS } = {}) {
   if (!document.body.hasAttribute("data-pending")) return;
   const reveal = () => document.body.removeAttribute("data-pending");
   void document.body.offsetHeight; // いま描いた中身の字を組む（ここで使う字の読み込みが始まり、document.fonts.ready が待つ）

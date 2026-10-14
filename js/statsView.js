@@ -117,8 +117,7 @@ initWordStore().then(() => {
     renderOverview();
   });
   // 読み込みの間はタブより下とフッターを透明にしている（body[data-pending]。css/pages.css）。3 つのタブの中身を描き終えてから出す
-  revealPendingPage();
-}).finally(revealPendingPage); // 語が読めなかったときも出す
+}).finally(revealPendingPage); // 語が読めなかったときも出す（描いた then と同じタスクのマイクロタスク＝描画の前に走る）
 
 // Pro の状態が届いたら（ページ表示直後は未確定）、期間と修復の表示を合わせる。
 // 推移は単語ストアの初期化後にだけ描く（先に描くと growth log の今日の行を 0 で上書きし、カレンダーの濃さが狂う）
