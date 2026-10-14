@@ -13,7 +13,7 @@ import { setFooterYear } from "./footer.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { markTypingArrival, logTypingStage } from "./funnelLog.js";
 import { localDay } from "./retentionCalc.js";
-import { writeLive } from "./srLive.js";
+import { createLive } from "./srLive.js";
 import {
   touch,
   storage,
@@ -90,7 +90,6 @@ const seconds = secondsFrom(location.search);
 const limitSec = limitSecondsFrom(location.search); // ?s=N（E2E）: 文ごとの持ち時間を一律に。その回は自己ベストに書かない
 const span = `${seconds}秒`;
 const guard = createResultGuard();
-const ANNOUNCE_GAP_MS = 50; // 読み上げの行を空にしてから書くまで（同じ文を同じタスクで書き直すと読まれない環境がある）
 const reduced = (() => {
   try {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -117,30 +116,14 @@ let shownSecs = -1;
 let shownRatio = -1;
 let clockTimer = 0;
 let rafId = 0;
-let announceTimer = 0;
 
 const focusInput = () => focusOn(el.input);
 
-// 待っている「次の文」を捨てる（結果の 1 文・始まる前の空・読み込めない画面を上書きしない）
-function cancelAnnounce() {
-  clearTimeout(announceTimer);
-  announceTimer = 0;
-}
-
-// 読み上げの行に書く（js/srLive.js: ご意見の窓が開いている間は窓の中の行へ。背後は inert で #tgLive は読まれない。js/ui.js announce と同じ判定。Batch 66 R1）
-function setLive(text) {
-  cancelAnnounce();
-  if (el.live) writeLive(el.live, text);
-}
-
-// 同じ文が続けて書かれると読まれない読み上げ環境があるので、空にしてから次のタスクで書く（2 回目以降の「次の文」も読まれる）
-function announce(text) {
-  setLive("");
-  announceTimer = setTimeout(() => {
-    announceTimer = 0;
-    if (el.live) writeLive(el.live, text);
-  }, ANNOUNCE_GAP_MS);
-}
+// 読み上げ（#tgLive。js/srLive.js createLive: 行を全部空にして 50ms 後に書き、書く瞬間に行き先を選ぶ〔ご意見の窓が開いていれば窓の中の行。
+// 背後は inert で #tgLive は読まれない〕。js/ui.js announce と同じ形）。同じ文が続けて書かれると読まれない読み上げ環境があるので、空にしてから
+// 次のタスクで書く（2 回目以降の「次の文」も読まれる）。sr.say("") は空にするだけで、待っている「次の文」も捨てる。sr.cancel() は待っている文だけ捨てる
+// （読み込めない画面を上書きしない）。Batch 66 R1 → PR #168 レビューの 6・7
+const sr = createLive(el.live);
 
 // ---- 描く ----
 
@@ -275,7 +258,7 @@ function nextSentence() {
 function onFlowed() {
   if (!nextSentence()) return;
   render();
-  announce("次の文");
+  sr.say("次の文");
   syncClock();
 }
 
@@ -312,7 +295,7 @@ function toReady(c = course) {
     window.dispatchEvent(new CustomEvent("spelldash:game-start")); // 画面キーボードを出す（タッチ端末）
   }
   syncTabs();
-  setLive("");
+  sr.say("");
   el.hint.textContent = `打ち始めると、${span}を測る。文ごとに持ち時間がある。尽きると次の文へ。`;
   render();
   if (!modalOpen()) focusInput(); // ご意見の窓が開いているときは、窓の焦点を取らない
@@ -331,7 +314,7 @@ function start(now) {
 function toError() {
   phase = "error";
   syncClock();
-  cancelAnnounce();
+  sr.cancel();
   closeKeyboard();
   render();
 }
@@ -392,7 +375,7 @@ function finish() {
   renderResult(s, cmp);
   render();
   const head = `${s.got} ${s.unit}。${s.reached ? "目標に届いた" : `目標まで あと ${s.goal - s.got}${s.unit}`}。`;
-  setLive(s.total > 0 ? `${head}流れた ${s.lost}、打/分 ${s.kpm}、正確さ ${s.accuracy}%、ミス ${s.miss}。` : `${head}流れた ${s.lost}。`);
+  sr.say(s.total > 0 ? `${head}流れた ${s.lost}、打/分 ${s.kpm}、正確さ ${s.accuracy}%、ミス ${s.miss}。` : `${head}流れた ${s.lost}。`);
   if (!touch) {
     try {
       el.mainLine.focus({ preventScroll: true });
@@ -420,7 +403,7 @@ function press(key, now) {
   if (!nextSentence()) return;
   render();
   if (run.current !== before) syncClock();
-  if (r.flowed) announce("次の文");
+  if (r.flowed) sr.say("次の文");
 }
 
 // ---- 教材 ----

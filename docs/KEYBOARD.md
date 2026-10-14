@@ -90,7 +90,7 @@
 | Ctrl・Cmd・Alt つき | 既定（再読み込み・コピーを止めない） | 同左 | 同左 | 同左 |
 | ページが裏に回る（`visibilitychange`） | 何もしない | 始まる前に戻す（離れていた時間で打/分が下がった結果を出さない） | 何もしない | 何もしない |
 
-- 扱わない場所: `[aria-modal="true"]` が見えている（ご意見の窓）、対象が `#input` 以外の入力できる要素。Tab は閉じ込めない（文字のキーは焦点がどこにあっても数える）
+- 扱わない場所: 開いている窓（js/typingKeys.js `modalOpen`。読み上げの行き先と同じ js/srLive.js `openWindow` を `#input` から見る: ご意見の窓〔aria-modal・背後は inert〕と `<dialog>.showModal()` の窓。PR #168 のレビュー 7）、対象が `#input` 以外の入力できる要素。Tab は閉じ込めない（文字のキーは焦点がどこにあっても数える）
 - **画面キーボードを借りる**: `initializeKeyboard({ playingClass: "typing--live", forceOnTouch: true })`。`playingClass` は「プレイ中」の印の body の class（既定 `home--playing`）、`forceOnTouch` は設定が「オフ」でもタッチ端末なら盤面を出す（入力欄が読み取り専用で OS キーボードが出ないため。既定 `false` で、今までどおりローマ字のカードだけ）。引数なしの Study（js/main.js）は 1 文字も変わらない。Enter は CSS で隠し、英単語では 3 段目（空白・ー・Enter）ごと隠す（高さの予約 `--osk-h` は変えない）。日本語では `body.romaji-answer` で ー を出す
 - `getOskMode()` は `localStorage.getItem` が投げる端末（サイトのデータを拒否した端末）では `"auto"` を返す（以前は投げていた: Study は js/main.js の頭の `initializeKeyboard()` で止まってホームが描かれず、refreshKeyboard のたびにも uncaught の例外になっていた。Study も同じ直しが効く）
 - **結果の 0.6 秒の守り**: 時間切れの瞬間に盤面を畳むと、盤面を叩いていた指の次のタップが下から現れた本体へのボタンに落ちる。結果が出てから 0.6 秒は盤面を出したまま・盤面（`#osk`）の外のクリックをすべて捨て（js/typingKeys.js `createResultGuard`。一覧で持たない）、0.6 秒後に畳む。keyboard.js は `spelldash:game-end` だけでなく **body の class の変化でも**盤面を畳む（MutationObserver）ので、守りの間は `typing--live`・`romaji-answer` も外さない

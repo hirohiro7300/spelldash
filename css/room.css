@@ -131,7 +131,7 @@ html[data-theme] .page-room .header-streak--off .icon {
 }
 
 html[data-theme] .page-room .header-streak span {
-  display: inline; /* brand.css はスマホで「日」を消すが、部屋では「30日」で読む */
+  display: inline; /* スマホでも「30日」で読む（数字だけになるのは 359px 以下だけ。下の 359px の箱） */
   margin-left: 0;
   font-size: 12px;
   letter-spacing: 0.06em;
@@ -2105,12 +2105,17 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
   html[data-theme] .page-room .play__bar {
     margin-top: 6px;
   }
-  /* 初回（PC）: 積んだ本は開いた本の脇（机の上）に。4 冊すべてが 1 画面目に入る */
-  html[data-theme] .page-room #welcome:not([hidden]) {
+  /* 初回（PC）: 積んだ本は開いた本の脇（机の上）に。4 冊すべてが 1 画面目に入る。
+     html[data-first-visit] の間（index.html の <head> の 1 行が初回と見て js が引き継ぐまで。hidden のまま css/welcome.css が出す）も同じ格子 */
+  html[data-theme] .page-room #welcome:not([hidden]),
+  html[data-theme][data-first-visit] .page-room #welcome {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 138px;
     column-gap: 12px;
     align-items: end;
+  }
+  html[data-theme][data-first-visit] .page-room #welcome {
+    display: grid !important; /* css/welcome.css の block !important より詳細 */
   }
   .tome--first {
     grid-column: 1;
@@ -2338,18 +2343,6 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
 
 #pathList:empty {
   min-height: 297px;
-}
-
-/* 初回の積んだ本（js/welcome.js が積む）の空き: 初回の本は index.html のインラインで最初の描画から出るので、積むまでの高さを積んだあとと同じに
-   （1099px 以下 187・1100px 以上は 54px の本で 216。差があると「171冊から選ぶ」と紙片、PC では下揃えの開いた本も動いた。Batch 66） */
-#welcomeStack:empty {
-  min-height: 187px;
-}
-
-@media (min-width: 1100px) {
-  #welcomeStack:empty {
-    min-height: 216px;
-  }
 }
 
 html[data-theme] body.home--playing :is(#pathHead, #pathNow, #pathList):empty {

@@ -11,8 +11,18 @@
     width: 94%;
   }
 
-  .brand__name {
-    display: none;
+  /* 名前を隠すのはヘッダーだけ（フッターの名前は出す）。見た目だけ隠す: 家へのリンクの字はこれだけ（「SD」の印は aria-hidden）なので、
+     display: none だと読み上げの名前が空になる（PR #168 のレビュー 1・2。.sr-only と同じ形。絶対配置なので帯の幅・高さは印だけのときと同じ） */
+  .site-header .brand__name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .site-nav {

@@ -8,6 +8,17 @@
   display: none !important;
 }
 
+/* 最初の描画から初回の本: index.html の <head> の 1 行が初回と見たら html[data-first-visit] を置く。js/welcome.js が hidden に置き換えて外すまで、
+   机（#main）を隠し初回の本（#welcome）を出す（HTML のどこまで読めたかによらない。PR #168 のレビュー 4）。
+   [hidden] の !important（reset.css・上の規則）に勝つため !important。PC（1100px 以上）の格子は css/room.css */
+html[data-first-visit] #main {
+  display: none !important;
+}
+
+html[data-first-visit] #welcome {
+  display: block !important;
+}
+
 .welcome {
   position: relative;
   z-index: 3;

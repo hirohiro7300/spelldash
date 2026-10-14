@@ -4,7 +4,7 @@ import { findWord } from "./wordStore.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { classifyWord } from "./categoryProgress.js";
 import { normalizeReading } from "./romaji.js";
-import { liveTarget, clearLive } from "./srLive.js";
+import { createLive } from "./srLive.js";
 
 export const elements = {
   time: document.getElementById("time"),
@@ -36,20 +36,10 @@ export function scrollBehavior() {
 // 窓が開いている間は #srStatus が窓の外で読まれないので、書く瞬間に開いている窓の中の読み上げの行に書く
 // （窓の中なので、aria-modal の窓の外を読まない読み上げでも読まれる。Batch 65 Q3 の窓の外の行 #srStatusTop は PR #166 レビューの 7 で窓の中の行に替えた）。
 // 書く前は #srStatus と窓の中の行を全部空にする（窓を開け閉めしても、前の文が残った行で同じ文が読まれないことがない）。
-// 開いている窓の判定と窓の中の行は js/srLive.js（タイピングの 2 ページの読み上げも同じ判定を通る。Batch 66 R1）
-let pendingText = "";
-let pendingTimer = 0;
+// 空にして間をあけて書く・書く瞬間に行き先を選ぶ・つなげるの形は js/srLive.js createLive（タイピングの 2 ページの読み上げも同じ形。PR #168 レビューの 7）
+const srStatus = createLive(() => document.getElementById("srStatus"), { gap: 30, join: true });
 export function announce(text) {
-  const el = document.getElementById("srStatus");
-  if (!el) return;
-  pendingText = pendingTimer && pendingText ? `${pendingText}${/[。．.!?！？]$/.test(pendingText) ? "" : "。"}${text}` : text;
-  clearTimeout(pendingTimer);
-  clearLive(el);
-  pendingTimer = setTimeout(() => {
-    liveTarget(el).textContent = pendingText;
-    pendingText = "";
-    pendingTimer = 0;
-  }, 30);
+  srStatus.say(text);
 }
 
 export function initializeDisplay() {

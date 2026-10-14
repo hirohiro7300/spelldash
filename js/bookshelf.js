@@ -4,7 +4,7 @@ import { getWordStats, getCategoryBests } from "./storage.js";
 import { COURSES, DEFAULT_COURSE, getCourseId } from "./course.js";
 import { SHELVES, shelfIdOf, shelfOf } from "./shelves.js";
 import { getEnabledPackIds } from "./packs.js";
-import { pickWelcomeBook } from "./welcome.js";
+import { pickWelcomeBook, isWelcomeOpen } from "./welcome.js";
 import { scrollBehavior } from "./ui.js";
 import { isPulling } from "./sync.js";
 import { SHELF_KEY, parseShelf, serializeShelf, migrateShelf, reconcileShelf, noteStudyStart, shelfAtStart, applyStartChoice, startChanges, effectiveCourse, savedHas, addKey, dropKey, displayItems, packRows } from "./shelfStore.js";
@@ -400,7 +400,7 @@ function updateFindCount() {
 }
 
 // ---------- 状態 ----------
-const isWelcome = () => document.body.classList.contains("welcome-open");
+const isWelcome = isWelcomeOpen; // body.welcome-open か、js が引き継ぐ前の html[data-first-visit]（js/welcome.js）
 const deskId = () => localStorage.getItem(CATEGORY_KEY) || "all";
 const myCount = () => getWordsByCategory(MY_CATEGORY.id).length;
 
