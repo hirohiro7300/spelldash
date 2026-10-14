@@ -25,7 +25,7 @@ export function openWindow(ref) {
 }
 
 // 窓の中の読み上げの行（[data-sr-live]）。3 つの窓（ご意見・語の詳細・本を足す）は markup に最初から置く（後から差し込んだ live 領域は
-// 読まれないことがある）。置いていない窓には作って足す（role=status・aria-live=polite・sr-only）
+// 読まれないことがある。ご意見の窓は殻ごと読み込みのときに置く: js/feedback.js initFeedback）。置いていない窓には作って足す（role=status・aria-live=polite・sr-only）
 function liveLineIn(box) {
   let line = box.querySelector("[data-sr-live]");
   if (!line) {
@@ -53,7 +53,8 @@ const SENTENCE_END = /[。．.!?！？]$/;
 //   join: 待っている間に次の文が来たら、前の文を消さずに 1 つの文につなげる（js/ui.js: 時間切れでレベルアップと見出しの文が同じ tick に来る。PR #164 レビューの 3）
 // say(text): ref と窓の中の行を全部空にし、gap 後に書く。書く行はその瞬間に選ぶ（開いている窓の中の行、無ければ ref）。
 //   同じ操作の続きで窓が開いても（ご意見のボタンを押した: クリックの capture で長文を止めて「止めた。」を言い、そのあと同じクリックで窓が開き
-//   背後が inert になる。ご意見の窓は初めて開くときに作る）、書く瞬間には窓と窓の中の行があるので、そこに入る。ref に書いてから移すことはしない（PR #168 レビューの 6）。
+//   背後が inert になる。ご意見の窓の殻と中の行は読み込みのときに置いてある: js/feedback.js initFeedback。Batch 67 C2）、書く瞬間には窓と窓の中の行が
+//   あるので、そこに入る。ref に書いてから移すことはしない（PR #168 レビューの 6）。
 //   空の text は空にするだけ（待っている文も捨てる）
 // cancel(): 待っている文を捨てる（行はそのまま）
 export function createLive(ref, { gap = 50, join = false } = {}) {

@@ -5,13 +5,13 @@
 // アプリ（Capacitor）では購入ボタンと価格を出さず、状態だけ出す（加入と管理は Web 版で）。
 
 import { initializeAuth } from "./auth.js";
-import { setFooterYear } from "./footer.js";
+import { setFooterYear, revealPendingPage } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
 import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { getPlan, refreshPlan, postBilling, waitForPro, planLabel, planActionLabel } from "./plan.js";
-import { fetchBillingConfig, rememberBillingConfig, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
+import { fetchBillingConfig, rememberBillingConfig, rememberedBillingPrice, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
 import { logFunnel, logFunnelBeforeLeave, markPaidPending, hasPaidPending, freshPaidPending, bindPaidPending } from "./funnelLog.js";
 
 const MESSAGES = {
@@ -44,6 +44,7 @@ if (donePending) markPaidPending(); // 反映が遅くても、後で Pro にな
 let welcomeActive = donePending; // 反映を待つ間とその後は購入ボタンを出さない（二重の申し込みを防ぐ）
 let resumeShown = false;
 let sessionKnown = false; // getSession の結果が出たか（出るまでは「ログインしていない」と決めない）
+let planSeen = false; // このページで Pro の状態を読み直したか（js/auth.js の refreshPlan が spelldash:plan を投げる。ログイン済みは契約の行で無料期間の文が決まる）
 if (params.has("resume") || params.has("pro")) {
   // 開き直したときに同じ案内を繰り返さない
   history.replaceState(null, "", location.pathname + location.hash);
@@ -73,7 +74,21 @@ supabase.auth.onAuthStateChange((_event, nextSession) => {
   if (sessionKnown) bindPaidPending(session?.user?.id);
   render();
 });
-document.addEventListener("spelldash:plan", render);
+document.addEventListener("spelldash:plan", () => {
+  planSeen = true;
+  render();
+});
+// 読み込みの間は題より下とフッターを透明にしている（body[data-pending]。css/pages.css）。料金の 1 行（#proPrice）は config が届いてから題の下に入り、
+// 比較表と料金の節を押し下げていた（CLS 1200 で 0.07〜0.09）。Pro の人は比較表を隠すので料金の節が 500px 上がっていた（0.15〜0.48）。
+// 料金の 1 行・比較表を出すか・料金の節の中身が決まってから出す（render の最後）。config が遅いときは長くても PENDING_MAX_MS で出す（比較表は静的なので待たせすぎない）。
+// そのときは料金の 1 行の場所を空けてから出す（reservePriceLine。空けないと届いたときに比較表と料金の節が 1〜2 行ぶん下がる: 2 秒遅れで 1200 0.069・390 0.040）
+const PENDING_MAX_MS = 1200;
+let pendingTimedOut = false;
+setTimeout(() => {
+  pendingTimedOut = true;
+  if (!config) renderPlans(getPlan()); // 料金の 1 行を出す人なら場所を空ける（アプリ・加入済み・支払いの反映待ちは 1 行を出さないので空けない）
+  revealPendingPage({ fontWait: 0 });
+}, PENDING_MAX_MS);
 
 // アプリでは購入 UI を出さないので価格も取りに行かない（/api/billing/* は CORS を許可していない）
 if (isNativeApp) render();
@@ -109,7 +124,11 @@ function trialInfo() {
   if (months <= 0 && days <= 0) return null;
   const endMs = months > 0 ? Date.parse(config?.trialEndsAt ?? "") : Date.now() + days * 86400000;
   const jst = Number.isNaN(endMs) ? null : new Date(endMs + 9 * 3600000);
-  return { label: months > 0 ? `${months}か月` : `${days}日`, endText: jst ? `${jst.getUTCMonth() + 1}/${jst.getUTCDate()}` : "" };
+  return { label: trialLabel(months, days), endText: jst ? `${jst.getUTCMonth() + 1}/${jst.getUTCDate()}` : "" };
+}
+
+function trialLabel(months, days) {
+  return months > 0 ? `${months}か月` : `${days}日`;
 }
 
 // この人に無料期間が付くか: 未ログインは「初めての方は」と案内だけ、ログイン済みは契約の行を読めて、一度も契約が無い人
@@ -127,6 +146,28 @@ function trialUnknown() {
 
 function yen(amount) {
   return `¥${Number(amount).toLocaleString("ja-JP")}`;
+}
+
+// 見出しの直下の料金の 1 行の文。monthYen／yearYen は円の字（年額が無ければ null）、offer は無料期間の名（「1か月」。案内しないなら null）
+function priceLineText(monthYen, yearYen, offer) {
+  return `月額 ${monthYen}${yearYen ? ` ／ 年額 ${yearYen}` : ""}（税込）。${offer ? `初めての方は最初の${offer}無料。` : ""}いつでも解約できる。`;
+}
+
+// 料金の 1 行（#proPrice）。text が null なら出さない。reserved: config が遅いときに場所だけ空ける（字は見せず読ませない。css/pro.css .pro-price--reserved）
+function setPriceLine(text, { reserved = false } = {}) {
+  if (!priceElement) return;
+  priceElement.hidden = text === null;
+  priceElement.textContent = text ?? "";
+  priceElement.classList.toggle("pro-price--reserved", reserved);
+}
+
+// config が届く前に出すとき: 届いたときに入る 1 行と同じ大きさの場所を空ける。前に取れた config の形（js/proFunnel.js が覚える。どのページの
+// フッターも取る）で同じ文を組む。覚えた形が無い（初めて開いた）ときは月額 3 桁・年額 4 桁・無料期間なしの形で量る（1200 はどの形でも 1 行、390 は 2 行）
+function reservePriceLine() {
+  if (!priceElement?.hidden) return;
+  const shape = rememberedBillingPrice();
+  const offer = shape && (shape.trialMonths > 0 || shape.trialDays > 0) && trialEligible() ? trialLabel(shape.trialMonths, shape.trialDays) : null;
+  setPriceLine(shape ? priceLineText(yen(shape.month), shape.year === null ? null : yen(shape.year), offer) : priceLineText("¥000", "¥0,000", null), { reserved: true });
 }
 
 function setMessage(text, type = "") {
@@ -148,22 +189,24 @@ function renderPlans(plan) {
   if (compareSection) compareSection.hidden = owned;
   if (plansTitle) plansTitle.textContent = owned ? "プラン" : "料金";
   if (owned) {
-    if (priceElement) priceElement.hidden = true;
+    setPriceLine(null);
     plansElement.innerHTML = "";
     return;
   }
   // 支払いを終えたのに、まだ Pro に反映されていない（開き直した）: 購入ボタンを出さない（二重の申し込みを防ぐ）。
   // ログインが分かるまでは、印があれば待つ側に倒す（購入ボタンを一瞬でも出さない）
   if (freshPaidPending() && (!sessionKnown || hasPaidPending(session?.user?.id))) {
-    if (priceElement) priceElement.hidden = true;
+    setPriceLine(null);
     plansElement.innerHTML = `<p class="pro-pending">${PAID_WAIT_TEXT}</p>`;
     return;
   }
   if (!config) {
+    if (pendingTimedOut) reservePriceLine(); // 待ちきれずに出す（出した後に 1 行が入って下が動かないように）
     plansElement.innerHTML = '<p class="pro-pending">読み込み中</p>';
     return;
   }
   if (!config.configured) {
+    setPriceLine(null); // 空けていた場所は畳む（受付前・取れなかったときは 1 行を出さない）
     plansElement.innerHTML = `<p class="pro-pending">${MESSAGES.notConfigured}</p>`;
     return;
   }
@@ -172,6 +215,7 @@ function renderPlans(plan) {
   const year = config.prices.find((p) => p.interval === "year");
   if (!month) {
     // 月額の価格が無い（Stripe の設定の入れ替え中など）: ボタンを出さず「準備中」
+    setPriceLine(null);
     plansElement.innerHTML = `<p class="pro-pending">${MESSAGES.notConfigured}</p>`;
     return;
   }
@@ -179,11 +223,7 @@ function renderPlans(plan) {
   const terms = termsHtml(month, year, perMonth, { withPerMonth: !session });
   // 最初の画面で「いくらで、いつでもやめられるか」が分かるように、見出しの直下に 1 行
   const trialInfoNow = trialInfo();
-  if (priceElement) {
-    const offer = trialInfoNow && trialEligible() ? `初めての方は最初の${trialInfoNow.label}無料。` : "";
-    priceElement.textContent = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}` : ""}（税込）。${offer}いつでも解約できる。`;
-    priceElement.hidden = false;
-  }
+  setPriceLine(priceLineText(yen(month.amount), year ? yen(year.amount) : null, trialInfoNow && trialEligible() ? trialInfoNow.label : null));
   const trial = trialInfoNow && session && trialEligible() ? `${trialInfoNow.label}無料で始める` : "";
   if (!session) {
     // 未ログイン: ボタンは「ログインして始める」1 つ（押すとヘッダーのログインが開く。動かないボタンを出さない）
@@ -257,6 +297,8 @@ function render() {
     scrolledToPlans = true;
     document.getElementById("proPlansSection")?.scrollIntoView({ block: "start" });
   }
+  // 出してよい: ログインが分かり、Pro の状態を読み直し、料金の 1 行が決まった（config が届いた・アプリ・Pro・支払いの反映待ちは 1 行を出さない）
+  if (sessionKnown && planSeen && (config || isNativeApp || plan.pro || welcomeActive)) revealPendingPage();
 }
 
 // ログインから戻った（加入の途中）: 選ぶところから続ける
@@ -271,6 +313,7 @@ function maybeResume(plan) {
   const hasYear = config.prices.some((p) => p.interval === "year");
   setMessage(hasYear ? "ログインした。月額か年額を選ぶ。" : "ログインした。月額で始められる。");
   logFunnel("login_return");
+  revealPendingPage({ fontWait: 0 }); // 透明なまま（body[data-pending]）のボタンに焦点を置かない（見えない所に焦点が出る）。料金の節は描き終えているので字を待たずに出す
   document.getElementById("proCheckoutMonth")?.focus({ preventScroll: false });
 }
 

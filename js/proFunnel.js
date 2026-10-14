@@ -9,7 +9,7 @@
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { isPro } from "./plan.js";
 
-const OPEN_KEY = "spelldash_billing_open"; // { open: bool, at: ms }
+const OPEN_KEY = "spelldash_billing_open"; // { open: bool, at: ms, price?: { month, year, trialMonths, trialDays } }（price は受付中のときだけ。加入画面の料金の 1 行の形）
 const OPEN_TTL_MS = 12 * 60 * 60 * 1000;
 const RETRY_MS = 10 * 60 * 1000; // 取れなかったときは前の値のまま、10 分後にもう一度
 const RETURN_KEY = "spelldash_login_return"; // sessionStorage: ログインから戻ってきた（加入画面へ移ったあとも freshLogin として扱う）
@@ -31,11 +31,12 @@ export function isBillingOpen() {
   return cached?.open === true;
 }
 
-// 加入画面が取った config をそのまま覚える（js/proView.js）
-export function rememberBillingOpen(open) {
+// 加入画面が取った config をそのまま覚える（js/proView.js）。price: 料金の 1 行の形（月額・年額・無料期間。受付中のときだけ）。
+// 加入画面で config が遅いとき、題の下に 1 行の場所を空けておく大きさに使う（字には使わない。表示する金額は毎回取り直した config から）
+export function rememberBillingOpen(open, price = null) {
   const before = isBillingOpen();
   try {
-    localStorage.setItem(OPEN_KEY, JSON.stringify({ open: !!open, at: Date.now() }));
+    localStorage.setItem(OPEN_KEY, JSON.stringify({ open: !!open, at: Date.now(), ...(open && price ? { price } : {}) }));
   } catch {
     // 保存できなくても動線が出ないだけ
   }
@@ -62,15 +63,24 @@ export async function fetchBillingConfig() {
 // 取れた config だけを覚える。取れなかったときは前の値のまま、10 分後に取り直す
 export function rememberBillingConfig(config) {
   if (config.ok) {
-    rememberBillingOpen(config.configured);
+    const month = config.prices.find((p) => p.interval === "month");
+    const year = config.prices.find((p) => p.interval === "year");
+    rememberBillingOpen(config.configured, month ? { month: Number(month.amount), year: year ? Number(year.amount) : null, trialMonths: config.trialMonths, trialDays: config.trialDays } : null);
     return;
   }
   try {
     const prev = readJson(OPEN_KEY);
-    localStorage.setItem(OPEN_KEY, JSON.stringify({ open: prev?.open === true, at: Date.now() - OPEN_TTL_MS + RETRY_MS }));
+    localStorage.setItem(OPEN_KEY, JSON.stringify({ open: prev?.open === true, at: Date.now() - OPEN_TTL_MS + RETRY_MS, ...(prev?.price ? { price: prev.price } : {}) }));
   } catch {
     // 何もしない
   }
+}
+
+// 前に取れた config の料金の 1 行の形（rememberBillingOpen）。無い・壊れているときは null
+export function rememberedBillingPrice() {
+  const price = readJson(OPEN_KEY)?.price;
+  if (!price || !Number.isFinite(price.month)) return null;
+  return { month: price.month, year: Number.isFinite(price.year) ? price.year : null, trialMonths: Number(price.trialMonths) || 0, trialDays: Number(price.trialDays) || 0 };
 }
 
 // キャッシュが古い（または無い）ときだけ config を取りに行く。戻り値: 受付中か

@@ -41,6 +41,8 @@ function sampleHtml(data, words) {
     .join("\n");
 }
 
+// 本文 main.pp は body（縦の flex。layout.css）の中で margin: 0 auto なので、幅を書かないと中身に合わせた幅（fit-content）になり、
+// 一覧の説明（1 行で省略）の長さが最小の幅になって 561〜631px で横スクロールした（Batch 67 N4）。width: 100% で画面の幅に合わせる（上限 720px は今のまま）
 function pageShell({ title, description, canonical, body }) {
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -70,7 +72,7 @@ function pageShell({ title, description, canonical, body }) {
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <style>
-    .pp { max-width: 720px; margin: 0 auto; padding: 8px 16px 56px; color: var(--ink); }
+    .pp { width: 100%; max-width: 720px; margin: 0 auto; padding: 8px 16px 56px; color: var(--ink); }
     .pp-hero { padding: 24px 0 8px; }
     .pp-kicker { margin: 0 0 6px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); }
     .pp h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; }

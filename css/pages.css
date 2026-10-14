@@ -12,6 +12,26 @@ html[data-theme] .app--narrow {
   width: min(720px, 100%);
 }
 
+/* ---- 読み込みの間（単語帳・学習データ・加入画面。Batch 67 C1）: js が最初に描くまで、題（と学習データのタブ）より下とフッターを透明にする ----
+   中身（一覧・週のまとめ・推移・分野パックの棚・料金の 1 行）は js が後から描き、高さはその人の記録や config で決まる。空の枠を先に見せると、
+   埋まるときに下の節とフッターが動いた（CLS: 1200 で 0.07〜0.39・390 で 0.04〜0.91）。描いた後にまとめて出す（body の data-pending を
+   js/footer.js revealPendingPage が外す）。透明な間に動いても CLS に入らない。透明（opacity）にするのは本文の子とフッターだけ（継がない値なので、
+   畳んだ <details> の中の古い計算値が後で切り替わって reduced motion の 0.01ms の transition が残ることがない。visibility は継ぐので使わない）。
+   押せないようにする（pointer-events）。js が動かなかったときに備えて 4 秒で出す */
+html[data-theme] body[data-pending] main > :not(.hero, .stats-tabs),
+html[data-theme] body[data-pending] > .site-footer {
+  opacity: 0;
+  pointer-events: none;
+  animation: page-pending-reveal 0s linear 4s forwards;
+}
+
+@keyframes page-pending-reveal {
+  to {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 /* ---- 見出し（装飾なしの文字だけ） ---- */
 html[data-theme] .hero,
 html[data-theme] .hero--compact {
@@ -2091,6 +2111,11 @@ html[data-theme] .install__done {
     flex: 1 1 auto;
     min-width: 0;
     max-width: none;
+  }
+  /* ランキング表示名の入力欄は縮んでよい（type=text は既定の幅 size 20 ぶんより縮まず、ログイン中の mobile の 320 で「保存」が 4px 画面の外へ出た。
+     Batch 67）。広げはしない: 360 からの見た目は今のまま */
+  html[data-theme] .voice-row #displayNameInput {
+    min-width: 0;
   }
   html[data-theme] .setting-row > .setting-select {
     width: 100%;

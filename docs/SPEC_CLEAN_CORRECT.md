@@ -20,6 +20,7 @@
 ### ローカル（localStorage: spelldash_word_stats）
 - 追加フィールド1つ: `cleanCorrectCount`（number, 初期0）
 - 既存レコードは `?? 0` で読む（マイグレーション不要・後方互換）
+- 読めない値（壊れた JSON・配列・数・文字列。2026-10-14 Batch 67）: js/storage.js `readStats` が、上書きする前に元の文字列を `spelldash_word_stats_corrupt` に写して（1 つだけ・同じ値なら書き直さない・同期しない・バックアップには入る・別のアカウントでログインすると消える）空の表として読む。書斎・出題・学習データ・単語帳は止まらない。元の鍵は読むときに触らず、最初の書き込みが上書きする。壊れた値は送らず、ログインした端末はクラウドの記録を空の端末と同じく取り込む。null・false・0・"" は今までどおり空。初回の判定（index.html の head の 1 行と `shouldShowWelcome`）は今どおり壊れた JSON を初回と見ない（机）
 
 ### セッション集計（保存不要）
 - ラン内カウンタ `cleanCount` を追加（score, typingMissCount と並ぶ変数）
