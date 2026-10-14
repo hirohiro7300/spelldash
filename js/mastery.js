@@ -280,6 +280,21 @@ function prevDayOf(s) {
   return last > 0 ? localDay(new Date(last)) : null;
 }
 
+// ===== 日数の文（数え方は 1 つ。Batch 68 L1-6） =====
+// 盤面の上「N日ぶりの復習」・正解の後の「N日ぶりでも思い出せた」（js/game.js）・語の詳細「（N日あけて）」（rankBasis）は、どれも
+// 前の答え（○ でも × でも）のローカル日から今の答えのローカル日までの暦日の差。24 時間の切り捨て・UTC で読んだ日付・四捨五入は使わない
+// （前日 23 時の答えを翌日 9 時に答えても 1 日）。前の答えが無い・同じ日・時計が戻って前の答えが先に見えるときは 0（文に日数を出さない）
+export function daysBetween(prevDay, day) {
+  const n = dayDiff(prevDay, day);
+  return n >= 1 ? n : 0;
+}
+
+// 答える前の stat の、前の答えから today までの日数（盤面の上と正解の後の文）。前の答えは answerContext の prevAt と同じ
+// （max(lastRecallSuccessAt, lastRecallFailAt)。同じ端末では history の最後の項目と同じ日）
+export function daysSinceAnswer(stat, today = localDay(new Date())) {
+  return daysBetween(prevDayOf(stat), today);
+}
+
 // その語の事実だけを返す（段ごとの決まり文句で経緯を言わない）。上から最初に当たる枝。段 0 は空文字。
 // today は今のローカル日（"YYYY-MM-DD"。今は使わない。rankNext と呼び方をそろえる）
 export function rankBasis(stat, today = localDay(new Date())) {
@@ -299,13 +314,14 @@ export function rankBasis(stat, today = localDay(new Date())) {
   if (isKnownWaiting(s) && (r === 3 || r === 4)) {
     return `${okMd ? `${okMd}に` : ""}初めて答えて、${r === 4 ? "すぐ打てた" : "間違えずに打てた"}`;
   }
-  // N 日あけて: history の最後の o（日が lastRecallSuccessAt の日と同じ）とその前の項目の日の差。0・足りないときは括弧ごと省く
+  // N 日あけて: history の最後の o（日が lastRecallSuccessAt の日と同じ）とその前の項目（前の答え）の日の差（daysBetween。盤面の上・正解の後の文と
+  // 同じ数え方）。0・足りないときは括弧ごと省く
   const h = Array.isArray(s.history) ? s.history : [];
   const lastO = h.map((e) => e?.r).lastIndexOf("o");
   let gapText = "";
   if (okDay && lastO >= 1 && h[lastO]?.d === okDay) {
-    const n = dayDiff(h[lastO - 1]?.d, okDay);
-    if (n >= 1) gapText = `（${n}日あけて）`;
+    const n = daysBetween(h[lastO - 1]?.d, okDay);
+    if (n) gapText = `（${n}日あけて）`;
   }
   return `${okMd ? `${okMd}に` : ""}思い出せた${gapText}`;
 }

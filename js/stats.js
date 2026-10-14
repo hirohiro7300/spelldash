@@ -1,9 +1,36 @@
-import { saveWordStats, editWordStats } from "./storage.js";
+import { saveWordStats, editWordStats, getWordStats } from "./storage.js";
 import { markWordDirty } from "./sync.js";
 import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
 import { touchStudyTime } from "./studyTime.js";
-import { answerContext, nextRank, isFirstAnswer, intervalAfter, keepLaterDue, unseenFailCap, SRS_STEPS } from "./mastery.js";
+import { answerContext, nextRank, isFirstAnswer, intervalAfter, keepLaterDue, unseenFailCap, SRS_STEPS, MAX_INTERVAL_DAYS, MIN_GAP_MS, isUnresolved, isKnownWord, isKnownWaiting } from "./mastery.js";
 import { noteRankCheck, tickMasteryMeta } from "./masteryMeta.js";
+import { localDay, dayDiff } from "./retentionCalc.js";
+import { BASE_VARIANT, readShadow, writeShadow, shadowOf, shadowInit, shadowPredict, shadowSuccess, shadowSameDay, shadowFail, migrateState } from "./memoryModel.js";
+import {
+  noteCalibration,
+  noteSpeedNext,
+  noteXNext,
+  noteCapHit,
+  noteSamples,
+  noteInputCount,
+  speedBasis,
+  classP20,
+  classTp,
+  encodePend,
+  decodePend,
+  encodeMark,
+  qBandOf,
+  aBandOf,
+  tickMemoryCheck,
+  CLS_CODE,
+  CLS_CHAR,
+  T1_MIN as CHECK_T1_MIN,
+  T1_MAX as CHECK_T1_MAX
+} from "./memoryCheck.js";
+import { getMemoryWord, putMemoryWord, tickMemoryWords, prefetchMemoryWords, useWordStatsReader } from "./memoryWords.js";
+
+// 語ごとの記録の質（js/memoryWords.js）は、書く直前に語の記録と照らし合わせる（復元・消去の後の書きかけを書き戻さない）
+useWordStatsReader(getWordStats);
 
 // 簡易SRS: 連続ノーミス正解数 → 次の復習までの日数
 // 1回→1日後、3連続→3日後、10連続→30日後（それ以上は30日固定）。表は js/mastery.js の SRS_STEPS の 1 か所（習熟度の S2 も同じ表を読む）
@@ -34,13 +61,14 @@ export function recordPlay(word) {
   saveWordStats(stats);
   markWordDirty(word);
   touchStudyTime(); // 学習時間（js/studyTime.js）。計測は装飾: 失敗しても記録は済んでいる
+  prefetchMemoryWords(); // 記録の質（spelldash_memory_words）を手が空いたときに読んでおく（答えのタスクで JSON から戻さない）
 }
 
 // 答える前の stat の控え（習熟度。js/mastery.js）。○ は recordCorrect が先に streak・mastered を書き換えるので、
 // recordCorrect の先頭（写す前）で控え、同じタスクの recordRecallSuccess（id が同じとき）が使う。メモリーだけ（word_stats には書かない）。
 // マイクロタスクで捨てる（答え表示の後の打ち直しで recordCorrect だけが呼ばれたとき、次の答えへ持ち越さない。js/storage.js の draft と同じ作法）。
 // Battle（凍結）は recordCorrect(id, wasClean) → recordRecallSuccess(id) の今の呼び方なので、この控えの仕組みで答える前の段を渡す
-let pendingAnswer = null; // { id, rankBefore, knownBefore, clean, ctx, streakDays }
+let pendingAnswer = null; // { id, rankBefore, knownBefore, clean, ctx, streakDays, stat }
 
 // ctx = 答える前の stat の answerContext。js/game.js は速さの分類のために同じ値を持っているので渡す（二重に計算しない）。
 // 渡さない呼び方（Battle・答えを見た後の打ち直し）はここで計算する。段と確認待ちは ctx から読む（rank = rankOf、knownCheck = isKnownWaiting）
@@ -53,7 +81,8 @@ function holdPendingAnswer(word, stat, wasClean, ctx = null) {
       knownBefore: c.knownCheck, // 確認待ちの知ってた語か（js/mastery.js isKnownWaiting。streak 1 だけでなく期日でも見る）
       clean: !!wasClean,
       ctx: c,
-      streakDays: 0 // この答えで recordCorrect が streak から決めた日数（進まなければ 0）。S2・S3 が伸ばす起点（段階 2）
+      streakDays: 0, // この答えで recordCorrect が streak から決めた日数（進まなければ 0）。S2・S3 が伸ばす起点（段階 2）
+      stat // 答える前の記録（記録の質: 影の計算の移行の値・前の答えの控え。recordCorrect が写す前の表の値で、書き換えない）
     };
     pendingAnswer = held;
     queueMicrotask(() => {
@@ -167,33 +196,50 @@ export function recordTypingMiss(word) {
 
 // 思い出せなかった（Enterで答えを見た）。これが本当の「苦手」
 // lastRecallFailAt を更新 → 自力正解するまで Unresolved（未解決）状態になる
-// 直近8回の思い出せた/思い出せなかった履歴（「昨日×→今日○」を語ごとに見せる）
-function pushHistory(stat, r) {
+// 直近8回の思い出せた/思い出せなかった履歴（「昨日×→今日○」を語ごとに見せる）。extra: × の細目（k・p・a。記録の質。端末だけ）
+function pushHistory(stat, r, extra = null) {
   const h = Array.isArray(stat.history) ? stat.history : [];
-  stat.history = [...h.slice(-7), { d: localDateString(), r }];
+  stat.history = [...h.slice(-7), { d: localDateString(), r, ...(extra ?? {}) }];
 }
 
-// 1日以上前に覚えていた語への挑戦か（復習の成否＝定着率の材料）
-export function isReviewAttempt(stat) {
-  if (!stat?.lastRecallSuccessAt) return false;
-  return Date.now() - Date.parse(stat.lastRecallSuccessAt) >= 20 * 60 * 60 * 1000;
+// 別の日に覚えていた語への挑戦か（復習の成否＝定着率の材料）。「別の日」= 最後の自力正解とローカルの暦日が違い、かつ 6 時間以上
+// （js/mastery.js answerContext の同じ日の扱いと同じ線。前日 23 時の正解を翌日 9 時に答えても復習。時計が戻って先に見える正解は復習にしない）
+export function isReviewAttempt(stat, nowMs = Date.now()) {
+  const okAt = Date.parse(stat?.lastRecallSuccessAt ?? "");
+  if (!(okAt > 0)) return false;
+  if (nowMs - okAt < MIN_GAP_MS) return false;
+  return dayDiff(localDay(new Date(okAt)), localDay(new Date(nowMs))) >= 1;
 }
 
-export function recordRecallFail(word) {
+// × の細目（js/game.js が渡す detail = { k, p, a }）→ history の 1 件に足す欄。k: e 答え表示・h ヒント・m 1 打ミス・p パス、
+// 渡さない呼び方（Battle）・知らない値は u（不明）。p = 打てていた字数（0 以上の整数のときだけ）、a = m のとき隣のキーを打ったか（真偽のときだけ）
+const FAIL_KINDS = new Set(["e", "h", "m", "p"]);
+function failFields(detail) {
+  const k = FAIL_KINDS.has(detail?.k) ? detail.k : "u";
+  const out = { k };
+  if (k !== "u" && Number.isInteger(detail.p) && detail.p >= 0) out.p = detail.p;
+  if (k === "m" && typeof detail.a === "boolean") out.a = detail.a;
+  return out;
+}
+
+// detail（省略可）: × の細目（failFields）。Battle は引数なし（u）
+export function recordRecallFail(word, detail = null) {
   const stats = editWordStats();
 
   if (!stats[word]) return;
   const nowMs = Date.now();
+  const statBefore = stats[word]; // 答える前の記録（記録の質。書き換えない）
   const before = readRank(stats[word], nowMs); // 習熟度: 書く前の stat から（答える前の段と文脈）
   stats[word] = { ...stats[word] };
   const nowIso = new Date(nowMs).toISOString(); // 期日・思い出せなかった日時・段を決めた時刻は同じ文字列（rankOf が自分の × を「見ていない ×」と読まない）
 
-  if (isReviewAttempt(stats[word])) {
+  if (isReviewAttempt(stats[word], nowMs)) {
     stats[word].lastReviewResult = "ng";
     stats[word].lastReviewAt = nowIso;
   }
 
-  pushHistory(stats[word], "x");
+  const fail = failFields(detail);
+  pushHistory(stats[word], "x", fail);
   stats[word].recallFail += 1;
   stats[word].missCount += 1;
   stats[word].cleanCorrectStreak = 0;
@@ -201,6 +247,7 @@ export function recordRecallFail(word) {
   stats[word].nextReviewAt = nowIso;
   stats[word].lastRecallFailAt = nowIso;
   writeRank(stats[word], before, { ok: false, clean: false, speed: "unknown" }, before?.ctx, nowIso);
+  noteMemory(word, stats[word], statBefore, before?.ctx, { ok: false, kind: fail.k }, nowMs); // 記録の質（影の計算・集計。期日・段は上で決めたまま）
 
   saveWordStats(stats);
   markWordDirty(word);
@@ -266,7 +313,9 @@ function noteRankOutcome(word, before, ok) {
 // 答え表示後の入力練習ではこの関数を呼ばないこと。
 // answer = { clean, speed }（js/game.js が渡す。clean = ノーミス、speed = "fast" | "normal" | "slow" | "unknown"）。
 // 省略（Battle）: clean は recordCorrect が控えた wasClean、speed は "unknown"（どちらも無ければ打ち間違いありとみなす＝控えめ）
-export function recordRecallSuccess(word, answer) {
+// measure（省略可。記録の質）: js/game.js の測りの札 { t1, pcMax, qLen, aLen, input, multi, outside, stalled, firstSight }。測れなかった語は null。
+// 何を残すかはここで決める（noteSpeedRecord）。期日・段・streak・速さの分類は measure を見ない
+export function recordRecallSuccess(word, answer, measure = null) {
   const stats = editWordStats();
 
   if (!stats[word]) return;
@@ -275,6 +324,7 @@ export function recordRecallSuccess(word, answer) {
   const p = pendingAnswer?.id === word ? pendingAnswer : null;
   pendingAnswer = null;
   const before = p ? { rank: p.rankBefore, ctx: p.ctx } : readRank(stats[word], nowMs);
+  const statBefore = p?.stat ?? stats[word]; // 答える前の記録（recordCorrect が先に streak・期日を書き換えるので控えから。記録の質）
   stats[word] = { ...stats[word] };
   const nowIso = new Date(nowMs).toISOString(); // 自力正解の日時と段を決めた時刻は同じ文字列
 
@@ -282,7 +332,7 @@ export function recordRecallSuccess(word, answer) {
   // 見ていない × の段の上限（S3 の下限だけに使う）。段と段を決めた時刻を書く前に読む（recordCorrect はこの 3 つの欄を書かないので、答える前の値と同じ）
   const rankCap = unseenFailCap(stats[word]);
 
-  if (isReviewAttempt(stats[word])) {
+  if (isReviewAttempt(stats[word], nowMs)) {
     stats[word].lastReviewResult = "ok";
     stats[word].lastReviewAt = nowIso;
   }
@@ -296,6 +346,7 @@ export function recordRecallSuccess(word, answer) {
     const ctx = { ...before.ctx, knownCheck: !!(p && p.knownBefore) };
     writeRank(stats[word], before, { ok: true, clean, speed }, ctx, nowIso);
     extendInterval(stats[word], ctx, clean, speed, p?.streakDays ?? 0, nowMs, rankCap); // S2・S3（段を書いた後。下限は答えた後の段。見ていない × があれば 1 段下まで）
+    noteMemory(word, stats[word], statBefore, before.ctx, { ok: true, clean, speed, measure }, nowMs); // 記録の質（期日・段を決めた後。それらは変えない）
   }
 
   saveWordStats(stats);
@@ -305,6 +356,160 @@ export function recordRecallSuccess(word, answer) {
   noteAnswer(word, "o", stats[word]);
   noteRankOutcome(word, before, true);
   touchStudyTime();
+}
+
+// ===== 記録の質（docs/SPEC_MASTERY.md「記録の質」。D1 L1）。どれも失敗しても記録（SRS・段・保持率）は止めない =====
+// 語ごとの欄は語の記録（spelldash_word_stats）に書かず、端末だけの別のキー spelldash_memory_words に置く（js/memoryWords.js。
+// 正解のたびに語の表を丸ごと JSON にする保存を重くしない: Batch 58）。word_stats に足すのは history の × の細目 k・p・a だけ（同じ 1 回の保存）:
+//   t      この書き手がこの語の答えを書いた時刻（ms。= lastRecall*At）。見ていない答え（2 台目・古い版・書く前に落ちたタブ）を見分ける
+//          （hasUnseenAnswer。影の S を作り直し、速さの控え spP を数えずに捨てる）
+//   sp     語ごとの速さ（直近 3 件 [日番号, T1(ms), q(%)|null, 分類 "f"|"n"|"s"|"u", 印]）。材料 (a) の答えだけ（noteSpeedRecord）
+//   spP    速さの材料 (a)・(b) の答えの控え [日番号, 符号]（次のその日の最初の答えで speedNext に数えて消す。間に見ていない答えがあれば
+//          数えずに捨てる。js/memoryCheck.js encodePend）
+//   memSv  影の 7 通りの S（js/memoryModel.js VARIANTS の順）、memD・memD0 共通の難しさとその初めの値（どれも 0.1 刻みの整数: 値 × 10）
+// 集計は js/memoryCheck.js（spelldash_memory_check）。出題・期日・段・streak・習得・保持率の記録はここで変えない（scripts/sim-writers.mjs で確かめる）
+const DAY_ZERO = "1970-01-01";
+const SP_KEEP = 3; // sp は直近 3 件
+const SP_GAP_DAYS = 3; // 材料 (a): 前の答え（○でも × でも）から 3 暦日以上あいた、その日の最初の答え（または初めての答え）
+const SP_B_RATIO = 0.5; // 材料 (b): 影の S（G0 1.5）で t ≥ 0.5 × S の、その日の最初の答え
+
+const dayNoOf = (ymd) => {
+  const n = dayDiff(DAY_ZERO, ymd);
+  return Number.isInteger(n) ? n : null;
+};
+
+// 答える前の記録から、影の S・D の初めの値（js/memoryModel.js migrateState。D1 §2.6）
+function migratedShadow(st) {
+  const m = migrateState({
+    everRecalled: !!st.lastRecallSuccessAt,
+    unresolved: isUnresolved(st),
+    knownWaiting: isKnownWaiting(st),
+    mastered: !!st.mastered,
+    dueMs: Date.parse(st.nextReviewAt ?? "") || 0,
+    okMs: Date.parse(st.lastRecallSuccessAt ?? "") || 0,
+    recallFail: st.recallFail ?? 0,
+    known: isKnownWord(st)
+  });
+  return shadowOf(m.S, m.D, m.D0);
+}
+
+// この端末の書き手が見ていない答えがあるか（2 台目・古い版で答えた・書く前にタブが落ちた）: 語ごとの欄を書いた時刻（at = 記録の質の t）
+// より新しい lastRecall*At がある。t の無い語（at 0）は偽
+function hasUnseenAnswer(st, at) {
+  return at > 0 && Math.max(Date.parse(st.lastRecallSuccessAt ?? "") || 0, Date.parse(st.lastRecallFailAt ?? "") || 0) > at;
+}
+
+// 見ていない答えがある語（hasUnseenAnswer）の影の欄: S を同期する欄から作り直す。D は残し、見ていない × があれば +1（D1 §2.6。段の unseenFail と同じ作法）
+function refreshShadow(sh, st, at) {
+  const failAt = Date.parse(st.lastRecallFailAt ?? "") || 0;
+  const m = migratedShadow(st);
+  return { Sv: m.Sv, D: failAt > at ? Math.min(10, sh.D + 1) : sh.D, D0: sh.D0 };
+}
+
+// 前の答えの日（prevDay）の最初の × の種類（xNext の種類。js/memoryCheck.js X_KINDS）。k の無い古い × は数えない
+function prevDayFailKind(history, prevDay) {
+  if (!Array.isArray(history) || !prevDay) return null;
+  const e = history.find((x) => x?.d === prevDay && x.r === "x" && typeof x.k === "string");
+  if (!e) return null;
+  if (e.k !== "m") return ["e", "h", "p", "u"].includes(e.k) ? e.k : null;
+  if (Number.isInteger(e.p) && e.p <= 1) return "m2"; // 1 打ミス 2 字目まで
+  return e.a === true ? "m3a" : "m3"; // 3 字目以降（字数が分からない m も）: 隣のキーか、ほか
+}
+
+// 上限が効いている語（表で次に進めば上限 30 日を超える語）: 習得・streak が表の最後に届いた・期日が最後の自力正解から 30 日
+function atCap(st) {
+  if (st.mastered || (st.cleanCorrectStreak ?? 0) >= SRS_STEPS.length) return true;
+  const due = Date.parse(st.nextReviewAt ?? "");
+  const ok = Date.parse(st.lastRecallSuccessAt ?? "");
+  return due > 0 && ok > 0 && due - ok >= (MAX_INTERVAL_DAYS - 0.5) * 86400000;
+}
+
+// 1 回の答えの記録の質。stat = 書き手の写し（答えた後。読むだけ: 段 masteryRank）、prev = 答える前の記録、ctx = 答える前の answerContext、
+// ans = { ok, clean, speed, measure }（○）| { ok: false, kind }（×。kind は history の k）。語ごとの欄は spelldash_memory_words に置く（js/memoryWords.js）
+function noteMemory(word, stat, prev, ctx, ans, nowMs) {
+  try {
+    if (!ctx || !prev) return;
+    const before = getMemoryWord(word) ?? {}; // 答える前の語ごとの記録の質（書き換えない）
+    const outcome = ans.ok ? "o" : ans.kind === "m" ? "xt" : "xm";
+    const xCount = prev.recallFail ?? 0;
+    const today = dayNoOf(ctx.today);
+    const seenAt = Number(before.t) || 0;
+    const unseen = hasUnseenAnswer(prev, seenAt); // この端末の書き手が見ていない答えがある（影の S を作り直し、速さの控えを捨てる）
+    let sh = readShadow(before);
+    let fresh = false;
+    if (sh) {
+      if (unseen) sh = refreshShadow(sh, prev, seenAt);
+    } else if (ctx.prevDay === null && !ctx.unknownDays) {
+      // 答えの記録が無い語: 初めての答えで作る（知ってた 14 日・打ち間違いありの正解 1 日・× と答えの綴りを見た語は 0 日＝まだ覚えていない）
+      sh = shadowInit(ans.ok && ctx.firstAnswer ? (ans.clean ? "clean" : "typo") : "x");
+      fresh = true;
+    } else sh = migratedShadow(prev); // 影の欄の無い語（この版より前の記録・2 台目・上限で捨てた語）: 今の記録から作る
+    const baseS = sh.Sv[BASE_VARIANT];
+    let bMat = false;
+    // 速さの控え。見ていない答えをはさんだ控えは数えずに捨てる（控えの次の答えはこの端末が見ていない答えなので、数えると結果を別の答えに、
+    // 間隔を別の間隔に付ける。集計だけ書けて語ごとの欄が落ちた控えを 2 度数えることもある）。欠けた記録として扱う
+    let spP = Array.isArray(before.spP) && !unseen ? before.spP : undefined;
+    if (fresh) {
+      if (ans.ok && !ctx.firstAnswer) sh = shadowSameDay(sh, { ok: true, xCount }); // 答えの綴りを見た後の自力正解: S 1
+    } else if (ctx.firstOfDay) {
+      const t = ctx.gap;
+      if (baseS > 0) noteCalibration(word, shadowPredict(sh, t), outcome, nowMs); // 答える前の見込みと結果（覚えた語だけ）
+      const pend = spP ? decodePend(spP[1]) : null;
+      if (pend && today !== null && Number.isInteger(spP[0])) noteSpeedNext(pend, today - spP[0], outcome, nowMs);
+      const xk = prevDayFailKind(prev.history, ctx.prevDay);
+      if (xk) noteXNext(xk, t, outcome, nowMs);
+      if (atCap(prev)) noteCapHit(t, outcome, nowMs);
+      bMat = baseS > 0 && t >= SP_B_RATIO * baseS;
+      sh = ans.ok ? shadowSuccess(sh, { t, speed: ans.speed, clean: ans.clean, xCount }) : shadowFail(sh);
+      spP = undefined; // 控えはその日の最初の答えで数え終えた
+    } else if (ans.ok) sh = shadowSameDay(sh, { ok: true, xCount }); // 同じ日: まだ覚えていない語の最初の自力正解だけ S 1
+    const rec = { t: nowMs, memSv: null, memD: 0, memD0: 0, sp: Array.isArray(before.sp) ? before.sp.filter(Array.isArray) : null, spP: spP ?? null };
+    writeShadow(rec, sh);
+    if (ans.ok) noteSpeedRecord(rec, stat, ctx, ans, { bMat, today }, nowMs);
+    putMemoryWord(word, compactRecord(rec));
+    tickMemoryCheck();
+    tickMemoryWords();
+  } catch {
+    // 記録の質は学習を止めない（期日・段・保持率はもう書いた）
+  }
+}
+
+// 語ごとの記録の質の 1 件（無い欄は書かない。鍵の順は t・memSv・memD・memD0・sp・spP）
+function compactRecord(rec) {
+  const out = { t: rec.t, memSv: rec.memSv, memD: rec.memD, memD0: rec.memD0 };
+  if (rec.sp?.length) out.sp = rec.sp;
+  if (rec.spP) out.spP = rec.spP;
+  return out;
+}
+
+// 速さの記録（ノーミス正解で、測りの札がある答え）。rec = この語の記録の質（spelldash_memory_words の 1 件）、stat = 書き手の写し（答えた後の段を読む）。
+// sp に入れるのは材料 (a) だけ（(b) の印も付ける）、spP は (a)・(b) のどちらでも。
+// 入れない: 一度に 2 字以上入った答え・置き換えの入力（multi）・1 打目の前に盤面の外へ焦点が移った答え（outside）・T1 が 200ms 未満・30 秒超。
+// q = T1 ÷ 本人の基準 ×100（基準は同じ経路の、同じ問いの字数帯の中央値。帯が 20 件未満なら経路全体。js/memoryCheck.js speedBasis）。
+// 見本（字数帯・経路・初めての答え）は初めての答えかその日の最初の答えだけ（速さの箱と同じ）。止まった答え（stalled）は「T1 ＋ 最も長い止まり」を入れない
+function noteSpeedRecord(rec, stat, ctx, ans, { bMat, today }, nowMs) {
+  const m = ans.measure;
+  if (!m || typeof m !== "object") return;
+  noteInputCount(m.input, !!m.multi, nowMs);
+  if (!ans.clean) return;
+  const t1 = Number(m.t1);
+  if (!Number.isFinite(t1) || t1 < CHECK_T1_MIN || t1 > CHECK_T1_MAX || m.multi || m.outside) return;
+  const aMat = !!ctx.firstAnswer || (!!ctx.firstOfDay && ctx.gap >= SP_GAP_DAYS);
+  const sampled = !!ctx.firstAnswer || !!ctx.firstOfDay;
+  if (!aMat && !bMat && !sampled) return;
+  const pcMax = Number(m.pcMax);
+  const tp = !m.stalled && m.pcMax !== null && Number.isFinite(pcMax) && pcMax >= 0 ? t1 + pcMax : null;
+  if ((aMat || bMat) && today !== null) {
+    const basis = speedBasis({ qLen: m.qLen, input: m.input }); // 入れる前の見本と比べる
+    if (aMat) {
+      const base = basis.band ?? basis.all;
+      const q = base > 0 ? Math.round((t1 / base) * 100) : null;
+      const mark = encodeMark({ a: true, b: bMat, qb: qBandOf(m.qLen), ab: aBandOf(m.aLen), first: !!ctx.firstAnswer, input: m.input });
+      rec.sp = [...(rec.sp ?? []).slice(-(SP_KEEP - 1)), [today, Math.round(t1), q, CLS_CHAR[ans.speed] ?? "u", mark]];
+    }
+    rec.spP = [today, encodePend({ a: aMat, b: bMat, m: CLS_CODE[ans.speed] ?? 0, p: classP20(t1, basis.p20), t: classTp(tp, basis.tp), rank: stat.masteryRank ?? 0 })];
+  }
+  if (sampled) noteSamples({ t1, tp, qLen: m.qLen, aLen: m.aLen, input: m.input, first: !!ctx.firstAnswer }, nowMs);
 }
 
 function createInitialWordStats() {

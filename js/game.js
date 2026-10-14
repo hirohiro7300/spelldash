@@ -7,7 +7,7 @@ import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, r
 import { historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday, isTimedSet } from "./dailySet.js";
 import { isTutorialRunPending } from "./tutorial.js";
-import { rankOf, answerContext, isFirstAnswer, rankHtml, RANK_NAMES } from "./mastery.js";
+import { rankOf, answerContext, isFirstAnswer, rankHtml, RANK_NAMES, daysSinceAnswer } from "./mastery.js";
 import { boxKey, classifySpeed, noteSpeedSample, notePendingFirstFast, flushMasteryMeta, keyInputOf } from "./masteryMeta.js";
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
 import { computeLegacyLearnedCount } from "./categoryProgress.js";
@@ -164,9 +164,16 @@ let timedWarned = false; // 「残り10秒」を読み上げた
 // id -> { before: 段, seenToday: その答えが同じ日の扱いだった（今日もう答えていた）, slowDown: 回の最初の答えが遅い正解で 5 → 4 になった（この回で × があれば偽） }
 let runRankBefore = new Map();
 // 1 問ごとの速さ（docs/SPEC_MASTERY.md §3.4）: tShow = 出題の文を書いた後の最初の rAF、tFirst = この語の最初のキー、input = その経路（kbd／touch）、
-// spill = 前の語の続きが残っていた間に来たキー（測らない）、invalid = 測らない語（音・例文の訳つき・全文入力・計算・英文・空欄・並べ替え・ページの最初の語・裏に回った）
+// spill = 前の語の続きが残っていた間に来たキー（測らない）、invalid = 測らない語（音・例文の訳つき・全文入力・計算・英文・空欄・並べ替え・ページの最初の語・裏に回った）。
+// 記録の質（Batch 68 L1-1・L1-3。書き手へ渡す measure の材料。判定・分類・段は変えない）: detail = 最初のキーの入力の細目（kbd／osk／ime）、
+// keys・last・pcMax = 受理した打鍵の数・最後の打鍵の時刻・2 打目からの打鍵の止まりの最長、multi = 1 回の input で今の語に 2 字以上入った・置き換えの入力
+// （予測変換・候補のタップ）、outside = 1 打目の前に焦点が盤面の外へ移った・窓の焦点が外れた、away = 1 打目の後に同じことが起きた（pc を測らない）
 let wordTiming = null;
 let keyPath = "kbd"; // いま処理している打鍵の経路（物理キーの keydown = kbd／画面キーボードの合成キー・ソフトウェアキーボードの keydown と input = touch）
+// 入力の細目（記録だけ。速さの箱は keyPath の 2 つのまま）: kbd 物理キー／osk 専用キーボード（#osk のボタンが合成する keydown。isTrusted 偽）／
+// ime OS の画面キーボード（信頼された keydown で code が物理キーの名前でない・input の経路）
+let keyDetail = "kbd";
+const STALL_MS = 3000; // 1 打目の後にこれ以上止まった語は pc を測らない（T1 は使う）
 let pageWordsShown = 0; // このページで出した語の数（ページを開いて最初の語は測らない）
 const ambiguousCache = new Map(); // `${カテゴリ}|${id}` -> isAmbiguousPrompt（カテゴリの全語を走査するので、測るときだけ・語ごとに 1 回）
 let wordSerial = 0; // setNewWordごとに増える。正解直後の二重進行防止に使う
@@ -1269,8 +1276,9 @@ export function handleKeydown(event) {
 
   // 速さの箱の入力の経路（js/masteryMeta.js keyInputOf）: 信頼された keydown で code が物理キーの名前（KeyA・Digit1・Minus など）なら kbd
   // （日本語入力オンの物理キーの keyCode 229・key Process も code で kbd）。iPhone・Android の画面キーボード（信頼された keydown でも
-  // code が空・Unidentified）と #osk のボタンが合成する keydown は touch
+  // code が空・Unidentified）と #osk のボタンが合成する keydown は touch。touch の中は記録だけ osk（合成）と ime（OS の画面キーボード）に分ける
   keyPath = keyInputOf(event);
+  keyDetail = keyPath === "kbd" ? "kbd" : event.isTrusted === false ? "osk" : "ime";
 
   // 正解直後の待ち（次の語が出る前）: 文字キーは判定しない（次の語の1文字目をミス扱いにしない）。
   // 打ち終えた語の続き（ローマ字の読みの続き・英単語の長い候補の続き）は判定に食わせて時刻を進める
@@ -1352,7 +1360,7 @@ function handleRomajiKey(event) {
         expected = result.expected;
         return null; // ミスの feed は状態を変えない
       }
-      markFirstKey();
+      markKey();
       renderRomaji();
       // 画面キーボードが出ていると、長い問題文の下の入力欄が盤面に隠れることがある。打ち始めに見える位置へ
       if (romaji.keys.length === 1 && document.body.classList.contains("osk-open")) {
@@ -1466,12 +1474,21 @@ export function handleTextInput() {
 
   const fresh = [...raw.slice(accepted.length)];
   keyPath = "touch"; // ソフトウェアキーボードの input 経路（速さの箱）
+  keyDetail = "ime";
+  // この 1 回の input で今の語に受理した字の数（2 字目を受理する前に multi の印を付ける。完成の字なら completeWord がその場で読む）
+  let fedSerial = -1;
+  let fed = 0;
   for (let i = 0; i < fresh.length; i++) {
     const typedChar = fresh[i];
     const missBefore = typingMissCount;
     let finished = false;
     // 打ち終えた前の語の続き（a の後の n、gym の後の nasium）は次の語の打鍵にしない（keydown と同じ judgeKey。続きと次の語の両方に食わせて解決）
     const verdict = judgeSpellingKey(typedChar, typedChar, (ch) => {
+      if (fedSerial !== wordSerial) {
+        fedSerial = wordSerial;
+        fed = 0;
+      }
+      if (++fed >= 2 && wordTiming?.serial === wordSerial) wordTiming.multi = true;
       if (completedAnswer(activeCandidates(), typedSoFar + ch) !== null) {
         elements.input.value = typedSoFar + ch;
         updateTypedPreview(elements.input.value);
@@ -1520,18 +1537,45 @@ export function handleBeforeInput(event) {
     triggerEnter();
     return;
   }
+  // 置き換えの入力（予測変換・自動修正の候補）: 綴りを思い出していない字が入りうる。multi の印だけ（判定は handleTextInput のまま）
+  if (event.inputType === "insertReplacementText" && wordTiming?.serial === wordSerial) wordTiming.multi = true;
   if (romajiMode) event.preventDefault(); // ローマ字モードは keydown だけで判定する（値を書き換えさせない）
 }
 
-// 「思い出せなかった」の記録（答え表示・ヒントで共通）。1語につき1回だけ
-function markRecallFail() {
+// × の細目（書き手の history に残す。Batch 68 L1-2）: k = e 答え表示（Enter・Esc）／h ヒント／m 1 打ミス（全文入力の違う答えも）、
+// p = 打てていた字数（綴りは受理した字、ローマ字は受理したキー。全文入力の答え表示・ヒントは 0）、a = m のとき隣のキーを打ったか（ほかは null）。
+// p（パス）は Battle の道で、盤面には無い（Battle は引数なしの u のまま）
+function typedCount() {
+  if (freeMode) return 0;
+  return romajiMode ? String(romaji?.keys ?? "").length : typedSoFar.length;
+}
+
+// 隣のキー: 物理キーの QWERTY（段のずれ 0・0.25・0.75 キー）か専用キーボード（js/keyboard.js の ROWS の並び。css/keyboard.css で 2 段目は
+// 両側を半キーずつあけ、3 段目は 7 字＋⌫〔1.5 キー〕を左から並べる）のどちらかで隣り合う字。同じ段は左右、上下の段は中心の差が 1 キー未満
+const KEY_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]; // js/keyboard.js の ROWS と同じ（あちらは export しない）
+const KEY_X = [(r, i) => i + [0, 0.25, 0.75][r], (r, i) => (r === 2 ? (i + 0.5) * (10 / 8.5) : i + 0.5 + r * 0.5)];
+let adjacentKeys = null; // "ab" の集合（最初の 1 打ミスで作る）
+function isAdjacentKey(expected, typed) {
+  if (!/^[a-z]$/.test(expected ?? "") || !/^[a-z]$/.test(typed ?? "") || expected === typed) return false;
+  if (!adjacentKeys) {
+    adjacentKeys = new Set();
+    KEY_ROWS.forEach((row, r) => [...row].forEach((a, i) => KEY_ROWS.forEach((row2, r2) => [...row2].forEach((b, j) => {
+      const near = r === r2 ? Math.abs(i - j) === 1 : Math.abs(r - r2) === 1 && KEY_X.some((x) => Math.abs(x(r, i) - x(r2, j)) < 1);
+      if (near) adjacentKeys.add(a + b);
+    }))));
+  }
+  return adjacentKeys.has(expected + typed);
+}
+
+// 「思い出せなかった」の記録（答え表示・ヒントで共通）。1語につき1回だけ。detail = × の細目（上の typedCount の注釈）
+function markRecallFail(detail = { k: "e", p: typedCount(), a: null }) {
   recallFailCount++;
   if (elements.recallFail) elements.recallFail.textContent = recallFailCount;
 
   // 習熟度: 回で最初の答えなら、書く前の stat の段と同じ日の扱いを控える（完了パネル・結果の「段が動いた語」）
   const prevStat = getWordStats()[currentWord.id];
   const failCtx = prevStat ? answerContext(prevStat, Date.now()) : null;
-  recordRecallFail(currentWord.id);
+  recordRecallFail(currentWord.id, detail);
   noteRunAnswer(currentWord.id, { before: failCtx?.rank ?? 0, ok: false, sameDay: !!failCtx?.sameDay });
 
   // Study: Unresolved（赤）としてキューへ戻す。数問後に再出題される
@@ -1593,7 +1637,8 @@ function showAnswer() {
   else showColoredAnswer(currentWord.en);
 }
 
-function revealAnswer(fromMiss = false) {
+// failDetail: × の細目（ミス起点は呼び手が渡す。無ければ Enter・Esc の答え表示 e と打てていた字数）
+function revealAnswer(fromMiss = false, failDetail = null) {
   isRevealed = true;
   clearSpill(); // 答えを見た: 前の語の続きの持ち越し止めは終える
   hideHint();
@@ -1601,7 +1646,7 @@ function revealAnswer(fromMiss = false) {
   if (!fromMiss) sfxReveal(); // ミス起点ではsfxMissが鳴っているので重ねない
 
   // ヒントを見た時点で×は記録済み。二重に数えない
-  if (!hintUsed) markRecallFail();
+  if (!hintUsed) markRecallFail(failDetail ?? { k: fromMiss ? "m" : "e", p: typedCount(), a: null });
 
   showAnswer();
   if (listenMode) elements.japanese.textContent = promptOf(currentWord); // 音だけだった語の意味を見せる
@@ -1659,7 +1704,12 @@ function submitFreeAnswer(typed) {
   updateCombo(0);
   sfxMiss();
   recordTypingMiss(currentWord.id);
-  revealAnswer(true);
+  // × の細目: 違う答え（m）。打てていた字数は答えと頭から一致した字数（表記ゆれは吸収して比べる）。隣のキーかは 1 打ずつ見ないので null
+  const got = [...normalizeAnswer(typed)];
+  const want = [...normalizeAnswer(currentWord.en)];
+  let same = 0;
+  while (same < got.length && same < want.length && got[same] === want[same]) same++;
+  revealAnswer(true, { k: "m", p: same, a: null });
   // 英作文: どこから違うかを語単位で指摘（語順・時制・冠詞の気づきに）
   if (currentWord.write) {
     const diff = firstWordDiff(currentWord.en, typed);
@@ -1749,7 +1799,7 @@ export function useHint() {
   if (!hintUsed) {
     hintUsed = true;
     hasMissedCurrentWord = true; // クリーン判定からも外す
-    markRecallFail();
+    markRecallFail({ k: "h", p: typedCount(), a: null }); // × の細目: ヒント・ヒントの前に打てていた字数
     renderWordHistory();
     renderWordNote(currentWord);
     sfxReveal();
@@ -1986,7 +2036,7 @@ function handleCorrectChar(typedChar) {
 
 // 1文字受理の共通処理（DOMの入力欄には触れない）。単語完成ならtrueを返す
 function acceptChar(typedChar) {
-  if (typedChar !== undefined) markFirstKey(); // ヒントで足した字（useHint は字を渡さない）はこの語の最初のキーにしない
+  if (typedChar !== undefined) markKey(); // ヒントで足した字（useHint は字を渡さない）はこの語の打鍵にしない
   typedSoFar += typedChar ?? currentWord.en[currentIndex];
   currentIndex = typedSoFar.length;
   correctChars++;
@@ -2028,7 +2078,72 @@ function markFirstKey() {
   if (!t || t.serial !== wordSerial || t.tFirst !== null) return;
   t.tFirst = performance.now();
   t.input = keyPath;
+  t.detail = keyDetail;
+  t.last = t.tFirst;
   if (t.tShow === null || t.spill) t.invalid = true;
+}
+
+// この語に受理した打鍵（英単語の acceptChar・ローマ字の受理）。最初は markFirstKey、2 打目からは打鍵の止まりの最長（pcMax）を控える
+function markKey() {
+  const t = wordTiming;
+  if (!t || t.serial !== wordSerial) return;
+  t.keys++;
+  if (t.tFirst === null) {
+    markFirstKey();
+    return;
+  }
+  const now = performance.now();
+  if (t.last !== null && now - t.last > t.pcMax) t.pcMax = now - t.last;
+  t.last = now;
+}
+
+// 焦点が盤面の外か（記録の質の outside・away）。盤面 = #gameCard・#osk（メモ・覚え方の欄は外: focusOnBoard と同じ）。盤面を包む要素
+// （盤面の空いた所のクリックで焦点が残る <main tabindex="-1"> など）は外にしない
+function isOffBoard(el) {
+  if (!(el instanceof Element)) return false;
+  if (el.closest("#wordNote, #wordAi")) return true;
+  if (el.closest("#gameCard, #osk")) return false;
+  const card = document.getElementById("gameCard");
+  return !(card && el.contains(card));
+}
+
+// 盤面の外へ移った（焦点が盤面の外の要素へ・窓の焦点が外れた）: 1 打目の前なら outside、後なら away。判定・分類は変えない（書き手へ渡すだけ）
+function noteLeftBoard() {
+  const t = wordTiming;
+  if (!isPlaying || !t || t.serial !== wordSerial) return;
+  if (t.tFirst === null) t.outside = true;
+  else t.away = true;
+}
+document.addEventListener("focusin", (event) => {
+  if (wordTiming && isOffBoard(event.target)) noteLeftBoard();
+});
+window.addEventListener("blur", (event) => {
+  if (event.target === window) noteLeftBoard();
+});
+
+// 問いの字数（書き手の字数帯。見せている訳・場面の文から括弧〔「（略語）」など〕を除いた字数。品詞の札はラベルにあるので入らない）
+function promptLength(word) {
+  return [...String(promptOf(word)).replace(/[（(][^）)]*[）)]/g, "").trim()].length;
+}
+
+// 書き手へ渡す測りの札（docs/SPEC_MASTERY.md「記録の質」。何を残すかは書き手が決める）。speedSample が値を返した答えだけ（ほかは null）。
+// t1 = 出題から最初のキー（ms。30 秒を超えてもそのまま）、pcMax = 2 打目からの打鍵の止まりの最長（打鍵 1 つなら null）、qLen・aLen = 問いと答え
+// （受理した字・キー）の字数、input = 最初のキーの細目、multi・outside は上の注釈、stalled = 1 打目の後に 3 秒以上止まった・盤面の外へ移った、
+// firstSight = その語の初めての答え
+function measureOf(sample, ctx) {
+  const t = wordTiming;
+  const pcMax = t.keys >= 2 ? Math.round(t.pcMax) : null;
+  return {
+    t1: Math.round(sample.t1),
+    pcMax,
+    qLen: promptLength(currentWord),
+    aLen: romajiMode ? String(romaji?.keys ?? "").length : typedSoFar.length,
+    input: t.detail ?? "kbd",
+    multi: !!t.multi,
+    outside: !!t.outside,
+    stalled: !!t.away || (pcMax ?? 0) >= STALL_MS,
+    firstSight: !!ctx?.firstAnswer
+  };
 }
 
 // 同じ訳の語があり、例文の訳を添えて出す問い（例文の有無によらず、訳だけで決まらない問いは測らない）
@@ -2128,6 +2243,7 @@ function completeWord() {
   const sample = answerCtx && isClean ? speedSample(tDone) : null;
   const box = sample ? speedBox() : null;
   const { speed, basis } = sample && box ? classifySpeed(sample, box, { firstAnswer: answerCtx.firstAnswer }) : { speed: "unknown", basis: null };
+  const measure = sample ? measureOf(sample, answerCtx) : null; // 書き手へ渡す測りの札（分類は上のまま。記録の質）
   let ranks = null; // { before, after }（盤面の文の「習熟度 …」）
 
   recordCorrect(currentWord.id, isClean, answerCtx); // 答える前の文脈は上で出したものを渡す（書き手で二重に計算しない。答えを見た後の打ち直しは null）
@@ -2137,10 +2253,13 @@ function completeWord() {
   let loopResult = null;
   if (selfRecall) {
     consecutiveFails = 0;
-    recordRecallSuccess(currentWord.id, { clean: isClean, speed });
+    recordRecallSuccess(currentWord.id, { clean: isClean, speed }, measure);
     if (answerCtx) {
-      // 本人の基準に入れるのは、初めての答えかその日の最初の答えで、ノーミス・測れた答えだけ（分類は上で済ませた）
-      if (sample && box && (answerCtx.firstAnswer || answerCtx.firstOfDay)) noteSpeedSample(box, sample);
+      // 本人の基準に入れるのは、初めての答えかその日の最初の答えで、ノーミス・測れた答えだけ（分類は上で済ませた）。
+      // 一度に 2 字以上入った・1 打目の前に盤面の外へ移った答えは入れない。1 打目の後に止まった・外へ移った答えは pc を入れない（T1 は入れる）
+      if (sample && box && (answerCtx.firstAnswer || answerCtx.firstOfDay) && !measure.multi && !measure.outside) {
+        noteSpeedSample(box, measure.stalled ? { ...sample, pc: null } : sample);
+      }
       if (answerCtx.firstAnswer && speed === "fast") notePendingFirstFast(currentWord.id, basis);
       ranks = { before: answerCtx.rank, after: rankOf(getWordStats()[currentWord.id]) };
       noteRunAnswer(currentWord.id, { before: ranks.before, ok: true, speed, sameDay: answerCtx.sameDay, after: ranks.after });
@@ -2197,7 +2316,7 @@ function completeWord() {
   renderMission();
 
   if (mode === "study") {
-    applyStudyXp(earned, missionResult, loopResult, learnEvent, ranks);
+    applyStudyXp(earned, missionResult, loopResult, learnEvent, ranks, prevStat ? daysSinceAnswer(prevStat) : 0);
     if (consumeBoostNote()) {
       setTimeout(() => showMessage("知っている語が多い。少し難しい単語も混ぜる", "revealed"), 1200);
     }
@@ -2597,7 +2716,7 @@ function endStudySession({ timed = false } = {}) {
 
 // Studyモードは1語ごとに即XP反映（セッションの「終了」がないため）
 // ranks = { before, after }（この答えの前後の習熟度。自力正解のときだけ）
-function applyStudyXp(earned, missionResult, loopResult, learnEvent = null, ranks = null) {
+function applyStudyXp(earned, missionResult, loopResult, learnEvent = null, ranks = null, answerDays = 0) {
   markActiveToday();
   snapshotGrowth();
   learnedCardStale = true; // プレイ中は畳まれて見えない（css/room.css の body.home--playing）。終わったら notifyGameEnd が描く
@@ -2673,9 +2792,8 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null, rank
       return;
     }
     if (learnEvent === "retained") {
-      const days = stat?.lastReviewAt && stat?.history?.length > 1
-        ? Math.max(1, Math.round((Date.now() - Date.parse(stat.history[stat.history.length - 2]?.d ?? stat.lastReviewAt)) / 86400000))
-        : null;
+      // 日数は答える前の stat から（completeWord の answerDays。盤面の上・語の詳細と同じ暦日の差。0 なら日数を言わない）
+      const days = answerDays;
       // 「定着」は保持率（7 日窓）の言葉なので使わない。この答えで段が 身についた・即答 に上がったときだけ添える
       const promo = ranks && ranks.after >= 4 && ranks.after > ranks.before ? `。習熟度 ${RANK_NAMES[ranks.after]}` : "";
       showResult(`${days ? `${days}日ぶりでも` : ""}思い出せた${promo}${xp}`, "correct");
@@ -2714,8 +2832,9 @@ function handleTypingMiss(expectedChar = currentWord?.en[currentIndex], typedCha
 
   // 1回でもミスしたら不正解: スペルを表示して打ち直し。
   // 当てずっぽうでの正解到達は「思い出して打つ」の本質ではない（2026-08-15創業者決定）
+  // × の細目: 1 打ミス・打てていた字数・正しい字の隣のキーを打ったか（指の滑りの見分けの材料。判定は変えない）
   if (!isRevealed) {
-    revealAnswer(true);
+    revealAnswer(true, { k: "m", p: typedCount(), a: isAdjacentKey(expectedChar, String(typedChar ?? "").toLowerCase()) });
     return;
   }
 
@@ -2882,6 +3001,13 @@ function startWordTiming() {
     tShow: null,
     tFirst: null,
     input: null,
+    detail: null,
+    keys: 0,
+    last: null,
+    pcMax: 0,
+    multi: false,
+    outside: false,
+    away: false,
     spill: false,
     invalid:
       pageWordsShown === 1 ||
@@ -2956,9 +3082,8 @@ function renderWordMeta() {
     currentWordKind = "repeat";
   } else if (isReviewDue(stat)) {
     currentWordKind = "review";
-    const days = stat.lastRecallSuccessAt
-      ? Math.floor((Date.now() - Date.parse(stat.lastRecallSuccessAt)) / 86400000)
-      : 0;
+    // 前の答えからの暦日の差（js/mastery.js daysSinceAnswer。正解の後の文・語の詳細と同じ数え方。24 時間の切り捨てにしない）
+    const days = daysSinceAnswer(stat);
     label = days >= 1 ? `${days}日ぶりの復習` : "復習";
   }
   el.textContent = label;

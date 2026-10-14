@@ -1,6 +1,6 @@
 # 単語ごとの習熟度と Study の 60 秒 — 仕様（Batch 63）
 
-> 確定版（2026-10-12）。**段階 1・段階 2 とも実装済み**（段階 1 = §2 の A〜K1、段階 2 = §6 の S1〜S5。§11 に実装で決めたこと。段階 2 は §11.5、PR #159 のレビュー対応は §11.6）。創業者の指示（2026-10-11）:「習熟度ランクがあってもいいと思うんだよね。りんごをappleって言えない人っていないじゃん？ど忘れでもないものやん。その単語に対してどれぐらいの記憶認識しているのかを可視化できるようにしたい。60秒間のタイム制はやっぱり学習モードでもあった方がよくて、その時点での各単語の習熟度を出すべきだと思うんだよね。」
+> 確定版（2026-10-12）。**段階 1・段階 2 とも実装済み**（段階 1 = §2 の A〜K1、段階 2 = §6 の S1〜S5。§11 に実装で決めたこと。段階 2 は §11.5、PR #159 のレビュー対応は §11.6）。**記録の質と影の計算（Batch 68、2026-10-14）は §12**（出題・期日・段は変えない）。創業者の指示（2026-10-11）:「習熟度ランクがあってもいいと思うんだよね。りんごをappleって言えない人っていないじゃん？ど忘れでもないものやん。その単語に対してどれぐらいの記憶認識しているのかを可視化できるようにしたい。60秒間のタイム制はやっぱり学習モードでもあった方がよくて、その時点での各単語の習熟度を出すべきだと思うんだよね。」
 > 学習の本体（Study ほか）の話として扱う。集客の /typing.html・/typing-game.html は触らない（別の作業）。
 > 起草は 2026-10-12。3 つの案（学習科学・体験・最小）を採点して学習科学の案を土台に選び（付録 C）、同日 3 つの視点（段の論理・60 秒の回と画面と E2E・創業者の指示）の反証を受けて改訂した（付録 D）。
 > 文中の行番号は実装前の木（d079352）のもの。実装後の場所は関数名で引く。
@@ -17,6 +17,7 @@
 7. 単語帳・語の詳細・学習データ・語数のセットの完了パネル・Challenge／Daily の結果に同じ物差しを出す。語の詳細では、段の名前に**その語の事実**（いつ・何日あけて思い出せたか）と**次の段の条件**を添える。段ごとの決まり文句で経緯を言わない。常に 0/10 だった記憶ゲージは外す。
 8. 記録は word_stats に**端末だけの欄 2 つ**（`masteryRank`・`masteryAt`。PR #159 のレビューで `masteryDownAt`・`answerSeenAt` を足した。§7.1・§11.6）と別キー `spelldash_mastery_meta` 1 つ。schema 6 のまま、SQL は要らない。
 9. 期日前の身についた以上の語と、2 週間後の確認を待つ知ってた語は、補充・ミッション・息抜きに出さない（S6、**段階 1**）。段階 2 で間隔とつなぐ（正解で期日を早めない・日をあけた正解は間隔を伸ばす・身についた 7 日／即答 30 日の下限）。apple が 106 日までに出る回数は、今の 10 回＋期日を見ない補充から、段階 1 で 10 回（補充なし）、段階 2 で 5 回になる（Challenge・Daily・Battle で答えなければ）。予定どおり続ける人の間隔は今と同じ。
+10. **記録の質と影の計算**（Batch 68。§12）: 盤面は答えごとに測りの札（T1・最も長い止まり・問いと答えの字数・入力の細目・一度に 2 字以上・盤面の外・止まり）と × の細目（答え表示・ヒント・1 打ミスと隣のキーか）を書き手に渡す。書き手は語ごとの速さ `sp`（初めての答えと 3 暦日以上あいた答えだけ）・影の強さ（難しさ・安定性の式の 7 通り）を端末だけの別のキー `spelldash_memory_words`（語の記録とは別。10 答えごとに書く）に、history の × の種類を word_stats に、当たりと見本を `spelldash_memory_check` に残す。出題・期日・段・保持率は 1 件も変えない（scripts/sim-writers.mjs で毎回確かめる）。日数の文は 3 か所とも前の答えからの暦日の差に。
 
 ---
 
@@ -125,7 +126,7 @@
 | T1 | `tFirst − tShow`（ms）。速さの本体 |
 | 1 字あたり pc | `(tDone − tFirst) ÷ (打った字数 − 1)`。字数 3 以上のときだけ。綴りで迷った語の見張り |
 
-**測らない（速さ＝`unknown`、基準にも入れない）**: ヒント・答え表示の語（どちらも ×）／前の語の続き（spill・shared）の字がこの語の最初の字になった語／出題から最初のキーまでにタブが裏に回った語（visibilitychange を数える）／ページを開いて最初の語（キューの先頭の強い語と腕試しの最初の語を測れないが、即答の機会を 1 回失うだけで控えめ側）／音で出題（`listenMode`）／例文の訳を添えた問い（`isAmbiguousPrompt`）／全文入力のカード（`freeMode`・概念カード・IME）・計算・英文を打つ・空欄・並べ替えのカード／`tShow` より前のキー／T1 < 200ms（先打ちの疑い）／Battle（引数なし）。ローマ字の答えは測る（`ja` の箱）。
+**測らない（速さ＝`unknown`、基準にも入れない）**: ヒント・答え表示の語（どちらも ×）／前の語の続き（spill・shared）の字がこの語の最初の字になった語／出題から最初のキーまでにタブが裏に回った語（visibilitychange を数える）／ページを開いて最初の語（キューの先頭の強い語と腕試しの最初の語を測れないが、即答の機会を 1 回失うだけで控えめ側）／音で出題（`listenMode`）／例文の訳を添えた問い（`isAmbiguousPrompt`）／全文入力のカード（`freeMode`・概念カード・IME）・計算・英文を打つ・空欄・並べ替えのカード／`tShow` より前のキー／T1 < 200ms（先打ちの疑い）／Battle（引数なし）。ローマ字の答えは測る（`ja` の箱）。測った答えでも、1 回の input で 2 字以上入った答え・1 打目の前に盤面の外へ焦点が移った答えは箱に入れず、1 打目の後に 3 秒以上止まった・外へ移った答えは pc を入れない（分類はそのまま。Batch 68。§12.1）。
 
 **本人の基準**（js/masteryMeta.js）:
 
@@ -429,7 +430,7 @@ export function rankOf(s) {
   | 未解決 | M月D日は思い出せなかった（`lastRecallFailAt` の日） |
   | 確認待ちの知ってた語（知ってた語で streak 1）で段 4 | M月D日に初めて答えて、すぐ打てた |
   | 確認待ちの知ってた語で段 3 | M月D日に初めて答えて、間違えずに打てた |
-  | それ以外 | M月D日に思い出せた（N日あけて）。N は history の最後の `o`（日が `lastRecallSuccessAt` と同じ）とその前の項目の日の差。差が 0・history が足りないときは括弧ごと省く |
+  | それ以外 | M月D日に思い出せた（N日あけて）。N は history の最後の `o`（日が `lastRecallSuccessAt` と同じ）とその前の項目の日の差（`daysBetween`。盤面の上・正解の後の文と同じ数え方。§12.6）。差が 0・history が足りないときは括弧ごと省く |
 
   どの枝も日付を持つので、段が「いつの時点の段か」も分かる（段は時間では下がらない）。
 - `rankNext(stat, today, nowMs)`（`nowMs` の既定は今。日付は前の答えの日 `prevDay` から。その日付が今日以前なら「M月D日以降に」を「次に」にする）:
@@ -468,7 +469,7 @@ export function rankOf(s) {
 ### 5.6 盤面の 1 行の文（`applyStudyXp`、要素も行も増やさない）
 
 - 知ってた（game.js:2346）: 段 4 なら `知ってた。${en} はもう身についている。2週間後に確認${xp}`、それ以外は `知ってた。${en} は2週間後に確認${xp}`（初見の日なので「身についた」と過去形で言わない。S6 で 2 週間は補充に出ないので「2週間後に確認」は事実）。
-- 日をあけた正解（game.js:2342）: `${days ? `${days}日ぶりでも` : ""}思い出せた${promo}${xp}`。`promo` はこの答えで段が 4 か 5 に上がったときだけ `。習熟度 ${名前}`（例「9日ぶりでも思い出せた。習熟度 身についた」）。
+- 日をあけた正解（game.js:2342）: `${days ? `${days}日ぶりでも` : ""}思い出せた${promo}${xp}`。`days` は答える前の stat の前の答えからの暦日の差（`daysSinceAnswer`。盤面の上の「N日ぶりの復習」・語の詳細と同じ。Batch 68 §12.6）。`promo` はこの答えで段が 4 か 5 に上がったときだけ `。習熟度 ${名前}`（例「9日ぶりでも思い出せた。習熟度 身についた」）。
 - ほかの文の順と中身は今のまま。打つ前・打っている間は段を見せない。
 
 ### 5.7 道・ホーム
@@ -524,8 +525,11 @@ myWordsView.js:9 の表に `known: "知ってた"` を足す（「・ undefined�
 | 同上 | `masteryAt`（ISO。段を決めた答えの時刻。書いた `lastRecall*At` と同じ文字列） | 同上（答えごとに必ず書く。段が変わらなくても） | しない |
 | 同上 | `masteryDownAt`（ISO。× で段を下げた答えの時刻。書いた `lastRecallFailAt` と同じ文字列。PR #159 のレビュー） | `recordRecallFail` の中（段を下げたときだけ） | しない |
 | 同上 | `answerSeenAt`（ISO。別解を打って答えの綴りを見た時刻。PR #159 のレビュー） | `recordAnswerSeen`（game.js `acceptAlternative` から。初見の語だけ・語ごとに多くて 1 回） | しない |
+| 同上 | history の × の `k`・`p`・`a`（Batch 68。§12.2） | `recordRecallFail` の中（同じ写し） | しない |
 | `spelldash_mastery_meta`（新しいキー） | 下の JSON | js/masteryMeta.js | しない（入力の速さは端末と指に固有） |
-| メモリー（タスクの中だけ） | `pendingAnswer = { id, rankBefore, knownBefore, clean, ctx, streakDays }` | stats.js `recordCorrect` の先頭。`queueMicrotask` で捨てる | — |
+| `spelldash_memory_check`（Batch 68 の新しいキー） | §12.4 | js/memoryCheck.js | しない |
+| `spelldash_memory_words`（Batch 68 の新しいキー） | 語ごとの `t`・`sp`・`spP`・`memSv`・`memD`・`memD0`（§12.2） | js/memoryWords.js（書き手は js/stats.js `noteMemory`。10 答えごと・回の終わり・pagehide） | しない |
+| メモリー（タスクの中だけ） | `pendingAnswer = { id, rankBefore, knownBefore, clean, ctx, streakDays, stat }`（`stat` は答える前の記録。Batch 68） | stats.js `recordCorrect` の先頭。`queueMicrotask` で捨てる | — |
 | メモリー（回の中だけ） | `runKind`・`runSize`、`runRankBefore: Map<id, { before, seenToday, slowDown }>`、60 秒の `deadline`・`hiddenAt`、語ごとの `{ tShow, tFirst, input, invalid }` | game.js | — |
 | `spelldash_set_size` | `"60s"` を足す（キーは今のまま。バックアップの対象） | dailySet.js | しない（今と同じ） |
 
@@ -548,7 +552,7 @@ spelldash_mastery_meta = {
 
 ### 7.2 書く順序と回数
 
-- 書き手の引数: `recordRecallSuccess(word, answer?)`。`answer = { clean: boolean, speed: "fast" | "normal" | "slow" | "unknown" }`。省略（Battle）は §3.3 のとおり（`pendingAnswer.clean`）。`recordRecallFail(word)` は今のまま（× はどこからでも同じに扱う）。Battle の呼び方の意味は変わらない。
+- 書き手の引数: `recordRecallSuccess(word, answer?, measure?)`。`answer = { clean: boolean, speed: "fast" | "normal" | "slow" | "unknown" }`。省略（Battle）は §3.3 のとおり（`pendingAnswer.clean`）。`recordRecallFail(word, detail?)`（× はどこからでも同じに扱い、期日・段は detail を見ない）。`measure`・`detail` は Batch 68 の記録の質（§12.1。何を残すかは §12.2）。Battle の呼び方（引数なし）の意味は変わらない。
 - `recordCorrect(word, wasClean, ctx?)`: 先頭（`{ ...stats[word] }` で写す前）で `pendingAnswer` を置く（`ctx` = game.js が渡した答える前の `answerContext`、無ければ `answerContext(s, now)`。`rankBefore = ctx.rank`・`knownBefore = ctx.knownCheck`・`clean = wasClean`）→ 初見の判定（`correctCount` を足す前に読む）→ 今の処理（知ってたの枝も含む）。
 - `recordRecallSuccess`: `p = pendingAnswer?.id === word ? pendingAnswer : null`。`r = p?.rankBefore ?? rankOf(s)`、`ctx = p?.ctx ?? answerContext(s, now)`、`knownCheck = !!p?.knownBefore`（`knownBefore` は `recordCorrect` の先頭で控えた `isKnownWaiting(stat)`。streak 1 を含む。§11.1 の 9） → 今の処理 → `const nowIso = new Date().toISOString()` を 1 回だけ取り、`lastRecallSuccessAt = nowIso` → `nextRank` → `masteryRank`・`masteryAt = nowIso` を同じ写しに書く → （段階 2）S2・S3 → `noteRankCheck({ id, rankBefore: r, gap, ok: true })`（その日の最初の答えのとき）。
 - `recordRecallFail`: 先頭で `ctx = answerContext(s, now)`・`r = rankOf(s)` を読む（書く前）→ `nowIso` を 1 回だけ取り、`nextReviewAt`・`lastRecallFailAt`・`masteryAt` に同じ値を使う（今は `new Date()` を 2 回呼んでいる。stats.js:141-142）→ `nextRank(r, { ok: false }, ctx)` → `noteRankCheck({ id, rankBefore: r, gap, ok: false })`。
@@ -567,8 +571,8 @@ spelldash_mastery_meta = {
 | 2 台目の初回の取り込み | クラウドだけの語は端末だけの欄が無い（sync.js:423-427）→ 初期値（控えめ）。確認待ちの知ってた語は同期する欄の形で知ってた語と読む（§3.6・§11.6 の 2）。取り込む前に答えた語は、この端末の答えとして段が動く |
 | 両方にある語のマージ | `{ ...l, ...rowToStat(c, l), ...recallFields }` で端末の欄は残る（sync.js:446）。段は端末ごと。もう 1 台の × は `unseenFail` で効き（もう 1 台で打ち直して解決済みの × も、この端末の次の答えの S3 の下限では 1 段として効く。§11.5 の 7）、○ は効かない |
 | 2 つのタブで同時に学ぶ | `spelldash_mastery_meta` は書く直前に保存を読み直し、このタブで足した分（速さの見本・集計の増分）だけを足して書く（見本は各箱の最新 40 件・集計は足し算・控えの語は足した／数えた分だけ）。書いた中身をメモリーにするので、もう一方のタブの見本も基準に入る（§11.6 の 4。段は word_stats なので今の作法のまま） |
-| バックアップ・復元 | `spelldash_*` を丸ごと持ち出す。新しい欄も新しいキーも入る。復元（backup.js:85 の `applyBackup`）でも `forgetMasteryMeta()` を `forgetWordStats()` の隣で呼ぶ（メモリーの古い基準が後から復元した中身を上書きしない） |
-| 端末の記録を消す（`clearLocalRecords`） | `spelldash_mastery_meta` も消える（KEEP_ON_CLEAR に入れない）。メモリーの基準も捨てる（`forgetMasteryMeta()` を `forgetWordStats()` の隣で呼ぶ） |
+| バックアップ・復元 | `spelldash_*` を丸ごと持ち出す。新しい欄も新しいキーも入る。復元（backup.js:85 の `applyBackup`）でも `forgetMasteryMeta()` を `forgetWordStats()` の隣で呼ぶ（メモリーの古い基準が後から復元した中身を上書きしない）。`spelldash_memory_check`・`spelldash_memory_words` も同じで `forgetMemoryCheck()`・`forgetMemoryWords()`（Batch 68） |
+| 端末の記録を消す（`clearLocalRecords`。別のアカウントでログインしたときも） | `spelldash_mastery_meta`・`spelldash_memory_check`・`spelldash_memory_words`（と壊れた値の写し `spelldash_memory_words_corrupt`）も消える（KEEP_ON_CLEAR に入れない）。メモリーの基準と集計も捨てる（`forgetMasteryMeta()`・`forgetMemoryCheck()`・`forgetMemoryWords()` を `forgetWordStats()` の隣で呼ぶ） |
 
 ### 7.4 SQL
 
@@ -608,11 +612,11 @@ spelldash_mastery_meta = {
 
 1. **Study は既定で時間切れしない**: 長さの既定は 15 語のまま。60 秒は `spelldash_set_size = "60s"` か `?set=60s` のときだけ。数の `?set=N` は保存値の `"60s"` に勝つ。`?t=` は 60 秒の回だけ Study に効く（Challenge の 23 か所はそのまま）。24〜40 語を回す節はそのまま通る。
 2. **B57_GEOMETRY ±0**（tests/e2e.mjs:3305-3307・3465-3480）: 語数の Study の盤面に要素を足さない。完了パネルの「もう1セット」110・「Challenge（60秒）」162・ボタンの高さ 40／38・語チップの左端と高さは変えない（B57 は既定の 15 語で測るので「もう60秒」にはならない）。§5.4 の行は段が動いた語があるときだけで、B57 の種（新しい語だけ）では出ない。
-3. **R3**（:6125-6160）: 正解の 1 打で word_stats の書き込みは 1 回・2MB の parse は 1 回以下。同じ 1 打で `spelldash_mastery_meta` の書き込みも 0 回。
+3. **R3**（:6125-6160）: 正解の 1 打で word_stats の書き込みは 1 回・2MB の parse は 1 回以下。同じ 1 打で `spelldash_mastery_meta` の書き込みも 0 回。測る語（sp に 1 件入る道）でも同じで、`spelldash_memory_check`・`spelldash_memory_words` も 0 回、2,000 語ぶんの `spelldash_memory_words` の parse も 0 回（Batch 68）。
 4. **凍った記録**: `rankOf`・`initialRank`・`rankHtml`・`rankBasis`・`rankNext` は stat を書き換えない。全ページの「エラー0」。
 5. **`schema_version` は "6"**。欄が欠けた種の stat でも初期値で表示する。
 6. 文言・id: 「今日のセット完了」「明日」「思い出せた」「思い出せず」「覚えた（前は出てこなかった語）」・`.word-chip--learned`・`#setRetry`・`#setAgain`・`#setChallenge`（語数のセット）・`#setProgress` の「/ 2」・`#setSizeSelect`・Challenge の「ベスト」・`#resultRetry`・「知ってた」（:3805 は `includes`）・`knownOnSight === true`・`dailyLearningStage >= 4`。
-7. タイピングの 2 ページは学習記録を変えない（:922・1478）。mastery.js・masteryMeta.js を読まない。
+7. タイピングの 2 ページは学習記録を変えない（:922・1478）。mastery.js・masteryMeta.js・memoryModel.js・memoryCheck.js・memoryWords.js を読まない。
 8. 同期: スタブに届く `word_progress` の行が 15 列のまま（`mastery*` の鍵が無い）。
 9. import を足したら `node scripts/modulepreload.mjs`。
 10. **CSS の規律（B57-12、:3664-3675）**: 足した CSS の行に `var(--radius)`・`var(--radius-lg)`・`999px`・`rgba(0,0,0`・`#FFF` を書かない。目盛りの角は 1px、角丸のトークンは `var(--radius-room)`。
@@ -799,6 +803,155 @@ Batch 65 は、まず E2E の節 study 60s で失敗を再現し（63 件通る�
 3. **焦点**: 変えていない。時間切れの瞬間に窓の中で作業中なら焦点も位置も動かさない（Batch 64 M3・§11.9 の 2）。窓を閉じると焦点は窓を開いたボタンへ戻り、inert は残らない。
 4. **E2E**: study 60s に 2 件（Batch 65。PR #166 のレビューで形を合わせた）: ご意見の窓を開いたまま時間切れ → 窓の中の読み上げの行（窓を開いた時からある）に「60秒 終わり」が 1 つ・窓の外の行には入らない・`#srStatusTop`／`data-keep-live` は無い・焦点は窓の中。閉じると焦点は開いたボタンへ戻り（見出しへ移さない）、inert が残らない。PR #166 のレビューで 2 件: study 60s（語の詳細を開いて announce → 札の中の行に 1 つ、閉じたら `#srStatus`）、本棚の節（本を足すの窓〔showModal〕を開いて announce → 窓の中の行に 1 つ・窓の外の `#srStatus` には入らない、閉じたら `#srStatus`）。
 5. **確かめていないこと**: 実機の読み上げ（VoiceOver・TalkBack）で窓の中の行が読まれるか（手元の Chromium では確かめられない）。Batch 65 の窓の外の行は aria-modal の窓の外を読まない環境で読まれないおそれがあったが、行を窓の中に置いたのでその心配は無くなった。typing の 2 ページの読み上げ（`#typingLive`・`#tgLive`）は、Batch 66 R1 で同じ判定と窓の中の行を通るようにした（js/srLive.js。PR #168 のレビュー 6・7 で `writeLive` の移す道を消し、js/ui.js `announce` と同じ `createLive`〔書く瞬間に行き先を選ぶ〕にした。docs/SPEC_TYPING.md §2・SPEC_TYPING_GAME.md §2）。ご意見の窓は、前は初めて開くときに作っていた（窓の中の行もそのとき置かれた）。2026-10-14 の Batch 67 C2 で、js/feedback.js `initFeedback` が読み込みのときに隠したまま（hidden）の殻と行を置く形にした（見た目・焦点の順・inert・CLS は同じ。開いたあとの「60秒 終わり」は読み込みのときからある同じ行に入る。E2E study 60s・9.7）。
+
+## 12. 記録の質と影の計算（Batch 68。2026-10-14）
+
+> 創業者の依頼（2026-10-14）「覚えた内容をどのスパンで再度出すことでより記憶効率が良くなるのか科学的な根拠も用いて」「建物＝buildは思い出すまで1秒かかる人とかいるやろ…その記憶レベルをわかりやすく管理できるようにして、学習データの質を高めて」への最初の段。記憶のレベルの見せ方・間隔を直す前に、**答えの記録の質を上げ、語ごとの強さの式を裏で回し始める**。
+> **変えないもの**: 出題・期日・段・streak・習得・保持率の記録・画面の文言（文言は 1 つも足していない）・学習記録の形（schema 6・送る列 15・SQL なし）・Battle のロジック（引数なしの呼び方のまま）・keyboard.js と keyboard.css。画面の数が変わるのは日数の数え方を 1 つにした所だけ（§12.6）。新しい欄はどれも端末だけで同期しない。
+> 後の段: 見せ方（語ごとの速さの語・段の戻り方）、間隔の直し（上限・習得の語の確認・× で振り出しに戻さない・暦日の期日）、強さの式で出題。どれも別の Batch で、この節の記録と集計を材料にする。
+
+### 12.1 盤面が測る値（js/game.js → 書き手）
+
+- 正解: `recordRecallSuccess(id, { clean, speed }, measure)`。`measure` は最後の引数（無い・null なら前と同じ振る舞い）。何を残すかは書き手が決める（§12.2）。期日・段・streak・速さの分類は measure を見ない。
+
+  | 欄 | 中身 |
+  |---|---|
+  | `t1` | 今の T1（§3.4。出題の文を書いた後の rAF から最初のキーまで）を整数 ms に丸めた値。30 秒を超えてもそのまま渡す |
+  | `pcMax` | 2 打目からの、受理した打鍵と打鍵の間の最長（整数 ms）。受理した打鍵が 1 つなら null |
+  | `qLen` | 見せている問い（訳・場面の文。`promptOf`）から括弧の中（「（略語）」など）を除いた字数（コードポイント）。品詞の札はラベル（「日本語訳（名）」）にあるので入らない |
+  | `aLen` | 答えの字数（受理した綴りの字。ローマ字の答えは受理したキーの数） |
+  | `input` | 最初のキーの細目: `kbd` 物理キー（§3.4 の kbd と同じ）／`osk` 専用キーボード `#osk`（ボタンが合成する keydown。isTrusted が偽）／`ime` OS の画面キーボード（信頼された keydown で code が物理キーの名前でない・input の経路）。速さの箱は今の kbd／touch の 2 つのまま（osk と ime は touch） |
+  | `multi` | 1 回の input（`handleTextInput`。変換の確定 `handleCompositionEnd` も同じ道）で今の語に 2 字以上受理した、または beforeinput の inputType が `insertReplacementText`（予測変換・自動修正の候補）。判定は変えない（綴りは今どおり 1 字ずつ見る） |
+  | `outside` | 1 打目の前に、焦点が盤面の外の要素へ移った（focusin）か、窓の焦点が外れた（window の blur）。盤面 = `#gameCard`・`#osk`。メモ・覚え方の欄（`#wordNote`・`#wordAi`）は外。盤面を包む要素（空いた所を押すと焦点が残る `<main tabindex="-1">` など）は外にしない（§4.7 の `focusOnBoard` と同じ見方） |
+  | `stalled` | 1 打目の後に同じことが起きた、または `pcMax ≥ 3,000ms`（`STALL_MS`） |
+  | `firstSight` | その語の初めての答え（`answerContext` の `firstAnswer`） |
+
+- **measure が null の答え**（§3.4 の「測らない」語と同じ）: ページの最初の語・音で出題・全文入力・概念カード・計算・英文を打つ・空欄・並べ替え・例文の訳を添えた問い・出題から最初のキーまでに裏に回った語・前の語の続きの字が最初のキーになった語・`tShow` より前のキー・打ち間違いありの正解。ヒント・答え表示の語は × なので `recordRecallSuccess` を呼ばない。T1 が 200ms 未満の答えは measure を渡し、書き手が sp と見本に入れない。
+- ×: `recordRecallFail(id, detail)`、`detail = { k, p, a }`。
+
+  | k | 道 | p（打てていた字数） | a |
+  |---|---|---|---|
+  | `e` 答え表示 | Enter・Esc（`triggerEnter`。ローマ字の Enter、全文入力の空の Enter も） | 受理した綴りの字（ローマ字は受理したキー、全文入力は 0） | null |
+  | `h` ヒント | `useHint` の最初のヒント | ヒントの前に打てていた字数 | null |
+  | `m` 1 打ミス | `handleTypingMiss`。全文入力の違う答え（`submitFreeAnswer`）も m | 打てていた字数（全文入力は答えと頭から一致した字数。表記ゆれは `normalizeAnswer` で吸収） | 正しい字の隣のキーを打ったか（真偽）。全文入力は null |
+  | `p` パス | 盤面には道が無い（パスは Battle だけ） | — | — |
+
+  Battle（js/battleEngine.js）は引数なしのまま（書き手が `u` 不明として残す）。
+- **隣のキー**（`isAdjacentKey`）: 物理キーの QWERTY（段のずれ 0・0.25・0.75 キー）と、専用キーボードの並び（js/keyboard.js の ROWS。css/keyboard.css で 2 段目は両側を半キーずつあけ、3 段目は 7 字＋⌫〔1.5 キー〕を左から並べる）の**どちらかで**隣り合う字なら真。同じ段は左右、上下の段は中心の差が 1 キー未満。keyboard.js は export しないので、game.js に ROWS の写し（`KEY_ROWS`）を置いた（並びを変えたら両方を直す）。
+- **速さの箱**（§3.4。js/masteryMeta.js）: `multi`・`outside` の答えは入れない。`stalled` の答えは T1 だけ入れ、pc を入れない。箱の決まり（40 件・7,000ms で丸める・初めての答えかその日の最初の答え）と分類（`classifySpeed`）・段は変えない（multi の答えも今どおり分類し、段の決め方に使う）。`noteSpeedSample(box, sample, measure?)` も同じ守りを持つ（game.js は札を見て呼び分け、書き手側は省略可の守り）。
+- `classifySpeed(sample, box, { firstAnswer, qLen, input })`: `qLen` か `input` を渡したときだけ、比べた基準 `all`（その経路の T1 の中央値）・`band`（同じ問いの字数帯の中央値。どちらも 20 件以上のときだけ数）も返す。渡さなければ前と同じ `{ speed, basis }`。分類そのものは箱の中央値のまま。
+
+### 12.2 書き手が残す欄（js/stats.js。端末だけ）
+
+語ごとの欄は**語の記録（`spelldash_word_stats`）に書かず、端末だけの別のキー `spelldash_memory_words` に置く**（js/memoryWords.js。下の「置き場所」）。語の記録は正解のたびに表を丸ごと JSON にして書くので、そこに 1 語 約 160 B を足すと、記録の多い人ほど入力完了から次の問題までが重くなる（Batch 58。§12.7）。word_stats に足すのは history の × の細目だけ（1 語あたり 1.5 B）。
+
+| 置き場所 | 欄 | 形 | 書くとき |
+|---|---|---|---|
+| `spelldash_memory_words` の語ごと | `t` | この端末の書き手がこの語の答えを書いた時刻（ms。書いた `lastRecall*At` と同じ時刻） | 答えるたび |
+| 同上 | `sp` | 直近 3 件 `[日番号, T1(ms), q(%) または null, 分類, 印]` | 材料 (a) の答えだけ（下） |
+| 同上 | `spP` | `[日番号, 符号]`（材料 a・b、3 つの物差しの分類、答えた後の段。js/memoryCheck.js `encodePend`） | 材料 (a) か (b) の答え。次のその日の最初の答えで集計 `speedNext` に数えて消す。間に見ていない答え（§12.3 の「2 台目・古い版」）があれば数えずに捨てる |
+| 同上 | `memSv` | 影の 7 通りの S（§12.3 の並び） | 答えるたび（§12.3） |
+| 同上 | `memD`・`memD0` | 共通の難しさ D と、その初めの値（毎回 1 割だけ初めの値へ戻すのに要る） | 同上 |
+| `spelldash_word_stats[id]` | `history[i].k`・`.p`・`.a` | × の 1 件に、k（e／h／m／p。引数なし・知らない値は u）・p（0 以上の整数のときだけ）・a（k が m で真偽のときだけ） | `recordRecallFail`（同じ写し）。8 件の上限・`d`・`r` は今のまま。○ の件には足さない |
+
+- 日番号は 1970-01-01 からのローカル暦日の数。`memSv`・`memD`・`memD0` は **0.1 刻みの整数（値 × 10）** で書く。
+- **sp の材料**（どれも満たす答えだけ）: ノーミス正解で measure があり、`200ms ≤ t1 ≤ 30 秒`、`multi`・`outside` でない。そのうえで次のどちらか。
+  - (a) 初めての答え、または前の答え（○ でも × でも）から **3 暦日以上**あいた、その日の最初の答え。sp に書く（既定の材料）。翌日・2 日目の答えは、前日に見た取り出しやすさで速く出やすいので入れない
+  - (b) 影の S（伸び率 1.5 の通り）で `t ≥ 0.5 × S` の、その日の最初の答え。sp には入れず、(a) の件に印を付ける。(b) だけの答えは spP に控えて集計に数える（どちらを採るかは見せ方の段の前に決める）
+- **印**（ビット）: a 1・b 2・問いの字数帯 `<<2`（2 字以下／3〜4／5〜7／8 以上）・答えの字数帯 `<<4`（4 字以下／5〜7／8〜10／11 以上）・初めての答え 64・経路 `<<7`（kbd 0・osk 1・ime 2）。
+- **q** = T1 ÷ 本人の基準 × 100。基準は、同じ経路の同じ問いの字数帯の中央値（20 件以上）、無ければその経路全体の中央値（20 件以上）、どちらも無ければ null。見本は §12.4 の `len`・`input`（入れる前の見本と比べる）。英語とローマ字の答え、Study と遊びは分けない（measure に言語と回の種類が無い。§12.8）。
+- **分類**は game.js が渡す今の分類（`answer.speed`。f／n／s／u）をそのまま残す。sp は記録だけで、段・間隔に使わない。
+- 書き手（`noteMemory`）は答える前の語ごとの欄を `getMemoryWord(id)` で読み、新しい 1 件を `putMemoryWord(id, …)` でメモリーに置く（読んだ 1 件は書き換えない）。word_stats の写しには history の × の細目だけを書くので、**正解の 1 打の word_stats の書き込みは 1 回のまま**、`spelldash_memory_words` の書き込みは 0 回（§7.2・E2E R3）。全体を try/catch で包み、失敗しても期日・段・保持率は書いたまま進む。
+- 大きさ: 模擬の 300 語・1 年で 1 語あたり **word_stats +1.5 B（× の細目）＋ `spelldash_memory_words` 184.5 B**（id の鍵と `t` を含む）。分ける前（全部を word_stats に置いた形）は word_stats +159 B だった。
+
+**置き場所 `spelldash_memory_words`**（js/memoryWords.js。v 1・端末だけ・同期しない・画面に出さない）:
+
+```
+spelldash_memory_words = { v: 1, w: { "<語の id>": { t, memSv: [7], memD, memD0, sp?: [...], spP?: [...] }, … } }
+```
+
+- **書き方は `spelldash_mastery_meta`・`spelldash_memory_check` と同じ作法**: メモリーに持ち、変えた語があるときだけ、10 答えごと（書き手の `tickMemoryWords`）・回の終わりと stopGame（`flushMasteryMeta` から `scheduleMemoryWordsFlush`）・pagehide で 1 回書く。10 答えごとと回の終わりは、表が大きい（2,000 語で約 37 万字）ので**答えのタスクの中では書かず、手が空いたとき**（`requestIdleCallback`。無い端末は次のタスク）に書く。pagehide はその場で書く。
+- 読むのは出題（`recordPlay`）の後の手が空いたとき（`prefetchMemoryWords`。1 ページ 1 回）。最初の答えのタスクで表を JSON から戻さない（E2E R3: 正解の 1 打で 2,000 語ぶんの parse は 0 回）。
+- **書く直前に保存を読み直し、このタブで変えた語だけを足す**（保存が前に読んだ・書いた文字列のままなら、ほかのタブは書いていないので JSON から戻さずにメモリーの中身を使う。2,000 語で 1 回 約 2ms の読み直しを省く）。ただし、保存の方が `t` の新しい語（もう一方のタブが後から答えた）は保存のまま。語の記録に無い語・語の記録の最後の答え（`max(lastRecallSuccessAt, lastRecallFailAt)`）がこのタブの `t` より古い語は足さない（別のタブで復元した・端末の記録を消した・別のアカウントでログインした・語の記録を書けなかった答えの欄を書き戻さない）。別のタブが書いた（storage イベント）ときは、次に使うときに読み直してこのタブの書きかけを上に重ねる。
+- **上限 50 万字**（`MAX_CHARS`）。2,000 語を 1 年使った記録で約 37 万字なので、約 2,700 語までは捨てない。超えたら、最後に答えた時刻（`t`）の古い語から語ごとの欄をまるごと捨てて 9 割まで減らす（その語は次に答えたとき今の記録から作り直す: §12.3 の移行の値）。端末の保存の枠（1 つのサイトに約 500 万字）の 1 割に収め、語の記録の書き込みの余地を食わない。容量で書けなかったときは、半分まで減らしてもう一度書く（それも書けなければ次の機会に）。
+- **壊れた保存**（JSON でない・表でない・版が違う）は止めずに空として読み、上書きする前に 1 つだけ `spelldash_memory_words_corrupt` に写す（js/storage.js の `spelldash_word_stats_corrupt` と同じ作法。容量で写せなければ元の鍵を写しへ移す）。語ごとの値が表でない語は無いものとして読む（移行の値で作り直す）。
+- **バックアップに入る**（`spelldash_` で始まる。写しも）。端末の記録を消すと消える（KEEP_ON_CLEAR に入れない。別のアカウントでログインしたときの `clearLocalRecords` も同じで、word_stats と同じ扱い）。復元と消去の後は js/backup.js が `forgetMemoryWords()` でメモリーと書きかけを捨てる。同期しない（js/sync.js は読まない）。
+- 語の記録の読み手は書き手（js/stats.js）が `useWordStatsReader(getWordStats)` で渡す（js/memoryWords.js は js/storage.js を import しない。js/masteryMeta.js からも読まれるので、保存の移行を連れてこない）。
+
+### 12.3 影の計算（js/memoryModel.js。出題には使わない）
+
+- 新しい純関数のファイル（DOM・localStorage・import なし。Node から直に読む）。語ごとに S（安定性: 思い出せる見込みが 0.9 に下がるまでの日数）と D（難しさ 1〜10）を持つ、難しさ・安定性の式。見込みは冪の忘却曲線 `R(t) = (1 + F·t / S)^C`（F = 19/81・C = −0.5。t = S で 0.9）。t は前の答えからのローカル暦日の差（整数）。数はどれも仮の値。
+- その日の最初の自力正解: `S ← max(S, S × g)`、`g = 1 + (G − 1) × 速さの係数 × 遅れの係数`。G は D から（D 5 で伸び率 G0、D が 1 上がるごとに伸びを 12% 減らす）。遅れの係数は `(1 − R) ÷ 0.1` を 0.1〜2 に丸めた値（期日前の答えはほとんど伸ばさない）。S の上限 730 日。共通の D はノーミスの正解ごとに −0.1（速さを使わない）、そのうえで毎回 1 割だけ初めの値へ戻す。打ち間違いありの正解は S を変えず D + 0.3。その日の最初の ×: S × 0.3（下限 1）・D + 1。
+- **影の 7 通り**（`memSv` の並び）: 伸び率 G0 = 1.3・1.5・1.8・2.2・2.7・3.3（速さを使わない）と、1.5 で速さを使う通り（伸びをすぐ 1.5 倍・遅い 0.5 倍）。D は共通（速さを使わない動き）。基準の通りは 1.5（今の表に近い）。
+- **初めの値**: 初めての答えで作る。知ってた（ノーミス）S 14・D 3、打ち間違いありの正解 S 1・D 5、× や答えを見た語は S 0（まだ覚えていない）・D 5。S 0 の語は、最初の自力正解（同じ日の Recall Loop でも）で S 1・D = min(7, 4 + それまでの × の回数)。同じ日の 2 回目以降の答えはほかに何も動かさない。
+- **移行の値**（影の欄の無い語。この版より前の記録）: 次に答えたとき、答える前の記録から作る。自力正解が一度も無い S 0／最後が ×（未解決）S 1／確認待ちの知ってた語 S 14／習得 S 45／ほかは「期日 − 最後の自力正解」の日数を 1〜30 に丸めた値。D = 4 + min(× の回数, 5) − （知ってた語なら 2）を 1〜9 に。
+- **2 台目・古い版**: 語ごとの欄の `t`（この端末の書き手が最後に書いた答えの時刻）より新しい `lastRecall*At` がある語（この端末の書き手が見ていない答え: 2 台目・古い版の書き手・書く前にタブが落ちた）は、S を同期する欄から作り直す。D は残し、見ていない × があれば +1（段の `unseenFail` と同じ作法）。古い版の書き手も段と `masteryAt` は書くので、`masteryAt` ではなく `t` と比べる。
+  - 同じ語の速さの控え `spP` は、見ていない答えがあれば**数えずに捨てる**（欠けた記録として。§12.2）。控えの「次の答え」はこの端末が見ていない答えなので、数えると次の結果を別の答えに、次の間隔を別の間隔（控えの日から今日まで）に付ける。集計だけ書けて語ごとの欄が書く前に落ちた語では、同じ控えを 2 度数えることにもなる。捨てるのはその答えの種類によらない（その日の最初の答えでなくても捨て、後の日に数え直さない）。その答えが材料なら、その答えの控えを新しく作る。反証の模擬（300 語・1 年）で、直す前は数えた控えのうち見ていない答えをはさんだものが 0.3%（3% の回に 2 台目の答えと 1 回の復元を混ぜる型）・2.5%（そのうえ回の 1 割でタブが落ちる）・26%（復習の 3 割を 2 台目で答える）あった。直した後はどれも 0（その分の控えは捨てる。§12.8 の 9）。
+- **当たりを数える**: その日の最初の答えで、覚えた語（基準の通りの S > 0）なら、**答える前の** 7 通りの見込みと結果（○／× 記憶／× 1 打ミス）を集計 `cal` に数えてから更新する。Battle の打ち間違いありの正解は ○ に数える（仮の決め）。
+- 書くのは `writeShadow`・読むのは `readShadow`（形が合わなければ移行の値で作り直す）。どの通りも出題・期日・段・streak・習得に使わない（§12.7 の不変の模擬で毎回確かめる）。強さの式で出題するのは後の段で、本人の記録で「当たりがよい」と言えた人からにする。
+
+### 12.4 集計 `spelldash_memory_check`（js/memoryCheck.js。v 1・端末だけ・画面に出さない）
+
+```
+spelldash_memory_check = {
+  v: 1, schedV: 1, since: "YYYY-MM-DD",          出し方の版（1 = 今の規則）。版をまたいだ集計は混ぜない（違う版の保存は空から読む）
+  cal: { n: [7], ll: [7], lm: [7],                見込みを出した数・対数損失の和（全部／1 打ミスの × を除く）
+         b: [7][5][4],                           通り × 見込みの帯（0.95 以上／0.9／0.85／0.8／0.8 未満）× [○, ×記憶, ×1打ミス, 見込みの和]
+         w: [64][7] },                           語の束（id の hash で 64）ごとの、各通り − 基準の通りの損失の差の和 6 つと件数（束を単位に区間を出す）
+  speedNext: { "<物差し>.<材料>.<分類>.<段>.<帯>": [○, ×記憶, ×1打ミス] },
+                                                 速さの材料の答えの分類（m 今の分類・p 下から 2 割の値 × 1.3 と比べた分類・t「T1 ＋ 最も長い止まり」の中央値比）
+                                                 × 材料（a／b）× 答えた後の段 × 次の間隔の帯 × 次のその日の最初の答えの結果
+  xNext: { "<種類>.<帯>": [○, ×記憶, ×1打ミス] }, × の種類（e・h・m2 1 打ミス 2 字目まで・m3a 3 字目以降で隣のキー・m3 同・その他・p・u）× 次の間隔の帯
+  len: { kbd|osk|ime: { q: [[T1…] × 4], a: [[T1…] × 4] } },   問いの字数帯・答えの字数帯ごとの T1（直近 40）
+  input: { kbd|osk|ime: { t1: [], tp: [], n, multi } },        経路ごとの T1・T1 ＋ 最も長い止まり（直近 40）、測った正解の数、一度に 2 字以上入った正解の数
+  capHit: { "<帯>": [○, ×記憶, ×1打ミス] },      上限が効いている語（習得・streak が表の最後に届いた・期日が最後の自力正解から 30 日）のその日の最初の答え
+  first: { f: [T1…], r: [T1…] }                  初めての答えと、その日の最初の（復習の）答えの T1（直近 40 ずつ）
+}
+```
+
+- 間隔の帯は `1`・`2-5`・`6-13`・`14-29`・`30+`（§3.8 と同じ）。見本（len・input の T1・first）は初めての答えかその日の最初の答えだけ（速さの箱と同じ）。stalled の答えは「T1 ＋ 最も長い止まり」を入れない。経路ごとの数 `n`・`multi` は measure のある正解すべて（同じ日も）。
+- `p` の物差しの「時間がかかる」線（下から 2 割の値 × 1.3 の 2 倍超）と capHit の決め方は仮の値（数の根拠が無いのでこちらで決めた。間隔を直す段の前に見直す）。
+- **書き方は `spelldash_mastery_meta` と同じ作法**: メモリーに持ち、変わったときだけ、10 答えごと（書き手の `tickMemoryCheck`）・回の終わりと stopGame（`flushMasteryMeta` が `scheduleMemoryCheckFlush` を呼ぶ）・pagehide で 1 回書く。10 答えごとと回の終わりは、答えのタスクの中では書かず手が空いたとき（`requestIdleCallback`。無い端末は次のタスク）に書く（読み直し・JSON 化を入力完了から次の問題までに入れない。pagehide はその場で）。書く直前に保存を読み直し、このタブで足した分だけを足す（もう一方のタブの分を消さない）。読み書きはすべて try/catch。
+- **大きさ**: 20,000 字以下（中身は ASCII なので 20 KB 以下）。超えるときは見本（直近 40 件）を古い方から 10 件ずつ捨て、尽きても超えるなら件数の少ない集計の枡から捨てる（`fitSize`）。模擬の 1 年で 16,451 字。
+- **バックアップに入る**（`spelldash_` で始まる）。端末の記録を消すと消える（KEEP_ON_CLEAR に入れない）。復元と消去の後は js/backup.js が `forgetMemoryCheck()` でメモリーを捨てる（`forgetMasteryMeta` の隣。古いメモリーが後から上書きしない）。同期しない。
+- 見方: 2〜4 週後、創業者の端末のバックアップの JSON で読む。見る順は (1) 段の単調さ（§3.8）、(2) 予測の当たり（帯ごとに ±5 ポイントに入るか・どの伸び率が最も当たるか）、(3) 速さ（同じ帯・同じ段の中で、すぐ ＞ ふつう ＞ 時間がかかる の順に ○ の割合が並ぶか）、(4) × の種類（3 字目以降・隣のキーの 1 打ミスは、翌日に答え表示より打てているか）、(5) 問いの字数・答えの字数・経路で T1 が 25% 以上違うか、(6) 一度に 2 字以上入った答えの割合（経路ごと）。
+
+### 12.5 書き手の順（§7.2 に足したこと）
+
+- `recordCorrect` の控え `pendingAnswer` に答える前の記録 `stat` も持つ（影の移行の値・前の答えの控えに使う。書き換えない）。
+- `recordRecallSuccess(word, answer?, measure?)`: 段（`writeRank`）と S2・S3（`extendInterval`）を書いた**後**に `noteMemory`（影の計算・集計・sp）。期日・段はもう決まっていて、noteMemory はそれらの欄を書かない（語ごとの欄は `putMemoryWord` で `spelldash_memory_words` のメモリーへ。`tickMemoryCheck`・`tickMemoryWords`）。
+- `recordPlay`（出題）の最後に `prefetchMemoryWords()`（まだ読んでいなければ、手が空いたときに `spelldash_memory_words` を読む）。
+- `recordRecallFail(word, detail?)`: `pushHistory(stat, "x", failFields(detail))` → 今の処理 → 段 → `noteMemory`。
+- 集計の数え（noteCalibration など）はメモリーへの足し算だけで、保存は 10 答えごと。正解の 1 打で `spelldash_memory_check`・`spelldash_memory_words` の setItem は 0 回（10 答え目でも答えのタスクの中では書かず、手が空いたときに書く。E2E R3・mastery writers で守る）。
+
+### 12.6 「日」の数え方を 1 つに（js/mastery.js・js/game.js・js/stats.js）
+
+- 盤面の上の「N日ぶりの復習」・正解の後の「N日ぶりでも思い出せた」・語の詳細の「（N日あけて）」は、どれも**前の答え（○ でも × でも）のローカル日から、今の答えのローカル日までの暦日の差**。`daysBetween(prevDay, day)`（0 以下・読めない日は 0）と `daysSinceAnswer(stat, today)`（前の答え = `max(lastRecallSuccessAt, lastRecallFailAt)`。`answerContext` の `prevAt` と同じ）。0 なら日数を言わない（「復習」・「思い出せた」・括弧なし）。
+  - 前は、盤面の上が `floor((今 − 最後の自力正解) ÷ 24 時間)`、正解の後の文が history の 1 つ前の日付を UTC で読んだ値との差の四捨五入で、同じ答えに 1・3・2 と出ることがあった。
+  - 例: 前日 23 時に自力正解・期日は今日の語を 9 時に答える → 3 か所とも 1（前は「復習」・日数なし・1）。3 日目 21:00 に ×・21:04 に ○ の語を 5 日目 21:00 に答える → 3 か所とも 2（前は 1・3・2）。
+  - 正解の後の文の日数は、`completeWord` が答える前の stat から数えて `applyStudyXp` に渡す。
+- **「別の日」の復習**（`isReviewAttempt(stat, nowMs)`。`lastReviewResult`・`lastReviewAt`〔週間レポートの復習の数〕と、正解の後の文「N日ぶりでも思い出せた」を出すかの判定）: 最後の自力正解から 20 時間以上 → **ローカルの暦日が違い、かつ 6 時間以上**（`answerContext` の同じ日の扱いと同じ線。時計が戻って先に見える正解は復習にしない）。前日 23 時の正解を翌日 9 時に答えても復習になる。期日・段・streak・習得・保持率は変わらない（不変の模擬で、変わったのは 300 語中 1 語の `lastReviewAt` だけ）。
+- 変えていないもの: 語の詳細の「次の復習 N日後」（期日までの日数。`ceil((期日 − 今) ÷ 24 時間)`）は別の量で、今のまま（§12.8）。
+
+### 12.7 確かめ方
+
+- **不変の模擬**（scripts/sim-writers.mjs。CI の checks で `node scripts/test-memory.mjs` が毎回流す）: 製品の書き手（js/stats.js・js/mastery.js・js/masteryMeta.js）を偽の時計で 1 年回す。300 語・365 日・2 割の日を休む・7〜23 時のどこか・同じ日の 2 回目の回 3 割・5 つの型（毎回すぐ 700ms／ふつう 2,000ms／時間がかかる 3,600ms／初見で × のち覚える／× の 4 つの種類と Battle の引数なしの × と打ち間違いありの正解を混ぜる）・答え 8,910 回。js/game.js の呼び順（measure・detail も渡す）と js/studyQueue.js の同日反復、js/battleEngine.js の呼び方を写す。語ごとの今の欄すべて（`nextReviewAt`・`masteryRank`・`cleanCorrectStreak`・`mastered`・`masteredAt`・`masteryAt`・`masteryDownAt`・history の d／r ほか。新しい欄と `lastReview*` を除く）・`spelldash_retention`・`spelldash_mastery_meta` の hash を、この Batch の前の main（06cf345）で取った tests/fixtures/sim-writers.json と比べる。結果は 300 語・保持率 264 語とも違い 0、段の分布 {2: 1, 3: 10, 4: 222, 5: 67}・習得 251 も同じ。
+  - わざと出題・期日・段を変える Batch は fixture を取り直す: `node scripts/sim-writers.mjs <前の版の木> --summary > tests/fixtures/sim-writers.json`（前の版の木は `git archive` で取り出す）。`--quality` は一度に 2 字以上・盤面の外・止まった答えを混ぜる参考の模擬（比べない。箱に入れない分だけ本人の基準が動き、段の分布が少し動く）。
+- **単体** `node scripts/test-memory.mjs`（142 件）: 式の表・初めの値・移行の値・× の比・2 台目と古い版の作り直し（記録の質の `t` と比べる）・見ていない答えをはさんだ速さの控えを speedNext に数えない（2 台目の答えをはさむ・2 台目と同じ日の答え・タブが落ちた・集計だけ書けて 2 度数えない、と見ていない答えの無い対照）・sp の材料（同じ日／1 日前／3 日前・multi・outside・30 秒超）・× の細目・別の日・集計の足し算（2 タブ・版・壊れた保存・20,000 字の上限・10 答え目は答えのタスクの外）・語ごとの欄の置き場所（word_stats に書かない・10 答え目と回の終わりは答えのタスクの外で 1 回・2 タブ・別のタブの復元と消去の後は書き戻さない・forget・壊れた保存 4 通りと写し・上限 50 万字と古い語から捨てる・容量で書けないときは半分にして書き直す・同じタブで続けて書くときは読み直しの parse 0 回）・箱の札・不変の模擬と大きさ。`node scripts/test-mastery.mjs` に日数の 5 件。
+- **入力完了から次の問題まで**（Batch 58 の計測の型。最後の 1 打をページの中で送り、次の出題文に変わるまで。測る語 = 2 語目以降を出題から 0.5 秒待って打つ）: 語ごとの欄を別のキーに分けた木（§12.2）を、前の main（06cf345）と交互に開いて比べた。記録は木ごとに、その木の書き手で 1 年回した模擬の記録（scripts/sim-writers.mjs `--dump --words=2000`／300 語。main は前の形、直した木は word_stats ＋ `spelldash_memory_words` ＋ `spelldash_memory_check`）。答える語は復習の語（5 日前に自力正解・期日は昨日。影の見込み・集計・sp を通る重い道）。E2E だけの凍らせを外した製品の状態。各 3 回・264 件、95% 区間はブートストラップ: 2,000 語・1 年で次の語の文まで **+0.8ms（区間 −0.65〜+3.5）**、次の語を出したタスクの終わり（出題の保存を含む）まで **+1.1ms（−1.7〜+3.4）**。300 語で +0.8ms（+0.4〜+1.2）・+1.65ms（−2.0〜+4.8）。どれも区間の上が 5ms 未満。最後の 1 打の keydown の処理は 2,000 語で +0.4ms（0〜+0.7）、その間に主スレッドが使った CPU の時間（CDP の ThreadTime）は +1.46ms（−1.25〜+3.78）。分ける前（全部を word_stats に置いた形）は、仕上げの計測で次の語の文まで +1.65〜2.05ms（区間の上 +5.4ms）、タスクの終わりまで +3.65〜4.2ms（区間の上 +8.1ms）だった（記録と答える語の作りが違うので、数は並べて読むだけ）。
+- **E2E**: 2 Study（記録の質の 16 件: ページの最初の語は null・450ms 待った物理キーの measure と箱・sp・1 打目の前にヘッダーへ焦点 → outside・3 秒の止まり → stalled・窓の blur・置き換えの入力 → multi・× の細目 e／m〔隣・離れた〕／h と history・#osk → osk で sp に入る・OS の画面キーボードで残り 3 字を 1 回の input → 正解のまま・multi・箱と sp に入らず `input.ime.multi` +1）、5 Challenge・study 60s（遊びの箱・時間切れの語は書き手に何も渡さない）、mastery（日数の 2 件）、mastery writers（word_stats に記録の質の欄を書かない・`spelldash_memory_words` は 10 答え目の後に答えのタスクの外で 1 回・sp の材料・影の欄が整数・移行・× の細目 e／u／m・memory_check も 10 答え目の後に答えのタスクの外で 1 回・mastery_meta は 1 回のまま・タイピングの 2 ページは memoryModel.js・memoryCheck.js・memoryWords.js を読まない）、9.7（2 つのキーがバックアップに入る・復元の後に古いメモリーを書かない・復元の後の答えは復元した値に足す・消すと 2 つのキーと壊れた値の写しが消えて書き戻さない）、8.6 書斎（`spelldash_memory_words` が壊れていても止まらず、写しを残して書き直す）、20 同期（送る行は 15 列のまま・クラウドの方が新しい語を取り込んでも語ごとの欄と × の細目が残る・別のアカウントでログインして置き換えると他人の語の欄も消え、キャンセルなら残る）、Batch 58（測る語でも 0.7 秒以内・正解の 1 打の word_stats の書き込みは 1 回で memory_check・memory_words は 0 回、2,000 語ぶんの語ごとの欄の parse も 0 回）。E2E の頭の `watchWriters` は、配る js/stats.js の 2 つの書き手を引数を控えてから元を呼ぶ関数に包む検査用の道具（製品のコードは変えない）。
+
+### 12.8 残り（後の段で決める）
+
+1. 語の詳細の「次の復習 N日後」（js/wordDetail.js）は 24 時間の切り上げのまま。見せ方の段で暦日にそろえる（例: 今日 9 時に見て期日が明日 23:30 なら今は「2日後」、暦日なら「1日後」）。
+2. 2 台目: 盤面の上と正解の文は同期する `lastRecall*At` から、語の詳細は端末だけの history から数える。別の端末で答えた後は語の詳細の数がずれうる（同じ端末なら 3 つとも同じ）。そろえるには端末をまたぐ「前の答えの日」の欄が要る（SQL の段）。出題から答えまでの間に 0 時をまたぐと、盤面の上（出した時点）と正解の文（答えた時点）が 1 違いうる。
+3. multi・outside の答えも速さの分類（即答の判定）は今のまま。予測変換でまとめて入った答えが「すぐ」と分類されて段が上がる道は残る。見せ方か間隔の段で外すか決める（集計の `input.*.multi` で数が見える）。
+4. Android などで英字でも変換を使う OS キーボードでは、語が一度に入るので multi になり、その人の ime の答えは箱と sp に入らない。実機でどれくらい起きるかは未確認（同じく `input.ime.multi` で見える）。
+5. q の基準は英語とローマ字の答え、Study と遊びを分けない（measure に言語と回の種類が無い）。見せ方の段の前に measure に言語を足すか決める。ローマ字の答えの qLen は場面の文の字数（訳より長い）。
+6. 保存の重さ（済み）: 語ごとの欄を別のキー `spelldash_memory_words` に分けた（§12.2）。word_stats の 1 語あたりの増えは × の細目の 1.5〜2.2 B だけで、2,000 語・1 年後の記録でも入力完了から次の問題までの差は区間の上が 5ms 未満（§12.7）。残り: 別のキーの表は 2,000 語で約 37 万字あり、10 答えごとと回の終わりに手が空いたとき 1 回 JSON にして書く（同じタブで続けて書くときは読み直しの parse を省く）。2,700 語を超える人は上限 50 万字で古い語から欄を捨て、その語は次に答えたとき今の記録から作り直す（影の計算の精度だけが落ちる）。携帯の遅い端末での手が空いたときの書き込み（1 回数 ms〜十数 ms）は測っていない。
+7. 当たりの集計の「語ごとの損失の差」は語の id の hash で 64 束に束ねた（語ごとに 300 語分を持つと 20 KB に収まらない）。束を単位にしても同じ計算はできるが、区間は少し広くなる。
+8. 窓の焦点の外れ（window の blur）は E2E では疑似のイベントで確かめただけ（OS の窓の切り替えは試していない）。
+9. 見ていない答えをはさんだ速さの控えは捨てる（§12.3）ので、2 台目でよく答える人は `speedNext` の材料が欠ける（反証の模擬: 復習の 3 割を 2 台目で答えると控えの 26%、回の 1 割でタブが落ちると 2.5%、どちらも足さない型でも 0.3%〔この模擬は 3% の回に 2 台目の答えと、1 回の復元を混ぜる〕）。端末をまたいで次の結果を数えるには、送る行に速さの欄が要る（SQL の段）。
 
 ## 付録 A. 変えるファイル
 

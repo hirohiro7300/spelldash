@@ -1,5 +1,7 @@
 import { forgetWordStats } from "./storage.js";
 import { forgetMasteryMeta } from "./masteryMeta.js";
+import { forgetMemoryCheck } from "./memoryCheck.js";
+import { forgetMemoryWords } from "./memoryWords.js";
 
 // ===== 学習データのバックアップ / 復元 =====
 //
@@ -86,6 +88,8 @@ export function applyBackup(obj) {
   }
   forgetWordStats(); // 語の記録を直に書き換えた。持っている中身と書きかけを捨てる（js/storage.js）
   forgetMasteryMeta(); // 習熟度の速さの基準と集計も（メモリーの古い中身が、復元した中身を後から上書きしない。js/masteryMeta.js）
+  forgetMemoryCheck(); // 記録の質の集計（spelldash_memory_check）も同じ（js/memoryCheck.js）
+  forgetMemoryWords(); // 語ごとの記録の質（spelldash_memory_words）も同じ（js/memoryWords.js）
   return summary;
 }
 
@@ -98,7 +102,8 @@ export function applyBackup(obj) {
 // 消すもの（主なもの）: word_stats・xp・xp_synced・streak・best_score・best_by_category・battle・pending_battles・study_mix・
 //   growth_log・daily_set・daily・sets_total・veteran・course・category・mode・packs・my_words・word_notes・user_items_meta／dirty・
 //   dirty_words・session・session_log・mission・placement(_note)・first_sight・level_boost(_note)・tutorial・typing_stats・key_miss・
-//   word_ai・activity・feedback_queue・plan・display_name・login_nudge・week_goal・set_size・genre・owner
+//   word_ai・activity・feedback_queue・plan・display_name・login_nudge・week_goal・set_size・genre・owner・mastery_meta・memory_check・
+//   memory_words(_corrupt)
 const KEEP_ON_CLEAR = new Set([
   "spelldash_theme",
   "spelldash_audio",
@@ -126,6 +131,8 @@ export function clearLocalRecords() {
   toRemove.forEach((key) => localStorage.removeItem(key));
   forgetWordStats(); // 語の記録を直に消した。持っている中身と書きかけを捨てる（js/storage.js）
   forgetMasteryMeta(); // spelldash_mastery_meta も消した（KEEP_ON_CLEAR に入れない）。メモリーの基準も捨てる
+  forgetMemoryCheck(); // spelldash_memory_check も消した（KEEP_ON_CLEAR に入れない）。メモリーの集計も捨てる
+  forgetMemoryWords(); // spelldash_memory_words（と壊れた値の写し）も消した。メモリーの語ごとの欄と書きかけも捨てる
   return toRemove.length;
 }
 
