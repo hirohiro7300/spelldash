@@ -13,7 +13,7 @@ import { setFooterYear } from "./footer.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { markTypingArrival, logTypingStage } from "./funnelLog.js";
 import { localDay } from "./retentionCalc.js";
-import { writeLive } from "./srLive.js";
+import { createLive } from "./srLive.js";
 import { romajiKeyOf } from "./romaji.js";
 import {
   touch,
@@ -127,7 +127,6 @@ const INPUT_ARIA = {
 };
 const LONG_HINT = "打ち始めると、最後まで時間を測る。";
 const PAUSED_TEXT = "止めた。打つと続きから。";
-const ANNOUNCE_GAP_MS = 50; // 読み上げの行を空にしてから書くまで（同じ文を同じタスクで書き直すと読まれない環境がある）
 
 const seconds = secondsFrom(location.search);
 const span = seconds === 60 ? "1分" : `${seconds}秒`;
@@ -145,7 +144,6 @@ let endAt = 0;
 let shownSecs = -1;
 let finishTimer = 0;
 let tickTimer = 0;
-let announceTimer = 0;
 // 長文
 let longTexts = null; // null = まだ取っていない／false = 取れなかった／教材の文章の列（data/typing-long.json）
 let longFetching = false;
@@ -180,26 +178,10 @@ function stopTimers() {
 
 const focusInput = () => focusOn(el.input);
 
-// 待っている読み上げ（長文の「次の行」・読み込み直後の 1 行）を捨てる（結果の 1 文・止めた・始まる前を上書きしない）
-function cancelAnnounce() {
-  clearTimeout(announceTimer);
-  announceTimer = 0;
-}
-
-// 読み上げの行に書く（js/srLive.js: ご意見の窓が開いている間は窓の中の行へ。背後は inert で #typingLive は読まれない。js/ui.js announce と同じ判定。Batch 66 R1）
-function setLive(text) {
-  cancelAnnounce();
-  if (el.live) writeLive(el.live, text);
-}
-
-// 空にしてから次のタスクで書く（同じ文が続いても黙らない）
-function announce(text) {
-  setLive("");
-  announceTimer = setTimeout(() => {
-    announceTimer = 0;
-    if (el.live) writeLive(el.live, text);
-  }, ANNOUNCE_GAP_MS);
-}
+// 読み上げ（#typingLive。js/srLive.js createLive: 行を全部空にして 50ms 後に書き、書く瞬間に行き先を選ぶ〔ご意見の窓が開いていれば窓の中の行。
+// 背後は inert で #typingLive は読まれない〕。js/ui.js announce と同じ形。同じ文が続いても黙らない）。sr.say("") は空にするだけで、待っている文
+// （長文の「次の行」・読み込み直後の 1 行）も捨てる（結果の 1 文・止めた・始まる前を上書きしない）。Batch 66 R1 → PR #168 レビューの 6・7
+const sr = createLive(el.live);
 
 // ---- 長文の小さな問い ----
 
@@ -444,7 +426,7 @@ function toReady(k = kind, opts = {}) {
   }
   el.errorWhat.textContent = k === "long" ? "長文" : "単語";
   syncTabs();
-  setLive("");
+  sr.say("");
   el.hint.textContent = k === "long" ? LONG_HINT : `打ち始めると、${span}を測る。`;
   render();
   if (!modalOpen() && !opts.keepFocus) focusInput(); // ご意見の窓が開いているときは、窓の焦点を取らない
@@ -456,7 +438,7 @@ function start(now) {
     if (phase === "paused") {
       clock.resume(now); // 止めていた間を数え終える（続きのキーの時刻まで）
       phase = "running";
-      setLive("");
+      sr.say("");
       render();
       return;
     }
@@ -598,7 +580,7 @@ function finish() {
   }
   renderResult(s, cmp);
   render();
-  setLive(s.total > 0 ? `${s.kpm} 打/分。正確さ ${s.accuracy}%、ミス ${s.miss}。` : `${s.kpm} 打/分。`);
+  sr.say(s.total > 0 ? `${s.kpm} 打/分。正確さ ${s.accuracy}%、ミス ${s.miss}。` : `${s.kpm} 打/分。`);
   afterResult();
   logTypingStage("done");
 }
@@ -618,7 +600,7 @@ function finishLong(isPartial) {
   }
   renderLongResult(s, cmp, text);
   render();
-  setLive(longLiveText(s));
+  sr.say(longLiveText(s));
   afterResult();
   if (!isPartial) {
     logTypingStage("long_done");
@@ -636,7 +618,7 @@ function pauseLong() {
   if (phase !== "running") return;
   clock.pause(performance.now());
   phase = "paused";
-  setLive(PAUSED_TEXT); // 待っている「次の行」は捨てる
+  sr.say(PAUSED_TEXT); // 待っている「次の行」は捨てる
   render();
 }
 
@@ -661,7 +643,7 @@ function press(key, now) {
         return;
       }
       render();
-      announce(`次の行。${lineText()}`); // 打鍵ごとには何も言わない。行が替わったときだけ
+      sr.say(`次の行。${lineText()}`); // 打鍵ごとには何も言わない。行が替わったときだけ
       return;
     }
     render();
@@ -735,7 +717,7 @@ async function loadLong() {
   if (!isLong() || phase !== "loading") return;
   toReady("long");
   // 焦点はすでに入力欄にあって動かず describedby が読まれないので、題と今の行を 1 回だけ読ませる
-  if (phase === "ready") announce(`${currentText()?.title ?? ""}。${lineText()}`);
+  if (phase === "ready") sr.say(`${currentText()?.title ?? ""}。${lineText()}`);
 }
 
 // 長文のタブ: 初めて押したら計測と教材の取り込み。打っている間・止めている間・始まる前は焦点だけ（回を捨てない）

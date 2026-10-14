@@ -8,6 +8,7 @@
 import { isTouchDevice } from "./keyboard.js";
 import { romajiKeyOf } from "./romaji.js";
 import { RESULT_GUARD_MS, validPairs } from "./typingDrill.js";
+import { openWindow } from "./srLive.js";
 
 // 打っている間、Space／Enter とキーで押すクリックを止めるボタン（タブ・ご意見）。語のあとの癖の Space で回が消えない（止めた回では続きから）
 const RUN_CONTROLS = ".tp-tabs button, [data-feedback-open]";
@@ -176,9 +177,11 @@ export function reopenLink(anchor, param, value) {
 
 // ---- 焦点・画面キーボード ----
 
-// ご意見の窓（aria-modal。開け閉めは hidden）が開いているか。打鍵ごとに呼ぶので、レイアウトを読まない
-export function modalOpen() {
-  return [...document.querySelectorAll('[aria-modal="true"]')].some((node) => !node.closest("[hidden]"));
+// 窓が開いているか（打鍵を止める・時間切れの回を捨てる・窓の焦点を取らない）。読み上げの行き先と同じ判定（js/srLive.js openWindow。PR #168 レビューの 7）を
+// ページの入力欄（#input。窓の外）から見る: ご意見の窓（aria-modal・開け閉めは hidden・背後は inert。js/feedback.js）と <dialog>.showModal() の窓。
+// 打鍵ごとに呼ぶので、レイアウトを読まない（openWindow はセレクタと closest だけ）
+export function modalOpen(ref = document.getElementById("input")) {
+  return openWindow(ref) !== null;
 }
 
 export function focusInput(input) {
@@ -283,7 +286,7 @@ export function wireTyping(page) {
   };
 
   function onKey(event) {
-    if (modalOpen()) return;
+    if (modalOpen(page.input)) return;
     const target = event.target;
     if (editable(target, page.input)) return;
     const isEnter = event.key === "Enter";
@@ -367,7 +370,7 @@ export function wireTyping(page) {
 
   // Space はボタンの上で keyup のときに押される: 打っている間は keyup も止める（spaceIsKey のときは焦点がどこでも）
   function onKeyUp(event) {
-    if (!live(page.phase()) || modalOpen()) return;
+    if (!live(page.phase()) || modalOpen(page.input)) return;
     if (event.key !== " " && event.key !== "Spacebar") return;
     const target = event.target;
     if (!(target instanceof Element)) return;

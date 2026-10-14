@@ -5,6 +5,8 @@
 // プレイ中（body.home--playing）と初回（body.welcome-open）は sticky を外す（ゲームカードや積んだ本の高さが変わる）。
 // 動きは無い（位置の計算だけ。prefers-reduced-motion でも同じ）。
 
+import { isWelcomeOpen } from "./welcome.js"; // 初回は js が引き継ぐ前（html[data-first-visit]）から sticky にしない
+
 export function initRoom() {
   const nook = document.getElementById("nook");
   if (!nook) return;
@@ -12,7 +14,7 @@ export function initRoom() {
 
   const fitNook = () => {
     const body = document.body;
-    if (!wide.matches || body.classList.contains("home--playing") || body.classList.contains("welcome-open")) {
+    if (!wide.matches || body.classList.contains("home--playing") || isWelcomeOpen()) {
       nook.style.position = "";
       nook.style.top = "";
       return;

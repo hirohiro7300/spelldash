@@ -36,10 +36,18 @@ export function markOnboarded() {
   localStorage.setItem(ONBOARDED_KEY, "1");
 }
 
+// index.html の <head> の 1 行（id="firstVisit"。最初の描画から初回の本を出すための写し）と同じ条件・同じ読み方: 語の記録は無い・空の文字列・{}・null を「記録なし」、
+// 読めない値（壊れた JSON）は初回と見ない（1 行は catch で何もしない）。変えるときは両方を変える（E2E が同じ状態の表で突き合わせる）
 export function shouldShowWelcome() {
   if (localStorage.getItem(ONBOARDED_KEY)) return false;
   if (getTotalXp() > 0) return false;
-  if (Object.keys(getWordStats()).length > 0) return false;
+  let stats;
+  try {
+    stats = getWordStats();
+  } catch {
+    return false;
+  }
+  if (Object.keys(stats).length > 0) return false;
   // アプリ内への深いリンク（?set= ?words= ?t= など）で来た人には出さない。それ以外のパラメータ（計測用等）では出す
   const params = new URLSearchParams(location.search);
   if (["set", "words", "t", "weekly", "category", "genre", "mode"].some((k) => params.has(k))) return false;
@@ -174,6 +182,12 @@ function flatbookHtml(book, { back = false } = {}) {
   return `<li${back ? " hidden" : ""}><button type="button" class="flatbook${back ? " flatbook--back" : ""}" data-book="${esc(book.id)}" aria-pressed="${book.id === currentBook.id}" aria-label="${esc(book.shelf)}、${esc(book.title)}を机に出す" style="--c:${esc(book.cover)};${book.style ?? "--wd:94%;--x:3px;--r:-.5deg;--hh:46px"}"><span class="flatbook__k">${esc(book.shelf)}</span><span class="flatbook__t">${numHtml(book.title)}</span><span class="flatbook__s">${book.lang === "en" ? "答えは英語" : "答えは日本語"}</span></button></li>`;
 }
 
+// 積んだ本（4 冊）と、入れ替えたときに降りてくる英単語（hidden）。index.html の #welcomeStack に同じ中身を静的に置いてある（最初の描画から積んだ高さ。
+// 空きの高さを手で数えない）。E2E が index.html の積みとこれの中身が同じことを見る。本を替えるときは両方を変える
+export function welcomePileHtml() {
+  return WELCOME_PILE.map((b) => flatbookHtml(b)).join("") + flatbookHtml(FIRST_BOOK, { back: true });
+}
+
 // 机の本を替える（積んだ本・本棚から）。始めない。本棚からの本は meta（{ shelf, title, sub, lang }）で名前をもらう
 export function pickWelcomeBook(id, meta = null) {
   const root = document.getElementById("welcome");
@@ -211,6 +225,22 @@ export function pickWelcomeBook(id, meta = null) {
   }, 160);
 }
 
+// 初回の本が開いているか（開くと決まっているか）: js が引き継いだあとは body.welcome-open、引き継ぐ前（module の js が読まれている間）は
+// index.html の <head> の 1 行が置いた html[data-first-visit]。読み込み時に状態を覚える js（js/bookshelf.js・js/room.js）はこれで読む
+// （body のクラスだけを見ると、引き継ぎで「閉 → 開」に替わったと見て本棚を語の読み込みの前に描いてしまう）
+export function isWelcomeOpen() {
+  return document.body.classList.contains("welcome-open") || "firstVisit" in document.documentElement.dataset;
+}
+
+// 初回の本（open）と机の切り替え。index.html の <head> の 1 行が置いた html[data-first-visit]（CSS が最初の描画から初回の本を出す）はここで外す:
+// 以後は hidden と body.welcome-open が決める（同じタスクで置き換えるので、描画の間に机が挟まらない）
+function setWelcomeOpen(root, app, open) {
+  root.hidden = !open;
+  app.hidden = open;
+  document.body.classList.toggle("welcome-open", open);
+  delete document.documentElement.dataset.firstVisit;
+}
+
 // トップページを畳んでアプリ（机の本）を出す。ログイン済みの人・同期で記録が届いた人に使う（js/main.js）。
 // スタートと同じ切り替えから、腕試しの開始（onStart）を抜いたもの
 export function dismissWelcome() {
@@ -218,10 +248,8 @@ export function dismissWelcome() {
   const app = document.querySelector(".app--home");
   if (!root || !app) return;
   markOnboarded();
-  if (root.hidden && !document.body.classList.contains("welcome-open")) return;
-  root.hidden = true;
-  app.hidden = false;
-  document.body.classList.remove("welcome-open");
+  if (root.hidden && !isWelcomeOpen()) return;
+  setWelcomeOpen(root, app, false);
   document.body.classList.add("returning");
   renderHasumiHome(); // 「はじめまして」を、戻ってきた人の文に
 }
@@ -232,21 +260,17 @@ export function renderWelcome({ onStart } = {}) {
   const app = document.querySelector(".app--home");
   if (!root || !app) return false;
   if (!shouldShowWelcome()) {
-    // index.html のインライン（最初の描画から初回の本を出す。判定は同じ）と食い違ったときは机に戻す（ふだんは何も変わらない）
-    root.hidden = true;
-    app.hidden = false;
-    document.body.classList.remove("welcome-open");
+    // <head> の 1 行（最初の描画から初回の本を出す。判定は同じ）と食い違ったときは机に戻す（ふだんは何も変わらない）
+    setWelcomeOpen(root, app, false);
     return false;
   }
 
-  root.hidden = false;
-  app.hidden = true;
-  document.body.classList.add("welcome-open");
+  setWelcomeOpen(root, app, true);
 
-  // 積んだ本（4 冊）と、入れ替えたときに降りてくる英単語
+  // 積んだ本（4 冊）と、入れ替えたときに降りてくる英単語: index.html に静的に置いた物を使う（無いときだけ作る）
   const stack = root.querySelector("#welcomeStack");
   if (stack) {
-    stack.innerHTML = WELCOME_PILE.map((b) => flatbookHtml(b)).join("") + flatbookHtml(FIRST_BOOK, { back: true });
+    if (!stack.querySelector(".flatbook")) stack.innerHTML = welcomePileHtml();
     stack.addEventListener("click", (event) => {
       const btn = event.target.closest(".flatbook");
       if (btn) pickWelcomeBook(btn.dataset.book);
@@ -257,9 +281,7 @@ export function renderWelcome({ onStart } = {}) {
 
   const start = () => {
     markOnboarded();
-    root.hidden = true;
-    app.hidden = false;
-    document.body.classList.remove("welcome-open");
+    setWelcomeOpen(root, app, false);
     document.body.classList.add("returning"); // キャッチコピーは見せたので、アプリ側の見出しは机の本から
     window.scrollTo({ top: 0 });
     onStart?.({ bookId: currentBook.id, courseId: currentBook.course }); // course は本棚の函から選んだとき（js/bookshelf.js）
@@ -269,9 +291,7 @@ export function renderWelcome({ onStart } = {}) {
     event.preventDefault();
     event.stopPropagation(); // document のクリック監視（auth.js）が開いた直後のログイン欄を閉じないように
     markOnboarded();
-    root.hidden = true;
-    app.hidden = false;
-    document.body.classList.remove("welcome-open");
+    setWelcomeOpen(root, app, false);
     renderHasumiHome(); // 紙片の「はじめまして」は初回の本の間だけ
     document.getElementById("loginToggle")?.click();
   });

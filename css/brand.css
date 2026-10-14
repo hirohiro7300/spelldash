@@ -743,13 +743,11 @@ html[data-theme] .icon {
     padding: 6px 8px;
     font-size: 12px;
   }
-  /* 連続日数は数字だけ、アバターは 32px */
+  /* 連続日数は「12日」のまま高さだけ 40px（当たり判定）、アバターは 32px。
+     字と余白は帯の上の規則（このファイルの body:not(.page-room) .header-streak・room.css の .page-room .header-streak）が全幅で決める
+     （ここにあった「単位を消す・padding 4px 7px」は詳細度と後勝ちで効いていなかったので消した。PR #168 のレビュー 5。数字だけになるのは書斎の 359px 以下だけ: room.css） */
   html[data-theme] .header-streak {
     min-height: 40px;
-    padding: 4px 7px;
-  }
-  html[data-theme] .header-streak span {
-    display: none;
   }
   html[data-theme] .avatar-button {
     padding: 6px;
