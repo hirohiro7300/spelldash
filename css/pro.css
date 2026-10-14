@@ -337,6 +337,11 @@ html[data-theme] .pro-price[hidden] {
   display: none;
 }
 
+/* config が遅く、届く前に出したとき: 1 行の場所だけ空ける（js/proView.js reservePriceLine。字は見せず読ませない。Batch 67） */
+html[data-theme] .pro-price--reserved {
+  visibility: hidden;
+}
+
 /* マイ単語帳の「すべて表示」 */
 html[data-theme] .my-words__more {
   margin-top: 8px;

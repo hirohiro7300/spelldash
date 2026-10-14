@@ -745,7 +745,7 @@ html[data-theme] .icon {
   }
   /* 連続日数は「12日」のまま高さだけ 40px（当たり判定）、アバターは 32px。
      字と余白は帯の上の規則（このファイルの body:not(.page-room) .header-streak・room.css の .page-room .header-streak）が全幅で決める
-     （ここにあった「単位を消す・padding 4px 7px」は詳細度と後勝ちで効いていなかったので消した。PR #168 のレビュー 5。数字だけになるのは書斎の 359px 以下だけ: room.css） */
+     （ここにあった「単位を消す・padding 4px 7px」は詳細度と後勝ちで効いていなかったので消した。PR #168 のレビュー 5。数字だけになるのは 359px 以下だけ: 書斎は room.css、ほかは下の 449px の節） */
   html[data-theme] .header-streak {
     min-height: 40px;
   }
@@ -768,6 +768,49 @@ html[data-theme] .icon {
   /* 4 つ目のタブが出る Battle のページでは連続日数の丸を出さない（4 タブ＋ログインで幅いっぱい。連続日数は学習データにもある） */
   html[data-theme] .site-header__inner:has(.site-nav__link[aria-current][href$="battle.html"]) .header-streak {
     display: none;
+  }
+}
+
+/* ---- ヘッダー（449px 以下）: 部品（印・ナビ・連続日数・ログイン／アバター）が重ならないように詰める（Batch 67）。
+   ナビは flex: 1・min-width: 0・overflow: visible なので、幅が足りないとリンクが連続日数・ログインの下に潜る（320 の未ログイン・1234 日で 52px、
+   400〜432 の 4 タブ＋連続日数も）。いちばん混む形（未ログイン＋4 桁の連続日数）が 320〜720 のどの幅でも収まる量だけ、目立たない所から詰める:
+   部品の間 6 → 4px（ログイン／アバターの前は 6px のまま: アバターの当たり判定は左へ 6px 出る）・内枠 94% → 100% − 16px・ログインの左右 8 → 6px・
+   ナビ 5px／0.08em → 4px／0.04em。足りない 2 つの帯（≤359・4 タブが出る 400〜411）だけナビを 3px／0.02em に。
+   ≤359 は連続日数を数字だけにする（書斎の room.css と同じ。炎と単位を畳む。aria-label「連続 N日」は残る）。帯の高さと字の 1 行は変えない ---- */
+@media (max-width: 449.98px) {
+  html[data-theme] .site-header__inner {
+    gap: 4px;
+    width: calc(100% - 16px);
+  }
+  html[data-theme] .account {
+    padding-left: 2px;
+  }
+  html[data-theme] .account .btn--ghost {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+  html[data-theme] .site-nav__link {
+    padding-right: 4px;
+    padding-left: 4px;
+    letter-spacing: 0.04em;
+  }
+}
+
+@media (max-width: 359.98px), (min-width: 400px) and (max-width: 411.98px) {
+  html[data-theme] .site-nav__link {
+    padding-right: 3px;
+    padding-left: 3px;
+    letter-spacing: 0.02em;
+  }
+}
+
+@media (max-width: 359.98px) {
+  html[data-theme] body:not(.page-room) .header-streak span,
+  html[data-theme] body:not(.page-room) .header-streak .icon {
+    display: none;
+  }
+  html[data-theme] body:not(.page-room) .header-streak {
+    padding: 4px 2px;
   }
 }
 

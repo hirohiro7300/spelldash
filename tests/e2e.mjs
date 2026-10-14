@@ -324,6 +324,34 @@ async function newPage(init = {}) {
   return page;
 }
 
+// 読み込みの CLS（Batch 67 C1。単語帳・学習データ・加入画面）: 全応答を delay ms 遅らせて開き（scratchpad/perf-delay.mjs の作法）、load から wait ms のあいだの
+// layout-shift の合計と、動いた要素（値の大きい順に 4 つ）。入力はしないので hadRecentInput では除かない（isMobile の模擬では入力が無くても
+// hadRecentInput が true になり、除くと 390 がいつも 0 に見える）。slow: { URL の glob: ms } はその応答だけをさらに遅らせる（加入画面の config だけが遅い場合）
+async function loadCls(url, { width = 1200, height = 900, mobile = false, delay = 80, wait = 2500, storage = {}, slow = {} } = {}) {
+  const page = await newPage({ mobile, viewport: { width, height }, storage });
+  await page.addInitScript(() => {
+    window.__cls = 0;
+    window.__clsSrc = [];
+    const name = (n) => n?.id ? `#${n.id}` : typeof n?.className === "string" && n.className ? `.${n.className.trim().split(/\s+/)[0]}` : n?.nodeName ?? "?";
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) { window.__cls += e.value; for (const s of e.sources ?? []) window.__clsSrc.push([e.value, name(s.node)]); } }).observe({ type: "layout-shift", buffered: true });
+  });
+  if (delay) await page.route("**/*", async (route) => { await new Promise((r) => setTimeout(r, delay)); await route.continue(); });
+  for (const [glob, ms] of Object.entries(slow)) await page.route(glob, async (route) => { await new Promise((r) => setTimeout(r, ms)); await route.fallback(); });
+  await page.goto(BASE + url, { waitUntil: "load" });
+  await page.waitForTimeout(wait);
+  const r = await page.evaluate(() => ({ cls: Math.round(window.__cls * 10000) / 10000, src: [...new Set(window.__clsSrc.sort((a, b) => b[0] - a[0]).map((x) => x[1]))].slice(0, 4) }));
+  r.errors = page.errors.slice(0, 1);
+  await page.close();
+  return r;
+}
+// loadCls の「学習記録あり」の種: 中学英語 1年の 60 語（3 語に 1 語は苦手）・連続 3 日・腕試し済み・机は中学英語 1年
+function clsRecords() {
+  const words = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", "jhs-english1.json"), "utf8")).words.slice(0, 60);
+  const at = (i) => new Date(Date.now() - (i % 9) * 86400000).toISOString();
+  const stats = Object.fromEntries(words.map((w, i) => [w.id, { playCount: 3, correctCount: i % 3 ? 3 : 1, recallFail: i % 3 ? 0 : 2, typingMiss: 0, lastPlayed: at(i), lastRecallSuccessAt: at(i), history: [1, 1, i % 3 ? 1 : 0] }]));
+  return { spelldash_placement: "done", spelldash_xp: "1200", spelldash_streak: JSON.stringify({ current: 3, best: 5, last: ymd(new Date()) }), spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(stats) };
+}
+
 // ===== 1. 全ページがエラーなく表示される =====
 // 各ページの <link rel="modulepreload">（scripts/modulepreload.mjs）が import の依存と揃っている（足した import の先読みを忘れない）
 console.log("modulepreload:");
@@ -4466,6 +4494,85 @@ console.log("study (room):");
     check("初回: ログインの行でトップが畳まれたら、紙片は「はじめまして」から戻ってきた人の文に変わる", before.includes("はじめまして") && !after.includes("はじめまして") && after.trim().length > 0 && !(await page.isVisible("#welcome")), `${before} → ${after}`);
     await page.close();
   }
+
+  // ---- Batch 67 C3: 端末の spelldash_word_stats が壊れた JSON（PR #168 のレビューで見つけた。前から: js/tutorial.js が js/storage.js の getWordStats で投げ、
+  // js/main.js が止まっていた）。書斎がエラー 0 で開き、スタートで出題が始まり、答えると記録が書ける。元の値は上書きする前に端末だけの退避の鍵
+  // spelldash_word_stats_corrupt に写す（1 つだけ・同期しない）。初回の判定は今どおり「壊れた JSON は机」（index.html の head の 1 行と shouldShowWelcome）。
+  // 学習データ・単語帳も止まらない。ログインした端末: 壊れた値は送らず、クラウドの記録は空の端末と同じく取り込む（退避の鍵は残る）
+  {
+    const BROKEN = '{"english-apple":{"playCount":3,"correctCount":2,"lastPlayed":"2026-'; // 書いている途中で切れた体
+    const corrupt = (p) => p.evaluate(() => ({ stats: localStorage.getItem("spelldash_word_stats"), kept: localStorage.getItem("spelldash_word_stats_corrupt") }));
+    const runs = [];
+    for (const who of ["onboarded", "notOnboarded"]) {
+      // newPage の種は読み込みのたびに入れ直すので、この検査では読み込みは 1 回だけ
+      const page = await newPage({ keepOnboarding: who === "notOnboarded", viewport: { width: 390, height: 844 }, storage: { spelldash_word_stats: BROKEN } });
+      const stacks = [];
+      page.on("pageerror", (e) => stacks.push(String(e.stack || e.message).split("\n").slice(0, 3).join(" | ")));
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      await page.waitForTimeout(600);
+      const open = await page.evaluate(() => ({
+        firstVisit: document.documentElement.hasAttribute("data-first-visit"),
+        welcome: !!document.getElementById("welcome")?.getClientRects().length && !document.getElementById("welcome").hidden,
+        start: !!document.getElementById("pathStart")?.getClientRects().length
+      }));
+      const kept0 = await corrupt(page);
+      let started = false, answered = false, kept1 = null;
+      if (open.start) {
+        await page.click("#pathStart");
+        started = await waitUntil(() => page.isVisible("#backToPath"), 4000);
+        await page.press("#input", "Enter"); // 答え表示
+        await waitUntil(async () => /^[a-z]+$/.test(((await page.textContent("#word")) ?? "").trim()), 1500);
+        const word = ((await page.textContent("#word")) ?? "").trim();
+        for (const ch of word) await page.press("#input", ch);
+        await page.waitForTimeout(NEXT_READY_MS);
+        kept1 = await corrupt(page);
+        answered = (() => { try { return Object.keys(JSON.parse(kept1.stats)).length > 0; } catch { return false; } })();
+      }
+      runs.push({ who, open, kept0: kept0.kept === BROKEN, started, answered, kept1: kept1?.kept === BROKEN, errors: page.errors.length, stacks: stacks.slice(0, 2) });
+      await page.close();
+    }
+    check("壊れた学習記録（Batch 67 C3）: 書斎がエラー 0 で開き（机。初回の本は出ない。onboarded の有無どちらも）、スタートで出題が始まり、答えると記録が書け、退避の鍵 spelldash_word_stats_corrupt に元の値がある（開いた直後も答えたあとも）",
+      runs.every((r) => !r.open.firstVisit && !r.open.welcome && r.open.start && r.kept0 && r.started && r.answered && r.kept1 && r.errors === 0), JSON.stringify(runs));
+
+    // 学習データ・単語帳も止まらない（同じ読み手 getWordStats）
+    const others = {};
+    for (const url of ["/stats.html", "/list.html"]) {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_word_stats: BROKEN } });
+      await page.goto(BASE + url, { waitUntil: "networkidle" });
+      await page.waitForTimeout(500);
+      others[url] = { errors: page.errors.slice(0, 1), kept: (await corrupt(page)).kept === BROKEN, body: url === "/list.html" ? /語/.test((await page.textContent("#listSummary")) ?? "") : ((await page.textContent("#statsBody, #main")) ?? "").length > 0 };
+      await page.close();
+    }
+    check("壊れた学習記録（Batch 67 C3）: 学習データ・単語帳もエラー 0 で中身を描き、退避の鍵に元の値", Object.values(others).every((r) => r.errors.length === 0 && r.kept && r.body), JSON.stringify(others));
+
+    // ログインした端末: クラウドの記録は空の端末と同じく取り込み、壊れた値は送らない。退避の鍵は残り、バックアップには入る
+    {
+      const jhs = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", "jhs-english1.json"), "utf8")).words.slice(0, 5);
+      const at = new Date(Date.now() - 3600 * 1000).toISOString();
+      const cloud = createCloud({
+        word_progress: jhs.map((w) => ({ user_id: "test-user", word_id: w.id, play_count: 2, correct_count: 2, typing_miss: 0, recall_fail: 0, clean_correct_streak: 2, mastered: false, mastered_at: null, last_played: at, next_review_at: at, last_recall_fail_at: null, last_recall_success_at: at, daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: at })),
+        user_progress: [{ user_id: "test-user", xp: 40, level: 1, streak: { last: ymd(new Date()), current: 1, best: 1, shields: 0 }, best_score: 0, selected_category: "all", selected_mode: "study", updated_at: at }]
+      });
+      const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      await page.addInitScript((seed) => {
+        if (sessionStorage.getItem("spelldash_test_seeded")) return;
+        sessionStorage.setItem("spelldash_test_seeded", "1");
+        for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+      }, { spelldash_schema_version: "6", spelldash_onboarded: "1", spelldash_owner: "test-user", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_word_stats: BROKEN, spelldash_dirty_words: JSON.stringify(["english-apple"]) });
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      const pulled = await waitUntil(async () => (await page.evaluate(() => { try { return Object.keys(JSON.parse(localStorage.getItem("spelldash_word_stats"))).length; } catch { return 0; } })) === jhs.length, 8000);
+      const sent = cloud.writes("word_progress").map((e) => e.n);
+      const state = await page.evaluate(() => ({ kept: localStorage.getItem("spelldash_word_stats_corrupt"), keys: (() => { try { return Object.keys(JSON.parse(localStorage.getItem("spelldash_word_stats"))).length; } catch { return -1; } })() }));
+      const backupKeys = await page.evaluate(async () => Object.keys((await import("/js/backup.js")).buildBackup().data));
+      const cloudIds = cloud.rows("word_progress").map((r) => r.word_id);
+      check("壊れた学習記録（Batch 67 C3）: ログインした端末はクラウドの 5 語を空の端末と同じく取り込み、壊れた値（english-apple）は送らない（word_progress の送信 0 行）。退避の鍵は残り、バックアップには入る",
+        pulled && state.keys === jhs.length && state.kept === BROKEN && sent.every((n) => n === 0) && !cloudIds.includes("english-apple") && backupKeys.includes("spelldash_word_stats_corrupt") && page.errors.length === 0,
+        JSON.stringify({ pulled, state: { ...state, kept: state.kept === BROKEN }, sent, cloudIds: cloudIds.length, backup: backupKeys.includes("spelldash_word_stats_corrupt"), errors: page.errors.slice(0, 1) }));
+      await page.close();
+    }
+  }
 }
 
 // ===== 8.6 わたしの本棚（js/bookshelf.js・js/shelfStore.js。Batch 61）: 自分で足した本と函だけ（机の本は空き）。171 冊の目録は「本を足す」の窓、下ろすのは「整理」 =====
@@ -5616,7 +5723,7 @@ console.log("pages (書斎の皮):");
   // 2: ヘッダーの家へのリンク（a.brand）の字は .brand__name だけ（「SD」は aria-hidden）なので、display: none では読み上げの名前が空だった（≤560 も前から同じ）。
   //    見た目だけ隠す（sr-only の形。.site-header .brand__name）。帯の見た目（印だけ・高さ）は変えない
   // 5: brand.css の 720 の箱の連続日数の 2 つ（span を消す・padding 4px 7px）は詳細度・後勝ちで効いていなかった。消しても見た目は今のまま:
-  //    ≤720 でも「12日」（単位の span は出る。書斎の ≤359 だけ room.css が数字だけに。Battle の 400 未満は連続日数ごと出さない）、padding はその頁の 1200 と同じ、当たり判定の min-height 40px は効く
+  //    ≤720 でも「12日」（単位の span は出る。≤359 だけ数字だけ: 書斎は room.css、ほかは Batch 67 N1 の brand.css。Battle の 400 未満は連続日数ごと出さない）、padding はその頁の 1200 と同じ、当たり判定の min-height 40px は効く
   {
     const BRAND_WIDTHS = [320, 379, 390, 560, 561, 600, 640, 700, 720, 721, 1200];
     const brandAt = () => {
@@ -5648,7 +5755,7 @@ console.log("pages (書斎の皮):");
         if (name !== "SpellDash") nameBad.push(`${p}@${w}:${JSON.stringify(name)}`);
         if (wide.streak) {
           const off = p === "/battle.html" && w < 400; // Battle の 400px 未満は連続日数を出さない（brand.css の 399.98px の箱）
-          const unitHidden = p === "/index.html" && w <= 359; // 書斎の 359px の箱（room.css）だけ数字だけ
+          const unitHidden = w <= 359; // 359px 以下は数字だけ（書斎は room.css、ほかは brand.css の 449px の節。Batch 67 N1）
           const s = r.streak;
           if (off ? s !== null : !s || s.unit === unitHidden || (!unitHidden && (s.padding !== wide.streak.padding || s.text !== "12日")) || (w <= 720 && s.minH !== "40px")) streakBad.push(`${p}@${w}:${JSON.stringify(s)}`);
         }
@@ -5656,8 +5763,235 @@ console.log("pages (書斎の皮):");
     }
     check(`PR #168 の 1: フッターの名前「SpellDash」はどの幅でも見える（全 ${1 + SKIN_PAGES.length} ページ × ${BRAND_WIDTHS.join("・")}。詰めた 1 行で名前を隠すのはヘッダーだけ）`, footBad.length === 0, JSON.stringify({ n: footBad.length, bad: footBad.slice(0, 6) }));
     check(`PR #168 の 2: ヘッダーの家へのリンクの読み上げの名前は「SpellDash」（全 ${1 + SKIN_PAGES.length} ページ × ${BRAND_WIDTHS.join("・")}）、見た目は今のまま（≤720 は印だけ・721 からは名前つき）`, nameBad.length === 0 && headBad.length === 0, JSON.stringify({ name: nameBad.slice(0, 6), nName: nameBad.length, head: headBad.slice(0, 6) }));
-    check("PR #168 の 5: ≤720 でも連続日数は「12日」（単位が出る。書斎の ≤359 だけ数字だけ・Battle の 400 未満は出さない）・padding はその頁の 1200 と同じ・当たり判定の min-height 40px（効いていなかった宣言を消しても見た目は今のまま）", streakPages >= 10 && streakBad.length === 0 && page.errors.length === 0, JSON.stringify({ streakPages, n: streakBad.length, bad: streakBad.slice(0, 6), errors: page.errors.slice(0, 1) }));
+    check("PR #168 の 5: ≤720 でも連続日数は「12日」（単位が出る。≤359 だけ数字だけ〔Batch 67 N1〕・Battle の 400 未満は出さない）・padding はその頁の 1200 と同じ・当たり判定の min-height 40px（効いていなかった宣言を消しても見た目は今のまま）", streakPages >= 10 && streakBad.length === 0 && page.errors.length === 0, JSON.stringify({ streakPages, n: streakBad.length, bad: streakBad.slice(0, 6), errors: page.errors.slice(0, 1) }));
     await page.close();
+  }
+
+  // ---- Batch 67 N1: 細い幅でヘッダーの部品が重なる（前から。Batch 66 の反証役）。≤720 の詰めた 1 行でもナビ（flex: 1・min-width: 0・overflow: visible）が
+  // 連続日数とログインに幅を譲れず、リンクが連続日数・ログインの下に潜った（320 の未ログインで 12 日 37px・1234 日 52px、battle の「バトル」が「ログイン」の下に
+  // 24px〔当たり判定の箱〕。361〜379 の 1234 日、400〜432 の 4 タブ＋連続日数も重なった）。直し（css/brand.css）: ≤449 は部品の間 4px（ログイン／アバターの前は 6px）・
+  // 内枠 100%−16px・ログインの左右 6px・ナビ 4px／0.04em、≤359 と 400〜411（4 タブ）はナビ 3px／0.02em、≤359 は連続日数を数字だけ（書斎と同じ。炎と単位を畳む。
+  // aria-label は残る）。4 つの形（未ログイン・ログイン・Pro・アプリ）× 連続日数 0・12・128・1234 × 5 ページ（書斎・アプリの頁・4 タブの battle・静的頁・生成した packs）×
+  // 320〜360 の各幅＋361〜720 の 27 幅で: 部品（印・ナビの各リンク・連続日数・ログイン／アバター／設定）の箱（当たり判定）が互いに重ならない・画面の外に出ない・
+  // 字は 1 行・帯の高さは幅によらず同じ（書斎 56・ほか 57）・連続日数は消さない（Battle の 400 未満だけ出さない。≤359 は数字だけ）・タブの数は今のまま（400 未満は 3、Battle は 4）
+  console.log("header (narrow, Batch 67 N1):");
+  // 細い幅の検査を速くする台: 1 つのタブに複数のページを同じオリジンの iframe で並べ、iframe の幅を変えて中を測る（iframe の中のメディアクエリと resize は
+  // iframe の幅で動く）。1 幅ごとに setViewportSize すると N1（16 形 × 5 ページ × 68 幅）だけで 3 分かかった。台の頁は page.route で返す（ファイルは足さない）
+  const openFrames = async (page, paths, w, h) => {
+    await page.route(BASE + "/__frames", (route) => route.fulfill({ contentType: "text/html", body: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0">${paths.map((p) => `<iframe src="${p}" style="display:block;border:0;width:${w}px;height:${h}px"></iframe>`).join("")}</body></html>` }));
+    await page.goto(BASE + "/__frames", { waitUntil: "networkidle" });
+  };
+  {
+    const todayN = ymd(new Date());
+    const isoN = (d) => new Date(Date.now() + d * 86400000).toISOString();
+    const FORMS_N1 = [
+      ["未ログイン", {}, false],
+      ["ログイン", { spelldash_test_session: "1", spelldash_plan: JSON.stringify({ status: "none", interval: null, periodEnd: null, cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) }, false],
+      ["Pro", { spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: isoN(20), cancel_at_period_end: false }), spelldash_plan: JSON.stringify({ status: "active", interval: "month", periodEnd: isoN(20), cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) }, false],
+      ["アプリ", {}, true]
+    ];
+    const N1_PAGES = ["/index.html", "/stats.html", "/battle.html", "/news.html", "/packs/index.html"];
+    const N1_WIDTHS = [...Array.from({ length: 41 }, (_, i) => 320 + i), 361, 375, 384, 390, 393, 399, 400, 402, 404, 408, 411, 412, 414, 420, 428, 430, 440, 449, 450, 480, 540, 560, 561, 600, 640, 680, 720];
+    // iframe ごと・幅ごとに: 部品の箱の重なり・画面の外・字の行数（8.7 の H1 と同じ数え方）・帯の高さ・見えるタブの数・連続日数の字
+    const headerBoxes = (widths) => {
+      const out = [];
+      for (const frame of document.querySelectorAll("iframe")) {
+        const win = frame.contentWindow, doc = frame.contentDocument;
+        const shown = (el) => !!el && el.getClientRects().length > 0 && win.getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden]");
+        const lines = (el) => {
+          const rects = [];
+          const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (!n.data.trim() || !shown(n.parentElement)) continue;
+            const r = doc.createRange();
+            r.selectNodeContents(n);
+            rects.push(...[...r.getClientRects()].filter((x) => x.width > 0));
+          }
+          let count = 0, bottom = -Infinity;
+          for (const x of rects.sort((a, b) => a.top - b.top)) {
+            if ((x.top + x.bottom) / 2 > bottom) { count++; bottom = x.bottom; } else bottom = Math.max(bottom, x.bottom);
+          }
+          return count;
+        };
+        for (const w of widths) {
+          frame.style.width = `${w}px`;
+          frame.getBoundingClientRect(); // 台の配置を確定（iframe の幅 → 中のメディアクエリ）
+          const parts = [...doc.querySelectorAll(".site-header .brand__mark, .site-header .site-nav__link, #headerStreak, #loginToggle, #avatarButton, .site-header .account__link")].filter(shown);
+          const boxes = parts.map((el) => { const b = el.getBoundingClientRect(); return { n: el.id || el.textContent.trim().slice(0, 6), l: b.left, r: b.right, t: b.top, b: b.bottom }; });
+          const overlap = [];
+          for (let i = 0; i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+              const a = boxes[i], c = boxes[j];
+              const dx = Math.min(a.r, c.r) - Math.max(a.l, c.l), dy = Math.min(a.b, c.b) - Math.max(a.t, c.t);
+              if (dx > 0.5 && dy > 0.5) overlap.push(`${a.n}|${c.n}:${dx.toFixed(1)}`);
+            }
+          }
+          const vw = doc.documentElement.clientWidth;
+          const streak = doc.getElementById("headerStreak");
+          out.push({
+            p: new URL(frame.src).pathname, w, vw, overlap,
+            out: boxes.filter((x) => x.l < -0.5 || x.r > vw + 0.5).map((x) => x.n),
+            broken: parts.filter((el) => el.id !== "avatarButton" && !el.matches(".brand__mark") && lines(el) > 1).map((el) => el.textContent.trim()),
+            h: doc.querySelector(".site-header").offsetHeight,
+            tabs: parts.filter((el) => el.matches(".site-nav__link")).length,
+            streak: shown(streak) ? streak.innerText.replace(/\s+/g, "") : null,
+            native: doc.documentElement.classList.contains("native-app")
+          });
+        }
+      }
+      return out;
+    };
+    for (const [form, storage, app] of FORMS_N1) {
+      for (const days of [0, 12, 128, 1234]) {
+        const page = await newPage({ mobile: app, viewport: { width: 1200, height: 800 }, storage: { spelldash_placement: "done", ...storage, ...(days ? { spelldash_streak: JSON.stringify({ current: days, best: days, last: todayN }) } : {}) } });
+        if (app) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
+        await openFrames(page, N1_PAGES, 1200, 800);
+        await page.waitForTimeout(150);
+        const rows = await page.evaluate(headerBoxes, N1_WIDTHS);
+        const bad = rows.filter((r) => {
+          const battle = r.p === "/battle.html";
+          const wantStreak = !days || (battle && r.w < 400) ? null : r.w <= 359 ? String(days) : `${days}日`;
+          return r.vw !== r.w || r.overlap.length || r.out.length || r.broken.length || r.h !== (r.p === "/index.html" ? 56 : 57) || r.tabs !== (battle || r.w >= 400 ? 4 : 3) || r.streak !== wantStreak || r.native !== app;
+        }).map((r) => JSON.stringify(r));
+        check(`N1 ヘッダーの部品は重ならない（${form}・連続 ${days} 日: ${N1_PAGES.length} ページ × 320〜360 の各幅と 361〜720 の 27 幅。箱が重ならない・画面の内・字は 1 行・高さ 56／57・連続日数は ≤359 で数字だけ・タブは 400 未満 3〔Battle は 4〕）`,
+          rows.length === N1_PAGES.length * N1_WIDTHS.length && bad.length === 0 && page.errors.length === 0, JSON.stringify({ rows: rows.length, n: bad.length, bad: bad.slice(0, 3), errors: page.errors.slice(0, 1) }));
+        await page.close();
+      }
+    }
+  }
+
+  // ---- Batch 67 N2: battle.html の 368px 以下で横スクロール（前から。desktop の 320〜359 で 36px・mobile の 360 で 8px）。出題の select と「対戦を始める」
+  // （min-width 160px・折り返さない）が 1 行のまま札の内側を越えた（select は自動の最小幅で縮まず、mobile の 376〜389 はボタンが札の縁の外、390〜400 は札の余白の中）。
+  // 直し（css/battle.css）: 390px 未満は 2 つを縦に積んで札の幅いっぱい、390 からは 1 行で select が縮む。
+  // 320〜400 の 2px ごと × desktop／mobile: 横スクロール 0・select とボタンは札の内側で重ならない・高さ 40px 以上（指の端末は 44px）・ボタンの幅 160px 以上・
+  // ボタンの中心を押すとボタン（当たり判定）・字は 1 行・390 未満は縦に積んで 2 つとも札の幅いっぱい、390 からは 1 行（折り返しで 2 行に割らない）で select は 140px 以上
+  console.log("battle start row (narrow, Batch 67 N2):");
+  for (const mobile of [false, true]) {
+    const page = await newPage({ mobile, viewport: { width: 400, height: 800 }, storage: { spelldash_placement: "done" } });
+    await page.goto(BASE + "/battle.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(200);
+    const bad = [];
+    for (let w = 320; w <= 400; w += 2) {
+      await page.setViewportSize({ width: w, height: 800 });
+      const r = await page.evaluate(() => {
+        const card = document.querySelector(".rank-card"), cs = getComputedStyle(card), cb = card.getBoundingClientRect();
+        const innerL = cb.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft), innerR = cb.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight);
+        const select = document.getElementById("battleCategory"), btn = document.getElementById("startBattle");
+        btn.scrollIntoView({ block: "center" });
+        const s = select.getBoundingClientRect(), b = btn.getBoundingClientRect();
+        const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        const range = document.createRange();
+        range.selectNodeContents(btn);
+        const tops = new Set([...range.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top)));
+        return {
+          sw: document.documentElement.scrollWidth, vw: document.documentElement.clientWidth,
+          inside: [s, b].every((x) => x.left >= innerL - 0.5 && x.right <= innerR + 0.5),
+          overlap: Math.min(s.right, b.right) - Math.max(s.left, b.left) > 0.5 && Math.min(s.bottom, b.bottom) - Math.max(s.top, b.top) > 0.5,
+          sh: Math.round(s.height), bh: Math.round(b.height), bw: Math.round(b.width), sw2: Math.round(s.width), hit: !!hit && (hit === btn || btn.contains(hit)), lines: tops.size,
+          row: Math.abs((s.top + s.bottom) / 2 - (b.top + b.bottom) / 2) < 2, full: [s, b].every((x) => Math.abs(x.left - innerL) < 1 && Math.abs(x.right - innerR) < 1) && b.top >= s.bottom
+        };
+      });
+      const minH = mobile ? 44 : 40;
+      if (r.sw > r.vw || !r.inside || r.overlap || r.sh < minH || r.bh < minH || r.bw < 160 || !r.hit || r.lines !== 1 || (w < 390 ? !r.full : !r.row || r.sw2 < 140)) bad.push(`${w}: ${JSON.stringify(r)}`);
+    }
+    check(`N2 battle.html の出題と「対戦を始める」（${mobile ? "mobile" : "desktop"}・320〜400 の 2px ごと）: 横スクロール 0・札の内側で重ならない・高さ ${mobile ? 44 : 40}px 以上・ボタンの幅 160px 以上・中心を押すとボタン・字は 1 行・390 未満は縦に積んで札の幅いっぱい・390 から 1 行`,
+      bad.length === 0 && page.errors.length === 0, JSON.stringify({ n: bad.length, bad: bad.slice(0, 3), errors: page.errors.slice(0, 1) }));
+    await page.close();
+  }
+
+  // ---- Batch 67 N3: profile.html のログイン中（Pro も）・mobile の 320 で横スクロール 4px（前から）。ランキング表示名の行（.voice-row: 入力欄＋「保存」）は ≤560 で
+  // 折り返さず、入力欄（type=text）が既定の幅（size 20 ぶん）より縮まないので「保存」が画面の外へ出た。直し（css/pages.css）: ≤560 は入力欄が残りの幅を取って縮む
+  // （声の select と同じ形）。ログイン／Pro × desktop／mobile × 320・330・340・360・390・560: 横スクロール 0・入力欄と「保存」は 1 行で画面の内・入力欄は 120px 以上・
+  // mobile の「保存」の高さは 44px（当たり判定）
+  console.log("profile display name (narrow, Batch 67 N3):");
+  {
+    const isoP = (d) => new Date(Date.now() + d * 86400000).toISOString();
+    const FORMS_N3 = [
+      ["ログイン", { spelldash_test_session: "1" }],
+      ["Pro", { spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: isoP(20), cancel_at_period_end: false }), spelldash_plan: JSON.stringify({ status: "active", interval: "month", periodEnd: isoP(20), cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) }]
+    ];
+    for (const [form, storage] of FORMS_N3) {
+      for (const mobile of [false, true]) {
+        const page = await newPage({ mobile, viewport: { width: 400, height: 800 }, storage: { spelldash_placement: "done", ...storage } });
+        await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+        await page.waitForTimeout(200);
+        const bad = [];
+        for (const w of [320, 330, 340, 360, 390, 560]) {
+          await page.setViewportSize({ width: w, height: 800 });
+          const r = await page.evaluate(() => {
+            const i = document.getElementById("displayNameInput").getBoundingClientRect(), b = document.getElementById("displayNameSave").getBoundingClientRect();
+            const vw = document.documentElement.clientWidth;
+            return { sw: document.documentElement.scrollWidth, vw, iw: Math.round(i.width), bh: Math.round(b.height), row: Math.abs((i.top + i.bottom) / 2 - (b.top + b.bottom) / 2) < 2, inside: i.left >= 0 && b.left >= i.right && b.right <= vw + 0.5, shown: !document.getElementById("profileCard").hidden };
+          });
+          if (r.sw > r.vw || !r.shown || !r.row || !r.inside || r.iw < 120 || (mobile && r.bh < 44)) bad.push(`${w}: ${JSON.stringify(r)}`);
+        }
+        check(`N3 profile.html のランキング表示名（${form}・${mobile ? "mobile" : "desktop"}・320／330／340／360／390／560）: 横スクロール 0・入力欄と「保存」は 1 行で画面の内・入力欄 120px 以上${mobile ? "・「保存」は 44px" : ""}`,
+          bad.length === 0 && page.errors.length === 0, JSON.stringify({ n: bad.length, bad: bad.slice(0, 3), errors: page.errors.slice(0, 1) }));
+        await page.close();
+      }
+    }
+  }
+
+  // ---- Batch 67 N4: packs/index.html の 561〜631px で横スクロール（前から。scrollWidth 632）。本文 main.pp は body（縦の flex）の中で margin: 0 auto なので
+  // 幅が中身に合わせて決まり（fit-content）、561px 以上で出る一覧の説明（.packs-item small。1 行で省略）の 1 行の長さが最小の幅になって 632px に広がった。
+  // 直し（scripts/build-pack-pages.mjs の型の .pp に width: 100%。生成し直した差は全ページのその 1 行だけ）: 540〜720 の各幅 × desktop／mobile で横スクロール 0・
+  // 本文は画面の内・1200 の本文の幅は 720 のまま。型の .pp の行と生成した全ページの .pp の行が同じ（生成し忘れを見張る）
+  console.log("packs index (561-631, Batch 67 N4):");
+  {
+    const gen = fs.readFileSync(path.join(ROOT, "scripts", "build-pack-pages.mjs"), "utf8");
+    const ppRule = gen.match(/^ {4}\.pp \{[^}]*\}$/m)?.[0]?.trim() ?? "";
+    const packFiles = fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html"));
+    const stale = packFiles.filter((f) => !fs.readFileSync(path.join(ROOT, "packs", f), "utf8").includes(ppRule));
+    check(`N4 生成元の型の .pp は幅 100%（中身の幅で広がらない）・生成した ${packFiles.length} ページの .pp は型と同じ`, /width: 100%/.test(ppRule) && packFiles.length > 100 && stale.length === 0, JSON.stringify({ ppRule, n: stale.length, stale: stale.slice(0, 3) }));
+    for (const mobile of [false, true]) {
+      const page = await newPage({ mobile, viewport: { width: 720, height: 800 }, storage: { spelldash_placement: "done" } });
+      await page.goto(BASE + "/packs/index.html", { waitUntil: "networkidle" });
+      const bad = [];
+      for (let w = 540; w <= 720; w++) {
+        await page.setViewportSize({ width: w, height: mobile ? 360 : 800 });
+        const r = await page.evaluate(() => { const m = document.querySelector("main.pp").getBoundingClientRect(); const vw = document.documentElement.clientWidth; return { sw: document.documentElement.scrollWidth, vw, l: Math.round(m.left), r: Math.round(m.right) }; });
+        if (r.sw > r.vw || r.l < 0 || r.r > r.vw) bad.push(`${w}: ${JSON.stringify(r)}`);
+      }
+      await page.setViewportSize({ width: 1200, height: 800 });
+      const wide = await page.evaluate(() => Math.round(document.querySelector("main.pp").getBoundingClientRect().width));
+      check(`N4 packs/index.html（${mobile ? "mobile" : "desktop"}）: 540〜720 の各幅で横スクロール 0・本文は画面の内、1200 の本文の幅は 720 のまま`, bad.length === 0 && wide === 720 && page.errors.length === 0, JSON.stringify({ n: bad.length, bad: bad.slice(0, 3), wide, errors: page.errors.slice(0, 1) }));
+      await page.close();
+    }
+  }
+
+  // ---- Batch 67: 横スクロール 0 を 390 だけでなく守る（STATUS「細い画面で横スクロール無し」）。全ページ（admin を除く・packs は一覧と 1 ページ）×
+  // 320／360／390／568／600／640 × 未ログイン（desktop・mobile）／ログイン・Pro（mobile）。mobile の 568〜640 は横向き（高さ 360）。連続日数 128 日（帯が混む形）
+  console.log("no horizontal scroll (all pages, Batch 67):");
+  {
+    const todayH = ymd(new Date());
+    const isoH = (d) => new Date(Date.now() + d * 86400000).toISOString();
+    const streak128 = { spelldash_streak: JSON.stringify({ current: 128, best: 128, last: todayH }) };
+    const HS_PAGES = ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html", "/list.html", "/pro.html", "/tokushoho.html", "/terms.html", "/typing.html", "/typing-game.html", "/packs/index.html", "/packs/accounting.html"];
+    const HS_WIDTHS = [320, 360, 390, 568, 600, 640];
+    const HS_FORMS = [
+      ["未ログイン", {}, false],
+      ["未ログイン", {}, true],
+      ["ログイン", { spelldash_test_session: "1" }, true],
+      ["Pro", { spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: isoH(20), cancel_at_period_end: false }), spelldash_plan: JSON.stringify({ status: "active", interval: "month", periodEnd: isoH(20), cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) }, true]
+    ];
+    for (const [form, storage, mobile] of HS_FORMS) {
+      const page = await newPage({ mobile, viewport: { width: 1200, height: 800 }, storage: { spelldash_placement: "done", ...streak128, ...storage } });
+      await openFrames(page, HS_PAGES, 390, 800);
+      await page.waitForTimeout(150);
+      const rows = await page.evaluate(async ({ widths, mobile }) => {
+        const out = [];
+        const frames = [...document.querySelectorAll("iframe")];
+        for (const w of widths) {
+          for (const f of frames) { f.style.width = `${w}px`; f.style.height = `${mobile && w > 560 ? 360 : 800}px`; } // mobile の 568〜640 は横向き
+          await new Promise((r) => setTimeout(r, 60)); // 各頁の resize の処理（本棚の幅合わせなど）を走らせてから測る
+          for (const f of frames) { const el = f.contentDocument.documentElement; out.push({ p: new URL(f.src).pathname, w, sw: el.scrollWidth, vw: el.clientWidth }); }
+        }
+        return out;
+      }, { widths: HS_WIDTHS, mobile });
+      const bad = rows.filter((r) => r.sw > r.vw || r.vw !== r.w).map((r) => `${r.p}@${r.w}: ${r.sw}/${r.vw}`);
+      check(`横スクロール 0（${form}・${mobile ? "mobile" : "desktop"}: ${HS_PAGES.length} ページ × ${HS_WIDTHS.join("／")}）`, rows.length === HS_PAGES.length * HS_WIDTHS.length && bad.length === 0 && page.errors.length === 0, JSON.stringify({ rows: rows.length, n: bad.length, bad: bad.slice(0, 6), errors: page.errors.slice(0, 1) }));
+      await page.close();
+    }
   }
 }
 
@@ -6810,11 +7144,13 @@ console.log("study 60s:");
     const fb = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedT() }); // 高さ 900: 短い画面では完了で出題の UI を畳んだ分だけ scrollY が詰まる（寄せたのではない）
     await fb.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
     await fb.waitForTimeout(900);
+    // 窓の中の読み上げの行は読み込みのときからある（後から差し込んだ live 領域は読まれないことがある。Batch 67 C2: 前は窓を開いた時に作っていた）。
+    // 窓を開く前に印を付け、時間切れの文が同じ行に入ったかを見る
+    const preLine = await fb.evaluate(() => { const l = document.querySelector('#feedbackModal[hidden] #feedbackForm [data-sr-live][role="status"]'); if (l) l.dataset.atLoad = "1"; return !!l; });
     await fb.click("#pathStart");
     await fb.waitForTimeout(300);
     await fb.click("[data-feedback-open]");
     await fb.waitForTimeout(150);
-    const preLine = await fb.evaluate(() => !!document.querySelector('#feedbackForm [data-sr-live][role="status"]')); // 窓の中の読み上げの行は窓を開いた時からある（後から差し込んだ live 領域は読まれないことがある）
     const y1 = await typeElsewhere(fb, "#feedbackMessage", "訳が分かりにくい");
     await waitUntil(() => panelOpenT(fb), 8000);
     await fb.waitForTimeout(250);
@@ -6826,14 +7162,14 @@ console.log("study 60s:");
     const live2 = await fb.evaluate((title) => {
       const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => !n.closest("[inert]") && title && n.textContent.trim().includes(title));
       return {
-        inside: lines.filter((n) => n.closest("#feedbackForm")).map((n) => ({ role: n.getAttribute("role"), live: n.getAttribute("aria-live"), sr: n.classList.contains("sr-only"), own: n.hasAttribute("data-sr-live") })),
+        inside: lines.filter((n) => n.closest("#feedbackForm")).map((n) => ({ role: n.getAttribute("role"), live: n.getAttribute("aria-live"), sr: n.classList.contains("sr-only"), own: n.hasAttribute("data-sr-live"), atLoad: n.dataset.atLoad === "1" })),
         outside: lines.filter((n) => !n.closest("#feedbackModal")).map((n) => n.id || n.className),
         top: !!document.getElementById("srStatusTop") || document.querySelectorAll("[data-keep-live]").length > 0,
         srInert: !!document.getElementById("srStatus").closest("[inert]")
       };
     }, s2.title);
-    check("60 秒: ご意見の窓（背後は inert）を開いたまま時間切れ → 窓の中の読み上げの行（role=status・aria-live=polite・sr-only。窓を開いた時からある）に見出しの文（60秒 終わり）が 1 つ入り、窓の外の行には入らず、焦点は窓の中のまま（Batch 65 Q3・PR #166 の 7）",
-      s2.title === "60秒 終わり" && preLine && live2.srInert && live2.inside.length === 1 && live2.inside[0].role === "status" && live2.inside[0].live === "polite" && live2.inside[0].sr && live2.inside[0].own && live2.outside.length === 0 && !live2.top && s2.active === "feedbackMessage", JSON.stringify({ ...live2, preLine, title: s2.title, active: s2.active }));
+    check("60 秒: ご意見の窓（背後は inert）を開いたまま時間切れ → 窓の中の読み上げの行（role=status・aria-live=polite・sr-only。読み込みのときからある同じ行: Batch 67 C2）に見出しの文（60秒 終わり）が 1 つ入り、窓の外の行には入らず、焦点は窓の中のまま（Batch 65 Q3・PR #166 の 7）",
+      s2.title === "60秒 終わり" && preLine && live2.srInert && live2.inside.length === 1 && live2.inside[0].role === "status" && live2.inside[0].live === "polite" && live2.inside[0].sr && live2.inside[0].own && live2.inside[0].atLoad && live2.outside.length === 0 && !live2.top && s2.active === "feedbackMessage", JSON.stringify({ ...live2, preLine, title: s2.title, active: s2.active }));
     await fb.keyboard.press("Escape");
     await fb.waitForTimeout(150);
     const closed2 = await fb.evaluate(() => ({ active: document.activeElement?.matches("[data-feedback-open]") ?? false, id: document.activeElement?.id ?? "", inert: document.querySelectorAll("[inert]").length, hidden: document.getElementById("feedbackModal").hidden }));
@@ -7179,6 +7515,16 @@ console.log("category progress:");
   check("カテゴリ行の内訳は 0 の項目を出さない（覚えかけ・未学習の呼び名も使わない）", !rows.some((t) => zeroItem(t) || t.includes("覚えかけ") || t.includes("未学習")), rows.find(zeroItem)?.replace(/\s+/g, " ") ?? "");
   check("カテゴリ進捗でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
+
+  // Batch 67 C1: 読み込みの CLS（直す前は 1200 で 0.38〜0.42・390 で 0.83〜0.91。最初の描画で 3 つのタブの節が全部見えていて js が隠すまでと、
+  // 中身の無い #overview・週のまとめ・推移・保持率が埋まるときに、下の節・「息抜きに」・フッターが動いた）
+  const runs = {};
+  for (const [label, opts] of [
+    ["1200 記録あり 80ms", { storage: clsRecords() }], ["1200 記録あり 0ms", { storage: clsRecords(), delay: 0 }], ["390 記録あり 80ms", { width: 390, height: 844, mobile: true, storage: clsRecords() }],
+    ["1200 記録なし 80ms", {}], ["390 記録なし 80ms", { width: 390, height: 844, mobile: true }], ["1200 夜 記録あり 80ms", { storage: { ...clsRecords(), spelldash_theme: "dark" } }]
+  ]) runs[label] = await loadCls("/stats.html", opts);
+  check("学習データ（Batch 67 C1）: 読み込みの CLS < 0.05（1200×900・390×844 mobile・学習記録あり／なし・昼夜・全応答 80ms 遅延と遅延なし）・エラー 0",
+    Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
 }
 
 // ===== 9.5 覚えた瞬間 v2: 知ってた／覚えた！／履歴／語チップ／単語帳／難易度ブースト =====
@@ -8673,6 +9019,50 @@ console.log("learning quality:");
   check("送信→お礼表示（未接続時は端末に保持）", fbStatus.includes("ありがとう") && (fbStatus.includes("届きました") || queue.length === 1), `${fbStatus} queue=${queue.length}`);
   check("ご意見フローでエラー0", page4.errors.length === 0, page4.errors[0] ?? "");
   await page4.close();
+
+  // Batch 67 C2: ご意見の窓の殻と窓の中の読み上げの行（[data-sr-live]）は読み込みのときに置く（前は初めて開くときに作り、開いた直後の読み上げが
+  // 「後から差し込んだ live 領域」に入っていた。読まない環境がある）。DOMContentLoaded の時点で窓の中に行があり、隠したまま（display: none・矩形 0）・
+  // どこにも inert が無い・ページの焦点の順に入らない。開いたあとの読み上げは、読み込みのときからあった同じ行に入る（書斎・単語帳・タイピング練習・設定）
+  {
+    const runs = {};
+    for (const url of ["/index.html", "/list.html", "/typing.html", "/profile.html"]) {
+      const page = await newPage({ viewport: { width: 1200, height: 900 } });
+      await page.addInitScript(() => document.addEventListener("DOMContentLoaded", () => {
+        const line = document.querySelector('#feedbackModal #feedbackForm [data-sr-live][role="status"][aria-live="polite"].sr-only');
+        if (line) line.dataset.atLoad = "1";
+        window.__fbAtLoad = { line: !!line, hidden: document.getElementById("feedbackModal")?.hidden ?? null };
+      }));
+      await page.goto(BASE + url, { waitUntil: "networkidle" });
+      await page.waitForTimeout(300);
+      const idle = await page.evaluate(() => {
+        const m = document.getElementById("feedbackModal");
+        return { ...window.__fbAtLoad, display: m ? getComputedStyle(m).display : null, rects: m ? m.getClientRects().length : null, inert: document.querySelectorAll("[inert]").length, modals: document.querySelectorAll("#feedbackModal").length };
+      });
+      // Tab で 40 回進めても焦点は窓に入らない（隠した窓は焦点の順の外）
+      let tabbedIn = false;
+      for (let i = 0; i < 40 && !tabbedIn; i++) {
+        await page.keyboard.press("Tab");
+        tabbedIn = await page.evaluate(() => !!document.activeElement?.closest("#feedbackModal"));
+      }
+      // 開いて読み上げる（読み上げの行があるページ: 書斎は js/ui.js announce の #srStatus、タイピング練習は #typingLive。行き先の判定は js/srLive.js。
+      // 単語帳・設定はページの読み上げの行が無く、時間切れも無いので、窓の行が読み込みのときからあることだけを見る）
+      const said = url === "/list.html" || url === "/profile.html" ? null : await page.evaluate(async (u) => {
+        (await import("/js/feedback.js")).openFeedback();
+        const text = "残り10秒";
+        if (u === "/typing.html") {
+          const { createLive } = await import("/js/srLive.js");
+          createLive(document.getElementById("typingLive")).say(text);
+        } else (await import("/js/ui.js")).announce(text);
+        await new Promise((r) => setTimeout(r, 150));
+        const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === text);
+        return { n: lines.length, atLoad: lines.length === 1 && lines[0].dataset.atLoad === "1", inModal: lines.length === 1 && !!lines[0].closest("#feedbackForm") };
+      }, url);
+      runs[url] = { idle, tabbedIn, said, errors: page.errors.slice(0, 1) };
+      await page.close();
+    }
+    check("ご意見の窓（Batch 67 C2）: 殻と窓の中の読み上げの行は読み込みのとき（DOMContentLoaded）からあり、隠したまま（display: none・矩形 0・inert 0・Tab で入らない）、開いたあとの読み上げはその同じ行に 1 つだけ入る（書斎・タイピング練習。単語帳・設定は行があることまで）・エラー 0",
+      Object.values(runs).every((r) => r.idle.line && r.idle.hidden === true && r.idle.display === "none" && r.idle.rects === 0 && r.idle.inert === 0 && r.idle.modals === 1 && !r.tabbedIn && (r.said === null || (r.said.n === 1 && r.said.atLoad && r.said.inModal)) && r.errors.length === 0), JSON.stringify(runs));
+  }
 }
 
 // ===== 9.8 初回体験と継続（Batch 2）: 腕試し／回収／中身予告／週の目標／ホーム画面に追加 =====
@@ -9094,6 +9484,16 @@ console.log("genre list:");
   await page3.waitForTimeout(800);
   check("カテゴリ別進捗に「一覧」リンク", (await page3.$$eval(".cat-row__list", (els) => els.map((e) => e.getAttribute("href")))).includes("./list.html?category=listing"));
   await page3.close();
+
+  // Batch 67 C1: 読み込みの CLS（直す前は 1200 で 0.22〜0.36・390 で 0.35〜0.62。中身の無い #listBody の下のフッターが最初の描画で見えていて、一覧で押し出された。
+  // カテゴリの無い人は分野パックの棚が開いて、下のマイ単語帳・絞り込みが押し出された。カテゴリの select が中身で幅を変え、検索の欄が横に動いた）
+  const runs = {};
+  for (const [label, opts] of [
+    ["1200 記録あり 80ms", { storage: clsRecords() }], ["1200 記録あり 0ms", { storage: clsRecords(), delay: 0 }], ["390 記録あり 80ms", { width: 390, height: 844, mobile: true, storage: clsRecords() }],
+    ["1200 記録なし（棚が開く）80ms", {}], ["390 記録なし（棚が開く）80ms", { width: 390, height: 844, mobile: true }], ["1200 夜 記録あり 80ms", { storage: { ...clsRecords(), spelldash_theme: "dark" } }]
+  ]) runs[label] = await loadCls("/list.html", opts);
+  check("単語帳（Batch 67 C1）: 読み込みの CLS < 0.05（1200×900・390×844 mobile・学習記録あり（棚は畳む）／なし（棚が開く）・昼夜・全応答 80ms 遅延と遅延なし）・エラー 0",
+    Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
 }
 
 // ===== 9.99 Batch 5a: マイ場面カード／まとめて追加／記憶ゲージ／救済／今月／制覇／ログイン案内 =====
@@ -13816,6 +14216,66 @@ console.log("pro:");
     await page2.waitForTimeout(300);
     check("Pro（390px）: 特商法ページも横スクロールしない", await noHorizontalScroll(page2));
     await page2.close();
+  }
+
+  // Batch 67 C1: 読み込みの CLS（直す前は 1200 で 0.07〜0.09・390 で 0.04〜0.05。題の下の料金の 1 行〔#proPrice。config が届くまで hidden〕が後から出て、
+  // 比較表と料金の節を押し下げた。Pro の人は js が比較表を隠すまで料金の節が下にあり、500px 跳ね上がった〔0.15〜0.48〕）
+  {
+    const runs = {};
+    const cloud = createCloud({});
+    for (const [label, opts] of [
+      ["1200 未ログイン 80ms", {}], ["1200 未ログイン 0ms", { delay: 0 }], ["390 未ログイン 80ms", { width: 390, height: 844, mobile: true }], ["1200 夜 未ログイン 80ms", { storage: { spelldash_theme: "dark" } }],
+      ["1200 ログイン 80ms", { storage: { spelldash_test_session: "1", spelldash_test_cloud: cloud.id } }], ["390 ログイン 80ms", { width: 390, height: 844, mobile: true, storage: { spelldash_test_session: "1", spelldash_test_cloud: cloud.id } }],
+      ["1200 Pro 80ms", { storage: proStorage() }], ["390 Pro 80ms", { width: 390, height: 844, mobile: true, storage: proStorage() }]
+    ]) runs[label] = await loadCls("/pro.html", opts);
+    check("Pro（Batch 67 C1）: 加入画面の読み込みの CLS < 0.05（1200×900・390×844 mobile・未ログイン／ログイン／Pro・昼夜・全応答 80ms 遅延と遅延なし）・エラー 0",
+      Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
+  }
+
+  // Batch 67 反証: config だけが遅い（本番は冷えた関数が決済サービスに価格を問い合わせる。キャッシュは 10 分でインスタンスごと）。1.2 秒（js/proView.js PENDING_MAX_MS）で出した後に
+  // 料金の 1 行（#proPrice）が題の下に入り、比較表と料金の節を押し下げていた（2 秒遅れで 1200 未ログイン 0.069・390 0.040。直す前の木も 0.072）。
+  // 出すときに 1 行の場所を空けておく（字は見せない）。前に取れた config の形（金額・年額の有無・無料期間）を覚えていればその形で量る
+  {
+    const cloud = createCloud({});
+    const login = { spelldash_test_session: "1", spelldash_test_cloud: cloud.id };
+    const slow = { "**/api/billing/config": 2000 };
+    const runs = {};
+    for (const [label, opts] of [
+      ["1200 未ログイン", {}], ["390 未ログイン", { width: 390, height: 844, mobile: true }], ["1200 夜 未ログイン", { storage: { spelldash_theme: "dark" } }],
+      ["1200 ログイン", { storage: login }], ["390 ログイン", { width: 390, height: 844, mobile: true, storage: login }]
+    ]) runs[label] = await loadCls("/pro.html", { ...opts, delay: 0, slow, wait: 3500 });
+    check("Pro（Batch 67 反証）: config だけが 2 秒遅くても加入画面の CLS < 0.05（1200×900・390×844 mobile・未ログイン／ログイン・昼夜）・エラー 0",
+      Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
+    // 空けている間は字を見せず読ませない（visibility: hidden）。config が届いたら同じ場所に同じ高さの本当の 1 行（比較表は動かない）
+    const reserveRun = async (viewport, mobile, storage) => {
+      const page = await newPage({ mobile, viewport, storage: { spelldash_placement: "done", ...storage } });
+      await page.route("**/api/billing/config", async (route) => { await new Promise((r) => setTimeout(r, 2000)); await route.fallback(); });
+      await page.goto(BASE + "/pro.html", { waitUntil: "load" });
+      await waitUntil(async () => !(await page.evaluate(() => document.body.hasAttribute("data-pending"))), 3000);
+      const price = () => page.evaluate(() => { const el = document.getElementById("proPrice"); return { hidden: el.hidden, visibility: getComputedStyle(el).visibility, h: el.getBoundingClientRect().height, text: el.textContent, compareY: Math.round(document.getElementById("proCompareSection").getBoundingClientRect().y) }; });
+      const during = await price();
+      await waitUntil(async () => (await price()).visibility === "visible" && (await price()).text.includes("¥580"), 4000);
+      const after = await price();
+      const errors = page.errors.slice(0, 1);
+      await page.close();
+      return { during, after, ok: !during.hidden && during.visibility === "hidden" && during.h > 0 && after.visibility === "visible" && after.text.startsWith("月額 ¥580") && after.h === during.h && after.compareY === during.compareY && errors.length === 0, errors };
+    };
+    const first = await reserveRun({ width: 1200, height: 900 }, false, {});
+    check("Pro（Batch 67 反証）: config が遅い間は料金の 1 行の場所を空け（字は見せない）、届いたら同じ高さで本当の 1 行が入る（1200・初めて開いた）", first.ok, JSON.stringify(first));
+    // 無料期間ありの config（最初の 1 か月無料）を前に取って覚えた人: 480 では 1 行が 2 行になる（覚えた形が無いと 1 行ぶん足りず 0.02 動く）
+    await fetch(BASE + "/__billing/trial?months=1", { method: "POST" });
+    const seen = await newPage({ mobile: true, viewport: { width: 480, height: 844 } });
+    await seen.goto(BASE + "/pro.html", { waitUntil: "load" });
+    await waitUntil(async () => (await seen.evaluate(() => !document.getElementById("proPrice").hidden)), 5000);
+    const remembered = await seen.evaluate(() => localStorage.getItem("spelldash_billing_open"));
+    await seen.close();
+    const shaped = await reserveRun({ width: 480, height: 844 }, true, { spelldash_billing_open: remembered });
+    await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
+    let price = null;
+    try { price = JSON.parse(remembered).price; } catch {}
+    check("Pro（Batch 67 反証）: 取れた config の形（月額・年額・無料期間）を覚え、次に config が遅いときはその形で 1 行の場所を空ける（480・無料期間ありで 2 行）",
+      JSON.stringify(price) === JSON.stringify({ month: 580, year: 4800, trialMonths: 1, trialDays: 0 }) && shaped.ok && shaped.after.text.includes("1か月無料") && shaped.after.h > first.after.h,
+      JSON.stringify({ remembered, shaped }));
   }
 }
 

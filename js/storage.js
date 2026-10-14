@@ -1,4 +1,7 @@
 const STORAGE_KEY = "spelldash_word_stats";
+// 読めなかった語の記録（壊れた JSON・表でない値）の写し。上書きする前に 1 つだけ残す（端末だけ: 同期しない・読み手は無い。
+// バックアップには入る＝端末を替えても持ち出せる。別のアカウントでログインしたときは前の持ち主の記録として消す。js/backup.js）
+const CORRUPT_KEY = "spelldash_word_stats_corrupt";
 const BEST_SCORE_KEY = "spelldash_best_score";
 const TYPING_KEY = "spelldash_typing_stats";
 const SCHEMA_VERSION_KEY = "spelldash_schema_version";
@@ -11,7 +14,14 @@ function migrateStorage() {
   let version = Number(localStorage.getItem(SCHEMA_VERSION_KEY)) || 1;
   if (version >= CURRENT_SCHEMA_VERSION) return;
 
-  let stats = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+  const raw = localStorage.getItem(STORAGE_KEY);
+  const read = readStats(raw);
+  if (read.broken) {
+    // 壊れた値は移行しない（読めないので足すフィールドも無い）。退避は readStats が済ませた。保存は書き手が最初に書くまで触らない
+    localStorage.setItem(SCHEMA_VERSION_KEY, String(CURRENT_SCHEMA_VERSION));
+    return;
+  }
+  let stats = read.stats;
 
   // v1 → v2: lastPlayed / nextReviewAt を追加
   if (version < 2) {
@@ -85,6 +95,37 @@ function migrateStorage() {
   localStorage.setItem(SCHEMA_VERSION_KEY, String(version));
 }
 
+// 保存の文字列を表にする。空・null は空の表。壊れた JSON と表でない値（配列・数・文字列）は、退避の鍵に写してから空の表として読む
+// （止めない: 書斎・出題・学習データ・単語帳が使える。黙って捨てない: 最初の書き込みで上書きされる前に写しが残る）
+function readStats(raw) {
+  let value;
+  try {
+    value = raw ? JSON.parse(raw) : null;
+  } catch {
+    value = undefined;
+  }
+  if (value === null || (value !== undefined && !value)) return { stats: {}, broken: false }; // null・false・0・"" は今までどおり空
+  if (value !== undefined && typeof value === "object" && !Array.isArray(value)) return { stats: value, broken: false };
+  keepCorrupt(raw);
+  return { stats: {}, broken: true };
+}
+
+function keepCorrupt(raw) {
+  try {
+    if (localStorage.getItem(CORRUPT_KEY) === raw) return;
+    localStorage.setItem(CORRUPT_KEY, raw);
+  } catch (error) {
+    // 容量で写せない: 元の鍵を退避の鍵へ移す（消してから書くので同じ大きさで足りる）。それも書けなければ元に戻して知らせる
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(CORRUPT_KEY, raw);
+    } catch {
+      try { localStorage.setItem(STORAGE_KEY, raw); } catch {}
+    }
+    (globalThis.reportError ?? console.error)(error);
+  }
+}
+
 migrateStorage();
 
 // ===== 語の記録（spelldash_word_stats）: 読みは 1 タスク 1 回、書きは 1 タスク 1 回 =====
@@ -129,7 +170,7 @@ export function getWordStats() {
   if (memoStats && (pending || trusted)) return forReaders(memoStats);
   const raw = localStorage.getItem(STORAGE_KEY);
   if (memoStats === null || raw !== memoRaw) {
-    memoStats = (raw && JSON.parse(raw)) || {};
+    memoStats = readStats(raw).stats;
     memoRaw = raw;
     if (FREEZE) deepFreeze(memoStats);
   }

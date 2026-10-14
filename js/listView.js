@@ -1,6 +1,6 @@
 import { exampleHtml, hasExample } from "./wordExample.js";
 import { initializeAuth } from "./auth.js";
-import { setFooterYear } from "./footer.js";
+import { setFooterYear, revealPendingPage } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
 import { initWordStore, getCategories, getPackCatalog, isConceptWord } from "./wordStore.js";
@@ -105,7 +105,9 @@ initWordStore().then(async () => {
       document.getElementById("listSearch")?.focus();
     }
   });
-});
+  // 読み込みの間は題より下とフッターを透明にしている（body[data-pending]。css/pages.css）。棚の開閉・カテゴリ・一覧・表示密度を描き終えてから出す
+  revealPendingPage();
+}).finally(revealPendingPage); // 語が読めなかったときも出す
 
 window.addEventListener("spelldash:synced", render);
 window.addEventListener("spelldash:notes", render);

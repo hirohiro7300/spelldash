@@ -78,6 +78,9 @@ export async function submitFeedback({ message, contact = "" }) {
 
 // ---- UI ----
 
+// 窓の殻（隠したまま）は読み込みのときに置く（initFeedback。Batch 67 C2）。窓の中の読み上げの行（[data-sr-live]）が、窓を開いた瞬間に
+// 差し込まれた live 領域にならない（後から差し込んだ live 領域は読まれないことがある。開いた直後の時間切れの文はこの行に書く: js/srLive.js）。
+// hidden（display: none）なので見た目・焦点の順・CLS は変わらず、背後の inert は開いたときだけ（js/focusTrap.js）。読み込みのときの手間は DOM 十数個だけ
 function ensureModal() {
   let modal = document.getElementById("feedbackModal");
   if (modal) return modal;
@@ -160,8 +163,9 @@ export function closeFeedback() {
   }
 }
 
-// フッターの「ご意見・不具合」リンクを配線し、送信待ちがあれば再送を試みる
+// フッターの「ご意見・不具合」リンクを配線し、窓の殻を置き、送信待ちがあれば再送を試みる
 export function initFeedback() {
+  ensureModal();
   document.querySelectorAll("[data-feedback-open]").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();

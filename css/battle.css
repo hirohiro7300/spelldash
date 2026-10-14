@@ -69,8 +69,21 @@
   margin-top: 20px;
 }
 
-/* 同じ行の select とボタンは同じ高さ（40px。指で押す端末は 44px） */
+/* 390px 未満は 2 つを縦に積んで札の幅いっぱいに（Batch 67）。横に並べると、select（一番長い出題名の幅 151px・指の端末は 16px の字で 163px）は
+   flex の自動の最小幅で縮まず、「対戦を始める」が札の内側を越えた: desktop の 320〜359・mobile の 360〜367 は横スクロール（最大 36px）、
+   mobile の 376〜389 は札の縁の外、390〜400 は札の余白の中まで。ボタンの高さ（40px・指の端末 44px）と最小幅 160px は今のまま、幅は広がるだけ。
+   flex-wrap は使わない（折り返しは縮める前の幅で決まるので、1 行に収まる幅でも 2 行に割れる） */
+@media (max-width: 389.98px) {
+  .battle-start-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* 同じ行の select とボタンは同じ高さ（40px。指で押す端末は 44px）。select は縮んでよい（390〜400 の mobile でボタンを札の内側に収める。
+   390 で 163 → 152px、一番長い「広告・マーケ」は 16px の字でも欠けない） */
 html[data-theme] .battle-start-row .setting-select {
+  min-width: 0;
   min-height: 40px;
 }
 
