@@ -33,7 +33,9 @@ import {
   RANK_FLOOR_DAYS,
   intervalAfter,
   keepLaterDue,
-  unseenFailCap
+  unseenFailCap,
+  daysBetween,
+  daysSinceAnswer
 } from "../js/mastery.js";
 import { localDay, dayDiff } from "../js/retentionCalc.js";
 import {
@@ -398,6 +400,12 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   eq("history が足りなければ括弧なし", rankBasis({ ...r4, history: hist(["2026-10-03", "o"]) }, T), "10月3日に思い出せた");
   eq("history の最後の o の日が違えば括弧なし", rankBasis({ ...r4, history: hist(["2026-09-20", "o"], ["2026-09-26", "o"]) }, T), "10月3日に思い出せた");
   eq("差が 0（同じ日の反復）なら括弧なし", rankBasis({ ...r4, history: hist(["2026-10-03", "x"], ["2026-10-03", "o"]) }, T), "10月3日に思い出せた");
+  // 日数の数え方は 1 つ（Batch 68 L1-6）: 前の答えのローカル日からの暦日の差。盤面の上・正解の後の文（daysSinceAnswer）と語の詳細（rankBasis）が同じ数
+  eq("daysBetween: 暦日の差・同じ日／前の答えなし／先の日は 0", [daysBetween("2026-10-13", "2026-10-14"), daysBetween("2026-10-17", "2026-10-19"), daysBetween("2026-10-14", "2026-10-14"), daysBetween(null, "2026-10-14"), daysBetween("2026-10-15", "2026-10-14")], [1, 2, 0, 0, 0]);
+  eq("daysSinceAnswer: 前日 23 時の自力正解を翌日 9 時に → 1（24 時間の切り捨てなら 0）", daysSinceAnswer({ lastRecallSuccessAt: iso("2026-10-13", 23) }, "2026-10-14"), 1);
+  eq("daysSinceAnswer: 前の答えは ○ と × の新しい方（3 日目 21:00 × → 21:04 ○、5 日目に → 2）", daysSinceAnswer({ lastRecallFailAt: iso("2026-10-17", 21), lastRecallSuccessAt: iso("2026-10-17", 21, 4) }, "2026-10-19"), 2);
+  eq("daysSinceAnswer: 前の答えが無い語は 0", daysSinceAnswer({ playCount: 1 }, "2026-10-19"), 0);
+  eq("rankBasis の（N日あけて）も同じ数え方（3 日目 → 5 日目で 2）", rankBasis({ masteryRank: 3, masteryAt: iso("2026-10-19", 21), recallFail: 1, cleanCorrectStreak: 2, lastRecallFailAt: iso("2026-10-17", 21), lastRecallSuccessAt: iso("2026-10-19", 21), history: hist(["2026-10-17", "x"], ["2026-10-17", "o"], ["2026-10-19", "o"]) }, "2026-10-19"), "10月19日に思い出せた（2日あけて）");
   const r3 = { masteryRank: 3, masteryAt: iso("2026-10-10"), cleanCorrectStreak: 3, lastRecallSuccessAt: iso("2026-10-10") };
   eq("段 3 の次の条件（前の答え＋6 日）", rankNext(r3, T), "10月16日以降に 間違えずに思い出せると 身についた");
   eq("日付が今日以前なら「次に」", rankNext({ ...r3, lastRecallSuccessAt: iso("2026-10-01"), masteryAt: iso("2026-10-01") }, T), "次に 間違えずに思い出せると 身についた");

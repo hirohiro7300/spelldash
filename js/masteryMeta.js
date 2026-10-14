@@ -22,6 +22,8 @@
 // （別のタブで「端末の記録を消す」「復元」をした後に、このタブが読み込んだ時の古い基準を書き戻さない）。
 
 import { localDay } from "./retentionCalc.js";
+import { scheduleMemoryCheckFlush, speedBasis } from "./memoryCheck.js";
+import { scheduleMemoryWordsFlush } from "./memoryWords.js";
 
 const KEY = "spelldash_mastery_meta";
 
@@ -218,10 +220,20 @@ const pcOf = (sample) => (Number.isFinite(sample?.pc) && sample.pc >= 0 ? sample
 
 // 今の答えの速さを、入れる前の箱と比べて分類する（仮の値。§3.8 で見直す）。
 //   box: boxKey の値。firstAnswer: 初めての答えか（answerContext の firstAnswer）。data: 箱の中身の差し替え（単体テスト用）
-// 返り値 { speed: "fast" | "normal" | "slow" | "unknown", basis: "own" | "prior" | null }
+//   qLen・input（省略可。記録の質）: 渡すと、比べた基準（js/memoryCheck.js speedBasis: all = 経路の T1 の中央値、band = 同じ問いの字数帯の
+//   中央値。どちらも 20 件以上のときだけ数）も返す。分類そのものは箱の中央値のまま（変えない）
+// 返り値 { speed: "fast" | "normal" | "slow" | "unknown", basis: "own" | "prior" | null }（qLen か input を渡したときは ＋ all・band）
 //   箱の T1 が 20 件以上: 本人の中央値と比べる（pc は pc の箱が 20 件以上のときだけ見る）
 //   20 件未満: 初めての答え・英語の綴りで、既定の線以下のときだけ fast（prior）。ほかは unknown（既定から遅い・ふつうは出さない）
-export function classifySpeed(sample, box, { firstAnswer = false, data } = {}) {
+export function classifySpeed(sample, box, { firstAnswer = false, data, qLen, input } = {}) {
+  const r = classifyBox(sample, box, firstAnswer, data);
+  if (qLen === undefined && input === undefined) return r;
+  const path = input ?? (String(box).split(".")[1] === "kbd" ? "kbd" : undefined);
+  const { all, band } = speedBasis({ qLen, input: path });
+  return { ...r, all, band };
+}
+
+function classifyBox(sample, box, firstAnswer, data) {
   const unknown = { speed: "unknown", basis: null };
   if (!BOX_SET.has(box) || !isMeasured(sample)) return unknown;
   const b = data ?? getSpeedBox(box);
@@ -244,10 +256,14 @@ export function classifySpeed(sample, box, { firstAnswer = false, data } = {}) {
 }
 
 // 測れた答えを箱に入れる（初めての答え、またはその日の最初の答えで、ノーミス正解のときだけ呼ぶ。分類はこの前に済ませる）。
-// T1 は 7,000ms で丸める。各 40 件まで（古いものから捨てる）。箱が初めて 20 件になったとき、その中央値を firstMedian に 1 回だけ書く
-export function noteSpeedSample(box, sample) {
+// T1 は 7,000ms で丸める。各 40 件まで（古いものから捨てる）。箱が初めて 20 件になったとき、その中央値を firstMedian に 1 回だけ書く。
+// measure（省略可。js/game.js の測りの札）: 1 回の input で 2 字以上入った答え（multi）・1 打目の前に盤面の外へ焦点が移った答え（outside）は入れない。
+// 1 打目の後に 3 秒以上止まった・盤面の外へ移った答え（stalled）は pc を入れない（T1 は入れる）。箱の決まりそのものは変えない
+export function noteSpeedSample(box, sample, measure = null) {
   try {
     if (!BOX_SET.has(box) || !isMeasured(sample)) return false;
+    if (measure && (measure.multi || measure.outside)) return false;
+    if (measure?.stalled) sample = { t1: sample.t1, pc: null };
     const m = load();
     const b = m.speed[box] ?? { t1: [], pc: [] };
     const t1 = Math.min(sample.t1, T1_CAP);
@@ -326,6 +342,14 @@ export function notePendingFirstFast(id, basis, nowMs = Date.now()) {
 // 書く直前に保存を読み直し、このタブで足した分だけを足す（もう一方のタブが書いた見本・集計を消さない）。書いた中身をメモリーにする
 export function flushMasteryMeta() {
   answersSinceFlush = 0;
+  try {
+    // 記録の質の集計（spelldash_memory_check）と語ごとの欄（spelldash_memory_words）も同じ機会（回の終わり・stopGame・10 答え目）に、
+    // このタスクの外（手が空いたとき）で書く。変わっていなければ書かない（10 答えごとは js/stats.js が別にも数える。pagehide はそれぞれがその場で）
+    scheduleMemoryCheckFlush();
+    scheduleMemoryWordsFlush();
+  } catch {
+    // 集計は学習を止めない
+  }
   if (!dirty || !meta) return false;
   try {
     const merged = mergeDelta(readStored(), delta);
