@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # PR では向け先の側（マージの試しのコミットの 1 つ目の親 HEAD^1）の教材も読む（下の品質の規則の --base）
+          # PR では向け先の側（マージの試しのコミットの 1 つ目の親 HEAD^1）の教材と基準線も読む（下の品質の規則の --base）
           fetch-depth: 2
 
       - uses: actions/setup-node@v4
@@ -29,11 +29,11 @@ jobs:
       - name: 判定器（js/judge.js。gym／gymnasium・a／an・favourite／favorite・ローマ字の語末の ん・別解・答え表示の後・英字の大小文字・品詞をまたぐ別解）
         run: node scripts/test-judge.mjs
 
-      - name: 教材の品質の規則（scripts/quality/check.mjs。誤りの規則で基準線 baseline.json に無い当たり・増えた数・古い基準線、PR では向け先の教材と比べて変わったカードの新しい当たりがあれば落ちる）と比べ方の検査（test-check.mjs）
+      - name: 教材の品質の規則（scripts/quality/check.mjs。誤りの規則で基準線 baseline.json に無い当たり・増えた数・古い基準線、PR では向け先の教材と比べて変わったカードの新しい当たり・向け先の基準線より上げた基準線があれば落ちる）と比べ方の検査（test-check.mjs）
         run: |
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             mkdir -p "$RUNNER_TEMP/base"
-            git archive HEAD^1 data | tar -x -C "$RUNNER_TEMP/base"
+            git archive HEAD^1 data scripts/quality/baseline.json | tar -x -C "$RUNNER_TEMP/base"
             node scripts/quality/check.mjs --base="$RUNNER_TEMP/base"
           else
             node scripts/quality/check.mjs

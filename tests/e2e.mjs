@@ -921,6 +921,41 @@ console.log("strict miss:");
   check("大小文字 (T4): 完了パネルの語チップは元の綴り（Cu。cu ではない）", chipsT4.includes("Cu") && !chipsT4.includes("cu"), JSON.stringify({ chipsT4, panel: await pageB.isVisible("#resultPanel") }));
   check("大小文字 (T4) 完了パネルでエラー0", pageB.errors.length === 0, pageB.errors[0] ?? "");
   await pageB.close();
+  // 盤面の外の表示も元の綴り（PR #175 の 3。js/wordData.js answerLabel）: Cu を今日覚えた（昨日 ×・今日 ○）・NaCl は知ってた語の記録で、
+  // ホームの「今日覚えた」とはちゃんの一言・学習データの覚えた単語帳・知ってた語・単語の一覧（jsci1）が Cu・NaCl（cu・nacl ではない）
+  const naclT4 = js1T4.find((w) => w.id === "concept-js1-nacl");
+  const nowT4 = new Date().toISOString();
+  const pageC = await newPage({ storage: {
+    spelldash_packs: JSON.stringify(["jsci1"]), spelldash_category: "jsci1", spelldash_placement: "done", spelldash_level_boost: "2",
+    spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_streak: JSON.stringify({ current: 1, best: 1, last: todayT4 }),
+    spelldash_word_stats: JSON.stringify({
+      [cuT4.id]: { playCount: 2, correctCount: 1, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 1, mastered: false, lastPlayed: nowT4, nextReviewAt: nowT4, lastRecallFailAt: yT4.toISOString(), lastRecallSuccessAt: nowT4, history: [{ d: ymd(yT4), r: "x" }, { d: todayT4, r: "o" }] },
+      [naclT4.id]: { playCount: 1, correctCount: 0, missCount: 0, typingMiss: 0, recallFail: 0, recallSuccess: 1, cleanCorrectStreak: 1, knownOnSight: true, mastered: false, lastPlayed: nowT4, nextReviewAt: nowT4, lastRecallSuccessAt: nowT4, history: [{ d: todayT4, r: "o" }] }
+    })
+  } });
+  await pageC.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await pageC.waitForTimeout(700);
+  const homeT4 = await pageC.evaluate(() => ({
+    today: document.querySelector(".learned-card__today-words")?.textContent.trim() ?? "",
+    bubble: document.querySelector("#hasumiHome .hasumi__bubble")?.textContent.trim() ?? ""
+  }));
+  check("大小文字 (T4): ホームの「今日覚えた」は元の綴り Cu（cu ではない）", /\bCu\b/.test(homeT4.today) && !/\bcu\b/.test(homeT4.today), JSON.stringify(homeT4));
+  check("大小文字 (T4): はちゃんの一言「今日は Cu を覚えた」も元の綴り", homeT4.bubble.includes("Cu") && !/\bcu\b/.test(homeT4.bubble), JSON.stringify(homeT4));
+  await pageC.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+  await pageC.waitForTimeout(700);
+  await pageC.$eval("#wordCategoryFilter", (el) => { el.value = "jsci1"; el.dispatchEvent(new Event("change")); }); // 単語のタブは畳まれている
+  await pageC.waitForTimeout(200);
+  const statsT4 = await pageC.evaluate(() => ({
+    learned: [...document.querySelectorAll("#learnedWordList .learned-item__en")].map((e) => e.textContent.trim()),
+    known: [...document.querySelectorAll("#knownWordList .known-words__item")].map((e) => e.textContent.trim()),
+    list: [...document.querySelectorAll("#wordList .word-item__detail")].map((e) => e.textContent.trim())
+  }));
+  check("大小文字 (T4): 学習データの覚えた単語帳は Cu・知ってた語は NaCl（元の綴り）",
+    statsT4.learned.includes("Cu") && !statsT4.learned.includes("cu") && statsT4.known.includes("NaCl") && !statsT4.known.includes("nacl"), JSON.stringify({ learned: statsT4.learned, known: statsT4.known }));
+  check("大小文字 (T4): 学習データの単語の一覧（jsci1）も Cu・NaCl（元の綴り）",
+    statsT4.list.includes("Cu") && statsT4.list.includes("NaCl") && !statsT4.list.includes("cu") && !statsT4.list.includes("nacl"), JSON.stringify(statsT4.list.slice(0, 12)));
+  check("大小文字 (T4) ホーム・学習データでエラー0", pageC.errors.length === 0, pageC.errors[0] ?? "");
+  await pageC.close();
 }
 
 // ===== 3. Daily Dash: 完走→ロック→カウントダウン =====
@@ -12900,7 +12935,15 @@ console.log("romaji answers:");
     const missBefore = await num(pageC, "#miss");
     await pressAll(pageC, endsN ? keys + "n" : keys); // 手前の短い読みで先に終われば、残りの打鍵は次の語に持ち越さない
     await pageC.waitForTimeout(80);
-    if (endsN) swallowed = (await num(pageC, "#miss")) === missBefore && (await pageC.textContent("#typedPreview")) === "" && (await pageC.textContent("#japanese")).trim() !== q;
+    if (endsN) {
+      // 次の語の読みが n で始まる（日米和親条約 の に。jhist1 の 75 枚中 3 枚）と、その n は次の語も受ける引き分けで、次の語に見せたまま次の打鍵で決める
+      // （js/game.js judgeKey。main 5c75239 でも同じ）。それ以外は何も見せない。以前は引き分けの回も「見せない」で見ていて、出題の巡りで落ちることがあった（PR #175）
+      const nq = (await pageC.textContent("#japanese")).trim();
+      const nw = jh1.find((x) => x.q === nq);
+      const tie = !!nw && matchRomaji(readingEntries(nw), "n").alive;
+      const shown = (await pageC.textContent("#typedPreview")).trim();
+      swallowed = (await num(pageC, "#miss")) === missBefore && nq !== q && (tie ? shown === "n" : shown === "");
+    }
   }
   check("Challenge: 語末の ん を n で終えた直後の n は次の語に持ち越さない", swallowed === true, String(swallowed));
   check("Challenge（ローマ字）でエラー0", pageC.errors.length === 0, pageC.errors[0] ?? "");
@@ -14854,23 +14897,25 @@ console.log("judge (出題語が別の正解の先頭部分):");
       n > 15000 && bad.length === 0, bad.slice(0, 8).join(" "));
   }
 
-  // (38) 品詞をまたぐ別解を結ばない（Batch 69 T6。js/answers.js buildAlternativeIndex）: ngsl24 の reasonably（副「まあまあ・合理的に」）と
-  // alright（形「大丈夫な・まあまあ」）は「まあまあ」で互いに別解だった。品詞が違うので結ばない: reasonably の問いで alright と打つと 1 打目で ×（以前は
-  // 別解として受けて打ち直し）。同じ品詞の別解は今と同じ: gentle（形「優しい・穏やかな」）の問いで tender（形「柔らかい・優しい」）は別解
+  // (38) 品詞をまたぐ別解（Batch 69 T6。PR #175 で札の確かな組だけに。js/answers.js meaningGroups・crossesPos）: 札はカードに 1 つなので、
+  // その訳の札が確かなのは訳が 1 つのカードだけ。両方で確かで違う組（repeatedly〔副「繰り返し」〕と repetition〔名「繰り返し」〕）は結ばない。
+  // 札が確かでない組は結ぶ（誤った × を出さない側。Batch 69 の前と同じ）: ngsl24 の reasonably（副「まあまあ・合理的に」）と alright（形「大丈夫な・まあまあ」）は
+  // どちらも訳が 2 つ。reasonably の問いで alright と打つと別解（Batch 69 では 1 打目で ×）。同じ品詞の別解は今と同じ: gentle の問いで tender は別解
   {
     const n24 = packJ("ngsl24");
     const reasonably = n24.find((w) => w.id === "english-reasonably");
     const gentle = n24.find((w) => w.id === "english-gentle");
-    check("判定 (38) 全パック有効の索引: different（形）と differ（動）・repeatedly（副）と repetition（名）・reasonably（副）と alright（形）は結ばない。ad と advertisement（名）は結ぶ",
-      !idxJ.get("different")?.has("differ") && !idxJ.get("differ")?.has("different") && !idxJ.get("repeatedly")?.has("repetition") && !idxJ.get("reasonably")?.has("alright") &&
-      !!idxJ.get("ad")?.has("advertisement"));
+    const both = (a, b) => !!idxJ.get(a)?.has(b) && !!idxJ.get(b)?.has(a);
+    const neither = (a, b) => !idxJ.get(a)?.has(b) && !idxJ.get(b)?.has(a);
+    check("判定 (38) 全パック有効の索引: 札が両方で確かで違う repeatedly（副）と repetition（名）・resemble（動）と similar（形）は結ばない。札が確かでない different（形・訳 2 つ）と differ（動）・reasonably と alright・circa（前・訳 2 つ）と approximately（副）は結ぶ。ad と advertisement（名）は結ぶ",
+      neither("repeatedly", "repetition") && neither("resemble", "similar") && both("different", "differ") && both("reasonably", "alright") && both("circa", "approximately") && both("ad", "advertisement"));
     const p = await openJ(seedJ("ngsl24", [reasonably.id, gentle.id]), reasonably);
     for (const ch of "alright") await p.press("#input", ch);
     await p.waitForTimeout(250);
     const msg1 = (await p.textContent("#message")).trim();
-    check("判定 (38) reasonably の問いで alright と打つと 1 打目で ×（思い出せず 1・別解の案内は出ない）",
-      (await numJ(p, "#recallFail")) === 1 && (await numJ(p, "#score")) === 0 && !msg1.includes("alright も"), msg1);
-    for (const ch of reasonably.en) await p.press("#input", ch); // 見せた答えを打ち直して次へ
+    check("判定 (38) reasonably の問いで alright（札が確かでない別の品詞）: 別解として受ける（×にしない・この問題の語は reasonably）",
+      msg1.includes("alright も") && msg1.includes("reasonably") && (await numJ(p, "#recallFail")) === 0, msg1);
+    for (const ch of reasonably.en) await p.press("#input", ch); // 見せた語を打って次へ
     await waitUntil(async () => (await jaJ(p)) === gentle.ja, 3000);
     const rfBefore = await numJ(p, "#recallFail");
     for (const ch of "tender") await p.press("#input", ch);
@@ -14879,6 +14924,19 @@ console.log("judge (出題語が別の正解の先頭部分):");
     check("判定 (38) gentle の問いで tender（同じ品詞の別解）: 今と同じく別解として受ける（×にしない・この問題の語は gentle）",
       msg2.includes("tender も") && msg2.includes("gentle") && (await numJ(p, "#recallFail")) === rfBefore, msg2);
     check("判定 (38) でエラー0", p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+  // (38b) PR #175 の 2 の再現: eiken2 と nawl02 を有効にした盤面で、approximately（副「およそ」）の問いに circa（前「およそ・〜ごろ（年号の前）」）と打つと
+  // 別解（Batch 69 では 1 打目で ×）。circa のカードは訳が 2 つなので「およそ」の札が前かは確かでない
+  {
+    const approx = packJ("eiken2").find((w) => w.id === "english-approximately");
+    const p = await openJ(seedJ("eiken2", [approx.id], { spelldash_packs: JSON.stringify(["eiken2", "nawl02"]) }), approx);
+    for (const ch of "circa") await p.press("#input", ch);
+    await p.waitForTimeout(250);
+    const msg = (await p.textContent("#message")).trim();
+    check("判定 (38b) eiken2＋nawl02: approximately の問いで circa と打つと別解（×にしない・この問題の語は approximately）",
+      msg.includes("circa も") && msg.includes("approximately") && (await numJ(p, "#recallFail")) === 0, msg);
+    check("判定 (38b) でエラー0", p.errors.length === 0, p.errors[0] ?? "");
     await p.close();
   }
 }

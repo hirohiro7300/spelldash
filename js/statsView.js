@@ -566,7 +566,7 @@ function renderLearnedWords() {
           (w) => `
           <div class="learned-item">
             <span class="learned-item__main">
-              <button type="button" class="learned-item__en mono" data-word-detail="${w.id}">${w.en}</button>
+              <button type="button" class="learned-item__en mono" data-word-detail="${w.id}">${w.term}</button>
               <span class="learned-item__ja">${w.ja}</span>
               <span class="learned-item__note">${noteChipHtml(w.id, { onlyIfHas: true })}</span>
             </span>
@@ -585,7 +585,7 @@ function renderLearnedWords() {
   if (knownContainer) {
     // 並びは CSS の flex-wrap（空白文字に頼らない）
     knownContainer.innerHTML = known.length
-      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<button type="button" class="known-words__item mono" data-word-detail="${w.id}" title="${w.ja}">${w.en}</button>`).join("")}${known.length > 200 ? `<span class="known-words__more">ほか ${known.length - 200}語</span>` : ""}</p>`
+      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<button type="button" class="known-words__item mono" data-word-detail="${w.id}" title="${w.ja}">${w.term}</button>`).join("")}${known.length > 200 ? `<span class="known-words__more">ほか ${known.length - 200}語</span>` : ""}</p>`
       : '<p class="muted">まだない。</p>';
   }
 }

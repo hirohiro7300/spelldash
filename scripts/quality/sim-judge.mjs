@@ -2,9 +2,10 @@
 //   node scripts/quality/sim-judge.mjs                 要約（打つものの種類 × 結果の数・規則 Q05 の当たりの数）
 //   node scripts/quality/sim-judge.mjs --tsv <file>    1 行 1 件の表（競合語の表を含む）も書く
 //   node scripts/quality/sim-judge.mjs --json          要約を JSON で
-//   node scripts/quality/sim-judge.mjs --root <木>     別の木（data/ と js/）で流す（前の判定と比べるとき）
+//   node scripts/quality/sim-judge.mjs --root <木>     別の木（data/ と js/）で流す（前の判定と比べるとき。js/answers.js に meaningGroups の無い
+//                                                     PR #175 より前の木は、その木の scripts/quality/sim-judge.mjs で流す）
 //
-// 判定は盤面と同じ js/judge.js の typeAnswer（新しい語を頭から打つ。前の語の続きは無い）。候補は盤面と同じ作り方で、
+// 判定は盤面と同じ js/judge.js の typeAnswer（新しい語を頭から打つ。前の語の続きは無い。js/judge.js は ctx の木〔--root〕のもの）。候補は盤面と同じ作り方で、
 // 有効にしたパックは「基本カテゴリ＋そのカードのパック」（パックを 1 つ足した人の盤面。基本カテゴリのカードは基本カテゴリだけ）。
 //
 // 打つもの（own＝このカードで正解になるはずのもの。規則 Q05 が見る）:
@@ -18,21 +19,22 @@
 // 競合語（rival＝打つと × になりうる語。表にだけ出す。記録が無くても欠陥の候補を全数で出す「競合語の表」）:
 //   otherPack     同じ id の他のカテゴリのカードにある答え・別解（綴り）・読み（ローマ字）で、このカードの候補に無いもの
 //   packAlt       全パックを有効にすると別解になるが、このカードの盤面（基本＋そのパック）では候補に無い語（有効にしたパックで正解が変わる）
-//   oneChar       同じ盤面で 1 字の訳が同じ語（moon／month の「月」。1 字の訳は別解の索引が使わない）
+//   oneChar       同じ盤面で 1 字の訳が同じ語（moon／month の「月」。1 字の訳は別解の索引が使わない。まとめ方は別解の索引と同じ
+//                 js/answers.js meaningGroups の 1 字の訳）
 //
 // 結果（how）: auto（Enter なしで正解・別解）／enter（打ち終えて Enter で確定。× ではない）／miss（at 打目で 1 打ミス＝×）／
 //             reveal（打ち終えても完成せず Enter で答えが開く＝×）／wrong（全文入力の違う答え＝×）／untypeable（その答え方では打てない字）
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { loadContext } from "./ctx.mjs";
+import { kanjiOf } from "./common.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const OWN_KINDS = ["answer", "reading", "accept", "alt", "kanjiAccept"];
 export const RIVAL_KINDS = ["otherPack", "packAlt", "oneChar"];
 export const X_HOWS = ["miss", "reveal", "wrong"];
 
-const kanjiOf = (s) => (String(s ?? "").match(/[㐀-鿿々〆]/g) ?? []).join("");
 const faceOf = (s) => String(s ?? "").normalize("NFKC").replace(/[・･\s]/g, "");
 // 綴り入力で打てる字（物理キーの 1 字。日本語は打てない: js/game.js handleCompositionEnd が英字モードに戻させる）
 const SPELL_TYPEABLE = /^[\x20-\x7e]+$/;
@@ -53,10 +55,11 @@ export function isOwnFailure(row) {
   return X_HOWS.includes(row.how);
 }
 
-// ctx（scripts/quality/ctx.mjs）の全カードを流す。judge・answers を替えると別の判定で流せる（前の判定との比べ）。
+// ctx（scripts/quality/ctx.mjs）の全カードを流す。judge・answers を替えると別の判定で流せる（前の判定との比べ）。既定は ctx の木の js/。
 // readingOf(text) → かなの読み | null: 漢字の別解の読み（既定はデータの中の読み）。rivals = 競合語も流すか（own はいつも流す）
-export function simulate(ctx, { judge, answers = ctx.modules.answers, romaji = ctx.modules.romaji, readingOf = null, rivals = true } = {}) {
+export function simulate(ctx, { judge = ctx.modules.judge, answers = ctx.modules.answers, romaji = ctx.modules.romaji, readingOf = null, rivals = true } = {}) {
   if (!judge) throw new Error("simulate: judge（js/judge.js）が要る");
+  if (rivals && typeof answers.meaningGroups !== "function") throw new Error("simulate: js/answers.js に meaningGroups が無い（PR #175 より前の木。その木の scripts/quality/sim-judge.mjs で流す）");
   const t0 = performance.now();
   const { cards } = ctx;
   const base = cards.filter((w) => !w.entry.pack);
@@ -88,23 +91,11 @@ export function simulate(ctx, { judge, answers = ctx.modules.answers, romaji = c
     if (!byId.has(w.id)) byId.set(w.id, []);
     byId.get(w.id).push(w);
   }
+  // 1 字の訳 → (en → …)。別解の索引と同じカード・同じ訳の分け方（js/answers.js meaningGroups）で、1 字の訳だけ
   const oneCharCache = new Map();
   const oneCharFor = (w) => {
     const key = w.entry.pack ? w.entry.id : "";
-    if (!oneCharCache.has(key)) {
-      const m = new Map();
-      const { jaTokens } = ctx.modules.jaAmbiguity;
-      for (const o of key ? [...base, ...ctx.cardsOf(key)] : base) {
-        if (!o?.en || !o.ja || o.q || o.write || o.blank || o.calc || o.school || !/^[a-z][a-z-]+$/.test(o.en)) continue;
-        for (const t of jaTokens(o.ja)) {
-          const k = answers.altKey(t);
-          if (k.length !== 1) continue;
-          if (!m.has(k)) m.set(k, new Set());
-          m.get(k).add(o.en);
-        }
-      }
-      oneCharCache.set(key, m);
-    }
+    if (!oneCharCache.has(key)) oneCharCache.set(key, answers.meaningGroups(key ? [...base, ...ctx.cardsOf(key)] : base, { oneChar: true }));
     return oneCharCache.get(key);
   };
 
@@ -147,7 +138,7 @@ export function simulate(ctx, { judge, answers = ctx.modules.answers, romaji = c
         for (const t of jaTokens(w.ja)) {
           const k = answers.altKey(t);
           if (k.length !== 1) continue;
-          for (const e of one.get(k) ?? []) if (e !== w.en) rival("oneChar", e, k);
+          for (const e of one.get(k)?.keys() ?? []) if (e !== w.en) rival("oneChar", e, k);
         }
       }
       continue;
@@ -225,8 +216,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const root = path.resolve(opt("--root") ?? path.join(HERE, "..", ".."));
   const t0 = performance.now();
   const ctx = await loadContext({ root });
-  const judge = await import(pathToFileURL(path.join(root, "js", "judge.js")).href);
-  const sim = simulate(ctx, { judge });
+  const sim = simulate(ctx); // 判定器は ctx の木の js/judge.js（ctx.modules.judge）
   const fails = ownFailures(sim.rows);
   const summary = {
     cards: sim.cards,

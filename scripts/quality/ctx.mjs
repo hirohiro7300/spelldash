@@ -25,7 +25,8 @@
 //   packIds        パック（manifest で pack:true）の id（manifest の並び）
 //   ref(card)      card.ref と同じ（カテゴリ id とカード id から作る）
 //   packRef(id)    パックそのものの当たり（説明文など）を書くときの ref: "<パック id>:*"
-//   modules        { answers, romaji, jaAmbiguity, jaScript, wordData }（この木の js/ を読み込んだもの）
+//   modules        { answers, romaji, jaAmbiguity, jaScript, judge, wordData }（root の木の js/ を読み込んだもの。規則は判定器も
+//                  ctx.modules.judge を使う〔規則のファイルの場所の js/ を読むと、--root で 2 つの木のコードが混ざる〕）
 //   buildAlternativeIndex(words)  js/answers.js の同じ関数
 //   altIndex(packIds = [])        基本カテゴリ＋指定のパックを有効にしたときの別解の索引（js/wordStore.js と同じ: manifest の並びの
 //                                 カードから buildAlternativeIndex）。同じ組み合わせは 1 度だけ作る
@@ -37,8 +38,17 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 let loadSeq = 0;
+// 読み込みは 1 つずつ（PR #175 のレビュー）: カードを作る間だけ global の fetch を差し替えるので、2 つ同時に読むと、もう一方の偽の fetch で
+// 別の木の教材を読み、終わった後に偽の fetch が残る。呼びを promise の列に並べ、前の読み込みが終わって fetch を戻してから次を始める
+let loadQueue = Promise.resolve();
 
-export async function loadContext({ root = ROOT, dataRoot, patch } = {}) {
+export function loadContext(options = {}) {
+  const run = loadQueue.then(() => load(options));
+  loadQueue = run.catch(() => {});
+  return run;
+}
+
+async function load({ root = ROOT, dataRoot, patch } = {}) {
   root = path.resolve(root);
   dataRoot = path.resolve(dataRoot ?? root);
   const readJson = (rel) => JSON.parse(fs.readFileSync(path.join(dataRoot, "data", rel), "utf8"));
@@ -50,7 +60,7 @@ export async function loadContext({ root = ROOT, dataRoot, patch } = {}) {
   if (typeof patch === "function") patch(files, { manifest, categories });
 
   const importJs = (name, fresh = false) => import(pathToFileURL(path.join(root, "js", name)).href + (fresh ? `?ctx=${++loadSeq}` : ""));
-  const [answers, romaji, jaAmbiguity, jaScript] = await Promise.all(["answers.js", "romaji.js", "jaAmbiguity.js", "jaScript.js"].map((n) => importJs(n)));
+  const [answers, romaji, jaAmbiguity, jaScript, judge] = await Promise.all(["answers.js", "romaji.js", "jaAmbiguity.js", "jaScript.js", "judge.js"].map((n) => importJs(n)));
 
   // ゲームと同じ読み込み（js/wordData.js）。fetch("./data/<file>") を、上で読んだ（patch 済みの）JSON の写しに替える。
   // wordData.js は読み込んだカテゴリを覚えるので、loadContext ごとに別の写しを読み込む（?ctx=N）
@@ -111,7 +121,7 @@ export async function loadContext({ root = ROOT, dataRoot, patch } = {}) {
     packIds,
     ref: (card) => card?.ref ?? `${card?.category}:${card?.id}`,
     packRef: (id) => `${id}:*`,
-    modules: { answers, romaji, jaAmbiguity, jaScript, wordData },
+    modules: { answers, romaji, jaAmbiguity, jaScript, judge, wordData },
     buildAlternativeIndex: answers.buildAlternativeIndex,
     altIndex,
     altIndexAll: () => (allIndex ??= answers.buildAlternativeIndex(cards))

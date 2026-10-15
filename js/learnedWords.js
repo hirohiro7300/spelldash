@@ -2,9 +2,11 @@ import { getWordStats } from "./storage.js";
 import { findWord, getCategories, getWordsByCategory, getAllWords } from "./wordStore.js";
 import { classifyWord } from "./categoryProgress.js";
 import { localDateString } from "./stats.js";
+import { answerLabel } from "./wordData.js";
 
 // ===== 覚えた単語（語の粒度で見せる） =====
 // 「覚えた」= 一度つまずいてから自力で思い出せた語。数字ではなく語で見せるための集計。
+// 一覧の要素: en = 判定の綴り（並べ替え・CSV の english 列）、term = 見せる綴り（英字の答えは元の綴り: Cu・NaCl。js/wordData.js answerLabel）
 
 function categoryLabel(id) {
   return getCategories().find((c) => c.id === id)?.label ?? "";
@@ -33,7 +35,7 @@ export function getLearnedWordsToday() {
     if (!isLearnedToday(stat)) continue;
     const word = findWord(id);
     if (!word) continue;
-    list.push({ id, en: word.en, ja: word.ja, category: word.category, at: stat.lastRecallSuccessAt });
+    list.push({ id, en: word.en, term: answerLabel(word), ja: word.ja, category: word.category, at: stat.lastRecallSuccessAt });
   }
   return list.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
 }
@@ -77,7 +79,7 @@ export function getLearnedWordList() {
     if (status !== "learning" && status !== "mastered") continue;
     const word = inActive.get(id) ?? inPack.get(id) ?? findWord(id);
     if (!word) continue;
-    list.push({ id, en: word.en, ja: word.ja, category: word.category, label: categoryLabel(word.category), status, stat });
+    list.push({ id, en: word.en, term: answerLabel(word), ja: word.ja, category: word.category, label: categoryLabel(word.category), status, stat });
   }
   return list.sort((a, b) => (b.stat.lastRecallSuccessAt ?? "").localeCompare(a.stat.lastRecallSuccessAt ?? ""));
 }
@@ -99,7 +101,7 @@ export function getKnownWordList() {
   for (const [id, stat] of Object.entries(stats)) {
     if (classifyWord(stat) !== "known") continue;
     const word = findWord(id);
-    if (word) list.push({ id, en: word.en, ja: word.ja });
+    if (word) list.push({ id, en: word.en, term: answerLabel(word), ja: word.ja });
   }
   return list.sort((a, b) => a.en.localeCompare(b.en));
 }

@@ -16,31 +16,61 @@ export function altKey(token) {
     .trim();
 }
 
-// en → 別解の集合。全カードの訳を見て、同じ訳を持つ語どうしを結ぶ。
-// ただし品詞をまたぐ組は結ばない（Batch 69）: その訳を持つカードの品詞の札（pos）が両方にあって重ならない
-// （different〔形〕と differ〔動〕の「異なる」、repeatedly〔副〕と repetition〔名〕の「繰り返し」）なら、別の語を問う問題なので別解にしない。
-// 札は訳ごとに見る（ship の「船」は名・「送る」は動）。札の無いカード（基本カテゴリ）しか無い語は今までどおり結ぶ
-export function buildAlternativeIndex(words) {
-  const byMeaning = new Map(); // 訳 → (en → その訳を持つカードの品詞の札の集まり)
+// 別解の索引に入れるカード: 訳があり、答えを綴りで打つ英単語（a-z とハイフン）のカード。
+// 問題文・英作文・穴埋め・計算・学校の用語のカードは入れない
+export function isAltCard(w) {
+  return !!w?.en && !!w.ja && !w.q && !w.write && !w.blank && !w.calc && !w.school && /^[a-z][a-z-]+$/.test(w.en);
+}
+
+// 訳ごとのまとめ: 訳の見出し（altKey）→ (en → { pos, surePos, cards })。別解の索引（buildAlternativeIndex）・品質の規則 P2・
+// 判定のシミュレーションの 1 字の訳（scripts/quality/sim-judge.mjs）が同じまとめ方を使う。訳はカードの ja を jaTokens で区切ったもの。
+//   pos      その訳を持つその語のカードの品詞の札（重なりなし。札の無いカードは足さない）
+//   surePos  そのうち、その訳の札として確かな札。札はカードに 1 つ（docs/PACK_FORMAT.md「2品詞なら主な方」）なので、
+//            確かなのは訳が 1 つのカードの札だけ。訳が 2 つ以上のカード（かっこだけの説明も 1 つと数える）の札は、どの訳の札か分からない
+//            （ngsl02 の only「～だけ・唯一の」の札は副だが、「唯一の」は形容詞の意味）
+//   cards    その訳を持つその語のカード（カードの並び）
+// oneChar: true なら 1 字の訳だけを集める（既定は 2 字以上。1 字の訳は偶然ぶつかるので別解には使わない）
+export function meaningGroups(words, { oneChar = false } = {}) {
+  const groups = new Map();
   for (const w of words) {
-    if (!w?.en || !w.ja || w.q || w.write || w.blank || w.calc || w.school) continue;
-    if (!/^[a-z][a-z-]+$/.test(w.en)) continue;
-    for (const token of jaTokens(w.ja)) {
+    if (!isAltCard(w)) continue;
+    const tokens = jaTokens(w.ja);
+    const sure = tokens.length === 1;
+    for (const token of tokens) {
       const key = altKey(token);
-      if (key.length < 2) continue; // 1文字の訳は偶然ぶつかるので使わない
-      if (!byMeaning.has(key)) byMeaning.set(key, new Map());
-      const ens = byMeaning.get(key);
-      if (!ens.has(w.en)) ens.set(w.en, new Set());
-      if (w.pos) ens.get(w.en).add(w.pos);
+      if (oneChar ? key.length !== 1 : key.length < 2) continue;
+      let ens = groups.get(key);
+      if (!ens) groups.set(key, (ens = new Map()));
+      let e = ens.get(w.en);
+      if (!e) ens.set(w.en, (e = { pos: [], surePos: [], cards: [] }));
+      if (w.pos) {
+        if (!e.pos.includes(w.pos)) e.pos.push(w.pos);
+        if (sure && !e.surePos.includes(w.pos)) e.surePos.push(w.pos);
+      }
+      if (e.cards[e.cards.length - 1] !== w) e.cards.push(w); // 同じカードに同じ訳が 2 つあっても 1 度
     }
   }
-  const crossesPos = (a, b) => a.size > 0 && b.size > 0 && ![...a].some((p) => b.has(p));
+  return groups;
+}
+
+// 同じ訳の 2 語（meaningGroups の要素）が品詞をまたぐか: 両方に確かな札があり、札（確かでない札も含む）が 1 つも重ならない。
+// 片方でも確かな札が無ければ（札の無いカード・訳が 2 つ以上のカードの札だけ）またがない＝結ぶ（誤った × を出さない側）
+export function crossesPos(a, b) {
+  return a.surePos.length > 0 && b.surePos.length > 0 && !a.pos.some((p) => b.pos.includes(p));
+}
+
+// en → 別解の集合。全カードの訳を見て、同じ訳を持つ語どうしを結ぶ。
+// ただし品詞をまたぐ組は結ばない（Batch 69。PR #175 で札の確かな組だけに）: その訳の札が両方で確かで、重ならない
+// （repeatedly〔副「繰り返し」〕と repetition〔名「繰り返し」〕、resemble〔動「似ている」〕と similar〔形「似ている」〕）なら、別の語を問う問題なので別解にしない。
+// 札が確かでない組（different〔形「ちがう・異なる」〕と differ〔動「異なる」〕、circa〔前「およそ・〜ごろ」〕と approximately〔副「およそ」〕）と、
+// 札の無いカード（基本カテゴリ）しか無い語は今までどおり結ぶ（crossesPos）
+export function buildAlternativeIndex(words) {
   const index = new Map();
-  for (const ens of byMeaning.values()) {
+  for (const ens of meaningGroups(words).values()) {
     if (ens.size < 2) continue;
-    for (const [en, pos] of ens) {
-      for (const [other, otherPos] of ens) {
-        if (other === en || crossesPos(pos, otherPos)) continue;
+    for (const [en, a] of ens) {
+      for (const [other, b] of ens) {
+        if (other === en || crossesPos(a, b)) continue;
         if (!index.has(en)) index.set(en, new Set());
         index.get(en).add(other);
       }
