@@ -5,16 +5,16 @@ import {
   answerModeOf,
   answerMatches,
   candidatesNow,
-  completesAs,
-  enterAnswer,
   finishKind,
-  fitsAnswer,
-  isFreeAnswer,
   isOwnAnswer,
   normalizeAnswer,
-  restsAfter,
-  romajiEntriesFor
+  romajiFromStart,
+  romajiMatcherFor,
+  romajiStep,
+  spellFitsFromStart,
+  spellStep
 } from "./judge.js";
+import { completedAnswer } from "./answers.js";
 import { createRomajiMatcher, primaryReading, romajiKeyOf } from "./romaji.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
@@ -228,7 +228,7 @@ function nextStudyWordIsFree() {
   for (const id of getUpcomingIds()) {
     const word = findWordIn(activeCategory, id);
     if (word?.kanjiOnly) continue;
-    return !!word && (!!word.calc || (romajiEntriesFor(word).length === 0 && isFreeAnswer(word)));
+    return !!word && (!!word.calc || answerModeOf(word).mode === "free"); // setNewWord と同じ答え方の決め方（js/judge.js answerModeOf）
   }
   return false;
 }
@@ -238,7 +238,7 @@ function nextStudyWordIsFree() {
 // 入力欄は読み取り専用にして IME・OS キーボードを開かせない（keydown は届く）。打ったかなと、その下に打ったキーを出す。
 // かなの読みが 1 つもないカード（自分で作った場面カードなど）は従来どおり全文入力（IME で打って Enter）
 let romajiMode = false;
-let romaji = null; // いまの読みの判定（createRomajiMatcher）。答えを見た後は主な読みだけ
+let romaji = null; // いまの読みの判定（js/judge.js romajiMatcherFor）。答えを見た後は主な読みだけ
 let romajiEntries = [];
 
 // 語を打ち終えた直後の打鍵の持ち越し止め（打ち越し防止）。ローマ字と英単語で共通:
@@ -651,17 +651,21 @@ function judgeKey(next) {
   s.shared.typed = nextTyped();
 }
 
-// 綴り入力の次の語の 1 打（keydown と Android の input 経路で共通）。accept(typedChar) は受理（完成なら true を返す）
+// 綴り入力の次の語の 1 打（keydown と Android の input 経路で共通）。判定は判定器の 1 打（js/judge.js spellStep）。
+// accept(typedChar, step) は受理（step = その 1 打の結果。完成なら true を返す）
 function judgeSpellingKey(typedChar, contKey, accept) {
-  const fits = (typed) => fitsAnswer(activeCandidates(), typed);
+  const step = () => spellStep(activeCandidates(), typedSoFar, typedChar);
   return judgeKey({
     key: typedChar,
     contKey,
-    tryAccept: () => (fits(typedSoFar + typedChar) ? (accept(typedChar) ? "done" : "more") : null),
-    finishes: () => (fits(typedSoFar + typedChar) ? completesAs(activeCandidates(), typedSoFar + typedChar) : null),
+    tryAccept: () => {
+      const r = step();
+      return r.ok ? (accept(typedChar, r) ? "done" : "more") : null;
+    },
+    finishes: () => step().done,
     own: (done) => isOwnAnswer(done, currentWord.en),
-    firstFits: () => fits(typedChar),
-    fitsFromStart: (keys) => fits(keys),
+    firstFits: () => spellStep(activeCandidates(), "", typedChar).ok,
+    fitsFromStart: (keys) => spellFitsFromStart(activeCandidates(), keys),
     show: (on) => {
       const shown = typedSoFar + (on ? typedChar : "");
       elements.input.value = shown;
@@ -1178,7 +1182,7 @@ function triggerEnter() {
   if (!isRevealed) {
     // Enter は「打った語で確定」: 打った綴りがそのまま候補の 1 つに一致して止まっているなら、その語で確定する
     // （別解 = 出題語 advertisement に対して "ad" なら別解として受け取る。出題語に一致していれば正解。どちらも「分からない」にしない）
-    const done = enterAnswer(activeCandidates(), typedSoFar);
+    const done = completedAnswer(activeCandidates(), typedSoFar, { force: true });
     if (done) {
       finishTypedAnswer(done);
       return;
@@ -1344,7 +1348,7 @@ function handleRomajiKey(event) {
     key,
     contKey: spill?.keyOf(event),
     tryAccept: () => {
-      const result = romaji.feed(key);
+      const result = romajiStep(romaji, key); // 判定器の 1 打（js/judge.js）
       if (!result.ok) {
         expected = result.expected;
         return null; // ミスの feed は状態を変えない
@@ -1358,14 +1362,11 @@ function handleRomajiKey(event) {
       if (result.done) finishRomajiWord();
       return result.done ? "done" : "more";
     },
-    // この字で読みを打ち終えるか（状態は変えない: 写しの判定に打った字 ＋ この字を食わせる）
-    finishes: () => {
-      const r = createRomajiMatcher(romajiEntries).type(romaji.keys + key);
-      return r.missAt === -1 && r.done ? "done" : null;
-    },
+    // この字で読みを打ち終えるか（状態は変えない: いまの読みを打った字 ＋ この字で頭から打つ。js/judge.js romajiFromStart）
+    finishes: () => (romajiFromStart(romaji, romaji.keys + key).done ? "done" : null),
     own: () => true, // どの読みで打ち終えても正解（別解の案内は無い）
-    firstFits: () => createRomajiMatcher(romajiEntries).feed(key).ok,
-    fitsFromStart: (keys) => createRomajiMatcher(romajiEntries).type(keys).missAt === -1,
+    firstFits: () => romajiFromStart(romaji, key).fits,
+    fitsFromStart: (keys) => romajiFromStart(romaji, keys).fits,
     show: () => {}, // 入力欄の字は見えない（かなの 2 段表示は判定に食わせた打鍵だけ）。保留の字は見せない
     echo: () => ({ kind: "romaji", entries: romajiEntries }),
     miss: (typed = key) => handleTypingMiss(expected ?? romaji.state().expected, typed)
@@ -1472,17 +1473,17 @@ export function handleTextInput() {
     const missBefore = typingMissCount;
     let finished = false;
     // 打ち終えた前の語の続き（a の後の n、gym の後の nasium）は次の語の打鍵にしない（keydown と同じ judgeKey。続きと次の語の両方に食わせて解決）
-    const verdict = judgeSpellingKey(typedChar, typedChar, (ch) => {
+    const verdict = judgeSpellingKey(typedChar, typedChar, (ch, step) => {
       if (fedSerial !== wordSerial) {
         fedSerial = wordSerial;
         fed = 0;
       }
       if (++fed >= 2 && wordTiming?.serial === wordSerial) wordTiming.multi = true;
-      if (completesAs(activeCandidates(), typedSoFar + ch) !== null) {
+      if (step.done !== null) {
         elements.input.value = typedSoFar + ch;
         updateTypedPreview(elements.input.value);
       }
-      finished = acceptChar(ch);
+      finished = acceptChar(ch, step);
       return finished;
     });
     if (verdict === "again") {
@@ -1623,7 +1624,7 @@ function acceptAlternative(typed) {
 
 // 答えを見せる。ローマ字モードは答えの下に読みも（鎌倉幕府 ／ かまくらばくふ）
 function showAnswer() {
-  if (romajiMode) showAnswerWithReading(currentWord.en, primaryRomajiEntry()?.display);
+  if (romajiMode) showAnswerWithReading(answerLabel(currentWord), primaryRomajiEntry()?.display); // 日本語の答えは en と同じ
   else showColoredAnswer(answerLabel(currentWord)); // 英字の答えは元の綴り（Cu・NaCl・ASEAN）。判定は小文字の en のまま
 }
 
@@ -1656,7 +1657,7 @@ function revealAnswer(fromMiss = false, failDetail = null) {
   typedSoFar = "";
   elements.input.value = "";
   clearTypedPreview();
-  if (romajiMode) romaji = createRomajiMatcher([primaryRomajiEntry()]); // 答えを見た後は、見せた読みだけを打って練習
+  if (romajiMode) romaji = romajiMatcherFor(romajiEntries, { revealed: true }); // 答えを見た後は、見せた読み（主な読み）だけを打って練習
 
   const stat = getWordStats()[currentWord.id];
   const leech = (stat?.recallFail ?? 0) >= LEECH_FAILS;
@@ -1979,12 +1980,12 @@ function renderWordFamily(word) {
     const names = word.family
       .map((id) => findWord(id))
       .filter(Boolean)
-      .map((w) => `${w.en}（${w.ja}）`);
+      .map((w) => `${answerLabel(w)}（${w.ja}）`);
     if (names.length) lines.push(`仲間の語: ${names.join("・")}`);
   }
   // 紛らわしい語（affect/effect, adapt/adopt …）: 綴りが1〜2文字違いの語を並べて混同を潰す
   const confusables = findConfusables(word);
-  if (confusables.length) lines.push(`似た綴り: ${confusables.map((w) => `${w.en}（${w.ja}）`).join("・")}`);
+  if (confusables.length) lines.push(`似た綴り: ${confusables.map((w) => `${answerLabel(w)}（${w.ja}）`).join("・")}`);
 
   elements.wordFamily.textContent = lines.join("　");
 }
@@ -2019,27 +2020,28 @@ function findConfusables(word) {
   return out;
 }
 
-function handleCorrectChar(typedChar) {
+function handleCorrectChar(typedChar, step) {
   elements.input.value += typedChar;
   updateTypedPreview(elements.input.value);
-  return acceptChar(typedChar);
+  return acceptChar(typedChar, step);
 }
 
-// 1文字受理の共通処理（DOMの入力欄には触れない）。単語完成ならtrueを返す
-function acceptChar(typedChar) {
+// 1文字受理の共通処理（DOMの入力欄には触れない）。step = その字の判定器の 1 打（js/judge.js spellStep。受けた字の結果）。
+// ヒント（useHint）は字も step も渡さない: 出題語の次の字を、受けるかを見ずに足す（以前のまま）。完成と続きは同じ 1 打の関数で決める。単語完成ならtrueを返す
+function acceptChar(typedChar, step = null) {
   if (typedChar !== undefined) markKey(); // ヒントで足した字（useHint は字を渡さない）はこの語の打鍵にしない
-  typedSoFar += typedChar ?? currentWord.en[currentIndex];
+  const ch = typedChar ?? currentWord.en[currentIndex];
+  const r = step ?? spellStep(activeCandidates(), typedSoFar, ch);
+  typedSoFar += ch;
   currentIndex = typedSoFar.length;
   correctChars++;
   updateTypeSpeed();
 
-  const done = completesAs(activeCandidates(), typedSoFar);
-  if (done) {
+  if (r.done) {
     // 打った綴りより長い候補が残っている（gym → gymnasium、a → an、sport → sports）: 続けて打たれた続きを次の語の打鍵にしない
-    const rests = restsAfter(activeCandidates(), typedSoFar);
-    if (rests.length > 0) startSpellingSpill(rests);
+    if (r.rests.length > 0) startSpellingSpill(r.rests);
     else clearSpill();
-    finishTypedAnswer(done);
+    finishTypedAnswer(r.done);
     return true;
   }
 
@@ -2902,7 +2904,7 @@ function setNewWord() {
   const answerMode = answerModeOf(currentWord);
   romajiEntries = answerMode.entries;
   romajiMode = answerMode.mode === "romaji";
-  romaji = romajiMode ? createRomajiMatcher(romajiEntries) : null;
+  romaji = romajiMode ? romajiMatcherFor(romajiEntries) : null;
   freeMode = answerMode.mode === "free";
   // 全文入力の語は 1 打ずつ判定しない（入力欄の字はブラウザ・IME が入れる）。英単語の長い候補の続きは持ち越さない
   // （物理キーだけ飲んで Android の input 経路では飲まない、という食い違いを作らない。ローマ字の続きの扱いは以前のまま）

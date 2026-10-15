@@ -4,13 +4,20 @@
 //                                                     ・数が増えた: 当たりのカードの数が基準線より多い
 //                                                     ・基準線が古い: 基準線のカードがもう当たらない（直した）→ --update で下げて同じ PR に入れる
 //                                                   警告（warn）・情報（info）の規則は数を出すだけで落とさない
-//   node scripts/quality/check.mjs --base=<木>      上に加えて、前の木（PR の向け先。<木>/data/ だけを読む）の教材と比べる（CI の PR）:
+//   node scripts/quality/check.mjs --base=<木>      上に加えて、前の木（PR の向け先。<木>/data/ と <木>/scripts/quality/baseline.json を読む）と比べる（CI の PR）:
 //                                                     ・変わったカードに新しい当たり: 基準線にもうあるカードを PR で変え、前の木では出なかった
 //                                                       当たり（中身 detail が違うもの）が出た（漢字の別表記を足したのに読みが無い、など）。
 //                                                       前の木の教材も今のコードと規則で流すので、違いは教材の変更から来たものだけ。
 //                                                       基準線に無いカードは上の「新しい当たり」が見る
-//   node scripts/quality/check.mjs --update         今の当たりで基準線を書き直す（直して減ったとき。新しい当たりを残すと決めたときも）
+//                                                     ・基準線を上げた: 誤りの規則で、向け先の基準線に無いカードを今の基準線に足した（数を上げた）。
+//                                                       向け先の基準線に無い規則（PR で足した規則）と、向け先の教材でも今のコードと規則で当たるカード
+//                                                       （規則・判定器を変えて見つかった、前からある当たり）は除く
+//   node scripts/quality/check.mjs --update         基準線を書き直す。誤りの規則は下げるだけ（もう当たらないカードを消す。新しい当たりは足さない）。
+//                                                   警告・情報の規則は今の当たりに合わせる（落とさない規則。数の推移を基準線の差分で見る）
 //   node scripts/quality/check.mjs --update=Q03,Q04 その規則だけ書き直す
+//   node scripts/quality/check.mjs --update --add=Q05  その規則は今の当たりで書き直す（新しい当たりも足す）。新しい規則を基準線に入れるとき、
+//                                                   規則・判定器を変えて前からの教材に当たりが見つかったときだけ（教材の変更から来た当たりは
+//                                                   CI の PR で「基準線を上げた」で落ちる。直す）。--add Q05 とも書ける
 //   node scripts/quality/check.mjs --only=Q03,Q04   その規則だけ流す（比べ方は同じ）
 //   node scripts/quality/check.mjs --list=Q04       その規則の当たりを 1 行ずつ出す（カード・中身）
 //   node scripts/quality/check.mjs --json           結果を JSON で出す
@@ -80,7 +87,8 @@ export async function runRules(ctx, rules) {
 
 // 基準線と比べる → 規則ごとの { before, now, added[], removed[], fail[] } と、落とす理由の一覧
 // changed（任意）= compareWithBase の byRule（規則 → 変わったカードに出た新しい当たり）。あれば「変わったカードに新しい当たり」でも落とす
-export function compareWithBaseline(results, baseline, { partial = false, changed = null } = {}) {
+// raised（任意）= compareWithTargetBaseline の結果（規則 → 向け先の基準線から上げた分）。あれば「基準線を上げた」でも落とす
+export function compareWithBaseline(results, baseline, { partial = false, changed = null, raised = null } = {}) {
   const rows = [];
   const failures = [];
   for (const r of results) {
@@ -89,14 +97,18 @@ export function compareWithBaseline(results, baseline, { partial = false, change
     const added = [...r.hits.keys()].filter((c) => !base.has(c)).sort();
     const removed = [...base].filter((c) => !r.hits.has(c)).sort();
     const grown = r.level === "error" ? changed?.get(r.id) ?? [] : [];
+    const up = r.level === "error" ? raised?.get(r.id) ?? null : null;
     const fail = [];
     if (r.level === "error") {
       if (added.length) fail.push(`新しい当たり ${added.length} 枚`);
       if (r.hits.size > base.size) fail.push(`数が増えた（${base.size} → ${r.hits.size}）`);
       if (removed.length) fail.push(`基準線が古い（もう当たらない ${removed.length} 枚。--update=${r.id} で下げる）`);
       if (grown.length) fail.push(`変わったカードに新しい当たり ${grown.length} 枚（基準線にあるカード。前の木では出なかった中身）`);
+      if (up?.added.length) fail.push(`基準線を上げた（向け先 ${up.before} → 今 ${up.after}。向け先の基準線に無いカード ${up.added.length} 枚を足した）`);
     }
-    rows.push({ id: r.id, level: r.level, describe: r.describe, known, before: base.size, now: r.hits.size, groups: r.groups, added, removed, grown, fail, ms: r.ms });
+    const raisedCards = up?.added ?? [];
+    const fromCode = up?.fromCode ?? [];
+    rows.push({ id: r.id, level: r.level, describe: r.describe, known, before: base.size, now: r.hits.size, groups: r.groups, added, removed, grown, raised: raisedCards, fromCode, fail, ms: r.ms });
     if (fail.length) failures.push(`${r.id}: ${fail.join("・")}`);
   }
   if (!partial) {
@@ -162,9 +174,44 @@ export async function compareWithBase(headCtx, headResults, baseCtx, rules, base
   return { changed, byRule, ranBase: [...targets.keys()] };
 }
 
-export function baselineOf(results, prev = {}, only = null) {
+// 基準線を上げていないか（CI の PR。target = 向け先の基準線〔--base の木の scripts/quality/baseline.json〕、current = 今の基準線）。
+// 誤りの規則ごとに、向け先の基準線に無いのに今の基準線にあるカードを出す（数を上げたのはこのカードがあるときだけ。基準線はカードの集まり）。
+// 向け先の基準線に無い規則（PR で足した規則）は見ない。足したカードのうち、向け先の教材（baseCtx = 今のコードで前の木の data/ を読んだもの）
+// にも今の規則で当たるもの（規則・判定器を変えて見つかった、前からある当たり）は fromCode に分けて落とさない。前の木を流すのは足したカードがある規則だけ
+// → Map(規則 id → { before, after, added: [落とすカード], fromCode: [落とさないカード] })
+export async function compareWithTargetBaseline(target, current, rules, baseCtx) {
+  const pending = new Map();
+  for (const r of rules) {
+    if (r.level !== "error" || !Object.prototype.hasOwnProperty.call(target, r.id)) continue;
+    const before = new Set(target[r.id]);
+    const now = current[r.id] ?? [];
+    pending.set(r.id, { before: before.size, after: now.length, cards: now.filter((c) => !before.has(c)) });
+  }
+  const need = rules.filter((r) => pending.get(r.id)?.cards.length);
+  const baseResults = need.length ? await runRules(baseCtx, need) : [];
+  const out = new Map();
+  for (const [id, p] of pending) {
+    const hits = baseResults.find((x) => x.id === id)?.hits ?? new Map();
+    out.set(id, { before: p.before, after: p.after, added: p.cards.filter((c) => !hits.has(c)).sort(), fromCode: p.cards.filter((c) => hits.has(c)).sort() });
+  }
+  return out;
+}
+
+// --update で書く基準線。誤りの規則は下げるだけ: 前の基準線のカードのうち、今も当たるものだけを残す（新しい当たりは足さない）。
+// add にある規則は今の当たりにする（新しい規則を入れる・規則や判定器を変えて見つかった前からの当たりを足す）。
+// 警告・情報の規則は今の当たりにする（落とさない規則。数の推移を基準線の差分で見る）。
+// only（任意）があればその規則（と add の規則）だけ書き直す。無ければ、規則のファイルが無い基準線の行も消す
+export function updateBaseline(results, prev = {}, { only = null, add = null } = {}) {
   const next = { ...prev };
-  for (const r of results) if (!only || only.has(r.id)) next[r.id] = [...r.hits.keys()].sort();
+  for (const r of results) {
+    if (only && !only.has(r.id) && !add?.has(r.id)) continue;
+    const now = [...r.hits.keys()].sort();
+    if (r.level !== "error" || add?.has(r.id)) next[r.id] = now;
+    else {
+      const before = new Set(prev[r.id] ?? []);
+      next[r.id] = now.filter((c) => before.has(c));
+    }
+  }
   if (!only) for (const id of Object.keys(next)) if (!results.some((r) => r.id === id)) delete next[id];
   const sorted = {};
   for (const id of Object.keys(next).sort(idOrder)) sorted[id] = next[id];
@@ -193,14 +240,15 @@ function printTable(rows, ctx, seconds) {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  // --add Q05（空白で区切った形）は --add=Q05 と同じ
+  const args = process.argv.slice(2).flatMap((a, i, all) => (a === "--add" && all[i + 1] && !all[i + 1].startsWith("--") ? [`--add=${all[i + 1]}`] : all[i - 1] === "--add" && !a.startsWith("--") ? [] : [a]));
   const opt = (name) => {
     const a = args.find((x) => x === `--${name}` || x.startsWith(`--${name}=`));
     if (!a) return null;
     return a.includes("=") ? a.slice(a.indexOf("=") + 1) : true;
   };
   const idList = (v) => (typeof v === "string" ? new Set(v.split(",").map((s) => s.trim()).filter(Boolean)) : null);
-  const known = ["update", "only", "list", "json", "root", "baseline", "base"];
+  const known = ["update", "add", "only", "list", "json", "root", "baseline", "base"];
   const unknown = args.filter((a) => !known.some((k) => a === `--${k}` || a.startsWith(`--${k}=`)));
   if (unknown.length) {
     console.error(`知らない引数: ${unknown.join(" ")}（使い方は scripts/quality/check.mjs の先頭）`);
@@ -219,6 +267,17 @@ async function main() {
     console.error("流す規則が無い（--only・--list の id を確かめる）");
     process.exit(2);
   }
+  const add = opt("add") ? idList(opt("add")) : null;
+  if (opt("add") && (!add?.size || !opt("update"))) {
+    console.error("--add=<規則> は --update と一緒に使う（--update --add=Q05。その規則の新しい当たりも基準線に足す）");
+    process.exit(2);
+  }
+  for (const id of add ?? []) {
+    if (!rules.some((r) => r.id === id)) {
+      console.error(`--add: 規則 ${id} を流していない（規則の id・--only を確かめる）`);
+      process.exit(2);
+    }
+  }
   const results = await runRules(ctx, rules);
   const seconds = (performance.now() - t0) / 1000;
   const baseline = readBaseline(baselineFile);
@@ -234,13 +293,19 @@ async function main() {
 
   const update = opt("update");
   if (update) {
-    const subset = idList(update);
-    const next = baselineOf(results, baseline, subset ?? (only ? only : null));
+    const subset = idList(update) ?? only;
+    const next = updateBaseline(results, baseline, { only: subset, add });
     fs.writeFileSync(baselineFile, JSON.stringify(next, null, 2) + "\n");
     const { rows } = compareWithBaseline(results, baseline, { partial: true });
     printTable(rows, ctx, seconds);
-    const changed = rows.filter((r) => (!subset || subset.has(r.id)) && (r.added.length || r.removed.length || !r.known));
-    console.log(`基準線を書き直した: ${path.relative(process.cwd(), baselineFile) || baselineFile}${changed.length ? `（${changed.map((r) => `${r.id} ${r.known ? fmt(r.before) : "—"} → ${fmt(r.now)}`).join("・")}）` : "（変わりなし）"}`);
+    const has = (id) => Object.prototype.hasOwnProperty.call(baseline, id);
+    const changed = rows.filter((r) => JSON.stringify(next[r.id] ?? null) !== JSON.stringify(has(r.id) ? baseline[r.id] : null));
+    console.log(`基準線を書き直した: ${path.relative(process.cwd(), baselineFile) || baselineFile}${changed.length ? `（${changed.map((r) => `${r.id} ${has(r.id) ? fmt(baseline[r.id].length) : "—"} → ${fmt(next[r.id].length)}`).join("・")}）` : "（変わりなし）"}`);
+    const kept = rows.filter((r) => r.level === "error" && (!subset || subset.has(r.id)) && !add?.has(r.id) && r.added.length);
+    if (kept.length) {
+      console.log(`誤りの規則の新しい当たりは基準線に足していない（--update は下げるだけ）: ${kept.map((r) => `${r.id} ${fmt(r.added.length)} 枚`).join("・")}`);
+      console.log("  直す。足すのは、新しい規則と、規則・判定器を変えて前からの教材に見つかった当たりだけ（--update --add=<規則>。教材の変更から来た当たりは CI の PR で「基準線を上げた」で落ちる）");
+    }
     return;
   }
 
@@ -253,17 +318,21 @@ async function main() {
   }
   if (typeof baseOpt === "string") {
     const baseRoot = path.resolve(baseOpt);
-    if (!fs.existsSync(path.join(baseRoot, "data", "manifest.json"))) {
-      console.error(`--base: ${baseRoot}/data/manifest.json が無い（前の木の根を渡す）`);
-      process.exit(2);
+    const targetFile = path.join(baseRoot, "scripts", "quality", "baseline.json");
+    for (const f of [path.join(baseRoot, "data", "manifest.json"), targetFile]) {
+      if (!fs.existsSync(f)) {
+        console.error(`--base: ${f} が無い（前の木の根を渡す。git archive <向け先> data scripts/quality/baseline.json | tar -x -C <木>）`);
+        process.exit(2);
+      }
     }
     const baseCtx = await loadContext({ root, dataRoot: baseRoot });
     vsBase = await compareWithBase(ctx, results, baseCtx, rules, baseline);
+    vsBase.raised = await compareWithTargetBaseline(readBaseline(targetFile), baseline, rules, baseCtx);
   }
   const allSeconds = (performance.now() - t0) / 1000;
-  const { rows, failures } = compareWithBaseline(results, baseline, { partial: Boolean(only), changed: vsBase?.byRule ?? null });
+  const { rows, failures } = compareWithBaseline(results, baseline, { partial: Boolean(only), changed: vsBase?.byRule ?? null, raised: vsBase?.raised ?? null });
   if (opt("json")) {
-    const base = vsBase && { changedCards: vsBase.changed.size, ranBase: vsBase.ranBase };
+    const base = vsBase && { changedCards: vsBase.changed.size, ranBase: vsBase.ranBase, raised: Object.fromEntries([...vsBase.raised].filter(([, x]) => x.added.length || x.fromCode.length)) };
     console.log(JSON.stringify({ cards: ctx.cards.length, seconds: allSeconds, ok: failures.length === 0, failures, base, rules: rows.map(({ ms, ...r }) => ({ ...r, ms: Math.round(ms) })) }, null, 1));
     process.exitCode = failures.length ? 1 : 0; // exit() は標準出力を書き切る前に終わることがある（パイプ）
     return;
@@ -272,9 +341,11 @@ async function main() {
   if (vsBase) {
     const grown = [...vsBase.byRule.values()].reduce((n, l) => n + l.length, 0);
     console.log(`前の木（${baseOpt}）と比べた: 変わったカード ${fmt(vsBase.changed.size)} 枚。そのうち基準線にあって新しい中身の当たりが出たカード ${fmt(grown)} 枚`);
+    const ups = [...vsBase.raised].filter(([, x]) => x.added.length || x.fromCode.length);
+    console.log(`  向け先の基準線と比べた: ${ups.length ? ups.map(([id, x]) => `${id} ${fmt(x.before)} → ${fmt(x.after)}（足したカード ${fmt(x.added.length + x.fromCode.length)} 枚${x.fromCode.length ? `。うち向け先の教材でも当たる ${fmt(x.fromCode.length)} 枚は落とさない` : ""}）`).join("・") : "誤りの規則の基準線は上げていない"}`);
   }
   if (!failures.length) {
-    console.log(`OK: 誤りの規則で新しい当たりなし・基準線は最新${vsBase ? "・変わったカードに新しい当たりなし" : ""}`);
+    console.log(`OK: 誤りの規則で新しい当たりなし・基準線は最新${vsBase ? "・変わったカードに新しい当たりなし・基準線を上げていない" : ""}`);
     return;
   }
   console.log(`NG: ${failures.length} 件`);
@@ -287,9 +358,13 @@ async function main() {
     if (r.removed.length > 10) console.log(`    …ほか ${r.removed.length - 10} 枚`);
     for (const g of r.grown.slice(0, 30)) console.log(`    * ${g.card}  ${g.added.join(" ／ ")}`);
     if (r.grown.length > 30) console.log(`    …ほか ${r.grown.length - 30} 枚`);
+    for (const c of r.raised.slice(0, 30)) console.log(`    ^ ${c}  （向け先の基準線に無い。向け先の教材では当たらない）`);
+    if (r.raised.length > 30) console.log(`    …ほか ${r.raised.length - 30} 枚`);
   }
-  console.log("直し方: 新しい当たりは直す（残すと決めたときだけ --update=<規則> で基準線に足し、PR に理由を書く）。直して減ったら --update で基準線を下げて同じ PR に入れる");
+  console.log("直し方: 新しい当たりは直す（--update は下げるだけで足さない）。直して減ったら --update で基準線を下げて同じ PR に入れる");
+  console.log("  新しい規則を足した・規則や判定器を変えて前からの教材に当たりが見つかったときだけ --update --add=<規則> で足し、PR に理由を書く");
   if (rows.some((r) => r.grown.length)) console.log("  * は基準線にもうあるカードを変えて出た当たり。基準線はカードの一覧なので --update では残せない。そのカードの変更を直す");
+  if (rows.some((r) => r.raised.length)) console.log("  ^ は向け先の基準線に無いのに今の基準線に足したカード（教材の変更から来た当たり）。誤りの規則の基準線は上げない。基準線から外し、カードを直す");
   process.exitCode = 1;
 }
 

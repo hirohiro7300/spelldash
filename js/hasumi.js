@@ -44,7 +44,7 @@ export function hasumiHomeLine() {
     const learned = getLearnedWordsToday();
     if (learned.length > 0) {
       const extra = learned.length > 1 ? ` ほか${learned.length - 1}語` : "";
-      return { mood: "happy", text: `今日は ${learned[0].en}${extra}を覚えた。` };
+      return { mood: "happy", text: `今日は ${learned[0].term}${extra}を覚えた。` };
     }
     // 「思い出せた」の数は学習データが持つ。ここでは今日のぶんが済んだかどうかの事実だけ（チップの「途中」と合わせる）
     if (isDailySetDone()) return { mood: "happy", text: "今日のぶん、終わった。" };

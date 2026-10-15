@@ -1,5 +1,6 @@
 import { exampleHtml, hasExample } from "./wordExample.js";
 import { findWord, findWordIn, getCategories } from "./wordStore.js";
+import { answerLabel } from "./wordData.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml } from "./learnedWords.js";
@@ -114,7 +115,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
       </div>
     </div>
     <div class="word-detail__ai" id="wordDetailAi"></div>
-    ${family.length ? `<div class="word-detail__family">同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${w.id}">${escapeHtml(w.en)}</button>`).join(" ")}</div>` : ""}
+    ${family.length ? `<div class="word-detail__family">同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${w.id}">${escapeHtml(answerLabel(w))}</button>`).join(" ")}</div>` : ""}
     <p class="sr-only" role="status" aria-live="polite" data-sr-live></p>
   `;
   modal.hidden = false;
