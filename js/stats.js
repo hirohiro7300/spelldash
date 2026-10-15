@@ -1,4 +1,4 @@
-import { saveWordStats, editWordStats, getWordStats } from "./storage.js";
+import { saveWordStats, editWordStats, getWordStats, wordStatsChars } from "./storage.js";
 import { markWordDirty } from "./sync.js";
 import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
 import { touchStudyTime } from "./studyTime.js";
@@ -29,8 +29,9 @@ import {
 } from "./memoryCheck.js";
 import { getMemoryWord, putMemoryWord, tickMemoryWords, prefetchMemoryWords, useWordStatsReader } from "./memoryWords.js";
 
-// 語ごとの記録の質（js/memoryWords.js）は、書く直前に語の記録と照らし合わせる（復元・消去の後の書きかけを書き戻さない）
-useWordStatsReader(getWordStats);
+// 語ごとの記録の質（js/memoryWords.js）は、書く直前に語の記録と照らし合わせ（復元・消去の後の書きかけを書き戻さない）、
+// 語の記録の字数を見て端末の枠を分ける（学習の記録と合わせて js/storageGuard.js SHARED_BUDGET 字まで）
+useWordStatsReader(getWordStats, wordStatsChars);
 
 // 簡易SRS: 連続ノーミス正解数 → 次の復習までの日数
 // 1回→1日後、3連続→3日後、10連続→30日後（それ以上は30日固定）。表は js/mastery.js の SRS_STEPS の 1 か所（習熟度の S2 も同じ表を読む）

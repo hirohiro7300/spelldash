@@ -5,7 +5,7 @@
 process.env.TZ = "Asia/Tokyo";
 
 import { isDeepStrictEqual } from "util";
-import { computeRetention, dayDiff, shiftDay, localDay, WINDOW_7, WINDOW_30 } from "../js/retentionCalc.js";
+import { computeRetention, dayDiff, shiftDay, localDay, median, WINDOW_7, WINDOW_30 } from "../js/retentionCalc.js";
 import { noteFirstRecall, noteAnswer, getRetentionRecords } from "../js/retentionLog.js";
 import { touchStudyTime, getStudySecondsByDay, resetStudyTimeClock } from "../js/studyTime.js";
 
@@ -57,6 +57,8 @@ eq("localDay: 0:30 はその日（UTC では前日）", localDay(at(T0, 0, 30)),
 eq("localDay: 23:30 はその日", localDay(at(T0, 23, 30)), T0);
 eq("localDay: ISO 文字列も同じ", localDay(iso(T0, 0)), T0);
 eq("localDay: 読めない値は null", localDay("not a date"), null);
+// 中央値（js/masteryMeta.js の速さの箱と js/memoryCheck.js の本人の基準が使う共通の 1 つ。PR #172 のレビュー 7）
+eq("median: 奇数・偶数・数でない値は除く・空は NaN", [median([3, 1, 2]), median([4, 1, 3, 2]), median([5, NaN, "x", 1, null]), Number.isNaN(median([])), Number.isNaN(median(null))], [2, 2.5, 3, true, true]);
 {
   const early = { a: { f: at(T0, 0, 30).toISOString(), d: T0, n: 0 } };
   const late = { a: { f: at(T0, 23, 30).toISOString(), d: T0, n: 0 } };

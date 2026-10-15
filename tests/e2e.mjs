@@ -637,7 +637,8 @@ console.log("record quality:");
         ma.multi === false && ma.outside === false && ma.stalled === false && ma.firstSight === true && a.box.t1 === 1 && a.box.pc === 1, JSON.stringify(a));
     check("記録の質（書き手の記録）: 初めての答え・測れた語は sp に 1 件（語の記録とは別のキー spelldash_memory_words。word_stats には記録の質の欄を書かない）", a.sp === 1 && a.stray === 0, JSON.stringify(a));
 
-    // 1 打目の前に焦点を盤面の外（ヘッダーのボタン・リンク）へ移してから戻って打つ → outside。箱にも sp にも入れない（判定・段は今のまま）
+    // 1 打目の前に焦点をヘッダーのボタン・リンクへ移してから戻って打つ → 盤面の外にしない（focusOnBoard と同じ見方: 外は盤面の外の書ける欄・
+    // 開いている窓・メモの欄だけ。押したあとに焦点が残るボタン・リンク・summary は外にしない。PR #172 のレビュー 4）。箱にも sp にも入る
     let moved = false;
     const o = await measured(page, {
       before: async (p) => {
@@ -645,8 +646,20 @@ console.log("record quality:");
         await p.focus("#input");
       }
     });
-    check("記録の質: 1 打目の前に焦点をヘッダーへ移した語は outside（stalled なし）・箱に入れない", moved && o.m?.outside === true && o.m?.stalled === false && o.box.t1 === 0 && o.box.pc === 0, JSON.stringify({ moved, ...o }));
-    check("記録の質（書き手の記録）: 1 打目の前に盤面の外へ移った語は sp に入れない", o.sp === 0, JSON.stringify(o));
+    check("記録の質: 1 打目の前に焦点をヘッダーのボタン・リンクへ移して戻った語は盤面の外にしない（outside・stalled なし）・箱と sp に入る（focusOnBoard と同じ見方。PR #172 のレビュー 4）", moved && o.m?.outside === false && o.m?.stalled === false && o.box.t1 === 1 && o.box.pc === 1 && o.sp === 1, JSON.stringify({ moved, ...o }));
+    // 1 打目の前にヘッダーのログインの欄（盤面の外の書ける欄）へ焦点を移してから戻って打つ → outside（今どおり）。箱にも sp にも入れない（判定・段は今のまま）
+    let inField = false;
+    const lo = await measured(page, {
+      before: async (p) => {
+        await waitUntil(() => p.evaluate(() => !!document.getElementById("loginToggle")?.getClientRects().length), 3000);
+        await p.click("#loginToggle"); // 開くとログインの欄（#emailInput）に焦点が移る（js/auth.js）
+        inField = await waitUntil(() => p.evaluate(() => document.activeElement?.id === "emailInput"), 1000);
+        await p.evaluate(() => document.body.click()); // 外を押して閉じる（焦点は動かさない）
+        await p.focus("#input");
+      }
+    });
+    check("記録の質: 1 打目の前にヘッダーのログインの欄（盤面の外の書ける欄）へ焦点を移した語は outside（stalled なし）・箱に入れない", inField && lo.m?.outside === true && lo.m?.stalled === false && lo.box.t1 === 0 && lo.box.pc === 0, JSON.stringify({ inField, ...lo }));
+    check("記録の質（書き手の記録）: 1 打目の前に盤面の外の書ける欄へ移った語は sp に入れない", lo.sp === 0, JSON.stringify(lo));
 
     // 1 打目の後に 3 秒止まる → stalled・pcMax ≥ 3,000。箱には T1 だけ（pc は入れない）
     const s = await measured(page, { mid: (p) => p.waitForTimeout(3100) });
@@ -686,6 +699,45 @@ console.log("record quality:");
     const k = await measured(page, { box: "en.touch.study", keys: async (p, en) => { for (const ch of en) await p.click(`#osk .osk__key[data-key="${ch}"]`); } });
     check("記録の質: 専用キーボード（#osk）で打った語は input osk・outside なし・箱 en.touch.study に 1 件", k.m?.input === "osk" && k.m?.outside === false && k.m?.multi === false && k.box.t1 === 1, JSON.stringify(k));
     check("記録の質（書き手の記録）: 専用キーボードで打った語は sp に入る", k.sp === 1, JSON.stringify(k));
+    // 回の途中で「出題: … ・ 設定」（#setupToggle）を押して開き、もう一度押して閉じる → 焦点はボタンに残ったまま、専用キーボードで打つ（キーは盤面に届く）。
+    // 押したあとに焦点が残るボタンは盤面の外にしない（focusOnBoard と同じ見方。PR #172 のレビュー 4）: outside・stalled なし・箱 en.touch.study と sp に入る
+    let stayed = null;
+    const tg = await measured(page, {
+      box: "en.touch.study",
+      before: async (p) => {
+        await p.click("#setupToggle");
+        await p.click("#setupToggle");
+      },
+      keys: async (p, en) => {
+        for (const ch of en.slice(0, -1)) await p.click(`#osk .osk__key[data-key="${ch}"]`);
+        stayed = await p.evaluate(() => document.activeElement?.id ?? "");
+        await p.click(`#osk .osk__key[data-key="${en.at(-1)}"]`);
+      }
+    });
+    check("記録の質: 回の途中で #setupToggle を押して閉じ、焦点がボタンに残ったまま専用キーボードで打った語は outside・stalled なし・箱 en.touch.study と sp に入る（PR #172 のレビュー 4）",
+      stayed === "setupToggle" && tg.m?.outside === false && tg.m?.stalled === false && tg.box.t1 === 1 && tg.sp === 1, JSON.stringify({ stayed, ...tg }));
+    // 隣のキーの写し（js/game.js KEY_X の専用キーボードの並び）が #osk の実際の矩形と合う（PR #172 のレビュー 8。字の並びは js/keyboard.js の ROWS を読む）
+    const geo = await page.evaluate(async () => {
+      const { KEY_X } = await import("/js/game.js");
+      const rows = [0, 1, 2].map((r) => [...document.querySelectorAll(`#osk .osk__row--${r} .osk__key[data-key]`)].map((b) => b.dataset.key));
+      const rect = (k) => document.querySelector(`#osk .osk__key[data-key="${k}"]`).getBoundingClientRect();
+      const pitch = rect(rows[0][1]).left - rect(rows[0][0]).left; // キー 1 つ分（幅＋すき間）
+      const x0 = rect(rows[0][0]).left + rect(rows[0][0]).width / 2 - 0.5 * pitch; // 1 段目の左端（KEY_X の 0）
+      const pos = {};
+      const want = {};
+      rows.forEach((row, r) => row.forEach((k, i) => { const b = rect(k); pos[k] = (b.left + b.width / 2 - x0) / pitch; want[k] = KEY_X[1](r, i); }));
+      const pairs = (x) => {
+        const out = [];
+        rows.forEach((row, r) => row.forEach((a, i) => rows.forEach((row2, r2) => row2.forEach((b, j) => {
+          if (r === r2 ? Math.abs(i - j) === 1 : Math.abs(r - r2) === 1 && Math.abs(x[a] - x[b]) < 1) out.push(a + b);
+        }))));
+        return out.sort().join();
+      };
+      const dev = Math.max(...Object.keys(pos).map((k) => Math.abs(pos[k] - want[k])));
+      return { rows: rows.map((r) => r.join("")), dev: Math.round(dev * 1000) / 1000, same: pairs(pos) === pairs(want), pitch: Math.round(pitch * 10) / 10 };
+    }).catch((e) => ({ rows: [], error: String(e).slice(0, 200) }));
+    check("隣のキー（PR #172 のレビュー 8）: js/game.js の専用キーボードの並び（KEY_X）が #osk の実際の矩形と合う（字の中心のずれ 0.15 キー以内・隣り合う字の組が同じ・段は qwertyuiop／asdfghjkl／zxcvbnm）",
+      geo.rows.join("/") === "qwertyuiop/asdfghjkl/zxcvbnm" && geo.dev <= 0.15 && geo.same, JSON.stringify(geo));
     // OS の画面キーボード: 1 字ずつ 2 回 → 残りの 3 字を 1 回の input で → 正解の判定は今と同じ・input ime・multi。箱に入れない
     let score0 = null;
     let multi0 = null;
@@ -4770,7 +4822,8 @@ console.log("study (room):");
       runs.every((r) => !r.open.firstVisit && !r.open.welcome && r.open.start && r.kept0 && r.started && r.answered && r.kept1 && r.errors === 0), JSON.stringify(runs));
 
     // 記録の質（Batch 68）: 語ごとの欄の保存 spelldash_memory_words が壊れていても（JSON でない・形が違う）、出題・答え・記録は止まらない。
-    // 元の値は上書きする前に spelldash_memory_words_corrupt に写し（1 つだけ）、書く機会（ここでは pagehide と同じ flush）で v 1 に書き直す
+    // 元の値は上書きする前に spelldash_memory_words_corrupt に写し（1 つだけ。語の記録の退避と同じ包み {"at","size","head"}・512K 字まで・30 日で消す。
+    // PR #172 のレビュー 1）、書く機会（ここでは pagehide と同じ flush）で v 1 に書き直す
     {
       const memRuns = [];
       for (const raw of ['{"v":1,"w":{"english-apple":{"t":17', JSON.stringify([1, 2, 3])]) {
@@ -4791,12 +4844,14 @@ console.log("study (room):");
           try { saved = JSON.parse(localStorage.getItem("spelldash_memory_words")); } catch {}
           let answered = 0;
           try { answered = Object.values(JSON.parse(localStorage.getItem("spelldash_word_stats"))).filter((x) => x.lastRecallFailAt).length; } catch {}
-          return { kept: localStorage.getItem("spelldash_memory_words_corrupt"), v: saved?.v ?? null, n: Object.keys(saved?.w ?? {}).length, answered };
+          let kept = null;
+          try { kept = JSON.parse(localStorage.getItem("spelldash_memory_words_corrupt")); } catch {}
+          return { kept, v: saved?.v ?? null, n: Object.keys(saved?.w ?? {}).length, answered };
         });
-        memRuns.push({ started, word, ...st, kept: st.kept === raw, errors: page.errors.slice(0, 1) });
+        memRuns.push({ started, word, ...st, kept: st.kept?.head === raw && st.kept.size === raw.length && typeof st.kept.at === "string", errors: page.errors.slice(0, 1) });
         await page.close();
       }
-      check("壊れた記録の質の保存（Batch 68）: spelldash_memory_words が壊れていても（JSON でない・配列）書斎がエラー 0 で開き、出題・答え・記録が止まらず、元の値は spelldash_memory_words_corrupt に写して v 1 に書き直す",
+      check("壊れた記録の質の保存（Batch 68）: spelldash_memory_words が壊れていても（JSON でない・配列）書斎がエラー 0 で開き、出題・答え・記録が止まらず、元の値は spelldash_memory_words_corrupt に写して（日時つきの包み）v 1 に書き直す",
         memRuns.every((r) => r.started && r.answered >= 1 && r.kept && r.v === 1 && r.n >= 1 && r.errors.length === 0), JSON.stringify(memRuns));
     }
 
@@ -4889,6 +4944,36 @@ console.log("study (room):");
       S.saveWordStats(t);
       await tick();
       out.noCopy = { words: words(), errors: [...errors] };
+      // PR #172 のレビュー 1: 退避は無く、影のデータ（記録の質の spelldash_memory_words・spelldash_memory_check。消しても次に答えたとき作り直す）が枠を食っている:
+      // 影のデータを消して書き直す（答えの記録が先。js/storageGuard.js）。速さの箱 spelldash_mastery_meta は分類に使うので消さない
+      const MW = "spelldash_memory_words", MC = "spelldash_memory_check", MM = "spelldash_mastery_meta";
+      reset({ [K]: JSON.stringify({ "english-apple": { playCount: 1 } }), [MW]: JSON.stringify({ v: 1, w: { "english-x": { t: 1, pad: "m".repeat(300000) } } }), [MC]: JSON.stringify({ v: 1, schedV: 1 }), [MM]: JSON.stringify({ v: 1, speed: {} }) });
+      quota = 600000;
+      S = await load();
+      t = S.editWordStats();
+      t["english-zz"] = { playCount: 1, pad: "q".repeat(350000) };
+      S.saveWordStats(t);
+      await tick();
+      out.shadow = { words: words(), mw: localStorage.getItem(MW) === null, mc: localStorage.getItem(MC) === null, mm: localStorage.getItem(MM) !== null, errors: [...errors] };
+      // 送る語の印 spelldash_dirty_words（js/sync.js saveDirtyWords）も同じ優先: 枠が上限なら影のデータを消して書き直し、それでも書けなければ投げずに続ける
+      // （前は try/catch が無く、答えの書き手 recordPlay ごと投げていた。PR #172 のレビュー対応の反証で見つけた）
+      const D = "spelldash_dirty_words";
+      const used = () => { let u = 0; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); u += k.length + localStorage.getItem(k).length; } return u; };
+      reset({ [MW]: JSON.stringify({ v: 1, w: { "english-x": { t: 1, pad: "m".repeat(300000) } } }) });
+      localStorage.removeItem(D);
+      quota = used() + 20;
+      const Sy = await import(`/js/sync.js?case=${++n}`);
+      let threw = false;
+      try { Sy.markWordDirty("english-zz"); } catch { threw = true; }
+      out.dirty = { threw, saved: localStorage.getItem(D), mw: localStorage.getItem(MW) === null };
+      reset({});
+      localStorage.removeItem(D);
+      quota = used() + 5;
+      threw = false;
+      try { Sy.markWordDirty("english-yy"); } catch { threw = true; }
+      out.dirty2 = { threw, saved: localStorage.getItem(D) };
+      quota = Infinity;
+      for (const k of [MW, MC, MM]) localStorage.removeItem(k);
       // (a) 30 日たった退避は読み込みのときに消す。29 日はまだ残す（中身も日時も変えない）
       reset({ [C]: wrap(Date.now() - 31 * DAY, '{"english-apple":') });
       await load();
@@ -4927,6 +5012,10 @@ console.log("study (room):");
       return out;
     });
     await page.close();
+    check("PR #172 の 1: 退避が無くても、影のデータ（spelldash_memory_words・spelldash_memory_check）が枠を食っていれば消して word_stats を書き直す（答えの記録が先・誤りを知らせない・速さの箱は残す）",
+      JSON.stringify(r.shadow.words) === JSON.stringify(["english-apple", "english-zz"]) && r.shadow.mw && r.shadow.mc && r.shadow.mm && r.shadow.errors.length === 0, JSON.stringify(r.shadow));
+    check("PR #172 のレビュー対応: 送る語の印（spelldash_dirty_words）も枠が上限なら影のデータを消して書き直す。それでも書けなければ投げずに続ける（答えの書き手を止めない）",
+      r.dirty.threw === false && r.dirty.saved === '["english-zz"]' && r.dirty.mw && r.dirty2.threw === false && r.dirty2.saved === null, JSON.stringify({ dirty: r.dirty, dirty2: r.dirty2 }));
     check("PR #170 の 1: 退避の鍵があっても word_stats の書き込みは失敗しない（上限を超えたら退避を消して 1 回だけ書き直す・誤りを知らせない）。退避が無ければ書き直さず 1 回知らせる",
       JSON.stringify(r.retry.words) === JSON.stringify(["english-apple", "english-zz"]) && r.retry.corrupt && r.retry.errors.length === 0 &&
       JSON.stringify(r.noCopy.words) === JSON.stringify(["english-apple"]) && r.noCopy.errors.length === 1, JSON.stringify({ retry: r.retry, noCopy: r.noCopy }));
@@ -9495,6 +9584,47 @@ console.log("mastery writers:");
     check("記録の質: spelldash_memory_check は 9 答えでは書かず、10 答え目の答えのタスクの中でも書かず、その後（手が空いたとき）に 1 回書く（v 1・schedV 1・見込みの集計 cal と見本 len・input）", r3.writes9 === 0 && r3.checkInTask === 0 && r3.writes10 === 1 && r3.check?.v === 1 && r3.check.schedV === 1 && Array.isArray(r3.check.cal?.n) && r3.check.cal.n.length === 7 && r3.check.input?.kbd?.n >= 1 && r3.check.input.kbd.multi === 1, JSON.stringify({ w9: r3.writes9, inTask: r3.checkInTask, w10: r3.writes10, v: r3.check?.v, n: r3.check?.cal?.n, kbd: r3.check?.input?.kbd && { n: r3.check.input.kbd.n, multi: r3.check.input.kbd.multi } }));
     check("記録の質: 書き手の直呼び 10 答えで spelldash_mastery_meta は 1 回だけ（10 答えごと。memory_check を足しても増えない）・schema_version \"6\"・エラー 0", (await metaWrites(p3)) === 1 && (await p3.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "6" && p3.errors.length === 0, JSON.stringify({ meta: await metaWrites(p3), errors: p3.errors.slice(0, 1) }));
     await p3.close();
+  }
+
+  // ---- 記録の質（PR #172 のレビュー 2）: 10 答えに届く前にタブが裏に回った（visibilitychange で hidden）ら、その場で書く。スマホは裏のタブを
+  // pagehide なしで捨てることが多く、書かずに捨てられると次の答えが「見ていない答え」になって影の S を作り直し、速さの控えも捨てる ----
+  {
+    const ids = ["my-river", "my-cloud", "my-stone", "my-bread", "my-glass", "my-chair", "my-horse"];
+    const p7 = await newPage({ storage: seed(Object.fromEntries(ids.map((id) => [id, okStat(4, 3 * DAY, 0, { cleanCorrectStreak: 2 })]))) });
+    await p7.addInitScript(COUNT_META);
+    await p7.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await p7.waitForTimeout(300);
+    const r7 = await p7.evaluate(async (list) => {
+      const s = await import("/js/stats.js");
+      const idle = () => new Promise((res) => requestIdleCallback(() => setTimeout(res, 0)));
+      const keys = ["spelldash_memory_words", "spelldash_memory_check", "spelldash_mastery_meta"];
+      const m = { t1: 450, pcMax: 160, qLen: 1, aLen: 5, input: "kbd", multi: false, outside: false, stalled: false, firstSight: false };
+      for (const id of list) {
+        s.recordCorrect(id, true);
+        s.recordRecallSuccess(id, { clean: true, speed: "normal" }, m); // 3 日あけた正解（7 答え。10 答えに届かない）
+        await new Promise((res) => setTimeout(res, 0));
+      }
+      await idle();
+      const before = keys.map((k) => localStorage.getItem(k) !== null);
+      const metaBefore = window.__metaWrites;
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.dispatchEvent(new Event("visibilitychange")); // pagehide は起こさない（裏に回ったまま捨てられる）
+      const words = JSON.parse(localStorage.getItem("spelldash_memory_words") || "null");
+      const stats = JSON.parse(localStorage.getItem("spelldash_word_stats"));
+      return {
+        before,
+        after: keys.map((k) => localStorage.getItem(k) !== null),
+        ids: Object.keys(words?.w ?? {}).sort(),
+        tOk: list.every((id) => words?.w?.[id]?.t === Date.parse(stats[id].lastRecallSuccessAt)),
+        sp: list.filter((id) => words?.w?.[id]?.sp?.length === 1).length,
+        metaWrites: window.__metaWrites - metaBefore
+      };
+    }, ids);
+    check("記録の質（PR #172 のレビュー 2）: 7 答え（10 答えに届かない）では書かず、裏に回った（visibilitychange → hidden）その場で spelldash_memory_words・spelldash_memory_check・spelldash_mastery_meta を書く（7 語の欄・t は答えの時刻・sp）",
+      r7.before.every((b) => b === false) && r7.after.every((b) => b === true) && r7.ids.join() === [...ids].sort().join() && r7.tOk && r7.sp === 7 && r7.metaWrites === 1 && p7.errors.length === 0,
+      JSON.stringify({ ...r7, errors: p7.errors.slice(0, 1) }));
+    await p7.close();
   }
 
   // ---- §9.1-7 タイピングの 2 ページは mastery.js・masteryMeta.js を読まない（記録の質の memoryModel.js・memoryCheck.js・memoryWords.js も） ----

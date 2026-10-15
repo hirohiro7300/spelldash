@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.js";
+import { CORRUPT_KEYS, SHADOW_KEYS, dropKeys, isQuotaError } from "./storageGuard.js";
 import { getWordStats, saveWordStats, getBestScore, saveBestScore } from "./storage.js";
 import { getTotalXp, getLevelState, getStreak } from "./level.js";
 import {
@@ -50,8 +51,19 @@ function getDirtyWords() {
   }
 }
 
+// 送る語の印。枠が上限のときは、学習の記録と同じ優先（退避 → 影のデータの順に消して書き直す。js/storageGuard.js）。
+// それでも書けなければ投げずに続ける（答えの記録は書けている。印が欠けた語は次に答えたときに付く）
 function saveDirtyWords(set) {
-  localStorage.setItem(DIRTY_KEY, JSON.stringify([...set]));
+  const text = JSON.stringify([...set]);
+  for (const drop of [null, CORRUPT_KEYS, SHADOW_KEYS]) {
+    if (drop && !dropKeys(drop)) continue;
+    try {
+      localStorage.setItem(DIRTY_KEY, text);
+      return;
+    } catch (error) {
+      if (!isQuotaError(error)) return;
+    }
+  }
 }
 
 export function markWordDirty(wordId) {

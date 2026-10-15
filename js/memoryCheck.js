@@ -22,12 +22,17 @@
 // }
 //
 // 書き方は js/masteryMeta.js と同じ: メモリーに持ち、変わったときだけ、10 答えごと（tickMemoryCheck）・回の終わり（flushMasteryMeta から）・
-// pagehide で 1 回書く。10 答えごとと回の終わりは答えのタスクの中では書かず、手が空いたときに書く（scheduleMemoryCheckFlush。入力完了から次の
-// 問題までに読み直し・JSON 化を入れない。pagehide はその場で）。書く直前に保存を読み直し、このタブで足した分（delta）だけを足す。
-// 読み書きはすべて try/catch（失敗しても学習は続く）。
-// 20 KB を超えるときは古い見本から捨てる（fitSize）。復元と端末の記録を消した後は js/backup.js が forgetMemoryCheck でメモリーを捨てる。
+// pagehide・裏に回ったとき（visibilitychange で hidden。PR #172 のレビュー 2）で 1 回書く。10 答えごとと回の終わりは答えのタスクの中では書かず、
+// 手が空いたときに書く（scheduleMemoryCheckFlush。入力完了から次の問題までに読み直し・JSON 化を入れない。pagehide と裏に回ったときはその場で）。
+// 書く直前に保存を読み直し、このタブで足した分（delta）だけを足す。読み書きはすべて try/catch（失敗しても学習は続く）。
+// 20 KB を超えるときは数の少ない集計の枡から捨てる（見本は本人の基準の 20 件を残す。fitSize）。復元と端末の記録を消した後は js/backup.js が
+// forgetMemoryCheck でメモリーを捨てる。学習の記録が上限で書けないときは js/storage.js がこの鍵を消す（影のデータ。js/storageGuard.js）。
+// 見込みの帯・損失・影の通りは js/memoryModel.js、日の帯・中央値・ローカルの日付は js/retentionCalc.js（js/masteryMeta.js と同じもの）を使う
 
-const KEY = "spelldash_memory_check";
+import { VARIANTS, BASE_VARIANT, predBand, logLoss } from "./memoryModel.js";
+import { gapBand, median, localDay } from "./retentionCalc.js";
+import { MEMORY_CHECK_KEY as KEY } from "./storageGuard.js";
+
 export const SCHED_V = 1;
 export const MAX_BYTES = 20000; // 20 KB 以下
 export const KEEP = 40; // 見本は直近 40 件
@@ -36,8 +41,7 @@ export const T1_MIN = 200; // 先打ちの疑い（測らない。js/masteryMeta
 export const T1_MAX = 30000; // 30 秒を超える答えは語ごとの記録・見本に入れない
 export const T1_CAP = 7000; // 見本に入れるとき 7,000ms で丸める（js/masteryMeta.js の箱と同じ）
 const ANSWERS_PER_FLUSH = 10;
-const NV = 7; // 影の通りの数（js/memoryModel.js VARIANTS）
-const BASE = 1; // 損失の差の基準の通り（G0 1.5）
+const NV = VARIANTS.length; // 影の通りの数（7）
 const BANDS_PRED = 5;
 const BUCKETS = 64;
 export const PATHS = ["kbd", "osk", "ime"];
@@ -54,28 +58,11 @@ const num = (v) => (Number.isFinite(v) ? v : 0);
 const r3 = (x) => Math.round(x * 1000) / 1000;
 const triple = (v) => (Array.isArray(v) && v.length === 3 && v.every((n) => Number.isInteger(n) && n >= 0) ? [v[0], v[1], v[2]] : null);
 
-export function median(list) {
-  const a = nums(list).sort((x, y) => x - y);
-  if (a.length === 0) return NaN;
-  const mid = a.length >> 1;
-  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
-}
-
 // 下から q の値（最も近い順位）
 export function quantile(list, q) {
   const a = nums(list).sort((x, y) => x - y);
   if (a.length === 0) return NaN;
   return a[Math.min(a.length - 1, Math.max(0, Math.ceil(q * a.length) - 1))];
-}
-
-// gap（整数日）の帯（js/masteryMeta.js gapBand と同じ帯）。1 未満・数でなければ null
-export function gapBand(gap) {
-  if (!Number.isFinite(gap) || gap < 1) return null;
-  if (gap === 1) return "1";
-  if (gap <= 5) return "2-5";
-  if (gap <= 13) return "6-13";
-  if (gap <= 29) return "14-29";
-  return "30+";
 }
 
 // 問いの字数の帯（品詞の札を除いた字数）: 0 = 2 以下・1 = 3〜4・2 = 5〜7・3 = 8 以上。数でなければ null
@@ -177,8 +164,7 @@ function load() {
 }
 
 function startCheck(m, nowMs) {
-  const d = new Date(nowMs);
-  const day = Number.isNaN(d.getTime()) ? undefined : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const day = localDay(new Date(nowMs)) ?? undefined;
   if (!m.since) m.since = day;
   if (!delta.since) delta.since = day;
 }
@@ -201,17 +187,18 @@ function bumpCell(table, key, outcome) {
   cell[i]++;
 }
 
+// 見込みの帯と対数損失は js/memoryModel.js（predBand・logLoss）。損失の差の基準は BASE_VARIANT（G0 1.5・速さなし）
 function addCal(cal, preds, outcome, bucket) {
   const ok = outcome === "o";
   const oi = OUTCOMES.indexOf(outcome);
-  const loss = preds.map((r) => (r === null ? null : -Math.log(Math.min(0.999, Math.max(0.001, ok ? r : 1 - r)))));
+  const loss = preds.map((r) => (r === null ? null : logLoss(r, ok)));
   for (let i = 0; i < NV; i++) {
     const r = preds[i];
     if (r === null) continue;
     cal.n[i]++;
     cal.ll[i] = r3(cal.ll[i] + loss[i]);
     if (outcome !== "xt") cal.lm[i] = r3(cal.lm[i] + loss[i]);
-    const band = r >= 0.95 ? 0 : r >= 0.9 ? 1 : r >= 0.85 ? 2 : r >= 0.8 ? 3 : 4;
+    const band = predBand(r);
     cal.b[i][band][oi]++;
     cal.b[i][band][3] = r3(cal.b[i][band][3] + r);
   }
@@ -219,8 +206,8 @@ function addCal(cal, preds, outcome, bucket) {
     const row = cal.w[bucket];
     let k = 0;
     for (let i = 0; i < NV; i++) {
-      if (i === BASE) continue;
-      row[k] = r3(row[k] + loss[i] - loss[BASE]);
+      if (i === BASE_VARIANT) continue;
+      row[k] = r3(row[k] + loss[i] - loss[BASE_VARIANT]);
       k++;
     }
     row[NV - 1]++;
@@ -431,9 +418,24 @@ function mergeDelta(base, d) {
   return m;
 }
 
-// 20 KB を超えるときは、見本（直近 40 件の T1）を古い方から 10 件ずつ捨てる。見本が尽きても超えるなら、件数の少ない集計の枡から捨てる
+// 20 KB を超えるときの捨て方（PR #172 のレビュー 3。見本が本人の基準の 20 件〔MIN_BASIS〕を割ると speedBasis が null を返し続け、
+// sp の q・speedNext の p／t の分類がずっと「不明」になるので、見本は最後に削る）:
+//   1. 集計の枡（speedNext・xNext・capHit）を、答えの数（○・×記憶・×1 打ミスの和）の少ない順に、初めの枡の数の 1 割ずつ捨てる
+//      （同じ数なら先にできた枡から。数の少ない枡ほど読める差が小さい。次に数えるときは 0 から足し直す）
+//   2. 枡が尽きても超えるなら、見本（直近 40 件の T1）を古い方から 10 件ずつ捨てる。20 件（MIN_BASIS）で収まればそこで止める
+//   3. それでも超えるなら 20 件より下へ（10・0）。見込みの集計 cal と since は捨てない（大きさが決まっている: 1 年で約 4,000 字）
+// 1 年の模擬は 300 語で 16,451 字（枡 255）、2,000 語で 17,792 字（枡 288）で、どちらも何も捨てない。枡が 600 近くになる（2 年を超える）と効く
 export function fitSize(m, max = MAX_BYTES) {
   let json = JSON.stringify(m);
+  if (json.length <= max) return json;
+  const cells = [];
+  for (const key of ["speedNext", "xNext", "capHit"]) for (const [k, v] of Object.entries(m[key])) cells.push([key, k, v[0] + v[1] + v[2]]);
+  cells.sort((x, y) => x[2] - y[2]); // 安定な並べ替え（同じ数なら先にできた順）
+  const step = Math.max(1, Math.ceil(cells.length / 10));
+  for (let i = 0; json.length > max && i < cells.length; i += step) {
+    for (const [key, k] of cells.slice(i, i + step)) delete m[key][k];
+    json = JSON.stringify(m);
+  }
   const lists = () => {
     const out = [];
     for (const l of Object.values(m.len)) for (const k of ["q", "a"]) out.push(...l[k]);
@@ -443,14 +445,6 @@ export function fitSize(m, max = MAX_BYTES) {
   };
   for (let keep = KEEP - 10; json.length > max && keep >= 0; keep -= 10) {
     for (const list of lists()) if (list.length > keep) list.splice(0, list.length - keep);
-    json = JSON.stringify(m);
-  }
-  while (json.length > max) {
-    const cells = [];
-    for (const key of ["speedNext", "xNext", "capHit"]) for (const [k, v] of Object.entries(m[key])) cells.push([key, k, v[0] + v[1] + v[2]]);
-    if (!cells.length) break;
-    cells.sort((x, y) => x[2] - y[2]);
-    for (const [key, k] of cells.slice(0, Math.max(1, Math.ceil(cells.length / 10)))) delete m[key][k];
     json = JSON.stringify(m);
   }
   return json;
@@ -505,4 +499,10 @@ export function forgetMemoryCheck() {
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("pagehide", () => flushMemoryCheck());
+  // 裏に回った: その場で書く（裏のタブは pagehide なしで捨てられうる。PR #172 のレビュー 2）
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushMemoryCheck();
+    });
+  }
 }

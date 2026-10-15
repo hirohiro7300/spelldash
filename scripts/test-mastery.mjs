@@ -37,12 +37,11 @@ import {
   daysBetween,
   daysSinceAnswer
 } from "../js/mastery.js";
-import { localDay, dayDiff } from "../js/retentionCalc.js";
+import { localDay, dayDiff, gapBand } from "../js/retentionCalc.js"; // gap の帯は js/masteryMeta.js と js/memoryCheck.js が同じものを使う（PR #172 のレビュー 7）
 import {
   BOX_KEYS,
   COLD_FAST_MS,
   boxKey,
-  gapBand,
   classifySpeed,
   noteSpeedSample,
   getSpeedBox,
