@@ -16,25 +16,34 @@ export function altKey(token) {
     .trim();
 }
 
-// en → 別解の集合。全カードの訳を見て、同じ訳を持つ語どうしを結ぶ
+// en → 別解の集合。全カードの訳を見て、同じ訳を持つ語どうしを結ぶ。
+// ただし品詞をまたぐ組は結ばない（Batch 69）: その訳を持つカードの品詞の札（pos）が両方にあって重ならない
+// （different〔形〕と differ〔動〕の「異なる」、repeatedly〔副〕と repetition〔名〕の「繰り返し」）なら、別の語を問う問題なので別解にしない。
+// 札は訳ごとに見る（ship の「船」は名・「送る」は動）。札の無いカード（基本カテゴリ）しか無い語は今までどおり結ぶ
 export function buildAlternativeIndex(words) {
-  const byMeaning = new Map();
+  const byMeaning = new Map(); // 訳 → (en → その訳を持つカードの品詞の札の集まり)
   for (const w of words) {
     if (!w?.en || !w.ja || w.q || w.write || w.blank || w.calc || w.school) continue;
     if (!/^[a-z][a-z-]+$/.test(w.en)) continue;
     for (const token of jaTokens(w.ja)) {
       const key = altKey(token);
       if (key.length < 2) continue; // 1文字の訳は偶然ぶつかるので使わない
-      if (!byMeaning.has(key)) byMeaning.set(key, new Set());
-      byMeaning.get(key).add(w.en);
+      if (!byMeaning.has(key)) byMeaning.set(key, new Map());
+      const ens = byMeaning.get(key);
+      if (!ens.has(w.en)) ens.set(w.en, new Set());
+      if (w.pos) ens.get(w.en).add(w.pos);
     }
   }
+  const crossesPos = (a, b) => a.size > 0 && b.size > 0 && ![...a].some((p) => b.has(p));
   const index = new Map();
   for (const ens of byMeaning.values()) {
     if (ens.size < 2) continue;
-    for (const en of ens) {
-      if (!index.has(en)) index.set(en, new Set());
-      for (const other of ens) if (other !== en) index.get(en).add(other);
+    for (const [en, pos] of ens) {
+      for (const [other, otherPos] of ens) {
+        if (other === en || crossesPos(pos, otherPos)) continue;
+        if (!index.has(en)) index.set(en, new Set());
+        index.get(en).add(other);
+      }
     }
   }
   return index;

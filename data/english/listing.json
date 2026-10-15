@@ -63,7 +63,6 @@
       "answer": "ランディングページ",
       "accept": [
         "lp",
-        "LP",
         "着地ページ"
       ],
       "ja": "広告を押した先のページ。理解と問い合わせが起きる場所",
@@ -84,7 +83,6 @@
         "といあわせ",
         "リード",
         "lead",
-        "Lead",
         "問合せ",
         "入電"
       ],
@@ -104,7 +102,6 @@
       "answer": "コールセンター",
       "accept": [
         "CC",
-        "cc",
         "コルセン"
       ],
       "ja": "架電・接触・ヒアリングで案件を処理する現場",
@@ -310,7 +307,6 @@
       "kind": "concept",
       "answer": "AA",
       "accept": [
-        "aa",
         "オートオークション",
         "オークション"
       ],
@@ -774,7 +770,6 @@
       "kind": "concept",
       "answer": "MCC",
       "accept": [
-        "mcc",
         "管理アカウント"
       ],
       "ja": "複数の広告アカウントを管理する上位の器（管理アカウント）",
@@ -861,8 +856,7 @@
         "検索クエリ",
         "けんさくごく",
         "クエリ",
-        "query",
-        "Query"
+        "query"
       ],
       "ja": "ユーザーが実際に検索した語句（Query）",
       "q": "広告主が登録した語句ではなく、ユーザーが実際に検索窓に打ち込んだ語句",
@@ -880,7 +874,6 @@
       "kind": "concept",
       "answer": "RSA",
       "accept": [
-        "rsa",
         "レスポンシブ検索広告"
       ],
       "ja": "複数の見出し・説明文を組み合わせて配信する検索広告",
@@ -938,7 +931,6 @@
       "answer": "デマンドジェネレーション",
       "accept": [
         "Demand Gen",
-        "demand gen",
         "デマンドジェン"
       ],
       "ja": "YouTube・Discover等で需要喚起・再接触するキャンペーン群",
@@ -957,10 +949,8 @@
       "answer": "P-MAX",
       "accept": [
         "pmax",
-        "p-max",
         "Performance Max",
-        "パフォーマンスマックス",
-        "PMAX"
+        "パフォーマンスマックス"
       ],
       "ja": "Googleの複数面を横断し目標に基づき自動最適化するキャンペーン",
       "q": "検索・YouTube・ディスプレイなどGoogleの面をまたいで、設定した目標に向けて自動で配信を最適化するキャンペーン",
@@ -979,7 +969,6 @@
       "answer": "表示回数",
       "accept": [
         "imp",
-        "Imp",
         "impressions",
         "ひょうじかいすう",
         "インプレッション",
@@ -1000,7 +989,6 @@
       "kind": "concept",
       "answer": "CTR",
       "accept": [
-        "ctr",
         "クリック率"
       ],
       "ja": "クリック率 ＝ Click ÷ Imp",
@@ -1020,7 +1008,6 @@
       "kind": "concept",
       "answer": "CPC",
       "accept": [
-        "cpc",
         "クリック単価"
       ],
       "ja": "クリック単価 ＝ Cost ÷ Click",
@@ -1040,7 +1027,6 @@
       "kind": "concept",
       "answer": "CV",
       "accept": [
-        "cv",
         "コンバージョン",
         "conversion"
       ],
@@ -1061,9 +1047,7 @@
       "kind": "concept",
       "answer": "CVR",
       "accept": [
-        "cvr",
         "cv率",
-        "CV率",
         "コンバージョン率"
       ],
       "ja": "CV率 ＝ CV ÷ Click",
@@ -1083,9 +1067,7 @@
       "kind": "concept",
       "answer": "CPA",
       "accept": [
-        "cpa",
         "cv単価",
-        "CV単価",
         "獲得単価"
       ],
       "ja": "CV単価 ＝ Cost ÷ CV ＝ CPC ÷ CVR",
@@ -1106,7 +1088,6 @@
       "answer": "コンバージョン値",
       "accept": [
         "cv値",
-        "CV値",
         "CV Value",
         "コンバージョン価値",
         "こんばーじょんち"
@@ -1127,7 +1108,6 @@
       "kind": "concept",
       "answer": "ROAS",
       "accept": [
-        "roas",
         "広告費用対効果"
       ],
       "ja": "広告費用対効果 ＝ CV Value ÷ Cost",
@@ -1147,7 +1127,6 @@
       "kind": "concept",
       "answer": "IS",
       "accept": [
-        "is",
         "インプレッションシェア",
         "impression share",
         "表示シェア"
@@ -1168,7 +1147,6 @@
       "kind": "concept",
       "answer": "損失IS（予算）",
       "accept": [
-        "損失is（予算）",
         "予算による損失IS",
         "Lost IS budget",
         "損失IS 予算",
@@ -1188,7 +1166,6 @@
       "kind": "concept",
       "answer": "損失IS（ランク）",
       "accept": [
-        "損失is（ランク）",
         "ランクによる損失IS",
         "Lost IS rank",
         "損失IS ランク",
@@ -1229,9 +1206,7 @@
       "kind": "concept",
       "answer": "CPC÷CVR",
       "accept": [
-        "cpc÷cvr",
         "cpc/cvr",
-        "CPC/CVR",
         "CPC ÷ CVR"
       ],
       "ja": "CPAの分解式。CPA悪化の原因を分ける",
@@ -1268,9 +1243,7 @@
       "kind": "concept",
       "answer": "tCPA",
       "accept": [
-        "tcpa",
         "目標cpa",
-        "目標CPA",
         "target cpa"
       ],
       "ja": "目標とする1CVあたりコストを与えるスマート自動入札",
@@ -1289,9 +1262,7 @@
       "kind": "concept",
       "answer": "tROAS",
       "accept": [
-        "troas",
         "目標roas",
-        "目標ROAS",
         "target roas"
       ],
       "ja": "目標とするCV値÷広告費の比率を与えるスマート自動入札",
@@ -1312,7 +1283,6 @@
       "accept": [
         "CV数の最大化",
         "cv最大化",
-        "CV最大化",
         "Maximize Conversions",
         "コンバージョン最大化",
         "こんばーじょんすうのさいだいか"
@@ -1333,7 +1303,6 @@
       "accept": [
         "CV値の最大化",
         "cv値最大化",
-        "CV値最大化",
         "Maximize Conversion Value",
         "こんばーじょんちのさいだいか"
       ],
@@ -1370,7 +1339,6 @@
       "answer": "個別クリック単価",
       "accept": [
         "個別cpc",
-        "個別CPC",
         "Manual CPC",
         "手動入札",
         "手動cpc",
@@ -1469,7 +1437,6 @@
       "answer": "完全一致",
       "accept": [
         "exact",
-        "Exact",
         "完全一致キーワード",
         "かんぜんいっち"
       ],
@@ -1489,7 +1456,6 @@
       "answer": "フレーズ一致",
       "accept": [
         "phrase",
-        "Phrase",
         "ふれーずいっち",
         "フレーズ"
       ],
@@ -1510,7 +1476,6 @@
       "accept": [
         "部分一致",
         "broad",
-        "Broad",
         "インテント マッチ"
       ],
       "ja": "キーワードに関連する検索へ広く接続する（旧・部分一致）",
@@ -1568,7 +1533,6 @@
       "answer": "AI Max",
       "accept": [
         "aimax",
-        "ai max",
         "AI 最大化設定",
         "AI最大化設定",
         "エーアイマックス"
@@ -1722,7 +1686,6 @@
       "accept": [
         "Quality Score",
         "qs",
-        "QS",
         "ひんしつすこあ"
       ],
       "ja": "キーワード単位の診断指標（推定CTR・関連性・LP利便性、1〜10）",
@@ -1780,7 +1743,6 @@
       "answer": "コンバージョンアクション",
       "accept": [
         "cvアクション",
-        "CVアクション",
         "Conversion Action"
       ],
       "ja": "フォーム送信・電話・成約など個別に定義した成果イベント",
@@ -1798,7 +1760,6 @@
       "answer": "コンバージョン目標",
       "accept": [
         "cv目標",
-        "CV目標",
         "Conversion Goal",
         "こんばーじょんもくひょう"
       ],
@@ -1819,8 +1780,7 @@
         "メイン",
         "プライマリ",
         "Primary",
-        "メインcv",
-        "メインCV"
+        "メインcv"
       ],
       "ja": "原則として入札最適化の対象に使うCVアクション",
       "q": "入札の最適化に使うと決めたCVアクション。ここに何を置くかで媒体が追う目的が変わる",
@@ -1839,8 +1799,7 @@
         "サブ",
         "セカンダリ",
         "Secondary",
-        "サブcv",
-        "サブCV"
+        "サブcv"
       ],
       "ja": "観測には使うが入札の主要最適化対象にしないCVアクション",
       "q": "数は見たいが、入札の最適化には使わないと決めたCVアクション",
@@ -1857,7 +1816,6 @@
       "answer": "カウント方法",
       "accept": [
         "count",
-        "Count",
         "かうんとほうほう",
         "カウント",
         "One/Every",
@@ -1881,8 +1839,7 @@
         "こんばーじょんきかん",
         "コンバージョンウィンドウ",
         "Conversion Window",
-        "cv期間",
-        "CV期間"
+        "cv期間"
       ],
       "ja": "広告接触後、何日までを成果として計測対象にするか",
       "q": "広告をクリックしてから何日以内に起きた成果までをCVとして数えるかの設定",
@@ -1917,7 +1874,6 @@
       "kind": "concept",
       "answer": "GCLID",
       "accept": [
-        "gclid",
         "Google Click ID"
       ],
       "ja": "広告クリックを識別するID。クリックとCRM上の後段成果を結ぶ鍵",
@@ -1937,7 +1893,6 @@
       "answer": "オフラインコンバージョン",
       "accept": [
         "オフラインcv",
-        "オフラインCV",
         "Offline Conversion",
         "オフラインコンバージョンインポート"
       ],
@@ -1957,7 +1912,6 @@
       "accept": [
         "拡張コンバージョン",
         "拡張cv",
-        "拡張CV",
         "Enhanced Conversions",
         "りーどのかくちょうこんばーじょん"
       ],
@@ -1975,7 +1929,6 @@
       "kind": "concept",
       "answer": "CRM",
       "accept": [
-        "crm",
         "顧客管理システム"
       ],
       "ja": "顧客・リード・商談を管理するシステム。後段情報の主要保管場所",
@@ -1994,7 +1947,6 @@
       "kind": "concept",
       "answer": "Data Manager",
       "accept": [
-        "data manager",
         "データマネージャー",
         "Data Manager API"
       ],
@@ -2129,9 +2081,7 @@
       "kind": "concept",
       "answer": "許容CPA",
       "accept": [
-        "許容cpa",
         "上限CPA",
-        "上限cpa",
         "目標上限",
         "きょようCPA"
       ],
@@ -2149,7 +2099,6 @@
       "kind": "concept",
       "answer": "平均CPA",
       "accept": [
-        "平均cpa",
         "平均獲得単価",
         "へいきんCPA"
       ],
@@ -2167,7 +2116,6 @@
       "kind": "concept",
       "answer": "限界CPA",
       "accept": [
-        "限界cpa",
         "げんかいCPA",
         "マージナルCPA",
         "追加1件のコスト"

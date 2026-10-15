@@ -822,6 +822,59 @@ console.log("strict miss:");
   await page.close();
 }
 
+// 英字の答えの大小文字（Batch 69 T4。js/wordData.js answerLabel）: 判定は今と同じく小文字で比べ（cu と打っても正解）、
+// 答えの表示（1 ミスの後のスペル・完了パネルの語チップ）は元の綴り（Cu）。中学理科（jsci1）の Cu・Mg を続きから出す（セットは 2 語）
+{
+  const todayT4 = ymd(new Date());
+  const js1T4 = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jsci1.json"), "utf8")).words;
+  const cuT4 = js1T4.find((w) => w.id === "concept-js1-cu");
+  const mgT4 = js1T4.find((w) => w.id === "concept-js1-mg");
+  const page = await newPage({ storage: {
+    spelldash_packs: JSON.stringify(["jsci1"]), spelldash_category: "jsci1", spelldash_placement: "done", spelldash_level_boost: "2",
+    spelldash_after_correct: "quick", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_streak: JSON.stringify({ current: 1, best: 1, last: todayT4 }),
+    spelldash_session: JSON.stringify({ category: "jsci1", focus: "", queue: [cuT4.id, mgT4.id], recalled: [], failed: [], newCount: 0, reviewCount: 0, setSize: 2, date: todayT4, savedAt: new Date().toISOString() })
+  } });
+  await page.goto(BASE + "/index.html?hintms=600000", { waitUntil: "networkidle" });
+  await page.waitForTimeout(700);
+  await page.press("#input", "Enter"); // 道のスタート（続きから）
+  const jaT4 = async () => (await page.textContent("#japanese")).trim();
+  await waitUntil(async () => (await jaT4()) === cuT4.q, 3000);
+  await page.press("#input", "c");
+  await page.press("#input", "a"); // 2 打目で 1 ミス → 答えのスペルを見せる
+  await page.waitForTimeout(250);
+  const shownT4 = (await page.textContent("#word")).trim();
+  check("大小文字 (T4): Cu の問いで 1 ミスの後に見せる答えは元の綴り Cu（cu ではない）", shownT4 === "Cu" && (await page.textContent("#recallFail")).trim() === "1", shownT4);
+  for (const ch of "cu") await page.press("#input", ch); // 小文字で打ち直しても通る（判定は今と同じ）
+  const nextT4 = await waitUntil(async () => (await jaT4()) === mgT4.q, 3000);
+  check("大小文字 (T4): 見せた答えを cu（小文字）で打ち直すと通って次の語へ", nextT4, await jaT4());
+  const scoreT4 = Number((await page.textContent("#score")).trim());
+  for (const ch of "mg") await page.press("#input", ch);
+  await waitUntil(async () => Number((await page.textContent("#score")).trim()) === scoreT4 + 1, 2000);
+  const msgT4 = (await page.textContent("#message")).trim();
+  check("大小文字 (T4): Mg の問いで mg と打つと Enter なしで正解（判定は小文字で比べる）・結果の行の語は Mg",
+    Number((await page.textContent("#score")).trim()) === scoreT4 + 1 && (await page.textContent("#recallFail")).trim() === "1" && msgT4.includes("Mg") && !msgT4.includes("mg"), msgT4);
+  check("大小文字 (T4) でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+  // 完了パネル: 昨日思い出せなかった Cu を今日 cu で思い出す（1 語のセット）→ 「覚えた！ Cu」・語チップも Cu
+  const yT4 = new Date(Date.now() - 86400000);
+  const pageB = await newPage({ storage: {
+    spelldash_packs: JSON.stringify(["jsci1"]), spelldash_category: "jsci1", spelldash_placement: "done", spelldash_level_boost: "2",
+    spelldash_after_correct: "quick", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_streak: JSON.stringify({ current: 1, best: 1, last: todayT4 }),
+    spelldash_word_stats: JSON.stringify({ [cuT4.id]: { playCount: 1, correctCount: 0, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 0, mastered: false, lastPlayed: yT4.toISOString(), nextReviewAt: yT4.toISOString(), lastRecallFailAt: yT4.toISOString(), lastRecallSuccessAt: null, history: [{ d: ymd(yT4), r: "x" }] } }),
+    spelldash_session: JSON.stringify({ category: "jsci1", focus: "", queue: [cuT4.id], recalled: [], failed: [], newCount: 0, reviewCount: 1, setSize: 1, date: todayT4, savedAt: new Date().toISOString() })
+  } });
+  await pageB.goto(BASE + "/index.html?hintms=600000", { waitUntil: "networkidle" });
+  await pageB.waitForTimeout(700);
+  await pageB.press("#input", "Enter");
+  await waitUntil(async () => (await pageB.textContent("#japanese")).trim() === cuT4.q, 3000);
+  for (const ch of "cu") await pageB.press("#input", ch);
+  await waitUntil(() => pageB.isVisible("#resultPanel"), 4000);
+  const chipsT4 = await pageB.$$eval("#resultPanel .word-chip b", (els) => els.map((e) => e.textContent.trim())).catch(() => []);
+  check("大小文字 (T4): 完了パネルの語チップは元の綴り（Cu。cu ではない）", chipsT4.includes("Cu") && !chipsT4.includes("cu"), JSON.stringify({ chipsT4, panel: await pageB.isVisible("#resultPanel") }));
+  check("大小文字 (T4) 完了パネルでエラー0", pageB.errors.length === 0, pageB.errors[0] ?? "");
+  await pageB.close();
+}
+
 // ===== 3. Daily Dash: 完走→ロック→カウントダウン =====
 console.log("daily:");
 {
@@ -12256,6 +12309,37 @@ console.log("romaji answers:");
   const num = async (page, sel) => Number((await page.textContent(sel)).trim());
   const pressAll = async (page, keys) => { for (const ch of keys) await page.press("#input", ch); };
 
+  // ---- 判定器（Batch 69 J1。js/judge.js）だけで: 全カードのローマ字で打つ読み（答えと accept の読み）を標準の綴り（語末の ん は n 1 つ）で
+  // 打ち切ると Enter なしで正解。カードは盤面と同じ読み込み（js/wordData.js toCard）。答えを見た後は主な読みだけ（ほかの読みは受けない）
+  {
+    const J = await import("../js/judge.js");
+    const { toCard } = await import("../js/wordData.js");
+    const manifestR = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));
+    let n = 0;
+    let cardsR = 0;
+    const bad = [];
+    const revealedBad = [];
+    for (const category of manifestR.subjects.flatMap((s) => s.categories)) {
+      const data = JSON.parse(fs.readFileSync(path.join(ROOT, "data", category.file), "utf8"));
+      for (const raw of data.words) {
+        const w = toCard(raw, data, category);
+        const { mode, entries } = J.answerModeOf(w);
+        if (mode !== "romaji") continue;
+        cardsR++;
+        const primary = primaryReading(entries);
+        for (const e of entries) {
+          const keys = canonicalRomaji(e.reading, { finalN: true });
+          const r = J.typeAnswer(w, [], keys);
+          n++;
+          if (r.how !== "auto") bad.push(`${category.id}:${raw.id}:${e.reading}:${r.how}@${r.at}`);
+          if (e === primary && J.typeAnswer(w, [], keys, { revealed: true }).how !== "auto") revealedBad.push(`${category.id}:${raw.id}`);
+        }
+      }
+    }
+    check(`ローマ字（判定器 js/judge.js）: 全カード（${cardsR} 枚）のすべての読み ${n} 件を標準の綴りで打ち切ると Enter なしで正解・答えを見た後も主な読みは正解`,
+      cardsR > 4000 && n > cardsR && bad.length === 0 && revealedBad.length === 0, [...bad, ...revealedBad].slice(0, 8).join(" "));
+  }
+
   // ---- 中学歴史（社会）: 続きからの列で 7 枚を順に ----
   const ids = ["concept-jh1-yoritomo", "concept-jh1-shinran", "concept-jh1-kenzuishi", "concept-jh1-iwajuku", "concept-jh1-kaitaishinsho", "concept-jh1-shomutenno", "concept-jh1-manyoshu"];
   const W = Object.fromEntries(ids.map((id) => [id, byId("jhist1", id)]));
@@ -14417,6 +14501,52 @@ console.log("judge (出題語が別の正解の先頭部分):");
     check(`判定 (36) ${label}: do の保留中に 3 語目（全文入力）へ「In wh」と入れると、do の正解・3 語目の入力欄は打ったとおりの「In wh」（ミス 0・×なし）`,
       onDo && s.ja === myFreeJ.q && s.free && s.input === "In wh" && s.score === 2 && s.miss === 0 && s.rf === 0, JSON.stringify(s));
     check(`判定 (36) ${label} でエラー0`, p.errors.length === 0, p.errors[0] ?? "");
+    await p.close();
+  }
+
+  // (37) 判定器（Batch 69 J1。js/judge.js）: 盤面の判定の分岐は judge.js の純関数。全カード（全パック有効）の出題語を judge.js の typeAnswer で
+  // 頭から打つと、綴り・ローマ字は Enter なしで正解、全文入力は Enter で正解（上の (全カード) の answers.js の数え方と同じ結果）
+  {
+    const J = await import("../js/judge.js");
+    const bad = [];
+    let n = 0;
+    for (const w of allJ) {
+      if (w.calc) continue;
+      const { mode, entries } = J.answerModeOf(w);
+      const keys = mode === "romaji" ? canonicalRomaji(primaryReading(entries).reading, { finalN: true }) : w.en;
+      const r = J.typeAnswer(w, A.acceptedAnswers(w, idxJ), keys);
+      n++;
+      if (mode === "free" ? r.how !== "enter" : r.how !== "auto" || r.kind !== "exact") bad.push(`${w.category}:${w.id}:${mode}:${r.how}`);
+    }
+    check(`判定 (37) 判定器（js/judge.js typeAnswer）で全カードの出題語・主な読みを打つと × にならない（${n} 枚。綴り・ローマ字は Enter なし、全文入力は Enter で正解）`,
+      n > 15000 && bad.length === 0, bad.slice(0, 8).join(" "));
+  }
+
+  // (38) 品詞をまたぐ別解を結ばない（Batch 69 T6。js/answers.js buildAlternativeIndex）: ngsl24 の reasonably（副「まあまあ・合理的に」）と
+  // alright（形「大丈夫な・まあまあ」）は「まあまあ」で互いに別解だった。品詞が違うので結ばない: reasonably の問いで alright と打つと 1 打目で ×（以前は
+  // 別解として受けて打ち直し）。同じ品詞の別解は今と同じ: gentle（形「優しい・穏やかな」）の問いで tender（形「柔らかい・優しい」）は別解
+  {
+    const n24 = packJ("ngsl24");
+    const reasonably = n24.find((w) => w.id === "english-reasonably");
+    const gentle = n24.find((w) => w.id === "english-gentle");
+    check("判定 (38) 全パック有効の索引: different（形）と differ（動）・repeatedly（副）と repetition（名）・reasonably（副）と alright（形）は結ばない。ad と advertisement（名）は結ぶ",
+      !idxJ.get("different")?.has("differ") && !idxJ.get("differ")?.has("different") && !idxJ.get("repeatedly")?.has("repetition") && !idxJ.get("reasonably")?.has("alright") &&
+      !!idxJ.get("ad")?.has("advertisement"));
+    const p = await openJ(seedJ("ngsl24", [reasonably.id, gentle.id]), reasonably);
+    for (const ch of "alright") await p.press("#input", ch);
+    await p.waitForTimeout(250);
+    const msg1 = (await p.textContent("#message")).trim();
+    check("判定 (38) reasonably の問いで alright と打つと 1 打目で ×（思い出せず 1・別解の案内は出ない）",
+      (await numJ(p, "#recallFail")) === 1 && (await numJ(p, "#score")) === 0 && !msg1.includes("alright も"), msg1);
+    for (const ch of reasonably.en) await p.press("#input", ch); // 見せた答えを打ち直して次へ
+    await waitUntil(async () => (await jaJ(p)) === gentle.ja, 3000);
+    const rfBefore = await numJ(p, "#recallFail");
+    for (const ch of "tender") await p.press("#input", ch);
+    await p.waitForTimeout(250);
+    const msg2 = (await p.textContent("#message")).trim();
+    check("判定 (38) gentle の問いで tender（同じ品詞の別解）: 今と同じく別解として受ける（×にしない・この問題の語は gentle）",
+      msg2.includes("tender も") && msg2.includes("gentle") && (await numJ(p, "#recallFail")) === rfBefore, msg2);
+    check("判定 (38) でエラー0", p.errors.length === 0, p.errors[0] ?? "");
     await p.close();
   }
 }
