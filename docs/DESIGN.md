@@ -11,7 +11,7 @@ Knowledge Map Platform
 ```
 
 - **表向き**：知的な成長可視化ツール（Minimal / Cyber / Focus / Growth / Knowledge）
-- **裏側**：ゲーミフィケーション（XP・レベル・称号・コンボ・ストリーク）
+- **裏側**：ゲーミフィケーション（XP・レベル・学習のランク・コンボ・ストリーク）
 
 ゲーム性を露骨に見せず、大人がカフェで開ける見た目を保ちながら、継続の仕組みは裏で回す。
 
@@ -77,7 +77,7 @@ localStorageに保存（キーは単語の `en`）：
 
 - 単語ごと: playCount / correctCount / missCount / cleanCorrectStreak / mastered
 - タイピング: correctChars / missChars / seconds / sessions / bestSpeed
-- 成長: XP（spelldash_xp）/ ストリーク（spelldash_streak）
+- 成長: XP（spelldash_xp）/ ストリーク（spelldash_streak）。レベルと学習のランク（木 1 → … → 神 3 の 21 段。段ごとの紋章の絵。2026-10-15 に称号〔F3 → … → レジェンドの 22 個〕から改めた）は XP から毎回決める（記録しない・下がらない。js/level.js `rankOf`・js/emblem.js。docs/CONCEPT.md §8）
 
 ## 記憶要素
 

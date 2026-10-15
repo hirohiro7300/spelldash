@@ -55,6 +55,9 @@ jobs:
       - name: わたしの本棚の規則（移行・照合・段の割り付け。js/shelfStore.js）
         run: node scripts/test-shelf.mjs
 
+      - name: 学習のランク（21 段の境と名前・レベルからの割り付け・紋章の絵が揃う。js/level.js rankOf・js/emblem.js）
+        run: node scripts/test-level.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 

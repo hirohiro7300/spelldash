@@ -826,7 +826,7 @@ button {
   font: inherit;
 }
 
-/* ===== ランクアップ（F1→E3 等）: 暗幕＋紙色の面＋1px 罫線。影・光彩・バウンス無し。1.2 秒、タップで閉じる ===== */
+/* ===== ランクアップ（学習のランク。木 3 → 銅 1 等）: 暗幕＋紙色の面＋1px 罫線。影・光彩・バウンス無し。1.2 秒、タップで閉じる ===== */
 .rank-up {
   position: fixed;
   inset: 0;
@@ -853,6 +853,24 @@ button {
   animation: none;
 }
 
+/* ランクの紋章（新しいランクの絵。js/emblem.js・scripts/build-emblems.mjs の 224px＝2 倍）: 112 の枠は先に空け、絵は読めてから見せる。
+   読み込み中・オフライン・読めないときは透明のまま＝文字だけ（壊れた画像の印を出さない。読めなければ img ごと外す） */
+.rank-up__emblem {
+  width: 112px;
+  height: 112px;
+  margin: 0 auto 6px;
+}
+
+.rank-up__emblem img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.rank-up__emblem img.is-ready { opacity: 1; }
+
 .rank-up__label {
   color: var(--ink-3);
   font-size: 12px;
@@ -862,9 +880,10 @@ button {
 
 .rank-up__title {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: center;
-  gap: 12px;
+  gap: 0 12px;
   margin: 6px 0 4px;
   color: var(--ink-3);
   font-family: var(--font-mono);
@@ -872,8 +891,26 @@ button {
   font-weight: 600;
 }
 
+/* 前のランクと矢印は 1 つの塊、後のランクも 1 つの塊（名前の中で折り返さない）。入りきらない幅では後のランクが次の行へ回る */
+.rank-up__from {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  white-space: nowrap;
+}
+
 .rank-up__title i { font-style: normal; color: var(--ink-4); font-size: 20px; }
-.rank-up__title b { color: var(--ink); font-size: 40px; font-weight: 600; text-shadow: none; }
+.rank-up__title b { color: var(--ink); font-size: 40px; font-weight: 600; text-shadow: none; white-space: nowrap; }
+
+/* 480px 以下: 名前は 20／30px・面の左右の余白 20px。「ダイヤ 3 → レジェンド 1」が 390 で 1 行（約 302px）。
+   320 と、いちばん長い「レジェンド 2 → レジェンド 3」（約 342px）は後のランクが次の行へ回る（E2E 9.955） */
+@media (max-width: 480px) {
+  .rank-up__inner { padding: 20px; }
+  .rank-up__title { gap: 0 8px; font-size: 20px; }
+  .rank-up__from { gap: 8px; }
+  .rank-up__title i { font-size: 16px; }
+  .rank-up__title b { font-size: 30px; }
+}
 
 .rank-up__sub {
   color: var(--ink-2);
@@ -923,6 +960,7 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .rank-up, .rank-up__inner { animation: none; }
+  .rank-up__emblem img { transition: none; }
 }
 
 /* ===== 概念カード（場面 → 用語）／全文入力モード ===== */

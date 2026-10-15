@@ -423,7 +423,8 @@ html[data-theme] .packs-fold__summary::-webkit-details-marker {
 }
 
 html[data-theme] .packs-fold__summary::before,
-html[data-theme] .my-fold__summary::before {
+html[data-theme] .my-fold__summary::before,
+html[data-theme] .rank-list__summary::before {
   content: "";
   display: inline-block;
   width: 7px;
@@ -437,7 +438,8 @@ html[data-theme] .my-fold__summary::before {
 }
 
 html[data-theme] .packs-fold[open] > .packs-fold__summary::before,
-html[data-theme] .my-fold[open] > .my-fold__summary::before {
+html[data-theme] .my-fold[open] > .my-fold__summary::before,
+html[data-theme] .rank-list[open] > .rank-list__summary::before {
   transform: translateY(-3px) rotate(45deg);
 }
 
@@ -1353,7 +1355,7 @@ html[data-theme] .note-save:hover {
 html[data-theme] .level-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   margin: 16px 0 0;
   padding: 0;
   border: none;
@@ -1377,6 +1379,159 @@ html[data-theme] .level-bar__line {
 
 html[data-theme] .level-bar__line .mono {
   font-family: var(--font-mono);
+}
+
+/* ランクの紋章（今のランク。js/emblem.js の 96px の小さい絵）: 大きさを先に取り（CLS 0）、読めてから見せる（読み込み中・読めない絵は透明のまま。
+   壊れた画像の印を出さない）。縮まない（いちばん長い行でも 1 行に収まるよう、359px 以下は行の左右の余白を外す: 下の .level-bar--line）。
+   上下の -6px: 行の高さは今のまま字の行（12px の字で約 17px）が決める（28px の絵は上下に 5〜6px はみ出すだけ。上は padding-top 4px と上の余白の中） */
+html[data-theme] .level-bar__emblem {
+  flex: none;
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin-block: -6px;
+  opacity: 0;
+}
+
+html[data-theme] .level-bar__emblem.is-ready {
+  opacity: 1;
+}
+
+/* ---- ランクの一覧（js/levelUi.js renderRankList）: 行の下の畳み。21 段を 3 列（段ごとに 1 → 2 → 3 の 1 列）で、下の木 1 から上の神 3 へ。
+   紋章は開いたときに置く（32px の枠は先に取る）。今のランクの行は枠の線と「今」の札（色だけに頼らない）。
+   559px 以下は紋章・名前・Lv を縦に積む（320 の 1 列 約 93px にいちばん長い「レジェンド 3」12px〔約 70px〕が収まる）。560px 以上は紋章の右に名前と Lv。字は 12px を割らない ---- */
+html[data-theme] .rank-list-host {
+  margin: 2px 0 0;
+  padding: 0 16px;
+}
+
+html[data-theme] .rank-list-host:empty {
+  display: none;
+}
+
+html[data-theme] .rank-list {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .rank-list__summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  gap: 6px;
+  color: var(--ink-3);
+  list-style: none;
+  cursor: pointer;
+}
+
+html[data-theme] .rank-list__summary::-webkit-details-marker {
+  display: none;
+}
+
+html[data-theme] .rank-list[open] > .rank-list__summary {
+  color: var(--ink-2);
+}
+
+@media (pointer: coarse) {
+  html[data-theme] .rank-list__summary {
+    min-height: 40px;
+  }
+}
+
+html[data-theme] .rank-list__items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  max-width: 560px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .rank-list__item {
+  position: relative;
+  min-width: 0;
+  padding: 6px 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-room);
+}
+
+html[data-theme] .rank-list__item.is-now {
+  border-color: var(--line-2);
+  background: var(--paper-2);
+}
+
+html[data-theme] .rank-list__row {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+html[data-theme] .rank-list__emblem {
+  display: block;
+  width: 32px;
+  height: 32px;
+}
+
+html[data-theme] .rank-list__emblem img {
+  display: block;
+  width: 32px;
+  height: 32px;
+  opacity: 0;
+}
+
+html[data-theme] .rank-list__emblem img.is-ready {
+  opacity: 1;
+}
+
+html[data-theme] .rank-list__name {
+  max-width: 100%;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+html[data-theme] .rank-list__lv {
+  color: var(--ink-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+html[data-theme] .rank-list__now {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  padding: 0 5px;
+  border-radius: 2px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+@media (min-width: 560px) {
+  html[data-theme] .rank-list__item {
+    padding: 6px 8px;
+  }
+
+  html[data-theme] .rank-list__row {
+    grid-template-columns: 32px minmax(0, 1fr);
+    justify-items: start;
+    column-gap: 8px;
+    row-gap: 0;
+    text-align: left;
+  }
+
+  html[data-theme] .rank-list__emblem {
+    grid-row: span 2;
+  }
+
+  html[data-theme] .rank-list__name {
+    font-size: 13px;
+  }
 }
 
 html[data-theme] .progress-bar {
@@ -2613,6 +2768,25 @@ html[data-theme] .level-bar--line {
   padding: 4px 16px 0;
   font-size: 12px;
   color: var(--ink-3);
+}
+
+/* 359px 以下: いちばん長い行（「レジェンド 3 ・ Lv.69 ・ 次のレベルまで 3499」は字だけで約 259px）に紋章（28px＋間 6px）を足すと、
+   320 の行の幅 288px に収まらず折り返す。この幅だけ行と一覧の左右の余白を外して紋章を札の縁の線に寄せ、紋章との間を 4px、
+   語の間（「 ・ 」の空白 6 つ）を 1px ずつ詰める（字だけで約 253px＋32px＝約 285px。「・」は字の中に左右の余白を持つので詰めても読める）。
+   360 以上は今のまま。E2E 9.955 が 320／348／359／360 で 1 行を見る */
+@media (max-width: 359px) {
+  html[data-theme] .level-bar--line,
+  html[data-theme] .rank-list-host {
+    padding-inline: 0;
+  }
+
+  html[data-theme] .level-bar--line {
+    gap: 4px;
+  }
+
+  html[data-theme] .level-bar__line {
+    word-spacing: -1px;
+  }
 }
 
 /* ===== 書斎の読む机（Batch 56b）: 部屋以外のページの札・題箋・タブ・セグメント・数字 =====
