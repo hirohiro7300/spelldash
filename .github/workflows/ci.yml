@@ -32,7 +32,7 @@ jobs:
       - name: 単語ごとの習熟度（段の規則・速さの基準・期日前に出さない・書き手。js/mastery.js・masteryMeta.js・stats.js）
         run: node scripts/test-mastery.mjs
 
-      - name: 記録の質と影の計算（js/memoryModel.js・memoryCheck.js・stats.js の新しい欄）と不変の模擬（scripts/sim-writers.mjs: 1 年回して期日・段・習得・保持率が前の main と同じ）
+      - name: "記録の質と影の計算（js/memoryModel.js・memoryCheck.js・stats.js の新しい欄）と不変の模擬（scripts/sim-writers.mjs: 1 年回して期日・段・習得・保持率が前の main と同じ）"
         run: node scripts/test-memory.mjs
 
       - name: わたしの本棚の規則（移行・照合・段の割り付け。js/shelfStore.js）
