@@ -2,7 +2,7 @@ import { saveWordStats, editWordStats, getWordStats, wordStatsChars } from "./st
 import { markWordDirty } from "./sync.js";
 import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
 import { touchStudyTime } from "./studyTime.js";
-import { answerContext, nextRank, isFirstAnswer, intervalAfter, keepLaterDue, unseenFailCap, SRS_STEPS, MAX_INTERVAL_DAYS, MIN_GAP_MS, isUnresolved, isKnownWord, isKnownWaiting } from "./mastery.js";
+import { answerContext, nextRank, isFirstAnswer, isSlipFail, intervalAfter, keepLaterDue, unseenFailCap, SRS_STEPS, MAX_INTERVAL_DAYS, MIN_GAP_MS, isUnresolved, isKnownWord, isKnownWaiting } from "./mastery.js";
 import { noteRankCheck, tickMasteryMeta } from "./masteryMeta.js";
 import { localDay, dayDiff } from "./retentionCalc.js";
 import { BASE_VARIANT, readShadow, writeShadow, shadowOf, shadowInit, shadowPredict, shadowSuccess, shadowSameDay, shadowFail, migrateState } from "./memoryModel.js";
@@ -247,7 +247,7 @@ export function recordRecallFail(word, detail = null) {
   stats[word].mastered = false;
   stats[word].nextReviewAt = nowIso;
   stats[word].lastRecallFailAt = nowIso;
-  writeRank(stats[word], before, { ok: false, clean: false, speed: "unknown" }, before?.ctx, nowIso);
+  writeRank(stats[word], before, { ok: false, clean: false, speed: "unknown", slip: isSlipFail({ r: "x", ...fail }) }, before?.ctx, nowIso);
   noteMemory(word, stats[word], statBefore, before?.ctx, { ok: false, kind: fail.k }, nowMs); // 記録の質（影の計算・集計。期日・段は上で決めたまま）
 
   saveWordStats(stats);
@@ -276,9 +276,24 @@ function writeRank(stat, before, answer, ctx, nowIso) {
     stat.masteryRank = nextRank(before.rank, answer, ctx);
     stat.masteryAt = nowIso;
     if (!answer.ok && stat.masteryRank < before.rank) stat.masteryDownAt = nowIso;
+    writePeak(stat, before, answer, ctx);
   } catch {
     // 段は次の答えで書き直す
   }
+}
+
+// 1 打ミスで下がる前の段の控え masteryPeak（M1。Batch 70。端末だけの欄・送らない。js/mastery.js masteryPeakOf が読む）。段と同じ写しに書く:
+//   指の滑りの ×（answer.slip）で段が下がった → 控え ＝ max(答える前に使えた控え, 答える前の段)（続けて 1 打ミスで下がっても、どの段も 1 打ミスで下がったので上の段まで戻す）
+//   指の滑りの × で段が下がらない（同じ日の 2 回目・段 1）→ 使えた控えを残す
+//   ほかの ×（答え表示・ヒント・パス・2 字目までの隣でない字・全文入力の違う答え・Battle）→ 消す（下がった段は今の決まりで戻す）
+//   ○ → 控えが今の段より上なら残す（遅い・打ち間違いあり・同じ日の ○ は戻さないので次の日に）、戻りきったら消す。使えない控え（見ていない × の後など）も消す
+function writePeak(stat, before, answer, ctx) {
+  const usable = Number.isInteger(ctx.peak) ? ctx.peak : 0;
+  let peak = 0;
+  if (answer.ok) peak = usable;
+  else if (answer.slip) peak = stat.masteryRank < before.rank ? Math.max(usable, before.rank) : usable;
+  if (peak > stat.masteryRank) stat.masteryPeak = peak;
+  else delete stat.masteryPeak;
 }
 
 // 日をあけた正解の後、復習の間隔を伸ばす（習熟度の S2・S3。段階 2。js/mastery.js intervalAfter）。書き手の写しに書く（同じ 1 回の保存）。

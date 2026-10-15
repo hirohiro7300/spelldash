@@ -271,6 +271,18 @@ html[data-theme] .my-tab {
   padding: 8px 12px;
 }
 
+/* マイ単語帳の 3 つのタブ（英単語・場面カード・テキストから作る）は 1 行で約 293px。320 の端末では枠の内が 254px なので、前から 6px だけ画面の外へ
+   出て横スクロールしていた（Batch 70 の仕上げで見つけた）。359px 以下は左右の内側を詰め、それでも入らない字（代わりの字が広いとき）は折り返す */
+@media (max-width: 359px) {
+  html[data-theme] .my-tabs {
+    flex-wrap: wrap;
+  }
+
+  html[data-theme] .my-tab {
+    padding: 8px 5px;
+  }
+}
+
 /* ---- チップ ---- */
 html[data-theme] .filter-chip,
 html[data-theme] .genre-chip,
@@ -1191,6 +1203,34 @@ html[data-theme] .gcard__foot:empty {
   display: none;
 }
 
+/* 思い出す速さ（Batch 70。js/listView.js）: 「詳しく」の足元で、段の名前のすぐ後に「・ すぐ」「・ 時間がかかる」（名前と同じ 12px・同じ色。名前との間 6px）。
+   段と札は 1 組（.gcard__rankspeed。足元の flex の 1 つの子で、中は折れない）: 足元が 2 行になるとき組ごと次の行へ移る（前は札だけが次の行の頭に
+   「・ 時間がかかる」で落ち、足元の間を詰める margin-left:-4px でカードの左へ 4px 出た。320 で履歴 8 点の語。反証）。包みは素の span（inline-flex は 2,000 語の配置が増える）。
+   包みの行の高さは 14px にそろえ、段と札を行の上に揃える（足元の行は札の無い語と同じ 14px・字の縦の位置は前の flex と同じ。そろえないと包みの行が親の字の
+   行の高さになり、札のある語だけ足元が 5px 高くなる）。
+   読み上げは .rank と同じく role=img の aria-label「思い出す速さ 時間がかかる」（中黒は読まない）。札の要素は 1 つだけ（2,000 語の単語帳の描画を重くしない）。
+   簡潔表示は足元ごと隠れる（title に入れてある） */
+html[data-theme] .gcard__rankspeed {
+  font-size: 12px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+html[data-theme] .gcard__rankspeed > .rank {
+  vertical-align: top;
+}
+
+html[data-theme] .gcard__speed {
+  margin-left: 6px;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
 /* 簡潔表示: 行のどこを押しても詳細が開く（語のボタンの ::after を行いっぱいに。右の状態チップ列 96px は残す） */
 html[data-theme] body.list-compact .gcard {
   position: relative;
@@ -1861,8 +1901,37 @@ html[data-theme] .mastery-note {
   line-height: 1.7;
 }
 
+/* 思い出す速さと段ごとの実測（Batch 70。js/statsView.js speedLines）: 習熟度の行と注記の下に、罫で区切って 1〜2 行と実測の注記。
+   行は習熟度の行の語数と同じ 14px の字、見出しは小さく --ink-3。390 では文の中で折り返す */
+html[data-theme] .mastery-speed-block {
+  max-width: 640px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+html[data-theme] :is(.mastery-speed, .mastery-measured) {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+html[data-theme] .mastery-speed__label {
+  margin-right: 4px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .mastery-measured-note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
 /* 夜の札の中の罫: --line は --sheet の上で消えるので --line-2（覚えた単語帳の行と同じ） */
-html:is([data-theme="dark"], [data-theme="indigo"]) .result-card .mastery-row {
+html:is([data-theme="dark"], [data-theme="indigo"]) .result-card :is(.mastery-row, .mastery-speed-block) {
   border-color: var(--line-2);
 }
 
@@ -2577,7 +2646,8 @@ html[data-theme] .word-detail__rank {
   gap: 2px;
 }
 
-html[data-theme] .word-detail__rank-line {
+/* 思い出す速さの行（Batch 70。js/wordDetail.js・js/recallSpeed.js）は習熟度の行と同じ字・同じ見出しの色。畳んだ「速さの記録」は「習熟度の決まり」と同じ形 */
+html[data-theme] :is(.word-detail__rank-line, .word-detail__speed) {
   margin: 0;
   color: var(--ink-2);
   font-size: 13px;
@@ -2613,12 +2683,12 @@ html[data-theme] .rank-scale {
   line-height: 1.6;
 }
 
-html[data-theme] .rank-rule {
+html[data-theme] :is(.rank-rule, .speed-log) {
   color: var(--ink-3);
   font-size: 12px;
 }
 
-html[data-theme] .rank-rule > summary {
+html[data-theme] :is(.rank-rule, .speed-log) > summary {
   display: inline-flex;
   align-items: center;
   min-height: 28px;
@@ -2629,15 +2699,15 @@ html[data-theme] .rank-rule > summary {
   cursor: pointer;
 }
 
-html[data-theme] .rank-rule > summary::-webkit-details-marker {
+html[data-theme] :is(.rank-rule, .speed-log) > summary::-webkit-details-marker {
   display: none;
 }
 
-html[data-theme] .rank-rule[open] > summary {
+html[data-theme] :is(.rank-rule, .speed-log)[open] > summary {
   color: var(--ink-2);
 }
 
-html[data-theme] .rank-rule > p {
+html[data-theme] :is(.rank-rule, .speed-log) > p {
   margin: 2px 0 0;
   color: var(--ink-2);
   font-size: 12px;
@@ -2645,7 +2715,7 @@ html[data-theme] .rank-rule > p {
 }
 
 @media (pointer: coarse) {
-  html[data-theme] .rank-rule > summary {
+  html[data-theme] :is(.rank-rule, .speed-log) > summary {
     min-height: 40px;
   }
 }

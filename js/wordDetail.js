@@ -1,5 +1,5 @@
 import { exampleHtml, hasExample } from "./wordExample.js";
-import { findWord, findWordIn, getCategories } from "./wordStore.js";
+import { findWord, findWordIn, getCategories, promptOf } from "./wordStore.js";
 import { answerLabel } from "./wordData.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
@@ -12,6 +12,8 @@ import { icon } from "./icons.js";
 import { trapFocus } from "./focusTrap.js";
 import { rankHtml, rankOf, rankBasis, rankNext, statusScaleNote, RANK_NAMES, RANK_RULE } from "./mastery.js";
 import { localDay } from "./retentionCalc.js";
+import { recallSpeedOf, recallSpeedText, recallSpeedLog } from "./recallSpeed.js";
+import { getMemoryWord } from "./memoryWords.js";
 
 // ===== 単語詳細ポップアップ =====
 // 一覧のどこから押しても、その語の「状態・履歴・メモ・仲間・発音」を1か所で見られる。
@@ -25,8 +27,11 @@ const LEVEL_LABEL = { easy: "やさしい", normal: "ふつう", hard: "むず�
 //   2 行目: 段の梯子（今の段だけ太字。読み上げない）と次の段の条件（rankNext。読み上げる。段 5 は無し）
 //   題箋と段が食い違って見える組（苦手＋身についた など）だけ: 題箋の意味と「習熟度とは別の物差し」の 1 文（statusScaleNote。Batch 64 M4）
 //   その下: 畳んだ「習熟度の決まり」（開くと規則の文。閉じていれば 1 行で、毎語に規則の 4 文が並ばない）
-// 文はどれも mastery.js が記録から作る固定の文（利用者の入力を含まない）。stat は読むだけ
-function masteryHtml(stat, status, today = localDay(new Date())) {
+//   思い出す速さ（Batch 70。docs/SPEC_MASTERY.md・D1 §3.1）: 段 2〜4・材料（語ごとの速さの記録 sp。端末だけのキー spelldash_memory_words）2 件以上・
+//   訳 8 字未満の語だけ、1 行目のすぐ下に「思い出す速さ ふつう ・ 最近 3 回の答えから」（js/recallSpeed.js）。秒はいちばん下の畳んだ「速さの記録」の中だけ
+//   （新しい順・「出題から1打目まで。訳を読む時間を含む。この端末」）。ほかの語には行も記録も出さない。読み上げは各行 1 文で、#wordMeta（盤面の aria-live）には入れない
+// 文はどれも mastery.js・recallSpeed.js が記録から作る固定の文（利用者の入力を含まない）。stat・速さの記録は読むだけ
+function masteryHtml(stat, status, word, wordId, today = localDay(new Date())) {
   const r = rankOf(stat);
   if (r === 0) return "";
   const next = rankNext(stat, today);
@@ -34,11 +39,14 @@ function masteryHtml(stat, status, today = localDay(new Date())) {
   const ladder = RANK_NAMES.slice(1)
     .map((name, i) => (i + 1 === r ? `<b>${name}</b>` : name))
     .join(" ・ ");
+  const speed = recallSpeedOf({ sp: getMemoryWord(wordId)?.sp, rank: r, prompt: promptOf(word), today }); // 速さの記録は語の記録と同じ id の鍵
   return `<div class="word-detail__rank">
       <p class="word-detail__rank-line"><span class="word-detail__rank-label">習熟度</span> ${rankHtml(r, { label: "" })} ・ <span class="word-detail__rank-basis">${rankBasis(stat, today)}</span></p>
+      ${speed ? `<p class="word-detail__speed"><span class="word-detail__rank-label">思い出す速さ</span> ${recallSpeedText(speed)}</p>` : ""}
       <p class="rank-ladder"><span aria-hidden="true">${ladder}${next ? " ・ " : ""}</span>${next ? `<span class="rank-ladder__next">${next}</span>` : ""}</p>
       ${scale ? `<p class="rank-scale">${scale}</p>` : ""}
       <details class="rank-rule"><summary>習熟度の決まり</summary><p>${RANK_RULE}</p></details>
+      ${speed ? `<details class="speed-log"><summary>速さの記録</summary><p>${recallSpeedLog(speed)}</p></details>` : ""}
     </div>`;
 }
 
@@ -105,7 +113,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
       ${word.level ? `<span>${LEVEL_LABEL[word.level] ?? escapeHtml(word.level)}</span>` : ""}
       ${nextReview != null ? `<span>次の復習 ${nextReview === 0 ? "今日" : `${nextReview}日後`}</span>` : ""}
     </div>
-    ${masteryHtml(stat, status)}
+    ${masteryHtml(stat, status, word, wordId)}
     ${historyDotsHtml(stat) ? `<div class="word-detail__history">履歴 ${historyDotsHtml(stat)}</div>` : ""}
     <div class="word-detail__note">
       <label for="wordDetailNote">覚え方のメモ</label>

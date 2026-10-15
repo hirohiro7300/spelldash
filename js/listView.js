@@ -3,7 +3,7 @@ import { initializeAuth } from "./auth.js";
 import { setFooterYear, revealPendingPage } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
-import { initWordStore, getCategories, getPackCatalog, isConceptWord } from "./wordStore.js";
+import { initWordStore, getCategories, getPackCatalog, isConceptWord, promptOf } from "./wordStore.js";
 import { setPackEnabled } from "./packs.js";
 import { openFeedback } from "./feedback.js";
 import { initializeMyWordsView, setMyWordsListBelow } from "./myWordsView.js";
@@ -13,6 +13,8 @@ import { classifyWord } from "./categoryProgress.js";
 import { historyDotsHtml } from "./learnedWords.js";
 import { rankHtml, rankOf, rankBasis, RANK_NAMES } from "./mastery.js";
 import { localDay } from "./retentionCalc.js";
+import { recallSpeedClass, recallSpeedTag } from "./recallSpeed.js";
+import { getMemoryWord } from "./memoryWords.js";
 import { noteChipHtml, bindNoteEditors, escapeHtml } from "./wordNotes.js";
 import { bindWordDetail } from "./wordDetail.js";
 import { groupByGenre, setGenre, getGenre, genreLabel } from "./genres.js";
@@ -379,9 +381,14 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
   // 390 で 0 行・320 で 8 行まで。Batch 64 M1）。名前が見えないので、title は「段の名前 ・ 根拠の文」（語の詳細の行と同じ形）。
   // 2 つは同時に見えない（詳しい表示では 1 行目の目盛りを隠す。css/pages.css）ので、読み上げも 1 回。
   // 1 行目の目盛りは語のボタンの覆いの上（マウスで title が出る）。押すと語のボタンと同じ（上の listBody の click）
+  // 思い出す速さ（Batch 70。D1 §3.2）: 「すぐ」「時間がかかる」の 2 つだけ（「ふつう」は出さない）。詳しい表示は足元の段の名前のすぐ後に添え、
+  // 簡潔表示は目盛りのまま title に足す（「身についた ・ 時間がかかる ・ 10月3日に思い出せた」。行の高さを変えない）。段 2〜4 の語だけ速さの記録を引く。
+  // 札があるときは段と札を 1 組（.gcard__rankspeed。素の span で中は折れない。css/pages.css）にする: 足元の flex の別々の子だと、履歴が 8 点の語は 320 で
+  // 札だけが次の行の頭に「・ 時間がかかる」で落ちた（反証。inline-flex で包むと 2,000 語の配置が +86ms 増えるので素の span）
   const term = escapeHtml(word.answer ?? word.en);
   const rank = rankOf(stat);
   const basis = rank ? rankBasis(stat, today) : "";
+  const speedTag = rank >= 2 && rank <= 4 ? recallSpeedTag(recallSpeedClass({ sp: getMemoryWord(word.id)?.sp, rank, prompt: promptOf(word) })) : "";
   const termClass = concept && !/^[A-Za-z0-9 .,'’/&()-]+$/.test(word.answer ?? word.en ?? "") ? "gcard__term" : "gcard__term mono";
   return `
     <article class="gcard gcard--${status}">
@@ -390,7 +397,7 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
         ${concept
           ? `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`
           : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}
-        <span class="gcard__marks">${rankHtml(rank, { name: false, title: rank ? `${RANK_NAMES[rank]} ・ ${basis}` : "" })}<span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span></span>
+        <span class="gcard__marks">${rankHtml(rank, { name: false, title: rank ? `${RANK_NAMES[rank]} ・ ${speedTag ? `${speedTag} ・ ` : ""}${basis}` : "" })}<span class="gcard__status gcard__status--${status}">${STATUS_LABEL[status]}</span></span>
         ${removable && myWordKey(word) ? `<button type="button" class="my-word__remove gcard__remove" data-my-remove="${escapeHtml(myWordKey(word))}" data-my-kind="${word.kind === "concept" ? "concept" : "word"}" aria-label="${term} を削除" title="削除">${icon("x", { size: 16 })}</button>` : ""}
       </div>
       ${concept
@@ -400,7 +407,7 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
         : hasExample(word) ? `<p class="gcard__ex">${exampleHtml(word, { speakButton: false, className: "gcard__ex" })}</p>` : ""}
       <div class="gcard__foot">
         ${historyDotsHtml(stat)}
-        ${rankHtml(rank, { title: basis })}
+        ${speedTag ? `<span class="gcard__rankspeed">${rankHtml(rank, { title: basis })}<span class="gcard__speed" role="img" aria-label="思い出す速さ ${speedTag}">・ ${speedTag}</span></span>` : rankHtml(rank, { title: basis })}
         ${noteChipHtml(word.id, { onlyIfHas: true })}
       </div>
     </article>`;
