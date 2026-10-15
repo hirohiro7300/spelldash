@@ -425,7 +425,8 @@ for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", 
   await page.close();
 }
 
-// og-image（SNS に貼られたときの絵。BACKLOG D10）: og:image・twitter:image のあるページはどれも同じ URL（assets/images/og-image.png に版の ?v=N）を指し、
+// og-image（SNS に貼られたときの絵。BACKLOG D10）: og:image・twitter:image のあるページは、OG_PAGES のページ（タイピング練習・タイピングゲーム。
+// ページごとの絵 assets/images/og-<名前>.png。型は scripts/og-image-page.html）のほかはどれも同じ URL（assets/images/og-image.png に版の ?v=N）を指し、
 // ファイルは 1200×630 の PNG・300KB 以下。絵は scripts/build-og-image.mjs が型（scripts/og-image.html）から撮る: 型は自前の 3 書体で描け・
 // 外への要求が無く・見える文に数字と絵文字が無い（「1000語・7カテゴリ」と絵文字の旧い絵に戻さない）。
 // SNS は絵を URL で覚えるので、絵を変えたら版を上げる（全ページ・packs の生成元・この OG_URL。PR #164 のレビュー 6。ファイル名は変えない）
@@ -436,18 +437,33 @@ console.log("og image:");
   const versionNote = ["build-og-image.mjs", "og-image.html"].filter((f) => !fs.readFileSync(path.join(ROOT, "scripts", f), "utf8").includes("絵を変えたら版を上げる"));
   check("og-image: URL に版（?v=2）があり、packs の生成元（scripts/build-pack-pages.mjs）も同じ URL を書く、生成器と型の頭に「絵を変えたら版を上げる」",
     /\?v=\d+$/.test(OG_URL) && packGen.includes(`content="${OG_URL.replace("https://www.spelldash.net", "${SITE}")}"`) && !/og-image\.png"/.test(packGen) && versionNote.length === 0, JSON.stringify({ versionNote }));
+  // ページごとの絵（2026-10-15。背景は scripts/og-art/<名前>.webp）。絵を変えたらそのページと、ここの ?v=N を 1 つ上げる
+  const OG_PAGES = {
+    "typing.html": "https://www.spelldash.net/assets/images/og-typing.png?v=1",
+    "typing-game.html": "https://www.spelldash.net/assets/images/og-typing-game.png?v=1"
+  };
   const files = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html") && f !== "admin.html"), ...fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html")).map((f) => `packs/${f}`)];
   const ogBad = [];
   for (const f of files) {
     const html = fs.readFileSync(path.join(ROOT, f), "utf8");
+    const want = OG_PAGES[f] ?? OG_URL;
     const og = [...html.matchAll(/<meta property="og:image" content="([^"]*)"/g)].map((m) => m[1]);
     const tw = [...html.matchAll(/<meta name="twitter:image" content="([^"]*)"/g)].map((m) => m[1]);
-    if (og.length !== 1 || og[0] !== OG_URL || tw.some((u) => u !== OG_URL)) ogBad.push(`${f}: ${[...og, ...tw].join(",") || "なし"}`);
+    if (og.length !== 1 || og[0] !== want || tw.some((u) => u !== want)) ogBad.push(`${f}: ${[...og, ...tw].join(",") || "なし"}`);
   }
+  const pageBad = [];
+  for (const [f, url] of Object.entries(OG_PAGES)) {
+    const name = url.match(/og-([a-z-]+)\.png\?v=\d+$/)?.[1];
+    const file = name && path.join(ROOT, "assets", "images", `og-${name}.png`);
+    const buf = file && fs.existsSync(file) ? fs.readFileSync(file) : null;
+    const ok = buf && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) && buf.readUInt32BE(16) === 1200 && buf.readUInt32BE(20) === 630 && buf.length <= 300 * 1024;
+    if (!ok || !files.includes(f) || !fs.existsSync(path.join(ROOT, "scripts", "og-art", `${name}.webp`))) pageBad.push(f);
+  }
+  check(`og-image: ページごとの絵（${Object.keys(OG_PAGES).join("・")}）は 1200×630 の PNG・300KB 以下で、背景の絵が scripts/og-art にある`, pageBad.length === 0, JSON.stringify({ pageBad }));
   const png = fs.readFileSync(path.join(ROOT, "assets", "images", "og-image.png"));
   const isPng = png.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   const dims = [png.readUInt32BE(16), png.readUInt32BE(20)];
-  check(`og-image: 全 ${files.length} ページ（admin を除く・packs を含む）の og:image（twitter:image も）は同じ URL、ファイルは 1200×630 の PNG・300KB 以下（${Math.round(png.length / 1024)}KB）`,
+  check(`og-image: 全 ${files.length} ページ（admin を除く・packs を含む）の og:image（twitter:image も）は OG_PAGES のほかは同じ URL、ファイルは 1200×630 の PNG・300KB 以下（${Math.round(png.length / 1024)}KB）`,
     files.length > 100 && ogBad.length === 0 && isPng && dims[0] === 1200 && dims[1] === 630 && png.length <= 300 * 1024, JSON.stringify({ ogBad: ogBad.slice(0, 3), isPng, dims, kb: Math.round(png.length / 1024) }));
   const page = await newPage({ viewport: { width: 1200, height: 630 } });
   const hosts = new Set();
@@ -466,6 +482,30 @@ console.log("og image:");
     tpl.fonts.every(Boolean) && tpl.size[0] === 1200 && tpl.size[1] === 630 && [...hosts].every((h) => h === own) && !tpl.digits && !tpl.emoji && tpl.text.includes("SpellDash") && tpl.text.includes("英単語を思い出して打つ") && page.errors.length === 0 && fs.existsSync(path.join(ROOT, "scripts", "build-og-image.mjs")),
     JSON.stringify({ fonts: tpl.fonts, size: tpl.size, hosts: [...hosts], text: tpl.text.replace(/\s+/g, " ").trim(), errors: page.errors.slice(0, 2) }));
   await page.close();
+  // ページごとの型: どのページの中身も 2 書体で描け、外への要求なし、文に数字・絵文字なし、背景の絵が読める
+  const pageTpl = [];
+  for (const [f, url] of Object.entries(OG_PAGES)) {
+    const name = url.match(/og-([a-z-]+)\.png/)[1];
+    const p2 = await newPage({ viewport: { width: 1200, height: 630 } });
+    const hosts2 = new Set();
+    let bgLoaded = false;
+    p2.on("request", (req) => hosts2.add(new URL(req.url()).host));
+    p2.on("response", (r) => { if (r.url().endsWith(`/scripts/og-art/${name}.webp`) && r.status() === 200) bgLoaded = true; });
+    await p2.goto(BASE + `/scripts/og-image-page.html?page=${name}`, { waitUntil: "networkidle" });
+    const r = await p2.evaluate(async () => {
+      const og = document.querySelector(".og");
+      const text = og.innerText;
+      const list = [['600 60px "Cormorant Garamond"', "SpellDash"], ['500 72px "Shippori Mincho"', text.replace(/SpellDash|SD/g, "")]];
+      await Promise.all(list.map(([font, t]) => document.fonts.load(font, t)));
+      await document.fonts.ready;
+      const box = og.getBoundingClientRect();
+      return { page: og.dataset.page, text, fonts: list.map(([font, t]) => document.fonts.check(font, t)), size: [box.width, box.height], digits: /[0-9０-９]/.test(text), emoji: /\p{Extended_Pictographic}/u.test(text) };
+    });
+    const ok = r.page === name && r.fonts.every(Boolean) && r.size[0] === 1200 && r.size[1] === 630 && !r.digits && !r.emoji && r.text.includes("SpellDash") && bgLoaded && [...hosts2].every((h) => h === own) && p2.errors.length === 0;
+    if (!ok) pageTpl.push({ f, ...r, bgLoaded, hosts: [...hosts2], errors: p2.errors.slice(0, 2) });
+    await p2.close();
+  }
+  check("og-image: ページごとの型（scripts/og-image-page.html）は どのページも 1200×630・自前の 2 書体で描け、外への要求なし、背景の絵が読め、文に数字・絵文字なし", pageTpl.length === 0, JSON.stringify(pageTpl).slice(0, 600));
 }
 
 // ===== 2. Study: デスクトップ入力＋モバイル入力 =====
@@ -4602,7 +4642,7 @@ console.log("typing game:");
   const RIVAL = String.fromCodePoint(0x5bff, 0x53f8, 0x6253); // よく知られたタイピングゲームの名（リポジトリは public。木に字面を入れないため符号で持つ）
   const noRival = [gameHtml, fs.readFileSync(path.join(ROOT, "css", "typing-game.css"), "utf8"), fs.readFileSync(path.join(ROOT, "js", "typingGame.js"), "utf8"), fs.readFileSync(path.join(ROOT, "js", "typingGamePage.js"), "utf8"), fs.readFileSync(path.join(ROOT, "js", "typingKeys.js"), "utf8"), fs.readFileSync(path.join(ROOT, "scripts", "build-typing-game.mjs"), "utf8"), fs.readFileSync(path.join(ROOT, "scripts", "typing-game", "deny.txt"), "utf8"), docsText].every((t) => !t.includes(RIVAL));
   check("typing game: title・og:title・canonical・og:url・og:image・twitter:card、description は og と同じで「登録なし」「90秒」「スマホ」を前半に含む、h1・lead・このページについて 5 行・最初の文と補足（目標は定数と同じ）、木（docs も）に他社の固有名が無い、フッターの先頭は typing.html で現在地でない・Pro を出さない印",
-    gameHtml.includes(`<title>${TITLE}</title>`) && gmeta(/<meta property="og:title" content="([^"]*)"/) === TITLE && gameHtml.includes('<link rel="canonical" href="https://www.spelldash.net/typing-game.html" />') && gameHtml.includes('<meta property="og:url" content="https://www.spelldash.net/typing-game.html" />') && gameHtml.includes('<meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png?v=2" />') && gameHtml.includes('<meta name="twitter:card" content="summary_large_image" />') &&
+    gameHtml.includes(`<title>${TITLE}</title>`) && gmeta(/<meta property="og:title" content="([^"]*)"/) === TITLE && gameHtml.includes('<link rel="canonical" href="https://www.spelldash.net/typing-game.html" />') && gameHtml.includes('<meta property="og:url" content="https://www.spelldash.net/typing-game.html" />') && gameHtml.includes('<meta property="og:image" content="https://www.spelldash.net/assets/images/og-typing-game.png?v=1" />') && gameHtml.includes('<meta name="twitter:card" content="summary_large_image" />') &&
     gdesc !== "" && gdesc === gmeta(/<meta property="og:description" content="([^"]*)"/) && gdesc.includes("登録なし") && gdesc.includes("90秒") && gdesc.indexOf("スマホ") >= 0 && gdesc.indexOf("スマホ") < 70 && !/noindex/i.test(gameHtml) &&
     gameHtml.includes("<h1>タイピングゲーム</h1>") && gameHtml.includes('<p class="subtitle">日本語の文を次々と打つ。登録なし・無料。</p>') && (about.match(/<li>/g) ?? []).length === 5 &&
     ["残り 90秒", "打ち始めると、90秒を測る。文ごとに持ち時間がある。尽きると次の文へ。", "今日はいい天気だ", "きょうはいいてんきだ", "取れた", "このページについて", `${G.COURSES.normal.note}<span class="tp-sep"> ・</span> 目標 ${G.goalFor("normal")}文`].every((s) => gameHtml.includes(s)) && // 補足の区切りは sep の span（Batch 66 R2）

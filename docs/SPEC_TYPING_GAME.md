@@ -84,7 +84,7 @@
 ## 6. 入口・SEO・アプリ
 
 - 入口: typing.html の札の下・「このページについて」の上に 1 行（`.tp-more`「文を次々と打つ 90秒の タイピングゲーム」）。盤面の外なので時間切れの守りに入る（一覧に足す必要はない）。お知らせ 1 件（本文に typing.html も）。フッターの「タイピング練習」は typing.html のまま。ヘッダー・ホームには足さない。
-- SEO: title「タイピングゲーム（日本語の文・ローマ字）無料・90秒 | SpellDash」、description（「登録なし」「90秒」、スマホの画面キーボードで打てることを前半に）、canonical／og:url `https://www.spelldash.net/typing-game.html`、本文は静的な HTML。sitemap は `scripts/build-pack-pages.mjs` の `urls`。og:image は共通のまま（BACKLOG D10）。
+- SEO: title「タイピングゲーム（日本語の文・ローマ字）無料・90秒 | SpellDash」、description（「登録なし」「90秒」、スマホの画面キーボードで打てることを前半に）、canonical／og:url `https://www.spelldash.net/typing-game.html`、本文は静的な HTML。sitemap は `scripts/build-pack-pages.mjs` の `urls`。og:image はこのページだけの `https://www.spelldash.net/assets/images/og-typing-game.png?v=1`（2026-10-15。1200×630・273KB。夜空を流れる紙の帯と机の上の砂時計の絵〔背景は文字の無い絵 `scripts/og-art/typing-game.webp`。創業者が用意した〕に、名前・金の菱・題「タイピングゲーム」・2 行の説明「日本語の文を、ローマ字で」「登録なし・無料」を載せる。数字は載せない〔全ページ共通の型と同じ決まり〕。型は `scripts/og-image-page.html?page=typing-game`、生成器は `node scripts/build-og-image.mjs --page typing-game`。絵を変えたらこのページと tests/e2e.mjs の `OG_PAGES` の版を上げる。docs/SPEC_TYPING.md §6・BACKLOG D10）。
 - アプリ: `scripts/build-app.mjs` の PAGES、`sw.js` の CORE_ASSETS（CACHE_NAME は上げない）。typing-game.html は Service Worker を登録しない。外部への要求は共通の js/supabase.js の SDK 1 本だけ（ほかの静的ページと同じ）。
 
 ## 7. 計測（SQL を変えない）

@@ -1,6 +1,8 @@
 // og-image（SNS などに貼られたときの絵。1200×630 の PNG）を作り直す。
 //   node scripts/build-og-image.mjs            → assets/images/og-image.png を上書き（全ページの og:image が指すファイル。ファイル名は変えない）
 //   node scripts/build-og-image.mjs --out x.png → 別の場所に書く（見比べる用）
+//   node scripts/build-og-image.mjs --page typing（typing-game）→ ページごとの絵 assets/images/og-<名前>.png（型は scripts/og-image-page.html、
+//     背景は scripts/og-art/<名前>.webp。そのページの og:image だけが指す。--out も使える）
 // 絵を変えたら版を上げる（全ページ・E2E）: SNS は絵を URL で覚えるので、og:image の ?v=N を全ページ（packs は scripts/build-pack-pages.mjs）と tests/e2e.mjs の OG_URL で 1 つ上げる。
 // 型は scripts/og-image.html（色は css/tokens.css、字は css/fonts.css の自前のフォント）。このスクリプトは木をその場で配る小さな
 // サーバーを立て、Chromium（CHROME_PATH、無ければ Playwright の置き場）で 1200×630・倍率 1 で撮る。自前のフォントが 3 つとも
@@ -58,7 +60,11 @@ function serve() {
 
 const args = process.argv.slice(2);
 const outArg = args.indexOf("--out");
-const OUT = outArg >= 0 ? path.resolve(args[outArg + 1]) : DEFAULT_OUT;
+const pageArg = args.indexOf("--page");
+const PAGE = pageArg >= 0 ? args[pageArg + 1] : null;
+if (pageArg >= 0 && !/^[a-z-]+$/.test(PAGE ?? "")) throw new Error("--page の名前は英小文字とハイフンだけ（typing・typing-game）");
+const OUT = outArg >= 0 ? path.resolve(args[outArg + 1]) : PAGE ? path.join(ROOT, "assets", "images", `og-${PAGE}.png`) : DEFAULT_OUT;
+const URL_PATH = PAGE ? `/scripts/og-image-page.html?page=${PAGE}` : TEMPLATE;
 
 const server = await serve();
 const browser = await chromium.launch({ executablePath: findChromium() });
@@ -68,13 +74,20 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("requestfailed", (r) => errors.push(`読めない: ${r.url()}`));
   page.on("response", (r) => { if (r.status() >= 400) errors.push(`${r.status()}: ${r.url()}`); });
-  await page.goto(`http://127.0.0.1:${server.address().port}${TEMPLATE}`, { waitUntil: "networkidle" });
+  await page.goto(`http://127.0.0.1:${server.address().port}${URL_PATH}`, { waitUntil: "networkidle" });
+  // ページごとの型は、そのページの題と説明の字で書体を確かめる（Plex Mono は使わない）
+  let fontList = FONTS;
+  if (PAGE) {
+    const pageText = await page.evaluate(() => ({ known: document.querySelector(".og").dataset.page, text: document.querySelector(".og__title").textContent + document.querySelector(".og__sub").textContent }));
+    if (pageText.known !== PAGE) throw new Error(`型に ${PAGE} の中身が無い（scripts/og-image-page.html の PAGES）`);
+    fontList = [FONTS[0], ['500 72px "Shippori Mincho"', pageText.text]];
+  }
   // 使う字のサブセットを読ませてから確かめる（unicode-range で分かれた明朝は、描いた字のぶんだけ読まれる）
   const fonts = await page.evaluate(async (list) => {
     await Promise.all(list.map(([font, text]) => document.fonts.load(font, text)));
     await document.fonts.ready;
     return list.map(([font, text]) => [font, document.fonts.check(font, text)]);
-  }, FONTS);
+  }, fontList);
   const missing = fonts.filter(([, ok]) => !ok).map(([font]) => font);
   if (missing.length || errors.length) throw new Error(`撮らずに止めた: ${[...missing.map((f) => `書体が読めていない ${f}`), ...errors].join(" / ")}`);
   const size = await page.evaluate(() => { const r = document.querySelector(".og").getBoundingClientRect(); return [r.width, r.height]; });
