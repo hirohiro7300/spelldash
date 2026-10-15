@@ -1,7 +1,21 @@
 import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord, answersFor } from "./wordStore.js";
+import { answerLabel } from "./wordData.js";
 import { jaLooksSame } from "./jaAmbiguity.js";
-import { viableAnswers, completedAnswer, continuationsOf, isSpellingVariant } from "./answers.js";
-import { createRomajiMatcher, readingEntries, primaryReading, romajiKeyOf, hasJapaneseScript, hasKana } from "./romaji.js";
+import {
+  answerModeOf,
+  answerMatches,
+  candidatesNow,
+  completesAs,
+  enterAnswer,
+  finishKind,
+  fitsAnswer,
+  isFreeAnswer,
+  isOwnAnswer,
+  normalizeAnswer,
+  restsAfter,
+  romajiEntriesFor
+} from "./judge.js";
+import { createRomajiMatcher, primaryReading, romajiKeyOf } from "./romaji.js";
 import { applyGenre } from "./genres.js";
 import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, renderHasumiHome } from "./hasumi.js";
 import { historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWords.js";
@@ -204,10 +218,6 @@ let learnedCardStale = false; // プレイ中は覚えた単語カードを描�
 let keepMessage = false; // この語の結果の行を次の語が出ても残すか（語の名を含む行・節目の行。showResult が決める。advanceNow）
 let readingHold = false; // 待ちの間に作った覚え方を読んでいる（自動では進めない。Enter で次へ）
 let staleMessageTimer = null;
-
-function isFreeAnswer(word) {
-  return !!word && !/^[a-z-]+$/.test(word.en);
-}
 
 // Study の待ちの間: 次に出す語（setNewWord と同じ選び方: キューの先頭から、漢字の書き分けのカードを飛ばす）が全文入力か（計算カードも全文入力）。
 // キューが空・語が見つからない（setNewWord が埋める語・抽選の語）は分からないので false（待ちを縮めてよい側。そのときは advanceNow が全文入力の語に
@@ -642,13 +652,13 @@ function judgeKey(next) {
 
 // 綴り入力の次の語の 1 打（keydown と Android の input 経路で共通）。accept(typedChar) は受理（完成なら true を返す）
 function judgeSpellingKey(typedChar, contKey, accept) {
-  const fits = (typed) => viableAnswers(activeCandidates(), typed).length > 0;
+  const fits = (typed) => fitsAnswer(activeCandidates(), typed);
   return judgeKey({
     key: typedChar,
     contKey,
     tryAccept: () => (fits(typedSoFar + typedChar) ? (accept(typedChar) ? "done" : "more") : null),
-    finishes: () => (fits(typedSoFar + typedChar) ? completedAnswer(activeCandidates(), typedSoFar + typedChar) : null),
-    own: (done) => done === currentWord.en || isSpellingVariant(done, currentWord.en),
+    finishes: () => (fits(typedSoFar + typedChar) ? completesAs(activeCandidates(), typedSoFar + typedChar) : null),
+    own: (done) => isOwnAnswer(done, currentWord.en),
     firstFits: () => fits(typedChar),
     fitsFromStart: (keys) => fits(keys),
     show: (on) => {
@@ -659,14 +669,6 @@ function judgeSpellingKey(typedChar, contKey, accept) {
     echo: () => ({ kind: "spelling", rests: [typedSoFar + typedChar] }),
     miss: (typed = typedChar) => handleTypingMiss(currentWord.en[currentIndex], typed)
   });
-}
-
-function romajiEntriesFor(word) {
-  if (!word || word.calc || word.kanjiOnly || word.write || word.blank || !isConceptWord(word)) return [];
-  if (!hasJapaneseScript(word.en)) return [];
-  const entries = readingEntries(word);
-  // かなの読みが無い（英字の別解だけの自分の場面カード）は、答えを打てないので全文入力に戻す
-  return entries.some((e) => hasKana(e.reading)) ? entries : [];
 }
 
 // 入力欄: ローマ字モードでは読み取り専用（IME も OS キーボードも開かない。keydown は届く）
@@ -701,21 +703,6 @@ function renderRomaji() {
   if (!romaji) return;
   elements.input.value = romaji.keys; // 値は見えない（文字色は透明）。プレースホルダを消すため
   updateRomajiPreview(romaji.state());
-}
-
-// 表記ゆれを吸収して比較（全角/半角・空白・記号・大文字小文字・アポストロフィ）
-function normalizeAnswer(text) {
-  return String(text ?? "")
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[\s・／/\-‐－_（）()「」『』.,、。:：;；?？!！'’"”“]/g, "");
-}
-
-function answerMatches(word, text) {
-  const typed = normalizeAnswer(text);
-  if (!typed) return false;
-  const candidates = [word.en, ...(Array.isArray(word.accept) ? word.accept : [])];
-  return candidates.some((c) => normalizeAnswer(c) === typed);
 }
 
 // 英作文: 語ごとに比べて、最初に違う語の位置を返す（語順・時制の誤りを指摘するため）
@@ -1189,7 +1176,7 @@ function triggerEnter() {
   if (!isRevealed) {
     // Enter は「打った語で確定」: 打った綴りがそのまま候補の 1 つに一致して止まっているなら、その語で確定する
     // （別解 = 出題語 advertisement に対して "ad" なら別解として受け取る。出題語に一致していれば正解。どちらも「分からない」にしない）
-    const done = completedAnswer(activeCandidates(), typedSoFar, { force: true });
+    const done = enterAnswer(activeCandidates(), typedSoFar);
     if (done) {
       finishTypedAnswer(done);
       return;
@@ -1396,9 +1383,9 @@ function finishRomajiWord() {
   completeWord();
 }
 
-// 答えを見た後は出題語だけを練習させる（別解でごまかせないように）
+// 答えを見た後は出題語だけを練習させる（別解でごまかせないように。js/judge.js candidatesNow）
 function activeCandidates() {
-  return isRevealed ? [currentWord.en] : answerCandidates;
+  return candidatesNow(answerCandidates, currentWord.en, isRevealed);
 }
 
 // ===== モバイル（ソフトキーボード/IME）対応 =====
@@ -1489,7 +1476,7 @@ export function handleTextInput() {
         fed = 0;
       }
       if (++fed >= 2 && wordTiming?.serial === wordSerial) wordTiming.multi = true;
-      if (completedAnswer(activeCandidates(), typedSoFar + ch) !== null) {
+      if (completesAs(activeCandidates(), typedSoFar + ch) !== null) {
         elements.input.value = typedSoFar + ch;
         updateTypedPreview(elements.input.value);
       }
@@ -1616,7 +1603,7 @@ function acceptAlternative(typed) {
   isRevealed = true;
   recordAnswerSeen(currentWord.id); // 答えの綴りを見た印（初見の語だけ。打ち直さずに終わっても、次の答えを「知ってた」にしない。js/stats.js）
   hideHint();
-  showColoredAnswer(currentWord.en);
+  showColoredAnswer(answerLabel(currentWord)); // 表示は元の綴り（Cu・ASEAN。判定は小文字の en。js/wordData.js answerLabel）
   if (listenMode) elements.japanese.textContent = promptOf(currentWord);
   renderWordFamily(currentWord);
   renderWordHistory();
@@ -1629,13 +1616,13 @@ function acceptAlternative(typed) {
   typedSoFar = "";
   elements.input.value = "";
   clearTypedPreview();
-  showMessage(`${typed} も「${promptOf(currentWord)}」。この問題の語は ${currentWord.en}`, "info");
+  showMessage(`${typed} も「${promptOf(currentWord)}」。この問題の語は ${answerLabel(currentWord)}`, "info");
 }
 
 // 答えを見せる。ローマ字モードは答えの下に読みも（鎌倉幕府 ／ かまくらばくふ）
 function showAnswer() {
   if (romajiMode) showAnswerWithReading(currentWord.en, primaryRomajiEntry()?.display);
-  else showColoredAnswer(currentWord.en);
+  else showColoredAnswer(answerLabel(currentWord)); // 英字の答えは元の綴り（Cu・NaCl・ASEAN）。判定は小文字の en のまま
 }
 
 // failDetail: × の細目（ミス起点は呼び手が渡す。無ければ Enter・Esc の答え表示 e と打てていた字数）
@@ -1854,11 +1841,11 @@ export function useHint() {
   if (freeMode) {
     hintChars = Math.min(currentWord.en.length, hintChars + 1);
     const total = currentWord.en.length;
-    showHiddenWordText(`${currentWord.en.slice(0, hintChars)}${"・".repeat(Math.max(0, total - hintChars))}（${total}文字）`, { hint: true });
+    showHiddenWordText(`${answerLabel(currentWord).slice(0, hintChars)}${"・".repeat(Math.max(0, total - hintChars))}（${total}文字）`, { hint: true });
     showMessage(
       hintChars === 1
-        ? `頭文字は「${currentWord.en[0]}」。続きを思い出して入力（ヒントを見たので、この語はまた出す）`
-        : `${currentWord.en.slice(0, hintChars)}… 続きを入力してEnter`,
+        ? `頭文字は「${answerLabel(currentWord)[0]}」。続きを思い出して入力（ヒントを見たので、この語はまた出す）`
+        : `${answerLabel(currentWord).slice(0, hintChars)}… 続きを入力してEnter`,
       "revealed"
     );
     return;
@@ -1867,11 +1854,12 @@ export function useHint() {
   const nextChar = currentWord.en[currentIndex];
   const total = currentWord.en.length;
   const shown = currentIndex + 1;
-  showHiddenWordText(`${currentWord.en.slice(0, shown)}${"・".repeat(Math.max(0, total - shown))}（${total}文字）`, { hint: true });
+  showHiddenWordText(`${answerLabel(currentWord).slice(0, shown)}${"・".repeat(Math.max(0, total - shown))}（${total}文字）`, { hint: true });
+  const nextLabel = answerLabel(currentWord)[currentIndex] ?? nextChar; // 見せる字は元の綴り（Cu の C）。入力欄と判定は小文字のまま
   showMessage(
     shown === 1
-      ? `頭文字は「${nextChar}」。残りを自力で打つ（ヒントを見たので、この語はまた出す）`
-      : `次は「${nextChar}」。続きを打つ`,
+      ? `頭文字は「${nextLabel}」。残りを自力で打つ（ヒントを見たので、この語はまた出す）`
+      : `次は「${nextLabel}」。続きを打つ`,
     "revealed"
   );
 
@@ -2043,10 +2031,10 @@ function acceptChar(typedChar) {
   correctChars++;
   updateTypeSpeed();
 
-  const done = completedAnswer(activeCandidates(), typedSoFar);
+  const done = completesAs(activeCandidates(), typedSoFar);
   if (done) {
     // 打った綴りより長い候補が残っている（gym → gymnasium、a → an、sport → sports）: 続けて打たれた続きを次の語の打鍵にしない
-    const rests = continuationsOf(activeCandidates(), typedSoFar);
+    const rests = restsAfter(activeCandidates(), typedSoFar);
     if (rests.length > 0) startSpellingSpill(rests);
     else clearSpill();
     finishTypedAnswer(done);
@@ -2056,16 +2044,17 @@ function acceptChar(typedChar) {
   return false;
 }
 
-// 打ち終わった綴りで分岐。出題語ならそのまま正解、別解なら減点せずに出題語を見せる
+// 打ち終わった綴りで分岐（js/judge.js finishKind）。出題語ならそのまま正解、別解なら減点せずに出題語を見せる
 function finishTypedAnswer(typed) {
-  if (typed === currentWord.en) {
+  const kind = finishKind(typed, currentWord.en);
+  if (kind === "exact") {
     completeWord();
     return;
   }
   // つづり違い（favourite / favorite）は同じ語。打ち直させずにそのまま正解にする
-  if (isSpellingVariant(typed, currentWord.en)) {
+  if (kind === "variant") {
     completeWord();
-    showResult(`${typed} も正解（この教材では ${currentWord.en}）`, "info", true);
+    showResult(`${typed} も正解（この教材では ${answerLabel(currentWord)}）`, "info", true);
     return;
   }
   acceptAlternative(typed);
@@ -2451,7 +2440,7 @@ function renderSetProgress() {
 // 別の日に思い出せなかった語を今日自力で思い出せた＝学習成立。ここだけは大きく祝う
 function celebrateLearned(word, earned, note = "") {
   const jaShort = word.ja.length > 22 ? `${word.ja.slice(0, 22)}…` : word.ja;
-  const line = `覚えた！ ${word.en}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`;
+  const line = `覚えた！ ${answerLabel(word)}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`;
   if (timedRun()) {
     // 60 秒の回: メッセージ行の「覚えた！ X」だけ（スタンプ・はちゃんの知らせは出さない。待ちも延ばさない）
     sfxSparkle();
@@ -2478,7 +2467,7 @@ function celebrateLearned(word, earned, note = "") {
 
   const toast = document.getElementById("learnToast");
   if (toast) {
-    toast.innerHTML = hasumiBubbleHtml(hasumiLearnedLine(word.en), "hasumi--result");
+    toast.innerHTML = hasumiBubbleHtml(hasumiLearnedLine(answerLabel(word)), "hasumi--result");
     toast.hidden = false;
     clearTimeout(toast._timer);
     toast._timer = setTimeout(() => {
@@ -2516,7 +2505,7 @@ function renderPlayScore() {
 function renderSetWordChips() {
   const chip = (id, cls = "") => {
     const w = findWord(id);
-    return w ? `<button type="button" class="word-chip ${cls}" data-speak="${w.en}"><b>${w.en}</b><small>${w.ja}</small></button>` : "";
+    return w ? `<button type="button" class="word-chip ${cls}" data-speak="${w.en}"><b>${answerLabel(w)}</b><small>${w.ja}</small></button>` : "";
   };
   const learned = [...setLearnEvents].filter(([, e]) => e === "learned").map(([id]) => id);
   const recovered = [...setLearnEvents].filter(([, e]) => e === "recovered").map(([id]) => id);
@@ -2559,7 +2548,7 @@ function renderRankGroups() {
       .map(({ word, entry, after }) => {
         const move = rankMoveLabel(entry, after);
         // ボタンの名前は「budget 予算 上がった」と読まれる（flex の中の空白は見た目に影響しない）
-        return `<button type="button" class="word-chip" data-speak="${escapeHtml(word.en)}"><b>${escapeHtml(word.en)}</b> <small>${escapeHtml(word.ja)}</small>${move ? ` <span class="word-chip__move">${move}</span>` : ""}</button>`;
+        return `<button type="button" class="word-chip" data-speak="${escapeHtml(word.en)}"><b>${escapeHtml(answerLabel(word))}</b> <small>${escapeHtml(word.ja)}</small>${move ? ` <span class="word-chip__move">${move}</span>` : ""}</button>`;
       })
       .join("");
     html += `<div class="word-chips rank-group" role="group" aria-labelledby="rankGroup${n}"><span class="word-chips__title" id="rankGroup${n}">${rankHtml(n)}</span>${chips}</div>`;
@@ -2581,9 +2570,9 @@ function renderRankMoves(exclude = new Set()) {
     const word = findWord(id);
     if (!word || after < 1 || after === entry.before) continue;
     if (after > entry.before) {
-      if (!exclude.has(id)) ups.push(`${escapeHtml(word.en)}（${RANK_NAMES[after]}）`);
+      if (!exclude.has(id)) ups.push(`${escapeHtml(answerLabel(word))}（${RANK_NAMES[after]}）`);
     } else {
-      downs.push(`${escapeHtml(word.en)}（${RANK_NAMES[after]}${rankMoveLabel(entry, after) === "時間がかかった" ? "・時間がかかった" : ""}）`);
+      downs.push(`${escapeHtml(answerLabel(word))}（${RANK_NAMES[after]}${rankMoveLabel(entry, after) === "時間がかかった" ? "・時間がかかった" : ""}）`);
     }
   }
   const line = (label, items) =>
@@ -2653,7 +2642,7 @@ function endStudySession({ timed = false } = {}) {
   const dueWords = getDueReviewWords(activeCategory, tomorrow.getTime(), 3);
   const tomorrowLine =
     dueTomorrow > 0
-      ? `<div class="result-panel__tomorrow">明日の復習: <b>${dueWords.map((w) => w.en).join("・")}</b>${dueTomorrow > dueWords.length ? ` ほか${dueTomorrow - dueWords.length}語` : ""}</div>`
+      ? `<div class="result-panel__tomorrow">明日の復習: <b>${dueWords.map((w) => answerLabel(w)).join("・")}</b>${dueTomorrow > dueWords.length ? ` ほか${dueTomorrow - dueWords.length}語` : ""}</div>`
       : `<div class="result-panel__tomorrow">明日の復習はまだ無い。新しい語から</div>`;
 
   // 週の目標（学習日数）: ちょうど達成した日だけ一言添える（途中経過の数字は出さない。数字は 1 行の原則）
@@ -2789,12 +2778,12 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null, rank
     const stat = getWordStats()[currentWord.id];
     if (stat?.mastered) {
       sfxComplete();
-      showResult(`${currentWord.en} を習得。10回連続で思い出せた${xp}`, "learned", true);
+      showResult(`${answerLabel(currentWord)} を習得。10回連続で思い出せた${xp}`, "learned", true);
       return;
     }
     if (learnEvent === "recovered") {
       sfxSparkle();
-      showResult(`思い出せた。さっき思い出せなかった ${currentWord.en}`, "correct", true);
+      showResult(`思い出せた。さっき思い出せなかった ${answerLabel(currentWord)}`, "correct", true);
       return;
     }
     if (learnEvent === "retained") {
@@ -2808,7 +2797,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null, rank
     if (learnEvent === "known") {
       // 初見の日なので「身についた」と過去形で言わない。確認待ちの間は補充に出ない（S6）ので「2週間後に確認」は事実
       showResult(
-        ranks?.after === 4 ? `知ってた。${currentWord.en} はもう身についている。2週間後に確認${xp}` : `知ってた。${currentWord.en} は2週間後に確認${xp}`,
+        ranks?.after === 4 ? `知ってた。${answerLabel(currentWord)} はもう身についている。2週間後に確認${xp}` : `知ってた。${answerLabel(currentWord)} は2週間後に確認${xp}`,
         "correct",
         true
       );
@@ -2908,10 +2897,11 @@ function setNewWord() {
   renderExplain(null);
 
   // ローマ字モード（日本語の答え）／全文入力モード（英語の用語・読みのない日本語の答え）の切替
-  romajiEntries = romajiEntriesFor(currentWord);
-  romajiMode = romajiEntries.length > 0;
+  const answerMode = answerModeOf(currentWord);
+  romajiEntries = answerMode.entries;
+  romajiMode = answerMode.mode === "romaji";
   romaji = romajiMode ? createRomajiMatcher(romajiEntries) : null;
-  freeMode = !romajiMode && isFreeAnswer(currentWord);
+  freeMode = answerMode.mode === "free";
   // 全文入力の語は 1 打ずつ判定しない（入力欄の字はブラウザ・IME が入れる）。英単語の長い候補の続きは持ち越さない
   // （物理キーだけ飲んで Android の input 経路では飲まない、という食い違いを作らない。ローマ字の続きの扱いは以前のまま）
   if (freeMode && spill?.kind === "spelling") clearSpill();

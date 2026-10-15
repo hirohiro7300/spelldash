@@ -19,7 +19,7 @@
   },
   "words": [
     {"id": "english-into", "en": "into", "ja": "～の中へ", "pos": "前", "level": "easy", "tags": ["fn"], "ex": "Please come into the house.", "exJa": "家の中に入ってください。"},
-    {"id": "english-only", "en": "only", "ja": "～だけ・唯一の", "pos": "副", "level": "easy", "accept": ["just"], "tags": ["adj"], "ex": "I have only one brother.", "exJa": "兄弟は一人だけです。"},
+    {"id": "english-only", "en": "only", "ja": "～だけ・唯一の", "pos": "副", "level": "easy", "accept": ["just", "sole", "unique"], "tags": ["adj"], "ex": "I have only one brother.", "exJa": "兄弟は一人だけです。"},
     {"id": "english-look", "en": "look", "ja": "見る・～に見える", "pos": "動", "level": "easy", "accept": ["see", "watch", "seem"], "tags": ["v"], "ex": "Look at that bird in the tree!", "exJa": "木の上のあの鳥を見て！"},
     {"id": "english-want", "en": "want", "ja": "～がほしい", "pos": "動", "level": "normal", "tags": ["v"], "ex": "I want a dog.", "exJa": "犬がほしいです。"},
     {"id": "english-give", "en": "give", "ja": "与える", "pos": "動", "level": "easy", "tags": ["v"], "ex": "My aunt gave me this watch.", "exJa": "この時計はおばがくれたんだ。", "exForm": "gave"},

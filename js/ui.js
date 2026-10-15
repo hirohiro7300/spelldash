@@ -1,6 +1,7 @@
 import { renderColoredWord } from "./colors.js";
 import { getBestScore, getWordStats } from "./storage.js";
 import { findWord } from "./wordStore.js";
+import { answerLabel } from "./wordData.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { classifyWord } from "./categoryProgress.js";
 import { normalizeReading } from "./romaji.js";
@@ -141,7 +142,7 @@ export function renderWeakWords() {
     <div class="word-list">
       ${weakWords.map(([wordId, data]) => {
         const word = findWord(wordId);
-        const en = word ? word.en : wordId.replace(/^[a-z]+-/, "");
+        const en = word ? answerLabel(word) : wordId.replace(/^[a-z]+-/, ""); // 英字の答えは元の綴り（Cu。js/wordData.js answerLabel）
         const ja = word ? word.ja : "";
 
         const recallFail = data.recallFail ?? 0;
