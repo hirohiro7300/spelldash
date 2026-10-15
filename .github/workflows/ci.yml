@@ -58,6 +58,9 @@ jobs:
       - name: 学習のランク（21 段の境と名前・レベルからの割り付け・紋章の絵が揃う。js/level.js rankOf・js/emblem.js）
         run: node scripts/test-level.mjs
 
+      - name: 思い出す速さ（語ごとのすぐ・ふつう・時間がかかると、出す語の決まり。js/recallSpeed.js）
+        run: node scripts/test-recall.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 

@@ -6,7 +6,9 @@
 // 出力（標準出力に JSON）: 語ごとの記録（新しい欄と、別の日の扱いを直した lastReviewResult・lastReviewAt を除く。history は d と r だけ）・
 // spelldash_retention・spelldash_mastery_meta と、大きさ（word_stats の新しい欄〔history の × の細目〕の分・語ごとの欄 spelldash_memory_words・
 // spelldash_memory_check）。
-// scripts/test-memory.mjs が、この出力の要約（hash）を tests/fixtures/sim-writers.json（この Batch の前の main で取った値）と比べる（受け入れの基準 1）。
+// scripts/test-memory.mjs が、この出力の要約（hash）を tests/fixtures/sim-writers.json と比べる（受け入れの基準 1）。fixture は Batch 68 の前の main で取り、
+// Batch 70（M1・M1': 1 打ミスの × の detail で段の控え masteryPeak を書き、翌日から戻す・即答の 30 日は 14 日以上あけた答えだけ）でわざと取り直した。
+// 語の hash には masteryPeak も入る（word_stats の欄）。取り直しの前後の差の確かめ方（入力を固定して書き手だけを比べる流し直し）は docs/SPEC_MASTERY.md §3.5
 // --quality: 一度に 2 字以上入った答え・盤面の外へ焦点が移った答え・3 秒止まった答えを混ぜる（js/game.js が箱に入れない・pc を入れない分だけ、
 // 本人の基準が変わり段が動きうる。比べない。BUILD の参考の数）。既定の模擬はどれも偽（4 つの型と × の種類だけ）
 // 計測用（比べない）: --words=<数>（語の数。既定 300）・--t0=<ISO>（1 日目の 0 時。既定 2026-10-14）・--dump（1 年後の spelldash_* をまるごと出す）
@@ -313,6 +315,7 @@ globalThis.Date = RealDate;
 
 // ===== 出力 =====
 const NEW_FIELDS = ["sp", "spP", "memSv", "memD", "memD0"];
+const NEW_STAT_FIELDS = ["masteryPeak"]; // word_stats に足した欄（Batch 70）。hash には入れ、大きさにも数える
 const CHANGED_FIELDS = ["lastReviewResult", "lastReviewAt"]; // 「別の日」の扱い（S5）で意図して変わる欄（比べない）
 const stats = JSON.parse(store.get("spelldash_word_stats") || "{}");
 if (RAW) {
@@ -335,7 +338,7 @@ for (const [id, st] of Object.entries(stats)) {
   words[id] = base;
   reviewFields[id] = { r: st.lastReviewResult ?? null, at: st.lastReviewAt ?? null };
   const stripped = { ...st };
-  for (const k of NEW_FIELDS) delete stripped[k];
+  for (const k of [...NEW_FIELDS, ...NEW_STAT_FIELDS]) delete stripped[k];
   if (Array.isArray(st.history)) stripped.history = st.history.map((e) => ({ d: e.d, r: e.r }));
   newBytes += JSON.stringify(st).length - JSON.stringify(stripped).length;
 }
@@ -355,7 +358,7 @@ if (SUMMARY) {
         answers,
         ranks,
         mastered: Object.values(words).filter((st) => st.mastered).length,
-        // 比べない（大きさの基準）: newBytesPerWord = word_stats の 1 語あたりの増え（history の × の細目）、memoryWordsPerWord = 別のキーの 1 語あたり
+        // 比べない（大きさの基準）: newBytesPerWord = word_stats の 1 語あたりの増え（history の × の細目と段の控え masteryPeak）、memoryWordsPerWord = 別のキーの 1 語あたり
         size: { newBytesPerWord: n ? Math.round((newBytes / n) * 10) / 10 : 0, memoryWordsBytes, memoryWordsPerWord: n ? Math.round((memoryWordsBytes / n) * 10) / 10 : 0, memoryCheckBytes: (store.get("spelldash_memory_check") || "").length },
         retention: hash(retention),
         meta: hash(meta),

@@ -6,8 +6,8 @@
 // 段: 0 = 答えの記録が無い（出さない）、1 まだ・2 あやふや・3 思い出せる・4 身についた・5 即答。
 // 記録: word_stats[id].masteryRank（1〜5）と masteryAt（段を決めた答えの時刻。書いた lastRecall*At と同じ文字列）。
 // どちらも端末だけの欄（js/sync.js statToRow は送らない）。欄が無い語は initialRank で読む（書かない）。
-// 端末だけの欄はほかに 2 つ: masteryDownAt（その日の × で段を下げた答えの時刻。同じ日の ○ で戻さない。rankNext の段 1 の文も読む）・answerSeenAt（別解を打って
-// 答えの綴りを見た時刻。初見と読まない）。どちらも js/stats.js の書き手だけが書く。
+// 端末だけの欄はほかに 3 つ: masteryDownAt（その日の × で段を下げた答えの時刻。同じ日の ○ で戻さない。rankNext の段 1 の文も読む）・answerSeenAt（別解を打って
+// 答えの綴りを見た時刻。初見と読まない）・masteryPeak（1 打ミスの × で下がる前の段。M1。Batch 70。masteryPeakOf で読む）。どれも js/stats.js の書き手だけが書く。
 
 import { localDay, dayDiff, shiftDay } from "./retentionCalc.js";
 import { esc } from "./html.js";
@@ -30,9 +30,10 @@ export const RANK_GLOSS = [
   "2週間以上あけて、すぐ打てた"
 ];
 
-// 規則の文（学習データの注記と、語の詳細の畳んだ「習熟度の決まり」）
+// 規則の文（学習データの注記と、語の詳細の畳んだ「習熟度の決まり」）。打ち間違いで下がった段の戻り方（M1。Batch 70）は isSlipFail の × の言い直し
+// （1 打ずつ打つ道の 3 字目から〔p ≥ 2〕か隣のキー〔a〕。遅い答えでは戻らない・Battle の × は入らないことは文に入れない。docs/SPEC_MASTERY.md §3.5）
 export const RANK_RULE =
-  "日をあけて間違えずに思い出せると 1 段上がる（1 日に 1 段まで）。身についた には前の答えから 6日、即答 には 20日あけて すぐ打てることが要る。初めて答えて間違えずに打てた語は 思い出せる（すぐなら 身についた）から始まり、2週間後の確認で すぐ打てると 即答。思い出せなかった日は 1 段下がる。時間がたつだけでは下がらない。";
+  "日をあけて間違えずに思い出せると 1 段上がる（1 日に 1 段まで）。身についた には前の答えから 6日、即答 には 20日あけて すぐ打てることが要る。初めて答えて間違えずに打てた語は 思い出せる（すぐなら 身についた）から始まり、2週間後の確認で すぐ打てると 即答。思い出せなかった日は 1 段下がる。3字目からの打ち間違いか 隣のキーの押し間違いで下がった段は、翌日から 間違えずに思い出せると 1 日 1 段ずつ戻る。時間がたつだけでは下がらない。";
 
 const ms = (iso) => Date.parse(iso ?? "") || 0;
 const DAY_MS = 86400000;
@@ -116,6 +117,30 @@ function hasRankField(s) {
   return Number.isInteger(s?.masteryRank) && s.masteryRank >= 1 && s.masteryRank <= RANK_MAX;
 }
 
+// ===== 1 打ミスで下がった段の控え（M1。Batch 70。docs/SPEC_MASTERY.md §3.5） =====
+// 指の滑りと見る ×: history の 1 件（js/stats.js pushHistory。r "x" と × の細目 k・p・a）が 1 打ミス（k "m"）で、3 字目以降（打てていた字数 p ≥ 2）か
+// 隣のキー（a が真）。a は 1 打ずつ判定する道（綴り・ローマ字）だけが真偽で渡す。全文入力の違う答え（a なし）は綴りを丸ごと打った答えなので入れない
+// （build と打った building も p 5 になる）。答え表示・ヒント・パス・不明（Battle・Batch 68 より前の記録）も入れない
+export const SLIP_MIN_TYPED = 2;
+export function isSlipFail(e) {
+  if (!e || e.r !== "x" || e.k !== "m" || typeof e.a !== "boolean") return false;
+  return e.a || (Number.isInteger(e.p) && e.p >= SLIP_MIN_TYPED);
+}
+
+// 今使える控えの段（無ければ 0）。控えは書き手が置き直す・消すが、読むときも次を確かめる（古い版・2 台目が控えを知らずに書いた記録で戻しすぎない）:
+//   段の欄があり、控えが今の段より上の整数（RANK_MAX まで）・この端末の段が最後の × を見ている（lastRecallFailAt ≤ masteryAt。2 台目・古い版の × は種類が分からない）・
+//   history の最後の × が指の滑り（isSlipFail。古い版が書いた × には k が無い）
+export function masteryPeakOf(stat) {
+  const s = stat;
+  if (!hasRankField(s)) return 0;
+  const peak = s.masteryPeak;
+  if (!Number.isInteger(peak) || peak <= s.masteryRank || peak > RANK_MAX) return 0;
+  if (ms(s.lastRecallFailAt) > ms(s.masteryAt)) return 0;
+  const h = Array.isArray(s.history) ? s.history : [];
+  for (let i = h.length - 1; i >= 0; i--) if (h[i]?.r === "x") return isSlipFail(h[i]) ? peak : 0;
+  return 0;
+}
+
 // ===== 同じ日の扱い =====
 // 時刻 t（ms）の出来事が、今（nowMs。そのローカル日 today）から見て同じ日の扱いか: ローカル日が今日か、6 時間未満（時計が戻って先に見える時刻も）。
 // answerContext の failedToday・downToday と、語の詳細の次の条件（rankNext の段 1）が使う（答えの判定と文を食い違わせない）
@@ -145,6 +170,7 @@ function downTodayOf(s, nowMs, today) {
 //   rank        答える前の段（rankOf）
 //   known       知ってた語か
 //   knownCheck  知ってた語の最初の確認か（isKnownWaiting: 知ってた語で streak 1、期日が最後の自力正解から 13 日以上先）
+//   peak        1 打ミスで下がる前の段の控え（masteryPeakOf。無ければ 0）。nextRank が戻す上限・書き手が置き直す起点
 export function answerContext(stat, nowMs = Date.now()) {
   const s = stat ?? {};
   const okAt = ms(s.lastRecallSuccessAt);
@@ -178,14 +204,15 @@ export function answerContext(stat, nowMs = Date.now()) {
     downToday: downTodayOf(s, nowMs, today),
     rank,
     known,
-    knownCheck: isKnownWaiting(s)
+    knownCheck: isKnownWaiting(s),
+    peak: masteryPeakOf(s)
   };
 }
 
 // ===== 段の動き =====
 // r = 答える前の段（○ は recordCorrect が控えた rankBefore、× は書く前の rankOf）
 // a = { ok, clean, speed }（speed: "fast" | "normal" | "slow" | "unknown"）
-// c = answerContext の値（prevDay・sameDay・gap・failedToday・sawAnswer・downToday）＋ knownCheck
+// c = answerContext の値（prevDay・sameDay・gap・failedToday・sawAnswer・downToday・peak）＋ knownCheck
 export function nextRank(r, a, c) {
   const rank = clampRank(r);
   if (c.prevDay === null && rank === 0 && !c.sawAnswer) {
@@ -199,6 +226,14 @@ export function nextRank(r, a, c) {
   // 日数が分からない・同じ日の ○: まだ → あやふや だけ。今日の × で下げた語（2 → 1）は戻さない（思い出せなかった日は 1 段下がる。翌日以降の規則で上がる）
   if (c.prevDay === null || c.sameDay) return from <= 1 && !c.downToday ? 2 : from;
   if (!a.clean) return Math.max(from, 2); // 打ち間違いあり（Battle）は 2 より上げない。正解で下げない
+  const n = steadyRank(from, a, c);
+  // M1（Batch 70）: 1 打ミスの × で下がった段（控え c.peak）は、翌日以降のノーミス・遅くない答えで控えまで 1 日 1 段（6 日・20 日・すぐの条件なし）
+  const peak = Number.isInteger(c.peak) ? Math.min(RANK_MAX, c.peak) : 0;
+  return peak > from && a.speed !== "slow" ? Math.max(n, from + 1) : n;
+}
+
+// 別の日のノーミス正解（今の規則）
+function steadyRank(from, a, c) {
   if (c.knownCheck && (from === 3 || from === 4) && c.gap >= KNOWN_CHECK_DAYS) return a.speed === "fast" ? 5 : 4;
   if (from === 5) return a.speed === "slow" ? 4 : 5; // 遅い答えのまま「即答」と言わない
   const e = c.gap >= TOP_GAP_DAYS && a.speed === "fast" ? 5 : c.gap >= SOLID_GAP_DAYS ? 4 : 3;
@@ -346,6 +381,9 @@ export function rankNext(stat, today = localDay(new Date()), nowMs = Date.now())
     const d = shiftDay(dayOfIso(s.masteryDownAt), 1); // 時計が戻って下げた日が先に見えるときも、その日＋1 日
     return `${d ? `${mdOf(d)}以降に` : "日をあけて"} 自力で思い出せると あやふや`;
   }
+  // 1 打ミスの × で下がった段（M1。控えが使える語: masteryPeakOf）は、前の答えの翌日以降のノーミス・遅くない答えで 1 段戻る（6 日・20 日・すぐの条件なし。
+  // nextRank の M1 の枝と同じ）。段 2 の文は今の規則と同じになる
+  if (r >= 2 && masteryPeakOf(s) > r) return `${after(1, "日をあけて")} 間違えずに思い出せると ${RANK_NAMES[r + 1]}`;
   if (isKnownWaiting(s) && (r === 3 || r === 4)) {
     const checkDay = dayOfIso(s.nextReviewAt) ?? (prevDay ? shiftDay(prevDay, KNOWN_CHECK_DAYS) : null);
     // 確認の日が過ぎている（まだ答えていない）ときは「次の確認で」（過ぎた日付を約束の形で言わない）
@@ -407,6 +445,9 @@ export function holdBeforeDue(stat, nowMs = Date.now(), { includeRank3 = false }
 export const SRS_STEPS = Object.freeze([1, 2, 3, 5, 7, 10, 14, 21, 30]);
 export const MAX_INTERVAL_DAYS = 30; // S2・S3 で伸ばす上限（表の最後の値）
 export const RANK_FLOOR_DAYS = { 4: 7, 5: 30 }; // S3: 段ごとの下限（身についた 7 日・即答 30 日）
+// M1'（Batch 70）: 段の下限をかける前の答えからの日数。即答の 30 日は 14 日以上あけた答え（知ってた語の確認と同じ日数）だけ。短いときは 1 段下の下限
+// （身についたの 7 日。M1 で戻った翌日・期日前の答え・打ち間違いありの正解の翌日に、× の翌日の正解 1 回から 30 日あけない）
+export const RANK_FLOOR_GAP_DAYS = Object.freeze({ 5: KNOWN_CHECK_DAYS });
 
 // S2・S3: 日をあけた正解の後の間隔（日）。伸ばすだけで、streakDays より短くしない。
 //   streakDays = recordCorrect が streak から決めた日数（streak が進まなかった答えは 0。知ってた語の初見は 14）
@@ -415,13 +456,14 @@ export const RANK_FLOOR_DAYS = { 4: 7, 5: 30 }; // S3: 段ごとの下限（身�
 //   speed      = "fast" | "normal" | "slow" | "unknown"
 // gap が数でない・1 未満（初めての答え・同じ日の扱い。dayDiff(null, …) の NaN で 30 日にしない）と slow は credit も下限も無し（streakDays のまま）。
 // それ以外は、gap 6 以上なら credit = 表で gap より長い最初の値（無ければ 30。gap 6 未満は credit なし: 1 日遅れで表を飛ばさない）、
-// 段 4 は 7 日・段 5 は 30 日を下限に（下限は gap 1 から）、どちらも 30 日まで。
+// 段 4 は 7 日（gap 1 から）・段 5 は 30 日（gap 14 から。gap 13 までは段 4 の 7 日。M1'）を下限に、どちらも 30 日まで。
 // ノーミスか・その日の最初の答えかは呼ぶ側（stats.js）が見る（打ち間違いありの正解は recordCorrect が期日を翌日にする。§6 S1 の例外）
 export function intervalAfter({ streakDays = 0, gap = null, rank = 0, speed = "unknown" } = {}) {
   const base = Number.isFinite(streakDays) && streakDays > 0 ? streakDays : 0;
   if (typeof gap !== "number" || !Number.isFinite(gap) || gap < 1 || speed === "slow") return base;
   const credit = gap >= SOLID_GAP_DAYS ? SRS_STEPS.find((d) => d > gap) ?? MAX_INTERVAL_DAYS : 0;
-  const floor = RANK_FLOOR_DAYS[clampRank(rank)] ?? 0;
+  const r = clampRank(rank);
+  const floor = (gap >= (RANK_FLOOR_GAP_DAYS[r] ?? 0) ? RANK_FLOOR_DAYS[r] : RANK_FLOOR_DAYS[r - 1]) ?? 0;
   return Math.max(base, Math.min(MAX_INTERVAL_DAYS, Math.max(credit, floor)));
 }
 

@@ -782,6 +782,44 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
   for (let i = 0; i < 1500; i++) MW.putMemoryWord(`b${String(i).padStart(4, "0")}`, entry(T + i * 1000, { sp: [[20740, 900, 100, "n", 5]] }));
   MW.flushMemoryWords();
   eq("語の記録が小さい端末では縮めない（1,500 語とも残る）", Object.keys(saved()?.w ?? {}).length, 1500);
+
+  // ── 4d. 段の控え masteryPeak の置き場所（Batch 70 の M1。docs/SPEC_MASTERY.md §3.5）: 学習の記録（word_stats）の端末だけの欄 ──
+  // 学習の記録と同じ優先で守られ（上限でも影のデータが先に消える）・送らず（js/sync.js は読まない）・バックアップに入り・2 台目の取り込みで壊れない
+  const MA = await import("../js/mastery.js");
+  const peakOf = typeof MA.masteryPeakOf === "function" ? MA.masteryPeakOf : () => "masteryPeakOf が無い";
+  const BK = await import("../js/backup.js");
+  const DAY = 86400000;
+  const now = Date.now();
+  const five = (okMs) => ({ ...statAt(okMs), playCount: 9, correctCount: 9, cleanCorrectStreak: 6, masteryRank: 5, masteryAt: at(okMs), history: [{ d: "2026-09-01", r: "o" }] });
+  // 2 日前に 1 打ミス（3 字目）で 即答 → 身についた になった語（書き手が書く形）
+  const slipped = (failMs) => ({ ...five(failMs - 30 * DAY), recallFail: 1, missCount: 1, cleanCorrectStreak: 0, masteryRank: 4, masteryPeak: 5, masteryAt: at(failMs), masteryDownAt: at(failMs), lastRecallFailAt: at(failMs), nextReviewAt: at(failMs + DAY), history: [{ d: "2026-09-01", r: "o" }, { d: "2026-10-12", r: "x", k: "m", p: 2, a: false }] });
+  reset({ ...words, q5: five(T - 30 * DAY) }, { [KEY]: shadowBig, spelldash_dirty_words: JSON.stringify([...Object.keys(words), "q5"]) });
+  await withQuota(used() + 5, async () => {
+    W.recordRecallFail("q5", { k: "m", p: 2, a: false });
+    await new Promise((r) => setImmediate(r));
+  });
+  const q5 = JSON.parse(store.get("spelldash_word_stats")).q5;
+  eq("控え: 1 打ミスの × の控え（masteryPeak 5）は学習の記録の写しに書き、上限では影のデータ（spelldash_memory_words）を先に消して書く", [q5?.masteryRank, q5?.masteryPeak, store.has(KEY)], [4, 5, false]);
+  ok("控え: 語ごとの記録の質（spelldash_memory_words）には書かない", !JSON.stringify(MW.getMemoryWord("q5") ?? {}).includes("masteryPeak"));
+  ok("控え: 同期の行を作る js/sync.js は masteryPeak を読まない（送る行は 15 列のまま）", !/masteryPeak/.test(readFileSync(path.join(ROOT, "js/sync.js"), "utf8").replace(/\/\/.*$/gm, "")));
+  // バックアップ → 復元 → 翌日以降のノーミスで戻る
+  reset({ s6: slipped(now - 2 * DAY) });
+  const bk = BK.buildBackup();
+  ok("控え: バックアップに入る（spelldash_word_stats の欄）", JSON.parse(bk.data.spelldash_word_stats).s6.masteryPeak === 5);
+  store.clear();
+  BK.applyBackup(bk);
+  eq("控え: 復元の後も残り、使える（masteryPeakOf 5）", [JSON.parse(store.get("spelldash_word_stats")).s6.masteryPeak, peakOf(JSON.parse(store.get("spelldash_word_stats")).s6)], [5, 5]);
+  W.recordCorrect("s6", true);
+  W.recordRecallSuccess("s6", { clean: true, speed: "normal" });
+  await new Promise((r) => setImmediate(r));
+  const s6 = JSON.parse(store.get("spelldash_word_stats")).s6;
+  eq("控え: 復元の後のノーミスで 即答 に戻り、控えを消す・期日は 7 日後（M1'）", [s6.masteryRank, s6.masteryPeak ?? null, Math.round((Date.parse(s6.nextReviewAt) - Date.now()) / DAY)], [5, null, 7]);
+  // 2 台目の取り込み（js/sync.js pullSync の「クラウドの行が新しい」枝: { ...ローカル, ...クラウドの 15 列, 新しい方の自力正解・× の日時 }）
+  const local = slipped(now - 2 * DAY);
+  const merged = (cloud) => ({ ...local, ...cloud, lastRecallFailAt: [local.lastRecallFailAt, cloud.lastRecallFailAt].filter(Boolean).sort().at(-1) ?? null, lastRecallSuccessAt: [local.lastRecallSuccessAt, cloud.lastRecallSuccessAt].filter(Boolean).sort().at(-1) ?? null });
+  const okThere = merged({ lastPlayed: at(now - DAY), lastRecallSuccessAt: at(now - DAY), cleanCorrectStreak: 1, nextReviewAt: at(now) });
+  const xThere = merged({ lastPlayed: at(now - DAY), lastRecallFailAt: at(now - DAY), recallFail: 2, nextReviewAt: at(now - DAY) });
+  eq("控え: 2 台目の取り込みの後も欄は残る。2 台目の ○ だけなら使え、2 台目の ×（種類が分からない）があれば使わない", [okThere.masteryPeak, peakOf(okThere), xThere.masteryPeak, peakOf(xThere)], [5, 5, 5, 0]);
 }
 
 // ── 5. 速さの箱（js/masteryMeta.js）: 測りの札で入れない答え・基準も返す ─────────────

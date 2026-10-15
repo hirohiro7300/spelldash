@@ -17,10 +17,13 @@ import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDo
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
 import { downloadLearnedCsv } from "./exportCsv.js";
-import { rankHtml, rankOf, RANK_GLOSS, RANK_RULE } from "./mastery.js";
+import { rankHtml, rankOf, RANK_GLOSS, RANK_RULE, RANK_NAMES } from "./mastery.js";
+import { recallSpeedClass, SPEED_LABEL } from "./recallSpeed.js";
+import { getMemoryWord } from "./memoryWords.js";
+import { getMasteryMeta } from "./masteryMeta.js";
 import { bindWordDetail } from "./wordDetail.js";
 
-import { initWordStore, findWord } from "./wordStore.js";
+import { initWordStore, findWord, promptOf } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
 import { logTypingStage } from "./funnelLog.js";
 
@@ -506,18 +509,25 @@ function renderGrowthTrend() {
 // 行は段 5 → 1。目盛りと名前（見出しが「習熟度」なので aria-label には重ねない）・語数・入り方によらず真の短い説明（RANK_GLOSS）。
 // 数えるのは語が引ける（findWord）語のうち段 1 以上（知ってた語・苦手の語も含む。外したパックの語は数えない）。0 の行は出さず、
 // 1 語も無ければ節ごと出さない。その段に知ってた語（題箋と同じ「知ってた」= classifyWord が known。ホームの「覚えた N語」が除く語）が
-// あるときだけ「（うち知ってた M語）」。率・合計・推移は出さない。段は rankOf で読むだけ（記録を書き換えない）
+// あるときだけ「（うち知ってた M語）」。率・合計・推移は出さない。段は rankOf で読むだけ（記録を書き換えない）。
+// 思い出す速さと段ごとの実測（Batch 70。D1 §3.3）は、習熟度の行と注記の下に 1〜2 行（speedLines）
 function renderMastery() {
   const section = document.getElementById("mastery");
   const container = document.getElementById("masteryReport");
   if (!section || !container) return;
   const counts = [0, 0, 0, 0, 0, 0];
   const known = [0, 0, 0, 0, 0, 0];
+  const speeds = { fast: 0, normal: 0, slow: 0 };
   for (const [id, stat] of Object.entries(getWordStats())) {
     const r = rankOf(stat);
-    if (r < 1 || !findWord(id)) continue;
+    const word = r >= 1 ? findWord(id) : null;
+    if (!word) continue;
     counts[r]++;
     if (classifyWord(stat) === "known") known[r]++;
+    if (r >= 2 && r <= 4) {
+      const speed = recallSpeedClass({ sp: getMemoryWord(id)?.sp, rank: r, prompt: promptOf(word) });
+      if (speed) speeds[speed]++;
+    }
   }
   const empty = counts.every((n) => n === 0);
   section.toggleAttribute("data-tab-empty", empty);
@@ -539,7 +549,43 @@ function renderMastery() {
     )
     .join("");
   container.innerHTML = `<ul class="mastery-rows" role="list">${rows}</ul>
-    <p class="mastery-note">答えた記録から決める（予測ではない）。${RANK_RULE}最後に答えた時点の段。この端末の記録から。</p>`;
+    <p class="mastery-note">答えた記録から決める（予測ではない）。${RANK_RULE}最後に答えた時点の段。この端末の記録から。</p>${speedLines(speeds)}`;
+}
+
+// 段ごとの実測を出すのは、その段で 30 回答えてから（それより少ない回数の割合は揺れが大きい）
+const MEASURED_MIN = 30;
+
+// 思い出す速さ（Batch 70。D1 §3.3）: 「思い出す速さ すぐ N語 ・ ふつう N語 ・ 時間がかかる N語」。数えるのは段 2〜4 で速さが出る語だけ（js/recallSpeed.js。
+// 段 5 は名前の「即答」に入る）。0 語の語は出さず、1 語も無ければ行ごと出さない。
+// 段ごとの実測: 「日をあけて問うと思い出せた 身についた 120回のうち108回 ・ 思い出せる 300回のうち246回」。材料は spelldash_mastery_meta の check.rank
+// （その日の最初の答え〔前の答えから 1 日以上〕の、答える前の段 × 間隔の帯 × ○／× の数。js/masteryMeta.js noteRankCheck）を段ごとに足した数。
+// 30 回からその段を出し（段 5 → 1）、1 段も無ければ行も注記も出さない。注記「この端末の記録。予測ではない。」。率（%）・順位・推移は出さない。読むだけ
+function speedLines(speeds) {
+  const items = ["fast", "normal", "slow"].filter((k) => speeds[k] > 0).map((k) => `${SPEED_LABEL[k]} ${speeds[k]}語`);
+  const speedHtml = items.length ? `<p class="mastery-speed"><span class="mastery-speed__label">思い出す速さ</span> ${items.join(" ・ ")}</p>` : "";
+  let check = {};
+  try {
+    check = getMasteryMeta().check?.rank ?? {};
+  } catch {
+    check = {};
+  }
+  const measured = [5, 4, 3, 2, 1]
+    .map((r) => {
+      let ok = 0;
+      let n = 0;
+      for (const v of Object.values(check[r] ?? {})) {
+        if (!Array.isArray(v)) continue;
+        ok += Number(v[0]) || 0;
+        n += (Number(v[0]) || 0) + (Number(v[1]) || 0);
+      }
+      return { r, ok, n };
+    })
+    .filter((m) => m.n >= MEASURED_MIN)
+    .map((m) => `${RANK_NAMES[m.r]} ${m.n}回のうち${m.ok}回`);
+  const measuredHtml = measured.length
+    ? `<p class="mastery-measured"><span class="mastery-speed__label">日をあけて問うと思い出せた</span> ${measured.join(" ・ ")}</p><p class="mastery-measured-note">この端末の記録。予測ではない。</p>`
+    : "";
+  return speedHtml || measuredHtml ? `<div class="mastery-speed-block">${speedHtml}${measuredHtml}</div>` : "";
 }
 
 // ===== 覚えた単語帳（語で見せる） =====

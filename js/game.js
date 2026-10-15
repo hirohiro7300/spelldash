@@ -176,7 +176,8 @@ let timedHiddenAt = null; // 裏に回った時刻（null = 表）
 let timedLastTick = 0; // 前の描画の時刻（止まっていた分を足すため）
 let timedWarned = false; // 「残り10秒」を読み上げた
 // 回で最初に答えた語の、答える直前の段（習熟度。js/mastery.js）。Study（語数・60 秒）・Challenge・Daily とも。保存しない。
-// id -> { before: 段, seenToday: その答えが同じ日の扱いだった（今日もう答えていた）, slowDown: 回の最初の答えが遅い正解で 5 → 4 になった（この回で × があれば偽） }
+// id -> { before: 段, seenToday: その答えが同じ日の扱いだった（今日もう答えていた）, slowDown: 回の最初の答えが遅い正解で 5 → 4 になった（この回で × があれば偽）,
+//         slow: 回の最初の答えが段 3・4 のその日の最初のノーミス正解で「時間がかかる」だった（この回で × があれば偽。Batch 70） }
 let runRankBefore = new Map();
 // 1 問ごとの速さ（docs/SPEC_MASTERY.md §3.4）: tShow = 出題の文を書いた後の最初の rAF、tFirst = この語の最初のキー、input = その経路（kbd／touch）、
 // spill = 前の語の続きが残っていた間に来たキー（測らない）、invalid = 測らない語（音・例文の訳つき・全文入力・計算・英文・空欄・並べ替え・ページの最初の語・裏に回った）。
@@ -2169,14 +2170,19 @@ function speedBox() {
 }
 
 // 答えを 1 つ控える（○ は recordRecallSuccess、× は recordRecallFail のとき）。回で最初の答えなら答える前の段と同じ日の扱いを、
-// 遅い正解で 5 → 4 になったら slowDown を。この回で × があれば slowDown は外す（「時間がかかった」ではなく「下がった」）
+// 遅い正解で 5 → 4 になったら slowDown を、段 3・4 のその日の最初の答え（同じ日の扱いでない）が遅い正解なら slow を（Batch 70。D1 §3.4。
+// speed が "slow" になるのはノーミスで速さを測れた答えだけ: completeWord の speedSample）。この回で × があればどちらも外す（「時間がかかった」ではなく「下がった」）
 function noteRunAnswer(id, { before = 0, ok, speed = "unknown", sameDay = false, after = null }) {
   const entry = runRankBefore.get(id);
   if (!entry) {
-    runRankBefore.set(id, { before, seenToday: !!sameDay, slowDown: !!ok && speed === "slow" && before === 5 && after === 4 });
+    const slowOk = !!ok && speed === "slow";
+    runRankBefore.set(id, { before, seenToday: !!sameDay, slowDown: slowOk && before === 5 && after === 4, slow: slowOk && !sameDay && (before === 3 || before === 4) });
     return;
   }
-  if (!ok) entry.slowDown = false;
+  if (!ok) {
+    entry.slowDown = false;
+    entry.slow = false;
+  }
 }
 
 let studyWordsSinceSync = 0;
@@ -2524,12 +2530,14 @@ function renderSetWordChips() {
 }
 
 // 回で最初に答えた直前の段（before）と今の段（after）から、語チップに添える 1 語。同じなら無し（矢印・記号は使わない）。
-// 正解の遅さだけで 5 → 4 になった語は「時間がかかった」（正解したのに「下がった」と出て不具合に見えないように）
-function rankMoveLabel({ before, slowDown }, after) {
+// 正解の遅さだけで 5 → 4 になった語は「時間がかかった」（正解したのに「下がった」と出て不具合に見えないように）。
+// 段 3・4 の語のその日の最初のノーミス正解が「時間がかかる」に当たり、段が動かなかった語も「時間がかかった」（Batch 70。1 語に札は 1 つ: 上がった・下がったが先）
+function rankMoveLabel({ before, slowDown, slow }, after) {
   if (before === 0) return "初めて";
   if (after > before) return "上がった";
   if (after === before - 1 && slowDown) return "時間がかかった";
   if (after < before) return "下がった";
+  if (slow && after === before) return "時間がかかった";
   return "";
 }
 
@@ -2562,17 +2570,23 @@ function renderRankGroups() {
 }
 
 // 語数のセットの完了パネル・Challenge／Daily の結果: 回の前が段 1 以上で段が動いた語だけ、1〜2 行（無ければ何も足さない）。
-// 「習熟度が上がった: budget（身についた）・ invoice（思い出せる）」。1 行 8 語まで、残りは「ほか N語」。exclude = 「覚えた」のチップの語（必ず 1 → 2 で上がっている）
+// 「習熟度が上がった: budget（身についた）・ invoice（思い出せる）」。1 行 8 語まで、残りは「ほか N語」。exclude = 「覚えた」のチップの語（必ず 1 → 2 で上がっている）。
+// 段の動かなかった語で「時間がかかった」の札の語（段 3・4 のその日の最初のノーミス正解が「時間がかかる」。Batch 70）は 3 行目「時間がかかった: desk（身についた）」
 const RANK_MOVES_PER_LINE = 8;
 function renderRankMoves(exclude = new Set()) {
   const stats = getWordStats();
   const ups = [];
   const downs = [];
+  const slows = [];
   for (const [id, entry] of runRankBefore) {
     if (entry.before < 1) continue;
     const after = rankOf(stats[id]);
     const word = findWord(id);
-    if (!word || after < 1 || after === entry.before) continue;
+    if (!word || after < 1) continue;
+    if (after === entry.before) {
+      if (rankMoveLabel(entry, after) === "時間がかかった") slows.push(`${escapeHtml(answerLabel(word))}（${RANK_NAMES[after]}）`);
+      continue;
+    }
     if (after > entry.before) {
       if (!exclude.has(id)) ups.push(`${escapeHtml(answerLabel(word))}（${RANK_NAMES[after]}）`);
     } else {
@@ -2583,7 +2597,7 @@ function renderRankMoves(exclude = new Set()) {
     items.length
       ? `<p class="rank-moves">${label}: ${items.slice(0, RANK_MOVES_PER_LINE).join("・ ")}${items.length > RANK_MOVES_PER_LINE ? ` ほか${items.length - RANK_MOVES_PER_LINE}語` : ""}</p>`
       : "";
-  return line("習熟度が上がった", ups) + line("習熟度が下がった", downs);
+  return line("習熟度が上がった", ups) + line("習熟度が下がった", downs) + line("時間がかかった", slows);
 }
 
 // 腕試し（初回10語）の結果を1回だけ伝える。答え表示後にも出るよう、少し遅らせて上書きする
