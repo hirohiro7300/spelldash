@@ -98,7 +98,7 @@ import { getAfterCorrect, waitAfterCorrect, GLANCE_MS, MILESTONE_MS, ADVANCE_GUA
 import { generateCalc } from "./calcCards.js";
 import { getNote, setNote, escapeHtml, NOTE_MAX_LENGTH } from "./wordNotes.js";
 import { renderWordAi } from "./wordAi.js";
-import { editAtCaret } from "./keyboard.js";
+import { editAtCaret, ROWS as KEY_ROWS } from "./keyboard.js";
 import {
   elements,
   showMessage,
@@ -1550,10 +1550,11 @@ function typedCount() {
   return romajiMode ? String(romaji?.keys ?? "").length : typedSoFar.length;
 }
 
-// 隣のキー: 物理キーの QWERTY（段のずれ 0・0.25・0.75 キー）か専用キーボード（js/keyboard.js の ROWS の並び。css/keyboard.css で 2 段目は
-// 両側を半キーずつあけ、3 段目は 7 字＋⌫〔1.5 キー〕を左から並べる）のどちらかで隣り合う字。同じ段は左右、上下の段は中心の差が 1 キー未満
-const KEY_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]; // js/keyboard.js の ROWS と同じ（あちらは export しない）
-const KEY_X = [(r, i) => i + [0, 0.25, 0.75][r], (r, i) => (r === 2 ? (i + 0.5) * (10 / 8.5) : i + 0.5 + r * 0.5)];
+// 隣のキー: 物理キーの QWERTY（段のずれ 0・0.25・0.75 キー）か専用キーボード（字の並びは js/keyboard.js の ROWS をそのまま使う。
+// css/keyboard.css で 2 段目は両側を半キーずつあけ、3 段目は 7 字＋⌫〔1.5 キー〕を左から並べる）のどちらかで隣り合う字。同じ段は左右、
+// 上下の段は中心の差が 1 キー未満。KEY_X は段 r の i 番目の字の中心（キー 1 つ分の幅を 1）: [0] 物理キー、[1] 専用キーボード（css の並びの写し。
+// #osk の実際の矩形と合うことは E2E「隣のキー」が確かめる。PR #172 のレビュー 8）
+export const KEY_X = [(r, i) => i + [0, 0.25, 0.75][r], (r, i) => (r === 2 ? (i + 0.5) * (10 / 8.5) : i + 0.5 + r * 0.5)];
 let adjacentKeys = null; // "ab" の集合（最初の 1 打ミスで作る）
 function isAdjacentKey(expected, typed) {
   if (!/^[a-z]$/.test(expected ?? "") || !/^[a-z]$/.test(typed ?? "") || expected === typed) return false;
@@ -2097,14 +2098,20 @@ function markKey() {
   t.last = now;
 }
 
-// 焦点が盤面の外か（記録の質の outside・away）。盤面 = #gameCard・#osk（メモ・覚え方の欄は外: focusOnBoard と同じ）。盤面を包む要素
-// （盤面の空いた所のクリックで焦点が残る <main tabindex="-1"> など）は外にしない
+// 焦点が盤面の外か（記録の質の outside・away と、結果パネルの見出しへ焦点を移すかの focusOnBoard が同じ判定を使う。PR #172 のレビュー 4）。
+// 「盤面の外で作業中」は次の 3 つのときだけ（PR #164 レビューの 1・2）:
+//   (a) 盤面（#gameCard・#osk）の外の書ける欄（input・textarea・select・contenteditable。ヘッダーのログインの欄・出題設定の select など）
+//   (b) 開いている窓（aria-modal・role=dialog。ご意見・語の詳細・コースを選ぶ）の中
+//   (c) 盤面の中のメモ・覚え方の欄（#wordNote・#wordAi）
+// ほかは「盤面にある」と同じ: どこにも無い（body）・盤面の祖先（盤面の空いた所をクリックすると Chromium は <main tabindex="-1"> に、
+// 「本文へ」も #main に焦点を置く）・入力欄・画面キーボード・押したあとに焦点が残ったボタン／リンク／summary（「出題: … ・ 設定」・ヘッダーの
+// ボタンなど。キーは盤面に届く）、隠れた要素に残った焦点（完了で畳んだ出題の UI）
 function isOffBoard(el) {
-  if (!(el instanceof Element)) return false;
+  if (!(el instanceof Element) || el === document.body || el === document.documentElement) return false;
+  if (!el.getClientRects().length) return false;
   if (el.closest("#wordNote, #wordAi")) return true;
-  if (el.closest("#gameCard, #osk")) return false;
-  const card = document.getElementById("gameCard");
-  return !(card && el.contains(card));
+  if (el.closest('[aria-modal="true"], [role="dialog"]')) return true;
+  return !el.closest("#gameCard, #osk") && isWritableField(el);
 }
 
 // 盤面の外へ移った（焦点が盤面の外の要素へ・窓の焦点が外れた）: 1 打目の前なら outside、後なら away。判定・分類は変えない（書き手へ渡すだけ）
@@ -2256,10 +2263,9 @@ function completeWord() {
     recordRecallSuccess(currentWord.id, { clean: isClean, speed }, measure);
     if (answerCtx) {
       // 本人の基準に入れるのは、初めての答えかその日の最初の答えで、ノーミス・測れた答えだけ（分類は上で済ませた）。
-      // 一度に 2 字以上入った・1 打目の前に盤面の外へ移った答えは入れない。1 打目の後に止まった・外へ移った答えは pc を入れない（T1 は入れる）
-      if (sample && box && (answerCtx.firstAnswer || answerCtx.firstOfDay) && !measure.multi && !measure.outside) {
-        noteSpeedSample(box, measure.stalled ? { ...sample, pc: null } : sample);
-      }
+      // 測りの札で入れない答え（一度に 2 字以上入った・1 打目の前に盤面の外へ移った）と pc を入れない答え（1 打目の後に止まった・外へ移った）は
+      // noteSpeedSample が札を見て決める（決まりは js/masteryMeta.js の 1 か所。PR #172 のレビュー 5）
+      if (sample && box && (answerCtx.firstAnswer || answerCtx.firstOfDay)) noteSpeedSample(box, sample, measure);
       if (answerCtx.firstAnswer && speed === "fast") notePendingFirstFast(currentWord.id, basis);
       ranks = { before: answerCtx.rank, after: rankOf(getWordStats()[currentWord.id]) };
       noteRunAnswer(currentWord.id, { before: ranks.before, ok: true, speed, sameDay: answerCtx.sameDay, after: ranks.after });
@@ -3378,20 +3384,9 @@ function focusResultTitle(panel) {
   return true;
 }
 
-// 焦点が盤面にある（見出しへ移してよい）か。「盤面の外で作業中」（false）は次の 3 つのときだけ（PR #164 レビューの 1・2）:
-//   (a) 盤面（#gameCard・#osk）の外の書ける欄（input・textarea・select・contenteditable。ヘッダーのログインの欄・出題設定の select など）
-//   (b) 開いている窓（aria-modal・role=dialog。ご意見・語の詳細・コースを選ぶ）の中
-//   (c) 盤面の中のメモ・覚え方の欄（#wordNote・#wordAi）
-// ほかは「盤面にある」と同じ: どこにも無い（body）・盤面の祖先（盤面の空いた所をクリックすると Chromium は <main tabindex="-1"> に、
-// 「本文へ」も #main に焦点を置く）・入力欄・画面キーボード・押したあとに焦点が残ったボタン／リンク／summary（「出題: … ・ 設定」など）、
-// 隠れた要素に残った焦点（完了で畳んだ出題の UI）
+// 焦点が盤面にある（見出しへ移してよい）か。「盤面の外で作業中」の決まりは isOffBoard（記録の質の outside と同じ）
 function focusOnBoard() {
-  const active = document.activeElement;
-  if (!active || active === document.body || active === document.documentElement) return true;
-  if (!active.getClientRects().length) return true;
-  if (active.closest("#wordNote, #wordAi")) return false;
-  if (active.closest('[aria-modal="true"], [role="dialog"]')) return false;
-  return !!active.closest("#gameCard, #osk") || !isWritableField(active);
+  return !isOffBoard(document.activeElement);
 }
 
 // 書ける欄（input の押すだけの種類〔button・submit・reset・image・checkbox・radio〕は除く。値を動かしている range〔出題設定の配分〕は欄と同じ）

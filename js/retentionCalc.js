@@ -1,5 +1,6 @@
-// ===== 記憶の保持率の集計（純関数） =====
+// ===== 記憶の保持率の集計（純関数）と、日の数え方・小さな計算の共通の所 =====
 // import なし・DOM なし・localStorage なし。Node から直接 import して検証する（scripts/test-retention.mjs）。
+// ローカル日（localDay・dayDiff・shiftDay）・gap の帯（gapBand）・中央値（median）はほかの集計も使う（写しを持たない。PR #172 のレビュー 7）
 // 記録の書き手は js/retentionLog.js・js/studyTime.js、画面は js/retention.js、定義は docs/SPEC_RETENTION.md。
 //
 // 語ごとの記録: { f: 初回の自力正解の ISO, d: 最後に数えた回答日 "YYYY-MM-DD", n: 復習した日数,
@@ -10,11 +11,30 @@ export const WINDOW_7 = [6, 8]; // 覚えた日から +6〜+8 日
 export const WINDOW_30 = [27, 33]; // +27〜+33 日
 const EFFICIENCY_LAG_DAYS = 7; // 学習時間は「7 日前まで」の日を分母にする（直近 7 日の語はまだ測れないため）
 
-// ローカル日 "YYYY-MM-DD"。読めない日時は null
+// ローカル日 "YYYY-MM-DD"。読めない日時は null（日の数え方の共通の所: js/mastery.js・js/stats.js・js/masteryMeta.js・js/memoryCheck.js も使う）
 export function localDay(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return null;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// gap（前の答えからの整数日）の帯: 1・2-5・6-13・14-29・30+。1 未満・数でなければ null（段の確かめ js/masteryMeta.js と
+// 記録の質の集計 js/memoryCheck.js が同じ帯で数える。docs/SPEC_MASTERY.md §3.8・§12.4）
+export function gapBand(gap) {
+  if (!Number.isFinite(gap) || gap < 1) return null;
+  if (gap === 1) return "1";
+  if (gap <= 5) return "2-5";
+  if (gap <= 13) return "6-13";
+  if (gap <= 29) return "14-29";
+  return "30+";
+}
+
+// 中央値（数でない値は除く。空なら NaN）。速さの箱の基準（js/masteryMeta.js）と記録の質の本人の基準（js/memoryCheck.js speedBasis）
+export function median(list) {
+  const a = (Array.isArray(list) ? list : []).filter(Number.isFinite).sort((x, y) => x - y);
+  if (a.length === 0) return NaN;
+  const mid = a.length >> 1;
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
 }
 
 function parts(ymd) {

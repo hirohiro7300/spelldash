@@ -16,7 +16,7 @@ import { isNativeApp, nativeCall } from "./appEnv.js";
 //   引数なし（Study の js/main.js）は今のまま（home--playing・タッチの強制はローマ字のカードだけ）
 
 const OSK_KEY = "spelldash_osk"; // "auto" | "on" | "off"
-const ROWS = [
+export const ROWS = [
   ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
   ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
   ["z", "x", "c", "v", "b", "n", "m"]

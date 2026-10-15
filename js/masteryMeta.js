@@ -14,15 +14,17 @@
 //   }
 // }
 //
-// 答えごとには書かない。メモリーに持ち、変わったとき（dirty）だけ、10 答えごと（tickMasteryMeta）・回の終わり・stopGame・pagehide で
-// 1 回書く（flushMasteryMeta）。変わっていなければ書かない。読み書きはすべて try/catch（失敗しても学習は続く。js/retentionLog.js と同じ作法）。
+// 答えごとには書かない。メモリーに持ち、変わったとき（dirty）だけ、10 答えごと（tickMasteryMeta）・回の終わり・stopGame・pagehide・
+// 裏に回ったとき（visibilitychange で hidden。スマホは裏のタブを pagehide なしで捨てることが多い。PR #172 のレビュー 2）で 1 回書く（flushMasteryMeta）。変わっていなければ書かない。読み書きはすべて try/catch（失敗しても学習は続く。js/retentionLog.js と同じ作法）。
 // 2 つのタブで同時に学んでも互いに消さない: 書く直前に保存を読み直し、このタブで足した分（速さの見本・集計の増分。delta）だけを足して書く
 // （見本は各箱の最新 40 件、集計は足し算）。書いた後のメモリーは保存と同じ中身（もう一方のタブの見本も基準に入る）。
 // 最初の中央値（firstMedian）と数え始めた日（since）も、このタブが読み込んだ（前に書いた）後に新しく決めたものだけを delta に持って足す
 // （別のタブで「端末の記録を消す」「復元」をした後に、このタブが読み込んだ時の古い基準を書き戻さない）。
 
-import { localDay } from "./retentionCalc.js";
-import { scheduleMemoryCheckFlush, speedBasis } from "./memoryCheck.js";
+import { localDay, gapBand, median } from "./retentionCalc.js";
+// 記録の質の 2 つの鍵（js/memoryCheck.js・js/memoryWords.js）を読むのは、回の終わり・stopGame・10 答え目の書く機会を同じにするためだけ
+// （flushMasteryMeta が手が空いたときの書き込みを頼む）。速さの分類（classifySpeed）は記録の質を読まない
+import { scheduleMemoryCheckFlush } from "./memoryCheck.js";
 import { scheduleMemoryWordsFlush } from "./memoryWords.js";
 
 const KEY = "spelldash_mastery_meta";
@@ -52,23 +54,6 @@ const BANDS = ["1", "2-5", "6-13", "14-29", "30+"];
 export function boxKey({ lang, input, ctx } = {}) {
   const key = `${lang}.${input}.${ctx}`;
   return BOX_SET.has(key) ? key : null;
-}
-
-// gap（整数日）の帯。1 未満・数でなければ null
-export function gapBand(gap) {
-  if (!Number.isFinite(gap) || gap < 1) return null;
-  if (gap === 1) return "1";
-  if (gap <= 5) return "2-5";
-  if (gap <= 13) return "6-13";
-  if (gap <= 29) return "14-29";
-  return "30+";
-}
-
-export function median(list) {
-  const a = (Array.isArray(list) ? list : []).filter(Number.isFinite).sort((x, y) => x - y);
-  if (a.length === 0) return NaN;
-  const mid = a.length >> 1;
-  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
 }
 
 // ===== メモリーの中身 =====
@@ -220,20 +205,12 @@ const pcOf = (sample) => (Number.isFinite(sample?.pc) && sample.pc >= 0 ? sample
 
 // 今の答えの速さを、入れる前の箱と比べて分類する（仮の値。§3.8 で見直す）。
 //   box: boxKey の値。firstAnswer: 初めての答えか（answerContext の firstAnswer）。data: 箱の中身の差し替え（単体テスト用）
-//   qLen・input（省略可。記録の質）: 渡すと、比べた基準（js/memoryCheck.js speedBasis: all = 経路の T1 の中央値、band = 同じ問いの字数帯の
-//   中央値。どちらも 20 件以上のときだけ数）も返す。分類そのものは箱の中央値のまま（変えない）
-// 返り値 { speed: "fast" | "normal" | "slow" | "unknown", basis: "own" | "prior" | null }（qLen か input を渡したときは ＋ all・band）
+// 返り値 { speed: "fast" | "normal" | "slow" | "unknown", basis: "own" | "prior" | null }
 //   箱の T1 が 20 件以上: 本人の中央値と比べる（pc は pc の箱が 20 件以上のときだけ見る）
 //   20 件未満: 初めての答え・英語の綴りで、既定の線以下のときだけ fast（prior）。ほかは unknown（既定から遅い・ふつうは出さない）
-export function classifySpeed(sample, box, { firstAnswer = false, data, qLen, input } = {}) {
-  const r = classifyBox(sample, box, firstAnswer, data);
-  if (qLen === undefined && input === undefined) return r;
-  const path = input ?? (String(box).split(".")[1] === "kbd" ? "kbd" : undefined);
-  const { all, band } = speedBasis({ qLen, input: path });
-  return { ...r, all, band };
-}
-
-function classifyBox(sample, box, firstAnswer, data) {
+// 問いの字数帯・経路ごとの本人の基準（記録の質）は js/memoryCheck.js speedBasis で、書き手（js/stats.js の sp の q）だけが使う
+// （PR #172 のレビュー 5 で、使う所の無かった「基準も返す」枝を消した。即答の判定を字数帯で比べるかは間隔を直す段の前に決める: docs/SPEC_MASTERY.md §12.8）
+export function classifySpeed(sample, box, { firstAnswer = false, data } = {}) {
   const unknown = { speed: "unknown", basis: null };
   if (!BOX_SET.has(box) || !isMeasured(sample)) return unknown;
   const b = data ?? getSpeedBox(box);
@@ -257,8 +234,9 @@ function classifyBox(sample, box, firstAnswer, data) {
 
 // 測れた答えを箱に入れる（初めての答え、またはその日の最初の答えで、ノーミス正解のときだけ呼ぶ。分類はこの前に済ませる）。
 // T1 は 7,000ms で丸める。各 40 件まで（古いものから捨てる）。箱が初めて 20 件になったとき、その中央値を firstMedian に 1 回だけ書く。
-// measure（省略可。js/game.js の測りの札）: 1 回の input で 2 字以上入った答え（multi）・1 打目の前に盤面の外へ焦点が移った答え（outside）は入れない。
-// 1 打目の後に 3 秒以上止まった・盤面の外へ移った答え（stalled）は pc を入れない（T1 は入れる）。箱の決まりそのものは変えない
+// measure（js/game.js の測りの札。札を見て入れるかを決めるのはここだけ: 盤面は札をそのまま渡す。PR #172 のレビュー 5）:
+// 1 回の input で 2 字以上入った答え（multi）・1 打目の前に盤面の外へ焦点が移った答え（outside）は入れない。
+// 1 打目の後に 3 秒以上止まった・盤面の外へ移った答え（stalled）は pc を入れない（T1 は入れる）。札が無い（null）呼び方は今のまま（箱の決まりは変えない）
 export function noteSpeedSample(box, sample, measure = null) {
   try {
     if (!BOX_SET.has(box) || !isMeasured(sample)) return false;
@@ -380,4 +358,10 @@ export function forgetMasteryMeta() {
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("pagehide", () => flushMasteryMeta());
+  // 裏に回った: その場で書く（裏のタブは pagehide なしで捨てられうる。PR #172 のレビュー 2）。記録の質の 2 つの鍵もそれぞれがその場で書く
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushMasteryMeta();
+    });
+  }
 }

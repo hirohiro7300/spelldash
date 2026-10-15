@@ -184,11 +184,12 @@ async function studyOk(w) {
   const ctx = M.answerContext(prev, Date.now());
   const box = input === "kbd" ? "en.kbd.study" : "en.touch.study";
   const sample = { t1, pc: jitter(220, 0.3) };
-  const keepSample = AS_BEFORE || !(measure.multi || measure.outside); // js/game.js が箱に入れない答え（この Batch から。既定の模擬ではいつも真）
   const { speed, basis } = MM.classifySpeed(sample, box, { firstAnswer: ctx.firstAnswer });
   S.recordCorrect(w.id, true, ctx);
   S.recordRecallSuccess(w.id, { clean: true, speed }, measure);
-  if ((ctx.firstAnswer || ctx.firstOfDay) && keepSample) MM.noteSpeedSample(box, measure.stalled && !AS_BEFORE ? { t1, pc: null } : sample);
+  // js/game.js と同じく測りの札をそのまま渡す（入れない答え・pc を入れない答えは noteSpeedSample が決める。前の版の書き手は札を読まない）。
+  // --as-before は前の版の js/game.js と同じに札を渡さない（全部入れる）
+  if (ctx.firstAnswer || ctx.firstOfDay) MM.noteSpeedSample(box, sample, AS_BEFORE ? null : measure);
   if (ctx.firstAnswer && speed === "fast") MM.notePendingFirstFast(w.id, basis);
   // js/studyQueue.js onRecallSuccess（同日反復）
   const s = read()[w.id];

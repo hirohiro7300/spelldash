@@ -15,25 +15,31 @@
 // }
 //
 // 書く機会: 10 答えごと（tickMemoryWords）と回の終わり（js/masteryMeta.js flushMasteryMeta）は、答えのタスクの外（手が空いたとき）に 1 回。
-// pagehide はその場で 1 回。変えた語が無ければ書かない。書く直前に保存を読み直し（前に読んだ・書いた文字列と同じなら JSON から戻さず
+// pagehide と、裏に回ったとき（visibilitychange で hidden。スマホは裏のタブを pagehide なしで捨てることが多い。PR #172 のレビュー 2）はその場で 1 回。
+// 変えた語が無ければ書かない。書く直前に保存を読み直し（前に読んだ・書いた文字列と同じなら JSON から戻さず
 // メモリーの中身を使う）、このタブで変えた語だけを足す。ただし
 //   ・保存の方が新しい（もう一方のタブが後から答えた: t が大きい）語は保存のまま
 //   ・語の記録に無い・語の記録の最後の答えがこのタブの答えより古い語（別のタブで復元・端末の記録を消した・書けなかった）は足さない
-// 上限 MAX_CHARS 字。超えたら、最後に答えた時刻の古い語から、語ごとの欄をまるごと捨てて 9 割まで減らす（次に答えたとき今の記録から作り直す）。
-// 壊れた保存（JSON でない・形が違う）は止めずに空として読み、上書きする前に 1 つだけ spelldash_memory_words_corrupt に写す（js/storage.js と同じ作法）。
+// 上限は MAX_CHARS 字と「学習の記録と合わせて SHARED_BUDGET 字（js/storageGuard.js）」の小さい方。超えたら、最後に答えた時刻の古い語から、
+// 語ごとの欄をまるごと捨てて 9 割まで減らす（次に答えたとき今の記録から作り直す。学習の記録の書き込みの余地を残す。PR #172 のレビュー 1）。
+// 学習の記録（js/storage.js）が上限で書けないときは、こちらの鍵の方を先に消す（その後はこのタブで変えた語だけを書き直す）。
+// 壊れた保存（JSON でない・形が違う）は止めずに空として読み、上書きする前に 1 つだけ spelldash_memory_words_corrupt に写す（js/storage.js の
+// 退避と同じ包み・512K 字まで・30 日で消す。js/storageGuard.js）。
 // 復元と端末の記録を消した後は js/backup.js が forgetMemoryWords でメモリーを捨てる。読み書きはすべて try/catch（失敗しても学習は続く）。
 
-// 語の記録の読み手は書き手（js/stats.js）が渡す（useWordStatsReader）。ここで js/storage.js を読まないのは、js/masteryMeta.js
+import { MEMORY_WORDS_KEY as KEY, MEMORY_WORDS_CORRUPT_KEY as CORRUPT_KEY, SHARED_BUDGET, keepCorrupt as keepCorruptCopy, expireCorrupt } from "./storageGuard.js";
+
+// 語の記録の読み手と、その保存の字数は書き手（js/stats.js）が渡す（useWordStatsReader）。ここで js/storage.js を読まないのは、js/masteryMeta.js
 // （回の終わりの書き込み）からも読まれ、保存の移行（js/storage.js の読み込みで走る）を連れてこないため
 let readWordStats = null;
-export function useWordStatsReader(fn) {
+let readWordStatsChars = null;
+export function useWordStatsReader(fn, charsFn = null) {
   readWordStats = typeof fn === "function" ? fn : null;
+  readWordStatsChars = typeof charsFn === "function" ? charsFn : null;
 }
 
-const KEY = "spelldash_memory_words";
-const CORRUPT_KEY = "spelldash_memory_words_corrupt";
-// 50 万字: 2,000 語を 1 年使った記録で約 37 万字（1 語 約 185 字）。約 2,700 語までは捨てない。
-// 端末の保存の枠（ブラウザで 1 つのサイトに約 500 万字）の 1 割で、語の記録の書き込みの余地を食わない
+// 50 万字: 2,000 語を 1 年使った記録で約 37 万字（1 語 約 185 字）。約 2,700 語までは捨てない（学習の記録との合計の上限が先に効くことがある: 下の roomLeft）。
+// 端末の保存の枠は端末で違う（Chromium は鍵と値の合計 5,242,880 字、iPhone の Safari は約 250 万字）。後者では 2 割になるので、合計でも抑える
 export const MAX_CHARS = 500000;
 const TRIM_RATIO = 0.9;
 const ANSWERS_PER_FLUSH = 10;
@@ -49,24 +55,13 @@ let stale = false; // 別のタブが書いた（storage イベント）: 次に
 let flushQueued = false;
 let prefetchQueued = false;
 
+// 壊れた保存の写し（包み・512K 字まで。容量で写せなければ元の鍵を写しへ移す。それも書けなければ元に戻す: 記録の質は学習を止めない）
 function keepCorrupt(raw) {
-  try {
-    if (localStorage.getItem(CORRUPT_KEY) === raw) return;
-    localStorage.setItem(CORRUPT_KEY, raw);
-  } catch {
-    // 容量で写せない: 元の鍵を退避の鍵へ移す（消してから書くので同じ大きさで足りる）。それも書けなければ元に戻す
-    try {
-      localStorage.removeItem(KEY);
-      localStorage.setItem(CORRUPT_KEY, raw);
-    } catch {
-      try {
-        localStorage.setItem(KEY, raw);
-      } catch {
-        // 写しは残せない（記録の質は学習を止めない）
-      }
-    }
-  }
+  keepCorruptCopy(KEY, CORRUPT_KEY, raw);
 }
+
+// 読み込みのとき: 30 日たった写しを消す（読む所が無い。Batch 68 の形〔元の値そのまま・上限なし〕は今の日時で包み直す）
+expireCorrupt(CORRUPT_KEY);
 
 function readRaw() {
   try {
@@ -147,6 +142,16 @@ function trim(table, max) {
   }
 }
 
+// この鍵に使ってよい字数: 学習の記録と合わせて SHARED_BUDGET 字まで（学習の記録の字数が分からなければ上限なし）
+function roomLeft() {
+  try {
+    const used = readWordStatsChars ? Number(readWordStatsChars()) : NaN;
+    return Number.isFinite(used) ? Math.max(0, SHARED_BUDGET - used) : Infinity;
+  } catch {
+    return Infinity;
+  }
+}
+
 function serialize(table, max) {
   let json = JSON.stringify({ v: 1, w: table });
   if (json.length > max) {
@@ -156,7 +161,7 @@ function serialize(table, max) {
   return json;
 }
 
-// 変えた語があれば 1 回書く（読み直してこのタブの変化だけを足し、上限に収める）。書いた中身をメモリーにする
+// 変えた語があれば 1 回書く（読み直してこのタブの変化だけを足し、上限〔max と、学習の記録と合わせた枠の小さい方〕に収める）。書いた中身をメモリーにする
 export function flushMemoryWords({ max = MAX_CHARS } = {}) {
   flushQueued = false;
   answers = 0;
@@ -183,7 +188,7 @@ export function flushMemoryWords({ max = MAX_CHARS } = {}) {
         else base[id] = cur; // メモリーに置いた変化を、保存の値に戻す
       }
     }
-    let json = serialize(base, max);
+    let json = serialize(base, Math.min(max, roomLeft())); // 語の記録の字数は読んだ（照らし合わせた）後に見る
     try {
       localStorage.setItem(KEY, json);
     } catch {
@@ -254,6 +259,12 @@ export function forgetMemoryWords() {
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("pagehide", () => flushMemoryWords());
+  // 裏に回った: その場で書く（手が空くのを待たない。裏のタブは pagehide なしで捨てられうる。PR #172 のレビュー 2）
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushMemoryWords();
+    });
+  }
   // 別のタブが書いた・消した（復元・端末の記録を消す）: 次に使うときに読み直す（このタブの書きかけは上に重ねる）
   window.addEventListener("storage", (e) => {
     if (e.key === null || e.key === KEY) stale = true;

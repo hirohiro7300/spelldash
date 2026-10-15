@@ -216,12 +216,44 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
   for (let i = 0; i < 900; i++) big.speedNext[`m.a.f.${(i % 5) + 1}.k${i}`] = [i, 1, 0];
   const json = MC.fitSize(big);
   ok(`上限: 20,000 字以下に収める（${json.length}）`, json.length <= MC.MAX_BYTES);
-  ok("上限: 見本は古い方から捨てる（直近は残る・40 件より少ない）", big.input.kbd.t1.length < 40);
-  ok("上限: それでも超えるときは件数の少ない枡から捨てる（多い枡は残る）", !big.speedNext["m.a.f.1.k0"] && !!big.speedNext["m.a.f.5.k899"]);
+  ok("上限: 先に件数の少ない枡から捨てる（多い枡は残る）", !big.speedNext["m.a.f.1.k0"] && !!big.speedNext["m.a.f.5.k899"]);
+  ok("上限: 枡で収まれば見本（直近 40 件）は捨てない（本人の基準の 20 件を割らない。PR #172 のレビュー 3）", MC.PATHS.every((p) => big.input[p].t1.length === 40 && big.len[p].q.every((l) => l.length === 40)));
   const small = JSON.parse(JSON.stringify(A.getMemoryCheck()));
   small.first.f = [1, 2, 3];
   MC.fitSize(small);
   eq("上限より小さければ何も捨てない", small.first.f, [1, 2, 3]);
+
+  // PR #172 のレビュー 3: 枡が 600 個（1 年より先の重い利用者）と、3 つの経路の見本 40 件ずつ。書いた後も本人の基準（20 件以上）が残り、20,000 字以下
+  store.clear();
+  MC.forgetMemoryCheck();
+  const heavy = JSON.parse(JSON.stringify(MC.getMemoryCheck()));
+  for (const p of MC.PATHS) {
+    heavy.len[p] = { q: [0, 1, 2, 3].map((b) => Array.from({ length: 40 }, (_, i) => 2900 + b * 700 + i * 97)), a: [0, 1, 2, 3].map((b) => Array.from({ length: 40 }, (_, i) => 2950 + b * 690 + i * 89)) };
+    heavy.input[p] = { t1: Array.from({ length: 40 }, (_, i) => 3000 + i * 97), tp: Array.from({ length: 40 }, (_, i) => 9500 + i * 113), n: 400, multi: 3 };
+  }
+  heavy.first = { f: Array.from({ length: 40 }, (_, i) => 1100 + i), r: Array.from({ length: 40 }, (_, i) => 1200 + i) };
+  let cells = 0;
+  for (const clf of ["m", "p", "t"]) for (const mat of ["a", "b"]) for (const cls of ["u", "f", "n", "s"]) for (const rank of [1, 2, 3, 4, 5]) for (const band of ["1", "2-5", "6-13", "14-29", "30+"]) {
+    heavy.speedNext[`${clf}.${mat}.${cls}.${rank}.${band}`] = [((cells * 37) % 900) + 1, (cells * 13) % 90, cells % 9];
+    cells++;
+  }
+  store.set("spelldash_memory_check", JSON.stringify(heavy));
+  MC.forgetMemoryCheck();
+  MC.noteXNext("e", 3, "o", nowMs); // 読み込んで足し、書く
+  const wrote = MC.flushMemoryCheck();
+  const heavySaved = store.get("spelldash_memory_check") ?? "";
+  ok(`上限（600 枡・3 経路の見本）: 書けて 20,000 字以下（${cells} 枡・前 ${JSON.stringify(heavy).length} 字 → ${heavySaved.length} 字）`, wrote && cells === 600 && JSON.stringify(heavy).length > MC.MAX_BYTES && heavySaved.length <= MC.MAX_BYTES);
+  const bases = MC.PATHS.map((p) => MC.speedBasis({ qLen: 3, input: p }));
+  ok(`上限（600 枡・3 経路の見本）: 書いた後も本人の基準は null にならない（全体・字数帯・下から 2 割・止まり。${JSON.stringify(bases)}）`, bases.every((b) => b.all !== null && b.band !== null && b.p20 !== null && b.tp !== null));
+  const afterHeavy = MC.getMemoryCheck();
+  ok("上限（600 枡）: 見本は 20 件（MIN_BASIS）以上のまま・数の多い枡は残る", MC.PATHS.every((p) => afterHeavy.input[p].t1.length >= MC.MIN_BASIS && afterHeavy.input[p].tp.length >= MC.MIN_BASIS && afterHeavy.len[p].q[1].length >= MC.MIN_BASIS) && Object.keys(afterHeavy.speedNext).length > 300);
+  // どうしても足りないとき（上限を小さくして確かめる）: 枡を捨て尽くしてから見本を 20 件まで、それでも超えれば 20 件より下へ（cal と since は捨てない）
+  const tight = JSON.parse(JSON.stringify(heavy));
+  const tightJson = MC.fitSize(tight, 7500);
+  ok(`どうしても足りないとき: 枡を捨て尽くしてから見本を 20 件まで（7,500 字 → ${tightJson.length} 字・枡 ${Object.keys(tight.speedNext).length}・見本 ${tight.input.kbd.t1.length}）`, tightJson.length <= 7500 && Object.keys(tight.speedNext).length === 0 && tight.input.kbd.t1.length >= MC.MIN_BASIS && tight.input.kbd.t1.length < 40);
+  const tighter = JSON.parse(JSON.stringify(heavy));
+  const tighterJson = MC.fitSize(tighter, 4000);
+  ok(`どうしても足りないとき: 20 件でも超えれば 20 件より下へ（4,000 字 → ${tighterJson.length} 字・見本 ${tighter.input.kbd.t1.length}・cal は残る）`, tighterJson.length <= 4000 && tighter.input.kbd.t1.length < MC.MIN_BASIS && tighter.cal.w.length === 64);
 }
 
 // ── 4. 書き手（js/stats.js）: sp の材料・× の細目・影の欄・別の日の復習 ─────────────
@@ -591,7 +623,8 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
     } catch {
       threw = true;
     }
-    eq(`壊れた保存（${label}）: 止まらない・空として読む・写しを残して上書きする`, [threw, got, store.get("spelldash_memory_words_corrupt"), Object.keys(saved()?.w ?? {})], [false, null, raw, ["k1"]]);
+    const kept = (() => { try { return JSON.parse(store.get("spelldash_memory_words_corrupt")); } catch { return null; } })(); // 写しは包み {at, size, head}（js/storageGuard.js）
+    eq(`壊れた保存（${label}）: 止まらない・空として読む・写し（包みの head に元の値）を残して上書きする`, [threw, got, kept?.head, kept?.size, typeof kept?.at, Object.keys(saved()?.w ?? {})], [false, null, raw, raw.length, "string", ["k1"]]);
   }
   reset({ k1: statAt(T + 1000) }, JSON.stringify({ v: 1, w: { k1: 5, k2: [1], k3: null } }));
   eq("語ごとの値が表でない語は無いものとして読む（移行の値で作り直す）", [MW.getMemoryWord("k1"), MW.getMemoryWord("k2"), MW.getMemoryWord("k3"), store.has("spelldash_memory_words_corrupt")], [null, null, null, false]);
@@ -630,6 +663,127 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
   ok(`容量: 書けなかったら半分まで減らして書き直す（断られた ${refused} 回・${store.get(KEY)?.length} 字・新しい語が残る）`, res === true && refused === 1 && store.get(KEY).length <= 12000 && !!saved().w.z199);
 }
 
+// ── 4c. 端末の保存の上限と優先（PR #172 のレビュー 1）: 学習の記録（word_stats）を、影のデータ（記録の質）とその退避より先に書く ─────────────
+{
+  const W = await import("../js/stats.js");
+  const ST = await import("../js/storage.js");
+  const MM = await import("../js/masteryMeta.js");
+  const KEY = "spelldash_memory_words";
+  const CK = "spelldash_memory_words_corrupt";
+  const CHECK = "spelldash_memory_check";
+  const at = (ms) => new Date(ms).toISOString();
+  const T = Date.UTC(2026, 9, 14, 0, 0, 0);
+  const statAt = (ms) => ({ playCount: 1, correctCount: 1, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 1, mastered: false, lastRecallSuccessAt: at(ms), lastRecallFailAt: null, nextReviewAt: at(ms + 86400000) });
+  const entry = (t, extra = {}) => ({ t, memSv: [10, 10, 10, 10, 10, 10, 10], memD: 50, memD0: 50, ...extra });
+  const reset = (stats, extra = {}) => {
+    store.clear();
+    store.set("spelldash_word_stats", JSON.stringify(stats));
+    for (const [k, v] of Object.entries(extra)) store.set(k, v);
+    ST.forgetWordStats();
+    MM.forgetMasteryMeta();
+    MC.forgetMemoryCheck();
+    MW.forgetMemoryWords();
+    writes.clear();
+  };
+  const saved = () => JSON.parse(store.get(KEY) ?? "null");
+  const used = () => {
+    let n = 0;
+    for (const [k, v] of store) n += k.length + v.length;
+    return n;
+  };
+  // 端末の保存の枠（鍵と値の合計 limit 字）を偽装する: 超える setItem は QuotaExceededError（Safari・Chromium と同じ名前）
+  const withQuota = async (limit, fn) => {
+    const realSet = localStorage.setItem;
+    const realReport = globalThis.reportError;
+    const realError = console.error;
+    localStorage.setItem = (k, v) => {
+      const s = String(v);
+      const next = used() - (store.has(k) ? k.length + store.get(k).length : 0) + k.length + s.length;
+      if (next > limit) throw Object.assign(new Error("quota"), { name: "QuotaExceededError" });
+      return realSet(k, s);
+    };
+    globalThis.reportError = noop; // 書けなかった記録は reportError に出す（ここでは黙らせる）
+    console.error = noop;
+    try {
+      return await fn();
+    } finally {
+      localStorage.setItem = realSet;
+      if (realReport === undefined) delete globalThis.reportError;
+      else globalThis.reportError = realReport;
+      console.error = realError;
+    }
+  };
+  const words = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`q${i}`, statAt(T + i * 1000)]));
+  const dirty = JSON.stringify(Object.keys(words)); // 同期の印はもう付いている（この検査の書き込みは word_stats だけにする）
+  const shadowBig = JSON.stringify({ v: 1, w: Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`s${i}`, entry(T, { sp: [[20740, 900, 100, "n", 5]] })])) });
+  const failQ3 = async () => {
+    W.recordRecallFail("q3", { k: "e", p: 1, a: null });
+    await new Promise((r) => setImmediate(r)); // 書き込みはこのタスクの終わり（マイクロタスク）
+  };
+  const q3 = () => JSON.parse(store.get("spelldash_word_stats")).q3;
+
+  // (b) 上限で word_stats が書けない: 退避の写し → 影のデータ（spelldash_memory_words・spelldash_memory_check）の順に消して書き直す
+  reset(words, { [KEY]: shadowBig, [CHECK]: JSON.stringify({ v: 1, schedV: 1, xNext: { "e.1": [1, 0, 0] } }), spelldash_dirty_words: dirty });
+  await withQuota(used() + 5, failQ3);
+  ok(`上限: 学習の記録（× の答え）は影のデータのために失われない（${store.get(KEY)?.length ?? 0} 字の語ごとの欄があっても）`, !!q3().lastRecallFailAt && q3().recallFail === 1);
+  eq("上限: 学習の記録を書くために、影のデータ（spelldash_memory_words・spelldash_memory_check）を先に消す", [store.has(KEY), store.has(CHECK)], [false, false]);
+
+  reset(words, { [KEY]: JSON.stringify({ v: 1, w: { q1: entry(T + 1000) } }), [CK]: JSON.stringify({ at: at(Date.now()), size: 5000, head: "x".repeat(5000) }), spelldash_dirty_words: dirty });
+  await withQuota(used() + 5, failQ3);
+  eq("上限: 写し（spelldash_memory_words_corrupt）を消せば足りるなら、影のデータは残す（読む所の無い写しが先）", [!!q3().lastRecallFailAt, store.has(CK), store.has(KEY)], [true, false, true]);
+
+  reset(words, { spelldash_word_stats_corrupt: JSON.stringify({ at: at(Date.now()), size: 5000, head: "x".repeat(5000) }), [KEY]: shadowBig, spelldash_dirty_words: dirty });
+  await withQuota(used() + 5, failQ3);
+  eq("上限: 語の記録の写し（spelldash_word_stats_corrupt）も今どおり先に消す", [!!q3().lastRecallFailAt, store.has("spelldash_word_stats_corrupt"), store.has(KEY)], [true, false, true]);
+
+  // 影のデータを消した後も、語ごとの欄はこのタブで変えた語だけを書き直す（止まらない・書き戻しで上限を食い直さない）
+  reset(words, { [KEY]: shadowBig, spelldash_dirty_words: dirty });
+  await withQuota(used() + 5, failQ3);
+  MW.putMemoryWord("q4", entry(Date.parse(words.q4.lastRecallSuccessAt)));
+  const rewrote = MW.flushMemoryWords();
+  eq("上限で影のデータを消した後: 語ごとの欄はこのタブで変えた語だけを書く（消した 2,000 語は書き戻さない）", [rewrote, Object.keys(saved()?.w ?? {}).sort()], [true, ["q3", "q4"]]);
+
+  // (a) 壊れた語ごとの欄の写しも上限つきの包み（頭と元の字数・512K 字まで）と 30 日の期限（js/storage.js の退避と同じ）
+  const hugeBroken = "{" + "y".repeat(600000);
+  reset({ k1: statAt(T + 1000) }, { [KEY]: hugeBroken });
+  MW.getMemoryWord("k1");
+  const env = (() => { try { return JSON.parse(store.get(CK)); } catch { return null; } })();
+  ok(`壊れた語ごとの欄の写しは上限つきの包み（512K 字まで・退避した日時・元の字数・頭。${store.get(CK)?.length} 字）`, !!env && store.get(CK).length <= 512 * 1024 && env.cut === true && env.size === hugeBroken.length && hugeBroken.startsWith(env.head) && env.head.length > 500000 && typeof env.at === "string" && store.get(CK).startsWith('{"at":"'));
+  const firstAt = env?.at;
+  MW.forgetMemoryWords();
+  MW.getMemoryWord("k1"); // 同じ壊れた値を読み直す
+  eq("同じ壊れた値を読み直しても写しの日時は変えない", (() => { try { return JSON.parse(store.get(CK)).at; } catch { return "読めない"; } })(), firstAt);
+  for (const [label, ageDays, kept] of [["31 日前", 31, false], ["29 日前", 29, true], ["先の日時", -40, false]]) {
+    store.clear();
+    store.set(CK, JSON.stringify({ at: at(Date.now() - ageDays * 86400000), size: 3, head: "abc" }));
+    await import(`../js/memoryWords.js?expire=${ageDays}`);
+    eq(`壊れた語ごとの欄の写しは 30 日で消す（読み込みのとき。${label}）`, store.has(CK), kept);
+  }
+  store.clear();
+  store.set(CK, "{old");
+  await import("../js/memoryWords.js?expire=old");
+  const rewrapped = (() => { try { return JSON.parse(store.get(CK)); } catch { return null; } })();
+  ok("Batch 68 の形の写し（元の値そのまま）は今の日時で包み直す（30 日後に消える）", rewrapped?.head === "{old" && rewrapped.size === 4 && typeof rewrapped.at === "string");
+
+  // (c) 語の記録が大きい端末: 語ごとの欄は、語の記録と合わせて 200 万字に収まるまで縮める（古い語から。学習の記録の書き込みの余地を残す）
+  const heavyWords = {};
+  for (let i = 0; i < 1500; i++) heavyWords[`b${String(i).padStart(4, "0")}`] = statAt(T + i * 1000);
+  heavyWords.pad = { ...statAt(T), note: "" };
+  heavyWords.pad.note = "x".repeat(1900000 - JSON.stringify(heavyWords).length);
+  reset(heavyWords);
+  for (let i = 0; i < 1500; i++) MW.putMemoryWord(`b${String(i).padStart(4, "0")}`, entry(T + i * 1000, { sp: [[20740, 900, 100, "n", 5]] }));
+  MW.flushMemoryWords();
+  const wsLen = store.get("spelldash_word_stats").length;
+  const mwLen = store.get(KEY)?.length ?? 0;
+  const kept = Object.keys(saved()?.w ?? {});
+  ok(`語の記録が大きい端末: 語ごとの欄は語の記録と合わせて 200 万字まで（語の記録 ${wsLen} 字・語ごとの欄 ${mwLen} 字・${kept.length} 語）`, wsLen >= 1890000 && wsLen + mwLen <= 2000000 && mwLen > 0);
+  ok("語の記録が大きい端末: 縮めるときは最後に答えた時刻の古い語から捨てる", kept.includes("b1499") && !kept.includes("b0000"));
+  reset(Object.fromEntries(Object.entries(heavyWords).filter(([id]) => id !== "pad")));
+  for (let i = 0; i < 1500; i++) MW.putMemoryWord(`b${String(i).padStart(4, "0")}`, entry(T + i * 1000, { sp: [[20740, 900, 100, "n", 5]] }));
+  MW.flushMemoryWords();
+  eq("語の記録が小さい端末では縮めない（1,500 語とも残る）", Object.keys(saved()?.w ?? {}).length, 1500);
+}
+
 // ── 5. 速さの箱（js/masteryMeta.js）: 測りの札で入れない答え・基準も返す ─────────────
 {
   const MM = await import("../js/masteryMeta.js");
@@ -640,8 +794,17 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
   MM.noteSpeedSample("en.kbd.study", { t1: 900, pc: 100 }, { stalled: true });
   MM.noteSpeedSample("en.kbd.study", { t1: 950, pc: 120 });
   eq("箱: 止まった答えは T1 だけ（pc は入れない）・札なしは今のまま", MM.getSpeedBox("en.kbd.study"), { t1: [900, 950], pc: [120] });
-  eq("classifySpeed: 字数・経路を渡さなければ今の形のまま", MM.classifySpeed({ t1: 1400 }, "en.kbd.study", { firstAnswer: true, data: { t1: [], pc: [] } }), { speed: "fast", basis: "prior" });
-  eq("classifySpeed: 字数を渡すと比べた基準（全体・字数帯の中央値。20 件未満は null）も返す", MM.classifySpeed({ t1: 1400 }, "en.kbd.study", { firstAnswer: true, data: { t1: [], pc: [] }, qLen: 3 }), { speed: "fast", basis: "prior", all: null, band: null });
+  eq("classifySpeed: 返すのは { speed, basis } だけ（記録の質の基準は js/memoryCheck.js speedBasis。書き手の sp だけが使う。PR #172 のレビュー 5）", [MM.classifySpeed({ t1: 1400 }, "en.kbd.study", { firstAnswer: true, data: { t1: [], pc: [] } }), MM.classifySpeed({ t1: 1400 }, "en.kbd.study", { firstAnswer: true, data: { t1: [], pc: [] }, qLen: 3, input: "kbd" })], [{ speed: "fast", basis: "prior" }, { speed: "fast", basis: "prior" }]);
+  // 盤面（js/game.js）は札をそのまま渡し、入れる・入れないの決まりは noteSpeedSample の 1 か所（PR #172 のレビュー 5）。js/game.js に写しが無い
+  const gameSrc = readFileSync(path.join(ROOT, "js/game.js"), "utf8");
+  ok("js/game.js は noteSpeedSample(box, sample, measure) と札を渡し、multi・outside・stalled の除き方を写さない", /noteSpeedSample\(box, sample, measure\)/.test(gameSrc) && !/measure\.(multi|outside|stalled)/.test(gameSrc));
+  // 写しを持たない（PR #172 のレビュー 6・7・8）: 見込みの帯・損失は js/memoryModel.js、gap の帯・中央値・ローカルの日付は js/retentionCalc.js、字の並びは js/keyboard.js
+  const src = (f) => readFileSync(path.join(ROOT, f), "utf8");
+  ok("js/memoryCheck.js・js/masteryMeta.js は gapBand・median・ローカルの日付を自前で持たず、memoryCheck は帯と損失を js/memoryModel.js から使う",
+    !/function (gapBand|median)\b/.test(src("js/memoryCheck.js") + src("js/masteryMeta.js")) && !/getFullYear\(\)/.test(src("js/memoryCheck.js")) && !/Math\.log\(/.test(src("js/memoryCheck.js")) && /import \{[^}]*\bpredBand\b[^}]*\blogLoss\b[^}]*\} from "\.\/memoryModel\.js"/.test(src("js/memoryCheck.js")));
+  ok("js/game.js は字の並びを js/keyboard.js の ROWS から読む（写しを持たない）", /import \{[^}]*\bROWS as KEY_ROWS\b[^}]*\} from "\.\/keyboard\.js"/.test(src("js/game.js")) && !/const KEY_ROWS\s*=/.test(src("js/game.js")) && /export const ROWS = \[/.test(src("js/keyboard.js")));
+  const simSrc = readFileSync(path.join(ROOT, "scripts/sim-writers.mjs"), "utf8");
+  ok("scripts/sim-writers.mjs も札を渡すだけ（除き方を写さない）", /noteSpeedSample\(box, sample, AS_BEFORE \? null : measure\)/.test(simSrc) && !/measure\.(multi|outside|stalled)/.test(simSrc));
 }
 
 // ── 6. 不変の模擬（受け入れの基準 1・3）: 製品の書き手を偽の時計で 1 年。この Batch の前の main と 1 件も違わない ─────────────
