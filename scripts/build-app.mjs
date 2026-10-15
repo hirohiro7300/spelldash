@@ -15,11 +15,14 @@ const DIST = path.join(ROOT, "dist");
 export const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html", "terms.html", "typing.html", "typing-game.html"];
 export const DIRS = ["css", "js", "data", "assets"];
 
+// SNS に貼られたときの絵（assets/images/og-*.png。og-image.png とページごとの絵）は SNS の読み取りだけが使い、アプリの中のページは出さないので入れない
+export const isOgImage = (file) => /[\\/]assets[\\/]images[\\/]og-[^\\/]*\.png$/.test(file);
+
 function build() {
   fs.rmSync(DIST, { recursive: true, force: true });
   fs.mkdirSync(DIST, { recursive: true });
   for (const p of PAGES) fs.copyFileSync(path.join(ROOT, p), path.join(DIST, p));
-  for (const d of DIRS) fs.cpSync(path.join(ROOT, d), path.join(DIST, d), { recursive: true });
+  for (const d of DIRS) fs.cpSync(path.join(ROOT, d), path.join(DIST, d), { recursive: true, filter: (src) => !isOgImage(src) });
   // PWA の manifest はアプリでは不要だが、リンク切れ（404ログ）を避けるために置いておく
   fs.copyFileSync(path.join(ROOT, "manifest.webmanifest"), path.join(DIST, "manifest.webmanifest"));
 

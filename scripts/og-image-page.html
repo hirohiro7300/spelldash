@@ -3,9 +3,11 @@
   ページごとの og-image の型（1200×630）。scripts/build-og-image.mjs --page <名前> がこのファイルを ?page=<名前> で撮って
   assets/images/og-<名前>.png に書く（手で撮らない）。全ページ共通の絵の型は scripts/og-image.html。
   背景の絵は scripts/og-art/<名前>.webp（1200×800。文字の無い絵。上下を切って 1200×630 で使う）。その上に名前・金の菱・題・2 行の説明を載せる。
+  名前の印・名前・金の平縁と菱は scripts/og-shared.css（全ページ共通の型と共通）。題と説明は 1 つの列に流す（.og__text）。
   色は css/tokens.css の変数、字は css/fonts.css の自前のフォント（Cormorant Garamond 600・Shippori Mincho 500）だけ。数・絵文字・ほかの名前は書かない。
   scripts/ は配信しない（.vercelignore）。
-  絵を変えたら版を上げる（そのページ・E2E）: SNS は絵を URL で覚えるので、そのページの og:image の ?v=N と tests/e2e.mjs の OG_PAGES で 1 つ上げる。
+  絵を変えたら版を上げる（そのページ・E2E）: SNS は絵を URL で覚えるので、そのページの og:image の ?v=N と tests/e2e.mjs の頭の OG_PAGES で 1 つ上げる
+  （E2E はどの節も OG_PAGES を読む。共通の絵の版 og-image.png?v=N は上げない）。
 -->
 <html lang="ja">
 <head>
@@ -13,6 +15,7 @@
   <title>ページごとの og-image の型</title>
   <link rel="stylesheet" href="../css/fonts.css" />
   <link rel="stylesheet" href="../css/tokens.css" />
+  <link rel="stylesheet" href="og-shared.css" />
   <style>
     html,
     body {
@@ -37,66 +40,32 @@
       background-size: 1200px 800px;
     }
 
-    .og__brand {
-      position: absolute;
-      left: 96px;
-      top: 110px;
-      display: flex;
-      align-items: center;
-      gap: 18px;
+    /* 名前の印・名前・金の平縁と菱は scripts/og-shared.css（全ページ共通の型と同じ部品）。ここでは位置と大きさだけ */
+    :root {
+      --og-brand-top: 110px;
+      --og-brand-gap: 18px;
+      --og-mark-size: 46px;
+      --og-mark-font: 21px;
+      --og-name-size: 60px;
+      --og-rule-top: 196px;
+      --og-rule-width: 460px;
     }
 
-    .og__mark {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 46px;
-      height: 46px;
-      box-sizing: border-box;
-      border: 2px solid rgba(230, 200, 135, 0.7);
-      border-radius: var(--radius-room);
-      color: var(--foil);
-      font-family: var(--font-latin);
-      font-weight: 600;
-      font-size: 21px;
-      line-height: 1;
-    }
-
-    .og__name {
-      color: var(--foil);
-      font-family: var(--font-latin);
-      font-weight: 600;
-      font-size: 60px;
-      line-height: 1;
-      text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
-    }
-
-    /* 金の平縁と菱（全ページ共通の型と同じ形） */
-    .og__rule {
-      position: absolute;
-      left: 96px;
-      top: 196px;
-      width: 460px;
-      height: 1px;
-      background: linear-gradient(to right, var(--gold) 0%, rgba(201, 163, 90, 0.55) 70%, rgba(201, 163, 90, 0) 100%);
-    }
-
-    .og__rule::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: -5px;
-      width: 9px;
-      height: 9px;
-      background: var(--foil);
-      transform: rotate(45deg);
-    }
-
-    .og__title {
+    /* 題と 2 行の説明は 1 つの列に流して置く（題が長くても説明と重ならない）。どの行も折り返さない。
+       列の右端が絵にかからないこと（720px 以下）と題が 1 行であることは、生成器と E2E が確かめる */
+    .og__text {
       position: absolute;
       left: 96px;
       top: 232px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16.4px;
+    }
+
+    .og__title {
       margin: 0;
+      white-space: nowrap;
       color: var(--on-vault);
       font-family: var(--font-display);
       font-weight: 500;
@@ -107,10 +76,8 @@
     }
 
     .og__sub {
-      position: absolute;
-      left: 98px;
-      top: 342px;
-      margin: 0;
+      margin: 0 0 0 2px;
+      white-space: nowrap;
       color: var(--on-vault);
       opacity: 0.85;
       font-family: var(--font-display);
@@ -126,8 +93,10 @@
   <main class="og">
     <div class="og__brand"><span class="og__mark">SD</span><span class="og__name">SpellDash</span></div>
     <div class="og__rule"></div>
-    <p class="og__title"></p>
-    <p class="og__sub"></p>
+    <div class="og__text">
+      <p class="og__title"></p>
+      <p class="og__sub"></p>
+    </div>
   </main>
   <script>
     // ページごとの中身。y は背景の絵（1200×800）の上を何 px 切るか（絵の主役が 630 の中に収まる所）
