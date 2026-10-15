@@ -91,6 +91,7 @@
   <link rel="modulepreload" href="./js/levelUi.js" />
   <link rel="modulepreload" href="./js/homeStrip.js" />
   <link rel="modulepreload" href="./js/dailySet.js" />
+  <link rel="modulepreload" href="./js/emblem.js" />
   <link rel="modulepreload" href="./js/weeklyReport.js" />
   <link rel="modulepreload" href="./js/learnedWords.js" />
   <link rel="modulepreload" href="./js/hasumi.js" />
@@ -305,6 +306,8 @@
     </section>
 
     <section class="level-bar level-bar--line" id="levelBar" data-tab="analysis"></section>
+    <!-- ランクの一覧（畳み。21 段・今のランクに「今」の札。紋章は開いたときに読む）: js/levelUi.js renderRankList が描く -->
+    <section class="rank-list-host" id="rankList" data-tab="analysis"></section>
 
     <section data-tab="analysis" class="result-card">
       <h3 role="heading" aria-level="2">その他の数字</h3>

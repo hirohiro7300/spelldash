@@ -81,8 +81,9 @@ import {
   playRecallSuccessEffect,
   playRecallFailEffect
 } from "./studyQueueUi.js";
-import { addXp, updateStreak, getTitle } from "./level.js";
+import { addXp, updateStreak } from "./level.js";
 import { renderLevelBar, playLevelUpEffect } from "./levelUi.js";
+import { emblemImgHtml, revealEmblem, scheduleEmblemPreload } from "./emblem.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { markMissionWord, isMissionWordPending, renderMission } from "./mission.js";
 import {
@@ -913,6 +914,7 @@ export function startGame(options = {}) {
   milestoneThisWord = false;
   startTime = Date.now();
   updateCombo(0);
+  scheduleEmblemPreload(); // ランクの紋章（今と次のランクの幕用の絵。多くて 2 枚）を手の空いたときに読んでおく: 幕が開いた瞬間から絵が出る（js/emblem.js）
 
   elements.input.disabled = false;
   elements.input.value = "";
@@ -3312,24 +3314,31 @@ function getCategoryLabel(id) {
   return getCategories().find((c) => c.id === id)?.label ?? (id === "my" ? "マイ単語帳" : id);
 }
 
-// 称号が変わるレベルアップ（F3→F2 等）は節目。大きめのオーバーレイで祝う（画面の語は「レベルアップ」。「ランク」は Battle の RP の制度に取っておく）
+// ランクが変わるレベルアップ（木 1 → 木 2・木 3 → 銅 1 等）は節目。大きめのオーバーレイで祝う（見出しは「ランクアップ」。レベルだけ上がったときは呼び手が 1 行で言う）。
+// 学習のランク（js/level.js rankOf。getLevelState の rank）はレベルで決まり下がらない。Battle の RP のランク（勝敗で上下する）は別の制度で、Battle の画面だけに出る。
+// （この台本の rankOf は語の習熟度の段〔js/mastery.js〕。学習のランクは addXp の結果の before.rank・after.rank を使う）
 function celebrateRankUp(result) {
   if (!result?.leveledUp) return false;
-  const beforeTitle = getTitle(result.before.level);
-  const afterTitle = result.after.title;
-  if (beforeTitle === afterTitle) return false;
+  const before = result.before?.rank;
+  const after = result.after?.rank;
+  if (!before || !after || before.name === after.name) return false;
   const overlay = document.createElement("div");
   overlay.className = "rank-up";
   overlay.setAttribute("aria-hidden", "true"); // 読み上げは静的な #srStatus（role=status）に流す。後から挿入した live 領域は読まれない
-  announce(`レベルアップ: ${beforeTitle} から ${afterTitle}`);
+  announce(`ランクアップ: ${before.name} から ${after.name}`);
+  // 新しいランクの紋章を「ランクアップ」の上に（絵は飾りで、読み上げの文は名前だけ）。
+  // 112 の枠は先に空ける: 絵がまだ・読めないときは文字だけに見える（js/emblem.js revealEmblem・css/game.css .rank-up__emblem）。
+  // 名前は 1 つずつ折り返さない塊（data-rank-name）。細い幅で長い組（レジェンド 2 → レジェンド 3）は後の名前が次の行へ回る
   overlay.innerHTML = `
     <div class="rank-up__inner">
-      <div class="rank-up__label">レベルアップ</div>
-      <div class="rank-up__title"><span>${beforeTitle}</span><i>→</i><b>${afterTitle}</b></div>
+      <div class="rank-up__emblem">${emblemImgHtml(after)}</div>
+      <div class="rank-up__label">ランクアップ</div>
+      <div class="rank-up__title"><span class="rank-up__from"><span data-rank-name>${before.name}</span><i>→</i></span><b data-rank-name>${after.name}</b></div>
       <div class="rank-up__sub">${unlockNoteForLevel(result.after.level).replace(/^。/, "")}</div>
     </div>
   `;
   document.body.appendChild(overlay);
+  revealEmblem(overlay.querySelector(".rank-up__emblem img"));
   milestoneThisWord = true; // 幕（1.2 秒＋消える 0.22 秒）が消えるまで次の語を出さない
   sfxSparkle();
   // 1.2 秒で静かに消える。タップでも閉じられる（次の一手を待たせない）

@@ -951,7 +951,7 @@ console.log("home widgets:");
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   check("数字1行にストリーク・週の目標", (await page.textContent("#todayStrip")).includes("3日連続"), await page.textContent("#todayStrip"));
-  check("ホームにランク表示は出さない（学習データにある）", !(await page.textContent("#todayStrip")).includes("F3") && !(await page.textContent("#todayStrip")).includes("Lv."));
+  check("ホームにランク表示は出さない（学習データにある）", !(await page.textContent("#todayStrip")).includes("木 1") && !(await page.textContent("#todayStrip")).includes("Lv.") && !(await page.$("#todayStrip img, #levelBar, #rankList")));
   await page.click("#setupToggle"); // 出題設定は畳まれている
   check("苦手トグル（Study時）表示", await page.isVisible("#weakToggleButton"));
   check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
@@ -7918,9 +7918,9 @@ console.log("study 60s:");
     await m.close();
   }
 
-  // ---- 13c. 焦点を動かさない終わりでも、レベルアップの読み上げを見出しの読み上げで消さない（PR #164 レビューの 3）:
-  //           称号の変わるレベルアップ（95 XP ＋ その日最初の回の 50 → Lv.2 = F3→F2）で終わる Challenge を、ログインの欄で打ったまま時間切れ →
-  //           #srStatus に「レベルアップ: F3 から F2」と見出しの文の両方が入る（同じ待ちの続けての announce は 1 つの文につなげる） ----
+  // ---- 13c. 焦点を動かさない終わりでも、ランクアップの読み上げを見出しの読み上げで消さない（PR #164 レビューの 3）:
+  //           ランクの変わるレベルアップ（95 XP ＋ その日最初の回の 50 → Lv.2 = 木 1→木 2）で終わる Challenge を、ログインの欄で打ったまま時間切れ →
+  //           #srStatus に「ランクアップ: 木 1 から 木 2」と見出しの文の両方が入る（同じ待ちの続けての announce は 1 つの文につなげる） ----
   {
     const ch = await newPage({ viewport: { width: 1200, height: 480 }, storage: seedT({ spelldash_xp: "95" }) });
     await ch.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
@@ -7934,8 +7934,8 @@ console.log("study 60s:");
     await waitUntil(() => panelOpenT(ch), 8000);
     await ch.waitForTimeout(250);
     const s = await ch.evaluate(() => ({ active: document.activeElement?.id ?? "", sr: document.getElementById("srStatus").textContent.trim(), title: document.getElementById("resultTitle")?.textContent.trim() ?? "", overlay: document.querySelector(".rank-up")?.textContent.replace(/\s+/g, " ").trim() ?? "" }));
-    check("Challenge の時間切れ（ログインの欄で打ったまま・称号の変わるレベルアップ）: #srStatus にレベルアップの文と見出しの文の両方が入る", s.active === "emailInput" && s.overlay.includes("F2") && s.sr.includes("レベルアップ: F3 から F2") && !!s.title && s.sr.includes(s.title), JSON.stringify(s));
-    check("Challenge のレベルアップと見出しの読み上げでエラー0", ch.errors.length === 0, ch.errors[0] ?? "");
+    check("Challenge の時間切れ（ログインの欄で打ったまま・ランクの変わるレベルアップ）: #srStatus にランクアップの文と見出しの文の両方が入る", s.active === "emailInput" && s.overlay.includes("木 2") && s.sr.includes("ランクアップ: 木 1 から 木 2") && !!s.title && s.sr.includes(s.title), JSON.stringify(s));
+    check("Challenge のランクアップと見出しの読み上げでエラー0", ch.errors.length === 0, ch.errors[0] ?? "");
     await ch.close();
   }
 
@@ -10199,7 +10199,7 @@ console.log("challenge & quality:");
   check("Challenge（Batch 4）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
-  // Esc = 分からない（答え表示）、Ctrl+. = 発音（エラーなし・進行しない）、Tab は既定どおり次の要素へ（キーボードトラップなし）。ランクアップ演出（Lv1→2 = F3→F2）
+  // Esc = 分からない（答え表示）、Ctrl+. = 発音（エラーなし・進行しない）、Tab は既定どおり次の要素へ（キーボードトラップなし）。ランクアップ演出（Lv1→2 = 木 1→木 2）
   const tomorrow = new Date(Date.now() + 20 * 3600000);
   const page2 = await newPage({ storage: {
     spelldash_category: "my",
@@ -10227,7 +10227,7 @@ console.log("challenge & quality:");
   const shown = (await page2.textContent("#word")).trim();
   for (const ch of shown) await page2.press("#input", ch);
   const rankUp = await waitUntil(async () => (await page2.$(".rank-up")) !== null, 1500);
-  check("ランクアップ演出（F3→F2）", rankUp && (await page2.textContent(".rank-up")).includes("F2"));
+  check("ランクアップ演出（木 1→木 2。見出しは「ランクアップ」）", rankUp && (await page2.textContent(".rank-up")).includes("木 2") && (await page2.textContent(".rank-up__label")).trim() === "ランクアップ");
   // 明日の予告: セットを完了させる（残り1語を自力で）
   await waitUntil(async () => !(await page2.$eval("#resultPanel", (el) => el.hidden)) || (await page2.textContent("#japanese")).trim() !== ja, 1500);
   const answers = { 請求書: "invoice", 予算: "budget" };
@@ -10259,6 +10259,290 @@ console.log("challenge & quality:");
   check("オンライン復帰でバナーが消える", offlineHidden);
   check("音量／オフラインでエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
   await page3.close();
+}
+
+// ===== 9.955 学習のランク（木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3 の 21 段と紋章。js/level.js RANKS・rankOf・js/emblem.js・js/levelUi.js・css/game.css .rank-up・css/pages.css .level-bar__emblem・.rank-list。scripts/build-emblems.mjs）: 幕・先読み・学習データの行・ランクの一覧・絵が読めないとき・幅と昼夜・読み上げ・21 枚の大きさ =====
+console.log("rank（学習のランク）:");
+{
+  // ランクが変わるレベルアップは Challenge の時間切れ（?t=2・何も打たない）で起こす: その日最初の回の 50 XP で、しきいの 5 XP 手前から 1 つ上のランクへ（13c と同じ作法）
+  const xpForLv = (lv) => { let x = 0; for (let l = 1; l < lv; l++) x += 100 + (l - 1) * 50; return x; }; // js/level.js xpToNext の和
+  const seedE = (xp, extra = {}) => ({ spelldash_placement: "done", spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_level_boost: "2", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_xp: String(xp), ...extra });
+  const EMB = "/assets/images/emblems/";
+  // 21 段（低い順）。名前・絵の名前・境のレベル（js/level.js RANKS と同じ表を別に書く）
+  const RANKS = ["wood:木", "copper:銅", "silver:銀", "gold:金", "diamond:ダイヤ", "legend:レジェンド", "god:神"].flatMap((s, t) => [1, 2, 3].map((n, i) => ({ file: `${s.split(":")[0]}-${n}`, name: `${s.split(":")[1]} ${n}`, level: [1, 2, 3, 5, 7, 9, 12, 15, 18, 22, 26, 30, 35, 40, 45, 51, 57, 63, 70, 80, 92][t * 3 + i] })));
+  // 幕が足された瞬間（celebrateRankUp と同じタスクの終わり）の絵の様子を控える: 先読みで手元にあれば、開いた瞬間から出ている
+  const EMB_PROBE = () => {
+    window.__emb = [];
+    new MutationObserver((list) => {
+      for (const m of list) for (const n of m.addedNodes) {
+        if (!(n instanceof HTMLElement) || !n.classList.contains("rank-up")) continue;
+        const img = n.querySelector(".rank-up__emblem img");
+        const box = n.querySelector(".rank-up__emblem");
+        window.__emb.push({ src: img?.getAttribute("src") ?? null, complete: !!img?.complete, nw: img?.naturalWidth ?? 0, ready: !!img?.classList.contains("is-ready"), box: box ? [box.offsetWidth, box.offsetHeight] : null });
+      }
+    }).observe(document, { childList: true, subtree: true }); // 初期化の台本は <html> より前に走る（document は在る）
+  };
+  // 紋章の絵を全部 404 に。page.route は Service Worker（sw.js。読み込み後にページを受け持つ）が取りに行く絵には効かないので、この回は SW を入れない
+  // （オフラインで保存の無い絵は sw.js が Response.error を返し、ページでは同じ「読めない」になる）
+  const block404Emblems = async (page) => {
+    await page.addInitScript(() => { try { navigator.serviceWorker.register = () => new Promise(() => {}); } catch { /* SW の無い環境 */ } });
+    await page.route(`**${EMB}**`, (route) => route.fulfill({ status: 404, body: "" }));
+  };
+  // 読み上げの木で無視される（飾り）か: CDP の Accessibility.getPartialAXTree
+  const axIgnored = async (page, selector) => {
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      const { root } = await cdp.send("DOM.getDocument", { depth: -1 });
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector });
+      if (!nodeId) return null;
+      const { nodes } = await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false });
+      return nodes[0]?.ignored === true;
+    } finally {
+      await cdp.detach().catch(() => {});
+    }
+  };
+  const overlayState = (page) => page.evaluate(() => {
+    const o = document.querySelector(".rank-up");
+    if (!o) return null;
+    const innerEl = o.querySelector(".rank-up__inner");
+    const inner = innerEl.getBoundingClientRect();
+    const img = o.querySelector(".rank-up__emblem img");
+    const box = o.querySelector(".rank-up__emblem")?.getBoundingClientRect();
+    const title = o.querySelector(".rank-up__title");
+    const cs = img ? getComputedStyle(img) : null;
+    // 名前（前と後）は 1 つの名前の中で折り返さない・題の行は面からはみ出さない
+    const names = [...(title?.querySelectorAll("[data-rank-name]") ?? [])].map((el) => ({ text: el.textContent.trim(), lines: el.getClientRects().length, l: Math.round(el.getBoundingClientRect().left), r: Math.round(el.getBoundingClientRect().right) }));
+    return {
+      text: o.textContent.replace(/\s+/g, " ").trim(),
+      label: o.querySelector(".rank-up__label")?.textContent.trim() ?? "",
+      names,
+      titleFits: !!title && title.scrollWidth <= title.clientWidth + 1 && names.every((n) => n.l >= Math.floor(inner.left) && n.r <= Math.ceil(inner.right)),
+      src: img?.getAttribute("src") ?? null,
+      alt: img?.getAttribute("alt") ?? null,
+      imgAria: img?.getAttribute("aria-hidden") ?? null,
+      overlayAria: o.getAttribute("aria-hidden"),
+      box: box ? [Math.round(box.width), Math.round(box.height)] : null,
+      inner: { l: Math.round(inner.left), t: Math.round(inner.top), r: Math.round(inner.right), b: Math.round(inner.bottom), h: Math.round(inner.height * 10) / 10 },
+      vw: innerWidth, vh: innerHeight,
+      sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth,
+      sr: document.getElementById("srStatus")?.textContent.trim() ?? "",
+      nw: img?.naturalWidth ?? 0, ready: !!img?.classList.contains("is-ready"), opacity: cs?.opacity ?? null, transition: cs ? `${cs.transitionProperty} ${cs.transitionDuration}` : null,
+      broken: [...o.querySelectorAll("img")].some((i) => i.complete && i.naturalWidth === 0 && getComputedStyle(i).opacity !== "0" && getComputedStyle(i).visibility !== "hidden")
+    };
+  });
+  // 1 回: 開いて Challenge を時間切れにし、幕が出た瞬間を測る。opts.block404 なら紋章の絵を全部 404 に
+  async function rankUpRun(xp, { viewport = { width: 1200, height: 800 }, mobile = false, theme = null, block404 = false, reduce = false, ax = false } = {}) {
+    const page = await newPage({ viewport, mobile, storage: seedE(xp, theme ? { spelldash_theme: theme } : {}) });
+    await page.addInitScript(EMB_PROBE);
+    const reqs = [];
+    page.on("request", (r) => { const u = new URL(r.url()).pathname; if (u.startsWith(EMB)) reqs.push({ u, t: Date.now() }); });
+    if (block404) await block404Emblems(page);
+    if (reduce) await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(BASE + "/index.html?t=2", { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    const startedAt = Date.now();
+    await page.click('#playModes [data-mode="challenge"]');
+    await waitUntil(async () => (await page.$(".rank-up")) !== null, 8000, 20);
+    const openedAt = Date.now();
+    const s = await overlayState(page);
+    const ign = ax && s ? await axIgnored(page, ".rank-up__emblem img") : null;
+    await page.waitForTimeout(block404 ? 350 : 50);
+    const late = await overlayState(page); // 404 は開いた後に失敗する（読み込み中 → 読めない）
+    const probe = await page.evaluate(() => window.__emb ?? []);
+    const r = { s, late, probe: probe[0] ?? null, ign, reqs: reqs.map((q) => ({ u: q.u, before: q.t <= openedAt, afterStart: q.t >= startedAt })), errors: page.errors.slice(0, 1) };
+    await page.close();
+    return r;
+  }
+
+  // ---- (1) 木 3 → 銅 1: 見出しは「ランクアップ」・絵は銅 1（copper-1）。開いた瞬間から出ている（回の初めに先読み）。読み上げは「ランクアップ: 木 3 から 銅 1」。絵は飾り ----
+  const cu = await rankUpRun(xpForLv(5) - 5, { ax: true });
+  check("ランク（幕）: 木 3 → 銅 1 の幕の見出しは「ランクアップ」・前と後の名前・銅 1 の紋章（src が emblems/copper-1.webp）・幅と高さ 112 の枠", !!cu.s && cu.s.label === "ランクアップ" && !cu.s.text.includes("レベルアップ") && cu.s.names.map((n) => n.text).join("→") === "木 3→銅 1" && cu.s.src === `${EMB}copper-1.webp` && cu.s.box?.join() === "112,112", JSON.stringify(cu.s));
+  check("ランク（幕）: 回の初めに先読みした絵で、幕の開いた瞬間から出ている（complete・is-ready・224px）。先読みは回が始まってから・幕より前に多くて 2 枚（今の木 3 と次の銅 1 の幕用の絵だけ）", !!cu.probe && cu.probe.src === `${EMB}copper-1.webp` && cu.probe.complete && cu.probe.nw === 224 && cu.probe.ready && cu.reqs.some((q) => q.u === `${EMB}copper-1.webp` && q.before && q.afterStart) && cu.reqs.filter((q) => q.before).every((q) => q.afterStart && [`${EMB}wood-3.webp`, `${EMB}copper-1.webp`].includes(q.u)) && new Set(cu.reqs.filter((q) => q.before).map((q) => q.u)).size <= 2, JSON.stringify({ probe: cu.probe, reqs: cu.reqs }));
+  check("ランク（幕）: 読み上げは #srStatus に「ランクアップ: 木 3 から 銅 1」（「レベルアップ」の語は無い）・絵は alt=\"\" と aria-hidden・読み上げの木で無視される", !!cu.s && cu.s.sr.includes("ランクアップ: 木 3 から 銅 1") && !cu.s.sr.includes("レベルアップ") && cu.s.alt === "" && cu.s.imgAria === "true" && cu.s.overlayAria === "true" && cu.ign === true, JSON.stringify({ sr: cu.s?.sr, alt: cu.s?.alt, aria: cu.s?.imgAria, ign: cu.ign }));
+  check("ランク（幕）: 木 3 → 銅 1 でエラー0", cu.errors.length === 0, cu.errors[0] ?? "");
+
+  // ---- (2) 木 1 → 木 2（段の中の番号が上がる）は木 2 の絵・(3) 神 2 → 神 3 は神 3 の絵 ----
+  const w2 = await rankUpRun(95);
+  check("ランク（幕）: 木 1 → 木 2 の幕に木 2 の紋章（wood-2）・読み上げ「ランクアップ: 木 1 から 木 2」", !!w2.s && w2.s.names.map((n) => n.text).join("→") === "木 1→木 2" && w2.s.src === `${EMB}wood-2.webp` && w2.probe?.ready === true && w2.s.sr.includes("ランクアップ: 木 1 から 木 2"), JSON.stringify({ s: w2.s, probe: w2.probe }));
+  const g3 = await rankUpRun(xpForLv(92) - 5);
+  check("ランク（幕）: 神 2 → 神 3 の幕に神 3 の紋章（god-3）・読み上げ「ランクアップ: 神 2 から 神 3」", !!g3.s && g3.s.names.map((n) => n.text).join("→") === "神 2→神 3" && g3.s.src === `${EMB}god-3.webp` && g3.probe?.ready === true && g3.s.sr.includes("ランクアップ: 神 2 から 神 3"), JSON.stringify({ s: g3.s, probe: g3.probe }));
+  check("ランク（幕）: 木 1 → 木 2・神 2 → 神 3 でエラー0", w2.errors.length === 0 && g3.errors.length === 0, w2.errors[0] ?? g3.errors[0] ?? "");
+
+  // ---- (4) 絵が読めない（紋章を全部 404）: 幕は文字だけ（枠は空けたまま・壊れた画像の印なし）。高さは絵があるときと同じ ----
+  const no = await rankUpRun(xpForLv(5) - 5, { block404: true });
+  check("ランク（幕）: 絵が読めない（404）とき、開いた瞬間は読み込み中で見えず（is-ready なし）、枠 112×112 は空けたまま", !!no.probe && !no.probe.ready && no.probe.box?.join() === "112,112" && !!no.s && !no.s.broken, JSON.stringify({ probe: no.probe, s: no.s }));
+  check("ランク（幕）: 404 のあとも壊れた画像の印なし・文字は出る（ランクアップ・木 3 → 銅 1）・幕の高さは絵があるときと同じ", !!no.late && !no.late.broken && (no.late.src === null || no.late.opacity === "0") && no.late.label === "ランクアップ" && no.late.text.includes("銅 1") && no.late.box?.join() === "112,112" && Math.abs(no.late.inner.h - cu.s.inner.h) <= 0.5, JSON.stringify({ late: no.late, h: cu.s?.inner.h }));
+  check("ランク（幕）: 404 でエラー0", no.errors.length === 0, no.errors[0] ?? "");
+
+  // ---- (5) 320／390／1200 × 昼と夜: 幕が画面に収まり、横スクロール 0。いちばん長い名前の組（ダイヤ 3 → レジェンド 1・レジェンド 2 → レジェンド 3）も
+  //          320 と 390 で面に収まり、名前の中で折り返さない（細い幅では後の名前が次の行へ回る） ----
+  const fits = [];
+  for (const [w, h, mobile] of [[320, 568, true], [390, 844, true], [1200, 800, false]]) for (const theme of ["light", "dark"]) {
+    const r = w === 1200 && theme === "light" ? cu : await rankUpRun(xpForLv(5) - 5, { viewport: { width: w, height: h }, mobile, theme });
+    const s = r.s;
+    fits.push({ w, theme, ok: !!s && s.inner.l >= 0 && s.inner.t >= 0 && s.inner.r <= s.vw && s.inner.b <= s.vh && s.sw <= s.cw && s.titleFits && s.names.every((n) => n.lines === 1) && s.src === `${EMB}copper-1.webp` && r.errors.length === 0, inner: s?.inner, names: s?.names, sw: s?.sw, cw: s?.cw, err: r.errors[0] });
+  }
+  check("ランク（幕）: 320／390／1200 × 昼・夜で幕（紋章 112 の枠を含む）が画面に収まり、横スクロール 0・エラー0", fits.every((f) => f.ok), JSON.stringify(fits.filter((f) => !f.ok)));
+  const longs = [];
+  for (const [lv, pair, file] of [[51, "ダイヤ 3→レジェンド 1", "legend-1"], [63, "レジェンド 2→レジェンド 3", "legend-3"]]) for (const [w, h] of [[320, 568], [390, 844]]) {
+    const r = await rankUpRun(xpForLv(lv) - 5, { viewport: { width: w, height: h }, mobile: true });
+    const s = r.s;
+    longs.push({ w, pair, ok: !!s && s.names.map((n) => n.text).join("→") === pair && s.src === `${EMB}${file}.webp` && s.inner.l >= 0 && s.inner.r <= s.vw && s.inner.b <= s.vh && s.sw <= s.cw && s.titleFits && s.names.every((n) => n.lines === 1) && r.errors.length === 0, names: s?.names, inner: s?.inner, vw: s?.vw, err: r.errors[0] });
+  }
+  check("ランク（幕）: いちばん長い名前の組（ダイヤ 3 → レジェンド 1・レジェンド 2 → レジェンド 3）も 320／390 で面に収まり、名前の中で折り返さない・横スクロール 0", longs.every((f) => f.ok), JSON.stringify(longs.filter((f) => !f.ok)));
+
+  // ---- (6) 動きを減らす設定: 絵の現れ方に動きなし ----
+  const rm = await rankUpRun(xpForLv(5) - 5, { reduce: true });
+  check("ランク（幕）: prefers-reduced-motion では絵の現れ方に transition なし（transition-property: none）・ふだんは opacity 160ms", !!rm.s && /^none /.test(rm.s.transition ?? "") && rm.s.src === `${EMB}copper-1.webp` && cu.s?.transition === "opacity 0.16s", JSON.stringify({ reduce: rm.s?.transition, normal: cu.s?.transition, src: rm.s?.src }));
+
+  // ---- (7) 学習データの行（stats.html の分析タブ #levelBar）: 「銀 2 ・ Lv.15 ・ 次のレベルまで N」の前に 28 px の紋章（今のランク）。名前の文字は残す ----
+  const rowState = (page) => page.evaluate(() => {
+    const bar = document.getElementById("levelBar");
+    const img = bar?.querySelector("img.level-bar__emblem");
+    const line = bar?.querySelector(".level-bar__line");
+    const ir = img?.getBoundingClientRect();
+    const lh = line ? parseFloat(getComputedStyle(line).lineHeight) || parseFloat(getComputedStyle(line).fontSize) * 1.6 : 0;
+    return {
+      text: bar?.textContent.replace(/\s+/g, " ").trim() ?? "",
+      src: img?.getAttribute("src") ?? null,
+      attrs: img ? [img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("alt"), img.getAttribute("aria-hidden")] : null,
+      size: ir ? [Math.round(ir.width), Math.round(ir.height)] : null,
+      barH: bar ? Math.round(bar.getBoundingClientRect().height * 10) / 10 : 0,
+      lineH: line ? Math.round(line.getBoundingClientRect().height * 10) / 10 : 0, lh,
+      before: !!img && !!line && img.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING ? true : false,
+      nw: img?.naturalWidth ?? 0, ready: !!img?.classList.contains("is-ready"), opacity: img ? getComputedStyle(img).opacity : null,
+      broken: !!img && img.isConnected && img.complete && img.naturalWidth === 0 && getComputedStyle(img).opacity !== "0",
+      sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth
+    };
+  });
+  async function openRow(xp, { width = 1200, height = 900, mobile = false, block404 = false, theme = null, reqs = null } = {}) {
+    const page = await newPage({ viewport: { width, height }, mobile, storage: { spelldash_xp: String(xp), ...(theme ? { spelldash_theme: theme } : {}) } });
+    if (reqs) page.on("request", (r) => { const u = new URL(r.url()).pathname; if (u.startsWith(EMB)) reqs.push(u); });
+    if (block404) await block404Emblems(page);
+    await page.goto(BASE + "/stats.html#analysis", { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    const s = await rowState(page);
+    return { page, s };
+  }
+  const rows = [];
+  for (const [xp, name, file] of [[0, "木 1", "wood-1"], [xpForLv(5), "銅 1", "copper-1"], [xpForLv(22), "金 1", "gold-1"], [xpForLv(40), "ダイヤ 2", "diamond-2"], [xpForLv(92), "神 3", "god-3"]]) {
+    const { page, s } = await openRow(xp);
+    const ign = await axIgnored(page, "#levelBar img.level-bar__emblem");
+    rows.push({ name, ok: s.src === `${EMB}${file}-sm.webp` && s.text.startsWith(`${name} ・ Lv.`) && s.text.includes("次のレベルまで") && s.before && s.attrs?.join() === "28,28,,true" && s.size?.join() === "28,28" && s.nw === 96 && s.ready && ign === true && page.errors.length === 0, s, ign, err: page.errors[0] });
+    await page.close();
+  }
+  check("ランク（学習データの行）: 「<ランク> ・ Lv.N ・ 次のレベルまで N」の前に今のランクの紋章（木 1→wood-1・銅 1→copper-1・金 1→gold-1・ダイヤ 2→diamond-2・神 3→god-3）・width／height 28・alt=\"\"・aria-hidden・読み上げの木で無視", rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
+
+  // 行の高さは絵の有無（読み込み中・404）で変わらない（CLS 0）。320 でも 1 行のまま・横スクロール 0。夜でも同じ
+  const ok200 = await openRow(xpForLv(15), { width: 320, mobile: true });
+  const ng404 = await openRow(xpForLv(15), { width: 320, mobile: true, block404: true });
+  const dark = await openRow(xpForLv(15), { width: 390, mobile: true, theme: "dark" });
+  const a = ok200.s, b = ng404.s, d = dark.s;
+  check("ランク（学習データの行）: 行の高さは字の行＋上の余白 4px のまま（28px の絵で高くならない）・絵が読めない（404）ときも同じ（CLS 0）・壊れた画像の印なし・名前の文字は出る", a.barH > 0 && a.barH <= a.lineH + 4 + 0.5 && a.barH === b.barH && !b.broken && b.text.startsWith("銀 2 ・ Lv.15") && (b.src === null || b.opacity === "0"), JSON.stringify({ a: { barH: a.barH, lineH: a.lineH, text: a.text }, b }));
+  check("ランク（学習データの行）: 320 でも行は 1 行（折り返さない）・横スクロール 0・夜の 390 も同じ・エラー0", a.lineH > 0 && a.lineH < a.lh * 1.6 && a.sw <= a.cw && d.lineH < d.lh * 1.6 && d.sw <= d.cw && d.src === `${EMB}silver-2-sm.webp` && ok200.page.errors.length === 0 && ng404.page.errors.length === 0 && dark.page.errors.length === 0, JSON.stringify({ a, d, err: ok200.page.errors[0] ?? ng404.page.errors[0] ?? dark.page.errors[0] }));
+  for (const x of [ok200, ng404, dark]) await x.page.close();
+  // いちばん長い行（レジェンド 3・Lv.63〜69 は残りが 4 桁。神 3 の Lv.150 は残り 7,550 台）でも紋章で折り返さない。320〜359 と 360 の境の両側で見る
+  const longRows = [];
+  for (const [w, lv, name] of [[320, 63, "レジェンド 3"], [320, 69, "レジェンド 3"], [348, 69, "レジェンド 3"], [359, 69, "レジェンド 3"], [360, 69, "レジェンド 3"], [320, 150, "神 3"]]) {
+    const { page, s } = await openRow(xpForLv(lv) + 1, { width: w, mobile: true });
+    longRows.push({ w, lv, ok: s.text.startsWith(`${name} ・ Lv.${lv} ・ 次のレベルまで`) && s.lineH > 0 && s.lineH < s.lh * 1.6 && s.barH === a.barH && s.sw <= s.cw && s.size?.join() === "28,28" && page.errors.length === 0, text: s.text, lineH: s.lineH, barH: s.barH, lh: s.lh, sw: s.sw, cw: s.cw, err: page.errors[0] });
+    await page.close();
+  }
+  check("ランク（学習データの行）: いちばん長い行（レジェンド 3 の Lv.63・69〔残り 4 桁〕・神 3 の Lv.150）でも 320／348／359／360 で 1 行のまま・行の高さは銀 2 と同じ・横スクロール 0", longRows.every((r) => r.ok), JSON.stringify(longRows.filter((r) => !r.ok)));
+
+  // ---- (8) ランクの一覧（行の下の畳んだ「ランクの一覧」）: 閉じている間は絵を読まない（行の絵 1 枚だけ）。開くと 21 行（木 1 から神 3 へ）・今のランクに「今」の札・
+  //          絵は開いたときに初めて読む・読み上げは 1 行 1 文・同期で描き直しても開いたまま ----
+  const listState = (page) => page.evaluate(() => {
+    const det = document.querySelector("#rankList details");
+    const items = [...document.querySelectorAll("#rankList li")];
+    const sum = det?.querySelector("summary");
+    const box = det?.getBoundingClientRect();
+    return {
+      exists: !!det, open: !!det?.open, summary: sum?.textContent.trim() ?? "", sumH: sum ? Math.round(sum.getBoundingClientRect().height) : 0,
+      after: !!det && !!document.getElementById("levelBar") && !!(document.getElementById("levelBar").compareDocumentPosition(det) & Node.DOCUMENT_POSITION_FOLLOWING),
+      imgs: document.querySelectorAll("#rankList img").length,
+      items: items.map((li) => {
+        const img = li.querySelector("img");
+        const ir = img?.getBoundingClientRect();
+        const lr = li.getBoundingClientRect();
+        const name = li.querySelector(".rank-list__name");
+        return {
+          sr: li.querySelector(".sr-only")?.textContent ?? "",
+          visHidden: li.querySelector(".rank-list__row")?.getAttribute("aria-hidden") ?? null,
+          name: name?.textContent.trim() ?? "", lv: li.querySelector(".rank-list__lv")?.textContent.trim() ?? "",
+          now: li.querySelector(".rank-list__now")?.textContent.trim() ?? "",
+          src: img?.getAttribute("src") ?? null, attrs: img ? [img.getAttribute("width"), img.getAttribute("height"), img.getAttribute("alt")] : null,
+          size: ir ? [Math.round(ir.width), Math.round(ir.height)] : null, nw: img?.naturalWidth ?? 0,
+          inside: !!box && lr.left >= box.left - 0.5 && lr.right <= box.right + 0.5, nameFits: !!name && name.scrollWidth <= name.clientWidth + 1
+        };
+      }),
+      sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth
+    };
+  });
+  // 畳みを開く（一覧が無い木でも止まらずに検査を落とす）
+  const openList = async (page) => { const sum = await page.$("#rankList summary"); if (sum) await sum.click(); };
+  const listReqs = [];
+  const L1 = await openRow(xpForLv(15), { reqs: listReqs });
+  const closed = await listState(L1.page);
+  const closedReqs = listReqs.slice();
+  check("ランクの一覧: 学習データの行の下に畳んだ「ランクの一覧」（details・閉じている）。閉じている間は一覧の絵を読まない（要素 0・紋章の要求は行の絵 silver-2-sm の 1 つだけ）", closed.exists && !closed.open && closed.after && closed.summary === "ランクの一覧" && closed.imgs === 0 && [...new Set(closedReqs)].join() === `${EMB}silver-2-sm.webp`, JSON.stringify({ closed: { ...closed, items: closed.items.length }, closedReqs }));
+  await openList(L1.page);
+  await waitUntil(async () => (await L1.page.evaluate(() => [...document.querySelectorAll("#rankList img")].filter((i) => i.complete && i.naturalWidth > 0).length)) === 21, 4000);
+  const opened = await listState(L1.page);
+  const want = RANKS.map((r) => ({ name: r.name, lv: `Lv.${r.level} から`, src: `${EMB}${r.file}-sm.webp` }));
+  check("ランクの一覧: 開くと 21 行（下の木 1 から上の神 3 へ。名前・「Lv.N から」・小さい紋章 32×32〔96px の絵〕）。絵は開いたときに 21 枚読む", opened.open && opened.items.length === 21 && JSON.stringify(opened.items.map((i) => ({ name: i.name, lv: i.lv, src: i.src }))) === JSON.stringify(want) && opened.items.every((i) => i.attrs?.join() === "32,32," && i.size?.join() === "32,32" && i.nw === 96) && new Set(listReqs.filter((u) => u.endsWith("-sm.webp"))).size === 21, JSON.stringify({ items: opened.items.filter((i, k) => i.name !== want[k]?.name || i.lv !== want[k]?.lv || i.src !== want[k]?.src || i.size?.join() !== "32,32" || i.nw !== 96).slice(0, 4), reqs: listReqs.length }));
+  const nowRows = opened.items.filter((i) => i.now);
+  check("ランクの一覧: 今のランク（銀 2）の行だけに「今」の札（色だけに頼らない）", nowRows.length === 1 && nowRows[0].name === "銀 2" && nowRows[0].now === "今", JSON.stringify(nowRows));
+  check("ランクの一覧: 読み上げは 1 行 1 文（「銀 2、レベル 15 から、今のランク」。「Lv.」は読み上げでは「レベル」。見た目の名前・Lv・札は aria-hidden）・絵は alt=\"\"", opened.items.length === 21 && opened.items.every((i, k) => i.sr === `${want[k].name}、レベル ${RANKS[k].level} から${RANKS[k].name === "銀 2" ? "、今のランク" : ""}` && i.visHidden === "true" && i.attrs?.[2] === ""), JSON.stringify(opened.items.filter((i, k) => !i.sr.startsWith(want[k].name) || i.visHidden !== "true").slice(0, 3).concat(opened.items.slice(7, 8))));
+  const nReq = listReqs.length;
+  await L1.page.evaluate(() => window.dispatchEvent(new Event("spelldash:synced")));
+  await L1.page.waitForTimeout(200);
+  const resynced = await listState(L1.page);
+  check("ランクの一覧: 同期で行を描き直しても一覧は開いたまま・21 行と絵はそのまま（読み直さない）", resynced.open && resynced.items.length === 21 && resynced.imgs === 21 && listReqs.length === nReq && resynced.items.filter((i) => i.now).length === 1, JSON.stringify({ open: resynced.open, n: resynced.items.length, imgs: resynced.imgs, reqs: listReqs.length - nReq }));
+  check("ランクの一覧: 開閉と同期でエラー0", L1.page.errors.length === 0, L1.page.errors[0] ?? "");
+  await L1.page.close();
+  // 神 3 の人は最後の行に「今」・木 1 の人は最初の行に「今」
+  const ends = [];
+  for (const [xp, idx] of [[0, 0], [xpForLv(92), 20]]) {
+    const { page } = await openRow(xp);
+    await openList(page);
+    await page.waitForTimeout(150);
+    const s = await listState(page);
+    ends.push({ idx, ok: s.items.findIndex((i) => i.now) === idx && s.items.filter((i) => i.now).length === 1 && page.errors.length === 0, now: s.items.filter((i) => i.now).map((i) => i.name), err: page.errors[0] });
+    await page.close();
+  }
+  check("ランクの一覧: 木 1 の人は最初の行・神 3 の人は最後の行に「今」", ends.every((e) => e.ok), JSON.stringify(ends));
+  // 320／390／1200 × 昼夜で開いた一覧: 横スクロール 0・行が一覧の枠に収まる・名前が切れない。畳みの見出しは押せる高さ（指の端末 40px 以上）
+  const lfits = [];
+  for (const [w, h, mobile] of [[320, 640, true], [390, 844, true], [1200, 900, false]]) for (const theme of ["light", "dark"]) {
+    const { page } = await openRow(xpForLv(57), { width: w, height: h, mobile, theme });
+    await openList(page);
+    await page.waitForTimeout(200);
+    const s = await listState(page);
+    lfits.push({ w, theme, ok: s.open && s.items.length === 21 && s.sw <= s.cw && s.items.every((i) => i.inside && i.nameFits) && s.sumH >= (mobile ? 40 : 28) && page.errors.length === 0, sw: s.sw, cw: s.cw, sumH: s.sumH, bad: s.items.filter((i) => !i.inside || !i.nameFits).map((i) => i.name), err: page.errors[0] });
+    await page.close();
+  }
+  check("ランクの一覧: 320／390／1200 × 昼・夜で開いても横スクロール 0・21 行が枠に収まり名前が切れない・畳みの見出しは押せる高さ（指 40px・ほか 28px 以上）", lfits.every((f) => f.ok), JSON.stringify(lfits.filter((f) => !f.ok)));
+  // 分析タブを開いて読み込むときの CLS（行・一覧の見出しは描いてから出す: body[data-pending]）
+  const clsA = {};
+  for (const [label, opts] of [["1200 記録あり", { storage: { ...clsRecords(), spelldash_stats_tab: "analysis" } }], ["390 記録あり", { width: 390, height: 844, mobile: true, storage: { ...clsRecords(), spelldash_stats_tab: "analysis" } }], ["390 夜 記録なし", { width: 390, height: 844, mobile: true, storage: { spelldash_xp: String(xpForLv(57)), spelldash_theme: "dark", spelldash_stats_tab: "analysis" } }]]) clsA[label] = await loadCls("/stats.html#analysis", opts);
+  check("ランク: 分析タブ（行と一覧の見出し）を開いて読み込むときの CLS < 0.05（1200・390・夜・全応答 80ms 遅延）・エラー 0", Object.values(clsA).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(clsA));
+
+  // ---- (9) 21 段の絵が揃い、1 枚ずつ大きさの上限以下（幕 224px・24KB／小さい絵 96px・10KB／合計 440KB。scripts/build-emblems.mjs と同じ上限） ----
+  const files = RANKS.flatMap((r) => [{ name: `${r.file}.webp`, px: 224, max: 24 * 1024 }, { name: `${r.file}-sm.webp`, px: 96, max: 10 * 1024 }]).map((f) => {
+    const p = path.join(ROOT, "assets/images/emblems", f.name);
+    return { ...f, bytes: fs.existsSync(p) ? fs.statSync(p).size : -1 };
+  });
+  const total = files.reduce((n, f) => n + Math.max(0, f.bytes), 0);
+  const dims = await (async () => {
+    const page = await newPage();
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    const out = await page.evaluate((list) => Promise.all(list.map((u) => new Promise((resolve) => { const i = new Image(); i.onload = () => resolve([u, i.naturalWidth, i.naturalHeight]); i.onerror = () => resolve([u, 0, 0]); i.src = u; }))), files.map((f) => EMB + f.name));
+    await page.close();
+    return out;
+  })();
+  const extra = fs.readdirSync(path.join(ROOT, "assets/images/emblems")).filter((f) => !files.some((x) => x.name === f));
+  check("ランク: 21 段 × 2 種（幕 224px・小さい絵 96px）の WebP が揃い、1 枚ずつ上限以下（24KB／10KB）・合計 440KB 以下・画素は表示の 2 倍・ほかの絵（前の 8 段など）は無い", files.every((f) => f.bytes > 0 && f.bytes <= f.max) && total <= 440 * 1024 && dims.every(([u, w, h], i) => w === files[i].px && h === files[i].px) && extra.length === 0, JSON.stringify({ total, bad: files.filter((f) => !(f.bytes > 0 && f.bytes <= f.max)), dims: dims.filter(([u, w], i) => w !== files[i].px), extra }));
 }
 
 // ===== 9.97 概念カード「リスティング広告 実務」: 場面→用語、日本語で答える全文入力モード =====
@@ -11816,13 +12100,13 @@ console.log("after correct（入力完了から次の問題まで）:");
   // ---- 節目の行（Lv・シールド獲得）は次の語が出ても残す（語の名を含まないが、次の語を正解に見せない） ----
   {
     const myAns = Object.fromEntries(JSON.parse(myWordsA).map((w) => [w.ja, w.en]));
-    // Lv: XP を上がる 5 手前に置き（称号は変わらない）、答えを見た語の練習（+5 XP）で上げる
+    // Lv: XP を上がる 5 手前に置き（ランクは変わらない）、答えを見た語の練習（+5 XP）で上げる
     const pL = await openPlay({ spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsA, spelldash_audio: JSON.stringify({ mode: "off" }) }, { url: "/index.html?set=10&hintms=600000" });
     await pL.evaluate(async () => {
       const L = await import("/js/level.js");
       for (let t = 200; t < 200000; t++) {
         const a = L.getLevelState(t), b = L.getLevelState(t + 5);
-        if (b.level > a.level && a.title === b.title && L.getLevelState(t + 4).level === a.level) { localStorage.setItem("spelldash_xp", String(t)); return; }
+        if (b.level > a.level && a.rank.name === b.rank.name && L.getLevelState(t + 4).level === a.level) { localStorage.setItem("spelldash_xp", String(t)); return; }
       }
     });
     await pL.press("#input", "Enter"); // 答えを見る
@@ -11834,13 +12118,13 @@ console.log("after correct（入力完了から次の問題まで）:");
     check("Lv が上がった行は次の語が出ても残る（答えを見た語の練習で Lv が上がる）", rL.ms !== null && rL.after && !rL.after.same && rL.after.message.startsWith("Lv."), JSON.stringify({ ms: rL.ms, after: rL.after?.message }));
     check("節目の行（Lv）でエラー0", pL.errors.length === 0, pL.errors[0] ?? "");
     await pL.close();
-    // 称号が変わる Lv（幕が節目）: 1 行の「思い出せた」は次の語が出たら消す（まだ打っていない次の語を正解に見せない）
+    // ランクが変わる Lv（幕が節目）: 1 行の「思い出せた」は次の語が出たら消す（まだ打っていない次の語を正解に見せない）
     const pR = await openPlay({ spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsA, spelldash_audio: JSON.stringify({ mode: "off" }) }, { url: "/index.html?set=10&hintms=600000" });
     await pR.evaluate(async () => {
       const L = await import("/js/level.js");
       for (let t = 200; t < 200000; t++) {
         const a = L.getLevelState(t), b = L.getLevelState(t + 5);
-        if (b.level > a.level && a.title !== b.title && L.getLevelState(t + 4).level === a.level) { localStorage.setItem("spelldash_xp", String(t)); return; }
+        if (b.level > a.level && a.rank.name !== b.rank.name && L.getLevelState(t + 4).level === a.level) { localStorage.setItem("spelldash_xp", String(t)); return; }
       }
     });
     await pR.press("#input", "Enter"); // 答えを見る
@@ -11849,8 +12133,8 @@ console.log("after correct（入力完了から次の問題まで）:");
     const enR = (await wordOf(pR)).replace(/\s+/g, "");
     await typeAllButLast(pR, enR);
     const rR = await finishTimed(pR, enR.at(-1), { probeMs: 300, afterMs: 150 });
-    check("称号が変わるレベルアップの幕の語の「思い出せた」は次の語で消える", rR.probe?.same && rR.probe.message === "思い出せた" && rR.ms !== null && rR.after && !rR.after.same && rR.after.message !== "思い出せた", JSON.stringify({ ms: rR.ms, probe: rR.probe?.message, after: rR.after?.message }));
-    check("節目の行（称号が変わる Lv）でエラー0", pR.errors.length === 0, pR.errors[0] ?? "");
+    check("ランクが変わるレベルアップの幕の語の「思い出せた」は次の語で消える", rR.probe?.same && rR.probe.message === "思い出せた" && rR.ms !== null && rR.after && !rR.after.same && rR.after.message !== "思い出せた", JSON.stringify({ ms: rR.ms, probe: rR.probe?.message, after: rR.after?.message }));
+    check("節目の行（ランクが変わる Lv）でエラー0", pR.errors.length === 0, pR.errors[0] ?? "");
     await pR.close();
     // シールド獲得: 4 日連続・最後は昨日 → 今日最初の自力正解で 5 日連続・シールド獲得
     const yS = ymd(new Date(Date.now() - 86400000));

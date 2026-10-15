@@ -161,6 +161,7 @@
 
 - フォント: 自前の Shippori Mincho 500／700・Cormorant Garamond 600・IBM Plex Mono だけ（`css/fonts.css`、OFL）。ホーム 390 の初回読み込み（本棚まで）で **≤ 520KB**（典型の棚。実測 477KB・33 本）。全部足した棚（124 点。初めて来た人には起きない）は **≤ 600KB**（Batch 61）。「スタート」のかなのサブセット 2 本（119 の 500／700）を `index.html` が preload。外部リクエスト 0（CSP は self のまま）。
 - 場面の画像: 表示 1 回あたり **≤ 260KB**（実測 81–87KB: 場面の WebP 1 枚＋タイル＋SVG）。表示する場面はテーマと幅で 1 枚だけ（E2E が要求回数 1 を見る）。`index.html` のインラインの script が CSS と同じ分岐で 1 枚を preload する（LCP）。
+- 学習のランクの紋章（2026-10-15）: 21 段 × 2 種の WebP（幕 224px・1 枚 24KB 以下／行と一覧の小さい絵 64px・6KB 以下、合計 400KB 以下。実測 342.7KB〔幕用 280.1KB・小さい絵 62.6KB〕）。幕の絵は回の初めの手の空いたときに今と次のランクの 2 枚だけ読む。行は 1 枚、ランクの一覧は開いたときだけ小さい絵 21 枚（閉じている間は 0 枚）。上限は `scripts/build-emblems.mjs` と E2E 9.955 が見る。
 - a11y: 文字は AA（`--ink-3` 6.6:1、朱の文字 5.7:1、スタート 4.77:1 以上、箔の文字 5.4:1 以上）、押せる物は `<button>` に名前、`:focus-visible` が見える、reduced motion で動き 0、横スクロール無し（admin を除く全ページ × 320／360／390／568／600／640。Batch 67）、目次は DOM 順（本 → 札）、本棚は 1 つの roving tabindex（整理の札も）。
 - 390×844 で 1 画面目にスタートが 1 つ・全幅（実測: 下端 651px・幅 306px。初回は 567px）。1200×900 でも 1 画面目（619px）。
 - 初回（学習記録の無い端末）の書斎は、最初の描画から初回の本を出す。`index.html` の `<head>` の 1 行（`id="firstVisit"`。テーマの 1 行と同じく CSS より前）が判定して `html[data-first-visit]` を置き、`css/welcome.css`（1100px 以上の格子は `css/room.css`）が `#main` を隠し `#welcome` を出す（ページの中の置き場所に頼らない）。`js/welcome.js` `setWelcomeOpen` が hidden に置き換えて印を外し、読み込み時に状態を覚える js（本棚・部屋の sticky）は `isWelcomeOpen` で読む。判定は `shouldShowWelcome` と同じ条件（語の記録の空の文字列・null は記録なし、壊れた JSON は初回と見ない）で、E2E が同じ状態の表 144 通りで 2 つを突き合わせる。判定の条件を変えるときは両方を変える。食い違ったら `renderWelcome` が机に戻す。積んだ本は `index.html` に静的に置く（`welcomePileHtml` と同じ中身。E2E が突き合わせる。空きの高さを手で数えない）。初回の CLS は 1200×900・1200×1100・390 で < 0.02（全応答 80ms 遅延。Batch 66）、実測は 1200×900 0.0011・1200×1100 0.0023・1920×1080 0.0011・390 0（PR #168 のレビュー）。戻ってきた人の 390 は 0。
@@ -181,6 +182,7 @@
 | ≥1100 の机の列の sticky | `js/room.js` |
 | 場面の絵（SVG → WebP・SVG の飾り・タイル・アバター） | `scripts/room-art/`（`render.mjs`・`render-avatar.mjs`・`build-art.mjs`・`tiles.mjs`・`hachan.mjs`）→ `assets/images/room/`。`scripts/` はデプロイしない |
 | 予算の表 | `scripts/room-budget.mjs` |
+| 学習のランク（木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3 の 21 段と紋章。ランクアップの幕〔112px〕・学習データの行〔28px〕・ランクの一覧〔32px。開いたときだけ絵を読む〕。絵は飾りで、名前の文字は残す。ランクは記録せずレベルから毎回決める・下がらない。Battle の RP のランクとは別） | ランクの表と決まり `js/level.js`（`RANKS`・`rankOf`・`nextRankOf`。純粋な関数。`scripts/test-level.mjs`）、絵の URL・出し方・先読み `js/emblem.js`、行と一覧 `js/levelUi.js`、`css/game.css` `.rank-up`・`css/pages.css` `.level-bar__emblem`・`.rank-list`、絵は創業者が用意した 21 枚を `scripts/build-emblems.mjs --src <元の絵の置き場>` → `assets/images/emblems/` |
 | 部屋以外のページ（単語帳・学習データ・設定・Pro・お知らせ・法務・パックの入口） | 帯と幅木・ボタンとフォームの皮は `css/brand.css`（`body:not(.page-room)` 付き）、札・題箋・タブ・表は `css/pages.css` 末尾の「書斎の読む机」の節と `css/pro.css`、Battle は `css/battle.css`（色と面だけ）。HTML・JS・ホームの CSS は触らない |
 
 ## 9. 残すこと・変えないこと
