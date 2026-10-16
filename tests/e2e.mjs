@@ -7725,6 +7725,8 @@ console.log("study 60s:");
     await page.waitForTimeout(300);
     const prog = await progT(page);
     check("60 秒（?t=8）: #setProgress は「8秒 ・ 残り N秒」、#bigTimer は隠れたまま、body.is-playing なし（BGM を鳴らさない）", /^8秒 残り [78]秒$/.test(prog) && (await page.$eval("#bigTimer", (el) => el.hidden)) && !(await page.evaluate(() => document.body.classList.contains("is-playing"))), prog);
+    // 読み上げは一度空にして 30ms 後に書く（js/ui.js announce）。決め打ちの待ちでなく、書かれるまで待つ（上限 1 秒）
+    await waitUntil(async () => (await page.textContent("#srStatus")).trim() === "8秒", 1000, 20);
     check("60 秒: 始めに 1 回だけ読み上げ「8秒」（#setProgress は aria-live にしない）", (await page.textContent("#srStatus")).trim() === "8秒" && (await page.$eval("#setProgress", (el) => !el.hasAttribute("aria-live"))), await page.textContent("#srStatus"));
     const seen = [];
     let learnedMsg = "";
