@@ -10712,15 +10712,17 @@ console.log("challenge & quality:");
   await page3.close();
 }
 
-// ===== 9.955 学習のランク（木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3 の 21 段と紋章。js/level.js RANKS・rankOf・js/emblem.js・js/levelUi.js・css/game.css .rank-up・css/pages.css .level-bar__emblem・.rank-list。scripts/build-emblems.mjs）: 幕・先読み・学習データの行・ランクの一覧・絵が読めないとき・幅と昼夜・読み上げ・21 枚の大きさ =====
+// ===== 9.955 学習のランク（木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3 の 21 段と紋章。js/level.js LEARNING_RANKS・learningRankOf・js/emblem.js・js/levelUi.js・css/game.css .rank-up・css/pages.css .level-bar__emblem・.rank-list。scripts/build-emblems.mjs）: 幕・先読み・学習データの行・ランクの一覧・絵が読めないとき・幅と昼夜・読み上げ・21 枚の大きさ =====
 console.log("rank（学習のランク）:");
 {
   // ランクが変わるレベルアップは Challenge の時間切れ（?t=2・何も打たない）で起こす: その日最初の回の 50 XP で、しきいの 5 XP 手前から 1 つ上のランクへ（13c と同じ作法）
   const xpForLv = (lv) => { let x = 0; for (let l = 1; l < lv; l++) x += 100 + (l - 1) * 50; return x; }; // js/level.js xpToNext の和
   const seedE = (xp, extra = {}) => ({ spelldash_placement: "done", spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_level_boost: "2", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_xp: String(xp), ...extra });
   const EMB = "/assets/images/emblems/";
-  // 21 段（低い順）。名前・絵の名前・境のレベル（js/level.js RANKS と同じ表を別に書く）
-  const RANKS = ["wood:木", "copper:銅", "silver:銀", "gold:金", "diamond:ダイヤ", "legend:レジェンド", "god:神"].flatMap((s, t) => [1, 2, 3].map((n, i) => ({ file: `${s.split(":")[0]}-${n}`, name: `${s.split(":")[1]} ${n}`, level: [1, 2, 3, 5, 7, 9, 12, 15, 18, 22, 26, 30, 35, 40, 45, 51, 57, 63, 70, 80, 92][t * 3 + i] })));
+  // 絵の段の並び・番号・大きさ・上限は scripts/build-emblems.mjs の値をそのまま使う（import しても Chromium は立ち上がらない。PR #178 のレビュー 7）
+  const { TIERS: EMB_TIERS, STEPS: EMB_STEPS, SIZES: EMB_SIZES, TOTAL_MAX_BYTES: EMB_TOTAL_MAX } = await import("../scripts/build-emblems.mjs");
+  // 21 段（低い順）。名前と境のレベルは js/level.js LEARNING_RANKS と同じ表を別に書く（答え。下の (9) でページの level.js と突き合わせる）。絵の名前は build-emblems の段と番号
+  const RANKS = ["木", "銅", "銀", "金", "ダイヤ", "レジェンド", "神"].flatMap((name, t) => EMB_STEPS.map((n, i) => ({ file: `${EMB_TIERS[t]}-${n}`, name: `${name} ${n}`, level: [1, 2, 3, 5, 7, 9, 12, 15, 18, 22, 26, 30, 35, 40, 45, 51, 57, 63, 70, 80, 92][t * 3 + i] })));
   // 幕が足された瞬間（celebrateRankUp と同じタスクの終わり）の絵の様子を控える: 先読みで手元にあれば、開いた瞬間から出ている
   const EMB_PROBE = () => {
     window.__emb = [];
@@ -10808,7 +10810,8 @@ console.log("rank（学習のランク）:");
   // ---- (1) 木 3 → 銅 1: 見出しは「ランクアップ」・絵は銅 1（copper-1）。開いた瞬間から出ている（回の初めに先読み）。読み上げは「ランクアップ: 木 3 から 銅 1」。絵は飾り ----
   const cu = await rankUpRun(xpForLv(5) - 5, { ax: true });
   check("ランク（幕）: 木 3 → 銅 1 の幕の見出しは「ランクアップ」・前と後の名前・銅 1 の紋章（src が emblems/copper-1.webp）・幅と高さ 112 の枠", !!cu.s && cu.s.label === "ランクアップ" && !cu.s.text.includes("レベルアップ") && cu.s.names.map((n) => n.text).join("→") === "木 3→銅 1" && cu.s.src === `${EMB}copper-1.webp` && cu.s.box?.join() === "112,112", JSON.stringify(cu.s));
-  check("ランク（幕）: 回の初めに先読みした絵で、幕の開いた瞬間から出ている（complete・is-ready・224px）。先読みは回が始まってから・幕より前に多くて 2 枚（今の木 3 と次の銅 1 の幕用の絵だけ）", !!cu.probe && cu.probe.src === `${EMB}copper-1.webp` && cu.probe.complete && cu.probe.nw === 224 && cu.probe.ready && cu.reqs.some((q) => q.u === `${EMB}copper-1.webp` && q.before && q.afterStart) && cu.reqs.filter((q) => q.before).every((q) => q.afterStart && [`${EMB}wood-3.webp`, `${EMB}copper-1.webp`].includes(q.u)) && new Set(cu.reqs.filter((q) => q.before).map((q) => q.u)).size <= 2, JSON.stringify({ probe: cu.probe, reqs: cu.reqs }));
+  // 先読み（PR #178 のレビュー 2）: 幕に出る次のランクの絵から、Challenge で届きうる先（0 XP 足して 1,000 XP 先 = Lv.4 → Lv.7）のランクまで。今のランク（木 3）の絵は読まない
+  check("ランク（幕）: 回の初めに先読みした絵で、幕の開いた瞬間から出ている（complete・is-ready・224px）。先読みは回が始まってから・幕より前に、次の銅 1 と届きうる銅 2 の幕用の絵だけ（今の木 3 は読まない）", !!cu.probe && cu.probe.src === `${EMB}copper-1.webp` && cu.probe.complete && cu.probe.nw === 224 && cu.probe.ready && cu.reqs.some((q) => q.u === `${EMB}copper-1.webp` && q.before && q.afterStart) && cu.reqs.filter((q) => q.before).every((q) => q.afterStart && [`${EMB}copper-1.webp`, `${EMB}copper-2.webp`].includes(q.u)) && new Set(cu.reqs.filter((q) => q.before).map((q) => q.u)).size <= 2, JSON.stringify({ probe: cu.probe, reqs: cu.reqs }));
   check("ランク（幕）: 読み上げは #srStatus に「ランクアップ: 木 3 から 銅 1」（「レベルアップ」の語は無い）・絵は alt=\"\" と aria-hidden・読み上げの木で無視される", !!cu.s && !!cu.late?.sr.includes("ランクアップ: 木 3 から 銅 1") && !cu.late.sr.includes("レベルアップ") && cu.s.alt === "" && cu.s.imgAria === "true" && cu.s.overlayAria === "true" && cu.ign === true, JSON.stringify({ sr: cu.late?.sr, alt: cu.s?.alt, aria: cu.s?.imgAria, ign: cu.ign }));
   check("ランク（幕）: 木 3 → 銅 1 でエラー0", cu.errors.length === 0, cu.errors[0] ?? "");
 
@@ -10892,14 +10895,17 @@ console.log("rank（学習のランク）:");
   check("ランク（学習データの行）: 行の高さは字の行＋上の余白 4px のまま（28px の絵で高くならない）・絵が読めない（404）ときも同じ（CLS 0）・壊れた画像の印なし・名前の文字は出る", a.barH > 0 && a.barH <= a.lineH + 4 + 0.5 && a.barH === b.barH && !b.broken && b.text.startsWith("銀 2 ・ Lv.15") && (b.src === null || b.opacity === "0"), JSON.stringify({ a: { barH: a.barH, lineH: a.lineH, text: a.text }, b }));
   check("ランク（学習データの行）: 320 でも行は 1 行（折り返さない）・横スクロール 0・夜の 390 も同じ・エラー0", a.lineH > 0 && a.lineH < a.lh * 1.6 && a.sw <= a.cw && d.lineH < d.lh * 1.6 && d.sw <= d.cw && d.src === `${EMB}silver-2-sm.webp` && ok200.page.errors.length === 0 && ng404.page.errors.length === 0 && dark.page.errors.length === 0, JSON.stringify({ a, d, err: ok200.page.errors[0] ?? ng404.page.errors[0] ?? dark.page.errors[0] }));
   for (const x of [ok200, ng404, dark]) await x.page.close();
-  // いちばん長い行（レジェンド 3・Lv.63〜69 は残りが 4 桁。神 3 の Lv.150 は残り 7,550 台）でも紋章で折り返さない。320〜359 と 360 の境の両側で見る
+  // いちばん長い行（レジェンド 3・Lv.63〜69 は残りが 4 桁。神 3 の Lv.150 は残り 7,550 台）: 1 行に収まる幅だけ 1 行、それより細い幅は「ランク ・ Lv」と
+  // 「次のレベルまで N」の 2 行に決めて組む（PR #178 のレビュー 3。前は 359px 以下だけ語の間を詰めて 1 行に押し込んでいた）。収まるかは字の数から出した上限
+  // （data-em。レジェンド 3 は 22.6em、神 3 の Lv.150 は 19.25em）× 12px ＋ 紋章 34px が、行の箱（幅 − 64px）以下か: レジェンド 3 は 370px・神 3 は 329px から 1 行
   const longRows = [];
-  for (const [w, lv, name] of [[320, 63, "レジェンド 3"], [320, 69, "レジェンド 3"], [348, 69, "レジェンド 3"], [359, 69, "レジェンド 3"], [360, 69, "レジェンド 3"], [320, 150, "神 3"]]) {
+  for (const [w, lv, name, lines] of [[320, 63, "レジェンド 3", 2], [320, 69, "レジェンド 3", 2], [348, 69, "レジェンド 3", 2], [359, 69, "レジェンド 3", 2], [360, 69, "レジェンド 3", 2], [369, 69, "レジェンド 3", 2], [370, 69, "レジェンド 3", 1], [414, 69, "レジェンド 3", 1], [320, 150, "神 3", 2], [340, 150, "神 3", 1]]) {
     const { page, s } = await openRow(xpForLv(lv) + 1, { width: w, mobile: true });
-    longRows.push({ w, lv, ok: s.text.startsWith(`${name} ・ Lv.${lv} ・ 次のレベルまで`) && s.lineH > 0 && s.lineH < s.lh * 1.6 && s.barH === a.barH && s.sw <= s.cw && s.size?.join() === "28,28" && page.errors.length === 0, text: s.text, lineH: s.lineH, barH: s.barH, lh: s.lh, sw: s.sw, cw: s.cw, err: page.errors[0] });
+    const got = Math.round(s.lineH / s.lh);
+    longRows.push({ w, lv, lines, ok: s.text.startsWith(`${name} ・ Lv.${lv} ・ 次のレベルまで`) && got === lines && Math.abs(s.barH - (4 + lines * s.lh)) <= 0.5 && s.sw <= s.cw && s.size?.join() === "28,28" && page.errors.length === 0, got, text: s.text, lineH: s.lineH, barH: s.barH, lh: s.lh, sw: s.sw, cw: s.cw, err: page.errors[0] });
     await page.close();
   }
-  check("ランク（学習データの行）: いちばん長い行（レジェンド 3 の Lv.63・69〔残り 4 桁〕・神 3 の Lv.150）でも 320／348／359／360 で 1 行のまま・行の高さは銀 2 と同じ・横スクロール 0", longRows.every((r) => r.ok), JSON.stringify(longRows.filter((r) => !r.ok)));
+  check("ランク（学習データの行）: いちばん長い行（レジェンド 3 の Lv.63・69〔残り 4 桁〕・神 3 の Lv.150）は、1 行に収まる幅（レジェンド 3 は 370px・神 3 は 329px から）だけ 1 行、細い幅は決めた 2 行（高さは 4px＋字の行 × 行数）・横スクロール 0", longRows.every((r) => r.ok), JSON.stringify(longRows.filter((r) => !r.ok)));
 
   // ---- (8) ランクの一覧（行の下の畳んだ「ランクの一覧」）: 閉じている間は絵を読まない（行の絵 1 枚だけ）。開くと 21 行（木 1 から神 3 へ）・今のランクに「今」の札・
   //          絵は開いたときに初めて読む・読み上げは 1 行 1 文・同期で描き直しても開いたまま ----
@@ -10974,26 +10980,527 @@ console.log("rank（学習のランク）:");
     await page.close();
   }
   check("ランクの一覧: 320／390／1200 × 昼・夜で開いても横スクロール 0・21 行が枠に収まり名前が切れない・畳みの見出しは押せる高さ（指 40px・ほか 28px 以上）", lfits.every((f) => f.ok), JSON.stringify(lfits.filter((f) => !f.ok)));
+  // 文字を大きくした細い幅（反証の 2）: 文字 1／1.15／1.3 倍 × 自前の書体・代わりの書体（読めない）× 320〜414 の各幅（1.3 倍は昼と夜）で、名前と Lv が自分の枠に収まり、
+  // 隣の名前と重ならない・横スクロール 0。名前は空白でだけ 2 行に折れる（「レジェンド」「2」。仮名の途中では切らない）。文字 1 倍では折れない（今の見た目のまま）。
+  // 「今」の札（レジェンド 2）は紋章の右の余りの列に置き、紋章に重ならない（1 枠が狭まって、前は 1.15・1.3 倍の 320 で紋章の縁に掛かった）。
+  // 前は名前が nowrap で、320 の 1.3 倍で「レジェンド 1/2/3」が枠の右へ 16px はみ出し、隣の名前と 9px 重なった。字の範囲は Range の getClientRects で測る
+  // （名前の scrollWidth は、中央寄せの名前が枠の両側へはみ出すのを捉えきれない）。1 つのタブに stats.html#analysis の iframe を置き、幅を変えて測る（(13) と同じ台）
+  {
+    const LIST_WIDTHS = Array.from({ length: 95 }, (_, i) => 320 + i);
+    const zoomInitL = (z) => { const set = () => document.documentElement?.style.setProperty("-webkit-text-size-adjust", `${Math.round(z * 100)}%`); if (document.documentElement) set(); else new MutationObserver((_, o) => { if (document.documentElement) { set(); o.disconnect(); } }).observe(document, { childList: true }); };
+    const lzoom = [];
+    for (const [font, zoom, theme] of [["web", 1, "light"], ["nofont", 1, "light"], ["web", 1.15, "light"], ["nofont", 1.15, "light"], ["web", 1.3, "light"], ["nofont", 1.3, "light"], ["web", 1.3, "dark"], ["nofont", 1.3, "dark"]]) {
+      const page = await newPage({ mobile: true, viewport: { width: 414, height: 900 }, storage: { spelldash_xp: String(xpForLv(57) + 1), spelldash_stats_tab: "analysis", spelldash_theme: theme } });
+      let swapped = 0;
+      if (font === "nofont") {
+        await page.route("**/assets/fonts/**", (route) => { swapped++; return route.fulfill({ status: 404, body: "" }); });
+        await page.addInitScript(() => { delete Navigator.prototype.serviceWorker; });
+      }
+      if (zoom !== 1) await page.addInitScript(zoomInitL, zoom);
+      await page.route(BASE + "/__list", (route) => route.fulfill({ contentType: "text/html", body: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0"><iframe src="/stats.html#analysis" style="display:block;border:0;width:414px;height:900px"></iframe></body></html>` }));
+      await page.goto(BASE + "/__list", { waitUntil: "load" });
+      await page.waitForFunction(() => { const d = document.querySelector("iframe")?.contentDocument; return d?.readyState === "complete" && d.fonts.status === "loaded" && !d.body.hasAttribute("data-pending") && !!d.querySelector("#rankList details"); }, null, { timeout: 15000 });
+      const r = await page.evaluate(async (widths) => {
+        const frame = document.querySelector("iframe");
+        const doc = frame.contentDocument, win = frame.contentWindow;
+        const faces = [...doc.fonts].some((f) => f.status === "loaded" && /SD Num|Shippori/.test(f.family));
+        doc.querySelector("#rankList details").open = true;
+        const rectsOf = (el) => { const rg = doc.createRange(); rg.selectNodeContents(el); return [...rg.getClientRects()].filter((x) => x.width > 0); };
+        const out = [];
+        for (const w of widths) {
+          frame.style.width = `${w}px`;
+          await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+          const items = [...doc.querySelectorAll("#rankList .rank-list__item")];
+          const bad = [];
+          let wrapped = 0;
+          for (const li of items) {
+            const b = li.getBoundingClientRect();
+            for (const el of li.querySelectorAll(".rank-list__name, .rank-list__lv")) for (const x of rectsOf(el)) if (x.left < b.left - 0.5 || x.right > b.right + 0.5 || x.top < b.top - 0.5 || x.bottom > b.bottom + 0.5) bad.push(`はみ出し ${el.textContent}`);
+            // 名前の行の切れ目は空白だけ（空白でない字が隣どうしで別の行にあれば語の途中で切れている）
+            const t = li.querySelector(".rank-list__name").firstChild;
+            const tops = [];
+            for (let i = 0; i < t.data.length; i++) {
+              if (t.data[i] === " ") continue;
+              const rg = doc.createRange();
+              rg.setStart(t, i);
+              rg.setEnd(t, i + 1);
+              const rc = rg.getClientRects()[0];
+              tops.push({ i, top: rc ? rc.top : NaN });
+            }
+            let lines = 1;
+            for (let k = 1; k < tops.length; k++) if (Math.abs(tops[k].top - tops[k - 1].top) > 4) { lines++; if (tops[k].i === tops[k - 1].i + 1) bad.push(`語の途中 ${t.data}`); }
+            if (lines > 1) wrapped++;
+          }
+          // 「今」の札は自分の枠の中で、紋章（32px の箱）に重ならない
+          const nowLi = doc.querySelector("#rankList .rank-list__item.is-now");
+          const tag = nowLi?.querySelector(".rank-list__now")?.getBoundingClientRect(), em = nowLi?.querySelector(".rank-list__emblem")?.getBoundingClientRect(), nb = nowLi?.getBoundingClientRect();
+          if (!tag || !em) bad.push("今の札が無い");
+          else if (tag.left < nb.left - 0.5 || tag.right > nb.right + 0.5 || tag.top < nb.top - 0.5 || (tag.right > em.left + 0.5 && em.right > tag.left + 0.5 && tag.bottom > em.top + 0.5 && em.bottom > tag.top + 0.5)) bad.push(`今の札 ${Math.round(tag.left * 10) / 10}-${Math.round(tag.right * 10) / 10} 紋章 ${Math.round(em.left * 10) / 10}-${Math.round(em.right * 10) / 10}`);
+          // 同じ段（3 列）で隣の名前の字の箱と重ならない
+          for (let i = 0; i + 1 < items.length; i++) {
+            if (i % 3 === 2) continue;
+            const a = rectsOf(items[i].querySelector(".rank-list__name")), c = rectsOf(items[i + 1].querySelector(".rank-list__name"));
+            for (const x of a) for (const y of c) if (x.right > y.left + 0.5 && y.right > x.left + 0.5 && x.bottom > y.top + 0.5 && y.bottom > x.top + 0.5) bad.push(`重なり ${items[i].querySelector(".rank-list__name").textContent}/${items[i + 1].querySelector(".rank-list__name").textContent}`);
+          }
+          const fs = parseFloat(win.getComputedStyle(doc.querySelector(".rank-list__name")).fontSize);
+          out.push({ w, n: items.length, bad: [...new Set(bad)], wrapped, fs, sw: doc.documentElement.scrollWidth, cw: doc.documentElement.clientWidth });
+        }
+        return { faces, out };
+      }, LIST_WIDTHS);
+      const mock = (font === "web" ? r.faces : !r.faces && swapped > 0) && r.out.every((x) => Math.abs(x.fs - 12 * zoom) < 0.3);
+      const badW = r.out.filter((x) => x.n !== 21 || x.bad.length > 0 || x.sw > x.cw || (zoom === 1 && x.wrapped > 0));
+      lzoom.push({ font, zoom, theme, ok: mock && badW.length === 0 && page.errors.length === 0, mock, n: badW.length, bad: badW.slice(0, 3), wrapped320: r.out[0]?.wrapped, err: page.errors[0] });
+      await page.close();
+    }
+    check("反証の 2: ランクの一覧は文字 1／1.15／1.3 倍 × 自前の書体・代わりの書体 × 320〜414 の各幅（1.3 倍は昼と夜）で、名前と Lv が自分の枠に収まり隣の名前と重ならない・名前は空白でだけ折れる・文字 1 倍では折れない・「今」の札は紋章に重ならない・横スクロール 0",
+      lzoom.every((c) => c.ok), JSON.stringify(lzoom.filter((c) => !c.ok)));
+  }
   // 分析タブを開いて読み込むときの CLS（行・一覧の見出しは描いてから出す: body[data-pending]）
   const clsA = {};
   for (const [label, opts] of [["1200 記録あり", { storage: { ...clsRecords(), spelldash_stats_tab: "analysis" } }], ["390 記録あり", { width: 390, height: 844, mobile: true, storage: { ...clsRecords(), spelldash_stats_tab: "analysis" } }], ["390 夜 記録なし", { width: 390, height: 844, mobile: true, storage: { spelldash_xp: String(xpForLv(57)), spelldash_theme: "dark", spelldash_stats_tab: "analysis" } }]]) clsA[label] = await loadCls("/stats.html#analysis", opts);
   check("ランク: 分析タブ（行と一覧の見出し）を開いて読み込むときの CLS < 0.05（1200・390・夜・全応答 80ms 遅延）・エラー 0", Object.values(clsA).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(clsA));
 
-  // ---- (9) 21 段の絵が揃い、1 枚ずつ大きさの上限以下（幕 224px・24KB／小さい絵 96px・10KB／合計 440KB。scripts/build-emblems.mjs と同じ上限） ----
-  const files = RANKS.flatMap((r) => [{ name: `${r.file}.webp`, px: 224, max: 24 * 1024 }, { name: `${r.file}-sm.webp`, px: 96, max: 10 * 1024 }]).map((f) => {
+  // ---- (9) 21 段の絵が揃い、1 枚ずつ大きさの上限以下（幕 224px・小さい絵 96px の 1 枚の上限と合計の上限は scripts/build-emblems.mjs の SIZES・TOTAL_MAX_BYTES）。
+  //          build-emblems の段の並び（TIERS・STEPS）はページの js/level.js（LEARNING_RANK_TIERS・LEARNING_RANKS）と同じ ----
+  const files = RANKS.flatMap((r) => EMB_SIZES.map((x) => ({ name: `${r.file}${x.suffix}.webp`, px: x.px, max: x.maxBytes }))).map((f) => {
     const p = path.join(ROOT, "assets/images/emblems", f.name);
     return { ...f, bytes: fs.existsSync(p) ? fs.statSync(p).size : -1 };
   });
   const total = files.reduce((n, f) => n + Math.max(0, f.bytes), 0);
-  const dims = await (async () => {
+  const { dims, lv } = await (async () => {
     const page = await newPage();
     await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     const out = await page.evaluate((list) => Promise.all(list.map((u) => new Promise((resolve) => { const i = new Image(); i.onload = () => resolve([u, i.naturalWidth, i.naturalHeight]); i.onerror = () => resolve([u, 0, 0]); i.src = u; }))), files.map((f) => EMB + f.name));
+    const lvOut = await page.evaluate(async () => { const L = await import("/js/level.js"); return { tiers: L.LEARNING_RANK_TIERS.map((t) => t.id), ranks: L.LEARNING_RANKS.map((r) => `${r.tier}-${r.step}:${r.name}:${r.level}`) }; });
     await page.close();
-    return out;
+    return { dims: out, lv: lvOut };
   })();
   const extra = fs.readdirSync(path.join(ROOT, "assets/images/emblems")).filter((f) => !files.some((x) => x.name === f));
-  check("ランク: 21 段 × 2 種（幕 224px・小さい絵 96px）の WebP が揃い、1 枚ずつ上限以下（24KB／10KB）・合計 440KB 以下・画素は表示の 2 倍・ほかの絵（前の 8 段など）は無い", files.every((f) => f.bytes > 0 && f.bytes <= f.max) && total <= 440 * 1024 && dims.every(([u, w, h], i) => w === files[i].px && h === files[i].px) && extra.length === 0, JSON.stringify({ total, bad: files.filter((f) => !(f.bytes > 0 && f.bytes <= f.max)), dims: dims.filter(([u, w], i) => w !== files[i].px), extra }));
+  check(`ランク: 21 段 × ${EMB_SIZES.length} 種（${EMB_SIZES.map((x) => `${x.px}px`).join("・")}）の WebP が揃い、1 枚ずつ上限以下（${EMB_SIZES.map((x) => `${x.maxBytes / 1024}KB`).join("／")}）・合計 ${EMB_TOTAL_MAX / 1024}KB 以下（build-emblems.mjs と同じ上限）・画素は表示の 2 倍・ほかの絵（前の 8 段など）は無い`, EMB_SIZES.length === 2 && files.length === 42 && files.every((f) => f.bytes > 0 && f.bytes <= f.max) && total <= EMB_TOTAL_MAX && dims.every(([u, w, h], i) => w === files[i].px && h === files[i].px) && extra.length === 0, JSON.stringify({ total, bad: files.filter((f) => !(f.bytes > 0 && f.bytes <= f.max)), dims: dims.filter(([u, w], i) => w !== files[i].px), extra }));
+  check("ランク: build-emblems.mjs の段の並び（TIERS・STEPS）と、この節の表（名前・境のレベル）が、ページの js/level.js（LEARNING_RANK_TIERS・LEARNING_RANKS）と同じ",
+    JSON.stringify(lv.tiers) === JSON.stringify(EMB_TIERS) && JSON.stringify(lv.ranks) === JSON.stringify(RANKS.map((r) => `${r.file}:${r.name}:${r.level}`)), JSON.stringify({ lv, tiers: EMB_TIERS }));
+
+  // ===== PR #178 のレビュー（1〜4）。どれも直す前の木（main a51105e）で落ちることを確かめてから直した =====
+  const myWordsR = JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "budget", ja: "予算" }]);
+  const myAnsR = { 請求書: "invoice", 交渉する: "negotiate", 予算: "budget" };
+  const jaR = async (p) => (await p.textContent("#japanese")).trim();
+  const openListR = async (page) => { const sum = await page.$("#rankList summary"); if (sum) await sum.click(); };
+  const panelOpenR = (p) => p.evaluate(() => !document.getElementById("resultPanel").hidden);
+  // 幕（.rank-up）が足された瞬間ごとに: 名前・絵が手元にあったか・回の終わり（body.set-done）か・結果のパネルが出ているか
+  const UPS_PROBE = () => {
+    window.__ups = [];
+    new MutationObserver((list) => {
+      for (const m of list) for (const n of m.addedNodes) {
+        if (!(n instanceof HTMLElement) || !n.classList.contains("rank-up")) continue;
+        const img = n.querySelector(".rank-up__emblem img");
+        window.__ups.push({ names: [...n.querySelectorAll("[data-rank-name]")].map((x) => x.textContent.trim()).join("→"), src: img?.getAttribute("src") ?? null, complete: !!img?.complete, nw: img?.naturalWidth ?? 0, ready: !!img?.classList.contains("is-ready"), setDone: document.body.classList.contains("set-done"), at: Math.round(performance.now()) });
+      }
+    }).observe(document, { childList: true, subtree: true });
+  };
+  // 最後の 1 打をページの中で送る。次の出題文に変わるまでの ms と、probeMs の時点の幕・スタンプ・はちゃんの知らせ・メッセージ行（aria-live）・#srStatus
+  const finishR = (p, key, { probeMs = 300, until = 3500 } = {}) => p.evaluate(({ key, probeMs, until }) => new Promise((resolve) => {
+    const ja = document.getElementById("japanese");
+    const ja0 = ja.textContent.trim();
+    let ms = null, probe = null;
+    const mo = new MutationObserver(() => { if (ms === null && ja.textContent.trim() !== ja0) ms = Math.round(performance.now() - t0); });
+    mo.observe(ja, { childList: true, characterData: true, subtree: true });
+    const t0 = performance.now();
+    document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    setTimeout(() => {
+      const o = document.querySelector(".rank-up");
+      const toast = document.getElementById("learnToast");
+      probe = {
+        overlay: o ? [...o.querySelectorAll("[data-rank-name]")].map((x) => x.textContent.trim()).join("→") : null,
+        src: o?.querySelector(".rank-up__emblem img")?.getAttribute("src") ?? null,
+        stamp: !!document.querySelector(".learn-stamp"), toast: !!toast && !toast.hidden,
+        message: document.getElementById("message").textContent.trim(), sr: document.getElementById("srStatus").textContent.trim()
+      };
+    }, probeMs);
+    setTimeout(() => { mo.disconnect(); resolve({ ms, probe }); }, until);
+  }), { key, probeMs, until });
+
+  // ---- (10) PR #178 のレビュー 1: 覚えた と同じ答えでランクが変わると、幕はランクアップ（読み上げ「ランクアップ: 木 3 から 銅 1」）。覚えた は 1 行（#message は aria-live）。
+  //           スタンプとはちゃんの知らせは出さない（節目の幕は 1 つ）。待ちは 覚えた だけのときと同じ（MILESTONE_MS） ----
+  {
+    const y = new Date(Date.now() - 86400000);
+    const learnedSeed = (xp) => ({
+      spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsR, spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_xp: String(xp),
+      spelldash_word_stats: JSON.stringify({ "my-invoice": { playCount: 1, correctCount: 0, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 0, mastered: false, lastPlayed: y.toISOString(), nextReviewAt: y.toISOString(), lastRecallFailAt: y.toISOString(), lastRecallSuccessAt: null, history: [{ d: ymd(y), r: "x" }] } }),
+      spelldash_first_sight: JSON.stringify(Array(11).fill(true))
+    });
+    const learnedRun = async (xp) => {
+      const p = await newPage({ storage: learnedSeed(xp) });
+      await p.addInitScript(UPS_PROBE);
+      await p.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "networkidle" });
+      await p.waitForTimeout(700);
+      await p.press("#input", "Enter");
+      await waitUntil(async () => (await jaR(p)) === "請求書", 3000, 20);
+      await p.waitForTimeout(1200); // 回の初めの先読み（手の空いたとき）の後に答える
+      for (const ch of "invoic") await p.press("#input", ch);
+      const r = await finishR(p, "e");
+      r.ups = await p.evaluate(() => window.__ups);
+      r.errors = p.errors.slice(0, 1);
+      await p.close();
+      return r;
+    };
+    // +66 XP（その日最初の 50＋10＋ノーミス 5＋連続 1）: しきいの 10 手前（Lv.4 = 木 3）から Lv.5 = 銅 1。比べる回は覚えた だけ（Lv.4 のまま）
+    const both = await learnedRun(xpForLv(5) - 10);
+    const only = await learnedRun(xpForLv(5) - 200);
+    check("PR #178 のレビュー 1: 覚えた と同じ答えでランクが変わる（木 3 → 銅 1）と、ランクアップの幕（銅 1 の紋章・回の初めに先読みした絵）と読み上げ「ランクアップ: 木 3 から 銅 1」が出る",
+      both.probe?.overlay === "木 3→銅 1" && both.probe.src === `${EMB}copper-1.webp` && both.probe.sr.includes("ランクアップ: 木 3 から 銅 1") && both.ups.length === 1 && both.ups[0].ready, JSON.stringify({ probe: both.probe, ups: both.ups }));
+    check("PR #178 のレビュー 1: そのとき 覚えた はメッセージ行の 1 行（「覚えた！ invoice（請求書）」・aria-live）。スタンプとはちゃんの知らせは出さない（節目の幕は 1 つ）。覚えた だけの回はスタンプ",
+      !!both.probe && both.probe.message.startsWith("覚えた！ invoice（請求書）") && !both.probe.stamp && !both.probe.toast && only.probe?.stamp === true && only.probe.overlay === null && only.probe.message.startsWith("覚えた！ invoice"), JSON.stringify({ both: both.probe, only: only.probe }));
+    check("PR #178 のレビュー 1: 待ちは延びない（覚えた だけの回と同じ MILESTONE_MS: 次の語まで 1.3〜2.8 秒・差 300ms 以内）・エラー0",
+      both.ms !== null && only.ms !== null && both.ms >= 1300 && both.ms <= 2800 && Math.abs(both.ms - only.ms) <= 300 && both.errors.length === 0 && only.errors.length === 0, JSON.stringify({ both: both.ms, only: only.ms, err: both.errors[0] ?? only.errors[0] }));
+  }
+
+  // ---- (11) PR #178 のレビュー 1: 回の終わりのランクアップ。60 秒の回と腕試しは回の間は幕を出さず（時計とテンポを止めない。1 行の「Lv.N に上がった」）、
+  //           終わりのパネルで幕と読み上げを 1 つ。語数のセットの最後の語・Daily Dash の時間切れも幕と読み上げ ----
+  {
+    // 60 秒の回（?t=5）: 95 XP の木 1 で、最初の語を自力で（+66）→ Lv.2 = 木 2。回の間は幕なし → 時間切れのパネルで 木 1 → 木 2
+    const p = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsR, spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_set_size: "60s", spelldash_xp: "95" } });
+    await p.addInitScript(UPS_PROBE);
+    await p.goto(BASE + "/index.html?t=5&hintms=600000", { waitUntil: "networkidle" });
+    await p.waitForTimeout(700);
+    await p.press("#input", "Enter");
+    await waitUntil(async () => !!myAnsR[await jaR(p)], 3000, 20);
+    const timed = await p.evaluate(() => document.querySelector("#setProgress")?.dataset.timed === "1");
+    const en = myAnsR[await jaR(p)];
+    for (const ch of en.slice(0, -1)) await p.press("#input", ch);
+    const mid = await finishR(p, en.at(-1), { probeMs: 150, until: 300 });
+    await waitUntil(() => panelOpenR(p), 9000, 50);
+    await p.waitForTimeout(100);
+    const end = await p.evaluate(() => ({ sr: document.getElementById("srStatus").textContent.trim(), title: document.getElementById("resultTitle")?.textContent.trim() ?? "", ups: window.__ups }));
+    check("PR #178 のレビュー 1: 60 秒の回でランクが変わる（木 1 → 木 2）と、回の間は幕を出さず 1 行（Lv.2 に上がった）、時間切れのパネルで幕 1 つと読み上げ「ランクアップ: 木 1 から 木 2」（紋章は先読みした木 2）",
+      timed && mid.probe?.overlay === null && mid.probe.message.startsWith("Lv.2 に上がった") && end.ups.length === 1 && end.ups[0].names === "木 1→木 2" && end.ups[0].setDone && end.ups[0].src === `${EMB}wood-2.webp` && end.ups[0].ready && end.sr.includes("ランクアップ: 木 1 から 木 2") && end.title === "今日のセット完了" && p.errors.length === 0,
+      JSON.stringify({ timed, mid: mid.probe, end, err: p.errors[0] }));
+    await p.close();
+  }
+  {
+    // 60 秒の回でランクが変わった後に、設定の「苦手のみ復習」を切り替える（プレイ中の Study は restartGame で新しい回）: 控えたランクアップは
+    // その切り替えで幕 1 つと読み上げ（前は startGame が控えを捨て、幕にも読み上げにもならなかった。反証の 1）。新しい回の後に机に戻っても 2 度目は出ない
+    const y = new Date(Date.now() - 86400000);
+    const weak = () => ({ playCount: 1, correctCount: 0, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 0, mastered: false, lastPlayed: y.toISOString(), nextReviewAt: y.toISOString(), lastRecallFailAt: y.toISOString(), lastRecallSuccessAt: null, history: [{ d: ymd(y), r: "x" }] });
+    const p = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsR, spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_set_size: "60s", spelldash_xp: "95",
+      spelldash_word_stats: JSON.stringify({ "my-invoice": weak(), "my-negotiate": weak() }) } });
+    await p.addInitScript(UPS_PROBE);
+    await p.goto(BASE + "/index.html?t=60&hintms=600000", { waitUntil: "networkidle" });
+    await p.waitForTimeout(700);
+    await p.press("#input", "Enter");
+    await waitUntil(async () => !!myAnsR[await jaR(p)], 3000, 20);
+    const timed = await p.evaluate(() => document.querySelector("#setProgress")?.dataset.timed === "1");
+    const en = myAnsR[await jaR(p)];
+    for (const ch of en.slice(0, -1)) await p.press("#input", ch);
+    const mid = await finishR(p, en.at(-1), { probeMs: 150, until: 300 });
+    await p.waitForTimeout(300);
+    const before = await p.evaluate(() => ({ ups: window.__ups.length, xp: localStorage.getItem("spelldash_xp"), weakOff: document.getElementById("weakToggleButton")?.getAttribute("aria-disabled") }));
+    await p.evaluate(() => document.getElementById("setupToggle")?.click());
+    await p.waitForTimeout(150);
+    await p.evaluate(() => document.getElementById("weakToggleButton")?.click());
+    await p.waitForTimeout(250);
+    const tog = await p.evaluate(() => ({ ups: window.__ups, sr: document.getElementById("srStatus").textContent.trim(), weakOn: document.getElementById("weakToggleButton")?.getAttribute("aria-pressed"), timed: document.querySelector("#setProgress")?.dataset.timed === "1", input: !document.getElementById("input").disabled }));
+    tog.playing = await waitUntil(async () => !!myAnsR[await jaR(p)], 2000, 20); // 新しい回の語（苦手のみ）が出る
+    await p.waitForTimeout(1200); // 幕が消えてから机に戻る
+    await p.evaluate(() => document.getElementById("backToPath")?.click());
+    await p.waitForTimeout(400);
+    const back = await p.evaluate(() => ({ ups: window.__ups.length, overlay: !!document.querySelector(".rank-up") }));
+    check("反証の 1: 60 秒の回でランクが変わった（木 1 → 木 2）後に「苦手のみ復習」を切り替えると（新しい回）、控えたランクアップの幕 1 つ（先読みした木 2 の紋章）と読み上げ「ランクアップ: 木 1 から 木 2」が出る。新しい回は 60 秒のまま始まり、机に戻っても 2 度目は出ない",
+      timed && mid.probe?.overlay === null && /^(Lv\.2 に上がった|覚えた！)/.test(mid.probe.message) && before.ups === 0 && before.weakOff === "false" && tog.ups.length === 1 && tog.ups[0].names === "木 1→木 2" && tog.ups[0].src === `${EMB}wood-2.webp` && tog.sr.includes("ランクアップ: 木 1 から 木 2") && tog.weakOn === "true" && tog.playing && tog.input && tog.timed && back.ups === 1 && !back.overlay && p.errors.length === 0,
+      JSON.stringify({ timed, mid: mid.probe, before, tog, back, err: p.errors[0] }));
+    await p.close();
+  }
+  {
+    // 腕試し（初めての人・?set=3）: 95 XP の木 1 で答えていく → 腕試しの間は幕なし → 3 語で終わったパネルで 木 1 → 木 2
+    const biz = JSON.parse(fs.readFileSync(path.join(ROOT, "data/english/business.json"), "utf8")).words;
+    const ansOf = (ja) => { const c = biz.filter((w) => w.ja === ja || w.ja.split("・").includes(ja)); return c.length && new Set(c.map((w) => w.en)).size === 1 && /^[a-z]+$/.test(c[0].en) ? c[0].en : null; };
+    const p = await newPage({ storage: { spelldash_category: "business", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_xp: "95" } });
+    await p.addInitScript(UPS_PROBE);
+    await p.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "networkidle" });
+    await p.waitForTimeout(700);
+    await p.press("#input", "Enter");
+    await waitUntil(async () => (await jaR(p)) !== "", 3000, 20);
+    const placing = await p.evaluate(() => localStorage.getItem("spelldash_placement") === "started" && document.body.classList.contains("placement"));
+    const known = new Map();
+    let midUps = 0;
+    for (let i = 0; i < 40 && !(await panelOpenR(p)); i++) {
+      const ja = await jaR(p);
+      const hidden = !/^[a-z]+$/.test((await p.textContent("#word")).trim());
+      const en = known.get(ja) ?? ansOf(ja);
+      if (en && hidden) {
+        for (const ch of en) await p.press("#input", ch);
+      } else {
+        await p.press("#input", "Enter"); // 答えを見る
+        await waitUntil(async () => /^[a-z]+$/.test((await p.textContent("#word")).trim()), 1500, 20);
+        const shown = (await p.textContent("#word")).trim();
+        if (!/^[a-z]+$/.test(shown)) continue;
+        known.set(ja, shown);
+        for (const ch of shown) await p.press("#input", ch);
+      }
+      await waitUntil(async () => (await panelOpenR(p)) || (await jaR(p)) !== ja, 2500, 20);
+      if (!(await panelOpenR(p))) midUps = Math.max(midUps, (await p.evaluate(() => window.__ups.length)));
+      await afterAdvance(p);
+    }
+    await p.waitForTimeout(100);
+    const end = await p.evaluate(() => ({ sr: document.getElementById("srStatus").textContent.trim(), ups: window.__ups, open: !document.getElementById("resultPanel").hidden }));
+    check("PR #178 のレビュー 1: 腕試しでランクが変わる（木 1 → 木 2）と、腕試しの間は幕を出さず、終わりのパネルで幕 1 つと読み上げ「ランクアップ: 木 1 から 木 2」",
+      placing && end.open && midUps === 0 && end.ups.length === 1 && end.ups[0].names === "木 1→木 2" && end.ups[0].setDone && end.sr.includes("ランクアップ: 木 1 から 木 2") && p.errors.length === 0, JSON.stringify({ placing, midUps, end, err: p.errors[0] }));
+    await p.close();
+  }
+  {
+    // 語数のセットの最後の語（?set=1）でランクが変わる: その答えで幕と読み上げ → 待ちのあと完了のパネル
+    const p = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsR, spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_xp: "95" } });
+    await p.addInitScript(UPS_PROBE);
+    await p.goto(BASE + "/index.html?set=1&hintms=600000", { waitUntil: "networkidle" });
+    await p.waitForTimeout(700);
+    await p.press("#input", "Enter");
+    await waitUntil(async () => !!myAnsR[await jaR(p)], 3000, 20);
+    const en = myAnsR[await jaR(p)];
+    for (const ch of en.slice(0, -1)) await p.press("#input", ch);
+    const r = await finishR(p, en.at(-1), { probeMs: 300, until: 400 });
+    await waitUntil(() => panelOpenR(p), 4000, 50);
+    const end = await p.evaluate(() => ({ title: document.getElementById("resultTitle")?.textContent.trim() ?? "", ups: window.__ups }));
+    check("PR #178 のレビュー 1: 語数のセットの最後の語でランクが変わる（木 1 → 木 2）と、その答えで幕 1 つと読み上げ → 完了のパネル",
+      r.probe?.overlay === "木 1→木 2" && r.probe.sr.includes("ランクアップ: 木 1 から 木 2") && end.ups.length === 1 && end.title === "今日のセット完了" && p.errors.length === 0, JSON.stringify({ probe: r.probe, end, err: p.errors[0] }));
+    await p.close();
+  }
+  {
+    // Daily Dash の時間切れ（?t=2・何も打たない）: 95 XP の木 1 に その日最初の 50＋Daily 30 → 木 2 の幕と読み上げ
+    const p = await newPage({ viewport: { width: 1200, height: 800 }, storage: seedE(95) });
+    await p.addInitScript(UPS_PROBE);
+    await p.goto(BASE + "/index.html?t=2", { waitUntil: "networkidle" });
+    await p.waitForTimeout(600);
+    // 未プレイの #dailyCard は畳んである（節 3 と同じく DOM 側で押す。机の「ほかの遊び方」の Daily は 2 セットで解放）
+    await p.$eval("#homeMore", (el) => { el.open = true; });
+    await p.$eval("#dailyStartButton", (el) => el.click());
+    await waitUntil(async () => (await p.$(".rank-up")) !== null, 8000, 20);
+    // 読み上げは一度空にして 30ms 後に書く（js/ui.js announce）。幕が出た瞬間はまだ空のことがあるので、書かれるまで待つ（幕の 1.2 秒の内）
+    await waitUntil(async () => (await p.evaluate(() => document.getElementById("srStatus")?.textContent ?? "")).includes("ランクアップ"), 1000, 20);
+    const s = await overlayState(p);
+    const ups = await p.evaluate(() => window.__ups);
+    check("PR #178 のレビュー 1: Daily Dash の時間切れでランクが変わる（木 1 → 木 2）と、幕 1 つ（木 2 の紋章・先読みした絵）と読み上げ「ランクアップ: 木 1 から 木 2」",
+      !!s && s.names.map((n) => n.text).join("→") === "木 1→木 2" && s.src === `${EMB}wood-2.webp` && s.sr.includes("ランクアップ: 木 1 から 木 2") && ups.length === 1 && ups[0].ready && p.errors.length === 0, JSON.stringify({ s, ups, err: p.errors[0] }));
+    await p.close();
+  }
+
+  // ---- (12) PR #178 のレビュー 2: 先読みは幕に出る絵（次のランク）。今のランクの絵は読まない。回の途中でランクが上がったら、次のランクを読み直す（2 度目の幕も開いた瞬間から絵）。
+  //           Challenge／Daily（XP を回の終わりにまとめて足す）は、その回で届きうる先のランクまで（多くて 3 枚） ----
+  {
+    // Study の語数の回で 2 度上がる: 95 XP の木 1 → 1 語目で木 2（幕 1）→ XP をしきいの 5 手前に置き → 2 語目で木 3（幕 2）
+    const reqs = [];
+    const p = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: myWordsR, spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_xp: "95" } });
+    p.on("request", (r) => { const u = new URL(r.url()).pathname; if (u.startsWith(EMB)) reqs.push({ u, t: Date.now() }); });
+    await p.addInitScript(UPS_PROBE);
+    await p.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "networkidle" });
+    await p.waitForTimeout(700);
+    const startedAt = Date.now();
+    await p.press("#input", "Enter");
+    await waitUntil(async () => !!myAnsR[await jaR(p)], 3000, 20);
+    await p.waitForTimeout(1200);
+    const atFirst = reqs.filter((q) => q.t >= startedAt).map((q) => q.u);
+    const ja1 = await jaR(p);
+    const en1 = myAnsR[ja1];
+    for (const ch of en1) await p.press("#input", ch);
+    await waitUntil(async () => (await jaR(p)) !== ja1, 3000, 20);
+    await p.evaluate((xp) => localStorage.setItem("spelldash_xp", String(xp)), xpForLv(3) - 5);
+    await p.waitForTimeout(1200); // 幕の後の先読み（手の空いたとき）
+    await waitUntil(async () => !!myAnsR[await jaR(p)], 3000, 20);
+    const en2 = myAnsR[await jaR(p)];
+    for (const ch of en2) await p.press("#input", ch);
+    await waitUntil(async () => (await p.evaluate(() => window.__ups.length)) >= 2, 3000, 20);
+    const ups = await p.evaluate(() => window.__ups);
+    check("PR #178 のレビュー 2: Study の回の初めの先読みは次のランクの絵だけ（木 1 の人は wood-2。今のランクの wood-1 は読まない）",
+      atFirst.length >= 1 && atFirst.every((u) => u === `${EMB}wood-2.webp`), JSON.stringify(atFirst));
+    check("PR #178 のレビュー 2: 同じ回の 2 度目のランクアップ（木 2 → 木 3）の幕も、開いた瞬間から絵が出ている（1 度目の幕の後に次のランクの絵を読み直した）",
+      ups.length === 2 && ups[0].names === "木 1→木 2" && ups[0].ready && ups[1].names === "木 2→木 3" && ups[1].src === `${EMB}wood-3.webp` && ups[1].complete && ups[1].nw === 224 && ups[1].ready && p.errors.length === 0, JSON.stringify({ ups, err: p.errors[0] }));
+    await p.close();
+  }
+  {
+    // Challenge: 0 XP の木 1 の回の初めに、届きうる先（木 2・木 3・銅 1）まで先読み（3 枚・wood-1 は読まない）。回の終わりに 2 段以上先（銅 1）へ上がっても幕の絵は手元にある
+    // （回の途中で XP を Lv.5 の 5 手前に置き、時間切れの その日最初の 50 で 木 3 → 銅 1 にする: 1 回で 700 XP 近く足したのと同じ終わり）
+    const reqs = [];
+    const p = await newPage({ viewport: { width: 1200, height: 800 }, storage: seedE(0) });
+    p.on("request", (r) => { const u = new URL(r.url()).pathname; if (u.startsWith(EMB)) reqs.push({ u, t: Date.now() }); });
+    await p.addInitScript(UPS_PROBE);
+    await p.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+    await p.waitForTimeout(600);
+    const startedAt = Date.now();
+    await p.click('#playModes [data-mode="challenge"]');
+    await p.waitForTimeout(1300);
+    await p.evaluate((xp) => localStorage.setItem("spelldash_xp", String(xp)), xpForLv(5) - 5);
+    await waitUntil(async () => (await p.$(".rank-up")) !== null, 8000, 20);
+    const ups = await p.evaluate(() => window.__ups);
+    const pre = [...new Set(reqs.filter((q) => q.t >= startedAt && q.t <= startedAt + 1300).map((q) => q.u))];
+    check("PR #178 のレビュー 2: Challenge の回の初め（0 XP の木 1）は、その回で届きうる先のランクの幕の絵まで先読み（wood-2・wood-3・copper-1 の 3 枚。今の wood-1 は読まない）",
+      pre.length === 3 && [`${EMB}wood-2.webp`, `${EMB}wood-3.webp`, `${EMB}copper-1.webp`].every((u) => pre.includes(u)), JSON.stringify(pre));
+    check("PR #178 のレビュー 2: Challenge の回の終わりに 2 段以上先（銅 1）へ上がっても、幕の絵（copper-1）は開いた瞬間から出ている",
+      ups.length === 1 && ups[0].names === "木 3→銅 1" && ups[0].src === `${EMB}copper-1.webp` && ups[0].complete && ups[0].ready && p.errors.length === 0, JSON.stringify({ ups, err: p.errors[0] }));
+    await p.close();
+  }
+
+  // ---- (13) PR #178 のレビュー 3: 学習データの行の高さは書体によらない（自前の書体・代わりの書体〔読めない〕・広い代わりの書体）。文字 1・1.15・1.3 倍 × 320〜414 の各幅 ×
+  //           昼と夜で、書体が届いても行の高さが変わらない（下が動かない）・横スクロール 0・字が切れない・紋章 28px。書体が遅れて届く読み込みでも、出したときと届いた後で高さが同じ ----
+  {
+    const ROW_WIDE = fs.readFileSync(path.join(ROOT, "assets", "fonts", "ibm-plex-mono-latin-500-normal.woff2"));
+    const ROW_WIDTHS = Array.from({ length: 95 }, (_, i) => 320 + i);
+    const zoomInit = (z) => { const set = () => document.documentElement?.style.setProperty("-webkit-text-size-adjust", `${Math.round(z * 100)}%`); if (document.documentElement) set(); else new MutationObserver((_, o) => { if (document.documentElement) { set(); o.disconnect(); } }).observe(document, { childList: true }); };
+    // 1 つのタブに stats.html#analysis の iframe を 1 つ置き、iframe の幅を 320〜414 で変えて中を測る（8.7 の N1 と同じ台）
+    async function rowAcross({ xp, font, zoom, theme = "light" }) {
+      const page = await newPage({ mobile: true, viewport: { width: 414, height: 900 }, storage: { spelldash_xp: String(xp), spelldash_stats_tab: "analysis", spelldash_theme: theme } });
+      let swapped = 0;
+      if (font !== "web") {
+        await page.route("**/assets/fonts/**", (route) => { swapped++; return font === "wide" ? route.fulfill({ contentType: "font/woff2", body: ROW_WIDE }) : route.fulfill({ status: 404, body: "" }); });
+        await page.addInitScript(() => { delete Navigator.prototype.serviceWorker; });
+      }
+      if (zoom !== 1) await page.addInitScript(zoomInit, zoom);
+      await page.route(BASE + "/__row", (route) => route.fulfill({ contentType: "text/html", body: `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0"><iframe src="/stats.html#analysis" style="display:block;border:0;width:414px;height:900px"></iframe></body></html>` }));
+      await page.goto(BASE + "/__row", { waitUntil: "load" });
+      await page.waitForFunction(() => { const d = document.querySelector("iframe")?.contentDocument; return d?.readyState === "complete" && d.fonts.status === "loaded" && !d.body.hasAttribute("data-pending") && !!d.querySelector("#levelBar .level-bar__line"); }, null, { timeout: 15000 });
+      await page.waitForTimeout(150);
+      const rows = await page.evaluate(async (widths) => {
+        const frame = document.querySelector("iframe");
+        const doc = frame.contentDocument, win = frame.contentWindow;
+        const faces = [...doc.fonts].some((f) => f.status === "loaded" && /SD Num|Shippori/.test(f.family));
+        const out = [];
+        for (const w of widths) {
+          frame.style.width = `${w}px`;
+          await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+          const bar = doc.getElementById("levelBar"), br = bar.getBoundingClientRect();
+          const line = bar.querySelector(".level-bar__line");
+          const img = bar.querySelector("img.level-bar__emblem")?.getBoundingClientRect();
+          // 字の行数（テキストの行の箱を上から数える）と、字が行の箱の外に出ていないか
+          const rects = [];
+          const walker = doc.createTreeWalker(bar, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (!n.data.trim() || n.parentElement.getClientRects().length === 0) continue;
+            const r = doc.createRange();
+            r.selectNodeContents(n);
+            rects.push(...[...r.getClientRects()].filter((x) => x.width > 0));
+          }
+          let lines = 0, bottom = -Infinity;
+          for (const x of rects.sort((a, b) => a.top - b.top)) { if ((x.top + x.bottom) / 2 > bottom) { lines++; bottom = x.bottom; } else bottom = Math.max(bottom, x.bottom); }
+          const clipped = [...bar.querySelectorAll("*")].filter((el) => el.tagName !== "IMG" && win.getComputedStyle(el).display !== "inline").some((el) => el.scrollWidth > el.clientWidth + 1);
+          const outside = rects.some((x) => x.right > br.right + 0.5 || x.left < br.left - 0.5);
+          out.push({ w, h: Math.round(br.height * 10) / 10, below: Math.round((doc.getElementById("rankList").getBoundingClientRect().top - br.top) * 10) / 10, lines, clipped, outside, img: img ? `${Math.round(img.width)}x${Math.round(img.height)}` : null, sw: doc.documentElement.scrollWidth, cw: doc.documentElement.clientWidth, fs: parseFloat(win.getComputedStyle(line).fontSize), text: bar.textContent.replace(/\s+/g, " ").trim() });
+        }
+        return { faces, out };
+      }, ROW_WIDTHS);
+      rows.swapped = swapped;
+      rows.errors = page.errors.slice(0, 1);
+      await page.close();
+      return rows;
+    }
+    const looksOk = (r, font, zoom) => (font === "web" ? r.faces : font === "nofont" ? !r.faces && r.swapped > 0 : r.faces && r.swapped > 0) && r.out.every((x) => Math.abs(x.fs - 12 * zoom) < 0.3);
+    const cases = [];
+    for (const [label, xp, themes] of [["レジェンド 3 ・ Lv.69（いちばん長い行）", xpForLv(69) + 1, ["light", "dark"]], ["銀 2 ・ Lv.15", xpForLv(15) + 1, ["light"]]]) {
+      for (const zoom of [1, 1.15, 1.3]) for (const theme of themes) {
+        const by = {};
+        for (const font of ["web", "nofont", "wide"]) by[font] = await rowAcross({ xp, font, zoom, theme });
+        const bad = [];
+        for (const [i, w] of ROW_WIDTHS.entries()) {
+          const xs = ["web", "nofont", "wide"].map((f) => by[f].out[i]);
+          const same = xs.every((x) => Math.abs(x.h - xs[0].h) <= 0.5 && Math.abs(x.below - xs[0].below) <= 0.5);
+          const fine = xs.every((x) => x.sw <= x.cw && !x.clipped && !x.outside && x.img === "28x28" && x.lines >= 1 && x.lines <= 2);
+          if (!same || !fine) bad.push({ w, h: xs.map((x) => x.h).join("/"), lines: xs.map((x) => x.lines).join("/"), below: xs.map((x) => x.below).join("/"), sw: xs.map((x) => `${x.sw}/${x.cw}`).join(" "), clipped: xs.map((x) => x.clipped || x.outside).join("/") });
+        }
+        const mocks = ["web", "nofont", "wide"].every((f) => looksOk(by[f], f, zoom));
+        cases.push({ label, zoom, theme, ok: bad.length === 0 && mocks && ["web", "nofont", "wide"].every((f) => by[f].errors.length === 0), n: bad.length, bad: bad.slice(0, 3), mocks, err: ["web", "nofont", "wide"].map((f) => by[f].errors[0]).find(Boolean) });
+      }
+    }
+    for (const c of cases) check(`PR #178 のレビュー 3: 学習データの行（${c.label}・文字 ${c.zoom} 倍・${c.theme === "dark" ? "夜" : "昼"}）は 320〜414 の各幅で、自前の書体・代わりの書体・広い代わりの書体の高さが同じ（書体が届いても下が動かない）・1〜2 行・字が切れない・紋章 28px・横スクロール 0`,
+      c.ok, JSON.stringify({ n: c.n, bad: c.bad, mocks: c.mocks, err: c.err }));
+
+    // 書体が遅れて届く（woff2 を 1.5 秒遅らせる。出すまで待つのは 300ms まで: js/footer.js FONT_WAIT_MS）: 出した瞬間（代わりの書体）と届いた後で、行の高さと下の一覧の位置が同じ
+    const late = [];
+    for (const [w, zoom] of [[320, 1], [360, 1], [390, 1], [320, 1.3], [414, 1.15]]) {
+      const page = await newPage({ mobile: true, viewport: { width: w, height: 800 }, storage: { spelldash_xp: String(xpForLv(69) + 1), spelldash_stats_tab: "analysis" } });
+      await page.addInitScript(() => { delete Navigator.prototype.serviceWorker; });
+      if (zoom !== 1) await page.addInitScript(zoomInit, zoom);
+      await page.addInitScript(() => {
+        const snap = () => { const bar = document.getElementById("levelBar"); const r = bar?.getBoundingClientRect(); return r ? { h: Math.round(r.height * 10) / 10, below: Math.round((document.getElementById("rankList").getBoundingClientRect().top - r.top) * 10) / 10, fonts: document.fonts.status } : null; };
+        new MutationObserver((_, o) => {
+          if (!document.body || document.body.hasAttribute("data-pending")) return;
+          o.disconnect();
+          window.__shown = snap();
+          document.fonts.ready.then(() => requestAnimationFrame(() => setTimeout(() => (window.__loaded = snap()), 50)));
+        }).observe(document, { attributes: true, subtree: true, attributeFilter: ["data-pending"] });
+      });
+      await page.route("**/*.woff2", async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.fallback(); });
+      await page.goto(BASE + "/stats.html#analysis", { waitUntil: "load" });
+      await waitUntil(() => page.evaluate(() => !!window.__loaded), 8000, 50);
+      const s = await page.evaluate(() => ({ shown: window.__shown, loaded: window.__loaded }));
+      late.push({ w, zoom, ok: !!s.shown && !!s.loaded && s.shown.fonts !== "loaded" && Math.abs(s.shown.h - s.loaded.h) <= 0.5 && Math.abs(s.shown.below - s.loaded.below) <= 0.5 && page.errors.length === 0, ...s, err: page.errors[0] });
+      await page.close();
+    }
+    check("PR #178 のレビュー 3: 書体が遅れて届く読み込み（320・360・390 の 1 倍、320 の 1.3 倍、414 の 1.15 倍）で、出したとき（代わりの書体）と届いた後の行の高さと一覧の位置が同じ（CLS 0）",
+      late.every((x) => x.ok), JSON.stringify(late.filter((x) => !x.ok)));
+  }
+
+  // ---- (14) PR #178 のレビュー 4: 一覧の読めなかった紋章は箱から外し（32px の枠は箱が持つ）、閉じて開き直したとき・同期で描き直したとき・通信が戻ったときに読み直す。
+  //           行の読めなかった紋章も同じ見方（is-gone の印。28px の枠は img が持つので外さない。次の描き直しで作り直す） ----
+  {
+    const listImgs = (page) => page.evaluate(() => {
+      const boxes = [...document.querySelectorAll("#rankList .rank-list__emblem")];
+      const imgs = boxes.map((b) => b.querySelector("img"));
+      return {
+        boxes: boxes.length, imgs: imgs.filter(Boolean).length, loaded: imgs.filter((i) => i && i.complete && i.naturalWidth === 96 && i.classList.contains("is-ready")).length,
+        dead: imgs.filter((i) => i && i.complete && i.naturalWidth === 0).length,
+        sizes: [...new Set(boxes.map((b) => `${Math.round(b.getBoundingClientRect().width)}x${Math.round(b.getBoundingClientRect().height)}`))].join(","),
+        row: (() => { const i = document.querySelector("#levelBar img.level-bar__emblem"); return i ? { gone: i.classList.contains("is-gone"), ok: i.complete && i.naturalWidth === 96, size: `${Math.round(i.getBoundingClientRect().width)}x${Math.round(i.getBoundingClientRect().height)}` } : null; })(),
+        barH: Math.round(document.getElementById("levelBar").getBoundingClientRect().height * 10) / 10
+      };
+    });
+    const openFailing = async () => {
+      const state = { fail: true };
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_xp: String(xpForLv(15)), spelldash_stats_tab: "analysis" } });
+      await page.addInitScript(() => { try { navigator.serviceWorker.register = () => new Promise(() => {}); } catch { /* SW の無い環境 */ } });
+      await page.route(`**${EMB}**`, (route) => (state.fail ? route.fulfill({ status: 404, body: "" }) : route.fallback()));
+      await page.goto(BASE + "/stats.html#analysis", { waitUntil: "networkidle" });
+      await page.waitForTimeout(300);
+      await openListR(page);
+      await page.waitForTimeout(500);
+      return { page, state, failed: await listImgs(page) };
+    };
+    // (a) 閉じて開き直す
+    {
+      const { page, state, failed } = await openFailing();
+      check("PR #178 のレビュー 4: 読めなかった一覧の紋章は箱から外す（透明の img を残さない・32px の枠は残る）。行の読めなかった紋章は is-gone の印で 28px の枠のまま（行の高さは同じ）",
+        failed.boxes === 21 && failed.imgs === 0 && failed.dead === 0 && failed.sizes === "32x32" && failed.row?.gone === true && failed.row.size === "28x28", JSON.stringify(failed));
+      state.fail = false;
+      await page.click("#rankList summary"); // 閉じる
+      await page.waitForTimeout(100);
+      await openListR(page); // 開き直す
+      await waitUntil(async () => (await listImgs(page)).loaded === 21, 4000, 50);
+      const again = await listImgs(page);
+      check("PR #178 のレビュー 4: 通信が戻ってから一覧を閉じて開き直すと、21 段の紋章を読み直して出す", again.loaded === 21 && again.dead === 0 && page.errors.length === 0, JSON.stringify({ again, err: page.errors[0] }));
+      await page.close();
+    }
+    // (b) 開いたまま同期で描き直す（spelldash:synced）: 一覧の紋章も行の紋章も読み直す
+    {
+      const { page, state } = await openFailing();
+      state.fail = false;
+      await page.evaluate(() => window.dispatchEvent(new Event("spelldash:synced")));
+      await waitUntil(async () => (await listImgs(page)).loaded === 21, 4000, 50);
+      const s = await listImgs(page);
+      check("PR #178 のレビュー 4: 開いたまま同期で描き直すと、読めなかった一覧の紋章を読み直す（行の紋章も作り直して出る）", s.loaded === 21 && s.row?.ok === true && !s.row.gone && page.errors.length === 0, JSON.stringify({ s, err: page.errors[0] }));
+      await page.close();
+    }
+    // (c) オフラインで開く → 通信が戻る（online）: 開いたままの一覧は読み直す
+    {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_xp: String(xpForLv(15)), spelldash_stats_tab: "analysis" } });
+      await page.addInitScript(() => { try { navigator.serviceWorker.register = () => new Promise(() => {}); } catch { /* SW の無い環境 */ } });
+      await page.goto(BASE + "/stats.html#analysis", { waitUntil: "networkidle" });
+      await page.waitForTimeout(300);
+      await page.context().setOffline(true);
+      await openListR(page);
+      await page.waitForTimeout(500);
+      const off = await listImgs(page);
+      await page.context().setOffline(false);
+      await waitUntil(async () => (await listImgs(page)).loaded === 21, 4000, 50);
+      const on = await listImgs(page);
+      check("PR #178 のレビュー 4: オフラインで開いた一覧（紋章は読めない・枠だけ）は、通信が戻ると開いたまま 21 段の紋章を読み直す", off.loaded <= 1 && off.imgs === off.loaded && off.dead === 0 && on.loaded === 21 && page.errors.length === 0, JSON.stringify({ off, on, err: page.errors[0] }));
+      await page.close();
+    }
+  }
 }
 
 // ===== 9.97 概念カード「リスティング広告 実務」: 場面→用語、日本語で答える全文入力モード =====
