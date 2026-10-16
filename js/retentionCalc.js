@@ -1,6 +1,7 @@
 // ===== 記憶の保持率の集計（純関数）と、日の数え方・小さな計算の共通の所 =====
 // import なし・DOM なし・localStorage なし。Node から直接 import して検証する（scripts/test-retention.mjs）。
-// ローカル日（localDay・dayDiff・shiftDay）・gap の帯（gapBand）・中央値（median）はほかの集計も使う（写しを持たない。PR #172 のレビュー 7）
+// ローカル日（localDay・dayDiff・shiftDay）・gap の帯（gapBand）・中央値（median）はほかの集計も使う（写しを持たない。PR #172 のレビュー 7）。
+// 日番号（dayNoOf・ymdOfDayNo）・日付の文字（mdOf）・問いの字数（promptChars）も同じ（PR #180 のレビュー 6: js/recallSpeed.js の写しを寄せた）
 // 記録の書き手は js/retentionLog.js・js/studyTime.js、画面は js/retention.js、定義は docs/SPEC_RETENTION.md。
 //
 // 語ごとの記録: { f: 初回の自力正解の ISO, d: 最後に数えた回答日 "YYYY-MM-DD", n: 復習した日数,
@@ -55,6 +56,28 @@ export function shiftDay(ymd, days) {
   if (!p) return null;
   const d = new Date(Date.UTC(p[0], p[1], p[2] + days));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+// 日番号（1970-01-01 からのローカル暦日の数。速さの記録 sp の日。書き手 js/stats.js と画面 js/recallSpeed.js が使う）⇄ "YYYY-MM-DD"。読めなければ null
+const DAY_ZERO = "1970-01-01";
+export function dayNoOf(ymd) {
+  const n = dayDiff(DAY_ZERO, ymd);
+  return Number.isInteger(n) ? n : null;
+}
+export function ymdOfDayNo(n) {
+  return Number.isInteger(n) ? shiftDay(DAY_ZERO, n) : null;
+}
+
+// "YYYY-MM-DD" → "M月D日"（画面の日付。読めなければ空文字）
+export function mdOf(ymd) {
+  const p = parts(ymd);
+  return p ? `${p[1] + 1}月${p[2]}日` : "";
+}
+
+// 問いの字数（括弧〔「（略語）」など〕の中を除いた字数。コードポイント）。品詞の札はラベルにあるので入らない。
+// 書き手へ渡す字数帯（js/game.js の測りの札 qLen）と、思い出す速さを出す語の門（js/recallSpeed.js。訳 8 字未満）が同じ数え方で数える
+export function promptChars(text) {
+  return [...String(text ?? "").replace(/[（(][^）)]*[）)]/g, "").trim()].length;
 }
 
 function emptyWindow() {

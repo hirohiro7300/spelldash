@@ -60,6 +60,10 @@ export function boxKey({ lang, input, ctx } = {}) {
 
 let meta = null; // 読んだ中身（無ければ空）＋このタブで足した分
 let dirty = false; // 保存していない変化がある
+// 別のタブが書いた・消した（storage イベント）: 学習データの読み手（getRankCheck）が次に読むときに読み直す（js/memoryWords.js と同じ形）。
+// 答えの道（classifySpeed・noteSpeedSample・noteRankCheck の load）は読み直さない（入力完了から次の問題までの読み書きを増やさない。
+// 書くときは flushMasteryMeta が保存を読み直して足すので、もう一方のタブの分は消えない）
+let stale = false;
 let answersSinceFlush = 0;
 // 前に書いてから（読んでから）このタブで足した分。flush で保存を読み直した中身に足す
 let delta = emptyDelta();
@@ -172,6 +176,25 @@ export function getMasteryMeta() {
     return JSON.parse(JSON.stringify(load()));
   } catch {
     return emptyMeta();
+  }
+}
+
+// 段ごとの実測の集計（学習データの「日をあけて問うと思い出せた」。js/statsView.js）: check.rank だけの写し { "4": { "1": [o, x], … }, … }。
+// meta 全体は写さない。別のタブが書いた後は保存を読み直し、このタブでまだ書いていない分（delta）を上に重ねる（書くときの flush と同じ足し方）
+export function getRankCheck() {
+  try {
+    if (!meta || stale) {
+      meta = mergeDelta(readStored(), delta);
+      stale = false;
+    }
+    const out = {};
+    for (const [r, row] of Object.entries(meta.check.rank)) {
+      out[r] = {};
+      for (const [band, v] of Object.entries(row)) out[r][band] = [v[0], v[1]];
+    }
+    return out;
+  } catch {
+    return {};
   }
 }
 
@@ -335,6 +358,7 @@ export function flushMasteryMeta() {
     meta = merged;
     delta = emptyDelta();
     dirty = false;
+    stale = false; // 書く直前に読み直した（もう一方のタブの分も入っている）
     return true;
   } catch {
     return false; // 書けなかった（容量など）: 足した分は持ったまま、次の機会にもう一度
@@ -352,6 +376,7 @@ export function tickMasteryMeta() {
 export function forgetMasteryMeta() {
   meta = null;
   dirty = false;
+  stale = false;
   answersSinceFlush = 0;
   delta = emptyDelta();
 }
@@ -364,4 +389,8 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
       if (document.visibilityState === "hidden") flushMasteryMeta();
     });
   }
+  // 別のタブが書いた・消した（復元・端末の記録を消す）: 学習データの読み手が次に読むときに読み直す（このタブの書きかけは上に重ねる）
+  window.addEventListener("storage", (e) => {
+    if (e.key === null || e.key === KEY) stale = true;
+  });
 }

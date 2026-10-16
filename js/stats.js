@@ -2,9 +2,9 @@ import { saveWordStats, editWordStats, getWordStats, wordStatsChars } from "./st
 import { markWordDirty } from "./sync.js";
 import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
 import { touchStudyTime } from "./studyTime.js";
-import { answerContext, nextRank, isFirstAnswer, isSlipFail, intervalAfter, keepLaterDue, unseenFailCap, SRS_STEPS, MAX_INTERVAL_DAYS, MIN_GAP_MS, isUnresolved, isKnownWord, isKnownWaiting } from "./mastery.js";
+import { answerContext, nextRank, isFirstAnswer, isSlipFail, typedCharsOf, intervalAfter, keepLaterDue, unseenFailCap, SRS_STEPS, MAX_INTERVAL_DAYS, MIN_GAP_MS, isUnresolved, isKnownWord, isKnownWaiting } from "./mastery.js";
 import { noteRankCheck, tickMasteryMeta } from "./masteryMeta.js";
-import { localDay, dayDiff } from "./retentionCalc.js";
+import { localDay, dayDiff, dayNoOf } from "./retentionCalc.js";
 import { BASE_VARIANT, readShadow, writeShadow, shadowOf, shadowInit, shadowPredict, shadowSuccess, shadowSameDay, shadowFail, migrateState } from "./memoryModel.js";
 import {
   noteCalibration,
@@ -212,14 +212,17 @@ export function isReviewAttempt(stat, nowMs = Date.now()) {
   return dayDiff(localDay(new Date(okAt)), localDay(new Date(nowMs))) >= 1;
 }
 
-// × の細目（js/game.js が渡す detail = { k, p, a }）→ history の 1 件に足す欄。k: e 答え表示・h ヒント・m 1 打ミス・p パス、
-// 渡さない呼び方（Battle）・知らない値は u（不明）。p = 打てていた字数（0 以上の整数のときだけ）、a = m のとき隣のキーを打ったか（真偽のときだけ）
+// × の細目（js/game.js が渡す detail = { k, p, a, c }）→ history の 1 件に足す欄。k: e 答え表示・h ヒント・m 1 打ミス・p パス、
+// 渡さない呼び方（Battle）・知らない値は u（不明）。p = 打てていた字数（綴りは受理した字、ローマ字は受理したキー。0 以上の整数のときだけ）、
+// a = m のとき隣のキーを打ったか（真偽のときだけ）、c = ローマ字の答えの m のとき打ち終えていたかなの字数（0 以上の整数のときだけ。PR #180 のレビュー 3。
+// 3 字目かどうかは js/mastery.js typedCharsOf が c → p の順で読む。綴りの答えは渡さないので今の形のまま）
 const FAIL_KINDS = new Set(["e", "h", "m", "p"]);
 function failFields(detail) {
   const k = FAIL_KINDS.has(detail?.k) ? detail.k : "u";
   const out = { k };
   if (k !== "u" && Number.isInteger(detail.p) && detail.p >= 0) out.p = detail.p;
   if (k === "m" && typeof detail.a === "boolean") out.a = detail.a;
+  if (k === "m" && Number.isInteger(detail.c) && detail.c >= 0) out.c = detail.c;
   return out;
 }
 
@@ -276,24 +279,32 @@ function writeRank(stat, before, answer, ctx, nowIso) {
     stat.masteryRank = nextRank(before.rank, answer, ctx);
     stat.masteryAt = nowIso;
     if (!answer.ok && stat.masteryRank < before.rank) stat.masteryDownAt = nowIso;
-    writePeak(stat, before, answer, ctx);
+    writePeak(stat, before, answer, ctx, nowIso);
   } catch {
     // 段は次の答えで書き直す
   }
 }
 
-// 1 打ミスで下がる前の段の控え masteryPeak（M1。Batch 70。端末だけの欄・送らない。js/mastery.js masteryPeakOf が読む）。段と同じ写しに書く:
+// 1 打ミスで下がる前の段の控え masteryPeak と、その控えを置いた × の時刻 masteryPeakAt（M1。Batch 70・PR #180 のレビュー 1。端末だけの欄・送らない。
+// js/mastery.js masteryPeakOf が「masteryPeakAt と lastRecallFailAt が同じ時刻」で使えるかを見る）。段と同じ写しに書く:
 //   指の滑りの ×（answer.slip）で段が下がった → 控え ＝ max(答える前に使えた控え, 答える前の段)（続けて 1 打ミスで下がっても、どの段も 1 打ミスで下がったので上の段まで戻す）
 //   指の滑りの × で段が下がらない（同じ日の 2 回目・段 1）→ 使えた控えを残す
 //   ほかの ×（答え表示・ヒント・パス・2 字目までの隣でない字・全文入力の違う答え・Battle）→ 消す（下がった段は今の決まりで戻す）
 //   ○ → 控えが今の段より上なら残す（遅い・打ち間違いあり・同じ日の ○ は戻さないので次の日に）、戻りきったら消す。使えない控え（見ていない × の後など）も消す
-function writePeak(stat, before, answer, ctx) {
+// 控えを残す × では masteryPeakAt ＝ この × の時刻（nowIso ＝ 書いた lastRecallFailAt）、○ では最後の × の時刻（使えた控えなら同じ時刻。
+// masteryPeakAt の無い PR #180 の版の控えにはここで書き足す）。控えを消すときは一緒に消す
+function writePeak(stat, before, answer, ctx, nowIso) {
   const usable = Number.isInteger(ctx.peak) ? ctx.peak : 0;
   let peak = 0;
   if (answer.ok) peak = usable;
   else if (answer.slip) peak = stat.masteryRank < before.rank ? Math.max(usable, before.rank) : usable;
-  if (peak > stat.masteryRank) stat.masteryPeak = peak;
-  else delete stat.masteryPeak;
+  if (peak > stat.masteryRank) {
+    stat.masteryPeak = peak;
+    stat.masteryPeakAt = answer.ok ? stat.lastRecallFailAt : nowIso;
+  } else {
+    delete stat.masteryPeak;
+    delete stat.masteryPeakAt;
+  }
 }
 
 // 日をあけた正解の後、復習の間隔を伸ばす（習熟度の S2・S3。段階 2。js/mastery.js intervalAfter）。書き手の写しに書く（同じ 1 回の保存）。
@@ -384,15 +395,10 @@ export function recordRecallSuccess(word, answer, measure = null) {
 //          数えずに捨てる。js/memoryCheck.js encodePend）
 //   memSv  影の 7 通りの S（js/memoryModel.js VARIANTS の順）、memD・memD0 共通の難しさとその初めの値（どれも 0.1 刻みの整数: 値 × 10）
 // 集計は js/memoryCheck.js（spelldash_memory_check）。出題・期日・段・streak・習得・保持率の記録はここで変えない（scripts/sim-writers.mjs で確かめる）
-const DAY_ZERO = "1970-01-01";
+// sp の日番号（1970-01-01 からのローカル暦日の数）は js/retentionCalc.js dayNoOf（画面の js/recallSpeed.js と同じ関数）
 const SP_KEEP = 3; // sp は直近 3 件
 const SP_GAP_DAYS = 3; // 材料 (a): 前の答え（○でも × でも）から 3 暦日以上あいた、その日の最初の答え（または初めての答え）
 const SP_B_RATIO = 0.5; // 材料 (b): 影の S（G0 1.5）で t ≥ 0.5 × S の、その日の最初の答え
-
-const dayNoOf = (ymd) => {
-  const n = dayDiff(DAY_ZERO, ymd);
-  return Number.isInteger(n) ? n : null;
-};
 
 // 答える前の記録から、影の S・D の初めの値（js/memoryModel.js migrateState。D1 §2.6）
 function migratedShadow(st) {
@@ -428,7 +434,8 @@ function prevDayFailKind(history, prevDay) {
   const e = history.find((x) => x?.d === prevDay && x.r === "x" && typeof x.k === "string");
   if (!e) return null;
   if (e.k !== "m") return ["e", "h", "p", "u"].includes(e.k) ? e.k : null;
-  if (Number.isInteger(e.p) && e.p <= 1) return "m2"; // 1 打ミス 2 字目まで
+  const n = typedCharsOf(e); // ローマ字の答えは打ち終えたかなの字数 c（無ければ p。js/mastery.js。isSlipFail と同じ数え方）
+  if (n !== null && n <= 1) return "m2"; // 1 打ミス 2 字目まで
   return e.a === true ? "m3a" : "m3"; // 3 字目以降（字数が分からない m も）: 隣のキーか、ほか
 }
 
