@@ -6365,7 +6365,7 @@ console.log("finder covers:");
     await openFinder(page);
     const geo = {};
     for (const id of ["social", "grammar", "exam"]) { await openShelf(page, id); await page.waitForTimeout(300); geo[id] = await rowsGeo(page, `#bookFinderBrowse details[data-shelf="${id}"]`); }
-    const imgs = await page.evaluate(() => [...document.querySelectorAll("#bookFinderBrowse .finder__cov img")].filter((i) => i.offsetParent).map((i) => ({ done: i.complete, nw: i.naturalWidth, w: Math.round(i.getBoundingClientRect().width), h: Math.round(i.getBoundingClientRect().height) })));
+    const imgs = await page.evaluate(() => [...document.querySelectorAll("#bookFinderBrowse details[open] .finder__cov img")].map((i) => ({ done: i.complete, nw: i.naturalWidth, w: Math.round(i.getBoundingClientRect().width), h: Math.round(i.getBoundingClientRect().height) })));
     const bg = await page.evaluate(() => [...document.querySelectorAll("#bookFinderBrowse details[open] .finder__cov, #bookFinderBrowse details[data-shelf='social'] .finder__cov")].slice(0, 6).map((c) => getComputedStyle(c).backgroundColor));
     const sameRows = ["social", "grammar", "exam"].every((id) => JSON.stringify(geo[id].map((r) => [r.key, r.h, r.tl, r.ml, r.tw, r.cov])) === JSON.stringify((normal390[id] ?? []).map((r) => [r.key, r.h, r.tl, r.ml, r.tw, r.cov])));
     check("窓の表紙（390）: 表に無い本（文法・英作文の 11 冊）は革の無地の箱（絵なし・同じ 21×28・背の革の色）",
