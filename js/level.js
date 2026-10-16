@@ -8,8 +8,9 @@ const STREAK_KEY = "spelldash_streak";
 // 境のレベルは前の称号（F3 → … → S1 → レジェンドの 22 個。2026-10-15 まで）の境を 21 に詰めたもの: 神 1 までは同じで、S2・S1・レジェンドの 3 つを
 // 神 2（80）・神 3（92）の 2 つにした。今の人はレベルが同じまま名前と紋章だけ変わる（S1 の人は神 2、レジェンドの人は神 3）。
 // 序盤は 1 レベルごとに上がって「進んでる感」を作り、上位ほど 1 段が重くなる。
-// Battle の RP のランク（Bronze〜Master。js/battleConfig.js rankFromRp）は別の制度: 勝敗で上下し、Battle の画面だけに出る。学習のランクは下がらず、レベルで決まる
-export const RANK_TIERS = Object.freeze([
+// 名前に LEARNING_ を付けるのは、同じ「ランク」の語の段がほかに 2 つあるから: 語の習熟度の段（js/mastery.js rankOf・RANK_NAMES）と
+// Battle の RP のランク（Bronze〜Master。js/battleConfig.js RANKS・rankFromRp。勝敗で上下し、Battle の画面だけに出る）。学習のランクは下がらず、レベルで決まる
+export const LEARNING_RANK_TIERS = Object.freeze([
   Object.freeze({ id: "wood", name: "木" }),
   Object.freeze({ id: "copper", name: "銅" }),
   Object.freeze({ id: "silver", name: "銀" }),
@@ -21,22 +22,22 @@ export const RANK_TIERS = Object.freeze([
 const RANK_LEVELS = [1, 2, 3, 5, 7, 9, 12, 15, 18, 22, 26, 30, 35, 40, 45, 51, 57, 63, 70, 80, 92];
 
 // 低い順の 21 段。{ name: "銀 2", tier: "silver", step: 2, level: 15 }（level はそのランクになるレベル）
-export const RANKS = Object.freeze(
-  RANK_TIERS.flatMap((tier, t) => [1, 2, 3].map((step, s) => Object.freeze({ name: `${tier.name} ${step}`, tier: tier.id, step, level: RANK_LEVELS[t * 3 + s] })))
+export const LEARNING_RANKS = Object.freeze(
+  LEARNING_RANK_TIERS.flatMap((tier, t) => [1, 2, 3].map((step, s) => Object.freeze({ name: `${tier.name} ${step}`, tier: tier.id, step, level: RANK_LEVELS[t * 3 + s] })))
 );
 
-// レベル → ランク（そのレベル以下で最後に届いたもの。壊れたレベルは木 1）
-export function rankOf(level) {
-  let rank = RANKS[0];
-  for (const entry of RANKS) {
+// レベル → 学習のランク（そのレベル以下で最後に届いたもの。壊れたレベルは木 1）
+export function learningRankOf(level) {
+  let rank = LEARNING_RANKS[0];
+  for (const entry of LEARNING_RANKS) {
     if (level >= entry.level) rank = entry;
   }
   return rank;
 }
 
-// 次のランク（神 3 に届いていれば null）
-export function nextRankOf(level) {
-  return RANKS.find((entry) => entry.level > level) ?? null;
+// 次の学習のランク（神 3 に届いていれば null）
+export function nextLearningRankOf(level) {
+  return LEARNING_RANKS.find((entry) => entry.level > level) ?? null;
 }
 
 // レベルnからn+1に上がるのに必要なXP（少しずつ重くなる）
@@ -59,7 +60,7 @@ export function getLevelState(totalXp = getTotalXp()) {
 
   return {
     level,
-    rank: rankOf(level),
+    rank: learningRankOf(level), // 学習のランク（learningRankOf）
     currentXp: remaining,
     neededXp: xpToNext(level),
     totalXp

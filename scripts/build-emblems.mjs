@@ -1,4 +1,4 @@
-// 学習のランク（木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3 の 21 段。js/level.js RANKS・rankOf）の紋章の絵を作る。
+// 学習のランク（木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3 の 21 段。js/level.js LEARNING_RANKS・learningRankOf）の紋章の絵を作る。
 // 絵は創業者が用意した 21 枚（1024×1024 の PNG・背景透過。各段の 1 → 2 → 3 で下の菱が 1 → 3 個に増え、飾りが豪華になる）。
 // 配信するのは assets/images/emblems/ の WebP だけで、元の PNG はリポジトリに入れない（1 枚 1MB 前後。作り直すときは元の絵の置き場を渡す）。
 //
@@ -27,7 +27,8 @@
 //   4. 配信する絵: 半分ずつ縮めて（一度に大きく縮めると細い線がちらつく）224px と 96px にし、WebP で書く
 //   どの WebP も canvas が付ける sRGB の ICC（456 バイト）を外して書く（stripIcc。色は sRGB の既定と同じ。画素は 1 つも変わらない）
 // 絵の処理と WebP の書き出しは Chromium の canvas（playwright-core。E2E と同じ。CHROME_PATH か Playwright の置き場）。ほかの道具は要らない。
-// 大きさの上限（超えたら書かずに止める）: SIZES の maxBytes と TOTAL_MAX_BYTES。E2E（9.955 学習のランク）も同じ上限で見る。
+// 大きさの上限（超えたら書かずに止める）: SIZES の maxBytes と TOTAL_MAX_BYTES。E2E（9.955 学習のランク）と scripts/test-level.mjs はこの台本を import して
+// 同じ値（SIZES・TOTAL_MAX_BYTES・TIERS・STEPS）で見る（import しただけでは Chromium を立ち上げない: 下の「直接呼ばれたときだけ」）。
 // 絵を替えたら、書いた絵を目で確かめてからコミットする（--sheet）。
 
 import fs from "fs";
@@ -36,7 +37,7 @@ import { fileURLToPath } from "url";
 import { chromium } from "playwright-core";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-// 段の英字の名前（js/level.js RANK_TIERS と同じ並び。低い順）と、元の絵のファイル名に使われうる名前
+// 段の英字の名前（js/level.js LEARNING_RANK_TIERS と同じ並び。低い順。test-level と E2E 9.955 が突き合わせる）と、元の絵のファイル名に使われうる名前
 export const TIERS = ["wood", "copper", "silver", "gold", "diamond", "legend", "god"];
 const SRC_ALIASES = { legend: ["legend", "legend-rainbow"] };
 export const STEPS = [1, 2, 3];
@@ -362,4 +363,13 @@ async function main() {
   }
 }
 
-await main();
+// 直接呼ばれたときだけ作る（tests/e2e.mjs・scripts/test-level.mjs が SIZES・TOTAL_MAX_BYTES・TIERS・STEPS を読むために import しても Chromium を立ち上げない。
+// scripts/build-app.mjs・scripts/build-og-image.mjs と同じ作り）
+const realOf = (p) => {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+};
+if (process.argv[1] && realOf(process.argv[1]) === realOf(fileURLToPath(import.meta.url))) await main();

@@ -216,6 +216,11 @@ let advancedBy = null; // 次の語へ進んだきっかけ（"timer" = 待ち�
 let completedAt = -Infinity; // Study で前の語を打ち終えた時刻（タイマーで進んだときの守り。isAdvanceEcho）
 let tailUntil = -Infinity; // 待ちを縮めて次の語を出したときの、次の語の 1 打目の守りの終わり（-Infinity = 守らない。advanceNow が置く。spendTailGuard）
 let milestoneThisWord = false; // この語で節目の演出（覚えた のスタンプ・レベルアップの幕）を出した
+// 60 秒の回・腕試しの間に変わった学習のランク { before, after }（回の間は幕を出さない。回の終わり〔endStudySession〕・途中でやめたとき〔stopGame〕・途中で新しい回にしたとき〔restartGame〕に幕を 1 つ）
+let deferredRankUp = null;
+// Challenge／Daily（XP を回の終わりにまとめて足す）で 1 回に足しうる XP の見積もり: 1 語 最大 25（10＋ノーミス 5＋連続 10）× 約 36 語（60 秒）＋
+// その日最初の 50＋Daily 30＋ミッション 40。回の初めに、ここまでで届きうるランクの幕の絵を先読みする（多くて 3 枚。js/emblem.js preloadRanks）
+const RUN_XP_REACH = 1000;
 let learnedCardStale = false; // プレイ中は覚えた単語カードを描かない（畳まれて見えない）。終わったら描く
 let keepMessage = false; // この語の結果の行を次の語が出ても残すか（語の名を含む行・節目の行。showResult が決める。advanceNow）
 let readingHold = false; // 待ちの間に作った覚え方を読んでいる（自動では進めない。Enter で次へ）
@@ -819,6 +824,7 @@ function notifyGameEnd() {
 
 export function stopGame() {
   clearInterval(timer);
+  if (isPlaying) celebrateDeferredRankUp(); // 60 秒の回・腕試しを途中でやめても、回の間に変わったランクは落とさない
   isPlaying = false;
   timedHiddenAt = null;
   wordTiming = null;
@@ -917,9 +923,11 @@ export function startGame(options = {}) {
   tailUntil = -Infinity;
   readingHold = false;
   milestoneThisWord = false;
+  deferredRankUp = null;
   startTime = Date.now();
   updateCombo(0);
-  scheduleEmblemPreload(); // ランクの紋章（今と次のランクの幕用の絵。多くて 2 枚）を手の空いたときに読んでおく: 幕が開いた瞬間から絵が出る（js/emblem.js）
+  // ランクの紋章（幕に出る次のランクの絵。Challenge／Daily はその回で届きうる先のランクまで、多くて 3 枚）を手の空いたときに読んでおく: 幕が開いた瞬間から絵が出る（js/emblem.js）
+  scheduleEmblemPreload({ reach: mode === "challenge" ? RUN_XP_REACH : 0 });
 
   elements.input.disabled = false;
   elements.input.value = "";
@@ -1129,6 +1137,9 @@ document.addEventListener("visibilitychange", () => {
 
 export function restartGame() {
   clearInterval(timer);
+  // 60 秒の回・腕試しの途中で新しい回にする（プレイ中の「苦手のみ復習」の切り替え等）: startGame が控えを捨てる前に、回の間に変わったランクの幕と読み上げを出す（stopGame と同じ）。
+  // 幕の待ち（milestoneThisWord）は startGame が戻すので、新しい回の最初の語は待たない
+  if (isPlaying) celebrateDeferredRankUp();
   isPlaying = false;
   startGame();
 }
@@ -2448,9 +2459,14 @@ function renderSetProgress() {
 
 // ===== 「覚えた！」の瞬間 =====
 // 別の日に思い出せなかった語を今日自力で思い出せた＝学習成立。ここだけは大きく祝う
-function celebrateLearned(word, earned, note = "") {
+// 「覚えた！」の 1 行（スタンプの回も、ランクアップの幕に譲った回も同じ文）
+function learnedLine(word, earned, note = "") {
   const jaShort = word.ja.length > 22 ? `${word.ja.slice(0, 22)}…` : word.ja;
-  const line = `覚えた！ ${answerLabel(word)}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`;
+  return `覚えた！ ${answerLabel(word)}（${jaShort}）${earned > 0 ? `  +${earned} XP` : ""}${note}`;
+}
+
+function celebrateLearned(word, earned, note = "") {
+  const line = learnedLine(word, earned, note);
   if (timedRun()) {
     // 60 秒の回: メッセージ行の「覚えた！ X」だけ（スタンプ・はちゃんの知らせは出さない。待ちも延ばさない）
     sfxSparkle();
@@ -2668,6 +2684,9 @@ function endStudySession({ timed = false } = {}) {
   const activeDays = getActiveDaysThisWeek();
   const goalLine = activeDays === goal ? `<div class="result-panel__goal">今週の目標 ${goal}日 達成</div>` : "";
 
+  // 60 秒の回・腕試しの間に変わったランクは、ここで幕 1 つと読み上げ（Challenge の終わりと同じく、結果のパネルの見出しの前に）
+  celebrateDeferredRankUp();
+
   const panel = document.getElementById("resultPanel");
   if (panel) {
     const hasumiLine = timed && recalled === 0
@@ -2746,9 +2765,22 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null, rank
 
   const result = addXp(earned);
   renderLevelBar();
+  // ランクが変わる節目は幕 1 つ。60 秒の回と腕試しの間は幕を出さない（時計とテンポを止めない）: 回の終わりのパネルで幕を出す（deferRankUp）
+  const rankChanged = rankChangedIn(result);
+  const quiet = isPlacementRun() || timedRun();
+  if (rankChanged && quiet) deferRankUp(result);
 
-  // 「覚えた！」は他の何より先に祝う（学習が成立した瞬間）
+  // 「覚えた！」は他の何より先に祝う（学習が成立した瞬間）。ただし同じ答えでランクが変わったら、幕はランクアップ（21 段で数回きりの節目。覚えた は毎日ある）。
+  // 節目の幕は 1 つ: 覚えた はメッセージ行の 1 行（#message は aria-live なので読み上げも届く）で、スタンプとはちゃんの知らせは出さない。
+  // 待ちはどちらも MILESTONE_MS（幕もスタンプも milestoneThisWord）で、延びない（PR #178 のレビュー 1）
   if (learnEvent === "learned") {
+    if (rankChanged && !quiet) {
+      playLevelUpEffect();
+      sfxLevelUp();
+      celebrateRankUp(result);
+      showResult(learnedLine(currentWord, earned, shieldNote), "learned", true);
+      return;
+    }
     celebrateLearned(currentWord, earned, shieldNote);
     return;
   }
@@ -2757,7 +2789,7 @@ function applyStudyXp(earned, missionResult, loopResult, learnEvent = null, rank
     playLevelUpEffect();
     sfxLevelUp();
     // ランクが変わる節目はオーバーレイ 1 つ、それ以外は 1 行。両方は出さない
-    if (isPlacementRun() || timedRun() || !celebrateRankUp(result)) {
+    if (quiet || !celebrateRankUp(result)) {
       showResult(`Lv.${result.after.level} に上がった${unlockNoteForLevel(result.after.level)}${shieldNote}`, "finished", true);
     } else {
       showResult(`思い出せた${shieldNote}`, "correct", !!shieldNote); // 幕が節目。1 行の「思い出せた」は次の語で消す
@@ -3330,14 +3362,30 @@ function getCategoryLabel(id) {
   return getCategories().find((c) => c.id === id)?.label ?? (id === "my" ? "マイ単語帳" : id);
 }
 
+// addXp の結果で学習のランクが変わったか（レベルだけ上がったときは false）
+function rankChangedIn(result) {
+  return !!result?.leveledUp && !!result.before?.rank && !!result.after?.rank && result.before.rank.name !== result.after.rank.name;
+}
+
+// 60 秒の回・腕試しの間に変わったランクを控える（前は回の間で最初に変わる前、後は最後に変わった後）。幕に出す絵（その時点の次のランク）を手の空いたときに読む
+function deferRankUp(result) {
+  deferredRankUp = { leveledUp: true, before: deferredRankUp?.before ?? result.before, after: result.after };
+  scheduleEmblemPreload();
+}
+
+// 控えたランクアップの幕を出す（回の終わり・途中でやめたとき・途中で新しい回にしたとき。1 回きり）
+function celebrateDeferredRankUp() {
+  const pending = deferredRankUp;
+  deferredRankUp = null;
+  return pending ? celebrateRankUp(pending) : false;
+}
+
 // ランクが変わるレベルアップ（木 1 → 木 2・木 3 → 銅 1 等）は節目。大きめのオーバーレイで祝う（見出しは「ランクアップ」。レベルだけ上がったときは呼び手が 1 行で言う）。
-// 学習のランク（js/level.js rankOf。getLevelState の rank）はレベルで決まり下がらない。Battle の RP のランク（勝敗で上下する）は別の制度で、Battle の画面だけに出る。
-// （この台本の rankOf は語の習熟度の段〔js/mastery.js〕。学習のランクは addXp の結果の before.rank・after.rank を使う）
+// 学習のランク（js/level.js learningRankOf。getLevelState の rank）はレベルで決まり下がらない。Battle の RP のランク（勝敗で上下する）は別の制度で、Battle の画面だけに出る
 function celebrateRankUp(result) {
-  if (!result?.leveledUp) return false;
-  const before = result.before?.rank;
-  const after = result.after?.rank;
-  if (!before || !after || before.name === after.name) return false;
+  if (!rankChangedIn(result)) return false;
+  const before = result.before.rank;
+  const after = result.after.rank;
   const overlay = document.createElement("div");
   overlay.className = "rank-up";
   overlay.setAttribute("aria-hidden", "true"); // 読み上げは静的な #srStatus（role=status）に流す。後から挿入した live 領域は読まれない
@@ -3355,6 +3403,7 @@ function celebrateRankUp(result) {
   `;
   document.body.appendChild(overlay);
   revealEmblem(overlay.querySelector(".rank-up__emblem img"));
+  scheduleEmblemPreload(); // 同じ回のうちにもう一度上がっても開いた瞬間から絵が出るよう、新しいレベルの次のランクの絵を手の空いたときに読む
   milestoneThisWord = true; // 幕（1.2 秒＋消える 0.22 秒）が消えるまで次の語を出さない
   sfxSparkle();
   // 1.2 秒で静かに消える。タップでも閉じられる（次の一手を待たせない）

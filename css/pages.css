@@ -1411,26 +1411,73 @@ html[data-theme] .level-bar:empty {
   display: none;
 }
 
+/* 行の組み方（js/levelUi.js renderLevelBar・fitLevelBar。PR #178 のレビュー 3）: 細い幅では「ランク ・ Lv」と「次のレベルまで N」の 2 行に決めて組み、
+   1 行に収まる幅だけ 1 行（.level-bar--one）。どちらにするかは js が、行の箱の幅・字の大きさ（文字の拡大も入った今の大きさ）・字の数から出した 1 行の幅の上限
+   （data-em）で決め、書体の実測に頼らない: 代わりの書体・遅れて届く書体・文字の拡大（1.15／1.3 倍）でも、書体が届く前と後で行の高さが同じ（CLS 0）。
+   字の行の高さは字の大きさの 1.5 倍に決め（書体ごとの行の高さ〔line-height: normal〕で動かさない）、数字の書体（SD Num と代わりの書体）の上下の寸法で
+   行が伸びないよう、数字の行の高さは 1 にする。字が箱からはみ出しそうなら「…」で止める（data-em は上限の見積もりなので、文字 1.3 倍までは出ない。E2E 9.955） */
+html[data-theme] .level-bar--line {
+  position: relative;
+}
+
+html[data-theme] .level-bar__probe {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 html[data-theme] .level-bar__line {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--ink-3);
   font-size: 12px;
   font-weight: 500;
+  line-height: 1.5;
+}
+
+html[data-theme] .level-bar__part {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html[data-theme] .level-bar__sep {
+  display: none;
 }
 
 html[data-theme] .level-bar__line .mono {
   font-family: var(--font-mono);
+  line-height: 1;
 }
 
-/* ランクの紋章（今のランク。js/emblem.js の 96px の小さい絵）: 大きさを先に取り（CLS 0）、読めてから見せる（読み込み中・読めない絵は透明のまま。
-   壊れた画像の印を出さない）。縮まない（いちばん長い行でも 1 行に収まるよう、359px 以下は行の左右の余白を外す: 下の .level-bar--line）。
-   上下の -6px: 行の高さは今のまま字の行（12px の字で約 17px）が決める（28px の絵は上下に 5〜6px はみ出すだけ。上は padding-top 4px と上の余白の中） */
+html[data-theme] .level-bar--one .level-bar__line {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html[data-theme] .level-bar--one :is(.level-bar__part, .level-bar__sep) {
+  display: inline;
+}
+
+/* ランクの紋章（今のランク。js/emblem.js の 96px の小さい絵）: 大きさを先に取り（CLS 0）、読めてから見せる（読み込み中・読めない絵〔is-gone〕は透明のまま。
+   壊れた画像の印を出さない）。縮まない。2 行のときは 2 行の字の真ん中に、1 行のときは上下 -5px で行の高さを字の行（12px の字で 18px）のままにする */
 html[data-theme] .level-bar__emblem {
   flex: none;
   display: block;
   width: 28px;
   height: 28px;
-  margin-block: -6px;
   opacity: 0;
+}
+
+html[data-theme] .level-bar--one .level-bar__emblem {
+  margin-block: -5px;
 }
 
 html[data-theme] .level-bar__emblem.is-ready {
@@ -1439,7 +1486,7 @@ html[data-theme] .level-bar__emblem.is-ready {
 
 /* ---- ランクの一覧（js/levelUi.js renderRankList）: 行の下の畳み。21 段を 3 列（段ごとに 1 → 2 → 3 の 1 列）で、下の木 1 から上の神 3 へ。
    紋章は開いたときに置く（32px の枠は先に取る）。今のランクの行は枠の線と「今」の札（色だけに頼らない）。
-   559px 以下は紋章・名前・Lv を縦に積む（320 の 1 列 約 93px にいちばん長い「レジェンド 3」12px〔約 70px〕が収まる）。560px 以上は紋章の右に名前と Lv。字は 12px を割らない ---- */
+   559px 以下は紋章・名前・Lv を縦に積む（320 の 1 列 約 83px にいちばん長い「レジェンド 3」12px〔約 70px〕が収まる。文字を大きくして入らないときは名前を空白で 2 行に）。560px 以上は紋章の右に名前と Lv。字は 12px を割らない ---- */
 html[data-theme] .rank-list-host {
   margin: 2px 0 0;
   padding: 0 16px;
@@ -1501,15 +1548,20 @@ html[data-theme] .rank-list__item.is-now {
   background: var(--paper-2);
 }
 
+/* 559px 以下の紋章の段は 3 列（左の余り・紋章 32px・右の余り）。「今」の札は右の余りに置く: 札が余りより広い（文字を大きくした細い幅。320 の 1.3 倍で
+   札 約 26px・余り 約 22px）ときは右の列が札の幅まで広がって紋章が少し左へ寄り、札と紋章は重ならない（前は札を枠の右上に重ねていて、
+   1 枠が狭まった 320 では紋章の縁に 1 倍で 0.7px・1.3 倍で 5.8px 掛かった）。名前と Lv は 3 列をまたぐ。560px 以上は下で紋章の右に名前と Lv */
 html[data-theme] .rank-list__row {
   display: grid;
+  grid-template-columns: 1fr 32px 1fr;
   justify-items: center;
-  gap: 2px;
+  gap: 2px 0;
   text-align: center;
 }
 
 html[data-theme] .rank-list__emblem {
   display: block;
+  grid-column: 2;
   width: 32px;
   height: 32px;
 }
@@ -1525,12 +1577,15 @@ html[data-theme] .rank-list__emblem img.is-ready {
   opacity: 1;
 }
 
+/* 名前は空白でだけ折り返す（keep-all: 仮名の途中では切らない）。文字を大きくした細い幅（320 の 1.15・1.3 倍。1 枠 約 83px）で「レジェンド 1」が
+   入りきらないときは「レジェンド」「1」の 2 行になる（はみ出して隣の名前と重ならない）。文字 1 倍ではどの幅も 1 行（E2E 9.955・反証の 2） */
 html[data-theme] .rank-list__name {
   max-width: 100%;
   color: var(--ink);
   font-size: 12px;
   font-weight: 600;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 html[data-theme] .rank-list__lv {
@@ -1539,10 +1594,17 @@ html[data-theme] .rank-list__lv {
   white-space: nowrap;
 }
 
+html[data-theme] .rank-list__name,
+html[data-theme] .rank-list__lv {
+  grid-column: 1 / -1;
+}
+
 html[data-theme] .rank-list__now {
-  position: absolute;
-  top: 3px;
-  right: 3px;
+  grid-row: 1;
+  grid-column: 3;
+  justify-self: end;
+  align-self: start;
+  margin: -3px 1px 0 0; /* 前と同じ位置（枠の内側の右上から 3px） */
   padding: 0 5px;
   border-radius: 2px;
   background: var(--ink);
@@ -1566,11 +1628,24 @@ html[data-theme] .rank-list__now {
   }
 
   html[data-theme] .rank-list__emblem {
-    grid-row: span 2;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  html[data-theme] .rank-list__name,
+  html[data-theme] .rank-list__lv {
+    grid-column: 2;
   }
 
   html[data-theme] .rank-list__name {
     font-size: 13px;
+  }
+
+  html[data-theme] .rank-list__now {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    margin: 0;
   }
 }
 
@@ -2838,25 +2913,6 @@ html[data-theme] .level-bar--line {
   padding: 4px 16px 0;
   font-size: 12px;
   color: var(--ink-3);
-}
-
-/* 359px 以下: いちばん長い行（「レジェンド 3 ・ Lv.69 ・ 次のレベルまで 3499」は字だけで約 259px）に紋章（28px＋間 6px）を足すと、
-   320 の行の幅 288px に収まらず折り返す。この幅だけ行と一覧の左右の余白を外して紋章を札の縁の線に寄せ、紋章との間を 4px、
-   語の間（「 ・ 」の空白 6 つ）を 1px ずつ詰める（字だけで約 253px＋32px＝約 285px。「・」は字の中に左右の余白を持つので詰めても読める）。
-   360 以上は今のまま。E2E 9.955 が 320／348／359／360 で 1 行を見る */
-@media (max-width: 359px) {
-  html[data-theme] .level-bar--line,
-  html[data-theme] .rank-list-host {
-    padding-inline: 0;
-  }
-
-  html[data-theme] .level-bar--line {
-    gap: 4px;
-  }
-
-  html[data-theme] .level-bar__line {
-    word-spacing: -1px;
-  }
 }
 
 /* ===== 書斎の読む机（Batch 56b）: 部屋以外のページの札・題箋・タブ・セグメント・数字 =====
