@@ -11273,6 +11273,8 @@ console.log("rank（学習のランク）:");
     await p.$eval("#homeMore", (el) => { el.open = true; });
     await p.$eval("#dailyStartButton", (el) => el.click());
     await waitUntil(async () => (await p.$(".rank-up")) !== null, 8000, 20);
+    // 読み上げは一度空にして 30ms 後に書く（js/ui.js announce）。幕が出た瞬間はまだ空のことがあるので、書かれるまで待つ（幕の 1.2 秒の内）
+    await waitUntil(async () => (await p.evaluate(() => document.getElementById("srStatus")?.textContent ?? "")).includes("ランクアップ"), 1000, 20);
     const s = await overlayState(p);
     const ups = await p.evaluate(() => window.__ups);
     check("PR #178 のレビュー 1: Daily Dash の時間切れでランクが変わる（木 1 → 木 2）と、幕 1 つ（木 2 の紋章・先読みした絵）と読み上げ「ランクアップ: 木 1 から 木 2」",
