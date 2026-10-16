@@ -1633,6 +1633,202 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   }
 }
 
+// ── 19. PR #180 のレビュー対応（1〜3）: 控えは history の 8 件に頼らない・語の詳細の M1 の文と 6 時間の決まり・ローマ字の 3 字目はかなで数える ──
+// 1: 控えを置いた × の時刻 masteryPeakAt（端末だけの欄）を控えと一緒に持ち、読むときは「masteryPeakAt と lastRecallFailAt が同じ時刻（控えの後に × が無い）」で見る。
+// 2: rankNext の日付と「次に」は nextRank と同じ 6 時間の決まり（sameDayAs）で作る。3: ローマ字の 1 打ミスは打ち終えたかなの字数 c で 3 字目を見る（p はキーの数のまま）。
+// 書き手は §15 と同じ js/stats.js（偽の時計で日をまたぐ）
+{
+  const W = await import("../js/stats.js");
+  const RealDate = Date;
+  let clock = at("2026-10-01", 12);
+  class FakeDate extends RealDate {
+    constructor(...a) {
+      if (a.length === 0) super(clock);
+      else super(...a);
+    }
+    static now() {
+      return clock;
+    }
+  }
+  const DAY = 86400000;
+  const peakOf = typeof MA.masteryPeakOf === "function" ? MA.masteryPeakOf : () => "masteryPeakOf が無い";
+  const slip = typeof MA.isSlipFail === "function" ? MA.isSlipFail : () => "isSlipFail が無い";
+  const blank = (over = {}) => ({ playCount: 1, correctCount: 0, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 0, mastered: false, masteredAt: null, lastPlayed: null, nextReviewAt: null, lastRecallFailAt: null, lastRecallSuccessAt: null, dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: null, ...over });
+  const five = (over = {}) => {
+    const okIso = iso("2026-09-01", 12);
+    return blank({ playCount: 9, correctCount: 9, cleanCorrectStreak: 6, masteryRank: 5, masteryAt: okIso, lastRecallSuccessAt: okIso, lastPlayed: okIso, srsAdvancedOn: "2026-09-01", nextReviewAt: iso("2026-10-01", 11), history: [{ d: "2026-08-02", r: "o" }, { d: "2026-09-01", r: "o" }], ...over });
+  };
+  const seed = (map) => {
+    store.set("spelldash_word_stats", JSON.stringify(map));
+    forgetMasteryMeta();
+  };
+  const read = () => JSON.parse(store.get("spelldash_word_stats"));
+  const nextTask = () => new Promise((r) => setTimeout(r, 0));
+  const study = (id, speed = "normal") => {
+    W.recordCorrect(id, true);
+    W.recordRecallSuccess(id, { clean: true, speed });
+  };
+  const day = (n, h = 12, m = 0) => at("2026-10-01", h, m) + n * DAY;
+  const SLIP3 = { k: "m", p: 2, a: false }; // 3 字目の 1 打ミス（隣でない）
+
+  // ---- 1. 純関数: masteryPeakAt と lastRecallFailAt が同じ時刻なら、history に × が残っていなくても使う ----
+  const failIso = iso("2026-10-10", 12);
+  const okIso = iso("2026-10-10", 12, 40);
+  const eightO = Array.from({ length: 8 }, () => ({ d: "2026-10-10", r: "o" })); // × は押し出された（pushHistory は 8 件まで）
+  const kept = { masteryRank: 4, masteryAt: okIso, masteryPeak: 5, masteryPeakAt: failIso, recallFail: 1, lastRecallFailAt: failIso, lastRecallSuccessAt: okIso, history: eightO };
+  eq(
+    "PR180-1 masteryPeakOf: 控えの × の時刻が最後の × と同じなら history に × が無くても 5・控えの後に別の × があれば 0・同じ時刻の別の書き方（+00:00）も 5・時刻が読めない・違えば 0",
+    [
+      peakOf(kept),
+      peakOf({ ...kept, lastRecallFailAt: iso("2026-10-11", 9), masteryAt: iso("2026-10-11", 9), recallFail: 2 }),
+      peakOf({ ...kept, lastRecallFailAt: failIso.replace("Z", "+00:00") }),
+      peakOf({ ...kept, masteryPeakAt: "x" }),
+      peakOf({ ...kept, masteryPeakAt: iso("2026-10-09", 12) })
+    ],
+    [5, 0, 5, 0, 0]
+  );
+  eq(
+    "PR180-1 masteryPeakOf: 控えの × の時刻の無い控え（PR #180 の版が書いた形）は今の読み方（history の最後の × が指の滑りなら 5、押し出されていれば 0）",
+    [
+      peakOf({ ...kept, masteryPeakAt: undefined, history: [{ d: "2026-09-01", r: "o" }, { d: "2026-10-10", r: "x", ...SLIP3 }, { d: "2026-10-10", r: "o" }] }),
+      peakOf({ ...kept, masteryPeakAt: undefined })
+    ],
+    [5, 0]
+  );
+
+  // ---- 2. 語の詳細の M1 の文（rankNext）と nextRank: 6 時間の境の前後で「次に」と日付が答えの判定と食い違わない ----
+  // 「次に」と言うのは、今ノーミス・ふつうの速さで答えると文の段になるときだけ。日付を言うときは、今の答えでは段が動かず、その日付が
+  // 答えると上がる最初の日（1 分きざみで探す）。文の段の名前は上がった段と同じ
+  {
+    const x2330 = at("2026-10-10", 23, 30);
+    const isoOf = (t) => new RealDate(t).toISOString();
+    const m1Late = { masteryRank: 4, masteryAt: isoOf(x2330 + 120000), masteryPeak: 5, masteryPeakAt: isoOf(x2330), masteryDownAt: isoOf(x2330), recallFail: 1, lastRecallFailAt: isoOf(x2330), lastRecallSuccessAt: isoOf(x2330 + 120000), history: [{ d: "2026-09-01", r: "o" }, { d: "2026-10-10", r: "x", ...SLIP3 }, { d: "2026-10-10", r: "o" }] };
+    const m1Noon = { ...m1Late, masteryAt: iso("2026-10-10", 12, 2), masteryPeakAt: iso("2026-10-10", 12), masteryDownAt: iso("2026-10-10", 12), lastRecallFailAt: iso("2026-10-10", 12), lastRecallSuccessAt: iso("2026-10-10", 12, 2) };
+    const two = { masteryRank: 2, masteryAt: isoOf(x2330), recallFail: 0, cleanCorrectStreak: 1, lastRecallSuccessAt: isoOf(x2330), history: [{ d: "2026-10-09", r: "o" }, { d: "2026-10-10", r: "o" }] };
+    const views = [["2026-10-10", 23, 40], ["2026-10-11", 0, 10], ["2026-10-11", 1, 0], ["2026-10-11", 5, 31], ["2026-10-11", 5, 33], ["2026-10-11", 9, 0], ["2026-10-12", 9, 0]].map(([d, h, m]) => at(d, h, m));
+    const md = (t) => {
+      const d = new RealDate(t);
+      return `${d.getMonth() + 1}月${d.getDate()}日`;
+    };
+    const stamp = (t) => new RealDate(t).toString().slice(4, 21);
+    const bad = [];
+    for (const [name, s] of [["M1 23:30", m1Late], ["M1 12:00", m1Noon], ["段 2 23:30", two]]) {
+      for (const now of views) {
+        const text = rankNext(s, localDay(new RealDate(now)), now);
+        const c = answerContext(s, now);
+        const up = nextRank(c.rank, okA("normal"), c);
+        let first = null;
+        for (let t = now; t <= now + 3 * DAY; t += 60000) {
+          const ct = answerContext(s, t);
+          if (nextRank(ct.rank, okA("normal"), ct) > ct.rank) {
+            first = t;
+            break;
+          }
+        }
+        const target = first === null ? "" : RANK_NAMES[nextRank(c.rank, okA("normal"), answerContext(s, first))];
+        const okText = text.startsWith("次に")
+          ? up > c.rank && text.endsWith(` ${RANK_NAMES[up]}`)
+          : up === c.rank && first !== null && text.startsWith(`${md(first)}以降に `) && text.endsWith(` ${target}`);
+        if (!okText) bad.push(`${name} @${stamp(now)}: 「${text}」 今の答え ${c.rank}→${up}・上がる最初 ${first ? stamp(first) : "なし"}`);
+      }
+    }
+    eq("PR180-2 rankNext と nextRank: 23:30 の × を翌 0:10・1:00・5:31 に見ても「次に」と言わない（日付は 10月11日）・6 時間たてば「次に」。12:00 の × と段 2 の文も同じ決まり", bad, []);
+    eq(
+      "PR180-2 rankNext: 23:30 の 1 打ミス（Recall Loop 23:32）を翌 1:00 に見ると「10月11日以降に 間違えずに思い出せると 即答」・翌 5:33 に見ると「次に …」",
+      [rankNext(m1Late, "2026-10-11", at("2026-10-11", 1, 0)), rankNext(m1Late, "2026-10-11", at("2026-10-11", 5, 33))],
+      ["10月11日以降に 間違えずに思い出せると 即答", "次に 間違えずに思い出せると 即答"]
+    );
+  }
+
+  // ---- 3. 純関数: ローマ字の 1 打ミスは、打ち終えたかなの字数 c で 3 字目を見る（p は受理したキーの数のまま） ----
+  eq(
+    "PR180-3 isSlipFail: ローマ字（c あり）は 1〜2 字目のかなの中の誤り（しんぶん の s・h の後 p 2・c 0、ひみ の hi・m の後 p 3・c 1）は偽・3 字目のかなから（c 2）と隣のキーは真。綴り（c なし）は今のまま（p 2 で真・p 1 で偽）",
+    [{ k: "m", p: 2, c: 0, a: false }, { k: "m", p: 3, c: 1, a: false }, { k: "m", p: 4, c: 2, a: false }, { k: "m", p: 1, c: 0, a: true }, { k: "m", p: 2, a: false }, { k: "m", p: 1, a: false }].map((e) => slip({ r: "x", ...e })),
+    [false, false, true, true, true, false]
+  );
+
+  const quiet = console.warn;
+  console.warn = () => {};
+  globalThis.Date = FakeDate;
+  try {
+    // ---- 1. 書き手: 控えた後に 8 回以上答えても（同じ日の繰り返し・遅い答え）、翌日以降のノーミス・遅くない答えで戻る ----
+    clock = day(0);
+    seed({ rep: five(), slow: five(), x2: five(), old: five(), roma: five(), roma3: five() });
+    await nextTask();
+    for (const id of ["rep", "slow", "x2", "old"]) {
+      W.recordRecallFail(id, SLIP3);
+      W.recordCorrect(id, false); // 答えを見て打ち直す（答えに数えない）
+    }
+    await nextTask();
+    let s = read();
+    eq("PR180-1 書き手: 1 打ミスの × で控え 5 と控えの × の時刻（masteryPeakAt ＝ lastRecallFailAt）を同じ写しに書く", [s.rep.masteryRank, s.rep.masteryPeak, s.rep.masteryPeakAt === s.rep.lastRecallFailAt], [4, 5, true]);
+    // 同じ日に 9 回答える（Recall Loop と、その日の Challenge・Study の繰り返し）。× は history から押し出される
+    for (let i = 1; i <= 9; i++) {
+      clock = day(0, 12, 2 + i * 3);
+      study("rep", "fast");
+      await nextTask();
+    }
+    clock = day(0, 12, 2);
+    for (const id of ["slow", "x2", "old"]) study(id, "normal"); // Recall Loop
+    await nextTask();
+    // 遅い答えが 8 日続く（M1 は遅い答えでは戻さない。その日の最初の答え）
+    for (let d = 1; d <= 8; d++) {
+      clock = day(d);
+      study("slow", "slow");
+      await nextTask();
+    }
+    s = read();
+    eq(
+      "PR180-1 書き手: 同じ日に 9 回・遅い答えが 8 日続いて × が history から押し出されても控えは残る（段 4・控え 5）",
+      [[s.rep.masteryRank, s.rep.masteryPeak, s.rep.history.some((e) => e.r === "x")], [s.slow.masteryRank, s.slow.masteryPeak, s.slow.history.some((e) => e.r === "x")]],
+      [[4, 5, false], [4, 5, false]]
+    );
+    clock = day(1);
+    study("rep", "normal");
+    clock = day(9);
+    study("slow", "normal");
+    await nextTask();
+    s = read();
+    eq(
+      "PR180-1 書き手: 押し出された後でも、翌日以降のノーミス・遅くない答えで 即答 に戻り、控えと控えの × の時刻を消す",
+      [[s.rep.masteryRank, s.rep.masteryPeak ?? null, s.rep.masteryPeakAt ?? null], [s.slow.masteryRank, s.slow.masteryPeak ?? null, s.slow.masteryPeakAt ?? null]],
+      [[5, null, null], [5, null, null]]
+    );
+    // 控えの後に × がある: この端末の答え表示の ×（書き手が控えを消す）・古い版の ×（控えの欄を知らず、段・masteryAt・lastRecallFailAt・history だけ書く）
+    clock = day(1, 9);
+    W.recordRecallFail("x2", { k: "e", p: 0 });
+    W.recordCorrect("x2", false);
+    await nextTask();
+    s = read();
+    const oldX = new RealDate(day(1, 9)).toISOString();
+    s.old = { ...s.old, masteryRank: 3, recallFail: s.old.recallFail + 1, lastRecallFailAt: oldX, masteryAt: oldX, history: [...s.old.history.slice(-7), { d: localDay(new RealDate(day(1, 9))), r: "x", k: "m", p: 3, a: false }] };
+    store.set("spelldash_word_stats", JSON.stringify(s));
+    eq("PR180-1 控えの後に × がある: 答え表示の × は控えを消す・古い版の ×（控えの欄はそのまま）の後は使わない（masteryPeakOf 0）", [[s.x2.masteryRank, s.x2.masteryPeak ?? null, s.x2.masteryPeakAt ?? null], [s.old.masteryPeak, peakOf(s.old)]], [[3, null, null], [5, 0]]);
+    clock = day(2);
+    study("x2", "normal");
+    study("old", "normal");
+    await nextTask();
+    s = read();
+    eq("PR180-1 控えの後に × がある語は翌日のノーミスでも戻さない（今の決まり。控えの欄も消える）", [[s.x2.masteryRank, s.x2.masteryPeak ?? null], [s.old.masteryRank, s.old.masteryPeak ?? null, s.old.masteryPeakAt ?? null]], [[3, null], [3, null, null]]);
+
+    // ---- 3. 書き手: ローマ字の 1 打ミスの c を history に残し、c で 3 字目を見る ----
+    clock = day(3);
+    W.recordRecallFail("roma", { k: "m", p: 3, c: 1, a: false }); // ひみこ の hi・m の後（2 字目 み の中）
+    W.recordRecallFail("roma3", { k: "m", p: 4, c: 2, a: false }); // どぐう の dogu の後（3 字目 う）
+    await nextTask();
+    s = read();
+    const lastX = (st) => st.history.filter((e) => e.r === "x").at(-1);
+    eq(
+      "PR180-3 書き手: ローマ字の 2 字目のかなの中の 1 打ミス（p 3・c 1）は控えない（段 4・控えなし）・3 字目のかなから（p 4・c 2）は控える（控え 5）。history の × に p と c が残る",
+      [[s.roma.masteryRank, s.roma.masteryPeak ?? null, lastX(s.roma).p, lastX(s.roma).c], [s.roma3.masteryRank, s.roma3.masteryPeak ?? null, lastX(s.roma3).p, lastX(s.roma3).c]],
+      [[4, null, 3, 1], [4, 5, 4, 2]]
+    );
+  } finally {
+    globalThis.Date = RealDate;
+    console.warn = quiet;
+  }
+}
+
 // ── 結果 ──────────────────────────────────────────
 if (failures.length) {
   console.error(`${failures.length} failed, ${passed} passed`);

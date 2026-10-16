@@ -478,6 +478,27 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
   clock += DAY;
   await answer("x2", measure());
   eq("xNext: 2 字目までの 1 打ミス（m2）の翌日の答え ○", MC.getMemoryCheck().xNext, { "m2.1": [1, 0, 0] });
+  // ローマ字の答え（PR #180 のレビュー 3）: 種類はかなの字数 c で決める（p は受理したキーの数）。ひみこ の hi・m の後（p 3・c 1）は m2、
+  // どぐう の dogu の後（p 4・c 2）は m3。history の × には p と c の両方が残る
+  seed({
+    r2: blank({ correctCount: 3, cleanCorrectStreak: 3, lastRecallSuccessAt: new RealDate(clock - 3 * DAY).toISOString(), nextReviewAt: new RealDate(clock).toISOString() }),
+    r3: blank({ correctCount: 3, cleanCorrectStreak: 3, lastRecallSuccessAt: new RealDate(clock - 3 * DAY).toISOString(), nextReviewAt: new RealDate(clock).toISOString() })
+  });
+  W.recordRecallFail("r2", { k: "m", p: 3, c: 1, a: false });
+  W.recordRecallFail("r3", { k: "m", p: 4, c: 2, a: false });
+  await tick();
+  const romaX = ["r2", "r3"].map((id) => readStat(id).history.at(-1));
+  clock += 4 * 60000;
+  await answer("r2", measure());
+  await answer("r3", measure());
+  clock += DAY;
+  await answer("r2", measure());
+  await answer("r3", measure());
+  eq(
+    "xNext（ローマ字）: 2 字目のかなの中の 1 打ミス（p 3・c 1）は m2・3 字目のかなから（p 4・c 2）は m3。history の × に p と c が残る",
+    [MC.getMemoryCheck().xNext, romaX.map((e) => [e.k, e.p, e.c, e.a])],
+    [{ "m2.1": [1, 0, 0], "m3.1": [1, 0, 0] }, [["m", 3, 1, false], ["m", 4, 2, false]]]
+  );
 
   // ---- 書き込みの回数: 正解の 1 打の word_stats は 1 回（新しい欄は同じ写しに書く） ----
   seed({ r1: blank() });
@@ -791,21 +812,21 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
   const DAY = 86400000;
   const now = Date.now();
   const five = (okMs) => ({ ...statAt(okMs), playCount: 9, correctCount: 9, cleanCorrectStreak: 6, masteryRank: 5, masteryAt: at(okMs), history: [{ d: "2026-09-01", r: "o" }] });
-  // 2 日前に 1 打ミス（3 字目）で 即答 → 身についた になった語（書き手が書く形）
-  const slipped = (failMs) => ({ ...five(failMs - 30 * DAY), recallFail: 1, missCount: 1, cleanCorrectStreak: 0, masteryRank: 4, masteryPeak: 5, masteryAt: at(failMs), masteryDownAt: at(failMs), lastRecallFailAt: at(failMs), nextReviewAt: at(failMs + DAY), history: [{ d: "2026-09-01", r: "o" }, { d: "2026-10-12", r: "x", k: "m", p: 2, a: false }] });
+  // 2 日前に 1 打ミス（3 字目）で 即答 → 身についた になった語（書き手が書く形。控えの × の時刻 masteryPeakAt は PR #180 のレビュー 1）
+  const slipped = (failMs) => ({ ...five(failMs - 30 * DAY), recallFail: 1, missCount: 1, cleanCorrectStreak: 0, masteryRank: 4, masteryPeak: 5, masteryPeakAt: at(failMs), masteryAt: at(failMs), masteryDownAt: at(failMs), lastRecallFailAt: at(failMs), nextReviewAt: at(failMs + DAY), history: [{ d: "2026-09-01", r: "o" }, { d: "2026-10-12", r: "x", k: "m", p: 2, a: false }] });
   reset({ ...words, q5: five(T - 30 * DAY) }, { [KEY]: shadowBig, spelldash_dirty_words: JSON.stringify([...Object.keys(words), "q5"]) });
   await withQuota(used() + 5, async () => {
     W.recordRecallFail("q5", { k: "m", p: 2, a: false });
     await new Promise((r) => setImmediate(r));
   });
   const q5 = JSON.parse(store.get("spelldash_word_stats")).q5;
-  eq("控え: 1 打ミスの × の控え（masteryPeak 5）は学習の記録の写しに書き、上限では影のデータ（spelldash_memory_words）を先に消して書く", [q5?.masteryRank, q5?.masteryPeak, store.has(KEY)], [4, 5, false]);
+  eq("控え: 1 打ミスの × の控え（masteryPeak 5・控えの × の時刻 masteryPeakAt ＝ lastRecallFailAt）は学習の記録の写しに書き、上限では影のデータ（spelldash_memory_words）を先に消して書く", [q5?.masteryRank, q5?.masteryPeak, !!q5?.masteryPeakAt && q5.masteryPeakAt === q5.lastRecallFailAt, store.has(KEY)], [4, 5, true, false]);
   ok("控え: 語ごとの記録の質（spelldash_memory_words）には書かない", !JSON.stringify(MW.getMemoryWord("q5") ?? {}).includes("masteryPeak"));
-  ok("控え: 同期の行を作る js/sync.js は masteryPeak を読まない（送る行は 15 列のまま）", !/masteryPeak/.test(readFileSync(path.join(ROOT, "js/sync.js"), "utf8").replace(/\/\/.*$/gm, "")));
+  ok("控え: 同期の行を作る js/sync.js は masteryPeak・masteryPeakAt を読まない（送る行は 15 列のまま）", !/masteryPeak/.test(readFileSync(path.join(ROOT, "js/sync.js"), "utf8").replace(/\/\/.*$/gm, "")));
   // バックアップ → 復元 → 翌日以降のノーミスで戻る
   reset({ s6: slipped(now - 2 * DAY) });
   const bk = BK.buildBackup();
-  ok("控え: バックアップに入る（spelldash_word_stats の欄）", JSON.parse(bk.data.spelldash_word_stats).s6.masteryPeak === 5);
+  ok("控え: バックアップに入る（spelldash_word_stats の欄。控えの × の時刻も）", JSON.parse(bk.data.spelldash_word_stats).s6.masteryPeak === 5 && JSON.parse(bk.data.spelldash_word_stats).s6.masteryPeakAt === at(now - 2 * DAY));
   store.clear();
   BK.applyBackup(bk);
   eq("控え: 復元の後も残り、使える（masteryPeakOf 5）", [JSON.parse(store.get("spelldash_word_stats")).s6.masteryPeak, peakOf(JSON.parse(store.get("spelldash_word_stats")).s6)], [5, 5]);
@@ -813,13 +834,13 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
   W.recordRecallSuccess("s6", { clean: true, speed: "normal" });
   await new Promise((r) => setImmediate(r));
   const s6 = JSON.parse(store.get("spelldash_word_stats")).s6;
-  eq("控え: 復元の後のノーミスで 即答 に戻り、控えを消す・期日は 7 日後（M1'）", [s6.masteryRank, s6.masteryPeak ?? null, Math.round((Date.parse(s6.nextReviewAt) - Date.now()) / DAY)], [5, null, 7]);
+  eq("控え: 復元の後のノーミスで 即答 に戻り、控えと控えの × の時刻を消す・期日は 7 日後（M1'）", [s6.masteryRank, s6.masteryPeak ?? null, s6.masteryPeakAt ?? null, Math.round((Date.parse(s6.nextReviewAt) - Date.now()) / DAY)], [5, null, null, 7]);
   // 2 台目の取り込み（js/sync.js pullSync の「クラウドの行が新しい」枝: { ...ローカル, ...クラウドの 15 列, 新しい方の自力正解・× の日時 }）
   const local = slipped(now - 2 * DAY);
   const merged = (cloud) => ({ ...local, ...cloud, lastRecallFailAt: [local.lastRecallFailAt, cloud.lastRecallFailAt].filter(Boolean).sort().at(-1) ?? null, lastRecallSuccessAt: [local.lastRecallSuccessAt, cloud.lastRecallSuccessAt].filter(Boolean).sort().at(-1) ?? null });
   const okThere = merged({ lastPlayed: at(now - DAY), lastRecallSuccessAt: at(now - DAY), cleanCorrectStreak: 1, nextReviewAt: at(now) });
   const xThere = merged({ lastPlayed: at(now - DAY), lastRecallFailAt: at(now - DAY), recallFail: 2, nextReviewAt: at(now - DAY) });
-  eq("控え: 2 台目の取り込みの後も欄は残る。2 台目の ○ だけなら使え、2 台目の ×（種類が分からない）があれば使わない", [okThere.masteryPeak, peakOf(okThere), xThere.masteryPeak, peakOf(xThere)], [5, 5, 5, 0]);
+  eq("控え: 2 台目の取り込みの後も欄は残る。2 台目の ○ だけなら使え、2 台目の ×（種類が分からない）があれば使わない", [okThere.masteryPeak, okThere.masteryPeakAt === local.masteryPeakAt, peakOf(okThere), xThere.masteryPeak, peakOf(xThere)], [5, true, 5, 5, 0]);
 }
 
 // ── 5. 速さの箱（js/masteryMeta.js）: 測りの札で入れない答え・基準も返す ─────────────
@@ -836,10 +857,11 @@ const wait = (ms = 5) => new Promise((r) => setTimeout(r, ms)); // 手が空い�
   // 盤面（js/game.js）は札をそのまま渡し、入れる・入れないの決まりは noteSpeedSample の 1 か所（PR #172 のレビュー 5）。js/game.js に写しが無い
   const gameSrc = readFileSync(path.join(ROOT, "js/game.js"), "utf8");
   ok("js/game.js は noteSpeedSample(box, sample, measure) と札を渡し、multi・outside・stalled の除き方を写さない", /noteSpeedSample\(box, sample, measure\)/.test(gameSrc) && !/measure\.(multi|outside|stalled)/.test(gameSrc));
-  // 写しを持たない（PR #172 のレビュー 6・7・8）: 見込みの帯・損失は js/memoryModel.js、gap の帯・中央値・ローカルの日付は js/retentionCalc.js、字の並びは js/keyboard.js
+  // 写しを持たない（PR #172 のレビュー 6・7・8）: 見込みの帯・損失は js/memoryModel.js、gap の帯・中央値・ローカルの日付は js/retentionCalc.js、字の並びは js/keyboard.js。
+  // 思い出す速さ（js/recallSpeed.js）も中央値を js/retentionCalc.js から読む（PR #180 のレビュー 6: 前は medianOf の写しを持っていた。median で始まる名前の関数を見る）
   const src = (f) => readFileSync(path.join(ROOT, f), "utf8");
-  ok("js/memoryCheck.js・js/masteryMeta.js は gapBand・median・ローカルの日付を自前で持たず、memoryCheck は帯と損失を js/memoryModel.js から使う",
-    !/function (gapBand|median)\b/.test(src("js/memoryCheck.js") + src("js/masteryMeta.js")) && !/getFullYear\(\)/.test(src("js/memoryCheck.js")) && !/Math\.log\(/.test(src("js/memoryCheck.js")) && /import \{[^}]*\bpredBand\b[^}]*\blogLoss\b[^}]*\} from "\.\/memoryModel\.js"/.test(src("js/memoryCheck.js")));
+  ok("js/memoryCheck.js・js/masteryMeta.js・js/recallSpeed.js は gapBand・median（medianOf などの写しも）・ローカルの日付を自前で持たず、recallSpeed は median を js/retentionCalc.js から使い、memoryCheck は帯と損失を js/memoryModel.js から使う",
+    !/function (gapBand|median\w*)\b/.test(src("js/memoryCheck.js") + src("js/masteryMeta.js") + src("js/recallSpeed.js")) && /import \{[^}]*\bmedian\b[^}]*\} from "\.\/retentionCalc\.js"/.test(src("js/recallSpeed.js")) && !/getFullYear\(\)/.test(src("js/memoryCheck.js") + src("js/recallSpeed.js")) && !/Math\.log\(/.test(src("js/memoryCheck.js")) && /import \{[^}]*\bpredBand\b[^}]*\blogLoss\b[^}]*\} from "\.\/memoryModel\.js"/.test(src("js/memoryCheck.js")));
   ok("js/game.js は字の並びを js/keyboard.js の ROWS から読む（写しを持たない）", /import \{[^}]*\bROWS as KEY_ROWS\b[^}]*\} from "\.\/keyboard\.js"/.test(src("js/game.js")) && !/const KEY_ROWS\s*=/.test(src("js/game.js")) && /export const ROWS = \[/.test(src("js/keyboard.js")));
   const simSrc = readFileSync(path.join(ROOT, "scripts/sim-writers.mjs"), "utf8");
   ok("scripts/sim-writers.mjs も札を渡すだけ（除き方を写さない）", /noteSpeedSample\(box, sample, AS_BEFORE \? null : measure\)/.test(simSrc) && !/measure\.(multi|outside|stalled)/.test(simSrc));

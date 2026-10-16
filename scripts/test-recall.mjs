@@ -13,9 +13,6 @@ import {
   SPEED_OLD_DAYS,
   SPEED_LABEL,
   SPEED_LOG_NOTE,
-  promptChars,
-  dayNoOf,
-  ymdOfDayNo,
   speedOfRecords,
   recallSpeedClass,
   recallSpeedOf,
@@ -25,7 +22,7 @@ import {
 } from "../js/recallSpeed.js";
 import { FAST_RATIO, SLOW_RATIO } from "../js/masteryMeta.js";
 import { encodeMark, CLS_CHAR } from "../js/memoryCheck.js";
-import { dayDiff } from "../js/retentionCalc.js";
+import { dayDiff, dayNoOf, ymdOfDayNo, mdOf, promptChars } from "../js/retentionCalc.js";
 
 let passed = 0;
 const failures = [];
@@ -61,20 +58,31 @@ ok("語と注記に「遅い」・数の予測（%）が無い", !/遅い|%|％/
   ok("純関数: localStorage・document・window を読まない", !/localStorage|document\.|window\./.test(src.replace(/\/\/.*$/gm, "")));
 }
 
-// ---- 問いの字数（js/game.js promptLength と同じ数え方） ----
+// ---- 問いの字数（js/retentionCalc.js promptChars。書き手の qLen〔js/game.js〕と速さの門が同じ関数） ----
 eq("字数: りんご 3・建物 2・括弧の中を除く（請求書（インボイス） 3）・前後の空白", [promptChars("りんご"), promptChars("建物"), promptChars("請求書（インボイス）"), promptChars(" 机 ")], [3, 2, 3, 1]);
 eq("字数: 半角の括弧も除く・空・null", [promptChars("SNS (略)"), promptChars(""), promptChars(null)], [3, 0, 0]);
-{
-  const game = readFileSync(new URL("../js/game.js", import.meta.url), "utf8");
-  const mine = readFileSync(new URL("../js/recallSpeed.js", import.meta.url), "utf8");
-  const re = String.raw`.replace(/[（(][^）)]*[）)]/g, "").trim()].length`;
-  ok("字数: js/game.js promptLength（書き手の qLen）と同じ式", game.includes(re) && mine.includes(re));
-}
 
-// ---- 日番号（js/stats.js と同じ: 1970-01-01 からのローカル暦日の数） ----
+// ---- 日番号（1970-01-01 からのローカル暦日の数）・日付の文字（js/retentionCalc.js。書き手 js/stats.js と同じ関数） ----
 eq("日番号: 1970-01-02 は 1・往復", [dayNoOf("1970-01-02"), ymdOfDayNo(dayNoOf(TODAY)), dayNoOf("2026-10-15") - dayNoOf("2026-10-03")], [1, TODAY, 12]);
 eq("日番号: 読めない日は null", [dayNoOf("x"), ymdOfDayNo(1.5), ymdOfDayNo(null)], [null, null, null]);
-eq("日番号: js/stats.js の dayNoOf（dayDiff(1970-01-01, ymd)）と同じ", dayNoOf(TODAY), dayDiff("1970-01-01", TODAY));
+eq("日番号: dayDiff(1970-01-01, ymd) と同じ", dayNoOf(TODAY), dayDiff("1970-01-01", TODAY));
+eq("日付の文字: 2026-10-03 → 10月3日・読めない日は空", [mdOf("2026-10-03"), mdOf("2026-12-31"), mdOf("x"), mdOf(null)], ["10月3日", "12月31日", "", ""]);
+
+// ---- 写しを持たない（PR #180 のレビュー 6）: 字数・日番号・日付の文字・中央値は js/retentionCalc.js の 1 か所 ----
+{
+  const code = (f) => readFileSync(new URL(`../js/${f}`, import.meta.url), "utf8").replace(/\/\/.*$/gm, "");
+  const re = String.raw`.replace(/[（(][^）)]*[）)]/g, "")`;
+  const [game, mine, stats, calc] = ["game.js", "recallSpeed.js", "stats.js", "retentionCalc.js"].map(code);
+  ok("字数の数え方は js/retentionCalc.js promptChars の 1 か所（js/game.js の qLen は promptChars(promptOf(…))・js/recallSpeed.js は import。式の写しが無い）",
+    calc.includes(re) && !game.includes(re) && !mine.includes(re) && /import \{[^}]*\bpromptChars\b[^}]*\} from "\.\/retentionCalc\.js"/.test(game) && /qLen: promptChars\(promptOf\(currentWord\)\)/.test(game) && !/function promptLength\b/.test(game));
+  ok("日番号は js/retentionCalc.js dayNoOf の 1 か所（js/stats.js・js/recallSpeed.js に 1970-01-01 の写しが無い）",
+    !/1970-01-01|DAY_ZERO/.test(stats + mine) && /import \{[^}]*\bdayNoOf\b[^}]*\} from "\.\/retentionCalc\.js"/.test(stats) && /import \{[^}]*\bdayNoOf\b[^}]*\} from "\.\/retentionCalc\.js"/.test(mine));
+  ok("js/recallSpeed.js は中央値・日付の文字・字数・日番号の関数を自前で持たない（median・mdOf・promptChars・dayNoOf・ymdOfDayNo は import）",
+    !/function (median\w*|mdOf|promptChars|dayNoOf|ymdOfDayNo)\b/.test(mine) && /import \{ median, dayNoOf, ymdOfDayNo, mdOf, promptChars \} from "\.\/retentionCalc\.js"/.test(mine));
+  const mastery = code("mastery.js");
+  ok("日付の文字（M月D日）は js/retentionCalc.js mdOf の 1 か所（語の詳細の文の js/mastery.js も import。写しが無い）",
+    !/function mdOf\b/.test(mastery) && /import \{[^}]*\bmdOf\b[^}]*\} from "\.\/retentionCalc\.js"/.test(mastery) && /export function mdOf\b/.test(calc));
+}
 
 // ---- 出す語・出さない語 ----
 {
@@ -156,6 +164,39 @@ eq("日番号: js/stats.js の dayNoOf（dayDiff(1970-01-01, ymd)）と同じ", 
 // ---- 書き手の sp の形（[日番号, T1, q, 分類, 印]）と分類の字 ----
 eq("分類の字は書き手と同じ（f・n・s・u）", CLS_CHAR, { unknown: "u", fast: "f", normal: "n", slow: "s" });
 ok("印は材料 a のビットが立つ（初めての答えも）", (MARK & 1) === 1 && (FIRST & 1) === 1 && (FIRST & 64) === 64);
+
+// ---- 学習データの段ごとの実測の読み手（js/masteryMeta.js getRankCheck。PR #180 のレビュー 5）: check.rank だけの写し・別のタブが書いた後は読み直す ----
+{
+  const KEY = "spelldash_mastery_meta";
+  const store = new Map();
+  const listeners = [];
+  globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  globalThis.window = { addEventListener: (type, fn) => type === "storage" && listeners.push(fn) };
+  const fire = (key) => listeners.forEach((fn) => fn({ key }));
+  const metaJson = (rank) => JSON.stringify({ v: 1, speed: { "en.kbd.study": { t1: [900, 950], pc: [] } }, check: { since: "2026-09-01", rank, firstFast: { prior: [0, 0], own: [0, 0] }, pending: { w1: "p" }, firstMedian: {} } });
+  const MM = await import("../js/masteryMeta.js?rank-check"); // storage の聞き手を付けた別の写し（上の import は window の無いときに読んだ）
+  eq("段ごとの実測: 保存が無ければ空", MM.getRankCheck(), {});
+  MM.forgetMasteryMeta();
+  store.set(KEY, metaJson({ 4: { "1": [50, 5] } }));
+  const a = MM.getRankCheck();
+  eq("段ごとの実測: check.rank だけの写し（速さの箱・pending は写さない）", a, { 4: { "1": [50, 5] } });
+  a[4]["1"][0] = 999;
+  eq("段ごとの実測: 写しを書き換えてもメモリーの集計は変わらない", MM.getRankCheck(), { 4: { "1": [50, 5] } });
+  store.set(KEY, metaJson({ 4: { "1": [60, 5] } }));
+  const same = MM.getRankCheck()[4]["1"];
+  fire("spelldash_word_stats");
+  eq("段ごとの実測: storage イベントが無い（同じタブの描き直し）・別の鍵のイベントでは読み直さない", [same, MM.getRankCheck()[4]["1"]], [[50, 5], [50, 5]]);
+  fire(KEY);
+  eq("段ごとの実測: 別のタブが書いた（storage イベント）後は読み直す", MM.getRankCheck()[4]["1"], [60, 5]);
+  MM.noteRankCheck({ id: "w2", rankBefore: 4, gap: 1, ok: true }, Date.parse("2026-10-15T09:00:00+09:00")); // このタブの答え（まだ書いていない）
+  store.set(KEY, metaJson({ 4: { "1": [70, 6] }, 3: { "2-5": [1, 0] } }));
+  fire(null); // 別のタブで復元・端末の記録を消した（key null）も読み直す
+  eq("段ごとの実測: 読み直すときはこのタブの書きかけ（1 回）を上に重ねる", MM.getRankCheck(), { 4: { "1": [71, 6] }, 3: { "2-5": [1, 0] } });
+  MM.flushMasteryMeta();
+  eq("段ごとの実測: 書いた保存はもう一方のタブの分 ＋ このタブの 1 回（2 度数えない）・箱と pending は保存のまま", [JSON.parse(store.get(KEY)).check.rank, JSON.parse(store.get(KEY)).check.pending, JSON.parse(store.get(KEY)).speed["en.kbd.study"].t1], [{ 4: { "1": [71, 6] }, 3: { "2-5": [1, 0] } }, { w1: "p" }, [900, 950]]);
+  const sv = readFileSync(new URL("../js/statsView.js", import.meta.url), "utf8");
+  ok("学習データ（js/statsView.js）は meta 全体の写し（getMasteryMeta）を読まず、check.rank の写し（getRankCheck）だけ", !/getMasteryMeta/.test(sv) && /getRankCheck\(\)/.test(sv));
+}
 
 if (failures.length) {
   console.error(failures.map((f) => `✗ ${f}`).join("\n"));

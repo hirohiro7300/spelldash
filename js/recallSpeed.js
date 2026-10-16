@@ -11,7 +11,7 @@
 // FAST_RATIO 0.75・SLOW_RATIO 1.5 と同じ境）。q が 1 件も無い（基準がまだ無かった）ときは、最後の材料の分類が「すぐ」（初めての答えの既定の線）ならすぐ、
 // ほかは出さない。
 
-import { dayDiff, shiftDay } from "./retentionCalc.js";
+import { median, dayNoOf, ymdOfDayNo, mdOf, promptChars } from "./retentionCalc.js";
 
 export const SPEED_FAST_Q = 75; // q がこれ以下で「すぐ」（FAST_RATIO 0.75 × 100）
 export const SPEED_SLOW_Q = 150; // q がこれを超えると「時間がかかる」（SLOW_RATIO 1.5 × 100）
@@ -27,33 +27,7 @@ export const SPEED_LABEL = Object.freeze({ fast: "すぐ", normal: "ふつう", 
 // 秒の注記（語の詳細の畳んだ「速さの記録」の中だけ）
 export const SPEED_LOG_NOTE = "出題から1打目まで。訳を読む時間を含む。この端末";
 
-const DAY_ZERO = "1970-01-01"; // 日番号の 0（js/stats.js と同じ。1970-01-01 からのローカル暦日の数）
-
-// 問いの字数（js/game.js promptLength と同じ数え方: 括弧〔「（略語）」など〕の中を除いた字数。コードポイント）。品詞の札はラベルにあるので入らない
-export function promptChars(text) {
-  return [...String(text ?? "").replace(/[（(][^）)]*[）)]/g, "").trim()].length;
-}
-
-// 日番号 ⇄ "YYYY-MM-DD"
-export function dayNoOf(ymd) {
-  const n = dayDiff(DAY_ZERO, ymd);
-  return Number.isInteger(n) ? n : null;
-}
-export function ymdOfDayNo(n) {
-  return Number.isInteger(n) ? shiftDay(DAY_ZERO, n) : null;
-}
-
-// "YYYY-MM-DD" → "M月D日"
-function mdOf(ymd) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd ?? "");
-  return m ? `${Number(m[2])}月${Number(m[3])}日` : "";
-}
-
-function medianOf(list) {
-  const a = [...list].sort((x, y) => x - y);
-  const mid = a.length >> 1;
-  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
-}
+// 日番号・日付の文字・中央値・問いの字数（js/game.js の測りの札 qLen と同じ数え方）は js/retentionCalc.js のものを使う（写しを持たない。PR #180 のレビュー 6）
 
 // sp の 1 件が形の合う材料 (a) の件か（日番号は整数・T1 は 0 以上の数・q は数か null・分類は文字・印は材料 a のビットが立った整数）
 function validEntry(e) {
@@ -69,27 +43,15 @@ function validEntry(e) {
   );
 }
 
-// q の値（数の件だけ）から語の速さ。q が 1 件も無ければ、最後の材料の分類が「すぐ」ならすぐ、ほかは null
-export function speedOfRecords(records) {
-  const list = Array.isArray(records) ? records.filter(validEntry) : [];
-  if (list.length === 0) return null;
-  const qs = list.map((e) => e[2]).filter((q) => Number.isFinite(q));
-  if (qs.length === 0) return list[list.length - 1][3] === "f" ? "fast" : null;
-  const q = medianOf(qs);
-  return q <= SPEED_FAST_Q ? "fast" : q > SPEED_SLOW_Q ? "slow" : "normal";
-}
-
-// 語の速さの分類だけ（"fast"|"normal"|"slow"、出さない語は null。単語帳・学習データの数え上げ用）。決まりは recallSpeedOf と同じで、
-// 配列を並べ替えず・日付の文字を作らない（2,000 語の単語帳を描くたびに全部の語で呼ぶため。最後の材料 = 日番号のいちばん大きい件、同じ日なら後ろの件）。
-// 安い条件から見る: 段 → 件数 → 形の合う件 2 件以上 → 訳の字数
-export function recallSpeedClass({ sp, rank, prompt } = {}) {
-  if (!Number.isInteger(rank) || rank < SPEED_RANK_MIN || rank > SPEED_RANK_MAX) return null;
-  if (!Array.isArray(sp) || sp.length < SPEED_MIN_RECORDS) return null;
+// 速さの分類はここ 1 か所（PR #180 のレビュー 7）: 形の合う件を 1 回なめて（並べ替えない）、件数・最後の材料の分類・q の中央値から決める。
+// 最後の材料 = 日番号のいちばん大きい件（同じ日なら後ろの件）。q が 1 件も無ければ、最後の材料の分類が「すぐ」ならすぐ、ほかは null。
+// 件数が minRecords（1 以上）に満たなければ null
+function classOfRecords(records, minRecords) {
   let n = 0;
   let lastDay = -Infinity;
   let lastCls = null;
   const qs = [];
-  for (const e of sp) {
+  for (const e of records) {
     if (!validEntry(e)) continue;
     n++;
     if (e[0] >= lastDay) {
@@ -98,13 +60,28 @@ export function recallSpeedClass({ sp, rank, prompt } = {}) {
     }
     if (Number.isFinite(e[2])) qs.push(e[2]);
   }
-  if (n < SPEED_MIN_RECORDS || promptChars(prompt) >= SPEED_MAX_PROMPT) return null;
+  if (n < minRecords) return null;
   if (qs.length === 0) return lastCls === "f" ? "fast" : null;
-  const q = medianOf(qs);
+  const q = median(qs);
   return q <= SPEED_FAST_Q ? "fast" : q > SPEED_SLOW_Q ? "slow" : "normal";
 }
 
-// 語の思い出す速さ。出さない語は null。
+// 材料の列だけから語の速さ（段・件数・訳の字数の門なし。形の違う件は数えない）
+export function speedOfRecords(records) {
+  return Array.isArray(records) ? classOfRecords(records, 1) : null;
+}
+
+// 語の速さの分類だけ（"fast"|"normal"|"slow"、出さない語は null。単語帳・学習データの数え上げ用。語の詳細の recallSpeedOf もこれで決める）。
+// 配列を並べ替えず・日付の文字を作らない（2,000 語の単語帳を描くたびに全部の語で呼ぶため）。
+// 安い条件から見る: 段 → 件数 → 形の合う件 2 件以上と分類 → 訳の字数（字数は速さの出る語だけ数える）
+export function recallSpeedClass({ sp, rank, prompt } = {}) {
+  if (!Number.isInteger(rank) || rank < SPEED_RANK_MIN || rank > SPEED_RANK_MAX) return null;
+  if (!Array.isArray(sp) || sp.length < SPEED_MIN_RECORDS) return null;
+  const speed = classOfRecords(sp, SPEED_MIN_RECORDS);
+  return speed && promptChars(prompt) < SPEED_MAX_PROMPT ? speed : null;
+}
+
+// 語の思い出す速さ。出さない語は null。速さは recallSpeedClass で決め、ここは記録の行・最後の日・古いかの欄だけを作る。
 //   sp     spelldash_memory_words の語ごとの欄 sp（無い・形の違う値は材料 0 件）
 //   rank   今の段（js/mastery.js rankOf）
 //   prompt 見せている問い（js/wordStore.js promptOf: 場面の文があればそれ、無ければ訳）
@@ -112,25 +89,18 @@ export function recallSpeedClass({ sp, rank, prompt } = {}) {
 // 返り値 { speed: "fast"|"normal"|"slow", label, n: 材料の件数, last: 最後の材料の日 "YYYY-MM-DD", old: 最後の材料が 90 日より前か,
 //         records: [{ day: "YYYY-MM-DD", ms: T1 }]（新しい順。秒は語の詳細の畳んだ記録の中だけで出す） }
 export function recallSpeedOf({ sp, rank, prompt, today } = {}) {
-  if (!Number.isInteger(rank) || rank < SPEED_RANK_MIN || rank > SPEED_RANK_MAX) return null;
-  if (promptChars(prompt) >= SPEED_MAX_PROMPT) return null;
-  const list = (Array.isArray(sp) ? sp.filter(validEntry) : []).slice().sort((a, b) => a[0] - b[0]);
-  if (list.length < SPEED_MIN_RECORDS) return null;
-  const speed = speedOfRecords(list);
+  const speed = recallSpeedClass({ sp, rank, prompt });
   if (!speed) return null;
+  const list = sp.filter(validEntry).sort((a, b) => a[0] - b[0]); // 日の順（同じ日は保存の順のまま）
   const lastNo = list[list.length - 1][0];
-  const last = ymdOfDayNo(lastNo);
   const todayNo = dayNoOf(today);
   return {
     speed,
     label: SPEED_LABEL[speed],
     n: list.length,
-    last,
+    last: ymdOfDayNo(lastNo),
     old: todayNo !== null && todayNo - lastNo > SPEED_OLD_DAYS,
-    records: list
-      .slice()
-      .reverse()
-      .map((e) => ({ day: ymdOfDayNo(e[0]), ms: Math.round(e[1]) }))
+    records: list.reverse().map((e) => ({ day: ymdOfDayNo(e[0]), ms: Math.round(e[1]) }))
   };
 }
 

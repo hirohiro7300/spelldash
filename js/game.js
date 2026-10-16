@@ -23,6 +23,7 @@ import { getSetSize, markDailySetDone, getSetsToday, isTimedSet } from "./dailyS
 import { isTutorialRunPending } from "./tutorial.js";
 import { rankOf, answerContext, isFirstAnswer, rankHtml, RANK_NAMES, daysSinceAnswer } from "./mastery.js";
 import { boxKey, classifySpeed, noteSpeedSample, notePendingFirstFast, flushMasteryMeta, keyInputOf } from "./masteryMeta.js";
+import { promptChars } from "./retentionCalc.js"; // mastery.js・masteryMeta.js が読む module（答えの道の読み込みは増えない）
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
 import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { startBgm, stopBgm, setBgmIntensity } from "./bgm.js";
@@ -1545,11 +1546,19 @@ export function handleBeforeInput(event) {
 }
 
 // × の細目（書き手の history に残す。Batch 68 L1-2）: k = e 答え表示（Enter・Esc）／h ヒント／m 1 打ミス（全文入力の違う答えも）、
-// p = 打てていた字数（綴りは受理した字、ローマ字は受理したキー。全文入力の答え表示・ヒントは 0）、a = m のとき隣のキーを打ったか（ほかは null）。
+// p = 打てていた字数（綴りは受理した字、ローマ字は受理したキー。全文入力の答え表示・ヒントは 0）、a = m のとき隣のキーを打ったか（ほかは null）、
+// c = ローマ字の答えの 1 打ミスのとき、打ち終えていたかなの字数（kanaTypedCount。3 字目かどうかは js/mastery.js がこの数で見る。PR #180 のレビュー 3）。
 // p（パス）は Battle の道で、盤面には無い（Battle は引数なしの u のまま）
 function typedCount() {
   if (freeMode) return 0;
   return romajiMode ? String(romaji?.keys ?? "").length : typedSoFar.length;
+}
+
+// ローマ字の答えで打ち終えていたかなの字数（判定器の確定したかな ＝ 盤面の 2 段表示でかなになっている字。しんぶん を s・h まで打った所は 0、shi で 1、shinb で 2。
+// きゃ は 2 字。n 1 つの ん は次の打鍵で決まるまで数えない。js/romaji.js state().committed）。1 打ミスの × のときだけ読む（判定器は誤った打鍵では状態を変えない）
+function kanaTypedCount() {
+  const segs = romaji?.state().committed ?? [];
+  return segs.reduce((n, seg) => n + [...String(seg.kana ?? "")].length, 0);
 }
 
 // 隣のキー: 物理キーの QWERTY（段のずれ 0・0.25・0.75 キー）か専用キーボード（字の並びは js/keyboard.js の ROWS をそのまま使う。
@@ -2133,11 +2142,6 @@ window.addEventListener("blur", (event) => {
   if (event.target === window) noteLeftBoard();
 });
 
-// 問いの字数（書き手の字数帯。見せている訳・場面の文から括弧〔「（略語）」など〕を除いた字数。品詞の札はラベルにあるので入らない）
-function promptLength(word) {
-  return [...String(promptOf(word)).replace(/[（(][^）)]*[）)]/g, "").trim()].length;
-}
-
 // 書き手へ渡す測りの札（docs/SPEC_MASTERY.md「記録の質」。何を残すかは書き手が決める）。speedSample が値を返した答えだけ（ほかは null）。
 // t1 = 出題から最初のキー（ms。30 秒を超えてもそのまま）、pcMax = 2 打目からの打鍵の止まりの最長（打鍵 1 つなら null）、qLen・aLen = 問いと答え
 // （受理した字・キー）の字数、input = 最初のキーの細目、multi・outside は上の注釈、stalled = 1 打目の後に 3 秒以上止まった・盤面の外へ移った、
@@ -2148,7 +2152,7 @@ function measureOf(sample, ctx) {
   return {
     t1: Math.round(sample.t1),
     pcMax,
-    qLen: promptLength(currentWord),
+    qLen: promptChars(promptOf(currentWord)), // 問いの字数（書き手の字数帯。数え方は js/retentionCalc.js promptChars の 1 か所: 思い出す速さの門と同じ）
     aLen: romajiMode ? String(romaji?.keys ?? "").length : typedSoFar.length,
     input: t.detail ?? "kbd",
     multi: !!t.multi,
@@ -2181,13 +2185,14 @@ function speedBox() {
 }
 
 // 答えを 1 つ控える（○ は recordRecallSuccess、× は recordRecallFail のとき）。回で最初の答えなら答える前の段と同じ日の扱いを、
-// 遅い正解で 5 → 4 になったら slowDown を、段 3・4 のその日の最初の答え（同じ日の扱いでない）が遅い正解なら slow を（Batch 70。D1 §3.4。
+// 遅い正解で 5 → 4 になったら slowDown を、段 3・4 のその日の最初の答え（answerContext の firstOfDay: 前の答えの日があり同じ日の扱いでない）が
+// 遅い正解なら slow を（Batch 70。D1 §3.4。日付の記録が無い古い行の答えは段が動かないので付けない: PR #180 のレビュー 4。
 // speed が "slow" になるのはノーミスで速さを測れた答えだけ: completeWord の speedSample）。この回で × があればどちらも外す（「時間がかかった」ではなく「下がった」）
-function noteRunAnswer(id, { before = 0, ok, speed = "unknown", sameDay = false, after = null }) {
+function noteRunAnswer(id, { before = 0, ok, speed = "unknown", sameDay = false, firstOfDay = false, after = null }) {
   const entry = runRankBefore.get(id);
   if (!entry) {
     const slowOk = !!ok && speed === "slow";
-    runRankBefore.set(id, { before, seenToday: !!sameDay, slowDown: slowOk && before === 5 && after === 4, slow: slowOk && !sameDay && (before === 3 || before === 4) });
+    runRankBefore.set(id, { before, seenToday: !!sameDay, slowDown: slowOk && before === 5 && after === 4, slow: slowOk && !!firstOfDay && (before === 3 || before === 4) });
     return;
   }
   if (!ok) {
@@ -2278,7 +2283,7 @@ function completeWord() {
       if (sample && box && (answerCtx.firstAnswer || answerCtx.firstOfDay)) noteSpeedSample(box, sample, measure);
       if (answerCtx.firstAnswer && speed === "fast") notePendingFirstFast(currentWord.id, basis);
       ranks = { before: answerCtx.rank, after: rankOf(getWordStats()[currentWord.id]) };
-      noteRunAnswer(currentWord.id, { before: ranks.before, ok: true, speed, sameDay: answerCtx.sameDay, after: ranks.after });
+      noteRunAnswer(currentWord.id, { before: ranks.before, ok: true, speed, sameDay: answerCtx.sameDay, firstOfDay: answerCtx.firstOfDay, after: ranks.after });
     }
     const recallDetail = { id: currentWord.id, mode };
     window.dispatchEvent(new CustomEvent("spelldash:recall", { detail: recallDetail })); // チュートリアル（js/tutorial.js）
@@ -2879,7 +2884,9 @@ function handleTypingMiss(expectedChar = currentWord?.en[currentIndex], typedCha
   // 当てずっぽうでの正解到達は「思い出して打つ」の本質ではない（2026-08-15創業者決定）
   // × の細目: 1 打ミス・打てていた字数・正しい字の隣のキーを打ったか（指の滑りの見分けの材料。判定は変えない）
   if (!isRevealed) {
-    revealAnswer(true, { k: "m", p: typedCount(), a: isAdjacentKey(expectedChar, String(typedChar ?? "").toLowerCase()) });
+    const detail = { k: "m", p: typedCount(), a: isAdjacentKey(expectedChar, String(typedChar ?? "").toLowerCase()) };
+    if (romajiMode && romaji) detail.c = kanaTypedCount(); // ローマ字の答え: 3 字目はかなで数える（綴りの答えは今の形のまま）
+    revealAnswer(true, detail);
     return;
   }
 

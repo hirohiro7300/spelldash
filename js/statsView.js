@@ -20,7 +20,7 @@ import { downloadLearnedCsv } from "./exportCsv.js";
 import { rankHtml, rankOf, RANK_GLOSS, RANK_RULE, RANK_NAMES } from "./mastery.js";
 import { recallSpeedClass, SPEED_LABEL } from "./recallSpeed.js";
 import { getMemoryWord } from "./memoryWords.js";
-import { getMasteryMeta } from "./masteryMeta.js";
+import { getRankCheck } from "./masteryMeta.js";
 import { bindWordDetail } from "./wordDetail.js";
 
 import { initWordStore, findWord, promptOf } from "./wordStore.js";
@@ -559,16 +559,12 @@ const MEASURED_MIN = 30;
 // 段 5 は名前の「即答」に入る）。0 語の語は出さず、1 語も無ければ行ごと出さない。
 // 段ごとの実測: 「日をあけて問うと思い出せた 身についた 120回のうち108回 ・ 思い出せる 300回のうち246回」。材料は spelldash_mastery_meta の check.rank
 // （その日の最初の答え〔前の答えから 1 日以上〕の、答える前の段 × 間隔の帯 × ○／× の数。js/masteryMeta.js noteRankCheck）を段ごとに足した数。
-// 30 回からその段を出し（段 5 → 1）、1 段も無ければ行も注記も出さない。注記「この端末の記録。予測ではない。」。率（%）・順位・推移は出さない。読むだけ
+// 30 回からその段を出し（段 5 → 1）、1 段も無ければ行も注記も出さない。注記「この端末の記録。予測ではない。」。率（%）・順位・推移は出さない。読むだけ。
+// 描くたびに読むのは check.rank の写しだけ（meta 全体を写さない）。別のタブで答えた後の描き直し（同期・マイ単語帳）では保存を読み直す（PR #180 のレビュー 5）
 function speedLines(speeds) {
   const items = ["fast", "normal", "slow"].filter((k) => speeds[k] > 0).map((k) => `${SPEED_LABEL[k]} ${speeds[k]}語`);
   const speedHtml = items.length ? `<p class="mastery-speed"><span class="mastery-speed__label">思い出す速さ</span> ${items.join(" ・ ")}</p>` : "";
-  let check = {};
-  try {
-    check = getMasteryMeta().check?.rank ?? {};
-  } catch {
-    check = {};
-  }
+  const check = getRankCheck(); // check.rank だけの写し（別のタブが書いた後は読み直す。js/masteryMeta.js）
   const measured = [5, 4, 3, 2, 1]
     .map((r) => {
       let ok = 0;

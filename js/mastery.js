@@ -6,10 +6,11 @@
 // 段: 0 = 答えの記録が無い（出さない）、1 まだ・2 あやふや・3 思い出せる・4 身についた・5 即答。
 // 記録: word_stats[id].masteryRank（1〜5）と masteryAt（段を決めた答えの時刻。書いた lastRecall*At と同じ文字列）。
 // どちらも端末だけの欄（js/sync.js statToRow は送らない）。欄が無い語は initialRank で読む（書かない）。
-// 端末だけの欄はほかに 3 つ: masteryDownAt（その日の × で段を下げた答えの時刻。同じ日の ○ で戻さない。rankNext の段 1 の文も読む）・answerSeenAt（別解を打って
-// 答えの綴りを見た時刻。初見と読まない）・masteryPeak（1 打ミスの × で下がる前の段。M1。Batch 70。masteryPeakOf で読む）。どれも js/stats.js の書き手だけが書く。
+// 端末だけの欄はほかに 4 つ: masteryDownAt（その日の × で段を下げた答えの時刻。同じ日の ○ で戻さない。rankNext の段 1 の文も読む）・answerSeenAt（別解を打って
+// 答えの綴りを見た時刻。初見と読まない）・masteryPeak（1 打ミスの × で下がる前の段。M1。Batch 70）と masteryPeakAt（その控えを置いた × の時刻。PR #180 のレビュー 1。
+// どちらも masteryPeakOf で読む）。どれも js/stats.js の書き手だけが書く。
 
-import { localDay, dayDiff, shiftDay } from "./retentionCalc.js";
+import { localDay, dayDiff, shiftDay, mdOf } from "./retentionCalc.js"; // mdOf（"YYYY-MM-DD" → "M月D日"）は js/recallSpeed.js と同じ関数（PR #180 のレビュー 6）
 import { esc } from "./html.js";
 
 export const RANK_MAX = 5;
@@ -118,24 +119,37 @@ function hasRankField(s) {
 }
 
 // ===== 1 打ミスで下がった段の控え（M1。Batch 70。docs/SPEC_MASTERY.md §3.5） =====
-// 指の滑りと見る ×: history の 1 件（js/stats.js pushHistory。r "x" と × の細目 k・p・a）が 1 打ミス（k "m"）で、3 字目以降（打てていた字数 p ≥ 2）か
+// 指の滑りと見る ×: history の 1 件（js/stats.js pushHistory。r "x" と × の細目 k・p・a・c）が 1 打ミス（k "m"）で、3 字目以降（打てていた字数 2 以上）か
 // 隣のキー（a が真）。a は 1 打ずつ判定する道（綴り・ローマ字）だけが真偽で渡す。全文入力の違う答え（a なし）は綴りを丸ごと打った答えなので入れない
 // （build と打った building も p 5 になる）。答え表示・ヒント・パス・不明（Battle・Batch 68 より前の記録）も入れない
 export const SLIP_MIN_TYPED = 2;
 export function isSlipFail(e) {
   if (!e || e.r !== "x" || e.k !== "m" || typeof e.a !== "boolean") return false;
-  return e.a || (Number.isInteger(e.p) && e.p >= SLIP_MIN_TYPED);
+  const n = typedCharsOf(e);
+  return e.a || (n !== null && n >= SLIP_MIN_TYPED);
+}
+
+// × の前に打てていた字数（3 字目かどうかを見る数。PR #180 のレビュー 3）。ローマ字の答えの 1 打ミスは打ち終えたかなの字数 c（js/game.js が渡す。
+// きゃ は 2 字。p は受理したキーの数で、しんぶん の s・h の後の誤りも p 2 になる）、綴りの答えは p（受理した字の数。c は渡さない）。読めなければ null。
+// isSlipFail と記録の質の xNext の種類（js/stats.js prevDayFailKind の m2）が使う
+export function typedCharsOf(e) {
+  const n = Number.isInteger(e?.c) ? e.c : e?.p;
+  return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
 // 今使える控えの段（無ければ 0）。控えは書き手が置き直す・消すが、読むときも次を確かめる（古い版・2 台目が控えを知らずに書いた記録で戻しすぎない）:
-//   段の欄があり、控えが今の段より上の整数（RANK_MAX まで）・この端末の段が最後の × を見ている（lastRecallFailAt ≤ masteryAt。2 台目・古い版の × は種類が分からない）・
-//   history の最後の × が指の滑り（isSlipFail。古い版が書いた × には k が無い）
+//   段の欄があり、控えが今の段より上の整数（RANK_MAX まで）・この端末の段が最後の × を見ている（lastRecallFailAt ≤ masteryAt）・
+//   控えを置いた × の時刻 masteryPeakAt が最後の × の時刻 lastRecallFailAt と同じ（控えの後に × が無い。2 台目・古い版の × は lastRecallFailAt を変える。
+//   時刻は文字列でなく ms で比べる）。history は見ない（8 件までなので、控えの後に 8 回答えると × が押し出される。PR #180 のレビュー 1）。
+//   masteryPeakAt の無い控え（PR #180 の版が書いた形）だけは、history の最後の × が指の滑りかで読む（次の答えで書き手が masteryPeakAt を書き足す）
 export function masteryPeakOf(stat) {
   const s = stat;
   if (!hasRankField(s)) return 0;
   const peak = s.masteryPeak;
   if (!Number.isInteger(peak) || peak <= s.masteryRank || peak > RANK_MAX) return 0;
-  if (ms(s.lastRecallFailAt) > ms(s.masteryAt)) return 0;
+  const failAt = ms(s.lastRecallFailAt);
+  if (failAt > ms(s.masteryAt)) return 0;
+  if (s.masteryPeakAt != null) return failAt > 0 && ms(s.masteryPeakAt) === failAt ? peak : 0;
   const h = Array.isArray(s.history) ? s.history : [];
   for (let i = h.length - 1; i >= 0; i--) if (h[i]?.r === "x") return isSlipFail(h[i]) ? peak : 0;
   return 0;
@@ -300,12 +314,6 @@ export function rankHtml(rank, { name = true, label = "習熟度 ", title = "" }
 
 // ===== 語ごとの根拠と次の条件の文（語の詳細・単語帳の title） =====
 
-// "YYYY-MM-DD" → "M月D日"
-function mdOf(ymd) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd ?? "");
-  return m ? `${Number(m[2])}月${Number(m[3])}日` : "";
-}
-
 function dayOfIso(iso) {
   return ms(iso) > 0 ? localDay(new Date(ms(iso))) : null;
 }
@@ -361,7 +369,9 @@ export function rankBasis(stat, today = localDay(new Date())) {
   return `${okMd ? `${okMd}に` : ""}思い出せた${gapText}`;
 }
 
-// 次の段の条件。段 5・段 0 は空文字。日付は前の答えの日から数え、今日以前なら「次に」と言う。
+// 次の段の条件。段 5・段 0 は空文字。日付は前の答えの日から数え、今日以前で、今が前の答えと同じ日の扱いでない（sameDayAs: ローカル日が同じか 6 時間未満。
+// answerContext の sameDay と同じ判定）なら「次に」と言う。同じ日の扱いの間は日付のまま（23:30 の答えを翌 1:00 に見ると、今の答えでは上がらないので
+// 「（前の答えの日＋1）以降に」。6 時間たてば「次に」。PR #180 のレビュー 2）。
 // 前の答えの日が分からない古い行は日付を言わず「N日以上あけて」と言う（次の答えでは上がらず、その答えから数え直すため）
 // 段 1 は同じ日の ○ でも上がるので日付なし。ただし今日の × で下げた語は、その扱いが続く間の ○ では上がらない（nextRank）ので、
 // 下げた日＋1 日を言う（§11.6 の 5）。「今日下げた」は answerContext の downToday と同じ判定（downTodayOf: ローカル日が今日か 6 時間未満）で見る
@@ -370,11 +380,12 @@ export function rankNext(stat, today = localDay(new Date()), nowMs = Date.now())
   const s = stat;
   const r = rankOf(s);
   if (r === 0 || r >= RANK_MAX) return "";
-  const prevDay = prevDayOf(s);
+  const prevAt = Math.max(ms(s?.lastRecallSuccessAt), ms(s?.lastRecallFailAt));
+  const prevDay = prevAt > 0 ? localDay(new Date(prevAt)) : null; // prevDayOf と同じ
   const after = (days, unknown) => {
     if (!prevDay) return unknown;
     const d = shiftDay(prevDay, days);
-    return d && d > today ? `${mdOf(d)}以降に` : "次に";
+    return d && (d > today || sameDayAs(prevAt, nowMs, today)) ? `${mdOf(d)}以降に` : "次に";
   };
   if (r === 1) {
     if (!downTodayOf(s, nowMs, today)) return "自力で思い出せると あやふや";

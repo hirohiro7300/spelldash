@@ -7725,6 +7725,8 @@ console.log("study 60s:");
     await page.waitForTimeout(300);
     const prog = await progT(page);
     check("60 秒（?t=8）: #setProgress は「8秒 ・ 残り N秒」、#bigTimer は隠れたまま、body.is-playing なし（BGM を鳴らさない）", /^8秒 残り [78]秒$/.test(prog) && (await page.$eval("#bigTimer", (el) => el.hidden)) && !(await page.evaluate(() => document.body.classList.contains("is-playing"))), prog);
+    // 読み上げは一度空にして 30ms 後に書く（js/ui.js announce）。決め打ちの待ちでなく、書かれるまで待つ（上限 1 秒）
+    await waitUntil(async () => (await page.textContent("#srStatus")).trim() === "8秒", 1000, 20);
     check("60 秒: 始めに 1 回だけ読み上げ「8秒」（#setProgress は aria-live にしない）", (await page.textContent("#srStatus")).trim() === "8秒" && (await page.$eval("#setProgress", (el) => !el.hasAttribute("aria-live"))), await page.textContent("#srStatus"));
     const seen = [];
     let learnedMsg = "";
@@ -7831,6 +7833,12 @@ console.log("study 60s:");
       return page.evaluate(() => scrollY);
     };
     const after = (page, id) => page.evaluate((i) => ({ active: document.activeElement?.id ?? "", value: document.getElementById(i)?.value ?? "", y: scrollY, sr: document.getElementById("srStatus").textContent.trim(), title: document.getElementById("resultTitle")?.textContent.trim() ?? "" }), id);
+    // 見出しの文の読み上げ（js/ui.js announce）は一度空にして 30ms 後に書く。焦点と位置が動かないことは決め打ちの 250ms 待って見るが、読み上げは
+    // その後も行（sel）に見出しの文が入るまで見る（上限 1 秒。決め打ちの待ちだけだと CI が重いときに書かれる前に読む。PR #180 のレビュー 8）
+    const titleSaid = (page, sel = "#srStatus") => page.waitForFunction((q) => {
+      const t = document.getElementById("resultTitle")?.textContent.trim();
+      return !!t && [...document.querySelectorAll(q)].some((n) => n.textContent.includes(t));
+    }, sel, { timeout: 1000, polling: 10 }).then(() => true, () => false);
     // 高さ 480: 終わりのパネルは画面の下に出るので、守りが無ければ見出しへ寄せて scrollY も変わる（焦点と位置の両方を見る）
     const page = await newPage({ viewport: { width: 1200, height: 480 }, storage: seedT() });
     await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
@@ -7842,6 +7850,7 @@ console.log("study 60s:");
     const y0 = await typeElsewhere(page, "#emailInput", "hachan@example.jp");
     await waitUntil(() => panelOpenT(page), 8000);
     await page.waitForTimeout(250);
+    await titleSaid(page);
     const s1 = await after(page, "emailInput");
     check("60 秒: 時間切れの瞬間にヘッダーのログインの欄で打っていると、焦点と打った文はそのまま・ページを寄せない・見出しの文（60秒 終わり）は読み上げる", (await panelOpenT(page)) && s1.active === "emailInput" && s1.value === "hachan@example.jp" && s1.y === y0 && s1.title === "60秒 終わり" && s1.sr === s1.title, JSON.stringify({ ...s1, y0 }));
     check("60 秒: 焦点を奪わない終わりでエラー0", page.errors.length === 0, page.errors[0] ?? "");
@@ -7860,6 +7869,7 @@ console.log("study 60s:");
     const y1 = await typeElsewhere(fb, "#feedbackMessage", "訳が分かりにくい");
     await waitUntil(() => panelOpenT(fb), 8000);
     await fb.waitForTimeout(250);
+    await titleSaid(fb, "#feedbackForm [data-sr-live]"); // 窓が開いている間は窓の中の読み上げの行に書く
     const s2 = await after(fb, "feedbackMessage");
     check("60 秒: ご意見の窓で打っている間に時間切れでも、焦点と打った文はそのまま・背後のページを寄せない", (await panelOpenT(fb)) && s2.active === "feedbackMessage" && s2.value === "訳が分かりにくい" && s2.y === y1 && !(await fb.$eval("#feedbackModal", (el) => el.hidden)), JSON.stringify({ ...s2, y1 }));
     // Batch 65 Q3 → PR #166 レビューの 7: 背後が inert の間（#srStatus も inert の中）でも、見出しの文は開いている窓の中の読み上げの行
@@ -7917,6 +7927,7 @@ console.log("study 60s:");
     const y2 = await typeElsewhere(ch, "#emailInput", "hachan@example.jp");
     await waitUntil(() => panelOpenT(ch), 8000);
     await ch.waitForTimeout(250);
+    await titleSaid(ch);
     const s3 = await after(ch, "emailInput");
     check("Challenge の時間切れも同じ: ログインの欄の焦点と打った文はそのまま・ページを寄せない・見出しの文は読み上げる", (await panelOpenT(ch)) && s3.active === "emailInput" && s3.value === "hachan@example.jp" && s3.y === y2 && !!s3.title && s3.sr === s3.title, JSON.stringify({ ...s3, y2 }));
     check("Challenge の焦点を奪わない終わりでエラー0", ch.errors.length === 0, ch.errors[0] ?? "");
@@ -8004,6 +8015,12 @@ console.log("study 60s:");
     await ch.keyboard.type("hachan@example.jp");
     await waitUntil(() => panelOpenT(ch), 8000);
     await ch.waitForTimeout(250);
+    // 読み上げは一度空にして 30ms 後に書く（js/ui.js announce）: ランクアップの文と見出しの文が入るまで見る（上限 1 秒。PR #180 のレビュー 8）
+    await ch.waitForFunction(() => {
+      const sr = document.getElementById("srStatus")?.textContent ?? "";
+      const t = document.getElementById("resultTitle")?.textContent.trim();
+      return sr.includes("ランクアップ") && !!t && sr.includes(t);
+    }, null, { timeout: 1000, polling: 10 }).catch(() => {});
     const s = await ch.evaluate(() => ({ active: document.activeElement?.id ?? "", sr: document.getElementById("srStatus").textContent.trim(), title: document.getElementById("resultTitle")?.textContent.trim() ?? "", overlay: document.querySelector(".rank-up")?.textContent.replace(/\s+/g, " ").trim() ?? "" }));
     check("Challenge の時間切れ（ログインの欄で打ったまま・ランクの変わるレベルアップ）: #srStatus にランクアップの文と見出しの文の両方が入る", s.active === "emailInput" && s.overlay.includes("木 2") && s.sr.includes("ランクアップ: 木 1 から 木 2") && !!s.title && s.sr.includes(s.title), JSON.stringify(s));
     check("Challenge のランクアップと見出しの読み上げでエラー0", ch.errors.length === 0, ch.errors[0] ?? "");
@@ -8382,6 +8399,59 @@ console.log("recall speed stats:");
   for (const [w, h, theme] of [[390, 844, "light"], [390, 844, "dark"], [320, 640, "light"], [1200, 900, "dark"]]) {
     const s = await read(recallSeed({ spelldash_mastery_meta: metaOf(RANKS), spelldash_theme: theme }).storage, { w, h, mobile: w < 1000 });
     check(`思い出す速さ 学習データ（${w}・${theme}）: 速さの行・実測の行が出て横スクロールなし・エラー0`, !!s.speed && !!s.measured && s.scroll <= s.inner && s.errors.length === 0, JSON.stringify({ scroll: s.scroll, inner: s.inner, err: s.errors[0] }));
+  }
+  // PR #180 のレビュー 5: 別のタブで答えた後（spelldash_mastery_meta を書いた: storage イベント）の描き直し（同期・マイ単語帳）で、段ごとの実測を読み直す
+  // （前は 1 回読んだ写しのままで、描き直しても数が古かった）。同じタブの描き直し（storage イベントなし）は保存を読み直さない
+  {
+    // 2 つのタブは同じ保存を見る 1 つの context（newPage は 1 枚ごとに別の context）。Service Worker は入れない（もう一方のタブの空のページを route で返す）
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => {
+      localStorage.setItem("spelldash_schema_version", "6");
+      localStorage.setItem("spelldash_onboarded", "1");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, R.storage);
+    await page.addInitScript(() => {
+      const get = Storage.prototype.getItem;
+      window.__metaReads = 0;
+      Storage.prototype.getItem = function (k) {
+        if (k === "spelldash_mastery_meta") window.__metaReads++;
+        return get.call(this, k);
+      };
+    });
+    await page.goto(BASE + "/stats.html#words", { waitUntil: "networkidle" });
+    await page.waitForSelector("#mastery .mastery-measured", { state: "attached", timeout: 5000 }).catch(() => {});
+    const measuredNow = () => page.evaluate(() => document.querySelector("#mastery .mastery-measured")?.textContent.replace(/\s+/g, " ").trim() ?? null);
+    const redraw = (type) => page.evaluate((t) => { const n0 = window.__metaReads; window.dispatchEvent(new CustomEvent(t)); return window.__metaReads - n0; }, type);
+    // 別のタブ（同じ端末の保存）で集計を書く。このページに storage イベントが届くまで待つ
+    const writeElsewhere = async (rank) => {
+      const heard = page.evaluate(() => new Promise((resolve) => { addEventListener("storage", (e) => e.key === "spelldash_mastery_meta" && resolve(true)); setTimeout(() => resolve(false), 3000); }));
+      const other = await ctx.newPage();
+      await other.route(BASE + "/__other-tab", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>other</title>" })); // 同じ origin の空のページ
+      await other.goto(BASE + "/__other-tab");
+      await other.evaluate((v) => localStorage.setItem("spelldash_mastery_meta", v), metaOf(rank));
+      await other.close();
+      return heard;
+    };
+    const first = await measuredNow();
+    const plain = await redraw("spelldash:synced"); // 同じタブの描き直し: 読み直さない
+    const r1 = { ...RANKS, 4: { "1": [60, 5], "6-13": [58, 7] }, 2: { "1": [21, 9] } }; // 段 4: 130 回・段 2: 30 回
+    const heard1 = await writeElsewhere(r1);
+    const syncReads = await redraw("spelldash:synced");
+    const synced = await measuredNow();
+    const heard2 = await writeElsewhere({ ...r1, 5: { "30+": [25, 5] } }); // 段 5: 30 回
+    const myReads = await redraw("spelldash:mywords");
+    const mine = await measuredNow();
+    check("PR #180 のレビュー 5: 別のタブが段ごとの実測の集計を書いた後、同期の描き直しで読み直す（身についた 130 回・あやふや 30 回）。マイ単語帳の描き直しでも（即答 30 回）",
+      first === "日をあけて問うと思い出せた 身についた 120回のうち108回 ・ 思い出せる 300回のうち246回" && heard1 && heard2 &&
+        synced === "日をあけて問うと思い出せた 身についた 130回のうち118回 ・ 思い出せる 300回のうち246回 ・ あやふや 30回のうち21回" &&
+        mine === "日をあけて問うと思い出せた 即答 30回のうち25回 ・ 身についた 130回のうち118回 ・ 思い出せる 300回のうち246回 ・ あやふや 30回のうち21回" && page.errors.length === 0,
+      JSON.stringify({ first, heard1, synced, heard2, mine, err: page.errors[0] }));
+    check("PR #180 のレビュー 5: 保存を読むのは別のタブが書いた後の描き直しの 1 回だけ（同じタブの描き直しは 0 回）",
+      plain === 0 && syncReads === 1 && myReads === 1, JSON.stringify({ plain, syncReads, myReads }));
+    await ctx.close();
   }
 }
 
@@ -10029,9 +10099,9 @@ console.log("mastery writers:");
     }
     const riverA = await statOf(pageA, "my-river");
     const cloudA = await statOf(pageA, "my-cloud");
-    check("習熟度 M1: 即答の語を 3 字目の 1 打ミスで × → 身についた・下がる前の段 5 を控える（history の × は k m・p 2・a false）",
-      riverA?.masteryRank === 4 && riverA.masteryPeak === 5 && lastX(riverA)?.k === "m" && lastX(riverA)?.p === 2 && lastX(riverA)?.a === false,
-      JSON.stringify({ rank: riverA?.masteryRank, peak: riverA?.masteryPeak, x: lastX(riverA) }));
+    check("習熟度 M1: 即答の語を 3 字目の 1 打ミスで × → 身についた・下がる前の段 5 と控えの × の時刻（masteryPeakAt ＝ lastRecallFailAt）を控える（history の × は k m・p 2・a false・c なし）",
+      riverA?.masteryRank === 4 && riverA.masteryPeak === 5 && riverA.masteryPeakAt === riverA.lastRecallFailAt && lastX(riverA)?.k === "m" && lastX(riverA)?.p === 2 && lastX(riverA)?.a === false && !("c" in (lastX(riverA) ?? {})),
+      JSON.stringify({ rank: riverA?.masteryRank, peak: riverA?.masteryPeak, peakAt: riverA?.masteryPeakAt, failAt: riverA?.lastRecallFailAt, x: lastX(riverA) }));
     check("習熟度 M1: 即答の語を答え表示で × → 身についた・控えなし（今の決まりで戻す）", cloudA?.masteryRank === 4 && cloudA.masteryPeak === undefined && lastX(cloudA)?.k === "e", JSON.stringify({ rank: cloudA?.masteryRank, peak: cloudA?.masteryPeak, x: lastX(cloudA) }));
     check("習熟度 M1（1 日目）: エラー0", pageA.errors.length === 0, pageA.errors[0] ?? "");
     const carried = await pageA.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith("spelldash_")).map((k) => [k, localStorage.getItem(k)])));
@@ -10142,7 +10212,7 @@ console.log("mastery writers:");
     // (3) 同期: 控えのある語を送る行も 15 列のまま（masteryPeak は端末だけ）。クラウドの方が新しい語を取り込んでも欄は残り、
     // 2 台目の ○ だけなら使え、2 台目の ×（種類が分からない）があれば使わない（今の決まり）
     const slipAt = at(DAY + HOUR);
-    const slipped = () => five(31 * DAY, { recallFail: 1, missCount: 1, cleanCorrectStreak: 1, masteryRank: 4, masteryPeak: 5, masteryAt: slipAt, masteryDownAt: slipAt, lastRecallFailAt: slipAt, nextReviewAt: at(HOUR), lastPlayed: slipAt, history: [{ d: dayOf(at(31 * DAY)), r: "o" }, { d: dayOf(slipAt), r: "x", k: "m", p: 2, a: false }] });
+    const slipped = () => five(31 * DAY, { recallFail: 1, missCount: 1, cleanCorrectStreak: 1, masteryRank: 4, masteryPeak: 5, masteryPeakAt: slipAt, masteryAt: slipAt, masteryDownAt: slipAt, lastRecallFailAt: slipAt, nextReviewAt: at(HOUR), lastPlayed: slipAt, history: [{ d: dayOf(at(31 * DAY)), r: "o" }, { d: dayOf(slipAt), r: "x", k: "m", p: 2, a: false }] });
     const cloudPlayed = at(2 * HOUR);
     const row = (word, over) => ({ user_id: "test-user", word_id: word, play_count: 10, correct_count: 9, typing_miss: 1, recall_fail: 1, clean_correct_streak: 1, mastered: false, mastered_at: null, last_played: cloudPlayed, next_review_at: at(-DAY), last_recall_fail_at: slipAt, last_recall_success_at: at(31 * DAY), daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, ...over });
     const cloud = createCloud({ word_progress: [row("my-stone", { last_recall_success_at: at(2 * HOUR), clean_correct_streak: 2 }), row("my-paper", { last_recall_fail_at: at(2 * HOUR), recall_fail: 2, next_review_at: at(2 * HOUR) })], user_progress: [], user_items: [] });
@@ -10161,7 +10231,7 @@ console.log("mastery writers:");
     const r3 = await p3.evaluate(async () => {
       const m = await import("/js/mastery.js");
       const all = JSON.parse(localStorage.getItem("spelldash_word_stats"));
-      return Object.fromEntries(["my-river", "my-stone", "my-paper"].map((id) => [id, { field: all[id]?.masteryPeak ?? null, usable: m.masteryPeakOf(all[id]), rank: m.rankOf(all[id]), lastPlayed: all[id]?.lastPlayed }]));
+      return Object.fromEntries(["my-river", "my-stone", "my-paper"].map((id) => [id, { field: all[id]?.masteryPeak ?? null, fieldAt: all[id]?.masteryPeakAt ?? null, usable: m.masteryPeakOf(all[id]), rank: m.rankOf(all[id]), lastPlayed: all[id]?.lastPlayed }]));
     });
     let sent = null;
     await waitUntil(async () => {
@@ -10171,12 +10241,79 @@ console.log("mastery writers:");
     }, 6000, 300);
     const COLS = ["user_id", "word_id", "play_count", "correct_count", "typing_miss", "recall_fail", "clean_correct_streak", "mastered", "mastered_at", "last_played", "next_review_at", "last_recall_fail_at", "last_recall_success_at", "daily_learning_date", "daily_learning_stage", "srs_advanced_on", "updated_at"];
     const sentKeys = sent ? Object.keys(sent).sort() : [];
-    check("習熟度 M1 同期: 控え（masteryPeak）のある語を送る行も 15 列のまま（mastery の列が無い）", pulled && sentKeys.join() === [...COLS].sort().join() && !sentKeys.some((k) => /mastery|peak/i.test(k)), JSON.stringify({ pulled, sentKeys }));
+    check("習熟度 M1 同期: 控え（masteryPeak・masteryPeakAt）のある語を送る行も 15 列のまま（mastery の列が無い）", pulled && sentKeys.join() === [...COLS].sort().join() && !sentKeys.some((k) => /mastery|peak/i.test(k)), JSON.stringify({ pulled, sentKeys }));
     check("習熟度 M1 同期: クラウドの方が新しい語を取り込んでも控えの欄は残る。2 台目の ○ だけなら使える（5）・2 台目の × があれば使わない（0。段は 1 段下に読む）",
-      r3["my-stone"].lastPlayed === cloudPlayed && r3["my-stone"].field === 5 && r3["my-stone"].usable === 5 && r3["my-paper"].lastPlayed === cloudPlayed && r3["my-paper"].field === 5 && r3["my-paper"].usable === 0 && r3["my-paper"].rank === 3 && r3["my-river"].usable === 5,
+      r3["my-stone"].lastPlayed === cloudPlayed && r3["my-stone"].field === 5 && r3["my-stone"].fieldAt === slipAt && r3["my-stone"].usable === 5 && r3["my-paper"].lastPlayed === cloudPlayed && r3["my-paper"].field === 5 && r3["my-paper"].usable === 0 && r3["my-paper"].rank === 3 && r3["my-river"].usable === 5,
       JSON.stringify(r3));
     check("習熟度 M1 同期: schema_version は \"6\" のまま・エラー0", (await p3.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "6" && p3.errors.length === 0, p3.errors[0] ?? "");
     await p3.close();
+  }
+
+  // ---- PR #180 のレビュー 3: ローマ字の答えの 1 打ミスは、打ち終えたかなの字数（history の × の c）で 3 字目を見る（p は受理したキーの数のまま）。
+  // 中学歴史の 2 語（どちらも即答・期日）を続きからの列で: ひみこ を hi・m の後に離れたキー（2 字目 み の中。p 3・c 1）→ 控えない、
+  // どぐう を dogu の後に離れたキー（3 字目 う。p 4・c 2）→ 控える ----
+  {
+    const todayR = ymd(new Date());
+    const ids = ["concept-jh1-himiko", "concept-jh1-dogu"];
+    const five = () => okStat(5, 30 * DAY, HOUR, { cleanCorrectStreak: 6, history: [{ d: dayOf(at(60 * DAY)), r: "o" }, { d: dayOf(at(30 * DAY)), r: "o" }] });
+    const storage = {
+      spelldash_packs: JSON.stringify(["jhist1"]), spelldash_category: "jhist1", spelldash_placement: "done", spelldash_level_boost: "2",
+      spelldash_streak: JSON.stringify({ current: 1, best: 1, last: todayR }),
+      spelldash_session: JSON.stringify({ category: "jhist1", focus: "", queue: ids, recalled: [], failed: [], newCount: 0, reviewCount: 0, setSize: 20, date: todayR, savedAt: new Date().toISOString() }),
+      spelldash_word_stats: JSON.stringify(Object.fromEntries(ids.map((id) => [id, five()])))
+    };
+    const page = await open(storage, { url: "/index.html?hintms=600000" });
+    const missAfter = async (id, keys, wrong, retype) => {
+      await waitUntil(async () => (await curId(page)) === id, 4000);
+      const n = await shown(page);
+      await page.waitForTimeout(NEXT_READY_MS);
+      for (const ch of keys) await page.press("#input", ch);
+      await page.press("#input", wrong);
+      await waitUntil(async () => !!(await statOf(page, id))?.lastRecallFailAt, 3000);
+      await page.waitForTimeout(300);
+      for (const ch of retype) await page.press("#input", ch); // 見せた読みで打ち直す
+      await waitUntil(async () => (await shown(page)) > n || (await panelOpen(page)), 4000);
+    };
+    await missAfter(ids[0], "him", "p", "himiko");
+    await missAfter(ids[1], "dogu", "p", "doguu");
+    const lastXOf = (st) => (st?.history ?? []).filter((e) => e.r === "x").at(-1) ?? null;
+    const [h, d] = [await statOf(page, ids[0]), await statOf(page, ids[1])];
+    check("習熟度 M1（PR #180 のレビュー 3）: ローマ字の ひみこ を hi・m の後に打ち間違える（2 字目のかなの中。p 3・c 1）→ 身についた・控えない",
+      h?.masteryRank === 4 && h.masteryPeak === undefined && lastXOf(h)?.k === "m" && lastXOf(h)?.p === 3 && lastXOf(h)?.c === 1 && lastXOf(h)?.a === false,
+      JSON.stringify({ rank: h?.masteryRank, peak: h?.masteryPeak, x: lastXOf(h) }));
+    check("習熟度 M1（PR #180 のレビュー 3）: ローマ字の どぐう を dogu の後に打ち間違える（3 字目のかな。p 4・c 2）→ 身についた・控え 即答（控えの × の時刻つき）・エラー0",
+      d?.masteryRank === 4 && d.masteryPeak === 5 && d.masteryPeakAt === d.lastRecallFailAt && lastXOf(d)?.p === 4 && lastXOf(d)?.c === 2 && lastXOf(d)?.a === false && page.errors.length === 0,
+      JSON.stringify({ rank: d?.masteryRank, peak: d?.masteryPeak, peakAt: d?.masteryPeakAt, x: lastXOf(d), err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- PR #180 のレビュー 4: 「時間がかかった」はその日の最初のノーミス正解だけ（答えの文脈の firstOfDay。SPEC の「その日の最初のノーミス正解」）。
+  // 日付の記録が無い古い行（段はあるが lastRecallSuccessAt・lastRecallFailAt が無い。nextRank の日数不明の枝で段は動かない）の遅い正解には付けない。
+  // 段 4・3 日前の cloud と、日付の無い知ってた語 glass（streak 2 → 段 4）を、どちらも 3,500ms 待って打つ（本人の基準 2,000ms の 1.5 倍超）----
+  {
+    const fail = at(DAY + HOUR);
+    const stats = {
+      ...KEEP,
+      "my-river": { ...B, playCount: 2, correctCount: 1, missCount: 1, recallFail: 1, cleanCorrectStreak: 0, lastPlayed: fail, lastRecallFailAt: fail, nextReviewAt: fail, history: [{ d: dayOf(fail), r: "x" }], masteryRank: 1, masteryAt: fail }, // 未解決: 先に出る（ページの最初の語は測らない）
+      "my-cloud": okStat(4, 3 * DAY, HOUR, { cleanCorrectStreak: 4 }),
+      "my-glass": { ...B, playCount: 3, correctCount: 3, cleanCorrectStreak: 2, knownOnSight: true, lastPlayed: at(3 * DAY), nextReviewAt: at(HOUR) }
+    };
+    const page = await open(seed(stats, { words: ["river", "cloud", "glass", "bread", "tiger"], spelldash_mastery_meta: meta20("en.kbd.study", 2000) }), { url: "/index.html?set=3&hintms=600000" });
+    const before = await rankRead(page, "my-glass");
+    const order = [];
+    for (let i = 0; i < 8 && !(await panelOpen(page)); i++) {
+      const id = await curId(page);
+      order.push(enOf(id));
+      await typeCurrent(page, { wait: (id === "my-cloud" || id === "my-glass") && order.length > 1 ? 3500 : 0 });
+      await page.waitForTimeout(80);
+    }
+    await waitUntil(() => panelOpen(page), 4000);
+    const lines = await page.$$eval("#resultPanel .rank-moves", (els) => els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+    const after = await rankRead(page, "my-glass");
+    check("習熟度（PR #180 のレビュー 4）: 段 4・3 日前の語の遅い正解は「時間がかかった: cloud（身についた）」・日付の無い古い行（段 4 のまま）の遅い正解には付けない",
+      order[0] === "river" && order.includes("cloud") && order.includes("glass") && before === 4 && after === 4 && lines.includes("時間がかかった: cloud（身についた）") && !lines.some((l) => l.includes("glass（")) && page.errors.length === 0,
+      JSON.stringify({ order, before, after, lines, err: page.errors[0] }));
+    await page.close();
   }
 
   // ---- §9.1-7 タイピングの 2 ページは mastery.js・masteryMeta.js を読まない（記録の質の memoryModel.js・memoryCheck.js・memoryWords.js も） ----
@@ -10754,6 +10891,10 @@ console.log("rank（学習のランク）:");
       await cdp.detach().catch(() => {});
     }
   };
+  // 読み上げ（#srStatus）は一度空にして 30ms 後に書く（js/ui.js announce）。決め打ちの待ちの後に読むと、CI が重いときは書かれる前に読む
+  // （PR #179・#181 の CI で 1 回ずつ落ちた）ので、文が入るまで待つ（上限 1 秒: 幕の 1.2 秒の内）。入れば true
+  const srHas = (page, text = "ランクアップ", timeout = 1000) =>
+    page.waitForFunction((t) => (document.getElementById("srStatus")?.textContent ?? "").includes(t), text, { timeout, polling: 10 }).then(() => true, () => false);
   const overlayState = (page) => page.evaluate(() => {
     const o = document.querySelector(".rank-up");
     if (!o) return null;
@@ -10799,8 +10940,9 @@ console.log("rank（学習のランク）:");
     const openedAt = Date.now();
     const s = await overlayState(page);
     const ign = ax && s ? await axIgnored(page, ".rank-up__emblem img") : null;
-    await page.waitForTimeout(block404 ? 350 : 50);
-    const late = await overlayState(page); // 404 は開いた後に失敗する（読み込み中 → 読めない）。読み上げもこちらで見る（#srStatus は一度空にして 30ms 後に書く: js/ui.js announce。開いた瞬間の s ではまだ空のことがある）
+    await srHas(page); // 読み上げは下の late で見る（開いた瞬間の s ではまだ空のことがある）
+    if (block404) await page.waitForTimeout(350); // 404 は開いた後に失敗する（読み込み中 → 読めない）
+    const late = await overlayState(page);
     const probe = await page.evaluate(() => window.__emb ?? []);
     const r = { s, late, probe: probe[0] ?? null, ign, reqs: reqs.map((q) => ({ u: q.u, before: q.t <= openedAt, afterStart: q.t >= startedAt })), errors: page.errors.slice(0, 1) };
     await page.close();
@@ -11097,11 +11239,14 @@ console.log("rank（学習のランク）:");
       }
     }).observe(document, { childList: true, subtree: true });
   };
-  // 最後の 1 打をページの中で送る。次の出題文に変わるまでの ms と、probeMs の時点の幕・スタンプ・はちゃんの知らせ・メッセージ行（aria-live）・#srStatus
-  const finishR = (p, key, { probeMs = 300, until = 3500 } = {}) => p.evaluate(({ key, probeMs, until }) => new Promise((resolve) => {
+  // 最後の 1 打をページの中で送る。次の出題文に変わるまでの ms と、probeMs の時点の幕・スタンプ・はちゃんの知らせ・メッセージ行（aria-live）・#srStatus。
+  // sr を渡した回は、probeMs の時点の #srStatus にその文が無ければ、入るまで見る（上限 1 秒: 幕の 1.2 秒の内。一度空にして 30ms 後に書く読み上げを
+  // 決め打ちの probeMs で読むと、CI が重いときは書かれる前に読む: 上の srHas と同じ）
+  const finishR = (p, key, { probeMs = 300, until = 3500, sr = "" } = {}) => p.evaluate(({ key, probeMs, until, sr }) => new Promise((resolve) => {
     const ja = document.getElementById("japanese");
+    const live = document.getElementById("srStatus");
     const ja0 = ja.textContent.trim();
-    let ms = null, probe = null;
+    let ms = null, probe = null, srWait = null;
     const mo = new MutationObserver(() => { if (ms === null && ja.textContent.trim() !== ja0) ms = Math.round(performance.now() - t0); });
     mo.observe(ja, { childList: true, characterData: true, subtree: true });
     const t0 = performance.now();
@@ -11113,11 +11258,17 @@ console.log("rank（学習のランク）:");
         overlay: o ? [...o.querySelectorAll("[data-rank-name]")].map((x) => x.textContent.trim()).join("→") : null,
         src: o?.querySelector(".rank-up__emblem img")?.getAttribute("src") ?? null,
         stamp: !!document.querySelector(".learn-stamp"), toast: !!toast && !toast.hidden,
-        message: document.getElementById("message").textContent.trim(), sr: document.getElementById("srStatus").textContent.trim()
+        message: document.getElementById("message").textContent.trim(), sr: live.textContent.trim()
       };
+      if (!sr || probe.sr.includes(sr)) return;
+      srWait = new Promise((done) => {
+        const seen = new MutationObserver(() => { const t = live.textContent.trim(); if (t.includes(sr)) { probe.sr = t; seen.disconnect(); done(); } });
+        seen.observe(live, { childList: true, characterData: true, subtree: true });
+        setTimeout(() => { seen.disconnect(); done(); }, 1000);
+      });
     }, probeMs);
-    setTimeout(() => { mo.disconnect(); resolve({ ms, probe }); }, until);
-  }), { key, probeMs, until });
+    setTimeout(async () => { mo.disconnect(); await srWait; resolve({ ms, probe }); }, until);
+  }), { key, probeMs, until, sr });
 
   // ---- (10) PR #178 のレビュー 1: 覚えた と同じ答えでランクが変わると、幕はランクアップ（読み上げ「ランクアップ: 木 3 から 銅 1」）。覚えた は 1 行（#message は aria-live）。
   //           スタンプとはちゃんの知らせは出さない（節目の幕は 1 つ）。待ちは 覚えた だけのときと同じ（MILESTONE_MS） ----
@@ -11137,7 +11288,7 @@ console.log("rank（学習のランク）:");
       await waitUntil(async () => (await jaR(p)) === "請求書", 3000, 20);
       await p.waitForTimeout(1200); // 回の初めの先読み（手の空いたとき）の後に答える
       for (const ch of "invoic") await p.press("#input", ch);
-      const r = await finishR(p, "e");
+      const r = await finishR(p, "e", { sr: "ランクアップ" }); // 覚えた だけの回（幕なし）は 1 秒見て終わる（until 3.5 秒の内）
       r.ups = await p.evaluate(() => window.__ups);
       r.errors = p.errors.slice(0, 1);
       await p.close();
@@ -11169,7 +11320,7 @@ console.log("rank（学習のランク）:");
     for (const ch of en.slice(0, -1)) await p.press("#input", ch);
     const mid = await finishR(p, en.at(-1), { probeMs: 150, until: 300 });
     await waitUntil(() => panelOpenR(p), 9000, 50);
-    await p.waitForTimeout(100);
+    await srHas(p); // 終わりのパネルの幕の読み上げが入るまで
     const end = await p.evaluate(() => ({ sr: document.getElementById("srStatus").textContent.trim(), title: document.getElementById("resultTitle")?.textContent.trim() ?? "", ups: window.__ups }));
     check("PR #178 のレビュー 1: 60 秒の回でランクが変わる（木 1 → 木 2）と、回の間は幕を出さず 1 行（Lv.2 に上がった）、時間切れのパネルで幕 1 つと読み上げ「ランクアップ: 木 1 から 木 2」（紋章は先読みした木 2）",
       timed && mid.probe?.overlay === null && mid.probe.message.startsWith("Lv.2 に上がった") && end.ups.length === 1 && end.ups[0].names === "木 1→木 2" && end.ups[0].setDone && end.ups[0].src === `${EMB}wood-2.webp` && end.ups[0].ready && end.sr.includes("ランクアップ: 木 1 から 木 2") && end.title === "今日のセット完了" && p.errors.length === 0,
@@ -11197,7 +11348,7 @@ console.log("rank（学習のランク）:");
     await p.evaluate(() => document.getElementById("setupToggle")?.click());
     await p.waitForTimeout(150);
     await p.evaluate(() => document.getElementById("weakToggleButton")?.click());
-    await p.waitForTimeout(250);
+    await srHas(p); // 切り替えで出す控えた幕の読み上げが入るまで
     const tog = await p.evaluate(() => ({ ups: window.__ups, sr: document.getElementById("srStatus").textContent.trim(), weakOn: document.getElementById("weakToggleButton")?.getAttribute("aria-pressed"), timed: document.querySelector("#setProgress")?.dataset.timed === "1", input: !document.getElementById("input").disabled }));
     tog.playing = await waitUntil(async () => !!myAnsR[await jaR(p)], 2000, 20); // 新しい回の語（苦手のみ）が出る
     await p.waitForTimeout(1200); // 幕が消えてから机に戻る
@@ -11240,7 +11391,7 @@ console.log("rank（学習のランク）:");
       if (!(await panelOpenR(p))) midUps = Math.max(midUps, (await p.evaluate(() => window.__ups.length)));
       await afterAdvance(p);
     }
-    await p.waitForTimeout(100);
+    await srHas(p); // 終わりのパネルの幕の読み上げが入るまで
     const end = await p.evaluate(() => ({ sr: document.getElementById("srStatus").textContent.trim(), ups: window.__ups, open: !document.getElementById("resultPanel").hidden }));
     check("PR #178 のレビュー 1: 腕試しでランクが変わる（木 1 → 木 2）と、腕試しの間は幕を出さず、終わりのパネルで幕 1 つと読み上げ「ランクアップ: 木 1 から 木 2」",
       placing && end.open && midUps === 0 && end.ups.length === 1 && end.ups[0].names === "木 1→木 2" && end.ups[0].setDone && end.sr.includes("ランクアップ: 木 1 から 木 2") && p.errors.length === 0, JSON.stringify({ placing, midUps, end, err: p.errors[0] }));
@@ -11256,7 +11407,7 @@ console.log("rank（学習のランク）:");
     await waitUntil(async () => !!myAnsR[await jaR(p)], 3000, 20);
     const en = myAnsR[await jaR(p)];
     for (const ch of en.slice(0, -1)) await p.press("#input", ch);
-    const r = await finishR(p, en.at(-1), { probeMs: 300, until: 400 });
+    const r = await finishR(p, en.at(-1), { probeMs: 300, until: 400, sr: "ランクアップ" });
     await waitUntil(() => panelOpenR(p), 4000, 50);
     const end = await p.evaluate(() => ({ title: document.getElementById("resultTitle")?.textContent.trim() ?? "", ups: window.__ups }));
     check("PR #178 のレビュー 1: 語数のセットの最後の語でランクが変わる（木 1 → 木 2）と、その答えで幕 1 つと読み上げ → 完了のパネル",
@@ -11273,8 +11424,7 @@ console.log("rank（学習のランク）:");
     await p.$eval("#homeMore", (el) => { el.open = true; });
     await p.$eval("#dailyStartButton", (el) => el.click());
     await waitUntil(async () => (await p.$(".rank-up")) !== null, 8000, 20);
-    // 読み上げは一度空にして 30ms 後に書く（js/ui.js announce）。幕が出た瞬間はまだ空のことがあるので、書かれるまで待つ（幕の 1.2 秒の内）
-    await waitUntil(async () => (await p.evaluate(() => document.getElementById("srStatus")?.textContent ?? "")).includes("ランクアップ"), 1000, 20);
+    await srHas(p); // 幕が出た瞬間の読み上げはまだ空のことがある（上の srHas）
     const s = await overlayState(p);
     const ups = await p.evaluate(() => window.__ups);
     check("PR #178 のレビュー 1: Daily Dash の時間切れでランクが変わる（木 1 → 木 2）と、幕 1 つ（木 2 の紋章・先読みした絵）と読み上げ「ランクアップ: 木 1 から 木 2」",
