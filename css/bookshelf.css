@@ -698,7 +698,10 @@
 
 /* ---- 本を足す（索引カードの引き出し）: 検索と棚ごとの畳んだ見出し。見出しと入力欄は固定、中身（.finder__body）だけ縦に送る ---- */
 .bookshelf .finder {
-  width: min(560px, calc(100% - 20px));
+  /* 窓の幅は自前の式で（ブラウザの dialog の既定 max-width: calc(100% - 6px - 2em) には頼らない）。左右 19px・上限 560px は表紙を入れる前に効いていた値 */
+  --finder-w: min(560px, calc(100% - 38px));
+  width: var(--finder-w);
+  max-width: none;
   max-height: min(640px, calc(100% - 40px));
   margin: auto;
   padding: 0;
@@ -944,18 +947,20 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .finder__cov img {
   filter: brightness(0.9); /* 夜の頁（羊皮紙が 1 段暗い）に合わせる */
 }
 
-/* 360px 未満では出さない（display:none の loading=lazy は読みにも行かない）。360〜599px は表紙の幅（21＋間 7 = 28px）を、
-   窓の外の余白（ブラウザの dialog の max-width が効いて 19px だった所を、上の width のとおり 10px に: 18px）と札の内側の余白（20 → 15px: 10px）から取る。
-   題と meta の列の幅は今と同じ（書名の行数が変わらない） */
-@media (max-width: 359px) {
+/* 360px 未満では出さない（display:none の loading=lazy は読みにも行かない）。360〜600px 未満は表紙の幅（21＋間 7 = 28px）を、
+   窓の幅（表紙を入れる前の --finder-w より 18px 広く: 左右の外の余白 19 → 10px。上限 560 → 578px）と札の内側の余白（20 → 15px: 10px）から取る。
+   どの幅（小数の幅も）でも題と meta の列の幅は表紙を入れる前と同じ（書名の行数が変わらない）。600px 以上は列の余りから取る（24＋間 10 = 34px）。
+   境目は小数の幅で抜けないよう 359.98px／599.98px（ほかの所と同じ形）。
+   (359.98, 360)・(599.98, 600) の 0.02px の抜けは残す: 範囲の書き方 (width < 360px) は Safari 16.4 から（アプリの器は iOS 15 から・iOS 16.3 以前の Safari も直してきた） */
+@media (max-width: 359.98px) {
   .finder__cov {
     display: none;
   }
 }
 
-@media (min-width: 360px) and (max-width: 599px) {
+@media (min-width: 360px) and (max-width: 599.98px) {
   .bookshelf .finder {
-    max-width: none;
+    width: calc(var(--finder-w) + 18px);
   }
 
   .finder__card {

@@ -6,10 +6,15 @@
 //   node scripts/build-covers.mjs --src <dir> [--sheet <png>] [--asis] [--out <dir>]
 //       <dir>/<番号>-<名前>.png（下の COVERS）から assets/images/covers/<name>.webp を書く。
 //       --sheet を添えると、配信する絵を昼と夜の羊皮紙の地に、表示の大きさ（1 倍・2 倍）と元の表紙の切り出す枠を並べた絵を書く（目で見る用）
-//       --asis は色の寄せ（GRADE と TUNE）を掛けずに作る（元の色と見比べる用。配信する絵にはしない）
-//       --out は書き先（既定 assets/images/covers）
-//   node scripts/build-covers.mjs --check --src <dir>
-//       同じ元から作り直して、木の絵とバイト単位で同じかを見る（違えば exit 1。何も書かない）
+//       --asis は色の寄せ（GRADE と TUNE）を掛けずに作る（元の色と見比べる用。配信する絵にはしない: --out <作業用のフォルダ> が要り、
+//       既定の書き先と同じ所〔末尾の /・..・symlink を挟んだ別の書き方も〕なら止まる）
+//       --out は書き先（既定 assets/images/covers）。既定の所では、表（COVERS）に無い名前の .webp を、名前を出してから消す（名前を替えた表紙の
+//       前の絵を残さない）。ほかの書き先では、表の 22 枚を書くだけで、ほかの物は消さない（--out assets/images/room でも場面・タイルは残る）
+//   node scripts/build-covers.mjs --check --src <dir> [--sheet <png>]
+//       同じ元から作り直して、木の絵とバイト単位で同じかを見る（違えば exit 1。--sheet の並べた絵のほかは何も書かない）
+// 引数の誤り（値の無い --src・--out・--sheet、-- で始まる値〔--out --asis〕、同じ引数が 2 つ、知らない引数〔--out=x の形・書き違い〕）と、
+// 書けない書き先（途中にファイルがある・--sheet がフォルダ・--out がファイル）は、Chromium を立ち上げる前に止まる（何も書かず、消さない）。
+// 無い書き先のフォルダ（--out・--sheet）は、絵を作り終えてから、書く直前に作る（途中で止まった回はフォルダも残さない）
 //
 // 配信する絵（1 種類）: 幅 48 × 高さ 64（3:4 の縦長）。窓の行の表示は 24×32 CSS px（360〜599px の幅では 21×28）。表示の 2 倍の画素。不透明。
 //   表紙の全体ではなく、絵のある下の部分を縦長に切り出す（表紙の上 4 割は題の余白で、30px に縮めると色の札になる。審査の条件 1）。
@@ -82,18 +87,19 @@ export const CROP = {
 // 全部の表紙に掛ける寄せ: 彩度を sat 倍（輝度へ寄せる）、暖色（R+、B−）を warm だけ
 export const GRADE = { sat: 0.7, warm: 0.04 };
 
-// 色の決まりとぶつかる表紙の追加の寄せ。1 つの op は色相の範囲 hue [h0, h1]（度。境から 14 度かけて弱める）の画素を、
-// to（色相を寄せる先）・sat（彩度の倍率）・val（明度の倍率）で寄せる。minS・minV はそれ未満の画素に掛けない（灰色の地・暗い所を残す）。
-// 元の色に戻すなら、その表紙の行を消して作り直す
+// 色の決まりとぶつかる表紙の追加の寄せ。1 つの op は色相の範囲 hue [h0, h1]（度。境から FEATHER = 14 度かけて弱める）の画素を、
+// to（色相を寄せる先）・sat（彩度の倍率）・val（明度の倍率）で寄せる。minS・minV（0〜1）は境目: 彩度・明度がそれ以下の画素には掛けず（重み 0。
+// 灰色の地・暗い所を残す）、境目から RAMP = 0.1 上がるまでになだらかに強め（0 → 1 へ一次）、その上は全部に掛ける。書かなければ境目なし（全部の画素）。
+// 既定の値は無い（使う値は表に書く。表に無い名前のキーは止める: 書き違いで黙って寄せが外れない）。元の色に戻すなら、その表紙の行を消して作り直す
 export const TUNE = {
-  geography: [{ why: "緑の地を胡桃へ", hue: [62, 175], to: 34, sat: 0.62 }],
-  biology: [{ why: "緑の地と葉を胡桃へ", hue: [62, 175], to: 34, sat: 0.62 }],
-  bookkeeping: [{ why: "緑の地を胡桃へ", hue: [62, 175], to: 34, sat: 0.62 }],
-  kobun: [{ why: "緑の地を胡桃へ", hue: [62, 175], to: 34, sat: 0.62 }],
-  exam: [{ why: "緑の地を胡桃へ", hue: [62, 175], to: 34, sat: 0.62 }],
+  geography: [{ why: "緑の地を胡桃へ", hue: [62, 175], minS: 0.12, to: 34, sat: 0.62 }],
+  biology: [{ why: "緑の地と葉を胡桃へ", hue: [62, 175], minS: 0.12, to: 34, sat: 0.62 }],
+  bookkeeping: [{ why: "緑の地を胡桃へ", hue: [62, 175], minS: 0.12, to: 34, sat: 0.62 }],
+  kobun: [{ why: "緑の地を胡桃へ", hue: [62, 175], minS: 0.12, to: 34, sat: 0.62 }],
+  exam: [{ why: "緑の地を胡桃へ", hue: [62, 175], minS: 0.12, to: 34, sat: 0.62 }],
   science: [
     { why: "光るフラスコ（青緑）を沈める", hue: [150, 205], minV: 0.45, minS: 0.2, sat: 0.4, val: 0.6 },
-    { why: "青緑の地を藍へ", hue: [150, 205], to: 218, sat: 0.85 }
+    { why: "青緑の地を藍へ", hue: [150, 205], minS: 0.12, to: 218, sat: 0.85 }
   ],
   physics: [{ why: "枠に残る虹（プリズムの光）を沈める。真鍮の金色は残す", hue: [62, 340], minS: 0.35, minV: 0.5, sat: 0.4, val: 0.85 }],
   it: [{ why: "光る青い立方体を沈める", hue: [185, 250], minV: 0.4, minS: 0.25, sat: 0.45, val: 0.64 }],
@@ -102,6 +108,8 @@ export const TUNE = {
 
 const ALPHA_FLOOR = 16;
 const FEATHER = 14;
+const RAMP = 0.1;
+const TUNE_KEYS = new Set(["why", "hue", "to", "sat", "val", "minS", "minV"]);
 
 // ページの中で動く関数（canvas）。decode・canvasOf・resizeTo は PAGE_CANVAS（scripts/lib/canvas-art.mjs）
 const PAGE_LIB = PAGE_CANVAS + String.raw`
@@ -136,7 +144,8 @@ function hueWeight(h, [h0, h1], feather) {
   const dist = (a, b) => { const t = Math.abs(a - b) % 360; return Math.min(t, 360 - t); };
   return Math.max(0, 1 - Math.min(dist(h, h0), dist(h, h1)) / feather);
 }
-const ramp = (x, lo) => (lo ? Math.max(0, Math.min(1, (x - lo) / 0.1 + 0.5)) : 1);
+// 境目 lo（minS・minV）の重み: lo 以下は 0、lo から width 上がるまで 0 → 1 へ一次、その上は 1。lo が無ければ 1（境目なし）
+const ramp = (x, lo, width) => (lo == null ? 1 : Math.max(0, Math.min(1, (x - lo) / width)));
 function grade(d, sat, warm) {
   if (sat === 1 && !warm) return;
   for (let k = 0; k < d.length; k += 4) {
@@ -147,11 +156,11 @@ function grade(d, sat, warm) {
     d[k + 2] = clamp(l + (b - l) * sat - 255 * warm * 0.5);
   }
 }
-function tune(d, ops, feather) {
+function tune(d, ops, feather, rampW) {
   for (const op of ops) {
     for (let k = 0; k < d.length; k += 4) {
       const [h, s, v] = rgb2hsv(d[k], d[k + 1], d[k + 2]);
-      const w = hueWeight(h, op.hue, feather) * ramp(s, op.minS ?? 0.12) * ramp(v, op.minV ?? 0);
+      const w = hueWeight(h, op.hue, feather) * ramp(s, op.minS, rampW) * ramp(v, op.minV, rampW);
       if (w <= 0) continue;
       let nh = h;
       if (op.to != null) { let delta = ((op.to - h + 540) % 360) - 180; nh = (h + delta * w + 360) % 360; }
@@ -183,7 +192,7 @@ window.coverLib = {
     cg.drawImage(c, -wx, -wy);
     const img = cg.getImageData(0, 0, ww, wh);
     grade(img.data, opt.sat, opt.warm);
-    tune(img.data, opt.ops, opt.feather);
+    tune(img.data, opt.ops, opt.feather, opt.ramp);
     cg.putImageData(img, 0, 0);
     held.set(name, crop);
     return { box: [b.x0, b.y0, W, H], win: [wx, wy, ww, wh], size: [bmp.width, bmp.height] };
@@ -219,20 +228,87 @@ window.coverLib = {
 const kb = (n) => `${(n / 1024).toFixed(2)}KB`;
 const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex").slice(0, 12);
 
+// 実の置き場（symlink・..・末尾の / を解いた絶対の道）。まだ無い道は、ある所まで遡って実の置き場にし、残りを足す
+const realOf = (p) => {
+  const abs = path.resolve(p);
+  try {
+    return fs.realpathSync(abs);
+  } catch {
+    const parent = path.dirname(abs);
+    return parent === abs ? abs : path.join(realOf(parent), path.basename(abs));
+  }
+};
+// 同じ所か: 実の置き場が同じ、またはどちらもあって同じフォルダ（同じ dev と inode。大文字と小文字を区別しない置き場・bind mount でも）
+function samePlace(a, b) {
+  if (realOf(a) === realOf(b)) return true;
+  try {
+    const x = fs.statSync(a), y = fs.statSync(b);
+    return x.dev === y.dev && x.ino === y.ino;
+  } catch {
+    return false;
+  }
+}
+// 配る所（既定の書き先）か、その下か
+function insideOut(p) {
+  const r = realOf(p), d = realOf(OUT_DIR);
+  return samePlace(p, OUT_DIR) || r.startsWith(d + path.sep);
+}
+// 引数: 値を取る物と印だけの物。値が無い・-- で始まる（--out --asis で「--asis」というフォルダに書かない）・同じ物が 2 つ・知らない物は止まる
+const VALUE_ARGS = { "--src": "<dir>", "--out": "<dir>", "--sheet": "<png>" };
+const FLAG_ARGS = ["--asis", "--check"];
+function parseArgs(argv) {
+  const o = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (Object.hasOwn(o, a)) throw new Error(`${a} が 2 つある`);
+    if (Object.hasOwn(VALUE_ARGS, a)) {
+      const v = argv[i + 1];
+      if (v == null || v === "" || v.startsWith("--")) throw new Error(`${a} の後に値が無い（${a} ${VALUE_ARGS[a]}${v ? `。「${v}」は値にしない` : ""}）`);
+      o[a] = v;
+      i++;
+    } else if (FLAG_ARGS.includes(a)) o[a] = true;
+    else throw new Error(`知らない引数: ${a}（使えるのは ${[...Object.keys(VALUE_ARGS), ...FLAG_ARGS].join("・")}。値は空白で区切る: --out <dir>）`);
+  }
+  return o;
+}
+// 書き先を絵を作る前に確かめる（何も作らない）: 途中にファイルがある・--sheet がフォルダ・--out がファイル・書けない、なら止まる
+function checkDest(flag, p, isFile) {
+  const abs = path.resolve(p);
+  if (fs.existsSync(abs) && fs.statSync(abs).isDirectory() === isFile) throw new Error(`${flag} ${p} は${isFile ? "フォルダ（並べた絵のファイルの名前を渡す）" : "ファイル（フォルダを渡す）"}`);
+  let dir = isFile ? path.dirname(abs) : abs;
+  while (!fs.existsSync(dir)) dir = path.dirname(dir);
+  if (!fs.statSync(dir).isDirectory()) throw new Error(`${flag} ${p} の途中にファイルがある（${dir}）`);
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+  } catch {
+    throw new Error(`${flag} ${p} に書けない（${dir}）`);
+  }
+}
+
 async function main() {
-  const args = process.argv.slice(2);
-  const opt = (name) => {
-    const i = args.indexOf(name);
-    return i >= 0 ? args[i + 1] : null;
-  };
-  const srcDir = opt("--src");
-  const sheetOut = opt("--sheet");
-  const outDir = opt("--out") ? path.resolve(opt("--out")) : OUT_DIR;
-  const asis = args.includes("--asis");
-  const check = args.includes("--check");
+  const arg = parseArgs(process.argv.slice(2));
+  const srcDir = arg["--src"];
+  const sheetOut = arg["--sheet"] ? path.resolve(arg["--sheet"]) : null;
+  const outDir = arg["--out"] ? path.resolve(arg["--out"]) : OUT_DIR;
+  const asis = !!arg["--asis"];
+  const check = !!arg["--check"];
   if (!srcDir) throw new Error("元の絵の置き場を --src <dir> で渡す（011-english.png など 22 枚）");
-  if (check && (asis || opt("--out"))) throw new Error("--check は木の絵と同じ作り方（--asis・--out なし）で見る");
+  if (check && (asis || arg["--out"])) throw new Error("--check は木の絵と同じ作り方（--asis・--out なし）で見る");
+  if (asis && !arg["--out"]) throw new Error("--asis は配る絵にしない。書き先を --out <作業用のフォルダ> で渡す");
+  if (asis && insideOut(outDir)) throw new Error(`--asis は配る絵にしない。--out ${arg["--out"]} は既定の書き先（assets/images/covers）かその下。作業用のフォルダを渡す`);
+  if (sheetOut && insideOut(path.dirname(sheetOut))) throw new Error(`--sheet ${arg["--sheet"]} は配る所（assets/images/covers）の中。並べた絵は配らない所に書く`);
+  if (arg["--out"]) checkDest("--out", arg["--out"], false);
+  if (sheetOut) checkDest("--sheet", arg["--sheet"], true);
   for (const file of Object.values(COVERS)) if (!fs.existsSync(path.join(srcDir, file))) throw new Error(`元の絵が無い: ${path.join(srcDir, file)}`);
+  for (const [name, ops] of Object.entries(TUNE)) {
+    // 表の自分の名前だけ（constructor・toString・__proto__ など Object.prototype の名前は通さない）
+    if (!Object.hasOwn(COVERS, name)) throw new Error(`TUNE の ${name} は COVERS に無い`);
+    if (!Array.isArray(ops)) throw new Error(`TUNE の ${name} は op の配列にする`);
+    for (const op of ops) {
+      const odd = Object.keys(op).filter((k) => !TUNE_KEYS.has(k));
+      if (odd.length || !Array.isArray(op.hue) || op.hue.length !== 2) throw new Error(`TUNE の ${name}（${op.why}）: ${odd.length ? `知らないキー ${odd.join("・")}` : "hue は [h0, h1]"}`);
+    }
+  }
 
   const browser = await chromium.launch({ executablePath: findChromium(), args: ["--no-sandbox"] });
   try {
@@ -245,6 +321,7 @@ async function main() {
       const o = {
         floor: ALPHA_FLOOR,
         feather: FEATHER,
+        ramp: RAMP,
         w: SIZE.w,
         h: SIZE.h,
         crop: { ...CROP_DEFAULT, ...(CROP[name] ?? {}) },
@@ -264,6 +341,10 @@ async function main() {
     if (total > TOTAL_MAX_BYTES) throw new Error(`合計が ${kb(total)}（上限 ${kb(TOTAL_MAX_BYTES)}）`);
     const sizes = written.map((w) => w.buf.length);
     console.log(`${written.length} 枚・合計 ${kb(total)}（上限 ${kb(TOTAL_MAX_BYTES)}）・最大 ${kb(Math.max(...sizes))}（上限 ${kb(SIZE.maxBytes)}）・最小 ${kb(Math.min(...sizes))}${asis ? "・寄せなし（--asis）" : ""}`);
+    // 並べた絵も先に作り、書き先のフォルダ（無ければ）を作ってから書く（22 枚を書いた後で並べた絵の書き先が無くて止まらない）
+    const sheetPng = sheetOut ? bufferOf(await page.evaluate(([items, s]) => window.coverLib.sheet(items, s), [written.map(({ url, src, win }) => ({ url, src, win })), SIZE])) : null;
+    if (!check) fs.mkdirSync(outDir, { recursive: true });
+    if (sheetOut) fs.mkdirSync(path.dirname(sheetOut), { recursive: true });
 
     if (check) {
       const differ = written.filter((w) => {
@@ -276,14 +357,18 @@ async function main() {
         process.exitCode = 1;
       } else console.log(`木の絵 ${written.length} 枚とバイト単位で同じ`);
     } else {
-      fs.mkdirSync(outDir, { recursive: true });
-      const keep = new Set(written.map((w) => w.file));
-      for (const old of fs.readdirSync(outDir)) if (old.endsWith(".webp") && !keep.has(old)) fs.rmSync(path.join(outDir, old)); // 前の名前の絵を残さない
+      // 消すのは既定の書き先（この生成器だけの所）にある、表に無い名前の .webp だけ（名前を替えた表紙の前の絵）。ほかの書き先では何も消さない
+      if (samePlace(outDir, OUT_DIR)) {
+        const keep = new Set(written.map((w) => w.file));
+        const stale = fs.readdirSync(outDir).filter((f) => f.endsWith(".webp") && !keep.has(f)).sort();
+        if (stale.length) console.log(`表に無い名前の絵を消す: ${stale.join("・")}`);
+        for (const f of stale) fs.rmSync(path.join(outDir, f));
+      }
       for (const w of written) fs.writeFileSync(path.join(outDir, w.file), w.buf);
-      console.log(`→ ${path.relative(ROOT, outDir) || outDir}/`);
+      console.log(`→ ${path.relative(ROOT, outDir) || outDir}/（${written.length} 枚）`);
     }
-    if (sheetOut) {
-      fs.writeFileSync(sheetOut, bufferOf(await page.evaluate(([items, s]) => window.coverLib.sheet(items, s), [written.map(({ url, src, win }) => ({ url, src, win })), SIZE])));
+    if (sheetPng) {
+      fs.writeFileSync(sheetOut, sheetPng);
       console.log("並べた絵:", sheetOut);
     }
   } finally {
