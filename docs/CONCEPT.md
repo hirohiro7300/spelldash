@@ -114,6 +114,14 @@
 - 唯一の動きは夜のろうそくの揺らぎ（`room-flicker` 4.2s）。昼は 0。`prefers-reduced-motion: reduce` では部屋のすべての animation／transition を 0 にする（E2E が `document.getAnimations().length === 0` を見る）。
 - 初回の積んだ本の入れ替えは ≤ 200ms のクロスフェード（reduced motion で 0）。
 
+### 3.10 創業者が用意した絵（教材の表紙。2026-10-16）
+
+- 使うのは「本を足す」「本をさがす」の窓の行の左の小さな表紙だけ（390 で 21×28、600px 以上で 24×32。360px 未満は出さない）。初回の積んだ本・本棚の背・机の本には使わない（積んだ本を表紙にする案は題の字が小さくなり、1 画面目に緑と光る物が入るので保留）。
+- 表紙の全体ではなく、**絵のある下の部分を 3:4 の縦長に切り出す**（表紙の上 4 割は題の余白で、縮めると色の札になる）。書名は今どおり HTML。絵に文字を焼き込まない。絵は飾り（alt 空・aria-hidden。読み上げの行は変わらない）。
+- 色は部屋に寄せる: 全部の表紙の彩度を 0.7 倍・わずかに暖色へ。§3.2 とぶつかる表紙は追加で寄せる: 緑の地（地理・生物・簿記・古文・英語資格）は胡桃の色相へ、光る物（理科のフラスコ・物理の虹・IT とプログラミングの立方体）は彩度と明度を落とす（光るのは炎だけ）。理科の青緑の地は藍へ。寄せ方の表は `scripts/build-covers.mjs` の `GRADE`・`TUNE` の 1 か所で、元の色に戻すならその表紙の行を消して作り直す。夜は絵を 0.9 倍の明るさに（羊皮紙が 1 段暗いのに合わせる）。
+- 本 → 表紙は `js/covers.js` の表（本の id・コース・棚の既定）。名前が似ているだけでは当てない。表に無い本は背と同じ革の無地の箱（金の細線）で、題の列は揃う。セキュリティの表紙（錠と鍵穴）は有料に見えるので使わない。
+- 同じ表紙が続く棚（試験の 13 行・英単語の 6 行）も行ごとに出す（見出しに 1 枚だけでは、表紙が何種もある棚と検索の結果で表せない）。
+
 ## 4. 打つ層（「墨と朱」の原則はそのまま）
 
 ゲームカード・結果パネル・単語帳・学習データ・設定・Pro・お知らせ・法務・タイピング練習（/typing.html）・タイピングゲーム（/typing-game.html）は 2026-09-21 の原則で動く。変わったのは紙の色（`--paper` が羊皮紙）と見出しの書体（明朝 500）、そして器（天井の帯のヘッダー・羊皮紙の札・胡桃の幅木のフッター。Batch 56b）。角丸は札 3px・題箋 2px の 2 種だけ、朱は 1 画面に 1 回（現在地の菱は金）、数は Cormorant、本文・表・フォーム・利用者が打った文は `--font-ui`。
@@ -162,6 +170,7 @@
 - フォント: 自前の Shippori Mincho 500／700・Cormorant Garamond 600・IBM Plex Mono だけ（`css/fonts.css`、OFL）。ホーム 390 の初回読み込み（本棚まで）で **≤ 520KB**（典型の棚。実測 477KB・33 本）。全部足した棚（124 点。初めて来た人には起きない）は **≤ 600KB**（Batch 61）。「スタート」のかなのサブセット 2 本（119 の 500／700）を `index.html` が preload。外部リクエスト 0（CSP は self のまま）。
 - 場面の画像: 表示 1 回あたり **≤ 260KB**（実測 81–87KB: 場面の WebP 1 枚＋タイル＋SVG）。表示する場面はテーマと幅で 1 枚だけ（E2E が要求回数 1 を見る）。`index.html` のインラインの script が CSS と同じ分岐で 1 枚を preload する（LCP）。
 - 学習のランクの紋章（2026-10-15）: 21 段 × 2 種の WebP（幕 224px・1 枚 24KB 以下／行と一覧の小さい絵 96px・10KB 以下、合計 440KB 以下。実測 384.8KB〔幕用 280.1KB・小さい絵 104.7KB〕）。幕の絵は手の空いたときに、幕に出る次のランクの 1 枚を読む（Challenge／Daily は XP を回の終わりにまとめて足すので、その回で届きうる先のランクまで多くて 3 枚。回の途中でランクが変わったら次を読み直す。PR #178 のレビュー）。行は 1 枚、ランクの一覧は開いたときだけ小さい絵 21 枚（閉じている間は 0 枚）。上限は `scripts/build-emblems.mjs` の `SIZES`・`TOTAL_MAX_BYTES` の 1 か所で、`scripts/test-level.mjs` と E2E 9.955 はそれを import して見る。
+- 窓の行の小さな表紙（2026-10-16）: 22 枚の WebP（48×64・不透明・1 枚 2.5KB 以下・合計 40KB 以下。実測 22.7KB、1 枚 0.82〜1.25KB）。上限は `scripts/build-covers.mjs` の `SIZE`・`TOTAL_MAX_BYTES` で、超えたら書かずに止める（E2E 8.6 窓の表紙が import して同じ値で見る）。窓を開くまで要求 0、読むのは開いた棚の行の絵だけ（`loading="lazy"`・`fetchpriority="low"`。閉じた見出しと 360px 未満〔display:none〕では読まない）。箱の大きさは決まっていて CLS 0。読めなかった絵（404・つながらない・SW にまだ無い）は外して革の無地の箱にする（Chromium は alt 空でも大きさのある `<img>` に壊れた絵の印を描くので、残さない）。行は崩れない。360〜599px は表紙の幅の分を窓の外の余白（ブラウザの dialog の max-width を外して CSS のとおり 10px に）と札の内側の余白（20 → 15px）から取り、題の列の幅は前と同じ（書名の行数が変わらない）。
 - a11y: 文字は AA（`--ink-3` 6.6:1、朱の文字 5.7:1、スタート 4.77:1 以上、箔の文字 5.4:1 以上）、押せる物は `<button>` に名前、`:focus-visible` が見える、reduced motion で動き 0、横スクロール無し（admin を除く全ページ × 320／360／390／568／600／640。Batch 67）、目次は DOM 順（本 → 札）、本棚は 1 つの roving tabindex（整理の札も）。
 - 390×844 で 1 画面目にスタートが 1 つ・全幅（実測: 下端 651px・幅 306px。初回は 567px）。1200×900 でも 1 画面目（619px）。
 - 初回（学習記録の無い端末）の書斎は、最初の描画から初回の本を出す。`index.html` の `<head>` の 1 行（`id="firstVisit"`。テーマの 1 行と同じく CSS より前）が判定して `html[data-first-visit]` を置き、`css/welcome.css`（1100px 以上の格子は `css/room.css`）が `#main` を隠し `#welcome` を出す（ページの中の置き場所に頼らない）。`js/welcome.js` `setWelcomeOpen` が hidden に置き換えて印を外し、読み込み時に状態を覚える js（本棚・部屋の sticky）は `isWelcomeOpen` で読む。判定は `shouldShowWelcome` と同じ条件（語の記録の空の文字列・null は記録なし、壊れた JSON は初回と見ない）で、E2E が同じ状態の表 144 通りで 2 つを突き合わせる。判定の条件を変えるときは両方を変える。食い違ったら `renderWelcome` が机に戻す。積んだ本は `index.html` に静的に置く（`welcomePileHtml` と同じ中身。E2E が突き合わせる。空きの高さを手で数えない）。初回の CLS は 1200×900・1200×1100・390 で < 0.02（全応答 80ms 遅延。Batch 66）、実測は 1200×900 0.0011・1200×1100 0.0023・1920×1080 0.0011・390 0（PR #168 のレビュー）。戻ってきた人の 390 は 0。
@@ -182,6 +191,7 @@
 | ≥1100 の机の列の sticky | `js/room.js` |
 | 場面の絵（SVG → WebP・SVG の飾り・タイル・アバター） | `scripts/room-art/`（`render.mjs`・`render-avatar.mjs`・`build-art.mjs`・`tiles.mjs`・`hachan.mjs`）→ `assets/images/room/`。`scripts/` はデプロイしない |
 | 予算の表 | `scripts/room-budget.mjs` |
+| 窓の行の小さな表紙（教科の表紙の絵） | 表 `js/covers.js`、行 `js/bookshelf.js` の `covHtml`、`css/bookshelf.css` の `.finder__cov`、絵 `node scripts/build-covers.mjs --src <元の PNG の置き場>` → `assets/images/covers/`（`--check` で作り直しがバイト単位で同じかを見る） |
 | 学習のランク（木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3 の 21 段と紋章。ランクアップの幕〔112px〕・学習データの行〔28px〕・ランクの一覧〔32px。開いたときだけ絵を読む〕。絵は飾りで、名前の文字は残す。ランクは記録せずレベルから毎回決める・下がらない。Battle の RP のランクとは別） | ランクの表と決まり `js/level.js`（`LEARNING_RANK_TIERS`・`LEARNING_RANKS`・`learningRankOf`・`nextLearningRankOf`。純粋な関数。`scripts/test-level.mjs`。語の習熟度の `rankOf`〔js/mastery.js〕・Battle の `RANKS`〔js/battleConfig.js〕と名前を分ける）、絵の URL・出し方・先読み `js/emblem.js`、行と一覧 `js/levelUi.js`、`css/game.css` `.rank-up`・`css/pages.css` `.level-bar__emblem`・`.rank-list`、絵は創業者が用意した 21 枚を `scripts/build-emblems.mjs --src <元の絵の置き場>` → `assets/images/emblems/` |
 | 部屋以外のページ（単語帳・学習データ・設定・Pro・お知らせ・法務・パックの入口） | 帯と幅木・ボタンとフォームの皮は `css/brand.css`（`body:not(.page-room)` 付き）、札・題箋・タブ・表は `css/pages.css` 末尾の「書斎の読む机」の節と `css/pro.css`、Battle は `css/battle.css`（色と面だけ）。HTML・JS・ホームの CSS は触らない |
 
