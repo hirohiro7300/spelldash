@@ -19,8 +19,7 @@ import { resumableFor } from "./sessionResume.js";
 //   NG:「来てくれないと思った…」「寂しかった…」「会いたかった…」
 // - 数字と矛盾することを言わない（結果の一言は前回比で分岐する）
 
-// 丸いアバター: 創業者が用意した絵の顔（ふつう = 006 お出迎え・うれしい = 008 学習成功）。img は 32×32 で、枠 1px の内側の 30 CSS px に描くので、
-// 30・60・90px の WebP を 1x・2x・3x で渡す（scripts/build-hasumi.mjs）。1 画面で読むのは srcset が選ぶ 1 枚
+// 丸いアバター（32px）: 創業者が用意した絵の顔（ふつう = 006 お出迎え・うれしい = 008 学習成功）。32・64px の WebP（scripts/build-hasumi.mjs）
 const AVATAR = {
   normal: "./assets/images/hasumi-normal.webp",
   happy: "./assets/images/hasumi-happy.webp"
@@ -28,10 +27,6 @@ const AVATAR = {
 const AVATAR_2X = {
   normal: "./assets/images/hasumi-normal@2x.webp",
   happy: "./assets/images/hasumi-happy@2x.webp"
-};
-const AVATAR_3X = {
-  normal: "./assets/images/hasumi-normal@3x.webp",
-  happy: "./assets/images/hasumi-happy@3x.webp"
 };
 
 function pick(lines) {
@@ -148,10 +143,9 @@ export function hasumiWeeklyLine(r) {
 
 // 吹き出しUI（アバター＋一言）を組み立てる共通部品
 export function hasumiBubbleHtml({ mood, text }, extraClass = "") {
-  const m = AVATAR[mood] ? mood : "normal";
   return `
     <div class="hasumi ${extraClass}">
-      <img class="hasumi__avatar" src="${AVATAR[m]}" srcset="${AVATAR_2X[m]} 2x, ${AVATAR_3X[m]} 3x" alt="はちゃん" width="32" height="32" />
+      <img class="hasumi__avatar" src="${AVATAR[mood] ?? AVATAR.normal}" srcset="${AVATAR_2X[mood] ?? AVATAR_2X.normal} 2x" alt="はちゃん" width="32" height="32" />
       <div class="hasumi__bubble">${text}</div>
     </div>
   `;

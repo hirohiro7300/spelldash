@@ -394,6 +394,20 @@ eq("11 移行 M1-② 既定のコース以外の前のコースは記録で（�
   ok("deskKey 目録に無い机は null", S.deskKey(snapOf({ desk: "zzz-none" })) === null);
 }
 
+// 窓の行の表紙の表（js/covers.js coverOf）: 無ければ null。棚の id が空文字でも、id が Object.prototype の名前でも、表の外の物を返さない
+{
+  const C = await import("../js/covers.js");
+  eq("covers 表にある本・コース・棚の id が空文字でも本の表で引く", [C.coverOf("b:jhist1"), C.coverOf("c:eiken"), C.coverOf("b:jhist1", ""), C.coverOf("jhist1", "social")], ["history", "exam", "history", "history"]);
+  eq("covers 表に無い本・棚の id が空文字・null・無い棚は null（空文字を返さない）", [C.coverOf("b:zzz-none", ""), C.coverOf("b:zzz-none", null), C.coverOf("b:zzz-none"), C.coverOf("b:zzz-none", "zzz"), C.coverOf("c:zzz-none")], [null, null, null, null, null]);
+  const PROTO = ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "isPrototypeOf"];
+  eq("covers 本の id が Object.prototype の名前でも null", PROTO.map((id) => C.coverOf(`b:${id}`)), PROTO.map(() => null));
+  eq("covers コースの id が Object.prototype の名前でも null", PROTO.map((id) => C.coverOf(`c:${id}`)), PROTO.map(() => null));
+  eq("covers 棚の id が Object.prototype の名前でも null", PROTO.map((id) => C.coverOf("b:zzz-none", id)), PROTO.map(() => null));
+  eq("covers key に b:／c: が無い id が Object.prototype の名前でも null", PROTO.map((id) => C.coverOf(id)), PROTO.map(() => null));
+  const names = new Set([...Object.values(C.BOOK_COVER), ...Object.values(C.COURSE_COVER), ...Object.values(C.SHELF_COVER)]);
+  ok("covers 返すのは null か表の表紙の名前（文字列）だけ", [...Object.keys(C.BOOK_COVER).map((id) => C.coverOf(`b:${id}`)), ...Object.keys(C.COURSE_COVER).map((id) => C.coverOf(`c:${id}`))].every((n) => typeof n === "string" && names.has(n)));
+}
+
 if (failures.length) {
   console.error(`test-shelf: ${failures.length} failed, ${passed} passed\n  ${failures.join("\n  ")}`);
   process.exit(1);

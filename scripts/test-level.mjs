@@ -103,8 +103,8 @@ eq("小さい絵の URL（神 3 → god-3-sm.webp）", E.emblemSrc(rankOf(92), {
 eq("レジェンドの絵は legend-<n>（元の絵の名前の legend-rainbow ではない）", E.emblemSrc(rankOf(57)), "/assets/images/emblems/legend-2.webp");
 eq("知らないランク・空は空の URL（絵を出さない）", [null, undefined, {}, { tier: "x", step: 1 }, { tier: "wood", step: 4 }, "木 1"].map((r) => E.emblemSrc(r)), ["", "", "", "", "", ""]);
 const dir = path.join(ROOT, "assets/images/emblems");
-// WebP の画素の大きさ（scripts/lib/canvas-art.mjs の webpSize。生成器・E2E と同じ読み方）
-const { webpSize } = await import("./lib/canvas-art.mjs");
+// WebP の画素の大きさ（VP8X の canvas。build-emblems の絵は透過つきなので VP8X）
+const webpSize = (buf) => (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 12, 16) === "VP8X" ? [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)] : null);
 let total = 0;
 for (const r of L.LEARNING_RANKS ?? []) for (const size of B.SIZES ?? []) {
   const small = size.suffix === "-sm";
