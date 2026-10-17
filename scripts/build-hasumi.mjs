@@ -28,7 +28,6 @@ import { chromium } from "playwright-core";
 import { stripIcc, findChromium } from "./build-emblems.mjs";
 import { bakeScenes, writeOrCheck, FIGURE_FILE, SCENE_MAX_BYTES } from "./room-art/render.mjs";
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 // 元の絵のファイル名
 export const SOURCES = { normal: "006-welcome.png", happy: "008-success.png", reading: "010-reading.png" };
 // 配信するアバター（js/hasumi.js の AVATAR・AVATAR_2X と同じ名前。E2E が突き合わせる）。表示は 32 CSS px の丸（css/pages.css・card.css）、1x と 2x
