@@ -49,7 +49,7 @@ const FACE = { cx: 666, cy: 400, side: 440 };
 export const SRC_SIZE = 1254;
 // 010 の本の光: 頁の上の楕円（中心・半径・ぼかしの幅）に黄の補色（薄い藤色）を掛ける。
 // 霞: 楕円を haze 倍に広げた中で、不透明さ hazeAlpha 未満・明るさ（平均）hazeLum 以上の画素のうち、不透明な画素（solid 以上）から near px より離れた物だけ消す
-// （本体から離れて浮く光の霞。頁・襟・金の縁のなめらかな縁は不透明な画素に接しているので残る。手元の 010: 頁の縁の明るい半透明は 1〜2px、霞は頁から 3px 以上）
+// （本体から離れて浮く光の霞。頁・襟・金の縁のなめらかな縁は不透明な画素に接しているので残る。手元の 010: 頁の縁の明るい半透明は不透明な頁から 1〜2px、霞の 7 割は 12px より遠い）
 const DEGLOW = { cx: 790, cy: 700, rx: 210, ry: 105, feather: 80, color: "#C9C2E8", haze: 1.35, hazeAlpha: 160, hazeLum: 150, solid: 200, near: 2 };
 
 // ---- ページの中で動く関数（canvas）。引数と戻り値は文字列と数だけ。decode・canvasOf・resizeTo は PAGE_CANVAS（scripts/lib/canvas-art.mjs） ----
