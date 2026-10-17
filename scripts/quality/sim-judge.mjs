@@ -13,9 +13,11 @@
 //   reading  ほかの読み（accept のかな・英字の読み。ローマ字のカード）
 //   accept   データの別解（綴り入力・全文入力のカード。綴り入力で打てない字〔日本語〕を含むものは untypeable）
 //   alt      別解の索引の語（同じ訳の別の語。綴り入力のカード）
-//   kanjiAccept  漢字の別解（読みが書かれていない。ローマ字のカード）を、データの中の読み（同じ字面を答えにするカードの主な読み）で打ったもの。
-//                sub = short（答えの漢字の先頭部分。直列／直列回路）・same（漢字の並びが同じ。「の」の有無）・
-//                other（別の語: 電子線／陰極線）。読みが分からない別解は数えない（規則 Q04 が見る）
+//   kanjiAccept  漢字の別解（ローマ字のカード）を、その読みで打ったもの。sub = bound（カードの acceptReadings で別表記に結んだ読み。
+//                docs/PACK_FORMAT.md「別表記の読み」。結んだ読み 1 つごとに 1 行。ほかの行と同じ読みでも数える＝打てるようになった別表記の数）と、
+//                データの中の読み（同じ字面を答えにするカードの主な読み。その読みがこのカードの読みに無いときだけ）で打った
+//                short（答えの漢字の先頭部分。直列／直列回路）・same（漢字の並びが同じ。「の」の有無）・other（別の語: 電子線／陰極線）。
+//                読みが分からない別解は数えない（規則 Q04 が見る）
 // 競合語（rival＝打つと × になりうる語。表にだけ出す。記録が無くても欠陥の候補を全数で出す「競合語の表」）:
 //   otherPack     同じ id の他のカテゴリのカードにある答え・別解（綴り）・読み（ローマ字）で、このカードの候補に無いもの
 //   packAlt       全パックを有効にすると別解になるが、このカードの盤面（基本＋そのパック）では候補に無い語（有効にしたパックで正解が変わる）
@@ -28,7 +30,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadContext } from "./ctx.mjs";
-import { kanjiOf } from "./common.mjs";
+import { kanjiOf, acceptReadingsOf } from "./common.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const OWN_KINDS = ["answer", "reading", "accept", "alt", "kanjiAccept"];
@@ -158,10 +160,17 @@ export function simulate(ctx, { judge = ctx.modules.judge, answers = ctx.modules
         push(w, mode, input, text, keys, run(judge, w, [], keys), sub);
       };
       const ka = kanjiOf(w.en);
+      const bound = acceptReadingsOf(w);
       for (const a of Array.isArray(w.accept) ? w.accept : []) {
         if (romaji.isReading(romaji.normalizeReading(a))) continue;
         const kb = kanjiOf(a);
         if (!kb) continue;
+        // 結んだ読み（acceptReadings）: 別表記 1 つ・読み 1 つごとに、その読みを打つ（読みの形でなければ untypeable）
+        for (const r of bound.get(a) ?? []) {
+          const n = romaji.normalizeReading(r);
+          const keys = romaji.isReading(n) ? canon(n) : null;
+          push(w, mode, "kanjiAccept", a, keys, keys ? run(judge, w, [], keys) : { how: "untypeable", at: 0 }, "bound");
+        }
         const reading = readingOfText(a);
         if (!reading) continue;
         const sub = kb === ka ? "same" : ka.startsWith(kb) ? "short" : "other";

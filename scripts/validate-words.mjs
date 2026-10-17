@@ -1,12 +1,23 @@
 // 単語データの機械検証。データ編集後に実行する:
-//   node scripts/validate-words.mjs
+//   node scripts/validate-words.mjs                 この木の data/ を検証する
+//   node scripts/validate-words.mjs --strict-bind   学校のパックと基本カテゴリで、読みでない別表記をすべて acceptReadings に結んでいるかも見る
+//                                                   （docs/PACK_FORMAT.md「別表記の読み」。Batch 71 の段 3 で既定にする）
+//   node scripts/validate-words.mjs --root=<木>     その木の data/ を検証する（検査は js/ をこの木から読む。scripts/quality/test-check.mjs が写しで流す）
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
+import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, isReading, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
 import { shelfIdOf } from "../js/shelves.js";
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const argv = process.argv.slice(2);
+const unknownArgs = argv.filter((a) => a !== "--strict-bind" && !a.startsWith("--root="));
+if (unknownArgs.length) {
+  console.error(`知らない引数: ${unknownArgs.join(" ")}（使い方は scripts/validate-words.mjs の先頭）`);
+  process.exit(2);
+}
+const STRICT_BIND = argv.includes("--strict-bind");
+const rootArg = argv.find((a) => a.startsWith("--root="));
+const ROOT = rootArg ? path.resolve(rootArg.slice("--root=".length)) : path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = path.join(ROOT, "data", "english");
 const PACK_DIR = path.join(ROOT, "data", "packs");
 const files = [
@@ -60,6 +71,52 @@ function checkReadings(w, where) {
     if (!res || res.missAt !== -1 || res.finished === null) problems.push(`読みを打ち終えられない ${where} (${r} / ${keys})`);
   }
 }
+// 漢字の別表記の読み（acceptReadings。docs/PACK_FORMAT.md「別表記の読み」）: { "<accept の別表記>": "<読み>" | ["<読み>", …] }。
+//  ・形: オブジェクト。値は読み 1 つの文字列か、読みの文字列の空でない配列。日本語の答えのカード（kanjiOnly・計算・英作文・穴埋めを除く）だけ
+//  ・別表記は accept にそのままある（書き違い・外した後の古い記録を止める）・読みでない（読みに読みは要らない）・かなか漢字を含む（英字の別解は結ばない）
+//  ・読みはひらがなを含む読みで、重複せず、カードの読みの候補（[answer, ...accept] の読み）にある（読みの足し忘れ。判定は accept の読みだけで打つ）
+//  ・どの読みも打ち終えられるかは上の checkReadings が、別表記の形に合うか・判定器で × にならないかは品質の規則 Q04・Q05 が見る
+// 学校のパック（cardType: "school"）と基本カテゴリ（data/english）では、読みでない別表記（かなか漢字を含む）をすべて結ぶ（--strict-bind のときだけ。
+// 規則 Q04 が数えない「漢字の並びが同じ」型〔取り締まり役／取締役〕も、ここでふさぐ）
+let boundAlts = 0;
+let unboundStrict = 0;
+const isJapaneseCard = (w, cardType) => w.kind === "concept" && !w.calc && !w.kanjiOnly && cardType !== "writing" && cardType !== "grammar" && hasJapaneseScript(w.answer);
+function checkAcceptReadings(w, where, { cardType, strict }) {
+  const m = w.acceptReadings;
+  const accept = Array.isArray(w.accept) ? w.accept : [];
+  if (m != null) {
+    if (typeof m !== "object" || Array.isArray(m)) problems.push(`acceptReadings の形（オブジェクト） ${where}`);
+    else if (!isJapaneseCard(w, cardType)) problems.push(`acceptReadings は日本語の答えのカードだけ ${where}`);
+    else {
+      const cands = readingEntries(w).map((e) => e.reading);
+      for (const [alt, v] of Object.entries(m)) {
+        const list = typeof v === "string" ? [v] : Array.isArray(v) && v.length && v.every((x) => typeof x === "string") ? v : null;
+        if (!list) {
+          problems.push(`acceptReadings の値（読みか読みの配列） ${where} (${alt})`);
+          continue;
+        }
+        boundAlts++;
+        if (!accept.includes(alt)) problems.push(`acceptReadings の別表記が accept に無い ${where} (${alt})`);
+        if (isReading(normalizeReading(alt))) problems.push(`acceptReadings の別表記が読み（読みに読みは要らない） ${where} (${alt})`);
+        else if (!hasJapaneseScript(alt)) problems.push(`acceptReadings の別表記にかなも漢字も無い ${where} (${alt})`);
+        if (new Set(list.map(normalizeReading)).size !== list.length) problems.push(`acceptReadings の読みが重複 ${where} (${alt})`);
+        for (const r of list) {
+          const n = normalizeReading(r);
+          if (!isReading(n) || !hasKana(n)) problems.push(`acceptReadings の読みがひらがなの読みでない ${where} (${alt}: ${r})`);
+          else if (!cands.includes(n)) problems.push(`acceptReadings の読みが accept に無い ${where} (${alt}: ${r})`);
+        }
+      }
+    }
+  }
+  if (!strict || !isJapaneseCard(w, cardType)) return;
+  const bound = m && typeof m === "object" && !Array.isArray(m) ? m : {};
+  for (const a of accept) {
+    if (typeof a !== "string" || !hasJapaneseScript(a) || isReading(normalizeReading(a)) || Object.prototype.hasOwnProperty.call(bound, a)) continue;
+    unboundStrict++;
+    if (STRICT_BIND) problems.push(`学校・基本の別表記に読みを結んでいない ${where} (${a})`);
+  }
+}
+
 const allIds = new Set();
 const entries = [];
 let total = 0;
@@ -161,6 +218,7 @@ for (const fullPath of files) {
     if (!["easy", "normal", "hard"].includes(w.level)) problems.push(`level不正 ${where}`);
     // 日本語の答え: 漢字に変換せず、読みをローマ字で打つ（js/romaji.js）。読み（ひらがな）が accept に必要
     if (w.kind === "concept" && !w.calc && !w.kanjiOnly && hasJapaneseScript(w.answer)) checkReadings(w, where);
+    checkAcceptReadings(w, where, { cardType: data.cardType, strict: !isPack || data.cardType === "school" });
     // 訳に見出し語そのものを書かない（出題文に答えが出てしまい、思い出す練習にならない）。
     // 連語を示したいときは「〜に代わって（on ___ of）」のように見出し語を伏せる。
     if (w.en && String(w.ja ?? "").toLowerCase().includes(String(w.en).toLowerCase())) {
@@ -234,11 +292,12 @@ for (const [file, w] of entries) {
   }
 }
 
-console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${familyById.size} / 日本語の答え: ${readingCards}枚（読み ${readingCount}）`);
+console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${familyById.size} / 日本語の答え: ${readingCards}枚（読み ${readingCount}・読みを結んだ別表記 ${boundAlts}）`);
+console.log(`学校・基本で読みを結んでいない別表記: ${unboundStrict}件${STRICT_BIND ? "（--strict-bind）" : "（--strict-bind で NG）"}`);
 if (problems.length === 0) {
   console.log("OK: 問題なし");
 } else {
   console.log(`NG: ${problems.length}件`);
   problems.forEach((p) => console.log("  " + p));
-  process.exit(1);
+  process.exitCode = 1; // exit() は標準出力を書き切る前に終わることがある（パイプ）
 }
