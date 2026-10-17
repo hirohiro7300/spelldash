@@ -17,6 +17,7 @@ import { syncModulePreload, baseDataFiles, WORD_PAGES } from "../scripts/modulep
 import { canonicalRomaji, readingEntries, primaryReading, matchRomaji } from "../js/romaji.js";
 import { FEEDBACK_MS, ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS, GLANCE_MS, MILESTONE_MS, waitAfterCorrect } from "../js/afterCorrect.js";
 import { shelfIdOf } from "../js/shelves.js";
+import { webpSize, webpAlpha } from "../scripts/lib/canvas-art.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STUB = path.join(ROOT, "tests", "mocks", "supabase-stub.js");
@@ -297,14 +298,12 @@ function pngInfo(file) {
   return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), bytes: buf.length };
 }
 const isOgPng = (info) => !!info && info.w === 1200 && info.h === 630 && info.bytes <= 300 * 1024;
-// WebP の頭（VP8X・VP8・VP8L）の幅・高さと大きさ。読めない・WebP でなければ null
+// WebP のファイルの幅・高さ・透過（scripts/lib/canvas-art.mjs の webpSize・webpAlpha。生成器と同じ読み方）と大きさ。無い・WebP でなければ null
 function webpInfo(file) {
   if (!file || !fs.existsSync(file)) return null;
   const buf = fs.readFileSync(file);
-  if (buf.length < 30 || buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WEBP") return null;
-  const t = buf.toString("ascii", 12, 16), l = buf.readUInt32LE(21);
-  const [w, h] = t === "VP8X" ? [buf.readUIntLE(24, 3) + 1, buf.readUIntLE(27, 3) + 1] : t === "VP8 " ? [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff] : t === "VP8L" ? [(l & 0x3fff) + 1, ((l >> 14) & 0x3fff) + 1] : [0, 0];
-  return { w, h, bytes: buf.length };
+  const size = webpSize(buf);
+  return size ? { w: size[0], h: size[1], bytes: buf.length, alpha: webpAlpha(buf) } : null;
 }
 
 function check(name, ok, detail = "") {
@@ -366,8 +365,19 @@ async function watchWriters(page) {
 }
 const writesOf = (page, fn) => page.evaluate((f) => (window.__writes ?? []).filter((w) => !f || w.fn === f), fn);
 
+// 表示中の書斎の場面（.room__scene の 1 枚）の WebP: 名前・種類（phone／short／desk）・バイト（fetch で読み直す）。上限は scripts/room-art/render.mjs の SCENE_MAX_BYTES[kind]
+const shownSceneBytes = (page) => page.evaluate(async () => {
+  const el = [...document.querySelectorAll(".room__scene")].find((e) => getComputedStyle(e).display !== "none");
+  const url = el && getComputedStyle(el).backgroundImage.match(/url\("?([^")]+)"?\)/)?.[1];
+  if (!url) return { ok: false };
+  const res = await fetch(url);
+  const file = url.split("/").pop();
+  return { ok: res.ok, bytes: (await res.arrayBuffer()).byteLength, url: file, kind: file.match(/^scene-(phone|short|desk)-/)?.[1] ?? null };
+});
+
 // はちゃんの丸いアバター（js/hasumi.js hasumiBubbleHtml。結果のパネル・週間レポート・学習中の知らせ #learnToast）: scope の中の img.hasumi__avatar の状態。
-// 読み込みを待ってから（上限 2 秒）、属性・選ばれた絵（currentSrc）・画素（naturalWidth は 2x の絵でも CSS px）・表示の箱・読み上げの名前（role img・名前「はちゃん」の数）
+// 読み込みを待ってから（上限 2 秒）、属性・選ばれた絵（currentSrc）・naturalWidth（x の記述子で割った CSS px）・選ばれた絵の画素（px: srcset なしで読み直した幅）・
+// 描く中身（cw: 枠の内側の clientWidth）・表示の箱・このページで読んだアバターのファイル（reqs）・読み上げの名前（role img・名前「はちゃん」の数）
 async function hasumiAvatarOf(page, scope) {
   const a = await page.evaluate(async (sel) => {
     const imgs = [...document.querySelectorAll(`${sel} img.hasumi__avatar`)];
@@ -375,19 +385,24 @@ async function hasumiAvatarOf(page, scope) {
     if (!el) return { n: 0 };
     if (!el.complete) await new Promise((r) => { el.addEventListener("load", r, { once: true }); el.addEventListener("error", r, { once: true }); setTimeout(r, 2000); });
     const r = el.getBoundingClientRect();
-    return { n: imgs.length, src: el.getAttribute("src"), srcset: el.getAttribute("srcset"), current: el.currentSrc.split("/").pop(), nw: el.naturalWidth, nh: el.naturalHeight, w: el.getAttribute("width"), h: el.getAttribute("height"), box: [Math.round(r.width), Math.round(r.height)], alt: el.getAttribute("alt"), dpr: devicePixelRatio };
+    const reqs = performance.getEntriesByType("resource").map((e) => e.name.split("/").pop()).filter((n) => /^hasumi-(normal|happy)(@[23]x)?\.webp$/.test(n));
+    const probe = new Image();
+    probe.src = el.currentSrc;
+    await probe.decode().catch(() => {});
+    return { n: imgs.length, src: el.getAttribute("src"), srcset: el.getAttribute("srcset"), current: el.currentSrc.split("/").pop(), nw: el.naturalWidth, nh: el.naturalHeight, px: probe.naturalWidth, cw: el.clientWidth, ch: el.clientHeight, w: el.getAttribute("width"), h: el.getAttribute("height"), box: [Math.round(r.width), Math.round(r.height)], alt: el.getAttribute("alt"), dpr: devicePixelRatio, reqs };
   }, scope);
   a.named = a.n ? await page.locator(scope).getByRole("img", { name: "はちゃん", exact: true }).count().catch(() => -1) : 0;
   return a;
 }
-// 新しい絵か（avatars = scripts/build-hasumi.mjs の AVATARS。mood を渡せばその気分の絵、null ならどちらか）: src は 1x・srcset は 2x の対、選ばれた絵は画面の倍率の物、
-// 画素は 32 CSS px、width／height 32・表示 32×32（枠 1px を含む。前の絵と同じ）・alt「はちゃん」・読み上げの名前 1 つ
+// 新しい絵か（avatars = scripts/build-hasumi.mjs の AVATARS。mood を渡せばその気分の絵、null ならどちらか）: src は 1x・srcset は 2x と 3x、選ばれた絵は画面の倍率（1・2・3）の物で、
+// その画素は描く中身（枠 1px の内側の 30 CSS px）× 倍率。width／height 32・表示 32×32（枠を含む。前と同じ）・alt「はちゃん」・読み上げの名前 1 つ
 function isNewHasumiAvatar(a, avatars, mood = null) {
   if (!a || a.n !== 1 || !avatars?.length) return false;
-  const pair = ["normal", "happy"].filter((m) => !mood || m === mood).map((m) => [avatars.find((x) => x.mood === m && x.px === 32), avatars.find((x) => x.mood === m && x.px === 64)])
-    .find(([one, two]) => one && two && a.src === `./${one.rel}` && a.srcset === `./${two.rel} 2x`);
-  if (!pair) return false;
-  return a.current === pair[a.dpr >= 2 ? 1 : 0].rel.split("/").pop() && a.nw === 32 && a.nh === 32 && a.w === "32" && a.h === "32" && a.box[0] === 32 && a.box[1] === 32 && a.alt === "はちゃん" && a.named === 1;
+  const set = ["normal", "happy"].filter((m) => !mood || m === mood).map((m) => [1, 2, 3].map((d) => avatars.find((x) => x.mood === m && x.dpr === d)))
+    .find(([one, two, three]) => one && two && three && a.src === `./${one.rel}` && a.srcset === `./${two.rel} 2x, ./${three.rel} 3x`);
+  const want = set?.[[1, 2, 3].indexOf(a.dpr)];
+  if (!want) return false;
+  return a.current === want.rel.split("/").pop() && a.px === want.px && a.px === a.cw * a.dpr && a.cw === a.ch && a.nw === a.cw && a.w === "32" && a.h === "32" && a.box[0] === 32 && a.box[1] === 32 && a.alt === "はちゃん" && a.named === 1;
 }
 
 // 読み込みの CLS（Batch 67 C1。単語帳・学習データ・加入画面）: 全応答を delay ms 遅らせて開き（scratchpad/perf-delay.mjs の作法）、load から wait ms のあいだの
@@ -1063,15 +1078,10 @@ console.log("home widgets:");
   check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
   // はちゃん（ホーム一言）: 吹き出し＋アバター画像がロードされている
   check("はちゃんのホーム一言表示（窓の脇の紙片に 1 文）", (await page.isVisible("#hasumiHome .hasumi__bubble")) && ((await page.textContent("#hasumiHome .hasumi__bubble")) ?? "").trim().length > 0);
-  // はちゃん本人は部屋の絵（焼いた WebP。scripts/room-art/render.mjs）の中。表示中の場面の背景画像が読めていて 60KB 以下
-  const scene = await page.evaluate(async () => {
-    const el = [...document.querySelectorAll(".room__scene")].find((e) => getComputedStyle(e).display !== "none");
-    const url = el && getComputedStyle(el).backgroundImage.match(/url\("?([^")]+)"?\)/)?.[1];
-    if (!url) return { ok: false };
-    const res = await fetch(url);
-    return { ok: res.ok, bytes: (await res.arrayBuffer()).byteLength, url: url.split("/").pop() };
-  });
-  check("はちゃんは部屋の絵の中（表示中の場面の WebP が読めて 60KB 以下）", scene.ok && scene.bytes > 0 && scene.bytes <= 60 * 1024, JSON.stringify(scene));
+  // はちゃん本人は部屋の絵（焼いた WebP。scripts/room-art/render.mjs）の中。表示中の場面の背景画像が読めていて、その場面の 1 枚の上限（render.mjs の SCENE_MAX_BYTES）以下
+  const { SCENE_MAX_BYTES: SCENE_MAX4 = {} } = await import("../scripts/room-art/render.mjs").catch(() => ({}));
+  const scene = await shownSceneBytes(page);
+  check(`はちゃんは部屋の絵の中（表示中の場面の WebP が読めて、その場面の上限以下。${scene.kind ?? "?"} ${(SCENE_MAX4[scene.kind] ?? 0) / 1024}KB）`, scene.ok && scene.bytes > 0 && scene.bytes <= (SCENE_MAX4[scene.kind] ?? 0), JSON.stringify(scene));
   await page.close();
 
   // 腕試しの途中で何語か答えて閉じた人（placement=started のまま）: 翌日のホームで「まず腕試し10語から。」を言い続けない
@@ -1107,6 +1117,8 @@ console.log("home widgets:");
 // ===== 5. Challenge: 完走でリザルトパネル =====
 console.log("challenge result:");
 {
+  // はちゃんの顔の名前は生成器の値（scripts/build-hasumi.mjs の AVATARS。ふつう 006／うれしい 008 の丸）。import は流れの前に済ませる
+  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const page = await newPage();
   await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
@@ -1114,10 +1126,9 @@ console.log("challenge result:");
   await page.waitForTimeout(3800);
   check("リザルトパネル表示", await page.isVisible("#resultPanel"));
   check("リザルトにはちゃんの一言", await page.isVisible("#resultPanel .hasumi__bubble"));
-  // はちゃんの顔は創業者が用意した絵（scripts/build-hasumi.mjs の AVATARS。ふつう 006／うれしい 008 の 32px の丸）
-  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
+  // はちゃんの顔は創業者が用意した絵（パネルは「もう一回」まで残るので、待っても時間に敏感な検査は無い）
   const hsAv = await hasumiAvatarOf(page, "#resultPanel");
-  check("リザルトのはちゃんは新しい顔（1x／2x の WebP の対・32px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(hsAv, HS_AV), JSON.stringify(hsAv));
+  check("リザルトのはちゃんは新しい顔（1x／2x／3x の WebP・描く 30 CSS px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(hsAv, HS_AV), JSON.stringify(hsAv));
   check("もう一回でパネルが消える", await page.click("#resultRetry").then(async () => {
     await page.waitForTimeout(300);
     return !(await page.isVisible("#resultPanel"));
@@ -4847,6 +4858,9 @@ console.log("study (foundation):");
 // ===== 8.6 書斎（部屋・机の本・初回）: 1 画面目・場面は 1 枚・予算・横スクロール無し・動き・夜・紙片・積んだ本（css/room.css・js/pathView.js・js/welcome.js） =====
 console.log("study (room):");
 {
+  // 場面 1 枚の上限は焼く台本の値（desk 50KB・phone 40KB・short 32KB。import しても Chromium は立ち上がらない）
+  const { SCENE_MAX_BYTES: SCENE_MAX = {} } = await import("../scripts/room-art/render.mjs").catch(() => ({}));
+  const underMax = (s) => !!s.ok && s.bytes > 0 && s.bytes <= (SCENE_MAX[s.kind] ?? 0);
   const jhs1R0 = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
   const tagsR0 = [...new Set(jhs1R0.map((w) => w.tags[0]))];
   const doneR0 = new Set(tagsR0.slice(0, 3));
@@ -4882,7 +4896,9 @@ console.log("study (room):");
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(600);
     const sc = await sceneState(page);
-    check(`書斎（390・${theme}）: 部屋の帯が見え、場面は 1 枚だけ読む`, sc.stageVisible && sc.shown === 1 && sceneRequests.length === 1, JSON.stringify({ ...sc, sceneRequests }));
+    const reqs390 = [...sceneRequests]; // バイトを読み直す fetch の前に数える
+    const bytes390 = await shownSceneBytes(page);
+    check(`書斎（390・${theme}）: 部屋の帯が見え、場面は 1 枚だけ読み、その 1 枚は phone の上限（${(SCENE_MAX.phone ?? 0) / 1024}KB）以下`, sc.stageVisible && sc.shown === 1 && reqs390.length === 1 && bytes390.kind === "phone" && underMax(bytes390), JSON.stringify({ ...sc, sceneRequests: reqs390, bytes390 }));
     const start = await page.evaluate(() => { const r = document.getElementById("pathStart")?.getBoundingClientRect(); return { n: document.querySelectorAll("#pathStart").length, bottom: r?.bottom, width: r?.width, text: document.getElementById("pathStart")?.textContent.trim() }; });
     check(`書斎（390・${theme}）: スタートは 1 個・全幅・1 画面目（下端 ≤ 700px）`, start.n === 1 && start.width >= 300 && start.bottom <= 700 && start.text === "スタート", JSON.stringify(start));
     check(`書斎（390・${theme}）: 目次（#pathList）はスタートの下に見えている`, (await page.isVisible("#pathList .path__list")) && (await page.evaluate(() => document.querySelector("#pathList").getBoundingClientRect().top > document.getElementById("pathStart").getBoundingClientRect().bottom)));
@@ -4929,7 +4945,8 @@ console.log("study (room):");
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(500);
     const w = await page.evaluate(() => ({ scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth, start: document.getElementById("pathStart").getBoundingClientRect().width, shown: [...document.querySelectorAll(".room__scene")].filter((e) => getComputedStyle(e).display !== "none").length }));
-    check("書斎（320）: 横スクロールしない・場面は 1 枚・スタートは全幅", w.scrollW <= w.innerW && w.shown === 1 && w.start >= 240, JSON.stringify(w));
+    const bytes320 = await shownSceneBytes(page);
+    check(`書斎（320）: 横スクロールしない・場面は 1 枚（背の低い画面の short で、上限 ${(SCENE_MAX.short ?? 0) / 1024}KB 以下）・スタートは全幅`, w.scrollW <= w.innerW && w.shown === 1 && w.start >= 240 && bytes320.kind === "short" && underMax(bytes320), JSON.stringify({ ...w, bytes320 }));
     await page.close();
   }
 
@@ -4942,7 +4959,9 @@ console.log("study (room):");
     await page.waitForTimeout(600);
     const sc = await sceneState(page);
     const start = await page.evaluate(() => document.getElementById("pathStart").getBoundingClientRect());
-    check("書斎（1200）: 場面は机の 1 枚だけ・スタートは 1 画面目", sc.shown === 1 && sc.url.includes("scene-desk") && sceneRequests.length === 1 && start.bottom < 900 && start.bottom > 0, JSON.stringify({ ...sc, sceneRequests, bottom: start.bottom }));
+    const reqs1200 = [...sceneRequests]; // バイトを読み直す fetch の前に数える
+    const bytes1200 = await shownSceneBytes(page);
+    check(`書斎（1200）: 場面は机の 1 枚だけ（上限 ${(SCENE_MAX.desk ?? 0) / 1024}KB 以下）・スタートは 1 画面目`, sc.shown === 1 && sc.url.includes("scene-desk") && reqs1200.length === 1 && bytes1200.kind === "desk" && underMax(bytes1200) && start.bottom < 900 && start.bottom > 0, JSON.stringify({ ...sc, sceneRequests: reqs1200, bytes1200, bottom: start.bottom }));
     check("書斎（1200）: 横スクロールしない", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     // 本棚は右の列（#bookshelf の left ≥ 640）。最初の棚板の上面は机の天板の線（--desk-top 398px）にそろう
     const shelfPos = await page.evaluate(() => ({ left: document.getElementById("bookshelf").getBoundingClientRect().left, hidden: document.getElementById("bookshelf").hidden, board: Math.round(document.querySelector("#bookshelf .shelf__board")?.getBoundingClientRect().top ?? -1), desk: Math.round(document.querySelector(".desk").getBoundingClientRect().top) }));
@@ -6649,8 +6668,7 @@ console.log("finder covers:");
   {
     const names = uniq([...Object.values(BOOK_COVER), ...Object.values(COURSE_COVER), ...Object.values(SHELF_COVER)]);
     const files = fs.readdirSync(path.join(ROOT, COV_DIR)).filter((f) => f.endsWith(".webp")).sort();
-    const webpSize = (buf) => (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 12, 16) === "VP8X" ? [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)] : null);
-    const sizes = files.map((f) => { const buf = fs.readFileSync(path.join(ROOT, COV_DIR, f)); return { f, bytes: buf.length, dim: webpSize(buf)?.join("×"), alpha: buf.includes(Buffer.from("ALPH")) }; });
+    const sizes = files.map((f) => { const buf = fs.readFileSync(path.join(ROOT, COV_DIR, f)); return { f, bytes: buf.length, dim: webpSize(buf)?.join("×"), alpha: webpAlpha(buf) }; });
     const total = sizes.reduce((n, s) => n + s.bytes, 0);
     const catIds = new Set(JSON.parse(fs.readFileSync(path.join(ROOT, "data/manifest.json"), "utf8")).subjects.flatMap((s) => s.categories.map((c) => c.id)));
     const unknown = Object.keys(BOOK_COVER).filter((id) => !catIds.has(id));
@@ -6661,7 +6679,7 @@ console.log("finder covers:");
   }
 }
 
-// ===== 8.65 はちゃんの絵（創業者が用意した絵 006・008・010。scripts/build-hasumi.mjs・scripts/room-art/render.mjs・scene.mjs・js/hasumi.js）: 窓辺の場面 6 枚に新しい絵・丸いアバター 4 枚・前の絵と参照が残っていない・結果と週間レポートの新しい顔・320／390／1200 × 昼夜の横スクロールと CLS =====
+// ===== 8.65 はちゃんの絵（創業者が用意した絵 006・008・010。scripts/build-hasumi.mjs・scripts/room-art/render.mjs・scene.mjs・js/hasumi.js）: 窓辺の場面 6 枚に新しい絵・丸いアバター 6 枚（30／60／90px）・前の絵と参照が残っていない・結果と週間レポートの新しい顔・320／390／1200 × 昼夜の横スクロールと CLS・dpr 1／2／3 で選ばれる絵 =====
 console.log("hasumi art:");
 {
   // 名前・上限・置き方は生成器と構図の値をそのまま使う（import しても Chromium は立ち上がらない）。入れる前の木には無いので空のまま落ちる
@@ -6671,12 +6689,12 @@ console.log("hasumi art:");
   const AV = HAS.AVATARS ?? [];
   const SCENE_MAX = HAS.SIZES?.scene ?? {};
 
-  // (1) 窓辺の場面 6 枚: 寸法は構図の 2 倍・1 枚ずつ上限以下
+  // (1) 窓辺の場面 6 枚: 寸法は構図の 2 倍・1 枚ずつ上限以下・背景は透過（壁・机は CSS と DOM。webpAlpha）
   const scenes = Object.entries(SC.SCENES ?? {}).flatMap(([name, c]) => ["light", "dark"].map((theme) => ({ name, theme, c, rel: `assets/images/room/scene-${name}-${theme}.webp` })));
   const sceneInfo = scenes.map((x) => ({ ...x, info: webpInfo(path.join(ROOT, x.rel)), max: SCENE_MAX[x.name] }));
-  check(`はちゃんの絵: 場面 6 枚は構図の 2 倍の画素で、1 枚ずつ上限以下（${Object.entries(SCENE_MAX).map(([k, v]) => `${k} ${v / 1024}KB`).join("／") || "上限なし"}。render.mjs の SCENE_MAX_BYTES）`,
-    sceneInfo.length === 6 && sceneInfo.every((x) => x.info && x.max && x.info.w === x.c.vb[0] * 2 && x.info.h === x.c.vb[1] * 2 && x.info.bytes <= x.max),
-    JSON.stringify(HAS.error ? { error: HAS.error } : sceneInfo.map((x) => [x.rel.split("/").pop(), x.info?.w, x.info?.h, x.info?.bytes, x.max])));
+  check(`はちゃんの絵: 場面 6 枚は構図の 2 倍の画素で、1 枚ずつ上限以下（${Object.entries(SCENE_MAX).map(([k, v]) => `${k} ${v / 1024}KB`).join("／") || "上限なし"}。render.mjs の SCENE_MAX_BYTES）・透過`,
+    sceneInfo.length === 6 && sceneInfo.every((x) => x.info && x.max && x.info.w === x.c.vb[0] * 2 && x.info.h === x.c.vb[1] * 2 && x.info.bytes <= x.max && x.info.alpha),
+    JSON.stringify(HAS.error ? { error: HAS.error } : sceneInfo.map((x) => [x.rel.split("/").pop(), x.info?.w, x.info?.h, x.info?.bytes, x.max, x.info?.alpha])));
   // (2) 場面に窓辺の絵（scripts/room-art/figure-reading.webp）が置き方（scene.mjs の FIGURE）の位置で焼き込まれている: 絵の内側（縁から 3px 内の画素）の明るさと
   //     場面の同じ画素の明るさの相関 ≥ 0.8（昼夜の色の寄せは色ごとの 1 次の変換なので相関は残る。手元: 0.90〜0.975。前のベクターの場面に同じ枠を当てると 0.08〜0.13）
   {
@@ -6712,11 +6730,11 @@ console.log("hasumi art:");
     await page.close();
   }
 
-  // (3) 丸いアバター 4 枚（ふつう 006・うれしい 008 の顔 × 32／64px の WebP）: 揃い、寸法は表示の 1x と 2x、1 枚ずつ上限以下。前の絵（ベクターの頭と肩の PNG 4 枚）と
+  // (3) 丸いアバター 6 枚（ふつう 006・うれしい 008 の顔 × 30／60／90px の WebP）: 揃い、寸法は描く中身 30 CSS px の 1x・2x・3x、1 枚ずつ上限以下、透過（顔の外は抜く。webpAlpha）。前の絵（ベクターの頭と肩の PNG 4 枚）と
   //     その生成器（render-avatar.mjs）・ベクターのはちゃん（hachan.mjs）は無く、ページ・js・css・scripts・docs（CHANGELOG の履歴を除く）のどこからも参照されない
   const avInfo = AV.map((a) => ({ ...a, info: webpInfo(path.join(ROOT, a.rel)) }));
-  check(`はちゃんの絵: 丸いアバター 4 枚（ふつう・うれしい × 32／64px の WebP）が揃い、1 枚ずつ上限以下（${[...new Set(AV.map((a) => `${a.maxBytes / 1024}KB`))].join("／") || "上限なし"}。build-hasumi.mjs の AVATARS）`,
-    avInfo.length === 4 && new Set(avInfo.map((a) => a.mood)).size === 2 && avInfo.every((a) => a.info && a.info.w === a.px && a.info.h === a.px && a.info.bytes <= a.maxBytes),
+  check(`はちゃんの絵: 丸いアバター 6 枚（ふつう・うれしい × 30／60／90px の WebP）が揃い、1 枚ずつ上限以下（${[...new Set(AV.map((a) => `${a.maxBytes / 1024}KB`))].join("／") || "上限なし"}。build-hasumi.mjs の AVATARS）・透過`,
+    avInfo.length === 6 && new Set(avInfo.map((a) => a.mood)).size === 2 && avInfo.every((a) => a.info && a.px === (HAS.AVATAR_CSS_PX ?? 0) * a.dpr && a.info.w === a.px && a.info.h === a.px && a.info.bytes <= a.maxBytes && a.info.alpha),
     JSON.stringify(HAS.error ? { error: HAS.error } : avInfo.map((a) => [a.rel, a.info])));
   const OLD = ["assets/images/hasumi.png", "assets/images/hasumi@2x.png", "assets/images/hasumi-happy.png", "assets/images/hasumi-happy@2x.png", "scripts/room-art/render-avatar.mjs", "scripts/room-art/hachan.mjs"];
   const OLD_RE = /hasumi(-happy)?(@2x)?\.png|render-avatar\.mjs|hachan\.mjs/;
@@ -6729,7 +6747,7 @@ console.log("hasumi art:");
 
   // (4) 320／390／1200 × 昼夜: 書斎（戻ってきた人）と学習データ（週間レポートにはちゃん）の読み込みの CLS（全応答 80ms 遅延。書斎 1200 < 0.02・ほか < 0.05）と横スクロール 0。
   //     週間レポートのはちゃんは新しい顔（1x／2x の対・32px・alt）
-  const growth = [6, 5, 4, 2, 1].map((n, i) => ({ date: ymd(new Date(Date.now() - n * 86400000)), learned: 10 + i * 6, mastered: i * 2, active: true }));
+  const growth = [6, 5, 4, 2, 1].map((n, i) => ({ date: ymdDaysAgo(n), learned: 10 + i * 6, mastered: i * 2, active: true }));
   const hsOf = async (p) => ({ scrollW: await p.evaluate(() => document.documentElement.scrollWidth), innerW: await p.evaluate(() => window.innerWidth) });
   const runs = {};
   for (const w of [320, 390, 1200]) for (const theme of ["light", "dark"]) {
@@ -6741,7 +6759,7 @@ console.log("hasumi art:");
   const hsOk = (r) => r.scrollW <= r.innerW && r.errors.length === 0;
   check("はちゃんの絵: 書斎（戻ってきた人）は 320／390／1200 × 昼夜で横スクロール 0・読み込みの CLS（全応答 80ms 遅延）は 1200 < 0.02・320／390 < 0.05・エラー 0",
     Object.entries(runs).every(([k, r]) => hsOk(r.home) && r.home.cls < (k.startsWith("1200") ? 0.02 : 0.05)), JSON.stringify(Object.fromEntries(Object.entries(runs).map(([k, r]) => [k, [r.home.cls, r.home.scrollW, r.home.innerW, r.home.src, r.home.errors]]))));
-  check("はちゃんの絵: 学習データ（週間レポート）は 320／390／1200 × 昼夜で横スクロール 0・読み込みの CLS < 0.05・エラー 0、週間レポートのはちゃんは新しい顔（1x／2x の対・32px・alt と読み上げ「はちゃん」）",
+  check("はちゃんの絵: 学習データ（週間レポート）は 320／390／1200 × 昼夜で横スクロール 0・読み込みの CLS < 0.05・エラー 0、週間レポートのはちゃんは新しい顔（1x／2x／3x・描く 30 CSS px・alt と読み上げ「はちゃん」）",
     Object.values(runs).every((r) => hsOk(r.stats) && r.stats.cls < 0.05 && isNewHasumiAvatar(r.stats.av, AV)), JSON.stringify(Object.fromEntries(Object.entries(runs).map(([k, r]) => [k, [r.stats.cls, r.stats.scrollW, r.stats.innerW, r.stats.av?.current, r.stats.av?.nw, r.stats.av?.box, r.stats.errors]]))));
 
   // (5) 結果のパネル（Challenge の 3 秒。?t=3）× 320／390（2 倍の画面）／1200 × 昼夜: はちゃんは新しい顔で、2 倍の画面では @2x を選ぶ。横スクロール 0。
@@ -6761,9 +6779,38 @@ console.log("hasumi art:");
     res[`${w}-${theme}`] = { av: await hasumiAvatarOf(page, "#resultPanel"), ...(await hsOf(page)), shift: await page.evaluate(() => window.__hsShift.length), errors: page.errors.slice(0, 1) };
     await page.close();
   }
-  check("はちゃんの絵: 結果のパネル（Challenge）× 320／390／1200 × 昼夜で、はちゃんは新しい顔（2 倍の画面は @2x・32px・alt と読み上げ「はちゃん」）・横スクロール 0・はちゃんが動かす layout-shift 0・エラー 0",
+  check("はちゃんの絵: 結果のパネル（Challenge）× 320／390／1200 × 昼夜で、はちゃんは新しい顔（2 倍の画面は @2x の 60px・描く 30 CSS px・alt と読み上げ「はちゃん」）・横スクロール 0・はちゃんが動かす layout-shift 0・エラー 0",
     Object.values(res).every((r) => isNewHasumiAvatar(r.av, AV) && r.scrollW <= r.innerW && r.shift === 0 && r.errors.length === 0) && res["390-light"].av.current?.includes("@2x"),
-    JSON.stringify(Object.fromEntries(Object.entries(res).map(([k, r]) => [k, [r.av.current, r.av.nw, r.av.box, r.av.named, r.scrollW, r.innerW, r.shift, r.errors]]))));
+    JSON.stringify(Object.fromEntries(Object.entries(res).map(([k, r]) => [k, [r.av.current, r.av.px, r.av.cw, r.av.box, r.av.named, r.scrollW, r.innerW, r.shift, r.errors]]))));
+
+  // (6) 3 倍の画面でもぼけない（PR #184 のレビュー 2）: img は 32×32・枠 1px なので描く中身は 30 CSS px。dpr 1・2・3 の週間レポート（390）と dpr 3 の結果のパネル（390）で、
+  //     選ばれる絵の画素は 30 × dpr（30／60／90px）、読むのは 1 つの顔につきその倍率の 1 枚だけ（srcset のほかの倍率は読まない）、alt と読み上げは前と同じ（「はちゃん」1 つ）。
+  //     学習データは単語の記録が読めた後に週間レポートを描き直すので、気分が替わると 2 つ目の顔（ふつう → うれしい）を読む（前からの動き。同じ倍率の 1 枚ずつ）
+  const dprRuns = {};
+  for (const dpr of [1, 2, 3]) {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, dpr, storage: { ...clsRecords(), spelldash_growth_log: JSON.stringify(growth) } });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    dprRuns[`週間レポート dpr ${dpr}`] = await hasumiAvatarOf(page, "#weeklyReport");
+    await page.close();
+  }
+  {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, dpr: 3, storage: { spelldash_placement: "done" } });
+    await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => document.querySelector('#playModes [data-mode="challenge"]').click());
+    await waitUntil(() => page.isVisible("#resultPanel"), 6000);
+    await page.waitForTimeout(300);
+    dprRuns["結果のパネル dpr 3"] = await hasumiAvatarOf(page, "#resultPanel");
+    await page.close();
+  }
+  check("はちゃんの絵: dpr 1・2・3 で、選ばれるアバターの画素は描く寸法（30 CSS px）× dpr（30／60／90px）、1 画面で読むアバターは 1 枚、alt と読み上げは「はちゃん」1 つ（週間レポート・結果のパネル）",
+    Object.values(dprRuns).every((a) => {
+      const ofDpr = new RegExp(`^hasumi-(normal|happy)${a.dpr === 1 ? "" : `@${a.dpr}x`}\\.webp$`); // この倍率の絵だけ
+      return isNewHasumiAvatar(a, AV) && a.reqs?.length >= 1 && a.reqs.every((f) => ofDpr.test(f)) && new Set(a.reqs).size === a.reqs.length;
+    }) &&
+      [1, 2, 3].every((d) => dprRuns[`週間レポート dpr ${d}`].px === 30 * d) && dprRuns["結果のパネル dpr 3"].px === 90 && dprRuns["結果のパネル dpr 3"].reqs.length === 1,
+    JSON.stringify(Object.fromEntries(Object.entries(dprRuns).map(([k, a]) => [k, [a.current, a.px, a.cw, a.dpr, a.reqs, a.alt, a.named]]))));
 }
 
 // ===== 8.7 書斎の皮（ホーム以外のページ）: 帯のヘッダー・胡桃の幅木・羊皮紙の札・横スクロール無し・文字と帯のコントラスト（css/brand.css・pages.css・battle.css。Batch 56b） =====
@@ -9012,6 +9059,8 @@ console.log("recall speed stats:");
 // ===== 9.5 覚えた瞬間 v2: 知ってた／覚えた！／履歴／語チップ／単語帳／難易度ブースト =====
 console.log("learned moment:");
 {
+  // 知らせのはちゃんの顔の名前（scripts/build-hasumi.mjs の AVATARS）。import は流れの前に済ませる（履歴の点は 1.4 秒で次の語に替わる）
+  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const y = new Date(Date.now() - 86400000);
   const yKey = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
   const page = await newPage({ storage: {
@@ -9029,11 +9078,10 @@ console.log("learned moment:");
   await waitUntil(async () => (await page.textContent("#message")).includes("覚えた"));
   check("日をまたいで自力正解→「覚えた！」", (await page.textContent("#message")).includes("覚えた！"), await page.textContent("#message"));
   check("はちゃんが語を名指しで喜ぶ", !(await page.$eval("#learnToast", (el) => el.hidden)) && (await page.textContent("#learnToast")).includes("invoice"));
-  // 覚えた瞬間の知らせのはちゃんは うれしい の新しい顔（008。scripts/build-hasumi.mjs の AVATARS）
-  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
-  const toastAv = await hasumiAvatarOf(page, "#learnToast");
-  check("覚えた瞬間の知らせのはちゃんは うれしい の新しい顔（hasumi-happy の 1x／2x・32px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(toastAv, HS_AV, "happy"), JSON.stringify(toastAv));
   check("履歴ドット ×→○", (await page.$$eval("#wordHistory .hist i", (els) => els.map((e) => e.className).join(","))) === "hist__x,hist__o");
+  // 覚えた瞬間の知らせのはちゃんは うれしい の新しい顔（008）。読み込みを待つ（上限 2 秒）ので、1.4 秒で消える履歴の点の後で見る（知らせは 4.5 秒残る）
+  const toastAv = await hasumiAvatarOf(page, "#learnToast");
+  check("覚えた瞬間の知らせのはちゃんは うれしい の新しい顔（hasumi-happy の 1x／2x／3x・描く 30 CSS px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(toastAv, HS_AV, "happy"), JSON.stringify(toastAv));
   await waitUntil(async () => (await page.textContent("#japanese")).trim() === "交渉する", 2500); // 「覚えた」の語はスタンプが消えるまで（1.4 秒）待ってから次へ
   for (const ch of "negotiate") await page.press("#input", ch);
   await waitUntil(async () => (await page.textContent("#message")).includes("知ってた"), 1500);
@@ -9064,6 +9112,7 @@ console.log("learned moment:");
 // ===== 9.55 成長の証拠: 週間レポート・推移・今週+N =====
 console.log("growth:");
 {
+  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const page = await newPage({ storage: { spelldash_growth_log: JSON.stringify([
     { date: "2000-01-01", learned: 0, mastered: 0, active: true }
   ]) } });
@@ -9071,9 +9120,8 @@ console.log("growth:");
   await page.waitForTimeout(900);
   check("週間レポートが表示", (await page.textContent("#weeklyReport")).includes("週間レポート"));
   check("週間レポートに学習した日", (await page.textContent("#weeklyReport")).includes("学習した日"));
-  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const weeklyAv = await hasumiAvatarOf(page, "#weeklyReport");
-  check("週間レポートのはちゃんは新しい顔（1x／2x の WebP の対・32px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(weeklyAv, HS_AV), JSON.stringify(weeklyAv));
+  check("週間レポートのはちゃんは新しい顔（1x／2x／3x の WebP・描く 30 CSS px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(weeklyAv, HS_AV), JSON.stringify(weeklyAv));
   check("推移グラフ or 案内", (await page.$("#growthTrend svg")) !== null || (await page.textContent("#growthTrend")).includes("明日から"));
   const log = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_growth_log") || "[]"));
   check("成長ログに今日の行", log.some((e) => e.date === new Date().toISOString().slice(0, 10) || e.date.length === 10) && log.length >= 2, `len=${log.length}`);
@@ -12617,7 +12665,8 @@ console.log("my concept & retention:");
   check("マイ場面カードの出題でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 
-  // 救済: 3連続で思い出せなかったら、思い出せる語（Familiar）が次に挟まる
+  // 救済: 3連続で思い出せなかったら、思い出せる語（Familiar）が次に挟まる。知らせのはちゃんの顔の名前（scripts/build-hasumi.mjs の AVATARS）の import は流れの前に済ませる
+  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const y = new Date(Date.now() - 3 * 86400000).toISOString();
   const page3 = await newPage({ storage: {
     spelldash_category: "my", spelldash_placement: "done",
@@ -12636,14 +12685,13 @@ console.log("my concept & retention:");
     await page3.press("#input", "Enter"); // 思い出せず
     await page3.waitForTimeout(150);
     if (i === 2) breather = !(await page3.$eval("#learnToast", (el) => el.hidden)) && (await page3.textContent("#learnToast")).includes("3つ続けて");
-    if (i === 2) breatherAv = await hasumiAvatarOf(page3, "#learnToast");
+    if (i === 2) breatherAv = await hasumiAvatarOf(page3, "#learnToast"); // 答えを見せて打つのを待っている間（時間で進まない）。知らせは 4 秒残る
     const shown = (await page3.textContent("#word")).trim();
     for (const ch of shown) await page3.press("#input", ch);
     await page3.waitForTimeout(NEXT_READY_MS);
   }
   check("3連続で思い出せず→はちゃんの助け舟", breather);
-  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
-  check("助け舟の知らせのはちゃんは ふつう の新しい顔（hasumi-normal の 1x／2x・32px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(breatherAv, HS_AV, "normal"), JSON.stringify(breatherAv));
+  check("助け舟の知らせのはちゃんは ふつう の新しい顔（hasumi-normal の 1x／2x／3x・描く 30 CSS px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(breatherAv, HS_AV, "normal"), JSON.stringify(breatherAv));
   check("次に思い出せる語（予算）が挟まる", (await page3.textContent("#japanese")).trim() === "予算", await page3.textContent("#japanese"));
   check("救済フローでエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
   await page3.close();

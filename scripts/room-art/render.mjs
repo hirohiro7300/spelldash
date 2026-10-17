@@ -6,7 +6,8 @@
 // 窓辺のはちゃんは scripts/room-art/figure-reading.webp（創業者が用意した絵 010 を scripts/build-hasumi.mjs が切り出した物。scripts/ はデプロイしない）。
 //   絵を替えたら build-hasumi.mjs（--src）が切り出しから場面の焼き直しまで通す。窓・小物・置き方・昼夜の色の寄せだけ直したときはこの台本だけでよい。
 // 書き出しは PIL（品質 80／desk 72・透過の品質 80／desk 66・method 6）。同じ元から焼き直すとバイト単位で同じ。
-// 上限（1 枚でも超えたら 1 枚も書かずに止める）: SCENE_MAX_BYTES。E2E（8.6 書斎）はこの値を import して見る（import しただけでは Chromium を立ち上げない）。
+// 上限（1 枚でも超えたら 1 枚も書かずに止める）: SCENE_MAX_BYTES。E2E（4 ホーム・8.6 書斎は表示中の 1 枚、8.65 はちゃんの絵は 6 枚）はこの値を import して見る
+// （import しただけでは Chromium を立ち上げない）。
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -14,7 +15,8 @@ import { execFileSync } from "child_process";
 import { chromium } from "playwright-core";
 import { defs, compose, SCENES } from "./scene.mjs";
 import { sceneLight, sceneDark, toCss } from "./tokens.mjs";
-import { findChromium } from "../build-emblems.mjs";
+import { findChromium, webpSize, webpAlpha } from "../lib/canvas-art.mjs";
+import { isMain } from "../lib/is-main.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const SCENE_DIR = "assets/images/room";
@@ -42,12 +44,13 @@ im.save(out, "WEBP", quality=${q}, method=6, alpha_quality=${aq})
 sys.stdout.buffer.write(out.getvalue())`], { input: png, maxBuffer: 64 * 1024 * 1024 });
 }
 
-// 窓辺の絵の WebP → compose に渡す形（data URL と縦横比）
+// 窓辺の絵の WebP → compose に渡す形（data URL と縦横比）。幅と高さは最初の塊（12 バイト目）の頭（webpSize）。
+// 透過の絵なので透過も見る（webpAlpha: VP8X の透過の印と ALPH の塊など。不透明の VP8・印の無い VP8X は止める）
 export function figureOf(buf) {
-  if (buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WEBP") throw new Error("窓辺の絵が WebP ではない");
-  const at = buf.indexOf("VP8X");
-  if (at < 0) throw new Error("窓辺の絵に VP8X（透過の WebP の頭）が無い");
-  const w = buf.readUIntLE(at + 12, 3) + 1, h = buf.readUIntLE(at + 15, 3) + 1;
+  const size = webpSize(buf);
+  if (!size) throw new Error("窓辺の絵が WebP ではない");
+  if (!webpAlpha(buf)) throw new Error("窓辺の絵に透過が無い（VP8X の透過の印と ALPH の塊、または透過のある VP8L が要る）");
+  const [w, h] = size;
   return { href: `data:image/webp;base64,${buf.toString("base64")}`, aspect: h / w, w, h };
 }
 
@@ -108,11 +111,5 @@ async function main() {
   }
 }
 
-const realOf = (p) => {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
-};
-if (process.argv[1] && realOf(process.argv[1]) === realOf(fileURLToPath(import.meta.url))) await main();
+// 直接呼ばれたときだけ焼く（build-hasumi.mjs・tests/e2e.mjs が bakeScenes・SCENE_MAX_BYTES を読むために import しても Chromium を立ち上げない）
+if (isMain(import.meta.url)) await main();

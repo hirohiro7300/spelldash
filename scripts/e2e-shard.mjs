@@ -27,6 +27,7 @@ import fs from "fs";
 import path from "path";
 import { spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
+import { isMain } from "./lib/is-main.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = path.join(ROOT, "tests", "e2e.mjs");
@@ -64,14 +65,16 @@ export const STICKY = [];
 // PR #183 のレビューで足した検査の見積もり: 8.6 窓の表紙 +70（寸法と書名の行数の幅を 3 → 7〔359.5・599.5 は zoom の iframe・599・600〕・404 の後の検索 5 打と online の読み直し・
 // 404 の画素の件を分けた 2 件〔撮るのは同じ〕。節を 1 本で流した手元 約 190 秒 − 前の 120）。
 // PR #183 のレビューの仕上げで足した検査の見積もり: 8.6 窓の表紙 +12（404 のほかの棚の件〔コース・英単語・試験の棚を開いて送り、2 枚撮る〕約 7 秒・遅い 404 で打ち替える件〔400ms の 404 を 2 回待つ・1 枚撮る〕約 5 秒）。
+// PR #184 のレビュー（2026-10-17）で足した検査の見積もり: 8.65 はちゃんの絵 +10（dpr 1・2・3 の学習データ 3 回と dpr 3 の結果のパネル 1 回）・
+// 8.6 書斎 +1（表示中の場面の 1 枚を読み直して上限と比べる 3 回）。5・9.5 覚えた瞬間 v2・9.55・9.99 はアバターの検査の場所を動かしただけ（±0）。
 // 組の重さにだけ使う。ずれても落ちはせず、偏るだけ。節を足したら CI の組のログ（最後の「節ごとの秒」）から写す（表に無い節は行数で見積もる）
 export const SECONDS = {
   "1. 全ページがエラーなく表示される": 31, "2. Study": 48, "2.5 日本語IME＋Studyキュー配置": 3,
   "2.6 1ミス＝不正解＋スペル表示": 15, "3. Daily Dash": 6, "4. ストリークカード＋苦手トグル＋ヘッダーストリーク表示": 6,
   "5. Challenge": 12, "6. モバイル": 7, "7. お知らせページ＋フッターリンク": 3,
   "7.5 タイピング練習": 192, "7.55 タイピング練習の長文": 91, "7.6 タイピングゲーム": 148,
-  "8. テーマ": 4, "8.5 書斎の土台": 3, "8.6 書斎": 39,
-  "8.6 わたしの本棚": 139, "8.6 窓の表紙": 202, "8.65 はちゃんの絵": 85, "8.7 書斎の皮": 351, "8.8 書斎の仕上げ": 71,
+  "8. テーマ": 4, "8.5 書斎の土台": 3, "8.6 書斎": 40,
+  "8.6 わたしの本棚": 139, "8.6 窓の表紙": 202, "8.65 はちゃんの絵": 95, "8.7 書斎の皮": 351, "8.8 書斎の仕上げ": 71,
   "8.9 Batch 57": 160, "9. 難易度ゲート": 3, "9.3 Challengeの手触り": 6,
   "9.4 今日のセット": 24, "study 60s": 194, "9.5 学習データ": 33,
   "9.5 覚えた瞬間 v2": 7, "9.55 成長の証拠": 2, "9.56 記憶の保持率": 12,
@@ -232,14 +235,7 @@ async function run(parts, k, n) {
 }
 
 // 直接呼ばれたときだけ動く（symlink を含むパスで呼ばれても実体のパスでそろえて比べる）
-const realOf = (p) => {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
-};
-if (process.argv[1] && realOf(path.resolve(process.argv[1])) === realOf(fileURLToPath(import.meta.url))) {
+if (isMain(import.meta.url)) {
   const args = process.argv.slice(2);
   const opt = (name) => {
     const i = args.findIndex((a) => a === name || a.startsWith(name + "="));

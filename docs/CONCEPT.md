@@ -108,7 +108,7 @@
 - 絵は創業者が用意した絵（2026-10-17〜。大きな目・正面向き・2.5〜3 頭身のとんがり帽子の見習い魔法使い）。元の PNG はリポジトリに入れず、`scripts/build-hasumi.mjs --src` が配信する絵を作る。
 - 部屋の帯の中（焼いた WebP の窓辺）に座って本を読んでいるのが本体（010 読書）。幅は窓の開口の 0.6 強。本の頁の光は抑える（光るのは炎だけ）。部屋の光に寄せて焼く: 昼は北窓の冷たい色と左上の縁の光・座面の影、夜は暗く暖かく沈め上の縁に月の光（つばが暗い空に沈まない）・右の縁にろうそくの照り返し（`scripts/room-art/scene.mjs` の `FIG_LOOK`）。
 - 一言は窓の脇の紙片（`#hasumiHome .hasumi__bubble.slip`。128px・Shippori 500 16px・-1.6° に傾け・鋲は真鍮）。ホームでは隣に 2 人目（丸いアバター）を置かない。
-- 結果のパネル・週間レポート・学習中の知らせ（覚えた瞬間・3 つ続けて出てこない時）の 32px の丸いアバターは、006（ふつう）と 008（うれしい）の顔（`assets/images/hasumi-normal.webp`／`hasumi-happy.webp`＋`@2x`。32px ≤ 2.5KB・64px ≤ 5KB）。
+- 結果のパネル・週間レポート・学習中の知らせ（覚えた瞬間・3 つ続けて出てこない時）の 32px の丸いアバターは、006（ふつう）と 008（うれしい）の顔（`assets/images/hasumi-normal.webp`／`hasumi-happy.webp`＋`@2x`・`@3x`。枠 1px の内側の 30 CSS px に描くので 30・60・90px を 1x・2x・3x で。≤ 2.5／5／8KB）。
 
 ### 3.9 動き
 
@@ -191,7 +191,7 @@
 | 本棚（棚・背・函・本を足す・整理） | `css/bookshelf.css`、`js/bookshelf.js`、`js/shelfStore.js`（棚の中身の規則・純粋な関数。`scripts/test-shelf.mjs`）、`js/shelves.js`（目録の棚割り） |
 | 机の本（左頁・右頁 `#pathNow`・目次 `#pathList`） | `js/pathView.js`、`css/path.css` |
 | 初回（積んだ本・1 語体験） | `js/welcome.js`、`css/welcome.css` |
-| はちゃん（紙片・一言・アバター） | `js/hasumi.js`、`assets/images/hasumi-normal.webp`・`hasumi-happy.webp`（＋`@2x`）。絵は創業者が用意した 006・008・010 を `scripts/build-hasumi.mjs --src <元の絵の置き場>`（`--check` で作り直しが同じかを見る） |
+| はちゃん（紙片・一言・アバター） | `js/hasumi.js`、`assets/images/hasumi-normal.webp`・`hasumi-happy.webp`（＋`@2x`・`@3x`）。絵は創業者が用意した 006・008・010 を `scripts/build-hasumi.mjs --src <元の絵の置き場>`（`--check` で作り直しが同じかを見る） |
 | ほかの遊び方の 1 行 | `js/playModes.js` |
 | ≥1100 の机の列の sticky | `js/room.js` |
 | 場面の絵（SVG → WebP・SVG の飾り・タイル） | `scripts/room-art/`（`render.mjs`〔窓辺の姿は `figure-reading.webp`〕・`scene.mjs`・`build-art.mjs`・`tiles.mjs`）→ `assets/images/room/`。`scripts/` はデプロイしない |

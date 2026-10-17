@@ -27,14 +27,16 @@
 // 大きさの上限（超えたら書かずに止める）: SIZE.maxBytes（1 枚）と TOTAL_MAX_BYTES（合計）。E2E（窓の表紙）はこの台本を import して同じ値で見る
 //   （import しただけでは Chromium を立ち上げない: 下の「直接呼ばれたときだけ」）。
 // 同じ元の絵・同じ Chromium で作り直すと、バイト単位で同じ絵になる（乱数・時刻を使わない。--check で確かめる）。
-// 絵の処理と WebP の書き出しは Chromium の canvas（playwright-core。E2E と同じ）。ICC を外す stripIcc は build-emblems.mjs の物。
+// 絵の処理と WebP の書き出しは Chromium の canvas（playwright-core。E2E と同じ）。Chromium の置き場・ICC を外す stripIcc・ページの中の decode・canvasOf・resizeTo は
+// scripts/lib/canvas-art.mjs（build-emblems・build-hasumi と共通）。
 
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { chromium } from "playwright-core";
-import { stripIcc } from "./build-emblems.mjs";
+import { findChromium, dataUrlOf, bufferOf, stripIcc, webpAlpha, PAGE_CANVAS } from "./lib/canvas-art.mjs";
+import { isMain } from "./lib/is-main.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = path.join(ROOT, "assets", "images", "covers");
@@ -109,12 +111,8 @@ const FEATHER = 14;
 const RAMP = 0.1;
 const TUNE_KEYS = new Set(["why", "hue", "to", "sat", "val", "minS", "minV"]);
 
-const PAGE_LIB = String.raw`
-async function decode(dataUrl) {
-  const blob = await (await fetch(dataUrl)).blob();
-  return createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
-}
-function canvasOf(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+// ページの中で動く関数（canvas）。decode・canvasOf・resizeTo は PAGE_CANVAS（scripts/lib/canvas-art.mjs）
+const PAGE_LIB = PAGE_CANVAS + String.raw`
 // 不透明さ floor 以上の画素の外接矩形（x1・y1 は含む）
 function boxOf(img, floor) {
   const { width: W, height: H, data: d } = img;
@@ -173,19 +171,6 @@ function tune(d, ops, feather, rampW) {
     }
   }
 }
-// 半分ずつ縮めて（一度に大きく縮めると細い線がちらつく）、最後に目の大きさへ。出口の canvas は不透明（alpha: false）
-function resizeTo(src, w, h) {
-  let cur = src;
-  while (cur.width / 2 >= w && cur.height / 2 >= h) {
-    const next = canvasOf(Math.round(cur.width / 2), Math.round(cur.height / 2));
-    const g = next.getContext("2d", { alpha: false }); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
-    g.drawImage(cur, 0, 0, next.width, next.height); cur = next;
-  }
-  const out = canvasOf(w, h);
-  const g = out.getContext("2d", { alpha: false }); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
-  g.drawImage(cur, 0, 0, w, h);
-  return out;
-}
 const held = new Map();
 window.coverLib = {
   // 元の絵 → 切り出した枠（元の画素のまま、不透明、色を寄せた canvas）をページに持つ
@@ -212,7 +197,8 @@ window.coverLib = {
     held.set(name, crop);
     return { box: [b.x0, b.y0, W, H], win: [wx, wy, ww, wh], size: [bmp.width, bmp.height] };
   },
-  render(name, w, h, q) { return resizeTo(held.get(name), w, h).toDataURL("image/webp", q); },
+  // 半分ずつ縮めて目の大きさへ。途中も出口も不透明（opaque）
+  render(name, w, h, q) { return resizeTo(held.get(name), w, h, { opaque: true }).toDataURL("image/webp", q); },
   // 並べた絵: 昼と夜の羊皮紙の地に、元の表紙（切り出す枠つき）・表示の大きさ（2 倍の画素のまま＝ 2x の画面の見え方）・その 3 倍に拡大
   async sheet(items, size) {
     const cell = 150, rows = items.length, bandW = 16 + 120 + 16 + size.w + 16 + size.w * 3 + 16;
@@ -239,24 +225,8 @@ window.coverLib = {
 };
 `;
 
-const dataUrlOf = (file) => `data:image/png;base64,${fs.readFileSync(file).toString("base64")}`;
-const bufferOf = (url) => Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
 const kb = (n) => `${(n / 1024).toFixed(2)}KB`;
 const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex").slice(0, 12);
-
-function findChromium() {
-  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
-  for (const root of [process.env.PLAYWRIGHT_BROWSERS_PATH, "/opt/pw-browsers", path.join(process.env.HOME ?? "", ".cache", "ms-playwright")]) {
-    if (!root || !fs.existsSync(root)) continue;
-    for (const dir of fs.readdirSync(root).filter((d) => d.startsWith("chromium"))) {
-      for (const sub of ["chrome-linux/chrome", "chrome-linux64/chrome"]) {
-        const p = path.join(root, dir, sub);
-        if (fs.existsSync(p)) return p;
-      }
-    }
-  }
-  throw new Error("Chromium が見つからない。CHROME_PATH を設定する");
-}
 
 // 実の置き場（symlink・..・末尾の / を解いた絶対の道）。まだ無い道は、ある所まで遡って実の置き場にし、残りを足す
 const realOf = (p) => {
@@ -363,7 +333,7 @@ async function main() {
       const url = await page.evaluate(([n, w, h, q]) => window.coverLib.render(n, w, h, q), [name, SIZE.w, SIZE.h, SIZE.quality]);
       const buf = stripIcc(bufferOf(url));
       if (buf.length > SIZE.maxBytes) throw new Error(`${name}.webp が ${kb(buf.length)}（上限 ${kb(SIZE.maxBytes)}）。品質か画素を下げる`);
-      if (buf.includes(Buffer.from("ALPH"))) throw new Error(`${name}.webp に透過が残った（不透明にする）`);
+      if (webpAlpha(buf)) throw new Error(`${name}.webp に透過が残った（不透明にする）`);
       written.push({ name, file: `${name}.webp`, buf, url, src: sheetOut ? src : null, win: r.win });
       console.log(`${name.padEnd(13)} ${file.padEnd(30)} 外接 ${r.box[2]}×${r.box[3]} → 枠 ${r.win[2]}×${r.win[3]}（${r.win[0]},${r.win[1]}）→ ${SIZE.w}×${SIZE.h} ${String(buf.length).padStart(5)} B ${sha(buf)}${o.ops.length ? `  寄せ: ${o.ops.map((x) => x.why).join("・")}` : ""}`);
     }
@@ -406,5 +376,5 @@ async function main() {
   }
 }
 
-// 直接呼ばれたときだけ作る（E2E が SIZE・TOTAL_MAX_BYTES・COVERS を読むために import しても Chromium を立ち上げない。build-emblems.mjs と同じ作り）
-if (process.argv[1] && realOf(process.argv[1]) === realOf(fileURLToPath(import.meta.url))) await main();
+// 直接呼ばれたときだけ作る（E2E が SIZE・TOTAL_MAX_BYTES・COVERS を読むために import しても Chromium を立ち上げない）
+if (isMain(import.meta.url)) await main();

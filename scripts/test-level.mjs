@@ -103,8 +103,24 @@ eq("小さい絵の URL（神 3 → god-3-sm.webp）", E.emblemSrc(rankOf(92), {
 eq("レジェンドの絵は legend-<n>（元の絵の名前の legend-rainbow ではない）", E.emblemSrc(rankOf(57)), "/assets/images/emblems/legend-2.webp");
 eq("知らないランク・空は空の URL（絵を出さない）", [null, undefined, {}, { tier: "x", step: 1 }, { tier: "wood", step: 4 }, "木 1"].map((r) => E.emblemSrc(r)), ["", "", "", "", "", ""]);
 const dir = path.join(ROOT, "assets/images/emblems");
-// WebP の画素の大きさ（VP8X の canvas。build-emblems の絵は透過つきなので VP8X）
-const webpSize = (buf) => (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 12, 16) === "VP8X" ? [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)] : null);
+// WebP の画素の大きさと透過（scripts/lib/canvas-art.mjs の webpSize・webpAlpha。生成器・E2E と同じ読み方）。紋章は透過の絵なので、
+// 寸法（webpSize は不透明の VP8・VP8L も読む）とは別に透過を見る（ALPH の塊か VP8X の透過の印。不透明の VP8 になったら落ちる）
+const { webpSize, webpAlpha } = await import("./lib/canvas-art.mjs");
+// webpAlpha の読み方（作った頭で）: VP8 は不透明・VP8X は透過の印と ALPH があって透過・印だけ／ALPH だけは不透明・VP8L は alpha_is_used
+{
+  const chunk = (tag, data) => { const b = Buffer.alloc(8 + data.length + (data.length % 2)); b.write(tag, 0, "ascii"); b.writeUInt32LE(data.length, 4); data.copy(b, 8); return b; };
+  const riff = (...cs) => { const body = Buffer.concat([Buffer.from("WEBP"), ...cs]); const h = Buffer.alloc(8); h.write("RIFF", 0, "ascii"); h.writeUInt32LE(body.length, 4); return Buffer.concat([h, body]); };
+  const vp8 = () => { const d = Buffer.alloc(10); d.set([0x9d, 0x01, 0x2a], 3); d.writeUInt16LE(96, 6); d.writeUInt16LE(96, 8); return chunk("VP8 ", d); };
+  const vp8x = (flags) => { const d = Buffer.alloc(10); d[0] = flags; d.writeUIntLE(95, 4, 3); d.writeUIntLE(95, 7, 3); return chunk("VP8X", d); };
+  const vp8l = (alpha) => { const d = Buffer.alloc(10); d[0] = 0x2f; d.writeUInt32LE(95 | (95 << 14) | ((alpha ? 1 : 0) << 28), 1); return chunk("VP8L", d); };
+  const alph = chunk("ALPH", Buffer.alloc(4));
+  const cases = { "VP8": riff(vp8()), "VP8X 透過の印＋ALPH＋VP8": riff(vp8x(0x10), alph, vp8()), "VP8X 印なし（ICC だけ）＋VP8": riff(vp8x(0x20), vp8()), "VP8X 印だけ（ALPH なし）＋VP8": riff(vp8x(0x10), vp8()),
+    "VP8X 印なし＋ALPH＋VP8": riff(vp8x(0), alph, vp8()), "VP8X 透過の印＋VP8L（透過）": riff(vp8x(0x10), vp8l(true)), "VP8L 透過": riff(vp8l(true)), "VP8L 不透明": riff(vp8l(false)), "WebP でない": Buffer.alloc(40) };
+  eq("webpAlpha（scripts/lib/canvas-art.mjs）: 作った頭 9 通りで透過の有無を読み分ける（寸法はどれも webpSize が 96×96 と読む）",
+    Object.fromEntries(Object.entries(cases).map(([k, b]) => [k, [webpAlpha(b), webpSize(b)?.join("×") ?? null]])),
+    { "VP8": [false, "96×96"], "VP8X 透過の印＋ALPH＋VP8": [true, "96×96"], "VP8X 印なし（ICC だけ）＋VP8": [false, "96×96"], "VP8X 印だけ（ALPH なし）＋VP8": [false, "96×96"],
+      "VP8X 印なし＋ALPH＋VP8": [false, "96×96"], "VP8X 透過の印＋VP8L（透過）": [true, "96×96"], "VP8L 透過": [true, "96×96"], "VP8L 不透明": [false, "96×96"], "WebP でない": [false, null] });
+}
 let total = 0;
 for (const r of L.LEARNING_RANKS ?? []) for (const size of B.SIZES ?? []) {
   const small = size.suffix === "-sm";
@@ -112,7 +128,7 @@ for (const r of L.LEARNING_RANKS ?? []) for (const size of B.SIZES ?? []) {
   const file = path.join(dir, name);
   const buf = fs.existsSync(file) ? fs.readFileSync(file) : null;
   total += buf?.length ?? 0;
-  ok(`絵のファイル ${name} がある・${size.px}px・上限 ${size.maxBytes / 1024}KB 以下（build-emblems.mjs SIZES）`, !!buf && buf.length > 0 && buf.length <= size.maxBytes && webpSize(buf)?.join() === `${size.px},${size.px}`, buf ? `${buf.length} bytes ${webpSize(buf)}` : "無い");
+  ok(`絵のファイル ${name} がある・${size.px}px・上限 ${size.maxBytes / 1024}KB 以下・透過（build-emblems.mjs SIZES。webpAlpha）`, !!buf && buf.length > 0 && buf.length <= size.maxBytes && webpSize(buf)?.join() === `${size.px},${size.px}` && webpAlpha(buf), buf ? `${buf.length} bytes ${webpSize(buf)} 透過 ${webpAlpha(buf)}` : "無い");
 }
 ok(`21 段 × 2 種の合計が上限 ${(B.TOTAL_MAX_BYTES ?? 0) / 1024}KB 以下（build-emblems.mjs TOTAL_MAX_BYTES）`, total > 0 && total <= B.TOTAL_MAX_BYTES, `${total} bytes`);
 const want = new Set((L.LEARNING_RANKS ?? []).flatMap((r) => (B.SIZES ?? []).map((size) => path.basename(E.emblemSrc(r, { small: size.suffix === "-sm" }) || "-"))));
