@@ -6359,20 +6359,91 @@ console.log("finder covers:");
     await page.close();
   }
 
-  // ---- (5) 無地の代わり・(6) 読めない絵（404）: 行は崩れず、箱は革の色のまま ----
+  // ---- (5) 無地の代わり・(6) 読めない絵（404）: 行は崩れず、読めなかった絵は外れて箱は革の無地（Chromium は alt 空でも大きさのある <img> に壊れた絵の印を描く） ----
+  // 箱の内側に壊れた絵の印の色（明るい空色・丘の緑・紙の白）の画素が無いかを、画面を撮って数える（窓の中に見えている箱だけ。革・金の細線・羊皮紙の色は当たらない）
+  async function brokenMarkPixels(page, scope) {
+    const boxes = await page.evaluate((scope) => {
+      const body = document.querySelector("#bookFinder .finder__body").getBoundingClientRect();
+      return [...document.querySelectorAll(`${scope} .finder__cov`)].map((c) => c.getBoundingClientRect()).filter((b) => b.width && b.top >= body.top && b.bottom <= body.bottom).map((b) => [b.left, b.top, b.width, b.height]);
+    }, scope);
+    const png = (await page.screenshot()).toString("base64");
+    return page.evaluate(async ({ png, boxes }) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${png}`;
+      await img.decode();
+      const k = img.naturalWidth / window.innerWidth;
+      const cv = document.createElement("canvas");
+      cv.width = img.naturalWidth;
+      cv.height = img.naturalHeight;
+      const ctx = cv.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      const n = { boxes: boxes.length, px: 0, sky: 0, green: 0, white: 0 };
+      for (const [x, y, w, h] of boxes) {
+        const d = ctx.getImageData(Math.ceil(x * k), Math.ceil(y * k), Math.max(1, Math.floor(w * k) - 1), Math.max(1, Math.floor(h * k) - 1)).data;
+        for (let i = 0; i < d.length; i += 4) {
+          const r = d[i], g = d[i + 1], b = d[i + 2];
+          n.px++;
+          if (b >= 180 && b - r >= 25 && g >= 150) n.sky++;
+          if (g - r >= 35 && g - b >= 25) n.green++;
+          if (Math.min(r, g, b) >= 240) n.white++;
+        }
+      }
+      return n;
+    }, { png, boxes });
+  }
+  const noMark = (p) => p.boxes >= 5 && p.px > 0 && p.sky === 0 && p.green === 0 && p.white === 0;
+  // 読めない絵の後の箱: 表で表紙のある行（coverOf）も、絵を持たず（img 0 枚）革の無地（--plain）で、地は革の色
+  const brokenBoxes = (page, scope) => page.evaluate((scope) => [...document.querySelectorAll(`${scope} .finder__row`)].filter((r) => r.offsetHeight).map((r) => {
+    const c = r.querySelector(".finder__cov");
+    return { key: r.dataset.book ? `b:${r.dataset.book}` : `c:${r.dataset.course}`, imgs: c ? c.querySelectorAll("img").length : -1, plain: !!c?.classList.contains("finder__cov--plain"), bg: c ? getComputedStyle(c).backgroundColor : "" };
+  }), scope);
+  const boxesOk = (bs) => bs.length > 0 && bs.every((b) => b.imgs === 0 && b.plain && b.bg && b.bg !== "rgba(0, 0, 0, 0)" && b.bg !== "transparent");
+  const boxesBad = (bs) => bs.filter((b) => b.imgs !== 0 || !b.plain).slice(0, 2);
+  const toTop = (page, scope) => page.evaluate((scope) => { const d = document.querySelector(scope); d.closest(".finder__body").scrollTop = d.offsetTop; }, scope);
   {
     const page = await covPage({ block: true });
     await openFinder(page);
-    const geo = {};
-    for (const id of ["social", "grammar", "exam"]) { await openShelf(page, id); await page.waitForTimeout(300); geo[id] = await rowsGeo(page, `#bookFinderBrowse details[data-shelf="${id}"]`); }
-    const imgs = await page.evaluate(() => [...document.querySelectorAll("#bookFinderBrowse details[open] .finder__cov img")].map((i) => ({ done: i.complete, nw: i.naturalWidth, w: Math.round(i.getBoundingClientRect().width), h: Math.round(i.getBoundingClientRect().height) })));
-    const bg = await page.evaluate(() => [...document.querySelectorAll("#bookFinderBrowse details[open] .finder__cov, #bookFinderBrowse details[data-shelf='social'] .finder__cov")].slice(0, 6).map((c) => getComputedStyle(c).backgroundColor));
+    const geo = {}, boxes = {}, marks = {};
+    for (const id of ["social", "grammar", "exam"]) {
+      const scope = `#bookFinderBrowse details[data-shelf="${id}"]`;
+      await openShelf(page, id);
+      await page.waitForTimeout(300);
+      geo[id] = await rowsGeo(page, scope);
+      boxes[id] = await brokenBoxes(page, scope);
+      await toTop(page, scope);
+      await page.waitForTimeout(100);
+      marks[id] = await brokenMarkPixels(page, scope);
+    }
     const sameRows = ["social", "grammar", "exam"].every((id) => JSON.stringify(geo[id].map((r) => [r.key, r.h, r.tl, r.ml, r.tw, r.cov])) === JSON.stringify((normal390[id] ?? []).map((r) => [r.key, r.h, r.tl, r.ml, r.tw, r.cov])));
+    const hadCover = ["social", "exam"].every((id) => boxes[id].filter((b) => coverOf(b.key, id)).length >= 5);
     check("窓の表紙（390）: 表に無い本（文法・英作文の 11 冊）は革の無地の箱（絵なし・同じ 21×28・背の革の色）",
       geo.grammar.length > 0 && geo.grammar.every((r) => r.plain && !r.img && r.cov?.join() === "21,28") && !!normal390.grammar, JSON.stringify(geo.grammar.slice(0, 2)));
-    check("窓の表紙（390）: 絵が全部 404 でも、行の高さ・題と meta の行数と幅・表紙の箱は読めたときと同じ。読めない絵は箱いっぱいの空（壊れた絵の印や代わりの文字は出ない: alt 空）で、箱は革の色のまま",
-      page.covReqs.length > 0 && sameRows && imgs.length > 0 && imgs.every((i) => i.done && i.nw === 0 && i.w === 21 && i.h === 28) && bg.length > 0 && bg.every((c) => c && c !== "rgba(0, 0, 0, 0)" && c !== "transparent"), JSON.stringify({ reqs: page.covReqs.length, sameRows, imgs: imgs.slice(0, 2), bg: bg.slice(0, 2) }));
+    check("窓の表紙（390）: 絵が全部 404 でも、行の高さ・題と meta の行数と幅・表紙の箱は読めたときと同じ。読めなかった絵は外れ（img 0 枚）、表紙のある行の箱も革の無地（--plain・地は革の色）。箱の中に壊れた絵の印（空色・緑・白）の画素は無い",
+      page.covReqs.length > 0 && sameRows && hadCover && ["social", "grammar", "exam"].every((id) => boxesOk(boxes[id]) && noMark(marks[id])),
+      JSON.stringify({ reqs: page.covReqs.length, sameRows, hadCover, bad: Object.fromEntries(Object.entries(boxes).map(([id, bs]) => [id, boxesBad(bs)])), marks }));
     check("窓の表紙（404）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+  // 1200・夜（箱 24×32・夜は絵に brightness）と、検索の結果の行（棚の見出しの外の 1 列。打つたびに描き直す）でも同じ
+  {
+    const page = await covPage({ width: 1200, height: 900, theme: "dark", block: true });
+    await openFinder(page);
+    const scope = '#bookFinderBrowse details[data-shelf="science"]';
+    await openShelf(page, "science");
+    await page.waitForTimeout(300);
+    const shelf = await brokenBoxes(page, scope);
+    await toTop(page, scope);
+    await page.waitForTimeout(100);
+    const shelfMark = await brokenMarkPixels(page, scope);
+    await page.fill("#bookFinderQ", "社会");
+    await waitUntil(() => page.evaluate(() => document.querySelectorAll("#bookFinderList .finder__row").length > 0 && [...document.querySelectorAll("#bookFinderList .finder__cov img")].every((i) => i.complete)), 4000);
+    await page.waitForTimeout(300);
+    const list = await brokenBoxes(page, "#bookFinderList");
+    const listMark = await brokenMarkPixels(page, "#bookFinderList");
+    const geo = await rowsGeo(page, "#bookFinderList");
+    check("窓の表紙（1200・夜・404）: 棚の行も検索の結果の行も、読めなかった絵は外れて革の無地の箱（24×32 のまま）。壊れた絵の印の画素は無い・エラー 0",
+      page.covReqs.length > 0 && boxesOk(shelf) && boxesOk(list) && list.filter((b) => coverOf(b.key)).length >= 5 && noMark(shelfMark) && noMark(listMark) && geo.length > 0 && geo.every((r) => r.cov?.join() === "24,32") && page.errors.length === 0,
+      JSON.stringify({ reqs: page.covReqs.length, shelf: boxesBad(shelf), list: boxesBad(list), shelfMark, listMark, geo: geo.slice(0, 1), errors: page.errors.slice(0, 1) }));
     await page.close();
   }
 

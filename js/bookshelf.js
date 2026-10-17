@@ -1024,7 +1024,7 @@ function rowMeta(key, search, ctx) {
 }
 
 // 行の左の小さな表紙（js/covers.js の表）: 表紙のある本は絵、無い本は背と同じ革の無地（今の形）。どちらも同じ箱で、題の列が揃う。
-// 絵は閉じた見出しの中と 360px 未満（display:none）では読まない（loading=lazy）。読めなくても箱は革の色のまま
+// 絵は閉じた見出しの中と 360px 未満（display:none）では読まない（loading=lazy）。読めなかった絵は外して革の無地に（bind の error）
 function covHtml(key) {
   const id = key.slice(2);
   const course = key.startsWith("c:");
@@ -1280,6 +1280,18 @@ function bind() {
       if (!body) return;
       const top = d.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
       body.scrollTo({ top: Math.max(0, top), behavior: scrollBehavior() });
+    },
+    true
+  );
+  // 窓の行の表紙が読めなかった（404・つながらない・SW にまだ無い）: 絵を外して箱を革の無地に（表紙の無い本と同じ）。Chromium は alt 空でも
+  // 大きさのある <img> に壊れた絵の印を描く。箱の大きさは CSS で決まっているので行の寸法は変わらない。error は泡立たないので捕捉で
+  root.addEventListener(
+    "error",
+    (event) => {
+      const img = event.target;
+      if (!img?.matches?.(".finder__cov img")) return;
+      img.parentElement.classList.add("finder__cov--plain");
+      img.remove();
     },
     true
   );
