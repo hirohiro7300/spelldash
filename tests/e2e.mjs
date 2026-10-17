@@ -6259,34 +6259,48 @@ console.log("finder covers:");
   const { COVERS: COV_SRC, SIZE: COV_SIZE, TOTAL_MAX_BYTES: COV_TOTAL } = await import("../scripts/build-covers.mjs");
   const { BOOK_COVER, COURSE_COVER, SHELF_COVER, coverOf } = await import("../js/covers.js");
   const COV_DIR = "/assets/images/covers/";
-  // 種: 戻ってきた人（中学英語やり直し・中学英語 1年・腕試し済み）。first = 初めての人（本をさがす）
+  // 種: 戻ってきた人（中学英語やり直し・中学英語 1年・腕試し済み）。first = 初めての人（本をさがす）。
+  // 小数の幅（359.5・599.5）は、同じオリジンの頁に zoom: 2 の iframe（幅 359.5px = 画素 719）を置いて開く（頁の幅も zoom の無い iframe の幅も整数に丸まる。
+  // zoom の掛かった iframe の中は 2 倍に拡大した画面と同じで、媒体の問い合わせと % はその小数の幅で決まる）。そのときは iframe の frame を返す
+  // （evaluate・fill・$$eval・waitForTimeout は頁と同じ。押すのは evaluate の click。close・covReqs・errors は頁の物を付ける）
   async function covPage({ width = 390, height = 844, theme = "light", first = false, block = false, delay = 0 } = {}) {
+    const inFrame = !Number.isInteger(width);
     const storage = first ? { spelldash_theme: theme } : { spelldash_theme: theme, spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" };
-    const page = await newPage({ viewport: { width, height }, mobile: width < 600, keepOnboarding: first, storage });
+    const page = await newPage({ viewport: inFrame ? { width: Math.ceil(width * 2), height: height * 2 } : { width, height }, mobile: !inFrame && width < 600, keepOnboarding: first, storage });
     await page.addInitScript(() => { try { navigator.serviceWorker.register = () => new Promise(() => {}); } catch { /* SW の無い環境 */ } });
     page.covReqs = [];
     page.on("request", (r) => { const u = new URL(r.url()); if (u.pathname.startsWith(COV_DIR)) page.covReqs.push(u.pathname.slice(COV_DIR.length)); });
-    if (block) await page.route(`**${COV_DIR}**`, (route) => route.fulfill({ status: 404, body: "" }));
+    if (block) await page.route(`**${COV_DIR}**`, async (route) => { if (delay) await new Promise((r) => setTimeout(r, delay)); await route.fulfill({ status: 404, body: "" }); });
     else if (delay) await page.route(`**${COV_DIR}**`, async (route) => { await new Promise((r) => setTimeout(r, delay)); await route.continue(); });
-    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await waitUntil(() => page.evaluate((f) => (f ? !!document.getElementById("welcomeFind")?.offsetParent : !!document.querySelector("#shelfRun .shelf") && !document.getElementById("bookFinderOpen").hidden), first), 6000);
-    await page.waitForTimeout(200);
-    return page;
+    let f = page;
+    if (inFrame) {
+      await page.route(`${BASE}/__frame.html`, (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><meta charset="utf-8"><style>html,body{margin:0}iframe{display:block;border:0;zoom:2;width:${width}px;height:${height}px}</style><iframe src="/index.html"></iframe>` }));
+      await page.goto(BASE + "/__frame.html", { waitUntil: "networkidle" });
+      await waitUntil(() => page.frames().some((x) => x.url() === BASE + "/index.html"), 5000);
+      f = page.frames().find((x) => x.url() === BASE + "/index.html");
+      Object.assign(f, { inFrame, covReqs: page.covReqs, errors: page.errors, close: () => page.close() });
+    } else await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => f.evaluate((fi) => (fi ? !!document.getElementById("welcomeFind")?.offsetParent : !!document.querySelector("#shelfRun .shelf") && !document.getElementById("bookFinderOpen").hidden), first), 6000);
+    await f.waitForTimeout(200);
+    return f;
   }
   const openFinder = async (page, first = false) => {
-    if (first) await page.click("#welcomeFind");
+    if (page.inFrame) await page.evaluate((fi) => document.getElementById(fi ? "welcomeFind" : "bookFinderOpen").click(), first);
+    else if (first) await page.click("#welcomeFind");
     else { await page.evaluate(() => document.getElementById("bookFinderOpen").scrollIntoView({ block: "center" })); await page.click("#bookFinderOpen"); }
     await waitUntil(() => page.evaluate(() => document.getElementById("bookFinder").open), 3000);
     await page.waitForTimeout(150);
   };
   const shelvesOf = (page) => page.$$eval("#bookFinderBrowse details", (ds) => ds.map((d) => d.dataset.shelf));
-  // 見出しを開き、窓の中を下まで送って（loading=lazy の先読みの距離の外の行も）、開いた棚の絵が読み終わるまで待つ
+  // 見出しを開き、窓の中を見出しの上端から下まで送って（loading=lazy の先読みの距離の外の行も）、開いた棚の絵が読み終わるまで待つ。
+  // 窓の中の位置は .finder__body の中身の上端から測る（offsetTop の基準は .finder__card〔position: relative〕なので、見出し・検索・注の高さだけ行き過ぎる）
   async function openShelf(page, id) {
     await page.evaluate((id) => { const d = document.querySelector(`#bookFinderBrowse details[data-shelf="${id}"]`); if (!d.open) d.querySelector("summary").click(); }, id);
     await page.evaluate(async (id) => {
       const d = document.querySelector(`#bookFinderBrowse details[data-shelf="${id}"]`);
       const body = d.closest(".finder__body");
-      for (let y = d.offsetTop; y <= d.offsetTop + d.offsetHeight; y += 200) { body.scrollTop = y; await new Promise((r) => setTimeout(r, 30)); }
+      const top = d.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+      for (let y = top; y <= top + d.offsetHeight; y += 200) { body.scrollTop = y; await new Promise((r) => setTimeout(r, 30)); }
     }, id);
     await waitUntil(() => page.evaluate((id) => [...document.querySelectorAll(`#bookFinderBrowse details[data-shelf="${id}"] .finder__cov img`)].every((i) => i.complete), id), 4000);
     await page.waitForTimeout(100);
@@ -6304,8 +6318,9 @@ console.log("finder covers:");
       img: img ? img.getAttribute("src").split("/").pop().replace(/\.webp$/, "") : null, plain: !!cov?.classList.contains("finder__cov--plain")
     };
   }), scope);
-  // 表紙を入れる前の窓の形（表紙なし・dialog の max-width はブラウザの既定・札の左右 20px）に戻すと行がどうなるか。比べ終えたら外す
-  const OLD_LAYOUT = ".finder__cov { display: none !important; } .bookshelf .finder { max-width: revert !important; } .finder__card { padding-left: 20px !important; padding-right: 20px !important; }";
+  // 表紙を入れる前の窓の形（main 399c729: 表紙なし・窓の width は min(560px, 100% - 20px) でブラウザの dialog の既定の max-width が効く・札の左右 20px）に
+  // 戻すと行がどうなるか。比べ終えたら外す
+  const OLD_LAYOUT = ".finder__cov { display: none !important; } .bookshelf .finder { width: min(560px, calc(100% - 20px)) !important; max-width: revert !important; } .finder__card { padding-left: 20px !important; padding-right: 20px !important; }";
   async function withOldLayout(page, fn) {
     await page.evaluate((css) => { const s = document.createElement("style"); s.id = "__oldLayout"; s.textContent = css; document.head.appendChild(s); }, OLD_LAYOUT);
     await page.waitForTimeout(50);
@@ -6374,8 +6389,9 @@ console.log("finder covers:");
     await page.close();
   }
 
-  // ---- (4) 寸法と書名の行数: 表紙を入れる前の窓の形と比べ、どの行も題・meta の行数と行の高さが同じ。360〜599px は題と meta の列の幅も同じ ----
-  for (const [width, height, box] of [[360, 780, [21, 28]], [390, 844, [21, 28]], [1200, 900, [24, 32]]]) {
+  // ---- (4) 寸法と書名の行数: 表紙を入れる前の窓の形と比べ、どの行も題・meta の行数と行の高さが同じ。600px 未満は題と meta の列の幅も同じ ----
+  // 境目は小数の幅（359.5・599.5。iframe）でも抜けない: 359.5 は表紙を出さず、599.5 は 360〜600px 未満の形。599 は窓の幅の上限の際（581〜599px）
+  for (const [width, height, box] of [[359.5, 780, null], [360, 780, [21, 28]], [390, 844, [21, 28]], [599, 844, [21, 28]], [599.5, 844, [21, 28]], [600, 844, [24, 32]], [1200, 900, [24, 32]]]) {
     const page = await covPage({ width, height });
     await openFinder(page);
     const diff = [], boxBad = [];
@@ -6387,26 +6403,29 @@ console.log("finder covers:");
       now.forEach((r, i) => {
         const o = old[i];
         if (!o || o.key !== r.key || o.tl !== r.tl || o.ml !== r.ml || Math.abs(o.h - r.h) > 0.5 || (width < 600 && Math.abs(o.tw - r.tw) > 0.5)) diff.push(`${label}:${r.key} 題${o?.tl}→${r.tl} meta${o?.ml}→${r.ml} 高さ${o?.h}→${r.h} 幅${o?.tw}→${r.tw}`);
-        if (!r.cov || Math.abs(r.cov[0] - box[0]) > 0.5 || Math.abs(r.cov[1] - box[1]) > 0.5 || !r.inRow) boxBad.push(`${label}:${r.key}:${r.cov}:${r.inRow}`);
+        if (box ? !r.cov || Math.abs(r.cov[0] - box[0]) > 0.5 || Math.abs(r.cov[1] - box[1]) > 0.5 || !r.inRow : r.cov) boxBad.push(`${label}:${r.key}:${r.cov}:${r.inRow}`);
       });
     };
     for (const id of await shelvesOf(page)) { await openShelf(page, id); await compare(`#bookFinderBrowse details[data-shelf="${id}"]`, id); }
     for (const q of ["社会", "英検", "国語", "仕事"]) { await page.fill("#bookFinderQ", q); await page.waitForTimeout(80); await compare("#bookFinderList", `q:${q}`); }
     const imgs = await page.evaluate(() => [...document.querySelectorAll("#bookFinder .finder__cov img")].filter((i) => i.complete && i.naturalWidth).map((i) => [i.naturalWidth, i.naturalHeight, i.getAttribute("width"), i.getAttribute("height")]));
-    check(`窓の表紙（${width}）: 表紙の箱は ${box.join("×")}（3:4。行の中に収まる）・絵は ${COV_SIZE.w}×${COV_SIZE.h}・<img width height> は 3:4。全 ${n} 行（9 棚＋検索 4 語）で、表紙を入れる前の窓の形と比べて題の行数・meta の行数・行の高さが同じ${width < 600 ? "・題と meta の列の幅も同じ（書名が 2 行に折れない）" : ""}`,
-      n > 150 && diff.length === 0 && boxBad.length === 0 && imgs.length > 0 && imgs.every(([w, h, aw, ah]) => w === COV_SIZE.w && h === COV_SIZE.h && Number(aw) * 4 === Number(ah) * 3), JSON.stringify({ n, diff: diff.slice(0, 5), boxBad: boxBad.slice(0, 5), imgs: imgs.slice(0, 2) }));
+    check(`窓の表紙（${width}）: ${box ? `表紙の箱は ${box.join("×")}（3:4。行の中に収まる）・絵は ${COV_SIZE.w}×${COV_SIZE.h}・<img width height> は 3:4` : "表紙の箱は出さない（360px 未満）・絵は 1 枚も読まない"}。全 ${n} 行（9 棚＋検索 4 語）で、表紙を入れる前の窓の形と比べて題の行数・meta の行数・行の高さが同じ${width < 600 ? "・題と meta の列の幅も同じ（書名が 2 行に折れない）" : ""}`,
+      n > 150 && diff.length === 0 && boxBad.length === 0 && (box ? imgs.length > 0 && imgs.every(([w, h, aw, ah]) => w === COV_SIZE.w && h === COV_SIZE.h && Number(aw) * 4 === Number(ah) * 3) : imgs.length === 0 && page.covReqs.length === 0), JSON.stringify({ n, diff: diff.slice(0, 5), boxBad: boxBad.slice(0, 5), imgs: imgs.slice(0, 2), reqs: page.covReqs.length }));
     await page.close();
   }
 
   // ---- (5) 無地の代わり・(6) 読めない絵（404）: 行は崩れず、読めなかった絵は外れて箱は革の無地（Chromium は alt 空でも大きさのある <img> に壊れた絵の印を描く） ----
-  // 箱の内側に壊れた絵の印の色（明るい空色・丘の緑・紙の白）の画素が無いかを、画面を撮って数える（窓の中に見えている箱だけ。革・金の細線・羊皮紙の色は当たらない）
+  // 箱の内側に壊れた絵の印の色（明るい空色・丘の緑・紙の白）の画素が無いかを、画面を撮って数える（窓の中に見えている箱だけ。革・金の細線・羊皮紙の色は当たらない）。
+  // first = scope の最初の行の箱が窓の中に見えている（見出しのすぐ下の行を見落とさない。toTop で送ってから撮る）
   async function brokenMarkPixels(page, scope) {
-    const boxes = await page.evaluate((scope) => {
+    const { boxes, first } = await page.evaluate((scope) => {
       const body = document.querySelector("#bookFinder .finder__body").getBoundingClientRect();
-      return [...document.querySelectorAll(`${scope} .finder__cov`)].map((c) => c.getBoundingClientRect()).filter((b) => b.width && b.top >= body.top && b.bottom <= body.bottom).map((b) => [b.left, b.top, b.width, b.height]);
+      const all = [...document.querySelectorAll(`${scope} .finder__cov`)].map((c) => c.getBoundingClientRect()).filter((b) => b.width);
+      const inView = (b) => b.top >= body.top && b.bottom <= body.bottom;
+      return { boxes: all.filter(inView).map((b) => [b.left, b.top, b.width, b.height]), first: all.length > 0 && inView(all[0]) };
     }, scope);
     const png = (await page.screenshot()).toString("base64");
-    return page.evaluate(async ({ png, boxes }) => {
+    return page.evaluate(async ({ png, boxes, first }) => {
       const img = new Image();
       img.src = `data:image/png;base64,${png}`;
       await img.decode();
@@ -6416,7 +6435,7 @@ console.log("finder covers:");
       cv.height = img.naturalHeight;
       const ctx = cv.getContext("2d");
       ctx.drawImage(img, 0, 0);
-      const n = { boxes: boxes.length, px: 0, sky: 0, green: 0, white: 0 };
+      const n = { boxes: boxes.length, first, px: 0, sky: 0, green: 0, white: 0 };
       for (const [x, y, w, h] of boxes) {
         const d = ctx.getImageData(Math.ceil(x * k), Math.ceil(y * k), Math.max(1, Math.floor(w * k) - 1), Math.max(1, Math.floor(h * k) - 1)).data;
         for (let i = 0; i < d.length; i += 4) {
@@ -6428,9 +6447,9 @@ console.log("finder covers:");
         }
       }
       return n;
-    }, { png, boxes });
+    }, { png, boxes, first });
   }
-  const noMark = (p) => p.boxes >= 5 && p.px > 0 && p.sky === 0 && p.green === 0 && p.white === 0;
+  const noMark = (p) => p.first && p.boxes >= 5 && p.px > 0 && p.sky === 0 && p.green === 0 && p.white === 0;
   // 読めない絵の後の箱: 表で表紙のある行（coverOf）も、絵を持たず（img 0 枚）革の無地（--plain）で、地は革の色
   const brokenBoxes = (page, scope) => page.evaluate((scope) => [...document.querySelectorAll(`${scope} .finder__row`)].filter((r) => r.offsetHeight).map((r) => {
     const c = r.querySelector(".finder__cov");
@@ -6438,7 +6457,8 @@ console.log("finder covers:");
   }), scope);
   const boxesOk = (bs) => bs.length > 0 && bs.every((b) => b.imgs === 0 && b.plain && b.bg && b.bg !== "rgba(0, 0, 0, 0)" && b.bg !== "transparent");
   const boxesBad = (bs) => bs.filter((b) => b.imgs !== 0 || !b.plain).slice(0, 2);
-  const toTop = (page, scope) => page.evaluate((scope) => { const d = document.querySelector(scope); d.closest(".finder__body").scrollTop = d.offsetTop; }, scope);
+  // scope（開いた見出し・検索の結果の列）の上端を .finder__body の上端へ（位置は .finder__body の中身から測る。offsetTop の基準は .finder__card で、見出し・検索・注の高さだけ行き過ぎる）
+  const toTop = (page, scope) => page.evaluate((scope) => { const d = document.querySelector(scope), body = d.closest(".finder__body"); body.scrollTop = d.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop; }, scope);
   {
     const page = await covPage({ block: true });
     await openFinder(page);
@@ -6457,10 +6477,92 @@ console.log("finder covers:");
     const hadCover = ["social", "exam"].every((id) => boxes[id].filter((b) => coverOf(b.key, id)).length >= 5);
     check("窓の表紙（390）: 表に無い本（文法・英作文の 11 冊）は革の無地の箱（絵なし・同じ 21×28・背の革の色）",
       geo.grammar.length > 0 && geo.grammar.every((r) => r.plain && !r.img && r.cov?.join() === "21,28") && !!normal390.grammar, JSON.stringify(geo.grammar.slice(0, 2)));
-    check("窓の表紙（390）: 絵が全部 404 でも、行の高さ・題と meta の行数と幅・表紙の箱は読めたときと同じ。読めなかった絵は外れ（img 0 枚）、表紙のある行の箱も革の無地（--plain・地は革の色）。箱の中に壊れた絵の印（空色・緑・白）の画素は無い",
-      page.covReqs.length > 0 && sameRows && hadCover && ["social", "grammar", "exam"].every((id) => boxesOk(boxes[id]) && noMark(marks[id])),
-      JSON.stringify({ reqs: page.covReqs.length, sameRows, hadCover, bad: Object.fromEntries(Object.entries(boxes).map(([id, bs]) => [id, boxesBad(bs)])), marks }));
+    check("窓の表紙（390）: 絵が全部 404 でも、行の高さ・題と meta の行数と幅・表紙の箱は読めたときと同じ。読めなかった絵は外れ（img 0 枚）、表紙のある行の箱も革の無地（--plain・地は革の色）",
+      page.covReqs.length > 0 && sameRows && hadCover && ["social", "grammar", "exam"].every((id) => boxesOk(boxes[id])),
+      JSON.stringify({ reqs: page.covReqs.length, sameRows, hadCover, bad: Object.fromEntries(Object.entries(boxes).map(([id, bs]) => [id, boxesBad(bs)])) }));
+    check("窓の表紙（390・404）: 社会・文法・試験とも、見出しのすぐ下の最初の行から、窓に見えている箱の中に壊れた絵の印（空色・緑・白）の画素は無い",
+      ["social", "grammar", "exam"].every((id) => noMark(marks[id])), JSON.stringify(marks));
+    // 読めなかった表紙は覚える（ページの間だけ）: 404 の後に検索を打っても（1 打ごとに行を作り直す）、その表紙はもう要求せず、行は最初から革の無地（img を作らない）。
+    // 作り直した行に一瞬でも img が入ったかは MutationObserver で見る（404 の応答が早いと、見に行く前に error で外れている）
+    const failedCov = uniq(page.covReqs);
+    const reqBefore = page.covReqs.length;
+    await page.evaluate((failed) => {
+      window.__covAdded = [];
+      const imgsOf = (n) => (n.nodeType !== 1 ? [] : n.matches("img") ? [n] : [...n.querySelectorAll("img")]);
+      new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) for (const i of imgsOf(n)) if (i.closest(".finder__cov") && failed.includes(i.getAttribute("src").split("/").pop())) window.__covAdded.push(i.getAttribute("src")); })
+        .observe(document.getElementById("bookFinder"), { childList: true, subtree: true });
+    }, failedCov);
+    for (const q of ["社", "社会", "歴史", "日本史", "英検"]) { await page.fill("#bookFinderQ", q); await page.waitForTimeout(120); }
+    await page.waitForTimeout(300);
+    const again = page.covReqs.slice(reqBefore).filter((f) => failedCov.includes(f));
+    const added = await page.evaluate(() => window.__covAdded.length);
+    const listBoxes = await brokenBoxes(page, "#bookFinderList");
+    await toTop(page, "#bookFinderList");
+    await page.waitForTimeout(100);
+    const listMark = await brokenMarkPixels(page, "#bookFinderList");
+    check("窓の表紙（390・404 の後に検索）: 読めなかった表紙を覚えていて、検索を 5 回打っても（社・社会・歴史・日本史・英検）その表紙をもう要求せず、作り直した行に img を入れない（最初から革の無地）。壊れた絵の印の画素も無い",
+      failedCov.length >= 5 && again.length === 0 && added === 0 && boxesOk(listBoxes) && listBoxes.filter((b) => coverOf(b.key)).length >= 5 && noMark(listMark),
+      JSON.stringify({ failed: failedCov, again: uniq(again), againN: again.length, added, bad: boxesBad(listBoxes), listMark }));
+    // 通信が戻ったら（online）忘れて読み直す: 窓に出ている行に絵が戻り、読める
+    await page.unroute(`**${COV_DIR}**`);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await waitUntil(() => page.evaluate(() => { const is = [...document.querySelectorAll("#bookFinderList .finder__cov img")]; return is.length > 0 && is.every((i) => i.complete); }), 4000);
+    await page.waitForTimeout(100);
+    const back = (await page.evaluate(() => [...document.querySelectorAll("#bookFinderList .finder__row")].map((r) => { const c = r.querySelector(".finder__cov"), i = c.querySelector("img"); return { key: r.dataset.book ? `b:${r.dataset.book}` : `c:${r.dataset.course}`, plain: c.classList.contains("finder__cov--plain"), w: i?.naturalWidth ?? 0 }; })))
+      .map((b) => ({ ...b, cover: coverOf(b.key) }));
+    const reread = page.covReqs.slice(reqBefore).filter((f) => failedCov.includes(f));
+    const backBad = back.filter((b) => (b.cover ? b.plain || b.w !== COV_SIZE.w : !b.plain || b.w));
+    check("窓の表紙（390・online）: 通信が戻ったら読めなかった表紙を忘れ、窓に出ている行のうち表紙のある行に絵を戻して読み直す（無地が外れ、絵が読める。表紙の無い行は無地のまま）",
+      back.filter((b) => b.cover).length >= 5 && backBad.length === 0 && reread.length > 0, JSON.stringify({ n: back.length, covered: back.filter((b) => b.cover).length, bad: backBad.slice(0, 2), reread: uniq(reread) }));
     check("窓の表紙（404）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+  const countOf = (a) => a.reduce((m, f) => ((m[f] = (m[f] ?? 0) + 1), m), {});
+  // 同じ表紙のほかの棚（棚の行は窓を開いたときに全部作る）: コースの棚で読めなかった表紙（英単語・英会話・英語資格）は、英単語・試験の棚を開いても
+  // もう要求せず、その棚の行は革の無地（img 0 枚）。最初の行から壊れた絵の印の画素も無い
+  {
+    const page = await covPage({ block: true });
+    await openFinder(page);
+    await openShelf(page, "course");
+    await page.waitForTimeout(300);
+    const failedCov = uniq(page.covReqs);
+    const reqBefore = page.covReqs.length;
+    const res = {};
+    for (const id of ["eng", "exam"]) {
+      const scope = `#bookFinderBrowse details[data-shelf="${id}"]`;
+      await openShelf(page, id);
+      await page.waitForTimeout(300);
+      const boxes = await brokenBoxes(page, scope);
+      await toTop(page, scope);
+      await page.waitForTimeout(100);
+      res[id] = { boxes, covered: boxes.filter((b) => coverOf(b.key, id)).length, mark: await brokenMarkPixels(page, scope) };
+    }
+    const again = page.covReqs.slice(reqBefore).filter((f) => failedCov.includes(f));
+    check("窓の表紙（390・404・ほかの棚）: コースの棚で読めなかった表紙（英単語・英会話・英語資格）は、英単語・試験の棚を開いてももう要求しない（要求 0）。その棚の行は革の無地（img 0 枚）で、最初の行から壊れた絵の印の画素は無い",
+      same(failedCov, ["conversation.webp", "english.webp", "exam.webp"]) && again.length === 0 && ["eng", "exam"].every((id) => boxesOk(res[id].boxes) && res[id].covered >= 3 && noMark(res[id].mark)) && page.errors.length === 0,
+      JSON.stringify({ failed: failedCov, again: countOf(again), eng: { covered: res.eng.covered, bad: boxesBad(res.eng.boxes), mark: res.eng.mark }, exam: { covered: res.exam.covered, bad: boxesBad(res.exam.boxes), mark: res.exam.mark }, errors: page.errors.slice(0, 1) }));
+    await page.close();
+  }
+  // 404 が遅い（400ms）: 返る前に検索を打ち替えて行を外しても（その error は外した img にだけ届き、窓の捕捉には届かない）、失敗を覚えて、
+  // 次に同じ表紙の行を作るときはもう要求しない（最初の失敗の間に同じ表紙を 2 度要求しない）。行は最初から革の無地
+  {
+    const page = await covPage({ block: true, delay: 400 });
+    await openFinder(page);
+    await page.fill("#bookFinderQ", "歴史");
+    const seen = await waitUntil(() => ["history.webp", "japhist.webp", "worldhist.webp"].every((f) => page.covReqs.includes(f)), 2000, 20);
+    await page.fill("#bookFinderQ", "英検");
+    await page.waitForTimeout(900);
+    const mid = countOf(page.covReqs);
+    await page.fill("#bookFinderQ", "歴史");
+    await page.waitForTimeout(900);
+    const n = countOf(page.covReqs);
+    const listBoxes = await brokenBoxes(page, "#bookFinderList");
+    await toTop(page, "#bookFinderList");
+    await page.waitForTimeout(100);
+    const listMark = await brokenMarkPixels(page, "#bookFinderList");
+    check("窓の表紙（390・遅い 404）: 返る前に打ち替えて外した行の表紙（歴史・日本史・世界史）も、失敗を覚えて、もう一度「歴史」と打っても要求しない（どの表紙も要求は 1 回）。行は最初から革の無地で、壊れた絵の印の画素は無い",
+      seen && ["history.webp", "japhist.webp", "worldhist.webp", "exam.webp"].every((f) => n[f] === 1) && Object.values(n).every((c) => c === 1) && boxesOk(listBoxes) && listBoxes.filter((b) => coverOf(b.key)).length >= 5 && noMark(listMark) && page.errors.length === 0,
+      JSON.stringify({ seen, mid, n, bad: boxesBad(listBoxes), listMark, errors: page.errors.slice(0, 1) }));
     await page.close();
   }
   // 1200・夜（箱 24×32・夜は絵に brightness）と、検索の結果の行（棚の見出しの外の 1 列。打つたびに描き直す）でも同じ
@@ -6478,11 +6580,14 @@ console.log("finder covers:");
     await waitUntil(() => page.evaluate(() => document.querySelectorAll("#bookFinderList .finder__row").length > 0 && [...document.querySelectorAll("#bookFinderList .finder__cov img")].every((i) => i.complete)), 4000);
     await page.waitForTimeout(300);
     const list = await brokenBoxes(page, "#bookFinderList");
+    await toTop(page, "#bookFinderList");
+    await page.waitForTimeout(100);
     const listMark = await brokenMarkPixels(page, "#bookFinderList");
     const geo = await rowsGeo(page, "#bookFinderList");
-    check("窓の表紙（1200・夜・404）: 棚の行も検索の結果の行も、読めなかった絵は外れて革の無地の箱（24×32 のまま）。壊れた絵の印の画素は無い・エラー 0",
-      page.covReqs.length > 0 && boxesOk(shelf) && boxesOk(list) && list.filter((b) => coverOf(b.key)).length >= 5 && noMark(shelfMark) && noMark(listMark) && geo.length > 0 && geo.every((r) => r.cov?.join() === "24,32") && page.errors.length === 0,
-      JSON.stringify({ reqs: page.covReqs.length, shelf: boxesBad(shelf), list: boxesBad(list), shelfMark, listMark, geo: geo.slice(0, 1), errors: page.errors.slice(0, 1) }));
+    check("窓の表紙（1200・夜・404）: 棚の行も検索の結果の行も、読めなかった絵は外れて革の無地の箱（24×32 のまま）・エラー 0",
+      page.covReqs.length > 0 && boxesOk(shelf) && boxesOk(list) && list.filter((b) => coverOf(b.key)).length >= 5 && geo.length > 0 && geo.every((r) => r.cov?.join() === "24,32") && page.errors.length === 0,
+      JSON.stringify({ reqs: page.covReqs.length, shelf: boxesBad(shelf), list: boxesBad(list), geo: geo.slice(0, 1), errors: page.errors.slice(0, 1) }));
+    check("窓の表紙（1200・夜・404）: 棚も検索の結果も、最初の行から、窓に見えている箱の中に壊れた絵の印の画素は無い", noMark(shelfMark) && noMark(listMark), JSON.stringify({ shelfMark, listMark }));
     await page.close();
   }
 

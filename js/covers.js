@@ -42,11 +42,14 @@ export const COURSE_COVER = { "jhs-redo": "english", hs: "english", conversation
 // 棚の既定（本の id の表に無い本）。いまは無し（仕事の言葉の 015 は未着）
 export const SHELF_COVER = {};
 
-// 窓の行の key（"b:<id>"・"c:<id>"）と棚の id → 表紙の名前。無ければ null
+// 表の自分の項目だけを引く（id が constructor・__proto__・toString などでも Object.prototype の物を返さない）。無ければ null
+const pick = (table, id) => (id && Object.hasOwn(table, id) ? table[id] : null);
+
+// 窓の行の key（"b:<id>"・"c:<id>"）と棚の id → 表紙の名前。無ければ null（棚の id が空文字でも null）
 export function coverOf(key, shelfId = null) {
-  if (key.startsWith("c:")) return COURSE_COVER[key.slice(2)] ?? null;
+  if (key.startsWith("c:")) return pick(COURSE_COVER, key.slice(2));
   const id = key.startsWith("b:") ? key.slice(2) : key;
-  return BOOK_COVER[id] ?? (shelfId && SHELF_COVER[shelfId]) ?? null;
+  return pick(BOOK_COVER, id) ?? pick(SHELF_COVER, shelfId);
 }
 
 // <img>（飾り。alt 空・閉じた見出しの中と 360px 未満〔display:none〕では読まない loading=lazy・低い優先度・非同期の解読）。
