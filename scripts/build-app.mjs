@@ -8,6 +8,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { isMain } from "./lib/is-main.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
@@ -34,11 +35,4 @@ function build() {
 }
 
 // 直接呼ばれたときだけ組み立てる（tests/e2e.mjs が PAGES を読むために import しても dist/ を消さない）
-const realOf = (p) => {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
-};
-if (process.argv[1] && realOf(path.resolve(process.argv[1])) === realOf(fileURLToPath(import.meta.url))) build();
+if (isMain(import.meta.url)) build();
