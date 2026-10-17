@@ -25,7 +25,7 @@
 //      1 枚ずつ切り詰めないのは、元の絵が同じ中心・同じ縮尺で描かれ、段が上がるほど大きくなる（木 1 の 780px → 神 3 の 910px）から。
 //      1 枚ずつ詰めると木と銅の丸いメダルが翼のある神と同じ大きさに膨らみ、段が上がる感じが消える。共通の枠なら中心・縮尺・余白の基準が 21 枚で揃う
 //   4. 配信する絵: 半分ずつ縮めて（一度に大きく縮めると細い線がちらつく）224px と 96px にし、WebP で書く
-//   どの WebP も canvas が付ける sRGB の ICC（456 バイト）を外して書く（stripIcc。色は sRGB の既定と同じ。画素は 1 つも変わらない）
+//   どの WebP も canvas が付ける sRGB の ICC（456 バイト）を外して書く（scripts/lib/canvas-art.mjs の stripIcc。色は sRGB の既定と同じ。画素は 1 つも変わらない）
 // 絵の処理と WebP の書き出しは Chromium の canvas（playwright-core。E2E と同じ。CHROME_PATH か Playwright の置き場）。ほかの道具は要らない。
 // 大きさの上限（超えたら書かずに止める）: SIZES の maxBytes と TOTAL_MAX_BYTES。E2E（9.955 学習のランク）と scripts/test-level.mjs はこの台本を import して
 // 同じ値（SIZES・TOTAL_MAX_BYTES・TIERS・STEPS）で見る（import しただけでは Chromium を立ち上げない: 下の「直接呼ばれたときだけ」）。
@@ -35,6 +35,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "playwright-core";
+import { findChromium, dataUrlOf, bufferOf, stripIcc, PAGE_CANVAS } from "./lib/canvas-art.mjs";
+import { isMain } from "./lib/is-main.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 // 段の英字の名前（js/level.js LEARNING_RANK_TIERS と同じ並び。低い順。test-level と E2E 9.955 が突き合わせる）と、元の絵のファイル名に使われうる名前
@@ -53,20 +55,6 @@ export const TOTAL_MAX_BYTES = 440 * 1024;
 const PAD = 0.02;
 const ALPHA_FLOOR = 16;
 
-export function findChromium() {
-  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
-  for (const root of [process.env.PLAYWRIGHT_BROWSERS_PATH, "/opt/pw-browsers", path.join(process.env.HOME ?? "", ".cache", "ms-playwright")]) {
-    if (!root || !fs.existsSync(root)) continue;
-    for (const dir of fs.readdirSync(root).filter((d) => d.startsWith("chromium"))) {
-      for (const sub of ["chrome-linux/chrome", "chrome-linux64/chrome"]) {
-        const p = path.join(root, dir, sub);
-        if (fs.existsSync(p)) return p;
-      }
-    }
-  }
-  throw new Error("Chromium が見つからない。CHROME_PATH を設定する");
-}
-
 function srcFile(dir, tier, step) {
   for (const name of SRC_ALIASES[tier] ?? [tier]) {
     const file = path.join(dir, `emblem-${name}-${step}.png`);
@@ -75,17 +63,8 @@ function srcFile(dir, tier, step) {
   throw new Error(`元の絵が無い: ${path.join(dir, `emblem-${tier}-${step}.png`)}`);
 }
 
-// ---- ページの中で動く関数（canvas）。引数と戻り値は文字列と数だけ ----
-const PAGE_LIB = String.raw`
-async function decode(dataUrl) {
-  const blob = await (await fetch(dataUrl)).blob();
-  return createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
-}
-function canvasOf(w, h) {
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  return c;
-}
+// ---- ページの中で動く関数（canvas）。引数と戻り値は文字列と数だけ。decode・canvasOf・resizeTo は PAGE_CANVAS（scripts/lib/canvas-art.mjs） ----
+const PAGE_LIB = PAGE_CANVAS + String.raw`
 function pixelsOf(bitmap) {
   const c = canvasOf(bitmap.width, bitmap.height);
   const g = c.getContext("2d", { willReadFrequently: true });
@@ -147,23 +126,6 @@ function cleanAndBox(img, floor) {
   }
   if (x1 < 0) throw new Error("不透明な画素が無い");
   return { x0, y0, x1, y1 };
-}
-// 半分ずつ縮める（最後の 1 回で目の大きさへ）。canvas の高品質の縮小は 1/2 より大きく縮めると細い線が欠ける
-function resizeTo(src, px) {
-  let cur = src;
-  while (cur.width / 2 >= px) {
-    const next = canvasOf(Math.round(cur.width / 2), Math.round(cur.height / 2));
-    const g = next.getContext("2d");
-    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
-    g.drawImage(cur, 0, 0, next.width, next.height);
-    cur = next;
-  }
-  if (cur.width === px) return cur;
-  const out = canvasOf(px, px);
-  const g = out.getContext("2d");
-  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
-  g.drawImage(cur, 0, 0, px, px);
-  return out;
 }
 // 元の絵（PNG の data URL）→ 白い背景を消し、かすかな透過を消した canvas と外接矩形
 async function cleaned(dataUrl, floor) {
@@ -251,32 +213,6 @@ window.emblemLib = {
 };
 `;
 
-const dataUrlOf = (file, mime) => `data:${mime};base64,${fs.readFileSync(file).toString("base64")}`;
-const bufferOf = (url) => Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
-
-// canvas の WebP には sRGB の ICC（456 バイト）が付く。色の定義は sRGB の既定と同じなので外す（小さい絵では 1 割前後の重さ）。
-// RIFF の ICCP の塊を抜き、VP8X の ICC の印（0x20）を消して、RIFF の大きさを直す。ほかの塊（VP8・ALPH）はそのまま
-export function stripIcc(buf) {
-  if (buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WEBP") return buf;
-  const parts = [buf.subarray(0, 12)];
-  let at = 12;
-  while (at + 8 <= buf.length) {
-    const tag = buf.toString("ascii", at, at + 4);
-    const size = buf.readUInt32LE(at + 4);
-    const end = at + 8 + size + (size % 2);
-    if (tag === "VP8X") {
-      const chunk = Buffer.from(buf.subarray(at, end));
-      chunk[8] &= ~0x20;
-      parts.push(chunk);
-    } else if (tag !== "ICCP") {
-      parts.push(buf.subarray(at, end));
-    }
-    at = end;
-  }
-  const out = Buffer.concat(parts);
-  out.writeUInt32LE(out.length - 8, 4);
-  return out;
-}
 const kb = (n) => `${(n / 1024).toFixed(1)}KB`;
 
 async function main() {
@@ -363,13 +299,5 @@ async function main() {
   }
 }
 
-// 直接呼ばれたときだけ作る（tests/e2e.mjs・scripts/test-level.mjs が SIZES・TOTAL_MAX_BYTES・TIERS・STEPS を読むために import しても Chromium を立ち上げない。
-// scripts/build-app.mjs・scripts/build-og-image.mjs と同じ作り）
-const realOf = (p) => {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
-};
-if (process.argv[1] && realOf(process.argv[1]) === realOf(fileURLToPath(import.meta.url))) await main();
+// 直接呼ばれたときだけ作る（tests/e2e.mjs・scripts/test-level.mjs が SIZES・TOTAL_MAX_BYTES・TIERS・STEPS を読むために import しても Chromium を立ち上げない）
+if (isMain(import.meta.url)) await main();

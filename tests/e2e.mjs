@@ -17,6 +17,7 @@ import { syncModulePreload, baseDataFiles, WORD_PAGES } from "../scripts/modulep
 import { canonicalRomaji, readingEntries, primaryReading, matchRomaji } from "../js/romaji.js";
 import { FEEDBACK_MS, ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS, GLANCE_MS, MILESTONE_MS, waitAfterCorrect } from "../js/afterCorrect.js";
 import { shelfIdOf } from "../js/shelves.js";
+import { webpSize } from "../scripts/lib/canvas-art.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STUB = path.join(ROOT, "tests", "mocks", "supabase-stub.js");
@@ -297,14 +298,12 @@ function pngInfo(file) {
   return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), bytes: buf.length };
 }
 const isOgPng = (info) => !!info && info.w === 1200 && info.h === 630 && info.bytes <= 300 * 1024;
-// WebP の頭（VP8X・VP8・VP8L）の幅・高さと大きさ。読めない・WebP でなければ null
+// WebP のファイルの幅・高さ（scripts/lib/canvas-art.mjs の webpSize。生成器と同じ読み方）と大きさ。無い・WebP でなければ null
 function webpInfo(file) {
   if (!file || !fs.existsSync(file)) return null;
   const buf = fs.readFileSync(file);
-  if (buf.length < 30 || buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WEBP") return null;
-  const t = buf.toString("ascii", 12, 16), l = buf.readUInt32LE(21);
-  const [w, h] = t === "VP8X" ? [buf.readUIntLE(24, 3) + 1, buf.readUIntLE(27, 3) + 1] : t === "VP8 " ? [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff] : t === "VP8L" ? [(l & 0x3fff) + 1, ((l >> 14) & 0x3fff) + 1] : [0, 0];
-  return { w, h, bytes: buf.length };
+  const size = webpSize(buf);
+  return size ? { w: size[0], h: size[1], bytes: buf.length } : null;
 }
 
 function check(name, ok, detail = "") {
@@ -366,8 +365,19 @@ async function watchWriters(page) {
 }
 const writesOf = (page, fn) => page.evaluate((f) => (window.__writes ?? []).filter((w) => !f || w.fn === f), fn);
 
+// 表示中の書斎の場面（.room__scene の 1 枚）の WebP: 名前・種類（phone／short／desk）・バイト（fetch で読み直す）。上限は scripts/room-art/render.mjs の SCENE_MAX_BYTES[kind]
+const shownSceneBytes = (page) => page.evaluate(async () => {
+  const el = [...document.querySelectorAll(".room__scene")].find((e) => getComputedStyle(e).display !== "none");
+  const url = el && getComputedStyle(el).backgroundImage.match(/url\("?([^")]+)"?\)/)?.[1];
+  if (!url) return { ok: false };
+  const res = await fetch(url);
+  const file = url.split("/").pop();
+  return { ok: res.ok, bytes: (await res.arrayBuffer()).byteLength, url: file, kind: file.match(/^scene-(phone|short|desk)-/)?.[1] ?? null };
+});
+
 // はちゃんの丸いアバター（js/hasumi.js hasumiBubbleHtml。結果のパネル・週間レポート・学習中の知らせ #learnToast）: scope の中の img.hasumi__avatar の状態。
-// 読み込みを待ってから（上限 2 秒）、属性・選ばれた絵（currentSrc）・画素（naturalWidth は 2x の絵でも CSS px）・表示の箱・読み上げの名前（role img・名前「はちゃん」の数）
+// 読み込みを待ってから（上限 2 秒）、属性・選ばれた絵（currentSrc）・naturalWidth（x の記述子で割った CSS px）・選ばれた絵の画素（px: srcset なしで読み直した幅）・
+// 描く中身（cw: 枠の内側の clientWidth）・表示の箱・このページで読んだアバターのファイル（reqs）・読み上げの名前（role img・名前「はちゃん」の数）
 async function hasumiAvatarOf(page, scope) {
   const a = await page.evaluate(async (sel) => {
     const imgs = [...document.querySelectorAll(`${sel} img.hasumi__avatar`)];
@@ -375,19 +385,24 @@ async function hasumiAvatarOf(page, scope) {
     if (!el) return { n: 0 };
     if (!el.complete) await new Promise((r) => { el.addEventListener("load", r, { once: true }); el.addEventListener("error", r, { once: true }); setTimeout(r, 2000); });
     const r = el.getBoundingClientRect();
-    return { n: imgs.length, src: el.getAttribute("src"), srcset: el.getAttribute("srcset"), current: el.currentSrc.split("/").pop(), nw: el.naturalWidth, nh: el.naturalHeight, w: el.getAttribute("width"), h: el.getAttribute("height"), box: [Math.round(r.width), Math.round(r.height)], alt: el.getAttribute("alt"), dpr: devicePixelRatio };
+    const reqs = performance.getEntriesByType("resource").map((e) => e.name.split("/").pop()).filter((n) => /^hasumi-(normal|happy)(@[23]x)?\.webp$/.test(n));
+    const probe = new Image();
+    probe.src = el.currentSrc;
+    await probe.decode().catch(() => {});
+    return { n: imgs.length, src: el.getAttribute("src"), srcset: el.getAttribute("srcset"), current: el.currentSrc.split("/").pop(), nw: el.naturalWidth, nh: el.naturalHeight, px: probe.naturalWidth, cw: el.clientWidth, ch: el.clientHeight, w: el.getAttribute("width"), h: el.getAttribute("height"), box: [Math.round(r.width), Math.round(r.height)], alt: el.getAttribute("alt"), dpr: devicePixelRatio, reqs };
   }, scope);
   a.named = a.n ? await page.locator(scope).getByRole("img", { name: "はちゃん", exact: true }).count().catch(() => -1) : 0;
   return a;
 }
-// 新しい絵か（avatars = scripts/build-hasumi.mjs の AVATARS。mood を渡せばその気分の絵、null ならどちらか）: src は 1x・srcset は 2x の対、選ばれた絵は画面の倍率の物、
-// 画素は 32 CSS px、width／height 32・表示 32×32（枠 1px を含む。前の絵と同じ）・alt「はちゃん」・読み上げの名前 1 つ
+// 新しい絵か（avatars = scripts/build-hasumi.mjs の AVATARS。mood を渡せばその気分の絵、null ならどちらか）: src は 1x・srcset は 2x と 3x、選ばれた絵は画面の倍率（1・2・3）の物で、
+// その画素は描く中身（枠 1px の内側の 30 CSS px）× 倍率。width／height 32・表示 32×32（枠を含む。前と同じ）・alt「はちゃん」・読み上げの名前 1 つ
 function isNewHasumiAvatar(a, avatars, mood = null) {
   if (!a || a.n !== 1 || !avatars?.length) return false;
-  const pair = ["normal", "happy"].filter((m) => !mood || m === mood).map((m) => [avatars.find((x) => x.mood === m && x.px === 32), avatars.find((x) => x.mood === m && x.px === 64)])
-    .find(([one, two]) => one && two && a.src === `./${one.rel}` && a.srcset === `./${two.rel} 2x`);
-  if (!pair) return false;
-  return a.current === pair[a.dpr >= 2 ? 1 : 0].rel.split("/").pop() && a.nw === 32 && a.nh === 32 && a.w === "32" && a.h === "32" && a.box[0] === 32 && a.box[1] === 32 && a.alt === "はちゃん" && a.named === 1;
+  const set = ["normal", "happy"].filter((m) => !mood || m === mood).map((m) => [1, 2, 3].map((d) => avatars.find((x) => x.mood === m && x.dpr === d)))
+    .find(([one, two, three]) => one && two && three && a.src === `./${one.rel}` && a.srcset === `./${two.rel} 2x, ./${three.rel} 3x`);
+  const want = set?.[[1, 2, 3].indexOf(a.dpr)];
+  if (!want) return false;
+  return a.current === want.rel.split("/").pop() && a.px === want.px && a.px === a.cw * a.dpr && a.cw === a.ch && a.nw === a.cw && a.w === "32" && a.h === "32" && a.box[0] === 32 && a.box[1] === 32 && a.alt === "はちゃん" && a.named === 1;
 }
 
 // 読み込みの CLS（Batch 67 C1。単語帳・学習データ・加入画面）: 全応答を delay ms 遅らせて開き（scratchpad/perf-delay.mjs の作法）、load から wait ms のあいだの
@@ -1063,15 +1078,10 @@ console.log("home widgets:");
   check("ヘッダーストリーク表示", await page.isVisible("#headerStreak"));
   // はちゃん（ホーム一言）: 吹き出し＋アバター画像がロードされている
   check("はちゃんのホーム一言表示（窓の脇の紙片に 1 文）", (await page.isVisible("#hasumiHome .hasumi__bubble")) && ((await page.textContent("#hasumiHome .hasumi__bubble")) ?? "").trim().length > 0);
-  // はちゃん本人は部屋の絵（焼いた WebP。scripts/room-art/render.mjs）の中。表示中の場面の背景画像が読めていて 60KB 以下
-  const scene = await page.evaluate(async () => {
-    const el = [...document.querySelectorAll(".room__scene")].find((e) => getComputedStyle(e).display !== "none");
-    const url = el && getComputedStyle(el).backgroundImage.match(/url\("?([^")]+)"?\)/)?.[1];
-    if (!url) return { ok: false };
-    const res = await fetch(url);
-    return { ok: res.ok, bytes: (await res.arrayBuffer()).byteLength, url: url.split("/").pop() };
-  });
-  check("はちゃんは部屋の絵の中（表示中の場面の WebP が読めて 60KB 以下）", scene.ok && scene.bytes > 0 && scene.bytes <= 60 * 1024, JSON.stringify(scene));
+  // はちゃん本人は部屋の絵（焼いた WebP。scripts/room-art/render.mjs）の中。表示中の場面の背景画像が読めていて、その場面の 1 枚の上限（render.mjs の SCENE_MAX_BYTES）以下
+  const { SCENE_MAX_BYTES: SCENE_MAX4 = {} } = await import("../scripts/room-art/render.mjs").catch(() => ({}));
+  const scene = await shownSceneBytes(page);
+  check(`はちゃんは部屋の絵の中（表示中の場面の WebP が読めて、その場面の上限以下。${scene.kind ?? "?"} ${(SCENE_MAX4[scene.kind] ?? 0) / 1024}KB）`, scene.ok && scene.bytes > 0 && scene.bytes <= (SCENE_MAX4[scene.kind] ?? 0), JSON.stringify(scene));
   await page.close();
 
   // 腕試しの途中で何語か答えて閉じた人（placement=started のまま）: 翌日のホームで「まず腕試し10語から。」を言い続けない
@@ -1107,6 +1117,8 @@ console.log("home widgets:");
 // ===== 5. Challenge: 完走でリザルトパネル =====
 console.log("challenge result:");
 {
+  // はちゃんの顔の名前は生成器の値（scripts/build-hasumi.mjs の AVATARS。ふつう 006／うれしい 008 の丸）。import は流れの前に済ませる
+  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const page = await newPage();
   await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
@@ -1114,10 +1126,9 @@ console.log("challenge result:");
   await page.waitForTimeout(3800);
   check("リザルトパネル表示", await page.isVisible("#resultPanel"));
   check("リザルトにはちゃんの一言", await page.isVisible("#resultPanel .hasumi__bubble"));
-  // はちゃんの顔は創業者が用意した絵（scripts/build-hasumi.mjs の AVATARS。ふつう 006／うれしい 008 の 32px の丸）
-  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
+  // はちゃんの顔は創業者が用意した絵（パネルは「もう一回」まで残るので、待っても時間に敏感な検査は無い）
   const hsAv = await hasumiAvatarOf(page, "#resultPanel");
-  check("リザルトのはちゃんは新しい顔（1x／2x の WebP の対・32px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(hsAv, HS_AV), JSON.stringify(hsAv));
+  check("リザルトのはちゃんは新しい顔（1x／2x／3x の WebP・描く 30 CSS px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(hsAv, HS_AV), JSON.stringify(hsAv));
   check("もう一回でパネルが消える", await page.click("#resultRetry").then(async () => {
     await page.waitForTimeout(300);
     return !(await page.isVisible("#resultPanel"));
@@ -4847,6 +4858,9 @@ console.log("study (foundation):");
 // ===== 8.6 書斎（部屋・机の本・初回）: 1 画面目・場面は 1 枚・予算・横スクロール無し・動き・夜・紙片・積んだ本（css/room.css・js/pathView.js・js/welcome.js） =====
 console.log("study (room):");
 {
+  // 場面 1 枚の上限は焼く台本の値（desk 50KB・phone 40KB・short 32KB。import しても Chromium は立ち上がらない）
+  const { SCENE_MAX_BYTES: SCENE_MAX = {} } = await import("../scripts/room-art/render.mjs").catch(() => ({}));
+  const underMax = (s) => !!s.ok && s.bytes > 0 && s.bytes <= (SCENE_MAX[s.kind] ?? 0);
   const jhs1R0 = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
   const tagsR0 = [...new Set(jhs1R0.map((w) => w.tags[0]))];
   const doneR0 = new Set(tagsR0.slice(0, 3));
@@ -4882,7 +4896,9 @@ console.log("study (room):");
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(600);
     const sc = await sceneState(page);
-    check(`書斎（390・${theme}）: 部屋の帯が見え、場面は 1 枚だけ読む`, sc.stageVisible && sc.shown === 1 && sceneRequests.length === 1, JSON.stringify({ ...sc, sceneRequests }));
+    const reqs390 = [...sceneRequests]; // バイトを読み直す fetch の前に数える
+    const bytes390 = await shownSceneBytes(page);
+    check(`書斎（390・${theme}）: 部屋の帯が見え、場面は 1 枚だけ読み、その 1 枚は phone の上限（${(SCENE_MAX.phone ?? 0) / 1024}KB）以下`, sc.stageVisible && sc.shown === 1 && reqs390.length === 1 && bytes390.kind === "phone" && underMax(bytes390), JSON.stringify({ ...sc, sceneRequests: reqs390, bytes390 }));
     const start = await page.evaluate(() => { const r = document.getElementById("pathStart")?.getBoundingClientRect(); return { n: document.querySelectorAll("#pathStart").length, bottom: r?.bottom, width: r?.width, text: document.getElementById("pathStart")?.textContent.trim() }; });
     check(`書斎（390・${theme}）: スタートは 1 個・全幅・1 画面目（下端 ≤ 700px）`, start.n === 1 && start.width >= 300 && start.bottom <= 700 && start.text === "スタート", JSON.stringify(start));
     check(`書斎（390・${theme}）: 目次（#pathList）はスタートの下に見えている`, (await page.isVisible("#pathList .path__list")) && (await page.evaluate(() => document.querySelector("#pathList").getBoundingClientRect().top > document.getElementById("pathStart").getBoundingClientRect().bottom)));
@@ -4929,7 +4945,8 @@ console.log("study (room):");
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(500);
     const w = await page.evaluate(() => ({ scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth, start: document.getElementById("pathStart").getBoundingClientRect().width, shown: [...document.querySelectorAll(".room__scene")].filter((e) => getComputedStyle(e).display !== "none").length }));
-    check("書斎（320）: 横スクロールしない・場面は 1 枚・スタートは全幅", w.scrollW <= w.innerW && w.shown === 1 && w.start >= 240, JSON.stringify(w));
+    const bytes320 = await shownSceneBytes(page);
+    check(`書斎（320）: 横スクロールしない・場面は 1 枚（背の低い画面の short で、上限 ${(SCENE_MAX.short ?? 0) / 1024}KB 以下）・スタートは全幅`, w.scrollW <= w.innerW && w.shown === 1 && w.start >= 240 && bytes320.kind === "short" && underMax(bytes320), JSON.stringify({ ...w, bytes320 }));
     await page.close();
   }
 
@@ -4942,7 +4959,9 @@ console.log("study (room):");
     await page.waitForTimeout(600);
     const sc = await sceneState(page);
     const start = await page.evaluate(() => document.getElementById("pathStart").getBoundingClientRect());
-    check("書斎（1200）: 場面は机の 1 枚だけ・スタートは 1 画面目", sc.shown === 1 && sc.url.includes("scene-desk") && sceneRequests.length === 1 && start.bottom < 900 && start.bottom > 0, JSON.stringify({ ...sc, sceneRequests, bottom: start.bottom }));
+    const reqs1200 = [...sceneRequests]; // バイトを読み直す fetch の前に数える
+    const bytes1200 = await shownSceneBytes(page);
+    check(`書斎（1200）: 場面は机の 1 枚だけ（上限 ${(SCENE_MAX.desk ?? 0) / 1024}KB 以下）・スタートは 1 画面目`, sc.shown === 1 && sc.url.includes("scene-desk") && reqs1200.length === 1 && bytes1200.kind === "desk" && underMax(bytes1200) && start.bottom < 900 && start.bottom > 0, JSON.stringify({ ...sc, sceneRequests: reqs1200, bytes1200, bottom: start.bottom }));
     check("書斎（1200）: 横スクロールしない", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     // 本棚は右の列（#bookshelf の left ≥ 640）。最初の棚板の上面は机の天板の線（--desk-top 398px）にそろう
     const shelfPos = await page.evaluate(() => ({ left: document.getElementById("bookshelf").getBoundingClientRect().left, hidden: document.getElementById("bookshelf").hidden, board: Math.round(document.querySelector("#bookshelf .shelf__board")?.getBoundingClientRect().top ?? -1), desk: Math.round(document.querySelector(".desk").getBoundingClientRect().top) }));
@@ -6259,48 +6278,34 @@ console.log("finder covers:");
   const { COVERS: COV_SRC, SIZE: COV_SIZE, TOTAL_MAX_BYTES: COV_TOTAL } = await import("../scripts/build-covers.mjs");
   const { BOOK_COVER, COURSE_COVER, SHELF_COVER, coverOf } = await import("../js/covers.js");
   const COV_DIR = "/assets/images/covers/";
-  // 種: 戻ってきた人（中学英語やり直し・中学英語 1年・腕試し済み）。first = 初めての人（本をさがす）。
-  // 小数の幅（359.5・599.5）は、同じオリジンの頁に zoom: 2 の iframe（幅 359.5px = 画素 719）を置いて開く（頁の幅も zoom の無い iframe の幅も整数に丸まる。
-  // zoom の掛かった iframe の中は 2 倍に拡大した画面と同じで、媒体の問い合わせと % はその小数の幅で決まる）。そのときは iframe の frame を返す
-  // （evaluate・fill・$$eval・waitForTimeout は頁と同じ。押すのは evaluate の click。close・covReqs・errors は頁の物を付ける）
+  // 種: 戻ってきた人（中学英語やり直し・中学英語 1年・腕試し済み）。first = 初めての人（本をさがす）
   async function covPage({ width = 390, height = 844, theme = "light", first = false, block = false, delay = 0 } = {}) {
-    const inFrame = !Number.isInteger(width);
     const storage = first ? { spelldash_theme: theme } : { spelldash_theme: theme, spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" };
-    const page = await newPage({ viewport: inFrame ? { width: Math.ceil(width * 2), height: height * 2 } : { width, height }, mobile: !inFrame && width < 600, keepOnboarding: first, storage });
+    const page = await newPage({ viewport: { width, height }, mobile: width < 600, keepOnboarding: first, storage });
     await page.addInitScript(() => { try { navigator.serviceWorker.register = () => new Promise(() => {}); } catch { /* SW の無い環境 */ } });
     page.covReqs = [];
     page.on("request", (r) => { const u = new URL(r.url()); if (u.pathname.startsWith(COV_DIR)) page.covReqs.push(u.pathname.slice(COV_DIR.length)); });
-    if (block) await page.route(`**${COV_DIR}**`, async (route) => { if (delay) await new Promise((r) => setTimeout(r, delay)); await route.fulfill({ status: 404, body: "" }); });
+    if (block) await page.route(`**${COV_DIR}**`, (route) => route.fulfill({ status: 404, body: "" }));
     else if (delay) await page.route(`**${COV_DIR}**`, async (route) => { await new Promise((r) => setTimeout(r, delay)); await route.continue(); });
-    let f = page;
-    if (inFrame) {
-      await page.route(`${BASE}/__frame.html`, (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><meta charset="utf-8"><style>html,body{margin:0}iframe{display:block;border:0;zoom:2;width:${width}px;height:${height}px}</style><iframe src="/index.html"></iframe>` }));
-      await page.goto(BASE + "/__frame.html", { waitUntil: "networkidle" });
-      await waitUntil(() => page.frames().some((x) => x.url() === BASE + "/index.html"), 5000);
-      f = page.frames().find((x) => x.url() === BASE + "/index.html");
-      Object.assign(f, { inFrame, covReqs: page.covReqs, errors: page.errors, close: () => page.close() });
-    } else await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await waitUntil(() => f.evaluate((fi) => (fi ? !!document.getElementById("welcomeFind")?.offsetParent : !!document.querySelector("#shelfRun .shelf") && !document.getElementById("bookFinderOpen").hidden), first), 6000);
-    await f.waitForTimeout(200);
-    return f;
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate((f) => (f ? !!document.getElementById("welcomeFind")?.offsetParent : !!document.querySelector("#shelfRun .shelf") && !document.getElementById("bookFinderOpen").hidden), first), 6000);
+    await page.waitForTimeout(200);
+    return page;
   }
   const openFinder = async (page, first = false) => {
-    if (page.inFrame) await page.evaluate((fi) => document.getElementById(fi ? "welcomeFind" : "bookFinderOpen").click(), first);
-    else if (first) await page.click("#welcomeFind");
+    if (first) await page.click("#welcomeFind");
     else { await page.evaluate(() => document.getElementById("bookFinderOpen").scrollIntoView({ block: "center" })); await page.click("#bookFinderOpen"); }
     await waitUntil(() => page.evaluate(() => document.getElementById("bookFinder").open), 3000);
     await page.waitForTimeout(150);
   };
   const shelvesOf = (page) => page.$$eval("#bookFinderBrowse details", (ds) => ds.map((d) => d.dataset.shelf));
-  // 見出しを開き、窓の中を見出しの上端から下まで送って（loading=lazy の先読みの距離の外の行も）、開いた棚の絵が読み終わるまで待つ。
-  // 窓の中の位置は .finder__body の中身の上端から測る（offsetTop の基準は .finder__card〔position: relative〕なので、見出し・検索・注の高さだけ行き過ぎる）
+  // 見出しを開き、窓の中を下まで送って（loading=lazy の先読みの距離の外の行も）、開いた棚の絵が読み終わるまで待つ
   async function openShelf(page, id) {
     await page.evaluate((id) => { const d = document.querySelector(`#bookFinderBrowse details[data-shelf="${id}"]`); if (!d.open) d.querySelector("summary").click(); }, id);
     await page.evaluate(async (id) => {
       const d = document.querySelector(`#bookFinderBrowse details[data-shelf="${id}"]`);
       const body = d.closest(".finder__body");
-      const top = d.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
-      for (let y = top; y <= top + d.offsetHeight; y += 200) { body.scrollTop = y; await new Promise((r) => setTimeout(r, 30)); }
+      for (let y = d.offsetTop; y <= d.offsetTop + d.offsetHeight; y += 200) { body.scrollTop = y; await new Promise((r) => setTimeout(r, 30)); }
     }, id);
     await waitUntil(() => page.evaluate((id) => [...document.querySelectorAll(`#bookFinderBrowse details[data-shelf="${id}"] .finder__cov img`)].every((i) => i.complete), id), 4000);
     await page.waitForTimeout(100);
@@ -6318,9 +6323,8 @@ console.log("finder covers:");
       img: img ? img.getAttribute("src").split("/").pop().replace(/\.webp$/, "") : null, plain: !!cov?.classList.contains("finder__cov--plain")
     };
   }), scope);
-  // 表紙を入れる前の窓の形（main 399c729: 表紙なし・窓の width は min(560px, 100% - 20px) でブラウザの dialog の既定の max-width が効く・札の左右 20px）に
-  // 戻すと行がどうなるか。比べ終えたら外す
-  const OLD_LAYOUT = ".finder__cov { display: none !important; } .bookshelf .finder { width: min(560px, calc(100% - 20px)) !important; max-width: revert !important; } .finder__card { padding-left: 20px !important; padding-right: 20px !important; }";
+  // 表紙を入れる前の窓の形（表紙なし・dialog の max-width はブラウザの既定・札の左右 20px）に戻すと行がどうなるか。比べ終えたら外す
+  const OLD_LAYOUT = ".finder__cov { display: none !important; } .bookshelf .finder { max-width: revert !important; } .finder__card { padding-left: 20px !important; padding-right: 20px !important; }";
   async function withOldLayout(page, fn) {
     await page.evaluate((css) => { const s = document.createElement("style"); s.id = "__oldLayout"; s.textContent = css; document.head.appendChild(s); }, OLD_LAYOUT);
     await page.waitForTimeout(50);
@@ -6389,9 +6393,8 @@ console.log("finder covers:");
     await page.close();
   }
 
-  // ---- (4) 寸法と書名の行数: 表紙を入れる前の窓の形と比べ、どの行も題・meta の行数と行の高さが同じ。600px 未満は題と meta の列の幅も同じ ----
-  // 境目は小数の幅（359.5・599.5。iframe）でも抜けない: 359.5 は表紙を出さず、599.5 は 360〜600px 未満の形。599 は窓の幅の上限の際（581〜599px）
-  for (const [width, height, box] of [[359.5, 780, null], [360, 780, [21, 28]], [390, 844, [21, 28]], [599, 844, [21, 28]], [599.5, 844, [21, 28]], [600, 844, [24, 32]], [1200, 900, [24, 32]]]) {
+  // ---- (4) 寸法と書名の行数: 表紙を入れる前の窓の形と比べ、どの行も題・meta の行数と行の高さが同じ。360〜599px は題と meta の列の幅も同じ ----
+  for (const [width, height, box] of [[360, 780, [21, 28]], [390, 844, [21, 28]], [1200, 900, [24, 32]]]) {
     const page = await covPage({ width, height });
     await openFinder(page);
     const diff = [], boxBad = [];
@@ -6403,29 +6406,26 @@ console.log("finder covers:");
       now.forEach((r, i) => {
         const o = old[i];
         if (!o || o.key !== r.key || o.tl !== r.tl || o.ml !== r.ml || Math.abs(o.h - r.h) > 0.5 || (width < 600 && Math.abs(o.tw - r.tw) > 0.5)) diff.push(`${label}:${r.key} 題${o?.tl}→${r.tl} meta${o?.ml}→${r.ml} 高さ${o?.h}→${r.h} 幅${o?.tw}→${r.tw}`);
-        if (box ? !r.cov || Math.abs(r.cov[0] - box[0]) > 0.5 || Math.abs(r.cov[1] - box[1]) > 0.5 || !r.inRow : r.cov) boxBad.push(`${label}:${r.key}:${r.cov}:${r.inRow}`);
+        if (!r.cov || Math.abs(r.cov[0] - box[0]) > 0.5 || Math.abs(r.cov[1] - box[1]) > 0.5 || !r.inRow) boxBad.push(`${label}:${r.key}:${r.cov}:${r.inRow}`);
       });
     };
     for (const id of await shelvesOf(page)) { await openShelf(page, id); await compare(`#bookFinderBrowse details[data-shelf="${id}"]`, id); }
     for (const q of ["社会", "英検", "国語", "仕事"]) { await page.fill("#bookFinderQ", q); await page.waitForTimeout(80); await compare("#bookFinderList", `q:${q}`); }
     const imgs = await page.evaluate(() => [...document.querySelectorAll("#bookFinder .finder__cov img")].filter((i) => i.complete && i.naturalWidth).map((i) => [i.naturalWidth, i.naturalHeight, i.getAttribute("width"), i.getAttribute("height")]));
-    check(`窓の表紙（${width}）: ${box ? `表紙の箱は ${box.join("×")}（3:4。行の中に収まる）・絵は ${COV_SIZE.w}×${COV_SIZE.h}・<img width height> は 3:4` : "表紙の箱は出さない（360px 未満）・絵は 1 枚も読まない"}。全 ${n} 行（9 棚＋検索 4 語）で、表紙を入れる前の窓の形と比べて題の行数・meta の行数・行の高さが同じ${width < 600 ? "・題と meta の列の幅も同じ（書名が 2 行に折れない）" : ""}`,
-      n > 150 && diff.length === 0 && boxBad.length === 0 && (box ? imgs.length > 0 && imgs.every(([w, h, aw, ah]) => w === COV_SIZE.w && h === COV_SIZE.h && Number(aw) * 4 === Number(ah) * 3) : imgs.length === 0 && page.covReqs.length === 0), JSON.stringify({ n, diff: diff.slice(0, 5), boxBad: boxBad.slice(0, 5), imgs: imgs.slice(0, 2), reqs: page.covReqs.length }));
+    check(`窓の表紙（${width}）: 表紙の箱は ${box.join("×")}（3:4。行の中に収まる）・絵は ${COV_SIZE.w}×${COV_SIZE.h}・<img width height> は 3:4。全 ${n} 行（9 棚＋検索 4 語）で、表紙を入れる前の窓の形と比べて題の行数・meta の行数・行の高さが同じ${width < 600 ? "・題と meta の列の幅も同じ（書名が 2 行に折れない）" : ""}`,
+      n > 150 && diff.length === 0 && boxBad.length === 0 && imgs.length > 0 && imgs.every(([w, h, aw, ah]) => w === COV_SIZE.w && h === COV_SIZE.h && Number(aw) * 4 === Number(ah) * 3), JSON.stringify({ n, diff: diff.slice(0, 5), boxBad: boxBad.slice(0, 5), imgs: imgs.slice(0, 2) }));
     await page.close();
   }
 
   // ---- (5) 無地の代わり・(6) 読めない絵（404）: 行は崩れず、読めなかった絵は外れて箱は革の無地（Chromium は alt 空でも大きさのある <img> に壊れた絵の印を描く） ----
-  // 箱の内側に壊れた絵の印の色（明るい空色・丘の緑・紙の白）の画素が無いかを、画面を撮って数える（窓の中に見えている箱だけ。革・金の細線・羊皮紙の色は当たらない）。
-  // first = scope の最初の行の箱が窓の中に見えている（見出しのすぐ下の行を見落とさない。toTop で送ってから撮る）
+  // 箱の内側に壊れた絵の印の色（明るい空色・丘の緑・紙の白）の画素が無いかを、画面を撮って数える（窓の中に見えている箱だけ。革・金の細線・羊皮紙の色は当たらない）
   async function brokenMarkPixels(page, scope) {
-    const { boxes, first } = await page.evaluate((scope) => {
+    const boxes = await page.evaluate((scope) => {
       const body = document.querySelector("#bookFinder .finder__body").getBoundingClientRect();
-      const all = [...document.querySelectorAll(`${scope} .finder__cov`)].map((c) => c.getBoundingClientRect()).filter((b) => b.width);
-      const inView = (b) => b.top >= body.top && b.bottom <= body.bottom;
-      return { boxes: all.filter(inView).map((b) => [b.left, b.top, b.width, b.height]), first: all.length > 0 && inView(all[0]) };
+      return [...document.querySelectorAll(`${scope} .finder__cov`)].map((c) => c.getBoundingClientRect()).filter((b) => b.width && b.top >= body.top && b.bottom <= body.bottom).map((b) => [b.left, b.top, b.width, b.height]);
     }, scope);
     const png = (await page.screenshot()).toString("base64");
-    return page.evaluate(async ({ png, boxes, first }) => {
+    return page.evaluate(async ({ png, boxes }) => {
       const img = new Image();
       img.src = `data:image/png;base64,${png}`;
       await img.decode();
@@ -6435,7 +6435,7 @@ console.log("finder covers:");
       cv.height = img.naturalHeight;
       const ctx = cv.getContext("2d");
       ctx.drawImage(img, 0, 0);
-      const n = { boxes: boxes.length, first, px: 0, sky: 0, green: 0, white: 0 };
+      const n = { boxes: boxes.length, px: 0, sky: 0, green: 0, white: 0 };
       for (const [x, y, w, h] of boxes) {
         const d = ctx.getImageData(Math.ceil(x * k), Math.ceil(y * k), Math.max(1, Math.floor(w * k) - 1), Math.max(1, Math.floor(h * k) - 1)).data;
         for (let i = 0; i < d.length; i += 4) {
@@ -6447,9 +6447,9 @@ console.log("finder covers:");
         }
       }
       return n;
-    }, { png, boxes, first });
+    }, { png, boxes });
   }
-  const noMark = (p) => p.first && p.boxes >= 5 && p.px > 0 && p.sky === 0 && p.green === 0 && p.white === 0;
+  const noMark = (p) => p.boxes >= 5 && p.px > 0 && p.sky === 0 && p.green === 0 && p.white === 0;
   // 読めない絵の後の箱: 表で表紙のある行（coverOf）も、絵を持たず（img 0 枚）革の無地（--plain）で、地は革の色
   const brokenBoxes = (page, scope) => page.evaluate((scope) => [...document.querySelectorAll(`${scope} .finder__row`)].filter((r) => r.offsetHeight).map((r) => {
     const c = r.querySelector(".finder__cov");
@@ -6457,8 +6457,7 @@ console.log("finder covers:");
   }), scope);
   const boxesOk = (bs) => bs.length > 0 && bs.every((b) => b.imgs === 0 && b.plain && b.bg && b.bg !== "rgba(0, 0, 0, 0)" && b.bg !== "transparent");
   const boxesBad = (bs) => bs.filter((b) => b.imgs !== 0 || !b.plain).slice(0, 2);
-  // scope（開いた見出し・検索の結果の列）の上端を .finder__body の上端へ（位置は .finder__body の中身から測る。offsetTop の基準は .finder__card で、見出し・検索・注の高さだけ行き過ぎる）
-  const toTop = (page, scope) => page.evaluate((scope) => { const d = document.querySelector(scope), body = d.closest(".finder__body"); body.scrollTop = d.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop; }, scope);
+  const toTop = (page, scope) => page.evaluate((scope) => { const d = document.querySelector(scope); d.closest(".finder__body").scrollTop = d.offsetTop; }, scope);
   {
     const page = await covPage({ block: true });
     await openFinder(page);
@@ -6477,92 +6476,10 @@ console.log("finder covers:");
     const hadCover = ["social", "exam"].every((id) => boxes[id].filter((b) => coverOf(b.key, id)).length >= 5);
     check("窓の表紙（390）: 表に無い本（文法・英作文の 11 冊）は革の無地の箱（絵なし・同じ 21×28・背の革の色）",
       geo.grammar.length > 0 && geo.grammar.every((r) => r.plain && !r.img && r.cov?.join() === "21,28") && !!normal390.grammar, JSON.stringify(geo.grammar.slice(0, 2)));
-    check("窓の表紙（390）: 絵が全部 404 でも、行の高さ・題と meta の行数と幅・表紙の箱は読めたときと同じ。読めなかった絵は外れ（img 0 枚）、表紙のある行の箱も革の無地（--plain・地は革の色）",
-      page.covReqs.length > 0 && sameRows && hadCover && ["social", "grammar", "exam"].every((id) => boxesOk(boxes[id])),
-      JSON.stringify({ reqs: page.covReqs.length, sameRows, hadCover, bad: Object.fromEntries(Object.entries(boxes).map(([id, bs]) => [id, boxesBad(bs)])) }));
-    check("窓の表紙（390・404）: 社会・文法・試験とも、見出しのすぐ下の最初の行から、窓に見えている箱の中に壊れた絵の印（空色・緑・白）の画素は無い",
-      ["social", "grammar", "exam"].every((id) => noMark(marks[id])), JSON.stringify(marks));
-    // 読めなかった表紙は覚える（ページの間だけ）: 404 の後に検索を打っても（1 打ごとに行を作り直す）、その表紙はもう要求せず、行は最初から革の無地（img を作らない）。
-    // 作り直した行に一瞬でも img が入ったかは MutationObserver で見る（404 の応答が早いと、見に行く前に error で外れている）
-    const failedCov = uniq(page.covReqs);
-    const reqBefore = page.covReqs.length;
-    await page.evaluate((failed) => {
-      window.__covAdded = [];
-      const imgsOf = (n) => (n.nodeType !== 1 ? [] : n.matches("img") ? [n] : [...n.querySelectorAll("img")]);
-      new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) for (const i of imgsOf(n)) if (i.closest(".finder__cov") && failed.includes(i.getAttribute("src").split("/").pop())) window.__covAdded.push(i.getAttribute("src")); })
-        .observe(document.getElementById("bookFinder"), { childList: true, subtree: true });
-    }, failedCov);
-    for (const q of ["社", "社会", "歴史", "日本史", "英検"]) { await page.fill("#bookFinderQ", q); await page.waitForTimeout(120); }
-    await page.waitForTimeout(300);
-    const again = page.covReqs.slice(reqBefore).filter((f) => failedCov.includes(f));
-    const added = await page.evaluate(() => window.__covAdded.length);
-    const listBoxes = await brokenBoxes(page, "#bookFinderList");
-    await toTop(page, "#bookFinderList");
-    await page.waitForTimeout(100);
-    const listMark = await brokenMarkPixels(page, "#bookFinderList");
-    check("窓の表紙（390・404 の後に検索）: 読めなかった表紙を覚えていて、検索を 5 回打っても（社・社会・歴史・日本史・英検）その表紙をもう要求せず、作り直した行に img を入れない（最初から革の無地）。壊れた絵の印の画素も無い",
-      failedCov.length >= 5 && again.length === 0 && added === 0 && boxesOk(listBoxes) && listBoxes.filter((b) => coverOf(b.key)).length >= 5 && noMark(listMark),
-      JSON.stringify({ failed: failedCov, again: uniq(again), againN: again.length, added, bad: boxesBad(listBoxes), listMark }));
-    // 通信が戻ったら（online）忘れて読み直す: 窓に出ている行に絵が戻り、読める
-    await page.unroute(`**${COV_DIR}**`);
-    await page.evaluate(() => window.dispatchEvent(new Event("online")));
-    await waitUntil(() => page.evaluate(() => { const is = [...document.querySelectorAll("#bookFinderList .finder__cov img")]; return is.length > 0 && is.every((i) => i.complete); }), 4000);
-    await page.waitForTimeout(100);
-    const back = (await page.evaluate(() => [...document.querySelectorAll("#bookFinderList .finder__row")].map((r) => { const c = r.querySelector(".finder__cov"), i = c.querySelector("img"); return { key: r.dataset.book ? `b:${r.dataset.book}` : `c:${r.dataset.course}`, plain: c.classList.contains("finder__cov--plain"), w: i?.naturalWidth ?? 0 }; })))
-      .map((b) => ({ ...b, cover: coverOf(b.key) }));
-    const reread = page.covReqs.slice(reqBefore).filter((f) => failedCov.includes(f));
-    const backBad = back.filter((b) => (b.cover ? b.plain || b.w !== COV_SIZE.w : !b.plain || b.w));
-    check("窓の表紙（390・online）: 通信が戻ったら読めなかった表紙を忘れ、窓に出ている行のうち表紙のある行に絵を戻して読み直す（無地が外れ、絵が読める。表紙の無い行は無地のまま）",
-      back.filter((b) => b.cover).length >= 5 && backBad.length === 0 && reread.length > 0, JSON.stringify({ n: back.length, covered: back.filter((b) => b.cover).length, bad: backBad.slice(0, 2), reread: uniq(reread) }));
+    check("窓の表紙（390）: 絵が全部 404 でも、行の高さ・題と meta の行数と幅・表紙の箱は読めたときと同じ。読めなかった絵は外れ（img 0 枚）、表紙のある行の箱も革の無地（--plain・地は革の色）。箱の中に壊れた絵の印（空色・緑・白）の画素は無い",
+      page.covReqs.length > 0 && sameRows && hadCover && ["social", "grammar", "exam"].every((id) => boxesOk(boxes[id]) && noMark(marks[id])),
+      JSON.stringify({ reqs: page.covReqs.length, sameRows, hadCover, bad: Object.fromEntries(Object.entries(boxes).map(([id, bs]) => [id, boxesBad(bs)])), marks }));
     check("窓の表紙（404）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
-    await page.close();
-  }
-  const countOf = (a) => a.reduce((m, f) => ((m[f] = (m[f] ?? 0) + 1), m), {});
-  // 同じ表紙のほかの棚（棚の行は窓を開いたときに全部作る）: コースの棚で読めなかった表紙（英単語・英会話・英語資格）は、英単語・試験の棚を開いても
-  // もう要求せず、その棚の行は革の無地（img 0 枚）。最初の行から壊れた絵の印の画素も無い
-  {
-    const page = await covPage({ block: true });
-    await openFinder(page);
-    await openShelf(page, "course");
-    await page.waitForTimeout(300);
-    const failedCov = uniq(page.covReqs);
-    const reqBefore = page.covReqs.length;
-    const res = {};
-    for (const id of ["eng", "exam"]) {
-      const scope = `#bookFinderBrowse details[data-shelf="${id}"]`;
-      await openShelf(page, id);
-      await page.waitForTimeout(300);
-      const boxes = await brokenBoxes(page, scope);
-      await toTop(page, scope);
-      await page.waitForTimeout(100);
-      res[id] = { boxes, covered: boxes.filter((b) => coverOf(b.key, id)).length, mark: await brokenMarkPixels(page, scope) };
-    }
-    const again = page.covReqs.slice(reqBefore).filter((f) => failedCov.includes(f));
-    check("窓の表紙（390・404・ほかの棚）: コースの棚で読めなかった表紙（英単語・英会話・英語資格）は、英単語・試験の棚を開いてももう要求しない（要求 0）。その棚の行は革の無地（img 0 枚）で、最初の行から壊れた絵の印の画素は無い",
-      same(failedCov, ["conversation.webp", "english.webp", "exam.webp"]) && again.length === 0 && ["eng", "exam"].every((id) => boxesOk(res[id].boxes) && res[id].covered >= 3 && noMark(res[id].mark)) && page.errors.length === 0,
-      JSON.stringify({ failed: failedCov, again: countOf(again), eng: { covered: res.eng.covered, bad: boxesBad(res.eng.boxes), mark: res.eng.mark }, exam: { covered: res.exam.covered, bad: boxesBad(res.exam.boxes), mark: res.exam.mark }, errors: page.errors.slice(0, 1) }));
-    await page.close();
-  }
-  // 404 が遅い（400ms）: 返る前に検索を打ち替えて行を外しても（その error は外した img にだけ届き、窓の捕捉には届かない）、失敗を覚えて、
-  // 次に同じ表紙の行を作るときはもう要求しない（最初の失敗の間に同じ表紙を 2 度要求しない）。行は最初から革の無地
-  {
-    const page = await covPage({ block: true, delay: 400 });
-    await openFinder(page);
-    await page.fill("#bookFinderQ", "歴史");
-    const seen = await waitUntil(() => ["history.webp", "japhist.webp", "worldhist.webp"].every((f) => page.covReqs.includes(f)), 2000, 20);
-    await page.fill("#bookFinderQ", "英検");
-    await page.waitForTimeout(900);
-    const mid = countOf(page.covReqs);
-    await page.fill("#bookFinderQ", "歴史");
-    await page.waitForTimeout(900);
-    const n = countOf(page.covReqs);
-    const listBoxes = await brokenBoxes(page, "#bookFinderList");
-    await toTop(page, "#bookFinderList");
-    await page.waitForTimeout(100);
-    const listMark = await brokenMarkPixels(page, "#bookFinderList");
-    check("窓の表紙（390・遅い 404）: 返る前に打ち替えて外した行の表紙（歴史・日本史・世界史）も、失敗を覚えて、もう一度「歴史」と打っても要求しない（どの表紙も要求は 1 回）。行は最初から革の無地で、壊れた絵の印の画素は無い",
-      seen && ["history.webp", "japhist.webp", "worldhist.webp", "exam.webp"].every((f) => n[f] === 1) && Object.values(n).every((c) => c === 1) && boxesOk(listBoxes) && listBoxes.filter((b) => coverOf(b.key)).length >= 5 && noMark(listMark) && page.errors.length === 0,
-      JSON.stringify({ seen, mid, n, bad: boxesBad(listBoxes), listMark, errors: page.errors.slice(0, 1) }));
     await page.close();
   }
   // 1200・夜（箱 24×32・夜は絵に brightness）と、検索の結果の行（棚の見出しの外の 1 列。打つたびに描き直す）でも同じ
@@ -6580,14 +6497,11 @@ console.log("finder covers:");
     await waitUntil(() => page.evaluate(() => document.querySelectorAll("#bookFinderList .finder__row").length > 0 && [...document.querySelectorAll("#bookFinderList .finder__cov img")].every((i) => i.complete)), 4000);
     await page.waitForTimeout(300);
     const list = await brokenBoxes(page, "#bookFinderList");
-    await toTop(page, "#bookFinderList");
-    await page.waitForTimeout(100);
     const listMark = await brokenMarkPixels(page, "#bookFinderList");
     const geo = await rowsGeo(page, "#bookFinderList");
-    check("窓の表紙（1200・夜・404）: 棚の行も検索の結果の行も、読めなかった絵は外れて革の無地の箱（24×32 のまま）・エラー 0",
-      page.covReqs.length > 0 && boxesOk(shelf) && boxesOk(list) && list.filter((b) => coverOf(b.key)).length >= 5 && geo.length > 0 && geo.every((r) => r.cov?.join() === "24,32") && page.errors.length === 0,
-      JSON.stringify({ reqs: page.covReqs.length, shelf: boxesBad(shelf), list: boxesBad(list), geo: geo.slice(0, 1), errors: page.errors.slice(0, 1) }));
-    check("窓の表紙（1200・夜・404）: 棚も検索の結果も、最初の行から、窓に見えている箱の中に壊れた絵の印の画素は無い", noMark(shelfMark) && noMark(listMark), JSON.stringify({ shelfMark, listMark }));
+    check("窓の表紙（1200・夜・404）: 棚の行も検索の結果の行も、読めなかった絵は外れて革の無地の箱（24×32 のまま）。壊れた絵の印の画素は無い・エラー 0",
+      page.covReqs.length > 0 && boxesOk(shelf) && boxesOk(list) && list.filter((b) => coverOf(b.key)).length >= 5 && noMark(shelfMark) && noMark(listMark) && geo.length > 0 && geo.every((r) => r.cov?.join() === "24,32") && page.errors.length === 0,
+      JSON.stringify({ reqs: page.covReqs.length, shelf: boxesBad(shelf), list: boxesBad(list), shelfMark, listMark, geo: geo.slice(0, 1), errors: page.errors.slice(0, 1) }));
     await page.close();
   }
 
@@ -6649,7 +6563,6 @@ console.log("finder covers:");
   {
     const names = uniq([...Object.values(BOOK_COVER), ...Object.values(COURSE_COVER), ...Object.values(SHELF_COVER)]);
     const files = fs.readdirSync(path.join(ROOT, COV_DIR)).filter((f) => f.endsWith(".webp")).sort();
-    const webpSize = (buf) => (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 12, 16) === "VP8X" ? [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)] : null);
     const sizes = files.map((f) => { const buf = fs.readFileSync(path.join(ROOT, COV_DIR, f)); return { f, bytes: buf.length, dim: webpSize(buf)?.join("×"), alpha: buf.includes(Buffer.from("ALPH")) }; });
     const total = sizes.reduce((n, s) => n + s.bytes, 0);
     const catIds = new Set(JSON.parse(fs.readFileSync(path.join(ROOT, "data/manifest.json"), "utf8")).subjects.flatMap((s) => s.categories.map((c) => c.id)));
@@ -6712,11 +6625,11 @@ console.log("hasumi art:");
     await page.close();
   }
 
-  // (3) 丸いアバター 4 枚（ふつう 006・うれしい 008 の顔 × 32／64px の WebP）: 揃い、寸法は表示の 1x と 2x、1 枚ずつ上限以下。前の絵（ベクターの頭と肩の PNG 4 枚）と
+  // (3) 丸いアバター 6 枚（ふつう 006・うれしい 008 の顔 × 30／60／90px の WebP）: 揃い、寸法は描く中身 30 CSS px の 1x・2x・3x、1 枚ずつ上限以下。前の絵（ベクターの頭と肩の PNG 4 枚）と
   //     その生成器（render-avatar.mjs）・ベクターのはちゃん（hachan.mjs）は無く、ページ・js・css・scripts・docs（CHANGELOG の履歴を除く）のどこからも参照されない
   const avInfo = AV.map((a) => ({ ...a, info: webpInfo(path.join(ROOT, a.rel)) }));
-  check(`はちゃんの絵: 丸いアバター 4 枚（ふつう・うれしい × 32／64px の WebP）が揃い、1 枚ずつ上限以下（${[...new Set(AV.map((a) => `${a.maxBytes / 1024}KB`))].join("／") || "上限なし"}。build-hasumi.mjs の AVATARS）`,
-    avInfo.length === 4 && new Set(avInfo.map((a) => a.mood)).size === 2 && avInfo.every((a) => a.info && a.info.w === a.px && a.info.h === a.px && a.info.bytes <= a.maxBytes),
+  check(`はちゃんの絵: 丸いアバター 6 枚（ふつう・うれしい × 30／60／90px の WebP）が揃い、1 枚ずつ上限以下（${[...new Set(AV.map((a) => `${a.maxBytes / 1024}KB`))].join("／") || "上限なし"}。build-hasumi.mjs の AVATARS）`,
+    avInfo.length === 6 && new Set(avInfo.map((a) => a.mood)).size === 2 && avInfo.every((a) => a.info && a.px === (HAS.AVATAR_CSS_PX ?? 0) * a.dpr && a.info.w === a.px && a.info.h === a.px && a.info.bytes <= a.maxBytes),
     JSON.stringify(HAS.error ? { error: HAS.error } : avInfo.map((a) => [a.rel, a.info])));
   const OLD = ["assets/images/hasumi.png", "assets/images/hasumi@2x.png", "assets/images/hasumi-happy.png", "assets/images/hasumi-happy@2x.png", "scripts/room-art/render-avatar.mjs", "scripts/room-art/hachan.mjs"];
   const OLD_RE = /hasumi(-happy)?(@2x)?\.png|render-avatar\.mjs|hachan\.mjs/;
@@ -6729,7 +6642,7 @@ console.log("hasumi art:");
 
   // (4) 320／390／1200 × 昼夜: 書斎（戻ってきた人）と学習データ（週間レポートにはちゃん）の読み込みの CLS（全応答 80ms 遅延。書斎 1200 < 0.02・ほか < 0.05）と横スクロール 0。
   //     週間レポートのはちゃんは新しい顔（1x／2x の対・32px・alt）
-  const growth = [6, 5, 4, 2, 1].map((n, i) => ({ date: ymd(new Date(Date.now() - n * 86400000)), learned: 10 + i * 6, mastered: i * 2, active: true }));
+  const growth = [6, 5, 4, 2, 1].map((n, i) => ({ date: ymdDaysAgo(n), learned: 10 + i * 6, mastered: i * 2, active: true }));
   const hsOf = async (p) => ({ scrollW: await p.evaluate(() => document.documentElement.scrollWidth), innerW: await p.evaluate(() => window.innerWidth) });
   const runs = {};
   for (const w of [320, 390, 1200]) for (const theme of ["light", "dark"]) {
@@ -6741,7 +6654,7 @@ console.log("hasumi art:");
   const hsOk = (r) => r.scrollW <= r.innerW && r.errors.length === 0;
   check("はちゃんの絵: 書斎（戻ってきた人）は 320／390／1200 × 昼夜で横スクロール 0・読み込みの CLS（全応答 80ms 遅延）は 1200 < 0.02・320／390 < 0.05・エラー 0",
     Object.entries(runs).every(([k, r]) => hsOk(r.home) && r.home.cls < (k.startsWith("1200") ? 0.02 : 0.05)), JSON.stringify(Object.fromEntries(Object.entries(runs).map(([k, r]) => [k, [r.home.cls, r.home.scrollW, r.home.innerW, r.home.src, r.home.errors]]))));
-  check("はちゃんの絵: 学習データ（週間レポート）は 320／390／1200 × 昼夜で横スクロール 0・読み込みの CLS < 0.05・エラー 0、週間レポートのはちゃんは新しい顔（1x／2x の対・32px・alt と読み上げ「はちゃん」）",
+  check("はちゃんの絵: 学習データ（週間レポート）は 320／390／1200 × 昼夜で横スクロール 0・読み込みの CLS < 0.05・エラー 0、週間レポートのはちゃんは新しい顔（1x／2x／3x・描く 30 CSS px・alt と読み上げ「はちゃん」）",
     Object.values(runs).every((r) => hsOk(r.stats) && r.stats.cls < 0.05 && isNewHasumiAvatar(r.stats.av, AV)), JSON.stringify(Object.fromEntries(Object.entries(runs).map(([k, r]) => [k, [r.stats.cls, r.stats.scrollW, r.stats.innerW, r.stats.av?.current, r.stats.av?.nw, r.stats.av?.box, r.stats.errors]]))));
 
   // (5) 結果のパネル（Challenge の 3 秒。?t=3）× 320／390（2 倍の画面）／1200 × 昼夜: はちゃんは新しい顔で、2 倍の画面では @2x を選ぶ。横スクロール 0。
@@ -6761,9 +6674,38 @@ console.log("hasumi art:");
     res[`${w}-${theme}`] = { av: await hasumiAvatarOf(page, "#resultPanel"), ...(await hsOf(page)), shift: await page.evaluate(() => window.__hsShift.length), errors: page.errors.slice(0, 1) };
     await page.close();
   }
-  check("はちゃんの絵: 結果のパネル（Challenge）× 320／390／1200 × 昼夜で、はちゃんは新しい顔（2 倍の画面は @2x・32px・alt と読み上げ「はちゃん」）・横スクロール 0・はちゃんが動かす layout-shift 0・エラー 0",
+  check("はちゃんの絵: 結果のパネル（Challenge）× 320／390／1200 × 昼夜で、はちゃんは新しい顔（2 倍の画面は @2x の 60px・描く 30 CSS px・alt と読み上げ「はちゃん」）・横スクロール 0・はちゃんが動かす layout-shift 0・エラー 0",
     Object.values(res).every((r) => isNewHasumiAvatar(r.av, AV) && r.scrollW <= r.innerW && r.shift === 0 && r.errors.length === 0) && res["390-light"].av.current?.includes("@2x"),
-    JSON.stringify(Object.fromEntries(Object.entries(res).map(([k, r]) => [k, [r.av.current, r.av.nw, r.av.box, r.av.named, r.scrollW, r.innerW, r.shift, r.errors]]))));
+    JSON.stringify(Object.fromEntries(Object.entries(res).map(([k, r]) => [k, [r.av.current, r.av.px, r.av.cw, r.av.box, r.av.named, r.scrollW, r.innerW, r.shift, r.errors]]))));
+
+  // (6) 3 倍の画面でもぼけない（PR #184 のレビュー 2）: img は 32×32・枠 1px なので描く中身は 30 CSS px。dpr 1・2・3 の週間レポート（390）と dpr 3 の結果のパネル（390）で、
+  //     選ばれる絵の画素は 30 × dpr（30／60／90px）、読むのは 1 つの顔につきその倍率の 1 枚だけ（srcset のほかの倍率は読まない）、alt と読み上げは前と同じ（「はちゃん」1 つ）。
+  //     学習データは単語の記録が読めた後に週間レポートを描き直すので、気分が替わると 2 つ目の顔（ふつう → うれしい）を読む（前からの動き。同じ倍率の 1 枚ずつ）
+  const dprRuns = {};
+  for (const dpr of [1, 2, 3]) {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, dpr, storage: { ...clsRecords(), spelldash_growth_log: JSON.stringify(growth) } });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    dprRuns[`週間レポート dpr ${dpr}`] = await hasumiAvatarOf(page, "#weeklyReport");
+    await page.close();
+  }
+  {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, dpr: 3, storage: { spelldash_placement: "done" } });
+    await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => document.querySelector('#playModes [data-mode="challenge"]').click());
+    await waitUntil(() => page.isVisible("#resultPanel"), 6000);
+    await page.waitForTimeout(300);
+    dprRuns["結果のパネル dpr 3"] = await hasumiAvatarOf(page, "#resultPanel");
+    await page.close();
+  }
+  check("はちゃんの絵: dpr 1・2・3 で、選ばれるアバターの画素は描く寸法（30 CSS px）× dpr（30／60／90px）、1 画面で読むアバターは 1 枚、alt と読み上げは「はちゃん」1 つ（週間レポート・結果のパネル）",
+    Object.values(dprRuns).every((a) => {
+      const ofDpr = new RegExp(`^hasumi-(normal|happy)${a.dpr === 1 ? "" : `@${a.dpr}x`}\\.webp$`); // この倍率の絵だけ
+      return isNewHasumiAvatar(a, AV) && a.reqs?.length >= 1 && a.reqs.every((f) => ofDpr.test(f)) && new Set(a.reqs).size === a.reqs.length;
+    }) &&
+      [1, 2, 3].every((d) => dprRuns[`週間レポート dpr ${d}`].px === 30 * d) && dprRuns["結果のパネル dpr 3"].px === 90 && dprRuns["結果のパネル dpr 3"].reqs.length === 1,
+    JSON.stringify(Object.fromEntries(Object.entries(dprRuns).map(([k, a]) => [k, [a.current, a.px, a.cw, a.dpr, a.reqs, a.alt, a.named]]))));
 }
 
 // ===== 8.7 書斎の皮（ホーム以外のページ）: 帯のヘッダー・胡桃の幅木・羊皮紙の札・横スクロール無し・文字と帯のコントラスト（css/brand.css・pages.css・battle.css。Batch 56b） =====
@@ -9012,6 +8954,8 @@ console.log("recall speed stats:");
 // ===== 9.5 覚えた瞬間 v2: 知ってた／覚えた！／履歴／語チップ／単語帳／難易度ブースト =====
 console.log("learned moment:");
 {
+  // 知らせのはちゃんの顔の名前（scripts/build-hasumi.mjs の AVATARS）。import は流れの前に済ませる（履歴の点は 1.4 秒で次の語に替わる）
+  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const y = new Date(Date.now() - 86400000);
   const yKey = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
   const page = await newPage({ storage: {
@@ -9029,11 +8973,10 @@ console.log("learned moment:");
   await waitUntil(async () => (await page.textContent("#message")).includes("覚えた"));
   check("日をまたいで自力正解→「覚えた！」", (await page.textContent("#message")).includes("覚えた！"), await page.textContent("#message"));
   check("はちゃんが語を名指しで喜ぶ", !(await page.$eval("#learnToast", (el) => el.hidden)) && (await page.textContent("#learnToast")).includes("invoice"));
-  // 覚えた瞬間の知らせのはちゃんは うれしい の新しい顔（008。scripts/build-hasumi.mjs の AVATARS）
-  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
-  const toastAv = await hasumiAvatarOf(page, "#learnToast");
-  check("覚えた瞬間の知らせのはちゃんは うれしい の新しい顔（hasumi-happy の 1x／2x・32px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(toastAv, HS_AV, "happy"), JSON.stringify(toastAv));
   check("履歴ドット ×→○", (await page.$$eval("#wordHistory .hist i", (els) => els.map((e) => e.className).join(","))) === "hist__x,hist__o");
+  // 覚えた瞬間の知らせのはちゃんは うれしい の新しい顔（008）。読み込みを待つ（上限 2 秒）ので、1.4 秒で消える履歴の点の後で見る（知らせは 4.5 秒残る）
+  const toastAv = await hasumiAvatarOf(page, "#learnToast");
+  check("覚えた瞬間の知らせのはちゃんは うれしい の新しい顔（hasumi-happy の 1x／2x／3x・描く 30 CSS px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(toastAv, HS_AV, "happy"), JSON.stringify(toastAv));
   await waitUntil(async () => (await page.textContent("#japanese")).trim() === "交渉する", 2500); // 「覚えた」の語はスタンプが消えるまで（1.4 秒）待ってから次へ
   for (const ch of "negotiate") await page.press("#input", ch);
   await waitUntil(async () => (await page.textContent("#message")).includes("知ってた"), 1500);
@@ -9064,6 +9007,7 @@ console.log("learned moment:");
 // ===== 9.55 成長の証拠: 週間レポート・推移・今週+N =====
 console.log("growth:");
 {
+  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const page = await newPage({ storage: { spelldash_growth_log: JSON.stringify([
     { date: "2000-01-01", learned: 0, mastered: 0, active: true }
   ]) } });
@@ -9071,9 +9015,8 @@ console.log("growth:");
   await page.waitForTimeout(900);
   check("週間レポートが表示", (await page.textContent("#weeklyReport")).includes("週間レポート"));
   check("週間レポートに学習した日", (await page.textContent("#weeklyReport")).includes("学習した日"));
-  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const weeklyAv = await hasumiAvatarOf(page, "#weeklyReport");
-  check("週間レポートのはちゃんは新しい顔（1x／2x の WebP の対・32px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(weeklyAv, HS_AV), JSON.stringify(weeklyAv));
+  check("週間レポートのはちゃんは新しい顔（1x／2x／3x の WebP・描く 30 CSS px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(weeklyAv, HS_AV), JSON.stringify(weeklyAv));
   check("推移グラフ or 案内", (await page.$("#growthTrend svg")) !== null || (await page.textContent("#growthTrend")).includes("明日から"));
   const log = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_growth_log") || "[]"));
   check("成長ログに今日の行", log.some((e) => e.date === new Date().toISOString().slice(0, 10) || e.date.length === 10) && log.length >= 2, `len=${log.length}`);
@@ -12617,7 +12560,8 @@ console.log("my concept & retention:");
   check("マイ場面カードの出題でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 
-  // 救済: 3連続で思い出せなかったら、思い出せる語（Familiar）が次に挟まる
+  // 救済: 3連続で思い出せなかったら、思い出せる語（Familiar）が次に挟まる。知らせのはちゃんの顔の名前（scripts/build-hasumi.mjs の AVATARS）の import は流れの前に済ませる
+  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
   const y = new Date(Date.now() - 3 * 86400000).toISOString();
   const page3 = await newPage({ storage: {
     spelldash_category: "my", spelldash_placement: "done",
@@ -12636,14 +12580,13 @@ console.log("my concept & retention:");
     await page3.press("#input", "Enter"); // 思い出せず
     await page3.waitForTimeout(150);
     if (i === 2) breather = !(await page3.$eval("#learnToast", (el) => el.hidden)) && (await page3.textContent("#learnToast")).includes("3つ続けて");
-    if (i === 2) breatherAv = await hasumiAvatarOf(page3, "#learnToast");
+    if (i === 2) breatherAv = await hasumiAvatarOf(page3, "#learnToast"); // 答えを見せて打つのを待っている間（時間で進まない）。知らせは 4 秒残る
     const shown = (await page3.textContent("#word")).trim();
     for (const ch of shown) await page3.press("#input", ch);
     await page3.waitForTimeout(NEXT_READY_MS);
   }
   check("3連続で思い出せず→はちゃんの助け舟", breather);
-  const { AVATARS: HS_AV = [] } = await import("../scripts/build-hasumi.mjs").catch(() => ({}));
-  check("助け舟の知らせのはちゃんは ふつう の新しい顔（hasumi-normal の 1x／2x・32px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(breatherAv, HS_AV, "normal"), JSON.stringify(breatherAv));
+  check("助け舟の知らせのはちゃんは ふつう の新しい顔（hasumi-normal の 1x／2x／3x・描く 30 CSS px・alt と読み上げ「はちゃん」）", isNewHasumiAvatar(breatherAv, HS_AV, "normal"), JSON.stringify(breatherAv));
   check("次に思い出せる語（予算）が挟まる", (await page3.textContent("#japanese")).trim() === "予算", await page3.textContent("#japanese"));
   check("救済フローでエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
   await page3.close();
