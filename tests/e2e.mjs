@@ -17,7 +17,7 @@ import { syncModulePreload, baseDataFiles, WORD_PAGES } from "../scripts/modulep
 import { canonicalRomaji, readingEntries, primaryReading, matchRomaji } from "../js/romaji.js";
 import { FEEDBACK_MS, ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS, GLANCE_MS, MILESTONE_MS, waitAfterCorrect } from "../js/afterCorrect.js";
 import { shelfIdOf } from "../js/shelves.js";
-import { webpSize } from "../scripts/lib/canvas-art.mjs";
+import { webpSize, webpAlpha } from "../scripts/lib/canvas-art.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STUB = path.join(ROOT, "tests", "mocks", "supabase-stub.js");
@@ -298,12 +298,12 @@ function pngInfo(file) {
   return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), bytes: buf.length };
 }
 const isOgPng = (info) => !!info && info.w === 1200 && info.h === 630 && info.bytes <= 300 * 1024;
-// WebP のファイルの幅・高さ（scripts/lib/canvas-art.mjs の webpSize。生成器と同じ読み方）と大きさ。無い・WebP でなければ null
+// WebP のファイルの幅・高さ・透過（scripts/lib/canvas-art.mjs の webpSize・webpAlpha。生成器と同じ読み方）と大きさ。無い・WebP でなければ null
 function webpInfo(file) {
   if (!file || !fs.existsSync(file)) return null;
   const buf = fs.readFileSync(file);
   const size = webpSize(buf);
-  return size ? { w: size[0], h: size[1], bytes: buf.length } : null;
+  return size ? { w: size[0], h: size[1], bytes: buf.length, alpha: webpAlpha(buf) } : null;
 }
 
 function check(name, ok, detail = "") {
@@ -6668,7 +6668,7 @@ console.log("finder covers:");
   {
     const names = uniq([...Object.values(BOOK_COVER), ...Object.values(COURSE_COVER), ...Object.values(SHELF_COVER)]);
     const files = fs.readdirSync(path.join(ROOT, COV_DIR)).filter((f) => f.endsWith(".webp")).sort();
-    const sizes = files.map((f) => { const buf = fs.readFileSync(path.join(ROOT, COV_DIR, f)); return { f, bytes: buf.length, dim: webpSize(buf)?.join("×"), alpha: buf.includes(Buffer.from("ALPH")) }; });
+    const sizes = files.map((f) => { const buf = fs.readFileSync(path.join(ROOT, COV_DIR, f)); return { f, bytes: buf.length, dim: webpSize(buf)?.join("×"), alpha: webpAlpha(buf) }; });
     const total = sizes.reduce((n, s) => n + s.bytes, 0);
     const catIds = new Set(JSON.parse(fs.readFileSync(path.join(ROOT, "data/manifest.json"), "utf8")).subjects.flatMap((s) => s.categories.map((c) => c.id)));
     const unknown = Object.keys(BOOK_COVER).filter((id) => !catIds.has(id));
@@ -6689,12 +6689,12 @@ console.log("hasumi art:");
   const AV = HAS.AVATARS ?? [];
   const SCENE_MAX = HAS.SIZES?.scene ?? {};
 
-  // (1) 窓辺の場面 6 枚: 寸法は構図の 2 倍・1 枚ずつ上限以下
+  // (1) 窓辺の場面 6 枚: 寸法は構図の 2 倍・1 枚ずつ上限以下・背景は透過（壁・机は CSS と DOM。webpAlpha）
   const scenes = Object.entries(SC.SCENES ?? {}).flatMap(([name, c]) => ["light", "dark"].map((theme) => ({ name, theme, c, rel: `assets/images/room/scene-${name}-${theme}.webp` })));
   const sceneInfo = scenes.map((x) => ({ ...x, info: webpInfo(path.join(ROOT, x.rel)), max: SCENE_MAX[x.name] }));
-  check(`はちゃんの絵: 場面 6 枚は構図の 2 倍の画素で、1 枚ずつ上限以下（${Object.entries(SCENE_MAX).map(([k, v]) => `${k} ${v / 1024}KB`).join("／") || "上限なし"}。render.mjs の SCENE_MAX_BYTES）`,
-    sceneInfo.length === 6 && sceneInfo.every((x) => x.info && x.max && x.info.w === x.c.vb[0] * 2 && x.info.h === x.c.vb[1] * 2 && x.info.bytes <= x.max),
-    JSON.stringify(HAS.error ? { error: HAS.error } : sceneInfo.map((x) => [x.rel.split("/").pop(), x.info?.w, x.info?.h, x.info?.bytes, x.max])));
+  check(`はちゃんの絵: 場面 6 枚は構図の 2 倍の画素で、1 枚ずつ上限以下（${Object.entries(SCENE_MAX).map(([k, v]) => `${k} ${v / 1024}KB`).join("／") || "上限なし"}。render.mjs の SCENE_MAX_BYTES）・透過`,
+    sceneInfo.length === 6 && sceneInfo.every((x) => x.info && x.max && x.info.w === x.c.vb[0] * 2 && x.info.h === x.c.vb[1] * 2 && x.info.bytes <= x.max && x.info.alpha),
+    JSON.stringify(HAS.error ? { error: HAS.error } : sceneInfo.map((x) => [x.rel.split("/").pop(), x.info?.w, x.info?.h, x.info?.bytes, x.max, x.info?.alpha])));
   // (2) 場面に窓辺の絵（scripts/room-art/figure-reading.webp）が置き方（scene.mjs の FIGURE）の位置で焼き込まれている: 絵の内側（縁から 3px 内の画素）の明るさと
   //     場面の同じ画素の明るさの相関 ≥ 0.8（昼夜の色の寄せは色ごとの 1 次の変換なので相関は残る。手元: 0.90〜0.975。前のベクターの場面に同じ枠を当てると 0.08〜0.13）
   {
@@ -6730,11 +6730,11 @@ console.log("hasumi art:");
     await page.close();
   }
 
-  // (3) 丸いアバター 6 枚（ふつう 006・うれしい 008 の顔 × 30／60／90px の WebP）: 揃い、寸法は描く中身 30 CSS px の 1x・2x・3x、1 枚ずつ上限以下。前の絵（ベクターの頭と肩の PNG 4 枚）と
+  // (3) 丸いアバター 6 枚（ふつう 006・うれしい 008 の顔 × 30／60／90px の WebP）: 揃い、寸法は描く中身 30 CSS px の 1x・2x・3x、1 枚ずつ上限以下、透過（顔の外は抜く。webpAlpha）。前の絵（ベクターの頭と肩の PNG 4 枚）と
   //     その生成器（render-avatar.mjs）・ベクターのはちゃん（hachan.mjs）は無く、ページ・js・css・scripts・docs（CHANGELOG の履歴を除く）のどこからも参照されない
   const avInfo = AV.map((a) => ({ ...a, info: webpInfo(path.join(ROOT, a.rel)) }));
-  check(`はちゃんの絵: 丸いアバター 6 枚（ふつう・うれしい × 30／60／90px の WebP）が揃い、1 枚ずつ上限以下（${[...new Set(AV.map((a) => `${a.maxBytes / 1024}KB`))].join("／") || "上限なし"}。build-hasumi.mjs の AVATARS）`,
-    avInfo.length === 6 && new Set(avInfo.map((a) => a.mood)).size === 2 && avInfo.every((a) => a.info && a.px === (HAS.AVATAR_CSS_PX ?? 0) * a.dpr && a.info.w === a.px && a.info.h === a.px && a.info.bytes <= a.maxBytes),
+  check(`はちゃんの絵: 丸いアバター 6 枚（ふつう・うれしい × 30／60／90px の WebP）が揃い、1 枚ずつ上限以下（${[...new Set(AV.map((a) => `${a.maxBytes / 1024}KB`))].join("／") || "上限なし"}。build-hasumi.mjs の AVATARS）・透過`,
+    avInfo.length === 6 && new Set(avInfo.map((a) => a.mood)).size === 2 && avInfo.every((a) => a.info && a.px === (HAS.AVATAR_CSS_PX ?? 0) * a.dpr && a.info.w === a.px && a.info.h === a.px && a.info.bytes <= a.maxBytes && a.info.alpha),
     JSON.stringify(HAS.error ? { error: HAS.error } : avInfo.map((a) => [a.rel, a.info])));
   const OLD = ["assets/images/hasumi.png", "assets/images/hasumi@2x.png", "assets/images/hasumi-happy.png", "assets/images/hasumi-happy@2x.png", "scripts/room-art/render-avatar.mjs", "scripts/room-art/hachan.mjs"];
   const OLD_RE = /hasumi(-happy)?(@2x)?\.png|render-avatar\.mjs|hachan\.mjs/;

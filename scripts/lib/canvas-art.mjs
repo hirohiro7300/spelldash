@@ -1,7 +1,8 @@
 // 絵の生成器（build-emblems・build-covers・build-hasumi・room-art/render・build-og-image）の共通の部品。絵の処理は Chromium の canvas（playwright-core）。
-//   Node の側: findChromium（Chromium の置き場）・dataUrlOf・bufferOf（ページとの受け渡し）・stripIcc（canvas の WebP の ICC を外す）・webpSize（WebP の幅と高さ）
+//   Node の側: findChromium（Chromium の置き場）・dataUrlOf・bufferOf（ページとの受け渡し）・stripIcc（canvas の WebP の ICC を外す）・webpSize（WebP の幅と高さ）・
+//             webpAlpha（WebP に透過があるか）
 //   ページの側: PAGE_CANVAS（decode・canvasOf・resizeTo。各台本の PAGE_LIB の頭に置く文字列）
-// tests/e2e.mjs・scripts/test-level.mjs も webpSize を使う（WebP の頭の読み方は 1 つ）。import しても Chromium は立ち上がらない。
+// tests/e2e.mjs・scripts/test-level.mjs も webpSize・webpAlpha を使う（WebP の頭の読み方は 1 つ）。import しても Chromium は立ち上がらない。
 import fs from "fs";
 import path from "path";
 
@@ -59,6 +60,26 @@ export function webpSize(buf) {
     return [(bits & 0x3fff) + 1, ((bits >> 14) & 0x3fff) + 1];
   }
   return null;
+}
+
+// WebP に透過があるか。webpSize は不透明の VP8・VP8L も読むので、透過を見る所（紋章・アバター・窓辺の姿は透過、表紙は不透明）はこれで別に確かめる。
+// 透過あり: VP8X の透過の印（0x10）があって ALPH の塊（不可逆＋透過）か透過のある VP8L が続く・または最初の塊が透過のある VP8L（alpha_is_used）。
+// VP8（不可逆の単純な形）・印の無い VP8X（ICC だけなど）・WebP でない物は false
+export function webpAlpha(buf) {
+  if (!webpSize(buf)) return false;
+  const vp8lAlpha = (at) => at + 13 <= buf.length && ((buf.readUInt32LE(at + 9) >>> 28) & 1) === 1; // 塊の中身: 署名 0x2f・幅と高さと alpha_is_used の 32 ビット
+  const first = buf.toString("ascii", 12, 16);
+  if (first === "VP8L") return vp8lAlpha(12);
+  if (first !== "VP8X" || !(buf[20] & 0x10)) return false;
+  for (let at = 12; at + 8 <= buf.length; ) {
+    const tag = buf.toString("ascii", at, at + 4);
+    const size = buf.readUInt32LE(at + 4);
+    if (tag === "ALPH") return true;
+    if (tag === "VP8L") return vp8lAlpha(at);
+    if (tag === "VP8 ") return false;
+    at += 8 + size + (size % 2);
+  }
+  return false;
 }
 
 // ---- ページの中で動く関数（canvas）。各台本の PAGE_LIB の頭に置く。引数と戻り値は文字列と数だけ ----

@@ -35,7 +35,7 @@ import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { chromium } from "playwright-core";
-import { findChromium, dataUrlOf, bufferOf, stripIcc, PAGE_CANVAS } from "./lib/canvas-art.mjs";
+import { findChromium, dataUrlOf, bufferOf, stripIcc, webpAlpha, PAGE_CANVAS } from "./lib/canvas-art.mjs";
 import { isMain } from "./lib/is-main.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -333,7 +333,7 @@ async function main() {
       const url = await page.evaluate(([n, w, h, q]) => window.coverLib.render(n, w, h, q), [name, SIZE.w, SIZE.h, SIZE.quality]);
       const buf = stripIcc(bufferOf(url));
       if (buf.length > SIZE.maxBytes) throw new Error(`${name}.webp が ${kb(buf.length)}（上限 ${kb(SIZE.maxBytes)}）。品質か画素を下げる`);
-      if (buf.includes(Buffer.from("ALPH"))) throw new Error(`${name}.webp に透過が残った（不透明にする）`);
+      if (webpAlpha(buf)) throw new Error(`${name}.webp に透過が残った（不透明にする）`);
       written.push({ name, file: `${name}.webp`, buf, url, src: sheetOut ? src : null, win: r.win });
       console.log(`${name.padEnd(13)} ${file.padEnd(30)} 外接 ${r.box[2]}×${r.box[3]} → 枠 ${r.win[2]}×${r.win[3]}（${r.win[0]},${r.win[1]}）→ ${SIZE.w}×${SIZE.h} ${String(buf.length).padStart(5)} B ${sha(buf)}${o.ops.length ? `  寄せ: ${o.ops.map((x) => x.why).join("・")}` : ""}`);
     }

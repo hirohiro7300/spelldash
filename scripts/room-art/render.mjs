@@ -15,7 +15,7 @@ import { execFileSync } from "child_process";
 import { chromium } from "playwright-core";
 import { defs, compose, SCENES } from "./scene.mjs";
 import { sceneLight, sceneDark, toCss } from "./tokens.mjs";
-import { findChromium, webpSize } from "../lib/canvas-art.mjs";
+import { findChromium, webpSize, webpAlpha } from "../lib/canvas-art.mjs";
 import { isMain } from "../lib/is-main.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -44,11 +44,12 @@ im.save(out, "WEBP", quality=${q}, method=6, alpha_quality=${aq})
 sys.stdout.buffer.write(out.getvalue())`], { input: png, maxBuffer: 64 * 1024 * 1024 });
 }
 
-// 窓辺の絵の WebP → compose に渡す形（data URL と縦横比）。幅と高さは最初の塊（12 バイト目）の VP8X の頭（webpSize。透過の絵なので VP8X）
+// 窓辺の絵の WebP → compose に渡す形（data URL と縦横比）。幅と高さは最初の塊（12 バイト目）の頭（webpSize）。
+// 透過の絵なので透過も見る（webpAlpha: VP8X の透過の印と ALPH の塊など。不透明の VP8・印の無い VP8X は止める）
 export function figureOf(buf) {
   const size = webpSize(buf);
   if (!size) throw new Error("窓辺の絵が WebP ではない");
-  if (buf.toString("ascii", 12, 16) !== "VP8X") throw new Error("窓辺の絵の最初の塊が VP8X（透過の WebP の頭）ではない");
+  if (!webpAlpha(buf)) throw new Error("窓辺の絵に透過が無い（VP8X の透過の印と ALPH の塊、または透過のある VP8L が要る）");
   const [w, h] = size;
   return { href: `data:image/webp;base64,${buf.toString("base64")}`, aspect: h / w, w, h };
 }
