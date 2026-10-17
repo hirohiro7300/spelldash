@@ -912,64 +912,6 @@
   cursor: pointer;
 }
 
-/* 行の左の小さな表紙（js/covers.js の表・scripts/build-covers.mjs の絵 48×64）。表紙のある本は絵、無い本は背と同じ革の無地（金の細線）。
-   箱の大きさは決まっていて（読む前から: CLS 0）、読めなかった絵は JS が外して無地にする。高さ 32 は行の中身（題＋meta 39.5px）より低く、行は高くならない */
-.finder__cov {
-  flex: none;
-  width: 24px;
-  height: 32px;
-  overflow: hidden;
-  border-radius: 1px 2px 2px 1px;
-  background: var(--c, #2B1F17);
-  box-shadow: 1px 1px 0 0 #D9CCAE, 1.5px 2px 3px -1px rgba(var(--shadow-rgb), 0.55);
-}
-
-.finder__cov img {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.finder__cov--plain {
-  background:
-    linear-gradient(90deg, rgba(var(--shadow-rgb), 0.5), transparent 3px, transparent calc(100% - 2px), rgba(var(--shadow-rgb), 0.35)),
-    url(../assets/images/room/tile-leather.webp) 0 0 / 60px 60px,
-    var(--c);
-  background-blend-mode: normal, soft-light, normal;
-  outline: 0.75px solid rgba(201, 163, 90, 0.55);
-  outline-offset: -4px;
-}
-
-html:is([data-theme="dark"], [data-theme="indigo"]) .finder__cov img {
-  filter: brightness(0.9); /* 夜の頁（羊皮紙が 1 段暗い）に合わせる */
-}
-
-/* 360px 未満では出さない（display:none の loading=lazy は読みにも行かない）。360〜599px は表紙の幅（21＋間 7 = 28px）を、
-   窓の外の余白（ブラウザの dialog の max-width が効いて 19px だった所を、上の width のとおり 10px に: 18px）と札の内側の余白（20 → 15px: 10px）から取る。
-   題と meta の列の幅は今と同じ（書名の行数が変わらない） */
-@media (max-width: 359px) {
-  .finder__cov {
-    display: none;
-  }
-}
-
-@media (min-width: 360px) and (max-width: 599px) {
-  .bookshelf .finder {
-    max-width: none;
-  }
-
-  .finder__card {
-    padding-right: 15px;
-    padding-left: 15px;
-  }
-
-  .finder__cov {
-    width: 21px;
-    height: 28px;
-    margin-right: -3px;
-  }
-}
-
 .finder__txt {
   flex: 1 1 auto;
   min-width: 0;

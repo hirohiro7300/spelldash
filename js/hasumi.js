@@ -8,6 +8,9 @@ import { resumableFor } from "./sessionResume.js";
 
 // ===== はちゃん（はすみ / Hasumi）: 学習パートナー =====
 //
+// 出る場所は 3 場面＋学習中の知らせだけ（docs/CHARACTER.md §3。2026-10-17 創業者決定）:
+//   ① ホームの窓辺と紙片（renderHasumiHome）② 結果のパネル ③ 週間レポート ＋ 学習中の知らせ #learnToast（覚えた瞬間・3 つ続けて出てこない時）
+//
 // トーン規則（docs/CHARACTER.md と docs/CONCEPT.md 原則 8・10 が正）:
 // - ユーザーが主人公、はちゃんは伴走者。主役にならない
 // - 1 行 1 文。事実＋伴走。「！」は多くて 1 つ
@@ -16,13 +19,14 @@ import { resumableFor } from "./sessionResume.js";
 //   NG:「来てくれないと思った…」「寂しかった…」「会いたかった…」
 // - 数字と矛盾することを言わない（結果の一言は前回比で分岐する）
 
+// 丸いアバター（32px）: 創業者が用意した絵の顔（ふつう = 006 お出迎え・うれしい = 008 学習成功）。32・64px の WebP（scripts/build-hasumi.mjs）
 const AVATAR = {
-  normal: "./assets/images/hasumi.png",
-  happy: "./assets/images/hasumi-happy.png"
+  normal: "./assets/images/hasumi-normal.webp",
+  happy: "./assets/images/hasumi-happy.webp"
 };
 const AVATAR_2X = {
-  normal: "./assets/images/hasumi@2x.png",
-  happy: "./assets/images/hasumi-happy@2x.png"
+  normal: "./assets/images/hasumi-normal@2x.webp",
+  happy: "./assets/images/hasumi-happy@2x.webp"
 };
 
 function pick(lines) {
@@ -135,19 +139,6 @@ export function hasumiWeeklyLine(r) {
   if (r.activeDays >= 3) return { mood: "normal", text: "続いた週。来週も5分から。" };
   if (r.activeDays > 0) return { mood: "normal", text: "少しでも続いた。来週も5分から。" };
   return { mood: "normal", text: "今週は休み。今日から1セット、いこう。" };
-}
-
-// ストリークカードの一言（言うことがある時だけ返す）
-export function hasumiStreakLine() {
-  const streak = getStreak();
-  const playedToday = hasPlayedToday();
-  if (!playedToday && streak.current > 0 && streak.current + 1 > streak.best) {
-    return "あと1日で記録更新。";
-  }
-  if (playedToday && streak.best >= 2 && streak.current >= streak.best) {
-    return "連続記録、更新中。";
-  }
-  return null;
 }
 
 // 吹き出しUI（アバター＋一言）を組み立てる共通部品

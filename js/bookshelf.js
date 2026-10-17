@@ -5,7 +5,6 @@ import { COURSES, DEFAULT_COURSE, getCourseId } from "./course.js";
 import { SHELVES, shelfIdOf, shelfOf } from "./shelves.js";
 import { getEnabledPackIds } from "./packs.js";
 import { pickWelcomeBook, isWelcomeOpen } from "./welcome.js";
-import { coverOf, coverImgHtml } from "./covers.js";
 import { scrollBehavior } from "./ui.js";
 import { isPulling } from "./sync.js";
 import { SHELF_KEY, parseShelf, serializeShelf, migrateShelf, reconcileShelf, noteStudyStart, shelfAtStart, applyStartChoice, startChanges, effectiveCourse, savedHas, addKey, dropKey, displayItems, packRows } from "./shelfStore.js";
@@ -1023,20 +1022,10 @@ function rowMeta(key, search, ctx) {
   return `${head}${search ? `${shelfName(book.shelfId)}・` : ""}答えは${book.lang.split("・")[0]}・${book.count}${book.unit}`;
 }
 
-// 行の左の小さな表紙（js/covers.js の表）: 表紙のある本は絵、無い本は背と同じ革の無地（今の形）。どちらも同じ箱で、題の列が揃う。
-// 絵は閉じた見出しの中と 360px 未満（display:none）では読まない（loading=lazy）。読めなかった絵は外して革の無地に（bind の error）
-function covHtml(key) {
-  const id = key.slice(2);
-  const course = key.startsWith("c:");
-  const item = course ? BOXES.get(id) : BOOKS.get(id);
-  const cover = coverOf(key, course ? null : item?.shelfId);
-  return `<span class="finder__cov${cover ? "" : " finder__cov--plain"}" style="--c:${leather(item?.c ?? "walnut")}" aria-hidden="true">${cover ? coverImgHtml(cover) : ""}</span>`;
-}
-
 function rowHtml(key, search, ctx) {
   const name = nameOf(key);
   const attr = key.startsWith("c:") ? `data-course="${esc(key.slice(2))}"` : `data-book="${esc(key.slice(2))}"`;
-  return `<li class="finder__row" ${attr}>${covHtml(key)}<span class="finder__txt"><span class="finder__t">${numHtml(name)}</span><span class="finder__m">${numHtml(rowMeta(key, search, ctx))}</span></span>${actHtml(key, name, ctx.shelf && savedHas(ctx.shelf, key))}</li>`;
+  return `<li class="finder__row" ${attr}><span class="finder__txt"><span class="finder__t">${numHtml(name)}</span><span class="finder__m">${numHtml(rowMeta(key, search, ctx))}</span></span>${actHtml(key, name, ctx.shelf && savedHas(ctx.shelf, key))}</li>`;
 }
 
 // 窓の行の状態（棚にあるか・いまのコース・机の上）。窓を開いたときと棚が替わったとき（足した・同期: syncFinderStates）に作り、打つたびには作らない
@@ -1280,18 +1269,6 @@ function bind() {
       if (!body) return;
       const top = d.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
       body.scrollTo({ top: Math.max(0, top), behavior: scrollBehavior() });
-    },
-    true
-  );
-  // 窓の行の表紙が読めなかった（404・つながらない・SW にまだ無い）: 絵を外して箱を革の無地に（表紙の無い本と同じ）。Chromium は alt 空でも
-  // 大きさのある <img> に壊れた絵の印を描く。箱の大きさは CSS で決まっているので行の寸法は変わらない。error は泡立たないので捕捉で
-  root.addEventListener(
-    "error",
-    (event) => {
-      const img = event.target;
-      if (!img?.matches?.(".finder__cov img")) return;
-      img.parentElement.classList.add("finder__cov--plain");
-      img.remove();
     },
     true
   );
