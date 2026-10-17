@@ -18,8 +18,6 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "playwright-core";
-import { findChromium } from "./lib/canvas-art.mjs";
-import { isMain } from "./lib/is-main.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TEMPLATE = "/scripts/og-image.html";
@@ -68,6 +66,20 @@ const FONTS = [
 
 const MIME = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".woff2": "font/woff2", ".webp": "image/webp", ".png": "image/png", ".svg": "image/svg+xml" };
 
+function findChromium() {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
+  for (const root of [process.env.PLAYWRIGHT_BROWSERS_PATH, "/opt/pw-browsers", path.join(process.env.HOME ?? "", ".cache", "ms-playwright")]) {
+    if (!root || !fs.existsSync(root)) continue;
+    for (const dir of fs.readdirSync(root).filter((d) => d.startsWith("chromium"))) {
+      for (const sub of ["chrome-linux/chrome", "chrome-linux64/chrome"]) {
+        const p = path.join(root, dir, sub);
+        if (fs.existsSync(p)) return p;
+      }
+    }
+  }
+  throw new Error("Chromium が見つからない。CHROME_PATH を設定する");
+}
+
 function serve() {
   const server = http.createServer((req, res) => {
     const rel = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -83,7 +95,14 @@ function serve() {
 }
 
 // 直接呼ばれたときだけ撮る（tests/e2e.mjs が ogPageLook・TEXT_RIGHT_MAX を読むために import しても撮らない）
-if (isMain(import.meta.url)) await main();
+const realOf = (p) => {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+};
+if (process.argv[1] && realOf(process.argv[1]) === realOf(fileURLToPath(import.meta.url))) await main();
 
 async function main() {
   const args = process.argv.slice(2);
