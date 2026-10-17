@@ -1024,42 +1024,13 @@ function rowMeta(key, search, ctx) {
 }
 
 // 行の左の小さな表紙（js/covers.js の表）: 表紙のある本は絵、無い本は背と同じ革の無地（今の形）。どちらも同じ箱で、題の列が揃う。
-// 絵は閉じた見出しの中と 360px 未満（display:none）では読まない（loading=lazy）。読めなかった絵は外して革の無地に（bind の error）、
-// その表紙の名前をページの間だけ覚え（failedCovers）、次に行を作るとき（検索の 1 打ごと・窓を開き直す）は最初から無地で出して要求しない。
-// 通信が戻ったら（online）忘れて、窓の行に絵を戻す（読み直す）
-const failedCovers = new Set();
-const rowKey = (row) => (row.dataset.course != null ? `c:${row.dataset.course}` : `b:${row.dataset.book}`);
-function coverForKey(key) {
-  return coverOf(key, key.startsWith("c:") ? null : BOOKS.get(key.slice(2))?.shelfId);
-}
-// 読めなかった表紙の img: 名前を覚え、窓の中の同じ表紙の img（ほかの棚の行・検索の列。棚の行は窓を開いたときに作ってある）もまとめて外して
-// 革の無地に（もう要求させない。読めた絵は残す）。img は窓の中の物でも、作り直しで外した行の物でもよい
-function coverFailed(img) {
-  const row = img.closest(".finder__row");
-  const cover = row && coverForKey(rowKey(row));
-  if (cover) failedCovers.add(cover);
-  const src = img.getAttribute("src");
-  for (const i of [img, ...root.querySelectorAll("#bookFinder .finder__cov img")]) {
-    if (i !== img && (i.getAttribute("src") !== src || (i.complete && i.naturalWidth > 0))) continue;
-    i.parentElement?.classList.add("finder__cov--plain");
-    i.remove();
-  }
-}
-// 行を作り直す前（検索の 1 打ごと・窓を開き直す）: 外す行のまだ読み込み中の img は、error が窓（bind の捕捉）に届かなくなるので、img に直に聞く。
-// もう壊れていて error がまだ届いていない img（complete で幅 0）は、その場で覚える（届く前の打鍵で同じ表紙の img を作らない）
-// （最初の失敗の間に作り直した行で、同じ表紙を重ねて要求しない。閉じた見出しの中のまだ読まない img は何も起きない）
-function watchDetachedCovers(container) {
-  for (const img of container.querySelectorAll(".finder__cov img")) {
-    if (!img.complete) img.addEventListener("error", () => coverFailed(img), { once: true });
-    else if (!img.naturalWidth) coverFailed(img);
-  }
-}
+// 絵は閉じた見出しの中と 360px 未満（display:none）では読まない（loading=lazy）。読めなかった絵は外して革の無地に（bind の error）
 function covHtml(key) {
   const id = key.slice(2);
-  const item = key.startsWith("c:") ? BOXES.get(id) : BOOKS.get(id);
-  const cover = coverForKey(key);
-  const img = cover && !failedCovers.has(cover);
-  return `<span class="finder__cov${img ? "" : " finder__cov--plain"}" style="--c:${leather(item?.c ?? "walnut")}" aria-hidden="true">${img ? coverImgHtml(cover) : ""}</span>`;
+  const course = key.startsWith("c:");
+  const item = course ? BOXES.get(id) : BOOKS.get(id);
+  const cover = coverOf(key, course ? null : item?.shelfId);
+  return `<span class="finder__cov${cover ? "" : " finder__cov--plain"}" style="--c:${leather(item?.c ?? "walnut")}" aria-hidden="true">${cover ? coverImgHtml(cover) : ""}</span>`;
 }
 
 function rowHtml(key, search, ctx) {
@@ -1080,7 +1051,6 @@ function renderBrowse(ctx) {
   const browse = root.querySelector("#bookFinderBrowse");
   const welcome = finderMode === "welcome";
   const visible = (key) => !(welcome && key === "b:my");
-  watchDetachedCovers(browse);
   browse.innerHTML = BROWSE.map((s) => {
     const rows = s.rows.filter(visible);
     const body = s.heads
@@ -1116,7 +1086,6 @@ function showSearch(q, ctx) {
   const list = root.querySelector("#bookFinderList");
   const browse = root.querySelector("#bookFinderBrowse");
   const hint = root.querySelector("#bookFinderHint");
-  watchDetachedCovers(list);
   if (!norm(q)) {
     hint.textContent = "棚ごとの一覧";
     list.hidden = true;
@@ -1320,21 +1289,12 @@ function bind() {
     "error",
     (event) => {
       const img = event.target;
-      if (img?.matches?.(".finder__cov img")) coverFailed(img);
+      if (!img?.matches?.(".finder__cov img")) return;
+      img.parentElement.classList.add("finder__cov--plain");
+      img.remove();
     },
     true
   );
-  // 通信が戻った: 読めなかった表紙を忘れ、窓の無地の箱のうち表紙のある行に絵を戻す（読み直す。閉じた見出しの中は開いたときに読む）
-  window.addEventListener("online", () => {
-    if (!failedCovers.size) return;
-    failedCovers.clear();
-    for (const box of root.querySelectorAll("#bookFinder .finder__cov--plain")) {
-      const cover = coverForKey(rowKey(box.closest(".finder__row")));
-      if (!cover) continue;
-      box.classList.remove("finder__cov--plain");
-      box.innerHTML = coverImgHtml(cover);
-    }
-  });
 
   // 幅・机の列の高さが変わった・畳まれていた本棚が出た（プレイ中 → 机に戻る）ら段を割り直す
   let timer = null;
