@@ -19,7 +19,7 @@
 
 ## 2. 構造（創業者と決めた骨組み。変えない）
 
-- 上に部屋の帯: 窓とはちゃん（本を膝に立てて読む見習い）。はちゃんの一言は窓の脇に鋲で留めた紙片。
+- 上に部屋の帯: 窓とはちゃん（窓辺の腰掛けで本を読む見習い。創業者が用意した絵）。はちゃんの一言は窓の脇に鋲で留めた紙片。
 - 机の上に今日の本（開いた見開き）: 左頁 = 書名・柱（コース 第 n 巻／全 N 巻）・答え方と語数・覚えた n／N・コースを変える。右頁 = 今の章・今日のセット・**スタート**。3 枚目 = 目次（道のノード）。
 - 机の幕板に「ほかの遊び方」（チャレンジ・Daily Dash・バトル）を 1 行。
 - その下にわたしの本棚: 自分で足した本と函だけ（机の本は空きに代本板「机の上」、机の本が巻のコースの函は「いまのコース」で藍のしおり）。1200 の少ない棚は空の段 1 枚の下を書架の腰の扉で机の列の下端まで。171 冊の目録は「本を足す」の窓（9 つの棚の畳んだ見出し・検索）。背を押すと机の本が替わる、函でコース。下ろすのは「整理」（背の上の紙の札。下ろした本は「終わる」までその場に暗く残り、札「戻す」で戻せる。記録は消えない）。Batch 61 で自分で足す形に（棚に並べる規則は `js/shelfStore.js`）。
@@ -70,7 +70,7 @@
 - **紙・羊皮紙**: 暖かいオフホワイト（#FFF は禁止）。繊維（α .035–.05）とむら（α .04–.06）、縁は暗く（`inset 0 0 40px rgba(120,80,30,.12)`）、綴じ目へ 0→18%、小口と足に 3–5 本の紙の重なり、表紙の板は頁より 6–10px 出て箔の細線を内側に。**文字の下の質感は ±4 L\* まで。コントラストは最悪の画素で測る。**
 - **真鍮**: 鋭く細い光の段（`#2E200C → #8A6A30 → #F6E2A8（2–4%） → #9C7A3C → #3E2C12`）。真鍮の板に彫った文字は `--ink`（板の最も明るい所 ≥ `#C9A35A` で 5.8:1）。
 - **ガラス・蝋・炎**: 暗い透明な体に 1 本の鋭い斜めの光（白 α .35・2–3px）。蝋は上 20% が透ける暖かいオフホワイト、炎は 3 層（外の橙 α .7・中の黄白・小さな青の根）＋にじみ。昼のろうそくは消えている。
-- **性能**: `feTurbulence` は小さな要素か、前もって焼いたタイル（`assets/images/room/tile-*.webp` 128–256px・8–20KB）でだけ使う。スマホの全画面には走らせない。部屋の場面は WebP に焼く（`scene-{phone,short,desk}-{light,dark}.webp`、表示する 1 枚だけ読む。≤ 50KB／枚）。
+- **性能**: `feTurbulence` は小さな要素か、前もって焼いたタイル（`assets/images/room/tile-*.webp` 128–256px・8–20KB）でだけ使う。スマホの全画面には走らせない。部屋の場面は WebP に焼く（`scene-{phone,short,desk}-{light,dark}.webp`、表示する 1 枚だけ読む。desk ≤ 50KB・phone ≤ 40KB・short ≤ 32KB／枚。`scripts/room-art/render.mjs` の `SCENE_MAX_BYTES`）。
 
 ### 3.5 文字
 
@@ -105,9 +105,10 @@
 
 ### 3.8 はちゃん（docs/CHARACTER.md が正）
 
-- 部屋の帯の中（焼いた WebP の窓辺）に座って本を読んでいるのが本体。とんがり帽子の見習い魔法使い。頭は机の側へ 3/4、頬に 1 本の髪、目の線 1 本、つばは緩い波に窓側の 1px の暖かい縁、ケープの裾は 2–3 の柔らかい落ち、衣のひだは 1 段深く。
+- 絵は創業者が用意した絵（2026-10-17〜。大きな目・正面向き・2.5〜3 頭身のとんがり帽子の見習い魔法使い）。元の PNG はリポジトリに入れず、`scripts/build-hasumi.mjs --src` が配信する絵を作る。
+- 部屋の帯の中（焼いた WebP の窓辺）に座って本を読んでいるのが本体（010 読書）。幅は窓の開口の 0.6 強。本の頁の光は抑える（光るのは炎だけ）。部屋の光に寄せて焼く: 昼は北窓の冷たい色と左上の縁の光・座面の影、夜は暗く暖かく沈め上の縁に月の光（つばが暗い空に沈まない）・右の縁にろうそくの照り返し（`scripts/room-art/scene.mjs` の `FIG_LOOK`）。
 - 一言は窓の脇の紙片（`#hasumiHome .hasumi__bubble.slip`。128px・Shippori 500 16px・-1.6° に傾け・鋲は真鍮）。ホームでは隣に 2 人目（丸いアバター）を置かない。
-- 結果パネル・覚えた瞬間・週間レポートの 32px の丸いアバター（`assets/images/hasumi.png`／`hasumi-happy.png`＋`@2x`）は、同じ SVG（`scripts/room-art/hachan.mjs`）から `render-avatar.mjs` で切り出す。
+- 結果のパネル・週間レポート・学習中の知らせ（覚えた瞬間・3 つ続けて出てこない時）の 32px の丸いアバターは、006（ふつう）と 008（うれしい）の顔（`assets/images/hasumi-normal.webp`／`hasumi-happy.webp`＋`@2x`。32px ≤ 2.5KB・64px ≤ 5KB）。
 
 ### 3.9 動き
 
@@ -134,7 +135,7 @@
 6. **動きは短く静か。** 120〜200ms のフェード／位置移動だけ。点滅・バウンス・紙吹雪はしない。reduced motion では動かさない。
 7. **数字を誇張しない。** XP・レベル・コンボ・速度は小さな文字で 1 行（学習データのランクの行だけは、1 行に収まらない細い幅で「ランク ・ Lv」と「次のレベルまで N」の 2 行に決めて組む。字の大きさは同じ。PR #178 のレビュー）。目立つのは「覚えた語数」と「今日のセットの残り」だけ。例外: タイピング練習（/typing.html）とタイピングゲーム（/typing-game.html）の結果だけは主の数 1 行（打/分／取れた文。タイピング練習の長文はスコア＝打/分×正確さの 2 乗）にする（数の行は主 1 行＋補足 2 行まで。レベル・段階の名前は出さない）。学習の画面（Study・Challenge）には持ち込まない（Batch 59・60・62 創業者指示。docs/SPEC_TYPING.md・docs/SPEC_TYPING_GAME.md）。
 8. **文言は短く、常体で、断定。** 「〜しましょう！」「すごい！」「✨」を使わない。事実と次の一手だけ（例: 「今日のセット 残り6語」）。絵文字は UI に使わない。
-9. **はちゃんは小さく、3 場面だけ**（ホームの一言・セット完了・週間レポート）。台詞は 1 文、「！」は多くて 1 つ。
+9. **はちゃんは小さく、3 場面＋学習中の知らせだけ**（ホームの窓辺と紙片・結果のパネル・週間レポート＋学習中の知らせ。docs/CHARACTER.md §3）。台詞は 1 文、「！」は多くて 1 つ。
 10. **Pro の文言は部屋に出さない。** 完了パネル・道・はちゃんにも出さない（docs/SPEC_FUNNEL.md）。
 
 ## 5. 禁止（AI 感・安っぽさの源）
@@ -186,10 +187,10 @@
 | 本棚（棚・背・函・本を足す・整理） | `css/bookshelf.css`、`js/bookshelf.js`、`js/shelfStore.js`（棚の中身の規則・純粋な関数。`scripts/test-shelf.mjs`）、`js/shelves.js`（目録の棚割り） |
 | 机の本（左頁・右頁 `#pathNow`・目次 `#pathList`） | `js/pathView.js`、`css/path.css` |
 | 初回（積んだ本・1 語体験） | `js/welcome.js`、`css/welcome.css` |
-| はちゃん（紙片・一言・アバター） | `js/hasumi.js`、`assets/images/hasumi*.png` |
+| はちゃん（紙片・一言・アバター） | `js/hasumi.js`、`assets/images/hasumi-normal.webp`・`hasumi-happy.webp`（＋`@2x`）。絵は創業者が用意した 006・008・010 を `scripts/build-hasumi.mjs --src <元の絵の置き場>`（`--check` で作り直しが同じかを見る） |
 | ほかの遊び方の 1 行 | `js/playModes.js` |
 | ≥1100 の机の列の sticky | `js/room.js` |
-| 場面の絵（SVG → WebP・SVG の飾り・タイル・アバター） | `scripts/room-art/`（`render.mjs`・`render-avatar.mjs`・`build-art.mjs`・`tiles.mjs`・`hachan.mjs`）→ `assets/images/room/`。`scripts/` はデプロイしない |
+| 場面の絵（SVG → WebP・SVG の飾り・タイル） | `scripts/room-art/`（`render.mjs`〔窓辺の姿は `figure-reading.webp`〕・`scene.mjs`・`build-art.mjs`・`tiles.mjs`）→ `assets/images/room/`。`scripts/` はデプロイしない |
 | 予算の表 | `scripts/room-budget.mjs` |
 | 窓の行の小さな表紙（教科の表紙の絵） | 表 `js/covers.js`、行 `js/bookshelf.js` の `covHtml`、`css/bookshelf.css` の `.finder__cov`、絵 `node scripts/build-covers.mjs --src <元の PNG の置き場>` → `assets/images/covers/`（`--check` で作り直しがバイト単位で同じかを見る） |
 | 学習のランク（木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3 の 21 段と紋章。ランクアップの幕〔112px〕・学習データの行〔28px〕・ランクの一覧〔32px。開いたときだけ絵を読む〕。絵は飾りで、名前の文字は残す。ランクは記録せずレベルから毎回決める・下がらない。Battle の RP のランクとは別） | ランクの表と決まり `js/level.js`（`LEARNING_RANK_TIERS`・`LEARNING_RANKS`・`learningRankOf`・`nextLearningRankOf`。純粋な関数。`scripts/test-level.mjs`。語の習熟度の `rankOf`〔js/mastery.js〕・Battle の `RANKS`〔js/battleConfig.js〕と名前を分ける）、絵の URL・出し方・先読み `js/emblem.js`、行と一覧 `js/levelUi.js`、`css/game.css` `.rank-up`・`css/pages.css` `.level-bar__emblem`・`.rank-list`、絵は創業者が用意した 21 枚を `scripts/build-emblems.mjs --src <元の絵の置き場>` → `assets/images/emblems/` |

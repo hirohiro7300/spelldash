@@ -53,7 +53,7 @@ export const TOTAL_MAX_BYTES = 440 * 1024;
 const PAD = 0.02;
 const ALPHA_FLOOR = 16;
 
-function findChromium() {
+export function findChromium() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   for (const root of [process.env.PLAYWRIGHT_BROWSERS_PATH, "/opt/pw-browsers", path.join(process.env.HOME ?? "", ".cache", "ms-playwright")]) {
     if (!root || !fs.existsSync(root)) continue;

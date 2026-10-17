@@ -1,8 +1,7 @@
-// 天球（Celestial）の書斎: 場面の SVG を組み立てる（スマホ 390 と PC の 2 つの構図）。
+// 天球（Celestial）の書斎: 場面の SVG を組み立てる（スマホ 390・背の低いスマホ・PC の 3 つの構図）。
 // 色はすべて CSS 変数（--s-*）で、テーマは CSS だけで切り替わる。
 import { f, v, stops } from "./art-head.mjs";
 import { symWindow, WIN } from "./figures.mjs";
-import { symHachan, HC } from "./hachan.mjs";
 import { symArmillary, symChart, symCandle, symInk, symGlobeShelf, symFlatBooks } from "./props.mjs";
 
 export function defs() {
@@ -24,9 +23,8 @@ export function defs() {
     <feFlood style="flood-color:${v("shadow")}" flood-opacity=".28"/><feComposite in2="b" operator="in"/>
   </filter>
   <pattern id="pt-hatch" width="1.6" height="1.6" patternUnits="userSpaceOnUse" patternTransform="rotate(38)"><rect width="1.6" height="0.32" style="fill:${v("engr")}"/></pattern>
-  <pattern id="pt-hatch-hc" width="1.3" height="1.3" patternUnits="userSpaceOnUse" patternTransform="rotate(-52)"><rect width="1.3" height="0.3" style="fill:${v("robe-dk")}"/></pattern>
   <pattern id="pt-stipple" width="3" height="3" patternUnits="userSpaceOnUse"><circle cx="0.7" cy="0.8" r="0.28" style="fill:${v("engr")}"/><circle cx="2.2" cy="2.3" r="0.22" style="fill:${v("engr")}"/></pattern>
-  ${symHachan()}
+  ${figureFilters()}
   ${symWindow()}
   ${symArmillary()}
   ${symChart()}
@@ -39,13 +37,68 @@ export function defs() {
 
 const use = (id, x, y, w, h, extra = "") => `<use href="#${id}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" ${extra}/>`;
 
-// 構図: 窓（はちゃん）・紙片の位置・壁の額・机の上の燭台・インク壺・渾天儀（PC は壁の棚と寝かせた本も）
+// ================= 窓辺のはちゃん（創業者が用意した絵 010 読書。scripts/build-hasumi.mjs が scripts/room-art/figure-reading.webp に切り出す） =================
+// 置き方（窓の座標 WIN の単位。開口は L16〜R124 の 108、腰掛けの上面 143）: 幅 w、左は開口の左端 + dx、下は腰掛けの上面 + dy（裾と靴が腰掛けの前に少しかかる）。
+// 幅は開口の 0.6 強（夜の窓の月を隠さない・机の紙片とスタートより目立たない）。
+export const FIGURE = { w: 66, dx: 9, dy: 3 };
+
+// 色の寄せ（4×5 の色の行列）: 彩度 sat → 色ごとの利き gain → コントラスト contrast（0.5 を中心に）
+function grade({ sat, gain, contrast }) {
+  const L = [0.2126, 0.7152, 0.0722];
+  const rows = [0, 1, 2].map((i) => {
+    const row = L.map((l, j) => (i === j ? l + (1 - l) * sat : l * (1 - sat)) * gain[i] * contrast);
+    return [...row, 0, (0.5 * (1 - contrast)) * gain[i]];
+  });
+  return [...rows, [0, 0, 0, 1, 0]].flat().map((n) => Math.round(n * 10000) / 10000).join(" ");
+}
+// 縁の光: 形と、(dx,dy) ずらした形の差（形の内側の細い帯）を少しぼかし、形の中に収めて色を付ける。単位は絵の外接矩形に対する割合（スマホと PC で同じ見え方）
+const edge = (id, dx, dy, blur, color, opacity) => `
+    <feOffset in="SourceAlpha" dx="${dx}" dy="${dy}" result="${id}-s"/>
+    <feComposite in="SourceAlpha" in2="${id}-s" operator="out" result="${id}-e"/>
+    <feGaussianBlur in="${id}-e" stdDeviation="${blur}" result="${id}-b"/>
+    <feComposite in="${id}-b" in2="SourceAlpha" operator="in" result="${id}-m"/>
+    <feFlood style="flood-color:${v(color)}" flood-opacity="${opacity}"/>
+    <feComposite in2="${id}-m" operator="in" result="${id}"/>`;
+// 昼: 光は背後の北窓（左上）。絵は前から照らした厚塗りなので、北窓の冷たい昼に寄せ（彩度・赤を引く・コントラストを浅く）、
+//     左上の縁に窓の光、部屋側（右）に机からの弱い照り返し。
+// 夜: 部屋の光はろうそく（右の机の上）、窓の外は月。暗く暖かく沈め、上の縁に月の光（つばと帽子の山が暗い空に沈まない）、右の縁にろうそくの照り返し。
+// rim・bounce: [dx, dy, ぼかし, 不透明さ]（絵の外接矩形に対する割合）。rimFade: 縁の光の強さを上 → 下で [上, 中ほど, 下] に（光は上から。裾まで同じ強さだと切り抜きの白い縁に見える）
+export const FIG_LOOK = {
+  day: { grade: { sat: 0.84, gain: [0.94, 0.96, 1.0], contrast: 0.92 }, rim: [0.012, 0.011, 0.0025, 0.85], rimFade: [1, 0.6, 0.2], bounce: [-0.01, 0.002, 0.003, 0.2] },
+  night: { grade: { sat: 0.78, gain: [0.66, 0.6, 0.55], contrast: 0.96 }, rim: [0.005, 0.016, 0.0022, 1], rimFade: [1, 0.5, 0.1], bounce: [-0.012, 0.003, 0.004, 0.45] },
+};
+function figureFilters() {
+  return Object.entries(FIG_LOOK).map(([k, o]) => `
+  <filter id="fx-fig-${k}" x="-4%" y="-4%" width="108%" height="108%" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+    <feColorMatrix in="SourceGraphic" type="matrix" values="${grade(o.grade)}" result="base"/>${edge("bounce", ...o.bounce.slice(0, 3), "bounce", o.bounce[3])}
+    <feMerge><feMergeNode in="base"/><feMergeNode in="bounce"/></feMerge>
+  </filter>
+  <filter id="fx-fig-${k}-rim" x="-4%" y="-4%" width="108%" height="108%" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB">${edge("rim", ...o.rim.slice(0, 3), "rim", o.rim[3])}
+  </filter>
+  <linearGradient id="g-fig-${k}-rim" x1="0" y1="0" x2="0" y2="1">${stops([[0, "#fff", o.rimFade[0]], [0.5, "#fff", o.rimFade[1]], [1, "#fff", o.rimFade[2]]])}</linearGradient>
+  <mask id="m-fig-${k}-rim" maskContentUnits="objectBoundingBox"><rect width="1" height="1" fill="url(#g-fig-${k}-rim)"/></mask>`).join("");
+}
+// 窓辺の絵を腰掛けに置く。腰掛けに落ちる影（接地。昼は窓の光で右下へ短く、夜はろうそくで左へ薄く）＋昼と夜（.lt-day／.lt-night を片方だけ見せる）。
+// 絵は 1 度だけ置き（<defs>）、色を寄せた本体と縁の光を <use> で重ねる
+function figureAt(c, fig, seatY, place) {
+  const ws = c.win.s, w = place.w * ws, h = w * fig.aspect;
+  const x = c.win.x + (WIN.L + place.dx) * ws, y = seatY + place.dy * ws - h;
+  const id = `fig-${c.cls}`;
+  const shadow = (cls, cx, op) => `<ellipse cx="${f(x + w * cx)}" cy="${f(seatY + 1.2 * ws)}" rx="${f(w * 0.44)}" ry="${f(2.6 * ws)}" style="fill:${v("shadow")}" opacity="${op}" filter="url(#fx-soft)" class="${cls}"/>`
+    + `<ellipse cx="${f(x + w * cx)}" cy="${f(seatY + 0.6 * ws)}" rx="${f(w * 0.3)}" ry="${f(1.1 * ws)}" style="fill:${v("shadow")}" opacity="${op}" filter="url(#fx-hair)" class="${cls}"/>`;
+  const look = (k) => `<g class="lt-${k}"><use href="#${id}" filter="url(#fx-fig-${k})"/><use href="#${id}" filter="url(#fx-fig-${k}-rim)" mask="url(#m-fig-${k}-rim)"/></g>`;
+  return `<defs><image id="${id}" href="${fig.href}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" preserveAspectRatio="none"/></defs>`
+    + `${shadow("lt-day", 0.56, 0.5)}${shadow("lt-night", 0.46, 0.34)}${look("day")}${look("night")}`;
+}
+
+// 構図: 窓（窓辺のはちゃん）・紙片の位置・壁の額・机の上の燭台・インク壺・渾天儀（PC は壁の棚と寝かせた本も）
+// figure: 窓辺の絵（{ href: data URL, aspect: 高さ／幅 }。render.mjs が figure-reading.webp から渡す）
 // 返す値: SVG と、光源（炎）の位置（CSS の光の溜まりに使う）
-function compose(c) {
+export function compose(c, figure, place = FIGURE) {
+  if (!figure) throw new Error("窓辺の絵（figure）が要る");
   const [W, H] = c.vb;
-  const ws = c.win.s, hs = ws * 0.72;
+  const ws = c.win.s;
   const seatY = c.win.y + WIN.seatTop * ws;
-  const hx = c.win.x + (WIN.L + 3) * ws - HC.left * hs, hy = seatY - HC.seat * hs;
   const cd = c.candle, flame = [cd.x + 20 * cd.s, cd.y + 14 * cd.s];
   const svg = `<svg class="scene ${c.cls}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true" focusable="false">
     <!-- 壁に落ちる影（昼は窓 → 右下、夜はろうそく → 外側へ） -->
@@ -55,7 +108,7 @@ function compose(c) {
     ${use("candle", cd.x, cd.y, 40 * cd.s, 70 * cd.s, 'filter="url(#fx-cast-sm)" class="lt-day"')}
     <!-- 窓とはちゃん（腰掛けのクッションの上、窓の開口の内側） -->
     ${use("win", c.win.x, c.win.y, WIN.w * ws, WIN.h * ws)}
-    ${use("hachan", hx, hy, HC.w * hs, HC.h * hs)}
+    ${figureAt(c, figure, seatY, place)}
     <!-- 壁の額（銅版画の星図）と棚 -->
     ${use("chart", c.chart.x, c.chart.y, c.chart.s, c.chart.s)}
     ${c.shelf ? use("globeshelf", c.shelf.x, c.shelf.y, 90 * c.shelf.s, 80 * c.shelf.s) : ""}
@@ -65,7 +118,7 @@ function compose(c) {
     ${use("ink", c.ink.x, c.ink.y, 30 * c.ink.s, 34 * c.ink.s)}
     ${use("armillary", c.arm.x, c.arm.y, 90 * c.arm.s, 120 * c.arm.s)}
   </svg>`;
-  return { svg, flame, glass: [c.win.x + WIN.cx * ws, c.win.y + (WIN.S + 20) * ws], hc: [hx, hy, hs] };
+  return { svg, flame, glass: [c.win.x + WIN.cx * ws, c.win.y + (WIN.S + 20) * ws] };
 }
 
 // スマホ（390×262、ヘッダーと天井の帯を含む。机の奥の縁 y=240）
@@ -90,7 +143,5 @@ export const DESK = {
   arm: { x: 520, y: 276, s: 1.05 }, ink: { x: 438, y: 366, s: 1.1 },
   shelf: { x: 292, y: 96, s: 1.5 }, books: { x: 338, y: 378, s: 1.15 },
 };
-export const PH = compose(PHONE), SH = compose(SHORT), DK = compose(DESK);
-export const scenePhone = () => PH.svg;
-export const sceneShort = () => SH.svg;
-export const sceneDesk = () => DK.svg;
+// 場面の 3 つの構図（render.mjs が順に焼く。名前はファイル名 scene-<name>-<theme>.webp の <name>）
+export const SCENES = { phone: PHONE, short: SHORT, desk: DESK };
