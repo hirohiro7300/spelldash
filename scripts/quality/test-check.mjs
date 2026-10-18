@@ -25,7 +25,7 @@
 //  16. 別表記の形の見張り（scripts/quality/readingShape.mjs）の表
 //  17. sim-judge は結んだ読みを kanjiAccept の bound の行で打つ。accept に無い読みを結ぶと Q05 が当たる
 //  18. 反証の手がかり（scripts/quality/review-readings.mjs）は、データの漢字の読みで裏付けの無い組を出す
-//  19. validate-words: acceptReadings の形の検査と、--strict-bind（学校・基本の読みでない別表記をすべて結ぶ）。教材の写し（--root）で流す
+//  19. validate-words: acceptReadings の形の検査と、学校・基本の読みでない別表記をすべて結ぶこと（既定）。教材の写し（--root）で流す
 //  20. add-readings の alts・drop・--root: 4 通りのファイルの体裁で書き、2 度目は 0 枚。accept に無い別表記は NG でファイルを書かない。
 //      結んだ別表記を外すと、記録とその別表記だけに結んだ読みも消える
 import fs from "node:fs";
@@ -504,10 +504,10 @@ const TAX = "listing:concept-weight-tax-refund";
     check("validate-words: 形の合う acceptReadings は通り、結んだ数を出す（読みを結んだ別表記 1 以上）", good.code === 0 && /読みを結んだ別表記 [1-9]/.test(good.out), good.out.slice(-300));
     set(SAN, undefined);
     set("listing:concept-deal", undefined);
-    const strict = node("validate-words.mjs", [`--root=${vroot}`, "--strict-bind"]);
+    const strict = node("validate-words.mjs", [`--root=${vroot}`]);
     const sLines = strict.out.split("\n").filter((l) => l.includes("学校・基本の別表記に読みを結んでいない"));
     check(
-      "validate-words --strict-bind: 学校と基本の結んでいない別表記を NG にする（三内丸山・listing の 契約）。結んだ 岩宿 と分野パックは出ない",
+      "validate-words: 学校と基本の結んでいない別表記を NG にする（三内丸山・listing の 契約）。結んだ 岩宿 と分野パックは出ない",
       strict.code === 1 &&
         sLines.some((l) => l.includes("packs/jhist1.json:concept-jh1-sannaimaruyama (三内丸山)")) &&
         sLines.some((l) => l.includes("english/listing.json:concept-deal (契約)")) &&

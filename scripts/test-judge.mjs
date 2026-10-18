@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { isDeepStrictEqual } from "util";
 import { toCard, answerLabel } from "../js/wordData.js";
+import { normalizeReading, isReading, hasKana } from "../js/romaji.js";
 import { buildAlternativeIndex, acceptedAnswers, completedAnswer } from "../js/answers.js";
 import {
   answerModeOf,
@@ -131,14 +132,18 @@ const type = (w, text, opts) => typeAnswer(w, cands(w), text, opts);
   const kangen = card("jsci1", "concept-js1-kangen"); // 還元（かんげん）
   judged("還元: 途中の ん を nn で打っても正解", type(kangen, "kanngen"), { how: "auto", at: 7 });
   judged("還元: 途中の ん を n 1 つ（kange…）でも正解", type(kangen, "kangen"), { how: "auto", at: 6 });
-  const shotoku = card("elem-hist", "concept-eh-shotokutaishi"); // 聖徳太子（しょうとくたいし・うまやどのおうじ）
-  judged("聖徳太子: 別の読み（厩戸皇子）を打ち切っても Enter なしで正解", type(shotoku, "umayadonoouji"), { how: "auto", at: 13 });
+  const shotoku = card("elem-hist", "concept-eh-shotokutaishi"); // 聖徳太子（しょうとくたいし・厩戸皇子 うまやどのおうじ・厩戸王 うまやどのおう／うまやとおう）
+  // 厩戸皇子 の読みの頭が 厩戸王 の読み（うまやどのおう）なので、うまやどのおうじ と打つと 11 打目（うまやどのおう）で正解し、ji は残り（Batch 71）
+  judged("聖徳太子: 別の読み（厩戸皇子）を打つと、頭の 厩戸王 の読み（うまやどのおう）で Enter なしで正解", type(shotoku, "umayadonoouji"), { how: "auto", at: 11, rest: "ji" });
   judged("聖徳太子: 答えを見た後は主な読みだけ（別の読みは 1 打目で ×）", type(shotoku, "umayadonoouji", { revealed: true }), { how: "miss", at: 1 });
   judged("聖徳太子: 答えを見た後も主な読みは正解", type(shotoku, "shoutokutaishi", { revealed: true }), { how: "auto", at: 14 });
   // 盤面と typeAnswer が使う 1 打の関数（PR #175 の 6）: 読みの判定・1 打・状態を変えない見通し
   const { entries } = answerModeOf(shotoku);
   const m = romajiMatcherFor(entries);
-  eq("romajiMatcherFor: 答えを見る前はすべての読み（2 つ）", m.entries.length, 2);
+  // 読みの数は教材から数える（別表記に読みを結ぶと増える。今は しょうとくたいし・うまやどのおうじ・うまやどのおう・うまやとおう の 4 つ）
+  const dataReadings = [...new Set([shotoku.answer, ...(shotoku.accept ?? [])].map(normalizeReading).filter((r) => isReading(r) && hasKana(r)))];
+  eq("romajiMatcherFor: 答えを見る前はすべての読み（教材の読みの数）", m.entries.map((e) => e.reading), dataReadings);
+  ok("romajiMatcherFor: 教材の読みは主な読みと 厩戸皇子 の読みを含む（2 つより多い）", dataReadings.length > 2 && dataReadings[0] === "しょうとくたいし" && dataReadings.includes("うまやどのおうじ"));
   eq("romajiMatcherFor: 答えを見た後は主な読みだけ（しょうとくたいし）", romajiMatcherFor(entries, { revealed: true }).entries.map((e) => e.reading), ["しょうとくたいし"]);
   eq("romajiStep: 空白はローマ字のキーでない（判定しない）", romajiStep(m, " ").ignored, true);
   const s1 = romajiStep(m, "s");

@@ -1,7 +1,6 @@
 // 単語データの機械検証。データ編集後に実行する:
-//   node scripts/validate-words.mjs                 この木の data/ を検証する
-//   node scripts/validate-words.mjs --strict-bind   学校のパックと基本カテゴリで、読みでない別表記をすべて acceptReadings に結んでいるかも見る
-//                                                   （docs/PACK_FORMAT.md「別表記の読み」。Batch 71 の段 3 で既定にする）
+//   node scripts/validate-words.mjs                 この木の data/ を検証する（学校のパックと基本カテゴリは、読みでない別表記をすべて
+//                                                   acceptReadings に結んでいるかも見る。docs/PACK_FORMAT.md「別表記の読み」）
 //   node scripts/validate-words.mjs --root=<木>     その木の data/ を検証する（検査は js/ をこの木から読む。scripts/quality/test-check.mjs が写しで流す）
 import fs from "fs";
 import path from "path";
@@ -10,12 +9,11 @@ import { readingEntries, primaryReading, normalizeReading, displayReading, hasKa
 import { shelfIdOf } from "../js/shelves.js";
 
 const argv = process.argv.slice(2);
-const unknownArgs = argv.filter((a) => a !== "--strict-bind" && !a.startsWith("--root="));
+const unknownArgs = argv.filter((a) => !a.startsWith("--root="));
 if (unknownArgs.length) {
   console.error(`知らない引数: ${unknownArgs.join(" ")}（使い方は scripts/validate-words.mjs の先頭）`);
   process.exit(2);
 }
-const STRICT_BIND = argv.includes("--strict-bind");
 const rootArg = argv.find((a) => a.startsWith("--root="));
 const ROOT = rootArg ? path.resolve(rootArg.slice("--root=".length)) : path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = path.join(ROOT, "data", "english");
@@ -76,8 +74,8 @@ function checkReadings(w, where) {
 //  ・別表記は accept にそのままある（書き違い・外した後の古い記録を止める）・読みでない（読みに読みは要らない）・かなか漢字を含む（英字の別解は結ばない）
 //  ・読みはひらがなを含む読みで、重複せず、カードの読みの候補（[answer, ...accept] の読み）にある（読みの足し忘れ。判定は accept の読みだけで打つ）
 //  ・どの読みも打ち終えられるかは上の checkReadings が、別表記の形に合うか・判定器で × にならないかは品質の規則 Q04・Q05 が見る
-// 学校のパック（cardType: "school"）と基本カテゴリ（data/english）では、読みでない別表記（かなか漢字を含む）をすべて結ぶ（--strict-bind のときだけ。
-// 規則 Q04 が数えない「漢字の並びが同じ」型〔取り締まり役／取締役〕も、ここでふさぐ）
+// 学校のパック（cardType: "school"）と基本カテゴリ（data/english）では、読みでない別表記（かなか漢字を含む）をすべて結ぶ（Batch 71 から既定。
+// 規則 Q04 が数えない「漢字の並びが同じ」型〔取り締まり役／取締役〕も、ここでふさぐ。分野パックは F10 の後に広げる）
 let boundAlts = 0;
 let unboundStrict = 0;
 const isJapaneseCard = (w, cardType) => w.kind === "concept" && !w.calc && !w.kanjiOnly && cardType !== "writing" && cardType !== "grammar" && hasJapaneseScript(w.answer);
@@ -113,7 +111,7 @@ function checkAcceptReadings(w, where, { cardType, strict }) {
   for (const a of accept) {
     if (typeof a !== "string" || !hasJapaneseScript(a) || isReading(normalizeReading(a)) || Object.prototype.hasOwnProperty.call(bound, a)) continue;
     unboundStrict++;
-    if (STRICT_BIND) problems.push(`学校・基本の別表記に読みを結んでいない ${where} (${a})`);
+    problems.push(`学校・基本の別表記に読みを結んでいない ${where} (${a})`);
   }
 }
 
@@ -293,7 +291,7 @@ for (const [file, w] of entries) {
 }
 
 console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${familyById.size} / 日本語の答え: ${readingCards}枚（読み ${readingCount}・読みを結んだ別表記 ${boundAlts}）`);
-console.log(`学校・基本で読みを結んでいない別表記: ${unboundStrict}件${STRICT_BIND ? "（--strict-bind）" : "（--strict-bind で NG）"}`);
+console.log(`学校・基本で読みを結んでいない別表記: ${unboundStrict}件`);
 if (problems.length === 0) {
   console.log("OK: 問題なし");
 } else {
