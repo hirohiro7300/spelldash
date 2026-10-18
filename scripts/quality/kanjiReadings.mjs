@@ -2,9 +2,14 @@
 // 答えと主な読みの組（validate-words が見る確かな組）を、漢字 1 字に 1〜6 かなで並べ、EM（数回）で並べ方の重みを決めて、漢字ごとに
 // 出てきた読みを数える。別表記に結んだ読みの「裏付け」（その字面の漢字のどれもが、データのどこかでその音で読まれているか）を見る。
 // データに無い音（頼朝 の 朝＝とも・古文の訓）は正しくても裏付けが無いと出るので、規則にはしない（見直す人の一覧）。
+// 漢字にはさまれた ケ・ヶ・ヵ・カ（関ケ原・吉野ケ里・四カ国）は、形の見張り（readingShape.mjs）と同じ関数 markFreeKana で見分け、
+// 小さい ヵ・ヶ と同じ か・が・こ・け の 1 字の枠にする（形の見張りは漢字と同じ枠。どちらも け・か の字のままでは読まない。
+// 並べ方の重みには入れないので、四カ国条約 の 四＝よん のような表の読みは散らない）
 //   buildTable(pairs)                pairs: [{ face, reading }] → { count, sure, looseSure, known }（sure: 漢字 → 確かな読みの集合）
 //   supported(table, face, reading)  → { ok, unknown, bad }  ok: どの漢字も、出てきた読み（ゆるく: 濁点・語末の っ）か知らない字で並べられる。
 //                                    bad: 並ばないときの、裏付けの無い字と読み（[{ k, kana }]）
+import { markFreeKana, FREE } from "./readingShape.mjs";
+
 const KANJI = /[㐀-鿿々〆]/;
 const toHira = (s) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
 // ゆるい比べ: 濁点・半濁点を落とす。語末の っ は つ・く・ち・き のどれでもよい（復＝ふっ・日＝にっ・学＝がっ）
@@ -16,11 +21,12 @@ const looseForms = (s) => {
 const looseKana = (s) => looseForms(s)[0];
 
 function units(face) {
-  // 字面を「漢字 1 字」「そのまま読む字」に分ける（記号・空白は落とした字面。かっこは落とす）
+  // 字面を「漢字 1 字」「そのまま読む字」に分ける（記号・空白は落とした字面。かっこは落とす）。
+  // 漢字にはさまれた ケ・ヶ・ヵ・カ（markFreeKana の FREE）と小さい ヵ・ヶ は ゖ（か・が・こ・け の 1 字）
   const out = [];
-  for (const raw of String(face).normalize("NFKC").replace(/\([^()]*\)/g, "").toLowerCase()) {
+  for (const raw of markFreeKana(face).replace(/\([^()]*\)/g, "").toLowerCase()) {
     if (/[\p{P}\p{S}\p{Z}\s]/u.test(raw)) continue;
-    const c = /[ヵヶゕゖ]/.test(raw) ? "ゖ" : toHira(raw);
+    const c = raw === FREE || /[ヵヶゕゖ]/.test(raw) ? "ゖ" : toHira(raw);
     if (KANJI.test(c)) out.push({ k: c });
     else out.push({ lit: c });
   }

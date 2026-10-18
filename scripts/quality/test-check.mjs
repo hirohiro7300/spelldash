@@ -1,5 +1,8 @@
 // scripts/quality/check.mjs の比べ方の検査（CI）。教材のファイルは書き換えず、読んだ JSON を ctx.mjs の patch で変えて流す。
 //   node scripts/quality/test-check.mjs
+// 教材と js/ は最初に 1 回だけ読み（baseCtx）、検査ごとの教材は deriveContext で写して patch を当てる（触ったカテゴリのカードだけ作り直す。
+// PR #187 のレビュー 7: 1 件ごとに loadContext で全部を読み直して 11.5 → 27 秒になっていた）。カードの違う patch は組ごとにまとめて 1 回で流す。
+// loadContext そのものを見る 12・13 だけは loadContext で読む
 // 確かめること:
 //   1. 今の教材は基準線どおり（Q03・Q04・P1）
 //   2. 1 枚の accept に重複を足すと Q03 が落ち、落ちたカードがその 1 枚（PR で accept の重複を入れた形）
@@ -17,23 +20,29 @@
 //      （規則・判定器を変えて見つかった、前からある当たり）は落とさない。警告の規則は素の --update で今の当たりに合わせる
 //  11. 10 と同じことを check.mjs のコマンド（--update・--update --add・--base）で、教材を変えた木の写しに流す
 //  12. 規則は ctx の木（--root）の js/judge.js で判定する（Q05。規則のファイルの場所の js/ を読まない）
-//  13. loadContext を 2 つ同時に呼んでも木が混ざらず、global の fetch は元に戻る
+//  13. loadContext を 2 つ同時に呼んでも木が混ざらず、global の fetch は元に戻る。deriveContext は loadContext({ patch }) と同じ教材を作る
 //  14. 別表記の読み（acceptReadings。Batch 71・docs/PACK_FORMAT.md「別表記の読み」）: 結ぶと Q04 が消え、結び方の誤り（読みが accept に無い・
 //      読みの形でない・別表記の形に合わない・空）は当たる。結んでいない別表記は当たりのまま、一部だけ結ぶと中身が減り --base でも落ちない、
 //      基準線のカードを誤って結ぶと --base で落ちる。「の」の型は今のまま
-//  15. Q04w（警告）の 5 つの手がかり（短い形・他のカード・同じ読み・別表記の無い短い読み・同じ別表記の別の読み）。今の教材は 0
-//  16. 別表記の形の見張り（scripts/quality/readingShape.mjs）の表
+//  15. Q04w（警告）の 5 つの手がかり（短い形・他のカード・同じ読み・別表記の無い短い読み・同じ別表記の別の読み）。今の教材は基準線どおり。
+//      「別表記の無い短い読み」は漢字の別表記が 1 つ以上あり全部結んだカードだけ（PR #187 のレビュー 4。別表記の無いカード・分野パックには出ない）
+//  16. 別表記の形の見張り（scripts/quality/readingShape.mjs）の表。数字の並び・5 かなの漢字・単位の記号（PR #187 のレビュー 2）
 //  17. sim-judge は結んだ読みを kanjiAccept の bound の行で打つ。accept に無い読みを結ぶと Q05 が当たる
-//  18. 反証の手がかり（scripts/quality/review-readings.mjs）は、データの漢字の読みで裏付けの無い組を出す
-//  19. validate-words: acceptReadings の形の検査と、学校・基本の読みでない別表記をすべて結ぶこと（既定）。教材の写し（--root）で流す
+//  18. 反証の手がかり（scripts/quality/review-readings.mjs）は、データの漢字の読みで裏付けの無い組を出す。漢字にはさまれた ケ は形の見張りと
+//      同じ関数で見分け、が・か・こ の 1 字に並べる（PR #187 のレビュー 3。関ケ原の戦い・吉野ケ里遺跡 は「並べ方なし」にならない）
+//  19. validate-words: acceptReadings の形の検査と、学校・基本の読みでない別表記をすべて結ぶこと（既定）。Batch 71 で足した読み
+//      （scripts/quality/b71-readings.json）が accept に残るなら、どれかの結びか主な読みに属すること（PR #187 のレビュー 1）。教材の写し（--root）で流す
 //  20. add-readings の alts・drop・--root: 4 通りのファイルの体裁で書き、2 度目は 0 枚。accept に無い別表記は NG でファイルを書かない。
-//      結んだ別表記を外すと、記録とその別表記だけに結んだ読みも消える
+//      結んだ別表記を外すと、記録とその別表記だけに結んだ読みも消える。結び直すと前の読みも消え「も外した」と出る（ほかの別表記・主な読み・
+//      台帳の readings の読みは残す。PR #187 のレビュー 1）
+//  21. acceptReadings を読む 1 か所（scripts/lib/accept-readings.mjs。PR #187 のレビュー 6）: 空の配列は形の誤り（add-readings・validate-words・
+//      品質の規則で同じ）
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { loadContext, ROOT } from "./ctx.mjs";
+import { loadContext, deriveContext, ROOT } from "./ctx.mjs";
 import { loadRules, runRules, compareWithBaseline, compareWithBase, compareWithTargetBaseline, updateBaseline, readBaseline } from "./check.mjs";
 
 let passed = 0;
@@ -49,16 +58,19 @@ const pick = (...ids) => rules.filter((r) => ids.includes(r.id));
 const baseline = readBaseline();
 const wordOf = (files, cat, id) => files.get(cat).words.find((w) => w.id === id);
 
+// 今の教材（1 回だけ読む）と、それを写して patch を当てた教材
+const baseCtx = await loadContext();
+const derive = (patch) => deriveContext(baseCtx, patch);
+
 async function run(ids, patch, base = baseline) {
-  const ctx = await loadContext({ patch });
+  const ctx = derive(patch);
   const results = await runRules(ctx, pick(...ids));
   return { ctx, results, ...compareWithBaseline(results, base, { partial: true }) };
 }
 
 // 前の木（今の教材のまま）と PR の木（patch した教材）で比べる（check.mjs --base と同じ）
-const baseCtx = await loadContext();
 async function runVsBase(ids, patch) {
-  const ctx = await loadContext({ patch });
+  const ctx = derive(patch);
   const rs = pick(...ids);
   const results = await runRules(ctx, rs);
   const vs = await compareWithBase(ctx, results, baseCtx, rs, baseline);
@@ -121,7 +133,7 @@ async function runVsBase(ids, patch) {
 
 // 6
 {
-  const ctx = await loadContext();
+  const ctx = baseCtx;
   const fake = [
     { id: "W1", level: "warn", describe: "警告", run: (c) => c.cards.slice(0, 3).map((w) => ({ card: w.ref })) },
     { id: "E1", level: "error", describe: "誤り", run: (c) => c.cards.slice(0, 1).map((w) => ({ card: w.ref })) }
@@ -177,7 +189,7 @@ async function runVsBase(ids, patch) {
     const w = wordOf(files, "jsci1", "concept-js1-mg");
     w.accept = [...w.accept, "マグネシウム"]; // PR で accept に重複を足した
   };
-  const ctx = await loadContext({ patch });
+  const ctx = derive(patch);
   const rs = pick("Q03", "Q15");
   const results = await runRules(ctx, rs);
   const first = compareWithBaseline(results, baseline, { partial: true });
@@ -281,9 +293,11 @@ async function runVsBase(ids, patch) {
     wordOf(files, "jsci1", "concept-js1-mg").explain = s;
   };
   let got = null;
+  let loadedA = null;
   try {
     const [a, b, c] = await Promise.all([loadContext({ patch: mark("木A") }), loadContext({ patch: mark("木B") }), loadContext({ patch: mark("木C") })]);
     got = [a, b, c].map((x) => x.cardByRef.get(ref)?.explain);
+    loadedA = a;
   } catch (e) {
     got = String(e?.message ?? e);
   }
@@ -291,6 +305,14 @@ async function runVsBase(ids, patch) {
   const fetchBack = globalThis.fetch === prev;
   globalThis.fetch = prev;
   check("同時に呼んだ後、global の fetch は元に戻る（偽の fetch が残らない）", fetchBack, "");
+  // deriveContext（PR #187 のレビュー 7。この検査の教材の作り方）: loadContext({ patch }) と同じカード・ref・raw・files を作り、元の ctx は変えない。
+  // 触っていないカテゴリのカードは元の ctx と同じ物
+  const d = derive(mark("木A"));
+  const sig = (ctx, id) => JSON.stringify(ctx.cardsOf(id).map((w) => [w.ref, w.raw, w])) + JSON.stringify(ctx.files.get(id));
+  const sameShape = !!loadedA && d.cards.length === loadedA.cards.length && d.cards.every((w, i) => w.ref === loadedA.cards[i].ref) && sig(d, "jsci1") === sig(loadedA, "jsci1");
+  const shared = d.cardsOf("jhist1").every((w, i) => w === baseCtx.cardsOf("jhist1")[i]) && d.files.get("jhist1") === baseCtx.files.get("jhist1") && d.cardsOf("jsci1")[0] !== baseCtx.cardsOf("jsci1")[0];
+  const untouched = baseCtx.cardByRef.get(ref)?.explain !== "木A" && baseCtx.files.get("jsci1").words.every((w) => w.explain !== "木A");
+  check("deriveContext: 写して patch を当てた教材は loadContext({ patch }) と同じカード・ref・raw・files。触ったカテゴリだけ作り直し、元の ctx は変えない", sameShape && shared && untouched && d.cardByRef.get(ref)?.explain === "木A", JSON.stringify({ sameShape, shared, untouched }));
 }
 
 // ---- 14〜20: 別表記の読み（acceptReadings。Batch 71） ----
@@ -306,7 +328,8 @@ const KNOWN = {
   "hs-civics:concept-hp-akaji-kokusai": ["あかじこくさい", "特例国債", "とくれいこくさい"],
   "listing:concept-weight-tax-refund": ["自動車重量税還付", "重量税の還付", "じゅうりょうぜいかんぷ"],
   "listing:concept-deal": ["契約", "売却合意", "成約件数", "せいやく"],
-  "elem-math:concept-em-bunpai": ["ぶんぱいのきまり", "分配法則"]
+  "elem-math:concept-em-bunpai": ["ぶんぱいのきまり", "分配法則"],
+  "jhist1:concept-jh1-yoshinogari": ["よしのがりいせき", "吉野ヶ里", "よしのがり", "吉野ケ里遺跡"]
 };
 // ref のカードを KNOWN の accept（＋ add − remove）にし、acceptReadings を map にする（undefined なら欄を消す）
 const put = (files, ref, map, { add = [], remove = [] } = {}) => {
@@ -318,7 +341,7 @@ const put = (files, ref, map, { add = [], remove = [] } = {}) => {
 };
 const known = (...refs) => (files) => refs.forEach((ref) => put(files, ref, undefined));
 const hitsOf = async (ids, patch) => {
-  const ctx = await loadContext({ patch });
+  const ctx = derive(patch);
   const results = await runRules(ctx, pick(...ids));
   const of = (id, ref) => results.find((r) => r.id === id)?.hits.get(ref) ?? null;
   return { ctx, results, of };
@@ -327,8 +350,8 @@ const hitsOf = async (ids, patch) => {
 async function vsBase(ids, basePatch, headPatch, refs) {
   const base = { ...baseline };
   for (const id of ids) base[id] = [...new Set([...(baseline[id] ?? []), ...refs])].sort();
-  const before = await loadContext({ patch: basePatch });
-  const ctx = await loadContext({ patch: (files) => (basePatch(files), headPatch(files)) });
+  const before = derive(basePatch);
+  const ctx = derive((files) => (basePatch(files), headPatch(files)));
   const rs = pick(...ids);
   const results = await runRules(ctx, rs);
   const vs = await compareWithBase(ctx, results, before, rs, base);
@@ -342,25 +365,34 @@ const JSHO = "jhist1:concept-jh1-shotokutaishi";
 const GAI = "hs-bio:concept-hb-gairai";
 const AKA = "hs-civics:concept-hp-akaji-kokusai";
 const TAX = "listing:concept-weight-tax-refund";
+const YOSHI = "jhist1:concept-jh1-yoshinogari";
+const FREEZE = "banking:concept-bank-freeze";
 
-// 14
+// 14（カードの違う patch は 1 つの教材にまとめて流す。同じカードの別の形は別の教材。Q04 はカードごとの規則なので当たりは同じ）
 {
-  const before = (await hitsOf(["Q04"], known(IWA))).of("Q04", IWA) ?? [];
+  const partPatch = (files) => put(files, SHOTOKU, { 厩戸皇子: "うまやどのおうじ" });
+  const asIs = await hitsOf(["Q04"], known(IWA, SHOTOKU, TAX));
+  const mixed = await hitsOf(["Q04"], (files) => {
+    put(files, IWA, { 岩宿: "いわじゅく" });
+    put(files, OSHIO, { 大塩の乱: "おおしおらん" }, { add: ["おおしおらん"] });
+    partPatch(files);
+    put(files, TAX, { 重量税の還付: "じゅうりょうぜいのかんぷ" }, { add: ["じゅうりょうぜいのかんぷ"] });
+  });
+  const before = asIs.of("Q04", IWA) ?? [];
   check("結んでいない漢字の別表記は Q04 の当たりのまま（中身は「読みを結んでいない」）", before.length === 1 && before[0] === "漢字の別表記「岩宿」（B 型）に読みを結んでいない", JSON.stringify(before));
-  const bound = (await hitsOf(["Q04"], (files) => put(files, IWA, { 岩宿: "いわじゅく" }))).of("Q04", IWA);
+  const bound = mixed.of("Q04", IWA);
   check("別表記に読みを結ぶと Q04 から消える（jhist1 岩宿遺跡: 岩宿 → いわじゅく）", bound === null, JSON.stringify(bound));
   const missing = (await hitsOf(["Q04"], (files) => put(files, IWA, { 岩宿: "いわじゅく" }, { remove: ["いわじゅく"] }))).of("Q04", IWA) ?? [];
   check("結んだ読みが accept に無いと Q04 に当たる", missing.length === 1 && missing[0].includes("「岩宿」に結んだ読み「いわじゅく」が accept に無い"), JSON.stringify(missing));
-  const shape = (await hitsOf(["Q04"], (files) => put(files, OSHIO, { 大塩の乱: "おおしおらん" }, { add: ["おおしおらん"] }))).of("Q04", OSHIO) ?? [];
+  const shape = mixed.of("Q04", OSHIO) ?? [];
   check("結んだ読みが別表記の形に合わないと Q04 に当たる（大塩の乱 → おおしおらん。「の」が読みに無い）", shape.length === 1 && shape[0].includes("「大塩の乱」に結んだ読み「おおしおらん」と、別表記のかな・字数が合わない"), JSON.stringify(shape));
   const latin = (await hitsOf(["Q04"], (files) => put(files, IWA, { 岩宿: "iwajuku" }, { add: ["iwajuku"] }))).of("Q04", IWA) ?? [];
   check("結んだ読みがひらがなの読みでない（iwajuku）と Q04 に当たる", latin.length === 1 && latin[0].includes("「岩宿」に結んだ「iwajuku」が読みの形でない"), JSON.stringify(latin));
   const empty = (await hitsOf(["Q04"], (files) => put(files, IWA, { 岩宿: [] }))).of("Q04", IWA) ?? [];
   check("結んだ読みが空の配列なら Q04 に当たる", empty.length === 1 && empty[0].includes("「岩宿」に結んだ読みが無い"), JSON.stringify(empty));
 
-  const whole = (await hitsOf(["Q04"], known(SHOTOKU))).of("Q04", SHOTOKU) ?? [];
-  const partPatch = (files) => put(files, SHOTOKU, { 厩戸皇子: "うまやどのおうじ" });
-  const part = (await hitsOf(["Q04"], partPatch)).of("Q04", SHOTOKU) ?? [];
+  const whole = asIs.of("Q04", SHOTOKU) ?? [];
+  const part = mixed.of("Q04", SHOTOKU) ?? [];
   check("1 枚の別表記の一部だけを結ぶと、当たりは残り中身が減る（聖徳太子: 2 → 1。残りは 厩戸王）", whole.length === 2 && part.length === 1 && part[0] === "漢字の別表記「厩戸王」（C 型）に読みを結んでいない", `${JSON.stringify(whole)} → ${JSON.stringify(part)}`);
   const partVs = await vsBase(["Q04"], known(SHOTOKU), partPatch, [SHOTOKU]);
   check("一部だけ結んでも --base では落ちない（変わったカード 1 枚）", partVs.failures.length === 0 && partVs.vs.changed.size === 1, `${partVs.failures.join(" / ")} changed=${partVs.vs.changed.size}`);
@@ -372,9 +404,9 @@ const TAX = "listing:concept-weight-tax-refund";
     `${wrongVs.only.failures.join(" / ")} | ${wrongVs.failures.join(" / ")} ${JSON.stringify(grown)}`
   );
 
-  const no = (await hitsOf(["Q04"], known(TAX))).of("Q04", TAX) ?? [];
+  const no = asIs.of("Q04", TAX) ?? [];
   check("「の」の有無だけ違う別表記は今の数え方のまま（読みが無ければ当たり）", no.includes("「の」の有無だけ違う別表記「重量税の還付」の読みが無い（主な読み じゅうりょうぜいかんぷ）"), JSON.stringify(no));
-  const noBound = (await hitsOf(["Q04"], (files) => put(files, TAX, { 重量税の還付: "じゅうりょうぜいのかんぷ" }, { add: ["じゅうりょうぜいのかんぷ"] }))).of("Q04", TAX) ?? [];
+  const noBound = mixed.of("Q04", TAX) ?? [];
   check("「の」の型も結べば消え、ほかの別表記（自動車重量税還付）は当たりのまま", noBound.length === 1 && noBound[0] === "漢字の別表記「自動車重量税還付」（B 型）に読みを結んでいない", JSON.stringify(noBound));
 }
 
@@ -384,32 +416,56 @@ const TAX = "listing:concept-weight-tax-refund";
   check("Q04w（警告）の規則がある", hasRule, rules.map((r) => r.id).join(","));
   const q = (await hitsOf(["Q04w"])).results.find((r) => r.id === "Q04w");
   check("今の教材の Q04w は基準線どおり（--update --add=Q04w で入れた。警告なので --update で合わせる）", hasRule && JSON.stringify([...(q?.hits.keys() ?? [])].sort()) === JSON.stringify(baseline.Q04w ?? null), `${q?.hits.size} / ${JSON.stringify(baseline.Q04w)}`);
-  const w = (ref, patch) => hitsOf(["Q04w"], patch).then((x) => x.of("Q04w", ref) ?? []);
-  const a1 = await w(SAN, (files) => put(files, SAN, { 三内丸山: "さんないまるさん" }, { add: ["さんないまるさん"] }));
-  const a0 = await w(SAN, (files) => put(files, SAN, { 三内丸山: "さんないまるやま" }));
+  // 当たる形（…1）と当たらない形（…0）を、それぞれ 1 つの教材にまとめて流す（カードも別表記の字面も別。他のカード・同じ別表記の別の読みも
+  // patch したカードどうしでは重ならない）
+  const pair = (r1, r2) => (files) => {
+    put(files, SHOTOKU, { 厩戸王: r1 }, { add: [r1] });
+    put(files, JSHO, { 厩戸王: r2 });
+  };
+  const ones = await hitsOf(["Q04w"], (files) => {
+    put(files, SAN, { 三内丸山: "さんないまるさん" }, { add: ["さんないまるさん"] });
+    put(files, GAI, { 外来種: "がいらいだね" }, { add: ["がいらいだね"] });
+    put(files, AKA, { 特例国債: "あかじこくさい" });
+    put(files, YOSHI, { 吉野ケ里遺跡: "よしのがりいせき" }, { remove: ["吉野ヶ里"] });
+    pair("うまやどのおう", "うまやとおう")(files);
+    // PR #187 のレビュー 4: 漢字の別表記が無いカードは every が空の配列で真になり、ほぼ全部の日本語のカードで走っていた（結ぶ先が無く直す手立てが無い）
+    put(files, IWA, undefined, { remove: ["岩宿"] }); // 学校: 岩宿 を外して いわじゅく が残る（漢字の別表記は 0）
+    const f = wordOf(files, "banking", "concept-bank-freeze");
+    f.accept = ["こうざとうけつ", "こうざ"]; // 分野パック: 漢字の別表記の無いカードに、主な読みの頭の短い読み
+    delete f.acceptReadings;
+  });
+  const zeros = await hitsOf(["Q04w"], (files) => {
+    put(files, SAN, { 三内丸山: "さんないまるやま" });
+    put(files, GAI, { 外来種: "がいらいしゅ" });
+    put(files, AKA, { 特例国債: "とくれいこくさい" });
+    put(files, YOSHI, { 吉野ヶ里: "よしのがり", 吉野ケ里遺跡: "よしのがりいせき" });
+    pair("うまやどのおう", "うまやどのおう")(files);
+  });
+  const of1 = (ref) => ones.of("Q04w", ref) ?? [];
+  const of0 = (ref) => zeros.of("Q04w", ref) ?? [];
+  const a1 = of1(SAN);
+  const a0 = of0(SAN);
   // さんないまるさん に結ぶと、前の読み さんないまるやま はどの別表記にも結ばれない短い読みになるので「別表記の無い短い読み」にも出る
   check(
     "Q04w 短い形: 三内丸山 → さんないまるさん（ほかの読みの頭にならない）は当たり、さんないまるやま は当たらない",
     hasRule && a1.filter((d) => d.startsWith("短い形: 「三内丸山」は答えの頭なのに、読み「さんないまるさん」")).length === 1 && a0.length === 0,
     `${JSON.stringify(a1)} / ${JSON.stringify(a0)}`
   );
-  const b1 = await w(GAI, (files) => put(files, GAI, { 外来種: "がいらいだね" }, { add: ["がいらいだね"] }));
-  const b0 = await w(GAI, (files) => put(files, GAI, { 外来種: "がいらいしゅ" }));
+  const b1 = of1(GAI);
+  const b0 = of0(GAI);
   check("Q04w 他のカード: 外来種 → がいらいだね（外来種を答えにするカードの読みは がいらいしゅ）は当たり、がいらいしゅ は当たらない", hasRule && b1.length === 1 && b1[0].startsWith("他のカード: 「外来種」は ") && b1[0].includes("がいらいしゅ") && b0.length === 0, `${JSON.stringify(b1)} / ${JSON.stringify(b0)}`);
-  const c1 = await w(AKA, (files) => put(files, AKA, { 特例国債: "あかじこくさい" }));
-  const c0 = await w(AKA, (files) => put(files, AKA, { 特例国債: "とくれいこくさい" }));
+  const c1 = of1(AKA);
+  const c0 = of0(AKA);
   check("Q04w 同じ読み: 特例国債 → あかじこくさい（答えの主な読み）は当たり、とくれいこくさい は当たらない", hasRule && c1.length === 1 && c1[0].startsWith("同じ読み: 「特例国債」は答えと漢字が違う（赤字／特例）") && c0.length === 0, `${JSON.stringify(c1)} / ${JSON.stringify(c0)}`);
-  const d1 = await w(IWA, (files) => put(files, IWA, undefined, { remove: ["岩宿"] }));
-  const d0 = await w(IWA, (files) => put(files, IWA, { 岩宿: "いわじゅく" }));
-  check("Q04w 別表記の無い短い読み: 岩宿 を外して いわじゅく を残すと当たり、岩宿 に結べば当たらない", hasRule && d1.length === 1 && d1[0].startsWith("別表記の無い短い読み: 「いわじゅく」は主な読み「いわじゅくいせき」の頭") && d0.length === 0, `${JSON.stringify(d1)} / ${JSON.stringify(d0)}`);
-  const pair = (r1, r2) => (files) => {
-    put(files, SHOTOKU, { 厩戸王: r1 }, { add: [r1] });
-    put(files, JSHO, { 厩戸王: r2 });
-  };
-  const e1 = await hitsOf(["Q04w"], pair("うまやどのおう", "うまやとおう"));
-  const e0 = await hitsOf(["Q04w"], pair("うまやどのおう", "うまやどのおう"));
-  const eA = e1.of("Q04w", SHOTOKU) ?? [];
-  const eB = e1.of("Q04w", JSHO) ?? [];
+  const d1 = of1(YOSHI);
+  const d0 = of0(YOSHI);
+  check("Q04w 別表記の無い短い読み: 吉野ヶ里遺跡 から 吉野ヶ里 を外して よしのがり を残すと当たり（吉野ケ里遺跡 は結んだまま）、吉野ヶ里 に結べば当たらない", hasRule && d1.length === 1 && d1[0].startsWith("別表記の無い短い読み: 「よしのがり」は主な読み「よしのがりいせき」の頭") && d0.length === 0, `${JSON.stringify(d1)} / ${JSON.stringify(d0)}`);
+  const nIwa = of1(IWA);
+  const nFreeze = of1(FREEZE);
+  check("Q04w 別表記の無い短い読みは、漢字の別表記が 1 つ以上あり全部結んだカードだけ: 別表記を全部外した 岩宿遺跡 の いわじゅく・分野パックの別表記の無い 口座凍結 の こうざ には出ない", hasRule && nIwa.length === 0 && nFreeze.length === 0, `${JSON.stringify(nIwa)} / ${JSON.stringify(nFreeze)}`);
+  const e0 = zeros;
+  const eA = of1(SHOTOKU);
+  const eB = of1(JSHO);
   check(
     "Q04w 同じ別表記の別の読み: 2 枚で 厩戸王 を共通の読みの無い読みに結ぶと両方に当たり、同じ読みなら当たらない",
     hasRule && eA.length === 1 && eA[0].startsWith(`同じ別表記の別の読み: 「厩戸王」を ${JSHO} では「うまやとおう」`) && eB.length === 1 && eB[0].includes(SHOTOKU) && !e0.of("Q04w", SHOTOKU) && !e0.of("Q04w", JSHO),
@@ -426,16 +482,21 @@ const TAX = "listing:concept-weight-tax-refund";
     shapeOk = null;
   }
   const ok = [["関ケ原", "せきがはら"], ["一ヵ月", "いっかげつ"], ["X線", "xせん"], ["W杯", "だぶりゅーはい"], ["1192年", "1192ねん"], ["鎌倉ばくふ", "かまくらばくふ"], ["岩宿", "いわじゅく"]];
-  const ng = [["大塩の乱", "おおしおらん"], ["平塚らいてう", "ひらつからいちょう"], ["岩宿", "いわじゅくいせきあと"]];
+  const ng = [["大塩の乱", "おおしおらん"], ["平塚らいてう", "ひらつからいちょう"], ["岩宿", "いわじゅくいせきあとち"]]; // 漢字 2 字に 11 字（1 字 5 字まで。PR #187 のレビュー 2 の前は 4 字までで、10 字の いわじゅくいせきあと で見ていた）
   const bad = shapeOk ? [...ok.filter(([t, r]) => !shapeOk(t, r, R.normalizeReading)), ...ng.filter(([t, r]) => shapeOk(t, r, R.normalizeReading))] : ["readingShape.mjs が無い"];
   check("別表記の形の見張り: 関ケ原・一ヵ月・X線・W杯・1192年・鎌倉ばくふ は合い、大塩の乱＝おおしおらん・平塚らいてう＝ひらつからいちょう は合わない", bad.length === 0, JSON.stringify(bad));
+  // PR #187 のレビュー 2: 数字の並びは位の読みで縮む・5 かなの漢字・単位の記号。緩めても捕まえる読み違い
+  const ok2 = [["1000年", "せんねん"], ["1000℃", "せんど"], ["100000", "じゅうまん"], ["志", "こころざし"], ["政", "まつりごと"], ["詔", "みことのり"], ["承る", "うけたまわる"], ["50％", "ごじゅっぱーせんと"], ["Q&A", "きゅーあんどえー"], ["2×4工法", "つーばいふぉーこうほう"], ["関ケ原の戦い", "せきがはらのたたかい"]];
+  const ng2 = [["志", "こころざしは"], ["百", "ひゃくひゃく"], ["1192年", "ねん"], ["2024年", "にねん"], ["50％", "ご"], ["X線", "えっくすせんせんせんせん"]];
+  const bad2 = shapeOk ? [...ok2.filter(([t, r]) => !shapeOk(t, r, R.normalizeReading)).map((x) => `合わない ${x.join("=")}`), ...ng2.filter(([t, r]) => shapeOk(t, r, R.normalizeReading)).map((x) => `合う ${x.join("=")}`)] : ["readingShape.mjs が無い"];
+  check("別表記の形の見張り: 1000年＝せんねん・1000℃＝せんど・100000＝じゅうまん・志＝こころざし・政＝まつりごと・詔＝みことのり・承る＝うけたまわる・50％・Q&A・2×4工法・関ケ原の戦い は合い、志＝こころざしは（6 かな）・1192年＝ねん・50％＝ご などは合わない", bad2.length === 0, JSON.stringify(bad2));
 }
 
 // 17
 {
   const { simulate } = await import("./sim-judge.mjs");
   const ex1 = (files) => put(files, SHOTOKU, { 厩戸皇子: "うまやどのおうじ", 厩戸王: ["うまやどのおう", "うまやとおう"] }, { add: ["うまやどのおう", "うまやとおう"] });
-  const ctx = await loadContext({ patch: ex1 });
+  const ctx = derive(ex1);
   const rows = simulate(ctx, { rivals: false }).rows.filter((r) => r.ref === SHOTOKU && r.input === "kanjiAccept" && r.sub === "bound");
   check(
     "sim-judge: 結んだ別表記は読み 1 つごとに kanjiAccept の bound の行になり、Enter なしで正解（聖徳太子 3 行）",
@@ -454,20 +515,38 @@ const TAX = "listing:concept-weight-tax-refund";
   } catch (e) {
     review = null;
   }
+  // PR #187 のレビュー 3 の 3 組（漢字にはさまれた ケ。今の教材のまま）も同じ教材・同じ表で 1 回に見る（表を作るのが重い）
+  const KE = ["elem-hist:concept-eh-sekigahara", "jhist1:concept-jh1-sekigahara", YOSHI];
   let lines = [];
+  let ke = null;
   if (review) {
-    const ctx = await loadContext({
-      patch: (files) => {
-        put(files, "elem-math:concept-em-bunpai", { 分配法則: "ぶんぱいのきまり" });
-        put(files, IWA, { 岩宿: "いわじゅく" });
-      }
+    const ctx = derive((files) => {
+      put(files, "elem-math:concept-em-bunpai", { 分配法則: "ぶんぱいのきまり" });
+      put(files, IWA, { 岩宿: "いわじゅく" });
     });
-    lines = review(ctx, { refs: new Set(["elem-math:concept-em-bunpai", IWA]) }).rows;
+    const rows = review(ctx, { refs: new Set(["elem-math:concept-em-bunpai", IWA, ...KE]) }).rows;
+    lines = rows.filter((r) => !KE.includes(r.card));
+    ke = rows.filter((r) => KE.includes(r.card));
   }
   check(
     "反証の手がかり: 分配法則 → ぶんぱいのきまり（法・則の読みがデータに無い）は裏付けの無い組に出て、岩宿 → いわじゅく は出ない",
     review && lines.length === 1 && lines[0].card === "elem-math:concept-em-bunpai" && lines[0].alt === "分配法則" && lines[0].reading === "ぶんぱいのきまり",
     JSON.stringify(lines)
+  );
+  // PR #187 のレビュー 3: 漢字にはさまれた片仮名の ケ を け の字のまま並べていた（readingShape は漢字と同じ枠）
+  let shared = false;
+  try {
+    const shape = await import("./readingShape.mjs");
+    const kr = await import("./kanjiReadings.mjs");
+    const t = kr.buildTable([{ face: "関ヶ原", reading: "せきがはら" }, { face: "小原", reading: "おはら" }]);
+    shared = typeof shape.markFreeKana === "function" && kr.supported(t, "関ケ原", "せきがはら").ok && kr.supported(t, "関カ原", "せきがはら").ok && !kr.supported(t, "関ケ原", "せきはら").ok;
+  } catch (e) {
+    shared = false;
+  }
+  check(
+    "反証の手がかり: 漢字にはさまれた ケ は形の見張りと同じ関数（markFreeKana）で見分け、が・か・こ の 1 字に並べる（関ケ原の戦い ← せきがはらのたたかい・吉野ケ里遺跡 ← よしのがりいせき は裏付けの無い組に出ない）",
+    review && ke.length === 0 && shared,
+    JSON.stringify({ ke, shared })
   );
 }
 
@@ -481,11 +560,18 @@ const TAX = "listing:concept-weight-tax-refund";
       return { code: e.status, out: String(e.stdout ?? "") + String(e.stderr ?? "") };
     }
   };
+  // 同時に流す形（同じ { code, out }）
+  const nodeAsync = (script, args) =>
+    new Promise((resolve) =>
+      execFile(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }, (e, stdout, stderr) =>
+        resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: String(stdout ?? "") + String(stderr ?? "") })
+      )
+    );
   try {
-    // 19 validate-words（教材の写し）
-    const vroot = path.join(tmp, "v");
-    fs.cpSync(path.join(ROOT, "data"), path.join(vroot, "data"), { recursive: true });
+    // 19 validate-words（教材の写し）。4 つの形（通る形・結んでいない形・形の誤り・Batch 71 の読みの残り）を別々の写しに作り、まとめて同時に流す
+    // （前は 1 つの写しを順に書き換えて 1 回ずつ流していた。形はそのまま: 結んでいない形は通る形に、形の誤りは結んでいない形に重ねる）
     const fileOf = (cat) => baseCtx.categoryById.get(cat).file;
+    let vroot = null;
     const edit = (ref, fn) => {
       const [cat, id] = ref.split(":");
       const f = path.join(vroot, "data", fileOf(cat));
@@ -499,22 +585,17 @@ const TAX = "listing:concept-weight-tax-refund";
         if (map === undefined) delete w.acceptReadings;
         else w.acceptReadings = map;
       });
+    const copyTo = (from, name) => {
+      vroot = path.join(tmp, name);
+      fs.cpSync(path.join(from, "data"), path.join(vroot, "data"), { recursive: true });
+      return vroot;
+    };
+    const vGood = copyTo(ROOT, "v-good");
     set(IWA, { 岩宿: "いわじゅく" });
-    const good = node("validate-words.mjs", [`--root=${vroot}`]);
-    check("validate-words: 形の合う acceptReadings は通り、結んだ数を出す（読みを結んだ別表記 1 以上）", good.code === 0 && /読みを結んだ別表記 [1-9]/.test(good.out), good.out.slice(-300));
+    const vStrict = copyTo(vGood, "v-strict");
     set(SAN, undefined);
     set("listing:concept-deal", undefined);
-    const strict = node("validate-words.mjs", [`--root=${vroot}`]);
-    const sLines = strict.out.split("\n").filter((l) => l.includes("学校・基本の別表記に読みを結んでいない"));
-    check(
-      "validate-words: 学校と基本の結んでいない別表記を NG にする（三内丸山・listing の 契約）。結んだ 岩宿 と分野パックは出ない",
-      strict.code === 1 &&
-        sLines.some((l) => l.includes("packs/jhist1.json:concept-jh1-sannaimaruyama (三内丸山)")) &&
-        sLines.some((l) => l.includes("english/listing.json:concept-deal (契約)")) &&
-        !sLines.some((l) => l.includes("concept-jh1-iwajuku")) &&
-        !sLines.some((l) => l.includes("packs/banking.json")),
-      `exit=${strict.code} ${sLines.length} 件 ${sLines.slice(0, 3).join(" / ")}`
-    );
+    const vBad = copyTo(vStrict, "v-bad");
     set(IWA, { 岩宿跡: "いわじゅく" });
     set(SAN, { 三内丸山: "さんないまるさん" });
     set(OSHIO, { 大塩の乱: "oshio" });
@@ -527,7 +608,23 @@ const TAX = "listing:concept-weight-tax-refund";
     });
     edit("elem-sci:concept-es-sanagi", (w) => (w.acceptReadings = ["蛹"]));
     edit("junior:english-apple", (w) => (w.acceptReadings = { 林檎: "りんご" }));
-    const bad = node("validate-words.mjs", [`--root=${vroot}`]);
+    // PR #187 のレビュー 1: Batch 71 で足した読み（scripts/quality/b71-readings.json）が、どの結びにも主な読みにも属さずに accept に残る
+    // （台帳で 厩戸王 を [うまやどのおう, うまやとおう] → うまやどのおう に結び直して、うまやとおう が accept に残った形）
+    const vLeft = copyTo(ROOT, "v-left");
+    edit(SHOTOKU, (w) => (w.acceptReadings = { 厩戸皇子: "うまやどのおうじ", 厩戸王: "うまやどのおう" }));
+    const [good, strict, bad, left] = await Promise.all([vGood, vStrict, vBad, vLeft].map((r) => nodeAsync("validate-words.mjs", [`--root=${r}`])));
+
+    check("validate-words: 形の合う acceptReadings は通り、結んだ数を出す（読みを結んだ別表記 1 以上）", good.code === 0 && /読みを結んだ別表記 [1-9]/.test(good.out), good.out.slice(-300));
+    const sLines = strict.out.split("\n").filter((l) => l.includes("学校・基本の別表記に読みを結んでいない"));
+    check(
+      "validate-words: 学校と基本の結んでいない別表記を NG にする（三内丸山・listing の 契約）。結んだ 岩宿 と分野パックは出ない",
+      strict.code === 1 &&
+        sLines.some((l) => l.includes("packs/jhist1.json:concept-jh1-sannaimaruyama (三内丸山)")) &&
+        sLines.some((l) => l.includes("english/listing.json:concept-deal (契約)")) &&
+        !sLines.some((l) => l.includes("concept-jh1-iwajuku")) &&
+        !sLines.some((l) => l.includes("packs/banking.json")),
+      `exit=${strict.code} ${sLines.length} 件 ${sLines.slice(0, 3).join(" / ")}`
+    );
     const want = [
       "acceptReadings の別表記が accept に無い packs/jhist1.json:concept-jh1-iwajuku (岩宿跡)",
       "acceptReadings の読みが accept に無い packs/jhist1.json:concept-jh1-sannaimaruyama (三内丸山: さんないまるさん)",
@@ -541,6 +638,12 @@ const TAX = "listing:concept-weight-tax-refund";
     ];
     const lost = want.filter((x) => !bad.out.includes(x));
     check("validate-words: acceptReadings の形の誤り 9 種を NG にする", bad.code === 1 && lost.length === 0, `exit=${bad.code} 無い: ${lost.join(" / ")}`);
+    const leftLines = left.out.split("\n").filter((l) => l.includes("Batch 71 で足した読み"));
+    check(
+      "validate-words: Batch 71 で足した読みが結びにも主な読みにも無いまま accept に残ると NG（厩戸王 を うまやどのおう だけに結び直して うまやとおう が残る）。今の教材は 0 件",
+      left.code === 1 && leftLines.some((l) => l.includes("Batch 71 で足した読みが、別表記の結びにも主な読みにも無い packs/elem-hist.json:concept-eh-shotokutaishi (うまやとおう)")) && leftLines.filter((l) => l.includes("にも無い")).length === 1 && /Batch 71 で足した読みのうち accept に残る 230/.test(good.out),
+      `exit=${left.code} ${leftLines.slice(0, 4).join(" / ")}`
+    );
 
     // 20 add-readings（4 通りの体裁＋区切りに空白の無い形の小さな教材。--root）
     const aroot = path.join(tmp, "a");
@@ -639,9 +742,72 @@ const TAX = "listing:concept-weight-tax-refund";
         !read("row").includes("acceptReadings"),
       `exit=${dropped.code} ${JSON.stringify(eh.accept)} ${JSON.stringify(eh.acceptReadings)} ${dropped.out.slice(-400)}`
     );
+
+    // PR #187 のレビュー 1: もう結んである別表記を別の読みに結び直すと、前の読みが accept に残り、何も知らせなかった
+    const rb = { file: "packs/t-rebind.json" };
+    const rbCards = [
+      card("t-iwa3", "岩宿遺跡", ["いわじゅくいせき", "岩宿", "いわしゅく"], { acceptReadings: { 岩宿: "いわしゅく" } }),
+      card("t-sho3", "聖徳太子", ["しょうとくたいし", "厩戸王", "うまやどのおう", "うまやとおう"], { acceptReadings: { 厩戸王: ["うまやどのおう", "うまやとおう"] } }),
+      card("t-seki", "関ヶ原の戦い", ["せきがはらのたたかい", "関ヶ原", "関ケ原", "せきがはら"], { acceptReadings: { 関ヶ原: "せきがはら", 関ケ原: "せきがはら" } }),
+      card("t-aka", "赤字国債", ["あかじこくさい", "特例国債"], { acceptReadings: { 特例国債: "あかじこくさい" } }),
+      card("t-iwa4", "岩宿遺跡", ["いわじゅくいせき", "岩宿", "いわじゅく"], { acceptReadings: { 岩宿: "いわじゅく" } })
+    ];
+    const rbText = JSON.stringify({ ...head("t-rebind"), words: rbCards }, null, 2) + "\n";
+    fs.writeFileSync(path.join(aroot, "data", rb.file), rbText);
+    const man2 = JSON.parse(fs.readFileSync(path.join(aroot, "data", "manifest.json"), "utf8"));
+    man2.subjects[0].categories.push({ id: "t-rebind", file: rb.file, pack: true });
+    fs.writeFileSync(path.join(aroot, "data", "manifest.json"), JSON.stringify(man2));
+    const relinked = add(
+      empty,
+      ledger("reviewed-rebind.json", [
+        { id: "concept-t-iwa3", category: "t-rebind", readings: [], alts: { 岩宿: "いわじゅく" } },
+        { id: "concept-t-sho3", category: "t-rebind", readings: [], alts: { 厩戸王: "うまやどのおう" } },
+        { id: "concept-t-seki", category: "t-rebind", readings: [], alts: { 関ケ原: "せきがわら" } }, // 前の読み せきがはら は 関ヶ原 にも結んである
+        { id: "concept-t-aka", category: "t-rebind", readings: [], alts: { 特例国債: "とくれいこくさい" } }, // 前の読み あかじこくさい は主な読み
+        { id: "concept-t-iwa4", category: "t-rebind", readings: ["いわじゅくいせき", "いわじゅく"], alts: { 岩宿: "いわしゅく" } } // 前の読みは台帳の readings にある
+      ])
+    );
+    const rbw = (id) => JSON.parse(fs.readFileSync(path.join(aroot, "data", rb.file), "utf8")).words.find((x) => x.id === `concept-${id}`);
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const [i3, s3, sk, ak, i4] = ["t-iwa3", "t-sho3", "t-seki", "t-aka", "t-iwa4"].map(rbw);
+    check(
+      "add-readings: 結び直すと、前の記録にあって新しい記録に無い読みを accept から外し「も外した」と出す（岩宿 いわしゅく → いわじゅく・厩戸王 [うまやどのおう, うまやとおう] → うまやどのおう）",
+      relinked.code === 0 &&
+        same(i3?.accept, ["いわじゅくいせき", "岩宿", "いわじゅく"]) && same(i3?.acceptReadings, { 岩宿: "いわじゅく" }) &&
+        same(s3?.accept, ["しょうとくたいし", "厩戸王", "うまやどのおう"]) && same(s3?.acceptReadings, { 厩戸王: "うまやどのおう" }) &&
+        relinked.out.includes("packs/t-rebind.json:concept-t-iwa3 「岩宿」に結んでいた読み「いわしゅく」も外した") &&
+        relinked.out.includes("packs/t-rebind.json:concept-t-sho3 「厩戸王」に結んでいた読み「うまやとおう」も外した"),
+      `exit=${relinked.code} ${JSON.stringify([i3?.accept, s3?.accept])} ${relinked.out.slice(-500)}`
+    );
+    check(
+      "add-readings: 結び直しでも、ほかの別表記に結んだ読み（関ヶ原 の せきがはら）・主な読み（赤字国債 の あかじこくさい）・台帳の readings の読み（いわじゅく）は残す",
+      relinked.code === 0 &&
+        same(sk?.accept, ["せきがはらのたたかい", "関ヶ原", "関ケ原", "せきがはら", "せきがわら"]) && same(sk?.acceptReadings, { 関ヶ原: "せきがはら", 関ケ原: "せきがわら" }) &&
+        same(ak?.accept, ["あかじこくさい", "特例国債", "とくれいこくさい"]) &&
+        same(i4?.accept, ["いわじゅくいせき", "岩宿", "いわじゅく", "いわしゅく"]) &&
+        !/t-(seki|aka|iwa4) .*も外した/.test(relinked.out),
+      `${JSON.stringify([sk?.accept, ak?.accept, i4?.accept])} ${relinked.out.slice(-300)}`
+    );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+// 21（PR #187 のレビュー 6）: acceptReadings の値を読む所は 1 か所。空の配列は、add-readings・validate-words と同じく品質の規則でも形の誤り
+{
+  let lib = null;
+  try {
+    lib = await import("../lib/accept-readings.mjs");
+  } catch (e) {
+    lib = null;
+  }
+  const { acceptReadingsOf } = await import("./common.mjs");
+  const m = acceptReadingsOf({ acceptReadings: { 岩宿: [], 厩戸王: ["うまやどのおう", 5], 関ヶ原: "せきがはら" } });
+  check(
+    "acceptReadings を読む 1 か所: 空の配列・文字列でない要素は形の誤り（null）、読み 1 つは配列に（common の acceptReadingsOf は scripts/lib/accept-readings.mjs と同じ関数）",
+    !!lib && m.get("岩宿") === null && m.get("厩戸王") === null && JSON.stringify(m.get("関ヶ原")) === JSON.stringify(["せきがはら"]) && lib.acceptReadingsOf === acceptReadingsOf && lib.readingsList([]) === null,
+    JSON.stringify([...m])
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

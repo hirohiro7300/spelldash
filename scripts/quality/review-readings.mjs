@@ -34,7 +34,7 @@ export function reviewReadings(ctx, { refs = null, only = null } = {}) {
     if (refs && !refs.has(w.ref)) continue;
     if (only && !only.has(w.entry.id)) continue;
     for (const [alt, list] of acceptReadingsOf(w)) {
-      for (const r of list) {
+      for (const r of list ?? []) {
         const n = R.normalizeReading(r);
         if (!R.isReading(n) || !R.hasKana(n)) continue; // 形の誤りは Q04・validate-words
         checked++;

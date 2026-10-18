@@ -14,6 +14,9 @@
 //       （結んでいない別表記の読みは分からないので、外すなら drop に読みも書く。書き忘れは品質の規則 Q04w が見張る）
 //     ・alts は漢字の別表記ごとの読み { "<accept の別表記>": "<読み>" | ["<読み>", …] }。読みが accept に無ければ accept の末尾に足し、
 //       カードの acceptReadings（accept の直後の欄）にその別表記の読みとして書く（前の記録は置き換える）。
+//       結び直し（もう結んである別表記を別の読みに）では、前の記録にあって新しい記録に無い読みを accept からも外し、1 行ずつ「も外した」と出す
+//       （岩宿 の いわしゅく → いわじゅく・厩戸王 の [うまやどのおう, うまやとおう] → うまやどのおう）。ただし、ほかの別表記に結んだ読み・
+//       主な読み（答えの読み）・台帳の readings（結ばない読み）と alts の読みは残す（drop と同じ決まり）
 //       別表記が accept に無い・読みがひらがなの読みでない台帳は NG で、そのファイルは書かない
 //   見直しの無い案は、flags が空のときだけ使う。flags のある案は「未解決」として一覧に出し、書き足さない。
 //
@@ -27,6 +30,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { normalizeReading, readingCandidates, primaryReading, hasKana, isReading } from "../js/romaji.js";
+import { readingsList, readingsRecordOf } from "./lib/accept-readings.mjs";
 
 const args = process.argv.slice(2);
 const checkOnly = args.includes("--check");
@@ -62,8 +66,7 @@ for (const [id, rev] of reviewed) {
 }
 
 // ── カードの新しい値 ────────────────────────────────────────
-const readingsList = (v) => (typeof v === "string" ? [v] : Array.isArray(v) && v.length && v.every((x) => typeof x === "string") ? v : null);
-const recordOf = (card) => (card.acceptReadings && typeof card.acceptReadings === "object" && !Array.isArray(card.acceptReadings) ? card.acceptReadings : {});
+// 読む関数と形（読みの文字列か、文字列の空でない配列）は scripts/lib/accept-readings.mjs の 1 か所（validate-words・品質の規則と同じ物）
 
 // → { accept, acceptReadings（無ければ null）, added, dropped, bound（書き換えた別表記の数）, unbound: [{ alt, reading }], problems: [] }
 function nextCard(card, entry) {
@@ -71,19 +74,22 @@ function nextCard(card, entry) {
   const before = Array.isArray(card.accept) ? card.accept : [];
   const drop = new Set(entry.drop);
   let accept = before.filter((a) => !drop.has(a));
-  const record = recordOf(card);
+  const record = readingsRecordOf(card) ?? {};
   const alts = Object.entries(entry.alts ?? {});
+  // 台帳の alts の読み（形の誤りは null。3. で NG にする。そのときはその別表記を結び直さない扱いで数える）
+  const relink = new Map(alts.map(([alt, v]) => [alt, readingsList(v)]).filter(([, list]) => list));
 
-  // 1. 外した別表記に結んでいた読みも外す（残る別表記の読み・主な読み・台帳の readings と alts の読みは残す）
+  // 1. 外した別表記に結んでいた読みと、結び直した別表記の前の読み（前の記録にあって新しい記録に無い読み）も外す
+  //    （残る別表記に結んだ読み〔結び直す別表記は新しい読み〕・主な読み・台帳の readings と alts の読みは残す）
   const keep = new Set();
-  for (const [alt, v] of Object.entries(record)) if (accept.includes(alt)) for (const r of readingsList(v) ?? []) keep.add(normalizeReading(r));
-  for (const [, v] of alts) for (const r of readingsList(v) ?? []) keep.add(normalizeReading(r));
+  for (const [alt, v] of Object.entries(record)) if (accept.includes(alt)) for (const r of (relink.get(alt) ?? readingsList(v) ?? [])) keep.add(normalizeReading(r));
+  for (const [, list] of relink) for (const r of list) keep.add(normalizeReading(r));
   for (const r of entry.readings) keep.add(normalizeReading(r));
   const primaryBefore = primaryReading(readingCandidates({ answer: card.answer, accept: before }));
   if (primaryBefore) keep.add(primaryBefore);
   const unbound = [];
   for (const [alt, v] of Object.entries(record)) {
-    if (accept.includes(alt)) continue;
+    if (accept.includes(alt) && !relink.has(alt)) continue; // 残る別表記で、結び直さない
     for (const r of readingsList(v) ?? []) {
       const n = normalizeReading(r);
       if (keep.has(n)) continue;
