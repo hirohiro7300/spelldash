@@ -4,13 +4,13 @@
 //   他のカード   別表記が別のカードの答えそのもの（同じ字面）なのに、結んだ読みにそのカードの読みが 1 つも無い
 //   同じ読み     答えと違う漢字の所（共通の頭と尾を除いた残りが、両方とも漢字だけ）があるのに、結んだ読みが答えの主な読みと同じ
 //                （特例国債／赤字国債 に あかじこくさい。民撰／民選 のような書き換えは正しいので、見直して残す）
-//   別表記の無い短い読み  読みでない別表記をすべて結んだカードに、主な読みの頭（尾）そのものの短い読みがあり、どの別表記にも結んでいない
-//                （外した別表記の読みの消し忘れ: 岩宿 を外して いわじゅく が残る。答えのかなの中にある読みは除く）
+//   別表記の無い短い読み  読みでない別表記が 1 つ以上あり、それをすべて結んだカードに、主な読みの頭（尾）そのものの短い読みがあり、
+//                どの別表記にも結んでいない（外した別表記の読みの消し忘れ: 吉野ヶ里遺跡 から 吉野ヶ里 を外して よしのがり が残る。答えのかなの中に
+//                ある読みは除く）。別表記の無いカード（分野パックのほとんど・別表記を全部外したカード）は結ぶ先が無く直す手立てが無いので見ない
 //   同じ別表記の別の読み  同じ字面の別表記を、別のカードで共通の読みの無い読みに結んでいる（賢し: かしこし／さかし。両方のカードに出す）
 // 読みが正しいかは辞書が要るので、ここは「見直す候補」を出すだけ（執筆 → 反証の 2 段の反証役が見る一覧）
 import { acceptReadingsOf } from "../common.mjs";
-
-const face = (s) => String(s ?? "").normalize("NFKC").replace(/[・･\s]/g, "");
+import { faceOf as face, readingsByFace } from "../sim-judge.mjs"; // 字面と「同じ字面を答えにするカードの読み」の表は sim-judge と同じ物
 const KANJI_ONLY = /^[㐀-鿿々〆]+$/;
 // 共通の頭と尾を除いた残り（答え側・別表記側）
 function middles(a, b) {
@@ -29,28 +29,25 @@ export default {
   describe: "漢字の別表記に結んだ読みの見直しの候補（短い形・他のカード・同じ読み・別表記の無い短い読み・同じ別表記の別の読み）",
   run(ctx) {
     const R = ctx.modules.romaji;
-    const { romajiEntriesFor } = ctx.modules.judge;
-    // 字面 → そのカードのかなの読み（最初のカード）
-    const byFace = new Map();
-    for (const w of ctx.cards) {
-      const entries = romajiEntriesFor(w);
-      if (!entries.length) continue;
-      const f = face(w.en);
-      if (!byFace.has(f)) byFace.set(f, { ref: w.ref, readings: entries.map((e) => e.reading).filter(R.hasKana) });
-    }
-    const boundReadings = (list) => list.map(R.normalizeReading).filter((n) => R.isReading(n) && R.hasKana(n));
+    // 読みは 1 枚に 1 回だけ作る（字面の表と、下の見直しの両方で使う）
+    const entriesOf = new Map(ctx.cards.map((w) => [w, ctx.modules.judge.romajiEntriesFor(w)]));
+    // 字面 → その字面を答えにする最初のカードの読み
+    const byFace = readingsByFace(ctx.cards, ctx.modules.judge, entriesOf);
+    const kanaReadings = (entries) => entries.map((e) => e.reading).filter(R.hasKana);
+    const boundReadings = (list) => (list ?? []).map(R.normalizeReading).filter((n) => R.isReading(n) && R.hasKana(n));
     const hits = [];
     // 同じ別表記の別の読み: 字面 → [{ ref, alt, rs }]
     const byAlt = new Map();
     for (const w of ctx.cards) {
-      const entries = romajiEntriesFor(w);
+      const entries = entriesOf.get(w);
       if (!entries.length) continue;
       const bound = acceptReadingsOf(w);
+      if (!bound.size) continue; // 結んだ別表記の無いカードは見ない（下の allBound も結んだ別表記が 1 つ以上要る）
       const accept = Array.isArray(w.accept) ? w.accept : [];
       const alts = accept.filter((a) => R.hasJapaneseScript(a) && !R.isReading(R.normalizeReading(a)));
-      const allBound = alts.every((a) => bound.has(a));
-      if (!bound.size && !allBound) continue;
-      const readings = entries.map((e) => e.reading).filter(R.hasKana);
+      // 漢字の別表記が 1 つ以上あり、それが全部結んである（every は空の配列で真になるので、数も見る）
+      const allBound = alts.length > 0 && alts.every((a) => bound.has(a));
+      const readings = kanaReadings(entries);
       const ans = face(w.raw.answer);
       const prim = R.primaryReading(readings) ?? "";
       const allRs = new Set();
@@ -69,8 +66,9 @@ export default {
           hits.push({ card: w.ref, detail: `短い形: 「${alt}」は答えの尾なのに、読み「${rs.join("／")}」がほかの読みの尾にならない` });
         }
         const o = byFace.get(f);
-        if (o && o.ref !== w.ref && o.readings.length && !rs.some((r) => o.readings.includes(r))) {
-          hits.push({ card: w.ref, detail: `他のカード: 「${alt}」は ${o.ref} の答えで読みは「${o.readings.join("／")}」。結んだ読み「${rs.join("／")}」と違う` });
+        const oReadings = o && o.ref !== w.ref ? kanaReadings(o.entries) : [];
+        if (oReadings.length && !rs.some((r) => oReadings.includes(r))) {
+          hits.push({ card: w.ref, detail: `他のカード: 「${alt}」は ${o.ref} の答えで読みは「${oReadings.join("／")}」。結んだ読み「${rs.join("／")}」と違う` });
         }
         const [ma, mb] = middles(ans, f);
         if (ma && mb && KANJI_ONLY.test(ma) && KANJI_ONLY.test(mb) && rs.includes(prim)) {

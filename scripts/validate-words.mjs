@@ -1,12 +1,14 @@
 // 単語データの機械検証。データ編集後に実行する:
 //   node scripts/validate-words.mjs                 この木の data/ を検証する（学校のパックと基本カテゴリは、読みでない別表記をすべて
 //                                                   acceptReadings に結んでいるかも見る。docs/PACK_FORMAT.md「別表記の読み」）
-//   node scripts/validate-words.mjs --root=<木>     その木の data/ を検証する（検査は js/ をこの木から読む。scripts/quality/test-check.mjs が写しで流す）
+//   node scripts/validate-words.mjs --root=<木>     その木の data/ を検証する（検査は js/ と scripts/quality/b71-readings.json をこの木から読む。
+//                                                   scripts/quality/test-check.mjs が写しで流す）
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, isReading, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
 import { shelfIdOf } from "../js/shelves.js";
+import { isReadingsRecord, readingsList } from "./lib/accept-readings.mjs";
 
 const argv = process.argv.slice(2);
 const unknownArgs = argv.filter((a) => !a.startsWith("--root="));
@@ -15,7 +17,8 @@ if (unknownArgs.length) {
   process.exit(2);
 }
 const rootArg = argv.find((a) => a.startsWith("--root="));
-const ROOT = rootArg ? path.resolve(rootArg.slice("--root=".length)) : path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = rootArg ? path.resolve(rootArg.slice("--root=".length)) : path.join(SCRIPTS, "..");
 const DATA_DIR = path.join(ROOT, "data", "english");
 const PACK_DIR = path.join(ROOT, "data", "packs");
 const files = [
@@ -83,12 +86,12 @@ function checkAcceptReadings(w, where, { cardType, strict }) {
   const m = w.acceptReadings;
   const accept = Array.isArray(w.accept) ? w.accept : [];
   if (m != null) {
-    if (typeof m !== "object" || Array.isArray(m)) problems.push(`acceptReadings の形（オブジェクト） ${where}`);
+    if (!isReadingsRecord(m)) problems.push(`acceptReadings の形（オブジェクト） ${where}`);
     else if (!isJapaneseCard(w, cardType)) problems.push(`acceptReadings は日本語の答えのカードだけ ${where}`);
     else {
       const cands = readingEntries(w).map((e) => e.reading);
       for (const [alt, v] of Object.entries(m)) {
-        const list = typeof v === "string" ? [v] : Array.isArray(v) && v.length && v.every((x) => typeof x === "string") ? v : null;
+        const list = readingsList(v);
         if (!list) {
           problems.push(`acceptReadings の値（読みか読みの配列） ${where} (${alt})`);
           continue;
@@ -107,7 +110,7 @@ function checkAcceptReadings(w, where, { cardType, strict }) {
     }
   }
   if (!strict || !isJapaneseCard(w, cardType)) return;
-  const bound = m && typeof m === "object" && !Array.isArray(m) ? m : {};
+  const bound = isReadingsRecord(m) ? m : {};
   for (const a of accept) {
     if (typeof a !== "string" || !hasJapaneseScript(a) || isReading(normalizeReading(a)) || Object.prototype.hasOwnProperty.call(bound, a)) continue;
     unboundStrict++;
@@ -242,6 +245,35 @@ for (const fullPath of files) {
   }
 }
 
+// Batch 71 で足した読み（scripts/quality/b71-readings.json。学校のパックと基本カテゴリの 187 枚・230 読み）: accept に残っている読みは、
+// どれかの別表記の結び（acceptReadings）か主な読み（答えの読み）に属すること。結び直し・外しの残りを止める
+// （台帳で 岩宿 を いわしゅく → いわじゅく に結び直して いわしゅく が残る・厩戸王 の読みの並びから うまやとおう を外して accept に残る）。
+// 読みを accept から外すのはよい（記録は書き足さない）
+let b71Checked = 0;
+{
+  const B71 = JSON.parse(fs.readFileSync(path.join(SCRIPTS, "quality", "b71-readings.json"), "utf8"));
+  const fileOfCat = new Map(manifestCategories.map((c) => [c.id, c.file]));
+  const byWhere = new Map(entries.map(([file, w]) => [`${file}:${w.id}`, w]));
+  for (const [ref, list] of Object.entries(B71.readings ?? {})) {
+    const at = ref.indexOf(":");
+    const where = `${fileOfCat.get(ref.slice(0, at))}:${ref.slice(at + 1)}`;
+    const w = byWhere.get(where);
+    if (!w) {
+      problems.push(`Batch 71 の読みの記録のカードが無い ${ref}`);
+      continue;
+    }
+    const ents = readingEntries(w);
+    const have = new Set(ents.map((e) => e.reading));
+    const primary = primaryReading(ents.filter((e) => hasKana(e.reading)))?.reading;
+    const bound = new Set(Object.values(isReadingsRecord(w.acceptReadings) ? w.acceptReadings : {}).flatMap((v) => readingsList(v) ?? []).map(normalizeReading));
+    for (const r of list) {
+      if (!have.has(r)) continue;
+      b71Checked++;
+      if (r !== primary && !bound.has(r)) problems.push(`Batch 71 で足した読みが、別表記の結びにも主な読みにも無い ${where} (${r})`);
+    }
+  }
+}
+
 // Knowledge Map拡張フィールドの整合性
 const familyById = new Map();
 for (const [file, w] of entries) {
@@ -291,7 +323,7 @@ for (const [file, w] of entries) {
 }
 
 console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${familyById.size} / 日本語の答え: ${readingCards}枚（読み ${readingCount}・読みを結んだ別表記 ${boundAlts}）`);
-console.log(`学校・基本で読みを結んでいない別表記: ${unboundStrict}件`);
+console.log(`学校・基本で読みを結んでいない別表記: ${unboundStrict}件・Batch 71 で足した読みのうち accept に残る ${b71Checked}（結びか主な読みに属するかを見た）`);
 if (problems.length === 0) {
   console.log("OK: 問題なし");
 } else {

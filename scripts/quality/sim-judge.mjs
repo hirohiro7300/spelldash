@@ -37,7 +37,22 @@ export const OWN_KINDS = ["answer", "reading", "accept", "alt", "kanjiAccept"];
 export const RIVAL_KINDS = ["otherPack", "packAlt", "oneChar"];
 export const X_HOWS = ["miss", "reveal", "wrong"];
 
-const faceOf = (s) => String(s ?? "").normalize("NFKC").replace(/[・･\s]/g, "");
+// 字面（NFKC・中黒と空白を落とす）。規則 Q04w も同じ字面で比べる
+export const faceOf = (s) => String(s ?? "").normalize("NFKC").replace(/[・･\s]/g, "");
+
+// データの中の読みの表: 字面 → その字面を答えにする最初のカード（manifest の並び。読みの無いカードは数えない）の { ref, entries }。
+// entries は judge.romajiEntriesFor(w)（entriesOf: Map〔カード → entries〕を渡せば作り直さない）。
+// sim-judge は主な読みで漢字の別解を打ち、規則 Q04w の「他のカード」は結んだ読みをそのカードの読みと比べる
+export function readingsByFace(cards, judge, entriesOf = null) {
+  const out = new Map();
+  for (const w of cards) {
+    const entries = entriesOf?.get(w) ?? judge.romajiEntriesFor(w);
+    if (!entries.length) continue;
+    const f = faceOf(w.en);
+    if (!out.has(f)) out.set(f, { ref: w.ref, entries });
+  }
+  return out;
+}
 // 綴り入力で打てる字（物理キーの 1 字。日本語は打てない: js/game.js handleCompositionEnd が英字モードに戻させる）
 const SPELL_TYPEABLE = /^[\x20-\x7e]+$/;
 
@@ -77,12 +92,9 @@ export function simulate(ctx, { judge = ctx.modules.judge, answers = ctx.modules
   // データの中の読み: 答え（字面）→ 主な読み（かな）。読みが書かれていない漢字の別解を、同じ字面を答えにするカードの読みで打つ
   const dataReading = new Map();
   if (!readingOf) {
-    for (const w of cards) {
-      const entries = judge.romajiEntriesFor(w);
-      if (!entries.length) continue;
-      const face = faceOf(w.en);
+    for (const [face, { entries }] of readingsByFace(cards, judge)) {
       const primary = romaji.primaryReading(entries);
-      if (primary && !dataReading.has(face)) dataReading.set(face, primary.reading);
+      if (primary) dataReading.set(face, primary.reading);
     }
   }
   const readingOfText = readingOf ?? ((text) => dataReading.get(faceOf(text)) ?? null);

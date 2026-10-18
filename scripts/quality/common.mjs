@@ -47,14 +47,6 @@ export function leakTarget(w) {
 export const pct = (x) => `${Math.round(x * 100)}%`;
 
 // 漢字の別表記に結んだ読み（docs/PACK_FORMAT.md「別表記の読み」）。カードの acceptReadings
-// { "<accept の別表記>": "<読み>" | ["<読み>", …] } → Map(別表記 → 読みの配列〔書いたまま。正規化は呼ぶ側〕)。
-// 形が違う値（オブジェクトでない・文字列でも文字列の配列でもない）は空の配列にする（validate-words が形の誤りを出す）
-export function acceptReadingsOf(card) {
-  const m = card?.acceptReadings ?? card?.raw?.acceptReadings;
-  const out = new Map();
-  if (!m || typeof m !== "object" || Array.isArray(m)) return out;
-  for (const [alt, v] of Object.entries(m)) {
-    out.set(alt, typeof v === "string" ? [v] : Array.isArray(v) && v.every((x) => typeof x === "string") ? v : []);
-  }
-  return out;
-}
+// { "<accept の別表記>": "<読み>" | ["<読み>", …] } → Map(別表記 → 読みの配列〔書いたまま。正規化は呼ぶ側〕| null〔値の形の誤り。空の配列も〕)。
+// 読む関数と形の検査は scripts/lib/accept-readings.mjs の 1 か所（add-readings・validate-words と同じ物。形の誤りは validate-words が出す）
+export { acceptReadingsOf } from "../lib/accept-readings.mjs";

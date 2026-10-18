@@ -2,7 +2,7 @@
 // accept の漢字の別表記は、その読みが accept に無ければ打てない（単語帳には「別解」として出る）。
 // 別表記ごとの読みはカードの acceptReadings に結ぶ（{ "<別表記>": "<読み>" | ["<読み>", …] }。docs/PACK_FORMAT.md「別表記の読み」）。
 //   結んだ別表記: 結んだ読みが 1 つ以上あり、どれもひらがなを含む読みの形で、読みの候補（[answer, ...accept] の読み）にあり、
-//            別表記の形（かなが同じ順で出る・漢字 1 字が読みの 1〜4 字。scripts/quality/readingShape.mjs）に合えば当たらない。
+//            別表記の形（かなが同じ順で出る・漢字は 2 字以上の並びで 1 字 1〜4 字・1 字だけで 1〜5 字・数字の並びは位の読み。scripts/quality/readingShape.mjs）に合えば当たらない。
 //            空・読みの形でない・accept に無い・形が合わない読みがあれば当たり（結び方の誤り）。読みを打てるかは validate-words と Q05 が見る。
 //            形のほかの手がかり（短い形・他のカード・同じ読みなど）は正しいこともあるので、警告 Q04w が見直しの候補として出す
 //   結んでいない別表記:
@@ -40,9 +40,9 @@ export default {
         const kb = kanjiOf(a);
         if (!kb) continue;
         if (bound.has(a)) {
-          const list = bound.get(a);
-          if (!list.length) hits.push({ card: w.ref, detail: `漢字の別表記「${a}」に結んだ読みが無い` });
-          for (const r of list) {
+          const list = bound.get(a); // 形の誤り（空の配列・文字列でない値）は null
+          if (!list) hits.push({ card: w.ref, detail: `漢字の別表記「${a}」に結んだ読みが無い` });
+          for (const r of list ?? []) {
             const n = normalizeReading(r);
             if (!isReading(n) || !hasKana(n)) hits.push({ card: w.ref, detail: `漢字の別表記「${a}」に結んだ「${r}」が読みの形でない` });
             else if (!readings.includes(n)) hits.push({ card: w.ref, detail: `漢字の別表記「${a}」に結んだ読み「${r}」が accept に無い` });
