@@ -26,7 +26,8 @@
 //      基準線のカードを誤って結ぶと --base で落ちる。「の」の型は今のまま
 //  15. Q04w（警告）の 5 つの手がかり（短い形・他のカード・同じ読み・別表記の無い短い読み・同じ別表記の別の読み）。今の教材は基準線どおり。
 //      「別表記の無い短い読み」は漢字の別表記が 1 つ以上あり全部結んだカードだけ（PR #187 のレビュー 4。別表記の無いカード・分野パックには出ない）
-//  16. 別表記の形の見張り（scripts/quality/readingShape.mjs）の表。数字の並び・5 かなの漢字・単位の記号（PR #187 のレビュー 2）
+//  16. 別表記の形の見張り（scripts/quality/readingShape.mjs）の表。数字の並び・5 かなの漢字・単位の記号（PR #187 のレビュー 2）。
+//      5 かなは 1 字だけの漢字で、2 字以上の並びは 1 字 4 かなまで（PR #187 のレビュー対応の仕上げ B）
 //  17. sim-judge は結んだ読みを kanjiAccept の bound の行で打つ。accept に無い読みを結ぶと Q05 が当たる
 //  18. 反証の手がかり（scripts/quality/review-readings.mjs）は、データの漢字の読みで裏付けの無い組を出す。漢字にはさまれた ケ は形の見張りと
 //      同じ関数で見分け、が・か・こ の 1 字に並べる（PR #187 のレビュー 3。関ケ原の戦い・吉野ケ里遺跡 は「並べ方なし」にならない）
@@ -34,7 +35,8 @@
 //      （scripts/quality/b71-readings.json）が accept に残るなら、どれかの結びか主な読みに属すること（PR #187 のレビュー 1）。教材の写し（--root）で流す
 //  20. add-readings の alts・drop・--root: 4 通りのファイルの体裁で書き、2 度目は 0 枚。accept に無い別表記は NG でファイルを書かない。
 //      結んだ別表記を外すと、記録とその別表記だけに結んだ読みも消える。結び直すと前の読みも消え「も外した」と出る（ほかの別表記・主な読み・
-//      台帳の readings の読みは残す。PR #187 のレビュー 1）
+//      台帳の readings の読みは残す。PR #187 のレビュー 1）。外す読みが答えの読みかもしれない（accept で別表記より前にある・前の記録で
+//      主な読みと一緒に結んである）なら外さず NG（PR #187 のレビュー対応の仕上げ A）
 //  21. acceptReadings を読む 1 か所（scripts/lib/accept-readings.mjs。PR #187 のレビュー 6）: 空の配列は形の誤り（add-readings・validate-words・
 //      品質の規則で同じ）
 import fs from "node:fs";
@@ -482,7 +484,7 @@ const FREEZE = "banking:concept-bank-freeze";
     shapeOk = null;
   }
   const ok = [["関ケ原", "せきがはら"], ["一ヵ月", "いっかげつ"], ["X線", "xせん"], ["W杯", "だぶりゅーはい"], ["1192年", "1192ねん"], ["鎌倉ばくふ", "かまくらばくふ"], ["岩宿", "いわじゅく"]];
-  const ng = [["大塩の乱", "おおしおらん"], ["平塚らいてう", "ひらつからいちょう"], ["岩宿", "いわじゅくいせきあとち"]]; // 漢字 2 字に 11 字（1 字 5 字まで。PR #187 のレビュー 2 の前は 4 字までで、10 字の いわじゅくいせきあと で見ていた）
+  const ng = [["大塩の乱", "おおしおらん"], ["平塚らいてう", "ひらつからいちょう"], ["岩宿", "いわじゅくいせきあとち"]]; // 漢字 2 字に 11 字（2 字以上の並びは 1 字 4 字まで。10 字の いわじゅくいせきあと は下の 3 つ目で見る）
   const bad = shapeOk ? [...ok.filter(([t, r]) => !shapeOk(t, r, R.normalizeReading)), ...ng.filter(([t, r]) => shapeOk(t, r, R.normalizeReading))] : ["readingShape.mjs が無い"];
   check("別表記の形の見張り: 関ケ原・一ヵ月・X線・W杯・1192年・鎌倉ばくふ は合い、大塩の乱＝おおしおらん・平塚らいてう＝ひらつからいちょう は合わない", bad.length === 0, JSON.stringify(bad));
   // PR #187 のレビュー 2: 数字の並びは位の読みで縮む・5 かなの漢字・単位の記号。緩めても捕まえる読み違い
@@ -490,6 +492,12 @@ const FREEZE = "banking:concept-bank-freeze";
   const ng2 = [["志", "こころざしは"], ["百", "ひゃくひゃく"], ["1192年", "ねん"], ["2024年", "にねん"], ["50％", "ご"], ["X線", "えっくすせんせんせんせん"]];
   const bad2 = shapeOk ? [...ok2.filter(([t, r]) => !shapeOk(t, r, R.normalizeReading)).map((x) => `合わない ${x.join("=")}`), ...ng2.filter(([t, r]) => shapeOk(t, r, R.normalizeReading)).map((x) => `合う ${x.join("=")}`)] : ["readingShape.mjs が無い"];
   check("別表記の形の見張り: 1000年＝せんねん・1000℃＝せんど・100000＝じゅうまん・志＝こころざし・政＝まつりごと・詔＝みことのり・承る＝うけたまわる・50％・Q&A・2×4工法・関ケ原の戦い は合い、志＝こころざしは（6 かな）・1192年＝ねん・50％＝ご などは合わない", bad2.length === 0, JSON.stringify(bad2));
+  // PR #187 のレビュー対応の仕上げ B: 5 かなは 1 字だけの漢字（志・詔・承る の 承）の分。2 字以上の並びは 1 字 4 字まで（1 字 5 字のままだと、
+  // 読みを 2 回・3 回打つ・末尾に字を足す読み違いを多く通した）
+  const ok3 = [["志", "こころざし"], ["承る", "うけたまわる"], ["第2次世界大戦", "だいにじせかいたいせん"], ["玉蜀黍", "とうもろこし"], ["大和魂", "やまとだましい"], ["魂柱", "たましいばしら"], ["岩宿", "いわじゅく"]];
+  const ng3 = [["岩宿", "いわじゅくいせきあと"], ["出口", "でぐちでぐちでぐち"], ["成約", "せいやくああああああ"], ["遺跡", "いせきあとちいせき"]];
+  const bad3 = shapeOk ? [...ok3.filter(([t, r]) => !shapeOk(t, r, R.normalizeReading)).map((x) => `合わない ${x.join("=")}`), ...ng3.filter(([t, r]) => shapeOk(t, r, R.normalizeReading)).map((x) => `合う ${x.join("=")}`)] : ["readingShape.mjs が無い"];
+  check("別表記の形の見張り: 漢字 1 字だけなら 5 かなまで（志＝こころざし・承る）、2 字以上の並びは 1 字 4 かなまで（玉蜀黍・大和魂・魂柱 は合い、岩宿＝いわじゅくいせきあと〔10 字〕・出口＝でぐちでぐちでぐち は合わない）", bad3.length === 0, JSON.stringify(bad3));
 }
 
 // 17
@@ -787,6 +795,56 @@ const FREEZE = "banking:concept-bank-freeze";
         same(i4?.accept, ["いわじゅくいせき", "岩宿", "いわじゅく", "いわしゅく"]) &&
         !/t-(seki|aka|iwa4) .*も外した/.test(relinked.out),
       `${JSON.stringify([sk?.accept, ak?.accept, i4?.accept])} ${relinked.out.slice(-300)}`
+    );
+
+    // PR #187 のレビュー対応の仕上げ A: 外す読みが答えの読みかもしれない（accept でその別表記より前にある・前の記録で主な読みと一緒に結んである）なら、
+    // 外さずに NG にして、台帳の readings（残す）か drop（外す）に書かせる。前は 竜頭蛇尾 の 龍頭蛇尾 を りゅうとうだび だけに結び直すと、
+    // 答えの読み りょうとうだび も外していた（今の教材で同じ形は 32 枚・33 読み）
+    const kp = { ng: "packs/t-keep.json", ok: "packs/t-keep2.json" };
+    const ryu = (id) => card(id, "竜頭蛇尾", ["りゅうとうだび", "りょうとうだび", "龍頭蛇尾"], { acceptReadings: { 龍頭蛇尾: ["りゅうとうだび", "りょうとうだび"] } });
+    const kpCards = {
+      ng: [
+        ryu("t-ryu"),
+        card("t-shoin", "書院造", ["しょいんづくり", "書院造り", "しょいんずくり"], { acceptReadings: { 書院造り: ["しょいんづくり", "しょいんずくり"] } }),
+        card("t-age", "上知令", ["あげちれい", "じょうちれい", "上地令"], { acceptReadings: { 上地令: "じょうちれい" } }),
+        card("t-kuchi", "くちをし", ["くちおし", "口惜し"], { acceptReadings: { 口惜し: ["くちをし", "くちおし"] } })
+      ],
+      ok: [ryu("t-ryu2"), ryu("t-ryu3")]
+    };
+    const kpText = Object.fromEntries(Object.entries(kpCards).map(([k, cards]) => [k, JSON.stringify({ ...head(`t-keep-${k}`), words: cards }, null, 2) + "\n"]));
+    for (const k of Object.keys(kp)) fs.writeFileSync(path.join(aroot, "data", kp[k]), kpText[k]);
+    const man3 = JSON.parse(fs.readFileSync(path.join(aroot, "data", "manifest.json"), "utf8"));
+    for (const k of Object.keys(kp)) man3.subjects[0].categories.push({ id: `t-keep-${k}`, file: kp[k], pack: true });
+    fs.writeFileSync(path.join(aroot, "data", "manifest.json"), JSON.stringify(man3));
+    const kept = add(
+      empty,
+      ledger("reviewed-keep.json", [
+        { id: "concept-t-ryu", category: "t-keep-ng", readings: [], alts: { 龍頭蛇尾: "りゅうとうだび" } }, // 別表記より前・主な読みと一緒
+        { id: "concept-t-shoin", category: "t-keep-ng", readings: [], alts: { 書院造り: "しょいんづくり" } }, // 別表記より後ろ・主な読みと一緒
+        { id: "concept-t-age", category: "t-keep-ng", readings: [], alts: { 上地令: "あげちれい" } }, // 別表記より前
+        { id: "concept-t-kuchi", category: "t-keep-ng", readings: [], drop: ["口惜し"] }, // 別表記を外す（drop）ときも同じ
+        { id: "concept-t-ryu2", category: "t-keep-ok", readings: ["りゅうとうだび", "りょうとうだび"], alts: { 龍頭蛇尾: "りゅうとうだび" } }, // 残す
+        { id: "concept-t-ryu3", category: "t-keep-ok", readings: [], drop: ["りょうとうだび"], alts: { 龍頭蛇尾: "りゅうとうだび" } } // 外す
+      ])
+    );
+    const kpRead = (k) => fs.readFileSync(path.join(aroot, "data", kp[k]), "utf8");
+    const kpw = (k, id) => JSON.parse(kpRead(k)).words.find((x) => x.id === `concept-${id}`);
+    const maybe = (id, alt, r) => `packs/t-keep.json:concept-${id} 「${alt}」に結んでいた読み「${r}」は答えの読みかもしれない`;
+    check(
+      "add-readings: 外す読みが答えの読みかもしれない（accept で別表記より前にある・前の記録で主な読みと一緒に結んである）なら外さず NG で、そのファイルは書かない（竜頭蛇尾 の 龍頭蛇尾 を りゅうとうだび だけに結び直す・書院造り・上地令・口惜し を drop）",
+      kept.code === 1 &&
+        kpRead("ng") === kpText.ng &&
+        [maybe("t-ryu", "龍頭蛇尾", "りょうとうだび"), maybe("t-shoin", "書院造り", "しょいんずくり"), maybe("t-age", "上地令", "じょうちれい"), maybe("t-kuchi", "口惜し", "くちおし")].every((x) => kept.out.includes(x)) &&
+        !/t-(ryu|shoin|age|kuchi) .*も外した/.test(kept.out),
+      `exit=${kept.code} 書いた: ${kpRead("ng") !== kpText.ng} ${kept.out.slice(-700)}`
+    );
+    const [r2, r3] = ["t-ryu2", "t-ryu3"].map((id) => kpw("ok", id));
+    check(
+      "add-readings: 答えの読みかもしれない読みは、台帳の readings に書けば残し、drop に書けば外す（NG にならない）",
+      same(r2?.accept, ["りゅうとうだび", "りょうとうだび", "龍頭蛇尾"]) && same(r2?.acceptReadings, { 龍頭蛇尾: "りゅうとうだび" }) &&
+        same(r3?.accept, ["りゅうとうだび", "龍頭蛇尾"]) && same(r3?.acceptReadings, { 龍頭蛇尾: "りゅうとうだび" }) &&
+        !/t-ryu[23] /.test(kept.out),
+      `${JSON.stringify([r2?.accept, r2?.acceptReadings, r3?.accept, r3?.acceptReadings])} ${kept.out.slice(-300)}`
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

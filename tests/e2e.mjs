@@ -7964,8 +7964,9 @@ console.log("parts (途中の部品の皮):");
     // 見るのは「勝ち」の札の色（金）。遅い CI では CPU に負ける・引き分けることがあるので、札の勝敗は勝ちに揃えてから色を読む（Battle のロジックは触らない）。
     // 札を替えると、reduced motion の 0.01ms の transition（css/game.css の * の規則。transition-property は既定の all）が色に掛かる。次の描画までは
     // 前の色（引き分けの --ink-2）のまま読め、document.getAnimations() にも残る（PR #187 の CI の組 3: 390 昼の色と「動く物 1」）。
-    // 替えた札の色の transition だけをその場で終えてから読む（ページが自分で動かす物は止めない。10 の「動く物 0」はそのまま見る）
-    await page2.evaluate(() => { const v = document.getElementById("resultVerdict"); if (v && !v.classList.contains("battle-verdict--win")) { v.classList.remove("battle-verdict--loss", "battle-verdict--draw"); v.classList.add("battle-verdict--win"); for (const a of v.getAnimations()) if (a instanceof CSSTransition && a.transitionProperty === "color") a.finish(); } });
+    // 替えた札の色の transition のうち、reduced motion の物（遅れを含めて 1ms 以内に終わる物）だけをその場で終えてから読む。ページの css が札に長い transition を
+    // 持つときは終えないので、色（金でない）と 10 の「動く物 0」で落ちる（ページが自分で動かす物も止めない）
+    await page2.evaluate(() => { const v = document.getElementById("resultVerdict"); if (v && !v.classList.contains("battle-verdict--win")) { v.classList.remove("battle-verdict--loss", "battle-verdict--draw"); v.classList.add("battle-verdict--win"); for (const a of v.getAnimations()) if (a instanceof CSSTransition && a.transitionProperty === "color" && a.effect.getComputedTiming().endTime <= 1) a.finish(); } });
     const battle = await page2.evaluate(part, "battle");
     await donePart(page2);
     const page3 = await openPart(`mywords ${w} ${theme}`, viewP(w, theme, myWordsSeedP), "/list.html#myWords", theme);

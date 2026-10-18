@@ -17,6 +17,9 @@
 //       結び直し（もう結んである別表記を別の読みに）では、前の記録にあって新しい記録に無い読みを accept からも外し、1 行ずつ「も外した」と出す
 //       （岩宿 の いわしゅく → いわじゅく・厩戸王 の [うまやどのおう, うまやとおう] → うまやどのおう）。ただし、ほかの別表記に結んだ読み・
 //       主な読み（答えの読み）・台帳の readings（結ばない読み）と alts の読みは残す（drop と同じ決まり）
+//     ・drop と結び直しで外す読みが答えの読みかもしれないとき（accept でその別表記より前にある＝別表記に結ぶ前からある読み、
+//       または前の記録で主な読みと一緒に結んである＝答えと同じ読みの異体。竜頭蛇尾 の 龍頭蛇尾 ＝ [りゅうとうだび, りょうとうだび] を
+//       りゅうとうだび だけにすると りょうとうだび が外れる）は、外さずに NG にする。残すなら readings に、外すなら drop に読みを書く
 //       別表記が accept に無い・読みがひらがなの読みでない台帳は NG で、そのファイルは書かない
 //   見直しの無い案は、flags が空のときだけ使う。flags のある案は「未解決」として一覧に出し、書き足さない。
 //
@@ -88,13 +91,24 @@ function nextCard(card, entry) {
   const primaryBefore = primaryReading(readingCandidates({ answer: card.answer, accept: before }));
   if (primaryBefore) keep.add(primaryBefore);
   const unbound = [];
+  const at = (n) => before.findIndex((a) => isReading(normalizeReading(a)) && normalizeReading(a) === n);
   for (const [alt, v] of Object.entries(record)) {
     if (accept.includes(alt) && !relink.has(alt)) continue; // 残る別表記で、結び直さない
-    for (const r of readingsList(v) ?? []) {
+    const prev = readingsList(v) ?? [];
+    const withPrimary = !!primaryBefore && prev.some((r) => normalizeReading(r) === primaryBefore);
+    for (const r of prev) {
       const n = normalizeReading(r);
       if (keep.has(n)) continue;
       const left = accept.filter((a) => !(isReading(normalizeReading(a)) && normalizeReading(a) === n));
       if (left.length === accept.length) continue;
+      // 答えの読みかもしれない読みは外さない（NG。台帳の readings に書けば残し、drop に書けば外す）:
+      // accept でその別表記より前にある（alts の読みは別表記の後ろに足すので、別表記に結ぶ前からある読み）か、
+      // 前の記録で主な読みと一緒に結んである（答えと同じ読みの異体の別表記。竜頭蛇尾 の 龍頭蛇尾 ＝ [りゅうとうだび, りょうとうだび]）
+      const why = [at(n) < before.indexOf(alt) ? "accept で別表記より前にある" : null, withPrimary ? `前の記録で主な読み「${primaryBefore}」と一緒に結んである` : null].filter(Boolean);
+      if (why.length) {
+        problems.push(`「${alt}」に結んでいた読み「${r}」は答えの読みかもしれない（${why.join("・")}）。残すなら台帳の readings に（主な読みの後ろに）、外すなら drop に書く`);
+        continue;
+      }
       accept = left;
       unbound.push({ alt, reading: r });
     }
