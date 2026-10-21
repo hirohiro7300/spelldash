@@ -255,9 +255,10 @@ function matchesStatus(word, stats) {
   return true;
 }
 
+// 検索: 用語・訳・場面・解説・別解・表示と検索だけの名前（aka: 英字の答えのカードの日本語の名前・正式名。PR #191 のレビュー 3）・タグ
 function matches(word) {
   if (!keyword) return true;
-  const hay = [word.en, word.ja, word.q, word.explain, ...(word.accept ?? []), ...(word.tags ?? [])].filter(Boolean).join(" ").toLowerCase();
+  const hay = [word.en, word.ja, word.q, word.explain, ...(word.accept ?? []), ...(Array.isArray(word.aka) ? word.aka : []), ...(word.tags ?? [])].filter(Boolean).join(" ").toLowerCase();
   return hay.includes(keyword);
 }
 
@@ -403,7 +404,8 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
       ${concept
         ? `<p class="gcard__q">${escapeHtml(word.q)}</p>
            ${word.explain ? `<p class="gcard__explain">${escapeHtml(word.explain)}</p>` : ""}
-           ${word.accept?.length ? `<p class="gcard__accept">別解: ${word.accept.map(escapeHtml).join(" / ")}</p>` : ""}`
+           ${word.accept?.length ? `<p class="gcard__accept">別解: ${word.accept.map(escapeHtml).join(" / ")}</p>` : ""}
+           ${akaHtml(word)}`
         : hasExample(word) ? `<p class="gcard__ex">${exampleHtml(word, { speakButton: false, className: "gcard__ex" })}</p>` : ""}
       <div class="gcard__foot">
         ${historyDotsHtml(stat)}
@@ -411,6 +413,12 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
         ${noteChipHtml(word.id, { onlyIfHas: true })}
       </div>
     </article>`;
+}
+
+// 表示と検索だけの名前（aka）の行。判定・ヒントには使わない（別解の行と同じ見た目・同じく簡潔表示では隠れるので、語の詳細にも出す）
+function akaHtml(word) {
+  const names = Array.isArray(word?.aka) ? word.aka.filter(Boolean) : [];
+  return names.length ? `<p class="gcard__accept">別名: ${names.map(escapeHtml).join(" / ")}</p>` : "";
 }
 
 // 練習中ジャンルの表示名（ホーム用に再利用）

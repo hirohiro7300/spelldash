@@ -303,6 +303,9 @@
       "kind": "concept",
       "answer": "AA",
       "accept": [],
+      "aka": [
+        "オートオークション"
+      ],
       "ja": "事業者間の中古車オークション（Auto Auction）",
       "q": "事業者同士が中古車を売買する市場。車両の換金価格・相場が形成される重要な出口",
       "explain": "Auto Auction。出品・成約手数料、陸送、相場変動、検査差異がコスト",
@@ -963,8 +966,10 @@
       "kind": "concept",
       "answer": "P-MAX",
       "accept": [
-        "pmax",
-        "Performance Max"
+        "pmax"
+      ],
+      "aka": [
+        "パフォーマンスマックス"
       ],
       "ja": "Googleの複数面を横断し目標に基づき自動最適化するキャンペーン",
       "q": "検索・YouTube・ディスプレイなどGoogleの面をまたいで、設定した目標に向けて自動で配信を最適化するキャンペーン",
@@ -1038,6 +1043,9 @@
       "accept": [
         "conversion"
       ],
+      "aka": [
+        "コンバージョン"
+      ],
       "ja": "広告主が「成果」と定義したイベント",
       "q": "フォーム送信や電話など、広告主が「これを成果と数える」と自分で定義したイベント。自然界に存在する客観的成果ではない",
       "explain": "Conversion。問い合わせとは限らないし、成約でもない。CV＝売上と思うのは不合格の典型",
@@ -1055,6 +1063,9 @@
       "kind": "concept",
       "answer": "CVR",
       "accept": [],
+      "aka": [
+        "コンバージョン率"
+      ],
       "ja": "CV率 ＝ CV ÷ Click",
       "q": "100クリックのうち5件が問い合わせになったら5%。クリックから成果への率",
       "explain": "Conversion Rate ＝ CV ÷ Click（分母定義はレポートに注意）",
@@ -1072,6 +1083,9 @@
       "kind": "concept",
       "answer": "CPA",
       "accept": [],
+      "aka": [
+        "獲得単価"
+      ],
       "ja": "CV単価 ＝ Cost ÷ CV ＝ CPC ÷ CVR",
       "q": "広告費12万円で問い合わせが12件なら1件1万円。成果1件あたりのコスト",
       "explain": "Cost Per Acquisition ＝ Cost ÷ CV ＝ CPC ÷ CVR。何をCVにしたかで意味が変わる",
@@ -1129,8 +1143,10 @@
       "en": "impression-share",
       "kind": "concept",
       "answer": "IS",
-      "accept": [
-        "impression share"
+      "accept": [],
+      "aka": [
+        "インプレッションシェア",
+        "表示シェア"
       ],
       "ja": "表示可能だった推定機会のうち実際に表示された割合",
       "q": "本当は1,000回出せたはずの機会のうち、実際に600回出たなら60%。この割合",
@@ -1251,8 +1267,9 @@
       "en": "tcpa",
       "kind": "concept",
       "answer": "tCPA",
-      "accept": [
-        "target cpa"
+      "accept": [],
+      "aka": [
+        "目標cpa"
       ],
       "ja": "目標とする1CVあたりコストを与えるスマート自動入札",
       "q": "「問い合わせ1件を1万円以内で取ってほしい」と目標単価を渡す自動入札",
@@ -1269,8 +1286,9 @@
       "en": "troas",
       "kind": "concept",
       "answer": "tROAS",
-      "accept": [
-        "target roas"
+      "accept": [],
+      "aka": [
+        "目標roas"
       ],
       "ja": "目標とするCV値÷広告費の比率を与えるスマート自動入札",
       "q": "「広告費の3倍のコンバージョン値を取ってほしい」と目標比率を渡す自動入札",
@@ -1895,9 +1913,7 @@
       "en": "gclid",
       "kind": "concept",
       "answer": "GCLID",
-      "accept": [
-        "Google Click ID"
-      ],
+      "accept": [],
       "ja": "広告クリックを識別するID。クリックとCRM上の後段成果を結ぶ鍵",
       "q": "広告クリックごとに付く識別ID。あとで「この成約はどのクリックから来たか」をCRMと突き合わせる鍵になる",
       "explain": "Google Click ID。広告クリックとCRM上の後段成果（成約等）を結び付ける",
@@ -1949,6 +1965,9 @@
       "kind": "concept",
       "answer": "CRM",
       "accept": [],
+      "aka": [
+        "顧客管理システム"
+      ],
       "ja": "顧客・リード・商談を管理するシステム。後段情報の主要保管場所",
       "q": "問い合わせ後の架電結果・売却意思・成約など、Google広告の外側で起きたことが記録されているシステム",
       "explain": "後段情報の主要保管場所。GCLIDとつなぐ相手",

@@ -11472,6 +11472,24 @@ console.log("my words:");
   check("マイ単語帳の語が出題される", ["交渉する", "請求書", "締め切り"].includes(ja), `ja=${ja}`);
   check("マイ単語帳フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
+
+  // PR #191 のレビュー 2: 利用者が作る場面カード（英字の答え）の日本語の別解は、綴り入力の候補に入れない（教材と同じ決まり。js/answers.js isSpellAlt）。
+  // SSL・別解 https化: h と打つと 1 打目で ×（前は https の頭で止まらず、ヒントで「化」が入った）。単語帳では「別名」と出す（別解ではない）
+  const sslCard = { kind: "concept", en: "ssl", answer: "SSL", q: "通信を暗号化してサイトを守る仕組みの略語", explain: "", accept: ["https化"], ja: "", addedAt: new Date().toISOString() };
+  const pageS = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: JSON.stringify([sslCard]), spelldash_after_correct: "quick" } });
+  await pageS.goto(BASE + "/index.html?hintms=600000", { waitUntil: "networkidle" });
+  await pageS.waitForTimeout(800);
+  await pageS.press("#input", "Enter");
+  await waitUntil(async () => (await pageS.textContent("#japanese")).trim() === sslCard.q, 3000);
+  await pageS.press("#input", "h");
+  await pageS.waitForTimeout(250);
+  check("利用者の場面カード SSL（別解 https化）: h は 1 打目で ×（日本語の別解の頭で止まらない）", (await pageS.textContent("#recallFail")).trim() === "1" && (await pageS.textContent("#word")).trim() === "SSL", `${(await pageS.textContent("#recallFail")).trim()} ${(await pageS.textContent("#word")).trim()}`);
+  await pageS.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
+  await pageS.waitForTimeout(700);
+  const myText = await pageS.textContent("#listBody");
+  check("利用者の場面カード SSL: 単語帳では https化 を「別名」と出す（別解の行に出さない）", myText.includes("別名: https化") && !myText.includes("別解: https化"), myText.slice(0, 200));
+  check("利用者の場面カードの別名でエラー0", pageS.errors.length === 0, pageS.errors[0] ?? "");
+  await pageS.close();
 }
 
 // ===== 9.7 学びの質（Batch 1）: ヒント／メモ／難敵／正解時発音／バックアップ／ご意見 =====
@@ -12863,6 +12881,20 @@ console.log("genre list:");
   await page.waitForTimeout(150);
   const hits = await page.$$eval(".gcard", (els) => els.length);
   check("検索で絞り込める（用語・場面・解説を横断）", hits >= 1 && hits <= 3 && (await page.textContent("#listBody")).includes("重量税還付"), `hits=${hits}`);
+  // PR #191 のレビュー 3: 綴り入力のカードの日本語の名前（Batch 73 で accept から外した）は、表示と検索だけの欄 aka で引ける・「別名」と出す（別解ではない）
+  await page.fill("#listSearch", "顧客管理システム");
+  await page.waitForTimeout(150);
+  const akaTerms = await page.$$eval(".gcard", (els) => els.map((e) => e.querySelector(".gcard__term")?.textContent.trim()));
+  const akaText = await page.textContent("#listBody");
+  check("検索: 日本語の名前（aka）で英字の答えのカードを引ける（顧客管理システム → CRM）。カードに「別名: 顧客管理システム」（別解の行には出さない）",
+    akaTerms.includes("CRM") && akaText.includes("別名: 顧客管理システム") && !/別解: [^別]*顧客管理システム/.test(akaText), `${akaTerms.join(",")} ${akaText.slice(0, 200)}`);
+  const crmTerm = await page.$('.gcard__term:text-is("CRM")');
+  if (crmTerm) await crmTerm.click();
+  await page.waitForTimeout(200);
+  const akaDetail = crmTerm ? ((await page.textContent("#wordDetailPanel").catch(() => "")) ?? "") : "";
+  check("語の詳細にも「別名: 顧客管理システム」（簡潔表示では一覧の行が隠れるので）", akaDetail.includes("別名: 顧客管理システム"), akaDetail.slice(0, 200));
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
   await page.fill("#listSearch", "");
   await page.waitForTimeout(150);
   await page.selectOption("#listCategory", "ads");
@@ -15948,7 +15980,8 @@ console.log("judge (出題語が別の正解の先頭部分):");
   }
   const knownJ = ["jhs-english1:gym→gymnasium", "ngsl01:a→an", "highschool:sport→sports", "travel:photo→photograph"];
   // 下限: K0-1 のときは 170 枚。Batch 73 で綴り入力のカードの日本語の別解（seo→seo記事・isbn→isbnコード など、打ち終えられない続き）を外し、
-  // differ→different（札の確かでない組）が結ばれなくなって 131 枚
+  // differ→different（札の確かでない組）が結ばれなくなって 131 枚。PR #191 のレビュー 4 で、続きが英字で終わらない答えに続ける語句（icd→icd-10・icd10。
+  // 画面キーボードでは打ち切れない）を外して 130 枚（a→a large・rest→rest api のような続きの英字を打てる語句は残す）
   check(`判定（全カード）: 出題語が別の候補の先頭部分にあるカードを数える（全パック有効。綴り入力 ${spellJ.length} 枚のうち ${prefixCards.length} 枚。gym／gymnasium・a／an・sport／sports・photo／photograph を含む）`,
     spellJ.length > 10000 && prefixCards.length >= 125 &&knownJ.every((k) => prefixCards.some((p) => p === k || p.startsWith(k + ","))), `${spellJ.length} / ${prefixCards.length} / ${prefixCards.slice(0, 5).join(" ")}`);
   check(`判定（全カード）: 出題語を 1 字ずつ打つと、打ち切った時点で出題語として完成する（途中では終わらない。失敗 ${notDone.length} 枚）`, notDone.length === 0, notDone.slice(0, 8).join(" "));

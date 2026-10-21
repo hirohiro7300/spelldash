@@ -105,6 +105,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
     <div class="word-detail__ja">${escapeHtml(word.ja)}</div>
     ${word.q ? `<div class="word-detail__q">場面: ${escapeHtml(word.q)}</div>` : ""}
     ${word.explain ? `<div class="word-detail__q">${escapeHtml(word.explain)}</div>` : ""}
+    ${Array.isArray(word.aka) && word.aka.length ? `<div class="word-detail__q">別名: ${word.aka.map(escapeHtml).join(" / ")}</div>` : ""}
     ${hasExample(word) ? `<div class="word-detail__ex word-example">${exampleHtml(word)}</div>` : ""}
     <div class="word-detail__meta">
       <span class="word-detail__status word-detail__status--${status}"${statusTitle ? ` title="${statusTitle}"` : ""}>${STATUS_LABEL[status]}</span>

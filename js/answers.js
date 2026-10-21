@@ -62,7 +62,7 @@ export function crossesPos(a, b) {
 // en → 別解の集合。全カードの訳を見て、同じ訳を持つ語どうしを結ぶ。
 // ただし品詞をまたぐ組は結ばない（Batch 69。PR #175 で札の確かな組だけに）: その訳の札が両方で確かで、重ならない
 // （repeatedly〔副「繰り返し」〕と repetition〔名「繰り返し」〕、resemble〔動「似ている」〕と similar〔形「似ている」〕）なら、別の語を問う問題なので別解にしない。
-// 札が確かでない組（different〔形「ちがう・異なる」〕と differ〔動「異なる」〕、circa〔前「およそ・〜ごろ」〕と approximately〔副「およそ」〕）と、
+// 札が確かでない組（circa〔前「およそ・〜ごろ」〕と approximately〔副「およそ」〕、only〔副「～だけ・唯一の」〕と sole〔形「唯一の・単独の」〕）と、
 // 札の無いカード（基本カテゴリ）しか無い語は今までどおり結ぶ（crossesPos）
 export function buildAlternativeIndex(words) {
   const index = new Map();
@@ -79,7 +79,26 @@ export function buildAlternativeIndex(words) {
   return index;
 }
 
-// この語を出したときに正解として受け入れる綴りの一覧（先頭は必ず出題語）
+// 綴り入力（1 字ずつ判定する答え: 英単語・英字の答えの概念カード Cu・CPC）の別解に使える綴り（PR #191 のレビュー 2・4）。
+// 画面キーボード（js/keyboard.js ROWS）と Android の OS キーボードの input 経路（js/game.js handleTextInput）が判定に届けるのは a〜z だけで、
+// 空白・数字・記号・日本語は打てない。使えるのは次の 2 つ（小文字にして前後の空白を落とした形で見る。acceptedAnswers と同じ）:
+//   1. 英小文字で始まり、英小文字とハイフンの語（英単語のカードの accept と同じ決まり。scripts/validate-words.mjs）。ハイフンも画面キーボードに無いが、
+//      答えの綴り（check-in・Wi-Fi）にもあるので決まりに残す（打ち方は docs/BACKLOG）
+//   2. 答えに続ける語句: 答え（answer）の綴りで始まり、続きが半角の字で英字で終わる（a → a large・rest → rest api・edta → edta-2k）。
+//      答えを打ち切った時点で答えとして完成し（completedAnswer）、続きは持ち越し止め（js/game.js startSpellingSpill）が英字だけを受ける
+//      （続きの頭の空白・記号・数字は読み飛ばす）ので、画面キーボードでも打てる。続きが英字で終わらない語句（icd → icd-10）は打ち切れない
+// validate-words・sim-judge・マイ単語帳（js/myWords.js）もここを読む
+export const SPELL_ALT = /^[a-z][a-z-]*$/;
+const CONTINUATION = /^[\x20-\x7e]*[a-z]$/;
+export function isSpellAlt(text, answer = "") {
+  const s = String(text ?? "").toLowerCase().trim();
+  if (SPELL_ALT.test(s)) return true;
+  const a = String(answer ?? "").toLowerCase().trim();
+  return a.length > 0 && s.length > a.length && s.startsWith(a) && CONTINUATION.test(s.slice(a.length));
+}
+
+// この語を出したときに正解として受け入れる綴りの一覧（先頭は必ず出題語）。綴り入力の候補なので、データの別解は綴り入力で打てるもの（isSpellAlt）だけ
+// （利用者の場面カード〔js/myWords.js〕の日本語の別解 https化 を候補に入れると、h が × にならず、ヒントで「化」が入り、NISA口座 の「口座」が続きとして残る）
 export function acceptedAnswers(word, index) {
   const out = [word?.en].filter(Boolean);
   const push = (s) => {
@@ -87,7 +106,7 @@ export function acceptedAnswers(word, index) {
     if (v && !out.includes(v)) out.push(v);
   };
   // データに書かれた別解が最優先
-  if (Array.isArray(word?.accept)) word.accept.forEach(push);
+  if (Array.isArray(word?.accept)) for (const a of word.accept) if (isSpellAlt(a, word?.en)) push(a);
   // 同じ訳を持つ他のカードの語
   if (index && word?.en) (index.get(word.en) ?? []).forEach(push);
   return out;

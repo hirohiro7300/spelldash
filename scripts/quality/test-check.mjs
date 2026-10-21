@@ -40,7 +40,9 @@
 //  21. acceptReadings を読む 1 か所（scripts/lib/accept-readings.mjs。PR #187 のレビュー 6）: 空の配列は形の誤り（add-readings・validate-words・
 //      品質の規則で同じ）
 //  22. validate-words: 綴り入力のカード（英字の答えの概念カード）の accept に綴りで打てない字（日本語・全角）があれば NG（Batch 73）。今の教材は 0 件。
-//      全文入力・ローマ字のカードの日本語の別解と、空白や記号の英字の別解は出ない。教材の写し（--root）で流す
+//      全文入力・ローマ字のカードの日本語の別解は出ない。空白・記号・数字の英字の別解も NG で、ハイフンは通る（画面キーボードの決まり。PR #191 のレビュー 4）。
+//      綴り入力のカードの数は全部の枚数（レビュー 6）。表示と検索だけの欄 aka の誤りも NG（レビュー 3）。教材の写しは 19 と同じ（PR #191 のレビュー 7）
+//  23. 教材の問題文の向き: 保証会社の問題文は、借主に代わって貸し手へ返す向き（PR #191 のレビュー 1）
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -71,6 +73,40 @@ async function run(ids, patch, base = baseline) {
   const results = await runRules(ctx, pick(...ids));
   return { ctx, results, ...compareWithBaseline(results, base, { partial: true }) };
 }
+
+// 写しにコマンドを流す部品（19・20・22 が使う。PR #191 のレビュー 7: 22 が 19 の部品を写していた）
+// node は 1 本ずつ、nodeAsync は同時に流す形（同じ { code, out }）
+const node = (script, args) => {
+  try {
+    return { code: 0, out: execFileSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) };
+  } catch (e) {
+    return { code: e.status, out: String(e.stdout ?? "") + String(e.stderr ?? "") };
+  }
+};
+const nodeAsync = (script, args) =>
+  new Promise((resolve) =>
+    execFile(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }, (e, stdout, stderr) =>
+      resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: String(stdout ?? "") + String(stderr ?? "") })
+    )
+  );
+// カテゴリのファイル（data/ からの道）
+const fileOf = (cat) => baseCtx.categoryById.get(cat).file;
+// 教材の写し: from の木の data/ を dir/name に写して、その木の道を返す
+const copyData = (dir, from, name) => {
+  const r = path.join(dir, name);
+  fs.cpSync(path.join(from, "data"), path.join(r, "data"), { recursive: true });
+  return r;
+};
+// 写しの木 root のカード 1 枚（"カテゴリ:id"）を fn で書き換える
+const editCard = (root, ref, fn) => {
+  const [cat, id] = ref.split(":");
+  const f = path.join(root, "data", fileOf(cat));
+  const json = JSON.parse(fs.readFileSync(f, "utf8"));
+  fn(json.words.find((x) => x.id === id));
+  fs.writeFileSync(f, JSON.stringify(json));
+};
+// 19 で流した validate-words の結果（22 も同じ写しの結果を見る）
+let validateRuns = null;
 
 // 前の木（今の教材のまま）と PR の木（patch した教材）で比べる（check.mjs --base と同じ）
 async function runVsBase(ids, patch) {
@@ -563,43 +599,19 @@ const FREEZE = "banking:concept-bank-freeze";
 // 19, 20（写しにコマンドを流す）
 {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spelldash-readings-"));
-  const node = (script, args) => {
-    try {
-      return { code: 0, out: execFileSync(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) };
-    } catch (e) {
-      return { code: e.status, out: String(e.stdout ?? "") + String(e.stderr ?? "") };
-    }
-  };
-  // 同時に流す形（同じ { code, out }）
-  const nodeAsync = (script, args) =>
-    new Promise((resolve) =>
-      execFile(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }, (e, stdout, stderr) =>
-        resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: String(stdout ?? "") + String(stderr ?? "") })
-      )
-    );
   try {
     // 19 validate-words（教材の写し）。4 つの形（通る形・結んでいない形・形の誤り・Batch 71 の読みの残り）を別々の写しに作り、まとめて同時に流す
-    // （前は 1 つの写しを順に書き換えて 1 回ずつ流していた。形はそのまま: 結んでいない形は通る形に、形の誤りは結んでいない形に重ねる）
-    const fileOf = (cat) => baseCtx.categoryById.get(cat).file;
+    // （前は 1 つの写しを順に書き換えて 1 回ずつ流していた。形はそのまま: 結んでいない形は通る形に、形の誤りは結んでいない形に重ねる）。
+    // 22（綴り入力のカードの accept）も同じ写しを見る: 通る形（今の教材＋岩宿の結び）が「今の教材」、形の誤りの写しに綴り入力の誤りも重ねる
     let vroot = null;
-    const edit = (ref, fn) => {
-      const [cat, id] = ref.split(":");
-      const f = path.join(vroot, "data", fileOf(cat));
-      const json = JSON.parse(fs.readFileSync(f, "utf8"));
-      fn(json.words.find((x) => x.id === id));
-      fs.writeFileSync(f, JSON.stringify(json));
-    };
+    const edit = (ref, fn) => editCard(vroot, ref, fn);
     const set = (ref, map, add = []) =>
       edit(ref, (w) => {
         w.accept = [...(KNOWN[ref] ?? w.accept), ...add];
         if (map === undefined) delete w.acceptReadings;
         else w.acceptReadings = map;
       });
-    const copyTo = (from, name) => {
-      vroot = path.join(tmp, name);
-      fs.cpSync(path.join(from, "data"), path.join(vroot, "data"), { recursive: true });
-      return vroot;
-    };
+    const copyTo = (from, name) => (vroot = copyData(tmp, from, name));
     const vGood = copyTo(ROOT, "v-good");
     set(IWA, { 岩宿: "いわじゅく" });
     const vStrict = copyTo(vGood, "v-strict");
@@ -620,9 +632,22 @@ const FREEZE = "banking:concept-bank-freeze";
     edit("junior:english-apple", (w) => (w.acceptReadings = { 林檎: "りんご" }));
     // PR #187 のレビュー 1: Batch 71 で足した読み（scripts/quality/b71-readings.json）が、どの結びにも主な読みにも属さずに accept に残る
     // （台帳で 厩戸王 を [うまやどのおう, うまやとおう] → うまやどのおう に結び直して、うまやとおう が accept に残った形）
+    // 22: 綴り入力のカードに日本語の別解・全角の英字・空白や記号の英字の別解、全文入力のカードに日本語の別解（形の誤りの写しに重ねる）
+    edit("jsci1:concept-js1-cu", (w) => (w.accept = [...(w.accept ?? []), "銅", "ＣＵ", "copper (cu)"]));
+    edit("webdev:concept-web-ssl", (w) => (w.accept = [...(w.accept ?? []), "https化"]));
+    edit("jsci1:concept-js1-co2", (w) => (w.accept = [...(w.accept ?? []), "炭酸ガス"]));
+    // PR #191 のレビュー 4: 画面キーボードで打てない英字の別解（空白・記号・数字）も NG。ハイフンは英単語のカードと同じく通る
+    edit("listing:concept-cpc", (w) => (w.accept = [...(w.accept ?? []), "cost per click", "c.p.c", "cpc2", "cost-per-click", "cpc rate"]));
+    // PR #191 のレビュー 3: 表示と検索だけの欄 aka の誤り（重複・答えと同じ・綴りで打てる語・形・綴り入力の概念カードでない）
+    edit("listing:concept-cpc", (w) => (w.aka = ["クリック単価の目安", "クリック単価の目安", "CPC", "costperclick"]));
+    edit("webdev:concept-web-ssl", (w) => (w.aka = "https化"));
+    edit("jsci1:concept-js1-mg", (w) => (w.aka = ["マグネシウム", ""]));
+    edit(IWA, (w) => (w.aka = ["岩宿"]));
+    edit("junior:english-apple", (w) => (w.aka = ["林檎"]));
     const vLeft = copyTo(ROOT, "v-left");
     edit(SHOTOKU, (w) => (w.acceptReadings = { 厩戸皇子: "うまやどのおうじ", 厩戸王: "うまやどのおう" }));
     const [good, strict, bad, left] = await Promise.all([vGood, vStrict, vBad, vLeft].map((r) => nodeAsync("validate-words.mjs", [`--root=${r}`])));
+    validateRuns = { good, bad };
 
     check("validate-words: 形の合う acceptReadings は通り、結んだ数を出す（読みを結んだ別表記 1 以上）", good.code === 0 && /読みを結んだ別表記 [1-9]/.test(good.out), good.out.slice(-300));
     const sLines = strict.out.split("\n").filter((l) => l.includes("学校・基本の別表記に読みを結んでいない"));
@@ -872,55 +897,75 @@ const FREEZE = "banking:concept-bank-freeze";
 
 // 22（Batch 73）: validate-words は、綴り入力のカード（英字の答えの概念カード: Cu・CPC。js/judge.js answerModeOf が spell）の accept に
 // 綴りで打てない字（日本語・全角）があれば NG。今の教材は 0 件（main d8ea9c6 の教材では 828 件・306 枚で落ちる）。日本語の答えのカード（ローマ字）と
-// 全文入力のカード（CO2・AI Max）の日本語の別解・空白や記号の入った英字の別解は出ない。教材の写し（--root）で流す
+// 全文入力のカード（CO2・AI Max）の日本語の別解・空白や記号の入った英字の別解は出ない。教材の写しは 19 と同じ（通る形＝今の教材、形の誤りの写しに重ねた）
 {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spelldash-spell-"));
-  const nodeAsync = (script, args) =>
-    new Promise((resolve) =>
-      execFile(process.execPath, [path.join(ROOT, "scripts", script), ...args], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }, (e, stdout, stderr) =>
-        resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: String(stdout ?? "") + String(stderr ?? "") })
-      )
-    );
-  try {
-    const fileOf = (cat) => baseCtx.categoryById.get(cat).file;
-    const copy = (name) => {
-      const r = path.join(tmp, name);
-      fs.cpSync(path.join(ROOT, "data"), path.join(r, "data"), { recursive: true });
-      return r;
-    };
-    const edit = (root, ref, fn) => {
-      const [cat, id] = ref.split(":");
-      const f = path.join(root, "data", fileOf(cat));
-      const json = JSON.parse(fs.readFileSync(f, "utf8"));
-      fn(json.words.find((x) => x.id === id));
-      fs.writeFileSync(f, JSON.stringify(json));
-    };
-    const now = copy("s-now");
-    const bad = copy("s-bad");
-    edit(bad, "jsci1:concept-js1-cu", (w) => (w.accept = [...(w.accept ?? []), "銅", "ＣＵ", "copper (cu)"]));
-    edit(bad, "webdev:concept-web-ssl", (w) => (w.accept = [...(w.accept ?? []), "https化"]));
-    edit(bad, "jsci1:concept-js1-co2", (w) => (w.accept = [...(w.accept ?? []), "炭酸ガス"]));
-    const [vNow, vBad] = await Promise.all([now, bad].map((r) => nodeAsync("validate-words.mjs", [`--root=${r}`])));
-    const LABEL = "綴り入力のカードの accept に綴りで打てない字";
-    const linesOf = (out) => out.split("\n").filter((l) => l.includes(LABEL));
-    const nowLines = linesOf(vNow.out);
-    check(
-      "validate-words: 今の教材の綴り入力のカード（英字の答えの概念カード）の accept に、綴りで打てない字（日本語・全角）は 0 件（見たカード 1 枚以上）",
-      vNow.code === 0 && nowLines.length === 0 && /綴り入力のカード（英字の答えの概念カード）: [1-9]/.test(vNow.out),
-      `exit=${vNow.code} ${nowLines.length} 件 ${nowLines.slice(0, 3).join(" / ")}`
-    );
-    const badLines = linesOf(vBad.out);
-    const want = ["packs/jsci1.json:concept-js1-cu (銅)", "packs/jsci1.json:concept-js1-cu (ＣＵ)", "packs/webdev.json:concept-web-ssl (https化)"];
-    const lost = want.filter((x) => !badLines.some((l) => l.includes(x)));
-    const extra = badLines.filter((l) => /copper \(cu\)|concept-js1-co2|concept-ai-max|concept-jh1-iwajuku/.test(l));
-    check(
-      "validate-words: 綴り入力のカードに日本語の別解（Cu の 銅・SSL の https化）・全角の英字（ＣＵ）を足すと NG で名指しする。空白や記号の英字の別解（copper (cu)）・全文入力（CO2 の 炭酸ガス・AI Max）とローマ字のカード（岩宿遺跡）の日本語の別解は出ない",
-      vBad.code === 1 && lost.length === 0 && extra.length === 0 && badLines.length === nowLines.length + want.length,
-      `exit=${vBad.code} ${badLines.length} 件（今の教材 ${nowLines.length}） 無い: ${lost.join(" / ")} 余分: ${extra.join(" / ")}`
-    );
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
+  const { good: vNow, bad: vBad } = validateRuns;
+  const LABEL = "綴り入力のカードの accept に綴りで打てない字";
+  const linesOf = (out) => out.split("\n").filter((l) => l.includes(LABEL));
+  const nowLines = linesOf(vNow.out);
+  check(
+    "validate-words: 今の教材の綴り入力のカード（英字の答えの概念カード）の accept に、綴りで打てない字（日本語・全角）は 0 件（見たカード 1 枚以上）",
+    vNow.code === 0 && nowLines.length === 0 && /綴り入力のカード（英字の答えの概念カード）: [1-9]/.test(vNow.out),
+    `exit=${vNow.code} ${nowLines.length} 件 ${nowLines.slice(0, 3).join(" / ")}`
+  );
+  const badLines = linesOf(vBad.out);
+  const want = ["packs/jsci1.json:concept-js1-cu (銅)", "packs/jsci1.json:concept-js1-cu (ＣＵ)", "packs/webdev.json:concept-web-ssl (https化)"];
+  const lost = want.filter((x) => !badLines.some((l) => l.includes(x)));
+  const extra = badLines.filter((l) => /concept-js1-co2|concept-ai-max|concept-jh1-iwajuku/.test(l));
+  check(
+    "validate-words: 綴り入力のカードに日本語の別解（Cu の 銅・SSL の https化）・全角の英字（ＣＵ）を足すと NG で名指しする。全文入力（CO2 の 炭酸ガス・AI Max）とローマ字のカード（岩宿遺跡）の日本語の別解は出ない",
+    vBad.code === 1 && lost.length === 0 && extra.length === 0,
+    `exit=${vBad.code} ${badLines.length} 件（今の教材 ${nowLines.length}） 無い: ${lost.join(" / ")} 余分: ${extra.join(" / ")}`
+  );
+  // PR #191 のレビュー 4: 綴り入力の別解は、画面キーボード（a〜z。js/keyboard.js ROWS）で打てる綴りだけ（js/answers.js isSpellAlt）: 英単語のカードの accept と
+  // 同じ「英小文字で始まり、英小文字とハイフン」の語か、答えに続ける語句（答えの綴りで始まり、続きが英字で終わる: cpc rate）。空白・記号・数字の英字の別解も NG
+  const want4 = ["packs/jsci1.json:concept-js1-cu (copper (cu))", "english/listing.json:concept-cpc (cost per click)", "english/listing.json:concept-cpc (c.p.c)", "english/listing.json:concept-cpc (cpc2)"];
+  const lost4 = want4.filter((x) => !badLines.some((l) => l.includes(x)));
+  check(
+    "validate-words: 綴り入力のカードの空白・記号・数字の英字の別解（copper (cu)・cost per click・c.p.c・cpc2）も NG で名指しする。ハイフンの別解（cost-per-click）と答えに続ける語句（cpc rate）は通る。足した 7 件だけが出る",
+    vBad.code === 1 && lost4.length === 0 && !badLines.some((l) => /\((cost-per-click|cpc rate)\)/.test(l)) && badLines.length === nowLines.length + want.length + want4.length,
+    `exit=${vBad.code} ${badLines.length} 件（今の教材 ${nowLines.length}） 無い: ${lost4.join(" / ")}`
+  );
+  // PR #191 のレビュー 6: 数は綴り入力の概念カードの全部（accept の無いカードも数える）。accept のある枚数は別に出す
+  const spellAll = baseCtx.cards.filter((w) => w.kind === "concept" && !w.calc && baseCtx.modules.judge.answerModeOf(w).mode === "spell");
+  const withAccept = spellAll.filter((w) => Array.isArray(w.raw.accept) && w.raw.accept.length > 0).length;
+  const countLine = vNow.out.split("\n").find((l) => l.startsWith("綴り入力のカード（英字の答えの概念カード）")) ?? "";
+  check(
+    `validate-words: 綴り入力のカードの数は、綴り入力の概念カードの全部（${spellAll.length} 枚。accept が 1 語以上 ${withAccept} 枚）`,
+    countLine.includes(`: ${spellAll.length}枚`) && countLine.includes(`accept が 1 語以上 ${withAccept}枚`),
+    countLine
+  );
+  // PR #191 のレビュー 3: 表示と検索だけの欄 aka（綴り入力の概念カードの日本語の名前・正式名。判定・ヒント・タイピング練習には使わない）
+  const AKA_NG = ["aka の語が重複", "aka の語が答えと同じ", "aka の語が綴りで打てる", "aka の形", "aka は綴り入力の概念カードだけ"];
+  const akaLines = (out) => out.split("\n").filter((l) => AKA_NG.some((k) => l.includes(k)));
+  const wantAka = [
+    "aka の語が重複 english/listing.json:concept-cpc (クリック単価の目安)",
+    "aka の語が答えと同じ english/listing.json:concept-cpc (CPC)",
+    "aka の語が綴りで打てる（別解なら accept に。表示と検索だけの名前は綴りで打てない語） english/listing.json:concept-cpc (costperclick)",
+    "aka の形（空でない文字列の配列） packs/webdev.json:concept-web-ssl",
+    "aka の形（空でない文字列の配列） packs/jsci1.json:concept-js1-mg",
+    "aka は綴り入力の概念カードだけ（英字の答えの日本語の名前・正式名。表示と検索だけ） packs/jhist1.json:concept-jh1-iwajuku",
+    "aka は綴り入力の概念カードだけ（英字の答えの日本語の名前・正式名。表示と検索だけ） english/junior.json:english-apple"
+  ];
+  const badAka = akaLines(vBad.out);
+  const lostAka = wantAka.filter((x) => !badAka.some((l) => l.includes(x)));
+  check(
+    "validate-words: aka の誤り（重複・答えと同じ・綴りで打てる語・形・綴り入力の概念カードでない）を NG で名指しする。今の教材は 0 件",
+    vBad.code === 1 && lostAka.length === 0 && badAka.length === wantAka.length && akaLines(vNow.out).length === 0 && /aka（表示と検索だけの名前）: [1-9][0-9,]*語/.test(vNow.out),
+    `${badAka.length} 件 無い: ${lostAka.join(" / ")} 今の教材: ${akaLines(vNow.out).slice(0, 3).join(" / ")}`
+  );
+}
+
+// 23（PR #191 のレビュー 1）: 教材の問題文の向き。保証会社（借主が返せないとき、借主に代わって貸し手へ返す・立て替える）の問題文が、
+// 誰の代わりかを逆に言わない（Batch 73 の書き換えで banking の 保証会社 が「銀行に代わって残りを返す」になっていた）
+{
+  const g = baseCtx.cards.filter((w) => w.kind === "concept" && /保証会社/.test(String(w.answer ?? w.en)));
+  const wrong = g.filter((w) => /(銀行|貸主|金融機関|貸し手)に代わって/.test(w.q ?? "") || !/借主に代わって|立て替え/.test(w.q ?? ""));
+  check(
+    `教材: 保証会社の問題文（${g.length} 枚）は、借主に代わって貸し手へ返す向き（「銀行に代わって」と言わない）`,
+    g.length >= 2 && wrong.length === 0,
+    wrong.map((w) => `${w.ref} ${w.q}`).join(" / ")
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

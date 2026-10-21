@@ -21,7 +21,7 @@
     {"id": "english-run", "en": "run", "ja": "走る", "pos": "動", "level": "easy", "tags": ["v"], "ex": "I run every morning before breakfast.", "exJa": "毎朝、朝食の前に走っています。"},
     {"id": "english-under", "en": "under", "ja": "〜の下に", "pos": "前", "level": "easy", "accept": ["below", "beneath"], "tags": ["fn"], "ex": "The cat is sleeping under the table.", "exJa": "猫がテーブルの下で寝ている。"},
     {"id": "english-turn", "en": "turn", "ja": "曲がる・回す", "pos": "動", "level": "easy", "accept": ["rotate", "spin"], "tags": ["v"], "ex": "Turn left at the next corner.", "exJa": "次の角を左に曲がってください。"},
-    {"id": "english-few", "en": "few", "ja": "少しの・（数が）ほとんどない", "pos": "形", "level": "normal", "accept": ["little"], "tags": ["adj"], "ex": "Only a few people came to the meeting.", "exJa": "会議に来た人はほんの数人だった。"},
+    {"id": "english-few", "en": "few", "ja": "少数の・（数が）ほとんどない", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "Only a few people came to the meeting.", "exJa": "会議に来た人はほんの数人だった。"},
     {"id": "english-bring", "en": "bring", "ja": "持ってくる", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Can you bring me a cup of tea?", "exJa": "お茶を一杯持ってきてくれる？"},
     {"id": "english-early", "en": "early", "ja": "早く・早い", "pos": "副", "level": "easy", "tags": ["adj"], "ex": "I got up early to catch the first train.", "exJa": "始発に乗るために早く起きた。"},
     {"id": "english-hand", "en": "hand", "ja": "手", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Wash your hands before lunch.", "exJa": "お昼の前に手を洗いなさい。", "exForm": "hands"},

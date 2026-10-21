@@ -221,7 +221,7 @@
       "en": "g3-passive-must",
       "kind": "concept",
       "answer": "must",
-      "accept": ["has to"],
+      "accept": [],
       "ja": "助動詞＋受動態",
       "q": "This room ____ be cleaned every day.（この部屋は毎日そうじされなければなりません）",
       "explain": "助動詞の後ろは動詞の原形なので be + 過去分詞。must is cleaned は誤り",
