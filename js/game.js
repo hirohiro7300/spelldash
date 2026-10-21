@@ -182,7 +182,7 @@ let timedWarned = false; // 「残り10秒」を読み上げた
 let runRankBefore = new Map();
 // 1 問ごとの速さ（docs/SPEC_MASTERY.md §3.4）: tShow = 出題の文を書いた後の最初の rAF、tFirst = この語の最初のキー、input = その経路（kbd／touch）、
 // spill = 前の語の続きが残っていた間に来たキー（測らない）、invalid = 測らない語（音・例文の訳つき・全文入力・計算・英文・空欄・並べ替え・続きからの 1 語目・裏に回った）、
-// fixed = 出し方に速さを測れる道が無い語（全文入力・計算・英文・空欄・並べ替え。M1 の speedless の材料）、lag = 回の最初の語（片側だけ信じる。PR #189 のレビュー）。
+// fixed = 出し方に速さを測れる道が無い語（全文入力・英字で答える概念カード・計算・英文・空欄・並べ替え。M1 の speedless の材料）、lag = 回の最初の語（片側だけ信じる。PR #189 のレビュー）。
 // 記録の質（Batch 68 L1-1・L1-3。書き手へ渡す measure の材料。判定・分類・段は変えない）: detail = 最初のキーの入力の細目（kbd／osk／ime）、
 // keys・last・pcMax = 受理した打鍵の数・最後の打鍵の時刻・2 打目からの打鍵の止まりの最長、multi = 1 回の input で今の語に 2 字以上入った・置き換えの入力
 // （予測変換・候補のタップ）、outside = 1 打目の前に焦点が盤面の外へ移った・窓の焦点が外れた、away = 1 打目の後に同じことが起きた（pc を測らない）
@@ -2278,8 +2278,9 @@ function completeWord() {
   const timing = wordTiming?.serial === wordSerial ? wordTiming : null;
   // 回の最初の語（lag）は すぐ・ふつう だけ信じる（時間がかかって見えたら unknown。js/masteryMeta.js classifySpeed）
   const { speed, basis } = sample && box ? classifySpeed(sample, box, { firstAnswer: answerCtx.firstAnswer, lag: !!timing?.lag }) : { speed: "unknown", basis: null };
-  // この問いの形では速さを測れない答え（speedless。読むのは js/mastery.js nextRank の M1 だけ）: 測らない札のカード（fixed）・本人の基準がまだ無い箱・
-  // 例文の訳を添えた問い。札を見るのは控えのある語だけなので、控えが今の段より上の語でだけ作る（いつ戻すか〔その日の最初・ノーミス〕は nextRank が決める）。
+  // この問いの形では速さを測れない答え（speedless。読むのは js/mastery.js nextRank の M1 だけ）: 測らない札のカード（fixed。英字で答える概念カードは
+  // 1 打ずつ打つので 1 打ミスの控えが付く）・本人の基準がまだ無い箱・同じ訳の語がある問い（例文の有無によらない）。規則の文 RANK_RULE の括弧が 3 つとも言う。
+  // 札を見るのは控えのある語だけなので、控えが今の段より上の語でだけ作る（いつ戻すか〔その日の最初・ノーミス〕は nextRank が決める）。
   // 例文の訳の判定は最後（回の最初の語・測らない語は startWordTiming が最初の描画の後に済ませてある。測る語は speedSample が見た）
   const speedless = speed === "unknown" && (answerCtx?.peak ?? 0) > (answerCtx?.rank ?? 0) && (!!timing?.fixed || !boxReady(speedBox()) || isAmbiguousCached(currentWord));
   const measure = sample ? measureOf(sample, answerCtx) : null; // 書き手へ渡す測りの札（分類は上のまま。記録の質）
@@ -3065,7 +3066,7 @@ function setNewWord() {
 }
 
 // 速さの計測を始める（docs/SPEC_MASTERY.md §3.4）。tShow は出題の文を書いた後の最初の rAF の中（recordPlay の同期の書き込みを数えない）。
-// 測らない語: 続きからの回の 1 語目・音で出題・全文入力（概念カード・IME）・計算・英文を打つ・空欄・並べ替え・裏に回っている。
+// 測らない語: 続きからの回の 1 語目・音で出題・全文入力（IME）・概念カード（英字の答えを 1 打ずつ打つものも）・計算・英文を打つ・空欄・並べ替え・裏に回っている。
 // 回の最初の語（ページを開いて最初の語も）は片側だけ信じて測る（lag: 手がキーに戻る・盤面への描き替えの分 T1 が長く見えうるので、すぐ・ふつう は使い、
 // 時間がかかった とは言わない。本人の基準の箱と sp に入れない。PR #189 のレビュー 1・5）。ローマ字の答えは測る（ja の箱）。
 // 例文の訳を添える問い（同じ訳の語がある）は、測るときに見る（speedSample。カテゴリの全語を走査するため）
@@ -3076,7 +3077,8 @@ function startWordTiming() {
   // 続きからの回の 1 語目: 前の回で問いを見せた語（思い出す前に考えられたので速い側へずれうる。片側だけ信じる前提が崩れるので測らない）
   const seenHead = head && resumeHeadId !== null && w.id === resumeHeadId;
   if (head) resumeHeadId = null;
-  // この語の出し方に速さを測れる道が無い（何度出しても測れない。M1 の speedless の材料）: 全文入力（概念カード・IME）・計算・英文を打つ・空欄・並べ替え
+  // この語の出し方に速さを測れる道が無い（何度出しても測れない。M1 の speedless の材料）: 全文入力（IME）・概念カード（英字の答えを 1 打ずつ打つものも）・
+  // 計算・英文を打つ・空欄・並べ替え
   const fixed = (!romajiMode && (freeMode || isConceptWord(w))) || !!(w.calc || w.write || w.blank || w.bank);
   const timing = {
     serial: wordSerial,

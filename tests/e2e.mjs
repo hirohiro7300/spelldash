@@ -10879,7 +10879,7 @@ console.log("mastery writers:");
       check("習熟度 M1 語の詳細（つなぎ）: 1 打ミスで下がった語は 身についた・次の条件は「翌日以降に 間違えずに 時間をかけずに思い出せると 即答」（Batch 72）",
         dRiver.name === "身についた" && dRiver.next === `${dRiver.tomorrow}以降に 間違えずに 時間をかけずに思い出せると 即答`, JSON.stringify(dRiver));
       check("習熟度 M1 語の詳細（つなぎ）: 答え表示で下がった語は今の次の条件（前の答え＋20 日以降に すぐ打てると 即答）・規則の文に戻り方の 1 文（括弧は PR #189 のレビュー 2 の形）・エラー0",
-        dCloud.name === "身についた" && dCloud.next === `${dCloud.plus20}以降に すぐ打てると 即答` && dCloud.rule.includes("下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（例文の訳が付く問いと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと 速さを測れなかった答えは数えない）。") && pd.errors.length === 0,
+        dCloud.name === "身についた" && dCloud.next === `${dCloud.plus20}以降に すぐ打てると 即答` && dCloud.rule.includes("下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（同じ訳の語がある問い・英字で答える文法や用語のカードと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと たまたま速さを測れなかった答えは数えない）。") && pd.errors.length === 0,
         JSON.stringify({ ...dCloud, err: pd.errors[0] }));
       await pd.close();
     }
@@ -11175,7 +11175,7 @@ console.log("mastery writers:");
   }
 
   // ---- PR #189 のレビュー 1・2（docs/SPEC_MASTERY.md §3.4・§3.5・§13.9）: 出題の順は変えない（Batch 72 の B1 を外した）。回の最初の語は片側だけ信じて測る（lag）。
-  // この問いの形では速さを測れない答え（例文の訳を添えた問い・本人の基準がまだ無い箱）は、1 打ミスで下がった段を速さを見ずにノーミスで戻す。
+  // この問いの形では速さを測れない答え（同じ訳の語がある問い・英字で答える文法や用語のカード・本人の基準がまだ無い箱）は、1 打ミスで下がった段を速さを見ずにノーミスで戻す。
   // たまたま測れなかった答え（続きからの 1 語目など）では戻さず待つ。控えの使える語には音で出題を選ばない。期待は木によらない（語の詳細の文のとおり）:
   // 期日の段 4 の語を 25 日ぶりに すぐ 打てば 即答（指摘 1）。控えのある語は翌日以降に 間違えずに 時間をかけずに 打てば戻る（指摘 2）。本人の基準は 20 件・中央値 2,000ms
   {
@@ -11273,14 +11273,17 @@ console.log("mastery writers:");
       const want = wait === 1800 ? r.river.rank === 5 && r.river.peak === null : r.river.rank === 4 && r.river.peak === 5;
       check(`習熟度 M1（PR #189 のレビュー）回の最初の語は片側で測る: 1 語目の river を ${wait / 1000} 秒で打つと ${wait === 1800 ? "即答（ふつう を使う）" : "身についた・控え 5（時間がかかった とは言わず待つ）"}・本人の基準の箱は増えない`, r.river.pos === 1 && want && r.box.river === 0 && !r.err, brief(r));
     }
-    // E5 指摘 2a 例文の訳: see・look が同じ訳「見る」（問いに例文の訳が付き、速さを測れない）。see（段 4・控え 5・期日）を翌日の 1 語目で 0.5 秒 → 即答。
+    // E5 指摘 2a 同じ訳の語がある問い: see・look が同じ訳「見る」（訳だけで決まらない問いなので速さを測らない。マイ単語帳の語には例文が無いので、
+    // 問いに例文の訳は付かない〔#promptContext は空〕）。see（段 4・控え 5・期日）を翌日の 1 語目で 0.5 秒 → 即答。
     // 未解決の glass が 1 語目の回（see は 2 語目）でも 即答。語の詳細の次の条件が「…時間をかけずに思い出せると 即答」のまま残らない
     {
       const SEE = [["see", "見る"], ["look", "見る"], ["bread", "パン"]];
-      const a = await runR({ words: SEE, stats: { "my-see": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { see: 500 }, watch: ["see"] });
-      const b = await runR({ words: [["glass", "コップ"], ...SEE], stats: { "my-glass": headWord(), "my-see": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { glass: 500, see: 500 }, watch: ["see"] });
-      check("習熟度 M1（PR #189 のレビュー 2）例文の訳の問い: 控えの see を 1 語目（0.5 秒）でも 2 語目（未解決の glass の後）でも 即答 に戻る・次の条件は「時間をかけずに思い出せると 即答」のまま残らない",
-        a.see.pos === 1 && a.see.rank === 5 && a.see.peak === null && b.see.pos === 2 && b.see.rank === 5 && !String(b.see.next).includes("時間をかけずに思い出せると 即答") && !a.err && !b.err, JSON.stringify({ a: brief(a), b: brief(b) }));
+      const ctxOf = {};
+      const onWord = async (page, en) => { if (en === "see") ctxOf[ctxOf.a === undefined ? "a" : "b"] = (await page.textContent("#promptContext")).trim(); return null; };
+      const a = await runR({ words: SEE, stats: { "my-see": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { see: 500 }, watch: ["see"], onWord });
+      const b = await runR({ words: [["glass", "コップ"], ...SEE], stats: { "my-glass": headWord(), "my-see": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { glass: 500, see: 500 }, watch: ["see"], onWord });
+      check("習熟度 M1（PR #189 のレビュー 2）同じ訳の語がある問い（例文の訳は付かない）: 控えの see を 1 語目（0.5 秒）でも 2 語目（未解決の glass の後）でも 即答 に戻る・次の条件は「時間をかけずに思い出せると 即答」のまま残らない",
+        a.see.pos === 1 && a.see.rank === 5 && a.see.peak === null && b.see.pos === 2 && b.see.rank === 5 && !String(b.see.next).includes("時間をかけずに思い出せると 即答") && ctxOf.a === "" && ctxOf.b === "" && !a.err && !b.err, JSON.stringify({ ctxOf, a: brief(a), b: brief(b) }));
     }
     // E6 指摘 2b 本人の基準がまだ無い箱（spelldash_mastery_meta なし）: river（控え 5）を 2 語目で 0.5 秒 → 即答
     {
@@ -11349,6 +11352,58 @@ console.log("mastery writers:");
       const r = await twoDays({ words: [["glass", "コップ"], ["river", "川"], ["bread", "パン"]], stats: { "my-glass": headWord(), "my-river": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits1: { glass: 500, river: 5000 }, watch: "river" });
       check("習熟度 M1（PR #189 のレビュー）正しさ: 2 語目で測れた 時間がかかる（5 秒）は 1 回目も 2 回目も戻らない（身についた・控え 5）",
         r.d1.pos === 2 && r.d2.pos === 2 && r.d1.rank === 4 && r.d2.rank === 4 && r.d2.peak === 5 && !r.err, JSON.stringify(r));
+    }
+    // E12 英字で答える文法や用語のカード（測らない札 fixed。PR #189 のレビュー対応の反証）: 文法パックの concept-g1-be-are（空欄・答え are。1 打ずつ打つ）は
+    // 3 字目の 1 打ミスで控えが付く。1 日目: 段 5（30 日ぶり・期日）を a・r・x → 身についた・控え 5（history の × は k m・p 2・a false）。
+    // 翌日（未解決なので列の 1 番）: 5 秒待って are → 即答（速さは unknown のまま札 speedless で戻る。本人の基準の箱は 20 件あるので札の材料は fixed だけ）。
+    // 規則の文の括弧はこの型（英字で答える文法や用語のカード）を戻る側で言う（直す前の木の括弧は「速さを測れなかった答えは数えない」の側だった）
+    {
+      const id = "concept-g1-be-are";
+      const okAt = at(30 * DAY);
+      const st0 = { ...B, playCount: 6, correctCount: 6, cleanCorrectStreak: 5, lastPlayed: okAt, lastRecallSuccessAt: okAt, nextReviewAt: at(DAY), masteryRank: 5, masteryAt: okAt, history: [{ d: dayOf(at(60 * DAY)), r: "o" }, { d: dayOf(okAt), r: "o" }] };
+      const seedG = { spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_packs: JSON.stringify(["grammar-jhs1"]), spelldash_category: "grammar-jhs1", spelldash_mastery_meta: metaN("en.kbd.study"), spelldash_word_stats: JSON.stringify({ [id]: st0 }) };
+      const openG = async (storage, time = null) => {
+        const page = await newPage({ storage });
+        await watchWriters(page);
+        if (time) await page.clock.setSystemTime(new Date(time));
+        await page.addInitScript(PROBE);
+        await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "networkidle" });
+        await page.waitForTimeout(700);
+        await page.press("#input", "Enter");
+        await waitUntil(async () => (await shown(page)) >= 1, 5000);
+        await page.waitForTimeout(150);
+        return page;
+      };
+      const p1 = await openG(seedG);
+      const first1 = await curId(p1);
+      for (const ch of ["a", "r", "x"]) await p1.press("#input", ch);
+      await waitUntil(async () => !!(await statOf(p1, id))?.lastRecallFailAt, 3000);
+      await p1.waitForTimeout(150);
+      const s1 = await statOf(p1, id);
+      const carried = await dumpAll(p1);
+      const now1 = await p1.evaluate(() => Date.now());
+      const err1 = p1.errors[0] ?? null;
+      await p1.close();
+      const p2 = await openG(carried, now1 + DAY + HOUR);
+      const first2 = await curId(p2);
+      const ctx2 = (await p2.textContent("#promptContext")).trim();
+      const m2 = await msgCount(p2);
+      await p2.waitForTimeout(Math.max(0, 5000 - (await p2.evaluate(() => performance.now() - window.__shownAt))));
+      for (const ch of "are") await p2.press("#input", ch);
+      await waitUntil(async () => (await msgCount(p2)) > m2, 3000);
+      await p2.waitForTimeout(200);
+      const s2 = await statOf(p2, id);
+      const w = (await writesOf(p2, "recordRecallSuccess")).filter((x) => x.id === id).at(-1) ?? null;
+      const rule = await p2.evaluate(async () => (await import("/js/mastery.js")).RANK_RULE);
+      const err2 = p2.errors[0] ?? null;
+      await p2.close();
+      const x1 = s1?.history?.at(-1) ?? null;
+      const row = { first1, first2, ctx2, d1: { rank: s1?.masteryRank, peak: s1?.masteryPeak ?? null, x: x1 }, d2: { rank: s2?.masteryRank, peak: s2?.masteryPeak ?? null, answer: w ? w.args[0] : null, measure: w ? w.args[1] : undefined }, err: err1 ?? err2 };
+      check("習熟度 M1（PR #189 のレビュー対応）英字で答える文法のカード: 3 字目の 1 打ミスで 身についた・控え 5 → 翌日 5 秒で打っても 即答 に戻る（速さは unknown・札 speedless）・規則の文の括弧がこの型を戻る側で言う",
+        first1 === id && first2 === id && ctx2 === "" && s1?.masteryRank === 4 && s1.masteryPeak === 5 && x1?.k === "m" && x1?.p === 2 && x1?.a === false &&
+          s2?.masteryRank === 5 && (s2.masteryPeak ?? null) === null && w?.args[0]?.speed === "unknown" && w?.args[0]?.speedless === true && w?.args[1] === null &&
+          rule.includes("英字で答える文法や用語のカードと 速さの基準がまだ無い間は、間違えずに思い出せると戻る") && !err1 && !err2,
+        JSON.stringify(row));
     }
   }
 

@@ -1484,7 +1484,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   }
   ok(
     "M1 規則の文: 打ち間違いで下がった段の戻り方の 1 文があり（括弧は PR #189 のレビュー 2 の形）、「時間がたつだけでは下がらない」で終わる・「遅い」は無い",
-    RANK_RULE.includes("3字目からの打ち間違いか 隣のキーの押し間違いで下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（例文の訳が付く問いと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと 速さを測れなかった答えは数えない）。") &&
+    RANK_RULE.includes("3字目からの打ち間違いか 隣のキーの押し間違いで下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（同じ訳の語がある問い・英字で答える文法や用語のカードと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと たまたま速さを測れなかった答えは数えない）。") &&
       RANK_RULE.endsWith("時間がたつだけでは下がらない。") &&
       !RANK_RULE.includes("遅い")
   );
@@ -1960,7 +1960,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
 }
 
 // ── 22. PR #189 のレビュー 1・2・4・5・6（docs/SPEC_MASTERY.md §3.4・§3.5・§13.9）──────────────
-// M1 は「速さを測れた すぐ・ふつう」か「この問いの形では速さを測れない答え（speedless: 例文の訳を添えた問い・本人の基準がまだ無い箱・測らない札のカード）」で戻す。
+// M1 は「速さを測れた すぐ・ふつう」か「この問いの形では速さを測れない答え（speedless: 同じ訳の語がある問い・本人の基準がまだ無い箱・測らない札のカード〔英字で答える概念カードを含む〕）」で戻す。
 // たまたま測れなかった答え（札の無い unknown: Battle・裏に回った・続きからの 1 語目・回の最初の語で 時間がかかって見えた など）では戻さず待つ。
 // 回の最初の語は片側だけ信じて測る（classifySpeed の lag: すぐ・ふつう は使い、時間がかかった とは言わない。箱と sp に入れない）。
 // Batch 72 の B1（列の先頭・Challenge の 1 語目・明日の復習の名指しの入れ替え）は外した。名前で読む（無い版でも読み込みは落ちず検査が落ちる）
@@ -2032,9 +2032,14 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   }
 
   // ---- J10: 規則の文 ----
+  // 括弧は speedless の 3 つの材料（js/game.js completeWord: 同じ訳の語がある問い〔isAmbiguousCached。例文の有無によらない〕・測らない札のカード〔fixed。
+  // 1 打ずつ打てて 1 打ミスの控えが付くのは英字で答える概念カード: 文法パック・分野パックなど 616 枚〕・本人の基準がまだ無い箱〔!boxReady〕）を全部言い、
+  // 戻さない答えは Battle と「たまたま」速さを測れなかった答え（裏に回った・続きからの 1 語目など）とだけ言う（PR #189 のレビュー対応の反証。
+  // 前の括弧は「例文の訳が付く問い」と言い〔マイ単語帳の see／look には例文が無い〕、英字で答える概念カードを「速さを測れなかった答えは数えない」の側に入れていた）
   ok(
-    "PR189-J10 RANK_RULE: 戻り方の括弧は「例文の訳が付く問いと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと 速さを測れなかった答えは数えない」・「遅い」は無い",
-    RANK_RULE.includes("（例文の訳が付く問いと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと 速さを測れなかった答えは数えない）") && !RANK_RULE.includes("遅い") && !RANK_RULE.includes("音で出題など")
+    "PR189-J10 RANK_RULE: 戻り方の括弧は「同じ訳の語がある問い・英字で答える文法や用語のカードと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと たまたま速さを測れなかった答えは数えない」・「例文の訳が付く」「遅い」は無い",
+    RANK_RULE.includes("（同じ訳の語がある問い・英字で答える文法や用語のカードと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと たまたま速さを測れなかった答えは数えない）") &&
+      !RANK_RULE.includes("例文の訳が付く") && !RANK_RULE.includes("遅い") && !RANK_RULE.includes("音で出題など")
   );
 
   // ---- 書き手（js/stats.js）: J6・J7・J8・J9・J11 ----
@@ -2090,7 +2095,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
       [[s0.masteryRank, s0.masteryPeak], [s1.masteryRank, s1.masteryPeak ?? null, s1.masteryPeakAt ?? null], [t1.masteryRank, t1.masteryPeak ?? null, !!t1.masteryPeakAt], [t2.masteryRank, t2.masteryPeak ?? null, t2.masteryPeakAt ?? null]],
       [[4, 5], [5, null, null], [4, 5, true], [5, null, null]]
     );
-    // J7: いつまでも戻れない語（指摘 2）: 例文の訳の問いだけで答える語（毎日 speedless）。main は 29 日のうち 29 日戻らない
+    // J7: いつまでも戻れない語（指摘 2）: 同じ訳の語がある問いだけで答える語（毎日 speedless）。main は 29 日のうち 29 日戻らない
     clock = at("2026-10-01", 9);
     put({ "my-look": five(at("2026-09-10")) });
     await slip("my-look");
@@ -2101,7 +2106,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
       if ((s.masteryRank ?? 0) >= 5) break;
       stuck++;
     }
-    eq("PR189-J7 いつまでも戻れない語が無い: 例文の訳の問い（speedless）だけで答える語も翌日に 即答 に戻る（戻らなかった日 0）", stuck, 0);
+    eq("PR189-J7 いつまでも戻れない語が無い: 同じ訳の語がある問い（speedless）だけで答える語も翌日に 即答 に戻る（戻らなかった日 0）", stuck, 0);
     // J8: Battle（引数なし）のノーミス正解は控えを残して待つ
     clock = at("2026-10-01", 9);
     put({ "my-bat": five(at("2026-09-10")) });
