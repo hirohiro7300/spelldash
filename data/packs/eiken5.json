@@ -78,7 +78,7 @@
     {"id": "english-yesterday", "en": "yesterday", "ja": "昨日", "pos": "副", "level": "hard", "tags": ["time"], "ex": "It was sunny yesterday.", "exJa": "昨日は晴れだった。"},
     {"id": "english-week", "en": "week", "ja": "週", "pos": "名", "level": "normal", "tags": ["time"], "ex": "See you next week!", "exJa": "また来週！"},
     {"id": "english-weekend", "en": "weekend", "ja": "週末", "pos": "名", "level": "hard", "tags": ["time"], "ex": "Have a nice weekend!", "exJa": "よい週末を！"},
-    {"id": "english-month", "en": "month", "ja": "月（暦）", "pos": "名", "level": "normal", "tags": ["time"], "ex": "My birthday is next month.", "exJa": "誕生日は来月です。"},
+    {"id": "english-month", "en": "month", "ja": "1か月（暦の月）", "pos": "名", "level": "normal", "tags": ["time"], "ex": "My birthday is next month.", "exJa": "誕生日は来月です。"},
     {"id": "english-year", "en": "year", "ja": "年", "pos": "名", "level": "normal", "tags": ["time"], "ex": "I go to Kyoto every year.", "exJa": "毎年、京都に行く。"},
     {"id": "english-birthday", "en": "birthday", "ja": "誕生日", "pos": "名", "level": "hard", "tags": ["time"], "ex": "When is your birthday?", "exJa": "誕生日はいつ？"},
     {"id": "english-park", "en": "park", "ja": "公園", "pos": "名", "level": "easy", "tags": ["place"], "ex": "Let's go to the park.", "exJa": "公園に行こう。"},

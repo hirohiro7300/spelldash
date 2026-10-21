@@ -11,7 +11,7 @@
 // 打つもの（own＝このカードで正解になるはずのもの。規則 Q05 が見る）:
 //   answer   出題語（綴り）・主な読み（ローマ字）・答え（全文入力）
 //   reading  ほかの読み（accept のかな・英字の読み。ローマ字のカード）
-//   accept   データの別解（綴り入力・全文入力のカード。綴り入力で打てない字〔日本語〕を含むものは untypeable）
+//   accept   データの別解（綴り入力・全文入力のカード。綴り入力で打てない字〔日本語〕を含むものは untypeable。Batch 73 から validate-words が NG にする）
 //   alt      別解の索引の語（同じ訳の別の語。綴り入力のカード）
 //   kanjiAccept  漢字の別解（ローマ字のカード）を、その読みで打ったもの。sub = bound（カードの acceptReadings で別表記に結んだ読み。
 //                docs/PACK_FORMAT.md「別表記の読み」。結んだ読み 1 つごとに 1 行。ほかの行と同じ読みでも数える＝打てるようになった別表記の数）と、
@@ -31,6 +31,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadContext } from "./ctx.mjs";
 import { kanjiOf, acceptReadingsOf } from "./common.mjs";
+import { SPELL_TYPEABLE } from "../lib/spell-typeable.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const OWN_KINDS = ["answer", "reading", "accept", "alt", "kanjiAccept"];
@@ -53,8 +54,8 @@ export function readingsByFace(cards, judge, entriesOf = null) {
   }
   return out;
 }
-// 綴り入力で打てる字（物理キーの 1 字。日本語は打てない: js/game.js handleCompositionEnd が英字モードに戻させる）
-const SPELL_TYPEABLE = /^[\x20-\x7e]+$/;
+// 綴り入力で打てる字（物理キーの 1 字。日本語は打てない: js/game.js handleCompositionEnd が英字モードに戻させる）は scripts/lib/spell-typeable.mjs の
+// 1 か所（validate-words が綴り入力のカードの accept に打てない字があれば NG にするのと同じ決め方。Batch 73）
 
 // 打つもの 1 件に対して判定器を走らせる（keys = 実際に打つキーの並び。null なら untypeable）
 function run(judge, word, candidates, keys) {
@@ -66,7 +67,7 @@ function run(judge, word, candidates, keys) {
 // 別解は Enter で確定しても × ではない（advertisement の問いの ad は止めずに Enter で別解。js/answers.js completedAnswer）
 export function isOwnFailure(row) {
   if (!OWN_KINDS.includes(row.input)) return false;
-  if (row.how === "untypeable") return false; // 打てない別解は Q05 ではなく表に出すだけ（綴り入力のカードの日本語の別解）
+  if (row.how === "untypeable") return false; // 打てない別解は Q05 ではなく表に出すだけ（綴り入力のカードの日本語の別解。Batch 73 から validate-words が NG にするので教材には無い）
   if (row.input === "answer") return row.mode === "free" ? row.how !== "enter" : row.how !== "auto";
   if (row.mode === "romaji") return row.how !== "auto";
   return X_HOWS.includes(row.how);

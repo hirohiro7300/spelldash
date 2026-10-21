@@ -473,10 +473,6 @@
       "kind": "concept",
       "answer": "ATF",
       "accept": [
-        "オートマオイル",
-        "CVTフルード",
-        "ATフルード",
-        "オートマチックトランスミッションフルード",
         "CVTF"
       ],
       "ja": "自動変速機の作動油。交換可否と方法の判断が難しい",
@@ -600,10 +596,6 @@
       "kind": "concept",
       "answer": "DTC",
       "accept": [
-        "故障コード",
-        "ダイアグコード",
-        "診断コード",
-        "エラーコード",
         "diagnostic trouble code"
       ],
       "ja": "コンピューターが記録した異常を示す英数字のコード",
@@ -644,8 +636,6 @@
       "kind": "concept",
       "answer": "ECU",
       "accept": [
-        "エンジンコンピューター",
-        "電子制御ユニット",
         "electronic control unit",
         "ECM"
       ],

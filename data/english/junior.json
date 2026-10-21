@@ -43,7 +43,7 @@
     {"id": "english-tomorrow", "en": "tomorrow", "ja": "明日", "level": "easy", "tags": ["time"], "ex": "Are you free tomorrow?", "exJa": "明日、ひま？"},
     {"id": "english-yesterday", "en": "yesterday", "ja": "昨日", "level": "easy", "tags": ["time"], "ex": "I saw Ken at the station yesterday.", "exJa": "昨日、駅でケンに会った。"},
     {"id": "english-week", "en": "week", "ja": "週", "level": "easy", "tags": ["time"], "ex": "See you next week.", "exJa": "また来週。"},
-    {"id": "english-month", "en": "month", "ja": "月（1か月）", "level": "easy", "tags": ["time"], "ex": "My birthday is next month.", "exJa": "誕生日は来月です。"},
+    {"id": "english-month", "en": "month", "ja": "1か月（暦の月）", "level": "easy", "tags": ["time"], "ex": "My birthday is next month.", "exJa": "誕生日は来月です。"},
     {"id": "english-year", "en": "year", "ja": "年", "level": "easy", "tags": ["time"], "ex": "Ken went to Tokyo last year.", "exJa": "ケンは去年、東京に行った。"},
     {"id": "english-time", "en": "time", "ja": "時間", "level": "easy", "tags": ["time"], "ex": "I don't have time today.", "exJa": "今日は時間がない。"},
     {"id": "english-spring", "en": "spring", "ja": "春", "level": "easy", "tags": ["time", "nature"], "ex": "Spring is my favorite season.", "exJa": "春は私の一番好きな季節です。"},

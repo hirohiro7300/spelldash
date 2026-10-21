@@ -79,7 +79,7 @@
     {"id": "english-today", "en": "today", "ja": "今日", "pos": "副", "level": "easy", "tags": ["time"], "ex": "It is sunny today.", "exJa": "今日は晴れだ。"},
     {"id": "english-tomorrow", "en": "tomorrow", "ja": "明日", "pos": "副", "level": "hard", "tags": ["time"], "ex": "See you tomorrow.", "exJa": "また明日。"},
     {"id": "english-week", "en": "week", "ja": "週", "pos": "名", "level": "easy", "tags": ["time"], "ex": "We have no school this week.", "exJa": "今週は学校が休みだ。"},
-    {"id": "english-month", "en": "month", "ja": "（暦の）月", "pos": "名", "level": "normal", "tags": ["time"], "ex": "My birthday is next month.", "exJa": "誕生日は来月だ。"},
+    {"id": "english-month", "en": "month", "ja": "1か月（暦の月）", "pos": "名", "level": "normal", "tags": ["time"], "ex": "My birthday is next month.", "exJa": "誕生日は来月だ。"},
     {"id": "english-year", "en": "year", "ja": "年", "pos": "名", "level": "easy", "tags": ["time"], "ex": "I am twelve years old.", "exJa": "十二歳です。", "exForm": "years"},
     {"id": "english-weekend", "en": "weekend", "ja": "週末", "pos": "名", "level": "hard", "tags": ["time"], "ex": "I go shopping on the weekend.", "exJa": "週末は買い物に行く。"},
     {"id": "english-often", "en": "often", "ja": "よく・しばしば", "pos": "副", "level": "hard", "tags": ["time"], "ex": "I often go to the library.", "exJa": "よく図書館に行く。"},

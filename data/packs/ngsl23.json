@@ -118,7 +118,7 @@
     {"id": "english-exhaust", "en": "exhaust", "ja": "疲れ果てさせる・使い果たす", "pos": "動", "level": "hard", "accept": ["deplete"], "tags": ["v"], "ex": "The long meeting exhausted everyone.", "exJa": "長い会議でみんな疲れ果てた。", "exForm": "exhausted"},
     {"id": "english-attraction", "en": "attraction", "ja": "魅力・観光名所", "pos": "名", "level": "hard", "accept": ["charm","appeal"], "tags": ["n"], "ex": "The old temple is the main attraction of the town.", "exJa": "その古い寺が町の一番の観光名所だ。"},
     {"id": "english-ocean", "en": "ocean", "ja": "海・大洋", "pos": "名", "level": "easy", "accept": ["sea"], "tags": ["n"], "ex": "Whales travel across the ocean every year.", "exJa": "クジラは毎年、海を渡って移動する。"},
-    {"id": "english-quietly", "en": "quietly", "ja": "静かに", "pos": "副", "level": "normal", "accept": ["silently"], "tags": ["adj"], "ex": "Please close the door quietly.", "exJa": "ドアは静かに閉めてください。"},
+    {"id": "english-quietly", "en": "quietly", "ja": "静かに", "pos": "副", "level": "normal", "accept": ["silently"], "tags": ["adj"], "ex": "Please speak quietly in the library.", "exJa": "図書館では静かに話してください。"},
     {"id": "english-castle", "en": "castle", "ja": "城", "pos": "名", "level": "easy", "tags": ["n"], "ex": "The castle is a ten-minute walk from here.", "exJa": "城はここから歩いて10分です。"},
     {"id": "english-veteran", "en": "veteran", "ja": "退役軍人・ベテラン", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Ms. Sato is a veteran teacher with thirty years of experience.", "exJa": "佐藤先生は30年の経験を持つベテラン教師だ。"},
     {"id": "english-reflection", "en": "reflection", "ja": "反射・（鏡などに）映った姿", "pos": "名", "level": "hard", "tags": ["n"], "ex": "She looked at her reflection in the window.", "exJa": "彼女は窓に映った自分の姿を見た。"},

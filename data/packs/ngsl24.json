@@ -128,7 +128,7 @@
     {"id": "english-rose", "en": "rose", "ja": "バラ", "pos": "名", "level": "easy", "tags": ["n"], "ex": "He gave her a red rose on her birthday.", "exJa": "彼は彼女の誕生日に赤いバラを贈った。"},
     {"id": "english-noun", "en": "noun", "ja": "名詞", "pos": "名", "level": "normal", "tags": ["n"], "ex": "A noun is the name of a person, place, or thing.", "exJa": "名詞とは人・場所・物の名前のことだ。"},
     {"id": "english-fortunate", "en": "fortunate", "ja": "幸運な", "pos": "形", "level": "hard", "accept": ["lucky"], "tags": ["adj"], "ex": "We were fortunate to find a hotel room so late.", "exJa": "こんなに遅くにホテルの部屋が見つかって幸運だった。"},
-    {"id": "english-alright", "en": "alright", "ja": "大丈夫な・まあまあ", "pos": "形", "level": "normal", "accept": ["okay", "ok", "fine"], "tags": ["adj"], "ex": "Are you alright? You look tired.", "exJa": "大丈夫？疲れているみたいだけど。"},
+    {"id": "english-alright", "en": "alright", "ja": "大丈夫な・まあまあの", "pos": "形", "level": "normal", "accept": ["okay", "ok", "fine"], "tags": ["adj"], "ex": "Are you alright? You look tired.", "exJa": "大丈夫？疲れているみたいだけど。"},
     {"id": "english-lazy", "en": "lazy", "ja": "怠け者の・だらけた", "pos": "形", "level": "easy", "accept": ["idle"], "tags": ["adj"], "ex": "I felt lazy on Sunday and stayed in bed all morning.", "exJa": "日曜日はだらけて、午前中ずっとベッドにいた。"},
     {"id": "english-hello", "en": "hello", "ja": "こんにちは", "pos": "間", "level": "easy", "accept": ["hi"], "tags": ["fn"], "ex": "Hello, Ken. How are you today?", "exJa": "こんにちは、ケン。調子はどう？"},
     {"id": "english-hunger", "en": "hunger", "ja": "空腹・飢え", "pos": "名", "level": "hard", "accept": ["starvation"], "tags": ["n"], "ex": "Many children in the world still suffer from hunger.", "exJa": "世界では今も多くの子どもが飢えに苦しんでいる。"},
