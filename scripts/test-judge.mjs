@@ -279,6 +279,24 @@ const type = (w, text, opts) => typeAnswer(w, cands(w), text, opts);
   ok("hintStep: 確かめた頭の数が 1 万通り以上", n > 10000);
 }
 
+// ---- 盤面の 1 字の受け方（PR #189 のレビュー 7。js/game.js acceptChar）: 受ける字は 1 つの引数だけで受け、ヒントの字は { fromHint: true } で言う。
+// 前は打った字 typedChar とヒントの字 hintCh の 2 つの引数を持ち、`typedChar !== undefined` を「本当の打鍵」の印にしていた（呼び手が取り違えると、
+// ヒントを打鍵に数えるか `typedSoFar += ch` に undefined を足す。ヒントの直しで消した不具合そのもの）。盤面は Node で動かないので、定義と呼び手の形を読む
+{
+  const src = fs.readFileSync(path.join(ROOT, "js/game.js"), "utf8");
+  const def = src.match(/function acceptChar\(([^)]*\{[^}]*\}[^)]*|[^)]*)\)\s*\{/);
+  const params = def ? def[1].replace(/\s+/g, " ").trim() : "";
+  const body = def ? src.slice(def.index, src.indexOf("\n}\n", def.index)) : "";
+  const calls = [...src.matchAll(/(?<!function )acceptChar\(([^;\n]*)\);?/g)].map((m) => m[1].trim());
+  eq("acceptChar（PR #189 のレビュー 7）: 引数は 字・1 打・{ fromHint }（字の引数は 1 つ）",
+    params, "ch, step = null, { fromHint = false } = {}");
+  ok("acceptChar（PR #189 のレビュー 7）: 打鍵に数えるかは fromHint で決める（`!== undefined` を打鍵の印にしない）・字は ch だけを足す",
+    /if \(!fromHint\) markKey\(\);/.test(body) && !/!== undefined/.test(body) && /typedSoFar \+= ch;/.test(body) && !/const ch\s*=/.test(body));
+  eq("acceptChar（PR #189 のレビュー 7）: 呼び手は 3 つ（ヒントは { fromHint: true }・ほかは打った字）。undefined を字の引数に渡す呼び手は無い",
+    calls.map((c) => c.replace(/\s+/g, " ")).sort(),
+    ["ch, step", "step.ch, null, { fromHint: true }", "typedChar, step"]);
+}
+
 if (failures.length) {
   console.error(`test-judge: ${failures.length} 件失敗（${passed} 件通過）\n  - ${failures.join("\n  - ")}`);
   process.exit(1);

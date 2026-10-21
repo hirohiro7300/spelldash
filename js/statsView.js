@@ -30,13 +30,15 @@ import { logTypingStage } from "./funnelLog.js";
 const overviewElement = document.getElementById("overview");
 const typingElement = document.getElementById("typingMetrics");
 let trendsReady = false; // 推移グラフは単語ストアの初期化後にだけ描く（growth log を空の値で上書きしないため）
+let weeklyReady = false; // 週間レポートを描いてよい（単語ストアの初期化と成長ログの今日の行の後。初期化に失敗したときは失敗の後: renderWeekly）
 let resizeTimer = null;
 
 // 週間レポート（Batch 72）: 単語ストアの初期化と成長ログの今日の行（renderGrowthTrend。前の形の行の語数も合わせる）の後にだけ描く。先に届いた知らせ
 // （Pro の受付の返事 spelldash:billing・同期）で描くと、読み直す前の数で描いてすぐ描き直し、はちゃんの顔と一言が替わっていた（2 つ目の顔も読む）。
-// 初めの描画は届いた知らせの後の状態を読むので、先に届いた分は描かなくてよい。同じ中身なら js/weeklyReport.js が描き直さない
+// 初めの描画は届いた知らせの後の状態を読むので、先に届いた分は描かなくてよい。同じ中身なら js/weeklyReport.js が描き直さない。
+// 単語の表が読めない（オフラインで目録やパックの写しが無い）ときは、失敗の後に今の記録で描く（週間レポートは語の表を読まずに描ける。PR #189 のレビュー 3）
 function renderWeekly() {
-  if (trendsReady) renderWeeklyReport("weeklyReport");
+  if (weeklyReady) renderWeeklyReport("weeklyReport");
 }
 
 initializeAuth();
@@ -103,6 +105,7 @@ initWordStore().then(() => {
   renderTyping();
   renderGrowthTrend(); // 今日の行のスナップショットを先に取る（カレンダー・今月のまとめが同じ行を読む）
   trendsReady = true;
+  weeklyReady = true;
   renderCalendar("calendarGrid");
   renderMonthlySummary();
   bindWordDetail({ onNoteSaved: () => { renderLearnedWords(); renderWeakWords(); } });
@@ -127,6 +130,10 @@ initWordStore().then(() => {
     renderOverview();
   });
   // 読み込みの間はタブより下とフッターを透明にしている（body[data-pending]。css/pages.css）。3 つのタブの中身を描き終えてから出す
+}, () => {
+  // 単語の表が読めなかった（初期化の失敗だけ。上の描画の失敗はここに来ない）: 週間レポートは今の記録で描く。後から届く知らせ（課金・修復・同期）でも描き直す
+  weeklyReady = true;
+  renderWeekly();
 }).finally(revealPendingPage); // 語が読めなかったときも出す（描いた then と同じタスクのマイクロタスク＝描画の前に走る）
 
 // Pro の状態が届いたら（ページ表示直後は未確定）、期間と修復の表示を合わせる。

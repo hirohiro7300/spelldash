@@ -23,7 +23,7 @@ import { historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWor
 import { getSetSize, markDailySetDone, getSetsToday, isTimedSet } from "./dailySet.js";
 import { isTutorialRunPending } from "./tutorial.js";
 import { rankOf, answerContext, isFirstAnswer, rankHtml, RANK_NAMES, daysSinceAnswer, needsMeasuredSpeed } from "./mastery.js";
-import { boxKey, classifySpeed, noteSpeedSample, notePendingFirstFast, flushMasteryMeta, keyInputOf } from "./masteryMeta.js";
+import { boxKey, boxReady, classifySpeed, noteSpeedSample, notePendingFirstFast, flushMasteryMeta, keyInputOf } from "./masteryMeta.js";
 import { promptChars } from "./retentionCalc.js"; // mastery.js・masteryMeta.js が読む module（答えの道の読み込みは増えない）
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
 import { computeLegacyLearnedCount } from "./categoryProgress.js";
@@ -61,7 +61,6 @@ import {
   isLearningToday,
   isReviewDue,
   getSessionReviewCount,
-  getDueReviewCount,
   getDueReviewWords,
   startRetryQueue,
   isPlacementRun,
@@ -70,8 +69,7 @@ import {
   getFocusGenre,
   getQueueComposition,
   insertBreather,
-  isBeforePlacement,
-  avoidUnmeasuredHead
+  isBeforePlacement
 } from "./studyQueue.js";
 import { getWeekGoal, getActiveDaysThisWeek } from "./growthLog.js";
 import { canInstall, promptInstall } from "./installPrompt.js";
@@ -183,7 +181,8 @@ let timedWarned = false; // 「残り10秒」を読み上げた
 //         slow: 回の最初の答えが段 3・4 のその日の最初のノーミス正解で「時間がかかる」だった（この回で × があれば偽。Batch 70） }
 let runRankBefore = new Map();
 // 1 問ごとの速さ（docs/SPEC_MASTERY.md §3.4）: tShow = 出題の文を書いた後の最初の rAF、tFirst = この語の最初のキー、input = その経路（kbd／touch）、
-// spill = 前の語の続きが残っていた間に来たキー（測らない）、invalid = 測らない語（音・例文の訳つき・全文入力・計算・英文・空欄・並べ替え・ページの最初の語・裏に回った）。
+// spill = 前の語の続きが残っていた間に来たキー（測らない）、invalid = 測らない語（音・例文の訳つき・全文入力・計算・英文・空欄・並べ替え・続きからの 1 語目・裏に回った）、
+// fixed = 出し方に速さを測れる道が無い語（全文入力・計算・英文・空欄・並べ替え。M1 の speedless の材料）、lag = 回の最初の語（片側だけ信じる。PR #189 のレビュー）。
 // 記録の質（Batch 68 L1-1・L1-3。書き手へ渡す measure の材料。判定・分類・段は変えない）: detail = 最初のキーの入力の細目（kbd／osk／ime）、
 // keys・last・pcMax = 受理した打鍵の数・最後の打鍵の時刻・2 打目からの打鍵の止まりの最長、multi = 1 回の input で今の語に 2 字以上入った・置き換えの入力
 // （予測変換・候補のタップ）、outside = 1 打目の前に焦点が盤面の外へ移った・窓の焦点が外れた、away = 1 打目の後に同じことが起きた（pc を測らない）
@@ -193,8 +192,9 @@ let keyPath = "kbd"; // いま処理している打鍵の経路（物理キー�
 // ime OS の画面キーボード（信頼された keydown で code が物理キーの名前でない・input の経路）
 let keyDetail = "kbd";
 const STALL_MS = 3000; // 1 打目の後にこれ以上止まった語は pc を測らない（T1 は使う）
-let pageWordsShown = 0; // このページで出した語の数（ページを開いて最初の語は測らない）
-const ambiguousCache = new Map(); // `${カテゴリ}|${id}` -> isAmbiguousPrompt（カテゴリの全語を走査するので、測るときだけ・語ごとに 1 回）
+let runWordsShown = 0; // この回（startGame）で出した語の数。回の最初の語は T1 が長く見えうる（手がキーに戻る・盤面への描き替え。startWordTiming の lag）
+let resumeHeadId = null; // 続きからの回の 1 語目の id（前の回で問いを見せた語。速い側へずれうるので測らない）
+const ambiguousCache = new Map(); // `${カテゴリ}|${id}` -> isAmbiguousPrompt（カテゴリの全語を走査するので、測るとき〔回の最初の語・測らない語は描画の後〕だけ・語ごとに 1 回）
 let wordSerial = 0; // setNewWordごとに増える。正解直後の二重進行防止に使う
 
 // ヒント（Study）: 迷ったら次の1文字だけ見せる。見た時点で「自力」ではなくなる（×扱い）
@@ -916,6 +916,8 @@ export function startGame(options = {}) {
   gainedXp = 0;
   runKind = "words";
   runRankBefore = new Map();
+  runWordsShown = 0;
+  resumeHeadId = resume ? String(resume.queue[0]) : null;
   timedDeadline = 0;
   timedHiddenAt = null;
   timedWarned = false;
@@ -955,7 +957,6 @@ export function startGame(options = {}) {
     if (retry) startRetryQueue(retry);
     else if (resume) startResumedQueue(resume.queue, resume.recalled);
     else startStudyQueue(activeCategory);
-    if (pageWordsShown === 0) avoidUnmeasuredHead(); // ページの最初の語は速さを測らないので、控えの使える語（M1）を 1 語目にしない（js/studyQueue.js。Batch 72）
     composition = getQueueComposition(); // 最初の1語を取り出す前に構成を控える
     // 回の種類と長さ（ここで 1 度だけ。腕試しかどうかは startStudyQueue の後で決まる）。60 秒にしないのは決めた語だけの回・続きから・腕試し・チュートリアルの回
     if (retry) {
@@ -1897,7 +1898,7 @@ export function useHint() {
 
   elements.input.value += step.ch;
   updateTypedPreview(elements.input.value);
-  acceptChar(undefined, null, step.ch);
+  acceptChar(step.ch, null, { fromHint: true });
 }
 
 // ===== 自分のメモ（覚え方）: 答え表示・ヒント後に表示＋編集 =====
@@ -2055,12 +2056,12 @@ function handleCorrectChar(typedChar, step) {
   return acceptChar(typedChar, step);
 }
 
-// 1文字受理の共通処理（DOMの入力欄には触れない）。step = その字の判定器の 1 打（js/judge.js spellStep。受けた字の結果）。
-// ヒント（useHint）は打った字を渡さず、足す字を hintCh で渡す（js/judge.js hintStep: 今打っている候補の次の字。spellStep が受ける字）。
+// 1文字受理の共通処理（DOMの入力欄には触れない）。ch = 受ける 1 字（打った字か、ヒントが足す字）。step = その字の判定器の 1 打（js/judge.js spellStep。
+// 打鍵の道は判定済みの結果を渡す。無ければここで判定する）。fromHint = ヒント（useHint）が足した字（js/judge.js hintStep: 今打っている候補の次の字。
+// spellStep が受ける字）で、この語の打鍵に数えない（PR #189 のレビュー 7: 字は 1 つの引数だけで受け、打鍵かどうかは名前で言う）。
 // 完成と続きは同じ 1 打の関数で決める。単語完成ならtrueを返す
-function acceptChar(typedChar, step = null, hintCh = undefined) {
-  if (typedChar !== undefined) markKey(); // ヒントで足した字はこの語の打鍵にしない
-  const ch = typedChar ?? hintCh;
+function acceptChar(ch, step = null, { fromHint = false } = {}) {
+  if (!fromHint) markKey();
   const r = step ?? spellStep(activeCandidates(), typedSoFar, ch);
   typedSoFar += ch;
   currentIndex = typedSoFar.length;
@@ -2154,7 +2155,7 @@ window.addEventListener("blur", (event) => {
 // 書き手へ渡す測りの札（docs/SPEC_MASTERY.md「記録の質」。何を残すかは書き手が決める）。speedSample が値を返した答えだけ（ほかは null）。
 // t1 = 出題から最初のキー（ms。30 秒を超えてもそのまま）、pcMax = 2 打目からの打鍵の止まりの最長（打鍵 1 つなら null）、qLen・aLen = 問いと答え
 // （受理した字・キー）の字数、input = 最初のキーの細目、multi・outside は上の注釈、stalled = 1 打目の後に 3 秒以上止まった・盤面の外へ移った、
-// firstSight = その語の初めての答え
+// firstSight = その語の初めての答え、lag = 回の最初の語（T1 が長く見えうる。本人の基準の箱と sp には入れない: js/masteryMeta.js noteSpeedSample・js/stats.js noteSpeedRecord）
 function measureOf(sample, ctx) {
   const t = wordTiming;
   const pcMax = t.keys >= 2 ? Math.round(t.pcMax) : null;
@@ -2167,7 +2168,8 @@ function measureOf(sample, ctx) {
     multi: !!t.multi,
     outside: !!t.outside,
     stalled: !!t.away || (pcMax ?? 0) >= STALL_MS,
-    firstSight: !!ctx?.firstAnswer
+    firstSight: !!ctx?.firstAnswer,
+    lag: !!t.lag
   };
 }
 
@@ -2273,7 +2275,13 @@ function completeWord() {
   const answerCtx = selfRecall && prevStat ? answerContext(prevStat, Date.now()) : null;
   const sample = answerCtx && isClean ? speedSample(tDone) : null;
   const box = sample ? speedBox() : null;
-  const { speed, basis } = sample && box ? classifySpeed(sample, box, { firstAnswer: answerCtx.firstAnswer }) : { speed: "unknown", basis: null };
+  const timing = wordTiming?.serial === wordSerial ? wordTiming : null;
+  // 回の最初の語（lag）は すぐ・ふつう だけ信じる（時間がかかって見えたら unknown。js/masteryMeta.js classifySpeed）
+  const { speed, basis } = sample && box ? classifySpeed(sample, box, { firstAnswer: answerCtx.firstAnswer, lag: !!timing?.lag }) : { speed: "unknown", basis: null };
+  // この問いの形では速さを測れない答え（speedless。読むのは js/mastery.js nextRank の M1 だけ）: 測らない札のカード（fixed）・本人の基準がまだ無い箱・
+  // 例文の訳を添えた問い。札を見るのは控えのある語だけなので、控えが今の段より上の語でだけ作る（いつ戻すか〔その日の最初・ノーミス〕は nextRank が決める）。
+  // 例文の訳の判定は最後（回の最初の語・測らない語は startWordTiming が最初の描画の後に済ませてある。測る語は speedSample が見た）
+  const speedless = speed === "unknown" && (answerCtx?.peak ?? 0) > (answerCtx?.rank ?? 0) && (!!timing?.fixed || !boxReady(speedBox()) || isAmbiguousCached(currentWord));
   const measure = sample ? measureOf(sample, answerCtx) : null; // 書き手へ渡す測りの札（分類は上のまま。記録の質）
   let ranks = null; // { before, after }（盤面の文の「習熟度 …」）
 
@@ -2284,10 +2292,10 @@ function completeWord() {
   let loopResult = null;
   if (selfRecall) {
     consecutiveFails = 0;
-    recordRecallSuccess(currentWord.id, { clean: isClean, speed }, measure);
+    recordRecallSuccess(currentWord.id, { clean: isClean, speed, ...(speedless ? { speedless: true } : {}) }, measure);
     if (answerCtx) {
       // 本人の基準に入れるのは、初めての答えかその日の最初の答えで、ノーミス・測れた答えだけ（分類は上で済ませた）。
-      // 測りの札で入れない答え（一度に 2 字以上入った・1 打目の前に盤面の外へ移った）と pc を入れない答え（1 打目の後に止まった・外へ移った）は
+      // 測りの札で入れない答え（一度に 2 字以上入った・1 打目の前に盤面の外へ移った・回の最初の語）と pc を入れない答え（1 打目の後に止まった・外へ移った）は
       // noteSpeedSample が札を見て決める（決まりは js/masteryMeta.js の 1 か所。PR #172 のレビュー 5）
       if (sample && box && (answerCtx.firstAnswer || answerCtx.firstOfDay)) noteSpeedSample(box, sample, measure);
       if (answerCtx.firstAnswer && speed === "fast") notePendingFirstFast(currentWord.id, basis);
@@ -2686,8 +2694,10 @@ function endStudySession({ timed = false } = {}) {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(23, 59, 59, 999);
-  const dueTomorrow = getDueReviewCount(activeCategory, tomorrow.getTime());
-  const dueWords = getDueReviewWords(activeCategory, tomorrow.getTime(), 3);
+  // 翌朝の列の頭と同じ並び（未解決 → 期日の復習。js/studyQueue.js）で名指しし、数も同じ並びの長さ（PR #189 のレビュー 4）
+  const tomorrowWords = getDueReviewWords(activeCategory, tomorrow.getTime(), Infinity);
+  const dueTomorrow = tomorrowWords.length;
+  const dueWords = tomorrowWords.slice(0, 3);
   const tomorrowLine =
     dueTomorrow > 0
       ? `<div class="result-panel__tomorrow">明日の復習: <b>${dueWords.map((w) => answerLabel(w)).join("・")}</b>${dueTomorrow > dueWords.length ? ` ほか${dueTomorrow - dueWords.length}語` : ""}</div>`
@@ -2938,13 +2948,15 @@ function setNewWord() {
     if (g) currentWord = { ...currentWord, en: g.answer, answer: g.answer, accept: g.accept, q: g.q, explain: g.explain, calcFormula: g.formula };
   }
 
-  // 音で出題: Studyの英単語（概念カード以外）を設定の割合で「聞いて打つ」にする
+  // 音で出題: Studyの英単語（概念カード以外）を設定の割合で「聞いて打つ」にする。1 打ミスで下がった段の控えが使える語（js/mastery.js needsMeasuredSpeed）には
+  // 選ばない（音の答えは思い出す速さを測れず、M1 は測れた答えで戻すため。PR #189 のレビュー）。乱数の呼び方と順は前のまま（ほかの語の割合を変えない）
   listenMode =
     mode === "study" &&
     !isConceptWord(currentWord) &&
     !!speechTextOf(currentWord) &&
     getListenRatio() > 0 &&
-    Math.random() * 100 < getListenRatio();
+    Math.random() * 100 < getListenRatio() &&
+    !needsMeasuredSpeed(getWordStats()[currentWord.id]);
 
   currentIndex = 0;
   typedSoFar = "";
@@ -3053,11 +3065,19 @@ function setNewWord() {
 }
 
 // 速さの計測を始める（docs/SPEC_MASTERY.md §3.4）。tShow は出題の文を書いた後の最初の rAF の中（recordPlay の同期の書き込みを数えない）。
-// 測らない語: ページを開いて最初の語・音で出題・全文入力（概念カード・IME）・計算・英文を打つ・空欄・並べ替え・裏に回っている。
-// ローマ字の答えは測る（ja の箱）。例文の訳を添える問い（同じ訳の語がある）は、測るときに見る（speedSample。カテゴリの全語を走査するため）
+// 測らない語: 続きからの回の 1 語目・音で出題・全文入力（概念カード・IME）・計算・英文を打つ・空欄・並べ替え・裏に回っている。
+// 回の最初の語（ページを開いて最初の語も）は片側だけ信じて測る（lag: 手がキーに戻る・盤面への描き替えの分 T1 が長く見えうるので、すぐ・ふつう は使い、
+// 時間がかかった とは言わない。本人の基準の箱と sp に入れない。PR #189 のレビュー 1・5）。ローマ字の答えは測る（ja の箱）。
+// 例文の訳を添える問い（同じ訳の語がある）は、測るときに見る（speedSample。カテゴリの全語を走査するため）
 function startWordTiming() {
-  pageWordsShown++;
+  runWordsShown++;
   const w = currentWord;
+  const head = runWordsShown === 1;
+  // 続きからの回の 1 語目: 前の回で問いを見せた語（思い出す前に考えられたので速い側へずれうる。片側だけ信じる前提が崩れるので測らない）
+  const seenHead = head && resumeHeadId !== null && w.id === resumeHeadId;
+  if (head) resumeHeadId = null;
+  // この語の出し方に速さを測れる道が無い（何度出しても測れない。M1 の speedless の材料）: 全文入力（概念カード・IME）・計算・英文を打つ・空欄・並べ替え
+  const fixed = (!romajiMode && (freeMode || isConceptWord(w))) || !!(w.calc || w.write || w.blank || w.bank);
   const timing = {
     serial: wordSerial,
     tShow: null,
@@ -3071,16 +3091,16 @@ function startWordTiming() {
     outside: false,
     away: false,
     spill: false,
-    invalid:
-      pageWordsShown === 1 ||
-      listenMode ||
-      (!romajiMode && (freeMode || isConceptWord(w))) ||
-      !!(w.calc || w.write || w.blank || w.bank) ||
-      isPageHidden()
+    fixed,
+    lag: head,
+    invalid: seenHead || listenMode || fixed || isPageHidden()
   };
   wordTiming = timing;
   requestAnimationFrame(() => {
     if (wordTiming === timing && timing.tFirst === null) timing.tShow = performance.now();
+    // 例文の訳の判定（カテゴリの全語の走査）を入力完了の道（completeWord の speedSample・speedless）に入れない: 回の最初の語と測らない語だけ、
+    // 最初の描画の後に済ませる（2 語目からの測る語は今のまま speedSample が見る。大きいカテゴリで keydown の中を重くしない）
+    if ((timing.lag || timing.invalid) && !timing.fixed) setTimeout(() => { if (wordTiming === timing) isAmbiguousCached(w); }, 0);
   });
 }
 
@@ -3189,18 +3209,6 @@ function chooseWord() {
   });
 
   let selected = weightedWords[Math.floor(Math.random() * weightedWords.length)];
-  // ページの最初の語（速さを測らない）に控えの使える語（M1）を引いたら、その語を候補から外して重みのまま引き直す（js/studyQueue.js avoidUnmeasuredHead と
-  // 同じ決まり。控えの語しか無ければ最初に引いた語のまま。Batch 72）。2 語目からは見ない。Daily は全員共通の並びなのでこの関数を通らない
-  if (pageWordsShown === 0 && needsMeasuredSpeed(stats[selected.id])) {
-    let rest = weightedWords;
-    let pick = selected;
-    while (pick && needsMeasuredSpeed(stats[pick.id])) {
-      const drop = pick.id;
-      rest = rest.filter((w) => w.id !== drop);
-      pick = rest.length ? rest[Math.floor(Math.random() * rest.length)] : null;
-    }
-    if (pick) selected = pick;
-  }
 
   if (currentWord && selected.id === currentWord.id && words.length > 1) {
     selected = words.find((word) => word.id !== currentWord.id);

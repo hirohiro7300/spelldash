@@ -228,12 +228,14 @@ const pcOf = (sample) => (Number.isFinite(sample?.pc) && sample.pc >= 0 ? sample
 
 // 今の答えの速さを、入れる前の箱と比べて分類する（仮の値。§3.8 で見直す）。
 //   box: boxKey の値。firstAnswer: 初めての答えか（answerContext の firstAnswer）。data: 箱の中身の差し替え（単体テスト用）
+//   lag: T1 が長く見えうる答え（回の最初の語。js/game.js startWordTiming）。長く見せる向きのずれしか無いので、すぐ・ふつう は信じ、
+//        時間がかかる に入る答えは unknown にする（片側だけ信じる。pc で 時間がかかる に入る答えも。PR #189 のレビュー）
 // 返り値 { speed: "fast" | "normal" | "slow" | "unknown", basis: "own" | "prior" | null }
 //   箱の T1 が 20 件以上: 本人の中央値と比べる（pc は pc の箱が 20 件以上のときだけ見る）
 //   20 件未満: 初めての答え・英語の綴りで、既定の線以下のときだけ fast（prior）。ほかは unknown（既定から遅い・ふつうは出さない）
 // 問いの字数帯・経路ごとの本人の基準（記録の質）は js/memoryCheck.js speedBasis で、書き手（js/stats.js の sp の q）だけが使う
 // （PR #172 のレビュー 5 で、使う所の無かった「基準も返す」枝を消した。即答の判定を字数帯で比べるかは間隔を直す段の前に決める: docs/SPEC_MASTERY.md §12.8）
-export function classifySpeed(sample, box, { firstAnswer = false, data } = {}) {
+export function classifySpeed(sample, box, { firstAnswer = false, data, lag = false } = {}) {
   const unknown = { speed: "unknown", basis: null };
   if (!BOX_SET.has(box) || !isMeasured(sample)) return unknown;
   const b = data ?? getSpeedBox(box);
@@ -246,7 +248,7 @@ export function classifySpeed(sample, box, { firstAnswer = false, data } = {}) {
     const usePc = pc !== null && pcs.length >= MIN_SAMPLES;
     const pcBase = usePc ? median(pcs) : NaN;
     if (t1 <= base * FAST_RATIO && (!usePc || pc <= pcBase * PC_FAST_MAX)) return { speed: "fast", basis: "own" };
-    if (t1 > base * SLOW_RATIO || (usePc && pc > pcBase * PC_SLOW)) return { speed: "slow", basis: "own" };
+    if (t1 > base * SLOW_RATIO || (usePc && pc > pcBase * PC_SLOW)) return lag ? unknown : { speed: "slow", basis: "own" };
     return { speed: "normal", basis: "own" };
   }
   const [lang, input] = box.split(".");
@@ -255,15 +257,20 @@ export function classifySpeed(sample, box, { firstAnswer = false, data } = {}) {
   return unknown;
 }
 
+// 本人の基準が使える箱か（T1 が 20 件以上。classifySpeed が本人の中央値と比べる箱）。M1 の「この問いの形では速さを測れない答え」の材料（js/game.js completeWord）
+export function boxReady(box) {
+  return BOX_SET.has(box) && (load().speed[box]?.t1.length ?? 0) >= MIN_SAMPLES;
+}
+
 // 測れた答えを箱に入れる（初めての答え、またはその日の最初の答えで、ノーミス正解のときだけ呼ぶ。分類はこの前に済ませる）。
 // T1 は 7,000ms で丸める。各 40 件まで（古いものから捨てる）。箱が初めて 20 件になったとき、その中央値を firstMedian に 1 回だけ書く。
 // measure（js/game.js の測りの札。札を見て入れるかを決めるのはここだけ: 盤面は札をそのまま渡す。PR #172 のレビュー 5）:
-// 1 回の input で 2 字以上入った答え（multi）・1 打目の前に盤面の外へ焦点が移った答え（outside）は入れない。
+// 1 回の input で 2 字以上入った答え（multi）・1 打目の前に盤面の外へ焦点が移った答え（outside）・回の最初の語（lag。T1 が長く見えうる）は入れない。
 // 1 打目の後に 3 秒以上止まった・盤面の外へ移った答え（stalled）は pc を入れない（T1 は入れる）。札が無い（null）呼び方は今のまま（箱の決まりは変えない）
 export function noteSpeedSample(box, sample, measure = null) {
   try {
     if (!BOX_SET.has(box) || !isMeasured(sample)) return false;
-    if (measure && (measure.multi || measure.outside)) return false;
+    if (measure && (measure.multi || measure.outside || measure.lag)) return false;
     if (measure?.stalled) sample = { t1: sample.t1, pc: null };
     const m = load();
     const b = m.speed[box] ?? { t1: [], pc: [] };
