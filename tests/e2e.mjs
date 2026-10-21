@@ -757,11 +757,16 @@ console.log("record quality:");
   // ---- 物理キーボード（1200） ----
   {
     const page = await openRq();
-    // ページの最初の語は測らない（measure は null）
+    // 回の最初の語（ページを開いて最初の語も）は片側だけ信じて測る（PR #189 のレビュー。measure.lag。本人の基準の箱と sp には入れない）
     const id0 = await cur(page);
+    const b00 = await boxOf(page, "en.kbd.study");
+    await sinceShow(page, 450);
     await pass(page);
     const w0 = await lastWrite(page, "recordRecallSuccess", id0);
-    check("記録の質: ページの最初の語の正解は測らない（measure は null。答えの { clean, speed } は今のまま）", !!w0 && w0.args[1] === null && w0.args[0]?.clean === true && w0.args[0]?.speed === "unknown", JSON.stringify(w0));
+    const b01 = await boxOf(page, "en.kbd.study");
+    const { mem: mem0 } = await memOf(page, id0);
+    check("記録の質: 回の最初の語は片側で測る（measure.lag が真・t1 は 400ms 以上・答えはノーミス）・箱（en.kbd.study）の件数と sp は増えない",
+      !!w0 && w0.args[1]?.lag === true && w0.args[1].t1 >= 400 && w0.args[0]?.clean === true && b01.t1 === b00.t1 && !mem0?.sp?.length, JSON.stringify({ w0, b00, b01, sp: mem0?.sp ?? null }));
 
     // 450ms 待って物理キーで打つ: t1・打鍵の止まり・字数・入力の細目・初めての答え。箱（en.kbd.study）に 1 件
     const a = await measured(page);
@@ -9211,6 +9216,24 @@ console.log("growth:");
   check("週間レポート（Batch 72）: 学習データを開くと 1 回だけ描く（全応答 0ms・80ms 遅延とも。はちゃんは うれしい の 1 つ・読むアバター 1 枚・CLS < 0.05・エラー0）", okW(runsW[0]) && okW(runsW[80]), JSON.stringify(runsW));
 }
 
+// 単語の表が読めないとき（PR #189 のレビュー 3。js/statsView.js）: オフラインで目録が届かない（data/manifest.json を落とす）と単語ストアの初期化が失敗する。
+// 週間レポートは語の表を読まずに描ける（端末の記録と成長ログ）ので、失敗の後に今の記録で描く。後から届く知らせ（Pro の受付の返事 spelldash:billing）でも空のままにしない
+// （直す前は、描くのを単語ストアの初期化の後〔trendsReady〕に限ったので、失敗すると #weeklyReport は空の箱のままだった。PR #189 の前は課金の知らせで描けた）
+{
+  const growthF = [6, 5, 4, 2, 1].map((n, i) => ({ date: ymdDaysAgo(n), learned: 10 + i * 6, mastered: i * 2, active: true }));
+  const page = await newPage({ storage: { spelldash_growth_log: JSON.stringify(growthF) } });
+  await page.route("**/data/manifest.json", (route) => route.abort());
+  await page.goto(BASE + "/stats.html", { waitUntil: "load" });
+  await page.waitForTimeout(1500);
+  const text0 = (await page.textContent("#weeklyReport")).replace(/\s+/g, " ").trim();
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent("spelldash:billing")));
+  await page.waitForTimeout(300);
+  const text1 = (await page.textContent("#weeklyReport")).replace(/\s+/g, " ").trim();
+  check("週間レポート（PR #189 のレビュー 3）: 目録が読めず単語ストアの初期化が失敗しても描く（失敗の後に 1 回・Pro の受付の返事の後も残る）",
+    text0.includes("週間レポート") && text0.includes("学習した日") && text1.includes("週間レポート"), JSON.stringify({ text0: text0.slice(0, 120), text1: text1.slice(0, 60) }));
+  await page.close();
+}
+
 // ===== 9.56 記憶の保持率（7 日・30 日、復習なし／あり、学習時間と効率。docs/SPEC_RETENTION.md） =====
 // 時計のモックは無いので seed は相対日付（固定日付は使わない）。記録は word_stats と別のキー spelldash_retention / spelldash_study_time
 console.log("retention:");
@@ -10855,8 +10878,8 @@ console.log("mastery writers:");
       const dCloud = await detailOf("my-cloud");
       check("習熟度 M1 語の詳細（つなぎ）: 1 打ミスで下がった語は 身についた・次の条件は「翌日以降に 間違えずに 時間をかけずに思い出せると 即答」（Batch 72）",
         dRiver.name === "身についた" && dRiver.next === `${dRiver.tomorrow}以降に 間違えずに 時間をかけずに思い出せると 即答`, JSON.stringify(dRiver));
-      check("習熟度 M1 語の詳細（つなぎ）: 答え表示で下がった語は今の次の条件（前の答え＋20 日以降に すぐ打てると 即答）・規則の文に戻り方の 1 文・エラー0",
-        dCloud.name === "身についた" && dCloud.next === `${dCloud.plus20}以降に すぐ打てると 即答` && dCloud.rule.includes("下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（Battle の × と、音で出題など速さを測れない答えは数えない）。") && pd.errors.length === 0,
+      check("習熟度 M1 語の詳細（つなぎ）: 答え表示で下がった語は今の次の条件（前の答え＋20 日以降に すぐ打てると 即答）・規則の文に戻り方の 1 文（括弧は PR #189 のレビュー 2 の形）・エラー0",
+        dCloud.name === "身についた" && dCloud.next === `${dCloud.plus20}以降に すぐ打てると 即答` && dCloud.rule.includes("下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（同じ訳の語がある問い・英字で答える文法や用語のカードと 速さの基準がまだ無い間は、間違えずに思い出せると戻る。Battle の答えと たまたま速さを測れなかった答えは数えない）。") && pd.errors.length === 0,
         JSON.stringify({ ...dCloud, err: pd.errors[0] }));
       await pd.close();
     }
@@ -11038,11 +11061,11 @@ console.log("mastery writers:");
     await page.close();
   }
 
-  // ---- Batch 72 項目 1（docs/SPEC_MASTERY.md §3.5・§4.3）: M1 は速さを測れた すぐ・ふつう の答えでしか戻さない。ページを開いて最初の語は速さを測らないので、
-  // 1 打ミスで下がった段の控えが使える語は Study の列の先頭・Challenge の 1 語目にしない（2 語目以降で測る）。前は、1 打ミスの後に回が終わった語が翌日の
-  // ページの最初の語になると、何秒かかっても戻っていた（BACKLOG Batch 70 の反証）。期待は木によらない: 翌日の river を 5 秒で打つと戻らない（身についた・
-  // 控え 5 が残る）、1.8 秒（本人の基準 2,000ms のふつう）なら同じ日に戻る（即答）。道 a: 1 打ミスの後に回が終わって未解決のまま翌日。道 b: 同じ日の出し直しで
-  // 打てた（控えは残る）→ 期日の日。Challenge: 控えの river（段 4）と即答の stone・遊びの箱 20 件・Math.random を 0 に決める（直す前は重みの列の先頭の river が 1 語目）
+  // ---- Batch 72 項目 1・PR #189 のレビュー（docs/SPEC_MASTERY.md §3.4・§3.5）: M1 は速さを測れた すぐ・ふつう の答えで戻す。回の最初の語（ページを開いて最初の語も）は
+  // 片側だけ信じて測る（すぐ・ふつう は使い、時間がかかった とは言わない）。前（Batch 70）は、1 打ミスの後に回が終わった語が翌日のページの最初の語になると、
+  // 何秒かかっても戻っていた（BACKLOG Batch 70 の反証）。期待は木によらない（列の位置は見ない）: 翌日の river を 5 秒で打つと戻らない（身についた・控え 5 が残る）、
+  // 1.8 秒（本人の基準 2,000ms のふつう）なら同じ日に戻る（即答）。道 a: 1 打ミスの後に回が終わって未解決のまま翌日（river は回の最初の語）。道 b: 同じ日の出し直しで
+  // 打てた（控えは残る）→ 期日の日。Challenge: 控えの river（段 4）と即答の stone・遊びの箱 20 件・Math.random を 0 に決める（river は 1 語目）
   {
     const V8 = ["river", "cloud", "stone", "bread", "glass", "chair", "horse", "tiger"];
     const five = (okMs, extra = {}) => okStat(5, okMs, HOUR, { cleanCorrectStreak: 6, history: [{ d: dayOf(at(okMs + 30 * DAY)), r: "o" }, { d: dayOf(at(okMs)), r: "o" }], ...extra });
@@ -11116,11 +11139,11 @@ console.log("mastery writers:");
       const d1 = await day1(path);
       const slow = await day2(d1, 5000);
       const normal = await day2(d1, 1800);
-      check(`習熟度 M1（Batch 72）道 ${path} の 2 日目: 控えの river はページの最初の語にならない（2 語目以降で速さを測る）・5 秒（時間がかかる）なら戻らない（身についた・控え 5 が残る）`,
-        slow.pos >= 2 && slow.rank === 4 && slow.peak === 5 && !slow.err, JSON.stringify(slow));
-      check(`習熟度 M1（Batch 72）道 ${path} の 2 日目: 1.8 秒（ふつう）なら同じ日に 即答 に戻る（控えを消す）`, normal.pos >= 2 && normal.rank === 5 && normal.peak === null && !normal.err, JSON.stringify(normal));
+      check(`習熟度 M1（Batch 72）道 ${path} の 2 日目: 控えの river を 5 秒（時間がかかる。回の最初の語なら 時間がかかった とは言わない）で打つと戻らない（身についた・控え 5 が残る）`,
+        slow.pos >= 1 && slow.rank === 4 && slow.peak === 5 && !slow.err, JSON.stringify(slow));
+      check(`習熟度 M1（Batch 72）道 ${path} の 2 日目: 1.8 秒（ふつう。回の最初の語でも使う）なら同じ日に 即答 に戻る（控えを消す）`, normal.pos >= 1 && normal.rank === 5 && normal.peak === null && !normal.err, JSON.stringify(normal));
     }
-    // Challenge（遊びの箱に本人の基準 20 件）: 1 語目の抽選で控えの語を引いたら、候補から外して引き直す（Math.random を 0 に決めても river は 2 語目）
+    // Challenge（遊びの箱に本人の基準 20 件）: 出題の抽選は変えない（Math.random を 0 に決めると river が 1 語目。回の最初の語は片側で測る）
     const failAt = at(26 * HOUR);
     const riverC = { ...B, playCount: 8, correctCount: 8, recallFail: 1, typingMiss: 1, missCount: 1, cleanCorrectStreak: 1, masteryRank: 4, masteryPeak: 5, masteryPeakAt: failAt, masteryAt: failAt, masteryDownAt: failAt, lastRecallFailAt: failAt, lastRecallSuccessAt: at(26 * HOUR - 60000), lastPlayed: failAt, nextReviewAt: at(2 * HOUR), history: [{ d: dayOf(at(31 * DAY)), r: "o" }, { d: dayOf(failAt), r: "x", k: "m", p: 2, a: false }, { d: dayOf(failAt), r: "o" }] };
     const chalStorage = seed({ "my-river": riverC, "my-stone": five(30 * DAY) }, { words: ["river", "stone"], spelldash_mode: "challenge", spelldash_mastery_meta: meta20("en.kbd.play", 2000) });
@@ -11146,8 +11169,241 @@ console.log("mastery writers:");
       const r = await statOf(page, "my-river");
       const row = { pos: order.indexOf("river") + 1, order, rank: r?.masteryRank, peak: r?.masteryPeak ?? null, err: page.errors[0] ?? null };
       await page.close();
-      check(`習熟度 M1（Batch 72）Challenge（乱数 0）: 控えの river は 1 語目にならず 2 語目・${wait / 1000} 秒で${wait === 5000 ? "戻らない（身についた・控え 5）" : "戻る（即答）"}`,
-        row.pos === 2 && (wait === 5000 ? row.rank === 4 && row.peak === 5 : row.rank === 5 && row.peak === null) && !row.err, JSON.stringify(row));
+      check(`習熟度 M1（Batch 72）Challenge（乱数 0）: 控えの river（回の最初の語）を ${wait / 1000} 秒で${wait === 5000 ? "打つと戻らない（時間がかかった とは言わず待つ。身についた・控え 5）" : "打つと戻る（ふつう を使う。即答）"}`,
+        row.pos === 1 && (wait === 5000 ? row.rank === 4 && row.peak === 5 : row.rank === 5 && row.peak === null) && !row.err, JSON.stringify(row));
+    }
+  }
+
+  // ---- PR #189 のレビュー 1・2（docs/SPEC_MASTERY.md §3.4・§3.5・§13.9）: 出題の順は変えない（Batch 72 の B1 を外した）。回の最初の語は片側だけ信じて測る（lag）。
+  // この問いの形では速さを測れない答え（同じ訳の語がある問い・英字で答える文法や用語のカード・本人の基準がまだ無い箱）は、1 打ミスで下がった段を速さを見ずにノーミスで戻す。
+  // たまたま測れなかった答え（続きからの 1 語目など）では戻さず待つ。控えの使える語には音で出題を選ばない。期待は木によらない（語の詳細の文のとおり）:
+  // 期日の段 4 の語を 25 日ぶりに すぐ 打てば 即答（指摘 1）。控えのある語は翌日以降に 間違えずに 時間をかけずに 打てば戻る（指摘 2）。本人の基準は 20 件・中央値 2,000ms
+  {
+    const metaN = (...boxes) => JSON.stringify({ v: 1, speed: Object.fromEntries(boxes.map((b) => [b, { t1: Array(20).fill(2000), pc: [] }])), check: { rank: {}, firstFast: { prior: [0, 0], own: [0, 0] }, pending: {}, firstMedian: {} } });
+    // 控えのある語（段 4・控え 5）。unresolved: 26 時間前の 1 打ミスのまま（未解決・列の 1 番）／ほか: その 1 分後に打てた（期日の語）
+    const peakWord = ({ unresolved = false } = {}) => {
+      const failAt = at(26 * HOUR);
+      return { ...B, playCount: 8, correctCount: 8, recallFail: 1, typingMiss: 1, missCount: 1, cleanCorrectStreak: unresolved ? 0 : 1, masteryRank: 4, masteryPeak: 5, masteryPeakAt: failAt, masteryAt: unresolved ? failAt : at(26 * HOUR - 60000), masteryDownAt: failAt, lastRecallFailAt: failAt, lastRecallSuccessAt: unresolved ? at(31 * DAY) : at(26 * HOUR - 60000), lastPlayed: failAt, nextReviewAt: at(2 * HOUR), history: [{ d: dayOf(at(31 * DAY)), r: "o" }, { d: dayOf(failAt), r: "x", k: "m", p: 2, a: false }, ...(unresolved ? [] : [{ d: dayOf(failAt), r: "o" }])] };
+    };
+    // 1 語目に置く語: 25 時間前に答え表示で × の未解決の語（控えは無い。列の 1 番）
+    const headWord = () => {
+      const failAt = at(25 * HOUR);
+      return { ...B, playCount: 5, correctCount: 4, recallFail: 1, cleanCorrectStreak: 0, masteryRank: 3, masteryAt: failAt, masteryDownAt: failAt, lastRecallFailAt: failAt, lastRecallSuccessAt: at(8 * DAY), lastPlayed: failAt, nextReviewAt: at(2 * HOUR), history: [{ d: dayOf(at(8 * DAY)), r: "o" }, { d: dayOf(failAt), r: "x", k: "e", p: 0, a: null }] };
+    };
+    // 初見ですぐ打てた知ってた語（身についた）の 14 日後の確認（期日は今）
+    const knownWord = () => {
+      const ok = at(14 * DAY + HOUR);
+      return { ...B, playCount: 1, correctCount: 1, cleanCorrectStreak: 1, knownOnSight: true, srsAdvancedOn: dayOf(ok), lastPlayed: ok, lastRecallSuccessAt: ok, nextReviewAt: at(HOUR), masteryRank: 4, masteryAt: ok, history: [{ d: dayOf(ok), r: "o" }] };
+    };
+    const ownWords = (list) => JSON.stringify(list.map(([en, ja]) => ({ en, ja })));
+    const rankNextOf = (page, id) => page.evaluate(async (i) => (await import("/js/mastery.js")).rankNext(JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")[i]), id);
+    const dumpAll = (page) => page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith("spelldash_")).map((k) => [k, localStorage.getItem(k)])));
+    // 1 回開いて、語ごとの待ち（ms。既定 500）で打つ。watch の語を打ち終えるか max 語で止める。onWord(page, en) が "stop" を返したらそこで止める
+    async function runR({ words, stats, extra = {}, mode = "study", waits = {}, watch = [], random0 = false, max = 6, url = "/index.html?set=3&hintms=600000", time = null, onWord = null, keep = false, writers = false }) {
+      const storage = { spelldash_category: "my", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_my_words: ownWords(words), spelldash_word_stats: JSON.stringify(stats), ...(mode === "challenge" ? { spelldash_mode: "challenge" } : {}), ...extra };
+      const page = await newPage({ storage });
+      if (writers) await watchWriters(page);
+      if (time) await page.clock.setSystemTime(new Date(time));
+      if (random0) await page.addInitScript(() => { Math.random = () => 0; });
+      await page.addInitScript(PROBE);
+      await page.goto(BASE + (mode === "challenge" ? "/index.html?t=30" : url), { waitUntil: "networkidle" });
+      await page.waitForTimeout(700);
+      if (mode === "challenge") await page.focus("#input");
+      await page.press("#input", "Enter");
+      await waitUntil(async () => (await shown(page)) >= 1, 5000);
+      await page.waitForTimeout(mode === "challenge" ? 450 : 150);
+      const order = [];
+      const listen = {};
+      const box = {};
+      const left = new Set(watch);
+      for (let i = 0; i < max && left.size && !(await panelOpen(page)); i++) {
+        const en = enOf(await curId(page));
+        order.push(en);
+        listen[en] = (await page.textContent("#japanese")).trim() === "聞いて打つ";
+        if (onWord && (await onWord(page, en, order.length)) === "stop") break;
+        const b0 = await boxLen(page, mode === "challenge" ? "en.kbd.play" : "en.kbd.study");
+        await typeCurrent(page, { wait: waits[en] ?? 500 });
+        await page.waitForTimeout(80);
+        box[en] = (await boxLen(page, mode === "challenge" ? "en.kbd.play" : "en.kbd.study")) - b0;
+        left.delete(en);
+      }
+      await page.waitForTimeout(200);
+      const res = { order, listen, box, err: page.errors[0] ?? null };
+      for (const en of watch) {
+        const st = await statOf(page, `my-${en}`);
+        res[en] = { pos: order.indexOf(en) + 1, rank: st?.masteryRank ?? null, peak: st?.masteryPeak ?? null, next: await rankNextOf(page, `my-${en}`).catch(() => null) };
+      }
+      res.storage = await dumpAll(page);
+      res.now = await page.evaluate(() => Date.now());
+      if (keep) res.page = page;
+      else await page.close();
+      return res;
+    }
+    const brief = (r) => JSON.stringify({ ...r, storage: undefined, now: undefined, page: undefined });
+    // 2 日の答え: 1 日目の後、head の語をもう一度未解決（列の 1 番）にして、watch の語の次の期日（無ければ翌日）の 1 時間後に開き直す
+    async function twoDays({ words, words2 = words, stats, extra = {}, waits1, waits2 = waits1, watch, mode = "study", random0 = false, max = 6, head = "glass", gapMs = null }) {
+      const d1 = await runR({ words, stats, extra, waits: waits1, watch: [watch], mode, random0, max });
+      const st = JSON.parse(d1.storage.spelldash_word_stats);
+      const due = Date.parse(st[`my-${watch}`]?.nextReviewAt ?? "") || d1.now + DAY;
+      const t2 = gapMs ? d1.now + gapMs : Math.max(d1.now + DAY + HOUR, due + HOUR);
+      if (head && st[`my-${head}`]) st[`my-${head}`] = { ...st[`my-${head}`], recallFail: (st[`my-${head}`].recallFail ?? 1) + 1, lastRecallFailAt: new Date(d1.now + 60000).toISOString(), masteryAt: new Date(d1.now + 60000).toISOString() };
+      const ex2 = { ...extra, ...(d1.storage.spelldash_mastery_meta ? { spelldash_mastery_meta: d1.storage.spelldash_mastery_meta } : {}) };
+      const d2 = await runR({ words: words2, stats: st, extra: ex2, waits: waits2, watch: [watch], mode, random0, max, time: t2 });
+      return { d1: d1[watch], d2: d2[watch], o1: d1.order, o2: d2.order, err: d1.err ?? d2.err };
+    }
+    const W4 = [["river", "川"], ["stone", "石"], ["bread", "パン"], ["glass", "コップ"]];
+    // E1 指摘 1 Study: 列 [river（未解決・段 4・控え 5）, stone（段 4・25 日ぶり・期日）]。stone（2 語目）を 0.4 秒 → 即答（前は B1 が stone を先頭に出して測れず 身についた のまま）
+    {
+      const r = await runR({ words: W4, stats: { "my-river": peakWord({ unresolved: true }), "my-stone": okStat(4, 25 * DAY, 2 * HOUR) }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { river: 600, stone: 400 }, watch: ["river", "stone"] });
+      check("習熟度 M1（PR #189 のレビュー 1）Study: 期日の段 4 の stone（25 日ぶり・2 語目）を 0.4 秒で打つと 即答（出題の順は変えない: river が 1 語目）", r.order[0] === "river" && r.stone.pos === 2 && r.stone.rank === 5 && !r.err, brief(r));
+    }
+    // E2 指摘 1 知ってた語の確認: [river, cloud（初見ですぐ・14 日後の確認）]。cloud を 0.4 秒 → 即答
+    {
+      const r = await runR({ words: [["river", "川"], ["cloud", "雲"], ["bread", "パン"]], stats: { "my-river": peakWord({ unresolved: true }), "my-cloud": knownWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { river: 600, cloud: 400 }, watch: ["river", "cloud"] });
+      check("習熟度 M1（PR #189 のレビュー 1）知ってた語の確認: 14 日後の確認の cloud（2 語目）を 0.4 秒で打つと 即答（river が 1 語目）", r.order[0] === "river" && r.cloud.pos === 2 && r.cloud.rank === 5 && !r.err, brief(r));
+    }
+    // E3 指摘 1 Challenge（Math.random を 0）: [river, stone]。river が 1 語目（抽選は変えない）・stone（2 語目）を 0.4 秒 → 即答
+    {
+      const r = await runR({ mode: "challenge", random0: true, words: [["river", "川"], ["stone", "石"]], stats: { "my-river": peakWord(), "my-stone": okStat(4, 25 * DAY, 2 * HOUR) }, extra: { spelldash_mastery_meta: metaN("en.kbd.play", "en.kbd.study") }, waits: { river: 600, stone: 400 }, watch: ["river", "stone"], max: 4 });
+      check("習熟度 M1（PR #189 のレビュー 1）Challenge（乱数 0）: river が 1 語目（抽選は変えない）・期日の段 4 の stone（2 語目）を 0.4 秒で打つと 即答", r.river.pos === 1 && r.stone.pos === 2 && r.stone.rank === 5 && !r.err, brief(r));
+    }
+    // E4 回の最初の語を片側で測る: 同じ列の river（1 語目）を 1.8 秒 → 即答（同じ日に戻る）／5 秒 → 身についた・控え 5（時間がかかった とは言わず待つ）。どちらも箱の件数は変わらない
+    for (const wait of [1800, 5000]) {
+      const r = await runR({ words: W4, stats: { "my-river": peakWord({ unresolved: true }), "my-stone": okStat(4, 25 * DAY, 2 * HOUR) }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { river: wait }, watch: ["river"] });
+      const want = wait === 1800 ? r.river.rank === 5 && r.river.peak === null : r.river.rank === 4 && r.river.peak === 5;
+      check(`習熟度 M1（PR #189 のレビュー）回の最初の語は片側で測る: 1 語目の river を ${wait / 1000} 秒で打つと ${wait === 1800 ? "即答（ふつう を使う）" : "身についた・控え 5（時間がかかった とは言わず待つ）"}・本人の基準の箱は増えない`, r.river.pos === 1 && want && r.box.river === 0 && !r.err, brief(r));
+    }
+    // E5 指摘 2a 同じ訳の語がある問い: see・look が同じ訳「見る」（訳だけで決まらない問いなので速さを測らない。マイ単語帳の語には例文が無いので、
+    // 問いに例文の訳は付かない〔#promptContext は空〕）。see（段 4・控え 5・期日）を翌日の 1 語目で 0.5 秒 → 即答。
+    // 未解決の glass が 1 語目の回（see は 2 語目）でも 即答。語の詳細の次の条件が「…時間をかけずに思い出せると 即答」のまま残らない
+    {
+      const SEE = [["see", "見る"], ["look", "見る"], ["bread", "パン"]];
+      const ctxOf = {};
+      const onWord = async (page, en) => { if (en === "see") ctxOf[ctxOf.a === undefined ? "a" : "b"] = (await page.textContent("#promptContext")).trim(); return null; };
+      const a = await runR({ words: SEE, stats: { "my-see": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { see: 500 }, watch: ["see"], onWord });
+      const b = await runR({ words: [["glass", "コップ"], ...SEE], stats: { "my-glass": headWord(), "my-see": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { glass: 500, see: 500 }, watch: ["see"], onWord });
+      check("習熟度 M1（PR #189 のレビュー 2）同じ訳の語がある問い（例文の訳は付かない）: 控えの see を 1 語目（0.5 秒）でも 2 語目（未解決の glass の後）でも 即答 に戻る・次の条件は「時間をかけずに思い出せると 即答」のまま残らない",
+        a.see.pos === 1 && a.see.rank === 5 && a.see.peak === null && b.see.pos === 2 && b.see.rank === 5 && !String(b.see.next).includes("時間をかけずに思い出せると 即答") && ctxOf.a === "" && ctxOf.b === "" && !a.err && !b.err, JSON.stringify({ ctxOf, a: brief(a), b: brief(b) }));
+    }
+    // E6 指摘 2b 本人の基準がまだ無い箱（spelldash_mastery_meta なし）: river（控え 5）を 2 語目で 0.5 秒 → 即答
+    {
+      const r = await runR({ words: [["glass", "コップ"], ["river", "川"], ["bread", "パン"]], stats: { "my-glass": headWord(), "my-river": peakWord() }, waits: { glass: 500, river: 500 }, watch: ["river"] });
+      check("習熟度 M1（PR #189 のレビュー 2）基準がまだ無い箱: 控えの river（2 語目）を 0.5 秒で打つと 即答", r.river.pos === 2 && r.river.rank === 5 && r.river.peak === null && !r.err, brief(r));
+    }
+    // E7 指摘 2c 遊びの箱が 20 件未満（Study の箱だけ 20 件）: Challenge（乱数 0）で stone が 1 語目・river（控え 5）が 2 語目。0.5 秒 → 即答
+    {
+      const r = await runR({ mode: "challenge", random0: true, words: [["stone", "石"], ["river", "川"]], stats: { "my-stone": okStat(5, 30 * DAY, -10 * DAY, { cleanCorrectStreak: 6 }), "my-river": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits: { stone: 500, river: 500 }, watch: ["river"], max: 4 });
+      check("習熟度 M1（PR #189 のレビュー 2）遊びの箱が 20 件未満: Challenge で控えの river（2 語目）を 0.5 秒で打つと 即答", r.river.pos === 2 && r.river.rank === 5 && r.river.peak === null && !r.err, brief(r));
+    }
+    // E8 続きからの 1 語目は測らない（前に問いを見せた語なので速い側へずれうる）: 同じページで Study を始め、glass に答えた後 river（控え 5）が出たところで「机に戻る」→
+    // 続きから → river を 0.5 秒 → 身についた・控え 5 のまま（measure は null）。次の期日に 2 語目で 0.5 秒 → 即答
+    {
+      const words = [["glass", "コップ"], ["river", "川"], ["bread", "パン"], ["stone", "石"]];
+      const stats = { "my-glass": headWord(), "my-river": peakWord() };
+      const d1 = await runR({ words, stats, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, url: "/index.html?set=5&hintms=600000", watch: ["river"], waits: { glass: 500 }, keep: true, writers: true, onWord: async (page, en) => (en === "river" ? "stop" : null) });
+      const page = d1.page;
+      let resumed = null;
+      let first = null;
+      if (d1.order.at(-1) === "river") {
+        await page.click("#backToPath");
+        await page.waitForTimeout(300);
+        resumed = (await page.textContent("#pathStart")).trim();
+        await page.click("#pathStart");
+        await waitUntil(async () => (await curId(page)) === "my-river" && (await shown(page)) >= 3, 4000);
+        await page.waitForTimeout(150);
+        first = enOf(await curId(page));
+        await typeCurrent(page, { wait: 500 });
+        await page.waitForTimeout(150);
+      }
+      const st1 = await statOf(page, "my-river");
+      const w = (await writesOf(page, "recordRecallSuccess")).filter((x) => x.id === "my-river").at(-1) ?? null;
+      const carried = await dumpAll(page);
+      const now1 = await page.evaluate(() => Date.now());
+      const err1 = page.errors[0] ?? null;
+      await page.close();
+      const okDay1 = String(resumed).includes("続きから") && first === "river" && st1?.masteryRank === 4 && st1.masteryPeak === 5 && !!w && w.args[1] === null && !err1;
+      check("習熟度 M1（PR #189 のレビュー）続きからの 1 語目: 同じページで「机に戻る」→ 続きから の river を 0.5 秒で打っても戻らない（身についた・控え 5・measure は null）",
+        okDay1, JSON.stringify({ order: d1.order, resumed, first, rank: st1?.masteryRank, peak: st1?.masteryPeak, measure: w ? w.args[1] : undefined, err: err1 }));
+      const st = JSON.parse(carried.spelldash_word_stats);
+      st["my-glass"] = { ...st["my-glass"], recallFail: (st["my-glass"].recallFail ?? 1) + 1, lastRecallFailAt: new Date(now1 + 60000).toISOString(), masteryAt: new Date(now1 + 60000).toISOString() };
+      const due = Date.parse(st["my-river"]?.nextReviewAt ?? "") || now1 + DAY;
+      const d2 = await runR({ words, stats: st, extra: { spelldash_mastery_meta: carried.spelldash_mastery_meta }, time: Math.max(now1 + DAY + HOUR, due + HOUR), waits: { glass: 500, river: 500 }, watch: ["river"] });
+      check("習熟度 M1（PR #189 のレビュー）続きからの後: 次の期日に 2 語目で 0.5 秒で打つと 即答", d2.river.pos === 2 && d2.river.rank === 5 && d2.river.peak === null && !d2.err, brief(d2));
+    }
+    // E9 音で出題（音 50%・Math.random を 0 で毎回当たる）: 控えの river（2 語目）は「聞いて打つ」にならず、0.5 秒で 即答。控えの無い語は「聞いて打つ」のまま
+    {
+      const r = await runR({ random0: true, words: [["glass", "コップ"], ["river", "川"], ["bread", "パン"]], stats: { "my-glass": headWord(), "my-river": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study"), spelldash_audio: JSON.stringify({ mode: "off", listenRatio: 50 }) }, waits: { glass: 500, river: 500 }, watch: ["river"] });
+      check("習熟度 M1（PR #189 のレビュー）音で出題 50%（乱数 0）: 控えの river（2 語目）は 聞いて打つ にならず 0.5 秒で 即答・控えの無い glass は 聞いて打つ",
+        r.order[0] === "glass" && r.listen.glass === true && r.river.pos === 2 && r.listen.river === false && r.river.rank === 5 && r.river.peak === null && !r.err, brief(r));
+    }
+    // E11 指摘 4 (b) 明日の復習の名指し: 期日が明日より先の未解決の語 cloud（2 台目の記録を合わせた語など。翌朝の列の 1 番）も名指しする。
+    // 1 語のセットで未解決の glass（期日）に答えて終える → 完了パネルは「明日の復習: cloud」（直す前は期日の語だけを数えて「明日の復習はまだ無い」）
+    {
+      const r = await runR({ words: [["glass", "コップ"], ["cloud", "雲"], ["bread", "パン"]], stats: { "my-glass": headWord(), "my-cloud": { ...headWord(), nextReviewAt: at(-9 * DAY) } }, url: "/index.html?set=1&hintms=600000", waits: { glass: 300 }, watch: ["glass"], keep: true });
+      const page = r.page;
+      await waitUntil(() => panelOpen(page), 4000);
+      const line = await page.$eval("#resultPanel .result-panel__tomorrow", (el) => el.textContent.replace(/\s+/g, " ").trim()).catch(() => null);
+      const err = page.errors[0] ?? null;
+      await page.close();
+      check("明日の復習（PR #189 のレビュー 4）: 期日が先の未解決の語（翌朝の列の 1 語目）も名指しする（「明日の復習: cloud」）", r.order[0] === "glass" && line === "明日の復習: cloud" && !err, JSON.stringify({ order: r.order, line, err }));
+    }
+    // E10 正しさ: 2 語目で測れた 5 秒（時間がかかる）を 2 日続けて → 2 回とも 身についた・控え 5（測れた 時間がかかる では何回目でも戻らない）
+    {
+      const r = await twoDays({ words: [["glass", "コップ"], ["river", "川"], ["bread", "パン"]], stats: { "my-glass": headWord(), "my-river": peakWord() }, extra: { spelldash_mastery_meta: metaN("en.kbd.study") }, waits1: { glass: 500, river: 5000 }, watch: "river" });
+      check("習熟度 M1（PR #189 のレビュー）正しさ: 2 語目で測れた 時間がかかる（5 秒）は 1 回目も 2 回目も戻らない（身についた・控え 5）",
+        r.d1.pos === 2 && r.d2.pos === 2 && r.d1.rank === 4 && r.d2.rank === 4 && r.d2.peak === 5 && !r.err, JSON.stringify(r));
+    }
+    // E12 英字で答える文法や用語のカード（測らない札 fixed。PR #189 のレビュー対応の反証）: 文法パックの concept-g1-be-are（空欄・答え are。1 打ずつ打つ）は
+    // 3 字目の 1 打ミスで控えが付く。1 日目: 段 5（30 日ぶり・期日）を a・r・x → 身についた・控え 5（history の × は k m・p 2・a false）。
+    // 翌日（未解決なので列の 1 番）: 5 秒待って are → 即答（速さは unknown のまま札 speedless で戻る。本人の基準の箱は 20 件あるので札の材料は fixed だけ）。
+    // 規則の文の括弧はこの型（英字で答える文法や用語のカード）を戻る側で言う（直す前の木の括弧は「速さを測れなかった答えは数えない」の側だった）
+    {
+      const id = "concept-g1-be-are";
+      const okAt = at(30 * DAY);
+      const st0 = { ...B, playCount: 6, correctCount: 6, cleanCorrectStreak: 5, lastPlayed: okAt, lastRecallSuccessAt: okAt, nextReviewAt: at(DAY), masteryRank: 5, masteryAt: okAt, history: [{ d: dayOf(at(60 * DAY)), r: "o" }, { d: dayOf(okAt), r: "o" }] };
+      const seedG = { spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_packs: JSON.stringify(["grammar-jhs1"]), spelldash_category: "grammar-jhs1", spelldash_mastery_meta: metaN("en.kbd.study"), spelldash_word_stats: JSON.stringify({ [id]: st0 }) };
+      const openG = async (storage, time = null) => {
+        const page = await newPage({ storage });
+        await watchWriters(page);
+        if (time) await page.clock.setSystemTime(new Date(time));
+        await page.addInitScript(PROBE);
+        await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "networkidle" });
+        await page.waitForTimeout(700);
+        await page.press("#input", "Enter");
+        await waitUntil(async () => (await shown(page)) >= 1, 5000);
+        await page.waitForTimeout(150);
+        return page;
+      };
+      const p1 = await openG(seedG);
+      const first1 = await curId(p1);
+      for (const ch of ["a", "r", "x"]) await p1.press("#input", ch);
+      await waitUntil(async () => !!(await statOf(p1, id))?.lastRecallFailAt, 3000);
+      await p1.waitForTimeout(150);
+      const s1 = await statOf(p1, id);
+      const carried = await dumpAll(p1);
+      const now1 = await p1.evaluate(() => Date.now());
+      const err1 = p1.errors[0] ?? null;
+      await p1.close();
+      const p2 = await openG(carried, now1 + DAY + HOUR);
+      const first2 = await curId(p2);
+      const ctx2 = (await p2.textContent("#promptContext")).trim();
+      const m2 = await msgCount(p2);
+      await p2.waitForTimeout(Math.max(0, 5000 - (await p2.evaluate(() => performance.now() - window.__shownAt))));
+      for (const ch of "are") await p2.press("#input", ch);
+      await waitUntil(async () => (await msgCount(p2)) > m2, 3000);
+      await p2.waitForTimeout(200);
+      const s2 = await statOf(p2, id);
+      const w = (await writesOf(p2, "recordRecallSuccess")).filter((x) => x.id === id).at(-1) ?? null;
+      const rule = await p2.evaluate(async () => (await import("/js/mastery.js")).RANK_RULE);
+      const err2 = p2.errors[0] ?? null;
+      await p2.close();
+      const x1 = s1?.history?.at(-1) ?? null;
+      const row = { first1, first2, ctx2, d1: { rank: s1?.masteryRank, peak: s1?.masteryPeak ?? null, x: x1 }, d2: { rank: s2?.masteryRank, peak: s2?.masteryPeak ?? null, answer: w ? w.args[0] : null, measure: w ? w.args[1] : undefined }, err: err1 ?? err2 };
+      check("習熟度 M1（PR #189 のレビュー対応）英字で答える文法のカード: 3 字目の 1 打ミスで 身についた・控え 5 → 翌日 5 秒で打っても 即答 に戻る（速さは unknown・札 speedless）・規則の文の括弧がこの型を戻る側で言う",
+        first1 === id && first2 === id && ctx2 === "" && s1?.masteryRank === 4 && s1.masteryPeak === 5 && x1?.k === "m" && x1?.p === 2 && x1?.a === false &&
+          s2?.masteryRank === 5 && (s2.masteryPeak ?? null) === null && w?.args[0]?.speed === "unknown" && w?.args[0]?.speedless === true && w?.args[1] === null &&
+          rule.includes("英字で答える文法や用語のカードと 速さの基準がまだ無い間は、間違えずに思い出せると戻る") && !err1 && !err2,
+        JSON.stringify(row));
     }
   }
 

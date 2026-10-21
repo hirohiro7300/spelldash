@@ -338,9 +338,10 @@ function noteRankOutcome(word, before, ok) {
 
 // 答えを見ずに自力で正解した（打ち間違いはあってもよい）。
 // 答え表示後の入力練習ではこの関数を呼ばないこと。
-// answer = { clean, speed }（js/game.js が渡す。clean = ノーミス、speed = "fast" | "normal" | "slow" | "unknown"）。
+// answer = { clean, speed, speedless? }（js/game.js が渡す。clean = ノーミス、speed = "fast" | "normal" | "slow" | "unknown"、
+// speedless = この問いの形では速さを測れない答え〔speed が unknown のときだけ。段の M1 だけが読む: js/mastery.js nextRank。保存しない〕）。
 // 省略（Battle）: clean は recordCorrect が控えた wasClean、speed は "unknown"（どちらも無ければ打ち間違いありとみなす＝控えめ）
-// measure（省略可。記録の質）: js/game.js の測りの札 { t1, pcMax, qLen, aLen, input, multi, outside, stalled, firstSight }。測れなかった語は null。
+// measure（省略可。記録の質）: js/game.js の測りの札 { t1, pcMax, qLen, aLen, input, multi, outside, stalled, firstSight, lag }。測れなかった語は null。
 // 何を残すかはここで決める（noteSpeedRecord）。期日・段・streak・速さの分類は measure を見ない
 export function recordRecallSuccess(word, answer, measure = null) {
   const stats = editWordStats();
@@ -369,9 +370,10 @@ export function recordRecallSuccess(word, answer, measure = null) {
   if (before?.ctx) {
     const clean = typeof answer?.clean === "boolean" ? answer.clean : p ? p.clean : false;
     const speed = SPEEDS.has(answer?.speed) ? answer.speed : "unknown";
+    const speedless = speed === "unknown" && answer?.speedless === true; // 間隔（extendInterval）・記録の質（noteMemory）には渡さない
     // 知ってた語の最初の確認は、答える前に確認待ちだったときだけ（recordCorrect の控え。isKnownWaiting は streak 1 を含む。控えが無ければ立てない）
     const ctx = { ...before.ctx, knownCheck: !!(p && p.knownBefore) };
-    writeRank(stats[word], before, { ok: true, clean, speed }, ctx, nowIso);
+    writeRank(stats[word], before, { ok: true, clean, speed, ...(speedless ? { speedless: true } : {}) }, ctx, nowIso);
     extendInterval(stats[word], ctx, clean, speed, p?.streakDays ?? 0, nowMs, rankCap); // S2・S3（段を書いた後。下限は答えた後の段。見ていない × があれば 1 段下まで）
     noteMemory(word, stats[word], statBefore, before.ctx, { ok: true, clean, speed, measure }, nowMs); // 記録の質（期日・段を決めた後。それらは変えない）
   }
@@ -507,7 +509,8 @@ function compactRecord(rec) {
 
 // 速さの記録（ノーミス正解で、測りの札がある答え）。rec = この語の記録の質（spelldash_memory_words の 1 件）、stat = 書き手の写し（答えた後の段を読む）。
 // sp に入れるのは材料 (a) だけ（(b) の印も付ける）、spP は (a)・(b) のどちらでも。
-// 入れない: 一度に 2 字以上入った答え・置き換えの入力（multi）・1 打目の前に盤面の外へ焦点が移った答え（outside）・T1 が 200ms 未満・30 秒超。
+// 入れない: 一度に 2 字以上入った答え・置き換えの入力（multi）・1 打目の前に盤面の外へ焦点が移った答え（outside）・回の最初の語（lag。T1 が長く見えうる。
+// PR #189 のレビュー）・T1 が 200ms 未満・30 秒超。
 // q = T1 ÷ 本人の基準 ×100（基準は同じ経路の、同じ問いの字数帯の中央値。帯が 20 件未満なら経路全体。js/memoryCheck.js speedBasis）。
 // 見本（字数帯・経路・初めての答え）は初めての答えかその日の最初の答えだけ（速さの箱と同じ）。止まった答え（stalled）は「T1 ＋ 最も長い止まり」を入れない
 function noteSpeedRecord(rec, stat, ctx, ans, { bMat, today }, nowMs) {
@@ -516,7 +519,7 @@ function noteSpeedRecord(rec, stat, ctx, ans, { bMat, today }, nowMs) {
   noteInputCount(m.input, !!m.multi, nowMs);
   if (!ans.clean) return;
   const t1 = Number(m.t1);
-  if (!Number.isFinite(t1) || t1 < CHECK_T1_MIN || t1 > CHECK_T1_MAX || m.multi || m.outside) return;
+  if (!Number.isFinite(t1) || t1 < CHECK_T1_MIN || t1 > CHECK_T1_MAX || m.multi || m.outside || m.lag) return;
   const aMat = !!ctx.firstAnswer || (!!ctx.firstOfDay && ctx.gap >= SP_GAP_DAYS);
   const sampled = !!ctx.firstAnswer || !!ctx.firstOfDay;
   if (!aMat && !bMat && !sampled) return;

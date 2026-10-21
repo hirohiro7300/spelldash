@@ -14,7 +14,7 @@ import {
   PLACEMENT_MIX
 } from "./difficulty.js";
 import { applyGenre } from "./genres.js";
-import { holdBeforeDue, isUnresolved, needsMeasuredSpeed } from "./mastery.js";
+import { holdBeforeDue, isUnresolved } from "./mastery.js";
 import {
   MAX_ACTIVE_NEW_WORDS,
   NEW_WORD_DAILY_SUCCESS_TARGET,
@@ -29,8 +29,6 @@ import {
 //   3. SRS復習期限到来
 //   4. 学習中New単語の同日反復（前セッションからの持ち越し含む）
 //   5. 通常補充 … ここだけ Mix Control の比率（回答済み/未回答）で構成
-//   例外: ページで最初の回の 1 語目は、1 打ミスで下がった段の控えが使える語（M1）にしない（avoidUnmeasuredHead。ページを開いて最初の語は
-//   速さを測らず、M1 は測れた答えでしか戻さないため。Batch 72）
 //
 // 単語プール:
 //   Familiar = 過去に自力正解済み（lastRecallSuccessAtあり）かつ非Unresolved
@@ -209,30 +207,26 @@ export function getDueReviewCount(categoryId = localStorage.getItem("spelldash_c
   return count;
 }
 
-// 期日が来る語そのもの（「明日の復習: negotiate ほか4語」の材料）
+// 明日の復習の語（「明日の復習: negotiate ほか4語」の材料。limit を Infinity にすると全部: 完了パネルは数もこの並びの長さで言う）。
+// 翌朝の列の頭と同じ並びで名指しする（「明日の復習: A・B・C」が翌朝の 1 語目と合う。startStudyQueue の手順 1・3）: いまのカテゴリの未解決の語
+// （期日によらず列の 1 番。2 台目の記録を合わせて期日が先になった語も。PR #189 のレビュー 4）→ 期日が until までに来る復習の語（プールは手順 3 と同じ）。
+// ミッションの復習（手順 2）は翌朝に決まるので入れない。ジャンルの絞り込みと「苦手のみ」は出題側だけに効く（getDueReviewCount と同じく掛けない）
 export function getDueReviewWords(categoryId = localStorage.getItem("spelldash_category") || "all", until = Date.now(), limit = 3) {
   const stats = getWordStats();
   const list = [];
-  // 出題順（いまのカテゴリの未解決 → 期日の復習）と同じ並びで名指しする（「明日の復習: A・B・C」が翌朝の 1 語目と合う）
-  const due = [];
+  const seen = new Set();
+  const add = (word) => {
+    if (list.length >= limit || seen.has(word.id)) return;
+    seen.add(word.id);
+    list.push(word);
+  };
+  for (const word of getWordsByCategory(categoryId)) if (isUnresolved(stats[word.id])) add(word);
   for (const word of reviewPoolWords(categoryId)) {
     const s = stats[word.id];
     if (!s || s.mastered || !s.nextReviewAt) continue;
     if (Date.parse(s.nextReviewAt) > until) continue;
     if (isDoneForToday(s)) continue;
-    due.push(word);
-  }
-  const inCategory = new Set(getWordsByCategory(categoryId).map((w) => w.id));
-  const first = (w) => Number(inCategory.has(w.id) && isUnresolved(stats[w.id]));
-  due.sort((a, b) => first(b) - first(a));
-  // 翌朝の 1 語目と合わせる: ページの最初の語に控えの使える語を置かない決まり（avoidUnmeasuredHead）を、名指しの並びにも until の時刻で当てる
-  if (due.length >= 2 && needsMeasuredSpeed(stats[due[0].id], until)) {
-    const i = due.findIndex((w) => !needsMeasuredSpeed(stats[w.id], until));
-    if (i > 0) due.unshift(...due.splice(i, 1));
-  }
-  for (const word of due) {
-    list.push(word);
-    if (list.length >= limit) break;
+    add(word);
   }
   return list;
 }
@@ -506,21 +500,6 @@ export function startStudyQueue(categoryId) {
   if (queue.length < MIN_QUEUE) {
     queue.push(...pickFillers(MIN_QUEUE - queue.length, new Set(queue)));
   }
-}
-
-// ページの最初の語は速さを測らない（js/game.js startWordTiming）。M1 は速さを測れた すぐ・ふつう の答えでしか戻さないので（js/mastery.js nextRank）、
-// 控えの使える語（needsMeasuredSpeed）をページの最初の語にしない: 先頭がそういう語なら、そうでない最初の語を 1 語だけ先頭へ出す（ほかの語の順はそのまま。
-// 控えの語は 2 語目以降で測る）。そうでない語が無ければ何もしない（控えの語は戻るのが 1 回遅れるだけ。誤って戻ることはない）。
-// js/game.js startGame が、ページで最初の回の列を作った直後に 1 回だけ呼ぶ。返り値は動かした語と元の位置（動かさなければ null。単体が読む）
-export function avoidUnmeasuredHead({ nowMs = Date.now() } = {}) {
-  if (queue.length < 2) return null;
-  const stats = getWordStats();
-  if (!needsMeasuredSpeed(stats[queue[0]], nowMs)) return null;
-  const i = queue.findIndex((id) => !needsMeasuredSpeed(stats[id], nowMs));
-  if (i < 0) return null;
-  const [id] = queue.splice(i, 1);
-  queue.unshift(id);
-  return { id, from: i };
 }
 
 // 「思い出せなかった語だけもう1周」: 指定語だけを回す（補充なし）。全部自力で思い出せたら終わり
