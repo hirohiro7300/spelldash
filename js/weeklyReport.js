@@ -97,6 +97,10 @@ export function buildWeeklyShareText(r = computeWeeklyReport()) {
   return lines.join("\n");
 }
 
+// 最後に描いた中身（入れ物ごと）。同じ中身なら描き直さない（Batch 72: 学習データを開いた直後に Pro の受付の返事などで同じ中身を描き直すと、
+// はちゃんの絵を読み直し、押した「レポートをシェア」の文も戻っていた）
+const lastHtml = new WeakMap();
+
 export function renderWeeklyReport(containerId, { compact = false } = {}) {
   const el = document.getElementById(containerId);
   if (!el) return;
@@ -105,7 +109,7 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
   // 成長ログの無い端末: 学習した日・7日で覚えた は「–」、はちゃんは出さない（数字と矛盾しない）。注記 1 行。シェアも出さない
   const noLog = r.noLog;
 
-  el.innerHTML = `
+  const html = `
     <div class="weekly__head">
       <span class="weekly__title">週間レポート</span>
       <span class="weekly__range">${r.range}</span>
@@ -125,6 +129,9 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
       ${compact ? `<a class="result-panel__action result-panel__action--ghost" href="./stats.html#weekly">くわしく見る</a>` : ""}
     </div>`}
   `;
+  if (lastHtml.get(el) === html) return;
+  lastHtml.set(el, html);
+  el.innerHTML = html;
 
   el.querySelector("[data-weekly-share]")?.addEventListener("click", async (event) => {
     const button = event.currentTarget;

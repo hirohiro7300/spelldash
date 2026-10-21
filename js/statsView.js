@@ -32,6 +32,13 @@ const typingElement = document.getElementById("typingMetrics");
 let trendsReady = false; // 推移グラフは単語ストアの初期化後にだけ描く（growth log を空の値で上書きしないため）
 let resizeTimer = null;
 
+// 週間レポート（Batch 72）: 単語ストアの初期化と成長ログの今日の行（renderGrowthTrend。前の形の行の語数も合わせる）の後にだけ描く。先に届いた知らせ
+// （Pro の受付の返事 spelldash:billing・同期）で描くと、読み直す前の数で描いてすぐ描き直し、はちゃんの顔と一言が替わっていた（2 つ目の顔も読む）。
+// 初めの描画は届いた知らせの後の状態を読むので、先に届いた分は描かなくてよい。同じ中身なら js/weeklyReport.js が描き直さない
+function renderWeekly() {
+  if (trendsReady) renderWeeklyReport("weeklyReport");
+}
+
 initializeAuth();
 renderLevelBar();
 setFooterYear();
@@ -108,7 +115,7 @@ initWordStore().then(() => {
   renderMastery();
   renderLearnedWords();
   renderCategoryProgress();
-  renderWeeklyReport("weeklyReport");
+  renderWeekly();
   renderRetention("retentionReport");
   renderWeakWords();
   initializeWordList();
@@ -158,7 +165,7 @@ window.addEventListener("spelldash:synced", () => {
   renderMastery();
   renderLearnedWords();
   renderCategoryProgress();
-  renderWeeklyReport("weeklyReport");
+  renderWeekly();
   renderRetention("retentionReport");
   renderWeakWords();
 });
@@ -215,13 +222,13 @@ function initializeStreakRepair() {
     repairedCount = result.current;
     renderOverview();
     renderHeaderStreak();
-    renderWeeklyReport("weeklyReport");
+    renderWeekly();
   });
   // 受付中かが分かったら「Pro なら…」の案内（修復の 1 行と週間レポートの 1 行）を出し直す（js/myWordsView.js・profileView.js と同じ。
   // 初めて開いた端末は /api/billing/config の返事が最初の描画より遅れることがある）
   document.addEventListener("spelldash:billing", () => {
     renderStreakRepair();
-    renderWeeklyReport("weeklyReport");
+    renderWeekly();
   });
 }
 

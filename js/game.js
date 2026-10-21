@@ -12,7 +12,8 @@ import {
   romajiMatcherFor,
   romajiStep,
   spellFitsFromStart,
-  spellStep
+  spellStep,
+  hintStep
 } from "./judge.js";
 import { completedAnswer } from "./answers.js";
 import { createRomajiMatcher, primaryReading, romajiKeyOf } from "./romaji.js";
@@ -21,7 +22,7 @@ import { hasumiResultLine, hasumiSetLine, hasumiLearnedLine, hasumiBubbleHtml, r
 import { historyDotsHtml, getLearnedCount, getLearnedCounts } from "./learnedWords.js";
 import { getSetSize, markDailySetDone, getSetsToday, isTimedSet } from "./dailySet.js";
 import { isTutorialRunPending } from "./tutorial.js";
-import { rankOf, answerContext, isFirstAnswer, rankHtml, RANK_NAMES, daysSinceAnswer } from "./mastery.js";
+import { rankOf, answerContext, isFirstAnswer, rankHtml, RANK_NAMES, daysSinceAnswer, needsMeasuredSpeed } from "./mastery.js";
 import { boxKey, classifySpeed, noteSpeedSample, notePendingFirstFast, flushMasteryMeta, keyInputOf } from "./masteryMeta.js";
 import { promptChars } from "./retentionCalc.js"; // mastery.js・masteryMeta.js が読む module（答えの道の読み込みは増えない）
 import { markActiveToday, recordGrowthSnapshot } from "./growthLog.js";
@@ -69,7 +70,8 @@ import {
   getFocusGenre,
   getQueueComposition,
   insertBreather,
-  isBeforePlacement
+  isBeforePlacement,
+  avoidUnmeasuredHead
 } from "./studyQueue.js";
 import { getWeekGoal, getActiveDaysThisWeek } from "./growthLog.js";
 import { canInstall, promptInstall } from "./installPrompt.js";
@@ -953,6 +955,7 @@ export function startGame(options = {}) {
     if (retry) startRetryQueue(retry);
     else if (resume) startResumedQueue(resume.queue, resume.recalled);
     else startStudyQueue(activeCategory);
+    if (pageWordsShown === 0) avoidUnmeasuredHead(); // ページの最初の語は速さを測らないので、控えの使える語（M1）を 1 語目にしない（js/studyQueue.js。Batch 72）
     composition = getQueueComposition(); // 最初の1語を取り出す前に構成を控える
     // 回の種類と長さ（ここで 1 度だけ。腕試しかどうかは startStudyQueue の後で決まる）。60 秒にしないのは決めた語だけの回・続きから・腕試し・チュートリアルの回
     if (retry) {
@@ -1875,11 +1878,16 @@ export function useHint() {
     return;
   }
 
-  const nextChar = currentWord.en[currentIndex];
-  const total = currentWord.en.length;
-  const shown = currentIndex + 1;
-  showHiddenWordText(`${answerLabel(currentWord).slice(0, shown)}${"・".repeat(Math.max(0, total - shown))}（${total}文字）`, { hint: true });
-  const nextLabel = answerLabel(currentWord)[currentIndex] ?? nextChar; // 見せる字は元の綴り（Cu の C）。入力欄と判定は小文字のまま
+  // 今打っている候補の次の字（js/judge.js hintStep。出題語の頭を打っている間は出題語の次の字、別解の頭を打っている間はその別解の次の字。Batch 72）。
+  // 前は出題語の次の字を足していたので、別解の頭が出題語の長さを越えると「undefined」、越えなくても違う字が入って次の打鍵が × になった
+  const step = hintStep(activeCandidates(), typedSoFar);
+  if (!step) return;
+  const own = step.target === currentWord.en;
+  const label = own ? answerLabel(currentWord) : step.target; // 見せる字は元の綴り（Cu の C）。入力欄と判定は小文字のまま。別解は候補の綴り
+  const total = step.target.length;
+  const shown = typedSoFar.length + 1;
+  showHiddenWordText(`${label.slice(0, shown)}${"・".repeat(Math.max(0, total - shown))}（${total}文字）`, { hint: true });
+  const nextLabel = label[shown - 1] ?? step.ch;
   showMessage(
     shown === 1
       ? `頭文字は「${nextLabel}」。残りを自力で打つ（ヒントを見たので、この語はまた出す）`
@@ -1887,9 +1895,9 @@ export function useHint() {
     "revealed"
   );
 
-  elements.input.value += nextChar;
+  elements.input.value += step.ch;
   updateTypedPreview(elements.input.value);
-  acceptChar();
+  acceptChar(undefined, null, step.ch);
 }
 
 // ===== 自分のメモ（覚え方）: 答え表示・ヒント後に表示＋編集 =====
@@ -2048,10 +2056,11 @@ function handleCorrectChar(typedChar, step) {
 }
 
 // 1文字受理の共通処理（DOMの入力欄には触れない）。step = その字の判定器の 1 打（js/judge.js spellStep。受けた字の結果）。
-// ヒント（useHint）は字も step も渡さない: 出題語の次の字を、受けるかを見ずに足す（以前のまま）。完成と続きは同じ 1 打の関数で決める。単語完成ならtrueを返す
-function acceptChar(typedChar, step = null) {
-  if (typedChar !== undefined) markKey(); // ヒントで足した字（useHint は字を渡さない）はこの語の打鍵にしない
-  const ch = typedChar ?? currentWord.en[currentIndex];
+// ヒント（useHint）は打った字を渡さず、足す字を hintCh で渡す（js/judge.js hintStep: 今打っている候補の次の字。spellStep が受ける字）。
+// 完成と続きは同じ 1 打の関数で決める。単語完成ならtrueを返す
+function acceptChar(typedChar, step = null, hintCh = undefined) {
+  if (typedChar !== undefined) markKey(); // ヒントで足した字はこの語の打鍵にしない
+  const ch = typedChar ?? hintCh;
   const r = step ?? spellStep(activeCandidates(), typedSoFar, ch);
   typedSoFar += ch;
   currentIndex = typedSoFar.length;
@@ -3180,6 +3189,18 @@ function chooseWord() {
   });
 
   let selected = weightedWords[Math.floor(Math.random() * weightedWords.length)];
+  // ページの最初の語（速さを測らない）に控えの使える語（M1）を引いたら、その語を候補から外して重みのまま引き直す（js/studyQueue.js avoidUnmeasuredHead と
+  // 同じ決まり。控えの語しか無ければ最初に引いた語のまま。Batch 72）。2 語目からは見ない。Daily は全員共通の並びなのでこの関数を通らない
+  if (pageWordsShown === 0 && needsMeasuredSpeed(stats[selected.id])) {
+    let rest = weightedWords;
+    let pick = selected;
+    while (pick && needsMeasuredSpeed(stats[pick.id])) {
+      const drop = pick.id;
+      rest = rest.filter((w) => w.id !== drop);
+      pick = rest.length ? rest[Math.floor(Math.random() * rest.length)] : null;
+    }
+    if (pick) selected = pick;
+  }
 
   if (currentWord && selected.id === currentWord.id && words.length > 1) {
     selected = words.find((word) => word.id !== currentWord.id);

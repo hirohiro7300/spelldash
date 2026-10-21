@@ -32,9 +32,10 @@ export const RANK_GLOSS = [
 ];
 
 // 規則の文（学習データの注記と、語の詳細の畳んだ「習熟度の決まり」）。打ち間違いで下がった段の戻り方（M1。Batch 70）は isSlipFail の × の言い直し
-// （1 打ずつ打つ道の 3 字目から〔p ≥ 2〕か隣のキー〔a〕。遅い答えでは戻らない・Battle の × は入らないことは文に入れない。docs/SPEC_MASTERY.md §3.5）
+// （1 打ずつ打つ道の 3 字目から〔p ≥ 2〕か隣のキー〔a〕）。戻す答えは速さを測れた すぐ・ふつう だけ（Batch 72）なので「時間をかけずに」と言い、
+// 数えないもの（Battle の × は控えを置かない・速さを測れない答えでは戻さない）を括弧で言う。画面に「遅い」とは書かない（docs/SPEC_MASTERY.md §3.4・§3.5）
 export const RANK_RULE =
-  "日をあけて間違えずに思い出せると 1 段上がる（1 日に 1 段まで）。身についた には前の答えから 6日、即答 には 20日あけて すぐ打てることが要る。初めて答えて間違えずに打てた語は 思い出せる（すぐなら 身についた）から始まり、2週間後の確認で すぐ打てると 即答。思い出せなかった日は 1 段下がる。3字目からの打ち間違いか 隣のキーの押し間違いで下がった段は、翌日から 間違えずに思い出せると 1 日 1 段ずつ戻る。時間がたつだけでは下がらない。";
+  "日をあけて間違えずに思い出せると 1 段上がる（1 日に 1 段まで）。身についた には前の答えから 6日、即答 には 20日あけて すぐ打てることが要る。初めて答えて間違えずに打てた語は 思い出せる（すぐなら 身についた）から始まり、2週間後の確認で すぐ打てると 即答。思い出せなかった日は 1 段下がる。3字目からの打ち間違いか 隣のキーの押し間違いで下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（Battle の × と、音で出題など速さを測れない答えは数えない）。時間がたつだけでは下がらない。";
 
 const ms = (iso) => Date.parse(iso ?? "") || 0;
 const DAY_MS = 86400000;
@@ -223,6 +224,15 @@ export function answerContext(stat, nowMs = Date.now()) {
   };
 }
 
+// 速さを測れる位置で答えてほしい語か: その日の最初の答えで、1 打ミスで下がった段の控えが使える（M1 は速さを測れた すぐ・ふつう の答えでしか戻さない）。
+// ページを開いて最初の語（速さを測らない）を選ぶ所（js/studyQueue.js avoidUnmeasuredHead・getDueReviewWords、js/game.js chooseWord）が読む（Batch 72）。
+// M1 が実際に段を変えるか（今の規則でも上がる答えか）までは見ない（少し多めに動かす側）。段 5 の語は入れない（5 → 4 は測れた slow だけなので、測らなくても誤らない）
+export function needsMeasuredSpeed(stat, nowMs = Date.now()) {
+  if (!stat) return false;
+  const c = answerContext(stat, nowMs);
+  return c.firstOfDay && c.peak > c.rank;
+}
+
 // ===== 段の動き =====
 // r = 答える前の段（○ は recordCorrect が控えた rankBefore、× は書く前の rankOf）
 // a = { ok, clean, speed }（speed: "fast" | "normal" | "slow" | "unknown"）
@@ -241,9 +251,12 @@ export function nextRank(r, a, c) {
   if (c.prevDay === null || c.sameDay) return from <= 1 && !c.downToday ? 2 : from;
   if (!a.clean) return Math.max(from, 2); // 打ち間違いあり（Battle）は 2 より上げない。正解で下げない
   const n = steadyRank(from, a, c);
-  // M1（Batch 70）: 1 打ミスの × で下がった段（控え c.peak）は、翌日以降のノーミス・遅くない答えで控えまで 1 日 1 段（6 日・20 日・すぐの条件なし）
+  // M1（Batch 70・Batch 72）: 1 打ミスの × で下がった段（控え c.peak）は、翌日以降のノーミスで、速さを測れて すぐ・ふつう だった答えで控えまで 1 日 1 段
+  // （6 日・20 日・すぐの条件なし）。速さを測れない答え（unknown: ページを開いて最初の語・音で出題・例文の訳を添えた問い・基準がまだ無い箱・Battle など）
+  // では戻さず、控えを残して次の測れた答えで戻す（js/stats.js の書き手は ○ で「控えが今の段より上なら残す」ので変えない）。
+  // 速さで段を動かすのは測れた答えだけ: 段 5 の 5 → 4（steadyRank）も測れた slow だけのまま（M1 とは分ける。docs/SPEC_MASTERY.md §3.5 の守り 8）
   const peak = Number.isInteger(c.peak) ? Math.min(RANK_MAX, c.peak) : 0;
-  return peak > from && a.speed !== "slow" ? Math.max(n, from + 1) : n;
+  return peak > from && (a.speed === "fast" || a.speed === "normal") ? Math.max(n, from + 1) : n;
 }
 
 // 別の日のノーミス正解（今の規則）
@@ -338,6 +351,18 @@ export function daysSinceAnswer(stat, today = localDay(new Date())) {
   return daysBetween(prevDayOf(stat), today);
 }
 
+// 語の詳細の「次の復習 …」（js/wordDetail.js。Batch 72）: 期日（nextReviewAt）のローカル日までの暦日の差で「今日」（期日が今日か過ぎた）・「明日」
+// （完了パネルの「明日の復習」と同じ言い方）・「N日後」。上の日数の文と同じ数え方（24 時間の切り上げは使わない: 今日 9 時に見て期日が明日 23:30 なら 明日）。
+// 出さない語（習得した語・期日が無い・読めない）は空文字
+export function nextReviewText(stat, nowMs = Date.now()) {
+  if (!stat?.nextReviewAt || stat.mastered) return "";
+  const due = ms(stat.nextReviewAt);
+  if (!due) return "";
+  const n = dayDiff(localDay(new Date(nowMs)), localDay(new Date(due)));
+  if (!Number.isFinite(n)) return "";
+  return n <= 0 ? "今日" : n === 1 ? "明日" : `${n}日後`;
+}
+
 // その語の事実だけを返す（段ごとの決まり文句で経緯を言わない）。上から最初に当たる枝。段 0 は空文字。
 // today は今のローカル日（"YYYY-MM-DD"。今は使わない。rankNext と呼び方をそろえる）
 export function rankBasis(stat, today = localDay(new Date())) {
@@ -392,9 +417,10 @@ export function rankNext(stat, today = localDay(new Date()), nowMs = Date.now())
     const d = shiftDay(dayOfIso(s.masteryDownAt), 1); // 時計が戻って下げた日が先に見えるときも、その日＋1 日
     return `${d ? `${mdOf(d)}以降に` : "日をあけて"} 自力で思い出せると あやふや`;
   }
-  // 1 打ミスの × で下がった段（M1。控えが使える語: masteryPeakOf）は、前の答えの翌日以降のノーミス・遅くない答えで 1 段戻る（6 日・20 日・すぐの条件なし。
-  // nextRank の M1 の枝と同じ）。段 2 の文は今の規則と同じになる
-  if (r >= 2 && masteryPeakOf(s) > r) return `${after(1, "日をあけて")} 間違えずに思い出せると ${RANK_NAMES[r + 1]}`;
+  // 1 打ミスの × で下がった段（M1。控えが使える語: masteryPeakOf）は、前の答えの翌日以降のノーミスで、速さを測れて すぐ・ふつう だった答えで 1 段戻る
+  // （6 日・20 日・すぐの条件なし。nextRank の M1 の枝と同じ。Batch 72）。段 3・4 は「時間をかけずに」を言う。段 2 → 3 は今の規則でも翌日のノーミスで
+  // 速さを見ずに上がるので、今の段 2 の文と同じ
+  if (r >= 2 && masteryPeakOf(s) > r) return `${after(1, "日をあけて")} 間違えずに${r >= 3 ? " 時間をかけずに" : ""}思い出せると ${RANK_NAMES[r + 1]}`;
   if (isKnownWaiting(s) && (r === 3 || r === 4)) {
     const checkDay = dayOfIso(s.nextReviewAt) ?? (prevDay ? shiftDay(prevDay, KNOWN_CHECK_DAYS) : null);
     // 確認の日が過ぎている（まだ答えていない）ときは「次の確認で」（過ぎた日付を約束の形で言わない）

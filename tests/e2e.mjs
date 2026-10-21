@@ -1044,6 +1044,52 @@ console.log("strict miss:");
   await pageC.close();
 }
 
+// ヒントは今打っている候補の次の字（Batch 72 項目 3。js/judge.js hintStep・js/game.js useHint）: 別解の頭を打ってからヒントを押すと、その別解の次の字を足す。
+// 前は出題語の次の字を足していたので、別解の頭が出題語の長さを越えると「undefined」（start の問いで comme → commeundefined）、越えなくても違う字が
+// 入って次の打鍵が ×（picture の問いで ph → phc）。判定は変えない（ヒントの × は今どおり 1 回・別解を打ち切ると出題語を見せて打ち直させる）。
+// マイ単語帳の場面カード 2 枚（綴りで答える start〔別解 commence〕・picture〔別解 photo〕）を続きの列で出す
+{
+  const todayH = ymd(new Date());
+  const page = await newPage({ storage: {
+    spelldash_category: "my", spelldash_placement: "done", spelldash_after_correct: "quick", spelldash_audio: JSON.stringify({ mode: "off" }),
+    spelldash_streak: JSON.stringify({ current: 1, best: 1, last: todayH }),
+    spelldash_my_words: JSON.stringify([{ kind: "concept", en: "start", answer: "start", q: "会議を十時に始める", explain: "", accept: ["commence"], ja: "" }, { kind: "concept", en: "picture", answer: "picture", q: "旅先で撮った写真", explain: "", accept: ["photo"], ja: "" }]),
+    spelldash_session: JSON.stringify({ category: "my", focus: "", queue: ["my-q-start", "my-q-picture"], recalled: [], failed: [], newCount: 2, reviewCount: 0, setSize: 2, date: todayH, savedAt: new Date().toISOString() })
+  } });
+  await page.goto(BASE + "/index.html?hintms=600000", { waitUntil: "networkidle" });
+  await page.waitForTimeout(700);
+  await page.press("#input", "Enter"); // 道のスタート（続きから）
+  const jaH = async () => (await page.textContent("#japanese")).trim();
+  const hintH = async () => { await page.evaluate(() => document.getElementById("hintButton").click()); await page.waitForTimeout(150); };
+  const boardH = async () => ({ input: await page.inputValue("#input"), word: (await page.textContent("#word")).trim(), fail: (await page.textContent("#recallFail")).trim(), msg: (await page.textContent("#message")).trim() });
+  await waitUntil(async () => (await jaH()).includes("会議を十時に始める"), 3000);
+  for (const ch of "comme") await page.press("#input", ch);
+  await hintH();
+  const s1 = await boardH();
+  check("ヒント（Batch 72）: start の問いで別解の頭 comme を打ってからヒント → 入力は commen（undefined の字が入らない）・見せるのは commen・・（8文字）・× は 1",
+    s1.input === "commen" && s1.word === "commen・・（8文字）" && s1.fail === "1" && !/undefined/.test(JSON.stringify(s1)), JSON.stringify(s1));
+  for (const ch of "ce") await page.press("#input", ch);
+  await waitUntil(async () => (await page.textContent("#message")).includes("commence も"), 1500);
+  const s2 = await boardH();
+  check("ヒント（Batch 72）: 続けて ce で別解 commence を打ち切る → 出題語 start を見せて打ち直させる（今の判定どおり）・× は 1 のまま",
+    s2.msg.includes("commence も「会議を十時に始める」") && s2.msg.includes("start") && s2.fail === "1" && s2.input === "", JSON.stringify(s2));
+  for (const ch of "start") await page.press("#input", ch);
+  await waitUntil(async () => (await jaH()).includes("旅先で撮った写真"), 3000);
+  await afterAdvance(page);
+  for (const ch of "ph") await page.press("#input", ch);
+  await hintH();
+  const s3 = await boardH();
+  check("ヒント（Batch 72）: picture の問いで別解の頭 ph を打ってからヒント → 入力は pho（photo の次の字。前は phc）・見せるのは pho・・（5文字）",
+    s3.input === "pho" && s3.word === "pho・・（5文字）" && s3.fail === "2", JSON.stringify(s3));
+  for (const ch of "to") await page.press("#input", ch);
+  await waitUntil(async () => (await page.textContent("#message")).includes("photo も"), 1500);
+  const s4 = await boardH();
+  check("ヒント（Batch 72）: 続けて to で別解 photo を打ち切れる（1 打ミスにならない）・出題語 picture を見せる・× は増えない",
+    s4.msg.includes("photo も「旅先で撮った写真」") && s4.msg.includes("picture") && s4.fail === "2", JSON.stringify(s4));
+  check("ヒント（Batch 72）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+
 // ===== 3. Daily Dash: 完走→ロック→カウントダウン =====
 console.log("daily:");
 {
@@ -9134,6 +9180,37 @@ console.log("growth:");
   await page.close();
 }
 
+// 週間レポートは 1 回だけ描く（Batch 72 項目 4。js/statsView.js・js/weeklyReport.js）: 学習データを開くと、Pro の受付の返事（spelldash:billing）が
+// 語の読み込みより先に届いたときは、成長ログを読み直す前の中身（ふつう「続いた週。来週も5分から。」）で描き、0.1 秒ほど後に うれしい「増えた語は、来週も
+// 復習で出る。」に描き直していた（2 つ目の顔も読む）。後に届いたときも同じ中身で描き直していた。8.65 と同じ種（clsRecords＋成長ログ）で、全応答 0ms・80ms 遅延の
+// どちらでも、描く回数 1・はちゃんの顔は うれしい 1 つ・読むアバター 1 枚・読み込みの CLS < 0.05
+{
+  const growthW = [6, 5, 4, 2, 1].map((n, i) => ({ date: ymdDaysAgo(n), learned: 10 + i * 6, mastered: i * 2, active: true }));
+  const runsW = {};
+  for (const delay of [0, 80]) {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { ...clsRecords(), spelldash_growth_log: JSON.stringify(growthW) } });
+    await page.addInitScript(() => {
+      window.__weekly = [];
+      window.__cls = 0;
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });
+      addEventListener("DOMContentLoaded", () => {
+        const el = document.getElementById("weeklyReport");
+        if (el) new MutationObserver((records) => { for (const r of records) if (r.target === el && r.addedNodes.length) window.__weekly.push(el.querySelector(".hasumi__bubble")?.textContent.trim() ?? null); }).observe(el, { childList: true });
+      });
+    });
+    if (delay) await page.route("**/*", async (route) => { await new Promise((r) => setTimeout(r, delay)); await route.continue(); });
+    const avatarReqs = [];
+    page.on("request", (r) => { if (/\/assets\/images\/hasumi-[^/]*\.webp/.test(r.url())) avatarReqs.push(r.url().replace(BASE, "")); });
+    await page.goto(BASE + "/stats.html", { waitUntil: "load" });
+    await page.waitForTimeout(2500);
+    const r = await page.evaluate(() => ({ weekly: window.__weekly, cls: Math.round(window.__cls * 10000) / 10000 }));
+    runsW[delay] = { ...r, avatarReqs, errors: page.errors.slice(0, 1) };
+    await page.close();
+  }
+  const okW = (x) => x.weekly.length === 1 && x.weekly[0] === "増えた語は、来週も復習で出る。" && x.avatarReqs.length === 1 && x.cls < 0.05 && x.errors.length === 0;
+  check("週間レポート（Batch 72）: 学習データを開くと 1 回だけ描く（全応答 0ms・80ms 遅延とも。はちゃんは うれしい の 1 つ・読むアバター 1 枚・CLS < 0.05・エラー0）", okW(runsW[0]) && okW(runsW[80]), JSON.stringify(runsW));
+}
+
 // ===== 9.56 記憶の保持率（7 日・30 日、復習なし／あり、学習時間と効率。docs/SPEC_RETENTION.md） =====
 // 時計のモックは無いので seed は相対日付（固定日付は使わない）。記録は word_stats と別のキー spelldash_retention / spelldash_study_time
 console.log("retention:");
@@ -9526,6 +9603,37 @@ console.log("mastery views:");
     check("習熟度 語の詳細: 読むだけ（word_stats を書き換えない）・エラー0", (await page.evaluate(() => localStorage.getItem("spelldash_word_stats"))) === statsJson && page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
+  // (2b) 語の詳細の「次の復習」（Batch 72 項目 5。js/mastery.js nextReviewText）: 期日までのローカルの暦日の差で 今日・明日・N日後（盤面の上・正解の文と同じ数え方。
+  //      完了パネルの「明日の復習」と同じ言い方）。前は ceil((期日 − 今) ÷ 24 時間) で、明日 23:59 の期日が「2日後」・今日 23:59 が「1日後」と出ていた
+  {
+    const now = new Date();
+    const local = (days, h, m) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, h, m).toISOString();
+    const dueStat = (dueIso) => ({ ...base, playCount: 3, correctCount: 3, recallFail: 0, cleanCorrectStreak: 2, masteryRank: 3, masteryAt: at(2), lastPlayed: at(2), lastRecallSuccessAt: at(2), nextReviewAt: dueIso, history: [o(4), o(2)] });
+    const DUE = { kiwi: local(0, 23, 59), plum: local(1, 23, 59), pear: local(2, 0, 1), lime: local(6, 12, 0), fig: at(1) };
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: {
+      spelldash_category: "my", spelldash_list_compact: "0", spelldash_placement: "done",
+      spelldash_my_words: JSON.stringify(Object.keys(DUE).map((en) => ({ en, ja: WORDS.find((w) => w[0] === en)[1] }))),
+      spelldash_word_stats: JSON.stringify(Object.fromEntries(Object.entries(DUE).map(([en, due]) => [`my-${en}`, dueStat(due)])))
+    } });
+    await page.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
+    await page.waitForSelector('.gcard__term[data-word-detail="my-kiwi"]', { timeout: 5000 }).catch(() => {});
+    const nextOf = async (en) => {
+      if (!(await page.$eval("#wordDetail", (el) => el.hidden).catch(() => true))) {
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(100);
+      }
+      await page.click(`.gcard__term[data-word-detail="my-${en}"]`);
+      await page.waitForTimeout(150);
+      return page.evaluate(() => [...document.querySelectorAll("#wordDetailPanel .word-detail__meta span")].map((s) => s.textContent.trim()).find((t) => t.startsWith("次の復習")) ?? null);
+    };
+    const got = {};
+    for (const en of Object.keys(DUE)) got[en] = await nextOf(en);
+    check("語の詳細の次の復習（Batch 72）: 暦日の差で言う（今日 23:59 → 今日・明日 23:59 → 明日・明後日 0:01 → 2日後・6 日後 → 6日後・過ぎた期日 → 今日）・エラー0",
+      got.kiwi === "次の復習 今日" && got.plum === "次の復習 明日" && got.pear === "次の復習 2日後" && got.lime === "次の復習 6日後" && got.fig === "次の復習 今日" && page.errors.length === 0,
+      JSON.stringify({ got, err: page.errors[0] }));
+    await page.close();
+  }
+
   // 語の詳細（390 mobile・夜）: パネルの中で横にはみ出さない
   {
     const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: seedOf(ALL, { spelldash_category: "my", spelldash_list_compact: "0", spelldash_theme: "dark" }) });
@@ -10690,7 +10798,8 @@ console.log("mastery writers:");
     const five = (okMs, extra = {}) => okStat(5, okMs, HOUR, { cleanCorrectStreak: 6, history: [{ d: dayOf(at(okMs + 30 * DAY)), r: "o" }, { d: dayOf(at(okMs)), r: "o" }], ...extra });
     const lastX = (st) => (st?.history ?? []).filter((e) => e.r === "x").at(-1) ?? null;
     // (1) 盤面で: 即答の river を 3 字目の 1 打ミス（ri の次に、v の隣でない x）で ×、即答の cloud を Enter（答え表示）で ×。どちらも打ち直し、回の残り（Recall Loop）は打てる
-    const pageA = await open(seed({ ...KEEP, "my-river": five(30 * DAY), "my-cloud": five(30 * DAY) }, { words: ["river", "cloud", "tiger"] }), { url: "/index.html?set=2&hintms=600000" });
+    // 本人の基準（物理キーの Study の箱に 20 件・中央値 2,000ms）を置く: M1 は速さを測れた すぐ・ふつう の答えだけで戻す（Batch 72）。基準の無い箱の答えは速さ unknown
+    const pageA = await open(seed({ ...KEEP, "my-river": five(30 * DAY), "my-cloud": five(30 * DAY) }, { words: ["river", "cloud", "tiger"], spelldash_mastery_meta: meta20("en.kbd.study", 2000) }), { url: "/index.html?set=2&hintms=600000" });
     const done = new Set();
     for (let i = 0; i < 10 && !(await panelOpen(pageA)); i++) {
       const id = await curId(pageA);
@@ -10744,10 +10853,10 @@ console.log("mastery writers:");
       };
       const dRiver = await detailOf("my-river");
       const dCloud = await detailOf("my-cloud");
-      check("習熟度 M1 語の詳細（つなぎ）: 1 打ミスで下がった語は 身についた・次の条件は「翌日以降に 間違えずに思い出せると 即答」",
-        dRiver.name === "身についた" && dRiver.next === `${dRiver.tomorrow}以降に 間違えずに思い出せると 即答`, JSON.stringify(dRiver));
+      check("習熟度 M1 語の詳細（つなぎ）: 1 打ミスで下がった語は 身についた・次の条件は「翌日以降に 間違えずに 時間をかけずに思い出せると 即答」（Batch 72）",
+        dRiver.name === "身についた" && dRiver.next === `${dRiver.tomorrow}以降に 間違えずに 時間をかけずに思い出せると 即答`, JSON.stringify(dRiver));
       check("習熟度 M1 語の詳細（つなぎ）: 答え表示で下がった語は今の次の条件（前の答え＋20 日以降に すぐ打てると 即答）・規則の文に戻り方の 1 文・エラー0",
-        dCloud.name === "身についた" && dCloud.next === `${dCloud.plus20}以降に すぐ打てると 即答` && dCloud.rule.includes("下がった段は、翌日から 間違えずに思い出せると 1 日 1 段ずつ戻る。") && pd.errors.length === 0,
+        dCloud.name === "身についた" && dCloud.next === `${dCloud.plus20}以降に すぐ打てると 即答` && dCloud.rule.includes("下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（Battle の × と、音で出題など速さを測れない答えは数えない）。") && pd.errors.length === 0,
         JSON.stringify({ ...dCloud, err: pd.errors[0] }));
       await pd.close();
     }
@@ -10927,6 +11036,119 @@ console.log("mastery writers:");
       order[0] === "river" && order.includes("cloud") && order.includes("glass") && before === 4 && after === 4 && lines.includes("時間がかかった: cloud（身についた）") && !lines.some((l) => l.includes("glass（")) && page.errors.length === 0,
       JSON.stringify({ order, before, after, lines, err: page.errors[0] }));
     await page.close();
+  }
+
+  // ---- Batch 72 項目 1（docs/SPEC_MASTERY.md §3.5・§4.3）: M1 は速さを測れた すぐ・ふつう の答えでしか戻さない。ページを開いて最初の語は速さを測らないので、
+  // 1 打ミスで下がった段の控えが使える語は Study の列の先頭・Challenge の 1 語目にしない（2 語目以降で測る）。前は、1 打ミスの後に回が終わった語が翌日の
+  // ページの最初の語になると、何秒かかっても戻っていた（BACKLOG Batch 70 の反証）。期待は木によらない: 翌日の river を 5 秒で打つと戻らない（身についた・
+  // 控え 5 が残る）、1.8 秒（本人の基準 2,000ms のふつう）なら同じ日に戻る（即答）。道 a: 1 打ミスの後に回が終わって未解決のまま翌日。道 b: 同じ日の出し直しで
+  // 打てた（控えは残る）→ 期日の日。Challenge: 控えの river（段 4）と即答の stone・遊びの箱 20 件・Math.random を 0 に決める（直す前は重みの列の先頭の river が 1 語目）
+  {
+    const V8 = ["river", "cloud", "stone", "bread", "glass", "chair", "horse", "tiger"];
+    const five = (okMs, extra = {}) => okStat(5, okMs, HOUR, { cleanCorrectStreak: 6, history: [{ d: dayOf(at(okMs + 30 * DAY)), r: "o" }, { d: dayOf(at(okMs)), r: "o" }], ...extra });
+    const dump = (page) => page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith("spelldash_")).map((k) => [k, localStorage.getItem(k)])));
+    async function slipRiver(page) {
+      const id = await curId(page);
+      const n = await shown(page);
+      await page.waitForTimeout(NEXT_READY_MS);
+      for (const ch of ["r", "i", "x"]) await page.press("#input", ch);
+      await waitUntil(async () => !!(await statOf(page, id))?.lastRecallFailAt, 3000);
+      await page.waitForTimeout(300);
+      for (const ch of enOf(id)) await page.press("#input", ch);
+      await waitUntil(async () => (await shown(page)) > n || (await panelOpen(page)), 4000);
+      await afterAdvance(page);
+    }
+    async function day1(path) {
+      const page = await open(seed({ ...KEEP, "my-river": five(30 * DAY), "my-cloud": five(30 * DAY), "my-stone": five(30 * DAY) }, { words: V8, spelldash_mastery_meta: meta20("en.kbd.study", 2000) }), { url: `/index.html?set=${path === "a" ? 2 : 10}&hintms=600000` });
+      const order = [];
+      let slipped = false;
+      let again = false;
+      for (let i = 0; i < 14 && !(await panelOpen(page)); i++) {
+        const id = await curId(page);
+        order.push(enOf(id));
+        if (id === "my-river" && !slipped) {
+          slipped = true;
+          await slipRiver(page);
+        } else {
+          await typeCurrent(page, { wait: 400 });
+          await page.waitForTimeout(80);
+          if (id === "my-river") {
+            again = true;
+            break; // 道 b: 出し直しで打てたらページを閉じる（回の途中）
+          }
+        }
+      }
+      await page.waitForTimeout(300);
+      const r = await statOf(page, "my-river");
+      const unresolved = Date.parse(r?.lastRecallFailAt ?? "") > Date.parse(r?.lastRecallSuccessAt ?? "");
+      const okPath = path === "a" ? (await panelOpen(page)) && unresolved && !again : again && !unresolved;
+      check(`習熟度 M1（Batch 72）道 ${path} の 1 日目: river を 3 字目の 1 打ミスで × → 身についた・控え 5・${path === "a" ? "回が先に終わって未解決" : "同じ日の出し直しで打てた（控えは残る）"}`,
+        okPath && r?.masteryRank === 4 && r.masteryPeak === 5 && page.errors.length === 0, JSON.stringify({ order, rank: r?.masteryRank, peak: r?.masteryPeak, unresolved, again, err: page.errors[0] }));
+      const carried = await dump(page);
+      const tA = await page.evaluate(() => Date.now());
+      await page.close();
+      return { carried, tA, due: Date.parse(r?.nextReviewAt ?? "") || 0 };
+    }
+    async function day2(d1, wait) {
+      const page = await newPage({ storage: d1.carried });
+      await page.clock.setSystemTime(new Date(Math.max(d1.tA + DAY + HOUR, d1.due + HOUR)));
+      await page.addInitScript(PROBE);
+      await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "networkidle" });
+      await page.waitForTimeout(700);
+      await page.press("#input", "Enter");
+      await waitUntil(async () => (await shown(page)) >= 1, 5000);
+      await page.waitForTimeout(150);
+      const order = [];
+      for (let i = 0; i < 6 && !(await panelOpen(page)); i++) {
+        const id = await curId(page);
+        order.push(enOf(id));
+        await typeCurrent(page, { wait: id === "my-river" ? wait : 400 });
+        await page.waitForTimeout(80);
+        if (id === "my-river") break;
+      }
+      await page.waitForTimeout(200);
+      const r = await statOf(page, "my-river");
+      const res = { pos: order.indexOf("river") + 1, order, rank: r?.masteryRank, peak: r?.masteryPeak ?? null, err: page.errors[0] ?? null };
+      await page.close();
+      return res;
+    }
+    for (const path of ["a", "b"]) {
+      const d1 = await day1(path);
+      const slow = await day2(d1, 5000);
+      const normal = await day2(d1, 1800);
+      check(`習熟度 M1（Batch 72）道 ${path} の 2 日目: 控えの river はページの最初の語にならない（2 語目以降で速さを測る）・5 秒（時間がかかる）なら戻らない（身についた・控え 5 が残る）`,
+        slow.pos >= 2 && slow.rank === 4 && slow.peak === 5 && !slow.err, JSON.stringify(slow));
+      check(`習熟度 M1（Batch 72）道 ${path} の 2 日目: 1.8 秒（ふつう）なら同じ日に 即答 に戻る（控えを消す）`, normal.pos >= 2 && normal.rank === 5 && normal.peak === null && !normal.err, JSON.stringify(normal));
+    }
+    // Challenge（遊びの箱に本人の基準 20 件）: 1 語目の抽選で控えの語を引いたら、候補から外して引き直す（Math.random を 0 に決めても river は 2 語目）
+    const failAt = at(26 * HOUR);
+    const riverC = { ...B, playCount: 8, correctCount: 8, recallFail: 1, typingMiss: 1, missCount: 1, cleanCorrectStreak: 1, masteryRank: 4, masteryPeak: 5, masteryPeakAt: failAt, masteryAt: failAt, masteryDownAt: failAt, lastRecallFailAt: failAt, lastRecallSuccessAt: at(26 * HOUR - 60000), lastPlayed: failAt, nextReviewAt: at(2 * HOUR), history: [{ d: dayOf(at(31 * DAY)), r: "o" }, { d: dayOf(failAt), r: "x", k: "m", p: 2, a: false }, { d: dayOf(failAt), r: "o" }] };
+    const chalStorage = seed({ "my-river": riverC, "my-stone": five(30 * DAY) }, { words: ["river", "stone"], spelldash_mode: "challenge", spelldash_mastery_meta: meta20("en.kbd.play", 2000) });
+    for (const wait of [5000, 1800]) {
+      const page = await newPage({ storage: chalStorage });
+      await page.addInitScript(() => { Math.random = () => 0; });
+      await page.addInitScript(PROBE);
+      await page.goto(BASE + "/index.html?t=30", { waitUntil: "networkidle" });
+      await page.waitForTimeout(700);
+      await page.focus("#input");
+      await page.keyboard.press("Enter");
+      await waitUntil(async () => (await shown(page)) >= 1, 4000);
+      await page.waitForTimeout(450);
+      const order = [];
+      for (let k = 0; k < 4; k++) {
+        const id = await curId(page);
+        order.push(enOf(id));
+        await typeCurrent(page, { wait: id === "my-river" ? wait : 500 });
+        await page.waitForTimeout(80);
+        if (id === "my-river") break;
+      }
+      await page.waitForTimeout(150);
+      const r = await statOf(page, "my-river");
+      const row = { pos: order.indexOf("river") + 1, order, rank: r?.masteryRank, peak: r?.masteryPeak ?? null, err: page.errors[0] ?? null };
+      await page.close();
+      check(`習熟度 M1（Batch 72）Challenge（乱数 0）: 控えの river は 1 語目にならず 2 語目・${wait / 1000} 秒で${wait === 5000 ? "戻らない（身についた・控え 5）" : "戻る（即答）"}`,
+        row.pos === 2 && (wait === 5000 ? row.rank === 4 && row.peak === 5 : row.rank === 5 && row.peak === null) && !row.err, JSON.stringify(row));
+    }
   }
 
   // ---- §9.1-7 タイピングの 2 ページは mastery.js・masteryMeta.js を読まない（記録の質の memoryModel.js・memoryCheck.js・memoryWords.js も） ----

@@ -10,7 +10,7 @@ import { speak } from "./audio.js";
 import { speechTextOf } from "./wordStore.js";
 import { icon } from "./icons.js";
 import { trapFocus } from "./focusTrap.js";
-import { rankHtml, rankOf, rankBasis, rankNext, statusScaleNote, RANK_NAMES, RANK_RULE } from "./mastery.js";
+import { rankHtml, rankOf, rankBasis, rankNext, statusScaleNote, RANK_NAMES, RANK_RULE, nextReviewText } from "./mastery.js";
 import { localDay } from "./retentionCalc.js";
 import { recallSpeedOf, recallSpeedText, recallSpeedLog } from "./recallSpeed.js";
 import { getMemoryWord } from "./memoryWords.js";
@@ -91,7 +91,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
   const category = getCategories().find((c) => c.id === word.category)?.label ?? "";
   const note = getNote(wordId);
   const family = (Array.isArray(word.family) ? word.family : []).map((id) => findWord(id)).filter(Boolean);
-  const nextReview = stat?.nextReviewAt && !stat.mastered ? Math.max(0, Math.ceil((Date.parse(stat.nextReviewAt) - Date.now()) / 86400000)) : null;
+  const nextReview = nextReviewText(stat); // 期日までのローカルの暦日の差で 今日・明日・N日後（js/mastery.js。Batch 72。出さない語は空）
   // 題箋の title: 思い出せず・ノーミス連続。「思い出せた N回」（correctCount は答えを見た後の打ち直しも数えて多めに出る）は出さない
   const statusTitle = stat ? `思い出せず ${stat.recallFail ?? 0}回${stat.cleanCorrectStreak ? ` ・ ノーミス連続 ${stat.cleanCorrectStreak}/10` : ""}` : "";
 
@@ -111,7 +111,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
       ${category ? `<span>${escapeHtml(category)}</span>` : ""}
       ${word.pos ? `<span>${escapeHtml(word.pos)}</span>` : ""}
       ${word.level ? `<span>${LEVEL_LABEL[word.level] ?? escapeHtml(word.level)}</span>` : ""}
-      ${nextReview != null ? `<span>次の復習 ${nextReview === 0 ? "今日" : `${nextReview}日後`}</span>` : ""}
+      ${nextReview ? `<span>次の復習 ${nextReview}</span>` : ""}
     </div>
     ${masteryHtml(stat, status, word, wordId)}
     ${historyDotsHtml(stat) ? `<div class="word-detail__history">履歴 ${historyDotsHtml(stat)}</div>` : ""}

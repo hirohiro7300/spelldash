@@ -21,6 +21,7 @@ import {
   typeAnswer,
   answerMatches
 } from "../js/judge.js";
+import * as JUDGE from "../js/judge.js"; // Batch 72 のヒントの 1 字（hintStep）。名前で読むので、無い版でも読み込みは落ちず検査が落ちる
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 let passed = 0;
@@ -244,6 +245,38 @@ const type = (w, text, opts) => typeAnswer(w, cands(w), text, opts);
   ok("模擬: 両方が訳 1 つのカードで札が違えば結ばない（alpha〔名〕と beta〔動〕）", !idx.get("alpha")?.has("beta") && !idx.get("beta")?.has("alpha"));
   const mixed = buildAlternativeIndex([word("gamma", "見本", "副"), word("gamma", "見本・試供品", "形"), word("delta", "見本", "形")]);
   ok("模擬: 同じ語の訳 1 つのカード〔副〕と訳 2 つのカード〔形〕: 相手〔形〕と札が重なるので結ぶ", mixed.get("gamma")?.has("delta") && mixed.get("delta")?.has("gamma"));
+}
+
+// ---- ヒントの 1 字（Batch 72 項目 3。js/judge.js hintStep・盤面の js/game.js useHint）: いま打っている候補の次の字。出題語の頭を打っている間は出題語の
+// 次の字（前と同じ）、別解の頭を打っている間はその別解の次の字。前は出題語の次の字を足していたので、別解の頭が出題語の長さを越えると「undefined」、
+// 越えなくても違う字が入って次の打鍵が ×（highschool の picture で ph → phc）。判定（spellStep・typeAnswer）は 1 打も変えない。名前で読む ----
+{
+  const hint = typeof JUDGE.hintStep === "function" ? JUDGE.hintStep : () => "hintStep が無い";
+  const start = ["start", "begin", "commence"];
+  eq("hintStep: start の問いで comme（別解 commence の頭。出題語の 5 字を越える）→ n（commence）", hint(start, "comme"), { ch: "n", target: "commence" });
+  eq("hintStep: 何も打っていない・sta → 出題語の次の字（s・r。前と同じ）・b → 別解 begin の e・候補に無い頭 → null", [hint(start, ""), hint(start, "sta"), hint(start, "b"), hint(start, "x")], [{ ch: "s", target: "start" }, { ch: "r", target: "start" }, { ch: "e", target: "begin" }, null]);
+  const pic = card("highschool", "english-picture");
+  eq("hintStep: highschool の picture（別解 photo・photograph）で ph → o（photo）・photo → g（photograph。打ち切った別解はまだ伸びる）・pi → c（出題語）",
+    [hint(cands(pic), "ph"), hint(cands(pic), "photo"), hint(cands(pic), "pi")], [{ ch: "o", target: "photo" }, { ch: "g", target: "photograph" }, { ch: "c", target: "picture" }]);
+  // 全カード（綴り入力）× 候補ごとの頭: ヒントの字は 1 字で、判定器が受ける字（spellStep の ok）。出題語の頭なら出題語の次の字（前の useHint と同じ字）
+  let n = 0;
+  const bad = [];
+  for (const w of cards) {
+    if (answerModeOf(w).mode !== "spell") continue;
+    const cs = cands(w);
+    for (const c of cs) {
+      for (let k = 0; k < c.length; k++) {
+        const typed = c.slice(0, k);
+        const h = hint(cs, typed);
+        n++;
+        const okStep = h && typeof h.ch === "string" && h.ch.length === 1 && spellStep(cs, typed, h.ch).ok && h.target.startsWith(typed + h.ch);
+        const same = !w.en.startsWith(typed) || w.en.length <= k || (h && h.ch === w.en[k] && h.target === w.en);
+        if (!okStep || !same) bad.push(`${w.category}:${w.id} ${JSON.stringify(typed)} → ${JSON.stringify(h)}`);
+      }
+    }
+  }
+  eq(`hintStep: 全カードの候補の頭 ${n} 通りで、1 字・判定器が受ける字・出題語の頭なら出題語の次の字（前と同じ）`, bad.slice(0, 5), []);
+  ok("hintStep: 確かめた頭の数が 1 万通り以上", n > 10000);
 }
 
 if (failures.length) {
