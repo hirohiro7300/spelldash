@@ -35,7 +35,7 @@
     {"id":"english-franc","en":"franc","ja":"フラン（スイスなどの通貨）","pos":"名","level":"hard","tags":["n"],"ex":"The hotel bill came to two hundred francs.","exJa":"ホテルの請求は二百フランになった。","exForm":"francs"},
     {"id":"english-policyholder","en":"policyholder","ja":"保険契約者","pos":"名","level":"hard","tags":["n"],"ex":"The policyholder must report the accident within ten days.","exJa":"保険契約者は十日以内に事故を届け出る必要がある。"},
     {"id":"english-sustainability","en":"sustainability","ja":"持続可能性","pos":"名","level":"hard","tags":["n"],"ex":"Our new report covers sustainability and the environment.","exJa":"新しい報告書は持続可能性と環境を扱っています。"},
-    {"id":"english-supervisory","en":"supervisory","ja":"監督の・管理する","pos":"形","level":"hard","tags":["adj"],"ex":"She was moved to a supervisory role last year.","exJa":"彼女は昨年、監督する役職に移りました。"},
+    {"id":"english-supervisory","en":"supervisory","ja":"監督の","pos":"形","level":"hard","tags":["adj"],"ex":"She was moved to a supervisory role last year.","exJa":"彼女は昨年、監督する役職に移りました。"},
     {"id":"english-brochure","en":"brochure","ja":"パンフレット","pos":"名","level":"hard","accept":["pamphlet","leaflet"],"tags":["n"],"ex":"Please take a brochure to learn more about our tours.","exJa":"ツアーについて詳しくはパンフレットをお持ちください。"},
     {"id":"english-sheer","en":"sheer","ja":"まったくの・純然たる","pos":"形","level":"hard","accept":["utter","pure","absolute"],"tags":["adj"],"ex":"The plan failed through sheer bad luck.","exJa":"計画はまったくの不運で失敗した。"},
     {"id":"english-electorate","en":"electorate","ja":"有権者（全体）","pos":"名","level":"hard","tags":["n"],"ex":"The electorate wants lower taxes and better roads.","exJa":"有権者は減税と道路の改善を望んでいる。"},

@@ -35,7 +35,7 @@
     {"id": "english-aware", "en": "aware", "ja": "気づいている", "pos": "形", "level": "hard", "accept": ["conscious"], "tags": ["adj"], "ex": "Are you aware of the change in the schedule?", "exJa": "予定の変更に気づいていますか。"},
     {"id": "english-advice", "en": "advice", "ja": "助言", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Thank you for your advice about studying.", "exJa": "勉強についてのアドバイスをありがとう。"},
     {"id": "english-handle", "en": "handle", "ja": "扱う・対処する", "pos": "動", "level": "normal", "accept": ["treat"], "tags": ["v"], "ex": "Emi can handle difficult customers very well.", "exJa": "エミは難しいお客さんの対応がとても上手だ。"},
-    {"id": "english-glass", "en": "glass", "ja": "ガラス・コップ", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Can I have a glass of water, please?", "exJa": "コップ一杯の水をいただけますか。"},
+    {"id": "english-glass", "en": "glass", "ja": "ガラス・コップ", "pos": "名", "level": "easy", "tags": ["n"], "ex": "This table is made of glass.", "exJa": "このテーブルはガラスでできている。"},
     {"id": "english-trial", "en": "trial", "ja": "試し・裁判", "pos": "名", "level": "hard", "accept": ["test"], "tags": ["n"], "ex": "You can use the app free for a thirty-day trial.", "exJa": "このアプリは三十日間、無料でお試しできます。"},
     {"id": "english-stress", "en": "stress", "ja": "ストレス", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Listening to music helps me deal with stress.", "exJa": "音楽を聴くとストレスの解消になる。"},
     {"id": "english-radio", "en": "radio", "ja": "ラジオ", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I listen to the radio while I cook.", "exJa": "料理をしながらラジオを聴く。"},

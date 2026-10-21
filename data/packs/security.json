@@ -570,8 +570,7 @@
       "accept": [
         "SSL",
         "TLS",
-        "SSL/TLS",
-        "常時SSL"
+        "SSL/TLS"
       ],
       "ja": "通信を暗号化し、サイトの正当性を証明書で示す接続方式",
       "q": "ブラウザとWebサイトの間の通信を暗号化し、アドレス欄に鍵マークが出る接続方式。サーバー証明書でサイトの運営者が確認できる",
@@ -589,10 +588,7 @@
       "kind": "concept",
       "answer": "VPN",
       "accept": [
-        "仮想プライベートネットワーク",
-        "VPN接続",
-        "virtual private network",
-        "ブイピーエヌ"
+        "virtual private network"
       ],
       "ja": "公衆回線上に暗号化された専用の通信路を作る仕組み",
       "q": "自宅や外出先から社内ネットワークへ接続するとき、インターネット上に暗号化された専用の通信路を作って安全につなぐ仕組み",
@@ -630,8 +626,6 @@
       "kind": "concept",
       "answer": "WAF",
       "accept": [
-        "ワフ",
-        "Webアプリケーションファイアウォール",
         "web application firewall"
       ],
       "ja": "Webアプリへの攻撃通信を検知・遮断する仕組み",
@@ -650,8 +644,7 @@
       "kind": "concept",
       "answer": "EDR",
       "accept": [
-        "endpoint detection and response",
-        "イーディーアール"
+        "endpoint detection and response"
       ],
       "ja": "端末の挙動を監視し、侵入後の不審な動きを検知・対処する",
       "q": "パソコンやサーバーの操作や通信を常時記録し、ウイルス対策ソフトをすり抜けた侵入後の不審な動きを検知して隔離・調査できる仕組み",
@@ -731,9 +724,7 @@
       "kind": "concept",
       "answer": "SIEM",
       "accept": [
-        "シーム",
-        "security information and event management",
-        "ログ統合管理"
+        "security information and event management"
       ],
       "ja": "各機器のログを集約・相関分析して異常を検知する仕組み",
       "q": "ファイアウォール、サーバー、認証システムなどバラバラのログを一か所に集め、時系列で突き合わせて不審なパターンを自動検知する仕組み",
@@ -809,9 +800,7 @@
       "kind": "concept",
       "answer": "CSIRT",
       "accept": [
-        "シーサート",
-        "computer security incident response team",
-        "インシデント対応チーム"
+        "computer security incident response team"
       ],
       "ja": "インシデント発生時に対応を指揮する社内の専門チーム",
       "q": "情報漏えいやウイルス感染が起きたときに、報告を受け付け、調査・対応の指揮、外部機関との連絡を担う社内の専門チーム",
@@ -891,11 +880,7 @@
       "kind": "concept",
       "answer": "NDA",
       "accept": [
-        "秘密保持契約",
-        "機密保持契約",
-        "秘密保持契約書",
-        "non-disclosure agreement",
-        "秘密保持誓約書"
+        "non-disclosure agreement"
       ],
       "ja": "知り得た情報を第三者に漏らさないと約束する契約",
       "q": "取引先と情報をやり取りする前や、社員の入社時に結ぶ、業務で知った情報を第三者に漏らさない・目的外に使わないと約束する契約や誓約書",
@@ -1013,8 +998,6 @@
       "kind": "concept",
       "answer": "GDPR",
       "accept": [
-        "EU一般データ保護規則",
-        "一般データ保護規則",
         "general data protection regulation"
       ],
       "ja": "EUの個人データ保護規則。域外の日本企業にも及ぶ",
@@ -1074,11 +1057,8 @@
       "kind": "concept",
       "answer": "ISMS",
       "accept": [
-        "情報セキュリティマネジメントシステム",
         "ISO27001",
-        "ISO/IEC 27001",
-        "ISMS認証",
-        "アイエスエムエス"
+        "ISO/IEC 27001"
       ],
       "ja": "情報を守る仕組みを計画・運用・改善する管理の枠組みと認証",
       "q": "会社が情報を守る仕組みを計画・運用・点検・改善の流れで回す管理の枠組み。国際規格に基づく第三者認証があり、入札や取引の条件になることもある",

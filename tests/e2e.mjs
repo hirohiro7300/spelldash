@@ -15947,8 +15947,10 @@ console.log("judge (出題語が別の正解の先頭部分):");
     }
   }
   const knownJ = ["jhs-english1:gym→gymnasium", "ngsl01:a→an", "highschool:sport→sports", "travel:photo→photograph"];
+  // 下限: K0-1 のときは 170 枚。Batch 73 で綴り入力のカードの日本語の別解（seo→seo記事・isbn→isbnコード など、打ち終えられない続き）を外し、
+  // differ→different（札の確かでない組）が結ばれなくなって 131 枚
   check(`判定（全カード）: 出題語が別の候補の先頭部分にあるカードを数える（全パック有効。綴り入力 ${spellJ.length} 枚のうち ${prefixCards.length} 枚。gym／gymnasium・a／an・sport／sports・photo／photograph を含む）`,
-    spellJ.length > 10000 && prefixCards.length >= 160 && knownJ.every((k) => prefixCards.some((p) => p === k || p.startsWith(k + ","))), `${spellJ.length} / ${prefixCards.length} / ${prefixCards.slice(0, 5).join(" ")}`);
+    spellJ.length > 10000 && prefixCards.length >= 125 &&knownJ.every((k) => prefixCards.some((p) => p === k || p.startsWith(k + ","))), `${spellJ.length} / ${prefixCards.length} / ${prefixCards.slice(0, 5).join(" ")}`);
   check(`判定（全カード）: 出題語を 1 字ずつ打つと、打ち切った時点で出題語として完成する（途中では終わらない。失敗 ${notDone.length} 枚）`, notDone.length === 0, notDone.slice(0, 8).join(" "));
   check("判定（全カード）: Enter は打った語で確定（出題語を打った状態の Enter は出題語。×にしない）", enterBad.length === 0, enterBad.slice(0, 8).join(" "));
   check("判定（全カード）: 出題語で完成したときの続き（gym → nasium）は、より長い候補の残りと同じ", restsBad.length === 0, restsBad.slice(0, 8).join(" "));
@@ -17187,24 +17189,17 @@ console.log("judge (出題語が別の正解の先頭部分):");
 
   // (38) 品詞をまたぐ別解（Batch 69 T6。PR #175 で札の確かな組だけに。js/answers.js meaningGroups・crossesPos）: 札はカードに 1 つなので、
   // その訳の札が確かなのは訳が 1 つのカードだけ。両方で確かで違う組（repeatedly〔副「繰り返し」〕と repetition〔名「繰り返し」〕）は結ばない。
-  // 札が確かでない組は結ぶ（誤った × を出さない側。Batch 69 の前と同じ）: ngsl24 の reasonably（副「まあまあ・合理的に」）と alright（形「大丈夫な・まあまあ」）は
-  // どちらも訳が 2 つ。reasonably の問いで alright と打つと別解（Batch 69 では 1 打目で ×）。同じ品詞の別解は今と同じ: gentle の問いで tender は別解
+  // 札が確かでない組は結ぶ（誤った × を出さない側。Batch 69 の前と同じ）: circa（前「およそ・〜ごろ」・訳 2 つ）と approximately（副「およそ」）。盤面は下の (38b)。
+  // Batch 73 で訳を辞書どおりに直して重ならなくした組（different「違った」と differ「異なる」・alright「大丈夫な・まあまあの」と reasonably「まあまあ・合理的に」）は結ばない。
+  // 同じ品詞の別解は今と同じ: gentle の問いで tender は別解
   {
     const n24 = packJ("ngsl24");
-    const reasonably = n24.find((w) => w.id === "english-reasonably");
     const gentle = n24.find((w) => w.id === "english-gentle");
     const both = (a, b) => !!idxJ.get(a)?.has(b) && !!idxJ.get(b)?.has(a);
     const neither = (a, b) => !idxJ.get(a)?.has(b) && !idxJ.get(b)?.has(a);
-    check("判定 (38) 全パック有効の索引: 札が両方で確かで違う repeatedly（副）と repetition（名）・resemble（動）と similar（形）は結ばない。札が確かでない different（形・訳 2 つ）と differ（動）・reasonably と alright・circa（前・訳 2 つ）と approximately（副）は結ぶ。ad と advertisement（名）は結ぶ",
-      neither("repeatedly", "repetition") && neither("resemble", "similar") && both("different", "differ") && both("reasonably", "alright") && both("circa", "approximately") && both("ad", "advertisement"));
-    const p = await openJ(seedJ("ngsl24", [reasonably.id, gentle.id]), reasonably);
-    for (const ch of "alright") await p.press("#input", ch);
-    await p.waitForTimeout(250);
-    const msg1 = (await p.textContent("#message")).trim();
-    check("判定 (38) reasonably の問いで alright（札が確かでない別の品詞）: 別解として受ける（×にしない・この問題の語は reasonably）",
-      msg1.includes("alright も") && msg1.includes("reasonably") && (await numJ(p, "#recallFail")) === 0, msg1);
-    for (const ch of reasonably.en) await p.press("#input", ch); // 見せた語を打って次へ
-    await waitUntil(async () => (await jaJ(p)) === gentle.ja, 3000);
+    check("判定 (38) 全パック有効の索引: 札が両方で確かで違う repeatedly（副）と repetition（名）・resemble（動）と similar（形）は結ばない。札が確かでない circa（前・訳 2 つ）と approximately（副）は結ぶ。訳の重ならない different（形「違った」。Batch 73）と differ（動「異なる」）・alright（形「大丈夫な・まあまあの」。Batch 73）と reasonably（副）は結ばない。ad と advertisement（名）は結ぶ",
+      neither("repeatedly", "repetition") && neither("resemble", "similar") && neither("different", "differ") && neither("reasonably", "alright") && both("circa", "approximately") && both("ad", "advertisement"));
+    const p = await openJ(seedJ("ngsl24", [gentle.id]), gentle);
     const rfBefore = await numJ(p, "#recallFail");
     for (const ch of "tender") await p.press("#input", ch);
     await p.waitForTimeout(250);

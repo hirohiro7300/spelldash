@@ -192,10 +192,14 @@ const type = (w, text, opts) => typeAnswer(w, cands(w), text, opts);
   ok("同じ品詞の別解は今までどおり結ぶ（ad・advertisement 名）", linked("ad", "advertisement"));
   ok("同じ品詞の別解は今までどおり結ぶ（begin・start 動）", linked("begin", "start"));
   judged("repeatedly の問いで repetition: 別解にならず 5 打目で ×（repe までは repeatedly と同じ）", type(card("tsl07", "english-repeatedly"), "repetition"), { how: "miss", at: 5 });
-  // 札が確かでない組は結ぶ: jhs-english2 の different は「ちがう・異なる」（訳 2 つ）なので、「異なる」の札が形かは確かでない
-  ok("different（形「ちがう・異なる」・訳 2 つ）と differ（動「異なる」）は結ぶ（札が確かでない）", linked("different", "differ"));
+  // 札が確かでない組は結ぶ（模擬）: different が「ちがう・異なる」（訳 2 つ）なら、「異なる」の札が形かは確かでない。
+  // 教材の jhs-english2 の different は Batch 73 で「違った」（訳 1 つ）にしたので、教材では differ と結ばない
+  const pair = (en, ja, pos) => ({ en, ja, pos });
+  const unsure = buildAlternativeIndex([pair("different", "ちがう・異なる", "形"), pair("differ", "異なる", "動")]);
+  ok("模擬: different（形「ちがう・異なる」・訳 2 つ）と differ（動「異なる」）は結ぶ（札が確かでない）", unsure.get("different")?.has("differ") && unsure.get("differ")?.has("different"));
   const different = card("jhs-english2", "english-different");
-  judged("different の問いで differ: 伸びる候補（different）があるので止めず、Enter で別解（Batch 69 の前と同じ）", type(different, "differ"), { how: "enter", kind: "alt", at: 6 });
+  judged("模擬: different の問いで differ: 伸びる候補（different）があるので止めず、Enter で別解（Batch 69 の前と同じ）", typeAnswer(different, acceptedAnswers(different, unsure), "differ"), { how: "enter", kind: "alt", at: 6 });
+  ok("教材: different（形「違った」）と differ（動「異なる」）は結ばない（Batch 73。訳が重ならない）", !linked("different", "differ"));
   judged("differ の問いで different: differ で正解し、続き ent は残り（次の語の打鍵にしない）", type(card("ngsl17", "english-differ"), "different"), { how: "auto", kind: "exact", at: 6, rest: "ent" });
   // only（副「～だけ・唯一の」）の「唯一の」は形容詞の意味で、sole・unique（形）と同じ。only は訳が 2 つなので札が確かでなく、索引で結ぶ。
   // accept（only に sole・unique、sole・unique に only。Batch 69）も残す（盤面によらず別解）。till（前）と until（接）は訳 1 つどうしで札が違うので索引では結ばないが、互いの accept にある

@@ -9,6 +9,9 @@ import { fileURLToPath } from "url";
 import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, isReading, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
 import { shelfIdOf } from "../js/shelves.js";
 import { isReadingsRecord, readingsList } from "./lib/accept-readings.mjs";
+import { isSpellTypeable } from "./lib/spell-typeable.mjs";
+import { answerModeOf } from "../js/judge.js";
+import { toCard } from "../js/wordData.js";
 
 const argv = process.argv.slice(2);
 const unknownArgs = argv.filter((a) => !a.startsWith("--root="));
@@ -118,6 +121,18 @@ function checkAcceptReadings(w, where, { cardType, strict }) {
   }
 }
 
+// 綴り入力のカード（答えが英字とハイフンだけの概念カード: Cu・CPC・EU。盤面と同じ js/wordData.js toCard → js/judge.js answerModeOf が spell。
+// 計算カードを除く）の accept は、綴りで打てる語だけ（半角の英字・数字・記号・空白。scripts/lib/spell-typeable.mjs）。日本語の名前・読み
+// （Cu の 銅・どう、CPC の クリック単価）は判定で使われず、単語帳の「別解」に正解でない語として出るだけ。英字で始まる日本語（https化・nisa口座）は、
+// 打ち終えられない英字の頭を × にしない・ヒントで日本語の字が入る・続きの持ち越し止めで次の語の速さを測らない（Batch 73。docs/PACK_FORMAT.md）
+let spellCards = 0;
+function checkSpellAccept(w, where, data, isPack) {
+  if (w.kind !== "concept" || w.calc || !Array.isArray(w.accept)) return;
+  if (answerModeOf(toCard(w, data, isPack ? { pack: true } : null)).mode !== "spell") return;
+  spellCards++;
+  for (const a of w.accept) if (!isSpellTypeable(a)) problems.push(`綴り入力のカードの accept に綴りで打てない字（英字の答えの別解は綴りだけ） ${where} (${a})`);
+}
+
 const allIds = new Set();
 const entries = [];
 let total = 0;
@@ -219,6 +234,7 @@ for (const fullPath of files) {
     if (!["easy", "normal", "hard"].includes(w.level)) problems.push(`level不正 ${where}`);
     // 日本語の答え: 漢字に変換せず、読みをローマ字で打つ（js/romaji.js）。読み（ひらがな）が accept に必要
     if (w.kind === "concept" && !w.calc && !w.kanjiOnly && hasJapaneseScript(w.answer)) checkReadings(w, where);
+    checkSpellAccept(w, where, data, isPack);
     checkAcceptReadings(w, where, { cardType: data.cardType, strict: !isPack || data.cardType === "school" });
     // 訳に見出し語そのものを書かない（出題文に答えが出てしまい、思い出す練習にならない）。
     // 連語を示したいときは「〜に代わって（on ___ of）」のように見出し語を伏せる。
@@ -324,6 +340,7 @@ for (const [file, w] of entries) {
 
 console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${familyById.size} / 日本語の答え: ${readingCards}枚（読み ${readingCount}・読みを結んだ別表記 ${boundAlts}）`);
 console.log(`学校・基本で読みを結んでいない別表記: ${unboundStrict}件・Batch 71 で足した読みのうち accept に残る ${b71Checked}（結びか主な読みに属するかを見た）`);
+console.log(`綴り入力のカード（英字の答えの概念カード）: ${spellCards}枚（accept は綴りで打てる語だけか見た）`);
 if (problems.length === 0) {
   console.log("OK: 問題なし");
 } else {
