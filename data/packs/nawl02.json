@@ -25,7 +25,7 @@
     {"id": "english-chronic", "en": "chronic", "ja": "慢性の", "pos": "形", "level": "hard", "tags": ["adj"], "ex": "Chronic back pain is common among office workers.", "exJa": "慢性的な腰痛は会社員によく見られる。"},
     {"id": "english-chunk", "en": "chunk", "ja": "大きな塊・部分", "pos": "名", "level": "hard", "tags": ["n"], "ex": "A large chunk of the budget goes to rent.", "exJa": "予算の大きな部分が家賃に消える。"},
     {"id": "english-cinema", "en": "cinema", "ja": "映画館", "pos": "名", "level": "easy", "tags": ["n"], "ex": "There is a new cinema near the station.", "exJa": "駅の近くに新しい映画館があります。"},
-    {"id": "english-circa", "en": "circa", "ja": "およそ・〜ごろ（年号の前）", "pos": "前", "level": "hard", "accept": ["around", "about"], "tags": ["fn"], "ex": "The map was drawn circa fifteen hundred.", "exJa": "その地図は1500年ごろに描かれた。"},
+    {"id": "english-circa", "en": "circa", "ja": "およそ・〜ごろ（年号の前）", "pos": "前", "level": "hard", "accept": ["around", "about", "approximately"], "tags": ["fn"], "ex": "The map was drawn circa fifteen hundred.", "exJa": "その地図は1500年ごろに描かれた。"},
     {"id": "english-circulate", "en": "circulate", "ja": "回覧する・広める", "pos": "動", "level": "hard", "accept": ["spread"], "tags": ["v"], "ex": "Please circulate this memo to all the staff.", "exJa": "このメモを全員に回覧してください。"},
     {"id": "english-circulation", "en": "circulation", "ja": "発行部数・循環", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The newspaper has a circulation of two million.", "exJa": "その新聞の発行部数は二百万部です。"},
     {"id": "english-civilization", "en": "civilization", "ja": "文明", "pos": "名", "level": "hard", "accept": ["civilisation"], "tags": ["n"], "ex": "The lecture covered the rise of ancient civilization.", "exJa": "講義は古代文明の興りを扱った。"},

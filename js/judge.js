@@ -78,6 +78,15 @@ export function spellFitsFromStart(candidates, keys) {
   return true;
 }
 
+// ヒントの 1 字（盤面の js/game.js useHint。Batch 72）: いま打っている候補の次の字。候補の並び（先頭は出題語・データの別解・同じ訳の語）で、
+// typed を頭に持ち typed より長い最初の候補を target にする（出題語の頭を打っている間は出題語＝前と同じ字。別解の頭を打っている間はその別解）。
+// 返り値 { ch, target }。足した字は spellStep が受ける字なので、判定（spellStep・typeAnswer の結果）は変わらない。伸ばせる候補が無ければ null
+export function hintStep(candidates, typed) {
+  const t = String(typed ?? "").toLowerCase();
+  const target = candidates.find((c) => c.length > t.length && c.startsWith(t));
+  return target ? { ch: target[t.length], target } : null;
+}
+
 // ===== ローマ字（日本語の答え） =====
 
 // 1 語ぶんのローマ字の判定（js/romaji.js createRomajiMatcher）を作る。entries = ローマ字で打つ読み（romajiEntriesFor）。

@@ -38,6 +38,7 @@ import {
   daysSinceAnswer
 } from "../js/mastery.js";
 import * as MA from "../js/mastery.js"; // Batch 70 の M1・M1'（isSlipFail・masteryPeakOf・RANK_FLOOR_GAP_DAYS）。名前で読むので、無い版でも読み込みは落ちず検査が落ちる
+import * as R72 from "../js/retentionCalc.js"; // Batch 72 の検査の日付の文字（mdOf・shiftDay）
 import { localDay, dayDiff, gapBand } from "../js/retentionCalc.js"; // gap の帯は js/masteryMeta.js と js/memoryCheck.js が同じものを使う（PR #172 のレビュー 7）
 import {
   BOX_KEYS,
@@ -1440,24 +1441,32 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   // nextRank: 控え（c.peak）が今の段より上なら、翌日以降のノーミス・遅くない答えで 1 段（6 日・20 日・すぐの条件なし）。× と同じ日の ○ は今のまま
   const P = (r, a, over = {}) => nextRank(r, a, ctx({ gap: 1, peak: 5, ...over }));
   eq(
-    "M1 nextRank: 控え 5 の段 4 → 翌日のふつう・すぐ・速さ unknown で 5。遅い・打ち間違いあり・同じ日の ○・× は今のまま（4・4・4・3）",
+    "M1 nextRank: 控え 5 の段 4 → 翌日のふつう・すぐで 5。速さを測れない答え（unknown）・遅い・打ち間違いあり・同じ日の ○・× は今のまま（4・4・4・4・3）",
     [P(4, okA("normal")), P(4, okA("fast")), P(4, okA("unknown")), P(4, okA("slow")), P(4, okA("normal", false)), P(4, okA("normal"), { sameDay: true, gap: null }), P(4, NG)],
-    [5, 5, 5, 4, 4, 4, 3]
+    [5, 5, 4, 4, 4, 4, 3]
   );
   eq("M1 nextRank: 1 日 1 段（控え 5 の段 3 → 4）・控えより上に上げない（控え 4 の段 3 を 25 日あけてすぐ → 4）・控えが今の段以下なら今のまま", [P(3, okA("normal")), P(3, okA("fast"), { peak: 4, gap: 25 }), P(4, okA("normal"), { peak: 4 }), P(4, okA("normal"), { peak: 0 })], [4, 4, 4, 4]);
   eq("M1 nextRank: 今の規則の方が上ならそちら（知ってた語の確認で 3 → 5）", nextRank(3, okA("fast"), ctx({ gap: 14, knownCheck: true, peak: 4 })), 5);
+  // Batch 72 項目 1: 速さを測れない答え（ページの最初の語・Battle・基準がまだ無い箱）は M1 で戻さない。速さの無い答え・知らない札も同じ。
+  // 今の規則で上がるとき（6 日あけた 3 → 4）は今の規則のまま。段 5 の 5 → 4 は測れた slow だけ（unknown では下げない。分ける）
+  eq(
+    "M1 nextRank（Batch 72）: 控えのある語の速さ unknown・速さなし・知らない札は戻さない（段 3 → 3・段 4 → 4）。6 日あけた unknown の 3 → 4 は今の規則で上がる",
+    [P(3, okA("unknown"), { peak: 4 }), P(4, { ok: true, clean: true }), P(4, okA("quick")), P(3, okA("unknown"), { peak: 4, gap: 6 })],
+    [3, 4, 4, 4]
+  );
+  eq("段 5 の 5 → 4（Batch 72 で分けた）: 測れた slow だけ 4・unknown は 5 のまま（gap 1・gap 30）", [nextRank(5, okA("slow"), ctx({ gap: 1 })), nextRank(5, okA("unknown"), ctx({ gap: 1 })), nextRank(5, okA("unknown"), ctx({ gap: 30 }))], [4, 5, 5]);
   // 語の詳細の次の条件（rankNext。仕上げでつないだ）: 控えが使える語は「前の答えの翌日以降に 間違えずに思い出せると <1 段上の名前>」（nextRank の M1 の枝と
   // 同じ日・同じ段。今の規則の「6日・20日あけて」「すぐ打てると」は言わない）。控えが使えない語は今の文。規則の文にも戻り方の 1 文
   const T10 = "2026-10-10";
   eq(
-    "M1 rankNext: 控え 5 の段 4 は「10月11日以降に 間違えずに思い出せると 即答」・翌日に見ると「次に …」",
+    "M1 rankNext: 控え 5 の段 4 は「10月11日以降に 間違えずに 時間をかけずに思い出せると 即答」・翌日に見ると「次に …」",
     [rankNext(slipped, T10), rankNext(slipped, "2026-10-11")],
-    ["10月11日以降に 間違えずに思い出せると 即答", "次に 間違えずに思い出せると 即答"]
+    ["10月11日以降に 間違えずに 時間をかけずに思い出せると 即答", "次に 間違えずに 時間をかけずに思い出せると 即答"]
   );
   eq(
     "M1 rankNext: 控え 5 の段 3（続けて 2 回下がった）は 1 段上の 身についた（6 日あけなくても）・控え 3 の段 2 は今の段 2 の文と同じ",
     [rankNext({ ...slipped, masteryRank: 3 }, T10), rankNext({ ...slipped, masteryRank: 2, masteryPeak: 3 }, T10)],
-    ["10月11日以降に 間違えずに思い出せると 身についた", "10月11日以降に 間違えずに思い出せると 思い出せる"]
+    ["10月11日以降に 間違えずに 時間をかけずに思い出せると 身についた", "10月11日以降に 間違えずに思い出せると 思い出せる"]
   );
   eq(
     "M1 rankNext: 控えの無い語・最後の × が答え表示の語は今の文（20 日あけて すぐ打てると 即答）・2 台目の × を取り込んだ語は 1 段下（3）の今の文（6 日あけて）",
@@ -1475,7 +1484,7 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
   }
   ok(
     "M1 規則の文: 打ち間違いで下がった段の戻り方の 1 文があり、「時間がたつだけでは下がらない」で終わる・「遅い」は無い",
-    RANK_RULE.includes("3字目からの打ち間違いか 隣のキーの押し間違いで下がった段は、翌日から 間違えずに思い出せると 1 日 1 段ずつ戻る。") &&
+    RANK_RULE.includes("3字目からの打ち間違いか 隣のキーの押し間違いで下がった段は、翌日から 間違えずに 時間をかけずに思い出せると 1 日 1 段ずつ戻る（Battle の × と、音で出題など速さを測れない答えは数えない）。") &&
       RANK_RULE.endsWith("時間がたつだけでは下がらない。") &&
       !RANK_RULE.includes("遅い")
   );
@@ -1579,19 +1588,51 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
     eq("M1 書き手: Recall Loop で打てた語も翌日に戻る", [s.loop.masteryRank, s.loop.masteryPeak ?? null], [5, null]);
     eq("M1 書き手: 遅い答え・打ち間違いありの正解では戻さず、控えを残す（4・控え 5）", [[s.slow.masteryRank, s.slow.masteryPeak], [s.typo.masteryRank, s.typo.masteryPeak]], [[4, 5], [4, 5]]);
     eq("M1 書き手: 翌日も 1 打ミス → 3・控えは 5 のまま（どちらの段も 1 打ミスで下がった）", [s.twice.masteryRank, s.twice.masteryPeak], [3, 5]);
-    eq("M1 書き手: Battle のノーミス正解（速さ unknown）でも戻る（遅くないノーミス）", [s.bt.masteryRank, s.bt.masteryPeak ?? null], [5, null]);
+    eq("M1 書き手（Batch 72）: Battle のノーミス正解（速さ unknown）では戻さず、控えと控えの × の時刻を残す（4・控え 5）", [s.bt.masteryRank, s.bt.masteryPeak ?? null, s.bt.masteryPeakAt === s.bt.lastRecallFailAt], [4, 5, true]);
 
     // 2 日後
     clock = day(2);
-    for (const id of ["slow", "typo", "twice"]) study(id, "normal");
+    for (const id of ["slow", "typo", "twice", "bt"]) study(id, "normal");
     await nextTask();
     s = read();
+    eq("M1 書き手（Batch 72）: Battle の翌日の測れた ふつう の答えで戻り、控えを消す", [s.bt.masteryRank, s.bt.masteryPeak ?? null], [5, null]);
     eq("M1 書き手: 控えの残った語は次の日のノーミスで戻る（遅い・打ち間違いの翌日 → 5）・2 回下がった語は 1 日 1 段（3 → 4・控え 5 は残る）", [[s.slow.masteryRank, s.slow.masteryPeak ?? null], [s.typo.masteryRank, s.typo.masteryPeak ?? null], [s.twice.masteryRank, s.twice.masteryPeak]], [[5, null], [5, null], [4, 5]]);
     clock = day(3);
     study("twice", "normal");
     await nextTask();
     eq("M1 書き手: その翌日に 5 へ戻りきって控えを消す", [read().twice.masteryRank, read().twice.masteryPeak ?? null], [5, null]);
     ok("M1 書き手: どの語も書いた直後は rankOf === masteryRank", Object.values(read()).every((st) => rankOf(st) === st.masteryRank));
+
+    // ---- Batch 72 項目 1（反証の再現の形）: 1 打ミスの後に回が終わった語（未解決のまま翌日）が、翌日のページの最初の語（js/game.js は速さを測らず
+    // speed "unknown" で渡す）になっても、何秒かかったかを測っていないので戻さない。控えは残り、次の測れた答えで戻す（遅ければ戻さない）。
+    // 語の詳細の次の条件は控えが使える間「（前の答えの翌日）以降に 間違えずに 時間をかけずに思い出せると 即答」のまま
+    {
+      clock = day(10);
+      seed({ pg: five(), pg2: five() });
+      await nextTask();
+      for (const id of ["pg", "pg2"]) W.recordRecallFail(id, SLIP3); // Recall Loop の前に回が終わる（打ち直しもしない）
+      await nextTask();
+      let t = read();
+      eq("M1 書き手（Batch 72）: 回の終わりの 1 打ミス → 段 4・控え 5・未解決のまま", ["pg", "pg2"].map((id) => [t[id].masteryRank, t[id].masteryPeak, MA.isUnresolved(t[id])]), [[4, 5, true], [4, 5, true]]);
+      const peakAt = t.pg.masteryPeakAt;
+      clock = day(11, 9);
+      study("pg", "unknown"); // 翌日のページの最初の語（測らない）
+      study("pg2", "slow"); // 2 語目で測って遅い
+      await nextTask();
+      t = read();
+      eq(
+        "M1 書き手（Batch 72）: 翌日のページの最初の語（速さ unknown）は戻さず控えと控えの × の時刻を残す（4・5・同じ時刻）・測った遅い答えも戻さない（4・5）",
+        [[t.pg.masteryRank, t.pg.masteryPeak, t.pg.masteryPeakAt === peakAt], [t.pg2.masteryRank, t.pg2.masteryPeak]],
+        [[4, 5, true], [4, 5]]
+      );
+      eq("M1 rankNext（Batch 72）: 戻さなかった語の次の条件は 控えの文のまま（今日の答えの翌日以降に 間違えずに 時間をかけずに思い出せると 即答）", rankNext(t.pg, localDay(new RealDate(day(11, 9)))), `${R72.mdOf(R72.shiftDay(localDay(new RealDate(day(11, 9))), 1))}以降に 間違えずに 時間をかけずに思い出せると 即答`);
+      clock = day(12, 9);
+      study("pg", "normal"); // 次の日の測れた ふつう
+      study("pg2", "normal");
+      await nextTask();
+      t = read();
+      eq("M1 書き手（Batch 72）: 次の日の測れた ふつう の答えで 2 語とも 即答 に戻り、控えを消す", ["pg", "pg2"].map((id) => [t[id].masteryRank, t[id].masteryPeak ?? null]), [[5, null], [5, null]]);
+    }
 
     // ---- M2: 模擬の道（D1 §2.7 の L2 の行）を製品の書き手で。毎日 12:00 に期日の語だけ答える。× の日は 12:00 に × → 打ち直し → 12:02 に Recall Loop ----
     const D0 = "2026-01-05";
@@ -1734,9 +1775,9 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
     }
     eq("PR180-2 rankNext と nextRank: 23:30 の × を翌 0:10・1:00・5:31 に見ても「次に」と言わない（日付は 10月11日）・6 時間たてば「次に」。12:00 の × と段 2 の文も同じ決まり", bad, []);
     eq(
-      "PR180-2 rankNext: 23:30 の 1 打ミス（Recall Loop 23:32）を翌 1:00 に見ると「10月11日以降に 間違えずに思い出せると 即答」・翌 5:33 に見ると「次に …」",
+      "PR180-2 rankNext: 23:30 の 1 打ミス（Recall Loop 23:32）を翌 1:00 に見ると「10月11日以降に 間違えずに 時間をかけずに思い出せると 即答」・翌 5:33 に見ると「次に …」",
       [rankNext(m1Late, "2026-10-11", at("2026-10-11", 1, 0)), rankNext(m1Late, "2026-10-11", at("2026-10-11", 5, 33))],
-      ["10月11日以降に 間違えずに思い出せると 即答", "次に 間違えずに思い出せると 即答"]
+      ["10月11日以降に 間違えずに 時間をかけずに思い出せると 即答", "次に 間違えずに 時間をかけずに思い出せると 即答"]
     );
   }
 
@@ -1827,6 +1868,162 @@ eq("isFirstAnswer: 出題だけの語（streak 0・correctCount 0）→ true", i
     globalThis.Date = RealDate;
     console.warn = quiet;
   }
+}
+
+// ── 20. Batch 72 項目 1（B1）: ページの最初の語（速さを測らない）に、控えの使える語を置かない。docs/SPEC_MASTERY.md §3.5・§4.3 ──────────────
+// M1 は速さを測れた すぐ・ふつう の答えでしか戻さない（上の 18 の Batch 72 の検査）。ページを開いて最初の語は速さを測らないので、控えの使える語
+// （needsMeasuredSpeed: その日の最初の答えで、控えが今の段より上）を Study の列の先頭にしない（js/studyQueue.js avoidUnmeasuredHead）。
+// 完了パネルの「明日の復習: …」（getDueReviewWords）も同じ決まりで名指しする（翌朝の 1 語目と合う）。関数は名前で読む（無い版でも読み込みは落ちず検査が落ちる）
+{
+  globalThis.sessionStorage ??= { getItem: () => null, setItem() {}, removeItem() {} };
+  globalThis.CustomEvent ??= class { constructor(t, o) { this.type = t; this.detail = o?.detail; } };
+  const needs = typeof MA.needsMeasuredSpeed === "function" ? MA.needsMeasuredSpeed : () => "needsMeasuredSpeed が無い";
+  const HOUR = 3600000;
+  const DAY = 86400000;
+  const now = at("2026-10-20", 9);
+  const isoMs = (t) => new Date(t).toISOString();
+  const slipStat = (failAt, extra = {}) => ({ playCount: 6, correctCount: 6, recallFail: 1, typingMiss: 1, missCount: 1, cleanCorrectStreak: 0, masteryRank: 4, masteryPeak: 5, masteryPeakAt: isoMs(failAt), masteryAt: isoMs(failAt), masteryDownAt: isoMs(failAt), lastRecallFailAt: isoMs(failAt), lastRecallSuccessAt: isoMs(failAt - 30 * DAY), nextReviewAt: isoMs(failAt + DAY), history: [{ d: "2026-09-19", r: "o" }, { d: "2026-10-19", r: "x", k: "m", p: 2, a: false }], ...extra });
+  const late = at("2026-10-19", 23, 50);
+  const top = { playCount: 6, correctCount: 6, recallFail: 0, cleanCorrectStreak: 6, masteryRank: 5, masteryAt: isoMs(now - 30 * DAY), lastRecallSuccessAt: isoMs(now - 30 * DAY), nextReviewAt: isoMs(now - HOUR), history: [{ d: "2026-09-20", r: "o" }] };
+  // ---- 純関数 ----
+  eq(
+    "B72-1 needsMeasuredSpeed: 翌日の控えの語は要る・2 時間前の × は要らない（同じ日）・23:50 の × → 00:03 は要らない（6 時間）／→ 06:00 は要る・控えの無い語・控えの後に別の × がある語・段 5 の語・記録の無い語は要らない",
+    [
+      needs(slipStat(now - 25 * HOUR), now),
+      needs(slipStat(now - 2 * HOUR), now),
+      needs(slipStat(late), at("2026-10-20", 0, 3)),
+      needs(slipStat(late), at("2026-10-20", 6)),
+      needs(slipStat(now - 25 * HOUR, { masteryPeak: undefined, masteryPeakAt: undefined }), now),
+      needs(slipStat(now - 25 * HOUR, { masteryPeakAt: isoMs(now - 50 * HOUR) }), now),
+      needs(top, now),
+      needs(undefined, now),
+      needs({}, now)
+    ],
+    [true, false, false, true, false, false, false, false, false]
+  );
+  // nextRank と食い違わない: 要る語 ⇔ 測れた ふつう で M1 が効く。unknown と slow では M1 は効かない（A＋B1）
+  for (const [name, st, t] of [["翌日", slipStat(now - 25 * HOUR), now], ["同じ日", slipStat(now - 2 * HOUR), now], ["6 時間の境", slipStat(late), at("2026-10-20", 0, 3)]]) {
+    const c = answerContext(st, t);
+    const up = (speed) => nextRank(c.rank, { ok: true, clean: true, speed }, c) - nextRank(c.rank, { ok: true, clean: true, speed }, { ...c, peak: 0 });
+    const need = needs(st, t);
+    eq(`B72-1 needsMeasuredSpeed（${name}）＝ 測れた ふつう で M1 が効く・unknown と slow では効かない`, [need === true || need === false, need === up("normal") > 0, up("unknown"), up("slow")], [true, true, 0, 0]);
+  }
+
+  // ---- 列の入れ替え（js/studyQueue.js avoidUnmeasuredHead）と明日の復習の名指し（getDueReviewWords） ----
+  const RealDate = Date;
+  let clock = now;
+  class FakeDate extends RealDate {
+    constructor(...a) {
+      if (a.length === 0) super(clock);
+      else super(...a);
+    }
+    static now() {
+      return clock;
+    }
+  }
+  const quiet = console.warn;
+  console.warn = () => {};
+  globalThis.Date = FakeDate;
+  try {
+    store.set("spelldash_my_words", JSON.stringify(["aaa", "bbb", "ccc", "ddd", "eee"].map((en) => ({ en, ja: `訳${en}` }))));
+    const WS = await import("../js/wordStore.js");
+    WS.refreshMyWords();
+    const SQ = await import("../js/studyQueue.js");
+    const ST = await import("../js/storage.js");
+    const avoid = typeof SQ.avoidUnmeasuredHead === "function" ? SQ.avoidUnmeasuredHead : () => "avoidUnmeasuredHead が無い";
+    const put = (stats) => {
+      store.set("spelldash_word_stats", JSON.stringify(stats));
+      ST.forgetWordStats();
+    };
+    const run = (ids, stats) => {
+      put(stats);
+      SQ.startResumedQueue(ids, []);
+      const r = avoid({ nowMs: clock });
+      return [SQ.getUpcomingIds().join(), r];
+    };
+    const P = slipStat(now - 25 * HOUR);
+    eq("B72-1 avoidUnmeasuredHead: 先頭の控えの語と、次の控えの無い語を入れ替える（ほかはそのまま・from 1）", run(["my-aaa", "my-bbb", "my-ccc"], { "my-aaa": P }), ["my-bbb,my-aaa,my-ccc", { id: "my-bbb", from: 1 }]);
+    eq("B72-1 avoidUnmeasuredHead: 控えの語が 2 つ続くと 3 番目を先頭へ（控えの語の順はそのまま・from 2）", run(["my-aaa", "my-bbb", "my-ccc", "my-ddd"], { "my-aaa": P, "my-bbb": P }), ["my-ccc,my-aaa,my-bbb,my-ddd", { id: "my-ccc", from: 2 }]);
+    eq("B72-1 avoidUnmeasuredHead: 全部が控えの語・先頭が控えの語でない・1 語の列は動かさない（null）", [run(["my-aaa", "my-bbb"], { "my-aaa": P, "my-bbb": P }), run(["my-bbb", "my-aaa"], { "my-aaa": P }), run(["my-aaa"], { "my-aaa": P })], [["my-aaa,my-bbb", null], ["my-bbb,my-aaa", null], ["my-aaa", null]]);
+    eq("B72-1 avoidUnmeasuredHead: 段 5 の語（5 → 4 は測れた 時間がかかる だけ。分けた）は動かさない", run(["my-eee", "my-bbb"], { "my-eee": top }), ["my-eee,my-bbb", null]);
+    // 明日の復習の名指し: 今日 10 時に 1 打ミス（未解決・控え 5）の aaa と、明日 8 時が期日の bbb。名指しの 1 番目は bbb、翌朝 9 時の列の 1 語目も bbb
+    const today20 = at("2026-10-20", 20);
+    const tom = new Date(2026, 9, 21, 23, 59, 59, 999).getTime();
+    const failAt = at("2026-10-20", 10);
+    const slip = slipStat(failAt, { nextReviewAt: isoMs(failAt + HOUR) });
+    const dueB = { playCount: 4, correctCount: 4, recallFail: 0, cleanCorrectStreak: 3, masteryRank: 3, masteryAt: isoMs(today20 - 5 * DAY), lastRecallSuccessAt: isoMs(today20 - 5 * DAY), lastPlayed: isoMs(today20 - 5 * DAY), nextReviewAt: isoMs(at("2026-10-21", 8)), history: [{ d: "2026-10-15", r: "o" }] };
+    const notDue = { ...dueB, nextReviewAt: isoMs(today20 + 9 * DAY) };
+    clock = today20;
+    put({ "my-aaa": slip, "my-bbb": dueB, "my-ccc": notDue });
+    const names = SQ.getDueReviewWords("my", tom, 3).map((w) => w.id);
+    clock = at("2026-10-21", 9);
+    ST.forgetWordStats();
+    SQ.startStudyQueue("my");
+    const before = SQ.getUpcomingIds().slice();
+    avoid({ nowMs: clock });
+    const q = SQ.getUpcomingIds().slice();
+    eq("B72-1 明日の復習の名指し: 控えの語（未解決）を 1 番目にせず期日の語を先に・翌朝 9 時の列の 1 語目は名指しの 1 番目と同じ（列は未解決が先）", [names, before[0], q[0]], [["my-bbb", "my-aaa"], "my-aaa", "my-bbb"]);
+    clock = today20;
+    put({ "my-aaa": slip });
+    eq("B72-1 明日の復習の名指し: 名指しが控えの語 1 つだけなら、そのまま", SQ.getDueReviewWords("my", tom, 3).map((w) => w.id), ["my-aaa"]);
+    store.delete("spelldash_my_words");
+    store.delete("spelldash_word_stats");
+    WS.refreshMyWords();
+    ST.forgetWordStats();
+  } finally {
+    globalThis.Date = RealDate;
+    console.warn = quiet;
+  }
+}
+
+// ── 21. Batch 72 項目 5: 語の詳細の「次の復習」はローカルの暦日の差（盤面の上・正解の文と同じ数え方）。今日・明日・N日後 ──────────────
+// 前は ceil((期日 − 今) ÷ 24 時間)。今日 9 時に見て期日が明日 23:30 なら「2日後」と出ていた（暦日なら 明日）。関数は名前で読む
+{
+  const nextText = typeof MA.nextReviewText === "function" ? MA.nextReviewText : () => "nextReviewText が無い";
+  const due = (iso) => ({ nextReviewAt: iso, masteryRank: 3 });
+  eq(
+    "B72-5 nextReviewText: 9 時に見て期日が明日 23:30 → 明日・今日 23:00 → 今日・過ぎた期日 → 今日・明後日 01:00 → 2日後・6 日後 → 6日後",
+    [
+      nextText(due(iso("2026-10-21", 23, 30)), at("2026-10-20", 9)),
+      nextText(due(iso("2026-10-20", 23)), at("2026-10-20", 9)),
+      nextText(due(iso("2026-10-18", 8)), at("2026-10-20", 9)),
+      nextText(due(iso("2026-10-22", 1)), at("2026-10-20", 9)),
+      nextText(due(iso("2026-10-26", 9)), at("2026-10-20", 9))
+    ],
+    ["明日", "今日", "今日", "2日後", "6日後"]
+  );
+  eq(
+    "B72-5 nextReviewText: 0 時をまたぐ（23:50 に見て 00:10 の期日 → 明日・00:10 に見て同じ日 23:50 の期日 → 今日・23:59 に見て 2 日後の 00:01 → 2日後）",
+    [
+      nextText(due(iso("2026-10-21", 0, 10)), at("2026-10-20", 23, 50)),
+      nextText(due(iso("2026-10-21", 23, 50)), at("2026-10-21", 0, 10)),
+      nextText(due(iso("2026-10-22", 0, 1)), at("2026-10-20", 23, 59))
+    ],
+    ["明日", "今日", "2日後"]
+  );
+  eq(
+    "B72-5 nextReviewText: 出さない（習得した語・期日なし・読めない期日・記録なし）は空",
+    [nextText({ ...due(iso("2026-10-22", 9)), mastered: true }, at("2026-10-20", 9)), nextText({ masteryRank: 3 }, at("2026-10-20", 9)), nextText(due("x"), at("2026-10-20", 9)), nextText(undefined, at("2026-10-20", 9))],
+    ["", "", "", ""]
+  );
+  // 夏時間をまたぐ（時間帯を一時的に America/New_York に。2026 年は 3 月 8 日に 1 時間進み、11 月 1 日に戻る）: 暦日で数えるので 24 時間でない日も 1 日
+  const tz = process.env.TZ;
+  process.env.TZ = "America/New_York";
+  try {
+    const ny = (y, mo, d, h, m = 0) => new Date(y, mo - 1, d, h, m).getTime();
+    eq(
+      "B72-5 nextReviewText（夏時間）: 3/7 23:30 に見て 3/9 00:30（実の 24 時間）→ 2日後・10/31 12:00 に見て 11/1 12:00（実の 25 時間）→ 明日・11/1 00:30 に見て 11/2 00:10（実の 24 時間 40 分）→ 明日",
+      [
+        nextText(due(new Date(ny(2026, 3, 9, 0, 30)).toISOString()), ny(2026, 3, 7, 23, 30)),
+        nextText(due(new Date(ny(2026, 11, 1, 12)).toISOString()), ny(2026, 10, 31, 12)),
+        nextText(due(new Date(ny(2026, 11, 2, 0, 10)).toISOString()), ny(2026, 11, 1, 0, 30))
+      ],
+      ["2日後", "明日", "明日"]
+    );
+  } finally {
+    process.env.TZ = tz;
+  }
+  eq("B72-5 時間帯を戻した（Asia/Tokyo）", localDay(new Date(at("2026-10-20", 23, 30))), "2026-10-20");
 }
 
 // ── 結果 ──────────────────────────────────────────
