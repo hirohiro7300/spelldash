@@ -760,7 +760,7 @@ console.log("record quality:");
     // 回の最初の語（ページを開いて最初の語も）は片側だけ信じて測る（PR #189 のレビュー。measure.lag。本人の基準の箱と sp には入れない）
     const id0 = await cur(page);
     const b00 = await boxOf(page, "en.kbd.study");
-    await sinceShow(page, 450);
+    await sinceShow(page, 700); // 回の最初の語の測り始めは最初の描画の後なので、重い組でも t1 が 400ms を下回らない余裕を取る
     await pass(page);
     const w0 = await lastWrite(page, "recordRecallSuccess", id0);
     const b01 = await boxOf(page, "en.kbd.study");
@@ -11472,6 +11472,43 @@ console.log("my words:");
   check("マイ単語帳の語が出題される", ["交渉する", "請求書", "締め切り"].includes(ja), `ja=${ja}`);
   check("マイ単語帳フローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
+
+  // PR #191 のレビュー 2: 利用者が作る場面カード（英字の答え）の日本語の別解は、綴り入力の候補に入れない（教材と同じ決まり。js/answers.js isSpellAlt）。
+  // SSL・別解 https化: h と打つと 1 打目で ×（前は https の頭で止まらず、ヒントで「化」が入った）。単語帳では「別名」と出す（別解ではない）
+  const sslCard = { kind: "concept", en: "ssl", answer: "SSL", q: "通信を暗号化してサイトを守る仕組みの略語", explain: "", accept: ["https化"], ja: "", addedAt: new Date().toISOString() };
+  const pageS = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: JSON.stringify([sslCard]), spelldash_after_correct: "quick" } });
+  await pageS.goto(BASE + "/index.html?hintms=600000", { waitUntil: "networkidle" });
+  await pageS.waitForTimeout(800);
+  await pageS.press("#input", "Enter");
+  await waitUntil(async () => (await pageS.textContent("#japanese")).trim() === sslCard.q, 3000);
+  await pageS.press("#input", "h");
+  await pageS.waitForTimeout(250);
+  check("利用者の場面カード SSL（別解 https化）: h は 1 打目で ×（日本語の別解の頭で止まらない）", (await pageS.textContent("#recallFail")).trim() === "1" && (await pageS.textContent("#word")).trim() === "SSL", `${(await pageS.textContent("#recallFail")).trim()} ${(await pageS.textContent("#word")).trim()}`);
+  await pageS.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
+  await pageS.waitForTimeout(700);
+  const myText = await pageS.textContent("#listBody");
+  check("利用者の場面カード SSL: 単語帳では https化 を「別名」と出す（別解の行に出さない）", myText.includes("別名: https化") && !myText.includes("別解: https化"), myText.slice(0, 200));
+  check("利用者の場面カードの別名でエラー0", pageS.errors.length === 0, pageS.errors[0] ?? "");
+  await pageS.close();
+
+  // PR #191 のレビュー 4 の見直し: 空白の入った英字の別解（CPC の cost per click）は物理キーで打てる正しい別解なので、綴り入力の候補に残す
+  // （日本語の クリック単価 だけを別名にする）。物理キーで打つと別解（× にしない）。単語帳では cost per click を「別解」、クリック単価 を「別名」と出す
+  const cpcCard = { kind: "concept", en: "cpc", answer: "CPC", q: "1クリックあたりにかかった広告費の略語", explain: "", accept: ["クリック単価", "cost per click"], ja: "", addedAt: new Date().toISOString() };
+  const pageCpc = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: JSON.stringify([cpcCard]), spelldash_after_correct: "quick" } });
+  await pageCpc.goto(BASE + "/index.html?hintms=600000", { waitUntil: "networkidle" });
+  await pageCpc.waitForTimeout(800);
+  await pageCpc.press("#input", "Enter");
+  await waitUntil(async () => (await pageCpc.textContent("#japanese")).trim() === cpcCard.q, 3000);
+  for (const ch of "cost per click") await pageCpc.press("#input", ch);
+  await pageCpc.waitForTimeout(300);
+  const cpcFail = (await pageCpc.textContent("#recallFail")).trim();
+  const cpcMsg = (await pageCpc.textContent("#message")).trim();
+  check("利用者の場面カード CPC（別解 クリック単価・cost per click）: 物理キーで cost per click と打つと別解（× にしない）", cpcFail === "0" && (await pageCpc.textContent("#word")).trim() === "CPC" && cpcMsg.includes("cost per click"), `${cpcFail} ${cpcMsg}`);
+  await pageCpc.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
+  await pageCpc.waitForTimeout(700);
+  const cpcList = await pageCpc.textContent("#listBody");
+  check("利用者の場面カード CPC: 単語帳では cost per click を「別解」、クリック単価 を「別名」と出す（エラー0）", cpcList.includes("別解: cost per click") && cpcList.includes("別名: クリック単価") && pageCpc.errors.length === 0, `${cpcList.slice(0, 200)} ${pageCpc.errors[0] ?? ""}`);
+  await pageCpc.close();
 }
 
 // ===== 9.7 学びの質（Batch 1）: ヒント／メモ／難敵／正解時発音／バックアップ／ご意見 =====
@@ -12863,6 +12900,20 @@ console.log("genre list:");
   await page.waitForTimeout(150);
   const hits = await page.$$eval(".gcard", (els) => els.length);
   check("検索で絞り込める（用語・場面・解説を横断）", hits >= 1 && hits <= 3 && (await page.textContent("#listBody")).includes("重量税還付"), `hits=${hits}`);
+  // PR #191 のレビュー 3: 綴り入力のカードの日本語の名前（Batch 73 で accept から外した）は、表示と検索だけの欄 aka で引ける・「別名」と出す（別解ではない）
+  await page.fill("#listSearch", "顧客管理システム");
+  await page.waitForTimeout(150);
+  const akaTerms = await page.$$eval(".gcard", (els) => els.map((e) => e.querySelector(".gcard__term")?.textContent.trim()));
+  const akaText = await page.textContent("#listBody");
+  check("検索: 日本語の名前（aka）で英字の答えのカードを引ける（顧客管理システム → CRM）。カードに「別名: 顧客管理システム」（別解の行には出さない）",
+    akaTerms.includes("CRM") && akaText.includes("別名: 顧客管理システム") && !/別解: [^別]*顧客管理システム/.test(akaText), `${akaTerms.join(",")} ${akaText.slice(0, 200)}`);
+  const crmTerm = await page.$('.gcard__term:text-is("CRM")');
+  if (crmTerm) await crmTerm.click();
+  await page.waitForTimeout(200);
+  const akaDetail = crmTerm ? ((await page.textContent("#wordDetailPanel").catch(() => "")) ?? "") : "";
+  check("語の詳細にも「別名: 顧客管理システム」（簡潔表示では一覧の行が隠れるので）", akaDetail.includes("別名: 顧客管理システム"), akaDetail.slice(0, 200));
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
   await page.fill("#listSearch", "");
   await page.waitForTimeout(150);
   await page.selectOption("#listCategory", "ads");

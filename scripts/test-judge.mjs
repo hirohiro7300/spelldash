@@ -22,6 +22,7 @@ import {
   answerMatches
 } from "../js/judge.js";
 import * as JUDGE from "../js/judge.js"; // Batch 72 のヒントの 1 字（hintStep）。名前で読むので、無い版でも読み込みは落ちず検査が落ちる
+import * as ANSWERS from "../js/answers.js"; // 綴り入力の別解の決まり（isSpellAlt。PR #191 のレビュー 2）。同じく名前で読む
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 let passed = 0;
@@ -299,6 +300,100 @@ const type = (w, text, opts) => typeAnswer(w, cands(w), text, opts);
   eq("acceptChar（PR #189 のレビュー 7）: 呼び手は 3 つ（ヒントは { fromHint: true }・ほかは打った字）。undefined を字の引数に渡す呼び手は無い",
     calls.map((c) => c.replace(/\s+/g, " ")).sort(),
     ["ch, step", "step.ch, null, { fromHint: true }", "typedChar, step"]);
+}
+
+// ---- 綴り入力の候補は、綴りで打てる語だけ（PR #191 のレビュー 2。js/answers.js isSpellAlt・acceptedAnswers）。決まりは物理キーで打てる半角の字
+// （0x20〜0x7e: 英字・数字・記号・空白。前の scripts/lib/spell-typeable.mjs と同じ）。利用者が作る場面カード（js/myWords.js toWordObjects の形）の日本語の別解も、
+// 教材と同じく候補に入れない。空白・数字・記号の入った別解（cost per click・can't）は物理キーで打てる正しい別解なので候補に残す
+// （画面キーボードは a〜z だけなのでスマホでは打てないが、答えは打てる。docs/BACKLOG） ----
+{
+  const hint = typeof JUDGE.hintStep === "function" ? JUDGE.hintStep : () => "hintStep が無い";
+  const isSpellAlt = typeof ANSWERS.isSpellAlt === "function" ? ANSWERS.isSpellAlt : null;
+  ok("isSpellAlt がある（js/answers.js。validate-words・sim-judge・マイ単語帳と同じ 1 か所）", !!isSpellAlt);
+  const spell = isSpellAlt ?? (() => null);
+  eq("isSpellAlt: 半角の英字・数字・記号・空白（大文字・前後の空白は落として見る）は打てる。日本語・全角・半角の外の字・空は打てない",
+    ["cpc", " Copper ", "co-worker", "cost per click", "rel=canonical", "ISO27001", "can't", "B/S", "icd-10", "a large", "https化", "NISA口座", "ＣＵ", "copper（cu）", "café", " "].map((t) => spell(t)),
+    [true, true, true, true, true, true, true, true, true, true, false, false, false, false, false, false]);
+  const aNum = card("grammar-hs2", "concept-gh2-art-a-number-of");
+  ok("教材: grammar-hs2 の a の別解 a large は候補に残す（E2E 16.5 の (13)）", acceptedAnswers(aNum, index).includes("a large"));
+  // 教材: 空白・数字・記号の入った別解は候補にあり、物理キーで打つと別解として通る（× にしない。PR #191 のレビュー 4 の見直し。B/S は BS の綴り違いでそのまま正解）
+  for (const [category, id, text, kind] of [
+    ["startupfinance", "concept-sfin-vc", "venture capital", "alt"],
+    ["webdev", "concept-web-canonical", "rel=canonical", "alt"],
+    ["security", "concept-sec-isms", "iso27001", "alt"],
+    ["accounting", "concept-acc-bs", "b/s", "variant"],
+    ["grammar-jhs1", "concept-g1-can-cannot", "can't", "alt"],
+    ["grammar-jhs1", "concept-g1-be-am", "'m", "alt"],
+    ["grammar-jhs2", "concept-g2-modal-must", "have to", "alt"]
+  ]) {
+    const w = card(category, id);
+    judged(`教材: ${category} の ${w.answer ?? w.en} の問いで ${text} は物理キーで${kind === "alt" ? "別解" : "綴り違い"}（× にしない）`, type(w, text), { kind, done: text });
+  }
+  // 利用者の場面カード（js/myWords.js toWordObjects の形。accept は入れたまま）
+  const mine = (answer, accept) => ({ id: `my-q-${answer.toLowerCase()}`, key: answer.toLowerCase(), kind: "concept", en: answer.toLowerCase(), answer, accept, ja: "", q: `${answer} の場面`, explain: "", level: "easy", tags: ["my-concept"], subject: "english", category: "my" });
+  const ssl = mine("SSL", ["https化"]);
+  eq("利用者の場面カード SSL（別解 https化）: 綴り入力の候補は ssl だけ", acceptedAnswers(ssl, index), ["ssl"]);
+  judged("利用者の場面カード SSL: h と打つと 1 打目で ×（日本語の別解の頭 https で止まらない）", typeAnswer(ssl, acceptedAnswers(ssl, index), "h"), { how: "miss", at: 1 });
+  eq("利用者の場面カード SSL: h の後のヒントは無い（日本語の別解の字〔化〕を出さない）", hint(acceptedAnswers(ssl, index), "h"), null);
+  const nisa = mine("NISA", ["NISA口座"]);
+  eq("利用者の場面カード NISA（別解 NISA口座）: nisa で完成したとき、続き（口座）を残さない（次の語の速さを測らない持ち越し止めにしない）", spellStep(acceptedAnswers(nisa, index), "nis", "a"), { ok: true, typed: "nisa", done: "nisa", rests: [] });
+  const cpcJa = mine("CPC", ["クリック単価"]);
+  eq("利用者の場面カード CPC（別解 クリック単価）: 候補は cpc だけ・c の後のヒントは p（答えの次の字）", [acceptedAnswers(cpcJa, index), hint(acceptedAnswers(cpcJa, index), "c")], [["cpc"], { ch: "p", target: "cpc" }]);
+  const cpc = mine("CPC", ["クリック単価", "cost per click", "c-p-c"]);
+  const cpcC = acceptedAnswers(cpc, index);
+  eq("利用者の場面カード CPC（別解 クリック単価・cost per click・c-p-c）: 候補は cpc・cost per click・c-p-c（日本語は入れない）", cpcC, ["cpc", "cost per click", "c-p-c"]);
+  judged("利用者の場面カード CPC: cost per click は物理キーで別解（14 打目で完成）", typeAnswer(cpc, cpcC, "cost per click"), { how: "auto", kind: "alt", done: "cost per click", at: 14 });
+  eq("利用者の場面カード CPC: cpc で完成したとき、続きは残らない・c の後のヒントは p（答え）・co の後のヒントは s（打っている別解 cost per click の次の字）",
+    [spellStep(cpcC, "cp", "c"), hint(cpcC, "c"), hint(cpcC, "co")], [{ ok: true, typed: "cpc", done: "cpc", rests: [] }, { ch: "p", target: "cpc" }, { ch: "s", target: "cost per click" }]);
+  // 教材: 綴り入力のカード（概念・英単語）の accept は、どれも綴りで打てる語（validate-words が NG にする。今の教材 0 件）
+  // （決まりの式は検査の側にも書く: js/answers.js が無い・違う版でも、教材そのものを決まりで見る）
+  const RULE = (t) => /^[\x20-\x7e]+$/.test(t);
+  const offRule = cards.filter((w) => !w.calc && answerModeOf(w).mode === "spell").flatMap((w) => (Array.isArray(w.accept) ? w.accept : []).filter((a) => !RULE(String(a).toLowerCase().trim())).map((a) => `${w.category}:${w.id} ${a}`));
+  eq(`教材: 綴り入力のカードの accept に、綴りで打てない別解（日本語・全角）は 0 件（今 ${offRule.length} 件）`, offRule.slice(0, 5), []);
+  // 教材: 表示と検索だけの欄（aka）の名前は、綴り入力の候補・ヒントに入らない（PR #191 のレビュー 3）
+  const crm = card("listing", "concept-crm");
+  ok("教材: listing の CRM の aka に 顧客管理システム（Batch 73 で accept から外した日本語の名前を、表示と検索だけの欄に戻した）", Array.isArray(crm.aka) && crm.aka.includes("顧客管理システム"));
+  const withAka = cards.filter((w) => Array.isArray(w.aka) && w.aka.length);
+  ok(`教材: aka のあるカード（${withAka.length} 枚）はどれも綴り入力の概念カード`, withAka.length > 0 && withAka.every((w) => w.kind === "concept" && answerModeOf(w).mode === "spell"));
+  ok("教材: aka の名前はどれも accept に無い（同じ語を 2 つの欄に置かない）", withAka.every((w) => w.aka.every((a) => !(w.accept ?? []).includes(a))));
+  const leak = withAka.filter((w) => {
+    const c = acceptedAnswers(w, index);
+    const akas = w.aka.map((a) => String(a).toLowerCase().trim());
+    return c.some((x) => akas.includes(x)) || akas.some((a) => typeAnswer(w, c, a).done === a) || akas.some((a) => [...a].some((_, i) => { const h = hint(c, a.slice(0, i)); return h && h.target === a; }));
+  });
+  eq(`教材: aka の名前（${withAka.reduce((n, w) => n + w.aka.length, 0)} 語）は綴り入力の候補に無く、打ってもその名前では完成せず、ヒントの的にもならない`, leak.map((w) => `${w.category}:${w.id}`).slice(0, 5), []);
+}
+
+// ---- few の別解（PR #191 のレビュー 5）: ngsl03 の few は訳を数えられる意味（「少数の・（数が）ほとんどない」）に絞ったので、
+// 数えられない側の little を accept に置かず、訳でも結ばない（ngsl02 の little「小さい・少しの」と訳を共有すると、両方のパックを足した盤面で
+// 別解の索引が結ぶ。altKey はかっこを落とすので、書き分けはかっこの外の字で）。NGSL を 01〜03 と順に足す盤面と全パックの索引でも見る ----
+{
+  const few = card("ngsl03", "english-few");
+  const little = card("ngsl02", "english-little");
+  ok("教材: ngsl03 の few の accept に little が無い", !(few.accept ?? []).includes("little"));
+  const packIds = new Set(manifest.subjects.flatMap((s) => s.categories.filter((c) => c.pack).map((c) => c.id)));
+  const boardOf = (packs) => buildAlternativeIndex(cards.filter((c) => !packIds.has(c.category) || packs.includes(c.category)));
+  const boards = [
+    ["基本＋ngsl03 の盤面", boardOf(["ngsl03"])],
+    ["基本＋ngsl02＋ngsl03 の盤面", boardOf(["ngsl02", "ngsl03"])],
+    ["基本＋ngsl01〜03 の盤面", boardOf(["ngsl01", "ngsl02", "ngsl03"])],
+    ["全パックの索引", index]
+  ];
+  for (const [name, b] of boards) {
+    judged(`${name}: few の問いで little は 1 打目で ×`, typeAnswer(few, acceptedAnswers(few, b), "little"), { how: "miss", at: 1 });
+    judged(`${name}: few は 3 打目で正解`, typeAnswer(few, acceptedAnswers(few, b), "few"), { how: "auto", kind: "exact", at: 3 });
+  }
+  // 逆向き: little の問いの few（little は ngsl02 なので、ngsl02 を足した盤面）
+  for (const [name, b] of boards.slice(1)) {
+    judged(`${name}: little の問いで few は 1 打目で ×`, typeAnswer(little, acceptedAnswers(little, b), "few"), { how: "miss", at: 1 });
+    judged(`${name}: little は 6 打目で正解`, typeAnswer(little, acceptedAnswers(little, b), "little"), { how: "auto", kind: "exact", at: 6 });
+  }
+  ok("全パックの索引: few と little は結ばれない（訳を共有しない）", !index.get("few")?.has("little") && !index.get("little")?.has("few"));
+  // 文法の空所（few と little を分ける問題）も答えの綴りで別解の索引を引く（js/wordStore.js answersFor）ので、結ばれると相手の語が別解で通っていた
+  for (const [category, id, other] of [["grammar-hs2", "concept-gh2-art-few", "little"], ["grammar-hs2", "concept-gh2-art-little", "few"], ["grammar-toeic", "concept-gt-quant-little", "few"]]) {
+    const w = card(category, id);
+    judged(`全パックの索引: ${category} の空所（答え ${w.en}）で ${other} は 1 打目で ×`, type(w, other), { how: "miss", at: 1 });
+  }
 }
 
 if (failures.length) {
