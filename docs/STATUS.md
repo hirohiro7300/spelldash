@@ -1,4 +1,4 @@
-# SpellDash 現状スナップショット（2026-10-21）
+# SpellDash 現状スナップショット（2026-10-22）
 
 > 2026-07-17 版は docs/archive/STATUS_2026-07-17.md に移した（当時の設計論点と、9 月までの追記の履歴はそちら）。
 > 変更の履歴は docs/CHANGELOG.md、次にやることは docs/BACKLOG.md、**創業者側の作業と判断は docs/FOUNDER_TODO.md**。
