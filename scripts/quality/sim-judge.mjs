@@ -11,8 +11,8 @@
 // 打つもの（own＝このカードで正解になるはずのもの。規則 Q05 が見る）:
 //   answer   出題語（綴り）・主な読み（ローマ字）・答え（全文入力）
 //   reading  ほかの読み（accept のかな・英字の読み。ローマ字のカード）
-//   accept   データの別解（綴り入力・全文入力のカード。綴り入力の別解の決まり〔js/answers.js isSpellAlt: a〜z とハイフンの語か、答えに続ける語句。画面キーボードで打てる綴り〕に
-//            合わないもの〔日本語・空白・数字・記号〕は判定の候補に入らないので untypeable の行。Batch 73・PR #191 のレビュー 4 から validate-words が NG にする）
+//   accept   データの別解（綴り入力・全文入力のカード。綴り入力で打てない字〔日本語・全角〕を含むものは判定の候補に入らないので untypeable の行。
+//            決まりは js/answers.js isSpellAlt〔半角の 0x20〜0x7e〕。Batch 73 から validate-words が NG にする）
 //   alt      別解の索引の語（同じ訳の別の語。綴り入力のカード）
 //   kanjiAccept  漢字の別解（ローマ字のカード）を、その読みで打ったもの。sub = bound（カードの acceptReadings で別表記に結んだ読み。
 //                docs/PACK_FORMAT.md「別表記の読み」。結んだ読み 1 つごとに 1 行。ほかの行と同じ読みでも数える＝打てるようになった別表記の数）と、
@@ -54,10 +54,9 @@ export function readingsByFace(cards, judge, entriesOf = null) {
   }
   return out;
 }
-// 綴り入力で打てる綴り（画面キーボード・Android の input 経路は a〜z だけ。日本語は js/game.js handleCompositionEnd が英字モードに戻させる）は
-// js/answers.js isSpellAlt の 1 か所（判定の候補〔acceptedAnswers〕・validate-words と同じ決め方。PR #191 のレビュー 4）。ctx の木の js/ のものを使い、
-// 無い木（PR #191 より前）は前の決め方（半角の 0x20〜0x7e）で見る
-// （typeable(text, 答え)。答えに続ける語句〔a → a large〕は答えを渡して見る）
+// 綴り入力で打てる字（物理キーの 1 字。日本語は打てない: js/game.js handleCompositionEnd が英字モードに戻させる）は js/answers.js isSpellAlt の
+// 1 か所（判定の候補〔acceptedAnswers〕・validate-words と同じ決め方。PR #191 のレビュー 2）。ctx の木の js/ のものを使い、
+// 無い木（PR #191 より前。前の scripts/lib/spell-typeable.mjs）は同じ決まり（半角の 0x20〜0x7e）をここで見る
 const spellTypeableOf = (answers) => (typeof answers.isSpellAlt === "function" ? answers.isSpellAlt : (t) => /^[\x20-\x7e]+$/.test(String(t ?? "").toLowerCase().trim()));
 
 // 打つもの 1 件に対して判定器を走らせる（keys = 実際に打つキーの並び。null なら untypeable）
@@ -131,10 +130,10 @@ export function simulate(ctx, { judge = ctx.modules.judge, answers = ctx.modules
       push(w, mode, "answer", w.en, w.en, run(judge, w, cands, w.en));
       for (const c of cands.slice(1)) {
         const input = accepts.has(c) ? "accept" : "alt";
-        const keys = typeable(c, w.en) ? c : null;
+        const keys = typeable(c) ? c : null;
         push(w, mode, input, c, keys, run(judge, w, cands, keys));
       }
-      // データの別解のうち、決まりに合わず判定の候補に入らないもの（教材には無い。validate-words が NG）
+      // データの別解のうち、綴りで打てず判定の候補に入らないもの（教材には無い。validate-words が NG）
       for (const a of accepts) if (!cands.includes(a)) push(w, mode, "accept", a, null, { how: "untypeable", at: 0 });
       if (!rivals) continue;
       const own = new Set(cands);
@@ -143,7 +142,7 @@ export function simulate(ctx, { judge = ctx.modules.judge, answers = ctx.modules
         const t = String(text ?? "").toLowerCase().trim();
         if (!t || own.has(t) || seen.has(input + "\t" + t)) return;
         seen.add(input + "\t" + t);
-        const keys = typeable(t, w.en) ? t : null;
+        const keys = typeable(t) ? t : null;
         push(w, mode, input, t, keys, run(judge, w, cands, keys), sub);
       };
       for (const o of byId.get(w.id) ?? []) {

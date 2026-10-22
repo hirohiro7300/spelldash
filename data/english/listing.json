@@ -966,7 +966,8 @@
       "kind": "concept",
       "answer": "P-MAX",
       "accept": [
-        "pmax"
+        "pmax",
+        "Performance Max"
       ],
       "aka": [
         "パフォーマンスマックス"
@@ -1143,7 +1144,9 @@
       "en": "impression-share",
       "kind": "concept",
       "answer": "IS",
-      "accept": [],
+      "accept": [
+        "impression share"
+      ],
       "aka": [
         "インプレッションシェア",
         "表示シェア"
@@ -1267,7 +1270,9 @@
       "en": "tcpa",
       "kind": "concept",
       "answer": "tCPA",
-      "accept": [],
+      "accept": [
+        "target cpa"
+      ],
       "aka": [
         "目標cpa"
       ],
@@ -1286,7 +1291,9 @@
       "en": "troas",
       "kind": "concept",
       "answer": "tROAS",
-      "accept": [],
+      "accept": [
+        "target roas"
+      ],
       "aka": [
         "目標roas"
       ],
@@ -1913,7 +1920,9 @@
       "en": "gclid",
       "kind": "concept",
       "answer": "GCLID",
-      "accept": [],
+      "accept": [
+        "Google Click ID"
+      ],
       "ja": "広告クリックを識別するID。クリックとCRM上の後段成果を結ぶ鍵",
       "q": "広告クリックごとに付く識別ID。あとで「この成約はどのクリックから来たか」をCRMと突き合わせる鍵になる",
       "explain": "Google Click ID。広告クリックとCRM上の後段成果（成約等）を結び付ける",

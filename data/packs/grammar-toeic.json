@@ -293,7 +293,9 @@
       "en": "gt-prep-despite",
       "kind": "concept",
       "answer": "despite",
-      "accept": [],
+      "accept": [
+        "in spite of"
+      ],
       "ja": "前置詞 despite",
       "q": "____ the bad weather, the event was held as planned.（悪天候にもかかわらず、イベントは予定通り開催された）",
       "explain": "後ろが名詞句なので前置詞 despite / in spite of。despite of は誤り。節が続くなら although",
@@ -310,6 +312,7 @@
       "answer": "although",
       "accept": [
         "though",
+        "even though",
         "while"
       ],
       "ja": "接続詞 although",
@@ -528,7 +531,9 @@
       "en": "gt-rel-where",
       "kind": "concept",
       "answer": "where",
-      "accept": [],
+      "accept": [
+        "in which"
+      ],
       "ja": "関係副詞 where",
       "q": "This is the conference room ____ the board meeting will be held.（ここが取締役会が開かれる会議室です）",
       "explain": "後ろが完全な文（S ＋ V がそろっている）なので関係副詞 where = in which。which なら後ろに名詞の欠けが必要",
@@ -590,7 +595,8 @@
       "kind": "concept",
       "answer": "why",
       "accept": [
-        "that"
+        "that",
+        "for which"
       ],
       "ja": "関係副詞 why",
       "q": "This is the reason ____ the shipment was delayed.（これが出荷が遅れた理由です）",
@@ -654,7 +660,9 @@
       "en": "gt-quant-most-of",
       "kind": "concept",
       "answer": "most",
-      "accept": [],
+      "accept": [
+        "the majority"
+      ],
       "ja": "most of ＋限定された名詞",
       "q": "____ of our customers pay by credit card.（顧客のほとんどがクレジットカードで支払う）",
       "explain": "most of の後は our / the などで限定された名詞。almost of our customers は誤り（almost は副詞）",
@@ -669,7 +677,10 @@
       "en": "gt-quant-little",
       "kind": "concept",
       "answer": "little",
-      "accept": [],
+      "accept": [
+        "very little",
+        "not much"
+      ],
       "ja": "little（ほとんど〜ない）",
       "q": "We have ____ time before the deadline, so let's hurry.（締め切りまでほとんど時間がないので急ごう）",
       "explain": "不可算名詞 time には little（ほとんどない）。a little は「少しはある」で so let's hurry とつながらない。few は可算用",
@@ -731,7 +742,8 @@
       "kind": "concept",
       "answer": "far",
       "accept": [
-        "much"
+        "much",
+        "a lot"
       ],
       "ja": "比較級の強調 far / much",
       "q": "The new model is ____ more efficient than the old one.（新モデルは旧モデルよりはるかに効率的だ）",
@@ -835,7 +847,9 @@
       "en": "gt-verb-suggest-be",
       "kind": "concept",
       "answer": "be",
-      "accept": [],
+      "accept": [
+        "should be"
+      ],
       "ja": "suggest that＋原形",
       "q": "The consultant suggested that the meeting ____ postponed.（コンサルタントは会議を延期するよう提案した）",
       "explain": "提案・要求・命令の that 節は動詞の原形（仮定法現在）。受動態なので be postponed。is / was は誤り",
@@ -850,7 +864,9 @@
       "en": "gt-verb-insist-attend",
       "kind": "concept",
       "answer": "attend",
-      "accept": [],
+      "accept": [
+        "should attend"
+      ],
       "ja": "insist that＋原形",
       "q": "The manager insisted that every employee ____ the safety training.（部長はすべての社員が安全研修に出席するよう主張した）",
       "explain": "insist / demand / require that の後は主語が三人称単数でも原形 attend。attends や attended にしない",
@@ -1003,7 +1019,11 @@
       "en": "gt-part-participating",
       "kind": "concept",
       "answer": "participating",
-      "accept": [],
+      "accept": [
+        "who participate",
+        "who participated",
+        "taking part"
+      ],
       "ja": "現在分詞の後置修飾",
       "q": "Customers ____ in the survey will receive a coupon.（アンケートに参加した顧客はクーポンを受け取れます）",
       "explain": "Customers who participate in の関係代名詞を省いた現在分詞の後置修飾。顧客が「参加する」側なので -ing",
@@ -1068,7 +1088,8 @@
       "accept": [
         "thus",
         "consequently",
-        "hence"
+        "hence",
+        "as a result"
       ],
       "ja": "接続副詞 therefore（結果）",
       "q": "Sales have dropped sharply; ____, we need to cut costs.（売上が急減した。したがって、コストを削減する必要がある）",
@@ -1086,6 +1107,7 @@
       "answer": "moreover",
       "accept": [
         "furthermore",
+        "in addition",
         "besides",
         "additionally",
         "also"
@@ -1132,7 +1154,9 @@
       "en": "gt-adv-meanwhile",
       "kind": "concept",
       "answer": "meanwhile",
-      "accept": [],
+      "accept": [
+        "in the meantime"
+      ],
       "ja": "接続副詞 meanwhile（その間）",
       "q": "The sales team is attending the trade show. ____, the marketing team is preparing the new brochure.（営業チームは展示会に参加している。その間、マーケティングチームは新しいパンフレットを準備している）",
       "explain": "同時に進む別の出来事をつなぐ meanwhile / in the meantime。while は接続詞なので文頭に置いて単独では使わない",

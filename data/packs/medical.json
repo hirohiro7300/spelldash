@@ -1011,7 +1011,10 @@
       "en": "med-icd",
       "kind": "concept",
       "answer": "ICD",
-      "accept": [],
+      "accept": [
+        "ICD-10",
+        "ICD10"
+      ],
       "aka": [
         "国際疾病分類"
       ],

@@ -614,7 +614,9 @@
       "en": "staff-kpi",
       "kind": "concept",
       "answer": "KPI",
-      "accept": [],
+      "accept": [
+        "key performance indicator"
+      ],
       "aka": [
         "重要業績評価指標",
         "管理指標"
@@ -851,7 +853,9 @@
       "en": "staff-ats",
       "kind": "concept",
       "answer": "ATS",
-      "accept": [],
+      "accept": [
+        "applicant tracking system"
+      ],
       "aka": [
         "採用管理システム",
         "応募者管理システム",

@@ -118,7 +118,9 @@
       "en": "gh2-subj-without",
       "kind": "concept",
       "answer": "without",
-      "accept": [],
+      "accept": [
+        "but for"
+      ],
       "ja": "without / but for",
       "q": "____ your help, I could not have finished the report.（あなたの助けがなかったら、その報告書を仕上げられなかっただろう）",
       "explain": "Without / But for A = If it had not been for A「Aがなかったら」。if 節の代わりに前置詞句で仮定を表す",
@@ -356,7 +358,9 @@
       "en": "gh2-rel-however",
       "kind": "concept",
       "answer": "however",
-      "accept": [],
+      "accept": [
+        "no matter how"
+      ],
       "ja": "複合関係副詞 however",
       "q": "____ hard you try, you cannot please everyone.（どんなに一生懸命やっても、皆を喜ばせることはできない）",
       "explain": "however ＋形容詞・副詞＋ S ＋ V「どんなに〜でも」= no matter how。接続副詞の「しかし」と区別",
@@ -507,7 +511,10 @@
       "en": "gh2-inv-cannot",
       "kind": "concept",
       "answer": "cannot",
-      "accept": [],
+      "accept": [
+        "can't",
+        "can not"
+      ],
       "ja": "省略と代用（助動詞で受ける）",
       "q": "She can speak Chinese, but her brother ____.（彼女は中国語を話せるが、弟は話せない）",
       "explain": "繰り返しを避けて助動詞だけを残す省略。cannot speak Chinese の speak 以下を省いた形",
@@ -612,7 +619,9 @@
       "en": "gh2-speech-would",
       "kind": "concept",
       "answer": "would",
-      "accept": [],
+      "accept": [
+        "'d"
+      ],
       "ja": "話法転換（will → would）",
       "q": "He said that he ____ call me the next day.（彼は翌日私に電話すると言った）",
       "explain": "He said, \"I will call you tomorrow.\" を間接話法に。will → would、tomorrow → the next day に変わる",
@@ -904,7 +913,10 @@
       "en": "gh2-conj-lest",
       "kind": "concept",
       "answer": "lest",
-      "accept": [],
+      "accept": [
+        "for fear",
+        "for fear that"
+      ],
       "ja": "lest S (should) do",
       "q": "He worked hard ____ he should fail.（彼は失敗しないように一生懸命働いた）",
       "explain": "lest S (should) ＋原形「〜しないように」。lest 自体に否定の意味があるので not を入れない。for fear (that) も同じ",
@@ -1016,7 +1028,9 @@
       "en": "gh2-art-most-of",
       "kind": "concept",
       "answer": "most",
-      "accept": [],
+      "accept": [
+        "the majority"
+      ],
       "ja": "most of the",
       "q": "____ of the students passed the exam.（学生の大半が試験に合格した）",
       "explain": "most of の後は the や所有格つきの名詞。almost of the students や most of students は誤り",
@@ -1048,7 +1062,10 @@
       "en": "gh2-art-few",
       "kind": "concept",
       "answer": "few",
-      "accept": [],
+      "accept": [
+        "very few",
+        "hardly any"
+      ],
       "ja": "few（ほとんど〜ない）",
       "q": "He has ____ friends in Tokyo, so he feels lonely.（東京にはほとんど友達がいないので、彼は寂しい）",
       "explain": "可算名詞に few、不可算名詞に little。a few は「少しはある」と肯定的で、so he feels lonely とつながらない",
@@ -1061,7 +1078,9 @@
     {
       "id": "concept-gh2-art-little",
       "en": "gh2-art-little",
-      "accept": [],
+      "accept": [
+        "very little"
+      ],
       "kind": "concept",
       "answer": "little",
       "ja": "little（ほとんど〜ない）",

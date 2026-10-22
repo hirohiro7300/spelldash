@@ -79,22 +79,14 @@ export function buildAlternativeIndex(words) {
   return index;
 }
 
-// 綴り入力（1 字ずつ判定する答え: 英単語・英字の答えの概念カード Cu・CPC）の別解に使える綴り（PR #191 のレビュー 2・4）。
-// 画面キーボード（js/keyboard.js ROWS）と Android の OS キーボードの input 経路（js/game.js handleTextInput）が判定に届けるのは a〜z だけで、
-// 空白・数字・記号・日本語は打てない。使えるのは次の 2 つ（小文字にして前後の空白を落とした形で見る。acceptedAnswers と同じ）:
-//   1. 英小文字で始まり、英小文字とハイフンの語（英単語のカードの accept と同じ決まり。scripts/validate-words.mjs）。ハイフンも画面キーボードに無いが、
-//      答えの綴り（check-in・Wi-Fi）にもあるので決まりに残す（打ち方は docs/BACKLOG）
-//   2. 答えに続ける語句: 答え（answer）の綴りで始まり、続きが半角の字で英字で終わる（a → a large・rest → rest api・edta → edta-2k）。
-//      答えを打ち切った時点で答えとして完成し（completedAnswer）、続きは持ち越し止め（js/game.js startSpellingSpill）が英字だけを受ける
-//      （続きの頭の空白・記号・数字は読み飛ばす）ので、画面キーボードでも打てる。続きが英字で終わらない語句（icd → icd-10）は打ち切れない
-// validate-words・sim-judge・マイ単語帳（js/myWords.js）もここを読む
-export const SPELL_ALT = /^[a-z][a-z-]*$/;
-const CONTINUATION = /^[\x20-\x7e]*[a-z]$/;
-export function isSpellAlt(text, answer = "") {
-  const s = String(text ?? "").toLowerCase().trim();
-  if (SPELL_ALT.test(s)) return true;
-  const a = String(answer ?? "").toLowerCase().trim();
-  return a.length > 0 && s.length > a.length && s.startsWith(a) && CONTINUATION.test(s.slice(a.length));
+// 綴り入力（1 字ずつ判定する答え: 英単語・英字の答えの概念カード Cu・CPC）の別解に使える綴り（PR #191 のレビュー 2）。
+// 物理キーで打てる半角の字（0x20〜0x7e: 英字・数字・記号・空白）だけ。小文字にして前後の空白を落とした形で見る（acceptedAnswers と同じ）。
+// 日本語・全角の字は綴り入力では打てない（js/game.js handleCompositionEnd が英字に戻させる）ので候補に入れない。
+// 画面キーボード（js/keyboard.js ROWS）は a〜z だけなので、空白・数字・記号の入った別解（cost per click・ISO27001・can't）はスマホでは打てない（答えは打てる。docs/BACKLOG）。
+// validate-words・sim-judge・マイ単語帳（js/myWords.js）もここを読む（前の scripts/lib/spell-typeable.mjs と同じ決まり）
+export const SPELL_ALT = /^[\x20-\x7e]+$/;
+export function isSpellAlt(text) {
+  return SPELL_ALT.test(String(text ?? "").toLowerCase().trim());
 }
 
 // この語を出したときに正解として受け入れる綴りの一覧（先頭は必ず出題語）。綴り入力の候補なので、データの別解は綴り入力で打てるもの（isSpellAlt）だけ
@@ -106,7 +98,7 @@ export function acceptedAnswers(word, index) {
     if (v && !out.includes(v)) out.push(v);
   };
   // データに書かれた別解が最優先
-  if (Array.isArray(word?.accept)) for (const a of word.accept) if (isSpellAlt(a, word?.en)) push(a);
+  if (Array.isArray(word?.accept)) for (const a of word.accept) if (isSpellAlt(a)) push(a);
   // 同じ訳を持つ他のカードの語
   if (index && word?.en) (index.get(word.en) ?? []).forEach(push);
   return out;

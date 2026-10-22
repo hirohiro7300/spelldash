@@ -569,10 +569,10 @@
       "answer": "HTTPS",
       "accept": [
         "SSL",
-        "TLS"
+        "TLS",
+        "SSL/TLS"
       ],
       "aka": [
-        "SSL/TLS",
         "常時SSL"
       ],
       "ja": "通信を暗号化し、サイトの正当性を証明書で示す接続方式",
@@ -590,7 +590,9 @@
       "en": "sec-vpn",
       "kind": "concept",
       "answer": "VPN",
-      "accept": [],
+      "accept": [
+        "virtual private network"
+      ],
       "aka": [
         "仮想プライベートネットワーク"
       ],
@@ -629,7 +631,9 @@
       "en": "sec-waf",
       "kind": "concept",
       "answer": "WAF",
-      "accept": [],
+      "accept": [
+        "web application firewall"
+      ],
       "aka": [
         "ワフ",
         "Webアプリケーションファイアウォール"
@@ -649,7 +653,9 @@
       "en": "sec-edr",
       "kind": "concept",
       "answer": "EDR",
-      "accept": [],
+      "accept": [
+        "endpoint detection and response"
+      ],
       "ja": "端末の挙動を監視し、侵入後の不審な動きを検知・対処する",
       "q": "パソコンやサーバーの操作や通信を常時記録し、ウイルス対策ソフトをすり抜けた侵入後の不審な動きを検知して隔離・調査できる仕組み",
       "explain": "Endpoint Detection and Response。アンチウイルスは「侵入を防ぐ」、こちらは「侵入後を見つける」。監視体制が要る",
@@ -727,10 +733,11 @@
       "en": "sec-siem",
       "kind": "concept",
       "answer": "SIEM",
-      "accept": [],
+      "accept": [
+        "security information and event management"
+      ],
       "aka": [
         "シーム",
-        "security information and event management",
         "ログ統合管理"
       ],
       "ja": "各機器のログを集約・相関分析して異常を検知する仕組み",
@@ -806,7 +813,9 @@
       "en": "sec-csirt",
       "kind": "concept",
       "answer": "CSIRT",
-      "accept": [],
+      "accept": [
+        "computer security incident response team"
+      ],
       "aka": [
         "シーサート",
         "インシデント対応チーム"
@@ -888,7 +897,9 @@
       "en": "sec-nda",
       "kind": "concept",
       "answer": "NDA",
-      "accept": [],
+      "accept": [
+        "non-disclosure agreement"
+      ],
       "aka": [
         "秘密保持契約",
         "機密保持契約",
@@ -1010,7 +1021,9 @@
       "en": "sec-gdpr",
       "kind": "concept",
       "answer": "GDPR",
-      "accept": [],
+      "accept": [
+        "general data protection regulation"
+      ],
       "aka": [
         "EU一般データ保護規則",
         "一般データ保護規則"
@@ -1071,10 +1084,12 @@
       "en": "sec-isms",
       "kind": "concept",
       "answer": "ISMS",
-      "accept": [],
+      "accept": [
+        "ISO27001",
+        "ISO/IEC 27001"
+      ],
       "aka": [
-        "情報セキュリティマネジメントシステム",
-        "ISO27001"
+        "情報セキュリティマネジメントシステム"
       ],
       "ja": "情報を守る仕組みを計画・運用・改善する管理の枠組みと認証",
       "q": "会社が情報を守る仕組みを計画・運用・点検・改善の流れで回す管理の枠組み。国際規格に基づく第三者認証があり、入札や取引の条件になることもある",

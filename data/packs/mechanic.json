@@ -601,7 +601,9 @@
       "en": "mech-dtc",
       "kind": "concept",
       "answer": "DTC",
-      "accept": [],
+      "accept": [
+        "diagnostic trouble code"
+      ],
       "aka": [
         "故障コード",
         "ダイアグコード",
@@ -646,6 +648,7 @@
       "kind": "concept",
       "answer": "ECU",
       "accept": [
+        "electronic control unit",
         "ECM"
       ],
       "aka": [

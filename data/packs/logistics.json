@@ -228,7 +228,9 @@
       "en": "logi-sku",
       "kind": "concept",
       "answer": "SKU",
-      "accept": [],
+      "accept": [
+        "stock keeping unit"
+      ],
       "aka": [
         "ストックキーピングユニット",
         "最小管理単位"
@@ -268,7 +270,9 @@
       "en": "logi-wms",
       "kind": "concept",
       "answer": "WMS",
-      "accept": [],
+      "accept": [
+        "warehouse management system"
+      ],
       "aka": [
         "倉庫管理システム",
         "倉庫システム"
@@ -805,7 +809,9 @@
       "en": "logi-bcp",
       "kind": "concept",
       "answer": "BCP",
-      "accept": [],
+      "accept": [
+        "business continuity plan"
+      ],
       "aka": [
         "事業継続計画",
         "災害時対応計画"
@@ -866,7 +872,9 @@
       "en": "logi-fcl",
       "kind": "concept",
       "answer": "FCL",
-      "accept": [],
+      "accept": [
+        "full container load"
+      ],
       "aka": [
         "フルコンテナ",
         "コンテナ貸切",

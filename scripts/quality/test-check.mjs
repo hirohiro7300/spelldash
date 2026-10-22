@@ -40,7 +40,7 @@
 //  21. acceptReadings を読む 1 か所（scripts/lib/accept-readings.mjs。PR #187 のレビュー 6）: 空の配列は形の誤り（add-readings・validate-words・
 //      品質の規則で同じ）
 //  22. validate-words: 綴り入力のカード（英字の答えの概念カード）の accept に綴りで打てない字（日本語・全角）があれば NG（Batch 73）。今の教材は 0 件。
-//      全文入力・ローマ字のカードの日本語の別解は出ない。空白・記号・数字の英字の別解も NG で、ハイフンは通る（画面キーボードの決まり。PR #191 のレビュー 4）。
+//      全文入力・ローマ字のカードの日本語の別解と、空白・記号・数字の英字の別解（物理キーで打てる。PR #191 のレビュー 4 の見直し）は出ない。
 //      綴り入力のカードの数は全部の枚数（レビュー 6）。表示と検索だけの欄 aka の誤りも NG（レビュー 3）。教材の写しは 19 と同じ（PR #191 のレビュー 7）
 //  23. 教材の問題文の向き: 保証会社の問題文は、借主に代わって貸し手へ返す向き（PR #191 のレビュー 1）
 import fs from "node:fs";
@@ -636,10 +636,10 @@ const FREEZE = "banking:concept-bank-freeze";
     edit("jsci1:concept-js1-cu", (w) => (w.accept = [...(w.accept ?? []), "銅", "ＣＵ", "copper (cu)"]));
     edit("webdev:concept-web-ssl", (w) => (w.accept = [...(w.accept ?? []), "https化"]));
     edit("jsci1:concept-js1-co2", (w) => (w.accept = [...(w.accept ?? []), "炭酸ガス"]));
-    // PR #191 のレビュー 4: 画面キーボードで打てない英字の別解（空白・記号・数字）も NG。ハイフンは英単語のカードと同じく通る
-    edit("listing:concept-cpc", (w) => (w.accept = [...(w.accept ?? []), "cost per click", "c.p.c", "cpc2", "cost-per-click", "cpc rate"]));
+    // PR #191 のレビュー 4 の見直し: 空白・記号・数字・ハイフンの英字の別解は物理キーで打てるので NG にしない。日本語の別解は NG
+    edit("listing:concept-cpc", (w) => (w.accept = [...(w.accept ?? []), "cost per click", "c.p.c", "cpc2", "cost-per-click", "クリック単価"]));
     // PR #191 のレビュー 3: 表示と検索だけの欄 aka の誤り（重複・答えと同じ・綴りで打てる語・形・綴り入力の概念カードでない）
-    edit("listing:concept-cpc", (w) => (w.aka = ["クリック単価の目安", "クリック単価の目安", "CPC", "costperclick"]));
+    edit("listing:concept-cpc", (w) => (w.aka = ["クリック単価の目安", "クリック単価の目安", "CPC", "cost per click"]));
     edit("webdev:concept-web-ssl", (w) => (w.aka = "https化"));
     edit("jsci1:concept-js1-mg", (w) => (w.aka = ["マグネシウム", ""]));
     edit(IWA, (w) => (w.aka = ["岩宿"]));
@@ -897,7 +897,7 @@ const FREEZE = "banking:concept-bank-freeze";
 
 // 22（Batch 73）: validate-words は、綴り入力のカード（英字の答えの概念カード: Cu・CPC。js/judge.js answerModeOf が spell）の accept に
 // 綴りで打てない字（日本語・全角）があれば NG。今の教材は 0 件（main d8ea9c6 の教材では 828 件・306 枚で落ちる）。日本語の答えのカード（ローマ字）と
-// 全文入力のカード（CO2・AI Max）の日本語の別解・空白や記号の入った英字の別解は出ない。教材の写しは 19 と同じ（通る形＝今の教材、形の誤りの写しに重ねた）
+// 全文入力のカード（CO2・AI Max）の日本語の別解・空白や記号の入った英字の別解（物理キーで打てる）は出ない。教材の写しは 19 と同じ（通る形＝今の教材、形の誤りの写しに重ねた）
 {
   const { good: vNow, bad: vBad } = validateRuns;
   const LABEL = "綴り入力のカードの accept に綴りで打てない字";
@@ -917,14 +917,15 @@ const FREEZE = "banking:concept-bank-freeze";
     vBad.code === 1 && lost.length === 0 && extra.length === 0,
     `exit=${vBad.code} ${badLines.length} 件（今の教材 ${nowLines.length}） 無い: ${lost.join(" / ")} 余分: ${extra.join(" / ")}`
   );
-  // PR #191 のレビュー 4: 綴り入力の別解は、画面キーボード（a〜z。js/keyboard.js ROWS）で打てる綴りだけ（js/answers.js isSpellAlt）: 英単語のカードの accept と
-  // 同じ「英小文字で始まり、英小文字とハイフン」の語か、答えに続ける語句（答えの綴りで始まり、続きが英字で終わる: cpc rate）。空白・記号・数字の英字の別解も NG
-  const want4 = ["packs/jsci1.json:concept-js1-cu (copper (cu))", "english/listing.json:concept-cpc (cost per click)", "english/listing.json:concept-cpc (c.p.c)", "english/listing.json:concept-cpc (cpc2)"];
+  // PR #191 のレビュー 4 の見直し: 綴り入力の別解の決まりは物理キーで打てる半角の字（0x20〜0x7e。js/answers.js isSpellAlt）。空白・記号・数字・ハイフンの入った英字の別解
+  // （cost per click・copper (cu)・c.p.c・cpc2・cost-per-click）は物理キーで打てる正しい別解なので NG にしない（画面キーボードで打てないのは docs/BACKLOG）。日本語の別解（クリック単価）は NG
+  const want4 = ["english/listing.json:concept-cpc (クリック単価)"];
   const lost4 = want4.filter((x) => !badLines.some((l) => l.includes(x)));
+  const ascii4 = badLines.filter((l) => /\((copper \(cu\)|cost per click|c\.p\.c|cpc2|cost-per-click)\)/.test(l));
   check(
-    "validate-words: 綴り入力のカードの空白・記号・数字の英字の別解（copper (cu)・cost per click・c.p.c・cpc2）も NG で名指しする。ハイフンの別解（cost-per-click）と答えに続ける語句（cpc rate）は通る。足した 7 件だけが出る",
-    vBad.code === 1 && lost4.length === 0 && !badLines.some((l) => /\((cost-per-click|cpc rate)\)/.test(l)) && badLines.length === nowLines.length + want.length + want4.length,
-    `exit=${vBad.code} ${badLines.length} 件（今の教材 ${nowLines.length}） 無い: ${lost4.join(" / ")}`
+    "validate-words: 綴り入力のカードの空白・記号・数字・ハイフンの英字の別解（copper (cu)・cost per click・c.p.c・cpc2・cost-per-click）は NG にしない。日本語の別解（CPC の クリック単価）は NG で名指しする。足した日本語・全角の 4 件だけが出る",
+    vBad.code === 1 && lost4.length === 0 && ascii4.length === 0 && badLines.length === nowLines.length + want.length + want4.length,
+    `exit=${vBad.code} ${badLines.length} 件（今の教材 ${nowLines.length}） 無い: ${lost4.join(" / ")} 出た英字: ${ascii4.join(" / ")}`
   );
   // PR #191 のレビュー 6: 数は綴り入力の概念カードの全部（accept の無いカードも数える）。accept のある枚数は別に出す
   const spellAll = baseCtx.cards.filter((w) => w.kind === "concept" && !w.calc && baseCtx.modules.judge.answerModeOf(w).mode === "spell");
@@ -935,17 +936,17 @@ const FREEZE = "banking:concept-bank-freeze";
     countLine.includes(`: ${spellAll.length}枚`) && countLine.includes(`accept が 1 語以上 ${withAccept}枚`),
     countLine
   );
-  // PR #191 のレビュー 3: 表示と検索だけの欄 aka（綴り入力の概念カードの日本語の名前・正式名。判定・ヒント・タイピング練習には使わない）
+  // PR #191 のレビュー 3: 表示と検索だけの欄 aka（綴り入力の概念カードの日本語の名前。判定・ヒント・タイピング練習には使わない）
   const AKA_NG = ["aka の語が重複", "aka の語が答えと同じ", "aka の語が綴りで打てる", "aka の形", "aka は綴り入力の概念カードだけ"];
   const akaLines = (out) => out.split("\n").filter((l) => AKA_NG.some((k) => l.includes(k)));
   const wantAka = [
     "aka の語が重複 english/listing.json:concept-cpc (クリック単価の目安)",
     "aka の語が答えと同じ english/listing.json:concept-cpc (CPC)",
-    "aka の語が綴りで打てる（別解なら accept に。表示と検索だけの名前は綴りで打てない語） english/listing.json:concept-cpc (costperclick)",
+    "aka の語が綴りで打てる（別解なら accept に。表示と検索だけの名前は綴りで打てない語） english/listing.json:concept-cpc (cost per click)",
     "aka の形（空でない文字列の配列） packs/webdev.json:concept-web-ssl",
     "aka の形（空でない文字列の配列） packs/jsci1.json:concept-js1-mg",
-    "aka は綴り入力の概念カードだけ（英字の答えの日本語の名前・正式名。表示と検索だけ） packs/jhist1.json:concept-jh1-iwajuku",
-    "aka は綴り入力の概念カードだけ（英字の答えの日本語の名前・正式名。表示と検索だけ） english/junior.json:english-apple"
+    "aka は綴り入力の概念カードだけ（英字の答えの日本語の名前。表示と検索だけ） packs/jhist1.json:concept-jh1-iwajuku",
+    "aka は綴り入力の概念カードだけ（英字の答えの日本語の名前。表示と検索だけ） english/junior.json:english-apple"
   ];
   const badAka = akaLines(vBad.out);
   const lostAka = wantAka.filter((x) => !badAka.some((l) => l.includes(x)));

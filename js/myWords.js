@@ -56,18 +56,17 @@ export function toWordObjects(list = getMyWords()) {
     if (w.kind === "concept") {
       const answer = String(w.answer).trim();
       const spell = /^[a-z-]+$/i.test(answer);
-      // 答えが英字（綴り入力: SSL・CPC）なら、別解は綴りで打てる語だけ（js/answers.js isSpellAlt。教材と同じ決まり）。打てない語（https化・クリック単価）は
-      // 表示と検索だけの名前（aka。単語帳の「別名」）にする。保存した形は変えない（PR #191 のレビュー 2）
+      // 答えが英字（綴り入力: SSL・CPC）なら、別解は綴りで打てる語だけ（js/answers.js isSpellAlt: 半角の英字・数字・記号・空白。教材と同じ決まり）。
+      // 打てない語（https化・クリック単価）は表示と検索だけの名前（aka。単語帳の「別名」）にする。保存した形は変えない（PR #191 のレビュー 2）
       const accept = Array.isArray(w.accept) ? w.accept : [];
-      const typeable = (a) => isSpellAlt(a, answer);
-      const aka = spell ? accept.filter((a) => !typeable(a)) : [];
+      const aka = spell ? accept.filter((a) => !isSpellAlt(a)) : [];
       return {
         id: `my-q-${w.en}`,
         key: w.en,
         kind: "concept",
         en: spell ? answer.toLowerCase() : answer,
         answer,
-        accept: spell ? accept.filter(typeable) : accept,
+        accept: spell ? accept.filter((a) => isSpellAlt(a)) : accept,
         ...(aka.length ? { aka } : {}),
         ja: w.ja || (w.explain ? w.explain.slice(0, 40) : "自分の場面カード"),
         q: w.q,

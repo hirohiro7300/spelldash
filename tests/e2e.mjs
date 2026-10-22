@@ -11490,6 +11490,25 @@ console.log("my words:");
   check("利用者の場面カード SSL: 単語帳では https化 を「別名」と出す（別解の行に出さない）", myText.includes("別名: https化") && !myText.includes("別解: https化"), myText.slice(0, 200));
   check("利用者の場面カードの別名でエラー0", pageS.errors.length === 0, pageS.errors[0] ?? "");
   await pageS.close();
+
+  // PR #191 のレビュー 4 の見直し: 空白の入った英字の別解（CPC の cost per click）は物理キーで打てる正しい別解なので、綴り入力の候補に残す
+  // （日本語の クリック単価 だけを別名にする）。物理キーで打つと別解（× にしない）。単語帳では cost per click を「別解」、クリック単価 を「別名」と出す
+  const cpcCard = { kind: "concept", en: "cpc", answer: "CPC", q: "1クリックあたりにかかった広告費の略語", explain: "", accept: ["クリック単価", "cost per click"], ja: "", addedAt: new Date().toISOString() };
+  const pageCpc = await newPage({ storage: { spelldash_category: "my", spelldash_placement: "done", spelldash_my_words: JSON.stringify([cpcCard]), spelldash_after_correct: "quick" } });
+  await pageCpc.goto(BASE + "/index.html?hintms=600000", { waitUntil: "networkidle" });
+  await pageCpc.waitForTimeout(800);
+  await pageCpc.press("#input", "Enter");
+  await waitUntil(async () => (await pageCpc.textContent("#japanese")).trim() === cpcCard.q, 3000);
+  for (const ch of "cost per click") await pageCpc.press("#input", ch);
+  await pageCpc.waitForTimeout(300);
+  const cpcFail = (await pageCpc.textContent("#recallFail")).trim();
+  const cpcMsg = (await pageCpc.textContent("#message")).trim();
+  check("利用者の場面カード CPC（別解 クリック単価・cost per click）: 物理キーで cost per click と打つと別解（× にしない）", cpcFail === "0" && (await pageCpc.textContent("#word")).trim() === "CPC" && cpcMsg.includes("cost per click"), `${cpcFail} ${cpcMsg}`);
+  await pageCpc.goto(BASE + "/list.html?category=my", { waitUntil: "networkidle" });
+  await pageCpc.waitForTimeout(700);
+  const cpcList = await pageCpc.textContent("#listBody");
+  check("利用者の場面カード CPC: 単語帳では cost per click を「別解」、クリック単価 を「別名」と出す（エラー0）", cpcList.includes("別解: cost per click") && cpcList.includes("別名: クリック単価") && pageCpc.errors.length === 0, `${cpcList.slice(0, 200)} ${pageCpc.errors[0] ?? ""}`);
+  await pageCpc.close();
 }
 
 // ===== 9.7 学びの質（Batch 1）: ヒント／メモ／難敵／正解時発音／バックアップ／ご意見 =====
@@ -15980,8 +15999,7 @@ console.log("judge (出題語が別の正解の先頭部分):");
   }
   const knownJ = ["jhs-english1:gym→gymnasium", "ngsl01:a→an", "highschool:sport→sports", "travel:photo→photograph"];
   // 下限: K0-1 のときは 170 枚。Batch 73 で綴り入力のカードの日本語の別解（seo→seo記事・isbn→isbnコード など、打ち終えられない続き）を外し、
-  // differ→different（札の確かでない組）が結ばれなくなって 131 枚。PR #191 のレビュー 4 で、続きが英字で終わらない答えに続ける語句（icd→icd-10・icd10。
-  // 画面キーボードでは打ち切れない）を外して 130 枚（a→a large・rest→rest api のような続きの英字を打てる語句は残す）
+  // differ→different（札の確かでない組）が結ばれなくなって 131 枚
   check(`判定（全カード）: 出題語が別の候補の先頭部分にあるカードを数える（全パック有効。綴り入力 ${spellJ.length} 枚のうち ${prefixCards.length} 枚。gym／gymnasium・a／an・sport／sports・photo／photograph を含む）`,
     spellJ.length > 10000 && prefixCards.length >= 125 &&knownJ.every((k) => prefixCards.some((p) => p === k || p.startsWith(k + ","))), `${spellJ.length} / ${prefixCards.length} / ${prefixCards.slice(0, 5).join(" ")}`);
   check(`判定（全カード）: 出題語を 1 字ずつ打つと、打ち切った時点で出題語として完成する（途中では終わらない。失敗 ${notDone.length} 枚）`, notDone.length === 0, notDone.slice(0, 8).join(" "));

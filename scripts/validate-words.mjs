@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, isReading, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
 import { shelfIdOf } from "../js/shelves.js";
 import { isReadingsRecord, readingsList } from "./lib/accept-readings.mjs";
-import { SPELL_ALT, isSpellAlt } from "../js/answers.js";
+import { isSpellAlt } from "../js/answers.js";
 import { answerModeOf } from "../js/judge.js";
 import { toCard } from "../js/wordData.js";
 
@@ -122,10 +122,10 @@ function checkAcceptReadings(w, where, { cardType, strict }) {
 }
 
 // 綴り入力のカード（答えが英字とハイフンだけの概念カード: Cu・CPC・EU。盤面と同じ js/wordData.js toCard → js/judge.js answerModeOf が spell。
-// 計算カードを除く）の accept は、画面キーボードで打てる綴りだけ（英小文字で始まり英小文字とハイフンの語〔英単語のカードの accept と同じ〕か、
-// 答えに続ける語句〔a → a large〕。js/answers.js isSpellAlt の 1 か所。判定の候補も同じ決まりで絞る）。日本語の名前・読み（Cu の 銅・どう、CPC の クリック単価）と、空白・数字・記号の
-// 入った英字（cost per click・rel=canonical・ISO27001）は綴り入力では打てない（画面キーボードは a〜z だけ。Batch 73・PR #191 のレビュー 4）。
-// 日本語の名前・正式名を見せたい・検索で引きたいなら、表示と検索だけの欄 aka に書く（判定・ヒント・タイピング練習には使わない。PR #191 のレビュー 3）
+// 計算カードを除く）の accept は、綴りで打てる語だけ（半角の英字・数字・記号・空白。js/answers.js isSpellAlt の 1 か所。判定の候補も同じ決まりで絞る）。
+// 日本語の名前・読み（Cu の 銅・どう、CPC の クリック単価）は判定で使われず、英字で始まる日本語（https化・nisa口座）は、打ち終えられない英字の頭を × にしない・
+// ヒントで日本語の字が入る・続きの持ち越し止めで次の語の速さを測らない（Batch 73。docs/PACK_FORMAT.md）。
+// 日本語の名前を見せたい・検索で引きたいなら、表示と検索だけの欄 aka に書く（判定・ヒント・タイピング練習には使わない。PR #191 のレビュー 3）
 let spellCards = 0;
 let spellWithAccept = 0;
 let akaCards = 0;
@@ -133,17 +133,17 @@ let akaNames = 0;
 function checkSpellAccept(w, where, data, isPack) {
   const card = w.kind === "concept" && !w.calc ? toCard(w, data, isPack ? { pack: true } : null) : null;
   const spell = !!card && answerModeOf(card).mode === "spell";
-  if (w.aka !== undefined) checkAka(w, where, spell, card?.en);
+  if (w.aka !== undefined) checkAka(w, where, spell);
   if (!spell) return;
   spellCards++;
   const accept = Array.isArray(w.accept) ? w.accept : [];
   if (accept.length) spellWithAccept++;
-  for (const a of accept) if (!isSpellAlt(a, card.en)) problems.push(`綴り入力のカードの accept に綴りで打てない字（英字の答えの別解は a〜z とハイフンの綴りか、答えに続ける語句だけ。日本語の名前・正式名は aka に） ${where} (${a})`);
+  for (const a of accept) if (!isSpellAlt(a)) problems.push(`綴り入力のカードの accept に綴りで打てない字（英字の答えの別解は綴りだけ。日本語の名前は aka に） ${where} (${a})`);
 }
 // aka（表示と検索だけの名前）: 綴り入力の概念カードだけ。空でない文字列の配列で、重複しない・答えと同じでない・綴りで打てない語（打てる語は別解なら accept に）
-function checkAka(w, where, spell, en) {
+function checkAka(w, where, spell) {
   if (!spell) {
-    problems.push(`aka は綴り入力の概念カードだけ（英字の答えの日本語の名前・正式名。表示と検索だけ） ${where}`);
+    problems.push(`aka は綴り入力の概念カードだけ（英字の答えの日本語の名前。表示と検索だけ） ${where}`);
     return;
   }
   if (!Array.isArray(w.aka) || w.aka.length === 0 || w.aka.some((a) => typeof a !== "string" || !a.trim())) {
@@ -158,7 +158,7 @@ function checkAka(w, where, spell, en) {
     if (seen.has(k)) problems.push(`aka の語が重複 ${where} (${a})`);
     seen.add(k);
     if (k === answer) problems.push(`aka の語が答えと同じ ${where} (${a})`);
-    else if (isSpellAlt(a, en)) problems.push(`aka の語が綴りで打てる（別解なら accept に。表示と検索だけの名前は綴りで打てない語） ${where} (${a})`);
+    else if (isSpellAlt(a)) problems.push(`aka の語が綴りで打てる（別解なら accept に。表示と検索だけの名前は綴りで打てない語） ${where} (${a})`);
     akaNames++;
   }
 }
@@ -254,7 +254,7 @@ for (const fullPath of files) {
         if (!Array.isArray(w.accept)) problems.push(`accept形式 ${where}`);
         else {
           for (const a of w.accept) {
-            if (!SPELL_ALT.test(String(a))) problems.push(`accept のつづり ${where} "${a}"`); // 綴り入力の別解の決まり（js/answers.js。概念カードと同じ）
+            if (!/^[a-z][a-z-]*$/.test(String(a))) problems.push(`accept のつづり ${where} "${a}"`);
             if (String(a) === w.en) problems.push(`accept に出題語そのもの ${where}`);
           }
           if (new Set(w.accept.map(String)).size !== w.accept.length) problems.push(`accept重複 ${where}`);
@@ -370,7 +370,7 @@ for (const [file, w] of entries) {
 
 console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${familyById.size} / 日本語の答え: ${readingCards}枚（読み ${readingCount}・読みを結んだ別表記 ${boundAlts}）`);
 console.log(`学校・基本で読みを結んでいない別表記: ${unboundStrict}件・Batch 71 で足した読みのうち accept に残る ${b71Checked}（結びか主な読みに属するかを見た）`);
-console.log(`綴り入力のカード（英字の答えの概念カード）: ${spellCards}枚（accept が 1 語以上 ${spellWithAccept}枚。accept は a〜z とハイフンの綴りか答えに続ける語句だけか見た）`);
+console.log(`綴り入力のカード（英字の答えの概念カード）: ${spellCards}枚（accept が 1 語以上 ${spellWithAccept}枚。accept は綴りで打てる語だけか見た）`);
 console.log(`aka（表示と検索だけの名前）: ${akaNames}語・${akaCards}枚（綴り入力の概念カードだけ・綴りで打てない語だけか見た）`);
 if (problems.length === 0) {
   console.log("OK: 問題なし");
