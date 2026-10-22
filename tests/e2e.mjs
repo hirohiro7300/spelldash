@@ -760,7 +760,7 @@ console.log("record quality:");
     // 回の最初の語（ページを開いて最初の語も）は片側だけ信じて測る（PR #189 のレビュー。measure.lag。本人の基準の箱と sp には入れない）
     const id0 = await cur(page);
     const b00 = await boxOf(page, "en.kbd.study");
-    await sinceShow(page, 450);
+    await sinceShow(page, 700); // 回の最初の語の測り始めは最初の描画の後なので、重い組でも t1 が 400ms を下回らない余裕を取る
     await pass(page);
     const w0 = await lastWrite(page, "recordRecallSuccess", id0);
     const b01 = await boxOf(page, "en.kbd.study");
