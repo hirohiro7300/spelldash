@@ -1,6 +1,6 @@
 // ===== 本棚の棚割り（データだけ） =====
 //
-// 171 のカテゴリ（基本 9＋分野パック 162）を 9 つの棚に振る。本棚（js/bookshelf.js）と机の本の柱（js/pathView.js）が使う。
+// 173 のカテゴリ（基本 9＋分野パック 164）を 9 つの棚に振る。本棚（js/bookshelf.js）と机の本の柱（js/pathView.js）が使う。
 // 振り分けは manifest の group 名 → 棚の表と、id の例外表（小学校・中学校・高校の group は教科が混ざるので id で振る）。
 // 答え方（lang）と単位（語／枚）もここで決める。語数は manifest の count（基本カテゴリは読み込んだ語を数える）。
 
@@ -21,6 +21,7 @@ const SHELF_BY_ID = Object.fromEntries(SHELVES.map((s) => [s.id, s]));
 // manifest の group → 棚
 const GROUP_SHELF = {
   "英語（教科書レベル）": "eng",
+  "分野の英単語（プログラミング）": "eng",
   "試験・レベル別（英検・TOEIC）": "exam",
   "文法（中学・高校・TOEIC）": "grammar",
   "英作文・表現（並べ替え・英作文・ライティング・面接）": "grammar",

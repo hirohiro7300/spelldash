@@ -93,7 +93,7 @@ document の keydown で受ける（焦点が `#input` に無くても打てる�
 ## 5. 教材（data/typing.json）
 
 - `scripts/build-typing.mjs` がパックから作る生成物（1 語 1 行、英 942 語・日 663 語、54.0KB・gzip 19.9KB）。`node scripts/build-typing.mjs` で作り直し、`--check` で生成物との一致と条件を見る（CI と E2E）。**パックの語・訳・読みを直したら作り直す**。
-- 英単語: manifest の english の並び順に、自作の単語帳（`source` の無いファイル。NGSL・TSL・BSL・NAWL の CC BY-SA の「選定と順序」を持ち込まない）の語で、`/^[a-z]{3,8}$/`・`level` が easy か normal・訳が 12 字以下で「略」を含まないもの。同じ綴りは先に出た方。**群 `EXCLUDE_EN` は外す**: `ads`（広告の専門の訳のまま出る: exact=完全一致（マッチタイプ）など）・`eikenp1`・`eiken1`（haughty・obstinate が normal／easy に入っている）・`toeic860`・`toeic990`（latency=（通信の）遅延 など）。`level` はパックの中の相対の難しさなので群で外す。
+- 英単語: manifest の english の並び順に、自作の単語帳（`source` の無いファイル。NGSL・TSL・BSL・NAWL の CC BY-SA の「選定と順序」を持ち込まない）の語で、`/^[a-z]{3,8}$/`・`level` が easy か normal・訳が 12 字以下で「略」を含まないもの。同じ綴りは先に出た方。**群 `EXCLUDE_EN` は外す**: `ads`（広告の専門の訳のまま出る: exact=完全一致（マッチタイプ）など）・`eikenp1`・`eiken1`（haughty・obstinate が normal／easy に入っている）・`toeic860`・`toeic990`（latency=（通信の）遅延 など）・`prog-english1`・`prog-english2`（プログラミングの英単語。訳がプログラミングの意味のまま出る: type=型・index=添字 など）。`level` はパックの中の相対の難しさなので群で外す。
 - 日本語: concept の群のうち group が「小学校」「中学校」で始まるもの（15 本）の用語で、主な読みが 3〜10 かな・標準の綴り（語末の ん は n）で打ち終えられ、答えが かな・ー・・・＝ だけではないもの（用語の行とかなの行が同じ字になる）。候補は主な読み 1 つ（別解を渡すと短い読みで先に終わる）。日常の語はデータに無い（BACKLOG D11）。
 - 並べ方: 1 回ごとに全語を Fisher–Yates で混ぜる。ページを開いて最初の英単語の回だけ先頭を apple に固定（日本語・長文で開いたときは、英単語のタブを初めて押した回）。難しさの順にはしない。
 - 読み込み: head の `<link rel="preload" as="fetch" crossorigin>` と同じ URL・CORS で `fetch("./data/typing.json")`（1 回だけ取る）。届く前に apple を打ち終えたら札に「読み込み中」（時間は止めない）。取れなければ `error`。

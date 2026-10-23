@@ -5307,9 +5307,9 @@ console.log("study (room):");
   }
 }
 
-// ===== 8.6 わたしの本棚（js/bookshelf.js・js/shelfStore.js。Batch 61）: 自分で足した本と函だけ（机の本は空き）。171 冊の目録は「本を足す」の窓、下ろすのは「整理」 =====
+// ===== 8.6 わたしの本棚（js/bookshelf.js・js/shelfStore.js。Batch 61）: 自分で足した本と函だけ（机の本は空き）。173 冊の目録は「本を足す」の窓、下ろすのは「整理」 =====
 // 種: shelfSeed（中学英語やり直し・中学英語 1年・最初の 3 章を覚えた）、shelfJson（spelldash_shelf の文字列）、countSeed(n)（目録の順の先頭 n 点・机は「すべて」・コースなし）、
-// heavySeed（全部足した棚 = 函 10＋本 113＋マイ単語帳 = 124 点。頻度順の巻 58 は除く）。移行・照合の規則の分岐は scripts/test-shelf.mjs（node の単体）
+// heavySeed（全部足した棚 = 函 10＋本 115＋マイ単語帳 = 126 点。頻度順の巻 58 は除く）。移行・照合の規則の分岐は scripts/test-shelf.mjs（node の単体）
 console.log("bookshelf:");
 {
   const jhs1S = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
@@ -5415,16 +5415,16 @@ console.log("bookshelf:");
     if (v.scrollW > v.innerW || v.booksScroll || v.more) bad.push("scroll");
     return bad;
   };
-  // 目録の順のキー（ページの shelfCatalogKeys）。全部足した棚は頻度順の巻を除く 124 点
-  let catalog124 = null;
+  // 目録の順のキー（ページの shelfCatalogKeys）。全部足した棚は頻度順の巻を除く 126 点
+  let catalogAll = null;
   const catalog = async () => {
-    if (catalog124) return catalog124;
+    if (catalogAll) return catalogAll;
     const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
     await openHome(page);
     const keys = await page.evaluate(() => import("/js/bookshelf.js").then((m) => m.shelfCatalogKeys()));
     await page.close();
-    catalog124 = keys.filter((k) => !/^b:(ngsl|tsl|bsl|nawl)\d/.test(k));
-    return catalog124;
+    catalogAll = keys.filter((k) => !/^b:(ngsl|tsl|bsl|nawl)\d/.test(k));
+    return catalogAll;
   };
   const countSeed = (keys, n, extra = {}) => { const pick = keys.slice(0, n); return shelfSeed({ spelldash_course: "", spelldash_category: "all", spelldash_packs: "[]", spelldash_shelf: JSON.stringify({ v: 1, books: pick.filter((k) => k.startsWith("b:")).map((k) => k.slice(2)), courses: pick.filter((k) => k.startsWith("c:")).map((k) => k.slice(2)), seen: [], prov: false }), ...extra }); };
 
@@ -5538,10 +5538,72 @@ console.log("bookshelf:");
     await page.close();
   }
 
-  // 1200: 全部足した棚（124 点）: 名前・答え方・背の文字・roving（段をまたいでも Tab で止まるのは 1 つ）・フォント ≤ 600KB
-  const keys124 = await catalog();
+  // ---- Batch 74: プログラミングの英単語 1・2（prog-english1・prog-english2）: 窓の英単語の見出しと検索で引け、棚に足せ、背を押すと机に出て盤面で出題される ----
+  // 無い本（main の木）でも止まらずに落ちるよう、押すのは有るときだけ（evaluate の click）、語の読み込みは失敗したら空
+  {
+    const progIds = ["prog-english1", "prog-english2"];
+    const progWords = Object.fromEntries(progIds.map((id) => { try { return [id, wordsOf(id)]; } catch { return [id, []]; } }));
+    const clickIf = (pg, sel) => pg.evaluate((s) => { const el = document.querySelector(s); if (el) el.click(); return !!el; }, sel);
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, ...shelfSeed() });
+    await openHome(page);
+    await page.click("#bookFinderOpen");
+    await page.waitForTimeout(200);
+    await page.click('#bookFinderBrowse details[data-shelf="eng"] > summary');
+    await page.waitForTimeout(150);
+    const engRows = await page.evaluate(() => [...document.querySelectorAll('#bookFinderBrowse details[data-shelf="eng"] .finder__row')].map((r) => ({ id: r.dataset.book ?? null, t: r.querySelector(".finder__t").textContent.trim(), m: r.querySelector(".finder__m").textContent.trim(), img: r.querySelector(".finder__cov img")?.getAttribute("src").split("/").pop() ?? null })));
+    const engIds = engRows.map((r) => r.id);
+    const row1 = engRows.find((r) => r.id === "prog-english1") ?? null, row2 = engRows.find((r) => r.id === "prog-english2") ?? null;
+    check("本を足す（Batch 74）: 英単語の見出しに「プログラミングの英単語 1」「2」が IT 英単語の直後に並ぶ（答えは英語・123語／125語、表紙は programming の 059）",
+      engIds.indexOf("prog-english1") === engIds.indexOf("it") + 1 && engIds.indexOf("prog-english2") === engIds.indexOf("it") + 2 && progWords["prog-english1"].length === 123 && progWords["prog-english2"].length === 125 &&
+      row1?.t === "プログラミングの英単語 1" && row1.m === "答えは英語・123語" && row1.img === "programming.webp" && row2?.t === "プログラミングの英単語 2" && row2.m === "答えは英語・125語" && row2.img === "programming.webp",
+      JSON.stringify({ tail: engIds.slice(-6), row1, row2, n: [progWords["prog-english1"].length, progWords["prog-english2"].length] }));
+    // 検索: 書名で 2 冊が先頭に。かな（ぷろぐらみんぐ）でも引ける
+    const hitsOf = async (q) => { await page.fill("#bookFinderQ", q); await page.waitForTimeout(100); return page.evaluate(() => [...document.querySelectorAll("#bookFinderList .finder__row")].map((r) => r.dataset.book ?? `c:${r.dataset.course}`)); };
+    const hits = await hitsOf("プログラミングの英単語");
+    const hitsKana = await hitsOf("ぷろぐらみんぐ");
+    check("本を足す（Batch 74）: 検索「プログラミングの英単語」で 2 冊が先頭（1・2 の順）。かなの「ぷろぐらみんぐ」でも 2 冊が出る",
+      same(hits.slice(0, 2), progIds) && progIds.every((id) => hitsKana.includes(id)), JSON.stringify({ hits, hitsKana }));
+    // 足す: 2 冊とも棚に（packs・机・コースは変わらない）
+    const before = await learning(page);
+    const added = [];
+    for (const id of progIds) added.push(await clickIf(page, `#bookFinderList .finder__act[data-key="b:${id}"]`));
+    await page.waitForTimeout(100);
+    const status = await page.evaluate(() => document.getElementById("bookFinderStatus").textContent);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const keysAdd = await shelfKeys(page);
+    const savedAdd = await savedShelf(page);
+    check("本を足す（Batch 74）: 窓で 2 冊を棚に足すと背が並び、spelldash_shelf に 2 冊（学習・packs・机・コースは変わらない）",
+      added.every(Boolean) && progIds.every((id) => keysAdd.includes(`b:${id}`) && savedAdd?.books.includes(id)) && status === "棚に足した: プログラミングの英単語 2" && same(before, await learning(page)), JSON.stringify({ added, status, keysAdd, savedAdd }));
+    // 背を押す → 机 → スタート → 盤面の問いはその本の語（訳がその語の訳・答えを開くとその語）
+    const askOf = async (id) => {
+      const pressed = await clickIf(page, `#shelfRun button.spine[data-book="${id}"]`);
+      const onDesk = pressed && (await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === id && (await page.evaluate(() => document.activeElement?.id === "pathStart")), 6000));
+      const desk = await page.evaluate(() => ({ title: document.querySelector("#pathHead .path__title")?.textContent ?? "", kicker: document.querySelector("#pathHead .path__kicker")?.textContent ?? "", meta: document.querySelector("#pathHead .path__meta")?.textContent ?? "" }));
+      if (!onDesk) return { id, pressed, onDesk, desk };
+      await page.click("#pathStart");
+      const started = await waitUntil(() => page.isVisible("#backToPath"), 4000);
+      const ja = ((await page.textContent("#japanese")) ?? "").trim();
+      await page.press("#input", "Enter"); // 答え表示（×）
+      await waitUntil(async () => /^[a-z]+$/.test(((await page.textContent("#word")) ?? "").trim()), 1500);
+      const en = ((await page.textContent("#word")) ?? "").trim();
+      const card = progWords[id].find((w) => w.en === en) ?? null;
+      await page.click("#backToPath");
+      await page.waitForTimeout(400);
+      return { id, pressed, onDesk, desk, started, ja, en, ok: !!card && card.ja === ja };
+    };
+    const q1 = await askOf("prog-english1");
+    const q2 = await askOf("prog-english2");
+    check("本を足す（Batch 74）: 足した背を押すと机に出て（英単語の棚・答えは英語）、スタートすると盤面にその本の語が出る（問いはその語の訳、答えはその語。1 も 2 も）",
+      [q1, q2].every((q, i) => q.onDesk && q.started && q.ok && q.desk.title.includes(`プログラミングの英単語 ${i + 1}`) && q.desk.kicker.includes("英単語の棚") && q.desk.meta.includes("英語")), JSON.stringify({ q1, q2 }));
+    check("本を足す（Batch 74）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // 1200: 全部足した棚（126 点）: 名前・答え方・背の文字・roving（段をまたいでも Tab で止まるのは 1 つ）・フォント ≤ 600KB
+  const keysAll = await catalog();
   for (const [w, h, mobile] of [[1200, 900, false], [390, 844, true]]) {
-    const page = await newPage({ mobile, viewport: { width: w, height: h }, ...countSeed(keys124, keys124.length) });
+    const page = await newPage({ mobile, viewport: { width: w, height: h }, ...countSeed(keysAll, keysAll.length) });
     let fontBytes = 0;
     const seenFont = new Set();
     page.on("response", async (r) => { try { const u = new URL(r.url()).pathname; if (r.request().resourceType() !== "font" || seenFont.has(u)) return; seenFont.add(u); fontBytes += (await r.body()).length; } catch {} });
@@ -5551,8 +5613,8 @@ console.log("bookshelf:");
       const ja = lab.filter((x) => ["social", "science", "kokugo", "job"].includes(x.group));
       const en = lab.filter((x) => ["eng", "exam"].includes(x.group));
       const kanji = lab.filter((x) => x.key === "b:jkokugo2" || x.key === "b:hs-kanbun");
-      check("本棚（全部足した棚・1200）: 押せる物 124 点が全部名前つき。社会・理科・国語・仕事の背は「答えは日本語」、英単語・試験の背は「答えは英語」、漢字の読み（中学）・漢文は「一部は漢字で答える」",
-        lab.length === 124 && lab.every((x) => x.label) && ja.length === perShelf.social + perShelf.science + perShelf.kokugo + perShelf.job && ja.every((x) => x.label.includes("答えは日本語")) && en.length === perShelf.eng + perShelf.exam + 1 && en.every((x) => x.label.includes("答えは英語")) && kanji.length === 2 && kanji.every((x) => x.label.includes("一部は漢字で答える")), JSON.stringify({ n: lab.length, unlabeled: lab.filter((x) => !x.label).map((x) => x.key), ja: ja.length, en: en.length, badJa: ja.filter((x) => !x.label.includes("答えは日本語")).map((x) => x.key), kanji }));
+      check("本棚（全部足した棚・1200）: 押せる物 126 点が全部名前つき。社会・理科・国語・仕事の背は「答えは日本語」、英単語・試験の背は「答えは英語」、漢字の読み（中学）・漢文は「一部は漢字で答える」",
+        lab.length === 126 && lab.every((x) => x.label) && ja.length === perShelf.social + perShelf.science + perShelf.kokugo + perShelf.job && ja.every((x) => x.label.includes("答えは日本語")) && en.length === perShelf.eng + perShelf.exam + 1 && en.every((x) => x.label.includes("答えは英語")) && kanji.length === 2 && kanji.every((x) => x.label.includes("一部は漢字で答える")), JSON.stringify({ n: lab.length, unlabeled: lab.filter((x) => !x.label).map((x) => x.key), ja: ja.length, en: en.length, badJa: ja.filter((x) => !x.label.includes("答えは日本語")).map((x) => x.key), kanji }));
       // roving: 最初の物から End で最後（別の段）へ、← で 1 つ戻る。Tab で止まるのは #shelfRun の中で 1 つ
       await page.evaluate(() => document.querySelector("#shelfRun button.box, #shelfRun button.spine").focus());
       await page.keyboard.press("ArrowRight");
@@ -5575,7 +5637,7 @@ console.log("bookshelf:");
 
   // 390: 段は折り返す（20 点）・背を押すと机へ・プレイ中は畳む・畳まれている間の組み直し・窓は画面に収まる・典型の棚のフォント
   {
-    const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, ...countSeed(keys124, 20) });
+    const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, ...countSeed(keysAll, 20) });
     await openHome(page);
     const v = await rowsOf(page);
     const order = await page.evaluate(() => [...document.querySelectorAll("#shelfRun .shelf")].every((s) => { const a = s.querySelector(".books"), b = s.querySelector(".shelf__board"); return a && b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }));
@@ -5627,7 +5689,7 @@ console.log("bookshelf:");
     await page.close();
   }
 
-  // 初回: 本棚は下見の棚（いまスタートしたら並ぶ物。保存しない）。「171冊から選ぶ」は語の読み込みの前から見え、窓（本をさがす・コースだけ開いて始める）で机の本を替える。スタートで下見と同じ棚になる
+  // 初回: 本棚は下見の棚（いまスタートしたら並ぶ物。保存しない）。「173冊から選ぶ」は語の読み込みの前から見え、窓（本をさがす・コースだけ開いて始める）で机の本を替える。スタートで下見と同じ棚になる
   {
     const page = await seededPage({ keepOnboarding: true, viewport: { width: 390, height: 844 } });
     await page.addInitScript(() => document.addEventListener("DOMContentLoaded", () => { const b = document.getElementById("welcomeFind"); window.__findEarly = b ? { hidden: b.hidden, text: b.textContent.trim() } : null; }));
@@ -5645,7 +5707,7 @@ console.log("bookshelf:");
     await page.waitForTimeout(500);
     const w = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, t: document.querySelector('#welcomeBook [data-f="t"]').textContent, s: document.querySelector('#welcomeBook [data-f="s"]').textContent, book: document.querySelector("#welcome [data-welcome-start]").dataset.book, cat: localStorage.getItem("spelldash_category"), packs: localStorage.getItem("spelldash_packs") || "", shelf: localStorage.getItem("spelldash_shelf"), focus: document.activeElement?.matches("#welcome .welcome__cta [data-welcome-start]") }));
     const keysK = await shelfKeys(page);
-    check("初回: 本棚は下見の棚（函 中学英語やり直し＋空き 中学英語 1年）と一文「ほかの本は、あとから足せる。」で、本を足す・整理は無い。「171冊から選ぶ」は読み込みの前から見え（数は目録の本の数）、押すと窓（本をさがす・コースだけ開いている・行は「机に出す」）。古文単語の「机に出す」で窓が閉じ、机の本と下見の棚が空き 古文単語だけに替わる（始めない・packs も spelldash_shelf も書かない・焦点はスタート）",
+    check("初回: 本棚は下見の棚（函 中学英語やり直し＋空き 中学英語 1年）と一文「ほかの本は、あとから足せる。」で、本を足す・整理は無い。「173冊から選ぶ」は読み込みの前から見え（数は目録の本の数）、押すと窓（本をさがす・コースだけ開いている・行は「机に出す」）。古文単語の「机に出す」で窓が閉じ、机の本と下見の棚が空き 古文単語だけに替わる（始めない・packs も spelldash_shelf も書かない・焦点はスタート）",
       v0.welcome && same(keysW, ["c:jhs-redo", "slot:b:jhs-english1"]) && v0.hint === "ほかの本は、あとから足せる。" && v0.add && v0.tidy && v0.early && !v0.early.hidden && v0.find === `${catsS.length}冊から選ぶ` && v0.findVisible &&
       dlg.open && dlg.title === "本をさがす" && same(dlg.opened, ["course"]) && !dlg.my && same(dlg.acts, ["机に出す"]) &&
       !w.open && w.t.includes("国語") && w.s.includes("古文単語") && w.book === "hs-kobun" && w.cat === "jhs-english1" && !w.packs.includes("hs-kobun") && w.shelf === null && w.focus && same(keysK, ["slot:b:hs-kobun"]), JSON.stringify({ v0, keysW, dlg, w, keysK }));
@@ -5821,7 +5883,7 @@ console.log("bookshelf:");
   for (const [w, h, mobile] of [[320, 640, true], [390, 844, true], [1100, 900, false], [1200, 900, false]]) {
     const results = [];
     for (const n of [0, 1, 2, 5, 20, 60]) {
-      const seed = n === 2 ? shelfSeed() : countSeed(keys124, n);
+      const seed = n === 2 ? shelfSeed() : countSeed(keysAll, n);
       const page = await newPage({ mobile, viewport: { width: w, height: h }, ...seed });
       await openHome(page);
       const v = await rowsOf(page);
@@ -5848,7 +5910,7 @@ console.log("bookshelf:");
   {
     const night = [];
     for (const [w, h, mobile] of [[390, 844, true], [1200, 900, false]]) for (const n of [5, 60]) {
-      const page = await newPage({ mobile, viewport: { width: w, height: h }, ...countSeed(keys124, n, { spelldash_theme: "dark" }) });
+      const page = await newPage({ mobile, viewport: { width: w, height: h }, ...countSeed(keysAll, n, { spelldash_theme: "dark" }) });
       await openHome(page);
       const v = await page.evaluate(() => {
         const rail = document.querySelector(".cabinet__rail").getBoundingClientRect(), t = document.getElementById("bookshelfTitle").getBoundingClientRect();
@@ -6069,7 +6131,7 @@ console.log("bookshelf:");
     await page.close();
   }
 
-  // ---- PR #152 レビュー B1: 目録の準備前に押した「171冊から選ぶ」は、届いた時点でまだ初回の画面のときだけ窓を開く。スタートした後には開かない（焦点はゲームの入力欄） ----
+  // ---- PR #152 レビュー B1: 目録の準備前に押した「173冊から選ぶ」は、届いた時点でまだ初回の画面のときだけ窓を開く。スタートした後には開かない（焦点はゲームの入力欄） ----
   {
     const page = await seededPage({ keepOnboarding: true, viewport: { width: 390, height: 844 } });
     let release = null;
@@ -6088,7 +6150,7 @@ console.log("bookshelf:");
     const after = await page.evaluate(() => ({ open: document.getElementById("bookFinder").open, focus: document.activeElement?.id, welcome: document.body.classList.contains("welcome-open") }));
     await page.keyboard.press("Enter"); // 入力欄に打てる: Enter で答えが出る
     const typed = await waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 3000);
-    check("本棚（B1）: 目録の準備前に「171冊から選ぶ」を押すと「読み込み中」（窓はまだ無い）。そのままスタートしてから目録が届いても窓は開かず、焦点はゲームの入力欄で Enter が効く（答えが出る）",
+    check("本棚（B1）: 目録の準備前に「173冊から選ぶ」を押すと「読み込み中」（窓はまだ無い）。そのままスタートしてから目録が届いても窓は開かず、焦点はゲームの入力欄で Enter が効く（答えが出る）",
       !wait.open && wait.status === "読み込み中" && started && !after.open && !after.welcome && after.focus === "input" && typed && page.errors.length === 0, JSON.stringify({ wait, started, after, typed, errors: page.errors.slice(0, 2) }));
     await page.close();
   }
@@ -7478,7 +7540,7 @@ console.log("study (finish):");
   check("書斎の仕上げ（390）: 読み込み中の最小高さ（#pathHead 182・#pathNow 189・#pathList 297。頁の padding は段ごとに足す）で、頁は語の入った最終の高さ（218・225・333）と差 ≤ 2px", lo.headEmpty && lo.head === "182px" && lo.now === "189px" && lo.list === "297px" && near(fi.head, 182) && near(fi.l, 218) && near(fi.r, 225) && near(fi.toc, 333), JSON.stringify({ loading: lo, final: fi }));
 
   // ---- Batch 66 H2: 初回（学習記録の無い端末）の書斎の CLS。56c の 0.055（1200×900）は、戻ってきた人の机（#main、1200 で 723px）が先に描かれ、
-  // main.js の renderWelcome で初回の本（#welcome、429px）に替わって部屋が縮み（フッターが画面に入る）、そのあと本棚（171 冊、2,149px）が描かれて
+  // main.js の renderWelcome で初回の本（#welcome、429px）に替わって部屋が縮み（フッターが画面に入る）、そのあと本棚（173 冊、2,149px）が描かれて
   // フッターがまた押し出されたもの（js/footer.js ではない。56d の木で 1200×900 0.054〜0.058・1200×1100 0.13〜0.18）。Batch 61 で本棚が同じ描画に入り
   // 1200×900 は 0.0001 になったが、机 → 初回の本の差し替えは残り、背の高い画面（1200×1000 0.023・1200×1100 0.030・1920×1080 0.020）ではフッターが動き、
   // 空の机が約 0.3 秒見えてから初回の本に替わっていた → 最初の描画から初回の本（js/welcome.js と同じ判定）、積んだ本の空きは積んだあとと同じ高さ。
@@ -7654,7 +7716,7 @@ console.log("study (finish):");
   const CSS_56B = { room: 70594, bookshelf: 46477 };
   check("書斎の仕上げ: css/room.css・bookshelf.css の応答は 56b（70,594・46,477 B）から +8KB 以内", cssBytes.room > 0 && cssBytes.bookshelf > 0 && cssBytes.room <= CSS_56B.room + 8 * 1024 && cssBytes.bookshelf <= CSS_56B.bookshelf + 8 * 1024, JSON.stringify(cssBytes));
 
-  // 細い端末（320・360・390）: 全部足した棚（124 点）で整理の札は背の幅の中・前の段の棚板の下に潜らない。窓の行は題と meta の 2 行＋右にボタン（Batch 61。56d の段の見出し行は名札ごと無くなった）
+  // 細い端末（320・360・390）: 全部足した棚（126 点）で整理の札は背の幅の中・前の段の棚板の下に潜らない。窓の行は題と meta の 2 行＋右にボタン（Batch 61。56d の段の見出し行は名札ごと無くなった）
   const catsF = JSON.parse(fs.readFileSync(path.join(ROOT, "data/manifest.json"), "utf8")).subjects.find((x) => x.id === "english").categories;
   const heavyShelf = JSON.stringify({ v: 1, books: [...catsF.filter((c) => shelfIdOf(c.id, c) !== "freq").map((c) => c.id), "my"], courses: ["jhs-redo", "biz", "conversation", "hs", "eiken", "toeic", "ngsl", "tsl", "bsl", "nawl"], seen: [], prov: false });
   const slipsFit = async (w) => {

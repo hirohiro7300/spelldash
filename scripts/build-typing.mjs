@@ -20,7 +20,8 @@ const OUT = path.join(ROOT, "data", "typing.json");
 //   ads      … 広告・マーケ。ここにしか無い語は広告の専門の訳のまま出る（exact=完全一致（マッチタイプ）・rank=広告ランク など）
 //   eikenp1・eiken1 … 英検準1級・1級（haughty・obstinate・banal が normal／easy に入っている）
 //   toeic860・toeic990 … TOEIC 上級（latency=（通信の）遅延 など）
-export const EXCLUDE_EN = ["ads", "eikenp1", "eiken1", "toeic860", "toeic990"];
+//   prog-english1・prog-english2 … プログラミングの英単語。訳がプログラミングの意味のまま出る（type=型・index=添字・operator=演算子 など）
+export const EXCLUDE_EN = ["ads", "eikenp1", "eiken1", "toeic860", "toeic990", "prog-english1", "prog-english2"];
 export const MIN_EN = 900;
 export const MIN_JA = 600;
 const EN_RE = /^[a-z]{3,8}$/;
