@@ -13,7 +13,7 @@ import { SHELF_KEY, parseShelf, serializeShelf, migrateShelf, reconcileShelf, no
 // ===== わたしの本棚（書斎の右の列。スマホは机の下） =====
 //
 // 棚に並ぶのは自分の本だけ: 足した本・函（コース）＋机の本（空き）＋机の本が巻のコースの函（「いまのコース」）。
-// 171 冊の目録は「本を足す」の窓（棚ごとの畳んだ見出し 9 つ・検索）。背を押すとその本が机に出る（読み込みは押したときに）、函はコース。
+// 173 冊の目録は「本を足す」の窓（棚ごとの畳んだ見出し 9 つ・検索）。背を押すとその本が机に出る（読み込みは押したときに）、函はコース。
 // 下ろすのは「整理」（背の上の紙の札）。棚の保存は localStorage の spelldash_shelf だけで、学習（packs・机・コース・記録）には書かない。
 // 何を保存し何を並べるかの規則は js/shelfStore.js（純粋な関数。scripts/test-shelf.mjs）。ここは状態を集めて描くだけ。
 //   initBookshelf({ onPick, onCourse }) … 1 回。描いて配線する。onPick(id) は本を机に出す、onCourse(id) はコースの乗り換え（js/main.js）
@@ -47,6 +47,8 @@ const SPINE = {
   travel: { t: "旅行の英語", c: "vellum", h: 124, kind: "vellum", w: 46 },
   business: { t: "ビジネス", s: "英単語", c: "slate", h: 130 },
   it: { t: "IT", s: "英単語", c: "walnut", h: 118, lat: true },
+  "prog-english1": { t: "プログラミング", s: "英単語・入門", c: "indigo", h: 136 },
+  "prog-english2": { t: "プログラミング", s: "英単語・実践", c: "indigo", h: 136 },
   ads: { t: "広告", s: "英単語", c: "cognac", h: 126, w: 48 },
   my: { t: "マイ単語帳", c: "vellum", h: 112, kind: "vellum", w: 40 },
   // 試験
@@ -161,7 +163,7 @@ const SPINE = {
 
 // 棚の中の並び（目録の順）。"|" で始まる項目は旧い飾りの名残で、読み飛ばす。表に無い本（あとで足したパック）は棚の末尾に付く
 const ORDER = {
-  eng: ["elem-english", "jhs-english1", "jhs-english2", "jhs-english3", "junior", "highschool", "daily", "travel", "business", "it", "ads"],
+  eng: ["elem-english", "jhs-english1", "jhs-english2", "jhs-english3", "junior", "highschool", "daily", "travel", "business", "it", "prog-english1", "prog-english2", "ads"],
   exam: ["eiken5", "eiken4", "eiken3", "eikenp2", "eiken2", "eikenp1", "eiken1", "toeic500", "toeic600", "toeic730", "toeic860", "toeic990", "toeic"],
   grammar: ["grammar-jhs1", "grammar-jhs2", "grammar-jhs3", "grammar-hs1", "grammar-hs2", "grammar-toeic", "writing-jhs-order", "writing-jhs", "writing-hs", "writing-eiken", "writing-interview"],
   social: ["elem-hist", "pref", "jgeo1", "jgeo2", "jhist1", "jhist2", "jcivics", "hs-japhist1", "hs-japhist2", "hs-worldhist1", "hs-worldhist2", "hs-geo", "hs-civics", "hs-ethics"],
@@ -238,7 +240,7 @@ const ICON = {
   plus: `<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M6 1v10M1 6h10" fill="none" stroke="currentColor" stroke-width="1.15"/></svg>`
 };
 
-// ---------- データ: manifest の 171 冊（＋マイ単語帳）と 10 の函 ----------
+// ---------- データ: manifest の 173 冊（＋マイ単語帳）と 10 の函 ----------
 let BOOKS = new Map(); // id → book
 let BOXES = new Map(); // コース id → box
 let CATALOG = []; // 目録の表示順 [{ key, group }]（棚の並びの順。js/shelfStore.js displayItems）
@@ -334,7 +336,7 @@ function buildData() {
   }
   // 棚の無い本は出せない（scripts/validate-words.mjs が manifest の全カテゴリに棚があることを確かめる）
   console.assert(unassigned.length === 0, "本棚: 棚の無い本", unassigned);
-  // マイ単語帳は英単語の棚の末尾（171 冊には数えない）
+  // マイ単語帳は英単語の棚の末尾（173 冊には数えない）
   const my = bookOf({ id: MY_CATEGORY.id, label: MY_CATEGORY.label, kind: "" }, "eng");
   my.lang = "英語";
   BOOKS.set("my", my);
@@ -371,7 +373,7 @@ function buildData() {
     if (shelf.id === "job") return { id: shelf.id, name: shelf.name, unit: "冊", rows: shelfIds.job.map((id) => `b:${id}`), heads: jobHeads.map((h) => ({ name: h.name, rows: h.ids.map((id) => `b:${id}`) })) };
     return { id: shelf.id, name: shelf.name, unit: "冊", rows: (shelfIds[shelf.id] ?? []).map((id) => `b:${id}`) };
   }).map((s) => ({ ...s, note: SHELF_NOTE[s.id] ?? "" }));
-  // 検索: 本 171（頻度順の巻を含む）＋マイ単語帳＋コース 10。並びは照合の強さ（searchRows）、同じ強さなら目録の順
+  // 検索: 本 173（頻度順の巻を含む）＋マイ単語帳＋コース 10。並びは照合の強さ（searchRows）、同じ強さなら目録の順
   const normed = (list) => list.filter(Boolean).map(norm).filter(Boolean);
   SEARCH = CATALOG.map(({ key }) => {
     const id = key.slice(2);
@@ -392,7 +394,7 @@ function buildData() {
   updateFindCount();
 }
 
-// 目録の本の数（171。マイ単語帳は数えない）
+// 目録の本の数（173。マイ単語帳は数えない）
 const catalogCount = () => [...BOOKS.keys()].filter((id) => id !== "my").length;
 
 function updateFindCount() {
@@ -1001,7 +1003,7 @@ let finderMode = "add"; // "add" | "welcome"
 let lastAdded = "";
 const addedKeys = new Set(); // この窓で足した物（閉じたあと棚の背の頭に金の押し点。次に棚を描き直すまで）
 let picked = false;
-let pendingFind = false; // 初回の「171冊から選ぶ」を目録の準備前に押した。届いた時点でまだ初回の画面なら窓を開く（スタートしたら忘れる）
+let pendingFind = false; // 初回の「173冊から選ぶ」を目録の準備前に押した。届いた時点でまだ初回の画面なら窓を開く（スタートしたら忘れる）
 
 function actHtml(key, name, on) {
   if (finderMode === "welcome") return `<button type="button" class="finder__act" data-key="${esc(key)}" aria-label="${esc(name)}を机に出す">机に出す</button>`;
@@ -1367,7 +1369,7 @@ export function initBookshelf({ onPick, onCourse } = {}) {
   bind();
   lastHtml = "";
   updateBookshelf();
-  // 準備前に押された「171冊から選ぶ」: まだ初回の画面なら開く。スタート（またはログインの行）で初回の画面を閉じていたら開かない（ゲームの入力欄から焦点を奪わない）
+  // 準備前に押された「173冊から選ぶ」: まだ初回の画面なら開く。スタート（またはログインの行）で初回の画面を閉じていたら開かない（ゲームの入力欄から焦点を奪わない）
   if (pendingFind) {
     pendingFind = false;
     if (isWelcome()) openFinder(true);
@@ -1375,7 +1377,7 @@ export function initBookshelf({ onPick, onCourse } = {}) {
 }
 
 // ---------- 読み込まれた時点（語の読み込みの前）に結ぶもの ----------
-// 初回の「171冊から選ぶ」: 最初から見えている（読み込み後に押し下げない）。準備前に押されたら、読み込み後に窓を開く
+// 初回の「173冊から選ぶ」: 最初から見えている（読み込み後に押し下げない）。準備前に押されたら、読み込み後に窓を開く
 document.getElementById("welcomeFind")?.addEventListener("click", () => openFinder(true));
 // welcome の開け閉め（スタート・ログインの行・auth-ready は renderHome を呼ばないことがある）と、welcome の机の本（下見の棚）
 {
@@ -1385,7 +1387,7 @@ document.getElementById("welcomeFind")?.addEventListener("click", () => openFind
     if (now === wasWelcome) return;
     wasWelcome = now;
     if (now) return drawWelcome();
-    pendingFind = false; // 初回の画面を閉じた（スタート・ログインの行・同期）: 準備前に押された「171冊から選ぶ」は忘れる
+    pendingFind = false; // 初回の画面を閉じた（スタート・ログインの行・同期）: 準備前に押された「173冊から選ぶ」は忘れる
     // welcome が畳まれた（ログインの行・auth-ready・同期）: 初回の形の窓（本をさがす・机に出す）が開いていたら閉じる
     const dlg = root?.querySelector("#bookFinder");
     if (dlg?.open && finderMode === "welcome") dlg.close();

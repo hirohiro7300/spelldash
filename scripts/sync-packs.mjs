@@ -18,6 +18,7 @@ const GROUPS = {
   "文法（中学・高校・TOEIC）": ["grammar-jhs1", "grammar-jhs2", "grammar-jhs3", "grammar-hs1", "grammar-hs2", "grammar-toeic"],
   "英作文・表現（並べ替え・英作文・ライティング・面接）": ["writing-jhs-order", "writing-jhs", "writing-hs", "writing-eiken", "writing-interview"],
   "試験・レベル別（英検・TOEIC）": ["eiken5", "eiken4", "eiken3", "eikenp2", "eiken2", "eikenp1", "eiken1", "toeic500", "toeic600", "toeic730", "toeic860", "toeic990"],
+  "分野の英単語（プログラミング）": ["prog-english1", "prog-english2"],
   "NGSL 基本英単語 2,800語（オープン教材・頻度順）": Array.from({ length: 24 }, (_, i) => `ngsl${String(i + 1).padStart(2, "0")}`),
   "TOEIC 英単語 1,250語（オープン教材・頻度順）": Array.from({ length: 11 }, (_, i) => `tsl${String(i + 1).padStart(2, "0")}`),
   "学術英単語 960語（オープン教材・アルファベット順）": Array.from({ length: 8 }, (_, i) => `nawl${String(i + 1).padStart(2, "0")}`),

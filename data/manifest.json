@@ -651,6 +651,26 @@
           "group": "試験・レベル別（英検・TOEIC）"
         },
         {
+          "id": "prog-english1",
+          "label": "プログラミングの英単語 1（入門）",
+          "file": "packs/prog-english1.json",
+          "pack": true,
+          "count": 123,
+          "blurb": "値・型・条件・関数・エラー文。入門で出会う語を綴りで打つ",
+          "audience": "プログラミングを学び始めた人",
+          "group": "分野の英単語（プログラミング）"
+        },
+        {
+          "id": "prog-english2",
+          "label": "プログラミングの英単語 2（実践）",
+          "file": "packs/prog-english2.json",
+          "pack": true,
+          "count": 125,
+          "blurb": "非推奨・依存・設定・テスト・非同期。資料とレビューの語",
+          "audience": "駆け出しのエンジニア、開発と一緒に働く人",
+          "group": "分野の英単語（プログラミング）"
+        },
+        {
           "id": "ngsl01",
           "label": "NGSL 基本英単語 1（数・曜日・月と 1〜72位）",
           "file": "packs/ngsl01.json",

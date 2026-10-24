@@ -31,7 +31,7 @@ const BY_COVER = {
   kobun: ["hs-kobun"], // 055 古文
   kanbun: ["hs-kanbun"], // 056 漢文
   it: ["itsupport"], // 037 IT 基礎
-  programming: ["programming"], // 059
+  programming: ["programming", "prog-english1", "prog-english2"], // 059
   realestate: ["realestate"], // 039 宅建と不動産
   bookkeeping: ["accounting"], // 040 簿記
   bizlaw: ["legal"] // 060 ビジネス法務

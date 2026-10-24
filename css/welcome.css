@@ -172,7 +172,7 @@ html[data-first-visit] #welcome {
   }
 }
 
-/* ---- 初回の「171冊から選ぶ」: 積んだ本の下の紙の付箋に下線の文字（見出しの札 .stack-k とは下線で見分ける）。押すと本棚の目録の窓（js/bookshelf.js）。
+/* ---- 初回の「173冊から選ぶ」: 積んだ本の下の紙の付箋に下線の文字（見出しの札 .stack-k とは下線で見分ける）。押すと本棚の目録の窓（js/bookshelf.js）。
    最初から見せる（読み込み後に押し下げない）。木の上に直に字を置かない（夜に読めない）ので .welcome-trust と同じ紙 ---- */
 html[data-theme] .page-room .pile__find {
   display: inline-flex;
@@ -213,7 +213,7 @@ html:is([data-theme="dark"], [data-theme="indigo"]) .page-room .pile__find {
 }
 
 @media (min-width: 1100px) {
-  /* 積んだ本の列（開いた本より高い。格子は下揃え）が「171冊から選ぶ」の分だけ伸びて机の本を押し下げないように、列の上の余白 30px を詰める（css/room.css .pile） */
+  /* 積んだ本の列（開いた本より高い。格子は下揃え）が「173冊から選ぶ」の分だけ伸びて机の本を押し下げないように、列の上の余白 30px を詰める（css/room.css .pile） */
   html[data-theme] .page-room .pile {
     padding-top: 0;
   }
