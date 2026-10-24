@@ -64,6 +64,9 @@ jobs:
       - name: アカウントの紋章（ランクが決まる条件・紋章を替える時機・読めない絵の扱い。js/accountEmblem.js）
         run: node scripts/test-account-emblem.mjs
 
+      - name: 一冊を終えるまでの目安（その回の本だけ数える・初めて済みになった語だけ・記録を始めてからの暦日数で割る・365 日の上限。js/bookPace.js）
+        run: node scripts/test-pace.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 

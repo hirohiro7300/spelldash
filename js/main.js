@@ -445,6 +445,7 @@ renderWelcome({
 
 storeReady
   .then(() => {
+    import("./bookPace.js").then((m) => m.watchBookPace()).catch(() => {}); // 一冊を終えるまでの目安の日次記録（端末だけ。Study の回の終わりに机の本を数える。答えの道の外）
     // 動線の計測: 学んだ日が 7 日になった端末（1 回きり。docs/SQL_FUNNEL.md）
     if (getGrowthLog().filter((e) => e.active).length >= 7) logFunnel("day7");
     initializeCategoryPicker();
