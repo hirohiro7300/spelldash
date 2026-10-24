@@ -37,8 +37,8 @@ const DAILY_KINDS = new Set(["daily", "study10", "review"]);
 const SLOT_IDS = SLOTS.map((s) => s.id);
 const CLAIM_RE = /^[a-z0-9]+:[A-Za-z0-9_.:-]{1,80}$/; // 読むとき残す受け取りの形（知らない種類も）
 const BOOK_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-const REF_RE = /^[A-Za-z0-9_.:-]{1,80}$/; // 所持・装着の品の id（目録に無い id も残す）
-const SLOT_RE = /^[a-z0-9_-]{1,32}$/;
+const REF_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/; // 所持・装着の品の id（目録に無い id も残す。頭は英数字: __proto__ などを鍵にしない）
+const SLOT_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const DEV_RE = /^[a-z0-9]{4,16}$/;
 const NOT_BOOKS = new Set(["all", "my"]); // すべて・マイ単語帳は一冊ではない
 
@@ -98,7 +98,7 @@ function validDraw(d) {
 function normalize(raw) {
   const state = emptyCollection();
   let dropped = 0;
-  for (const [k, v] of Object.entries(raw)) if (!KNOWN.has(k)) state[k] = v;
+  for (const [k, v] of Object.entries(raw)) if (!KNOWN.has(k) && k !== "__proto__") state[k] = v;
   if (raw.since !== undefined && raw.since !== null) typeof raw.since === "string" ? (state.since = raw.since) : dropped++;
   if (raw.dev !== undefined && raw.dev !== null) typeof raw.dev === "string" && DEV_RE.test(raw.dev) ? (state.dev = raw.dev) : dropped++;
   if (isObj(raw.claims)) {
