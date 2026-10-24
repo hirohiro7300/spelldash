@@ -81,7 +81,7 @@ export const ITEMS = freeze([
   item("binding-memory-tree", "binding", "SR", "記憶の樹の藍", "藍の地に記憶の樹を押した表紙。", 9, ["cover", "thumb"]),
   item("fx-gold-edge", "fx", "N", "金の縁", "思い出したとき、枠が金に変わる。", 10, []),
   item("fx-layered-paper", "fx", "R", "重なる紙", "思い出したとき、紙が重なる。", 11, ["frame", "thumb"]),
-  item("fx-ink-star", "fx", "SR", "雫が星に", "思い出したとき、雫が星に変わる。", 12, ["sprite"])
+  item("fx-star-drop", "fx", "SR", "雫が星に", "思い出したとき、雫が星に変わる。", 12, ["sprite"])
 ]);
 
 const BY_ID = new Map(ITEMS.map((it) => [it.id, it]));

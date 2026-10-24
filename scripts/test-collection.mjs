@@ -218,7 +218,7 @@ const NEXT = at(2026, 11, 3, 0, 0);
   const T = D.DRAW_TABLE;
   eq("抽選表: 版は t1・重みの和 100", [T.version, T.total, D.DRAW_TABLE_VERSION], ["t1", 100, "t1"]);
   eq("抽選表: t1 の指紋（品・重み・有効を変えたら版を上げる）", D.drawTableFingerprint(T),
-    "N:70:binding-brown,desk-notebook,fx-gold-edge,window-rain|R:25:binding-redleather,desk-hourglass,fx-layered-paper,window-morning|SR:5:binding-memory-tree,desk-grimoire,fx-ink-star,window-moon");
+    "N:70:binding-brown,desk-notebook,fx-gold-edge,window-rain|R:25:binding-redleather,desk-hourglass,fx-layered-paper,window-morning|SR:5:binding-memory-tree,desk-grimoire,fx-star-drop,window-moon");
   const N = 10000;
   const byRarity = {};
   const byItem = {};
@@ -474,6 +474,7 @@ const BK = await import("../js/backup.js");
   ok("文言: しおり・ログインボーナス・読破を使わない", !/しおり|ログインボーナス|読破/.test(all));
   ok("文言: 絵文字が無い", !/\p{Extended_Pictographic}/u.test(all));
   ok("文言: 品の名前に「インク」「光」を入れない（通貨と部屋の光と紛れない）", D.ITEMS.every((it) => !/インク|光/.test(it.name + it.desc)));
+  ok("名前: 品の id に ink を入れない（通貨の memoryInk と紛れない）", D.ITEMS.every((it) => !/ink/i.test(it.id)));
   eq("文言: 名前（記憶のインク・インク・今日の贈り物・書斎くじ）", [D.MEMORY_INK.id, D.MEMORY_INK.name, D.MEMORY_INK.short, D.TEXT.dailyName, D.TEXT.drawName], ["memoryInk", "記憶のインク", "インク", "今日の贈り物", "書斎くじ"]);
   eq("文言: 数は設定の値から（1・2・1・5・3・1）", [D.TEXT.daily, D.TEXT.study10, D.TEXT.review, D.TEXT.book("中学英語 1年"), D.TEXT.drawCost, D.TEXT.duplicate, D.TEXT.short(2)],
     ["今日の贈り物。記憶のインクを1つ受け取った。", "10語思い出した。記憶のインクを2つ受け取った。", "今日の復習を終えた。記憶のインクを1つ受け取った。", "「中学英語 1年」を終えた。記憶のインクを5つ受け取った。", "無料。記憶のインク3つで1回引ける。", "もう持っている。記憶のインク1つに変わった。", "インクが足りない。あと2つ。"]);
@@ -497,11 +498,11 @@ const BK = await import("../js/backup.js");
     : it.asset.kind === "css" && it.asset.ref === it.id && it.placeholder === false;
   ok("品: 絵の参照は assets/images/collection/<id>-<variant>.webp（絵が入るまで placeholder）・CSS だけの品は fx-gold-edge だけ", D.ITEMS.every(assetOk) && D.ITEMS.filter((it) => it.asset.kind === "css").map((it) => it.id).join() === "fx-gold-edge");
   eq("品: 配る絵の名前（G のアセット仕様 §1）", D.ITEMS.flatMap((it) => Object.values(it.asset.files ?? {})).map((f) => f.replace("assets/images/collection/", "").replace(".webp", "")),
-    ["window-rain-day", "window-rain-night", "window-morning-day", "window-morning-night", "window-moon-day", "window-moon-night", "desk-notebook-prop", "desk-hourglass-prop", "desk-grimoire-prop", "binding-brown-cover", "binding-brown-thumb", "binding-redleather-cover", "binding-redleather-thumb", "binding-memory-tree-cover", "binding-memory-tree-thumb", "fx-layered-paper-frame", "fx-layered-paper-thumb", "fx-ink-star-sprite"]);
+    ["window-rain-day", "window-rain-night", "window-morning-day", "window-morning-night", "window-moon-day", "window-moon-night", "desk-notebook-prop", "desk-hourglass-prop", "desk-grimoire-prop", "binding-brown-cover", "binding-brown-thumb", "binding-redleather-cover", "binding-redleather-thumb", "binding-memory-tree-cover", "binding-memory-tree-thumb", "fx-layered-paper-frame", "fx-layered-paper-thumb", "fx-star-drop-sprite"]);
   eq("品: スロットの名前", D.SLOTS.map((s) => [s.id, s.label]), [["window", "窓の景色"], ["desk", "机の小物"], ["binding", "本の装丁"], ["fx", "正解の演出"]]);
   ok("品: スロットとレアリティは表のもの・表示順は一意の整数", D.ITEMS.every((it) => D.SLOTS.some((s) => s.id === it.slot) && D.RARITIES.some((r) => r.id === it.rarity) && Number.isInteger(it.order)) && new Set(D.ITEMS.map((it) => it.order)).size === 12);
   ok("品: 凍っている（呼び手が書き換えない）", Object.isFrozen(D.ITEMS) && Object.isFrozen(D.ITEMS[0]) && Object.isFrozen(D.ITEMS[0].asset) && Object.isFrozen(D.ITEMS[0].asset.files) && Object.isFrozen(D.DRAW_TABLE) && Object.isFrozen(D.TEXT));
-  eq("品: getItem・listItems", [D.getItem("window-rain")?.name, D.getItem("nope"), D.listItems({ rarity: "SR" }).map((it) => it.id)], ["雨の町", null, ["window-moon", "desk-grimoire", "binding-memory-tree", "fx-ink-star"]]);
+  eq("品: getItem・listItems", [D.getItem("window-rain")?.name, D.getItem("nope"), D.listItems({ rarity: "SR" }).map((it) => it.id)], ["雨の町", null, ["window-moon", "desk-grimoire", "binding-memory-tree", "fx-star-drop"]]);
   eq("保存: 鍵と版", [D.COLLECTION_KEY, D.COLLECTION_CORRUPT_KEY, D.COLLECTION_VERSION], ["spelldash_collection", "spelldash_collection_corrupt", 1]);
 }
 
