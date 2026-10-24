@@ -17,6 +17,8 @@ export const BACKUP_VERSION = 1;
 const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course"]);
 // 復元のときに必ず消すもの（復元した記録の持ち主と、クラウドとの差分の基準は分からないので、次の同期を初回の扱いにする）
 const RESET_ON_RESTORE = ["spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner"];
+// 復元のとき、バックアップに文字列の値が無ければ今の値を残す鍵（この端末の書斎コレクションと読めなかった値の写し。導入より前に作ったバックアップで消さない。Batch 77）
+const KEEP_IF_ABSENT = ["spelldash_collection", "spelldash_collection_corrupt"];
 
 export function buildBackup() {
   const data = {};
@@ -65,13 +67,14 @@ export function inspectBackup(obj) {
   return { words, keys: keys.length, exportedAt: obj.exportedAt ?? null, xp: Number(obj.data.spelldash_xp) || 0 };
 }
 
-// 復元: spelldash_* を一度消してから書き戻す（上書き）
+// 復元: spelldash_* を一度消してから書き戻す（上書き）。ただし KEEP_IF_ABSENT の鍵は、バックアップに文字列の値が無ければ今の値を残す
 export function applyBackup(obj) {
   const summary = inspectBackup(obj);
+  const keep = new Set(KEEP_IF_ABSENT.filter((key) => typeof obj.data[key] !== "string"));
   const toRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key && key.startsWith(PREFIX) && !EXCLUDE.has(key)) toRemove.push(key);
+    if (key && key.startsWith(PREFIX) && !EXCLUDE.has(key) && !keep.has(key)) toRemove.push(key);
   }
   toRemove.forEach((key) => localStorage.removeItem(key));
   RESET_ON_RESTORE.forEach((key) => localStorage.removeItem(key));
@@ -98,7 +101,8 @@ export function applyBackup(obj) {
 //   theme（表示の色）・audio（音声の設定）・osk（専用キーボード）・after_correct（正解のあとの長さ）・list_compact／setup_open／stats_tab／trend_range／weak_only（画面の開き方）、
 //   typing_kind／typing_game_course（タイピング練習の種類・タイピングゲームのコースの記憶。この端末の開き方の好みで、バックアップにも入れない。Batch 65）、
 //   installed（ホーム画面に追加の案内）・onboarded（この端末でトップページを見た）・schema_version（保存形式の版。消すと移行が走り直す）、
-//   test_*（E2E のスタブのログイン状態）
+//   test_*（E2E のスタブのログイン状態）、
+//   collection／collection_corrupt（この端末の書斎コレクションと読めなかった値の写し。同じ端末のアカウントで共有する。創業者の決定 2026-10-22。Batch 77）
 // 消すもの（主なもの）: word_stats・xp・xp_synced・streak・best_score・best_by_category・battle・pending_battles・study_mix・
 //   growth_log・daily_set・daily・sets_total・veteran・course・category・mode・packs・my_words・word_notes・user_items_meta／dirty・
 //   dirty_words・session・session_log・mission・placement(_note)・first_sight・level_boost(_note)・tutorial・typing_stats・key_miss・
@@ -118,7 +122,9 @@ const KEEP_ON_CLEAR = new Set([
   "spelldash_onboarded",
   "spelldash_schema_version",
   "spelldash_typing_kind",
-  "spelldash_typing_game_course"
+  "spelldash_typing_game_course",
+  "spelldash_collection",
+  "spelldash_collection_corrupt"
 ]);
 
 export function clearLocalRecords() {
