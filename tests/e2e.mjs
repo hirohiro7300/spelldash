@@ -13313,6 +13313,111 @@ console.log("account emblem（アカウントの紋章）:");
       moved && a.label === label("金 1") && a.row === "金 1 ・ Lv.22" && page.errors.length === 0, JSON.stringify({ a, err: page.errors[0] }));
     await ctx.close();
   }
+
+  // ---- (15)〜(18) 反証役 C の段 2（scratchpad/b75/rv）: 紋章の処理が回の途中に届いたとき（C-P1・C-P2）・語数の Study の答えの幕（C-P3）・60 秒の回の途中で止める・新しい回にする（C-P4） ----
+  const myWordsC = JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "budget", ja: "予算" }]);
+  const ansC = { 請求書: "invoice", 交渉する: "negotiate", 予算: "budget" };
+  const jaC = async (page) => (await page.textContent("#japanese")).trim();
+  // js/accountEmblem.js を 1.5 秒遅らせる（読み込みの直後に回を始めると、紋章の処理は回の途中に届く）。page.route は SW が取りに行く物に効かないので SW を止める
+  const slowModule = async (page) => {
+    await noSW(page);
+    await page.route("**/js/accountEmblem.js", async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue(); });
+  };
+  const modLoaded = (page) => page.evaluate(() => performance.getEntriesByType("resource").some((e) => e.name.endsWith("/js/accountEmblem.js") && e.responseEnd > 0));
+  const playing = (page) => page.evaluate(() => document.body.classList.contains("home--playing") && !document.body.classList.contains("set-done"));
+  // 幕（.rank-up）が外れるまで前のランク（before）で、外れた後に after へ替わったか（控えの毎コマの記録）
+  const curtainOrder = (log, beforeFile, afterName) => {
+    const last = log.map((e, i) => (e.curtain ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1;
+    return last >= 0 && log.slice(0, last + 1).every((e) => e.src !== `${afterName.file}-sm.webp` && !new RegExp(afterName.name).test(`${e.label}${e.row}`)) && log.slice(0, last + 1).some((e) => e.curtain && e.src === beforeFile);
+  };
+
+  // (15) C-P1: Challenge（6 秒・ランクは変わらない）を読み込みの直後に始め、紋章の処理が回の途中に届く: 回の間は頭文字（控えを守る）、回が終わったら触らなくても紋章
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedC(xpForLv(15)) });
+    await slowModule(page);
+    await page.goto(BASE + "/index.html?t=6", { waitUntil: "load" });
+    await page.waitForTimeout(200);
+    await page.click('#playModes [data-mode="challenge"]');
+    const started = await playing(page);
+    await waitUntil(() => modLoaded(page), 6000, 50);
+    await page.waitForTimeout(300);
+    const mid = await avatarOf(page);
+    const midPlaying = await playing(page);
+    await waitUntil(() => page.evaluate(() => !document.getElementById("resultPanel").hidden), 12000, 50);
+    const shown = await shownIs(page, "silver-2-sm.webp", 3000);
+    const after = await avatarOf(page);
+    check("アカウントの紋章（C-P1）: 紋章の処理が Challenge の回の途中に届くと、回の間は頭文字のまま、回が終わったら（ホバー・焦点なしで）紋章・「アカウントメニュー（銀 2）」・「銀 2 ・ Lv.15」・エラー 0",
+      started && midPlaying && mid.src === null && mid.label === "アカウントメニュー" && shown && after.label === label("銀 2") && after.row === "銀 2 ・ Lv.15" && page.errors.length === 0, JSON.stringify({ started, midPlaying, mid, after, err: page.errors[0] }));
+    await page.close();
+  }
+
+  // (16) C-P2: Study を読み込みの直後に始め、紋章の処理が回の途中に届く → 机に戻る（stopGame）と、触らなくても紋章
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(xpForLv(15), { spelldash_category: "my", spelldash_my_words: myWordsC }) });
+    await slowModule(page);
+    await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "load" });
+    await page.waitForTimeout(200);
+    await page.press("#input", "Enter");
+    await waitUntil(async () => !!ansC[await jaC(page)], 3000, 20);
+    await waitUntil(() => modLoaded(page), 6000, 50);
+    await page.waitForTimeout(300);
+    const mid = await avatarOf(page);
+    const midPlaying = await playing(page);
+    await page.click("#backToPath");
+    const shown = await shownIs(page, "silver-2-sm.webp", 3000);
+    const after = await avatarOf(page);
+    check("アカウントの紋章（C-P2）: 紋章の処理が Study の回の途中に届くと、回の間は頭文字のまま、机に戻ったら（stopGame・ホバー・焦点なしで）紋章と「アカウントメニュー（銀 2）」・エラー 0",
+      midPlaying && mid.src === null && shown && after.label === label("銀 2") && !(await playing(page)) && page.errors.length === 0, JSON.stringify({ midPlaying, mid, after, err: page.errors[0] }));
+    await page.close();
+  }
+
+  // (17) C-P3: Study（語数の回）の答えでランクが変わる（木 1 → 木 2。幕は答えのすぐ後）: 幕の間は木 1、幕が外れた後に木 2
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(95, { spelldash_category: "my", spelldash_my_words: myWordsC }) });
+    await page.addInitScript(AVLOG);
+    await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "load" });
+    await shownIs(page, "wood-1-sm.webp");
+    await page.press("#input", "Enter");
+    await waitUntil(async () => !!ansC[await jaC(page)], 3000, 20);
+    for (const ch of ansC[await jaC(page)]) await page.press("#input", ch);
+    const opened = await waitUntil(async () => (await page.$(".rank-up")) !== null, 3000, 20);
+    await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 30);
+    const shown = await shownIs(page, "wood-2-sm.webp", 4000);
+    const end = await avatarOf(page);
+    const log = await page.evaluate(() => window.__avlog);
+    check("アカウントの紋章（C-P3）: Study（語数の回）の答えでランクが変わる（木 1 → 木 2）と、幕の間は木 1（紋章・名前・行）、幕が外れた後に木 2（「アカウントメニュー（木 2）」・「木 2 ・ Lv.2」）・エラー 0",
+      opened && curtainOrder(log, "wood-1-sm.webp", { file: "wood-2", name: "木 2" }) && shown && end.label === label("木 2") && end.row === "木 2 ・ Lv.2" && page.errors.length === 0, JSON.stringify({ opened, end, log: log.slice(0, 8), err: page.errors[0] }));
+    await page.close();
+  }
+
+  // (18) C-P4: 60 秒の回の途中でランクが変わった（木 1 → 木 2）後に、机に戻る（stopGame）／新しい回にする（restartGame）: 幕の間は木 1、幕が外れた後に木 2
+  {
+    const rows = [];
+    for (const how of ["back", "restart"]) {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(95, { spelldash_category: "my", spelldash_my_words: myWordsC, spelldash_set_size: "60s" }) });
+      await page.addInitScript(AVLOG);
+      await page.goto(BASE + "/index.html?t=40&hintms=600000", { waitUntil: "load" });
+      await shownIs(page, "wood-1-sm.webp");
+      await page.press("#input", "Enter");
+      await waitUntil(async () => !!ansC[await jaC(page)], 3000, 20);
+      for (const ch of ansC[await jaC(page)]) await page.press("#input", ch);
+      await waitUntil(async () => (await page.textContent("#message")).includes("Lv.2 に上がった"), 2000, 20);
+      await page.waitForTimeout(400);
+      const mid = await avatarOf(page);
+      if (how === "back") await page.click("#backToPath");
+      else await page.evaluate(async () => (await import("/js/game.js")).restartGame());
+      const opened = await waitUntil(async () => (await page.$(".rank-up")) !== null, 3000, 20);
+      await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 30);
+      const shown = await shownIs(page, "wood-2-sm.webp", 4000);
+      const end = await avatarOf(page);
+      const log = await page.evaluate(() => window.__avlog);
+      const ok = mid.src === `${EMB}wood-1-sm.webp` && mid.label === label("木 1") && opened && curtainOrder(log, "wood-1-sm.webp", { file: "wood-2", name: "木 2" }) && shown && end.label === label("木 2") && page.errors.length === 0;
+      rows.push({ how, ok, mid: ok ? undefined : mid, end: ok ? undefined : end, log: ok ? undefined : log.slice(0, 8), err: page.errors[0] });
+      await page.close();
+    }
+    check("アカウントの紋章（C-P4）: 60 秒の回の途中でランクが変わった（木 1 → 木 2）後に、机に戻る（stopGame）・新しい回にする（restartGame）のどちらでも、幕の間は木 1、幕が外れた後に木 2・エラー 0",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
+  }
 }
 
 // ===== 9.97 概念カード「リスティング広告 実務」: 場面→用語、日本語で答える全文入力モード =====
