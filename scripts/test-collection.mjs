@@ -198,7 +198,7 @@ const NEXT = at(2026, 11, 3, 0, 0);
   eq("残高: 1 回引くと 3 減る", [d1.ok, d1.memoryInk, S.getMemoryInk()], [true, 5, 5]);
   ok("残高: 保存に残高の欄は無い", !("memoryInk" in saved()) && !("balance" in saved()));
   eq("残高: memoryInkOf は 受け取り − 消費 + 戻し", S.memoryInkOf(saved()), 5);
-  reset({ v: 1, claims: { "daily:2026-11-01": { n: 1, at: iso(DAY) } }, draws: [{ id: "draw:aaaa1111-1", at: iso(DAY), t: "t1", r: 0.5, rarity: "N", item: "bg-stone", cost: 3, dup: false, refund: 0 }] });
+  reset({ v: 1, claims: { "daily:2026-11-01": { n: 1, at: iso(DAY) } }, draws: [{ id: "draw:aaaa1111-1", at: iso(DAY), t: "t1", r: 0.5, rarity: "N", item: "window-rain", cost: 3, dup: false, refund: 0 }] });
   eq("残高: 生の値が負（改変・競合）でも画面の値は 0", [S.memoryInkOf(saved()), S.getMemoryInk(), S.getCollectionView(DAY).memoryInk], [-2, 0, 0]);
   eq("残高: 生の値が負なら引けない", S.drawOnce({ rand: () => 0.5, now: DAY }).reason, "short");
 }
@@ -218,7 +218,7 @@ const NEXT = at(2026, 11, 3, 0, 0);
   const T = D.DRAW_TABLE;
   eq("抽選表: 版は t1・重みの和 100", [T.version, T.total, D.DRAW_TABLE_VERSION], ["t1", 100, "t1"]);
   eq("抽選表: t1 の指紋（品・重み・有効を変えたら版を上げる）", D.drawTableFingerprint(T),
-    "N:70:bg-stone,binding-linen,desk-hourglass,fx-ripple|R:25:bg-brick,binding-redleather,desk-paperweight,fx-petal|SR:5:bg-oldmap,binding-gilt,desk-globe,fx-feather");
+    "N:70:binding-brown,desk-notebook,fx-gold-edge,window-rain|R:25:binding-redleather,desk-hourglass,fx-layered-paper,window-morning|SR:5:binding-memory-tree,desk-grimoire,fx-ink-star,window-moon");
   const N = 10000;
   const byRarity = {};
   const byItem = {};
@@ -241,10 +241,10 @@ const NEXT = at(2026, 11, 3, 0, 0);
     if (!isDeepStrictEqual(D.pickDraw(r, shuffled), D.pickDraw(r, T))) same = false;
   }
   ok("抽選: 品の並びと表示順を逆にしても、全部の r で同じ品", same && D.drawTableFingerprint(shuffled) === D.drawTableFingerprint(T));
-  eq("抽選: 端の r（0 は最初の帯の最初・1 の手前は最後の帯の最後）", [D.pickDraw(0), D.pickDraw(1 - 1e-12)], [{ rarity: "N", item: "bg-stone" }, { rarity: "SR", item: "fx-feather" }]);
+  eq("抽選: 端の r（0 は最初の帯の最初・1 の手前は最後の帯の最後）", [D.pickDraw(0), D.pickDraw(1 - 1e-12)], [{ rarity: "N", item: "binding-brown" }, { rarity: "SR", item: "window-moon" }]);
   eq("抽選: 範囲外・数でない r は null", [D.pickDraw(1), D.pickDraw(-0.1), D.pickDraw(NaN), D.pickDraw("0.5"), D.pickDraw(undefined)], [null, null, null, null, null]);
-  const partial = D.buildDrawTable(D.ITEMS.map((it) => (it.id === "bg-stone" ? { ...it, enabled: false } : it.id === "bg-brick" ? { ...it, sale: "pro" } : it.rarity === "SR" ? { ...it, enabled: false } : it)));
-  eq("抽選表: 無効の品・販売区分のある品は入れない・品の無いレアリティは帯を作らない", [partial.total, partial.bands.map((b) => b.rarity), partial.bands[0].items.includes("bg-stone"), partial.bands[1].items.includes("bg-brick")], [95, ["N", "R"], false, false]);
+  const partial = D.buildDrawTable(D.ITEMS.map((it) => (it.id === "window-rain" ? { ...it, enabled: false } : it.id === "window-morning" ? { ...it, sale: "pro" } : it.rarity === "SR" ? { ...it, enabled: false } : it)));
+  eq("抽選表: 無効の品・販売区分のある品は入れない・品の無いレアリティは帯を作らない", [partial.total, partial.bands.map((b) => b.rarity), partial.bands[0].items.includes("window-rain"), partial.bands[1].items.includes("window-morning")], [95, ["N", "R"], false, false]);
   eq("抽選表: 品が 1 つも無ければ total 0 で pickDraw は null", D.pickDraw(0.5, D.buildDrawTable([])), null);
   const rates = D.rateTable();
   eq("提供の割合: N 70・R 25・SR 5、品ごとに 17.5・6.25・1.25", rates.map((r) => [r.rarity, r.percent, r.items.map((i) => i.percent)]), [["N", 70, [17.5, 17.5, 17.5, 17.5]], ["R", 25, [6.25, 6.25, 6.25, 6.25]], ["SR", 5, [1.25, 1.25, 1.25, 1.25]]]);
@@ -273,7 +273,7 @@ const NEXT = at(2026, 11, 3, 0, 0);
   ok("所持: 抽選の id は draw:<端末の印>-<連番>", /^draw:[a-z0-9]{8}-1$/.test(a.draw.id) && b.draw.id === a.draw.id.replace(/-1$/, "-2"), `${a.draw.id} ${b.draw.id}`);
   eq("所持: 新しい品は owned に入り、via が抽選の id", [s.owned[a.item.id]?.via, s.owned[b.item.id]?.via, typeof s.owned[a.item.id]?.at], [a.draw.id, b.draw.id, "string"]);
   eq("所持: 一覧（getCollectionView）に入る", S.getCollectionView(DAY).owned.sort(), [a.item.id, b.item.id].sort());
-  reset(withInk(1, { owned: { "future-item": { at: iso(DAY) } }, equipped: { bg: null, desk: null, binding: null, fx: null, hat: "future-item" } }));
+  reset(withInk(1, { owned: { "future-item": { at: iso(DAY) } }, equipped: { window: null, desk: null, binding: null, fx: null, hat: "future-item" } }));
   S.claimDaily(DAY);
   eq("所持: 目録に無い所持・知らないスロットは書いた後も消さない（一覧には出さない）", [!!saved().owned["future-item"], saved().equipped.hat, S.getCollectionView(DAY).owned], [true, "future-item", []]);
 }
@@ -300,13 +300,13 @@ const NEXT = at(2026, 11, 3, 0, 0);
 // ── 12. 同じスロットは 1 つだけ ──
 {
   const own = (ids) => Object.fromEntries(ids.map((id) => [id, { at: iso(DAY) }]));
-  reset(withInk(0, { owned: own(["bg-stone", "bg-brick", "desk-globe"]) }));
-  S.equipItem("desk-globe");
-  S.equipItem("bg-stone");
-  const e = S.equipItem("bg-brick");
-  eq("排他: 同じスロットの 2 品目を使うと 1 品目が外れる・ほかのスロットは変わらない", [e.ok, e.replaced, saved().equipped, S.getEquipped()], [true, "bg-stone", { bg: "bg-brick", desk: "desk-globe", binding: null, fx: null }, { bg: "bg-brick", desk: "desk-globe", binding: null, fx: null }]);
-  reset(withInk(0, { owned: own(["desk-hourglass"]), equipped: { bg: "desk-hourglass", desk: "desk-globe", binding: 5, fx: "nope" } }));
-  eq("排他: 違うスロットの品・持っていない品・知らない品を書き換えた保存は、読むと使っていない", S.getEquipped(), { bg: null, desk: null, binding: null, fx: null });
+  reset(withInk(0, { owned: own(["window-rain", "window-morning", "desk-grimoire"]) }));
+  S.equipItem("desk-grimoire");
+  S.equipItem("window-rain");
+  const e = S.equipItem("window-morning");
+  eq("排他: 同じスロットの 2 品目を使うと 1 品目が外れる・ほかのスロットは変わらない", [e.ok, e.replaced, saved().equipped, S.getEquipped()], [true, "window-rain", { window: "window-morning", desk: "desk-grimoire", binding: null, fx: null }, { window: "window-morning", desk: "desk-grimoire", binding: null, fx: null }]);
+  reset(withInk(0, { owned: own(["desk-notebook"]), equipped: { window: "desk-notebook", desk: "desk-grimoire", binding: 5, fx: "nope" } }));
+  eq("排他: 違うスロットの品・持っていない品・知らない品を書き換えた保存は、読むと使っていない", S.getEquipped(), { window: null, desk: null, binding: null, fx: null });
 }
 
 // ── 13. 旧データからの移行 ──
@@ -318,11 +318,11 @@ const NEXT = at(2026, 11, 3, 0, 0);
   reset({ v: 1, claims: { "daily:2026-11-01": { n: 1, at: iso(DAY) } } });
   const p = S.readCollection();
   eq("移行: 欄の欠けた v1 は既定値で埋める（ok）", [p.status, p.state.carry, p.state.draws, p.state.owned, p.state.equipped, p.state.today, S.getMemoryInk()],
-    ["ok", { n: 0, cost: 0, refund: 0, draws: 0, upTo: null }, [], {}, { bg: null, desk: null, binding: null, fx: null }, { day: null, recalled: 0, reviewSeen: false }, 1]);
+    ["ok", { n: 0, cost: 0, refund: 0, draws: 0, upTo: null }, [], {}, { window: null, desk: null, binding: null, fx: null }, { day: null, recalled: 0, reviewSeen: false }, 1]);
   const future = JSON.stringify({ v: 2, claims: { "daily:2026-11-01": { n: 1, at: iso(DAY) } }, wallet: { x: 1 } });
   reset(future);
   const f = S.readCollection();
-  eq("移行: 知らない新しい版（v2）は読むだけ・書かない", [f.status, f.writable, S.claimDaily(DAY).reason, S.drawOnce({ rand: () => 0.5, now: DAY }).reason, S.equipItem("bg-stone").reason, S.noteReviewDue(DAY).reason, store.get(KEY) === future, allWrites()], ["future", false, "version", "version", "version", "version", true, 0]);
+  eq("移行: 知らない新しい版（v2）は読むだけ・書かない", [f.status, f.writable, S.claimDaily(DAY).reason, S.drawOnce({ rand: () => 0.5, now: DAY }).reason, S.equipItem("window-rain").reason, S.noteReviewDue(DAY).reason, store.get(KEY) === future, allWrites()], ["future", false, "version", "version", "version", "version", true, 0]);
   const steps = { 0: (s) => ({ ...s, v: 1, claims: s.old ?? {} }) };
   eq("移行: 段を順に当てる（仮の 0 → 1）", S.migrateCollection({ v: 0, old: { "daily:2026-11-01": { n: 1, at: "x" } } }, steps), { v: 1, old: { "daily:2026-11-01": { n: 1, at: "x" } }, claims: { "daily:2026-11-01": { n: 1, at: "x" } } });
   eq("移行: 段の無い古い版は null（壊れた扱い）", [S.migrateCollection({ v: 0 }, {}), S.parseCollection(JSON.stringify({ v: 0 })).status], [null, "corrupt"]);
@@ -360,14 +360,14 @@ const NEXT = at(2026, 11, 3, 0, 0);
   eq("壊れた: 形の違う所だけ落とす（repaired）", [rp.status, rp.dropped, S.getMemoryInk()], ["repaired", 3, 1]);
   S.claimDaily(DAY);
   ok("壊れた: repaired も書く前に写す", (JSON.parse(store.get(CORRUPT) ?? "{}").head ?? "").includes("bad id!"));
-  reset('{"v":1,"__proto__":{"claims":{"daily:2026-01-01":{"n":99,"at":"x"}}},"claims":{"daily:2026-11-01":{"n":1,"at":"x"}},"owned":{"__proto__":{"at":"x"}},"equipped":{"__proto__":"bg-stone"}}');
+  reset('{"v":1,"__proto__":{"claims":{"daily:2026-01-01":{"n":99,"at":"x"}}},"claims":{"daily:2026-11-01":{"n":1,"at":"x"}},"owned":{"__proto__":{"at":"x"}},"equipped":{"__proto__":"window-rain"}}');
   const proto = S.readCollection();
   S.claimDaily(DAY);
   eq("壊れた: __proto__ の鍵は拾わない（形を変えない・残高を足さない）", [proto.status, Object.getPrototypeOf(proto.state) === Object.prototype, Object.getPrototypeOf(proto.state.owned) === Object.prototype, S.getMemoryInk(), Object.keys(saved().owned)], ["repaired", true, true, 2, []]);
   reset(withInk(5));
   mode.getThrows = true;
   const u = S.readCollection();
-  eq("壊れた: 読めない端末は unavailable・書く関数は storage・投げない", [u.status, u.writable, S.getMemoryInk(), S.getCollectionView(DAY).available, S.claimDaily(DAY).reason, S.drawOnce({ rand: () => 0.5, now: DAY }).reason, S.equipItem("bg-stone").reason, S.hasClaim("daily:2026-10-01")], ["unavailable", false, 0, false, "storage", "storage", "storage", false]);
+  eq("壊れた: 読めない端末は unavailable・書く関数は storage・投げない", [u.status, u.writable, S.getMemoryInk(), S.getCollectionView(DAY).available, S.claimDaily(DAY).reason, S.drawOnce({ rand: () => 0.5, now: DAY }).reason, S.equipItem("window-rain").reason, S.hasClaim("daily:2026-10-01")], ["unavailable", false, 0, false, "storage", "storage", "storage", false]);
   mode.getThrows = false;
   const raw = store.get(KEY);
   mode.setThrows = true;
@@ -423,7 +423,7 @@ const BK = await import("../js/backup.js");
 
 // ── 19. 読むだけは書かない ──
 {
-  reset(withInk(6, { owned: { "bg-stone": { at: iso(DAY) } }, equipped: { bg: "bg-stone", desk: null, binding: null, fx: null } }));
+  reset(withInk(6, { owned: { "window-rain": { at: iso(DAY) } }, equipped: { window: "window-rain", desk: null, binding: null, fx: null } }));
   S.readCollection();
   S.getCollectionView(DAY);
   S.getMemoryInk();
@@ -449,18 +449,18 @@ const BK = await import("../js/backup.js");
       "book:junior": { n: 5, at: iso(old) }
     },
     draws: [
-      { id: "draw:abcd1234-1", at: iso(old), t: "t1", r: 0.01, rarity: "N", item: "bg-stone", cost: 3, dup: false, refund: 0 },
-      { id: "draw:abcd1234-2", at: iso(old), t: "t1", r: 0.01, rarity: "N", item: "bg-stone", cost: 3, dup: true, refund: 1 },
-      { id: "draw:abcd1234-3", at: iso(kept), t: "t1", r: 0.5, rarity: "N", item: "desk-hourglass", cost: 3, dup: false, refund: 0 }
+      { id: "draw:abcd1234-1", at: iso(old), t: "t1", r: 0.01, rarity: "N", item: "binding-brown", cost: 3, dup: false, refund: 0 },
+      { id: "draw:abcd1234-2", at: iso(old), t: "t1", r: 0.01, rarity: "N", item: "binding-brown", cost: 3, dup: true, refund: 1 },
+      { id: "draw:abcd1234-3", at: iso(kept), t: "t1", r: 0.5, rarity: "N", item: "fx-gold-edge", cost: 3, dup: false, refund: 0 }
     ],
-    owned: { "bg-stone": { at: iso(old) }, "desk-hourglass": { at: iso(kept) } }
+    owned: { "binding-brown": { at: iso(old) }, "fx-gold-edge": { at: iso(kept) } }
   });
   const before = S.getMemoryInk();
   S.claimDaily(DAY);
   const s = saved();
   eq("畳み: 61 日以上前の日次と抽選は carry に移る・60 日前は残す・本は残す", [Object.keys(s.claims).sort(), s.draws.map((d) => d.id), s.carry],
     [["book:junior", "daily:2026-09-03", "daily:2026-11-02"], ["draw:abcd1234-3"], { n: 4, cost: 6, refund: 1, draws: 2, upTo: "2026-09-02" }]);
-  eq("畳み: 残高・所持は同じ（+ 今日の 1）", [before, S.getMemoryInk(), Object.keys(s.owned).sort()], [1 + 2 + 1 + 1 + 5 - 9 + 1, before + 1, ["bg-stone", "desk-hourglass"]]);
+  eq("畳み: 残高・所持は同じ（+ 今日の 1）", [before, S.getMemoryInk(), Object.keys(s.owned).sort()], [1 + 2 + 1 + 1 + 5 - 9 + 1, before + 1, ["binding-brown", "fx-gold-edge"]]);
   eq("畳み: 畳んだ日以前の日次は受け取り済みと読み、時計を戻しても folded", [S.hasClaim("daily:2026-08-01"), S.hasClaim("review:2026-07-30"), S.claimDaily(at(2026, 8, 20)).reason, S.claimDaily(at(2026, 9, 3)).reason], [true, true, "folded", "dup"]);
   const d = S.drawOnce({ rand: () => 0.99, now: DAY });
   eq("畳み: 抽選の連番は畳んだ分の後から（重ならない）", d.draw.id, "draw:abcd1234-4");
@@ -477,6 +477,8 @@ const BK = await import("../js/backup.js");
   eq("文言: 名前（記憶のインク・インク・今日の贈り物・書斎くじ）", [D.MEMORY_INK.id, D.MEMORY_INK.name, D.MEMORY_INK.short, D.TEXT.dailyName, D.TEXT.drawName], ["memoryInk", "記憶のインク", "インク", "今日の贈り物", "書斎くじ"]);
   eq("文言: 数は設定の値から（1・2・1・5・3・1）", [D.TEXT.daily, D.TEXT.study10, D.TEXT.review, D.TEXT.book("中学英語 1年"), D.TEXT.drawCost, D.TEXT.duplicate, D.TEXT.short(2)],
     ["今日の贈り物。記憶のインクを1つ受け取った。", "10語思い出した。記憶のインクを2つ受け取った。", "今日の復習を終えた。記憶のインクを1つ受け取った。", "「中学英語 1年」を終えた。記憶のインクを5つ受け取った。", "無料。記憶のインク3つで1回引ける。", "もう持っている。記憶のインク1つに変わった。", "インクが足りない。あと2つ。"]);
+  eq("文言: 窓の UI の文（G の設計 §1）と端末保存の文", [D.TEXT.deviceOnly, D.TEXT.howToEarn, D.TEXT.draw, D.TEXT.recent, D.TEXT.got("雨の町"), D.TEXT.wasEquipped("雨の町"), D.TEXT.openLabel, D.TEXT.tabList, D.TEXT.tabDraw, D.TEXT.drawAgain, D.TEXT.filterAll, D.TEXT.previewTitle],
+    ["この端末に保存。ほかの端末には移らない。", "10語思い出すと2つ、今日の復習を終えると1つ受け取れる。", "引く（インク3つ）", "最近の5回", "雨の町を手に入れた。", "雨の町は外した。", "コレクション", "一覧", "書斎くじ", "もう1回引く", "すべて", "書斎の見本"]);
   eq("設定の値", [D.REWARDS, D.STUDY10_WORDS, D.DRAW_COST, D.DUPLICATE_REFUND, D.RARITIES.map((r) => [r.id, r.weight])], [{ daily: 1, study10: 2, review: 1, book: 5 }, 10, 3, 1, [["N", 70], ["R", 25], ["SR", 5]]]);
   const names = [...Object.keys(D), ...Object.keys(S)];
   eq("名前: export に ink だけの名前が無い（memoryInk・MEMORY_INK は可）", names.filter((n) => /ink/i.test(n) && !/memoryInk|MEMORY_INK/i.test(n)), []);
@@ -488,11 +490,18 @@ const BK = await import("../js/backup.js");
 {
   const ids = D.ITEMS.map((it) => it.id);
   eq("品: 12 品・id は一意", [D.ITEMS.length, new Set(ids).size], [12, 12]);
-  eq("品: 各スロットに N・R・SR が 1 つずつ", D.SLOTS.map((s) => [s.id, D.listItems({ slot: s.id }).map((it) => it.rarity)]), [["bg", ["N", "R", "SR"]], ["desk", ["N", "R", "SR"]], ["binding", ["N", "R", "SR"]], ["fx", ["N", "R", "SR"]]]);
-  ok("品: id の形・仮の印・販売区分 null・入手は書斎くじ・アセットの参照・有効・装着可", D.ITEMS.every((it) => /^[a-z0-9-]+$/.test(it.id) && it.placeholder === true && it.sale === null && it.source === "draw" && it.asset && typeof it.asset.kind === "string" && typeof it.asset.ref === "string" && it.enabled === true && it.equippable === true));
+  eq("品: 各スロットに N・R・SR が 1 つずつ", D.SLOTS.map((s) => [s.id, D.listItems({ slot: s.id }).map((it) => it.rarity)]), [["window", ["N", "R", "SR"]], ["desk", ["N", "R", "SR"]], ["binding", ["N", "R", "SR"]], ["fx", ["N", "R", "SR"]]]);
+  ok("品: id は <スロット>-<名>（G の形 ^(window|desk|binding|fx)-[a-z0-9-]{1,40}$）・販売区分 null・入手は書斎くじ・有効・装着可", D.ITEMS.every((it) => /^(window|desk|binding|fx)-[a-z0-9-]{1,40}$/.test(it.id) && it.id.startsWith(`${it.slot}-`) && it.sale === null && it.source === "draw" && it.enabled === true && it.equippable === true));
+  const assetOk = (it) => it.asset.kind === "image"
+    ? Object.entries(it.asset.files).length > 0 && Object.entries(it.asset.files).every(([v, f]) => D.ASSET_VARIANTS.includes(v) && f === `assets/images/collection/${it.id}-${v}.webp` && f === D.assetPath(it.id, v)) && it.placeholder === true
+    : it.asset.kind === "css" && it.asset.ref === it.id && it.placeholder === false;
+  ok("品: 絵の参照は assets/images/collection/<id>-<variant>.webp（絵が入るまで placeholder）・CSS だけの品は fx-gold-edge だけ", D.ITEMS.every(assetOk) && D.ITEMS.filter((it) => it.asset.kind === "css").map((it) => it.id).join() === "fx-gold-edge");
+  eq("品: 配る絵の名前（G のアセット仕様 §1）", D.ITEMS.flatMap((it) => Object.values(it.asset.files ?? {})).map((f) => f.replace("assets/images/collection/", "").replace(".webp", "")),
+    ["window-rain-day", "window-rain-night", "window-morning-day", "window-morning-night", "window-moon-day", "window-moon-night", "desk-notebook-prop", "desk-hourglass-prop", "desk-grimoire-prop", "binding-brown-cover", "binding-brown-thumb", "binding-redleather-cover", "binding-redleather-thumb", "binding-memory-tree-cover", "binding-memory-tree-thumb", "fx-layered-paper-frame", "fx-layered-paper-thumb", "fx-ink-star-sprite"]);
+  eq("品: スロットの名前", D.SLOTS.map((s) => [s.id, s.label]), [["window", "窓の景色"], ["desk", "机の小物"], ["binding", "本の装丁"], ["fx", "正解の演出"]]);
   ok("品: スロットとレアリティは表のもの・表示順は一意の整数", D.ITEMS.every((it) => D.SLOTS.some((s) => s.id === it.slot) && D.RARITIES.some((r) => r.id === it.rarity) && Number.isInteger(it.order)) && new Set(D.ITEMS.map((it) => it.order)).size === 12);
-  ok("品: 凍っている（呼び手が書き換えない）", Object.isFrozen(D.ITEMS) && Object.isFrozen(D.ITEMS[0]) && Object.isFrozen(D.ITEMS[0].asset) && Object.isFrozen(D.DRAW_TABLE) && Object.isFrozen(D.TEXT));
-  eq("品: getItem・listItems", [D.getItem("bg-stone")?.name, D.getItem("nope"), D.listItems({ rarity: "SR" }).map((it) => it.id)], ["灰の石壁", null, ["bg-oldmap", "desk-globe", "binding-gilt", "fx-feather"]]);
+  ok("品: 凍っている（呼び手が書き換えない）", Object.isFrozen(D.ITEMS) && Object.isFrozen(D.ITEMS[0]) && Object.isFrozen(D.ITEMS[0].asset) && Object.isFrozen(D.ITEMS[0].asset.files) && Object.isFrozen(D.DRAW_TABLE) && Object.isFrozen(D.TEXT));
+  eq("品: getItem・listItems", [D.getItem("window-rain")?.name, D.getItem("nope"), D.listItems({ rarity: "SR" }).map((it) => it.id)], ["雨の町", null, ["window-moon", "desk-grimoire", "binding-memory-tree", "fx-ink-star"]]);
   eq("保存: 鍵と版", [D.COLLECTION_KEY, D.COLLECTION_CORRUPT_KEY, D.COLLECTION_VERSION], ["spelldash_collection", "spelldash_collection_corrupt", 1]);
 }
 

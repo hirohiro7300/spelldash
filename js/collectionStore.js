@@ -8,7 +8,7 @@
 //   carry: { n, cost, refund, draws, upTo },                                 畳んだ分の合計（upTo = 畳んだ最後の日。その日以前の日次は受け付けない）
 //   draws: [{ id, at, t: 抽選表の版, r: 乱数, rarity, item, cost, dup, refund }],   抽選の台帳（追記だけ。古い物は carry に畳む）
 //   owned: { "<item id>": { at, via?: 抽選の id } },                          所持の集合
-//   equipped: { bg, desk, binding, fx },                                     スロットごとに 0 か 1 つ
+//   equipped: { window, desk, binding, fx },                                 スロットごとに 0 か 1 つ
 //   today: { day, recalled, reviewSeen }                                     日次の数え（day が今日でなければ 0 から）
 // }
 // claim id: daily:<日>（今日の贈り物）・study10:<日>（その日最初の 10 語）・review:<日>（今日の復習）・book:<本の id>（一冊。永続）。

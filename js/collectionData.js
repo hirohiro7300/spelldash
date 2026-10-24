@@ -34,25 +34,32 @@ export const RARITIES = freeze([
   { id: "SR", label: "SR", weight: 5 }
 ]);
 
+// スロット。id は永続（保存の equipped の鍵・品の id の頭）。MVP の窓の景色は window（部屋全体の背景は段 2 で別の id にする）
 export const SLOTS = freeze([
-  { id: "bg", label: "書斎の背景", order: 1 },
+  { id: "window", label: "窓の景色", order: 1 },
   { id: "desk", label: "机の小物", order: 2 },
   { id: "binding", label: "本の装丁", order: 3 },
   { id: "fx", label: "正解の演出", order: 4 }
 ]);
 
-// 品。id は永続（所持・装着・抽選の記録が指す。替えない）。見た目は asset が指す（仮は CSS の見本: ref を data 属性などで当てる）。
-// 本番のアセットに替えるときは asset と placeholder だけを替える（例: { kind: "image", src: "assets/images/collection/<id>.webp", w, h }）。
+// 品の絵の置き場と名前: assets/images/collection/<item-id>-<variant>.webp（コアは参照の文字列だけを持つ。絵は別に入る）
+export const COLLECTION_ASSET_DIR = "assets/images/collection/";
+export const ASSET_VARIANTS = freeze(["day", "night", "thumb", "cover", "frame", "sprite", "prop"]);
+export const assetPath = (id, variant) => `${COLLECTION_ASSET_DIR}${id}-${variant}.webp`;
+
+// 品。id は永続（所持・装着・抽選の記録が指す。替えない。形は <スロット>-<名>）。見た目は asset が指す:
+//   絵の品 { kind: "image", files: { <variant>: "assets/images/collection/<id>-<variant>.webp", … } }・CSS だけの品 { kind: "css", ref: <id> }。
+// placeholder: true は絵がまだ入っていない（画面は CSS の仮の見た目で出す）。絵をコミットした品から false にする（CSS だけの品は最初から false）。
 // source は入手の方法（今は書斎くじだけ）。enabled: false は抽選に入れず装着もできない（所持は残す）。order は表示の順だけ（抽選に使わない）。
 // sale は将来の販売区分の余地（今は null だけ。null 以外は抽選に入れない）
-const item = (id, slot, rarity, name, desc, order) => ({
+const item = (id, slot, rarity, name, desc, order, variants) => ({
   id,
   slot,
   rarity,
   name,
   desc,
-  asset: { kind: "css", ref: `ph-${id}` },
-  placeholder: true,
+  asset: variants.length ? { kind: "image", files: Object.fromEntries(variants.map((v) => [v, assetPath(id, v)])) } : { kind: "css", ref: id },
+  placeholder: variants.length > 0,
   equippable: true,
   source: "draw",
   enabled: true,
@@ -60,20 +67,21 @@ const item = (id, slot, rarity, name, desc, order) => ({
   sale: null
 });
 
-// 仮の 12 品（各スロットに N・R・SR が 1 つずつ。名と説明は仮）
+// MVP の候補（2026-10-24 の G の案。創業者の確定の前）: 12 品（各スロットに N・R・SR が 1 つずつ。名と説明は仮）。
+// 1 品は 1 つのスロットだけを変える。同じ系統から無料に出すのは 2 スロットまで（3 スロットの揃いを作らない）
 export const ITEMS = freeze([
-  item("bg-stone", "bg", "N", "灰の石壁", "灰色の石を積んだ壁。", 1),
-  item("bg-brick", "bg", "R", "煉瓦の壁", "赤茶の煉瓦を積んだ壁。", 2),
-  item("bg-oldmap", "bg", "SR", "古地図の壁", "古い地図を貼った壁。", 3),
-  item("desk-hourglass", "desk", "N", "砂時計", "机の端に置く小さな砂時計。", 4),
-  item("desk-paperweight", "desk", "R", "真鍮の文鎮", "紙を押さえる真鍮の文鎮。", 5),
-  item("desk-globe", "desk", "SR", "小さな天球儀", "星の位置を示す小さな天球儀。", 6),
-  item("binding-linen", "binding", "N", "麻の装丁", "麻の布で包んだ表紙。", 7),
-  item("binding-redleather", "binding", "R", "赤革の装丁", "赤い革の表紙。", 8),
-  item("binding-gilt", "binding", "SR", "金の箔押し", "金の箔で縁を押した表紙。", 9),
-  item("fx-ripple", "fx", "N", "波紋", "思い出したとき、枠に波紋が広がる。", 10),
-  item("fx-petal", "fx", "R", "花びら", "思い出したとき、花びらが一枚落ちる。", 11),
-  item("fx-feather", "fx", "SR", "羽根", "思い出したとき、羽根が一枚舞う。", 12)
+  item("window-rain", "window", "N", "雨の町", "窓の外に雨の町が見える。", 1, ["day", "night"]),
+  item("window-morning", "window", "R", "朝の町", "窓の外に朝の町が見える。", 2, ["day", "night"]),
+  item("window-moon", "window", "SR", "月の町", "窓の外に月の出た町が見える。", 3, ["day", "night"]),
+  item("desk-notebook", "desk", "N", "茶革の手帳", "机の端に置く茶色い革の手帳。", 4, ["prop"]),
+  item("desk-hourglass", "desk", "R", "胡桃の砂時計", "胡桃の枠の砂時計。", 5, ["prop"]),
+  item("desk-grimoire", "desk", "SR", "星空の魔導書箱", "星空を描いた魔導書の箱。", 6, ["prop"]),
+  item("binding-brown", "binding", "N", "深茶の革", "深い茶色の革の表紙。", 7, ["cover", "thumb"]),
+  item("binding-redleather", "binding", "R", "深紅の革と真鍮の角", "深紅の革に真鍮の角を付けた表紙。", 8, ["cover", "thumb"]),
+  item("binding-memory-tree", "binding", "SR", "記憶の樹の藍", "藍の地に記憶の樹を押した表紙。", 9, ["cover", "thumb"]),
+  item("fx-gold-edge", "fx", "N", "金の縁", "思い出したとき、枠が金に変わる。", 10, []),
+  item("fx-layered-paper", "fx", "R", "重なる紙", "思い出したとき、紙が重なる。", 11, ["frame", "thumb"]),
+  item("fx-ink-star", "fx", "SR", "雫が星に", "思い出したとき、雫が星に変わる。", 12, ["sprite"])
 ]);
 
 const BY_ID = new Map(ITEMS.map((it) => [it.id, it]));
@@ -158,7 +166,19 @@ export const TEXT = freeze({
   equip: "使う",
   unequip: "外す",
   equipped: "使っている",
-  deviceOnly: "この端末のコレクション。ほかの端末には移らない。",
+  deviceOnly: "この端末に保存。ほかの端末には移らない。",
   cannotSave: `この端末に保存できない。${MEMORY_INK.name}は受け取れない。`,
-  balance: (n) => `${MEMORY_INK.name} ${n}${MEMORY_INK.unit}`
+  balance: (n) => `${MEMORY_INK.name} ${n}${MEMORY_INK.unit}`,
+  // 窓の UI の文（作業役 G の設計 §1 の案）
+  openLabel: "コレクション",
+  tabList: "一覧",
+  tabDraw: "書斎くじ",
+  howToEarn: `${STUDY10_WORDS}語思い出すと${REWARDS.study10}${MEMORY_INK.unit}、今日の復習を終えると${REWARDS.review}${MEMORY_INK.unit}受け取れる。`,
+  draw: `引く（${MEMORY_INK.short}${DRAW_COST}${MEMORY_INK.unit}）`,
+  drawAgain: "もう1回引く",
+  got: (name) => `${name}を手に入れた。`,
+  recent: `最近の${RECENT_DRAWS}回`,
+  filterAll: "すべて",
+  previewTitle: "書斎の見本",
+  wasEquipped: (prev) => `${prev}は外した。`
 });
