@@ -61,6 +61,9 @@ jobs:
       - name: 思い出す速さ（語ごとのすぐ・ふつう・時間がかかると、出す語の決まり。js/recallSpeed.js）
         run: node scripts/test-recall.mjs
 
+      - name: アカウントの紋章（ランクが決まる条件・紋章を替える時機・読めない絵の扱い。js/accountEmblem.js）
+        run: node scripts/test-account-emblem.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 

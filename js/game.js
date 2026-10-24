@@ -3451,7 +3451,11 @@ function celebrateRankUp(result) {
     closed = true;
     document.removeEventListener("keydown", onKey, true);
     overlay.classList.add("rank-up--out");
-    setTimeout(() => overlay.remove(), 220);
+    setTimeout(() => {
+      overlay.remove();
+      // 幕を閉じた: ヘッダーのアカウントの紋章をこの幕のランクに替えてよい（js/accountEmblem.js。幕より先に替えない。受け手は後へ回す）
+      window.dispatchEvent(new CustomEvent("spelldash:rank-up-closed", { detail: { rank: after.name, level: result.after.level } }));
+    }, 220);
   };
   // キーボードでも閉じられる（Esc／Enter）。既定動作は妨げない。表示直後の Enter（答え表示→次への連打）では消さない
   const shownAt = performance.now();

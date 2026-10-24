@@ -229,6 +229,27 @@ html[data-theme] body:not(.page-room) .account :is(.btn--ghost, .account__link, 
   color: var(--foil);
 }
 
+/* アイコンの紋章が出ている丸（js/accountEmblem.js .has-emblem）: 地は帯の藍のまま（透明）、縁は印（.brand__mark）と同じ金の 1px（外寸は同じ: border-box）。
+   ホバー・開いている間は縁が金箔（--foil）で地を少し明るく（ログインのボタンのホバーと同じ）。帯は昼も夜も藍（--vault）なので、どのテーマでも同じ。
+   縁と帯の比は昼 約 3.9・夜 約 4.2（E2E 9.956 が測る）。書斎（.page-room）の透明な帯も天井の藍の上 */
+html[data-theme] .avatar.has-emblem {
+  border: 1px solid rgba(230, 200, 135, 0.55);
+  background: transparent;
+}
+
+html[data-theme] .avatar-button:hover .avatar.has-emblem,
+html[data-theme] .avatar-button[aria-expanded="true"] .avatar.has-emblem {
+  border-color: var(--foil);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* メニューの一番上の行（ランクとレベル）: 項目と同じ明朝 500（押せる項目ではないので字は小さく --ink-2。--sheet の上で昼 9.08・夜 9.35） */
+html[data-theme] .account-menu__rank {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
 /* 連続日数: 「30日」。数字は Cormorant、炎は 1px の金の線画。下線の札は外して帯の上に直に置く */
 html[data-theme] body:not(.page-room) .header-streak {
   align-items: baseline;
@@ -791,6 +812,11 @@ html[data-theme] .icon {
     width: 32px;
     height: 32px;
     font-size: 14px;
+  }
+  /* 32px の丸に紋章 28px（1200 は 38px に 32px: layout.css） */
+  html[data-theme] .avatar__emblem {
+    width: 28px;
+    height: 28px;
   }
 }
 
