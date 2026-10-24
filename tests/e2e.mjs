@@ -5358,7 +5358,8 @@ console.log("bookshelf:");
     };
   };
   // 学習の状態: spelldash_* を全部（本棚の保存 spelldash_shelf と、開いた時刻・端末で変わるキーは除く）＋カテゴリの並び（出題の範囲）。下ろす・足すの前後でこれが同じなら学習は変わっていない
-  const LEARN_SKIP = ["spelldash_shelf", "spelldash_billing_open", "spelldash_device_id", "spelldash_user_items_meta"];
+  // spelldash_book_pace（一冊を終えるまでの目安の日次記録。Batch 76）はホームの読み込み・回の始め・裏に回ったときに書く派生の記録で、学習の状態ではない（書く時機が前後の写しの間に入りうる）
+  const LEARN_SKIP = ["spelldash_shelf", "spelldash_billing_open", "spelldash_device_id", "spelldash_user_items_meta", "spelldash_book_pace"];
   const learning = (pg) => pg.evaluate(async (skip) => ({
     store: Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith("spelldash_") && !skip.includes(k)).sort().map((k) => [k, localStorage.getItem(k)])),
     cats: (await import("/js/wordStore.js")).getCategories().map((c) => c.id).join(",")
@@ -9392,6 +9393,304 @@ console.log("retention:");
     const ret2 = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_retention") || "{}"));
     check("保持率（書き込み）: 同じ日の 2 回目（×）でも w7 と復習日数は変わらない", JSON.stringify(ret2["my-invoice"]?.w7) === JSON.stringify({ t: today, r: "o", rv: 0 }) && ret2["my-invoice"]?.n === 1, JSON.stringify(ret2["my-invoice"]));
     check("保持率（書き込み）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+}
+
+// ===== 9.57 一冊を終えるまでの目安（Batch 76: 学習データ「今週」タブの机の本 1 冊・js/bookPace.js・spelldash_book_pace。docs は統合担当） =====
+// 学習データ: 机の本 1 冊の「残り N語」と目安（進んだ日 3 日以上・1 日あたり = 進み ÷ 記録を始めてからの日数〔上限 14〕・365 日まで）・待ちの文・完了・語の無い冊は出さない。
+// 保持率の直後・読むだけ（鍵を書かない）・320／390／1200 × 昼夜で横スクロールなし・読み込みの CLS。
+// ホーム（書き手）: Study の回で初めて済みになった机の本の語だけを数える（答えの間は書かない・回の終わりのタスクの後）。外れて戻った語・ほかの本（共有の語）・
+// 同期・Challenge・読み直しは数えない（反証役のレビュー B1 の 1a〜1c も）。
+// 完了の画面・ホーム・本棚・Battle・単語帳に目安の文を出さない
+console.log("book pace:");
+{
+  const DAY = 86400000;
+  const dayNoAgo = (n) => { const [y, m, d] = ymdDaysAgo(n).split("-").map(Number); return Math.round(Date.UTC(y, m - 1, d) / DAY); };
+  const J1W = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", "jhs-english1.json"), "utf8")).words;
+  const J1 = J1W.map((w) => w.id);
+  const iso = (days) => new Date(Date.now() - days * DAY).toISOString();
+  const LEARN = (d) => ({ playCount: 2, correctCount: 1, recallFail: 1, missCount: 1, typingMiss: 0, cleanCorrectStreak: 1, mastered: false, lastPlayed: iso(d), lastRecallSuccessAt: iso(d), lastRecallFailAt: iso(d + 2), nextReviewAt: iso(-3) });
+  const WEAK = (d) => ({ playCount: 2, correctCount: 1, recallFail: 1, missCount: 1, typingMiss: 0, cleanCorrectStreak: 0, mastered: false, lastPlayed: iso(d), lastRecallSuccessAt: iso(d + 4), lastRecallFailAt: iso(d), nextReviewAt: iso(d) });
+  // 中学英語 1年（120 語）: 覚えた 34・習得 2・知ってた 4（済み 40）・苦手 2・出題だけ 1
+  const statsJ1 = (doneAll = false) => {
+    const s = {};
+    J1.forEach((id, i) => {
+      if (doneAll || i < 34) s[id] = LEARN(1);
+      else if (i < 36) s[id] = { playCount: 12, correctCount: 10, recallFail: 0, missCount: 0, typingMiss: 0, cleanCorrectStreak: 10, mastered: true, masteredAt: iso(2), lastPlayed: iso(2), lastRecallSuccessAt: iso(2), nextReviewAt: iso(-20) };
+      else if (i < 40) s[id] = { playCount: 1, correctCount: 1, recallFail: 0, missCount: 0, typingMiss: 0, cleanCorrectStreak: 1, mastered: false, knownOnSight: true, lastPlayed: iso(4), lastRecallSuccessAt: iso(4), nextReviewAt: iso(-10) };
+      else if (i < 42) s[id] = WEAK(1);
+      else if (i < 43) s[id] = { playCount: 1, correctCount: 0, recallFail: 0, missCount: 0, typingMiss: 0, cleanCorrectStreak: 0, mastered: false, lastPlayed: iso(1) };
+    });
+    return s;
+  };
+  const paceKey = (rows, start = 30) => JSON.stringify({ v: 1, at: dayNoAgo(0), b: { "jhs-english1": { s: dayNoAgo(start), p: rows.map(([d, n]) => [dayNoAgo(-d), n]) } } }); // rows の日は今日からの差（−3 = 3 日前）
+  const seedJ1 = (rows, { start = 30, doneAll = false, extra = {} } = {}) => ({
+    spelldash_placement: "done", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(statsJ1(doneAll)),
+    ...(rows ? { spelldash_book_pace: paceKey(rows, start) } : {}), ...extra
+  });
+  const LABEL = "中学英語 1年（教科書レベル）";
+  const NOTE = "済み（覚えた・習得・知ってた）で数えています。";
+  const readCard = async (storage, { w = 1200, h = 900, mobile = false, hash = "" } = {}) => {
+    const page = await newPage({ mobile, viewport: { width: w, height: h }, storage });
+    await page.goto(BASE + "/stats.html" + hash, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => {
+      const sec = document.getElementById("bookPace");
+      return {
+        exists: !!sec,
+        hidden: sec ? sec.hidden : null,
+        head: sec?.querySelector("h3")?.textContent.trim() ?? null,
+        lines: sec ? [...sec.querySelectorAll("#bookPaceReport p")].map((p) => p.textContent.replace(/\s+/g, " ").trim()) : [],
+        bold: sec ? [...sec.querySelectorAll("#bookPaceReport b")].map((b) => b.textContent) : [],
+        afterRetention: !!document.querySelector("#retention + #bookPace"),
+        growthRetention: !!document.querySelector("#growth + #retention"),
+        tab: sec?.dataset.tab ?? null,
+        card: sec?.classList.contains("result-card") ?? false,
+        live: sec ? sec.querySelector("[aria-live]") !== null || sec.closest("[aria-live]") !== null : null,
+        scroll: document.documentElement.scrollWidth,
+        inner: document.documentElement.clientWidth,
+        key: localStorage.getItem("spelldash_book_pace")
+      };
+    });
+    r.errors = page.errors.slice(0, 1);
+    await page.close();
+    return r;
+  };
+
+  // ---- 学習データ: 目安・待ち・完了・語の無い冊 ----
+  const rows3 = [[0, 14], [-3, 7], [-9, 7]]; // 進み 28・3 日 → 1 日平均 2 語・残り 80 → 約40日
+  const s1 = seedJ1(rows3);
+  const a = await readCard(s1);
+  check("目安 学習データ: 「今週」タブの保持率の直後に 1 枚（見出し「一冊を終えるまでの目安」・札は .result-card・推移の直後は保持率のまま）",
+    a.exists && !a.hidden && a.head === "一冊を終えるまでの目安" && a.afterRetention && a.growthRetention && a.tab === "week" && a.card, JSON.stringify({ exists: a.exists, hidden: a.hidden, head: a.head, after: a.afterRetention, tab: a.tab }));
+  check("目安 学習データ: 机の本の名前と決定の 4 行・済みの注（残り 80・1 日平均 2 語・約40日）",
+    JSON.stringify(a.lines) === JSON.stringify([LABEL, "残り80語", "最近14日間は、1日平均2語進んでいます。", "今のペースなら、完了まであと約40日が目安です。", "この端末の記録から計算しています。", NOTE]) && JSON.stringify(a.bold) === JSON.stringify(["80", "2", "40"]),
+    JSON.stringify({ lines: a.lines, bold: a.bold }));
+  check("目安 学習データ: 読むだけ（鍵を書き換えない）・読み上げの live なし・エラー0", a.key === s1.spelldash_book_pace && a.live === false && a.errors.length === 0, JSON.stringify({ same: a.key === s1.spelldash_book_pace, err: a.errors[0] }));
+  const fresh = await readCard(seedJ1([[0, 10], [-2, 10], [-4, 10]], { start: 4 }));
+  check("目安 学習データ: 記録を始めて 5 日なら 5 日で割る（進み 30 → 1 日平均 6 語・80×5÷30 = 約13日）",
+    fresh.lines[2] === "最近5日間は、1日平均6語進んでいます。" && fresh.lines[3] === "今のペースなら、完了まであと約13日が目安です。", JSON.stringify(fresh.lines));
+  const wait2 = await readCard(seedJ1([[0, 14], [-3, 7]]));
+  check("目安 学習データ: 進んだ日が 2 日なら日数を出さず待ちの文（残りは出す）",
+    JSON.stringify(wait2.lines) === JSON.stringify([LABEL, "残り80語", "学習を続けると、完了までの目安が表示されます。", NOTE]), JSON.stringify(wait2.lines));
+  const long = await readCard(seedJ1([[0, 1], [-1, 1], [-2, 1]]));
+  check("目安 学習データ: 365 日を超える日数（80×14÷3 = 373）は出さず待ちの文", JSON.stringify(long.lines) === JSON.stringify(wait2.lines), JSON.stringify(long.lines));
+  const none = await readCard(seedJ1(null));
+  check("目安 学習データ: 記録が無ければ待ちの文・学習データは鍵を作らない", JSON.stringify(none.lines) === JSON.stringify(wait2.lines) && none.key === null && none.errors.length === 0, JSON.stringify({ lines: none.lines, key: none.key }));
+  const broken = await readCard({ ...seedJ1(null), spelldash_book_pace: "{oops" });
+  check("目安 学習データ: 壊れた値でも待ちの文・エラー0（値は書き換えない）", JSON.stringify(broken.lines) === JSON.stringify(wait2.lines) && broken.key === "{oops" && broken.errors.length === 0, JSON.stringify({ lines: broken.lines, err: broken.errors[0] }));
+  const done = await readCard(seedJ1(rows3, { doneAll: true }));
+  check("目安 学習データ: 全部の語が済み（知ってたを含む）なら「完了」と済みの注だけ", JSON.stringify(done.lines) === JSON.stringify([LABEL, "完了", NOTE]), JSON.stringify(done.lines));
+  const empty = await readCard({ spelldash_placement: "done", spelldash_category: "my" });
+  check("目安 学習データ: 語の無い冊（空のマイ単語帳）は節ごと出さない", empty.exists && empty.hidden === true && empty.lines.length === 0 && empty.errors.length === 0, JSON.stringify({ hidden: empty.hidden, lines: empty.lines }));
+  const concept = await readCard({ spelldash_placement: "done", spelldash_category: "listing" });
+  check("目安 学習データ: 概念カードの冊は「枚」（道と同じ。リスティング広告 実務 127 枚）", JSON.stringify(concept.lines.slice(0, 2)) === JSON.stringify(["リスティング広告 実務", "残り127枚"]), JSON.stringify(concept.lines));
+  const words = await readCard(s1, { hash: "#words" });
+  check("目安 学習データ: 「記録」タブでは出さない（今週タブの節）", words.exists && words.hidden === true, JSON.stringify({ hidden: words.hidden }));
+  for (const [w, h, theme] of [[1200, 900, "light"], [1200, 900, "dark"], [390, 844, "light"], [390, 844, "dark"], [320, 640, "light"], [320, 640, "indigo"]]) {
+    const s = await readCard({ ...s1, spelldash_theme: theme }, { w, h, mobile: w < 1000 });
+    check(`目安 学習データ（${w}・${theme}）: 6 行が出て横スクロールなし・エラー0`, s.lines.length === 6 && s.scroll <= s.inner && s.errors.length === 0, JSON.stringify({ n: s.lines.length, scroll: s.scroll, inner: s.inner, err: s.errors[0] }));
+  }
+  {
+    const runs = {};
+    for (const [label, opts] of [["1200 目安あり", { storage: s1 }], ["390 目安あり", { width: 390, height: 844, mobile: true, storage: s1 }], ["390 待ち", { width: 390, height: 844, mobile: true, storage: seedJ1(null) }], ["1200 夜 目安あり 0ms", { storage: { ...s1, spelldash_theme: "dark" }, delay: 0 }]]) runs[label] = await loadCls("/stats.html", opts);
+    check("目安 学習データ: 読み込みの CLS < 0.05（1200・390 mobile・目安あり／待ち・昼夜・80ms 遅延と遅延なし）・エラー0", Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
+  }
+
+  // ---- ホーム（書き手）: Study の回の終わりに机の本だけ数える ----
+  {
+    const enOf = Object.fromEntries(J1W.map((w) => [w.id, w.en]));
+    const storage = { spelldash_placement: "done", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_audio: JSON.stringify({ mode: "off" }) };
+    const page = await newPage({ storage });
+    await page.addInitScript(() => {
+      window.__ids = [];
+      window.__paceWrites = 0;
+      addEventListener("spelldash:word", (e) => window.__ids.push(e.detail?.id ?? null));
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (k === "spelldash_book_pace") window.__paceWrites++; return set.call(this, k, v); };
+    });
+    await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    const EMPTY = { v: 0, at: null, b: {} }; // 鍵が無いとき（直す前の木）も検査を最後まで流す
+    const pace = () => page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_book_pace") || "null")).then((k) => k ?? EMPTY);
+    const writes = () => page.evaluate(() => window.__paceWrites);
+    const k0 = await pace();
+    const today = dayNoAgo(0);
+    check("目安 ホーム: 読み込みの後に冊の行を置く（机の本・基本カテゴリ・「すべて」。記録を始めた日 = 今日・進みは 0）",
+      !!k0 && k0.v === 1 && k0.at === today && k0.b["jhs-english1"]?.s === today && k0.b["jhs-english1"].p.length === 0 && !!k0.b.junior && !!k0.b.all && Object.values(k0.b).every((e) => e.p.length === 0 && e.n === undefined), JSON.stringify(k0?.b?.["jhs-english1"]));
+    await page.evaluate(() => addEventListener("spelldash:game-end", () => { window.__atEnd = window.__paceWrites; })); // 書き手の受け手より後に足す（書き手が同じタスクで書いたら数が増えている）
+    await page.click("#pathStart");
+    await waitUntil(async () => (await page.evaluate(() => window.__ids.length)) >= 1, 5000);
+    await page.waitForTimeout(300);
+    const w1 = await writes();
+    const typed = [];
+    for (let i = 0; i < 6 && !(await page.$eval("#resultPanel", (el) => !el.hidden)); i++) {
+      const id = await page.evaluate(() => window.__ids.at(-1));
+      const n = await page.evaluate(() => window.__ids.length);
+      if (typed.length === 2) check("目安 ホーム: 回の途中（答えの間）は鍵を書かない", (await writes()) === w1, `writes ${w1} → ${await writes()}`);
+      for (const ch of enOf[id] ?? "") await page.press("#input", ch);
+      typed.push(id);
+      await waitUntil(async () => (await page.evaluate(() => window.__ids.length)) > n || (await page.$eval("#resultPanel", (el) => !el.hidden)), 3000);
+      await afterAdvance(page);
+    }
+    await waitUntil(async () => (await writes()) > w1, 2000);
+    const k1 = await pace();
+    const panel = await page.$eval("#resultPanel", (el) => (el.hidden ? "" : el.textContent));
+    const juniorIds = new Set(JSON.parse(fs.readFileSync(path.join(ROOT, "data", "english", "junior.json"), "utf8")).words.map((w) => w.id));
+    const J = (k) => k.b["jhs-english1"] ?? { n: null, s: null, p: null };
+    check("目安 ホーム: 回の終わりに机の本（中学英語 1年）の今日の行 = この回で初めて済みになった語の数（知ってた 3）",
+      typed.length === 3 && JSON.stringify(J(k1).p) === JSON.stringify([[today, 3]]), JSON.stringify({ typed, p: J(k1).p }));
+    check("目安 ホーム: 机の本のほかの冊（共有の語で済みが増えた冊も）は進みに加えない（基準だけ）",
+      Object.keys(k1.b).length > 2 && Object.entries(k1.b).every(([id, e]) => id === "jhs-english1" || e.p.length === 0), JSON.stringify(Object.entries(k1.b).filter(([, e]) => e.p.length).map(([id]) => id)));
+    check("目安 ホーム: 回の終わりの知らせのタスクでは書かず、その後に 1 回書く", (await page.evaluate(() => window.__atEnd)) === w1 && (await writes()) === w1 + 1, JSON.stringify({ atEnd: await page.evaluate(() => window.__atEnd), w1, now: await writes() }));
+    check("目安 ホーム: 完了の画面に目安の文が無い", panel.includes("今日のセット完了") && !/目安|完了まで|一冊を終える/.test(panel), panel.slice(0, 80));
+    // 同じ日に 済み → 未済み → 済み（回を 2 つ: × の回・○ の回）: 二重に加えない
+    const setStat = (id, stat) => page.evaluate(([i, s]) => { const t = JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}"); t[i] = s; localStorage.setItem("spelldash_word_stats", JSON.stringify(t)); }, [id, stat]);
+    const statOf = (id) => page.evaluate((i) => JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")[i], id);
+    const fire = (type, detail) => page.evaluate(([t, d]) => window.dispatchEvent(new CustomEvent(t, { detail: d })), [type, detail]);
+    const before0 = await statOf(typed[0]);
+    await fire("spelldash:game-start", { mode: "study" });
+    await page.waitForTimeout(100);
+    await setStat(typed[0], WEAK(0));
+    await fire("spelldash:game-end", { mode: "study" });
+    await page.waitForTimeout(150);
+    const kx = await pace();
+    await fire("spelldash:game-start", { mode: "study" });
+    await page.waitForTimeout(100);
+    await setStat(typed[0], { ...before0, lastRecallSuccessAt: new Date().toISOString() });
+    await fire("spelldash:game-end", { mode: "study" });
+    await page.waitForTimeout(150);
+    const ko = await pace();
+    check("目安 ホーム: 同じ日に × の回で外れ、○ の回で戻っても今日の行は 3 のまま（× で引かず、外れて戻った語を足さない）",
+      JSON.stringify(J(kx).p) === JSON.stringify([[today, 3]]) && JSON.stringify(J(ko).p) === JSON.stringify([[today, 3]]), JSON.stringify({ x: J(kx).p, o: J(ko).p }));
+    // 回の途中で裏に回った: その場で机の本を数える。回の外で裏に回った・Challenge の回・同期: 置き直すだけ
+    const nextId = J1.find((id) => !typed.includes(id));
+    await fire("spelldash:game-start", { mode: "study" });
+    await page.waitForTimeout(100);
+    await setStat(nextId, LEARN(0));
+    await page.evaluate(() => { Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
+    const kh = await pace(); // 待たずに読む（その場で書く）
+    await page.evaluate(() => { Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
+    await fire("spelldash:game-end", { mode: "study" });
+    await page.waitForTimeout(150);
+    check("目安 ホーム: 回の途中で裏に回ったらその場で机の本を数える（回の終わりで二重にしない）",
+      JSON.stringify(J(kh).p) === JSON.stringify([[today, 4]]) && JSON.stringify(J(await pace()).p) === JSON.stringify([[today, 4]]), JSON.stringify({ hidden: J(kh).p }));
+    const others = J1.filter((id) => !typed.includes(id) && id !== nextId);
+    await fire("spelldash:game-start", { mode: "challenge" });
+    await page.waitForTimeout(100);
+    await setStat(others[0], LEARN(0));
+    await fire("spelldash:game-end", { mode: "challenge" });
+    await page.waitForTimeout(150);
+    const kc = await pace();
+    await setStat(others[1], LEARN(0));
+    await page.evaluate(() => { Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
+    await page.evaluate(() => { Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); });
+    const kv = await pace();
+    await setStat(others[2], LEARN(0));
+    await fire("spelldash:synced");
+    await page.waitForTimeout(150);
+    const ks = await pace();
+    check("目安 ホーム: Challenge の回・回の外で裏に回った・同期で済みになった語は数えない",
+      [kc, kv, ks].every((k) => JSON.stringify(J(k).p) === JSON.stringify([[today, 4]])), JSON.stringify([kc, kv, ks].map((k) => J(k).p)));
+    // 共有の語（中学英語 1年と中学英語の両方にある語）を机の本の回で覚えた: 机の本だけ +1、中学英語は基準だけ（創業者の決定 4）
+    const sharedId = J1.find((id) => juniorIds.has(id) && !typed.includes(id) && id !== nextId && !others.slice(0, 3).includes(id));
+    const kb = await pace();
+    await fire("spelldash:game-start", { mode: "study" });
+    await page.waitForTimeout(100);
+    await setStat(sharedId, LEARN(0));
+    await fire("spelldash:game-end", { mode: "study" });
+    await page.waitForTimeout(150);
+    const kd = await pace();
+    check("目安 ホーム: 共有の語を机の本の回で覚えた → 机の本だけ +1、共有のほかの本（中学英語・すべて）の進みは 0",
+      JSON.stringify(J(kd).p) === JSON.stringify([[today, 5]]) && kd.b.junior?.p.length === 0 && kd.b.all?.p.length === 0, JSON.stringify({ desk: J(kd).p, junior: kd.b.junior?.p, all: kd.b.all?.p, before: J(kb).p }));
+    // 反証役のレビュー B1（直す前の木では +2）: 1a Challenge で外して Study で戻す・1b 別の本の回で外して机の本の回で戻す・1c 同期で外れて Study で戻す
+    const okAgain = async (id) => setStat(id, { ...(await statOf(id)), lastRecallSuccessAt: new Date().toISOString() });
+    const round = async (mode, fn) => { await fire("spelldash:game-start", { mode }); await page.waitForTimeout(100); await fn(); await fire("spelldash:game-end", { mode }); await page.waitForTimeout(250); };
+    await round("challenge", () => setStat(typed[1], WEAK(0)));
+    await round("study", () => okAgain(typed[1]));
+    const k1a = await pace();
+    await page.evaluate(() => localStorage.setItem("spelldash_category", "junior"));
+    await round("study", () => setStat(sharedId, WEAK(0)));
+    await page.evaluate(() => localStorage.setItem("spelldash_category", "jhs-english1"));
+    await round("study", () => okAgain(sharedId));
+    const k1b = await pace();
+    await setStat(typed[2], WEAK(0));
+    await fire("spelldash:synced");
+    await page.waitForTimeout(250);
+    await round("study", () => okAgain(typed[2]));
+    const k1c = await pace();
+    check("目安 ホーム（レビュー B1）: 1a Challenge の × → Study の ○、1b 別の本の回の × → 机の本の回の ○、1c 同期の × → Study の ○ のどれも足さない（直す前は +2）",
+      [k1a, k1b, k1c].every((k) => JSON.stringify(J(k).p) === JSON.stringify([[today, 5]])) && k1b.b.junior?.p.length === 0, JSON.stringify({ a: J(k1a).p, b: J(k1b).p, junior: k1b.b.junior?.p, c: J(k1c).p }));
+    const homeText = await page.evaluate(() => document.body.innerText);
+    check("目安 ホーム: 机の本・本棚・はちゃんに目安の文が無い・エラー0", !/完了までの目安|一冊を終えるまで|今のペースなら/.test(homeText) && page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+    // 読み込み直し: 進みはそのまま（置き直しだけ）
+    const again = await newPage({ storage: { ...storage, spelldash_word_stats: JSON.stringify(Object.fromEntries(J1.slice(0, 9).map((id) => [id, LEARN(0)]))), spelldash_book_pace: JSON.stringify(ks) } });
+    await again.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await again.waitForTimeout(800);
+    const kr = (await again.evaluate(() => JSON.parse(localStorage.getItem("spelldash_book_pace") || "null"))) ?? { b: {} };
+    check("目安 ホーム: 読み込み直し（別の端末や Battle で済みが増えた）では進みを足さない・記録を始めた日はそのまま", JSON.stringify(J(kr).p) === JSON.stringify([[today, 4]]) && J(kr).s === J(k0).s, JSON.stringify(J(kr)));
+    await again.close();
+  }
+  // ---- 反証役のレビュー B1 の 1a を画面で: Study → 完了の画面の Challenge で × → 机に戻って Study で ○ → 足さない ----
+  {
+    const MY = [["cloud", "雲"], ["river", "川"], ["stone", "石"]];
+    const storage = { spelldash_category: "my", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_my_words: JSON.stringify(MY.map(([en, ja]) => ({ en, ja }))) };
+    const page = await newPage({ storage });
+    await page.addInitScript(() => {
+      window.__ids = [];
+      addEventListener("spelldash:word", (e) => window.__ids.push(e.detail?.id ?? null));
+    });
+    await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    const today = dayNoAgo(0);
+    const pace = () => page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_book_pace") || "null")).then((k) => k ?? { b: {} });
+    const panelOpen = () => page.$eval("#resultPanel", (el) => !el.hidden).catch(() => false);
+    const typeShown = async () => {
+      const id = await page.evaluate(() => window.__ids.at(-1));
+      const n = await page.evaluate(() => window.__ids.length);
+      for (const ch of String(id).replace(/^my-/, "")) await page.press("#input", ch);
+      await waitUntil(async () => (await page.evaluate(() => window.__ids.length)) > n || (await panelOpen()), 3000);
+      await afterAdvance(page);
+      return id;
+    };
+    await page.click("#pathStart");
+    await waitUntil(async () => (await page.evaluate(() => window.__ids.length)) >= 1, 5000);
+    for (let i = 0; i < 5 && !(await panelOpen()); i++) await typeShown();
+    await waitUntil(async () => (await pace()).b.my?.p?.length > 0, 3000);
+    const k1 = await pace();
+    await page.click("#setChallenge");
+    const n0 = await page.evaluate(() => window.__ids.length);
+    await waitUntil(async () => (await page.evaluate(() => window.__ids.length)) > n0, 5000);
+    await page.waitForTimeout(NEXT_READY_MS);
+    const missed = await page.evaluate(() => window.__ids.at(-1));
+    await page.press("#input", "Enter"); // 答え表示（×）
+    await waitUntil(async () => { const st = await page.evaluate((i) => JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")[i], missed); return Date.parse(st?.lastRecallFailAt ?? "") > Date.parse(st?.lastRecallSuccessAt ?? ""); }, 3000);
+    await page.waitForTimeout(400);
+    await page.click("#backToPath");
+    await page.waitForTimeout(500);
+    await page.click("#pathStart");
+    const n1 = await page.evaluate(() => window.__ids.length);
+    await waitUntil(async () => (await page.evaluate(() => window.__ids.length)) > n1, 5000);
+    let back = false;
+    for (let i = 0; i < 5 && !back && !(await panelOpen()); i++) back = (await typeShown()) === missed;
+    const st = await page.evaluate((i) => JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")[i], missed);
+    if (await page.isVisible("#backToPath")) await page.click("#backToPath");
+    await page.waitForTimeout(1200);
+    const k2 = await pace();
+    check("目安 ホーム（レビュー B1 の 1a・画面）: Study で 3 語 → 完了の画面の Challenge で 1 語を × → Study で戻しても、今日の行は 3 のまま（直す前は 4）",
+      JSON.stringify(k1.b.my?.p) === JSON.stringify([[today, 3]]) && back && Date.parse(st?.lastRecallSuccessAt ?? "") > Date.parse(st?.lastRecallFailAt ?? "") && JSON.stringify(k2.b.my?.p) === JSON.stringify([[today, 3]]) && page.errors.length === 0,
+      JSON.stringify({ k1: k1.b.my?.p, missed, back, k2: k2.b.my?.p, err: page.errors[0] }));
+    await page.close();
+  }
+  // ---- ほかのページに出さない ----
+  for (const url of ["/battle.html", "/list.html", "/profile.html"]) {
+    const page = await newPage({ storage: s1 });
+    await page.goto(BASE + url, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const text = await page.evaluate(() => document.body.innerText);
+    check(`目安: ${url} に目安の文が無い・鍵を書かない`, !/完了までの目安|一冊を終えるまで|今のペースなら/.test(text) && (await page.evaluate(() => localStorage.getItem("spelldash_book_pace"))) === s1.spelldash_book_pace, url);
     await page.close();
   }
 }
