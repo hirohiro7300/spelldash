@@ -330,7 +330,7 @@ function transact(kind, now, fn) {
   const day = localDay(date);
   let out;
   try {
-    out = fn(state, { date, day, at: date.toISOString(), before });
+    out = fn(state, { date, day, at: date.toISOString() });
   } catch {
     return fail(kind, "invalid", before);
   }
