@@ -1712,6 +1712,34 @@ html[data-theme] .weekly__note {
   font-size: 12px;
 }
 
+/* 一冊を終えるまでの目安（学習データ「今週」タブ。js/statsView.js renderBookPace）: 本の名前・残り・目安の文・注。数は数字の字。色はトークンだけ */
+html[data-theme] .book-pace__name {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .book-pace__line {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .book-pace__line b {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .book-pace__note {
+  margin: 8px 0 0;
+}
+
+html[data-theme] .book-pace__note + .book-pace__note {
+  margin-top: 2px;
+}
+
 html[data-theme] .weekly .weekly__actions {
   display: none;
 }

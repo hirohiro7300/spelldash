@@ -23,9 +23,14 @@ import { getMemoryWord } from "./memoryWords.js";
 import { getRankCheck } from "./masteryMeta.js";
 import { bindWordDetail } from "./wordDetail.js";
 
-import { initWordStore, findWord, promptOf } from "./wordStore.js";
+import { initWordStore, findWord, promptOf, getCategories, getWordsByCategory, isConceptWord } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
 import { logTypingStage } from "./funnelLog.js";
+
+// 一冊を終えるまでの目安（js/bookPace.js）は動的 import（静的な読み込みの表を増やさない）。語の表と並べて先に読み始め、描くときに待つ
+const bookPaceModule = import("./bookPace.js").catch(() => null);
+let bookPace = null; // 読めた module（読めなかったら null のまま。節は出さない）
+let bookPaceReady = false; // 単語ストアの初期化の後だけ描く（先に届いた同期で、語の無い表から「語の無い本」と読まない）
 
 const overviewElement = document.getElementById("overview");
 const typingElement = document.getElementById("typingMetrics");
@@ -128,12 +133,21 @@ initWordStore().then(() => {
     renderMastery();
     renderLearnedWords();
     renderOverview();
+    renderBookPace();
   });
   // 読み込みの間はタブより下とフッターを透明にしている（body[data-pending]。css/pages.css）。3 つのタブの中身を描き終えてから出す
+  // （目安の module を待ってから描くので、出すのはその後。読めなければ節を出さない）
+  return bookPaceModule.then((m) => {
+    bookPace = m;
+    bookPaceReady = true;
+    renderBookPace();
+  });
 }, () => {
   // 単語の表が読めなかった（初期化の失敗だけ。上の描画の失敗はここに来ない）: 週間レポートは今の記録で描く。後から届く知らせ（課金・修復・同期）でも描き直す
   weeklyReady = true;
   renderWeekly();
+  bookPaceReady = true; // 目安は語の表が無いと数えられないので節ごと出さない（見出しだけの空の札を残さない）
+  renderBookPace();
 }).finally(revealPendingPage); // 語が読めなかったときも出す（描いた then と同じタスクのマイクロタスク＝描画の前に走る）
 
 // Pro の状態が届いたら（ページ表示直後は未確定）、期間と修復の表示を合わせる。
@@ -151,6 +165,7 @@ window.addEventListener("spelldash:packs", (event) => {
     renderMastery();
     renderLearnedWords();
     renderCategoryProgress();
+    renderBookPace();
     window.dispatchEvent(new CustomEvent("spelldash:store-ready"));
   });
 });
@@ -174,6 +189,7 @@ window.addEventListener("spelldash:synced", () => {
   renderCategoryProgress();
   renderWeekly();
   renderRetention("retentionReport");
+  renderBookPace();
   renderWeakWords();
 });
 
@@ -395,6 +411,55 @@ function renderCategoryProgress() {
       window.location.href = "/";
     });
   });
+}
+
+// ===== 一冊を終えるまでの目安（今週タブ・保持率の直後。Batch 76） =====
+// 机の本（spelldash_category。無ければ「すべて」）の 1 冊だけ。本の名前・「残り N語」・目安（または待ちの文）・注。完了の本は「完了」。語の無い本は節ごと出さない。
+// 残りと完了は済み（覚えた・習得・知ってた。道と同じ）で数える。進みは端末の日次の記録（spelldash_book_pace。書くのはホームだけ）を読むだけ。
+// 計算と文は js/bookPace.js paceOf。数は <b>。読み上げはふつうの段落（aria-live なし。読み込みの間に描き終える）
+function renderBookPace() {
+  const section = document.getElementById("bookPace");
+  const container = document.getElementById("bookPaceReport");
+  if (!section || !container || !bookPaceReady) return;
+  let lines = [];
+  try {
+    lines = bookPace ? bookPaceLines(bookPace) : [];
+  } catch {
+    lines = [];
+  }
+  const empty = lines.length === 0;
+  section.toggleAttribute("data-tab-empty", empty);
+  const activeTab = document.querySelector(".stats-tab--active")?.dataset.tab;
+  section.hidden = empty || (activeTab != null && activeTab !== section.dataset.tab);
+  container.replaceChildren(...lines);
+}
+
+function bookPaceLines(m) {
+  const id = localStorage.getItem("spelldash_category") || "all";
+  const category = id === "all" ? { id, label: "すべて" } : getCategories().find((c) => c.id === id);
+  if (!category) return [];
+  const words = getWordsByCategory(id);
+  const unit = category.kind === "concept" || isConceptWord(words[0]) ? "枚" : "語"; // 概念カード（日本語で答える）の本は「枚」（js/pathView.js と同じ）
+  const stats = getWordStats();
+  const count = m.countBooks([{ id, ids: words.map((w) => w.id) }], (wid) => m.isDoneState(classifyWord(stats[wid])), { total: true })[id];
+  const record = m.readPace(localStorage.getItem(m.PACE_KEY)).b[id];
+  const result = m.paceOf({ total: count.total, done: count.done, rows: record?.p ?? [], start: record?.s ?? null, today: m.todayNo(), unit });
+  if (result.kind === "none") return [];
+  const para = (className, ...nodes) => {
+    const p = document.createElement("p");
+    p.className = className;
+    p.append(...nodes);
+    return p;
+  };
+  const bold = (value) => {
+    const b = document.createElement("b");
+    b.textContent = String(value);
+    return b;
+  };
+  return [
+    para("book-pace__name", category.label),
+    ...result.parts.map((part) => (part.note ? para("weekly__note book-pace__note", part.pre) : para("book-pace__line", part.pre, ...(part.num != null ? [bold(part.num)] : []), part.post ?? "")))
+  ];
 }
 
 // ===== 今月のまとめ（学習した日・覚えた・セット。値が 0 の項目は出さない） =====
