@@ -7,8 +7,10 @@
 //   それ以外（持ち主が別のアカウント・持ち主の印が無く同期がまだ・同期の失敗・壊れた XP）は頭文字のまま、ボタンの名前は「アカウントメニュー」、行は出さない。
 // 絵がまだ・読めない（404・オフライン）・遅い: 頭文字のまま（ボタンの名前と行はランクを出す）。壊れた画像の印を出さない（js/emblem.js の作法）。
 // 替える時機（nextShown）: このタブのプレイで上がったランクは、ランクの幕（js/game.js celebrateRankUp）を閉じた知らせ（spelldash:rank-up-closed）の後に替える。
-//   幕が出ている間とプレイ中（60 秒の回・腕試しは幕を回の終わりに控える）は段を替えない（同じ段なら Lv だけ新しく）。回の終わり（spelldash:game-end）は幕より先に
-//   来るので、それでは段を替えない。同期（spelldash:synced）・別のタブ（storage）・メニューを開く前は、幕とプレイの外ならそのまま替える（上がる・下がる）。
+//   幕が出ている間とプレイ中（60 秒の回・腕試しは幕を回の終わりに控える）は段を替えない（同じ段なら Lv だけ新しく）。回の終わり（spelldash:game-end）は控えた幕より
+//   先に来るので、後へ回して（setTimeout 0）幕が出ていないことを見てから替える（幕は同じタスクで足される: js/game.js endStudySession・endChallenge・stopGame）。
+//   回の頭（spelldash:game-start）も替えてよい（控えはもう無い。restartGame は幕を出してから始める）。紋章の処理が回の途中に届いたとき（その回の間は頭文字）は、
+//   ここで出す。同期（spelldash:synced）・別のタブ（storage）・メニューを開く前は、幕とプレイの外ならそのまま替える（上がる・下がる）。
 import { getLevelState, getTotalXp, LEARNING_RANKS } from "./level.js";
 import { emblemSrc } from "./emblem.js";
 
@@ -124,12 +126,12 @@ export function setAccountSession(session) {
   refreshAccountEmblem();
 }
 
-// 描き直す。opts.announced = 幕を閉じた知らせのランク、opts.levelOnly = 段は替えない（回の終わり: 控えた幕がまだ出ていないことがある）、opts.retry = 読めなかった絵も読み直す
-export function refreshAccountEmblem({ announced = null, levelOnly = false, retry = false } = {}) {
+// 描き直す。opts.announced = 幕を閉じた知らせのランク、opts.settled = 回の終わり・頭（プレイ中の印を見ない。幕が出ていれば替えない）、opts.retry = 読めなかった絵も読み直す
+export function refreshAccountEmblem({ announced = null, settled = false, retry = false } = {}) {
   if (typeof document === "undefined") return;
   if (retry) failedSrc = "";
   const next = account
-    ? nextShown({ current: currentState(), shown, curtainOpen: !!document.querySelector(".rank-up"), running: levelOnly || isRunning(), announced })
+    ? nextShown({ current: currentState(), shown, curtainOpen: !!document.querySelector(".rank-up"), running: !settled && isRunning(), announced })
     : null;
   render(next);
 }
@@ -137,7 +139,8 @@ export function refreshAccountEmblem({ announced = null, levelOnly = false, retr
 function render(state) {
   shown = state;
   const button = document.getElementById("avatarButton");
-  if (button) button.setAttribute("aria-label", menuLabel(state));
+  const name = menuLabel(state);
+  if (button && button.getAttribute("aria-label") !== name) button.setAttribute("aria-label", name); // 同じなら書かない（焦点のたびに名前の変化を起こさない）
   renderRow(state);
   renderEmblem(emblemUrl(state));
 }
@@ -239,8 +242,10 @@ function installListeners() {
     later(() => refreshAccountEmblem({ announced: announced ?? currentState() }));
   });
   window.addEventListener("spelldash:synced", () => refreshAccountEmblem());
-  // 回の終わり: 段は替えない（控えた幕は game-end の後に足される）。Lv だけ新しく（Challenge は game-end の後に XP を足すので後へ回す）
-  window.addEventListener("spelldash:game-end", () => setTimeout(() => refreshAccountEmblem({ levelOnly: true }), 0));
+  // 回の終わり: 後へ回す。控えた幕・Challenge の幕と XP（js/game.js endChallenge は game-end の後に足す）は同じタスクで入るので、幕が出ていれば替えない
+  window.addEventListener("spelldash:game-end", () => setTimeout(() => refreshAccountEmblem({ settled: true }), 0));
+  // 回の頭: 控えは無い（restartGame の控えた幕は始める前に DOM に入る）。回を始める処理と同じタスクで描かない
+  window.addEventListener("spelldash:game-start", () => setTimeout(() => refreshAccountEmblem({ settled: true }), 0));
   window.addEventListener("storage", (event) => {
     if (event.key === null || event.key === XP_KEY || event.key === OWNER_KEY) refreshAccountEmblem();
   });
