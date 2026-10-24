@@ -5578,7 +5578,9 @@ console.log("bookshelf:");
     // 背を押す → 机 → スタート → 盤面の問いはその本の語（訳がその語の訳・答えを開くとその語）
     const askOf = async (id) => {
       const pressed = await clickIf(page, `#shelfRun button.spine[data-book="${id}"]`);
-      const onDesk = pressed && (await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === id && (await page.evaluate(() => document.activeElement?.id === "pathStart")), 6000));
+      // 机の題が押した本に替わるまで待つ（前の本から戻った直後は焦点がもうスタートにあり、題の描き直しが少し後になる。Batch 75 の全件で揺れた）
+      const wantTitle = `プログラミングの英単語 ${id.slice(-1)}`;
+      const onDesk = pressed && (await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_category"))) === id && (await page.evaluate((t) => document.activeElement?.id === "pathStart" && (document.querySelector("#pathHead .path__title")?.textContent ?? "").includes(t), wantTitle)), 6000));
       const desk = await page.evaluate(() => ({ title: document.querySelector("#pathHead .path__title")?.textContent ?? "", kicker: document.querySelector("#pathHead .path__kicker")?.textContent ?? "", meta: document.querySelector("#pathHead .path__meta")?.textContent ?? "" }));
       if (!onDesk) return { id, pressed, onDesk, desk };
       await page.click("#pathStart");
