@@ -1,21 +1,23 @@
 // ===== 一冊を終えるまでの目安（学習データ「今週」タブの 1 枚。Batch 76） =====
-// 冊（カテゴリ・「すべて」・マイ単語帳）ごとに「済みの語の数」の日ごとの純増を、この端末だけに残す（spelldash_book_pace。送らない・同期しない）。
-// 済み = 覚えた・習得・知ってた（js/pathView.js isRemembered と同じ。js/categoryProgress.js classifyWord が learning・mastered・known）。
-// 既存の記録（語ごとの最後の ○・× の日時・直近 8 件の history・保持率の f・成長ログ）からは冊ごとの日の増減を戻せないので、新しく数える（創業者の決定 2026-10-24）。
+// 冊（カテゴリ・「すべて」・マイ単語帳）ごとに、その冊を机にした Study の回で「初めて済みになった語」の数を日ごとに、この端末だけに残す
+// （spelldash_book_pace。送らない・同期しない）。済み = 覚えた・習得・知ってた（js/pathView.js isRemembered と同じ。js/categoryProgress.js classifyWord が
+// learning・mastered・known）。既存の記録（語ごとの最後の ○・× の日時・直近 8 件の history・保持率の f・成長ログ）からは冊ごとの日の進みを戻せないので、
+// 新しく数える（創業者の決定 2026-10-24）。
 //
-// 鍵 spelldash_book_pace = { v: 1, at: 最後に写した日, b: { [冊 id]: { n: そのときの済みの数, s: 記録を始めた日, p: [[日, その日の純増], ...], off?: 1 } } }
-//   日はローカル暦日の日番号（js/retentionCalc.js dayNoOf。端末の時間帯の 0 時で区切る。ms で引かない）。
-//   p は 0 でない日だけ・直近 14 日（今日−13〜今日）だけ持つ。off = 前に写したとき読み込まれていなかった冊（外したパック）。
-// 写し方（observePace）:
-//   - 数える（count）: Study の回の終わり（と回の途中で裏に回った・離れたとき）。**その回の本（机の本）だけ**、前の写しとの差をその日の p に足す（純増。
-//     × で外れた語は引くので、同じ日に 済み → 未済み → 済み の語は 0）。ほかの冊は基準 n を置き直すだけ（共有の語がほかの本で済みになった変化は加えない）
-//   - 置き直す（rebase）: ホームの読み込み・回の始め・同期・語の読み直し・回の外で裏に回ったとき。n を今の値にするだけで進みに入れない
-//     （同期で届いた変化・パックの出し入れ・版の変化・Battle など本に属さない変化）
-//   - 初めて見た冊・外していた冊は基準だけ。時計が戻った（今日 < at）ときは数えずに置き直す。今日より後の日の行は読まない（書くとき捨てる）
+// 鍵 spelldash_book_pace = { v: 1, at: 最後に写した日, b: { [冊 id]: { s: 記録を始めた日, p: [[日, その日に初めて済みになった語の数], ...] } } }
+//   日はローカル暦日の日番号（js/retentionCalc.js dayNoOf。端末の時間帯の 0 時で区切る。ms で引かない）。p は 0 でない日だけ・直近 14 日（今日−13〜今日）だけ。
+//   s は今日より後にしない。窓の中に s より前の行があれば、いちばん早い行の日にする（時計が進んでいた端末・壊れた値）。
+// 数え方（創業者の決定 4・5、反証役のレビュー B1）:
+//   - Study の回の始めに、机の本の語のうち一度も済みになったことの無い語（自力正解・知ってた・習得のどれも無い: neverDone）の id をメモリーに控える。
+//   - 回の終わり（と回の途中で裏に回った・離れたとき・回を始め直したとき）に、そのうち今済みで、自力正解がこの回の始めより後の語の数を、
+//     その本の今日の行に足す（数えた語は控えから外す。二重に足さない）。
+//   - 外れて戻った語（一度済みになった語）・同期で届いた語・別の本の回・Challenge・Daily・Battle で済みになった語は数えない。× で引かない。
+//   - 同期の取り込みの間（js/sync.js isPulling。読むだけ）は数えない（控えは残し、取り込みの後に数える）。時計が戻った（今日 < at）ときの写しは数えない。
 // 書くのはホーム（js/main.js が語の読み込みの後に watchBookPace を動的 import で呼ぶ）だけ。答えの道（入力完了から次の問題まで）には足さない:
-// 回の始め・終わりの知らせ（spelldash:game-start・game-end）は setTimeout 0 で、そのタスクの後に写す。学習データのページは読むだけ。
+// 回の始めの控えは机の本の語だけ（id と 3 つの欄を見るだけ）、保存は手が空いたとき（requestIdleCallback。無ければ setTimeout）。
+// 裏に回ったとき・離れるときだけ、その場で書く（裏のタブは pagehide なしで捨てられうる）。学習データのページは読むだけ。
 //
-// 目安（paceOf）: 残り R = 冊の語（id で重複を除く）− 済み。進み G = 直近 14 暦日の p の和。進んだ日 = p > 0 の日。
+// 目安（paceOf）: 残り R = 冊の語（id で重複を除く）− 済み。進み G = 直近 14 暦日の行の和。進んだ日 = 行が 1 以上の日。
 //   1 日あたり = G ÷ D（D = 記録を始めてからの暦日数。今日を含む・上限 14。学習した日数で割らない）。
 //   語が 0 → 出さない。R = 0 → 完了。進んだ日 ≥ 3・G > 0・日数 ≤ 365 → 「約 N 日」（N = R×D÷G の四捨五入を整数で。下限 1）。それ以外 → 待ちの文。
 // 上の純な関数の import は js/retentionCalc.js（import なし）だけ。Node から直に読む（scripts/test-pace.mjs）。
@@ -34,7 +36,6 @@ const DONE_STATES = new Set(["learning", "mastered", "known"]); // js/pathView.j
 
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 const emptyBooks = () => Object.create(null); // 冊 id に "__proto__" などが来ても型を変えない
-const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj ?? {}, key);
 
 export function emptyPace() {
   return { v: VERSION, at: null, b: emptyBooks() };
@@ -51,6 +52,30 @@ export function isDoneState(state) {
   return DONE_STATES.has(state);
 }
 
+// 一度も済みになったことが無い語か: 自力正解の日時が無く、知ってたでも習得でもない（済みの 3 つ〔覚えた・知ってた・習得〕は、どれもこれらの欄が無いとならない）
+export function neverDone(stat) {
+  return !stat || (!stat.lastRecallSuccessAt && !stat.knownOnSight && !stat.mastered);
+}
+
+// 回の始めの控え: 冊の語のうち一度も済みになったことの無い語の id
+export function freshIds(ids, stats) {
+  const out = new Set();
+  for (const id of ids) if (neverDone(stats?.[id])) out.add(id);
+  return out;
+}
+
+// 回で初めて済みになった語: 控えのうち今済み（isDone）で、自力正解の日時が回の始め（since。ms）より後の語。
+// 日時で見るのは、同期で届いた別の端末の古い答えを、この回の答えと数えないため
+export function gainedIds(fresh, stats, isDone, since = 0) {
+  const out = [];
+  for (const id of fresh) {
+    const st = stats?.[id];
+    if (!st || !isDone(id)) continue;
+    if (Date.parse(st.lastRecallSuccessAt ?? "") >= since) out.push(id);
+  }
+  return out;
+}
+
 // p の行を整える: [日, 0 でない整数] だけ・同じ日は和・0 になった日は捨てる・日の昇順。lo〜hi の外は捨てる
 function cleanRows(rows, lo = 0, hi = Infinity) {
   const days = new Map();
@@ -62,9 +87,17 @@ function cleanRows(rows, lo = 0, hi = Infinity) {
   return [...days].filter(([, n]) => n !== 0).sort((a, b) => a[0] - b[0]);
 }
 
-const entry = (n, s, p, off = false) => ({ n, s, p, ...(off ? { off: 1 } : {}) });
+// 記録を始めた日: 今日より後にしない。今日までの行のいちばん早い日より後にしない。読めなければ null
+export function clampStart(start, rows, today) {
+  if (!isCount(start)) return null;
+  let s = isCount(today) ? Math.min(start, today) : start;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (Array.isArray(row) && isCount(row[0]) && (!isCount(today) || row[0] <= today)) s = Math.min(s, row[0]);
+  }
+  return s;
+}
 
-// 保存の文字列（または読んだ値）→ 整えた記録。読めない・形が違う・版が違う → 空（次の写しで基準を置き直す）。壊れた冊の行は 1 つずつ捨てる
+// 保存の文字列（または読んだ値）→ 整えた記録。読めない・形が違う・版が違う → 空（次の写しで置き直す）。壊れた冊の行は 1 つずつ捨てる
 export function readPace(raw) {
   let data = raw;
   if (typeof raw === "string") {
@@ -80,8 +113,8 @@ export function readPace(raw) {
   const books = data.b && typeof data.b === "object" && !Array.isArray(data.b) ? data.b : {};
   for (const id of Object.keys(books)) {
     const e = books[id];
-    if (!id || !e || typeof e !== "object" || !isCount(e.n)) continue;
-    out.b[id] = entry(e.n, isCount(e.s) ? e.s : null, cleanRows(e.p), e.off === 1);
+    if (!id || !e || typeof e !== "object" || Array.isArray(e)) continue;
+    out.b[id] = { s: isCount(e.s) ? e.s : null, p: cleanRows(e.p) };
   }
   return out;
 }
@@ -104,47 +137,39 @@ export function countBooks(books, isDone, { total = false } = {}) {
   return out;
 }
 
-// 1 回の写し。state = readPace の値（書き換えない）、doneById = { [冊]: 済みの数 }（今読み込んでいる冊）、
-// mode = "count"（book = その回の本。その本にだけ差を足す）| "rebase"。新しい記録を返す
-export function observePace(state, doneById, { today, mode = "rebase", book = null } = {}) {
+// 1 回の写し。state = readPace の値（書き換えない）。books = 今読み込んでいる冊の id（無い冊は s = 今日で行を置く。null なら冊の一覧は見ない）。
+// gains = [{ book, n }]（その回の本で初めて済みになった語の数。1 以上の整数だけ足す）。新しい記録を返す
+export function observePace(state, { books = null, today, gains = [] } = {}) {
   if (!isCount(today)) return state;
   const prev = state && state.b ? state : emptyPace();
   const lo = today - (PACE_DAYS - 1);
-  // 時計が戻った（前に写した日より今日が前）: その日の進みには数えない（置き直す）
-  const count = mode === "count" && prev.at !== null && today >= prev.at;
+  const loaded = Array.isArray(books) ? new Set(books.filter((id) => typeof id === "string" && id)) : null;
+  // 時計が戻った（前に写した日より今日が前）: その写しの進みは足さない（at は今日に合わせるので、次の写しからは足す）
+  const count = prev.at === null || today >= prev.at;
   const next = { v: VERSION, at: today, b: emptyBooks() };
-  const seen = new Set();
-  for (const id of Object.keys(doneById ?? {})) {
-    const done = doneById[id];
-    if (!isCount(done)) continue;
-    seen.add(id);
-    const e = prev.b[id];
-    if (!e) {
-      next.b[id] = entry(done, today, []); // 初めて見た冊: 基準だけ（記録を始めた日 = 今日）
-      continue;
-    }
-    const p = cleanRows(e.p, lo, today);
-    const start = isCount(e.s) ? e.s : today;
-    // 外していた冊は数えずに置き直す。数えるのはその回の本だけ
-    const delta = count && id === book && !e.off ? done - e.n : 0;
-    next.b[id] = entry(done, start, delta ? cleanRows([...p, [today, delta]], lo, today) : p);
-  }
-  // 今読み込んでいない冊（外したパック）: 窓の中に進みがあれば off の印を付けて残す（次に見たときは基準を置き直す）。進みが無ければ捨てる。
-  // 数が読めなかった冊（doneById にあるが数でない）は、そのまま残す
   for (const id of Object.keys(prev.b)) {
-    if (seen.has(id)) continue;
     const e = prev.b[id];
     const p = cleanRows(e.p, lo, today);
-    if (has(doneById, id)) next.b[id] = entry(e.n, e.s, p, !!e.off);
-    else if (p.length) next.b[id] = entry(e.n, e.s, p, true);
+    if (loaded && !loaded.has(id) && p.length === 0) continue; // 読み込んでいない冊（外したパック）は、窓の中に進みがあるときだけ残す
+    next.b[id] = { s: clampStart(e.s, p, today) ?? today, p };
+  }
+  if (loaded) for (const id of loaded) if (!next.b[id]) next.b[id] = { s: today, p: [] }; // 初めて見た冊: 記録を始めた日 = 今日
+  if (count) {
+    for (const g of Array.isArray(gains) ? gains : []) {
+      if (!g || typeof g.book !== "string" || !g.book || !Number.isInteger(g.n) || g.n <= 0) continue;
+      const e = next.b[g.book] ?? (next.b[g.book] = { s: today, p: [] });
+      e.p = cleanRows([...e.p, [today, g.n]], lo, today);
+    }
   }
   return next;
 }
 
-// 割る日数: 記録を始めてからの暦日数（今日を含む）。上限 14・下限 1。始めた日が読めなければ 14（短く見せない側）
-export function paceSpan(start, today) {
-  if (!isCount(start) || !isCount(today)) return PACE_DAYS;
-  return Math.min(PACE_DAYS, Math.max(1, today - start + 1));
+// 割る日数: 記録を始めてからの暦日数（今日を含む）。上限 14・下限 1。始めた日は今日より後にせず、窓の中の行より後にしない。読めなければ 14（短く見せない側）
+export function paceSpan(start, today, rows = []) {
+  if (!isCount(today)) return PACE_DAYS;
+  const s = clampStart(start, cleanRows(rows, today - (PACE_DAYS - 1), today), today);
+  if (s === null) return PACE_DAYS;
+  return Math.min(PACE_DAYS, Math.max(1, today - s + 1));
 }
 
 // 日数: R×D÷G の四捨五入（0.5 は上）を整数だけで。R÷(G÷D) は浮動小数で 1 日ずれる組がある。1 日未満は 1 日
@@ -181,7 +206,7 @@ export function paceOf({ total, done, rows = [], start = null, today, unit = "�
       if (n > 0) active++;
     }
   }
-  const span = paceSpan(start, today);
+  const span = paceSpan(start, today, rows);
   const days = gain > 0 ? roundDays(remaining, gain, span) : null;
   const base = { remaining, gain, active, span, days, unit };
   if (active < PACE_MIN_ACTIVE || gain <= 0 || days > PACE_MAX_DAYS) {
@@ -208,61 +233,90 @@ export function paceText(result) {
 }
 
 // ===== ホームの書き手（ブラウザだけ） =====
-// 語の表（js/wordStore.js）・語の記録（js/storage.js）・分類（js/categoryProgress.js）はホームで読み込み済みなので動的 import（同じ module を使う）。
-// 冊の語は js/wordStore.js getWordsByCategory と同じ条件（カテゴリが同じ・kanjiOnly を除く）で、全部の語を 1 回だけ走って分ける（冊ごとに全語を走らない）
+// 語の表（js/wordStore.js）・語の記録（js/storage.js）・分類（js/categoryProgress.js）・同期（js/sync.js isPulling。読むだけ）はホームで読み込み済みなので
+// 動的 import（同じ module を使う）
 const DESK_KEY = "spelldash_category"; // 机の本（js/pathView.js と同じ鍵。無ければ「すべて」）
 let watching = false;
 
-function currentDone({ ws, st, cp }) {
-  const stats = st.getWordStats();
-  const groups = new Map();
-  for (const c of ws.getCategories()) if (c.id !== ws.MY_CATEGORY.id) groups.set(c.id, []);
-  for (const w of ws.getAllWords()) {
-    if (w.kanjiOnly) continue;
-    groups.get(w.category)?.push(w.id);
-  }
-  const books = [...groups].map(([id, ids]) => ({ id, ids }));
-  books.push({ id: "all", ids: ws.getWordsByCategory("all").map((w) => w.id) });
-  books.push({ id: ws.MY_CATEGORY.id, ids: ws.getWordsByCategory(ws.MY_CATEGORY.id).map((w) => w.id) });
-  return countBooks(books, (id) => isDoneState(cp.classifyWord(stats[id])));
-}
+// 手が空いたとき（無ければ次のタスク）
+const idle = (fn) => (typeof requestIdleCallback === "function" ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 0));
 
-function record(deps, mode, book = null) {
-  try {
-    const today = todayNo();
-    if (today === null) return;
-    const raw = localStorage.getItem(PACE_KEY);
-    const next = observePace(readPace(raw), currentDone(deps), { today, mode, book });
-    const text = JSON.stringify(next);
-    if (text !== raw) localStorage.setItem(PACE_KEY, text);
-  } catch {
-    // 目安は装飾: 保存できなくても学習は止めない（画面は待ちの文になるだけ）。ほかの鍵は消さない
-  }
-}
-
-// ホームで 1 回だけ呼ぶ（js/main.js。語の読み込みの後）。読み込んだ時点で置き直す。
-// Study の回の始めに置き直してその回の本を覚え、回の終わり（と回の途中で裏に回った・離れたとき）にその本だけ数える。回の外の写しは置き直すだけ
+// ホームで 1 回だけ呼ぶ（js/main.js。語の読み込みの後）
 export function watchBookPace() {
   if (watching || typeof window === "undefined") return Promise.resolve(false);
   watching = true;
-  return Promise.all([import("./wordStore.js"), import("./storage.js"), import("./categoryProgress.js")])
-    .then(([ws, st, cp]) => {
-      const deps = { ws, st, cp };
-      let session = null; // その回の本（Study の回の間だけ）
-      const later = (fn) => setTimeout(fn, 0);
-      const now = () => (session ? record(deps, "count", session) : record(deps, "rebase"));
-      record(deps, "rebase");
+  return Promise.all([import("./wordStore.js"), import("./storage.js"), import("./categoryProgress.js"), import("./sync.js")])
+    .then(([ws, st, cp, sy]) => {
+      let session = null; // Study の回の間: { book, fresh: 一度も済みになったことの無い語, since: 回の始めの時刻 }
+      let pending = null; // 同期の取り込みの間に終わった回（取り込みの後に数える）
+      const queue = []; // まだ書いていない進み [{ book, n }]
+      const pulling = () => {
+        try {
+          return !!sy.isPulling?.();
+        } catch {
+          return false;
+        }
+      };
+      const books = () => [...ws.getCategories().map((c) => c.id), "all"]; // 読み込んでいるカテゴリ（マイ単語帳を含む）と「すべて」
+      // その回で初めて済みになった語を数えて控えから外す（メモリーだけ。書くのは write）
+      const take = (s) => {
+        const stats = st.getWordStats();
+        const ids = gainedIds(s.fresh, stats, (id) => isDoneState(cp.classifyWord(stats[id])), s.since);
+        for (const id of ids) s.fresh.delete(id);
+        if (ids.length) queue.push({ book: s.book, n: ids.length });
+      };
+      const write = () => {
+        try {
+          const today = todayNo();
+          if (today === null) return;
+          const raw = localStorage.getItem(PACE_KEY);
+          const next = observePace(readPace(raw), { books: books(), today, gains: queue.splice(0) });
+          const text = JSON.stringify(next);
+          if (text !== raw) localStorage.setItem(PACE_KEY, text);
+        } catch {
+          // 目安は装飾: 保存できなくても学習は止めない（画面は待ちの文になるだけ）。ほかの鍵は消さない
+        }
+      };
+      // 終わった回（と始め直した回）を数える。取り込みの間は控えておく（force: 次の回を始める前なので待たずに数える）
+      const settle = (s, force = false) => {
+        if (!s) return;
+        if (!force && pulling()) {
+          pending = s;
+          return;
+        }
+        if (pending === s) pending = null;
+        take(s);
+      };
+      const flushPending = (force = false) => {
+        if (pending) settle(pending, force);
+      };
+      write(); // 読み込んだ冊の行を置く
       window.addEventListener("spelldash:game-start", (event) => {
-        session = event.detail?.mode === "study" ? localStorage.getItem(DESK_KEY) || "all" : null;
-        later(() => record(deps, "rebase")); // 回の前の変化（Challenge・ほかのページ）はこの回に入れない
+        flushPending(true);
+        settle(session, true); // 終わりの知らせの無いまま始め直した回（苦手だけ・机の本の替え）: 先にその本を数える
+        const book = localStorage.getItem(DESK_KEY) || "all";
+        session = event.detail?.mode === "study" ? { book, fresh: freshIds(ws.getWordsByCategory(book).map((w) => w.id), st.getWordStats()), since: Date.now() } : null;
+        idle(write);
       });
       window.addEventListener("spelldash:game-end", () => {
-        const book = session;
+        settle(session);
         session = null;
-        later(() => (book ? record(deps, "count", book) : record(deps, "rebase"))); // 完了の画面を描いた後のタスクで
+        idle(write); // 完了の画面を描いた後に書く
       });
-      for (const type of ["spelldash:synced", "spelldash:store-ready", "spelldash:mywords"]) window.addEventListener(type, () => later(() => record(deps, "rebase")));
-      // 裏に回った・離れる: その場で（裏のタブは pagehide なしで捨てられうる。js/masteryMeta.js と同じ作法）。回の途中ならその回の本を数える
+      for (const type of ["spelldash:synced", "spelldash:store-ready", "spelldash:mywords"]) {
+        window.addEventListener(type, () => {
+          flushPending();
+          idle(write);
+        });
+      }
+      // 裏に回った・離れる: その場で（裏のタブは pagehide なしで捨てられうる。js/masteryMeta.js と同じ作法）。回の途中ならその回の分を数える（取り込みの間は数えない）
+      const now = () => {
+        if (!pulling()) {
+          flushPending();
+          if (session) take(session);
+        }
+        write();
+      };
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") now();
       });
