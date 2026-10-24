@@ -252,6 +252,7 @@ function updateAuthDisplay(session) {
     accountUserElement.hidden = true;
     userStatusElement.textContent = "";
     closeDropdown(accountUserElement, avatarButtonElement);
+    updateAccountEmblem(null);
     return;
   }
 
@@ -261,8 +262,55 @@ function updateAuthDisplay(session) {
   accountGuestElement.hidden = true;
   accountUserElement.hidden = false;
   userStatusElement.textContent = email;
-  headerAvatarElement.textContent = email.charAt(0).toUpperCase() || "?";
+  setAvatarLetter(email.charAt(0).toUpperCase() || "?");
   closeDropdown(accountGuestElement, loginToggleElement);
+  updateAccountEmblem(session);
+}
+
+// 頭文字は #headerAvatar の中の span の字だけを替える（中身を丸ごと書き換えると、紋章の img が消える: 認証の知らせはトークンの更新・タブに戻ったときにも来る）
+function setAvatarLetter(letter) {
+  let el = headerAvatarElement.querySelector(".avatar__letter");
+  if (!el) {
+    for (const node of [...headerAvatarElement.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.remove(); // HTML の「?」
+    el = document.createElement("span");
+    el.className = "avatar__letter";
+    el.setAttribute("aria-hidden", "true"); // 名前はボタンの aria-label
+    headerAvatarElement.prepend(el);
+  }
+  el.textContent = letter;
+}
+
+// ===== アカウントのアイコンの紋章（今の学習のランク。js/accountEmblem.js） =====
+// ログイン中だけ、読み込みの後の手の空いたときに動的 import で読む（最初の描画・LCP の絵と競らない。静的 import を足すと各ページの modulepreload が変わる）。
+// 読んだ後は、認証の知らせのたびにセッションを渡す（同じ人なら状態を捨てずに比べ直すだけ。幕とプレイの間は段を替えない: js/accountEmblem.js setAccountSession）
+let accountEmblem = null;
+let accountEmblemQueued = false;
+let accountSession = null;
+
+function updateAccountEmblem(session) {
+  accountSession = session;
+  if (accountEmblem) {
+    accountEmblem.setAccountSession(session);
+    return;
+  }
+  if (!session || accountEmblemQueued) return;
+  accountEmblemQueued = true;
+  afterLoadIdle(() => {
+    import("./accountEmblem.js")
+      .then((mod) => {
+        accountEmblem = mod;
+        mod.setAccountSession(accountSession);
+      })
+      .catch(() => {
+        accountEmblemQueued = false; // 読めなかった（オフライン等）: 頭文字のまま。次の認証の知らせで読み直す
+      });
+  });
+}
+
+function afterLoadIdle(run) {
+  const idle = () => (typeof requestIdleCallback === "function" ? requestIdleCallback(run, { timeout: 2000 }) : setTimeout(run, 1200));
+  if (document.readyState === "complete") idle();
+  else window.addEventListener("load", idle, { once: true });
 }
 
 // initialSync の戻り値（js/sync.js）: "changed"（取り込んだ）／"same"（変化なし）／"cancelled"（別アカウントの記録の置き換えを断った）／false（未ログイン・このタブで同期済み）
@@ -288,6 +336,9 @@ async function runInitialSync(options = {}) {
     if (Object.keys(getWordStats()).length === 0) {
       showAuthMessage("記録を取り込めなかった。開き直すともう一度試す。", "error", { scope: "user" });
     }
+  } finally {
+    // 結果によらず紋章を描き直す（取り込みの失敗・変化なしでは spelldash:synced が来ない。置き換えた後は持ち主の印が替わる）
+    accountEmblem?.refreshAccountEmblem();
   }
 }
 
