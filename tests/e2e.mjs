@@ -12843,6 +12843,478 @@ console.log("rank（学習のランク）:");
   }
 }
 
+// ===== 9.956 アカウントの紋章（Batch 75: ログイン中の人のアカウントのアイコンを今の学習のランクの紋章に。js/accountEmblem.js・js/auth.js・js/game.js の spelldash:rank-up-closed・css/layout.css と brand.css の .avatar・.account-menu__rank）: 7 ページ・未ログインとアプリは読まない・読み込みの順と要求の数・CLS・読めない／遅い絵・決まらないとき・同期・幕を閉じた後・認証の知らせ・ログアウト・キーボードと読み上げ・幅と昼夜 =====
+console.log("account emblem（アカウントの紋章）:");
+{
+  const EMB = "/assets/images/emblems/";
+  const xpForLv = (lv) => { let x = 0; for (let l = 1; l < lv; l++) x += 100 + (l - 1) * 50; return x; }; // js/level.js xpToNext の和
+  const PAGES7 = ["/index.html", "/stats.html", "/list.html", "/battle.html", "/profile.html", "/pro.html", "/admin.html"];
+  // ログイン済みで端末の持ち主が本人（ランクが決まる形）。既定の XP は Lv.15 = 銀 2。頭文字はスタブの test@example.com の「T」
+  const LOGIN = { spelldash_test_session: "1", spelldash_owner: "test-user" };
+  const seedA = (xp = xpForLv(15), extra = {}) => ({ spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), ...LOGIN, spelldash_xp: String(xp), ...extra });
+  // Challenge の時間切れ（?t=2・何も打たない）でランクを上げる種（9.955 の seedE と同じ）
+  const seedC = (xp, extra = {}) => seedA(xp, { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_level_boost: "2", ...extra });
+  // アバターの様子: 見えている img（透明でない）・頭文字・ボタンの名前・メニューの一番上の行（見える字と読み上げ）・箱
+  const AV = () => {
+    const btn = document.getElementById("avatarButton"), av = document.getElementById("headerAvatar"), user = document.getElementById("accountUser");
+    if (!btn || !av) return null;
+    const seen = (i) => { const s = getComputedStyle(i); return s.opacity !== "0" && s.visibility !== "hidden" && s.display !== "none"; };
+    const imgs = [...av.querySelectorAll("img")];
+    const img = imgs.find(seen) ?? null;
+    const letterEl = av.querySelector(".avatar__letter");
+    const letter = (letterEl ?? av).textContent.trim();
+    const row = document.getElementById("accountRank");
+    const rowOn = !!row && !row.hidden;
+    const ab = av.getBoundingClientRect(), ib = img?.getBoundingClientRect(), bb = btn.getBoundingClientRect();
+    return {
+      user: !!user && !user.hidden, label: btn.getAttribute("aria-label"), n: imgs.length,
+      src: img ? new URL(img.src).pathname : null, nw: img?.naturalWidth ?? 0,
+      size: ib ? `${Math.round(ib.width)},${Math.round(ib.height)}` : null, box: `${Math.round(ab.width)},${Math.round(ab.height)}`,
+      btn: `${Math.round(bb.left)},${Math.round(bb.top)},${Math.round(bb.width)},${Math.round(bb.height)}`,
+      inside: !!ib && ib.left >= ab.left - 0.5 && ib.right <= ab.right + 0.5 && ib.top >= ab.top - 0.5 && ib.bottom <= ab.bottom + 0.5,
+      centered: !!ib && Math.abs((ib.left + ib.right) / 2 - (ab.left + ab.right) / 2) <= 1 && Math.abs((ib.top + ib.bottom) / 2 - (ab.top + ab.bottom) / 2) <= 1,
+      alt: img?.getAttribute("alt") ?? null, imgHidden: img?.getAttribute("aria-hidden") ?? null, prio: img?.getAttribute("fetchpriority") ?? null,
+      letter, letterShown: letterEl ? getComputedStyle(letterEl).visibility !== "hidden" : letter !== "",
+      broken: imgs.some((i) => i.complete && i.naturalWidth === 0 && seen(i)),
+      row: rowOn ? (row.querySelector('[aria-hidden="true"]') ?? row).textContent.trim() : null,
+      rowSr: rowOn ? row.querySelector(".sr-only")?.textContent.trim() ?? null : null,
+      rowFirst: rowOn && row.parentElement?.id === "accountMenu" && row.parentElement.firstElementChild === row,
+      rowItem: !!row?.classList.contains("account-menu__item"),
+      header: document.querySelector(".site-header")?.offsetHeight ?? 0
+    };
+  };
+  const avatarOf = (page) => page.evaluate(AV);
+  const shownIs = (page, file, timeout = 8000) => waitUntil(async () => { const a = await avatarOf(page); return a?.src === `${EMB}${file}` && a.nw > 0; }, timeout);
+  // 紋章（/assets/images/emblems/）と js/accountEmblem.js の要求を数える
+  const watchReqs = (page) => {
+    page.embReqs = [];
+    page.modReqs = 0;
+    page.on("request", (r) => { const u = new URL(r.url()).pathname; if (u.startsWith(EMB)) page.embReqs.push(u.slice(EMB.length)); if (u.endsWith("/js/accountEmblem.js")) page.modReqs++; });
+  };
+  // 毎コマ、アバターの見えている絵・ボタンの名前・幕（.rank-up）の有無が替わったら控える（幕より先に替わらないかを見る）
+  const AVLOG = () => {
+    window.__avlog = [];
+    let last = "";
+    const tick = () => {
+      const av = document.getElementById("headerAvatar"), btn = document.getElementById("avatarButton");
+      if (av && btn) {
+        const img = [...av.querySelectorAll("img")].find((i) => getComputedStyle(i).opacity !== "0");
+        const src = img ? new URL(img.src).pathname.split("/").pop() : null;
+        const curtain = !!document.querySelector(".rank-up");
+        const row = document.getElementById("accountRank");
+        const rowText = row && !row.hidden ? (row.querySelector('[aria-hidden="true"]') ?? row).textContent.trim() : null;
+        const key = `${src}|${btn.getAttribute("aria-label")}|${curtain}|${rowText}`;
+        if (key !== last) { last = key; window.__avlog.push({ t: Math.round(performance.now()), src, label: btn.getAttribute("aria-label"), curtain, row: rowText }); }
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+  const noSW = (page) => page.addInitScript(() => { try { navigator.serviceWorker.register = () => new Promise(() => {}); } catch { /* SW の無い環境 */ } });
+  const label = (name) => `アカウントメニュー（${name}）`;
+
+  // ---- (1) 7 ページ（1200 昼）: 紋章・頭文字は隠れる・ボタンの名前・メニューの一番上の行・絵は飾り・低い優先度。Battle の RP（Gold）・Pro は出さない ----
+  {
+    const rows = [];
+    const battle = JSON.stringify({ rp: 250, wins: 3, losses: 1, draws: 0, currentWinStreak: 1, bestWinStreak: 2 }); // RP 250 = Gold（js/battleConfig.js）。学習のランクとは別
+    const pro = { spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: new Date(Date.now() + 20 * 86400000).toISOString(), cancel_at_period_end: false }) };
+    for (const [p, extra] of [...PAGES7.map((p) => [p, { spelldash_battle: battle }]), ["/index.html", pro], ["/stats.html", pro]]) {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(xpForLv(15), extra) });
+      watchReqs(page);
+      await page.goto(BASE + p, { waitUntil: "load" });
+      await shownIs(page, "silver-2-sm.webp");
+      const a = await avatarOf(page);
+      const ok = !!a && a.user && a.src === `${EMB}silver-2-sm.webp` && a.nw === 96 && a.size === "32,32" && a.box === "38,38" && a.inside && a.centered && a.alt === "" && a.imgHidden === "true" && a.prio === "low" &&
+        a.letter === "T" && !a.letterShown && !a.broken && a.label === label("銀 2") && a.row === "銀 2 ・ Lv.15" && a.rowSr === "銀 2、レベル 15" && a.rowFirst && !a.rowItem && page.modReqs === 1 && page.errors.length === 0;
+      rows.push({ p: `${p}${extra.spelldash_test_plan ? " Pro" : ""}`, ok, a: ok ? undefined : a, mod: page.modReqs, err: page.errors[0] });
+      await page.close();
+    }
+    check("アカウントの紋章: 7 ページ（admin・battle・index・list・pro・profile・stats）と Pro の人で、ログイン中のアイコンは今の学習のランクの紋章（銀 2 = silver-2-sm・96px の絵を 32×32 で 38px の丸の真ん中）・頭文字「T」は隠れる・絵は alt=\"\" と aria-hidden・fetchpriority=low・ボタンの名前「アカウントメニュー（銀 2）」・メニューの一番上の行「銀 2 ・ Lv.15」（読み上げ「銀 2、レベル 15」・押せる項目の class は付けない）・Battle の RP（Gold）や Pro は出さない・エラー 0",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
+  }
+
+  // ---- (2)〔守り〕未ログイン（7 ページ）とアプリ（Capacitor の偽装）: 紋章も js/accountEmblem.js も読まない。ランクアップの幕を閉じた後も読まない ----
+  {
+    const rows = [];
+    for (const [p, app] of [...PAGES7.map((p) => [p, false]), ["/index.html", true], ["/stats.html", true], ["/pro.html", true]]) {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_xp: String(xpForLv(15)) } });
+      if (app) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
+      watchReqs(page);
+      await page.goto(BASE + p, { waitUntil: "load" });
+      await page.waitForTimeout(1500); // 読み込みの後の手の空いたとき（ログインしていれば読む時機）を過ぎるまで
+      const a = await avatarOf(page);
+      // 学習データ（stats）は学習データの行が同じ -sm の絵を読む（js/levelUi.js。9.955）。それ以外のページは紋章の要求 0
+      const wantEmb = p === "/stats.html" ? ["silver-2-sm.webp"] : [];
+      const ok = (!a || (!a.user && a.n === 0 && a.label === "アカウントメニュー")) && page.modReqs === 0 && JSON.stringify([...new Set(page.embReqs)]) === JSON.stringify(wantEmb) && page.errors.length === 0;
+      rows.push({ p: `${p}${app ? " アプリ" : ""}`, ok, a: ok ? undefined : a, emb: page.embReqs, mod: page.modReqs, err: page.errors[0] });
+      await page.close();
+    }
+    // 未ログインでも幕は出る（Challenge の時間切れ・木 3 → 銅 1）。閉じた後も -sm の絵と js/accountEmblem.js は読まない
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: Object.fromEntries(Object.entries(seedC(xpForLv(5) - 5)).filter(([k]) => !(k in LOGIN))) });
+    watchReqs(page);
+    await page.goto(BASE + "/index.html?t=2", { waitUntil: "networkidle" });
+    await page.waitForTimeout(600);
+    await page.click('#playModes [data-mode="challenge"]');
+    const opened = await waitUntil(async () => (await page.$(".rank-up")) !== null, 8000, 20);
+    await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 50);
+    await page.waitForTimeout(800);
+    const guestUp = { opened, sm: page.embReqs.filter((u) => u.endsWith("-sm.webp")), mod: page.modReqs, err: page.errors[0] };
+    await page.close();
+    check("アカウントの紋章〔守り〕: 未ログインの 7 ページとアプリ（index・stats・pro）は紋章も js/accountEmblem.js も読まない（学習データの行の絵だけ）・アイコンは今のまま。未ログインで幕を閉じた後も -sm の絵と js/accountEmblem.js は 0",
+      rows.every((r) => r.ok) && guestUp.opened && guestUp.sm.length === 0 && guestUp.mod === 0 && !guestUp.err, JSON.stringify({ bad: rows.filter((r) => !r.ok).slice(0, 3), guestUp }));
+  }
+
+  // ---- (3) 読み込みの順と要求の数（index 1200）: 紋章と js/accountEmblem.js は load の後（最初の描画・LCP の絵が揃った後）に始まる。1 ページ 1 枚。
+  //          同期の知らせ・同じ人の SIGNED_IN（本物ではタブに戻ったとき・トークンの更新でも来る）・メニューのホバーでは要求も img の作り直しも無い ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
+    await page.addInitScript(() => { window.__lcp = []; new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__lcp.push(e.startTime); }).observe({ type: "largest-contentful-paint", buffered: true }); });
+    watchReqs(page);
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await shownIs(page, "silver-2-sm.webp");
+    const t = await page.evaluate(() => {
+      const nav = performance.getEntriesByType("navigation")[0];
+      const res = performance.getEntriesByType("resource");
+      const at = (re) => res.filter((e) => re.test(e.name)).map((e) => Math.round(e.startTime));
+      document.querySelector("#headerAvatar img[fetchpriority]")?.setAttribute("data-mark", "1");
+      const fcp = performance.getEntriesByType("paint").find((e) => e.name === "first-contentful-paint")?.startTime ?? Infinity;
+      return { load: Math.round(nav.loadEventEnd), fcp: Math.round(fcp), lcp: window.__lcp.map(Math.round), emb: at(/\/emblems\/[^/]+-sm\.webp/), mod: at(/\/js\/accountEmblem\.js/) };
+    });
+    const before = { emb: page.embReqs.slice(), mod: page.modReqs };
+    await page.evaluate(async () => {
+      for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent("spelldash:synced"));
+      for (let i = 0; i < 3; i++) window.__stubAuth.signIn();
+    });
+    await page.hover("#avatarButton");
+    await page.waitForTimeout(400);
+    await page.mouse.move(600, 700);
+    await page.waitForTimeout(1200);
+    const a = await avatarOf(page);
+    const same = await page.evaluate(() => [...document.querySelectorAll("#headerAvatar img")].length === 1 && document.querySelector("#headerAvatar img")?.getAttribute("data-mark") === "1");
+    check("アカウントの紋章: 紋章（silver-2-sm）と js/accountEmblem.js は最初の描画と load の終わりの後に始まる（LCP の絵を含むページの読み込みと競らない）・紋章の要求は 1 ページ 1 枚",
+      t.emb.length === 1 && t.mod.length === 1 && t.emb[0] >= t.load && t.mod[0] >= t.load && t.emb[0] >= t.fcp && t.mod[0] >= t.fcp && (t.lcp[0] ?? 0) <= t.emb[0] && before.emb.length === 1 && before.emb[0] === "silver-2-sm.webp" && before.mod === 1, JSON.stringify({ t, before }));
+    check("アカウントの紋章: 同期の知らせ 3 回・同じ人の SIGNED_IN 3 回・メニューのホバーの後も、紋章の要求は増えず img は作り直さない（同じ要素）・頭文字に戻らない・エラー 0",
+      page.embReqs.length === 1 && page.modReqs === 1 && same && a.src === `${EMB}silver-2-sm.webp` && !a.letterShown && a.label === label("銀 2") && page.errors.length === 0, JSON.stringify({ emb: page.embReqs, mod: page.modReqs, same, a, err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- (4) CLS と遅い絵: 紋章を 1.5 秒遅らせ、届く前は頭文字・届いたら紋章。アカウントの部品（.account）が動かす layout-shift 0・ボタンの箱と帯の高さは前と後で同じ。320／390 は 32px の丸に 28px ----
+  {
+    const rows = [];
+    for (const [p, w, mobile] of [["/index.html", 1200, false], ["/index.html", 390, true], ["/stats.html", 320, true], ["/pro.html", 1200, false], ["/list.html", 390, true]]) {
+      const page = await newPage({ viewport: { width: w, height: 844 }, mobile, storage: seedA() });
+      await noSW(page);
+      await page.addInitScript(() => {
+        window.__hs = 0;
+        new PerformanceObserver((l) => { for (const e of l.getEntries()) for (const s of e.sources ?? []) { const el = s.node?.nodeType === 1 ? s.node : s.node?.parentElement; if (el?.closest?.(".site-header .account")) window.__hs += e.value; } }).observe({ type: "layout-shift", buffered: true });
+      });
+      await page.route(`**${EMB}**`, async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue(); });
+      await page.goto(BASE + p, { waitUntil: "load" });
+      await waitUntil(async () => (await avatarOf(page))?.user, 4000);
+      const a0 = await avatarOf(page);
+      const shown = await shownIs(page, "silver-2-sm.webp", 8000);
+      await page.waitForTimeout(200);
+      const a1 = await avatarOf(page);
+      const hs = await page.evaluate(() => window.__hs);
+      const small = w <= 720;
+      const ok = shown && a0.src === null && a0.letterShown && a0.letter === "T" && a1.src === `${EMB}silver-2-sm.webp` && !a1.letterShown && a0.btn === a1.btn && a0.box === a1.box && a0.header === a1.header &&
+        a1.box === (small ? "32,32" : "38,38") && a1.size === (small ? "28,28" : "32,32") && a1.inside && a1.centered && hs === 0 && page.errors.length === 0;
+      rows.push({ p, w, ok, a0: ok ? undefined : a0, a1: ok ? undefined : a1, hs, err: page.errors[0] });
+      await page.close();
+    }
+    check("アカウントの紋章: 絵が 1.5 秒遅れても、届く前は頭文字「T」・届いたら紋章（1200 は 38px の丸に 32px、320／390 は 32px の丸に 28px）。ボタンの箱・丸・帯の高さは前と後で同じ、アカウントの部品が動かす layout-shift 0（index・stats・pro・list）",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
+  }
+
+  // ---- (5) 絵が読めない（404・SW なし）: 頭文字のまま・壊れた印なし・名前と行はランクを出す。知らせが続いても取り直さない（輪にしない）。通信が戻ったら（online）読み直す ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
+    await noSW(page);
+    watchReqs(page);
+    const block = (route) => route.fulfill({ status: 404, body: "" });
+    await page.route(`**${EMB}**`, block);
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await waitUntil(async () => page.embReqs.length >= 1, 6000);
+    await page.waitForTimeout(600);
+    const a = await avatarOf(page);
+    const n0 = page.embReqs.length;
+    await page.evaluate(() => { for (let i = 0; i < 3; i++) { window.dispatchEvent(new CustomEvent("spelldash:synced")); window.__stubAuth.signIn(); } });
+    await page.hover("#avatarButton");
+    await page.waitForTimeout(1200);
+    const n1 = page.embReqs.length;
+    await page.mouse.move(600, 700);
+    await page.unroute(`**${EMB}**`, block);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    const back = await shownIs(page, "silver-2-sm.webp", 4000);
+    check("アカウントの紋章: 絵が 404 なら頭文字「T」のまま（img を残さない・壊れた印なし）、ボタンの名前と行はランク（銀 2）を出す。知らせ（同期 3・SIGNED_IN 3・ホバー）で取り直さない。online で読み直して紋章が出る・エラー 0",
+      n0 === 1 && a.n === 0 && a.letterShown && a.letter === "T" && !a.broken && a.label === label("銀 2") && a.row === "銀 2 ・ Lv.15" && n1 === n0 && back && page.errors.length === 0, JSON.stringify({ n0, n1, a, back, err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- (6) ランクが決まらないとき: 端末の持ち主が別のアカウント（記録あり・銅 1）。置き換えを受けて取り込む間は頭文字・「アカウントメニュー」・行なし（前の人のランクを出さない）、
+  //          取り込んだらクラウドの XP（5240 = Lv.14 = 銀 1）。幕は出さない。取り込みが失敗したら頭文字のまま（消した前の人の XP からランクを出さない） ----
+  {
+    const iso = new Date(Date.now() - 3600000).toISOString();
+    const otherDevice = async (cloudConfig) => {
+      const cloud = createCloud({ word_progress: [], user_progress: [{ user_id: "test-user", xp: 5240, level: 14, updated_at: iso }], user_items: [] }, cloudConfig);
+      const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      page.dialogs = [];
+      page.on("dialog", async (d) => { page.dialogs.push(d.message()); await d.accept(); });
+      await page.addInitScript((seed) => {
+        if (sessionStorage.getItem("spelldash_test_seeded")) return;
+        sessionStorage.setItem("spelldash_test_seeded", "1");
+        for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+      }, { spelldash_schema_version: "6", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "other-user", spelldash_xp: "777", spelldash_word_stats: JSON.stringify({ "zzz-only-other": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }) });
+      await page.addInitScript(AVLOG);
+      watchReqs(page);
+      return { page, cloud };
+    };
+    const { page } = await otherDevice({ delayMs: 2500 });
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await page.waitForTimeout(1600); // 紋章の処理を読んだ後・取り込み（2.5 秒遅れ）が終わる前
+    const during = await avatarOf(page);
+    const synced = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_owner"))) === "test-user", 8000);
+    await shownIs(page, "silver-1-sm.webp", 6000);
+    const after = await avatarOf(page);
+    const log = await page.evaluate(() => window.__avlog);
+    check("アカウントの紋章: 持ち主が別のアカウントの端末で置き換えを受けた後、取り込みの間は頭文字・「アカウントメニュー」・行なし（前の人の銅 1 を出さない）、取り込んだらクラウドの XP の銀 1（silver-1-sm・「アカウントメニュー（銀 1）」・「銀 1 ・ Lv.14」）。幕は出ない・銅 1 は一度も出ない・エラー 0",
+      page.dialogs.length === 1 && during.user && during.src === null && during.label === "アカウントメニュー" && during.row === null && during.letterShown && synced && after.src === `${EMB}silver-1-sm.webp` && after.label === label("銀 1") && after.row === "銀 1 ・ Lv.14" &&
+        !log.some((e) => e.curtain || e.src === "copper-1-sm.webp" || /銅/.test(e.label ?? "")) && !page.embReqs.includes("copper-1-sm.webp") && page.errors.length === 0, JSON.stringify({ dialogs: page.dialogs.length, during, after, log: log.slice(0, 6), emb: page.embReqs, err: page.errors[0] }));
+    await page.close();
+    const failed = await otherDevice({ failSelect: { user_progress: "boom" } });
+    await failed.page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await waitUntil(async () => (await failed.page.textContent("#authMessage")).includes("記録を取り込めなかった"), 6000);
+    await failed.page.waitForTimeout(1800);
+    const af = await avatarOf(failed.page);
+    check("アカウントの紋章〔守り〕: 置き換えを受けた後に取り込みが失敗した: 頭文字・「アカウントメニュー」・行なしのまま（前の人の銅 1 も、消した後の木 1 も出さない）・紋章の要求 0・エラー 0",
+      af.user && af.src === null && af.label === "アカウントメニュー" && af.row === null && failed.page.embReqs.length === 0 && failed.page.errors.length === 0, JSON.stringify({ af, emb: failed.page.embReqs, err: failed.page.errors[0] }));
+    await failed.page.close();
+  }
+
+  // ---- (7) 同期で XP が上がる（手元 3000 = Lv.10 = 銅 3、クラウド 5240 = 銀 1）: 取り込みの後に銀 1（幕は出ない）。
+  //          銅 3 の絵が遅れて（2 秒）届く間にランクが替わっても、遅れて届いた銅 3 の絵を上に付けない ----
+  {
+    const iso = new Date(Date.now() - 3600000).toISOString();
+    const cloud = createCloud({ word_progress: [], user_progress: [{ user_id: "test-user", xp: 5240, level: 14, updated_at: iso }], user_items: [] }, { delayMs: 1800 });
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(3000, { spelldash_test_cloud: cloud.id, spelldash_word_stats: JSON.stringify({ "zzz-mine": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }) }) });
+    await noSW(page);
+    await page.addInitScript(AVLOG);
+    watchReqs(page);
+    await page.route(`**${EMB}copper-3-sm.webp`, async (route) => { await new Promise((r) => setTimeout(r, 2000)); await route.continue(); });
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await shownIs(page, "silver-1-sm.webp", 9000);
+    await page.waitForTimeout(2200); // 遅れた銅 3 の絵が届くまで
+    const a = await avatarOf(page);
+    const log = await page.evaluate(() => window.__avlog);
+    check("アカウントの紋章: 同期で XP が上がると（銅 3 → クラウドの銀 1）開き直さずに銀 1 の紋章・名前・行（「銀 1 ・ Lv.14」）に替わる。幕は出ない。遅れて届いた銅 3 の絵は付けない（img は 1 つ・銀 1）・エラー 0",
+      page.embReqs.includes("copper-3-sm.webp") && a.src === `${EMB}silver-1-sm.webp` && a.n === 1 && a.label === label("銀 1") && a.row === "銀 1 ・ Lv.14" && !log.some((e) => e.curtain) && log.at(-1)?.src === "silver-1-sm.webp" && page.errors.length === 0,
+      JSON.stringify({ emb: page.embReqs, a, log: log.slice(-4), err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- (8) ランクの幕の後に替える（Challenge の時間切れ: 木 3 → 銅 1）。幕が出ている間は木 3 のまま、幕が外れた後に銅 1。閉じ方（自然に・Esc・タップ）のどれでも 1 回だけ替わる。
+  //          新しいランクの絵だけ 404 なら、閉じた後は頭文字（前の木 3 の絵を残さない）で名前は銅 1 ----
+  {
+    const runUp = async (how, { block = null } = {}) => {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedC(xpForLv(5) - 5) });
+      await page.addInitScript(AVLOG);
+      watchReqs(page);
+      if (block) { await noSW(page); await page.route(`**${EMB}${block}`, (route) => route.fulfill({ status: 404, body: "" })); }
+      await page.goto(BASE + "/index.html?t=2", { waitUntil: "load" });
+      await shownIs(page, "wood-3-sm.webp");
+      await page.click('#playModes [data-mode="challenge"]');
+      await waitUntil(async () => (await page.$(".rank-up")) !== null, 8000, 20);
+      if (how === "esc") { await page.waitForTimeout(450); await page.keyboard.press("Escape"); }
+      if (how === "tap") { await page.waitForTimeout(450); await page.mouse.click(600, 450); }
+      await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 30);
+      if (block) await page.waitForTimeout(1200);
+      else await shownIs(page, "copper-1-sm.webp", 4000);
+      await page.waitForTimeout(300);
+      const a = await avatarOf(page);
+      const log = await page.evaluate(() => window.__avlog);
+      const r = { how, a, log, emb: page.embReqs, err: page.errors[0] };
+      await page.close();
+      return r;
+    };
+    const after = (r, want) => {
+      const lastCurtain = r.log.map((e, i) => (e.curtain ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1;
+      const during = r.log.filter((e) => e.curtain);
+      const first = r.log.findIndex((e) => e.curtain);
+      const changes = r.log.filter((e, i) => i > first && first >= 0 && e.src !== r.log[i - 1].src).map((e) => e.src);
+      return lastCurtain >= 0 && during.every((e) => e.src === "wood-3-sm.webp" && e.label === label("木 3") && (e.row === null || e.row === "木 3 ・ Lv.4")) &&
+        r.log.slice(0, lastCurtain + 1).every((e) => !/銅/.test(`${e.label}${e.row}`) && e.src !== "copper-1-sm.webp") && JSON.stringify(changes) === JSON.stringify(want);
+    };
+    const runs = [await runUp("auto"), await runUp("esc"), await runUp("tap")];
+    const okRun = (r) => after(r, ["copper-1-sm.webp"]) && r.a.src === `${EMB}copper-1-sm.webp` && r.a.label === label("銅 1") && r.a.row === "銅 1 ・ Lv.5" && JSON.stringify([...new Set(r.emb.filter((u) => u.endsWith("-sm.webp")))]) === JSON.stringify(["wood-3-sm.webp", "copper-1-sm.webp"]) && !r.err;
+    check("アカウントの紋章: ランクの幕（Challenge の時間切れ・木 3 → 銅 1）が出ている間は木 3（紋章・名前・行）、幕が外れた後に銅 1（copper-1-sm・「アカウントメニュー（銅 1）」・「銅 1 ・ Lv.5」）。自然に閉じる・Esc・タップのどれでも替わるのは 1 回・頭文字に戻らない・エラー 0",
+      runs.every(okRun), JSON.stringify(runs.filter((r) => !okRun(r)).map((r) => ({ how: r.how, a: r.a, log: r.log.slice(0, 8), emb: r.emb, err: r.err }))));
+    const miss = await runUp("auto", { block: "copper-1-sm.webp" });
+    check("アカウントの紋章: 新しいランクの絵（copper-1-sm）だけ 404 なら、幕が外れた後は頭文字「T」（前の木 3 の絵を残さない・壊れた印なし）・名前と行は銅 1・エラー 0",
+      after(miss, [null]) && miss.a.src === null && miss.a.n === 0 && miss.a.letterShown && !miss.a.broken && miss.a.label === label("銅 1") && miss.a.row === "銅 1 ・ Lv.5" && !miss.err, JSON.stringify({ a: miss.a, log: miss.log.slice(0, 8), err: miss.err }));
+  }
+
+  // ---- (9) 60 秒の回（控えた幕は回の終わり）: 回の途中でランクが変わっても（木 1 → 木 2）、回の間は木 1 のまま。同じ人の SIGNED_IN が来ても・メニューをホバーで開いても木 1
+  //          （「木 1 ・ Lv.1」。Lv だけ新しい組を作らない）。時間切れのパネルの幕が外れた後に木 2 ----
+  {
+    const myWords = JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "budget", ja: "予算" }]);
+    const ans = { 請求書: "invoice", 交渉する: "negotiate", 予算: "budget" };
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(95, { spelldash_category: "my", spelldash_my_words: myWords, spelldash_set_size: "60s" }) });
+    await page.addInitScript(AVLOG);
+    watchReqs(page);
+    await page.goto(BASE + "/index.html?t=5&hintms=600000", { waitUntil: "load" });
+    await shownIs(page, "wood-1-sm.webp");
+    await page.press("#input", "Enter");
+    await waitUntil(async () => !!ans[(await page.textContent("#japanese")).trim()], 3000, 20);
+    const en = ans[(await page.textContent("#japanese")).trim()];
+    for (const ch of en) await page.press("#input", ch);
+    await waitUntil(async () => (await page.textContent("#message")).includes("Lv.2 に上がった"), 2000, 20);
+    await page.evaluate(() => { document.querySelector("#headerAvatar img[fetchpriority]")?.setAttribute("data-mark", "1"); window.__stubAuth.signIn(); });
+    await page.hover("#avatarButton");
+    await page.waitForTimeout(500);
+    const mid = await avatarOf(page);
+    const midSame = await page.evaluate(() => document.querySelector("#headerAvatar img")?.getAttribute("data-mark") === "1");
+    await page.mouse.move(600, 700);
+    const panel = await waitUntil(() => page.evaluate(() => !document.getElementById("resultPanel").hidden), 9000, 50);
+    await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 30);
+    await shownIs(page, "wood-2-sm.webp", 4000);
+    const end = await avatarOf(page);
+    const log = await page.evaluate(() => window.__avlog);
+    const lastCurtain = log.map((e, i) => (e.curtain ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1;
+    check("アカウントの紋章: 60 秒の回で回の途中にランクが変わっても（木 1 → 木 2）回の間は木 1（同じ人の SIGNED_IN・ホバーで開いたメニューでも「木 1 ・ Lv.1」・img は作り直さない）。時間切れのパネルの幕が外れた後に木 2（「木 2 ・ Lv.2」）・エラー 0",
+      mid.src === `${EMB}wood-1-sm.webp` && mid.label === label("木 1") && mid.row === "木 1 ・ Lv.1" && midSame && panel && lastCurtain >= 0 &&
+        log.slice(0, lastCurtain + 1).every((e) => e.src !== "wood-2-sm.webp" && !/木 2/.test(`${e.label}${e.row}`)) && end.src === `${EMB}wood-2-sm.webp` && end.label === label("木 2") && end.row === "木 2 ・ Lv.2" && page.errors.length === 0,
+      JSON.stringify({ mid, midSame, panel, end, log: log.slice(0, 10), err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- (10) ランクの変わらないレベルアップ（Challenge の時間切れ: 銀 2 の Lv.15 → Lv.16）: 紋章と名前はそのまま、メニューの行は「銀 2 ・ Lv.16」。絵の要求は増えない ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedC(xpForLv(16) - 5) });
+    await page.addInitScript(AVLOG);
+    watchReqs(page);
+    await page.goto(BASE + "/index.html?t=2", { waitUntil: "load" });
+    await shownIs(page, "silver-2-sm.webp");
+    await page.click('#playModes [data-mode="challenge"]');
+    await waitUntil(() => page.evaluate(() => !document.getElementById("resultPanel").hidden), 8000, 50);
+    await page.waitForTimeout(300);
+    await page.hover("#avatarButton");
+    await page.waitForTimeout(300);
+    const a = await avatarOf(page);
+    const log = await page.evaluate(() => window.__avlog);
+    check("アカウントの紋章: ランクの変わらないレベルアップ（銀 2 Lv.15 → 16）の後、メニューの行は「銀 2 ・ Lv.16」・紋章と名前は銀 2 のまま・絵の要求は 1 枚・幕は出ない・エラー 0",
+      a.row === "銀 2 ・ Lv.16" && a.src === `${EMB}silver-2-sm.webp` && a.label === label("銀 2") && page.embReqs.filter((u) => u.endsWith("-sm.webp")).length === 1 && !log.some((e) => e.curtain) && page.errors.length === 0, JSON.stringify({ a, emb: page.embReqs, err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- (11) ログアウト → 未ログインの形（紋章・行・名前を残さない）→ 同じタブで再ログイン → 紋章が戻る（絵の要求は増えない） ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
+    watchReqs(page);
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await shownIs(page, "silver-2-sm.webp");
+    await page.click("#avatarButton");
+    await page.click("#logoutButton");
+    await waitUntil(() => page.evaluate(() => !document.getElementById("accountGuest").hidden), 3000);
+    await page.waitForTimeout(400);
+    const out = await avatarOf(page);
+    await page.evaluate(() => window.__stubAuth.signIn());
+    const back = await shownIs(page, "silver-2-sm.webp", 5000);
+    const again = await avatarOf(page);
+    check("アカウントの紋章: ログアウトすると未ログインの形（#accountUser は隠れ、紋章・メニューの行・ランクの名前を残さない）。同じタブで再ログインすると紋章・名前・行が戻る（絵の要求は 1 枚のまま）・エラー 0",
+      !out.user && out.n === 0 && out.row === null && out.label === "アカウントメニュー" && back && again.label === label("銀 2") && again.row === "銀 2 ・ Lv.15" && page.embReqs.length === 1 && page.errors.length === 0, JSON.stringify({ out, again, emb: page.embReqs, err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- (12) キーボードと読み上げ: ボタンの名前（読み上げの木）は「アカウントメニュー（銀 2）」・紋章は無視される。Enter で開き（最初の焦点は「設定」）、Esc で閉じて焦点はアバターへ ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await shownIs(page, "silver-2-sm.webp");
+    const cdp = await page.context().newCDPSession(page);
+    const ax = async (selector) => {
+      const { root } = await cdp.send("DOM.getDocument", { depth: -1 });
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector });
+      if (!nodeId) return null;
+      const { nodes } = await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false });
+      return { name: nodes[0]?.name?.value ?? null, ignored: nodes[0]?.ignored === true };
+    };
+    const btnAx = await ax("#avatarButton");
+    const imgAx = await ax("#headerAvatar img");
+    await cdp.detach().catch(() => {});
+    await page.focus("#avatarButton");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
+    const opened = await page.evaluate(() => ({ exp: document.getElementById("avatarButton").getAttribute("aria-expanded"), focus: document.activeElement?.textContent.trim(), first: document.getElementById("accountMenu").firstElementChild?.id, sr: document.querySelector("#accountRank .sr-only")?.textContent.trim() }));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const closed = await page.evaluate(() => ({ exp: document.getElementById("avatarButton").getAttribute("aria-expanded"), focus: document.activeElement?.id }));
+    check("アカウントの紋章: 読み上げの名前は「アカウントメニュー（銀 2）」・紋章の img は読み上げの木で無視。キーボード: Enter で開く（aria-expanded=true・最初の焦点は「設定」・パネルの一番上はランクの行「銀 2、レベル 15」）、Esc で閉じて焦点はアバター・エラー 0",
+      btnAx?.name === label("銀 2") && imgAx?.ignored === true && opened.exp === "true" && opened.focus === "設定" && opened.first === "accountRank" && opened.sr === "銀 2、レベル 15" && closed.exp === "false" && closed.focus === "avatarButton" && page.errors.length === 0,
+      JSON.stringify({ btnAx, imgAx, opened, closed, err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- (13) 320／390／1200 × 昼・夜（index・stats・reduced motion）: 紋章は丸の内の真ん中・帯の上の縁は帯と 3:1 以上・ホバーで縁は金箔（--foil）・ヘッダーの部品は重ならない・
+  //           横スクロール 0・帯の高さは index 56／stats 57・動く物 0 ----
+  {
+    const rows = [];
+    for (const theme of ["light", "dark"]) for (const [w, mobile] of [[320, true], [390, true], [1200, false]]) for (const p of ["/index.html", "/stats.html"]) {
+      const page = await newPage({ viewport: { width: w, height: 800 }, mobile, storage: seedA(xpForLv(92), { spelldash_theme: theme, spelldash_streak: JSON.stringify({ current: 12, best: 12, last: ymd(new Date()) }) }) });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto(BASE + p, { waitUntil: "load" });
+      await shownIs(page, "god-3-sm.webp");
+      await page.waitForTimeout(150);
+      const a = await avatarOf(page);
+      const look = await page.evaluate(() => {
+        const rgb = (s) => (s.match(/[\d.]+/g) || []).map(Number);
+        const token = (name) => { const el = document.createElement("span"); el.style.color = `var(${name})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
+        const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+        const over = (fg, bg) => { const [r, g, b, al = 1] = rgb(fg); const [R, G, B] = rgb(bg); return [r * al + R * (1 - al), g * al + G * (1 - al), b * al + B * (1 - al)]; };
+        const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100; };
+        const vault = token("--vault");
+        const ring = getComputedStyle(document.getElementById("headerAvatar")).borderTopColor;
+        const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden]");
+        const parts = [...document.querySelectorAll(".site-header .brand__mark, .site-header .site-nav__link, #headerStreak, #avatarButton")].filter(shown).map((el) => { const b = el.getBoundingClientRect(); return { n: el.id || el.textContent.trim().slice(0, 4), l: b.left, r: b.right, t: b.top, b: b.bottom }; });
+        const overlap = [];
+        for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) { const x = parts[i], y = parts[j]; if (Math.min(x.r, y.r) - Math.max(x.l, y.l) > 0.5 && Math.min(x.b, y.b) - Math.max(x.t, y.t) > 0.5) overlap.push(`${x.n}|${y.n}`); }
+        return { ring: ratio(over(ring, vault), rgb(vault)), overlap, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, anims: document.getAnimations().length, foil: token("--foil") };
+      });
+      await page.hover("#avatarButton");
+      await page.waitForTimeout(100);
+      const hover = await page.evaluate(() => getComputedStyle(document.getElementById("headerAvatar")).borderTopColor);
+      const small = w <= 720;
+      const ok = a.src === `${EMB}god-3-sm.webp` && a.inside && a.centered && a.size === (small ? "28,28" : "32,32") && a.box === (small ? "32,32" : "38,38") && a.header === (p === "/index.html" ? 56 : 57) &&
+        look.ring >= 3 && hover === look.foil && look.overlap.length === 0 && look.sw <= look.cw && look.anims === 0 && a.label === label("神 3") && page.errors.length === 0;
+      rows.push({ theme, w, p, ok, a: ok ? undefined : a, look: ok ? undefined : look, hover: ok ? undefined : hover, err: page.errors[0] });
+      await page.close();
+    }
+    check("アカウントの紋章: 320／390／1200 × 昼・夜（index・stats・神 3・連続 12 日）で、紋章は丸の内の真ん中（320／390 は 32px の丸に 28px・1200 は 38px に 32px）・縁と帯の比 3 以上・ホバーで縁は --foil・ヘッダーの部品は重ならない・横スクロール 0・帯の高さ 56／57・reduced motion で動く物 0・エラー 0",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
+  }
+
+  // ---- (14) 別のタブで XP が増えた（storage）: プレイしていないタブ（学習データ）は開き直さずに金 1（Lv.22）へ ----
+  {
+    // 2 枚のタブは同じ context（localStorage を分け合う）。種は 1 枚目にだけ入れる（2 枚目が開いたときに XP を戻さない）
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => { for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); }, { spelldash_schema_version: "6", spelldash_onboarded: "1", ...seedA() });
+    await page.goto(BASE + "/stats.html", { waitUntil: "load" });
+    await shownIs(page, "silver-2-sm.webp");
+    const other = await ctx.newPage();
+    await other.goto(BASE + "/news.html", { waitUntil: "load" });
+    await other.evaluate((xp) => localStorage.setItem("spelldash_xp", String(xp)), xpForLv(22));
+    const moved = await shownIs(page, "gold-1-sm.webp", 4000);
+    const a = await avatarOf(page);
+    check("アカウントの紋章: 別のタブで XP が増える（storage）と、プレイしていないタブは開き直さずに金 1（gold-1-sm・「アカウントメニュー（金 1）」・「金 1 ・ Lv.22」）・エラー 0",
+      moved && a.label === label("金 1") && a.row === "金 1 ・ Lv.22" && page.errors.length === 0, JSON.stringify({ a, err: page.errors[0] }));
+    await ctx.close();
+  }
+}
+
 // ===== 9.97 概念カード「リスティング広告 実務」: 場面→用語、日本語で答える全文入力モード =====
 console.log("concept cards:");
 {
