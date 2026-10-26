@@ -1,0 +1,239 @@
+import { isPro } from "./plan.js";
+
+const XP_KEY = "spelldash_xp";
+const STREAK_KEY = "spelldash_streak";
+const pad2 = (value) => String(value).padStart(2, "0");
+
+function ymdFromDate(date = new Date(), offsetDays = 0) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  next.setDate(next.getDate() + offsetDays);
+  return `${next.getFullYear()}-${pad2(next.getMonth() + 1)}-${pad2(next.getDate())}`;
+}
+
+function monthFromDate(date = new Date()) {
+  const next = new Date(date);
+  return `${next.getFullYear()}-${pad2(next.getMonth() + 1)}`;
+}
+
+// ===== 学習のランク（21 段: 木・銅・銀・金・ダイヤ・レジェンド・神 × 1〜3）。レベル（XP）で決まり、下がらない（XP は減らない） =====
+// 記録しない（レベルから毎回決める）。誰でもレベルで同じに上がる（Pro・課金とはつながない）。紋章の絵は段の英字の名前と番号（js/emblem.js）。
+// 境のレベルは前の称号（F3 → … → S1 → レジェンドの 22 個。2026-10-15 まで）の境を 21 に詰めたもの: 神 1 までは同じで、S2・S1・レジェンドの 3 つを
+// 神 2（80）・神 3（92）の 2 つにした。今の人はレベルが同じまま名前と紋章だけ変わる（S1 の人は神 2、レジェンドの人は神 3）。
+// 序盤は 1 レベルごとに上がって「進んでる感」を作り、上位ほど 1 段が重くなる。
+// 名前に LEARNING_ を付けるのは、同じ「ランク」の語の段がほかに 2 つあるから: 語の習熟度の段（js/mastery.js rankOf・RANK_NAMES）と
+// Battle の RP のランク（Bronze〜Master。js/battleConfig.js RANKS・rankFromRp。勝敗で上下し、Battle の画面だけに出る）。学習のランクは下がらず、レベルで決まる
+export const LEARNING_RANK_TIERS = Object.freeze([
+  Object.freeze({ id: "wood", name: "木" }),
+  Object.freeze({ id: "copper", name: "銅" }),
+  Object.freeze({ id: "silver", name: "銀" }),
+  Object.freeze({ id: "gold", name: "金" }),
+  Object.freeze({ id: "diamond", name: "ダイヤ" }),
+  Object.freeze({ id: "legend", name: "レジェンド" }),
+  Object.freeze({ id: "god", name: "神" })
+]);
+const RANK_LEVELS = [1, 2, 3, 5, 7, 9, 12, 15, 18, 22, 26, 30, 35, 40, 45, 51, 57, 63, 70, 80, 92];
+
+// 低い順の 21 段。{ name: "銀 2", tier: "silver", step: 2, level: 15 }（level はそのランクになるレベル）
+export const LEARNING_RANKS = Object.freeze(
+  LEARNING_RANK_TIERS.flatMap((tier, t) => [1, 2, 3].map((step, s) => Object.freeze({ name: `${tier.name} ${step}`, tier: tier.id, step, level: RANK_LEVELS[t * 3 + s] })))
+);
+
+// レベル → 学習のランク（そのレベル以下で最後に届いたもの。壊れたレベルは木 1）
+export function learningRankOf(level) {
+  let rank = LEARNING_RANKS[0];
+  for (const entry of LEARNING_RANKS) {
+    if (level >= entry.level) rank = entry;
+  }
+  return rank;
+}
+
+// 次の学習のランク（神 3 に届いていれば null）
+export function nextLearningRankOf(level) {
+  return LEARNING_RANKS.find((entry) => entry.level > level) ?? null;
+}
+
+// レベルnからn+1に上がるのに必要なXP（少しずつ重くなる）
+export function xpToNext(level) {
+  return 100 + (level - 1) * 50;
+}
+
+export function getTotalXp() {
+  return Number(localStorage.getItem(XP_KEY)) || 0;
+}
+
+export function getLevelState(totalXp = getTotalXp()) {
+  let level = 1;
+  let remaining = totalXp;
+
+  while (remaining >= xpToNext(level)) {
+    remaining -= xpToNext(level);
+    level++;
+  }
+
+  return {
+    level,
+    rank: learningRankOf(level), // 学習のランク（learningRankOf）
+    currentXp: remaining,
+    neededXp: xpToNext(level),
+    totalXp
+  };
+}
+
+// XPを加算し、加算前後のレベル状態を返す（レベルアップ検知用）
+export function addXp(amount) {
+  const before = getLevelState();
+  const total = before.totalXp + Math.max(0, Math.round(amount));
+  localStorage.setItem(XP_KEY, String(total));
+  const after = getLevelState(total);
+
+  return { before, after, gained: amount, leveledUp: after.level > before.level };
+}
+
+// ===== 連続プレイ日数（ストリーク） =====
+// シールド: 5日連続ごとに1枚獲得（最大2枚。Pro は3枚）。
+// 1日休んでも、次に開いたときにシールドが自動で消費されて連続記録を守る。
+// 途切れたときは直前の連続日数を lost に残し、Pro は月1回・7日以内なら取り戻せる（repairStreak）。
+
+export const SHIELD_EARN_EVERY = 5;
+const REPAIR_WINDOW_DAYS = 7;
+
+export function shieldMax() {
+  return isPro() ? 3 : 2;
+}
+
+function todayString() {
+  return ymdFromDate();
+}
+
+function yesterdayString() {
+  return ymdFromDate(new Date(), -1);
+}
+
+// "YYYY-MM-DD" 同士の日数差（UTC解釈なので丸1日単位で正確）
+function daysBetween(fromYmd, toYmd) {
+  return Math.round((Date.parse(toYmd) - Date.parse(fromYmd)) / 86400000);
+}
+
+function monthString() {
+  return monthFromDate();
+}
+
+function loadStreak() {
+  const data = JSON.parse(localStorage.getItem(STREAK_KEY)) || {};
+  return { last: null, current: 0, best: 0, shields: 0, shieldSavedOn: null, lost: null, repairedMonth: null, ...data };
+}
+
+// 空白日をシールドで埋める。守れたら last を昨日扱いにして連続記録を維持する。
+// getStreak / updateStreak の前に必ず通す（消費は保存されるので二重消費しない）
+function normalizeStreak() {
+  const data = loadStreak();
+  if (!data.last || data.current === 0) return data;
+
+  const missedDays = daysBetween(data.last, todayString()) - 1;
+  if (missedDays <= 0) return data;
+
+  if (missedDays <= data.shields) {
+    data.shields -= missedDays;
+    data.last = yesterdayString();
+    data.shieldSavedOn = todayString();
+    localStorage.setItem(STREAK_KEY, JSON.stringify(data));
+  }
+
+  return data;
+}
+
+export function getStreak() {
+  const data = normalizeStreak();
+
+  // 昨日までにプレイが途切れていたら、表示上は0に戻す
+  if (data.last !== todayString() && data.last !== yesterdayString()) {
+    return { ...data, current: 0 };
+  }
+
+  return data;
+}
+
+export function hasPlayedToday() {
+  return loadStreak().last === todayString();
+}
+
+// ゲーム終了時に呼ぶ。今日最初のプレイかどうか・シールド獲得を返す
+export function updateStreak() {
+  const data = normalizeStreak();
+  const today = todayString();
+
+  if (data.last === today) {
+    return { ...data, isFirstToday: false, earnedShield: false };
+  }
+
+  const continued = data.last === yesterdayString();
+  const current = continued ? data.current + 1 : 1;
+  const best = Math.max(current, data.best);
+
+  // 途切れた（昨日でも今日でもない）: 直前の連続日数を残す（修復用。1日だけなら残さない）
+  let lost = data.lost ?? null;
+  if (!continued && data.last && data.current >= 2) {
+    lost = { count: data.current, on: data.last };
+  }
+
+  // 節目（5日ごと）でシールドを獲得。途切れてもシールドは失わない
+  let shields = data.shields;
+  let earnedShield = false;
+  if (current % SHIELD_EARN_EVERY === 0 && shields < shieldMax()) {
+    shields++;
+    earnedShield = true;
+  }
+
+  const updated = { last: today, current, best, shields, shieldSavedOn: data.shieldSavedOn, lost, repairedMonth: data.repairedMonth ?? null };
+  localStorage.setItem(STREAK_KEY, JSON.stringify(updated));
+
+  return { ...updated, isFirstToday: true, earnedShield };
+}
+
+// ===== 連続記録の修復（Pro・月1回・途切れてから7日以内） =====
+
+// 7日以内に途切れた記録 { count, on } があれば返す。無ければ null。
+// まだ updateStreak() が走っていない（途切れたまま開いただけ）でも、保存値から同じものを組み立てる
+export function getLostStreak() {
+  const data = normalizeStreak();
+  const today = todayString();
+  let lost = data.lost ?? null;
+  if (!lost && data.last && data.current >= 2 && data.last !== today && data.last !== yesterdayString()) {
+    lost = { count: data.current, on: data.last };
+  }
+  if (!lost || !lost.on || !(lost.count >= 2)) return null;
+  const days = daysBetween(lost.on, today);
+  if (!(days >= 0 && days <= REPAIR_WINDOW_DAYS)) return null;
+  return { count: lost.count, on: lost.on };
+}
+
+export function canRepairStreak() {
+  if (!isPro()) return false;
+  const lost = getLostStreak();
+  if (!lost) return false;
+  return loadStreak().repairedMonth !== monthString();
+}
+
+// 直前の連続日数に戻す。今日すでにプレイしていれば +1。last はそのまま（今日未プレイなら昨日扱いで続く）
+export function repairStreak() {
+  if (!canRepairStreak()) return { ok: false, current: getStreak().current };
+  const lost = getLostStreak();
+  const data = loadStreak();
+  const today = todayString();
+  // 途切れたあとに積み直した日数（今日・昨日から続いているぶん）は失わず、その上に前の連続を戻す
+  const rebuilt = data.last === today || data.last === yesterdayString() ? data.current : 0;
+  const current = lost.count + rebuilt;
+  // 積み直しが無ければ、昨日まで続いていたことにして次のプレイで +1 される
+  const last = rebuilt > 0 ? data.last : yesterdayString();
+  const updated = {
+    ...data,
+    last,
+    current,
+    best: Math.max(current, data.best ?? 0),
+    repairedMonth: monthString(),
+    lost: null
+  };
+  localStorage.setItem(STREAK_KEY, JSON.stringify(updated));
+  return { ok: true, current };
+}

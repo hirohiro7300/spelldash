@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>SpellDash - 思い出して打つ、英単語タイピング学習</title>
+  <!-- テーマと場面の先読みは CSS より前（後ろに置くと、インラインの script が CSS の読み込みを待たされる） -->
+  <meta name="theme-color" content="#1A2137" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme];
+    /* 部屋の場面（LCP）の先読み: css/room.css の分岐（≥1100 = desk、高さ ≤700 = short、それ以外 = phone。dark／indigo = 夜）と同じ 1 枚だけ。CSS が同じ URL を参照するので要求は 1 回 */
+    try { const bp = matchMedia("(min-width: 1100px)").matches ? "desk" : matchMedia("(max-height: 700px)").matches ? "short" : "phone"; const l = document.createElement("link"); l.rel = "preload"; l.as = "image"; l.fetchPriority = "high"; l.href = `../../assets/images/room/scene-${bp}-${theme === "dark" || theme === "indigo" ? "dark" : "light"}.webp`; document.head.appendChild(l); } catch {} })();</script>
+  <!-- 初回（学習記録の無い端末）は最初の描画から初回の本: 判定だけここで行い html[data-first-visit] を置く。机を隠し初回の本を出すのは CSS（css/welcome.css。
+       ページの中の置き場所に頼らない）。js/welcome.js が hidden に置き換えて印を外す。条件は js/welcome.js の shouldShowWelcome と同じ（鍵・空の文字列と壊れた JSON の読み方。
+       E2E が同じ状態の表で 2 つを突き合わせる）。変えるときは両方を変える -->
+  <script id="firstVisit">(() => { try { const s = localStorage, q = new URLSearchParams(location.search), w = s.getItem("spelldash_word_stats"); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys((w && JSON.parse(w)) || {}).length > 0 || ["set","words","t","weekly","category","genre","mode"].some((k) => q.has(k)) || location.hash === "#play") return; document.documentElement.dataset.firstVisit = ""; } catch {} })();</script>
+
+  <link rel="stylesheet" href="../styles/reset.css" />
+  <link rel="stylesheet" href="../styles/fonts.css" />
+  <link rel="stylesheet" href="../styles/tokens.css" />
+  <link rel="stylesheet" href="../styles/layout.css" />
+  <link rel="stylesheet" href="../styles/game.css" />
+  <link rel="stylesheet" href="../styles/path.css" />
+  <link rel="stylesheet" href="../styles/welcome.css" />
+  <link rel="stylesheet" href="../styles/keyboard.css" />
+  <link rel="stylesheet" href="../styles/responsive.css" />
+  <link rel="stylesheet" href="../styles/brand.css" />
+  <link rel="stylesheet" href="../styles/home.css" />
+  <link rel="stylesheet" href="../styles/card.css" />
+  <link rel="stylesheet" href="../styles/room.css" />
+  <link rel="stylesheet" href="../styles/bookshelf.css" />
+
+
+  <meta name="description" content="思い出して打つから、英単語が残る。日本語を見て英単語をタイピング。1日少しずつ、英語とタイピングを同時に鍛える。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SpellDash" />
+  <meta property="og:title" content="SpellDash - 英単語タイピング学習" />
+  <meta property="og:description" content="思い出して打つから、英単語が残る。日本語を見て英単語をタイピング。1日少しずつ、英語とタイピングを同時に鍛える。" />
+<link rel="canonical" href="https://www.spelldash.net/" />
+  <meta property="og:url" content="https://www.spelldash.net/" />
+  <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png?v=2" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+  <!-- フォントの先読み: 「スタート」の字（かな）が入る 2 本だけ。modulepreload ブロックの外（scripts/modulepreload.mjs がブロックの中身を丸ごと書き換えるため） -->
+  <link rel="preload" href="../../assets/fonts/shippori-mincho-119-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../../assets/fonts/shippori-mincho-119-500-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <!-- modulepreload:start -->
+  <link rel="modulepreload" href="../scripts/main.js" />
+  <link rel="modulepreload" href="../scripts/appEnv.js" />
+  <link rel="modulepreload" href="../scripts/ui.js" />
+  <link rel="modulepreload" href="../scripts/colors.js" />
+  <link rel="modulepreload" href="../scripts/storage.js" />
+  <link rel="modulepreload" href="../scripts/storageGuard.js" />
+  <link rel="modulepreload" href="../scripts/wordStore.js" />
+  <link rel="modulepreload" href="../scripts/wordData.js" />
+  <link rel="modulepreload" href="../scripts/packs.js" />
+  <link rel="modulepreload" href="../scripts/userItemsSync.js" />
+  <link rel="modulepreload" href="../scripts/myWords.js" />
+  <link rel="modulepreload" href="../scripts/answers.js" />
+  <link rel="modulepreload" href="../scripts/jaAmbiguity.js" />
+  <link rel="modulepreload" href="../scripts/plan.js" />
+  <link rel="modulepreload" href="../scripts/supabase.js" />
+  <link rel="modulepreload" href="../scripts/proFunnel.js" />
+  <link rel="modulepreload" href="../scripts/jaScript.js" />
+  <link rel="modulepreload" href="../scripts/wordNotes.js" />
+  <link rel="modulepreload" href="../scripts/icons.js" />
+  <link rel="modulepreload" href="../scripts/categoryProgress.js" />
+  <link rel="modulepreload" href="../scripts/studyQueue.js" />
+  <link rel="modulepreload" href="../scripts/course.js" />
+  <link rel="modulepreload" href="../scripts/studyConfig.js" />
+  <link rel="modulepreload" href="../scripts/mission.js" />
+  <link rel="modulepreload" href="../scripts/difficulty.js" />
+  <link rel="modulepreload" href="../scripts/level.js" />
+  <link rel="modulepreload" href="../scripts/mastery.js" />
+  <link rel="modulepreload" href="../scripts/retentionCalc.js" />
+  <link rel="modulepreload" href="../scripts/html.js" />
+  <link rel="modulepreload" href="../scripts/stats.js" />
+  <link rel="modulepreload" href="../scripts/sync.js" />
+  <link rel="modulepreload" href="../scripts/battleRank.js" />
+  <link rel="modulepreload" href="../scripts/battleConfig.js" />
+  <link rel="modulepreload" href="../scripts/studyMix.js" />
+  <link rel="modulepreload" href="../scripts/activity.js" />
+  <link rel="modulepreload" href="../scripts/backup.js" />
+  <link rel="modulepreload" href="../scripts/masteryMeta.js" />
+  <link rel="modulepreload" href="../scripts/memoryCheck.js" />
+  <link rel="modulepreload" href="../scripts/memoryModel.js" />
+  <link rel="modulepreload" href="../scripts/memoryWords.js" />
+  <link rel="modulepreload" href="../scripts/growthLog.js" />
+  <link rel="modulepreload" href="../scripts/unlocks.js" />
+  <link rel="modulepreload" href="../scripts/retentionLog.js" />
+  <link rel="modulepreload" href="../scripts/studyTime.js" />
+  <link rel="modulepreload" href="../scripts/genres.js" />
+  <link rel="modulepreload" href="../scripts/romaji.js" />
+  <link rel="modulepreload" href="../scripts/srLive.js" />
+  <link rel="modulepreload" href="../scripts/game.js" />
+  <link rel="modulepreload" href="../scripts/judge.js" />
+  <link rel="modulepreload" href="../scripts/hasumi.js" />
+  <link rel="modulepreload" href="../scripts/learnedWords.js" />
+  <link rel="modulepreload" href="../scripts/pathView.js" />
+  <link rel="modulepreload" href="../scripts/dailySet.js" />
+  <link rel="modulepreload" href="../scripts/tutorial.js" />
+  <link rel="modulepreload" href="../scripts/sessionResume.js" />
+  <link rel="modulepreload" href="../scripts/focusTrap.js" />
+  <link rel="modulepreload" href="../scripts/shelves.js" />
+  <link rel="modulepreload" href="../scripts/bgm.js" />
+  <link rel="modulepreload" href="../scripts/learnedCard.js" />
+  <link rel="modulepreload" href="../scripts/weeklyReport.js" />
+  <link rel="modulepreload" href="../scripts/installPrompt.js" />
+  <link rel="modulepreload" href="../scripts/keyMiss.js" />
+  <link rel="modulepreload" href="../scripts/studyQueueUi.js" />
+  <link rel="modulepreload" href="../scripts/levelUi.js" />
+  <link rel="modulepreload" href="../scripts/homeStrip.js" />
+  <link rel="modulepreload" href="../scripts/emblem.js" />
+  <link rel="modulepreload" href="../scripts/headerStreak.js" />
+  <link rel="modulepreload" href="../scripts/headerFit.js" />
+  <link rel="modulepreload" href="../scripts/dailyChallenge.js" />
+  <link rel="modulepreload" href="../scripts/dailyRank.js" />
+  <link rel="modulepreload" href="../scripts/sfx.js" />
+  <link rel="modulepreload" href="../scripts/audio.js" />
+  <link rel="modulepreload" href="../scripts/wordExample.js" />
+  <link rel="modulepreload" href="../scripts/afterCorrect.js" />
+  <link rel="modulepreload" href="../scripts/calcCards.js" />
+  <link rel="modulepreload" href="../scripts/wordAi.js" />
+  <link rel="modulepreload" href="../scripts/keyboard.js" />
+  <link rel="modulepreload" href="../scripts/auth.js" />
+  <link rel="modulepreload" href="../scripts/footer.js" />
+  <link rel="modulepreload" href="../scripts/feedback.js" />
+  <link rel="modulepreload" href="../scripts/offline.js" />
+  <link rel="modulepreload" href="../scripts/funnelLog.js" />
+  <link rel="modulepreload" href="../scripts/categoryPicker.js" />
+  <link rel="modulepreload" href="../scripts/welcome.js" />
+  <link rel="modulepreload" href="../scripts/playModes.js" />
+  <link rel="modulepreload" href="../scripts/loginNudge.js" />
+  <link rel="modulepreload" href="../scripts/room.js" />
+  <link rel="modulepreload" href="../scripts/bookshelf.js" />
+  <link rel="modulepreload" href="../scripts/covers.js" />
+  <link rel="modulepreload" href="../scripts/shelfStore.js" />
+  <link rel="preload" href="/data/manifest.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/junior.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/highschool.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/toeic.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/business.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/it.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/travel.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/daily.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/ads.json" as="fetch" crossorigin="anonymous" />
+  <link rel="preload" href="/data/english/listing.json" as="fetch" crossorigin="anonymous" />
+  <!-- modulepreload:end -->
+</head>
+<body class="page-room">
+  <a class="skip-link" href="#main">本文へ</a>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark" aria-hidden="true">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link" aria-current="page">書斎</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
+        <a href="./list.html" class="site-nav__link">単語帳</a>
+        <a href="./battle.html" class="site-nav__link">バトル</a>
+      </nav>
+
+      <div class="account">
+        <div class="account__guest dropdown" id="accountGuest" hidden>
+          <button
+            class="btn btn--sm btn--ghost"
+            id="loginToggle"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="accountLogin"
+          >
+            ログイン
+          </button>
+
+          <div class="dropdown__panel">
+            <form class="account-menu account-menu--login" id="accountLogin">
+              <p class="account-menu__native">アプリ版のログインは準備中。記録はこの端末に保存（Web 版 www.spelldash.net ではログインできる）。</p>
+              <p class="account-menu__hint">記録を別の端末でも。</p>
+              <button
+                id="googleLoginButton"
+                type="button"
+                class="btn btn--sm btn--google"
+              >
+                Googleでログイン
+              </button>
+
+              <div class="account-menu__divider">または</div>
+
+              <p class="account-menu__hint">
+                メールにログインリンクを送る
+              </p>
+              <input
+                id="emailInput"
+                type="email"
+                placeholder="メールアドレス"
+                aria-label="メールアドレス"
+                autocomplete="email"
+              />
+              <button id="loginButton" type="submit" class="btn btn--sm">
+                ログインリンクを送る
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="account__user dropdown" id="accountUser" hidden>
+          <button
+            class="avatar-button"
+            id="avatarButton"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-controls="accountMenu"
+            aria-label="アカウントメニュー"
+          >
+            <span class="avatar" id="headerAvatar">?</span>
+          </button>
+
+          <div class="dropdown__panel">
+            <div class="account-menu" id="accountMenu">
+              <p class="account-menu__email" id="userStatus"></p>
+              <a class="account-menu__item" href="./profile.html">設定</a>
+              <button
+                class="account-menu__item account-menu__item--danger"
+                id="logoutButton"
+                type="button"
+              >
+                ログアウト
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 書斎（魔法使いの書斎 — 星図と羊皮紙）: 上に部屋の帯（窓・はちゃんの紙片）、机の上に開いた本、机の下に静かな 2 枚の紙、右（PC）／下（スマホ）に本棚。
+       振る舞いは「道」のまま（js/pathView.js・js/main.js）。見た目は css/room.css -->
+  <div class="room" id="room">
+    <div class="room__vault" aria-hidden="true"></div>
+    <div class="room__rib" aria-hidden="true"></div>
+    <div class="room__vignette" aria-hidden="true"></div>
+    <div class="room__in">
+      <div class="nook" id="nook">
+        <!-- 部屋の帯: 焼いた場面の WebP（幅と高さで 1 枚だけ読む）、光の溜まり、昼の光の筋、はちゃんの紙片 -->
+        <div class="room__stage">
+          <div class="room__pool room__pool--win" aria-hidden="true"></div>
+          <div class="room__pool room__pool--candle" aria-hidden="true"></div>
+          <div class="room__scene room__scene--phone" aria-hidden="true"></div>
+          <div class="room__scene room__scene--short" aria-hidden="true"></div>
+          <div class="room__scene room__scene--desk" aria-hidden="true"></div>
+          <div class="room__shaft" aria-hidden="true"></div>
+          <figure class="hasumi hasumi--home" id="hasumiHome" aria-label="はちゃんからの一言"></figure>
+        </div>
+
+        <!-- 机（胡桃の天板）: 初回は最初の本（#welcome）、以後は今日の本（main） -->
+        <div class="desk">
+          <div class="desk__candle desk__candle--l" aria-hidden="true"></div>
+          <div class="desk__candle desk__candle--s" aria-hidden="true"></div>
+
+          <!-- 初めて来た人向けのトップページ。学習データが無い初回だけ表示し、スタートでアプリ（机の本）に切り替える（js/welcome.js） -->
+          <section class="welcome" id="welcome" hidden aria-label="SpellDash の紹介">
+            <article class="tome tome--first" aria-labelledby="welcomeTitle">
+              <div class="tome__block">
+                <div class="tome__page tome__page--l">
+                  <p class="welcome__kicker runhead">登録なし・<wbr />無料・<wbr />ブラウザで動く</p>
+                  <h1 class="welcome__title tome__title" id="welcomeTitle"><span class="nb">本棚の<span class="n">1</span>冊を、</span><span class="nb">1日<span class="n">5</span>分。</span></h1>
+                  <p class="welcome__lead">見て、思い出して、打つ。</p>
+                </div>
+                <div class="tome__page tome__page--r" id="welcomeBook" aria-live="polite">
+                  <p class="pick-k">最初の<span class="n">1</span>冊</p>
+                  <p class="pick-t" data-f="t">英単語</p>
+                  <p class="pick-s" data-f="s">中学英語 <span class="n">1</span>年から・答えは英語</p>
+                  <div class="welcome__cta"><button type="button" class="start welcome__start" data-welcome-start data-book="jhs-english1">スタート</button></div>
+                  <p class="welcome__note" data-f="cap">腕試し10語（約3分）。知らない語は Enter で答えを見る。</p>
+                  <p class="login-line">使ったことがある人は <a href="#login" id="welcomeLogin">ログイン</a></p>
+                </div>
+                <div class="tome__page tome__page--demo">
+                  <div class="welcome-demo demo" aria-label="1語だけ体験">
+                    <p class="welcome-demo__label">試しに1語 <span id="welcomeDemoDots" class="welcome-demo__dots"></span></p>
+                    <div class="welcome-demo__card">
+                      <p class="welcome-demo__ja" id="welcomeDemoJa">りんご</p>
+                      <p class="welcome-demo__preview mono" id="welcomeDemoPreview" aria-hidden="true"></p>
+                      <input id="welcomeDemoInput" class="welcome-demo__input mono" type="text" placeholder="英単語を入力" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英単語を入力" />
+                      <p class="welcome-demo__msg" id="welcomeDemoMsg"></p>
+                    </div>
+                    <p class="welcome-demo__after" id="welcomeAfterDemo" hidden>スタートから本番へ。</p>
+                  </div>
+                </div>
+              </div>
+              <span class="tome__ribbon" aria-hidden="true"></span>
+              <svg class="fore-quill" viewBox="0 0 100 50" aria-hidden="true" focusable="false"><defs><linearGradient id="fq-v" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--s-quill-lit)"/><stop offset=".55" style="stop-color:var(--s-quill)"/><stop offset="1" style="stop-color:var(--s-quill-dk)"/></linearGradient><filter id="fq-sh" x="-20%" y="-40%" width="150%" height="220%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.6"/><feOffset dx="4" dy="5"/><feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer></filter></defs><g filter="url(#fq-sh)"><path d="M26.08,36.16 L27.18,33.51 L28.46,31.92 L29.79,30.55 L31.14,29.3 L32.5,28.15 L33.88,27.08 L35.27,26.06 L36.67,25.09 L38.08,24.17 L39.49,23.29 L40.92,22.45 L42.34,21.64 L43.78,20.87 L45.22,20.12 L46.66,19.4 L48.11,18.71 L49.56,18.04 L51.02,17.4 L52.48,16.78 L53.95,16.18 L55.42,15.6 L56.89,15.03 L58.53,14.86 L60.77,16.05 L61.48,13.8 L62.81,12.95 L64.29,12.46 L65.78,11.99 L67.27,11.54 L68.77,11.09 L70.26,10.66 L71.76,10.23 L73.26,9.82 L74.76,9.42 L76.26,9.02 L77.77,8.64 L79.28,8.26 L80.78,7.9 L82.29,7.54 L83.8,7.19 L85.32,6.85 L86.83,6.52 L88.35,6.19 L89.86,5.89 L91.39,5.59 L92.91,5.32 L94.44,5.09 L96,5 L94.82,5.8 L93.58,6.56 L92.31,7.32 L91.03,8.06 L89.75,8.8 L88.46,9.54 L87.16,10.28 L85.86,11.01 L84.55,11.74 L83.24,12.47 L81.93,13.2 L80.61,13.92 L79.29,14.64 L77.96,15.36 L76.63,16.08 L75.29,16.79 L73.95,17.5 L72.6,18.21 L71.24,18.91 L69.88,19.61 L68.52,20.31 L67.14,21 L65.76,21.7 L64.38,22.38 L62.98,23.06 L61.57,23.74 L60.16,24.41 L58.74,25.08 L57.31,25.74 L55.86,26.4 L54.41,27.05 L52.94,27.69 L51.46,28.33 L49.97,28.96 L48.47,29.59 L46.95,30.2 L45.41,30.81 L43.86,31.4 L42.29,31.99 L40.69,32.56 L39.08,33.13 L37.43,33.68 L35.76,34.21 L34.05,34.72 L32.3,35.21 L30.48,35.66 L28.54,36.05 Z"/><path d="M3.69,45.31 L95.96,4.91 L96.04,5.09 L4.31,46.69 Z"/></g><path d="M26.08,36.16 L27.18,33.51 L28.46,31.92 L29.79,30.55 L31.14,29.3 L32.5,28.15 L33.88,27.08 L35.27,26.06 L36.67,25.09 L38.08,24.17 L39.49,23.29 L40.92,22.45 L42.34,21.64 L43.78,20.87 L45.22,20.12 L46.66,19.4 L48.11,18.71 L49.56,18.04 L51.02,17.4 L52.48,16.78 L53.95,16.18 L55.42,15.6 L56.89,15.03 L58.53,14.86 L60.77,16.05 L61.48,13.8 L62.81,12.95 L64.29,12.46 L65.78,11.99 L67.27,11.54 L68.77,11.09 L70.26,10.66 L71.76,10.23 L73.26,9.82 L74.76,9.42 L76.26,9.02 L77.77,8.64 L79.28,8.26 L80.78,7.9 L82.29,7.54 L83.8,7.19 L85.32,6.85 L86.83,6.52 L88.35,6.19 L89.86,5.89 L91.39,5.59 L92.91,5.32 L94.44,5.09 L96,5 L94.82,5.8 L93.58,6.56 L92.31,7.32 L91.03,8.06 L89.75,8.8 L88.46,9.54 L87.16,10.28 L85.86,11.01 L84.55,11.74 L83.24,12.47 L81.93,13.2 L80.61,13.92 L79.29,14.64 L77.96,15.36 L76.63,16.08 L75.29,16.79 L73.95,17.5 L72.6,18.21 L71.24,18.91 L69.88,19.61 L68.52,20.31 L67.14,21 L65.76,21.7 L64.38,22.38 L62.98,23.06 L61.57,23.74 L60.16,24.41 L58.74,25.08 L57.31,25.74 L55.86,26.4 L54.41,27.05 L52.94,27.69 L51.46,28.33 L49.97,28.96 L48.47,29.59 L46.95,30.2 L45.41,30.81 L43.86,31.4 L42.29,31.99 L40.69,32.56 L39.08,33.13 L37.43,33.68 L35.76,34.21 L34.05,34.72 L32.3,35.21 L30.48,35.66 L28.54,36.05 Z" fill="url(#fq-v)"/><path d="M3.69,45.31 L95.96,4.91 L96.04,5.09 L4.31,46.69 Z" style="fill:var(--s-quill-rachis)"/><path d="M0.32,47.64 L6.43,44.04 L7.92,44.91 Z" style="fill:var(--s-ink-liquid)"/></svg>
+            </article>
+            <div class="pile">
+              <p class="stack-k" id="welcomeStackK">ほかの本から始める</p>
+              <!-- 積んだ本（4 冊）と、入れ替えたときに降りてくる英単語（hidden）。js/welcome.js の welcomePileHtml と同じ中身（E2E が突き合わせる。本を替えるときは両方）。
+                   最初の描画から積んだ高さ（空きの高さを手で数えない。PR #168 のレビュー 8） -->
+              <ul class="stack" id="welcomeStack" aria-labelledby="welcomeStackK">
+                <li><button type="button" class="flatbook" data-book="jhist1" aria-pressed="false" aria-label="社会、中学歴史 古代〜近世を机に出す" style="--c:#2B1F17;--wd:93%;--x:4px;--r:.7deg;--hh:44px"><span class="flatbook__k">社会</span><span class="flatbook__t">中学歴史 古代〜近世</span><span class="flatbook__s">答えは日本語</span></button></li>
+                <li><button type="button" class="flatbook" data-book="jsci1" aria-pressed="false" aria-label="理科、中学理科 物理・化学を机に出す" style="--c:#2C3550;--wd:97%;--x:0px;--r:-.8deg;--hh:50px"><span class="flatbook__k">理科</span><span class="flatbook__t">中学理科 物理・化学</span><span class="flatbook__s">答えは日本語</span></button></li>
+                <li><button type="button" class="flatbook" data-book="jkokugo1" aria-pressed="false" aria-label="国語、四字熟語・ことわざを机に出す" style="--c:#4A2320;--wd:90%;--x:8px;--r:.4deg;--hh:45px"><span class="flatbook__k">国語</span><span class="flatbook__t">四字熟語・ことわざ</span><span class="flatbook__s">答えは日本語</span></button></li>
+                <li><button type="button" class="flatbook" data-book="accounting" aria-pressed="false" aria-label="仕事の言葉、経理・会計を机に出す" style="--c:#5E361C;--wd:95%;--x:2px;--r:-1.1deg;--hh:48px"><span class="flatbook__k">仕事の言葉</span><span class="flatbook__t">経理・会計</span><span class="flatbook__s">答えは日本語</span></button></li>
+                <li hidden><button type="button" class="flatbook flatbook--back" data-book="jhs-english1" aria-pressed="true" aria-label="英単語、中学英語 1年を机に出す" style="--c:#1E2436;--wd:94%;--x:3px;--r:-.5deg;--hh:46px"><span class="flatbook__k">英単語</span><span class="flatbook__t">中学英語 <span class="n">1</span>年</span><span class="flatbook__s">答えは英語</span></button></li>
+              </ul>
+              <!-- 173 冊の目録（本棚の「本を足す」の窓を「本をさがす」の形で開く。js/bookshelf.js）。最初から見せる（読み込み後に押し下げない）。数は読み込み後にデータの数で書き直す -->
+              <button type="button" class="pile__find" id="welcomeFind"><span class="n">173</span>冊から選ぶ</button>
+              <p class="welcome-trust" aria-label="データについて">記録はこの端末に保存。ログインすると別の端末でも続きから。広告なし。単語の学習はずっと無料。</p>
+            </div>
+          </section>
+
+          <main class="app app--home" id="main" tabindex="-1">
+            <!-- キャッチコピーはトップページ（#welcome）が担う。要素は残す（認証メッセージは外にある） -->
+            <section class="hero hero--compact" id="hero" hidden></section>
+            <p class="auth-message auth-message--home" id="authMessage" role="status"></p>
+
+            <!-- 机の本: 左頁 = 書名・進み、右頁 = 今の章・今日のセット・スタート 1 個、目次 = 章の一覧。ホームの 1 画面目はこれだけ（js/pathView.js） -->
+            <section class="path tome" id="pathCard" aria-label="机の本">
+              <div class="tome__page tome__page--l">
+                <div id="pathHead"></div>
+                <div class="today__strip" id="todayStrip" aria-label="連続日数"></div>
+              </div>
+              <div class="tome__page tome__page--r">
+                <div id="pathNow"></div>
+              </div>
+              <div class="tome__page tome__page--toc">
+                <div id="pathList"></div>
+              </div>
+              <!-- 出題の要約行（出題: … ・ 設定）と「机に戻る」。プレイ中は見出しと同じ1行に畳む（body.home--playing） -->
+              <div class="play__bar">
+                <button type="button" class="back-to-path" id="backToPath" hidden>机に戻る</button>
+                <button type="button" class="setup-toggle" id="setupToggle" aria-expanded="false" aria-controls="setupPanel">
+                  <span class="setup-toggle__label">出題:</span>
+                  <span class="setup-toggle__summary" id="setupSummary">すべて</span>
+                  <span class="setup-toggle__sep" aria-hidden="true">・</span>
+                  <span class="setup-toggle__more">設定</span>
+                </button>
+              </div>
+              <span class="tome__ribbon" aria-hidden="true"></span>
+              <svg class="fore-quill" viewBox="0 0 100 50" aria-hidden="true" focusable="false"><defs><linearGradient id="fq-v2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--s-quill-lit)"/><stop offset=".55" style="stop-color:var(--s-quill)"/><stop offset="1" style="stop-color:var(--s-quill-dk)"/></linearGradient><filter id="fq-sh2" x="-20%" y="-40%" width="150%" height="220%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.6"/><feOffset dx="4" dy="5"/><feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer></filter></defs><g filter="url(#fq-sh2)"><path d="M26.08,36.16 L27.18,33.51 L28.46,31.92 L29.79,30.55 L31.14,29.3 L32.5,28.15 L33.88,27.08 L35.27,26.06 L36.67,25.09 L38.08,24.17 L39.49,23.29 L40.92,22.45 L42.34,21.64 L43.78,20.87 L45.22,20.12 L46.66,19.4 L48.11,18.71 L49.56,18.04 L51.02,17.4 L52.48,16.78 L53.95,16.18 L55.42,15.6 L56.89,15.03 L58.53,14.86 L60.77,16.05 L61.48,13.8 L62.81,12.95 L64.29,12.46 L65.78,11.99 L67.27,11.54 L68.77,11.09 L70.26,10.66 L71.76,10.23 L73.26,9.82 L74.76,9.42 L76.26,9.02 L77.77,8.64 L79.28,8.26 L80.78,7.9 L82.29,7.54 L83.8,7.19 L85.32,6.85 L86.83,6.52 L88.35,6.19 L89.86,5.89 L91.39,5.59 L92.91,5.32 L94.44,5.09 L96,5 L94.82,5.8 L93.58,6.56 L92.31,7.32 L91.03,8.06 L89.75,8.8 L88.46,9.54 L87.16,10.28 L85.86,11.01 L84.55,11.74 L83.24,12.47 L81.93,13.2 L80.61,13.92 L79.29,14.64 L77.96,15.36 L76.63,16.08 L75.29,16.79 L73.95,17.5 L72.6,18.21 L71.24,18.91 L69.88,19.61 L68.52,20.31 L67.14,21 L65.76,21.7 L64.38,22.38 L62.98,23.06 L61.57,23.74 L60.16,24.41 L58.74,25.08 L57.31,25.74 L55.86,26.4 L54.41,27.05 L52.94,27.69 L51.46,28.33 L49.97,28.96 L48.47,29.59 L46.95,30.2 L45.41,30.81 L43.86,31.4 L42.29,31.99 L40.69,32.56 L39.08,33.13 L37.43,33.68 L35.76,34.21 L34.05,34.72 L32.3,35.21 L30.48,35.66 L28.54,36.05 Z"/><path d="M3.69,45.31 L95.96,4.91 L96.04,5.09 L4.31,46.69 Z"/></g><path d="M26.08,36.16 L27.18,33.51 L28.46,31.92 L29.79,30.55 L31.14,29.3 L32.5,28.15 L33.88,27.08 L35.27,26.06 L36.67,25.09 L38.08,24.17 L39.49,23.29 L40.92,22.45 L42.34,21.64 L43.78,20.87 L45.22,20.12 L46.66,19.4 L48.11,18.71 L49.56,18.04 L51.02,17.4 L52.48,16.78 L53.95,16.18 L55.42,15.6 L56.89,15.03 L58.53,14.86 L60.77,16.05 L61.48,13.8 L62.81,12.95 L64.29,12.46 L65.78,11.99 L67.27,11.54 L68.77,11.09 L70.26,10.66 L71.76,10.23 L73.26,9.82 L74.76,9.42 L76.26,9.02 L77.77,8.64 L79.28,8.26 L80.78,7.9 L82.29,7.54 L83.8,7.19 L85.32,6.85 L86.83,6.52 L88.35,6.19 L89.86,5.89 L91.39,5.59 L92.91,5.32 L94.44,5.09 L96,5 L94.82,5.8 L93.58,6.56 L92.31,7.32 L91.03,8.06 L89.75,8.8 L88.46,9.54 L87.16,10.28 L85.86,11.01 L84.55,11.74 L83.24,12.47 L81.93,13.2 L80.61,13.92 L79.29,14.64 L77.96,15.36 L76.63,16.08 L75.29,16.79 L73.95,17.5 L72.6,18.21 L71.24,18.91 L69.88,19.61 L68.52,20.31 L67.14,21 L65.76,21.7 L64.38,22.38 L62.98,23.06 L61.57,23.74 L60.16,24.41 L58.74,25.08 L57.31,25.74 L55.86,26.4 L54.41,27.05 L52.94,27.69 L51.46,28.33 L49.97,28.96 L48.47,29.59 L46.95,30.2 L45.41,30.81 L43.86,31.4 L42.29,31.99 L40.69,32.56 L39.08,33.13 L37.43,33.68 L35.76,34.21 L34.05,34.72 L32.3,35.21 L30.48,35.66 L28.54,36.05 Z" fill="url(#fq-v2)"/><path d="M3.69,45.31 L95.96,4.91 L96.04,5.09 L4.31,46.69 Z" style="fill:var(--s-quill-rachis)"/><path d="M0.32,47.64 L6.43,44.04 L7.92,44.91 Z" style="fill:var(--s-ink-liquid)"/></svg>
+            </section>
+
+            <!-- プレイ: ゲームカードは本でスタートしたときだけ出る。出題設定は折りたたみ -->
+            <section class="play" aria-label="プレイ">
+              <div class="setup" id="setupPanel" hidden>
+        <div class="setup__row">
+          <span class="setup__label">コース・カテゴリ</span>
+          <section class="category-picker" id="categoryPicker" aria-label="出題カテゴリ"></section>
+          <div class="genre-bar" id="genreBar"></div>
+        </div>
+        <div class="setup__row setup__row--inline">
+          <section class="weak-toggle" id="weakToggleRow">
+            <button type="button" class="weak-toggle__btn" id="weakToggleButton">
+              苦手のみ復習 <span class="weak-toggle__count" id="weakToggleCount"></span>
+            </button>
+            <span class="weak-toggle__hint">思い出せなかった・打ち間違いが多い単語だけを出題</span>
+          </section>
+        </div>
+        <div class="setup__row setup__row--inline setup__row--length">
+          <label for="setLengthSelect" class="setup__label">今日のセットの長さ</label>
+          <select id="setLengthSelect" class="setting-select" autocomplete="off">
+            <option value="10">10語（約3分）</option>
+            <option value="15">15語（約5分・標準）</option>
+            <option value="25">25語（約8分）</option>
+            <option value="60s">60秒（時間で区切る）</option>
+          </select>
+        </div>
+        <div class="setup__row">
+          <section class="mix-control" id="mixControl">
+            <div class="mix-control__head">
+              <span>テンポ重視</span>
+              <span>新規学習</span>
+            </div>
+            <input type="range" id="mixSlider" min="0" max="100" step="10" value="80" dir="rtl" aria-describedby="mixLabel" />
+            <div class="mix-control__foot">
+              <span id="mixLabel">回答済み 80% / 未回答 20%</span>
+              <span class="mix-control__hint">右へ動かすほど新しい語が増える</span>
+            </div>
+          </section>
+        </div>
+      </div>
+
+    <section class="game-card" id="gameCard" aria-label="いまの問題">
+      <div class="big-timer" id="bigTimer" hidden aria-label="残り時間">60</div>
+      <div class="play-score" id="playScore" hidden aria-label="現在のスコア"></div>
+      <div class="set-progress" id="setProgress" aria-label="今日のセットの進捗"></div>
+      <div class="study-queue" id="studyQueue" aria-label="このあとの問題"></div>
+
+      <p class="label">日本語訳</p>
+      <p id="wordMeta" class="word-meta" aria-live="polite"></p>
+      <p id="japanese" aria-live="polite" aria-atomic="true">Enterキーでスタート</p>
+      <p id="promptContext" class="prompt-context"></p>
+
+      <p id="word" class="hidden-word" aria-live="polite">スペルはまだ非表示</p>
+      <p id="wordHistory" class="word-history"></p>
+      <p id="wordExplain" class="word-explain"></p>
+      <p id="wordExample" class="word-example"></p>
+
+      <p id="wordFamily" class="word-family"></p>
+      <!-- 答え表示後の操作は1行（メモ・覚え方を作る・ヒント・発音）。絵文字ではなく線画アイコン -->
+      <div class="word-actions">
+        <div id="wordNote" class="word-note"></div>
+        <div id="wordAi" class="word-ai-slot"></div>
+        <div class="word-tools">
+          <button id="hintButton" type="button" class="hint-button" aria-label="ヒント（次の1文字）" hidden><svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5.5 10.5a3.8 3.8 0 1 1 5 0v1.5h-5z"/><path d="M6.5 14h3"/></svg>ヒント</button>
+          <button id="speakButton" type="button" class="speak-button" aria-label="発音を再生" hidden><svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h3l4-3v10l-4-3H3z"/><path d="M12 5.5a3.5 3.5 0 0 1 0 5"/></svg>発音</button>
+        </div>
+      </div>
+
+      <!-- 入力欄: 打った文字は朱で重ねる（2トーン） -->
+      <div class="input-wrapper">
+    <div id="typedPreview" class="typed-preview"></div>
+
+    <input
+      id="input"
+      type="text"
+      placeholder="英単語を入力"
+      aria-label="英単語を入力"
+      autocomplete="off"
+      autocapitalize="none"
+      autocorrect="off"
+      spellcheck="false"
+      enterkeyhint="go"
+    />
+      </div>
+
+      <p id="combo" class="combo"></p>
+
+      <p id="message" class="message" aria-live="polite">単語データを読み込み中…</p>
+      <div id="learnToast" class="learn-toast" role="status" hidden></div>
+      <!-- 読み上げ専用のステータス行（ランクアップ等の演出は aria-hidden にして、文言はここに流す） -->
+      <p id="srStatus" class="sr-only" role="status"></p>
+
+      <div id="resultPanel" class="result-panel" role="region" aria-labelledby="resultTitle" hidden></div>
+
+      <button id="restart" class="btn btn--ghost btn--sm">もう一回</button>
+    </section>
+
+      <!-- セッションの数字: 1行の静かなテキスト（正解 3 ・ 思い出せず 1 ・ 今日 20）。要素は残す -->
+      <section class="stats stats--strip" aria-label="このセッションの数字">
+        <div class="stat-card"><span>思い出せた</span><strong id="score">0</strong></div>
+        <div class="stat-card"><span>思い出せず</span><strong id="recallFail">0</strong></div>
+        <div class="stat-card stat-card--study"><span>今日 思い出せた</span><strong id="recalledToday">0</strong><span class="stat-card__sub" id="securedToday"></span></div>
+        <div class="stat-card stat-card--miss"><span>ミスタイプ</span><strong id="miss">0</strong></div>
+        <div class="stat-card stat-card--challenge"><span>速度</span><strong><span id="typeSpeed">0.0</span>打/秒</strong></div>
+        <div class="stat-card stat-card--challenge"><span>ベスト</span><strong id="bestScore">0</strong></div>
+        <div class="stat-card stat-card--challenge stat-card--time"><span>残り</span><strong><span id="time">60</span>秒</strong></div>
+      </section>
+            </section>
+
+            <!-- 机の幕板: ほかの遊び方（解放式）の 1 行 -->
+            <div class="desk__front">
+              <section class="play-modes" id="playModes" aria-label="ほかの遊び方"></section>
+            </div>
+
+            <!-- 机の下: ログインの案内と、詳細（覚えた単語・Daily Dash の結果とランキング）。普段は畳んでおく -->
+            <div class="desk__under">
+              <div class="login-nudge" id="loginNudge"></div>
+              <details class="home-more" id="homeMore">
+                <summary><span>覚えた単語</span></summary>
+                <div class="home-more__body">
+                  <section class="learned-card" id="learnedCard" aria-label="覚えた単語"></section>
+                  <section class="daily" id="dailyCard" aria-label="デイリーチャレンジ"></section>
+                </div>
+              </details>
+            </div>
+          </main>
+        </div>
+      </div>
+
+      <!-- わたしの本棚: 自分で足した本と函（＋机の本の空き）。173 冊の目録は「本を足す」の窓。js/bookshelf.js が描いて hidden を外す（スマホは机の下、PC は右の列 440px）。見た目は css/bookshelf.css -->
+      <section class="bookshelf" id="bookshelf" aria-labelledby="bookshelfTitle" hidden></section>
+    </div>
+  </div>
+
+  <!-- 専用キーボード（A〜Z＋BS）。スマホでプレイ中だけ画面下に出る -->
+  <div class="osk" id="osk" hidden></div>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark" aria-hidden="true">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="./typing.html">タイピング練習</a>
+        <a href="./news.html">お知らせ</a>
+        <a href="./privacy.html">プライバシー</a>
+        <a href="./tokushoho.html">特定商取引法に基づく表記</a>
+        <a href="./terms.html">利用規約</a>
+        <button type="button" class="site-footer__linkbtn" data-feedback-open>ご意見・不具合</button>
+      </nav>
+
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
+    </div>
+  </footer>
+
+  <script type="module" src="../scripts/main.js"></script>
+  <script>
+    if ("serviceWorker" in navigator && !window.Capacitor) {
+      navigator.serviceWorker.register("/sw.js");
+    }
+  </script>
+</body>
+</html>
