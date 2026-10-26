@@ -4,6 +4,19 @@
 
 🌐 本番: https://www.spelldash.net
 
+## リポジトリ構成
+
+- `frontend/`: 画面・UI・ブラウザ側のロジック、HTML/CSS/JS
+- `backend/`: API、DB連携、Supabase関連のサーバー処理
+- `data/`: 学習教材、語彙、パック、JSONデータ
+- `assets/`: 画像・アイコン・音声・フォントなどの静的メディア
+- `native/`: iOS / Android のネイティブラッパー実装をまとめた層
+  - `native/ios/`, `native/android/`
+- `docs/`: 方針・設計・作業メモ
+- `tests/`: E2E / 回帰テスト
+
+> 実装責務を軸に分離した構成を採用している。iOS / Android は実行環境のラッパーなので `native/` にまとめている。
+
 ## コンセプト
 
 「勉強アプリ」ではなく **「気付いたら英単語が覚えられているゲーム」**。
@@ -45,6 +58,7 @@ Active Recall（思い出す学習）をタイピングゲームの形にし、�
 - フロント: 素のHTML/CSS/JavaScript（ESモジュール、ビルドなし、依存ライブラリなし）
 - 認証/DB: Supabase（Google OAuth＋メールマジックリンク、Postgres＋RLS）
 - ホスティング: Vercel（mainへのpushで自動デプロイ）
+- ネイティブラッパー: Capacitor（`native/ios` / `native/android`）
 - サーバー関数: `api/generate-cards.js`（テキストから場面カードを作る）／`api/explain-word.js`（語の覚え方・例文・注意点を作る）。Claude APIをサーバー側で呼ぶ
   - Vercel の環境変数 `ANTHROPIC_API_KEY` が必要。未設定のときは「この機能は準備中です」と返す（アプリ本体は影響なし）
   - ログイン必須（Supabaseのアクセストークンを検証）。1ユーザー1日20回目安（`CARD_GEN_DAILY_LIMIT` で変更可）

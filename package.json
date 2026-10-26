@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/e2e.mjs",
-    "test:shard": "node scripts/e2e-shard.mjs --shard",
-    "app:build": "node scripts/build-app.mjs",
-    "app:sync": "node scripts/build-app.mjs && npx cap sync",
-    "app:ios": "node scripts/build-app.mjs && npx cap sync ios && npx cap open ios",
-    "app:android": "node scripts/build-app.mjs && npx cap sync android && npx cap open android"
+    "test": "node backend/tests/e2e.mjs",
+    "test:shard": "node backend/scripts/e2e-shard.mjs --shard",
+    "app:build": "node backend/scripts/build-app.mjs",
+    "app:sync": "node backend/scripts/build-app.mjs && npx cap sync",
+    "app:ios": "node backend/scripts/build-app.mjs && echo 'iOS project is under native/ios; open it directly in Xcode or run cap from that folder.'",
+    "app:android": "node backend/scripts/build-app.mjs && echo 'Android project is under native/android; open it directly in Android Studio or run cap from that folder.'"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",

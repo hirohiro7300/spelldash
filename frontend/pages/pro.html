@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>SpellDash Pro | SpellDash</title>
+
+  <link rel="stylesheet" href="../styles/reset.css" />
+  <link rel="stylesheet" href="../styles/fonts.css" />
+  <link rel="stylesheet" href="../styles/tokens.css" />
+  <link rel="stylesheet" href="../styles/layout.css" />
+  <link rel="stylesheet" href="../styles/game.css" />
+  <link rel="stylesheet" href="../styles/responsive.css" />
+  <link rel="stylesheet" href="../styles/brand.css" />
+  <link rel="stylesheet" href="../styles/pages.css" />
+  <link rel="stylesheet" href="../styles/pro.css" />
+  <meta name="theme-color" content="#1A2137" />
+  <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
+
+
+  <meta name="description" content="SpellDash Pro。単語の学習は無料のまま、マイ単語帳の上限・AI の回数・90日の推移・連続記録の修復・追加テーマを。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SpellDash" />
+  <meta property="og:title" content="SpellDash Pro | SpellDash" />
+  <meta property="og:description" content="単語の学習は無料のまま。Pro は、もっと自分向けに。" />
+<link rel="canonical" href="https://www.spelldash.net/pro.html" />
+  <meta property="og:url" content="https://www.spelldash.net/pro.html" />
+  <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png?v=2" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+  <!-- modulepreload:start -->
+  <link rel="modulepreload" href="../scripts/proView.js" />
+  <link rel="modulepreload" href="../scripts/auth.js" />
+  <link rel="modulepreload" href="../scripts/appEnv.js" />
+  <link rel="modulepreload" href="../scripts/supabase.js" />
+  <link rel="modulepreload" href="../scripts/sync.js" />
+  <link rel="modulepreload" href="../scripts/storageGuard.js" />
+  <link rel="modulepreload" href="../scripts/storage.js" />
+  <link rel="modulepreload" href="../scripts/level.js" />
+  <link rel="modulepreload" href="../scripts/plan.js" />
+  <link rel="modulepreload" href="../scripts/battleRank.js" />
+  <link rel="modulepreload" href="../scripts/battleConfig.js" />
+  <link rel="modulepreload" href="../scripts/studyMix.js" />
+  <link rel="modulepreload" href="../scripts/studyConfig.js" />
+  <link rel="modulepreload" href="../scripts/activity.js" />
+  <link rel="modulepreload" href="../scripts/userItemsSync.js" />
+  <link rel="modulepreload" href="../scripts/backup.js" />
+  <link rel="modulepreload" href="../scripts/masteryMeta.js" />
+  <link rel="modulepreload" href="../scripts/retentionCalc.js" />
+  <link rel="modulepreload" href="../scripts/memoryCheck.js" />
+  <link rel="modulepreload" href="../scripts/memoryModel.js" />
+  <link rel="modulepreload" href="../scripts/memoryWords.js" />
+  <link rel="modulepreload" href="../scripts/growthLog.js" />
+  <link rel="modulepreload" href="../scripts/stats.js" />
+  <link rel="modulepreload" href="../scripts/retentionLog.js" />
+  <link rel="modulepreload" href="../scripts/studyTime.js" />
+  <link rel="modulepreload" href="../scripts/mastery.js" />
+  <link rel="modulepreload" href="../scripts/html.js" />
+  <link rel="modulepreload" href="../scripts/unlocks.js" />
+  <link rel="modulepreload" href="../scripts/course.js" />
+  <link rel="modulepreload" href="../scripts/packs.js" />
+  <link rel="modulepreload" href="../scripts/wordStore.js" />
+  <link rel="modulepreload" href="../scripts/wordData.js" />
+  <link rel="modulepreload" href="../scripts/myWords.js" />
+  <link rel="modulepreload" href="../scripts/answers.js" />
+  <link rel="modulepreload" href="../scripts/jaAmbiguity.js" />
+  <link rel="modulepreload" href="../scripts/proFunnel.js" />
+  <link rel="modulepreload" href="../scripts/jaScript.js" />
+  <link rel="modulepreload" href="../scripts/focusTrap.js" />
+  <link rel="modulepreload" href="../scripts/footer.js" />
+  <link rel="modulepreload" href="../scripts/feedback.js" />
+  <link rel="modulepreload" href="../scripts/icons.js" />
+  <link rel="modulepreload" href="../scripts/offline.js" />
+  <link rel="modulepreload" href="../scripts/funnelLog.js" />
+  <link rel="modulepreload" href="../scripts/headerStreak.js" />
+  <link rel="modulepreload" href="../scripts/headerFit.js" />
+  <!-- modulepreload:end -->
+</head>
+<body data-pending>
+  <a class="skip-link" href="#main">本文へ</a>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a href="/" class="brand">
+        <span class="brand__mark" aria-hidden="true">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </a>
+
+      <nav class="site-nav" aria-label="メインナビ">
+        <a href="/" class="site-nav__link">書斎</a>
+        <a href="./stats.html" class="site-nav__link">学習データ</a>
+        <a href="./list.html" class="site-nav__link">単語帳</a>
+        <a href="./battle.html" class="site-nav__link">バトル</a>
+      </nav>
+
+      <div class="account">
+        <div class="account__guest dropdown" id="accountGuest" hidden>
+          <button
+            class="btn btn--sm btn--ghost"
+            id="loginToggle"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+          >
+            ログイン
+          </button>
+
+          <div class="dropdown__panel">
+            <form class="account-menu account-menu--login" id="accountLogin">
+              <p class="account-menu__native">アプリ版のログインは準備中。記録はこの端末に保存（Web 版 www.spelldash.net ではログインできる）。</p>
+              <p class="account-menu__hint">Pro はアカウントに付く。ログインすると支払いへ進める。</p>
+              <button
+                id="googleLoginButton"
+                type="button"
+                class="btn btn--sm btn--google"
+              >
+                Googleでログイン
+              </button>
+
+              <div class="account-menu__divider">または</div>
+
+              <p class="account-menu__hint">
+                メールにログインリンクを送る
+              </p>
+              <input
+                id="emailInput"
+                type="email"
+                placeholder="メールアドレス"
+                autocomplete="email"
+              />
+              <button id="loginButton" type="submit" class="btn btn--sm">
+                ログインリンクを送る
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="account__user dropdown" id="accountUser" hidden>
+          <button
+            class="avatar-button"
+            id="avatarButton"
+            type="button"
+            aria-haspopup="true"
+            aria-expanded="false"
+            aria-label="アカウントメニュー"
+          >
+            <span class="avatar" id="headerAvatar">?</span>
+          </button>
+
+          <div class="dropdown__panel">
+            <div class="account-menu" id="accountMenu">
+              <p class="account-menu__email" id="userStatus"></p>
+              <a class="account-menu__item" href="./profile.html">設定</a>
+              <button
+                class="account-menu__item account-menu__item--danger"
+                id="logoutButton"
+                type="button"
+              >
+                ログアウト
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="app app--narrow pro" id="main" tabindex="-1">
+    <section class="hero hero--compact">
+      <p class="logo">SpellDash Pro</p>
+      <h1>単語の学習は無料のまま。<br />Pro は、もっと自分向けに。</h1>
+      <p class="pro-price" id="proPrice" hidden></p>
+      <p class="auth-message" id="authMessage" role="status"></p>
+    </section>
+
+    <section class="settings pro-section pro-welcome" id="proWelcome" hidden></section>
+
+    <section class="settings pro-section" id="proCompareSection">
+      <h2 class="settings__title">無料と Pro</h2>
+      <table class="pro-compare" id="proCompare">
+        <thead>
+          <tr>
+            <th scope="col"><span class="visually-hidden">項目</span></th>
+            <th scope="col">無料</th>
+            <th scope="col"><span class="pro-chip">Pro</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">マイ単語帳<span class="pro-compare__sub">自分の仕事・試験の単語を入れて、同じ仕組みで覚える</span></th>
+            <td><b class="mono">100</b>語まで</td>
+            <td><b class="mono">1,000</b>語まで</td>
+          </tr>
+          <tr>
+            <th scope="row">AI<span class="pro-compare__sub">1日の回数。覚え方の解説・テキストからカード</span></th>
+            <!-- 値は api/explain-word.js（3／60）と api/generate-cards.js（2／20）の既定。env を変えたらここも -->
+            <td>解説 <b class="mono">3</b>・カード <b class="mono">2</b></td>
+            <td>解説 <b class="mono">60</b>・カード <b class="mono">20</b></td>
+          </tr>
+          <tr>
+            <th scope="row">覚えた単語の推移<span class="pro-compare__sub">学習データのグラフ</span></th>
+            <td><b class="mono">30</b> 日</td>
+            <td><b class="mono">90</b> 日</td>
+          </tr>
+          <tr>
+            <th scope="row">連続記録<span class="pro-compare__sub">休んだ日を守るシールドと、途切れたときの修復</span></th>
+            <td>休んだ日を守るシールド 最大 <b class="mono">2</b> 枚</td>
+            <td>シールド 最大 <b class="mono">3</b> 枚＋修復 月 <b class="mono">1</b> 回（途切れて 7 日以内）</td>
+          </tr>
+          <tr>
+            <th scope="row">テーマ<span class="pro-compare__sub">設定 →「見た目」</span></th>
+            <td>白・黒</td>
+            <td>白・黒・紙・藍</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="setting-hint pro-note">覚えやすさや判定が有利になるものは売らない。</p>
+    </section>
+
+    <section class="settings pro-section" id="proPlansSection">
+      <h2 class="settings__title" id="proPlansTitle">料金</h2>
+      <p class="pro-message" id="proMessage" role="status"></p>
+      <div class="pro-plans" id="proPlans"><p class="pro-pending">読み込み中</p></div>
+      <p class="pro-state" id="proState" role="status"></p>
+    </section>
+
+    <section class="settings pro-section">
+      <h2 class="settings__title">よくある質問</h2>
+      <details class="pro-faq">
+        <summary>支払いはどこで処理される</summary>
+        <p>決済は Stripe が処理する。カード番号は SpellDash のサーバーに渡らず、保存もしない。</p>
+      </details>
+      <details class="pro-faq">
+        <summary>領収書はもらえる</summary>
+        <p>「解約・お支払いの管理」で、過去の請求と領収書を見られる。</p>
+      </details>
+      <details class="pro-faq">
+        <summary>Pro をやめたら、入れた単語はどうなる</summary>
+        <p>消えない。100語を超えたぶんもそのまま見られて練習できる。新しく追加できるのが100語までに戻るだけ。</p>
+      </details>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <div class="site-footer__brand">
+        <span class="brand__mark" aria-hidden="true">SD</span>
+        <span class="brand__name">SpellDash</span>
+      </div>
+
+      <p class="site-footer__tagline">
+        タイピングで、英単語を体に覚えさせる。
+      </p>
+
+      <nav class="site-footer__nav" aria-label="フッターナビ">
+        <a href="./typing.html">タイピング練習</a>
+        <a href="./news.html">お知らせ</a>
+        <a href="./privacy.html">プライバシー</a>
+        <a href="./tokushoho.html">特定商取引法に基づく表記</a>
+        <a href="./terms.html">利用規約</a>
+        <button type="button" class="site-footer__linkbtn" data-feedback-open>ご意見・不具合</button>
+      </nav>
+
+      <p class="site-footer__copy">© <span id="footerYear">2026</span> SpellDash</p>
+    </div>
+  </footer>
+
+  <script type="module" src="../scripts/proView.js"></script>
+  <script>
+    if ("serviceWorker" in navigator && !window.Capacitor) {
+      navigator.serviceWorker.register("/sw.js");
+    }
+  </script>
+</body>
+</html>

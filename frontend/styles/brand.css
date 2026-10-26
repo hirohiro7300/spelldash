@@ -1,0 +1,1438 @@
+/* ===== 「墨と朱」→「書斎」共通レイヤー（docs/CONCEPT.md） =====
+   全ページの最後に読み込む。土台（ページ・ヘッダー・ナビ・ボタン・入力欄・カード・文字色）をトークンで統一し、
+   既存 CSS のダーク基調＋ライト上書きを両方まとめて置き換える。
+   html[data-theme] を頭に付けて (0,3,1) の詳細度で後勝ちにする（theme.css は Batch 40 で廃止）。
+   文字の使い分け（tokens.css）: 見出し・ナビ・ワードマーク・ボタン・はちゃん・チュートリアルの札・フッターのリンクは --font-display（明朝、500。
+   700 はスタートだけ）。本文・表・フォーム・一覧は --font-ui のまま（13px の可読性）。ラテン文字のワードマークは --font-latin、数字は --font-num。
+   部屋の中（index.html の body.page-room）の規則はここに書かない（css/room.css）。 */
+
+html[data-theme] body {
+  font-family: var(--font-ui);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+:where(html[data-theme]) a {
+  color: inherit;
+}
+
+/* フォーカスは outline 方式に一本化（box-shadow を持つ部品でも消えない）。入力欄だけ --focus のリング */
+:where(html[data-theme]) :focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+html[data-theme] .input-wrapper #input:focus,
+html[data-theme] .input-wrapper--battle #battleInput:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent; /* 文字は透明で、枠と輪は外側の wrapper が持つ（brand.css の .input-wrapper:focus-within） */
+}
+
+/* プログラムで焦点を置くだけの要素（本文の入口・結果の見出し）には枠を出さない */
+html[data-theme] #main:focus,
+html[data-theme] .result-panel__title:focus {
+  outline: none;
+}
+
+/* ---- 読み上げ専用（画面には出さない） ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- スキップリンク: Tab で最初に現れ、本文（<main id="main">）へ飛ぶ ---- */
+html[data-theme] .skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 100;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+html[data-theme] .skip-link:focus {
+  left: 16px;
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- ヘッダー ---- */
+html[data-theme] .site-header {
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] .site-header__inner {
+  min-height: 56px;
+  padding: 6px 0;
+}
+
+/* 1 行の帯の構造（PR #170 のレビュー 5）: 部品が重ならないことを字の寸法（Web フォントの有無・代わりの字・端末の文字の拡大）に頼らない。
+   印・連続日数・ログイン／アバター／設定は縮めず、字も折らない。ナビは残りの幅だけ（min-width: 0）で、はみ出しは切る（overflow: clip。無い環境は hidden）ので、
+   リンクがほかの部品の下に潜らない。リンクは縮んで字を「…」で省略する（ふだんは入るので出ない。入らないと測ったら、先に js/headerFit.js が細い形にする:
+   下の 359px の節の後の data-fit）。切り取りは焦点の輪（2px＋間 2px）の外まで取る: ナビの padding 4px と同じだけの負の margin（並びと位置は変わらない） */
+html[data-theme] .site-header__inner > :not(.site-nav) {
+  flex-shrink: 0;
+}
+
+html[data-theme] .site-header :is(#loginToggle, .account__link) {
+  white-space: nowrap;
+}
+
+html[data-theme] .site-nav {
+  min-width: 0;
+  margin: -4px;
+  padding: 4px;
+  overflow: hidden;
+  overflow: clip;
+}
+
+html[data-theme] .site-nav__link {
+  min-width: 0;
+  overflow: hidden;
+  overflow: clip visible; /* 切るのは横だけ（現在地の菱の下の角はリンクの箱から 1px 出る。clip の無い環境は hidden で 1px 欠ける） */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-theme] .brand,
+html[data-theme] .site-footer .brand__name {
+  color: var(--ink);
+}
+
+/* 印は黒いタイルではなく 1px の枠に「SD」（書斎では金の枠。room.css）。ワードマークは Cormorant 600 */
+html[data-theme] .brand__mark {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ink-2);
+  border-radius: var(--radius-room);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-latin);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+html[data-theme] .brand__name {
+  font-family: var(--font-latin);
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+html[data-theme] .site-nav__link {
+  position: relative;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  color: var(--ink-2);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  background: transparent;
+}
+
+html[data-theme] .site-nav__link:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+/* 現在地: 下線の帯ではなく 5px の菱の印（朱。書斎では金。room.css） */
+html[data-theme] .site-nav__link[aria-current="page"] {
+  color: var(--ink);
+  background: transparent;
+}
+
+html[data-theme] .site-nav__link[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  width: 5px;
+  height: 5px;
+  background: var(--signal);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+/* ---- 帯（部屋以外のページ）: ホームの天井と同じ藍の漆喰を、紙の上の 1 本の帯として描く。文字と印は room.css 66〜150 行の作法をそのまま写す
+   （.page-room → body:not(.page-room)。ホームの画素は変えない）。高さ 56px・position: sticky・html.native-app の padding-top は layout.css のまま
+   （背景は padding-box に描かれるので切り欠きも藍）。dark／indigo は帯が紙より暗いので、下端の金線が帯と紙の境を担う（落とさない） ---- */
+html[data-theme] body:not(.page-room) .site-header {
+  background:
+    url(../../assets/images/room/tile-plaster.webp) 0 0 / 384px 384px,
+    linear-gradient(to bottom, var(--vault), var(--vault-2));
+  background-blend-mode: soft-light, normal;
+  border-bottom: 1px solid var(--gold-dk);
+  box-shadow: 0 2px 6px -3px rgba(var(--shadow-rgb), 0.45); /* 帯が紙に落とす影。主光源（左上）と向きが合う */
+}
+
+html[data-theme] body:not(.page-room) .brand,
+html[data-theme] body:not(.page-room) .brand__name {
+  color: var(--foil);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme] body:not(.page-room) .site-header .brand__mark {
+  border-color: rgba(230, 200, 135, 0.7);
+  color: var(--foil);
+  text-shadow: none;
+}
+
+html[data-theme] body:not(.page-room) .site-nav__link {
+  color: var(--on-vault);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme] body:not(.page-room) .site-nav__link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--foil);
+}
+
+/* 現在地の菱は金（朱は 1 画面 1 回。Battle の「対戦を始める」だけ） */
+html[data-theme] body:not(.page-room) .site-nav__link[aria-current="page"] {
+  color: var(--foil);
+}
+
+html[data-theme] body:not(.page-room) .site-nav__link[aria-current="page"]::after {
+  background: var(--foil);
+}
+
+html[data-theme] body:not(.page-room) .account :is(.btn--ghost, .account__link, .account__home) {
+  color: var(--on-vault);
+  border-color: rgba(232, 220, 194, 0.5);
+}
+
+html[data-theme] body:not(.page-room) .account :is(.btn--ghost, .account__link, .account__home):hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foil);
+}
+
+/* アイコンの紋章が出ている丸（js/accountEmblem.js .has-emblem）: 地は帯の藍のまま（透明）、縁は印（.brand__mark）と同じ金の 1px（外寸は同じ: border-box）。
+   ホバー・開いている間は縁が金箔（--foil）で地を少し明るく（ログインのボタンのホバーと同じ）。帯は昼も夜も藍（--vault）なので、どのテーマでも同じ。
+   縁と帯の比は昼 約 3.9・夜 約 4.2（E2E 9.956 が測る）。書斎（.page-room）の透明な帯も天井の藍の上 */
+html[data-theme] .avatar.has-emblem {
+  border: 1px solid rgba(230, 200, 135, 0.55);
+  background: transparent;
+}
+
+html[data-theme] .avatar-button:hover .avatar.has-emblem,
+html[data-theme] .avatar-button[aria-expanded="true"] .avatar.has-emblem {
+  border-color: var(--foil);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* メニューの一番上の行（ランクとレベル）: 項目と同じ明朝 500（押せる項目ではないので字は小さく --ink-2。--sheet の上で昼 9.08・夜 9.35） */
+html[data-theme] .account-menu__rank {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* 連続日数: 「30日」。数字は Cormorant、炎は 1px の金の線画。下線の札は外して帯の上に直に置く */
+html[data-theme] body:not(.page-room) .header-streak {
+  align-items: baseline;
+  gap: 2px;
+  padding: 4px 4px;
+  border: 0;
+  border-radius: 0;
+  color: var(--foil);
+  font-size: 19px;
+  line-height: 1;
+  font-variant-numeric: lining-nums proportional-nums;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme] body:not(.page-room) .header-streak .icon,
+html[data-theme] body:not(.page-room) .header-streak--off .icon {
+  width: 15px;
+  height: 15px;
+  margin-right: 1px;
+  color: var(--foil);
+}
+
+html[data-theme] body:not(.page-room) .header-streak span {
+  display: inline; /* スマホでも「30日」で読む */
+  margin-left: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--on-vault-2);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme] body:not(.page-room) .header-streak:hover {
+  color: #F6E2A8;
+}
+
+html[data-theme] body:not(.page-room) .header-streak--off {
+  color: var(--on-vault-2);
+}
+
+/* 帯から下がる紙片（ログイン／アカウントのメニュー）: 読む机の紙に机への影。ホームの帯からも同じ紙が下がる
+   （layout.css の素の箱 = --paper-2・10px・影なし を全ページで置き換える。--ink / --sheet = 昼 13.67・夜 12.51、説明 --ink-3 / --sheet = 6.74・6.23） */
+html[data-theme] .account-menu,
+html[data-theme] .account-menu--login {
+  border-radius: var(--radius-room);
+  border-color: var(--sheet-edge);
+  background: var(--sheet);
+  box-shadow: 0 10px 20px -12px rgba(var(--shadow-rgb), 0.55);
+}
+
+/* 紙の中の部品も札の角（layout.css の --radius と Google ボタンの 6px に (0,3,1) で勝つ）。入力は紙の上の一段くぼんだ欄 --paper-2（--ink / --paper-2 = 14.40・12.81） */
+html[data-theme] .account-menu--login input,
+html[data-theme] .account-menu .btn,
+html[data-theme] .account-menu__item {
+  border-radius: var(--radius-room);
+}
+
+/* 項目はナビの字（明朝 500・字間 .04em）。ログアウトは危険な操作ではない（記録は端末に残る）ので朱を使わない: 朱は 1 画面 1 回（スタート）。
+   --ink-2 / --sheet = 昼 9.08・夜 9.35。14px・padding 10px 12px・coarse の 40px は layout.css と下の coarse のまま */
+html[data-theme] .account-menu__item {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] .account-menu__item--danger {
+  color: var(--ink-2);
+}
+
+html[data-theme] .account-menu__item--danger:hover {
+  color: var(--ink);
+}
+
+/* 夜の紙の中の罫: --line は --sheet の上で 1.2:1 で消えるので --line-2（56b の「夜の札の中の罫」と同じ理屈）。擬似要素は :is() に入れられないので 2 つ書く */
+html:is([data-theme="dark"], [data-theme="indigo"]) .account-menu .account-menu__divider::before,
+html:is([data-theme="dark"], [data-theme="indigo"]) .account-menu .account-menu__divider::after {
+  background: var(--line-2);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"]) .account-menu .account-menu__email {
+  border-bottom-color: var(--line-2);
+}
+
+/* ---- フッター ---- */
+html[data-theme] .site-footer {
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+  backdrop-filter: none;
+  color: var(--ink-3);
+}
+
+html[data-theme] .site-footer__tagline,
+html[data-theme] .site-footer__copy,
+html[data-theme] .site-footer__nav a {
+  color: var(--ink-3);
+}
+
+html[data-theme] .site-footer__tagline,
+html[data-theme] .site-footer__nav a,
+html[data-theme] .site-footer__linkbtn {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+html[data-theme] .site-footer__copy {
+  font-family: var(--font-latin);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+html[data-theme] .site-footer__nav a:hover {
+  color: var(--ink);
+}
+
+/* フッターの「ご意見・不具合」はモーダルを開くので button。見た目は隣のリンクと同じ */
+html[data-theme] .site-footer__linkbtn {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+html[data-theme] .site-footer__linkbtn:hover {
+  background: none;
+  color: var(--ink);
+}
+
+/* ---- 幅木（部屋以外のページ）: ホームの床と同じ胡桃の板 18px ＋ 床板（room.css 1390〜1431 行を写す。margin-top 40px は layout.css のまま＝紙の余白）。
+   文字は床の帯（--wood-3 に黒 .35〜.6。--on-vault-2 で 8.9:1 以上）に置く。板面の明るい木目の上では 4.35:1 まで落ちるので板面に文字を置かない ---- */
+html[data-theme] body:not(.page-room) .site-footer {
+  border: 0;
+  color: var(--on-vault-2);
+  background:
+    linear-gradient(to bottom, rgba(255, 226, 186, 0.3) 0, rgba(255, 226, 186, 0.3) 1px, rgba(0, 0, 0, 0.25) 1px, transparent 4px),
+    linear-gradient(to bottom, transparent 18px, rgba(0, 0, 0, 0.55) 18px, rgba(0, 0, 0, 0.55) 19px, rgba(255, 226, 186, 0.1) 19px, transparent 21px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0) 20px, rgba(0, 0, 0, 0.35) 60px, rgba(0, 0, 0, 0.6) 100%),
+    url(../../assets/images/room/tile-wood.webp) 0 0 / 640px 256px,
+    linear-gradient(to bottom, var(--wood), var(--wood-2) 18px, var(--wood-3) 19px, var(--floor) 100%);
+  background-blend-mode: normal, normal, normal, soft-light, normal;
+}
+
+html[data-theme] body:not(.page-room) .site-footer__inner {
+  padding: 36px 0 30px;
+}
+
+html[data-theme] body:not(.page-room) .site-footer .brand__name,
+html[data-theme] body:not(.page-room) .site-footer .brand__mark {
+  color: var(--on-vault);
+  border-color: rgba(232, 220, 194, 0.5);
+}
+
+html[data-theme] body:not(.page-room) .site-footer__tagline,
+html[data-theme] body:not(.page-room) .site-footer__copy,
+html[data-theme] body:not(.page-room) .site-footer__nav a,
+html[data-theme] body:not(.page-room) .site-footer__linkbtn {
+  color: var(--on-vault-2);
+}
+
+html[data-theme] body:not(.page-room) .site-footer__nav a,
+html[data-theme] body:not(.page-room) .site-footer__linkbtn {
+  text-decoration: underline;
+  text-decoration-color: rgba(230, 200, 135, 0.4);
+  text-underline-offset: 4px;
+}
+
+html[data-theme] body:not(.page-room) .site-footer__nav a:hover,
+html[data-theme] body:not(.page-room) .site-footer__linkbtn:hover {
+  color: var(--on-vault);
+}
+
+/* オーバースクロールの床: 幅木の下に紙が見えない。body は紙のまま（E2E のテーマ検査は body の色を見る）。
+   書斎（room.css の :has(body.page-room)）と同じ値なので、:has を使わずに html 全体に当てる（:has の無いブラウザでも床が出る） */
+html[data-theme] {
+  background: var(--floor);
+}
+
+/* ---- ボタン ---- */
+:where(html[data-theme]) button,
+html[data-theme] .btn {
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  box-shadow: none;
+  transition: background var(--ease), color var(--ease), border-color var(--ease), transform var(--ease);
+}
+
+:where(html[data-theme]) button:hover,
+html[data-theme] .btn:hover {
+  background: var(--ink-2);
+}
+
+/* 主ボタンの寸法（CONCEPT §4: 高さ 40px・太字 14px）。素の class="btn" でもこの寸法になる（旧 game.css の全称 button に落ちない） */
+html[data-theme] .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+html[data-theme] .btn--sm {
+  min-height: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: var(--radius);
+}
+
+html[data-theme] .btn--ghost,
+html[data-theme] .btn--ghost:hover {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+}
+
+html[data-theme] .btn--ghost:hover {
+  background: var(--paper-3);
+}
+
+/* 無効: 半透明ではなく、灰の文字＋紙3の面で示す（文字が薄くなりすぎない） */
+html[data-theme] .btn:disabled,
+:where(html[data-theme]) button:disabled,
+html[data-theme] .weak-toggle__btn[aria-disabled="true"] {
+  opacity: 1;
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border-color: var(--line);
+  cursor: default;
+}
+
+/* ---- ボタンと入力欄の皮（部屋以外）: 角丸は部品・札とも --radius-room の 1 種（6／10px をやめる）。主は墨の板に紙の字（明朝 500・字間 .06em）、副は 1px の罫だけ。
+   下の .btn は (0,3,2) なので、変種（hover・ghost・google・disabled）も同じ節で (0,3,2) 以上に再指定する。
+   触らないもの: 28px の共有ピル（.speak-button・.hint-button・.word-note__edit・.word-ai__button・.word-chip・.coach__ok）はホームのプレイ中にも出る ---- */
+html[data-theme] body:not(.page-room) :is(.btn, .btn--sm, .btn--ghost, .btn--google, .skip-link, .feedback-modal__close, .account-menu__item),
+html[data-theme] body:not(.page-room) :is(input[type="text"], input[type="email"], input[type="search"], input[type="number"], textarea, select) {
+  border-radius: var(--radius-room);
+}
+
+html[data-theme] body:not(.page-room) .btn {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+html[data-theme] body:not(.page-room) .btn:hover {
+  background: var(--ink-2);
+}
+
+html[data-theme] body:not(.page-room) .btn--ghost,
+html[data-theme] body:not(.page-room) .btn--google {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+}
+
+html[data-theme] body:not(.page-room) .btn--ghost:hover,
+html[data-theme] body:not(.page-room) .btn--google:hover {
+  background: var(--paper-3);
+}
+
+html[data-theme] body:not(.page-room) .btn:disabled {
+  color: var(--ink-3);
+  background: var(--paper-3);
+  border-color: var(--line);
+}
+
+/* ---- 入力欄（ゲーム） ---- */
+html[data-theme] .input-wrapper {
+  background: var(--paper-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+}
+
+html[data-theme] .input-wrapper:focus-within {
+  border-color: var(--signal);
+  box-shadow: var(--focus);
+}
+
+html[data-theme] #input {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  caret-color: var(--signal);
+}
+
+html[data-theme] #input::placeholder {
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  letter-spacing: 0;
+  font-size: 18px;
+}
+
+html[data-theme] .typed-preview {
+  font-weight: 500;
+  font-size: 24px;
+  letter-spacing: 0.04em;
+}
+
+/* プレースホルダは唯一の説明文になることがあるので ink-3（4.5:1 以上）。layout.css の ink-4 を上書き */
+html[data-theme] .account-menu--login input::placeholder,
+html[data-theme] .welcome-demo__input::placeholder {
+  color: var(--ink-3);
+}
+
+/* 汎用の入力・選択 */
+:where(html[data-theme]) input[type="text"],
+:where(html[data-theme]) input[type="email"],
+:where(html[data-theme]) input[type="search"],
+:where(html[data-theme]) input[type="number"],
+:where(html[data-theme]) textarea,
+:where(html[data-theme]) select {
+  background: var(--paper-2);
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  font-family: inherit;
+}
+
+:where(html[data-theme]) input:focus,
+:where(html[data-theme]) textarea:focus,
+:where(html[data-theme]) select:focus,
+:where(html[data-theme]) input:focus-visible,
+:where(html[data-theme]) textarea:focus-visible,
+:where(html[data-theme]) select:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: var(--focus);
+}
+
+/* 検索欄の消去「×」: ブラウザ既定の青ではなく墨の線画（js/icons.js の x と同じ） */
+:where(html[data-theme]) input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--ink-3);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E") center / contain no-repeat;
+  cursor: pointer;
+}
+
+:where(html[data-theme]) input[type="search"]::-webkit-search-cancel-button:hover {
+  background: var(--ink);
+}
+
+/* ---- 文字 ---- */
+html[data-theme] .muted,
+html[data-theme] .subtitle,
+html[data-theme] .label,
+html[data-theme] .word-meta,
+html[data-theme] .auth-message {
+  color: var(--ink-3);
+}
+
+/* 見出しは明朝 500（太字にしない: 700 はスタートだけ）。字間 +.04em、「palt」は見出しだけ */
+:where(html[data-theme]) h1,
+:where(html[data-theme]) h2,
+:where(html[data-theme]) h3 {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  font-feature-settings: "palt";
+}
+
+/* ---- 題と柱（部屋以外）: 題は明朝 500・--fs-title（1200 で 34px。ホームの題と同じ段）。柱（kicker）は短い金の罫＋小さな字＋字間
+   （ホームの「— 第1巻／全8巻」と同じ作法）。ラテンは Cormorant 500（600 にしない: かなで Shippori 700 が読まれる）、かなは --font-display に落ちる。
+   --gold-ink / --paper = light 5.27・paper 5.57・dark 11.5・indigo 11.4 ---- */
+html[data-theme] body:not(.page-room) :is(.hero, .hero--compact, .pp-hero) h1 {
+  font-size: var(--fs-title);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+html[data-theme] body:not(.page-room) :is(.logo, .pp-kicker) {
+  font-family: var(--font-latin);
+  font-weight: 500;
+  font-size: var(--fs-meta);
+  letter-spacing: 0.14em;
+  color: var(--gold-ink);
+}
+
+html[data-theme] body:not(.page-room) :is(.logo, .pp-kicker)::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 1px;
+  margin-right: 8px;
+  vertical-align: middle;
+  background: var(--gold);
+}
+
+html[data-theme] .auth-message.success { color: var(--gold-ink); } /* 済みは金（緑は使わない）。ホームの .auth-message--home は room.css が --on-vault に差し替える */
+html[data-theme] .auth-message.error { color: var(--signal-ink); }
+
+/* ---- カード（ゲームカードと結果） ---- */
+html[data-theme] .game-card {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+html[data-theme] .label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-theme] #japanese {
+  color: var(--ink);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+html[data-theme] .message {
+  color: var(--ink-2);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+html[data-theme] .message.correct { color: var(--ok); }
+html[data-theme] .message.wrong { color: var(--signal-ink); }
+html[data-theme] .message.revealed { color: var(--ink-2); }
+
+/* ---- 小さな部品: 発音（.speak-button／.word-detail__speak）・ヒント・メモ・覚え方。
+   28px の pill（paper-3 の面・1px --line）。プレイ画面（card.css）と単語詳細（pages.css）で同じ 1 つの定義 ---- */
+html[data-theme] .word-note__edit,
+html[data-theme] .word-ai__button,
+html[data-theme] .speak-button,
+html[data-theme] .word-detail__speak,
+html[data-theme] .hint-button,
+html[data-theme] .word-note__save {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: none;
+  animation: none;
+  cursor: pointer;
+  transition: background var(--ease), color var(--ease), border-color var(--ease);
+}
+
+html[data-theme] .word-note__edit .icon,
+html[data-theme] .word-ai__button .icon,
+html[data-theme] .speak-button .icon,
+html[data-theme] .word-detail__speak .icon,
+html[data-theme] .hint-button .icon {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  vertical-align: 0;
+}
+
+html[data-theme] .word-note__edit:hover,
+html[data-theme] .word-ai__button:hover,
+html[data-theme] .speak-button:hover,
+html[data-theme] .word-detail__speak:hover,
+html[data-theme] .hint-button:hover,
+html[data-theme] .word-note__save:hover {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+html[data-theme] .word-ai__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ---- 学習データ: カテゴリ別の行。行（div）の中の見出し部分だけが button（a と button の入れ子をやめた） ---- */
+html[data-theme] .cat-row__go,
+html[data-theme] .cat-row__go:hover {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ---- アイコン ---- */
+html[data-theme] .icon {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 4px;
+}
+
+/* ---- 選択・スクロールバーの色（ブラウザ既定を紙と墨に） ---- */
+:where(html[data-theme]) ::selection {
+  background: var(--signal-soft);
+  color: var(--ink);
+}
+
+/* ---- ヘッダー（スマホ・横向き・細い窓）: 横スクロールにしない。詰めて 1 行に収める。切り替えは responsive.css と同じ 720px
+   （560px では 561〜680px でナビの字が途中で折れた。Batch 66） ---- */
+@media (max-width: 720px) {
+  html[data-theme] .site-header__inner {
+    gap: 6px;
+  }
+  html[data-theme] .site-nav {
+    gap: 0;
+  }
+  /* 56px のヘッダーの縦の余白を当たり判定に使う（タブ 41px・連続日数 40px・アバターは見た目 32px のまま 44px）。
+     タブの高さは 41px に固定し、字の行（1lh）を上下の余白で真ん中に置く（Web フォントの 13px で 11px ずつ = 前の padding 11px と同じ）。
+     端末の文字の拡大で字の行が伸びても、余白が縮むだけで帯は 56／57px のまま（前は 1.3 倍で 59／60px。PR #170 のレビュー 5）。
+     lh の無い環境は padding 11px のまま */
+  html[data-theme] .site-nav__link {
+    height: 41px;
+    padding: 11px 5px;
+    padding-top: max(0px, (41px - 1lh) / 2);
+    padding-bottom: max(0px, (41px - 1lh) / 2);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  html[data-theme] .account .btn--ghost {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+  /* 連続日数は「12日」のまま高さだけ 40px（当たり判定）、アバターは 32px。
+     字と余白は帯の上の規則（このファイルの body:not(.page-room) .header-streak・room.css の .page-room .header-streak）が全幅で決める
+     （ここにあった「単位を消す・padding 4px 7px」は詳細度と後勝ちで効いていなかったので消した。PR #168 のレビュー 5。数字だけになるのは 359px 以下: 書斎は room.css、ほかは下の 449px の節。
+     ほかに、1 行に入らないと js/headerFit.js が測ったとき: 下の data-fit の num） */
+  html[data-theme] .header-streak {
+    min-height: 40px;
+  }
+  html[data-theme] .avatar-button {
+    padding: 6px;
+    margin: -6px;
+  }
+  html[data-theme] .avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  /* 32px の丸に紋章 28px（1200 は 38px に 32px: layout.css） */
+  html[data-theme] .avatar__emblem {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* 400px 未満は「バトル」タブを出さない（ホームの「ほかの遊び方」から入れる）。Battle のページでは現在地の印として残す */
+@media (max-width: 399.98px) {
+  html[data-theme] .site-nav__link[href$="battle.html"]:not([aria-current]) {
+    display: none;
+  }
+  /* 4 つ目のタブが出る Battle のページでは連続日数の丸を出さない（4 タブ＋ログインで幅いっぱい。連続日数は学習データにもある） */
+  html[data-theme] .site-header__inner:has(.site-nav__link[aria-current][href$="battle.html"]) .header-streak {
+    display: none;
+  }
+}
+
+/* ---- ヘッダー（449px 以下）: 部品（印・ナビ・連続日数・ログイン／アバター）が重ならないように詰める（Batch 67）。
+   当時のナビは flex: 1・min-width: 0・overflow: visible で、幅が足りないとリンクが連続日数・ログインの下に潜った（320 の未ログイン・1234 日で 52px、
+   400〜432 の 4 タブ＋連続日数も）。今は重なりそのものをヘッダーの節の構造（はみ出しを切る）が止めるので、ここは Web フォントの字で「…」も細い形も
+   出さないための詰め方。いちばん混む形（未ログイン＋4 桁の連続日数）が 320〜720 のどの幅でも収まる量だけ、目立たない所から詰める:
+   部品の間 6 → 4px（ログイン／アバターの前は 6px のまま: アバターの当たり判定は左へ 6px 出る）・内枠 94% → 100% − 16px・ログインの左右 8 → 6px・
+   ナビ 5px／0.08em → 4px／0.04em。足りない 2 つの帯（≤359・4 タブが出る 400〜411）だけナビを 3px／0.02em に。
+   ≤359 は連続日数を数字だけにする（書斎の room.css と同じ。炎と単位を畳む。aria-label「連続 N日」は残る）。帯の高さと字の 1 行は変えない ---- */
+@media (max-width: 449.98px) {
+  html[data-theme] .site-header__inner {
+    gap: 4px;
+    width: calc(100% - 16px);
+  }
+  html[data-theme] .account {
+    padding-left: 2px;
+  }
+  html[data-theme] .account .btn--ghost {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+  html[data-theme] .site-nav__link {
+    padding-right: 4px;
+    padding-left: 4px;
+    letter-spacing: 0.04em;
+  }
+}
+
+@media (max-width: 359.98px), (min-width: 400px) and (max-width: 411.98px) {
+  html[data-theme] .site-nav__link {
+    padding-right: 3px;
+    padding-left: 3px;
+    letter-spacing: 0.02em;
+  }
+}
+
+@media (max-width: 359.98px) {
+  html[data-theme] body:not(.page-room) .header-streak span,
+  html[data-theme] body:not(.page-room) .header-streak .icon {
+    display: none;
+  }
+  html[data-theme] body:not(.page-room) .header-streak {
+    padding: 4px 2px;
+  }
+}
+
+/* ---- ヘッダー: 収まらないときの形（PR #170 のレビュー 5）。上の幅の帯の詰め方は Web フォントの寸法で決めてあるので、フォントが読めない・代わりの字が広い・
+   端末の文字の拡大では足りないことがある。js/headerFit.js が今の字で 1 行に入るかを測り（リンクを縮めない形で、ナビの中身がナビの内側に入るか）、
+   入らなければ .site-header__inner の data-fit に畳むものを足していく（軽い順に試し、入った所で止める。幅の帯ではなく測った結果で決める）:
+   name = 名前「SpellDash」を見た目だけ隠す（721px 以上の 1 行で効く。720px 以下はもとから印だけ。読み上げの名前は残る）。
+   num = 連続日数を数字だけ（炎と単位を畳む。aria-label「連続 N日」は残る。359px 以下と同じ形）・ナビ 3px／0.02em。
+   battle = 「バトル」のタブを畳む（400px 未満と同じ。ホームの「ほかの遊び方」から入れる。Battle のページでは現在地として残し、連続日数を出さない）。
+   streak = 連続日数も畳む（学習データにある）・ナビ 2px／字間 0。
+   それでも入らなければリンクの字が「…」になる（上のヘッダーの節の構造。重なりはしない）。data-fit-measure は測るあいだだけ（同じ処理の中で外すので描かれない） ---- */
+html[data-theme] .site-header__inner[data-fit~="name"] .brand__name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+html[data-theme] .site-header__inner[data-fit~="num"] .header-streak span,
+html[data-theme] .site-header__inner[data-fit~="num"] .header-streak .icon,
+html[data-theme] .site-header__inner[data-fit~="battle"] .site-nav__link[href$="battle.html"]:not([aria-current]),
+html[data-theme] .site-header__inner[data-fit~="battle"]:has(.site-nav__link[aria-current][href$="battle.html"]) .header-streak,
+html[data-theme] .site-header__inner[data-fit~="streak"] .header-streak {
+  display: none;
+}
+
+html[data-theme] .site-header__inner[data-fit~="num"] .header-streak {
+  padding: 4px 2px;
+}
+
+html[data-theme] .site-header__inner[data-fit~="num"] .site-nav__link {
+  padding-right: 3px;
+  padding-left: 3px;
+  letter-spacing: 0.02em;
+}
+
+html[data-theme] .site-header__inner[data-fit~="streak"] .site-nav__link {
+  padding-right: 2px;
+  padding-left: 2px;
+  letter-spacing: 0;
+}
+
+html[data-theme] .site-header__inner[data-fit-measure] .site-nav__link {
+  flex-shrink: 0;
+}
+
+/* ---- ヘッダーの連続日数（炎の線画＋日数） ---- */
+html[data-theme] .header-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 2px 3px;
+  border: 0;
+  border-bottom: 1px solid var(--line-2); /* 丸い札ではなく、細い下線だけ */
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-num);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: none;
+}
+
+html[data-theme] .header-streak .icon {
+  margin-right: 2px;
+  color: var(--ink-2);
+}
+
+html[data-theme] .header-streak span {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+html[data-theme] .header-streak--off {
+  color: var(--ink-3);
+  border-color: var(--line);
+}
+
+html[data-theme] .header-streak--off .icon {
+  color: var(--ink-3);
+}
+
+/* ---- はちゃん（全ページ共通の土台）: 丸いアバター＋吹き出し。色・寸法は home.css／card.css／pages.css の各場面 ---- */
+html[data-theme] .hasumi__avatar {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+html[data-theme] .hasumi__bubble {
+  position: relative;
+  align-self: center;
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+}
+
+/* ---- ご意見・不具合モーダル（js/feedback.js が全ページのフッターから開く）: 1 定義。単語詳細（pages.css）と同じ暗幕・紙の面 ---- */
+html[data-theme] .feedback-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+html[data-theme] .feedback-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-theme] .feedback-modal__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(480px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 18px 20px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  background: var(--paper-2);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+/* 読む机の紙の一枚（小口 2 段＋机への影。カードの共通レシピと同じ値）。ホームのフッターから開いても同じ紙（上の素の定義を後勝ちで置き換える） */
+html[data-theme] .feedback-modal__panel {
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  box-shadow: var(--sheet-shadow);
+}
+
+html[data-theme] .feedback-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+html[data-theme] .feedback-modal__head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+/* 閉じる: 40px の当たり・枠なし・ink-3 の線画 */
+html[data-theme] .feedback-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: -8px -8px -8px 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-room);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+html[data-theme] .feedback-modal__close .icon {
+  margin: 0;
+}
+
+html[data-theme] .feedback-modal__close:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+html[data-theme] .feedback-modal__lead {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+html[data-theme] .feedback-modal__panel textarea,
+html[data-theme] .feedback-modal__panel input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-room);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+/* プレースホルダは説明文（例文・返信先）。ブラウザ既定の #757575 は夜 3.78・藍 3.75 で本文 4.5:1 を割る。
+   単語の詳細のメモ欄（#wordDetailNote）も同じ面（--paper-2）なのでここで揃える。--ink-3 / --paper-2 = 昼 7.10・夜 6.38・紙 7.34・藍 6.93 */
+html[data-theme] :is(.feedback-modal__panel textarea, .feedback-modal__panel input, #wordDetailNote)::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+
+html[data-theme] .feedback-modal__panel :is(input, textarea):focus,
+html[data-theme] .feedback-modal__panel :is(input, textarea):focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: var(--focus);
+}
+
+html[data-theme] .feedback-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+html[data-theme] .feedback-modal__status {
+  color: var(--gold-ink); /* 送れた、は金（緑は使わない）。--gold-ink / --sheet = 昼 5.36・夜 10.51 */
+  font-size: 13px;
+}
+
+html[data-theme] .feedback-modal__note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* ---- プロフィール: 声の選択 ---- */
+html[data-theme] .voice-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+html[data-theme] .voice-row .setting-select {
+  max-width: 260px;
+}
+
+/* ---- 例文の発音（.word-example__speak）: 28px の丸。「発音」pill と同じ素材（paper-3 の面・1px --line）。全ページ共通 ---- */
+html[data-theme] .word-example__speak {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  margin: 0 0 0 6px;
+  padding: 0;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.6;
+  box-shadow: none;
+}
+
+html[data-theme] .word-example__speak .icon {
+  margin: 0;
+  vertical-align: 0;
+}
+
+html[data-theme] .word-example__speak:hover {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+/* 指で押す端末は 36px。1 定義（card.css／pages.css には書かない） */
+@media (pointer: coarse) {
+  html[data-theme] .word-example__speak {
+    width: 36px;
+    height: 36px;
+  }
+  html[data-theme] .word-example__speak .icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* ---- 共有の 28px ピルは札の角（999px をやめる。56b S5 の先送り分）。上の 2 定義と同じ詳細度なので必ずこの後に置く。
+   高さ 28px（coarse 36px）・padding・字は変えない。.word-example__speak は 28×28 の正方形になる（円は本当に丸い物だけ）。ホームのプレイ中（発音・ヒント）にも効く ---- */
+html[data-theme] :is(.word-note__edit, .word-ai__button, .speak-button, .word-detail__speak, .hint-button, .word-note__save, .word-example__speak) {
+  border-radius: var(--radius-room);
+}
+
+/* ---- チュートリアルの札（js/tutorial.js）: 画面下に 1 本。読む机の紙片（--sheet・1px の小口・札の角・--slip-shadow）。三角・動きなし。
+   --ink / --sheet = 昼 13.67・夜 12.51。「わかった」 --ink-2 / --paper-3 = 昼 7.93・夜 8.60 ---- */
+html[data-theme] .coach {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  background: var(--sheet);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  box-shadow: var(--slip-shadow);
+  transform: translateX(-50%);
+  opacity: 1;
+  transition: opacity var(--ease);
+  pointer-events: none; /* 札は何も遮らない。押せるのは「わかった」だけ */
+}
+
+html[data-theme] .coach--out {
+  opacity: 0;
+}
+
+html[data-theme] .coach__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html[data-theme] .coach__ok {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-room);
+  background: var(--paper-3);
+  color: var(--ink-2);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+html[data-theme] .coach__ok:hover {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+/* 画面キーボードの上に出す（高さは css/keyboard.css の --osk-h を読む。幅・高さの分岐はそちらが持つ） */
+html[data-theme] body.osk-open .coach {
+  bottom: calc(var(--osk-h, 236px) + 8px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] .coach {
+    transition: none;
+  }
+}
+
+/* 設定の文字ボタン（「チュートリアルをもう一度」など）: 下線の文字リンクと同じ見た目 */
+html[data-theme] .setting-linkbtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+html[data-theme] .setting-linkbtn:hover {
+  color: var(--ink);
+}
+
+/* ---- 習熟度（js/mastery.js rankHtml。docs/SPEC_MASTERY.md §3.2）: 墨の目盛り 5 つ＋段の名前。単語帳・語の詳細・学習データ・完了パネルが同じ 1 定義を読む
+   （index.html は card.css だけ、list.html・stats.html は pages.css だけを読むので、全ページが読むここに置く）。
+   目盛りは幅 5px・高さ 6〜14px（左から 2px ずつ高く、並びの向きを形でも伝える）・間 2px・下揃え・角 1px。塗りは --ink-3、空きは --line-2 の 1px の枠。
+   名前が主（12px・390 でも省かない）、目盛りは添え。緑・朱・金・信号の色は使わない。読み上げは外側の role="img" の aria-label の 1 文 ---- */
+html[data-theme] .rank {
+  display: inline-flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 2px;
+  line-height: 14px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+html[data-theme] .rank i {
+  display: block;
+  flex: none;
+  box-sizing: border-box;
+  width: 5px;
+  height: 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 1px;
+  background: transparent;
+  font-style: normal;
+}
+
+html[data-theme] .rank i:nth-child(2) { height: 8px; }
+html[data-theme] .rank i:nth-child(3) { height: 10px; }
+html[data-theme] .rank i:nth-child(4) { height: 12px; }
+html[data-theme] .rank i:nth-child(5) { height: 14px; }
+
+html[data-theme] .rank[data-rank="1"] i:nth-child(-n+1),
+html[data-theme] .rank[data-rank="2"] i:nth-child(-n+2),
+html[data-theme] .rank[data-rank="3"] i:nth-child(-n+3),
+html[data-theme] .rank[data-rank="4"] i:nth-child(-n+4),
+html[data-theme] .rank[data-rank="5"] i:nth-child(-n+5) {
+  border-color: var(--ink-3);
+  background: var(--ink-3);
+}
+
+html[data-theme] .rank__name {
+  margin-left: 4px;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+  letter-spacing: 0;
+}
+
+/* ---- 指で押す端末: 副ボタン・チップの当たり判定を 40px（発音／メモは 36px）に。見た目（1px 罫線・13px）は変えない ---- */
+@media (pointer: coarse) {
+  html[data-theme] :is(.btn--sm, .play-modes__go, .path__guide, .path__guide--course, .path__course-pick, .back-to-path, .daily__button, .result-panel__action, .word-detail__close, .feedback-modal__close, .pack__actions .btn--sm, .category-chip, .filter-chip, .genre-chip, .stats-tab, .my-tab, .trend-range button, .packs-jump a, .pp-related a, [data-fold-open], .learned-item__en, .note-chip, .account-menu__item) {
+    min-height: 40px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  html[data-theme] a:is(.btn--sm, .play-modes__go, .path__guide, .pack__actions .btn--sm, .category-chip, .genre-chip, .stats-tab, .packs-jump a, .pp-related a) {
+    display: inline-flex;
+    align-items: center;
+  }
+  /* ログイン済みメニューの「設定」(a) と「ログアウト」(button) を同じ 40px の行に */
+  html[data-theme] .account-menu__item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+  html[data-theme] :is(.speak-button, .word-detail__speak, .hint-button, .word-note__edit, .word-ai__button) {
+    height: 36px;
+    min-height: 36px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  /* 完了パネルの語チップ（押すと発音）: 36px・間隔 8px。見た目（paper-3 の pill・13px 等幅）は変えない */
+  html[data-theme] .word-chip {
+    min-height: 36px;
+    padding-top: 0;
+    padding-bottom: 0;
+    align-items: center;
+  }
+  html[data-theme] .word-chips {
+    gap: 8px;
+  }
+  /* 主線以外の入力欄も 16px に（iOS Safari は 16px 未満の入力欄にフォーカスすると拡大する） */
+  html[data-theme] :is(.setting-select, .note-input, .account-menu--login input, .feedback-modal__panel input, .feedback-modal__panel textarea, #wordSearch, .word-filter, .my-concept__form textarea, .cardgen textarea, .my-words__bulk textarea, #myWordBulk, .packs__tools input, #listSearch, #packsSearch, #emailInput) {
+    font-size: 16px;
+  }
+  html[data-theme] :is(#emailInput, #feedbackContact, #wordSearch, .word-filter) {
+    min-height: 44px;
+  }
+  /* 文字だけのリンク・ボタン: 見た目は変えず当たり判定だけ縦に広げる */
+  html[data-theme] .gcard__term {
+    padding-top: 8px;
+    padding-bottom: 8px;
+    margin-top: -8px;
+    margin-bottom: -8px;
+  }
+  /* 12px の文字でも当たり 40px 以上 */
+  html[data-theme] .learned-card__link {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    margin-top: -12px;
+    margin-bottom: -12px;
+  }
+  /* フッターのリンクは 40px の行（負マージンで広げると隣の行と重なる） */
+  html[data-theme] .site-footer__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 16px;
+  }
+  html[data-theme] .site-footer__nav a,
+  html[data-theme] .site-footer__linkbtn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0;
+    margin: 0;
+  }
+  html[data-theme] .setting-select {
+    min-height: 44px;
+  }
+  html[data-theme] .voice-row .btn--sm {
+    min-height: 44px;
+    padding: 0 16px;
+  }
+  html[data-theme] .volume-row input[type="range"] {
+    height: 44px;
+  }
+}
+
+/* ご意見モーダル（390）: 上寄せ・「送る」は全幅 44px。coarse の .btn--sm 40px（同じ詳細度）より後に置く */
+@media (max-width: 560px) {
+  html[data-theme] .feedback-modal {
+    align-items: flex-start;
+    padding-top: 16px;
+  }
+  html[data-theme] .feedback-modal__actions {
+    flex-wrap: wrap;
+  }
+  html[data-theme] .feedback-modal__actions .btn {
+    flex: 1 1 100%;
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+/* ---- 机の本のコース選択（#pathCourses。path.css は凍結なので、ここで (0,3,1) の後勝ち。index.html では brand.css が path.css より後に読まれる。
+   room.css は .path__courses をプレイ中に隠すだけ）: 面は読む机の紙 --sheet（夜の頁の上で浮く --paper-2 をやめる）、390 の上角は札の角、
+   現在地は金（朱は 1 画面 1 回: スタート。--gold-ink / --paper-2 = 昼 5.65・夜 10.76・紙 6.08・藍 10.66）、hover は墨＋金の下線（朱を足さない） ---- */
+html[data-theme] .page-room .path__course-now {
+  color: var(--gold-ink);
+  font-weight: 500;
+}
+
+html[data-theme] .page-room .path__courses {
+  background: var(--sheet);
+  border-color: var(--sheet-edge);
+}
+
+html[data-theme] .page-room .path__courses-head {
+  background: var(--sheet);
+}
+
+html[data-theme] .page-room .path__course-pick:hover b {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--gold);
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .page-room .path__courses {
+    border-radius: var(--radius-room) var(--radius-room) 0 0;
+  }
+}
