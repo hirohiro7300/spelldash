@@ -484,6 +484,7 @@ const schema6 = () => ({ spelldash_schema_version: "6", spelldash_word_stats: JS
   const size = Object.entries(seed).reduce((n, [k, v]) => n + k.length + v.length, 0);
   LS = new FakeStorage(seed, size + 12); // 1 語ぶんの「,"ls":2」も入らない
   const text = LS.getItem("spelldash_word_stats");
+  const failed = seen("spelldash:save-failed");
   let threw = false;
   let src = null;
   try {
@@ -492,7 +493,7 @@ const schema6 = () => ({ spelldash_schema_version: "6", spelldash_word_stats: JS
   } catch {
     threw = true;
   }
-  eq("容量で書けない: 読み込みは投げない・版 6 のまま・表は同じ文字列", [threw, LS.getItem("spelldash_schema_version"), LS.getItem("spelldash_word_stats") === text], [false, "6", true]);
+  eq("容量で書けない: 読み込みは投げない・版 6 のまま・表は同じ文字列・保存の失敗を知らせる", [threw, LS.getItem("spelldash_schema_version"), LS.getItem("spelldash_word_stats") === text, failed.length], [false, "6", true, 1]);
   ok("その間の読み手は移行の式で読む（isDone あり）・数は移行の後と同じ", src && typeof src.isDone === "function" && isDeepStrictEqual(L.countLearnStates(JSON.parse(text), src.vocab, src.isDone), { new: T - 6, unsure: 2, learned: 4, total: T }));
   LS.limit = Infinity;
   const m = await openStorage();

@@ -343,7 +343,7 @@ async function newPage(init = {}) {
   page.errors = [];
   page.on("pageerror", (e) => page.errors.push(e.message));
   await page.addInitScript((seed) => {
-    localStorage.setItem("spelldash_schema_version", "6");
+    localStorage.setItem("spelldash_schema_version", "7");
     if (!seed.keepOnboarding) localStorage.setItem("spelldash_onboarded", "1");
     for (const [k, v] of Object.entries(seed.storage ?? {})) localStorage.setItem(k, v);
   }, init);
@@ -5162,7 +5162,7 @@ console.log("study (room):");
         if (sessionStorage.getItem("spelldash_test_seeded")) return;
         sessionStorage.setItem("spelldash_test_seeded", "1");
         for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
-      }, { spelldash_schema_version: "6", spelldash_onboarded: "1", spelldash_owner: "test-user", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_word_stats: BROKEN, spelldash_dirty_words: JSON.stringify(["english-apple"]) });
+      }, { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_owner: "test-user", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_word_stats: BROKEN, spelldash_dirty_words: JSON.stringify(["english-apple"]) });
       await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
       const pulled = await waitUntil(async () => (await page.evaluate(() => { try { return Object.keys(JSON.parse(localStorage.getItem("spelldash_word_stats"))).length; } catch { return 0; } })) === jhs.length, 8000);
       const sent = cloud.writes("word_progress").map((e) => e.n);
@@ -5334,7 +5334,7 @@ console.log("bookshelf:");
     await page.addInitScript((seed) => {
       if (sessionStorage.getItem("spelldash_test_seeded")) return;
       sessionStorage.setItem("spelldash_test_seeded", "1");
-      localStorage.setItem("spelldash_schema_version", "6");
+      localStorage.setItem("spelldash_schema_version", "7");
       if (!seed.keepOnboarding) localStorage.setItem("spelldash_onboarded", "1");
       for (const [k, v] of Object.entries(seed.storage ?? {})) localStorage.setItem(k, v);
     }, init);
@@ -9130,7 +9130,7 @@ console.log("recall speed stats:");
     page.errors = [];
     page.on("pageerror", (e) => page.errors.push(e.message));
     await page.addInitScript((seed) => {
-      localStorage.setItem("spelldash_schema_version", "6");
+      localStorage.setItem("spelldash_schema_version", "7");
       localStorage.setItem("spelldash_onboarded", "1");
       for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
     }, R.storage);
@@ -10235,7 +10235,7 @@ console.log("mastery views:");
         spelldash_word_stats: JSON.stringify({ "my-river": stat })
       };
       await page.addInitScript((seed) => {
-        localStorage.setItem("spelldash_schema_version", "6");
+        localStorage.setItem("spelldash_schema_version", "7");
         localStorage.setItem("spelldash_onboarded", "1");
         for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
       }, storage);
@@ -10668,7 +10668,7 @@ console.log("mastery writers:");
     await page.close();
   }
 
-  // ---- 12. 同期: 送る行は 15 列のまま（段の欄は端末だけ）・schema_version "6" ----
+  // ---- 12. 同期: 送る行は 15 列のまま（段の欄は端末だけ）・schema_version "7" ----
   {
     const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
     const page = await browser.newPage();
@@ -10677,7 +10677,7 @@ console.log("mastery writers:");
     await page.addInitScript((s) => {
       if (sessionStorage.getItem("spelldash_test_seeded")) return;
       sessionStorage.setItem("spelldash_test_seeded", "1");
-      localStorage.setItem("spelldash_schema_version", "6");
+      localStorage.setItem("spelldash_schema_version", "7");
       localStorage.setItem("spelldash_onboarded", "1");
       for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v);
     }, seed({ "my-river": okStat(3, 8 * DAY, DAY) }, { spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "test-user" }));
@@ -10699,7 +10699,7 @@ console.log("mastery writers:");
     const COLS = ["user_id", "word_id", "play_count", "correct_count", "typing_miss", "recall_fail", "clean_correct_streak", "mastered", "mastered_at", "last_played", "next_review_at", "last_recall_fail_at", "last_recall_success_at", "daily_learning_date", "daily_learning_stage", "srs_advanced_on", "updated_at"];
     const keys = row ? Object.keys(row).sort() : [];
     check("習熟度 12 同期: 段を書いた語を送る行は 15 列のまま（user_id・word_id のほか。mastery の列が無い）", pulled && local?.masteryRank === 4 && !!local.masteryAt && keys.join() === [...COLS].sort().join() && !keys.some((k) => /mastery|known/.test(k)), JSON.stringify({ pulled, rank: local?.masteryRank, keys }));
-    check("習熟度 12: schema_version は \"6\" のまま・エラー0", (await page.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "6" && page.errors.length === 0, page.errors[0] ?? "");
+    check("習熟度 12: schema_version は \"7\" のまま・エラー0", (await page.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "7" && page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
 
@@ -10860,7 +10860,7 @@ console.log("mastery writers:");
     check("習熟度 段階 2 S5: 知ってた語の 14 日後の確認 → すぐなら 即答・30 日後、ふつうなら 身についた・21 日後", r2.money?.masteryRank === 5 && daysAhead(r2.money) === 30 && r2.music?.masteryRank === 4 && daysAhead(r2.music) === 21, JSON.stringify({ money: [r2.money?.masteryRank, daysAhead(r2.money)], music: [r2.music?.masteryRank, daysAhead(r2.music)] }));
     check("習熟度 段階 2 S3: 即答の語（30 日あけたノーミス）→ 30 日後（streak 4 の 5 日ではない）・正解の 1 打の word_stats の書き込みは 1 回", r2.dream?.masteryRank === 5 && daysAhead(r2.dream) === 30 && r2.dreamWrites === 1, JSON.stringify({ rank: r2.dream?.masteryRank, days: daysAhead(r2.dream), writes: r2.dreamWrites }));
     check("習熟度 段階 2 S1 の例外: 期日が先の語でも打ち間違いありの正解（Battle）は期日を翌日に（今のまま）", r2.field?.cleanCorrectStreak === 0 && daysAhead(r2.field) === 1, JSON.stringify({ streak: r2.field?.cleanCorrectStreak, days: daysAhead(r2.field) }));
-    check("習熟度 段階 2（書き手の直呼び）: schema_version は \"6\" のまま・エラー0", (await p2.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "6" && p2.errors.length === 0, p2.errors[0] ?? "");
+    check("習熟度 段階 2（書き手の直呼び）: schema_version は \"7\" のまま・エラー0", (await p2.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "7" && p2.errors.length === 0, p2.errors[0] ?? "");
     await p2.close();
   }
 
@@ -11131,7 +11131,7 @@ console.log("mastery writers:");
     check("記録の質: 移行（影の欄の無い語）も答えたときに memSv を作る（期日・段・streak は今の規則のまま: 3 日前の段 4 → 4・streak 3）", ints(r3.stone?.memSv) && r3.stone.masteryRank === 4 && r3.stone.cleanCorrectStreak === 3, JSON.stringify({ memSv: r3.stone?.memSv, rank: r3.stone?.masteryRank, streak: r3.stone?.cleanCorrectStreak }));
     check("記録の質: × の細目は history の最後に（答え表示 k e・p 2／Battle の引数なし k u／1 打ミス k m・p 3・a true）。d と r は今のまま", r3.bread?.k === "e" && r3.bread.p === 2 && !("a" in r3.bread) && r3.bread.r === "x" && r3.glass?.k === "u" && !("p" in r3.glass) && r3.chair?.k === "m" && r3.chair.p === 3 && r3.chair.a === true && r3.chair.d === ymd(new Date()), JSON.stringify({ bread: r3.bread, glass: r3.glass, chair: r3.chair }));
     check("記録の質: spelldash_memory_check は 9 答えでは書かず、10 答え目の答えのタスクの中でも書かず、その後（手が空いたとき）に 1 回書く（v 1・schedV 1・見込みの集計 cal と見本 len・input）", r3.writes9 === 0 && r3.checkInTask === 0 && r3.writes10 === 1 && r3.check?.v === 1 && r3.check.schedV === 1 && Array.isArray(r3.check.cal?.n) && r3.check.cal.n.length === 7 && r3.check.input?.kbd?.n >= 1 && r3.check.input.kbd.multi === 1, JSON.stringify({ w9: r3.writes9, inTask: r3.checkInTask, w10: r3.writes10, v: r3.check?.v, n: r3.check?.cal?.n, kbd: r3.check?.input?.kbd && { n: r3.check.input.kbd.n, multi: r3.check.input.kbd.multi } }));
-    check("記録の質: 書き手の直呼び 10 答えで spelldash_mastery_meta は 1 回だけ（10 答えごと。memory_check を足しても増えない）・schema_version \"6\"・エラー 0", (await metaWrites(p3)) === 1 && (await p3.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "6" && p3.errors.length === 0, JSON.stringify({ meta: await metaWrites(p3), errors: p3.errors.slice(0, 1) }));
+    check("記録の質: 書き手の直呼び 10 答えで spelldash_mastery_meta は 1 回だけ（10 答えごと。memory_check を足しても増えない）・schema_version \"7\"・エラー 0", (await metaWrites(p3)) === 1 && (await p3.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "7" && p3.errors.length === 0, JSON.stringify({ meta: await metaWrites(p3), errors: p3.errors.slice(0, 1) }));
     await p3.close();
   }
 
@@ -11330,7 +11330,7 @@ console.log("mastery writers:");
     await p3.addInitScript((s) => {
       if (sessionStorage.getItem("spelldash_test_seeded")) return;
       sessionStorage.setItem("spelldash_test_seeded", "1");
-      localStorage.setItem("spelldash_schema_version", "6");
+      localStorage.setItem("spelldash_schema_version", "7");
       localStorage.setItem("spelldash_onboarded", "1");
       for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v);
     }, seed({ "my-river": slipped(), "my-stone": slipped(), "my-paper": slipped() }, { spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "test-user" }));
@@ -11353,7 +11353,7 @@ console.log("mastery writers:");
     check("習熟度 M1 同期: クラウドの方が新しい語を取り込んでも控えの欄は残る。2 台目の ○ だけなら使える（5）・2 台目の × があれば使わない（0。段は 1 段下に読む）",
       r3["my-stone"].lastPlayed === cloudPlayed && r3["my-stone"].field === 5 && r3["my-stone"].fieldAt === slipAt && r3["my-stone"].usable === 5 && r3["my-paper"].lastPlayed === cloudPlayed && r3["my-paper"].field === 5 && r3["my-paper"].usable === 0 && r3["my-paper"].rank === 3 && r3["my-river"].usable === 5,
       JSON.stringify(r3));
-    check("習熟度 M1 同期: schema_version は \"6\" のまま・エラー0", (await p3.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "6" && p3.errors.length === 0, p3.errors[0] ?? "");
+    check("習熟度 M1 同期: schema_version は \"7\" のまま・エラー0", (await p3.evaluate(() => localStorage.getItem("spelldash_schema_version"))) === "7" && p3.errors.length === 0, p3.errors[0] ?? "");
     await p3.close();
   }
 
@@ -13367,7 +13367,7 @@ console.log("account emblem（アカウントの紋章）:");
         if (sessionStorage.getItem("spelldash_test_seeded")) return;
         sessionStorage.setItem("spelldash_test_seeded", "1");
         for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
-      }, { spelldash_schema_version: "6", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "other-user", spelldash_xp: "777", spelldash_word_stats: JSON.stringify({ "zzz-only-other": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }) });
+      }, { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "other-user", spelldash_xp: "777", spelldash_word_stats: JSON.stringify({ "zzz-only-other": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }) });
       await page.addInitScript(AVLOG);
       watchReqs(page);
       return { page, cloud };
@@ -13602,7 +13602,7 @@ console.log("account emblem（アカウントの紋章）:");
     const page = await ctx.newPage();
     page.errors = [];
     page.on("pageerror", (e) => page.errors.push(e.message));
-    await page.addInitScript((seed) => { for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); }, { spelldash_schema_version: "6", spelldash_onboarded: "1", ...seedA() });
+    await page.addInitScript((seed) => { for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); }, { spelldash_schema_version: "7", spelldash_onboarded: "1", ...seedA() });
     await page.goto(BASE + "/stats.html", { waitUntil: "load" });
     await shownIs(page, "silver-2-sm.webp");
     const other = await ctx.newPage();
@@ -19255,7 +19255,7 @@ console.log("sync (2nd device):");
     await page.addInitScript((seed) => {
       if (sessionStorage.getItem("spelldash_test_seeded")) return;
       sessionStorage.setItem("spelldash_test_seeded", "1");
-      localStorage.setItem("spelldash_schema_version", "6");
+      localStorage.setItem("spelldash_schema_version", "7");
       for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
     }, storage);
     return page;
@@ -19641,7 +19641,7 @@ console.log("sync (2nd device):");
     const kept = (id) => { const s = words[id]; return JSON.stringify([s?.sp, s?.spP, s?.memSv, s?.memD, s?.memD0]) === JSON.stringify([ext.sp, ext.spP, ext.memSv, ext.memD, ext.memD0]); };
     check("同期（記録の質）: 端末の方が新しい語を送る行は 15 列のまま（user_id・word_id のほか。sp・mem・history の列が無い）", pulled && row?.play_count === 9 && keys.join() === [...COLS].sort().join() && !keys.some((k) => /^sp|mem|hist/.test(k)), JSON.stringify({ pulled, keys }));
     check("同期（記録の質）: クラウドの方が新しい語を取り込んでも、端末だけの語ごとの欄（spelldash_memory_words の sp・spP・memSv・memD・memD0）と history の × の細目（k・p・a）は残る（同期する欄はクラウドの値）", kept(wNew) && stats[wNew].history?.[0]?.k === "m" && stats[wNew].history[0].p === 2 && stats[wNew].history[0].a === true && stats[wNew].lastPlayed === cloud.rows("word_progress").find((r) => r.word_id === wNew)?.last_played, JSON.stringify(stats[wNew]));
-    check("同期（記録の質）: 送った語の端末の記録も新しい欄はそのまま・schema_version \"6\"・エラー 0", kept(wOld) && stats[wOld].history?.[0]?.k === "e" && (await ls(page, "spelldash_schema_version")) === "6" && page.errors.length === 0, JSON.stringify({ old: stats[wOld], errors: page.errors.slice(0, 1) }));
+    check("同期（記録の質）: 送った語の端末の記録も新しい欄はそのまま・schema_version \"7\"・エラー 0", kept(wOld) && stats[wOld].history?.[0]?.k === "e" && (await ls(page, "spelldash_schema_version")) === "7" && page.errors.length === 0, JSON.stringify({ old: stats[wOld], errors: page.errors.slice(0, 1) }));
     await page.close();
   }
 
@@ -19657,6 +19657,114 @@ console.log("sync (2nd device):");
   }
 }
 
+
+// ===== 78.2 3 状態の移行と保存（Batch 78 段 2。docs/SPEC_LEARN_STATE.md）: 版 6 の記録を開くと版 7・開き直しても同じ・古いクラウドの行で状態を上書きしない =====
+// 移行は読み込みの後に公開の語の表（data/public/english.json）と今の済みの判定を読んで 1 回だけ書く（js/storage.js）。種は 1 回だけ入れる（開き直しで種に戻さない）。
+// 状態の数は js/learnState.js countLearnStates をページの中で読む（画面は段 4）
+console.log("learn state (schema 7):");
+{
+  const vocab = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+  const [wA, wB, wC, wD] = vocab.order.slice(60, 64);
+  const isoAgo = (days, hour = 9) => { const d = new Date(); d.setDate(d.getDate() - days); d.setHours(hour, 0, 0, 0); return d.toISOString(); };
+  const base = { playCount: 2, correctCount: 1, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 1, mastered: false, masteredAt: null, lastPlayed: isoAgo(3), nextReviewAt: isoAgo(-1), lastRecallFailAt: null, lastRecallSuccessAt: isoAgo(3), dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: ymdDaysAgo(3) };
+  const oldStats = {
+    [wA]: base, // 済み（覚えた）→ 覚えた
+    [wB]: { ...base, recallFail: 1, missCount: 1, cleanCorrectStreak: 0, lastRecallFailAt: isoAgo(2) }, // 最後が × → あやふや
+    [wC]: { ...base, correctCount: 0, cleanCorrectStreak: 0, lastRecallSuccessAt: null, srsAdvancedOn: null }, // 出題だけ → これから
+    [wD]: { ...base, knownOnSight: true }, // 知ってた → 覚えた
+    "concept-ad-cpc": base, // 非公開の語（数えない・欄を書かない）
+    "my-river": { ...base, recallFail: 1, lastRecallFailAt: isoAgo(2) }
+  };
+  async function seededPage(storage) {
+    const page = await browser.newPage();
+    page.errors = [];
+    page.dialogs = [];
+    page.vocabFetches = 0;
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    page.on("dialog", async (d) => { page.dialogs.push(d.message()); await d.dismiss(); });
+    page.on("request", (r) => { if (r.url().includes("/data/public/english.json")) page.vocabFetches++; });
+    await page.addInitScript((seed) => {
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, storage);
+    return page;
+  }
+  const ls = (page, key) => page.evaluate((k) => localStorage.getItem(k), key);
+  const counts = (page) => page.evaluate(async () => {
+    const s = await import("/js/storage.js");
+    const L = await import("/js/learnState.js");
+    const src = await s.loadLearnStates();
+    return src ? L.countLearnStates(s.getWordStats(), src.vocab, src.isDone) : null;
+  });
+  const strip = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !["ls", "lsd", "lsAt"].includes(k)));
+
+  // (1) 版 6 の記録を開く → 版 7・公開の語に欄（覚えた 2・あやふや 1）・ほかの欄と非公開の語はそのまま → 開き直しても同じ
+  {
+    const page = await seededPage({ spelldash_schema_version: "6", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify(oldStats) });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const migrated = await waitUntil(async () => (await ls(page, "spelldash_schema_version")) === "7", 8000);
+    const t = JSON.parse((await ls(page, "spelldash_word_stats")) || "{}");
+    check("78.2 移行: 版 6 の記録を開くと版 7 になる", migrated, String(await ls(page, "spelldash_schema_version")));
+    check("78.2 移行: 済み → 覚えた・最後が × → あやふや・出題だけ → これから（欄なし）・知ってた → 覚えた", t[wA]?.ls === 2 && t[wB]?.ls === 1 && t[wC] && !("ls" in t[wC]) && t[wD]?.ls === 2, JSON.stringify([wA, wB, wC, wD].map((id) => t[id]?.ls ?? null)));
+    check("78.2 移行: 非公開の語（概念カード・マイ単語帳）は欄なし・ほかの欄は 1 つも変わらない", !("ls" in (t["concept-ad-cpc"] ?? {})) && !("ls" in (t["my-river"] ?? {})) && Object.keys(oldStats).every((id) => JSON.stringify(strip(t[id] ?? {})) === JSON.stringify(oldStats[id])), JSON.stringify(Object.keys(t)));
+    const c1 = await counts(page);
+    check("78.2 移行: 3 状態の数（公開の語だけ・和は公開の語数）", c1 && c1.learned === 2 && c1.unsure === 1 && c1.new === vocab.total - 3 && c1.new + c1.unsure + c1.learned === vocab.total && c1.total === vocab.total, JSON.stringify(c1));
+    check("78.2 移行: 公開の語の表は 1 回だけ取る", page.vocabFetches === 1, String(page.vocabFetches));
+    const text = await ls(page, "spelldash_word_stats");
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    check("78.2 移行: 開き直しても同じ（語の記録の文字列・版 7・数）", (await ls(page, "spelldash_word_stats")) === text && (await ls(page, "spelldash_schema_version")) === "7" && JSON.stringify(await counts(page)) === JSON.stringify(c1), String(await ls(page, "spelldash_schema_version")));
+    check("78.2 移行: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // (2) 版 7 の端末は表を取らない（読み込みの重さを増やさない）
+  {
+    const page = await seededPage({ spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ [wA]: { ...base, ls: 2 } }) });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    check("78.2 移行: 版 7 の端末はホームを開いても公開の語の表を取らない", page.vocabFetches === 0 && (await ls(page, "spelldash_schema_version")) === "7", String(page.vocabFetches));
+    // 版 6 のバックアップを戻すと、返る前に版 7・欄が入る（再読み込みを待たない）
+    const restored = await page.evaluate(async (old) => {
+      const s = await import("/js/storage.js");
+      const b = await import("/js/backup.js");
+      await s.loadLearnStateDeps();
+      b.applyBackup({ app: "SpellDash", version: 1, data: { spelldash_schema_version: "6", spelldash_onboarded: "1", spelldash_word_stats: JSON.stringify(old) } });
+      return { v: localStorage.getItem("spelldash_schema_version"), t: JSON.parse(localStorage.getItem("spelldash_word_stats")) };
+    }, oldStats);
+    const ids = [wA, wB, wC, wD];
+    check("78.2 復元: 版 6 のバックアップを戻すと、その場で版 7・欄が入る（同じ移行）", restored.v === "7" && restored.t[ids[0]].ls === 2 && restored.t[ids[1]].ls === 1 && !("ls" in restored.t[ids[2]]) && restored.t[ids[3]].ls === 2 && !("ls" in restored.t["concept-ad-cpc"]), JSON.stringify({ v: restored.v, ls: ids.map((id) => restored.t[id]?.ls ?? null) }));
+    check("78.2 復元: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.close();
+  }
+
+  // (3) 同期: 古いクラウドの行・新しく × を含む行のどちらも、端末の状態（覚えた・あやふやと数えた日）を上書きしない。送る行は 15 列のまま
+  {
+    const user = "test-user";
+    const todayNo = Math.round((Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()) - Date.UTC(1970, 0, 1)) / 86400000);
+    const row = (wordId, over) => ({ user_id: user, word_id: wordId, play_count: 9, correct_count: 4, typing_miss: 0, recall_fail: 3, clean_correct_streak: 0, mastered: false, mastered_at: null, last_played: isoAgo(5), next_review_at: isoAgo(5), last_recall_fail_at: isoAgo(5), last_recall_success_at: isoAgo(6), daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: isoAgo(5), ...over });
+    const cloud = createCloud({
+      word_progress: [row(wA), row(wB, { last_played: isoAgo(0, 0), last_recall_fail_at: isoAgo(0, 0), updated_at: isoAgo(0, 0) })],
+      user_progress: [{ user_id: user, xp: 10, level: 1, streak: null, best_score: 0, selected_category: "all", selected_mode: "study", updated_at: isoAgo(5) }]
+    });
+    const local = { [wA]: { ...base, lastPlayed: isoAgo(1), ls: 2, lsAt: Date.parse(isoAgo(1)) }, [wB]: { ...base, lastPlayed: isoAgo(1), ls: 1, lsd: todayNo - 1, lsAt: Date.parse(isoAgo(1)) } };
+    const page = await seededPage({ spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_owner: user, spelldash_learn_filled: user, spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_word_stats: JSON.stringify(local) });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const done = await waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session"))) === user, 10000);
+    const t = JSON.parse((await ls(page, "spelldash_word_stats")) || "{}");
+    check("78.2 同期: 取り込みが終わる", done, String(await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session"))));
+    check("78.2 同期: 古いクラウドの行（last_played が古い）で端末の 覚えた を上書きしない（行は端末のまま）", t[wA]?.ls === 2 && t[wA]?.recallFail === 0 && t[wA]?.lsAt === local[wA].lsAt, JSON.stringify(t[wA]));
+    check("78.2 同期: 新しく × を含むクラウドの行でも、端末の あやふや と数えた日は残る（ほかの欄はクラウドの値）", t[wB]?.ls === 1 && t[wB]?.lsd === todayNo - 1 && t[wB]?.recallFail === 3, JSON.stringify(t[wB]));
+    const sent = cloud.rows("word_progress");
+    check("78.2 同期: クラウドの行に状態の欄は入らない（送る 15 列のまま）", sent.every((r) => !("ls" in r) && !("lsd" in r) && !("lsAt" in r) && Object.keys(r).length === 17), JSON.stringify(sent.map((r) => Object.keys(r).length)));
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const t2 = JSON.parse((await ls(page, "spelldash_word_stats")) || "{}");
+    check("78.2 同期: 開き直しても状態はそのまま・エラー 0", t2[wA]?.ls === 2 && t2[wB]?.ls === 1 && t2[wB]?.lsd === todayNo - 1 && page.errors.length === 0, page.errors[0] ?? JSON.stringify([t2[wA]?.ls, t2[wB]?.ls]));
+    await page.close();
+  }
+}
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");

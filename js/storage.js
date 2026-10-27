@@ -232,7 +232,11 @@ function settleSave(ok) {
   const waiters = saveWaiters;
   saveWaiters = [];
   for (const resolve of waiters) resolve(ok);
-  if (!ok && typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent === "function") {
+  if (!ok) notifySaveFailed();
+}
+
+function notifySaveFailed() {
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent === "function") {
     window.dispatchEvent(new CustomEvent("spelldash:save-failed"));
   }
 }
@@ -366,6 +370,7 @@ export function migrateLearnStates(deps = learnDeps) {
       writeWordStats(raw); // 上限の守り（退避 → 影のデータの順に消して書き直す）を通す
     } catch (error) {
       (globalThis.reportError ?? console.error)(error);
+      notifySaveFailed(); // 画面は容量の短い知らせを出せる（記録はそのまま）
       return { ok: false, filled: 0 };
     }
     memoRaw = raw;
