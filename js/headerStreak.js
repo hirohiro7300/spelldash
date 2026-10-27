@@ -5,9 +5,18 @@ import { watchHeaderFit } from "./headerFit.js";
 // 全ページのヘッダーに連続日数を常時表示する（線画の炎＋日数。絵文字は使わない）。
 // 「今日まだやっていない」がどのページでも目に入る＝損失回避の常時提示
 
+// Batch 78: ヘッダーには出さない（依頼 §6「連続記録を人質にしない」）。連続日数の記録（spelldash_streak・js/level.js）と下の描き方は残す。
+// 静的な頁（js/staticHeader.js が描く札）は css/brand.css の「ヘッダーの連続日数」の規則が消す。戻すときは true にして、その CSS の 2 つの規則を消す
+export const HEADER_STREAK_SHOWN = false;
+
 export function renderHeaderStreak() {
   const headerInner = document.querySelector(".site-header__inner");
   if (!headerInner) return;
+
+  if (!HEADER_STREAK_SHOWN) {
+    watchHeaderFit(); // ナビの 1 行の測りはこれまでどおり（連続日数を描いた後に呼んでいた所）
+    return;
+  }
 
   let el = document.getElementById("headerStreak");
   if (!el) {

@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- Batch 78（創業者の決定 §7）: 単語帳（マイ単語帳を含む）は主導線・ナビ・sitemap・検索から外す。開いたら英単語のホームへ案内する（vercel.json の転送とページの守り） -->
+  <meta name="robots" content="noindex" />
   <title>単語帳 | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
@@ -116,10 +118,10 @@
       </a>
 
       <nav class="site-nav" aria-label="メインナビ">
-        <a href="/" class="site-nav__link">書斎</a>
-        <a href="./stats.html" class="site-nav__link">学習データ</a>
-        <a href="./list.html" class="site-nav__link" aria-current="page">単語帳</a>
-        <a href="./battle.html" class="site-nav__link">バトル</a>
+        <a href="/" class="site-nav__link">ホーム</a>
+        <a href="/?learn=next" class="site-nav__link">英単語を学ぶ</a>
+        <a href="./stats.html" class="site-nav__link">学習状況</a>
+        <a href="./profile.html" class="site-nav__link">設定</a>
       </nav>
 
       <div class="account">
@@ -298,11 +300,10 @@
       </div>
 
       <p class="site-footer__tagline">
-        タイピングで、英単語を体に覚えさせる。
+        ストレスなしで、英単語を覚える。
       </p>
 
       <nav class="site-footer__nav" aria-label="フッターナビ">
-        <a href="./typing.html">タイピング練習</a>
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
         <a href="./tokushoho.html">特定商取引法に基づく表記</a>
