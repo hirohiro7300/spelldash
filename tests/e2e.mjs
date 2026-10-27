@@ -8051,12 +8051,11 @@ console.log("parts (途中の部品の皮):");
   const green = {};
   for (const [w, theme] of [[390, "light"], [1200, "dark"]]) {
     const page = await openPart(`stats ${w} ${theme}`, viewP(w, theme, statsSeedP), "/stats.html", theme);
-    await page.click('#statsTabs [data-tab="words"]');
+    // 学習状況（Batch 78 段 4）: 前の 3 つのタブの節は「詳しい記録」の畳みの中（タブは無い）。カテゴリ別の進捗と思い出せるようになった語の「習得」の札は出さない
+    await page.evaluate(() => { const d = document.getElementById("statsMore"); if (d) d.open = true; });
     await page.waitForTimeout(600);
     const words = await page.evaluate(part, "stats");
-    await page.click('#statsTabs [data-tab="analysis"]');
-    await page.waitForTimeout(600);
-    const analysis = await page.evaluate(part, "stats");
+    const analysis = words;
     await donePart(page);
     // バトル: 4 秒の対戦で 1 語答える（CPU は 0 のまま → 勝ち）。tests の作法どおりロジックは触らない
     const page2 = await openPart(`battle ${w} ${theme}`, viewP(w, theme, returningP), "/battle.html?t=4", theme);
@@ -8096,10 +8095,10 @@ console.log("parts (途中の部品の皮):");
   };
   const greenOk = (g) => {
     const c = greenColors(g), flat = JSON.stringify(c.seen);
-    return !flat.includes(c.ok) && !flat.includes(c.okSoft) && g.detail.status?.color === c.gold && g.detail.hist === c.gold && g.words.gcard?.color === c.gold && g.myWords.myWord?.color === c.gold && g.words.nHist > 0 && g.words.hist !== undefined && g.words.cal.every(Boolean) && !!g.words.catBar && /battle-verdict--win/.test(g.battle.cls ?? "") && g.battle.verdict?.color === c.gold && g.battle.ratio >= 3;
+    return !flat.includes(c.ok) && !flat.includes(c.okSoft) && g.detail.status?.color === c.gold && g.detail.hist === c.gold && g.myWords.myWord?.color === c.gold && g.words.nHist > 0 && g.words.hist !== undefined && g.words.cal.every(Boolean) && /battle-verdict--win/.test(g.battle.cls ?? "") && g.battle.verdict?.color === c.gold && g.battle.ratio >= 3;
   };
   const minGold = Math.min(...["light", "dark", "paper", "indigo"].map((t) => themesP[t].goldOnPaper3));
-  check(`Batch 57 緑が 0（済みは金）: 詳細・一覧・stats の「習得」、履歴の点、今週の濃淡、分野の棒、マイ単語帳の習得、battle の「勝ち」（--gold-ink / --sheet 390 昼 ${green["390-light"].battle.ratio}・1200 夜 ${green["1200-dark"].battle.ratio} ≥ 3）に --ok 系の色が無い。「習得」の題箋 --gold-ink / --paper-3 は 昼 ${themesP.light.goldOnPaper3}・夜 ${themesP.dark.goldOnPaper3}・紙 ${themesP.paper.goldOnPaper3}・藍 ${themesP.indigo.goldOnPaper3}（最低 ${minGold} ≥ 4.68）`, greenOk(green["390-light"]) && greenOk(green["1200-dark"]) && minGold >= 4.68, JSON.stringify({ "390-light": greenColors(green["390-light"]), "1200-dark": greenColors(green["1200-dark"]), themes: themesP }));
+  check(`Batch 57 緑が 0（済みは金）: 詳細・一覧の「習得」、学習状況の詳しい記録の履歴の点と今週の濃淡、マイ単語帳の習得、battle の「勝ち」（--gold-ink / --sheet 390 昼 ${green["390-light"].battle.ratio}・1200 夜 ${green["1200-dark"].battle.ratio} ≥ 3）に --ok 系の色が無い。「習得」の題箋 --gold-ink / --paper-3 は 昼 ${themesP.light.goldOnPaper3}・夜 ${themesP.dark.goldOnPaper3}・紙 ${themesP.paper.goldOnPaper3}・藍 ${themesP.indigo.goldOnPaper3}（最低 ${minGold} ≥ 4.68）`, greenOk(green["390-light"]) && greenOk(green["1200-dark"]) && minGold >= 4.68, JSON.stringify({ "390-light": greenColors(green["390-light"]), "1200-dark": greenColors(green["1200-dark"]), themes: themesP }));
 
   // ---- 8. コース選択（ホーム 390・1200 × 昼・夜。「コースを変える」→ #pathCourses） ----
   const course = {};
