@@ -18533,25 +18533,25 @@ console.log("pro:");
     await page2.close();
   }
 
-  // 7. 推移: free が 90 を押しても 30 のまま（案内だけ）。Pro は 90 日で描き直し、選択を保存
+  // 7. 推移（学習状況の「詳しい記録」の中。Batch 78 段 4）: free には 30／90 の切り替えも Pro の案内も出さない（30 日で描く）。Pro は 90 日で描き直し、選択を保存
   {
     const log = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ date: ymdDaysAgo(99 - i), learned: i, mastered: Math.floor(i / 2), active: true })));
-    const page = await newPage({ storage: { spelldash_growth_log: log } });
+    const openMore = (pg) => pg.evaluate(() => { const d = document.getElementById("statsMore"); if (d) d.open = true; });
+    const page = await newPage({ storage: { spelldash_growth_log: log, spelldash_trend_range: "90" } });
     await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
-    const before = await page.$eval("#growthTrend", (el) => el.innerHTML);
-    check("Pro: 推移の期間は 30 が選ばれている", await page.$eval('[data-trend-range="30"]', (el) => el.classList.contains("is-active")));
-    await page.click('[data-trend-range="90"]');
+    await openMore(page);
     await page.waitForTimeout(300);
-    const hint = await text(page, ".trend-range__hint");
-    check("Pro: free が 90 を押すと「Pro で見られる」の案内と「Pro について」", hint.includes("Pro で見られる") && (await page.$$('.trend-range__hint a[href="./pro.html"]')).length === 1, hint);
-    check("Pro: free のグラフは 30 日のまま（描き直さない）", before === (await page.$eval("#growthTrend", (el) => el.innerHTML)) && (await page.$eval('[data-trend-range="30"]', (el) => el.classList.contains("is-active"))) && (await text(page, "#growthDays")) === "30");
-    check("Pro: free は spelldash_trend_range を保存しない", (await page.evaluate(() => localStorage.getItem("spelldash_trend_range"))) !== "90");
+    check("Pro: free には推移の 30／90 の切り替えを出さない（保存値が 90 でも 30 日で描く）・Pro の案内も無い",
+      !(await visible(page, ".trend-range")) && (await text(page, "#growthDays")) === "30" && (await page.$(".trend-range__hint")) === null && !(await text(page, "#growth")).includes("Pro"), await text(page, "#growthDays"));
     await page.close();
     const page2 = await newPage({ storage: proStorage({}, { spelldash_growth_log: log }) });
     await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page2.waitForTimeout(900);
+    await openMore(page2);
+    await page2.waitForTimeout(300);
     const before2 = await page2.$eval("#growthTrend", (el) => el.innerHTML);
+    check("Pro: Pro には切り替えが出て、30 が選ばれている", (await visible(page2, ".trend-range")) && (await page2.$eval('[data-trend-range="30"]', (el) => el.classList.contains("is-active"))));
     await page2.click('[data-trend-range="90"]');
     await page2.waitForTimeout(300);
     check("Pro: Pro が 90 を押すと 90 が .is-active・見出しも 90 日", (await page2.$eval('[data-trend-range="90"]', (el) => el.classList.contains("is-active"))) && (await text(page2, "#growthDays")) === "90" && (await page2.$(".trend-range__hint")) === null);
@@ -18604,27 +18604,30 @@ console.log("pro:");
     await page2.close();
   }
 
-  // 9. 連続記録の修復: 5 日前に 7 日で途切れた → free は案内、Pro はボタン → 「連続 7 日に戻しました」→ もう一度は押せない
+  // 9. 連続記録の修復（学習状況の「詳しい記録」の「その他の数字」の下。Batch 78 段 4）: 5 日前に 7 日で途切れた → free には何も出さない（Pro の案内も
+  //    途切れた文も）、Pro はボタン → 「連続 7 日に戻した」→ もう一度は押せない
   {
     const streak = JSON.stringify({ last: ymdDaysAgo(5), current: 7, best: 7, shields: 0 });
+    const openMore = (pg) => pg.evaluate(() => { const d = document.getElementById("statsMore"); if (d) d.open = true; });
     const page = await newPage({ storage: { spelldash_streak: streak } });
     await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     const repair = await text(page, "#streakRepair");
-    check("Pro: 途切れた記録があると #streakRepair「連続 7 日が M/D に途切れた」", repair.includes("連続 7 日") && repair.includes("途切れた"), repair);
-    check("Pro: free は「Pro なら」の案内と「Pro について」", repair.includes("Pro なら") && (await page.$$('#streakRepair a[href="./pro.html"]')).length === 1 && (await page.$("#streakRepairButton")) === null, repair);
+    check("Pro: free には連続記録の修復の行を出さない（「Pro なら」の案内・途切れた文・ボタンなし）", repair === "" && (await page.$$('#streakRepair a[href="./pro.html"]')).length === 0 && (await page.$("#streakRepairButton")) === null, repair);
     await page.close();
     const page2 = await newPage({ storage: proStorage({}, { spelldash_streak: streak }) });
     await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page2.waitForTimeout(900);
-    check("Pro: Pro には #streakRepairButton「今月の修復を使う」", (await text(page2, "#streakRepairButton")).includes("今月の修復"), await text(page2, "#streakRepair"));
+    await openMore(page2);
+    await page2.waitForTimeout(200);
+    check("Pro: Pro には「連続 7 日が M/D に途切れた」と #streakRepairButton「今月の修復を使う」", (await text(page2, "#streakRepair")).includes("連続 7 日") && (await text(page2, "#streakRepairButton")).includes("今月の修復"), await text(page2, "#streakRepair"));
     await page2.click("#streakRepairButton");
     await page2.waitForTimeout(300);
     check("Pro: 押すと「連続 7 日に戻した」", (await text(page2, "#streakRepair")).includes("連続 7 日に戻した"), await text(page2, "#streakRepair"));
     const saved = await page2.evaluate(() => JSON.parse(localStorage.getItem("spelldash_streak") || "{}"));
     const thisMonth = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
     check("Pro: 保存値は current 7・repairedMonth が今月・lost は消える", saved.current === 7 && saved.repairedMonth === thisMonth && !saved.lost, JSON.stringify(saved));
-    check("Pro: 概要の連続日数が 7 に戻る", (await text(page2, "#overview")).includes("7"), await text(page2, "#overview"));
+    check("Pro: その他の数字の「連続」が 7 日に戻る", (await text(page2, "#overviewMore")).includes("連続 7日"), await text(page2, "#overviewMore"));
     check("Pro: 修復後はボタンが無い（もう一度は押せない）", (await page2.$("#streakRepairButton")) === null);
     await page2.close();
     // 同じ月にまた途切れた（repairedMonth が今月）→ 「今月の修復は使いました」。newPage の seed は再読込でも効くので別ページで
