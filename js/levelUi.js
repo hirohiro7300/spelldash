@@ -108,3 +108,38 @@ function fillRankEmblems(details) {
 export function playLevelUpEffect() {
   pulseTodayStrip();
 }
+
+// ===== 中心の学習の回の終わりのランクアップの幕（覚えた語数の 9 段。Batch 78。js/rank.js） =====
+// 回の途中には出さない（入力完了から次の問題までを待たせない）。回の終わりのパネルを描いたあとに 1 回だけ（js/game.js）。
+// 絵はまだ無いので文字だけ（.rank-up の枠と動きは 21 段の幕と同じ。css/game.css）。読み上げは呼び手が #srStatus に流す（幕は aria-hidden）。
+// 1.2 秒で消える。Esc・Enter・タップでも閉じる（出した直後の Enter では閉じない）。下がった幕は無い（呼び手は上がったときだけ呼ぶ）
+export function showLearnRankUp({ from, to }) {
+  const overlay = document.createElement("div");
+  overlay.className = "rank-up rank-up--text";
+  overlay.setAttribute("aria-hidden", "true");
+  const name = (text) => String(text ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  overlay.innerHTML = `
+    <div class="rank-up__inner">
+      <div class="rank-up__label">ランクアップ</div>
+      <div class="rank-up__title"><span class="rank-up__from"><span data-rank-name>${name(from)}</span><i>→</i></span><b data-rank-name>${name(to)}</b></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", onKey, true);
+    overlay.classList.add("rank-up--out");
+    setTimeout(() => overlay.remove(), 220);
+  };
+  const shownAt = performance.now();
+  const onKey = (event) => {
+    if (event.key === "Enter" && performance.now() - shownAt < 300) return;
+    if (event.key === "Escape" || event.key === "Enter") close();
+  };
+  document.addEventListener("keydown", onKey, true);
+  overlay.addEventListener("pointerdown", close);
+  setTimeout(close, 1200);
+  return overlay;
+}
