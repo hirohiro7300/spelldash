@@ -67,6 +67,9 @@ jobs:
       - name: 一冊を終えるまでの目安（その回の本だけ数える・初めて済みになった語だけ・記録を始めてからの暦日数で割る・365 日の上限。js/bookPace.js）
         run: node scripts/test-pace.mjs
 
+      - name: 3 状態・スキーマ 7 の移行・最高到達ランクの決まり（js/learnState.js・js/rank.js・js/storage.js・js/sync.js・js/backup.js）
+        run: node scripts/test-learn-state.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 
@@ -78,6 +81,12 @@ jobs:
 
       - name: タイピング練習の長文の教材（data/typing-long.json）が最新か
         run: node scripts/build-typing-long.mjs --check
+
+      - name: 公開する英単語の表（data/public/english.json）が最新か（語数・機能語は最後・NGSL の順位）
+        run: node scripts/build-public-vocab.mjs --check
+
+      - name: 公開する英単語の表の決まり（教材とファイルの写しを壊すと落ちる。scripts/build-public-vocab.mjs）
+        run: node scripts/test-public-vocab.mjs
 
       - name: E2E の組分け（どの節もちょうど 1 つの組に入り、どの組の台本も構文が通る）
         run: node scripts/e2e-shard.mjs --check 4
