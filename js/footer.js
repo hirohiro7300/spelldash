@@ -1,6 +1,6 @@
 import { initFeedback } from "./feedback.js";
 import { initOfflineBanner } from "./offline.js";
-import { renderFooterPro } from "./proFunnel.js";
+import { refreshBillingOpen } from "./proFunnel.js";
 import { trackProEntries, flushFunnelQueue, trackFirstVisit, flushPaidPending } from "./funnelLog.js";
 import { isPro, getPlan } from "./plan.js";
 
@@ -13,8 +13,11 @@ export function setFooterYear() {
   initFeedback();
   // オフライン表示（全ページ共通）
   initOfflineBanner();
-  // 「SpellDash Pro」（受付中のときだけ。docs/SPEC_FUNNEL.md）
-  renderFooterPro();
+  // 「SpellDash Pro」はフッターに出さない（Batch 78: Pro は主導線から外す。出す仕組みは js/proFunnel.js renderFooterPro に残す）。
+  // 受付中かどうかの控え（設定の「Pro について」・マイ単語帳の上限の案内・AI の上限の案内が読む）は、前と同じ頁でここで取り直す
+  // （前に renderFooterPro が取り直していた。フッターに data-no-pro の印のある頁〔タイピング練習〕と加入画面は前から取らない）
+  const footerNav = document.querySelector(".site-footer__nav");
+  if (footerNav && !footerNav.hasAttribute("data-no-pro") && !location.pathname.endsWith("/pro.html")) refreshBillingOpen();
   // 動線の計測（docs/SQL_FUNNEL.md）: 加入画面へのリンクの入口と、初めて来た端末（学習記録の無い端末で番号を作ったとき）
   trackProEntries();
   flushFunnelQueue();

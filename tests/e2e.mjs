@@ -4874,7 +4874,7 @@ console.log("theme:");
   await page.close();
 }
 
-// ===== 8.5 書斎の土台: ナビの現在地「書斎」・自前の明朝が読めている・外部への要求が無い（css/fonts.css・tokens.css・brand.css） =====
+// ===== 8.5 書斎の土台: ナビの現在地「ホーム」（Batch 78 で「書斎」から改名）・自前の明朝が読めている・外部への要求が無い（css/fonts.css・tokens.css・brand.css） =====
 console.log("study (foundation):");
 {
   const page = await newPage({ viewport: { width: 390, height: 844 } });
@@ -4882,7 +4882,7 @@ console.log("study (foundation):");
   page.on("request", (req) => hosts.add(new URL(req.url()).host));
   await page.goto(BASE + "/index.html?t=3", { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
-  check("書斎: ナビの現在地が「書斎」", (await page.$eval('.site-nav [aria-current="page"]', (el) => el.textContent.trim())) === "書斎");
+  check("書斎: ナビの現在地が「ホーム」", (await page.$eval('.site-nav [aria-current="page"]', (el) => el.textContent.trim())) === "ホーム");
   const fonts = await page.evaluate(async () => {
     await document.fonts.ready;
     return {
@@ -4897,9 +4897,10 @@ console.log("study (foundation):");
   check("書斎の土台でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
   const page2 = await newPage();
-  await page2.goto(BASE + "/list.html", { waitUntil: "networkidle" });
+  await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
   await page2.waitForTimeout(400);
-  check("書斎: 単語帳のナビにも「書斎」（「プレイ」は残っていない）", (await page2.textContent(".site-nav")).includes("書斎") && !(await page2.textContent(".site-nav")).includes("プレイ"));
+  const nav2 = await page2.textContent(".site-nav");
+  check("書斎: 学習状況のナビにも「ホーム」（「書斎」「プレイ」は残っていない。単語帳はナビから外した）", nav2.includes("ホーム") && !nav2.includes("書斎") && !nav2.includes("プレイ"), nav2.replace(/\s+/g, " "));
   await page2.close();
 }
 
@@ -6954,7 +6955,8 @@ console.log("pages (書斎の皮):");
       cards
     };
   };
-  const SKIN_PAGES = ["/list.html", "/stats.html", "/profile.html", "/pro.html", "/battle.html", "/news.html", "/privacy.html", "/terms.html", "/tokushoho.html", "/packs/accounting.html", "/typing.html", "/typing-game.html"];
+  // Batch 78: 単語帳（list.html）と分野パックのページは開くとホームへ案内するので外した（主導線と、直接開けば動く Battle・タイピング・Pro・規約の頁）
+  const SKIN_PAGES = ["/stats.html", "/profile.html", "/pro.html", "/battle.html", "/news.html", "/privacy.html", "/terms.html", "/tokushoho.html", "/typing.html", "/typing-game.html"];
   const SKIN_VIEWS = [[390, true], [1200, false]];
   const skinPage = (w, mobile, theme) => newPage({ mobile, viewport: { width: w, height: mobile ? 844 : 900 }, storage: { spelldash_theme: theme, spelldash_placement: "done" } });
   const themed = (page, theme) => waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
@@ -7100,7 +7102,8 @@ console.log("pages (書斎の皮):");
     }
     check(`PR #168 の 1: フッターの名前「SpellDash」はどの幅でも見える（全 ${1 + SKIN_PAGES.length} ページ × ${BRAND_WIDTHS.join("・")}。詰めた 1 行で名前を隠すのはヘッダーだけ）`, footBad.length === 0, JSON.stringify({ n: footBad.length, bad: footBad.slice(0, 6) }));
     check(`PR #168 の 2: ヘッダーの家へのリンクの読み上げの名前は「SpellDash」（全 ${1 + SKIN_PAGES.length} ページ × ${BRAND_WIDTHS.join("・")}）、見た目は今のまま（≤720 は印だけ・721 からは名前つき）`, nameBad.length === 0 && headBad.length === 0, JSON.stringify({ name: nameBad.slice(0, 6), nName: nameBad.length, head: headBad.slice(0, 6) }));
-    check("PR #168 の 5: ≤720 でも連続日数は「12日」（単位が出る。≤359 だけ数字だけ〔Batch 67 N1〕・Battle の 400 未満は出さない）・padding はその頁の 1200 と同じ・当たり判定の min-height 40px（効いていなかった宣言を消しても見た目は今のまま）", streakPages >= 10 && streakBad.length === 0 && page.errors.length === 0, JSON.stringify({ streakPages, n: streakBad.length, bad: streakBad.slice(0, 6), errors: page.errors.slice(0, 1) }));
+    // Batch 78: ヘッダーの連続日数はどのページにも出さない（依頼 §6「連続記録を人質にしない」。js/headerStreak.js・css/brand.css）。前の「12日」の形の検査（streakBad）は、出す頁が無いので空のまま
+    check("PR #168 の 5（Batch 78）: 連続 12 日でも、ヘッダーの連続日数はどのページ・どの幅でも出さない", streakPages === 0 && streakBad.length === 0 && page.errors.length === 0, JSON.stringify({ streakPages, n: streakBad.length, bad: streakBad.slice(0, 6), errors: page.errors.slice(0, 1) }));
     await page.close();
   }
 
@@ -7131,7 +7134,7 @@ console.log("pages (書斎の皮):");
       ["Pro", { spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: isoN(20), cancel_at_period_end: false }), spelldash_plan: JSON.stringify({ status: "active", interval: "month", periodEnd: isoN(20), cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() }) }, false],
       ["アプリ", {}, true]
     ];
-    const N1_PAGES = ["/index.html", "/stats.html", "/battle.html", "/news.html", "/packs/index.html"];
+    const N1_PAGES = ["/index.html", "/stats.html", "/battle.html", "/news.html", "/profile.html"]; // Batch 78: 生成した packs はホームへ案内するので、設定の頁に替えた
     const N1_WIDTHS = [...Array.from({ length: 41 }, (_, i) => 320 + i), 361, 375, 384, 390, 393, 399, 400, 402, 404, 408, 411, 412, 414, 420, 428, 430, 440, 449, 450, 480, 540, 560, 561, 600, 640, 680, 720];
     // 幅ごと・iframe ごとに: 部品の箱の重なり・画面の外・字の行数（8.7 の H1 と同じ数え方）・帯の高さ・見えるタブの数・連続日数の字。
     // settle: 幅を変えたら 1 コマ待ってから測る（js/headerFit.js の ResizeObserver が「収まらないときの形」を決めるのはその描画の中。requestAnimationFrame の後の
@@ -7207,13 +7210,12 @@ console.log("pages (書斎の皮):");
         await page.waitForTimeout(150);
         const rows = await page.evaluate(headerBoxes, { widths: N1_WIDTHS, settle: false });
         const bad = rows.filter((r) => {
-          const battle = r.p === "/battle.html";
-          const wantStreak = !days || (battle && r.w < 400) ? null : r.w <= 359 ? String(days) : `${days}日`;
-          // PR #170 のレビュー 5 の直し（構造で止める）の後も、Web フォントで入るときは今の形のまま: タブの字は省略しない・細い形（data-fit="tight"）にしない・当たり判定と焦点の輪は保つ
-          return r.vw !== r.w || r.overlap.length || r.out.length || r.broken.length || r.h !== (r.p === "/index.html" ? 56 : 57) || r.tabs !== (battle || r.w >= 400 ? 4 : 3) || r.streak !== wantStreak || r.native !== app ||
+          // PR #170 のレビュー 5 の直し（構造で止める）の後も、Web フォントで入るときは今の形のまま: タブの字は省略しない・細い形（data-fit="tight"）にしない・当たり判定と焦点の輪は保つ。
+          // Batch 78: タブはどの幅でも 4 つ（ホーム・英単語を学ぶ・学習状況・設定。Battle の頁でも同じ）・連続日数は出さない
+          return r.vw !== r.w || r.overlap.length || r.out.length || r.broken.length || r.h !== (r.p === "/index.html" ? 56 : 57) || r.tabs !== 4 || r.links.join() !== "ホーム,英単語を学ぶ,学習状況,設定" || r.streak !== null || r.native !== app ||
             r.trunc.length || r.fit || r.small.length || r.ring.length;
         }).map((r) => JSON.stringify(r));
-        check(`N1 ヘッダーの部品は重ならない（${form}・連続 ${days} 日: ${N1_PAGES.length} ページ × 320〜360 の各幅と 361〜720 の 27 幅。箱が重ならない・画面の内・字は 1 行・高さ 56／57・連続日数は ≤359 で数字だけ・タブは 400 未満 3〔Battle は 4〕・タブの字を省略しない・当たり判定と焦点の輪）`,
+        check(`N1 ヘッダーの部品は重ならない（${form}・連続 ${days} 日: ${N1_PAGES.length} ページ × 320〜360 の各幅と 361〜720 の 27 幅。箱が重ならない・画面の内・字は 1 行・高さ 56／57・連続日数は出さない・タブはどの幅でも 4 つ・タブの字を省略しない・当たり判定と焦点の輪）`,
           rows.length === N1_PAGES.length * N1_WIDTHS.length && bad.length === 0 && page.errors.length === 0, JSON.stringify({ rows: rows.length, n: bad.length, bad: bad.slice(0, 3), errors: page.errors.slice(0, 1) }));
         await page.close();
       }
@@ -7255,20 +7257,19 @@ console.log("pages (書斎の皮):");
         const rows = await page.evaluate(headerBoxes, { widths: R5_WIDTHS, settle: true });
         rowsN += rows.length;
         for (const r of rows) {
-          const battle = r.p === "/battle.html";
           if (r.fit) tightN++;
           if (r.trunc.length) truncN++;
-          const fold = (r.fit ?? "").split(" ");
-          const wantLinks = ["書斎", "学習データ", "単語帳", ...(battle || (r.w >= 400 && !fold.includes("battle")) ? ["バトル"] : [])].join();
-          const streakOff = !days || fold.includes("streak") || (battle && (r.w < 400 || fold.includes("battle")));
-          const streakOk = streakOff ? r.streak === null : r.streak?.replace(/日$/, "") === String(days);
-          const looks = mode === "zoom" ? parseFloat(r.fs) >= 16.8 : mode === "nofont" ? !r.webfont : r.webfont; // 13px／14px の 1.3 倍 = 16.9／18.2px。フォントなしは明朝・SD Num の面が 1 つも読めていない（wide は差し替えた中身が読めている）
+          // Batch 78: 4 つのタブは畳まない（前に畳んだ「バトル」はナビから外した）・連続日数は出さない
+          const wantLinks = "ホーム,英単語を学ぶ,学習状況,設定";
+          const streakOk = r.streak === null;
+          // 13px／14px の 1.3 倍 = 16.9／18.2px（≤359 のタブは 12px〔Batch 78: 4 つのタブを 320 に入れる〕の 1.3 倍 = 15.6px）。フォントなしは明朝・SD Num の面が 1 つも読めていない（wide は差し替えた中身が読めている）
+          const looks = mode === "zoom" ? parseFloat(r.fs) >= (r.w <= 359 ? 15.5 : 16.8) : mode === "nofont" ? !r.webfont : r.webfont;
           if (r.vw !== r.w || r.overlap.length || r.out.length || r.broken.length || r.h !== (r.p === "/index.html" ? 56 : 57) || r.small.length || r.ring.length || r.links.join() !== wantLinks || !streakOk || r.native !== app || !looks) bad.push(JSON.stringify({ days, ...r }));
         }
         errors.push(...page.errors);
         await page.close();
       }
-      check(`PR #170 のレビュー 5: ${modeName}（${form}）でもヘッダーの部品は重ならない（連続 ${R5_DAYS.join("／")} 日 × ${N1_PAGES.length} ページ × 320〜449 の各幅＋450〜1200 の 8 幅。箱が重ならない・画面の内・字は 1 行・高さ 56／57・タブの当たり判定・焦点の輪はナビの内・書斎／学習データ／単語帳は出る・連続日数は畳んだ形でだけ消える）`,
+      check(`PR #170 のレビュー 5: ${modeName}（${form}）でもヘッダーの部品は重ならない（連続 ${R5_DAYS.join("／")} 日 × ${N1_PAGES.length} ページ × 320〜449 の各幅＋450〜1200 の 8 幅。箱が重ならない・画面の内・字は 1 行・高さ 56／57・タブの当たり判定・焦点の輪はナビの内・ホーム／英単語を学ぶ／学習状況／設定は出る・連続日数は出さない）`,
         rowsN === R5_DAYS.length * N1_PAGES.length * R5_WIDTHS.length && bad.length === 0 && errors.length === 0 && (mode === "zoom" || swapped > 0), JSON.stringify({ rows: rowsN, n: bad.length, fit: tightN, trunc: truncN, swapped, bad: bad.slice(0, 3), errors: errors.slice(0, 1) }));
     }
   }
@@ -7358,6 +7359,8 @@ console.log("pages (書斎の皮):");
     check(`N4 生成元の型の .pp は幅 100%（中身の幅で広がらない）・生成した ${packFiles.length} ページの .pp は型と同じ`, /width: 100%/.test(ppRule) && packFiles.length > 100 && stale.length === 0, JSON.stringify({ ppRule, n: stale.length, stale: stale.slice(0, 3) }));
     for (const mobile of [false, true]) {
       const page = await newPage({ mobile, viewport: { width: 720, height: 800 }, storage: { spelldash_placement: "done" } });
+      // Batch 78: パックのページは開くと英単語のホームへ案内する（頭の location.replace）。ここは生成した頁の幅を見るので、案内の 1 行を外して配る
+      await page.route(BASE + "/packs/index.html", async (route) => { const res = await route.fetch(); await route.fulfill({ response: res, body: (await res.text()).replace(/ *<script>location\.replace\([^<]*<\/script>\n?/, "") }); });
       await page.goto(BASE + "/packs/index.html", { waitUntil: "networkidle" });
       const bad = [];
       for (let w = 540; w <= 720; w++) {
@@ -7372,14 +7375,14 @@ console.log("pages (書斎の皮):");
     }
   }
 
-  // ---- Batch 67: 横スクロール 0 を 390 だけでなく守る（STATUS「細い画面で横スクロール無し」）。全ページ（admin を除く・packs は一覧と 1 ページ）×
+  // ---- Batch 67: 横スクロール 0 を 390 だけでなく守る（STATUS「細い画面で横スクロール無し」）。全ページ（admin と packs を除く）×
   // 320／360／390／568／600／640 × 未ログイン（desktop・mobile）／ログイン・Pro（mobile）。mobile の 568〜640 は横向き（高さ 360）。連続日数 128 日（帯が混む形）
   console.log("no horizontal scroll (all pages, Batch 67):");
   {
     const todayH = ymd(new Date());
     const isoH = (d) => new Date(Date.now() + d * 86400000).toISOString();
     const streak128 = { spelldash_streak: JSON.stringify({ current: 128, best: 128, last: todayH }) };
-    const HS_PAGES = ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html", "/list.html", "/pro.html", "/tokushoho.html", "/terms.html", "/typing.html", "/typing-game.html", "/packs/index.html", "/packs/accounting.html"];
+    const HS_PAGES = ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html", "/pro.html", "/tokushoho.html", "/terms.html", "/typing.html", "/typing-game.html"]; // Batch 78: packs は開くとホームへ案内するので外した（幅の検査は上の N4）
     const HS_WIDTHS = [320, 360, 390, 568, 600, 640];
     const HS_FORMS = [
       ["未ログイン", {}, false],
@@ -19008,6 +19011,209 @@ console.log("tutorial:");
   await page3.close();
 }
 
+// ===== 78.5 導線と検索（Batch 78 段 5a。創業者の決定 §7・§9 の 1・10・11・12・17）: ナビは全ページで 4 つ（ホーム・英単語を学ぶ・学習状況・設定）・英単語を学ぶ は /?learn=next・フッターの一文・Pro とタイピングの導線なし・連続日数を出さない・noindex と sitemap・パックのページはホームへ・320／390／1200 で横スクロール 0・キーボード・頭文字の丸の縁 =====
+// 静的な決まり（sitemap・noindex・vercel.json の転送・ナビとフッターの HTML）は scripts/test-site-map.mjs も見る。ここは配られた頁を開いて、描いた後の形を見る
+console.log("78.5 導線と検索:");
+{
+  const ROOT_PAGES = ["/index.html", "/stats.html", "/list.html", "/profile.html", "/battle.html", "/news.html", "/terms.html", "/privacy.html", "/tokushoho.html", "/pro.html", "/typing.html", "/typing-game.html"];
+  const MAIN_PAGES = ["/index.html", "/stats.html", "/profile.html", "/news.html", "/terms.html", "/privacy.html", "/tokushoho.html"];
+  const HIDDEN_PAGES = ["/battle.html", "/typing.html", "/typing-game.html", "/list.html"];
+  const NAV = [["ホーム", "/"], ["英単語を学ぶ", "/?learn=next"], ["学習状況", "/stats.html"], ["設定", "/profile.html"]];
+  const CURRENT = { "/": "ホーム", "/index.html": "ホーム", "/stats.html": "学習状況", "/profile.html": "設定" };
+  const TAGLINE = "ストレスなしで、英単語を覚える。";
+  const streak12 = JSON.stringify({ current: 12, best: 12, last: ymd(new Date()) });
+  const RETURNING = { spelldash_placement: "done", spelldash_streak: streak12, spelldash_xp: "1200" };
+  // ナビ・フッター・本文の見えるリンクのうち、外した面（単語帳・Battle・タイピング・分野パック・Pro）へ行くもの。読み上げの名前ではなく行き先で見る
+  const chromeOf = () => {
+    const HIDDEN = /(^|\/)(list\.html|battle\.html|typing\.html|typing-game\.html|pro\.html)([?#]|$)|(^|\/)packs(\/|$)/;
+    const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden]");
+    const hiddenLinks = (root) => (root ? [...root.querySelectorAll("a[href]")].filter(shown).map((a) => new URL(a.href, location.href)).filter((u) => u.origin === location.origin && HIDDEN.test(u.pathname)).map((u) => u.pathname + u.search + u.hash) : []);
+    const inner = document.querySelector(".site-header__inner");
+    const links = [...document.querySelectorAll(".site-header .site-nav .site-nav__link")];
+    const streak = document.getElementById("headerStreak");
+    const acct = inner?.querySelector(".account")?.getBoundingClientRect();
+    return {
+      path: location.pathname, search: location.search,
+      nav: links.map((a) => ({ label: a.textContent.trim(), href: new URL(a.href).pathname + new URL(a.href).search, current: a.getAttribute("aria-current"), shown: shown(a), trunc: a.scrollWidth > a.clientWidth })),
+      fit: inner?.dataset.fit ?? "",
+      tagline: document.querySelector(".site-footer__tagline")?.textContent.trim() ?? null,
+      footerPro: document.querySelectorAll(".site-footer__nav [data-footer-pro]").length,
+      footerText: document.querySelector(".site-footer__nav")?.textContent.replace(/\s+/g, " ").trim() ?? "",
+      navHidden: hiddenLinks(document.querySelector(".site-header")), footerHidden: hiddenLinks(document.querySelector(".site-footer")),
+      mainHidden: hiddenLinks(document.querySelector("main")),
+      streak: !!streak && shown(streak),
+      acctRight: inner && acct ? Math.round(inner.getBoundingClientRect().right - acct.right) : null,
+      sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth
+    };
+  };
+  const navOk = (c) => c.nav.length === 4 && c.nav.every((l, i) => l.label === NAV[i][0] && l.href === NAV[i][1] && l.shown && !l.trunc) &&
+    JSON.stringify(c.nav.filter((l) => l.current === "page").map((l) => l.label)) === JSON.stringify(CURRENT[c.path] ? [CURRENT[c.path]] : []);
+
+  // (1) 12 ページ × 390（スマホ）／1200: ナビは 4 つ（字は省略しない・畳まない）・現在地はそのページだけ・フッターの一文・Pro のリンクなし（受付中でも）・
+  //     ナビとフッターに外した面へのリンクなし・連続日数（12 日）を出さない・ログインはヘッダーの右端のまま・横スクロール 0・エラー 0。
+  //     単語帳を開いたときの守り（段 5b）でホームへ移っても、着いたページで同じことを見る
+  {
+    const bad = [];
+    let rows = 0;
+    for (const [w, mobile] of [[390, true], [1200, false]]) {
+      const page = await newPage({ viewport: { width: w, height: mobile ? 844 : 900 }, mobile, storage: RETURNING });
+      for (const p of ROOT_PAGES) {
+        const errFrom = page.errors.length;
+        await page.goto(BASE + p, { waitUntil: "networkidle" });
+        await page.waitForTimeout(400); // 受付中なら Pro のリンクを差し込む時機（js/proFunnel.js renderFooterPro）の後
+        const c = await page.evaluate(chromeOf);
+        rows++;
+        const ok = navOk(c) && !c.fit && c.tagline === TAGLINE && c.footerPro === 0 && !/タイピング|Pro|単語帳|バトル/.test(c.footerText) && c.navHidden.length === 0 && c.footerHidden.length === 0 &&
+          !c.streak && c.acctRight !== null && c.acctRight <= 1 && c.sw <= c.cw && page.errors.length === errFrom;
+        if (!ok) bad.push({ p, w, ...c, err: page.errors.slice(errFrom)[0] });
+      }
+      await page.close();
+    }
+    check(`導線: ${ROOT_PAGES.length} ページ × 390／1200 で、ナビは「ホーム・英単語を学ぶ・学習状況・設定」の 4 つ（行き先 /・/?learn=next・stats・profile、字は省略しない・畳まない）・現在地はそのページだけ・フッターの一文「${TAGLINE}」・受付中でも Pro のリンクを出さない・ナビとフッターに単語帳／Battle／タイピング／パック／Pro への導線なし・連続日数（12 日）を出さない・ログインは右端・横スクロール 0・エラー 0`,
+      rows === ROOT_PAGES.length * 2 && bad.length === 0, JSON.stringify(bad.slice(0, 2)));
+  }
+
+  // (2) 主導線の本文（ホーム: 記録のある人・初めての人／学習状況）の見えるリンクに、外した面へ行くものが無い（受け入れ 10: 非公開教材への主導線がない）。
+  //     ホームの本文は段 5b の持ち物（統合した木で通る）
+  {
+    const found = [];
+    for (const [who, init] of [["記録のある人", { storage: RETURNING }], ["初めての人", { keepOnboarding: true }]]) {
+      for (const p of ["/index.html", "/stats.html"]) {
+        const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, ...init });
+        await page.goto(BASE + p, { waitUntil: "networkidle" });
+        await page.waitForTimeout(400);
+        const c = await page.evaluate(chromeOf);
+        if (c.mainHidden.length || page.errors.length) found.push({ who, p, links: c.mainHidden, err: page.errors[0] });
+        await page.close();
+      }
+    }
+    check("導線: ホーム（記録のある人・初めての人）と学習状況の本文の見えるリンクに、単語帳／Battle／タイピング／パック／Pro へ行くものが無い（学習状況の「息抜きに タイピング練習」は外した）",
+      found.length === 0, JSON.stringify(found));
+  }
+
+  // (3) 英単語を学ぶ: どのページからも /?learn=next。キーボードだけで: 学習状況の頭から Tab で「本文へ」→ 印 → ナビの 4 つの順に進み、英単語を学ぶ で Enter → /?learn=next に着く
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: RETURNING });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    const order = [];
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press("Tab");
+      order.push(await page.evaluate(() => { const el = document.activeElement; return el?.closest(".site-nav") ? el.textContent.trim() : el?.classList.contains("brand") ? "印" : el?.classList.contains("skip-link") ? "本文へ" : el?.id || el?.tagName; }));
+    }
+    while (order.length && order.at(-1) !== "英単語を学ぶ") { await page.keyboard.press("Shift+Tab"); order.pop(); }
+    const focused = await page.evaluate(() => document.activeElement?.textContent.trim());
+    await Promise.all([page.waitForURL(/\?learn=next$/, { timeout: 8000 }).catch(() => {}), page.keyboard.press("Enter")]);
+    const arrived = new URL(page.url());
+    check("導線: キーボードだけで、学習状況の頭から Tab で「本文へ」→ 印 → ホーム → 英単語を学ぶ（→ 学習状況 → 設定）、英単語を学ぶ で Enter → /?learn=next に着く・エラー 0",
+      JSON.stringify(order.slice(0, 4)) === JSON.stringify(["本文へ", "印", "ホーム", "英単語を学ぶ"]) && focused === "英単語を学ぶ" && arrived.pathname === "/" && arrived.search === "?learn=next" && page.errors.length === 0,
+      JSON.stringify({ order, focused, url: page.url(), err: page.errors[0] }));
+    await page.close();
+  }
+
+  // (4) 検索: 配っている HTML の robots と sitemap.xml。外すページ（Battle・タイピング 2 つ・単語帳）は noindex、主導線とお知らせ・規約は noindex なし（特商法は事業者の欄が
+  //     埋まるまで前から noindex）。sitemap は 主導線とお知らせ・規約で noindex でないものだけ
+  {
+    const robots = async (p) => (await (await fetch(BASE + p)).text()).match(/<meta name="robots" content="([^"]*)"/)?.[1] ?? null;
+    const hidden = Object.fromEntries(await Promise.all(HIDDEN_PAGES.map(async (p) => [p, await robots(p)])));
+    const main = Object.fromEntries(await Promise.all(MAIN_PAGES.map(async (p) => [p, await robots(p)])));
+    const sitemap = await (await fetch(BASE + "/sitemap.xml")).text();
+    const locs = [...sitemap.matchAll(/<loc>https:\/\/www\.spelldash\.net([^<]*)<\/loc>/g)].map((m) => m[1]);
+    check("検索: Battle・タイピング練習・タイピングゲーム・単語帳は noindex。主導線（ホーム・学習状況・設定）とお知らせ・プライバシー・規約は noindex なし（特商法は前から noindex）",
+      Object.values(hidden).every((v) => /noindex/.test(v ?? "")) && Object.entries(main).every(([p, v]) => (p === "/tokushoho.html" ? /noindex/.test(v ?? "") : v === null)), JSON.stringify({ hidden, main }));
+    check("検索: sitemap.xml は /・学習状況・設定・お知らせ・プライバシー・規約の 6 つだけ（単語帳・分野パック・タイピング・Battle・Pro は載せない）",
+      JSON.stringify(locs) === JSON.stringify(["/", "/stats.html", "/profile.html", "/news.html", "/privacy.html", "/terms.html"]), JSON.stringify(locs));
+  }
+
+  // (5) 古い画面の URL: 分野パックのページ（NGSL の巻も）と一覧はページの守りで英単語のホーム（/?from=old）へ。履歴に古いページを残さない（location.replace）。
+  //     /packs と /packs/ そのもの（ディレクトリ）は配信の転送（vercel.json）だけが受ける（この台のサーバーは読まない。scripts/test-site-map.mjs が規則を見る）
+  {
+    const rows = [];
+    for (const p of ["/packs/ngsl01.html", "/packs/accounting.html", "/packs/index.html"]) {
+      const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: RETURNING });
+      await page.goto(BASE + "/news.html", { waitUntil: "load" });
+      await page.goto(BASE + p, { waitUntil: "load" }).catch(() => {});
+      await page.waitForURL(/\?from=old$/, { timeout: 8000 }).catch(() => {});
+      await page.waitForLoadState("load");
+      const u = new URL(page.url());
+      await page.goBack({ waitUntil: "load" }).catch(() => {});
+      rows.push({ p, path: u.pathname, search: u.search, back: new URL(page.url()).pathname, err: page.errors[0] ?? null });
+      await page.close();
+    }
+    check("古い URL: 分野パックのページ（ngsl01・accounting）と一覧（/packs/index.html）を開くと英単語のホーム /?from=old へ移る（古いページは履歴に残さない: 戻るとお知らせ）・エラー 0",
+      rows.every((r) => r.path === "/" && r.search === "?from=old" && r.back === "/news.html" && !r.err), JSON.stringify(rows));
+  }
+
+  // (6) スマホ幅と昼夜: 主導線とお知らせ・規約の 7 ページ × 320／390／1200 × 昼・夜（未ログイン）で横スクロール 0・ナビの 4 つは字を省略せず 1 行（畳まない）・エラー 0
+  {
+    const bad = [];
+    let rows = 0;
+    for (const theme of ["light", "dark"]) for (const [w, mobile] of [[320, true], [390, true], [1200, false]]) {
+      const page = await newPage({ viewport: { width: w, height: mobile ? 700 : 900 }, mobile, storage: { ...RETURNING, spelldash_theme: theme } });
+      for (const p of MAIN_PAGES) {
+        const errFrom = page.errors.length;
+        await page.goto(BASE + p, { waitUntil: "load" });
+        // ヘッダーの右端（ログイン／設定）が出て、字が届いて、js/headerFit.js が形を決めた後
+        await page.waitForFunction(() => [...document.querySelectorAll("#loginToggle, #avatarButton, .site-header .account__link")].some((el) => el.getClientRects().length > 0), null, { timeout: 8000 }).catch(() => {});
+        await page.evaluate(() => document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 120)))));
+        const c = await page.evaluate(chromeOf);
+        const h = await page.evaluate(() => document.querySelector(".site-header").offsetHeight);
+        rows++;
+        if (!(c.sw <= c.cw && navOk(c) && !c.fit && h === (p === "/index.html" ? 56 : 57) && page.errors.length === errFrom)) bad.push({ theme, w, p, sw: c.sw, cw: c.cw, fit: c.fit, nav: c.nav.filter((l) => !l.shown || l.trunc), h, err: page.errors.slice(errFrom)[0] });
+      }
+      await page.close();
+    }
+    check(`スマホ: 主導線とお知らせ・規約の ${MAIN_PAGES.length} ページ × 320／390／1200 × 昼・夜で横スクロール 0・ナビの 4 つは字を省略しない 1 行（畳まない）・帯の高さ 56／57・エラー 0`,
+      rows === MAIN_PAGES.length * 6 && bad.length === 0, JSON.stringify(bad.slice(0, 3)));
+  }
+
+  // (7) ログイン中の頭文字の丸（9 段の絵はまだ無いのでいつも頭文字）: 縁は金の 1px で帯（--vault）と 3:1 以上（昼・夜。前は縁が無く昼は丸が帯に溶けた）・頭文字と地は 4.5:1 以上・
+  //     丸の外寸は 32px（≤720）・ホバーで縁は金箔（--foil）
+  {
+    const rows = [];
+    for (const theme of ["light", "dark"]) for (const p of ["/index.html", "/stats.html"]) {
+      const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { ...RETURNING, spelldash_test_session: "1", spelldash_theme: theme } });
+      await page.goto(BASE + p, { waitUntil: "networkidle" });
+      await page.waitForFunction(() => document.getElementById("avatarButton")?.getClientRects().length > 0, null, { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(200);
+      const look = await page.evaluate(() => {
+        const rgb = (s) => (Array.isArray(s) ? s : (s.match(/[\d.]+/g) || []).map(Number)); // 色の文字列か、重ねた後の [r, g, b]
+        const token = (name) => { const el = document.createElement("span"); el.style.color = `var(${name})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
+        const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+        const over = (fg, bg) => { const [r, g, b, al = 1] = rgb(fg); const [R, G, B] = rgb(bg); return [r * al + R * (1 - al), g * al + G * (1 - al), b * al + B * (1 - al)]; };
+        const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100; };
+        const av = document.getElementById("headerAvatar");
+        const s = getComputedStyle(av);
+        const vault = token("--vault");
+        const fill = over(s.backgroundColor, vault);
+        return { emblem: av.classList.contains("has-emblem"), width: s.borderTopWidth, style: s.borderTopStyle, ring: ratio(over(s.borderTopColor, vault), rgb(vault)), letter: ratio(over(getComputedStyle(av.querySelector(".avatar__letter") ?? av).color, fill), fill), box: `${Math.round(av.getBoundingClientRect().width)},${Math.round(av.getBoundingClientRect().height)}`, foil: token("--foil") };
+      });
+      await page.hover("#avatarButton");
+      await page.waitForTimeout(100);
+      const hover = await page.evaluate(() => getComputedStyle(document.getElementById("headerAvatar")).borderTopColor);
+      rows.push({ theme, p, ok: !look.emblem && look.width === "1px" && look.style === "solid" && look.ring >= 3 && look.letter >= 4.5 && look.box === "32,32" && hover === look.foil && page.errors.length === 0, look, hover, err: page.errors[0] });
+      await page.close();
+    }
+    check("頭文字の丸: 昼・夜 × ホーム・学習状況で、縁は 1px の金で帯と 3:1 以上・頭文字と地は 4.5:1 以上・外寸 32px・ホバーで縁は金箔・エラー 0",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 2)));
+  }
+
+  // (8) 出典（受け入れ 17）: 規約の 5・6 は学習状況の「教材について」（stats.html#vocabSource）を指す・最終更新日 2026年10月27日・リンクで学習状況の「教材について」が見える。
+  //     Battle とタイピングは直接開けば今のまま動く（ナビは同じ 4 つ・現在地なし。中身は節 7.5・7.6・Battle の節が見る）
+  {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: RETURNING });
+    await page.goto(BASE + "/terms.html", { waitUntil: "networkidle" });
+    const terms = await page.evaluate(() => ({ links: [...document.querySelectorAll('main a[href="./stats.html#vocabSource"]')].map((a) => a.textContent.trim()), date: document.querySelector(".subtitle")?.textContent.trim(), old: document.querySelector("main").textContent.includes("各パック") }));
+    await Promise.all([page.waitForURL(/stats\.html#vocabSource$/, { timeout: 8000 }).catch(() => {}), page.click('main a[href="./stats.html#vocabSource"]')]);
+    await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForFunction(() => document.getElementById("vocabSourceBody")?.textContent.trim().length > 0, null, { timeout: 8000 }).catch(() => {});
+    const src = await page.evaluate(() => { const el = document.getElementById("vocabSource"); const b = el?.getBoundingClientRect(); return { title: document.getElementById("vocabSourceTitle")?.textContent.trim(), ngsl: /NGSL|New General Service List/.test(el?.textContent ?? ""), h: Math.round(b?.height ?? 0) }; });
+    check("出典: 規約の 5・6 の 2 か所が学習状況の「教材について」を指す（「各パック」の文は無い）・最終更新日 2026年10月27日・押すと学習状況の「教材について」（NGSL）が出る・エラー 0",
+      terms.links.length === 2 && terms.links.every((t) => t === "学習状況の「教材について」") && terms.date === "最終更新日: 2026年10月27日" && !terms.old && src.title === "教材について" && src.ngsl && src.h > 0 && page.errors.length === 0,
+      JSON.stringify({ terms, src, url: page.url(), err: page.errors[0] }));
+    await page.close();
+  }
+}
+
 // ===== 78.4 学習状況とランク（Batch 78 段 4。stats.html・js/statsView.js・js/learnPace.js・js/rank.js・js/accountEmblem.js。docs/SPEC_LEARN_STATE.md §10・§12）: 最初の画面の 6 つ（覚えた N / 総数・ランク・次のランクまで・これから・あやふや・覚えた）の数と和・札の順と行き先・0 語の札・今日の分は終わり・最高到達ランクより下げない・アメリカ人・目安の 1 行・詳しい記録は閉じている・出典・古い状態名なし・幅と昼夜・CLS・アカウントのアイコン =====
 console.log("78.4 学習状況とランク:");
 {
@@ -20406,11 +20612,14 @@ console.log("funnel log:");
   const first = await waitUntil(async () => steps("first_visit").length === 1, 5000);
   const row = steps("first_visit")[0] ?? {};
   check("計測: 初めて来た端末で first_visit（端末の番号だけ・未ログインは user_id 空）", first && typeof row.device_id === "string" && row.device_id.length >= 8 && row.user_id == null && !("email" in row), JSON.stringify(row));
-  await waitUntil(async () => (await page.$(".site-footer__nav [data-footer-pro]")) !== null, 5000);
-  await page.click(".site-footer__nav [data-footer-pro]");
+  // Batch 78: フッターの「SpellDash Pro」は出さない（Pro は主導線から外した。js/footer.js）。入口は設定のテーマの案内「Pro について」（入口 theme）で見る
+  await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page.selectOption("#themeSelect", "paper");
+  await waitUntil(async () => (await page.$('#themeHint a[data-funnel="theme"]')) !== null, 5000);
+  await page.click('#themeHint a[data-funnel="theme"]');
   await page.waitForURL(/pro\.html/, { timeout: 5000 }).catch(() => {});
-  const entered = await waitUntil(async () => steps("entry").some((r) => r.source === "footer"), 5000);
-  check("計測: フッターから加入画面へ → entry（入口 footer）が次のページで届く", entered, JSON.stringify(cloud.rows("funnel_events").map((r) => `${r.step}:${r.source}`)));
+  const entered = await waitUntil(async () => steps("entry").some((r) => r.source === "theme"), 5000);
+  check("計測: 設定のテーマの案内から加入画面へ → entry（入口 theme）が次のページで届く（フッターの入口は Batch 78 で外した）", entered, JSON.stringify(cloud.rows("funnel_events").map((r) => `${r.step}:${r.source}`)));
   check("計測: 加入画面を開いた → pro_view", await waitUntil(async () => steps("pro_view").length === 1, 5000));
   await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
   await page.click("#proLoginStart");
