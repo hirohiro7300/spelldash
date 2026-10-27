@@ -49,7 +49,7 @@ export const COURSES = {
   ngsl: {
     id: "ngsl",
     label: "基本英単語 2,800語（NGSL）",
-    blurb: "英文の約9割を作る基本語を頻度順に24セクション。数・曜日・月から始めて、よく出会う語から順に。出典はオープン教材の NGSL",
+    blurb: "基本の英単語を頻度順に24セクション。数・曜日・月から始めて、よく出会う語から順に。出典はオープン教材の NGSL",
     audience: "英語をゼロから体系的にやり直したい人",
     packs: Array.from({ length: 24 }, (_, i) => `ngsl${String(i + 1).padStart(2, "0")}`)
   },

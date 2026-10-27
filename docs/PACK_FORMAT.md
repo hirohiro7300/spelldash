@@ -157,6 +157,54 @@ node scripts/quality/review-readings.mjs    # 反証の手がかり（CI では�
 - 級・スコア帯と語彙の対応は公式の語彙表が無いので「目安」。検定団体名や商標的な表現は label 以外で使わない
 - **分野の英単語のパック**（Batch 74。`prog-english1`・`prog-english2`）も同じ形。群は「分野の英単語（<分野>）」（scripts/sync-packs.mjs の GROUPS・js/shelves.js の GROUP_SHELF で英単語の棚）。ジャンルの札は分野の接頭辞を付ける（`pw-value`。ジャンルの表示名は全パックで 1 つの表なので、`data`・`error` のような素の札はほかのパックの表示名になる）。訳はその分野での意味を先に書き、ふつうの意味を短く添えてよい（argument「引数・議論」）。製品名・会社名・言語名・サービス名は語にも例文にも書かない。外の頻度表を写さないので `source` は書かず、blurb で頻度順・網羅を言わない
 
+## 公開する英単語（Batch 78）
+
+公開の教材は「英単語」1 つ。中身は NGSL の 24 巻（`ngsl01`〜`ngsl24`）の 2,857 語（NGSL 1.2 の 2,809 語と、数・曜日・月の 48 語）。
+どの id を公開し、どの順に学ぶかは `data/public/english.json` の 1 ファイルが持つ（公開する id の唯一の表）。カードの中身（訳・品詞・例文・別解）はパックのまま。
+ほかのパックと利用者の記録は消さない（公開の対象から外すだけ）。出典は docs/LICENSES.md。
+
+```json
+{
+  "v": 1,
+  "id": "english",
+  "label": "英単語",
+  "total": 2857,
+  "fnLast": 122,
+  "packs": ["ngsl01", "…", "ngsl24"],
+  "source": {"list": "NGSL 1.2", "title": "New General Service List", "authors": "…", "license": "CC BY-SA 4.0", "licenseUrl": "…", "url": "…", "changes": "…"},
+  "order": [
+    "english-zero",
+    "english-two",
+    "…"
+  ],
+  "rank": [0, 0, "…"]
+}
+```
+
+| 欄 | 中身 |
+|---|---|
+| `total` | 公開する語数。生成器の `EXPECTED_TOTAL` と違えば落ちる。変えるのは創業者の決定のときだけ |
+| `fnLast` | 最後に回した機能語（`tags[0]` が `fn`）の数。生成器の `EXPECTED_FN` と違えば落ちる |
+| `packs` | 元の巻（この順に読む） |
+| `source` | 出典（画面の出典の表示が読む）。`changes` は SpellDash が変えたことの 1 文で、補助の語と機能語の数から作る |
+| `order` | 学ぶ順の id（1 語 1 行）。機能語でない語を巻の順のまま → 機能語を巻の順のまま最後に |
+| `rank` | `order` と同じ並びの NGSL 1.2 の順位（CSV の SFI Rank）。NGSL に無い補助の語は 0 |
+
+決まり（`node scripts/build-public-vocab.mjs --check` と `node scripts/test-public-vocab.mjs` が見る）:
+1. manifest の ngsl01〜24 の count = 巻の語数
+2. id は 24 巻で重ならない
+3. NGSL 1.2 の CSV の語は、どれも `english-<語>` の id で表にある（順位は id で引く）
+4. 巻の順・巻の中の順で NGSL の順位が下がらない。NGSL に無い語は ngsl01 の頭にだけ置く
+5. 語数 = `EXPECTED_TOTAL`、機能語の数 = `EXPECTED_FN`
+6. 並びと順位は上の `order`・`rank` のとおり
+7. ファイル = 生成物（作り直して同じ文字列）
+
+- **NGSL のパックで語を足す・消す・並べ替える・札（`tags[0]`）を変えたら `node scripts/build-public-vocab.mjs` で作り直す**（ずれると `--check` が落ちる）。訳・例文・別解だけの直しでは表は変わらない
+- 札を `fn` に変える・外すと並びが変わるので、機能語の数で止める。数を変えるなら決定（機能語 122 語を最後に）と食い違うので、先に創業者に確かめてから `EXPECTED_FN` を直す
+- 止めるのは数だけ。数が同じままの札のつけ替え（ある語を `fn` にして別の語の `fn` を外す）や、補助の語を NGSL に無い別の語に替えることは、作り直すと通る（作り直すまでは `--check` が「生成物と違う」で落ちる）。作り直したら表の差分（1 語 1 行）で、動いた語が意図どおりかを見る
+- 同じ綴りで別の項目にする語（5月を助動詞の may と別にするなら `english-may-month`）は、NGSL の順位を持たない補助の語として ngsl01 の頭に置く。語数が変わるので `EXPECTED_TOTAL` も直す（創業者の返事待ち。今は5月の項目は無い）
+- `data/public/` は教材ではなく表なので、validate-words・品質の規則の対象外。アプリが読むのは Batch 78 の後の段から（この表を足した時点では、画面・出題・記録は変わらない）
+
 ## 例文（英単語カード共通・任意）
 
 英単語カード（`data/english/*.json` と `cardType:"word"` のパック）には例文を付けられる。答えを見た時・正解した時と、単語帳・単語詳細に出る。
