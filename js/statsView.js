@@ -615,12 +615,12 @@ function renderGrowthTrend() {
 
 // ===== 習熟度（docs/SPEC_MASTERY.md §5.3）: 段ごとの語数（詳しい記録の中） =====
 // 行は段 5 → 1。目盛りと「段 N」・語数・入り方によらず真の短い説明（RANK_GLOSS）。段の名前（まだ・あやふや・思い出せる・身についた・即答）は
-// このページに出さない（3 状態の「あやふや」と別の意味の名前を同じページに出さない: Batch 78 段 4）。目盛りの読み上げも「習熟度 5段のうち N」。
+// このページに出さない（3 状態の「あやふや」と別の意味の名前を同じページに出さない: Batch 78 段 4）。目盛りの読み上げは「5段のうち N」（「習熟度」は見出しが言うので重ねない）。
 // 数えるのは語が引ける（findWord）語のうち段 1 以上（外したパックの語は数えない）。0 の行は出さず、1 語も無ければ節ごと出さない。
 // 率・合計・推移は出さない。段は rankOf で読むだけ（記録を書き換えない）。
 // 思い出す速さと段ごとの実測（Batch 70。D1 §3.3）は、習熟度の行と注記の下に 1〜2 行（speedLines）
 function masteryMeterHtml(r) {
-  return `<span class="rank" data-rank="${r}" role="img" aria-label="習熟度 5段のうち${r}"><i></i><i></i><i></i><i></i><i></i><span class="rank__name">段 ${r}</span></span>`;
+  return `<span class="rank" data-rank="${r}" role="img" aria-label="5段のうち${r}"><i></i><i></i><i></i><i></i><i></i><span class="rank__name">段 ${r}</span></span>`;
 }
 
 function renderMastery() {
