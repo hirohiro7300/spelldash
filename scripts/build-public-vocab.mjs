@@ -28,7 +28,7 @@ const CSV_REL = "data/sources/ngsl/NGSL_1.2_stats.csv";
 
 // 公開する語数。創業者の決定（Batch 78 §1・§9-2）でだけ変える。5月を助動詞の may と別の項目にするなら 1 語増える（返事待ち）
 export const EXPECTED_TOTAL = 2857;
-// 最後に回す機能語の数（決定 §1）。札を fn に変える・外すと並びが黙って変わるので、数で止める（品詞を直すときもここで気づく）
+// 最後に回す機能語の数（決定 §1）。札を fn に変える・外すと並びが黙って変わるので、数で止める（数が同じままのつけ替えは止めない。作り直した表の差分で見る）
 export const EXPECTED_FN = 122;
 export const PACKS = Array.from({ length: 24 }, (_, i) => `ngsl${String(i + 1).padStart(2, "0")}`);
 // 出典（docs/LICENSES.md・data/sources/ngsl/LICENSE.md）。changes は数から作る（sourceOf）
@@ -54,9 +54,17 @@ function readText(root, rel) {
   }
 }
 
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 const englishCategories = (manifest) => (manifest?.subjects ?? []).find((s) => s.id === "english")?.categories ?? [];
 
-// 教材を読む（書かない）。巻は manifest の file から。読めない巻は null（buildPublicVocab が問題に数える）
+// 教材を読む（書かない）。巻は manifest の file から。無い・JSON でない巻は null（buildPublicVocab が巻の名前つきで問題に数える）
 export function loadInputs(root = ROOT) {
   const manifest = JSON.parse(readText(root, "data/manifest.json"));
   const cats = englishCategories(manifest);
@@ -64,7 +72,7 @@ export function loadInputs(root = ROOT) {
   for (const id of PACKS) {
     const file = cats.find((c) => c.id === id)?.file;
     const text = file ? readText(root, path.join("data", file)) : null;
-    packs[id] = text == null ? null : JSON.parse(text);
+    packs[id] = text == null ? null : parseJson(text);
   }
   return { manifest, packs, csv: readText(root, CSV_REL) ?? "" };
 }

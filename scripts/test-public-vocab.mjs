@@ -4,11 +4,12 @@
 // 確かめること:
 //   1. 今の教材とファイルは決まりどおり（問題 0・語数と機能語の数は定数どおり・補助の語は頭・機能語は最後・順位の列・作り直しても同じ）
 //   2. 教材の写しを壊すと落ちる: 1 語を消す・巻の中の 2 語を入れ替える・id を重ねる・count をずらす・札を fn に変える／外す・
-//      補助の語を後ろの巻へ動かす・CSV の語が欠ける・巻が manifest に無い
+//      補助の語を後ろの巻へ動かす・補助の語を ngsl01 の中で頭の外へ動かす・5月の項目を ngsl01 の末尾に足す・CSV の語が欠ける・
+//      巻が manifest に無い。5月の項目を月の並びに足すと、落ちるのは語数だけ（順位 0。助動詞の may の順位を拾わない）
 //   3. ファイルの写しを壊すと落ちる: 機能語を途中に置く・2 語を入れ替える・id を重ねる・total をずらす・順位をずらす・
-//      古いファイル（1 語少ない／空白だけ違う）・ファイルが無い・JSON でない
+//      rank が 1 個足りない・24 巻に無い id・古いファイル（1 語少ない／空白だけ違う）・ファイルが無い・JSON でない
 //   4. コマンド: 今の木の --check は exit 0。写しの木で、1 語を消した教材は --check も書き直しも exit 1（書かない）、
-//      古いファイルは --check が exit 1 で、書き直すと exit 0 になり今のファイルと同じになる
+//      古いファイルは --check が exit 1 で、書き直すと exit 0 になり今のファイルと同じになる。巻が JSON でないと exit 1 で巻の名前を出す
 //   5. 語数の数字は生成器の定数 1 か所だけ（この台本は数字を書かず定数を読む）
 import fs from "fs";
 import os from "os";
@@ -63,7 +64,7 @@ const rising = (list) => list.every((r, i) => i === 0 || r > list[i - 1]);
 ok("機能語でない語・機能語のそれぞれで、順位は上がる一方", rising(data.rank.slice(extra, -EXPECTED_FN)) && rising(data.rank.slice(-EXPECTED_FN)));
 ok("並びの頭は ngsl01 の補助の語（zero から）", data.order[0] === "english-zero" && data.order.slice(0, extra).every((id) => real.cards.find((c) => c.id === id)?.pack === "ngsl01"));
 ok(
-  "出典の欄: NGSL 1.2・作者・CC BY-SA 4.0 と本文の URL・配布元・変えたこと（補助の語と機能語の数）",
+  "出典の欄: NGSL 1.2・作者・CC BY-SA 4.0 とその URL・配布元・変えたこと（補助の語と機能語の数）",
   Object.entries(SOURCE).every(([k, v]) => data.source[k] === v) &&
     data.source.license === "CC BY-SA 4.0" &&
     data.source.changes.includes(`${extra} 語を足した`) &&
@@ -123,6 +124,34 @@ ok(
   ok("補助の語を後ろの巻へ動かす（zero を ngsl02 の末尾。count も合わせる）: 頭の外で落ちる", has(p, /NGSL に無い語が ngsl01 の頭の外にある english-zero/), show(p));
 }
 {
+  // 巻は同じで語数も変わらない。順位つきの語の後ろに来たら頭の外
+  const m = copy();
+  wordsOf(m, "ngsl01").push(take(m, "ngsl01", "english-december"));
+  const p = buildPublicVocab(m).problems;
+  ok("補助の語を ngsl01 の中で頭の外へ動かす（december を ngsl01 の末尾）: 頭の外で落ちる", has(p, /NGSL に無い語が ngsl01 の頭の外にある english-december（ngsl01）/), show(p));
+}
+// 5月を助動詞の may と別の項目にする形（返事待ち。足すなら月の並びに置く）。順位は id で引くので en が may でも順位 0
+const mayMonth = () => ({ id: "english-may-month", en: "may", tags: ["n"] });
+{
+  const m = copy();
+  wordsOf(m, "ngsl01").push(mayMonth());
+  entryOf(m, "ngsl01").count++;
+  const p = buildPublicVocab(m).problems;
+  ok("5月の項目を ngsl01 の末尾に足す（count も合わせる）: 頭の外と語数で落ちる", has(p, /NGSL に無い語が ngsl01 の頭の外にある english-may-month（ngsl01）/) && has(p, /^語数 /), show(p));
+}
+{
+  const m = copy();
+  const w = wordsOf(m, "ngsl01");
+  w.splice(w.findIndex((x) => x.id === "english-april") + 1, 0, mayMonth());
+  entryOf(m, "ngsl01").count++;
+  const b = buildPublicVocab(m);
+  ok(
+    "5月の項目を april の後に足す（count も合わせる）: 頭の外にも順位の逆にもならず、語数で落ちる。順位は 0",
+    !has(b.problems, /頭の外|順位が逆/) && has(b.problems, /^語数 /) && b.cards.find((c) => c.id === "english-may-month")?.rank === 0,
+    show(b.problems)
+  );
+}
+{
   const m = copy();
   m.csv = m.csv.trimEnd().split("\n").slice(0, -1).join("\n") + "\n";
   const p = buildPublicVocab(m).problems;
@@ -174,6 +203,18 @@ const tableOf = (edit) => {
     t.rank[3000 % t.rank.length]++;
   });
   ok("順位を 1 つずらす: 順位で落ちる", has(p, /順位が違う/), show(p));
+}
+{
+  const p = tableOf((t) => {
+    t.rank.pop();
+  });
+  ok("rank が 1 個足りない: rank の数で落ちる", has(p, /^rank が .* 個（order は/), show(p));
+}
+{
+  const p = tableOf((t) => {
+    t.order[10] = "english-nonexistent";
+  });
+  ok("order の 1 語を 24 巻に無い id に替える: 無い id と抜けた id で落ちる", has(p, /order に 24 巻に無い id がある english-nonexistent/) && has(p, /^order に無い id /), show(p));
 }
 {
   const p = checkPublicVocab(base, fileText.replace(/\n {4}"english-film",/, "")).problems;
@@ -237,6 +278,10 @@ const cli = (...args) => {
     const e = cli(at);
     const f = cli("--check", at);
     ok("古いファイル: 書き直すと exit 0 で今のファイルと同じになり、--check も通る", e.code === 0 && e.out.startsWith("書いた:") && f.code === 0 && fs.readFileSync(path.join(tmp, OUT_REL), "utf8") === fileText, e.out + f.out);
+
+    put(packRel("ngsl07"), src(packRel("ngsl07")).slice(0, 200));
+    const g = cli("--check", at);
+    ok("巻が JSON でない（ngsl07 が途中で切れた）: --check は exit 1 で巻の名前を出す", g.code === 1 && g.out.includes(`ngsl07: data/${entryOf(base, "ngsl07").file} が読めない`) && !g.out.includes("SyntaxError"), g.out.slice(-400));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
