@@ -12,7 +12,7 @@
   <!-- 初回（学習記録の無い端末）は最初の描画から初回の本: 判定だけここで行い html[data-first-visit] を置く。机を隠し初回の本を出すのは CSS（css/welcome.css。
        ページの中の置き場所に頼らない）。js/welcome.js が hidden に置き換えて印を外す。条件は js/welcome.js の shouldShowWelcome と同じ（鍵・空の文字列と壊れた JSON の読み方。
        E2E が同じ状態の表で 2 つを突き合わせる）。変えるときは両方を変える -->
-  <script id="firstVisit">(() => { try { const s = localStorage, q = new URLSearchParams(location.search), w = s.getItem("spelldash_word_stats"); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys((w && JSON.parse(w)) || {}).length > 0 || ["set","words","t","weekly","category","genre","mode","learn"].some((k) => q.has(k)) || location.hash === "#play") return; document.documentElement.dataset.firstVisit = ""; } catch {} })();</script>
+  <script id="firstVisit">(() => { try { const s = localStorage, q = new URLSearchParams(location.search), w = s.getItem("spelldash_word_stats"); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys((w && JSON.parse(w)) || {}).length > 0 || ["set","words","t","weekly","category","genre","mode"].some((k) => q.has(k)) || ["new","unsure","learned"].includes((q.get("learn") || "").trim()) || location.hash === "#play") return; document.documentElement.dataset.firstVisit = ""; } catch {} })();</script>
 
   <link rel="stylesheet" href="./css/reset.css" />
   <link rel="stylesheet" href="./css/fonts.css" />
@@ -324,6 +324,8 @@
             <section class="path tome" id="pathCard" aria-label="机の本">
               <div class="tome__page tome__page--l">
                 <div id="pathHead"></div>
+                <!-- 中心の学習の回（/?learn=。body.learn-run）の柱: 机の本の題の代わりに「英単語」だけ（js/game.js setLearnScreen・css/game.css） -->
+                <p class="learn-head tome__title" id="learnHead" hidden>英単語</p>
                 <div class="today__strip" id="todayStrip" aria-label="連続日数"></div>
               </div>
               <div class="tome__page tome__page--r">

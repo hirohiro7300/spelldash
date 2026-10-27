@@ -195,6 +195,28 @@ html[data-theme] a.result-panel__action {
   text-decoration: none;
 }
 
+/* 中心の学習の回（body.learn-run。js/game.js setLearnScreen）: 柱は「英単語」だけ（#learnHead）。机の本の題（#pathHead）と
+   出題の設定（「出題: … ・ 設定」と開いたパネル。教材・苦手のみ・セットの長さはどれも中心の学習の列に効かない）は出さない（決定 §7・§9-1） */
+html[data-theme] body.learn-run :is(#pathHead, .setup-toggle, #setupPanel) {
+  display: none;
+}
+
+/* 柱の「英単語」は、プレイ中の本の題（css/room.css の body.home--playing #pathCard .path__title）と同じ見た目。display は置かない（hidden で畳む） */
+html[data-theme] body.home--playing #pathCard .learn-head {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: var(--parchment);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* 単語の履歴の × の点は朱にしない（中心の学習は赤い警告を使わない。依頼 §6） */
+html[data-theme] body.learn-run .hist__x {
+  background: var(--ink-3);
+}
+
 /* ===== ヘッダーの🔥ストリーク（.accountのmargin-left:autoの左隣） ===== */
 .header-streak {
   margin-left: auto;

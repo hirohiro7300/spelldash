@@ -120,6 +120,12 @@ for (const seed of [1, 2, 3]) {
   const pending = new Map([[a, 2], [b, 1]]);
   eq("版 6: pending の 覚えた・あやふや は その列、欄のある語は欄の値", [Q.buildLearnQueue("learned", t, vocab, TODAY, pending), Q.buildLearnQueue("unsure", t, vocab, TODAY, pending)], [[a], [b, c]]);
   ok("版 6: pending の語はこれからの列に入らない", !Q.buildLearnQueue("new", t, vocab, TODAY, pending).some((id) => id === a || id === b));
+  // 欄（ls）が無く数えた日（lsd）だけが残った語: 数えた日は欄に書いた あやふや のときだけ読む（pending の あやふや は今日の分・今日を 1 日目に数えない）
+  const d = vocab.order[203];
+  const td = { [d]: { ...base, lsd: TODAY } };
+  const pd = new Map([[d, L.LEARN_UNSURE]]);
+  ok("版 6: ls が無く lsd が今日の語（pending は あやふや）は今日の分に入る", Q.isLearnTarget("unsure", td[d], L.LEARN_UNSURE, TODAY) && Q.buildLearnQueue("unsure", td, vocab, TODAY, pd).includes(d));
+  eq("版 6: ls が無く lsd が今日の語は、回の結果で今日を 1 日目に数えない（あやふや 1・1 日目 0）", Q.learnSummary([d], td, pd, TODAY), { learned: 0, unsure: 1, dayOne: 0 });
 }
 
 // ===== 回の進み: 答えた語は二度出さない・順が来たとき対象でない語は飛ばす・開き直しても同じ次の語 =====
@@ -295,6 +301,15 @@ for (const seed of [1, 2, 3]) {
   const src = fs.readFileSync(path.join(ROOT, "js/learnQueue.js"), "utf8").replace(/\/\/.*$/gm, "");
   ok("純: js/learnQueue.js は document・window・localStorage・Math.random・Date を使わない", !/\b(document|window|localStorage|sessionStorage|Math\.random|Date)\b/.test(src));
   eq("純: import は js/learnState.js と js/judge.js だけ", [...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]), ["./learnState.js", "./judge.js"]);
+}
+
+// ===== 入口の値の写し: js/game.js（この module を読む前に入口かを決める）と index.html の <head> の 1 行（初回の本を出すか）は LEARN_MODES の鍵と同じ =====
+{
+  const game = fs.readFileSync(path.join(ROOT, "js/game.js"), "utf8");
+  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const fromGame = JSON.parse(game.match(/const LEARN_ENTRY_MODES = (\[[^\]]*\]);/)?.[1] ?? "null");
+  const fromHead = JSON.parse(html.match(/(\[[^\]]*\])\.includes\(\(q\.get\("learn"\)/)?.[1] ?? "null");
+  eq("入口の値の写し: js/game.js LEARN_ENTRY_MODES と index.html の <head> の 1 行は LEARN_MODES の鍵と同じ", [fromGame, fromHead], [Object.keys(Q.LEARN_MODES), Object.keys(Q.LEARN_MODES)]);
 }
 
 if (failures.length) {

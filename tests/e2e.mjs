@@ -20110,6 +20110,132 @@ console.log("learn modes (78.3):");
     check(`78.3 スマホ ${width}: 問いと回の終わりで横スクロール 0・画面キーボードは幅いっぱい・キーボードだけで 10 語（あやふや 10）`, during <= 0 && end <= 0 && osk >= width - 16 && /今回 覚えた 0/.test(panel) && /あやふや 10/.test(panel), JSON.stringify({ during, end, osk, panel }));
     await page.context().close();
   }
+
+  // (8) セットの終わりで開き直す: 終わりのパネルを出し直さず次のセットから・学んだ日の印と回の数（spelldash:session-end）を数え直さない（受け入れ基準 15）。
+  //     回の画面の柱は「英単語」だけ（机の本の題・出題の設定を出さない: 決定 §7・§9-1）。答えを見た後の打ち直しの打ち間違いは赤い「違う。もう一度」にしない（依頼 §6）
+  {
+    const q = vocab.order.slice(0, 11);
+    const page = await learnPage({ spelldash_word_stats: "{}" });
+    await page.addInitScript(() => addEventListener("spelldash:session-end", () => sessionStorage.setItem("__ends", String(Number(sessionStorage.getItem("__ends") || 0) + 1))));
+    await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const chrome = () => page.evaluate(() => {
+      const on = (el) => !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().width > 0;
+      return { toggle: on(document.getElementById("setupToggle")), setup: on(document.getElementById("setupPanel")), head: document.getElementById("pathCard").innerText.replace(/\s+/g, " ").trim() };
+    });
+    const c0 = await chrome();
+    check("78.3 回の画面: 柱は「英単語」だけ（机の本の題・すべて・出題の設定〔教材・セットの長さ〕を出さない）", !c0.toggle && !c0.setup && c0.head.includes("英単語") && !/中学英語|すべて|設定/.test(c0.head), JSON.stringify(c0));
+    await page.press("#input", "Enter"); // 答え表示 → 任意の打ち直しで打ち間違える
+    await page.waitForTimeout(50);
+    await typeWord(page, enOf(q[0]).startsWith("q") ? "z" : "q");
+    await page.waitForTimeout(50);
+    const typo = await page.evaluate(() => { const m = document.getElementById("message"); return { text: m.textContent.trim(), cls: m.className }; });
+    check("78.3 答えを見た後: 打ち直しの打ち間違いは赤い「違う。もう一度」にしない（.message.wrong でない）", typo.text !== "" && typo.text !== "違う。もう一度" && !/\bwrong\b/.test(typo.cls), JSON.stringify(typo));
+    await page.press("#input", "Enter");
+    for (let i = 1; i < 10; i++) {
+      await waitWord(page, i + 1);
+      await afterAdvance(page);
+      await typeWord(page, enOf(q[i]));
+    }
+    await waitPanel(page);
+    const marks = () => page.evaluate(() => ({ total: localStorage.getItem("spelldash_sets_total"), today: JSON.parse(localStorage.getItem("spelldash_daily_set") || "{}").setsToday ?? null, ends: sessionStorage.getItem("__ends") }));
+    const end = { panel: await panelText(page), marks: await marks(), writes: (await learnWrites(page)).length };
+    const rows = [];
+    for (let k = 0; k < 2; k++) {
+      await page.reload({ waitUntil: "networkidle" });
+      await waitUntil(async () => (await shownIds(page)).length >= 1 || (await panelText(page)) !== "", 6000);
+      await page.waitForTimeout(200);
+      rows.push({ shown: await shownIds(page), prog: await progress(page), panel: await panelText(page), marks: await marks(), writes: (await learnWrites(page)).length });
+    }
+    check("78.3 開き直し: セットの終わりの後に開き直すと次のセット（11 番目の語・これから 0 / 10）。終わりのパネルは出し直さない",
+      end.panel.includes("10語 終わり") && rows.every((r) => r.shown[0] === q[10] && r.prog === "これから 0 / 10" && r.panel === ""), JSON.stringify({ end: end.panel, rows: rows.map(({ shown, prog, panel }) => ({ shown, prog, panel })) }));
+    check("78.3 開き直し: セットの終わりの後に 2 回開き直しても、セットの数・今日のセット・回の終わりの知らせは 1 のまま・書き手は 10 回のまま（二重に数えない）",
+      end.marks.total === "1" && end.marks.today === 1 && end.marks.ends === "1" && end.writes === 10 && rows.every((r) => JSON.stringify(r.marks) === JSON.stringify(end.marks) && r.writes === 10), JSON.stringify({ end: end.marks, rows: rows.map((r) => r.marks) }));
+    // 机に戻ると柱と出題の設定は元に戻る（中心の学習の回の印を外す）
+    await page.click("#backToPath");
+    await page.waitForTimeout(200);
+    const back = await page.evaluate(() => ({ run: document.body.classList.contains("learn-run"), head: document.getElementById("learnHead")?.hidden ?? null }));
+    check("78.3 回の画面: 机に戻ると回の印（body.learn-run・柱の「英単語」）を外す", !back.run && back.head === true, JSON.stringify(back));
+    check("78.3 開き直し（セットの終わり）: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.context().close();
+  }
+
+  // (9) 読めない入口の値（?learn=foo）: 初めての人には初回の本のまま（spelldash_onboarded を付けない・出題の列の module も読まない）
+  {
+    const page = await learnPage({});
+    const reqs = [];
+    page.on("request", (r) => reqs.push(r.url()));
+    await page.goto(BASE + "/index.html?learn=foo", { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => ({ onboarded: localStorage.getItem("spelldash_onboarded"), welcome: getComputedStyle(document.getElementById("welcome")).display !== "none", run: document.body.classList.contains("learn-run") }));
+    const queueMod = reqs.filter((u) => u.includes("learnQueue.js")).length;
+    check("78.3 読めない入口の値: ?learn=foo の初めての人には初回の本（印を付けない・js/learnQueue.js を読まない）", r.onboarded === null && r.welcome && !r.run && queueMod === 0, JSON.stringify({ ...r, queueMod }));
+    await page.context().close();
+  }
+
+  // (10) 日をまたぐ あやふや の回（決定 §3「23:55 と翌日の 0:10 は別の日」・受け入れ基準 15「日付変更で二重計上しない」）
+  {
+    // 23:58 に始めた回を、翌日 0:02 に答えた後に開き直す: 回を始めた日が今日でなければ新しい回（前の日に数えた語も今日の分に戻る）
+    const [X, Y, Z] = vocab.order.slice(400, 403);
+    const d0 = new Date();
+    d0.setDate(d0.getDate() + 5);
+    d0.setHours(23, 58, 0, 0);
+    const d0No = dayNo(d0.getTime());
+    const seed = { [X]: rec({ ls: 1, lsAt: d0.getTime() - 3 * DAY }), [Y]: rec({ ls: 1, lsAt: d0.getTime() - 2 * DAY }), [Z]: rec({ ls: 1, lsAt: d0.getTime() - DAY }) };
+    const page = await learnPage({ spelldash_word_stats: JSON.stringify(seed) }, { time: d0.getTime() });
+    await page.goto(BASE + "/index.html?learn=unsure&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const first = (await shownIds(page))[0];
+    await typeWord(page, enOf(X)); // 23:58（1 日目 = d0）
+    await waitWord(page, 2);
+    await afterAdvance(page);
+    await page.clock.setSystemTime(new Date(d0.getTime() + 4 * 60000)); // 翌日 0:02
+    await typeWord(page, enOf(Y)); // 0:02（1 日目 = d0 + 1）
+    await page.waitForTimeout(100);
+    const t1 = await tableOf(page);
+    await page.reload({ waitUntil: "networkidle" });
+    await waitUntil(async () => (await shownIds(page)).length >= 1 || (await panelText(page)) !== "", 6000);
+    const re = { shown: await shownIds(page), prog: await progress(page), panel: await panelText(page) };
+    check("78.3 日をまたぐ: 23:58 に始めた回を翌日 0:02 の後に開き直すと新しい回（前の日に数えた語は今日の分・今日数えた語は出さない・あやふや 0 / 2・古い順）",
+      first === X && t1[X]?.lsd === d0No && t1[Y]?.lsd === d0No + 1 && re.shown[0] === Z && re.prog === "あやふや 0 / 2" && re.panel === "", JSON.stringify({ first, x: t1[X]?.lsd, y: t1[Y]?.lsd, d0No, re }));
+    await typeWord(page, enOf(Z));
+    await waitUntil(async () => (await shownIds(page)).length >= 2 || (await panelText(page)) !== "", 6000);
+    await afterAdvance(page);
+    const second = (await shownIds(page))[1] ?? null;
+    if (second === X) await typeWord(page, enOf(X));
+    await page.waitForTimeout(100);
+    const t2 = await tableOf(page);
+    check("78.3 日をまたぐ: 新しい回は前の日に数えた語も出し、翌日の自力正解で 覚えた（23:58 と 0:02 は別の日）", second === X && t2[X]?.ls === 2, JSON.stringify({ second, x: t2[X] ?? null }));
+    check("78.3 日をまたぐ（開き直し）: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.context().close();
+    // 開き直さずに日が替わる: 今日の分が尽きたら、今日の日で列を作り直す（前の日に数えた語を出す。「今日の分は終わり」にしない。この回で答えた語は出さない）
+    const [V, W] = vocab.order.slice(410, 412);
+    const d1 = new Date();
+    d1.setDate(d1.getDate() + 8);
+    d1.setHours(23, 58, 0, 0);
+    const d1No = dayNo(d1.getTime());
+    const seed2 = { [V]: rec({ ls: 1, lsAt: d1.getTime() - 2 * DAY }), [W]: rec({ ls: 1, lsd: d1No, lsAt: d1.getTime() - 14 * 3600000 }) };
+    const p2 = await learnPage({ spelldash_word_stats: JSON.stringify(seed2) }, { time: d1.getTime() });
+    await p2.goto(BASE + "/index.html?learn=unsure&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(p2, 1);
+    const s0 = { first: (await shownIds(p2))[0], prog: await progress(p2) };
+    await p2.clock.setSystemTime(new Date(d1.getTime() + 3 * 60000)); // 翌日 0:01
+    await typeWord(p2, enOf(V));
+    await waitUntil(async () => (await shownIds(p2)).length >= 2 || (await panelText(p2)) !== "", 6000);
+    const s1 = { shown: await shownIds(p2), panel: await panelText(p2), prog: await progress(p2) };
+    if (s1.shown[1] === W) {
+      await afterAdvance(p2);
+      await typeWord(p2, enOf(W));
+      await waitPanel(p2);
+    }
+    const tw = await tableOf(p2);
+    const s2 = { shown: await shownIds(p2), panel: await panelText(p2) };
+    check("78.3 日をまたぐ: 回の途中で日が替わると、今日の分が尽きたときに列を作り直す（前の日に数えた W を出す・あやふや 1 / 2）",
+      s0.first === V && s0.prog === "あやふや 0 / 1" && s1.shown[1] === W && s1.panel === "" && s1.prog === "あやふや 1 / 2", JSON.stringify({ s0, s1 }));
+    check("78.3 日をまたぐ: W は前の日と今日の自力正解で 覚えた・V は二度出さない・その後は「今日の分は終わり」", tw[W]?.ls === 2 && tw[V]?.lsd === d1No + 1 && s2.shown.length === 2 && s2.panel.includes("今日の分は終わり"), JSON.stringify({ w: tw[W] ?? null, v: tw[V] ?? null, s2 }));
+    check("78.3 日をまたぐ（回の途中）: エラー 0", p2.errors.length === 0, p2.errors[0] ?? "");
+    await p2.context().close();
+  }
 }
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====

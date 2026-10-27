@@ -242,9 +242,10 @@ let finishedAs = ""; // 打ち終えた綴り（finishTypedAnswer → completeWo
 
 // Study の待ちの間: 次に出す語（setNewWord と同じ選び方: キューの先頭から、漢字の書き分けのカードを飛ばす）が全文入力か（計算カードも全文入力）。
 // キューが空・語が見つからない（setNewWord が埋める語・抽選の語）は分からないので false（待ちを縮めてよい側。そのときは advanceNow が全文入力の語に
-// 1 打目の守りを置かない）。セットを終えて次の語を出さないときも false
+// 1 打目の守りを置かない）。セットを終えて次の語を出さないときも false。
+// 中心の学習の回は Study のキュー（前の Study の列が残っている）を見ない: 次の語は公開の版のカードで、どれも綴り入力（全文入力のカードは 0 枚）
 function nextStudyWordIsFree() {
-  if (setCompletePending) return false;
+  if (setCompletePending || learnRun) return false;
   for (const id of getUpcomingIds()) {
     const word = findWordIn(activeCategory, id);
     if (word?.kanjiOnly) continue;
@@ -838,6 +839,7 @@ function notifyGameEnd() {
 
 export function stopGame() {
   if (learnRun) leaveLearn(); // 机に戻る・ほかの遊び方へ: 答えた分は残る（続きは同じ日のうち）
+  setLearnScreen(false); // 置き換わって終えた回（learnRun は無い）のパネルから戻ったときも
   clearInterval(timer);
   if (isPlaying) celebrateDeferredRankUp(); // 60 秒の回・腕試しを途中でやめても、回の間に変わったランクは落とさない
   isPlaying = false;
@@ -888,21 +890,34 @@ export function stopGame() {
 // ほかのタブで記録が置き換わったら（spelldash:records-replaced）、次の答えのどの書き手より先に回を終える（前の人の答えを新しい人の表に入れない）。
 // 回の終わり（セットの終わり・今日の分は終わり・ここで終える）に、最高到達ランクが上がっていれば 1 回だけ文字の幕（js/levelUi.js showLearnRankUp）
 const LEARN_PARAM = new URLSearchParams(location.search).get("learn");
+// 読める入口の値（js/learnQueue.js LEARN_MODES の鍵と同じ。入口かどうかは module を読む前に要るので、ここにも持つ。単体が突き合わせる）。
+// 読めない値（?learn=foo）はふつうのホームのまま: 初回の本の印を付けず、材料も module も読まない（index.html の <head> の 1 行も同じ値だけを深いリンクとして扱う）
+const LEARN_ENTRY_MODES = ["new", "unsure", "learned"];
+const LEARN_ENTRY = LEARN_ENTRY_MODES.includes(String(LEARN_PARAM ?? "").trim());
 const LEARN_INTRO = {
   new: "分からないときは答えを見る。間違えても、あやふやに移るだけ",
-  unsure: "分からないときは答えを見る。別の日に2回正解すると覚えた",
+  unsure: "分からないときは答えを見る。間違えても、あやふやのまま。別の日に2回正解すると覚えた",
   learned: "分からないときは答えを見る。間違えても、あやふやに移るだけ"
 };
 const LEARN_NEXT = { new: "続けて学ぶ", unsure: "続けて学ぶ", learned: "続けて復習する" };
 
 // 入口から来た人には初回の本（js/welcome.js）を出さない: 読み込みのときの判定（main.js の renderWelcome）より前に印を付ける
-// （鍵は js/welcome.js の ONBOARDED_KEY と同じ。index.html の <head> の 1 行も ?learn= を深いリンクとして扱う）
-if (LEARN_PARAM !== null) {
+// （鍵は js/welcome.js の ONBOARDED_KEY と同じ。index.html の <head> の 1 行も読める ?learn= を深いリンクとして扱う）
+if (LEARN_ENTRY) {
   try {
     localStorage.setItem("spelldash_onboarded", "1");
   } catch {
     // 無視（初回の本が出るだけ）
   }
+}
+
+// 中心の学習の回の画面（body.learn-run。css/game.css）: 柱は「英単語」だけ（#learnHead）。机の本の題（#pathHead）と出題の設定（教材の選択・
+// 苦手のみ・セットの長さ。どれも中心の学習の列に効かない）は出さない（決定 §7「複数教材を選ぶ本棚を主導線から外す」・§9-1「英単語」一つ）。
+// 回を始めると付け（startGame）、机に戻る・ほかの遊び方を始めると外す（stopGame・startGame）。置き換わって終えた回のパネルの間は付けたまま
+function setLearnScreen(on) {
+  document.body.classList.toggle("learn-run", on);
+  const head = document.getElementById("learnHead");
+  if (head) head.hidden = !on;
 }
 
 // 中心の学習を始める（入口・パネルの「続けて学ぶ」から）。材料（出題の列の module・3 状態の材料・公開の 24 巻）を読んでから、
@@ -927,8 +942,10 @@ async function beginLearn(mode) {
   stopGame(); // 机の回の途中なら止める（setMode は同じモードだと止めない）
   const table = getWordStats();
   const counts = countLearnStates(table, src.vocab, src.pending);
-  const queue = Q.buildLearnQueue(kind, table, src.vocab, learnDayOf(Date.now()), src.pending);
-  // 続き: 答えた語の答えがどれも今の保存にある（中心の学習で最後に答えた時刻が回の始めより後）ときだけ。復元・アカウントの切り替えで表が替わっていれば新しい回
+  const today = learnDayOf(Date.now());
+  const queue = Q.buildLearnQueue(kind, table, src.vocab, today, src.pending);
+  // 続き: 今日始めた回（js/sessionResume.js learnPointFor。日をまたいだ回は新しい回: 前の日に数えた語も今日の分に戻る）で、
+  // 答えた語の答えがどれも今の保存にある（中心の学習で最後に答えた時刻が回の始めより後）ときだけ。復元・アカウントの切り替えで表が替わっていれば新しい回
   const point = learnPointFor(kind);
   const resumed = point && point.ids.every((id) => Number(table[id]?.lsAt) >= point.startedAt) ? point : null;
   if (point && !resumed) clearLearnPoint();
@@ -938,6 +955,7 @@ async function beginLearn(mode) {
     Q,
     epoch: recordsEpoch(), // 回の始めの印（書き手と最高到達ランクに渡す。替わったら書かない）
     queue,
+    day: today, // 列を作った日（回の途中で日が替わり列が尽きたら作り直す: nextLearnWordId）
     cursor: 0,
     ids, // 答えを保存できた語（答えた順。開き直しても残す）
     answered: new Set(ids), // この回で答えた語（保存できなかった答えも。二度出さない）
@@ -948,7 +966,7 @@ async function beginLearn(mode) {
     setNo: resumed ? resumed.setNo : 1,
     startedAt: resumed ? resumed.startedAt : Date.now(),
     saveFailed: 0, // 保存できなかった答えの数
-    dayMarked: false,
+    dayMarked: resumed ? resumed.dayMarked : false, // この回で学んだ日の印を付けた（回に 1 回。開き直しても数え直さない）
     rankShown: shownRank(counts.learned, readRankPeak(), counts.total), // 回の始めに見せていたランク（下がらない）
     wordDone: false // この問いの答えを書き手に渡した
   };
@@ -986,7 +1004,20 @@ function nextLearnWordId() {
   }
   const table = getWordStats();
   const today = learnDayOf(Date.now());
-  const i = r.Q.nextLearnIndex(r.queue, r.cursor, r.answered, (id) => isLearnTargetNow(id, table, today));
+  const isTarget = (id) => isLearnTargetNow(id, table, today);
+  let i = r.Q.nextLearnIndex(r.queue, r.cursor, r.answered, isTarget);
+  if (i < 0 && today !== r.day) {
+    // 回の途中で日が替わって列が尽きた: 今日の日で列を作り直す（前の日に数えた あやふや の語は今日の分に戻る。この回で答えた語は出さない）
+    const src = learnStateSource();
+    r.queue = r.Q.buildLearnQueue(r.mode, table, src.vocab, today, src.pending);
+    r.day = today;
+    r.cursor = 0;
+    i = r.Q.nextLearnIndex(r.queue, 0, r.answered, isTarget);
+    if (i >= 0) {
+      r.setSize = Math.min(r.Q.LEARN_SET_SIZE[r.mode], r.setAnswered + learnRemaining());
+      renderSetProgress();
+    }
+  }
   const step = r.Q.learnStep(r.mode, { setAnswered: r.setAnswered, ackBreak: r.ackBreak, more: i >= 0 });
   if (step !== "play") {
     endLearnSet(step);
@@ -1007,11 +1038,11 @@ function learnRemaining() {
   return n;
 }
 
-// 回の続きを保存する（答えを保存できた後・区切り・次のセット）
-function persistLearnPoint() {
+// 回の続きを保存する（答えを保存できた後・区切り・次のセット）。over = 保存だけ先に進める欄（セットの終わり: 開き直すと次のセットから。endLearnSet）
+function persistLearnPoint(over = null) {
   const r = learnRun;
   if (!r) return;
-  saveLearnPoint({ mode: r.mode, startedAt: r.startedAt, ids: r.ids, setStart: r.setStart, ackBreak: r.ackBreak, setNo: r.setNo });
+  saveLearnPoint({ mode: r.mode, startedAt: r.startedAt, ids: r.ids, setStart: r.setStart, ackBreak: r.ackBreak, setNo: r.setNo, dayMarked: r.dayMarked, ...over });
 }
 
 // 1 問の答えを書き手に渡す（1 問に 1 回だけ。今の書き手の後・同じタスク・同じ 1 回の保存）。ctx = 画面の文の種類（clean・alt・reveal・miss・hint）。
@@ -1121,8 +1152,6 @@ function endLearnSet(step) {
   const replaced = step === "replaced";
   if (!replaced) flushMasteryMeta(); // 置き換わった後の表には、前の人の回の集計を書かない
   currentWord = null;
-  if (step === "done" || step === "stop" || replaced) clearLearnPoint();
-  else persistLearnPoint();
   const { counts, rankUp } = replaced ? { counts: null, rankUp: null } : final ? finishLearnCounts() : { counts: null, rankUp: null };
   const src = learnStateSource();
   const today = learnDayOf(Date.now());
@@ -1135,6 +1164,10 @@ function endLearnSet(step) {
     snapshotGrowth();
     pushSync();
   }
+  // 回の続き: 尽きた・ここで終える・置き換わったら消す。セットの終わりは次のセットの始めとして残す（開き直しても終わりのパネル・学んだ日の印・
+  // 回の終わりの知らせを繰り返さず、次のセットの語から。パネルの「続けて学ぶ」も同じ所から始める）。区切りはそのまま残す
+  if (step === "done" || step === "stop" || replaced) clearLearnPoint();
+  else persistLearnPoint(step === "set" ? { setStart: r.ids.length, ackBreak: -1, setNo: r.setNo + 1 } : null);
   renderLearnPanel(step, { summary, counts });
   if (final && answeredAny) window.dispatchEvent(new CustomEvent("spelldash:session-end", { detail: { recalled: summary?.learned ?? 0, failed: summary?.unsure ?? 0, learn: r.mode } }));
   if (replaced) learnRun = null;
@@ -1159,7 +1192,7 @@ function renderLearnPanel(step, { summary, counts }) {
   renderSetProgress();
   renderLearnedCard();
   if (!panel) return;
-  const n = r.setAnswered;
+  const n = r.answered.size; // 見出しの語数は回の通し（下の「今回 覚えた・あやふや」と同じ範囲。続けて学ぶの後の区切りは 40語・50語…）
   let title = `${n}語 終わり`;
   let note = "";
   if (step === "break") note = "ここで終えても、答えた分は残る。";
@@ -1229,6 +1262,7 @@ function learnMore() {
 // 中心の学習の回をやめる（机に戻る・ほかの遊び方へ）。答えた分は残し、同じ日のうちなら続きから。開き直しで回に戻らないよう、URL の ?learn= は外す
 function leaveLearn() {
   learnRun = null;
+  setLearnScreen(false);
   if (LEARN_PARAM === null) return;
   try {
     const url = new URL(location.href);
@@ -1271,6 +1305,7 @@ export function startGame(options = {}) {
   if (isPlaying) return;
   if (learnRun && (options.retry || options.resume)) leaveLearn(); // 決めた語だけの回・Study の続きは中心の学習ではない
   const learn = !!learnRun; // 中心の学習の回（入口・続ける・続けて学ぶ。js/game.js beginLearn）
+  setLearnScreen(learn);
   const retry = Array.isArray(options.retry) && options.retry.length > 0 ? options.retry : null;
   const resume = !retry && options.resume && Array.isArray(options.resume.queue) && options.resume.queue.length > 0 ? options.resume : null; // 前回の続きから
   let composition = null;
@@ -3349,8 +3384,9 @@ function handleTypingMiss(expectedChar = currentWord?.en[currentIndex], typedCha
     return;
   }
 
-  // 答え表示後の練習中のミスは表示のみ
-  showMessage("違う。もう一度", "wrong");
+  // 答え表示後の練習中のミスは表示のみ。中心の学習は赤い警告にしない（任意の打ち直し。依頼 §6「強い失敗音や赤い警告を使わない」）
+  if (learnRun) showMessage("答えのとおりに打つか、Enter で次へ", "revealed");
+  else showMessage("違う。もう一度", "wrong");
 }
 
 function setNewWord() {
@@ -3966,5 +4002,5 @@ function updateTypeSpeed() {
   elements.typeSpeed.textContent = speed.toFixed(1);
 }
 
-// 入口 /?learn= から来た: 材料を読んでから中心の学習を始める（モジュールを読み終えた後。main.js の読み込みの処理と並べて走る）
-if (LEARN_PARAM !== null) beginLearn(LEARN_PARAM);
+// 入口 /?learn= から来た: 材料を読んでから中心の学習を始める（モジュールを読み終えた後。main.js の読み込みの処理と並べて走る）。読めない値は何もしない
+if (LEARN_ENTRY) beginLearn(LEARN_PARAM);
