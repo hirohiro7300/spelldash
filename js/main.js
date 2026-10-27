@@ -529,7 +529,7 @@ function raiseFocusPeakLater(epoch) {
   focusPeakTimer = setTimeout(attempt, 0);
 }
 
-// 英単語の学習に絞ったホーム: 古い URL（?words= ?add= ?category= ?moved=）の引数を外して 1 行を出し（js/focus.js。値は使わない）、
+// 英単語の学習に絞ったホーム: 古い URL（?words= ?add= ?category= と ?from=old）の引数を外して 1 行を出し（js/focus.js。値は使わない）、
 // 数は語の読み込みを待たずに 3 状態の材料から入れる。初回の本の判定（renderWelcome）は外す前の URL で行う（<head> の 1 行と同じ答えにする）
 if (FOCUS) {
   takeOldHomeUrl();

@@ -10,8 +10,9 @@
 // 戻すとき: FOCUS_ENGLISH を false にし、index.html と profile.html の <html data-focus="english">（最初の描画の旗。CSS が見る）を外す。
 //
 // 古い URL（PRESTART「古い URL」・contradictions c5）:
-//   ホーム（index.html）の ?words=（単語帳の「苦手だけ練習」の回）・?add=（パックを足す）・?category=（教材・巻を選ぶ）・?moved=（転送と
-//     ページの守りが付けるしるし）→ 値は使わない（回を始めない・パックを足さない・鍵を書かない）。URL から外して、ホームに 1 行
+//   ホーム（index.html）の ?words=（単語帳の「苦手だけ練習」の回）・?add=（パックを足す）・?category=（教材・巻を選ぶ）・?from=old（転送と
+//     ページの守りが付けるしるし。?from= のほかの値〔typing など〕は古い URL ではない）→ 値は使わない（回を始めない・パックを足さない・鍵を書かない）。
+//     URL から外して、ホームに 1 行
 //   単語帳（list.html。マイ単語帳・#packs・#myWords・?add=・?category= を含む）→ js/listView.js が最初にページの守り（leaveOldScreen）
 //   /packs/* と /packs/ → vercel.json の転送（permanent: false）とページの守り（段 5a）が MOVED_URL へ
 //   保存した遊び方 spelldash_mode = challenge → ホームは中心の学習を始める（値は残す: js/game.js setMode の save: false）
@@ -28,15 +29,17 @@ export const FOCUS_ATTR = "english";
 // 古い画面から来た人への 1 行（index.html の #focusNote に同じ文を静的に置く）
 export const FOCUS_NOTE = "英単語の学習にまとめました。";
 
-// 案内の行き先（英単語のホーム）。?moved= は「古い画面から来た」しるし（ホームが 1 行を出して URL から外す）
-export const MOVED_PARAM = "moved";
-export const MOVED_URL = `/?${MOVED_PARAM}=1`;
+// 案内の行き先（英単語のホーム）。?from=old は「古い画面から来た」しるし（ホームが 1 行を出して URL から外す。vercel.json の転送と
+// パックのページの守り〔段 5a〕も同じ行き先）
+export const MOVED_PARAM = "from";
+export const MOVED_VALUE = "old";
+export const MOVED_URL = `/?${MOVED_PARAM}=${MOVED_VALUE}`;
 
 // 「英単語を学ぶ」の入口（js/learnQueue.js LEARN_NEXT。回を始めるときに今の記録からモードを決める）
 export const LEARN_NEXT_URL = "/?learn=next";
 
-// ホームで「古い URL」とみなす引数（index.html の <head> の 1 行〔id="focusMoved"〕も同じ並び。E2E が突き合わせる）
-export const OLD_HOME_PARAMS = Object.freeze(["words", "add", "category", MOVED_PARAM]);
+// ホームで「古い URL」とみなす引数（あれば値によらず）と、しるし ?from=old（index.html の <head> の 1 行〔id="focusMoved"〕も同じ決まり。E2E が突き合わせる）
+export const OLD_HOME_PARAMS = Object.freeze(["words", "add", "category"]);
 
 export function isFocusOn() {
   return FOCUS_ENGLISH;
@@ -48,10 +51,12 @@ export function applyFocusFlag(root = document.documentElement) {
   if (!FOCUS_ENGLISH && "focus" in root.dataset) delete root.dataset.focus;
 }
 
-// URL の検索部分のうち、古い URL の引数（無ければ空の配列）
+// URL の検索部分のうち、古い URL の引数（しるしの ?from=old を含む。無ければ空の配列）
 export function oldHomeParams(search) {
   const q = new URLSearchParams(search);
-  return OLD_HOME_PARAMS.filter((k) => q.has(k));
+  const found = OLD_HOME_PARAMS.filter((k) => q.has(k));
+  if (q.get(MOVED_PARAM) === MOVED_VALUE) found.push(MOVED_PARAM);
+  return found;
 }
 
 // ホームに来た古い URL を片付ける: 古い引数を URL から外し（履歴は増やさない。ほかの引数と # は残す）、1 行を出すかを返す。

@@ -19955,7 +19955,7 @@ console.log("home and old URLs (78.6):");
     }
   }
 
-  // (4) 古い URL: ホームの ?words= ?add= ?category= ?moved=・単語帳（list.html・#packs・#myWords・?add=・?category=）→ 英単語のホームに 1 行だけ。
+  // (4) 古い URL: ホームの ?words= ?add= ?category= ?from=old（転送とパックのページの守りのしるし）・単語帳（list.html・#packs・#myWords・?add=・?category=）→ 英単語のホームに 1 行だけ。
   // 引数は URL から外す・回を始めない・パックを足さない・保存の鍵は消さない（値も変えない）・開き直すと 1 行は出ない
   {
     const seed = {
@@ -19964,7 +19964,7 @@ console.log("home and old URLs (78.6):");
       spelldash_my_words: JSON.stringify([{ en: "river", ja: "川" }]), spelldash_session: JSON.stringify({ category: "jhist1", queue: ["a"], date: "2026-01-01" }),
       spelldash_book_pace: JSON.stringify({ v: 1, at: 1, b: {} }), spelldash_set_size: "25"
     };
-    const URLS = ["/index.html?words=english-when,english-think", "/?add=accounting", "/?category=jhist1", "/?moved=1", "/list.html", "/list.html#myWords", "/list.html#packs", "/list.html?add=accounting", "/list.html?category=ngsl01"];
+    const URLS = ["/index.html?words=english-when,english-think", "/?add=accounting", "/?category=jhist1", "/?from=old", "/list.html", "/list.html#myWords", "/list.html#packs", "/list.html?add=accounting", "/list.html?category=ngsl01"];
     const rows = [];
     for (const u of URLS) {
       const page = await homePage(seed);
@@ -19984,14 +19984,38 @@ console.log("home and old URLs (78.6):");
       rows.push({ u, note: v.note, url: url.pathname + url.search, playing, lost, again, errs: page.errors.length });
       await closeCtx(page);
     }
-    const bad = rows.filter((r) => r.note !== 1 || /words=|add=|category=|moved=/.test(r.url) || !["/", "/index.html"].includes(r.url) || r.playing || r.lost.length || r.again !== 0 || r.errs);
+    const bad = rows.filter((r) => r.note !== 1 || /words=|add=|category=|from=/.test(r.url) || !["/", "/index.html"].includes(r.url) || r.playing || r.lost.length || r.again !== 0 || r.errs);
     check(`78.6 古い URL（${URLS.length} 通り）: 英単語のホームに「英単語の学習にまとめました。」1 行だけ・引数は URL から外す・回を始めない・保存の鍵は消さず値も変えない・開き直すと 1 行は出ない・エラー 0`,
       bad.length === 0, JSON.stringify(bad.length ? bad : rows.slice(0, 2)));
-    // <head> の 1 行（最初の描画で html[data-moved] を置く）の引数の並びは js/focus.js OLD_HOME_PARAMS と同じ
-    const idx = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
-    const fromHead = JSON.parse(idx.match(/<script id="focusMoved">[^<]*?(\[[^\]]*\])\.some/)?.[1] ?? "null");
-    const fromJs = JSON.parse(fs.readFileSync(path.join(ROOT, "js", "focus.js"), "utf8").match(/OLD_HOME_PARAMS = Object\.freeze\((\[[^\]]*\])\)/)?.[1]?.replace("MOVED_PARAM", '"moved"') ?? "null");
-    check("78.6 古い URL: index.html の <head> の 1 行（id=focusMoved）と js/focus.js OLD_HOME_PARAMS は同じ並び", JSON.stringify(fromHead) === JSON.stringify(fromJs) && fromHead?.length === 4, JSON.stringify({ fromHead, fromJs }));
+    // ?from= のほかの値（タイピング練習からの ?from=typing）は古い URL ではない: 1 行は出さず、引数も外さない
+    {
+      const page = await homePage(seed);
+      await page.goto(BASE + "/?from=typing", { waitUntil: "networkidle" });
+      await waitUntil(async () => (await homeView(page)).ready, 6000);
+      const t = { note: (await homeView(page)).note, url: page.url().replace(BASE, "") };
+      check("78.6 古い URL: ?from=typing（タイピング練習から）は古い URL でない（1 行なし・引数はそのまま）", t.note === 0 && t.url === "/?from=typing", JSON.stringify(t));
+      await closeCtx(page);
+    }
+    // <head> の 1 行（最初の描画で html[data-moved] を置く）の決まりは js/focus.js（OLD_HOME_PARAMS と ?from=old の oldHomeParams）と同じ答え
+    const fm = await homePage({});
+    await fm.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const heads = await fm.evaluate(async (list) => {
+      const F = await import("/js/focus.js");
+      const src = document.getElementById("focusMoved")?.textContent ?? "";
+      const html = document.documentElement, out = [];
+      for (const q of list) {
+        history.replaceState(null, "", "/index.html" + q);
+        delete html.dataset.moved;
+        new Function(src)();
+        out.push({ q, head: "moved" in html.dataset, js: F.oldHomeParams(location.search).length > 0 });
+      }
+      history.replaceState(null, "", "/index.html");
+      return out;
+    }, ["", "?words=a", "?add=b", "?category=c", "?from=old", "?from=typing", "?from=", "?login=1", "?learn=next", "?moved=1", "?t=5&category=x"]);
+    await closeCtx(fm);
+    const want = { "": false, "?words=a": true, "?add=b": true, "?category=c": true, "?from=old": true, "?from=typing": false, "?from=": false, "?login=1": false, "?learn=next": false, "?moved=1": false, "?t=5&category=x": true };
+    check("78.6 古い URL: index.html の <head> の 1 行（id=focusMoved）と js/focus.js oldHomeParams は 11 通りで同じ答え（?words= ?add= ?category= と ?from=old だけ）",
+      heads.length === 11 && heads.every((h) => h.head === want[h.q] && h.js === want[h.q]), JSON.stringify(heads.filter((h) => h.head !== want[h.q] || h.js !== want[h.q])));
   }
 
   // (5) 保存した遊び方が Challenge: ホームは中心の学習（見えない入力欄の Enter でも Challenge を始めない）・spelldash_mode は challenge のまま（机に戻っても）
