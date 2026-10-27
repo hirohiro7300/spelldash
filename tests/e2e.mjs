@@ -6980,7 +6980,8 @@ console.log("pages (書斎の皮):");
   };
   const SKIN_PAGES = ["/list.html", "/stats.html", "/profile.html", "/pro.html", "/battle.html", "/news.html", "/privacy.html", "/terms.html", "/tokushoho.html", "/packs/accounting.html", "/typing.html", "/typing-game.html"];
   // 単語帳（list.html）は英単語の学習に絞った間（js/focus.js。Batch 78 段 5b）は開くとホームへ案内する（ホームの皮は /index.html の行で見る）: 皮の表から外す
-  SKIN_PAGES.splice(SKIN_PAGES.indexOf("/list.html"), 1);
+  // （表に無いときは何もしない。段 5a も同じ表から外すので、重ねたときに別の頁を消さない）
+  if (SKIN_PAGES.includes("/list.html")) SKIN_PAGES.splice(SKIN_PAGES.indexOf("/list.html"), 1);
   const SKIN_VIEWS = [[390, true], [1200, false]];
   const skinPage = (w, mobile, theme) => newPage({ mobile, viewport: { width: w, height: mobile ? 844 : 900 }, storage: { spelldash_theme: theme, spelldash_placement: "done" } });
   const themed = (page, theme) => waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
