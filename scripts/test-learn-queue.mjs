@@ -265,6 +265,31 @@ for (const seed of [1, 2, 3]) {
   eq("結果: 版 6 の pending の状態も数える", Q.learnSummary([d], t, new Map([[d, 2]]), TODAY), { learned: 1, unsure: 0, dayOne: 0 });
 }
 
+// ===== 中心の学習の別解の索引（js/answers.js buildAlternativeIndexById。公開のカードだけ・カードの id で引く） =====
+{
+  const A = await import(modUrl("js/answers.js"));
+  const aux = { id: "english-may", en: "may", ja: "〜かもしれない", pos: "助" };
+  const month = { id: "english-may-month", en: "may", ja: "5月", pos: "名" };
+  const might = { id: "english-might", en: "might", ja: "〜かもしれない", pos: "助" };
+  const byId = A.buildAlternativeIndexById([aux, month, might]);
+  const byEn = A.buildAlternativeIndex([aux, month, might]);
+  eq("別解の索引 id: 同じ綴りの 2 枚（助動詞の may・5月の May）で、5月の問いに might を混ぜない・助動詞の問いは might を受ける",
+    [A.acceptedAnswers(month, byId, month.id), A.acceptedAnswers(aux, byId, aux.id), A.acceptedAnswers(might, byId, might.id)], [["may"], ["may", "might"], ["might", "may"]]);
+  eq("別解の索引 id: 綴りで引く今の索引は 5月の問いに might が混ざる（id で引く理由）", A.acceptedAnswers(month, byEn), ["may", "might"]);
+  // 公開の 2,857 枚（綴りは重ならない）では、id で引いても綴りで引いても同じ候補・同じ並び（中心の学習の判定は今の Study の判定と同じ）
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data/manifest.json"), "utf8"));
+  const cats = manifest.subjects.find((s) => s.id === "english").categories;
+  const json = JSON.parse(fs.readFileSync(path.join(ROOT, "data/public/english.json"), "utf8"));
+  const cards = json.packs.flatMap((id) => {
+    const data = JSON.parse(fs.readFileSync(path.join(ROOT, "data", cats.find((c) => c.id === id).file), "utf8"));
+    return data.words.map((w) => ({ ...w, category: data.category }));
+  });
+  const ia = A.buildAlternativeIndexById(cards);
+  const ie = A.buildAlternativeIndex(cards);
+  const differ = cards.filter((w) => JSON.stringify(A.acceptedAnswers(w, ia, w.id)) !== JSON.stringify(A.acceptedAnswers(w, ie)));
+  eq("別解の索引 id: 公開の 2,857 枚で、綴りの索引と候補が同じ（違う 0 枚）・別解のある語は 1,500 枚以上", [cards.length, differ.length, cards.filter((w) => A.acceptedAnswers(w, ia, w.id).length > 1).length >= 1500], [vocab.total, 0, true]);
+}
+
 // ===== 純なこと: DOM・localStorage・乱数・時刻を読まない =====
 {
   const src = fs.readFileSync(path.join(ROOT, "js/learnQueue.js"), "utf8").replace(/\/\/.*$/gm, "");

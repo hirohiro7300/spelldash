@@ -908,19 +908,21 @@ if (LEARN_PARAM !== null) {
 // 中心の学習を始める（入口・パネルの「続けて学ぶ」から）。材料（出題の列の module・3 状態の材料・公開の 24 巻）を読んでから、
 // 今日の同じモードの回があれば続きから（答えた語は二度出さない・回の数は二重に数えない: js/sessionResume.js learnPointFor）
 async function beginLearn(mode) {
+  let Q = null;
   let loaded = null;
   try {
-    loaded = await Promise.all([import("./learnQueue.js"), loadLearnStates(), loadPublicWords()]);
+    Q = await import("./learnQueue.js");
+    if (!Q.parseLearnMode(mode)) return; // 読めない入口の値: ふつうのホームのまま（材料は読まない）
+    loaded = await Promise.all([loadLearnStates(), loadPublicWords()]);
   } catch {
     loaded = null;
   }
-  const [Q, src, store] = loaded ?? [];
+  const [src, store] = loaded ?? [];
   if (!Q || !src || !store) {
     showLearnLoadError();
     return;
   }
   const kind = Q.parseLearnMode(mode);
-  if (!kind) return;
   setMode("study");
   stopGame(); // 机の回の途中なら止める（setMode は同じモードだと止めない）
   const table = getWordStats();
@@ -1114,11 +1116,11 @@ function endLearnSet(step) {
   wordTiming = null;
   learnedCardStale = false; // 下で自分で描く（notifyGameEnd で二重に描かない）
   notifyGameEnd();
-  flushMasteryMeta();
-  currentWord = null;
   const final = step !== "break";
   const answeredAny = r.answered.size > 0;
   const replaced = step === "replaced";
+  if (!replaced) flushMasteryMeta(); // 置き換わった後の表には、前の人の回の集計を書かない
+  currentWord = null;
   if (step === "done" || step === "stop" || replaced) clearLearnPoint();
   else persistLearnPoint();
   const { counts, rankUp } = replaced ? { counts: null, rankUp: null } : final ? finishLearnCounts() : { counts: null, rankUp: null };
@@ -3594,7 +3596,7 @@ function renderWordMeta() {
   if (!el) return;
   if (mode !== "study" || !currentWord || learnRun) {
     el.textContent = ""; // 中心の学習は状態ごとの回なので、語ごとの「なぜ今」は出さない（進みの札がモードの状態の名前）
-    currentWordKind = "";
+    if (learnRun) currentWordKind = "";
     return;
   }
 
