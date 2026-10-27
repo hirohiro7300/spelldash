@@ -1,4 +1,4 @@
-import { saveWordStats, editWordStats, getWordStats, wordStatsChars } from "./storage.js";
+import { saveWordStats, editWordStats, getWordStats, wordStatsChars, learnStateSource, recordsEpoch, whenWordStatsSaved } from "./storage.js";
 import { markWordDirty } from "./sync.js";
 import { noteFirstRecall, noteAnswer } from "./retentionLog.js";
 import { touchStudyTime } from "./studyTime.js";
@@ -28,6 +28,7 @@ import {
   T1_MAX as CHECK_T1_MAX
 } from "./memoryCheck.js";
 import { getMemoryWord, putMemoryWord, tickMemoryWords, prefetchMemoryWords, useWordStatsReader } from "./memoryWords.js";
+import { applyLearnAnswer, isAnswerKind } from "./learnState.js";
 
 // 語ごとの記録の質（js/memoryWords.js）は、書く直前に語の記録と照らし合わせ（復元・消去の後の書きかけを書き戻さない）、
 // 語の記録の字数を見て端末の枠を分ける（学習の記録と合わせて js/storageGuard.js SHARED_BUDGET 字まで）
@@ -385,6 +386,24 @@ export function recordRecallSuccess(word, answer, measure = null) {
   noteAnswer(word, "o", stats[word]);
   noteRankOutcome(word, before, true);
   touchStudyTime();
+}
+
+// ===== 3 つの状態（これから・あやふや・覚えた。Batch 78。js/learnState.js・docs/SPEC_LEARN_STATE.md）の書き手 =====
+// 中心の学習（これから・あやふや・覚えたの 3 つのモード）だけが、1 問に 1 回、上の書き手の後に呼ぶ。Battle・Challenge・Daily・タイピング・
+// 非公開の旧教材の直接 URL は呼ばない（状態を変えない: 決定 §4）。kind = js/learnState.js ANSWER_KINDS（× のあった問いはその × の種類）、
+// epoch = 回の始めに控えた js/storage.js recordsEpoch()（ほかのタブで記録が置き換わったら書かない）。
+// ほかの書き手の欄と出力は変えない: 同じタスクの同じ写しの、この語の ls・lsd・lsAt だけを替え、保存は同じ 1 回（setItem はタスクに 1 回のまま）。
+// 状態は同じタスクで読んだ語の欄から決める（回の列が持っている値は使わない）。公開の語だけ（非公開の語の記録には書かない）。
+// 返り値 Promise<boolean>: 保存できたら true。書かなかった（公開の語でない・種類が違う・材料〔公開の語の表〕がまだ読めていない・
+// 回の後に記録が置き換わった）・保存に失敗したら false（画面は変化を出さない: 受け入れ基準 14）
+export function recordLearnAnswer(word, kind, { epoch = null } = {}) {
+  const source = learnStateSource();
+  if (!source || !source.vocab.isPublic(word) || !isAnswerKind(kind)) return Promise.resolve(false);
+  if (epoch !== null && epoch !== recordsEpoch()) return Promise.resolve(false);
+  const stats = editWordStats();
+  stats[word] = applyLearnAnswer(stats[word] ?? createInitialWordStats(), kind, Date.now(), source.isDone);
+  saveWordStats(stats);
+  return whenWordStatsSaved();
 }
 
 // ===== 記録の質（docs/SPEC_MASTERY.md「記録の質」。D1 L1）。どれも失敗しても記録（SRS・段・保持率）は止めない =====

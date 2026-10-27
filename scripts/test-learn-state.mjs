@@ -431,6 +431,227 @@ eq("見せるランクは最高到達ランクより下がらない（覚えた�
   eq("読めない保存の値は null（壊れた値で上げない）", ["", "-1", "8.5", "9", "abc", "3"].map(R.parseRankPeak), [null, null, null, null, null, 3]);
 }
 
+// ── 8. スキーマ 7 の移行（js/storage.js。読み込みのたびに新しいモジュールで「開き直す」） ─────────────
+let loads = 0;
+const openStorage = async () => import(`${modUrl("js/storage.js")}?open=${++loads}`);
+const schema6 = () => ({ spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify(table0()), spelldash_xp: "120" });
+{
+  // 表が取れない（オフライン）: 版 6 のまま。読み手の材料も無い（状態を出さない）。公開の語の表をまだ読んでいないこのプロセスの最初に流す
+  fetchFail = true;
+  LS = new FakeStorage(schema6());
+  const m = await openStorage();
+  const src = await m.loadLearnStates();
+  eq("表が取れない: 版 6 のまま・材料なし（null）", [LS.getItem("spelldash_schema_version"), src], ["6", null]);
+  fetchFail = false;
+}
+{
+  LS = new FakeStorage(schema6());
+  const calls = fetchCalls;
+  const m = await openStorage();
+  const src = await m.loadLearnStates();
+  const t = JSON.parse(LS.getItem("spelldash_word_stats"));
+  eq("版 6 の記録を開く → 版 7・欄を埋める（公開の語だけ）", [LS.getItem("spelldash_schema_version"), PUB.slice(0, 7).map((id) => t[id].ls)], ["7", [2, 1, undefined, 2, 2, 2, 1]]);
+  eq("非公開の語・ほかの鍵はそのまま", [t["concept-ad-cpc"], t["my-river"], t["english-zzz-not-public"], t[PUB[7]], LS.getItem("spelldash_xp")], [SHAPES.learning, SHAPES.weak, SHAPES.learning, "broken", "120"]);
+  ok("移行の後の読み手の材料: isDone なし（欄の無い語は これから）", src && src.isDone === null && src.vocab.total === T);
+  eq("移行の後の数", L.countLearnStates(t, src.vocab, src.isDone), { new: T - 6, unsure: 2, learned: 4, total: T });
+  ok("表は 1 回だけ取る", fetchCalls - calls === 1);
+  const text = LS.getItem("spelldash_word_stats");
+  const m2 = await openStorage();
+  await m2.loadLearnStates();
+  ok("開き直しても同じ（何度流しても同じ文字列）", LS.getItem("spelldash_word_stats") === text && LS.getItem("spelldash_schema_version") === "7");
+  LS.setItem("spelldash_schema_version", "6"); // ロールバックの後の版 6（欄は残っている）
+  const m3 = await openStorage();
+  await m3.loadLearnStates();
+  ok("版が 6 に戻っても、欄のある語は飛ばす（同じ文字列）・版 7", LS.getItem("spelldash_word_stats") === text && LS.getItem("spelldash_schema_version") === "7");
+}
+{
+  LS = new FakeStorage({ spelldash_schema_version: "6" });
+  const calls = fetchCalls;
+  await openStorage();
+  ok("記録の無い端末: その場で版 7（表を取らない）", LS.getItem("spelldash_schema_version") === "7" && fetchCalls === calls);
+  LS = new FakeStorage({});
+  await openStorage();
+  eq("初めての端末（版の鍵なし）: 版 7・空の表", [LS.getItem("spelldash_schema_version"), LS.getItem("spelldash_word_stats")], ["7", "{}"]);
+  LS = new FakeStorage({ spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify({ [PUB[0]]: SHAPES.played, "concept-x": SHAPES.learning }) });
+  const m = await openStorage();
+  await m.loadLearnStates();
+  const t = JSON.parse(LS.getItem("spelldash_word_stats"));
+  ok("埋める公開の語が無い端末: 表を書かずに版 7（出題だけの語・非公開の語は欄なし）", LS.getItem("spelldash_schema_version") === "7" && !("ls" in t[PUB[0]]) && !("ls" in t["concept-x"]));
+}
+{
+  // 容量: 移行の書き込みが入らない → 版 6 のまま・表は不変・読み込みは投げない。読み手は移行の式で読む。容量が空いた次の読み込みで済む（dataloss d1）
+  const seed = schema6();
+  const size = Object.entries(seed).reduce((n, [k, v]) => n + k.length + v.length, 0);
+  LS = new FakeStorage(seed, size + 12); // 1 語ぶんの「,"ls":2」も入らない
+  const text = LS.getItem("spelldash_word_stats");
+  let threw = false;
+  let src = null;
+  try {
+    const m = await openStorage();
+    src = await m.loadLearnStates();
+  } catch {
+    threw = true;
+  }
+  eq("容量で書けない: 読み込みは投げない・版 6 のまま・表は同じ文字列", [threw, LS.getItem("spelldash_schema_version"), LS.getItem("spelldash_word_stats") === text], [false, "6", true]);
+  ok("その間の読み手は移行の式で読む（isDone あり）・数は移行の後と同じ", src && typeof src.isDone === "function" && isDeepStrictEqual(L.countLearnStates(JSON.parse(text), src.vocab, src.isDone), { new: T - 6, unsure: 2, learned: 4, total: T }));
+  LS.limit = Infinity;
+  const m = await openStorage();
+  await m.loadLearnStates();
+  ok("容量が空いた次の読み込みで版 7・欄が入る", LS.getItem("spelldash_schema_version") === "7" && JSON.parse(LS.getItem("spelldash_word_stats"))[PUB[0]].ls === 2);
+}
+{
+  // 版の鍵が無い（手で直したバックアップなど）: v3 → v4 の付け替えで前置きの付いた id を動かさない（dataloss d10）。前置きの無い古い鍵は english- へ
+  LS = new FakeStorage({ spelldash_word_stats: JSON.stringify({ "concept-ad-cpc": SHAPES.learning, "my-q-hello": SHAPES.weak, "my-river": SHAPES.weak, [PUB[0]]: SHAPES.learning, apple: SHAPES.weak }), spelldash_mission: JSON.stringify({ review: ["concept-ad-cpc", "my-river", "apple"] }) });
+  const m = await openStorage();
+  await m.loadLearnStates();
+  const t = JSON.parse(LS.getItem("spelldash_word_stats"));
+  eq("版の鍵なし: concept-・my-・my-q- の id は付け替えない・前置きの無い鍵だけ english- に", Object.keys(t).sort(), ["concept-ad-cpc", "english-apple", "my-q-hello", "my-river", PUB[0]].sort());
+  eq("ミッションの id も同じ", JSON.parse(LS.getItem("spelldash_mission")).review, ["concept-ad-cpc", "my-river", "english-apple"]);
+}
+
+{
+  // 公開の語の表の読み込みは 1 ページに 1 回（上の移行で読んだ表を使い回す。取り直さない）
+  const calls = fetchCalls;
+  const [a, b] = await Promise.all([PV.loadPublicVocab(), PV.loadPublicVocab()]);
+  const c = await PV.loadPublicVocab();
+  ok("読み込み済みの表を使い回す（fetch 0 回）・同じ表", fetchCalls === calls && a === b && b === c && PV.publicVocabNow() === a && a.total === VOCAB.total);
+}
+
+// ── 9. 書き手（js/stats.js recordLearnAnswer）と保存 ─────────────
+// 書き手はページの js/storage.js（ST が読んだもの）を使う。表と材料はそこで読む
+LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: "{}" });
+S.forgetWordStats();
+await S.loadLearnStates();
+const W = PUB[20];
+{
+  clock = D(0, 10);
+  ST.recordPlay(W);
+  const saved = await ST.recordLearnAnswer(W, K.exact);
+  const t = JSON.parse(LS.getItem("spelldash_word_stats"));
+  eq("書き手: 公開の語の初回の自力正解 → 覚えた と保存（true）", [saved, t[W].ls, t[W].lsAt], [true, 2, D(0, 10)]);
+  eq("書き手: 非公開の語は書かない（false）", [await ST.recordLearnAnswer("concept-ad-cpc", K.exact), await ST.recordLearnAnswer("english-zzz-not-public", K.miss), "concept-ad-cpc" in JSON.parse(LS.getItem("spelldash_word_stats"))], [false, false, false]);
+  eq("書き手: 知らない種類は書かない（false）", await ST.recordLearnAnswer(W, "alt"), false);
+  clock = D(1, 10);
+  await ST.recordLearnAnswer(W, K.hint);
+  clock = D(1, 11);
+  await ST.recordLearnAnswer(W, K.exact);
+  eq("書き手: 覚えた → ヒント → 同じ日の自力正解（1 日目）", [JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, JSON.parse(LS.getItem("spelldash_word_stats"))[W].lsd], [1, dayOf(D(1))]);
+}
+{
+  // 同じタスクのほかの書き手と同じ 1 回の保存（setItem はタスクに 1 回）。ほかの書き手の欄は変えない
+  const id = PUB[21];
+  clock = D(2, 9);
+  ST.recordPlay(id);
+  S.flushWordStats();
+  const writes = LS.writes.filter((k) => k === "spelldash_word_stats").length;
+  ST.recordCorrect(id, true);
+  ST.recordRecallSuccess(id, { clean: true, speed: "normal" });
+  const p = ST.recordLearnAnswer(id, K.exact);
+  await p;
+  eq("同じタスクの 3 つの書き手で語の記録の setItem は 1 回", LS.writes.filter((k) => k === "spelldash_word_stats").length - writes, 1);
+}
+{
+  // ほかの書き手の出力は、新しい書き手をはさんでも同じ（新しい 3 つの欄を除く）。同じ時計の 2 本で比べる
+  const script = (withLearn) => {
+    LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: "{}" });
+    S.forgetWordStats();
+    const ids = PUB.slice(40, 46);
+    let day = 0;
+    for (let round = 0; round < 6; round++) {
+      for (const [i, id] of ids.entries()) {
+        clock = D(day, 9 + i);
+        ST.recordPlay(id);
+        if ((round + i) % 3 === 0) {
+          ST.recordRecallFail(id, { k: "e", p: 1 });
+          if (withLearn) ST.recordLearnAnswer(id, K.reveal);
+          ST.recordCorrect(id, false);
+        } else {
+          ST.recordCorrect(id, true);
+          ST.recordRecallSuccess(id, { clean: true, speed: "fast" }, null);
+          if (withLearn) ST.recordLearnAnswer(id, K.exact);
+        }
+        S.flushWordStats();
+      }
+      day += round % 2 ? 1 : 0;
+    }
+    return JSON.parse(LS.getItem("spelldash_word_stats"));
+  };
+  const a = script(false);
+  const b = script(true);
+  const strip = (o) => Object.fromEntries(Object.entries(o).map(([id, s]) => [id, Object.fromEntries(Object.entries(s).filter(([k]) => !L.LEARN_FIELDS.includes(k)))]));
+  eq("ほかの書き手（recordPlay・recordCorrect・recordRecallSuccess・recordRecallFail）の出力は同じ（新しい欄を除く）", strip(b), a);
+  ok("新しい書き手をはさんだ側だけに欄がある", Object.values(b).every((s) => s.ls && s.lsAt) && Object.values(a).every((s) => !("ls" in s)));
+}
+{
+  // 保存の失敗（容量）: 書き手は false・spelldash:save-failed・保存は前のまま（受け入れ基準 14）
+  const failed = seen("spelldash:save-failed");
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: JSON.stringify({ [W]: { ...stat(), ls: 1, lsd: dayOf(D(3)) } }) });
+  S.forgetWordStats();
+  const text = LS.getItem("spelldash_word_stats");
+  LS.limit = [...LS.map].reduce((n, [k, v]) => n + k.length + v.length, 0); // これ以上増やせない
+  clock = D(4, 9);
+  const saved = await ST.recordLearnAnswer(W, K.exact);
+  eq("保存に失敗: false・失敗の知らせ 1 回・保存は前のまま", [saved, failed.length, LS.getItem("spelldash_word_stats") === text], [false, 1, true]);
+  LS.limit = Infinity;
+  const again = await ST.recordLearnAnswer(W, K.exact);
+  eq("容量が空いた後: 保存から読み直して書く（前の失敗の分は入っていない）", [again, JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls], [true, 2]);
+  eq("書きかけが無いときの whenWordStatsSaved は最後の成否", await S.whenWordStatsSaved(), true);
+}
+{
+  // 版 7 の前（移行が書けなかった端末）: 書き手も欄の無い語を移行の式で読む
+  LS = new FakeStorage({ spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify({ [W]: SHAPES.learning }) });
+  S.forgetWordStats();
+  clock = D(5, 9);
+  await ST.recordLearnAnswer(W, K.miss);
+  eq("版 6 の端末: 欄の無い 覚えた の形の語に × → あやふや（これから 扱いで 覚えた にしない）", JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, 1);
+  LS = new FakeStorage({ spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify({ [W]: SHAPES.weak }) });
+  S.forgetWordStats();
+  await ST.recordLearnAnswer(W, K.exact);
+  eq("版 6 の端末: 欄の無い 苦手 の形の語の自力正解は 1 日目（初回の 覚えた にしない）", JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, 1);
+}
+{
+  // 複数のタブ（dataloss d12）: ほかのタブが書いた欄を次のタスクで読み直して決める（同じ日を 2 回数えない）。記録の置き換えで回を終える
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: JSON.stringify({ [W]: { ...stat(), ls: 1 } }) });
+  S.forgetWordStats();
+  clock = D(6, 9);
+  await ST.recordLearnAnswer(W, K.exact); // このタブ: 1 日目
+  const other = JSON.parse(LS.getItem("spelldash_word_stats"));
+  LS.setItem("spelldash_word_stats", JSON.stringify({ ...other, [W]: { ...other[W], lsAt: D(6, 9, 30) } })); // ほかのタブが同じ日に答えた
+  await tick();
+  clock = D(6, 10);
+  await ST.recordLearnAnswer(W, K.exact);
+  eq("ほかのタブが同じ日に答えた後も、このタブの同じ日の答えは 1 日分（あやふや）", JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, 1);
+  const epoch = S.recordsEpoch();
+  const fire = (key, oldValue, newValue) => globalThis.dispatchEvent({ type: "storage", key, oldValue, newValue, storageArea: LS });
+  const replaced = seen("spelldash:records-replaced");
+  fire("spelldash_xp", "1", "2");
+  fire("spelldash_schema_version", "6", "7");
+  fire("spelldash_owner", null, "u1");
+  eq("置き換えでない知らせ（XP・版が上がる・初めての持ち主）では数えない", [S.recordsEpoch() - epoch, replaced.length], [0, 0]);
+  fire("spelldash_owner", "u1", "u2");
+  fire("spelldash_word_stats", "{}", null);
+  fire("spelldash_schema_version", "7", "6");
+  fire(null, null, null);
+  eq("置き換え（持ち主が替わる・語の記録が消える・版が下がる・全部消す）を数え、知らせる（開き直した js/storage.js の数だけ。どれも 4 回）", [S.recordsEpoch() - epoch, replaced.length], [4, 4 * (loads + 1)]);
+  clock = D(7, 9);
+  eq("回の始めの控えと違えば書かない（false）・控えが同じなら書く", [await ST.recordLearnAnswer(W, K.exact, { epoch }), await ST.recordLearnAnswer(W, K.exact, { epoch: S.recordsEpoch() })], [false, true]);
+}
+{
+  // 開き直し（リロード）・日付の変化で二重に数えない
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: JSON.stringify({ [W]: { ...stat(), ls: 1 } }) });
+  S.forgetWordStats();
+  clock = D(8, 23, 58);
+  await ST.recordLearnAnswer(W, K.exact);
+  S.forgetWordStats(); // 開き直し
+  clock = D(8, 23, 59);
+  await ST.recordLearnAnswer(W, K.exact);
+  eq("開き直しても同じ日の 2 回目は数えない", JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, 1);
+  clock = D(9, 0, 1);
+  await ST.recordLearnAnswer(W, K.exact);
+  eq("日付が変わった後の 1 回で 覚えた", JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, 2);
+}
+clock = null;
+
 console.warn = quiet;
 if (failures.length) {
   console.error(`test-learn-state: ${failures.length} failed, ${passed} passed`);
