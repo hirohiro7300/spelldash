@@ -125,15 +125,10 @@ function currentState() {
   try {
     const peak = readRankPeak();
     const now = learnedNow();
-    const state = accountRankState({
-      userId: account?.userId ?? null,
-      owner: storageValue(localStorage, OWNER_KEY),
-      syncedUser: storageValue(sessionStorage, SYNC_DONE_KEY),
-      peak,
-      learned: now?.learned ?? null,
-      total: now?.total ?? null
-    });
-    if (!state && peak === null && !now && account?.userId) needLearn();
+    const who = { userId: account?.userId ?? null, owner: storageValue(localStorage, OWNER_KEY), syncedUser: storageValue(sessionStorage, SYNC_DONE_KEY) };
+    const state = accountRankState({ ...who, peak, learned: now?.learned ?? null, total: now?.total ?? null });
+    // 本人の記録と決まっていて、最高到達ランクも今の語数もまだ無いときだけ材料を読む（持ち主が別の人・取り込みの前は読まない）
+    if (!state && peak === null && !now && accountRankState({ ...who, peak: 0 })) needLearn();
     return state;
   } catch {
     return null;
