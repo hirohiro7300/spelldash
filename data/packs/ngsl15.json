@@ -102,7 +102,7 @@
     {"id": "english-religion", "en": "religion", "ja": "宗教", "pos": "名", "level": "normal", "tags": ["n"], "ex": "We learned about the world's major religions in class.", "exJa": "授業で世界の主な宗教について学んだ。", "exForm": "religions"},
     {"id": "english-employer", "en": "employer", "ja": "雇用主", "pos": "名", "level": "hard", "tags": ["n"], "ex": "My employer pays for my train pass.", "exJa": "定期代は雇用主が負担してくれます。"},
     {"id": "english-reject", "en": "reject", "ja": "断る・拒否する", "pos": "動", "level": "hard", "accept": ["refuse", "decline"], "tags": ["v"], "ex": "The team rejected my idea at first.", "exJa": "チームは最初、私の案を拒否した。", "exForm": "rejected"},
-    {"id": "english-latter", "en": "latter", "ja": "後者の", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "Of the two plans, I prefer the latter.", "exJa": "二つの案のうち、私は後者のほうがいい。"},
+    {"id": "english-latter", "en": "latter", "ja": "後者の", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "Of the two plans, I prefer the latter one.", "exJa": "二つの案のうち、私は後者の案のほうがいい。"},
     {"id": "english-plate", "en": "plate", "ja": "皿", "pos": "名", "level": "normal", "accept": ["dish"], "tags": ["n"], "ex": "Put the cake on a clean plate.", "exJa": "ケーキをきれいな皿にのせて。"},
     {"id": "english-ban", "en": "ban", "ja": "禁止する", "pos": "動", "level": "hard", "accept": ["prohibit", "forbid"], "tags": ["v"], "ex": "The city banned smoking in all parks.", "exJa": "市はすべての公園での喫煙を禁止した。", "exForm": "banned"},
     {"id": "english-steal", "en": "steal", "ja": "盗む", "pos": "動", "level": "normal", "tags": ["v"], "ex": "Someone stole my bike last night.", "exJa": "昨夜、誰かに自転車を盗まれた。", "exForm": "stole"},

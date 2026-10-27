@@ -38,7 +38,7 @@
     {"id": "english-guitar", "en": "guitar", "ja": "ギター", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I play the guitar at home.", "exJa": "家でギターを弾く。"},
     {"id": "english-flag", "en": "flag", "ja": "旗", "pos": "名", "level": "easy", "tags": ["n"], "ex": "The flag was moving in the wind.", "exJa": "旗が風になびいていた。"},
     {"id": "english-piano", "en": "piano", "ja": "ピアノ", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Emi has played the piano since she was five.", "exJa": "エミは5歳の時からピアノを弾いている。"},
-    {"id": "english-magic", "en": "magic", "ja": "魔法", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The children loved the magic show.", "exJa": "子どもたちは手品のショーが大好きだった。"},
+    {"id": "english-magic", "en": "magic", "ja": "魔法", "pos": "名", "level": "normal", "tags": ["n"], "ex": "The witch used magic to open the door.", "exJa": "魔女は魔法でドアを開けた。"},
     {"id": "english-mystery", "en": "mystery", "ja": "謎・推理小説", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Why he left the company is still a mystery.", "exJa": "彼がなぜ会社を辞めたのかはまだ謎だ。"},
     {"id": "english-ski", "en": "ski", "ja": "スキーをする", "pos": "動", "level": "normal", "tags": ["v"], "ex": "Ken goes skiing every winter.", "exJa": "ケンは毎年冬にスキーに行く。", "exForm": "skiing"},
     {"id": "english-whisper", "en": "whisper", "ja": "ささやく", "pos": "動", "level": "hard", "tags": ["v"], "ex": "She whispered the answer in my ear.", "exJa": "彼女は私の耳元で答えをささやいた。", "exForm": "whispered"},

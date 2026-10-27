@@ -59,7 +59,7 @@
     {"id": "english-light", "en": "light", "ja": "軽い", "pos": "形", "level": "normal", "tags": ["adj"], "ex": "My new bike is very light.", "exJa": "新しい自転車はとても軽い。"},
     {"id": "english-develop", "en": "develop", "ja": "発展させる", "pos": "動", "level": "normal", "tags": ["v"], "ex": "The city plans to develop the area around the station.", "exJa": "市は駅の周りを発展させる計画だ。"},
     {"id": "english-remember", "en": "remember", "ja": "覚えている", "pos": "動", "level": "normal", "tags": ["v"], "ex": "Do you remember me?", "exJa": "私のこと、覚えてる？"},
-    {"id": "english-bit", "en": "bit", "ja": "少量・ちょっと", "pos": "名", "level": "normal", "tags": ["n"], "ex": "I am a bit tired today.", "exJa": "今日は少し疲れている。"},
+    {"id": "english-bit", "en": "bit", "ja": "少量・少し", "pos": "名", "level": "normal", "tags": ["n"], "ex": "I am a bit tired today.", "exJa": "今日は少し疲れている。"},
     {"id": "english-share", "en": "share", "ja": "分け合う", "pos": "動", "level": "normal", "tags": ["v"], "ex": "Let's share this cake with everyone.", "exJa": "このケーキをみんなで分け合おう。"},
     {"id": "english-real", "en": "real", "ja": "本物の・本当の", "pos": "形", "level": "easy", "accept": ["true","genuine","actual"], "tags": ["adj"], "ex": "Are these flowers real?", "exJa": "この花、本物？"},
     {"id": "english-answer", "en": "answer", "ja": "答え", "pos": "名", "level": "easy", "accept": ["reply","response"], "tags": ["n"], "ex": "Was my answer right?", "exJa": "私の答え、合ってた？"},

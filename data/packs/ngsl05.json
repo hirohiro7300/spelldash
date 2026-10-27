@@ -55,7 +55,7 @@
     {"id": "english-maybe", "en": "maybe", "ja": "たぶん・もしかしたら", "pos": "副", "level": "easy", "accept": ["perhaps", "probably", "possibly"], "tags": ["adj"], "ex": "Maybe it will rain tomorrow.", "exJa": "たぶん明日は雨だろう。"},
     {"id": "english-community", "en": "community", "ja": "地域社会", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Everyone in the community helped clean the park.", "exJa": "地域社会のみんなが公園の掃除に協力した。"},
     {"id": "english-else", "en": "else", "ja": "ほかに・そのほかの", "pos": "副", "level": "easy", "tags": ["adj"], "ex": "Do you need anything else?", "exJa": "ほかに何か必要ですか？"},
-    {"id": "english-particular", "en": "particular", "ja": "特定の", "pos": "形", "level": "hard", "accept": ["specific"], "tags": ["adj"], "ex": "Is there a particular reason for that?", "exJa": "それには何か特別な理由があるの？"},
+    {"id": "english-particular", "en": "particular", "ja": "特定の", "pos": "形", "level": "hard", "accept": ["specific"], "tags": ["adj"], "ex": "This medicine works only for a particular type of pain.", "exJa": "この薬は特定の種類の痛みにだけ効く。"},
     {"id": "english-role", "en": "role", "ja": "役割", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Everyone has a role on the team.", "exJa": "チームではみんなに役割がある。"},
     {"id": "english-join", "en": "join", "ja": "参加する", "pos": "動", "level": "normal", "accept": ["participate"], "tags": ["v"], "ex": "Why don't you join our tennis club?", "exJa": "うちのテニス部に入らない？"},
     {"id": "english-difficult", "en": "difficult", "ja": "難しい", "pos": "形", "level": "normal", "accept": ["hard", "tough"], "tags": ["adj"], "ex": "This question is too difficult for me.", "exJa": "この問題は私には難しすぎる。"},

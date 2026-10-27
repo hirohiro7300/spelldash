@@ -54,7 +54,7 @@
     {"id": "english-fashion", "en": "fashion", "ja": "流行・ファッション", "pos": "名", "level": "normal", "accept": ["trend"], "tags": ["n"], "ex": "She is interested in fashion.", "exJa": "彼女はファッションに興味がある。"},
     {"id": "english-danger", "en": "danger", "ja": "危険", "pos": "名", "level": "normal", "accept": ["risk", "hazard"], "tags": ["n"], "ex": "The sign says there is danger of falling rocks.", "exJa": "落石の危険があると看板に書いてある。"},
     {"id": "english-bomb", "en": "bomb", "ja": "爆弾", "pos": "名", "level": "hard", "tags": ["n"], "ex": "An old bomb was found under the road.", "exJa": "道路の下から古い爆弾が見つかった。"},
-    {"id": "english-army", "en": "army", "ja": "陸軍", "pos": "名", "level": "hard", "accept": ["military"], "tags": ["n"], "ex": "His brother is in the army.", "exJa": "彼の兄は軍隊にいる。"},
+    {"id": "english-army", "en": "army", "ja": "陸軍", "pos": "名", "level": "hard", "accept": ["military"], "tags": ["n"], "ex": "His brother is in the army.", "exJa": "彼の兄は陸軍にいる。"},
     {"id": "english-dangerous", "en": "dangerous", "ja": "危険な", "pos": "形", "level": "normal", "accept": ["risky", "hazardous", "unsafe"], "tags": ["adj"], "ex": "It is dangerous to swim in this river.", "exJa": "この川で泳ぐのは危険だ。"},
     {"id": "english-decrease", "en": "decrease", "ja": "減る", "pos": "動", "level": "normal", "accept": ["decline", "drop", "fall"], "tags": ["v"], "ex": "The number of children in this town is decreasing.", "exJa": "この町の子どもの数は減っている。", "exForm": "decreasing"},
     {"id": "english-hurt", "en": "hurt", "ja": "痛む・傷つける", "pos": "動", "level": "easy", "accept": ["ache", "injure", "wound"], "tags": ["v"], "ex": "My back hurts when I sit too long.", "exJa": "長く座っていると腰が痛くなる。", "exForm": "hurts"},
