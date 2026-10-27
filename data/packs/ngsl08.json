@@ -127,7 +127,7 @@
     {"id": "english-anyway", "en": "anyway", "ja": "とにかく・いずれにせよ", "pos": "副", "level": "normal", "accept": ["anyhow", "regardless"], "tags": ["adj"], "ex": "It was raining, but we went out anyway.", "exJa": "雨だったが、とにかく出かけた。"},
     {"id": "english-speech", "en": "speech", "ja": "スピーチ", "pos": "名", "level": "hard", "accept": ["address"], "tags": ["n"], "ex": "Emi made a speech in English.", "exJa": "エミは英語でスピーチをした。"},
     {"id": "english-dog", "en": "dog", "ja": "犬", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I walk my dog every evening.", "exJa": "毎日夕方に犬の散歩をします。"},
-    {"id": "english-officer", "en": "officer", "ja": "警察官・役人", "pos": "名", "level": "easy", "accept": ["policeman", "official"], "tags": ["n"], "ex": "A police officer showed me the way to the station.", "exJa": "警察官が駅までの道を教えてくれた。"},
+    {"id": "english-officer", "en": "officer", "ja": "警官・将校・役員", "pos": "名", "level": "easy", "accept": ["policeman", "official"], "tags": ["n"], "ex": "A police officer showed me the way to the station.", "exJa": "警察官が駅までの道を教えてくれた。"},
     {"id": "english-throughout", "en": "throughout", "ja": "〜の間中", "pos": "前", "level": "normal", "tags": ["fn"], "ex": "The store will offer discounts throughout the month of May.", "exJa": "その店では五月中ずっと割引を行います。"},
     {"id": "english-oil", "en": "oil", "ja": "油・石油", "pos": "名", "level": "normal", "accept": ["petroleum"], "tags": ["n"], "ex": "Heat some oil in the pan first.", "exJa": "まずフライパンで油を熱します。"},
     {"id": "english-dress", "en": "dress", "ja": "ドレス・ワンピース", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Emi wore a blue dress to the party.", "exJa": "エミはパーティーに青いワンピースを着ていった。"},
