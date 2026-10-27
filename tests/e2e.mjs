@@ -7880,12 +7880,13 @@ console.log("parts (途中の部品の皮):");
 
   // 状態を開く（reduced motion・console のエラーも拾う）／閉じる（閉じる直前に動き・横スクロール・エラーを quiet に積む）
   const quiet = [];
-  const openPart = async (label, init, url, theme) => {
+  const openPart = async (label, init, url, theme, before = null) => {
     const page = await newPage(init);
     page.label = label;
     page.consoleErrors = [];
     page.on("console", (m) => { if (m.type() === "error") page.consoleErrors.push(m.text()); });
     await page.emulateMedia({ reducedMotion: "reduce" });
+    if (before) await before(page); // 開く前の手当て（下のパックの一覧: 案内の 1 行を外して配る）
     await page.goto(BASE + url, { waitUntil: "networkidle" });
     await waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
     await page.waitForTimeout(500);
@@ -8128,7 +8129,9 @@ console.log("parts (途中の部品の皮):");
     await waitUntil(() => page2.evaluate(() => !!document.querySelector(".pro-state__text")), 5000);
     fontsP.pro = await page2.evaluate(part, "fonts");
     await donePart(page2);
-    const page3 = await openPart("fonts packs", viewP(390, "light", returningP), "/packs/index.html", "light");
+    // Batch 78: パックのページは開くと英単語のホームへ案内する（頭の location.replace）。ここは生成した頁の字を見るので、案内の 1 行を外して配る
+    const page3 = await openPart("fonts packs", viewP(390, "light", returningP), "/packs/index.html", "light", (p) =>
+      p.route(BASE + "/packs/index.html", async (route) => { const res = await route.fetch(); await route.fulfill({ response: res, body: (await res.text()).replace(/ *<script>location\.replace\([^<]*<\/script>\n?/, "") }); }));
     fontsP.packs = await page3.evaluate(part, "fonts");
     await donePart(page3);
     const page4 = await openPart("fonts cardgen", viewP(1200, "light", myWordsSeedP), "/list.html#myWords", "light");
