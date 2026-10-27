@@ -30,7 +30,7 @@ import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
 import { renderPath, currentUnitOf, buildPath, renderFocusPath } from "./pathView.js";
 import { renderTodayStrip } from "./homeStrip.js";
-import { renderWelcome, dismissWelcome, shouldShowWelcome } from "./welcome.js";
+import { renderWelcome, dismissWelcome, shouldShowWelcome, isWelcomeOpen } from "./welcome.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { renderPlayModes } from "./playModes.js";
 import { ensureDefaultCourse, advanceSection, startCourse, COURSES } from "./course.js";
@@ -468,6 +468,12 @@ renderWelcome({
 // js/learnQueue.js resolveNextMode）。描き直しが重なったら最後の 1 回だけ描く。材料が読めなければ数は出さない（ボタンは /?learn=next のまま）
 let focusSeq = 0;
 function renderFocusHome() {
+  // 初めての人の本が開いている間は数の材料を読まない（机は見えず、「英単語を学ぶ」でページを移る。初めの読み込みを軽くする）。
+  // 本が閉じたら（ログイン・同期で記録が届いた）読んで描く
+  if (isWelcomeOpen()) {
+    renderFocusHomeAfterWelcome();
+    return;
+  }
   const seq = ++focusSeq;
   const epoch = recordsEpoch();
   loadFocusView()
@@ -479,6 +485,18 @@ function renderFocusHome() {
     .catch(() => {
       if (seq === focusSeq) renderFocusPath(null);
     });
+}
+
+let welcomeWatch = null;
+function renderFocusHomeAfterWelcome() {
+  if (welcomeWatch) return;
+  welcomeWatch = new MutationObserver(() => {
+    if (isWelcomeOpen()) return;
+    welcomeWatch.disconnect();
+    welcomeWatch = null;
+    renderFocusHome();
+  });
+  welcomeWatch.observe(document.body, { attributes: true, attributeFilter: ["class"] });
 }
 
 async function loadFocusView() {
