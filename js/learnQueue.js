@@ -13,7 +13,7 @@
 // 同じ保存なら同じ列。開き直しても入れ替わらない（PRESTART「出題の順」・contradictions c9）。
 // 回の中で答えた語はもう出さない。順が来たときに対象でなくなっていた語（ほかのタブで答えた）は飛ばす。
 
-import { LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED, ANSWER_KINDS, learnStateOf, storedState } from "./learnState.js";
+import { LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED, ANSWER_KINDS, learnStateOf, storedState, isUnsureDueToday } from "./learnState.js";
 import { finishKind } from "./judge.js";
 
 // 入口の値 → 状態（js/learnState.js の値）
@@ -40,8 +40,7 @@ export function isLearnTarget(mode, stat, fallback, today) {
   const want = LEARN_MODES[mode];
   if (want === undefined || learnStateOf(stat, fallback) !== want) return false;
   if (want !== LEARN_UNSURE) return true;
-  const day = storedState(stat) === LEARN_UNSURE && Number.isInteger(stat.lsd) ? stat.lsd : null;
-  return day === null || (Number.isInteger(today) && day < today);
+  return isUnsureDueToday(stat, today);
 }
 
 // このモードの列（id の並び。対象の語ぜんぶ。回の始めに 1 回だけ作る）。table = 語の記録、vocab = 公開の語（js/publicVocab.js）、pending = 上の fallback の Map

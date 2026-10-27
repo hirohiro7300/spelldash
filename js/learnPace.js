@@ -18,7 +18,7 @@
 //   本当の始めの日より後になりうる。そのときは割る日数が短くなる）。どの語にも跡が無ければ待ちの文。
 //   古い鍵 spelldash_book_pace（冊ごとの目安）は消さず、読まない。
 
-import { LEARN_UNSURE, countLearnStates, learnStateOf, storedState, learnDayOf, firstLearnedDay } from "./learnState.js";
+import { LEARN_UNSURE, countLearnStates, learnStateOf, learnDayOf, firstLearnedDay, isUnsureDueToday } from "./learnState.js";
 import { rankView } from "./rank.js";
 import { paceOf, PACE_DAYS, PACE_WAIT, PACE_DEVICE_NOTE } from "./bookPace.js";
 
@@ -32,8 +32,7 @@ export function unsureDueCount(table, vocab, pending, today) {
   for (const id of vocab.order) {
     const s = table?.[id];
     if (learnStateOf(s, pending?.get(id)) !== LEARN_UNSURE) continue;
-    const day = storedState(s) === LEARN_UNSURE && Number.isInteger(s.lsd) ? s.lsd : null;
-    if (day === null || (Number.isInteger(today) && day < today)) n++;
+    if (isUnsureDueToday(s, today)) n++;
   }
   return n;
 }

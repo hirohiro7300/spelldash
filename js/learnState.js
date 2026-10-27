@@ -46,6 +46,14 @@ export function learnStateOf(stat, fallback = LEARN_NEW) {
   return fallback === LEARN_UNSURE || fallback === LEARN_LEARNED ? fallback : LEARN_NEW;
 }
 
+// あやふやの語が「今日の分」か（今日まだ 1 日分を数えていない: 数えた日 lsd が無いか、今日より前）。
+// 中心の学習の出題の列（js/learnQueue.js）と学習状況の札（js/learnPace.js）が同じ決まりで数えるための 1 か所。
+// 欄の無い語（版 6 の間の式の あやふや）は数えた日を持たないので、今日の分に入る
+export function isUnsureDueToday(stat, today) {
+  const day = storedState(stat) === LEARN_UNSURE && Number.isInteger(stat.lsd) ? stat.lsd : null;
+  return day === null || (Number.isInteger(today) && day < today);
+}
+
 // 語の記録の状態の欄だけ（同期の取り込みで、端末の値を必ず残すのに使う: js/sync.js）
 export function learnFieldsOf(stat) {
   const out = {};

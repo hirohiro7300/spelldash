@@ -137,13 +137,9 @@ let publicLoading = null;
 export function loadPublicWords(subjectId = "english") {
   if (publicStore) return Promise.resolve(publicStore);
   publicLoading ??= import("./publicVocab.js")
-    .then((pv) => fetch(pv.PUBLIC_VOCAB_URL))
-    .then((res) => {
-      if (!res.ok) throw new Error(`公開の英単語: ${res.status}`);
-      return res.json();
-    })
-    .then(async (json) => {
-      const packs = Array.isArray(json?.packs) ? json.packs : [];
+    .then((pv) => pv.loadPublicVocab()) // 表は 1 ページに 1 回だけ取る（3 状態の数え方と同じ読み手）
+    .then(async (vocab) => {
+      const packs = vocab.packs;
       const lists = await Promise.all(packs.map((id) => loadCategory(subjectId, id)));
       const byId = new Map();
       const byPack = new Map();

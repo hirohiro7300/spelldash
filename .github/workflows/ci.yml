@@ -70,6 +70,12 @@ jobs:
       - name: 3 状態・スキーマ 7 の移行・最高到達ランクの決まり（js/learnState.js・js/rank.js・js/storage.js・js/sync.js・js/backup.js）
         run: node scripts/test-learn-state.mjs
 
+      - name: 中心の学習の出題の列（これから・あやふや・覚えた。js/learnQueue.js）
+        run: node scripts/test-learn-queue.mjs
+
+      - name: 学習状況の数・ランクの見せ方・覚えたで数える目安（js/learnPace.js・js/rank.js）
+        run: node scripts/test-learn-status.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 

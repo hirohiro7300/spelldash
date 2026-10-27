@@ -6,7 +6,7 @@
 
 export const PUBLIC_VOCAB_URL = "./data/public/english.json";
 
-// 表の JSON → 読み手の形 { id, label, total, order, source, positionOf(id), isPublic(id) }。
+// 表の JSON → 読み手の形 { id, label, total, order, packs, source, positionOf(id), isPublic(id) }（packs = カードを持つ巻の id の並び）。
 // order は学ぶ順（機能語は最後）。positionOf は order の何番目か（無い id は -1）。形が違う（語数と order の長さが合わない・id が重なる・文字列でない）なら投げる
 export function makePublicVocab(json) {
   const order = json?.order;
@@ -23,6 +23,7 @@ export function makePublicVocab(json) {
     label: json.label ?? "英単語",
     total: order.length,
     order: Object.freeze([...order]),
+    packs: Object.freeze(Array.isArray(json.packs) ? [...json.packs] : []),
     source: json.source ? Object.freeze({ ...json.source }) : null,
     positionOf: (id) => position.get(id) ?? -1,
     isPublic: (id) => position.has(id)

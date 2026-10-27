@@ -1125,7 +1125,8 @@ function finishLearnCounts() {
   if (!src || r.epoch !== recordsEpoch()) return { counts: null, rankUp: null };
   const counts = countLearnStates(getWordStats(), src.vocab, src.pending);
   const reached = rankFor(counts.learned, counts.total);
-  raiseRankPeak(reached);
+  // 回の始めに見せていたランク（最高到達と今の数の大きい方）も残す。まだ保存されていなかった段（移行の直後など）が、回の中の × で下がらないように
+  raiseRankPeak(Math.max(r.rankShown, reached));
   const before = r.rankShown;
   r.rankShown = Math.max(before, reached);
   return { counts, rankUp: reached > before ? { from: LEARN_RANK_NAMES[before], to: LEARN_RANK_NAMES[reached] } : null };
