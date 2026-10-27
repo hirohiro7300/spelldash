@@ -6,6 +6,8 @@
 //   ls    1 = あやふや、2 = 覚えた。欄が無ければ これから（0 は書かない）
 //   lsd   あやふやの語で、自力正解を数えた日（ローカル暦日の日番号: js/retentionCalc.js dayNoOf）。数えていなければ無い
 //   lsAt  中心の学習で最後に答えた時刻（ms）。状態が変わらない答えでも書く（あやふや・覚えたの出題の順に使う。Battle・Challenge は書かないので順が動かない）
+//   lsf   目安（js/learnPace.js）の「初めて覚えた」の印。中心の学習で初めて覚えたになった日（日番号。1 以上）か、0 = 数えない
+//         （移行・同期の初めの埋め・版 6 の式で覚えただった語。その語に中心の学習で初めて答えたときに付ける）。無ければまだ決めていない（Batch 78 段 4）
 // 書くのは js/stats.js recordLearnAnswer（中心の学習の 3 つのモードだけが呼ぶ）、スキーマ 7 の移行（js/storage.js。ls だけ）、同期の初めの埋め（js/sync.js。ls だけ）。
 // 数える母集団は公開の語（js/publicVocab.js）だけ。非公開の語の記録は残すが、欄を書かず、数えない。
 
@@ -17,7 +19,7 @@ export const LEARN_UNSURE = 1; // あやふや
 export const LEARN_LEARNED = 2; // 覚えた
 // 画面の名前はこの 3 つだけ（決定 §2。済み・習得・知ってたは出さない）。状態の値で引く
 export const LEARN_LABELS = Object.freeze(["これから", "あやふや", "覚えた"]);
-export const LEARN_FIELDS = Object.freeze(["ls", "lsd", "lsAt"]);
+export const LEARN_FIELDS = Object.freeze(["ls", "lsd", "lsAt", "lsf"]);
 
 // 欄に書いてある状態（1・2）。欄が無い・読めない値は null
 export function storedState(stat) {
@@ -109,15 +111,38 @@ export function nextLearnState(prev, clean, today) {
 
 // 中心の学習の 1 問の答えを語の記録に当てる（純）。stat = 答える前の語の記録（書き換えない）、kind = ANSWER_KINDS の値、nowMs = 答えた時刻、
 // fallback = 欄の無い語の状態（learnStateOf と同じ。移行が書けていない間だけ渡す）。数えた日は、欄に書いてある あやふや のときだけ読む。
-// 返り値 = 写した語の記録（ls・lsd・lsAt だけを替える。ほかの欄はそのまま）
+// 返り値 = 写した語の記録（ls・lsd・lsAt・lsf だけを替える。ほかの欄はそのまま）
 export function applyLearnAnswer(stat, kind, nowMs, fallback = LEARN_NEW) {
+  const prev = learnStateOf(stat, fallback);
   const day = storedState(stat) === LEARN_UNSURE && Number.isInteger(stat.lsd) ? stat.lsd : null;
-  const next = nextLearnState({ state: learnStateOf(stat, fallback), day }, isCleanKind(kind), learnDayOf(nowMs));
+  const today = learnDayOf(nowMs);
+  const next = nextLearnState({ state: prev, day }, isCleanKind(kind), today);
   const out = { ...stat, ls: next.state };
   if (next.day === null) delete out.lsd;
   else out.lsd = next.day;
   out.lsAt = nowMs;
+  const first = firstLearnedMark(stat, prev, next.state, today);
+  if (first !== null) out.lsf = first;
   return out;
+}
+
+// ===== 目安の「初めて覚えた」の印 lsf（js/learnPace.js が数える。Batch 78 段 4。決定 §6「新しい覚えたの増加だけ」） =====
+// 印はこの答えの写しに足すだけ（保存は recordLearnAnswer の同じ 1 回。setItem を増やさない）。一度付けたら替えない:
+//   - 印の無い語が 覚えた のまま答えた（移行・同期の初めの埋め・版 6 の式で 覚えた だった語）→ 0（数えない。外れて戻っても数えない）
+//   - 印の無い語が この答えで 覚えた になった → 今日の日番号（日が読めない時刻なら 0）
+//   - それ以外（これから・あやふやのまま、印のある語）→ 足さない（null）
+// 外れて戻った語は前の印のまま（もう一度は数えない）。移行・同期の埋め・今の書き手は印を書かない（その語に中心の学習で初めて答えたときに決まる）
+export function firstLearnedMark(stat, prevState, nextState, today) {
+  if (stat && stat.lsf !== undefined) return null;
+  if (prevState === LEARN_LEARNED) return 0;
+  if (nextState !== LEARN_LEARNED) return null;
+  return Number.isInteger(today) && today > 0 ? today : 0;
+}
+
+// 目安に数える「初めて覚えた日」（1 以上の日番号）。数えない・まだ決めていない語は null
+export function firstLearnedDay(stat) {
+  const v = stat?.lsf;
+  return Number.isInteger(v) && v > 0 ? v : null;
 }
 
 // ===== 移行・同期の初めの埋め（一度だけ書く） =====
