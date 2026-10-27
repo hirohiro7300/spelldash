@@ -46,6 +46,55 @@
     add column if not exists mastery_at timestamptz,
     add column if not exists known_on_sight boolean;
   ```
+- （いまは何も要らない。**案だけ・未実行・流すには創業者の明示の許可が要る**）3 つの状態（これから・あやふや・覚えた）と最高到達ランク（Batch 78。docs/SPEC_LEARN_STATE.md）は端末ごと（状態は word_stats の端末だけの欄 `ls`・`lsd`・`lsAt`、最高到達ランクは `spelldash_rank_peak`。送る行は 15 列のまま）。SQL が無い間、2 台目は初めの取り込みで移行の式から始まるので、1 台目と状態が違う語がある。**2 台で同じ状態を見せたくなったときに、下の SQL が要る**
+  - 足す列: word_progress に `learn_state smallint`（1 = あやふや・2 = 覚えた・NULL = 未設定）・`learn_state_at timestamptz`（中心の学習が状態を書いた時刻。マージの鍵）・`learn_ok_day integer`（あやふやの語で数えた日の日番号）。user_progress に `rank_peak smallint`（0〜8）・`rank_peak_at timestamptz`
+  - 既存の行の初めの値: **すべて NULL**（UPDATE で埋めない）。NULL は「不明」で、これからの意味に使わない。端末は NULL の行で自分の状態を残し、端末に語が無ければ移行の式で作る（今の初めの埋めと同じ）
+  - RLS・権限: 変わらない（行ごとの方針と表ごとの GRANT。列を足しても同じ）。管理画面の API は列を名指しで読むので影響なし
+  - 順番が大事: **(0) 同じプロジェクトで Supabase を復旧**（新しいプロジェクトだと user id が変わり、端末の記録の置き換えの確認が出る）→ **(1) 下の SQL を流す → (2) 確認の SELECT（列が増えた・`count(learn_state)` が 0）→ (3) 連絡** → こちらで `statToRow`／`rowToStat`（js/sync.js）と user_progress の送受信に列を足す。逆の順だと word_progress の送信が丸ごと失敗し続ける。マージは語ごとに `learn_state_at` の新しい方（行全体の `last_played` では決めない。Battle の出題でも新しくなる）、`rank_peak` は大きい方
+  ```sql
+  -- 案（未実行）。何度流しても同じ
+  begin;
+  alter table public.word_progress
+    add column if not exists learn_state smallint,
+    add column if not exists learn_state_at timestamptz,
+    add column if not exists learn_ok_day integer;
+  alter table public.user_progress
+    add column if not exists rank_peak smallint,
+    add column if not exists rank_peak_at timestamptz;
+  do $$
+  begin
+    if not exists (select 1 from pg_constraint where conname = 'word_progress_learn_state_check') then
+      alter table public.word_progress add constraint word_progress_learn_state_check check (learn_state is null or learn_state in (1, 2));
+    end if;
+    if not exists (select 1 from pg_constraint where conname = 'word_progress_learn_ok_day_check') then
+      alter table public.word_progress add constraint word_progress_learn_ok_day_check check (learn_ok_day is null or learn_ok_day between 0 and 200000);
+    end if;
+    if not exists (select 1 from pg_constraint where conname = 'user_progress_rank_peak_check') then
+      alter table public.user_progress add constraint user_progress_rank_peak_check check (rank_peak is null or rank_peak between 0 and 8);
+    end if;
+  end $$;
+  commit;
+  notify pgrst, 'reload schema';
+  -- 確認（読むだけ）
+  select count(*) as rows, count(learn_state) as rows_with_state from public.word_progress;
+  select count(*) as users, count(rank_peak) as users_with_peak from public.user_progress;
+  ```
+  - 戻し方（**先にクライアントを「列を送らない版」に戻してから**流す。消えるのはサーバーの写しだけで、各端末の欄と最高到達ランクは残る）:
+  ```sql
+  begin;
+  alter table public.user_progress
+    drop constraint if exists user_progress_rank_peak_check,
+    drop column if exists rank_peak_at,
+    drop column if exists rank_peak;
+  alter table public.word_progress
+    drop constraint if exists word_progress_learn_ok_day_check,
+    drop constraint if exists word_progress_learn_state_check,
+    drop column if exists learn_ok_day,
+    drop column if exists learn_state_at,
+    drop column if exists learn_state;
+  commit;
+  notify pgrst, 'reload schema';
+  ```
 - ☐ アプリ版（Capacitor）: Mac／Xcode／TestFlight。docs/APP.md。コードは Web と同じものを `npm run app:build` で `dist/` に出す
 - ☐ 任意: 貼られたときの絵（og-image）の再取得 — 2026-10-13 に絵を作り直し、全ページの og:image の URL に版 `?v=2` を付けた（SNS は絵を URL で覚える）。新しく貼られたリンクは新しい絵になる。前に貼られたページで古い絵（1000語・7カテゴリ・絵文字）が出続けるなら、各 SNS の投稿の確かめ・再取得の画面でページの URL を取り直す（コードの変更は要らない。docs/SPEC_TYPING.md §6）
 
