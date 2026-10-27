@@ -1034,18 +1034,15 @@ console.log("strict miss:");
   check("大小文字 (T4): はちゃんの一言「今日は Cu を覚えた」も元の綴り", homeT4.bubble.includes("Cu") && !/\bcu\b/.test(homeT4.bubble), JSON.stringify(homeT4));
   await pageC.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
   await pageC.waitForTimeout(700);
-  await pageC.$eval("#wordCategoryFilter", (el) => { el.value = "jsci1"; el.dispatchEvent(new Event("change")); }); // 単語のタブは畳まれている
+  await pageC.evaluate(() => { document.getElementById("statsMore").open = true; }); // 学習状況の「詳しい記録」（Batch 78 段 4。単語の一覧は学習状況から外した: 単語帳 list.html）
   await pageC.waitForTimeout(200);
   const statsT4 = await pageC.evaluate(() => ({
     learned: [...document.querySelectorAll("#learnedWordList .learned-item__en")].map((e) => e.textContent.trim()),
-    known: [...document.querySelectorAll("#knownWordList .known-words__item")].map((e) => e.textContent.trim()),
-    list: [...document.querySelectorAll("#wordList .word-item__detail")].map((e) => e.textContent.trim())
+    known: [...document.querySelectorAll("#knownWordList .known-words__item")].map((e) => e.textContent.trim())
   }));
-  check("大小文字 (T4): 学習データの覚えた単語帳は Cu・知ってた語は NaCl（元の綴り）",
+  check("大小文字 (T4): 学習状況の詳しい記録の「思い出せるようになった語」は Cu・「初めて見て正解した語」は NaCl（元の綴り）",
     statsT4.learned.includes("Cu") && !statsT4.learned.includes("cu") && statsT4.known.includes("NaCl") && !statsT4.known.includes("nacl"), JSON.stringify({ learned: statsT4.learned, known: statsT4.known }));
-  check("大小文字 (T4): 学習データの単語の一覧（jsci1）も Cu・NaCl（元の綴り）",
-    statsT4.list.includes("Cu") && statsT4.list.includes("NaCl") && !statsT4.list.includes("cu") && !statsT4.list.includes("nacl"), JSON.stringify(statsT4.list.slice(0, 12)));
-  check("大小文字 (T4) ホーム・学習データでエラー0", pageC.errors.length === 0, pageC.errors[0] ?? "");
+  check("大小文字 (T4) ホーム・学習状況でエラー0", pageC.errors.length === 0, pageC.errors[0] ?? "");
   await pageC.close();
 }
 
@@ -13489,7 +13486,7 @@ console.log("account emblem（アカウントの紋章）:");
     await page.close();
   }
 
-  // ---- (12) 320／390／1200 × 昼・夜（index・stats・reduced motion）: 頭文字の丸の縁は帯と 3:1 以上・ヘッダーの部品は重ならない・
+  // ---- (12) 320／390／1200 × 昼・夜（index・stats・reduced motion）: 頭文字の字は丸の地と 4.5:1 以上・ヘッダーの部品は重ならない・
   //           横スクロール 0・帯の高さは index 56／stats 57・動く物 0・名前はアメリカ人（ホバーの金箔の縁は紋章の絵があるときだけ: css/brand.css .avatar.has-emblem。絵はまだ無い） ----
   {
     const rows = [];
@@ -13506,21 +13503,22 @@ console.log("account emblem（アカウントの紋章）:");
         const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
         const over = (fg, bg) => { const [r, g, b, al = 1] = rgb(fg); const [R, G, B] = rgb(bg); return [r * al + R * (1 - al), g * al + G * (1 - al), b * al + B * (1 - al)]; };
         const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100; };
-        const vault = token("--vault");
-        const ring = getComputedStyle(document.getElementById("headerAvatar")).borderTopColor;
+        const av = document.getElementById("headerAvatar");
+        const fill = getComputedStyle(av).backgroundColor;
+        const ink = getComputedStyle(av.querySelector(".avatar__letter") ?? av).color;
         const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden]");
         const parts = [...document.querySelectorAll(".site-header .brand__mark, .site-header .site-nav__link, #headerStreak, #avatarButton")].filter(shown).map((el) => { const b = el.getBoundingClientRect(); return { n: el.id || el.textContent.trim().slice(0, 4), l: b.left, r: b.right, t: b.top, b: b.bottom }; });
         const overlap = [];
         for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) { const x = parts[i], y = parts[j]; if (Math.min(x.r, y.r) - Math.max(x.l, y.l) > 0.5 && Math.min(x.b, y.b) - Math.max(x.t, y.t) > 0.5) overlap.push(`${x.n}|${y.n}`); }
-        return { ring: ratio(over(ring, vault), rgb(vault)), overlap, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, anims: document.getAnimations().length };
+        return { letter: ratio(over(ink, fill), over(fill, token("--vault"))), overlap, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, anims: document.getAnimations().length };
       });
       const small = w <= 720;
       const ok = a.n === 0 && a.letterShown && a.box === (small ? "32,32" : "38,38") && a.header === (p === "/index.html" ? 56 : 57) &&
-        look.ring >= 3 && look.overlap.length === 0 && look.sw <= look.cw && look.anims === 0 && a.label === label("アメリカ人") && page.errors.length === 0;
+        look.letter >= 4.5 && look.overlap.length === 0 && look.sw <= look.cw && look.anims === 0 && a.label === label("アメリカ人") && page.errors.length === 0;
       rows.push({ theme, w, p, ok, a: ok ? undefined : a, look: ok ? undefined : look, err: page.errors[0] });
       await page.close();
     }
-    check("アカウントの紋章: 320／390／1200 × 昼・夜（index・stats・アメリカ人・連続 12 日）で、頭文字の丸（320／390 は 32px・1200 は 38px）・縁と帯の比 3 以上・ヘッダーの部品は重ならない・横スクロール 0・帯の高さ 56／57・reduced motion で動く物 0・エラー 0",
+    check("アカウントの紋章: 320／390／1200 × 昼・夜（index・stats・アメリカ人・連続 12 日）で、頭文字の丸（320／390 は 32px・1200 は 38px）・頭文字と丸の地の比 4.5 以上・ヘッダーの部品は重ならない・横スクロール 0・帯の高さ 56／57・reduced motion で動く物 0・エラー 0",
       rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
   }
 }
