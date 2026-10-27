@@ -220,7 +220,7 @@
 
     <!-- 最初の画面（Batch 78 段 4。創業者の決定 §6）: 覚えた N / 総数・ランク・次のランクまで・3 つの札（これから・あやふや・覚えた。どの幅でもこの順）。
          数は js/statsView.js renderLearnStatus が js/learnPace.js learnStatusOf から描く（3 状態の数・ランクは今の記録から。ランクは最高到達ランクより下げない） -->
-    <section class="learn-status" id="learnStatus" aria-labelledby="learnStatusTitle">
+    <section class="learn-status is-unavailable" id="learnStatus" aria-labelledby="learnStatusTitle">
       <h2 class="sr-only" id="learnStatusTitle">今の学習状況</h2>
       <div class="learn-sum" id="learnSum">
         <p class="learn-sum__count"><span class="learn-sum__label">覚えた</span> <strong class="learn-sum__n" id="learnCount">0</strong><span class="learn-sum__total"> / <span id="learnTotal">0</span>語</span></p>

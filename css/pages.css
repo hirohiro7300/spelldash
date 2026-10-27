@@ -3555,6 +3555,21 @@ html[data-theme] .learn-card__note {
   text-align: right;
 }
 
+/* 細い幅の 0 語の札: 短い 1 行は説明の下に左寄せ（右の狭い所に入れて説明を折り返させない） */
+@media (max-width: 559px) {
+  html[data-theme] .learn-card.is-empty {
+    grid-template-areas: "name count" "desc desc" "act act";
+  }
+
+  html[data-theme] .learn-card.is-empty .learn-card__act {
+    justify-self: start;
+  }
+
+  html[data-theme] .learn-card.is-empty .learn-card__note {
+    text-align: left;
+  }
+}
+
 html[data-theme] .learn-card.is-done .learn-card__note {
   color: var(--ink-2);
   font-weight: 600;
@@ -3628,7 +3643,7 @@ html[data-theme] .learn-pace__note {
   font-size: 12px;
 }
 
-/* 表が読めない（オフラインで公開の語の表が無い）: 数の代わりに何も描かない（0 を本当の数に見せない） */
+/* 描く前（HTML の初めの形）と表が読めない（オフラインで公開の語の表が無い）とき: 数を見せない（初めの 0 を本当の数に見せない。高さはそのまま） */
 html[data-theme] .learn-status.is-unavailable :is(.learn-sum, .learn-cards, .learn-pace) {
   visibility: hidden;
 }
