@@ -28,16 +28,16 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { initializeCategoryPicker } from "./categoryPicker.js";
 import { renderLearnedCard } from "./learnedCard.js";
-import { renderPath, currentUnitOf, buildPath } from "./pathView.js";
+import { renderPath, currentUnitOf, buildPath, renderFocusPath } from "./pathView.js";
 import { renderTodayStrip } from "./homeStrip.js";
-import { renderWelcome, dismissWelcome, shouldShowWelcome } from "./welcome.js";
+import { renderWelcome, dismissWelcome, shouldShowWelcome, isWelcomeOpen } from "./welcome.js";
 import { initializeKeyboard } from "./keyboard.js";
 import { renderPlayModes } from "./playModes.js";
 import { ensureDefaultCourse, advanceSection, startCourse, COURSES } from "./course.js";
 import { setFocusGenre } from "./studyQueue.js";
 import { setGenre } from "./genres.js";
 import { resumableFor } from "./sessionResume.js";
-import { setupUnloadSync } from "./sync.js";
+import { setupUnloadSync, isPulling } from "./sync.js";
 import { initializeMixControl } from "./studyMix.js";
 import "./installPrompt.js"; // beforeinstallprompt を早めに拾う（ホーム画面に追加）
 import { renderLoginNudge } from "./loginNudge.js";
@@ -48,8 +48,17 @@ import { initBookshelf, renderBookshelf, updateBookshelf, holdShelf, releaseShel
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
 import { getCategories, getPackCatalog } from "./wordStore.js";
 import { getGenre, genreLabel } from "./genres.js";
-import { getWordStats } from "./storage.js";
+import { getWordStats, loadLearnStates, learnStateSource, recordsEpoch } from "./storage.js";
 import { icon } from "./icons.js";
+import { countLearnStates, learnDayOf } from "./learnState.js";
+import { readRankPeak, raiseRankPeak, rankFor } from "./rank.js";
+import { isFocusOn, applyFocusFlag, takeOldHomeUrl, LEARN_NEXT_URL } from "./focus.js";
+
+// 英単語の学習に絞ったホーム（js/focus.js。Batch 78 段 5）: 旗が立っている間は、旧の面（机の本の章とコース・本棚・ほかの遊び方・Daily の札・
+// 出題の設定・前の数え方の「覚えた単語」・はちゃんの紙片・連続日数）を描かず、「英単語を学ぶ」1 つと覚えた N ／総数・ランク・学習状況へだけ（renderFocusHome）。
+// 旗が無ければ前のまま（下の !FOCUS の道。コードと保存の鍵は残す）
+const FOCUS = isFocusOn();
+applyFocusFlag();
 
 initializeAuth();
 setFooterYear();
@@ -65,6 +74,12 @@ setupUnloadSync();
 window.addEventListener("spelldash:packs", (event) => {
   if (!event.detail?.synced) return;
   initWordStore().then(() => {
+    if (FOCUS) {
+      // 英単語の学習に絞ったホーム: 教材の選択・本棚・はちゃんの紙片は描かない（数は 3 状態の材料から: renderFocusHome）
+      renderHome();
+      window.dispatchEvent(new CustomEvent("spelldash:store-ready"));
+      return;
+    }
     initializeCategoryPicker();
     renderHome(); // 語が変わったので道も描き直す
     renderLearnedCard();
@@ -79,12 +94,13 @@ window.addEventListener("spelldash:auth-ready", (event) => {
   if (event.detail?.loggedIn) dismissWelcome();
 });
 
-// 道が見えている間（プレイ前）の Enter は、見えない入力欄でゲームを始めず、道のスタートと同じ動きにする
+// 道が見えている間（プレイ前）の Enter は、見えない入力欄でゲームを始めず、道のスタートと同じ動きにする。
+// 英単語の学習に絞ったホームでは、保存した遊び方（Challenge）・単語帳のジャンルに関わらず「英単語を学ぶ」（見えない入力欄で Study・Challenge を始めない）
 elements.input.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
   if (document.body.classList.contains("home--playing")) return;
-  if (getMode() !== "study") return; // Challenge を選んでいる人の Enter は従来どおり
-  if (getGenre()) return; // 単語帳の「このジャンルを練習」で来た人は、その絞り込みのまま始める
+  if (!FOCUS && getMode() !== "study") return; // Challenge を選んでいる人の Enter は従来どおり
+  if (!FOCUS && getGenre()) return; // 単語帳の「このジャンルを練習」で来た人は、その絞り込みのまま始める
   const start = document.getElementById("pathStart");
   if (!start) return;
   event.preventDefault();
@@ -98,10 +114,10 @@ window.addEventListener("spelldash:synced", () => {
   skipTutorialIfReturning(); // 記録が届いた端末では初回の札を出さない
   renderHeaderStreak();
   renderLoginNudge(); // ログイン済みなら案内を消す（「この端末だけにある」を残さない）
-  renderLearnedCard();
+  if (!FOCUS) renderLearnedCard();
   renderHome();
   renderLevelBar();
-  renderHasumiHome();
+  if (!FOCUS) renderHasumiHome();
   initializeDisplay();
 });
 
@@ -250,6 +266,10 @@ function celebrateNewUnits(path) {
 }
 
 function renderHome() {
+  if (FOCUS) {
+    renderFocusHome();
+    return null; // 章の節目（celebrateNewUnits）は無い
+  }
   const path = renderPath({ onStart: startUnit, onAdvance: goNextSection, onCourse: chooseCourse });
   renderPlayModes({ onChallenge: startChallenge, onDaily: startDaily });
   renderSetupSummary();
@@ -285,7 +305,7 @@ async function pickBook(id) {
 const backToPath = document.getElementById("backToPath");
 if (backToPath) backToPath.innerHTML = `${icon("arrowLeft")}机に戻る`;
 backToPath?.addEventListener("click", () => {
-  setMode("study");
+  setMode("study", { save: !FOCUS }); // 英単語の学習に絞ったホームは、保存した遊び方（Challenge）を書き換えない
   stopGame(); // プレイ中のセットは中断する（setMode は同じモードだと止めない）
   showGame(false);
   renderHome();
@@ -300,7 +320,7 @@ window.addEventListener("spelldash:game-start", () => showGame(true));
 // セットが終わったら道の数字を更新（結果パネルはそのまま）
 window.addEventListener("spelldash:session-end", () => {
   const path = renderHome();
-  renderLearnedCard();
+  if (!FOCUS) renderLearnedCard();
   renderTodayStrip(); // チップの「途中」を「済み」に
   celebrateNewUnits(path);
 });
@@ -410,8 +430,8 @@ document.getElementById("categoryPicker")?.addEventListener("click", () => {
   }, 0);
 });
 
-// 初めての人には既定のコース（中学英語やり直し）を敷いてから語を読む
-ensureDefaultCourse();
+// 初めての人には既定のコース（中学英語やり直し）を敷いてから語を読む（英単語の学習に絞ったホームでは敷かない: 本・コースを選ばせない）
+if (!FOCUS) ensureDefaultCourse();
 
 // 単語データを読み込んでからゲームを有効化
 // 初めての人にはトップページ（語の読み込みを待たずに出す。アプリのホームが一瞬見えないように）。
@@ -421,7 +441,8 @@ ensureDefaultCourse();
 // 状態を替えたあとで本棚を作る（startShelf: 下見と同じ棚。js/bookshelf.js）。押してからそれまで本棚は保存しない（holdShelf。語の読み込みを待つ間も）
 const storeReady = initWordStore();
 renderWelcome({
-  onStart: (choice = {}) => {
+  // 英単語の学習に絞ったホーム: 「英単語を学ぶ」は中心の学習の入口へ（初めての人は これから の 1 語目から。js/learnQueue.js resolveNextMode）
+  onStart: FOCUS ? () => location.assign(LEARN_NEXT_URL) : (choice = {}) => {
     holdShelf();
     return storeReady.then(async () => {
       const change = startChoiceChanges(choice);
@@ -443,11 +464,102 @@ renderWelcome({
   }
 });
 
+// 英単語の学習に絞ったホームの数（覚えた N ／総数・ランク・次に学ぶ状態）。学習状況（js/statsView.js）と同じ材料と決まり（js/learnPace.js learnStatusOf・
+// js/learnQueue.js resolveNextMode）。描き直しが重なったら最後の 1 回だけ描く。材料が読めなければ数は出さない（ボタンは /?learn=next のまま）
+let focusSeq = 0;
+function renderFocusHome() {
+  // 初めての人の本が開いている間は数の材料を読まない（机は見えず、「英単語を学ぶ」でページを移る。初めの読み込みを軽くする）。
+  // 本が閉じたら（ログイン・同期で記録が届いた）読んで描く
+  if (isWelcomeOpen()) {
+    renderFocusHomeAfterWelcome();
+    return;
+  }
+  const seq = ++focusSeq;
+  const epoch = recordsEpoch();
+  loadFocusView()
+    .then((view) => {
+      if (seq !== focusSeq) return;
+      renderFocusPath(view);
+      if (view && view.computed > (readRankPeak() ?? -1)) raiseFocusPeakLater(epoch);
+    })
+    .catch(() => {
+      if (seq === focusSeq) renderFocusPath(null);
+    });
+}
+
+let welcomeWatch = null;
+function renderFocusHomeAfterWelcome() {
+  if (welcomeWatch) return;
+  welcomeWatch = new MutationObserver(() => {
+    if (isWelcomeOpen()) return;
+    welcomeWatch.disconnect();
+    welcomeWatch = null;
+    renderFocusHome();
+  });
+  welcomeWatch.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+}
+
+async function loadFocusView() {
+  const source = await loadLearnStates();
+  if (!source) return null;
+  const [P, Q] = await Promise.all([import("./learnPace.js"), import("./learnQueue.js")]);
+  const status = P.learnStatusOf({ table: getWordStats(), source, peak: readRankPeak(), today: learnDayOf(Date.now()) });
+  const mode = Q.resolveNextMode(status.counts, status.due);
+  return { ...status, mode, setSize: Q.LEARN_SET_SIZE[mode], doneToday: P.UNSURE_DONE_TODAY };
+}
+
+// 見せたランク（今の語数の段が最高到達ランクより上）を最高到達ランクに残す（後で下げない: 決定 §5）。学習状況（js/statsView.js raisePeakLater）と
+// 同じ守り: 別のタスクで今の記録から数え直して書く・取り込みの途中は待つ・ほかのタブで記録が置き換わったら書かない
+const FOCUS_PEAK_RETRY_MS = 500;
+let focusPeakTimer = null;
+function raiseFocusPeakLater(epoch) {
+  clearTimeout(focusPeakTimer);
+  const attempt = () => {
+    focusPeakTimer = null;
+    if (epoch !== recordsEpoch()) return;
+    if (isPulling()) {
+      focusPeakTimer = setTimeout(attempt, FOCUS_PEAK_RETRY_MS);
+      return;
+    }
+    const source = learnStateSource();
+    if (!source) return;
+    const { learned } = countLearnStates(getWordStats(), source.vocab, source.pending);
+    raiseRankPeak(rankFor(learned, source.vocab.total));
+  };
+  focusPeakTimer = setTimeout(attempt, 0);
+}
+
+// 英単語の学習に絞ったホーム: 古い URL（?words= ?add= ?category= と ?from=old）の引数を外して 1 行を出し（js/focus.js。値は使わない）、
+// 数は語の読み込みを待たずに 3 状態の材料から入れる。初回の本の判定（renderWelcome）は外す前の URL で行う（<head> の 1 行と同じ答えにする）
+if (FOCUS) {
+  takeOldHomeUrl();
+  renderHome();
+  // 何も選んでいないとき（焦点が body）の Enter は「英単語を学ぶ」（初めての人の本が開いていればその「英単語を学ぶ」）。説明を読まずに始められる
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229 || event.defaultPrevented) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    if (document.body.classList.contains("home--playing")) return;
+    const start = document.body.classList.contains("welcome-open") ? document.querySelector("#welcome [data-welcome-start]") : document.getElementById("pathStart");
+    if (!start) return;
+    event.preventDefault();
+    start.click();
+  });
+}
+
 storeReady
   .then(() => {
-    import("./bookPace.js").then((m) => m.watchBookPace()).catch(() => {}); // 一冊を終えるまでの目安の日次記録（端末だけ。Study の回の終わりに机の本を数える。答えの道の外）
+    // 一冊を終えるまでの目安の日次記録（端末だけ。Study の回の終わりに机の本を数える。答えの道の外）。英単語の学習に絞ったホームでは書かない
+    // （spelldash_book_pace は消さずに残す。学習状況の目安は中心の学習の「初めて覚えた」の印から: js/learnPace.js）
+    if (!FOCUS) import("./bookPace.js").then((m) => m.watchBookPace()).catch(() => {});
     // 動線の計測: 学んだ日が 7 日になった端末（1 回きり。docs/SQL_FUNNEL.md）
     if (getGrowthLog().filter((e) => e.active).length >= 7) logFunnel("day7");
+    if (FOCUS) {
+      renderLoginNudge();
+      initializeDisplay();
+      setMode("study", { save: false }); // 保存した遊び方が Challenge でも、ホームは中心の学習（盤面は Study。値は残す）
+      openLoginFromUrl();
+      return;
+    }
     initializeCategoryPicker();
     renderLearnedCard();
     renderHasumiHome(); // 語の読み込み後に（「今日覚えた」の語を名指しするため）
@@ -478,19 +590,7 @@ storeReady
       }
     }
 
-    // 静的ページ（お知らせ・規約・パック入口）の「ログイン」から来た: ?login=1 でログインのドロップダウンを開く
-    const loginUrl = new URL(location.href);
-    if (loginUrl.searchParams.get("login") === "1") {
-      loginUrl.searchParams.delete("login");
-      history.replaceState(null, "", `${loginUrl.pathname}${loginUrl.search}${loginUrl.hash}`);
-      // auth.js はセッション確認のあとで #accountGuest を出し、spelldash:auth-ready を投げる。それを待ってから開く
-      const openLogin = () => {
-        const guest = document.getElementById("accountGuest");
-        if (guest && !guest.hidden) document.getElementById("loginToggle")?.click();
-      };
-      if (!document.getElementById("accountGuest")?.hidden) openLogin();
-      else window.addEventListener("spelldash:auth-ready", openLogin, { once: true });
-    }
+    openLoginFromUrl();
   })
   .catch(() => {
     showMessage("単語データを読み込めなかった", "wrong");
@@ -501,6 +601,21 @@ storeReady
     button.addEventListener("click", () => location.reload());
     elements.message.append(" ", button);
   });
+
+// 静的ページ（お知らせ・規約・パック入口）の「ログイン」から来た: ?login=1 でログインのドロップダウンを開く
+function openLoginFromUrl() {
+  const loginUrl = new URL(location.href);
+  if (loginUrl.searchParams.get("login") !== "1") return;
+  loginUrl.searchParams.delete("login");
+  history.replaceState(null, "", `${loginUrl.pathname}${loginUrl.search}${loginUrl.hash}`);
+  // auth.js はセッション確認のあとで #accountGuest を出し、spelldash:auth-ready を投げる。それを待ってから開く
+  const openLogin = () => {
+    const guest = document.getElementById("accountGuest");
+    if (guest && !guest.hidden) document.getElementById("loginToggle")?.click();
+  };
+  if (!document.getElementById("accountGuest")?.hidden) openLogin();
+  else window.addEventListener("spelldash:auth-ready", openLogin, { once: true });
+}
 
 // スマホ: ソフトキーボードが開いて入力欄が隠れたら見える位置へ寄せる
 if (window.visualViewport) {

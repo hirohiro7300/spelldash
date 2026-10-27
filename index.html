@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-focus="english">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -12,7 +12,11 @@
   <!-- 初回（学習記録の無い端末）は最初の描画から初回の本: 判定だけここで行い html[data-first-visit] を置く。机を隠し初回の本を出すのは CSS（css/welcome.css。
        ページの中の置き場所に頼らない）。js/welcome.js が hidden に置き換えて印を外す。条件は js/welcome.js の shouldShowWelcome と同じ（鍵・空の文字列と壊れた JSON の読み方。
        E2E が同じ状態の表で 2 つを突き合わせる）。変えるときは両方を変える -->
-  <script id="firstVisit">(() => { try { const s = localStorage, q = new URLSearchParams(location.search), w = s.getItem("spelldash_word_stats"); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys((w && JSON.parse(w)) || {}).length > 0 || ["set","words","t","weekly","category","genre","mode"].some((k) => q.has(k)) || ["new","unsure","learned"].includes((q.get("learn") || "").trim()) || location.hash === "#play") return; document.documentElement.dataset.firstVisit = ""; } catch {} })();</script>
+  <script id="firstVisit">(() => { try { const s = localStorage, q = new URLSearchParams(location.search), w = s.getItem("spelldash_word_stats"); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys((w && JSON.parse(w)) || {}).length > 0 || ["set","words","t","weekly","category","genre","mode"].some((k) => q.has(k)) || ["new","unsure","learned","next"].includes((q.get("learn") || "").trim()) || location.hash === "#play") return; document.documentElement.dataset.firstVisit = ""; } catch {} })();</script>
+  <!-- 英単語の学習に絞ったホーム（html[data-focus="english"]。js/focus.js）: 古い URL（?words= ?add= ?category= と、転送・ページの守りのしるし ?from=old。
+       js/focus.js OLD_HOME_PARAMS・MOVED_URL と同じ決まり）で来たら、最初の描画から 1 行「英単語の学習にまとめました。」を出す（html[data-moved]。
+       CSS が #focusNote を出す。js/focus.js takeOldHomeUrl が引数を URL から外す） -->
+  <script id="focusMoved">(() => { try { const q = new URLSearchParams(location.search); if (document.documentElement.dataset.focus === "english" && (["words","add","category"].some((k) => q.has(k)) || q.get("from") === "old")) document.documentElement.dataset.moved = ""; } catch {} })();</script>
 
   <link rel="stylesheet" href="./css/reset.css" />
   <link rel="stylesheet" href="./css/fonts.css" />
@@ -103,6 +107,7 @@
   <link rel="modulepreload" href="./js/dailySet.js" />
   <link rel="modulepreload" href="./js/tutorial.js" />
   <link rel="modulepreload" href="./js/sessionResume.js" />
+  <link rel="modulepreload" href="./js/focus.js" />
   <link rel="modulepreload" href="./js/focusTrap.js" />
   <link rel="modulepreload" href="./js/shelves.js" />
   <link rel="modulepreload" href="./js/bgm.js" />
@@ -265,21 +270,25 @@
           <div class="desk__candle desk__candle--l" aria-hidden="true"></div>
           <div class="desk__candle desk__candle--s" aria-hidden="true"></div>
 
-          <!-- 初めて来た人向けのトップページ。学習データが無い初回だけ表示し、スタートでアプリ（机の本）に切り替える（js/welcome.js） -->
+          <!-- 古い画面・古い URL から来た人への 1 行（html[data-moved] のときだけ CSS が出す。js/focus.js FOCUS_NOTE と同じ文） -->
+          <p class="focus-note" id="focusNote" role="status">英単語の学習にまとめました。</p>
+
+          <!-- 初めて来た人向けのトップページ。学習データが無い初回だけ表示し、「英単語を学ぶ」で中心の学習（これから）を始める（js/welcome.js・js/main.js）。
+               英単語の学習に絞ったホーム（html[data-focus]。js/focus.js）では本を選ばせない: 積んだ本と「N冊から選ぶ」は出さない（中身は旗を外したときのために残す） -->
           <section class="welcome" id="welcome" hidden aria-label="SpellDash の紹介">
             <article class="tome tome--first" aria-labelledby="welcomeTitle">
               <div class="tome__block">
                 <div class="tome__page tome__page--l">
                   <p class="welcome__kicker runhead">登録なし・<wbr />無料・<wbr />ブラウザで動く</p>
-                  <h1 class="welcome__title tome__title" id="welcomeTitle"><span class="nb">本棚の<span class="n">1</span>冊を、</span><span class="nb">1日<span class="n">5</span>分。</span></h1>
+                  <h1 class="welcome__title tome__title" id="welcomeTitle"><span class="nb">ストレスなしで、</span><span class="nb">英単語を覚える。</span></h1>
                   <p class="welcome__lead">見て、思い出して、打つ。</p>
                 </div>
                 <div class="tome__page tome__page--r" id="welcomeBook" aria-live="polite">
-                  <p class="pick-k">最初の<span class="n">1</span>冊</p>
+                  <p class="pick-k">教材</p>
                   <p class="pick-t" data-f="t">英単語</p>
-                  <p class="pick-s" data-f="s">中学英語 <span class="n">1</span>年から・答えは英語</p>
-                  <div class="welcome__cta"><button type="button" class="start welcome__start" data-welcome-start data-book="jhs-english1">スタート</button></div>
-                  <p class="welcome__note" data-f="cap">腕試し10語（約3分）。知らない語は Enter で答えを見る。</p>
+                  <p class="pick-s" data-f="s">よく使う語から・答えは英語</p>
+                  <div class="welcome__cta"><button type="button" class="start welcome__start" data-welcome-start data-book="english">英単語を学ぶ</button></div>
+                  <p class="welcome__note" data-f="cap">1回10語。分からない語は Enter で答えを見る。</p>
                   <p class="login-line">使ったことがある人は <a href="#login" id="welcomeLogin">ログイン</a></p>
                 </div>
                 <div class="tome__page tome__page--demo">
@@ -320,16 +329,41 @@
             <section class="hero hero--compact" id="hero" hidden></section>
             <p class="auth-message auth-message--home" id="authMessage" role="status"></p>
 
-            <!-- 机の本: 左頁 = 書名・進み、右頁 = 今の章・今日のセット・スタート 1 個、目次 = 章の一覧。ホームの 1 画面目はこれだけ（js/pathView.js） -->
+            <!-- 机の本: 左頁 = 書名・進み、右頁 = 今の章・今日のセット・スタート 1 個、目次 = 章の一覧。ホームの 1 画面目はこれだけ（js/pathView.js）。
+                 英単語の学習に絞ったホーム（html[data-focus]。js/focus.js）: 左頁 = 「英単語」・覚えた N ／総数・ランク、右頁 = 次に学ぶ状態と「英単語を学ぶ」1 つ・学習状況へ。
+                 下の中身は最初の描画から出す（数は js/pathView.js renderFocusPath が 3 状態の材料を読んでから入れる。ボタンは js が無くても /?learn=next へ）。
+                 旗を外すと renderPath が書き換える -->
             <section class="path tome" id="pathCard" aria-label="机の本">
               <div class="tome__page tome__page--l">
-                <div id="pathHead"></div>
+                <div id="pathHead">
+                  <div class="path__head focus-home" id="focusHead">
+                    <div class="path__head-text">
+                      <p class="path__kicker runhead">教材</p>
+                      <h1 class="path__title tome__title">英単語</h1>
+                      <p class="path__meta tome__meta"><span class="nb">答えは英語</span></p>
+                      <div class="path__progress progress focus-home__sum" id="focusSum" role="img" aria-label="覚えた語の数">
+                        <div class="progress__rule"><i></i></div>
+                        <p class="progress__txt">覚えた <b class="n" id="focusLearned">0</b><span class="of">／<span id="focusTotal">0</span></span></p>
+                      </div>
+                      <p class="focus-home__rank" id="focusRank">ランク <b id="focusRankName">赤ちゃん</b></p>
+                    </div>
+                  </div>
+                </div>
                 <!-- 中心の学習の回（/?learn=。body.learn-run）の柱: 机の本の題の代わりに「英単語」だけ（js/game.js setLearnScreen・css/game.css） -->
                 <p class="learn-head tome__title" id="learnHead" hidden>英単語</p>
                 <div class="today__strip" id="todayStrip" aria-label="連続日数"></div>
               </div>
               <div class="tome__page tome__page--r">
-                <div id="pathNow"></div>
+                <div id="pathNow">
+                  <ol class="path__list path__list--now focus-home">
+                    <li class="path__node path__node--current path__node--now">
+                      <p class="path__chapter chap__k">次に学ぶ</p>
+                      <div class="path__label focus-home__next" id="focusNext"><b class="chap__t" id="focusMode">これから</b><span class="todays" id="focusModeSub">次の10語</span></div>
+                      <a class="path__start start focus-home__start" id="pathStart" href="/?learn=next" aria-describedby="focusNext">英単語を学ぶ</a>
+                      <p class="path__links tome__links"><a class="path__unit-link" id="focusStatus" href="./stats.html">学習状況</a></p>
+                    </li>
+                  </ol>
+                </div>
               </div>
               <div class="tome__page tome__page--toc">
                 <div id="pathList"></div>

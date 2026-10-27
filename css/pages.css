@@ -2347,6 +2347,11 @@ html[data-theme] .setting-row--install:has(#installCard:empty) {
   display: none;
 }
 
+/* 出題の設定（今日のセットの長さ・音で出題）: 英単語の学習に絞った間（html[data-focus="english"]。js/focus.js。Batch 78 段 5）は出さない。値は残す */
+html[data-theme][data-focus="english"] .setting-row--question {
+  display: none;
+}
+
 html[data-theme] .setting-block .setting-row:last-child {
   border-bottom: 1px solid var(--line);
 }
