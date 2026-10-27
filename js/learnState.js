@@ -35,12 +35,13 @@ export function stateFromRecord(stat, isDone) {
   return isDone(stat) ? LEARN_LEARNED : LEARN_UNSURE;
 }
 
-// 語の今の状態。欄があればその値、欄が無い語は これから。ただし isDone を渡したとき（スキーマ 7 の移行が済んでいない間だけ。
-// js/storage.js learnStateSource）は、欄の無い語を移行の式で読む（メモリーの中だけ。書かない）
-export function learnStateOf(stat, isDone = null) {
+// 語の今の状態。欄があればその値、欄が無い語は fallback（ふだんは これから）。
+// スキーマ 7 の移行が書けていない間だけ、呼ぶ側が fallback に「移行を試したときの記録から式で決めた状態」を渡す（js/storage.js learnStateSource の pending）。
+// 今の記録に式を当て直さない: 同じタスクで先に走る今の書き手や Battle の答えで動いた記録から読むと、状態を変えない答えで状態が動く（反証 F1）
+export function learnStateOf(stat, fallback = LEARN_NEW) {
   const s = storedState(stat);
   if (s !== null) return s;
-  return isDone ? stateFromRecord(stat, isDone) : LEARN_NEW;
+  return fallback === LEARN_UNSURE || fallback === LEARN_LEARNED ? fallback : LEARN_NEW;
 }
 
 // 語の記録の状態の欄だけ（同期の取り込みで、端末の値を必ず残すのに使う: js/sync.js）
@@ -91,7 +92,8 @@ export function isCleanKind(kind) {
 // prev = { state, day }（day = lsd。無ければ null）、clean = 自力正解か、today = 答えた日の日番号。返り値も { state, day }:
 //   これから + 自力正解 → 覚えた。これから + × → あやふや（数えた日なし）
 //   あやふや + 自力正解: 数えた日なし → 今日を 1 日目に／数えた日が今日より前 → 覚えた／今日 → 変わらない（同じ日は何回でも 1 日分）／
-//                        今日より後（時計が戻った・西へ日付をまたいだ）→ 今日を 1 日目に置き直す（前の日と今日を二重に数えない）
+//                        今日より後（時計が戻った・西へ日付をまたいだ）→ 変わらない（数えない。前に数えた日を残す: 前に数えた日より後の日だけを数える。
+//                        置き直すと、元の日に戻ったときにその日を 2 日目にも数える。dataloss d13・創業者に送った既定）
 //   あやふや + × → 数えた日を消す（その後の同じ日の自力正解が新しい 1 日目）
 //   覚えた + 自力正解 → 変わらない。覚えた + × → あやふや（数えた日なし）
 export function nextLearnState(prev, clean, today) {
@@ -100,17 +102,17 @@ export function nextLearnState(prev, clean, today) {
   if (!clean) return { state: LEARN_UNSURE, day: null };
   if (state !== LEARN_UNSURE) return { state: LEARN_LEARNED, day: null };
   if (!Number.isInteger(today)) return { state, day }; // 日が読めない時刻: 数えない
-  if (day === null || day > today) return { state: LEARN_UNSURE, day: today };
+  if (day === null) return { state: LEARN_UNSURE, day: today };
   if (day < today) return { state: LEARN_LEARNED, day: null };
-  return { state, day };
+  return { state, day }; // 今日・今日より後
 }
 
 // 中心の学習の 1 問の答えを語の記録に当てる（純）。stat = 答える前の語の記録（書き換えない）、kind = ANSWER_KINDS の値、nowMs = 答えた時刻、
-// isDone = スキーマ 7 の移行が済んでいない間だけ（欄の無い語を移行の式で読む）。数えた日は、欄に書いてある あやふや のときだけ読む。
+// fallback = 欄の無い語の状態（learnStateOf と同じ。移行が書けていない間だけ渡す）。数えた日は、欄に書いてある あやふや のときだけ読む。
 // 返り値 = 写した語の記録（ls・lsd・lsAt だけを替える。ほかの欄はそのまま）
-export function applyLearnAnswer(stat, kind, nowMs, isDone = null) {
+export function applyLearnAnswer(stat, kind, nowMs, fallback = LEARN_NEW) {
   const day = storedState(stat) === LEARN_UNSURE && Number.isInteger(stat.lsd) ? stat.lsd : null;
-  const next = nextLearnState({ state: learnStateOf(stat, isDone), day }, isCleanKind(kind), learnDayOf(nowMs));
+  const next = nextLearnState({ state: learnStateOf(stat, fallback), day }, isCleanKind(kind), learnDayOf(nowMs));
   const out = { ...stat, ls: next.state };
   if (next.day === null) delete out.lsd;
   else out.lsd = next.day;
@@ -123,10 +125,11 @@ export function applyLearnAnswer(stat, kind, nowMs, isDone = null) {
 // ほかの欄・非公開の語・欄のある語・表でない値には触らない。何度当てても同じ（欄のある語は飛ばす）。
 // before（同期の初めの埋めだけ）: 取り込む前の端末の表。その語に端末の答えの記録があれば埋めない
 // （端末で答えた語の状態は、同期で届いた行で変えない。答えが Battle のものでも。決定 §4）。
-// 返り値 { table: 埋めた表（埋めた語が無ければ null）, filled: 埋めた語の数 }
+// 返り値 { table: 埋めた表（埋めた語が無ければ null）, filled: 埋めた語の数, states: 埋めた語と状態（id → 1・2。Map。
+// 移行が書けなかったときの読み手と書き手の fallback: js/storage.js learnStateSource） }
 export function fillLearnStates(table, isPublic, isDone, before = null) {
   let next = null;
-  let filled = 0;
+  const states = new Map();
   for (const id of Object.keys(table ?? {})) {
     const s = table[id];
     if (!s || typeof s !== "object" || storedState(s) !== null || !isPublic(id)) continue;
@@ -135,9 +138,9 @@ export function fillLearnStates(table, isPublic, isDone, before = null) {
     if (state === LEARN_NEW) continue;
     next ??= { ...table };
     next[id] = { ...s, ls: state };
-    filled++;
+    states.set(id, state);
   }
-  return { table: next, filled };
+  return { table: next, filled: states.size, states };
 }
 
 // 埋める候補があるか（欄の無い語に答えの記録がある）。公開の語かは見ない（表を読まずに決められる: スキーマ 7 の移行を、候補の無い端末ではその場で済ませる）
@@ -148,12 +151,12 @@ export function hasUnfilled(table) {
 
 // ===== 数え方（回の始め・回の終わり・学習状況だけ。答えのたびには数えない） =====
 // 公開の語（vocab: js/publicVocab.js makePublicVocab）ごとに 1 回ずつ見る。これから = 総数 − あやふや − 覚えた（3 つの和は必ず総数）。
-// isDone は learnStateOf と同じ（移行が済んでいない間だけ）
-export function countLearnStates(table, vocab, isDone = null) {
+// pending = 移行が書けていない間だけ: 欄の無い語の状態（id → 1・2 の Map。js/storage.js learnStateSource。learnStateOf の fallback）
+export function countLearnStates(table, vocab, pending = null) {
   let unsure = 0;
   let learned = 0;
   for (const id of vocab.order) {
-    const s = learnStateOf(table?.[id], isDone);
+    const s = learnStateOf(table?.[id], pending?.get(id));
     if (s === LEARN_UNSURE) unsure++;
     else if (s === LEARN_LEARNED) learned++;
   }

@@ -221,8 +221,8 @@ eq("あやふや + 自力正解（数えた日なし）→ 今日が 1 日目", 
 eq("あやふや + 自力正解（数えた日が前の日）→ 覚えた", N(UNSURE, 99, true, 100), { state: LEARNED, day: null });
 eq("あやふや + 自力正解（数えた日がずっと前）→ 覚えた", N(UNSURE, 50, true, 100), { state: LEARNED, day: null });
 eq("あやふや + 自力正解（数えた日が今日）→ 変わらない", N(UNSURE, 100, true, 100), { state: UNSURE, day: 100 });
-eq("あやふや + 自力正解（数えた日が先の日 = 時計が戻った）→ 今日を 1 日目に", N(UNSURE, 102, true, 100), { state: UNSURE, day: 100 });
-eq("あやふや + 自力正解（数えた日が 1 日先）→ 今日を 1 日目に（覚えたにしない）", N(UNSURE, 101, true, 100), { state: UNSURE, day: 100 });
+eq("あやふや + 自力正解（数えた日が先の日 = 時計が戻った）→ 変わらない（前に数えた日を残す）", N(UNSURE, 102, true, 100), { state: UNSURE, day: 102 });
+eq("あやふや + 自力正解（数えた日が 1 日先 = 西へ日付をまたいだ）→ 変わらない（覚えたにしない・前に数えた日を残す）", N(UNSURE, 101, true, 100), { state: UNSURE, day: 101 });
 eq("あやふや + × → 数えた日を消す", N(UNSURE, 100, false, 100), { state: UNSURE, day: null });
 eq("覚えた + 自力正解 → 変わらない", N(LEARNED, null, true, 100), { state: LEARNED, day: null });
 eq("覚えた + × → あやふや（数えた日なし）", N(LEARNED, null, false, 100), { state: UNSURE, day: null });
@@ -275,10 +275,26 @@ for (const kind of [K.variant, K.altAccept, K.altIndex]) {
   eq(`別解（${kind}）は あやふや の 1 日分にも数える`, run([[D(0), K.miss], [D(1), kind], [D(2), kind]]).trail, [UNSURE, UNSURE, LEARNED]);
 }
 {
-  // 時計が戻る: 先の日（D 3）に数えた語を、時計を戻して D 1 に答える → 今日を 1 日目に置き直し、D 1 のうちは 覚えたにしない。D 2 で 覚えた
+  // 時計が戻る: 先の日（D 3）に数えた語を、時計を戻して D 1・D 2 に答えても数えない（前に数えた日 D 3 を残す）。D 3 も同じ日。D 4 で 覚えた
+  // （創業者に送った既定「前に数えた日より後の日だけを数える」・dataloss d13）
   const ahead = run([[D(3, 9), K.miss], [D(3, 10), K.exact]]).s;
-  const back = run([[D(1, 9), K.exact], [D(1, 20), K.exact], [D(2, 9), K.exact]], ahead);
-  eq("時計が戻った: 先の日に数えた語は、戻った日に 1 日目へ置き直し（二重に数えない）、次の日で 覚えた", [back.trail, run([[D(1, 9), K.exact]], ahead).s.lsd], [[UNSURE, UNSURE, LEARNED], dayOf(D(1))]);
+  const back = run([[D(1, 9), K.exact], [D(1, 20), K.exact], [D(2, 9), K.exact], [D(3, 11), K.exact], [D(4, 9), K.exact]], ahead);
+  eq("時計が戻った: 先の日に数えた語は、戻った日・数えた日には数えず（前に数えた日を残す）、その後の日で 覚えた", [back.trail, run([[D(1, 9), K.exact]], ahead).s.lsd], [[UNSURE, UNSURE, UNSURE, UNSURE, LEARNED], dayOf(D(3))]);
+  // d13: 数えた日 = N で、N−1・N・N+1 の自力正解 → 変わらない・変わらない・覚えた
+  const atN = { ...stat(), ls: UNSURE, lsd: dayOf(D(5)) };
+  eq("数えた日 N に、N−1・N・N+1 の自力正解 → 変わらない・変わらない・覚えた（dataloss d13）", run([[D(4, 12), K.exact], [D(5, 12), K.exact], [D(6, 12), K.exact]], atN).trail, [UNSURE, UNSURE, LEARNED]);
+  // 10/2 に 1 日目 → 時計を 1 日戻して 10/1 → 10/2 に戻す: 10/2 を 1 日目と 2 日目に二重に数えない（反証 M2・F2）
+  eq("10/2 → 時計を戻して 10/1 → 10/2 の自力正解は 1 日分（あやふや のまま）", run([[D(1, 10), K.exact], [D(0, 10, 5), K.exact], [D(1, 10, 10), K.exact]], { ...stat(), ls: UNSURE }).trail, [UNSURE, UNSURE, UNSURE]);
+  // 東京 10:00 → 3 時間後にホノルル（ローカルの日付は前の日）→ 6 時間後に東京（同じ JST の日）: 1 日分（西へ日付をまたいでも二重に数えない）
+  {
+    const tokyo = (h) => new RealDate(Date.UTC(2026, 9, 2, h - 9)).getTime();
+    const s1 = L.applyLearnAnswer({ ...stat(), ls: UNSURE }, K.exact, tokyo(10));
+    process.env.TZ = "Pacific/Honolulu";
+    const s2 = L.applyLearnAnswer(s1, K.exact, tokyo(13));
+    process.env.TZ = "Asia/Tokyo";
+    const s3 = L.applyLearnAnswer(s2, K.exact, tokyo(16));
+    eq("東京 → ホノルル（前の日）→ 東京（同じ日）の自力正解は 1 日分（あやふや・数えた日は東京の日）", [s1.ls, s2.ls, s3.ls, s3.lsd], [UNSURE, UNSURE, UNSURE, s1.lsd]);
+  }
   // 今日数えた後に時計を 1 日戻す: 前の日として 2 日目に数えない
   const today = run([[D(5, 9), K.miss], [D(5, 10), K.exact]]).s;
   eq("今日数えた後に時計を 1 日戻して答えても 覚えた にしない", run([[D(4, 23), K.exact]], today).trail, [UNSURE]);
@@ -303,10 +319,11 @@ for (const kind of [K.variant, K.altAccept, K.altIndex]) {
   eq("速さは見ない: 段・速さの欄があっても同じ答え", L.applyLearnAnswer({ ...stat(), masteryRank: 5, sp: [[1, 300, 50, "f", 1]] }, K.miss, D(0)).ls, L.applyLearnAnswer(stat(), K.miss, D(0)).ls);
 }
 {
-  // 移行が済んでいない間（isDone を渡す）: 欄の無い語は移行の式で読んで動かす
-  eq("移行の前: 欄の無い 覚えた の形の語に × → あやふや", run([[D(0), K.miss]], SHAPES.learning, isDone).trail, [UNSURE]);
-  eq("移行の前: 欄の無い 苦手 の形の語に自力正解 → 1 日目（あやふや）", run([[D(0), K.exact]], SHAPES.weak, isDone).trail, [UNSURE]);
-  eq("移行の後（isDone なし）: 欄の無い語は これから から（Battle の答えは数えない）", run([[D(0), K.exact]], SHAPES.weak).trail, [LEARNED]);
+  // 移行が書けていない間（fallback = 移行を試したときに式で決めた状態）: 欄の無い語はその状態から動かす
+  eq("移行の前: 欄の無い語（式で 覚えた）に × → あやふや", run([[D(0), K.miss]], SHAPES.learning, LEARNED).trail, [UNSURE]);
+  eq("移行の前: 欄の無い語（式で あやふや）に自力正解 → 1 日目（あやふや）", run([[D(0), K.exact]], SHAPES.weak, UNSURE).trail, [UNSURE]);
+  eq("移行の後（fallback なし）: 欄の無い語は これから から（Battle の答えは数えない）", run([[D(0), K.exact]], SHAPES.weak).trail, [LEARNED]);
+  eq("fallback は 1・2 だけ（ほかの値は これから）・欄があれば欄の値", [L.learnStateOf(stat(), 3), L.learnStateOf(stat(), "2"), L.learnStateOf(stat(), LEARNED), L.learnStateOf({ ...stat(), ls: UNSURE }, LEARNED)], [NEW, NEW, LEARNED, UNSURE]);
 }
 
 // ── 4. 旧の記録からの移行（stateFromRecord。今の「済み」と同じ定義: js/categoryProgress.js classifyWord） ─────────────
@@ -369,7 +386,7 @@ const table0 = () => ({
   ok("埋める候補があるか（hasUnfilled）: 前 true・後 false", L.hasUnfilled(t) && !L.hasUnfilled({ [PUB[0]]: one.table[PUB[0]], [PUB[2]]: SHAPES.played }));
   const c = L.countLearnStates(one.table, VOCAB);
   eq("数: 公開の語だけ（非公開の 3 語は数えない）", c, { new: VOCAB.total - 6, unsure: 2, learned: 4, total: VOCAB.total });
-  eq("移行の前の読み（isDone）は移行の後の数と同じ", L.countLearnStates(t, VOCAB, isDone), c);
+  eq("移行の前の読み（埋めた語の状態 states を pending に）は移行の後の数と同じ", [L.countLearnStates(t, VOCAB, one.states), [...one.states.values()]], [c, [2, 1, 2, 2, 1]]);
   eq("同期の初めの埋め: 取り込む前の端末に答えのある語は埋めない", L.fillLearnStates({ [PUB[0]]: SHAPES.learning, [PUB[1]]: SHAPES.learning, [PUB[2]]: SHAPES.weak }, VOCAB.isPublic, isDone, { [PUB[0]]: SHAPES.failOnly, [PUB[1]]: SHAPES.played }).table, { [PUB[0]]: SHAPES.learning, [PUB[1]]: { ...SHAPES.learning, ls: 2 }, [PUB[2]]: { ...SHAPES.weak, ls: 1 } });
 }
 {
@@ -452,8 +469,8 @@ const schema6 = () => ({ spelldash_schema_version: "6", spelldash_word_stats: JS
   const t = JSON.parse(LS.getItem("spelldash_word_stats"));
   eq("版 6 の記録を開く → 版 7・欄を埋める（公開の語だけ）", [LS.getItem("spelldash_schema_version"), PUB.slice(0, 7).map((id) => t[id].ls)], ["7", [2, 1, undefined, 2, 2, 2, 1]]);
   eq("非公開の語・ほかの鍵はそのまま", [t["concept-ad-cpc"], t["my-river"], t["english-zzz-not-public"], t[PUB[7]], LS.getItem("spelldash_xp")], [SHAPES.learning, SHAPES.weak, SHAPES.learning, "broken", "120"]);
-  ok("移行の後の読み手の材料: isDone なし（欄の無い語は これから）", src && src.isDone === null && src.vocab.total === T);
-  eq("移行の後の数", L.countLearnStates(t, src.vocab, src.isDone), { new: T - 6, unsure: 2, learned: 4, total: T });
+  ok("移行の後の読み手の材料: pending なし（欄の無い語は これから）", src && src.pending === null && src.vocab.total === T);
+  eq("移行の後の数", L.countLearnStates(t, src.vocab, src.pending), { new: T - 6, unsure: 2, learned: 4, total: T });
   ok("表は 1 回だけ取る", fetchCalls - calls === 1);
   const text = LS.getItem("spelldash_word_stats");
   const m2 = await openStorage();
@@ -493,8 +510,8 @@ const schema6 = () => ({ spelldash_schema_version: "6", spelldash_word_stats: JS
   } catch {
     threw = true;
   }
-  eq("容量で書けない: 読み込みは投げない・版 6 のまま・表は同じ文字列・保存の失敗を知らせる", [threw, LS.getItem("spelldash_schema_version"), LS.getItem("spelldash_word_stats") === text, failed.length], [false, "6", true, 1]);
-  ok("その間の読み手は移行の式で読む（isDone あり）・数は移行の後と同じ", src && typeof src.isDone === "function" && isDeepStrictEqual(L.countLearnStates(JSON.parse(text), src.vocab, src.isDone), { new: T - 6, unsure: 2, learned: 4, total: T }));
+  eq("容量で書けない: 読み込みは投げない・版 6 のまま・表は同じ文字列・保存の失敗を知らせる（移行の失敗の印つき）", [threw, LS.getItem("spelldash_schema_version"), LS.getItem("spelldash_word_stats") === text, failed.length, failed[0]?.detail?.migration], [false, "6", true, 1, true]);
+  ok("その間の読み手は、移行を試したときに式で決めた状態で読む（pending）・数は移行の後と同じ", src && src.pending instanceof Map && isDeepStrictEqual(L.countLearnStates(JSON.parse(text), src.vocab, src.pending), { new: T - 6, unsure: 2, learned: 4, total: T }));
   LS.limit = Infinity;
   const m = await openStorage();
   await m.loadLearnStates();
@@ -592,23 +609,57 @@ const W = PUB[20];
   LS.limit = [...LS.map].reduce((n, [k, v]) => n + k.length + v.length, 0); // これ以上増やせない
   clock = D(4, 9);
   const saved = await ST.recordLearnAnswer(W, K.exact);
-  eq("保存に失敗: false・失敗の知らせ 1 回・保存は前のまま", [saved, failed.length, LS.getItem("spelldash_word_stats") === text], [false, 1, true]);
+  eq("保存に失敗: false・失敗の知らせ 1 回（移行の失敗の印なし）・保存は前のまま", [saved, failed.length, failed[0]?.detail?.migration, LS.getItem("spelldash_word_stats") === text], [false, 1, false, true]);
   LS.limit = Infinity;
   const again = await ST.recordLearnAnswer(W, K.exact);
   eq("容量が空いた後: 保存から読み直して書く（前の失敗の分は入っていない）", [again, JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls], [true, 2]);
   eq("書きかけが無いときの whenWordStatsSaved は最後の成否", await S.whenWordStatsSaved(), true);
 }
 {
-  // 版 7 の前（移行が書けなかった端末）: 書き手も欄の無い語を移行の式で読む
-  LS = new FakeStorage({ spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify({ [W]: SHAPES.learning }) });
-  S.forgetWordStats();
-  clock = D(5, 9);
-  await ST.recordLearnAnswer(W, K.miss);
-  eq("版 6 の端末: 欄の無い 覚えた の形の語に × → あやふや（これから 扱いで 覚えた にしない）", JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, 1);
+  // 版 7 の前（移行が容量で書けなかった端末）: 書き手も欄の無い語を、移行を試したときに式で決めた状態で読む
+  const v6 = async (shape) => {
+    const seed = { spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify({ [W]: shape }) };
+    LS = new FakeStorage(seed, Object.entries(seed).reduce((n, [k, v]) => n + k.length + v.length, 0) + 4); // 移行の「,"ls":…」が入らない
+    S.forgetWordStats();
+    await S.loadLearnStates();
+    LS.limit = Infinity;
+  };
   LS = new FakeStorage({ spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify({ [W]: SHAPES.weak }) });
   S.forgetWordStats();
+  eq("版 6 で移行をまだ試していない: 書き手は書かない（false。材料を待つ）", [await ST.recordLearnAnswer(W, K.exact), "ls" in JSON.parse(LS.getItem("spelldash_word_stats"))[W]], [false, false]);
+  await v6(SHAPES.learning);
+  clock = D(5, 9);
+  await ST.recordLearnAnswer(W, K.miss);
+  eq("版 6 の端末: 欄の無い 覚えた の形の語に × → あやふや（これから 扱いで 覚えた にしない）", [LS.getItem("spelldash_schema_version"), JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls], ["6", 1]);
+  await v6(SHAPES.weak);
   await ST.recordLearnAnswer(W, K.exact);
   eq("版 6 の端末: 欄の無い 苦手 の形の語の自力正解は 1 日目（初回の 覚えた にしない）", JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, 1);
+}
+{
+  // 版 7 の前（移行が容量で書けなかった端末）: 欄の無い語は、移行を試したときの記録から式で決めた状態で読む。同じタスクで先に走る今の書き手
+  // （recordPlay・recordCorrect・recordRecallSuccess）や Battle の書き手で動いた記録を、式で読み直さない（反証 F1。決定 §3・§4）
+  const V = PUB[23];
+  const seed = { spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify({ [W]: SHAPES.weak, [V]: SHAPES.weak, [PUB[24]]: SHAPES.played }) };
+  LS = new FakeStorage(seed, Object.entries(seed).reduce((n, [k, v]) => n + k.length + v.length, 0) + 12); // 移行の「,"ls":1」2 語ぶんが入らない
+  S.forgetWordStats();
+  const src = await S.loadLearnStates();
+  eq("移行が容量で書けない: 版 6 のまま・読み手の材料はある", [LS.getItem("spelldash_schema_version"), !!src], ["6", true]);
+  LS.limit = Infinity; // 1 問ぶんの書き込みは入る
+  const count = () => L.countLearnStates(S.getWordStats(), src.vocab, src.pending);
+  const before = count();
+  clock = D(10, 9);
+  ST.recordPlay(V); // Battle の答え（状態の書き手は呼ばない）
+  ST.recordCorrect(V, true);
+  ST.recordRecallSuccess(V, { clean: true, speed: "normal" });
+  S.flushWordStats();
+  eq("版 6 の端末: 今の書き手（Battle の形）だけでは 3 状態の数は変わらない", count(), before);
+  clock = D(10, 10);
+  ST.recordPlay(W); // 中心の学習の 1 問: 今の書き手の後に状態の書き手
+  ST.recordCorrect(W, true);
+  ST.recordRecallSuccess(W, { clean: true, speed: "normal" });
+  const saved = await ST.recordLearnAnswer(W, K.exact);
+  const t = JSON.parse(LS.getItem("spelldash_word_stats"));
+  eq("版 6 の端末: 式で あやふや の語は、今の書き手の後の 1 回の自力正解で 1 日目（覚えた にしない）", [saved, t[W].ls, t[W].lsd], [true, UNSURE, dayOf(D(10))]);
 }
 {
   // 複数のタブ（dataloss d12）: ほかのタブが書いた欄を次のタスクで読み直して決める（同じ日を 2 回数えない）。記録の置き換えで回を終える
@@ -656,8 +707,8 @@ clock = null;
 // ── 10. 同期（js/sync.js initialSync） ─────────────
 const row = (wordId, over = {}) => ({ user_id: "u1", word_id: wordId, play_count: 5, correct_count: 3, typing_miss: 0, recall_fail: 2, clean_correct_streak: 0, mastered: false, mastered_at: null, last_played: iso(D(20)), next_review_at: iso(D(20)), last_recall_fail_at: iso(D(20)), last_recall_success_at: iso(D(10)), daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: iso(D(20)), ...over });
 const SENT_COLUMNS = ["user_id", "word_id", "play_count", "correct_count", "typing_miss", "recall_fail", "clean_correct_streak", "mastered", "mastered_at", "last_played", "next_review_at", "last_recall_fail_at", "last_recall_success_at", "daily_learning_date", "daily_learning_stage", "srs_advanced_on", "updated_at"];
-async function sync(seed, { user = "u1", rows = [], answer = true } = {}) {
-  LS = new FakeStorage(seed);
+async function sync(seed, { user = "u1", rows = [], answer = true, limit = Infinity } = {}) {
+  LS = new FakeStorage(seed, limit);
   SS = new FakeStorage();
   S.forgetWordStats();
   cloud.user = user;
@@ -701,6 +752,19 @@ const E = PUB[33];
   eq("版 6 の取り込み: 埋めない・印を付けない（移行が埋める）", [v6.t[A].ls, LS.getItem("spelldash_learn_filled")], [undefined, null]);
 }
 {
+  // 初めの埋めの保存が容量で書けない: 埋めの印を付けない（次の取り込みでやり直す）。容量が空いた後の取り込みで埋める（反証 M1・dataloss d5）
+  const rows = PUB.slice(100, 150).map((id) => row(id, { recall_fail: 0, last_recall_fail_at: null, correct_count: 1, clean_correct_streak: 1 }));
+  await sync({ spelldash_schema_version: "7" }, { rows }); // 容量なしで 1 回流して、埋めた表の字数を知る
+  const filledChars = LS.getItem("spelldash_word_stats").length;
+  const others = [...LS.map].filter(([k]) => k !== "spelldash_word_stats").reduce((n, [k, v]) => n + k.length + v.length, 0);
+  const limit = others + "spelldash_word_stats".length + filledChars - rows.length * ',"ls":2'.length + 100; // 欄の無い表は入り、欄のある表は入らない
+  const failed = seen("spelldash:save-failed");
+  const first = await sync({ spelldash_schema_version: "7" }, { rows, limit });
+  eq("初めの埋めの保存が容量で書けない: 印を付けない・表は入っていない・保存の失敗を知らせる", [LS.getItem("spelldash_learn_filled"), Object.keys(first.t).length, failed.length > 0], [null, 0, true]);
+  const again = await sync({ ...LS.dump() }, { rows });
+  eq("容量が空いた次の取り込み: 埋める（覚えた 50 語）・印を付ける", [Object.values(again.t).filter((x) => x.ls === LEARNED).length, LS.getItem("spelldash_learn_filled")], [rows.length, "u1"]);
+}
+{
   // 別のアカウントに置き換え: 前の人の状態・最高到達ランク・埋めの印は消え、新しい人の行は初めの埋めで決める（決定 §8・dataloss d6）
   const seed = { spelldash_schema_version: "7", spelldash_owner: "u0", spelldash_rank_peak: "6", spelldash_learn_filled: "u0", spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2 }, [B]: { ...SHAPES.learning, ls: 2 } }) };
   const { result, t } = await sync(seed, { user: "u1", rows: [row(B)] });
@@ -712,11 +776,14 @@ const E = PUB[33];
   // ログアウトの後に答えた記録: 同じアカウントで入り直すときに足すかをたずねる（dataloss d7。創業者に送った既定）
   const base = { spelldash_schema_version: "7", spelldash_owner: "u1", spelldash_learn_filled: "u1" };
   LS = new FakeStorage(base);
+  clock = D(10, 9);
   SY.clearSyncedFlag(); // ログアウト
   const out = LS.getItem("spelldash_logout_at");
-  ok("ログアウトで時刻を残す（持ち主のある端末）", Date.parse(out) > 0);
+  ok("ログアウトで時刻を残す（持ち主のある端末）", out === iso(D(10, 9)));
+  clock = D(10, 15);
   SY.clearSyncedFlag();
-  ok("2 回目（ログインをやめた）では上書きしない", LS.getItem("spelldash_logout_at") === out);
+  clock = null;
+  ok("2 回目（ログインをやめた）では上書きしない（最初のログアウトの時刻のまま）", LS.getItem("spelldash_logout_at") === out);
   const after = { ...base, spelldash_logout_at: iso(D(10)), spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2, lastPlayed: iso(D(11)), lastRecallSuccessAt: iso(D(11)) } }) };
   const no = await sync(after, { rows: [], answer: false });
   eq("ログアウトの後の記録あり・断る: cancelled・確認の文は今の文・何も書かない", [no.result, confirms, LS.getItem("spelldash_word_stats") === after.spelldash_word_stats, LS.getItem("spelldash_logout_at")], ["cancelled", ["この端末の記録を、このアカウントの記録に足す。別の人の記録なら、キャンセルしてログインをやめる。"], true, iso(D(10))]);
@@ -724,6 +791,8 @@ const E = PUB[33];
   eq("ログアウトの後の記録あり・足す: 同期して時刻を消す", [yes.result, confirms.length, LS.getItem("spelldash_logout_at"), yes.t[A].ls], ["same", 1, null, 2]);
   const quietRelogin = await sync({ ...base, spelldash_logout_at: iso(D(10)), spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2, lastPlayed: iso(D(9)), lastRecallSuccessAt: iso(D(9)) } }) }, { rows: [] });
   eq("ログアウトの後に記録が無ければたずねない", [quietRelogin.result, confirms.length], ["same", 0]);
+  const lsAtOnly = await sync({ ...base, spelldash_logout_at: iso(D(10)), spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 1, lsAt: D(11), lastPlayed: iso(D(9)), lastRecallSuccessAt: iso(D(9)) } }) }, { rows: [], answer: false });
+  eq("ログアウトの後に中心の学習で答えた時刻（lsAt）だけが新しい語でもたずねる", [lsAtOnly.result, confirms.length], ["cancelled", 1]);
 }
 
 // ── 11. バックアップと復元（js/backup.js） ─────────────
@@ -739,14 +808,14 @@ const E = PUB[33];
   for (const id of PUB.slice(0, 130)) many[id] = SHAPES.learning; // 130 語が済み → よちよち（1）
   many["concept-ad-cpc"] = SHAPES.weak;
   const backup = { app: "SpellDash", version: 1, exportedAt: iso(D(0)), data: { spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify(many), spelldash_xp: "50" } };
-  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_rank_peak: "0", spelldash_owner: "u1", spelldash_learn_filled: "u1", spelldash_word_stats: "{}" });
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_rank_peak: "0", spelldash_owner: "u1", spelldash_learn_filled: "u1", spelldash_logout_at: iso(D(0)), spelldash_word_stats: "{}" });
   SS = new FakeStorage({ spelldash_synced_this_session: "u1", spelldash_pulled_this_session: "u1", spelldash_sync_done_this_session: "u1", spelldash_pull_started_at: "1" });
   S.forgetWordStats();
   const summary = BK.applyBackup(backup);
   const t = JSON.parse(LS.getItem("spelldash_word_stats"));
   eq("版 6 のバックアップを戻すと、返る前に版 7・欄が入る（非公開の語は欄なし）", [summary.words, LS.getItem("spelldash_schema_version"), t[PUB[0]].ls, t[PUB[129]].ls, "ls" in t["concept-ad-cpc"]], [131, "7", 2, 2, false]);
   eq("戻した後の最高到達ランク = 今の数の段（前 0・バックアップに無し・今 130 語 = よちよち）", LS.getItem("spelldash_rank_peak"), "1");
-  eq("ログイン中のタブの同期の印は消す（次に取り込みからやり直す: 古い行でクラウドを上書きしない）・持ち主と埋めの印も消す", [SS.length, LS.getItem("spelldash_owner"), LS.getItem("spelldash_learn_filled")], [0, null, null]);
+  eq("ログイン中のタブの同期の印は消す（次に取り込みからやり直す: 古い行でクラウドを上書きしない）・持ち主・埋めの印・ログアウトの時刻も消す", [SS.length, LS.getItem("spelldash_owner"), LS.getItem("spelldash_learn_filled"), LS.getItem("spelldash_logout_at")], [0, null, null, null]);
   LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_rank_peak: "5", spelldash_word_stats: "{}" });
   S.forgetWordStats();
   BK.applyBackup({ ...backup, data: { ...backup.data, spelldash_rank_peak: "3" } });

@@ -152,7 +152,7 @@ function keepRankPeak(before, backup) {
   let now = null;
   const source = learnStateSource();
   if (source) {
-    const counts = countLearnStates(getWordStats(), source.vocab, source.isDone);
+    const counts = countLearnStates(getWordStats(), source.vocab, source.pending);
     now = rankFor(counts.learned, counts.total);
   }
   const peak = Math.max(before ?? -1, backup ?? -1, now ?? -1);
@@ -209,7 +209,10 @@ export function clearLocalRecords() {
 
 // 読むあいだに、復元で使う材料（公開の語の表と旧の判定。js/storage.js loadLearnStateDeps）も読んでおく: applyBackup がその場で版 7 にし、
 // 最高到達ランクを戻した記録の今の数と比べられる（applyBackup は確認の窓と同じタスクで走るので、そこでは待てない）。
-// 材料が読めなくても復元は止めない（版 7 の段は後から: js/storage.js）
+// 材料が読めなくても復元は止めない（版 7 の段は後から: js/storage.js）。ファイルを読んだ後に材料を待つのは DEPS_WAIT_MS まで
+// （つながりが止まっていても、復元の確認を待たせない）
+const DEPS_WAIT_MS = 3000;
+
 export function readBackupFile(file) {
   const deps = loadLearnStateDeps();
   return new Promise((resolve, reject) => {
@@ -223,5 +226,14 @@ export function readBackupFile(file) {
     };
     reader.onerror = () => reject(new Error("ファイルを読み取れませんでした。"));
     reader.readAsText(file);
-  }).then((obj) => deps.then(() => obj));
+  }).then((obj) => {
+    let timer = null;
+    const waited = new Promise((resolve) => {
+      timer = setTimeout(resolve, DEPS_WAIT_MS);
+    });
+    return Promise.race([deps, waited]).then(() => {
+      clearTimeout(timer);
+      return obj;
+    });
+  });
 }

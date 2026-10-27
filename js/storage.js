@@ -217,7 +217,8 @@ function dropDraft() {
 }
 
 // 保存の成否（受け入れ基準 14: 保存に失敗したら、成功したような表示をしない）。flushWordStats が書くたびに決める。
-// 待つ人（whenWordStatsSaved）には、このタスクの書き込みの成否を返す。失敗したら spelldash:save-failed も投げる（画面が短い 1 行を出す）
+// 待つ人（whenWordStatsSaved）には、このタスクの書き込みの成否を返す。失敗したら spelldash:save-failed も投げる（画面が短い 1 行を出す）。
+// detail.migration = スキーマ 7 の移行の書き込み（読み込みのたびに試すので、だれも答えていないページでも来る。答えの失敗の 1 行は出さない）
 let lastSaveOk = true;
 let saveWaiters = [];
 
@@ -235,9 +236,9 @@ function settleSave(ok) {
   if (!ok) notifySaveFailed();
 }
 
-function notifySaveFailed() {
+function notifySaveFailed(migration = false) {
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof CustomEvent === "function") {
-    window.dispatchEvent(new CustomEvent("spelldash:save-failed"));
+    window.dispatchEvent(new CustomEvent("spelldash:save-failed", { detail: { migration } }));
   }
 }
 
@@ -313,6 +314,7 @@ export function forgetWordStats() {
   const waiters = saveWaiters; // 捨てた書きかけを待っていた人には「保存していない」
   saveWaiters = [];
   for (const resolve of waiters) resolve(false);
+  forgetLearnPending(); // 記録が置き換わった: 前の表で決めた移行の状態は使わない（次の loadLearnStates で、新しい表に移行を試し直す）
 }
 
 // ===== スキーマ 7: 3 状態の欄（ls。js/learnState.js・docs/SPEC_LEARN_STATE.md。Batch 78） =====
@@ -320,10 +322,18 @@ export function forgetWordStats() {
 // モジュールを連れてくる）が要るので、どちらも後から読む（動的 import。版 7 の端末と、埋める語の無い端末は読まない）。
 // 移行は一度だけ: 状態の欄の無い公開の語のうち、答えの記録がある語に ls だけを書く（ほかの欄・非公開の語・欄のある語には触らない。何度流しても同じ）。
 // 版は書けてから 7 に上げる。書けなかった（容量）・表が読めなかった（オフライン）ときは版 6 のまま、ページは止めない（モジュールの頭から投げない）。
-// その間、読み手と書き手は欄の無い語を移行の式で読む（learnStateSource の isDone。メモリーの中だけ）。次に開いたときにやり直す（dataloss d1・d2）
+// その間、読み手と書き手は欄の無い語を、移行を試したときの記録から式で決めた状態で読む（learnPending。メモリーの中だけ）。
+// 今の記録に式を当て直さない: 同じタスクで先に走る今の書き手や Battle の答えで動いた記録から読むと、状態を変えない答えで状態が動く（反証 F1）。
+// 次に開いたときにやり直す（dataloss d1・d2）
 let learnDeps = null; // { vocab, isDone }。読めたら持ち続ける
 let learnDepsLoading = null;
 let learnMigrating = null; // このページの移行（Promise<{ ok, filled }>）。容量で書けなかったら、次に開くまで書き直さない（表を丸ごと何度も書かない）
+let learnPending = null; // 版 7 の前だけ: 移行を試したときの表から式で決めた、欄の無い公開の語の状態（id → 1・2。Map）。まだ試していなければ null
+
+function forgetLearnPending() {
+  learnPending = null;
+  learnMigrating = null;
+}
 
 // 移行と 3 状態の読み手の材料を読む。読めなければ null（投げない。次に呼んだときに読み直す）
 export function loadLearnStateDeps() {
@@ -351,11 +361,13 @@ export function learnStatesMigrated() {
   return schemaVersion() >= CURRENT_SCHEMA_VERSION;
 }
 
-// 3 状態の読み手（中心の学習・学習状況）と書き手（js/stats.js recordLearnAnswer）の材料: { vocab, isDone }。
-// isDone は版 7 の前だけ（欄の無い語を移行の式で読む: js/learnState.js learnStateOf・countLearnStates）。材料がまだ読めていなければ null（loadLearnStates を待つ）
+// 3 状態の読み手（中心の学習・学習状況）と書き手（js/stats.js recordLearnAnswer）の材料: { vocab, pending }。
+// pending は版 7 の前だけ（欄の無い語の状態の Map: js/learnState.js countLearnStates の pending・learnStateOf と applyLearnAnswer の fallback）。版 7 なら null。
+// 材料がまだ読めていない・版 7 の前でまだ移行を試していなければ null（loadLearnStates を待つ）
 export function learnStateSource() {
   if (!learnDeps) return null;
-  return { vocab: learnDeps.vocab, isDone: learnStatesMigrated() ? null : learnDeps.isDone };
+  if (learnStatesMigrated()) return { vocab: learnDeps.vocab, pending: null };
+  return learnPending ? { vocab: learnDeps.vocab, pending: learnPending } : null;
 }
 
 // 移行（版 6 → 7）をその場で行う。deps = loadLearnStateDeps の材料。返り値 { ok: 版 7 になった（前から 7 も）, filled: 欄を書いた語の数 }
@@ -363,14 +375,15 @@ export function migrateLearnStates(deps = learnDeps) {
   if (learnStatesMigrated()) return { ok: true, filled: 0 };
   if (!deps || schemaVersion() < LEGACY_SCHEMA_VERSION) return { ok: false, filled: 0 }; // 古い版の段（migrateStorage）が先
   flushWordStats(); // このタスクの書きかけを先に書く（移行の表に入れる）
-  const { table, filled } = fillLearnStates(getWordStats(), deps.vocab.isPublic, deps.isDone);
+  const { table, filled, states } = fillLearnStates(getWordStats(), deps.vocab.isPublic, deps.isDone);
+  learnPending = states; // 書けなかったときは、版 7 になるまでこの時点の状態で読む
   if (table) {
     const raw = JSON.stringify(table);
     try {
       writeWordStats(raw); // 上限の守り（退避 → 影のデータの順に消して書き直す）を通す
     } catch (error) {
       (globalThis.reportError ?? console.error)(error);
-      notifySaveFailed(); // 画面は容量の短い知らせを出せる（記録はそのまま）
+      notifySaveFailed(true); // 画面は容量の短い知らせを出せる（記録はそのまま。答えの失敗とは分ける）
       return { ok: false, filled: 0 };
     }
     memoRaw = raw;
@@ -378,6 +391,7 @@ export function migrateLearnStates(deps = learnDeps) {
     draft = null; // このタスクの書き手は移行の後の表から写す
   }
   if (!setCurrentSchema()) return { ok: false, filled };
+  learnPending = null;
   return { ok: true, filled };
 }
 
@@ -394,7 +408,11 @@ function setCurrentSchema() {
 // 版 7 の前なら移行を始める（読み込みのとき・復元の後）。埋める候補の無い端末はその場で版を上げる。返り値 Promise<{ ok, filled }>
 function startLearnStates() {
   if (learnStatesMigrated()) return Promise.resolve({ ok: true, filled: 0 });
-  if (!hasUnfilled(getWordStats())) return Promise.resolve({ ok: setCurrentSchema(), filled: 0 });
+  if (!hasUnfilled(getWordStats())) {
+    const ok = setCurrentSchema();
+    if (!ok) learnPending = new Map(); // 版は上げられなかったが、埋める語は無い（欄の無い語は これから）
+    return Promise.resolve({ ok, filled: 0 });
+  }
   learnMigrating ??= loadLearnStateDeps().then((deps) => {
     if (deps) return migrateLearnStates(deps);
     learnMigrating = null; // 表が読めなかった: 次に呼んだときに読み直す
@@ -406,17 +424,19 @@ function startLearnStates() {
 // 3 状態を読む前に待つ（中心の学習・学習状況）: 版 7 の前なら移行を試し、材料を読む。返り値は learnStateSource()（材料が読めなければ null）
 export async function loadLearnStates() {
   await startLearnStates();
-  await loadLearnStateDeps();
+  if ((await loadLearnStateDeps()) && !learnStatesMigrated() && !learnPending) await startLearnStates(); // 材料が後から読めた: 移行を試す
   return learnStateSource();
 }
 
 // バックアップの復元（js/backup.js applyBackup）が、書き戻した直後に呼ぶ: 版 6 の記録はその場で版 7 にする（再読み込みを待たない。
 // 開いているほかのタブが、版 6 の表を「欄が無い = これから」と読まない: dataloss d9）。材料が読めていなければ版 7 の段は後から（startLearnStates）。
-// 版 6 より前の記録（版の鍵の無いファイルも）は、今までどおり次に開いたときに古い版の段から流す（その間も、読み手と書き手は版を見て移行の式で読む）
+// 版 6 より前の記録（版の鍵の無いファイルも）は、今までどおり次に開いたときに古い版の段から流す（その間の読み手と書き手は、戻した表から式で決めた状態で読む）
 export function migrateRestored() {
-  forgetWordStats();
-  learnMigrating = null;
-  if (schemaVersion() < LEGACY_SCHEMA_VERSION) return { ok: false, filled: 0 };
+  forgetWordStats(); // 前の表で決めた移行の状態も捨てる
+  if (schemaVersion() < LEGACY_SCHEMA_VERSION) {
+    if (learnDeps) learnPending = fillLearnStates(getWordStats(), learnDeps.vocab.isPublic, learnDeps.isDone).states;
+    return { ok: false, filled: 0 };
+  }
   if (learnDeps) return migrateLearnStates(learnDeps);
   startLearnStates();
   return { ok: false, filled: 0 };
@@ -448,6 +468,7 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
     if (event.storageArea && event.storageArea !== localStorage) return;
     if (!isRecordsReplaced(event)) return;
     recordsEpochNo++;
+    forgetLearnPending(); // 前の表で決めた移行の状態は使わない
     if (typeof CustomEvent === "function") window.dispatchEvent(new CustomEvent("spelldash:records-replaced"));
   });
 }

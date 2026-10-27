@@ -1,6 +1,6 @@
 import { supabase } from "./supabase.js";
 import { CORRUPT_KEYS, SHADOW_KEYS, dropKeys, isQuotaError } from "./storageGuard.js";
-import { getWordStats, saveWordStats, getBestScore, saveBestScore, loadLearnStateDeps, learnStatesMigrated } from "./storage.js";
+import { getWordStats, saveWordStats, whenWordStatsSaved, getBestScore, saveBestScore, loadLearnStateDeps, learnStatesMigrated } from "./storage.js";
 import { fillLearnStates, learnFieldsOf } from "./learnState.js";
 import { getTotalXp, getLevelState, getStreak } from "./level.js";
 import {
@@ -367,13 +367,14 @@ function hasPersonalRecords() {
   );
 }
 
-// ログアウトの後に、この端末で学んだ跡があるか（語の記録の最後の出題・答えの日時がログアウトより後）。未ログインのあいだに別の人が使ったかもしれないので、
-// 同じアカウントでログインし直したときも、足す前にたずねる（決定 §8「ログアウト…で別人の状態を混ぜない」。dataloss d7。創業者に送った既定）
+// ログアウトの後に、この端末で学んだ跡があるか（語の記録の最後の出題・答えの日時・中心の学習で最後に答えた時刻 lsAt がログアウトより後）。
+// 未ログインのあいだに別の人が使ったかもしれないので、同じアカウントでログインし直したときも、足す前にたずねる
+// （決定 §8「ログアウト…で別人の状態を混ぜない」。dataloss d7。創業者に送った既定）
 function learnedSinceLogout() {
   const at = Date.parse(localStorage.getItem(LOGOUT_KEY) ?? "");
   if (!(at > 0)) return false;
   const ms = (iso) => Date.parse(iso ?? "") || 0;
-  return Object.values(getWordStats()).some((s) => s && Math.max(ms(s.lastPlayed), ms(s.lastRecallSuccessAt), ms(s.lastRecallFailAt)) > at);
+  return Object.values(getWordStats()).some((s) => s && Math.max(ms(s.lastPlayed), ms(s.lastRecallSuccessAt), ms(s.lastRecallFailAt), Number(s.lsAt) || 0) > at);
 }
 
 let syncInFlight = false; // 同じページで 2 回走らせない（auth-ready と SIGNED_IN が続けて来る）
@@ -491,8 +492,12 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
     changedLocal = true;
   }
 
+  // 取り込んだ表の保存の成否（埋めの印は、埋めた表が保存できたときだけ付ける。容量で書けなかったのに印を付けると、
+  // 次の取り込みで埋めをやり直さず、届いた語が これから のまま残る: dataloss d5）
+  let savedLocal = Promise.resolve(true);
   if (changedLocal) {
     saveWordStats(merged);
+    savedLocal = whenWordStatsSaved();
   }
   // 別の端末の記録で 30 語以上になった人は「以前から使っている人」（同期より先に描いた画面が解放を "0" で保存していても直す）。
   // この端末だけで 30 語に達した新しい人は、従来どおりセット数で解放（js/unlocks.js）
@@ -613,7 +618,7 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   saveDirtyWords(new Set());
   localStorage.setItem(OWNER_KEY, userId);
   localStorage.removeItem(LOGOUT_KEY);
-  if (filledLearn.done) localStorage.setItem(LEARN_FILLED_KEY, userId);
+  if (filledLearn.done && (await savedLocal)) localStorage.setItem(LEARN_FILLED_KEY, userId);
   sessionStorage.setItem(DONE_FLAG, userId);
 
   // 追加したパックが変わったら、語の読み直しが終わるまで待ってから再描画を促す（読み直し前の語で数えないため）
@@ -634,7 +639,8 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
 // 状態の欄が無く、取り込む前の端末に答えの記録の無かった公開の語（2 台目の初回・置き換えた直後・記録を消した後に届いた語）を、移行の式で埋める
 // （状態の変化ではなく移行として扱う。目安・ランクアップの幕・知らせには数えない）。それより後に届いた行では状態を変えない（欄は これから のまま、
 // 中心の学習で答えたときに決まる）。端末にある状態・端末で答えた語は決して変えない。版 7 の前なら移行（js/storage.js）が埋めるので、ここでは埋めず印も付けない。
-// 材料（公開の語の表）が読めなければ埋めず、印も付けない（次の取り込みでやり直す）。返り値 { table: 埋めた表か null, done: 印を付けてよい }
+// 材料（公開の語の表）が読めなければ埋めず、印も付けない（次の取り込みでやり直す）。埋めた表が保存できなかった（容量）ときも印は付けない（呼ぶ側）。
+// 返り値 { table: 埋めた表か null, done: 印を付けてよい }
 function fillLearnStatesOnce(merged, local, deps) {
   if (!deps || !learnStatesMigrated()) return { table: null, done: false };
   const { table } = fillLearnStates(merged, deps.vocab.isPublic, deps.isDone, local);

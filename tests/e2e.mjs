@@ -19695,7 +19695,7 @@ console.log("learn state (schema 7):");
     const s = await import("/js/storage.js");
     const L = await import("/js/learnState.js");
     const src = await s.loadLearnStates();
-    return src ? L.countLearnStates(s.getWordStats(), src.vocab, src.isDone) : null;
+    return src ? L.countLearnStates(s.getWordStats(), src.vocab, src.pending) : null;
   });
   const strip = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !["ls", "lsd", "lsAt"].includes(k)));
 

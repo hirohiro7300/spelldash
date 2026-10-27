@@ -393,15 +393,17 @@ export function recordRecallSuccess(word, answer, measure = null) {
 // 非公開の旧教材の直接 URL は呼ばない（状態を変えない: 決定 §4）。kind = js/learnState.js ANSWER_KINDS（× のあった問いはその × の種類）、
 // epoch = 回の始めに控えた js/storage.js recordsEpoch()（ほかのタブで記録が置き換わったら書かない）。
 // ほかの書き手の欄と出力は変えない: 同じタスクの同じ写しの、この語の ls・lsd・lsAt だけを替え、保存は同じ 1 回（setItem はタスクに 1 回のまま）。
-// 状態は同じタスクで読んだ語の欄から決める（回の列が持っている値は使わない）。公開の語だけ（非公開の語の記録には書かない）。
+// 状態は同じタスクで読んだ語の欄から決める（回の列が持っている値は使わない）。欄の無い語は これから。ただし移行が書けていない版 6 の端末では、
+// 移行を試したときの記録から式で決めた状態（js/storage.js learnStateSource の pending。上の書き手が動かした今の記録には式を当てない）。
+// 公開の語だけ（非公開の語の記録には書かない）。
 // 返り値 Promise<boolean>: 保存できたら true。書かなかった（公開の語でない・種類が違う・材料〔公開の語の表〕がまだ読めていない・
-// 回の後に記録が置き換わった）・保存に失敗したら false（画面は変化を出さない: 受け入れ基準 14）
+// 版 6 で移行をまだ試していない・回の後に記録が置き換わった）・保存に失敗したら false（画面は変化を出さない: 受け入れ基準 14）
 export function recordLearnAnswer(word, kind, { epoch = null } = {}) {
   const source = learnStateSource();
   if (!source || !source.vocab.isPublic(word) || !isAnswerKind(kind)) return Promise.resolve(false);
   if (epoch !== null && epoch !== recordsEpoch()) return Promise.resolve(false);
   const stats = editWordStats();
-  stats[word] = applyLearnAnswer(stats[word] ?? createInitialWordStats(), kind, Date.now(), source.isDone);
+  stats[word] = applyLearnAnswer(stats[word] ?? createInitialWordStats(), kind, Date.now(), source.pending?.get(word));
   saveWordStats(stats);
   return whenWordStatsSaved();
 }
