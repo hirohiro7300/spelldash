@@ -19333,7 +19333,16 @@ console.log("78.4 学習状況とランク:");
 
   // ---- (12) 公開の語の表が読めない（オフライン）: 数と札の場所を空けず短い 1 行。通信が戻ったら（online）描き直す ----
   {
-    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: s1 });
+    // Service Worker は止める（page.route は Service Worker が取った要求を捕まえない）
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => {
+      localStorage.setItem("spelldash_schema_version", "7");
+      localStorage.setItem("spelldash_onboarded", "1");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, s1);
     await page.route("**/data/public/english.json", (route) => route.abort());
     await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(400);
@@ -19349,7 +19358,7 @@ console.log("78.4 学習状況とランク:");
     check("78.4 学習状況: 公開の語の表が読めないと数と札を出さず「学習状況を読み込めなかった。通信が戻ると表示する。」の 1 行・通信が戻ったら（online）開き直さずに描く（覚えた 1,180・中学生・出典）",
       off.msg === "学習状況を読み込めなかった。通信が戻ると表示する。" && !off.sumShown && off.cardsH === 0 && on.msgHidden === true && on.count === "1,180" && on.rank === "中学生" && on.source === true,
       JSON.stringify({ off, on, err: page.errors[0] }));
-    await page.close();
+    await ctx.close();
   }
 }
 
