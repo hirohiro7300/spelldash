@@ -1034,18 +1034,15 @@ console.log("strict miss:");
   check("大小文字 (T4): はちゃんの一言「今日は Cu を覚えた」も元の綴り", homeT4.bubble.includes("Cu") && !/\bcu\b/.test(homeT4.bubble), JSON.stringify(homeT4));
   await pageC.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
   await pageC.waitForTimeout(700);
-  await pageC.$eval("#wordCategoryFilter", (el) => { el.value = "jsci1"; el.dispatchEvent(new Event("change")); }); // 単語のタブは畳まれている
+  await pageC.evaluate(() => { document.getElementById("statsMore").open = true; }); // 学習状況の「詳しい記録」（Batch 78 段 4。単語の一覧は学習状況から外した: 単語帳 list.html）
   await pageC.waitForTimeout(200);
   const statsT4 = await pageC.evaluate(() => ({
     learned: [...document.querySelectorAll("#learnedWordList .learned-item__en")].map((e) => e.textContent.trim()),
-    known: [...document.querySelectorAll("#knownWordList .known-words__item")].map((e) => e.textContent.trim()),
-    list: [...document.querySelectorAll("#wordList .word-item__detail")].map((e) => e.textContent.trim())
+    known: [...document.querySelectorAll("#knownWordList .known-words__item")].map((e) => e.textContent.trim())
   }));
-  check("大小文字 (T4): 学習データの覚えた単語帳は Cu・知ってた語は NaCl（元の綴り）",
+  check("大小文字 (T4): 学習状況の詳しい記録の「思い出せるようになった語」は Cu・「初めて見て正解した語」は NaCl（元の綴り）",
     statsT4.learned.includes("Cu") && !statsT4.learned.includes("cu") && statsT4.known.includes("NaCl") && !statsT4.known.includes("nacl"), JSON.stringify({ learned: statsT4.learned, known: statsT4.known }));
-  check("大小文字 (T4): 学習データの単語の一覧（jsci1）も Cu・NaCl（元の綴り）",
-    statsT4.list.includes("Cu") && statsT4.list.includes("NaCl") && !statsT4.list.includes("cu") && !statsT4.list.includes("nacl"), JSON.stringify(statsT4.list.slice(0, 12)));
-  check("大小文字 (T4) ホーム・学習データでエラー0", pageC.errors.length === 0, pageC.errors[0] ?? "");
+  check("大小文字 (T4) ホーム・学習状況でエラー0", pageC.errors.length === 0, pageC.errors[0] ?? "");
   await pageC.close();
 }
 
@@ -8054,12 +8051,11 @@ console.log("parts (途中の部品の皮):");
   const green = {};
   for (const [w, theme] of [[390, "light"], [1200, "dark"]]) {
     const page = await openPart(`stats ${w} ${theme}`, viewP(w, theme, statsSeedP), "/stats.html", theme);
-    await page.click('#statsTabs [data-tab="words"]');
+    // 学習状況（Batch 78 段 4）: 前の 3 つのタブの節は「詳しい記録」の畳みの中（タブは無い）。カテゴリ別の進捗と思い出せるようになった語の「習得」の札は出さない
+    await page.evaluate(() => { const d = document.getElementById("statsMore"); if (d) d.open = true; });
     await page.waitForTimeout(600);
     const words = await page.evaluate(part, "stats");
-    await page.click('#statsTabs [data-tab="analysis"]');
-    await page.waitForTimeout(600);
-    const analysis = await page.evaluate(part, "stats");
+    const analysis = words;
     await donePart(page);
     // バトル: 4 秒の対戦で 1 語答える（CPU は 0 のまま → 勝ち）。tests の作法どおりロジックは触らない
     const page2 = await openPart(`battle ${w} ${theme}`, viewP(w, theme, returningP), "/battle.html?t=4", theme);
@@ -8099,10 +8095,10 @@ console.log("parts (途中の部品の皮):");
   };
   const greenOk = (g) => {
     const c = greenColors(g), flat = JSON.stringify(c.seen);
-    return !flat.includes(c.ok) && !flat.includes(c.okSoft) && g.detail.status?.color === c.gold && g.detail.hist === c.gold && g.words.gcard?.color === c.gold && g.myWords.myWord?.color === c.gold && g.words.nHist > 0 && g.words.hist !== undefined && g.words.cal.every(Boolean) && !!g.words.catBar && /battle-verdict--win/.test(g.battle.cls ?? "") && g.battle.verdict?.color === c.gold && g.battle.ratio >= 3;
+    return !flat.includes(c.ok) && !flat.includes(c.okSoft) && g.detail.status?.color === c.gold && g.detail.hist === c.gold && g.myWords.myWord?.color === c.gold && g.words.nHist > 0 && g.words.hist !== undefined && g.words.cal.every(Boolean) && /battle-verdict--win/.test(g.battle.cls ?? "") && g.battle.verdict?.color === c.gold && g.battle.ratio >= 3;
   };
   const minGold = Math.min(...["light", "dark", "paper", "indigo"].map((t) => themesP[t].goldOnPaper3));
-  check(`Batch 57 緑が 0（済みは金）: 詳細・一覧・stats の「習得」、履歴の点、今週の濃淡、分野の棒、マイ単語帳の習得、battle の「勝ち」（--gold-ink / --sheet 390 昼 ${green["390-light"].battle.ratio}・1200 夜 ${green["1200-dark"].battle.ratio} ≥ 3）に --ok 系の色が無い。「習得」の題箋 --gold-ink / --paper-3 は 昼 ${themesP.light.goldOnPaper3}・夜 ${themesP.dark.goldOnPaper3}・紙 ${themesP.paper.goldOnPaper3}・藍 ${themesP.indigo.goldOnPaper3}（最低 ${minGold} ≥ 4.68）`, greenOk(green["390-light"]) && greenOk(green["1200-dark"]) && minGold >= 4.68, JSON.stringify({ "390-light": greenColors(green["390-light"]), "1200-dark": greenColors(green["1200-dark"]), themes: themesP }));
+  check(`Batch 57 緑が 0（済みは金）: 詳細・一覧の「習得」、学習状況の詳しい記録の履歴の点と今週の濃淡、マイ単語帳の習得、battle の「勝ち」（--gold-ink / --sheet 390 昼 ${green["390-light"].battle.ratio}・1200 夜 ${green["1200-dark"].battle.ratio} ≥ 3）に --ok 系の色が無い。「習得」の題箋 --gold-ink / --paper-3 は 昼 ${themesP.light.goldOnPaper3}・夜 ${themesP.dark.goldOnPaper3}・紙 ${themesP.paper.goldOnPaper3}・藍 ${themesP.indigo.goldOnPaper3}（最低 ${minGold} ≥ 4.68）`, greenOk(green["390-light"]) && greenOk(green["1200-dark"]) && minGold >= 4.68, JSON.stringify({ "390-light": greenColors(green["390-light"]), "1200-dark": greenColors(green["1200-dark"]), themes: themesP }));
 
   // ---- 8. コース選択（ホーム 390・1200 × 昼・夜。「コースを変える」→ #pathCourses） ----
   const course = {};
@@ -9398,10 +9394,11 @@ console.log("retention:");
 }
 
 // ===== 9.57 一冊を終えるまでの目安（Batch 76: 学習データ「今週」タブの机の本 1 冊・js/bookPace.js・spelldash_book_pace。docs は統合担当） =====
-// 学習データ: 机の本 1 冊の「残り N語」と目安（進んだ日 3 日以上・1 日あたり = 進み ÷ 記録を始めてからの日数〔上限 14〕・365 日まで）・待ちの文・完了・語の無い冊は出さない。
-// 保持率の直後・読むだけ（鍵を書かない）・320／390／1200 × 昼夜で横スクロールなし・読み込みの CLS。
+// Batch 78 段 4 で学習状況の目安は「全部覚えるまでの目安」の 1 行（3 つの札の下。js/learnPace.js）に替えた: 進みは中心の学習で新しく覚えたになった語
+// （語の記録の印 lsf の日）だけ・残り = 総数 − 今の覚えた・決まり（進んだ日 3 日以上・1 日あたり = 進み ÷ 記録を始めてからの日数〔上限 14〕・365 日まで）は
+// Batch 76 の paceOf のまま。学習状況は古い鍵 spelldash_book_pace を読まない・書かない（消さない）。下の「学習状況」の検査はその形。
 // ホーム（書き手）: Study の回で初めて済みになった机の本の語だけを数える（答えの間は書かない・回の終わりのタスクの後）。外れて戻った語・ほかの本（共有の語）・
-// 同期・Challenge・読み直しは数えない（反証役のレビュー B1 の 1a〜1c も）。
+// 同期・Challenge・読み直しは数えない（反証役のレビュー B1 の 1a〜1c も）。古い鍵の書き手はそのまま（段 3・5 が中心の学習に替えるまで）。
 // 完了の画面・ホーム・本棚・Battle・単語帳に目安の文を出さない
 console.log("book pace:");
 {
@@ -9429,25 +9426,39 @@ console.log("book pace:");
     spelldash_placement: "done", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_word_stats: JSON.stringify(statsJ1(doneAll)),
     ...(rows ? { spelldash_book_pace: paceKey(rows, start) } : {}), ...extra
   });
-  const LABEL = "中学英語 1年（教科書レベル）";
-  const NOTE = "済み（覚えた・習得・知ってた）で数えています。";
-  const readCard = async (storage, { w = 1200, h = 900, mobile = false, hash = "" } = {}) => {
+  // ---- 学習状況: 全部覚えるまでの目安の 1 行（Batch 78 段 4。js/learnPace.js。数えるのは中心の学習で初めて覚えた語の印 lsf だけ） ----
+  const PUBV = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+  const PUB = PUBV.order;
+  const WAIT = "学習を続けると、完了までの目安が表示されます。";
+  const NOTE = "覚えた で数えています。";
+  // rows: [今日からの差（0 = 今日・−3 = 3 日前）, その日に中心の学習で初めて覚えた語の数]。fill = 移行で覚えた語（印なし: 覚えたには入るが進みに入らない）。
+  // start = 記録を始めた日（今日からの日数。中心の学習で答えたあやふやの語 1 つの lsAt で置く）
+  const seedLearn = (rows, { fill = 0, start = null, all = false, extra = {} } = {}) => {
+    const t = {};
+    let i = 0;
+    if (all) for (const id of PUB) t[id] = { playCount: 1, ls: 2 };
+    for (const [d, n] of rows ?? []) for (let k = 0; k < n; k++) t[PUB[i++]] = { playCount: 1, ls: 2, lsf: dayNoAgo(-d), lsAt: Date.now() + d * DAY };
+    for (let k = 0; k < fill; k++) t[PUB[i++]] = { playCount: 1, ls: 2 };
+    if (start !== null) t[PUB[PUB.length - 1]] = { playCount: 1, recallFail: 1, ls: 1, lsAt: Date.now() - start * DAY };
+    return { spelldash_placement: "done", spelldash_word_stats: JSON.stringify(t), ...extra };
+  };
+  const readCard = async (storage, { w = 1200, h = 900, mobile = false } = {}) => {
     const page = await newPage({ mobile, viewport: { width: w, height: h }, storage });
-    await page.goto(BASE + "/stats.html" + hash, { waitUntil: "networkidle" });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(300);
     const r = await page.evaluate(() => {
-      const sec = document.getElementById("bookPace");
+      const sec = document.getElementById("learnPace");
       return {
         exists: !!sec,
         hidden: sec ? sec.hidden : null,
-        head: sec?.querySelector("h3")?.textContent.trim() ?? null,
-        lines: sec ? [...sec.querySelectorAll("#bookPaceReport p")].map((p) => p.textContent.replace(/\s+/g, " ").trim()) : [],
-        bold: sec ? [...sec.querySelectorAll("#bookPaceReport b")].map((b) => b.textContent) : [],
-        afterRetention: !!document.querySelector("#retention + #bookPace"),
-        growthRetention: !!document.querySelector("#growth + #retention"),
-        tab: sec?.dataset.tab ?? null,
-        card: sec?.classList.contains("result-card") ?? false,
+        head: sec?.querySelector(".learn-pace__title")?.textContent.trim() ?? null,
+        lines: sec && !sec.hidden ? [...sec.querySelectorAll("h3, p")].filter((p) => !p.hidden).map((p) => p.textContent.replace(/\s+/g, " ").trim()) : [],
+        bold: sec ? [...sec.querySelectorAll("b")].map((b) => b.textContent) : [],
+        afterRule: !!document.querySelector(".learn-rule + #learnPace"),
+        inStatus: !!sec?.closest("#learnStatus"),
         live: sec ? sec.querySelector("[aria-live]") !== null || sec.closest("[aria-live]") !== null : null,
+        oldCard: !!document.getElementById("bookPace"),
         scroll: document.documentElement.scrollWidth,
         inner: document.documentElement.clientWidth,
         key: localStorage.getItem("spelldash_book_pace")
@@ -9457,46 +9468,39 @@ console.log("book pace:");
     await page.close();
     return r;
   };
-
-  // ---- 学習データ: 目安・待ち・完了・語の無い冊 ----
-  const rows3 = [[0, 14], [-3, 7], [-9, 7]]; // 進み 28・3 日 → 1 日平均 2 語・残り 80 → 約40日
-  const s1 = seedJ1(rows3);
-  const a = await readCard(s1);
-  check("目安 学習データ: 「今週」タブの保持率の直後に 1 枚（見出し「一冊を終えるまでの目安」・札は .result-card・推移の直後は保持率のまま）",
-    a.exists && !a.hidden && a.head === "一冊を終えるまでの目安" && a.afterRetention && a.growthRetention && a.tab === "week" && a.card, JSON.stringify({ exists: a.exists, hidden: a.hidden, head: a.head, after: a.afterRetention, tab: a.tab }));
-  check("目安 学習データ: 机の本の名前と決定の 4 行・済みの注（残り 80・1 日平均 2 語・約40日）",
-    JSON.stringify(a.lines) === JSON.stringify([LABEL, "残り80語", "最近14日間は、1日平均2語進んでいます。", "今のペースなら、完了まであと約40日が目安です。", "この端末の記録から計算しています。", NOTE]) && JSON.stringify(a.bold) === JSON.stringify(["80", "2", "40"]),
+  const rows3 = [[0, 14], [-3, 7], [-9, 7]]; // 進み 28・3 日・始めて 30 日（14 日で割る）・残り 2,857 − 2,178 = 679 → 679×14÷28 = 339.5 → 約340日
+  const sl = seedLearn(rows3, { fill: 2150, start: 30 });
+  const a = await readCard(sl);
+  check("目安 学習状況: 3 つの札の下（覚えたの条件の文の後）に「全部覚えるまでの目安」・前の「一冊を終えるまでの目安」の札は無い",
+    a.exists && !a.hidden && a.head === "全部覚えるまでの目安" && a.afterRule && a.inStatus && !a.oldCard, JSON.stringify({ exists: a.exists, hidden: a.hidden, head: a.head, after: a.afterRule, old: a.oldCard }));
+  check("目安 学習状況: 1 行と注（進み 28・14 日・残り 679 → 約340日・「覚えた で数えています。」）",
+    JSON.stringify(a.lines) === JSON.stringify(["全部覚えるまでの目安", "今のペースなら、あと約340日です。", `${NOTE}この端末の記録から計算しています。`]) && JSON.stringify(a.bold) === JSON.stringify(["340"]),
     JSON.stringify({ lines: a.lines, bold: a.bold }));
-  check("目安 学習データ: 読むだけ（鍵を書き換えない）・読み上げの live なし・エラー0", a.key === s1.spelldash_book_pace && a.live === false && a.errors.length === 0, JSON.stringify({ same: a.key === s1.spelldash_book_pace, err: a.errors[0] }));
-  const fresh = await readCard(seedJ1([[0, 10], [-2, 10], [-4, 10]], { start: 4 }));
-  check("目安 学習データ: 記録を始めて 5 日なら 5 日で割る（進み 30 → 1 日平均 6 語・80×5÷30 = 約13日）",
-    fresh.lines[2] === "最近5日間は、1日平均6語進んでいます。" && fresh.lines[3] === "今のペースなら、完了まであと約13日が目安です。", JSON.stringify(fresh.lines));
-  const wait2 = await readCard(seedJ1([[0, 14], [-3, 7]]));
-  check("目安 学習データ: 進んだ日が 2 日なら日数を出さず待ちの文（残りは出す）",
-    JSON.stringify(wait2.lines) === JSON.stringify([LABEL, "残り80語", "学習を続けると、完了までの目安が表示されます。", NOTE]), JSON.stringify(wait2.lines));
-  const long = await readCard(seedJ1([[0, 1], [-1, 1], [-2, 1]]));
-  check("目安 学習データ: 365 日を超える日数（80×14÷3 = 373）は出さず待ちの文", JSON.stringify(long.lines) === JSON.stringify(wait2.lines), JSON.stringify(long.lines));
-  const none = await readCard(seedJ1(null));
-  check("目安 学習データ: 記録が無ければ待ちの文・学習データは鍵を作らない", JSON.stringify(none.lines) === JSON.stringify(wait2.lines) && none.key === null && none.errors.length === 0, JSON.stringify({ lines: none.lines, key: none.key }));
-  const broken = await readCard({ ...seedJ1(null), spelldash_book_pace: "{oops" });
-  check("目安 学習データ: 壊れた値でも待ちの文・エラー0（値は書き換えない）", JSON.stringify(broken.lines) === JSON.stringify(wait2.lines) && broken.key === "{oops" && broken.errors.length === 0, JSON.stringify({ lines: broken.lines, err: broken.errors[0] }));
-  const done = await readCard(seedJ1(rows3, { doneAll: true }));
-  check("目安 学習データ: 全部の語が済み（知ってたを含む）なら「完了」と済みの注だけ", JSON.stringify(done.lines) === JSON.stringify([LABEL, "完了", NOTE]), JSON.stringify(done.lines));
-  const empty = await readCard({ spelldash_placement: "done", spelldash_category: "my" });
-  check("目安 学習データ: 語の無い冊（空のマイ単語帳）は節ごと出さない", empty.exists && empty.hidden === true && empty.lines.length === 0 && empty.errors.length === 0, JSON.stringify({ hidden: empty.hidden, lines: empty.lines }));
-  const concept = await readCard({ spelldash_placement: "done", spelldash_category: "listing" });
-  check("目安 学習データ: 概念カードの冊は「枚」（道と同じ。リスティング広告 実務 127 枚）", JSON.stringify(concept.lines.slice(0, 2)) === JSON.stringify(["リスティング広告 実務", "残り127枚"]), JSON.stringify(concept.lines));
-  const words = await readCard(s1, { hash: "#words" });
-  check("目安 学習データ: 「記録」タブでは出さない（今週タブの節）", words.exists && words.hidden === true, JSON.stringify({ hidden: words.hidden }));
+  check("目安 学習状況: 読むだけ（古い鍵 spelldash_book_pace を作らない）・読み上げの live なし・エラー0", a.key === null && a.live === false && a.errors.length === 0, JSON.stringify({ key: a.key, err: a.errors[0] }));
+  const fresh = await readCard(seedLearn([[0, 10], [-2, 10], [-4, 10]], { fill: 2500 }));
+  check("目安 学習状況: 記録を始めて 5 日なら 5 日で割る（進み 30・残り 327 → 327×5÷30 = 54.5 → 約55日）", fresh.lines[1] === "今のペースなら、あと約55日です。", JSON.stringify(fresh.lines));
+  const wait2 = await readCard(seedLearn([[0, 300], [-3, 300]], { fill: 1000 }));
+  check("目安 学習状況: 進んだ日が 2 日なら日数を出さず待ちの文と注", JSON.stringify(wait2.lines) === JSON.stringify(["全部覚えるまでの目安", WAIT, NOTE]), JSON.stringify(wait2.lines));
+  const long = await readCard(seedLearn([[0, 1], [-1, 1], [-2, 1]], { start: 30 }));
+  check("目安 学習状況: 365 日を超える日数（2,854×14÷3）は出さず待ちの文", JSON.stringify(long.lines) === JSON.stringify(wait2.lines), JSON.stringify(long.lines));
+  const migrated = await readCard(seedLearn(null, { fill: 2500, start: 3 }));
+  check("目安 学習状況: 移行で覚えた語（印なし）だけなら進みは 0 で待ちの文（覚えたには入る）", JSON.stringify(migrated.lines) === JSON.stringify(wait2.lines), JSON.stringify(migrated.lines));
+  const none = await readCard({ spelldash_placement: "done" });
+  check("目安 学習状況: 記録が無ければ待ちの文・鍵を作らない", JSON.stringify(none.lines) === JSON.stringify(wait2.lines) && none.key === null && none.errors.length === 0, JSON.stringify({ lines: none.lines, key: none.key }));
+  const broken = await readCard({ ...sl, spelldash_book_pace: "{oops" });
+  check("目安 学習状況: 古い鍵が壊れていても読まない（目安はそのまま・値は書き換えない）・エラー0", JSON.stringify(broken.lines) === JSON.stringify(a.lines) && broken.key === "{oops" && broken.errors.length === 0, JSON.stringify({ lines: broken.lines, err: broken.errors[0] }));
+  const done = await readCard(seedLearn(null, { all: true }));
+  check("目安 学習状況: 全部覚えたら「完了」と注だけ", JSON.stringify(done.lines) === JSON.stringify(["全部覚えるまでの目安", "完了", NOTE]), JSON.stringify(done.lines));
   for (const [w, h, theme] of [[1200, 900, "light"], [1200, 900, "dark"], [390, 844, "light"], [390, 844, "dark"], [320, 640, "light"], [320, 640, "indigo"]]) {
-    const s = await readCard({ ...s1, spelldash_theme: theme }, { w, h, mobile: w < 1000 });
-    check(`目安 学習データ（${w}・${theme}）: 6 行が出て横スクロールなし・エラー0`, s.lines.length === 6 && s.scroll <= s.inner && s.errors.length === 0, JSON.stringify({ n: s.lines.length, scroll: s.scroll, inner: s.inner, err: s.errors[0] }));
+    const s = await readCard({ ...sl, spelldash_theme: theme }, { w, h, mobile: w < 1000 });
+    check(`目安 学習状況（${w}・${theme}）: 見出し・1 行・注が出て横スクロールなし・エラー0`, s.lines.length === 3 && s.scroll <= s.inner && s.errors.length === 0, JSON.stringify({ n: s.lines.length, scroll: s.scroll, inner: s.inner, err: s.errors[0] }));
   }
   {
     const runs = {};
-    for (const [label, opts] of [["1200 目安あり", { storage: s1 }], ["390 目安あり", { width: 390, height: 844, mobile: true, storage: s1 }], ["390 待ち", { width: 390, height: 844, mobile: true, storage: seedJ1(null) }], ["1200 夜 目安あり 0ms", { storage: { ...s1, spelldash_theme: "dark" }, delay: 0 }]]) runs[label] = await loadCls("/stats.html", opts);
-    check("目安 学習データ: 読み込みの CLS < 0.05（1200・390 mobile・目安あり／待ち・昼夜・80ms 遅延と遅延なし）・エラー0", Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
+    for (const [label, opts] of [["1200 目安あり", { storage: sl }], ["390 目安あり", { width: 390, height: 844, mobile: true, storage: sl }], ["390 待ち", { width: 390, height: 844, mobile: true, storage: seedLearn(null) }], ["1200 夜 目安あり 0ms", { storage: { ...sl, spelldash_theme: "dark" }, delay: 0 }]]) runs[label] = await loadCls("/stats.html", opts);
+    check("目安 学習状況: 読み込みの CLS < 0.05（1200・390 mobile・目安あり／待ち・昼夜・80ms 遅延と遅延なし）・エラー0", Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
   }
+  const s1 = seedJ1([[0, 14], [-3, 7], [-9, 7]]); // ホームの古い鍵の種（下の「ほかのページに出さない」で使う）
 
   // ---- ホーム（書き手）: Study の回の終わりに机の本だけ数える ----
   {
@@ -11921,14 +11925,13 @@ console.log("learning quality:");
   const notesRaw = await page.evaluate(() => localStorage.getItem("spelldash_word_notes"));
   await page.close();
 
-  // 学習データ: 苦手単語に難敵タグとメモ
+  // 学習状況（Batch 78 段 4。前の学習データ）: 「いま苦手な語」の一覧（苦手・難敵の札）は出さない（難敵は隠す: E2E の分類 9.7）。メモは記録に残り、語の詳細で見られる
   const page2 = await newPage({ storage: { spelldash_word_stats: statsAfter, spelldash_my_words: myWords, spelldash_word_notes: notesRaw } });
   await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
-  const weak = await page2.textContent("#weakWords");
-  check("苦手単語に「難敵」タグ", weak.includes("難敵") && weak.includes("negotiate"), weak.slice(0, 80));
-  check("苦手単語にメモが出る", weak.includes("請求の声"));
-  check("学習データでエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
+  const shown = await page2.evaluate(() => { document.getElementById("statsMore").open = true; return { weak: !!document.getElementById("weakWords"), text: document.querySelector("main").innerText, notes: localStorage.getItem("spelldash_word_notes") }; });
+  check("学習状況: いま苦手な語の一覧と「難敵」「苦手」の札は出さない（詳しい記録を開いても）・メモの記録はそのまま", !shown.weak && !/難敵|苦手/.test(shown.text) && shown.notes === notesRaw, (shown.text.match(/.{0,20}(難敵|苦手).{0,20}/) ?? [""])[0]);
+  check("学習状況でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 
   // プロフィール: 正解時発音の設定＋バックアップの書き出し/復元
@@ -13144,39 +13147,28 @@ console.log("rank（学習のランク）:");
   }
 }
 
-// ===== 9.956 アカウントの紋章（Batch 75: ログイン中の人のアカウントのアイコンを今の学習のランクの紋章に。js/accountEmblem.js・js/auth.js・js/game.js の spelldash:rank-up-closed・css/layout.css と brand.css の .avatar・.account-menu__rank）: 7 ページ・未ログインとアプリは読まない・読み込みの順と要求の数・CLS・読めない／遅い絵・決まらないとき・同期・幕を閉じた後・認証の知らせ・ログアウト・キーボードと読み上げ・幅と昼夜 =====
+// ===== 9.956 アカウントの紋章（Batch 75。Batch 78 段 4 で材料を 9 段のランクに: ログイン中の人のアカウントのアイコンのボタンの名前とメニューの一番上の行に、js/rank.js の 9 段のランク〔最高到達ランクと今の覚えた語数の大きい方。XP は使わない〕の名前。新しい段の絵はまだ無いので頭文字のまま。js/accountEmblem.js・js/auth.js・css/layout.css と brand.css の .avatar・.account-menu__rank）: 7 ページ・未ログインとアプリは読まない・読み込みの順と要求の数・CLS・決まらないとき・同期と XP・幕の間とプレイ中・ほかのタブ・認証の知らせ・ログアウト・キーボードと読み上げ・幅と昼夜 =====
 console.log("account emblem（アカウントの紋章）:");
 {
   const EMB = "/assets/images/emblems/";
   const xpForLv = (lv) => { let x = 0; for (let l = 1; l < lv; l++) x += 100 + (l - 1) * 50; return x; }; // js/level.js xpToNext の和
   const PAGES7 = ["/index.html", "/stats.html", "/list.html", "/battle.html", "/profile.html", "/pro.html", "/admin.html"];
-  // ログイン済みで端末の持ち主が本人（ランクが決まる形）。既定の XP は Lv.15 = 銀 2。頭文字はスタブの test@example.com の「T」
+  // ログイン済みで端末の持ち主が本人（ランクが決まる形）。既定は最高到達ランク 4 = 中学生。XP は大きくしても使わない（前の 21 段の名前を出さない）。頭文字はスタブの test@example.com の「T」
   const LOGIN = { spelldash_test_session: "1", spelldash_owner: "test-user" };
-  const seedA = (xp = xpForLv(15), extra = {}) => ({ spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), ...LOGIN, spelldash_xp: String(xp), ...extra });
-  // Challenge の時間切れ（?t=2・何も打たない）でランクを上げる種（9.955 の seedE と同じ）
-  const seedC = (xp, extra = {}) => seedA(xp, { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_level_boost: "2", ...extra });
-  // アバターの様子: 見えている img（透明でない）・頭文字・ボタンの名前・メニューの一番上の行（見える字と読み上げ）・箱
+  const seedA = (peak = 4, extra = {}) => ({ spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), ...LOGIN, spelldash_xp: String(xpForLv(15)), ...(peak === null ? {} : { spelldash_rank_peak: String(peak) }), ...extra });
+  // アバターの様子: img の数・頭文字・ボタンの名前・メニューの一番上の行（見える字と読み上げ）・箱
   const AV = () => {
     const btn = document.getElementById("avatarButton"), av = document.getElementById("headerAvatar"), user = document.getElementById("accountUser");
     if (!btn || !av) return null;
-    const seen = (i) => { const s = getComputedStyle(i); return s.opacity !== "0" && s.visibility !== "hidden" && s.display !== "none"; };
-    const imgs = [...av.querySelectorAll("img")];
-    const img = imgs.find(seen) ?? null;
     const letterEl = av.querySelector(".avatar__letter");
     const letter = (letterEl ?? av).textContent.trim();
     const row = document.getElementById("accountRank");
     const rowOn = !!row && !row.hidden;
-    const ab = av.getBoundingClientRect(), ib = img?.getBoundingClientRect(), bb = btn.getBoundingClientRect();
+    const ab = av.getBoundingClientRect(), bb = btn.getBoundingClientRect();
     return {
-      user: !!user && !user.hidden, label: btn.getAttribute("aria-label"), n: imgs.length,
-      src: img ? new URL(img.src).pathname : null, nw: img?.naturalWidth ?? 0,
-      size: ib ? `${Math.round(ib.width)},${Math.round(ib.height)}` : null, box: `${Math.round(ab.width)},${Math.round(ab.height)}`,
-      btn: `${Math.round(bb.left)},${Math.round(bb.top)},${Math.round(bb.width)},${Math.round(bb.height)}`,
-      inside: !!ib && ib.left >= ab.left - 0.5 && ib.right <= ab.right + 0.5 && ib.top >= ab.top - 0.5 && ib.bottom <= ab.bottom + 0.5,
-      centered: !!ib && Math.abs((ib.left + ib.right) / 2 - (ab.left + ab.right) / 2) <= 1 && Math.abs((ib.top + ib.bottom) / 2 - (ab.top + ab.bottom) / 2) <= 1,
-      alt: img?.getAttribute("alt") ?? null, imgHidden: img?.getAttribute("aria-hidden") ?? null, prio: img?.getAttribute("fetchpriority") ?? null,
+      user: !!user && !user.hidden, label: btn.getAttribute("aria-label"), n: av.querySelectorAll("img").length,
+      box: `${Math.round(ab.width)},${Math.round(ab.height)}`, btn: `${Math.round(bb.left)},${Math.round(bb.top)},${Math.round(bb.width)},${Math.round(bb.height)}`,
       letter, letterShown: letterEl ? getComputedStyle(letterEl).visibility !== "hidden" : letter !== "",
-      broken: imgs.some((i) => i.complete && i.naturalWidth === 0 && seen(i)),
       row: rowOn ? (row.querySelector('[aria-hidden="true"]') ?? row).textContent.trim() : null,
       rowSr: rowOn ? row.querySelector(".sr-only")?.textContent.trim() ?? null : null,
       rowFirst: rowOn && row.parentElement?.id === "accountMenu" && row.parentElement.firstElementChild === row,
@@ -13185,103 +13177,86 @@ console.log("account emblem（アカウントの紋章）:");
     };
   };
   const avatarOf = (page) => page.evaluate(AV);
-  const shownIs = (page, file, timeout = 8000) => waitUntil(async () => { const a = await avatarOf(page); return a?.src === `${EMB}${file}` && a.nw > 0; }, timeout);
+  const label = (name) => `アカウントメニュー（${name}）`;
+  const shownIs = (page, name, timeout = 8000) => waitUntil(async () => (await avatarOf(page))?.label === label(name), timeout);
   // 紋章（/assets/images/emblems/）と js/accountEmblem.js の要求を数える
   const watchReqs = (page) => {
     page.embReqs = [];
     page.modReqs = 0;
     page.on("request", (r) => { const u = new URL(r.url()).pathname; if (u.startsWith(EMB)) page.embReqs.push(u.slice(EMB.length)); if (u.endsWith("/js/accountEmblem.js")) page.modReqs++; });
   };
-  // 毎コマ、アバターの見えている絵・ボタンの名前・幕（.rank-up）の有無が替わったら控える（幕より先に替わらないかを見る）
+  // 毎コマ、ボタンの名前・幕（.rank-up）の有無・行が替わったら控える（幕より先に替わらないかを見る）
   const AVLOG = () => {
     window.__avlog = [];
     let last = "";
     const tick = () => {
-      const av = document.getElementById("headerAvatar"), btn = document.getElementById("avatarButton");
-      if (av && btn) {
-        const img = [...av.querySelectorAll("img")].find((i) => getComputedStyle(i).opacity !== "0");
-        const src = img ? new URL(img.src).pathname.split("/").pop() : null;
+      const btn = document.getElementById("avatarButton");
+      if (btn) {
         const curtain = !!document.querySelector(".rank-up");
         const row = document.getElementById("accountRank");
         const rowText = row && !row.hidden ? (row.querySelector('[aria-hidden="true"]') ?? row).textContent.trim() : null;
-        const key = `${src}|${btn.getAttribute("aria-label")}|${curtain}|${rowText}`;
-        if (key !== last) { last = key; window.__avlog.push({ t: Math.round(performance.now()), src, label: btn.getAttribute("aria-label"), curtain, row: rowText }); }
+        const key = `${btn.getAttribute("aria-label")}|${curtain}|${rowText}`;
+        if (key !== last) { last = key; window.__avlog.push({ t: Math.round(performance.now()), label: btn.getAttribute("aria-label"), curtain, row: rowText }); }
       }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
   };
-  const noSW = (page) => page.addInitScript(() => { try { navigator.serviceWorker.register = () => new Promise(() => {}); } catch { /* SW の無い環境 */ } });
-  const label = (name) => `アカウントメニュー（${name}）`;
+  const OLD = /Lv\.|レベル|[木銅銀金神] \d|ダイヤ|レジェンド|Gold|Pro/;
 
-  // ---- (1) 7 ページ（1200 昼）: 紋章・頭文字は隠れる・ボタンの名前・メニューの一番上の行・絵は飾り・低い優先度。Battle の RP（Gold）・Pro は出さない ----
+  // ---- (1) 7 ページ（1200 昼）と Pro の人: ボタンの名前「アカウントメニュー（中学生）」・メニューの一番上の行「ランク 中学生」（読み上げも同じ・Lv なし）・
+  //          絵は読まず頭文字「T」・Battle の RP（Gold）・XP の段・Pro は出さない ----
   {
     const rows = [];
     const battle = JSON.stringify({ rp: 250, wins: 3, losses: 1, draws: 0, currentWinStreak: 1, bestWinStreak: 2 }); // RP 250 = Gold（js/battleConfig.js）。学習のランクとは別
     const pro = { spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: new Date(Date.now() + 20 * 86400000).toISOString(), cancel_at_period_end: false }) };
     for (const [p, extra] of [...PAGES7.map((p) => [p, { spelldash_battle: battle }]), ["/index.html", pro], ["/stats.html", pro]]) {
-      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(xpForLv(15), extra) });
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(4, extra) });
       watchReqs(page);
       await page.goto(BASE + p, { waitUntil: "load" });
-      await shownIs(page, "silver-2-sm.webp");
+      await shownIs(page, "中学生");
+      await page.waitForTimeout(200);
       const a = await avatarOf(page);
-      const ok = !!a && a.user && a.src === `${EMB}silver-2-sm.webp` && a.nw === 96 && a.size === "32,32" && a.box === "38,38" && a.inside && a.centered && a.alt === "" && a.imgHidden === "true" && a.prio === "low" &&
-        a.letter === "T" && !a.letterShown && !a.broken && a.label === label("銀 2") && a.row === "銀 2 ・ Lv.15" && a.rowSr === "銀 2、レベル 15" && a.rowFirst && !a.rowItem && page.modReqs === 1 && page.errors.length === 0;
-      rows.push({ p: `${p}${extra.spelldash_test_plan ? " Pro" : ""}`, ok, a: ok ? undefined : a, mod: page.modReqs, err: page.errors[0] });
+      const ok = !!a && a.user && a.label === label("中学生") && a.row === "ランク 中学生" && a.rowSr === "ランク 中学生" && a.rowFirst && !a.rowItem && a.n === 0 && a.letter === "T" && a.letterShown && a.box === "38,38" &&
+        !OLD.test(`${a.label}${a.row}${a.rowSr}`) && page.modReqs === 1 && page.embReqs.length === 0 && page.errors.length === 0;
+      rows.push({ p: `${p}${extra.spelldash_test_plan ? " Pro" : ""}`, ok, a: ok ? undefined : a, mod: page.modReqs, emb: page.embReqs, err: page.errors[0] });
       await page.close();
     }
-    check("アカウントの紋章: 7 ページ（admin・battle・index・list・pro・profile・stats）と Pro の人で、ログイン中のアイコンは今の学習のランクの紋章（銀 2 = silver-2-sm・96px の絵を 32×32 で 38px の丸の真ん中）・頭文字「T」は隠れる・絵は alt=\"\" と aria-hidden・fetchpriority=low・ボタンの名前「アカウントメニュー（銀 2）」・メニューの一番上の行「銀 2 ・ Lv.15」（読み上げ「銀 2、レベル 15」・押せる項目の class は付けない）・Battle の RP（Gold）や Pro は出さない・エラー 0",
+    check("アカウントの紋章: 7 ページ（admin・battle・index・list・pro・profile・stats）と Pro の人で、ログイン中のボタンの名前は「アカウントメニュー（中学生）」・メニューの一番上の行「ランク 中学生」（読み上げも同じ・Lv なし・押せる項目の class は付けない）・9 段の絵はまだ無いので img なしで頭文字「T」・紋章の要求 0・XP の段（Lv.15 = 銀 2）・Battle の RP（Gold）・Pro は出さない・エラー 0",
       rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
   }
 
-  // ---- (2)〔守り〕未ログイン（7 ページ）とアプリ（Capacitor の偽装）: 紋章も js/accountEmblem.js も読まない。ランクアップの幕を閉じた後も読まない ----
+  // ---- (2)〔守り〕未ログイン（7 ページ）とアプリ（Capacitor の偽装）: js/accountEmblem.js も紋章も読まない・アイコンは今のまま ----
   {
     const rows = [];
     for (const [p, app] of [...PAGES7.map((p) => [p, false]), ["/index.html", true], ["/stats.html", true], ["/pro.html", true]]) {
-      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_xp: String(xpForLv(15)) } });
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_xp: String(xpForLv(15)), spelldash_rank_peak: "4" } });
       if (app) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
       watchReqs(page);
       await page.goto(BASE + p, { waitUntil: "load" });
       await page.waitForTimeout(1500); // 読み込みの後の手の空いたとき（ログインしていれば読む時機）を過ぎるまで
       const a = await avatarOf(page);
-      // 学習データ（stats）は学習データの行が同じ -sm の絵を読む（js/levelUi.js。9.955）。それ以外のページは紋章の要求 0
-      const wantEmb = p === "/stats.html" ? ["silver-2-sm.webp"] : [];
-      const ok = (!a || (!a.user && a.n === 0 && a.label === "アカウントメニュー")) && page.modReqs === 0 && JSON.stringify([...new Set(page.embReqs)]) === JSON.stringify(wantEmb) && page.errors.length === 0;
+      const ok = (!a || (!a.user && a.n === 0 && a.label === "アカウントメニュー" && a.row === null)) && page.modReqs === 0 && page.embReqs.length === 0 && page.errors.length === 0;
       rows.push({ p: `${p}${app ? " アプリ" : ""}`, ok, a: ok ? undefined : a, emb: page.embReqs, mod: page.modReqs, err: page.errors[0] });
       await page.close();
     }
-    // 未ログインでも幕は出る（Challenge の時間切れ・木 3 → 銅 1）。閉じた後も -sm の絵と js/accountEmblem.js は読まない
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: Object.fromEntries(Object.entries(seedC(xpForLv(5) - 5)).filter(([k]) => !(k in LOGIN))) });
-    watchReqs(page);
-    await page.goto(BASE + "/index.html?t=2", { waitUntil: "networkidle" });
-    await page.waitForTimeout(600);
-    await page.click('#playModes [data-mode="challenge"]');
-    const opened = await waitUntil(async () => (await page.$(".rank-up")) !== null, 8000, 20);
-    await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 50);
-    await page.waitForTimeout(800);
-    const guestUp = { opened, sm: page.embReqs.filter((u) => u.endsWith("-sm.webp")), mod: page.modReqs, err: page.errors[0] };
-    await page.close();
-    check("アカウントの紋章〔守り〕: 未ログインの 7 ページとアプリ（index・stats・pro）は紋章も js/accountEmblem.js も読まない（学習データの行の絵だけ）・アイコンは今のまま。未ログインで幕を閉じた後も -sm の絵と js/accountEmblem.js は 0",
-      rows.every((r) => r.ok) && guestUp.opened && guestUp.sm.length === 0 && guestUp.mod === 0 && !guestUp.err, JSON.stringify({ bad: rows.filter((r) => !r.ok).slice(0, 3), guestUp }));
+    check("アカウントの紋章〔守り〕: 未ログインの 7 ページとアプリ（index・stats・pro）は js/accountEmblem.js も紋章の絵も読まない（学習状況もランクの絵を読まない）・アイコンは今のまま・エラー 0",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
   }
 
-  // ---- (3) 読み込みの順と要求の数（index 1200）: 紋章と js/accountEmblem.js は load の後（最初の描画・LCP の絵が揃った後）に始まる。1 ページ 1 枚。
-  //          同期の知らせ・同じ人の SIGNED_IN（本物ではタブに戻ったとき・トークンの更新でも来る）・メニューのホバーでは要求も img の作り直しも無い ----
+  // ---- (3) 読み込みの順と要求の数（index 1200）: js/accountEmblem.js は load の後（最初の描画の後）に 1 回。同期の知らせ・同じ人の SIGNED_IN・メニューのホバーでは
+  //          要求も行の作り直しも無い ----
   {
     const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
-    await page.addInitScript(() => { window.__lcp = []; new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__lcp.push(e.startTime); }).observe({ type: "largest-contentful-paint", buffered: true }); });
     watchReqs(page);
     await page.goto(BASE + "/index.html", { waitUntil: "load" });
-    await shownIs(page, "silver-2-sm.webp");
+    await shownIs(page, "中学生");
     const t = await page.evaluate(() => {
       const nav = performance.getEntriesByType("navigation")[0];
-      const res = performance.getEntriesByType("resource");
-      const at = (re) => res.filter((e) => re.test(e.name)).map((e) => Math.round(e.startTime));
-      document.querySelector("#headerAvatar img[fetchpriority]")?.setAttribute("data-mark", "1");
       const fcp = performance.getEntriesByType("paint").find((e) => e.name === "first-contentful-paint")?.startTime ?? Infinity;
-      return { load: Math.round(nav.loadEventEnd), fcp: Math.round(fcp), lcp: window.__lcp.map(Math.round), emb: at(/\/emblems\/[^/]+-sm\.webp/), mod: at(/\/js\/accountEmblem\.js/) };
+      document.getElementById("accountRank")?.setAttribute("data-mark", "1");
+      return { load: Math.round(nav.loadEventEnd), fcp: Math.round(fcp), mod: performance.getEntriesByType("resource").filter((e) => /\/js\/accountEmblem\.js/.test(e.name)).map((e) => Math.round(e.startTime)) };
     });
-    const before = { emb: page.embReqs.slice(), mod: page.modReqs };
     await page.evaluate(async () => {
       for (let i = 0; i < 3; i++) window.dispatchEvent(new CustomEvent("spelldash:synced"));
       for (let i = 0; i < 3; i++) window.__stubAuth.signIn();
@@ -13291,73 +13266,68 @@ console.log("account emblem（アカウントの紋章）:");
     await page.mouse.move(600, 700);
     await page.waitForTimeout(1200);
     const a = await avatarOf(page);
-    const same = await page.evaluate(() => [...document.querySelectorAll("#headerAvatar img")].length === 1 && document.querySelector("#headerAvatar img")?.getAttribute("data-mark") === "1");
-    check("アカウントの紋章: 紋章（silver-2-sm）と js/accountEmblem.js は最初の描画と load の終わりの後に始まる（LCP の絵を含むページの読み込みと競らない）・紋章の要求は 1 ページ 1 枚",
-      t.emb.length === 1 && t.mod.length === 1 && t.emb[0] >= t.load && t.mod[0] >= t.load && t.emb[0] >= t.fcp && t.mod[0] >= t.fcp && (t.lcp[0] ?? 0) <= t.emb[0] && before.emb.length === 1 && before.emb[0] === "silver-2-sm.webp" && before.mod === 1, JSON.stringify({ t, before }));
-    check("アカウントの紋章: 同期の知らせ 3 回・同じ人の SIGNED_IN 3 回・メニューのホバーの後も、紋章の要求は増えず img は作り直さない（同じ要素）・頭文字に戻らない・エラー 0",
-      page.embReqs.length === 1 && page.modReqs === 1 && same && a.src === `${EMB}silver-2-sm.webp` && !a.letterShown && a.label === label("銀 2") && page.errors.length === 0, JSON.stringify({ emb: page.embReqs, mod: page.modReqs, same, a, err: page.errors[0] }));
+    const same = await page.evaluate(() => document.getElementById("accountRank")?.getAttribute("data-mark") === "1");
+    check("アカウントの紋章: js/accountEmblem.js は最初の描画と load の終わりの後に 1 回。同期の知らせ 3 回・同じ人の SIGNED_IN 3 回・ホバーの後も、要求は増えず行は作り直さない・頭文字のまま・紋章の要求 0・エラー 0",
+      t.mod.length === 1 && t.mod[0] >= t.load && t.mod[0] >= t.fcp && page.modReqs === 1 && page.embReqs.length === 0 && same && a.label === label("中学生") && a.row === "ランク 中学生" && a.letterShown && page.errors.length === 0, JSON.stringify({ t, mod: page.modReqs, emb: page.embReqs, same, a, err: page.errors[0] }));
     await page.close();
   }
 
-  // ---- (4) CLS と遅い絵: 紋章を 1.5 秒遅らせ、届く前は頭文字・届いたら紋章。アカウントの部品（.account）が動かす layout-shift 0・ボタンの箱と帯の高さは前と後で同じ。320／390 は 32px の丸に 28px ----
+  // ---- (4) CLS: 名前と行が決まる前と後で、アカウントの部品（.account）が動かす layout-shift 0・ボタンの箱と帯の高さは同じ（1200 は 38px の丸、320／390 は 32px） ----
   {
     const rows = [];
     for (const [p, w, mobile] of [["/index.html", 1200, false], ["/index.html", 390, true], ["/stats.html", 320, true], ["/pro.html", 1200, false], ["/list.html", 390, true]]) {
       const page = await newPage({ viewport: { width: w, height: 844 }, mobile, storage: seedA() });
-      await noSW(page);
       await page.addInitScript(() => {
         window.__hs = 0;
         new PerformanceObserver((l) => { for (const e of l.getEntries()) for (const s of e.sources ?? []) { const el = s.node?.nodeType === 1 ? s.node : s.node?.parentElement; if (el?.closest?.(".site-header .account")) window.__hs += e.value; } }).observe({ type: "layout-shift", buffered: true });
       });
-      await page.route(`**${EMB}**`, async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue(); });
       await page.goto(BASE + p, { waitUntil: "load" });
       await waitUntil(async () => (await avatarOf(page))?.user, 4000);
       const a0 = await avatarOf(page);
-      const shown = await shownIs(page, "silver-2-sm.webp", 8000);
+      const shown = await shownIs(page, "中学生", 8000);
       await page.waitForTimeout(200);
       const a1 = await avatarOf(page);
       const hs = await page.evaluate(() => window.__hs);
       const small = w <= 720;
-      const ok = shown && a0.src === null && a0.letterShown && a0.letter === "T" && a1.src === `${EMB}silver-2-sm.webp` && !a1.letterShown && a0.btn === a1.btn && a0.box === a1.box && a0.header === a1.header &&
-        a1.box === (small ? "32,32" : "38,38") && a1.size === (small ? "28,28" : "32,32") && a1.inside && a1.centered && hs === 0 && page.errors.length === 0;
+      const ok = shown && a0.letter === "T" && a1.letter === "T" && a1.letterShown && a0.btn === a1.btn && a0.box === a1.box && a0.header === a1.header && a1.box === (small ? "32,32" : "38,38") && hs === 0 && page.errors.length === 0;
       rows.push({ p, w, ok, a0: ok ? undefined : a0, a1: ok ? undefined : a1, hs, err: page.errors[0] });
       await page.close();
     }
-    check("アカウントの紋章: 絵が 1.5 秒遅れても、届く前は頭文字「T」・届いたら紋章（1200 は 38px の丸に 32px、320／390 は 32px の丸に 28px）。ボタンの箱・丸・帯の高さは前と後で同じ、アカウントの部品が動かす layout-shift 0（index・stats・pro・list）",
+    check("アカウントの紋章: 名前と行が決まる前と後で頭文字「T」のまま、ボタンの箱・丸・帯の高さは同じ、アカウントの部品が動かす layout-shift 0（index・stats・pro・list。1200 は 38px、320／390 は 32px の丸）",
       rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
   }
 
-  // ---- (5) 絵が読めない（404・SW なし）: 頭文字のまま・壊れた印なし・名前と行はランクを出す。知らせが続いても取り直さない（輪にしない）。通信が戻ったら（online）読み直す ----
+  // ---- (5) 材料: 最高到達ランクがまだ無い端末は今の覚えた語数の段（材料を後から読む。記録が無ければ読まずに赤ちゃん）・XP は使わない ----
   {
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
-    await noSW(page);
-    watchReqs(page);
-    const block = (route) => route.fulfill({ status: 404, body: "" });
-    await page.route(`**${EMB}**`, block);
-    await page.goto(BASE + "/index.html", { waitUntil: "load" });
-    await waitUntil(async () => page.embReqs.length >= 1, 6000);
-    await page.waitForTimeout(600);
-    const a = await avatarOf(page);
-    const n0 = page.embReqs.length;
-    await page.evaluate(() => { for (let i = 0; i < 3; i++) { window.dispatchEvent(new CustomEvent("spelldash:synced")); window.__stubAuth.signIn(); } });
-    await page.hover("#avatarButton");
-    await page.waitForTimeout(1200);
-    const n1 = page.embReqs.length;
-    await page.mouse.move(600, 700);
-    await page.unroute(`**${EMB}**`, block);
-    await page.evaluate(() => window.dispatchEvent(new Event("online")));
-    const back = await shownIs(page, "silver-2-sm.webp", 4000);
-    check("アカウントの紋章: 絵が 404 なら頭文字「T」のまま（img を残さない・壊れた印なし）、ボタンの名前と行はランク（銀 2）を出す。知らせ（同期 3・SIGNED_IN 3・ホバー）で取り直さない。online で読み直して紋章が出る・エラー 0",
-      n0 === 1 && a.n === 0 && a.letterShown && a.letter === "T" && !a.broken && a.label === label("銀 2") && a.row === "銀 2 ・ Lv.15" && n1 === n0 && back && page.errors.length === 0, JSON.stringify({ n0, n1, a, back, err: page.errors[0] }));
-    await page.close();
+    const PUB = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8")).order;
+    const learned = (n) => JSON.stringify(Object.fromEntries(PUB.slice(0, n).map((id) => [id, { playCount: 1, correctCount: 1, ls: 2 }])));
+    const rows = [];
+    for (const [name, storage, want, vocab] of [
+      ["記録なし・最高到達ランクなし", seedA(null, { spelldash_xp: "250000" }), "赤ちゃん", false],
+      ["650 語・最高到達ランクなし（list）", seedA(null, { spelldash_word_stats: learned(650) }), "小学生", true],
+      ["120 語・最高到達ランク 留学生（下げない）", seedA(6, { spelldash_word_stats: learned(120) }), "留学生", false]
+    ]) {
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage });
+      const reqs = [];
+      page.on("request", (r) => reqs.push(new URL(r.url()).pathname));
+      await page.goto(BASE + "/list.html", { waitUntil: "load" });
+      const ok = await shownIs(page, want, 8000);
+      await page.waitForTimeout(200);
+      const a = await avatarOf(page);
+      const readVocab = reqs.includes("/data/public/english.json");
+      rows.push({ name, ok: ok && a.row === `ランク ${want}` && (vocab ? readVocab : true) && page.errors.length === 0, a: ok ? undefined : a, readVocab, err: page.errors[0] });
+      await page.close();
+    }
+    check("アカウントの紋章: 最高到達ランクがまだ無い端末は今の覚えた語数の段（記録なし → 赤ちゃん〔XP 250000 でも〕・650 語 → 小学生〔公開の語の表を後から読む〕）・最高到達ランクがあれば下げない（120 語でも留学生）・エラー 0",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
   }
 
-  // ---- (6) ランクが決まらないとき: 端末の持ち主が別のアカウント（記録あり・銅 1）。置き換えを受けて取り込む間は頭文字・「アカウントメニュー」・行なし（前の人のランクを出さない）、
-  //          取り込んだらクラウドの XP（5240 = Lv.14 = 銀 1）。幕は出さない。取り込みが失敗したら頭文字のまま（消した前の人の XP からランクを出さない） ----
+  // ---- (6) ランクが決まらないとき: 端末の持ち主が別のアカウント（最高到達ランク 留学生）。置き換えを受けて取り込む間は頭文字・「アカウントメニュー」・行なし（前の人のランクを出さない）、
+  //          取り込んだら新しい人の記録（クラウドの語は無い）で赤ちゃん。クラウドの XP は使わない。取り込みが失敗したら頭文字のまま ----
   {
     const iso = new Date(Date.now() - 3600000).toISOString();
     const otherDevice = async (cloudConfig) => {
-      const cloud = createCloud({ word_progress: [], user_progress: [{ user_id: "test-user", xp: 5240, level: 14, updated_at: iso }], user_items: [] }, cloudConfig);
+      const cloud = createCloud({ word_progress: [], user_progress: [{ user_id: "test-user", xp: 213850, level: 92, updated_at: iso }], user_items: [] }, cloudConfig);
       const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
       page.errors = [];
       page.on("pageerror", (e) => page.errors.push(e.message));
@@ -13367,7 +13337,7 @@ console.log("account emblem（アカウントの紋章）:");
         if (sessionStorage.getItem("spelldash_test_seeded")) return;
         sessionStorage.setItem("spelldash_test_seeded", "1");
         for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
-      }, { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "other-user", spelldash_xp: "777", spelldash_word_stats: JSON.stringify({ "zzz-only-other": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }) });
+      }, { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "other-user", spelldash_rank_peak: "6", spelldash_xp: "777", spelldash_word_stats: JSON.stringify({ "zzz-only-other": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }) });
       await page.addInitScript(AVLOG);
       watchReqs(page);
       return { page, cloud };
@@ -13377,172 +13347,130 @@ console.log("account emblem（アカウントの紋章）:");
     await page.waitForTimeout(1600); // 紋章の処理を読んだ後・取り込み（2.5 秒遅れ）が終わる前
     const during = await avatarOf(page);
     const synced = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_owner"))) === "test-user", 8000);
-    await shownIs(page, "silver-1-sm.webp", 6000);
+    await shownIs(page, "赤ちゃん", 6000);
     const after = await avatarOf(page);
     const log = await page.evaluate(() => window.__avlog);
-    check("アカウントの紋章: 持ち主が別のアカウントの端末で置き換えを受けた後、取り込みの間は頭文字・「アカウントメニュー」・行なし（前の人の銅 1 を出さない）、取り込んだらクラウドの XP の銀 1（silver-1-sm・「アカウントメニュー（銀 1）」・「銀 1 ・ Lv.14」）。幕は出ない・銅 1 は一度も出ない・エラー 0",
-      page.dialogs.length === 1 && during.user && during.src === null && during.label === "アカウントメニュー" && during.row === null && during.letterShown && synced && after.src === `${EMB}silver-1-sm.webp` && after.label === label("銀 1") && after.row === "銀 1 ・ Lv.14" &&
-        !log.some((e) => e.curtain || e.src === "copper-1-sm.webp" || /銅/.test(e.label ?? "")) && !page.embReqs.includes("copper-1-sm.webp") && page.errors.length === 0, JSON.stringify({ dialogs: page.dialogs.length, during, after, log: log.slice(0, 6), emb: page.embReqs, err: page.errors[0] }));
+    const peak = await page.evaluate(() => localStorage.getItem("spelldash_rank_peak"));
+    check("アカウントの紋章: 持ち主が別のアカウントの端末で置き換えを受けた後、取り込みの間は頭文字・「アカウントメニュー」・行なし（前の人の留学生を出さない）、取り込んだら新しい人の赤ちゃん（クラウドの XP は使わない）。前の人の最高到達ランクは消える・幕は出ない・留学生は一度も出ない・エラー 0",
+      page.dialogs.length === 1 && during.user && during.label === "アカウントメニュー" && during.row === null && during.letterShown && synced && after.label === label("赤ちゃん") && after.row === "ランク 赤ちゃん" && peak !== "6" &&
+        !log.some((e) => e.curtain || /留学生/.test(`${e.label}${e.row}`)) && page.errors.length === 0, JSON.stringify({ dialogs: page.dialogs.length, during, after, peak, log: log.slice(0, 6), err: page.errors[0] }));
     await page.close();
     const failed = await otherDevice({ failSelect: { user_progress: "boom" } });
     await failed.page.goto(BASE + "/index.html", { waitUntil: "load" });
     await waitUntil(async () => (await failed.page.textContent("#authMessage")).includes("記録を取り込めなかった"), 6000);
     await failed.page.waitForTimeout(1800);
     const af = await avatarOf(failed.page);
-    check("アカウントの紋章〔守り〕: 置き換えを受けた後に取り込みが失敗した: 頭文字・「アカウントメニュー」・行なしのまま（前の人の銅 1 も、消した後の木 1 も出さない）・紋章の要求 0・エラー 0",
-      af.user && af.src === null && af.label === "アカウントメニュー" && af.row === null && failed.page.embReqs.length === 0 && failed.page.errors.length === 0, JSON.stringify({ af, emb: failed.page.embReqs, err: failed.page.errors[0] }));
+    check("アカウントの紋章〔守り〕: 置き換えを受けた後に取り込みが失敗した: 頭文字・「アカウントメニュー」・行なしのまま（前の人の留学生を出さない）・エラー 0",
+      af.user && af.label === "アカウントメニュー" && af.row === null && failed.page.embReqs.length === 0 && failed.page.errors.length === 0, JSON.stringify({ af, err: failed.page.errors[0] }));
     await failed.page.close();
   }
 
-  // ---- (7) 同期で XP が上がる（手元 3000 = Lv.10 = 銅 3、クラウド 5240 = 銀 1）: 取り込みの後に銀 1（幕は出ない）。
-  //          銅 3 の絵が遅れて（2 秒）届く間にランクが替わっても、遅れて届いた銅 3 の絵を上に付けない ----
+  // ---- (7) XP では替わらない: 同期でクラウドの XP が上がっても・Challenge の時間切れで XP の段が上がっても（前の 21 段の幕が出ても）、名前と行は中学生のまま ----
   {
     const iso = new Date(Date.now() - 3600000).toISOString();
-    const cloud = createCloud({ word_progress: [], user_progress: [{ user_id: "test-user", xp: 5240, level: 14, updated_at: iso }], user_items: [] }, { delayMs: 1800 });
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(3000, { spelldash_test_cloud: cloud.id, spelldash_word_stats: JSON.stringify({ "zzz-mine": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }) }) });
-    await noSW(page);
+    const cloud = createCloud({ word_progress: [], user_progress: [{ user_id: "test-user", xp: 213850, level: 92, updated_at: iso }], user_items: [] });
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(4, { spelldash_test_cloud: cloud.id, spelldash_xp: "3000" }) });
+    await page.goto(BASE + "/stats.html", { waitUntil: "load" });
+    await waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session"))) === "test-user", 8000);
+    await page.waitForTimeout(800);
+    const s = await avatarOf(page);
+    await page.close();
+    const ch = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(4, { spelldash_xp: String(xpForLv(5) - 5), spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_level_boost: "2" }) });
+    await ch.addInitScript(AVLOG);
+    await ch.goto(BASE + "/index.html?t=2", { waitUntil: "load" });
+    await shownIs(ch, "中学生");
+    await ch.click('#playModes [data-mode="challenge"]');
+    await waitUntil(async () => Number(await ch.evaluate(() => localStorage.getItem("spelldash_xp"))) >= xpForLv(5), 9000);
+    await waitUntil(async () => (await ch.$(".rank-up")) === null, 5000, 50);
+    await ch.waitForTimeout(800);
+    const c = await avatarOf(ch);
+    const log = await ch.evaluate(() => window.__avlog);
+    check("アカウントの紋章: 同期でクラウドの XP（神 3 の値）が届いても・Challenge の時間切れで XP の段が上がっても、名前と行は中学生のまま（XP は 9 段のランクに使わない）・エラー 0",
+      s.label === label("中学生") && s.row === "ランク 中学生" && c.label === label("中学生") && c.row === "ランク 中学生" && log.every((e) => !OLD.test(`${e.label}${e.row}`)) && ch.errors.length === 0, JSON.stringify({ s, c, log: log.slice(0, 6), err: ch.errors[0] }));
+    await ch.close();
+  }
+
+  // ---- (8) 替える時機: 最高到達ランクが上がっても、ランクの幕が出ている間とプレイ中は替えない。幕を閉じた知らせ（detail.rank = 名前）・回の終わりの後に替える ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
     await page.addInitScript(AVLOG);
-    watchReqs(page);
-    await page.route(`**${EMB}copper-3-sm.webp`, async (route) => { await new Promise((r) => setTimeout(r, 2000)); await route.continue(); });
     await page.goto(BASE + "/index.html", { waitUntil: "load" });
-    await shownIs(page, "silver-1-sm.webp", 9000);
-    await page.waitForTimeout(2200); // 遅れた銅 3 の絵が届くまで
+    await shownIs(page, "中学生");
+    const raise = (r) => page.evaluate(async (rank) => (await import("/js/rank.js")).raiseRankPeak(rank), r);
+    await page.evaluate(() => { const d = document.createElement("div"); d.className = "rank-up"; document.body.append(d); });
+    await raise(5);
+    await page.waitForTimeout(600);
+    const inCurtain = await avatarOf(page);
+    await page.evaluate(() => { document.querySelector(".rank-up").remove(); window.dispatchEvent(new CustomEvent("spelldash:rank-up-closed", { detail: { rank: "高校生" } })); });
+    const closed = await shownIs(page, "高校生", 3000);
+    await page.evaluate(() => document.body.classList.add("home--playing"));
+    await raise(6);
+    await page.waitForTimeout(600);
+    const playing = await avatarOf(page);
+    await page.evaluate(() => { document.body.classList.remove("home--playing"); window.dispatchEvent(new CustomEvent("spelldash:game-end", { detail: { mode: "study" } })); });
+    const ended = await shownIs(page, "留学生", 3000);
+    const log = await page.evaluate(() => window.__avlog);
+    check("アカウントの紋章: 最高到達ランクを上げても幕の間は中学生のまま、幕を閉じた知らせ（高校生）の後に高校生。プレイ中に上がっても高校生のまま、回の終わりの後に留学生（同じタブの spelldash:rank-peak）・エラー 0",
+      inCurtain.label === label("中学生") && closed && playing.label === label("高校生") && playing.row === "ランク 高校生" && ended && log.filter((e) => e.curtain).every((e) => e.label === label("中学生")) && page.errors.length === 0,
+      JSON.stringify({ inCurtain, closed, playing, ended, log: log.slice(0, 8), err: page.errors[0] }));
+    await page.close();
+  }
+
+  // ---- (9) ほかのタブで最高到達ランクが上がった（storage）: プレイしていないタブ（学習状況）は開き直さずに替わる ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => {
+      if (sessionStorage.getItem("seeded9956")) return;
+      sessionStorage.setItem("seeded9956", "1");
+      localStorage.setItem("spelldash_schema_version", "7");
+      localStorage.setItem("spelldash_onboarded", "1");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, seedA(2));
+    await page.goto(BASE + "/list.html", { waitUntil: "load" });
+    await shownIs(page, "単語キッズ");
+    const other = await ctx.newPage();
+    await other.route(BASE + "/__other-9956", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>other</title>" }));
+    await other.goto(BASE + "/__other-9956");
+    await other.evaluate(() => localStorage.setItem("spelldash_rank_peak", "7"));
+    await other.close();
+    const ok = await shownIs(page, "バイリンガル", 4000);
     const a = await avatarOf(page);
-    const log = await page.evaluate(() => window.__avlog);
-    check("アカウントの紋章: 同期で XP が上がると（銅 3 → クラウドの銀 1）開き直さずに銀 1 の紋章・名前・行（「銀 1 ・ Lv.14」）に替わる。幕は出ない。遅れて届いた銅 3 の絵は付けない（img は 1 つ・銀 1）・エラー 0",
-      page.embReqs.includes("copper-3-sm.webp") && a.src === `${EMB}silver-1-sm.webp` && a.n === 1 && a.label === label("銀 1") && a.row === "銀 1 ・ Lv.14" && !log.some((e) => e.curtain) && log.at(-1)?.src === "silver-1-sm.webp" && page.errors.length === 0,
-      JSON.stringify({ emb: page.embReqs, a, log: log.slice(-4), err: page.errors[0] }));
-    await page.close();
+    check("アカウントの紋章: 別のタブで最高到達ランクが上がる（storage）と、プレイしていないタブは開き直さずに「アカウントメニュー（バイリンガル）」・「ランク バイリンガル」・エラー 0", ok && a.row === "ランク バイリンガル" && page.errors.length === 0, JSON.stringify({ a, err: page.errors[0] }));
+    await ctx.close();
   }
 
-  // ---- (8) ランクの幕の後に替える（Challenge の時間切れ: 木 3 → 銅 1）。幕が出ている間は木 3 のまま、幕が外れた後に銅 1。閉じ方（自然に・Esc・タップ）のどれでも 1 回だけ替わる。
-  //          新しいランクの絵だけ 404 なら、閉じた後は頭文字（前の木 3 の絵を残さない）で名前は銅 1 ----
-  {
-    const runUp = async (how, { block = null } = {}) => {
-      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedC(xpForLv(5) - 5) });
-      await page.addInitScript(AVLOG);
-      watchReqs(page);
-      if (block) { await noSW(page); await page.route(`**${EMB}${block}`, (route) => route.fulfill({ status: 404, body: "" })); }
-      await page.goto(BASE + "/index.html?t=2", { waitUntil: "load" });
-      await shownIs(page, "wood-3-sm.webp");
-      await page.click('#playModes [data-mode="challenge"]');
-      await waitUntil(async () => (await page.$(".rank-up")) !== null, 8000, 20);
-      if (how === "esc") { await page.waitForTimeout(450); await page.keyboard.press("Escape"); }
-      if (how === "tap") { await page.waitForTimeout(450); await page.mouse.click(600, 450); }
-      await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 30);
-      if (block) await page.waitForTimeout(1200);
-      else await shownIs(page, "copper-1-sm.webp", 4000);
-      await page.waitForTimeout(300);
-      const a = await avatarOf(page);
-      const log = await page.evaluate(() => window.__avlog);
-      const r = { how, a, log, emb: page.embReqs, err: page.errors[0] };
-      await page.close();
-      return r;
-    };
-    const after = (r, want) => {
-      const lastCurtain = r.log.map((e, i) => (e.curtain ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1;
-      const during = r.log.filter((e) => e.curtain);
-      const first = r.log.findIndex((e) => e.curtain);
-      const changes = r.log.filter((e, i) => i > first && first >= 0 && e.src !== r.log[i - 1].src).map((e) => e.src);
-      return lastCurtain >= 0 && during.every((e) => e.src === "wood-3-sm.webp" && e.label === label("木 3") && (e.row === null || e.row === "木 3 ・ Lv.4")) &&
-        r.log.slice(0, lastCurtain + 1).every((e) => !/銅/.test(`${e.label}${e.row}`) && e.src !== "copper-1-sm.webp") && JSON.stringify(changes) === JSON.stringify(want);
-    };
-    const runs = [await runUp("auto"), await runUp("esc"), await runUp("tap")];
-    const okRun = (r) => after(r, ["copper-1-sm.webp"]) && r.a.src === `${EMB}copper-1-sm.webp` && r.a.label === label("銅 1") && r.a.row === "銅 1 ・ Lv.5" && JSON.stringify([...new Set(r.emb.filter((u) => u.endsWith("-sm.webp")))]) === JSON.stringify(["wood-3-sm.webp", "copper-1-sm.webp"]) && !r.err;
-    check("アカウントの紋章: ランクの幕（Challenge の時間切れ・木 3 → 銅 1）が出ている間は木 3（紋章・名前・行）、幕が外れた後に銅 1（copper-1-sm・「アカウントメニュー（銅 1）」・「銅 1 ・ Lv.5」）。自然に閉じる・Esc・タップのどれでも替わるのは 1 回・頭文字に戻らない・エラー 0",
-      runs.every(okRun), JSON.stringify(runs.filter((r) => !okRun(r)).map((r) => ({ how: r.how, a: r.a, log: r.log.slice(0, 8), emb: r.emb, err: r.err }))));
-    const miss = await runUp("auto", { block: "copper-1-sm.webp" });
-    check("アカウントの紋章: 新しいランクの絵（copper-1-sm）だけ 404 なら、幕が外れた後は頭文字「T」（前の木 3 の絵を残さない・壊れた印なし）・名前と行は銅 1・エラー 0",
-      after(miss, [null]) && miss.a.src === null && miss.a.n === 0 && miss.a.letterShown && !miss.a.broken && miss.a.label === label("銅 1") && miss.a.row === "銅 1 ・ Lv.5" && !miss.err, JSON.stringify({ a: miss.a, log: miss.log.slice(0, 8), err: miss.err }));
-  }
-
-  // ---- (9) 60 秒の回（控えた幕は回の終わり）: 回の途中でランクが変わっても（木 1 → 木 2）、回の間は木 1 のまま。同じ人の SIGNED_IN が来ても・メニューをホバーで開いても木 1
-  //          （「木 1 ・ Lv.1」。Lv だけ新しい組を作らない）。時間切れのパネルの幕が外れた後に木 2 ----
-  {
-    const myWords = JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "budget", ja: "予算" }]);
-    const ans = { 請求書: "invoice", 交渉する: "negotiate", 予算: "budget" };
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(95, { spelldash_category: "my", spelldash_my_words: myWords, spelldash_set_size: "60s" }) });
-    await page.addInitScript(AVLOG);
-    watchReqs(page);
-    await page.goto(BASE + "/index.html?t=5&hintms=600000", { waitUntil: "load" });
-    await shownIs(page, "wood-1-sm.webp");
-    await page.press("#input", "Enter");
-    await waitUntil(async () => !!ans[(await page.textContent("#japanese")).trim()], 3000, 20);
-    const en = ans[(await page.textContent("#japanese")).trim()];
-    for (const ch of en) await page.press("#input", ch);
-    await waitUntil(async () => (await page.textContent("#message")).includes("Lv.2 に上がった"), 2000, 20);
-    await page.evaluate(() => { document.querySelector("#headerAvatar img[fetchpriority]")?.setAttribute("data-mark", "1"); window.__stubAuth.signIn(); });
-    await page.hover("#avatarButton");
-    await page.waitForTimeout(500);
-    const mid = await avatarOf(page);
-    const midSame = await page.evaluate(() => document.querySelector("#headerAvatar img")?.getAttribute("data-mark") === "1");
-    await page.mouse.move(600, 700);
-    const panel = await waitUntil(() => page.evaluate(() => !document.getElementById("resultPanel").hidden), 9000, 50);
-    await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 30);
-    await shownIs(page, "wood-2-sm.webp", 4000);
-    const end = await avatarOf(page);
-    const log = await page.evaluate(() => window.__avlog);
-    const lastCurtain = log.map((e, i) => (e.curtain ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1;
-    check("アカウントの紋章: 60 秒の回で回の途中にランクが変わっても（木 1 → 木 2）回の間は木 1（同じ人の SIGNED_IN・ホバーで開いたメニューでも「木 1 ・ Lv.1」・img は作り直さない）。時間切れのパネルの幕が外れた後に木 2（「木 2 ・ Lv.2」）・エラー 0",
-      mid.src === `${EMB}wood-1-sm.webp` && mid.label === label("木 1") && mid.row === "木 1 ・ Lv.1" && midSame && panel && lastCurtain >= 0 &&
-        log.slice(0, lastCurtain + 1).every((e) => e.src !== "wood-2-sm.webp" && !/木 2/.test(`${e.label}${e.row}`)) && end.src === `${EMB}wood-2-sm.webp` && end.label === label("木 2") && end.row === "木 2 ・ Lv.2" && page.errors.length === 0,
-      JSON.stringify({ mid, midSame, panel, end, log: log.slice(0, 10), err: page.errors[0] }));
-    await page.close();
-  }
-
-  // ---- (10) ランクの変わらないレベルアップ（Challenge の時間切れ: 銀 2 の Lv.15 → Lv.16）: 紋章と名前はそのまま、メニューの行は「銀 2 ・ Lv.16」。絵の要求は増えない ----
-  {
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedC(xpForLv(16) - 5) });
-    await page.addInitScript(AVLOG);
-    watchReqs(page);
-    await page.goto(BASE + "/index.html?t=2", { waitUntil: "load" });
-    await shownIs(page, "silver-2-sm.webp");
-    await page.click('#playModes [data-mode="challenge"]');
-    await waitUntil(() => page.evaluate(() => !document.getElementById("resultPanel").hidden), 8000, 50);
-    await page.waitForTimeout(300);
-    await page.hover("#avatarButton");
-    await page.waitForTimeout(300);
-    const a = await avatarOf(page);
-    const log = await page.evaluate(() => window.__avlog);
-    check("アカウントの紋章: ランクの変わらないレベルアップ（銀 2 Lv.15 → 16）の後、メニューの行は「銀 2 ・ Lv.16」・紋章と名前は銀 2 のまま・絵の要求は 1 枚・幕は出ない・エラー 0",
-      a.row === "銀 2 ・ Lv.16" && a.src === `${EMB}silver-2-sm.webp` && a.label === label("銀 2") && page.embReqs.filter((u) => u.endsWith("-sm.webp")).length === 1 && !log.some((e) => e.curtain) && page.errors.length === 0, JSON.stringify({ a, emb: page.embReqs, err: page.errors[0] }));
-    await page.close();
-  }
-
-  // ---- (11) ログアウト → 未ログインの形（紋章・行・名前を残さない）→ 同じタブで再ログイン → 紋章が戻る（絵の要求は増えない） ----
+  // ---- (10) ログアウト → 未ログインの形（行・名前を残さない）→ 同じタブで再ログイン → 戻る（js/accountEmblem.js の要求は 1 回のまま） ----
   {
     const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
     watchReqs(page);
     await page.goto(BASE + "/index.html", { waitUntil: "load" });
-    await shownIs(page, "silver-2-sm.webp");
+    await shownIs(page, "中学生");
     await page.click("#avatarButton");
     await page.click("#logoutButton");
     await waitUntil(() => page.evaluate(() => !document.getElementById("accountGuest").hidden), 3000);
     await page.waitForTimeout(400);
     const out = await avatarOf(page);
     await page.evaluate(() => window.__stubAuth.signIn());
-    const back = await shownIs(page, "silver-2-sm.webp", 5000);
+    const back = await shownIs(page, "中学生", 5000);
     const again = await avatarOf(page);
-    check("アカウントの紋章: ログアウトすると未ログインの形（#accountUser は隠れ、紋章・メニューの行・ランクの名前を残さない）。同じタブで再ログインすると紋章・名前・行が戻る（絵の要求は 1 枚のまま）・エラー 0",
-      !out.user && out.n === 0 && out.row === null && out.label === "アカウントメニュー" && back && again.label === label("銀 2") && again.row === "銀 2 ・ Lv.15" && page.embReqs.length === 1 && page.errors.length === 0, JSON.stringify({ out, again, emb: page.embReqs, err: page.errors[0] }));
+    check("アカウントの紋章: ログアウトすると未ログインの形（#accountUser は隠れ、メニューの行・ランクの名前を残さない）。同じタブで再ログインすると名前・行が戻る（js/accountEmblem.js の要求は 1 回のまま）・エラー 0",
+      !out.user && out.row === null && out.label === "アカウントメニュー" && back && again.row === "ランク 中学生" && page.modReqs === 1 && page.errors.length === 0, JSON.stringify({ out, again, mod: page.modReqs, err: page.errors[0] }));
     await page.close();
   }
 
-  // ---- (12) キーボードと読み上げ: ボタンの名前（読み上げの木）は「アカウントメニュー（銀 2）」・紋章は無視される。Enter で開き（最初の焦点は「設定」）、Esc で閉じて焦点はアバターへ ----
+  // ---- (11) キーボードと読み上げ: ボタンの名前（読み上げの木）は「アカウントメニュー（中学生）」。Enter で開き（最初の焦点は「設定」）、Esc で閉じて焦点はアバターへ ----
   {
     const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
     await page.goto(BASE + "/index.html", { waitUntil: "load" });
-    await shownIs(page, "silver-2-sm.webp");
+    await shownIs(page, "中学生");
     const cdp = await page.context().newCDPSession(page);
-    const ax = async (selector) => {
-      const { root } = await cdp.send("DOM.getDocument", { depth: -1 });
-      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector });
-      if (!nodeId) return null;
-      const { nodes } = await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false });
-      return { name: nodes[0]?.name?.value ?? null, ignored: nodes[0]?.ignored === true };
-    };
-    const btnAx = await ax("#avatarButton");
-    const imgAx = await ax("#headerAvatar img");
+    const { root } = await cdp.send("DOM.getDocument", { depth: -1 });
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "#avatarButton" });
+    const { nodes } = await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false });
+    const btnName = nodes[0]?.name?.value ?? null;
     await cdp.detach().catch(() => {});
     await page.focus("#avatarButton");
     await page.keyboard.press("Enter");
@@ -13551,21 +13479,21 @@ console.log("account emblem（アカウントの紋章）:");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
     const closed = await page.evaluate(() => ({ exp: document.getElementById("avatarButton").getAttribute("aria-expanded"), focus: document.activeElement?.id }));
-    check("アカウントの紋章: 読み上げの名前は「アカウントメニュー（銀 2）」・紋章の img は読み上げの木で無視。キーボード: Enter で開く（aria-expanded=true・最初の焦点は「設定」・パネルの一番上はランクの行「銀 2、レベル 15」）、Esc で閉じて焦点はアバター・エラー 0",
-      btnAx?.name === label("銀 2") && imgAx?.ignored === true && opened.exp === "true" && opened.focus === "設定" && opened.first === "accountRank" && opened.sr === "銀 2、レベル 15" && closed.exp === "false" && closed.focus === "avatarButton" && page.errors.length === 0,
-      JSON.stringify({ btnAx, imgAx, opened, closed, err: page.errors[0] }));
+    check("アカウントの紋章: 読み上げの名前は「アカウントメニュー（中学生）」。キーボード: Enter で開く（aria-expanded=true・最初の焦点は「設定」・パネルの一番上はランクの行「ランク 中学生」）、Esc で閉じて焦点はアバター・エラー 0",
+      btnName === label("中学生") && opened.exp === "true" && opened.focus === "設定" && opened.first === "accountRank" && opened.sr === "ランク 中学生" && closed.exp === "false" && closed.focus === "avatarButton" && page.errors.length === 0,
+      JSON.stringify({ btnName, opened, closed, err: page.errors[0] }));
     await page.close();
   }
 
-  // ---- (13) 320／390／1200 × 昼・夜（index・stats・reduced motion）: 紋章は丸の内の真ん中・帯の上の縁は帯と 3:1 以上・ホバーで縁は金箔（--foil）・ヘッダーの部品は重ならない・
-  //           横スクロール 0・帯の高さは index 56／stats 57・動く物 0 ----
+  // ---- (12) 320／390／1200 × 昼・夜（index・stats・reduced motion）: 頭文字の字は丸の地と 4.5:1 以上・ヘッダーの部品は重ならない・
+  //           横スクロール 0・帯の高さは index 56／stats 57・動く物 0・名前はアメリカ人（ホバーの金箔の縁は紋章の絵があるときだけ: css/brand.css .avatar.has-emblem。絵はまだ無い） ----
   {
     const rows = [];
     for (const theme of ["light", "dark"]) for (const [w, mobile] of [[320, true], [390, true], [1200, false]]) for (const p of ["/index.html", "/stats.html"]) {
-      const page = await newPage({ viewport: { width: w, height: 800 }, mobile, storage: seedA(xpForLv(92), { spelldash_theme: theme, spelldash_streak: JSON.stringify({ current: 12, best: 12, last: ymd(new Date()) }) }) });
+      const page = await newPage({ viewport: { width: w, height: 800 }, mobile, storage: seedA(8, { spelldash_theme: theme, spelldash_streak: JSON.stringify({ current: 12, best: 12, last: ymd(new Date()) }) }) });
       await page.emulateMedia({ reducedMotion: "reduce" });
       await page.goto(BASE + p, { waitUntil: "load" });
-      await shownIs(page, "god-3-sm.webp");
+      await shownIs(page, "アメリカ人");
       await page.waitForTimeout(150);
       const a = await avatarOf(page);
       const look = await page.evaluate(() => {
@@ -13574,150 +13502,23 @@ console.log("account emblem（アカウントの紋章）:");
         const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
         const over = (fg, bg) => { const [r, g, b, al = 1] = rgb(fg); const [R, G, B] = rgb(bg); return [r * al + R * (1 - al), g * al + G * (1 - al), b * al + B * (1 - al)]; };
         const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100; };
-        const vault = token("--vault");
-        const ring = getComputedStyle(document.getElementById("headerAvatar")).borderTopColor;
+        const av = document.getElementById("headerAvatar");
+        const fill = getComputedStyle(av).backgroundColor;
+        const ink = getComputedStyle(av.querySelector(".avatar__letter") ?? av).color;
         const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden]");
         const parts = [...document.querySelectorAll(".site-header .brand__mark, .site-header .site-nav__link, #headerStreak, #avatarButton")].filter(shown).map((el) => { const b = el.getBoundingClientRect(); return { n: el.id || el.textContent.trim().slice(0, 4), l: b.left, r: b.right, t: b.top, b: b.bottom }; });
         const overlap = [];
         for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) { const x = parts[i], y = parts[j]; if (Math.min(x.r, y.r) - Math.max(x.l, y.l) > 0.5 && Math.min(x.b, y.b) - Math.max(x.t, y.t) > 0.5) overlap.push(`${x.n}|${y.n}`); }
-        return { ring: ratio(over(ring, vault), rgb(vault)), overlap, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, anims: document.getAnimations().length, foil: token("--foil") };
+        return { letter: ratio(over(ink, fill), over(fill, token("--vault"))), overlap, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth, anims: document.getAnimations().length };
       });
-      await page.hover("#avatarButton");
-      await page.waitForTimeout(100);
-      const hover = await page.evaluate(() => getComputedStyle(document.getElementById("headerAvatar")).borderTopColor);
       const small = w <= 720;
-      const ok = a.src === `${EMB}god-3-sm.webp` && a.inside && a.centered && a.size === (small ? "28,28" : "32,32") && a.box === (small ? "32,32" : "38,38") && a.header === (p === "/index.html" ? 56 : 57) &&
-        look.ring >= 3 && hover === look.foil && look.overlap.length === 0 && look.sw <= look.cw && look.anims === 0 && a.label === label("神 3") && page.errors.length === 0;
-      rows.push({ theme, w, p, ok, a: ok ? undefined : a, look: ok ? undefined : look, hover: ok ? undefined : hover, err: page.errors[0] });
+      const ok = a.n === 0 && a.letterShown && a.box === (small ? "32,32" : "38,38") && a.header === (p === "/index.html" ? 56 : 57) &&
+        look.letter >= 4.5 && look.overlap.length === 0 && look.sw <= look.cw && look.anims === 0 && a.label === label("アメリカ人") && page.errors.length === 0;
+      rows.push({ theme, w, p, ok, a: ok ? undefined : a, look: ok ? undefined : look, err: page.errors[0] });
       await page.close();
     }
-    check("アカウントの紋章: 320／390／1200 × 昼・夜（index・stats・神 3・連続 12 日）で、紋章は丸の内の真ん中（320／390 は 32px の丸に 28px・1200 は 38px に 32px）・縁と帯の比 3 以上・ホバーで縁は --foil・ヘッダーの部品は重ならない・横スクロール 0・帯の高さ 56／57・reduced motion で動く物 0・エラー 0",
+    check("アカウントの紋章: 320／390／1200 × 昼・夜（index・stats・アメリカ人・連続 12 日）で、頭文字の丸（320／390 は 32px・1200 は 38px）・頭文字と丸の地の比 4.5 以上・ヘッダーの部品は重ならない・横スクロール 0・帯の高さ 56／57・reduced motion で動く物 0・エラー 0",
       rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
-  }
-
-  // ---- (14) 別のタブで XP が増えた（storage）: プレイしていないタブ（学習データ）は開き直さずに金 1（Lv.22）へ ----
-  {
-    // 2 枚のタブは同じ context（localStorage を分け合う）。種は 1 枚目にだけ入れる（2 枚目が開いたときに XP を戻さない）
-    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
-    const page = await ctx.newPage();
-    page.errors = [];
-    page.on("pageerror", (e) => page.errors.push(e.message));
-    await page.addInitScript((seed) => { for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); }, { spelldash_schema_version: "7", spelldash_onboarded: "1", ...seedA() });
-    await page.goto(BASE + "/stats.html", { waitUntil: "load" });
-    await shownIs(page, "silver-2-sm.webp");
-    const other = await ctx.newPage();
-    await other.goto(BASE + "/news.html", { waitUntil: "load" });
-    await other.evaluate((xp) => localStorage.setItem("spelldash_xp", String(xp)), xpForLv(22));
-    const moved = await shownIs(page, "gold-1-sm.webp", 4000);
-    const a = await avatarOf(page);
-    check("アカウントの紋章: 別のタブで XP が増える（storage）と、プレイしていないタブは開き直さずに金 1（gold-1-sm・「アカウントメニュー（金 1）」・「金 1 ・ Lv.22」）・エラー 0",
-      moved && a.label === label("金 1") && a.row === "金 1 ・ Lv.22" && page.errors.length === 0, JSON.stringify({ a, err: page.errors[0] }));
-    await ctx.close();
-  }
-
-  // ---- (15)〜(18) 反証役 C の段 2（scratchpad/b75/rv）: 紋章の処理が回の途中に届いたとき（C-P1・C-P2）・語数の Study の答えの幕（C-P3）・60 秒の回の途中で止める・新しい回にする（C-P4） ----
-  const myWordsC = JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }, { en: "budget", ja: "予算" }]);
-  const ansC = { 請求書: "invoice", 交渉する: "negotiate", 予算: "budget" };
-  const jaC = async (page) => (await page.textContent("#japanese")).trim();
-  // js/accountEmblem.js を 1.5 秒遅らせる（読み込みの直後に回を始めると、紋章の処理は回の途中に届く）。page.route は SW が取りに行く物に効かないので SW を止める
-  const slowModule = async (page) => {
-    await noSW(page);
-    await page.route("**/js/accountEmblem.js", async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue(); });
-  };
-  const modLoaded = (page) => page.evaluate(() => performance.getEntriesByType("resource").some((e) => e.name.endsWith("/js/accountEmblem.js") && e.responseEnd > 0));
-  const playing = (page) => page.evaluate(() => document.body.classList.contains("home--playing") && !document.body.classList.contains("set-done"));
-  // 幕（.rank-up）が外れるまで前のランク（before）で、外れた後に after へ替わったか（控えの毎コマの記録）
-  const curtainOrder = (log, beforeFile, afterName) => {
-    const last = log.map((e, i) => (e.curtain ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1;
-    return last >= 0 && log.slice(0, last + 1).every((e) => e.src !== `${afterName.file}-sm.webp` && !new RegExp(afterName.name).test(`${e.label}${e.row}`)) && log.slice(0, last + 1).some((e) => e.curtain && e.src === beforeFile);
-  };
-
-  // (15) C-P1: Challenge（6 秒・ランクは変わらない）を読み込みの直後に始め、紋章の処理が回の途中に届く: 回の間は頭文字（控えを守る）、回が終わったら触らなくても紋章
-  {
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedC(xpForLv(15)) });
-    await slowModule(page);
-    await page.goto(BASE + "/index.html?t=6", { waitUntil: "load" });
-    await page.waitForTimeout(200);
-    await page.click('#playModes [data-mode="challenge"]');
-    const started = await playing(page);
-    await waitUntil(() => modLoaded(page), 6000, 50);
-    await page.waitForTimeout(300);
-    const mid = await avatarOf(page);
-    const midPlaying = await playing(page);
-    await waitUntil(() => page.evaluate(() => !document.getElementById("resultPanel").hidden), 12000, 50);
-    const shown = await shownIs(page, "silver-2-sm.webp", 3000);
-    const after = await avatarOf(page);
-    check("アカウントの紋章（C-P1）: 紋章の処理が Challenge の回の途中に届くと、回の間は頭文字のまま、回が終わったら（ホバー・焦点なしで）紋章・「アカウントメニュー（銀 2）」・「銀 2 ・ Lv.15」・エラー 0",
-      started && midPlaying && mid.src === null && mid.label === "アカウントメニュー" && shown && after.label === label("銀 2") && after.row === "銀 2 ・ Lv.15" && page.errors.length === 0, JSON.stringify({ started, midPlaying, mid, after, err: page.errors[0] }));
-    await page.close();
-  }
-
-  // (16) C-P2: Study を読み込みの直後に始め、紋章の処理が回の途中に届く → 机に戻る（stopGame）と、触らなくても紋章
-  {
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(xpForLv(15), { spelldash_category: "my", spelldash_my_words: myWordsC }) });
-    await slowModule(page);
-    await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "load" });
-    await page.waitForTimeout(200);
-    await page.press("#input", "Enter");
-    await waitUntil(async () => !!ansC[await jaC(page)], 3000, 20);
-    await waitUntil(() => modLoaded(page), 6000, 50);
-    await page.waitForTimeout(300);
-    const mid = await avatarOf(page);
-    const midPlaying = await playing(page);
-    await page.click("#backToPath");
-    const shown = await shownIs(page, "silver-2-sm.webp", 3000);
-    const after = await avatarOf(page);
-    check("アカウントの紋章（C-P2）: 紋章の処理が Study の回の途中に届くと、回の間は頭文字のまま、机に戻ったら（stopGame・ホバー・焦点なしで）紋章と「アカウントメニュー（銀 2）」・エラー 0",
-      midPlaying && mid.src === null && shown && after.label === label("銀 2") && !(await playing(page)) && page.errors.length === 0, JSON.stringify({ midPlaying, mid, after, err: page.errors[0] }));
-    await page.close();
-  }
-
-  // (17) C-P3: Study（語数の回）の答えでランクが変わる（木 1 → 木 2。幕は答えのすぐ後）: 幕の間は木 1、幕が外れた後に木 2
-  {
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(95, { spelldash_category: "my", spelldash_my_words: myWordsC }) });
-    await page.addInitScript(AVLOG);
-    await page.goto(BASE + "/index.html?set=3&hintms=600000", { waitUntil: "load" });
-    await shownIs(page, "wood-1-sm.webp");
-    await page.press("#input", "Enter");
-    await waitUntil(async () => !!ansC[await jaC(page)], 3000, 20);
-    for (const ch of ansC[await jaC(page)]) await page.press("#input", ch);
-    const opened = await waitUntil(async () => (await page.$(".rank-up")) !== null, 3000, 20);
-    await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 30);
-    const shown = await shownIs(page, "wood-2-sm.webp", 4000);
-    const end = await avatarOf(page);
-    const log = await page.evaluate(() => window.__avlog);
-    check("アカウントの紋章（C-P3）: Study（語数の回）の答えでランクが変わる（木 1 → 木 2）と、幕の間は木 1（紋章・名前・行）、幕が外れた後に木 2（「アカウントメニュー（木 2）」・「木 2 ・ Lv.2」）・エラー 0",
-      opened && curtainOrder(log, "wood-1-sm.webp", { file: "wood-2", name: "木 2" }) && shown && end.label === label("木 2") && end.row === "木 2 ・ Lv.2" && page.errors.length === 0, JSON.stringify({ opened, end, log: log.slice(0, 8), err: page.errors[0] }));
-    await page.close();
-  }
-
-  // (18) C-P4: 60 秒の回の途中でランクが変わった（木 1 → 木 2）後に、机に戻る（stopGame）／新しい回にする（restartGame）: 幕の間は木 1、幕が外れた後に木 2
-  {
-    const rows = [];
-    for (const how of ["back", "restart"]) {
-      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(95, { spelldash_category: "my", spelldash_my_words: myWordsC, spelldash_set_size: "60s" }) });
-      await page.addInitScript(AVLOG);
-      await page.goto(BASE + "/index.html?t=40&hintms=600000", { waitUntil: "load" });
-      await shownIs(page, "wood-1-sm.webp");
-      await page.press("#input", "Enter");
-      await waitUntil(async () => !!ansC[await jaC(page)], 3000, 20);
-      for (const ch of ansC[await jaC(page)]) await page.press("#input", ch);
-      await waitUntil(async () => (await page.textContent("#message")).includes("Lv.2 に上がった"), 2000, 20);
-      await page.waitForTimeout(400);
-      const mid = await avatarOf(page);
-      if (how === "back") await page.click("#backToPath");
-      else await page.evaluate(async () => (await import("/js/game.js")).restartGame());
-      const opened = await waitUntil(async () => (await page.$(".rank-up")) !== null, 3000, 20);
-      await waitUntil(async () => (await page.$(".rank-up")) === null, 4000, 30);
-      const shown = await shownIs(page, "wood-2-sm.webp", 4000);
-      const end = await avatarOf(page);
-      const log = await page.evaluate(() => window.__avlog);
-      const ok = mid.src === `${EMB}wood-1-sm.webp` && mid.label === label("木 1") && opened && curtainOrder(log, "wood-1-sm.webp", { file: "wood-2", name: "木 2" }) && shown && end.label === label("木 2") && page.errors.length === 0;
-      rows.push({ how, ok, mid: ok ? undefined : mid, end: ok ? undefined : end, log: ok ? undefined : log.slice(0, 8), err: page.errors[0] });
-      await page.close();
-    }
-    check("アカウントの紋章（C-P4）: 60 秒の回の途中でランクが変わった（木 1 → 木 2）後に、机に戻る（stopGame）・新しい回にする（restartGame）のどちらでも、幕の間は木 1、幕が外れた後に木 2・エラー 0",
-      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
   }
 }
 
@@ -18732,25 +18533,25 @@ console.log("pro:");
     await page2.close();
   }
 
-  // 7. 推移: free が 90 を押しても 30 のまま（案内だけ）。Pro は 90 日で描き直し、選択を保存
+  // 7. 推移（学習状況の「詳しい記録」の中。Batch 78 段 4）: free には 30／90 の切り替えも Pro の案内も出さない（30 日で描く）。Pro は 90 日で描き直し、選択を保存
   {
     const log = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ date: ymdDaysAgo(99 - i), learned: i, mastered: Math.floor(i / 2), active: true })));
-    const page = await newPage({ storage: { spelldash_growth_log: log } });
+    const openMore = (pg) => pg.evaluate(() => { const d = document.getElementById("statsMore"); if (d) d.open = true; });
+    const page = await newPage({ storage: { spelldash_growth_log: log, spelldash_trend_range: "90" } });
     await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
-    const before = await page.$eval("#growthTrend", (el) => el.innerHTML);
-    check("Pro: 推移の期間は 30 が選ばれている", await page.$eval('[data-trend-range="30"]', (el) => el.classList.contains("is-active")));
-    await page.click('[data-trend-range="90"]');
+    await openMore(page);
     await page.waitForTimeout(300);
-    const hint = await text(page, ".trend-range__hint");
-    check("Pro: free が 90 を押すと「Pro で見られる」の案内と「Pro について」", hint.includes("Pro で見られる") && (await page.$$('.trend-range__hint a[href="./pro.html"]')).length === 1, hint);
-    check("Pro: free のグラフは 30 日のまま（描き直さない）", before === (await page.$eval("#growthTrend", (el) => el.innerHTML)) && (await page.$eval('[data-trend-range="30"]', (el) => el.classList.contains("is-active"))) && (await text(page, "#growthDays")) === "30");
-    check("Pro: free は spelldash_trend_range を保存しない", (await page.evaluate(() => localStorage.getItem("spelldash_trend_range"))) !== "90");
+    check("Pro: free には推移の 30／90 の切り替えを出さない（保存値が 90 でも 30 日で描く）・Pro の案内も無い",
+      !(await visible(page, ".trend-range")) && (await text(page, "#growthDays")) === "30" && (await page.$(".trend-range__hint")) === null && !(await text(page, "#growth")).includes("Pro"), await text(page, "#growthDays"));
     await page.close();
     const page2 = await newPage({ storage: proStorage({}, { spelldash_growth_log: log }) });
     await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page2.waitForTimeout(900);
+    await openMore(page2);
+    await page2.waitForTimeout(300);
     const before2 = await page2.$eval("#growthTrend", (el) => el.innerHTML);
+    check("Pro: Pro には切り替えが出て、30 が選ばれている", (await visible(page2, ".trend-range")) && (await page2.$eval('[data-trend-range="30"]', (el) => el.classList.contains("is-active"))));
     await page2.click('[data-trend-range="90"]');
     await page2.waitForTimeout(300);
     check("Pro: Pro が 90 を押すと 90 が .is-active・見出しも 90 日", (await page2.$eval('[data-trend-range="90"]', (el) => el.classList.contains("is-active"))) && (await text(page2, "#growthDays")) === "90" && (await page2.$(".trend-range__hint")) === null);
@@ -18803,27 +18604,30 @@ console.log("pro:");
     await page2.close();
   }
 
-  // 9. 連続記録の修復: 5 日前に 7 日で途切れた → free は案内、Pro はボタン → 「連続 7 日に戻しました」→ もう一度は押せない
+  // 9. 連続記録の修復（学習状況の「詳しい記録」の「その他の数字」の下。Batch 78 段 4）: 5 日前に 7 日で途切れた → free には何も出さない（Pro の案内も
+  //    途切れた文も）、Pro はボタン → 「連続 7 日に戻した」→ もう一度は押せない
   {
     const streak = JSON.stringify({ last: ymdDaysAgo(5), current: 7, best: 7, shields: 0 });
+    const openMore = (pg) => pg.evaluate(() => { const d = document.getElementById("statsMore"); if (d) d.open = true; });
     const page = await newPage({ storage: { spelldash_streak: streak } });
     await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     const repair = await text(page, "#streakRepair");
-    check("Pro: 途切れた記録があると #streakRepair「連続 7 日が M/D に途切れた」", repair.includes("連続 7 日") && repair.includes("途切れた"), repair);
-    check("Pro: free は「Pro なら」の案内と「Pro について」", repair.includes("Pro なら") && (await page.$$('#streakRepair a[href="./pro.html"]')).length === 1 && (await page.$("#streakRepairButton")) === null, repair);
+    check("Pro: free には連続記録の修復の行を出さない（「Pro なら」の案内・途切れた文・ボタンなし）", repair === "" && (await page.$$('#streakRepair a[href="./pro.html"]')).length === 0 && (await page.$("#streakRepairButton")) === null, repair);
     await page.close();
     const page2 = await newPage({ storage: proStorage({}, { spelldash_streak: streak }) });
     await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page2.waitForTimeout(900);
-    check("Pro: Pro には #streakRepairButton「今月の修復を使う」", (await text(page2, "#streakRepairButton")).includes("今月の修復"), await text(page2, "#streakRepair"));
+    await openMore(page2);
+    await page2.waitForTimeout(200);
+    check("Pro: Pro には「連続 7 日が M/D に途切れた」と #streakRepairButton「今月の修復を使う」", (await text(page2, "#streakRepair")).includes("連続 7 日") && (await text(page2, "#streakRepairButton")).includes("今月の修復"), await text(page2, "#streakRepair"));
     await page2.click("#streakRepairButton");
     await page2.waitForTimeout(300);
     check("Pro: 押すと「連続 7 日に戻した」", (await text(page2, "#streakRepair")).includes("連続 7 日に戻した"), await text(page2, "#streakRepair"));
     const saved = await page2.evaluate(() => JSON.parse(localStorage.getItem("spelldash_streak") || "{}"));
     const thisMonth = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
     check("Pro: 保存値は current 7・repairedMonth が今月・lost は消える", saved.current === 7 && saved.repairedMonth === thisMonth && !saved.lost, JSON.stringify(saved));
-    check("Pro: 概要の連続日数が 7 に戻る", (await text(page2, "#overview")).includes("7"), await text(page2, "#overview"));
+    check("Pro: その他の数字の「連続」が 7 日に戻る", (await text(page2, "#overviewMore")).includes("連続 7日"), await text(page2, "#overviewMore"));
     check("Pro: 修復後はボタンが無い（もう一度は押せない）", (await page2.$("#streakRepairButton")) === null);
     await page2.close();
     // 同じ月にまた途切れた（repairedMonth が今月）→ 「今月の修復は使いました」。newPage の seed は再読込でも効くので別ページで
@@ -19202,6 +19006,360 @@ console.log("tutorial:");
   await page3.waitForTimeout(300);
   check("チュートリアル: 学習記録のある人には出ない", (await coach(page3)) === null && (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length)) === 3);
   await page3.close();
+}
+
+// ===== 78.4 学習状況とランク（Batch 78 段 4。stats.html・js/statsView.js・js/learnPace.js・js/rank.js・js/accountEmblem.js。docs/SPEC_LEARN_STATE.md §10・§12）: 最初の画面の 6 つ（覚えた N / 総数・ランク・次のランクまで・これから・あやふや・覚えた）の数と和・札の順と行き先・0 語の札・今日の分は終わり・最高到達ランクより下げない・アメリカ人・目安の 1 行・詳しい記録は閉じている・出典・古い状態名なし・幅と昼夜・CLS・アカウントのアイコン =====
+console.log("78.4 学習状況とランク:");
+{
+  const PUBLIC = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+  const PUB = PUBLIC.order;
+  const TOTAL = PUBLIC.total;
+  const DAY = 86400000;
+  const dayNo = (days) => { const [y, m, d] = ymdDaysAgo(days).split("-").map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1970, 0, 1)) / DAY); };
+  const fmt = (n) => n.toLocaleString("ja-JP");
+  // 種: 公開の語の頭から learned 語を 覚えた（そのうち paced 語は中心の学習で初めて覚えた: 10 日に分けて印 lsf と最後の答え lsAt）、続く unsure 語を あやふや
+  // （そのうち today 語は今日 1 日分を数えた: lsd = 今日）。残りは これから（記録なし）
+  const seedOf = ({ learned = 0, paced = 0, unsure = 0, today = 0, peak = null, extra = {} } = {}) => {
+    const stats = {};
+    PUB.slice(0, learned).forEach((id, i) => {
+      stats[id] = { playCount: 1, correctCount: 1, lastPlayed: new Date(Date.now() - (i % 10) * DAY).toISOString(), ls: 2, ...(i < paced ? { lsf: dayNo(i % 10), lsAt: Date.now() - (i % 10) * DAY } : {}) };
+    });
+    PUB.slice(learned, learned + unsure).forEach((id, i) => {
+      stats[id] = { playCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date().toISOString(), ls: 1, ...(i < today ? { lsd: dayNo(0) } : {}) };
+    });
+    return { spelldash_placement: "done", spelldash_xp: "250000", spelldash_word_stats: JSON.stringify(stats), ...(peak === null ? {} : { spelldash_rank_peak: String(peak) }), ...extra };
+  };
+  const OLD_NAMES = /未着手|苦手|習得|知ってた|済み|思い出せる|身についた|即答|Lv\.|経験値|Pro/;
+  const read = async (storage, { w = 390, h = 844, theme = "light", url = "/stats.html" } = {}) => {
+    const page = await newPage({ viewport: { width: w, height: h }, mobile: w < 1000, storage: { ...storage, spelldash_theme: theme } });
+    await page.goto(BASE + url, { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => {
+      const t = (id) => document.getElementById(id)?.textContent.trim() ?? null;
+      const cards = [...document.querySelectorAll("#learnCards .learn-card")].map((c) => {
+        const a = c.querySelector("a");
+        const b = c.getBoundingClientRect();
+        return { state: c.dataset.state, name: c.querySelector(".learn-card__name")?.textContent.trim(), desc: c.querySelector(".learn-card__desc")?.textContent.trim(), count: c.querySelector(".learn-card__count")?.textContent.trim(), href: a?.getAttribute("href") ?? null, go: a?.textContent.trim() ?? null, note: c.querySelector(".learn-card__note")?.textContent.trim() ?? null, top: Math.round(b.top), left: Math.round(b.left), bottom: Math.round(b.bottom) };
+      });
+      const more = document.getElementById("statsMore");
+      const src = document.getElementById("vocabSource");
+      const main = document.querySelector("main");
+      return {
+        h1: document.querySelector("h1")?.textContent.trim(), title: document.title,
+        count: t("learnCount"), total: t("learnTotal"), rank: t("learnRank"), next: document.getElementById("learnNext")?.hidden ? null : t("learnNextN"), nextLine: t("learnNext"),
+        cards, rule: document.querySelector(".learn-rule")?.textContent.trim() ?? null,
+        pace: document.getElementById("learnPace")?.hidden ? null : { title: document.querySelector(".learn-pace__title")?.textContent.trim(), line: t("learnPaceLine"), note: t("learnPaceNote") },
+        moreOpen: more?.open ?? null, moreSummary: more?.querySelector("summary")?.textContent.trim() ?? null,
+        source: src ? { text: src.textContent.replace(/\s+/g, " ").trim(), license: src.querySelector('a[href="https://creativecommons.org/licenses/by-sa/4.0/"]')?.textContent.trim() ?? null, shown: src.getBoundingClientRect().height > 0 && getComputedStyle(src).visibility !== "hidden" } : null,
+        mainText: main?.innerText ?? "",
+        sumBottom: Math.round(document.getElementById("learnSum")?.getBoundingClientRect().bottom ?? 0),
+        scroll: document.documentElement.scrollWidth, inner: document.documentElement.clientWidth,
+        peak: localStorage.getItem("spelldash_rank_peak"), stats: localStorage.getItem("spelldash_word_stats"), bookPace: localStorage.getItem("spelldash_book_pace"),
+        curtain: !!document.querySelector(".rank-up"), tabs: !!document.querySelector(".stats-tabs"), categories: !!document.getElementById("categoryProgress"), levelBar: !!document.getElementById("levelBar")
+      };
+    });
+    r.errors = page.errors.slice(0, 2);
+    await page.close();
+    return r;
+  };
+
+  // ---- (1) 390 昼: 覚えた 1,180（うち中心の学習で 300）・あやふや 120（うち今日数えた 30）・最高到達ランク 中学生 ----
+  const s1 = seedOf({ learned: 1180, paced: 300, unsure: 120, today: 30, peak: 4 });
+  const a = await read(s1);
+  const want = { new: TOTAL - 1300, unsure: 120, learned: 1180 };
+  check("78.4 学習状況: 題は「学習状況」（title も）・覚えた 1,180 / 2,857・ランク 中学生・次のランクまであと 220 語（高校生 1,400 − 1,180）",
+    a.h1 === "学習状況" && a.title.startsWith("学習状況") && a.count === "1,180" && a.total === fmt(TOTAL) && a.rank === "中学生" && a.next === "220" && a.nextLine === "次のランクまであと 220 語" && a.errors.length === 0,
+    JSON.stringify({ h1: a.h1, title: a.title, count: a.count, total: a.total, rank: a.rank, next: a.nextLine, err: a.errors }));
+  const counts = a.cards.map((c) => Number(c.count.replace(/[^\d]/g, "")));
+  check("78.4 学習状況: 3 つの札はこれから・あやふや・覚えたの順で、語数（1,557・120・1,180）の和が総数",
+    JSON.stringify(a.cards.map((c) => c.state)) === JSON.stringify(["new", "unsure", "learned"]) && JSON.stringify(a.cards.map((c) => c.name)) === JSON.stringify(["これから", "あやふや", "覚えた"]) &&
+      JSON.stringify(counts) === JSON.stringify([want.new, want.unsure, want.learned]) && counts.reduce((x, y) => x + y, 0) === TOTAL,
+    JSON.stringify(a.cards.map((c) => [c.state, c.count])));
+  check("78.4 学習状況: 札の説明とボタン（まだ学んでいない単語・この単語を学ぶ → /?learn=new／もう一度確かめたい単語・この単語を学ぶ → /?learn=unsure／自力で答えられた単語・復習する → /?learn=learned）",
+    JSON.stringify(a.cards.map((c) => [c.desc, c.go, c.href])) === JSON.stringify([["まだ学んでいない単語", "この単語を学ぶ", "/?learn=new"], ["もう一度確かめたい単語", "この単語を学ぶ", "/?learn=unsure"], ["自力で答えられた単語", "復習する", "/?learn=learned"]]),
+    JSON.stringify(a.cards.map((c) => [c.desc, c.go, c.href])));
+  check("78.4 学習状況（390×844）: 6 つ（覚えた N・ランク・あと M 語・3 つの札）が開いた画面の中・横スクロールなし",
+    a.sumBottom > 0 && a.sumBottom <= 844 && a.cards.every((c) => c.bottom <= 844) && a.cards[0].top < a.cards[1].top && a.cards[1].top < a.cards[2].top && a.scroll <= a.inner, JSON.stringify({ sum: a.sumBottom, cards: a.cards.map((c) => c.bottom), scroll: a.scroll, inner: a.inner }));
+  check("78.4 学習状況: 札の下に覚えたの条件の文（依頼 §4）と目安の 1 行（中心の学習で覚えた 300 語・10 日 → 残り 1,677 は約 56 日）・注「覚えた で数えています。」",
+    a.rule === "初めから自力で正解できた単語、または、あやふやになったあと別の日に2回自力で正解できた単語が「覚えた」になります。間違えたり答えを見たりすると「あやふや」に戻ります。" &&
+      a.pace?.title === "全部覚えるまでの目安" && a.pace?.line === "今のペースなら、あと約56日です。" && a.pace?.note.startsWith("覚えた で数えています。"), JSON.stringify({ rule: a.rule, pace: a.pace }));
+  check("78.4 学習状況: 「詳しい記録」は閉じている・出典（NGSL 1.2・作者・CC BY-SA 4.0 へのリンク・SpellDash が変えたところ）が見える",
+    a.moreOpen === false && a.moreSummary === "詳しい記録" && !!a.source?.shown && a.source.text.includes("NGSL 1.2") && a.source.text.includes("Browne, C., Culligan, B. & Phillips, J. (2013)") && a.source.license === "CC BY-SA 4.0" && a.source.text.includes(PUBLIC.source.changes),
+    JSON.stringify({ open: a.moreOpen, summary: a.moreSummary, source: a.source }));
+  check("78.4 学習状況: 見える本文に古い状態名・習熟度の段の名前・XP の Lv・Pro が無い（XP 250000 の種でも）・3 タブ・カテゴリ別・XP の行は無い",
+    !OLD_NAMES.test(a.mainText) && !/[木銅銀金神] \d|ダイヤ|レジェンド/.test(a.mainText) && !a.tabs && !a.categories && !a.levelBar, (a.mainText.match(OLD_NAMES) ?? [""])[0] + (a.mainText.match(/[木銅銀金神] \d/) ?? [""])[0]);
+  check("78.4 学習状況: 語の記録と古い目安の鍵を書かない（読むだけ）・最高到達ランクは同じ値（4）・幕は出さない",
+    a.stats === s1.spelldash_word_stats && a.bookPace === null && a.peak === "4" && !a.curtain, JSON.stringify({ same: a.stats === s1.spelldash_word_stats, bookPace: a.bookPace, peak: a.peak }));
+
+  // ---- (2) 0 語の札と今日の分は終わり: 覚えた 0・あやふや 5（どれも今日数えた）----
+  const b = await read(seedOf({ learned: 0, unsure: 5, today: 5 }));
+  const byState = Object.fromEntries(b.cards.map((c) => [c.state, c]));
+  check("78.4 学習状況: 覚えた 0 語の札は押せない（リンクなし・「自力で正解すると、ここに入る。」）・あやふやに語があって今日の分が 0 なら「今日の分は終わり」（リンクなし）・これからは押せる",
+    byState.learned?.href === null && byState.learned?.note === "自力で正解すると、ここに入る。" && byState.unsure?.href === null && byState.unsure?.note === "今日の分は終わり" && byState.unsure?.count.startsWith("5") && byState.new?.href === "/?learn=new",
+    JSON.stringify(b.cards.map((c) => [c.state, c.count, c.href, c.note])));
+  check("78.4 学習状況: 赤ちゃん・よちよちまであと 120 語・目安は待ちの文（中心の学習で覚えた語がまだ無い）・最高到達ランクを 0 で置く",
+    b.rank === "赤ちゃん" && b.next === "120" && b.pace?.line === "学習を続けると、完了までの目安が表示されます。" && b.peak === "0" && b.errors.length === 0, JSON.stringify({ rank: b.rank, next: b.next, pace: b.pace, peak: b.peak, err: b.errors }));
+  const c0 = await read(seedOf({ learned: 0, unsure: 5, today: 2 }));
+  check("78.4 学習状況: あやふやのうち今日まだ数えていない語があれば「この単語を学ぶ」（今日の分 3）", c0.cards[1].href === "/?learn=unsure" && c0.cards[1].note === null, JSON.stringify(c0.cards[1]));
+  {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: seedOf({ learned: 0, unsure: 5, today: 5 }) });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForSelector('#learnCards .learn-card[data-state="learned"] .learn-card__note', { timeout: 8000 }).catch(() => {});
+    await page.click('#learnCards .learn-card[data-state="learned"]');
+    await page.click('#learnCards .learn-card[data-state="unsure"]');
+    await page.waitForTimeout(400);
+    const stay = new URL(page.url()).pathname;
+    const nameBox = await page.locator('#learnCards .learn-card[data-state="new"] .learn-card__name').boundingBox();
+    await page.mouse.click(nameBox.x + 4, nameBox.y + nameBox.height / 2); // 札の名前（リンクの外）を押してもリンクへ（リンクが札を覆う）
+    await page.waitForURL(/\?learn=new/, { timeout: 5000 }).catch(() => {});
+    check("78.4 学習状況: 押せない札（0 語・今日の分は終わり）を押しても移らない・押せる札はどこを押しても /?learn=new へ", stay === "/stats.html" && page.url().endsWith("/?learn=new"), JSON.stringify({ stay, url: page.url() }));
+    await page.close();
+  }
+
+  // ---- (3) 最高到達ランクが今より上: 留学生（6）・今 500 語 → 留学生のまま・あと M 語は今の数から（バイリンガル 2,350 − 500 = 1,850）。最高到達ランクは下げない ----
+  const c = await read(seedOf({ learned: 500, peak: 6 }));
+  check("78.4 学習状況: 最高到達ランク 留学生・今 500 語 → ランクは留学生（下げない）・覚えた 500 / 2,857・次のランクまであと 1,850 語（今の数から）・鍵は 6 のまま・下がった文なし",
+    c.rank === "留学生" && c.count === "500" && c.next === "1,850" && c.peak === "6" && !/下が/.test(c.mainText) && !c.curtain, JSON.stringify({ rank: c.rank, count: c.count, next: c.next, peak: c.peak }));
+  const up = await read(seedOf({ learned: 1180 }));
+  check("78.4 学習状況: 最高到達ランクが無く今 1,180 語 → 中学生を見せ、鍵を 4 に上げる（幕は出さない）", up.rank === "中学生" && up.peak === "4" && !up.curtain && up.errors.length === 0, JSON.stringify({ rank: up.rank, peak: up.peak }));
+
+  // ---- (4) アメリカ人: 全部覚えた → あと M 語の行なし・目安は「完了」 ----
+  const d = await read(seedOf({ learned: TOTAL }), { w: 1200, h: 900 });
+  check("78.4 学習状況: 全部覚えた → アメリカ人・覚えた 2,857 / 2,857・「次のランクまで」の行なし・これから 0 とあやふや 0 の札は押せない・目安は「完了」・鍵 8",
+    d.rank === "アメリカ人" && d.count === fmt(TOTAL) && d.next === null && d.cards[0].href === null && d.cards[1].href === null && d.cards[2].href === "/?learn=learned" && d.pace?.line === "完了" && d.peak === "8" && d.errors.length === 0,
+    JSON.stringify({ rank: d.rank, count: d.count, next: d.next, cards: d.cards.map((x) => x.href), pace: d.pace, peak: d.peak }));
+  const d2 = await read(seedOf({ learned: 2000, peak: 8 }), { w: 1200, h: 900 });
+  check("78.4 学習状況: 最高到達ランクがアメリカ人で今 2,000 語 → アメリカ人のまま・あと M 語の行なし・覚えた 2,000（今の数）", d2.rank === "アメリカ人" && d2.next === null && d2.count === "2,000", JSON.stringify({ rank: d2.rank, next: d2.next, count: d2.count }));
+
+  // ---- (5) 幅と昼夜: 320／390／1200 × 昼・夜で横スクロールなし・札の順（細い幅は上から、1200 は左から）・エラー 0 ----
+  {
+    const rows = [];
+    for (const [w, h] of [[320, 640], [390, 844], [1200, 900]]) for (const theme of ["light", "dark"]) {
+      const r = await read(s1, { w, h, theme });
+      const ordered = w >= 560 ? r.cards[0].left < r.cards[1].left && r.cards[1].left < r.cards[2].left && r.cards[0].top === r.cards[2].top : r.cards[0].top < r.cards[1].top && r.cards[1].top < r.cards[2].top;
+      rows.push({ w, theme, ok: r.scroll <= r.inner && ordered && r.count === "1,180" && r.errors.length === 0, scroll: r.scroll, inner: r.inner, ordered, err: r.errors[0] });
+    }
+    check("78.4 学習状況（320／390／1200 × 昼・夜）: 横スクロールなし・札はどの幅でもこれから・あやふや・覚えたの順・エラー 0", rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
+  }
+
+  // ---- (6) キーボード: 札のリンクと「詳しい記録」は Tab で届き、Enter で開く。深いリンク（#learnedWords）は畳みを開いてから送る ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: s1 });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForSelector("#learnCards a", { timeout: 8000 }).catch(() => {});
+    const seen = [];
+    for (let i = 0; i < 40 && seen.length < 5; i++) {
+      await page.keyboard.press("Tab");
+      const f = await page.evaluate(() => { const el = document.activeElement; return el?.closest("#learnCards") ? `card:${el.getAttribute("href")}` : el?.matches?.("#statsMore > summary") ? "more" : null; });
+      if (f && !seen.includes(f)) seen.push(f);
+    }
+    await page.focus("#statsMore > summary");
+    await page.keyboard.press("Enter");
+    const opened = await page.evaluate(() => document.getElementById("statsMore").open);
+    check("78.4 学習状況: Tab で 3 つの札のリンク（順に）と「詳しい記録」に届き、Enter で畳みが開く", JSON.stringify(seen) === JSON.stringify(["card:/?learn=new", "card:/?learn=unsure", "card:/?learn=learned", "more"]) && opened, JSON.stringify({ seen, opened }));
+    await page.close();
+    const deep = await read(s1, { w: 1200, h: 900, url: "/stats.html#learnedWords" });
+    check("78.4 学習状況: 前の深いリンク（#learnedWords）は「詳しい記録」を開いて送る", deep.moreOpen === true && deep.errors.length === 0, JSON.stringify({ open: deep.moreOpen }));
+  }
+
+  // ---- (7) ほかのタブで答えた（storage）: 開き直さずに数を描き直す ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => {
+      if (sessionStorage.getItem("seeded784")) return;
+      sessionStorage.setItem("seeded784", "1");
+      localStorage.setItem("spelldash_schema_version", "7");
+      localStorage.setItem("spelldash_onboarded", "1");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, seedOf({ learned: 119, peak: 0 }));
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForSelector("#learnCards a", { timeout: 8000 }).catch(() => {});
+    const before = await page.evaluate(() => [document.getElementById("learnCount").textContent, document.getElementById("learnRank").textContent]);
+    const other = await ctx.newPage();
+    await other.route(BASE + "/__other-784", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>other</title>" }));
+    await other.goto(BASE + "/__other-784");
+    await other.evaluate((id) => { const t = JSON.parse(localStorage.getItem("spelldash_word_stats")); t[id] = { playCount: 1, correctCount: 1, ls: 2, lsf: 1, lsAt: Date.now() }; localStorage.setItem("spelldash_word_stats", JSON.stringify(t)); }, PUB[119]);
+    await other.close();
+    await waitUntil(async () => (await page.evaluate(() => document.getElementById("learnCount").textContent)) === "120", 4000);
+    const after = await page.evaluate(() => [document.getElementById("learnCount").textContent, document.getElementById("learnRank").textContent, localStorage.getItem("spelldash_rank_peak")]);
+    check("78.4 学習状況: ほかのタブで 1 語覚えた（119 → 120）→ 開き直さずに 覚えた 120・よちよち（最高到達ランクも 1 に上がる）", JSON.stringify(before) === JSON.stringify(["119", "赤ちゃん"]) && JSON.stringify(after) === JSON.stringify(["120", "よちよち", "1"]) && page.errors.length === 0, JSON.stringify({ before, after, err: page.errors[0] }));
+    await ctx.close();
+  }
+
+  // ---- (8) 読み込みの CLS（1200・390 mobile・昼夜・80ms 遅延と遅延なし）----
+  {
+    const runs = {};
+    for (const [label, opts] of [["1200 80ms", { storage: s1 }], ["1200 0ms", { storage: s1, delay: 0 }], ["390 80ms", { width: 390, height: 844, mobile: true, storage: s1 }], ["390 夜 記録なし", { width: 390, height: 844, mobile: true, storage: { spelldash_placement: "done", spelldash_theme: "dark" } }]]) runs[label] = await loadCls("/stats.html", opts);
+    check("78.4 学習状況: 読み込みの CLS < 0.05（1200・390 mobile・記録あり／なし・昼夜・80ms 遅延と遅延なし）・エラー 0", Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
+  }
+
+  // ---- (9) アカウントのアイコン（ログイン中）: 9 段のランクの名前（Lv なし）・絵は無いので頭文字・XP は使わない ----
+  {
+    const LOGIN = { spelldash_test_session: "1", spelldash_owner: "test-user" };
+    const avatar = async (url, storage, w = 1200) => {
+      const page = await newPage({ viewport: { width: w, height: 900 }, mobile: w < 1000, storage });
+      page.embReqs = 0;
+      page.modReqs = 0;
+      page.on("request", (r) => { const u = new URL(r.url()).pathname; if (u.startsWith("/assets/images/emblems/")) page.embReqs++; if (u.endsWith("/js/accountEmblem.js")) page.modReqs++; });
+      await page.goto(BASE + url, { waitUntil: "load" });
+      await waitUntil(async () => (await page.evaluate(() => document.getElementById("accountRank") && !document.getElementById("accountRank").hidden)), 6000);
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(() => {
+        const row = document.getElementById("accountRank");
+        const av = document.getElementById("headerAvatar");
+        return { label: document.getElementById("avatarButton")?.getAttribute("aria-label"), row: row && !row.hidden ? row.querySelector('[aria-hidden="true"]')?.textContent.trim() : null, sr: row?.querySelector(".sr-only")?.textContent.trim() ?? null, imgs: av?.querySelectorAll("img").length ?? -1, letter: (av?.querySelector(".avatar__letter") ?? av)?.textContent.trim() };
+      });
+      r.emb = page.embReqs;
+      r.mod = page.modReqs;
+      r.errors = page.errors.slice(0, 1);
+      await page.close();
+      return r;
+    };
+    const rows = [];
+    for (const url of ["/stats.html", "/list.html", "/index.html"]) rows.push({ url, ...(await avatar(url, { ...seedOf({ learned: 500, peak: 4 }), ...LOGIN })) });
+    check("78.4 アカウントのアイコン: ログイン中・最高到達ランク 中学生（今 500 語）→ ボタンの名前「アカウントメニュー（中学生）」・メニューの行「ランク 中学生」（学年に読めないよう「ランク」を付ける・読み上げも同じ・Lv なし）・絵は読まず頭文字「T」（stats・list・index。XP 250000 は使わない）",
+      rows.every((r) => r.label === "アカウントメニュー（中学生）" && r.row === "ランク 中学生" && r.sr === "ランク 中学生" && r.imgs === 0 && r.letter === "T" && r.emb === 0 && r.mod === 1 && r.errors.length === 0), JSON.stringify(rows));
+    const noPeak = await avatar("/list.html", { ...seedOf({ learned: 1180 }), ...LOGIN }, 390);
+    check("78.4 アカウントのアイコン: 最高到達ランクがまだ無い端末は材料を後から読んで今の語数の段（1,180 語 → 中学生）", noPeak.label === "アカウントメニュー（中学生）" && noPeak.row === "ランク 中学生" && noPeak.errors.length === 0, JSON.stringify(noPeak));
+  }
+
+  // ---- (10) 見せたランクは最高到達ランクに書く（ログイン中の新しいタブ: 取り込みが走る間は書かず、取り込みの後に書く）。そのあと覚えたが 1 語減っても下げない ----
+  // 取り込みで端末の記録が変わったとき（spelldash:synced が来る）と、変わらなかったとき（知らせが来ない）の両方。アカウントのアイコン（今の語数から数えた段）も同じ。
+  // 持ち主が別の人の端末では、取り込みの後の値は新しい人の段（前の人の段を書かない）
+  {
+    const iso = new Date(Date.now() - 3 * DAY).toISOString();
+    const learnedLocal = (n) => Object.fromEntries(PUB.slice(0, n).map((id) => [id, { playCount: 2, correctCount: 1, lastPlayed: iso, lastRecallSuccessAt: iso, ls: 2 }]));
+    const cloudRow = (id) => ({ user_id: "test-user", word_id: id, play_count: 2, correct_count: 1, typing_miss: 0, recall_fail: 0, clean_correct_streak: 1, mastered: false, mastered_at: null, last_played: iso, next_review_at: null, last_recall_fail_at: null, last_recall_success_at: iso, daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: iso });
+    // 種は 1 回だけ入れる（開き直しで入れ直さない）。spelldash:synced を見たかを sessionStorage に控える
+    const openOnce = async (url, seed, { w = 1200, h = 900 } = {}) => {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, serviceWorkers: "block" });
+      const page = await ctx.newPage();
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      page.on("dialog", (d) => d.accept());
+      await page.addInitScript((s) => {
+        window.addEventListener("spelldash:synced", () => sessionStorage.setItem("seen784synced", "1"));
+        if (sessionStorage.getItem("seeded784b")) return;
+        sessionStorage.setItem("seeded784b", "1");
+        for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v);
+      }, seed);
+      await page.goto(BASE + url, { waitUntil: "networkidle" });
+      await waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session"))) === "test-user", 10000);
+      return { ctx, page };
+    };
+    const login = (cloud, extra = {}) => ({ spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "test-user", spelldash_learn_filled: "test-user", ...extra });
+    // 覚えたの 1 語を あやふや に（中心の学習の × と同じ形の記録。同じタブで書くので storage の知らせは来ない）→ 開き直す
+    const dropOne = async (page) => {
+      await page.evaluate((id) => { const t = JSON.parse(localStorage.getItem("spelldash_word_stats")); t[id] = { ...t[id], ls: 1, lastRecallFailAt: new Date().toISOString(), recallFail: 1 }; localStorage.setItem("spelldash_word_stats", JSON.stringify(t)); }, PUB[0]);
+      await page.reload({ waitUntil: "networkidle" });
+      await page.waitForTimeout(400);
+    };
+    const statusNow = (page) => page.evaluate(() => ({ rank: document.getElementById("learnRank")?.textContent, count: document.getElementById("learnCount")?.textContent, next: document.getElementById("learnNextN")?.textContent, peak: localStorage.getItem("spelldash_rank_peak"), synced: sessionStorage.getItem("seen784synced") === "1" }));
+    const rows = [];
+    for (const [label, tables, delayMs, synced] of [
+      ["取り込みで変わる・遅れ 0ms", { word_progress: PUB.slice(0, 1000).map(cloudRow), user_progress: [{ user_id: "test-user", xp: 1000, level: 5, updated_at: iso }], user_items: [] }, 0, true],
+      ["取り込みで変わる・遅れ 1500ms", { word_progress: PUB.slice(0, 1000).map(cloudRow), user_progress: [{ user_id: "test-user", xp: 1000, level: 5, updated_at: iso }], user_items: [] }, 1500, true],
+      ["取り込みで変わらない・遅れ 1500ms", {}, 1500, false]
+    ]) {
+      const cloud = createCloud(tables, { delayMs });
+      const { ctx, page } = await openOnce("/stats.html", login(cloud, { spelldash_word_stats: JSON.stringify(learnedLocal(1000)) }));
+      await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_rank_peak"))) === "4", 4000);
+      const first = await statusNow(page);
+      await dropOne(page);
+      const after = await statusNow(page);
+      rows.push({ label, ok: first.rank === "中学生" && first.peak === "4" && first.synced === synced && after.rank === "中学生" && after.count === "999" && after.next === "401" && after.peak === "4" && page.errors.length === 0, first, after, err: page.errors[0] });
+      await ctx.close();
+    }
+    check("78.4 学習状況（ログイン中・新しいタブで取り込みが走る）: 取り込みの後に見せた中学生を最高到達ランク 4 に書く（取り込みで変わる・変わらないの両方、遅れ 0／1500ms）・そのあと覚えたが 999 語になっても中学生のまま（あと 401 語は今の数から）",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
+
+    // アカウントのアイコン（学習状況でないページ）: 最高到達ランクが無い端末で今の語数から数えた段を見せたら、それを書く（取り込みの後）・1 語減っても下げない
+    {
+      const cloud = createCloud({}, { delayMs: 300 });
+      const { ctx, page } = await openOnce("/list.html", login(cloud, { spelldash_word_stats: JSON.stringify(learnedLocal(1000)) }));
+      const label = () => page.evaluate(() => document.getElementById("avatarButton")?.getAttribute("aria-label"));
+      await waitUntil(async () => (await label()) === "アカウントメニュー（中学生）", 6000);
+      await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_rank_peak"))) === "4", 4000);
+      const first = { label: await label(), peak: await page.evaluate(() => localStorage.getItem("spelldash_rank_peak")) };
+      await dropOne(page);
+      await waitUntil(async () => (await label()) !== "アカウントメニュー", 6000);
+      await page.waitForTimeout(600);
+      const after = { label: await label(), peak: await page.evaluate(() => localStorage.getItem("spelldash_rank_peak")) };
+      check("78.4 アカウントのアイコン: 最高到達ランクが無い端末で今の語数から数えた中学生を見せたら、最高到達ランク 4 に書く（取り込みの後）・覚えたが 999 語になっても中学生のまま",
+        first.label === "アカウントメニュー（中学生）" && first.peak === "4" && after.label === "アカウントメニュー（中学生）" && after.peak === "4" && page.errors.length === 0, JSON.stringify({ first, after, err: page.errors[0] }));
+      await ctx.close();
+    }
+
+    // 持ち主が別の人の端末（前の人: 留学生 6・2,000 語）: 置き換えと取り込みの後の最高到達ランクは新しい人の段（記録なし → 0 か無し）。前の人の 6 を書き戻さない
+    {
+      const cloud = createCloud({}, { delayMs: 300 });
+      const { ctx, page } = await openOnce("/stats.html", login(cloud, { spelldash_owner: "other-user", spelldash_learn_filled: "other-user", spelldash_rank_peak: "6", spelldash_word_stats: JSON.stringify(learnedLocal(2000)) }));
+      const seen = [];
+      for (let i = 0; i < 12; i++) {
+        seen.push(await page.evaluate(() => localStorage.getItem("spelldash_rank_peak")));
+        await page.waitForTimeout(150);
+      }
+      const r = await statusNow(page);
+      check("78.4 学習状況（持ち主が別の人の端末で取り込み）: 取り込みの後の最高到達ランクは新しい人の段（0 か無し）・前の人の 6 を書き戻さない・赤ちゃん・覚えた 0",
+        seen.every((p) => p === null || p === "0") && r.rank === "赤ちゃん" && r.count === "0" && page.errors.length === 0, JSON.stringify({ seen, r, err: page.errors[0] }));
+      await ctx.close();
+    }
+  }
+
+  // ---- (11) 詳しい記録の中の前の数え方の数（成長ログの語数・今月のまとめ）は「覚えた」と呼ばない（最初の画面の 3 状態の 覚えた と別の数） ----
+  {
+    const seed = seedOf({ learned: 40, extra: { spelldash_growth_log: JSON.stringify([{ date: ymdDaysAgo(3), learned: 0, mastered: 0, active: true, v: 2 }]) } });
+    for (const [label, storage] of [["推移あり", seed], ["推移なし", seedOf({ learned: 40 })]]) {
+      const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage });
+      await page.goto(BASE + "/stats.html#growth", { waitUntil: "networkidle" });
+      await page.waitForTimeout(500);
+      const r = await page.evaluate(() => ({
+        open: document.getElementById("statsMore")?.open,
+        title: document.querySelector("#growth h3")?.textContent.trim(),
+        trend: document.getElementById("growthTrend")?.textContent.trim(),
+        aria: document.querySelector("#growthTrend svg")?.getAttribute("aria-label") ?? null,
+        monthly: document.getElementById("monthlySummary")?.textContent.trim()
+      }));
+      check(`78.4 詳しい記録（${label}）: 推移の見出しは「思い出せるようになった語の推移（30日）」・推移と今月のまとめに「覚えた」が無い`,
+        r.open === true && r.title === "思い出せるようになった語の推移（30日）" && ![r.trend, r.aria, r.monthly].some((t) => (t ?? "").includes("覚えた")) && (label === "推移なし" || r.aria === "思い出せるようになった語の推移") && page.errors.length === 0,
+        JSON.stringify({ ...r, err: page.errors[0] }));
+      await page.close();
+    }
+  }
+
+  // ---- (12) 公開の語の表が読めない（オフライン）: 数と札の場所を空けず短い 1 行。通信が戻ったら（online）描き直す ----
+  {
+    // Service Worker は止める（page.route は Service Worker が取った要求を捕まえない）
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => {
+      localStorage.setItem("spelldash_schema_version", "7");
+      localStorage.setItem("spelldash_onboarded", "1");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, s1);
+    await page.route("**/data/public/english.json", (route) => route.abort());
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    const off = await page.evaluate(() => {
+      const msg = document.getElementById("learnUnavailable");
+      const sum = document.getElementById("learnSum");
+      return { msg: msg && !msg.hidden ? msg.textContent.trim() : null, sumShown: !!sum && getComputedStyle(sum).display !== "none", cardsH: Math.round(document.getElementById("learnCards")?.getBoundingClientRect().height ?? -1) };
+    });
+    await page.unroute("**/data/public/english.json");
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await waitUntil(async () => (await page.evaluate(() => document.getElementById("learnCount")?.textContent)) === "1,180", 5000);
+    const on = await page.evaluate(() => ({ msgHidden: document.getElementById("learnUnavailable")?.hidden, count: document.getElementById("learnCount")?.textContent, rank: document.getElementById("learnRank")?.textContent, source: document.getElementById("vocabSource")?.textContent.includes("NGSL") }));
+    check("78.4 学習状況: 公開の語の表が読めないと数と札を出さず「学習状況を読み込めなかった。通信が戻ると表示する。」の 1 行・通信が戻ったら（online）開き直さずに描く（覚えた 1,180・中学生・出典）",
+      off.msg === "学習状況を読み込めなかった。通信が戻ると表示する。" && !off.sumShown && off.cardsH === 0 && on.msgHidden === true && on.count === "1,180" && on.rank === "中学生" && on.source === true,
+      JSON.stringify({ off, on, err: page.errors[0] }));
+    await ctx.close();
+  }
 }
 
 // ===== 20. Batch 48: 2 台目の端末（ログイン・同期・マージ） =====

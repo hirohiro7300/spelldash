@@ -3,7 +3,8 @@
 // 一度届いた段は下がらない: 見せるランク = max（最高到達ランク, 今の語数の段）。画面の数（覚えた N / 総数・次のランクまであと M 語・3 状態の語数）は
 // 今の状態から正直に数える（最高到達ランクと今の覚えた語数は別の値）。下がった演出・知らせは出さない。
 // 最高到達ランクは端末だけの鍵 spelldash_rank_peak（段の番号 0〜8 の数字の文字列。送らない。バックアップに入る。別のアカウントに替えると消える: js/backup.js）。
-// 書くのは中心の学習の回の終わりと学習状況の表示だけ（移行・取り込み・復元のタスクでは数え直さない。復元は前・バックアップ・今の数の大きい方: js/backup.js）。
+// 書くのは中心の学習の回の終わりと、今の語数の段を見せたとき（学習状況・アカウントのアイコン。見せた段を後で下げない）だけ
+// （移行・取り込み・復元のタスクでは数え直さない。取り込みの途中は書かず、終わってから書く。復元は前・バックアップ・今の数の大きい方: js/backup.js）。
 // 上の純な関数は import なし・DOM なし（Node から直に読む: scripts/test-learn-state.mjs）。鍵を読む・書く関数だけが端末の保存に触る（失敗しても投げない）。
 // 名前は語彙の量の主張にしない（「中学生レベル」とは書かない）。新しい段の絵はまだ無い（文字で出す）。
 
@@ -58,15 +59,45 @@ export function readRankPeak(storage = globalThis.localStorage) {
 }
 
 // 最高到達ランクを rank まで上げる（下げない: 保存の値 = max（保存の値, rank））。書くタスクの中で保存を読み直してから比べる
-// （ほかのタブ・前の人の値をメモリーから持ち越さない）。返り値 { peak: 書いた後の値, saved: 書けた・書く必要が無かったら true、書けなかったら false }
+// （ほかのタブ・前の人の値をメモリーから持ち越さない）。返り値 { peak: 書いた後の値, saved: 書けた・書く必要が無かったら true、書けなかったら false }。
+// 上げたら、同じタブに spelldash:rank-peak（detail.peak）を知らせる（アカウントのアイコン js/accountEmblem.js が描き直す。ほかのタブは storage イベント）
 export function raiseRankPeak(rank, storage = globalThis.localStorage) {
   const stored = readRankPeak(storage);
   const want = parseRankPeak(rank);
   if (want === null || (stored !== null && stored >= want)) return { peak: stored, saved: true };
   try {
     storage.setItem(RANK_PEAK_KEY, String(want));
-    return { peak: want, saved: true };
   } catch {
     return { peak: stored, saved: false };
   }
+  notifyRankPeak(want);
+  return { peak: want, saved: true };
+}
+
+function notifyRankPeak(peak) {
+  if (typeof window === "undefined" || typeof window.dispatchEvent !== "function" || typeof CustomEvent !== "function") return;
+  try {
+    window.dispatchEvent(new CustomEvent("spelldash:rank-peak", { detail: { peak } }));
+  } catch {
+    // 知らせは飾り（アイコンは次の描き直しで合う）。書けた値はそのまま
+  }
+}
+
+// ===== 画面の形（学習状況・アカウントのアイコン。Batch 78 段 4） =====
+// 見せるランク（下がらない）と、次のランクまでの残り（今の覚えた語数から正直に。最後の段なら next は null = 「あと M 語」の行を出さない）
+export function rankView(count, peak, total) {
+  const rank = shownRank(count, peak, total);
+  return { rank, name: RANK_NAMES[rank], next: nextRankGap(count, rank, total) };
+}
+
+// 段の番号 → 名前（範囲の外・読めない値は null）
+export function rankName(rank) {
+  const r = parseRankPeak(rank);
+  return r === null ? null : RANK_NAMES[r];
+}
+
+// 名前 → 段の番号（知らない名前は null）
+export function rankOfName(name) {
+  const i = RANK_NAMES.indexOf(name);
+  return i >= 0 ? i : null;
 }
