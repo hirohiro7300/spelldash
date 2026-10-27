@@ -19766,6 +19766,352 @@ console.log("learn state (schema 7):");
   }
 }
 
+// ===== 78.3 3 つの学習（Batch 78 段 3。入口 /?learn=new|unsure|learned。js/learnQueue.js・js/game.js の中心の学習）: その状態の語だけ・状態の書き手・回の終わり・保存の失敗・開き直し・スマホ・キーボード =====
+// 書き手 recordLearnAnswer に渡った (id, 種類) は js/stats.js を包んで控える（中身はそのまま。watchWriters と同じ作法）。Service Worker は止める（開き直しでも包んだ js を読む）。
+// 種は 1 回だけ入れる（開き直しで種に戻さない）。正解のあとの待ちは「すぐ次へ」（js/afterCorrect.js の表は変えない）
+console.log("learn modes (78.3):");
+{
+  const vocab = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+  const enOf = (id) => id.replace(/^english-/, "");
+  const DAY = 86400000;
+  const dayNo = (ms) => { const d = new Date(ms); return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1970, 0, 1)) / DAY); };
+  const isoAgo = (days) => new Date(Date.now() - days * DAY).toISOString();
+  const rec = (over = {}) => ({ playCount: 2, correctCount: 1, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 1, mastered: false, masteredAt: null, lastPlayed: isoAgo(3), nextReviewAt: isoAgo(-2), lastRecallFailAt: null, lastRecallSuccessAt: isoAgo(3), dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: null, ...over });
+  const learnedUpTo = (ids) => Object.fromEntries(ids.map((id) => [id, rec({ ls: 2 })]));
+  async function learnPage(storage, { viewport = { width: 1200, height: 900 }, mobile = false, time = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    if (time) await page.clock.setSystemTime(new Date(time));
+    await page.route("**/js/stats.js", async (route) => {
+      const res = await route.fetch();
+      let src = await res.text();
+      src = src.replace("export function recordLearnAnswer(", "function __orig_recordLearnAnswer(");
+      src += `\nexport function recordLearnAnswer(...a) { try { const l = JSON.parse(sessionStorage.getItem("__learn") || "[]"); l.push({ id: a[0], kind: a[1] }); sessionStorage.setItem("__learn", JSON.stringify(l)); } catch {} return __orig_recordLearnAnswer(...a); }\n`;
+      await route.fulfill({ response: res, body: src, headers: { ...res.headers(), "content-type": "text/javascript" } });
+    });
+    await page.addInitScript((seed) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, storage);
+    return page;
+  }
+  const learnWrites = (page) => page.evaluate(() => JSON.parse(sessionStorage.getItem("__learn") || "[]"));
+  const tableOf = async (page) => JSON.parse((await page.evaluate(() => localStorage.getItem("spelldash_word_stats"))) || "{}");
+  const shownIds = (page) => page.evaluate(() => window.__words.slice());
+  const msg = (page) => page.evaluate(() => document.getElementById("message").textContent.trim());
+  const progress = (page) => page.evaluate(() => document.getElementById("setProgress").textContent.replace(/\s+/g, " ").trim());
+  const panelText = (page) => page.evaluate(() => { const p = document.getElementById("resultPanel"); return p && !p.hidden ? p.innerText.replace(/\s+/g, " ").trim() : ""; });
+  const waitWord = async (page, n) => waitUntil(async () => (await shownIds(page)).length >= n, 6000);
+  const waitPanel = (page) => waitUntil(async () => (await panelText(page)) !== "", 6000);
+  const counts = (page) => page.evaluate(async () => {
+    const s = await import("/js/storage.js");
+    const L = await import("/js/learnState.js");
+    const src = await s.loadLearnStates();
+    return src ? L.countLearnStates(s.getWordStats(), src.vocab, src.pending) : null;
+  });
+  async function typeWord(page, text) {
+    await page.focus("#input");
+    for (const ch of text) await page.press("#input", ch);
+  }
+  const hScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
+  // (1) これからの 10 語: 自力正解・別解（accept の語・同じ訳の別のカードの語）・答え表示・1 打ミス・ヒントを混ぜる → 状態・種類・数・回の終わり・ランクアップ
+  {
+    const head = vocab.order.slice(0, 60);
+    const more = vocab.order.slice(70, 125); // 覚えた 115 語から始める（あと 5 語でよちよち）
+    const q = vocab.order.slice(60, 70); // when think make time see up out good people year
+    const page = await learnPage({ spelldash_word_stats: JSON.stringify({ ...learnedUpTo(head), ...learnedUpTo(more) }) });
+    await page.goto(BASE + "/index.html?learn=new&hintms=400", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const first = { ids: await shownIds(page), ja: await page.textContent("#japanese"), prog: await progress(page), msg: await msg(page), focus: await page.evaluate(() => document.activeElement?.id) };
+    check("78.3 これから: 入口から始まり、状態の無い語を公開の並びのまま出す（頭は 61 番目の when・進みは「これから 0 / 10」・焦点は入力欄）", first.ids[0] === q[0] && first.prog === "これから 0 / 10" && first.focus === "input", JSON.stringify(first));
+    check("78.3 これから: 始めに「分からないときは答えを見る」「間違えても、あやふやに移るだけ」の 1 行", first.msg.includes("分からないときは答えを見る") && first.msg.includes("間違えても、あやふやに移るだけ"), first.msg);
+    const lines = {};
+    const next = async (n) => { await waitWord(page, n); await afterAdvance(page); };
+    await typeWord(page, "when"); // exact
+    lines.when = await msg(page);
+    await next(2);
+    await typeWord(page, "consider"); // think の accept → altAccept
+    await page.waitForTimeout(50);
+    lines.think = await msg(page);
+    await typeWord(page, "tz"); // 任意の打ち直しの打ち間違い（× にしない・書き手に渡さない）
+    await typeWord(page, "hink");
+    await next(3);
+    await page.press("#input", "Enter"); // make: 答え表示
+    await page.waitForTimeout(50);
+    lines.make = await msg(page);
+    await page.press("#input", "Enter");
+    await next(4);
+    const timeJa = await page.textContent("#japanese");
+    const baseJa = await page.evaluate(async () => (await import("/js/wordStore.js")).findWord("english-time")?.ja ?? null);
+    await typeWord(page, "x"); // time: 1 打ミス
+    await page.waitForTimeout(50);
+    lines.time = await msg(page);
+    await page.press("#input", "Enter");
+    await next(5);
+    await page.waitForSelector("#hintButton:not([hidden])", { timeout: 3000 });
+    await page.click("#hintButton"); // see: ヒント（× ）→ 残りを打つ
+    await typeWord(page, "ee");
+    lines.see = await msg(page);
+    for (const [i, en] of [[6, "up"], [7, "out"], [8, "good"]]) { await next(i); await typeWord(page, en); }
+    await next(9);
+    await typeWord(page, "folk"); // people: 同じ訳の別のカードの語 → altIndex
+    await page.waitForTimeout(50);
+    lines.people = await msg(page);
+    await page.press("#input", "Enter");
+    await next(10);
+    await typeWord(page, "year");
+    await waitPanel(page);
+    const t = await tableOf(page);
+    const writes = await learnWrites(page);
+    const kinds = Object.fromEntries(writes.map((w) => [enOf(w.id), w.kind]));
+    check("78.3 これから: 10 問で書き手は 10 回（1 問に 1 回・別解の後の打ち直しは渡さない）・公開の語だけ", writes.length === 10 && new Set(writes.map((w) => w.id)).size === 10 && writes.every((w) => q.includes(w.id)), JSON.stringify(writes));
+    check("78.3 これから: 種類 exact・altAccept（accept の語）・reveal・miss・hint・altIndex（同じ訳の別のカードの語）", kinds.when === "exact" && kinds.think === "altAccept" && kinds.make === "reveal" && kinds.time === "miss" && kinds.see === "hint" && kinds.people === "altIndex" && kinds.year === "exact" && kinds.up === "exact", JSON.stringify(kinds));
+    check("78.3 これから: 自力正解と別解は 覚えた、答え表示・1 打ミス・ヒントは あやふや（数えた日なし）", ["when", "think", "up", "out", "good", "people", "year"].every((en) => t[`english-${en}`]?.ls === 2) && ["make", "time", "see"].every((en) => t[`english-${en}`]?.ls === 1 && !("lsd" in t[`english-${en}`])), JSON.stringify(q.map((id) => [enOf(id), t[id]?.ls ?? null])));
+    check("78.3 これから: 別解の後の打ち直しの打ち間違いは × にしない（think の思い出せず 0・覚えた のまま）", t["english-think"]?.recallFail === 0 && t["english-think"]?.ls === 2, JSON.stringify(t["english-think"]));
+    check("78.3 これから: 答えの 1 行は状態の言葉（覚えた・あやふやに移った・それも正解。この問題の語は…）", lines.when === "覚えた" && lines.think === "それも正解。この問題の語は think（覚えた）" && lines.make.startsWith("あやふやに移った") && lines.time.startsWith("あやふやに移った") && lines.people === "それも正解。この問題の語は people（覚えた）" && lines.see.includes("ヒントを見たので、あやふやに移る"), JSON.stringify(lines));
+    check("78.3 これから: 公開の版のカードを出す（基本カテゴリの同じ id の訳ではない: time は「時間・時」）", timeJa.trim() === "時間・時" && baseJa === "時間", JSON.stringify({ timeJa, baseJa }));
+    const panel = await panelText(page);
+    const c1 = await counts(page);
+    check("78.3 これから: 回の終わり「10語 終わり」・今回 覚えた 7・あやふや 3・覚えた 122 / 2,857・続けて学ぶ・学習状況", panel.includes("10語 終わり") && /今回 覚えた 7/.test(panel) && /あやふや 3/.test(panel) && panel.includes(`覚えた 122 / ${vocab.total.toLocaleString("ja-JP")}`) && panel.includes("続けて学ぶ") && panel.includes("学習状況") && c1.learned === 122 && c1.unsure === 3, JSON.stringify({ panel, c1 }));
+    const rank = await page.evaluate(() => ({ text: document.querySelector(".rank-up")?.textContent.replace(/\s+/g, " ").trim() ?? "", img: document.querySelectorAll(".rank-up img").length, peak: localStorage.getItem("spelldash_rank_peak"), sr: document.getElementById("srStatus").textContent }));
+    check("78.3 これから: 回の終わりに 1 回だけランクアップの幕（赤ちゃん → よちよち・文字だけ）・最高到達ランク 1", rank.text.includes("ランクアップ") && rank.text.includes("赤ちゃん") && rank.text.includes("よちよち") && rank.img === 0 && rank.peak === "1" && rank.sr.includes("よちよち"), JSON.stringify(rank));
+    const words = (await panelText(page)) + (await page.evaluate(() => document.getElementById("gameCard").innerText));
+    check("78.3 これから: 回の中と終わりに XP・Lv・済み・習得・知ってた・Pro の文が無い（はちゃんの吹き出しも無い）", !/XP|Lv\.|済み|習得|知ってた|Pro/.test(words) && (await page.locator("#resultPanel .hasumi").count()) === 0, words.slice(0, 300));
+    // キーボードだけ: 幕を Esc で閉じ、見出しの次の Tab で「続けて学ぶ」→ Enter で次の 10 語（1 語目は year の次の語）
+    await page.keyboard.press("Escape");
+    const focusTitle = await page.evaluate(() => document.activeElement?.id);
+    await page.keyboard.press("Tab");
+    const focusBtn = await page.evaluate(() => document.activeElement?.textContent.trim());
+    await page.keyboard.press("Enter");
+    await waitWord(page, 11);
+    const again = { id: (await shownIds(page)).at(-1), prog: await progress(page) };
+    check("78.3 キーボード: 終わりの見出しに焦点 → Tab で「続けて学ぶ」→ Enter で次の 10 語（覚えたの 125 番目より後の、状態の無い語から・0 / 10）", focusTitle === "resultTitle" && focusBtn === "続けて学ぶ" && again.id === vocab.order[125] && again.prog === "これから 0 / 10", JSON.stringify({ focusTitle, focusBtn, again }));
+    check("78.3 これから: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.context().close();
+  }
+
+  // (2) 開き直し: 3 問の後に開き直すと、答えた語は出ず、同じ次の語から・進みは 3 / 10（二重に数えない）
+  {
+    const page = await learnPage({ spelldash_word_stats: "{}" });
+    await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const q = vocab.order.slice(0, 4);
+    await typeWord(page, enOf(q[0]));
+    await waitWord(page, 2);
+    await afterAdvance(page);
+    await page.press("#input", "Enter"); // 答え表示
+    await page.press("#input", "Enter");
+    await waitWord(page, 3);
+    await typeWord(page, enOf(q[2]));
+    await waitWord(page, 4);
+    const before = { shown: await shownIds(page), writes: (await learnWrites(page)).length, t: await tableOf(page) };
+    await page.reload({ waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const after = { shown: await shownIds(page), prog: await progress(page), writes: (await learnWrites(page)).length, t: await tableOf(page) };
+    check("78.3 開き直し: 3 問の後に開き直すと、同じ次の語（4 番目）から・進みは 3 / 10", before.shown[3] === q[3] && after.shown[0] === q[3] && after.prog === "これから 3 / 10", JSON.stringify({ before: before.shown, after: after.shown, prog: after.prog }));
+    check("78.3 開き直し: 開き直しで書き手は呼ばない・答えた 3 語の状態と lsAt はそのまま（二重に数えない）", before.writes === 3 && after.writes === 3 && q.slice(0, 3).every((id) => JSON.stringify(after.t[id]) === JSON.stringify(before.t[id])) && after.t[q[0]].ls === 2 && after.t[q[1]].ls === 1, JSON.stringify(q.map((id) => after.t[id]?.ls ?? null)));
+    // ほかのタブで記録が置き換わった（語の記録を消した）: 次の答えの書き手より先に回を終える
+    const other = await page.context().newPage();
+    await other.goto(BASE + "/privacy.html", { waitUntil: "networkidle" });
+    await other.evaluate(() => localStorage.removeItem("spelldash_word_stats"));
+    await waitPanel(page);
+    const panel = await panelText(page);
+    await page.keyboard.type(enOf(q[3])); // 入力欄は畳んである（打鍵は盤面に届かない）
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    check("78.3 複数のタブ: ほかのタブで記録が消えたら、回を終える（「この回は終えた」・その後の打鍵で書き手を呼ばない・語の記録を作らない）", panel.includes("この回は終えた") && (await learnWrites(page)).length === 3 && (await page.evaluate(() => localStorage.getItem("spelldash_word_stats"))) === null, panel);
+    check("78.3 開き直し: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await other.close();
+    await page.context().close();
+  }
+
+  // (3) あやふや: 別の日の 2 回で 覚えた・同じ日の 2 回目は数えない（今日の分は終わり）・今日もう数えた語は出さない
+  {
+    const [X, Y, Z] = vocab.order.slice(200, 203);
+    const d1 = new Date();
+    d1.setDate(d1.getDate() + 3);
+    d1.setHours(10, 0, 0, 0);
+    const d1No = dayNo(d1.getTime());
+    const seed = { [X]: rec({ ls: 1 }), [Y]: rec({ ls: 1 }), [Z]: rec({ ls: 1, lsd: d1No, lsAt: d1.getTime() - 3600000 }) };
+    const page = await learnPage({ spelldash_word_stats: JSON.stringify(seed) }, { time: d1.getTime() });
+    await page.goto(BASE + "/index.html?learn=unsure&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const prog0 = await progress(page);
+    await typeWord(page, enOf(X));
+    await page.waitForTimeout(50);
+    const lineX = await msg(page);
+    await waitWord(page, 2);
+    await afterAdvance(page);
+    await typeWord(page, enOf(Y));
+    await waitPanel(page);
+    const shown = await shownIds(page);
+    const panel = await panelText(page);
+    const t1 = await tableOf(page);
+    check("78.3 あやふや: 今日の分だけ（今日もう数えた語は出さない）・進みは あやふや 0 / 2", shown.length === 2 && shown[0] === X && shown[1] === Y && prog0 === "あやふや 0 / 2", JSON.stringify({ shown, prog0 }));
+    check("78.3 あやふや: 1 日目の自力正解は あやふや のまま今日を数える（「1日目」の 1 行）", t1[X]?.ls === 1 && t1[X]?.lsd === d1No && t1[Y]?.lsd === d1No && lineX.startsWith("1日目"), JSON.stringify({ x: t1[X], lineX }));
+    check("78.3 あやふや: 今日の分が尽きたら「今日の分は終わり」・今日を1日目に数えた語 2", panel.includes("今日の分は終わり") && panel.includes("今日を1日目に数えた語 2") && /今回 覚えた 0/.test(panel) && /あやふや 2/.test(panel), panel);
+    // 同じ日にもう一度開く: 出す語は無い（同じ日は 1 日分）
+    await page.reload({ waitUntil: "networkidle" });
+    await waitPanel(page);
+    check("78.3 あやふや: 同じ日にもう一度開いても出さない（今日の分は終わり・書き手は 2 回のまま）", (await shownIds(page)).length === 0 && (await panelText(page)).includes("今日の分は終わり") && (await learnWrites(page)).length === 2, await panelText(page));
+    const table = await page.evaluate(() => localStorage.getItem("spelldash_word_stats"));
+    check("78.3 あやふや: 1 日目のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.context().close();
+    // 翌日: 数えた日の次の日の自力正解で 覚えた
+    const d2 = d1.getTime() + DAY;
+    const page2 = await learnPage({ spelldash_word_stats: table }, { time: d2 });
+    await page2.goto(BASE + "/index.html?learn=unsure&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page2, 1);
+    const first2 = (await shownIds(page2))[0];
+    await typeWord(page2, enOf(first2));
+    await page2.waitForTimeout(50);
+    const line2 = await msg(page2);
+    const t2 = await tableOf(page2);
+    check("78.3 あやふや: 翌日は 3 語とも今日の分（最後に答えた時刻の古い順で Z が先）・別の日の 2 回目の自力正解で 覚えた", first2 === Z && t2[Z]?.ls === 2 && !("lsd" in t2[Z]) && line2 === "覚えた", JSON.stringify({ first2, z: t2[Z], line2 }));
+    check("78.3 あやふや: 2 日目のエラー 0", page2.errors.length === 0, page2.errors[0] ?? "");
+    await page2.context().close();
+  }
+
+  // (4) 覚えたの復習: 1 打ミスは あやふや に移るだけ（罰の演出なし）・最後に答えた時刻の古い順
+  {
+    const [A, B] = vocab.order.slice(300, 302);
+    const seed = { [A]: rec({ ls: 2, lsAt: Date.now() - 5 * DAY }), [B]: rec({ ls: 2, lsAt: Date.now() - 9 * DAY }) };
+    const page = await learnPage({ spelldash_word_stats: JSON.stringify(seed) });
+    await page.goto(BASE + "/index.html?learn=learned&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const firstId = (await shownIds(page))[0];
+    await page.evaluate(() => { window.__failFlash = 0; new MutationObserver(() => { if (document.getElementById("gameCard").classList.contains("game-card--failed")) window.__failFlash++; }).observe(document.getElementById("gameCard"), { attributes: true }); });
+    await typeWord(page, enOf(firstId) === "q" ? "z" : "q");
+    await page.waitForTimeout(80);
+    const line = await msg(page);
+    await page.press("#input", "Enter");
+    await waitWord(page, 2);
+    await afterAdvance(page);
+    await typeWord(page, enOf(A));
+    await waitPanel(page);
+    const t = await tableOf(page);
+    const panel = await panelText(page);
+    check("78.3 覚えた: 最後に答えた時刻の古い語から（9 日前の語が先）", firstId === B, firstId);
+    check("78.3 覚えた: 1 打ミスは あやふや に移るだけ（「あやふやに移った」・赤い点滅なし）・自力正解は 覚えた のまま", t[B]?.ls === 1 && t[A]?.ls === 2 && line.startsWith("あやふやに移った") && (await page.evaluate(() => window.__failFlash)) === 0, JSON.stringify({ b: t[B]?.ls, a: t[A]?.ls, line }));
+    check("78.3 覚えた: 終わり「覚えたの語は、全部復習した」・今回 覚えた 1・あやふや 1", panel.includes("覚えたの語は、全部復習した") && /今回 覚えた 1/.test(panel) && /あやふや 1/.test(panel), panel);
+    check("78.3 覚えた: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await page.context().close();
+  }
+
+  // (5) 中心の学習でない回（Challenge・Battle・?words= の Study）は状態を書かない（Battle のコードはそのまま）
+  {
+    const hs = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "english", "highschool.json"), "utf8")).words.map((w) => w.id).filter((id) => vocab.order.includes(id));
+    const lsAt = Date.now() - 2 * DAY;
+    const seed = Object.fromEntries(hs.map((id, i) => [id, rec({ ls: i % 2 ? 1 : 2, ...(i % 2 ? { lsd: dayNo(Date.now()) - 1 } : {}), lsAt })]));
+    const keep = (t) => hs.every((id) => t[id]?.ls === seed[id].ls && t[id]?.lsd === seed[id].lsd && t[id]?.lsAt === seed[id].lsAt);
+    const played = (t) => hs.filter((id) => t[id]?.lastPlayed !== seed[id].lastPlayed).length;
+    // Challenge（4 秒）
+    const page = await learnPage({ spelldash_word_stats: JSON.stringify(seed), spelldash_mode: "challenge", spelldash_category: "highschool" });
+    await page.goto(BASE + "/index.html?t=4", { waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
+    await page.focus("#input");
+    await page.press("#input", "Enter");
+    for (let i = 0; i < 8; i++) {
+      const id = (await shownIds(page)).at(-1);
+      if (!id || !(await page.evaluate(() => document.body.classList.contains("is-playing")))) break;
+      await typeWord(page, enOf(id));
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(4500);
+    const tc = await tableOf(page);
+    check("78.3 中心でない回: Challenge の答えで状態の欄は変わらない（答えた公開の語 1 語以上・書き手 0 回）", played(tc) >= 1 && keep(tc) && (await learnWrites(page)).length === 0, JSON.stringify({ played: played(tc) }));
+    await page.context().close();
+    // ?words= の Study（決めた語だけの回）
+    const pw = await learnPage({ spelldash_word_stats: JSON.stringify(seed) });
+    await pw.goto(BASE + `/index.html?words=${hs.slice(0, 2).join(",")}&hintms=600000`, { waitUntil: "networkidle" });
+    await waitWord(pw, 1);
+    await typeWord(pw, enOf((await shownIds(pw))[0]));
+    await waitWord(pw, 2);
+    await afterAdvance(pw);
+    await pw.press("#input", "Enter");
+    await pw.waitForTimeout(200);
+    const tw = await tableOf(pw);
+    check("78.3 中心でない回: ?words= の Study の答え（自力正解・答え表示）で状態の欄は変わらない・書き手 0 回", played(tw) >= 1 && keep(tw) && (await learnWrites(pw)).length === 0, JSON.stringify({ played: played(tw) }));
+    await pw.context().close();
+    // Battle（4 秒。tests の作法どおり Battle のロジックは触らない）
+    const pb = await learnPage({ spelldash_word_stats: JSON.stringify(seed) });
+    await pb.goto(BASE + "/battle.html?t=4", { waitUntil: "networkidle" });
+    await pb.selectOption("#battleCategory", "highschool").catch(() => {});
+    await pb.click("#startBattle");
+    await waitUntil(() => pb.evaluate(() => !document.getElementById("battleArena").hidden), 3000);
+    for (let i = 0; i < 12 && (await pb.evaluate(() => document.getElementById("battleResult")?.hidden !== false)); i++) {
+      const ja = (await pb.textContent("#playerJa")).trim();
+      const en = await pb.evaluate(async (q) => { const ws = await import("/js/wordStore.js"); return (ws.getWordsByCategory(document.getElementById("battleCategory").value) ?? []).find((x) => /^[a-z]+$/.test(x.en) && (x.ja === q || String(x.ja ?? "").split("・").includes(q)))?.en ?? null; }, ja);
+      if (!en) { await pb.press("#battleInput", "Enter"); await pb.waitForTimeout(200); continue; }
+      await pb.focus("#battleInput");
+      for (const ch of en) await pb.press("#battleInput", ch);
+      await waitUntil(async () => (await pb.textContent("#playerJa")).trim() !== ja, 1500);
+    }
+    await pb.waitForTimeout(4500);
+    const tb = await tableOf(pb);
+    check("78.3 中心でない回: Battle の答えで状態の欄は変わらない（答えた公開の語 1 語以上・書き手 0 回）", played(tb) >= 1 && keep(tb) && (await learnWrites(pb)).length === 0, JSON.stringify({ played: played(tb) }));
+    await pb.context().close();
+    // 書き手を呼ぶのは js/game.js の中心の学習の 1 か所だけ（stats.js の定義のほかに呼ぶ所は無い）
+    const callers = fs.readdirSync(path.join(ROOT, "js")).filter((f) => f.endsWith(".js")).flatMap((f) => [...fs.readFileSync(path.join(ROOT, "js", f), "utf8").matchAll(/\brecordLearnAnswer\(/g)].map(() => f));
+    check("78.3 中心でない回: recordLearnAnswer を呼ぶのは js/game.js の noteLearnAnswer の 1 か所だけ", JSON.stringify(callers.sort()) === JSON.stringify(["game.js", "stats.js"]), JSON.stringify(callers));
+  }
+
+  // (6) 保存の失敗: 「保存できませんでした」・状態の変化と数を出さない。直ったら次の答えは保存する
+  {
+    const page = await learnPage({ spelldash_word_stats: "{}" });
+    await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const [w1, w2] = vocab.order.slice(0, 2);
+    await page.evaluate(() => {
+      window.__realSet = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (k === "spelldash_word_stats") throw new Error("test: 書けない"); return window.__realSet.call(this, k, v); };
+    });
+    await typeWord(page, enOf(w1));
+    await page.waitForTimeout(50);
+    const line = await msg(page);
+    const t = await tableOf(page);
+    await page.evaluate(() => { Storage.prototype.setItem = window.__realSet; });
+    const c = await counts(page);
+    check("78.3 保存の失敗: 「保存できませんでした」・覚えた と出さない・語の記録に状態が無い・覚えた 0", line === "保存できませんでした" && !t[w1]?.ls && c.learned === 0, JSON.stringify({ line, t1: t[w1] ?? null, c }));
+    await waitWord(page, 2);
+    await afterAdvance(page);
+    await typeWord(page, enOf(w2));
+    await page.waitForTimeout(50);
+    const line2 = await msg(page);
+    const t2 = await tableOf(page);
+    check("78.3 保存の失敗: 直った後の答えは保存して「覚えた」（失敗した語は 覚えた にならない）", line2 === "覚えた" && t2[w2]?.ls === 2 && !t2[w1]?.ls, JSON.stringify({ line2, w1: t2[w1]?.ls ?? null }));
+    await page.context().close();
+  }
+
+  // (7) スマホ 390・320: 問いと回の終わりで横スクロール 0。キーボードだけで 10 語（Enter で答え表示 → Enter で次へ）
+  for (const width of [390, 320]) {
+    const page = await learnPage({ spelldash_word_stats: "{}" }, { viewport: { width, height: 844 }, mobile: true });
+    await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const during = await hScroll(page);
+    const osk = await page.evaluate(() => { const k = document.getElementById("osk"); const r = k?.getBoundingClientRect(); return k && !k.hidden && r ? Math.round(r.width) : 0; });
+    for (let i = 1; i <= 10; i++) {
+      await waitWord(page, i);
+      if (i > 1) await page.waitForTimeout(350);
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(30);
+      await page.keyboard.press("Enter");
+    }
+    await waitPanel(page);
+    const end = await hScroll(page);
+    const panel = await panelText(page);
+    check(`78.3 スマホ ${width}: 問いと回の終わりで横スクロール 0・画面キーボードは幅いっぱい・キーボードだけで 10 語（あやふや 10）`, during <= 0 && end <= 0 && osk >= width - 16 && /今回 覚えた 0/.test(panel) && /あやふや 10/.test(panel), JSON.stringify({ during, end, osk, panel }));
+    await page.context().close();
+  }
+}
+
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");
 {

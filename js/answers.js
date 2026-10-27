@@ -79,6 +79,27 @@ export function buildAlternativeIndex(words) {
   return index;
 }
 
+// 中心の学習（公開の英単語の 3 つのモード。Batch 78）の別解の索引: カードの id → 別解の綴りの集合。結び方は buildAlternativeIndex と同じ
+// （同じ訳の語どうし・品詞をまたぐ組は結ばない）。綴りではなくカードの id で引く: 同じ綴りのカードが 2 枚あっても（助動詞の may と 5月の May を
+// 別の項目にするとき）、片方の訳の別解をもう片方の問いに混ぜない（綴りで引くと「5月」の問いで might が正解になる。PRESTART §1-1）。
+// words は公開のカードだけを渡す（js/wordStore.js loadPublicWords）。綴りの重ならない表なら、どの id の集合も buildAlternativeIndex のその綴りの集合と同じ並び
+export function buildAlternativeIndexById(words) {
+  const index = new Map();
+  for (const ens of meaningGroups(words).values()) {
+    if (ens.size < 2) continue;
+    for (const [en, a] of ens) {
+      for (const [other, b] of ens) {
+        if (other === en || crossesPos(a, b)) continue;
+        for (const card of a.cards) {
+          if (!index.has(card.id)) index.set(card.id, new Set());
+          index.get(card.id).add(other);
+        }
+      }
+    }
+  }
+  return index;
+}
+
 // 綴り入力（1 字ずつ判定する答え: 英単語・英字の答えの概念カード Cu・CPC）の別解に使える綴り（PR #191 のレビュー 2）。
 // 物理キーで打てる半角の字（0x20〜0x7e: 英字・数字・記号・空白）だけ。小文字にして前後の空白を落とした形で見る（acceptedAnswers と同じ）。
 // 日本語・全角の字は綴り入力では打てない（js/game.js handleCompositionEnd が英字に戻させる）ので候補に入れない。
@@ -90,8 +111,9 @@ export function isSpellAlt(text) {
 }
 
 // この語を出したときに正解として受け入れる綴りの一覧（先頭は必ず出題語）。綴り入力の候補なので、データの別解は綴り入力で打てるもの（isSpellAlt）だけ
-// （利用者の場面カード〔js/myWords.js〕の日本語の別解 https化 を候補に入れると、h が × にならず、ヒントで「化」が入り、NISA口座 の「口座」が続きとして残る）
-export function acceptedAnswers(word, index) {
+// （利用者の場面カード〔js/myWords.js〕の日本語の別解 https化 を候補に入れると、h が × にならず、ヒントで「化」が入り、NISA口座 の「口座」が続きとして残る）。
+// key = 別解の索引を引く鍵（既定は出題語の綴り: buildAlternativeIndex。中心の学習はカードの id: buildAlternativeIndexById）
+export function acceptedAnswers(word, index, key = word?.en) {
   const out = [word?.en].filter(Boolean);
   const push = (s) => {
     const v = String(s ?? "").toLowerCase().trim();
@@ -100,7 +122,7 @@ export function acceptedAnswers(word, index) {
   // データに書かれた別解が最優先
   if (Array.isArray(word?.accept)) for (const a of word.accept) if (isSpellAlt(a)) push(a);
   // 同じ訳を持つ他のカードの語
-  if (index && word?.en) (index.get(word.en) ?? []).forEach(push);
+  if (index && word?.en) (index.get(key) ?? []).forEach(push);
   return out;
 }
 

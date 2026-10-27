@@ -159,6 +159,42 @@ body:not(.mode-study) .study-queue {
   flex-wrap: wrap;
 }
 
+/* ===== 中心の学習（これから・あやふや・覚えた。Batch 78）の区切り・終わりのパネル（js/game.js renderLearnPanel） =====
+   見出しは .result-panel__title と同じ見た目（別の名前: main.js の「章 済み」の行を入れない）。文は短い 1〜2 行。はちゃん・XP は出さない */
+html[data-theme] .learn-panel__title {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .learn-panel__title:focus {
+  outline: none; /* プログラムで焦点を置くだけ（tabindex="-1"。brand.css の .result-panel__title と同じ） */
+}
+
+html[data-theme] .learn-panel__note,
+html[data-theme] .learn-panel__line {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .learn-panel__note {
+  margin: 0 0 10px;
+}
+
+/* 学習状況への行き先は、ボタンと同じ形のリンク */
+html[data-theme] a.result-panel__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 /* ===== ヘッダーの🔥ストリーク（.accountのmargin-left:autoの左隣） ===== */
 .header-streak {
   margin-left: auto;
