@@ -357,7 +357,7 @@ export function learnStateSource() {
 // 移行（版 6 → 7）をその場で行う。deps = loadLearnStateDeps の材料。返り値 { ok: 版 7 になった（前から 7 も）, filled: 欄を書いた語の数 }
 export function migrateLearnStates(deps = learnDeps) {
   if (learnStatesMigrated()) return { ok: true, filled: 0 };
-  if (!deps) return { ok: false, filled: 0 };
+  if (!deps || schemaVersion() < LEGACY_SCHEMA_VERSION) return { ok: false, filled: 0 }; // 古い版の段（migrateStorage）が先
   flushWordStats(); // このタスクの書きかけを先に書く（移行の表に入れる）
   const { table, filled } = fillLearnStates(getWordStats(), deps.vocab.isPublic, deps.isDone);
   if (table) {
@@ -405,14 +405,13 @@ export async function loadLearnStates() {
   return learnStateSource();
 }
 
-// バックアップの復元（js/backup.js applyBackup）が、書き戻した直後に呼ぶ: 戻した記録をその場で今の版にする（再読み込みを待たない。
+// バックアップの復元（js/backup.js applyBackup）が、書き戻した直後に呼ぶ: 版 6 の記録はその場で版 7 にする（再読み込みを待たない。
 // 開いているほかのタブが、版 6 の表を「欄が無い = これから」と読まない: dataloss d9）。材料が読めていなければ版 7 の段は後から（startLearnStates）。
-// 古い版の段（v1 → v6）が容量で書けなければ投げる（復元する側が前の記録に戻す）
+// 版 6 より前の記録（版の鍵の無いファイルも）は、今までどおり次に開いたときに古い版の段から流す（その間も、読み手と書き手は版を見て移行の式で読む）
 export function migrateRestored() {
   forgetWordStats();
-  migrateStorage();
-  forgetWordStats();
   learnMigrating = null;
+  if (schemaVersion() < LEGACY_SCHEMA_VERSION) return { ok: false, filled: 0 };
   if (learnDeps) return migrateLearnStates(learnDeps);
   startLearnStates();
   return { ok: false, filled: 0 };
@@ -430,7 +429,7 @@ export function recordsEpoch() {
   return recordsEpochNo;
 }
 
-export function isRecordsReplaced(event) {
+function isRecordsReplaced(event) {
   if (!event) return false;
   if (event.key === null) return true; // 全部消した
   if (event.key === OWNER_KEY) return event.oldValue !== null && event.oldValue !== event.newValue;

@@ -104,7 +104,7 @@ function forgetMemory() {
   forgetMemoryWords(); // spelldash_memory_words（js/memoryWords.js）
 }
 
-// 復元: spelldash_* を一度消してから書き戻す（上書き）。書き戻した記録はその場で今の版にする（3 状態の欄の移行も。js/storage.js migrateRestored）。
+// 復元: spelldash_* を一度消してから書き戻す（上書き）。版 6 の記録は、返る前に 3 状態の欄を移して版 7 にする（js/storage.js migrateRestored）。
 // 途中で書けなかった（容量）ら、書きかけを消して前の記録に戻し、投げる（前の記録を消したまま半分で止めない。前からの不具合: verify-dataloss m1）。
 // 最高到達ランクは、復元の前の値・バックアップの値・戻した記録の今の数の段のうち大きい方を残す（下げない: 決定 §5。dataloss d8・創業者に送った既定）
 export function applyBackup(obj) {
@@ -123,13 +123,13 @@ export function applyBackup(obj) {
       if (!key.startsWith(PREFIX) || EXCLUDE.has(key) || typeof value !== "string") continue;
       localStorage.setItem(key, value);
     }
-    forgetMemory();
-    migrateRestored(); // 古い版の段（版の鍵が無ければ版 1 として）と版 7 の段。古い版の段が書けなければ投げる
   } catch (error) {
     restoreSnapshot(snapshot);
     forgetMemory();
     throw new Error(isQuotaError(error) ? "端末の空きが足りず、復元できなかった。今の記録はそのまま。" : "復元できなかった。今の記録はそのまま。");
   }
+  forgetMemory();
+  migrateRestored(); // 版 6 の記録はその場で版 7 に（容量で書けなければ版 6 のまま。js/storage.js）
   // 復元した単語はクラウド側にも送れるよう全部dirtyにする（ログイン時のみ意味を持つ）
   try {
     const ids = Object.keys(JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}"));

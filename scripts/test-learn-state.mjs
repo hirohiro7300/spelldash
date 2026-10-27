@@ -761,8 +761,13 @@ const E = PUB[33];
   LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: "{}" });
   S.forgetWordStats();
   BK.applyBackup(backup);
+  eq("版の鍵なしのバックアップ: 戻した直後は書き換えない（古い版の段は次に開いたとき。今までどおり）", [LS.getItem("spelldash_word_stats"), LS.getItem("spelldash_schema_version")], [backup.data.spelldash_word_stats, null]);
+  await tick();
+  ok("版の鍵なしのバックアップ: 版 6 より前の表に版 7 の段を当てない（材料が読めても）", LS.getItem("spelldash_word_stats") === backup.data.spelldash_word_stats);
+  const m = await openStorage(); // 再読み込み
+  await m.loadLearnStates();
   const t = JSON.parse(LS.getItem("spelldash_word_stats"));
-  eq("版の鍵なしのバックアップ: concept-・my- の id はそのまま・公開の語に欄・版 7", [Object.keys(t).sort(), t[PUB[0]].ls, LS.getItem("spelldash_schema_version")], [["concept-ad-cpc", "my-q-hello", "my-river", PUB[0]].sort(), 2, "7"]);
+  eq("版の鍵なしのバックアップ: 開き直すと concept-・my- の id はそのまま・公開の語に欄・版 7", [Object.keys(t).sort(), t[PUB[0]].ls, LS.getItem("spelldash_schema_version")], [["concept-ad-cpc", "my-q-hello", "my-river", PUB[0]].sort(), 2, "7"]);
 }
 {
   // 復元が容量で途中で失敗: 前の記録に戻して投げる（前の記録を消したまま半分で止めない: verify-dataloss m1）
