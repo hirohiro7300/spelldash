@@ -3504,6 +3504,7 @@ html[data-theme] .learn-card__desc {
   color: var(--ink-3);
   font-size: 13px;
   line-height: 1.5;
+  word-break: auto-phrase; /* 日本語は文節で折る（細い幅で「単／語」にしない） */
 }
 
 html[data-theme] .learn-card__count {
@@ -3643,9 +3644,20 @@ html[data-theme] .learn-pace__note {
   font-size: 12px;
 }
 
-/* 描く前（HTML の初めの形）と表が読めない（オフラインで公開の語の表が無い）とき: 数を見せない（初めの 0 を本当の数に見せない。高さはそのまま） */
+/* 描く前（HTML の初めの形）: 数を見せない（初めの 0 を本当の数に見せない。高さはそのまま） */
 html[data-theme] .learn-status.is-unavailable :is(.learn-sum, .learn-cards, .learn-pace) {
   visibility: hidden;
+}
+
+/* 表が読めなかった（オフラインで公開の語の表が無い）: 数と札の場所を空けず、短い 1 行だけ（通信が戻ったら描き直す） */
+html[data-theme] .learn-status.is-failed :is(.learn-sum, .learn-cards, .learn-pace) {
+  display: none;
+}
+
+html[data-theme] .learn-status__failed {
+  margin: 8px 0 12px;
+  color: var(--ink-2);
+  font-size: var(--fs-body);
 }
 
 /* ---- 詳しい記録（畳み。既定は閉じる） ---- */
@@ -3682,7 +3694,6 @@ html[data-theme] .stats-more__summary::before {
   border-right: 1.5px solid var(--ink-3);
   border-bottom: 1.5px solid var(--ink-3);
   transform: translateY(-2px) rotate(-45deg);
-  transition: transform var(--ease);
 }
 
 html[data-theme] .stats-more[open] > .stats-more__summary::before {

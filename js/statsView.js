@@ -62,9 +62,11 @@ function trackTypingEntry() {
 // ===== 学習状況の最初の画面（Batch 78 段 4。創業者の決定 §5・§6） =====
 // 覚えた N / 総数・ランク・次のランクまであと M 語・3 つの札（これから・あやふや・覚えた。語数と学ぶボタン）・覚えたの条件の文・目安の 1 行・教材について。
 // 数は今の記録から（js/learnPace.js learnStatusOf → js/learnState.js countLearnStates。3 つの和は総数）。ランクは最高到達ランクより下げない（js/rank.js）。
-// 今の語数の段が最高到達ランクより上なら spelldash_rank_peak を上げる（幕は出さない）。書くのは別のタスクで、記録を読み直し、回の印（recordsEpoch）が
-// 描き始めと同じで、このタブが取り込みの途中でないときだけ（移行・取り込み・復元のタスクで書かない。前の人の数を新しい人の鍵に入れない: dataloss d6）。
-// 同期の取り込みの知らせ（spelldash:synced）で描き直すときは書かない（見せるランクは max なので同じ）。下がった演出・知らせは出さない。
+// 今の語数の段が最高到達ランクより上なら spelldash_rank_peak を上げる（見せたランクを残す: 後で覚えたが減っても下げない。幕は出さない）。
+// 書くのは別のタスクで、記録を読み直して数え直し、回の印（recordsEpoch）が描き始めと同じときだけ（移行・取り込み・復元のタスクで書かない。
+// 前の人の数を新しい人の鍵に入れない: dataloss d6）。このタブが取り込みの途中（isPulling。ログイン中の端末は新しいタブのたびに取り込む）なら、
+// 書かずに待って、取り込みが終わってから今の記録で書く（取り込みで記録が変わらなかったときは spelldash:synced が来ないので、ここで待つ。
+// 変わったときは spelldash:synced の描き直しも同じく予約する）。下がった演出・知らせは出さない。
 const CARD_TEXT = {
   new: { mode: "new", go: "この単語を学ぶ", empty: "まだ学んでいない単語はない。" },
   unsure: { mode: "unsure", go: "この単語を学ぶ", empty: "あやふやな単語はない。" },
@@ -74,8 +76,10 @@ const STATE_LABEL = { new: "これから", unsure: "あやふや", learned: "覚
 const fmt = (n) => Number(n).toLocaleString("ja-JP");
 let statusSeq = 0; // 描き直しの番号（遅れて終わった古い描画で新しい数を上書きしない）
 let sourceDrawn = false;
+let peakTimer = null; // 最高到達ランクを書く予約（1 つだけ）
+const PEAK_RETRY_MS = 500; // 取り込みの途中なら、この間をおいて見直す（js/sync.js isPulling は 2 分で途中とみなさなくなる）
 
-async function renderLearnStatus({ raise = true } = {}) {
+async function renderLearnStatus() {
   const seq = ++statusSeq;
   const epoch = recordsEpoch();
   let source = null;
@@ -88,29 +92,41 @@ async function renderLearnStatus({ raise = true } = {}) {
   if (seq !== statusSeq) return;
   const section = document.getElementById("learnStatus");
   if (!section) return;
+  const failed = document.getElementById("learnUnavailable");
   if (!source || !paceMod) {
-    section.classList.add("is-unavailable");
+    // 表が読めない（オフライン）: 数は出さず、短い 1 行（通信が戻ったら描き直す: watchLearnStatus の online）
+    section.classList.add("is-unavailable", "is-failed");
+    if (failed) failed.hidden = false;
     renderVocabSource(null);
     return;
   }
-  section.classList.remove("is-unavailable");
+  section.classList.remove("is-unavailable", "is-failed");
+  if (failed) failed.hidden = true;
   const status = paceMod.learnStatusOf({ table: getWordStats(), source, peak: readRankPeak(), today: learnDayOf(Date.now()) });
   drawLearnSummary(status, source.vocab.total);
   drawLearnCards(status, paceMod.UNSURE_DONE_TODAY);
   drawLearnPace(status.pace);
   renderRankList(status.rank.rank, source.vocab.total);
   renderVocabSource(source.vocab.source);
-  if (raise && status.computed > (readRankPeak() ?? -1)) raisePeakLater(epoch);
+  if (status.computed > (readRankPeak() ?? -1)) raisePeakLater(epoch);
 }
 
+// 回の印が替わった（ほかのタブで記録が置き換わった）ら書かない（records-replaced の描き直しが新しい人の数で予約し直す）
 function raisePeakLater(epoch) {
-  setTimeout(() => {
-    if (epoch !== recordsEpoch() || isPulling()) return;
+  clearTimeout(peakTimer);
+  const attempt = () => {
+    peakTimer = null;
+    if (epoch !== recordsEpoch()) return;
+    if (isPulling()) {
+      peakTimer = setTimeout(attempt, PEAK_RETRY_MS);
+      return;
+    }
     const source = learnStateSource();
     if (!source) return;
     const { learned } = countLearnStates(getWordStats(), source.vocab, source.pending);
     raiseRankPeak(rankFor(learned, source.vocab.total));
-  }, 0);
+  };
+  peakTimer = setTimeout(attempt, 0);
 }
 
 function drawLearnSummary(status, total) {
@@ -198,12 +214,12 @@ function renderRankList(current, total) {
   });
 }
 
-// 教材について（出典。data/public/english.json の source）。表が読めないときは短い 1 行（通信が戻ったら開き直すと出る）
+// 教材について（出典。data/public/english.json の source）。表が読めないときは短い 1 行（通信が戻ったら描き直す）
 function renderVocabSource(src) {
   const body = document.getElementById("vocabSourceBody");
   if (!body || (sourceDrawn && !src)) return;
   if (!src) {
-    body.innerHTML = `<p class="muted">教材の情報を読み込めなかった。通信が戻ったら開き直す。</p>`;
+    body.innerHTML = `<p class="muted">教材の情報を読み込めなかった。通信が戻ると表示する。</p>`;
     return;
   }
   sourceDrawn = true;
@@ -218,7 +234,8 @@ function renderVocabSource(src) {
     </dl>`;
 }
 
-// 描き直す時機: ほかのタブが答えた・最高到達ランクを上げた・記録を置き換えた（storage・spelldash:records-replaced）、戻るで開き直した（pageshow）
+// 描き直す時機: ほかのタブが答えた・最高到達ランクを上げた・記録を置き換えた（storage・spelldash:records-replaced）、戻るで開き直した（pageshow）、
+// 通信が戻った（online。表が読めなかったときに読み直す）
 function watchLearnStatus() {
   let timer = null;
   const later = () => {
@@ -232,6 +249,7 @@ function watchLearnStatus() {
   window.addEventListener("pageshow", (event) => {
     if (event.persisted) later();
   });
+  window.addEventListener("online", later);
 }
 
 // ===== 詳しい記録（畳み。既定は閉じる。Batch 78 段 4） =====
@@ -323,7 +341,7 @@ window.addEventListener("spelldash:notes", () => {
 });
 
 window.addEventListener("spelldash:synced", () => {
-  renderLearnStatus({ raise: false }); // 取り込みの知らせのタスクでは最高到達ランクを書かない（見せるランクは max で同じ）
+  renderLearnStatus(); // 最高到達ランクは別のタスクで、取り込みを終えた今の記録から書く（raisePeakLater）
   renderOverview();
   renderTyping();
   if (trendsReady) renderGrowthTrend(); // 単語ストアの初期化前に同期が届いても、今日の行を 0 で上書きしない
@@ -495,7 +513,8 @@ function renderTyping() {
   ]);
 }
 
-// ===== 今月のまとめ（学習した日・覚えた・セット。値が 0 の項目は出さない） =====
+// ===== 今月のまとめ（学習した日・思い出せるようになった語・セット。値が 0 の項目は出さない） =====
+// 語の増えは成長ログ（前の数え方: js/learnedWords.js getLearnedCounts）の数なので「覚えた」と呼ばない（最初の画面の 3 状態の 覚えた と別の数）
 function renderMonthlySummary() {
   const container = document.getElementById("monthlySummary");
   if (!container) return;
@@ -514,12 +533,13 @@ function renderMonthlySummary() {
   }
   // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない
   const parts = [`学習した日 <b>${activeDays}</b>日`];
-  if (learnedDelta > 0) parts.push(`覚えた <b>+${learnedDelta}</b>`);
+  if (learnedDelta > 0) parts.push(`思い出せるようになった語 <b>+${learnedDelta}</b>`);
   if (sets > 0) parts.push(`セット <b>${sets}</b>回`);
   container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月 ${parts.join(" ・ ")}</p>`;
 }
 
-// ===== 覚えた単語の推移（無料 30日・Pro 90日） =====
+// ===== 思い出せるようになった語の推移（無料 30日・Pro 90日） =====
+// 数は成長ログ（前の数え方。下の「思い出せるようになった語」の一覧と同じ数え方）。最初の画面の 3 状態の 覚えた と別の数なので「覚えた」と呼ばない
 // 30 日と 90 日の切り替えは Pro の人にだけ出す（Pro でない人に 90 日の案内を出さない: 決定 §7。保存値はそのまま）
 const TREND_RANGE_KEY = "spelldash_trend_range";
 
@@ -570,7 +590,7 @@ function renderGrowthTrend() {
   const points = series.filter((p) => p.learned != null);
 
   if (points.length < 2) {
-    container.innerHTML = '<p class="score-trend__empty">毎日少しずつ学ぶと、覚えた語の増え方がここに描かれる（明日から）。</p>';
+    container.innerHTML = '<p class="score-trend__empty">毎日少しずつ学ぶと、思い出せるようになった語の増え方がここに描かれる（明日から）。</p>';
     return;
   }
 
@@ -600,7 +620,7 @@ function renderGrowthTrend() {
     .join("");
 
   container.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="覚えた単語の推移" style="width:100%;height:auto;display:block">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="思い出せるようになった語の推移" style="width:100%;height:auto;display:block">
       <text x="${pad.left - 6}" y="${pad.top + 4}" text-anchor="end" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${max}</text>
       <text x="${pad.left - 6}" y="${pad.top + innerH + 4}" text-anchor="end" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${min}</text>
       <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="var(--line-2)" />

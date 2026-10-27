@@ -222,6 +222,7 @@
          数は js/statsView.js renderLearnStatus が js/learnPace.js learnStatusOf から描く（3 状態の数・ランクは今の記録から。ランクは最高到達ランクより下げない） -->
     <section class="learn-status is-unavailable" id="learnStatus" aria-labelledby="learnStatusTitle">
       <h2 class="sr-only" id="learnStatusTitle">今の学習状況</h2>
+      <p class="learn-status__failed" id="learnUnavailable" role="status" hidden>学習状況を読み込めなかった。通信が戻ると表示する。</p>
       <div class="learn-sum" id="learnSum">
         <p class="learn-sum__count"><span class="learn-sum__label">覚えた</span> <strong class="learn-sum__n" id="learnCount">0</strong><span class="learn-sum__total"> / <span id="learnTotal">0</span>語</span></p>
         <p class="learn-sum__rank"><span class="learn-sum__label">ランク</span> <strong id="learnRank">赤ちゃん</strong></p>
@@ -247,7 +248,6 @@
           <div class="learn-card__act"></div>
         </li>
       </ul>
-      <p class="learn-status__save" id="learnSaveFailed" role="status" hidden></p>
       <p class="learn-rule">初めから自力で正解できた単語、または、あやふやになったあと別の日に2回自力で正解できた単語が「覚えた」になります。間違えたり答えを見たりすると「あやふや」に戻ります。</p>
       <!-- 全部覚えるまでの目安（1 行。js/learnPace.js learnPaceOf。中心の学習で新しく覚えた語だけで数える。出せないときは待ちの文） -->
       <div class="learn-pace" id="learnPace" hidden>
@@ -267,7 +267,7 @@
 
         <section class="result-card" id="growth">
           <div class="card-head">
-            <h3 role="heading" aria-level="3">覚えた単語の推移（<span id="growthDays">30</span>日）</h3>
+            <h3 role="heading" aria-level="3">思い出せるようになった語の推移（<span id="growthDays">30</span>日）</h3>
             <div class="trend-range" role="group" aria-label="期間" hidden>
               <button type="button" data-trend-range="30" class="is-active" aria-pressed="true">30日</button>
               <button type="button" data-trend-range="90" aria-pressed="false">90日</button>

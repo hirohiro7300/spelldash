@@ -1,13 +1,15 @@
 // ログイン中の人のアカウントのアイコン（ヘッダーの #headerAvatar。38px の丸、720px 以下は 32px）と、メニューの一番上の行に、学習のランクを出す。
 // ランクは Batch 78 の 9 段（js/rank.js。覚えた語数で決まる・一度届いたら下がらない）。前の XP の 21 段は使わない（XP は貯めるがランクにしない: 決定 §5）。
-// ボタンの名前は「アカウントメニュー（中学生）」、メニューの一番上の行は「中学生」（Lv は出さない）。Battle の RP のランクと Pro は入れない。
+// ボタンの名前は「アカウントメニュー（中学生）」、メニューの一番上の行は「ランク 中学生」（Lv は出さない。「中学生」だけだと学年に読める）。Battle の RP のランクと Pro は入れない。
 // js/auth.js が、ログインしているときだけ読み込みの後の手の空いたときに動的 import で読む（最初の描画・LCP を待たせない。静的 import は modulepreload を変える）。
 // 未ログイン・アプリ（ログインしない）では読まない。HTML は 7 ページとも同じ形で、中身はここで替える（頭文字の span は js/auth.js が置く）。
 //
 // ランクの材料: 見せるランク = max（最高到達ランク spelldash_rank_peak, 今の覚えた語数の段）（js/rank.js shownRank。学習状況と同じ）。
 //   今の覚えた語数は、このページで 3 状態の材料（公開の語の表）がもう読めているときだけ数える（学習状況・中心の学習のページ）。読めていなければ最高到達ランクだけ。
 //   最高到達ランクがまだ無い（移行の後に学習状況も回の終わりもまだ）ときは、材料を 1 回だけ後から読んで数える（語の記録が無ければ読まずに赤ちゃん）。
-//   ここでは最高到達ランクを書かない（書くのは学習状況と中心の学習の回の終わり）。
+//   見せた段が最高到達ランクより上なら（今の語数から数えた段を見せた）、別のタスクでその段まで上げる（見せたランクを後で下げない: 決定 §5）。
+//   書くのは、回の印（js/storage.js recordsEpoch）が描いたときと同じで、このタブが取り込みの途中（js/sync.js isPulling）でなく、
+//   まだ本人の記録と決まっているときだけ（取り込みの途中は書かず、取り込みの後の描き直し〔js/auth.js が同期の後に呼ぶ〕で書く。前の人の段を書かない）。
 // ランクが決まる・決まらない: 決まるのは、端末の持ち主の印（js/sync.js OWNER_KEY）がこのアカウントか、このタブで同期を終えた（js/sync.js DONE_FLAG）とき。
 //   それ以外（持ち主が別のアカウント・持ち主の印が無く同期がまだ・同期の失敗）と、材料が読めないときは頭文字のまま、ボタンの名前は「アカウントメニュー」、行は出さない。
 // 絵: 新しい 9 段の絵はまだ無い（決定 §5・§12）。絵ができるまでアイコンは頭文字のまま（js/emblem.js learnRankEmblemSrc が "" を返す）。絵を足したらそこで URL を返す
@@ -16,9 +18,9 @@
 //   幕が出ている間とプレイ中は段を替えない。回の終わり（spelldash:game-end）と頭（spelldash:game-start）は後へ回して（setTimeout 0）幕が出ていないことを見てから替える。
 //   最高到達ランクを上げた知らせ（spelldash:rank-peak。同じタブ）・同期（spelldash:synced）・別のタブ（storage）・記録の置き換え・メニューを開く前は、
 //   幕とプレイの外ならそのまま替える。下がった演出は出さない（見せるランクは下がらない。別のアカウントに替わったときだけ前の人のランクを消す）。
-import { RANK_NAMES, RANK_PEAK_KEY, rankFor, readRankPeak, shownRank, rankOfName, parseRankPeak } from "./rank.js";
+import { RANK_NAMES, RANK_PEAK_KEY, rankFor, readRankPeak, raiseRankPeak, shownRank, rankOfName, parseRankPeak } from "./rank.js";
 import { learnRankEmblemSrc } from "./emblem.js";
-import { STORAGE_KEY, getWordStats, hasWordRecords, learnStateSource, loadLearnStates } from "./storage.js";
+import { STORAGE_KEY, getWordStats, hasWordRecords, learnStateSource, loadLearnStates, recordsEpoch } from "./storage.js";
 import { countLearnStates } from "./learnState.js";
 
 export const OWNER_KEY = "spelldash_owner"; // js/sync.js OWNER_KEY（localStorage。最後に同期できたアカウントの user id）
@@ -44,9 +46,9 @@ export function menuLabel(state) {
   return state ? `${MENU_LABEL}（${state.name}）` : MENU_LABEL;
 }
 
-// メニューの一番上の行（ランクの名前だけ。Lv は出さない）と、その読み上げ
+// メニューの一番上の行（「ランク」とランクの名前。Lv は出さない）と、その読み上げ
 export function rankRowText(state) {
-  return state.name;
+  return `ランク ${state.name}`;
 }
 
 export function rankRowSpeech(state) {
@@ -89,6 +91,7 @@ let failedSrc = ""; // 読めなかった絵の URL（通信が戻るか段が�
 let installed = false;
 let loadingLearn = null; // 最高到達ランクが無いときに 3 状態の材料を読んでいる Promise（1 ページ 1 回）
 let learnFailed = false; // 材料が読めなかった（オフライン）: 通信が戻るまで読み直さない（描き直しのたびに取りに行かない）
+let peakTimer = null; // 見せた段を最高到達ランクに書く予約（1 つだけ）
 
 function storageValue(storage, key) {
   try {
@@ -165,6 +168,27 @@ export function refreshAccountEmblem({ announced = null, settled = false, retry 
     ? nextShown({ current: currentState(), shown, curtainOpen: !!document.querySelector(".rank-up"), running: !settled && isRunning(), announced })
     : null;
   render(next);
+  if (next && next.rank > (readRankPeak() ?? -1)) keepShownLater(next.rank);
+}
+
+// 見せた段を最高到達ランクに書く（別のタスク。下げない: raiseRankPeak は大きい方だけ書く）。
+// 書かない: 回の印が替わった（ほかのタブで記録が置き換わった）・取り込みの途中・もう本人の記録と決まらない（ログアウト・持ち主が替わった）。
+// js/sync.js は動的 import（js/auth.js が読んでいるので取りに行かない。静的に読むと Node の単体 scripts/test-account-emblem.mjs が DOM の要るモジュールまで読む）
+function keepShownLater(rank) {
+  const epoch = recordsEpoch();
+  const userId = account?.userId ?? null;
+  clearTimeout(peakTimer);
+  peakTimer = setTimeout(async () => {
+    peakTimer = null;
+    let pulling = true;
+    try {
+      pulling = (await import("./sync.js")).isPulling();
+    } catch {
+      return; // 読めなければ書かない（次の描き直しでまた試す）
+    }
+    if (pulling || epoch !== recordsEpoch() || !userId || account?.userId !== userId || !currentState()) return;
+    raiseRankPeak(rank);
+  }, 0);
 }
 
 function render(state) {

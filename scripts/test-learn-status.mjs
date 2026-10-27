@@ -260,6 +260,10 @@ const paceOfSeed = (table, today = TODAY) => {
   eq("目安: 進んだ日が 2 日なら待ちの文（進み 600 でも）", [two.kind, two.active], ["wait", 2]);
   const fresh = paceOfSeed(seedPace([[0, 100], [-2, 100], [-4, 100]], { fill: 1000 })); // 始めて 5 日 → 5 日で割る: 残り 1557×5÷300 = 25.95 → 26
   eq("目安: 記録を始めて 5 日なら 5 日で割る（1 日あたり 60 語・約 26 日）", [fresh.kind, fresh.span, fresh.days], ["pace", 5, 26]);
+  // 残りが 1 語違えば日数も 1 日違う組（進み 3・3 日で割る → 日数 = 残り）: 残りは総数 − 今の覚えた（1 語ずれた数え方を見つける）
+  const exact = paceOfSeed(seedPace([[0, 1], [-1, 1], [-2, 1]], { fill: VOCAB.total - 103 }));
+  const exactMore = paceOfSeed(seedPace([[0, 1], [-1, 1], [-2, 1]], { fill: VOCAB.total - 104 }));
+  eq("目安: 残り 100 語・進み 3・3 日で割る → 約 100 日、残り 101 語 → 約 101 日（残り = 総数 − 今の覚えた。1 語もずらさない）", [exact.kind, exact.span, exact.days, exactMore.days], ["pace", 3, 100, 101]);
   const early = seedPace([[0, 100], [-2, 100], [-4, 100]], { fill: 1000 });
   early[PUB[2000]] = { ls: 1, lsAt: at(2026, 10, 11, 12) }; // 10 日前に中心の学習で答えたあやふやの語 → 始めた日は 10 日前
   const e = paceOfSeed(early);

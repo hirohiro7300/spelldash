@@ -3,7 +3,7 @@
 //   node scripts/test-account-emblem.mjs
 // 失敗が 1 つでもあれば終了コード 1。
 // 見ること: ランクが決まる・決まらない（持ち主の印・このタブの同期・最高到達ランクと今の語数の材料）、見せるランク（最高到達ランクより下げない・
-// 9 段の境）、ボタンの名前とメニューの行の文（名前だけ・Lv なし）、絵が無い間は頭文字（URL は ""）、替える時機の決まり（幕の間・プレイ中・幕を閉じた知らせ）、
+// 9 段の境）、ボタンの名前とメニューの行の文（「ランク」と名前・Lv なし）、見せた段を最高到達ランクに書く決まり（raiseRankPeak だけ・取り込みの途中は書かない）、絵が無い間は頭文字（URL は ""）、替える時機の決まり（幕の間・プレイ中・幕を閉じた知らせ）、
 // 保存のキーの名前が js/sync.js・js/rank.js と同じこと、js/auth.js が紋章を静的に読まないこと（modulepreload を変えない）、
 // js/game.js の幕を閉じた知らせは 1 か所で、答えの道の外にあること。
 import fs from "fs";
@@ -66,10 +66,10 @@ eq("XP を渡しても使わない（材料に無い）", brief(A.accountRankSta
 const all = R.RANK_NAMES.map((name, rank) => ({ rank, name }));
 eq("決まらないときのボタンの名前は今のまま「アカウントメニュー」", A.menuLabel(null), "アカウントメニュー");
 eq("ボタンの名前は「アカウントメニュー（中学生）」（全角の括弧）", A.menuLabel({ rank: 4, name: "中学生" }), "アカウントメニュー（中学生）");
-eq("メニューの行はランクの名前だけ（「中学生」。Lv は出さない）", A.rankRowText({ rank: 4, name: "中学生" }), "中学生");
+eq("メニューの行は「ランク 中学生」（Lv は出さない。名前だけだと学年に読める）", A.rankRowText({ rank: 4, name: "中学生" }), "ランク 中学生");
 eq("メニューの行の読み上げは「ランク 中学生」", A.rankRowSpeech({ rank: 4, name: "中学生" }), "ランク 中学生");
 eq("9 段のボタンの名前", all.map(A.menuLabel), R.RANK_NAMES.map((n) => `アカウントメニュー（${n}）`));
-eq("9 段のメニューの行", all.map(A.rankRowText), [...R.RANK_NAMES]);
+eq("9 段のメニューの行", all.map(A.rankRowText), R.RANK_NAMES.map((n) => `ランク ${n}`));
 ok("文に undefined・NaN・Lv・レベル・Pro・Battle の段の名前・前の 21 段の名前が入らない", all.flatMap((s) => [A.menuLabel(s), A.rankRowText(s), A.rankRowSpeech(s)]).every((t) => !/undefined|NaN|Lv|レベル|Pro|Bronze|Silver|Gold|Diamond|Master|[木銅銀金神] \d|ダイヤ|レジェンド/.test(t)));
 
 // ---- 絵（9 段の絵はまだ無い: 頭文字のまま） ----
@@ -101,13 +101,15 @@ const emblemSrcText = read("js/accountEmblem.js").replace(/\/\/[^\n]*/g, ""); //
 eq("持ち主の印のキーは js/sync.js の OWNER_KEY と同じ", syncSrc.match(/const OWNER_KEY = "([^"]+)"/)?.[1], A.OWNER_KEY);
 eq("このタブの同期を終えた印のキーは js/sync.js の DONE_FLAG と同じ", syncSrc.match(/const DONE_FLAG = "([^"]+)"/)?.[1], A.SYNC_DONE_KEY);
 ok("最高到達ランクのキーは js/rank.js の RANK_PEAK_KEY を使う（写さない）・XP を読まない", /RANK_PEAK_KEY/.test(emblemSrcText) && !/spelldash_rank_peak|spelldash_xp|getTotalXp|getLevelState|LEARNING_RANKS/.test(emblemSrcText));
-ok("js/accountEmblem.js は最高到達ランクを書かない（raiseRankPeak を呼ばない。書くのは学習状況と回の終わり）", !/raiseRankPeak|setItem/.test(emblemSrcText));
+ok("js/accountEmblem.js は見せた段を最高到達ランクに書くのを js/rank.js raiseRankPeak だけで行い（setItem を直に呼ばない）、取り込みの途中（isPulling）・回の印が替わったときは書かない",
+  !/setItem/.test(emblemSrcText) && (emblemSrcText.match(/raiseRankPeak\(/g) ?? []).length === 1 && /isPulling\(\)/.test(emblemSrcText) && /recordsEpoch\(\)/.test(emblemSrcText));
 
 // ---- js/auth.js: 紋章は動的 import（静的に読むと battle・list・pro・profile・stats の head〔modulepreload〕が変わる） ----
 const authSrc = read("js/auth.js");
 const IMPORT_RE = /^\s*(?:import|export)\s(?:[^;"']*?\sfrom\s+)?["'](\.{1,2}\/[^"']+)["']/gm; // scripts/modulepreload.mjs と同じ
 const staticDeps = [...authSrc.matchAll(IMPORT_RE)].map((m) => m[1]);
 eq("js/auth.js は accountEmblem・emblem・level を静的に import しない", staticDeps.filter((d) => /accountEmblem|emblem\.js|level\.js/.test(d)), []);
+eq("js/accountEmblem.js は js/sync.js を静的に import しない（動的 import。Node の単体で DOM の要るモジュールを読まない）", [...read("js/accountEmblem.js").matchAll(IMPORT_RE)].map((m) => m[1]).filter((d) => /sync\.js/.test(d)), []);
 ok("js/auth.js は accountEmblem.js を動的に import する", /import\(\s*["']\.\/accountEmblem\.js["']\s*\)/.test(authSrc));
 ok("js/auth.js は #headerAvatar の中身を textContent で丸ごと替えない（紋章の img を消さない）", !/headerAvatarElement\.textContent\s*=/.test(authSrc));
 

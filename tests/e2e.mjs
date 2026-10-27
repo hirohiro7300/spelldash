@@ -13204,7 +13204,7 @@ console.log("account emblem（アカウントの紋章）:");
   };
   const OLD = /Lv\.|レベル|[木銅銀金神] \d|ダイヤ|レジェンド|Gold|Pro/;
 
-  // ---- (1) 7 ページ（1200 昼）と Pro の人: ボタンの名前「アカウントメニュー（中学生）」・メニューの一番上の行「中学生」（読み上げ「ランク 中学生」・Lv なし）・
+  // ---- (1) 7 ページ（1200 昼）と Pro の人: ボタンの名前「アカウントメニュー（中学生）」・メニューの一番上の行「ランク 中学生」（読み上げも同じ・Lv なし）・
   //          絵は読まず頭文字「T」・Battle の RP（Gold）・XP の段・Pro は出さない ----
   {
     const rows = [];
@@ -13217,12 +13217,12 @@ console.log("account emblem（アカウントの紋章）:");
       await shownIs(page, "中学生");
       await page.waitForTimeout(200);
       const a = await avatarOf(page);
-      const ok = !!a && a.user && a.label === label("中学生") && a.row === "中学生" && a.rowSr === "ランク 中学生" && a.rowFirst && !a.rowItem && a.n === 0 && a.letter === "T" && a.letterShown && a.box === "38,38" &&
+      const ok = !!a && a.user && a.label === label("中学生") && a.row === "ランク 中学生" && a.rowSr === "ランク 中学生" && a.rowFirst && !a.rowItem && a.n === 0 && a.letter === "T" && a.letterShown && a.box === "38,38" &&
         !OLD.test(`${a.label}${a.row}${a.rowSr}`) && page.modReqs === 1 && page.embReqs.length === 0 && page.errors.length === 0;
       rows.push({ p: `${p}${extra.spelldash_test_plan ? " Pro" : ""}`, ok, a: ok ? undefined : a, mod: page.modReqs, emb: page.embReqs, err: page.errors[0] });
       await page.close();
     }
-    check("アカウントの紋章: 7 ページ（admin・battle・index・list・pro・profile・stats）と Pro の人で、ログイン中のボタンの名前は「アカウントメニュー（中学生）」・メニューの一番上の行「中学生」（読み上げ「ランク 中学生」・Lv なし・押せる項目の class は付けない）・9 段の絵はまだ無いので img なしで頭文字「T」・紋章の要求 0・XP の段（Lv.15 = 銀 2）・Battle の RP（Gold）・Pro は出さない・エラー 0",
+    check("アカウントの紋章: 7 ページ（admin・battle・index・list・pro・profile・stats）と Pro の人で、ログイン中のボタンの名前は「アカウントメニュー（中学生）」・メニューの一番上の行「ランク 中学生」（読み上げも同じ・Lv なし・押せる項目の class は付けない）・9 段の絵はまだ無いので img なしで頭文字「T」・紋章の要求 0・XP の段（Lv.15 = 銀 2）・Battle の RP（Gold）・Pro は出さない・エラー 0",
       rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 3)));
   }
 
@@ -13268,7 +13268,7 @@ console.log("account emblem（アカウントの紋章）:");
     const a = await avatarOf(page);
     const same = await page.evaluate(() => document.getElementById("accountRank")?.getAttribute("data-mark") === "1");
     check("アカウントの紋章: js/accountEmblem.js は最初の描画と load の終わりの後に 1 回。同期の知らせ 3 回・同じ人の SIGNED_IN 3 回・ホバーの後も、要求は増えず行は作り直さない・頭文字のまま・紋章の要求 0・エラー 0",
-      t.mod.length === 1 && t.mod[0] >= t.load && t.mod[0] >= t.fcp && page.modReqs === 1 && page.embReqs.length === 0 && same && a.label === label("中学生") && a.row === "中学生" && a.letterShown && page.errors.length === 0, JSON.stringify({ t, mod: page.modReqs, emb: page.embReqs, same, a, err: page.errors[0] }));
+      t.mod.length === 1 && t.mod[0] >= t.load && t.mod[0] >= t.fcp && page.modReqs === 1 && page.embReqs.length === 0 && same && a.label === label("中学生") && a.row === "ランク 中学生" && a.letterShown && page.errors.length === 0, JSON.stringify({ t, mod: page.modReqs, emb: page.embReqs, same, a, err: page.errors[0] }));
     await page.close();
   }
 
@@ -13315,7 +13315,7 @@ console.log("account emblem（アカウントの紋章）:");
       await page.waitForTimeout(200);
       const a = await avatarOf(page);
       const readVocab = reqs.includes("/data/public/english.json");
-      rows.push({ name, ok: ok && a.row === want && (vocab ? readVocab : true) && page.errors.length === 0, a: ok ? undefined : a, readVocab, err: page.errors[0] });
+      rows.push({ name, ok: ok && a.row === `ランク ${want}` && (vocab ? readVocab : true) && page.errors.length === 0, a: ok ? undefined : a, readVocab, err: page.errors[0] });
       await page.close();
     }
     check("アカウントの紋章: 最高到達ランクがまだ無い端末は今の覚えた語数の段（記録なし → 赤ちゃん〔XP 250000 でも〕・650 語 → 小学生〔公開の語の表を後から読む〕）・最高到達ランクがあれば下げない（120 語でも留学生）・エラー 0",
@@ -13352,7 +13352,7 @@ console.log("account emblem（アカウントの紋章）:");
     const log = await page.evaluate(() => window.__avlog);
     const peak = await page.evaluate(() => localStorage.getItem("spelldash_rank_peak"));
     check("アカウントの紋章: 持ち主が別のアカウントの端末で置き換えを受けた後、取り込みの間は頭文字・「アカウントメニュー」・行なし（前の人の留学生を出さない）、取り込んだら新しい人の赤ちゃん（クラウドの XP は使わない）。前の人の最高到達ランクは消える・幕は出ない・留学生は一度も出ない・エラー 0",
-      page.dialogs.length === 1 && during.user && during.label === "アカウントメニュー" && during.row === null && during.letterShown && synced && after.label === label("赤ちゃん") && after.row === "赤ちゃん" && peak !== "6" &&
+      page.dialogs.length === 1 && during.user && during.label === "アカウントメニュー" && during.row === null && during.letterShown && synced && after.label === label("赤ちゃん") && after.row === "ランク 赤ちゃん" && peak !== "6" &&
         !log.some((e) => e.curtain || /留学生/.test(`${e.label}${e.row}`)) && page.errors.length === 0, JSON.stringify({ dialogs: page.dialogs.length, during, after, peak, log: log.slice(0, 6), err: page.errors[0] }));
     await page.close();
     const failed = await otherDevice({ failSelect: { user_progress: "boom" } });
@@ -13386,7 +13386,7 @@ console.log("account emblem（アカウントの紋章）:");
     const c = await avatarOf(ch);
     const log = await ch.evaluate(() => window.__avlog);
     check("アカウントの紋章: 同期でクラウドの XP（神 3 の値）が届いても・Challenge の時間切れで XP の段が上がっても、名前と行は中学生のまま（XP は 9 段のランクに使わない）・エラー 0",
-      s.label === label("中学生") && s.row === "中学生" && c.label === label("中学生") && c.row === "中学生" && log.every((e) => !OLD.test(`${e.label}${e.row}`)) && ch.errors.length === 0, JSON.stringify({ s, c, log: log.slice(0, 6), err: ch.errors[0] }));
+      s.label === label("中学生") && s.row === "ランク 中学生" && c.label === label("中学生") && c.row === "ランク 中学生" && log.every((e) => !OLD.test(`${e.label}${e.row}`)) && ch.errors.length === 0, JSON.stringify({ s, c, log: log.slice(0, 6), err: ch.errors[0] }));
     await ch.close();
   }
 
@@ -13411,7 +13411,7 @@ console.log("account emblem（アカウントの紋章）:");
     const ended = await shownIs(page, "留学生", 3000);
     const log = await page.evaluate(() => window.__avlog);
     check("アカウントの紋章: 最高到達ランクを上げても幕の間は中学生のまま、幕を閉じた知らせ（高校生）の後に高校生。プレイ中に上がっても高校生のまま、回の終わりの後に留学生（同じタブの spelldash:rank-peak）・エラー 0",
-      inCurtain.label === label("中学生") && closed && playing.label === label("高校生") && playing.row === "高校生" && ended && log.filter((e) => e.curtain).every((e) => e.label === label("中学生")) && page.errors.length === 0,
+      inCurtain.label === label("中学生") && closed && playing.label === label("高校生") && playing.row === "ランク 高校生" && ended && log.filter((e) => e.curtain).every((e) => e.label === label("中学生")) && page.errors.length === 0,
       JSON.stringify({ inCurtain, closed, playing, ended, log: log.slice(0, 8), err: page.errors[0] }));
     await page.close();
   }
@@ -13438,7 +13438,7 @@ console.log("account emblem（アカウントの紋章）:");
     await other.close();
     const ok = await shownIs(page, "バイリンガル", 4000);
     const a = await avatarOf(page);
-    check("アカウントの紋章: 別のタブで最高到達ランクが上がる（storage）と、プレイしていないタブは開き直さずに「アカウントメニュー（バイリンガル）」・「バイリンガル」・エラー 0", ok && a.row === "バイリンガル" && page.errors.length === 0, JSON.stringify({ a, err: page.errors[0] }));
+    check("アカウントの紋章: 別のタブで最高到達ランクが上がる（storage）と、プレイしていないタブは開き直さずに「アカウントメニュー（バイリンガル）」・「ランク バイリンガル」・エラー 0", ok && a.row === "ランク バイリンガル" && page.errors.length === 0, JSON.stringify({ a, err: page.errors[0] }));
     await ctx.close();
   }
 
@@ -13457,7 +13457,7 @@ console.log("account emblem（アカウントの紋章）:");
     const back = await shownIs(page, "中学生", 5000);
     const again = await avatarOf(page);
     check("アカウントの紋章: ログアウトすると未ログインの形（#accountUser は隠れ、メニューの行・ランクの名前を残さない）。同じタブで再ログインすると名前・行が戻る（js/accountEmblem.js の要求は 1 回のまま）・エラー 0",
-      !out.user && out.row === null && out.label === "アカウントメニュー" && back && again.row === "中学生" && page.modReqs === 1 && page.errors.length === 0, JSON.stringify({ out, again, mod: page.modReqs, err: page.errors[0] }));
+      !out.user && out.row === null && out.label === "アカウントメニュー" && back && again.row === "ランク 中学生" && page.modReqs === 1 && page.errors.length === 0, JSON.stringify({ out, again, mod: page.modReqs, err: page.errors[0] }));
     await page.close();
   }
 
@@ -19221,10 +19221,135 @@ console.log("78.4 学習状況とランク:");
     };
     const rows = [];
     for (const url of ["/stats.html", "/list.html", "/index.html"]) rows.push({ url, ...(await avatar(url, { ...seedOf({ learned: 500, peak: 4 }), ...LOGIN })) });
-    check("78.4 アカウントのアイコン: ログイン中・最高到達ランク 中学生（今 500 語）→ ボタンの名前「アカウントメニュー（中学生）」・メニューの行「中学生」（読み上げ「ランク 中学生」・Lv なし）・絵は読まず頭文字「T」（stats・list・index。XP 250000 は使わない）",
-      rows.every((r) => r.label === "アカウントメニュー（中学生）" && r.row === "中学生" && r.sr === "ランク 中学生" && r.imgs === 0 && r.letter === "T" && r.emb === 0 && r.mod === 1 && r.errors.length === 0), JSON.stringify(rows));
+    check("78.4 アカウントのアイコン: ログイン中・最高到達ランク 中学生（今 500 語）→ ボタンの名前「アカウントメニュー（中学生）」・メニューの行「ランク 中学生」（学年に読めないよう「ランク」を付ける・読み上げも同じ・Lv なし）・絵は読まず頭文字「T」（stats・list・index。XP 250000 は使わない）",
+      rows.every((r) => r.label === "アカウントメニュー（中学生）" && r.row === "ランク 中学生" && r.sr === "ランク 中学生" && r.imgs === 0 && r.letter === "T" && r.emb === 0 && r.mod === 1 && r.errors.length === 0), JSON.stringify(rows));
     const noPeak = await avatar("/list.html", { ...seedOf({ learned: 1180 }), ...LOGIN }, 390);
-    check("78.4 アカウントのアイコン: 最高到達ランクがまだ無い端末は材料を後から読んで今の語数の段（1,180 語 → 中学生）", noPeak.label === "アカウントメニュー（中学生）" && noPeak.row === "中学生" && noPeak.errors.length === 0, JSON.stringify(noPeak));
+    check("78.4 アカウントのアイコン: 最高到達ランクがまだ無い端末は材料を後から読んで今の語数の段（1,180 語 → 中学生）", noPeak.label === "アカウントメニュー（中学生）" && noPeak.row === "ランク 中学生" && noPeak.errors.length === 0, JSON.stringify(noPeak));
+  }
+
+  // ---- (10) 見せたランクは最高到達ランクに書く（ログイン中の新しいタブ: 取り込みが走る間は書かず、取り込みの後に書く）。そのあと覚えたが 1 語減っても下げない ----
+  // 取り込みで端末の記録が変わったとき（spelldash:synced が来る）と、変わらなかったとき（知らせが来ない）の両方。アカウントのアイコン（今の語数から数えた段）も同じ。
+  // 持ち主が別の人の端末では、取り込みの後の値は新しい人の段（前の人の段を書かない）
+  {
+    const iso = new Date(Date.now() - 3 * DAY).toISOString();
+    const learnedLocal = (n) => Object.fromEntries(PUB.slice(0, n).map((id) => [id, { playCount: 2, correctCount: 1, lastPlayed: iso, lastRecallSuccessAt: iso, ls: 2 }]));
+    const cloudRow = (id) => ({ user_id: "test-user", word_id: id, play_count: 2, correct_count: 1, typing_miss: 0, recall_fail: 0, clean_correct_streak: 1, mastered: false, mastered_at: null, last_played: iso, next_review_at: null, last_recall_fail_at: null, last_recall_success_at: iso, daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: iso });
+    // 種は 1 回だけ入れる（開き直しで入れ直さない）。spelldash:synced を見たかを sessionStorage に控える
+    const openOnce = async (url, seed, { w = 1200, h = 900 } = {}) => {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h }, serviceWorkers: "block" });
+      const page = await ctx.newPage();
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      page.on("dialog", (d) => d.accept());
+      await page.addInitScript((s) => {
+        window.addEventListener("spelldash:synced", () => sessionStorage.setItem("seen784synced", "1"));
+        if (sessionStorage.getItem("seeded784b")) return;
+        sessionStorage.setItem("seeded784b", "1");
+        for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v);
+      }, seed);
+      await page.goto(BASE + url, { waitUntil: "networkidle" });
+      await waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session"))) === "test-user", 10000);
+      return { ctx, page };
+    };
+    const login = (cloud, extra = {}) => ({ spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "test-user", spelldash_learn_filled: "test-user", ...extra });
+    // 覚えたの 1 語を あやふや に（中心の学習の × と同じ形の記録。同じタブで書くので storage の知らせは来ない）→ 開き直す
+    const dropOne = async (page) => {
+      await page.evaluate((id) => { const t = JSON.parse(localStorage.getItem("spelldash_word_stats")); t[id] = { ...t[id], ls: 1, lastRecallFailAt: new Date().toISOString(), recallFail: 1 }; localStorage.setItem("spelldash_word_stats", JSON.stringify(t)); }, PUB[0]);
+      await page.reload({ waitUntil: "networkidle" });
+      await page.waitForTimeout(400);
+    };
+    const statusNow = (page) => page.evaluate(() => ({ rank: document.getElementById("learnRank")?.textContent, count: document.getElementById("learnCount")?.textContent, next: document.getElementById("learnNextN")?.textContent, peak: localStorage.getItem("spelldash_rank_peak"), synced: sessionStorage.getItem("seen784synced") === "1" }));
+    const rows = [];
+    for (const [label, tables, delayMs, synced] of [
+      ["取り込みで変わる・遅れ 0ms", { word_progress: PUB.slice(0, 1000).map(cloudRow), user_progress: [{ user_id: "test-user", xp: 1000, level: 5, updated_at: iso }], user_items: [] }, 0, true],
+      ["取り込みで変わる・遅れ 1500ms", { word_progress: PUB.slice(0, 1000).map(cloudRow), user_progress: [{ user_id: "test-user", xp: 1000, level: 5, updated_at: iso }], user_items: [] }, 1500, true],
+      ["取り込みで変わらない・遅れ 1500ms", {}, 1500, false]
+    ]) {
+      const cloud = createCloud(tables, { delayMs });
+      const { ctx, page } = await openOnce("/stats.html", login(cloud, { spelldash_word_stats: JSON.stringify(learnedLocal(1000)) }));
+      await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_rank_peak"))) === "4", 4000);
+      const first = await statusNow(page);
+      await dropOne(page);
+      const after = await statusNow(page);
+      rows.push({ label, ok: first.rank === "中学生" && first.peak === "4" && first.synced === synced && after.rank === "中学生" && after.count === "999" && after.next === "401" && after.peak === "4" && page.errors.length === 0, first, after, err: page.errors[0] });
+      await ctx.close();
+    }
+    check("78.4 学習状況（ログイン中・新しいタブで取り込みが走る）: 取り込みの後に見せた中学生を最高到達ランク 4 に書く（取り込みで変わる・変わらないの両方、遅れ 0／1500ms）・そのあと覚えたが 999 語になっても中学生のまま（あと 401 語は今の数から）",
+      rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
+
+    // アカウントのアイコン（学習状況でないページ）: 最高到達ランクが無い端末で今の語数から数えた段を見せたら、それを書く（取り込みの後）・1 語減っても下げない
+    {
+      const cloud = createCloud({}, { delayMs: 300 });
+      const { ctx, page } = await openOnce("/list.html", login(cloud, { spelldash_word_stats: JSON.stringify(learnedLocal(1000)) }));
+      const label = () => page.evaluate(() => document.getElementById("avatarButton")?.getAttribute("aria-label"));
+      await waitUntil(async () => (await label()) === "アカウントメニュー（中学生）", 6000);
+      await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_rank_peak"))) === "4", 4000);
+      const first = { label: await label(), peak: await page.evaluate(() => localStorage.getItem("spelldash_rank_peak")) };
+      await dropOne(page);
+      await waitUntil(async () => (await label()) !== "アカウントメニュー", 6000);
+      await page.waitForTimeout(600);
+      const after = { label: await label(), peak: await page.evaluate(() => localStorage.getItem("spelldash_rank_peak")) };
+      check("78.4 アカウントのアイコン: 最高到達ランクが無い端末で今の語数から数えた中学生を見せたら、最高到達ランク 4 に書く（取り込みの後）・覚えたが 999 語になっても中学生のまま",
+        first.label === "アカウントメニュー（中学生）" && first.peak === "4" && after.label === "アカウントメニュー（中学生）" && after.peak === "4" && page.errors.length === 0, JSON.stringify({ first, after, err: page.errors[0] }));
+      await ctx.close();
+    }
+
+    // 持ち主が別の人の端末（前の人: 留学生 6・2,000 語）: 置き換えと取り込みの後の最高到達ランクは新しい人の段（記録なし → 0 か無し）。前の人の 6 を書き戻さない
+    {
+      const cloud = createCloud({}, { delayMs: 300 });
+      const { ctx, page } = await openOnce("/stats.html", login(cloud, { spelldash_owner: "other-user", spelldash_learn_filled: "other-user", spelldash_rank_peak: "6", spelldash_word_stats: JSON.stringify(learnedLocal(2000)) }));
+      const seen = [];
+      for (let i = 0; i < 12; i++) {
+        seen.push(await page.evaluate(() => localStorage.getItem("spelldash_rank_peak")));
+        await page.waitForTimeout(150);
+      }
+      const r = await statusNow(page);
+      check("78.4 学習状況（持ち主が別の人の端末で取り込み）: 取り込みの後の最高到達ランクは新しい人の段（0 か無し）・前の人の 6 を書き戻さない・赤ちゃん・覚えた 0",
+        seen.every((p) => p === null || p === "0") && r.rank === "赤ちゃん" && r.count === "0" && page.errors.length === 0, JSON.stringify({ seen, r, err: page.errors[0] }));
+      await ctx.close();
+    }
+  }
+
+  // ---- (11) 詳しい記録の中の前の数え方の数（成長ログの語数・今月のまとめ）は「覚えた」と呼ばない（最初の画面の 3 状態の 覚えた と別の数） ----
+  {
+    const seed = seedOf({ learned: 40, extra: { spelldash_growth_log: JSON.stringify([{ date: ymdDaysAgo(3), learned: 0, mastered: 0, active: true, v: 2 }]) } });
+    for (const [label, storage] of [["推移あり", seed], ["推移なし", seedOf({ learned: 40 })]]) {
+      const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage });
+      await page.goto(BASE + "/stats.html#growth", { waitUntil: "networkidle" });
+      await page.waitForTimeout(500);
+      const r = await page.evaluate(() => ({
+        open: document.getElementById("statsMore")?.open,
+        title: document.querySelector("#growth h3")?.textContent.trim(),
+        trend: document.getElementById("growthTrend")?.textContent.trim(),
+        aria: document.querySelector("#growthTrend svg")?.getAttribute("aria-label") ?? null,
+        monthly: document.getElementById("monthlySummary")?.textContent.trim()
+      }));
+      check(`78.4 詳しい記録（${label}）: 推移の見出しは「思い出せるようになった語の推移（30日）」・推移と今月のまとめに「覚えた」が無い`,
+        r.open === true && r.title === "思い出せるようになった語の推移（30日）" && ![r.trend, r.aria, r.monthly].some((t) => (t ?? "").includes("覚えた")) && (label === "推移なし" || r.aria === "思い出せるようになった語の推移") && page.errors.length === 0,
+        JSON.stringify({ ...r, err: page.errors[0] }));
+      await page.close();
+    }
+  }
+
+  // ---- (12) 公開の語の表が読めない（オフライン）: 数と札の場所を空けず短い 1 行。通信が戻ったら（online）描き直す ----
+  {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: s1 });
+    await page.route("**/data/public/english.json", (route) => route.abort());
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    const off = await page.evaluate(() => {
+      const msg = document.getElementById("learnUnavailable");
+      const sum = document.getElementById("learnSum");
+      return { msg: msg && !msg.hidden ? msg.textContent.trim() : null, sumShown: !!sum && getComputedStyle(sum).display !== "none", cardsH: Math.round(document.getElementById("learnCards")?.getBoundingClientRect().height ?? -1) };
+    });
+    await page.unroute("**/data/public/english.json");
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await waitUntil(async () => (await page.evaluate(() => document.getElementById("learnCount")?.textContent)) === "1,180", 5000);
+    const on = await page.evaluate(() => ({ msgHidden: document.getElementById("learnUnavailable")?.hidden, count: document.getElementById("learnCount")?.textContent, rank: document.getElementById("learnRank")?.textContent, source: document.getElementById("vocabSource")?.textContent.includes("NGSL") }));
+    check("78.4 学習状況: 公開の語の表が読めないと数と札を出さず「学習状況を読み込めなかった。通信が戻ると表示する。」の 1 行・通信が戻ったら（online）開き直さずに描く（覚えた 1,180・中学生・出典）",
+      off.msg === "学習状況を読み込めなかった。通信が戻ると表示する。" && !off.sumShown && off.cardsH === 0 && on.msgHidden === true && on.count === "1,180" && on.rank === "中学生" && on.source === true,
+      JSON.stringify({ off, on, err: page.errors[0] }));
+    await page.close();
   }
 }
 
