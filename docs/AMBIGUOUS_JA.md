@@ -43,6 +43,8 @@
 
 > **2026-10-21（Batch 73）**: 同じカテゴリで 1 字の訳がぶつかる組（品質の規則 Q09）として、§5 の ngsl02 home／house と ngsl04 power／force の訳を分けた（home は「自宅・わが家」にして accept の house を外した・power は「権力・電力」にして accept を electricity だけに。house「家」・force「力」と、それぞれの accept は変えない）。あわせて month（4 枚）を「1か月（暦の月）」、ngsl01 の on・at を「〜の上に・〜日に」「〜で・〜時に」に。§5 の ngsl22 whilst は「〜する間・〜する一方で（=while）」（meanwhile と結ばれないように）
 
+> **2026-10-27（Batch 78）**: 創業者の決定（2026-10-27。公開の教材を NGSL の 24 巻・2,857 語の「英単語」1 つにし、公開の前に旧訳を直す）を受けて、§5 の旧訳のまま残っていた具体案のある 82 枚と §7 の ngsl の 4 件を直し、公開 24 巻の訳の波ダッシュを「〜」にそろえた。中身は §5・§7 の頭の注。
+
 ## 4. 別解の執筆時に挙がった候補（Batch 35、137 件・未反映）
 
 英検 5 級〜1 級・TOEIC 500〜990・高校英語・TOEIC・ビジネス・IT の 16 パックに別解（`accept`）を書き足したとき、執筆者が「訳だけでは答えが一つに決まらない」「訳が英語の中心義とずれる」と報告したカード。多くは `accept` で別の語も正解にしてあるので実害は小さいが、訳を直した方が親切なものは ○ を付けてもらえれば反映する。書式は `語: 今の訳 → 置換案 — 理由`。
@@ -187,9 +189,16 @@
 | it | chip: 半導体チップ → チップ — semiconductor を打つ学習者が出る |
 | it | forum: 掲示板 → フォーラム — 掲示板 は bulletin board / board が第一想起 |
 
-## 5. NGSL 24 パックの別解執筆時に挙がった候補（Batch 36、147 件・未反映）
+## 5. NGSL 24 パックの別解執筆時に挙がった候補（Batch 36、147 件。Batch 39・73・78 で反映）
 
 基本語ほど多義で、同じパックに同じ訳の語が並ぶ（始める start／begin、置く put／set、〜の間に between／during など）。多くは互いに `accept` を入れてあるので打っても不正解にはならないが、訳を分けた方が親切なものは ○ を付けてもらえれば反映する。波ダッシュの字種（～ と 〜）の揺れの指摘も含む。
+
+> **2026-10-27（Batch 78）**: 創業者の決定（2026-10-27）で、具体案があり旧訳のままだった **82 枚を直した**（ngsl02・ngsl06 は 0 枚）。147 件の残りは、Batch 39・73 で直っていた 40・直し不要 12（kind・lot・produce・inside・heart・dress・exchange・host・tire・vice・sake・found）・§7 へ 4（accord・raise・march・retain）・要判断 9。
+> - 案のとおりにしなかった 13 枚（近い書き方にした）: 別の公開カードと同じ訳になる charge（fee の「料金」）→「料金・請求額」。訳に答えが入る pitch →「売り込み（sales ___）」。別解の索引で幅の広い別の語と結ばれ、相手の問いでその語が通る well（fully）→「上手に・うまく」、hold（have の「持っている」）→「（手に）持つ・開催する」、mass（massive）→「大量の・集団の」、fault（responsibility）→「落ち度・過失」、distinct（unique）→「はっきり異なる・別個の」、compose（write。かっこは索引で落ちる）→「作曲する・創作する」、regardless（still）→「（〜に）かかわらず・構わずに」。かっこの中の中黒で訳の見出しが割れる reporter →「（新聞やテレビの）記者」、adopt →「採択する・導入する」（「（方法や案を）採用する」は recruit と結ばれる）。品詞 動 に名詞を足す excuse →「（軽い失礼を）許す」（act・measure と同じ型）。日常の「受け取る」を落とす receive →「受け取る・受信する」
+> - 訳を変えて合わなくなった accept を 21 枚で外した（human の person・site の place と location・clock の watch・adopt の hire と employ・create の make と produce と generate など）。trick は例文も いたずら の意味に替えた
+> - 要判断の 9 枚（start・put・many・little・tell・rather・price・fast・store）は変えない（具体案が無い・案の訳に答えが入る・別の公開カードと同じ訳になる）
+> - 波ダッシュ: 公開 24 巻の ja の「～」(U+FF5E) 27 枚を「〜」(U+301C) に。そろえると新しく結ばれる組のうち over と on・upon、either と too は訳を書き分けた（over「〜の上方に・〜を越えて」・either「〜もまた〜ない」）。should と ought は同じ意味なので結ぶ。公開しない教材の 13 枚と data/typing.json の 5 語は「～」のまま
+> - 公開の 24 巻を 1 つの別解の索引で見ると、正解に受け入れる綴りが変わるのは 51 枚（足す 13・外す 52。編集しないカード 18 枚を含む）。足すのは同じ意味の語だけ（status と state・condition、personnel と staff、additional と further、capacity と ability・capability、convention と conference、false と wrong、raise と grow、should と ought）。外すのは案のねらいどおりの切り離しと、上の accept
 
 | パック | 候補 |
 |---|---|
@@ -562,6 +571,13 @@
 ## 7. 見出し語の変更を伴う候補（Batch 39、18 件・創業者判断）
 
 `en` そのものを変える（headquarter → headquarters、pant → pants）、カードの統合、例文の差し替えを伴うもの。データの構造（id・学習記録のキー）に触れるので、方針を決めてから反映する。
+
+> **2026-10-27（Batch 78）**: ngsl の 4 件は創業者の決定（2026-10-27）で反映した。どれも id は変えない。
+> - ngsl05 accord: 名詞「一致・調和」のまま、例文を名詞の使い方（The two leaders were in complete accord.）に替え、exForm according を外した
+> - ngsl05 raise: 動詞「上げる・育てる」・品詞 動・level normal・例文も動詞に（toeic600 の同じ id は「昇給」名のまま。品質の規則 P3 の警告が 1 組増える）
+> - ngsl22 march: 1 枚の「3月・行進」のまま（変えない）
+> - ngsl17 retain: level hard（CEFR-J B1）。toeic860 の同じ id は easy のまま。訳は「保持する」のまま
+> - ほかの 14 件（toeic860 keynote と tsl・bsl・nawl）は未決
 
 | グループ | 候補 |
 |---|---|
