@@ -787,14 +787,15 @@ export function getMode() {
 
 let modeInitialized = false;
 
-// Study / Challenge の切り替え。プレイ中なら中断する
-export function setMode(newMode) {
+// Study / Challenge の切り替え。プレイ中なら中断する。save: false は保存した遊び方（spelldash_mode）を書き換えない
+// （英単語の学習に絞ったホームと中心の学習は Study の盤面で動くが、Challenge を選んでいた人の保存値は残す。Batch 78 段 5・js/focus.js）
+export function setMode(newMode, { save = true } = {}) {
   if (mode === newMode && modeInitialized) return;
   modeInitialized = true;
 
   mode = newMode;
   stopGame();
-  localStorage.setItem(MODE_KEY, newMode);
+  if (save) localStorage.setItem(MODE_KEY, newMode);
 
   document.body.classList.toggle("mode-study", mode === "study");
   // カード下の数字のラベル: Study は「思い出せた」、Challenge は「正解」（index.html の初期値は Study 側）
@@ -880,7 +881,9 @@ export function stopGame() {
 }
 
 // ===== 中心の学習（これから・あやふや・覚えた。Batch 78。創業者の決定 §3・§4。出題の列は js/learnQueue.js、状態の決まりは js/learnState.js） =====
-// 入口は /?learn=new|unsure|learned（学習状況の 3 枚・ホームのボタンがここへ来る）。その状態の語だけを、公開の版のカード（NGSL の巻。js/wordStore.js publicWord）で出す。
+// 入口は /?learn=new|unsure|learned（学習状況の 3 枚がここへ来る）と /?learn=next（ホームの「英単語を学ぶ」とナビ。js/learnQueue.js resolveNextMode が
+// あやふやの今日の分 → これから → あやふや → 覚えた の順に 1 つのモードに決め、URL もそのモードに置き換える: 開き直しで別のモードに替わらない）。
+// その状態の語だけを、公開の版のカード（NGSL の巻。js/wordStore.js publicWord）で出す。
 // 1 問に 1 回だけ、今の書き手の後に recordLearnAnswer（js/stats.js）へ答えの種類を渡す: × のあった問いはその × の種類（答え表示・1 打ミス・ヒント。
 // 後の打ち直しは渡さない）、× が無ければ打ち終えた種類（exact・variant・altAccept・altIndex。別解も自力正解: 決定 §3）。状態を書くのはこの回だけ
 // （?words=・腕試し・チュートリアル・60 秒・Daily・Challenge・Battle・タイピングは書かない。書き手も公開の語だけを受ける）。
@@ -890,9 +893,9 @@ export function stopGame() {
 // ほかのタブで記録が置き換わったら（spelldash:records-replaced）、次の答えのどの書き手より先に回を終える（前の人の答えを新しい人の表に入れない）。
 // 回の終わり（セットの終わり・今日の分は終わり・ここで終える）に、最高到達ランクが上がっていれば 1 回だけ文字の幕（js/levelUi.js showLearnRankUp）
 const LEARN_PARAM = new URLSearchParams(location.search).get("learn");
-// 読める入口の値（js/learnQueue.js LEARN_MODES の鍵と同じ。入口かどうかは module を読む前に要るので、ここにも持つ。単体が突き合わせる）。
+// 読める入口の値（js/learnQueue.js LEARN_MODES の鍵と LEARN_NEXT。入口かどうかは module を読む前に要るので、ここにも持つ。単体が突き合わせる）。
 // 読めない値（?learn=foo）はふつうのホームのまま: 初回の本の印を付けず、材料も module も読まない（index.html の <head> の 1 行も同じ値だけを深いリンクとして扱う）
-const LEARN_ENTRY_MODES = ["new", "unsure", "learned"];
+const LEARN_ENTRY_MODES = ["new", "unsure", "learned", "next"];
 const LEARN_ENTRY = LEARN_ENTRY_MODES.includes(String(LEARN_PARAM ?? "").trim());
 const LEARN_INTRO = {
   new: "分からないときは答えを見る。間違えても、あやふやに移るだけ",
@@ -921,13 +924,14 @@ function setLearnScreen(on) {
 }
 
 // 中心の学習を始める（入口・パネルの「続けて学ぶ」から）。材料（出題の列の module・3 状態の材料・公開の 24 巻）を読んでから、
-// 今日の同じモードの回があれば続きから（答えた語は二度出さない・回の数は二重に数えない: js/sessionResume.js learnPointFor）
-async function beginLearn(mode) {
+// 今日の同じモードの回があれば続きから（答えた語は二度出さない・回の数は二重に数えない: js/sessionResume.js learnPointFor）。
+// entry は 3 つのモードの名前か "next"（「英単語を学ぶ」: 今の記録から 1 つのモードに決める）
+async function beginLearn(entry) {
   let Q = null;
   let loaded = null;
   try {
     Q = await import("./learnQueue.js");
-    if (!Q.parseLearnMode(mode)) return; // 読めない入口の値: ふつうのホームのまま（材料は読まない）
+    if (!Q.parseLearnEntry(entry)) return; // 読めない入口の値: ふつうのホームのまま（材料は読まない）
     loaded = await Promise.all([loadLearnStates(), loadPublicWords()]);
   } catch {
     loaded = null;
@@ -937,12 +941,14 @@ async function beginLearn(mode) {
     showLearnLoadError();
     return;
   }
-  const kind = Q.parseLearnMode(mode);
-  setMode("study");
+  setMode("study", { save: false }); // 保存した遊び方（Challenge を選んでいた人）は書き換えない
   stopGame(); // 机の回の途中なら止める（setMode は同じモードだと止めない）
   const table = getWordStats();
   const counts = countLearnStates(table, src.vocab, src.pending);
   const today = learnDayOf(Date.now());
+  const next = Q.parseLearnEntry(entry) === Q.LEARN_NEXT;
+  const kind = next ? Q.resolveNextMode(counts, Q.buildLearnQueue("unsure", table, src.vocab, today, src.pending).length) : Q.parseLearnMode(entry);
+  if (next) replaceLearnParam(kind); // 開き直しても同じモードの続きから（「英単語を学ぶ」の決まりで別のモードに替わらない）
   const queue = Q.buildLearnQueue(kind, table, src.vocab, today, src.pending);
   // 続き: 今日始めた回（js/sessionResume.js learnPointFor。日をまたいだ回は新しい回: 前の日に数えた語も今日の分に戻る）で、
   // 答えた語の答えがどれも今の保存にある（中心の学習で最後に答えた時刻が回の始めより後）ときだけ。復元・アカウントの切り替えで表が替わっていれば新しい回
@@ -1272,6 +1278,18 @@ function leaveLearn() {
     history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
   } catch {
     // 無視
+  }
+}
+
+// 「英単語を学ぶ」（?learn=next）で決めたモードを URL に書く（開き直しで同じモードの続きから。履歴は増やさない）
+function replaceLearnParam(kind) {
+  try {
+    const url = new URL(location.href);
+    if (url.searchParams.get("learn") === kind) return;
+    url.searchParams.set("learn", kind);
+    history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    // 無視（開き直すと「英単語を学ぶ」の決まりでもう一度決める）
   }
 }
 

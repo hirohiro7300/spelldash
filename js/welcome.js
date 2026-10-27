@@ -4,15 +4,23 @@ import { PLACEMENT_NOTE, PLACEMENT_MINUTES } from "./course.js";
 import { renderHasumiHome } from "./hasumi.js"; // 紙片の文は body.welcome-open を見る: 畳んだら描き直す
 import { esc, numHtml } from "./html.js";
 import { hasWordRecords } from "./storage.js";
+import { isFocusOn } from "./focus.js";
 
 // ===== 初めて来た人向けのトップページ（書斎の机に置いた最初の本） =====
 //
 // 学習データもオンボーディング済みの印も無い人にだけ、アプリの代わりに見せる。
 // 机の本の左頁に見出しと 1 語体験、右頁に「最初の 1 冊」とスタート（＝腕試し）。本の下に 4 冊を積み、選ぶと机の本が替わる。
 // スタートで印を付けてアプリ（机の本）に切り替え、そのまま腕試しを始める（onStart({ bookId })）。
-// 戻ってきた人・深いリンク（?set= ?words= ?t= #play など）で来た人には出さない。
+// 戻ってきた人・深いリンク（?set= ?words= ?t= #play・読める ?learn= など）で来た人には出さない。
+// 英単語の学習に絞ったホーム（js/focus.js。Batch 78 段 5）: 本を選ばせない。右頁は教材「英単語」と「英単語を学ぶ」1 つ（積んだ本と
+// 「N冊から選ぶ」は CSS で出さず、押しても何もしない）。押すと onStart() が中心の学習（/?learn=next。初めての人は これから の 1 語目から）へ
 
 const ONBOARDED_KEY = "spelldash_onboarded";
+// 読める ?learn= の値（中心の学習の入口。js/learnQueue.js LEARN_MODES の鍵と LEARN_NEXT・js/game.js LEARN_ENTRY_MODES・index.html の <head> の 1 行と同じ。
+// 単体 scripts/test-learn-queue.mjs が突き合わせる）。読めない値（?learn=foo）では初回の本を出す
+const LEARN_DEEP_LINKS = ["new", "unsure", "learned", "next"];
+// 英単語の学習に絞ったホームの右頁の注（index.html の #welcomeBook の静的な文と同じ）
+const FOCUS_CAP = "1回10語。分からない語は Enter で答えを見る。";
 
 const DEMO_WORDS = [
   { ja: "りんご", en: "apple" },
@@ -46,6 +54,7 @@ export function shouldShowWelcome() {
   // アプリ内への深いリンク（?set= ?words= ?t= など）で来た人には出さない。それ以外のパラメータ（計測用等）では出す
   const params = new URLSearchParams(location.search);
   if (["set", "words", "t", "weekly", "category", "genre", "mode"].some((k) => params.has(k))) return false;
+  if (LEARN_DEEP_LINKS.includes((params.get("learn") || "").trim())) return false;
   if (location.hash === "#play") return false;
   return true;
 }
@@ -120,7 +129,8 @@ function setupDemo(root, onDone) {
     if (locked) return;
     // 分からないときの動きも体験できる: 答えを見せて、そのまま打てば進む
     preview.innerHTML = renderColoredWord(DEMO_WORDS[index].en);
-    msg.textContent = `答えは「${DEMO_WORDS[index].en}」。見ながら打ってよい（本番では数問後にもう一度出る）`;
+    // 英単語の学習に絞ったホーム: 本番（中心の学習）では答えを見た語はこの回にはもう出ず あやふや に移る
+    msg.textContent = `答えは「${DEMO_WORDS[index].en}」。見ながら打ってよい（${isFocusOn() ? "本番では、あやふやに移るだけ" : "本番では数問後にもう一度出る"}）`;
     msg.className = "welcome-demo__msg welcome-demo__msg--reveal";
   };
 
@@ -168,8 +178,10 @@ function setupDemo(root, onDone) {
   show();
 }
 
-// 右頁の「最初の 1 冊」の文（本ごと）。英単語は腕試しの案内（道のスタート下と同じ文）。日本語で答える本も同じ目安の分（js/course.js PLACEMENT_MINUTES）
+// 右頁の「最初の 1 冊」の文（本ごと）。英単語は腕試しの案内（道のスタート下と同じ文）。日本語で答える本も同じ目安の分（js/course.js PLACEMENT_MINUTES）。
+// 英単語の学習に絞ったホームは中心の学習の 1 回の案内（腕試しはしない）
 function bookCap(book) {
+  if (isFocusOn()) return FOCUS_CAP;
   return book.lang === "en" ? PLACEMENT_NOTE : `最初は腕試し10枚（約${PLACEMENT_MINUTES}分）。分からなければ Enter で答えを見る。`;
 }
 
@@ -262,8 +274,9 @@ export function renderWelcome({ onStart } = {}) {
 
   setWelcomeOpen(root, app, true);
 
-  // 積んだ本（4 冊）と、入れ替えたときに降りてくる英単語: index.html に静的に置いた物を使う（無いときだけ作る）
-  const stack = root.querySelector("#welcomeStack");
+  // 積んだ本（4 冊）と、入れ替えたときに降りてくる英単語: index.html に静的に置いた物を使う（無いときだけ作る）。
+  // 英単語の学習に絞ったホームでは積んだ本を出さない（CSS）・押しても机の本を替えない
+  const stack = isFocusOn() ? null : root.querySelector("#welcomeStack");
   if (stack) {
     if (!stack.querySelector(".flatbook")) stack.innerHTML = welcomePileHtml();
     stack.addEventListener("click", (event) => {
@@ -276,6 +289,11 @@ export function renderWelcome({ onStart } = {}) {
 
   const start = () => {
     markOnboarded();
+    // 英単語の学習に絞ったホーム: 本は選ばず、そのまま中心の学習の入口へ（js/main.js がページを移る。机を一瞬出さない）
+    if (isFocusOn()) {
+      onStart?.({});
+      return;
+    }
     setWelcomeOpen(root, app, false);
     document.body.classList.add("returning"); // キャッチコピーは見せたので、アプリ側の見出しは机の本から
     window.scrollTo({ top: 0 });

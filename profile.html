@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-focus="english">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -193,14 +193,16 @@
   <main class="app app--narrow" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <h1>設定</h1>
-      <p class="subtitle">記録は<a href="./stats.html">学習データ</a>に。</p>
+      <p class="subtitle">記録は<a href="./stats.html">学習状況</a>に。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
     <section class="settings">
       <h2 class="settings__title">学習</h2>
 
-      <div class="setting-row">
+      <!-- 出題の設定（今日のセットの長さ・音で出題）: 英単語の学習に絞った間（html[data-focus]。js/focus.js）は出さない。中心の学習は 1 回 10 語・音で出題なしで、
+           この 2 つは効かない。保存した値（spelldash_set_size・spelldash_audio の listenRatio）はそのまま残す（css/pages.css .setting-row--question） -->
+      <div class="setting-row setting-row--question">
         <label for="setSizeSelect">今日のセットの長さ</label>
         <select id="setSizeSelect" class="setting-select" autocomplete="off">
           <option value="10">10語（約3分）</option>
@@ -273,7 +275,7 @@
         </select>
       </div>
 
-      <div class="setting-row">
+      <div class="setting-row setting-row--question">
         <label for="listenSelect">音で出題</label>
         <select id="listenSelect" class="setting-select">
           <option value="0">なし（日本語を見て打つ）</option>

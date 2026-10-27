@@ -2,7 +2,8 @@
 // DOM なし・localStorage なし。import は js/learnState.js（状態の読み方と答えの種類）と js/judge.js（打ち終えた綴りの種類）だけ。
 // Node から直に読む（scripts/test-learn-queue.mjs）。js/game.js は中心の学習を始めるときに動的 import で読む（ホームの読み込みを増やさない）。
 //
-// 入口は /?learn=new|unsure|learned（学習状況の 3 枚・ホームのボタンがここへ来る）。各モードは、その状態の語だけを出す:
+// 入口は /?learn=new|unsure|learned（学習状況の 3 枚がここへ来る）と /?learn=next（ホームの「英単語を学ぶ」とナビ。resolveNextMode で 1 つのモードに決める）。
+// 各モードは、その状態の語だけを出す:
 //   これから（new）    状態の無い語だけ。公開の並び（js/publicVocab.js の order。機能語は最後）のまま。1 回 10 語
 //   あやふや（unsure） 今日の分 = あやふやの語のうち、数えた日（lsd）が無いか今日より前の語（今日もう数えた語・時計が戻って先の日を数えている語は、
 //                      今日は自力正解でも数えないので出さない）。中心の学習で最後に答えた時刻（lsAt。無ければ 0）の古い順、同じなら公開の並び。
@@ -26,6 +27,24 @@ export const LEARN_BREAK_EVERY = 10;
 export function parseLearnMode(value) {
   const v = String(value ?? "").trim();
   return Object.hasOwn(LEARN_MODES, v) ? v : null;
+}
+
+// 「英単語を学ぶ」（ホームのボタン・ナビ。Batch 78 段 5）の入口の値。モードではなく、回を始めるときにその人の今の記録から 1 つのモードに決める（resolveNextMode）
+export const LEARN_NEXT = "next";
+// 入口として読める値（3 つのモードと LEARN_NEXT）。読めない値は null
+export function parseLearnEntry(value) {
+  const v = String(value ?? "").trim();
+  return v === LEARN_NEXT ? v : parseLearnMode(v);
+}
+
+// 「英単語を学ぶ」の行き先: あやふやの今日の分があれば あやふや、無ければ これから、これからも無ければ あやふや（今日の分は終わり）、
+// 全部覚えたら 覚えた の復習。counts = js/learnState.js countLearnStates の数、due = あやふやの今日の分の語数（buildLearnQueue("unsure", …) の長さ）。
+// ホームのボタンの文（js/pathView.js）と入口（js/game.js beginLearn）が同じこの決まりを使う
+export function resolveNextMode(counts, due) {
+  if (due > 0) return "unsure";
+  if (counts?.new > 0) return "new";
+  if (counts?.unsure > 0) return "unsure";
+  return "learned";
 }
 
 // 中心の学習で最後に答えた時刻（無い・読めない値は 0 = いちばん古い）

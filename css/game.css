@@ -217,6 +217,90 @@ html[data-theme] body.learn-run .hist__x {
   background: var(--ink-3);
 }
 
+/* ===== 英単語の学習に絞ったホーム（html[data-focus="english"]。js/focus.js。Batch 78 段 5。決定 §7・§9 の 1・10・11・18） =====
+   出さないもの（中身とコードは残す。旗を外すと前のまま）: 初回の本の積んだ本と「N冊から選ぶ」・机の本の目次の頁と「出題: … ・ 設定」・
+   ほかの遊び方（Challenge・Daily・Battle）・机の下の「覚えた単語」（前の数え方）と Daily の札・わたしの本棚・連続日数の札・はちゃんの紙片
+   （紙片の文は連続日数・前の数え方の「覚えた」・本の名を言うことがある。はちゃんは部屋の絵の中の窓辺に残る）。
+   詳細度は css/room.css（html[data-theme] … の (0,2,1) 以上）より上にする */
+html[data-theme][data-focus="english"] .page-room :is(.pile .stack-k, .pile .stack, .pile__find, #todayStrip, #hasumiHome, #playModes, #homeMore, #setupToggle, #setupPanel) {
+  display: none;
+}
+
+html[data-theme][data-focus="english"] .page-room #bookshelf {
+  display: none;
+}
+
+html[data-theme][data-focus="english"] body.page-room:not(.home--playing) #pathCard .tome__page--toc {
+  display: none;
+}
+
+/* PC（1100px 以上。css/room.css の 2 列）: 目次の頁が無いので本は「左頁・右頁」の 1 段。本棚の列が無いので、机の列を真ん中に置く */
+@media (min-width: 1100px) {
+  html[data-theme][data-focus="english"] body.page-room:not(.home--playing) #pathCard {
+    grid-template-areas: "l r" "bar bar";
+  }
+  html[data-theme][data-focus="english"] body.page-room:not(.home--playing) .room__in {
+    grid-template-columns: 640px;
+    justify-content: center;
+  }
+}
+
+/* 旗を外したとき（js/pathView.js renderPath が書き換えるまで）は、静的に置いた英単語のホームの中身を出さない */
+html:not([data-focus="english"]) .focus-home {
+  display: none;
+}
+
+/* 数（覚えた N ／総数・ランク・次に学ぶ状態）は材料を読んでから入れる（js/pathView.js renderFocusPath が #pathCard.focus-ready を付ける）。
+   それまでは場所を空けたまま見せない（読み込みの後に押し下げない・間違った数を一瞬も見せない） */
+html[data-theme][data-focus="english"] #pathCard:not(.focus-ready) :is(#focusSum, #focusRank, #focusNext) {
+  visibility: hidden;
+}
+
+/* ランクの 1 行（覚えた N ／総数の下。進みの帯と同じ字の大きさの静かな行） */
+html[data-theme] .focus-home__rank {
+  margin: 10px 0 0;
+  font: 500 14px/1.6 var(--font-display);
+  letter-spacing: 0.06em;
+  color: var(--ink-page-2);
+}
+
+html[data-theme] .focus-home__rank b {
+  font-weight: 500;
+  color: var(--ink-page);
+}
+
+/* 「英単語を学ぶ」はリンク（js が無くても /?learn=next へ）。見た目は朱漆の板（css/room.css .start）のまま、下線は付けない */
+html[data-theme] a.start.focus-home__start {
+  text-decoration: none;
+  border-bottom: 0;
+}
+
+/* 古い画面・古い URL から来た人への 1 行（html[data-moved]。<head> の 1 行が最初の描画から付ける）。机の上の紙の札（.stack-k と同じ紙） */
+html[data-theme] .focus-note {
+  display: none;
+}
+
+html[data-theme][data-moved] .focus-note {
+  position: relative;
+  z-index: 3;
+  display: block;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  margin: 0 auto 12px;
+  padding: 5px 14px 4px;
+  font: 500 14px/1.5 var(--font-display);
+  letter-spacing: 0.06em;
+  color: var(--ink-page-2);
+  background: #EFE6D2;
+  border-radius: 2px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35), 2px 3px 5px -2px rgba(0, 0, 0, 0.4);
+}
+
+html:is([data-theme="dark"], [data-theme="indigo"])[data-moved] .focus-note {
+  background: #E0D2B2;
+  color: #120C08;
+}
+
 /* ===== ヘッダーの🔥ストリーク（.accountのmargin-left:autoの左隣） ===== */
 .header-streak {
   margin-left: auto;

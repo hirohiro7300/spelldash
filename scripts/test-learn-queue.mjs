@@ -64,6 +64,32 @@ function randomTable(seed) {
 eq("入口: new・unsure・learned だけ（前後の空白は落とす）", ["new", "unsure", " learned ", "x", "", null, undefined, "__proto__", "constructor", "toString", "NEW"].map(Q.parseLearnMode), ["new", "unsure", "learned", null, null, null, null, null, null, null, null]);
 eq("1 セットの語数: これから 10・あやふや 30・覚えた 10。区切りは 10 語ごと", [Q.LEARN_SET_SIZE.new, Q.LEARN_SET_SIZE.unsure, Q.LEARN_SET_SIZE.learned, Q.LEARN_BREAK_EVERY], [10, 30, 10, 10]);
 
+// ===== 「英単語を学ぶ」（?learn=next。ホームのボタン・ナビ。Batch 78 段 5）=====
+eq("入口: 3 つのモードと next だけ（前後の空白は落とす。parseLearnMode は next をモードと読まない）",
+  [["next", " next ", "NEXT", "nextx", "new", "learned", "foo", "", null].map(Q.parseLearnEntry), Q.parseLearnMode("next")],
+  [["next", "next", null, null, "new", "learned", null, null, null], null]);
+{
+  const C = (n, u, l) => ({ new: n, unsure: u, learned: l, total: n + u + l });
+  eq("next の行き先: あやふやの今日の分 → これから → あやふや（今日の分は終わり）→ 覚えた の順",
+    [
+      Q.resolveNextMode(C(2857, 0, 0), 0), // 初めての人: これから
+      Q.resolveNextMode(C(100, 5, 10), 3), // あやふやの今日の分がある: あやふや（これからが残っていても）
+      Q.resolveNextMode(C(100, 5, 10), 0), // 今日の分は済んだ: これから
+      Q.resolveNextMode(C(0, 5, 2852), 0), // これからも無い: あやふや（今日の分は終わりの回）
+      Q.resolveNextMode(C(0, 5, 2852), 1), // これからが無く今日の分がある: あやふや
+      Q.resolveNextMode(C(0, 0, 2857), 0), // 全部覚えた: 覚えたの復習
+      Q.resolveNextMode(C(0, 0, 0), 0) // 語が無い（読めた表が空）: 覚えた（回は空で終わる）
+    ],
+    ["new", "unsure", "new", "unsure", "unsure", "learned", "learned"]);
+  // 本物の表で: due は buildLearnQueue("unsure") の長さ（js/game.js beginLearn と js/pathView.js が同じ数を使う）と、学習状況の今日の分（js/learnPace.js unsureDueCount）は同じ
+  const P = await import(modUrl("js/learnPace.js"));
+  for (const seed of [1, 2, 3]) {
+    const t = randomTable(seed);
+    const due = Q.buildLearnQueue("unsure", t, vocab, TODAY).length;
+    eq(`next の今日の分の数は学習状況の今日の分と同じ（種 ${seed}）`, due, P.unsureDueCount(t, vocab, null, TODAY));
+  }
+}
+
 // ===== 排他性: どの列もその状態の語だけ。あやふやは今日の分だけ =====
 for (const seed of [1, 2, 3]) {
   const t = randomTable(seed);
@@ -303,13 +329,17 @@ for (const seed of [1, 2, 3]) {
   eq("純: import は js/learnState.js と js/judge.js だけ", [...src.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]), ["./learnState.js", "./judge.js"]);
 }
 
-// ===== 入口の値の写し: js/game.js（この module を読む前に入口かを決める）と index.html の <head> の 1 行（初回の本を出すか）は LEARN_MODES の鍵と同じ =====
+// ===== 入口の値の写し: js/game.js（この module を読む前に入口かを決める）・index.html の <head> の 1 行（初回の本を出すか）・
+// js/welcome.js（初回の本を出すか。<head> の 1 行と同じ答え）は LEARN_MODES の鍵と LEARN_NEXT =====
 {
   const game = fs.readFileSync(path.join(ROOT, "js/game.js"), "utf8");
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const welcome = fs.readFileSync(path.join(ROOT, "js/welcome.js"), "utf8");
   const fromGame = JSON.parse(game.match(/const LEARN_ENTRY_MODES = (\[[^\]]*\]);/)?.[1] ?? "null");
   const fromHead = JSON.parse(html.match(/(\[[^\]]*\])\.includes\(\(q\.get\("learn"\)/)?.[1] ?? "null");
-  eq("入口の値の写し: js/game.js LEARN_ENTRY_MODES と index.html の <head> の 1 行は LEARN_MODES の鍵と同じ", [fromGame, fromHead], [Object.keys(Q.LEARN_MODES), Object.keys(Q.LEARN_MODES)]);
+  const fromWelcome = JSON.parse(welcome.match(/const LEARN_DEEP_LINKS = (\[[^\]]*\]);/)?.[1] ?? "null");
+  const entries = [...Object.keys(Q.LEARN_MODES), Q.LEARN_NEXT];
+  eq("入口の値の写し: js/game.js LEARN_ENTRY_MODES・index.html の <head> の 1 行・js/welcome.js LEARN_DEEP_LINKS は LEARN_MODES の鍵と LEARN_NEXT", [fromGame, fromHead, fromWelcome], [entries, entries, entries]);
 }
 
 if (failures.length) {

@@ -1,4 +1,5 @@
 import { localDateString } from "./stats.js";
+import { isFocusOn } from "./focus.js";
 
 // ===== 前回の続きから =====
 //
@@ -20,8 +21,10 @@ export function clearSession() {
   localStorage.removeItem(KEY);
 }
 
-// 今日・同じカテゴリで、まだ残りがあるセッションだけ返す
+// 今日・同じカテゴリで、まだ残りがあるセッションだけ返す。
+// 英単語の学習に絞ったホーム（js/focus.js。Batch 78 段 5）では古い形の続き（机の本の Study のセット）は出さない（null）。鍵 spelldash_session は消さない
 export function resumableFor(categoryId) {
+  if (isFocusOn()) return null;
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || "null");
     if (!s || s.date !== localDateString()) return null;
