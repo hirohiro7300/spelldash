@@ -45,10 +45,18 @@ export function isFocusOn() {
   return FOCUS_ENGLISH;
 }
 
-// 最初の描画の旗を FOCUS_ENGLISH に合わせる（index.html・profile.html の静的な旗と食い違ったときだけ書く）
+// 最初の描画の旗を FOCUS_ENGLISH に合わせる（index.html・profile.html の静的な旗と食い違ったときだけ書く）。
+// 旗を外したときは index.html に静的に置いた英単語のホームの中身（.focus-home）も外す: 前のホームの #pathHead・#pathNow を空に戻す
+// （読み込み中の高さ css/room.css の :empty が効き、js/pathView.js renderPath が描く。#pathStart が 2 つにならない）
 export function applyFocusFlag(root = document.documentElement) {
   if (FOCUS_ENGLISH && root.dataset.focus !== FOCUS_ATTR) root.dataset.focus = FOCUS_ATTR;
-  if (!FOCUS_ENGLISH && "focus" in root.dataset) delete root.dataset.focus;
+  if (FOCUS_ENGLISH) return;
+  if ("focus" in root.dataset) delete root.dataset.focus;
+  root.querySelectorAll(".focus-home").forEach((el) => {
+    const parent = el.parentElement;
+    el.remove();
+    if (parent && parent.children.length === 0) parent.textContent = ""; // 残った改行も消して :empty にする
+  });
 }
 
 // URL の検索部分のうち、古い URL の引数（しるしの ?from=old を含む。無ければ空の配列）

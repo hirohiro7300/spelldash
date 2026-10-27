@@ -498,26 +498,31 @@ console.log("modulepreload:");
   const stale = syncModulePreload();
   check("modulepreload が import の依存と揃っている（ずれたら node scripts/modulepreload.mjs）", stale.length === 0, stale.join(", "));
   // 教材の先読みが本当に使われる: 教材を読むページで、台帳と基本カテゴリの JSON はそれぞれ 1 回だけ取る（fetch と URL・CORS がずれると 2 回になる）
-  // 英単語の学習に絞った間（js/focus.js。Batch 78 段 5b）は単語帳（list.html）を開くと英単語のホームへ案内する（単語帳は教材を読まずに移る）:
-  // そのページは案内先のホームで数える（移った後の要求だけ）
+  // 英単語の学習に絞った間（js/focus.js。Batch 78 段 5b）は単語帳（list.html）を開くと英単語のホームへ案内する（location.replace）: 単語帳の先読みは
+  // 移る前に出ているので、案内先のホームが出した要求だけを数える（どの文書の要求かは Referer で分ける。移った時刻〔framenavigated〕で分けると、
+  // 先読みの走査の要求が移った知らせより先に届くことがあり、数がずれる）
   for (const pageName of WORD_PAGES) {
     const page = await newPage();
-    const counts = new Map();
+    const reqs = [];
     page.on("request", (req) => {
       const p = new URL(req.url()).pathname.slice(1);
-      if (p.startsWith("data/")) counts.set(p, (counts.get(p) ?? 0) + 1);
+      if (!p.startsWith("data/")) return;
+      let from = null;
+      try { from = new URL(req.headers().referer).pathname; } catch {}
+      reqs.push({ p, from });
     });
     let moved = false;
     page.on("framenavigated", (f) => {
-      if (f !== page.mainFrame() || new URL(f.url()).pathname === "/" + pageName) return;
-      moved = true;
-      counts.clear();
+      if (f === page.mainFrame() && new URL(f.url()).pathname !== "/" + pageName) moved = true;
     });
     await page.goto(BASE + "/" + pageName, { waitUntil: "networkidle" });
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(300);
+    const at = new URL(page.url()).pathname;
+    const counts = new Map();
+    for (const r of reqs) if (!moved || r.from === at) counts.set(r.p, (counts.get(r.p) ?? 0) + 1);
     const wrong = baseDataFiles().filter((f) => counts.get(f) !== 1).map((f) => `${f}=${counts.get(f) ?? 0}`);
-    check(`${pageName}: 先読みした教材はそれぞれ 1 回だけ取る（先読みが fetch に使われる${moved ? "。英単語のホームへ案内した先で数えた" : ""}）`, wrong.length === 0, wrong.join(" "));
+    check(`${pageName}: 先読みした教材はそれぞれ 1 回だけ取る（先読みが fetch に使われる${moved ? `。英単語のホーム〔${at}〕へ案内した先で数えた` : ""}）`, wrong.length === 0, wrong.join(" "));
     await page.close();
   }
 }
@@ -7545,7 +7550,7 @@ console.log("study (finish):");
         window.__loading = { headEmpty: document.getElementById("pathHead").childNodes.length === 0, head: min("#pathHead"), now: min("#pathNow"), list: min("#pathList") };
       });
     });
-    await page.route("**/*", (r) => setTimeout(() => r.continue(), 80));
+    await page.route("**/*", (r) => setTimeout(() => r.fallback(), 80)); // fallback: 先に登録した旗を外す route（focusOff）も通す
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(1500);
     const r = await page.evaluate(() => {
@@ -7595,7 +7600,7 @@ console.log("study (finish):");
       };
       requestAnimationFrame(tick);
     });
-    await page.route("**/*", (r) => setTimeout(() => r.continue(), 80));
+    await page.route("**/*", (r) => setTimeout(() => r.fallback(), 80)); // fallback: 先に登録した旗を外す route（focusOff）も通す
     await page.goto(BASE + url, { waitUntil: "networkidle" });
     await page.waitForTimeout(1500);
     const r = await page.evaluate(() => ({
@@ -20115,6 +20120,16 @@ console.log("home and old URLs (78.6):");
       start: document.getElementById("pathStart")?.tagName, text: document.getElementById("pathStart")?.textContent.trim(),
       focusHome: !!document.getElementById("focusHead"), shelf: !document.getElementById("bookshelf").hidden, modes: document.getElementById("playModes").innerText.includes("ほかの遊び方"), attr: document.documentElement.dataset.focus ?? null
     }));
+    const fresh = await homePage({}, { fresh: true });
+    await focusOff(fresh);
+    await fresh.goto(BASE + "/", { waitUntil: "networkidle" });
+    await fresh.waitForTimeout(300);
+    const w = await fresh.evaluate(() => ({
+      start: document.querySelector("#welcome [data-welcome-start]")?.textContent.trim(), book: document.querySelector("#welcome [data-welcome-start]")?.dataset.book,
+      title: document.getElementById("welcomeTitle")?.textContent, books: [...document.querySelectorAll("#welcome .flatbook")].filter((b) => b.getBoundingClientRect().height > 0).length
+    }));
+    check("78.6 戻せる形: 旗を外すと初めての人の本も前の形（見出し「本棚の1冊を、1日5分。」・積んだ本 4 冊・スタート・最初の 1 冊は中学英語 1年）", w.start === "スタート" && w.book === "jhs-english1" && w.title === "本棚の1冊を、1日5分。" && w.books >= 4 && fresh.errors.length === 0, JSON.stringify(w));
+    await closeCtx(fresh);
     check("78.6 戻せる形: 旗を外すと前のホーム（机の本のスタート・本棚・ほかの遊び方）が出て、英単語のホームの中身は残らない", o.start === "BUTTON" && o.text === "スタート" && !o.focusHome && o.shelf && o.modes && o.attr === null, JSON.stringify(o));
     await closeCtx(page);
   }

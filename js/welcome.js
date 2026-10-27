@@ -239,6 +239,32 @@ export function isWelcomeOpen() {
   return document.body.classList.contains("welcome-open") || "firstVisit" in document.documentElement.dataset;
 }
 
+// 旗を外したとき（js/focus.js）の初回の本の文: index.html の静的な文は英単語の学習に絞った形（本を選ばない）なので、前の文（見出し・「最初の 1 冊」・
+// 中学英語 1年・スタート）に戻す。注（data-f="cap"）は renderWelcome が bookCap で入れる。
+// 戻すのはこの module を読んだ時（下の 1 行）: js/bookshelf.js は読み込み時からスタートの data-book を見張り、替わると下見の棚を描く。
+// renderWelcome の中で替えると、語の読み込みの前に空の本棚を 1 回描いてしまう（E2E 8.8「空の本棚は出ない」）。この module は js/bookshelf.js より先に読まれる
+const BOOK_PICK_TEXT = {
+  title: '<span class="nb">本棚の<span class="n">1</span>冊を、</span><span class="nb">1日<span class="n">5</span>分。</span>',
+  kicker: '最初の<span class="n">1</span>冊',
+  start: "スタート"
+};
+function restoreBookPickText(root) {
+  const title = root.querySelector("#welcomeTitle");
+  if (title) title.innerHTML = BOOK_PICK_TEXT.title;
+  const kicker = root.querySelector("#welcomeBook .pick-k");
+  if (kicker) kicker.innerHTML = BOOK_PICK_TEXT.kicker;
+  const sub = root.querySelector('#welcomeBook [data-f="s"]');
+  if (sub) sub.innerHTML = numHtml(currentBook.sub);
+  root.querySelectorAll("[data-welcome-start]").forEach((btn) => {
+    btn.textContent = BOOK_PICK_TEXT.start;
+    btn.dataset.book = currentBook.id;
+  });
+}
+if (!isFocusOn()) {
+  const welcomeRoot = typeof document !== "undefined" ? document.getElementById("welcome") : null;
+  if (welcomeRoot) restoreBookPickText(welcomeRoot);
+}
+
 // 初回の本（open）と机の切り替え。index.html の <head> の 1 行が置いた html[data-first-visit]（CSS が最初の描画から初回の本を出す）はここで外す:
 // 以後は hidden と body.welcome-open が決める（同じタスクで置き換えるので、描画の間に机が挟まらない）
 function setWelcomeOpen(root, app, open) {
