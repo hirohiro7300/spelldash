@@ -94,6 +94,12 @@ jobs:
       - name: 公開する英単語の表の決まり（教材とファイルの写しを壊すと落ちる。scripts/build-public-vocab.mjs）
         run: node scripts/test-public-vocab.mjs
 
+      - name: 分野パックのページと sitemap.xml が生成器（scripts/build-pack-pages.mjs）どおりか
+        run: node scripts/build-pack-pages.mjs --check
+
+      - name: 検索と導線の決まり（sitemap は主導線と規約だけ・noindex・パックのページの案内・vercel.json の旧 URL の一時的な転送・ナビ 4 つとフッター。scripts/test-site-map.mjs）
+        run: node scripts/test-site-map.mjs
+
       - name: E2E の組分け（どの節もちょうど 1 つの組に入り、どの組の台本も構文が通る）
         run: node scripts/e2e-shard.mjs --check 4
 
