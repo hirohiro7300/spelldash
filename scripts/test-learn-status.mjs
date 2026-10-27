@@ -165,13 +165,14 @@ const tableOf = (entries) => Object.fromEntries(entries);
     [PUB[120], { ls: 1 }], // あやふや・数えた日なし → 今日の分
     [PUB[121], { ls: 1, lsd: TODAY - 1 }], // 前の日に数えた → 今日の分
     [PUB[122], { ls: 1, lsd: TODAY }], // 今日数えた → 今日の分ではない
+    [PUB[124], { ls: 1, lsd: TODAY + 2 }], // 時計が戻って先の日を数えている → 今日答えても数えないので今日の分ではない（js/learnQueue.js と同じ）
     ["concept-ad-cpc", { ls: 2 }], // 非公開の語は数えない
     [PUB[123], { playCount: 1 }] // 出題だけ → これから
   ]);
   const s = LP.learnStatusOf({ table, source: { vocab: VOCAB, pending: null }, peak: null, today: TODAY });
-  eq("3 状態の数（覚えた 120・あやふや 3・これから 残り）と和 = 総数", [s.counts, s.counts.new + s.counts.unsure + s.counts.learned], [{ new: T - 123, unsure: 3, learned: 120, total: T }, T]);
+  eq("3 状態の数（覚えた 120・あやふや 4・これから 残り）と和 = 総数", [s.counts, s.counts.new + s.counts.unsure + s.counts.learned], [{ new: T - 124, unsure: 4, learned: 120, total: T }, T]);
   eq("ランク: 覚えた 120 = よちよち・次（単語キッズ）まであと 230 語・今の語数の段 1", [s.rank.name, s.rank.next.remaining, s.computed], ["よちよち", 230, 1]);
-  eq("今日の分（あやふやのうち lsd が今日でない語）= 2", s.due, 2);
+  eq("今日の分（あやふやのうち数えた日が無いか今日より前の語）= 2", s.due, 2);
   const done = LP.learnStatusOf({ table: tableOf([[PUB[0], { ls: 1, lsd: TODAY }], [PUB[1], { ls: 1, lsd: TODAY }]]), source: { vocab: VOCAB, pending: null }, peak: 6, today: TODAY });
   eq("あやふや 2 語がどちらも今日数えた → 今日の分 0（札は「今日の分は終わり」）・最高到達ランク 6（留学生）を見せる・今の語数の段 0", [done.counts.unsure, done.due, done.rank.name, done.computed, done.rank.next.remaining], [2, 0, "留学生", 0, 2350]);
   const pending = new Map([[PUB[5], UNSURE], [PUB[6], LEARNED]]);

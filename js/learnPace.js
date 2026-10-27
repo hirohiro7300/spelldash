@@ -6,8 +6,9 @@
 // 数（3 状態の語数）は js/learnState.js countLearnStates、ランクは js/rank.js（見せるランク = 最高到達ランクと今の語数の段の大きい方・
 // 次のランクまで = 今の覚えた語数から正直に）。同じ決まりをここに写さない。
 //
-// 今日の分（あやふや）: あやふやの語のうち、今日まだ 1 日分を数えていない語（lsd が今日でない語）。0 で、あやふやが 1 語以上なら札に「今日の分は終わり」。
-//   同じ決まりは中心の学習の列（js/learnQueue.js。段 3）も持つ（二重に持っている。決まりを変えるときは両方を直す）。
+// 今日の分（あやふや）: あやふやの語のうち、今日まだ 1 日分を数えていない語（数えた日 lsd が無いか、今日より前の語。今日もう数えた語と、
+//   時計が戻って先の日を数えている語〔今日答えても数えない〕は入れない）。0 で、あやふやが 1 語以上なら札に「今日の分は終わり」。
+//   同じ決まりは中心の学習の列（js/learnQueue.js isLearnTarget。段 3）も持つ（二重に持っている。決まりを変えるときは両方を直す）。
 //
 // 目安（決定 §6「新しい覚えたの増加だけ」）: 進み = 中心の学習で初めて覚えたになった語（js/learnState.js の印 lsf の日）を、その日に 1 語ずつ数える。
 //   移行・同期の初めの埋め・版 6 の式で覚えただった語（印 0）は数えない。外れて戻った語はもう一度は数えない（印は一度だけ付く）。× で引かない。
@@ -25,14 +26,14 @@ export const LEARN_PACE_TITLE = "全部覚えるまでの目安";
 export const LEARN_PACE_NOTE = "覚えた で数えています。";
 export const UNSURE_DONE_TODAY = "今日の分は終わり";
 
-// あやふやの語のうち、今日まだ 1 日分を数えていない語の数（今日の分）。pending = 版 6 の間の式の状態（js/storage.js learnStateSource）
+// あやふやの語のうち、今日まだ 1 日分を数えていない語の数（今日の分。数えた日が無いか今日より前）。pending = 版 6 の間の式の状態（js/storage.js learnStateSource）
 export function unsureDueCount(table, vocab, pending, today) {
   let n = 0;
   for (const id of vocab.order) {
     const s = table?.[id];
     if (learnStateOf(s, pending?.get(id)) !== LEARN_UNSURE) continue;
-    const counted = storedState(s) === LEARN_UNSURE && Number.isInteger(s.lsd) && s.lsd === today;
-    if (!counted) n++;
+    const day = storedState(s) === LEARN_UNSURE && Number.isInteger(s.lsd) ? s.lsd : null;
+    if (day === null || (Number.isInteger(today) && day < today)) n++;
   }
   return n;
 }

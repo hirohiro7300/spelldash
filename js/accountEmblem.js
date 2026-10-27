@@ -1,90 +1,94 @@
-// ログイン中の人のアカウントのアイコン（ヘッダーの #headerAvatar。38px の丸、720px 以下は 32px）を、今の学習のランク（js/level.js。XP から決まる 21 段）の紋章にする。
-// ボタンの名前は「アカウントメニュー（銀 2）」、メニューの一番上の行は「銀 2 ・ Lv.15」（読み上げは「銀 2、レベル 15」）。Battle の RP のランクと Pro は入れない。
+// ログイン中の人のアカウントのアイコン（ヘッダーの #headerAvatar。38px の丸、720px 以下は 32px）と、メニューの一番上の行に、学習のランクを出す。
+// ランクは Batch 78 の 9 段（js/rank.js。覚えた語数で決まる・一度届いたら下がらない）。前の XP の 21 段は使わない（XP は貯めるがランクにしない: 決定 §5）。
+// ボタンの名前は「アカウントメニュー（中学生）」、メニューの一番上の行は「中学生」（Lv は出さない）。Battle の RP のランクと Pro は入れない。
 // js/auth.js が、ログインしているときだけ読み込みの後の手の空いたときに動的 import で読む（最初の描画・LCP を待たせない。静的 import は modulepreload を変える）。
 // 未ログイン・アプリ（ログインしない）では読まない。HTML は 7 ページとも同じ形で、中身はここで替える（頭文字の span は js/auth.js が置く）。
 //
+// ランクの材料: 見せるランク = max（最高到達ランク spelldash_rank_peak, 今の覚えた語数の段）（js/rank.js shownRank。学習状況と同じ）。
+//   今の覚えた語数は、このページで 3 状態の材料（公開の語の表）がもう読めているときだけ数える（学習状況・中心の学習のページ）。読めていなければ最高到達ランクだけ。
+//   最高到達ランクがまだ無い（移行の後に学習状況も回の終わりもまだ）ときは、材料を 1 回だけ後から読んで数える（語の記録が無ければ読まずに赤ちゃん）。
+//   ここでは最高到達ランクを書かない（書くのは学習状況と中心の学習の回の終わり）。
 // ランクが決まる・決まらない: 決まるのは、端末の持ち主の印（js/sync.js OWNER_KEY）がこのアカウントか、このタブで同期を終えた（js/sync.js DONE_FLAG）とき。
-//   それ以外（持ち主が別のアカウント・持ち主の印が無く同期がまだ・同期の失敗・壊れた XP）は頭文字のまま、ボタンの名前は「アカウントメニュー」、行は出さない。
-// 絵がまだ・読めない（404・オフライン）・遅い: 頭文字のまま（ボタンの名前と行はランクを出す）。壊れた画像の印を出さない（js/emblem.js の作法）。
-// 替える時機（nextShown）: このタブのプレイで上がったランクは、ランクの幕（js/game.js celebrateRankUp）を閉じた知らせ（spelldash:rank-up-closed）の後に替える。
-//   幕が出ている間とプレイ中（60 秒の回・腕試しは幕を回の終わりに控える）は段を替えない（同じ段なら Lv だけ新しく）。回の終わり（spelldash:game-end）は控えた幕より
-//   先に来るので、後へ回して（setTimeout 0）幕が出ていないことを見てから替える（幕は同じタスクで足される: js/game.js endStudySession・endChallenge・stopGame）。
-//   回の頭（spelldash:game-start）も替えてよい（控えはもう無い。restartGame は幕を出してから始める）。紋章の処理が回の途中に届いたとき（その回の間は頭文字）は、
-//   ここで出す。同期（spelldash:synced）・別のタブ（storage）・メニューを開く前は、幕とプレイの外ならそのまま替える（上がる・下がる）。
-import { getLevelState, getTotalXp, LEARNING_RANKS } from "./level.js";
-import { emblemSrc } from "./emblem.js";
+//   それ以外（持ち主が別のアカウント・持ち主の印が無く同期がまだ・同期の失敗）と、材料が読めないときは頭文字のまま、ボタンの名前は「アカウントメニュー」、行は出さない。
+// 絵: 新しい 9 段の絵はまだ無い（決定 §5・§12）。絵ができるまでアイコンは頭文字のまま（js/emblem.js learnRankEmblemSrc が "" を返す）。絵を足したらそこで URL を返す
+//   （読めない・遅い絵は頭文字のまま。壊れた画像の印を出さない: 下の renderEmblem）。
+// 替える時機（nextShown）: このタブの回で上がったランクは、ランクの幕を閉じた知らせ（spelldash:rank-up-closed。detail.rank はランクの名前か段の番号）の後に替える。
+//   幕が出ている間とプレイ中は段を替えない。回の終わり（spelldash:game-end）と頭（spelldash:game-start）は後へ回して（setTimeout 0）幕が出ていないことを見てから替える。
+//   最高到達ランクを上げた知らせ（spelldash:rank-peak。同じタブ）・同期（spelldash:synced）・別のタブ（storage）・記録の置き換え・メニューを開く前は、
+//   幕とプレイの外ならそのまま替える。下がった演出は出さない（見せるランクは下がらない。別のアカウントに替わったときだけ前の人のランクを消す）。
+import { RANK_NAMES, RANK_PEAK_KEY, rankFor, readRankPeak, shownRank, rankOfName, parseRankPeak } from "./rank.js";
+import { learnRankEmblemSrc } from "./emblem.js";
+import { STORAGE_KEY, getWordStats, hasWordRecords, learnStateSource, loadLearnStates } from "./storage.js";
+import { countLearnStates } from "./learnState.js";
 
 export const OWNER_KEY = "spelldash_owner"; // js/sync.js OWNER_KEY（localStorage。最後に同期できたアカウントの user id）
 export const SYNC_DONE_KEY = "spelldash_sync_done_this_session"; // js/sync.js DONE_FLAG（sessionStorage。このタブで同期を最後まで終えた user id）
-export const XP_KEY = "spelldash_xp"; // js/level.js XP_KEY
-// これより大きい XP は壊れた値として扱う（Lv. 約 2,000。神 3 は Lv.92 = 213,850）。getLevelState は 1 レベルずつ数えるので、Infinity や 1e300 では止まらない
-export const MAX_XP = 1e8;
 const MENU_LABEL = "アカウントメニュー";
 
 // ---- 決める（DOM なし。scripts/test-account-emblem.mjs） ----
 
-// 保存の XP（js/level.js getTotalXp と同じ読み方。壊れた値は Infinity・NaN のまま返し、accountRankState が「決まらない」にする）
-export function readXp() {
-  return getTotalXp();
-}
-
-// ランクが決まれば { rank, level }、決まらなければ null
-export function accountRankState({ userId, owner, syncedUser, xp }) {
+// ランクが決まれば { rank: 段の番号 0〜8, name }、決まらなければ null。
+// peak = 最高到達ランク（読めない値は無いのと同じ）、learned・total = 今の覚えた語数と公開の語数（数えていなければ null）。
+// 決まるのは持ち主の印かこのタブの同期が本人で、最高到達ランクか今の語数のどちらかがあるとき（どちらも無ければ材料を待つ: null）
+export function accountRankState({ userId, owner, syncedUser, peak = null, learned = null, total = null }) {
   if (!userId) return null;
   if (owner !== userId && syncedUser !== userId) return null;
-  if (!Number.isFinite(xp) || xp > MAX_XP) return null;
-  const state = getLevelState(xp);
-  return { rank: state.rank, level: state.level };
+  const p = parseRankPeak(peak);
+  const counted = Number.isInteger(learned) && learned >= 0 && Number.isInteger(total) && total > 0;
+  if (p === null && !counted) return null;
+  const rank = counted ? shownRank(learned, p, total) : p;
+  return { rank, name: RANK_NAMES[rank] };
 }
 
 export function menuLabel(state) {
-  return state ? `${MENU_LABEL}（${state.rank.name}）` : MENU_LABEL;
+  return state ? `${MENU_LABEL}（${state.name}）` : MENU_LABEL;
 }
 
-// メニューの一番上の行（学習データの行 js/levelUi.js と同じ書き方）と、その読み上げ（「Lv.」を「レベル」に。「エルブイ」と読まれない）
+// メニューの一番上の行（ランクの名前だけ。Lv は出さない）と、その読み上げ
 export function rankRowText(state) {
-  return `${state.rank.name} ・ Lv.${state.level}`;
+  return state.name;
 }
 
 export function rankRowSpeech(state) {
-  return `${state.rank.name}、レベル ${state.level}`;
+  return `ランク ${state.name}`;
 }
 
-// 紋章の絵（96px の小さい絵。学習データの行・ランクの一覧と同じ）。決まらない・知らないランクは ""
+// アイコンの絵（新しい 9 段の絵はまだ無いので ""。js/emblem.js learnRankEmblemSrc）。決まらないときも ""
 export function emblemUrl(state) {
-  return state ? emblemSrc(state.rank, { small: true }) : "";
+  return state ? learnRankEmblemSrc(state.rank, { small: true }) : "";
 }
 
-const sameRank = (a, b) => !!a && !!b && a.rank.name === b.rank.name;
+const sameRank = (a, b) => !!a && !!b && a.rank === b.rank;
 
-// 次に出す状態。current = 今の XP から（決まらなければ null）、shown = 今出している状態、curtainOpen = ランクの幕が出ている、
+// 次に出す状態。current = 今の材料から（決まらなければ null）、shown = 今出している状態、curtainOpen = ランクの幕が出ている、
 // running = プレイ中（または段を替えない描き直し）、announced = 幕を閉じた知らせで見せたランク
 export function nextShown({ current, shown = null, curtainOpen = false, running = false, announced = null }) {
   if (!current) return null;
   if (announced) {
     // 幕で見せた。プレイ中なら幕で見せたランクまで（そのあと回の間に次の段へ進んでいても、その幕はまだ）
     if (!running || sameRank(announced, current)) return current;
-    return announced;
+    return announced.rank < current.rank ? announced : current;
   }
   if (curtainOpen) return shown;
   if (running) return sameRank(shown, current) ? current : shown;
   return current;
 }
 
-// 幕を閉じた知らせの detail（{ rank: ランクの名前, level }）→ { rank, level }。壊れていれば null
+// 幕を閉じた知らせの detail（{ rank: ランクの名前 か 段の番号 }）→ { rank, name }。9 段のどれでもなければ null
 export function announcedFrom(detail) {
-  const rank = LEARNING_RANKS.find((r) => r.name === detail?.rank);
-  const level = Number(detail?.level);
-  if (!rank || !Number.isInteger(level) || level < rank.level) return null;
-  return { rank, level };
+  const raw = detail?.rank;
+  const rank = typeof raw === "string" && rankOfName(raw) !== null ? rankOfName(raw) : parseRankPeak(raw);
+  return rank === null ? null : { rank, name: RANK_NAMES[rank] };
 }
 
 // ---- 描く（ブラウザ） ----
 
 let account = null; // { userId }（null = 未ログイン）
-let shown = null; // 今出している { rank, level }（null = 頭文字）
+let shown = null; // 今出している { rank, name }（null = 頭文字）
 let failedSrc = ""; // 読めなかった絵の URL（通信が戻るか段が替わるまで取り直さない。知らせのたびに 404 を取りに行かない）
 let installed = false;
+let loadingLearn = null; // 最高到達ランクが無いときに 3 状態の材料を読んでいる Promise（1 ページ 1 回）
+let learnFailed = false; // 材料が読めなかった（オフライン）: 通信が戻るまで読み直さない（描き直しのたびに取りに行かない）
 
 function storageValue(storage, key) {
   try {
@@ -94,14 +98,43 @@ function storageValue(storage, key) {
   }
 }
 
+// 今の覚えた語数と公開の語数。材料がこのページでもう読めているときだけ数える（{ learned, total }）。語の記録が無ければ材料なしで 0 語。
+// まだ読めていなければ null（最高到達ランクが無いときは needLearn で 1 回だけ後から読む）
+function learnedNow() {
+  const source = learnStateSource();
+  if (source) return { learned: countLearnStates(getWordStats(), source.vocab, source.pending).learned, total: source.vocab.total };
+  if (!hasWordRecords()) return { learned: 0, total: 1 }; // 記録が無い = 0 語（rankFor(0) はどの総数でも赤ちゃん）
+  return null;
+}
+
+function needLearn() {
+  if (loadingLearn || learnFailed) return;
+  loadingLearn = loadLearnStates()
+    .catch(() => null)
+    .then((source) => {
+      loadingLearn = null;
+      if (!source) {
+        learnFailed = true; // 通信が戻ったら（online）読み直す
+        return;
+      }
+      refreshAccountEmblem();
+    });
+}
+
 function currentState() {
   try {
-    return accountRankState({
+    const peak = readRankPeak();
+    const now = learnedNow();
+    const state = accountRankState({
       userId: account?.userId ?? null,
       owner: storageValue(localStorage, OWNER_KEY),
       syncedUser: storageValue(sessionStorage, SYNC_DONE_KEY),
-      xp: readXp()
+      peak,
+      learned: now?.learned ?? null,
+      total: now?.total ?? null
     });
+    if (!state && peak === null && !now && account?.userId) needLearn();
+    return state;
   } catch {
     return null;
   }
@@ -126,10 +159,13 @@ export function setAccountSession(session) {
   refreshAccountEmblem();
 }
 
-// 描き直す。opts.announced = 幕を閉じた知らせのランク、opts.settled = 回の終わり・頭（プレイ中の印を見ない。幕が出ていれば替えない）、opts.retry = 読めなかった絵も読み直す
+// 描き直す。opts.announced = 幕を閉じた知らせのランク、opts.settled = 回の終わり・頭（プレイ中の印を見ない。幕が出ていれば替えない）、opts.retry = 読めなかった絵と材料も読み直す
 export function refreshAccountEmblem({ announced = null, settled = false, retry = false } = {}) {
   if (typeof document === "undefined") return;
-  if (retry) failedSrc = "";
+  if (retry) {
+    failedSrc = "";
+    learnFailed = false;
+  }
   const next = account
     ? nextShown({ current: currentState(), shown, curtainOpen: !!document.querySelector(".rank-up"), running: !settled && isRunning(), announced })
     : null;
@@ -242,18 +278,21 @@ function installListeners() {
     later(() => refreshAccountEmblem({ announced: announced ?? currentState() }));
   });
   window.addEventListener("spelldash:synced", () => refreshAccountEmblem());
-  // 回の終わり: 後へ回す。控えた幕・Challenge の幕と XP（js/game.js endChallenge は game-end の後に足す）は同じタスクで入るので、幕が出ていれば替えない
+  // 最高到達ランクを上げた（同じタブの学習状況・中心の学習の回の終わり: js/rank.js raiseRankPeak）。幕が出ていれば替えない（幕を閉じた知らせで替える）
+  window.addEventListener("spelldash:rank-peak", () => later(() => refreshAccountEmblem()));
+  window.addEventListener("spelldash:records-replaced", () => refreshAccountEmblem());
+  // 回の終わり: 後へ回す。控えた幕は同じタスクで入るので、幕が出ていれば替えない
   window.addEventListener("spelldash:game-end", () => setTimeout(() => refreshAccountEmblem({ settled: true }), 0));
-  // 回の頭: 控えは無い（restartGame の控えた幕は始める前に DOM に入る）。回を始める処理と同じタスクで描かない
+  // 回の頭: 回を始める処理と同じタスクで描かない
   window.addEventListener("spelldash:game-start", () => setTimeout(() => refreshAccountEmblem({ settled: true }), 0));
   window.addEventListener("storage", (event) => {
-    if (event.key === null || event.key === XP_KEY || event.key === OWNER_KEY) refreshAccountEmblem();
+    if (event.key === null || event.key === RANK_PEAK_KEY || event.key === OWNER_KEY || event.key === STORAGE_KEY) refreshAccountEmblem();
   });
   window.addEventListener("pageshow", (event) => {
     if (event.persisted) refreshAccountEmblem();
   });
   window.addEventListener("online", () => refreshAccountEmblem({ retry: true }));
-  // メニューを開く前（ホバー・焦点・クリック）: Lv を新しくする（幕とプレイの間は段を替えない）
+  // メニューを開く前（ホバー・焦点・クリック）: 今の材料で描き直す（幕とプレイの間は段を替えない）
   const user = document.getElementById("accountUser");
   user?.addEventListener("pointerenter", () => refreshAccountEmblem());
   user?.addEventListener("focusin", () => refreshAccountEmblem());
