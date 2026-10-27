@@ -19132,15 +19132,17 @@ console.log("78.5 導線と検索:");
       const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: RETURNING });
       await page.goto(BASE + "/news.html", { waitUntil: "load" });
       await page.goto(BASE + p, { waitUntil: "load" }).catch(() => {});
-      await page.waitForURL(/\?from=old$/, { timeout: 8000 }).catch(() => {});
+      await page.waitForURL((url) => url.pathname === "/", { timeout: 8000 }).catch(() => {});
       await page.waitForLoadState("load");
-      const u = new URL(page.url());
+      // 着いた文書を開いた URL（ホームは一文を出した後に ?from=old を URL から外す: 段 5b の js/focus.js。開いた URL はナビゲーションの記録に残る）
+      const opened = new URL(await page.evaluate(() => performance.getEntriesByType("navigation")[0]?.name ?? location.href));
+      const path = new URL(page.url()).pathname;
       await page.goBack({ waitUntil: "load" }).catch(() => {});
-      rows.push({ p, path: u.pathname, search: u.search, back: new URL(page.url()).pathname, err: page.errors[0] ?? null });
+      rows.push({ p, opened: opened.pathname + opened.search, path, back: new URL(page.url()).pathname, err: page.errors[0] ?? null });
       await page.close();
     }
     check("古い URL: 分野パックのページ（ngsl01・accounting）と一覧（/packs/index.html）を開くと英単語のホーム /?from=old へ移る（古いページは履歴に残さない: 戻るとお知らせ）・エラー 0",
-      rows.every((r) => r.path === "/" && r.search === "?from=old" && r.back === "/news.html" && !r.err), JSON.stringify(rows));
+      rows.every((r) => r.opened === "/?from=old" && r.path === "/" && r.back === "/news.html" && !r.err), JSON.stringify(rows));
   }
 
   // (6) スマホ幅と昼夜: 主導線とお知らせ・規約の 7 ページ × 320／390／1200 × 昼・夜（未ログイン）で横スクロール 0・ナビの 4 つは字を省略せず 1 行（畳まない）・エラー 0
