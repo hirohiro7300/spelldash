@@ -339,9 +339,11 @@ async function newPage(init = {}) {
   if (init.viewport) opts.viewport = init.viewport;
   if (init.mobile) Object.assign(opts, { isMobile: true, hasTouch: true }); // pointer: coarse になり、画面キーボードが出る
   if (init.dpr) opts.deviceScaleFactor = init.dpr;
+  if (init.focusOff) opts.serviceWorkers = "block"; // 旗を外したページ（focusOff）: Service Worker が取った要求は page.route が捕まえない
   const page = await browser.newPage(opts);
   page.errors = [];
   page.on("pageerror", (e) => page.errors.push(e.message));
+  if (init.focusOff) await focusOff(page);
   await page.addInitScript((seed) => {
     localStorage.setItem("spelldash_schema_version", "7");
     if (!seed.keepOnboarding) localStorage.setItem("spelldash_onboarded", "1");
@@ -349,6 +351,25 @@ async function newPage(init = {}) {
   }, init);
   return page;
 }
+
+// 英単語の学習に絞る旗（js/focus.js FOCUS_ENGLISH と index.html・profile.html の <html data-focus>）を外したページにする（Batch 78 段 5b）。
+// 前のホーム（机の本の Study・本棚・ほかの遊び方）と単語帳がそのまま動く。旗を外した側で流す検査（pre/e2e-classes.tsv の hold・内部の盤面の検査）に使う。
+// page.goto の前に呼ぶ。Service Worker が取った要求は page.route が捕まえないので、newPage({ focusOff: true }) は Service Worker を止めた文脈で開く
+async function focusOff(page) {
+  await page.route("**/js/focus.js", async (route) => {
+    const res = await route.fetch();
+    const src = (await res.text()).replace("export const FOCUS_ENGLISH = true;", "export const FOCUS_ENGLISH = false;");
+    await route.fulfill({ response: res, body: src, headers: { ...res.headers(), "content-type": "text/javascript" } });
+  });
+  await page.route((url) => /^\/(index\.html|profile\.html)?$/.test(url.pathname), async (route) => {
+    if (route.request().resourceType() !== "document") return route.fallback();
+    const res = await route.fetch();
+    const html = (await res.text()).replace('<html lang="ja" data-focus="english">', '<html lang="ja">');
+    await route.fulfill({ response: res, body: html, headers: { ...res.headers(), "content-type": "text/html" } });
+  });
+}
+// 前のホーム（旗を外したページ）で流す節・ブロックの newPage。ブロックの最初の文に const newPage = newPageFlagOff; と置く
+const newPageFlagOff = (init = {}) => newPage({ ...init, focusOff: true });
 
 // 書き手（js/stats.js の recordRecallSuccess・recordRecallFail）に盤面が渡した引数を、ページの window.__writes に控える（Batch 68 の測りの札 measure と
 // × の細目 detail。書き手の中身はそのまま: 配る stats.js の 2 つの export を、引数を写してから元を呼ぶ関数に包むだけ）。page.goto の前に呼ぶ
@@ -477,6 +498,8 @@ console.log("modulepreload:");
   const stale = syncModulePreload();
   check("modulepreload が import の依存と揃っている（ずれたら node scripts/modulepreload.mjs）", stale.length === 0, stale.join(", "));
   // 教材の先読みが本当に使われる: 教材を読むページで、台帳と基本カテゴリの JSON はそれぞれ 1 回だけ取る（fetch と URL・CORS がずれると 2 回になる）
+  // 英単語の学習に絞った間（js/focus.js。Batch 78 段 5b）は単語帳（list.html）を開くと英単語のホームへ案内する（単語帳は教材を読まずに移る）:
+  // そのページは案内先のホームで数える（移った後の要求だけ）
   for (const pageName of WORD_PAGES) {
     const page = await newPage();
     const counts = new Map();
@@ -484,10 +507,17 @@ console.log("modulepreload:");
       const p = new URL(req.url()).pathname.slice(1);
       if (p.startsWith("data/")) counts.set(p, (counts.get(p) ?? 0) + 1);
     });
+    let moved = false;
+    page.on("framenavigated", (f) => {
+      if (f !== page.mainFrame() || new URL(f.url()).pathname === "/" + pageName) return;
+      moved = true;
+      counts.clear();
+    });
     await page.goto(BASE + "/" + pageName, { waitUntil: "networkidle" });
+    await page.waitForLoadState("networkidle");
     await page.waitForTimeout(300);
     const wrong = baseDataFiles().filter((f) => counts.get(f) !== 1).map((f) => `${f}=${counts.get(f) ?? 0}`);
-    check(`${pageName}: 先読みした教材はそれぞれ 1 回だけ取る（先読みが fetch に使われる）`, wrong.length === 0, wrong.join(" "));
+    check(`${pageName}: 先読みした教材はそれぞれ 1 回だけ取る（先読みが fetch に使われる${moved ? "。英単語のホームへ案内した先で数えた" : ""}）`, wrong.length === 0, wrong.join(" "));
     await page.close();
   }
 }
@@ -603,23 +633,28 @@ console.log("og image:");
 }
 
 // ===== 2. Study: デスクトップ入力＋モバイル入力 =====
+// Batch 78 段 5b: ホームの Enter は「英単語を学ぶ」（js/focus.js。初めての人は中心の学習の これから へ）。入力の経路（物理キーの keydown・ソフトキーボードの
+// input）は中心の学習の盤面で見る（盤面は Study と同じ）。前の Study だけの件（腕試しの短い語・語ごとの「なぜ今」の札・Recall Loop の学びの文・ホームの
+// 覚えた単語の札）は中心の学習とホームに無いので、中心の学習の形（公開の並びの頭・進みの札・机に戻ったホームの 3 状態の数）に置き換えた
 console.log("study:");
 {
+  const vocab = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
   const page = await newPage();
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
-  await page.press("#input", "Enter");
+  await page.press("#input", "Enter"); // ホームの見えない入力欄の Enter = 「英単語を学ぶ」
+  await page.waitForURL(/learn=new/, { timeout: 8000 }).catch(() => {});
+  await waitUntil(async () => /これから/.test(await page.textContent("#setProgress")) && (await page.textContent("#japanese")).trim() !== "", 8000);
   await page.waitForTimeout(250);
   await page.press("#input", "Enter"); // 答え表示
   await page.waitForTimeout(150);
   const answer = (await page.textContent("#word")).trim();
-  const answerJa = (await page.textContent("#japanese")).trim();
-  check("初回スターターは短いeasy語", answer.length <= 4, `got=${answer}`);
+  check("ホームの Enter で これから の回（1 語目は公開の並びの頭）", page.url().endsWith("?learn=new") && answer === vocab.order[0].replace(/^english-/, ""), `url=${page.url()} got=${answer}`);
   // デスクトップ: keydown経路
   for (const ch of answer) await page.press("#input", ch);
   await page.waitForTimeout(NEXT_READY_MS); // 答えを見た後の正解は 0.25 秒で次へ。次の語の答え表示の Enter は守り（0.3 秒）の後に
   check("keydown経路で正解", (await page.textContent("#score")) === "1");
-  check("単語の状態ラベル（新しい単語）", (await page.textContent("#wordMeta")).includes("新しい単語"));
+  check("中心の学習の回は語ごとの「なぜ今」の札を出さない（進みの札が これから）", (await page.textContent("#wordMeta")).trim() === "" && (await page.textContent("#setProgress")).includes("これから"));
   // モバイル: inputイベント経路（2語目）
   await page.press("#input", "Enter");
   await page.waitForTimeout(150);
@@ -631,30 +666,11 @@ console.log("study:");
   }, answer2);
   await page.waitForTimeout(600);
   check("inputイベント経路（ソフトキーボード）で正解", (await page.textContent("#score")) === "2");
-  // 自力正解の成長メッセージ: 1語目（答えを見た語）がRecall Loopで戻ってきたら見ずに打つ
-  // 答えを見た語（既知）がRecall Loopで戻ってきたら、どれでも見ずに打つ＝自力正解
-  const known = new Map([[answerJa, answer]]);
-  let grew = false;
-  for (let i = 0; i < 24 && !grew; i++) {
-    const ja = (await page.textContent("#japanese")).trim();
-    const hidden = !/^[a-z]+$/.test((await page.textContent("#word")).trim());
-    if (known.has(ja) && hidden) {
-      for (const ch of known.get(ja)) await page.press("#input", ch); // 自力正解（答えを見ない）
-      await waitUntil(async () => (await page.textContent("#message")).includes("XP"));
-      grew = /思い出せた|覚えた/.test(await page.textContent("#message"));
-      break;
-    }
-    await page.press("#input", "Enter"); // 答え表示
-    await waitUntil(async () => /^[a-z]+$/.test((await page.textContent("#word")).trim()), 1000);
-    const shown = (await page.textContent("#word")).trim();
-    if (!/^[a-z]+$/.test(shown)) continue;
-    known.set(ja, shown);
-    for (const ch of shown) await page.press("#input", ch); // 練習で通過
-    await waitUntil(async () => (await page.textContent("#japanese")).trim() !== ja, 1500);
-    await afterAdvance(page);
-  }
-  check("自力正解後に学びのメッセージ（思い出せた/覚えた）", grew, `last msg=${await page.textContent("#message")}`);
-  check("ホームに覚えた単語カード", (await page.textContent("#learnedCard")).includes("覚えた単語"));
+  // 机に戻る: ホームは 3 状態の数（答えを見た 2 語は あやふや・今日の分 2 語）
+  await page.click("#backToPath");
+  await waitUntil(() => page.evaluate(() => document.getElementById("pathCard").classList.contains("focus-ready") && document.getElementById("focusMode").textContent === "あやふや"), 6000);
+  const home = await page.evaluate(() => ({ mode: document.getElementById("focusMode").textContent, sub: document.getElementById("focusModeSub").textContent, learned: document.getElementById("focusLearned").textContent }));
+  check("机に戻るとホームは 3 状態の数（答えを見た 2 語は あやふや・今日の分 2語・覚えた 0）", home.mode === "あやふや" && home.sub === "今日の分 2語" && home.learned === "0", JSON.stringify(home));
   check("Studyフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
@@ -678,7 +694,8 @@ console.log("record quality:");
   };
   async function openRq({ mobile = false } = {}) {
     const storage = { spelldash_category: "my", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_my_words: JSON.stringify(VOC.map(([en, ja]) => ({ en, ja }))) };
-    const page = await newPage({ storage, ...(mobile ? { mobile: true, viewport: { width: 390, height: 844 } } : {}) });
+    // 机の本の Study の盤面の記録の質（書き手の内部の記録）は、英単語の学習に絞る旗を外した側で見る（Batch 78 段 5b: ホームから Study は始まらない）
+    const page = await newPage({ storage, focusOff: true, ...(mobile ? { mobile: true, viewport: { width: 390, height: 844 } } : {}) });
     await watchWriters(page);
     await page.addInitScript(PROBE);
     await page.goto(BASE + "/index.html?set=25&hintms=600000", { waitUntil: "networkidle" });
@@ -4906,6 +4923,7 @@ console.log("study (foundation):");
 // ===== 8.6 書斎（部屋・机の本・初回）: 1 画面目・場面は 1 枚・予算・横スクロール無し・動き・夜・紙片・積んだ本（css/room.css・js/pathView.js・js/welcome.js） =====
 console.log("study (room):");
 {
+  const newPage = newPageFlagOff; // 机の本・積んだ本・本棚・はちゃんの紙片・初回の本選びの面は、旗を外したページ（前のホーム）で流す（Batch 78 段 5b。英単語の学習に絞ったホームの同じ面は 78.6 が見る）。壊れた記録・保存の上限は storage.js の決まりなので旗によらない
   // 場面 1 枚の上限は焼く台本の値（desk 50KB・phone 40KB・short 32KB。import しても Chromium は立ち上がらない）
   const { SCENE_MAX_BYTES: SCENE_MAX = {} } = await import("../scripts/room-art/render.mjs").catch(() => ({}));
   const underMax = (s) => !!s.ok && s.bytes > 0 && s.bytes <= (SCENE_MAX[s.kind] ?? 0);
@@ -5152,7 +5170,8 @@ console.log("study (room):");
         word_progress: jhs.map((w) => ({ user_id: "test-user", word_id: w.id, play_count: 2, correct_count: 2, typing_miss: 0, recall_fail: 0, clean_correct_streak: 2, mastered: false, mastered_at: null, last_played: at, next_review_at: at, last_recall_fail_at: null, last_recall_success_at: at, daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: at })),
         user_progress: [{ user_id: "test-user", xp: 40, level: 1, streak: { last: ymd(new Date()), current: 1, best: 1, shields: 0 }, best_score: 0, selected_category: "all", selected_mode: "study", updated_at: at }]
       });
-      const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+      const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+      await focusOff(page);
       page.errors = [];
       page.on("pageerror", (e) => page.errors.push(e.message));
       await page.addInitScript((seed) => {
@@ -6955,6 +6974,8 @@ console.log("pages (書斎の皮):");
     };
   };
   const SKIN_PAGES = ["/list.html", "/stats.html", "/profile.html", "/pro.html", "/battle.html", "/news.html", "/privacy.html", "/terms.html", "/tokushoho.html", "/packs/accounting.html", "/typing.html", "/typing-game.html"];
+  // 単語帳（list.html）は英単語の学習に絞った間（js/focus.js。Batch 78 段 5b）は開くとホームへ案内する（ホームの皮は /index.html の行で見る）: 皮の表から外す
+  SKIN_PAGES.splice(SKIN_PAGES.indexOf("/list.html"), 1);
   const SKIN_VIEWS = [[390, true], [1200, false]];
   const skinPage = (w, mobile, theme) => newPage({ mobile, viewport: { width: w, height: mobile ? 844 : 900 }, storage: { spelldash_theme: theme, spelldash_placement: "done" } });
   const themed = (page, theme) => waitUntil(() => page.evaluate((t) => document.documentElement.dataset.theme === t, theme));
@@ -7411,6 +7432,7 @@ console.log("pages (書斎の皮):");
 // ===== 8.8 書斎の仕上げ（夜の味付け・机の本・本棚の索引・CLS）: 夜だけ味付け・昼は 56b の計算値・reduced motion 0・索引の帯は 1 行・CLS・読み込み中の最小高さ・場面の拡大と位置の規律・CSS の増分・56b の残り・夜の層はスタートに掛からない（css/room.css・bookshelf.css・pro.css・pages.css。Batch 56c） =====
 console.log("study (finish):");
 {
+  const newPage = newPageFlagOff; // 机の本・本棚の索引・連続日数の帯の面は、旗を外したページ（前のホーム）で流す（Batch 78 段 5b。英単語の学習に絞ったホームの同じ面は 78.6 が見る）
   // 戻ってきた人（連続 3 日 = #todayStrip あり。Pro = 紙／藍が効く）。scratchpad/b56c/shoot-home.mjs の returning() と同じ種
   const finishSeed = (theme) => ({ storage: {
     spelldash_theme: theme, spelldash_placement: "done", spelldash_course: "jhs-redo", spelldash_category: "jhs-english1",
@@ -7791,6 +7813,7 @@ console.log("study (finish):");
 // トークンは span に var() を当てて rgb に解き、比は WCAG の相対輝度。全状態を reduced motion で開き、動き・横スクロール・エラーは最後にまとめて見る
 console.log("parts (途中の部品の皮):");
 {
+  const newPage = newPageFlagOff; // 机の本の Study・Challenge・コース選択から開く部品の皮は、旗を外したページ（前のホーム）で流す（Batch 78 段 5b。英単語の学習に絞ったホームの同じ面は 78.6 が見る）。中心の学習の回の終わりは 78.3
   // 直す前（56d の時点 = 4bb22a7）の盤面と 1 画面目の寸法。git archive HEAD を scratchpad/b57/baseline に展開し、serve-api.mjs の ROOT を差し替えて 8806 番で配り、
   // 同じ種・同じ操作で測った値（文書座標 = getBoundingClientRect + scroll、整数）。390 は isMobile（指の端末: 操作部品は 36／40px）、1200 は PC。
   // input・wrapper・osk はスタート直後、speak は答えを見た直後（#speakButton が出る）。結果パネルの語チップとボタンは出た語で位置が変わるので、
@@ -9504,6 +9527,7 @@ console.log("book pace:");
 
   // ---- ホーム（書き手）: Study の回の終わりに机の本だけ数える ----
   {
+    const newPage = newPageFlagOff; // 古い目安の書き手（js/bookPace.js watchBookPace）は英単語の学習に絞ったホームでは書かない（78.6 の (7)）。書き手は旗を外したページ（前のホーム）で流す（Batch 78 段 5b。英単語の学習に絞ったホームの同じ面は 78.6 が見る）
     const enOf = Object.fromEntries(J1W.map((w) => [w.id, w.en]));
     const storage = { spelldash_placement: "done", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_audio: JSON.stringify({ mode: "off" }) };
     const page = await newPage({ storage });
@@ -9639,6 +9663,7 @@ console.log("book pace:");
   }
   // ---- 反証役のレビュー B1 の 1a を画面で: Study → 完了の画面の Challenge で × → 机に戻って Study で ○ → 足さない ----
   {
+    const newPage = newPageFlagOff; // 同上（旗を外したページ（前のホーム）で流す（Batch 78 段 5b。英単語の学習に絞ったホームの同じ面は 78.6 が見る））
     const MY = [["cloud", "雲"], ["river", "川"], ["stone", "石"]];
     const storage = { spelldash_category: "my", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_my_words: JSON.stringify(MY.map(([en, ja]) => ({ en, ja }))) };
     const page = await newPage({ storage });
@@ -16084,6 +16109,7 @@ console.log("ads category:");
 // ===== 11. レビュー修正: 正解直後のキー・道に戻る・解放・トップページ・認証メッセージ・道の表示 =====
 console.log("review fixes:");
 {
+  const newPage = newPageFlagOff; // 道・解放・机の本の Study の面は、旗を外したページ（前のホーム）で流す（Batch 78 段 5b。英単語の学習に絞ったホームの同じ面は 78.6 が見る）
   const todayR = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
   const bizR = JSON.parse(fs.readFileSync(path.join(ROOT, "data/english/business.json"), "utf8")).words;
   const jhs1R = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jhs-english1.json"), "utf8")).words;
@@ -16377,6 +16403,7 @@ console.log("path fold:");
 // ===== 14. 前回の続きから =====
 console.log("resume:");
 {
+  const newPage = newPageFlagOff; // 机の本の Study の続き（spelldash_session）は英単語の学習に絞ったホームでは出さない（js/sessionResume.js）。旗を外したページ（前のホーム）で流す（Batch 78 段 5b）。中心の学習の開き直しは 78.3 の (2)・78.6 の (2)
   const bizR2 = JSON.parse(fs.readFileSync(path.join(ROOT, "data/english/business.json"), "utf8")).words;
   const byJa = (ja) => bizR2.filter((w) => w.ja === ja || w.ja.split("・").includes(ja));
   const todayS = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
@@ -16491,7 +16518,8 @@ console.log("native app:");
   check("アプリでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
-  const page2 = await newPage({ storage: { spelldash_packs: JSON.stringify(["jhs-english1"]) } });
+  // 単語帳（list.html）は英単語の学習に絞った間はホームへ案内する（js/focus.js）。単語帳の /packs/ の紹介へのリンクは旗を外したページで見る（Batch 78 段 5b）
+  const page2 = await newPageFlagOff({ storage: { spelldash_packs: JSON.stringify(["jhs-english1"]) } });
   await page2.addInitScript(NATIVE);
   await page2.goto(BASE + "/list.html", { waitUntil: "networkidle" });
   await page2.waitForTimeout(900);
@@ -18904,53 +18932,51 @@ console.log("pro:");
 }
 
 // ===== チュートリアル（Batch 44／45）: 初回の 1 セットに 1 文ずつ（docs/SPEC_TUTORIAL.md） =====
+// Batch 78 段 5b: ホームから始まる回は「英単語を学ぶ」（中心の学習）だけなので、初回の 1 セットは中心の学習の これから の 10 語で見る
 console.log("tutorial:");
 {
   const coach = async (p) => {
     const el = await p.$(".coach:not(.coach--out)");
     return el ? { step: await el.getAttribute("data-step"), text: (await el.textContent()).trim() } : null;
   };
-  // 初回: ?set=3 で短いセット。T2（答えを見た）→ T3（自力正解）→ 完了 → 道に戻る → T4（道）
+  // 初回: 「英単語を学ぶ」の回（/?learn=next。初めての人は これから の 10 語。Batch 78 段 5b でホームから始まるのは中心の学習だけ）。
+  // T2（答えを見た）→ T3（自力正解）→ 回の終わり → 机に戻る → T4。文は中心の学習の文（js/tutorial.js LEARN_STEPS の new）
+  const LEARN_URL = BASE + "/index.html?learn=next&hintms=600000";
+  const watchWords = (p) => p.addInitScript(() => {
+    window.__words = [];
+    addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+  });
+  const shownT = (p) => p.evaluate(() => window.__words.slice());
+  const waitWordT = (p, n) => waitUntil(async () => (await shownT(p)).length >= n, 8000);
   const page = await newPage();
-  await page.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
-  await page.waitForTimeout(600);
-  await page.press("#input", "Enter");
+  await watchWords(page);
+  await page.goto(LEARN_URL, { waitUntil: "networkidle" });
+  await waitWordT(page, 1);
   await page.waitForTimeout(300);
-  check("チュートリアル: 1 語目には札を出さない（#word の案内だけ）", (await coach(page)) === null);
+  check("チュートリアル: 1 語目には札を出さない（「英単語を学ぶ」は初めての人には これから の回）", /learn=new/.test(page.url()) && (await coach(page)) === null, page.url());
   await page.press("#input", "Enter"); // 答えを見る
   await page.waitForTimeout(300);
   const t2 = await coach(page);
-  check("チュートリアル: 初めて答えを見たら T2（数問後にもう一度）", t2?.step === "T2" && t2.text.includes("もう一度"), JSON.stringify(t2));
-  const knownT = new Map();
+  check("チュートリアル: 初めて答えを見たら T2（間違えても、あやふやに移るだけ。）", t2?.step === "T2" && t2.text === "間違えても、あやふやに移るだけ。", JSON.stringify(t2));
+  await page.press("#input", "Enter"); // 次へ（答えを見た語はこの回にはもう出ない）
   let t3 = null;
-  let panel = false;
-  for (let i = 0; i < 80 && !panel; i++) {
-    const ja = (await page.textContent("#japanese")).trim();
-    const hidden = !/^[a-z]+$/.test((await page.textContent("#word")).trim());
-    if (knownT.has(ja) && hidden) {
-      for (const ch of knownT.get(ja)) await page.press("#input", ch);
-    } else {
-      if (hidden) {
-        await page.press("#input", "Enter");
-        await page.waitForTimeout(250);
-      }
-      const shown = (await page.textContent("#word")).trim();
-      if (!/^[a-z]+$/.test(shown)) continue;
-      knownT.set(ja, shown);
-      for (const ch of shown) await page.press("#input", ch);
-    }
-    await page.waitForTimeout(NEXT_READY_MS);
+  for (let i = 2; i <= 10; i++) {
+    await waitWordT(page, i);
+    await page.waitForTimeout(350);
+    const id = (await shownT(page)).at(-1);
+    for (const ch of String(id).replace(/^english-/, "")) await page.press("#input", ch); // 自力正解（公開の並びの頭は数の語）
+    await page.waitForTimeout(250);
     const c = await coach(page);
     if (c?.step === "T3") t3 = c;
-    panel = !(await page.$eval("#resultPanel", (el) => el.hidden));
   }
-  check("チュートリアル: 初めて自力で思い出せたら T3（日をあけて）", t3 !== null && t3.text.includes("日をあけて"), JSON.stringify(t3));
+  check("チュートリアル: 初めて自力で正解したら T3（自力で正解した語は、覚えたになる。）", t3?.text === "自力で正解した語は、覚えたになる。", JSON.stringify(t3));
+  const panel = await waitUntil(() => page.evaluate(() => document.getElementById("resultPanel")?.hidden === false), 8000);
   await page.waitForTimeout(1800);
-  check("チュートリアル: 完了パネルには札を出さない", panel && (await coach(page)) === null);
+  check("チュートリアル: 回の終わりには札を出さない", panel && (await coach(page)) === null);
   await page.click("#backToPath");
   await page.waitForTimeout(400);
   const t4 = await coach(page);
-  check("チュートリアル: 道に戻ると T4（毎日スタート）＋「わかった」", t4?.step === "T4" && t4.text.includes("スタート") && (await page.$(".coach__ok")) !== null, JSON.stringify(t4));
+  check("チュートリアル: 机に戻ると T4（毎日スタート）＋「わかった」", t4?.step === "T4" && t4.text.includes("スタート") && (await page.$(".coach__ok")) !== null, JSON.stringify(t4));
   // T4 の「約N分」はその人の今日のセットの長さ（保存値。?set= は見ない）に合わせる: 既定 15 語 → 約5分・10 語 → 約3分・25 語 → 約8分・60 秒 → 60秒（PR #164 レビューの 8）
   const t4By = await page.evaluate(async () => {
     const mod = await import("/js/tutorial.js");
@@ -18965,32 +18991,31 @@ console.log("tutorial:");
     else localStorage.setItem("spelldash_set_size", saved);
     return out;
   });
-  check("チュートリアル: T4 は今日のセットの長さに合わせる（既定 15 語・?set=3 の回でも「約5分」・10語「約3分」・25語「約8分」・60秒「60秒」）", t4?.text.startsWith("毎日、スタートを押すだけ。約5分。") && t4By?.["10"] === "毎日、スタートを押すだけ。約3分。" && t4By?.["25"] === "毎日、スタートを押すだけ。約8分。" && t4By?.["60s"] === "毎日、スタートを押すだけ。60秒。", JSON.stringify({ t4: t4?.text, t4By }));
+  check("チュートリアル: T4 は今日のセットの長さに合わせる（既定 15 語「約5分」・10語「約3分」・25語「約8分」・60秒「60秒」）", t4?.text.startsWith("毎日、スタートを押すだけ。約5分。") && t4By?.["10"] === "毎日、スタートを押すだけ。約3分。" && t4By?.["25"] === "毎日、スタートを押すだけ。約8分。" && t4By?.["60s"] === "毎日、スタートを押すだけ。60秒。", JSON.stringify({ t4: t4?.text, t4By }));
   await page.click(".coach__ok");
   await page.waitForTimeout(250);
   check("チュートリアル: 「わかった」で閉じる", (await coach(page)) === null);
   const seenAll = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length);
   check("チュートリアル: 3 つとも seen に記録", seenAll === 3, String(seenAll));
-  await page.reload({ waitUntil: "networkidle" });
-  await page.waitForTimeout(500);
-  await page.press("#input", "Enter");
-  await page.waitForTimeout(200);
+  await page.goto(LEARN_URL, { waitUntil: "networkidle" });
+  await waitWordT(page, 1);
+  await page.waitForTimeout(300);
   await page.press("#input", "Enter");
   await page.waitForTimeout(300);
   check("チュートリアル: 2 回目の訪問では答えを見ても出ない", (await coach(page)) === null);
   check("チュートリアルでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 
-  // 設定の「チュートリアルをもう一度」→ 次のセットで T2 が戻る
+  // 設定の「チュートリアルをもう一度」→ 次の回で T2 が戻る
   // newPage の seed は遷移ごとに入れ直されるので、チュートリアルの状態は seed せず「腕試し済み」だけ渡す（初期化で全部 seen になる）
   const page2 = await newPage({ storage: { spelldash_placement: "done" } });
+  await watchWords(page2);
   await page2.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
   await page2.click("#tutorialReset");
   check("設定: 「チュートリアルをもう一度」で案内文", (await page2.textContent("#tutorialResetStatus")).includes("次のセット"));
-  await page2.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
-  await page2.waitForTimeout(500);
-  await page2.press("#input", "Enter");
-  await page2.waitForTimeout(200);
+  await page2.goto(LEARN_URL, { waitUntil: "networkidle" });
+  await waitWordT(page2, 1);
+  await page2.waitForTimeout(300);
   await page2.press("#input", "Enter");
   await page2.waitForTimeout(300);
   check("設定: もう一度のあと、答えを見ると T2 が出る", (await coach(page2))?.step === "T2");
@@ -18998,10 +19023,10 @@ console.log("tutorial:");
 
   // 既存ユーザー（学習記録あり）には出ない
   const page3 = await newPage({ storage: { spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-apple": { playCount: 3, correctCount: 2, missCount: 1, lastRecallSuccessAt: Date.now() } }) } });
-  await page3.goto(BASE + "/index.html?set=3", { waitUntil: "networkidle" });
-  await page3.waitForTimeout(500);
-  await page3.press("#input", "Enter");
-  await page3.waitForTimeout(200);
+  await watchWords(page3);
+  await page3.goto(LEARN_URL, { waitUntil: "networkidle" });
+  await waitWordT(page3, 1);
+  await page3.waitForTimeout(300);
   await page3.press("#input", "Enter");
   await page3.waitForTimeout(300);
   check("チュートリアル: 学習記録のある人には出ない", (await coach(page3)) === null && (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length)) === 3);
@@ -19828,8 +19853,8 @@ console.log("home and old URLs (78.6):");
   const stateOf = (ids, over) => Object.fromEntries(ids.map((id) => [id, rec(over)]));
   // ホームのほかの教材・旧の面の名前（本・パック・遊び方・連続日数）。英単語のホームの .room の文には 1 つも出ない
   const OTHER_NAMES = ["中学英語", "高校英語", "TOEIC", "ビジネス", "旅行", "日常英会話", "社会", "理科", "国語", "仕事の言葉", "経理", "中学歴史", "四字熟語", "本棚", "冊から選ぶ", "コース", "チャレンジ", "Daily", "バトル", "日連続", "苦手のみ", "セットの長さ", "腕試し", "書斎", "単語帳"];
-  async function homePage(storage, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null, fresh = false } = {}) {
-    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+  async function homePage(storage, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null, fresh = false, reducedMotion = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}), ...(reducedMotion ? { reducedMotion } : {}) });
     const page = await ctx.newPage();
     page.errors = [];
     page.on("pageerror", (e) => page.errors.push(e.message));
@@ -19899,6 +19924,12 @@ console.log("home and old URLs (78.6):");
     const s = { reached, url: page.url().replace(BASE, ""), first: (await shownIds(page))[0], prog: await progress(page), onboarded: await page.evaluate(() => localStorage.getItem("spelldash_onboarded")), focus: await page.evaluate(() => document.activeElement?.id) };
     check("78.6 初めての人: Tab と Enter だけで「英単語を学ぶ」→ これから の回（URL は ?learn=new に置き換わる・1 語目は公開の並びの頭・進みは「これから 0 / 10」・焦点は入力欄・印 onboarded）",
       s.reached && /\?learn=new$/.test(s.url) && s.first === vocab.order[0] && s.prog === "これから 0 / 10" && s.onboarded === "1" && s.focus === "input", JSON.stringify(s));
+    // 説明を読まなくても始められる（受け入れ基準 18）: 1 語目の #word に Enter の案内があり、Enter で答え（公開の並びの頭の語）が出る
+    const guide = { word: (await page.textContent("#word")).trim() };
+    await page.keyboard.press("Enter");
+    await waitUntil(async () => (await page.textContent("#word")).trim() === vocab.order[0].replace(/^english-/, ""), 3000);
+    guide.after = (await page.textContent("#word")).trim();
+    check("78.6 初めての人: 1 語目の #word に Enter の案内・Enter で答えが出る（説明を読まずに進める。受け入れ基準 18）", guide.word.includes("Enter") && guide.after === vocab.order[0].replace(/^english-/, ""), JSON.stringify(guide));
     check("78.6 初めての人: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
     await closeCtx(page);
   }
@@ -20076,17 +20107,7 @@ console.log("home and old URLs (78.6):");
   // (8) 戻せる形: 旗（js/focus.js FOCUS_ENGLISH と <html data-focus>）を外すと、前のホーム（机の本の章とスタート・本棚）がそのまま出る
   {
     const page = await homePage({ spelldash_word_stats: JSON.stringify(stateOf(vocab.order.slice(0, 3), { ls: 2 })) });
-    await page.route("**/js/focus.js", async (route) => {
-      const res = await route.fetch();
-      const src = (await res.text()).replace("export const FOCUS_ENGLISH = true;", "export const FOCUS_ENGLISH = false;");
-      await route.fulfill({ response: res, body: src, headers: { ...res.headers(), "content-type": "text/javascript" } });
-    });
-    await page.route(/\/(index\.html)?(\?.*)?$/, async (route) => {
-      if (route.request().resourceType() !== "document") return route.fallback();
-      const res = await route.fetch();
-      const html = (await res.text()).replace('<html lang="ja" data-focus="english">', '<html lang="ja">');
-      await route.fulfill({ response: res, body: html, headers: { ...res.headers(), "content-type": "text/html" } });
-    });
+    await focusOff(page);
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
     await waitUntil(() => page.evaluate(() => !!document.querySelector("#pathHead .path__title") && !document.getElementById("focusHead")), 6000);
     await page.waitForTimeout(500);
@@ -20096,6 +20117,66 @@ console.log("home and old URLs (78.6):");
     }));
     check("78.6 戻せる形: 旗を外すと前のホーム（机の本のスタート・本棚・ほかの遊び方）が出て、英単語のホームの中身は残らない", o.start === "BUTTON" && o.text === "スタート" && !o.focusHome && o.shelf && o.modes && o.attr === null, JSON.stringify(o));
     await closeCtx(page);
+  }
+
+  // (9) 前の書斎の検査（8.6・8.8）のうち英単語のホームに残すもの: 壊れた学習記録で止まらない・読み込みの揺れ（CLS）・読み込み中の高さ・夜と reduced motion
+  {
+    // 壊れた spelldash_word_stats（JSON でない）: ホームはエラー 0 で 覚えた 0・これから を描き、「英単語を学ぶ」で回が始まり、答えると記録が書ける。元の値は退避の鍵に
+    const BROKEN = '{"english-apple": {"playCount": 3,';
+    const page = await homePage({ spelldash_word_stats: BROKEN });
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await homeView(page)).ready, 6000);
+    const v = await homeView(page);
+    await page.click("#pathStart");
+    await page.waitForURL(/learn=new/, { timeout: 8000 }).catch(() => {});
+    await waitWord(page);
+    const first = (await shownIds(page))[0];
+    await page.focus("#input");
+    for (const ch of String(first).replace(/^english-/, "")) await page.press("#input", ch);
+    const readAfter = () => page.evaluate((id) => { let t = null; try { t = JSON.parse(localStorage.getItem("spelldash_word_stats")); } catch {} return { ls: t?.[id]?.ls ?? null, corrupt: (localStorage.getItem("spelldash_word_stats_corrupt") ?? "").includes("english-apple") }; }, first);
+    await waitUntil(async () => (await readAfter()).ls === 2, 4000);
+    const after = await readAfter();
+    check("78.6 壊れた学習記録: ホームはエラー 0 で 覚えた 0・これから を描き、「英単語を学ぶ」で回が始まり、答えると記録が書ける（元の値は退避の鍵に）",
+      v.ready && v.learned === "0" && v.mode === "これから" && first === vocab.order[0] && after.ls === 2 && after.corrupt && page.errors.length === 0, JSON.stringify({ learned: v.learned, mode: v.mode, first, after, err: page.errors[0] }));
+    await closeCtx(page);
+
+    // 読み込みの揺れと高さ: 数が入る前（語の表が届かない間）と後で「英単語を学ぶ」の札の高さは同じ・ボタンは押せる。CLS ≤ 0.02
+    const rows = [];
+    for (const [w, h, mobile] of [[390, 844, true], [1200, 900, false]]) {
+      const seed = { spelldash_word_stats: JSON.stringify(stateOf(vocab.order.slice(0, 130), { ls: 2 })) };
+      const ready = await homePage(seed, { viewport: { width: w, height: h }, mobile });
+      await ready.addInitScript(() => {
+        window.__cls = 0;
+        new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; }).observe({ type: "layout-shift", buffered: true });
+      });
+      await ready.goto(BASE + "/", { waitUntil: "networkidle" });
+      await waitUntil(async () => (await homeView(ready)).ready, 6000);
+      await ready.waitForTimeout(500);
+      const r1 = await ready.evaluate(() => ({ cls: Math.round(window.__cls * 1000) / 1000, h: Math.round(document.getElementById("pathCard").getBoundingClientRect().height) }));
+      await closeCtx(ready);
+      const wait = await homePage(seed, { viewport: { width: w, height: h }, mobile });
+      await wait.route("**/data/public/english.json", (route) => route.abort());
+      await wait.goto(BASE + "/", { waitUntil: "networkidle" });
+      await wait.waitForTimeout(500);
+      const r0 = await wait.evaluate(() => {
+        const card = document.getElementById("pathCard");
+        const start = document.getElementById("pathStart");
+        return { ready: card.classList.contains("focus-ready"), h: Math.round(card.getBoundingClientRect().height), start: getComputedStyle(start).visibility === "visible" && start.getBoundingClientRect().height > 0, href: start.getAttribute("href"), nums: getComputedStyle(document.getElementById("focusSum")).visibility };
+      });
+      rows.push({ w, cls: r1.cls, h1: r1.h, h0: r0.h, wait: r0, errs: wait.errors.length });
+      await closeCtx(wait);
+    }
+    check("78.6 読み込み: 390・1200 で CLS ≤ 0.02・語の表が届かない間も札の高さは同じ（±2px）で数は隠し、「英単語を学ぶ」は押せる（/?learn=next）・エラー 0",
+      rows.every((r) => r.cls <= 0.02 && Math.abs(r.h0 - r.h1) <= 2 && !r.wait.ready && r.wait.start && r.wait.href === "/?learn=next" && r.wait.nums === "hidden" && r.errs === 0), JSON.stringify(rows));
+
+    // 夜（dark）× reduced motion: 動く物 0・横スクロール 0
+    const night = await homePage({ spelldash_word_stats: JSON.stringify(stateOf(vocab.order.slice(0, 3), { ls: 1 })) }, { viewport: { width: 390, height: 844 }, mobile: true, theme: "dark", reducedMotion: "reduce" });
+    await night.goto(BASE + "/", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await homeView(night)).ready, 6000);
+    await night.waitForTimeout(300);
+    const n = await night.evaluate(() => ({ anims: document.getAnimations().length, theme: document.documentElement.dataset.theme, hx: document.documentElement.scrollWidth - document.documentElement.clientWidth }));
+    check("78.6 夜 × reduced motion: 動く物 0・横スクロール 0・エラー 0", n.anims === 0 && n.theme === "dark" && n.hx === 0 && night.errors.length === 0, JSON.stringify(n));
+    await closeCtx(night);
   }
 }
 
@@ -20116,8 +20197,14 @@ console.log("learn state (schema 7):");
     "concept-ad-cpc": base, // 非公開の語（数えない・欄を書かない）
     "my-river": { ...base, recallFail: 1, lastRecallFailAt: isoAgo(2) }
   };
-  async function seededPage(storage) {
-    const page = await browser.newPage();
+  // flagOff: 英単語の学習に絞る旗を外したページ（focusOff。Service Worker を止めた文脈。ページを閉じると文脈も閉じる）
+  async function seededPage(storage, { flagOff = false } = {}) {
+    const ctx = flagOff ? await browser.newContext({ serviceWorkers: "block" }) : null;
+    const page = ctx ? await ctx.newPage() : await browser.newPage();
+    if (ctx) {
+      page.on("close", () => ctx.close().catch(() => {}));
+      await focusOff(page);
+    }
     page.errors = [];
     page.dialogs = [];
     page.vocabFetches = 0;
@@ -20160,12 +20247,19 @@ console.log("learn state (schema 7):");
     await page.close();
   }
 
-  // (2) 版 7 の端末は表を取らない（読み込みの重さを増やさない）
+  // (2) 版 7 の端末は移行のために表を取らない（読み込みの重さを増やさない）。
+  // 英単語の学習に絞ったホーム（Batch 78 段 5b）は「覚えた N ／総数」を数えるので表を 1 回取る。移行が取らないことは、数を出さない前のホーム（旗を外したページ）で見る
   {
-    const page = await seededPage({ spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ [wA]: { ...base, ls: 2 } }) });
+    const v7 = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ [wA]: { ...base, ls: 2 } }) };
+    const home = await seededPage(v7);
+    await home.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await home.waitForTimeout(300);
+    check("78.2 移行: 版 7 の端末で英単語のホームは表を 1 回だけ取る（覚えた N ／総数のため）・記録はそのまま", home.vocabFetches === 1 && (await ls(home, "spelldash_schema_version")) === "7" && (await ls(home, "spelldash_word_stats")) === v7.spelldash_word_stats && home.errors.length === 0, String(home.vocabFetches));
+    await home.close();
+    const page = await seededPage(v7, { flagOff: true });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(300);
-    check("78.2 移行: 版 7 の端末はホームを開いても公開の語の表を取らない", page.vocabFetches === 0 && (await ls(page, "spelldash_schema_version")) === "7", String(page.vocabFetches));
+    check("78.2 移行: 版 7 の端末は前のホーム（旗を外したページ）を開いても公開の語の表を取らない", page.vocabFetches === 0 && (await ls(page, "spelldash_schema_version")) === "7", String(page.vocabFetches));
     // 版 6 のバックアップを戻すと、返る前に版 7・欄が入る（再読み込みを待たない）
     const restored = await page.evaluate(async (old) => {
       const s = await import("/js/storage.js");
@@ -20219,9 +20313,11 @@ console.log("learn modes (78.3):");
   const isoAgo = (days) => new Date(Date.now() - days * DAY).toISOString();
   const rec = (over = {}) => ({ playCount: 2, correctCount: 1, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 1, mastered: false, masteredAt: null, lastPlayed: isoAgo(3), nextReviewAt: isoAgo(-2), lastRecallFailAt: null, lastRecallSuccessAt: isoAgo(3), dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: null, ...over });
   const learnedUpTo = (ids) => Object.fromEntries(ids.map((id) => [id, rec({ ls: 2 })]));
-  async function learnPage(storage, { viewport = { width: 1200, height: 900 }, mobile = false, time = null } = {}) {
+  // flagOff: 英単語の学習に絞る旗を外したページ（focusOff。Batch 78 段 5b。前のホームの Challenge・?words= の Study を開く）
+  async function learnPage(storage, { viewport = { width: 1200, height: 900 }, mobile = false, time = null, flagOff = false } = {}) {
     const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
     const page = await ctx.newPage();
+    if (flagOff) await focusOff(page);
     page.errors = [];
     page.on("pageerror", (e) => page.errors.push(e.message));
     if (time) await page.clock.setSystemTime(new Date(time));
@@ -20453,8 +20549,8 @@ console.log("learn modes (78.3):");
     const seed = Object.fromEntries(hs.map((id, i) => [id, rec({ ls: i % 2 ? 1 : 2, ...(i % 2 ? { lsd: dayNo(Date.now()) - 1 } : {}), lsAt })]));
     const keep = (t) => hs.every((id) => t[id]?.ls === seed[id].ls && t[id]?.lsd === seed[id].lsd && t[id]?.lsAt === seed[id].lsAt);
     const played = (t) => hs.filter((id) => t[id]?.lastPlayed !== seed[id].lastPlayed).length;
-    // Challenge（4 秒）
-    const page = await learnPage({ spelldash_word_stats: JSON.stringify(seed), spelldash_mode: "challenge", spelldash_category: "highschool" });
+    // Challenge（4 秒）と ?words= の Study は、英単語の学習に絞ったホーム（Batch 78 段 5b）では出ない（中心の学習・ホームへ 1 行）。前のホーム（旗を外したページ）で見る
+    const page = await learnPage({ spelldash_word_stats: JSON.stringify(seed), spelldash_mode: "challenge", spelldash_category: "highschool" }, { flagOff: true });
     await page.goto(BASE + "/index.html?t=4", { waitUntil: "networkidle" });
     await page.waitForTimeout(500);
     await page.focus("#input");
@@ -20470,7 +20566,7 @@ console.log("learn modes (78.3):");
     check("78.3 中心でない回: Challenge の答えで状態の欄は変わらない（答えた公開の語 1 語以上・書き手 0 回）", played(tc) >= 1 && keep(tc) && (await learnWrites(page)).length === 0, JSON.stringify({ played: played(tc) }));
     await page.context().close();
     // ?words= の Study（決めた語だけの回）
-    const pw = await learnPage({ spelldash_word_stats: JSON.stringify(seed) });
+    const pw = await learnPage({ spelldash_word_stats: JSON.stringify(seed) }, { flagOff: true });
     await pw.goto(BASE + `/index.html?words=${hs.slice(0, 2).join(",")}&hintms=600000`, { waitUntil: "networkidle" });
     await waitWord(pw, 1);
     await typeWord(pw, enOf((await shownIds(pw))[0]));
