@@ -1,6 +1,7 @@
 import { supabase } from "./supabase.js";
 import { CORRUPT_KEYS, SHADOW_KEYS, dropKeys, isQuotaError } from "./storageGuard.js";
-import { getWordStats, saveWordStats, getBestScore, saveBestScore } from "./storage.js";
+import { getWordStats, saveWordStats, getBestScore, saveBestScore, loadLearnStateDeps, learnStatesMigrated } from "./storage.js";
+import { fillLearnStates, learnFieldsOf } from "./learnState.js";
 import { getTotalXp, getLevelState, getStreak } from "./level.js";
 import {
   getBattleStore,
@@ -37,6 +38,8 @@ const PULLED_FLAG = "spelldash_pulled_this_session"; // sessionStorage: この�
 const DONE_FLAG = "spelldash_sync_done_this_session"; // sessionStorage: このタブで同期を最後まで終えた（値は user id）
 const PULL_AT_FLAG = "spelldash_pull_started_at"; // sessionStorage: SYNCED_FLAG を立てた時刻（ms）。取り込みを始めるたびに新しくする
 const PULL_GIVE_UP_MS = 120000; // 取り込みを始めてから 2 分たっても取り込み終えない印は止まったものとみなす（isPulling）
+const LOGOUT_KEY = "spelldash_logout_at"; // 持ち主のある端末でログアウトした時刻（最初の 1 回。次の同期が済むまで残す。learnedSinceLogout）
+const LEARN_FILLED_KEY = "spelldash_learn_filled"; // 3 状態の初めの埋めを済ませたアカウントの user id（この端末とアカウントで 1 回だけ。fillLearnStatesOnce）
 const STORE_READY_TIMEOUT_MS = 5000;
 
 let isPushing = false;
@@ -133,7 +136,8 @@ async function getUserId() {
 
 // ---- push: ローカル → クラウド ----
 
-// ログアウト時に呼ぶ（js/auth.js）: 同じタブで次にログインしたとき、取り込みからやり直す
+// ログアウト時に呼ぶ（js/auth.js）: 同じタブで次にログインしたとき、取り込みからやり直す。
+// 持ち主のある端末ではログアウトの時刻も残す（最初の 1 回だけ。ログインをやめたときにも呼ばれるので上書きしない。次の同期が済んだら消す）
 export function clearSyncedFlag() {
   try {
     sessionStorage.removeItem(SYNCED_FLAG);
@@ -142,6 +146,11 @@ export function clearSyncedFlag() {
     sessionStorage.removeItem(PULL_AT_FLAG);
   } catch {
     // sessionStorage が使えない環境では何もしない
+  }
+  try {
+    if (localStorage.getItem(OWNER_KEY) && !localStorage.getItem(LOGOUT_KEY)) localStorage.setItem(LOGOUT_KEY, new Date().toISOString());
+  } catch {
+    // 書けなければ、次のログインでは今までどおり確かめずに足す
   }
 }
 
@@ -358,6 +367,15 @@ function hasPersonalRecords() {
   );
 }
 
+// ログアウトの後に、この端末で学んだ跡があるか（語の記録の最後の出題・答えの日時がログアウトより後）。未ログインのあいだに別の人が使ったかもしれないので、
+// 同じアカウントでログインし直したときも、足す前にたずねる（決定 §8「ログアウト…で別人の状態を混ぜない」。dataloss d7。創業者に送った既定）
+function learnedSinceLogout() {
+  const at = Date.parse(localStorage.getItem(LOGOUT_KEY) ?? "");
+  if (!(at > 0)) return false;
+  const ms = (iso) => Date.parse(iso ?? "") || 0;
+  return Object.values(getWordStats()).some((s) => s && Math.max(ms(s.lastPlayed), ms(s.lastRecallSuccessAt), ms(s.lastRecallFailAt)) > at);
+}
+
 let syncInFlight = false; // 同じページで 2 回走らせない（auth-ready と SIGNED_IN が続けて来る）
 
 // options.freshLogin: いまログインした（リンク・Google から戻った、ログイン操作の直後）。開いた時点ですでにログインしていた端末は false
@@ -390,15 +408,21 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   } else if (!owner && freshLogin && hasPersonalRecords()) {
     // 持ち主の印が無い端末（未ログインで使っていた・この版より前に同期した）にいまログインした: 足すかをたずねる
     if (!window.confirm(MERGE_CONFIRM_TEXT)) return "cancelled";
+  } else if (owner === userId && learnedSinceLogout()) {
+    // 同じアカウントでログインし直した端末に、ログアウトの後の記録がある: 同じ確認（断ったら何も書かない。次のログインでまたたずねる）
+    if (!window.confirm(MERGE_CONFIRM_TEXT)) return "cancelled";
   }
 
   sessionStorage.setItem(SYNCED_FLAG, userId);
   sessionStorage.setItem(PULL_AT_FLAG, String(Date.now()));
   sessionStorage.removeItem(PULLED_FLAG);
 
-  const [wordResult, progressResult] = await Promise.all([
+  // 3 状態の初めの埋め（fillLearnStatesOnce）の材料は、取り込みと並べて読む（取り込みの後から表を書き終えるまでのあいだに待ちをはさまない）
+  const learnFill = localStorage.getItem(LEARN_FILLED_KEY) === userId ? null : loadLearnStateDeps();
+  const [wordResult, progressResult, learnDeps] = await Promise.all([
     supabase.from("word_progress").select("*"),
-    supabase.from("user_progress").select("*").maybeSingle()
+    supabase.from("user_progress").select("*").maybeSingle(),
+    learnFill
   ]);
 
   // どちらかの取得に失敗したらフラグを戻して次回再試行（データを壊さない。user_progress の上書きにも進まない）
@@ -419,7 +443,7 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
 
   let changedLocal = cleared;
   const toUpload = [];
-  const merged = { ...local };
+  let merged = { ...local };
 
   const allIds = new Set([...Object.keys(local), ...cloudMap.keys()]);
 
@@ -454,10 +478,17 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
       changedLocal = true;
       toUpload.push(statToRow(userId, wordId, combined));
     } else if (cloudTime > localTime) {
-      // ローカルだけにある拡張フィールド（history / knownOnSight / lastReviewResult 等）は残す
-      merged[wordId] = { ...l, ...rowToStat(c, l), ...recallFields };
+      // ローカルだけにある拡張フィールド（history / knownOnSight / lastReviewResult 等）は残す。
+      // 3 状態の欄（ls・lsd・lsAt。送らない端末だけの欄）は、クラウドの行が新しくても（× を含んでいても）必ず端末の値（決定 §4・§8: 同期だけで届いた変化で状態を変えない）
+      merged[wordId] = { ...l, ...rowToStat(c, l), ...recallFields, ...learnFieldsOf(l) };
       changedLocal = true;
     }
+  }
+
+  const filledLearn = fillLearnStatesOnce(merged, local, learnDeps);
+  if (filledLearn.table) {
+    merged = filledLearn.table;
+    changedLocal = true;
   }
 
   if (changedLocal) {
@@ -581,6 +612,8 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
 
   saveDirtyWords(new Set());
   localStorage.setItem(OWNER_KEY, userId);
+  localStorage.removeItem(LOGOUT_KEY);
+  if (filledLearn.done) localStorage.setItem(LEARN_FILLED_KEY, userId);
   sessionStorage.setItem(DONE_FLAG, userId);
 
   // 追加したパックが変わったら、語の読み直しが終わるまで待ってから再描画を促す（読み直し前の語で数えないため）
@@ -595,6 +628,17 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   }
 
   return "same";
+}
+
+// 3 状態の初めの埋め（c6・dataloss d5。創業者に送った既定）: スキーマ 7 の後、この端末とアカウントで初めて取り込めたときに 1 回だけ、
+// 状態の欄が無く、取り込む前の端末に答えの記録の無かった公開の語（2 台目の初回・置き換えた直後・記録を消した後に届いた語）を、移行の式で埋める
+// （状態の変化ではなく移行として扱う。目安・ランクアップの幕・知らせには数えない）。それより後に届いた行では状態を変えない（欄は これから のまま、
+// 中心の学習で答えたときに決まる）。端末にある状態・端末で答えた語は決して変えない。版 7 の前なら移行（js/storage.js）が埋めるので、ここでは埋めず印も付けない。
+// 材料（公開の語の表）が読めなければ埋めず、印も付けない（次の取り込みでやり直す）。返り値 { table: 埋めた表か null, done: 印を付けてよい }
+function fillLearnStatesOnce(merged, local, deps) {
+  if (!deps || !learnStatesMigrated()) return { table: null, done: false };
+  const { table } = fillLearnStates(merged, deps.vocab.isPublic, deps.isDone, local);
+  return { table, done: true };
 }
 
 // 語の読み直しを頼み（spelldash:packs）、読み直したページ（ホーム js/main.js・単語帳 js/listView.js・学習データ js/statsView.js）が

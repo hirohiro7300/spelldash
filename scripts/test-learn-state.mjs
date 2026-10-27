@@ -652,6 +652,149 @@ const W = PUB[20];
 }
 clock = null;
 
+// ── 10. 同期（js/sync.js initialSync） ─────────────
+const row = (wordId, over = {}) => ({ user_id: "u1", word_id: wordId, play_count: 5, correct_count: 3, typing_miss: 0, recall_fail: 2, clean_correct_streak: 0, mastered: false, mastered_at: null, last_played: iso(D(20)), next_review_at: iso(D(20)), last_recall_fail_at: iso(D(20)), last_recall_success_at: iso(D(10)), daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: iso(D(20)), ...over });
+const SENT_COLUMNS = ["user_id", "word_id", "play_count", "correct_count", "typing_miss", "recall_fail", "clean_correct_streak", "mastered", "mastered_at", "last_played", "next_review_at", "last_recall_fail_at", "last_recall_success_at", "daily_learning_date", "daily_learning_stage", "srs_advanced_on", "updated_at"];
+async function sync(seed, { user = "u1", rows = [], answer = true } = {}) {
+  LS = new FakeStorage(seed);
+  SS = new FakeStorage();
+  S.forgetWordStats();
+  cloud.user = user;
+  cloud.tables = { word_progress: rows, user_progress: [] };
+  cloud.sent = [];
+  confirms.length = 0;
+  confirmAnswer = answer;
+  const result = await SY.initialSync();
+  return { result, t: JSON.parse(LS.getItem("spelldash_word_stats") || "{}") };
+}
+const A = PUB[30];
+const B = PUB[31];
+const C = PUB[32];
+const E = PUB[33];
+{
+  // 端末の 覚えた・あやふや（数えた日）と、クラウドの新しい行（× を含む）: 状態は端末のまま（決定 §8）
+  const local = { [A]: { ...SHAPES.learning, ls: 2, lsAt: D(5) }, [B]: { ...SHAPES.weak, ls: 1, lsd: dayOf(D(5)), lsAt: D(5) } };
+  const { result, t } = await sync({ spelldash_schema_version: "7", spelldash_owner: "u1", spelldash_learn_filled: "u1", spelldash_word_stats: JSON.stringify(local) }, { rows: [row(A), row(B)] });
+  eq("取り込み: クラウドの行が新しく × を含んでも、端末の 覚えた・あやふやと数えた日・最後の答えの時刻は残る", [result, t[A].ls, t[A].lsAt, t[B].ls, t[B].lsd, t[B].lsAt], ["changed", 2, D(5), 1, dayOf(D(5)), D(5)]);
+  eq("取り込み: ほかの欄はクラウドの新しい値になる（マージは今のまま）", [t[A].recallFail, t[A].playCount, t[A].lastRecallFailAt], [2, 5, iso(D(20))]);
+  const old = await sync({ spelldash_schema_version: "7", spelldash_owner: "u1", spelldash_learn_filled: "u1", spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2, lastPlayed: iso(D(30)) } }) }, { rows: [row(A, { last_played: iso(D(1)), recall_fail: 9 })] });
+  const sentWords = old.result && cloud.sent.filter((s) => s.table === "word_progress").flatMap((s) => s.rows);
+  eq("古いクラウドの行: 端末の行がそのまま残り（ls 2）、送る行は 15 列のまま（状態の欄は送らない）", [old.t[A].ls, old.t[A].recallFail, sentWords.length, sentWords.every((r) => isDeepStrictEqual(Object.keys(r), SENT_COLUMNS))], [2, 0, 1, true]);
+}
+{
+  // 初めの埋め（1 回だけ）: 版 7 の端末にクラウドだけの語が届く → 移行の式。端末で答えた語（欄なし）・欄のある語は変えない
+  const seed = {
+    spelldash_schema_version: "7",
+    spelldash_owner: "u1",
+    spelldash_word_stats: JSON.stringify({ [C]: { ...SHAPES.failOnly, lastPlayed: iso(D(1)) }, [E]: { ...SHAPES.played, lastPlayed: iso(D(1)) } })
+  };
+  const rows = [row(A, { recall_fail: 0, last_recall_fail_at: null, correct_count: 1, clean_correct_streak: 1 }), row(B), row(C, { recall_fail: 0, last_recall_fail_at: null }), row(E, { recall_fail: 0, last_recall_fail_at: null }), row("concept-ad-cpc", { recall_fail: 0, last_recall_fail_at: null })];
+  const first = await sync(seed, { rows });
+  eq("初めの取り込み: クラウドだけの語を移行の式で埋める（覚えた・あやふや）・印を付ける", [first.t[A].ls, first.t[B].ls, LS.getItem("spelldash_learn_filled")], [2, 1, "u1"]);
+  eq("初めの取り込み: 端末に答えのあった語（欄なし。Battle の答え）は これから のまま・答えの無かった語は埋める・非公開の語には書かない", [first.t[C].ls, first.t[E].ls, first.t["concept-ad-cpc"].ls], [undefined, 2, undefined]);
+  // 次のタブ（印は付いた）: 新しく届いた語は これから のまま
+  const next = await sync({ ...Object.fromEntries(LS.map), spelldash_word_stats: LS.getItem("spelldash_word_stats") }, { rows: [...rows, row(PUB[34], { recall_fail: 0, last_recall_fail_at: null })] });
+  eq("2 回目の取り込み: 新しく届いた語は埋めない（これから）・埋めた語は変わらない", [next.t[PUB[34]].ls, next.t[A].ls, next.t[B].ls], [undefined, 2, 1]);
+  // 版 6（移行が済んでいない）: ここでは埋めず、印も付けない
+  const v6 = await sync({ spelldash_schema_version: "6", spelldash_owner: "u1", spelldash_word_stats: JSON.stringify({ [PUB[35]]: { ...SHAPES.played, lastPlayed: iso(D(1)) } }), spelldash_xp: "1" }, { rows: [row(A)] });
+  eq("版 6 の取り込み: 埋めない・印を付けない（移行が埋める）", [v6.t[A].ls, LS.getItem("spelldash_learn_filled")], [undefined, null]);
+}
+{
+  // 別のアカウントに置き換え: 前の人の状態・最高到達ランク・埋めの印は消え、新しい人の行は初めの埋めで決める（決定 §8・dataloss d6）
+  const seed = { spelldash_schema_version: "7", spelldash_owner: "u0", spelldash_rank_peak: "6", spelldash_learn_filled: "u0", spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2 }, [B]: { ...SHAPES.learning, ls: 2 } }) };
+  const { result, t } = await sync(seed, { user: "u1", rows: [row(B)] });
+  eq("置き換え: 確認 1 回・前の人の語と最高到達ランクは消え、新しい人の語は移行の式（あやふや）", [result, confirms.length, A in t, t[B].ls, LS.getItem("spelldash_rank_peak"), LS.getItem("spelldash_learn_filled"), LS.getItem("spelldash_owner")], ["changed", 1, false, 1, null, "u1", "u1"]);
+  const cancel = await sync(seed, { user: "u1", rows: [row(B)], answer: false });
+  eq("置き換えを断る: 何も書かない", [cancel.result, LS.getItem("spelldash_word_stats"), LS.getItem("spelldash_rank_peak")], ["cancelled", seed.spelldash_word_stats, "6"]);
+}
+{
+  // ログアウトの後に答えた記録: 同じアカウントで入り直すときに足すかをたずねる（dataloss d7。創業者に送った既定）
+  const base = { spelldash_schema_version: "7", spelldash_owner: "u1", spelldash_learn_filled: "u1" };
+  LS = new FakeStorage(base);
+  SY.clearSyncedFlag(); // ログアウト
+  const out = LS.getItem("spelldash_logout_at");
+  ok("ログアウトで時刻を残す（持ち主のある端末）", Date.parse(out) > 0);
+  SY.clearSyncedFlag();
+  ok("2 回目（ログインをやめた）では上書きしない", LS.getItem("spelldash_logout_at") === out);
+  const after = { ...base, spelldash_logout_at: iso(D(10)), spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2, lastPlayed: iso(D(11)), lastRecallSuccessAt: iso(D(11)) } }) };
+  const no = await sync(after, { rows: [], answer: false });
+  eq("ログアウトの後の記録あり・断る: cancelled・確認の文は今の文・何も書かない", [no.result, confirms, LS.getItem("spelldash_word_stats") === after.spelldash_word_stats, LS.getItem("spelldash_logout_at")], ["cancelled", ["この端末の記録を、このアカウントの記録に足す。別の人の記録なら、キャンセルしてログインをやめる。"], true, iso(D(10))]);
+  const yes = await sync(after, { rows: [] });
+  eq("ログアウトの後の記録あり・足す: 同期して時刻を消す", [yes.result, confirms.length, LS.getItem("spelldash_logout_at"), yes.t[A].ls], ["same", 1, null, 2]);
+  const quietRelogin = await sync({ ...base, spelldash_logout_at: iso(D(10)), spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2, lastPlayed: iso(D(9)), lastRecallSuccessAt: iso(D(9)) } }) }, { rows: [] });
+  eq("ログアウトの後に記録が無ければたずねない", [quietRelogin.result, confirms.length], ["same", 0]);
+}
+
+// ── 11. バックアップと復元（js/backup.js） ─────────────
+{
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_rank_peak: "4", spelldash_logout_at: iso(D(1)), spelldash_learn_filled: "u1", spelldash_owner: "u1", spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2, lsAt: D(1) }, [B]: { ...SHAPES.weak, ls: 1, lsd: 20000 } }) });
+  S.forgetWordStats();
+  const data = BK.buildBackup().data;
+  eq("バックアップ: 最高到達ランクと語ごとの状態の欄が入る・同期の印（持ち主・ログアウト・埋めの印）は入らない", [data.spelldash_rank_peak, JSON.parse(data.spelldash_word_stats)[B].lsd, "spelldash_owner" in data, "spelldash_logout_at" in data, "spelldash_learn_filled" in data], ["4", 20000, false, false, false]);
+}
+{
+  // 古い（版 6）バックアップの復元: その場で版 7・欄を埋める（再読み込みを待たない: dataloss d9）。最高到達ランク = max（前, バックアップ, 今の数）
+  const many = {};
+  for (const id of PUB.slice(0, 130)) many[id] = SHAPES.learning; // 130 語が済み → よちよち（1）
+  many["concept-ad-cpc"] = SHAPES.weak;
+  const backup = { app: "SpellDash", version: 1, exportedAt: iso(D(0)), data: { spelldash_schema_version: "6", spelldash_word_stats: JSON.stringify(many), spelldash_xp: "50" } };
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_rank_peak: "0", spelldash_owner: "u1", spelldash_learn_filled: "u1", spelldash_word_stats: "{}" });
+  SS = new FakeStorage({ spelldash_synced_this_session: "u1", spelldash_pulled_this_session: "u1", spelldash_sync_done_this_session: "u1", spelldash_pull_started_at: "1" });
+  S.forgetWordStats();
+  const summary = BK.applyBackup(backup);
+  const t = JSON.parse(LS.getItem("spelldash_word_stats"));
+  eq("版 6 のバックアップを戻すと、返る前に版 7・欄が入る（非公開の語は欄なし）", [summary.words, LS.getItem("spelldash_schema_version"), t[PUB[0]].ls, t[PUB[129]].ls, "ls" in t["concept-ad-cpc"]], [131, "7", 2, 2, false]);
+  eq("戻した後の最高到達ランク = 今の数の段（前 0・バックアップに無し・今 130 語 = よちよち）", LS.getItem("spelldash_rank_peak"), "1");
+  eq("ログイン中のタブの同期の印は消す（次に取り込みからやり直す: 古い行でクラウドを上書きしない）・持ち主と埋めの印も消す", [SS.length, LS.getItem("spelldash_owner"), LS.getItem("spelldash_learn_filled")], [0, null, null]);
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_rank_peak: "5", spelldash_word_stats: "{}" });
+  S.forgetWordStats();
+  BK.applyBackup({ ...backup, data: { ...backup.data, spelldash_rank_peak: "3" } });
+  eq("最高到達ランクは下げない（前 5・バックアップ 3・今 1 → 5）", LS.getItem("spelldash_rank_peak"), "5");
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: "{}" });
+  S.forgetWordStats();
+  BK.applyBackup({ ...backup, data: { ...backup.data, spelldash_rank_peak: "3" } });
+  eq("前の値が無い: バックアップの 3（今 1 より大きい）", LS.getItem("spelldash_rank_peak"), "3");
+}
+{
+  // 版の鍵が無いバックアップ: id を付け替えない（dataloss d10）・欄を埋める
+  const backup = { app: "SpellDash", version: 1, data: { spelldash_word_stats: JSON.stringify({ "concept-ad-cpc": SHAPES.learning, "my-q-hello": SHAPES.weak, "my-river": SHAPES.weak, [PUB[0]]: SHAPES.learning }) } };
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: "{}" });
+  S.forgetWordStats();
+  BK.applyBackup(backup);
+  const t = JSON.parse(LS.getItem("spelldash_word_stats"));
+  eq("版の鍵なしのバックアップ: concept-・my- の id はそのまま・公開の語に欄・版 7", [Object.keys(t).sort(), t[PUB[0]].ls, LS.getItem("spelldash_schema_version")], [["concept-ad-cpc", "my-q-hello", "my-river", PUB[0]].sort(), 2, "7"]);
+}
+{
+  // 復元が容量で途中で失敗: 前の記録に戻して投げる（前の記録を消したまま半分で止めない: verify-dataloss m1）
+  const seed = { spelldash_schema_version: "7", spelldash_rank_peak: "2", spelldash_owner: "u1", spelldash_xp: "300", spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2 } }), spelldash_theme: "dark" };
+  const size = Object.entries(seed).reduce((n, [k, v]) => n + k.length + v.length, 0);
+  LS = new FakeStorage(seed, size + 400);
+  S.forgetWordStats();
+  const big = {};
+  for (const id of PUB.slice(0, 40)) big[id] = SHAPES.learning;
+  let message = "";
+  try {
+    BK.applyBackup({ app: "SpellDash", version: 1, data: { spelldash_xp: "9", spelldash_word_stats: JSON.stringify(big), spelldash_schema_version: "6" } });
+  } catch (error) {
+    message = error.message;
+  }
+  eq("復元の途中で容量: 投げる（短い文）・前の記録は 1 つも変わらない", [message, LS.dump()], ["端末の空きが足りず、復元できなかった。今の記録はそのまま。", Object.fromEntries(Object.entries(seed).sort(([a], [b]) => (a < b ? -1 : 1)))]);
+}
+{
+  // 別のアカウントのときの消去: 最高到達ランクも消す（d6）。設定と版は残す
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_rank_peak: "7", spelldash_theme: "dark", spelldash_word_stats: JSON.stringify({ [A]: { ls: 2 } }), spelldash_logout_at: iso(D(1)), spelldash_learn_filled: "u0" });
+  BK.clearLocalRecords();
+  eq("消去: 最高到達ランク・語の記録・ログアウトの時刻・埋めの印は消え、設定と版は残る", LS.dump(), { spelldash_schema_version: "7", spelldash_theme: "dark" });
+}
+{
+  // backup.js の同期の印の名前は js/sync.js と同じ 4 つ（写しの食い違いを止める）
+  const syncSrc = fs.readFileSync(path.join(ROOT, "js/sync.js"), "utf8");
+  const flags = [...syncSrc.matchAll(/const \w+_FLAG = "(spelldash_[a-z_]+)"; \/\/ sessionStorage/g)].map((m) => m[1]);
+  const backupSrc = fs.readFileSync(path.join(ROOT, "js/backup.js"), "utf8");
+  const list = JSON.parse(/const SYNC_FLAGS = (\[[^\]]+\])/.exec(backupSrc)?.[1] ?? "[]");
+  eq("js/backup.js SYNC_FLAGS は js/sync.js の sessionStorage の 4 つの印と同じ", [list.length, [...list].sort()], [4, [...flags].sort()]);
+}
+
 console.warn = quiet;
 if (failures.length) {
   console.error(`test-learn-state: ${failures.length} failed, ${passed} passed`);
