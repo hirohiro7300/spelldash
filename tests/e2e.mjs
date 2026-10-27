@@ -19204,6 +19204,226 @@ console.log("tutorial:");
   await page3.close();
 }
 
+// ===== 78.4 学習状況とランク（Batch 78 段 4。stats.html・js/statsView.js・js/learnPace.js・js/rank.js・js/accountEmblem.js。docs/SPEC_LEARN_STATE.md §10・§12）: 最初の画面の 6 つ（覚えた N / 総数・ランク・次のランクまで・これから・あやふや・覚えた）の数と和・札の順と行き先・0 語の札・今日の分は終わり・最高到達ランクより下げない・アメリカ人・目安の 1 行・詳しい記録は閉じている・出典・古い状態名なし・幅と昼夜・CLS・アカウントのアイコン =====
+console.log("78.4 学習状況とランク:");
+{
+  const PUBLIC = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+  const PUB = PUBLIC.order;
+  const TOTAL = PUBLIC.total;
+  const DAY = 86400000;
+  const dayNo = (days) => { const [y, m, d] = ymdDaysAgo(days).split("-").map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1970, 0, 1)) / DAY); };
+  const fmt = (n) => n.toLocaleString("ja-JP");
+  // 種: 公開の語の頭から learned 語を 覚えた（そのうち paced 語は中心の学習で初めて覚えた: 10 日に分けて印 lsf と最後の答え lsAt）、続く unsure 語を あやふや
+  // （そのうち today 語は今日 1 日分を数えた: lsd = 今日）。残りは これから（記録なし）
+  const seedOf = ({ learned = 0, paced = 0, unsure = 0, today = 0, peak = null, extra = {} } = {}) => {
+    const stats = {};
+    PUB.slice(0, learned).forEach((id, i) => {
+      stats[id] = { playCount: 1, correctCount: 1, lastPlayed: new Date(Date.now() - (i % 10) * DAY).toISOString(), ls: 2, ...(i < paced ? { lsf: dayNo(i % 10), lsAt: Date.now() - (i % 10) * DAY } : {}) };
+    });
+    PUB.slice(learned, learned + unsure).forEach((id, i) => {
+      stats[id] = { playCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date().toISOString(), ls: 1, ...(i < today ? { lsd: dayNo(0) } : {}) };
+    });
+    return { spelldash_placement: "done", spelldash_xp: "250000", spelldash_word_stats: JSON.stringify(stats), ...(peak === null ? {} : { spelldash_rank_peak: String(peak) }), ...extra };
+  };
+  const OLD_NAMES = /未着手|苦手|習得|知ってた|済み|思い出せる|身についた|即答|Lv\.|経験値|Pro/;
+  const read = async (storage, { w = 390, h = 844, theme = "light", url = "/stats.html" } = {}) => {
+    const page = await newPage({ viewport: { width: w, height: h }, mobile: w < 1000, storage: { ...storage, spelldash_theme: theme } });
+    await page.goto(BASE + url, { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => {
+      const t = (id) => document.getElementById(id)?.textContent.trim() ?? null;
+      const cards = [...document.querySelectorAll("#learnCards .learn-card")].map((c) => {
+        const a = c.querySelector("a");
+        const b = c.getBoundingClientRect();
+        return { state: c.dataset.state, name: c.querySelector(".learn-card__name")?.textContent.trim(), desc: c.querySelector(".learn-card__desc")?.textContent.trim(), count: c.querySelector(".learn-card__count")?.textContent.trim(), href: a?.getAttribute("href") ?? null, go: a?.textContent.trim() ?? null, note: c.querySelector(".learn-card__note")?.textContent.trim() ?? null, top: Math.round(b.top), left: Math.round(b.left), bottom: Math.round(b.bottom) };
+      });
+      const more = document.getElementById("statsMore");
+      const src = document.getElementById("vocabSource");
+      const main = document.querySelector("main");
+      return {
+        h1: document.querySelector("h1")?.textContent.trim(), title: document.title,
+        count: t("learnCount"), total: t("learnTotal"), rank: t("learnRank"), next: document.getElementById("learnNext")?.hidden ? null : t("learnNextN"), nextLine: t("learnNext"),
+        cards, rule: document.querySelector(".learn-rule")?.textContent.trim() ?? null,
+        pace: document.getElementById("learnPace")?.hidden ? null : { title: document.querySelector(".learn-pace__title")?.textContent.trim(), line: t("learnPaceLine"), note: t("learnPaceNote") },
+        moreOpen: more?.open ?? null, moreSummary: more?.querySelector("summary")?.textContent.trim() ?? null,
+        source: src ? { text: src.textContent.replace(/\s+/g, " ").trim(), license: src.querySelector('a[href="https://creativecommons.org/licenses/by-sa/4.0/"]')?.textContent.trim() ?? null, shown: src.getBoundingClientRect().height > 0 && getComputedStyle(src).visibility !== "hidden" } : null,
+        mainText: main?.innerText ?? "",
+        sumBottom: Math.round(document.getElementById("learnSum")?.getBoundingClientRect().bottom ?? 0),
+        scroll: document.documentElement.scrollWidth, inner: document.documentElement.clientWidth,
+        peak: localStorage.getItem("spelldash_rank_peak"), stats: localStorage.getItem("spelldash_word_stats"), bookPace: localStorage.getItem("spelldash_book_pace"),
+        curtain: !!document.querySelector(".rank-up"), tabs: !!document.querySelector(".stats-tabs"), categories: !!document.getElementById("categoryProgress"), levelBar: !!document.getElementById("levelBar")
+      };
+    });
+    r.errors = page.errors.slice(0, 2);
+    await page.close();
+    return r;
+  };
+
+  // ---- (1) 390 昼: 覚えた 1,180（うち中心の学習で 300）・あやふや 120（うち今日数えた 30）・最高到達ランク 中学生 ----
+  const s1 = seedOf({ learned: 1180, paced: 300, unsure: 120, today: 30, peak: 4 });
+  const a = await read(s1);
+  const want = { new: TOTAL - 1300, unsure: 120, learned: 1180 };
+  check("78.4 学習状況: 題は「学習状況」（title も）・覚えた 1,180 / 2,857・ランク 中学生・次のランクまであと 220 語（高校生 1,400 − 1,180）",
+    a.h1 === "学習状況" && a.title.startsWith("学習状況") && a.count === "1,180" && a.total === fmt(TOTAL) && a.rank === "中学生" && a.next === "220" && a.nextLine === "次のランクまであと 220 語" && a.errors.length === 0,
+    JSON.stringify({ h1: a.h1, title: a.title, count: a.count, total: a.total, rank: a.rank, next: a.nextLine, err: a.errors }));
+  const counts = a.cards.map((c) => Number(c.count.replace(/[^\d]/g, "")));
+  check("78.4 学習状況: 3 つの札はこれから・あやふや・覚えたの順で、語数（1,557・120・1,180）の和が総数",
+    JSON.stringify(a.cards.map((c) => c.state)) === JSON.stringify(["new", "unsure", "learned"]) && JSON.stringify(a.cards.map((c) => c.name)) === JSON.stringify(["これから", "あやふや", "覚えた"]) &&
+      JSON.stringify(counts) === JSON.stringify([want.new, want.unsure, want.learned]) && counts.reduce((x, y) => x + y, 0) === TOTAL,
+    JSON.stringify(a.cards.map((c) => [c.state, c.count])));
+  check("78.4 学習状況: 札の説明とボタン（まだ学んでいない単語・この単語を学ぶ → /?learn=new／もう一度確かめたい単語・この単語を学ぶ → /?learn=unsure／自力で答えられた単語・復習する → /?learn=learned）",
+    JSON.stringify(a.cards.map((c) => [c.desc, c.go, c.href])) === JSON.stringify([["まだ学んでいない単語", "この単語を学ぶ", "/?learn=new"], ["もう一度確かめたい単語", "この単語を学ぶ", "/?learn=unsure"], ["自力で答えられた単語", "復習する", "/?learn=learned"]]),
+    JSON.stringify(a.cards.map((c) => [c.desc, c.go, c.href])));
+  check("78.4 学習状況（390×844）: 6 つ（覚えた N・ランク・あと M 語・3 つの札）が開いた画面の中・横スクロールなし",
+    a.sumBottom > 0 && a.sumBottom <= 844 && a.cards.every((c) => c.bottom <= 844) && a.cards[0].top < a.cards[1].top && a.cards[1].top < a.cards[2].top && a.scroll <= a.inner, JSON.stringify({ sum: a.sumBottom, cards: a.cards.map((c) => c.bottom), scroll: a.scroll, inner: a.inner }));
+  check("78.4 学習状況: 札の下に覚えたの条件の文（依頼 §4）と目安の 1 行（中心の学習で覚えた 300 語・10 日 → 残り 1,677 は約 56 日）・注「覚えた で数えています。」",
+    a.rule === "初めから自力で正解できた単語、または、あやふやになったあと別の日に2回自力で正解できた単語が「覚えた」になります。間違えたり答えを見たりすると「あやふや」に戻ります。" &&
+      a.pace?.title === "全部覚えるまでの目安" && a.pace?.line === "今のペースなら、あと約56日です。" && a.pace?.note.startsWith("覚えた で数えています。"), JSON.stringify({ rule: a.rule, pace: a.pace }));
+  check("78.4 学習状況: 「詳しい記録」は閉じている・出典（NGSL 1.2・作者・CC BY-SA 4.0 へのリンク・SpellDash が変えたところ）が見える",
+    a.moreOpen === false && a.moreSummary === "詳しい記録" && !!a.source?.shown && a.source.text.includes("NGSL 1.2") && a.source.text.includes("Browne, C., Culligan, B. & Phillips, J. (2013)") && a.source.license === "CC BY-SA 4.0" && a.source.text.includes(PUBLIC.source.changes),
+    JSON.stringify({ open: a.moreOpen, summary: a.moreSummary, source: a.source }));
+  check("78.4 学習状況: 見える本文に古い状態名・習熟度の段の名前・XP の Lv・Pro が無い（XP 250000 の種でも）・3 タブ・カテゴリ別・XP の行は無い",
+    !OLD_NAMES.test(a.mainText) && !/[木銅銀金神] \d|ダイヤ|レジェンド/.test(a.mainText) && !a.tabs && !a.categories && !a.levelBar, (a.mainText.match(OLD_NAMES) ?? [""])[0] + (a.mainText.match(/[木銅銀金神] \d/) ?? [""])[0]);
+  check("78.4 学習状況: 語の記録と古い目安の鍵を書かない（読むだけ）・最高到達ランクは同じ値（4）・幕は出さない",
+    a.stats === s1.spelldash_word_stats && a.bookPace === null && a.peak === "4" && !a.curtain, JSON.stringify({ same: a.stats === s1.spelldash_word_stats, bookPace: a.bookPace, peak: a.peak }));
+
+  // ---- (2) 0 語の札と今日の分は終わり: 覚えた 0・あやふや 5（どれも今日数えた）----
+  const b = await read(seedOf({ learned: 0, unsure: 5, today: 5 }));
+  const byState = Object.fromEntries(b.cards.map((c) => [c.state, c]));
+  check("78.4 学習状況: 覚えた 0 語の札は押せない（リンクなし・「自力で正解すると、ここに入る。」）・あやふやに語があって今日の分が 0 なら「今日の分は終わり」（リンクなし）・これからは押せる",
+    byState.learned?.href === null && byState.learned?.note === "自力で正解すると、ここに入る。" && byState.unsure?.href === null && byState.unsure?.note === "今日の分は終わり" && byState.unsure?.count.startsWith("5") && byState.new?.href === "/?learn=new",
+    JSON.stringify(b.cards.map((c) => [c.state, c.count, c.href, c.note])));
+  check("78.4 学習状況: 赤ちゃん・よちよちまであと 120 語・目安は待ちの文（中心の学習で覚えた語がまだ無い）・最高到達ランクを 0 で置く",
+    b.rank === "赤ちゃん" && b.next === "120" && b.pace?.line === "学習を続けると、完了までの目安が表示されます。" && b.peak === "0" && b.errors.length === 0, JSON.stringify({ rank: b.rank, next: b.next, pace: b.pace, peak: b.peak, err: b.errors }));
+  const c0 = await read(seedOf({ learned: 0, unsure: 5, today: 2 }));
+  check("78.4 学習状況: あやふやのうち今日まだ数えていない語があれば「この単語を学ぶ」（今日の分 3）", c0.cards[1].href === "/?learn=unsure" && c0.cards[1].note === null, JSON.stringify(c0.cards[1]));
+  {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: seedOf({ learned: 0, unsure: 5, today: 5 }) });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForSelector('#learnCards .learn-card[data-state="learned"] .learn-card__note', { timeout: 8000 }).catch(() => {});
+    await page.click('#learnCards .learn-card[data-state="learned"]');
+    await page.click('#learnCards .learn-card[data-state="unsure"]');
+    await page.waitForTimeout(400);
+    const stay = new URL(page.url()).pathname;
+    const nameBox = await page.locator('#learnCards .learn-card[data-state="new"] .learn-card__name').boundingBox();
+    await page.mouse.click(nameBox.x + 4, nameBox.y + nameBox.height / 2); // 札の名前（リンクの外）を押してもリンクへ（リンクが札を覆う）
+    await page.waitForURL(/\?learn=new/, { timeout: 5000 }).catch(() => {});
+    check("78.4 学習状況: 押せない札（0 語・今日の分は終わり）を押しても移らない・押せる札はどこを押しても /?learn=new へ", stay === "/stats.html" && page.url().endsWith("/?learn=new"), JSON.stringify({ stay, url: page.url() }));
+    await page.close();
+  }
+
+  // ---- (3) 最高到達ランクが今より上: 留学生（6）・今 500 語 → 留学生のまま・あと M 語は今の数から（バイリンガル 2,350 − 500 = 1,850）。最高到達ランクは下げない ----
+  const c = await read(seedOf({ learned: 500, peak: 6 }));
+  check("78.4 学習状況: 最高到達ランク 留学生・今 500 語 → ランクは留学生（下げない）・覚えた 500 / 2,857・次のランクまであと 1,850 語（今の数から）・鍵は 6 のまま・下がった文なし",
+    c.rank === "留学生" && c.count === "500" && c.next === "1,850" && c.peak === "6" && !/下が/.test(c.mainText) && !c.curtain, JSON.stringify({ rank: c.rank, count: c.count, next: c.next, peak: c.peak }));
+  const up = await read(seedOf({ learned: 1180 }));
+  check("78.4 学習状況: 最高到達ランクが無く今 1,180 語 → 中学生を見せ、鍵を 4 に上げる（幕は出さない）", up.rank === "中学生" && up.peak === "4" && !up.curtain && up.errors.length === 0, JSON.stringify({ rank: up.rank, peak: up.peak }));
+
+  // ---- (4) アメリカ人: 全部覚えた → あと M 語の行なし・目安は「完了」 ----
+  const d = await read(seedOf({ learned: TOTAL }), { w: 1200, h: 900 });
+  check("78.4 学習状況: 全部覚えた → アメリカ人・覚えた 2,857 / 2,857・「次のランクまで」の行なし・これから 0 とあやふや 0 の札は押せない・目安は「完了」・鍵 8",
+    d.rank === "アメリカ人" && d.count === fmt(TOTAL) && d.next === null && d.cards[0].href === null && d.cards[1].href === null && d.cards[2].href === "/?learn=learned" && d.pace?.line === "完了" && d.peak === "8" && d.errors.length === 0,
+    JSON.stringify({ rank: d.rank, count: d.count, next: d.next, cards: d.cards.map((x) => x.href), pace: d.pace, peak: d.peak }));
+  const d2 = await read(seedOf({ learned: 2000, peak: 8 }), { w: 1200, h: 900 });
+  check("78.4 学習状況: 最高到達ランクがアメリカ人で今 2,000 語 → アメリカ人のまま・あと M 語の行なし・覚えた 2,000（今の数）", d2.rank === "アメリカ人" && d2.next === null && d2.count === "2,000", JSON.stringify({ rank: d2.rank, next: d2.next, count: d2.count }));
+
+  // ---- (5) 幅と昼夜: 320／390／1200 × 昼・夜で横スクロールなし・札の順（細い幅は上から、1200 は左から）・エラー 0 ----
+  {
+    const rows = [];
+    for (const [w, h] of [[320, 640], [390, 844], [1200, 900]]) for (const theme of ["light", "dark"]) {
+      const r = await read(s1, { w, h, theme });
+      const ordered = w >= 560 ? r.cards[0].left < r.cards[1].left && r.cards[1].left < r.cards[2].left && r.cards[0].top === r.cards[2].top : r.cards[0].top < r.cards[1].top && r.cards[1].top < r.cards[2].top;
+      rows.push({ w, theme, ok: r.scroll <= r.inner && ordered && r.count === "1,180" && r.errors.length === 0, scroll: r.scroll, inner: r.inner, ordered, err: r.errors[0] });
+    }
+    check("78.4 学習状況（320／390／1200 × 昼・夜）: 横スクロールなし・札はどの幅でもこれから・あやふや・覚えたの順・エラー 0", rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
+  }
+
+  // ---- (6) キーボード: 札のリンクと「詳しい記録」は Tab で届き、Enter で開く。深いリンク（#learnedWords）は畳みを開いてから送る ----
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: s1 });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForSelector("#learnCards a", { timeout: 8000 }).catch(() => {});
+    const seen = [];
+    for (let i = 0; i < 40 && seen.length < 5; i++) {
+      await page.keyboard.press("Tab");
+      const f = await page.evaluate(() => { const el = document.activeElement; return el?.closest("#learnCards") ? `card:${el.getAttribute("href")}` : el?.matches?.("#statsMore > summary") ? "more" : null; });
+      if (f && !seen.includes(f)) seen.push(f);
+    }
+    await page.focus("#statsMore > summary");
+    await page.keyboard.press("Enter");
+    const opened = await page.evaluate(() => document.getElementById("statsMore").open);
+    check("78.4 学習状況: Tab で 3 つの札のリンク（順に）と「詳しい記録」に届き、Enter で畳みが開く", JSON.stringify(seen) === JSON.stringify(["card:/?learn=new", "card:/?learn=unsure", "card:/?learn=learned", "more"]) && opened, JSON.stringify({ seen, opened }));
+    await page.close();
+    const deep = await read(s1, { w: 1200, h: 900, url: "/stats.html#learnedWords" });
+    check("78.4 学習状況: 前の深いリンク（#learnedWords）は「詳しい記録」を開いて送る", deep.moreOpen === true && deep.errors.length === 0, JSON.stringify({ open: deep.moreOpen }));
+  }
+
+  // ---- (7) ほかのタブで答えた（storage）: 開き直さずに数を描き直す ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => {
+      if (sessionStorage.getItem("seeded784")) return;
+      sessionStorage.setItem("seeded784", "1");
+      localStorage.setItem("spelldash_schema_version", "7");
+      localStorage.setItem("spelldash_onboarded", "1");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, seedOf({ learned: 119, peak: 0 }));
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForSelector("#learnCards a", { timeout: 8000 }).catch(() => {});
+    const before = await page.evaluate(() => [document.getElementById("learnCount").textContent, document.getElementById("learnRank").textContent]);
+    const other = await ctx.newPage();
+    await other.route(BASE + "/__other-784", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>other</title>" }));
+    await other.goto(BASE + "/__other-784");
+    await other.evaluate((id) => { const t = JSON.parse(localStorage.getItem("spelldash_word_stats")); t[id] = { playCount: 1, correctCount: 1, ls: 2, lsf: 1, lsAt: Date.now() }; localStorage.setItem("spelldash_word_stats", JSON.stringify(t)); }, PUB[119]);
+    await other.close();
+    await waitUntil(async () => (await page.evaluate(() => document.getElementById("learnCount").textContent)) === "120", 4000);
+    const after = await page.evaluate(() => [document.getElementById("learnCount").textContent, document.getElementById("learnRank").textContent, localStorage.getItem("spelldash_rank_peak")]);
+    check("78.4 学習状況: ほかのタブで 1 語覚えた（119 → 120）→ 開き直さずに 覚えた 120・よちよち（最高到達ランクも 1 に上がる）", JSON.stringify(before) === JSON.stringify(["119", "赤ちゃん"]) && JSON.stringify(after) === JSON.stringify(["120", "よちよち", "1"]) && page.errors.length === 0, JSON.stringify({ before, after, err: page.errors[0] }));
+    await ctx.close();
+  }
+
+  // ---- (8) 読み込みの CLS（1200・390 mobile・昼夜・80ms 遅延と遅延なし）----
+  {
+    const runs = {};
+    for (const [label, opts] of [["1200 80ms", { storage: s1 }], ["1200 0ms", { storage: s1, delay: 0 }], ["390 80ms", { width: 390, height: 844, mobile: true, storage: s1 }], ["390 夜 記録なし", { width: 390, height: 844, mobile: true, storage: { spelldash_placement: "done", spelldash_theme: "dark" } }]]) runs[label] = await loadCls("/stats.html", opts);
+    check("78.4 学習状況: 読み込みの CLS < 0.05（1200・390 mobile・記録あり／なし・昼夜・80ms 遅延と遅延なし）・エラー 0", Object.values(runs).every((r) => r.cls < 0.05 && r.errors.length === 0), JSON.stringify(runs));
+  }
+
+  // ---- (9) アカウントのアイコン（ログイン中）: 9 段のランクの名前（Lv なし）・絵は無いので頭文字・XP は使わない ----
+  {
+    const LOGIN = { spelldash_test_session: "1", spelldash_owner: "test-user" };
+    const avatar = async (url, storage, w = 1200) => {
+      const page = await newPage({ viewport: { width: w, height: 900 }, mobile: w < 1000, storage });
+      page.embReqs = 0;
+      page.modReqs = 0;
+      page.on("request", (r) => { const u = new URL(r.url()).pathname; if (u.startsWith("/assets/images/emblems/")) page.embReqs++; if (u.endsWith("/js/accountEmblem.js")) page.modReqs++; });
+      await page.goto(BASE + url, { waitUntil: "load" });
+      await waitUntil(async () => (await page.evaluate(() => document.getElementById("accountRank") && !document.getElementById("accountRank").hidden)), 6000);
+      await page.waitForTimeout(300);
+      const r = await page.evaluate(() => {
+        const row = document.getElementById("accountRank");
+        const av = document.getElementById("headerAvatar");
+        return { label: document.getElementById("avatarButton")?.getAttribute("aria-label"), row: row && !row.hidden ? row.querySelector('[aria-hidden="true"]')?.textContent.trim() : null, sr: row?.querySelector(".sr-only")?.textContent.trim() ?? null, imgs: av?.querySelectorAll("img").length ?? -1, letter: (av?.querySelector(".avatar__letter") ?? av)?.textContent.trim() };
+      });
+      r.emb = page.embReqs;
+      r.mod = page.modReqs;
+      r.errors = page.errors.slice(0, 1);
+      await page.close();
+      return r;
+    };
+    const rows = [];
+    for (const url of ["/stats.html", "/list.html", "/index.html"]) rows.push({ url, ...(await avatar(url, { ...seedOf({ learned: 500, peak: 4 }), ...LOGIN })) });
+    check("78.4 アカウントのアイコン: ログイン中・最高到達ランク 中学生（今 500 語）→ ボタンの名前「アカウントメニュー（中学生）」・メニューの行「中学生」（読み上げ「ランク 中学生」・Lv なし）・絵は読まず頭文字「T」（stats・list・index。XP 250000 は使わない）",
+      rows.every((r) => r.label === "アカウントメニュー（中学生）" && r.row === "中学生" && r.sr === "ランク 中学生" && r.imgs === 0 && r.letter === "T" && r.emb === 0 && r.mod === 1 && r.errors.length === 0), JSON.stringify(rows));
+    const noPeak = await avatar("/list.html", { ...seedOf({ learned: 1180 }), ...LOGIN }, 390);
+    check("78.4 アカウントのアイコン: 最高到達ランクがまだ無い端末は材料を後から読んで今の語数の段（1,180 語 → 中学生）", noPeak.label === "アカウントメニュー（中学生）" && noPeak.row === "中学生" && noPeak.errors.length === 0, JSON.stringify(noPeak));
+  }
+}
+
 // ===== 20. Batch 48: 2 台目の端末（ログイン・同期・マージ） =====
 // 上の createCloud が「クラウド」。端末の localStorage に spelldash_test_cloud（クラウドの id）を入れるとスタブがそこへ読み書きする。
 // seed は 1 回だけ入れる（newPage と違い、再読み込みや同期の書き込みを seed で上書きしない）
