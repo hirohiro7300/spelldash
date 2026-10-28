@@ -11934,8 +11934,9 @@ console.log("my words:");
 console.log("learning quality:");
 {
   // ヒント: 迷ったら次の1文字。見た時点で×扱い、残りを打っても自力扱いにならない
+  // Batch 78 段 6: マイ単語帳の語の Study は前のホームにだけあるので、旗を外したページ（newPageFlagOff）で（ヒント・メモの盤面は中心の学習と同じ）
   const todayKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
-  const page = await newPage({ storage: {
+  const page = await newPageFlagOff({ storage: {
     spelldash_category: "my",
     spelldash_streak: JSON.stringify({ last: todayKey, current: 1, best: 1, shields: 0 }), // 今日初プレイの祝いメッセージを外す
     spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "negotiate", ja: "交渉する" }]),
@@ -12318,7 +12319,8 @@ console.log("growth evidence:");
 console.log("challenge & quality:");
 {
   // Challenge 2回: 1回目はカテゴリ別ベスト、2回目は前回比
-  const page = await newPage({ storage: { spelldash_category: "ads", spelldash_mode: "challenge" } });
+  // Batch 78 段 6: Challenge とマイ単語帳の語の Study は前のホームにだけあるので、この節のホームは旗を外したページ（newPageFlagOff）で開く
+  const page = await newPageFlagOff({ storage: { spelldash_category: "ads", spelldash_mode: "challenge" } });
   await page.goto(BASE + "/index.html?t=2", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
   await page.press("#input", "Enter");
@@ -12335,7 +12337,7 @@ console.log("challenge & quality:");
 
   // Esc = 分からない（答え表示）、Ctrl+. = 発音（エラーなし・進行しない）、Tab は既定どおり次の要素へ（キーボードトラップなし）。ランクアップ演出（Lv1→2 = 木 1→木 2）
   const tomorrow = new Date(Date.now() + 20 * 3600000);
-  const page2 = await newPage({ storage: {
+  const page2 = await newPageFlagOff({ storage: {
     spelldash_category: "my",
     spelldash_xp: "95",
     spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "budget", ja: "予算" }]),
@@ -13427,7 +13429,8 @@ console.log("account emblem（アカウントの紋章）:");
     await page.waitForTimeout(800);
     const s = await avatarOf(page);
     await page.close();
-    const ch = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(4, { spelldash_xp: String(xpForLv(5) - 5), spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_level_boost: "2" }) });
+    // Challenge で XP を足す回は前のホームにだけある（Batch 78 段 6: 旗を外したページ newPageFlagOff で開く）
+    const ch = await newPageFlagOff({ viewport: { width: 1200, height: 900 }, storage: seedA(4, { spelldash_xp: String(xpForLv(5) - 5), spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_level_boost: "2" }) });
     await ch.addInitScript(AVLOG);
     await ch.goto(BASE + "/index.html?t=2", { waitUntil: "load" });
     await shownIs(ch, "中学生");
@@ -14827,6 +14830,9 @@ console.log("domain packs:");
 // 上限は実測の 2 倍以上（CI の揺れで落とさない）。待ちの中を見る検査は待ちの半分以下の時刻で見る
 console.log("after correct（入力完了から次の問題まで）:");
 {
+  // Batch 78 段 6: この節は前のホームの Study（ビジネス・続きの列・パック・マイ単語帳）で答えの道を測るので、旗を外したページ（newPageFlagOff）で開く。
+  // 答えの道（js/game.js completeWord・acceptChar・advance）は中心の学習と同じ。中心の学習の回は 78.3
+  const newPage = newPageFlagOff;
   const todayA = ymd(new Date());
   const bizA = JSON.parse(fs.readFileSync(path.join(ROOT, "data/english/business.json"), "utf8")).words;
   const packA = (pack) => JSON.parse(fs.readFileSync(path.join(ROOT, `data/packs/${pack}.json`), "utf8")).words;
@@ -16742,6 +16748,8 @@ console.log("prompt context:");
 // 出題語を打ち切ったらその場で正解（D1）、Enter は打った語で確定（D2）、続けて打った長い候補の続きは次の語の打鍵にしない（D3）
 console.log("judge (出題語が別の正解の先頭部分):");
 {
+  // Batch 78 段 6: 盤面の件は前のホームの続きの列（spelldash_session）・Challenge・マイ単語帳で出題するので、旗を外したページ（newPageFlagOff）で開く（判定は中心の学習と同じ）
+  const newPage = newPageFlagOff;
   const A = await import("../js/answers.js");
   // ---- Node だけで見るもの: 全パック（data/manifest.json の全カテゴリ）を有効にしたときの、綴り入力の全カード ----
   // 候補は game.js と同じ作り方: js/wordData.js loadCategory と同じ変換で全カードを読み、buildAlternativeIndex（js/wordStore.js initWordStore）、
@@ -19663,8 +19671,10 @@ console.log("sync (2nd device):");
   });
   const localStat = { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: isoDaysAgo(2), lastRecallSuccessAt: isoDaysAgo(2) };
 
-  async function syncDevice(storage, { dialog = "dismiss" } = {}) {
-    const page = await browser.newPage();
+  // flagOff: 英単語の学習に絞る旗を外したページ（前のホームの道・本棚と単語帳。newPageFlagOff と同じ。Batch 78 段 6）
+  async function syncDevice(storage, { dialog = "dismiss", flagOff = false } = {}) {
+    const page = await browser.newPage(flagOff ? { serviceWorkers: "block" } : {});
+    if (flagOff) await focusOff(page);
     page.errors = [];
     page.dialogs = [];
     page.on("pageerror", (e) => page.errors.push(e.message));
@@ -19692,9 +19702,13 @@ console.log("sync (2nd device):");
     document.dispatchEvent(new Event("visibilitychange"));
   });
   const login = (cloud, extra = {}) => ({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id, ...extra });
+  // 前のホームの道・本棚・単語帳を見る塊の頭で const syncDevice = syncDeviceFlagOff; と置く（同期の取り込みと書き込みは旗に関わらず同じ）
+  const syncDeviceFlagOff = (storage, opts = {}) => syncDevice(storage, { ...opts, flagOff: true });
 
   // (1) 空の端末にログインして開く: 語・現在地・今日のぶん・連続日数・解放が届き、トップページとチュートリアルは出ない
+  // Batch 78 段 6: 道・今日のチップ・錠は前のホームにだけあるので旗を外したページで（英単語のホームの同期は 78.4・78.6）
   {
+    const syncDevice = syncDeviceFlagOff;
     const cloud = createCloud(cloudTablesA());
     const page = await syncDevice(login(cloud)); // onboarded も無い、まっさらな端末
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
@@ -19717,8 +19731,10 @@ console.log("sync (2nd device):");
     check("同期: ログイン済みにはトップページを出さず道が見える", !(await visible(page, "#welcome")) && (await visible(page, "#pathCard")));
     check("同期: 「すでに使っている方はログイン」は hidden", await page.evaluate(() => document.getElementById("welcomeLogin")?.hidden === true));
     check("同期: 文「記録を同期した。」", (await txt(page, "#authMessage")) === "記録を同期した。", await txt(page, "#authMessage"));
-    const header = await page.evaluate(() => { const el = document.getElementById("headerStreak"); return el ? { hidden: el.hidden, text: el.textContent.trim() } : null; });
-    check("同期: ヘッダーの連続日数が開き直さずに出る", header && !header.hidden && header.text.includes("5"), JSON.stringify(header));
+    // ヘッダーの連続日数は Batch 78 段 5a から出さない（js/headerStreak.js HEADER_STREAK_SHOWN）。記録が開き直さずに届くことを見る
+    const header = await page.evaluate(() => { const el = document.getElementById("headerStreak"); return el ? { hidden: el.hidden, shown: el.getClientRects().length > 0, text: el.textContent.trim() } : null; });
+    const streakA = await lsJson(page, "spelldash_streak");
+    check("同期: 連続日数の記録（5 日）が開き直さずに届く・ヘッダーには出さない", streakA?.current === 5 && (!header || header.hidden || !header.shown), JSON.stringify({ header, streakA }));
     check("同期: チップが「途中」でなく済み（day 行）", !(await txt(page, "#todayStrip")).includes("途中") && (await page.$("#todayStrip .strip__chip--on")) !== null, await txt(page, "#todayStrip"));
     check("同期: Daily／Battle に錠が無い（30 語以上が届いた）", (await page.$$(".play-modes__lock")).length === 0, await txt(page, "#playModes"));
     check("同期: チュートリアルは既存の人として済み", (await lsJson(page, "spelldash_tutorial"))?.setDone === true, String(await ls(page, "spelldash_tutorial")));
@@ -19939,8 +19955,9 @@ console.log("sync (2nd device):");
     await page.close();
   }
 
-  // 単語帳: クラウドのマイ単語 3 語が開き直さずに出る
+  // 単語帳: クラウドのマイ単語 3 語が開き直さずに出る（単語帳は旗を外したページで開く。Batch 78 段 5b から旗の間はホームへ案内する）
   {
+    const syncDevice = syncDeviceFlagOff;
     const myItem = (en, ja, d) => ({ user_id: SYNC_USER, kind: "my_word", key: en, payload: { en, ja, addedAt: isoDaysAgo(d) }, deleted: false, updated_at: isoDaysAgo(d) });
     const cloud = createCloud({ word_progress: syncWords.map(wpRow), user_progress: [userProgress()], user_items: [myItem("negotiate", "交渉する", 5), myItem("invoice", "請求書", 4), myItem("deadline", "締め切り", 3)] });
     const page = await syncDevice(login(cloud));
@@ -19953,7 +19970,9 @@ console.log("sync (2nd device):");
   }
 
   // 本棚（Batch 61）: 2 台目の棚は届いた机の本とパックから組み立つ（移行が同期の前でも後でも同じ）。使っていない中学英語やり直しは出ない。shelf の行はクラウドに送らない
+  // （本棚は前のホームにだけあるので旗を外したページで。Batch 78 段 6）
   {
+    const syncDevice = syncDeviceFlagOff;
     const wordsIn = (cat) => { const raw = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", `${cat}.json`), "utf8")); return (Array.isArray(raw) ? raw : raw.words).filter((w) => !w.kanjiOnly); };
     const packRow = (id) => ({ user_id: SYNC_USER, kind: "pack", key: id, payload: { enabled: true }, deleted: false, updated_at: isoDaysAgo(1) });
     const shelfOn = async (page) => {
