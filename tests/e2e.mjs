@@ -10231,7 +10231,7 @@ console.log("mastery views:");
     check("習熟度 学習状況（詳しい記録）: 段の行は語数だけ（「知ってた」の内訳を出さない。Batch 78 段 4）", st.rows[0].count === "2 語" && st.rows[1].count === "2 語" && st.rows[2].count === "1 語" && !st.text.includes("知ってた"), JSON.stringify(st.rows.map((r) => r.count)));
     check("習熟度 学習状況（詳しい記録）: 目盛りの読み上げは「5段のうち N」（「習熟度」を重ねない・段の名前を読まない）・名前の欄は「段 N」・「%」が無い", st.rows.every((r) => r.aria === `5段のうち${r.rank}`) && !st.text.includes("%") && !RANK_NAMES.slice(1).some((n) => st.rows.some((r) => r.aria.includes(n))), JSON.stringify(st.rows.map((r) => r.aria)));
     // Batch 78 段 4（c6d846f）: 規則の文は段の名前を言わない短い形（RANK_RULE は段の名前を含むので学習状況には出さない）
-    check("習熟度 学習状況（詳しい記録）: 注記に「予測ではない」・段の上がり下がりの文・「この端末の記録から」・段の名前を言わない", st.note.includes("予測ではない") && st.note.includes("日をあけて間違えずに思い出せると段が上がり、思い出せなかった日は下がる。") && st.note.includes("この端末の記録から") && !RANK_NAMES.slice(1).some((n) => st.note.includes(n)), st.note);
+    check("習熟度 学習状況（詳しい記録）: 注記は「予測ではない」・段の上がり下がり・「この端末の記録から」の短い文（段の名前 即答・身についた・あやふや・まだ を言わない）", st.note.trim() === "答えた記録から決める（予測ではない）。日をあけて間違えずに思い出せると段が上がり、思い出せなかった日は下がる。最後に答えた時点の段。この端末の記録から。" && !["即答", "身についた", "あやふや", "まだ"].some((name) => st.note.includes(name)), st.note);
     // 畳みを閉じて開き直しても出る（前はタブの切り替えで消えないことを見ていた）
     await page.click("#statsMore > summary");
     await page.waitForTimeout(100);
@@ -20786,7 +20786,7 @@ console.log("learn modes (78.3):");
     // 紛らわしい語の注意は中心の学習の答え表示にも出る（前は 9.999 がマイ単語帳の adapt／adopt で見ていた。英単語の学習に絞ったホームの側。Batch 78 段 6）
     check("78.3 これから: 答え表示で紛らわしい語に「似た綴り」（make → take・male など公開の語。3 語まで）",
       makeFamily.includes("似た綴り: ") && makeFamily.split("似た綴り: ")[1].split("・").length <= 3 && /take|male|wake|lake|cake|mate|sake/.test(makeFamily.split("似た綴り: ")[1]), makeFamily);
-    // 中心の学習の「同じ訳」はそのカードの巻の中だけで見る（js/game.js isAmbiguousPrompt。公開の 2,857 語を毎問走査しない: 入力完了から次の問題まで）。
+    // 中心の学習の「同じ訳」はそのカードの巻の中だけで見る（js/game.js isAmbiguousPrompt。公開の全語を毎問走査しない: 入力完了から次の問題まで）。
     // people（ngsl01）と folk（ngsl15）は巻が違うので例文の訳は添えない（同じ巻の組は下の (1b)）
     check("78.3 これから: 巻の違う同じ訳（people・folk）には出題に例文の訳を添えない（同じ訳は巻の中だけで見る）", peopleCtx === "", peopleCtx);
     check("78.3 これから: 答えの 1 行は状態の言葉（覚えた・あやふやに移った・それも正解。この問題の語は…）", lines.when === "覚えた" && lines.think === "それも正解。この問題の語は think（覚えた）" && lines.make.startsWith("あやふやに移った") && lines.time.startsWith("あやふやに移った") && lines.people === "それも正解。この問題の語は people（覚えた）" && lines.see.includes("ヒントを見たので、あやふやに移る"), JSON.stringify(lines));
