@@ -84,6 +84,10 @@ export const HOLD = {
   "12. コース選択と制覇の演出": "H: コース選択と制覇",
   "12.5 Batch 47": "H: 「今日覚えた」の札とコースをまたぐ復習",
   "13. 道": "H: 道（コースのユニット）",
+  // U（内部の仕組み。単体が守る）のうち、今の木で落ちる節。前のホームの Study（ホームの Enter・カテゴリ・続きの列）で記録を作るので、
+  // 英単語のホーム（Batch 78 段 5b）では記録ができない。戻すなら塊を旗を外したページ（newPageFlagOff）で開く
+  "9.56 記憶の保持率": "U（落ちる）: 保持率と学習時間の書き手。数え方は test-retention",
+  "mastery writers": "U（落ちる）: 習熟度の書き手・期日・記録の質・送る 15 列。test-mastery・test-memory（sim-writers の固定入力）・test-recall",
 };
 const isHeld = (s) => Object.hasOwn(HOLD, s.key);
 
