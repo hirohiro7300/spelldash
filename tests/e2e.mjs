@@ -932,7 +932,9 @@ console.log("ime & queue:");
   const page = await newPage({ storage: { spelldash_placement: "done" } }); // 腕試し中はキューを畳むので、腕試し済みで
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
-  await page.press("#input", "Enter"); // Study開始
+  await page.press("#input", "Enter"); // ホームの Enter = 「英単語を学ぶ」（Batch 78 段 5b）。中心の学習の回に移ってから打つ
+  await page.waitForURL(/learn=new/, { timeout: 8000 }).catch(() => {});
+  await waitUntil(async () => (await page.textContent("#japanese")).trim() !== "", 8000);
   await page.waitForTimeout(250);
   // 日本語IMEを模擬: 変換開始→かなが入る→確定
   await page.evaluate(() => {
@@ -946,6 +948,16 @@ console.log("ime & queue:");
   check("IME確定後に入力欄が巻き戻る", (await page.inputValue("#input")) === "");
   check("日本語入力はミス扱いにしない", (await page.textContent("#miss")) === "0");
   check("英字モード案内が表示される", (await page.textContent("#message")).includes("英字モード"));
+  check("IMEフロー（中心の学習）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  await page.close();
+}
+// Studyキュー（Recall Loop の列）は前のホームの Study にだけある（中心の学習の回では出さない）。Batch 78 段 6: 旗を外したページ（newPageFlagOff）で見る
+{
+  const page = await newPageFlagOff({ storage: { spelldash_placement: "done" } });
+  await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+  await page.waitForTimeout(900);
+  await page.press("#input", "Enter"); // Study開始
+  await page.waitForTimeout(250);
   // Studyキュー: 答えを見てUnresolvedチップを出し、入力欄と重ならないことを確認
   await page.press("#input", "Enter"); // 答えを表示（recallFail→キューに赤チップ）
   await page.waitForTimeout(400);
@@ -957,7 +969,7 @@ console.log("ime & queue:");
     return separate ? "ok" : "overlap";
   });
   check("キューが入力欄と重ならない", overlap === "ok", `state=${overlap}`);
-  check("IME/キューフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
+  check("キューフロー（前のホームの Study）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
 
@@ -967,7 +979,9 @@ console.log("strict miss:");
   const page = await newPage();
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
-  await page.press("#input", "Enter"); // Study開始
+  await page.press("#input", "Enter"); // ホームの Enter = 「英単語を学ぶ」（Batch 78 段 5b）。中心の学習の回に移ってから打つ
+  await page.waitForURL(/learn=new/, { timeout: 8000 }).catch(() => {});
+  await waitUntil(async () => (await page.textContent("#japanese")).trim() !== "", 8000);
   await page.waitForTimeout(250);
   await page.press("#input", "1"); // 絶対に一致しない文字＝1ミス
   await page.waitForTimeout(300);
@@ -985,7 +999,9 @@ console.log("strict miss:");
 
 // 英字の答えの大小文字（Batch 69 T4。js/wordData.js answerLabel）: 判定は今と同じく小文字で比べ（cu と打っても正解）、
 // 答えの表示（1 ミスの後のスペル・完了パネルの語チップ）は元の綴り（Cu）。中学理科（jsci1）の Cu・Mg を続きから出す（セットは 2 語）
+// Batch 78 段 6: 中学理科の教材・続きの列・ホームの「今日覚えた」は前のホームにだけあるので、旗を外したページ（newPageFlagOff）で流す（盤面は中心の学習と同じ）
 {
+  const newPage = newPageFlagOff;
   const todayT4 = ymd(new Date());
   const js1T4 = JSON.parse(fs.readFileSync(path.join(ROOT, "data/packs/jsci1.json"), "utf8")).words;
   const cuT4 = js1T4.find((w) => w.id === "concept-js1-cu");
@@ -1072,7 +1088,9 @@ console.log("strict miss:");
 // 前は出題語の次の字を足していたので、別解の頭が出題語の長さを越えると「undefined」（start の問いで comme → commeundefined）、越えなくても違う字が
 // 入って次の打鍵が ×（picture の問いで ph → phc）。判定は変えない（ヒントの × は今どおり 1 回・別解を打ち切ると出題語を見せて打ち直させる）。
 // マイ単語帳の場面カード 2 枚（綴りで答える start〔別解 commence〕・picture〔別解 photo〕）を続きの列で出す
+// Batch 78 段 6: マイ単語帳と続きの列は前のホームにだけあるので、旗を外したページ（newPageFlagOff）で流す（ヒントの盤面は中心の学習と同じ）
 {
+  const newPage = newPageFlagOff;
   const todayH = ymd(new Date());
   const page = await newPage({ storage: {
     spelldash_category: "my", spelldash_placement: "done", spelldash_after_correct: "quick", spelldash_audio: JSON.stringify({ mode: "off" }),
@@ -7575,7 +7593,7 @@ console.log("study (finish):");
   // 残るのはフォントの差し替え（紙片の行数）と本棚が描かれる分で 0.006 前後。
   // PR #168 のレビュー 3・4・8: 判定は <head> の inline の 1 行（テーマの 1 行と同じ置き方。CSS より前）が html[data-first-visit] を置き、CSS（css/welcome.css）が
   // #main を隠し #welcome を出す（ページの中の置き場所に頼らない。js/welcome.js が hidden に置き換えて外す）。積んだ本は index.html に静的に置く（空きの高さの手計算を無くした）。
-  // 全応答 80ms 遅延・受付中（フッターの「SpellDash Pro」は取れてから足す）で、最初の描画（rAF。どちらの頁が見えるかは計算値の display）から初回の本・
+  // 全応答 80ms 遅延・受付中（前はフッターの「SpellDash Pro」を取れてから足した。Batch 78 段 5a からフッターに Pro は出さない）で、最初の描画（rAF。どちらの頁が見えるかは計算値の display）から初回の本・
   // 机はどの描画にも出ない・CLS < 0.02（目標 0.05。1200×900・1200×1100・390）。#play（アプリ内の深いリンク）と戻ってきた人は机のまま（初回の本は出ない）
   const firstVisit = async (w, h, mobile, { url = "/index.html", onboarded = false, storage = {}, quiet = false } = {}) => {
     const page = await newPage({ mobile, keepOnboarding: !onboarded, viewport: { width: w, height: h }, storage: { spelldash_theme: "light", ...storage } });
@@ -7615,8 +7633,8 @@ console.log("study (finish):");
     return r;
   };
   const fv = { "1200×900": await firstVisit(1200, 900, false), "1200×1100": await firstVisit(1200, 1100, false), "390×844": await firstVisit(390, 844, true) };
-  check("初回の書斎（Batch 66 H2）: 1200×900・1200×1100・390（全応答 80ms 遅延・受付中）で最初の描画から初回の本（机はどの描画にも出ない）・CLS < 0.02（目標 0.05）・フッターの「SpellDash Pro」は出る・js が引き継いだあと html[data-first-visit] は外れる・本棚は語の読み込みの後に中身つきで描かれる（空の本棚は出ない）",
-    Object.values(fv).every((r) => r.first === "W" && r.frames.length === 1 && r.open && r.cls < 0.02 && r.pro && !r.attr && r.shelfEmpty === 0 && r.shelf > 0), JSON.stringify(fv));
+  check("初回の書斎（Batch 66 H2）: 1200×900・1200×1100・390（全応答 80ms 遅延・受付中）で最初の描画から初回の本（机はどの描画にも出ない）・CLS < 0.02（目標 0.05）・フッターに「SpellDash Pro」は出さない（Batch 78 段 5a）・js が引き継いだあと html[data-first-visit] は外れる・本棚は語の読み込みの後に中身つきで描かれる（空の本棚は出ない）",
+    Object.values(fv).every((r) => r.first === "W" && r.frames.length === 1 && r.open && r.cls < 0.02 && !r.pro && !r.attr && r.shelfEmpty === 0 && r.shelf > 0), JSON.stringify(fv));
   const deep = await firstVisit(1200, 900, false, { url: "/index.html#play" }), back = await firstVisit(390, 844, true, { onboarded: true });
   check("初回の書斎（Batch 66 H2）: 学習記録の無い端末でも #play で来たときと、戻ってきた人（onboarded）は最初の描画から机のまま（初回の本はどの描画にも出ない）",
     deep.first === "M" && deep.frames.length === 1 && !deep.open && !deep.attr && back.first === "M" && back.frames.length === 1 && !back.open && !back.attr, JSON.stringify({ deep, back }));
@@ -16593,6 +16611,8 @@ console.log("prompt context:");
   // 受験生の指摘: 「話す」に talk と打つと1文字目で不正解になって答えられない
   console.log("alternative answers:");
   {
+    // Batch 78 段 6: ホームの ?words= は前の URL として外す（js/focus.js）ので、語を指す Study は旗を外したページ（newPageFlagOff）で開く（判定と盤面は中心の学習と同じ。中心の学習の別解は 78.3）
+    const newPage = newPageFlagOff;
     const seed = { spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" };
     const pageA = await newPage({ storage: seed });
     await pageA.goto(BASE + "/index.html?words=english-speak", { waitUntil: "networkidle" });
@@ -16697,6 +16717,7 @@ console.log("prompt context:");
 
   const seedP = { spelldash_course: "jhs-redo", spelldash_packs: JSON.stringify(["jhs-english1"]), spelldash_category: "jhs-english1", spelldash_placement: "done" };
   if (ambiguous && unique) {
+    const newPage = newPageFlagOff; // ?words= は旗を外したページで（上の別解と同じ）
     const page = await newPage({ storage: seedP });
     await page.goto(BASE + `/index.html?words=${ambiguous.id}`, { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
@@ -18060,7 +18081,9 @@ console.log("compact actions:");
   const page = await newPage({ mobile: true, viewport: { width: 390, height: 844 }, storage: { spelldash_osk: "off", spelldash_category: "business", spelldash_placement: "done", spelldash_level_boost: "2", spelldash_streak: JSON.stringify({ count: 1, last: todayH }) } });
   await page.goto(BASE + "/index.html?set=5", { waitUntil: "networkidle" });
   await page.waitForTimeout(900);
-  await page.press("#input", "Enter");
+  await page.press("#input", "Enter"); // ホームの Enter = 「英単語を学ぶ」（Batch 78 段 5b）。中心の学習の回に移ってから答えを見る
+  await page.waitForURL(/learn=new/, { timeout: 8000 }).catch(() => {});
+  await waitUntil(async () => (await page.textContent("#japanese")).trim() !== "", 8000);
   await page.waitForTimeout(300);
   await page.press("#input", "Enter"); // 答え表示
   await page.waitForTimeout(300);
