@@ -108,7 +108,8 @@ jobs:
   e2e:
     name: e2e (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 組は表で約 865 秒。ブラウザを入れる段が 9 分かかって 20 分で止まったことがある（2026-10-27 の 2 組）ので、ゆとりを見る
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
