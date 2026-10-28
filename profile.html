@@ -18,11 +18,11 @@
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
 
 
-  <meta name="description" content="今日のセットの長さ・発音・テーマ・アカウントの設定。" />
+  <meta name="description" content="発音・テーマ・バックアップ・アカウントの設定。" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="SpellDash" />
   <meta property="og:title" content="設定 | SpellDash" />
-  <meta property="og:description" content="今日のセットの長さ・発音・テーマ・アカウントの設定。" />
+  <meta property="og:description" content="発音・テーマ・バックアップ・アカウントの設定。" />
 <link rel="canonical" href="https://www.spelldash.net/profile.html" />
   <meta property="og:url" content="https://www.spelldash.net/profile.html" />
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png?v=2" />
@@ -347,7 +347,9 @@
             <button type="button" class="btn btn--sm btn--ghost" id="planPortal" hidden>解約・お支払いの管理</button>
           </span>
         </div>
-        <div class="setting-row">
+        <!-- ランキング表示名: Daily Dash のランキングにだけ効く（js/dailyRank.js）。英単語の学習に絞った間（html[data-focus]。js/focus.js）は Daily Dash が画面に無いので出さない。
+             値（spelldash_display_name・profiles.display_name）と保存の仕組みは残す（css/pages.css .setting-row--focus-off） -->
+        <div class="setting-row setting-row--focus-off">
           <label for="displayNameInput">ランキング表示名</label>
           <span class="voice-row">
             <input
@@ -366,7 +368,7 @@
 
       <div class="setting-row setting-row--stack" id="backupCard">
         <span class="setting-row__text">バックアップ</span>
-        <p class="setting-hint">学習の記録・覚えた単語・マイ単語帳・メモ・設定をファイルに書き出す。端末の買い替えや、ブラウザのデータ消去に備えて</p>
+        <p class="setting-hint">学習の記録と設定をファイルに書き出す。端末の買い替えや、ブラウザのデータ消去に備えて</p>
         <div class="backup-actions">
           <button type="button" class="btn btn--sm btn--ghost" id="backupExport" title="JSON">ファイルに書き出す</button>
           <label class="btn btn--sm btn--ghost backup-import">

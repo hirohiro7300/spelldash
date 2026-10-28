@@ -30,6 +30,7 @@ Share-Alike の範囲: SpellDash は「リストに由来する部分（語の�
 
 - 今: パックのページ（packs/ngsl*.html。scripts/build-pack-pages.mjs の「出典」の節）に、リスト名と配布元へのリンク・ライセンス名・頻度順位・「訳・品詞・例文は SpellDash が作成」を出す。作者名とライセンスへのリンクは無い。利用規約（terms.html「6. 教材と著作権」）は「出典を各パックのページに表記」と書く。
 - Batch 78 で、学習状況の画面と、規約または教材の情報から常に見られるようにする（創業者の決定 §1・§9-17）。表示は data/public/english.json の `source` を読む。パックのページは noindex で残してよい（決定 §1）。
+- 公開していないリスト（下の表の TSL・BSL・NAWL・NGSL-Spoken・NDL・CEFR-J）は data/ に残り配信されるので、出典とライセンスを利用規約の「6. 教材と著作権」の「公開していない教材のデータ」（terms.html#dataSources）に出す（創業者の決定 2026-10-28。Batch 78 段 6）。data/sources にリストを足したら規約にも足す（E2E 78.5 の (8) がファイルの名前と突き合わせる）。
 
 ## データとして残し、公開しないもの
 

@@ -2347,8 +2347,9 @@ html[data-theme] .setting-row--install:has(#installCard:empty) {
   display: none;
 }
 
-/* 出題の設定（今日のセットの長さ・音で出題）: 英単語の学習に絞った間（html[data-focus="english"]。js/focus.js。Batch 78 段 5）は出さない。値は残す */
-html[data-theme][data-focus="english"] .setting-row--question {
+/* 出題の設定（今日のセットの長さ・音で出題）と、外した遊び方にだけ効く設定（ランキング表示名: Daily Dash。Batch 78 段 6）: 英単語の学習に絞った間
+   （html[data-focus="english"]。js/focus.js。Batch 78 段 5）は出さない。値は残す */
+html[data-theme][data-focus="english"] :is(.setting-row--question, .setting-row--focus-off) {
   display: none;
 }
 

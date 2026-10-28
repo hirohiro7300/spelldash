@@ -10,9 +10,9 @@
 // 戻すとき: FOCUS_ENGLISH を false にし、index.html と profile.html の <html data-focus="english">（最初の描画の旗。CSS が見る）を外す。
 //
 // 古い URL（PRESTART「古い URL」・contradictions c5）:
-//   ホーム（index.html）の ?words=（単語帳の「苦手だけ練習」の回）・?add=（パックを足す）・?category=（教材・巻を選ぶ）・?from=old（転送と
-//     ページの守りが付けるしるし。?from= のほかの値〔typing など〕は古い URL ではない）→ 値は使わない（回を始めない・パックを足さない・鍵を書かない）。
-//     URL から外して、ホームに 1 行
+//   ホーム（index.html）の ?words=（単語帳の「苦手だけ練習」の回）・?add=（パックを足す）・?category=（教材・巻を選ぶ）・?genre=（分野の絞り込み）・
+//     ?from=old（転送とページの守りが付けるしるし。?from= のほかの値〔typing など〕は古い URL ではない）→ 値は使わない（回を始めない・パックを足さない・
+//     鍵を書かない）。URL から外して、ホームに 1 行。単語帳の #packs・#myWords（配信の転送は # を持ち越す: /list.html#packs → /?from=old#packs）も外す
 //   単語帳（list.html。マイ単語帳・#packs・#myWords・?add=・?category= を含む）→ js/listView.js が最初にページの守り（leaveOldScreen）
 //   /packs/* と /packs/ → vercel.json の転送（permanent: false）とページの守り（段 5a）が MOVED_URL へ
 //   保存した遊び方 spelldash_mode = challenge → ホームは中心の学習を始める（値は残す: js/game.js setMode の save: false）
@@ -39,7 +39,10 @@ export const MOVED_URL = `/?${MOVED_PARAM}=${MOVED_VALUE}`;
 export const LEARN_NEXT_URL = "/?learn=next";
 
 // ホームで「古い URL」とみなす引数（あれば値によらず）と、しるし ?from=old（index.html の <head> の 1 行〔id="focusMoved"〕も同じ決まり。E2E が突き合わせる）
-export const OLD_HOME_PARAMS = Object.freeze(["words", "add", "category"]);
+export const OLD_HOME_PARAMS = Object.freeze(["words", "add", "category", "genre"]);
+
+// 古い URL と一緒に来たら外す単語帳の #（ホームの # はほかに #login などがあるので、この 2 つだけ）
+export const OLD_HOME_HASHES = Object.freeze(["#packs", "#myWords"]);
 
 export function isFocusOn() {
   return FOCUS_ENGLISH;
@@ -81,6 +84,7 @@ export function takeOldHomeUrl() {
   try {
     const url = new URL(location.href);
     for (const k of found) url.searchParams.delete(k);
+    if (OLD_HOME_HASHES.includes(url.hash)) url.hash = "";
     history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
   } catch {
     // 無視（開き直すともう一度 1 行が出るだけ）

@@ -7386,7 +7386,9 @@ console.log("pages (書斎の皮):");
     ];
     for (const [form, storage] of FORMS_N3) {
       for (const mobile of [false, true]) {
-        const page = await newPage({ mobile, viewport: { width: 400, height: 800 }, storage: { spelldash_placement: "done", ...storage } });
+        // Batch 78 段 6（反証 rv5 M1）: ランキング表示名の行は Daily Dash のランキングにだけ効くので、英単語の学習に絞った間は出さない（78.6 の (6)）。
+        // 行の幅の決まりは前の形のまま守る: 旗を外したページ（newPageFlagOff）で測る
+        const page = await newPageFlagOff({ mobile, viewport: { width: 400, height: 800 }, storage: { spelldash_placement: "done", ...storage } });
         await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
         await page.waitForTimeout(200);
         const bad = [];
@@ -18458,10 +18460,20 @@ console.log("pro:");
 
     const week = Array.from({ length: 8 }, (_, i) => ({ date: ymdDaysAgo(7 - i), learned: 10 + i * 3, mastered: 0, active: true, v: 2 }));
     const open = JSON.stringify({ open: true, at: Date.now() });
-    const free = await newPage({ storage: { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week), spelldash_placement: "done" } });
+    // Batch 78 段 6（反証 rv5 shouldFix 3）: 英単語の学習に絞った間（旗あり）は、学習状況の「詳しい記録」の週間レポートにも Pro の 1 行を出さない
+    // （マイ単語帳・連続記録の修復は画面に出ない機能）。旗を外したページ（前の形）では前と同じに出す（決まり shouldShowWeeklyPro は残す）
+    const focused = await newPage({ storage: { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week), spelldash_placement: "done" } });
+    await focused.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await text(focused, "#weeklyReport")).includes("週間レポート"), 5000);
+    await focused.waitForTimeout(300);
+    check("動線: 英単語の学習に絞った間は、7 日以上学んだ free の週間レポートにも Pro の行を出さない（pro.html へのリンクなし）・エラー 0",
+      (await focused.$("#weeklyReport .weekly__pro")) === null && (await focused.$('#weeklyReport a[href="./pro.html"]')) === null && !(await text(focused, "#weeklyReport")).includes("Pro") && focused.errors.length === 0, await text(focused, "#weeklyReport"));
+    await focused.close();
+
+    const free = await newPageFlagOff({ storage: { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week), spelldash_placement: "done" } });
     await free.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await waitUntil(async () => (await text(free, "#weeklyReport")).includes("週間レポート"), 5000);
-    check("動線: 7 日以上学んだ free の週間レポートに「Pro なら、…」の 1 行", (await text(free, "#weeklyReport .weekly__pro")).startsWith("Pro なら、マイ単語帳 1,000語・連続記録の修復。") && (await free.$('#weeklyReport .weekly__pro a[href="./pro.html"]')) !== null, await text(free, "#weeklyReport"));
+    check("動線: 旗を外したページ（前の形）では、7 日以上学んだ free の週間レポートに「Pro なら、…」の 1 行", (await text(free, "#weeklyReport .weekly__pro")).startsWith("Pro なら、マイ単語帳 1,000語・連続記録の修復。") && (await free.$('#weeklyReport .weekly__pro a[href="./pro.html"]')) !== null, await text(free, "#weeklyReport"));
     await free.close();
 
     const short = await newPage({ storage: { spelldash_billing_open: open, spelldash_growth_log: JSON.stringify(week.slice(-3)), spelldash_placement: "done" } });
@@ -19238,6 +19250,16 @@ console.log("78.5 導線と検索:");
       Object.values(hidden).every((v) => /noindex/.test(v ?? "")) && Object.entries(main).every(([p, v]) => (p === "/tokushoho.html" ? /noindex/.test(v ?? "") : v === null)), JSON.stringify({ hidden, main }));
     check("検索: sitemap.xml は /・学習状況・設定・お知らせ・プライバシー・規約の 6 つだけ（単語帳・分野パック・タイピング・Battle・Pro は載せない）",
       JSON.stringify(locs) === JSON.stringify(["/", "/stats.html", "/profile.html", "/news.html", "/privacy.html", "/terms.html"]), JSON.stringify(locs));
+    // Service Worker の先読み（sw.js CORE_ASSETS）に、配信の転送（vercel.json の redirects。ホスト名の転送は除く）が受けるパスを入れない。
+    // 入れると install（cache.addAll は転送を追う）が転送後の応答（redirected）をそのパスで保存し、オフラインでそのページを開くとブラウザが
+    // 応答を断る（ページ遷移は転送を自分で追う決まり。Batch 78 段 6。反証 rv5 shouldFix 2: オフラインの /list.html がブラウザのエラーの画面になった）
+    const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+    const moved = (vercel.redirects ?? []).filter((r) => !(r.has ?? []).some((h) => h.type === "host")).map((r) => new RegExp(`^${r.source.replace(/[.]/g, "\\.").replace(/\/:[a-z]+\*/gi, "(/.*)?").replace(/:[a-z]+/gi, "[^/]+")}$`));
+    const swSrc = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
+    const core = [...(swSrc.match(/const CORE_ASSETS = \[([^\]]*)\]/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    const precacheMoved = core.filter((p) => moved.some((re) => re.test(p)));
+    check("検索: Service Worker の先読み（sw.js CORE_ASSETS）に、配信の転送が受けるパス（/list.html・/packs/*）が無い（オフラインで開けなくなる）・転送の規則は 3 つ・先読みは 10 ページ以上",
+      moved.length === 3 && moved.some((re) => re.test("/list.html")) && moved.some((re) => re.test("/packs/ngsl01.html")) && core.length >= 10 && precacheMoved.length === 0, JSON.stringify({ precacheMoved, core }));
   }
 
   // (5) 古い画面の URL: 分野パックのページ（NGSL の巻も）と一覧はページの守りで英単語のホーム（/?from=old）へ。履歴に古いページを残さない（location.replace）。
@@ -19315,18 +19337,36 @@ console.log("78.5 導線と検索:");
       rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 2)));
   }
 
-  // (8) 出典（受け入れ 17）: 規約の 5・6 は学習状況の「教材について」（stats.html#vocabSource）を指す・最終更新日 2026年10月27日・リンクで学習状況の「教材について」が見える。
-  //     Battle とタイピングは直接開けば今のまま動く（ナビは同じ 4 つ・現在地なし。中身は節 7.5・7.6・Battle の節が見る）
+  // (8) 出典（受け入れ 17）: 規約の 5・6 は学習状況の「教材について」（stats.html#vocabSource）を指す・最終更新日 2026年10月28日・リンクで学習状況の「教材について」が見える。
+  //     Battle とタイピングは直接開けば今のまま動く（ナビは同じ 4 つ・現在地なし。中身は節 7.5・7.6・Battle の節が見る）。
+  //     公開していない教材のデータ（data/ は配信される: data/packs の TSL・BSL・NAWL の巻と data/sources の元のリスト）の出典とライセンスは、規約の 6 の
+  //     「公開していない教材のデータ」（#dataSources）に出す（創業者の決定 2026-10-28。data/sources のどのリストの名前も載る・CC BY-SA 4.0 へのリンク・配布元へのリンク）
   {
     const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: RETURNING });
     await page.goto(BASE + "/terms.html", { waitUntil: "networkidle" });
     const terms = await page.evaluate(() => ({ links: [...document.querySelectorAll('main a[href="./stats.html#vocabSource"]')].map((a) => a.textContent.trim()), date: document.querySelector(".subtitle")?.textContent.trim(), old: document.querySelector("main").textContent.includes("各パック") }));
+    // data/sources の元のファイルの名前から、リストの名前（NGSL-Spoken_1.2_… → NGSL-Spoken 1.2・cefrj-vocabulary-profile-1.5 → CEFR-J … 1.5）
+    const SOURCE_DIR = path.join(ROOT, "data", "sources");
+    const listNames = [...new Set(fs.readdirSync(SOURCE_DIR).flatMap((d) => fs.statSync(path.join(SOURCE_DIR, d)).isDirectory() ? fs.readdirSync(path.join(SOURCE_DIR, d)) : [])
+      .filter((f) => /\.(csv|txt)$/.test(f)).map((f) => (/^cefrj-vocabulary-profile-([\d.]+)\./.test(f) ? `CEFR-J Vocabulary Profile ${f.match(/-([\d.]+)\.csv$/)[1]}` : f.match(/^([A-Za-z-]+)_([\d.]+)_/)?.slice(1, 3).join(" ") ?? f)))];
+    const data = await page.evaluate(() => {
+      const el = document.getElementById("dataSources");
+      const box = el ? [el, el.nextElementSibling].filter(Boolean) : [];
+      const text = box.map((e) => e.textContent.replace(/\s+/g, " ")).join(" ");
+      const links = box.flatMap((e) => [...e.querySelectorAll("a[href]")]).map((a) => a.getAttribute("href"));
+      return { shown: !!el && el.getClientRects().length > 0, inSix: !!el && el.previousElementSibling?.tagName === "P" && [...document.querySelectorAll("main h3")].some((h) => h.textContent.includes("6. 教材と著作権") && h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING), text, links };
+    });
+    const missing = listNames.filter((n) => n !== "NGSL 1.2" && !data.text.includes(n));
+    check(`出典: 規約の 6 に「公開していない教材のデータ」（#dataSources）・data/sources の ${listNames.length} のリスト（${listNames.join("・")}）の名前がすべて載る・CC BY-SA 4.0 と配布元へのリンク・CEFR-J の作者と利用条件`,
+      listNames.length >= 8 && data.shown && data.inSix && data.text.includes("公開していない教材のデータ") && missing.length === 0 && data.text.includes("CC BY-SA 4.0") &&
+      data.links.includes("https://creativecommons.org/licenses/by-sa/4.0/") && data.links.includes("https://www.newgeneralservicelist.com/") && data.text.includes("投野由紀夫") && data.text.includes("Browne"),
+      JSON.stringify({ missing, listNames, data }));
     await Promise.all([page.waitForURL(/stats\.html#vocabSource$/, { timeout: 8000 }).catch(() => {}), page.click('main a[href="./stats.html#vocabSource"]')]);
     await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
     await page.waitForFunction(() => document.getElementById("vocabSourceBody")?.textContent.trim().length > 0, null, { timeout: 8000 }).catch(() => {});
     const src = await page.evaluate(() => { const el = document.getElementById("vocabSource"); const b = el?.getBoundingClientRect(); return { title: document.getElementById("vocabSourceTitle")?.textContent.trim(), ngsl: /NGSL|New General Service List/.test(el?.textContent ?? ""), h: Math.round(b?.height ?? 0) }; });
-    check("出典: 規約の 5・6 の 2 か所が学習状況の「教材について」を指す（「各パック」の文は無い）・最終更新日 2026年10月27日・押すと学習状況の「教材について」（NGSL）が出る・エラー 0",
-      terms.links.length === 2 && terms.links.every((t) => t === "学習状況の「教材について」") && terms.date === "最終更新日: 2026年10月27日" && !terms.old && src.title === "教材について" && src.ngsl && src.h > 0 && page.errors.length === 0,
+    check("出典: 規約の 5・6 の 2 か所が学習状況の「教材について」を指す（「各パック」の文は無い）・最終更新日 2026年10月28日・押すと学習状況の「教材について」（NGSL）が出る・エラー 0",
+      terms.links.length === 2 && terms.links.every((t) => t === "学習状況の「教材について」") && terms.date === "最終更新日: 2026年10月28日" && !terms.old && src.title === "教材について" && src.ngsl && src.h > 0 && page.errors.length === 0,
       JSON.stringify({ terms, src, url: page.url(), err: page.errors[0] }));
     await page.close();
   }
@@ -19646,11 +19686,14 @@ console.log("78.4 学習状況とランク:");
         title: document.querySelector("#growth h3")?.textContent.trim(),
         trend: document.getElementById("growthTrend")?.textContent.trim(),
         aria: document.querySelector("#growthTrend svg")?.getAttribute("aria-label") ?? null,
-        monthly: document.getElementById("monthlySummary")?.textContent.trim()
+        monthly: document.getElementById("monthlySummary")?.textContent.trim(),
+        modes: (document.getElementById("statsMore")?.innerText ?? "").match(/[^\n]*(Challenge|Daily)[^\n]*/g) ?? []
       }));
       check(`78.4 詳しい記録（${label}）: 推移の見出しは「思い出せるようになった語の推移（30日）」・推移と今月のまとめに「覚えた」が無い`,
         r.open === true && r.title === "思い出せるようになった語の推移（30日）" && ![r.trend, r.aria, r.monthly].some((t) => (t ?? "").includes("覚えた")) && (label === "推移なし" || r.aria === "思い出せるようになった語の推移") && page.errors.length === 0,
         JSON.stringify({ ...r, err: page.errors[0] }));
+      // スコアを作る遊び方（Challenge・Daily Dash）は画面に無い: 開いた「詳しい記録」でそれを遊ぶよう誘わない（スコアの記録が無い人には節ごと出さない。反証 rv5 shouldFix 8）
+      check(`78.4 詳しい記録（${label}）: 「Challenge」「Daily」の文が無い（スコア推移の空の誘いを出さない）`, r.modes.length === 0, JSON.stringify(r.modes));
       await page.close();
     }
   }
@@ -20321,8 +20364,9 @@ console.log("home and old URLs (78.6):");
     }
   }
 
-  // (4) 古い URL: ホームの ?words= ?add= ?category= ?from=old（転送とパックのページの守りのしるし）・単語帳（list.html・#packs・#myWords・?add=・?category=）→ 英単語のホームに 1 行だけ。
-  // 引数は URL から外す・回を始めない・パックを足さない・保存の鍵は消さない（値も変えない）・開き直すと 1 行は出ない
+  // (4) 古い URL: ホームの ?words= ?add= ?category= ?genre= ?from=old（転送とパックのページの守りのしるし）・単語帳（list.html・#packs・#myWords・?add=・?category=）→ 英単語のホームに 1 行だけ。
+  // 引数は URL から外す・回を始めない・パックを足さない・保存の鍵は消さない（値も変えない）・開き直すと 1 行は出ない。
+  // 配信の転送（vercel.json）は # を持ち越すので、/list.html#packs は /?from=old#packs に着く: 単語帳の # も外す（Batch 78 段 6。反証 rv5 shouldFix 10）
   {
     const seed = {
       spelldash_word_stats: JSON.stringify(stateOf(vocab.order.slice(0, 3), { ls: 2 })),
@@ -20330,7 +20374,7 @@ console.log("home and old URLs (78.6):");
       spelldash_my_words: JSON.stringify([{ en: "river", ja: "川" }]), spelldash_session: JSON.stringify({ category: "jhist1", queue: ["a"], date: "2026-01-01" }),
       spelldash_book_pace: JSON.stringify({ v: 1, at: 1, b: {} }), spelldash_set_size: "25"
     };
-    const URLS = ["/index.html?words=english-when,english-think", "/?add=accounting", "/?category=jhist1", "/?from=old", "/list.html", "/list.html#myWords", "/list.html#packs", "/list.html?add=accounting", "/list.html?category=ngsl01"];
+    const URLS = ["/index.html?words=english-when,english-think", "/?add=accounting", "/?category=jhist1", "/?category=jhist1&genre=action", "/?from=old", "/?from=old#packs", "/?from=old#myWords", "/list.html", "/list.html#myWords", "/list.html#packs", "/list.html?add=accounting", "/list.html?category=ngsl01"];
     const rows = [];
     for (const u of URLS) {
       const page = await homePage(seed);
@@ -20347,11 +20391,11 @@ console.log("home and old URLs (78.6):");
       const url = new URL(page.url());
       await page.reload({ waitUntil: "networkidle" });
       const again = (await homeView(page)).note;
-      rows.push({ u, note: v.note, url: url.pathname + url.search, playing, lost, again, errs: page.errors.length });
+      rows.push({ u, note: v.note, url: url.pathname + url.search, hash: url.hash, playing, lost, again, errs: page.errors.length });
       await closeCtx(page);
     }
-    const bad = rows.filter((r) => r.note !== 1 || /words=|add=|category=|from=/.test(r.url) || !["/", "/index.html"].includes(r.url) || r.playing || r.lost.length || r.again !== 0 || r.errs);
-    check(`78.6 古い URL（${URLS.length} 通り）: 英単語のホームに「英単語の学習にまとめました。」1 行だけ・引数は URL から外す・回を始めない・保存の鍵は消さず値も変えない・開き直すと 1 行は出ない・エラー 0`,
+    const bad = rows.filter((r) => r.note !== 1 || /words=|add=|category=|genre=|from=/.test(r.url) || !["/", "/index.html"].includes(r.url) || r.hash !== "" || r.playing || r.lost.length || r.again !== 0 || r.errs);
+    check(`78.6 古い URL（${URLS.length} 通り）: 英単語のホームに「英単語の学習にまとめました。」1 行だけ・引数（?genre= も）と単語帳の #（#packs・#myWords）は URL から外す・回を始めない・保存の鍵は消さず値も変えない・開き直すと 1 行は出ない・エラー 0`,
       bad.length === 0, JSON.stringify(bad.length ? bad : rows.slice(0, 2)));
     // ?from= のほかの値（タイピング練習からの ?from=typing）は古い URL ではない: 1 行は出さず、引数も外さない
     {
@@ -20377,11 +20421,11 @@ console.log("home and old URLs (78.6):");
       }
       history.replaceState(null, "", "/index.html");
       return out;
-    }, ["", "?words=a", "?add=b", "?category=c", "?from=old", "?from=typing", "?from=", "?login=1", "?learn=next", "?moved=1", "?t=5&category=x"]);
+    }, ["", "?words=a", "?add=b", "?category=c", "?genre=action", "?from=old", "?from=typing", "?from=", "?login=1", "?learn=next", "?moved=1", "?t=5&category=x"]);
     await closeCtx(fm);
-    const want = { "": false, "?words=a": true, "?add=b": true, "?category=c": true, "?from=old": true, "?from=typing": false, "?from=": false, "?login=1": false, "?learn=next": false, "?moved=1": false, "?t=5&category=x": true };
-    check("78.6 古い URL: index.html の <head> の 1 行（id=focusMoved）と js/focus.js oldHomeParams は 11 通りで同じ答え（?words= ?add= ?category= と ?from=old だけ）",
-      heads.length === 11 && heads.every((h) => h.head === want[h.q] && h.js === want[h.q]), JSON.stringify(heads.filter((h) => h.head !== want[h.q] || h.js !== want[h.q])));
+    const want = { "": false, "?words=a": true, "?add=b": true, "?category=c": true, "?genre=action": true, "?from=old": true, "?from=typing": false, "?from=": false, "?login=1": false, "?learn=next": false, "?moved=1": false, "?t=5&category=x": true };
+    check("78.6 古い URL: index.html の <head> の 1 行（id=focusMoved）と js/focus.js oldHomeParams は 12 通りで同じ答え（?words= ?add= ?category= ?genre= と ?from=old だけ）",
+      heads.length === 12 && heads.every((h) => h.head === want[h.q] && h.js === want[h.q]), JSON.stringify(heads.filter((h) => h.head !== want[h.q] || h.js !== want[h.q])));
   }
 
   // (5) 保存した遊び方が Challenge: ホームは中心の学習（見えない入力欄の Enter でも Challenge を始めない）・spelldash_mode は challenge のまま（机に戻っても）
@@ -20402,20 +20446,25 @@ console.log("home and old URLs (78.6):");
     await closeCtx(page);
   }
 
-  // (6) 設定: 出題の設定（今日のセットの長さ・音で出題）を出さない。値は残す。テーマ・発音・バックアップ・アカウントは出る
+  // (6) 設定: 出題の設定（今日のセットの長さ・音で出題）を出さない。値は残す。テーマ・発音・バックアップ・アカウントは出る。
+  //     ログイン中: ランキング表示名（Daily Dash のランキングにだけ効く）も出さない。値（spelldash_display_name）は残す（Batch 78 段 6。反証 rv5 M1）
   {
-    const page = await homePage({ spelldash_set_size: "25", spelldash_audio: JSON.stringify({ mode: "off", listenRatio: 50 }) });
+    const page = await homePage({ spelldash_set_size: "25", spelldash_audio: JSON.stringify({ mode: "off", listenRatio: 50 }), spelldash_test_session: "1", spelldash_display_name: "hiro" });
     await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => !document.getElementById("profileCard").hidden), 4000);
     const p = await page.evaluate(() => {
       const vis = (sel) => { const el = document.querySelector(sel); return !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0; };
       return {
-        hidden: ["#setSizeSelect", "#listenSelect"].map(vis), shown: ["#themeSelect", "#audioModeSelect", "#afterCorrectSelect", "#backupExport", "#tutorialReset"].map(vis),
-        size: localStorage.getItem("spelldash_set_size"), listen: JSON.parse(localStorage.getItem("spelldash_audio") || "{}").listenRatio,
+        hidden: ["#setSizeSelect", "#listenSelect", "#displayNameInput", "#displayNameStatus"].map(vis), shown: ["#themeSelect", "#audioModeSelect", "#afterCorrectSelect", "#backupExport", "#tutorialReset", "#profileEmail"].map(vis),
+        size: localStorage.getItem("spelldash_set_size"), listen: JSON.parse(localStorage.getItem("spelldash_audio") || "{}").listenRatio, name: localStorage.getItem("spelldash_display_name"),
+        desc: [document.querySelector('meta[name="description"]')?.content, document.querySelector('meta[property="og:description"]')?.content],
         text: document.querySelector("main").innerText
       };
     });
-    check("78.6 設定: 今日のセットの長さ・音で出題は出さない（値 25・50 は残る）・テーマ・発音・正解のあと・バックアップ・チュートリアルは出る・「学習データ」と言わない",
-      p.hidden.every((x) => !x) && p.shown.every(Boolean) && p.size === "25" && p.listen === 50 && !p.text.includes("学習データ") && !/今日のセットの長さ|音で出題/.test(p.text), JSON.stringify({ ...p, text: undefined }));
+    check("78.6 設定: 今日のセットの長さ・音で出題・ランキング表示名は出さない（値 25・50 と表示名の鍵は残る）・テーマ・発音・正解のあと・バックアップ・チュートリアル・ログイン中は出る・「学習データ」「Daily」「ランキング」「マイ単語帳」と言わない",
+      p.hidden.every((x) => !x) && p.shown.every(Boolean) && p.size === "25" && p.listen === 50 && !!p.name && !p.text.includes("学習データ") && !/今日のセットの長さ|音で出題|Daily|ランキング|マイ単語帳/.test(p.text), JSON.stringify({ ...p, text: undefined }));
+    check("78.6 設定: ページの説明（description・og:description）とバックアップの説明に、出さない設定と機能（今日のセットの長さ・マイ単語帳）の名前が無い",
+      p.desc.length === 2 && p.desc.every((d) => !!d && !/今日のセットの長さ|マイ単語帳/.test(d)) && !/マイ単語帳/.test(p.text), JSON.stringify(p.desc));
     check("78.6 設定: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
     await closeCtx(page);
   }
@@ -21079,11 +21128,16 @@ console.log("learn modes (78.3):");
       end.panel.includes("10語 終わり") && rows.every((r) => r.shown[0] === q[10] && r.prog === "これから 0 / 10" && r.panel === ""), JSON.stringify({ end: end.panel, rows: rows.map(({ shown, prog, panel }) => ({ shown, prog, panel })) }));
     check("78.3 開き直し: セットの終わりの後に 2 回開き直しても、セットの数・今日のセット・回の終わりの知らせは 1 のまま・書き手は 10 回のまま（二重に数えない）",
       end.marks.total === "1" && end.marks.today === 1 && end.marks.ends === "1" && end.writes === 10 && rows.every((r) => JSON.stringify(r.marks) === JSON.stringify(end.marks) && r.writes === 10), JSON.stringify({ end: end.marks, rows: rows.map((r) => r.marks) }));
-    // 机に戻ると柱と出題の設定は元に戻る（中心の学習の回の印を外す）
+    // 机に戻ると柱と出題の設定は元に戻る（中心の学習の回の印を外す）。ナビの現在地: 回の間は「英単語を学ぶ」、戻るとホーム（Batch 78 段 6。反証 rv5 shouldFix 1）
+    const navCurrent = () => page.evaluate(() => [...document.querySelectorAll(".site-nav [aria-current]")].map((a) => `${a.textContent.trim()}=${a.getAttribute("aria-current")}`));
+    const curIn = await navCurrent();
     await page.click("#backToPath");
     await page.waitForTimeout(200);
     const back = await page.evaluate(() => ({ run: document.body.classList.contains("learn-run"), head: document.getElementById("learnHead")?.hidden ?? null }));
     check("78.3 回の画面: 机に戻ると回の印（body.learn-run・柱の「英単語」）を外す", !back.run && back.head === true, JSON.stringify(back));
+    const curBack = await navCurrent();
+    check("78.3 回の画面: ナビの現在地（aria-current=page）は回の間は「英単語を学ぶ」だけ・机に戻るとホームだけ",
+      JSON.stringify(curIn) === JSON.stringify(["英単語を学ぶ=page"]) && JSON.stringify(curBack) === JSON.stringify(["ホーム=page"]), JSON.stringify({ curIn, curBack }));
     check("78.3 開き直し（セットの終わり）: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
     await page.context().close();
   }

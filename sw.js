@@ -1,8 +1,12 @@
 // SpellDash Service Worker
 // 方針: Network First（デプロイが即反映される）＋オフライン時はキャッシュへフォールバック。
 // Supabase等のクロスオリジンには一切触らない。
-const CACHE_NAME = "spelldash-v4";
+// v5（Batch 78）: 先読みから /list.html を外した。前の版（v4）が持つ単語帳と分野パックの古いページは activate で消える
+const CACHE_NAME = "spelldash-v5";
 
+// 先読みのページ。配信の転送（vercel.json の redirects）が受けるパス（/list.html・/packs/*）は入れない: cache.addAll は転送を追うので、
+// 転送の後の応答（redirected）をそのパスで保存し、オフラインでそのページを開くとブラウザが応答を断る（ページ遷移の応答は転送を含めない決まり）。
+// E2E 78.5 の (4) が vercel.json と突き合わせる
 const CORE_ASSETS = [
   "/",
   "/index.html",
@@ -10,7 +14,6 @@ const CORE_ASSETS = [
   "/stats.html",
   "/profile.html",
   "/news.html",
-  "/list.html",
   "/pro.html",
   "/privacy.html",
   "/terms.html",

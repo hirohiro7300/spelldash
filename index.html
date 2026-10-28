@@ -13,10 +13,10 @@
        ページの中の置き場所に頼らない）。js/welcome.js が hidden に置き換えて印を外す。条件は js/welcome.js の shouldShowWelcome と同じ（鍵・空の文字列と壊れた JSON の読み方。
        E2E が同じ状態の表で 2 つを突き合わせる）。変えるときは両方を変える -->
   <script id="firstVisit">(() => { try { const s = localStorage, q = new URLSearchParams(location.search), w = s.getItem("spelldash_word_stats"); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys((w && JSON.parse(w)) || {}).length > 0 || ["set","words","t","weekly","category","genre","mode"].some((k) => q.has(k)) || ["new","unsure","learned","next"].includes((q.get("learn") || "").trim()) || location.hash === "#play") return; document.documentElement.dataset.firstVisit = ""; } catch {} })();</script>
-  <!-- 英単語の学習に絞ったホーム（html[data-focus="english"]。js/focus.js）: 古い URL（?words= ?add= ?category= と、転送・ページの守りのしるし ?from=old。
+  <!-- 英単語の学習に絞ったホーム（html[data-focus="english"]。js/focus.js）: 古い URL（?words= ?add= ?category= ?genre= と、転送・ページの守りのしるし ?from=old。
        js/focus.js OLD_HOME_PARAMS・MOVED_URL と同じ決まり）で来たら、最初の描画から 1 行「英単語の学習にまとめました。」を出す（html[data-moved]。
        CSS が #focusNote を出す。js/focus.js takeOldHomeUrl が引数を URL から外す） -->
-  <script id="focusMoved">(() => { try { const q = new URLSearchParams(location.search); if (document.documentElement.dataset.focus === "english" && (["words","add","category"].some((k) => q.has(k)) || q.get("from") === "old")) document.documentElement.dataset.moved = ""; } catch {} })();</script>
+  <script id="focusMoved">(() => { try { const q = new URLSearchParams(location.search); if (document.documentElement.dataset.focus === "english" && (["words","add","category","genre"].some((k) => q.has(k)) || q.get("from") === "old")) document.documentElement.dataset.moved = ""; } catch {} })();</script>
 
   <link rel="stylesheet" href="./css/reset.css" />
   <link rel="stylesheet" href="./css/fonts.css" />

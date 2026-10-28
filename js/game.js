@@ -921,6 +921,13 @@ function setLearnScreen(on) {
   document.body.classList.toggle("learn-run", on);
   const head = document.getElementById("learnHead");
   if (head) head.hidden = !on;
+  // ナビの現在地（読み上げの「現在のページ」）: 回の間は「英単語を学ぶ」（/?learn=next）、机に戻るとホーム（Batch 78 段 6。反証 rv5 shouldFix 1）
+  const home = document.querySelector('.site-nav a[href="/"]');
+  const learn = document.querySelector('.site-nav a[href="/?learn=next"]');
+  if (!home || !learn) return;
+  const [now, other] = on ? [learn, home] : [home, learn];
+  now.setAttribute("aria-current", "page");
+  other.removeAttribute("aria-current");
 }
 
 // 中心の学習を始める（入口・パネルの「続けて学ぶ」から）。材料（出題の列の module・3 状態の材料・公開の 24 巻）を読んでから、

@@ -8,6 +8,7 @@ import { isPro } from "./plan.js";
 import { getWordStats, getSessionLog, loadLearnStates, learnStateSource, recordsEpoch, STORAGE_KEY } from "./storage.js";
 import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
+import { isFocusOn } from "./focus.js";
 import { renderRetention } from "./retention.js";
 import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCounts } from "./learnedWords.js";
@@ -455,9 +456,14 @@ function renderScoreTrend() {
   if (!container) return;
 
   const log = getSessionLog().slice(-20);
+  // 英単語の学習に絞った間（js/focus.js）は、スコアを作る遊び方（Challenge・Daily Dash）が画面に無い: 記録の無い人には節ごと出さず、遊ぶよう誘わない
+  // （前に遊んだ人の推移はそのまま出す。Batch 78 段 6。反証 rv5 shouldFix 8）
+  const card = container.closest(".result-card");
+  const empty = log.length < 2;
+  if (card) card.hidden = empty && isFocusOn();
 
-  if (log.length < 2) {
-    container.innerHTML =
+  if (empty) {
+    container.innerHTML = isFocusOn() ? "" :
       '<p class="score-trend__empty">ChallengeやDaily Dashを遊ぶと、スコアの推移がここに出る。</p>';
     return;
   }
