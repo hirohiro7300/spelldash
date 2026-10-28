@@ -18393,10 +18393,11 @@ console.log("pro:");
 
   // 2b. 知る: フッターの「SpellDash Pro」（受付中のときだけ）と、7 日以上学んだ人の週間レポートの 1 行（Pro には出さない）
   {
+    // Batch 78 段 5a: フッターに Pro を出さない（js/footer.js。受付中かどうかの控えは前と同じ頁で取り直す）。前は受付中なら「SpellDash Pro」を足した
     const page = await newPage();
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    const linked = await waitUntil(async () => (await page.$(".site-footer__nav [data-footer-pro]")) !== null, 5000);
-    check("動線: 受付中ならフッターに「SpellDash Pro」", linked && (await text(page, ".site-footer__nav [data-footer-pro]")) === "SpellDash Pro");
+    await page.waitForTimeout(1200);
+    check("動線: 受付中でもフッターに「SpellDash Pro」は出さない（Batch 78 段 5a）", (await page.$(".site-footer__nav [data-footer-pro]")) === null);
     await page.close();
 
     const closed = await newPage({ storage: { spelldash_billing_open: JSON.stringify({ open: false, at: Date.now() }) } });
@@ -18513,9 +18514,10 @@ console.log("pro:");
   }
 
   // 2f. 受付前（キャッシュが閉じている）: 上限の文に Pro の話とリンクを出さない
+  // （マイ単語帳は旗の間はホームへ案内するので、旗を外したページ newPageFlagOff で開く。Batch 78 段 6）
   {
     const hundred = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ en: `word${i}`, ja: `語${i}` })));
-    const page = await newPage({ storage: { spelldash_billing_open: JSON.stringify({ open: false, at: Date.now() }), spelldash_my_words: hundred } });
+    const page = await newPageFlagOff({ storage: { spelldash_billing_open: JSON.stringify({ open: false, at: Date.now() }), spelldash_my_words: hundred } });
     await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
     const status = await waitUntil(async () => (await text(page, "#myWordStatus")).includes("100語まで"), 5000);
     check("Pro: 受付前は上限の文が「無料で追加できるのは100語まで。」だけ（Pro の話もリンクも無い）", status && (await text(page, "#myWordStatus")) === "無料で追加できるのは100語まで。" && (await page.$('#myWordStatus a[href="./pro.html"]')) === null, await text(page, "#myWordStatus"));
@@ -18571,8 +18573,9 @@ console.log("pro:");
     await page2.close();
   }
 
-  // 6. マイ単語帳: free は 100 語で止まる（「Pro について」）。Pro は追加できる
+  // 6. マイ単語帳: free は 100 語で止まる（「Pro について」）。Pro は追加できる（旗を外したページで。2f と同じ）
   {
+    const newPage = newPageFlagOff;
     const hundred = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ en: `word${String.fromCharCode(97 + Math.floor(i / 26))}${String.fromCharCode(97 + (i % 26))}`, ja: `語${i}` })));
     const page = await newPage({ storage: { spelldash_my_words: hundred } });
     await page.goto(BASE + "/list.html#myWords", { waitUntil: "networkidle" });
@@ -18736,13 +18739,14 @@ console.log("pro:");
     check("Pro: 全 12 ページのフッターにプライバシーの直後の特商法リンク", missing.length === 0, missing.join(","));
     const privacy = fs.readFileSync(path.join(ROOT, "privacy.html"), "utf8");
     check("Pro: privacy.html に「お支払い情報」の節と Stripe のポリシーへのリンク", privacy.includes("<h3>お支払い情報</h3>") && /href="https:\/\/stripe\.com\/jp\/privacy"[^>]*rel="noopener"/.test(privacy) && privacy.includes("Stripe, Inc."));
-    check("Pro: sitemap に pro.html と tokushoho.html、sw の precache にも", (() => { const sm = fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8"); const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8"); return sm.includes("/pro.html") && sm.includes("/tokushoho.html") && sw.includes('"/pro.html"') && sw.includes('"/tokushoho.html"'); })());
+    check("Pro: sitemap には pro.html と tokushoho.html を載せない（Batch 78 段 5a: Pro は主導線の外・特商法は noindex の間）、sw の precache には残る", (() => { const sm = fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8"); const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8"); return !sm.includes("/pro.html") && !sm.includes("/tokushoho.html") && sw.includes('"/pro.html"') && sw.includes('"/tokushoho.html"'); })());
   }
 
   // 12. 覚え方の解説: 無料ぶんを使い切った（429・upgrade）→ message と「Pro について」
+  // （マイ単語帳の語の Study は前のホームにだけあるので、旗を外したページ newPageFlagOff で開く。Batch 78 段 6）
   {
     const today = ymdDaysAgo(0);
-    const page = await newPage({ storage: { spelldash_test_session: "1", spelldash_placement: "done", spelldash_category: "my", spelldash_my_words: JSON.stringify([{ en: "limit", ja: "限界" }]), spelldash_streak: JSON.stringify({ last: today, current: 1, best: 1, shields: 0 }) } });
+    const page = await newPageFlagOff({ storage: { spelldash_test_session: "1", spelldash_placement: "done", spelldash_category: "my", spelldash_my_words: JSON.stringify([{ en: "limit", ja: "限界" }]), spelldash_streak: JSON.stringify({ last: today, current: 1, best: 1, shields: 0 }) } });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     await page.press("#input", "Enter");
