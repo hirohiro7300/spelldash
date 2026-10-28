@@ -9544,21 +9544,21 @@ console.log("book pace:");
     await page.close();
     return r;
   };
-  const rows3 = [[0, 14], [-3, 7], [-9, 7]]; // 進み 28・3 日・始めて 30 日（14 日で割る）・残り 2,857 − 2,178 = 679 → 679×14÷28 = 339.5 → 約340日
+  const rows3 = [[0, 14], [-3, 7], [-9, 7]]; // 進み 28・3 日・始めて 30 日（14 日で割る）・残り 総数 − 2,178（680）→ 680×14÷28 = 340 → 約340日
   const sl = seedLearn(rows3, { fill: 2150, start: 30 });
   const a = await readCard(sl);
   check("目安 学習状況: 3 つの札の下（覚えたの条件の文の後）に「全部覚えるまでの目安」・前の「一冊を終えるまでの目安」の札は無い",
     a.exists && !a.hidden && a.head === "全部覚えるまでの目安" && a.afterRule && a.inStatus && !a.oldCard, JSON.stringify({ exists: a.exists, hidden: a.hidden, head: a.head, after: a.afterRule, old: a.oldCard }));
-  check("目安 学習状況: 1 行と注（進み 28・14 日・残り 679 → 約340日・「覚えた で数えています。」）",
+  check("目安 学習状況: 1 行と注（進み 28・14 日・残り 総数 − 2,178 → 約340日・「覚えた で数えています。」）",
     JSON.stringify(a.lines) === JSON.stringify(["全部覚えるまでの目安", "今のペースなら、あと約340日です。", `${NOTE}この端末の記録から計算しています。`]) && JSON.stringify(a.bold) === JSON.stringify(["340"]),
     JSON.stringify({ lines: a.lines, bold: a.bold }));
   check("目安 学習状況: 読むだけ（古い鍵 spelldash_book_pace を作らない）・読み上げの live なし・エラー0", a.key === null && a.live === false && a.errors.length === 0, JSON.stringify({ key: a.key, err: a.errors[0] }));
   const fresh = await readCard(seedLearn([[0, 10], [-2, 10], [-4, 10]], { fill: 2500 }));
-  check("目安 学習状況: 記録を始めて 5 日なら 5 日で割る（進み 30・残り 327 → 327×5÷30 = 54.5 → 約55日）", fresh.lines[1] === "今のペースなら、あと約55日です。", JSON.stringify(fresh.lines));
+  check("目安 学習状況: 記録を始めて 5 日なら 5 日で割る（進み 30・残り 総数 − 2,530（328）→ 328×5÷30 = 54.7 → 約55日）", fresh.lines[1] === "今のペースなら、あと約55日です。", JSON.stringify(fresh.lines));
   const wait2 = await readCard(seedLearn([[0, 300], [-3, 300]], { fill: 1000 }));
   check("目安 学習状況: 進んだ日が 2 日なら日数を出さず待ちの文と注", JSON.stringify(wait2.lines) === JSON.stringify(["全部覚えるまでの目安", WAIT, NOTE]), JSON.stringify(wait2.lines));
   const long = await readCard(seedLearn([[0, 1], [-1, 1], [-2, 1]], { start: 30 }));
-  check("目安 学習状況: 365 日を超える日数（2,854×14÷3）は出さず待ちの文", JSON.stringify(long.lines) === JSON.stringify(wait2.lines), JSON.stringify(long.lines));
+  check("目安 学習状況: 365 日を超える日数（（総数 − 3）×14÷3）は出さず待ちの文", JSON.stringify(long.lines) === JSON.stringify(wait2.lines), JSON.stringify(long.lines));
   const migrated = await readCard(seedLearn(null, { fill: 2500, start: 3 }));
   check("目安 学習状況: 移行で覚えた語（印なし）だけなら進みは 0 で待ちの文（覚えたには入る）", JSON.stringify(migrated.lines) === JSON.stringify(wait2.lines), JSON.stringify(migrated.lines));
   const none = await readCard({ spelldash_placement: "done" });
@@ -19432,11 +19432,11 @@ console.log("78.4 学習状況とランク:");
   const s1 = seedOf({ learned: 1180, paced: 300, unsure: 120, today: 30, peak: 4 });
   const a = await read(s1);
   const want = { new: TOTAL - 1300, unsure: 120, learned: 1180 };
-  check("78.4 学習状況: 題は「学習状況」（title も）・覚えた 1,180 / 2,857・ランク 中学生・次のランクまであと 220 語（高校生 1,400 − 1,180）",
+  check(`78.4 学習状況: 題は「学習状況」（title も）・覚えた 1,180 / ${fmt(TOTAL)}・ランク 中学生・次のランクまであと 220 語（高校生 1,400 − 1,180）`,
     a.h1 === "学習状況" && a.title.startsWith("学習状況") && a.count === "1,180" && a.total === fmt(TOTAL) && a.rank === "中学生" && a.next === "220" && a.nextLine === "次のランクまであと 220 語" && a.errors.length === 0,
     JSON.stringify({ h1: a.h1, title: a.title, count: a.count, total: a.total, rank: a.rank, next: a.nextLine, err: a.errors }));
   const counts = a.cards.map((c) => Number(c.count.replace(/[^\d]/g, "")));
-  check("78.4 学習状況: 3 つの札はこれから・あやふや・覚えたの順で、語数（1,557・120・1,180）の和が総数",
+  check(`78.4 学習状況: 3 つの札はこれから・あやふや・覚えたの順で、語数（${fmt(TOTAL - 1300)}・120・1,180）の和が総数`,
     JSON.stringify(a.cards.map((c) => c.state)) === JSON.stringify(["new", "unsure", "learned"]) && JSON.stringify(a.cards.map((c) => c.name)) === JSON.stringify(["これから", "あやふや", "覚えた"]) &&
       JSON.stringify(counts) === JSON.stringify([want.new, want.unsure, want.learned]) && counts.reduce((x, y) => x + y, 0) === TOTAL,
     JSON.stringify(a.cards.map((c) => [c.state, c.count])));
@@ -19483,14 +19483,14 @@ console.log("78.4 学習状況とランク:");
 
   // ---- (3) 最高到達ランクが今より上: 留学生（6）・今 500 語 → 留学生のまま・あと M 語は今の数から（バイリンガル 2,350 − 500 = 1,850）。最高到達ランクは下げない ----
   const c = await read(seedOf({ learned: 500, peak: 6 }));
-  check("78.4 学習状況: 最高到達ランク 留学生・今 500 語 → ランクは留学生（下げない）・覚えた 500 / 2,857・次のランクまであと 1,850 語（今の数から）・鍵は 6 のまま・下がった文なし",
+  check(`78.4 学習状況: 最高到達ランク 留学生・今 500 語 → ランクは留学生（下げない）・覚えた 500 / ${fmt(TOTAL)}・次のランクまであと 1,850 語（今の数から）・鍵は 6 のまま・下がった文なし`,
     c.rank === "留学生" && c.count === "500" && c.next === "1,850" && c.peak === "6" && !/下が/.test(c.mainText) && !c.curtain, JSON.stringify({ rank: c.rank, count: c.count, next: c.next, peak: c.peak }));
   const up = await read(seedOf({ learned: 1180 }));
   check("78.4 学習状況: 最高到達ランクが無く今 1,180 語 → 中学生を見せ、鍵を 4 に上げる（幕は出さない）", up.rank === "中学生" && up.peak === "4" && !up.curtain && up.errors.length === 0, JSON.stringify({ rank: up.rank, peak: up.peak }));
 
   // ---- (4) アメリカ人: 全部覚えた → あと M 語の行なし・目安は「完了」 ----
   const d = await read(seedOf({ learned: TOTAL }), { w: 1200, h: 900 });
-  check("78.4 学習状況: 全部覚えた → アメリカ人・覚えた 2,857 / 2,857・「次のランクまで」の行なし・これから 0 とあやふや 0 の札は押せない・目安は「完了」・鍵 8",
+  check(`78.4 学習状況: 全部覚えた → アメリカ人・覚えた ${fmt(TOTAL)} / ${fmt(TOTAL)}・「次のランクまで」の行なし・これから 0 とあやふや 0 の札は押せない・目安は「完了」・鍵 8`,
     d.rank === "アメリカ人" && d.count === fmt(TOTAL) && d.next === null && d.cards[0].href === null && d.cards[1].href === null && d.cards[2].href === "/?learn=learned" && d.pace?.line === "完了" && d.peak === "8" && d.errors.length === 0,
     JSON.stringify({ rank: d.rank, count: d.count, next: d.next, cards: d.cards.map((x) => x.href), pace: d.pace, peak: d.peak }));
   const d2 = await read(seedOf({ learned: 2000, peak: 8 }), { w: 1200, h: 900 });
@@ -20320,7 +20320,7 @@ console.log("home and old URLs (78.6):");
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
     await waitUntil(async () => (await homeView(page)).ready, 6000);
     const v = await homeView(page);
-    check("78.6 ホーム: 数は今の状態から（覚えた 130 ／ 2,857・ランク よちよち）・次に学ぶのは あやふや（今日の分 3語）・ボタンは「英単語を学ぶ」1 つ（/?learn=next）・学習状況へのリンク",
+    check(`78.6 ホーム: 数は今の状態から（覚えた 130 ／ ${vocab.total.toLocaleString("ja-JP")}・ランク よちよち）・次に学ぶのは あやふや（今日の分 3語）・ボタンは「英単語を学ぶ」1 つ（/?learn=next）・学習状況へのリンク`,
       v.learned === "130" && v.total === vocab.total.toLocaleString("ja-JP") && v.rank === "よちよち" && v.mode === "あやふや" && v.sub === "今日の分 3語" &&
       v.start.text === "英単語を学ぶ" && v.start.href === "/?learn=next" && v.start.vis && v.starts.filter((x) => x === "英単語を学ぶ").length === 1 && v.status.vis && v.status.href === "./stats.html", JSON.stringify({ ...v, room: undefined }));
     check("78.6 ホーム: 本棚・ほかの遊び方・Daily の札・出題の設定・連続日数・はちゃんの紙片・目次・積んだ本は出ない", v.hidden.length === 0, v.hidden.join(","));
@@ -20844,7 +20844,7 @@ console.log("learn modes (78.3):");
     check("78.3 これから: 公開の版のカードを出す（基本カテゴリの同じ id の訳ではない: time は「時間・時」）", timeJa.trim() === "時間・時" && baseJa === "時間", JSON.stringify({ timeJa, baseJa }));
     const panel = await panelText(page);
     const c1 = await counts(page);
-    check("78.3 これから: 回の終わり「10語 終わり」・今回 覚えた 7・あやふや 3・覚えた 122 / 2,857・続けて学ぶ・学習状況", panel.includes("10語 終わり") && /今回 覚えた 7/.test(panel) && /あやふや 3/.test(panel) && panel.includes(`覚えた 122 / ${vocab.total.toLocaleString("ja-JP")}`) && panel.includes("続けて学ぶ") && panel.includes("学習状況") && c1.learned === 122 && c1.unsure === 3, JSON.stringify({ panel, c1 }));
+    check(`78.3 これから: 回の終わり「10語 終わり」・今回 覚えた 7・あやふや 3・覚えた 122 / ${vocab.total.toLocaleString("ja-JP")}・続けて学ぶ・学習状況`, panel.includes("10語 終わり") && /今回 覚えた 7/.test(panel) && /あやふや 3/.test(panel) && panel.includes(`覚えた 122 / ${vocab.total.toLocaleString("ja-JP")}`) && panel.includes("続けて学ぶ") && panel.includes("学習状況") && c1.learned === 122 && c1.unsure === 3, JSON.stringify({ panel, c1 }));
     const rank = await page.evaluate(() => ({ text: document.querySelector(".rank-up")?.textContent.replace(/\s+/g, " ").trim() ?? "", img: document.querySelectorAll(".rank-up img").length, peak: localStorage.getItem("spelldash_rank_peak"), sr: document.getElementById("srStatus").textContent }));
     check("78.3 これから: 回の終わりに 1 回だけランクアップの幕（赤ちゃん → よちよち・文字だけ）・最高到達ランク 1", rank.text.includes("ランクアップ") && rank.text.includes("赤ちゃん") && rank.text.includes("よちよち") && rank.img === 0 && rank.peak === "1" && rank.sr.includes("よちよち"), JSON.stringify(rank));
     const words = (await panelText(page)) + (await page.evaluate(() => document.getElementById("gameCard").innerText));

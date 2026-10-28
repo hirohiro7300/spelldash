@@ -7,7 +7,7 @@ SpellDash が使う外部の語彙リストの出典と、その扱い。元の�
 
 ## 公開する教材「英単語」: NGSL 1.2
 
-公開する 2,857 語（data/public/english.json。形は docs/PACK_FORMAT.md「公開する英単語」）は、NGSL 1.2 の 2,809 語と、SpellDash が足した 48 語。
+公開する 2,858 語（data/public/english.json。形は docs/PACK_FORMAT.md「公開する英単語」）は、NGSL 1.2 の 2,809 語と、SpellDash が足した 49 語。
 
 | 項目 | 中身 |
 |---|---|
@@ -19,7 +19,8 @@ SpellDash が使う外部の語彙リストの出典と、その扱い。元の�
 | 使った所 | 語の選定と順位（CSV の SFI Rank）。scripts/build-openlist-packs.mjs が 24 巻（data/packs/ngsl01〜24.json）に切った。語形の一覧（NGSL_1.2_lemmatized_for_research.csv）は例文の語形の候補と、タイピング練習の長文の語の照合（scripts/build-typing-long.mjs）に使った |
 
 SpellDash が変えたこと:
-- 数・曜日・月の 48 語を足した。NGSL に無い語で、ngsl01 の頭に置く（scripts/build-openlist-packs.mjs の SUPPLEMENTARY。one・may・march は NGSL の語なので足していない）。公開の表では順位 0。
+- 数・曜日・月の 49 語を足した。NGSL に無い語で、ngsl01 の頭に置く（scripts/build-openlist-packs.mjs の SUPPLEMENTARY。one・may・march は NGSL の語なので SUPPLEMENTARY からは外す）。公開の表では順位 0。
+  - 49 語のうち 1 語は 5月（english-may-month）。NGSL の may は助動詞（english-may・NGSL の順位つき）で、月の May は別の項目として足した（創業者の決定 2026-10-28。同じ綴りで別の項目にするカード: docs/PACK_FORMAT.md「同じ綴りで別の項目」。生成器の SENSE_SUPPLEMENTARY）。march は 1 枚のまま（NGSL の語。月の意味の項目は足していない）。
 - 訳・品詞・例文・別解は SpellDash が書いた。品詞と難しさ（level）の初期値は CEFR-J を参照した（下の表。scripts/build-openlist-packs.mjs の頭の注釈）。
 - 学ぶ順は NGSL の順位のまま。機能語（tags[0] が fn。前置詞・接続詞・代名詞など）122 語だけを最後に回した（data/public/english.json の order）。
 - 同じことを data/public/english.json の `source.changes` に 1 文で持つ（生成器 scripts/build-public-vocab.mjs が数から作る）。
