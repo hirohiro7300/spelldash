@@ -19845,7 +19845,10 @@ console.log("sync (2nd device):");
     check("同期: 1 語目で答えを見てもチュートリアルの札が出ない", !(await visible(page, "body > .coach:not(.coach--out)")), await txt(page, "body > .coach"));
 
     // (10) ログアウト → 文と同期済みの印 → 同じタブで再ログインすると、同期がもう一度走る
-    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    // 直前の答えの送信（前のページの pagehide の keepalive の POST）は、負荷が高いと返事がページに届かず、networkidle が来ない（4 組を並べた全件で
+    // 30 秒切れで投げた。負荷をかけて 6 回に 2 回。Batch 78 段 6）。ここは load と、押すアカウントの丸を待つ
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    await page.waitForSelector("#avatarButton", { state: "visible", timeout: 10000 });
     await page.waitForTimeout(400);
     await page.click("#avatarButton");
     await page.click("#logoutButton");
@@ -19885,6 +19888,40 @@ console.log("sync (2nd device):");
     await page.evaluate(() => window.__stubAuth.signIn());
     const again = await waitUntil(async () => cloud.log.slice(mark1).some((e) => e.table === "word_progress" && e.kind === "select"), 5000);
     check("再ログイン（英単語の学習に絞ったホーム）: 同じタブで取り込みがもう一度走る・エラー 0", again && page.errors.length === 0, JSON.stringify({ again, errors: page.errors.slice(0, 2) }));
+    await page.close();
+  }
+
+  // (1'') ログアウトの後にこの端末で学んだ（未ログインで中心の学習の 1 語）: 同じアカウントでログインし直しても、足す前にたずねる（js/sync.js learnedSinceLogout。
+  // 決定 §8「ログイン・ログアウト…で別人の状態を混ぜない」。前は単体 test-learn-state だけが見ていた: Batch 78 段 6）。キャンセルならクラウドに何も書かず、
+  // ログアウトの後の答えも端末に残す（消さない）。次のログインでまたたずねる（ログアウトの時刻を残す）
+  {
+    const cloud = createCloud(cloudTablesA());
+    const page = await syncDevice(login(cloud), { dialog: "dismiss" });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const synced = await ownerSet(page);
+    await waitUntil(async () => (await txt(page, "#authMessage")) === "記録を同期した。", 7000);
+    await page.click("#avatarButton");
+    await page.click("#logoutButton");
+    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログアウト"), 3000);
+    const logoutAt = Date.parse((await ls(page, "spelldash_logout_at")) ?? "");
+    await page.goto(BASE + "/index.html?learn=new", { waitUntil: "load" }); // ログアウトの送信（keepalive）で networkidle を待たない（上の (10) と同じ）
+    await waitUntil(() => page.evaluate(() => document.body.classList.contains("learn-run") && document.activeElement?.id === "input" && !!document.getElementById("japanese")?.textContent.trim()), 8000);
+    await page.waitForTimeout(500); // 次の語が出てから 300ms は答え表示の Enter を受けない（js/afterCorrect.js）
+    await page.press("#input", "Enter"); // 答え表示 → あやふや
+    const guestAnswer = async () => Object.entries((await lsJson(page, "spelldash_word_stats")) || {}).filter(([, s]) => s?.ls === 1 && Number(s.lsAt) > logoutAt).map(([id]) => id);
+    const answered = await waitUntil(async () => (await guestAnswer()).length === 1, 4000);
+    const mark = cloud.log.length;
+    const dialogsBefore = page.dialogs.length;
+    await page.evaluate(() => window.__stubAuth.signIn());
+    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
+    const after = {
+      dialogs: page.dialogs.slice(dialogsBefore), writes: cloud.writes(null, mark).filter((e) => e.table !== "funnel_events").map((e) => e.table),
+      kept: await guestAnswer(), logoutKept: (await ls(page, "spelldash_logout_at")) !== null, session: await ls(page, "spelldash_test_session"), msg: await txt(page, "#authMessage")
+    };
+    check("ログアウトの後に学んだ端末で同じアカウントに再ログイン: 「この端末の記録を、このアカウントの記録に足す。…」をたずね、キャンセルでクラウドに何も書かずログインをやめる・ログアウトの後の答え（あやふや）は端末に残る・次のログインでまたたずねる（ログアウトの時刻は残る）・エラー 0",
+      synced && logoutAt > 0 && answered && after.dialogs.length === 1 && after.dialogs[0].startsWith("この端末の記録を、このアカウントの記録に足す。") && after.writes.length === 0 &&
+        after.kept.length === 1 && after.logoutKept && after.session === null && after.msg === "ログインをやめた。記録はこの端末に残る。" && page.errors.length === 0,
+      JSON.stringify({ synced, logoutAt, answered, after, errors: page.errors.slice(0, 2) }));
     await page.close();
   }
 
