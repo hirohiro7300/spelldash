@@ -59,11 +59,19 @@ export function crossesPos(a, b) {
   return a.surePos.length > 0 && b.surePos.length > 0 && !a.pos.some((p) => b.pos.includes(p));
 }
 
+// 別解の索引を引く鍵（buildAlternativeIndex の鍵・acceptedAnswers の既定の鍵）。ふつうのカードは綴り（en）。同じ綴りで別の項目にしたカード
+// （sense の欄があるカード: 5月の May〔english-may-month〕と助動詞の may〔english-may〕。Batch 78・docs/PACK_FORMAT.md「同じ綴りで別の項目」）は
+// カードの id で引く。綴りで引くと 5月の問いに助動詞の訳の別解（might）が混ざる。sense の欄の無いカード（今の全部の語・マイ単語帳）の鍵は今のまま
+export function altLookupKey(w) {
+  return typeof w?.sense === "string" && w.sense ? w.id : w?.en;
+}
+
 // en → 別解の集合。全カードの訳を見て、同じ訳を持つ語どうしを結ぶ。
 // ただし品詞をまたぐ組は結ばない（Batch 69。PR #175 で札の確かな組だけに）: その訳の札が両方で確かで、重ならない
 // （repeatedly〔副「繰り返し」〕と repetition〔名「繰り返し」〕、resemble〔動「似ている」〕と similar〔形「似ている」〕）なら、別の語を問う問題なので別解にしない。
 // 札が確かでない組（circa〔前「およそ・〜ごろ」〕と approximately〔副「およそ」〕、only〔副「～だけ・唯一の」〕と sole〔形「唯一の・単独の」〕）と、
-// 札の無いカード（基本カテゴリ）しか無い語は今までどおり結ぶ（crossesPos）
+// 札の無いカード（基本カテゴリ）しか無い語は今までどおり結ぶ（crossesPos）。
+// 鍵はカードごとに altLookupKey（同じ綴りで別の項目にしたカードだけ id。そのほかの鍵と集合・並びは前と同じ: 同じ綴りのカードは同じ鍵に同じ順で足す）
 export function buildAlternativeIndex(words) {
   const index = new Map();
   for (const ens of meaningGroups(words).values()) {
@@ -71,8 +79,11 @@ export function buildAlternativeIndex(words) {
     for (const [en, a] of ens) {
       for (const [other, b] of ens) {
         if (other === en || crossesPos(a, b)) continue;
-        if (!index.has(en)) index.set(en, new Set());
-        index.get(en).add(other);
+        for (const card of a.cards) {
+          const key = altLookupKey(card);
+          if (!index.has(key)) index.set(key, new Set());
+          index.get(key).add(other);
+        }
       }
     }
   }
@@ -112,8 +123,9 @@ export function isSpellAlt(text) {
 
 // この語を出したときに正解として受け入れる綴りの一覧（先頭は必ず出題語）。綴り入力の候補なので、データの別解は綴り入力で打てるもの（isSpellAlt）だけ
 // （利用者の場面カード〔js/myWords.js〕の日本語の別解 https化 を候補に入れると、h が × にならず、ヒントで「化」が入り、NISA口座 の「口座」が続きとして残る）。
-// key = 別解の索引を引く鍵（既定は出題語の綴り: buildAlternativeIndex。中心の学習はカードの id: buildAlternativeIndexById）
-export function acceptedAnswers(word, index, key = word?.en) {
+// key = 別解の索引を引く鍵（既定は altLookupKey: 出題語の綴り〔同じ綴りで別の項目にしたカードは id〕で buildAlternativeIndex を引く。
+// 中心の学習はカードの id: buildAlternativeIndexById）
+export function acceptedAnswers(word, index, key = altLookupKey(word)) {
   const out = [word?.en].filter(Boolean);
   const push = (s) => {
     const v = String(s ?? "").toLowerCase().trim();

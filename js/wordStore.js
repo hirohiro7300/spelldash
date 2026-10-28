@@ -128,7 +128,7 @@ export function getPackCatalog(subjectId = "english") {
 // 中心の学習は公開の 24 巻（data/public/english.json の packs。NGSL）のカードだけを出す。同じ id の語が基本カテゴリにもあると findWord は
 // 基本カテゴリの版を返すので、公開の版はここで別に引く（findWord・answersFor・getWordsByCategory の結果は変えない: Battle・Study は今のまま）。
 // 別解の索引は公開のカードだけから、カードの id で作る（js/answers.js buildAlternativeIndexById: 同じ綴りのカードの別解を混ぜない）。
-// 紛らわしい訳（同じ訳の語に例文の訳を添える）は、そのカードの巻の中だけで見る（publicPackWords。2,857 語を毎問走査しない）。
+// 紛らわしい訳（同じ訳の語に例文の訳を添える）は、そのカードの巻の中だけで見る（publicPackWords。公開の全語を毎問走査しない）。
 // 読むのは中心の学習を始めるときだけ（ホームの読み込みでは取らない）。別解はどの巻の語でもありうるので、24 巻を並べて取る。
 // 読めなければ null（投げない。次に呼んだときに読み直す）
 let publicStore = null; // { byId: id → カード, byPack: 巻の id → カードの列, altIndex: id → 別解の綴りの集合 }

@@ -9,7 +9,8 @@ import { fileURLToPath } from "url";
 import { readingEntries, primaryReading, normalizeReading, displayReading, hasKana, isReading, hasJapaneseScript, canonicalRomaji, createRomajiMatcher } from "../js/romaji.js";
 import { shelfIdOf } from "../js/shelves.js";
 import { isReadingsRecord, readingsList } from "./lib/accept-readings.mjs";
-import { isSpellAlt } from "../js/answers.js";
+import { isSpellAlt, altKey } from "../js/answers.js";
+import { jaTokens } from "../js/jaAmbiguity.js";
 import { answerModeOf } from "../js/judge.js";
 import { toCard } from "../js/wordData.js";
 
@@ -32,6 +33,14 @@ const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.js
 const manifestCategories = manifest.subjects.flatMap((s) => s.categories);
 
 const problems = [];
+
+// 同じ綴りで別の項目にする英単語のカード（Batch 78・創業者の決定 2026-10-28 §1。docs/PACK_FORMAT.md「同じ綴りで別の項目」）。
+// 英単語のカードの id は english-<en>。sense の欄（英小文字だけ）のあるカードだけ english-<en>-<sense> で、記録・3 状態・別解の索引は id ごとに分かれる
+// （助動詞の may〔english-may〕と 5月〔english-may-month〕）。決まりの例外はこの一覧の id だけ（足すのは創業者の決定のとき。一覧に足して、ここで見る）。
+// 見ること: sense の形・id が english-<en>-<sense>・一覧にある・英単語のカードだけ・同じ綴りの元の項目（english-<en>）がある・
+// 元の項目と訳の見出し（js/answers.js altKey。かっこの外）が重ならない（重なると別解の索引で同じ訳の語として結ばれる）・一覧の id がどれかの教材にある
+const SENSE_IDS = new Set(["english-may-month"]);
+const senseCards = [];
 
 // 本棚: manifest の全カテゴリに棚があること（棚の無い本は本棚にも「本をさがす」にも出ない。js/shelves.js の ID_SHELF か GROUP_SHELF に足す）
 for (const c of manifestCategories) {
@@ -241,13 +250,21 @@ for (const fullPath of files) {
     if (!w.id || !w.en || !w.ja) problems.push(`空フィールド ${where}`);
     if (w.kind === "concept") {
       // 概念カード: id は concept-<key>、answer（打つ答え）と q（場面）が必須
+      if (w.sense !== undefined) problems.push(`sense は英単語のカードだけ ${where}`);
       if (w.id !== `concept-${w.en}`) problems.push(`ID不整合(concept) ${where} (en=${w.en})`);
       if (!/^[a-z][a-z0-9-]*$/.test(w.en ?? "")) problems.push(`キー形式 ${where} en="${w.en}"`);
       if (typeof w.answer !== "string" || !w.answer.trim()) problems.push(`answerなし ${where}`);
       if (typeof w.q !== "string" || w.q.length < 8) problems.push(`qなし/短い ${where}`);
       if (w.accept != null && !Array.isArray(w.accept)) problems.push(`accept形式 ${where}`);
     } else {
-      if (w.id !== `english-${w.en}`) problems.push(`ID不整合 ${where} (en=${w.en})`);
+      if (w.sense === undefined) {
+        if (w.id !== `english-${w.en}`) problems.push(`ID不整合 ${where} (en=${w.en})`);
+      } else if (typeof w.sense !== "string" || !/^[a-z]+$/.test(w.sense)) {
+        // 同じ綴りで別の項目にするカード（上の SENSE_IDS）。元の項目と訳の重なりは全部の教材を読んだ後で見る
+        problems.push(`sense の形（英小文字だけ） ${where}`);
+      } else if (w.id !== `english-${w.en}-${w.sense}`) problems.push(`ID不整合(sense) ${where} (en=${w.en}, sense=${w.sense})`);
+      else if (!SENSE_IDS.has(w.id)) problems.push(`同じ綴りで別の項目にするカードが許可の一覧に無い ${where}（scripts/validate-words.mjs SENSE_IDS）`);
+      else senseCards.push([where, w]);
       if (!/^[a-z][a-z-]*$/.test(w.en ?? "")) problems.push(`スペル形式 ${where} en="${w.en}"`);
       // 別解（accept）: 同じ訳で打たれても正解として受け入れる綴り
       if (w.accept != null) {
@@ -289,6 +306,24 @@ for (const fullPath of files) {
     allIds.add(w.id);
     entries.push([file, w]);
   }
+}
+
+// 同じ綴りで別の項目にしたカード（SENSE_IDS）: 元の項目（english-<en>）がどれかの教材にあり、元の項目のどの写しとも訳の見出しが重ならない。
+// 一覧の id はどれかの教材にある（外したカードの例外を一覧に残さない）
+{
+  const tokensOf = (w) => new Set(jaTokens(String(w.ja ?? "")).map(altKey).filter(Boolean));
+  for (const [where, w] of senseCards) {
+    const baseId = `english-${w.en}`;
+    const bases = entries.filter(([, x]) => x.id === baseId);
+    if (bases.length === 0) {
+      problems.push(`同じ綴りの元の項目が無い ${where} (${baseId})`);
+      continue;
+    }
+    const mine = tokensOf(w);
+    const shared = [...new Set(bases.flatMap(([, x]) => [...tokensOf(x)].filter((t) => mine.has(t))))];
+    if (shared.length) problems.push(`同じ綴りの元の項目と訳が重なる ${where} (${shared.join("・")}: ${baseId})`);
+  }
+  for (const id of SENSE_IDS) if (!entries.some(([, x]) => x.id === id)) problems.push(`許可の一覧の id がどの教材にも無い ${id}（scripts/validate-words.mjs SENSE_IDS）`);
 }
 
 // Batch 71 で足した読み（scripts/quality/b71-readings.json。学校のパックと基本カテゴリの 187 枚・230 読み）: accept に残っている読みは、
@@ -372,6 +407,7 @@ console.log(`words: ${total} / unique ids: ${allIds.size} / family付き: ${fami
 console.log(`学校・基本で読みを結んでいない別表記: ${unboundStrict}件・Batch 71 で足した読みのうち accept に残る ${b71Checked}（結びか主な読みに属するかを見た）`);
 console.log(`綴り入力のカード（英字の答えの概念カード）: ${spellCards}枚（accept が 1 語以上 ${spellWithAccept}枚。accept は綴りで打てる語だけか見た）`);
 console.log(`aka（表示と検索だけの名前）: ${akaNames}語・${akaCards}枚（綴り入力の概念カードだけ・綴りで打てない語だけか見た）`);
+console.log(`同じ綴りで別の項目にしたカード（sense）: ${senseCards.length}枚（${senseCards.map(([, w]) => w.id).join("・") || "なし"}）`);
 if (problems.length === 0) {
   console.log("OK: 問題なし");
 } else {

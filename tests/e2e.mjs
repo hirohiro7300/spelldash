@@ -20754,14 +20754,16 @@ console.log("learn modes (78.3):");
 
   // (1) これからの 10 語: 自力正解・別解（accept の語・同じ訳の別のカードの語）・答え表示・1 打ミス・ヒントを混ぜる → 状態・種類・数・回の終わり・ランクアップ
   {
-    const head = vocab.order.slice(0, 60);
-    const more = vocab.order.slice(70, 125); // 覚えた 115 語から始める（あと 5 語でよちよち）
-    const q = vocab.order.slice(60, 70); // when think make time see up out good people year
+    // when の前を覚えたに（when は公開の並びの 62 番目。5月を足す前は 61 番目）。when から 10 語が この回・その後ろを覚えた 115 語にそろえる（あと 5 語でよちよち）
+    const at = vocab.order.indexOf("english-when");
+    const head = vocab.order.slice(0, at);
+    const q = vocab.order.slice(at, at + 10); // when think make time see up out good people year
+    const more = vocab.order.slice(at + 10, 125);
     const page = await learnPage({ spelldash_word_stats: JSON.stringify({ ...learnedUpTo(head), ...learnedUpTo(more) }) });
     await page.goto(BASE + "/index.html?learn=new&hintms=400", { waitUntil: "networkidle" });
     await waitWord(page, 1);
     const first = { ids: await shownIds(page), ja: await page.textContent("#japanese"), prog: await progress(page), msg: await msg(page), focus: await page.evaluate(() => document.activeElement?.id) };
-    check("78.3 これから: 入口から始まり、状態の無い語を公開の並びのまま出す（頭は 61 番目の when・進みは「これから 0 / 10」・焦点は入力欄）", first.ids[0] === q[0] && first.prog === "これから 0 / 10" && first.focus === "input", JSON.stringify(first));
+    check("78.3 これから: 入口から始まり、状態の無い語を公開の並びのまま出す（頭は when・進みは「これから 0 / 10」・焦点は入力欄）", first.ids[0] === q[0] && q[0] === "english-when" && q[9] === "english-year" && head.length + more.length === 115 && first.prog === "これから 0 / 10" && first.focus === "input", JSON.stringify(first));
     check("78.3 これから: 始めに「分からないときは答えを見る」「間違えても、あやふやに移るだけ」の 1 行", first.msg.includes("分からないときは答えを見る") && first.msg.includes("間違えても、あやふやに移るだけ"), first.msg);
     const lines = {};
     const next = async (n) => { await waitWord(page, n); await afterAdvance(page); };
@@ -21217,6 +21219,38 @@ console.log("learn modes (78.3):");
     check("78.3 日をまたぐ: W は前の日と今日の自力正解で 覚えた・V は二度出さない・その後は「今日の分は終わり」", tw[W]?.ls === 2 && tw[V]?.lsd === d1No + 1 && s2.shown.length === 2 && s2.panel.includes("今日の分は終わり"), JSON.stringify({ w: tw[W] ?? null, v: tw[V] ?? null, s2 }));
     check("78.3 日をまたぐ（回の途中）: エラー 0", p2.errors.length === 0, p2.errors[0] ?? "");
     await p2.context().close();
+  }
+
+  // (11) 5月（english-may-month）と助動詞の may（english-may・別解 might）は綴りが同じでも別の項目（創業者の決定 2026-10-28 §1）。
+  //      5月の前の語を覚えたにして、これからの回の頭に 5月を出す。5月の問いで might は 2 打目で ×（助動詞の別解を混ぜない）・may は自力正解。
+  //      状態はカードの id ごと: 5月の答えで助動詞の may の状態は動かない（種の あやふや・覚えた のまま）
+  {
+    const MONTH = "english-may-month";
+    const AUX = "english-may";
+    const at = vocab.order.indexOf(MONTH);
+    const head = vocab.order.slice(0, Math.max(at, 0));
+    const run = async (aux, typed) => {
+      const page = await learnPage({ spelldash_word_stats: JSON.stringify({ ...learnedUpTo(head), [AUX]: rec(aux) }) });
+      await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+      await waitWord(page, 1);
+      const first = { id: (await shownIds(page))[0], ja: (await page.textContent("#japanese")).trim() };
+      await typeWord(page, typed);
+      await waitUntil(async () => (await learnWrites(page)).length >= 1, 4000);
+      await page.waitForTimeout(100);
+      const r = { first, writes: await learnWrites(page), t: await tableOf(page), line: await msg(page), errors: page.errors.slice() };
+      await page.context().close();
+      return r;
+    };
+    const miss = await run({ ls: 2 }, "mi");
+    check("78.3 5月: 公開の並びで april の次・これからの回の頭に「5月」を出す（id は english-may-month）",
+      at > 0 && vocab.order[at - 1] === "english-april" && miss.first.id === MONTH && miss.first.ja === "5月", JSON.stringify({ at, prev: vocab.order[at - 1], first: miss.first }));
+    check("78.3 5月: might と打つと 2 打目で 1 打ミス（助動詞の別解 might を 5月の正解にしない）→ 5月は あやふや・助動詞の may は 覚えた のまま",
+      JSON.stringify(miss.writes) === JSON.stringify([{ id: MONTH, kind: "miss" }]) && miss.t[MONTH]?.ls === 1 && miss.t[AUX]?.ls === 2 && miss.errors.length === 0,
+      JSON.stringify({ writes: miss.writes, month: miss.t[MONTH]?.ls, aux: miss.t[AUX]?.ls, line: miss.line, err: miss.errors[0] }));
+    const good = await run({ ls: 1, recallFail: 1, lastRecallFailAt: isoAgo(1) }, "may");
+    check("78.3 5月: may の自力正解 → 5月は 覚えた・助動詞の may は あやふや のまま（1 つの答えで 2 つの項目を動かさない）",
+      JSON.stringify(good.writes) === JSON.stringify([{ id: MONTH, kind: "exact" }]) && good.t[MONTH]?.ls === 2 && good.t[AUX]?.ls === 1 && good.line === "覚えた" && good.errors.length === 0,
+      JSON.stringify({ writes: good.writes, month: good.t[MONTH]?.ls, aux: good.t[AUX]?.ls, line: good.line, err: good.errors[0] }));
   }
 }
 

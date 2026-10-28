@@ -3619,7 +3619,7 @@ function startWordTiming() {
 function isAmbiguousPrompt(word) {
   if (!word || isConceptWord(word) || word.write || word.blank || word.calc || word.school) return false;
   if (!String(word.ja ?? "").trim()) return false;
-  // 中心の学習はそのカードの巻の中だけで見る（公開の 2,857 語を毎問走査すると 1 問 4〜5ms 重くなる。PRESTART「入力完了から次の問題まで」）
+  // 中心の学習はそのカードの巻の中だけで見る（公開の全語〔約 2,900 語〕を毎問走査すると 1 問 4〜5ms 重くなる。PRESTART「入力完了から次の問題まで」）
   const pool = learnRun ? publicPackWords(word) : getWordsByCategory(activeCategory);
   return pool.some((w) => w.id !== word.id && w.en !== word.en && jaLooksSame(word.ja, w.ja));
 }

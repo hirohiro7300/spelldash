@@ -4,13 +4,14 @@
 // 確かめること:
 //   1. 今の教材とファイルは決まりどおり（問題 0・語数と機能語の数は定数どおり・補助の語は頭・機能語は最後・順位の列・作り直しても同じ）
 //   2. 教材の写しを壊すと落ちる: 1 語を消す・巻の中の 2 語を入れ替える・id を重ねる・count をずらす・札を fn に変える／外す・
-//      補助の語を後ろの巻へ動かす・補助の語を ngsl01 の中で頭の外へ動かす・5月の項目を ngsl01 の末尾に足す・CSV の語が欠ける・
-//      巻が manifest に無い。5月の項目を月の並びに足すと、落ちるのは語数だけ（順位 0。助動詞の may の順位を拾わない）
+//      補助の語を後ろの巻へ動かす・補助の語を ngsl01 の中で頭の外へ動かす・CSV の語が欠ける・巻が manifest に無い。
+//      5月（english-may-month）は ngsl01 の april の後の補助の語（順位 0。助動詞の may の順位を拾わない）。消すと語数で、末尾へ動かすと頭の外で、
+//      助動詞と同じ id にすると重なり（と順位を拾った後ろの月が頭の外）で落ちる
 //   3. ファイルの写しを壊すと落ちる: 機能語を途中に置く・2 語を入れ替える・id を重ねる・total をずらす・順位をずらす・
 //      rank が 1 個足りない・24 巻に無い id・古いファイル（1 語少ない／空白だけ違う）・ファイルが無い・JSON でない
 //   4. コマンド: 今の木の --check は exit 0。写しの木で、1 語を消した教材は --check も書き直しも exit 1（書かない）、
 //      古いファイルは --check が exit 1 で、書き直すと exit 0 になり今のファイルと同じになる。巻が JSON でないと exit 1 で巻の名前を出す
-//   5. 語数の数字は生成器の定数 1 か所だけ（この台本は数字を書かず定数を読む）
+//   5. 語数の数字は生成器の定数 1 か所だけ（この台本は数字を書かず定数を読む）。製品のコード（js/・根のページ）にも語数を書かない。お知らせ（先頭の 1 件）の語数は表の語数
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -130,25 +131,42 @@ ok(
   const p = buildPublicVocab(m).problems;
   ok("補助の語を ngsl01 の中で頭の外へ動かす（december を ngsl01 の末尾）: 頭の外で落ちる", has(p, /NGSL に無い語が ngsl01 の頭の外にある english-december（ngsl01）/), show(p));
 }
-// 5月を助動詞の may と別の項目にする形（返事待ち。足すなら月の並びに置く）。順位は id で引くので en が may でも順位 0
-const mayMonth = () => ({ id: "english-may-month", en: "may", tags: ["n"] });
+// 5月（english-may-month。en は助動詞と同じ may・sense month）は、助動詞の may（english-may・ngsl02）と別の項目（創業者の決定 2026-10-28 §1）。
+// 順位は id で引くので en が may でも順位 0 の補助の語（ngsl01 の月の並び。april の後）。助動詞の may は NGSL の順位を持つ
 {
-  const m = copy();
-  wordsOf(m, "ngsl01").push(mayMonth());
-  entryOf(m, "ngsl01").count++;
-  const p = buildPublicVocab(m).problems;
-  ok("5月の項目を ngsl01 の末尾に足す（count も合わせる）: 頭の外と語数で落ちる", has(p, /NGSL に無い語が ngsl01 の頭の外にある english-may-month（ngsl01）/) && has(p, /^語数 /), show(p));
+  const month = real.cards.find((c) => c.id === "english-may-month");
+  const aux = real.cards.find((c) => c.id === "english-may");
+  const i = data.order.indexOf("english-may-month");
+  ok(
+    "5月: ngsl01 の補助の語（順位 0）で、並びは april の直後・june の前。助動詞の may は ngsl02 で NGSL の順位つき",
+    month?.pack === "ngsl01" && month.rank === 0 && data.order[i - 1] === "english-april" && data.order[i + 1] === "english-june" && data.rank[i] === 0 && aux?.pack === "ngsl02" && aux.rank > 0,
+    JSON.stringify({ month, aux, prev: data.order[i - 1], next: data.order[i + 1] })
+  );
+  const w = wordsOf(base, "ngsl01").find((x) => x.id === "english-may-month");
+  ok("5月のカード: en may・sense month・訳 5月・名・easy・札はほかの月と同じ", w?.en === "may" && w.sense === "month" && w.ja === "5月" && w.pos === "名" && w.level === "easy" && JSON.stringify(w.tags) === JSON.stringify(wordsOf(base, "ngsl01").find((x) => x.id === "english-april")?.tags), JSON.stringify(w));
 }
 {
   const m = copy();
-  const w = wordsOf(m, "ngsl01");
-  w.splice(w.findIndex((x) => x.id === "english-april") + 1, 0, mayMonth());
-  entryOf(m, "ngsl01").count++;
-  const b = buildPublicVocab(m);
+  take(m, "ngsl01", "english-may-month");
+  entryOf(m, "ngsl01").count--;
+  const p = buildPublicVocab(m).problems;
+  ok("5月の項目を消す（count も合わせる）: 語数だけで落ちる（決定の語数より 1 語少ない）", p.length === 1 && has(p, /^語数 /), show(p));
+}
+{
+  const m = copy();
+  wordsOf(m, "ngsl01").push(take(m, "ngsl01", "english-may-month"));
+  const p = buildPublicVocab(m).problems;
+  ok("5月の項目を ngsl01 の末尾へ動かす: 頭の外で落ちる", has(p, /NGSL に無い語が ngsl01 の頭の外にある english-may-month（ngsl01）/), show(p));
+}
+{
+  const m = copy();
+  const w = wordsOf(m, "ngsl01").find((x) => x.id === "english-may-month");
+  w.id = "english-may";
+  const p = buildPublicVocab(m).problems;
   ok(
-    "5月の項目を april の後に足す（count も合わせる）: 頭の外にも順位の逆にもならず、語数で落ちる。順位は 0",
-    !has(b.problems, /頭の外|順位が逆/) && has(b.problems, /^語数 /) && b.cards.find((c) => c.id === "english-may-month")?.rank === 0,
-    show(b.problems)
+    "5月の項目に助動詞と同じ id（english-may）を付ける（2 枚が 1 つの記録を共有する形）: id の重なりと、助動詞の順位を拾って後ろの月が頭の外になるので落ちる",
+    has(p, /id が重なる english-may（ngsl02）/) && has(p, /NGSL に無い語が ngsl01 の頭の外にある english-june（ngsl01）/),
+    show(p)
   );
 }
 {
@@ -296,6 +314,24 @@ const cli = (...args) => {
   const inGen = genSrc.match(re)?.length ?? 0;
   const inTest = fs.readFileSync(fileURLToPath(import.meta.url), "utf8").match(re)?.length ?? 0;
   ok("語数の数字は生成器の定数の 1 か所だけ（この台本には無い）", total === EXPECTED_TOTAL && inGen === 1 && inTest === 0, `生成器 ${inGen} か所・単体 ${inTest} か所`);
+  // 製品のコード（js/ と根のページ）は語数を表の total から読む（ランクの最上段・3 状態の和・進み・学習状況）。今の語数と 1 つ前の語数（5月を足す前）の
+  // 数字を書かない。お知らせ（js/news.js）は文なので数字を書くが、表の語数と同じであること（全角は NFKC で半角に直して見る）
+  const num = (n) => n.toLocaleString("en-US");
+  const numRe = (n) => new RegExp(`(?<![\\d,])${String(n).slice(0, -3)},?${String(n).slice(-3)}(?![\\d,])`);
+  const product = [
+    ...fs.readdirSync(path.join(ROOT, "js")).filter((f) => f.endsWith(".js") && f !== "news.js").map((f) => `js/${f}`),
+    ...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html"))
+  ];
+  const found = product.filter((rel) => {
+    const text = fs.readFileSync(path.join(ROOT, rel), "utf8").normalize("NFKC");
+    return numRe(total).test(text) || numRe(total - 1).test(text);
+  });
+  ok(`製品のコード（js/ と根のページ ${product.length} 本）に語数（${num(total)}・${num(total - 1)}）を書かない`, product.length > 40 && found.length === 0, found.join(" "));
+  // お知らせは Batch 78 の 1 件（配列の先頭）だけを見る（前の Batch 28 のお知らせの「24パックすべて（2,857語）」は、その時の文なので書き換えない）
+  const newsSrc = fs.readFileSync(path.join(ROOT, "js", "news.js"), "utf8").normalize("NFKC");
+  const latest = newsSrc.slice(newsSrc.indexOf("const NEWS = ["), newsSrc.indexOf("\n  },", newsSrc.indexOf("const NEWS = [")));
+  ok(`お知らせ（先頭の 1 件。英単語の学習にまとめた）の語数は表の語数（${num(total)}語）。前の語数（${num(total - 1)}語）は書かない`,
+    latest.includes("英単語の学習にまとめた") && latest.includes(`${num(total)}語`) && !numRe(total - 1).test(latest), latest.slice(0, 300));
 }
 
 // ── 結果 ─────────────────────────────────────────

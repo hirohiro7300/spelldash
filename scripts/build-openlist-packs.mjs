@@ -24,11 +24,21 @@ const SUPPLEMENTARY = [
   "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
   "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"
 ];
+// 同じ綴りで別の項目にする補助の語（Batch 78・創業者の決定 2026-10-28 §1）。NGSL 本体に同じ綴りの語がある（may は助動詞として NGSL にある）ので
+// 上の表からは外れるが、意味の違う項目として ngsl01 の補助の語に足す。id は english-<en>-<sense>、カードに sense の欄（scripts/validate-words.mjs SENSE_IDS・
+// docs/PACK_FORMAT.md「同じ綴りで別の項目」）。after = 補助の語の並びでこの語の前の語。巻の頭の 120 語の切り方は変えない（ngsl01 が 1 語増えるだけ）。
+// 訳・品詞・例文は既存のカードを id で引く（綴りで引くと助動詞のカードを拾う）。CEFR-J も綴りで引くので使わない
+const SENSE_SUPPLEMENTARY = [{ en: "may", sense: "month", after: "april" }];
 
-// ---- 既存カードの索引（en → カード） ----
+// ---- 既存カードの索引（en → カード。同じ綴りで別の項目にしたカード〔sense の欄〕は id → カードの別の索引だけに入れる） ----
 const existing = new Map();
+const existingById = new Map();
 const addExisting = (w) => {
   if (!w?.en || !w.ja || w.q) return;
+  if (w.sense) {
+    if (!existingById.has(w.id)) existingById.set(w.id, w);
+    return;
+  }
   const key = String(w.en).toLowerCase();
   if (!existing.has(key) || (!existing.get(key).ex && w.ex)) existing.set(key, w);
 };
@@ -90,12 +100,13 @@ function readNgsl() {
 const genreOf = (pos) => (pos === "名" ? "n" : pos === "動" ? "v" : pos === "形" || pos === "副" ? "adj" : "fn");
 const GENRES = { n: "名詞", v: "動詞", adj: "形容詞・副詞", fn: "機能語（前置詞・接続詞・代名詞など）" };
 
-function card(en, hint) {
-  const ex = existing.get(en);
-  const c = cefr.get(en);
+function card(en, hint, sense = null) {
+  const id = sense ? `english-${en}-${sense}` : `english-${en}`;
+  const ex = sense ? existingById.get(id) : existing.get(en);
+  const c = sense ? null : cefr.get(en);
   const pos = ex?.pos || c?.pos || "";
   const level = ex?.level || (c ? (c.rank <= 1 ? "easy" : c.rank === 2 ? "normal" : "hard") : hint.level);
-  const w = { id: `english-${en}`, en, ja: ex?.ja ?? "", pos, level, tags: [genreOf(pos)] };
+  const w = { id, en, ...(sense ? { sense } : {}), ja: ex?.ja ?? "", pos, level, tags: [genreOf(pos)] };
   if (ex?.ex && ex?.exJa) {
     w.ex = ex.ex;
     w.exJa = ex.exJa;
@@ -257,9 +268,15 @@ if (which === "nawl") {
 } else if (which === "ngsl") {
   const ranked = readNgsl();
   const sup = SUPPLEMENTARY.filter((en) => !ranked.some((r) => r.en === en));
+  const supItems = sup.map((en) => ({ en, rank: 0 }));
+  for (const x of SENSE_SUPPLEMENTARY) {
+    const at = supItems.findIndex((y) => y.en === x.after && !y.sense);
+    if (at < 0) throw new Error(`同じ綴りで別の項目にする補助の語の前の語が無い: ${x.en}（${x.sense}）の前 ${x.after}`);
+    supItems.splice(at + 1, 0, { en: x.en, sense: x.sense, rank: 0 });
+  }
   const packs = [];
-  // ngsl01 = 補助語（数・曜日・月）＋1位〜、以降は 119 語ずつ
-  const first = [...sup.map((en) => ({ en, rank: 0 })), ...ranked.slice(0, 120 - sup.length)];
+  // ngsl01 = 補助語（数・曜日・月。同じ綴りで別の項目にした 5月を含む）＋1位〜、以降は 119 語ずつ（切り方は sup の数で決める: 5月を足しても後ろの巻は動かない）
+  const first = [...supItems, ...ranked.slice(0, 120 - sup.length)];
   packs.push(first);
   let i = 120 - sup.length;
   const per = Math.ceil((ranked.length - i) / 23);
@@ -272,7 +289,7 @@ if (which === "nawl") {
     const lo = list.find((x) => x.rank > 0)?.rank ?? 1;
     const hi = list[list.length - 1].rank;
     const third = Math.ceil(list.length / 3);
-    const words = list.map((x, k) => card(x.en, { level: k < third ? "easy" : k < third * 2 ? "normal" : "hard" }));
+    const words = list.map((x, k) => card(x.en, { level: k < third ? "easy" : k < third * 2 ? "normal" : "hard" }, x.sense ?? null));
     const label = n === 0 ? `NGSL 基本英単語 1（数・曜日・月と 1〜${hi}位）` : `NGSL 基本英単語 ${n + 1}（${lo}〜${hi}位）`;
     const blurb = n === 0 ? "よく使われる順に並べた基本2,800語（NGSL）。まず数・曜日・月から" : `NGSL の ${lo}〜${hi}位。頻度順。前のパックほどよく出会う語`;
     return writePack(id, label, blurb, "英語をゼロから体系的にやり直したい人（NGSL: CC BY-SA 4.0）", words, { list: "NGSL 1.2", license: "CC BY-SA 4.0", url: "https://www.newgeneralservicelist.com/", ranks: `${lo}-${hi}` });

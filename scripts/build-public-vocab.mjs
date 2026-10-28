@@ -15,7 +15,7 @@
 //   5. 語数 = EXPECTED_TOTAL、機能語（tags[0] が fn）の数 = EXPECTED_FN
 //   6. 並び = 機能語でない語を巻の順のまま → 機能語を巻の順のまま最後に。rank は order と同じ並びの NGSL の順位（補助の語は 0）
 //   7. ファイル = 生成物（作り直して同じ文字列）
-// 順位は id で引く（english-<CSV の語>）。同じ綴りで別の項目にする語（5月を足すなら english-may-month）は補助の語になる。
+// 順位は id で引く（english-<CSV の語>）。同じ綴りで別の項目にした語（5月 english-may-month。en は助動詞と同じ may）は順位 0 の補助の語になる。
 // NGSL のパックの語を足す・消す・並べ替える・札（tags[0]）を変えたら作り直す。訳・例文だけの直しでは表は変わらない。
 import fs from "fs";
 import path from "path";
@@ -26,8 +26,8 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const OUT_REL = "data/public/english.json";
 const CSV_REL = "data/sources/ngsl/NGSL_1.2_stats.csv";
 
-// 公開する語数。創業者の決定（Batch 78 §1・§9-2）でだけ変える。5月を助動詞の may と別の項目にするなら 1 語増える（返事待ち）
-export const EXPECTED_TOTAL = 2857;
+// 公開する語数。創業者の決定（Batch 78 §1・§9-2 と 2026-10-28 の決定 §1: 5月〔english-may-month〕を助動詞の may と別の項目にして 1 語増やした）でだけ変える
+export const EXPECTED_TOTAL = 2858;
 // 最後に回す機能語の数（決定 §1）。札を fn に変える・外すと並びが黙って変わるので、数で止める（数が同じままのつけ替えは止めない。作り直した表の差分で見る）
 export const EXPECTED_FN = 122;
 export const PACKS = Array.from({ length: 24 }, (_, i) => `ngsl${String(i + 1).padStart(2, "0")}`);

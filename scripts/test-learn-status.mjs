@@ -119,7 +119,7 @@ const NAMES = ["赤ちゃん", "よちよち", "単語キッズ", "小学生", "
 const AT = [0, 120, 350, 650, 1000, 1400, 1850, 2350, T];
 eq("9 段の名前（決定 §5）", [...R.RANK_NAMES], NAMES);
 eq("境は 0・120・350・650・1,000・1,400・1,850・2,350・総数（data/public/english.json の total）", R.rankThresholds(T), AT);
-eq("総数は公開の表の total（2,857。5月の返事待ちで 1 か所だけ動く）", T, JSON.parse(VOCAB_TEXT).total);
+eq("総数は公開の表の total（5月〔english-may-month〕を足した語数。数は生成器の 1 か所: scripts/build-public-vocab.mjs EXPECTED_TOTAL）", T, JSON.parse(VOCAB_TEXT).total);
 for (let k = 1; k < AT.length; k++) {
   const before = R.rankView(AT[k] - 1, null, T);
   const exact = R.rankView(AT[k], null, T);
@@ -249,16 +249,16 @@ const paceOfSeed = (table, today = TODAY) => {
 };
 {
   const p = paceOfSeed(seedPace([[0, 14], [-3, 7], [-9, 7]], { fill: 400 }));
-  // 進み 28・始めた日 9 日前 → 10 日で割る: 残り 2,857 − 428 = 2,429・2429×10÷28 = 867.5 → 868 > 365 → 待ち
-  eq("目安: 進んだ日 3・進み 28・始めて 10 日・残り 2,429 → 868 日 > 365 は出さない（待ちの文）", [p.kind, LP.paceLineText(p)], ["wait", "学習を続けると、完了までの目安が表示されます。"]);
-  const big = seedPace([[0, 100], [-1, 100], [-5, 100], [-13, 100]], { fill: 1000 }); // 進み 400・14 日・残り 1,457 → 1457×14÷400 = 50.995 → 51
+  // 進み 28・始めた日 9 日前 → 10 日で割る: 残り 総数 − 428（2,430）・2430×10÷28 = 867.9 → 868 > 365 → 待ち
+  eq("目安: 進んだ日 3・進み 28・始めて 10 日・残り 総数 − 428 → 868 日 > 365 は出さない（待ちの文）", [p.kind, LP.paceLineText(p)], ["wait", "学習を続けると、完了までの目安が表示されます。"]);
+  const big = seedPace([[0, 100], [-1, 100], [-5, 100], [-13, 100]], { fill: 1000 }); // 進み 400・14 日・残り 総数 − 1,400（1,458）→ 1458×14÷400 = 51.03 → 51
   const q = paceOfSeed(big);
-  eq("目安: 進み 400・14 日で割る・残り 1,457 → 約 51 日", [q.kind, q.days, q.span, q.gain, LP.paceLineText(q), q.note], ["pace", 51, 14, 400, "今のペースなら、あと約51日です。", "覚えた で数えています。この端末の記録から計算しています。"]);
+  eq("目安: 進み 400・14 日で割る・残り 総数 − 1,400 → 約 51 日", [q.kind, q.days, q.span, q.gain, LP.paceLineText(q), q.note], ["pace", 51, 14, 400, "今のペースなら、あと約51日です。", "覚えた で数えています。この端末の記録から計算しています。"]);
   const old = paceOfSeed(seedPace([[0, 100], [-1, 100], [-5, 100], [-14, 100]], { fill: 1000 })); // 14 日前の行は窓の外
   eq("目安: 窓は今日を含む 14 暦日（14 日前の 100 語は進みに入らない・始めた日はその日なので 14 日で割る）", [old.gain, old.active, old.span], [300, 3, 14]);
   const two = paceOfSeed(seedPace([[0, 300], [-2, 300]], { fill: 1000 }));
   eq("目安: 進んだ日が 2 日なら待ちの文（進み 600 でも）", [two.kind, two.active], ["wait", 2]);
-  const fresh = paceOfSeed(seedPace([[0, 100], [-2, 100], [-4, 100]], { fill: 1000 })); // 始めて 5 日 → 5 日で割る: 残り 1557×5÷300 = 25.95 → 26
+  const fresh = paceOfSeed(seedPace([[0, 100], [-2, 100], [-4, 100]], { fill: 1000 })); // 始めて 5 日 → 5 日で割る: 残り 総数 − 1,300（1,558）×5÷300 = 25.97 → 26
   eq("目安: 記録を始めて 5 日なら 5 日で割る（1 日あたり 60 語・約 26 日）", [fresh.kind, fresh.span, fresh.days], ["pace", 5, 26]);
   // 残りが 1 語違えば日数も 1 日違う組（進み 3・3 日で割る → 日数 = 残り）: 残りは総数 − 今の覚えた（1 語ずれた数え方を見つける）
   const exact = paceOfSeed(seedPace([[0, 1], [-1, 1], [-2, 1]], { fill: VOCAB.total - 103 }));
@@ -267,7 +267,7 @@ const paceOfSeed = (table, today = TODAY) => {
   const early = seedPace([[0, 100], [-2, 100], [-4, 100]], { fill: 1000 });
   early[PUB[2000]] = { ls: 1, lsAt: at(2026, 10, 11, 12) }; // 10 日前に中心の学習で答えたあやふやの語 → 始めた日は 10 日前
   const e = paceOfSeed(early);
-  eq("目安: 記録を始めた日は答えた跡（lsAt）のいちばん早い日（10 日前 → 11 日で割る: 1557×11÷300 = 57.09 → 57）", [e.span, e.days], [11, 57]);
+  eq("目安: 記録を始めた日は答えた跡（lsAt）のいちばん早い日（10 日前 → 11 日で割る: 残り 総数 − 1,300（1,558）×11÷300 = 57.13 → 57）", [e.span, e.days], [11, 57]);
   const migrated = paceOfSeed(tableOf([...learnedOn(1500, 0), ...PUB.slice(1500, 1503).map((id, i) => [id, { ls: 2, lsf: TODAY - i, lsAt: at(2026, 10, 21 - i) }])]));
   eq("目安: 移行で覚えた語（印 0）は進みに入らない（1,500 語あっても進み 3）", [migrated.gain, migrated.active], [3, 3]);
   const all = paceOfSeed(tableOf(PUB.map((id) => [id, { ls: 2 }])));
@@ -279,7 +279,7 @@ const paceOfSeed = (table, today = TODAY) => {
   const back = seedPace([[0, 100], [-1, 100], [-5, 100], [-13, 100]], { fill: 1000 });
   for (const id of PUB.slice(0, 100)) back[id] = { ...back[id], ls: 1 }; // 今日覚えた 100 語が外れた（あやふや）: 進みは引かない・残りは増える
   const fb = paceOfSeed(back);
-  eq("目安: 外れた語は進みから引かない（進み 400 のまま）・残りは今の覚えたから（1,557）", [fb.gain, fb.days], [400, Math.max(1, Math.floor((2 * 1557 * 14 + 400) / (2 * 400)))]);
+  eq("目安: 外れた語は進みから引かない（進み 400 のまま）・残りは今の覚えたから（総数 − 1,300）", [fb.gain, fb.days], [400, Math.max(1, Math.floor((2 * (VOCAB.total - 1300) * 14 + 400) / (2 * 400)))]);
   eq("目安の見出し・注・待ちの文（Batch 76 と同じ待ちの文）", [LP.LEARN_PACE_TITLE, LP.LEARN_PACE_NOTE, BP.PACE_WAIT], ["全部覚えるまでの目安", "覚えた で数えています。", "学習を続けると、完了までの目安が表示されます。"]);
 }
 

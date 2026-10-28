@@ -1,7 +1,7 @@
 // 中心の学習の 3 つのモード（これから・あやふや・覚えた）の出題の列と回の区切り（js/learnQueue.js）の単体テスト。ブラウザなし（1 秒未満）:
 //   node scripts/test-learn-queue.mjs [<木の根>]
 // 失敗が 1 つでもあれば終了コード 1。決まりは js/learnQueue.js の頭の注・docs/SPEC_LEARN_STATE.md §11（創業者の決定 §4・PRESTART「出題の順」「あやふやの出し方」）。
-// 木の根を渡すと、その木の js/ を読む（変異の確かめ: 写した木の js を壊して流すと落ちる）。公開の語は data/public/english.json（本物の 2,857 語）
+// 木の根を渡すと、その木の js/ を読む（変異の確かめ: 写した木の js を壊して流すと落ちる）。公開の語は data/public/english.json（本物の表。語数は表の total）
 process.env.TZ = "Asia/Tokyo";
 
 import fs from "fs";
@@ -72,12 +72,12 @@ eq("入口: 3 つのモードと next だけ（前後の空白は落とす。par
   const C = (n, u, l) => ({ new: n, unsure: u, learned: l, total: n + u + l });
   eq("next の行き先: あやふやの今日の分 → これから → あやふや（今日の分は終わり）→ 覚えた の順",
     [
-      Q.resolveNextMode(C(2857, 0, 0), 0), // 初めての人: これから
+      Q.resolveNextMode(C(vocab.total, 0, 0), 0), // 初めての人: これから
       Q.resolveNextMode(C(100, 5, 10), 3), // あやふやの今日の分がある: あやふや（これからが残っていても）
       Q.resolveNextMode(C(100, 5, 10), 0), // 今日の分は済んだ: これから
-      Q.resolveNextMode(C(0, 5, 2852), 0), // これからも無い: あやふや（今日の分は終わりの回）
-      Q.resolveNextMode(C(0, 5, 2852), 1), // これからが無く今日の分がある: あやふや
-      Q.resolveNextMode(C(0, 0, 2857), 0), // 全部覚えた: 覚えたの復習
+      Q.resolveNextMode(C(0, 5, vocab.total - 5), 0), // これからも無い: あやふや（今日の分は終わりの回）
+      Q.resolveNextMode(C(0, 5, vocab.total - 5), 1), // これからが無く今日の分がある: あやふや
+      Q.resolveNextMode(C(0, 0, vocab.total), 0), // 全部覚えた: 覚えたの復習
       Q.resolveNextMode(C(0, 0, 0), 0) // 語が無い（読めた表が空）: 覚えた（回は空で終わる）
     ],
     ["new", "unsure", "new", "unsure", "unsure", "learned", "learned"]);
@@ -301,14 +301,20 @@ for (const seed of [1, 2, 3]) {
 {
   const A = await import(modUrl("js/answers.js"));
   const aux = { id: "english-may", en: "may", ja: "〜かもしれない", pos: "助" };
-  const month = { id: "english-may-month", en: "may", ja: "5月", pos: "名" };
+  const month = { id: "english-may-month", en: "may", sense: "month", ja: "5月", pos: "名" };
   const might = { id: "english-might", en: "might", ja: "〜かもしれない", pos: "助" };
   const byId = A.buildAlternativeIndexById([aux, month, might]);
   const byEn = A.buildAlternativeIndex([aux, month, might]);
   eq("別解の索引 id: 同じ綴りの 2 枚（助動詞の may・5月の May）で、5月の問いに might を混ぜない・助動詞の問いは might を受ける",
     [A.acceptedAnswers(month, byId, month.id), A.acceptedAnswers(aux, byId, aux.id), A.acceptedAnswers(might, byId, might.id)], [["may"], ["may", "might"], ["might", "may"]]);
-  eq("別解の索引 id: 綴りで引く今の索引は 5月の問いに might が混ざる（id で引く理由）", A.acceptedAnswers(month, byEn), ["may", "might"]);
-  // 公開の 2,857 枚（綴りは重ならない）では、id で引いても綴りで引いても同じ候補・同じ並び（中心の学習の判定は今の Study の判定と同じ）
+  // 綴りで引く索引（Study・Challenge・Daily の盤面。js/wordStore.js answersFor）も、同じ綴りで別の項目にしたカード（sense の欄）はカードの id で引く
+  eq("別解の索引 綴り: sense の欄のある 5月のカードは id で引く（might を混ぜない）・助動詞と might は今のまま",
+    [A.acceptedAnswers(month, byEn), A.acceptedAnswers(aux, byEn), A.acceptedAnswers(might, byEn)], [["may"], ["may", "might"], ["might", "may"]]);
+  const noSense = { ...month };
+  delete noSense.sense;
+  eq("別解の索引 綴り: sense の欄の無い形（scripts/validate-words.mjs が ID不整合で止める）は綴りで引くので might が混ざる（欄が要る理由）",
+    A.acceptedAnswers(noSense, A.buildAlternativeIndex([aux, noSense, might])), ["may", "might"]);
+  // 公開の語（綴りが重なるのは may の 2 枚だけ）では、id で引いても綴りで引いても同じ候補・同じ並び（中心の学習の判定は今の Study の判定と同じ）
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data/manifest.json"), "utf8"));
   const cats = manifest.subjects.find((s) => s.id === "english").categories;
   const json = JSON.parse(fs.readFileSync(path.join(ROOT, "data/public/english.json"), "utf8"));
@@ -316,10 +322,18 @@ for (const seed of [1, 2, 3]) {
     const data = JSON.parse(fs.readFileSync(path.join(ROOT, "data", cats.find((c) => c.id === id).file), "utf8"));
     return data.words.map((w) => ({ ...w, category: data.category }));
   });
+  const byEnCount = new Map();
+  for (const w of cards) byEnCount.set(w.en, [...(byEnCount.get(w.en) ?? []), w.id]);
+  eq("公開の語: 綴りが重なるのは may の 2 枚（5月 english-may-month・助動詞 english-may）だけ",
+    [...byEnCount].filter(([, ids]) => ids.length > 1), [["may", ["english-may-month", "english-may"]]]);
   const ia = A.buildAlternativeIndexById(cards);
   const ie = A.buildAlternativeIndex(cards);
+  const realMonth = cards.find((w) => w.id === "english-may-month");
+  const realAux = cards.find((w) => w.id === "english-may");
+  eq("公開の語: 5月の候補は id の索引でも綴りの索引でも may だけ・助動詞の may は might を受ける",
+    [realMonth && A.acceptedAnswers(realMonth, ia, realMonth.id), realMonth && A.acceptedAnswers(realMonth, ie), realAux && A.acceptedAnswers(realAux, ia, realAux.id).includes("might")], [["may"], ["may"], true]);
   const differ = cards.filter((w) => JSON.stringify(A.acceptedAnswers(w, ia, w.id)) !== JSON.stringify(A.acceptedAnswers(w, ie)));
-  eq("別解の索引 id: 公開の 2,857 枚で、綴りの索引と候補が同じ（違う 0 枚）・別解のある語は 1,500 枚以上", [cards.length, differ.length, cards.filter((w) => A.acceptedAnswers(w, ia, w.id).length > 1).length >= 1500], [vocab.total, 0, true]);
+  eq("別解の索引 id: 公開の語の全部で、綴りの索引と候補が同じ（違う 0 枚）・別解のある語は 1,500 枚以上", [cards.length, differ.map((w) => w.id), cards.filter((w) => A.acceptedAnswers(w, ia, w.id).length > 1).length >= 1500], [vocab.total, [], true]);
 }
 
 // ===== 純なこと: DOM・localStorage・乱数・時刻を読まない =====

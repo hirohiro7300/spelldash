@@ -408,7 +408,7 @@ const table0 = () => ({
 }
 
 // ── 6. 公開の語の読み手（js/publicVocab.js） ─────────────
-eq("公開の語数は表の total（2,857。数はここに持たない）", [VOCAB.total, VOCAB.order.length], [JSON.parse(VOCAB_TEXT).total, JSON.parse(VOCAB_TEXT).order.length]);
+eq("公開の語数は表の total（数はここに持たない）", [VOCAB.total, VOCAB.order.length], [JSON.parse(VOCAB_TEXT).total, JSON.parse(VOCAB_TEXT).order.length]);
 eq("並びと位置: 先頭・最後・無い id", [VOCAB.positionOf(PUB[0]), VOCAB.positionOf(PUB.at(-1)), VOCAB.positionOf("concept-x"), VOCAB.isPublic(PUB[10]), VOCAB.isPublic("english-zzz")], [0, VOCAB.total - 1, -1, true, false]);
 for (const [name, bad] of [["語数と order が合わない", { total: 3, order: ["a", "b"] }], ["id が重なる", { total: 2, order: ["a", "a"] }], ["order が無い", { total: 0 }], ["id が文字列でない", { total: 2, order: ["a", 3] }]]) {
   let threw = false;
@@ -554,6 +554,33 @@ const W = PUB[20];
   clock = D(1, 11);
   await ST.recordLearnAnswer(W, K.exact);
   eq("書き手: 覚えた → ヒント → 同じ日の自力正解（1 日目）", [JSON.parse(LS.getItem("spelldash_word_stats"))[W].ls, JSON.parse(LS.getItem("spelldash_word_stats"))[W].lsd], [1, dayOf(D(1))]);
+}
+{
+  // 5月（english-may-month）と助動詞の may（english-may）は綴りが同じでも別の項目（創業者の決定 2026-10-28 §1）: 状態はカードの id ごとに持ち、
+  // 片方の答えでもう片方は動かない。端末は別の写しで流し、後の検査の端末（LS）に戻す
+  const MONTH = "english-may-month";
+  const AUX = "english-may";
+  const kept = LS;
+  ok("5月と助動詞の may: どちらも公開の語（別の id・別の位置）", VOCAB.isPublic(MONTH) && VOCAB.isPublic(AUX) && VOCAB.positionOf(MONTH) !== VOCAB.positionOf(AUX));
+  const auxBefore = { ...SHAPES.weak, ls: UNSURE };
+  LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_word_stats: JSON.stringify({ [AUX]: auxBefore }) });
+  S.forgetWordStats();
+  await S.loadLearnStates();
+  clock = D(0, 10);
+  ST.recordPlay(MONTH);
+  const saved = await ST.recordLearnAnswer(MONTH, K.exact);
+  const t1 = JSON.parse(LS.getItem("spelldash_word_stats"));
+  eq("5月の自力正解: 5月は 覚えた・助動詞の may は あやふや のまま（欄も変えない）", [saved, t1[MONTH]?.ls, JSON.stringify(t1[AUX])], [true, LEARNED, JSON.stringify(auxBefore)]);
+  clock = D(0, 11);
+  ST.recordPlay(AUX);
+  await ST.recordLearnAnswer(AUX, K.miss);
+  const t2 = JSON.parse(LS.getItem("spelldash_word_stats"));
+  eq("助動詞の may の ×: 5月は 覚えた のまま", [t2[MONTH]?.ls, t2[AUX].ls], [LEARNED, UNSURE]);
+  eq("数: 2 語は別々に数える（覚えた 1・あやふや 1）", L.countLearnStates(t2, VOCAB), { new: VOCAB.total - 2, unsure: 1, learned: 1, total: VOCAB.total });
+  eq("移行: 助動詞の may の習得は may だけを 覚えた に（5月は記録が無いので これから）", L.fillLearnStates({ [AUX]: SHAPES.mastered }, VOCAB.isPublic, isDone).table, { [AUX]: { ...SHAPES.mastered, ls: LEARNED } });
+  LS = kept;
+  S.forgetWordStats();
+  await S.loadLearnStates();
 }
 {
   // 同じタスクのほかの書き手と同じ 1 回の保存（setItem はタスクに 1 回）。ほかの書き手の欄は変えない

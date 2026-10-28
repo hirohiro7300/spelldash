@@ -59,6 +59,7 @@
     {"id": "english-january", "en": "january", "ja": "1月", "pos": "名", "level": "easy", "tags": ["n"], "ex": "It is very cold in January.", "exJa": "1月はとても寒い。"},
     {"id": "english-february", "en": "february", "ja": "2月", "pos": "名", "level": "easy", "tags": ["n"], "ex": "February is the shortest month.", "exJa": "2月はいちばん短い月だ。"},
     {"id": "english-april", "en": "april", "ja": "4月", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Ken joined the company in April.", "exJa": "ケンは4月に入社した。"},
+    {"id": "english-may-month", "en": "may", "sense": "month", "ja": "5月", "pos": "名", "level": "easy", "tags": ["n"], "ex": "Roses bloom in May.", "exJa": "バラは5月に咲く。"},
     {"id": "english-june", "en": "june", "ja": "6月", "pos": "名", "level": "easy", "tags": ["n"], "ex": "It rains a lot in June.", "exJa": "6月は雨が多い。"},
     {"id": "english-july", "en": "july", "ja": "7月", "pos": "名", "level": "easy", "tags": ["n"], "ex": "My birthday is in July.", "exJa": "私の誕生日は7月です。"},
     {"id": "english-august", "en": "august", "ja": "8月", "pos": "名", "level": "easy", "tags": ["n"], "ex": "August is the hottest month of the year.", "exJa": "8月は1年でいちばん暑い月だ。"},

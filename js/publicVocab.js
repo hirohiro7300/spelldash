@@ -1,4 +1,4 @@
-// ===== 公開する英単語（教材「英単語」の 2,857 語。Batch 78）の読み手 =====
+// ===== 公開する英単語（教材「英単語」の語。語数は data/public/english.json の total。Batch 78）の読み手 =====
 // 表は data/public/english.json（scripts/build-public-vocab.mjs の生成物。公開の id の唯一の表と学ぶ順。形は docs/PACK_FORMAT.md「公開する英単語」）。
 // 語数はファイルの total（生成器の EXPECTED_TOTAL の 1 か所で決まる。ここに数を持たない）。3 状態（js/learnState.js）とランク（js/rank.js）が数える母集団。
 // 上の makePublicVocab は純な関数（import なし・DOM なし。Node から直に読む: scripts/test-learn-state.mjs）。読み込み（fetch）は loadPublicVocab だけ。
