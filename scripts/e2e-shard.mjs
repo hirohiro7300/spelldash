@@ -1,9 +1,21 @@
 // E2E（tests/e2e.mjs）を組に分けて 1 組だけ流す。CI の並列ジョブ用（.github/workflows/ci.yml の matrix）
 //
 // 使い方:
-//   node scripts/e2e-shard.mjs --shard 2/4   4 組のうち 2 組目を流す（npm run test:shard -- 2/4）
-//   node scripts/e2e-shard.mjs --plan 4      組の分け方の表を出す（流さない）
-//   node scripts/e2e-shard.mjs --check 4     全部の組の台本を作り、構文と「どの節もちょうど 1 つの組に入る」を確かめる（流さない）
+//   node scripts/e2e-shard.mjs --shard 2/4   4 組のうち 2 組目を流す（npm run test:shard -- 2/4）。保留の節（下の HOLD）は流さない
+//   node scripts/e2e-shard.mjs --all         保留でない節を全部 1 本で流す（CI の 4 組を足したのと同じ節。手元で全件を流すとき）
+//   node scripts/e2e-shard.mjs --held        保留の節だけを 1 本で流す（CI では流さない。保留の節を直す・戻すとき）
+//   node scripts/e2e-shard.mjs --only "9.6 マイ単語帳" [--only "<節の名前>" …]   名前の節だけを 1 本で流す（保留の節も流せる）
+//   node scripts/e2e-shard.mjs --plan 4      組の分け方の表と保留の節を出す（流さない）
+//   node scripts/e2e-shard.mjs --check 4     全部の組と保留の台本を作り、構文と「どの節も、ちょうど 1 つの組か保留のどちらか」を確かめる（流さない）
+//   --include-held を --shard・--all・--plan に足すと、保留の節も組に入れる（保留の前の分け方。全部の節を流すとき）
+//
+// 保留（HOLD）: CI で流さない節。コードは tests/e2e.mjs に残す（消さない）。Batch 78 で利用者の導線から外した機能（本棚・コース・ほかの教材・
+// Challenge・Daily・60 秒・マイ単語帳・前の学習データ・前のランク）の検査と、内部の仕組みで単体が守る検査のうち今の木で落ちるもの。
+// 分け方の一覧と理由は節の名前ごとに HOLD の値（docs は統合担当）。節を戻すときは HOLD の行を消す（SECONDS の秒で組に入る）。
+//
+// 節は 1 つずつ try { } catch で包む: 節が途中で投げても（待ちの 30 秒切れなど）その節の残りは流れないが、✗ を 1 件数えて次の節へ進む
+// （前は投げた節の後の節がその組で 1 つも流れなかった）。投げた節が開いたままの文脈（newPage のページ）は閉じる。待たれていない
+// Promise の失敗も ✗ に数えて止めない。最後に節ごとの ✓・✗ と投げた節を出す。終了コードは前と同じ（✗ が 1 件でもあれば 1）。
 //
 // tests/e2e.mjs を 3 つに切る:
 //   頭     … 最初の「// ===== 」の行の手前まで（import・偽のサーバー・check・waitUntil・newPage・ブラウザの起動）
@@ -21,7 +33,8 @@
 // 組の中の節にかかった秒を最後に SECONDS の形で出す（CI の組のログから写せば表を更新できる）。件数の行（「N passed, M failed」）は
 // 1 本のときと同じく最後の行。
 //
-// ローカルの npm test は 1 本のまま（並列で流すと負荷で時間に敏感な検査が揺れる）。
+// ローカルの npm test は 1 本のまま（並列で流すと負荷で時間に敏感な検査が揺れる）。npm test（node tests/e2e.mjs）は保留の節も流し、
+// 節を包まないので、投げた節で止まる。保留を除いた全件は --all。
 
 import fs from "fs";
 import path from "path";
@@ -36,6 +49,43 @@ const TAIL = /^await browser\.close\(\);/;
 
 // 前の節と同じ組に置く節（節の名前で照合）。今は無い（2026-10-11 に 4 組で全件を確かめた）
 export const STICKY = [];
+
+// 保留の節（CI で流さない）: 節の名前 → 理由。Batch 78 段 6（創業者の決定 §10「削除または保留する旧 E2E」）。消さずに残し、--held で流せる。
+// 分類（K = 仕様として CI に残す・U = 内部の仕組み〔単体が守る。通れば CI に残す〕・H = 外した機能）は S/b78/impl/e2e-final.tsv。ここは H と、落ちる U
+export const HOLD = {
+  "3. Daily Dash": "H: Daily は主導線から外した（ホームに札を出さない）",
+  "4. ストリークカード＋苦手トグル＋ヘッダーストリーク表示": "H: 連続日数の札・苦手のみ・ヘッダーの連続日数はホームとヘッダーに出さない",
+  "5. Challenge": "H: Challenge は主導線から外した",
+  "6. モバイル": "H: Challenge の結果と道（前のホーム）。スマホの中心の学習は 78.3・78.6 が見る",
+  "8.6 わたしの本棚": "H: 本棚（複数の教材から選ぶ）は主導線から外した",
+  "8.6 窓の表紙": "H: 本棚の窓の表紙",
+  "9. 難易度ゲート": "H: XP の難易度と他教科のカテゴリ（中心の学習で使わない）",
+  "9.3 Challengeの手触り": "H: Challenge",
+  "9.4 今日のセット": "H: 今日のセット（10／15／25 語）は中心の学習の回に替わった",
+  "study 60s": "H: 60 秒の回",
+  "9.5 学習データ": "H: 前の学習データ（カテゴリ別の進捗・段ごとの実測）。学習状況は 78.4 が見る",
+  "9.5 覚えた瞬間 v2": "H: 知ってた・覚えた！のスタンプと語チップ（中心の学習で出さない）",
+  "9.55 成長の証拠": "H: 週間レポート（詳しい記録の畳みの中）",
+  "mastery": "H: 習熟度の 5 段の画面（段の名前を利用者の画面から外した）。決まりは test-mastery",
+  "9.6 マイ単語帳": "H: マイ単語帳",
+  "9.8 初回体験と継続": "H: 腕試し・回収・中身予告・週の目標。初めての人は 78.6 とチュートリアルが見る",
+  "9.9 成長の証拠と獲得": "H: マイ単語帳の語のミスキー・カレンダー・CSV・単語帳の語の詳細（前の学習データ）",
+  "9.955 学習のランク": "H: XP の 21 段のランクの画面（9 段に替えた。XP の決まりは test-level）。9 段は 78.4 と 9.956",
+  "9.97 概念カード「リスティング広告 実務」": "H: 他教科の概念カード",
+  "9.98 単語帳": "H: 単語帳（開くとホームへ案内する）",
+  "9.99 Batch 5a": "H: マイ場面カード・救済・今月・記憶のゲージ",
+  "9.995 Batch 5b": "H: 前の学習データの 3 つのタブ・苦手だけ練習・累計シェア",
+  "9.999 Batch 6": "H: 計算ドリル・音で出題（出題の設定を出さない）",
+  "9.9995 Batch 7a": "H: AI で場面カードを作る（マイ単語帳）",
+  "9.9996 Batch 8": "H: 教材ライブラリ・分野パック",
+  "Batch 58 ここまで": "H: 目印だけ（検査 0）",
+  "10. 新カテゴリ「広告・マーケ」": "H: 目印だけ（検査 0。他教科）",
+  "日本語の答えは読みをローマ字で打つ": "H: 日本語で答える教材（他教科）。判定は test-romaji・test-judge",
+  "12. コース選択と制覇の演出": "H: コース選択と制覇",
+  "12.5 Batch 47": "H: 「今日覚えた」の札とコースをまたぐ復習",
+  "13. 道": "H: 道（コースのユニット）",
+};
+const isHeld = (s) => Object.hasOwn(HOLD, s.key);
 
 // 節ごとの CI の秒（2026-10-13、main の CI〔run 38417468654・872b15e〕の 4 組のログの「節ごとの秒」。4 組で 1,947 件・節の秒の和 2,527 秒）に、
 // Batch 66 で足した検査の秒の見積もり（手元の秒 × その節の CI／手元の比）を足したもの: 7.5 +4・7.55 +2・7.6 +10・8.7 +63（ヘッダーの字が 1 行の検査）・8.8 +15（初回の書斎の CLS の検査）・9.9996 +5。
@@ -129,14 +179,15 @@ export function splitE2E(src) {
   return { head: lines.slice(0, first).join("\n"), sections, tail: lines.slice(tail).join("\n") };
 }
 
+// 組に分ける。sections は分ける節だけ（保留を除いた並びでもよい）。返す idx は splitE2E の節の番号（index）
 export function planShards(sections, total) {
   const units = [];
   for (const s of sections) {
-    if (units.length && STICKY.includes(s.key)) units.at(-1).push(s.index);
-    else units.push([s.index]);
+    if (units.length && STICKY.includes(s.key)) units.at(-1).push(s);
+    else units.push([s]);
   }
   const order = units
-    .map((idx, k) => ({ idx, k, weight: idx.reduce((sum, i) => sum + sections[i].weight, 0) }))
+    .map((list, k) => ({ idx: list.map((s) => s.index), k, weight: list.reduce((sum, s) => sum + s.weight, 0) }))
     .sort((a, b) => b.weight - a.weight || a.k - b.k);
   const shards = Array.from({ length: total }, () => ({ weight: 0, idx: [] }));
   for (const unit of order) {
@@ -149,27 +200,51 @@ export function planShards(sections, total) {
   return shards;
 }
 
+// 組に入れる節（保留を除く。includeHeld なら全部）と保留の節
+export function shardable(parts, includeHeld = false) {
+  return includeHeld ? parts.sections : parts.sections.filter((s) => !isHeld(s));
+}
+export const heldSections = (parts) => parts.sections.filter(isHeld);
+
 function buildScript({ head, sections, tail }, idx) {
-  const lap = (title) => `__e2eShardLap(${JSON.stringify(title)});\n`;
   const timer = [
-    "// ---- e2e-shard: 節ごとの秒（scripts/e2e-shard.mjs が足した。tests/e2e.mjs には無い） ----",
+    "// ---- e2e-shard: 節ごとの秒と件数・投げた節を閉じて次へ（scripts/e2e-shard.mjs が足した。tests/e2e.mjs には無い） ----",
     "const __e2eShardTimes = [];",
+    "let __e2eShardContexts = new Set();",
     "function __e2eShardLap(title) {",
     "  const now = Date.now();",
     "  const last = __e2eShardTimes.at(-1);",
-    "  if (last) last.ms = now - last.at;",
-    "  if (title !== null) __e2eShardTimes.push({ title, at: now, ms: 0 });",
+    "  if (last) Object.assign(last, { ms: now - last.at, passed: passed - last.passed0, failed: failed - last.failed0 });",
+    "  if (title !== null) __e2eShardTimes.push({ title, at: now, ms: 0, passed0: passed, failed0: failed, passed: 0, failed: 0, threw: false });",
+    "  __e2eShardContexts = new Set(browser.contexts());",
     "}",
+    "const __e2eShardErr = (e) => String(e?.stack ?? e).split(\"\\n\").slice(0, 6).join(\" ／ \");",
+    "// 節が投げた: ✗ を 1 件数え、その節が開いたままの文脈（newPage のページ）を閉じて次の節へ",
+    "async function __e2eShardThrew(title, e) {",
+    "  const last = __e2eShardTimes.at(-1);",
+    "  if (last) last.threw = true;",
+    "  check(`節「${title}」が途中で投げた（この節の残りは流れていない。次の節へ進む）`, false, __e2eShardErr(e));",
+    "  for (const c of browser.contexts()) if (!__e2eShardContexts.has(c)) await c.close().catch(() => {});",
+    "}",
+    "process.on(\"unhandledRejection\", (e) => check(\"待たれていない Promise が投げた（止めずに ✗ に数える）\", false, __e2eShardErr(e)));",
     ""
   ].join("\n");
   const report = [
     "",
     "__e2eShardLap(null);",
-    'console.log("\\n節ごとの秒（この組。scripts/e2e-shard.mjs の SECONDS の形）:");',
+    'console.log("\\n節ごとの件数（この台本。「投げた」は途中で止まった節）:");',
+    'for (const t of __e2eShardTimes) console.log(`  ${t.threw ? "投げた" : t.failed ? "✗ あり" : "      "}  ✓ ${t.passed}・✗ ${t.failed}  ${t.title}`);',
+    'console.log("\\n節ごとの秒（この台本。scripts/e2e-shard.mjs の SECONDS の形）:");',
     'for (const t of __e2eShardTimes) console.log(`  ${JSON.stringify(t.title)}: ${Math.round(t.ms / 1000)},`);',
     ""
   ].join("\n");
-  const body = idx.map((i) => lap(sections[i].key) + sections[i].text).join("\n");
+  // 節は { } の中で閉じている（頭の名前だけを使う）ので、try { } で包んでも中身の意味は変わらない
+  const body = idx
+    .map((i) => {
+      const key = JSON.stringify(sections[i].key);
+      return `__e2eShardLap(${key});\ntry {\n${sections[i].text}\n} catch (__e2eShardError) {\n  await __e2eShardThrew(${key}, __e2eShardError);\n}`;
+    })
+    .join("\n");
   return `${head}\n${timer}\n${body}\n${report}\n${tail}`;
 }
 
@@ -181,14 +256,19 @@ function parseShard(arg) {
   return { k, n };
 }
 
-function tempPath(k, n) {
-  return path.join(ROOT, "tests", `.e2e-shard-${k}of${n}-${process.pid}.mjs`);
+// 一時の台本の名前（tests/.e2e-shard-*.mjs は .gitignore にある）
+function tempPath(label) {
+  return path.join(ROOT, "tests", `.e2e-shard-${label}-${process.pid}.mjs`);
 }
 
-function printPlan(parts, shards) {
-  const n = shards.length;
-  const est = parts.sections.filter((s) => s.estimated);
-  console.log(`tests/e2e.mjs: 節 ${parts.sections.length} 個・重さ ${parts.sections.reduce((a, s) => a + s.weight, 0)} 秒を ${n} 組に（* = SECONDS に無く行数から見積もった節: ${est.length} 個）`);
+const weightOf = (parts, idx) => idx.reduce((a, i) => a + parts.sections[i].weight, 0);
+
+function printPlan(parts, n, includeHeld) {
+  const list = shardable(parts, includeHeld);
+  const shards = planShards(list, n);
+  const held = includeHeld ? [] : heldSections(parts);
+  const est = list.filter((s) => s.estimated);
+  console.log(`tests/e2e.mjs: 節 ${parts.sections.length} 個のうち ${list.length} 個・重さ ${weightOf(parts, list.map((s) => s.index))} 秒を ${n} 組に（* = SECONDS に無く行数から見積もった節: ${est.length} 個）`);
   shards.forEach((s, j) => {
     console.log(`\n組 ${j + 1}/${n}（重さ ${s.weight} 秒・節 ${s.idx.length} 個）`);
     for (const i of s.idx) {
@@ -196,40 +276,65 @@ function printPlan(parts, shards) {
       console.log(`  ${String(sec.weight).padStart(4)}${sec.estimated ? "*" : " "} L${sec.line}  ${sec.title.slice(0, 70)}`);
     }
   });
+  if (held.length) {
+    console.log(`\n保留（CI で流さない。--held で流す・--include-held で組に入れる）: 節 ${held.length} 個・重さ ${weightOf(parts, held.map((s) => s.index))} 秒`);
+    for (const sec of held) console.log(`  ${String(sec.weight).padStart(4)}${sec.estimated ? "*" : " "} L${sec.line}  ${sec.key} … ${HOLD[sec.key]}`);
+  }
+}
+
+// 台本の構文を node --check で見る。通らなければ false
+function syntaxOk(parts, idx, label, tag) {
+  const file = tempPath(tag);
+  try {
+    fs.writeFileSync(file, buildScript(parts, idx));
+    const r = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
+    if (r.status === 0) return true;
+    console.error(`${label} の台本が構文で通らない（節の目印「// ===== 」が { } の中にある？）:\n${r.stderr}`);
+    return false;
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
 }
 
 function check(parts, n) {
-  const shards = planShards(parts.sections, n);
-  const seen = shards.flatMap((s) => s.idx).sort((a, b) => a - b);
-  const once = seen.length === parts.sections.length && seen.every((v, i) => v === i);
-  if (!once) throw new Error(`どの節もちょうど 1 つの組に入っていない: ${JSON.stringify(seen)}`);
+  const all = parts.sections;
+  // 節の名前（SECONDS・STICKY・HOLD の鍵）が重なると、どの節のことか決まらない
+  const dup = all.filter((s, i) => all.findIndex((t) => t.key === s.key) !== i).map((s) => s.key);
+  if (dup.length) throw new Error(`節の名前が重なっている（目印の行の「:」「（」の手前を変える）: ${JSON.stringify(dup)}`);
+  // 保留の表の名前は今の節にあること（名前を変えた・消した節が表に残ると、保留したつもりの節が CI で流れる）
+  const stale = Object.keys(HOLD).filter((k) => !all.some((s) => s.key === k));
+  if (stale.length) throw new Error(`HOLD に tests/e2e.mjs に無い節の名前がある: ${JSON.stringify(stale)}`);
+  const badReason = Object.entries(HOLD).filter(([, why]) => typeof why !== "string" || !why.trim()).map(([k]) => k);
+  if (badReason.length) throw new Error(`HOLD の理由が空: ${JSON.stringify(badReason)}`);
+  // 前の節と 1 かたまりで動く節（STICKY）は、前の節と保留かどうかがそろうこと
+  const split = all.filter((s, i) => i > 0 && STICKY.includes(s.key) && isHeld(s) !== isHeld(all[i - 1])).map((s) => s.key);
+  if (split.length) throw new Error(`STICKY の節と前の節で保留かどうかが違う: ${JSON.stringify(split)}`);
+  // どの節も、ちょうど 1 つの組か保留のどちらか（保留を組に入れたときは、どの節もちょうど 1 つの組）
+  const held = heldSections(parts).map((s) => s.index);
+  for (const includeHeld of [false, true]) {
+    const shards = planShards(shardable(parts, includeHeld), n);
+    const seen = [...shards.flatMap((s) => s.idx), ...(includeHeld ? [] : held)].sort((a, b) => a - b);
+    const once = seen.length === all.length && seen.every((v, i) => v === i);
+    if (!once) throw new Error(`どの節も、ちょうど 1 つの組か保留のどちらかに入っていない${includeHeld ? "（--include-held）" : ""}: ${JSON.stringify(seen)}`);
+  }
   // 頭（最初の節の手前）は全部の組に入るので、そこに検査があると件数が組の数だけ水増しされる
   if (/(^|[^\w.])check\(/m.test(parts.head.replace(/^function check\(/m, ""))) throw new Error("tests/e2e.mjs の頭（最初の「// ===== 」の手前）に check( がある。検査は節の中に書く");
+  const shards = planShards(shardable(parts), n);
   let bad = 0;
   shards.forEach((s, j) => {
-    const file = tempPath(j + 1, n);
-    try {
-      fs.writeFileSync(file, buildScript(parts, s.idx));
-      const r = spawnSync(process.execPath, ["--check", file], { encoding: "utf8" });
-      if (r.status !== 0) {
-        bad++;
-        console.error(`組 ${j + 1}/${n} の台本が構文で通らない（節の目印「// ===== 」が { } の中にある？）:\n${r.stderr}`);
-      }
-    } finally {
-      fs.rmSync(file, { force: true });
-    }
+    if (!syntaxOk(parts, s.idx, `組 ${j + 1}/${n}`, `${j + 1}of${n}`)) bad++;
   });
+  if (held.length && !syntaxOk(parts, held, "保留", "held")) bad++;
   if (bad) process.exit(1);
-  console.log(`OK: ${n} 組（節 ${parts.sections.length} 個はどれもちょうど 1 つの組に入り、どの組の台本も構文が通る）`);
+  console.log(`OK: ${n} 組（節 ${all.length} 個のうち ${all.length - held.length} 個はどれもちょうど 1 つの組に入り、${held.length} 個は保留〔CI で流さない〕。どの組の台本も保留の台本も構文が通る）`);
 }
 
-async function run(parts, k, n) {
-  const shards = planShards(parts.sections, n);
-  const mine = shards[k - 1];
-  console.log(`E2E 組 ${k}/${n}: 節 ${mine.idx.length} 個（重さ ${mine.weight} 秒／全体 ${shards.reduce((a, s) => a + s.weight, 0)} 秒）`);
-  for (const i of mine.idx) console.log(`  L${parts.sections[i].line}  ${parts.sections[i].title.slice(0, 70)}`);
-  const file = tempPath(k, n);
-  fs.writeFileSync(file, buildScript(parts, mine.idx));
+async function run(parts, idx, label, tag, total = null) {
+  const heldOut = heldSections(parts).filter((s) => !idx.includes(s.index)).length;
+  console.log(`E2E ${label}: 節 ${idx.length} 個（重さ ${weightOf(parts, idx)} 秒${total === null ? "" : `／全体 ${total} 秒`}）${heldOut ? `。保留の節 ${heldOut} 個は流さない（--held で流す）` : ""}`);
+  for (const i of idx) console.log(`  L${parts.sections[i].line}  ${parts.sections[i].title.slice(0, 70)}`);
+  const file = tempPath(tag);
+  fs.writeFileSync(file, buildScript(parts, idx));
   const cleanup = () => fs.rmSync(file, { force: true });
   process.on("exit", cleanup);
   const child = spawn(process.execPath, [file], { stdio: "inherit", env: process.env });
@@ -253,17 +358,32 @@ if (isMain(import.meta.url)) {
     if (i < 0) return undefined;
     return args[i].includes("=") ? args[i].slice(name.length + 1) : args[i + 1];
   };
+  // 何度でも書ける名前（--only）の値をすべて
+  const opts = (name) => args.flatMap((a, i) => (a === name ? [args[i + 1]] : a.startsWith(name + "=") ? [a.slice(name.length + 1)] : []));
+  const includeHeld = args.includes("--include-held");
   const parts = splitE2E(fs.readFileSync(SRC, "utf8"));
   if (opt("--plan") !== undefined) {
     const n = Number(opt("--plan"));
     if (!(n >= 1)) throw new Error("--plan N（N ≥ 1）");
-    printPlan(parts, planShards(parts.sections, n));
+    printPlan(parts, n, includeHeld);
   } else if (opt("--check") !== undefined) {
     const n = Number(opt("--check"));
     if (!(n >= 1)) throw new Error("--check N（N ≥ 1）");
     check(parts, n);
+  } else if (args.includes("--held")) {
+    const held = heldSections(parts).map((s) => s.index);
+    if (!held.length) throw new Error("保留の節が無い（HOLD が空）");
+    await run(parts, held, "保留の節", "held");
+  } else if (opt("--only") !== undefined) {
+    const names = opts("--only");
+    const unknown = names.filter((k) => !parts.sections.some((s) => s.key === k));
+    if (unknown.length) throw new Error(`--only の名前の節が無い（節の名前は --plan の行。目印の「:」「（」の手前）: ${JSON.stringify(unknown)}`);
+    await run(parts, parts.sections.filter((s) => names.includes(s.key)).map((s) => s.index), "名前の節", "only");
+  } else if (args.includes("--all")) {
+    await run(parts, shardable(parts, includeHeld).map((s) => s.index), includeHeld ? "全部の節（保留も）" : "保留でない節（CI の 4 組と同じ）", "all");
   } else {
     const { k, n } = parseShard(opt("--shard") ?? args.find((a) => /^\d+\/\d+$/.test(a)));
-    await run(parts, k, n);
+    const shards = planShards(shardable(parts, includeHeld), n);
+    await run(parts, shards[k - 1].idx, `組 ${k}/${n}`, `${k}of${n}`, shards.reduce((a, s) => a + s.weight, 0));
   }
 }
