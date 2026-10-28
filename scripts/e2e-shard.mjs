@@ -329,8 +329,9 @@ function check(parts, n) {
   console.log(`OK: ${n} 組（節 ${all.length} 個のうち ${all.length - held.length} 個はどれもちょうど 1 つの組に入り、${held.length} 個は保留〔CI で流さない〕。どの組の台本も保留の台本も構文が通る）`);
 }
 
-async function run(parts, idx, label, tag, total = null) {
-  const heldOut = heldSections(parts).filter((s) => !idx.includes(s.index)).length;
+// 1 本の台本を作って流す。noteHeld: 流さない保留の節の数を頭に出す（組と --all）
+async function run(parts, idx, label, tag, { total = null, noteHeld = false } = {}) {
+  const heldOut = noteHeld ? heldSections(parts).filter((s) => !idx.includes(s.index)).length : 0;
   console.log(`E2E ${label}: 節 ${idx.length} 個（重さ ${weightOf(parts, idx)} 秒${total === null ? "" : `／全体 ${total} 秒`}）${heldOut ? `。保留の節 ${heldOut} 個は流さない（--held で流す）` : ""}`);
   for (const i of idx) console.log(`  L${parts.sections[i].line}  ${parts.sections[i].title.slice(0, 70)}`);
   const file = tempPath(tag);
@@ -380,10 +381,10 @@ if (isMain(import.meta.url)) {
     if (unknown.length) throw new Error(`--only の名前の節が無い（節の名前は --plan の行。目印の「:」「（」の手前）: ${JSON.stringify(unknown)}`);
     await run(parts, parts.sections.filter((s) => names.includes(s.key)).map((s) => s.index), "名前の節", "only");
   } else if (args.includes("--all")) {
-    await run(parts, shardable(parts, includeHeld).map((s) => s.index), includeHeld ? "全部の節（保留も）" : "保留でない節（CI の 4 組と同じ）", "all");
+    await run(parts, shardable(parts, includeHeld).map((s) => s.index), includeHeld ? "全部の節（保留も）" : "保留でない節（CI の 4 組と同じ）", "all", { noteHeld: true });
   } else {
     const { k, n } = parseShard(opt("--shard") ?? args.find((a) => /^\d+\/\d+$/.test(a)));
     const shards = planShards(shardable(parts, includeHeld), n);
-    await run(parts, shards[k - 1].idx, `組 ${k}/${n}`, `${k}of${n}`, shards.reduce((a, s) => a + s.weight, 0));
+    await run(parts, shards[k - 1].idx, `組 ${k}/${n}`, `${k}of${n}`, { total: shards.reduce((a, s) => a + s.weight, 0), noteHeld: true });
   }
 }
