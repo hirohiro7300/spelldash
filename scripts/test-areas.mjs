@@ -2384,6 +2384,17 @@ async function runApp(root) {
       eq("U7 復元: 前の記録を prerestore に 1 件（今の領域・人の記録の全部・読み直し済み）・その後で上書き（XP 999・持ち主の鍵と同期の印は消す）",
         [pre.length, pre[0]?.area, pre[0]?.keys, LS.getItem("spelldash_xp"), LS.getItem("spelldash_owner"), LS.getItem("spelldash_learn_filled"), Boolean(r)],
         [1, `u:${UID}`, person(acct), "999", null, null, true]);
+      reset({ seed: acct, user: UID, page: `u:${UID}` });
+      const idb4 = new FakeIDB();
+      idb4.corruptRead = (s, v) => (s === "prerestore" ? { ...v, keys: {} } : v);
+      const before4 = LS.dump();
+      let err4 = null;
+      try {
+        await BK.restoreBackup({ ...file, data: { ...file.data, spelldash_xp: "999" } }, { openStore: () => STa.openAreaStore(idb4) });
+      } catch (e) {
+        err4 = e;
+      }
+      eq("U7 復元: 前の記録の控えを読み直すと中身が合わなければ戻さない", [Boolean(err4), LS.dump()], [true, before4]);
       reset({ seed: acct, user: "someone-else", page: "u:someone-else" });
       let refused = null;
       try {
@@ -2486,7 +2497,7 @@ const MUTANTS = [
   ["退避した領域の残り: 切り替えの後に片付けない", "switch", "      if (result) {\n        try {\n          await sweepStale(store);", "      if (false) {\n        try {\n          await sweepStale(store);"],
   ["退避した領域の残り: orphans に写さずに消す", "switch", "        await store.putVerified(\"orphans\", { id: newId(), savedAt: iso(), area, keys: late, sum: sumOf(late) });", ""],
   ["退避した領域の残り: 写しと同じ値も orphans に写す", "switch", "      for (const [name, value] of Object.entries(found)) if (!copy || copy[name] !== value) late[name] = value;", "      for (const [name, value] of Object.entries(found)) late[name] = value;"],
-  ["切り替え: 手順 6 で元を消す直前に写しと比べない", "switch", "        if (!sameKeys(collect(area), snapshot)) throw await stop(\"changed\");\n        writeIndex(", "        writeIndex("],
+  ["切り替え: 手順 6 で元を消す直前に写しと比べない", "switch", "        if (!sameKeys(collect(area), snapshot)) throw await stop(\"changed\");\n        const at = {", "        const at = {"],
   ["切り替え: 展開の前に切り替え先の残りを片付けない", "switch", "      if (!live.includes(target) && physicalOf(target).length > 0) {", "      if (false) {"],
   ["切り替え: 止める時に元の領域の遅れた値を戻す記録に重ねない", "switch", [["{ ...snapshot, ...collect(area) }", "snapshot"], ["{ ...copy, ...collect(from) }", "copy"]]],
   ["切り替え: 止めるときに切り替え先の index を前に戻さない", "switch", "        if (JSON.stringify(idx[target] ?? null) !== JSON.stringify(targetBefore ?? null)) {", "        if (false) {"],
@@ -2513,12 +2524,48 @@ const MUTANTS = [
   ["切り替え: persist() を頼まない", "switch", "    persistAsked = true;\n    try {\n      await persist();", "    persistAsked = true;\n    try {\n      void persist;"],
   ["控え: askPersist が navigator.storage.persist() を呼ばない", "store", "    return Boolean(await storage.persist());", "    return false;"],
   ["書き戻しの取り消し: 前からあった鍵も、今の値が同じなら消す（止めるときに戻す元の領域の遅れた値を失う）", "switch", [["      for (const [phys, prior, value] of wrote) if (prior === null && ls.get(phys) === value) ls.remove(phys);\n", "      for (const [phys, , value] of wrote) if (ls.get(phys) === value) ls.remove(phys);\n      for (const [name, value] of Object.entries(keys)) if (ls.get(K.physicalKey(area, name)) === value) ls.remove(K.physicalKey(area, name));\n"]]],
-  ["書き戻しの取り消し: 前からあった同じ名前の鍵を前の値に戻さない", "switch", "        if (prior === null || ls.get(phys) !== value) continue;", "        continue;"]
+  ["書き戻しの取り消し: 前からあった同じ名前の鍵を前の値に戻さない", "switch", "        if (prior === null || ls.get(phys) !== value) continue;", "        continue;"],
+  // 内部の 2（ログアウト・ログインの「移す？」・予行・見張りの旧い認証の鍵）
+  ["ログアウト: 退避を確かめる前に signOut する", "switch", '    return switchTo(store, "guest", "logout", {\n      afterArchive: async () => {', '    await signOut();\n    return switchTo(store, "guest", "logout", {\n      afterArchive: async () => {'],
+  ["ログアウト: signOut の結果（error とセッションが消えたこと）を確かめない", "switch", [['        if (result?.error) throw fail("signout", result.error);\n', ""], ['        if (sessionArea() !== "guest") throw fail("signout");\n', ""]]],
+  ["ログイン: ゲストに記録があってもたずねない", "switch", '      if (ask && from === "guest"', '      if (false && from === "guest"'],
+  ["ログイン: アカウントの領域が端末にあってもたずねる", "switch", " && readIndex()[target] === undefined && hasRecords(", " && hasRecords("],
+  ["はい: 持ち主の鍵など 5 つを消さない", "switch", "filter(([name]) => !ADOPT_RESET.includes(name))", "filter(() => true)"],
+  ["はい: 移した後にゲストを index から外さない", "switch", "      if (adopt) delete nextIndex[from];\n", ""],
+  ["はい: 落ちた後の直しでゲストを index から外さない", "switch", "          finishAdopt(pending);\n", ""],
+  ["はい: 切り替え先の写しを書かない", "switch", 'await store.putVerified("areas", { area: target, id, keys: adoptKeys,', 'void ({ area: target, id, keys: adoptKeys,'],
+  ["たずねた後にセッションを確かめ直さない", "switch", "        if (now !== target) {\n          target = now;\n          continue;\n        }\n", ""],
+  ["予行: 読み直さない（書くだけ）", "switch", 'await store.putVerified("areas", { area: PRECHECK_PREFIX + area,', 'await store.put("areas", { area: PRECHECK_PREFIX + area,'],
+  ["予行: 本物の写し（その領域の鍵）に書く", "switch", "area: PRECHECK_PREFIX + area,", "area,"],
+  ["予行: persist() を頼まない", "switch", "    try {\n      await persist();\n    } catch {\n      // 断られても写す", "    try {\n      void persist;\n    } catch {\n      // 断られても写す"],
+  ["見張り: 頭で旧い認証の鍵を消さない", "guard", "  dropOldAuth();\n\n  // ===== ほかのタブの書き込み", "\n  // ===== ほかのタブの書き込み"],
+  ["見張り: 知らせで旧い認証の鍵を消さない", "guard", "      if (event.newValue !== null) dropOldAuth();\n", ""],
+  ["見張り: 旧い場所の値の知らせで片付けを急がない", "guard", "scheduleSweep(true);\n    }\n  });", "scheduleSweep();\n    }\n  });"],
+  // U7・U8（別のプロセスで流す: js/ を写した木）
+  ["同期: 送るたびに確かめない（クラウドの口が領域を見ない）", "sync", '    if (!areaAllows(userId)) return Promise.resolve({ data: null, error: { message: "記録の持ち主が替わったため送らなかった。", code: "SD2_AREA" }, count: null });\n', ""],
+  ["同期: 見張りが無いときに通す", "sync", '    return Boolean(userId) && Boolean(area) && area.area === "u:" + userId && area.stillMine() === true;', '    return Boolean(userId) && (!area || (area.area === "u:" + userId && area.stillMine() === true));'],
+  ["同期: 領域の持ち主の印が別の人でも同期する", "sync", "  if (owner && owner !== userId) return false;\n", ""],
+  ["同期: initialSync の頭で領域を確かめない", "sync", "  if (!areaAllows(userId)) return false;\n  // このタブで最後まで済んでいれば", "  // このタブで最後まで済んでいれば"],
+  ["Supabase: 送る直前の確かめを部品に渡さない", "supabase", 'global: { headers: { "X-Client-Info": CLIENT_INFO }, fetch: guardedFetch }', 'global: { headers: { "X-Client-Info": CLIENT_INFO } }'],
+  ["Supabase: 世代の印を付けない", "supabase", 'global: { headers: { "X-Client-Info": CLIENT_INFO }, fetch: guardedFetch }', "global: { fetch: guardedFetch }"],
+  ["Supabase: トークンの人とページの領域を比べない", "supabase", 'area.area === (user ? "u:" + user : "guest") && ', ""],
+  ["Supabase: stillMine を見ない", "supabase", " && area.stillMine() === true;\n    } catch {\n      fits = false;", ";\n    } catch {\n      fits = false;"],
+  ["Supabase: 認証の要求も止める", "supabase", '  if (url.includes("/rest/v1/")) {', "  if (true) {"],
+  ["バックアップ: 持ち主の値に乱数を混ぜる", "backup", "new TextEncoder().encode(OWNER_SALT + userId)", "new TextEncoder().encode(OWNER_SALT + userId + Math.random())"],
+  ["バックアップ: ほかのアカウントのファイルも戻す", "backup", 'return tag !== null && tag === owner.tag ? { ok: true, legacy: false } : { ok: false, reason: "other" };', "return { ok: true, legacy: false };"],
+  ["バックアップ: ゲストのファイルをアカウントに戻す", "backup", 'if (owner.kind === "guest") return area === "guest" ? { ok: true, legacy: false } : { ok: false, reason: "guest-file" };', 'if (owner.kind === "guest") return { ok: true, legacy: false };'],
+  ["バックアップ: アカウントのファイルをゲストに戻す", "backup", '    if (typeof area !== "string" || !area.startsWith("u:")) return { ok: false, reason: "account-file" };\n', ""],
+  ["バックアップ: prerestore に写さずに戻す", "backup", "  await savePrerestore(area, openStore);\n", ""],
+  ["バックアップ: prerestore を読み直さない", "backup", 'await store.putVerified("prerestore",', 'await store.put("prerestore",'],
+  ["バックアップ: 持ち主を付けずに書き出す", "backup", "  if (owner) backup.owner = owner;\n  return backup;", "  return backup;"],
+  ["バックアップ: 古いファイルの最後に学んだ日で lsAt を見ない", "backup", ", Number(s.lsAt) || 0);", ");"],
+  ["バックアップ: 直に呼んだ復元で持ち主を確かめない", "backup", "  if (!decision.ok) throw new Error(RESTORE_REFUSED[decision.reason] ?? RESTORE_REFUSED.unknown);\n", ""]
 ];
+const APP_FILES = new Set(["sync", "backup", "supabase"]);
 let mutantReport = [];
 if (MUTATE && baseFailures.length === 0) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "areas-mut-"));
-  const files = { guard: "js/areaGuard.js", switch: "js/areaSwitch.js", store: "js/areaStore.js" };
+  const files = { guard: "js/areaGuard.js", switch: "js/areaSwitch.js", store: "js/areaStore.js", sync: "js/sync.js", backup: "js/backup.js", supabase: "js/supabase.js" };
   const original = Object.fromEntries(Object.entries(files).map(([k, f]) => [k, fs.readFileSync(path.join(ROOT, f), "utf8")]));
   let n = 0;
   for (const [name, file, from, to] of MUTANTS) {
@@ -2528,19 +2575,28 @@ if (MUTATE && baseFailures.length === 0) {
       mutantReport.push(`${name}: 変異の元の文が見つからない（テストを直す）`);
       continue;
     }
-    const d = path.join(dir, String(n), "js");
-    fs.mkdirSync(d, { recursive: true });
     const mutated = pairs.reduce((text, [a, b]) => text.replace(a, b), original[file]);
-    for (const [k, f] of Object.entries(files)) fs.writeFileSync(path.join(d, path.basename(f)), k === file ? mutated : original[k]);
-    guardSrc = fs.readFileSync(path.join(d, "areaGuard.js"), "utf8");
-    SW = await import(pathToFileURL(path.join(d, "areaSwitch.js")).href);
-    ST = await import(pathToFileURL(path.join(d, "areaStore.js")).href);
     passed = 0;
     failures = [];
-    try {
-      await runAll();
-    } catch (e) {
-      failures.push(`throw: ${e.message}`);
+    if (APP_FILES.has(file)) {
+      // js/ を全部写した木（data は元の木を指す）で、U7・U8 だけを別のプロセスで流す
+      const root = path.join(dir, String(n));
+      fs.cpSync(path.join(ROOT, "js"), path.join(root, "js"), { recursive: true });
+      fs.symlinkSync(path.join(ROOT, "data"), path.join(root, "data"));
+      fs.writeFileSync(path.join(root, files[file]), mutated);
+      runAppChild(root);
+    } else {
+      const d = path.join(dir, String(n), "js");
+      fs.mkdirSync(d, { recursive: true });
+      for (const [k, f] of Object.entries(files)) if (!APP_FILES.has(k)) fs.writeFileSync(path.join(d, path.basename(f)), k === file ? mutated : original[k]);
+      guardSrc = fs.readFileSync(path.join(d, "areaGuard.js"), "utf8");
+      SW = await import(pathToFileURL(path.join(d, "areaSwitch.js")).href);
+      ST = await import(pathToFileURL(path.join(d, "areaStore.js")).href);
+      try {
+        await runAll();
+      } catch (e) {
+        failures.push(`throw: ${e.message}`);
+      }
     }
     if (failures.length === 0) mutantReport.push(`${name}: 落ちなかった`);
     else if (!QUIET) console.log(`  変異「${name}」→ ${failures.length} 件落ちる（例: ${failures[0].split("\n")[0]}）`);
