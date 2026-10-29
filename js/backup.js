@@ -27,10 +27,20 @@ const RESET_ON_RESTORE = ["spelldash_xp_synced", "spelldash_xp_write", "spelldas
 // （Batch 78 の前からの不具合: verify-dataloss m2）。消せば、次の取り込みで語ごとに新しい方を採る
 const SYNC_FLAGS = ["spelldash_synced_this_session", "spelldash_pulled_this_session", "spelldash_sync_done_this_session", "spelldash_pull_started_at"];
 
+// 鍵の一覧は、領域を知る口（見張り js/areaGuard.js の window.SpellDashArea.keys()）だけから取る: 今の領域の人の記録と端末の鍵を、元の名前で返す。
+// ほかの人の領域・旧い場所の値（旧コードのタブ）は入らない。localStorage.key・length で数えると物理の鍵（sd2.<領域>.…）を拾うので使わない。
+// 見張りの無い所（Node の単体の偽の保存）だけ、渡された保存の鍵を数える（ブラウザのページは必ず見張りを読む。読めなければ止まる）
+function storedKeys() {
+  const area = globalThis.SpellDashArea;
+  if (area) return area.keys();
+  const out = [];
+  for (let i = 0; i < localStorage.length; i++) out.push(localStorage.key(i));
+  return out;
+}
+
 export function buildBackup() {
   const data = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
+  for (const key of storedKeys()) {
     if (!key || !key.startsWith(PREFIX) || EXCLUDE.has(key)) continue;
     data[key] = localStorage.getItem(key);
   }
@@ -77,8 +87,7 @@ export function inspectBackup(obj) {
 // spelldash_* の今の中身（復元が途中で失敗したときに書き戻す控え。メモリーだけ）
 function snapshotRecords() {
   const out = new Map();
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
+  for (const key of storedKeys()) {
     if (key && key.startsWith(PREFIX)) out.set(key, localStorage.getItem(key));
   }
   return out;
@@ -113,8 +122,7 @@ export function applyBackup(obj) {
   const snapshot = snapshotRecords();
   try {
     const toRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    for (const key of storedKeys()) {
       if (key && key.startsWith(PREFIX) && !EXCLUDE.has(key)) toRemove.push(key);
     }
     toRemove.forEach((key) => localStorage.removeItem(key));
@@ -194,8 +202,7 @@ const KEEP_ON_CLEAR = new Set([
 
 export function clearLocalRecords() {
   const toRemove = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
+  for (const key of storedKeys()) {
     if (!key || !key.startsWith(PREFIX) || KEEP_ON_CLEAR.has(key) || key.startsWith("spelldash_test_")) continue;
     toRemove.push(key);
   }

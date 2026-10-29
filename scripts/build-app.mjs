@@ -13,7 +13,8 @@ import { isMain } from "./lib/is-main.mjs";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
 
-export const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html", "terms.html", "typing.html", "typing-game.html"];
+// switch.html は人ごとの保存の領域の切り替えの画面（js/areaSwitch.js）。リンクからは辿らないが、どのページの見張り（js/areaGuard.js）も移る先なので入れる
+export const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html", "terms.html", "typing.html", "typing-game.html", "switch.html"];
 export const DIRS = ["css", "js", "data", "assets"];
 
 // SNS に貼られたときの絵（assets/images/og-*.png。og-image.png とページごとの絵）は SNS の読み取りだけが使い、アプリの中のページは出さないので入れない

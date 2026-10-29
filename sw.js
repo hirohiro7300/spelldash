@@ -3,7 +3,10 @@
 // Supabase等のクロスオリジンには一切触らない。
 // v5（Batch 78）: 先読みから /list.html を外した。前の版（v4）が持つ単語帳と分野パックの古いページは activate で消える
 // v6（Batch 78 段 6）: 先読みからタイピングの 2 ページ（/typing.html・/typing-game.html。配信の転送で英単語のホームへ）を外した。前の版（v5）の保存は activate で消える
-const CACHE_NAME = "spelldash-v6";
+// v7（Batch 78 アカウント分離 内部の 1）: 先読みに切り替えの画面（/switch.html）と記録の見張り（/js/areaGuard.js）を足した。有効になったら、開いている窓に
+// 問い合わせ、答えない窓（見張りの無い古いコードのページ）を読み直させる。これは補助で、安全の根拠にしない（凍った・裏の・Service Worker の無いタブは
+// 読み直されない。古いタブの守りは保存の鍵と認証の鍵の世代: DESIGN-FINAL §6）
+const CACHE_NAME = "spelldash-v7";
 
 // 先読みのページ。配信の転送（vercel.json の redirects）が受けるパス（/list.html・/packs/*・/typing.html・/typing-game.html）は入れない: cache.addAll は転送を追うので、
 // 転送の後の応答（redirected）をそのパスで保存し、オフラインでそのページを開くとブラウザが応答を断る（ページ遷移の応答は転送を含めない決まり）。
@@ -18,7 +21,9 @@ const CORE_ASSETS = [
   "/pro.html",
   "/privacy.html",
   "/terms.html",
-  "/tokushoho.html"
+  "/tokushoho.html",
+  "/switch.html",
+  "/js/areaGuard.js"
 ];
 
 self.addEventListener("install", (event) => {
@@ -38,8 +43,37 @@ self.addEventListener("activate", (event) => {
         Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
       )
       .then(() => self.clients.claim())
+      .then(() => reloadOldWindows())
   );
 });
+
+// 開いている窓に問い合わせ（sd2-ping）、PING_MS のうちに答えない窓を読み直させる（見張り js/areaGuard.js のある新しいページは答える）。
+// 失敗しても有効になるのを止めない
+const PING_MS = 1500;
+function ping(client) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (answered) => {
+      if (done) return;
+      done = true;
+      resolve(answered);
+    };
+    try {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (event) => finish(event.data?.type === "sd2-pong");
+      client.postMessage({ type: "sd2-ping" }, [channel.port2]);
+    } catch {
+      finish(false);
+    }
+    setTimeout(() => finish(false), PING_MS);
+  });
+}
+function reloadOldWindows() {
+  return self.clients
+    .matchAll({ type: "window", includeUncontrolled: false })
+    .then((windows) => Promise.all(windows.map((client) => ping(client).then((answered) => (answered ? null : client.navigate(client.url).catch(() => null))))))
+    .catch(() => null);
+}
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;

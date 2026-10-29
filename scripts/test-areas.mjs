@@ -383,11 +383,12 @@ const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !=
 
 // 切り替えの手順を偽物で作る
 let seq = 0; // 写しの id（タブをまたいで重ならない）
-function switcher(backing, { idb = new FakeIDB(), locks = new FakeLocks(), crashAt = null } = {}) {
+function switcher(backing, { idb = new FakeIDB(), locks = new FakeLocks(), crashAt = null, onRemove = null } = {}) {
   let t = Date.parse("2026-10-29T00:00:00Z");
   let ops = 0;
   let dead = false;
-  const raw = rawOf(backing);
+  const base = rawOf(backing);
+  const raw = onRemove ? { ...base, remove: (k) => { base.remove(k); onRemove(k); } } : base;
   const ls = crashAt === null ? raw : {
     get: raw.get,
     keys: raw.keys,
@@ -609,7 +610,7 @@ async function runAll() {
       const bb = new Backing(seed);
       const before = bb.dump();
       const tt = openTab(bb, { search: "?learn=next" });
-      eq(`U2 頭で止める: ${name}（止めて /switch.html へ・人の記録を書けない）`, [tt.log.stopped, tt.log.replaced, tt.tryWrite("spelldash_xp", "9"), bb.dump(), tt.ctx.SpellDashArea === undefined], [1, ["/switch.html?back=%2Findex.html%3Flearn%3Dnext"], "InvalidStateError", before, true]);
+      eq(`U2 頭で止める: ${name}（止めて /switch.html へ・使えないブラウザの文は出さない・人の記録を書けない）`, [tt.log.stopped, tt.log.replaced, tt.elements.some((e) => e.id === "areaStop"), tt.tryWrite("spelldash_xp", "9"), bb.dump(), tt.ctx.SpellDashArea === undefined], [1, ["/switch.html?back=%2Findex.html%3Flearn%3Dnext"], false, "InvalidStateError", before, true]);
     }
     // 切り替えの画面では包まない
     const b8 = new Backing({ spelldash_word_stats: "OLD" });
@@ -666,7 +667,7 @@ async function runAll() {
       const migrated = JSON.parse(b.get("sd2.migrated") ?? "null");
       eq(`U3 ${c.name}: 失敗しない・領域`, [r.error?.message ?? null, b.get("sd2.area")], [null, `${c.final}#${c.area === c.final ? 1 : 2}`]);
       eq(`U3 ${c.name}: legacy に旧い記録の全部（1 件・読み直し済み・印に id）`, [legacy.length, legacy[0]?.keys, migrated?.legacyId === legacy[0]?.id, migrated?.fromSchema], [1, old, true, "7"]);
-      eq(`U3 ${c.name}: 旧い本体は localStorage に残らない（持ち主の鍵は「移した」の印だけ）`, [rawPersonKeys(b), b.get("spelldash_owner")], [["spelldash_owner"], "sd2-moved"]);
+      eq(`U3 ${c.name}: 旧い本体は localStorage に残らない（持ち主の鍵は「移した」の印だけ）・移行が消す（旧い場所の片付け orphans に回さない）`, [rawPersonKeys(b), b.get("spelldash_owner"), r.idb.all("orphans").length], [["spelldash_owner"], "sd2-moved", 0]);
       const where = c.area === c.final ? areaRecords(b, c.area) : r.idb.peek("areas", c.area)?.keys;
       eq(`U3 ${c.name}: 記録（3 状態・最高到達ランク・回の続き・送信待ち）は 1 字も違わず ${c.area} に入る`, where, old);
       ok(`U3 ${c.name}: 端末の鍵はそのまま`, b.get("spelldash_theme") === "dark" && b.get("spelldash_device_id") === "dev1");
@@ -817,6 +818,30 @@ async function runAll() {
       b.set("sd2.auth", session("B"));
       const r = await settle(b, { idb });
       eq(`U4 退避に失敗（${name}）: 止める・A は localStorage のまま・印も index も替えない`, [r.error?.reason, areaRecords(b, "u:A"), b.get("sd2.area"), b.get("sd2.index"), b.get("sd2.switch")], [reason, A, before["sd2.area"], before["sd2.index"], null]);
+    }
+    // swap の段: 元の鍵を消し始めた後に、ほかのタブ（凍って戻った）が書こうとしても拒む。localStorage に元の鍵を残さない
+    {
+      const { b, idb } = await twoAreas();
+      const other = openTab(b);
+      let during = null;
+      b.set("sd2.auth", session("B"));
+      const s1 = switcher(b, { idb, onRemove: (k) => { if (during === null && k.startsWith("sd2.u:A.")) during = other.tryWrite("spelldash_xp", "555"); } });
+      let err = null;
+      try {
+        await s1.sw.settle();
+      } catch (e) {
+        err = e;
+      }
+      eq("U4 swap の段: 元の鍵を消している間のほかのタブの書き込みは拒む・切り替えの後に元の鍵が localStorage に残らない", [err?.message ?? null, during, areaRecords(b, "u:A"), areaRecords(b, "u:B"), idb.peek("areas", "u:A").keys], [null, "InvalidStateError", {}, B, A]);
+    }
+    // 切り替え先の写しが index の指す物でない・無い（ブラウザが消した等）: 元を消さずに止める
+    for (const [name, change] of [["id が違う", (idb) => idb.poke("areas", { ...idb.peek("areas", "u:B"), id: "other" })], ["無い", (idb) => idb.dbs.get("spelldash-areas").stores.get("areas").data.delete("u:B")]]) {
+      const { b, idb } = await twoAreas();
+      change(idb);
+      const before = b.dump();
+      b.set("sd2.auth", session("B"));
+      const r = await settle(b, { idb });
+      eq(`U4 切り替え先の写しが${name}: 理由 target・A は localStorage のまま・印は替えない`, [r.error?.reason, areaRecords(b, "u:A"), b.get("sd2.area"), b.get("sd2.switch")], ["target", A, before["sd2.area"], null]);
     }
     // ほかのページ（凍ったタブ）が残っても進める。swap の後は、そのタブは書けない
     {

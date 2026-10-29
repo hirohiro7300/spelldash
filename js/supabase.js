@@ -17,17 +17,25 @@ export const isSupabaseConfigured =
   supabaseAnonKey.length > 20 &&
   (supabaseAnonKey.startsWith("eyJ") || supabaseAnonKey.startsWith("sb_"));
 
-// テスト用の差し替え口（本番では常にesm.sh）
+// テスト用の差し替え口（本番では常にesm.sh）。
+// 部品の版は固定する（2.118.0。2026-10-29 に決めた）: 人ごとの保存の領域（js/areaGuard.js）は、部品が保存するセッションの鍵と形・
+// タブをまたぐ知らせ・SIGNED_OUT を出す時機に頼る。幅のある版（@2）だと、知らないうちに振る舞いが変わる。版を上げるときは
+// 旧タブの検査（tests/oldtab）と scripts/test-areas.mjs を流してから
 const MODULE_URL =
   (typeof window !== "undefined" && window.__SUPABASE_MODULE_URL) ||
-  "https://esm.sh/@supabase/supabase-js@2";
+  "https://esm.sh/@supabase/supabase-js@2.118.0";
+
+// 認証のセッションを置く鍵（世代を分けた新しい名前。spelldash_ で始めない）。旧い既定の鍵 sb-<ref>-auth-token は、移行のときに
+// 切り替えの画面（js/areaSwitch.js）がここへ移して消す。旧コードのタブの部品は旧い鍵と旧い知らせの名前しか見ないので、
+// 新しいタブでログインした人のセッションを読めない（DESIGN-FINAL §6）。js/areaGuard.js の AUTH_KEY と同じ名前（scripts/test-areas.mjs が確かめる）
+export const AUTH_STORAGE_KEY = "sd2.auth";
 
 let realClient = null;
 let loadFailed = false;
 
 const ready = import(MODULE_URL)
   .then(({ createClient }) => {
-    realClient = createClient(supabaseUrl, supabaseAnonKey);
+    realClient = createClient(supabaseUrl, supabaseAnonKey, { auth: { storageKey: AUTH_STORAGE_KEY } });
   })
   .catch(() => {
     loadFailed = true;

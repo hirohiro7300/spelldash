@@ -70,6 +70,9 @@ jobs:
       - name: 3 状態・スキーマ 7 の移行・最高到達ランクの決まり（js/learnState.js・js/rank.js・js/storage.js・js/sync.js・js/backup.js）
         run: node scripts/test-learn-state.mjs
 
+      - name: 人ごとの保存の領域（見張りの読み替えと書くたびの確かめ・localStorage の使い方の形・全ページの頭・移行・切り替えの直し・展開の途中で満杯・変異。js/areaGuard.js・areaSwitch.js・areaStore.js）
+        run: node scripts/test-areas.mjs
+
       - name: 中心の学習の出題の列（これから・あやふや・覚えた。js/learnQueue.js）
         run: node scripts/test-learn-queue.mjs
 
