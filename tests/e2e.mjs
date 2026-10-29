@@ -340,12 +340,62 @@ const browser = await chromium.launch({ executablePath: findChromium(), args: ["
 // 鍵の一覧は SpellDashArea.keys()（元の名前）で見る（Object.keys(localStorage) は物理の鍵 sd2.… を返す）。
 // 本物の頭の振る舞い（移行・止める・使えないブラウザ）を見る節は rawNewContext を使う（見張りを置かない。78.7）
 const AREA_GUARD_SRC = fs.readFileSync(path.join(ROOT, "js", "areaGuard.js"), "utf8");
+// ログインの種（Batch 78-7 内部の 2）: 種に spelldash_test_session（前の形のスタブのログイン）があれば、その文脈の最初の文書で、見張りより先に
+// 認証の新しい鍵 sd2.auth に test-user のセッションを書き、まっさらな端末ならその人の領域（u:test-user）の印を作る。種の人の記録はその人の領域へ入る
+// （前と同じく「ログインしている人の端末」。ゲストの記録をアカウントに移す確認を通らない）。種を足す addInitScript（文脈・ページ）が、見張りより先に走る
+// 文脈の初期化の script が読む印のクッキー（sde2e_login）を置く。印は 1 回使ったら消す（ログアウトの後に読み直しても、ログインに戻さない）
+const LOGIN_COOKIE = "sde2e_login";
+const PRE_GUARD_SRC = `(() => {
+  try {
+    if (!location.origin || location.origin === "null") return;
+    const m = document.cookie.match(/(?:^|; )${LOGIN_COOKIE}=([^;]*)/);
+    if (!m) return;
+    document.cookie = "${LOGIN_COOKIE}=; path=/; max-age=0";
+    const { token, user } = JSON.parse(decodeURIComponent(m[1]));
+    const ls = window.localStorage;
+    const P = Storage.prototype;
+    const keys = [];
+    for (let i = 0; i < ls.length; i++) keys.push(ls.key(i));
+    const fresh = !keys.some((k) => k.startsWith("sd2.") || k.startsWith("sb-") || (k.startsWith("spelldash_") && !k.startsWith("spelldash_test_")));
+    const session = { access_token: token === "1" ? "test-token" : token, token_type: "bearer", expires_in: 3600, expires_at: 9999999999, refresh_token: "test-refresh", user };
+    P.setItem.call(ls, "sd2.auth", JSON.stringify(session));
+    if (fresh) {
+      const area = "u:" + user.id;
+      const at = new Date().toISOString();
+      P.setItem.call(ls, "sd2.index", JSON.stringify({ [area]: { at: "ls", lastUsedAt: at } }));
+      P.setItem.call(ls, "sd2.area", area + "#1");
+      P.setItem.call(ls, "sd2.migrated", JSON.stringify({ at, fromSchema: null, legacyId: null }));
+    }
+  } catch {}
+})();`;
 const rawNewContext = browser.newContext.bind(browser);
 browser.newContext = async (opts = {}) => {
   const ctx = await rawNewContext(opts);
+  await ctx.addInitScript(PRE_GUARD_SRC);
   await ctx.addInitScript(AREA_GUARD_SRC);
   return ctx;
 };
+// 種（addInitScript の引数。{ storage: {...} } か、鍵と値の表）にスタブのログインがあれば、その文脈に印のクッキーを置いてから種を足す
+{
+  const loginToken = (arg) => {
+    const seed = arg && typeof arg === "object" ? (arg.storage && typeof arg.storage === "object" ? arg.storage : arg) : null;
+    return seed && typeof seed.spelldash_test_session === "string" && seed.spelldash_test_session ? seed.spelldash_test_session : null;
+  };
+  const probeCtx = await rawNewContext();
+  const probePage = await probeCtx.newPage();
+  for (const proto of [Object.getPrototypeOf(probePage), Object.getPrototypeOf(probeCtx)]) {
+    const original = proto.addInitScript;
+    proto.addInitScript = async function (script, arg) {
+      const token = loginToken(arg);
+      if (token) {
+        const ctx = typeof this.context === "function" ? this.context() : this;
+        await ctx.addCookies([{ name: LOGIN_COOKIE, value: encodeURIComponent(JSON.stringify({ token, user: { id: "test-user", email: "test@example.com" } })), url: BASE }]);
+      }
+      return original.call(this, script, arg);
+    };
+  }
+  await probeCtx.close();
+}
 
 async function newPage(init = {}) {
   const opts = {};
@@ -13434,47 +13484,71 @@ console.log("account emblem（アカウントの紋章）:");
       rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
   }
 
-  // ---- (6) ランクが決まらないとき: 端末の持ち主が別のアカウント（最高到達ランク 留学生）。置き換えを受けて取り込む間は頭文字・「アカウントメニュー」・行なし（前の人のランクを出さない）、
-  //          取り込んだら新しい人の記録（クラウドの語は無い）で赤ちゃん。クラウドの XP は使わない。取り込みが失敗したら頭文字のまま ----
+  // ---- (6) ランクが決まらないとき: 前の人（持ち主 other-user・最高到達ランク 留学生）の記録がある旧い形の端末に test-user がログインしている（Batch 78-7 内部の 2）。
+  //          移行で前の人の記録はその人の領域へ入り、切り替えの画面を通って test-user の領域（まだ記録なし）へ替わる（前の人の記録は IndexedDB の写しに残る・確認は出ない）。
+  //          取り込む間は頭文字・「アカウントメニュー」・行なし（前の人のランクを出さない）、取り込んだら新しい人の記録（クラウドの語は無い）で赤ちゃん。
+  //          クラウドの XP は使わない。取り込みが失敗したら頭文字のまま ----
   {
     const iso = new Date(Date.now() - 3600000).toISOString();
+    const OLD_AUTH = "sb-sujvgwozsnzjsjmkcrnk-auth-token";
     const otherDevice = async (cloudConfig) => {
       const cloud = createCloud({ word_progress: [], user_progress: [{ user_id: "test-user", xp: 213850, level: 92, updated_at: iso }], user_items: [] }, cloudConfig);
-      const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+      // 見張りを初期化の script に置かない文脈で、旧い形の端末（旧い鍵の記録と旧い認証の鍵）を見張りを読まない同じ origin の文書から作る
+      const ctx = await rawNewContext({ viewport: { width: 1200, height: 900 } });
+      const seedPage = await ctx.newPage();
+      await seedPage.goto(BASE + "/css/reset.css");
+      await seedPage.evaluate((seed) => { for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); }, {
+        spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_cloud: cloud.id, spelldash_owner: "other-user", spelldash_rank_peak: "6", spelldash_xp: "777",
+        spelldash_word_stats: JSON.stringify({ "zzz-only-other": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }),
+        [OLD_AUTH]: JSON.stringify({ access_token: "test-token", token_type: "bearer", expires_in: 3600, expires_at: 9999999999, refresh_token: "test-refresh", user: { id: "test-user", email: "test@example.com" } })
+      });
+      const page = await ctx.newPage();
       page.errors = [];
       page.on("pageerror", (e) => page.errors.push(e.message));
       page.dialogs = [];
       page.on("dialog", async (d) => { page.dialogs.push(d.message()); await d.accept(); });
-      await page.addInitScript((seed) => {
-        if (sessionStorage.getItem("spelldash_test_seeded")) return;
-        sessionStorage.setItem("spelldash_test_seeded", "1");
-        for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
-      }, { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_owner: "other-user", spelldash_rank_peak: "6", spelldash_xp: "777", spelldash_word_stats: JSON.stringify({ "zzz-only-other": { playCount: 1, correctCount: 1, missCount: 0, recallFail: 0, typingMiss: 0, lastPlayed: iso } }) });
+      page.visited = [];
+      page.on("framenavigated", (f) => { if (f === page.mainFrame()) page.visited.push(new URL(f.url()).pathname); });
       await page.addInitScript(AVLOG);
       watchReqs(page);
-      return { page, cloud };
+      const open = async () => {
+        await page.goto(BASE + "/index.html", { waitUntil: "load" }).catch(() => {}); // 頭で止めて切り替えの画面へ移ると、最初の読み込みは中断される
+        return waitUntil(() => page.evaluate(() => location.pathname === "/index.html" && window.SpellDashArea?.area === "u:test-user" && !!document.getElementById("avatarButton")).catch(() => false), 15000);
+      };
+      const rawIndex = async () => {
+        const p = await ctx.newPage();
+        try {
+          await p.goto(BASE + "/css/reset.css");
+          return await p.evaluate(() => JSON.parse(localStorage.getItem("sd2.index") || "{}"));
+        } finally {
+          await p.close();
+        }
+      };
+      return { page, cloud, ctx, open, rawIndex };
     };
-    const { page } = await otherDevice({ delayMs: 2500 });
-    await page.goto(BASE + "/index.html", { waitUntil: "load" });
-    await page.waitForTimeout(1600); // 紋章の処理を読んだ後・取り込み（2.5 秒遅れ）が終わる前
+    const dev = await otherDevice({ delayMs: 2500 });
+    const { page } = dev;
+    const arrived = await dev.open();
+    await page.waitForTimeout(1000); // 紋章の処理を読んだ後・取り込み（2.5 秒遅れ）が終わる前
     const during = await avatarOf(page);
-    const synced = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_owner"))) === "test-user", 8000);
+    const synced = await waitUntil(async () => (await page.evaluate(() => localStorage.getItem("spelldash_owner"))) === "test-user", 10000);
     await shownIs(page, "赤ちゃん", 6000);
     const after = await avatarOf(page);
     const log = await page.evaluate(() => window.__avlog);
     const peak = await page.evaluate(() => localStorage.getItem("spelldash_rank_peak"));
-    check("アカウントの紋章: 持ち主が別のアカウントの端末で置き換えを受けた後、取り込みの間は頭文字・「アカウントメニュー」・行なし（前の人の留学生を出さない）、取り込んだら新しい人の赤ちゃん（クラウドの XP は使わない）。前の人の最高到達ランクは消える・幕は出ない・留学生は一度も出ない・エラー 0",
-      page.dialogs.length === 1 && during.user && during.label === "アカウントメニュー" && during.row === null && during.letterShown && synced && after.label === label("赤ちゃん") && after.row === "ランク 赤ちゃん" && peak !== "6" &&
-        !log.some((e) => e.curtain || /留学生/.test(`${e.label}${e.row}`)) && page.errors.length === 0, JSON.stringify({ dialogs: page.dialogs.length, during, after, peak, log: log.slice(0, 6), err: page.errors[0] }));
-    await page.close();
+    const kept = String((await dev.rawIndex())["u:other-user"]?.at ?? "").startsWith("idb:");
+    check("アカウントの紋章: 前の人（持ち主が別のアカウント・留学生）の記録がある旧い端末でログイン中の人の領域へ切り替わった後（前の人の記録は IndexedDB の写しへ・確認は出ない）、取り込みの間は頭文字・「アカウントメニュー」・行なし（前の人の留学生を出さない）、取り込んだら新しい人の赤ちゃん（クラウドの XP は使わない）。前の人の最高到達ランクはこの人の領域に無い・幕は出ない・留学生は一度も出ない・エラー 0",
+      arrived && page.visited.includes("/switch.html") && kept && page.dialogs.length === 0 && during.user && during.label === "アカウントメニュー" && during.row === null && during.letterShown && synced && after.label === label("赤ちゃん") && after.row === "ランク 赤ちゃん" && peak !== "6" &&
+        !log.some((e) => e.curtain || /留学生/.test(`${e.label}${e.row}`)) && page.errors.length === 0, JSON.stringify({ arrived, visited: page.visited, kept, dialogs: page.dialogs, during, after, peak, log: log.slice(0, 6), err: page.errors[0] }));
+    await dev.ctx.close();
     const failed = await otherDevice({ failSelect: { user_progress: "boom" } });
-    await failed.page.goto(BASE + "/index.html", { waitUntil: "load" });
+    const arrivedF = await failed.open();
     await waitUntil(async () => (await failed.page.textContent("#authMessage")).includes("記録を取り込めなかった"), 6000);
     await failed.page.waitForTimeout(1800);
     const af = await avatarOf(failed.page);
-    check("アカウントの紋章〔守り〕: 置き換えを受けた後に取り込みが失敗した: 頭文字・「アカウントメニュー」・行なしのまま（前の人の留学生を出さない）・エラー 0",
-      af.user && af.label === "アカウントメニュー" && af.row === null && failed.page.embReqs.length === 0 && failed.page.errors.length === 0, JSON.stringify({ af, err: failed.page.errors[0] }));
-    await failed.page.close();
+    check("アカウントの紋章〔守り〕: 前の人の記録がある旧い端末で切り替わった後に取り込みが失敗した: 頭文字・「アカウントメニュー」・行なしのまま（前の人の留学生を出さない）・エラー 0",
+      arrivedF && af.user && af.label === "アカウントメニュー" && af.row === null && failed.page.embReqs.length === 0 && failed.page.errors.length === 0, JSON.stringify({ arrivedF, af, err: failed.page.errors[0] }));
+    await failed.ctx.close();
   }
 
   // ---- (7) XP では替わらない: 同期でクラウドの XP が上がっても・Challenge の時間切れで XP の段が上がっても（前の 21 段の幕が出ても）、名前と行は中学生のまま ----
@@ -13555,22 +13629,40 @@ console.log("account emblem（アカウントの紋章）:");
     await ctx.close();
   }
 
-  // ---- (10) ログアウト → 未ログインの形（行・名前を残さない）→ 同じタブで再ログイン → 戻る（js/accountEmblem.js の要求は 1 回のまま） ----
+  // ---- (10) ログアウト → 未ログインの形（行・名前を残さない）→ 同じタブで再ログイン → 戻る。ログアウトも再ログインも切り替えの画面を通って同じページに戻る
+  //           （Batch 78-7 内部の 2）。読み込み 1 回につき js/accountEmblem.js の要求は 1 回まで（未ログインのページは読まない）。
+  //           種は 1 回だけ入れる（newPage は読み込みのたびに種を入れ直すので、ログアウトの後のゲストの領域に A の記録とスタブのログインを書き戻してしまう） ----
   {
-    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA() });
+    const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((seed) => {
+      if (sessionStorage.getItem("seeded9956")) return;
+      sessionStorage.setItem("seeded9956", "1");
+      localStorage.setItem("spelldash_schema_version", "7");
+      localStorage.setItem("spelldash_onboarded", "1");
+      for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v);
+    }, seedA());
     watchReqs(page);
+    page.visited = [];
+    page.on("framenavigated", (f) => { if (f === page.mainFrame()) page.visited.push(new URL(f.url()).pathname); });
     await page.goto(BASE + "/index.html", { waitUntil: "load" });
     await shownIs(page, "中学生");
+    const firstReqs = page.modReqs;
     await page.click("#avatarButton");
     await page.click("#logoutButton");
-    await waitUntil(() => page.evaluate(() => !document.getElementById("accountGuest").hidden), 3000);
+    const left = await waitUntil(() => page.evaluate(() => location.pathname === "/index.html" && window.SpellDashArea?.area === "guest" && !!document.getElementById("accountGuest") && !document.getElementById("accountGuest").hidden).catch(() => false), 10000);
     await page.waitForTimeout(400);
     const out = await avatarOf(page);
+    const guestReqs = page.modReqs - firstReqs;
+    const before = page.modReqs;
     await page.evaluate(() => window.__stubAuth.signIn());
-    const back = await shownIs(page, "中学生", 5000);
+    await waitUntil(() => page.evaluate(() => location.pathname === "/index.html" && window.SpellDashArea?.area === "u:test-user").catch(() => false), 10000);
+    const back = await shownIs(page, "中学生", 8000);
     const again = await avatarOf(page);
-    check("アカウントの紋章: ログアウトすると未ログインの形（#accountUser は隠れ、メニューの行・ランクの名前を残さない）。同じタブで再ログインすると名前・行が戻る（js/accountEmblem.js の要求は 1 回のまま）・エラー 0",
-      !out.user && out.row === null && out.label === "アカウントメニュー" && back && again.row === "ランク 中学生" && page.modReqs === 1 && page.errors.length === 0, JSON.stringify({ out, again, mod: page.modReqs, err: page.errors[0] }));
+    const switched = page.visited.filter((p) => p === "/switch.html").length;
+    check("アカウントの紋章: ログアウトすると切り替えの画面を通って未ログインの形（#accountUser は隠れ、メニューの行・ランクの名前を残さない・未ログインのページは js/accountEmblem.js を読まない）。同じタブで再ログインすると切り替えの画面を通って名前・行が戻る（js/accountEmblem.js の要求は読み込み 1 回につき 1 回まで）・エラー 0",
+      left && !out.user && out.row === null && out.label === "アカウントメニュー" && guestReqs === 0 && back && again.row === "ランク 中学生" && switched === 2 && firstReqs === 1 && page.modReqs - before <= 1 && page.errors.length === 0, JSON.stringify({ left, out, again, switched, firstReqs, guestReqs, after: page.modReqs - before, err: page.errors[0] }));
     await page.close();
   }
 
@@ -18442,7 +18534,8 @@ console.log("pro:");
     await page.close();
   }
 
-  // 2a. ログインから戻って加入画面へ移っても「いまログインした」のまま: 持ち主の印が無い端末の記録は、足すかをたずねる
+  // 2a. ログインから戻って加入画面へ移る: ゲストの記録がある端末は、移る前に切り替えの画面で 1 回「ゲストで学んだ記録を、このアカウントに移す？」をたずね
+  //     （Batch 78-7 内部の 2。前は確認の窓「この端末の記録を、このアカウントの記録に足す。…」）、答えた後に加入画面へ移る
   {
     const page = await newPage();
     page.dialogs = [];
@@ -18453,10 +18546,14 @@ console.log("pro:");
       localStorage.setItem("spelldash_pro_intent", JSON.stringify({ at: Date.now() }));
       localStorage.setItem("spelldash_test_session", "1");
     });
-    await page.goto(BASE + "/index.html#access_token=test&type=magiclink", { waitUntil: "networkidle" });
-    await waitUntil(() => page.url().includes("/pro.html"), 5000);
-    const asked = await waitUntil(async () => page.dialogs.some((m) => m.startsWith("この端末の記録を、このアカウントの記録に足す。")), 5000);
-    check("動線: ログインから戻って加入画面へ移っても、端末の記録を足すかをたずねる", asked, JSON.stringify(page.dialogs));
+    await page.goto(BASE + "/index.html#access_token=test&type=magiclink", { waitUntil: "load" }).catch(() => {}); // 頭で止めて切り替えの画面へ移ると、最初の読み込みは中断される
+    const asked = await page.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout: 12000 }).then(() => true).catch(() => false);
+    const lead = asked ? await text(page, "#switchAskLead") : null;
+    if (asked) await page.click("#switchAskYes");
+    const moved = await waitUntil(() => page.url().includes("/pro.html"), 12000);
+    const kept = moved ? await page.evaluate(() => !!JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")["zzz-guest"] && window.SpellDashArea?.area === "u:test-user").catch(() => false) : false;
+    check("動線: ログインから戻って加入画面へ移る前に、切り替えの画面で「ゲストで学んだ記録を、このアカウントに移す？」をたずね（確認の窓は出さない）、はいで記録を移してから加入画面へ移る",
+      asked && lead === "ゲストで学んだ記録を、このアカウントに移す？" && moved && kept && page.dialogs.length === 0, JSON.stringify({ asked, lead, moved, kept, url: page.url(), dialogs: page.dialogs }));
     await page.close();
   }
 
@@ -19897,6 +19994,33 @@ console.log("sync (2nd device):");
     document.dispatchEvent(new Event("visibilitychange"));
   });
   const login = (cloud, extra = {}) => ({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id, ...extra });
+  // 人ごとの保存の領域（Batch 78-7 内部の 2）: ログアウト・再ログインは切り替えの画面（/switch.html）を通って同じページに戻る。戻って開き終えるまで待つ
+  const LOGOUT_DONE = "ログアウトした。記録はこのアカウントに残る。";
+  const settled = (page, area, timeout = 12000) => waitUntil(() => page.evaluate((a) => location.pathname !== "/switch.html" && document.readyState === "complete" && window.SpellDashArea?.area === a, area).catch(() => false), timeout);
+  // 端末の IndexedDB にある領域の写し（js/areaStore.js。keys は元の名前の鍵と値）
+  const archived = (page, area) => page.evaluate(async (a) => { const m = await import("/js/areaStore.js"); const db = await m.openAreaStore(); try { return (await db.get("areas", a)) ?? null; } finally { db.close(); } }, area);
+  const OLD_AUTH = "sb-sujvgwozsnzjsjmkcrnk-auth-token";
+  // 旧い形の端末（この版より前の鍵のまま）: 見張りを初期化の script に置かない文脈で、見張りを読まない同じ origin の文書から生の localStorage に書く。
+  // 種の spelldash_test_session は旧い認証の鍵の test-user のセッションにする（移行が新しい鍵へ移す）。ページを閉じると文脈も閉じる
+  async function legacyDevice(storage, { dialog = "dismiss" } = {}) {
+    const ctx = await rawNewContext({});
+    const seedPage = await ctx.newPage();
+    await seedPage.goto(BASE + "/css/reset.css");
+    const { spelldash_test_session: token, ...rest } = storage;
+    const raw = { spelldash_schema_version: "7", ...rest };
+    if (token) raw[OLD_AUTH] = JSON.stringify({ access_token: token === "1" ? "test-token" : token, token_type: "bearer", expires_in: 3600, expires_at: 9999999999, refresh_token: "test-refresh", user: { id: SYNC_USER, email: "test@example.com" } });
+    await seedPage.evaluate((seed) => { for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); }, raw);
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.dialogs = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    page.on("dialog", async (d) => {
+      page.dialogs.push(d.message());
+      if (dialog === "accept") await d.accept(); else await d.dismiss();
+    });
+    page.once("close", () => { ctx.close().catch(() => {}); });
+    return page;
+  }
   // 前のホームの道・本棚・単語帳を見る塊の頭で const syncDevice = syncDeviceFlagOff; と置く（同期の取り込みと書き込みは旗に関わらず同じ）
   const syncDeviceFlagOff = (storage, opts = {}) => syncDevice(storage, { ...opts, flagOff: true });
 
@@ -19942,24 +20066,31 @@ console.log("sync (2nd device):");
     await page.waitForTimeout(500);
     check("同期: 1 語目で答えを見てもチュートリアルの札が出ない", !(await visible(page, "body > .coach:not(.coach--out)")), await txt(page, "body > .coach"));
 
-    // (10) ログアウト → 文と同期済みの印 → 同じタブで再ログインすると、同期がもう一度走る
+    // (10) ログアウト → 文と同期済みの印 → 同じタブで再ログインすると、同期がもう一度走る（Batch 78-7 内部の 2: どちらも切り替えの画面を通る。
+    //      ログアウトするとこのアカウントの記録は IndexedDB の写しへ移り、ゲストの領域で開く。再ログインすると、たずねずにこのアカウントの領域を戻す）
     // 直前の答えの送信（前のページの pagehide の keepalive の POST）は、負荷が高いと返事がページに届かず、networkidle が来ない（4 組を並べた全件で
     // 30 秒切れで投げた。負荷をかけて 6 回に 2 回。Batch 78 段 6）。ここは load と、押すアカウントの丸を待つ
     await page.goto(BASE + "/index.html", { waitUntil: "load" });
     await page.waitForSelector("#avatarButton", { state: "visible", timeout: 10000 });
     await page.waitForTimeout(400);
+    const wordsBefore = Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length; // 上で 1 語目を出したぶん 40 より増えうる
     await page.click("#avatarButton");
     await page.click("#logoutButton");
+    const outGuest = await settled(page, "guest");
     await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログアウト"), 3000);
-    check("ログアウト: 文「ログアウトした。記録はこの端末に残る。」", (await txt(page, "#authMessage")) === "ログアウトした。記録はこの端末に残る。", await txt(page, "#authMessage"));
+    check("ログアウト: 切り替えの画面を通ってゲストの領域で開き直し、文「ログアウトした。記録はこのアカウントに残る。」", outGuest && (await txt(page, "#authMessage")) === LOGOUT_DONE, JSON.stringify({ outGuest, msg: await txt(page, "#authMessage") }));
     check("ログアウト: 同期済みの印（sessionStorage）が消える", (await ss(page, "spelldash_synced_this_session")) === null && (await ss(page, "spelldash_pulled_this_session")) === null);
-    check("ログアウト: 記録はこの端末に残る", Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length >= 40, String(Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length)); // 上で 1 語目を出したぶん増えうる
+    const copyA = await archived(page, `u:${SYNC_USER}`);
+    const copyWords = Object.keys(JSON.parse(copyA?.keys?.spelldash_word_stats || "{}")).length;
+    const guestWords = Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length;
+    check("ログアウト: このアカウントの記録はこの端末の写し（IndexedDB）に残る（語の数は同じ）・ゲストの領域には入らない", copyWords === wordsBefore && wordsBefore >= 40 && guestWords === 0, JSON.stringify({ copyWords, wordsBefore, guestWords }));
     const mark = cloud.log.length;
     await page.evaluate(() => window.__stubAuth.signIn());
+    const backIn = await settled(page, `u:${SYNC_USER}`);
     const reselected = await waitUntil(async () => cloud.log.slice(mark).some((e) => e.table === "word_progress" && e.kind === "select"), 5000);
-    check("再ログイン: 同じタブで word_progress の取り込みがもう一度走る", reselected, JSON.stringify(cloud.log.slice(mark).map((e) => `${e.table}.${e.kind}`)));
+    check("再ログイン: 同じタブで切り替えの画面を通ってこのアカウントの領域に戻り（語の数は同じ）、word_progress の取り込みがもう一度走る", backIn && reselected && Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length === wordsBefore, JSON.stringify({ backIn, log: cloud.log.slice(mark).map((e) => `${e.table}.${e.kind}`) }));
     await waitUntil(async () => (await ss(page, "spelldash_pulled_this_session")) === SYNC_USER, 5000);
-    check("再ログイン: ログアウトの文が消える", (await txt(page, "#authMessage")) !== "ログアウトした。記録はこの端末に残る。", await txt(page, "#authMessage"));
+    check("再ログイン: ログアウトの文が消える・確認の窓は出ない", (await txt(page, "#authMessage")) !== LOGOUT_DONE && page.dialogs.length === 0, JSON.stringify({ msg: await txt(page, "#authMessage"), dialogs: page.dialogs }));
     check("同期（空の端末・再ログイン）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
@@ -19978,48 +20109,63 @@ console.log("sync (2nd device):");
       synced && Object.keys(stats).length === 40 && (await txt(page, "#authMessage")) === "記録を同期した。" && home.focus === "english" && home.start === "英単語を学ぶ", JSON.stringify({ synced, n: Object.keys(stats).length, msg: await txt(page, "#authMessage"), home }));
     await page.click("#avatarButton");
     await page.click("#logoutButton");
+    const outGuest = await settled(page, "guest");
     await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログアウト"), 3000);
-    check("ログアウト（英単語の学習に絞ったホーム）: 文「ログアウトした。記録はこの端末に残る。」・同期済みの印が消える・語の記録は端末に残る",
-      (await txt(page, "#authMessage")) === "ログアウトした。記録はこの端末に残る。" && (await ss(page, "spelldash_synced_this_session")) === null && Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length === 40,
-      JSON.stringify({ msg: await txt(page, "#authMessage"), n: Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length }));
+    const copyN = Object.keys(JSON.parse((await archived(page, `u:${SYNC_USER}`))?.keys?.spelldash_word_stats || "{}")).length;
+    check("ログアウト（英単語の学習に絞ったホーム）: 文「ログアウトした。記録はこのアカウントに残る。」・同期済みの印が消える・語の記録（40）はこのアカウントの写し（IndexedDB）に残り、ゲストの領域には入らない",
+      outGuest && (await txt(page, "#authMessage")) === LOGOUT_DONE && (await ss(page, "spelldash_synced_this_session")) === null && copyN === 40 && Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length === 0,
+      JSON.stringify({ outGuest, msg: await txt(page, "#authMessage"), copyN, n: Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length }));
     const mark1 = cloud.log.length;
     await page.evaluate(() => window.__stubAuth.signIn());
+    const backIn = await settled(page, `u:${SYNC_USER}`);
     const again = await waitUntil(async () => cloud.log.slice(mark1).some((e) => e.table === "word_progress" && e.kind === "select"), 5000);
-    check("再ログイン（英単語の学習に絞ったホーム）: 同じタブで取り込みがもう一度走る・エラー 0", again && page.errors.length === 0, JSON.stringify({ again, errors: page.errors.slice(0, 2) }));
+    check("再ログイン（英単語の学習に絞ったホーム）: 同じタブで切り替えの画面を通ってこのアカウントの領域（語 40）に戻り、取り込みがもう一度走る・エラー 0",
+      backIn && again && Object.keys((await lsJson(page, "spelldash_word_stats")) || {}).length === 40 && page.errors.length === 0, JSON.stringify({ backIn, again, errors: page.errors.slice(0, 2) }));
     await page.close();
   }
 
-  // (1'') ログアウトの後にこの端末で学んだ（未ログインで中心の学習の 1 語）: 同じアカウントでログインし直しても、足す前にたずねる（js/sync.js learnedSinceLogout。
-  // 決定 §8「ログイン・ログアウト…で別人の状態を混ぜない」。前は単体 test-learn-state だけが見ていた: Batch 78 段 6）。キャンセルならクラウドに何も書かず、
-  // ログアウトの後の答えも端末に残す（消さない）。次のログインでまたたずねる（ログアウトの時刻を残す）
+  // (1'') ログアウトの後にこの端末で学んだ（未ログインで中心の学習の 1 語）: 同じアカウントでログインし直すと、たずねずにこのアカウントの領域を戻す
+  // （Batch 78-7 内部の 2。前は「この端末の記録を、このアカウントの記録に足す。…」をたずねた）。ログアウトの後の答えはゲストの領域にあり、ゲストの写し
+  // （IndexedDB）に残る。このアカウントの記録にもクラウドにも入らない（決定 §8「ログイン・ログアウト…で別人の状態を混ぜない」）
   {
     const cloud = createCloud(cloudTablesA());
     const page = await syncDevice(login(cloud), { dialog: "dismiss" });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     const synced = await ownerSet(page);
     await waitUntil(async () => (await txt(page, "#authMessage")) === "記録を同期した。", 7000);
+    const statsA = (await lsJson(page, "spelldash_word_stats")) || {};
+    const logoutAt = Date.now();
     await page.click("#avatarButton");
     await page.click("#logoutButton");
-    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログアウト"), 3000);
-    const logoutAt = Date.parse((await ls(page, "spelldash_logout_at")) ?? "");
+    const outGuest = await settled(page, "guest");
     await page.goto(BASE + "/index.html?learn=new", { waitUntil: "load" }); // ログアウトの送信（keepalive）で networkidle を待たない（上の (10) と同じ）
     await waitUntil(() => page.evaluate(() => document.body.classList.contains("learn-run") && document.activeElement?.id === "input" && !!document.getElementById("japanese")?.textContent.trim()), 8000);
     await page.waitForTimeout(500); // 次の語が出てから 300ms は答え表示の Enter を受けない（js/afterCorrect.js）
     await page.press("#input", "Enter"); // 答え表示 → あやふや
     const guestAnswer = async () => Object.entries((await lsJson(page, "spelldash_word_stats")) || {}).filter(([, s]) => s?.ls === 1 && Number(s.lsAt) > logoutAt).map(([id]) => id);
     const answered = await waitUntil(async () => (await guestAnswer()).length === 1, 4000);
-    const mark = cloud.log.length;
+    const [guestWord] = await guestAnswer();
+    // 再ログインで戻る先は、学習の回でないホームにする（学習の回へ戻ると、A の回が 1 語目を出して A の記録に書く。それはゲストの答えではない）
+    await page.goto(BASE + "/index.html", { waitUntil: "load" });
+    const cloudRowBefore = JSON.stringify(cloud.rows("word_progress").find((r) => r.word_id === guestWord) ?? null);
     const dialogsBefore = page.dialogs.length;
+    await page.waitForTimeout(400);
     await page.evaluate(() => window.__stubAuth.signIn());
-    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
+    const backIn = await settled(page, `u:${SYNC_USER}`);
+    await waitUntil(async () => (await ss(page, "spelldash_pulled_this_session")) === SYNC_USER, 6000);
+    await page.waitForTimeout(600);
+    const statsBack = (await lsJson(page, "spelldash_word_stats")) || {};
+    const guestCopy = await archived(page, "guest");
     const after = {
-      dialogs: page.dialogs.slice(dialogsBefore), writes: cloud.writes(null, mark).filter((e) => e.table !== "funnel_events").map((e) => e.table),
-      kept: await guestAnswer(), logoutKept: (await ls(page, "spelldash_logout_at")) !== null, session: await ls(page, "spelldash_test_session"), msg: await txt(page, "#authMessage")
+      dialogs: page.dialogs.slice(dialogsBefore),
+      inGuestCopy: JSON.parse(guestCopy?.keys?.spelldash_word_stats || "{}")[guestWord]?.ls ?? null,
+      inA: statsBack[guestWord] ? JSON.stringify(statsBack[guestWord]) === JSON.stringify(statsA[guestWord] ?? null) : !statsA[guestWord],
+      cloudSame: JSON.stringify(cloud.rows("word_progress").find((r) => r.word_id === guestWord) ?? null) === cloudRowBefore,
+      msg: await txt(page, "#authMessage")
     };
-    check("ログアウトの後に学んだ端末で同じアカウントに再ログイン: 「この端末の記録を、このアカウントの記録に足す。…」をたずね、キャンセルでクラウドに何も書かずログインをやめる・ログアウトの後の答え（あやふや）は端末に残る・次のログインでまたたずねる（ログアウトの時刻は残る）・エラー 0",
-      synced && logoutAt > 0 && answered && after.dialogs.length === 1 && after.dialogs[0].startsWith("この端末の記録を、このアカウントの記録に足す。") && after.writes.length === 0 &&
-        after.kept.length === 1 && after.logoutKept && after.session === null && after.msg === "ログインをやめた。記録はこの端末に残る。" && page.errors.length === 0,
-      JSON.stringify({ synced, logoutAt, answered, after, errors: page.errors.slice(0, 2) }));
+    check("ログアウトの後に学んだ端末で同じアカウントに再ログイン: たずねずに（確認の窓も「移す？」も出ない）このアカウントの領域に戻る・ログアウトの後の答え（あやふや）はゲストの写し（IndexedDB）に残り、このアカウントの記録にもクラウドにも入らない・エラー 0",
+      synced && outGuest && answered && backIn && after.dialogs.length === 0 && after.inGuestCopy === 1 && after.inA && after.cloudSame && !/ログインをやめた/.test(after.msg) && page.errors.length === 0,
+      JSON.stringify({ synced, outGuest, answered, backIn, guestWord, after, errors: page.errors.slice(0, 2) }));
     await page.close();
   }
 
@@ -20064,7 +20210,9 @@ console.log("sync (2nd device):");
     await page.close();
   }
 
-  // (3) 端末の持ち主が別人で記録がある: confirm が出る。キャンセル → 何も書かずログインをやめる／OK → 置き換え
+  // (3) 端末の持ち主が別人で記録がある（この版より前の端末: 前の人 other-user の記録のまま、test-user がログインしている）。Batch 78-7 内部の 2:
+  //     「この端末には別のアカウントの記録がある。消して、このアカウントの記録に置き換える」の確認は無い。移行で前の人の記録はその人の領域へ入り、
+  //     切り替えの画面を通ってこのアカウントの領域（まだ記録なし）で開く。前の人の記録はその人の写し（IndexedDB）に 1 字も違わず残り、消えない
   const otherSeed = (cloud) => login(cloud, {
     spelldash_onboarded: "1", spelldash_placement: "done", spelldash_owner: "other-user", spelldash_theme: "dark", spelldash_xp: "777",
     spelldash_word_stats: JSON.stringify({ "zzz-only-other": localStat }), spelldash_my_words: JSON.stringify([{ en: "othersword", ja: "他人の語" }]),
@@ -20072,57 +20220,66 @@ console.log("sync (2nd device):");
   });
   {
     const cloud = createCloud(cloudTablesA());
-    const page = await syncDevice(otherSeed(cloud), { dialog: "dismiss" });
-    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
-    check("持ち主が別人: confirm「この端末には別のアカウントの記録がある。…」が出る", page.dialogs.length >= 1 && page.dialogs[0] === "この端末には別のアカウントの記録がある。消して、このアカウントの記録に置き換える", JSON.stringify(page.dialogs));
-    check("持ち主が別人・キャンセル: 記録（語・XP・マイ単語帳・持ち主・記録の質の語ごとの欄）はそのまま", (await lsJson(page, "spelldash_word_stats"))?.["zzz-only-other"] && (await ls(page, "spelldash_xp")) === "777" && (await ls(page, "spelldash_owner")) === "other-user" && (await ls(page, "spelldash_my_words")).includes("othersword") && !!(await lsJson(page, "spelldash_memory_words"))?.w?.["zzz-only-other"]);
-    check("持ち主が別人・キャンセル: クラウドに書き込みが無い", cloud.writes().filter((e) => e.table !== "funnel_events").length === 0, JSON.stringify(cloud.writes().map((e) => e.table)));
-    check("持ち主が別人・キャンセル: 文「ログインをやめた。記録はこの端末に残る。」", (await txt(page, "#authMessage")) === "ログインをやめた。記録はこの端末に残る。", await txt(page, "#authMessage"));
-    check("持ち主が別人・キャンセル: ログアウトして未ログインの表示（#accountGuest）", (await ls(page, "spelldash_test_session")) === null && !(await page.$eval("#accountGuest", (el) => el.hidden)) && (await page.$eval("#accountUser", (el) => el.hidden)));
-    check("持ち主が別人（キャンセル）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    const seed = otherSeed(cloud);
+    const page = await legacyDevice(seed, { dialog: "accept" });
+    await page.goto(BASE + "/index.html", { waitUntil: "load" }).catch(() => {}); // 頭で止めて切り替えの画面へ移ると、最初の読み込みは中断される
+    const opened = await settled(page, `u:${SYNC_USER}`, 15000);
+    const done = await ownerSet(page, 12000);
+    const stats = (await lsJson(page, "spelldash_word_stats")) || {};
+    const my = (await lsJson(page, "spelldash_my_words")) || [];
+    const memWords = (await lsJson(page, "spelldash_memory_words"))?.w ?? {};
+    const other = (await archived(page, "u:other-user"))?.keys ?? {};
+    const KEPT = ["spelldash_word_stats", "spelldash_xp", "spelldash_my_words", "spelldash_memory_words", "spelldash_owner"];
+    check("持ち主が別人: 「消して置き換える」の確認も、ほかの確認の窓も出ない・切り替えの画面を通ってこのアカウントの領域で開く", opened && page.dialogs.length === 0, JSON.stringify({ opened, dialogs: page.dialogs }));
+    check("持ち主が別人: 前の人の記録（語・XP・マイ単語帳・持ち主・記録の質の語ごとの欄）はその人の写し（IndexedDB）に 1 字も違わず残る", KEPT.every((k) => other[k] === seed[k]), JSON.stringify(KEPT.filter((k) => other[k] !== seed[k])));
+    check("持ち主が別人: このアカウントの領域にはクラウドの記録（40 語）が届き、他人の語・マイ単語・記録の質の語ごとの欄は入らない・端末の設定（theme）は残る",
+      done && !stats["zzz-only-other"] && Object.keys(stats).length === 40 && !my.some((w) => w.en === "othersword") && !memWords["zzz-only-other"] && (await ls(page, "spelldash_theme")) === "dark",
+      JSON.stringify({ done, words: Object.keys(stats).length, my: my.map((w) => w.en), memWords: Object.keys(memWords), theme: await ls(page, "spelldash_theme") }));
+    check("持ち主が別人: 他人の語・マイ単語をクラウドへ上げない", !cloud.rows("word_progress").some((r) => r.word_id === "zzz-only-other") && !cloud.rows("user_items").some((r) => r.key === "othersword"));
+    check("持ち主が別人でエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
   {
-    // 持ち主の印が無い端末（未ログインで使っていた）でいまログインした: 足すかをたずね、キャンセルならログインをやめる
+    // 持ち主の印が無い端末（未ログインで使っていた）でいまログインした: 確認の窓は出さず、切り替えの画面で 1 回「ゲストで学んだ記録を、このアカウントに移す？」。
+    // いいえならゲストの記録はゲストの写しに残り、クラウドには何も書かない（はいの流れは 78.7）
     const cloud = createCloud(cloudTablesA());
     const page = await syncDevice({ spelldash_test_cloud: cloud.id, spelldash_onboarded: "1", spelldash_placement: "done", spelldash_xp: "500", spelldash_word_stats: JSON.stringify({ "zzz-offline": localStat }) }, { dialog: "dismiss" });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     await page.evaluate(() => window.__stubAuth.signIn());
-    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
-    check("持ち主なし・いまログイン: 「この端末の記録を、このアカウントの記録に足す。…」をたずね、キャンセルで何も書かない", page.dialogs[0]?.startsWith("この端末の記録を、このアカウントの記録に足す。") && cloud.writes().filter((e) => e.table !== "funnel_events").length === 0 && (await ls(page, "spelldash_xp")) === "500", JSON.stringify({ dialogs: page.dialogs, writes: cloud.writes().length }));
+    const asked = await page.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout: 12000 }).then(() => true).catch(() => false);
+    const lead = asked ? await txt(page, "#switchAskLead") : null;
+    if (asked) await page.click("#switchAskNo");
+    const opened = await settled(page, `u:${SYNC_USER}`, 15000);
+    await ownerSet(page, 10000);
+    const guestCopy = (await archived(page, "guest"))?.keys ?? {};
+    check("持ち主なし・いまログイン: 確認の窓は出さず「ゲストで学んだ記録を、このアカウントに移す？」をたずね、いいえでゲストの記録（語・XP）はゲストの写しに残り、クラウドに書かない",
+      asked && lead === "ゲストで学んだ記録を、このアカウントに移す？" && opened && page.dialogs.length === 0 && !!JSON.parse(guestCopy.spelldash_word_stats || "{}")["zzz-offline"] && guestCopy.spelldash_xp === "500" &&
+        !cloud.rows("word_progress").some((r) => r.word_id === "zzz-offline") && !(await lsJson(page, "spelldash_word_stats"))?.["zzz-offline"],
+      JSON.stringify({ asked, lead, opened, dialogs: page.dialogs, guestXp: guestCopy.spelldash_xp ?? null }));
     await page.close();
   }
   {
-    // 開いた時点ですでにログインしていた端末（この版より前から使っている人）にはたずねない
+    // 開いた時点ですでにログインしていた端末（この版より前から使っている人・持ち主の印なし）: 移行でその人の領域に入り、たずねずに足す
     const cloud = createCloud(cloudTablesA());
-    const page = await syncDevice(login(cloud, { spelldash_onboarded: "1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "zzz-offline": localStat }) }), { dialog: "dismiss" });
-    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const page = await legacyDevice(login(cloud, { spelldash_onboarded: "1", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "zzz-offline": localStat }) }), { dialog: "dismiss" });
+    await page.goto(BASE + "/index.html", { waitUntil: "load" }).catch(() => {});
+    const opened = await settled(page, `u:${SYNC_USER}`, 15000);
     await ownerSet(page);
-    check("持ち主なし・ログイン済みで開いた: たずねずに足す（持ち主が付く）", page.dialogs.length === 0 && Boolean((await lsJson(page, "spelldash_word_stats"))?.["zzz-offline"]), JSON.stringify(page.dialogs));
+    check("持ち主なし・ログイン済みで開いた: たずねずに足す（持ち主が付く）", opened && page.dialogs.length === 0 && Boolean((await lsJson(page, "spelldash_word_stats"))?.["zzz-offline"]), JSON.stringify({ opened, dialogs: page.dialogs }));
     await page.close();
   }
   {
-    // 語は無くても XP・マイ単語帳がある端末も確かめる（前の人の記録を確認なしに混ぜない）
+    // 語は無くても XP・マイ単語帳がある端末も確かめる（前の人の記録を確認なしに混ぜない）: 前の人の XP とマイ単語帳はその人の写しに残り、このアカウントには入らない
     const cloud = createCloud(cloudTablesA());
-    const page = await syncDevice(login(cloud, { spelldash_onboarded: "1", spelldash_owner: "other-user", spelldash_xp: "800", spelldash_my_words: JSON.stringify([{ en: "othersword", ja: "他人の語" }]) }), { dialog: "dismiss" });
-    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログインをやめた"), 5000);
-    check("持ち主が別人（語なし・XP とマイ単語帳あり）: confirm が出て、キャンセルで何も書かない", page.dialogs.length >= 1 && cloud.writes().filter((e) => e.table !== "funnel_events").length === 0 && (await ls(page, "spelldash_xp")) === "800", JSON.stringify({ dialogs: page.dialogs.length, writes: cloud.writes().map((e) => e.table) }));
-    await page.close();
-  }
-  {
-    const cloud = createCloud(cloudTablesA());
-    const page = await syncDevice(otherSeed(cloud), { dialog: "accept" });
-    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
-    await ownerSet(page);
-    const stats = (await lsJson(page, "spelldash_word_stats")) || {};
+    const page = await legacyDevice(login(cloud, { spelldash_onboarded: "1", spelldash_owner: "other-user", spelldash_xp: "800", spelldash_my_words: JSON.stringify([{ en: "othersword", ja: "他人の語" }]) }), { dialog: "dismiss" });
+    await page.goto(BASE + "/index.html", { waitUntil: "load" }).catch(() => {});
+    const opened = await settled(page, `u:${SYNC_USER}`, 15000);
+    const done = await ownerSet(page, 12000);
+    const other = (await archived(page, "u:other-user"))?.keys ?? {};
     const my = (await lsJson(page, "spelldash_my_words")) || [];
-    const memWords = (await lsJson(page, "spelldash_memory_words"))?.w ?? {};
-    check("持ち主が別人・OK: 他人の語とマイ単語帳が消え、クラウドの記録（40 語）に置き換わる。記録の質の語ごとの欄（spelldash_memory_words）も word_stats と同じく他人の語が消える", !stats["zzz-only-other"] && Object.keys(stats).length === 40 && !my.some((w) => w.en === "othersword") && !memWords["zzz-only-other"], JSON.stringify({ words: Object.keys(stats).length, my: my.map((w) => w.en), memWords: Object.keys(memWords) }));
-    check("持ち主が別人・OK: 端末の設定（theme）は残る", (await ls(page, "spelldash_theme")) === "dark");
-    check("持ち主が別人・OK: 他人の語・マイ単語をクラウドへ上げない", !cloud.rows("word_progress").some((r) => r.word_id === "zzz-only-other") && !cloud.rows("user_items").some((r) => r.key === "othersword"));
-    check("持ち主が別人（OK）でエラー0", page.errors.length === 0, page.errors[0] ?? "");
+    check("持ち主が別人（語なし・XP とマイ単語帳あり）: 確認は出ない・前の人の XP とマイ単語帳はその人の写しに残る・このアカウントの XP はクラウドの値・他人のマイ単語をクラウドへ上げない",
+      opened && done && page.dialogs.length === 0 && other.spelldash_xp === "800" && (other.spelldash_my_words ?? "").includes("othersword") && (await ls(page, "spelldash_xp")) === "5240" && !my.some((w) => w.en === "othersword") && !cloud.rows("user_items").some((r) => r.key === "othersword"),
+      JSON.stringify({ opened, done, dialogs: page.dialogs.length, otherXp: other.spelldash_xp ?? null, xp: await ls(page, "spelldash_xp"), writes: cloud.writes().map((e) => e.table) }));
     await page.close();
   }
 
@@ -20277,17 +20434,21 @@ console.log("sync (2nd device):");
       await ownerSet(page);
       await shelfOn(page);
       // ログアウト → 時計を 130 秒進める → 同じアカウントでもう一度ログイン（2 回目の取り込みは 3 秒かかる）。棚は消しておき、途中で保存されたら分かるように
+      // （Batch 78-7 内部の 2: ログアウトと再ログインは切り替えの画面を通って開き直す。棚はこのアカウントの領域でログアウトの前に消し、時計は以後のどの文書でも進める）
+      await page.evaluate(() => localStorage.removeItem("spelldash_shelf"));
       await page.click("#avatarButton");
       await page.click("#logoutButton");
-      await waitUntil(async () => (await txt(page, "#authMessage")).startsWith("ログアウト"), 3000);
-      await page.evaluate(() => {
+      await settled(page, "guest");
+      const clock = () => {
         const real = Date.now.bind(Date);
         window.__nowOffset = 130000;
         Date.now = () => real() + window.__nowOffset;
-        localStorage.removeItem("spelldash_shelf");
-      });
+      };
+      await page.addInitScript(clock);
+      await page.evaluate(clock);
       cloud.config.delayMs = 3000;
       await page.evaluate(() => window.__stubAuth.signIn());
+      await settled(page, `u:${SYNC_USER}`);
       const during2 = await waitUntil(async () => (await ss(page, "spelldash_synced_this_session")) === SYNC_USER && (await ss(page, "spelldash_pulled_this_session")) === null, 3000);
       const p2 = await probe();
       const stale = await page.evaluate(async () => {
@@ -21429,7 +21590,7 @@ console.log("learn modes (78.3):");
   }
 }
 
-// ===== 78.7 人ごとの保存の領域（Batch 78-7 内部の 1。js/areaGuard.js・js/areaSwitch.js・js/areaStore.js・switch.html。S/b78/acct/DESIGN-FINAL.md §1〜§4・§8）: 旧い形の端末の移行（記録と 3 状態はそのまま・旧い本体は localStorage に残らない・移行の前の控えは IndexedDB）・localStorage の各利用形式が領域の鍵へ・Service Worker 無効・切り替えの途中でタブを閉じても直る・展開の途中で満杯なら部分的に有効にしない・退避できなければ切り替えない・使えないブラウザは共用に戻さず止める・満杯で止める時の遅れた値を失わない・満杯の端末で本物の認証の部品がセッションをメモリーだけに置かない =====
+// ===== 78.7 人ごとの保存の領域（Batch 78-7 内部の 1。js/areaGuard.js・js/areaSwitch.js・js/areaStore.js・switch.html。S/b78/acct/DESIGN-FINAL.md §1〜§4・§8）: 旧い形の端末の移行（記録と 3 状態はそのまま・旧い本体は localStorage に残らない・移行の前の控えは IndexedDB）・localStorage の各利用形式が領域の鍵へ・Service Worker 無効・切り替えの途中でタブを閉じても直る・展開の途中で満杯なら部分的に有効にしない・退避できなければ切り替えない・使えないブラウザは共用に戻さず止める・満杯で止める時の遅れた値を失わない・満杯の端末で本物の認証の部品がセッションをメモリーだけに置かない。内部の 2: ゲスト → A（はい・いいえ）・ログアウト・A → B → A・複数タブ・予行と退避の失敗・オフラインのログアウト・バックアップの持ち主 =====
 // この節は見張りを初期化の script に置かない文脈（rawNewContext）で、本物の頭の 1 行の振る舞いを見る。種は見張りを読まない同じ origin の文書（/css/reset.css）で
 // 生の localStorage に書く（旧い形の端末・途中で落ちた端末を作る）。この段のスタブのログインは見張りから見えない（ゲスト）ので、セッションの人は
 // 認証の新しい鍵 sd2.auth に偽のセッションを直に書いて替える（保存の層の切り替えだけを見る。ログイン・ログアウトの確認は内部の 2）
@@ -21455,6 +21616,18 @@ console.log("78.7 人ごとの保存の領域:");
   const STABLE = ["spelldash_schema_version", "spelldash_word_stats", "spelldash_learn_session", "spelldash_dirty_words", "spelldash_xp"]; // 学習状況を開いても書き換わらない鍵
   const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k] ?? null]));
   const rawCtx = (opts = {}) => rawNewContext({ viewport: { width: 1200, height: 900 }, ...opts });
+  // 内部の 2: ゲストの記録がある端末で端末に無い人に替わると、切り替えの画面で 1 回「ゲストで学んだ記録を、このアカウントに移す？」をたずねる。
+  // 保存の層の切り替えだけを見る内部の 1 の検査は、その文脈でいいえ（ゲストはゲストの写しへ・替わった人は空で始まる）を選ぶ
+  const answerNo = (ctx) => ctx.addInitScript(() => {
+    if (location.pathname !== "/switch.html") return;
+    const tick = setInterval(() => {
+      const box = document.getElementById("switchAsk");
+      if (box && !box.hidden) {
+        clearInterval(tick);
+        document.getElementById("switchAskNo")?.click();
+      }
+    }, 50);
+  });
   // 見張りを読まない同じ origin の文書で、生の localStorage・IndexedDB を見る
   async function rawDoc(ctx, fn, arg) {
     const p = await ctx.newPage();
@@ -21640,6 +21813,7 @@ console.log("78.7 人ごとの保存の領域:");
   // (3) Service Worker 無効: 移行も切り替えも Service Worker に頼らない
   {
     const ctx = await rawCtx({ serviceWorkers: "block" });
+    await answerNo(ctx);
     try {
       const seed = oldDevice();
       await putRaw(ctx, seed);
@@ -21667,6 +21841,7 @@ console.log("78.7 人ごとの保存の領域:");
   // 次に開くと直して、どちらかの記録が全部そろう（混ざらない・古い写しを戻さない）
   {
     const ctx = await rawCtx({ serviceWorkers: "block" });
+    await answerNo(ctx);
     try {
       const seed = oldDevice();
       await putRaw(ctx, seed);
@@ -21984,8 +22159,10 @@ console.log("78.7 人ごとの保存の領域:");
       const raw = await dumpRaw(ctx);
       const orphans = await rawDoc(ctx, (s) => new Promise((resolve) => { const r = indexedDB.open("spelldash-areas"); r.onsuccess = () => { const db = r.result; try { const q = db.transaction(s, "readonly").objectStore(s).getAll(); q.onsuccess = () => { resolve(q.result); db.close(); }; q.onerror = () => resolve([]); } catch { resolve([]); } }; r.onerror = () => resolve([]); }), "orphans");
       const late = orphans.filter((o) => o.area === `u:${UA}`);
-      check("78.7 見え方の古いタブ: OK の後に A の鍵へ遅れて書かれた値は、localStorage から消える（B だけ）・IndexedDB の orphans に A の領域として残る（復元の値 999 も）・B の記録と印は替わらない・途中の印は無い",
-        swept && Object.keys(areaOf(raw, `u:${UA}`)).length === 0 && late.some((o) => o.keys?.spelldash_xp === "999") && areaOf(raw, `u:${UB}`).spelldash_xp === "222" && areaOf(raw, `u:${UB}`).spelldash_word_stats === B.spelldash_word_stats && raw["sd2.area"] === `u:${UB}#3` && raw["sd2.switch"] === undefined,
+      // 内部の 2: 復元は書く前に stillMine を確かめ、控え（prerestore）を IndexedDB に書いて読み直してから書く。その間に見え方が新しくなれば書かずに止まる
+      // （遅れた書き込みが無い）。書かれたなら、その値は orphans に残る
+      check("78.7 見え方の古いタブ: OK の後に A の鍵へ遅れて書かれた値は、localStorage から消える（B だけ）・書かれたなら IndexedDB の orphans に A の領域として残る（復元の値 999 も）・B の記録と印は替わらない・途中の印は無い",
+        swept && Object.keys(areaOf(raw, `u:${UA}`)).length === 0 && (!lateSeen || late.some((o) => o.keys?.spelldash_xp === "999")) && areaOf(raw, `u:${UB}`).spelldash_xp === "222" && areaOf(raw, `u:${UB}`).spelldash_word_stats === B.spelldash_word_stats && raw["sd2.area"] === `u:${UB}#3` && raw["sd2.switch"] === undefined,
         JSON.stringify({ lateSeen, swept, a: Object.keys(areaOf(raw, `u:${UA}`)), late: late.map((o) => Object.keys(o.keys ?? {})), area: raw["sd2.area"], bXp: areaOf(raw, `u:${UB}`).spelldash_xp }));
       const aCopy = await idbGet(ctx, "areas", `u:${UA}`);
       check("78.7 見え方の古いタブ: A の写し（index が指す）は遅れた値で変わらない（xp 111）", aCopy?.keys?.spelldash_xp === "111" && JSON.parse(raw["sd2.index"])[`u:${UA}`].at === `idb:${aCopy?.id}`, JSON.stringify({ xp: aCopy?.keys?.spelldash_xp }));
@@ -22156,7 +22333,7 @@ console.log("78.7 人ごとの保存の領域:");
           if (u.pathname.startsWith("/auth/v1/logout")) return route.fulfill({ status: 204, body: "" });
           return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
         });
-        // 旧い確認（消して置き換える）が出たら OK を押す（内部の 2 で外す確認。押しても、見張りが A の記録を消させないことも見る）
+        // 確認の窓は控えて OK を押す（旧い「置き換える」の確認は内部の 2 で外した。出ないことも見る）
         const dialogs = [];
         ctx.on("page", (p) => p.on("dialog", (d) => { dialogs.push(d.message()); d.accept().catch(() => {}); }));
         const A = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: statsSeed("A"), spelldash_xp: "120", spelldash_owner: UA, spelldash_tutorial: JSON.stringify({ seen: ["T1", "T2", "T3", "T4"], started: true }) };
@@ -22214,13 +22391,437 @@ console.log("78.7 人ごとの保存の領域:");
         const moved = end.path === "/switch.html" && end.recovery === "quota";
         const stayedA = end.path !== "/switch.html" && end.libUser === UA && end.guardUser === UA && end.area === `u:${UA}`;
         const aAfter = pick(areaOf(raw, `u:${UA}`), KEEP);
-        check("78.7 満杯と本物の認証の部品: B のリンクで開くと切り替えの画面へ移る（満杯なので復旧の画面・容量）か部品も A のまま・A の領域のページで部品だけ B の形にならない・A の記録は変わらない・B の鍵は無い・印は u:A のまま",
-          (moved || stayedA) && JSON.stringify(aAfter) === JSON.stringify(aBefore) && Object.keys(areaOf(raw, `u:${UB}`)).length === 0 && raw["sd2.area"] === `u:${UA}#1`,
+        check("78.7 満杯と本物の認証の部品: B のリンクで開くと切り替えの画面へ移る（満杯なので復旧の画面・容量）か部品も A のまま・A の領域のページで部品だけ B の形にならない・A の記録は変わらない・B の鍵は無い・印は u:A のまま・「置き換える」の確認は出ない",
+          (moved || stayedA) && JSON.stringify(aAfter) === JSON.stringify(aBefore) && Object.keys(areaOf(raw, `u:${UB}`)).length === 0 && raw["sd2.area"] === `u:${UA}#1` && !dialogs.some((m) => /置き換える/.test(m)),
           JSON.stringify({ end, moved, stayedA, aChanged: KEEP.filter((k) => aAfter[k] !== aBefore[k]), b: Object.keys(areaOf(raw, `u:${UB}`)), area: raw["sd2.area"], auth: (() => { try { return JSON.parse(raw[AUTH]).user.id; } catch { return null; } })(), dialogs, bRequests: requests.filter((q) => q.who === UB).map((q) => `${q.method} ${q.path}`).slice(0, 8) }));
         await p2.close();
       }
     } finally {
       if (ctx) await ctx.close();
+    }
+  }
+
+  // ===== 内部の 2（ゲストとアカウントの分離と切り替え。DESIGN-FINAL §3〜§5）: スタブの認証（sd2.auth・BroadcastChannel）で、見張り・切り替えの画面・同期を本物のまま流す =====
+  // ゲスト → A（はい・いいえ）・A → ログアウト → ゲスト・A → B → A（3 状態・最高到達ランク・回の続き・送信待ちが 1 字も違わない）・複数タブ・たずねている間に閉じる・
+  // 見え方の古いタブの書き込みは断る（保存できませんでした）・予行と退避の失敗（認証も領域も替わらない）・オフラインのログアウト・トークンの更新の失敗・
+  // 古いバックアップ・持ち主入りのバックアップ（同じ人・別の人・ゲスト）・別の端末（別の文脈）で同じアカウントのバックアップ・切り替えの後の同期（B のクラウドに A の行が行かない・A の送信待ちは A に戻ると送られる）
+  {
+    const UA = "a1a1a1a1-0000-4000-8000-00000000000a";
+    const UB = "b2b2b2b2-0000-4000-8000-00000000000b";
+    const userA = { id: UA, email: "a@example.com" };
+    const userB = { id: UB, email: "b@example.com" };
+    const sessOf = (user) => JSON.stringify({ access_token: "test-token", token_type: "bearer", expires_in: 3600, expires_at: 9999999999, refresh_token: "test-refresh", user });
+    const REPLACE = /置き換える/;
+    const ctxOf = async () => {
+      const ctx = await rawCtx({ serviceWorkers: "block" });
+      ctx.dialogs = [];
+      ctx.on("page", (p) => p.on("dialog", (d) => { ctx.dialogs.push(d.message()); d.accept().catch(() => {}); }));
+      return ctx;
+    };
+    const signInOn = (page, user) => page.evaluate((u) => window.__stubAuth.signIn("1", u), user).catch(() => null);
+    const waitAsk = (page, timeout = 15000) => page.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout }).then(() => true).catch(() => false);
+    const waitArea = (page, area, timeout = 15000) => page.waitForFunction((a) => location.pathname !== "/switch.html" && window.SpellDashArea?.area === a && document.readyState === "complete", area, { timeout }).then(() => true).catch(() => false);
+    const authText = (page) => page.evaluate(() => document.getElementById("authMessage")?.textContent.trim() ?? "").catch(() => null);
+    const signOuts = (ctx) => rawDoc(ctx, () => JSON.parse(localStorage.getItem("spelldash_test_signouts") || "[]"));
+    const sessionUser = (raw) => { try { return JSON.parse(raw[AUTH]).user.id; } catch { return null; } };
+    const logoutOn = async (page) => {
+      await page.waitForSelector("#avatarButton", { state: "visible", timeout: 10000 });
+      await page.click("#avatarButton");
+      await page.click("#logoutButton");
+    };
+    // 人の記録の種（3 状態・最高到達ランク・回の続き・送信待ち・XP）。tag で人を見分ける
+    const personRec = (tag, peak = "2") => ({ spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: statsSeed(tag), spelldash_rank_peak: peak, spelldash_learn_session: JSON.stringify({ v: 1, kind: "new", at: 1780000000000, tag }), spelldash_dirty_words: JSON.stringify([PUB[0]]), spelldash_xp: tag === "A" ? "1200" : "300", spelldash_tutorial: JSON.stringify({ seen: ["T1", "T2", "T3", "T4"], started: true, setDone: true }) });
+    const guestDevice = (ctx, rec, extra = {}) => putRaw(ctx, { ...marks("guest", 1, { guest: { at: "ls" } }), spelldash_onboarded: "1", ...phys("guest", rec), ...extra });
+    const accountDevice = (ctx, user, rec, extra = {}) => putRaw(ctx, { ...marks(`u:${user.id}`, 1, { [`u:${user.id}`]: { at: "ls" } }), [AUTH]: sessOf(user), spelldash_onboarded: "1", ...phys(`u:${user.id}`, rec), ...extra });
+    const wpRowOf = (userId, wordId) => ({ user_id: userId, word_id: wordId, play_count: 4, correct_count: 4, typing_miss: 0, recall_fail: 0, clean_correct_streak: 4, mastered: false, mastered_at: null, last_played: new Date(Date.now() - 3600000).toISOString(), next_review_at: null, last_recall_fail_at: null, last_recall_success_at: new Date(Date.now() - 3600000).toISOString(), daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: new Date(Date.now() - 3600000).toISOString() });
+    const wordIdsOf = (rec) => Object.keys(JSON.parse(rec.spelldash_word_stats || "{}"));
+
+    // (P1) ゲスト → A（この端末で初めて・ゲストに学んだ記録）: 1 回だけ「ゲストで学んだ記録を、このアカウントに移す？」。はい → ゲストの記録が A の記録になり、A のクラウドへ送られる。
+    // 持ち主の鍵・xp_synced・xp_write・logout_at・learn_filled は消す。ゲストは index から外れ、ログアウトするとゲストは空で始まる。「置き換える」の確認は出ない
+    {
+      const ctx = await ctxOf();
+      try {
+        const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+        const G = { ...personRec("G", "1"), spelldash_owner: "someone-before", spelldash_xp_synced: "100", spelldash_logout_at: new Date(Date.now() - 86400000).toISOString(), spelldash_learn_filled: "someone-before" };
+        await guestDevice(ctx, G, { spelldash_test_cloud: cloud.id });
+        const page = await openApp(ctx, "/stats.html", statsReady);
+        await signInOn(page, userA);
+        const asked = await waitAsk(page);
+        const askText = await page.evaluate(() => ({ lead: document.getElementById("switchAskLead")?.textContent.trim(), focus: document.activeElement?.id ?? null, yes: document.getElementById("switchAskYes")?.textContent.trim(), no: document.getElementById("switchAskNo")?.textContent.trim() })).catch(() => null);
+        await page.click("#switchAskYes");
+        const landed = await waitArea(page, `u:${UA}`);
+        await waitUntil(async () => cloud.writes("word_progress").some((e) => e.userId === UA), 8000, 200);
+        const raw = await dumpRaw(ctx);
+        const a = areaOf(raw, `u:${UA}`);
+        const idx = JSON.parse(raw["sd2.index"]);
+        const sentA = cloud.rows("word_progress").filter((r) => r.user_id === UA).map((r) => r.word_id).sort();
+        check("78.7 ゲスト → A・はい: 1 回たずねる（「ゲストで学んだ記録を、このアカウントに移す？」・はい／いいえ・焦点は問い）・はいで A の領域へ・3 状態と回の続きは 1 字も違わない・「置き換える」の確認は出ない",
+          asked && askText?.lead === "ゲストで学んだ記録を、このアカウントに移す？" && askText.yes === "はい" && askText.no === "いいえ" && askText.focus === "switchAskLead" && landed && a.spelldash_word_stats === G.spelldash_word_stats && a.spelldash_learn_session === G.spelldash_learn_session && a.spelldash_rank_peak === G.spelldash_rank_peak && !ctx.dialogs.some((d) => REPLACE.test(d)),
+          JSON.stringify({ asked, askText, landed, dialogs: ctx.dialogs, keys: Object.keys(a) }));
+        check("78.7 ゲスト → A・はい: 持ち主の鍵・xp_synced・xp_write・logout_at・learn_filled は前の物を消す（同期が A の物を書く）・ゲストは index から外れ localStorage に鍵が無い",
+          a.spelldash_owner !== "someone-before" && a.spelldash_logout_at === undefined && a.spelldash_learn_filled !== "someone-before" && a.spelldash_xp_synced !== "100" && !idx.guest && Object.keys(areaOf(raw, "guest")).length === 0,
+          JSON.stringify({ owner: a.spelldash_owner, logout: a.spelldash_logout_at, filled: a.spelldash_learn_filled, synced: a.spelldash_xp_synced, idx }));
+        check("78.7 ゲスト → A・はい: 移したゲストの記録（語）は A のクラウドへ送られる（A の名前で）", JSON.stringify(sentA) === JSON.stringify(wordIdsOf(G).sort()), JSON.stringify(sentA));
+        await logoutOn(page);
+        const out = await waitArea(page, "guest");
+        const raw2 = await dumpRaw(ctx);
+        const aCopy = await idbGet(ctx, "areas", `u:${UA}`);
+        const guest2 = areaOf(raw2, "guest");
+        const guestWords = Object.keys(JSON.parse(guest2.spelldash_word_stats || "{}"));
+        const guestHasG = Object.values(guest2).some((v) => typeof v === "string" && v.includes('"tag":"G"')) || guest2.spelldash_rank_peak === G.spelldash_rank_peak && guest2.spelldash_xp === G.spelldash_xp;
+        const aStats = JSON.parse(aCopy?.keys?.spelldash_word_stats || "{}");
+        const aWords = Object.keys(aStats).sort();
+        const aTagged = aWords.length > 0 && aWords.every((id) => aStats[id]?.tag === "G");
+        check("78.7 ゲスト → A・はいの後にログアウト: ゲストは空で始まる（移した記録はゲストに戻らない）・A の記録は IndexedDB に・文「ログアウトした。記録はこのアカウントに残る。」・エラー 0",
+          out && !guestHasG && guestWords.length === 0 && JSON.stringify(aWords) === JSON.stringify(wordIdsOf(G).sort()) && aTagged && (await authText(page)) === "ログアウトした。記録はこのアカウントに残る。" && page.errors.length === 0,
+          JSON.stringify({ out, guest: Object.keys(guest2), guestWords, guestHasG, aWords, aTagged, msg: await authText(page), err: page.errors[0] }));
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P2) ゲスト → A・いいえ: ログインは続く。ゲストの記録はゲストの写し（IndexedDB）に残り、A はクラウドの記録だけで始まる（ゲストの語は A のクラウドへ送らない）。
+    // ログアウトするとゲストの記録が戻る。もう一度 A に入るときは、たずねずに A を戻す
+    {
+      const ctx = await ctxOf();
+      try {
+        const aIds = PUB.slice(20, 23);
+        const cloud = createCloud({ word_progress: aIds.map((id) => wpRowOf(UA, id)), user_progress: [], user_items: [] });
+        const G = personRec("G", "1");
+        await guestDevice(ctx, G, { spelldash_test_cloud: cloud.id });
+        const page = await openApp(ctx, "/stats.html", statsReady);
+        await signInOn(page, userA);
+        const asked = await waitAsk(page);
+        await page.click("#switchAskNo");
+        const landed = await waitArea(page, `u:${UA}`);
+        await waitUntil(async () => Object.keys(JSON.parse((await page.evaluate(() => localStorage.getItem("spelldash_word_stats")).catch(() => null)) || "{}")).length === 3, 8000, 200);
+        const raw = await dumpRaw(ctx);
+        const a = JSON.parse(areaOf(raw, `u:${UA}`).spelldash_word_stats || "{}");
+        const gCopy = await idbGet(ctx, "areas", "guest");
+        const sentGuestWords = cloud.writes("word_progress").filter((e) => e.userId === UA).length;
+        const gIds = wordIdsOf(G);
+        const leaked = cloud.rows("word_progress").filter((r) => r.user_id === UA && gIds.includes(r.word_id));
+        check("78.7 ゲスト → A・いいえ: ログインは続く（A の領域）・A はクラウドの 3 語だけ・ゲストの記録は IndexedDB のゲストの写しに 1 字も違わず・ゲストの語は A のクラウドへ送らない",
+          asked && landed && JSON.stringify(Object.keys(a).sort()) === JSON.stringify([...aIds].sort()) && gCopy?.keys?.spelldash_word_stats === G.spelldash_word_stats && leaked.length === 0,
+          JSON.stringify({ asked, landed, a: Object.keys(a), gCopy: !!gCopy, leaked: leaked.map((r) => r.word_id), sentGuestWords }));
+        await logoutOn(page);
+        await waitArea(page, "guest");
+        const g2 = areaOf(await dumpRaw(ctx), "guest");
+        check("78.7 ゲスト → A・いいえの後にログアウト: ゲストの記録が 1 字も違わず戻る", g2.spelldash_word_stats === G.spelldash_word_stats && g2.spelldash_learn_session === G.spelldash_learn_session, JSON.stringify(Object.keys(g2)));
+        await signInOn(page, userA);
+        const askedAgain = await waitAsk(page, 4000);
+        const back = await waitArea(page, `u:${UA}`);
+        check("78.7 2 回目のログイン（A の領域が端末にある）: たずねずに A を戻す・「置き換える」の確認は一度も出ない・エラー 0", !askedAgain && back && !ctx.dialogs.some((d) => REPLACE.test(d)) && page.errors.length === 0, JSON.stringify({ askedAgain, back, dialogs: ctx.dialogs, err: page.errors[0] }));
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P3) A → B → A: B は空（B のクラウドだけ）で始まり、B のクラウドへ A の行は 1 件も行かない。A に戻ると 3 状態・最高到達ランク・回の続き・送信待ちが 1 字も違わない。
+    // その後の A の同期で、A の送信待ちが A の名前で送られる。どの切り替えも signOut しない（ログインし直しだけ）
+    {
+      const ctx = await ctxOf();
+      try {
+        const A = personRec("A", "4");
+        await accountDevice(ctx, userA, A);
+        const page = await openApp(ctx, "/stats.html", statsReady);
+        const before = areaOf(await dumpRaw(ctx), `u:${UA}`);
+        const bIds = PUB.slice(30, 32);
+        const cloud = createCloud({ word_progress: bIds.map((id) => wpRowOf(UB, id)), user_progress: [], user_items: [] });
+        await page.evaluate((id) => localStorage.setItem("spelldash_test_cloud", id), cloud.id);
+        await signInOn(page, userB);
+        const atB = await waitArea(page, `u:${UB}`);
+        await waitUntil(async () => cloud.log.some((e) => e.userId === UB && e.table === "word_progress" && e.kind === "select"), 8000, 200);
+        await page.waitForTimeout(800);
+        const aIds = wordIdsOf(A);
+        const bWrites = cloud.writes(null).filter((e) => e.userId === UB);
+        const bRows = cloud.rows("word_progress").filter((r) => r.user_id === UB);
+        const bLeak = bRows.filter((r) => aIds.includes(r.word_id));
+        const bProgress = cloud.rows("user_progress").filter((r) => r.user_id === UB);
+        const rawB = await dumpRaw(ctx);
+        check("78.7 A → B: B の領域（A の鍵は localStorage に無い・A は IndexedDB）・B の記録は B のクラウドの 2 語だけ・B のクラウドに A の語の行も A の XP も行かない",
+          atB && Object.keys(areaOf(rawB, `u:${UA}`)).length === 0 && JSON.stringify(Object.keys(JSON.parse(areaOf(rawB, `u:${UB}`).spelldash_word_stats || "{}")).sort()) === JSON.stringify([...bIds].sort()) && bLeak.length === 0 && !bProgress.some((r) => r.xp === 1200),
+          JSON.stringify({ atB, bLeak: bLeak.map((r) => r.word_id), bWrites: bWrites.map((e) => e.table), bXp: bProgress.map((r) => r.xp) }));
+        cloud.config.delayMs = 4000; // A の取り込みを遅らせて、戻った直後の A の記録を見る
+        await signInOn(page, userA);
+        const atA = await waitArea(page, `u:${UA}`);
+        const afterBack = areaOf(await dumpRaw(ctx), `u:${UA}`);
+        const SAME = ["spelldash_word_stats", "spelldash_rank_peak", "spelldash_learn_session", "spelldash_dirty_words", "spelldash_xp", "spelldash_schema_version"];
+        check("78.7 B → A: A の 3 状態・最高到達ランク・回の続き・送信待ち・XP が 1 字も違わず戻る（B の鍵は localStorage に無い）",
+          atA && JSON.stringify(pick(afterBack, SAME)) === JSON.stringify(pick(before, SAME)) && Object.keys(areaOf(await dumpRaw(ctx), `u:${UB}`)).length === 0,
+          JSON.stringify({ atA, diff: SAME.filter((k) => afterBack[k] !== before[k]) }));
+        cloud.config.delayMs = 0;
+        const sent = await waitUntil(async () => cloud.rows("word_progress").some((r) => r.user_id === UA && r.word_id === PUB[0]), 12000, 200);
+        const aRow = cloud.rows("word_progress").find((r) => r.user_id === UA && r.word_id === PUB[0]);
+        check("78.7 A に戻った後の同期: A の送信待ち（english の 1 語目）が A の名前で送られる・B の名前の書き込みに A の語は無い・signOut は 0 回",
+          sent && aRow?.play_count === 2 && !cloud.writes(null).some((e) => e.userId === UB && aIds.length && false) && cloud.rows("word_progress").filter((r) => r.user_id === UB && aIds.includes(r.word_id)).length === 0 && (await signOuts(ctx)).length === 0,
+          JSON.stringify({ sent, aRow, signOuts: await signOuts(ctx) }));
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P4) 複数タブの A → B: A の 2 つのタブは、ほかのタブで B に入ると同期の前に切り替えの画面へ移り、B の領域で開き直す。A の名前の書き込みは B のログインの後に無い。
+    // トークンの更新の失敗（SIGNED_OUT）は、どのタブもゲストへ
+    {
+      const ctx = await ctxOf();
+      try {
+        const A = personRec("A", "3");
+        const cloud = createCloud({ word_progress: [wpRowOf(UA, PUB[0])], user_progress: [], user_items: [] });
+        await accountDevice(ctx, userA, A, { spelldash_test_cloud: cloud.id });
+        const t1 = await openApp(ctx, "/stats.html", statsReady);
+        const t2 = await openApp(ctx, "/profile.html", () => window.SpellDashArea !== undefined && !!document.getElementById("backupImport"));
+        await waitUntil(async () => cloud.log.some((e) => e.userId === UA && e.kind === "select"), 8000, 200);
+        await t1.waitForTimeout(1200);
+        const t3 = await openApp(ctx, "/index.html");
+        const mark = cloud.log.length;
+        await signInOn(t3, userB);
+        const all = await Promise.all([t1, t2, t3].map((p) => waitArea(p, `u:${UB}`, 20000)));
+        await t1.waitForTimeout(1500);
+        const visited = [t1, t2].map((p) => p.visited.filter((x) => x === "/switch.html").length);
+        const aAfter = cloud.log.slice(mark).filter((e) => e.userId === UA);
+        const bLeak = cloud.rows("word_progress").filter((r) => r.user_id === UB && wordIdsOf(A).includes(r.word_id));
+        check("78.7 複数タブの A → B: A の 2 つのタブもほかのタブの B のログインで切り替えの画面へ移り、B の領域で開く・A の名前の読み書きは B のログインの後に 0 件・B のクラウドに A の語は無い",
+          all.every(Boolean) && visited.every((n) => n >= 1) && aAfter.length === 0 && bLeak.length === 0, JSON.stringify({ all, visited, aAfter: aAfter.map((e) => `${e.table}.${e.kind}`), bLeak: bLeak.length }));
+        await t2.evaluate(() => window.__stubAuth.expire()).catch(() => null);
+        const guest = await Promise.all([t1, t2, t3].map((p) => waitArea(p, "guest", 20000)));
+        const raw = await dumpRaw(ctx);
+        check("78.7 トークンの更新の失敗（SIGNED_OUT・ほかのタブへも）: どのタブもゲストの領域へ・B は IndexedDB に・セッションは無い・エラー 0",
+          guest.every(Boolean) && sessionUser(raw) === null && Object.keys(areaOf(raw, `u:${UB}`)).length === 0 && [t1, t2, t3].every((p) => p.errors.length === 0), JSON.stringify({ guest, err: [t1, t2, t3].map((p) => p.errors[0] ?? null) }));
+        for (const p of [t1, t2, t3]) await p.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P5) たずねている間にタブを閉じた: 何も替わらない（ゲストは localStorage のまま・A の index も鍵も無い）。次に開くと、もう一度たずねる
+    {
+      const ctx = await ctxOf();
+      try {
+        const G = personRec("G", "1");
+        await guestDevice(ctx, G);
+        const page = await openApp(ctx, "/stats.html", statsReady);
+        await signInOn(page, userA);
+        const asked = await waitAsk(page);
+        await page.close();
+        const raw = await dumpRaw(ctx);
+        const p2 = await openApp(ctx, "/stats.html", () => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false);
+        const askedAgain = await waitAsk(p2, 8000);
+        check("78.7 たずねている間に閉じた: ゲストは localStorage にそろう・A の index も鍵も無い・印は guest のまま・次に開くともう一度たずねる",
+          asked && JSON.stringify(pick(areaOf(raw, "guest"), STABLE)) === JSON.stringify(pick(G, STABLE)) && !JSON.parse(raw["sd2.index"])[`u:${UA}`] && Object.keys(areaOf(raw, `u:${UA}`)).length === 0 && raw["sd2.area"] === "guest#1" && askedAgain,
+          JSON.stringify({ asked, askedAgain, area: raw["sd2.area"], idx: raw["sd2.index"] }));
+        await p2.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P6) 見え方の古いタブ（切り替えの画面への移動が遅れている間）の書き込み: ほかのタブで B に入った後に答えると「保存できませんでした」・A の記録にも B の記録にも書かない
+    {
+      const ctx = await ctxOf();
+      try {
+        const A = { ...personRec("A", "2"), spelldash_word_stats: "{}" };
+        await accountDevice(ctx, userA, A);
+        const t1 = await ctx.newPage();
+        t1.errors = [];
+        t1.on("pageerror", (e) => t1.errors.push(e.message));
+        await t1.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "load" });
+        await t1.waitForFunction(() => document.body.classList.contains("learn-run") && !!document.getElementById("japanese")?.textContent.trim(), null, { timeout: 15000 }).catch(() => {});
+        await t1.waitForTimeout(500);
+        let held = false;
+        await t1.route(`${BASE}/switch.html`, async (route) => { held = true; await new Promise((r) => setTimeout(r, 9000)); await route.continue().catch(() => {}); });
+        const t2 = await openApp(ctx, "/index.html");
+        const aBefore = areaOf(await dumpRaw(ctx), `u:${UA}`).spelldash_word_stats ?? null; // 1 語目を出したときの A の語の記録
+        const lineBefore = await t1.evaluate(() => document.getElementById("message")?.textContent.trim() ?? null).catch(() => null);
+        await signInOn(t2, userB);
+        await waitUntil(async () => held, 5000, 50);
+        await t1.press("#input", "Enter").catch(() => {});
+        await waitUntil(async () => (await t1.evaluate(() => document.getElementById("message")?.textContent.trim() ?? null).catch(() => null)) !== lineBefore, 3000, 50);
+        const line = await t1.evaluate(() => document.getElementById("message")?.textContent.trim() ?? null).catch(() => null);
+        // 古いタブは切り替えの画面へ移る前に閉じる（移った後は B の領域で開き直して B として学ぶ。それは古いタブの書き込みではない）
+        await t1.close().catch(() => {});
+        await waitArea(t2, `u:${UB}`, 20000);
+        const raw = await dumpRaw(ctx);
+        const aCopy = await idbGet(ctx, "areas", `u:${UA}`);
+        check("78.7 見え方の古いタブ: ほかのタブで B に入った後の答えは「保存できませんでした」・B の領域に書かない・A の写しは答えの前のまま",
+          held && line === "保存できませんでした" && (areaOf(raw, `u:${UB}`).spelldash_word_stats ?? "{}") === "{}" && aCopy?.keys?.spelldash_word_stats === aBefore,
+          JSON.stringify({ held, lineBefore, line, b: areaOf(raw, `u:${UB}`).spelldash_word_stats ?? null, a: aCopy?.keys?.spelldash_word_stats ?? null, aBefore }));
+        await t2.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P7) 予行・退避の失敗: IndexedDB に書けない端末で、ログアウトを押しても・ログインのリンクを送ろうとしても、切り替えを始めない。文と案内（空き・書き出し・もう一度）を出す。
+    // 予行は通ったが切り替えの画面で退避が失敗した: signOut を呼ばず、ログインも A の記録もそのまま（元のページに戻って文）
+    {
+      const BLOCKED = "この端末に記録を安全に保存できなかったため、切り替えられません。";
+      // (a) 予行の失敗（開けない）
+      {
+        const ctx = await ctxOf();
+        try {
+          const A = personRec("A", "2");
+          await accountDevice(ctx, userA, A);
+          await ctx.addInitScript(() => { const open = IDBFactory.prototype.open; IDBFactory.prototype.open = function () { if (location.pathname !== "/css/reset.css") throw new DOMException("blocked", "UnknownError"); return open.apply(this, arguments); }; });
+          const page = await openApp(ctx, "/stats.html", statsReady);
+          const before = await dumpRaw(ctx);
+          await logoutOn(page);
+          await page.waitForTimeout(1500);
+          const msg = await authText(page);
+          const after = await dumpRaw(ctx);
+          check("78.7 予行の失敗（ログアウト）: 切り替えの画面へ移らない・文「この端末に記録を安全に保存できなかったため、切り替えられません。」と空き・書き出し・もう一度の案内・ログインも A の記録も印も替わらない・signOut を呼ばない",
+            page.url().includes("/stats.html") && !page.visited.includes("/switch.html") && msg?.startsWith(BLOCKED) && /空き/.test(msg) && /書き出/.test(msg) && /もう一度/.test(msg) && sessionUser(after) === UA && JSON.stringify(areaOf(after, `u:${UA}`)) === JSON.stringify(areaOf(before, `u:${UA}`)) && after["sd2.area"] === before["sd2.area"] && (await signOuts(ctx)).length === 0,
+            JSON.stringify({ url: page.url(), visited: page.visited, msg, user: sessionUser(after), signOuts: await signOuts(ctx) }));
+          await page.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+      // (b) 予行の失敗（ログイン）: Google に移らない（ログインのリンクはスタブでは設定が無いので送る前に止まる。予行の順は単体 U1 が見る）
+      {
+        const ctx = await ctxOf();
+        try {
+          await guestDevice(ctx, personRec("G", "1"));
+          await ctx.addInitScript(() => { IDBFactory.prototype.open = function () { throw new DOMException("blocked", "UnknownError"); }; });
+          const page = await openApp(ctx, "/index.html", () => window.SpellDashArea !== undefined && document.getElementById("loginToggle") && !document.getElementById("accountGuest").hidden);
+          let oauth = 0;
+          await page.exposeFunction("__noteOAuth", () => { oauth++; });
+          await page.evaluate(async () => { const m = await import("/js/supabase.js"); const real = m.supabase.auth.signInWithOAuth; m.supabase.auth.signInWithOAuth = async (...a) => { window.__noteOAuth(); return real(...a); }; });
+          await page.click("#loginToggle");
+          await page.click("#googleLoginButton");
+          await page.waitForTimeout(1200);
+          const msg = await authText(page);
+          check("78.7 予行の失敗（ログイン）: Google に移らない・文と案内を出す・ゲストのまま", oauth === 0 && msg?.startsWith(BLOCKED) && page.url().includes("/index.html") && !page.visited.includes("/switch.html"), JSON.stringify({ oauth, msg, visited: page.visited }));
+          await page.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+      // (c) 予行は通ったが、切り替えの画面で退避の写しが容量で入らない
+      {
+        const ctx = await ctxOf();
+        try {
+          const A = personRec("A", "2");
+          await accountDevice(ctx, userA, A);
+          await ctx.addInitScript(() => {
+            const put = IDBObjectStore.prototype.put;
+            IDBObjectStore.prototype.put = function (value) {
+              if (this.name === "areas" && location.pathname === "/switch.html" && !String(value?.area ?? "").startsWith("pre:")) throw new DOMException("full", "QuotaExceededError");
+              return put.apply(this, arguments);
+            };
+          });
+          const page = await openApp(ctx, "/stats.html", statsReady);
+          const before = await dumpRaw(ctx);
+          await logoutOn(page);
+          const backed = await page.waitForFunction(() => location.pathname === "/stats.html" && window.SpellDashArea?.area !== undefined && (document.getElementById("authMessage")?.textContent ?? "").length > 0, null, { timeout: 15000 }).then(() => true).catch(() => false);
+          const msg = await authText(page);
+          const after = await dumpRaw(ctx);
+          check("78.7 切り替えの画面で退避が失敗（容量）: signOut を呼ばない・元のページに戻って文（切り替えられません）・ログインも A の記録も印も替わらない・途中の印なし",
+            backed && page.visited.includes("/switch.html") && msg?.startsWith(BLOCKED) && sessionUser(after) === UA && JSON.stringify(pick(areaOf(after, `u:${UA}`), STABLE)) === JSON.stringify(pick(areaOf(before, `u:${UA}`), STABLE)) && after["sd2.area"] === before["sd2.area"] && after["sd2.switch"] === undefined && (await signOuts(ctx)).length === 0,
+            JSON.stringify({ backed, visited: page.visited, msg, user: sessionUser(after), sw: after["sd2.switch"] ?? null, signOuts: await signOuts(ctx) }));
+          await page.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+    }
+
+    // (P8) ログアウト（ふつう・オフライン）: ふつうは scope local の signOut で、A の記録は IndexedDB に 1 字も違わず、ゲストへ。オフラインは「ログアウトできなかった。」で何も替わらない
+    {
+      const ctx = await ctxOf();
+      try {
+        const A = personRec("A", "3");
+        await accountDevice(ctx, userA, A, { spelldash_test_signout_offline: "1" });
+        const page = await openApp(ctx, "/stats.html", statsReady);
+        const before = await dumpRaw(ctx);
+        await logoutOn(page);
+        const backed = await page.waitForFunction(() => location.pathname === "/stats.html" && (document.getElementById("authMessage")?.textContent ?? "").startsWith("ログアウト"), null, { timeout: 15000 }).then(() => true).catch(() => false);
+        const msg = await authText(page);
+        const after = await dumpRaw(ctx);
+        check("78.7 オフラインのログアウト: 「ログアウトできなかった。」・ログインも A の記録も印も替わらない（ゲストを展開しない）・signOut は scope local で 1 回",
+          backed && msg?.startsWith("ログアウトできなかった。") && sessionUser(after) === UA && JSON.stringify(pick(areaOf(after, `u:${UA}`), STABLE)) === JSON.stringify(pick(areaOf(before, `u:${UA}`), STABLE)) && after["sd2.area"] === before["sd2.area"] && Object.keys(areaOf(after, "guest")).length === 0 && JSON.stringify(await signOuts(ctx)) === JSON.stringify(["local"]),
+          JSON.stringify({ backed, msg, user: sessionUser(after), signOuts: await signOuts(ctx) }));
+        await page.evaluate(() => localStorage.removeItem("spelldash_test_signout_offline"));
+        await logoutOn(page);
+        const out = await waitArea(page, "guest");
+        const raw = await dumpRaw(ctx);
+        const aCopy = await idbGet(ctx, "areas", `u:${UA}`);
+        check("78.7 ログアウト（つながる）: ゲストの領域へ・文「ログアウトした。記録はこのアカウントに残る。」・A の記録は IndexedDB に 1 字も違わず・localStorage に A の鍵は無い・セッションは無い・signOut は 2 回とも scope local",
+          out && (await authText(page)) === "ログアウトした。記録はこのアカウントに残る。" && JSON.stringify(pick(aCopy?.keys ?? {}, STABLE)) === JSON.stringify(pick(A, STABLE)) && Object.keys(areaOf(raw, `u:${UA}`)).length === 0 && sessionUser(raw) === null && JSON.stringify(await signOuts(ctx)) === JSON.stringify(["local", "local"]) && page.errors.length === 0,
+          JSON.stringify({ out, msg: await authText(page), aCopy: !!aCopy, signOuts: await signOuts(ctx), err: page.errors[0] }));
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P9) バックアップの持ち主: 書き出しに持ち主の値（生の user id は無い）。同じ人の別の端末（別の文脈）で戻せる。別の人・ゲストのファイルは戻さない。持ち主の無い古いファイルは数と入れる先を見せてから
+    {
+      const A = personRec("A", "3");
+      const tagA = (await import("crypto")).createHash("sha256").update(`spelldash-backup-owner-v1:${UA}`).digest("hex").slice(0, 32);
+      const profileReady = () => window.SpellDashArea !== undefined && !!document.getElementById("backupImport") && document.readyState === "complete";
+      const exportFrom = async (ctx) => {
+        const page = await openApp(ctx, "/profile.html", profileReady);
+        const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 10000 }), page.click("#backupExport")]);
+        const text = fs.readFileSync(await dl.path(), "utf8");
+        await page.close();
+        return text;
+      };
+      const importInto = async (ctx, text) => {
+        const page = await openApp(ctx, "/profile.html", profileReady);
+        const before = ctx.dialogs.length;
+        await page.setInputFiles("#backupImport", { name: "spelldash-backup.json", mimeType: "application/json", buffer: Buffer.from(text) });
+        await page.waitForFunction(() => !/^読み込むと/.test(document.getElementById("backupStatus")?.textContent ?? ""), null, { timeout: 10000 }).catch(() => {});
+        const status = await page.evaluate(() => document.getElementById("backupStatus")?.textContent.trim()).catch(() => null);
+        const dialogs = ctx.dialogs.slice(before);
+        await page.waitForTimeout(1200); // 復元の後の読み直し
+        await page.close();
+        return { status, dialogs };
+      };
+      const c1 = await ctxOf();
+      const c2 = await ctxOf();
+      const c3 = await ctxOf();
+      const c4 = await ctxOf();
+      try {
+        await accountDevice(c1, userA, A);
+        const fileA = await exportFrom(c1);
+        const objA = JSON.parse(fileA);
+        check("78.7 バックアップの書き出し（A）: owner = { kind: account, tag: SHA-256 の頭 32 字 }・生の user id はファイルのどこにも無い・持ち主の鍵は入れない",
+          objA.owner?.kind === "account" && objA.owner.tag === tagA && !fileA.includes(UA) && !("spelldash_owner" in objA.data), JSON.stringify({ owner: objA.owner, hasId: fileA.includes(UA) }));
+        // 別の端末（別の文脈）で同じ A
+        await accountDevice(c2, userA, { spelldash_schema_version: "7", spelldash_placement: "done" });
+        const r2 = await importInto(c2, fileA);
+        const raw2 = await dumpRaw(c2);
+        const pre = await rawDoc(c2, async () => { const m = await import("/js/areaStore.js"); const db = await m.openAreaStore(); try { return await db.list("prerestore"); } finally { db.close(); } });
+        check("78.7 バックアップ: 別の端末（別の文脈）で同じアカウントのファイルを戻せる（上書きの警告・入れる先・前の記録は控えに）・prerestore に前の記録 1 件",
+          r2.status?.startsWith("復元した") && r2.dialogs.length === 1 && /上書き/.test(r2.dialogs[0]) && /ログイン中のアカウント/.test(r2.dialogs[0]) && areaOf(raw2, `u:${UA}`).spelldash_word_stats === A.spelldash_word_stats && pre.length === 1 && pre[0].area === `u:${UA}` && pre[0].keys.spelldash_placement === "done",
+          JSON.stringify({ status: r2.status, dialogs: r2.dialogs, pre: pre.length }));
+        // 別の人（B）の端末には戻さない
+        await accountDevice(c3, userB, { spelldash_schema_version: "7", spelldash_xp: "55" });
+        const r3 = await importInto(c3, fileA);
+        const raw3 = await dumpRaw(c3);
+        check("78.7 バックアップ: 別のアカウント（B）の端末には戻さない（確認も出さない・B の記録はそのまま）", r3.status?.startsWith("別のアカウントのバックアップのため、戻さなかった。") && r3.dialogs.length === 0 && areaOf(raw3, `u:${UB}`).spelldash_xp === "55", JSON.stringify(r3));
+        // ゲストのファイル: アカウントには戻さない・ゲストには戻せる
+        await guestDevice(c4, personRec("G", "1"));
+        const fileG = await exportFrom(c4);
+        const objG = JSON.parse(fileG);
+        const r4 = await importInto(c2, fileG);
+        check("78.7 バックアップ: ゲストのファイル（owner = guest）はアカウントの領域には戻さない", objG.owner?.kind === "guest" && r4.status?.startsWith("ゲストのバックアップのため、このアカウントには戻さなかった。") && r4.dialogs.length === 0, JSON.stringify({ owner: objG.owner, r4 }));
+        const r5 = await importInto(c4, fileG);
+        check("78.7 バックアップ: ゲストのファイルはゲストの領域に戻せる", r5.status?.startsWith("復元した") && r5.dialogs.length === 1, JSON.stringify(r5));
+        // 持ち主の無い古いファイル: 覚えた語数・答えた語数・最後に学んだ日・入れる先を見せて確かめてから
+        const legacy = JSON.stringify({ app: "SpellDash", version: 1, exportedAt: "2026-10-01T00:00:00.000Z", data: { spelldash_schema_version: "7", spelldash_word_stats: statsSeed("L"), spelldash_xp: "77" } });
+        const r6 = await importInto(c4, legacy);
+        const raw6 = await dumpRaw(c4);
+        check("78.7 バックアップ: 持ち主の無い古いファイルは、覚えた語数（3）・答えた語数（5）・最後に学んだ日・入れる先（ゲスト）を見せて確かめてから戻す",
+          r6.dialogs.length === 1 && /持ち主の分からない古いバックアップ/.test(r6.dialogs[0]) && /覚えた語: 3語/.test(r6.dialogs[0]) && /答えた語: 5語/.test(r6.dialogs[0]) && /最後に学んだ日/.test(r6.dialogs[0]) && /入れる先: この端末のゲスト/.test(r6.dialogs[0]) && r6.status?.startsWith("復元した") && areaOf(raw6, "guest").spelldash_xp === "77",
+          JSON.stringify(r6));
+      } finally {
+        for (const c of [c1, c2, c3, c4]) await c.close();
+      }
     }
   }
 }

@@ -3,7 +3,17 @@
 // 本物のSupabase（本番DB）にテストから絶対に接続しないための安全装置。
 export const isSupabaseConfigured = false;
 
+// 認証のセッションは本物の部品と同じく新しい鍵 sd2.auth に JSON で置く（js/supabase.js AUTH_STORAGE_KEY。見張り js/areaGuard.js が読む形:
+// { access_token, refresh_token, expires_at, token_type, user: { id, email } }）。人ごとの保存の領域（Batch 78-7 内部の 2）の検査は、ここに書いた人で
+// 見張りと切り替えの画面が動く。タブをまたぐ知らせ（SIGNED_IN・SIGNED_OUT）は、本物の部品と同じく鍵と同じ名前の BroadcastChannel で送る
+export const AUTH_STORAGE_KEY = "sd2.auth";
+const DEFAULT_USER = { id: "test-user", email: "test@example.com" };
+// 前の形の種（tests/e2e.mjs の種の spelldash_test_session）: "1" → access_token test-token、それ以外の文字列はその値。読み込みのときに新しい鍵が無ければ
+// test-user のセッションとして新しい鍵へ書く（ログインのリンクから戻ったタブの部品と同じ: 見張りが人の替わりを見て切り替えの画面へ移す）
 const SESSION_KEY = "spelldash_test_session";
+// signOut の scope の控え（JSON の配列。検査が読む）・通信できない signOut の印（"1"。navigator.onLine が false のときも）
+const SIGNOUTS_KEY = "spelldash_test_signouts";
+const SIGNOUT_OFFLINE_KEY = "spelldash_test_signout_offline";
 // 端末間同期の検証用「クラウド」: localStorage の spelldash_test_cloud にクラウドの id があれば、
 // from(table) の呼び出しを記録して await の時点で tests/e2e.mjs のローカルサーバー（POST /__cloud/query）に投げる。
 // サーバー側のメモリが Supabase の表のつもり（seed・select の失敗・遅延・送信の記録はサーバー側で決める）。
@@ -27,14 +37,34 @@ const readStorage = (key) => {
   }
 };
 
-// localStorage に spelldash_test_session があればログイン済みとして振る舞う（覚え方を作る 等の検証用）
-// 値が "1" なら従来どおり access_token は "test-token"。それ以外の文字列ならその値をそのまま access_token にする
+// セッションの形（本物の部品が sd2.auth に置く形と同じ）。token が "1" なら access_token は "test-token"、それ以外の文字列はその値
 // （偽 API が Bearer の値で 403／503 を返し分けるため。例: "forbidden-token", "unconfigured-token", "nonotes-token"）
+function makeSession(token = "1", user = DEFAULT_USER) {
+  return { access_token: token === "1" ? "test-token" : String(token), token_type: "bearer", expires_in: 3600, expires_at: 9999999999, refresh_token: "test-refresh", user: { ...DEFAULT_USER, ...user } };
+}
+// sd2.auth のセッション（無い・読めないなら null）
 function fakeSession() {
-  const value = readStorage(SESSION_KEY);
-  if (!value) return null;
-  const token = value === "1" ? "test-token" : value;
-  return { access_token: token, user: { id: "test-user", email: "test@example.com" } };
+  try {
+    const s = JSON.parse(readStorage(AUTH_STORAGE_KEY) || "null");
+    return s && typeof s.user?.id === "string" && s.user.id ? s : null;
+  } catch {
+    return null;
+  }
+}
+function writeSession(session) {
+  try {
+    if (session) localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    else localStorage.removeItem(AUTH_STORAGE_KEY);
+  } catch {
+    // 保存の無い環境ではログインもしない
+  }
+}
+// 前の形の種を新しい鍵へ（新しい鍵にセッションが無いときだけ）
+try {
+  const legacy = readStorage(SESSION_KEY);
+  if (legacy && !fakeSession()) writeSession(makeSession(legacy));
+} catch {
+  // 使えない環境では何もしない
 }
 
 // 読み込みの遅れの模擬（加入画面の読み込みの検査。PR #170 のレビュー 2）: localStorage の spelldash_test_delay = {"session": ms, "plan": ms} があれば、
@@ -59,6 +89,34 @@ function emit(event, session) {
     } catch {
       // 購読側の例外は他の購読者へ流すのを止めない
     }
+  }
+}
+// ほかのタブへの知らせ（本物の部品と同じく、保存の鍵と同じ名前の BroadcastChannel。受けたタブは購読者へ流すだけで、保存は書かない）
+let channel = null;
+try {
+  channel = new BroadcastChannel(AUTH_STORAGE_KEY);
+  channel.onmessage = (e) => {
+    const { event, session } = e.data || {};
+    if (typeof event === "string") emit(event, session ?? null);
+  };
+} catch {
+  channel = null;
+}
+function announce(event, session) {
+  emit(event, session);
+  try {
+    channel?.postMessage({ event, session });
+  } catch {
+    // 送れなくても、このタブには流した
+  }
+}
+function noteSignOut(scope) {
+  try {
+    const list = JSON.parse(readStorage(SIGNOUTS_KEY) || "[]");
+    list.push(scope ?? null);
+    localStorage.setItem(SIGNOUTS_KEY, JSON.stringify(list));
+  } catch {
+    // 控えられなくても続ける
   }
 }
 
@@ -129,15 +187,20 @@ export const supabase = {
     },
     signInWithOtp: asyncNull,
     signInWithOAuth: asyncNull,
-    // ログアウト: spelldash_test_session を消して SIGNED_OUT を流す（本物の SDK と同じく購読者へ知らせる）
-    signOut: async () => {
+    // ログアウト（本物の部品と同じ）: 受け口に届かない（オフライン・spelldash_test_signout_offline）なら失敗を返し、セッションは残す。
+    // 届けばセッション（sd2.auth と前の形の種）を消して SIGNED_OUT を流す（ほかのタブにも）。scope は控える
+    signOut: async (options = {}) => {
+      noteSignOut(options?.scope ?? null);
+      const offline = (typeof navigator !== "undefined" && navigator.onLine === false) || readStorage(SIGNOUT_OFFLINE_KEY) === "1";
+      if (offline) return { error: { name: "AuthRetryableFetchError", message: "Failed to fetch", status: 0 } };
       try {
         localStorage.removeItem(SESSION_KEY);
       } catch {
         // 使えない環境では何もしない
       }
-      emit("SIGNED_OUT", null);
-      return { data: null, error: null };
+      writeSession(null);
+      announce("SIGNED_OUT", null);
+      return { error: null };
     }
   },
   from: (table) => {
@@ -147,12 +210,24 @@ export const supabase = {
   }
 };
 
-// テスト用: ログインリンクから戻ってきた体で SIGNED_IN を流す（同じタブでの再ログイン）
+// テスト用:
+//   signIn(token, user) … ログインリンクから戻ってきた体（sd2.auth に書いて SIGNED_IN をこのタブとほかのタブへ）。user で別の人（{ id, email }）
+//   expire()           … トークンの更新が失敗した体（本物の部品と同じく、セッションを消して SIGNED_OUT をこのタブとほかのタブへ）
 if (typeof window !== "undefined") {
   window.__stubAuth = {
-    signIn(value = "1") {
-      localStorage.setItem(SESSION_KEY, value);
-      emit("SIGNED_IN", fakeSession());
+    signIn(value = "1", user = DEFAULT_USER) {
+      const session = makeSession(value, user);
+      writeSession(session);
+      announce("SIGNED_IN", session);
+    },
+    expire() {
+      writeSession(null);
+      try {
+        localStorage.removeItem(SESSION_KEY);
+      } catch {
+        // 使えない環境では何もしない
+      }
+      announce("SIGNED_OUT", null);
     }
   };
 }
