@@ -1,0 +1,337 @@
+# SQL: 旧いコードの書き込みを断る門（X-Client-Info の印）
+
+> **案だけ・未実行。流すのは創業者が明示して許したときだけ。** こちらからは流さない。データベースへの通信もしない。
+> 実行は創業者側（Supabase ダッシュボード → SQL Editor）。2026-10-29 作成（Batch 78-7）。アカウント分離を公開する前に要る。
+
+## 0. 要点
+
+- 新しい版（アカウント分離の入った版）は、表への要求に見出し `X-Client-Info: spelldash/2 supabase-js-web/2.118.0` を付ける。js/supabase.js の `CLIENT_INFO`。ブランチ b78-7-areas の e4d22b9 から入っている。b78-6-release にはまだ入っていない。
+- 直前の本番 0507672 までのコードは、認証の部品の既定の `supabase-js-web/<版>` だけを送る。`spelldash/` で始まらない。
+- 門は、書き込み（insert・update・delete）を、印の世代が 2 以上の要求だけに許す。行の権限の restrictive の方針で足す。今の許す側の方針（本人の行だけ など）はそのまま残る。読む（select）は今のまま。
+- 10 個の表に 3 つずつ、計 30 個の方針と、小さな関数 1 つ。何度流しても同じ。戻し方がある（§6）。
+- 印は守りではない。だれでも付けられる。止めるのは、手を加えていない旧いコードだけ（§8）。
+
+## 1. なぜ要るか
+
+- 旧タブの証明（tests/oldtab・ブランチ b78-7-oldtab）で、次の形が見つかった。
+  - 旧いタブの認証の部品が 2.107.0 より前の版だと、移行をまたいだトークンの更新の結果を、旧い鍵 `sb-<ref>-auth-token` へ A のセッションとして書き戻す。
+  - その間、旧いタブは A として、移行の後の空の端末の値を A のクラウドへ送る。最高点・連続日数・Battle の数・語の回数・今日の活動が後ろへ戻る。B への漏れは 0。
+- 直しの本体はクライアント側にある（新しいコードの見張りが、旧い鍵への書き戻しをその場で片付ける）。ただし、新しいコードのタブが 1 つも開いていない間は、旧いタブだけが動き続けうる。
+- 門はその残りを止める 2 枚目の守り。旧いコードの書き込みは、どのタブからでもサーバーが断る。旧いタブがどの人のセッションを持っていても同じ。
+
+## 2. 対象の表
+
+クライアントが書く表は、main 0507672 と b78-7-areas（5f26dc7）で同じ 10 個（js/ の `.from(` の呼び出しを全部数えた）。許す側の方針は docs と supabase/schema.sql から読んだ。本物のデータベースと違うことがあるので、§5.1 の写しで確かめる。
+
+| 表 | クライアントの書き込み | 今の許す側の方針（docs から） |
+|---|---|---|
+| profiles | insert（js/sync.js）・upsert（js/audio.js・js/profileView.js） | select・insert・update（本人）。supabase/schema.sql |
+| word_progress | upsert（js/sync.js） | select・insert・update・delete（本人）。supabase/schema.sql |
+| user_progress | upsert（js/sync.js） | select・insert・update（本人）。supabase/schema.sql |
+| activity_days | upsert（js/sync.js） | select・insert・update（本人）。supabase/schema.sql |
+| battle_sessions | insert（js/sync.js） | select・insert（本人）。supabase/schema.sql・migrations/2026-07-13 |
+| play_sessions | insert（js/sync.js） | select・insert（本人）。supabase/schema.sql |
+| daily_scores | insert（js/dailyRank.js） | select（全員）・insert・delete（本人）。supabase/schema.sql |
+| user_items | upsert（js/userItemsSync.js） | select・insert・update・delete（本人）。docs/SQL_USER_ITEMS.md。まだ作っていないかもしれない |
+| funnel_events | upsert・重複は無視（js/funnelLog.js） | insert（未ログインも。user_id は空か本人）。docs/SQL_FUNNEL.md。まだ作っていないかもしれない |
+| feedback | insert（js/feedback.js） | insert（未ログインも）。docs/SQL_FEEDBACK.md §2 の版なら本人だけ。まだ作っていないかもしれない |
+
+- 3 つの命令を全部の表にそろえる。許す側の方針が無い命令（例 battle_sessions の update）は、もともと断られる。門を足しても変わらない。
+- delete は今のクライアントが出さない。それでも断る。新しい版は印を付けるので、後で delete を使っても通る。
+- 門を付けない表: subscriptions（書くのは課金の webhook の service role だけ。authenticated に書く権限が無い。docs/SQL_BILLING.md）・crm_notes（service role だけ。docs/SQL_CRM.md）。
+- service role は行の権限を飛ばす。サーバーの API（api/）の書き込みはどれも service role なので、門に関係なく今のまま動く。日次の keepalive は読むだけ。
+- クライアントは関数（rpc）を呼ばない。表へ書く経路は上の 10 個だけ。
+
+## 3. 順番（いちばん大事）
+
+0. 創業者が明示して許す。それまで何も流さない。
+1. 前提: 新しい版（印を送る版）が受け入れ基準を通り、公開できる状態にある。公開する木の js/supabase.js で、`CLIENT_INFO` が `spelldash/2 ` で始まることを見る。
+2. Supabase のプロジェクトを復旧する（docs/FOUNDER_TODO.md の A。同じプロジェクト）。今は止まっている。この時点の本番はまだ旧い版。新しいコードが無いので移行は起きず、門はまだ要らない。
+3. 新しい版を公開する直前に: §5.1 の写しを取る → §4 を流す → §5.2〜§5.4 で確かめる。
+4. 推奨: 旧い本番で断られることを 1 回見る。本番を開いてログインし、1 語答える。ブラウザの開発者ツールの通信で、`/rest/v1/word_progress` への POST が 403。要求の見出し `x-client-info` が `supabase-js-web/…`。
+5. 新しい版を公開する。
+6. 必須: 新しい版で通ることを見る。読み直してログインし、1 語答える。`/rest/v1/` への POST が 2xx。見出し `x-client-info` が `spelldash/2 supabase-js-web/2.118.0`。2xx でなければ、すぐ §6 を流す（新しい版の書き込みも断られている。語の記録は端末の送信待ちに残り、戻した後の送信で送られる）。
+7. 門は残す。旧いタブ（凍った裏のタブ・開いたままの端末）は何週間も残りうる。外す日は決めない。
+
+守ること:
+
+- 門を入れる前に新しい版を公開しない。止まっている間に公開すると、移行は端末の中で進む。復旧した瞬間から門を入れるまでの間、旧いタブが書ける。
+- 門を入れてから新しい版の公開までを短くする（同じ日の続けた作業）。その間は旧い本番の同期が全部断られる。ログインと読むのは動く。止まっている今より悪くはない。
+- 復旧が公開よりずっと前になるなら、門は公開の直前まで入れない。
+- 本番を旧い版へ戻すときは、同じ時に §6 を流す。戻さないと、戻した版の書き込みが全部断られる。分離の後の端末で旧い版へ戻すこと自体の危うさは、この文書では扱わない。
+- 3 つの状態の列の SQL（docs/FOUNDER_TODO.md の E）とは別。どちらを先に流してもよい。
+
+## 4. 門の SQL
+
+```sql
+-- 案（未実行）。何度流しても同じ。全部が 1 つの取引で入るか、何も入らない
+begin;
+
+-- 印の確かめ。表への要求の見出し x-client-info が「spelldash/<世代>」と空白（か終わり）で始まり、世代が 2 以上なら true。
+-- 見出しが無い・空・形が違うなら false。SQL Editor とサーバーの API（service role）には効かない（行の権限を飛ばすため）
+create or replace function public.spelldash_client_ok()
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select coalesce(
+    substring(
+      (nullif(current_setting('request.headers', true), '')::json ->> 'x-client-info')
+      from '^spelldash/([0-9]{1,6})(?: |$)'
+    )::int >= 2,
+    false
+  );
+$$;
+
+grant execute on function public.spelldash_client_ok() to anon, authenticated;
+
+-- 書き込みの門（restrictive）。今の許す側の方針には触らない。読む（select）には付けない
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    'profiles', 'word_progress', 'user_progress', 'activity_days', 'battle_sessions',
+    'play_sessions', 'daily_scores', 'user_items', 'funnel_events', 'feedback'
+  ] loop
+    if to_regclass(format('public.%I', t)) is null then
+      raise notice '飛ばした: public.% が無い（作った後に、この SQL をもう一度流す）', t;
+      continue;
+    end if;
+    execute format('drop policy if exists spelldash_gate_insert on public.%I', t);
+    execute format('drop policy if exists spelldash_gate_update on public.%I', t);
+    execute format('drop policy if exists spelldash_gate_delete on public.%I', t);
+    execute format(
+      'create policy spelldash_gate_insert on public.%I as restrictive for insert to anon, authenticated
+         with check ((select public.spelldash_client_ok()))', t);
+    execute format(
+      'create policy spelldash_gate_update on public.%I as restrictive for update to anon, authenticated
+         using ((select public.spelldash_client_ok())) with check ((select public.spelldash_client_ok()))', t);
+    execute format(
+      'create policy spelldash_gate_delete on public.%I as restrictive for delete to anon, authenticated
+         using ((select public.spelldash_client_ok()))', t);
+  end loop;
+end $$;
+
+commit;
+```
+
+- restrictive の方針は、許す側の方針と「かつ」で重なる。本人の行だけ、かつ印がある、のときだけ書ける。
+- `(select …)` で包むので、関数は文ごとに 1 回だけ動く。
+- 印は世代の数で比べる。次の世代（`spelldash/3`）を出しても、門を直さずに通る（§9）。
+- `nullif(…, '')` は、見出しの設定が空の文字のときに json の読み違いで落ちないため。
+
+## 5. 確かめ（読むだけ。§5.4 は試しの行を必ず取り消す）
+
+### 5.1 流す前と流した後の写し
+
+流す前に流して、結果を CSV で残す。流した後にもう一度流して比べる。`spelldash_gate_*` の行が増えただけなら合格。ほかの行が変わっていたら止めて連絡する。
+
+```sql
+select tablename, policyname, permissive, roles, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public'
+  and tablename in ('profiles', 'word_progress', 'user_progress', 'activity_days', 'battle_sessions',
+                    'play_sessions', 'daily_scores', 'user_items', 'funnel_events', 'feedback')
+order by tablename, policyname;
+```
+
+### 5.2 表ごとのまとめ
+
+```sql
+-- 作った表ごとに: table_exists = true・rls_on = true・gate_policies = 3・permissive_policies = 流す前と同じ数
+-- rls_on が false の表があれば、門はその表に効かない。止めて連絡する（ここでは RLS を入れない。入れると今の書き込みが止まりうる）
+-- まだ作っていない表は table_exists = false・gate_policies = 0
+select t.name as table_name,
+       c.oid is not null as table_exists,
+       c.relrowsecurity as rls_on,
+       count(p.policyname) filter (where p.policyname like 'spelldash_gate_%' and p.permissive = 'RESTRICTIVE') as gate_policies,
+       count(p.policyname) filter (where p.permissive = 'PERMISSIVE') as permissive_policies
+from unnest(array['profiles', 'word_progress', 'user_progress', 'activity_days', 'battle_sessions',
+                  'play_sessions', 'daily_scores', 'user_items', 'funnel_events', 'feedback']) as t(name)
+left join pg_class c on c.oid = to_regclass('public.' || t.name)
+left join pg_policies p on p.schemaname = 'public' and p.tablename = t.name
+group by t.name, c.oid, c.relrowsecurity
+order by t.name;
+```
+
+### 5.3 門の中身
+
+```sql
+-- 表ごとに INSERT・UPDATE・DELETE の 3 行。permissive = RESTRICTIVE・roles = {anon,authenticated}
+-- INSERT は with_check だけ、UPDATE は qual と with_check、DELETE は qual だけに spelldash_client_ok() が入る
+select tablename, policyname, permissive, roles, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public' and policyname like 'spelldash_gate_%'
+order by tablename, cmd;
+
+-- 読むのには門が無い（0）
+select count(*) as gate_on_reads
+from pg_policies
+where schemaname = 'public' and policyname like 'spelldash_gate_%' and cmd in ('SELECT', 'ALL');
+
+-- 関数: provolatile = s（stable）・prosecdef = false（security definer でない）
+select p.proname, p.provolatile, p.prosecdef, pg_get_function_result(p.oid) as returns
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname = 'spelldash_client_ok';
+```
+
+### 5.4 振る舞いの試し（見出しを作って入れる。試しの行は残らない）
+
+最初の利用者 1 人の id を借り、word_progress に試しの語 `spelldash-gate-probe` を作ろうとする。どの行も、その場の取り消しと最後の rollback の両方で消える。エラーが出なければ合格。`NG` で始まるエラーが出たら、その番号を控えて §6 を流す。
+
+```sql
+begin;
+do $$
+declare
+  new_info constant text := '{"x-client-info":"spelldash/2 supabase-js-web/2.118.0"}';
+  old_info constant text := '{"x-client-info":"supabase-js-web/2.105.0"}';
+  probe_word constant text := 'spelldash-gate-probe';
+  probe_user uuid;
+  n integer;
+begin
+  -- 1. 印の読み方（表に触らない）
+  perform set_config('request.headers', new_info, true);
+  if not public.spelldash_client_ok() then raise exception 'NG 1a: 新しい印が通らない'; end if;
+  perform set_config('request.headers', '{"x-client-info":"spelldash/3 supabase-js-web/2.200.0"}', true);
+  if not public.spelldash_client_ok() then raise exception 'NG 1b: 次の世代の印が通らない'; end if;
+  perform set_config('request.headers', old_info, true);
+  if public.spelldash_client_ok() then raise exception 'NG 1c: 旧い印が通る'; end if;
+  perform set_config('request.headers', '{"x-client-info":"spelldash/1 supabase-js-web/2.118.0"}', true);
+  if public.spelldash_client_ok() then raise exception 'NG 1d: 世代 1 の印が通る'; end if;
+  perform set_config('request.headers', '{}', true);
+  if public.spelldash_client_ok() then raise exception 'NG 1e: 印の無い要求が通る'; end if;
+  perform set_config('request.headers', '', true);
+  if public.spelldash_client_ok() then raise exception 'NG 1f: 見出しの無い接続が通る'; end if;
+
+  -- 2. 本物の行の権限（word_progress）
+  select id into probe_user from auth.users order by created_at limit 1;
+  if probe_user is null then
+    raise notice '利用者が 0 人なので 2 は飛ばした';
+    return;
+  end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', probe_user, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+
+  -- 2a. 旧い印では作れない
+  perform set_config('request.headers', old_info, true);
+  begin
+    insert into public.word_progress (user_id, word_id) values (probe_user, probe_word);
+    raise exception 'NG 2a: 旧い印で行を作れた';
+  exception when insufficient_privilege then
+    null;
+  end;
+
+  -- 2b〜2f. 新しい印で作った行を、旧い印では書き換えも消しも upsert もできない。新しい印では書き換えられる
+  begin
+    perform set_config('request.headers', new_info, true);
+    insert into public.word_progress (user_id, word_id) values (probe_user, probe_word);
+    perform set_config('request.headers', old_info, true);
+    update public.word_progress set play_count = 99 where user_id = probe_user and word_id = probe_word;
+    get diagnostics n = row_count;
+    if n <> 0 then raise exception 'NG 2b: 旧い印で行を書き換えられた'; end if;
+    delete from public.word_progress where user_id = probe_user and word_id = probe_word;
+    get diagnostics n = row_count;
+    if n <> 0 then raise exception 'NG 2c: 旧い印で行を消せた'; end if;
+    begin
+      insert into public.word_progress (user_id, word_id, play_count) values (probe_user, probe_word, 5)
+        on conflict (user_id, word_id) do update set play_count = excluded.play_count;
+      raise exception 'NG 2d: 旧い印で既にある行へ upsert できた';
+    exception when insufficient_privilege then
+      null;
+    end;
+    perform set_config('request.headers', new_info, true);
+    update public.word_progress set play_count = 1 where user_id = probe_user and word_id = probe_word;
+    get diagnostics n = row_count;
+    if n <> 1 then raise exception 'NG 2e: 新しい印で行を書き換えられない'; end if;
+    raise exception using errcode = 'SDGT0', message = '試しの行を取り消す';
+  exception
+    when sqlstate 'SDGT0' then null;
+    when insufficient_privilege then raise exception 'NG 2f: 新しい印で書けない（%）', sqlerrm;
+  end;
+
+  reset role;
+  perform set_config('request.headers', '', true);
+  perform set_config('request.jwt.claims', '', true);
+  raise notice 'OK: 門は効いている';
+end $$;
+rollback;
+
+-- 試しの行が残っていない（0）
+select count(*) as probe_rows_left from public.word_progress where word_id = 'spelldash-gate-probe';
+```
+
+- 2a の旧い印の insert は `insufficient_privilege`（42501。行の権限の違反）で断られる。本物の要求では 403 か 401 になる。
+- 2b・2c の旧い印の update・delete はエラーにならず、0 行になる（行が見えない扱い）。旧いコードは update・delete を出さない。
+- 2d の upsert（旧いコードの同期の形）は、既にある行でもエラーで断られる。新しい行なら 2a と同じ。
+- この試しは見出しを作って入れたもの。本物の通り道（見出しがデータベースまで届くか）は §3 の 4 と 6 で見る。
+
+## 6. 戻し方
+
+門だけを外す。今の許す側の方針には触らない。データは変わらない。
+
+```sql
+begin;
+do $$
+declare
+  r record;
+begin
+  for r in
+    select tablename, policyname from pg_policies
+    where schemaname = 'public'
+      and policyname in ('spelldash_gate_insert', 'spelldash_gate_update', 'spelldash_gate_delete')
+  loop
+    execute format('drop policy %I on public.%I', r.policyname, r.tablename);
+  end loop;
+end $$;
+drop function if exists public.spelldash_client_ok();
+commit;
+
+-- 確かめ（0 と 0）。§5.1 の SELECT が、流す前の写しと同じになる
+select count(*) as gate_policies_left from pg_policies where policyname like 'spelldash_gate_%';
+select count(*) as gate_function_left from pg_proc where proname = 'spelldash_client_ok';
+```
+
+- 方針を先に外し、関数は後で外す。方針が残っていれば関数の削除は失敗する（取り残しに気づける）。
+- 外した後は、旧いコードの書き込みもまた通る。旧いタブによる A の記録の後退（§1）を止める物は、クライアント側の片付けだけになる。
+
+## 7. 旧いタブの利用者に見えること
+
+- 画面と学習は今のまま動く。端末の中の記録も今のまま増える。
+- クラウドへの書き込みだけが断られる（403 か 401）。旧いコードは insert と upsert だけを出すので、どれもエラーになる。旧いコードは多くの失敗を画面に出さない。だから同期が黙って止まる。
+  - 語の記録（word_progress）・ユーザーの品（user_items）: 送信待ちに残る。次の送信でまた断られる。
+  - XP・連続日数など（user_progress）: クラウドの値が進まない。XP の基準も進まない。
+  - Battle の履歴（battle_sessions）: 送信待ちの列に残る。
+  - Challenge の 1 回の履歴（play_sessions）・その日の活動（activity_days）: 送り直しの仕組みが無い。その回の行はクラウドに入らない。
+  - Daily Dash の完走（daily_scores）: その日の順位に載らない。失敗の文は出ない。
+  - 表示名の保存（設定）: 「保存できなかった。時間をおいてもう一度」と出る。音の設定の保存は黙って失敗する。
+  - ご意見（feedback）: 端末に控え、次のページで送り直す。旧いタブのままなら断られ続ける。
+  - 計測（funnel_events）: その旧いタブの分は数えられない。
+- ログイン・ログアウト・トークンの更新・クラウドを読むことは今のまま動く。
+- 断られた行の行き先:
+  - 新しいコードをまだ開いていない端末: 旧い場所（`spelldash_*`）に残る。次にページを開くと、新しいコードが移行でその人の領域へ移し、印を付けて送る。遅れるだけ。送り直しの仕組みの無い行（上の play_sessions・activity_days の過ぎた日・daily_scores）はクラウドに入らない。端末の記録は残る。
+  - 移行の後の端末の旧いタブ: 旧い場所に書いた値は、新しいコードが端末の控え（IndexedDB の orphans）へ写して消す。読まない・送らない。これは門が無くても同じ（アカウント分離の決まり）。移行の後に旧いタブでした学習は、クラウドにも新しい領域にも入らない。門が変えるのは、その旧いタブが A のクラウドを空の値で上書きすることを止める点だけ。
+
+## 8. 限界（正直に）
+
+1. 印は守りではない。公開の鍵と印はページの中に見える。だれでも同じ印を付けて書ける。本当の守りは、今までどおり本人の行だけの許す側の方針。門が止めるのは、手を加えていない旧いコード（0507672 まで。古いアプリ版の束が配られていれば、それも）だけ。
+2. 同じ人の新しいタブと旧いタブを見分けるのは印だけ。旧いコードが印を付けないことに頼る。
+3. 止めるのは表への書き込み（`/rest/v1/`）だけ。認証（`/auth/v1/`）は止めない。旧いタブのトークンの更新・端末の中の書き戻し・ログイン・ログアウトは今のまま動く。止めるのは、その後の送信。
+4. 読むのは止めない。旧いタブはクラウドの A の行を読んで、旧い場所へ取り込める。クラウドは変わらない。
+5. service role と security definer の関数は行の権限を飛ばす。サーバーの API の書き込み（課金の webhook・管理画面のメモ）は門の外。今のクライアントは関数を呼ばない。表へ書く関数を後で足すなら、その中で `public.spelldash_client_ok()` を確かめる。
+6. 新しい版が印を落とすと、その版の書き込みも全部断られる。多くは画面に出ずに失敗する。落とす形: 2 つ目の接続の口を作る・認証の部品の版を上げて見出しの扱いが変わる・`CLIENT_INFO` を書き替える。単体（scripts/test-areas.mjs の U8）は接続の口に渡す設定だけを見る。E2E の受け口は見出しを見ない。本物の要求に印が載るかは、§3 の 6 の目視だけで確かめる。部品の版を上げたときも同じ目視をする。
+7. 門の効きは、旧タブの証明（tests/oldtab）ではまだ確かめていない。にせの受け口は見出しで断らない。§5.4 は見出しを作って入れた試し。本物の通り道（ゲートウェイが見出しをデータベースまで渡すか）は、§3 の 4 と 6 で見る。
+8. 関数は、PostgREST が見出しを `request.headers`（小文字の名前の JSON）で渡す作りに頼る。作りが変われば関数は false を返し、書き込みが全部断られる（安全側に倒れる）。§3 の 6 か利用者の声で気づき、§6 で戻す。
+9. 門は、入れた後の書き込みだけを止める。入れる前に後ろへ戻ったクラウドの記録は直さない。
+10. クライアント側の直しの代わりではない。門を外せば、新しいコードのタブが 1 つも開いていない間に、旧いタブが A の記録を後ろへ戻しうる。
+11. 門が入ると、移行と関係のない旧いタブ（新しいコードをまだ開いていない端末）の送信も断られる。§7 のとおり、多くは遅れるだけ。送り直しの仕組みの無い行は失う（クラウドの側だけ）。
+12. 後で作った表は、§4 を流し直すまで門の外。
+13. 費用は書き込みの文 1 つにつき関数 1 回。小さい。
+
+## 9. 後で変えるとき
+
+- user_items・feedback・funnel_events をまだ作っていないなら、その SQL（docs/SQL_USER_ITEMS.md・docs/SQL_FEEDBACK.md・docs/SQL_FUNNEL.md）を流した後に §4 をもう一度流す。§5.2 でその表が 3 になったことを見る。
+- クライアントが書く表を新しく足すときは、§4 の表の並びと §5 の並びに足して流し直す。
+- 次の世代の版（`spelldash/3`）は、門を直さずに通る。世代 2 のタブも止めたくなったら、先に世代 3 の版を公開して §3 の 6 で確かめる。その後で、関数の `>= 2` を `>= 3` に替えて、§4 の `create or replace function` の文だけを流し直す。
+- 認証の部品の版を上げるときは、新しい版の `CLIENT_INFO` を直し、公開の後に §3 の 6 と同じ目視をする。
