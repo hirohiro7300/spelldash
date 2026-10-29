@@ -39,6 +39,8 @@
   // 同期の印・送信待ち・ログアウトの時刻・3 状態の初めの埋めの印・このタブの同期の印・端末の開き方の好み・Pro の状態の控えと支払いの印（生の user id を持つ）
   const EXPORT_EXCLUDE = Object.freeze(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled", "spelldash_plan", "spelldash_funnel_paid"]);
   const AREA_KEY_RE = /^sd2\.(guest|u:[^.#\s]+)\.(.+)$/;
+  // 書き出しで行の中の欄を外す鍵（js/backup.js の EXPORT_SCRUB と同じ。単体で固定する）: 送れなかったご意見の行は、送ろうとした時のセッションの生の user id を持つ
+  const EXPORT_SCRUB = Object.freeze({ spelldash_feedback_queue: Object.freeze(["user_id"]) });
 
   const isPersonKey = (key) => typeof key === "string" && key.startsWith(PREFIX) && !DEVICE.has(key) && !key.startsWith(TEST_PREFIX);
   const areaPrefix = (area) => "sd2." + area + ".";
@@ -75,6 +77,18 @@
     return { area, gen };
   };
   const formatMarker = (area, gen) => area + "#" + gen;
+  // 書き出す値（js/backup.js exportValueOf と同じ決まり）: 外す欄のある鍵は JSON の配列の行からその欄を外す（行でない物は入れない）。読めない値は null（書き出さない）
+  const exportValueOf = (name, value) => {
+    const drop = Object.prototype.hasOwnProperty.call(EXPORT_SCRUB, name) ? EXPORT_SCRUB[name] : null;
+    if (!drop || typeof value !== "string") return value;
+    const rows = readJson(value);
+    if (!Array.isArray(rows)) return null;
+    return JSON.stringify(rows.filter((row) => row && typeof row === "object" && !Array.isArray(row)).map((row) => {
+      const out = Object.assign({}, row);
+      for (const field of drop) delete out[field];
+      return out;
+    }));
+  };
   // セッションの値（認証の部品が書く JSON）から user id。無い・読めないなら null
   const sessionUserOf = (text, userText) => {
     const s = readJson(text);
@@ -85,8 +99,8 @@
 
   const KEYS = Object.freeze({
     PREFIX, TEST_PREFIX, DEVICE_NAMES, AREA_KEY, INDEX_KEY, MIGRATED_KEY, MIGRATING_KEY, SWITCH_KEY, AUTH_KEY, OLD_AUTH_KEY, OWNER_KEY, OWNER_MOVED, PROBE_KEY, TABGEN_KEY, SYNC_FLAGS,
-    SWITCH_PATH, PAGE_LOCK, SWITCH_LOCK, EXPORT_EXCLUDE,
-    isPersonKey, isDeviceKey: (key) => DEVICE.has(key), areaPrefix, physicalKey, logicalKey, areaOfUser, areaOfPhysical, isStaleArea, readJson, parseMarker, formatMarker, sessionUserOf
+    SWITCH_PATH, PAGE_LOCK, SWITCH_LOCK, EXPORT_EXCLUDE, EXPORT_SCRUB,
+    isPersonKey, isDeviceKey: (key) => DEVICE.has(key), areaPrefix, physicalKey, logicalKey, areaOfUser, areaOfPhysical, isStaleArea, readJson, parseMarker, formatMarker, sessionUserOf, exportValueOf
   });
   root.SpellDashAreaKeys = KEYS;
 
@@ -547,6 +561,11 @@
       }
       delete data[PROBE_KEY];
       for (const key of EXPORT_EXCLUDE) delete data[key];
+      for (const key of Object.keys(data)) {
+        const value = exportValueOf(key, data[key]);
+        if (value === null) delete data[key];
+        else data[key] = value;
+      }
     } catch {
       // 読めなければ書き出さない
     }

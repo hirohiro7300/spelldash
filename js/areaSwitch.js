@@ -64,7 +64,8 @@ export function hasRecords(rec) {
 }
 
 // deps: { ls: { get, set, remove, keys }（生の localStorage）, keys（js/areaGuard.js の SpellDashAreaKeys）, openStore, locks, now, newId, sleep, persist,
-//         ask（「移す？」をたずねる。"yes" | "no"。無ければ移さない）, signOut（ログアウト。{ error }。js/supabase.js の部品を scope local で） }
+//         ask（「移す？」の答え。引数は切り替え先の領域。"yes" | "no"。無ければ移さない。切り替えの画面は排他のロックの中ではたずねず、まだ答えが無ければ
+//              AskNeeded を投げてロックを放す: runSwitchPage）, signOut（ログアウト。{ error }。js/supabase.js の部品を scope local で） }
 export function createSwitcher(deps) {
   const { ls, keys: K, openStore, locks } = deps;
   const now = deps.now ?? (() => Date.now());
@@ -599,7 +600,7 @@ export function createSwitcher(deps) {
       const from = live.includes(marker?.area) ? marker.area : (live[0] ?? null);
       let op = "session";
       if (ask && from === "guest" && target !== "guest" && readIndex()[target] === undefined && hasRecords(collect("guest"))) {
-        const answer = await ask();
+        const answer = await ask(target);
         const now = sessionArea();
         if (now !== target) {
           target = now;
@@ -694,6 +695,8 @@ export async function sweepOrphansFromPage(raw, deps = {}) {
 // ===== 予行（ログインのリンクを送る前・Google に移る前・ログアウトの前。js/auth.js が呼ぶ。§4） =====
 // 今の領域の記録（元の名前 → 値）を IndexedDB に写して、新しいトランザクションで読み直して比べる。写すのは本物の写し（その領域の鍵）でなく予行の鍵
 // （pre:<領域>）なので、index が指す写しにも、切り替えの途中の写しにも触れない。localStorage も印も替えない。
+// 確かめたら予行の写しを消す（残すと、その写しが切り替えの画面の本物の退避の空きを使い、空きの少ない端末で予行が通っても本物の退避が入らない。反証）。
+// 消せなければ失敗（空きを確かめたことにならない）。
 // 返り値 { ok: true } か { ok: false, reason }（quota・open・evacuate）。できなければ、呼び手はリンクを送らない・ログアウトしない
 export async function precheck({ area, records, openStore = () => openAreaStore(), persist = () => askPersist(), newId = null, now = () => Date.now() } = {}) {
   if (typeof area !== "string" || !area || !records || typeof records !== "object") return { ok: false, reason: "evacuate" };
@@ -711,7 +714,19 @@ export async function precheck({ area, records, openStore = () => openAreaStore(
     }
     const keys = { ...records };
     const id = (typeof newId === "function" ? newId() : null) ?? (typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : `${now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
-    await store.putVerified("areas", { area: PRECHECK_PREFIX + area, of: area, id, keys, savedAt: new Date(now()).toISOString(), schema: keys.spelldash_schema_version ?? null, sum: sumOf(keys) });
+    const preKey = PRECHECK_PREFIX + area;
+    let checked = false;
+    try {
+      await store.putVerified("areas", { area: preKey, of: area, id, keys, savedAt: new Date(now()).toISOString(), schema: keys.spelldash_schema_version ?? null, sum: sumOf(keys) });
+      checked = true;
+    } finally {
+      // 予行の写しは、確かめても確かめられなくても消す（読み直しが合わなかった写しも残さない）。確かめた後に消せなければ失敗
+      try {
+        await store.remove("areas", preKey);
+      } catch (error) {
+        if (checked) throw error;
+      }
+    }
     return { ok: true };
   } catch (error) {
     return { ok: false, reason: isQuotaError(error) ? "quota" : "evacuate" };
@@ -813,8 +828,14 @@ export async function exportRecords(ls, K, { digest = globalThis.crypto?.subtle,
     }
   }
   Object.assign(data, person);
-  // バックアップと同じ鍵は入れない（持ち主の鍵は同期が書く生の user id・同期の印・送信待ち・ログアウトの時刻。js/backup.js EXCLUDE と同じ一覧）
+  // バックアップと同じ鍵は入れない（持ち主の鍵は同期が書く生の user id・同期の印・送信待ち・ログアウトの時刻。js/backup.js EXCLUDE と同じ一覧）。
+  // 行の中の生の user id（送れなかったご意見の行の user_id）も外す（js/backup.js exportValueOf と同じ決まり）
   for (const key of K.EXPORT_EXCLUDE ?? []) delete data[key];
+  for (const key of Object.keys(data)) {
+    const value = typeof K.exportValueOf === "function" ? K.exportValueOf(key, data[key]) : data[key];
+    if (value === null) delete data[key];
+    else data[key] = value;
+  }
   const backup = { app: "SpellDash", version: 1, exportedAt: new Date().toISOString(), data };
   if (area) backup.owner = await ownerOf(area, digest);
   return backup;
@@ -887,8 +908,19 @@ function setNotice(kind) {
   }
 }
 
-// 「ゲストで学んだ記録を、このアカウントに移す？」をたずねる（排他のロックを持つタブだけ。ほかのタブはロックを待つ）
-function askOnPage() {
+// 「移す？」の答えがまだ無い（切り替えの画面のロックの中）。ロックを放してから、このタブでたずねる
+export class AskNeeded extends Error {
+  constructor(target) {
+    super("ask");
+    this.name = "AskNeeded";
+    this.target = target;
+  }
+}
+
+// 「ゲストで学んだ記録を、このアカウントに移す？」をたずねる。排他のロックの外で、切り替えの画面を開いたどのタブもたずねる（ロックを持つタブだけが
+// たずねると、使っているタブや後から開いたタブは「記録を準備している…」のまま止まる。裏のタブは凍ることもある。反証）。答えたタブがロックを取って切り替える。
+// ほかのタブで答えて切り替えが始まった・人が替わった（印・index・セッションの知らせ）ときは null（たずね直すか、もう要らないかをロックの中で確かめ直す）
+function askOnPage(K) {
   return new Promise((resolve) => {
     const box = document.getElementById("switchAsk");
     const status = document.getElementById("switchStatus");
@@ -898,20 +930,46 @@ function askOnPage() {
       resolve("no"); // たずねられなければ移さない（混ぜない方）
       return;
     }
+    const first = box.hidden;
     if (status) status.hidden = true;
     box.hidden = false;
-    const done = (answer) => {
-      box.hidden = true;
-      if (status) {
-        status.hidden = false;
-        status.textContent = "記録を準備している…";
+    const watched = new Set([K.AREA_KEY, K.INDEX_KEY, K.SWITCH_KEY, K.MIGRATING_KEY, K.MIGRATED_KEY, K.AUTH_KEY, K.AUTH_KEY + "-user"]);
+    const finish = (answer) => {
+      yes.removeEventListener("click", onYes);
+      no.removeEventListener("click", onNo);
+      removeEventListener("storage", onStorage);
+      if (answer !== null) {
+        box.hidden = true;
+        if (status) {
+          status.hidden = false;
+          status.textContent = "記録を準備している…";
+        }
       }
       resolve(answer);
     };
-    yes.addEventListener("click", () => done("yes"), { once: true });
-    no.addEventListener("click", () => done("no"), { once: true });
-    document.getElementById("switchAskLead")?.focus();
+    const onYes = () => finish("yes");
+    const onNo = () => finish("no");
+    const onStorage = (event) => {
+      if (event.key === null || watched.has(event.key)) finish(null);
+    };
+    yes.addEventListener("click", onYes);
+    no.addEventListener("click", onNo);
+    addEventListener("storage", onStorage);
+    if (first) document.getElementById("switchAskLead")?.focus();
   });
+}
+
+// 問いの欄を閉じる（たずねなくてよくなった）
+function hideAsk() {
+  const box = document.getElementById("switchAsk");
+  const status = document.getElementById("switchStatus");
+  if (box && !box.hidden) {
+    box.hidden = true;
+    if (status) {
+      status.hidden = false;
+      status.textContent = "記録を準備している…";
+    }
+  }
 }
 
 // 今のセッションの人の領域が localStorage にそろっているか（ログアウトが止まったとき、何も替わっていなければ元のページへ戻す）
@@ -931,15 +989,32 @@ async function runSwitchPage() {
   if (!K) return showRecovery(fail("load"));
   if (!locks || typeof locks.request !== "function") return showRecovery(fail("locks"));
   const intent = takeIntent();
+  // 「移す？」の答え（このタブで受けた物。どの切り替え先の問いか）。ロックの中では、同じ切り替え先の答えだけを使う
+  let answer = null;
   const switcher = createSwitcher({
     ...browserDeps(),
-    ask: askOnPage,
+    ask: async (target) => {
+      if (answer && answer.target === target) return answer.value;
+      throw new AskNeeded(target);
+    },
     // ログアウトの部品はこの時だけ読む（オフラインで読めなければ失敗: 何も替えない）
     signOut: async () => signOutLocal((await import("./supabase.js")).supabase.auth)
   });
   try {
-    await locks.request(K.SWITCH_LOCK, () => switcher.settle(intent));
+    for (;;) {
+      try {
+        await locks.request(K.SWITCH_LOCK, () => switcher.settle(intent));
+        break;
+      } catch (error) {
+        if (!(error instanceof AskNeeded)) throw error;
+        // ロックを放してからたずねる（ほかのタブも同じくたずねる）。答えたらロックを取り直し、まだ同じ問いが要るかを確かめてから切り替える
+        const value = await askOnPage(K);
+        answer = value === null ? null : { target: error.target, value };
+      }
+    }
+    hideAsk();
   } catch (error) {
+    hideAsk();
     const reason = error instanceof SwitchError ? error : fail("evacuate", error);
     // ログアウトが止まって何も替わっていない（ログインも記録もそのまま）: 元のページへ戻して文を出す
     if (intent?.op === "logout" && sessionMatchesArea(K)) {

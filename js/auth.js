@@ -30,12 +30,21 @@ const RETURNED_FROM_LOGIN = (() => {
 })() || takeLoginReturn();
 
 // ===== 人ごとの保存の領域（js/areaGuard.js・js/areaSwitch.js。DESIGN-FINAL §4・§5） =====
-// セッションの人とページの領域が違えば（ほかのタブ・このタブでログインした・ログアウトした）、同期も Pro の状態の更新もせずに切り替えの画面へ
-function areaFits(session) {
+// 部品の答えたセッションとページの領域を比べる。返り値:
+//   "fits"    … 同じ人（ゲストならセッション無し）で、見張りの stillMine()。同期・Pro の状態の更新をしてよい
+//   "leave"   … 人が替わったと分かった（ほかの人のセッション・ゲストのページにセッション・stillMine() でない）。同期も更新もせずに切り替えの画面へ
+//   "unknown" … 部品は「セッションが無い」と答えたが、保存のセッション（見張りが読む sd2.auth）はまだある。部品を読めない（配る所に届かない）・
+//               オフラインで期限切れのトークンを更新できない、のどちらか。人が替わったとは分からないので、切り替えの画面へ移らない（移ると、切り替えの画面は
+//               保存のセッションで領域を決めて同じページへ戻すので、行き来が続く。反証）。同期も更新もしない。本当のログアウト（SIGNED_OUT）は保存のセッションを
+//               消すので、見張りがその場で切り替えの画面へ移す。部品が後でセッションを取り戻したら（TOKEN_REFRESHED など）、その知らせで始める
+function areaFit(session) {
   const area = window.SpellDashArea;
-  if (!area || area.area === null) return true; // 保存の無い端末（何も残らない）
-  const want = session?.user?.id ? "u:" + session.user.id : "guest";
-  return area.area === want && area.stillMine() === true;
+  if (!area || area.area === null) return "fits"; // 保存の無い端末（何も残らない）
+  if (area.stillMine() !== true) return "leave";
+  const id = session?.user?.id ?? null;
+  if (id) return area.area === "u:" + id ? "fits" : "leave";
+  if (area.area === "guest") return "fits";
+  return area.signedIn() ? "unknown" : "leave";
 }
 
 // 切り替えられないときの文（予行・退避の失敗。何も替えていない）
@@ -97,17 +106,20 @@ function goSwitch(op, notice = null) {
 
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
+  const fit = areaFit(data.session);
   // ページの領域がこのセッションの人でない: 切り替えの画面へ（同期・Pro の状態の更新・加入画面への戻しはその後のページで）
-  if (!areaFits(data.session)) {
+  if (fit === "leave") {
     window.SpellDashArea?.leave?.();
     return;
   }
-  const hadSessionAtLoad = Boolean(data.session) && !RETURNED_FROM_LOGIN;
+  // 部品の答えが分からない（"unknown"）: ページは今の領域のまま。同期と Pro の状態の更新は、部品がセッションを取り戻した知らせを待つ
+  let waiting = fit === "unknown";
+  const hadSessionAtLoad = (Boolean(data.session) || waiting) && !RETURNED_FROM_LOGIN;
   // 加入画面で「ログインして始める」を押してログインから戻った: 加入画面へ戻す（ログインのリンクはトップに戻る）
   if (data.session && RETURNED_FROM_LOGIN && resumeProIntent()) return;
   updateAuthDisplay(data.session);
   showPendingNotice();
-  refreshPlan(); // Pro の状態（spelldash_plan）を更新
+  if (!waiting) refreshPlan(); // Pro の状態（spelldash_plan）を更新
 
   // ログイン済みならクラウドと初回同期（マージ）
   if (data.session) {
@@ -115,12 +127,22 @@ export async function initializeAuth() {
   }
 
   supabase.auth.onAuthStateChange((_event, session) => {
+    const now = areaFit(session);
     // ほかのタブ・このタブでセッションの人が替わった: 同期の前に切り替えの画面へ（見張りも移すが、知らせの順によらずここでも止める）
-    if (!areaFits(session)) {
+    if (now === "leave") {
       window.SpellDashArea?.leave?.();
       return;
     }
+    // まだ分からない（部品のセッションは無いが、保存のセッションはある）: 何もしない
+    if (now === "unknown") return;
     updateAuthDisplay(session);
+    if (waiting && session) {
+      // 部品がセッションを取り戻した（つながってトークンを更新できた）: 読み込みのときに待った更新と初回同期をここで始める
+      waiting = false;
+      refreshPlan();
+      runInitialSync({ freshLogin: !hadSessionAtLoad });
+      return;
+    }
     if (_event === "SIGNED_OUT") clearPlan(); else if (_event === "SIGNED_IN") refreshPlan();
 
     if (_event === "SIGNED_IN") {

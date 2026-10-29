@@ -1,7 +1,17 @@
 // テスト用Supabaseスタブ。
 // tests/e2e.mjs のローカルサーバーが /js/supabase.js の代わりにこれを配信する。
 // 本物のSupabase（本番DB）にテストから絶対に接続しないための安全装置。
-export const isSupabaseConfigured = false;
+// ふだんは設定の無い形（ログインのリンクを送る前に止まる）。種の spelldash_test_configured が "1" のページだけ、設定のある形にして
+// ログインのリンクの送信（signInWithOtp）を控える（spelldash_test_otp。送る前の予行を検査が見る。送らない）
+const CONFIGURED_KEY = "spelldash_test_configured";
+const OTP_KEY = "spelldash_test_otp";
+export const isSupabaseConfigured = (() => {
+  try {
+    return localStorage.getItem(CONFIGURED_KEY) === "1";
+  } catch {
+    return false;
+  }
+})();
 
 // 認証のセッションは本物の部品と同じく新しい鍵 sd2.auth に JSON で置く（js/supabase.js AUTH_STORAGE_KEY。見張り js/areaGuard.js が読む形:
 // { access_token, refresh_token, expires_at, token_type, user: { id, email } }）。人ごとの保存の領域（Batch 78-7 内部の 2）の検査は、ここに書いた人で
@@ -11,7 +21,7 @@ const DEFAULT_USER = { id: "test-user", email: "test@example.com" };
 // 前の形の種（tests/e2e.mjs の種の spelldash_test_session）: "1" → access_token test-token、それ以外の文字列はその値。新しい鍵が無ければ
 // test-user のセッションとして新しい鍵へ書く（最初に getSession を呼んだ時。ログインのリンクから戻ったタブの部品と同じ: 見張りが人の替わりを見て切り替えの画面へ移す）
 const SESSION_KEY = "spelldash_test_session";
-// signOut の scope の控え（JSON の配列。検査が読む）・通信できない signOut の印（"1"。navigator.onLine が false のときも）
+// signOut の scope の控え（JSON の配列。検査が読む）・通信できない signOut の印（"1"。navigator.onLine が false のときも。"expired" はトークンの期限切れの形）
 const SIGNOUTS_KEY = "spelldash_test_signouts";
 const SIGNOUT_OFFLINE_KEY = "spelldash_test_signout_offline";
 // 端末間同期の検証用「クラウド」: localStorage の spelldash_test_cloud にクラウドの id があれば、
@@ -193,22 +203,39 @@ export const supabase = {
         }
       };
     },
-    signInWithOtp: asyncNull,
+    // ログインのリンクの送信: 設定のある形のときだけ呼ばれる（js/auth.js sendLoginLink）。送った先の控えだけ残す（送らない）
+    signInWithOtp: async (args = {}) => {
+      try {
+        const list = JSON.parse(readStorage(OTP_KEY) || "[]");
+        list.push(args?.email ?? null);
+        localStorage.setItem(OTP_KEY, JSON.stringify(list));
+      } catch {
+        // 控えられなくても続ける
+      }
+      return { data: {}, error: null };
+    },
     signInWithOAuth: asyncNull,
-    // ログアウト（本物の部品と同じ）: 受け口に届かない（オフライン・spelldash_test_signout_offline）なら失敗を返し、セッションは残す。
-    // 届けばセッション（sd2.auth と前の形の種）を消して SIGNED_OUT を流す（ほかのタブにも）。scope は控える
+    // ログアウト（本物の部品 2.118.0 の _signOut と同じ）: scope は控える。
+    //   受け口に届けば、セッション（sd2.auth・-user・-code-verifier と前の形の種）を消して SIGNED_OUT を流す（ほかのタブにも）。
+    //   受け口に届かない（オフライン・spelldash_test_signout_offline が "1"）ときも、部品はこの端末のセッションを先に同じく消して SIGNED_OUT を流し、
+    //   そのうえで失敗（AuthRetryableFetchError）を返す。
+    //   トークンの期限が切れていて更新が通信で失敗する形（spelldash_test_signout_offline が "expired"）だけは、何も消さずに失敗を返す
     signOut: async (options = {}) => {
       noteSignOut(options?.scope ?? null);
-      const offline = (typeof navigator !== "undefined" && navigator.onLine === false) || readStorage(SIGNOUT_OFFLINE_KEY) === "1";
-      if (offline) return { error: { name: "AuthRetryableFetchError", message: "Failed to fetch", status: 0 } };
+      const failure = { name: "AuthRetryableFetchError", message: "Failed to fetch", status: 0 };
+      const mode = readStorage(SIGNOUT_OFFLINE_KEY);
+      if (mode === "expired") return { error: failure };
+      const offline = (typeof navigator !== "undefined" && navigator.onLine === false) || mode === "1";
       try {
         localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(AUTH_STORAGE_KEY + "-user");
+        localStorage.removeItem(AUTH_STORAGE_KEY + "-code-verifier");
       } catch {
         // 使えない環境では何もしない
       }
       writeSession(null);
       announce("SIGNED_OUT", null);
-      return { error: null };
+      return { error: offline ? failure : null };
     }
   },
   from: (table) => {

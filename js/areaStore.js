@@ -6,7 +6,8 @@
 //                退避した領域の鍵へ、見え方の古いタブが後から書いた値の写しも置く { id, savedAt, area, keys, sum }（area 付き。同じく読まない）
 //   prerestore … 復元の前の今の記録の写し（js/backup.js が使う）。期限なし
 // keys は元の名前（spelldash_<名前>）から値への表。書くときは durability strict で書き、新しいトランザクションで読み直して鍵ごとに比べる。
-// 写しを消すのは、利用者の明示の確認があるときだけ（今は消す口を作らない）。
+// 写しを消すのは、利用者の明示の確認があるときだけ。消す口（remove）は、予行の写し（areas の pre:<領域>。js/areaSwitch.js precheck）を確かめた後に消すためだけに使う
+// （本物の写し・legacy・orphans・prerestore は消さない。scripts/test-areas.mjs U1 が呼び出しの全部を固定する）。
 // js/areaSwitch.js（切り替えの画面）と、E2E・単体（scripts/test-areas.mjs のメモリーの IndexedDB）が読む。import は無い。
 
 export const DB_NAME = "spelldash-areas";
@@ -139,10 +140,42 @@ function wrap(db) {
         reject(new AreaStoreError("read", "記録の控えを読めなかった。", error));
       }
     });
+  // 1 件消す（durability strict）。予行の写しだけに使う
+  const drop = (store, key) =>
+    new Promise((resolve, reject) => {
+      let settled = false;
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        reject(classify(error, "write"));
+      };
+      let tx;
+      try {
+        tx = db.transaction(store, "readwrite", { durability: "strict" });
+        const request = tx.objectStore(store).delete(key);
+        request.onerror = () => fail(request.error);
+      } catch (error) {
+        fail(error);
+        try {
+          tx?.abort();
+        } catch {
+          // もう終わったトランザクション
+        }
+        return;
+      }
+      tx.oncomplete = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      tx.onabort = () => fail(tx.error);
+      tx.onerror = () => fail(tx.error);
+    });
   return {
     put: write,
     get: read,
     list: readAll,
+    remove: drop,
     // 書いて、新しいトランザクションで読み直して比べる（鍵の集まり・鍵ごとの値・id・要約）。合わなければ AreaStoreError("verify")
     async putVerified(store, record) {
       await write(store, record);

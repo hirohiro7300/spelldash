@@ -1,6 +1,7 @@
-import { forgetWordStats, getWordStats, loadLearnStateDeps, learnStateSource, migrateRestored } from "./storage.js";
+import { forgetWordStats, getWordStats, loadLearnStateDeps, learnStateDeps, learnStateSource, migrateRestored } from "./storage.js";
 import { isQuotaError } from "./storageGuard.js";
-import { countLearnStates } from "./learnState.js";
+import { countLearnStates, storedState, stateFromRecord, LEARN_LEARNED } from "./learnState.js";
+import { answered } from "./mastery.js";
 import { RANK_PEAK_KEY, parseRankPeak, rankFor } from "./rank.js";
 import { forgetMasteryMeta } from "./masteryMeta.js";
 import { forgetMemoryCheck } from "./memoryCheck.js";
@@ -25,6 +26,32 @@ export const BACKUP_VERSION = 1;
 // Pro の状態の控え（spelldash_plan）と支払いの印（spelldash_funnel_paid）も入れない（生の user id を持つ。開けばサーバーから作り直す。Batch 78-7）。
 // 最高到達ランク（spelldash_rank_peak）と語ごとの 3 状態の欄（spelldash_word_stats の ls・lsd・lsAt）は入れる（js/rank.js・js/learnState.js）
 const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled", "spelldash_plan", "spelldash_funnel_paid"]);
+// 行の中の欄を外して書き出す鍵（Batch 78-7）: 送れなかったご意見の行（js/feedback.js の spelldash_feedback_queue）は、送ろうとした時のセッションの生の user id を
+// user_id に持つ。行は残し（本文は失わない）、その欄だけ外す。戻すときも外す（行に user_id のある古いファイルを戻しても、別の人のログインで前の人の名前を送らない）。
+// 見張り（js/areaGuard.js の SpellDashAreaKeys.exportValueOf。復旧の画面・使えないブラウザの書き出し）と同じ決まり（scripts/test-areas.mjs U7 が同じ値を返すか見る）
+const EXPORT_SCRUB = Object.freeze({ spelldash_feedback_queue: Object.freeze(["user_id"]) });
+
+// 書き出す値（戻すときに書く値）。外す欄のある鍵は、JSON の配列の行からその欄を外す（行でない物は外す欄を持てないので入れない）。読めない値は null（書かない）
+export function exportValueOf(name, value) {
+  const drop = Object.prototype.hasOwnProperty.call(EXPORT_SCRUB, name) ? EXPORT_SCRUB[name] : null;
+  if (!drop || typeof value !== "string") return value;
+  let rows;
+  try {
+    rows = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(rows)) return null;
+  return JSON.stringify(
+    rows
+      .filter((row) => row && typeof row === "object" && !Array.isArray(row))
+      .map((row) => {
+        const out = { ...row };
+        for (const field of drop) delete out[field];
+        return out;
+      })
+  );
+}
 // 復元のときに必ず消すもの（復元した記録の持ち主と、クラウドとの差分の基準は分からないので、次の同期を初回の扱いにする）
 const RESET_ON_RESTORE = ["spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_logout_at", "spelldash_learn_filled"];
 // このタブの同期の印（sessionStorage。js/sync.js clearSyncedFlag と同じ 4 つ。sync.js は backup.js を import するので、ここからは直に消す）。
@@ -70,7 +97,8 @@ export function buildBackup() {
   const data = {};
   for (const key of storedKeys()) {
     if (!key || !key.startsWith(PREFIX) || EXCLUDE.has(key)) continue;
-    data[key] = localStorage.getItem(key);
+    const value = exportValueOf(key, localStorage.getItem(key));
+    if (value !== null) data[key] = value;
   }
   return { app: "SpellDash", version: BACKUP_VERSION, exportedAt: new Date().toISOString(), data };
 }
@@ -120,25 +148,36 @@ export function inspectBackup(obj) {
   return { words, keys: keys.length, exportedAt: obj.exportedAt ?? null, xp: Number(obj.data.spelldash_xp) || 0 };
 }
 
-// 持ち主の無い古いファイルの中身の数: 覚えた語数（3 状態の 覚えた）・答えた語数・最後に学んだ時刻（ms。無ければ null）
-export function legacySummary(obj) {
+// 持ち主の無い古いファイルの中身の数: 覚えた語数・答えた語数・最後に学んだ時刻（ms。無ければ null）。
+//   覚えた語数 … 戻した後の学習状況の 覚えた と同じ数え方。3 状態の欄（ls）のある語はその値。版 7 より前のファイル（今の本番 main が書く版 6 など。欄が無い）は、
+//                戻した後に公開の語へ移行の式で欄を埋める（js/storage.js migrateRestored → js/learnState.js fillLearnStates）ので、同じ式で数える。
+//                式の材料（deps: 公開の語の表と旧の済みの判定。js/storage.js learnStateDeps。readBackupFile が読んでおく）が無ければ、習得と知ってたの語
+//   答えた語数 … 答えの記録がある語（js/mastery.js answered）と、3 状態の欄のある語。出題されただけの語は数えない
+export function legacySummary(obj, deps = learnStateDeps()) {
   let stats = {};
   try {
     stats = JSON.parse(obj?.data?.spelldash_word_stats || "{}") || {};
   } catch {
     stats = {};
   }
+  const fill = (Number(obj?.data?.spelldash_schema_version) || 0) < 7;
   let learned = 0;
-  let answered = 0;
+  let answeredCount = 0;
   let lastAt = 0;
   const ms = (iso) => Date.parse(iso ?? "") || 0;
-  for (const s of Object.values(stats)) {
+  for (const [id, s] of Object.entries(stats)) {
     if (!s || typeof s !== "object") continue;
-    if (s.ls === 2) learned++;
-    if ((Number(s.playCount) || 0) > 0 || (Number(s.correctCount) || 0) > 0 || (Number(s.recallFail) || 0) > 0) answered++;
+    const stored = storedState(s);
+    let state = stored;
+    if (state === null && fill) {
+      if (deps?.vocab && typeof deps.isDone === "function") state = deps.vocab.isPublic(id) ? stateFromRecord(s, deps.isDone) : null;
+      else state = s.mastered || s.knownOnSight ? LEARN_LEARNED : null;
+    }
+    if (state === LEARN_LEARNED) learned++;
+    if (stored !== null || answered(s)) answeredCount++;
     lastAt = Math.max(lastAt, ms(s.lastPlayed), ms(s.lastRecallSuccessAt), ms(s.lastRecallFailAt), Number(s.lsAt) || 0);
   }
-  return { learned, answered, lastAt: lastAt || null };
+  return { learned, answered: answeredCount, lastAt: lastAt || null };
 }
 
 // 戻す先の決まり（今の領域 area）。{ ok: true, legacy: false }（同じ持ち主）・{ ok: true, legacy: true, summary, target }（持ち主の無い古いファイル。確認してから）・
@@ -243,7 +282,8 @@ export function applyBackup(obj) {
     RESET_ON_RESTORE.forEach((key) => localStorage.removeItem(key));
     for (const [key, value] of Object.entries(obj.data)) {
       if (!key.startsWith(PREFIX) || EXCLUDE.has(key) || typeof value !== "string") continue;
-      localStorage.setItem(key, value);
+      const kept = exportValueOf(key, value); // 行の中の生の user id は戻さない
+      if (kept !== null) localStorage.setItem(key, kept);
     }
   } catch (error) {
     restoreSnapshot(snapshot);

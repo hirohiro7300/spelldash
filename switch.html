@@ -32,7 +32,7 @@
 <body>
   <main class="area-switch" id="main">
     <p id="switchStatus" role="status">記録を準備している…</p>
-    <!-- この端末で初めてアカウントに入り、ゲストに学んだ記録がある（js/areaSwitch.js askOnPage。排他のロックを持つタブだけがたずねる） -->
+    <!-- この端末で初めてアカウントに入り、ゲストに学んだ記録がある（js/areaSwitch.js askOnPage。排他のロックの外で、切り替えの画面を開いたどのタブもたずねる。答えたタブが切り替える） -->
     <section id="switchAsk" hidden aria-labelledby="switchAskLead">
       <h1 id="switchAskLead" tabindex="-1">ゲストで学んだ記録を、このアカウントに移す？</h1>
       <p>「はい」: ゲストの記録は、このアカウントの記録になる。</p>
