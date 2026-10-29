@@ -4,17 +4,19 @@
 // 確かめること:
 //   1. sitemap.xml: 載るのは主導線（ホーム・学習状況・設定）とお知らせ・規約のページだけ（下の SITEMAP_PAGES）。noindex のページは載せない
 //      （tokushoho.html は事業者の欄が埋まるまで noindex なので、その間は載らない）。載る URL のファイルがある
-//   2. noindex: 検索から外すページ（battle・typing・typing-game・list と packs/ の全ページ）にある。主導線とお知らせ・規約のページ（tokushoho を除く）には無い
+//   2. noindex: 検索から外すページ（battle・typing・typing-game・list・pro と packs/ の全ページ）にある。主導線とお知らせ・規約のページ（tokushoho を除く）には無い
+//      （pro.html は加入画面として残し、検索には出さない。Batch 78 段 6・創業者の決定 3）
 //   3. パックのページ: <head> の先頭で英単語のホーム（/?from=old）へ案内する（読み込みと描画の前。CSS より前）。生成器（scripts/build-pack-pages.mjs）の
 //      --check が今の木で通り、写しの木でページを 1 枚古くすると落ちる
-//   4. vercel.json: 読める。ホスト名の転送 3 つ（permanent: true）は前のまま先頭。/packs・/packs/…・/list.html は /?from=old へ一時的（permanent: false）。
-//      ほかの URL（主導線・Battle・タイピング・data/packs/ の JSON・js/listView.js）は転送しない
+//   4. vercel.json: 読める。ホスト名の転送 3 つ（permanent: true）は前のまま先頭。/packs・/packs/…・/list.html・/typing.html・/typing-game.html は /?from=old へ
+//      一時的（permanent: false。タイピングの 2 ページは Batch 78 段 6・創業者の決定 3: 古いお知らせのリンクは履歴のまま、開くと英単語のホームへ）。
+//      ほかの URL（主導線・Battle・加入画面・タイピングの js と css と教材・data/packs/ の JSON・js/listView.js）は転送しない
 //   5. ナビとフッター（ルートの 12 ページ〔admin.html を除く〕と packs/ の全ページ）: ナビは 4 つ「ホーム・英単語を学ぶ・学習状況・設定」で行き先は
 //      /・/?learn=next・stats.html・profile.html。現在地はそのページのリンクだけ。フッターの一文は「ストレスなしで、英単語を覚える。」・ナビとフッターに
 //      単語帳／Battle／タイピング／パック／Pro へのリンクが無い。js/footer.js はフッターに「SpellDash Pro」を差し込まない（js/proFunnel.js renderFooterPro を呼ばない）が、
 //      受付中かどうかの控え（refreshBillingOpen）は前と同じ頁で取り直す（設定の「Pro について」などが読む。data-no-pro の頁〔タイピング練習〕と加入画面は前から取らない）
-//   6. 写しを壊すと落ちる（決まりの検査そのものが効く）: sitemap に list.html を足す・tokushoho の noindex を外したのに sitemap に無い・battle の noindex を消す・
-//      パックのページの案内を消す・転送を permanent: true にする・転送の先を変える・転送が data/packs/ にも当たる・ホスト名の転送を後ろへ回す・
+//   6. 写しを壊すと落ちる（決まりの検査そのものが効く）: sitemap に list.html を足す・tokushoho の noindex を外したのに sitemap に無い・battle と pro の noindex を消す・
+//      パックのページの案内を消す・転送を permanent: true にする・転送の先を変える・転送が data/packs/ にも当たる・タイピングの転送を外す・ホスト名の転送を後ろへ回す・
 //      ナビに単語帳を足す・ナビの順を替える・フッターにタイピング練習を戻す・footer.js で renderFooterPro を呼ぶ・控えを取り直さない
 import fs from "fs";
 import os from "os";
@@ -29,8 +31,8 @@ const OLD_URL_HOME = "/?from=old";
 
 // sitemap に載せてよいページ（主導線と、お知らせ・規約）。載るのはこのうち noindex でないものだけ
 const SITEMAP_PAGES = [["/", "index.html"], ["/stats.html", "stats.html"], ["/profile.html", "profile.html"], ["/news.html", "news.html"], ["/privacy.html", "privacy.html"], ["/terms.html", "terms.html"], ["/tokushoho.html", "tokushoho.html"]];
-// 検索から外すページ（直接開けば動く。パックのページはホームへ案内する）
-const HIDDEN_PAGES = ["battle.html", "typing.html", "typing-game.html", "list.html"];
+// 検索から外すページ（Battle と加入画面は直接開けば動く。単語帳とパックのページはページの守り、単語帳とタイピングの 2 ページは配信の転送でホームへ案内する）
+const HIDDEN_PAGES = ["battle.html", "typing.html", "typing-game.html", "list.html", "pro.html"];
 // ナビとフッターを持つルートのページ（admin.html は対象外: 創業者の決定 §7「CRM・管理画面は今回の対象外」）
 const ROOT_PAGES = ["index.html", "stats.html", "list.html", "profile.html", "battle.html", "news.html", "terms.html", "privacy.html", "tokushoho.html", "pro.html", "typing.html", "typing-game.html"];
 const NAV = [["ホーム", "/"], ["英単語を学ぶ", "/?learn=next"], ["学習状況", "stats.html"], ["設定", "profile.html"]];
@@ -107,8 +109,9 @@ function firstRedirect(redirects, pathname, host = "www.spelldash.net") {
   return redirects.find((r) => sourceRegExp(r.source).test(pathname) && (r.has ?? []).every((h) => h.type === "host" && h.value === host)) ?? null;
 }
 const HOST_REDIRECTS = ["spelldash.vercel.app", "spelldash-jzf8.vercel.app", "spelldash.net"];
-const OLD_PATHS = ["/packs", "/packs/", "/packs/index.html", "/packs/ngsl01.html", "/packs/accounting.html", "/PACKS/ngsl01.html", "/list.html", "/list.html/"];
-const KEEP_PATHS = ["/", "/index.html", "/stats.html", "/profile.html", "/news.html", "/terms.html", "/privacy.html", "/tokushoho.html", "/pro.html", "/battle.html", "/typing.html", "/typing-game.html", "/admin.html", "/sitemap.xml", "/robots.txt", "/sw.js", "/data/packs/ngsl01.json", "/data/manifest.json", "/js/listView.js", "/js/packs.js", "/packs.html", "/list", "/listing.html", "/list.html.bak", "/api/billing/config"];
+const OLD_PATHS = ["/packs", "/packs/", "/packs/index.html", "/packs/ngsl01.html", "/packs/accounting.html", "/PACKS/ngsl01.html", "/list.html", "/list.html/", "/typing.html", "/typing.html/", "/TYPING.html", "/typing-game.html", "/typing-game.html/"];
+const KEEP_PATHS = ["/", "/index.html", "/stats.html", "/profile.html", "/news.html", "/terms.html", "/privacy.html", "/tokushoho.html", "/pro.html", "/battle.html", "/admin.html", "/sitemap.xml", "/robots.txt", "/sw.js", "/data/packs/ngsl01.json", "/data/manifest.json", "/js/listView.js", "/js/packs.js", "/packs.html", "/list", "/listing.html", "/list.html.bak", "/api/billing/config",
+  "/typing", "/typing-game", "/typing.html.bak", "/typing-long.html", "/js/typingPage.js", "/js/typingGamePage.js", "/css/typing.css", "/css/typing-game.css", "/data/typing.json", "/data/typing-game.json", "/assets/images/og-typing.png", "/assets/images/og-typing-game.png"];
 function redirectProblems(text) {
   let conf;
   try {
@@ -188,11 +191,11 @@ const locs = [...sitemapXml.matchAll(/<loc>([^<]*)<\/loc>/g)].map((m) => m[1].re
 ok("1. 今の sitemap の URL は 6 つ（/・stats・profile・news・privacy・terms。tokushoho は noindex の間は載らない）", JSON.stringify(locs) === JSON.stringify(["/", "/stats.html", "/profile.html", "/news.html", "/privacy.html", "/terms.html"]) && isNoindex(pages["tokushoho.html"]), JSON.stringify(locs));
 ok("1. sitemap に単語帳・パック・タイピング・Battle・Pro・旧い ?category= が無い", !/list\.html|\/packs\/|typing|battle|pro\.html|category=/.test(sitemapXml));
 const ni = noindexProblems(pages, packFiles);
-ok(`2. noindex: battle・typing・typing-game・list と packs/ の ${packFiles.length} ページにある・主導線とお知らせ・規約に無い`, ni.length === 0 && packFiles.length >= 165, show(ni));
+ok(`2. noindex: battle・typing・typing-game・list・pro と packs/ の ${packFiles.length} ページにある・主導線とお知らせ・規約に無い`, ni.length === 0 && packFiles.length >= 165, show(ni));
 const guards = packFiles.flatMap((f) => packGuardProblems(f, pages[f]));
 ok(`3. パックの ${packFiles.length} ページは頭の先頭（CSS より前）で ${OLD_URL_HOME} へ案内する`, guards.length === 0, show(guards));
 const rd = redirectProblems(vercelText);
-ok(`4. vercel.json: ホスト名の転送はそのまま先頭・/packs と /packs/… と /list.html は ${OLD_URL_HOME} へ一時的・ほかの ${KEEP_PATHS.length} の URL は転送しない`, rd.length === 0, show(rd));
+ok(`4. vercel.json: ホスト名の転送はそのまま先頭・/packs と /packs/… と /list.html と /typing.html・/typing-game.html は ${OLD_URL_HOME} へ一時的・ほかの ${KEEP_PATHS.length} の URL は転送しない`, rd.length === 0, show(rd));
 const ch = [...ROOT_PAGES, ...packFiles].flatMap((f) => chromeProblems(f, pages[f]));
 ok(`5. ナビは 4 つ（ホーム・英単語を学ぶ・学習状況・設定）・現在地・フッターの一文・data-no-pro・外した面へのリンクが無い（ルートの ${ROOT_PAGES.length} ページと packs/ の ${packFiles.length} ページ）`, ch.length === 0, show(ch));
 const fj = footerScriptProblems(read("js/footer.js"));
@@ -230,6 +233,7 @@ mutate("sitemap に list.html を足す", sitemapProblems(sitemapXml.replace("</
 mutate("sitemap から学習状況を消す", sitemapProblems(sitemapXml.replace(/ {2}<url><loc>[^<]*\/stats\.html<\/loc>[^\n]*\n/, ""), pages));
 mutate("tokushoho の noindex を外したのに sitemap に無い", sitemapProblems(sitemapXml, { ...pages, "tokushoho.html": pages["tokushoho.html"].replace(/<meta name="robots"[^>]*>/, "") }));
 mutate("battle の noindex を消す", noindexProblems({ ...pages, "battle.html": pages["battle.html"].replace(/<meta name="robots"[^>]*>/, "") }, packFiles));
+mutate("pro の noindex を消す", noindexProblems({ ...pages, "pro.html": pages["pro.html"].replace(/<meta name="robots"[^>]*>/, "") }, packFiles));
 mutate("ホームに noindex を付ける", noindexProblems({ ...pages, "index.html": pages["index.html"].replace("<head>", '<head>\n  <meta name="robots" content="noindex" />') }, packFiles));
 mutate("パックのページの案内を消す", packGuardProblems("packs/ngsl01.html", pages["packs/ngsl01.html"].replace(/ {2}<script>location\.replace\([^<]*<\/script>\n/, "")));
 mutate("パックのページの案内を CSS の後へ", packGuardProblems("packs/ngsl01.html", pages["packs/ngsl01.html"].replace(/ {2}(<script>location\.replace\([^<]*<\/script>)\n/, "").replace("</head>", `  <script>location.replace("${OLD_URL_HOME}");</script>\n</head>`)));
@@ -238,6 +242,10 @@ const withRedirects = (f) => JSON.stringify({ ...conf, redirects: f(structuredCl
 mutate("転送を permanent: true にする", redirectProblems(withRedirects((rs) => rs.map((r) => (r.source === "/list.html" ? { ...r, permanent: true } : r)))));
 mutate("転送の先を / にする", redirectProblems(withRedirects((rs) => rs.map((r) => (r.source.startsWith("/packs") ? { ...r, destination: "/" } : r)))));
 mutate("/packs の転送を外す", redirectProblems(withRedirects((rs) => rs.filter((r) => r.source !== "/packs/:path*" && r.source !== "/packs"))));
+mutate("タイピングゲームの転送を外す", redirectProblems(withRedirects((rs) => rs.filter((r) => r.source !== "/typing-game.html"))));
+mutate("タイピング練習の転送を permanent: true にする", redirectProblems(withRedirects((rs) => rs.map((r) => (r.source === "/typing.html" ? { ...r, permanent: true } : r)))));
+mutate("転送がタイピングの js・css・教材にも当たる", redirectProblems(withRedirects((rs) => [...rs, { source: "/:dir/:file", destination: OLD_URL_HOME, permanent: false }])));
+mutate("加入画面を転送する", redirectProblems(withRedirects((rs) => [...rs, { source: "/pro.html", destination: OLD_URL_HOME, permanent: false }])));
 mutate("転送が data/packs/ にも当たる", redirectProblems(withRedirects((rs) => [...rs, { source: "/:dir/packs/:path*", destination: OLD_URL_HOME, permanent: false }])));
 mutate("ホスト名の転送を後ろへ回す", redirectProblems(withRedirects((rs) => [...rs.slice(3), ...rs.slice(0, 3)])));
 mutate("vercel.json が壊れている", redirectProblems(vercelText.replace("{", "")));

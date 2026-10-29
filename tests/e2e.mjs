@@ -2254,7 +2254,10 @@ console.log("typing:");
   // お知らせは題で探す（並行の別の作業が先頭に 1 件足しても落ちない。検査の強さは同じ: その 1 件に ./typing.html）
   const newsItemOf = (title) => { const i = newsSrc.indexOf(`title: "${title}"`); return i < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", i), newsSrc.indexOf("},", i)); };
   const firstNews = newsItemOf("タイピング練習に長文");
-  check("typing: sitemap には載せない（Batch 78 段 5a）・sw の precache・アプリの PAGES・お知らせ（題「タイピング練習に長文」の 1 件）に typing.html、ci.yml に教材の --check", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing.html") && fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing.html"') && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing.mjs --check"));
+  // Batch 78 段 6（創業者の決定 3）: 配信では開くと英単語のホームへ転送する（vercel.json。/list.html と同じ形）。転送が受けるパスは sw の先読みに入れない
+  // （入れるとオフラインで開けなくなる。78.5 の (4)）。ページとファイルは残す（この節は検査の台がファイルを直接返す形で流す・アプリの PAGES にもある）。古いお知らせのリンクは履歴として残す
+  const typingRedirect = (src) => (JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).redirects ?? []).some((r) => r.source === src && r.destination === "/?from=old" && r.permanent === false);
+  check("typing: sitemap には載せない（Batch 78 段 5a）・配信の転送で英単語のホーム（/?from=old）へ・sw の precache に入れない（Batch 78 段 6）・アプリの PAGES・お知らせ（題「タイピング練習に長文」の 1 件。履歴）に typing.html、ci.yml に教材の --check", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing.html") && typingRedirect("/typing.html") && !fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing.html"') && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing.mjs --check"));
   const typingCss = fs.readFileSync(path.join(ROOT, "css", "typing.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   check("typing: typing.css は太さを longhand で書き、新しい animation／transition を持たない", !/text-decoration\s*:[^;]*\d+px/.test(typingCss) && !/\b(animation|transition)(-[a-z]+)?\s*:/.test(typingCss) && !typingCss.includes("@keyframes") && typingCss.includes("text-decoration-thickness: 2px"));
   // Batch 65 P1: 開く種類は head のインラインの 1 行（外のファイルを足さない・CSP の script-src は今のまま）で html[data-typing-kind] に置く。canonical・og:url はパラメータなしの 1 つ、sitemap に ?kind= を足さない
@@ -4873,7 +4876,9 @@ console.log("typing game:");
   const firstNews = newsAt < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", newsAt), newsSrc.indexOf("},", newsAt));
   const typingHtml = fs.readFileSync(path.join(ROOT, "typing.html"), "utf8");
   const typingAbout = typingHtml.match(/<section class="tp-about"[\s\S]*?<\/section>/)?.[0] ?? "";
-  check("typing game: sitemap には載せない（Batch 78 段 5a）・sw の precache・アプリの PAGES・お知らせ（題「文を次々と打つ、90秒のタイピングゲーム」の 1 件）に typing-game.html、ci.yml に教材の --check、typing.html の札の下から導線（このページについての外）", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing-game.html") && fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing-game.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing-game.html"') && firstNews.includes("./typing-game.html") && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing-game.mjs --check") && /<p class="tp-more">[^<]*<a href="\.\/typing-game\.html">タイピングゲーム<\/a><\/p>/.test(typingHtml) && !typingAbout.includes("typing-game.html"));
+  // Batch 78 段 6（創業者の決定 3）: 配信では開くと英単語のホームへ転送する（vercel.json）。sw の先読みに入れない。ページとファイルは残す（節 7.5 の同じ検査の注釈）
+  const gameRedirect = (JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).redirects ?? []).some((r) => r.source === "/typing-game.html" && r.destination === "/?from=old" && r.permanent === false);
+  check("typing game: sitemap には載せない（Batch 78 段 5a）・配信の転送で英単語のホーム（/?from=old）へ・sw の precache に入れない（Batch 78 段 6）・アプリの PAGES・お知らせ（題「文を次々と打つ、90秒のタイピングゲーム」の 1 件。履歴）に typing-game.html、ci.yml に教材の --check、typing.html の札の下から導線（このページについての外）", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing-game.html") && gameRedirect && !fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing-game.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing-game.html"') && firstNews.includes("./typing-game.html") && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing-game.mjs --check") && /<p class="tp-more">[^<]*<a href="\.\/typing-game\.html">タイピングゲーム<\/a><\/p>/.test(typingHtml) && !typingAbout.includes("typing-game.html"));
   const gameCss = fs.readFileSync(path.join(ROOT, "css", "typing-game.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   check("typing game: typing-game.css は animation／transition／@keyframes を持たず、太さは longhand、旧い書き方（999px・var(--radius)・rgba(0,0,0・#FFF）が無い", !/\b(animation|transition)(-[a-z]+)?\s*:/.test(gameCss) && !gameCss.includes("@keyframes") && !/text-decoration\s*:[^;]*\d+px/.test(gameCss) && ![/\b999px/, /var\(--radius\)/, /var\(--radius-lg\)/, /rgba\(0,\s*0,\s*0/, /#(?:FFF|fff)(?![0-9A-Fa-f])/].some((re) => re.test(gameCss)));
   // PR #166 のレビュー 6: 開くコースの読む順と値は head の inline の 1 行（CSP・速さのため残す）と js（js/typingKeys.js の choiceFromUrl・startChoice）で同じ:
@@ -4916,14 +4921,20 @@ console.log("theme:");
   check("テーマフローでエラー0", page.errors.length === 0, page.errors[0] ?? "");
   await page.close();
 }
-// 設定の「週の学習日の目標」（Batch 2。Batch 78 段 6 で保留の節 9.8 初回体験と継続から移した: 設定のこの行は英単語の学習に絞った間も出る）
+// 設定の「週の学習日の目標」（Batch 2。Batch 78 段 6 で保留の節 9.8 初回体験と継続から移した）。英単語の学習に絞った間（js/focus.js・profile.html の data-focus）は
+// 設定に出さない（創業者の決定 3。値 spelldash_week_goal は残す。行の見えない形は 78.6 の (6b) も見る）。旗を外したページ（前の形）では出て、選ぶと保存される
 {
-  const page2 = await newPage();
+  const page1 = await newPage({ storage: { spelldash_week_goal: "7" } });
+  await page1.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+  await page1.waitForTimeout(600);
+  check("週の目標の設定: 英単語の学習に絞った間は出さない（保存した値 7 は残り、選択の値も 7）", !(await page1.isVisible("#weekGoalSelect")) && (await page1.inputValue("#weekGoalSelect")) === "7" && (await page1.evaluate(() => localStorage.getItem("spelldash_week_goal"))) === "7" && page1.errors.length === 0, page1.errors[0] ?? "");
+  await page1.close();
+  const page2 = await newPageFlagOff();
   await page2.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
   await page2.waitForTimeout(600);
-  check("週の目標の設定（既定4日）", (await page2.inputValue("#weekGoalSelect")) === "4" && (await page2.isVisible("#weekGoalSelect")));
+  check("週の目標の設定（旗を外したページ・既定4日）", (await page2.inputValue("#weekGoalSelect")) === "4" && (await page2.isVisible("#weekGoalSelect")));
   await page2.selectOption("#weekGoalSelect", "5");
-  check("週の目標が保存される", (await page2.evaluate(() => localStorage.getItem("spelldash_week_goal"))) === "5");
+  check("週の目標が保存される（旗を外したページ）", (await page2.evaluate(() => localStorage.getItem("spelldash_week_goal"))) === "5");
   check("プロフィール（Batch 2）でエラー0", page2.errors.length === 0, page2.errors[0] ?? "");
   await page2.close();
 }
@@ -18626,8 +18637,14 @@ console.log("pro:");
     await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(800);
     check("Pro: 失効（期限 + 3 日を過ぎた）は #planValue が「無料」", (await text(page, "#planValue")) === "無料", await text(page, "#planValue"));
-    check("Pro: 失効したら「Pro について」のリンクが出る", (await visible(page, "#planLink")) && !(await visible(page, "#planPortal")));
+    // Batch 78 段 6（創業者の決定 3）: 英単語の学習に絞った間は、無料の人に設定のプランの行（「Pro について」）を出さない。旗を外したページ（前の形）では出る
+    check("Pro: 失効したら無料の人なので、英単語の学習に絞った間はプランの行ごと出さない（「Pro について」も「解約・お支払いの管理」も見えない）", !(await visible(page, "#planRow")) && !(await visible(page, "#planLink")) && !(await visible(page, "#planPortal")));
     await page.close();
+    const pageOff = await newPageFlagOff({ storage: proStorage({ current_period_end: isoDaysFromNow(-10) }) });
+    await pageOff.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+    await pageOff.waitForTimeout(800);
+    check("Pro: 失効したら「Pro について」のリンクが出る（旗を外したページ）", (await text(pageOff, "#planValue")) === "無料" && (await visible(pageOff, "#planLink")) && !(await visible(pageOff, "#planPortal")), await text(pageOff, "#planValue"));
+    await pageOff.close();
     const page2 = await newPage({ storage: proStorage({ status: "past_due", current_period_end: isoDaysFromNow(-1) }) });
     await page2.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
     await page2.waitForTimeout(800);
@@ -18706,7 +18723,18 @@ console.log("pro:");
     await page.selectOption("#themeSelect", "paper");
     await page.waitForTimeout(200);
     const hint = await text(page, "#themeHint");
-    check("Pro: free が紙を選ぶと #themeHint に「Pro のテーマ」と「Pro について」", (await visible(page, "#themeHint")) && hint.includes("Pro のテーマ") && (await page.$$('#themeHint a[href="./pro.html"]')).length === 1, hint);
+    // Batch 78 段 6（創業者の決定 3）: 英単語の学習に絞った間は設定から加入画面へ誘わない（案内は文だけ）。旗を外したページ（前の形）では「Pro について」が付く
+    check("Pro: free が紙を選ぶと #themeHint に「Pro のテーマ」の文だけ（英単語の学習に絞った間は「Pro について」のリンクを付けない）", (await visible(page, "#themeHint")) && hint === "紙・藍は Pro のテーマ。" && (await page.$$('#themeHint a')).length === 0, hint);
+    {
+      const pageOff = await newPageFlagOff();
+      await pageOff.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+      await pageOff.waitForTimeout(600);
+      await pageOff.selectOption("#themeSelect", "paper");
+      await pageOff.waitForTimeout(200);
+      const hintOff = await text(pageOff, "#themeHint");
+      check("Pro: free が紙を選ぶと #themeHint に「Pro のテーマ」と「Pro について」（旗を外したページ）", (await visible(pageOff, "#themeHint")) && hintOff.includes("Pro のテーマ") && (await pageOff.$$('#themeHint a[href="./pro.html"]')).length === 1 && pageOff.errors.length === 0, hintOff);
+      await pageOff.close();
+    }
     check("Pro: free の data-theme は light のまま・選択も戻る", (await theme(page)) === "light" && (await page.$eval("#themeSelect", (el) => el.value)) === "light" && (await page.evaluate(() => localStorage.getItem("spelldash_theme"))) !== "paper");
     await page.selectOption("#themeSelect", "indigo");
     await page.waitForTimeout(200);
@@ -19145,7 +19173,7 @@ console.log("78.5 導線と検索:");
 {
   const ROOT_PAGES = ["/index.html", "/stats.html", "/list.html", "/profile.html", "/battle.html", "/news.html", "/terms.html", "/privacy.html", "/tokushoho.html", "/pro.html", "/typing.html", "/typing-game.html"];
   const MAIN_PAGES = ["/index.html", "/stats.html", "/profile.html", "/news.html", "/terms.html", "/privacy.html", "/tokushoho.html"];
-  const HIDDEN_PAGES = ["/battle.html", "/typing.html", "/typing-game.html", "/list.html"];
+  const HIDDEN_PAGES = ["/battle.html", "/typing.html", "/typing-game.html", "/list.html", "/pro.html"];
   const NAV = [["ホーム", "/"], ["英単語を学ぶ", "/?learn=next"], ["学習状況", "/stats.html"], ["設定", "/profile.html"]];
   const CURRENT = { "/": "ホーム", "/index.html": "ホーム", "/stats.html": "学習状況", "/profile.html": "設定" };
   const TAGLINE = "ストレスなしで、英単語を覚える。";
@@ -19219,6 +19247,28 @@ console.log("78.5 導線と検索:");
       found.length === 0, JSON.stringify(found));
   }
 
+  // (2b) Pro への誘いは本文にも出さない（Batch 78 段 6。創業者の決定 3: pro.html は主導線から外す）。学習状況の「詳しい記録」の語の詳細が使う覚え方（AI）の部品
+  //      （js/wordAi.js）は、無料ぶんを使い切った返事（429・upgrade。検査の台は語 limit で返す）でも、受付中でも、文だけで「Pro について」と「Pro なら…」を付けない。
+  //      学習状況のページ（旗あり・ログイン中）で同じ部品を描いて押す（語の詳細の開き方は節 mastery が見る）
+  {
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { ...RETURNING, spelldash_test_session: "1" } });
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    const open = await waitUntil(() => page.evaluate(async () => (await import("/js/proFunnel.js")).canOfferPro()), 5000);
+    await page.evaluate(async () => {
+      const box = document.createElement("div");
+      box.id = "aiProbe";
+      document.querySelector("main").append(box);
+      (await import("/js/wordAi.js")).renderWordAi(box, { id: "english-limit", en: "limit", ja: "限界" });
+    });
+    await page.waitForSelector("#aiProbe [data-word-ai-run]", { timeout: 5000 }).catch(() => {});
+    await page.click("#aiProbe [data-word-ai-run]").catch(() => {});
+    await waitUntil(() => page.evaluate(() => /使い切った/.test(document.getElementById("aiProbe")?.textContent ?? "")), 5000);
+    const ai = await page.evaluate(() => ({ text: document.getElementById("aiProbe")?.textContent.trim() ?? "", links: document.querySelectorAll("#aiProbe a").length }));
+    check("導線: 学習状況の語の詳細の覚え方（AI）が無料ぶんの上限（429）でも、受付中でも、文だけ（「Pro について」のリンクと「Pro なら…」を付けない）・エラー 0",
+      open && /使い切った/.test(ai.text) && ai.links === 0 && !/Pro/.test(ai.text) && page.errors.length === 0, JSON.stringify({ open, ai, err: page.errors[0] }));
+    await page.close();
+  }
+
   // (3) 英単語を学ぶ: どのページからも /?learn=next。キーボードだけで: 学習状況の頭から Tab で「本文へ」→ 印 → ナビの 4 つの順に進み、英単語を学ぶ で Enter → /?learn=next に着く
   {
     const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: RETURNING });
@@ -19238,15 +19288,15 @@ console.log("78.5 導線と検索:");
     await page.close();
   }
 
-  // (4) 検索: 配っている HTML の robots と sitemap.xml。外すページ（Battle・タイピング 2 つ・単語帳）は noindex、主導線とお知らせ・規約は noindex なし（特商法は事業者の欄が
-  //     埋まるまで前から noindex）。sitemap は 主導線とお知らせ・規約で noindex でないものだけ
+  // (4) 検索: 配っている HTML の robots と sitemap.xml。外すページ（Battle・タイピング 2 つ・単語帳・加入画面〔Batch 78 段 6。創業者の決定 3: pro.html は残して noindex〕）は
+  //     noindex、主導線とお知らせ・規約は noindex なし（特商法は事業者の欄が埋まるまで前から noindex）。sitemap は 主導線とお知らせ・規約で noindex でないものだけ
   {
     const robots = async (p) => (await (await fetch(BASE + p)).text()).match(/<meta name="robots" content="([^"]*)"/)?.[1] ?? null;
     const hidden = Object.fromEntries(await Promise.all(HIDDEN_PAGES.map(async (p) => [p, await robots(p)])));
     const main = Object.fromEntries(await Promise.all(MAIN_PAGES.map(async (p) => [p, await robots(p)])));
     const sitemap = await (await fetch(BASE + "/sitemap.xml")).text();
     const locs = [...sitemap.matchAll(/<loc>https:\/\/www\.spelldash\.net([^<]*)<\/loc>/g)].map((m) => m[1]);
-    check("検索: Battle・タイピング練習・タイピングゲーム・単語帳は noindex。主導線（ホーム・学習状況・設定）とお知らせ・プライバシー・規約は noindex なし（特商法は前から noindex）",
+    check("検索: Battle・タイピング練習・タイピングゲーム・単語帳・加入画面（pro.html）は noindex。主導線（ホーム・学習状況・設定）とお知らせ・プライバシー・規約は noindex なし（特商法は前から noindex）",
       Object.values(hidden).every((v) => /noindex/.test(v ?? "")) && Object.entries(main).every(([p, v]) => (p === "/tokushoho.html" ? /noindex/.test(v ?? "") : v === null)), JSON.stringify({ hidden, main }));
     check("検索: sitemap.xml は /・学習状況・設定・お知らせ・プライバシー・規約の 6 つだけ（単語帳・分野パック・タイピング・Battle・Pro は載せない）",
       JSON.stringify(locs) === JSON.stringify(["/", "/stats.html", "/profile.html", "/news.html", "/privacy.html", "/terms.html"]), JSON.stringify(locs));
@@ -19258,8 +19308,38 @@ console.log("78.5 導線と検索:");
     const swSrc = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
     const core = [...(swSrc.match(/const CORE_ASSETS = \[([^\]]*)\]/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
     const precacheMoved = core.filter((p) => moved.some((re) => re.test(p)));
-    check("検索: Service Worker の先読み（sw.js CORE_ASSETS）に、配信の転送が受けるパス（/list.html・/packs/*）が無い（オフラインで開けなくなる）・転送の規則は 3 つ・先読みは 10 ページ以上",
-      moved.length === 3 && moved.some((re) => re.test("/list.html")) && moved.some((re) => re.test("/packs/ngsl01.html")) && core.length >= 10 && precacheMoved.length === 0, JSON.stringify({ precacheMoved, core }));
+    const MOVED_PATHS = ["/list.html", "/packs/ngsl01.html", "/typing.html", "/typing-game.html"];
+    check("検索: Service Worker の先読み（sw.js CORE_ASSETS）に、配信の転送が受けるパス（/list.html・/packs/*・/typing.html・/typing-game.html）が無い（オフラインで開けなくなる）・転送の規則は 5 つ・先読みは 10 ページ以上",
+      moved.length === 5 && MOVED_PATHS.every((p) => moved.some((re) => re.test(p))) && core.length >= 10 && precacheMoved.length === 0, JSON.stringify({ precacheMoved, core, moved: moved.length }));
+    // タイピングの 2 ページ（Batch 78 段 6。創業者の決定 3）: 古いお知らせのリンクは履歴として残し、開くと配信の転送で英単語のホームへ案内する。形は /list.html の規則と同じ
+    // （行き先 /?from=old・一時的 permanent: false・ホスト名の条件なし）。この台のサーバーは vercel.json を読まずにファイルを返す（節 7.5・7.55・7.6 は直接開いて流す）。
+    // 規則の当たり方（大小文字・末尾の /・ほかの URL に当たらない）は scripts/test-site-map.mjs が見る
+    const ruleOf = (src) => (vercel.redirects ?? []).filter((r) => r.source === src);
+    const listRule = ruleOf("/list.html")[0] ?? null;
+    const typingRules = ["/typing.html", "/typing-game.html"].map((src) => ruleOf(src));
+    check("検索: タイピング練習（/typing.html）とタイピングゲーム（/typing-game.html）は配信の転送で英単語のホーム（/?from=old）へ一時的に（permanent: false）・/list.html の規則と同じ形・規則は 1 つずつ",
+      !!listRule && typingRules.every((rs) => rs.length === 1 && rs[0].destination === "/?from=old" && rs[0].permanent === false && !rs[0].has && JSON.stringify(Object.keys(rs[0])) === JSON.stringify(Object.keys(listRule))),
+      JSON.stringify({ typingRules, listRule }));
+    // 先読みの版: 先読みを変えたので CACHE_NAME を上げる（spelldash-v6）。activate は前の版（v5 はタイピングの 2 ページを先読みした）の保存を消す
+    const cacheName = swSrc.match(/const CACHE_NAME = "([^"]+)"/)?.[1] ?? null;
+    const page = await newPage({ viewport: { width: 1200, height: 900 } });
+    await page.goto(BASE + "/news.html", { waitUntil: "load" }); // お知らせは Service Worker を入れない頁: 前の版の保存を先に置く
+    await page.evaluate(async () => {
+      const old = await caches.open("spelldash-v5");
+      for (const p of ["/typing.html", "/typing-game.html", "/index.html"]) await old.put(p, new Response("<!doctype html><title>前の版</title>", { headers: { "Content-Type": "text/html" } }));
+    });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const ready = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => Boolean(r.active))).catch(() => false);
+    await waitUntil(() => page.evaluate(async () => !(await caches.keys()).includes("spelldash-v5")), 8000);
+    const store = await page.evaluate(async () => {
+      const keys = await caches.keys();
+      const typing = [];
+      for (const k of keys) for (const req of await (await caches.open(k)).keys()) if (/^\/typing(-game)?\.html$/.test(new URL(req.url).pathname)) typing.push(`${k} ${new URL(req.url).pathname}`);
+      return { keys, typing };
+    });
+    check("検索: Service Worker の版は spelldash-v6・入れ替わると前の版（spelldash-v5。タイピングの 2 ページの保存を含む）を消す・新しい版の保存にタイピングの 2 ページは無い・エラー 0",
+      cacheName === "spelldash-v6" && ready && JSON.stringify(store.keys) === JSON.stringify(["spelldash-v6"]) && store.typing.length === 0 && page.errors.length === 0, JSON.stringify({ cacheName, ready, ...store, err: page.errors[0] }));
+    await page.close();
   }
 
   // (5) 古い画面の URL: 分野パックのページ（NGSL の巻も）と一覧はページの守りで英単語のホーム（/?from=old）へ。履歴に古いページを残さない（location.replace）。
@@ -20506,6 +20586,46 @@ console.log("home and old URLs (78.6):");
     await closeCtx(page);
   }
 
+  // (6b) 設定: プランの行（「プラン 無料」と「Pro について」）と「週の学習日の目標」は出さない（Batch 78 段 6。創業者の決定 3）。値（spelldash_week_goal）と
+  //      Pro の仕組みは残す。受付中（検査の台の /api/billing/config）でも、設定の本文に加入画面（pro.html）への見えるリンクは無い（無料の人が紙を選んだときの
+  //      テーマの案内も文だけ）。Pro の人には、規約と特商法が案内する「解約・お支払いの管理」があるのでプランの行を出す（「Pro について」は前から出さない）
+  {
+    const page = await homePage({ spelldash_test_session: "1", spelldash_week_goal: "5" });
+    await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => !document.getElementById("profileCard").hidden), 4000);
+    await page.waitForTimeout(400); // 受付中かどうかが分かって「Pro について」を出し直す時機（js/profileView.js の spelldash:billing）の後
+    await page.selectOption("#themeSelect", "paper");
+    await waitUntil(() => page.evaluate(() => !document.getElementById("themeHint").hidden), 3000);
+    const free = await page.evaluate(() => {
+      const vis = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+      const main = document.querySelector("main");
+      return {
+        plan: vis(document.getElementById("planRow")), link: vis(document.getElementById("planLink")), week: vis(document.getElementById("weekGoalSelect")),
+        hint: document.getElementById("themeHint")?.textContent.trim() ?? "", hintShown: vis(document.getElementById("themeHint")),
+        proLinks: [...main.querySelectorAll("a[href]")].filter(vis).map((a) => a.getAttribute("href")).filter((h) => /(^|\/)pro\.html/.test(h)),
+        text: main.innerText, week5: localStorage.getItem("spelldash_week_goal"), theme: document.documentElement.dataset.theme
+      };
+    });
+    check("78.6 設定: プランの行（「Pro について」）と「週の学習日の目標」は出さない（週の目標の値 5 は残る）・受付中でも本文に加入画面（pro.html）への見えるリンクが無い（紙を選んだ無料の人の案内は「紙・藍は Pro のテーマ。」の文だけ・テーマは light のまま）",
+      !free.plan && !free.link && !free.week && free.week5 === "5" && free.proLinks.length === 0 && free.hintShown && free.hint === "紙・藍は Pro のテーマ。" && free.theme === "light" && !/週の学習日の目標|Pro について/.test(free.text),
+      JSON.stringify({ ...free, text: undefined }));
+    check("78.6 設定（プランの行・週の目標）: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+    const row = { status: "active", plan_interval: "month", current_period_end: new Date(Date.now() + 20 * DAY).toISOString(), cancel_at_period_end: false };
+    const cache = { status: row.status, interval: row.plan_interval, periodEnd: row.current_period_end, cancelAtPeriodEnd: row.cancel_at_period_end, checkedAt: new Date().toISOString() };
+    const proPage = await homePage({ spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify(row), spelldash_plan: JSON.stringify(cache) });
+    await proPage.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+    await waitUntil(() => proPage.evaluate(() => (document.getElementById("planValue")?.textContent ?? "").includes("Pro")), 5000);
+    await proPage.waitForTimeout(300);
+    const pro = await proPage.evaluate(() => {
+      const vis = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+      return { plan: vis(document.getElementById("planRow")), link: vis(document.getElementById("planLink")), portal: vis(document.getElementById("planPortal")), portalText: document.getElementById("planPortal")?.textContent.trim(), planText: document.getElementById("planValue")?.textContent.trim(), week: vis(document.getElementById("weekGoalSelect")) };
+    });
+    check("78.6 設定: Pro の人にはプランの行（「Pro（次回の更新 …）」と「解約・お支払いの管理」）を出す（規約と特商法の案内どおり）・「Pro について」と週の目標は出さない・エラー 0",
+      pro.plan && pro.portal && pro.portalText === "解約・お支払いの管理" && /^Pro/.test(pro.planText ?? "") && !pro.link && !pro.week && proPage.errors.length === 0, JSON.stringify({ pro, err: proPage.errors[0] }));
+    await closeCtx(proPage);
+  }
+
   // (7) スマホ 320・390・PC 1200 × 昼・夜: 横スクロール 0・「英単語を学ぶ」は最初の画面に見える・ほかの教材の名前なし。古い目安の鍵（spelldash_book_pace）は書かない
   {
     const rows = [];
@@ -21296,19 +21416,21 @@ console.log("funnel log:");
 {
   const cloud = createCloud({});
   const steps = (step) => cloud.rows("funnel_events").filter((r) => r.step === step);
-  const page = await newPage({ storage: { spelldash_test_cloud: cloud.id } });
+  // 英単語の学習に絞った間（js/focus.js）は、設定にも加入画面への入口が無い（Batch 78 段 6。創業者の決定 3: テーマの案内も文だけ）。
+  // 入口の計測の仕組み（js/funnelLog.js のリンクの押下・次のページで送る）は残すので、入口のある旗を外したページ（前の形）で見る
+  const page = await newPageFlagOff({ storage: { spelldash_test_cloud: cloud.id } });
   await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
   const first = await waitUntil(async () => steps("first_visit").length === 1, 5000);
   const row = steps("first_visit")[0] ?? {};
   check("計測: 初めて来た端末で first_visit（端末の番号だけ・未ログインは user_id 空）", first && typeof row.device_id === "string" && row.device_id.length >= 8 && row.user_id == null && !("email" in row), JSON.stringify(row));
-  // Batch 78: フッターの「SpellDash Pro」は出さない（Pro は主導線から外した。js/footer.js）。入口は設定のテーマの案内「Pro について」（入口 theme）で見る
+  // Batch 78: フッターの「SpellDash Pro」は出さない（Pro は主導線から外した。js/footer.js）。入口は設定のテーマの案内「Pro について」（入口 theme。旗を外したページ）で見る
   await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
   await page.selectOption("#themeSelect", "paper");
   await waitUntil(async () => (await page.$('#themeHint a[data-funnel="theme"]')) !== null, 5000);
   await page.click('#themeHint a[data-funnel="theme"]');
   await page.waitForURL(/pro\.html/, { timeout: 5000 }).catch(() => {});
   const entered = await waitUntil(async () => steps("entry").some((r) => r.source === "theme"), 5000);
-  check("計測: 設定のテーマの案内から加入画面へ → entry（入口 theme）が次のページで届く（フッターの入口は Batch 78 で外した）", entered, JSON.stringify(cloud.rows("funnel_events").map((r) => `${r.step}:${r.source}`)));
+  check("計測: 設定のテーマの案内から加入画面へ → entry（入口 theme）が次のページで届く（フッターの入口は Batch 78 で外した。英単語の学習に絞った間はこの入口も無いので旗を外したページで）", entered, JSON.stringify(cloud.rows("funnel_events").map((r) => `${r.step}:${r.source}`)));
   check("計測: 加入画面を開いた → pro_view", await waitUntil(async () => steps("pro_view").length === 1, 5000));
   await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
   await page.click("#proLoginStart");
