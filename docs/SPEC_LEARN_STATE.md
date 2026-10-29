@@ -107,7 +107,7 @@
 ## 6. 数え方（js/learnState.js `countLearnStates`）
 
 - 公開の語（js/publicVocab.js の order）を 1 回ずつ見る。これから = 総数 − あやふや − 覚えた。3 つの和は必ず総数。
-- 答えのたびには数えない。回の始め・回の終わり・学習状況でだけ数える（入力完了から次の問題まで ±5ms を守る）。
+- 答えのたびには数えない。回の始め・回の終わり・学習状況でだけ数える（受け入れ基準 13「入力完了から次の問題までの時間を、変更前より5msを超えて遅くしない。高速化は許容する」を守る）。
 - 読み手は `await loadLearnStates()`（js/storage.js）の後に `countLearnStates(getWordStats(), source.vocab, source.pending)`（`pending` は版 6 の間だけ。版 7 なら null）。
 
 ## 7. 保存（js/storage.js・js/stats.js）
