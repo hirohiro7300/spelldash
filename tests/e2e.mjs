@@ -19443,7 +19443,8 @@ console.log("78.5 導線と検索:");
       const page = await gatePage(GATE_SEED);
       await page.goto(BASE + "/news.html", { waitUntil: "networkidle" });
       const links = await page.evaluate(() => [...document.querySelectorAll('#newsList a[href]')].map((a) => a.getAttribute("href")).filter((h) => /typing(-game)?\.html/.test(h)));
-      await Promise.all([page.waitForURL((url) => url.pathname === "/", { timeout: 8000 }).catch(() => {}), page.click('#newsList a[href="./typing-game.html"]').catch(() => {})]);
+      // 古いお知らせは畳まれていることがあるので、リンクの要素を押す（見えているかは問わない: 履歴として残すリンクの行き先を見る）
+      await Promise.all([page.waitForURL((url) => url.pathname === "/", { timeout: 8000 }).catch(() => {}), page.evaluate(() => document.querySelector('#newsList a[href="./typing-game.html"]')?.click())]);
       await page.waitForLoadState("networkidle");
       const opened = new URL(await page.evaluate(() => performance.getEntriesByType("navigation")[0]?.name ?? location.href));
       const ran = await page.evaluate(() => sessionStorage.getItem("__gateRan") ?? "");
