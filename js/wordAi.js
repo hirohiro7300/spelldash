@@ -140,12 +140,14 @@ function renderAiButton(container, word, { onStart, onSettled }) {
 // 返事を待つ間のボタン（押せない）。返事が来たら、欄がまだこの語なら描く（別の語に移っていたら描かない。保存は済んでいる）
 function showPending(container, word, onSettled) {
   container.innerHTML = `<button type="button" class="word-ai__button" data-word-ai-run disabled>作っています…</button>`;
-  inFlight.get(word.id).then((result) => {
+  // 英単語の学習に絞った間（js/focus.js）は Pro へ誘わない（Batch 78 段 6。創業者の決定 3）。focus.js はこの部品を使うページ（ホーム・学習状況・単語帳）が
+  // もう読んでいるので、動的 import は待たずに返る（静的に足すと各ページの先読みの並びが変わる）。読めなければ誘わない側に倒す
+  Promise.all([inFlight.get(word.id), import("./focus.js").then((m) => m.isFocusOn(), () => true)]).then(([result, focusOn]) => {
     if (container.dataset.wordAiFor !== word.id || !container.querySelector("[data-word-ai-run]:disabled")) return;
     if (!result.ok) {
       // Pro の案内は文の中に括弧で入れる（1 本の流し込み: 390 でリンクが語の途中で折れない）
-      // 受付前・アプリでは Pro の話をしない（サーバーの別欄 offer「Pro なら…」を足すのは受付中だけ）
-      const offer = result.upgrade && canOfferPro();
+      // 受付前・アプリ・英単語の学習に絞った間では Pro の話をしない（サーバーの別欄 offer「Pro なら…」を足すのは受付中だけ）
+      const offer = result.upgrade && canOfferPro() && !focusOn;
       const message = offer && result.offer ? `${result.message}${result.offer}` : result.message;
       container.innerHTML = `<span class="word-ai__error">${escapeHtml(message)}${offer ? '（<a class="ai-upgrade" href="./pro.html" data-funnel="ai">Pro について</a>）' : ""}</span>`;
     } else {

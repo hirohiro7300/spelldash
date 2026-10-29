@@ -104,10 +104,12 @@ function initializeThemeSetting() {
 
   themeSelect.value = getTheme();
   themeSelect.addEventListener("change", () => {
-    // 紙・藍は Pro だけ。無料の人には案内を出して選択を戻す（適用しない）
+    // 紙・藍は Pro だけ。無料の人には案内を出して選択を戻す（適用しない）。英単語の学習に絞った間（html[data-focus]。CSS が設定の行を隠すのと同じ旗）は
+    // 加入画面へ誘わない（Batch 78 段 6。創業者の決定 3: Pro は主導線から外す）ので、案内は文だけ
     if (isProTheme(themeSelect.value) && !isPro()) {
       if (hint) {
-        hint.innerHTML = canOfferPro() ? '紙・藍は Pro のテーマ。<a href="./pro.html" data-funnel="theme">Pro について</a>' : "紙・藍は Pro のテーマ。";
+        const offer = canOfferPro() && !("focus" in document.documentElement.dataset);
+        hint.innerHTML = offer ? '紙・藍は Pro のテーマ。<a href="./pro.html" data-funnel="theme">Pro について</a>' : "紙・藍は Pro のテーマ。";
         hint.hidden = false;
       }
       themeSelect.value = getTheme();
@@ -126,6 +128,7 @@ function initializeThemeSetting() {
 initializePlanRow();
 
 function initializePlanRow() {
+  const row = document.getElementById("planRow");
   const value = document.getElementById("planValue");
   const link = document.getElementById("planLink");
   const portal = document.getElementById("planPortal");
@@ -134,6 +137,8 @@ function initializePlanRow() {
   const render = () => {
     const plan = getPlan();
     value.textContent = planLabel(plan);
+    // 英単語の学習に絞った間は、Pro の人にだけプランの行を出す（css/pages.css .setting-row--plan。解約・お支払いの管理のため）
+    row?.toggleAttribute("data-pro", plan.pro);
     // アプリでは加入・管理のボタンを出さない（Web 版で）。受付前は「Pro について」も出さない
     if (link) link.hidden = plan.pro || !canOfferPro();
     if (portal) {

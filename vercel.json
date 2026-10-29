@@ -52,6 +52,16 @@
       "source": "/list.html",
       "destination": "/?from=old",
       "permanent": false
+    },
+    {
+      "source": "/typing.html",
+      "destination": "/?from=old",
+      "permanent": false
+    },
+    {
+      "source": "/typing-game.html",
+      "destination": "/?from=old",
+      "permanent": false
     }
   ],
   "crons": [

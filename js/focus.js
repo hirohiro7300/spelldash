@@ -15,9 +15,11 @@
 //     鍵を書かない）。URL から外して、ホームに 1 行。単語帳の #packs・#myWords（配信の転送は # を持ち越す: /list.html#packs → /?from=old#packs）も外す
 //   単語帳（list.html。マイ単語帳・#packs・#myWords・?add=・?category= を含む）→ js/listView.js が最初にページの守り（leaveOldScreen）
 //   /packs/* と /packs/ → vercel.json の転送（permanent: false）とページの守り（段 5a）が MOVED_URL へ
+//   タイピングの 2 ページ（typing.html・typing-game.html）→ vercel.json の転送（permanent: false）が MOVED_URL へ（Batch 78 段 6。創業者の決定 3。古いお知らせの
+//     リンクは履歴のまま。ページとファイルは残す: アプリの器と E2E は直接開く）
 //   保存した遊び方 spelldash_mode = challenge → ホームは中心の学習を始める（値は残す: js/game.js setMode の save: false）
 //   古い形の続き（Study の spelldash_session）→ 出さない（鍵は残す: js/sessionResume.js resumableFor）
-// Battle（battle.html）・タイピング（typing.html・typing-game.html）は直接開けば今のまま動く（導線から外すだけ。段 5a）
+// Battle（battle.html）と加入画面（pro.html。noindex）は直接開けば今のまま動く（導線から外すだけ。段 5a・段 6）
 //
 // この module は import を持たない（どのページからも静的に読んでよい）
 

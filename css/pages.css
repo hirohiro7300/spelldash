@@ -2353,6 +2353,11 @@ html[data-theme][data-focus="english"] :is(.setting-row--question, .setting-row-
   display: none;
 }
 
+/* プランの行（「Pro について」）: 英単語の学習に絞った間は無料の人に出さない。Pro の人（data-pro）には「解約・お支払いの管理」のために出す（Batch 78 段 6） */
+html[data-theme][data-focus="english"] .setting-row--plan:not([data-pro]) {
+  display: none;
+}
+
 html[data-theme] .setting-block .setting-row:last-child {
   border-bottom: 1px solid var(--line);
 }

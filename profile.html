@@ -223,7 +223,9 @@
         <p class="setting-hint">自力で正解した語の答え・例文・解説を見せる長さ。Enter で待たずに次へ</p>
       </div>
 
-      <div class="setting-row">
+      <!-- 週の学習日の目標: 英単語の学習に絞った間（html[data-focus]。js/focus.js）は出さない（Batch 78 段 6。創業者の決定 3）。ホームの週の札も出ないので、
+           選んでも効く場所が見えない。値（spelldash_week_goal）と保存の仕組みは残す（css/pages.css .setting-row--focus-off） -->
+      <div class="setting-row setting-row--focus-off">
         <label for="weekGoalSelect">週の学習日の目標</label>
         <select id="weekGoalSelect" class="setting-select">
           <option value="3">週3日</option>
@@ -339,7 +341,9 @@
             <span class="muted" id="profileJoined"></span>
           </span>
         </div>
-        <div class="setting-row" id="planRow">
+        <!-- プランの行（「プラン 無料」と「Pro について」）: 英単語の学習に絞った間（html[data-focus]）は出さない（Batch 78 段 6。創業者の決定 3: Pro は主導線から外す）。
+             Pro の人（data-pro。js/profileView.js）には出す: 規約と特商法が案内する「解約・お支払いの管理」がこの行にある。加入画面と課金の仕組みは残す（css/pages.css .setting-row--plan） -->
+        <div class="setting-row setting-row--plan" id="planRow">
           <span class="setting-row__text">プラン</span>
           <span class="setting-row__value plan-row__value">
             <span id="planValue">無料</span>
