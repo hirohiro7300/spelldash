@@ -375,9 +375,17 @@ browser.newContext = async (opts = {}) => {
   await ctx.addInitScript(AREA_GUARD_SRC);
   return ctx;
 };
-// 種（addInitScript の引数。{ storage: {...} } か、鍵と値の表）にスタブのログインがあれば、その文脈に印のクッキーを置いてから種を足す
+// 種（addInitScript の引数。{ storage: {...} }・鍵と値の表・その並び）にスタブのログインがあれば、その文脈に印のクッキーを置いてから種を足す
 {
+  // 種の形: 鍵と値の表・{ storage: {...} }・その並び（[種, …]。78.6 の homePage）
   const loginToken = (arg) => {
+    if (Array.isArray(arg)) {
+      for (const item of arg) {
+        const token = loginToken(item);
+        if (token) return token;
+      }
+      return null;
+    }
     const seed = arg && typeof arg === "object" ? (arg.storage && typeof arg.storage === "object" ? arg.storage : arg) : null;
     return seed && typeof seed.spelldash_test_session === "string" && seed.spelldash_test_session ? seed.spelldash_test_session : null;
   };
@@ -19853,18 +19861,36 @@ console.log("78.4 学習状況とランク:");
       await ctx.close();
     }
 
-    // 持ち主が別の人の端末（前の人: 留学生 6・2,000 語）: 置き換えと取り込みの後の最高到達ランクは新しい人の段（記録なし → 0 か無し）。前の人の 6 を書き戻さない
+    // 持ち主が別の人の端末（前の人: 留学生 6・2,000 語。この版より前の端末で、test-user がログインしている）: Batch 78-7 内部の 2 では、移行で前の人の記録は
+    // その人の領域へ入り、切り替えの画面を通ってこのアカウントの領域（記録なし）で開く。取り込みの後の最高到達ランクは新しい人の段（記録なし → 0 か無し）。
+    // 前の人の 6 を書き戻さない（前の人の 6 はその人の写しに残る）
     {
       const cloud = createCloud({}, { delayMs: 300 });
-      const { ctx, page } = await openOnce("/stats.html", login(cloud, { spelldash_owner: "other-user", spelldash_learn_filled: "other-user", spelldash_rank_peak: "6", spelldash_word_stats: JSON.stringify(learnedLocal(2000)) }));
+      const OLD_AUTH = "sb-sujvgwozsnzjsjmkcrnk-auth-token";
+      const ctx = await rawNewContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+      const seedPage = await ctx.newPage();
+      await seedPage.goto(BASE + "/css/reset.css");
+      await seedPage.evaluate((seed) => { for (const [k, v] of Object.entries(seed)) localStorage.setItem(k, v); }, {
+        spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_test_cloud: cloud.id, spelldash_owner: "other-user", spelldash_learn_filled: "other-user", spelldash_rank_peak: "6",
+        spelldash_word_stats: JSON.stringify(learnedLocal(2000)),
+        [OLD_AUTH]: JSON.stringify({ access_token: "test-token", token_type: "bearer", expires_in: 3600, expires_at: 9999999999, refresh_token: "test-refresh", user: { id: "test-user", email: "test@example.com" } })
+      });
+      const page = await ctx.newPage();
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      page.on("dialog", (d) => d.accept());
+      await page.goto(BASE + "/stats.html", { waitUntil: "load" }).catch(() => {}); // 頭で止めて切り替えの画面へ移ると、最初の読み込みは中断される
+      const opened = await waitUntil(() => page.evaluate(() => location.pathname === "/stats.html" && window.SpellDashArea?.area === "u:test-user" && document.readyState === "complete").catch(() => false), 15000);
+      await waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session")).catch(() => null)) === "test-user", 10000);
       const seen = [];
       for (let i = 0; i < 12; i++) {
         seen.push(await page.evaluate(() => localStorage.getItem("spelldash_rank_peak")));
         await page.waitForTimeout(150);
       }
       const r = await statusNow(page);
-      check("78.4 学習状況（持ち主が別の人の端末で取り込み）: 取り込みの後の最高到達ランクは新しい人の段（0 か無し）・前の人の 6 を書き戻さない・赤ちゃん・覚えた 0",
-        seen.every((p) => p === null || p === "0") && r.rank === "赤ちゃん" && r.count === "0" && page.errors.length === 0, JSON.stringify({ seen, r, err: page.errors[0] }));
+      const otherPeak = await page.evaluate(async () => { const m = await import("/js/areaStore.js"); const db = await m.openAreaStore(); try { return (await db.get("areas", "u:other-user"))?.keys?.spelldash_rank_peak ?? null; } finally { db.close(); } });
+      check("78.4 学習状況（持ち主が別の人の端末で取り込み）: 切り替えの画面を通ってこのアカウントの領域で開き、取り込みの後の最高到達ランクは新しい人の段（0 か無し）・前の人の 6 を書き戻さない（前の人の写しに残る）・赤ちゃん・覚えた 0",
+        opened && seen.every((p) => p === null || p === "0") && r.rank === "赤ちゃん" && r.count === "0" && otherPeak === "6" && page.errors.length === 0, JSON.stringify({ opened, seen, r, otherPeak, err: page.errors[0] }));
       await ctx.close();
     }
   }
