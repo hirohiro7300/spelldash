@@ -1,9 +1,13 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-focus="english">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <!-- Batch 78（創業者の決定 §7）: 主導線・ナビ・フッター・sitemap・検索から外す。直接開けば今のまま動く（自己ベストの記録も残す） -->
+  <!-- 入口の門（Batch 78 段 7。創業者の確認 2026-10-29 の 4。js/focus.js）: 英単語の学習に絞った間（html[data-focus="english"]）は、ほかの読み込みを止めて
+       英単語のホーム（/?from=old）へ置き換える。このページの js は動かさず、保存の鍵も書かない。配信の転送（vercel.json）が効かないアプリの中でも止める。
+       旗を外すと（data-focus を外す）今のまま開く。Battle・タイピング練習・タイピングゲームの 3 ページで同じ文（scripts/test-site-map.mjs の 7 が突き合わせる） -->
+  <script id="focusGate">(() => { if (document.documentElement.dataset.focus !== "english") return; try { window.stop(); } catch {} location.replace("/?from=old"); })();</script>
+  <!-- Batch 78（創業者の決定 §7）: 主導線・ナビ・フッター・sitemap・検索から外す。直接開いても上の入口の門で英単語のホームへ（Batch 78 段 7。自己ベストの記録は残す） -->
   <meta name="robots" content="noindex" />
   <title>タイピング練習（英単語・ローマ字・長文）無料 | SpellDash</title>
 

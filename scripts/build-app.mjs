@@ -5,6 +5,8 @@
 // 加入画面（pro.html）と特商法（tokushoho.html）は Web だけのページで、アプリに入れない（アプリに Pro を出さない。ストアの決済の方針でも、
 // アプリから外の決済へ誘わない）。アプリではそこへのリンクを出さない（css/layout.css の html.native-app・js/appEnv.js。利用規約の本文は文字だけ）。
 // アプリの中で見えるリンクの行き先はどれも PAGES にあること（tests/e2e.mjs の節 15 がアプリの状態で全ページを開いて守る）。
+// Battle とタイピングの 2 ページは英単語の学習に絞った間（html[data-focus="english"]）、ページの入口の門で英単語のホームへ移る（Batch 78 段 7。アプリでは配信の転送が
+// 効かないので、門がアプリでも止める）。旗を外せば今のまま開くので PAGES に残す
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";

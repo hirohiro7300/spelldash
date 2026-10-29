@@ -3,15 +3,15 @@
 // Supabase等のクロスオリジンには一切触らない。
 // v5（Batch 78）: 先読みから /list.html を外した。前の版（v4）が持つ単語帳と分野パックの古いページは activate で消える
 // v6（Batch 78 段 6）: 先読みからタイピングの 2 ページ（/typing.html・/typing-game.html。配信の転送で英単語のホームへ）を外した。前の版（v5）の保存は activate で消える
-const CACHE_NAME = "spelldash-v6";
+// v7（Batch 78 段 7）: 先読みから Battle（/battle.html。配信の転送と入口の門で英単語のホームへ）を外した。前の版（v6）の保存は activate で消える
+const CACHE_NAME = "spelldash-v7";
 
-// 先読みのページ。配信の転送（vercel.json の redirects）が受けるパス（/list.html・/packs/*・/typing.html・/typing-game.html）は入れない: cache.addAll は転送を追うので、
+// 先読みのページ。配信の転送（vercel.json の redirects）が受けるパス（/list.html・/packs/*・/typing.html・/typing-game.html・/battle.html）は入れない: cache.addAll は転送を追うので、
 // 転送の後の応答（redirected）をそのパスで保存し、オフラインでそのページを開くとブラウザが応答を断る（ページ遷移の応答は転送を含めない決まり）。
 // E2E 78.5 の (4) が vercel.json と突き合わせる
 const CORE_ASSETS = [
   "/",
   "/index.html",
-  "/battle.html",
   "/stats.html",
   "/profile.html",
   "/news.html",

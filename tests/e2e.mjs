@@ -125,6 +125,11 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
 
 // ---- 静的サーバー（supabase.jsだけスタブ差し替え） ----
 let fakeTrialMonths = 0; // 偽の /api/billing/config が返す無料期間（月）。POST /__billing/trial?months=N で切り替える
+// 入口の門（Batch 78 段 7。Battle・タイピングの 3 ページの <head> の頭。html[data-focus="english"] なら英単語のホーム /?from=old へ）を外すしるし。
+// 要求にこの cookie があれば、3 ページの <html> から data-focus を外して返す（旗を外したページ: 下の gateOff・focusOff）。
+// cookie にしたのは、Service Worker が取った要求（page.route が捕まえない）にも効かせるため
+const GATED_PAGES = ["/battle.html", "/typing.html", "/typing-game.html"];
+const GATE_OFF_COOKIE = "e2e_gate";
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (urlPath === "/") urlPath = "/index.html";
@@ -268,6 +273,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (GATED_PAGES.includes(urlPath) && String(req.headers.cookie ?? "").split(/;\s*/).includes(`${GATE_OFF_COOKIE}=off`)) {
+    const html = fs.readFileSync(file, "utf8").replace(/^(<html\b[^>]*?) data-focus="english"/m, "$1");
+    res.writeHead(200, { "Content-Type": "text/html" }).end(html);
+    return;
+  }
+
   res.writeHead(200, { "Content-Type": MIME[path.extname(file)] ?? "application/octet-stream" });
   fs.createReadStream(file).pipe(res);
 });
@@ -344,6 +355,7 @@ async function newPage(init = {}) {
   page.errors = [];
   page.on("pageerror", (e) => page.errors.push(e.message));
   if (init.focusOff) await focusOff(page);
+  else if (init.gateOff) await gateOff(page);
   await page.addInitScript((seed) => {
     localStorage.setItem("spelldash_schema_version", "7");
     if (!seed.keepOnboarding) localStorage.setItem("spelldash_onboarded", "1");
@@ -354,8 +366,10 @@ async function newPage(init = {}) {
 
 // 英単語の学習に絞る旗（js/focus.js FOCUS_ENGLISH と index.html・profile.html の <html data-focus>）を外したページにする（Batch 78 段 5b）。
 // 前のホーム（机の本の Study・本棚・ほかの遊び方）と単語帳がそのまま動く。旗を外した側で流す検査（pre/e2e-classes.tsv の hold・内部の盤面の検査）に使う。
-// page.goto の前に呼ぶ。Service Worker が取った要求は page.route が捕まえないので、newPage({ focusOff: true }) は Service Worker を止めた文脈で開く
+// page.goto の前に呼ぶ。Service Worker が取った要求は page.route が捕まえないので、newPage({ focusOff: true }) は Service Worker を止めた文脈で開く。
+// Battle・タイピングの 3 ページの入口の門も外す（gateOff。3 ページは js/focus.js を読まず、<html data-focus> だけを見る）
 async function focusOff(page) {
+  await gateOff(page);
   await page.route("**/js/focus.js", async (route) => {
     const res = await route.fetch();
     const src = (await res.text()).replace("export const FOCUS_ENGLISH = true;", "export const FOCUS_ENGLISH = false;");
@@ -370,6 +384,15 @@ async function focusOff(page) {
 }
 // 前のホーム（旗を外したページ）で流す節・ブロックの newPage。ブロックの最初の文に const newPage = newPageFlagOff; と置く
 const newPageFlagOff = (init = {}) => newPage({ ...init, focusOff: true });
+
+// Battle・タイピングの 3 ページ（GATED_PAGES）だけ旗を外す（Batch 78 段 7）。3 ページの入口の門（<head> の頭。html[data-focus="english"] なら
+// 英単語のホームへ）を、検査の台が <html> から data-focus を外して返すことで止める。ほかのページ（ホーム・学習状況など）は旗のまま。
+// cookie なので Service Worker が取った要求にも効く（Service Worker は止めない）。3 ページを直接開いて中身を見る内部の検査に使う
+// （Battle・タイピングが学習の記録を変えない: 受け入れ 6）。page.goto の前に呼ぶ
+async function gateOff(page) {
+  await page.context().addCookies([{ name: GATE_OFF_COOKIE, value: "off", url: BASE }]);
+}
+const newPageGateOff = (init = {}) => newPage({ ...init, gateOff: true });
 
 // 書き手（js/stats.js の recordRecallSuccess・recordRecallFail）に盤面が渡した引数を、ページの window.__writes に控える（Batch 68 の測りの札 measure と
 // × の細目 detail。書き手の中身はそのまま: 配る stats.js の 2 つの export を、引数を写してから元を呼ぶ関数に包むだけ）。page.goto の前に呼ぶ
@@ -504,8 +527,9 @@ console.log("modulepreload:");
   // 英単語の学習に絞った間（js/focus.js。Batch 78 段 5b）は単語帳（list.html）を開くと英単語のホームへ案内する（location.replace）: 単語帳の先読みは
   // 移る前に出ているので、案内先のホームが出した要求だけを数える（どの文書の要求かは Referer で分ける。移った時刻〔framenavigated〕で分けると、
   // 先読みの走査の要求が移った知らせより先に届くことがあり、数がずれる）
+  // Battle（battle.html）は旗のある配信では入口の門で英単語のホームへ移る（Batch 78 段 7）: Battle の先読みは、Battle だけ旗を外したページ（newPageGateOff）で見る
   for (const pageName of WORD_PAGES) {
-    const page = await newPage();
+    const page = await newPageGateOff();
     const reqs = [];
     page.on("request", (req) => {
       const p = new URL(req.url()).pathname.slice(1);
@@ -558,8 +582,9 @@ console.log("csp:");
 }
 
 console.log("pages:");
+// Battle・タイピングの 3 ページは旗のある配信では入口の門で英単語のホームへ移る（Batch 78 段 7。78.5 の (4b) が見る）: 3 ページの中身は 3 ページだけ旗を外したページ（newPageGateOff）で開いてエラー 0 を見る
 for (const p of ["/index.html", "/battle.html", "/stats.html", "/profile.html", "/privacy.html", "/news.html", "/list.html", "/pro.html", "/tokushoho.html", "/terms.html", "/typing.html", "/typing-game.html"]) {
-  const page = await newPage();
+  const page = await newPageGateOff();
   await page.goto(BASE + p, { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
   check(`${p} エラー0`, page.errors.length === 0, page.errors[0] ?? "");
@@ -1310,6 +1335,7 @@ console.log("news:");
 // タッチ端末 390 の 1 枚（?t=3）／375×560／静的。学習記録は変えない・Pro とはちゃんを出さない・要求は同一オリジン =====
 console.log("typing:");
 {
+  const newPage = newPageGateOff; // Batch 78 段 7: Battle・タイピングの 3 ページは旗のある配信では入口の門で英単語のホームへ移る。この節はその 3 ページを直接開いて中身を見る内部の検査なので、3 ページだけ旗を外したページ（newPageGateOff）で開く（ホームなどほかのページは旗のまま）
   const T = await import("../js/typingDrill.js");
   const B = await import("../scripts/build-typing.mjs");
 
@@ -2255,7 +2281,8 @@ console.log("typing:");
   const newsItemOf = (title) => { const i = newsSrc.indexOf(`title: "${title}"`); return i < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", i), newsSrc.indexOf("},", i)); };
   const firstNews = newsItemOf("タイピング練習に長文");
   // Batch 78 段 6（創業者の決定 3）: 配信では開くと英単語のホームへ転送する（vercel.json。/list.html と同じ形）。転送が受けるパスは sw の先読みに入れない
-  // （入れるとオフラインで開けなくなる。78.5 の (4)）。ページとファイルは残す（この節は検査の台がファイルを直接返す形で流す・アプリの PAGES にもある）。古いお知らせのリンクは履歴として残す
+  // （入れるとオフラインで開けなくなる。78.5 の (4)）。ページとファイルは残す（アプリの PAGES にもある）。旗のある配信ではページの入口の門でも英単語のホームへ移る
+  // （Batch 78 段 7。78.5 の (4b)）ので、この節は 3 ページだけ旗を外したページ（newPageGateOff）で流す。古いお知らせのリンクは履歴として残す
   const typingRedirect = (src) => (JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).redirects ?? []).some((r) => r.source === src && r.destination === "/?from=old" && r.permanent === false);
   check("typing: sitemap には載せない（Batch 78 段 5a）・配信の転送で英単語のホーム（/?from=old）へ・sw の precache に入れない（Batch 78 段 6）・アプリの PAGES・お知らせ（題「タイピング練習に長文」の 1 件。履歴）に typing.html、ci.yml に教材の --check", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing.html") && typingRedirect("/typing.html") && !fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing.html"') && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing.mjs --check"));
   const typingCss = fs.readFileSync(path.join(ROOT, "css", "typing.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -2297,6 +2324,7 @@ console.log("typing:");
 // ページ（1200 の 1 枚・完走と自己ベスト・英語・教材が読めない組・投げる storage・タッチ端末 390・全 20 編の全行・静的）は節の後半 =====
 console.log("typing long:");
 {
+  const newPage = newPageGateOff; // Batch 78 段 7: Battle・タイピングの 3 ページは旗のある配信では入口の門で英単語のホームへ移る。この節はその 3 ページを直接開いて中身を見る内部の検査なので、3 ページだけ旗を外したページ（newPageGateOff）で開く（ホームなどほかのページは旗のまま）
   const T = await import("../js/typingDrill.js");
   const L = await import("../js/typingLong.js");
   const R = await import("../js/romaji.js");
@@ -2576,6 +2604,7 @@ console.log("typing long:");
 // 打鍵は合成の keydown（焦点のある要素に送る。js/typingKeys.js は document で受ける）。合成のキーは「直前の入力」に数えられないので、行の送りで札が動けば CLS に入る。
 // 結果を出す最後の 1 打だけは本物のキー（結果で札の高さが替わるのは入力の直後: SPEC §2.6）。時間は performance.now() に足す __skew で進める（5 秒・止めていた間を待たない）
 {
+  const newPage = newPageGateOff; // Batch 78 段 7: Battle・タイピングの 3 ページは旗のある配信では入口の門で英単語のホームへ移る。この節はその 3 ページを直接開いて中身を見る内部の検査なので、3 ページだけ旗を外したページ（newPageGateOff）で開く（ホームなどほかのページは旗のまま）
   const longFile = path.join(ROOT, "data", "typing-long.json");
   const LONG = fs.existsSync(longFile) ? JSON.parse(fs.readFileSync(longFile, "utf8")).texts : null;
   if (!LONG) check("typing long: ページの検査には教材（data/typing-long.json）が要る", false);
@@ -3726,6 +3755,7 @@ console.log("typing long:");
 // 1200 の 1 枚を使い回す（?t=6&s=2）／タッチ端末 390 の 1 枚（?t=4&s=2。320・360 も）／横向き 844×390・844×340／全文の行数／静的 =====
 console.log("typing game:");
 {
+  const newPage = newPageGateOff; // Batch 78 段 7: Battle・タイピングの 3 ページは旗のある配信では入口の門で英単語のホームへ移る。この節はその 3 ページを直接開いて中身を見る内部の検査なので、3 ページだけ旗を外したページ（newPageGateOff）で開く（ホームなどほかのページは旗のまま）
   const G = await import("../js/typingGame.js");
   const T = await import("../js/typingDrill.js");
   const BG = await import("../scripts/build-typing-game.mjs");
@@ -4876,7 +4906,8 @@ console.log("typing game:");
   const firstNews = newsAt < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", newsAt), newsSrc.indexOf("},", newsAt));
   const typingHtml = fs.readFileSync(path.join(ROOT, "typing.html"), "utf8");
   const typingAbout = typingHtml.match(/<section class="tp-about"[\s\S]*?<\/section>/)?.[0] ?? "";
-  // Batch 78 段 6（創業者の決定 3）: 配信では開くと英単語のホームへ転送する（vercel.json）。sw の先読みに入れない。ページとファイルは残す（節 7.5 の同じ検査の注釈）
+  // Batch 78 段 6（創業者の決定 3）: 配信では開くと英単語のホームへ転送する（vercel.json）。sw の先読みに入れない。ページとファイルは残す。入口の門（段 7）と
+  // 旗を外したページで流すこと（newPageGateOff）は節 7.5 の同じ検査の注釈
   const gameRedirect = (JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).redirects ?? []).some((r) => r.source === "/typing-game.html" && r.destination === "/?from=old" && r.permanent === false);
   check("typing game: sitemap には載せない（Batch 78 段 5a）・配信の転送で英単語のホーム（/?from=old）へ・sw の precache に入れない（Batch 78 段 6）・アプリの PAGES・お知らせ（題「文を次々と打つ、90秒のタイピングゲーム」の 1 件。履歴）に typing-game.html、ci.yml に教材の --check、typing.html の札の下から導線（このページについての外）", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing-game.html") && gameRedirect && !fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing-game.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing-game.html"') && firstNews.includes("./typing-game.html") && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing-game.mjs --check") && /<p class="tp-more">[^<]*<a href="\.\/typing-game\.html">タイピングゲーム<\/a><\/p>/.test(typingHtml) && !typingAbout.includes("typing-game.html"));
   const gameCss = fs.readFileSync(path.join(ROOT, "css", "typing-game.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -7002,6 +7033,7 @@ console.log("hasumi art:");
 // 10 ページ × 390／1200 × light／dark。計測はページ内の getComputedStyle を 1 回でまとめて読み、check は項目ごと。ホームは room.css の透明な帯のまま
 console.log("pages (書斎の皮):");
 {
+  const newPage = newPageGateOff; // Batch 78 段 7: Battle・タイピングの 3 ページは旗のある配信では入口の門で英単語のホームへ移る。この節はその 3 ページを直接開いて中身を見る内部の検査なので、3 ページだけ旗を外したページ（newPageGateOff）で開く（ホームなどほかのページは旗のまま）
   // トークンは span に var() を当てて rgb に解く。比は WCAG の相対輝度（sRGB → 線形、(L1+.05)/(L2+.05)）
   const skin = () => {
     const rgb = (s) => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
@@ -9777,9 +9809,9 @@ console.log("book pace:");
       JSON.stringify({ k1: k1.b.my?.p, missed, back, k2: k2.b.my?.p, err: page.errors[0] }));
     await page.close();
   }
-  // ---- ほかのページに出さない ----
+  // ---- ほかのページに出さない（Battle は入口の門で英単語のホームへ移るので、Battle だけ旗を外したページ newPageGateOff で中身を見る。Batch 78 段 7） ----
   for (const url of ["/battle.html", "/list.html", "/profile.html"]) {
-    const page = await newPage({ storage: s1 });
+    const page = await newPageGateOff({ storage: s1 });
     await page.goto(BASE + url, { waitUntil: "networkidle" });
     await page.waitForTimeout(300);
     const text = await page.evaluate(() => document.body.innerText);
@@ -12076,7 +12108,7 @@ console.log("learning quality:");
   {
     const runs = {};
     for (const url of ["/index.html", "/list.html", "/typing.html", "/profile.html"]) {
-      const page = await newPage({ viewport: { width: 1200, height: 900 } });
+      const page = await newPageGateOff({ viewport: { width: 1200, height: 900 } }); // タイピング練習は入口の門で英単語のホームへ移るので、3 ページだけ旗を外す（Batch 78 段 7）
       await page.addInitScript(() => document.addEventListener("DOMContentLoaded", () => {
         const line = document.querySelector('#feedbackModal #feedbackForm [data-sr-live][role="status"][aria-live="polite"].sr-only');
         if (line) line.dataset.atLoad = "1";
@@ -13306,7 +13338,7 @@ console.log("account emblem（アカウントの紋章）:");
     const battle = JSON.stringify({ rp: 250, wins: 3, losses: 1, draws: 0, currentWinStreak: 1, bestWinStreak: 2 }); // RP 250 = Gold（js/battleConfig.js）。学習のランクとは別
     const pro = { spelldash_test_session: "pro-token", spelldash_test_plan: JSON.stringify({ status: "active", plan_interval: "month", current_period_end: new Date(Date.now() + 20 * 86400000).toISOString(), cancel_at_period_end: false }) };
     for (const [p, extra] of [...PAGES7.map((p) => [p, { spelldash_battle: battle }]), ["/index.html", pro], ["/stats.html", pro]]) {
-      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: seedA(4, extra) });
+      const page = await newPageGateOff({ viewport: { width: 1200, height: 900 }, storage: seedA(4, extra) }); // Battle は入口の門で英単語のホームへ移るので、Battle だけ旗を外して中身を見る（Batch 78 段 7）
       watchReqs(page);
       await page.goto(BASE + p, { waitUntil: "load" });
       await shownIs(page, "中学生");
@@ -13325,7 +13357,7 @@ console.log("account emblem（アカウントの紋章）:");
   {
     const rows = [];
     for (const [p, app] of [...PAGES7.map((p) => [p, false]), ["/index.html", true], ["/stats.html", true], ["/pro.html", true]]) {
-      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_xp: String(xpForLv(15)), spelldash_rank_peak: "4" } });
+      const page = await newPageGateOff({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_xp: String(xpForLv(15)), spelldash_rank_peak: "4" } }); // Battle だけ旗を外す（上と同じ）
       if (app) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
       watchReqs(page);
       await page.goto(BASE + p, { waitUntil: "load" });
@@ -19207,7 +19239,7 @@ console.log("78.5 導線と検索:");
 
   // (1) 12 ページ × 390（スマホ）／1200: ナビは 4 つ（字は省略しない・畳まない）・現在地はそのページだけ・フッターの一文・Pro のリンクなし（受付中でも）・
   //     ナビとフッターに外した面へのリンクなし・連続日数（12 日）を出さない・ログインはヘッダーの右端のまま・横スクロール 0・エラー 0。
-  //     単語帳を開いたときの守り（段 5b）でホームへ移っても、着いたページで同じことを見る
+  //     単語帳を開いたときの守り（段 5b）と Battle・タイピングの入口の門（段 7）でホームへ移っても、着いたページで同じことを見る
   {
     const bad = [];
     let rows = 0;
@@ -19308,38 +19340,164 @@ console.log("78.5 導線と検索:");
     const swSrc = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
     const core = [...(swSrc.match(/const CORE_ASSETS = \[([^\]]*)\]/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
     const precacheMoved = core.filter((p) => moved.some((re) => re.test(p)));
-    const MOVED_PATHS = ["/list.html", "/packs/ngsl01.html", "/typing.html", "/typing-game.html"];
-    check("検索: Service Worker の先読み（sw.js CORE_ASSETS）に、配信の転送が受けるパス（/list.html・/packs/*・/typing.html・/typing-game.html）が無い（オフラインで開けなくなる）・転送の規則は 5 つ・先読みは 10 ページ以上",
-      moved.length === 5 && MOVED_PATHS.every((p) => moved.some((re) => re.test(p))) && core.length >= 10 && precacheMoved.length === 0, JSON.stringify({ precacheMoved, core, moved: moved.length }));
-    // タイピングの 2 ページ（Batch 78 段 6。創業者の決定 3）: 古いお知らせのリンクは履歴として残し、開くと配信の転送で英単語のホームへ案内する。形は /list.html の規則と同じ
-    // （行き先 /?from=old・一時的 permanent: false・ホスト名の条件なし）。この台のサーバーは vercel.json を読まずにファイルを返す（節 7.5・7.55・7.6 は直接開いて流す）。
-    // 規則の当たり方（大小文字・末尾の /・ほかの URL に当たらない）は scripts/test-site-map.mjs が見る
+    const MOVED_PATHS = ["/list.html", "/packs/ngsl01.html", "/typing.html", "/typing-game.html", "/battle.html"];
+    check("検索: Service Worker の先読み（sw.js CORE_ASSETS）に、配信の転送が受けるパス（/list.html・/packs/*・/typing.html・/typing-game.html・/battle.html）が無い（オフラインで開けなくなる）・転送の規則は 6 つ・先読みは 9 ページ以上",
+      moved.length === 6 && MOVED_PATHS.every((p) => moved.some((re) => re.test(p))) && core.length >= 9 && precacheMoved.length === 0, JSON.stringify({ precacheMoved, core, moved: moved.length }));
+    // タイピングの 2 ページ（Batch 78 段 6。創業者の決定 3）と Battle（Batch 78 段 7。創業者の確認 2026-10-29 の 4）: 古いお知らせのリンクは履歴として残し、開くと配信の転送で
+    // 英単語のホームへ案内する。形は /list.html の規則と同じ（行き先 /?from=old・一時的 permanent: false・ホスト名の条件なし）。この台のサーバーは vercel.json を読まずに
+    // ファイルを返す: 3 ページの入口の門（下の (4b)）が止める。規則の当たり方（大小文字・末尾の /・ほかの URL に当たらない）は scripts/test-site-map.mjs が見る
     const ruleOf = (src) => (vercel.redirects ?? []).filter((r) => r.source === src);
     const listRule = ruleOf("/list.html")[0] ?? null;
-    const typingRules = ["/typing.html", "/typing-game.html"].map((src) => ruleOf(src));
-    check("検索: タイピング練習（/typing.html）とタイピングゲーム（/typing-game.html）は配信の転送で英単語のホーム（/?from=old）へ一時的に（permanent: false）・/list.html の規則と同じ形・規則は 1 つずつ",
+    const typingRules = ["/typing.html", "/typing-game.html", "/battle.html"].map((src) => ruleOf(src));
+    check("検索: タイピング練習（/typing.html）・タイピングゲーム（/typing-game.html）・Battle（/battle.html）は配信の転送で英単語のホーム（/?from=old）へ一時的に（permanent: false）・/list.html の規則と同じ形・規則は 1 つずつ",
       !!listRule && typingRules.every((rs) => rs.length === 1 && rs[0].destination === "/?from=old" && rs[0].permanent === false && !rs[0].has && JSON.stringify(Object.keys(rs[0])) === JSON.stringify(Object.keys(listRule))),
       JSON.stringify({ typingRules, listRule }));
-    // 先読みの版: 先読みを変えたので CACHE_NAME を上げる（spelldash-v6）。activate は前の版（v5 はタイピングの 2 ページを先読みした）の保存を消す
+    // 先読みの版: 先読みから Battle を外したので CACHE_NAME を上げる（spelldash-v7）。activate は前の版（v6 は Battle を先読みした）の保存を消す
     const cacheName = swSrc.match(/const CACHE_NAME = "([^"]+)"/)?.[1] ?? null;
     const page = await newPage({ viewport: { width: 1200, height: 900 } });
     await page.goto(BASE + "/news.html", { waitUntil: "load" }); // お知らせは Service Worker を入れない頁: 前の版の保存を先に置く
     await page.evaluate(async () => {
-      const old = await caches.open("spelldash-v5");
-      for (const p of ["/typing.html", "/typing-game.html", "/index.html"]) await old.put(p, new Response("<!doctype html><title>前の版</title>", { headers: { "Content-Type": "text/html" } }));
+      const old = await caches.open("spelldash-v6");
+      for (const p of ["/battle.html", "/typing.html", "/index.html"]) await old.put(p, new Response("<!doctype html><title>前の版</title>", { headers: { "Content-Type": "text/html" } }));
     });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     const ready = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => Boolean(r.active))).catch(() => false);
-    await waitUntil(() => page.evaluate(async () => !(await caches.keys()).includes("spelldash-v5")), 8000);
+    await waitUntil(() => page.evaluate(async () => !(await caches.keys()).includes("spelldash-v6")), 8000);
     const store = await page.evaluate(async () => {
       const keys = await caches.keys();
       const typing = [];
-      for (const k of keys) for (const req of await (await caches.open(k)).keys()) if (/^\/typing(-game)?\.html$/.test(new URL(req.url).pathname)) typing.push(`${k} ${new URL(req.url).pathname}`);
+      for (const k of keys) for (const req of await (await caches.open(k)).keys()) if (/^\/(typing(-game)?|battle)\.html$/.test(new URL(req.url).pathname)) typing.push(`${k} ${new URL(req.url).pathname}`);
       return { keys, typing };
     });
-    check("検索: Service Worker の版は spelldash-v6・入れ替わると前の版（spelldash-v5。タイピングの 2 ページの保存を含む）を消す・新しい版の保存にタイピングの 2 ページは無い・エラー 0",
-      cacheName === "spelldash-v6" && ready && JSON.stringify(store.keys) === JSON.stringify(["spelldash-v6"]) && store.typing.length === 0 && page.errors.length === 0, JSON.stringify({ cacheName, ready, ...store, err: page.errors[0] }));
+    check("検索: Service Worker の版は spelldash-v7・入れ替わると前の版（spelldash-v6。Battle の保存を含む）を消す・新しい版の保存に Battle とタイピングの 2 ページは無い・エラー 0",
+      cacheName === "spelldash-v7" && ready && JSON.stringify(store.keys) === JSON.stringify(["spelldash-v7"]) && store.typing.length === 0 && page.errors.length === 0, JSON.stringify({ cacheName, ready, ...store, err: page.errors[0] }));
     await page.close();
+  }
+
+  // (4b) 入口の門（Batch 78 段 7。創業者の確認 2026-10-29 の 4「Battle・Challenge・タイピングは、直接 URL でも英単語ホームへ」）: Battle・タイピング練習・
+  //      タイピングゲームは、検索の部分や # が付いた直接 URL で開いても英単語のホーム /?from=old に着き、1 行「英単語の学習にまとめました。」を出す。
+  //      配信の転送（vercel.json）が効かないアプリの中とこの台でも、ページの入口（<head> の頭の門 #focusGate。Battle の js は変えない）が止める:
+  //      ページの入口の module（Battle・タイピングの js）は 1 つも動かない・保存の鍵（Battle の記録・タイピングの自己ベスト・学習の記録・保存した遊び方）は
+  //      値も変えず、Battle・タイピングの鍵を足さない・古いページを履歴に残さない（戻るとお知らせ）。門は旗（html[data-focus]。js/focus.js FOCUS_ENGLISH）に従い、
+  //      旗を外すと 3 ページはそのまま開く（内部の検査: 7.5・7.55・7.6・21.5・21.6 など）
+  {
+    const GATE_ENTRY = /\/js\/(battleView|typingPage|typingGamePage)\.js$/;
+    const markEntry = async (route) => {
+      const res = await route.fetch();
+      const name = new URL(route.request().url()).pathname;
+      const body = `sessionStorage.setItem("__gateRan", (sessionStorage.getItem("__gateRan") || "") + ${JSON.stringify(name + " ")});\n` + (await res.text());
+      await route.fulfill({ response: res, body, headers: { ...res.headers(), "content-type": "text/javascript" } });
+    };
+    // 種は 1 回だけ入れる（開き直しのたびに入れ直すと、ページが書き換えた値を見落とす）
+    const gatePage = async (seed, { native = false, off = false } = {}) => {
+      const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: "block" });
+      const page = await ctx.newPage();
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      if (off) await gateOff(page);
+      await page.addInitScript(([s, nat]) => {
+        if (nat) window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) };
+        if (sessionStorage.getItem("spelldash_test_seeded")) return;
+        sessionStorage.setItem("spelldash_test_seeded", "1");
+        for (const [k, v] of Object.entries({ spelldash_schema_version: "7", spelldash_onboarded: "1", ...s })) localStorage.setItem(k, v);
+      }, [seed, native]);
+      await page.route(GATE_ENTRY, markEntry);
+      return page;
+    };
+    const closeGate = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+    const GATE_SEED = {
+      ...RETURNING,
+      spelldash_battle: JSON.stringify({ rp: 250, wins: 3, losses: 1, draws: 0, currentWinStreak: 1, bestWinStreak: 2 }),
+      spelldash_typing_practice: JSON.stringify({ best: { en: { cpm: 180 } } }), spelldash_typing_game: JSON.stringify({ best: { normal: { got: 9 } } }),
+      spelldash_typing_kind: "ja", spelldash_typing_game_course: "long", spelldash_mode: "challenge",
+      spelldash_word_stats: JSON.stringify({ "english-go": { playCount: 2, correctCount: 2, ls: 2, lsAt: Date.now() - 86400000 } })
+    };
+    const noteCount = () => [...document.querySelectorAll("body *")].filter((el) => el.children.length === 0 && el.textContent.includes("英単語の学習にまとめました。") && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden").length;
+    const GATE_URLS = ["/battle.html", "/battle.html?t=4", "/battle.html?t=4#arena", "/battle.html#result", "/typing.html", "/typing.html?kind=ja", "/typing.html#long", "/typing.html?t=2&kind=long#long", "/typing-game.html", "/typing-game.html?course=long", "/typing-game.html?course=short#x"];
+    const rows = [];
+    for (const u of GATE_URLS) {
+      const page = await gatePage(GATE_SEED);
+      await page.goto(BASE + "/news.html", { waitUntil: "load" });
+      await page.goto(BASE + u, { waitUntil: "load" }).catch(() => {});
+      await page.waitForURL((url) => url.pathname === "/", { timeout: 8000 }).catch(() => {});
+      await page.waitForLoadState("networkidle");
+      await page.waitForTimeout(300);
+      const at = await page.evaluate(() => ({
+        opened: performance.getEntriesByType("navigation")[0]?.name ?? location.href, path: location.pathname, hash: location.hash,
+        ran: sessionStorage.getItem("__gateRan") ?? "", store: Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)]))
+      }));
+      at.note = await page.evaluate(noteCount);
+      const changed = Object.keys(GATE_SEED).filter((k) => at.store[k] !== GATE_SEED[k]);
+      const added = Object.keys(at.store).filter((k) => !(k in GATE_SEED) && /battle|typing|tgame/.test(k));
+      await page.goBack({ waitUntil: "load" }).catch(() => {});
+      const opened = new URL(at.opened);
+      rows.push({ u, opened: opened.pathname + opened.search, path: at.path, hash: at.hash, note: at.note, ran: at.ran.trim(), changed, added, back: new URL(page.url()).pathname, err: page.errors[0] ?? null });
+      await closeGate(page);
+    }
+    const bad = rows.filter((r) => r.opened !== "/?from=old" || r.path !== "/" || r.hash !== "" || r.note !== 1 || r.ran || r.changed.length || r.added.length || r.back !== "/news.html" || r.err);
+    check(`入口の門: Battle・タイピング練習・タイピングゲームを直接 URL（${GATE_URLS.length} 通り。?t=・?kind=・?course= と # も）で開くと英単語のホーム /?from=old に着き 1 行「英単語の学習にまとめました。」・入口の module（Battle・タイピングの js）は動かない・保存の鍵は値も変えず Battle・タイピングの鍵を足さない・古いページは履歴に残さない（戻るとお知らせ）・エラー 0`,
+      rows.length === GATE_URLS.length && bad.length === 0, JSON.stringify(bad.length ? bad.slice(0, 3) : rows.slice(0, 1)));
+
+    // 古いお知らせのリンク（タイピング練習・タイピングゲーム）は履歴として残す（js/news.js は書き換えない）。押すと英単語のホーム /?from=old に着く
+    {
+      const page = await gatePage(GATE_SEED);
+      await page.goto(BASE + "/news.html", { waitUntil: "networkidle" });
+      const links = await page.evaluate(() => [...document.querySelectorAll('#newsList a[href]')].map((a) => a.getAttribute("href")).filter((h) => /typing(-game)?\.html/.test(h)));
+      // 古いお知らせは畳まれていることがあるので、リンクの要素を押す（見えているかは問わない: 履歴として残すリンクの行き先を見る）
+      await Promise.all([page.waitForURL((url) => url.pathname === "/", { timeout: 8000 }).catch(() => {}), page.evaluate(() => document.querySelector('#newsList a[href="./typing-game.html"]')?.click())]);
+      await page.waitForLoadState("networkidle");
+      const opened = new URL(await page.evaluate(() => performance.getEntriesByType("navigation")[0]?.name ?? location.href));
+      const ran = await page.evaluate(() => sessionStorage.getItem("__gateRan") ?? "");
+      check("入口の門: 古いお知らせのタイピング練習・タイピングゲームへのリンクは履歴のまま残り（4 本以上）、押すと英単語のホーム /?from=old に着く・タイピングの js は動かない・エラー 0",
+        links.filter((h) => h === "./typing.html").length >= 3 && links.includes("./typing-game.html") && opened.pathname + opened.search === "/?from=old" && !ran && page.errors.length === 0,
+        JSON.stringify({ links, opened: opened.href, ran, err: page.errors[0] }));
+      await closeGate(page);
+    }
+
+    // アプリの中（Capacitor の偽装。配信の転送が効かない）でも同じ: Battle を開くとアプリのホーム（native-app）に着く
+    {
+      const page = await gatePage(GATE_SEED, { native: true });
+      await page.goto(BASE + "/battle.html", { waitUntil: "load" }).catch(() => {});
+      await page.waitForURL((url) => url.pathname === "/", { timeout: 8000 }).catch(() => {});
+      await page.waitForLoadState("networkidle");
+      const app = await page.evaluate(() => ({ path: location.pathname, native: document.documentElement.classList.contains("native-app"), ran: sessionStorage.getItem("__gateRan") ?? "", battle: localStorage.getItem("spelldash_battle") }));
+      check("入口の門: アプリの中（配信の転送が効かない）でも Battle を開くとアプリの英単語のホームに着く・Battle の js は動かない・Battle の記録はそのまま・エラー 0",
+        app.path === "/" && app.native && !app.ran && app.battle === GATE_SEED.spelldash_battle && page.errors.length === 0, JSON.stringify({ app, err: page.errors[0] }));
+      await closeGate(page);
+    }
+
+    // 旗を外すと（3 ページの <html data-focus> を外す。js/focus.js FOCUS_ENGLISH と同じ旗）門は止めない: 3 ページがそのまま開き、入口の module が動く
+    {
+      const out = [];
+      for (const [u, sel] of [["/battle.html", "#startBattle"], ["/typing.html", "#typingBoard"], ["/typing-game.html", "#tgBoard"]]) {
+        const page = await gatePage(GATE_SEED, { off: true });
+        await page.goto(BASE + u, { waitUntil: "networkidle" });
+        await page.waitForTimeout(300);
+        out.push({ u, ...(await page.evaluate((s) => ({ path: location.pathname, shown: !!document.querySelector(s)?.getClientRects().length, ran: (sessionStorage.getItem("__gateRan") ?? "").trim(), focus: document.documentElement.dataset.focus ?? null }), sel)), err: page.errors[0] ?? null });
+        await closeGate(page);
+      }
+      const ENTRY = { "/battle.html": "/js/battleView.js", "/typing.html": "/js/typingPage.js", "/typing-game.html": "/js/typingGamePage.js" };
+      check("入口の門: 旗を外したページ（3 ページの html[data-focus] なし）では Battle・タイピング練習・タイピングゲームがそのまま開き、入口の module が動く（門は旗に従う）・エラー 0",
+        out.every((r) => r.path === r.u && r.shown && r.ran === ENTRY[r.u] && r.focus === null && !r.err), JSON.stringify(out));
+    }
+
+    // 静的な決まり: 3 ページの <html> の旗は js/focus.js FOCUS_ENGLISH と同じ（index.html・profile.html と同じ旗）。門（<script id="focusGate">）は <head> の最初の
+    // <script> で、どの <link>（CSS・先読み）より前。3 ページで同じ文。行き先は js/focus.js MOVED_URL
+    {
+      const focusSrc = fs.readFileSync(path.join(ROOT, "js", "focus.js"), "utf8");
+      const flagOn = /export const FOCUS_ENGLISH = true;/.test(focusSrc);
+      const movedUrl = focusSrc.includes('export const MOVED_PARAM = "from";') && focusSrc.includes('export const MOVED_VALUE = "old";') && focusSrc.includes("export const MOVED_URL = `/?${MOVED_PARAM}=${MOVED_VALUE}`;") ? "/?from=old" : null;
+      const gates = ["battle.html", "typing.html", "typing-game.html"].map((f) => {
+        const html = fs.readFileSync(path.join(ROOT, f), "utf8");
+        const head = html.slice(0, html.indexOf("</head>"));
+        const tag = html.match(/^<html\b[^>]*>/m)?.[0] ?? "";
+        const gate = head.match(/<script id="focusGate">[\s\S]*?<\/script>/)?.[0] ?? null;
+        return { f, flag: /\sdata-focus="english"/.test(tag), gate, first: gate !== null && head.indexOf("<script") === head.indexOf(gate), beforeLinks: gate !== null && (head.indexOf("<link") < 0 || head.indexOf(gate) < head.indexOf("<link")) };
+      });
+      check("入口の門（静的）: Battle・タイピングの 3 ページの <html data-focus> は js/focus.js FOCUS_ENGLISH と同じ・門 #focusGate は <head> の最初の <script> でどの <link> より前・3 ページで同じ文・行き先は MOVED_URL（/?from=old）",
+        gates.every((g) => g.flag === flagOn && g.gate && g.first && g.beforeLinks && g.gate === gates[0].gate && g.gate.includes(JSON.stringify(movedUrl ?? "?"))) && movedUrl === "/?from=old",
+        JSON.stringify(gates.map((g) => ({ ...g, gate: g.gate?.slice(0, 80) ?? null }))));
+    }
   }
 
   // (5) 古い画面の URL: 分野パックのページ（NGSL の巻も）と一覧はページの守りで英単語のホーム（/?from=old）へ。履歴に古いページを残さない（location.replace）。
@@ -19418,7 +19576,7 @@ console.log("78.5 導線と検索:");
   }
 
   // (8) 出典（受け入れ 17）: 規約の 5・6 は学習状況の「教材について」（stats.html#vocabSource）を指す・最終更新日 2026年10月28日・リンクで学習状況の「教材について」が見える。
-  //     Battle とタイピングは直接開けば今のまま動く（ナビは同じ 4 つ・現在地なし。中身は節 7.5・7.6・Battle の節が見る）。
+  //     Battle とタイピングは開くと英単語のホームへ移る（入口の門。Batch 78 段 7。中身は 3 ページだけ旗を外したページで節 7.5・7.6・8.7・8.9・78.3 が見る）。
   //     公開していない教材のデータ（data/ は配信される: data/packs の TSL・BSL・NAWL の巻と data/sources の元のリスト）の出典とライセンスは、規約の 6 の
   //     「公開していない教材のデータ」（#dataSources）に出す（創業者の決定 2026-10-28。data/sources のどのリストの名前も載る・CC BY-SA 4.0 へのリンク・配布元へのリンク）
   {
@@ -20563,6 +20721,69 @@ console.log("home and old URLs (78.6):");
     await closeCtx(page);
   }
 
+  // (5b) Challenge の入口（Batch 78 段 7。創業者の確認 2026-10-29 の 4）: Challenge（と Daily Dash）を始める入口はどれも英単語のホームか中心の学習に着く。
+  //      保存した遊び方 spelldash_mode=challenge のまま、時間を縮める ?t=・#play・古い URL のしるし ?from=old・?set= で開いても: ホームに Challenge・Daily の
+  //      入口（ほかの遊び方の行・Daily の札・「Challenge」「チャレンジ」の見える押し物）が無い・Enter は中心の学習（Study の盤面・Challenge の時計なし）・
+  //      保存した値は challenge のまま（消さない）。中心の学習の回の終わりのパネルにも Challenge のボタンが無い（前の Study の終わりの「Challenge（60秒）」は出ない）
+  {
+    const CH_URLS = ["/", "/index.html", "/?t=5", "/#play", "/?from=old", "/index.html?set=3", "/?t=5#play"];
+    const rows = [];
+    for (const u of CH_URLS) {
+      const page = await homePage({ spelldash_mode: "challenge", spelldash_word_stats: JSON.stringify(stateOf(vocab.order.slice(0, 3), { ls: 2 })) });
+      await page.goto(BASE + u, { waitUntil: "networkidle" });
+      await waitUntil(async () => (await homeView(page)).ready, 6000);
+      const entries = await page.evaluate(() => {
+        const vis = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden]");
+        return [...document.querySelectorAll("button, a[href], [role=button], #playModes, #dailyCard")].filter(vis)
+          .filter((el) => /^(playModes|dailyCard)$/.test(el.id) || /Challenge|チャレンジ|Daily/i.test(el.textContent) || /mode=|challenge|daily/i.test(el.getAttribute("href") ?? "") || ["challenge", "daily"].includes(el.dataset.mode))
+          .map((el) => el.id || el.textContent.trim().slice(0, 20));
+      });
+      await page.evaluate(() => document.activeElement?.blur());
+      await page.keyboard.press("Enter");
+      await page.waitForURL(/learn=/, { timeout: 8000 }).catch(() => {});
+      await waitWord(page);
+      const s = await page.evaluate(() => ({
+        url: location.pathname + location.search, study: document.body.classList.contains("mode-study"), timed: document.body.classList.contains("is-playing"),
+        mode: localStorage.getItem("spelldash_mode"), label: document.getElementById("score")?.previousElementSibling?.textContent ?? null
+      }));
+      rows.push({ u, entries, ...s, errs: page.errors.length });
+      await closeCtx(page);
+    }
+    const bad = rows.filter((r) => r.entries.length || !/^\/\?learn=(new|unsure|learned)$/.test(r.url) || !r.study || r.timed || r.mode !== "challenge" || r.errs);
+    check(`78.6 Challenge の入口（保存した遊び方 challenge × ${CH_URLS.length} 通りの URL: ?t=・#play・?from=old・?set=）: ホームに Challenge・Daily の入口が無い・Enter は中心の学習（Study の盤面・時計なし）・spelldash_mode は challenge のまま・エラー 0`,
+      rows.length === CH_URLS.length && bad.length === 0, JSON.stringify(bad.length ? bad.slice(0, 3) : rows.slice(0, 1)));
+
+    // 中心の学習の回の終わり（あやふや 1 語の回を終える）: パネルに Challenge のボタン・文が無い（#setChallenge なし）。保存した遊び方は challenge のまま
+    const unsureId = vocab.order[300];
+    const page = await homePage({ spelldash_mode: "challenge", spelldash_word_stats: JSON.stringify(stateOf([unsureId], { ls: 1, lsAt: Date.now() - 2 * DAY })) });
+    await page.goto(BASE + "/?learn=unsure", { waitUntil: "networkidle" });
+    await waitWord(page);
+    await page.focus("#input");
+    for (const ch of String(unsureId).replace(/^english-/, "")) await page.press("#input", ch);
+    await waitUntil(() => page.evaluate(() => !document.getElementById("resultPanel").hidden), 8000);
+    const end = await page.evaluate(() => {
+      const panel = document.getElementById("resultPanel");
+      return { text: panel.innerText.replace(/\s+/g, " ").trim(), setChallenge: !!document.getElementById("setChallenge"), buttons: [...panel.querySelectorAll("button, a")].map((b) => b.textContent.trim()), mode: localStorage.getItem("spelldash_mode") };
+    });
+    check("78.6 Challenge の入口: 中心の学習の回の終わりのパネルに Challenge のボタン・文が無い（「Challenge（60秒）」なし）・保存した遊び方は challenge のまま・エラー 0",
+      end.text.length > 0 && !end.setChallenge && !/Challenge|チャレンジ|Daily/i.test(end.text) && end.mode === "challenge" && page.errors.length === 0, JSON.stringify({ ...end, err: page.errors[0] }));
+    await closeCtx(page);
+
+    // ほかのタブで記録が替わって中心の学習の回を終えた（「この回は終えた」）後の Enter でも、中心でない回（Study の 60 秒・Challenge）を始めない
+    const rp = await homePage({ spelldash_mode: "challenge" });
+    await rp.addInitScript(() => { window.__starts = []; addEventListener("spelldash:game-start", (e) => window.__starts.push(e.detail?.mode ?? null)); });
+    await rp.goto(BASE + "/?learn=new", { waitUntil: "networkidle" });
+    await waitWord(rp);
+    await rp.evaluate(() => window.dispatchEvent(new CustomEvent("spelldash:records-replaced")));
+    await waitUntil(() => rp.evaluate(() => !document.getElementById("resultPanel").hidden), 4000);
+    await rp.keyboard.press("Enter");
+    await rp.waitForTimeout(600);
+    const rep = await rp.evaluate(() => ({ starts: window.__starts.slice(), panel: document.getElementById("resultPanel").innerText.replace(/\s+/g, " ").trim(), setChallenge: !!document.getElementById("setChallenge"), mode: localStorage.getItem("spelldash_mode") }));
+    check("78.6 Challenge の入口: ほかのタブで記録が替わって回を終えた後の Enter でも新しい回を始めない（Study・Challenge とも）・パネルは「この回は終えた」・保存した遊び方は challenge のまま・エラー 0",
+      rep.starts.length === 1 && rep.panel.includes("この回は終えた") && !rep.setChallenge && rep.mode === "challenge" && rp.errors.length === 0, JSON.stringify({ ...rep, err: rp.errors[0] }));
+    await closeCtx(rp);
+  }
+
   // (6) 設定: 出題の設定（今日のセットの長さ・音で出題）を出さない。値は残す。テーマ・発音・バックアップ・アカウントは出る。
   //     ログイン中: ランキング表示名（Daily Dash のランキングにだけ効く）も出さない。値（spelldash_display_name）は残す（Batch 78 段 6。反証 rv5 M1）
   {
@@ -20865,10 +21086,11 @@ console.log("learn modes (78.3):");
   const rec = (over = {}) => ({ playCount: 2, correctCount: 1, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 1, mastered: false, masteredAt: null, lastPlayed: isoAgo(3), nextReviewAt: isoAgo(-2), lastRecallFailAt: null, lastRecallSuccessAt: isoAgo(3), dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: null, ...over });
   const learnedUpTo = (ids) => Object.fromEntries(ids.map((id) => [id, rec({ ls: 2 })]));
   // flagOff: 英単語の学習に絞る旗を外したページ（focusOff。Batch 78 段 5b。前のホームの Challenge・?words= の Study を開く）
-  async function learnPage(storage, { viewport = { width: 1200, height: 900 }, mobile = false, time = null, flagOff = false } = {}) {
+  async function learnPage(storage, { viewport = { width: 1200, height: 900 }, mobile = false, time = null, flagOff = false, gate = false } = {}) {
     const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
     const page = await ctx.newPage();
     if (flagOff) await focusOff(page);
+    else if (gate) await gateOff(page); // Battle・タイピングの 3 ページだけ旗を外す（入口の門を止める。Batch 78 段 7）
     page.errors = [];
     page.on("pageerror", (e) => page.errors.push(e.message));
     if (time) await page.clock.setSystemTime(new Date(time));
@@ -21176,8 +21398,9 @@ console.log("learn modes (78.3):");
     const tw = await tableOf(pw);
     check("78.3 中心でない回: ?words= の Study の答え（自力正解・答え表示）で状態の欄は変わらない・書き手 0 回", played(tw) >= 1 && keep(tw) && (await learnWrites(pw)).length === 0, JSON.stringify({ played: played(tw) }));
     await pw.context().close();
-    // Battle（4 秒。tests の作法どおり Battle のロジックは触らない）
-    const pb = await learnPage({ spelldash_word_stats: JSON.stringify(seed) });
+    // Battle（4 秒。tests の作法どおり Battle のロジックは触らない）。Battle は旗のある配信では入口の門で英単語のホームへ移る（Batch 78 段 7）ので、
+    // Battle だけ旗を外したページで開く（内部の検査: Battle の答えが中心の学習の状態を変えない。受け入れ 6）
+    const pb = await learnPage({ spelldash_word_stats: JSON.stringify(seed) }, { gate: true });
     await pb.goto(BASE + "/battle.html?t=4", { waitUntil: "networkidle" });
     await pb.selectOption("#battleCategory", "highschool").catch(() => {});
     await pb.click("#startBattle");
@@ -21470,6 +21693,7 @@ console.log("funnel log:");
 // ===== 21.5 タイピング練習から来た端末（first_visit の source に typing*。SQL は変えない。docs/SQL_FUNNEL.md 5） =====
 console.log("typing funnel:");
 {
+  const newPage = newPageGateOff; // Batch 78 段 7: Battle・タイピングの 3 ページは旗のある配信では入口の門で英単語のホームへ移る。この節はその 3 ページを直接開いて中身を見る内部の検査なので、3 ページだけ旗を外したページ（newPageGateOff）で開く（ホームなどほかのページは旗のまま）
   const cloud = createCloud({});
   const rows = () => cloud.rows("funnel_events");
   const of = (device, src) => rows().filter((r) => r.device_id === device && r.step === "first_visit" && (src === undefined || r.source === src));
@@ -21698,6 +21922,7 @@ console.log("typing funnel:");
 // ===== 21.6 タイピングゲームから来た端末（first_visit の source に tgame*。typing.html から来た端末は typing_game。SQL は変えない。docs/SQL_FUNNEL.md 5） =====
 console.log("typing game funnel:");
 {
+  const newPage = newPageGateOff; // Batch 78 段 7: Battle・タイピングの 3 ページは旗のある配信では入口の門で英単語のホームへ移る。この節はその 3 ページを直接開いて中身を見る内部の検査なので、3 ページだけ旗を外したページ（newPageGateOff）で開く（ホームなどほかのページは旗のまま）
   const cloud = createCloud({});
   const rows = () => cloud.rows("funnel_events");
   const of = (device, src) => rows().filter((r) => r.device_id === device && r.step === "first_visit" && (src === undefined || r.source === src));
