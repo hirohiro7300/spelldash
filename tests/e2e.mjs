@@ -2274,6 +2274,7 @@ console.log("typing:");
   const typingCss = fs.readFileSync(path.join(ROOT, "css", "typing.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   check("typing: typing.css は太さを longhand で書き、新しい animation／transition を持たない", !/text-decoration\s*:[^;]*\d+px/.test(typingCss) && !/\b(animation|transition)(-[a-z]+)?\s*:/.test(typingCss) && !typingCss.includes("@keyframes") && typingCss.includes("text-decoration-thickness: 2px"));
   // Batch 65 P1: 開く種類は head のインラインの 1 行（外のファイルを足さない・CSP の script-src は今のまま）で html[data-typing-kind] に置く。canonical・og:url はパラメータなしの 1 つ、sitemap に ?kind= を足さない
+  // （外のファイルは、全ページの頭の最初の記録の見張り js/areaGuard.js だけ。Batch 78-7）
   {
     const head = typingHtml.slice(0, typingHtml.indexOf("</head>"));
     const kindLine = head.match(/<script>\(\(\) => \{ const K = \["en","ja","long"\];[^<]*<\/script>/)?.[0] ?? "";
@@ -2282,7 +2283,7 @@ console.log("typing:");
     check("typing（P1）: head のインラインの 1 行が ?kind=・#long・spelldash_typing_kind を try の中で読んで html[data-typing-kind] に置く（外の script を足さない）、canonical と og:url は 1 つでパラメータなし、sitemap に ?kind= が無い、CSP の script-src は 'self' 'unsafe-inline' https://esm.sh のまま",
       kindLine.includes('get("kind")') && kindLine.includes('location.hash === "#long"') && kindLine.includes('localStorage.getItem("spelldash_typing_kind")') && kindLine.includes("try {") && kindLine.includes("document.documentElement.dataset.typingKind = k || \"en\"") &&
       (typingHtml.match(/rel="canonical"/g) ?? []).length === 1 && (typingHtml.match(/property="og:url"/g) ?? []).length === 1 && !/canonical"[^>]*\?kind/.test(typingHtml) &&
-      !sitemap.includes("kind=") && !sitemap.includes("#long") && csp.includes("script-src 'self' 'unsafe-inline' https://esm.sh;") && !/<script[^>]+src=/.test(head),
+      !sitemap.includes("kind=") && !sitemap.includes("#long") && csp.includes("script-src 'self' 'unsafe-inline' https://esm.sh;") && !/<script[^>]+src=(?!"\/js\/areaGuard\.js")/.test(head),
       kindLine.slice(0, 120));
   }
   // PR #166 のレビュー 6: 開く種類の読む順と値は head の inline の 1 行（CSP・速さのため残す）と js（typingPage.js の KINDS・KIND_KEY と js/typingKeys.js の
@@ -5268,9 +5269,12 @@ console.log("study (room):");
       const K = "spelldash_word_stats", C = "spelldash_word_stats_corrupt", DAY = 86400000, MAX = 512 * 1024;
       const realSet = Storage.prototype.setItem;
       let quota = Infinity;
+      // 人の記録の鍵は領域の鍵（sd2.<領域>.<名前>）に置かれる（js/areaGuard.js）: 書き直す鍵の今の値は、その物理の鍵で除く
+      const physOf = (key) => (window.SpellDashArea?.isPersonKey(key) ? `sd2.${SpellDashArea.area}.${key.slice("spelldash_".length)}` : key);
       Storage.prototype.setItem = function (key, value) {
         let total = 0;
-        for (let i = 0; i < this.length; i++) { const k = this.key(i); if (k !== key) total += k.length + this.getItem(k).length; }
+        const phys = physOf(key);
+        for (let i = 0; i < this.length; i++) { const k = this.key(i); if (k !== key && k !== phys) total += k.length + this.getItem(k).length; }
         if (total + key.length + String(value).length > quota) throw new DOMException("quota", "QuotaExceededError");
         return realSet.call(this, key, String(value));
       };
@@ -16591,6 +16595,7 @@ console.log("native app:");
   check("アプリ: PAGES は 11 ページ（terms.html と切り替えの画面 switch.html はある・pro.html と tokushoho.html は無い）、PAGES のファイルはどれもある", APP_PAGES.length === 11 && APP_PAGES.includes("terms.html") && APP_PAGES.includes("switch.html") && WEB_ONLY.every((p) => !APP_PAGES.includes(p)) && Object.values(appHtml).every((t) => t !== null), JSON.stringify({ pages: APP_PAGES, missing: APP_PAGES.filter((p) => appHtml[p] === null) }));
   const footerOut = [];
   for (const [p, t] of Object.entries(appHtml)) {
+    if (p === "switch.html") continue; // 切り替えの画面（Batch 78-7）はナビもフッターも持たない（学習の部品を読まない短いページ）
     const nav = /<nav class="site-footer__nav"[\s\S]*?<\/nav>/.exec(t ?? "")?.[0] ?? "";
     if (!nav) footerOut.push(`${p}: フッターが無い`);
     for (const m of nav.matchAll(/href="(?:\.\/|\/)([a-z][\w-]*\.html)/g)) if (!APP_PAGES.includes(m[1]) && !WEB_ONLY.includes(m[1])) footerOut.push(`${p} → ${m[1]}`);
@@ -19333,25 +19338,25 @@ console.log("78.5 導線と検索:");
     check("検索: タイピング練習（/typing.html）とタイピングゲーム（/typing-game.html）は配信の転送で英単語のホーム（/?from=old）へ一時的に（permanent: false）・/list.html の規則と同じ形・規則は 1 つずつ",
       !!listRule && typingRules.every((rs) => rs.length === 1 && rs[0].destination === "/?from=old" && rs[0].permanent === false && !rs[0].has && JSON.stringify(Object.keys(rs[0])) === JSON.stringify(Object.keys(listRule))),
       JSON.stringify({ typingRules, listRule }));
-    // 先読みの版: 先読みを変えたので CACHE_NAME を上げる（spelldash-v6）。activate は前の版（v5 はタイピングの 2 ページを先読みした）の保存を消す
+    // 先読みの版: 先読みを変えたので CACHE_NAME を上げる（spelldash-v7。Batch 78-7 で切り替えの画面と記録の見張りを足した）。activate は前の版（v6）の保存を消す
     const cacheName = swSrc.match(/const CACHE_NAME = "([^"]+)"/)?.[1] ?? null;
     const page = await newPage({ viewport: { width: 1200, height: 900 } });
     await page.goto(BASE + "/news.html", { waitUntil: "load" }); // お知らせは Service Worker を入れない頁: 前の版の保存を先に置く
     await page.evaluate(async () => {
-      const old = await caches.open("spelldash-v5");
+      const old = await caches.open("spelldash-v6");
       for (const p of ["/typing.html", "/typing-game.html", "/index.html"]) await old.put(p, new Response("<!doctype html><title>前の版</title>", { headers: { "Content-Type": "text/html" } }));
     });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
     const ready = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => Boolean(r.active))).catch(() => false);
-    await waitUntil(() => page.evaluate(async () => !(await caches.keys()).includes("spelldash-v5")), 8000);
+    await waitUntil(() => page.evaluate(async () => !(await caches.keys()).includes("spelldash-v6")), 8000);
     const store = await page.evaluate(async () => {
       const keys = await caches.keys();
       const typing = [];
       for (const k of keys) for (const req of await (await caches.open(k)).keys()) if (/^\/typing(-game)?\.html$/.test(new URL(req.url).pathname)) typing.push(`${k} ${new URL(req.url).pathname}`);
       return { keys, typing };
     });
-    check("検索: Service Worker の版は spelldash-v6・入れ替わると前の版（spelldash-v5。タイピングの 2 ページの保存を含む）を消す・新しい版の保存にタイピングの 2 ページは無い・エラー 0",
-      cacheName === "spelldash-v6" && ready && JSON.stringify(store.keys) === JSON.stringify(["spelldash-v6"]) && store.typing.length === 0 && page.errors.length === 0, JSON.stringify({ cacheName, ready, ...store, err: page.errors[0] }));
+    check("検索: Service Worker の版は spelldash-v7・入れ替わると前の版（spelldash-v6。タイピングの 2 ページの保存を置いた）を消す・新しい版の保存にタイピングの 2 ページは無い・エラー 0",
+      cacheName === "spelldash-v7" && ready && JSON.stringify(store.keys) === JSON.stringify(["spelldash-v7"]) && store.typing.length === 0 && page.errors.length === 0, JSON.stringify({ cacheName, ready, ...store, err: page.errors[0] }));
     await page.close();
   }
 
