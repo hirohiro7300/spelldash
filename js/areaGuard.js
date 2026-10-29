@@ -155,9 +155,10 @@
   // 送ってよいか（同期の頭で使う。切り替えの途中は drain の段でも false）
   const stillMine = () => !stopped && !leaving && pageMarker !== null && get(AREA_KEY) === pageMarker && get(SWITCH_KEY) === null && sessionArea === pageArea;
 
+  // 戻り先は # の後ろに置く（? の後ろはサーバーへ送られ、Service Worker の保存の鍵にも残る。ログインのリンクの戻り #access_token=… を含みうる）
   function switchUrl() {
     const here = root.location.pathname + root.location.search + root.location.hash;
-    return SWITCH_PATH + "?back=" + encodeURIComponent(here);
+    return SWITCH_PATH + "#back=" + encodeURIComponent(here);
   }
   // ページを止めて切り替えの画面へ（読み込みの頭で使う）
   function stopAndSwitch() {
@@ -450,15 +451,19 @@
       // 文を出せなくても止まっている
     }
   }
-  // 書き出す記録（元の名前）: 移行の前なら旧い場所の記録。移行の後なら、印の領域の記録と端末の鍵
+  // 書き出す記録（元の名前）: 移行の前なら旧い場所の記録。移行の途中なら、残った旧い鍵に移した先の鍵を重ねた物。移行の後なら、index が ls を指す
+  // 領域の記録と端末の鍵（index が idb を指す領域の localStorage の残りは途中の物なので書き出さない。js/areaSwitch.js exportRecords と同じ決まり）
   function recordsForExport() {
     const data = {};
     if (!ls) return data;
     try {
-      const area = parseMarker(get(AREA_KEY))?.area ?? null;
+      const index = readJson(get(INDEX_KEY)) || {};
+      const moving = readJson(get(MIGRATING_KEY));
+      const after = !moving && (get(MIGRATED_KEY) !== null || Object.keys(index).some((a) => index[a] && index[a].at === "ls"));
+      const area = after ? Object.keys(index).find((a) => index[a] && index[a].at === "ls") || null : moving && typeof moving.area === "string" ? moving.area : null;
       for (const key of allKeys()) {
         if (area && key.startsWith(areaPrefix(area))) data[PREFIX + key.slice(areaPrefix(area).length)] = get(key);
-        else if (key.startsWith(PREFIX) && !key.startsWith(TEST_PREFIX) && !(key === OWNER_KEY && get(key) === OWNER_MOVED) && (!area || !isPersonKey(key))) data[key] = get(key);
+        else if (key.startsWith(PREFIX) && !key.startsWith(TEST_PREFIX) && !(key === OWNER_KEY && get(key) === OWNER_MOVED) && (!after || !isPersonKey(key)) && !(key in data)) data[key] = get(key);
       }
       delete data[PROBE_KEY];
     } catch {

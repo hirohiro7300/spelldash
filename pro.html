@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="./css/pro.css" />
   <meta name="theme-color" content="#1A2137" />
   <!-- 記録の見張り（js/areaGuard.js。人ごとの保存の領域）: ほかのどの script より先に同期で読む。読めないときは切り替えの画面へ（共用の場所で動かさない） -->
-  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html?back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
 
 

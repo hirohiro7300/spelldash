@@ -35,6 +35,7 @@
     <section id="switchRecovery" data-reason="" hidden aria-labelledby="switchLead">
       <h1 id="switchLead">この端末に記録を安全に保存できなかったため、切り替えられません。</h1>
       <p id="switchQuota" hidden><strong>この端末の保存の空きが足りない。</strong></p>
+      <p id="switchOffline" hidden><strong>通信できないため、切り替えの画面の部品を読めなかった。つながってから「もう一度」を押す。</strong></p>
       <p>記録はこの端末に残っている。学習・保存・同期は止めた。</p>
       <ul>
         <li>ほかの SpellDash のタブを閉じる。</li>
@@ -46,8 +47,11 @@
         <button type="button" class="btn btn--ghost" id="switchExport">記録を書き出す</button>
         <button type="button" class="btn" id="switchRetry">もう一度</button>
       </div>
+      <p id="switchExportFail" role="status" hidden>記録の控えを読めなかったため、書き出せなかった。「もう一度」を押してから試す。</p>
     </section>
   </main>
   <script type="module" src="./js/areaSwitch.js"></script>
+  <!-- 部品（js/areaSwitch.js と js/areaStore.js）が読めなかった（オフライン・取れない）: 「記録を準備している…」のまま止めず、復旧の画面と「もう一度」を出す -->
+  <script>addEventListener("DOMContentLoaded", function () { var d = document; if (d.documentElement.dataset.switchReady) return; var box = d.getElementById("switchRecovery"); if (!box) return; box.hidden = false; box.dataset.reason = "offline"; d.getElementById("switchStatus").hidden = true; d.getElementById("switchOffline").hidden = false; d.getElementById("switchExport").hidden = true; d.getElementById("switchRetry").addEventListener("click", function () { location.reload(); }); });</script>
 </body>
 </html>

@@ -58,7 +58,7 @@ function pageShell({ title, description, canonical, body }) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html?back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
 ${PACK_PAGES_PUBLIC ? "" : `  <meta name="robots" content="noindex" />
   <script>location.replace(${JSON.stringify(OLD_URL_HOME)});</script>
 `}  <title>${esc(title)}</title>

@@ -21465,7 +21465,42 @@ console.log("78.7 人ごとの保存の領域:");
       await p.close();
     }
   }
-  const putRaw = (ctx, entries) => rawDoc(ctx, (e) => { for (const [k, v] of Object.entries(e)) { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } }, entries);
+  // 種を生の localStorage に書き、別のページで読み直して全部そろうまで書いたページを開けておく（大きい値を書いた直後にページを閉じると、ブラウザが
+  // 書き込みを捨てることがある。反証: 2,700,000 字の種が 8 回に 3 回消え、(5) が満杯にならずに切り替わった）。そろわなければ書き直す。字数と要約で比べる
+  const digestOf = (v) => {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < v.length; i++) {
+      h ^= v.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return `${v.length}:${h}`;
+  };
+  async function putRaw(ctx, entries) {
+    const want = Object.fromEntries(Object.entries(entries).map(([k, v]) => [k, v === null ? null : digestOf(v)]));
+    const readBack = () => rawDoc(ctx, (keys) => {
+      const f = (v) => {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < v.length; i++) {
+          h ^= v.charCodeAt(i);
+          h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        return `${v.length}:${h}`;
+      };
+      return Object.fromEntries(keys.map((k) => { const v = localStorage.getItem(k); return [k, v === null ? null : f(v)]; }));
+    }, Object.keys(want));
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const p = await ctx.newPage();
+      try {
+        await p.goto(BASE + "/css/reset.css");
+        await p.evaluate((e) => { for (const [k, v] of Object.entries(e)) { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } }, entries);
+        if (await waitUntil(async () => JSON.stringify(await readBack()) === JSON.stringify(want), 3000, 100)) return true;
+      } finally {
+        await p.close();
+      }
+    }
+    check("78.7 種: 生の localStorage に書いて、別のページで読み直してそろう", false, JSON.stringify(Object.keys(entries)));
+    return false;
+  }
   const dumpRaw = (ctx) => rawDoc(ctx, () => Object.fromEntries(Object.keys(localStorage).sort().map((k) => [k, localStorage.getItem(k)])));
   const idbGet = (ctx, store, key) => rawDoc(ctx, async ([s, k]) => { const m = await import("/js/areaStore.js"); const db = await m.openAreaStore(); try { return (await db.get(s, k)) ?? null; } finally { db.close(); } }, [store, key]);
   const idbPut = (ctx, records) => rawDoc(ctx, async (recs) => { const m = await import("/js/areaStore.js"); const db = await m.openAreaStore(); try { for (const r of recs) await db.putVerified("areas", { ...r, sum: m.sumOf(r.keys) }); } finally { db.close(); } }, records);
@@ -21701,6 +21736,10 @@ console.log("78.7 人ごとの保存の領域:");
       await idbPut(ctx, [{ area: "u:B", id: "b1", keys: B, savedAt: new Date().toISOString(), schema: "7" }]);
       await putRaw(ctx, { ...marks("u:A", 2, { "u:A": { at: "ls" }, "u:B": { at: "idb:b1" } }), [AUTH]: sess("A"), ...phys("u:A", A), "zz.filler": "あ".repeat(2700000) });
       const before = await dumpRaw(ctx);
+      // 前の形を確かめる: ほかの物 2,700,000 字が入っていて、もう 1 つの 2,700,000 字（B の大きさ）は入らない
+      const direct = await rawDoc(ctx, () => { try { localStorage.setItem("zz.try", "あ".repeat(2700000)); localStorage.removeItem("zz.try"); return "fits"; } catch (e) { return e.name; } });
+      check("78.7 満杯（前の形）: ほかの物 2,700,000 字が localStorage に入っていて、もう 1 つの 2,700,000 字は入らない（QuotaExceededError）",
+        before["zz.filler"]?.length === 2700000 && direct === "QuotaExceededError", JSON.stringify({ filler: before["zz.filler"]?.length ?? 0, direct }));
       await putRaw(ctx, { [AUTH]: sess("B") });
       const page = await openApp(ctx, "/index.html", () => !document.getElementById("switchRecovery")?.hidden);
       const r = await recovery(page);
@@ -21792,6 +21831,111 @@ console.log("78.7 人ごとの保存の領域:");
       check(`78.7 使えないブラウザ（${name}）: localStorage に何も書かない（共用の場所へ戻さない・移行もしない）・「記録を書き出す」で今の記録を元の名前で書き出せる`,
         JSON.stringify(after) === JSON.stringify(before) && file?.data?.spelldash_word_stats === wantWs && Object.keys(file?.data ?? {}).every((k) => k.startsWith("spelldash_")), JSON.stringify({ changed: Object.keys(after).filter((k) => after[k] !== before[k]), keys: file && Object.keys(file.data) }));
       await page.close();
+    } finally {
+      await ctx.close();
+    }
+  }
+  // (7) Service Worker が有効になるとき、見張りの無い窓（旧コードのページの代わり: /css/reset.css の文書。問い合わせに答えない）が開いていても、
+  // 有効になるのを待たせず、ほかのタブの読み込みは止まらない。古い窓の読み直し（補助）は有効になった後に行う
+  // （activate の waitUntil の中で読み直しを待つと、読み直しのページ遷移が有効になるのを待って互いに止まり、どのページも数分開けなくなる。反証）
+  {
+    const ctx = await rawCtx();
+    try {
+      const old = await ctx.newPage();
+      await old.goto(BASE + "/css/reset.css");
+      await old.evaluate(() => { window.__oldMark = 1; });
+      const app = await ctx.newPage();
+      await app.goto(BASE + "/index.html", { waitUntil: "load" }).catch(() => {});
+      const activated = await app.waitForFunction(async () => (await navigator.serviceWorker.getRegistration())?.active?.state === "activated", null, { timeout: 15000, polling: 100 }).then(() => true).catch(() => false);
+      const z = await ctx.newPage();
+      const t0 = Date.now();
+      const nav = await z.goto(BASE + "/stats.html", { timeout: 10000, waitUntil: "domcontentloaded" }).then(() => Date.now() - t0).catch(() => null);
+      const reloaded = await waitUntil(async () => (await old.evaluate(() => window.__oldMark ?? null).catch(() => 1)) === null, 8000, 200);
+      check("78.7 Service Worker の更新: 見張りの無い窓が開いていても有効になり、ほかのタブの読み込みは止まらない（10 秒のうち）・答えない窓は有効になった後に読み直される（補助）",
+        activated && nav !== null && reloaded, JSON.stringify({ activated, nav, reloaded }));
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // (8) オフラインで、途中で閉じた切り替えの印が残っていても、切り替えの画面とその部品（js/areaSwitch.js・js/areaStore.js）は先読みの保存から開き、
+  // 直して元のページへ戻る（部品を先読みに入れていないと「記録を準備している…」のまま止まり、復旧の画面も出ない。反証）。
+  // この節だけの配信を別の口で立て、止めてオフラインにする（文脈の setOffline は Service Worker の取得に効かない）
+  {
+    const offSrv = http.createServer(server.listeners("request")[0]);
+    await new Promise((r) => offSrv.listen(0, "127.0.0.1", r));
+    const OFF = `http://127.0.0.1:${offSrv.address().port}`;
+    const ctx = await rawCtx();
+    try {
+      const page = await ctx.newPage();
+      await page.goto(OFF + "/index.html", { waitUntil: "load" }).catch(() => {});
+      const ready = await page.waitForFunction(async () => (await navigator.serviceWorker.getRegistration())?.active?.state === "activated" && !!navigator.serviceWorker.controller && !!window.SpellDashArea, null, { timeout: 15000, polling: 100 }).then(() => true).catch(() => false);
+      await page.evaluate(() => { localStorage.setItem("sd2.switch", JSON.stringify({ id: "s-off", op: "session", from: "guest", to: "guest", phase: "drain", at: new Date().toISOString() })); });
+      await page.close();
+      offSrv.close();
+      offSrv.closeAllConnections();
+      const p2 = await ctx.newPage();
+      p2.visited = [];
+      p2.on("framenavigated", (f) => { if (f === p2.mainFrame()) p2.visited.push(new URL(f.url()).pathname); });
+      await p2.goto(OFF + "/stats.html", { waitUntil: "load" }).catch(() => {});
+      await waitUntil(async () => (await p2.evaluate(() => location.pathname === "/stats.html" && !!window.SpellDashArea).catch(() => false)), 10000, 200);
+      const v = await p2.evaluate(() => ({ path: location.pathname, area: window.SpellDashArea?.area ?? null, flag: localStorage.getItem("sd2.switch"), status: document.getElementById("switchStatus")?.textContent ?? null })).catch((e) => ({ err: String(e) }));
+      check("78.7 オフライン: 途中で閉じた切り替えの印が残っていても、切り替えの画面の部品を先読みの保存から読み、直して学習状況へ戻る（印は消える）",
+        ready && p2.visited.includes("/switch.html") && v.path === "/stats.html" && v.area === "guest" && v.flag === null, JSON.stringify({ ready, visited: p2.visited, v }));
+      await p2.close();
+    } finally {
+      await ctx.close();
+      offSrv.close();
+    }
+  }
+  // (8b) 切り替えの画面の部品が読めない（取れない）: 「記録を準備している…」のまま止めず、復旧の画面・通信の文・「もう一度」を出す（書き出しは出さない）
+  {
+    const ctx = await rawCtx({ serviceWorkers: "block" });
+    try {
+      await putRaw(ctx, { ...marks("guest", 1, { guest: { at: "ls" } }), ...phys("guest", { spelldash_xp: "5" }), "sd2.switch": JSON.stringify({ id: "s-x", op: "session", from: "guest", to: "guest", phase: "drain", at: new Date().toISOString() }) });
+      await ctx.route("**/js/areaSwitch.js", (route) => route.abort("internetdisconnected"));
+      const page = await openApp(ctx, "/stats.html", () => location.pathname === "/switch.html" && !document.getElementById("switchRecovery")?.hidden);
+      const r = await recovery(page);
+      const extra = await page.evaluate(() => ({ offline: !document.getElementById("switchOffline")?.hidden, exportHidden: !!document.getElementById("switchExport")?.hidden, status: document.getElementById("switchStatus")?.hidden }));
+      const raw = await dumpRaw(ctx);
+      check("78.7 部品が読めない: 切り替えの画面は復旧の画面（理由 offline）・通信の文・「もう一度」を出す・書き出しは出さない・途中の印と記録はそのまま",
+        r.path === "/switch.html" && r.shown && r.reason === "offline" && r.retry && extra.offline && extra.exportHidden && extra.status === true && !!raw["sd2.switch"] && raw["sd2.guest.xp"] === "5", JSON.stringify({ r, extra }));
+      await page.close();
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // (9) 切り替えの画面の戻り先: URL の # の後ろに置く（ログインのリンクの戻り #access_token=… をサーバーへ送らない・保存の鍵に残さない）。
+  // 戻り先は同じ origin のパスだけ（タブ・改行を挟んだ // で外へ出ない。? の後ろの back は読まない）
+  {
+    const ctx = await rawCtx({ serviceWorkers: "block" });
+    try {
+      const seen = [];
+      ctx.on("request", (req) => seen.push(req.url()));
+      await ctx.route("http://evil.example/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>evil</title>" }));
+      await putRaw(ctx, oldDevice()); // 移行の前: 頭で止めて切り替えの画面へ
+      const urls = [];
+      const page = await ctx.newPage();
+      page.on("framenavigated", (f) => { if (f === page.mainFrame()) urls.push(f.url()); });
+      await page.goto(BASE + "/#access_token=AAA.secret.access&refresh_token=RRRsecretrefresh&type=magiclink", { waitUntil: "load" }).catch(() => {});
+      await waitUntil(async () => urls.some((u) => new URL(u).pathname === "/switch.html") && (await page.evaluate(() => !!window.SpellDashArea).catch(() => false)), 10000, 200);
+      const leaked = seen.filter((u) => u.includes("secret"));
+      const at = urls.findIndex((u) => new URL(u).pathname === "/switch.html");
+      const backed = at >= 0 && urls.slice(at + 1).some((u) => new URL(u).pathname === "/" && u.includes("#access_token=AAA.secret.access&refresh_token=RRRsecretrefresh"));
+      check("78.7 戻り先: 移行のために切り替えの画面を通っても、ログインの戻りの値はサーバーへの要求に入らない・元の URL（# の後ろも）へ戻る",
+        at >= 0 && leaked.length === 0 && backed, JSON.stringify({ urls: urls.map((u) => u.replace(BASE, "")), leaked: leaked.map((u) => u.replace(BASE, "")) }));
+      await page.close();
+      for (const form of ["?back=", "#back="]) {
+        const from = seen.length;
+        const p2 = await ctx.newPage();
+        await p2.goto(BASE + "/switch.html" + form + encodeURIComponent("/\t/evil.example/phish"), { waitUntil: "load" }).catch(() => {});
+        await waitUntil(async () => !p2.url().includes("/switch.html"), 8000, 200);
+        const at = p2.url();
+        check(`78.7 戻り先: /switch.html${form}<タブ>/evil.example/… を開いても同じ origin の / へ戻る（外の origin へ出ない）`,
+          new URL(at).origin === BASE && new URL(at).pathname === "/" && !seen.slice(from).some((u) => u.startsWith("http://evil.example")), at);
+        await p2.close();
+      }
     } finally {
       await ctx.close();
     }

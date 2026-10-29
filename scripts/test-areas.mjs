@@ -3,10 +3,15 @@
 // 仕様は S/b78/acct/DESIGN-FINAL.md（版 2）の §1・§2・§3・§4・§8（docs は統合の段で docs/SPEC_ACCOUNT_AREAS.md に移す）。
 // 見張り js/areaGuard.js（classic script）は、偽の window（vm の文脈）で読む。js/areaSwitch.js・js/areaStore.js は、偽の localStorage・
 // メモリーの IndexedDB・偽の Web Locks を渡して流す。この段（内部の 1）の検査:
-//   U1 鍵の分け方と、localStorage の使い方の形（key・length・clear・プロパティの形・別名・storage イベント）が許した所の外に無い・全ページの頭に見張り
-//   U2 包んだ口の読み替え・書くたびの確かめ（領域・swap の段・セッションの人）・storage イベントの作り直し・頭で止める・使えないブラウザ
-//   U3 移行の 5 通りと 2 回流し・legacy の写し・旧い本体が localStorage に残らない・落ちた点からの続き
-//   U4 切り替えの各点で落としたときの直し（どちらかが全部そろう・古い写しを戻さない）
+//   U1 鍵の分け方と、localStorage の使い方の全数（getItem・setItem・removeItem のほかに名前が出る所をファイルごとに固定・?. と window／self／globalThis／top・
+//      名前の文字列・別名の先をたどって clear・key・length・プロパティ・[ ] を使わない）・storage イベント・全ページの頭に見張り（戻り先は # の後ろ）・
+//      切り替えの画面とその部品の先読み・部品が読めないときの復旧の画面
+//   U2 包んだ口の読み替え・書くたびの確かめ（領域・swap の段・セッションの人）・storage イベントの作り直し・頭で止める・戻ったタブの確かめ直し・
+//      自分の確かめ・使えないブラウザ・切り替えの画面の戻り先（同じ origin のパスだけ）
+//   U3 移行の 5 通りと 2 回流し・legacy の写し・旧い本体が localStorage に残らない・落ちた点からの続き・移行の途中の旧タブの書き込み（orphans）・
+//      容量のぎりぎり（移した後の形が入るなら 1 回で終わる・入らなければ書き出しは legacy）・移行の途中の書き出し
+//   U4 切り替えの各点で落としたときの直し（どちらかが全部そろう・古い写しを戻さない）・drain の待ち・落ちた後のやり直しも失敗（満杯・写しが無い・
+//      控えが開けない）しても元は localStorage にそろう・書き出しは index が idb を指す領域の残りを読まない
 //   U6 展開の途中で localStorage が満杯 → 切り替え先は IndexedDB・元は失わない・印は替わらない
 //   U9 の一部（変異）: 見張りと切り替えの手順を 1 つずつ壊すと、どれかが落ちる（--no-mutate で飛ばす）
 // 失敗が 1 つでもあれば終了コード 1。
@@ -153,6 +158,8 @@ class FakeLocks {
   }
 }
 
+// 次の番（タイマーの 1ms の切り上げを避ける。順は登録の順）
+const tick = (fn) => setImmediate(fn);
 // メモリーの IndexedDB（js/areaStore.js が使う所だけ: open・upgrade・transaction・put・get・durability）。
 // 書き込みはトランザクションの終わりにまとめて入る（途中で失敗したら何も入らない）。失敗の差し込み: failOpen・failPut(store, value)・corruptRead(store, value)
 class FakeIDB {
@@ -165,7 +172,7 @@ class FakeIDB {
   }
   open(name, version) {
     const req = { result: null, error: null, onsuccess: null, onerror: null, onupgradeneeded: null };
-    setTimeout(() => {
+    tick(() => {
       if (this.failOpen) {
         req.error = this.failOpen;
         req.onerror?.({ target: req });
@@ -182,7 +189,7 @@ class FakeIDB {
         req.onupgradeneeded?.({ target: req });
       }
       req.onsuccess?.({ target: req });
-    }, 0);
+    });
     return req;
   }
   // 中を直に見る（検査用）
@@ -225,7 +232,7 @@ class FakeTx {
     this.error = null;
     this.oncomplete = this.onerror = this.onabort = null;
     if (mode === "readwrite") conn.factory.durabilities.push(opts?.durability ?? "default");
-    setTimeout(() => this.maybeCommit(), 0);
+    tick(() => this.maybeCommit());
   }
   objectStore(name) {
     const store = this.conn.db.stores.get(name);
@@ -249,7 +256,7 @@ class FakeTx {
   request(fn) {
     const r = { result: undefined, error: null, onsuccess: null, onerror: null };
     this.pending++;
-    setTimeout(() => {
+    tick(() => {
       if (this.aborted) return;
       try {
         r.result = fn();
@@ -261,8 +268,8 @@ class FakeTx {
         return;
       }
       this.pending--;
-      setTimeout(() => this.maybeCommit(), 0);
-    }, 0);
+      tick(() => this.maybeCommit());
+    });
     return r;
   }
   maybeCommit() {
@@ -275,10 +282,10 @@ class FakeTx {
     if (this.aborted || this.done) return;
     this.aborted = true;
     this.error = e ?? null;
-    setTimeout(() => {
+    tick(() => {
       this.onerror?.({ target: this });
       this.onabort?.({ target: this });
-    }, 0);
+    });
   }
 }
 
@@ -383,7 +390,7 @@ const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !=
 
 // 切り替えの手順を偽物で作る
 let seq = 0; // 写しの id（タブをまたいで重ならない）
-function switcher(backing, { idb = new FakeIDB(), locks = new FakeLocks(), crashAt = null, onRemove = null } = {}) {
+function switcher(backing, { idb = new FakeIDB(), locks = new FakeLocks(), crashAt = null, onRemove = null, onSleep = null } = {}) {
   let t = Date.parse("2026-10-29T00:00:00Z");
   let ops = 0;
   let dead = false;
@@ -417,8 +424,9 @@ function switcher(backing, { idb = new FakeIDB(), locks = new FakeLocks(), crash
     locks,
     now: () => (t += 7),
     newId: () => `id${++seq}`,
-    sleep: async () => {
-      t += 100;
+    sleep: async (ms) => {
+      t += ms ?? 100;
+      await onSleep?.(ms);
     },
     persist: async () => true
   });
@@ -443,6 +451,17 @@ const areaRecords = (backing, area) => {
   return Object.fromEntries(backing.keys().filter((k) => k.startsWith(prefix)).sort().map((k) => ["spelldash_" + k.slice(prefix.length), backing.get(k)]));
 };
 const rawPersonKeys = (backing) => backing.keys().filter((k) => loadKeys().isPersonKey(k));
+// 復旧の画面の「記録を書き出す」と同じ物（控えは渡したメモリーの IndexedDB）。書き出せなければ例外を返す
+const exportOf = async (backing, idb) => {
+  try {
+    return await SW.exportRecords(rawOf(backing), loadKeys(), { openStore: () => ST.openAreaStore(idb), digest: globalThis.crypto.subtle });
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+};
+const personOf = (data) => (data ? Object.fromEntries(Object.entries(data).filter(([k]) => loadKeys().isPersonKey(k)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : null);
+const sortedRec = (o) => (o ? Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : o);
+const isCrash = (e) => Boolean(e && (e.crash || e.message === "crashed" || isCrash(e.cause)));
 
 // =====================================================================
 async function runAll() {
@@ -484,23 +503,136 @@ async function runAll() {
     ok("U1 js/supabase.js の storageKey は見張りの鍵と同じ・旧い鍵と違う", supa.includes(`AUTH_STORAGE_KEY = "${K.AUTH_KEY}"`) && /storageKey:\s*AUTH_STORAGE_KEY/.test(supa) && K.AUTH_KEY !== K.OLD_AUTH_KEY);
     ok("U1 js/supabase.js は認証の部品の版を固定する（@2 のような幅のある版を使わない）", /supabase-js@\d+\.\d+\.\d+"/.test(supa) && !/supabase-js@2"/.test(supa));
     ok("U1 旧い認証の鍵は js/supabase.js の URL の ref から作る既定の名前", supa.includes(K.OLD_AUTH_KEY.replace(/^sb-/, "").replace(/-auth-token$/, "")));
-    // 使い方の形（コメントを除く）
+    // 使い方の形（コメントを除く。?. の形と、window・self・globalThis・top・parent・frames を前に付けた形も見る）
     const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1").replace(/<!--[\s\S]*?-->/g, "");
-    const hits = (re, allow = []) => Object.entries(src).filter(([f, t]) => !allow.includes(f) && re.test(strip(t))).map(([f]) => f);
-    eq("U1 clear() を使わない（localStorage・sessionStorage）", hits(/\b(localStorage|sessionStorage)\s*\.\s*clear\s*\(/), []);
-    eq("U1 key()・length は見張り・切り替えの画面・バックアップの見張りの無い所（Node の単体）だけ", hits(/\blocalStorage\s*\.\s*(key\s*\(|length\b)/, ["js/areaGuard.js", "js/areaSwitch.js", "js/backup.js"]), []);
+    // html は script の中身と on… の属性だけ（本文の文の「localStorage」は使い方でない）
+    const codeOf = (rel, text) => {
+      if (!rel.endsWith(".html")) return strip(text);
+      const parts = [];
+      for (const m of text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) parts.push(m[1]);
+      for (const m of text.matchAll(/\son[a-z]+\s*=\s*"([^"]*)"/gi)) parts.push(m[1]);
+      return strip(parts.join("\n;\n"));
+    };
+    const code = Object.fromEntries(Object.entries(src).map(([f, t]) => [f, codeOf(f, t)]));
+    for (const p of packPages) code[path.relative(ROOT, p)] = codeOf(p, fs.readFileSync(p, "utf8"));
+    const G = String.raw`(?:(?:window|self|globalThis|top|parent|frames)\s*\??\.\s*)?`;
+    const hits = (re, allow = []) => Object.entries(code).filter(([f, t]) => !allow.includes(f) && re.test(t)).map(([f]) => f);
+    eq("U1 clear() を使わない（localStorage・sessionStorage。?. の形も）", hits(new RegExp(String.raw`\b(localStorage|sessionStorage)\s*\??\.\s*clear\s*\(`)), []);
+    eq("U1 key()・length は見張り・切り替えの画面・バックアップの見張りの無い所（Node の単体）だけ", hits(/\blocalStorage\s*\??\.\s*(key\s*\(|length\b)/, ["js/areaGuard.js", "js/areaSwitch.js", "js/backup.js"]), []);
     eq("U1 プロパティの形（localStorage.foo）を使わない", hits(/\blocalStorage\s*\??\.\s*(?!getItem\b|setItem\b|removeItem\b|key\b|length\b)[A-Za-z_$]/), []);
-    eq("U1 localStorage[\"foo\"] の形を使わない", hits(/\blocalStorage\s*\[/), []);
-    eq("U1 Object.keys(localStorage)・for…in・展開・JSON.stringify(localStorage) を使わない", hits(/Object\.(keys|entries|values|assign)\(\s*(window\.|globalThis\.)?localStorage\b|\bin\s+(window\.|globalThis\.)?localStorage\b|\.\.\.\s*(window\.|globalThis\.)?localStorage\b|JSON\.stringify\(\s*(window\.|globalThis\.)?localStorage\b/), []);
-    // 別名: localStorage を値として渡す・入れる所は一覧のとおり（その先は getItem・setItem・removeItem だけ）
-    const aliasSites = Object.entries(src).filter(([f, t]) => /(=|\(|,|return)\s*(window\.|globalThis\.)?localStorage\b(?!\s*\.)/.test(strip(t)) && f !== "js/areaGuard.js").map(([f]) => f).sort();
-    eq("U1 localStorage の別名は一覧の所だけ（index.html の初回の判定・js/rank.js の既定の引数・js/typingKeys.js・js/accountEmblem.js・js/storage.js の知らせの比べ・切り替えの画面の生の口）", aliasSites, ["index.html", "js/accountEmblem.js", "js/areaSwitch.js", "js/rank.js", "js/storage.js", "js/typingKeys.js"]);
-    eq("U1 別名を使う所でも key・length・clear・[ ] を使わない", Object.entries(src).filter(([f, t]) => ["index.html", "js/accountEmblem.js", "js/rank.js", "js/typingKeys.js", "js/typingPage.js", "js/typingGamePage.js"].includes(f) && /\b(s|storage|store)\s*(\.\s*(key\s*\(|length\b|clear\s*\()|\[)/.test(strip(t))).map(([f]) => f), []);
+    eq("U1 localStorage[\"foo\"]・localStorage?.[\"foo\"] の形を使わない", hits(/\blocalStorage\s*(?:\?\.)?\s*\[/), []);
+    eq("U1 window[\"localStorage\"] のように名前の文字列で取らない", hits(/["'`]localStorage["'`]/), []);
+    eq("U1 Object.keys(localStorage)・for…in・展開・JSON.stringify(localStorage) を使わない（self.・top. なども）", hits(new RegExp(String.raw`Object\.(keys|entries|values|assign|getOwnPropertyNames)\(\s*${G}localStorage\b|\bin\s+${G}localStorage\b|\.\.\.\s*${G}localStorage\b|JSON\.stringify\(\s*${G}localStorage\b`)), []);
+    // 全数: localStorage という名前が getItem・setItem・removeItem を呼ぶ形のほかで出る所（前の語・前に付いた物・後ろ）を、ファイルごとに固定する。
+    // 新しい形（別名・引数で渡す・返す・比べる・?.[ ]・名前の文字列）を足すと、ここが落ちる。足すときは、その先も領域の口（読み替える 3 つ）だけかを確かめて一覧を直す
+    const lsForms = (t) => {
+      const out = [];
+      for (const m of t.matchAll(/(?<![\w$])localStorage(?![\w$])/g)) {
+        const post = t.slice(m.index + 12, m.index + 60);
+        if (/^\s*(?:\?\.|\.)\s*(?:getItem|setItem|removeItem)\s*\(/.test(post)) continue;
+        const pre = t.slice(Math.max(0, m.index - 60), m.index);
+        const obj = pre.match(/([A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*)$/)?.[1] ?? "";
+        const rest = pre.slice(0, pre.length - obj.length);
+        const before = rest.match(/(?:[A-Za-z_$][\w$]*\s*\(\s*|[A-Za-z_$][\w$]*\s*=\s*|return\s+|[!=]==?\s*|[<>]=?\s*|[(,:?[]\s*|&&\s*|\|\|\s*|\.\.\.\s*|typeof\s+|in\s+|of\s+)$/)?.[0] ?? rest.slice(-1);
+        const after = post.match(/^(?:\s*(?:\?\.|\.)\s*[A-Za-z_$][\w$]*\s*\(?|\s*(?:\?\.)?\s*\[|\s*[,;)\]}:]|\s*$)/)?.[0] ?? post.slice(0, 1);
+        out.push(`${before.replace(/\s+/g, "")}|${obj.replace(/\s+/g, "")}localStorage|${after.replace(/\s+/g, "")}`);
+      }
+      return out;
+    };
+    const forms = Object.fromEntries(Object.entries(code).map(([f, t]) => [f, lsForms(t)]).filter(([, l]) => l.length > 0).sort(([a], [b]) => (a < b ? -1 : 1)));
+    eq("U1 localStorage を値として使う所（別名・既定の引数・引数で渡す・返す・比べる・key・length）は一覧のとおり（全ファイル・packs も）", forms, {
+      "index.html": ["s=|localStorage|,"],
+      "js/accountEmblem.js": ["storageValue(|localStorage|,"],
+      "js/areaGuard.js": ["ls=|root.localStorage|;"],
+      "js/areaSwitch.js": ["webStorage=|globalThis.localStorage|;"],
+      "js/backup.js": ["<|localStorage|.length", "push(|localStorage|.key("],
+      "js/rank.js": ["storage=|globalThis.localStorage|)", "storage=|globalThis.localStorage|)"],
+      "js/storage.js": ["!==|localStorage|)"],
+      "js/typingKeys.js": ["return|window.localStorage|;"]
+    });
+    // 別名の先: 上の所で localStorage を受けた名前（const X = …・既定の引数・引数で受けた関数の仮引数・返す関数の呼び出し F()）と、そこから代入・引数で
+    // 渡った名前を、全ファイルでたどる。その名前では getItem・setItem・removeItem のほか（clear・key・length・プロパティ・[ ]）を使わない
+    // （切り替えの画面の生の口 js/areaSwitch.js だけ key・length も。見張り js/areaGuard.js は包む本人なので除く）
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const jsFiles = Object.keys(code).filter((f) => f.endsWith(".js"));
+    const splitArgs = (t, open) => {
+      const args = [];
+      let depth = 0;
+      let cur = "";
+      for (let i = open + 1; i < t.length; i++) {
+        const c = t[i];
+        if ("([{".includes(c)) depth++;
+        if (")]}".includes(c)) {
+          if (depth === 0) {
+            args.push(cur.trim());
+            return args;
+          }
+          depth--;
+        }
+        if (c === "," && depth === 0) {
+          args.push(cur.trim());
+          cur = "";
+        } else cur += c;
+      }
+      return args;
+    };
+    const paramsOf = (fn) => {
+      for (const f of jsFiles) {
+        const m = code[f].match(new RegExp(String.raw`function\s+${esc(fn)}\s*\(([^)]*)\)`));
+        if (m) return { file: f, params: m[1].split(",").map((p) => p.trim().split("=")[0].trim()) };
+      }
+      return null;
+    };
+    const aliases = new Set(); // "file\u0000name"
+    const queue = [];
+    const addAlias = (f, n) => {
+      if (!n || f === "js/areaGuard.js" || aliases.has(f + "\u0000" + n)) return;
+      aliases.add(f + "\u0000" + n);
+      queue.push([f, n]);
+    };
+    for (const [f, t] of Object.entries(code)) {
+      for (const m of t.matchAll(new RegExp(String.raw`(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*(?:[A-Za-z_$][\w$]*\s*\??\.\s*)?localStorage\b(?!\s*\??\.)`, "g"))) addAlias(f, m[1]);
+      for (const m of t.matchAll(new RegExp(String.raw`(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(\s*${G}localStorage\s*[,)]`, "g"))) {
+        const def = paramsOf(m[1]);
+        if (def) addAlias(def.file, def.params[0]);
+      }
+      for (const m of t.matchAll(new RegExp(String.raw`return\s+${G}localStorage\b(?!\s*\??\.)`, "g"))) {
+        const fn = [...t.slice(0, m.index).matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(/g)].pop()?.[1];
+        if (!fn) continue;
+        addAlias(f, fn + "()");
+        for (const g of jsFiles) if (new RegExp(String.raw`import\s*\{[^}]*\b${esc(fn)}\b[^}]*\}\s*from\s*["'][^"']*${esc(path.basename(f))}["']`).test(code[g])) addAlias(g, fn + "()");
+      }
+    }
+    while (queue.length) {
+      const [f, n] = queue.shift();
+      const t = code[f];
+      const N = esc(n);
+      for (const m of t.matchAll(new RegExp(String.raw`(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:[^;]*?\?\s*)?${N}\s*(?=[;:,)\n]|$)`, "g"))) addAlias(f, m[1]);
+      for (const m of t.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) {
+        if (["if", "for", "while", "switch", "catch", "function", "return"].includes(m[1])) continue;
+        const args = splitArgs(t, m.index + m[0].length - 1);
+        const i = args.indexOf(n);
+        if (i < 0) continue;
+        const def = paramsOf(m[1]);
+        if (def && def.params[i]) addAlias(def.file, def.params[i]);
+      }
+    }
+    const aliasBad = [];
+    for (const key of aliases) {
+      const [f, n] = key.split("\u0000");
+      const allowed = ["getItem", "setItem", "removeItem", ...(f === "js/areaSwitch.js" ? ["key", "length"] : [])];
+      const N = esc(n);
+      for (const m of code[f].matchAll(new RegExp(String.raw`(?<![\w$./'"\x60])${N}\s*(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)`, "g"))) if (!allowed.includes(m[1])) aliasBad.push(`${f}: ${n}.${m[1]}`);
+      for (const m of code[f].matchAll(new RegExp(String.raw`(?<![\w$./'"\x60])${N}\s*(?:\?\.)?\s*\[`, "g"))) aliasBad.push(`${f}: ${n}[`);
+    }
+    ok("U1 別名の先を全部たどった（index.html の s・js/rank.js・js/accountEmblem.js の storage・js/typingKeys.js の storage() とその先のタイピングの 5 ファイル・切り替えの画面の生の口）", ["index.html\u0000s", "js/rank.js\u0000storage", "js/accountEmblem.js\u0000storage", "js/typingKeys.js\u0000storage()", "js/typingPage.js\u0000store", "js/typingGamePage.js\u0000store", "js/typingLong.js\u0000storage", "js/typingDrill.js\u0000storage", "js/typingGame.js\u0000storage", "js/areaSwitch.js\u0000webStorage"].every((k) => aliases.has(k)), [...aliases].map((k) => k.replace("\u0000", ":")).join(" "));
+    eq("U1 別名の先でも getItem・setItem・removeItem のほか（clear・key・length・プロパティ・[ ]）を使わない", aliasBad, []);
     // storage イベントを聞く所（見張りが元の名前に作り直して届ける）
     const listeners = Object.entries(src).filter(([, t]) => /addEventListener\(\s*["']storage["']|\bonstorage\b/.test(strip(t))).map(([f]) => f).sort();
     eq("U1 storage イベントを聞く所は一覧のとおり（見張りが元の名前の知らせを届ける）", listeners, ["js/accountEmblem.js", "js/areaGuard.js", "js/masteryMeta.js", "js/memoryWords.js", "js/statsView.js", "js/storage.js"]);
     // 全ページの頭: 見張りの 1 行が最初の script（色の 1 行より前）
-    const GUARD_LINE = '<script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html?back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>';
+    // 戻り先は URL の # の後ろ（#back=）に置く。? の後ろに置くと、ログインのリンクの戻り（#access_token=…）がサーバーへ送られ、Service Worker の保存の鍵にも残る
+    const GUARD_LINE = '<script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>';
     const firstScript = (html) => {
       const head = html.slice(0, html.indexOf("</head>"));
       const i = head.indexOf("<script");
@@ -510,8 +642,13 @@ async function runAll() {
     eq("U1 全ページ（packs も）の head の最初の script が見張りの 1 行", appPages.filter((p) => firstScript(fs.readFileSync(p, "utf8")) !== GUARD_LINE).map((p) => path.relative(ROOT, p)), []);
     const switchHtml = fs.existsSync(path.join(ROOT, "switch.html")) ? fs.readFileSync(path.join(ROOT, "switch.html"), "utf8") : "";
     ok("U1 switch.html は見張りを data-switch で読み（包まない）、js/areaSwitch.js を読む・学習の部品を読まない", switchHtml.includes('<script src="/js/areaGuard.js" data-switch></script>') && switchHtml.includes("js/areaSwitch.js") && !/js\/(game|main|storage|sync|auth)\.js/.test(switchHtml));
+    const queryBack = [...appPages, ...pages, path.join(ROOT, "js/areaGuard.js"), path.join(ROOT, "js/areaSwitch.js"), path.join(ROOT, "scripts/build-pack-pages.mjs")].filter((p) => fs.existsSync(p) && /switch\.html\?back=|[?&]back=/.test(fs.readFileSync(p, "utf8"))).map((p) => path.relative(ROOT, p));
+    eq("U1 切り替えの画面の戻り先を ? の後ろに置かない（見張り・頭の 1 行・packs の生成器・切り替えの画面）", [...new Set(queryBack)], []);
     const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
-    ok("U1 sw.js は切り替えの画面と見張りを先読みする", sw.includes('"/switch.html"') && sw.includes('"/js/areaGuard.js"'));
+    const core = (sw.match(/const CORE_ASSETS = \[([\s\S]*?)\];/)?.[1] ?? "").match(/"[^"]+"/g)?.map((x) => x.slice(1, -1)) ?? [];
+    const switchAssets = [...switchHtml.matchAll(/<(?:link rel="stylesheet"|script)[^>]*(?:href|src)="([^"]+)"/g)].map((m) => "/" + m[1].replace(/^\.?\//, ""));
+    eq("U1 sw.js は切り替えの画面とその部品（見張り・js/areaSwitch.js・js/areaStore.js・css）を先読みする（オフラインでも直しと復旧の画面が開く）", ["/switch.html", ...new Set(switchAssets), "/js/areaStore.js"].filter((a) => !core.includes(a)), []);
+    ok("U1 switch.html は部品が読めないとき（オフライン・取れない）に復旧の画面と「もう一度」を出す（小さい classic の script）", /<script>[^<]*switchRecovery[^<]*<\/script>/.test(switchHtml) && switchHtml.includes('id="switchOffline"'));
     // 列挙は領域を知る口
     const backup = fs.readFileSync(path.join(ROOT, "js/backup.js"), "utf8");
     ok("U1 js/backup.js の列挙は SpellDashArea.keys()（見張りの無い所だけ key・length）", /SpellDashArea/.test(backup) && (strip(backup).match(/localStorage\.length/g) ?? []).length === 1);
@@ -555,7 +692,7 @@ async function runAll() {
     const b3 = new Backing({ ...migratedMarks("guest", 2), "sd2.guest.xp": "1" });
     const t3 = openTab(b3);
     b3.set("sd2.area", "u:B#3");
-    eq("U2 印が替わった後の書き込みは拒む（書かない・切り替えの画面へ）", [t3.tryWrite("spelldash_xp", "999"), b3.get("sd2.guest.xp"), b3.get("sd2.u:B.xp"), t3.log.replaced[0]?.startsWith("/switch.html?back=")], ["InvalidStateError", "1", null, true]);
+    eq("U2 印が替わった後の書き込みは拒む（書かない・切り替えの画面へ）", [t3.tryWrite("spelldash_xp", "999"), b3.get("sd2.guest.xp"), b3.get("sd2.u:B.xp"), t3.log.replaced[0]?.startsWith("/switch.html#back=")], ["InvalidStateError", "1", null, true]);
     ok("U2 removeItem も拒む", (() => { try { t3.ctx.localStorage.removeItem("spelldash_xp"); return false; } catch (e) { return e.name === "InvalidStateError"; } })() && b3.get("sd2.guest.xp") === "1");
     ok("U2 端末の鍵は書ける（人の記録でない）", t3.tryWrite("spelldash_theme", "dark") === "ok");
     // swap の段
@@ -594,7 +731,7 @@ async function runAll() {
     eq("U2 storage イベント: 今の領域の鍵は元の名前で届く・ほかの領域・旧い場所・印は届かない・端末の鍵はそのまま", t7.heard, [["spelldash_word_stats", "{}", "{\"x\":1}"], ["spelldash_theme", "light", "dark"]]);
     b7.set("sd2.switch", JSON.stringify({ id: "s", phase: "drain" }));
     t7.fire("sd2.switch", null, b7.get("sd2.switch"));
-    ok("U2 切り替えの印の知らせで切り替えの画面へ", t7.log.replaced.length === 1 && t7.log.replaced[0].startsWith("/switch.html?back=%2Findex.html"));
+    ok("U2 切り替えの印の知らせで切り替えの画面へ", t7.log.replaced.length === 1 && t7.log.replaced[0].startsWith("/switch.html#back=%2Findex.html"));
 
     // 頭で止める
     const stops = [
@@ -610,7 +747,7 @@ async function runAll() {
       const bb = new Backing(seed);
       const before = bb.dump();
       const tt = openTab(bb, { search: "?learn=next" });
-      eq(`U2 頭で止める: ${name}（止めて /switch.html へ・使えないブラウザの文は出さない・人の記録を書けない）`, [tt.log.stopped, tt.log.replaced, tt.elements.some((e) => e.id === "areaStop"), tt.tryWrite("spelldash_xp", "9"), bb.dump(), tt.ctx.SpellDashArea === undefined], [1, ["/switch.html?back=%2Findex.html%3Flearn%3Dnext"], false, "InvalidStateError", before, true]);
+      eq(`U2 頭で止める: ${name}（止めて /switch.html へ・使えないブラウザの文は出さない・人の記録を書けない）`, [tt.log.stopped, tt.log.replaced, tt.elements.some((e) => e.id === "areaStop"), tt.tryWrite("spelldash_xp", "9"), bb.dump(), tt.ctx.SpellDashArea === undefined], [1, ["/switch.html#back=%2Findex.html%3Flearn%3Dnext"], false, "InvalidStateError", before, true]);
     }
     // 切り替えの画面では包まない
     const b8 = new Backing({ spelldash_word_stats: "OLD" });
@@ -647,6 +784,40 @@ async function runAll() {
     openTab(new Backing(migratedMarks()), { locks: lk });
     await new Promise((r) => setTimeout(r, 0));
     eq("U2 ページの間、共有のロック spelldash-page を持つ", (await lk.query()).held.filter((l) => l.name === "spelldash-page" && l.mode === "shared").length, 1);
+    // 凍って知らせを受けていないタブが戻った: visibilitychange（見える）・pageshow（戻るの控えから）・focus で確かめ直して切り替えの画面へ
+    for (const [name, fire] of [
+      ["visibilitychange", (t) => t.ctx.document.dispatchEvent(new Event("visibilitychange"))],
+      ["pageshow(persisted)", (t) => t.ctx.dispatchEvent(Object.assign(new Event("pageshow"), { persisted: true }))],
+      ["focus", (t) => t.ctx.dispatchEvent(new Event("focus"))]
+    ]) {
+      const bb = new Backing({ ...migratedMarks("guest", 1), "sd2.guest.xp": "1" });
+      const tt = openTab(bb);
+      bb.set("sd2.area", "u:B#2"); // 凍っている間に切り替わった（storage イベントは届いていない）
+      bb.set("sd2.auth", session("B"));
+      const quiet = tt.log.replaced.length;
+      fire(tt);
+      eq(`U2 戻ったタブ（${name}）: 確かめ直して切り替えの画面へ（戻る前は動かない）`, [quiet, tt.log.replaced.length, tt.log.replaced[0]?.startsWith("/switch.html#back=") ?? false], [0, 1, true]);
+    }
+    // 自分の確かめ: 包んだ口で書いた値が生の口で読めない保存（書き込みが黙って消える）では止める
+    {
+      class Silent extends Backing {
+        set() {}
+      }
+      const bb = new Silent({ ...migratedMarks("guest", 1), "sd2.guest.xp": "1" });
+      const tt = openTab(bb);
+      const stopEl = tt.elements.find((e) => e.id === "areaStop");
+      eq("U2 自分の確かめが合わない（書き込みが黙って消える保存）: 止める・文を出す（理由 selftest）・SpellDashArea を置かない", [tt.log.stopped, stopEl?.dataset.reason ?? null, tt.ctx.SpellDashArea === undefined], [1, "selftest", true]);
+    }
+    // 切り替えの画面の戻り先（# の後ろの back）: 同じ origin のパスだけ。タブ・改行を挟んだ //・\・外の URL・切り替えの画面そのものは / へ
+    {
+      const origin = "https://www.spelldash.net";
+      const bad = ["https://evil.example/", "//evil.example/", "/\\evil.example/", "/\t/evil.example/", "/\n/evil.example/", "/\r/evil.example/", "\t//evil.example/", "/\u0000/evil.example/", "data:text/html,x", "", null, "/switch.html", "/switch.html#back=%2F", "/switch.html?x=1"];
+      eq("U2 戻り先: 外の URL・タブや改行を挟んだ //・\\・切り替えの画面は / にする（どれも同じ origin のまま）", bad.map((v) => SW.safeBack(v, origin)).map((r, i) => (r === "/" ? null : `${JSON.stringify(bad[i])} → ${JSON.stringify(r)} → ${new URL(r, origin).origin}`)).filter(Boolean), []);
+      const good = ["/stats.html", "/?learn=next", "/index.html?learn=new#play", "/#access_token=AAA&refresh_token=RRR", "/packs/school.html?x=%2F%2Fy"];
+      eq("U2 戻り先: 同じ origin のパスはそのまま（パラメータとログインの戻りの # も）", good.map((v) => SW.safeBack(v, origin)), good);
+      const fromHash = typeof SW.backFrom === "function" ? SW.backFrom({ hash: "#back=" + encodeURIComponent("/stats.html?learn=next#x"), search: "?back=%2F%2Fevil.example" }) : "（backFrom が無い）";
+      eq("U2 戻り先は URL の # の後ろから読む（? の後ろの back は読まない）", fromHash, "/stats.html?learn=next#x");
+    }
   }
 
   // ── U3 移行（§8） ─────────────────────────────
@@ -710,6 +881,85 @@ async function runAll() {
       inject(idb);
       const r = await settle(b, { idb });
       eq(`U3 legacy に${name}: 止める（理由 ${reason}）・旧い記録はそのまま・印を書かない`, [r.error?.reason, b.dump()], [reason, before]);
+    }
+    // 移行の途中（legacy に写した後）に旧コードのタブが旧い鍵へ書いた値: 消して失わない。orphans に 1 字も違わず写して localStorage から消す（読まない・移し直さない）
+    {
+      const seed = clean(personSeed("A"));
+      const b = new Backing({ ...seed });
+      const idb = new FakeIDB();
+      let fired = false;
+      idb.failPut = (store) => {
+        if (store === "legacy" && !fired) {
+          fired = true;
+          b.set("spelldash_xp", "OLDTAB-AFTER-SNAPSHOT");
+        }
+        return null;
+      };
+      const r = await settle(b, { idb });
+      eq("U3 移行の途中に旧コードのタブが書いた値: 旧い場所に残らず orphans に 1 字も違わず写る・新しい鍵には写した時の値", [r.error?.message ?? null, b.get("spelldash_xp"), idb.all("orphans").some((o) => o.keys.spelldash_xp === "OLDTAB-AFTER-SNAPSHOT"), areaRecords(b, "guest").spelldash_xp], [null, null, true, seed.spelldash_xp]);
+    }
+    // 容量のぎりぎりの端末: 移した後の形が入るなら、1 回で必ず終わる（途中で止まって開けなくならない）。入らなければ止まるが、
+    // 書き出しは legacy（旧い記録の全部）と 1 字も違わない。もう一度でも同じ。u:<uuid> の鍵は旧い名前より 33 字長い
+    {
+      seq = Math.max(seq, 100000); // 写しの id の字数をそろえる（終わった形の大きさを比べる）
+      const uid = "0f8d2c5e-1b7a-4c3d-9e8f-123456789abc";
+      const seeds = [
+        ["ログイン中・小さい鍵と大きい語の記録", { spelldash_memory_words: "s".repeat(100), spelldash_word_stats: "x".repeat(4000), spelldash_xp: "3", spelldash_schema_version: "7", spelldash_theme: "dark", [OLD_AUTH]: session(uid) }, `u:${uid}`],
+        ["ログイン中・語の記録の前に小さい鍵 20", (() => {
+          const s = { spelldash_theme: "dark", [OLD_AUTH]: session(uid) };
+          for (let i = 0; i < 20; i++) s[`spelldash_a${String(i).padStart(2, "0")}`] = "s".repeat(200);
+          s.spelldash_word_stats = "x".repeat(30000);
+          s.spelldash_xp = "3";
+          return s;
+        })(), `u:${uid}`],
+        ["持ち主あり・ログイン中", { spelldash_owner: uid, spelldash_word_stats: "x".repeat(3000), spelldash_xp: "3", spelldash_rank_peak: "2", [OLD_AUTH]: session(uid), [OLD_AUTH + "-user"]: JSON.stringify({ user: { id: uid } }) }, `u:${uid}`],
+        ["未ログイン・ゲスト", { spelldash_word_stats: "x".repeat(5000), spelldash_xp: "3", spelldash_schema_version: "7", spelldash_theme: "dark" }, "guest"]
+      ];
+      for (const [name, s, area] of seeds) {
+        const old = sortedRec(Object.fromEntries(Object.entries(s).filter(([k]) => K.isPersonKey(k))));
+        const used = new Backing(s).size();
+        const free = new Backing(s);
+        const r0 = await settle(free);
+        const need = free.size() - used; // 移した後の形に要る空き
+        eq(`U3 容量（${name}）: 空きに上限が無ければ終わる`, [r0.error?.message ?? null, free.get("sd2.area")], [null, `${area}#1`]);
+        const hs = [...new Set([Math.max(0, need - 200), need - 1, need, need + 1, need + 37, need + 200, ...Array.from({ length: 7 }, (_, k) => need + 400 + k * 641)])].filter((h) => h >= 0);
+        const stuck = [];
+        for (const h of hs) {
+          const b = new Backing(s, used + h);
+          const r1 = await settle(b);
+          const fits = h >= need;
+          if (!r1.error) {
+            const done = sortedRec(areaRecords(b, area));
+            if (!(fits && isDeepStrictEqual(done, old) && isDeepStrictEqual(rawPersonKeys(b), ["spelldash_owner"]) && b.get("sd2.migrating") === null && b.get("sd2.migrated") !== null && b.get(OLD_AUTH) === null)) stuck.push(`${h}: 終わったが形が違う`);
+            continue;
+          }
+          if (fits) stuck.push(`${h}（空き ${need} で入る）: 止まった（${r1.error.reason ?? r1.error.message}）`);
+          const e1 = await exportOf(b, r1.idb);
+          if (!isDeepStrictEqual(personOf(e1?.data), old)) stuck.push(`${h}: 書き出しが legacy と違う（${e1 instanceof Error ? e1.message : Object.keys(personOf(e1.data)).length + " 鍵"}）`);
+          const r2 = await settle(b, { idb: r1.idb });
+          if (r2.error) {
+            const e2 = await exportOf(b, r1.idb);
+            if (!isDeepStrictEqual(personOf(e2?.data), old)) stuck.push(`${h}: もう一度の後の書き出しが legacy と違う`);
+          } else if (!fits) stuck.push(`${h}: 入らないのに終わった`);
+        }
+        eq(`U3 容量（${name}・空き ${need} の前後 ${hs.length} 通り）: 移した後の形が入るなら 1 回で終わる・入らなければ止まり、書き出しは legacy と同じ`, stuck, []);
+      }
+    }
+    // 移行の途中（sd2.migrating がある）で止まった端末の書き出し: legacy（読めなければ、新しい鍵と残った旧い鍵を合わせた物）。持ち主は legacy から決めた領域
+    {
+      const s = { ...clean(personSeed("A")), spelldash_theme: "dark" };
+      const old = sortedRec(Object.fromEntries(Object.entries(s).filter(([k]) => K.isPersonKey(k))));
+      for (let n = 1; n < 30; n++) {
+        const b = new Backing(s);
+        const idb = new FakeIDB();
+        const first = await settle(b, { idb, crashAt: n });
+        if (!first.error) break;
+        if (b.get("sd2.migrating") === null) continue;
+        const e = await exportOf(b, idb);
+        idb.failOpen = new Error("lost");
+        const e2 = await exportOf(b, idb);
+        eq(`U3 移行の ${n} 番目で落ちた端末の書き出し: legacy と同じ・控えが開けなくても新しい鍵と旧い鍵を合わせて同じ・端末の鍵も入る`, [personOf(e?.data), personOf(e2?.data), e?.data?.spelldash_theme], [old, old, "dark"]);
+      }
     }
   }
 
@@ -810,6 +1060,22 @@ async function runAll() {
       const tab = openTab(b);
       ok("U6 満杯の後のページ: 頭で止めて切り替えの画面へ（学習・保存をしない）", tab.log.stopped === 1 && tab.log.replaced.length === 1);
     }
+    // U6 の続き: 展開の途中で満杯になり、そのあいだに退避した A の写しが読めなくなっても、元 A は手元の写し（退避の前に読んだ物）から書き戻す
+    {
+      const bigB = { ...B, spelldash_word_stats: "B".repeat(6000) };
+      const b = new Backing({ ...migratedMarks("u:B", 1), "sd2.auth": session("B"), ...Object.fromEntries(Object.entries(bigB).map(([k, v]) => [K.physicalKey("u:B", k), v])) });
+      const idb = new FakeIDB();
+      b.set("sd2.auth", session("A"));
+      await settle(b, { idb });
+      for (const [k, v] of Object.entries(A)) b.set(K.physicalKey("u:A", k), v);
+      b.set("zz.filler", "f".repeat(2000));
+      b.limit = b.size() + 3000;
+      let readsOfA = 0;
+      idb.corruptRead = (store, v) => (store === "areas" && v.area === "u:A" && ++readsOfA > 1 ? { ...v, keys: {} } : v); // 読み直しの 1 回の後は読めない
+      b.set("sd2.auth", session("B"));
+      const r = await settle(b, { idb });
+      eq("U6 満杯で、退避した A の写しがその後に読めなくなっても: A は localStorage に 1 字も違わず戻る・index は ls（手元の写しから）", [r.error?.reason, areaRecords(b, "u:A"), JSON.parse(b.get("sd2.index"))["u:A"].at], ["quota", sortedRec(A), "ls"]);
+    }
     // 退避（IndexedDB）に失敗: 切り替えない
     for (const [name, inject, reason] of [["容量", (idb) => (idb.failPut = (store) => (store === "areas" ? quotaError() : null)), "quota"], ["読み直しが合わない", (idb) => (idb.corruptRead = (store, v) => (store === "areas" ? { ...v, keys: {} } : v)), "evacuate"]]) {
       const { b, idb } = await twoAreas();
@@ -859,6 +1125,94 @@ async function runAll() {
       const r = await settle(b);
       eq("U4 旧い場所の値は orphans へ写して localStorage から消す・旧い認証の鍵は消す・今の領域は変えない", [r.error?.message ?? null, r.idb.all("orphans").map((o) => o.keys), rawPersonKeys(b), b.get(OLD_AUTH), areaRecords(b, "guest")], [null, [{ spelldash_xp: "999", spelldash_word_stats: "OLDTAB" }], ["spelldash_owner"], null, { spelldash_xp: "5" }]);
     }
+    // drain の段（§3 の 2）: ほかのページが共有のロックを持つ間は待つ。そのページの最後の書き込みは通り、その値が A の退避の写しに入る
+    {
+      const { b, idb } = await twoAreas();
+      const locks = new FakeLocks();
+      const other = openTab(b); // ページの見張り（書き込みの確かめ）
+      const release = locks.hold("spelldash-page"); // そのページの共有のロック
+      let sleeps = 0;
+      let wrote = null;
+      b.set("sd2.auth", session("B"));
+      const r = await settle(b, { idb, locks, onSleep: () => {
+        sleeps++;
+        if (sleeps === 2) {
+          wrote = other.tryWrite("spelldash_xp", "LAST-IN-DRAIN");
+          release();
+        }
+      } });
+      eq("U4 drain の段: ほかのページがロックを放すまで待つ・その間の最後の書き込みは通り、A の退避の写しに入る", [r.error?.message ?? null, wrote, idb.peek("areas", "u:A")?.keys.spelldash_xp, b.get("sd2.area")?.split("#")[0]], [null, "ok", "LAST-IN-DRAIN", "u:B"]);
+    }
+    // 前の切り替えが落ちた（タブを閉じた）後、やり直しも失敗する（満杯・切り替え先の写しが無い・控えが開けない）:
+    // 元 A は localStorage に 1 字も違わずそろい（写しから書き戻す）、index は ls・印は A・B の鍵は無い。書き出しは A と A の持ち主の値。
+    // 控えが開けないときは、A が localStorage にそろっていればそれを書き出し、写しにしか無ければ書き出さない（途中まで消した A を A の持ち主の値で出さない）
+    {
+      const tagA = (await SW.ownerOf("u:A", globalThis.crypto.subtle)).tag;
+      const tagB = (await SW.ownerOf("u:B", globalThis.crypto.subtle)).tag;
+      const fullSetup = async () => {
+        const bigB = { ...B, spelldash_word_stats: "B".repeat(6000) };
+        const b = new Backing({ ...migratedMarks("u:B", 1), "sd2.auth": session("B"), ...Object.fromEntries(Object.entries(bigB).map(([k, v]) => [K.physicalKey("u:B", k), v])) });
+        const idb = new FakeIDB();
+        b.set("sd2.auth", session("A"));
+        await settle(b, { idb }); // B を退避
+        for (const [k, v] of Object.entries(A)) b.set(K.physicalKey("u:A", k), v);
+        b.set("zz.filler", "f".repeat(2000));
+        b.limit = b.size() + 3000; // A を消しても B（6000 字）は入らない
+        return { b, idb, Bx: bigB };
+      };
+      const plainSetup = async () => ({ ...(await twoAreas()), Bx: B });
+      const cases = [
+        ["満杯", fullSetup, () => {}],
+        ["切り替え先の写しが無い", plainSetup, (idb) => idb.dbs.get("spelldash-areas").stores.get("areas").data.delete("u:B")],
+        ["控えが開けない", plainSetup, (idb) => (idb.failOpen = new Error("Connection to Indexed Database server lost"))]
+      ];
+      for (const [label, setup, inject] of cases) {
+        let points = 0;
+        const bad = [];
+        for (let n = 1; n < 80; n++) {
+          const { b, idb, Bx } = await setup();
+          b.set("sd2.auth", session("B"));
+          const first = await settle(b, { idb, crashAt: n });
+          if (!first.error || !isCrash(first.error)) break;
+          points++;
+          inject(idb);
+          const second = await settle(b, { idb });
+          const idx = JSON.parse(b.get("sd2.index"));
+          const exp = await exportOf(b, idb);
+          const expPerson = exp instanceof Error ? null : personOf(exp.data);
+          if (!second.error) {
+            if (!(isDeepStrictEqual(areaRecords(b, "u:B"), sortedRec(Bx)) && isDeepStrictEqual(areaRecords(b, "u:A"), {}) && isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, A))) bad.push(`${n}: やり直しで終わったが B と A がそろわない`);
+            continue;
+          }
+          const lsA = areaRecords(b, "u:A");
+          if (label !== "控えが開けない") {
+            const got = [isDeepStrictEqual(lsA, sortedRec(A)), idx["u:A"]?.at, b.get("sd2.area")?.split("#")[0], b.get("sd2.switch"), Object.keys(areaRecords(b, "u:B")).length, isDeepStrictEqual(expPerson, sortedRec(A)), exp?.owner?.tag === tagA];
+            if (!isDeepStrictEqual(got, [true, "ls", "u:A", null, 0, true, true])) bad.push(`${n}: ${JSON.stringify(got)}（${second.error.reason}）`);
+          } else if (idx["u:A"]?.at === "ls") {
+            if (!(isDeepStrictEqual(lsA, sortedRec(A)) && isDeepStrictEqual(expPerson, sortedRec(A)) && exp?.owner?.tag === tagA)) bad.push(`${n}: A は localStorage にあるが書き出しが A と違う`);
+          } else if (idx["u:B"]?.at === "ls") {
+            // 落ちたのが B をそろえて index を替えた後: B が localStorage にそろっている。書き出しは B（B の持ち主）
+            if (!(isDeepStrictEqual(areaRecords(b, "u:B"), sortedRec(Bx)) && isDeepStrictEqual(expPerson, sortedRec(Bx)) && exp?.owner?.tag === tagB && isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, A))) bad.push(`${n}: B は localStorage にあるが書き出しが B と違う`);
+          } else if (!(exp instanceof Error && isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, A))) bad.push(`${n}: A は写しにしか無いのに、書き出しが ${exp instanceof Error ? "失敗" : Object.keys(expPerson).length + " 鍵の途中の A"}`);
+        }
+        eq(`U4 前の切り替えが落ちた後のやり直しも失敗（${label}・${points} 点）: A は写しから localStorage にそろい index は ls・書き出しは A（途中の A を出さない）`, bad, []);
+        ok(`U4 前の切り替えが落ちた後のやり直し（${label}）: 全部の書き込みの点で落として確かめた（8 点以上）`, points >= 8, `${points} 点`);
+      }
+    }
+    // 書き出しは index が idb を指す領域の localStorage の残りを読まない。localStorage に今の領域が無ければ、index が指す確かめた写しを書き出す
+    {
+      const idb = new FakeIDB();
+      const store = await ST.openAreaStore(idb);
+      await store.putVerified("areas", { area: "u:A", id: "a1", keys: A, savedAt: "2026-10-29T00:00:00.000Z", schema: "7", sum: ST.sumOf(A) });
+      store.close();
+      const b = new Backing({ ...migratedMarks("u:A", 3, { "u:A": { at: "idb:a1" }, "u:B": { at: "idb:b1" } }), "sd2.auth": session("B"), "sd2.u:A.xp": A.spelldash_xp, "sd2.u:B.xp": "999" });
+      const exp = await exportOf(b, idb);
+      const tagA = (await SW.ownerOf("u:A", globalThis.crypto.subtle)).tag;
+      eq("U4 書き出し: localStorage に今の領域が無い端末は、index が指す A の写し（全部）と A の持ち主の値・残りの鍵（途中の A・B）は読まない", [exp instanceof Error ? exp.message : personOf(exp.data), exp?.owner?.tag === tagA], [sortedRec(A), true]);
+      idb.failOpen = new Error("lost");
+      const exp2 = await exportOf(b, idb);
+      ok("U4 書き出し: その写しが読めなければ書き出さない（途中の A を A の持ち主の値で出さない）", exp2 instanceof Error);
+    }
   }
 }
 
@@ -880,16 +1234,30 @@ const MUTANTS = [
   ["見張り: 同期の印を消さない", "guard", "for (const flag of SYNC_FLAGS) ss.removeItem(flag);", ""],
   ["控え: 読み直しで比べない", "store", "if (!back || back.id !== record.id || back.sum !== record.sum || !sameKeys(back.keys, record.keys) || sumOf(back.keys) !== record.sum) {", "if (false) {"],
   ["控え: durability strict で書かない", "store", '{ durability: "strict" }', "{}"],
-  ["移行: 旧い本体を消さない", "switch", "for (const key of legacyKeys()) if (legacy.keys[key] === ls.get(key)) ls.remove(key);", ""],
+  ["移行: 旧い本体を消さない", "switch", "    for (const key of legacyKeys()) if (legacy.keys[key] === ls.get(key)) ls.remove(key);\n    try {", "    try {"],
+  ["移行: 旧い本体を値を比べずに全部消す（旧タブが後から書いた値を orphans に回さず失う）", "switch", "    for (const key of legacyKeys()) if (legacy.keys[key] === ls.get(key)) ls.remove(key);\n    try {", "    for (const key of legacyKeys()) ls.remove(key);\n    try {"],
+  ["移行: 入らないとき今の鍵の旧い本体だけ消す（書き終えた鍵の旧い本体が場所を取ったまま）", "switch", "          if (!isQuotaError(error) || !freeOldBodies()) throw error;", "          if (!isQuotaError(error)) throw error;\n          ls.remove(name);"],
+  ["移行: 終わりの印が入らないときに途中の印を先に消さない", "switch", "        if (!isQuotaError(error)) throw error;\n        const moving = ls.get(K.MIGRATING_KEY);", "        throw error;\n        const moving = ls.get(K.MIGRATING_KEY);"],
+  ["移行: 認証の鍵が並んで入らないときに旧い鍵を先に消さない", "switch", "          if (!isQuotaError(error)) throw error;\n          // 両方は入らない: 旧い鍵を先に消してから書く", "          throw error;\n          // 両方は入らない: 旧い鍵を先に消してから書く"],
   ["移行: 持ち主の印を見ない", "switch", "if (typeof owner === \"string\" && owner && owner !== K.OWNER_MOVED) return K.areaOfUser(owner);", ""],
   ["移行: 認証のセッションを移さない", "switch", "      ls.set(K.OWNER_KEY, K.OWNER_MOVED);\n      moveAuth();", "      ls.set(K.OWNER_KEY, K.OWNER_MOVED);"],
   ["移行: legacy に写さない", "switch", "        await store.putVerified(\"legacy\", legacy);", ""],
   ["切り替え: 退避の写しを書かない", "switch", "await store.putVerified(\"areas\", { area, id, keys: snapshot,", "await Promise.resolve({ area, id, keys: snapshot,"],
   ["切り替え: swap の段にしない", "switch", 'ls.set(K.SWITCH_KEY, JSON.stringify({ ...flag, phase: "swap" }));', ""],
-  ["切り替え: 満杯のときに元を書き戻さない", "switch", "            for (const [name, value] of Object.entries(snapshot)) ls.set(K.physicalKey(area, name), value);", ""],
-  ["切り替え: 満杯のときに書いた切り替え先を消さない", "switch", "        for (const key of physicalOf(target)) ls.remove(key);\n        for (const [area, snapshot] of archived) {", "        for (const [area, snapshot] of archived) {"],
+  ["切り替え: 満杯のときに元を書き戻さない", "switch", '      for (const [area, snapshot] of archived) if (readIndex()[area]?.at !== "ls") restore(area, snapshot);', ""],
+  ["切り替え: 満杯のときに書いた切り替え先を消さない", "switch", [["      if (!live.includes(target)) for (const key of physicalOf(target)) ls.remove(key);\n", ""], ['      if (!sameKeys(collect(area), keys)) throw new AreaStoreError("verify", "書き戻すと中身が合わなかった。");\n    } catch (error) {\n      for (const key of physicalOf(area)) ls.remove(key);', '      if (!sameKeys(collect(area), keys)) throw new AreaStoreError("verify", "書き戻すと中身が合わなかった。");\n    } catch (error) {']]],
+  ["切り替え: 前の切り替えが落ちた後のやり直しが失敗しても、元を写しから戻さない", "switch", "      if (from && from !== target && liveAreas().length === 0) {", "      if (false) {"],
+  ["切り替え: drain の段でページのロックを待たない", "switch", "    await drain();\n", "\n"],
+  ["切り替え: drain の待ちの上限 0", "switch", "const DRAIN_MAX_MS = 3000;", "const DRAIN_MAX_MS = 0;"],
   ["切り替え: 先に印を替える", "switch", "    const archived = [];", "    ls.set(K.AREA_KEY, K.formatMarker(target, gen));\n    const archived = [];"],
-  ["切り替え: 切り替え先の写しの id を比べない", "switch", "if (!record || `idb:${record.id}` !== targetAt || sumOf(record.keys) !== record.sum) throw stop(\"target\");", "if (!record) throw stop(\"target\");"],
+  ["切り替え: 切り替え先の写しの id を比べない", "switch", "if (!record || `idb:${record.id}` !== at || sumOf(record.keys) !== record.sum) return null;", "if (!record) return null;"],
+  ["書き出し: index が idb を指す印の領域の localStorage の残りを書き出す", "switch", '    area = Object.keys(index).find((a) => index[a]?.at === "ls") ?? null;', '    area = Object.keys(index).find((a) => index[a]?.at === "ls") ?? marker?.area ?? null;'],
+  ["書き出し: 移行の途中に legacy を読まない", "switch", '    person = await readVerified("legacy", migrating.legacyId, (record) => record.id === migrating.legacyId);', "    person = null;"],
+  ["戻り先: 確かめない（外の URL も受ける）", "switch", [['  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || /[\\u0000-\\u001f\\u007f\\\\]/.test(value)) return "/";', '  if (typeof value !== "string") return "/";'], ['  if (url.origin !== new URL(base).origin || url.pathname === "/switch.html") return "/";', '  if (url.pathname === "/switch.html") return "/";']]],
+  ["戻り先: ? の後ろに置く", "guard", 'return SWITCH_PATH + "#back=" + encodeURIComponent(here);', 'return SWITCH_PATH + "?back=" + encodeURIComponent(here);'],
+  ["見張り: 読み込みの確かめ（selfTest）をしない", "guard", '  if (!selfTest()) return unsupported("selftest");', ""],
+  ["見張り: 戻ったタブ（pageshow・focus）で確かめ直さない", "guard", '  root.addEventListener("pageshow", recheck);\n  root.addEventListener("focus", () => recheck());', ""],
+  ["見張り: 戻ったタブ（visibilitychange）で確かめ直さない", "guard", '      if (doc.visibilityState === "visible") recheck();', ""],
   ["直し: idb を指す領域の残りを消さない", "switch", "      for (const key of physicalOf(area)) {\n        ls.remove(key);\n        removed++;\n      }", ""],
   ["片付け: 旧い場所の値を消さない", "switch", "      for (const key of names) if (ls.get(key) === found[key]) ls.remove(key);", ""]
 ];
@@ -901,13 +1269,15 @@ if (MUTATE && baseFailures.length === 0) {
   let n = 0;
   for (const [name, file, from, to] of MUTANTS) {
     n++;
-    if (!original[file].includes(from)) {
+    const pairs = Array.isArray(from) ? from : [[from, to]];
+    if (!pairs.every(([a]) => original[file].includes(a))) {
       mutantReport.push(`${name}: 変異の元の文が見つからない（テストを直す）`);
       continue;
     }
     const d = path.join(dir, String(n), "js");
     fs.mkdirSync(d, { recursive: true });
-    for (const [k, f] of Object.entries(files)) fs.writeFileSync(path.join(d, path.basename(f)), k === file ? original[k].replace(from, to) : original[k]);
+    const mutated = pairs.reduce((text, [a, b]) => text.replace(a, b), original[file]);
+    for (const [k, f] of Object.entries(files)) fs.writeFileSync(path.join(d, path.basename(f)), k === file ? mutated : original[k]);
     guardSrc = fs.readFileSync(path.join(d, "areaGuard.js"), "utf8");
     SW = await import(pathToFileURL(path.join(d, "areaSwitch.js")).href);
     ST = await import(pathToFileURL(path.join(d, "areaStore.js")).href);
