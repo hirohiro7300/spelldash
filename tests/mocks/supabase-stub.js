@@ -8,8 +8,8 @@ export const isSupabaseConfigured = false;
 // 見張りと切り替えの画面が動く。タブをまたぐ知らせ（SIGNED_IN・SIGNED_OUT）は、本物の部品と同じく鍵と同じ名前の BroadcastChannel で送る
 export const AUTH_STORAGE_KEY = "sd2.auth";
 const DEFAULT_USER = { id: "test-user", email: "test@example.com" };
-// 前の形の種（tests/e2e.mjs の種の spelldash_test_session）: "1" → access_token test-token、それ以外の文字列はその値。読み込みのときに新しい鍵が無ければ
-// test-user のセッションとして新しい鍵へ書く（ログインのリンクから戻ったタブの部品と同じ: 見張りが人の替わりを見て切り替えの画面へ移す）
+// 前の形の種（tests/e2e.mjs の種の spelldash_test_session）: "1" → access_token test-token、それ以外の文字列はその値。新しい鍵が無ければ
+// test-user のセッションとして新しい鍵へ書く（最初に getSession を呼んだ時。ログインのリンクから戻ったタブの部品と同じ: 見張りが人の替わりを見て切り替えの画面へ移す）
 const SESSION_KEY = "spelldash_test_session";
 // signOut の scope の控え（JSON の配列。検査が読む）・通信できない signOut の印（"1"。navigator.onLine が false のときも）
 const SIGNOUTS_KEY = "spelldash_test_signouts";
@@ -59,12 +59,15 @@ function writeSession(session) {
     // 保存の無い環境ではログインもしない
   }
 }
-// 前の形の種を新しい鍵へ（新しい鍵にセッションが無いときだけ）
-try {
-  const legacy = readStorage(SESSION_KEY);
-  if (legacy && !fakeSession()) writeSession(makeSession(legacy));
-} catch {
-  // 使えない環境では何もしない
+// 前の形の種を新しい鍵へ（新しい鍵にセッションが無いときだけ）。本物の部品と同じく、読み込みの時ではなく最初にセッションを読む時に書く
+// （本物の部品は URL のトークンを初期化の後で保存する。読み込みの時に書くと、ページの残りの同期の書き込みが切り替えの前に断られる）
+function adoptLegacySeed() {
+  try {
+    const legacy = readStorage(SESSION_KEY);
+    if (legacy && !fakeSession()) writeSession(makeSession(legacy));
+  } catch {
+    // 使えない環境では何もしない
+  }
 }
 
 // 読み込みの遅れの模擬（加入画面の読み込みの検査。PR #170 のレビュー 2）: localStorage の spelldash_test_delay = {"session": ms, "plan": ms} があれば、
@@ -170,6 +173,11 @@ export const supabase = {
     getSession: async () => {
       const wait = testDelay("session");
       if (wait) await wait;
+      if (readStorage(SESSION_KEY) && !fakeSession()) {
+        // 本物の部品と同じく、ページの読み込みの同期の処理が済んでから書く（次のタスク）
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        adoptLegacySeed();
+      }
       return { data: { session: fakeSession() } };
     },
     onAuthStateChange: (cb) => {

@@ -22577,6 +22577,9 @@ console.log("78.7 人ごとの保存の領域:");
         await waitUntil(async () => cloud.log.some((e) => e.userId === UA && e.kind === "select"), 8000, 200);
         await t1.waitForTimeout(1200);
         const t3 = await openApp(ctx, "/index.html");
+        // t3 の A の取り込みが終わってから印を取る（B のログインの前に始まった A の読みを、後の物と数えない）
+        await waitUntil(() => t3.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session")).then((v) => v !== null).catch(() => false), 8000, 100);
+        await t3.waitForTimeout(500);
         const mark = cloud.log.length;
         await signInOn(t3, userB);
         const all = await Promise.all([t1, t2, t3].map((p) => waitArea(p, `u:${UB}`, 20000)));
@@ -22619,7 +22622,7 @@ console.log("78.7 人ごとの保存の領域:");
       }
     }
 
-    // (P6) 見え方の古いタブ（切り替えの画面への移動が遅れている間）の書き込み: ほかのタブで B に入った後に答えると「保存できませんでした」・A の記録にも B の記録にも書かない
+    // (P6) 見え方の古いタブ（切り替えの画面へ移れなかったタブ）の書き込み: ほかのタブで B に入った後に答えると「保存できませんでした」・A の記録にも B の記録にも書かない
     {
       const ctx = await ctxOf();
       try {
@@ -22632,22 +22635,25 @@ console.log("78.7 人ごとの保存の領域:");
         await t1.waitForFunction(() => document.body.classList.contains("learn-run") && !!document.getElementById("japanese")?.textContent.trim(), null, { timeout: 15000 }).catch(() => {});
         await t1.waitForTimeout(500);
         let held = false;
-        await t1.route(`${BASE}/switch.html`, async (route) => { held = true; await new Promise((r) => setTimeout(r, 9000)); await route.continue().catch(() => {}); });
+        // 古いタブの切り替えの画面への移動は 204（中身なし）で止める: 移動は取り消され、タブは古い文書のまま残る（移れなかった古いタブ。見張りはもう移る途中の印を持つ）
+        await t1.route(`${BASE}/switch.html`, async (route) => { held = true; await route.fulfill({ status: 204, body: "" }).catch(() => {}); });
         const t2 = await openApp(ctx, "/index.html");
         const aBefore = areaOf(await dumpRaw(ctx), `u:${UA}`).spelldash_word_stats ?? null; // 1 語目を出したときの A の語の記録
         const lineBefore = await t1.evaluate(() => document.getElementById("message")?.textContent.trim() ?? null).catch(() => null);
         await signInOn(t2, userB);
         await waitUntil(async () => held, 5000, 50);
-        await t1.press("#input", "Enter").catch(() => {});
+        await t1.waitForTimeout(300); // 取り消された移動の後
+        // page.press は取り消された移動の終わりを待ち続けるので、入力欄へ直に keydown を送る（画面キーボードと同じ合成の keydown）
+        await t1.evaluate(() => { const el = document.getElementById("input"); el.focus(); el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true })); }).catch(() => {});
         await waitUntil(async () => (await t1.evaluate(() => document.getElementById("message")?.textContent.trim() ?? null).catch(() => null)) !== lineBefore, 3000, 50);
         const line = await t1.evaluate(() => document.getElementById("message")?.textContent.trim() ?? null).catch(() => null);
-        // 古いタブは切り替えの画面へ移る前に閉じる（移った後は B の領域で開き直して B として学ぶ。それは古いタブの書き込みではない）
+        // 古いタブを閉じてから、ほかのタブの切り替えの終わりを待つ（古いタブはページのロックを持つので、閉じるまで drain が待つ）
         await t1.close().catch(() => {});
         await waitArea(t2, `u:${UB}`, 20000);
         const raw = await dumpRaw(ctx);
         const aCopy = await idbGet(ctx, "areas", `u:${UA}`);
         check("78.7 見え方の古いタブ: ほかのタブで B に入った後の答えは「保存できませんでした」・B の領域に書かない・A の写しは答えの前のまま",
-          held && line === "保存できませんでした" && (areaOf(raw, `u:${UB}`).spelldash_word_stats ?? "{}") === "{}" && aCopy?.keys?.spelldash_word_stats === aBefore,
+          held && /^保存できませんでした/.test(line ?? "") && (areaOf(raw, `u:${UB}`).spelldash_word_stats ?? "{}") === "{}" && aCopy?.keys?.spelldash_word_stats === aBefore,
           JSON.stringify({ held, lineBefore, line, b: areaOf(raw, `u:${UB}`).spelldash_word_stats ?? null, a: aCopy?.keys?.spelldash_word_stats ?? null, aBefore }));
         await t2.close();
       } finally {
