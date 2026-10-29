@@ -36,8 +36,8 @@
   const PAGE_LOCK = "spelldash-page";
   const SWITCH_LOCK = "spelldash-area-switch";
   // 書き出し（復旧の画面・使えないブラウザ）に入れない鍵。js/backup.js の EXCLUDE と同じ（単体で固定する）: 持ち主の鍵（同期が書く生の user id）・
-  // 同期の印・送信待ち・ログアウトの時刻・3 状態の初めの埋めの印・このタブの同期の印・端末の開き方の好み
-  const EXPORT_EXCLUDE = Object.freeze(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled"]);
+  // 同期の印・送信待ち・ログアウトの時刻・3 状態の初めの埋めの印・このタブの同期の印・端末の開き方の好み・Pro の状態の控えと支払いの印（生の user id を持つ）
+  const EXPORT_EXCLUDE = Object.freeze(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled", "spelldash_plan", "spelldash_funnel_paid"]);
   const AREA_KEY_RE = /^sd2\.(guest|u:[^.#\s]+)\.(.+)$/;
 
   const isPersonKey = (key) => typeof key === "string" && key.startsWith(PREFIX) && !DEVICE.has(key) && !key.startsWith(TEST_PREFIX);

@@ -2342,10 +2342,12 @@ async function runApp(root) {
     const expected = (await import("crypto")).createHash("sha256").update(`spelldash-backup-owner-v1:${UID}`).digest("hex").slice(0, 32);
     const tag = await BK.ownerTag(UID);
     eq("U7 持ち主の値: SHA-256(\"spelldash-backup-owner-v1:\" + user id) の頭 32 字（端末ごとの乱数なし・どの端末でも同じ）・復旧の画面の書き出しと同じ", [tag, (await BK.ownerTag(UID)) === tag, (await SWa.ownerOf(`u:${UID}`)).tag], [expected, true, expected]);
-    const acct = { spelldash_schema_version: "7", spelldash_theme: "dark", spelldash_owner: UID, spelldash_learn_filled: UID, spelldash_word_stats: ws("A"), spelldash_xp: "300", spelldash_rank_peak: "2" };
+    // Pro の状態の控え（spelldash_plan）と支払いの印（spelldash_funnel_paid）は user id を持つ。書き出しには入れない（開けば作り直す）
+    const acct = { spelldash_schema_version: "7", spelldash_theme: "dark", spelldash_owner: UID, spelldash_learn_filled: UID, spelldash_word_stats: ws("A"), spelldash_xp: "300", spelldash_rank_peak: "2",
+      spelldash_plan: JSON.stringify({ status: "active", plan: "pro", checkedAt: 1780000000000, user: UID }), spelldash_funnel_paid: JSON.stringify({ day: "2026-10-01", user: UID }) };
     reset({ seed: acct, user: UID, page: `u:${UID}` });
     const file = await BK.buildOwnedBackup();
-    eq("U7 書き出し（アカウント）: owner = { kind: account, tag }・生の user id はファイルのどこにも無い・持ち主の鍵と同期の印は入れない", [file.owner, JSON.stringify(file).includes(UID), "spelldash_owner" in file.data, "spelldash_learn_filled" in file.data, file.data.spelldash_xp], [{ kind: "account", tag: expected }, false, false, false, "300"]);
+    eq("U7 書き出し（アカウント）: owner = { kind: account, tag }・生の user id はファイルのどこにも無い・持ち主の鍵と同期の印・Pro の状態の控えと支払いの印は入れない", [file.owner, JSON.stringify(file).includes(UID), "spelldash_owner" in file.data, "spelldash_learn_filled" in file.data, "spelldash_plan" in file.data, "spelldash_funnel_paid" in file.data, file.data.spelldash_xp], [{ kind: "account", tag: expected }, false, false, false, false, false, "300"]);
     reset({ seed: { spelldash_schema_version: "7", spelldash_xp: "5" }, user: null, page: "guest" });
     const gfile = await BK.buildOwnedBackup();
     eq("U7 書き出し（ゲスト）: owner = { kind: guest }", gfile.owner, { kind: "guest" });

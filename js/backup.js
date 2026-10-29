@@ -22,8 +22,9 @@ export const BACKUP_VERSION = 1;
 // 端末固有・一時的なものは含めない（xp_synced は「この端末が最後にクラウドと一致した XP」。別の端末に持ち込むと差分がずれる）。
 // タイピング練習の種類・タイピングゲームのコースの記憶（この端末の開き方の好み。Batch 65 P1・P2）も入れない。
 // ログアウトの時刻と 3 状態の初めの埋めの印（この端末とアカウントの同期の印。js/sync.js。Batch 78）も入れない。
+// Pro の状態の控え（spelldash_plan）と支払いの印（spelldash_funnel_paid）も入れない（生の user id を持つ。開けばサーバーから作り直す。Batch 78-7）。
 // 最高到達ランク（spelldash_rank_peak）と語ごとの 3 状態の欄（spelldash_word_stats の ls・lsd・lsAt）は入れる（js/rank.js・js/learnState.js）
-const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled"]);
+const EXCLUDE = new Set(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled", "spelldash_plan", "spelldash_funnel_paid"]);
 // 復元のときに必ず消すもの（復元した記録の持ち主と、クラウドとの差分の基準は分からないので、次の同期を初回の扱いにする）
 const RESET_ON_RESTORE = ["spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_logout_at", "spelldash_learn_filled"];
 // このタブの同期の印（sessionStorage。js/sync.js clearSyncedFlag と同じ 4 つ。sync.js は backup.js を import するので、ここからは直に消す）。
