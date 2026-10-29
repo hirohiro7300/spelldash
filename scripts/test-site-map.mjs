@@ -8,16 +8,20 @@
 //      （pro.html は加入画面として残し、検索には出さない。Batch 78 段 6・創業者の決定 3）
 //   3. パックのページ: <head> の先頭で英単語のホーム（/?from=old）へ案内する（読み込みと描画の前。CSS より前）。生成器（scripts/build-pack-pages.mjs）の
 //      --check が今の木で通り、写しの木でページを 1 枚古くすると落ちる
-//   4. vercel.json: 読める。ホスト名の転送 3 つ（permanent: true）は前のまま先頭。/packs・/packs/…・/list.html・/typing.html・/typing-game.html は /?from=old へ
-//      一時的（permanent: false。タイピングの 2 ページは Batch 78 段 6・創業者の決定 3: 古いお知らせのリンクは履歴のまま、開くと英単語のホームへ）。
-//      ほかの URL（主導線・Battle・加入画面・タイピングの js と css と教材・data/packs/ の JSON・js/listView.js）は転送しない
+//   4. vercel.json: 読める。ホスト名の転送 3 つ（permanent: true）は前のまま先頭。/packs・/packs/…・/list.html・/typing.html・/typing-game.html・/battle.html は /?from=old へ
+//      一時的（permanent: false。タイピングの 2 ページは Batch 78 段 6・創業者の決定 3: 古いお知らせのリンクは履歴のまま、開くと英単語のホームへ。Battle は Batch 78 段 7・
+//      創業者の確認 2026-10-29 の 4）。ほかの URL（主導線・加入画面・Battle とタイピングの js と css と教材・data/packs/ の JSON・js/listView.js）は転送しない
 //   5. ナビとフッター（ルートの 12 ページ〔admin.html を除く〕と packs/ の全ページ）: ナビは 4 つ「ホーム・英単語を学ぶ・学習状況・設定」で行き先は
 //      /・/?learn=next・stats.html・profile.html。現在地はそのページのリンクだけ。フッターの一文は「ストレスなしで、英単語を覚える。」・ナビとフッターに
 //      単語帳／Battle／タイピング／パック／Pro へのリンクが無い。js/footer.js はフッターに「SpellDash Pro」を差し込まない（js/proFunnel.js renderFooterPro を呼ばない）が、
 //      受付中かどうかの控え（refreshBillingOpen）は前と同じ頁で取り直す（設定の「Pro について」などが読む。data-no-pro の頁〔タイピング練習〕と加入画面は前から取らない）
 //   6. 写しを壊すと落ちる（決まりの検査そのものが効く）: sitemap に list.html を足す・tokushoho の noindex を外したのに sitemap に無い・battle と pro の noindex を消す・
-//      パックのページの案内を消す・転送を permanent: true にする・転送の先を変える・転送が data/packs/ にも当たる・タイピングの転送を外す・ホスト名の転送を後ろへ回す・
-//      ナビに単語帳を足す・ナビの順を替える・フッターにタイピング練習を戻す・footer.js で renderFooterPro を呼ぶ・控えを取り直さない
+//      パックのページの案内を消す・転送を permanent: true にする・転送の先を変える・転送が data/packs/ にも当たる・タイピングと Battle の転送を外す・ホスト名の転送を後ろへ回す・
+//      ナビに単語帳を足す・ナビの順を替える・フッターにタイピング練習を戻す・footer.js で renderFooterPro を呼ぶ・控えを取り直さない・入口の門を消す／CSS の後へ回す／
+//      旗（data-focus）を外す／行き先を変える
+//   7. 入口の門（Batch 78 段 7。創業者の確認 2026-10-29 の 4）: Battle・タイピング練習・タイピングゲームの 3 ページ（GATED_PAGES）は、<head> の最初の <script>
+//      （id="focusGate"。どの <link> より前）で、旗（<html data-focus="english">）が立っていれば英単語のホーム（/?from=old）へ置き換える。配信の転送が効かない
+//      アプリの中でも止めるため。3 ページの旗は js/focus.js FOCUS_ENGLISH と同じ（index.html・profile.html と同じ旗）。門は 3 ページで同じ文
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -31,8 +35,11 @@ const OLD_URL_HOME = "/?from=old";
 
 // sitemap に載せてよいページ（主導線と、お知らせ・規約）。載るのはこのうち noindex でないものだけ
 const SITEMAP_PAGES = [["/", "index.html"], ["/stats.html", "stats.html"], ["/profile.html", "profile.html"], ["/news.html", "news.html"], ["/privacy.html", "privacy.html"], ["/terms.html", "terms.html"], ["/tokushoho.html", "tokushoho.html"]];
-// 検索から外すページ（Battle と加入画面は直接開けば動く。単語帳とパックのページはページの守り、単語帳とタイピングの 2 ページは配信の転送でホームへ案内する）
+// 検索から外すページ（加入画面は直接開けば動く。単語帳とパックのページはページの守り、Battle とタイピングの 2 ページは入口の門、単語帳と Battle とタイピングの 2 ページは
+// 配信の転送でホームへ案内する）
 const HIDDEN_PAGES = ["battle.html", "typing.html", "typing-game.html", "list.html", "pro.html"];
+// 入口の門を持つページ（7）
+const GATED_PAGES = ["battle.html", "typing.html", "typing-game.html"];
 // ナビとフッターを持つルートのページ（admin.html は対象外: 創業者の決定 §7「CRM・管理画面は今回の対象外」）
 const ROOT_PAGES = ["index.html", "stats.html", "list.html", "profile.html", "battle.html", "news.html", "terms.html", "privacy.html", "tokushoho.html", "pro.html", "typing.html", "typing-game.html"];
 const NAV = [["ホーム", "/"], ["英単語を学ぶ", "/?learn=next"], ["学習状況", "stats.html"], ["設定", "profile.html"]];
@@ -91,6 +98,30 @@ function packGuardProblems(file, html) {
   return [];
 }
 
+// 7. 入口の門: pages = { ファイル名: HTML }、flagOn = js/focus.js FOCUS_ENGLISH
+function gateProblems(pages, flagOn) {
+  const problems = [];
+  const gates = [];
+  for (const file of GATED_PAGES) {
+    const html = pages[file] ?? "";
+    const head = html.slice(0, html.indexOf("</head>"));
+    const tag = html.match(/^<html\b[^>]*>/m)?.[0] ?? "";
+    if (/\sdata-focus="english"/.test(tag) !== flagOn) problems.push(`${file}: <html data-focus> が js/focus.js FOCUS_ENGLISH（${flagOn}）と違う`);
+    const gate = head.match(/<script id="focusGate">[\s\S]*?<\/script>/)?.[0] ?? null;
+    if (!gate) {
+      problems.push(`${file}: 入口の門（<script id="focusGate">）が無い`);
+      continue;
+    }
+    gates.push(gate);
+    if (head.indexOf("<script") !== head.indexOf(gate)) problems.push(`${file}: 入口の門が <head> の最初の <script> でない`);
+    const link = head.indexOf("<link");
+    if (link >= 0 && link < head.indexOf(gate)) problems.push(`${file}: 入口の門が <link>（CSS・先読み）より後`);
+    if (!gate.includes(`location.replace(${JSON.stringify(OLD_URL_HOME)})`) || !gate.includes('"english"') || !/dataset\.focus|data-focus/.test(gate)) problems.push(`${file}: 入口の門が旗を見て ${OLD_URL_HOME} へ置き換えない`);
+  }
+  if (new Set(gates).size > 1) problems.push("入口の門の文が 3 ページで違う");
+  return problems;
+}
+
 // 4. vercel.json の redirects: Vercel の source の書き方（path-to-regexp。:name は 1 区切り、:name* は 0 個以上の区切り、末尾の / は任意、大小文字は区別しない）
 function sourceRegExp(source) {
   let re = "";
@@ -109,8 +140,8 @@ function firstRedirect(redirects, pathname, host = "www.spelldash.net") {
   return redirects.find((r) => sourceRegExp(r.source).test(pathname) && (r.has ?? []).every((h) => h.type === "host" && h.value === host)) ?? null;
 }
 const HOST_REDIRECTS = ["spelldash.vercel.app", "spelldash-jzf8.vercel.app", "spelldash.net"];
-const OLD_PATHS = ["/packs", "/packs/", "/packs/index.html", "/packs/ngsl01.html", "/packs/accounting.html", "/PACKS/ngsl01.html", "/list.html", "/list.html/", "/typing.html", "/typing.html/", "/TYPING.html", "/typing-game.html", "/typing-game.html/"];
-const KEEP_PATHS = ["/", "/index.html", "/stats.html", "/profile.html", "/news.html", "/terms.html", "/privacy.html", "/tokushoho.html", "/pro.html", "/battle.html", "/admin.html", "/sitemap.xml", "/robots.txt", "/sw.js", "/data/packs/ngsl01.json", "/data/manifest.json", "/js/listView.js", "/js/packs.js", "/packs.html", "/list", "/listing.html", "/list.html.bak", "/api/billing/config",
+const OLD_PATHS = ["/packs", "/packs/", "/packs/index.html", "/packs/ngsl01.html", "/packs/accounting.html", "/PACKS/ngsl01.html", "/list.html", "/list.html/", "/typing.html", "/typing.html/", "/TYPING.html", "/typing-game.html", "/typing-game.html/", "/battle.html", "/battle.html/", "/BATTLE.html"];
+const KEEP_PATHS = ["/", "/index.html", "/stats.html", "/profile.html", "/news.html", "/terms.html", "/privacy.html", "/tokushoho.html", "/pro.html", "/admin.html", "/battle", "/battle.html.bak", "/js/battleView.js", "/css/battle.css", "/sitemap.xml", "/robots.txt", "/sw.js", "/data/packs/ngsl01.json", "/data/manifest.json", "/js/listView.js", "/js/packs.js", "/packs.html", "/list", "/listing.html", "/list.html.bak", "/api/billing/config",
   "/typing", "/typing-game", "/typing.html.bak", "/typing-long.html", "/js/typingPage.js", "/js/typingGamePage.js", "/css/typing.css", "/css/typing-game.css", "/data/typing.json", "/data/typing-game.json", "/assets/images/og-typing.png", "/assets/images/og-typing-game.png"];
 function redirectProblems(text) {
   let conf;
@@ -195,7 +226,10 @@ ok(`2. noindex: battle・typing・typing-game・list・pro と packs/ の ${pack
 const guards = packFiles.flatMap((f) => packGuardProblems(f, pages[f]));
 ok(`3. パックの ${packFiles.length} ページは頭の先頭（CSS より前）で ${OLD_URL_HOME} へ案内する`, guards.length === 0, show(guards));
 const rd = redirectProblems(vercelText);
-ok(`4. vercel.json: ホスト名の転送はそのまま先頭・/packs と /packs/… と /list.html と /typing.html・/typing-game.html は ${OLD_URL_HOME} へ一時的・ほかの ${KEEP_PATHS.length} の URL は転送しない`, rd.length === 0, show(rd));
+ok(`4. vercel.json: ホスト名の転送はそのまま先頭・/packs と /packs/… と /list.html と /typing.html・/typing-game.html・/battle.html は ${OLD_URL_HOME} へ一時的・ほかの ${KEEP_PATHS.length} の URL は転送しない`, rd.length === 0, show(rd));
+const flagOn = /^export const FOCUS_ENGLISH = true;$/m.test(read("js/focus.js"));
+const gp = gateProblems(pages, flagOn);
+ok(`7. 入口の門: ${GATED_PAGES.join("・")} は <head> の最初の <script>（どの <link> より前）で旗を見て ${OLD_URL_HOME} へ置き換える・3 ページで同じ文・旗は js/focus.js FOCUS_ENGLISH と同じ（${flagOn}）`, gp.length === 0 && flagOn, show(gp));
 const ch = [...ROOT_PAGES, ...packFiles].flatMap((f) => chromeProblems(f, pages[f]));
 ok(`5. ナビは 4 つ（ホーム・英単語を学ぶ・学習状況・設定）・現在地・フッターの一文・data-no-pro・外した面へのリンクが無い（ルートの ${ROOT_PAGES.length} ページと packs/ の ${packFiles.length} ページ）`, ch.length === 0, show(ch));
 const fj = footerScriptProblems(read("js/footer.js"));
@@ -243,6 +277,8 @@ mutate("転送を permanent: true にする", redirectProblems(withRedirects((rs
 mutate("転送の先を / にする", redirectProblems(withRedirects((rs) => rs.map((r) => (r.source.startsWith("/packs") ? { ...r, destination: "/" } : r)))));
 mutate("/packs の転送を外す", redirectProblems(withRedirects((rs) => rs.filter((r) => r.source !== "/packs/:path*" && r.source !== "/packs"))));
 mutate("タイピングゲームの転送を外す", redirectProblems(withRedirects((rs) => rs.filter((r) => r.source !== "/typing-game.html"))));
+mutate("Battle の転送を外す", redirectProblems(withRedirects((rs) => rs.filter((r) => r.source !== "/battle.html"))));
+mutate("Battle の転送を permanent: true にする", redirectProblems(withRedirects((rs) => rs.map((r) => (r.source === "/battle.html" ? { ...r, permanent: true } : r)))));
 mutate("タイピング練習の転送を permanent: true にする", redirectProblems(withRedirects((rs) => rs.map((r) => (r.source === "/typing.html" ? { ...r, permanent: true } : r)))));
 mutate("転送がタイピングの js・css・教材にも当たる", redirectProblems(withRedirects((rs) => [...rs, { source: "/:dir/:file", destination: OLD_URL_HOME, permanent: false }])));
 mutate("加入画面を転送する", redirectProblems(withRedirects((rs) => [...rs, { source: "/pro.html", destination: OLD_URL_HOME, permanent: false }])));
@@ -256,6 +292,12 @@ mutate("フッターにタイピング練習を戻す", chromeProblems("terms.ht
 const footerJs = read("js/footer.js");
 mutate("footer.js で renderFooterPro を呼ぶ", footerScriptProblems(footerJs.replace("refreshBillingOpen();", "refreshBillingOpen();\n  renderFooterPro();")));
 mutate("footer.js が控えを取り直さない", footerScriptProblems(footerJs.replace(/^ *if \(footerNav[^\n]*refreshBillingOpen\(\);$/m, "")));
+const gateOf = (f) => pages[f].match(/<script id="focusGate">[\s\S]*?<\/script>\n?/)?.[0] ?? "<script id=\"focusGate\"></script>";
+mutate("Battle の入口の門を消す", gateProblems({ ...pages, "battle.html": pages["battle.html"].replace(gateOf("battle.html"), "") }, true));
+mutate("タイピング練習の入口の門を CSS の後へ回す", gateProblems({ ...pages, "typing.html": pages["typing.html"].replace(gateOf("typing.html"), "").replace("</head>", `${gateOf("typing.html")}</head>`) }, true));
+mutate("タイピングゲームの旗（data-focus）を外す", gateProblems({ ...pages, "typing-game.html": pages["typing-game.html"].replace(' data-focus="english"', "") }, true));
+mutate("旗を外したのに 3 ページに旗が残る", gateProblems(pages, false));
+mutate("Battle の入口の門の行き先を変える", gateProblems({ ...pages, "battle.html": pages["battle.html"].replace(`location.replace("${OLD_URL_HOME}")`, 'location.replace("/")') }, true));
 mutate("フッターの一文を前に戻す", chromeProblems("packs/ngsl01.html", pages["packs/ngsl01.html"].replace(TAGLINE, "タイピングで、英単語を体に覚えさせる。")));
 
 if (failures.length) {
