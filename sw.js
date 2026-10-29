@@ -81,10 +81,20 @@ function ping(client) {
     setTimeout(() => finish(false), PING_MS);
   });
 }
+// 読み直す URL は # の後ろを外す（ログインのリンクを開いたタブでは # の後ろに初めのトークンが入りうる。同じ文書の中の移動になり読み直しにもならない）
+function withoutHash(href) {
+  try {
+    const url = new URL(href);
+    url.hash = "";
+    return url.href;
+  } catch {
+    return href;
+  }
+}
 function reloadOldWindows() {
   return self.clients
     .matchAll({ type: "window", includeUncontrolled: false })
-    .then((windows) => Promise.all(windows.map((client) => ping(client).then((answered) => (answered ? null : client.navigate(client.url).catch(() => null))))))
+    .then((windows) => Promise.all(windows.map((client) => ping(client).then((answered) => (answered ? null : client.navigate(withoutHash(client.url)).catch(() => null))))))
     .catch(() => null);
 }
 

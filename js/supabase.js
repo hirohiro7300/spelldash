@@ -55,12 +55,54 @@ const authStorage = {
   }
 };
 
+// 書き込みの世代の印（X-Client-Info。CORS で既に許されている見出しなので、新しい見出しは足さない）。人ごとの保存の領域の入った版（2）から送る。
+// 後でサーバー側の行の権限で「この印の無い書き込みを断る」を足せる（旧コードのタブは印を付けない）
+export const CLIENT_INFO = "spelldash/2 supabase-js-web/2.118.0";
+
+// 送る直前の確かめ（人ごとの保存の領域。js/areaGuard.js の SpellDashArea）: 表（/rest/v1/）への要求は、Authorization のトークンの人とページの領域が合い、
+// 見張りの stillMine()（領域の印が開いたときと同じ・切り替えの途中でない・セッションの人がページの人）のときだけ送る。違えば送らずに失敗の答えを返す
+// （呼び手は送れなかったとして扱い、成功と見せない）。認証（/auth/v1/）はいつも通す（ログアウト・トークンの更新）。見張りの無い所では表へ送らない
+function tokenUser(authorization) {
+  const m = /^Bearer\s+(\S+)$/i.exec(authorization ?? "");
+  const part = m ? m[1].split(".")[1] : null;
+  if (!part) return null;
+  try {
+    const bin = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    const payload = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+    return typeof payload?.sub === "string" && payload.sub ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+function refusedResponse() {
+  return new Response(JSON.stringify({ message: "記録の持ち主が替わったため送らなかった。", code: "SD2_AREA" }), { status: 409, headers: { "Content-Type": "application/json" } });
+}
+function guardedFetch(input, init) {
+  const url = typeof input === "string" ? input : String(input?.url ?? input);
+  if (url.includes("/rest/v1/")) {
+    const headers = new Headers(init?.headers ?? (typeof input === "object" ? input?.headers : undefined) ?? undefined);
+    const user = tokenUser(headers.get("Authorization"));
+    const area = globalThis.SpellDashArea;
+    let fits = false;
+    try {
+      fits = Boolean(area) && area.area === (user ? "u:" + user : "guest") && area.stillMine() === true;
+    } catch {
+      fits = false;
+    }
+    if (!fits) return Promise.resolve(refusedResponse());
+  }
+  return fetch(input, init);
+}
+
 let realClient = null;
 let loadFailed = false;
 
 const ready = import(MODULE_URL)
   .then(({ createClient }) => {
-    realClient = createClient(supabaseUrl, supabaseAnonKey, { auth: { storageKey: AUTH_STORAGE_KEY, storage: authStorage } });
+    realClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { storageKey: AUTH_STORAGE_KEY, storage: authStorage },
+      global: { headers: { "X-Client-Info": CLIENT_INFO }, fetch: guardedFetch }
+    });
   })
   .catch(() => {
     loadFailed = true;

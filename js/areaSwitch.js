@@ -3,16 +3,25 @@
 // 決まり（不変条件）: localStorage に置く人の記録はいつも 1 人（今の領域）だけ。sd2.index が指す方だけが本物。
 // 写して読み直して確かめてから index を替え、index を替えてから元を消す。容量で書けなければ部分的に有効にしない。
 // 鍵の決まりは js/areaGuard.js（switch.html では data-switch で読み、window.SpellDashAreaKeys に置く）。
-// この段（内部の 1）では、ログイン・ログアウトの確認（予行・はい／いいえ）は無い。今のセッションに合う領域へ、保存の層だけで切り替える。
+// 内部の 2: ログアウト（退避を確かめてから scope local の signOut）・ログインの「ゲストで学んだ記録を、このアカウントに移す？」（はい／いいえ）・
+// ログインとログアウトの前の予行（precheck。アプリのページが呼ぶ）。
 import { openAreaStore, sumOf, sameKeys, isQuotaError, askPersist, AreaStoreError } from "./areaStore.js";
 
 const DRAIN_MAX_MS = 3000;
 const DRAIN_STEP_MS = 100;
 const DRAIN_SETTLE_MS = 300;
+// 「はい」でゲストの記録をアカウントへ移すときに消す鍵（持ち主の鍵・同期の基準と送信の控え・ログアウトの時刻・3 状態の初めの埋めの印）
+export const ADOPT_RESET = Object.freeze(["spelldash_owner", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_logout_at", "spelldash_learn_filled"]);
+// 予行の写しの置き場（areas の別の鍵。本物の写し〔その領域の鍵〕には触れない）
+const PRECHECK_PREFIX = "pre:";
+// アプリのページから切り替えの画面へ渡す頼み（sessionStorage。このタブだけ）と、切り替えの画面から戻り先へ渡す知らせ
+export const INTENT_KEY = "sd2.intent";
+export const NOTICE_KEY = "sd2.notice";
+const INTENT_TTL_MS = 120000;
 
 // 切り替えられなかった理由。reason: evacuate（退避）・quota（容量）・target（切り替え先の控えが読めない）・legacy（移行の写し）・
 // migrate（移行の書き込み）・open（控えの置き場が使えない）・locks（排他のロックが使えない）・load（見張りが読めない）・changed（途中で変わった）・
-// export（書き出す記録の控えが読めない）。switch.html の小さい script は、部品が読めないときに offline
+// export（書き出す記録の控えが読めない）・signout（ログアウトの signOut が失敗した・セッションが残った）。switch.html の小さい script は、部品が読めないときに offline
 export class SwitchError extends Error {
   constructor(reason, message, cause = null) {
     super(message);
@@ -24,10 +33,38 @@ export class SwitchError extends Error {
 
 const fail = (reason, cause = null) => new SwitchError(reason, reasonText(reason), cause);
 function reasonText(reason) {
-  return reason === "quota" ? "この端末の保存の空きが足りない。" : "この端末に記録を安全に保存できなかったため、切り替えられません。";
+  if (reason === "quota") return "この端末の保存の空きが足りない。";
+  if (reason === "signout") return "ログアウトできなかった。";
+  return "この端末に記録を安全に保存できなかったため、切り替えられません。";
 }
 
-// deps: { ls: { get, set, remove, keys }（生の localStorage）, keys（js/areaGuard.js の SpellDashAreaKeys）, openStore, locks, now, newId, sleep, persist }
+// その領域に学んだ記録があるか（元の名前 → 値）。js/sync.js の前の確認と同じ物を数える: 語・XP・マイ単語帳・メモ・Battle・学んだ跡のある成長ログ・今日のセットの履歴。
+// 成長ログはホームを開いただけで 0 語の行が 1 つ書かれるので、学んだ跡のある行だけ数える
+export function hasRecords(rec) {
+  const json = (name, fallback) => {
+    try {
+      return JSON.parse(rec?.["spelldash_" + name] ?? "null") ?? fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const nonEmpty = (v) => (Array.isArray(v) ? v.length > 0 : v && typeof v === "object" ? Object.keys(v).length > 0 : false);
+  const battle = json("battle", {});
+  const growth = json("growth_log", []);
+  const rows = Array.isArray(growth) ? growth : Array.isArray(growth?.rows) ? growth.rows : [];
+  return (
+    nonEmpty(json("word_stats", {})) ||
+    (Number(rec?.spelldash_xp) || 0) > 0 ||
+    nonEmpty(json("my_words", [])) ||
+    nonEmpty(json("word_notes", {})) ||
+    (Number(battle?.wins) || 0) + (Number(battle?.losses) || 0) + (Number(battle?.draws) || 0) > 0 ||
+    rows.some((row) => row && (row.active === true || Number(row.learned) > 0 || Number(row.mastered) > 0)) ||
+    nonEmpty(json("daily_set", {})?.history ?? [])
+  );
+}
+
+// deps: { ls: { get, set, remove, keys }（生の localStorage）, keys（js/areaGuard.js の SpellDashAreaKeys）, openStore, locks, now, newId, sleep, persist,
+//         ask（「移す？」をたずねる。"yes" | "no"。無ければ移さない）, signOut（ログアウト。{ error }。js/supabase.js の部品を scope local で） }
 export function createSwitcher(deps) {
   const { ls, keys: K, openStore, locks } = deps;
   const now = deps.now ?? (() => Date.now());
@@ -35,6 +72,8 @@ export function createSwitcher(deps) {
   const newId = deps.newId ?? (() => `${now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const persist = deps.persist ?? (() => askPersist());
+  const ask = typeof deps.ask === "function" ? deps.ask : null;
+  const signOut = typeof deps.signOut === "function" ? deps.signOut : async () => ({ error: { message: "signOut が無い" } });
   let persistAsked = false;
 
   const readJson = K.readJson;
@@ -375,14 +414,18 @@ export function createSwitcher(deps) {
     return live;
   }
 
-  async function switchTo(store, target, op = "session") {
+  // op: "session"（今のセッションの領域へ）・"logout"（ログアウト。afterArchive が signOut して確かめる）・"adopt"（「はい」: ゲストの記録をこのアカウントへ移す）。
+  // adopt は手順 4 で、ゲストの写しと、持ち主の鍵などを消した切り替え先の写しの両方を書いて読み直し、手順 6 で両方を index に入れ、手順 8 でゲストを index から外す
+  // （移した記録をゲストに残さない。手順 6〜8 の間で落ちたときは、直しの finishAdopt が外す）
+  async function switchTo(store, target, op = "session", { afterArchive = null } = {}) {
     const marker = markerNow();
     const gen = (marker?.gen ?? 0) + 1;
     const id = newId();
     // 元 F は localStorage にある領域（印ではなく index で決める: 印を替える前に落ちた形では、印と index が食い違う）
     const live = liveAreas();
     const from = live.includes(marker?.area) ? marker.area : (live[0] ?? marker?.area ?? null);
-    const flag = { id, op, from, to: target, phase: "drain", at: iso() };
+    const adopt = op === "adopt" && from === "guest" && live.includes("guest") && target !== "guest" && readIndex()[target] === undefined;
+    const flag = { id, op: op === "adopt" && !adopt ? "session" : op, from, to: target, phase: "drain", at: iso() };
     const targetBefore = readIndex()[target]; // 止めるときに戻す（手順 8 の後に止まった）
     // 1. 印を書く（ほかのタブは知らせで切り替えの画面へ移る）。入らなければ何も替えずに止める
     try {
@@ -392,6 +435,7 @@ export function createSwitcher(deps) {
     }
     const archived = [];
     let incoming = null;
+    let adoptKeys = null;
     let wroteTarget = false;
     let stopping = false;
     // 止める（§3 の 4・7、§4。どの段の書き込みが容量で入らなくても同じ）: 切り替え先の index を前に戻し、書いた切り替え先の鍵を消す（写しにある）。
@@ -438,29 +482,47 @@ export function createSwitcher(deps) {
       // 3. swap の段。ここから人の記録への書き込みは、見え方が今のタブでは拒まれる（見え方の古いタブの遅れた書き込みは sweepStale が片付ける）
       ls.set(K.SWITCH_KEY, JSON.stringify({ ...flag, phase: "swap" }));
       // 4. 切り替え先でない localStorage の領域（ふつうは F の 1 つ）を IndexedDB に写す → 読み直して比べる。
-      // 失敗なら止める（F は localStorage のまま・印も index も替えない）
+      // 失敗なら止める（F は localStorage のまま・印も index も替えない）。adopt は切り替え先の写し（持ち主の鍵などを消した物）も書いて読み直す
       for (const area of live.filter((a) => a !== target)) {
         const snapshot = collect(area);
         await askPersistOnce();
         try {
           await store.putVerified("areas", { area, id, keys: snapshot, savedAt: iso(), schema: snapshot[K.PREFIX + "schema_version"] ?? null, sum: sumOf(snapshot) });
+          if (adopt && area === from) {
+            adoptKeys = Object.fromEntries(Object.entries(snapshot).filter(([name]) => !ADOPT_RESET.includes(name)));
+            await store.putVerified("areas", { area: target, id, keys: adoptKeys, savedAt: iso(), schema: adoptKeys[K.PREFIX + "schema_version"] ?? null, sum: sumOf(adoptKeys) });
+          }
         } catch (error) {
           throw await stop(isQuotaError(error) ? "quota" : "evacuate", error);
         }
         if (!sameKeys(collect(area), snapshot)) throw await stop("changed");
         archived.push([area, snapshot]);
       }
+      // 5. ログアウトだけ: 退避を確かめた後に signOut（scope local）と結果の確かめ。失敗なら止める（F は localStorage のまま・ログインもそのまま。写しは index が指さない）
+      if (afterArchive) {
+        try {
+          await afterArchive();
+        } catch (error) {
+          throw await stop(error instanceof SwitchError ? error.reason : "signout", error);
+        }
+      }
       // 切り替え先を、元を消す前に読む（読めなければ元を消さずに止める）
-      const targetAt = readIndex()[target]?.at;
-      if (typeof targetAt === "string" && targetAt.startsWith("idb:")) {
-        incoming = await readCopy(store, target);
-        if (!incoming) throw await stop("target");
+      if (adopt) {
+        if (!adoptKeys) throw await stop("changed");
+        incoming = adoptKeys;
+      } else {
+        const targetAt = readIndex()[target]?.at;
+        if (typeof targetAt === "string" && targetAt.startsWith("idb:")) {
+          incoming = await readCopy(store, target);
+          if (!incoming) throw await stop("target");
+        }
       }
       // 6. index[F] = idb → F の鍵を localStorage から消す。消す直前に、元が写しと同じかを確かめる（写しの後に遅れて書かれた値を消さない。
-      // 確かめと消すのは同じ流れの中で、間にほかのタブの書き込みは入らない）
+      // 確かめと消すのは同じ流れの中で、間にほかのタブの書き込みは入らない）。adopt は切り替え先の写しも同じ 1 回で index に入れる
       for (const [area, snapshot] of archived) {
         if (!sameKeys(collect(area), snapshot)) throw await stop("changed");
-        writeIndex({ ...readIndex(), [area]: { at: `idb:${id}`, lastUsedAt: iso() } });
+        const at = { at: `idb:${id}`, lastUsedAt: iso() };
+        writeIndex({ ...readIndex(), [area]: at, ...(adopt && area === from ? { [target]: at } : {}) });
         for (const key of physicalOf(area)) ls.remove(key);
       }
       // 7 の前: 切り替え先の領域に localStorage の残りがある（見え方の古いタブが前に書いた）。写しと違う値は orphans へ写してから消す（写しで上書きして失わない）
@@ -481,8 +543,10 @@ export function createSwitcher(deps) {
           throw await stop(isQuotaError(error) ? "quota" : "target", error);
         }
       }
-      // 8. index[T] = ls（新しければ作る）
-      writeIndex({ ...readIndex(), [target]: { at: "ls", lastUsedAt: iso() } });
+      // 8. index[T] = ls（新しければ作る）。adopt はゲストを index から外す（移した記録をゲストに残さない）
+      const nextIndex = { ...readIndex(), [target]: { at: "ls", lastUsedAt: iso() } };
+      if (adopt) delete nextIndex[from];
+      writeIndex(nextIndex);
       // 9. 印を 1 回で替える。途中の印を消す
       ls.set(K.AREA_KEY, K.formatMarker(target, gen));
       ls.remove(K.SWITCH_KEY);
@@ -491,21 +555,65 @@ export function createSwitcher(deps) {
       if (error instanceof SwitchError || stopping) throw error;
       throw await stop(isQuotaError(error) ? "quota" : "evacuate", error);
     }
-    return { from, to: target, gen };
+    return { from, to: target, gen, op: flag.op };
+  }
+
+  // 「はい」の切り替えが手順 6 の後で落ちた（index がゲストを、その切り替えのゲストの写しで指す）: 移すのは確かめ済みなので、ゲストを index から外して終える
+  // （ゲストと切り替え先の両方に同じ記録を残さない）。手順 6 の前に落ちた形は index が替わっていないので、もう一度たずねる
+  function finishAdopt(pending) {
+    if (!pending || pending.op !== "adopt" || typeof pending.id !== "string" || typeof pending.from !== "string") return;
+    const index = readIndex();
+    if (index[pending.from]?.at !== `idb:${pending.id}`) return;
+    const next = { ...index };
+    delete next[pending.from];
+    writeIndex(next); // 減らす書き込み（入らないことは無い）
+  }
+
+  // ログアウト（§3 の 5・§4）: 今のログインの領域を退避して確かめてから signOut（scope local）し、セッションが消えたことを確かめてから、元を消してゲストを戻す。
+  // 退避か signOut が失敗したら止める（元の記録とログインはそのまま）。signOut の後の展開の失敗は、認証が先に変わった形（復旧の画面）
+  async function logout(store) {
+    return switchTo(store, "guest", "logout", {
+      afterArchive: async () => {
+        let result;
+        try {
+          result = await signOut();
+        } catch (error) {
+          throw fail("signout", error);
+        }
+        if (result?.error) throw fail("signout", result.error);
+        if (sessionArea() !== "guest") throw fail("signout");
+      }
+    });
   }
 
   // 今のセッションに合う領域にする（同じで localStorage にあれば何もしない）。退避した領域の残りを写せなかった（staleError）ときは、
-  // 切り替えずに止める（元の領域の残りを localStorage に置いたまま、別の領域を重ねて展開しない）
+  // 切り替えずに止める（元の領域の残りを localStorage に置いたまま、別の領域を重ねて展開しない）。
+  // この端末で初めてアカウントに入り（index にその領域が無い）、今のゲストに学んだ記録があれば、1 回たずねる（ask）。たずねている間にセッションが
+  // 替わったら、今のセッションでやり直す（はいでも前のアカウントへは移さない）
   async function ensureArea(store, target = sessionArea(), staleError = null) {
-    const marker = markerNow();
-    const live = liveAreas();
-    if (marker?.area === target && live.length === 1 && live[0] === target) return null;
-    if (staleError) throw fail(isQuotaError(staleError) ? "quota" : "evacuate", staleError);
-    return switchTo(store, target);
+    for (let round = 0; round < 4; round++) {
+      const marker = markerNow();
+      const live = liveAreas();
+      if (marker?.area === target && live.length === 1 && live[0] === target) return null;
+      if (staleError) throw fail(isQuotaError(staleError) ? "quota" : "evacuate", staleError);
+      const from = live.includes(marker?.area) ? marker.area : (live[0] ?? null);
+      let op = "session";
+      if (ask && from === "guest" && target !== "guest" && readIndex()[target] === undefined && hasRecords(collect("guest"))) {
+        const answer = await ask();
+        const now = sessionArea();
+        if (now !== target) {
+          target = now;
+          continue;
+        }
+        if (answer === "yes") op = "adopt";
+      }
+      return switchTo(store, target, op);
+    }
+    throw fail("changed");
   }
 
-  // ロックの中で流す全部: 直し → 移行 → 片付け（旧い場所・退避した領域の残り） → 今のセッションの領域へ → 退避した領域の残りをもう一度
-  async function settle() {
+  // ロックの中で流す全部: 直し → 移行 → 片付け（旧い場所・退避した領域の残り） → 今のセッションの領域へ（intent がログアウトならログアウト） → 退避した領域の残りをもう一度
+  async function settle(intent = null) {
     let store;
     try {
       store = await openStore();
@@ -513,9 +621,11 @@ export function createSwitcher(deps) {
       throw fail(error?.code === "quota" ? "quota" : "open", error);
     }
     try {
+      const pending = readJson(ls.get(K.SWITCH_KEY));
       if (ls.get(K.SWITCH_KEY) !== null) {
         try {
           await repair(store);
+          finishAdopt(pending);
         } catch (error) {
           throw error instanceof SwitchError ? error : fail(isQuotaError(error) ? "quota" : "evacuate", error);
         }
@@ -532,7 +642,16 @@ export function createSwitcher(deps) {
       } catch (error) {
         staleError = error;
       }
-      const result = await ensureArea(store, sessionArea(), staleError);
+      // ログアウトの頼み: ログイン中で、その人の領域が localStorage にあるときだけ（もうセッションが無ければ、ふつうにゲストへ）
+      const session = sessionArea();
+      const live = liveAreas();
+      let result;
+      if (intent?.op === "logout" && session !== "guest" && markerNow()?.area === session && live.length === 1 && live[0] === session) {
+        if (staleError) throw fail(isQuotaError(staleError) ? "quota" : "evacuate", staleError);
+        result = await logout(store);
+      } else {
+        result = await ensureArea(store, session, staleError);
+      }
       // 切り替えの間に、退避した領域へ遅れて書かれた鍵（見え方の古いタブ）。写せなければ残す（次に開いたページの見張りが見つけて片付ける）
       if (result) {
         try {
@@ -547,7 +666,7 @@ export function createSwitcher(deps) {
     }
   }
 
-  return { settle, migrate, repair, switchTo, ensureArea, sweepOrphans, sweepStale, decideArea, sessionArea, collect, readIndex };
+  return { settle, migrate, repair, switchTo, ensureArea, logout, sweepOrphans, sweepStale, decideArea, sessionArea, collect, readIndex };
 }
 
 // ===== アプリのページから（見張りが旧い場所の値・退避した領域の残りを見つけたとき）: 手の空いたときに片付ける =====
@@ -570,6 +689,53 @@ export async function sweepOrphansFromPage(raw, deps = {}) {
       store.close();
     }
   });
+}
+
+// ===== 予行（ログインのリンクを送る前・Google に移る前・ログアウトの前。js/auth.js が呼ぶ。§4） =====
+// 今の領域の記録（元の名前 → 値）を IndexedDB に写して、新しいトランザクションで読み直して比べる。写すのは本物の写し（その領域の鍵）でなく予行の鍵
+// （pre:<領域>）なので、index が指す写しにも、切り替えの途中の写しにも触れない。localStorage も印も替えない。
+// 返り値 { ok: true } か { ok: false, reason }（quota・open・evacuate）。できなければ、呼び手はリンクを送らない・ログアウトしない
+export async function precheck({ area, records, openStore = () => openAreaStore(), persist = () => askPersist(), newId = null, now = () => Date.now() } = {}) {
+  if (typeof area !== "string" || !area || !records || typeof records !== "object") return { ok: false, reason: "evacuate" };
+  let store;
+  try {
+    store = await openStore();
+  } catch (error) {
+    return { ok: false, reason: error?.code === "quota" || isQuotaError(error?.cause) ? "quota" : "open" };
+  }
+  try {
+    try {
+      await persist();
+    } catch {
+      // 断られても写す
+    }
+    const keys = { ...records };
+    const id = (typeof newId === "function" ? newId() : null) ?? (typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : `${now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
+    await store.putVerified("areas", { area: PRECHECK_PREFIX + area, of: area, id, keys, savedAt: new Date(now()).toISOString(), schema: keys.spelldash_schema_version ?? null, sum: sumOf(keys) });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: isQuotaError(error) ? "quota" : "evacuate" };
+  } finally {
+    store.close();
+  }
+}
+
+// ログアウトは scope local（この端末のセッションだけ。ほかの端末のログインを切らない）。部品の答えの error をそのまま返す
+export async function signOutLocal(auth) {
+  const result = await auth.signOut({ scope: "local" });
+  return { error: result?.error ?? null };
+}
+
+// アプリのページが切り替えの画面に頼んだこと（ログアウト）。読んだら消す。古い頼み（2 分より前）は使わない
+export function takeIntent(store = globalThis.sessionStorage, now = Date.now()) {
+  try {
+    const text = store.getItem(INTENT_KEY);
+    store.removeItem(INTENT_KEY);
+    const intent = text ? JSON.parse(text) : null;
+    return intent && typeof intent.op === "string" && Number(intent.at) > 0 && now - Number(intent.at) < INTENT_TTL_MS ? intent : null;
+  } catch {
+    return null;
+  }
 }
 
 // ===== 書き出し（復旧の画面の「記録を書き出す」） =====
@@ -712,6 +878,51 @@ export function safeBack(value, origin = globalThis.location?.origin) {
   return url.pathname + url.search + url.hash;
 }
 
+// 戻り先のページへの知らせ（js/auth.js が読んで文を出す）: logout・logout-failed・logout-blocked・login-cancelled
+function setNotice(kind) {
+  try {
+    globalThis.sessionStorage.setItem(NOTICE_KEY, JSON.stringify({ kind, at: Date.now() }));
+  } catch {
+    // 知らせが出せなくても切り替えは済んでいる
+  }
+}
+
+// 「ゲストで学んだ記録を、このアカウントに移す？」をたずねる（排他のロックを持つタブだけ。ほかのタブはロックを待つ）
+function askOnPage() {
+  return new Promise((resolve) => {
+    const box = document.getElementById("switchAsk");
+    const status = document.getElementById("switchStatus");
+    const yes = document.getElementById("switchAskYes");
+    const no = document.getElementById("switchAskNo");
+    if (!box || !yes || !no) {
+      resolve("no"); // たずねられなければ移さない（混ぜない方）
+      return;
+    }
+    if (status) status.hidden = true;
+    box.hidden = false;
+    const done = (answer) => {
+      box.hidden = true;
+      if (status) {
+        status.hidden = false;
+        status.textContent = "記録を準備している…";
+      }
+      resolve(answer);
+    };
+    yes.addEventListener("click", () => done("yes"), { once: true });
+    no.addEventListener("click", () => done("no"), { once: true });
+    document.getElementById("switchAskLead")?.focus();
+  });
+}
+
+// 今のセッションの人の領域が localStorage にそろっているか（ログアウトが止まったとき、何も替わっていなければ元のページへ戻す）
+function sessionMatchesArea(K) {
+  const raw = browserDeps().ls;
+  const session = K.areaOfUser(K.sessionUserOf(raw.get(K.AUTH_KEY), raw.get(K.AUTH_KEY + "-user")));
+  const marker = K.parseMarker(raw.get(K.AREA_KEY));
+  const index = K.readJson(raw.get(K.INDEX_KEY)) ?? {};
+  return Boolean(marker) && marker.area === session && index[session]?.at === "ls" && raw.get(K.SWITCH_KEY) === null;
+}
+
 async function runSwitchPage() {
   const status = document.getElementById("switchStatus");
   const back = safeBack(backFrom(location), location.origin);
@@ -719,11 +930,29 @@ async function runSwitchPage() {
   const locks = globalThis.navigator?.locks;
   if (!K) return showRecovery(fail("load"));
   if (!locks || typeof locks.request !== "function") return showRecovery(fail("locks"));
-  const switcher = createSwitcher(browserDeps());
+  const intent = takeIntent();
+  const switcher = createSwitcher({
+    ...browserDeps(),
+    ask: askOnPage,
+    // ログアウトの部品はこの時だけ読む（オフラインで読めなければ失敗: 何も替えない）
+    signOut: async () => signOutLocal((await import("./supabase.js")).supabase.auth)
+  });
   try {
-    await locks.request(K.SWITCH_LOCK, () => switcher.settle());
+    await locks.request(K.SWITCH_LOCK, () => switcher.settle(intent));
   } catch (error) {
-    return showRecovery(error instanceof SwitchError ? error : fail("evacuate", error));
+    const reason = error instanceof SwitchError ? error : fail("evacuate", error);
+    // ログアウトが止まって何も替わっていない（ログインも記録もそのまま）: 元のページへ戻して文を出す
+    if (intent?.op === "logout" && sessionMatchesArea(K)) {
+      setNotice(reason.reason === "signout" ? "logout-failed" : "logout-blocked");
+      location.replace(back);
+      return;
+    }
+    return showRecovery(reason);
+  }
+  if (intent?.op === "logout") {
+    const raw = browserDeps().ls;
+    const signedOut = K.sessionUserOf(raw.get(K.AUTH_KEY), raw.get(K.AUTH_KEY + "-user")) === null;
+    setNotice(signedOut ? (intent.notice === "login-cancelled" ? "login-cancelled" : "logout") : "logout-failed");
   }
   if (status) status.textContent = "開いている…";
   location.replace(back);

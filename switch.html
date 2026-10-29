@@ -32,6 +32,16 @@
 <body>
   <main class="area-switch" id="main">
     <p id="switchStatus" role="status">記録を準備している…</p>
+    <!-- この端末で初めてアカウントに入り、ゲストに学んだ記録がある（js/areaSwitch.js askOnPage。排他のロックを持つタブだけがたずねる） -->
+    <section id="switchAsk" hidden aria-labelledby="switchAskLead">
+      <h1 id="switchAskLead" tabindex="-1">ゲストで学んだ記録を、このアカウントに移す？</h1>
+      <p>「はい」: ゲストの記録は、このアカウントの記録になる。</p>
+      <p>「いいえ」: ゲストの記録は、この端末のゲストに分けて残る。このアカウントには移さない。</p>
+      <div class="area-switch__actions">
+        <button type="button" class="btn" id="switchAskYes">はい</button>
+        <button type="button" class="btn btn--ghost" id="switchAskNo">いいえ</button>
+      </div>
+    </section>
     <section id="switchRecovery" data-reason="" hidden aria-labelledby="switchLead">
       <h1 id="switchLead">この端末に記録を安全に保存できなかったため、切り替えられません。</h1>
       <p id="switchQuota" hidden><strong>この端末の保存の空きが足りない。</strong></p>

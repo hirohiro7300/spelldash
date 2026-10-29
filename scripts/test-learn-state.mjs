@@ -148,6 +148,20 @@ globalThis.__fakeSupabase = {
   from: (table) => fakeQuery(table)
 };
 globalThis.__SUPABASE_MODULE_URL = `data:text/javascript,${encodeURIComponent("export const createClient = () => globalThis.__fakeSupabase;")}`;
+// 人ごとの保存の領域の見張り（js/areaGuard.js の SpellDashArea。Batch 78-7）の偽物: ページの領域はログイン中の人（cloud.user）の領域・いつも stillMine。
+// js/sync.js はページの領域がこのアカウントの領域のときだけ読み書きする（合わない形の確かめは scripts/test-areas.mjs の U8）
+globalThis.SpellDashArea = {
+  get area() {
+    return cloud.user ? `u:${cloud.user}` : "guest";
+  },
+  stillMine: () => true,
+  canWrite: () => true,
+  isPersonKey: (k) => typeof k === "string" && k.startsWith("spelldash_") && !k.startsWith("spelldash_test_"),
+  keys: () => [...LS.map.keys()],
+  userId: () => cloud.user,
+  signedIn: () => cloud.user !== null,
+  leave() {}
+};
 
 // 偽の時計（書き手の時刻。null なら本物）
 const RealDate = Date;
@@ -792,12 +806,11 @@ const E = PUB[33];
   eq("容量が空いた次の取り込み: 埋める（覚えた 50 語）・印を付ける", [Object.values(again.t).filter((x) => x.ls === LEARNED).length, LS.getItem("spelldash_learn_filled")], [rows.length, "u1"]);
 }
 {
-  // 別のアカウントに置き換え: 前の人の状態・最高到達ランク・埋めの印は消え、新しい人の行は初めの埋めで決める（決定 §8・dataloss d6）
+  // 領域の持ち主の印が別の人（人ごとの保存の領域。Batch 78-7）: 別の人の記録はその人の領域に分けて残るので、この形は起きない。起きても置き換えの確認は出さず、
+  // 何も消さず、何も送らない（前は「消して置き換える」をたずねて消していた）。新しいアカウントの語の初めの埋めは、空の領域の取り込み（上の「初めの取り込み」）
   const seed = { spelldash_schema_version: "7", spelldash_owner: "u0", spelldash_rank_peak: "6", spelldash_learn_filled: "u0", spelldash_word_stats: JSON.stringify({ [A]: { ...SHAPES.learning, ls: 2 }, [B]: { ...SHAPES.learning, ls: 2 } }) };
   const { result, t } = await sync(seed, { user: "u1", rows: [row(B)] });
-  eq("置き換え: 確認 1 回・前の人の語と最高到達ランクは消え、新しい人の語は移行の式（あやふや）", [result, confirms.length, A in t, t[B].ls, LS.getItem("spelldash_rank_peak"), LS.getItem("spelldash_learn_filled"), LS.getItem("spelldash_owner")], ["changed", 1, false, 1, null, "u1", "u1"]);
-  const cancel = await sync(seed, { user: "u1", rows: [row(B)], answer: false });
-  eq("置き換えを断る: 何も書かない", [cancel.result, LS.getItem("spelldash_word_stats"), LS.getItem("spelldash_rank_peak")], ["cancelled", seed.spelldash_word_stats, "6"]);
+  eq("領域の持ち主の印が別の人: 確認なし・前の人の語と最高到達ランクと埋めの印と持ち主の印はそのまま・何も送らない", [result, confirms.length, A in t, t[B].ls, LS.getItem("spelldash_rank_peak"), LS.getItem("spelldash_learn_filled"), LS.getItem("spelldash_owner"), cloud.sent.length], [false, 0, true, 2, "6", "u0", "u0", 0]);
 }
 {
   // ログアウトの後に答えた記録: 同じアカウントで入り直すときに足すかをたずねる（dataloss d7。創業者に送った既定）

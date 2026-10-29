@@ -750,7 +750,7 @@ async function runAll() {
     const rd = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
     const noComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
     const sync = rd("js/sync.js");
-    ok("U1 js/sync.js に「消して置き換える」の確認（OWNER_CONFIRM_TEXT）と、端末の記録を消す道（clearLocalRecords）が無い", !/消して|OWNER_CONFIRM_TEXT|clearLocalRecords/.test(sync));
+    ok("U1 js/sync.js に「消して置き換える」の確認（OWNER_CONFIRM_TEXT）と、端末の記録を消す道（clearLocalRecords）が無い", !/置き換える|OWNER_CONFIRM_TEXT|clearLocalRecords/.test(sync));
     const calls = [];
     for (const f of fs.readdirSync(path.join(ROOT, "js")).filter((n) => n.endsWith(".js") && !n.startsWith("battle"))) {
       for (const m of noComments(rd(`js/${f}`)).matchAll(/\.signOut\(([^)]*)\)/g)) calls.push([f, m[1].trim()]);
@@ -767,7 +767,7 @@ async function runAll() {
     };
     const before = (text, a, b) => text.includes(a) && text.includes(b) && text.indexOf(a) < text.indexOf(b);
     ok("U1 js/auth.js: ログインのリンクを送る前・Google に移る前に予行（precheckArea）", before(body("sendLoginLink"), "precheckArea(", "signInWithOtp(") && before(body("signInWithGoogle"), "precheckArea(", "signInWithOAuth("));
-    ok("U1 js/auth.js: ログアウトは予行の後に切り替えの画面へ（ログアウトは切り替えの画面で退避を確かめてから）", before(body("logout"), "precheckArea(", "leave("));
+    ok("U1 js/auth.js: ログアウトは予行の後に切り替えの画面へ（ログアウトは切り替えの画面で退避を確かめてから）", before(body("logout"), "precheckArea(", "goSwitch(") && /window\.SpellDashArea\.leave\(\)/.test(body("goSwitch")));
     const privacy = rd("privacy.html");
     ok("U1 privacy.html: IndexedDB に置くこと・人ごとに分けてこの端末に残すこと", privacy.includes("IndexedDB") && /ログアウトしても/.test(privacy) && /分けて/.test(privacy));
   }

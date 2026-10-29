@@ -11,6 +11,10 @@ import { forgetMemoryWords } from "./memoryWords.js";
 // Local First のため、未ログインの人のデータは端末にしかない。
 // 端末の買い替え・ブラウザのデータ消去に備えて、spelldash_* をまとめてJSONで持ち出せるようにする。
 // 復元は「上書き」（マージはしない。単純で説明しやすい方を選ぶ）。
+// 人ごとの保存の領域（js/areaGuard.js。DESIGN-FINAL §5）: 書き出すのは今の領域だけで、ファイルに持ち主（owner）を付ける。
+// ゲストは { kind: "guest" }、アカウントは { kind: "account", tag }。tag は user id から作る安定した値（端末ごとの乱数なし・どの端末でも同じ）で、
+// 生の user id はファイルに書かない。戻すのは同じ持ち主の領域だけ（ゲストのファイルはゲストだけ）。持ち主の無い古いファイルは、数と入れる先を
+// 見せて確認してから今の領域へ。戻す前に今の領域の記録を IndexedDB の prerestore に写して読み直す（写せなければ戻さない）
 
 const PREFIX = "spelldash_";
 export const BACKUP_VERSION = 1;
@@ -38,6 +42,29 @@ function storedKeys() {
   return out;
 }
 
+// ===== 持ち主の値 =====
+const OWNER_SALT = "spelldash-backup-owner-v1:";
+
+// SHA-256("spelldash-backup-owner-v1:" + user id) の頭 32 字（16 進）。作れない環境（暗号の口が無い）では null
+export async function ownerTag(userId, subtle = globalThis.crypto?.subtle) {
+  if (typeof userId !== "string" || !userId || !subtle || typeof subtle.digest !== "function") return null;
+  try {
+    const bytes = new Uint8Array(await subtle.digest("SHA-256", new TextEncoder().encode(OWNER_SALT + userId)));
+    return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+  } catch {
+    return null;
+  }
+}
+
+// 領域（guest か u:<user id>）の持ち主の値。分からなければ null（持ち主を付けない）
+export async function ownerOfArea(area) {
+  if (area === "guest") return { kind: "guest" };
+  if (typeof area === "string" && area.startsWith("u:") && area.length > 2) return { kind: "account", tag: await ownerTag(area.slice(2)) };
+  return null;
+}
+
+const pageArea = () => globalThis.SpellDashArea?.area ?? null;
+
 export function buildBackup() {
   const data = {};
   for (const key of storedKeys()) {
@@ -52,8 +79,16 @@ export function backupFileName(date = new Date()) {
   return `spelldash-backup-${ymd}.json`;
 }
 
-export function downloadBackup() {
-  const json = JSON.stringify(buildBackup(), null, 2);
+// 持ち主を付けた書き出し（今の領域）
+export async function buildOwnedBackup(area = pageArea()) {
+  const backup = buildBackup();
+  const owner = await ownerOfArea(area);
+  if (owner) backup.owner = owner;
+  return backup;
+}
+
+export async function downloadBackup() {
+  const json = JSON.stringify(await buildOwnedBackup(), null, 2);
   const blob = new Blob([json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -82,6 +117,84 @@ export function inspectBackup(obj) {
   }
   const keys = Object.keys(obj.data).filter((k) => k.startsWith(PREFIX));
   return { words, keys: keys.length, exportedAt: obj.exportedAt ?? null, xp: Number(obj.data.spelldash_xp) || 0 };
+}
+
+// 持ち主の無い古いファイルの中身の数: 覚えた語数（3 状態の 覚えた）・答えた語数・最後に学んだ時刻（ms。無ければ null）
+export function legacySummary(obj) {
+  let stats = {};
+  try {
+    stats = JSON.parse(obj?.data?.spelldash_word_stats || "{}") || {};
+  } catch {
+    stats = {};
+  }
+  let learned = 0;
+  let answered = 0;
+  let lastAt = 0;
+  const ms = (iso) => Date.parse(iso ?? "") || 0;
+  for (const s of Object.values(stats)) {
+    if (!s || typeof s !== "object") continue;
+    if (s.ls === 2) learned++;
+    if ((Number(s.playCount) || 0) > 0 || (Number(s.correctCount) || 0) > 0 || (Number(s.recallFail) || 0) > 0) answered++;
+    lastAt = Math.max(lastAt, ms(s.lastPlayed), ms(s.lastRecallSuccessAt), ms(s.lastRecallFailAt), Number(s.lsAt) || 0);
+  }
+  return { learned, answered, lastAt: lastAt || null };
+}
+
+// 戻す先の決まり（今の領域 area）。{ ok: true, legacy: false }（同じ持ち主）・{ ok: true, legacy: true, summary, target }（持ち主の無い古いファイル。確認してから）・
+// { ok: false, reason }（other: ほかのアカウント・account-file: アカウントのファイルをゲストへ・guest-file: ゲストのファイルをアカウントへ・unknown: 知らない形）
+export async function checkRestore(obj, area = pageArea()) {
+  const owner = obj?.owner;
+  if (owner === undefined || owner === null || (owner?.kind === "account" && !owner.tag)) return { ok: true, legacy: true, summary: legacySummary(obj), target: area };
+  if (owner.kind === "guest") return area === "guest" ? { ok: true, legacy: false } : { ok: false, reason: "guest-file" };
+  if (owner.kind === "account") {
+    if (typeof area !== "string" || !area.startsWith("u:")) return { ok: false, reason: "account-file" };
+    const tag = await ownerTag(area.slice(2));
+    return tag !== null && tag === owner.tag ? { ok: true, legacy: false } : { ok: false, reason: "other" };
+  }
+  return { ok: false, reason: "unknown" };
+}
+
+// 戻さなかった理由の文
+export const RESTORE_REFUSED = Object.freeze({
+  other: "別のアカウントのバックアップのため、戻さなかった。そのアカウントでログインしてから読み込む。",
+  "account-file": "アカウントのバックアップのため、ゲストには戻さなかった。そのアカウントでログインしてから読み込む。",
+  "guest-file": "ゲストのバックアップのため、このアカウントには戻さなかった。ログアウトしてから読み込む。",
+  unknown: "持ち主の形が分からないバックアップのため、戻さなかった。",
+  busy: "記録を切り替えている途中のため、戻さなかった。ページを開き直してから読み込む。"
+});
+const PRERESTORE_FAILED = "この端末に今の記録の控えを作れなかったため、戻さなかった。端末の空きを作ってから、もう一度読み込む。";
+
+// 復元（上書き）: 持ち主を確かめ、今の領域の人の記録を IndexedDB の prerestore に写して読み直してから applyBackup。写せなければ戻さない（今の記録はそのまま）。
+// 確認の窓（上書きの警告・古いファイルの数と入れる先）は呼び手（js/profileView.js）が先に出す
+export async function restoreBackup(obj, { area = pageArea(), openStore = null } = {}) {
+  inspectBackup(obj);
+  const guard = globalThis.SpellDashArea;
+  if (guard && guard.stillMine() !== true) throw new Error(RESTORE_REFUSED.busy);
+  const decision = await checkRestore(obj, area);
+  if (!decision.ok) throw new Error(RESTORE_REFUSED[decision.reason] ?? RESTORE_REFUSED.unknown);
+  await savePrerestore(area, openStore);
+  return applyBackup(obj);
+}
+
+async function savePrerestore(area, openStore) {
+  const guard = globalThis.SpellDashArea;
+  const keys = {};
+  for (const key of storedKeys()) {
+    if (!key || !key.startsWith(PREFIX) || key.startsWith("spelldash_test_") || (guard && !guard.isPersonKey(key))) continue;
+    const value = localStorage.getItem(key);
+    if (value !== null) keys[key] = value;
+  }
+  let store = null;
+  try {
+    const mod = await import("./areaStore.js"); // 復元のときだけ読む（設定のページの先読みを増やさない）
+    store = await (openStore ? openStore() : mod.openAreaStore());
+    const id = typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    await store.putVerified("prerestore", { id, area, savedAt: new Date().toISOString(), keys, sum: mod.sumOf(keys) });
+  } catch {
+    throw new Error(PRERESTORE_FAILED);
+  } finally {
+    store?.close();
+  }
 }
 
 // spelldash_* の今の中身（復元が途中で失敗したときに書き戻す控え。メモリーだけ）
@@ -172,7 +285,8 @@ function keepRankPeak(before, backup) {
   }
 }
 
-// ===== この端末の記録を消す（別のアカウントでログインしたとき。js/sync.js initialSync が呼ぶ） =====
+// ===== この端末の今の領域の記録を消す（今は製品の道からは呼ばない。単体の検査が使う） =====
+// 人ごとの保存の領域（Batch 78-7）から、別のアカウントでログインしても消さない（js/sync.js は呼ばない。別の人の記録はその人の領域に分けて残る）。
 // applyBackup と同じく spelldash_* を消す。残すのは端末の設定（人の記録ではないもの）だけ:
 //   theme（表示の色）・audio（音声の設定）・osk（専用キーボード）・after_correct（正解のあとの長さ）・list_compact／setup_open／stats_tab／trend_range／weak_only（画面の開き方）、
 //   typing_kind／typing_game_course（タイピング練習の種類・タイピングゲームのコースの記憶。この端末の開き方の好みで、バックアップにも入れない。Batch 65）、

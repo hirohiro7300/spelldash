@@ -29,12 +29,84 @@ const RETURNED_FROM_LOGIN = (() => {
   }
 })() || takeLoginReturn();
 
+// ===== 人ごとの保存の領域（js/areaGuard.js・js/areaSwitch.js。DESIGN-FINAL §4・§5） =====
+// セッションの人とページの領域が違えば（ほかのタブ・このタブでログインした・ログアウトした）、同期も Pro の状態の更新もせずに切り替えの画面へ
+function areaFits(session) {
+  const area = window.SpellDashArea;
+  if (!area || area.area === null) return true; // 保存の無い端末（何も残らない）
+  const want = session?.user?.id ? "u:" + session.user.id : "guest";
+  return area.area === want && area.stillMine() === true;
+}
+
+// 切り替えられないときの文（予行・退避の失敗。何も替えていない）
+const BLOCKED_MESSAGE = "この端末に記録を安全に保存できなかったため、切り替えられません。ほかの SpellDash のタブを閉じる。端末の空きを作る。設定の「ファイルに書き出す」で記録を書き出してから、もう一度。";
+const LOGOUT_FAILED_MESSAGE = "ログアウトできなかった。記録とログインはそのまま。通信がつながってから、もう一度。";
+const LOGOUT_DONE_MESSAGE = "ログアウトした。記録はこのアカウントに残る。";
+// 切り替えの画面から戻ったときの知らせ（js/areaSwitch.js NOTICE_KEY と同じ名前）と、切り替えの画面への頼み（INTENT_KEY）
+const NOTICE_KEY = "sd2.notice";
+const INTENT_KEY = "sd2.intent";
+const NOTICES = {
+  logout: [LOGOUT_DONE_MESSAGE, "", "guest"],
+  "logout-failed": [LOGOUT_FAILED_MESSAGE, "error", "user"],
+  "logout-blocked": [BLOCKED_MESSAGE, "error", "user"],
+  "login-cancelled": ["ログインをやめた。記録はこの端末に残る。", "", "guest"]
+};
+
+function showPendingNotice() {
+  let notice = null;
+  try {
+    notice = JSON.parse(sessionStorage.getItem(NOTICE_KEY) || "null");
+    sessionStorage.removeItem(NOTICE_KEY);
+  } catch {
+    notice = null;
+  }
+  const row = notice && Date.now() - Number(notice.at) < 120000 ? NOTICES[notice.kind] : null;
+  if (row) showAuthMessage(row[0], row[1], { scope: row[2] });
+}
+
+// 予行（ログインのリンクを送る前・Google に移る前・ログアウトの前）: 今の領域の記録を IndexedDB に写して読み直す（js/areaSwitch.js precheck）。
+// できなければ切り替えを始めない。保存の無い端末では写す物が無い
+async function precheckArea() {
+  const area = window.SpellDashArea;
+  if (!area || area.area === null) return { ok: true };
+  if (area.stillMine() !== true) return { ok: false, reason: "busy" };
+  const records = {};
+  for (const key of area.keys()) {
+    if (!area.isPersonKey(key)) continue;
+    const value = localStorage.getItem(key);
+    if (value !== null) records[key] = value;
+  }
+  try {
+    const mod = await import("./areaSwitch.js");
+    return await mod.precheck({ area: area.area, records });
+  } catch {
+    return { ok: false, reason: "load" };
+  }
+}
+
+// 切り替えの画面へ（ログアウトの頼みを渡す）。頼みを書けなければ移らない
+function goSwitch(op, notice = null) {
+  try {
+    sessionStorage.setItem(INTENT_KEY, JSON.stringify({ op, at: Date.now(), ...(notice ? { notice } : {}) }));
+  } catch {
+    return false;
+  }
+  window.SpellDashArea.leave();
+  return true;
+}
+
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
+  // ページの領域がこのセッションの人でない: 切り替えの画面へ（同期・Pro の状態の更新・加入画面への戻しはその後のページで）
+  if (!areaFits(data.session)) {
+    window.SpellDashArea?.leave?.();
+    return;
+  }
   const hadSessionAtLoad = Boolean(data.session) && !RETURNED_FROM_LOGIN;
   // 加入画面で「ログインして始める」を押してログインから戻った: 加入画面へ戻す（ログインのリンクはトップに戻る）
   if (data.session && RETURNED_FROM_LOGIN && resumeProIntent()) return;
   updateAuthDisplay(data.session);
+  showPendingNotice();
   refreshPlan(); // Pro の状態（spelldash_plan）を更新
 
   // ログイン済みならクラウドと初回同期（マージ）
@@ -43,6 +115,11 @@ export async function initializeAuth() {
   }
 
   supabase.auth.onAuthStateChange((_event, session) => {
+    // ほかのタブ・このタブでセッションの人が替わった: 同期の前に切り替えの画面へ（見張りも移すが、知らせの順によらずここでも止める）
+    if (!areaFits(session)) {
+      window.SpellDashArea?.leave?.();
+      return;
+    }
     updateAuthDisplay(session);
     if (_event === "SIGNED_OUT") clearPlan(); else if (_event === "SIGNED_IN") refreshPlan();
 
@@ -145,6 +222,13 @@ async function signInWithGoogle() {
     return;
   }
 
+  // 切り替えを始める前の予行（戻ってきたら、この端末の今の記録を IndexedDB に退避してから切り替える）。できなければ Google に移らない
+  if (!(await precheckArea()).ok) {
+    googleLoginButtonElement.disabled = false;
+    showAuthMessage(BLOCKED_MESSAGE, "error");
+    return;
+  }
+
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
@@ -181,6 +265,13 @@ async function sendLoginLink() {
   if (!(await checkAuthReachable())) {
     loginButtonElement.disabled = false;
     showAuthMessage(UNREACHABLE_MESSAGE, "error");
+    return;
+  }
+
+  // 切り替えを始める前の予行。できなければリンクを送らない
+  if (!(await precheckArea()).ok) {
+    loginButtonElement.disabled = false;
+    showAuthMessage(BLOCKED_MESSAGE, "error");
     return;
   }
 
@@ -236,10 +327,23 @@ function formatAuthError(error) {
   return `ログインリンクの送信に失敗した: ${message}`;
 }
 
+// ログアウト: 予行の後に切り替えの画面へ。切り替えの画面が今の領域を IndexedDB に退避して確かめてから signOut（scope local）し、ゲストの領域を戻す。
+// 予行・退避・signOut のどれかが失敗したら、記録もログインもそのまま（文を出す）。同期の印は領域の世代が替わったタブの見張りが消す
 async function logout() {
-  clearSyncedFlag(); // 同じタブで（別のアカウントでも）ログインし直したら、もう一度同期する
-  await supabase.auth.signOut();
-  showAuthMessage("ログアウトした。記録はこの端末に残る。");
+  const area = window.SpellDashArea;
+  if (!area || area.area === null) {
+    // 保存の無い端末: 切り替える記録が無い
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) showAuthMessage(LOGOUT_FAILED_MESSAGE, "error", { scope: "user" });
+    else showAuthMessage(LOGOUT_DONE_MESSAGE);
+    return;
+  }
+  logoutButtonElement.disabled = true;
+  const check = await precheckArea();
+  if (!check.ok || !goSwitch("logout")) {
+    logoutButtonElement.disabled = false;
+    showAuthMessage(BLOCKED_MESSAGE, "error", { scope: "user" });
+  }
 }
 
 function updateAuthDisplay(session) {
@@ -313,16 +417,16 @@ function afterLoadIdle(run) {
   else window.addEventListener("load", idle, { once: true });
 }
 
-// initialSync の戻り値（js/sync.js）: "changed"（取り込んだ）／"same"（変化なし）／"cancelled"（別アカウントの記録の置き換えを断った）／false（未ログイン・このタブで同期済み）
+// initialSync の戻り値（js/sync.js）: "changed"（取り込んだ）／"same"（変化なし）／"cancelled"（ログアウトの後の記録を足すのを断った）／
+// false（未ログイン・このタブで同期済み・ページの領域がこのアカウントでない）
 async function runInitialSync(options = {}) {
   try {
     const result = await initialSync(options);
     if (result === "cancelled") {
-      // 端末の記録は何も書き換えていない。ログインだけやめる（次にログインしたら、もう一度たずねる）。
-      // ページの文が出ていても、ログアウトは必ず行う
+      // 端末の記録は何も書き換えていない。ログインだけやめる（次にログインしたら、もう一度たずねる）。ログアウトと同じく切り替えの画面で
+      // 退避を確かめてから scope local で signOut（この端末だけ）。予行ができなければログインのまま（同期はしない）
       clearSyncedFlag();
-      await supabase.auth.signOut();
-      if (!pageMessageShown()) showAuthMessage("ログインをやめた。記録はこの端末に残る。");
+      if (!(await precheckArea()).ok || !goSwitch("logout", "login-cancelled")) showAuthMessage(BLOCKED_MESSAGE, "error", { scope: "user" });
       return;
     }
     if (pageMessageShown()) return; // ほかのページの文（プロフィールの「Pro になった」など）は上書きしない

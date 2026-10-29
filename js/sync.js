@@ -12,10 +12,8 @@ import {
 import { getStudyMix, adoptCloudRatio } from "./studyMix.js";
 import { buildActivityRow } from "./activity.js";
 import { pushUserItems, pullUserItems } from "./userItemsSync.js";
-import { clearLocalRecords } from "./backup.js";
-import { getGrowthLog } from "./growthLog.js";
 import { markVeteranIfReturning } from "./unlocks.js";
-import { COURSES, startCourse, ensureDefaultCourse } from "./course.js";
+import { COURSES, startCourse } from "./course.js";
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
 import { getPackCatalog } from "./wordStore.js";
 
@@ -24,6 +22,8 @@ import { getPackCatalog } from "./wordStore.js";
 //   - Challenge終了時 / Studyで10語ごと / ページ離脱時 / ログイン直後（マージ）
 // 毎入力での同期はしない。
 // 送信（push）はこのタブでクラウドの記録を取り込んで（pull）からだけ。取り込む前の空の端末の値でクラウドを上書きしない。
+// 人ごとの保存の領域（js/areaGuard.js）: クラウドを読み書きするのは、ページの領域が "u:" + セッションの user id で、見張りの stillMine() のときだけ
+// （areaAllows）。取り込み（initialSync）・送信（pushSync）・ユーザーの品の同期の頭で確かめ、送るたびにも確かめる（cloudFor の口は送る時に確かめる）。
 
 const DIRTY_KEY = "spelldash_dirty_words";
 const XP_KEY = "spelldash_xp";
@@ -134,6 +134,44 @@ async function getUserId() {
   return data.session?.user?.id ?? null;
 }
 
+// ---- 人ごとの保存の領域（DESIGN-FINAL §5） ----
+// ページの領域がこのアカウントの領域で、見張りが「まだこのページの人の物」と言うときだけ、クラウドを読み書きする。見張りが無い所では送らない
+function areaAllows(userId) {
+  const area = globalThis.SpellDashArea;
+  try {
+    return Boolean(userId) && Boolean(area) && area.area === "u:" + userId && area.stillMine() === true;
+  } catch {
+    return false;
+  }
+}
+
+// クラウドの口（supabase と同じ形）。表の呼び出しを控え、送る時（then）に areaAllows を確かめてから本物の口で流す。違えば何も送らずに失敗を返す
+// （呼び手は送れなかったとして扱う。成功と見せない）。ユーザーの品の同期（js/userItemsSync.js）にもこの口を渡す
+function cloudFor(userId) {
+  return { auth: supabase.auth, from: (table) => guardedTable(table, userId) };
+}
+function guardedTable(table, userId) {
+  const calls = [];
+  const run = () => {
+    if (!areaAllows(userId)) return Promise.resolve({ data: null, error: { message: "記録の持ち主が替わったため送らなかった。", code: "SD2_AREA" }, count: null });
+    let query = supabase.from(table);
+    for (const [method, args] of calls) query = query[method](...args);
+    return Promise.resolve(query);
+  };
+  const proxy = new Proxy(function () {}, {
+    get(_, prop) {
+      if (prop === "then") return (resolve, reject) => run().then(resolve, reject);
+      if (prop === "catch") return (fn) => run().catch(fn);
+      if (prop === "finally") return (fn) => run().finally(fn);
+      return (...args) => {
+        calls.push([prop, args]);
+        return proxy;
+      };
+    }
+  });
+  return proxy;
+}
+
 // ---- push: ローカル → クラウド ----
 
 // ログアウト時に呼ぶ（js/auth.js）: 同じタブで次にログインしたとき、取り込みからやり直す。
@@ -177,6 +215,8 @@ export async function pushSync(options = {}) {
   const userId = await getUserId();
   if (!userId) return; // 未ログインなら何もしない（Local First）
   if (sessionStorage.getItem(PULLED_FLAG) !== userId) return; // 別のアカウントの取り込みでは送らない
+  if (!areaAllows(userId)) return; // ページの領域がこのアカウントでない・切り替えの途中: 送らない
+  const cloud = cloudFor(userId);
 
   isPushing = true;
 
@@ -189,16 +229,16 @@ export async function pushSync(options = {}) {
         .filter((wordId) => stats[wordId])
         .map((wordId) => statToRow(userId, wordId, stats[wordId]));
 
-      const { error } = await supabase.from("word_progress").upsert(rows);
+      const { error } = await cloud.from("word_progress").upsert(rows);
       if (!error) {
         saveDirtyWords(new Set());
       }
     }
 
-    await pushUserProgress(userId, options);
-    await pushActivityDay(userId);
-    await flushPendingBattleSessions(userId);
-    await pushUserItems(supabase, userId); // マイ単語帳・メモ・パック（テーブル未作成なら何もしない）
+    await pushUserProgress(cloud, userId, options);
+    await pushActivityDay(cloud, userId);
+    await flushPendingBattleSessions(cloud, userId);
+    if (areaAllows(userId)) await pushUserItems(cloud, userId); // マイ単語帳・メモ・パック（テーブル未作成なら何もしない）
   } finally {
     isPushing = false;
   }
@@ -206,11 +246,11 @@ export async function pushSync(options = {}) {
 
 // KPI計測の心拍: 当日のアクティビティを1日1行upsert。
 // テーブル未作成・失敗時は静かにスキップ（ゲームに影響なし）
-async function pushActivityDay(userId) {
+async function pushActivityDay(cloud, userId) {
   try {
     const row = buildActivityRow(userId);
     if (!row) return;
-    await supabase.from("activity_days").upsert(row);
+    await cloud.from("activity_days").upsert(row);
   } catch {
     // 計測はベストエフォート
   }
@@ -251,7 +291,7 @@ function absorbCloudXp(cloudXp) {
   return merged;
 }
 
-async function pushUserProgress(userId, { leaving = false } = {}) {
+async function pushUserProgress(cloud, userId, { leaving = false } = {}) {
   const battle = getBattleStore();
   const row = {
     user_id: userId,
@@ -270,13 +310,13 @@ async function pushUserProgress(userId, { leaving = false } = {}) {
 
   if (leaving) {
     // ページを離れるときは XP を読まずに、XP 以外の列だけ送る（upsert は渡した列だけを書き換える）
-    await supabase.from("user_progress").upsert({ ...row, updated_at: new Date().toISOString() });
+    await cloud.from("user_progress").upsert({ ...row, updated_at: new Date().toISOString() });
     return;
   }
 
   let current;
   try {
-    current = await supabase.from("user_progress").select("xp,updated_at").maybeSingle();
+    current = await cloud.from("user_progress").select("xp,updated_at").maybeSingle();
   } catch {
     return;
   }
@@ -285,7 +325,7 @@ async function pushUserProgress(userId, { leaving = false } = {}) {
   const xp = absorbCloudXp(Number(current.data?.xp) || 0);
   const at = new Date().toISOString();
   localStorage.setItem(XP_WRITE_KEY, JSON.stringify({ value: xp, at }));
-  const { error } = await supabase.from("user_progress").upsert({ ...row, xp, level: getLevelState(xp).level, updated_at: at });
+  const { error } = await cloud.from("user_progress").upsert({ ...row, xp, level: getLevelState(xp).level, updated_at: at });
   if (!error) {
     localStorage.setItem(XP_SYNCED_KEY, String(xp));
     localStorage.removeItem(XP_WRITE_KEY);
@@ -293,12 +333,12 @@ async function pushUserProgress(userId, { leaving = false } = {}) {
 }
 
 // battle_sessionsの送信待ち行列を送る（失敗しても残り、次回再送）
-async function flushPendingBattleSessions(userId) {
+async function flushPendingBattleSessions(cloud, userId) {
   const pending = getPendingBattleSessions();
   if (pending.length === 0) return;
 
   const rows = pending.map((row) => ({ ...row, user_id: userId }));
-  const { error } = await supabase.from("battle_sessions").insert(rows);
+  const { error } = await cloud.from("battle_sessions").insert(rows);
 
   if (!error) {
     clearPendingBattleSessions();
@@ -309,9 +349,9 @@ async function flushPendingBattleSessions(userId) {
 
 export async function recordPlaySession(session) {
   const userId = await getUserId();
-  if (!userId) return;
+  if (!userId || !areaAllows(userId)) return;
 
-  await supabase.from("play_sessions").insert({
+  await cloudFor(userId).from("play_sessions").insert({
     user_id: userId,
     mode: session.mode,
     score: session.score,
@@ -325,14 +365,14 @@ export async function recordPlaySession(session) {
 // ---- 初回同期（ログイン直後 / ページロード時に1回） ----
 // パターン①クラウド空 → ローカルを全アップロード
 // パターン②両方あり → 単語ごとに新しい方（last_played比較）を採用してマージ
-// 別のアカウントの記録がある端末（spelldash_owner が違う）は混ぜずに、置き換えるかを本人に聞く。
+// 人ごとの保存の領域（js/areaGuard.js・js/areaSwitch.js）: ページの領域はこのアカウントの領域だけ。ゲストの記録を移すかは切り替えの画面が 1 回たずねる。
+// 別のアカウントの記録はその人の領域に分けて残る（端末の記録を差し替える確認と消去の道は無い）。
 //
 // 戻り値: "changed"（クラウドから何か取り込んだ）／"same"（同期したが変化なし）／
-//         "cancelled"（別のアカウントの記録があり、置き換えを断った。何も書いていない）／
-//         false（未ログイン、またはこのタブで同期済み）。取得の失敗は throw（ローカルは壊さない）
+//         "cancelled"（ログアウトの後の記録を足すのを断った。何も書いていない）／
+//         false（未ログイン・このタブで同期済み・ページの領域がこのアカウントでない）。取得の失敗は throw（ローカルは壊さない）
 
 const MERGE_CONFIRM_TEXT = "この端末の記録を、このアカウントの記録に足す。別の人の記録なら、キャンセルしてログインをやめる。";
-const OWNER_CONFIRM_TEXT = "この端末には別のアカウントの記録がある。消して、このアカウントの記録に置き換える";
 
 // 分野パックの一覧にある id か（基本カテゴリの id を「パック」として追加しない）
 function isKnownPack(id) {
@@ -341,30 +381,6 @@ function isKnownPack(id) {
   } catch {
     return false;
   }
-}
-
-// 人の記録が 1 つでもあるか（語・XP・マイ単語帳・メモ・Battle・成長ログ・今日のセットの履歴）。持ち主の確認に使う
-function hasPersonalRecords() {
-  const json = (key, fallback) => {
-    try {
-      return JSON.parse(localStorage.getItem(key)) ?? fallback;
-    } catch {
-      return fallback;
-    }
-  };
-  const nonEmpty = (v) => (Array.isArray(v) ? v.length > 0 : v && typeof v === "object" ? Object.keys(v).length > 0 : false);
-  const battle = json("spelldash_battle", {});
-  return (
-    nonEmpty(json("spelldash_word_stats", {})) ||
-    (Number(localStorage.getItem(XP_KEY)) || 0) > 0 ||
-    nonEmpty(json("spelldash_my_words", [])) ||
-    nonEmpty(json("spelldash_word_notes", {})) ||
-    (Number(battle.wins) || 0) + (Number(battle.losses) || 0) + (Number(battle.draws) || 0) > 0 ||
-    // 成長ログはホームを開いただけで 0 語の行が 1 つ書かれる（js/growthLog.js）。学んだ跡のある行だけ数える
-    // （数えると、初めての人がログインしただけで「この端末の記録を足す」をたずね、キャンセルでログインが止まっていた）
-    getGrowthLog().some((row) => row && (row.active === true || Number(row.learned) > 0 || Number(row.mastered) > 0)) ||
-    nonEmpty(json("spelldash_daily_set", {}).history ?? [])
-  );
 }
 
 // ログアウトの後に、この端末で学んだ跡があるか（語の記録の最後の出題・答えの日時・中心の学習で最後に答えた時刻 lsAt がログアウトより後）。
@@ -379,7 +395,7 @@ function learnedSinceLogout() {
 
 let syncInFlight = false; // 同じページで 2 回走らせない（auth-ready と SIGNED_IN が続けて来る）
 
-// options.freshLogin: いまログインした（リンク・Google から戻った、ログイン操作の直後）。開いた時点ですでにログインしていた端末は false
+// options（freshLogin）は受けるが使わない（ゲストの記録を移すかは切り替えの画面がたずねる。呼び手の形を変えない）
 export async function initialSync(options = {}) {
   if (syncInFlight) return false;
   syncInFlight = true;
@@ -390,27 +406,20 @@ export async function initialSync(options = {}) {
   }
 }
 
-async function runInitialSyncOnce({ freshLogin = false } = {}) {
+async function runInitialSyncOnce() {
   const userId = await getUserId();
   if (!userId) return false;
+  // ページの領域がこのアカウントでない・切り替えの途中: 何も読まない・何も送らない（見張りが切り替えの画面へ移す）
+  if (!areaAllows(userId)) return false;
   // このタブで最後まで済んでいれば何もしない（途中でページを移った場合は最初からやり直す）
   if (sessionStorage.getItem(DONE_FLAG) === userId) return false;
+  const cloud = cloudFor(userId);
 
-  // 端末の持ち主: 別のアカウントの記録が残っていたら混ぜない（会社の PC などの共用端末）
+  // 領域の持ち主の印が別の人（人ごとの領域では起きない形）: 混ぜない・消さない・送らない
   const owner = localStorage.getItem(OWNER_KEY);
-  let cleared = false;
-  if (owner && owner !== userId) {
-    if (hasPersonalRecords()) {
-      if (!window.confirm(OWNER_CONFIRM_TEXT)) return "cancelled";
-      cleared = true;
-    }
-    // 記録が無くても、前の持ち主の残り（基準の XP・設定以外のキー）は混ぜない
-    clearLocalRecords();
-  } else if (!owner && freshLogin && hasPersonalRecords()) {
-    // 持ち主の印が無い端末（未ログインで使っていた・この版より前に同期した）にいまログインした: 足すかをたずねる
-    if (!window.confirm(MERGE_CONFIRM_TEXT)) return "cancelled";
-  } else if (owner === userId && learnedSinceLogout()) {
-    // 同じアカウントでログインし直した端末に、ログアウトの後の記録がある: 同じ確認（断ったら何も書かない。次のログインでまたたずねる）
+  if (owner && owner !== userId) return false;
+  if (owner === userId && learnedSinceLogout()) {
+    // 移行の前（この版より前）にログアウトの後で学んだ記録が、持ち主の印でこのアカウントの領域に入った: 足す前にたずねる（断ったら何も書かない。次のログインでまたたずねる）
     if (!window.confirm(MERGE_CONFIRM_TEXT)) return "cancelled";
   }
 
@@ -421,8 +430,8 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   // 3 状態の初めの埋め（fillLearnStatesOnce）の材料は、取り込みと並べて読む（取り込みの後から表を書き終えるまでのあいだに待ちをはさまない）
   const learnFill = localStorage.getItem(LEARN_FILLED_KEY) === userId ? null : loadLearnStateDeps();
   const [wordResult, progressResult, learnDeps] = await Promise.all([
-    supabase.from("word_progress").select("*"),
-    supabase.from("user_progress").select("*").maybeSingle(),
+    cloud.from("word_progress").select("*"),
+    cloud.from("user_progress").select("*").maybeSingle(),
     learnFill
   ]);
 
@@ -442,7 +451,7 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   const freshDevice = Object.keys(local).length === 0;
   const cloudMap = new Map((cloudRows ?? []).map((row) => [row.word_id, row]));
 
-  let changedLocal = cleared;
+  let changedLocal = false;
   const toUpload = [];
   let merged = { ...local };
 
@@ -506,7 +515,7 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   if (toUpload.length > 0) {
     // 一度に送りすぎないよう分割
     for (let i = 0; i < toUpload.length; i += 500) {
-      await supabase.from("word_progress").upsert(toUpload.slice(i, i + 500));
+      await cloud.from("word_progress").upsert(toUpload.slice(i, i + 500));
     }
   }
 
@@ -585,7 +594,7 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
 
   // 自分のデータ（マイ単語帳・メモ・追加したパック・日ごとの記録）の項目マージ。
   // 語の読み直し（spelldash:packs）は現在地の採用と合わせて 1 回にまとめる
-  const items = await pullUserItems(supabase, userId, { deferPacksEvent: true });
+  const items = areaAllows(userId) ? await pullUserItems(cloud, userId, { deferPacksEvent: true }) : { changed: null };
   const itemChanged = items.changed ?? null;
   if (itemChanged && (itemChanged.my_word || itemChanged.note || itemChanged.pack || itemChanged.day)) changedLocal = true;
 
@@ -604,16 +613,16 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
     }
     packAdded = getEnabledPackIds().some((id) => !packsBefore.includes(id));
     if (packAdded || placeBefore !== `${localStorage.getItem(COURSE_KEY)}|${localStorage.getItem(CATEGORY_KEY)}`) changedLocal = true;
-  } else if (cleared) {
-    ensureDefaultCourse(); // 置き換えでコースが消え、クラウドにも選択が無い（新しいアカウント）とき
   }
 
+  // 取り込みの途中で領域が替わった（ほかのタブで切り替えが始まった・セッションが替わった）: 取り込み済みの印を付けない・送らない
+  if (!areaAllows(userId)) return false;
   // 取り込み（語・進捗・項目・現在地）はここまで。以降は送ってよい（pagehide の pushSync もここから効く）
   sessionStorage.setItem(PULLED_FLAG, userId);
 
   // 現在の値を送る（取り込みが済んだので、クラウドを空の値で上書きすることはない）
-  await pushUserProgress(userId);
-  await ensureProfile(userId);
+  await pushUserProgress(cloud, userId);
+  await ensureProfile(cloud, userId);
 
   saveDirtyWords(new Set());
   localStorage.setItem(OWNER_KEY, userId);
@@ -622,7 +631,7 @@ async function runInitialSyncOnce({ freshLogin = false } = {}) {
   sessionStorage.setItem(DONE_FLAG, userId);
 
   // 追加したパックが変わったら、語の読み直しが終わるまで待ってから再描画を促す（読み直し前の語で数えないため）
-  if (itemChanged?.pack || packAdded || cleared) {
+  if (itemChanged?.pack || packAdded) {
     await reloadWordsAndWait();
   }
 
@@ -667,8 +676,8 @@ function reloadWordsAndWait() {
 }
 
 // profiles行がなければ作成（表示名・アバターはGoogleログイン情報から）
-async function ensureProfile(userId) {
-  const { data: existing } = await supabase
+async function ensureProfile(cloud, userId) {
+  const { data: existing } = await cloud
     .from("profiles")
     .select("user_id")
     .maybeSingle();
@@ -680,7 +689,7 @@ async function ensureProfile(userId) {
   const meta = user?.user_metadata ?? {};
   const audio = JSON.parse(localStorage.getItem("spelldash_audio") || "{}");
 
-  await supabase.from("profiles").insert({
+  await cloud.from("profiles").insert({
     user_id: userId,
     display_name: meta.full_name || meta.name || user?.email?.split("@")[0] || null,
     avatar_url: meta.avatar_url || null,

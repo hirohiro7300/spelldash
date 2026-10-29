@@ -116,7 +116,9 @@
   let sessionUser = null; // 今のセッションの user id（同じタブの認証の書き込みと、ほかのタブの知らせで覚え直す）
   let sessionArea = "guest";
   let redispatching = false;
-  let sweepPending = false; // 片付けを頼んだ（終わるまで重ねて頼まない）
+  let sweepTimer = false; // 片付けを頼んだ（始まるまで重ねて頼まない。急ぎの頼みは待たずに始める）
+  let sweepRunning = false; // 片付けの途中（終わったら、その間の頼みをもう 1 回）
+  let sweepAgain = false;
   let ls = null;
   try {
     ls = root.localStorage;
@@ -284,6 +286,10 @@
     // sessionStorage が使えない環境では印も無い
   }
 
+  // 移行の後に旧コードのタブが旧い認証の鍵を書き戻していたら、その場で消す（旧いタブの部品は毎回保存から読むので、A のセッションを失って送れない。
+  // 移行の後の空の旧い場所の値を A として送らせない）。新しいコードは旧い鍵を読まない
+  dropOldAuth();
+
   // ===== ほかのタブの書き込み（storage イベント） =====
   // ページの領域の鍵は元の名前の知らせに作り直して届ける。ほかの領域の鍵・旧い場所の人の記録（旧コードのタブ）・見張りの印は、アプリに届けない
   root.addEventListener("storage", (event) => {
@@ -293,6 +299,11 @@
     if (key === null) {
       // ほかのタブが全部消した
       recheck();
+      return;
+    }
+    // 旧コードのタブが移行の後に旧い認証の鍵を書いた（トークンの更新の書き戻し）: その場で消す
+    if (key === OLD_AUTH_KEY || key === OLD_AUTH_KEY + "-user" || key === OLD_AUTH_KEY + "-code-verifier") {
+      if (event.newValue !== null) dropOldAuth();
       return;
     }
     if (key.startsWith("sd2.")) {
@@ -322,7 +333,11 @@
       }
       return;
     }
-    if (isPersonKey(key)) event.stopImmediatePropagation(); // 旧い場所（旧コードのタブ）の人の記録。新しいコードは読まない
+    if (isPersonKey(key)) {
+      // 旧い場所（旧コードのタブ）の人の記録。新しいコードは読まない。手の空くのを待たずに orphans へ写して localStorage から消す
+      event.stopImmediatePropagation();
+      if (event.newValue !== null && !leaving && !stopped && !(key === OWNER_KEY && event.newValue === OWNER_MOVED)) scheduleSweep(true);
+    }
   });
 
   // ページの間、共有のロックを持つ（切り替えの画面は、持ち主が 0 になるのを待つ）
@@ -402,20 +417,45 @@
       return hit !== null && hit.area !== pageArea && isStaleArea(hit.area, index, pageArea);
     });
   }
-  // 片付け（js/areaSwitch.js。排他のロックが空いているときだけ・切り替えと移行の途中は何もしない）。頼むのは同時に 1 回だけ
-  function scheduleSweep() {
-    if (sweepPending) return;
-    sweepPending = true;
+  // 片付け（js/areaSwitch.js。排他のロックが空いているときだけ・切り替えと移行の途中は何もしない）。頼むのは同時に 1 回だけ。
+  // urgent（旧コードのタブが旧い場所へ書いた知らせ）は手の空くのを待たずに始める
+  function scheduleSweep(urgent = false) {
+    if (sweepRunning) {
+      sweepAgain = true;
+      return;
+    }
+    if (sweepTimer && !urgent) return;
+    sweepTimer = true;
     const run = () => {
+      if (sweepRunning || !sweepTimer) return;
+      sweepTimer = false;
+      sweepRunning = true;
       import("/js/areaSwitch.js")
         .then((mod) => mod.sweepOrphansFromPage({ get, set, remove, keys: allKeys }))
         .catch(() => {})
         .then(() => {
-          sweepPending = false;
+          sweepRunning = false;
+          if (sweepAgain) {
+            sweepAgain = false;
+            scheduleSweep(true);
+          }
         });
     };
-    if (typeof root.requestIdleCallback === "function") root.requestIdleCallback(run, { timeout: 5000 });
+    if (urgent) root.setTimeout(run, 0);
+    else if (typeof root.requestIdleCallback === "function") root.requestIdleCallback(run, { timeout: 5000 });
     else root.setTimeout(run, 2000);
+  }
+  // 旧い認証の鍵（旧コードのタブが書き戻した物）を消す。移行の後で、移行の途中でないときだけ（移行は切り替えの画面が新しい鍵へ移してから消す）
+  function dropOldAuth() {
+    if (get(MIGRATED_KEY) === null || get(MIGRATING_KEY) !== null) return;
+    for (const suffix of ["", "-user", "-code-verifier"]) {
+      if (get(OLD_AUTH_KEY + suffix) === null) continue;
+      try {
+        remove(OLD_AUTH_KEY + suffix);
+      } catch {
+        // 消せなければ次の片付け（切り替えの画面）で
+      }
+    }
   }
   // 包んだ口で書いて生の口で読む。容量で書けないときは、包みが効いていること（口が包んだ物）だけを確かめる
   function selfTest() {
