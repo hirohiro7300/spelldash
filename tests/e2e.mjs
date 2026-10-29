@@ -21429,7 +21429,7 @@ console.log("learn modes (78.3):");
   }
 }
 
-// ===== 78.7 人ごとの保存の領域（Batch 78-7 内部の 1。js/areaGuard.js・js/areaSwitch.js・js/areaStore.js・switch.html。S/b78/acct/DESIGN-FINAL.md §1〜§4・§8）: 旧い形の端末の移行（記録と 3 状態はそのまま・旧い本体は localStorage に残らない・移行の前の控えは IndexedDB）・localStorage の各利用形式が領域の鍵へ・Service Worker 無効・切り替えの途中でタブを閉じても直る・展開の途中で満杯なら部分的に有効にしない・退避できなければ切り替えない・使えないブラウザは共用に戻さず止める =====
+// ===== 78.7 人ごとの保存の領域（Batch 78-7 内部の 1。js/areaGuard.js・js/areaSwitch.js・js/areaStore.js・switch.html。S/b78/acct/DESIGN-FINAL.md §1〜§4・§8）: 旧い形の端末の移行（記録と 3 状態はそのまま・旧い本体は localStorage に残らない・移行の前の控えは IndexedDB）・localStorage の各利用形式が領域の鍵へ・Service Worker 無効・切り替えの途中でタブを閉じても直る・展開の途中で満杯なら部分的に有効にしない・退避できなければ切り替えない・使えないブラウザは共用に戻さず止める・満杯で止める時の遅れた値を失わない・満杯の端末で本物の認証の部品がセッションをメモリーだけに置かない =====
 // この節は見張りを初期化の script に置かない文脈（rawNewContext）で、本物の頭の 1 行の振る舞いを見る。種は見張りを読まない同じ origin の文書（/css/reset.css）で
 // 生の localStorage に書く（旧い形の端末・途中で落ちた端末を作る）。この段のスタブのログインは見張りから見えない（ゲスト）ので、セッションの人は
 // 認証の新しい鍵 sd2.auth に偽のセッションを直に書いて替える（保存の層の切り替えだけを見る。ログイン・ログアウトの確認は内部の 2）
@@ -22031,6 +22031,196 @@ console.log("78.7 人ごとの保存の領域:");
       await page.close();
     } finally {
       await ctx.close();
+    }
+  }
+
+  // (12) A → B の切り替えで B が入らず（容量）止まる時、手順 6 の後に見え方の古い A のタブが A の鍵へ書いた値（遅れた値）は、IndexedDB の orphans へ
+  // 写せず（容量）、A と遅れた値の両方も localStorage に入らない: 遅れた値を消さない（localStorage に残る）・A は確かめた写しか localStorage にそろう・
+  // 印は替えない・B の鍵は無い（反証: A を戻す書き込みの取り消しが遅れた値まで消し、どこにも残らなかった）
+  {
+    const ctx = await rawCtx({ serviceWorkers: "block" });
+    try {
+      const UA = "11111111-2222-4333-8444-555555555555";
+      const UB = "66666666-7777-4888-9999-aaaaaaaaaaaa";
+      const A = { spelldash_schema_version: "7", spelldash_word_stats: JSON.stringify({ [PUB[0]]: { playCount: 1, correctCount: 1, ls: 2, tag: "A", pad: "a".repeat(1500) } }), spelldash_xp: "111", spelldash_rank_peak: "3" };
+      const B = { spelldash_schema_version: "7", spelldash_word_stats: JSON.stringify({ [PUB[1]]: { playCount: 1, correctCount: 1, ls: 2, tag: "B", pad: "b".repeat(6000) } }), spelldash_xp: "222" };
+      const LATE = "LATE-" + "z".repeat(1200);
+      const now = new Date().toISOString();
+      await idbPut(ctx, [{ area: `u:${UB}`, id: "b1", keys: B, savedAt: now, schema: "7" }]);
+      await putRaw(ctx, { ...marks(`u:${UA}`, 2, { [`u:${UA}`]: { at: "ls" }, [`u:${UB}`]: { at: "idb:b1" } }), [AUTH]: sess(UB), ...phys(`u:${UA}`, A) });
+      // 空きを 700 字にする（途中の印と index の伸びは入る。B は A を消しても入らない。A と遅れた値の両方は入らない）
+      const room = await rawDoc(ctx, (free) => {
+        localStorage.setItem("zz.filler", "あ".repeat(2500000));
+        let lo = 0;
+        let hi = 12000000;
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi) / 2);
+          try {
+            localStorage.setItem("zz.pad", "p".repeat(mid));
+            lo = mid;
+          } catch {
+            hi = mid - 1;
+          }
+        }
+        localStorage.setItem("zz.pad", "p".repeat(Math.max(0, lo - free)));
+        return lo;
+      }, 700);
+      const before = await dumpRaw(ctx);
+      // 切り替えの画面だけに差し込む: orphans への書き込みは容量で入らない・手順 6 で A の最後の鍵が消えた直後に、見え方の古い A のタブの書き込みが届く
+      await ctx.addInitScript(({ UA, LATE }) => {
+        if (location.pathname !== "/switch.html") return;
+        const put = IDBObjectStore.prototype.put;
+        IDBObjectStore.prototype.put = function (...a) {
+          if (this.name === "orphans") throw new DOMException("disk full", "QuotaExceededError");
+          return put.apply(this, a);
+        };
+        const rm = Storage.prototype.removeItem;
+        let done = false;
+        Storage.prototype.removeItem = function (k) {
+          const r = rm.call(this, k);
+          if (!done && String(k).startsWith(`sd2.u:${UA}.`) && (this.getItem("sd2.switch") ?? "").includes('"swap"')) {
+            let left = 0;
+            for (let i = 0; i < this.length; i++) if (this.key(i).startsWith(`sd2.u:${UA}.`)) left++;
+            if (left === 0) {
+              done = true;
+              Storage.prototype.setItem.call(this, `sd2.u:${UA}.late_key`, LATE);
+              window.__lateWritten = true;
+            }
+          }
+          return r;
+        };
+      }, { UA, LATE });
+      const page = await openApp(ctx, "/stats.html", () => location.pathname === "/switch.html" && !document.getElementById("switchRecovery")?.hidden);
+      const r = await recovery(page);
+      const lateWritten = await page.evaluate(() => window.__lateWritten === true).catch(() => false);
+      await page.close();
+      const raw = await dumpRaw(ctx);
+      const stores = await rawDoc(ctx, async () => {
+        const m = await import("/js/areaStore.js");
+        const db = await m.openAreaStore();
+        try {
+          return { orphans: await db.list("orphans"), areas: await db.list("areas") };
+        } finally {
+          db.close();
+        }
+      });
+      const lateAt = [...Object.keys(raw).filter((k) => raw[k] === LATE).map((k) => "ls:" + k), ...["orphans", "areas"].flatMap((s) => stores[s].filter((x) => Object.values(x.keys ?? {}).includes(LATE)).map((x) => `${s}:${x.area ?? x.id}`))];
+      const idx = JSON.parse(raw["sd2.index"]);
+      const aCopy = stores.areas.find((x) => x.area === `u:${UA}`);
+      const aLs = areaOf(raw, `u:${UA}`);
+      delete aLs.spelldash_late_key;
+      const aBack = idx[`u:${UA}`]?.at === "ls" && sorted(aLs) === sorted(A);
+      const aInCopy = idx[`u:${UA}`]?.at === `idb:${aCopy?.id}` && sorted(aCopy?.keys) === sorted(A);
+      check("78.7 満杯で止める時の遅れた値: 復旧の画面（容量）・遅れた値は消えずに localStorage に残る・A は localStorage か確かめた写しにそろう・印は u:A のまま・途中の印なし・B の鍵は無い",
+        room > 0 && lateWritten && r.path === "/switch.html" && r.shown && r.reason === "quota" && JSON.stringify(lateAt) === JSON.stringify([`ls:sd2.u:${UA}.late_key`]) && (aBack || aInCopy) && raw["sd2.area"] === before["sd2.area"] && raw["sd2.switch"] === undefined && Object.keys(areaOf(raw, `u:${UB}`)).length === 0,
+        JSON.stringify({ lateWritten, r: { path: r.path, reason: r.reason }, lateAt, aBack, aInCopy, indexA: idx[`u:${UA}`]?.at, area: raw["sd2.area"], sw: raw["sd2.switch"] ?? null }));
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // (13) 満杯の端末と本物の認証の部品（固定した版 2.118.0 の束。役 oldtab の tests/oldtab/vendor にある物を使う。スタブでは通らない道）:
+  // 部品はセッションをメモリーだけに置かない（js/supabase.js が置き場を渡す）。開いたときは部品と見張りのセッションの人が同じ（A）。
+  // B のログインのリンク（#access_token=…）で開くと、切り替えの画面へ移り（満杯なので復旧の画面・容量）、A の領域は 1 字も変わらない。
+  // A の領域のまま部品だけが B になる形は落ちる（反証: 部品の既定は試し書きが入らないとメモリーに置き、見張りの sd2.auth は A のまま、B の同期が A の領域で動いた）
+  {
+    const LIB = path.join(ROOT, "tests", "oldtab", "vendor", "supabase-js-2.118.0.mjs");
+    const hasLib = fs.existsSync(LIB);
+    check("78.7 満杯と本物の認証の部品: 固定した版の部品の束 tests/oldtab/vendor/supabase-js-2.118.0.mjs がある（役 oldtab の木と統合した木で流す）", hasLib, LIB);
+    const ctx = hasLib ? await rawCtx({ serviceWorkers: "block" }) : null;
+    try {
+      if (ctx) {
+        const UA = "aaaaaaaa-1111-4222-8333-444455556666";
+        const UB = "bbbbbbbb-1111-4222-8333-444455556666";
+        const now = Math.floor(Date.now() / 1000);
+        const b64u = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+        const jwt = (sub) => `${b64u({ alg: "HS256", typ: "JWT" })}.${b64u({ sub, aud: "authenticated", role: "authenticated", exp: now + 3600, iat: now, email: sub.slice(0, 1) + "@example.test" })}.c2lnbmF0dXJlc2lnbmF0dXJl`;
+        const userOf = (id) => ({ id, aud: "authenticated", role: "authenticated", email: id.slice(0, 1) + "@example.test", app_metadata: { provider: "email" }, user_metadata: {}, created_at: "2026-01-01T00:00:00Z" });
+        const sessionA = JSON.stringify({ access_token: jwt(UA), token_type: "bearer", expires_in: 3600, expires_at: now + 3600, refresh_token: "refreshA", user: userOf(UA) });
+        // 本物の js/supabase.js と部品の束を配る（この節だけ。ほかの節はスタブ）・認証の受け口は偽物（本物のサーバーへ出さない）
+        await ctx.route(`${BASE}/js/supabase.js`, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: fs.readFileSync(path.join(ROOT, "js", "supabase.js"), "utf8") }));
+        await ctx.route(`${BASE}/__vendor/supabase-js.mjs`, (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: fs.readFileSync(LIB, "utf8") }));
+        await ctx.addInitScript(() => { window.__SUPABASE_MODULE_URL = "/__vendor/supabase-js.mjs"; });
+        const requests = [];
+        await ctx.route("https://sujvgwozsnzjsjmkcrnk.supabase.co/**", (route) => {
+          const req = route.request();
+          const u = new URL(req.url());
+          let who = null;
+          try {
+            who = JSON.parse(Buffer.from((req.headers().authorization ?? "").replace(/^Bearer /, "").split(".")[1], "base64url").toString()).sub ?? null;
+          } catch {
+            who = null;
+          }
+          requests.push({ method: req.method(), path: u.pathname, who });
+          if (u.pathname === "/auth/v1/user") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(userOf(who ?? UA)) });
+          if (u.pathname.startsWith("/auth/v1/logout")) return route.fulfill({ status: 204, body: "" });
+          return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+        });
+        // 旧い確認（消して置き換える）が出たら OK を押す（内部の 2 で外す確認。押しても、見張りが A の記録を消させないことも見る）
+        const dialogs = [];
+        ctx.on("page", (p) => p.on("dialog", (d) => { dialogs.push(d.message()); d.accept().catch(() => {}); }));
+        const A = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: statsSeed("A"), spelldash_xp: "120", spelldash_owner: UA, spelldash_tutorial: JSON.stringify({ seen: ["T1", "T2", "T3", "T4"], started: true }) };
+        await putRaw(ctx, { ...marks(`u:${UA}`, 1, { [`u:${UA}`]: { at: "ls" } }), [AUTH]: sessionA, spelldash_onboarded: "1", ...phys(`u:${UA}`, A) });
+        // 満杯にする: 部品の試し書き（lswt-<乱数>、約 80 字）も入らないまで
+        let probe = null;
+        for (let attempt = 0; attempt < 3 && probe !== "QuotaExceededError"; attempt++) {
+          await rawDoc(ctx, (start) => {
+            let n = start;
+            for (let size = 1 << 22; size >= 1; size = Math.floor(size / 2)) {
+              for (;;) {
+                try {
+                  localStorage.setItem("zz.fill." + n, "x".repeat(size));
+                  n++;
+                } catch {
+                  break;
+                }
+              }
+            }
+            return n;
+          }, attempt * 1000);
+          probe = await rawDoc(ctx, () => { try { const k = "lswt-" + Math.random() + Math.random(); localStorage.setItem(k, k); localStorage.removeItem(k); return "fits"; } catch (e) { return e.name; } });
+        }
+        // 開いたとき（リンクなし）: 部品は保存された A のセッションを読む（メモリーの空の置き場ではない）・見張りの人と同じ
+        const p1 = await openApp(ctx, "/stats.html", statsReady);
+        const first = await p1.evaluate(async () => {
+          const { supabase } = await import("/js/supabase.js");
+          const { data } = await supabase.auth.getSession();
+          return { path: location.pathname, area: window.SpellDashArea?.area ?? null, guardUser: window.SpellDashArea?.userId?.() ?? null, libUser: data?.session?.user?.id ?? null };
+        }).catch((e) => ({ err: String(e) }));
+        await p1.close();
+        const KEEP = ["spelldash_word_stats", "spelldash_xp", "spelldash_owner", "spelldash_tutorial", "spelldash_schema_version"];
+        const aBefore = pick(areaOf(await dumpRaw(ctx), `u:${UA}`), KEEP); // A 自身の同期の後（B のリンクの前）
+        check("78.7 満杯と本物の認証の部品: 部品の試し書きも入らない端末で開くと、部品は保存された A のセッションを読む・見張りの人と同じ（A の領域）",
+          probe === "QuotaExceededError" && first.path === "/stats.html" && first.area === `u:${UA}` && first.guardUser === UA && first.libUser === UA, JSON.stringify({ probe, first }));
+        // B のログインのリンクで開く
+        const hash = `#access_token=${jwt(UB)}&expires_in=3600&expires_at=${now + 3600}&refresh_token=refreshB&token_type=bearer&type=magiclink`;
+        const p2 = await openApp(ctx, "/index.html" + hash, () => location.pathname === "/switch.html" && !document.getElementById("switchRecovery")?.hidden);
+        await p2.waitForTimeout(500);
+        const end = await p2.evaluate(async () => {
+          const out = { path: location.pathname, recovery: document.getElementById("switchRecovery")?.hidden === false ? document.getElementById("switchRecovery").dataset.reason : null, area: window.SpellDashArea?.area ?? null, guardUser: window.SpellDashArea?.userId?.() ?? null, libUser: null };
+          if (location.pathname !== "/switch.html") {
+            try {
+              const { supabase } = await import("/js/supabase.js");
+              out.libUser = (await supabase.auth.getSession()).data?.session?.user?.id ?? null;
+            } catch {
+              out.libUser = "error";
+            }
+          }
+          return out;
+        }).catch((e) => ({ err: String(e) }));
+        const raw = await dumpRaw(ctx);
+        // 通ってよい形は 2 つ: 切り替えの画面（満杯なので復旧の画面・容量）か、B のセッションを保存できず部品も見張りも A のまま。
+        // 落ちる形: A の領域のページに残ったまま、部品のセッションが B（見張りとの食い違い）
+        const moved = end.path === "/switch.html" && end.recovery === "quota";
+        const stayedA = end.path !== "/switch.html" && end.libUser === UA && end.guardUser === UA && end.area === `u:${UA}`;
+        const aAfter = pick(areaOf(raw, `u:${UA}`), KEEP);
+        check("78.7 満杯と本物の認証の部品: B のリンクで開くと切り替えの画面へ移る（満杯なので復旧の画面・容量）か部品も A のまま・A の領域のページで部品だけ B の形にならない・A の記録は変わらない・B の鍵は無い・印は u:A のまま",
+          (moved || stayedA) && JSON.stringify(aAfter) === JSON.stringify(aBefore) && Object.keys(areaOf(raw, `u:${UB}`)).length === 0 && raw["sd2.area"] === `u:${UA}#1`,
+          JSON.stringify({ end, moved, stayedA, aChanged: KEEP.filter((k) => aAfter[k] !== aBefore[k]), b: Object.keys(areaOf(raw, `u:${UB}`)), area: raw["sd2.area"], auth: (() => { try { return JSON.parse(raw[AUTH]).user.id; } catch { return null; } })(), dialogs, bRequests: requests.filter((q) => q.who === UB).map((q) => `${q.method} ${q.path}`).slice(0, 8) }));
+        await p2.close();
+      }
+    } finally {
+      if (ctx) await ctx.close();
     }
   }
 }

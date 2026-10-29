@@ -5,14 +5,15 @@
 // メモリーの IndexedDB・偽の Web Locks を渡して流す。この段（内部の 1）の検査:
 //   U1 鍵の分け方と、localStorage の使い方の全数（getItem・setItem・removeItem のほかに名前が出る所をファイルごとに固定・?. と window／self／globalThis／top・
 //      名前の文字列・別名の先をたどって clear・key・length・プロパティ・[ ] を使わない）・storage イベント・全ページの頭に見張り（戻り先は # の後ろ）・
-//      切り替えの画面とその部品の先読み・部品が読めないときの復旧の画面
+//      切り替えの画面とその部品の先読み・部品が読めないときの復旧の画面・認証の部品に渡すセッションの置き場（満杯でもメモリーに置かない）
 //   U2 包んだ口の読み替え・書くたびの確かめ（領域・swap の段・セッションの人）・storage イベントの作り直し・頭で止める・戻ったタブの確かめ直し・
-//      自分の確かめ・使えないブラウザ・切り替えの画面の戻り先（同じ origin のパスだけ）
+//      自分の確かめ・使えないブラウザ・切り替えの画面の戻り先（同じ origin のパスだけ）・sessionStorage（同じ Storage の型）のタブの印は読み替えない
 //   U3 移行の 5 通りと 2 回流し・legacy の写し・旧い本体が localStorage に残らない・落ちた点からの続き・移行の途中の旧タブの書き込み（orphans）・
-//      容量のぎりぎり（移した後の形が入るなら 1 回で終わる・入らなければ書き出しは legacy）・移行の途中の書き出し
+//      容量のぎりぎり（移した後の形が入るなら 1 回で終わる・入らなければ書き出しは legacy）・移行の途中の書き出し・新しい鍵の読み直し・persist() を頼む
 //   U4 切り替えの各点で落としたときの直し（どちらかが全部そろう・古い写しを戻さない）・drain の待ち・落ちた後のやり直しも失敗（満杯・写しが無い・
-//      控えが開けない）しても元は localStorage にそろう・書き出しは index が idb を指す領域の残りを読まない
-//   U6 展開の途中で localStorage が満杯 → 切り替え先は IndexedDB・元は失わない・印は替わらない
+//      控えが開けない）しても元は localStorage にそろう・書き出しは index が idb を指す領域の残りを読まない・切り替えの前の片付けが写せなければ止める・
+//      展開した記録の読み直し・片付けの消す直前の読み直し
+//   U6 展開の途中で localStorage が満杯 → 切り替え先は IndexedDB・元は失わない・印は替わらない・戻す書き込みの取り消しは前からあった鍵（遅れた値）を消さない
 //   U9 の一部（変異）: 見張りと切り替えの手順を 1 つずつ壊すと、どれかが落ちる（--no-mutate で飛ばす）
 // 失敗が 1 つでもあれば終了コード 1。
 import fs from "fs";
@@ -305,9 +306,11 @@ class FakeStorageEvent extends Event {
   }
 }
 function openTab(backing, { path: pagePath = "/index.html", search = "", locks = new FakeLocks(), idb = true, noLocks = false, session: ss = null, freezeProto = false, shadowSetItem = false, storageThrows = false, attrs = {} } = {}) {
-  const Storage = storageClass(() => backing);
+  // 本物のブラウザと同じく、localStorage と sessionStorage は同じ Storage の型（同じ prototype）で、中身だけが別。
+  // 見張りは prototype を包むので、sessionStorage も包んだ口を通る（「this が localStorage のときだけ読み替える」を確かめるため）
   const ssBacking = ss ?? new Backing();
-  const SessionStorage = storageClass(() => ssBacking);
+  let ssInst = null;
+  const Storage = storageClass((self) => (ssInst !== null && self === ssInst ? ssBacking : backing));
   const target = new EventTarget();
   const log = { replaced: [], stopped: 0, idle: [], timers: [], blobs: [] };
   const elements = [];
@@ -347,7 +350,8 @@ function openTab(backing, { path: pagePath = "/index.html", search = "", locks =
   if (shadowSetItem) Object.defineProperty(ls, "setItem", { value: function (k, v) { backing.set(k, v); } });
   if (storageThrows) Object.defineProperty(ctx, "localStorage", { get() { throw new DOMException("denied", "SecurityError"); } });
   else ctx.localStorage = ls;
-  ctx.sessionStorage = new SessionStorage();
+  ssInst = new Storage();
+  ctx.sessionStorage = ssInst;
   if (freezeProto) Object.freeze(Storage.prototype);
   // 「記録を書き出す」のファイル（Blob）を控える
   ctx.URL = class extends URL {
@@ -479,6 +483,68 @@ const EXPORT_DROP = (() => {
 const exportable = (rec) => sortedRec(Object.fromEntries(Object.entries(rec ?? {}).filter(([k]) => !EXPORT_DROP.includes(k))));
 const isCrash = (e) => Boolean(e && (e.crash || e.message === "crashed" || isCrash(e.cause)));
 
+// js/supabase.js が認証の部品に渡すセッションの置き場（§2 の (3)・§4）。部品の既定は、localStorage への試し書きが入らない端末（満杯）では
+// メモリーに置く。そうなると見張りが見る sd2.auth と部品のセッションの人が食い違い、ほかの人のリンクで入っても切り替えの画面へ移らない（反証）。
+// 偽の部品（createClient の引数を控える）を差し込み口 window.__SUPABASE_MODULE_URL で読ませ、渡された口を偽の localStorage で確かめる。1 回だけ流す
+let authStorageResult = null;
+function authStorageProbe() {
+  authStorageResult ??= (async () => {
+    const calls = [];
+    const fake = { failSet: null, denied: false, value: "SAVED" };
+    const fakeLs = {
+      getItem: (k) => (calls.push(["get", k]), k === "sd2.auth" ? fake.value : null),
+      setItem: (k, v) => {
+        calls.push(["set", k, v]);
+        if (fake.failSet) throw fake.failSet;
+        if (k === "sd2.auth") fake.value = v;
+      },
+      removeItem: (k) => calls.push(["remove", k])
+    };
+    const lib = `export function createClient(url, key, opts) { globalThis.__sdAuthOpts = opts ?? null; return { auth: { getSession: async () => ({ data: { session: null }, error: null }) }, from() { return {}; } }; }`;
+    const saved = { window: Object.getOwnPropertyDescriptor(globalThis, "window"), ls: Object.getOwnPropertyDescriptor(globalThis, "localStorage") };
+    Object.defineProperty(globalThis, "window", { configurable: true, writable: true, value: { __SUPABASE_MODULE_URL: "data:text/javascript," + encodeURIComponent(lib) } });
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { if (fake.denied) throw new DOMException("denied", "SecurityError"); return fakeLs; } });
+    try {
+      const mod = await import(pathToFileURL(path.join(ROOT, "js/supabase.js")).href);
+      await mod.supabase.auth.getSession();
+      const opts = globalThis.__sdAuthOpts;
+      const st = opts?.auth?.storage;
+      if (!st || typeof st.getItem !== "function" || typeof st.setItem !== "function" || typeof st.removeItem !== "function") return { storageKey: opts?.auth?.storageKey ?? null, storage: false };
+      await st.setItem("sd2.auth", "B-SESSION");
+      const wrote = calls.some((c) => c[0] === "set" && c[1] === "sd2.auth" && c[2] === "B-SESSION");
+      const read = await st.getItem("sd2.auth");
+      fake.failSet = quotaError();
+      let failed = null;
+      try {
+        await st.setItem("sd2.auth", "C-SESSION");
+      } catch (e) {
+        failed = e.name;
+      }
+      fake.failSet = null;
+      const afterFail = await st.getItem("sd2.auth"); // 書けなかった値をメモリーに置かない（読むのはいつも localStorage）
+      await st.removeItem("sd2.auth");
+      const removed = calls.some((c) => c[0] === "remove" && c[1] === "sd2.auth");
+      fake.denied = true;
+      let deniedRead;
+      try {
+        deniedRead = await st.getItem("sd2.auth");
+      } catch (e) {
+        deniedRead = "throws " + e.name;
+      }
+      return { storageKey: opts.auth.storageKey, storage: true, wrote, read, failed, afterFail, removed, deniedRead };
+    } catch (error) {
+      return { error: String(error?.message ?? error) };
+    } finally {
+      if (saved.window) Object.defineProperty(globalThis, "window", saved.window);
+      else delete globalThis.window;
+      if (saved.ls) Object.defineProperty(globalThis, "localStorage", saved.ls);
+      else delete globalThis.localStorage;
+      delete globalThis.__sdAuthOpts;
+    }
+  })();
+  return authStorageResult;
+}
+
 // =====================================================================
 async function runAll() {
   // ── U1 鍵の分け方と使い方の形 ─────────────────────────────
@@ -520,6 +586,9 @@ async function runAll() {
     ok("U1 js/supabase.js の storageKey は見張りの鍵と同じ・旧い鍵と違う", supa.includes(`AUTH_STORAGE_KEY = "${K.AUTH_KEY}"`) && /storageKey:\s*AUTH_STORAGE_KEY/.test(supa) && K.AUTH_KEY !== K.OLD_AUTH_KEY);
     ok("U1 js/supabase.js は認証の部品の版を固定する（@2 のような幅のある版を使わない）", /supabase-js@\d+\.\d+\.\d+"/.test(supa) && !/supabase-js@2"/.test(supa));
     ok("U1 旧い認証の鍵は js/supabase.js の URL の ref から作る既定の名前", supa.includes(K.OLD_AUTH_KEY.replace(/^sb-/, "").replace(/-auth-token$/, "")));
+    eq("U1 js/supabase.js は認証の部品にセッションの置き場を渡す（満杯でもメモリーに置かない）: 書くのも読むのも localStorage（見張りの包んだ口）を通す・書けなければ例外で、その値を覚えない・消すのも localStorage・localStorage を読めない端末では保存されたセッションは無い",
+      await authStorageProbe(),
+      { storageKey: K.AUTH_KEY, storage: true, wrote: true, read: "B-SESSION", failed: "QuotaExceededError", afterFail: "B-SESSION", removed: true, deniedRead: null });
     // 使い方の形（コメントを除く。?. の形と、window・self・globalThis・top・parent・frames を前に付けた形も見る）
     const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1").replace(/<!--[\s\S]*?-->/g, "");
     // html は script の中身と on… の属性だけ（本文の文の「localStorage」は使い方でない）
@@ -789,10 +858,16 @@ async function runAll() {
     // 保存そのものが使えない端末: 止めない（何も残らない）・送らない
     const t9 = openTab(new Backing(), { storageThrows: true });
     eq("U2 保存が使えない端末: 止めない・stillMine は false", [t9.log.stopped, t9.log.replaced, t9.ctx.SpellDashArea?.stillMine(), t9.threw?.message ?? null], [0, [], false, null]);
-    // タブの同期の印: 世代が違えば消す
+    // タブの同期の印: 世代が違えば消す。sessionStorage は localStorage と同じ Storage の型（本物のブラウザと同じ）なので、見張りの包んだ口を通る。
+    // 包んだ口は this が localStorage のときだけ読み替える: sessionStorage の印は元の名前のまま消す・書く・読む（sd2.<領域>. の鍵を作らない）
+    const lsb = new Backing({ ...migratedMarks("u:A", 3), "sd2.auth": session("A") });
     const ssb = new Backing({ spelldash_synced_this_session: "A", spelldash_pulled_this_session: "A", spelldash_sync_done_this_session: "A", spelldash_pull_started_at: "1", "sd2.tabgen": "u:A#1", spelldash_login_return: "1" });
-    openTab(new Backing({ ...migratedMarks("u:A", 3), "sd2.auth": session("A") }), { session: ssb });
-    eq("U2 領域の世代が替わったタブは同期の印 4 つを消す（ほかの印は残す）", ssb.dump(), { "sd2.tabgen": "u:A#3", spelldash_login_return: "1" });
+    const tss = openTab(lsb, { session: ssb });
+    eq("U2 領域の世代が替わったタブは同期の印 4 つを元の名前で消す（ほかの印は残す・sessionStorage に sd2.<領域>. の鍵を作らない）", [Object.getPrototypeOf(tss.ctx.sessionStorage) === Object.getPrototypeOf(tss.ctx.localStorage), ssb.dump()], [true, { "sd2.tabgen": "u:A#3", spelldash_login_return: "1" }]);
+    tss.ctx.sessionStorage.setItem("spelldash_synced_this_session", "A");
+    eq("U2 sessionStorage のタブの印は元の名前のまま書いて読む（読み替えない・localStorage の領域の鍵にも書かない）", [ssb.get("spelldash_synced_this_session"), ssb.get("sd2.u:A.synced_this_session"), tss.ctx.sessionStorage.getItem("spelldash_synced_this_session"), lsb.get("sd2.u:A.synced_this_session")], ["A", null, "A", null]);
+    tss.ctx.sessionStorage.removeItem("spelldash_synced_this_session");
+    eq("U2 sessionStorage のタブの印は元の名前のまま消す", ssb.get("spelldash_synced_this_session"), null);
     const ssc = new Backing({ spelldash_pulled_this_session: "A", "sd2.tabgen": "u:A#3" });
     openTab(new Backing({ ...migratedMarks("u:A", 3), "sd2.auth": session("A") }), { session: ssc });
     eq("U2 同じ世代なら印は残す", ssc.get("spelldash_pulled_this_session"), "A");
@@ -960,6 +1035,39 @@ async function runAll() {
       inject(idb);
       const r = await settle(b, { idb });
       eq(`U3 legacy に${name}: 止める（理由 ${reason}）・旧い記録はそのまま・印を書かない`, [r.error?.reason, b.dump()], [reason, before]);
+    }
+    // 新しい鍵の書き込みが黙って消える保存（切り替えの画面は読み込みの確かめをしない）: 手順 3 の読み直し（新しい領域への移行の確認）で止める。
+    // 旧い本体は消さない（legacy だけに残さない）・移行の印を書かない
+    {
+      class DropNew extends Backing {
+        set(k, v) {
+          if (String(k).startsWith("sd2.guest.")) return; // 新しい鍵だけ黙って消える
+          super.set(k, v);
+        }
+      }
+      const seed = { ...clean(personSeed("A")), spelldash_theme: "dark" };
+      const b = new DropNew(seed);
+      const r = await settle(b);
+      const old = Object.fromEntries(Object.entries(seed).filter(([k]) => K.isPersonKey(k)));
+      eq("U3 移行で新しい鍵が書けていない（黙って消える保存）: 止める（理由 migrate）・旧い本体は localStorage にそのまま・移行の印を書かない", [r.error?.reason ?? null, Object.fromEntries(rawPersonKeys(b).map((k) => [k, b.get(k)])), b.get("sd2.migrated")], ["migrate", old, null]);
+    }
+    // persist() を頼む（§7 (f)。初めて IndexedDB に写すとき）: 移行で 1 回以上・切り替えの退避で 1 回以上。askPersist は、まだ永続でなければ navigator.storage.persist() を呼ぶ
+    {
+      let asked = 0;
+      const b = new Backing({ ...clean(personSeed("A")) });
+      const idb = new FakeIDB();
+      const mk = () => SW.createSwitcher({ ls: rawOf(b), keys: K, openStore: () => ST.openAreaStore(idb), locks: new FakeLocks(), now: () => Date.parse("2026-10-29T00:00:00Z"), newId: () => `p${++seq}`, sleep: async () => {}, persist: async () => { asked++; return true; } });
+      const r1 = await mk().settle().then(() => null, (e) => e);
+      const afterMigrate = asked;
+      b.set("sd2.auth", session("B"));
+      const r2 = await mk().settle().then(() => null, (e) => e);
+      eq("U3 persist() を頼む: 移行（legacy に写す）で 1 回以上・切り替え（ゲストを退避）で 1 回以上", [r1?.message ?? null, r2?.message ?? null, afterMigrate >= 1, asked - afterMigrate >= 1, idb.peek("areas", "guest") !== undefined], [null, null, true, true, true]);
+      const ask = async (persisted) => {
+        let called = 0;
+        const res = await ST.askPersist({ persisted: async () => persisted, persist: async () => { called++; return true; } });
+        return [called, res];
+      };
+      eq("U3 askPersist: まだ永続でなければ navigator.storage.persist() を 1 回呼んで答えを返す・すでに永続なら呼ばずに true・口が無ければ false", [await ask(false), await ask(true), await ST.askPersist(null)], [[1, true], [0, true], false]);
     }
     // 移行の途中（legacy に写した後）に旧コードのタブが旧い鍵へ書いた値: 消して失わない。orphans に 1 字も違わず写して localStorage から消す（読まない・移し直さない）
     {
@@ -1412,6 +1520,140 @@ async function runAll() {
       }
       eq("U6 満杯で止める時に遅れた鍵を写せない: 理由 quota・A は localStorage に戻り、遅れた値も残る・index は ls", [err?.reason ?? null, { ...areaRecords(b, "u:A"), spelldash_late_key: undefined }, b.get("sd2.u:A.late_key"), JSON.parse(b.get("sd2.index"))["u:A"].at], ["quota", { ...sortedRec(A), spelldash_late_key: undefined }, "LATE", "ls"]);
     }
+    // 同じ形で、A と遅れた値の両方は入らない（A を戻す書き込みも容量で入らない）・遅れた値は orphans へ写せない: 戻す書き込みを取り消すときに、
+    // 前からあった鍵（遅れた値。写しにある名前 xp も、無い名前 late_key も）を消さない。A は確かめた写し（index が指す）に、遅れた値は localStorage に残る
+    // （失わない・2 人分を重ねない）。空きができれば次の 1 回で B へ切り替わり、遅れた値は orphans へ
+    // （反証: 取り消しが今の値と同じ鍵を全部消し、遅れた値がどこにも残らなかった）
+    {
+      const bigB = { ...B, spelldash_word_stats: "B".repeat(4000) };
+      const LATE = "LATE-" + "z".repeat(900);
+      const b = new Backing({ ...migratedMarks("u:B", 1), "sd2.auth": session("B"), ...Object.fromEntries(Object.entries(bigB).map(([k, v]) => [K.physicalKey("u:B", k), v])) });
+      const idb = new FakeIDB();
+      b.set("sd2.auth", session("A"));
+      await settle(b, { idb }); // B を退避・A は空で始まる
+      for (const [k, v] of Object.entries(A)) b.set(K.physicalKey("u:A", k), v);
+      b.set("sd2.auth", session("B"));
+      b.limit = b.size() + 900; // A と印は入る。B は入らない。A と遅れた値の両方も入らない
+      idb.failPut = (store) => (store === "orphans" ? quotaError() : null);
+      let injected = false;
+      const s1 = switcher(b, { idb, onRemove: (k) => {
+        // 手順 6 で A の最後の鍵が消えた直後に、見え方の古い A のタブの書き込みが届く
+        if (!injected && k.startsWith("sd2.u:A.") && !b.keys().some((x) => x.startsWith("sd2.u:A.")) && (b.get("sd2.switch") ?? "").includes('"swap"')) {
+          injected = true;
+          b.set("sd2.u:A.late_key", LATE);
+          b.set("sd2.u:A.xp", "LATE-XP");
+        }
+      } });
+      let err = null;
+      try {
+        await s1.sw.settle();
+      } catch (e) {
+        err = e;
+      }
+      const where = (value) => [
+        ...b.keys().filter((k) => b.get(k) === value).map((k) => "ls:" + k),
+        ...["orphans", "areas", "legacy"].flatMap((s) => idb.all(s).filter((r) => Object.values(r.keys ?? {}).includes(value)).map((r) => `${s}:${r.area ?? r.id}`))
+      ];
+      const idx = JSON.parse(b.get("sd2.index"));
+      const aCopy = idb.peek("areas", "u:A");
+      const aBack = idx["u:A"]?.at === "ls" && isDeepStrictEqual({ ...areaRecords(b, "u:A"), spelldash_late_key: undefined, spelldash_xp: undefined }, { ...sortedRec(A), spelldash_late_key: undefined, spelldash_xp: undefined });
+      const aInCopy = idx["u:A"]?.at === `idb:${aCopy?.id}` && isDeepStrictEqual(aCopy?.keys, A);
+      eq("U6 満杯で止める時、A と遅れた値の両方は入らず遅れた値も写せない: 理由 quota・遅れた値は失わない（localStorage に残る）・A は localStorage か確かめた写しにそろう・印は替えない・途中の印なし・B の鍵は無い",
+        [injected, err?.reason ?? null, where(LATE), where("LATE-XP"), aBack || aInCopy, b.get("sd2.area"), b.get("sd2.switch"), Object.keys(areaRecords(b, "u:B")).length],
+        [true, "quota", ["ls:sd2.u:A.late_key"], ["ls:sd2.u:A.xp"], true, "u:A#2", null, 0]);
+      // 空きができ、IndexedDB にも書ける: 次の 1 回で B へ。遅れた値は orphans（A の領域として）・A の写しは A のまま
+      b.limit = Infinity;
+      idb.failPut = null;
+      const again = await settle(b, { idb });
+      eq("U6 その後に空きができた: 次の 1 回で B へ切り替わる・遅れた値は orphans（A の領域）・localStorage には B だけ・A の写しは A",
+        [again.error?.reason ?? again.error?.message ?? null, b.get("sd2.area")?.split("#")[0], isDeepStrictEqual(areaRecords(b, "u:B"), sortedRec(bigB)), Object.keys(areaRecords(b, "u:A")).length, where(LATE), where("LATE-XP"), isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, A)],
+        [null, "u:B", true, 0, ["orphans:u:A"], ["orphans:u:A"], true]);
+    }
+    // 展開（手順 7）の途中で、見え方の古いタブが切り替え先 B の鍵（xp）へ書き、展開がその鍵を上書きした後に容量で止まる: 取り消しは、この展開が足した鍵を消し、
+    // 上書きした鍵は前の値（ほかのタブが書いた値）に戻す（消さない）。その値は退避した B の localStorage の残りとして置かれる（次の片付けが orphans へ）。A は戻る
+    {
+      const Bx = { spelldash_a: "1", spelldash_xp: "40", spelldash_word_stats: "B".repeat(6000) };
+      class Hook extends Backing {
+        set(k, v) {
+          super.set(k, v);
+          this.hook?.(k, v);
+        }
+      }
+      const b = new Hook({ ...migratedMarks("u:B", 1), "sd2.auth": session("B"), ...Object.fromEntries(Object.entries(Bx).map(([k, v]) => [K.physicalKey("u:B", k), v])) });
+      const idb = new FakeIDB();
+      b.set("sd2.auth", session("A"));
+      await settle(b, { idb }); // B を退避（鍵の順は a・xp・word_stats）
+      for (const [k, v] of Object.entries(A)) b.set(K.physicalKey("u:A", k), v);
+      b.set("zz.filler", "f".repeat(2000));
+      b.limit = b.size() + 3000; // A を消しても B は入らない
+      b.set("sd2.auth", session("B"));
+      let fired = false;
+      b.hook = (k) => {
+        if (!fired && k === "sd2.u:B.a") {
+          fired = true;
+          Backing.prototype.set.call(b, "sd2.u:B.xp", "STALE-B"); // 展開の途中にほかのタブが書いた
+        }
+      };
+      const r = await settle(b, { idb });
+      b.hook = null;
+      eq("U6 展開の途中にほかのタブが書いた鍵を展開が上書きしてから容量で止まる: 理由 quota・その鍵は前の値（ほかのタブの値）に戻る・展開が足した鍵は無い・A は localStorage に戻る・印は替えない",
+        [fired, r.error?.reason ?? null, b.get("sd2.u:B.xp"), b.get("sd2.u:B.a"), b.get("sd2.u:B.word_stats"), isDeepStrictEqual(areaRecords(b, "u:A"), sortedRec(A)), b.get("sd2.area")?.split("#")[0], b.get("sd2.switch")],
+        [true, "quota", "STALE-B", null, null, true, "u:A", null]);
+    }
+    // 切り替えの前の片付け（退避した領域の遅れた鍵を orphans へ写す）が IndexedDB に書けない: 切り替えが要るときは止める
+    // （元の領域を localStorage に置いたまま、遅れた鍵の領域の残りも置いたまま、別の領域を重ねて展開しない。§1.2）
+    {
+      const C = { spelldash_schema_version: "7", spelldash_word_stats: WS("C"), spelldash_xp: "333" };
+      const idb = new FakeIDB();
+      const store = await ST.openAreaStore(idb);
+      await store.putVerified("areas", { area: "u:B", id: "b1", keys: B, savedAt: "2026-10-29T00:00:00.000Z", schema: "7", sum: ST.sumOf(B) });
+      await store.putVerified("areas", { area: "u:C", id: "c1", keys: C, savedAt: "2026-10-29T00:00:00.000Z", schema: "7", sum: ST.sumOf(C) });
+      store.close();
+      const b = new Backing({ ...migratedMarks("u:A", 2, { "u:A": { at: "ls" }, "u:B": { at: "idb:b1" }, "u:C": { at: "idb:c1" } }), "sd2.auth": session("C"), ...Object.fromEntries(Object.entries(A).map(([k, v]) => [K.physicalKey("u:A", k), v])), "sd2.u:B.xp": "LATE-B" });
+      const before = b.dump();
+      idb.failPut = (s) => (s === "orphans" ? quotaError() : null);
+      const r = await settle(b, { idb });
+      eq("U4 切り替えの前の片付けを写せない: 止める（理由 quota）・印と index はそのまま・C を展開しない・遅れた B の値は残る・A はそのまま",
+        [r.error?.reason ?? null, b.get("sd2.area"), b.get("sd2.index"), Object.keys(areaRecords(b, "u:C")).length, b.get("sd2.u:B.xp"), isDeepStrictEqual(areaRecords(b, "u:A"), sortedRec(A)), b.get("sd2.switch")],
+        ["quota", "u:A#2", before["sd2.index"], 0, "LATE-B", true, null]);
+    }
+    // 展開した記録を読み直して比べる（§1.2 写して読み直して確かめてから index を替える）: 切り替え先の鍵の書き込みが黙って消える保存では、
+    // 切り替え先を有効にしない（index は切り替え先の写しを指したまま・元は localStorage に戻る・印は替えない）
+    {
+      class DropB extends Backing {
+        set(k, v) {
+          if (this.dropB && String(k).startsWith("sd2.u:B.")) return;
+          super.set(k, v);
+        }
+      }
+      const b = new DropB({ ...migratedMarks("u:B", 1), "sd2.auth": session("B"), ...Object.fromEntries(Object.entries(B).map(([k, v]) => [K.physicalKey("u:B", k), v])) });
+      const idb = new FakeIDB();
+      b.set("sd2.auth", session("A"));
+      await settle(b, { idb }); // B → A（B は IndexedDB）
+      for (const [k, v] of Object.entries(A)) b.set(K.physicalKey("u:A", k), v);
+      const bAt = JSON.parse(b.get("sd2.index"))["u:B"].at;
+      b.dropB = true;
+      b.set("sd2.auth", session("B"));
+      const r = await settle(b, { idb });
+      const idx = JSON.parse(b.get("sd2.index"));
+      eq("U4 展開した切り替え先が localStorage に入っていない（黙って消える保存）: 止める（理由 target）・印は A のまま・A は localStorage にそろう・index は B の写しを指したまま",
+        [r.error?.reason ?? null, b.get("sd2.area")?.split("#")[0], isDeepStrictEqual(areaRecords(b, "u:A"), sortedRec(A)), idx["u:A"]?.at, idx["u:B"]?.at, b.get("sd2.switch")],
+        ["target", "u:A", true, "ls", bAt, null]);
+    }
+    // 退避した領域の残りの片付けで、orphans へ写している間に見え方の古いタブが同じ鍵を書き直した: 消す直前に読み直し、写していない値を消さない
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      await settle(b, { idb }); // A → B（A は IndexedDB）
+      b.set("sd2.u:A.xp", "999"); // 見え方の古いタブが A へ遅れて書いた
+      idb.failPut = (s) => {
+        if (s === "orphans" && b.get("sd2.u:A.xp") === "999") b.set("sd2.u:A.xp", "NEWER-LATE"); // 写している間にもう一度
+        return null;
+      };
+      const r = await settle(b, { idb });
+      const kept = b.get("sd2.u:A.xp") === "NEWER-LATE" || idb.all("orphans").some((o) => o.keys?.spelldash_xp === "NEWER-LATE");
+      eq("U4 退避した領域の片付けの途中に遅れて書かれた値: localStorage か orphans に残る（写していない値を消さない）・写した値は orphans", [r.error?.message ?? null, kept, idb.all("orphans").some((o) => o.area === "u:A" && o.keys?.spelldash_xp === "999")], [null, true, true]);
+    }
     // 直し（sd2.switch が残っていた）で、index が idb を指す領域の鍵が写しと違う（遅れて書かれた）: 消さずに orphans へ
     {
       const { b, idb } = await twoAreas();
@@ -1580,7 +1822,7 @@ const MUTANTS = [
   ["切り替え: 退避の写しを書かない", "switch", "await store.putVerified(\"areas\", { area, id, keys: snapshot,", "await Promise.resolve({ area, id, keys: snapshot,"],
   ["切り替え: swap の段にしない", "switch", 'ls.set(K.SWITCH_KEY, JSON.stringify({ ...flag, phase: "swap" }));', ""],
   ["切り替え: 満杯のときに元を書き戻さない", "switch", '      for (const [area, snapshot] of archived) if (readIndex()[area]?.at !== "ls") restore(area, { ...snapshot, ...collect(area) });', ""],
-  ["切り替え: 満杯のときに書いた切り替え先を消さない", "switch", [["        if (wroteTarget) for (const [name, value] of Object.entries(incoming ?? {})) if (ls.get(K.physicalKey(target, name)) === value) ls.remove(K.physicalKey(target, name));\n", ""], ["        if (ls.get(phys) === value) ls.remove(phys);\n      }\n      throw error;", "      }\n      throw error;"]]],
+  ["切り替え: 満杯のときに書いた切り替え先を消さない", "switch", [["        if (wroteTarget) for (const [name, value] of Object.entries(incoming ?? {})) if (ls.get(K.physicalKey(target, name)) === value) ls.remove(K.physicalKey(target, name));\n", ""], ["      for (const [phys, prior, value] of wrote) if (prior === null && ls.get(phys) === value) ls.remove(phys);\n", ""]]],
   ["切り替え: 前の切り替えが落ちた後のやり直しが失敗しても、元を写しから戻さない", "switch", "      if (from && from !== target && liveAreas().length === 0) {", "      if (false) {"],
   ["切り替え: drain の段でページのロックを待たない", "switch", "    await drain();\n", "\n"],
   ["切り替え: drain の待ちの上限 0", "switch", "const DRAIN_MAX_MS = 3000;", "const DRAIN_MAX_MS = 0;"],
@@ -1622,7 +1864,19 @@ const MUTANTS = [
   // 書き出し（反証 fix2 の 3）
   ["書き出し: 持ち主の鍵・同期の印を除かない", "switch", "  for (const key of K.EXPORT_EXCLUDE ?? []) delete data[key];", ""],
   ["見張りの書き出し: 持ち主の鍵・同期の印を除かない", "guard", "      for (const key of EXPORT_EXCLUDE) delete data[key];", ""],
-  ["見張りの書き出し: 持ち主の値を付けない", "guard", "    if (owner) backup.owner = owner;", ""]
+  ["見張りの書き出し: 持ち主の値を付けない", "guard", "    if (owner) backup.owner = owner;", ""],
+  // 反証 fix3（S/b78/rvareas/tests3 の G40〜G42・S29・S9・S4・S23・S6・St5 と storage3 の遅れた値）
+  ["見張り: setItem の読み替えを sessionStorage にも当てる（this が localStorage かを見ない）", "guard", "    P.setItem = function setItem(key, value) {\n      if (this === ls && arguments.length > 1) {", "    P.setItem = function setItem(key, value) {\n      if (arguments.length > 1) {"],
+  ["見張り: removeItem の読み替えを sessionStorage にも当てる（タブの同期の印が消えない）", "guard", "    P.removeItem = function removeItem(key) {\n      if (this === ls && arguments.length > 0) {", "    P.removeItem = function removeItem(key) {\n      if (arguments.length > 0) {"],
+  ["見張り: getItem の読み替えを sessionStorage にも当てる", "guard", "    P.getItem = function getItem(key) {\n      if (this === ls && arguments.length > 0) {", "    P.getItem = function getItem(key) {\n      if (arguments.length > 0) {"],
+  ["切り替え: 切り替えの前の片付けが写せなくても切り替える（元の残りに別の領域を重ねる）", "switch", "    if (staleError) throw fail(isQuotaError(staleError) ? \"quota\" : \"evacuate\", staleError);\n", ""],
+  ["移行: 新しい鍵を読み直して legacy と比べない（新しい領域への移行を確かめない）", "switch", "    for (const [name, value] of Object.entries(legacy.keys)) if (ls.get(K.physicalKey(area, name)) !== value) throw fail(\"migrate\");\n", ""],
+  ["切り替え: 展開した記録を読み直して比べない", "switch", "      if (!sameKeys(collect(area), keys)) throw new AreaStoreError(\"verify\", \"書き戻すと中身が合わなかった。\");\n", ""],
+  ["退避した領域の残り: 消す直前に読み直さない（写している間に書かれた値を消す）", "switch", "if (ls.get(phys) === value && K.isStaleArea(area, readIndex(), markerNow()?.area ?? null)) {", "if (true) {"],
+  ["切り替え: persist() を頼まない", "switch", "    persistAsked = true;\n    try {\n      await persist();", "    persistAsked = true;\n    try {\n      void persist;"],
+  ["控え: askPersist が navigator.storage.persist() を呼ばない", "store", "    return Boolean(await storage.persist());", "    return false;"],
+  ["書き戻しの取り消し: 前からあった鍵も、今の値が同じなら消す（止めるときに戻す元の領域の遅れた値を失う）", "switch", [["      for (const [phys, prior, value] of wrote) if (prior === null && ls.get(phys) === value) ls.remove(phys);\n", "      for (const [phys, , value] of wrote) if (ls.get(phys) === value) ls.remove(phys);\n      for (const [name, value] of Object.entries(keys)) if (ls.get(K.physicalKey(area, name)) === value) ls.remove(K.physicalKey(area, name));\n"]]],
+  ["書き戻しの取り消し: 前からあった同じ名前の鍵を前の値に戻さない", "switch", "        if (prior === null || ls.get(phys) !== value) continue;", "        continue;"]
 ];
 let mutantReport = [];
 if (MUTATE && baseFailures.length === 0) {

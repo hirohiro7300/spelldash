@@ -30,12 +30,37 @@ const MODULE_URL =
 // 新しいタブでログインした人のセッションを読めない（DESIGN-FINAL §6）。js/areaGuard.js の AUTH_KEY と同じ名前（scripts/test-areas.mjs が確かめる）
 export const AUTH_STORAGE_KEY = "sd2.auth";
 
+// 認証のセッションの置き場（部品に渡す）。部品の既定は、localStorage への試し書きが入らない端末（満杯）ではセッションをメモリーに置く。
+// そうなると、見張り（js/areaGuard.js）が読む sd2.auth と部品のセッションの人が食い違い、ほかの人のリンクで入っても切り替えの画面へ移らず、
+// その人の同期が前の人の領域で動く。だから置き場を渡し、いつも localStorage（見張りが包んだ口）を通す。
+// 書けなければ例外（部品はログインの失敗として返す。メモリーだけに置かない）。localStorage を読めない端末（サイトのデータを断る設定）では、
+// 保存されたセッションは無い（読むと null・消すのは何もしない）
+const authStorage = {
+  getItem(key) {
+    try {
+      return globalThis.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem(key, value) {
+    globalThis.localStorage.setItem(key, value);
+  },
+  removeItem(key) {
+    try {
+      globalThis.localStorage.removeItem(key);
+    } catch {
+      // 読めない端末には消す物も無い
+    }
+  }
+};
+
 let realClient = null;
 let loadFailed = false;
 
 const ready = import(MODULE_URL)
   .then(({ createClient }) => {
-    realClient = createClient(supabaseUrl, supabaseAnonKey, { auth: { storageKey: AUTH_STORAGE_KEY } });
+    realClient = createClient(supabaseUrl, supabaseAnonKey, { auth: { storageKey: AUTH_STORAGE_KEY, storage: authStorage } });
   })
   .catch(() => {
     loadFailed = true;

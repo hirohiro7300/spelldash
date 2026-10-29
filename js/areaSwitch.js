@@ -315,21 +315,34 @@ export function createSwitcher(deps) {
     await sleep(DRAIN_SETTLE_MS);
   }
 
-  // その領域の記録を localStorage に全部書いて読み直す。書けない・合わなければ、書いた鍵（書いた値と同じ物）を消して例外（index は替えない）。
-  // 書いた値と違う鍵（見え方の古いタブが同じ時に書いた）は消さない（退避した領域の残りとして sweepStale が写す）
+  // その領域の記録を localStorage に全部書いて読み直す。もう同じ値がある鍵は書かない。書けない・合わなければ、この書き込みが替えた鍵だけを
+  // 前の形に戻して例外（index は替えない）: 前に無かった鍵は消し（先に消して空きを作る）、前からあった鍵は前の値に戻す。
+  // 前からあった鍵（止めるときに戻す元の領域へ、見え方の古いタブが遅れて書いた値）は消さない。書いた値と違う鍵（同じ時にほかのタブが書いた）にも触れない
   function writeArea(area, keys) {
+    const wrote = []; // [物理の鍵, 前の値（無ければ null）, 書いた値]
     try {
-      for (const [name, value] of Object.entries(keys)) ls.set(K.physicalKey(area, name), value);
-      if (!sameKeys(collect(area), keys)) throw new AreaStoreError("verify", "書き戻すと中身が合わなかった。");
-    } catch (error) {
       for (const [name, value] of Object.entries(keys)) {
         const phys = K.physicalKey(area, name);
-        if (ls.get(phys) === value) ls.remove(phys);
+        const prior = ls.get(phys);
+        if (prior === value) continue;
+        wrote.push([phys, prior, value]);
+        ls.set(phys, value);
+      }
+      if (!sameKeys(collect(area), keys)) throw new AreaStoreError("verify", "書き戻すと中身が合わなかった。");
+    } catch (error) {
+      for (const [phys, prior, value] of wrote) if (prior === null && ls.get(phys) === value) ls.remove(phys);
+      for (const [phys, prior, value] of wrote) {
+        if (prior === null || ls.get(phys) !== value) continue;
+        try {
+          ls.set(phys, prior);
+        } catch {
+          // 戻せなければ書いた値のまま（前に入っていた値で、先に新しい鍵を消して空けたので、ほかのタブが同じ時に空きを使わない限り入る）
+        }
       }
       throw error;
     }
   }
-  // 元に戻す: 書けたら index を ls に。書けなければ、元は確かめた写し（index が指す）にあり、localStorage の残りは消してある
+  // 元に戻す: 書けたら index を ls に。書けなければ、元は確かめた写し（index が指す）にあり、この書き込みで足した鍵は消してある（前からあった鍵はそのまま）
   function restore(area, keys) {
     try {
       writeArea(area, keys);
@@ -403,7 +416,9 @@ export function createSwitcher(deps) {
         }
         if (wroteTarget) for (const [name, value] of Object.entries(incoming ?? {})) if (ls.get(K.physicalKey(target, name)) === value) ls.remove(K.physicalKey(target, name));
       }
-      // 元の領域へ遅れて書かれた鍵（手順 6 の後）は、戻す前に orphans へ。写せなければ、戻すときに残りの値を写しに重ねる（その人の後の値。失わない）
+      // 元の領域へ遅れて書かれた鍵（手順 6 の後）は、戻す前に orphans へ。写せなければ、戻すときに残りの値を写しに重ねる（その人の後の値。失わない）。
+      // 元と残りの両方が入らなければ、戻す書き込みは取り消す（残りは消さない）。元は確かめた写し（index が指す）のまま、残りは退避した領域の
+      // localStorage の残りとして置く（次の片付けが orphans へ写す）。2 人分は重ねない
       try {
         await sweepStale(store, { only: [...archived.map(([area]) => area), ...(from ? [from] : [])] });
       } catch {
