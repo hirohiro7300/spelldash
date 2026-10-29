@@ -22,6 +22,7 @@ import path from "path";
 import vm from "vm";
 import { isDeepStrictEqual } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
+import { spawnSync } from "child_process";
 
 const ARGS = process.argv.slice(2);
 const ROOT = path.resolve(ARGS.find((a) => !a.startsWith("--")) ?? path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
@@ -403,7 +404,7 @@ const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !=
 
 // 切り替えの手順を偽物で作る
 let seq = 0; // 写しの id（タブをまたいで重ならない）
-function switcher(backing, { idb = new FakeIDB(), locks = new FakeLocks(), crashAt = null, onRemove = null, onSleep = null } = {}) {
+function switcher(backing, { idb = new FakeIDB(), locks = new FakeLocks(), crashAt = null, onRemove = null, onSleep = null, ask = undefined, signOut = undefined } = {}) {
   let t = Date.parse("2026-10-29T00:00:00Z");
   let ops = 0;
   let dead = false;
@@ -441,7 +442,9 @@ function switcher(backing, { idb = new FakeIDB(), locks = new FakeLocks(), crash
       t += ms ?? 100;
       await onSleep?.(ms);
     },
-    persist: async () => true
+    persist: async () => true,
+    ...(ask ? { ask } : {}),
+    ...(signOut ? { signOut } : {})
   });
   return { sw, idb, locks, ops: () => ops, dead: () => dead };
 }
@@ -453,7 +456,7 @@ function loadKeys() {
 const settle = async (backing, opts = {}) => {
   const s = switcher(backing, opts);
   try {
-    return { result: await s.sw.settle(), ...s };
+    return { result: await s.sw.settle(opts.intent ?? null), ...s };
   } catch (error) {
     return { error, ...s };
   }
@@ -740,6 +743,33 @@ async function runAll() {
     ok("U1 js/backup.js の列挙は SpellDashArea.keys()（見張りの無い所だけ key・length）", /SpellDashArea/.test(backup) && (strip(backup).match(/localStorage\.length/g) ?? []).length === 1);
     const header = fs.readFileSync(path.join(ROOT, "js/staticHeader.js"), "utf8");
     ok("U1 js/staticHeader.js はログインを新しい鍵で見る（key・length を使わない・旧い鍵 sb- を見ない）", /SpellDashArea/.test(header) && !/localStorage\.(key|length)/.test(strip(header)) && !/"sb-"/.test(header));
+  }
+
+  // ── U1 の続き（内部の 2）: 消して置き換える道が無い・ログアウトはどれも scope local・ログインとログアウトの前に予行・privacy の文 ─────────
+  {
+    const rd = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
+    const noComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+    const sync = rd("js/sync.js");
+    ok("U1 js/sync.js に「消して置き換える」の確認（OWNER_CONFIRM_TEXT）と、端末の記録を消す道（clearLocalRecords）が無い", !/消して|OWNER_CONFIRM_TEXT|clearLocalRecords/.test(sync));
+    const calls = [];
+    for (const f of fs.readdirSync(path.join(ROOT, "js")).filter((n) => n.endsWith(".js") && !n.startsWith("battle"))) {
+      for (const m of noComments(rd(`js/${f}`)).matchAll(/\.signOut\(([^)]*)\)/g)) calls.push([f, m[1].trim()]);
+    }
+    eq("U1 ログアウトの呼び出しは全部 scope local（ほかの端末のログインを切らない。キャンセルの道も）", calls.filter(([, a]) => !/^\{\s*scope:\s*"local"\s*\}$/.test(a)), []);
+    ok("U1 ログアウトの呼び出しがある（切り替えの画面 js/areaSwitch.js）", calls.some(([f]) => f === "areaSwitch.js"), JSON.stringify(calls));
+    const auth = noComments(rd("js/auth.js"));
+    const body = (name) => {
+      const i = auth.search(new RegExp(`(async )?function ${name}\\(`));
+      if (i < 0) return "";
+      const rest = auth.slice(i + 10);
+      const j = rest.search(/\n(async )?function /);
+      return auth.slice(i, j < 0 ? undefined : i + 10 + j);
+    };
+    const before = (text, a, b) => text.includes(a) && text.includes(b) && text.indexOf(a) < text.indexOf(b);
+    ok("U1 js/auth.js: ログインのリンクを送る前・Google に移る前に予行（precheckArea）", before(body("sendLoginLink"), "precheckArea(", "signInWithOtp(") && before(body("signInWithGoogle"), "precheckArea(", "signInWithOAuth("));
+    ok("U1 js/auth.js: ログアウトは予行の後に切り替えの画面へ（ログアウトは切り替えの画面で退避を確かめてから）", before(body("logout"), "precheckArea(", "leave("));
+    const privacy = rd("privacy.html");
+    ok("U1 privacy.html: IndexedDB に置くこと・人ごとに分けてこの端末に残すこと", privacy.includes("IndexedDB") && /ログアウトしても/.test(privacy) && /分けて/.test(privacy));
   }
 
   // ── U2 見張り ─────────────────────────────
@@ -1791,10 +1821,617 @@ async function runAll() {
       ok("U4 書き出し: その写しが読めなければ書き出さない（途中の A を A の持ち主の値で出さない）", exp2 instanceof Error);
     }
   }
+
+  // ── U5 退避の失敗で認証も領域も替わらない（ログアウト・ログインの前の予行）・ログインの「移す？」（はい・いいえ）（内部の 2。§3・§4・§5） ─────────
+  {
+    const K = loadKeys();
+    const A = clean(personSeed("A"));
+    // ゲストの記録（持ち主の鍵・同期の印も入れる: 「はい」で移すときに消す 5 つ）
+    const G = { ...clean(personSeed("G")), spelldash_owner: "someone", spelldash_xp_synced: "30", spelldash_xp_write: JSON.stringify({ value: 40, at: "2026-10-01T00:00:00.000Z" }), spelldash_logout_at: "2026-10-01T00:00:00.000Z", spelldash_learn_filled: "someone" };
+    const RESET = ["spelldash_owner", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_logout_at", "spelldash_learn_filled"];
+    const adopted = Object.fromEntries(Object.entries(G).filter(([k]) => !RESET.includes(k)));
+    const phys = (area, rec) => Object.fromEntries(Object.entries(rec).map(([k, v]) => [K.physicalKey(area, k), v]));
+    // index の lastUsedAt を除いた中身（止めたときに index の時刻だけが替わるのは「替わった」に数えない）
+    const norm = (dump) => {
+      const out = { ...dump };
+      if (out["sd2.index"]) out["sd2.index"] = JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(out["sd2.index"])).map(([a, e]) => [a, e?.at ?? null])));
+      return out;
+    };
+    // signOut の偽物（部品の auth.signOut）: 渡された引数を控える。error を返すとセッションは残る。keep なら「成功」と言うがセッションが残る
+    const fakeAuth = (b, { error = null, keep = false, onCall = null } = {}) => {
+      const calls = [];
+      return {
+        calls,
+        auth: {
+          signOut: async (opts) => {
+            calls.push(opts === undefined ? "（引数なし）" : opts);
+            onCall?.();
+            if (error) return { error };
+            if (!keep) {
+              b.remove("sd2.auth");
+              b.remove("sd2.auth-user");
+            }
+            return { error: null };
+          }
+        }
+      };
+    };
+    // A でログイン中（A が localStorage）・ゲストは IndexedDB（前に退避した G）の端末
+    async function loggedInA({ guest = G, limit = Infinity } = {}) {
+      const b = new Backing({ ...migratedMarks("guest", 1), ...(guest ? phys("guest", guest) : {}) });
+      const idb = new FakeIDB();
+      b.set("sd2.auth", session("A"));
+      const r = await settle(b, { idb, ask: async () => "no" });
+      if (r.error) throw r.error;
+      for (const [k, v] of Object.entries(A)) b.set(K.physicalKey("u:A", k), v);
+      b.limit = limit;
+      return { b, idb };
+    }
+    const logout = (b, idb, fa, extra = {}) => settle(b, { idb, intent: { op: "logout" }, signOut: () => (SW.signOutLocal ?? (async () => { throw new Error("signOutLocal が無い"); }))(fa.auth), ...extra });
+
+    // (1) ログアウト: drain → swap → A を退避して確かめる → signOut（scope local）→ A を消す → ゲストを戻す → 印
+    {
+      const { b, idb } = await loggedInA();
+      let atCall = null;
+      const fa = fakeAuth(b, { onCall: () => (atCall = { copy: idb.peek("areas", "u:A")?.keys ?? null, phase: JSON.parse(b.get("sd2.switch") ?? "null")?.phase ?? null, aInLs: areaRecords(b, "u:A") }) });
+      const r = await logout(b, idb, fa);
+      eq("U5 ログアウト: signOut は 1 回・scope local・A の退避を確かめた後（swap の段・A はまだ localStorage）",
+        [r.error?.message ?? null, fa.calls, atCall], [null, [{ scope: "local" }], { copy: A, phase: "swap", aInLs: A }]);
+      eq("U5 ログアウト: ゲストの記録が 1 字も違わず戻る・A は localStorage に無く IndexedDB に 1 字も違わず・印は guest・セッションは無い・途中の印は無い",
+        [r.result?.op, b.get("sd2.area"), areaRecords(b, "guest"), areaRecords(b, "u:A"), idb.peek("areas", "u:A")?.keys, b.get("sd2.auth"), b.get("sd2.switch")],
+        ["logout", "guest#3", sortedRec(G), {}, A, null, null]);
+      const tab = openTab(b);
+      ok("U5 ログアウトの後のページ: ゲストの領域で開く（頭で止めない）", tab.log.stopped === 0 && tab.ctx.SpellDashArea?.area === "guest" && tab.ctx.SpellDashArea.signedIn() === false);
+    }
+    // (1') 初めてのゲスト（ゲストの写しが無い）へのログアウト: ゲストは空で始まる
+    {
+      const { b, idb } = await loggedInA({ guest: null });
+      const fa = fakeAuth(b);
+      const r = await logout(b, idb, fa);
+      eq("U5 ログアウト（ゲストの写しなし）: ゲストは空で始まる・A は IndexedDB", [r.error?.message ?? null, b.get("sd2.area"), areaRecords(b, "guest"), idb.peek("areas", "u:A")?.keys], [null, "guest#3", {}, A]);
+    }
+    // (2) 退避が失敗: signOut を呼ばない・何も替わらない（認証・領域・localStorage）
+    for (const [name, inject, reason] of [
+      ["容量", (idb) => (idb.failPut = (s) => (s === "areas" ? quotaError() : null)), "quota"],
+      ["書けない", (idb) => (idb.failPut = (s) => (s === "areas" ? new Error("disk") : null)), "evacuate"],
+      ["読み直しが合わない", (idb) => (idb.corruptRead = (s, v) => (s === "areas" && v.area === "u:A" ? { ...v, keys: { ...v.keys, spelldash_xp: "0" } } : v)), "evacuate"],
+      ["開けない", (idb) => (idb.failOpen = new Error("blocked")), "open"]
+    ]) {
+      const { b, idb } = await loggedInA();
+      inject(idb);
+      const before = norm(b.dump());
+      const fa = fakeAuth(b);
+      const r = await logout(b, idb, fa);
+      eq(`U5 ログアウトの退避が${name}: 理由 ${reason}・signOut を呼ばない・認証も領域も localStorage も替わらない（途中の印も残さない）`, [r.error?.reason ?? null, fa.calls.length, norm(b.dump())], [reason, 0, before]);
+    }
+    // (3) signOut が失敗（オフライン）・成功と言うがセッションが残る: 理由 signout・何も替わらない
+    for (const [name, opts] of [["失敗（オフライン）", { error: { name: "AuthRetryableFetchError", message: "Failed to fetch", status: 0 } }], ["成功と言うがセッションが残る", { keep: true }]]) {
+      const { b, idb } = await loggedInA();
+      const before = norm(b.dump());
+      const fa = fakeAuth(b, opts);
+      const r = await logout(b, idb, fa);
+      eq(`U5 ログアウトの signOut が${name}: 理由 signout・A の記録もログインも替わらない・ゲストを展開しない`, [r.error?.reason ?? null, fa.calls.length, norm(b.dump()), areaRecords(b, "guest")], ["signout", 1, before, {}]);
+    }
+    // (3') 部品が読めない（signOut が投げる）: 理由 signout・何も替わらない
+    {
+      const { b, idb } = await loggedInA();
+      const before = norm(b.dump());
+      const r = await settle(b, { idb, intent: { op: "logout" }, signOut: async () => { throw new TypeError("Failed to fetch dynamically imported module"); } });
+      eq("U5 ログアウトの部品が読めない（オフライン）: 理由 signout・何も替わらない", [r.error?.reason ?? null, norm(b.dump())], ["signout", before]);
+    }
+    // (4) signOut の後に展開が満杯: 認証は先に変わった → 復旧の画面（理由 quota）・A は localStorage にそろう・印は替えない・別の領域を重ねない。空きができれば次で終わる
+    {
+      const bigG = { ...G, spelldash_word_stats: "G".repeat(6000) };
+      const { b, idb } = await loggedInA({ guest: bigG });
+      b.set("zz.filler", "f".repeat(2000));
+      b.limit = b.size() + 3000;
+      const fa = fakeAuth(b);
+      const r = await logout(b, idb, fa);
+      eq("U5 ログアウトで signOut の後に展開が満杯: 理由 quota・A は localStorage に 1 字も違わず・印は u:A のまま・ゲストの鍵は無い・セッションは無い（認証が先に変わった）",
+        [r.error?.reason ?? null, areaRecords(b, "u:A"), b.get("sd2.area"), areaRecords(b, "guest"), b.get("sd2.auth"), b.get("sd2.switch")], ["quota", sortedRec(A), "u:A#2", {}, null, null]);
+      const tab = openTab(new Backing(b.dump()));
+      ok("U5 その後のページは頭で止まる（学習・保存・同期をしない）", tab.log.stopped === 1);
+      b.remove("zz.filler");
+      b.limit = Infinity;
+      const again = await settle(b, { idb });
+      eq("U5 空きができた後の「もう一度」: ゲストへ切り替わる・A は IndexedDB", [again.error?.message ?? null, b.get("sd2.area")?.split("#")[0], areaRecords(b, "guest"), idb.peek("areas", "u:A")?.keys], [null, "guest", sortedRec(bigG), A]);
+    }
+    // (5) ログアウトの各点で落ちる → 次に開いたタブで直す: どちらかが全部そろう（A のログインと A の記録・ゲストと A の写し）。混ざらない
+    {
+      let points = 0;
+      for (let n = 1; n < 80; n++) {
+        const { b, idb } = await loggedInA();
+        const fa = fakeAuth(b);
+        const first = await logout(b, idb, fa, { crashAt: n });
+        if (!first.error) break;
+        points++;
+        const second = await settle(b, { idb });
+        const area = b.get("sd2.area")?.split("#")[0];
+        const signedIn = b.get("sd2.auth") !== null;
+        const good = signedIn
+          ? area === "u:A" && isDeepStrictEqual(areaRecords(b, "u:A"), sortedRec(A)) && Object.keys(areaRecords(b, "guest")).length === 0
+          : area === "guest" && isDeepStrictEqual(areaRecords(b, "guest"), sortedRec(G)) && Object.keys(areaRecords(b, "u:A")).length === 0 && isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, A);
+        ok(`U5 ログアウトの ${n} 番目の書き込みで落ちた: 直すとログインのまま A がそろうか、ゲストがそろい A は IndexedDB（混ざらない）`, !second.error && good && b.get("sd2.switch") === null, JSON.stringify({ area, signedIn, err: second.error?.message }));
+      }
+      ok("U5 ログアウトの書き込みの全部の点で落として確かめた（8 点以上）", points >= 8, `${points} 点`);
+    }
+    // (6) 予行（ログインのリンクを送る前・ログアウトの前）: 今の領域を IndexedDB に写して読み直す。localStorage・印・本物の写しは替えない
+    {
+      const { b, idb } = await loggedInA();
+      const before = norm(b.dump());
+      const copyA = idb.peek("areas", "u:A") ?? null;
+      const r = await (SW.precheck ?? (async () => ({ ok: null, reason: "関数が無い" })))({ area: "u:A", records: areaRecords(b, "u:A"), openStore: () => ST.openAreaStore(idb), persist: async () => true });
+      const pre = idb.peek("areas", "pre:u:A");
+      eq("U5 予行: 成功・予行の写し（pre:u:A）は今の領域の記録と 1 字も違わない・localStorage と印は替えない・本物の写し（u:A）に触れない",
+        [r.ok, pre?.keys, norm(b.dump()), idb.peek("areas", "u:A") ?? null], [true, sortedRec(A), before, copyA]);
+      for (const [name, inject, reason] of [
+        ["容量", (d) => (d.failPut = () => quotaError()), "quota"],
+        ["書けない", (d) => (d.failPut = () => new Error("disk")), "evacuate"],
+        ["読み直しが合わない", (d) => (d.corruptRead = (s, v) => ({ ...v, keys: {} })), "evacuate"],
+        ["開けない", (d) => (d.failOpen = new Error("blocked")), "open"]
+      ]) {
+        const d = new FakeIDB();
+        inject(d);
+        const rr = await (SW.precheck ?? (async () => ({ ok: null, reason: "関数が無い" })))({ area: "u:A", records: areaRecords(b, "u:A"), openStore: () => ST.openAreaStore(d), persist: async () => true });
+        eq(`U5 予行が${name}: 失敗（理由 ${reason}）・localStorage と印は替えない`, [rr.ok, rr.reason, norm(b.dump())], [false, reason, before]);
+      }
+      let asked = 0;
+      await (SW.precheck ?? (async () => ({ ok: null, reason: "関数が無い" })))({ area: "u:A", records: areaRecords(b, "u:A"), openStore: () => ST.openAreaStore(new FakeIDB()), persist: async () => { asked++; return false; } });
+      ok("U5 予行で persist() を頼む（断られても写す）", asked === 1);
+    }
+    // (7) ログイン: この端末で初めて A・ゲストに記録 → 1 回たずねる
+    const guestDevice = (rec = G) => ({ b: new Backing({ ...migratedMarks("guest", 1), ...phys("guest", rec) }), idb: new FakeIDB() });
+    {
+      const { b, idb } = guestDevice();
+      let asked = 0;
+      b.set("sd2.auth", session("A"));
+      const r = await settle(b, { idb, ask: async () => { asked++; return "no"; } });
+      const idx = JSON.parse(b.get("sd2.index"));
+      eq("U5 初めて A・ゲストに記録・いいえ: 1 回たずねる・ゲストの記録はゲストの写し（IndexedDB）に 1 字も違わず残る・A は空で始まる・ログインは続く",
+        [asked, r.error?.message ?? null, b.get("sd2.area"), areaRecords(b, "u:A"), areaRecords(b, "guest"), idb.peek("areas", "guest")?.keys, idx.guest?.at === `idb:${idb.peek("areas", "guest")?.id}`, b.get("sd2.auth") !== null],
+        [1, null, "u:A#2", {}, {}, G, true, true]);
+      const fa = fakeAuth(b);
+      await logout(b, idb, fa);
+      eq("U5 いいえの後にログアウト: ゲストの記録が戻る", [b.get("sd2.area")?.split("#")[0], areaRecords(b, "guest")], ["guest", sortedRec(G)]);
+      b.set("sd2.auth", session("A"));
+      let asked2 = 0;
+      await settle(b, { idb, ask: async () => { asked2++; return "yes"; } });
+      eq("U5 2 回目のログイン（A の領域が端末にある）: たずねずに A を戻す・ゲストはゲストに残る", [asked2, b.get("sd2.area")?.split("#")[0], areaRecords(b, "u:A"), idb.peek("areas", "guest")?.keys], [0, "u:A", {}, G]);
+    }
+    {
+      const { b, idb } = guestDevice();
+      let asked = 0;
+      b.set("sd2.auth", session("A"));
+      const r = await settle(b, { idb, ask: async () => { asked++; return "yes"; } });
+      const idx = JSON.parse(b.get("sd2.index"));
+      eq("U5 初めて A・ゲストに記録・はい: 1 回たずねる・ゲストの記録が A の記録になる（持ち主・xp_synced・xp_write・logout_at・learn_filled は消す）・ゲストの鍵も index も無い",
+        [asked, r.error?.message ?? null, r.result?.op, b.get("sd2.area"), areaRecords(b, "u:A"), areaRecords(b, "guest"), idx.guest ?? null, idx["u:A"]?.at],
+        [1, null, "adopt", "u:A#2", sortedRec(adopted), {}, null, "ls"]);
+      ok("U5 はい: 移す前に IndexedDB に写して確かめた（ゲストの写しと A の写し。読み直し済み）", isDeepStrictEqual(idb.peek("areas", "guest")?.keys, G) && isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, adopted));
+      const fa = fakeAuth(b);
+      await logout(b, idb, fa);
+      eq("U5 はいの後にログアウト: ゲストは空で始まる（移した記録はゲストに戻らない）・A は IndexedDB", [b.get("sd2.area")?.split("#")[0], areaRecords(b, "guest"), idb.peek("areas", "u:A")?.keys], ["guest", {}, adopted]);
+    }
+    {
+      // A の領域がこの端末にある（前にログアウトした）: たずねない
+      const { b, idb } = await loggedInA({ guest: null });
+      await logout(b, idb, fakeAuth(b));
+      for (const [k, v] of Object.entries(G)) b.set(K.physicalKey("guest", k), v); // ゲストで学んだ
+      let asked = 0;
+      b.set("sd2.auth", session("A"));
+      const r = await settle(b, { idb, ask: async () => { asked++; return "yes"; } });
+      eq("U5 A の領域が端末にある・ゲストに記録: たずねずに A を戻す・ゲストはゲストの写しに残る", [asked, r.error?.message ?? null, areaRecords(b, "u:A"), idb.peek("areas", "guest")?.keys], [0, null, sortedRec(A), G]);
+    }
+    {
+      const { b, idb } = guestDevice({ spelldash_schema_version: "7", spelldash_growth_log: JSON.stringify([{ date: "2026-10-28", learned: 0, mastered: 0 }]) });
+      let asked = 0;
+      b.set("sd2.auth", session("A"));
+      await settle(b, { idb, ask: async () => { asked++; return "yes"; } });
+      eq("U5 ゲストに学んだ記録が無い（ホームを開いただけ）: たずねない・A は空で始まる", [asked, b.get("sd2.area"), Object.keys(areaRecords(b, "u:A")).length], [0, "u:A#2", 0]);
+    }
+    {
+      // A → B（アカウントからアカウント）: たずねない
+      const { b, idb } = await loggedInA();
+      let asked = 0;
+      b.set("sd2.auth", session("B"));
+      await settle(b, { idb, ask: async () => { asked++; return "yes"; } });
+      eq("U5 A → 初めての B: たずねない・B は空・A は IndexedDB", [asked, b.get("sd2.area")?.split("#")[0], areaRecords(b, "u:B"), idb.peek("areas", "u:A")?.keys], [0, "u:B", {}, A]);
+    }
+    {
+      // たずねている間にセッションが替わった（ほかのタブで C に入り直した）: はいでも A に移さない。今のセッションでやり直す
+      const { b, idb } = guestDevice();
+      const answers = [];
+      b.set("sd2.auth", session("A"));
+      await settle(b, { idb, ask: async () => { answers.push(JSON.parse(b.get("sd2.auth")).user.id); if (answers.length === 1) b.set("sd2.auth", session("C")); return answers.length === 1 ? "yes" : "no"; } });
+      eq("U5 たずねている間にセッションが C に替わった: A には移さない・C についてたずね直す（いいえ）・ゲストはゲストに残る",
+        [answers, b.get("sd2.area")?.split("#")[0], Object.keys(areaRecords(b, "u:A")).length, JSON.parse(b.get("sd2.index"))["u:A"] ?? null, idb.peek("areas", "guest")?.keys], [["A", "C"], "u:C", 0, null, G]);
+    }
+    {
+      // たずねる口が無い（内部の 1 の切り替えの画面）: 移さない（混ぜない方）
+      const { b, idb } = guestDevice();
+      b.set("sd2.auth", session("A"));
+      await settle(b, { idb });
+      eq("U5 たずねる口が無い: 移さない（ゲストはゲストの写し・A は空）", [areaRecords(b, "u:A"), idb.peek("areas", "guest")?.keys], [{}, G]);
+    }
+    // (8) はいの各点で落ちる → 次に開いたタブで直す: A がそろうか（ゲストの index は無い）、まだ移していなければたずね直す（いいえ → ゲストの写しに残る）。
+    // ゲストと A の両方に同じ記録が残らない・ゲストの記録を失わない
+    {
+      let points = 0;
+      for (let n = 1; n < 80; n++) {
+        const { b, idb } = guestDevice();
+        b.set("sd2.auth", session("A"));
+        const first = await settle(b, { idb, crashAt: n, ask: async () => "yes" });
+        if (!first.error) break;
+        points++;
+        let askedAgain = 0;
+        const second = await settle(b, { idb, ask: async () => { askedAgain++; return "no"; } });
+        const idx = JSON.parse(b.get("sd2.index"));
+        const aRec = areaRecords(b, "u:A");
+        const moved = isDeepStrictEqual(aRec, sortedRec(adopted)) && !idx.guest && askedAgain === 0;
+        const kept = Object.keys(aRec).length === 0 && askedAgain === 1 && isDeepStrictEqual(idb.peek("areas", "guest")?.keys, G) && idx.guest?.at === `idb:${idb.peek("areas", "guest")?.id}`;
+        ok(`U5 はいの ${n} 番目の書き込みで落ちた: 直すと A に移り終わる（ゲストの index は無い）か、たずね直す（いいえでゲストの写しに残る）。両方に残らない・失わない`,
+          !second.error && (moved || kept) && Object.keys(areaRecords(b, "guest")).length === 0 && b.get("sd2.switch") === null, JSON.stringify({ askedAgain, a: Object.keys(aRec).length, guestIdx: idx.guest ?? null, err: second.error?.message }));
+      }
+      ok("U5 はいの書き込みの全部の点で落として確かめた（8 点以上）", points >= 8, `${points} 点`);
+    }
+    // (9) はいで A の領域へ展開が満杯（A の鍵の名前は長い user id を含む）: 移さない・ゲストは localStorage にそろう・印は替えない・A の index も鍵も無い
+    {
+      const UA = "11111111-2222-4333-8444-555555555555";
+      const bigG = { ...clean(personSeed("G")), spelldash_word_stats: "G".repeat(6000) };
+      const { b, idb } = guestDevice(bigG);
+      b.set("sd2.auth", session(UA));
+      b.limit = b.size() + 300; // 切り替えの印と index は入るが、ゲストの鍵を消して A（長い名前）へ書き直すと入らない
+      const r = await settle(b, { idb, ask: async () => "yes" });
+      const idx = JSON.parse(b.get("sd2.index"));
+      eq("U5 はいの展開が満杯: 理由 quota・ゲストは localStorage に 1 字も違わず・印は guest#1 のまま・A の index も鍵も無い・ゲストの index は ls・途中の印は無い",
+        [r.error?.reason ?? null, areaRecords(b, "guest"), b.get("sd2.area"), idx[`u:${UA}`] ?? null, Object.keys(areaRecords(b, `u:${UA}`)).length, idx.guest?.at, b.get("sd2.switch")],
+        ["quota", sortedRec(bigG), "guest#1", null, 0, "ls", null]);
+    }
+    // (10) 見張り: 移行の後に旧コードのタブが旧い認証の鍵を書き戻した（知らせ）・頭で見つけた → その場で消す（旧いタブは A のセッションを失い、空の値を A として送れない）
+    {
+      const b = new Backing({ ...migratedMarks("u:A", 1), "sd2.auth": session("A"), "sd2.u:A.xp": "5", [OLD_AUTH]: session("A") });
+      const t = openTab(b);
+      eq("U5 見張りの頭: 移行の後に残った旧い認証の鍵はその場で消す（新しい鍵はそのまま）", [b.get(OLD_AUTH), b.get("sd2.auth") !== null, t.log.stopped], [null, true, 0]);
+      for (const suffix of ["", "-user", "-code-verifier"]) {
+        b.set(OLD_AUTH + suffix, suffix === "-code-verifier" ? "v" : session("A"));
+        t.fire(OLD_AUTH + suffix, null, b.get(OLD_AUTH + suffix));
+        eq(`U5 見張りの知らせ: 旧い認証の鍵（${suffix || "本体"}）が書かれたらその場で消す`, b.get(OLD_AUTH + suffix), null);
+      }
+      const before = t.log.timers.length;
+      b.set("spelldash_xp", "0");
+      t.fire("spelldash_xp", null, "0");
+      ok("U5 見張りの知らせ: 旧い場所の人の記録が書かれたら、片付けをすぐ頼む（手の空くのを待たない）", t.log.timers.slice(before).some(([, ms]) => ms === 0), JSON.stringify(t.log.timers.slice(before).map(([, ms]) => ms)));
+      eq("U5 見張りの知らせ: 旧い場所の値はアプリに届けない・今の領域の値は替わらない", [t.heard.filter((h) => h[0] === "spelldash_xp").length, b.get("sd2.u:A.xp")], [0, "5"]);
+    }
+  }
+}
+
+
+// =====================================================================
+// U7・U8（内部の 2）: js/backup.js・js/sync.js・js/supabase.js を別のプロセスで読む（Node の大域に偽の localStorage・window・Supabase を置くため。
+// 変異では js/ を写した木で流す）。node scripts/test-areas.mjs <木の根> --part=app が結果を 1 行の JSON で出す
+async function runApp(root) {
+  const appUrl = (rel) => pathToFileURL(path.join(root, rel)).href;
+  const K = loadKeys();
+  // 偽の Storage（元の名前のまま。見張りは無いので、SpellDashArea の偽物が今の領域を言う）
+  class AppStorage {
+    constructor(seed = {}) {
+      this.b = new Backing(seed);
+    }
+    getItem(k) {
+      return this.b.get(String(k));
+    }
+    setItem(k, v) {
+      this.b.set(String(k), v);
+    }
+    removeItem(k) {
+      this.b.remove(String(k));
+    }
+    key(i) {
+      return this.b.keys()[i] ?? null;
+    }
+    get length() {
+      return this.b.keys().length;
+    }
+    dump() {
+      return this.b.dump();
+    }
+  }
+  let LS = new AppStorage();
+  let SS = new AppStorage();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => LS });
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, get: () => SS });
+  const listeners = new Map();
+  globalThis.window = globalThis;
+  globalThis.addEventListener = (type, fn) => listeners.set(type, [...(listeners.get(type) ?? []), fn]);
+  globalThis.removeEventListener = (type, fn) => listeners.set(type, (listeners.get(type) ?? []).filter((f) => f !== fn));
+  globalThis.dispatchEvent = (e) => {
+    for (const fn of listeners.get(e.type) ?? []) fn(e);
+    return true;
+  };
+  globalThis.CustomEvent ??= class extends Event {
+    constructor(type, init = {}) {
+      super(type);
+      this.detail = init.detail ?? null;
+    }
+  };
+  globalThis.document = { addEventListener() {}, removeEventListener() {}, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], documentElement: { dataset: {}, classList: { add() {}, remove() {}, toggle() {}, contains: () => false } }, body: null, visibilityState: "visible", hidden: false };
+  globalThis.location ??= { search: "", hash: "", hostname: "localhost", pathname: "/", href: "http://localhost/", origin: "http://localhost" };
+  const confirms = [];
+  globalThis.confirm = (t) => (confirms.push(t), true);
+  globalThis.reportError = () => {};
+  const quietWarn = console.warn;
+  console.warn = () => {};
+  const VOCAB_TEXT = fs.readFileSync(path.join(root, "data/public/english.json"), "utf8");
+  // 本物の fetch の代わり（公開の語の表だけ返す。ほかは 404）。Supabase の fetch の守りの確かめでは差し替える
+  const appFetch = async (u) => (String(u).endsWith("data/public/english.json") ? { ok: true, status: 200, json: async () => JSON.parse(VOCAB_TEXT) } : { ok: false, status: 404, json: async () => ({}) });
+  globalThis.fetch = appFetch;
+  // にせの Supabase（クラウドの表と、送られた物の記録）
+  const cloud = { user: null, tables: {}, log: [], onCall: null, signOuts: [] };
+  function fakeQuery(table) {
+    const ops = [];
+    const run = () => {
+      const kind = ops.find(([op]) => ["upsert", "insert", "update", "delete"].includes(op))?.[0] ?? "select";
+      const rows = kind === "select" ? null : ops.find(([op]) => op === kind)[1][0];
+      cloud.log.push({ table, kind, rows: rows === null ? null : [].concat(rows) });
+      cloud.onCall?.(table, kind);
+      if (kind !== "select") return { data: null, error: null };
+      const data = cloud.tables[table] ?? [];
+      return ops.some(([op]) => op === "maybeSingle") ? { data: data[0] ?? null, error: null } : { data, error: null };
+    };
+    const q = new Proxy({}, {
+      get(_, prop) {
+        if (prop === "then") return (resolve, reject) => Promise.resolve().then(run).then(resolve, reject);
+        return (...args) => {
+          ops.push([String(prop), args]);
+          return q;
+        };
+      }
+    });
+    return q;
+  }
+  globalThis.__fakeSupabase = {
+    auth: {
+      getSession: async () => ({ data: { session: cloud.user ? { access_token: "t", user: { id: cloud.user, email: `${cloud.user}@example.com` } } : null } }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+      signOut: async (opts) => (cloud.signOuts.push(opts ?? null), { error: null })
+    },
+    from: (table) => fakeQuery(table)
+  };
+  globalThis.__SUPABASE_MODULE_URL = "data:text/javascript," + encodeURIComponent("export function createClient(u, k, o) { globalThis.__sdOpts = o ?? null; return globalThis.__fakeSupabase; }");
+  // 見張りの偽物（ページの領域・stillMine・鍵の一覧）
+  const area = { area: "u:u1", mine: true };
+  const fakeArea = { get area() { return area.area; }, get gen() { return 1; }, stillMine: () => area.mine, canWrite: () => area.mine, isPersonKey: K.isPersonKey, keys: () => LS.b.keys(), userId: () => cloud.user, signedIn: () => cloud.user !== null, leave() {} };
+  globalThis.SpellDashArea = fakeArea;
+
+  const SY = await import(appUrl("js/sync.js"));
+  const BK = await import(appUrl("js/backup.js"));
+  const SB = await import(appUrl("js/supabase.js"));
+  const SWa = await import(appUrl("js/areaSwitch.js"));
+  const STa = await import(appUrl("js/areaStore.js"));
+  const ST0 = await import(appUrl("js/storage.js"));
+  const reset = ({ seed = {}, user = "u1", page = "u:u1", mine = true, tables = {}, session = {} } = {}) => {
+    LS = new AppStorage(seed);
+    SS = new AppStorage(session);
+    ST0.forgetWordStats();
+    cloud.user = user;
+    cloud.tables = { word_progress: [], user_progress: [], user_items: [], profiles: [], ...tables };
+    cloud.log = [];
+    cloud.onCall = null;
+    area.area = page;
+    area.mine = mine;
+    confirms.length = 0;
+  };
+  const writes = () => cloud.log.filter((e) => e.kind !== "select");
+  const ws = (tag) => JSON.stringify({ "english-apple": { playCount: 2, correctCount: 2, lastPlayed: "2026-10-20T09:00:00.000Z", ls: 2, tag }, "english-bread": { playCount: 1, correctCount: 0, recallFail: 1, lastPlayed: "2026-10-25T09:00:00.000Z", lastRecallFailAt: "2026-10-25T09:00:00.000Z", ls: 1, lsd: 20386, tag } });
+  const seedU1 = { spelldash_schema_version: "7", spelldash_owner: "u1", spelldash_learn_filled: "u1", spelldash_word_stats: ws("u1"), spelldash_xp: "120", spelldash_dirty_words: JSON.stringify(["english-apple"]) };
+
+  // ── U8 同期: ページの領域 = "u:" + セッションの user.id・stillMine() でないと何も送らない（読みもしない） ─────────
+  {
+    reset({ seed: seedU1 });
+    const r = await SY.initialSync();
+    ok("U8 同期（領域 u:u1・セッション u1・stillMine）: 取り込み（select）と送信（upsert）が走る", r !== false && cloud.log.some((e) => e.table === "word_progress" && e.kind === "select") && writes().some((e) => e.table === "word_progress"), JSON.stringify({ r, log: cloud.log.map((e) => `${e.table}.${e.kind}`) }));
+    for (const [name, opts] of [
+      ["ページの領域 u:u1・セッション u2", { user: "u2" }],
+      ["ページの領域 guest・セッション u1", { page: "guest" }],
+      ["stillMine が false（切り替えの途中・領域の印が替わった）", { mine: false }]
+    ]) {
+      reset({ seed: seedU1, ...opts });
+      const before = LS.dump();
+      const r2 = await SY.initialSync();
+      eq(`U8 同期の頭（${name}）: 何も読まない・何も送らない・端末の記録を替えない・確認を出さない`, [r2, cloud.log.length, LS.dump(), confirms.length], [false, 0, before, 0]);
+    }
+    {
+      reset({ seed: seedU1 });
+      delete globalThis.SpellDashArea;
+      const r3 = await SY.initialSync();
+      globalThis.SpellDashArea = fakeArea;
+      eq("U8 同期: 見張りが無い（SpellDashArea が無い）なら送らない（共用の場所で動かない）", [r3, cloud.log.length], [false, 0]);
+    }
+    {
+      // 領域の持ち主の印が別の人（今の作りでは起きない形）: 消さない・混ぜない・送らない・たずねない
+      reset({ seed: { ...seedU1, spelldash_owner: "u0" } });
+      const before = LS.dump();
+      const r4 = await SY.initialSync();
+      eq("U8 同期: 領域の持ち主の印が別の人（u0）でも「消して置き換える」をたずねない・何も消さない・何も送らない", [r4, confirms.length, LS.dump(), writes().length], [false, 0, before, 0]);
+    }
+    {
+      // 取り込みの途中で領域が替わった（ほかのタブで切り替えが始まった）: その後のクラウドへの書き込みは 1 件も無い
+      reset({ seed: seedU1 });
+      let flipped = -1;
+      cloud.onCall = (table, kind) => {
+        if (flipped < 0 && table === "word_progress" && kind === "select") {
+          area.mine = false;
+          flipped = cloud.log.length;
+        }
+      };
+      await SY.initialSync().catch(() => null);
+      eq("U8 同期の途中で stillMine が false になった: その後はクラウドへ書かない（word_progress・user_progress・user_items・profiles）", writes().filter((e, i) => cloud.log.indexOf(e) >= flipped).map((e) => e.table), []);
+    }
+    {
+      // pushSync・Challenge の記録（play_sessions）・ユーザーの品: 送る前に確かめる
+      const pulled = { spelldash_pulled_this_session: "u1" };
+      reset({ seed: { ...seedU1, spelldash_user_items_dirty: JSON.stringify(["my_word:apple"]), spelldash_my_words: JSON.stringify([{ en: "apple", ja: "りんご" }]), spelldash_user_items_meta: JSON.stringify({ "my_word:apple": { updatedAt: "2026-10-25T00:00:00.000Z", deleted: false } }) }, session: pulled });
+      await SY.pushSync();
+      ok("U8 pushSync（一致）: word_progress と user_items を送る", writes().some((e) => e.table === "word_progress") && writes().some((e) => e.table === "user_items"), JSON.stringify(writes().map((e) => e.table)));
+      for (const [name, opts] of [["セッション u2（取り込みの印は u1）", { user: "u2" }], ["領域 u:u2", { page: "u:u2" }], ["stillMine false", { mine: false }]]) {
+        reset({ seed: { ...seedU1, spelldash_user_items_dirty: JSON.stringify(["my_word:apple"]), spelldash_my_words: JSON.stringify([{ en: "apple", ja: "りんご" }]) }, session: pulled, ...opts });
+        await SY.pushSync();
+        await SY.recordPlaySession({ mode: "challenge", score: 1, typingSpeed: 1, typingMiss: 0, recallFail: 0, durationSeconds: 1 });
+        eq(`U8 pushSync・play_sessions（${name}）: 何も送らない`, cloud.log.map((e) => `${e.table}.${e.kind}`), []);
+      }
+      reset({ seed: seedU1, session: pulled });
+      let mid = -1;
+      cloud.onCall = (table, kind) => {
+        if (mid < 0 && table === "word_progress" && kind === "upsert") {
+          area.mine = false;
+          mid = cloud.log.length;
+        }
+      };
+      await SY.pushSync();
+      eq("U8 pushSync の途中で stillMine が false: 次の書き込み（user_progress・activity_days・user_items）を送らない", cloud.log.slice(mid).map((e) => `${e.table}.${e.kind}`), []);
+    }
+  }
+  // ── U8 js/supabase.js: 世代の印（X-Client-Info）と、送る直前（fetch）の確かめ ─────────
+  {
+    await SB.supabase.auth.getSession();
+    const opts = globalThis.__sdOpts ?? {};
+    const info = opts.global?.headers?.["X-Client-Info"] ?? null;
+    ok("U8 js/supabase.js: 書き込みに SpellDash の世代の印（X-Client-Info「spelldash/2 …」。新しい見出しは足さない）", typeof info === "string" && /^spelldash\/2 /.test(info), String(info));
+    const guardFetch = opts.global?.fetch;
+    ok("U8 js/supabase.js: 部品に送る直前の口（global.fetch）を渡す", typeof guardFetch === "function");
+    if (typeof guardFetch === "function") {
+      const sent = [];
+      globalThis.fetch = async (input, init) => (sent.push([String(input), init?.method ?? "GET"]), new Response("[]", { status: 200, headers: { "content-type": "application/json" } }));
+      const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+      const jwt = (payload) => `${b64({ alg: "HS256" })}.${b64(payload)}.sig`;
+      const call = async (url, { sub = "u1", method = "POST", anon = false } = {}) => {
+        const n = sent.length;
+        const res = await guardFetch(url, { method, headers: new Headers({ Authorization: `Bearer ${anon ? jwt({ role: "anon" }) : jwt({ sub, role: "authenticated" })}`, apikey: "k" }) });
+        return { through: sent.length > n, status: res.status };
+      };
+      const REST = "https://sujvgwozsnzjsjmkcrnk.supabase.co/rest/v1/word_progress";
+      const AUTHV = "https://sujvgwozsnzjsjmkcrnk.supabase.co/auth/v1/logout?scope=local";
+      area.area = "u:u1";
+      area.mine = true;
+      const rows = [
+        ["一致（u1・stillMine）の書き込み", await call(REST), true],
+        ["ほかの人（u2）のトークンの書き込み", await call(REST, { sub: "u2" }), false],
+        ["ほかの人（u2）のトークンの読み", await call(REST, { sub: "u2", method: "GET" }), false],
+        ["認証（/auth/v1）はほかの人のトークンでも通す（ログアウト・更新）", await call(AUTHV, { sub: "u2" }), true],
+        ["領域 u:u1 で匿名の鍵", await call(REST, { anon: true }), false]
+      ];
+      area.mine = false;
+      rows.push(["stillMine false", await call(REST), false]);
+      area.area = "guest";
+      area.mine = true;
+      rows.push(["ゲストの領域で匿名の鍵", await call(REST, { anon: true }), true]);
+      rows.push(["ゲストの領域で u1 のトークン", await call(REST), false]);
+      delete globalThis.SpellDashArea;
+      rows.push(["見張りが無い", await call(REST, { anon: true }), false]);
+      globalThis.SpellDashArea = fakeArea;
+      area.area = "u:u1";
+      for (const [name, got, want] of rows) eq(`U8 js/supabase.js の送る直前の確かめ: ${name} → ${want ? "通す" : "送らない"}`, got.through, want);
+      ok("U8 js/supabase.js: 送らないときは失敗の答え（成功と見せない）", rows.filter(([, , w]) => !w).every(([, g]) => g.status >= 400));
+      globalThis.fetch = appFetch;
+    }
+  }
+  // ── U7 バックアップの持ち主・復元 ─────────
+  {
+    const UID = "9f3c2a1e-4b5d-4c6e-8f70-123456789abc";
+    const expected = (await import("crypto")).createHash("sha256").update(`spelldash-backup-owner-v1:${UID}`).digest("hex").slice(0, 32);
+    const tag = await BK.ownerTag(UID);
+    eq("U7 持ち主の値: SHA-256(\"spelldash-backup-owner-v1:\" + user id) の頭 32 字（端末ごとの乱数なし・どの端末でも同じ）・復旧の画面の書き出しと同じ", [tag, (await BK.ownerTag(UID)) === tag, (await SWa.ownerOf(`u:${UID}`)).tag], [expected, true, expected]);
+    const acct = { spelldash_schema_version: "7", spelldash_theme: "dark", spelldash_owner: UID, spelldash_learn_filled: UID, spelldash_word_stats: ws("A"), spelldash_xp: "300", spelldash_rank_peak: "2" };
+    reset({ seed: acct, user: UID, page: `u:${UID}` });
+    const file = await BK.buildOwnedBackup();
+    eq("U7 書き出し（アカウント）: owner = { kind: account, tag }・生の user id はファイルのどこにも無い・持ち主の鍵と同期の印は入れない", [file.owner, JSON.stringify(file).includes(UID), "spelldash_owner" in file.data, "spelldash_learn_filled" in file.data, file.data.spelldash_xp], [{ kind: "account", tag: expected }, false, false, false, "300"]);
+    reset({ seed: { spelldash_schema_version: "7", spelldash_xp: "5" }, user: null, page: "guest" });
+    const gfile = await BK.buildOwnedBackup();
+    eq("U7 書き出し（ゲスト）: owner = { kind: guest }", gfile.owner, { kind: "guest" });
+    const other = await BK.ownerTag("other-user-id");
+    const legacyFile = { app: "SpellDash", version: 1, exportedAt: "2026-10-01T00:00:00.000Z", data: { spelldash_word_stats: JSON.stringify({ a: { playCount: 3, correctCount: 3, ls: 2, lastPlayed: "2026-10-20T09:00:00.000Z" }, b: { playCount: 1, ls: 1, lsAt: Date.parse("2026-10-26T09:00:00.000Z"), lastPlayed: "2026-10-22T09:00:00.000Z" }, c: { playCount: 0 } }), spelldash_xp: "9" } };
+    const cases = [
+      ["同じアカウントのファイル → そのアカウントの領域", file, `u:${UID}`, { ok: true, legacy: false }],
+      ["ほかのアカウントのファイル → 止める", { ...file, owner: { kind: "account", tag: other } }, `u:${UID}`, { ok: false, reason: "other" }],
+      ["アカウントのファイル → ゲストの領域では止める", file, "guest", { ok: false, reason: "account-file" }],
+      ["ゲストのファイル → ゲストの領域", gfile, "guest", { ok: true, legacy: false }],
+      ["ゲストのファイル → アカウントの領域では止める（ゲストの復元はゲストだけ）", gfile, `u:${UID}`, { ok: false, reason: "guest-file" }],
+      ["知らない形の持ち主 → 止める", { ...file, owner: { kind: "team" } }, `u:${UID}`, { ok: false, reason: "unknown" }]
+    ];
+    for (const [name, f, a, want] of cases) eq(`U7 戻す先の決まり: ${name}`, await BK.checkRestore(f, a), want);
+    const lg = await BK.checkRestore(legacyFile, `u:${UID}`);
+    eq("U7 持ち主の無い古いファイル: 確認が要る・覚えた語数・答えた語数・最後に学んだ日（lsAt も見る）を出す", [lg.ok, lg.legacy, lg.summary?.learned, lg.summary?.answered, lg.summary?.lastAt], [true, true, 1, 2, Date.parse("2026-10-26T09:00:00.000Z")]);
+    const unknownTag = await BK.checkRestore({ ...file, owner: { kind: "account", tag: null } }, `u:${UID}`);
+    eq("U7 持ち主の値を作れなかったファイル（tag なし）は古いファイルと同じく確認してから", [unknownTag.ok, unknownTag.legacy], [true, true]);
+    // 復元: 前に今の領域を IndexedDB の prerestore に写して読み直す。写せなければ戻さない
+    {
+      reset({ seed: acct, user: UID, page: `u:${UID}` });
+      const idb = new FakeIDB();
+      idb.failPut = (s) => (s === "prerestore" ? quotaError() : null);
+      const before = LS.dump();
+      let err = null;
+      try {
+        await BK.restoreBackup({ ...file, data: { ...file.data, spelldash_xp: "999" } }, { openStore: () => STa.openAreaStore(idb) });
+      } catch (e) {
+        err = e;
+      }
+      eq("U7 復元: 前の記録の控え（prerestore）を写せなければ戻さない（今の記録はそのまま・失敗を返す）", [Boolean(err), LS.dump()], [true, before]);
+      const idb2 = new FakeIDB();
+      const r = await BK.restoreBackup({ ...file, data: { ...file.data, spelldash_xp: "999" } }, { openStore: () => STa.openAreaStore(idb2) });
+      const pre = idb2.all("prerestore");
+      const person = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => K.isPersonKey(k)));
+      eq("U7 復元: 前の記録を prerestore に 1 件（今の領域・人の記録の全部・読み直し済み）・その後で上書き（XP 999・持ち主の鍵と同期の印は消す）",
+        [pre.length, pre[0]?.area, pre[0]?.keys, LS.getItem("spelldash_xp"), LS.getItem("spelldash_owner"), LS.getItem("spelldash_learn_filled"), Boolean(r)],
+        [1, `u:${UID}`, person(acct), "999", null, null, true]);
+      reset({ seed: acct, user: "someone-else", page: "u:someone-else" });
+      let refused = null;
+      try {
+        await BK.restoreBackup(file, { openStore: () => STa.openAreaStore(new FakeIDB()) });
+      } catch (e) {
+        refused = e;
+      }
+      ok("U7 復元: 持ち主の違うファイルは、直に呼んでも戻さない", Boolean(refused) && LS.getItem("spelldash_xp") === "300");
+      // 別の端末（新しい localStorage と IndexedDB）で同じアカウントのファイルを戻せる
+      reset({ seed: { spelldash_schema_version: "7" }, user: UID, page: `u:${UID}` });
+      const d3 = new FakeIDB();
+      const okOther = await BK.checkRestore(file, `u:${UID}`);
+      await BK.restoreBackup(file, { openStore: () => STa.openAreaStore(d3) });
+      eq("U7 別の端末で同じアカウントのバックアップ: 戻せる（持ち主の値が同じ）", [okOther.ok, LS.getItem("spelldash_xp"), LS.getItem("spelldash_word_stats") === acct.spelldash_word_stats], [true, "300", true]);
+    }
+  }
+  console.warn = quietWarn;
+}
+
+// 別のプロセスで U7・U8 を流して、件数と落ちた検査を足す（変異では js/ を写した木の根を渡す）
+function runAppChild(root) {
+  const res = spawnSync(process.execPath, [fileURLToPath(import.meta.url), root, "--part=app"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const line = (res.stdout || "").trim().split("\n").filter(Boolean).at(-1) ?? "";
+  try {
+    const out = JSON.parse(line);
+    passed += out.passed;
+    failures.push(...out.failures);
+  } catch {
+    failures.push(`U7・U8 の流しが結果を返さなかった（終了 ${res.status}）: ${(res.stderr || res.stdout || "").slice(-3000)}`);
+  }
+}
+if (ARGS.includes("--part=app")) {
+  try {
+    await runApp(ROOT);
+  } catch (e) {
+    failures.push(`throw: ${e?.stack ?? e}`);
+  }
+  console.log(JSON.stringify({ passed, failures }));
+  process.exit(0);
 }
 
 // =====================================================================
-await runAll();
+try {
+  await runAll();
+} catch (e) {
+  failures.push(`throw: ${e?.stack ?? e}`);
+}
+runAppChild(ROOT);
 const baseFailures = failures;
 const basePassed = passed;
 
