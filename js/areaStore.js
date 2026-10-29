@@ -2,7 +2,8 @@
 // DB spelldash-areas の 4 つの入れ物:
 //   areas      … 使っていない人の記録。1 人 1 件 { area, id, keys, savedAt, schema, sum }。期限なし・自動で消さない
 //   legacy     … 移行の前の旧い記録（spelldash_* の人の記録の全部）。1 件 { id, savedAt, fromSchema, keys, sum }。期限なし・自動で消さない
-//   orphans    … 移行の後に旧コードのタブが旧い鍵へ書いた値の写し { id, savedAt, keys, sum }。期限なし・読まない・移し直さない
+//   orphans    … 移行の後に旧コードのタブが旧い鍵へ書いた値の写し { id, savedAt, keys, sum }。期限なし・読まない・移し直さない。
+//                退避した領域の鍵へ、見え方の古いタブが後から書いた値の写しも置く { id, savedAt, area, keys, sum }（area 付き。同じく読まない）
 //   prerestore … 復元の前の今の記録の写し（js/backup.js が使う）。期限なし
 // keys は元の名前（spelldash_<名前>）から値への表。書くときは durability strict で書き、新しいトランザクションで読み直して鍵ごとに比べる。
 // 写しを消すのは、利用者の明示の確認があるときだけ（今は消す口を作らない）。
@@ -126,9 +127,22 @@ function wrap(db) {
         reject(new AreaStoreError("read", "記録の控えを読めなかった。", error));
       }
     });
+  // 入れ物の全部（移行のやり直しで、同じ中身の確かめた legacy を使い回すため）
+  const readAll = (store) =>
+    new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(store, "readonly");
+        const request = tx.objectStore(store).getAll();
+        request.onsuccess = () => resolve(request.result ?? []);
+        request.onerror = () => reject(new AreaStoreError("read", "記録の控えを読めなかった。", request.error));
+      } catch (error) {
+        reject(new AreaStoreError("read", "記録の控えを読めなかった。", error));
+      }
+    });
   return {
     put: write,
     get: read,
+    list: readAll,
     // 書いて、新しいトランザクションで読み直して比べる（鍵の集まり・鍵ごとの値・id・要約）。合わなければ AreaStoreError("verify")
     async putVerified(store, record) {
       await write(store, record);

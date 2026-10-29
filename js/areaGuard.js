@@ -35,12 +35,28 @@
   const SWITCH_PATH = "/switch.html";
   const PAGE_LOCK = "spelldash-page";
   const SWITCH_LOCK = "spelldash-area-switch";
+  // 書き出し（復旧の画面・使えないブラウザ）に入れない鍵。js/backup.js の EXCLUDE と同じ（単体で固定する）: 持ち主の鍵（同期が書く生の user id）・
+  // 同期の印・送信待ち・ログアウトの時刻・3 状態の初めの埋めの印・このタブの同期の印・端末の開き方の好み
+  const EXPORT_EXCLUDE = Object.freeze(["spelldash_dirty_words", "spelldash_synced_this_session", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_owner", "spelldash_typing_kind", "spelldash_typing_game_course", "spelldash_logout_at", "spelldash_learn_filled"]);
+  const AREA_KEY_RE = /^sd2\.(guest|u:[^.#\s]+)\.(.+)$/;
 
   const isPersonKey = (key) => typeof key === "string" && key.startsWith(PREFIX) && !DEVICE.has(key) && !key.startsWith(TEST_PREFIX);
   const areaPrefix = (area) => "sd2." + area + ".";
   const physicalKey = (area, key) => areaPrefix(area) + key.slice(PREFIX.length);
   const logicalKey = (area, phys) => (phys.startsWith(areaPrefix(area)) ? PREFIX + phys.slice(areaPrefix(area).length) : null);
   const areaOfUser = (id) => (id ? "u:" + id : "guest");
+  // 物理の鍵 sd2.<領域>.<名前> から { area, name（元の名前 spelldash_<名前>） }。人の記録の鍵でなければ null
+  const areaOfPhysical = (key) => {
+    const m = typeof key === "string" ? AREA_KEY_RE.exec(key) : null;
+    return m ? { area: m[1], name: PREFIX + m[2] } : null;
+  };
+  // 退避した領域か: index が idb を指す（本物は IndexedDB）。index に無い領域も、領域の印の領域でなければ退避した物と見る。
+  // その領域の localStorage の鍵は、見え方の古いタブが後から書いた物か、途中で落ちた残り（js/areaSwitch.js が写して片付ける）
+  const isStaleArea = (area, index, markerArea) => {
+    const entry = index && typeof index === "object" ? index[area] : undefined;
+    if (entry === undefined || entry === null) return area !== markerArea;
+    return typeof entry.at === "string" && entry.at.startsWith("idb:");
+  };
   const readJson = (text) => {
     if (typeof text !== "string") return null;
     try {
@@ -69,8 +85,8 @@
 
   const KEYS = Object.freeze({
     PREFIX, TEST_PREFIX, DEVICE_NAMES, AREA_KEY, INDEX_KEY, MIGRATED_KEY, MIGRATING_KEY, SWITCH_KEY, AUTH_KEY, OLD_AUTH_KEY, OWNER_KEY, OWNER_MOVED, PROBE_KEY, TABGEN_KEY, SYNC_FLAGS,
-    SWITCH_PATH, PAGE_LOCK, SWITCH_LOCK,
-    isPersonKey, isDeviceKey: (key) => DEVICE.has(key), areaPrefix, physicalKey, logicalKey, areaOfUser, readJson, parseMarker, formatMarker, sessionUserOf
+    SWITCH_PATH, PAGE_LOCK, SWITCH_LOCK, EXPORT_EXCLUDE,
+    isPersonKey, isDeviceKey: (key) => DEVICE.has(key), areaPrefix, physicalKey, logicalKey, areaOfUser, areaOfPhysical, isStaleArea, readJson, parseMarker, formatMarker, sessionUserOf
   });
   root.SpellDashAreaKeys = KEYS;
 
@@ -100,6 +116,7 @@
   let sessionUser = null; // 今のセッションの user id（同じタブの認証の書き込みと、ほかのタブの知らせで覚え直す）
   let sessionArea = "guest";
   let redispatching = false;
+  let sweepPending = false; // 片付けを頼んだ（終わるまで重ねて頼まない）
   let ls = null;
   try {
     ls = root.localStorage;
@@ -294,7 +311,15 @@
         noteSession();
         return;
       }
-      if (key === AREA_KEY || key === SWITCH_KEY || key === MIGRATING_KEY || key === INDEX_KEY) recheck();
+      if (key === AREA_KEY || key === SWITCH_KEY || key === MIGRATING_KEY || key === INDEX_KEY) {
+        recheck();
+        return;
+      }
+      // 退避した領域の鍵へ、ほかのタブ（見え方の古いタブ）が書いた: localStorage に 2 人分を残さないよう、手の空いたときに片付ける
+      if (event.newValue !== null && !leaving && !stopped) {
+        const hit = areaOfPhysical(key);
+        if (hit && hit.area !== pageArea && isStaleArea(hit.area, readJson(get(INDEX_KEY)), pageArea)) scheduleSweep();
+      }
       return;
     }
     if (isPersonKey(key)) event.stopImmediatePropagation(); // 旧い場所（旧コードのタブ）の人の記録。新しいコードは読まない
@@ -325,16 +350,9 @@
     // 文書の無い環境
   }
 
-  // 旧い場所に人の記録（移行の後に旧コードのタブが書いた値）か旧い認証の鍵があれば、手の空いたときに IndexedDB の orphans へ写して消す
-  if (orphanKeys().length > 0) {
-    const sweep = () => {
-      import("/js/areaSwitch.js")
-        .then((mod) => mod.sweepOrphansFromPage({ get, set, remove, keys: allKeys }))
-        .catch(() => {});
-    };
-    if (typeof root.requestIdleCallback === "function") root.requestIdleCallback(sweep, { timeout: 5000 });
-    else root.setTimeout(sweep, 2000);
-  }
+  // 旧い場所に人の記録（移行の後に旧コードのタブが書いた値）か旧い認証の鍵がある、または退避した領域の鍵が localStorage に残る（見え方の古いタブが
+  // 切り替えの後に書いた。書くたびの確かめはそのタブの古い見え方で通るので、ここで見つける）: 手の空いたときに IndexedDB の orphans へ写して消す
+  if (needsSweep()) scheduleSweep();
 
   root.SpellDashArea = Object.freeze({
     area: pageArea,
@@ -376,8 +394,28 @@
       return false; // 書けなければ切り替えの画面で（ロックの中で）移行する
     }
   }
-  function orphanKeys() {
-    return allKeys().filter((key) => (isPersonKey(key) && !(key === OWNER_KEY && get(key) === OWNER_MOVED)) || key === OLD_AUTH_KEY);
+  function needsSweep() {
+    const index = readJson(get(INDEX_KEY));
+    return allKeys().some((key) => {
+      if (key === OLD_AUTH_KEY || (isPersonKey(key) && !(key === OWNER_KEY && get(key) === OWNER_MOVED))) return true;
+      const hit = areaOfPhysical(key);
+      return hit !== null && hit.area !== pageArea && isStaleArea(hit.area, index, pageArea);
+    });
+  }
+  // 片付け（js/areaSwitch.js。排他のロックが空いているときだけ・切り替えと移行の途中は何もしない）。頼むのは同時に 1 回だけ
+  function scheduleSweep() {
+    if (sweepPending) return;
+    sweepPending = true;
+    const run = () => {
+      import("/js/areaSwitch.js")
+        .then((mod) => mod.sweepOrphansFromPage({ get, set, remove, keys: allKeys }))
+        .catch(() => {})
+        .then(() => {
+          sweepPending = false;
+        });
+    };
+    if (typeof root.requestIdleCallback === "function") root.requestIdleCallback(run, { timeout: 5000 });
+    else root.setTimeout(run, 2000);
   }
   // 包んだ口で書いて生の口で読む。容量で書けないときは、包みが効いていること（口が包んだ物）だけを確かめる
   function selfTest() {
@@ -434,13 +472,13 @@
       const p2 = doc.createElement("p");
       p2.textContent = "新しい版のブラウザで開く。プライベートの窓では開かない。ブラウザの設定でサイトのデータを保存できるようにする。";
       box.append(title, p1, p2);
-      const data = recordsForExport();
-      if (Object.keys(data).length > 0) {
+      const exp = recordsForExport();
+      if (Object.keys(exp.data).length > 0) {
         const button = doc.createElement("button");
         button.type = "button";
         button.id = "areaStopExport";
         button.textContent = "記録を書き出す";
-        button.addEventListener("click", () => download(data));
+        button.addEventListener("click", () => ownerFor(exp.area).then((owner) => download(exp.data, owner)));
         box.append(button);
       }
       body.append(box);
@@ -452,27 +490,44 @@
     }
   }
   // 書き出す記録（元の名前）: 移行の前なら旧い場所の記録。移行の途中なら、残った旧い鍵に移した先の鍵を重ねた物。移行の後なら、index が ls を指す
-  // 領域の記録と端末の鍵（index が idb を指す領域の localStorage の残りは途中の物なので書き出さない。js/areaSwitch.js exportRecords と同じ決まり）
+  // 領域の記録と端末の鍵（index が idb を指す領域の localStorage の残りは途中の物なので書き出さない。js/areaSwitch.js exportRecords と同じ決まり）。
+  // EXPORT_EXCLUDE の鍵（持ち主の鍵＝生の user id・同期の印）は入れない。返り値の area は持ち主の値を作る領域（移行の前は null で、持ち主を付けない）
   function recordsForExport() {
     const data = {};
-    if (!ls) return data;
+    let area = null;
+    if (!ls) return { data, area };
     try {
       const index = readJson(get(INDEX_KEY)) || {};
       const moving = readJson(get(MIGRATING_KEY));
       const after = !moving && (get(MIGRATED_KEY) !== null || Object.keys(index).some((a) => index[a] && index[a].at === "ls"));
-      const area = after ? Object.keys(index).find((a) => index[a] && index[a].at === "ls") || null : moving && typeof moving.area === "string" ? moving.area : null;
+      area = after ? Object.keys(index).find((a) => index[a] && index[a].at === "ls") || null : moving && typeof moving.area === "string" ? moving.area : null;
       for (const key of allKeys()) {
         if (area && key.startsWith(areaPrefix(area))) data[PREFIX + key.slice(areaPrefix(area).length)] = get(key);
         else if (key.startsWith(PREFIX) && !key.startsWith(TEST_PREFIX) && !(key === OWNER_KEY && get(key) === OWNER_MOVED) && (!after || !isPersonKey(key)) && !(key in data)) data[key] = get(key);
       }
       delete data[PROBE_KEY];
+      for (const key of EXPORT_EXCLUDE) delete data[key];
     } catch {
       // 読めなければ書き出さない
     }
-    return data;
+    return { data, area };
   }
-  function download(data) {
-    const json = JSON.stringify({ app: "SpellDash", version: 1, exportedAt: new Date().toISOString(), data }, null, 2);
+  // 持ち主の値（DESIGN-FINAL §5。js/areaSwitch.js ownerOf と同じ作り方）: ゲストは { kind: "guest" }、アカウントは { kind: "account", tag }。
+  // tag = SHA-256("spelldash-backup-owner-v1:" + user id) の頭 32 字（端末ごとの乱数を使わない）。生の user id は書かない
+  function ownerFor(area) {
+    if (!area) return Promise.resolve(null);
+    if (area === "guest") return Promise.resolve({ kind: "guest" });
+    const subtle = root.crypto && root.crypto.subtle;
+    if (!subtle || typeof subtle.digest !== "function" || typeof root.TextEncoder !== "function") return Promise.resolve({ kind: "account", tag: null });
+    return subtle
+      .digest("SHA-256", new root.TextEncoder().encode("spelldash-backup-owner-v1:" + area.slice(2)))
+      .then((buf) => ({ kind: "account", tag: Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32) }))
+      .catch(() => ({ kind: "account", tag: null }));
+  }
+  function download(data, owner) {
+    const backup = { app: "SpellDash", version: 1, exportedAt: new Date().toISOString(), data };
+    if (owner) backup.owner = owner;
+    const json = JSON.stringify(backup, null, 2);
     const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
     const a = doc.createElement("a");
     const d = new Date();

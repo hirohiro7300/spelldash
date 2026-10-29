@@ -250,7 +250,8 @@ class FakeTx {
         this.request(() => {
           const value = store.data.has(key) ? structuredClone(store.data.get(key)) : undefined;
           return value !== undefined && factory.corruptRead ? factory.corruptRead(name, value) ?? value : value;
-        })
+        }),
+      getAll: () => this.request(() => [...store.data.values()].map((v) => structuredClone(v)))
     };
   }
   request(fn) {
@@ -308,10 +309,10 @@ function openTab(backing, { path: pagePath = "/index.html", search = "", locks =
   const ssBacking = ss ?? new Backing();
   const SessionStorage = storageClass(() => ssBacking);
   const target = new EventTarget();
-  const log = { replaced: [], stopped: 0, idle: [], timers: [] };
+  const log = { replaced: [], stopped: 0, idle: [], timers: [], blobs: [] };
   const elements = [];
   const makeEl = (tag) => {
-    const el = { tag, children: [], attrs: {}, dataset: {}, textContent: "", id: "", setAttribute(k, v) { this.attrs[k] = v; }, append(...c) { this.children.push(...c); }, appendChild(c) { this.children.push(c); return c; }, addEventListener() {}, remove() {}, click() {} };
+    const el = { tag, children: [], attrs: {}, dataset: {}, textContent: "", id: "", handlers: {}, setAttribute(k, v) { this.attrs[k] = v; }, append(...c) { this.children.push(...c); }, appendChild(c) { this.children.push(c); return c; }, addEventListener(type, fn) { this.handlers[type] = fn; }, remove() {}, click() {} };
     elements.push(el);
     return el;
   };
@@ -319,7 +320,7 @@ function openTab(backing, { path: pagePath = "/index.html", search = "", locks =
   const document = {
     currentScript: Object.keys(attrs).length ? { hasAttribute: (n) => n in attrs } : null,
     documentElement: makeEl("html"),
-    body: null,
+    body: makeEl("body"),
     visibilityState: "visible",
     createElement: makeEl,
     addEventListener: (...a) => docTarget.addEventListener(...a),
@@ -327,7 +328,7 @@ function openTab(backing, { path: pagePath = "/index.html", search = "", locks =
   };
   const ctx = {
     console, Date, Math, JSON, Object, Array, String, Number, Boolean, Error, Promise, Set, Map, Symbol, RegExp, URL, Uint8Array,
-    encodeURIComponent, decodeURIComponent, DOMException, Event, structuredClone,
+    encodeURIComponent, decodeURIComponent, DOMException, Event, structuredClone, Blob, TextEncoder, crypto: globalThis.crypto,
     setTimeout: (fn, ms) => log.timers.push([fn, ms]),
     requestIdleCallback: (fn) => log.idle.push(fn),
     queueMicrotask,
@@ -348,6 +349,14 @@ function openTab(backing, { path: pagePath = "/index.html", search = "", locks =
   else ctx.localStorage = ls;
   ctx.sessionStorage = new SessionStorage();
   if (freezeProto) Object.freeze(Storage.prototype);
+  // 「記録を書き出す」のファイル（Blob）を控える
+  ctx.URL = class extends URL {
+    static createObjectURL(blob) {
+      log.blobs.push(blob);
+      return "blob:test";
+    }
+    static revokeObjectURL() {}
+  };
   ctx.window = ctx;
   ctx.globalThis = ctx;
   vm.createContext(ctx);
@@ -461,6 +470,13 @@ const exportOf = async (backing, idb) => {
 };
 const personOf = (data) => (data ? Object.fromEntries(Object.entries(data).filter(([k]) => loadKeys().isPersonKey(k)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : null);
 const sortedRec = (o) => (o ? Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : o);
+// 書き出しに入れない鍵（js/backup.js の EXCLUDE と同じ。持ち主の鍵・同期の印・送信待ち・ログアウトの時刻・端末の開き方の好み）
+const EXPORT_DROP = (() => {
+  const text = fs.readFileSync(path.join(ROOT, "js/backup.js"), "utf8");
+  const m = text.match(/const EXCLUDE = new Set\(\[([^\]]*)\]\)/);
+  return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
+})();
+const exportable = (rec) => sortedRec(Object.fromEntries(Object.entries(rec ?? {}).filter(([k]) => !EXPORT_DROP.includes(k))));
 const isCrash = (e) => Boolean(e && (e.crash || e.message === "crashed" || isCrash(e.cause)));
 
 // =====================================================================
@@ -497,6 +513,7 @@ async function runAll() {
     eq("U1 人の記録の鍵は 61 個で、一覧のとおり（後から足した鍵も人ごと。足したら一覧を直す）", classes.person, PERSON);
     eq("U1 端末の鍵は端末の設定 13 と端末の計測 10（コードに出る物は全部が一覧にある）", [K.DEVICE_NAMES.length, classes.device.length], [23, 23]);
     ok("U1 人の記録の判定: 端末の鍵・spelldash_test_・spelldash_ で始まらない鍵は人の記録でない", !K.isPersonKey("spelldash_theme") && !K.isPersonKey("spelldash_test_session") && !K.isPersonKey("sd2.guest.word_stats") && !K.isPersonKey("sb-x-auth-token") && K.isPersonKey("spelldash_word_stats") && K.isPersonKey("spelldash_new_key_later"));
+    ok("U1 書き出しに入れない鍵（見張りの EXPORT_EXCLUDE。復旧の画面・使えないブラウザの書き出し）は js/backup.js の EXCLUDE と同じ（持ち主の鍵・同期の印を含む）", EXPORT_DROP.includes("spelldash_owner") && isDeepStrictEqual([...(K.EXPORT_EXCLUDE ?? [])].sort(), [...EXPORT_DROP].sort()), JSON.stringify(K.EXPORT_EXCLUDE ?? null));
     ok("U1 印・認証の新しい鍵は spelldash_ で始まらない（旧コードの消去が触れない）", [K.AREA_KEY, K.INDEX_KEY, K.MIGRATED_KEY, K.MIGRATING_KEY, K.SWITCH_KEY, K.AUTH_KEY].every((k) => !k.startsWith("spelldash_")));
     // 認証の新しい鍵は js/supabase.js の storageKey と同じ・部品の版は固定
     const supa = fs.readFileSync(path.join(ROOT, "js/supabase.js"), "utf8");
@@ -808,6 +825,68 @@ async function runAll() {
       const stopEl = tt.elements.find((e) => e.id === "areaStop");
       eq("U2 自分の確かめが合わない（書き込みが黙って消える保存）: 止める・文を出す（理由 selftest）・SpellDashArea を置かない", [tt.log.stopped, stopEl?.dataset.reason ?? null, tt.ctx.SpellDashArea === undefined], [1, "selftest", true]);
     }
+    // 同じタブのログアウト（認証の部品が sd2.auth・sd2.auth-user を removeItem）: 覚え直して切り替えの画面へ・人の記録を書かない・送らない（§2 の (3)）
+    for (const key of ["sd2.auth", "sd2.auth-user"]) {
+      const seed = { ...migratedMarks("u:A", 1), "sd2.u:A.xp": "1" };
+      if (key === "sd2.auth") seed["sd2.auth"] = session("A");
+      else seed["sd2.auth-user"] = JSON.stringify({ user: { id: "A" } });
+      seed["sd2.auth"] ??= JSON.stringify({ access_token: "t", refresh_token: "r", expires_at: 9999999999 });
+      const b = new Backing(seed);
+      const t = openTab(b);
+      const before = [t.ctx.SpellDashArea.signedIn(), t.ctx.SpellDashArea.stillMine()];
+      t.ctx.localStorage.removeItem(key);
+      eq(`U2 同じタブのログアウト（${key} を removeItem）: 切り替えの画面へ・人の記録を書かない・stillMine と signedIn は false`, [before, t.log.replaced.length, t.tryWrite("spelldash_xp", "2"), b.get("sd2.u:A.xp"), t.ctx.SpellDashArea.stillMine(), t.ctx.SpellDashArea.signedIn()], [[true, true], 1, "InvalidStateError", "1", false, false]);
+    }
+    // 満杯の端末: 読み込みの確かめ（包んだ口で書く）が容量で入らなくても、ページは止めない（共用に戻さず、今の領域を読める・書けないのは容量の例外）
+    {
+      const seed = { ...migratedMarks("guest", 1), "sd2.guest.xp": "7", "sd2.guest.word_stats": "w".repeat(3000) };
+      const b = new Backing(seed, new Backing(seed).size()); // 1 字も入らない
+      const t = openTab(b);
+      eq("U2 満杯の端末: 止めない・使えないブラウザの文を出さない・今の領域を読める・書けないのは容量の例外（成功と見せない）", [t.log.stopped, t.elements.some((e) => e.id === "areaStop"), t.ctx.SpellDashArea?.area ?? null, t.ctx.localStorage.getItem("spelldash_xp"), t.tryWrite("spelldash_xp", "8888888"), b.get("sd2.guest.xp")], [0, false, "guest", "7", "QuotaExceededError", "7"]);
+    }
+    // 確かめの書き込みが容量でない理由で投げる保存: 止める（理由 selftest）
+    {
+      class Denied extends Backing {
+        set(k, v) {
+          if (k.endsWith("sd2probe")) throw new DOMException("denied", "SecurityError");
+          super.set(k, v);
+        }
+      }
+      const t = openTab(new Denied({ ...migratedMarks("guest", 1), "sd2.guest.xp": "7" }));
+      eq("U2 確かめの書き込みが容量でない例外: 止める（理由 selftest）・SpellDashArea を置かない", [t.log.stopped, t.elements.find((e) => e.id === "areaStop")?.dataset.reason ?? null, t.ctx.SpellDashArea === undefined], [1, "selftest", true]);
+    }
+    // 退避した領域（index が idb を指す）の鍵が localStorage に残っている（見え方の古いタブが切り替えの後に書いた）: 頭で見つけて、手の空いたときに片付けを頼む。
+    // ほかのタブの知らせでも同じ（今の領域の鍵・index が ls を指す領域の鍵では頼まない）
+    {
+      const idx = { "u:B": { at: "ls" }, "u:A": { at: "idb:a1" } };
+      const b = new Backing({ ...migratedMarks("u:B", 3, idx), "sd2.auth": session("B"), "sd2.u:B.xp": "222", "sd2.u:A.xp": "999" });
+      const t = openTab(b);
+      eq("U2 退避した領域の鍵が残る端末: 頭で止めない・今の領域を読む・片付けを 1 回頼む", [t.log.stopped, t.ctx.SpellDashArea?.area, t.ctx.localStorage.getItem("spelldash_xp"), t.log.idle.length], [0, "u:B", "222", 1]);
+      const b2 = new Backing({ ...migratedMarks("u:B", 3, idx), "sd2.auth": session("B"), "sd2.u:B.xp": "222" });
+      const t2 = openTab(b2);
+      const quiet = [t2.log.idle.length, t2.log.timers.length];
+      t2.fire("sd2.u:B.xp", "222", "223"); // 今の領域
+      const own = [t2.log.idle.length, t2.log.timers.length];
+      b2.set("sd2.u:A.xp", "999");
+      t2.fire("sd2.u:A.xp", null, "999"); // 退避した領域へ、見え方の古いタブが書いた
+      t2.fire("sd2.u:A.word_stats", null, "{}");
+      eq("U2 退避した領域の鍵の知らせ（ほかのタブ）: 片付けを 1 回だけ頼む・今の領域の知らせでは頼まない・アプリには届けない", [quiet, own, t2.log.idle.length + t2.log.timers.length > 0, t2.log.idle.length + t2.log.timers.length <= 1, t2.heard.map((h) => h[0])], [[0, 0], [0, 0], true, true, ["spelldash_xp"]]);
+    }
+    // 使えないブラウザの「記録を書き出す」: 持ち主の値（§5。アカウントは user id から作る安定した値）を入れ、生の user id・同期の印は書かない（js/backup.js の EXCLUDE と同じ鍵を除く）
+    {
+      const uid = "0f8d2c5e-1b7a-4c3d-9e8f-123456789abc";
+      const b = new Backing({ ...migratedMarks(`u:${uid}`, 2), "sd2.auth": session(uid), [`sd2.u:${uid}.xp`]: "5", [`sd2.u:${uid}.word_stats`]: "{}", [`sd2.u:${uid}.owner`]: uid, [`sd2.u:${uid}.xp_synced`]: "5", [`sd2.u:${uid}.logout_at`]: "2026-10-01T00:00:00.000Z", [`sd2.u:${uid}.dirty_words`]: "[]", spelldash_theme: "dark" });
+      const t = openTab(b, { idb: false });
+      const button = t.elements.find((e) => e.id === "areaStopExport");
+      let file = null;
+      if (button?.handlers.click) {
+        await button.handlers.click();
+        for (let i = 0; i < 20 && t.log.blobs.length === 0; i++) await new Promise((r) => setTimeout(r, 0));
+        file = t.log.blobs[0] ? JSON.parse(await t.log.blobs[0].text()) : null;
+      }
+      const tag = (await SW.ownerOf(`u:${uid}`, globalThis.crypto.subtle)).tag;
+      eq("U2 使えないブラウザの書き出し: 持ち主はアカウントの値・生の user id は無い・持ち主の鍵と同期の印（owner・xp_synced・logout_at・dirty_words）は入れない・記録と端末の鍵は入る", [file?.owner ?? null, file ? JSON.stringify(file).includes(uid) : null, file ? ["spelldash_owner", "spelldash_xp_synced", "spelldash_logout_at", "spelldash_dirty_words"].filter((k) => k in file.data) : null, file?.data?.spelldash_xp ?? null, file?.data?.spelldash_theme ?? null], [{ kind: "account", tag }, false, [], "5", "dark"]);
+    }
     // 切り替えの画面の戻り先（# の後ろの back）: 同じ origin のパスだけ。タブ・改行を挟んだ //・\・外の URL・切り替えの画面そのものは / へ
     {
       const origin = "https://www.spelldash.net";
@@ -935,11 +1014,11 @@ async function runAll() {
           }
           if (fits) stuck.push(`${h}（空き ${need} で入る）: 止まった（${r1.error.reason ?? r1.error.message}）`);
           const e1 = await exportOf(b, r1.idb);
-          if (!isDeepStrictEqual(personOf(e1?.data), old)) stuck.push(`${h}: 書き出しが legacy と違う（${e1 instanceof Error ? e1.message : Object.keys(personOf(e1.data)).length + " 鍵"}）`);
+          if (!isDeepStrictEqual(personOf(e1?.data), exportable(old))) stuck.push(`${h}: 書き出しが legacy と違う（${e1 instanceof Error ? e1.message : Object.keys(personOf(e1.data)).length + " 鍵"}）`);
           const r2 = await settle(b, { idb: r1.idb });
           if (r2.error) {
             const e2 = await exportOf(b, r1.idb);
-            if (!isDeepStrictEqual(personOf(e2?.data), old)) stuck.push(`${h}: もう一度の後の書き出しが legacy と違う`);
+            if (!isDeepStrictEqual(personOf(e2?.data), exportable(old))) stuck.push(`${h}: もう一度の後の書き出しが legacy と違う`);
           } else if (!fits) stuck.push(`${h}: 入らないのに終わった`);
         }
         eq(`U3 容量（${name}・空き ${need} の前後 ${hs.length} 通り）: 移した後の形が入るなら 1 回で終わる・入らなければ止まり、書き出しは legacy と同じ`, stuck, []);
@@ -958,7 +1037,7 @@ async function runAll() {
         const e = await exportOf(b, idb);
         idb.failOpen = new Error("lost");
         const e2 = await exportOf(b, idb);
-        eq(`U3 移行の ${n} 番目で落ちた端末の書き出し: legacy と同じ・控えが開けなくても新しい鍵と旧い鍵を合わせて同じ・端末の鍵も入る`, [personOf(e?.data), personOf(e2?.data), e?.data?.spelldash_theme], [old, old, "dark"]);
+        eq(`U3 移行の ${n} 番目で落ちた端末の書き出し: legacy と同じ・控えが開けなくても新しい鍵と旧い鍵を合わせて同じ・端末の鍵も入る`, [personOf(e?.data), personOf(e2?.data), e?.data?.spelldash_theme], [exportable(old), exportable(old), "dark"]);
       }
     }
   }
@@ -1076,6 +1155,98 @@ async function runAll() {
       const r = await settle(b, { idb });
       eq("U6 満杯で、退避した A の写しがその後に読めなくなっても: A は localStorage に 1 字も違わず戻る・index は ls（手元の写しから）", [r.error?.reason, areaRecords(b, "u:A"), JSON.parse(b.get("sd2.index"))["u:A"].at], ["quota", sortedRec(A), "ls"]);
     }
+    // 容量（手順 7 のほか）: 切り替えの印（手順 1・3）・index（手順 6・8）・領域の印（手順 9）の書き込みで満杯。どの空きでも、止まるなら理由は quota（復旧の画面で容量不足）・
+    // 途中の印は残さない・元は localStorage にそろい index は ls・切り替え先の index は前のまま（写しを指す）。空きができれば次の 1 回で終わり、切り替え先は写しのとおり。
+    // 写しの id は本物と同じ長さ（randomUUID）にする（index の伸びが本物と同じになる）
+    {
+      const UA = "11111111-2222-4333-8444-555555555555";
+      const UB = "66666666-7777-4888-9999-aaaaaaaaaaaa";
+      const uuidSettle = async (backing, idb) => {
+        let t = Date.parse("2026-10-29T00:00:00Z");
+        const sw = SW.createSwitcher({ ls: rawOf(backing), keys: K, openStore: () => ST.openAreaStore(idb), locks: new FakeLocks(), now: () => (t += 7), newId: () => globalThis.crypto.randomUUID(), sleep: async (ms) => { t += ms ?? 100; }, persist: async () => true });
+        try {
+          return { result: await sw.settle() };
+        } catch (error) {
+          return { error };
+        }
+      };
+      for (const [label, F, T, Frec, Trec] of [
+        ["A → B", `u:${UA}`, `u:${UB}`, A, B],
+        ["ゲスト → アカウント（領域の印が伸びる）", "guest", `u:${UB}`, A, B],
+        ["アカウント → 新しいゲスト（index が伸びる）", `u:${UA}`, "guest", A, null],
+        ["小さいゲスト → 新しいアカウント（手順 8 の index・手順 9 の領域の印が伸びる）", "guest", `u:${UB}`, { spelldash_xp: "1" }, null]
+      ]) {
+        const bad = [];
+        let stoppedQuota = 0;
+        for (let head = 0; head <= 400; head += 3) {
+          // T（あれば）を退避した後に F で学んだ端末
+          const b = new Backing(Trec ? { ...migratedMarks(T, 1), "sd2.auth": session(T.slice(2)), ...Object.fromEntries(Object.entries(Trec).map(([k, v]) => [K.physicalKey(T, k), v])) } : { ...migratedMarks(F, 1) });
+          if (T === "guest") b.remove("sd2.auth");
+          const idb = new FakeIDB();
+          if (Trec) {
+            if (F === "guest") b.remove("sd2.auth");
+            else b.set("sd2.auth", session(F.slice(2)));
+            const r0 = await uuidSettle(b, idb);
+            if (r0.error) { bad.push(`準備: ${r0.error.message}`); break; }
+          } else {
+            if (F === "guest") b.remove("sd2.auth");
+            else b.set("sd2.auth", session(F.slice(2)));
+            b.set("sd2.area", `${F}#1`);
+            b.set("sd2.index", JSON.stringify({ [F]: { at: "ls", lastUsedAt: "2026-10-01T00:00:00.000Z" } }));
+          }
+          for (const [k, v] of Object.entries(Frec)) b.set(K.physicalKey(F, k), v);
+          const indexBefore = JSON.parse(b.get("sd2.index"));
+          if (T === "guest") b.remove("sd2.auth");
+          else b.set("sd2.auth", session(T.slice(2)));
+          b.limit = b.size() + head;
+          const r = await uuidSettle(b, idb);
+          if (!r.error) continue;
+          const reason = r.error instanceof SW.SwitchError ? r.error.reason : `生の ${r.error.name}`;
+          const idx = JSON.parse(b.get("sd2.index"));
+          const got = [reason, b.get("sd2.switch"), isDeepStrictEqual(areaRecords(b, F), sortedRec(Frec)), idx[F]?.at, idx[T]?.at ?? null, Object.keys(areaRecords(b, T)).length, b.get("sd2.area")?.split("#")[0]];
+          const want = ["quota", null, true, "ls", indexBefore[T]?.at ?? null, 0, F];
+          if (!isDeepStrictEqual(got, want)) bad.push(`空き ${head}: ${JSON.stringify(got)}`);
+          else stoppedQuota++;
+          // 空きができた: 次の 1 回で終わり、切り替え先は写しのとおり・元は IndexedDB
+          b.limit = Infinity;
+          const again = await uuidSettle(b, idb);
+          const done = [again.error?.reason ?? again.error?.message ?? null, b.get("sd2.area")?.split("#")[0], isDeepStrictEqual(areaRecords(b, T), Trec ? sortedRec(Trec) : {}), Object.keys(areaRecords(b, F)).length, isDeepStrictEqual(idb.peek("areas", F)?.keys, Frec)];
+          if (!isDeepStrictEqual(done, [null, T, true, 0, true])) bad.push(`空き ${head} の後に空きができた: ${JSON.stringify(done)}`);
+        }
+        const uniq = bad.filter((x, i, a) => a.findIndex((y) => y.replace(/^空き \d+/, "") === x.replace(/^空き \d+/, "")) === i);
+        eq(`U6 容量（${label}・空き 0〜400 字）: 止まるなら理由 quota・途中の印なし・元は localStorage で index は ls・切り替え先の index は前のまま・空きができれば次の 1 回で終わる`, uniq, []);
+        ok(`U6 容量（${label}）: 止まる空きを 3 通り以上確かめた`, stoppedQuota >= 3, `${stoppedQuota} 通り`);
+      }
+      // 移行の途中の印（sd2.migrating）が満杯で入らない: 理由 quota・旧い記録はそのまま・もう一度を何回押しても legacy は 1 件（同じ中身の写しを増やさない）
+      {
+        const seed = { ...clean(personSeed("A")), spelldash_theme: "dark" };
+        const b = new Backing(seed);
+        b.limit = b.size() + 30;
+        const before = b.dump();
+        const idb = new FakeIDB();
+        const r = await uuidSettle(b, idb);
+        for (let i = 0; i < 3; i++) await uuidSettle(b, idb);
+        eq("U3 移行の途中の印が満杯で入らない: 理由 quota・旧い記録はそのまま・もう一度 3 回で legacy は 1 件のまま", [r.error instanceof SW.SwitchError ? r.error.reason : `生の ${r.error?.name}`, isDeepStrictEqual(b.dump(), before), idb.all("legacy").length], ["quota", true, 1]);
+        b.limit = Infinity;
+        const done = await uuidSettle(b, idb);
+        eq("U3 移行の途中の印が入らなかった端末: 空きができれば終わる・legacy は 1 件・印はその id", [done.error?.message ?? null, b.get("sd2.area"), idb.all("legacy").length, JSON.parse(b.get("sd2.migrated") ?? "{}").legacyId === idb.all("legacy")[0]?.id], [null, "guest#1", 1, true]);
+      }
+    }
+    // 書き出し（復旧の画面）: 持ち主の値（tag）を入れ、生の user id は書かない。js/backup.js の EXCLUDE と同じ鍵（持ち主の鍵・同期の印・送信待ち・ログアウトの時刻）は入れない
+    {
+      const uid = "0f8d2c5e-1b7a-4c3d-9e8f-123456789abc";
+      const rec = { ...A, spelldash_owner: uid, spelldash_xp_synced: "1200", spelldash_xp_write: "1", spelldash_logout_at: "2026-10-01T00:00:00.000Z", spelldash_learn_filled: "1" };
+      const b = new Backing({ ...migratedMarks(`u:${uid}`, 2), "sd2.auth": session(uid), ...Object.fromEntries(Object.entries(rec).map(([k, v]) => [K.physicalKey(`u:${uid}`, k), v])), spelldash_theme: "dark", spelldash_typing_kind: "x" });
+      const exp = await exportOf(b, new FakeIDB());
+      const text = exp instanceof Error ? "" : JSON.stringify(exp);
+      const tag = (await SW.ownerOf(`u:${uid}`, globalThis.crypto.subtle)).tag;
+      eq("U4 書き出し: 持ち主はアカウントの値・生の user id は無い・EXCLUDE の鍵は入れない・ほかの記録と端末の鍵は入る", [exp?.owner ?? null, text.includes(uid), EXPORT_DROP.filter((k) => text.includes(`"${k}"`)), personOf(exp?.data), exp?.data?.spelldash_theme], [{ kind: "account", tag }, false, [], exportable(A), "dark"]);
+      const migBackup = await (async () => {
+        const old = new Backing({ ...clean(personSeed("A")), spelldash_owner: uid, spelldash_xp_synced: "3", spelldash_theme: "dark" });
+        return exportOf(old, new FakeIDB());
+      })();
+      eq("U4 書き出し（移行の前）: 持ち主の鍵（生の user id）と同期の印は入れない", [migBackup instanceof Error ? migBackup.message : JSON.stringify(migBackup).includes(uid), migBackup?.data?.spelldash_xp_synced ?? null], [false, null]);
+    }
     // 退避（IndexedDB）に失敗: 切り替えない
     for (const [name, inject, reason] of [["容量", (idb) => (idb.failPut = (store) => (store === "areas" ? quotaError() : null)), "quota"], ["読み直しが合わない", (idb) => (idb.corruptRead = (store, v) => (store === "areas" ? { ...v, keys: {} } : v)), "evacuate"]]) {
       const { b, idb } = await twoAreas();
@@ -1124,6 +1295,170 @@ async function runAll() {
       const b = new Backing({ ...migratedMarks("guest", 1), "sd2.guest.xp": "5", spelldash_owner: "sd2-moved", spelldash_xp: "999", spelldash_word_stats: "OLDTAB", [OLD_AUTH]: session("A") });
       const r = await settle(b);
       eq("U4 旧い場所の値は orphans へ写して localStorage から消す・旧い認証の鍵は消す・今の領域は変えない", [r.error?.message ?? null, r.idb.all("orphans").map((o) => o.keys), rawPersonKeys(b), b.get(OLD_AUTH), areaRecords(b, "guest")], [null, [{ spelldash_xp: "999", spelldash_word_stats: "OLDTAB" }], ["spelldash_owner"], null, { spelldash_xp: "5" }]);
+    }
+    // 旧い場所の片付けの途中（orphans へ写している間）に旧コードのタブが同じ鍵を書き直した: 写していない値を消さない（localStorage か orphans に残る）
+    {
+      const b = new Backing({ ...migratedMarks("guest", 1), "sd2.guest.xp": "5", spelldash_owner: "sd2-moved", spelldash_xp: "999" });
+      const idb = new FakeIDB();
+      idb.failPut = (store) => {
+        if (store === "orphans" && b.get("spelldash_xp") === "999") b.set("spelldash_xp", "NEWER-FROM-OLD-TAB");
+        return null;
+      };
+      const r = await settle(b, { idb });
+      const kept = b.get("spelldash_xp") === "NEWER-FROM-OLD-TAB" || idb.all("orphans").some((o) => o.keys.spelldash_xp === "NEWER-FROM-OLD-TAB");
+      eq("U4 旧い場所の片付けの途中に旧タブが書いた値: localStorage か orphans のどちらかに残る（写していない値を消さない）・写した値は orphans", [r.error?.message ?? null, kept, idb.all("orphans").some((o) => o.keys.spelldash_xp === "999")], [null, true, true]);
+    }
+    // 旧コードのタブ（「消して置き換える」の確認の OK）が持ち主の印を消し、自分の持ち主を書いた: 片付けの後は「移した」の印に戻る（§6 の 3）・旧タブの値は orphans
+    {
+      const b = new Backing({ ...migratedMarks("guest", 1), "sd2.guest.xp": "5", spelldash_owner: "A", spelldash_xp: "999" });
+      const r = await settle(b);
+      eq("U4 旧タブが持ち主の印を替えた後の片付け: 持ち主の鍵は「移した」の印・旧タブの持ち主の値は orphans", [r.error?.message ?? null, b.get("spelldash_owner"), r.idb.all("orphans").some((o) => o.keys.spelldash_owner === "A")], [null, "sd2-moved", true]);
+    }
+    // 見え方の古いタブ（確認の窓が開いたまま・長い処理の間に切り替わった）が、切り替えの後に退避した領域の鍵へ書いた（書くたびの確かめは古い印を読んで通す）:
+    // localStorage に 2 人分を残さない。index が idb を指す領域（と index に無い印でない領域）の鍵は、写しと同じなら消し、違えば orphans に写して確かめてから消す
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      await settle(b, { idb }); // A → B（A は IndexedDB）
+      const late = { spelldash_xp: "999", spelldash_memory_words: "[\"late\"]", spelldash_rank_peak: A.spelldash_rank_peak };
+      for (const [k, v] of Object.entries(late)) b.set(K.physicalKey("u:A", k), v); // 見え方の古いタブの書き込み（rank_peak は写しと同じ値）
+      const pageStops = openTab(new Backing(b.dump())).log.stopped;
+      const r = await settle(b, { idb }); // 切り替えの画面を通る（セッション B のまま）
+      const lateRec = idb.all("orphans").filter((o) => o.area === "u:A");
+      eq("U4 退避した領域へ遅れて書かれた鍵: 切り替えの画面を通ると localStorage から消え（B だけ）・写しと違う値は orphans（領域つき）・写しと同じ値は写さない・A の写しは変えない・ページは頭で止めない",
+        [r.error?.message ?? null, areaRecords(b, "u:A"), areaRecords(b, "u:B"), lateRec.map((o) => o.keys), idb.peek("areas", "u:A").keys, pageStops],
+        [null, {}, B, [{ spelldash_xp: "999", spelldash_memory_words: "[\"late\"]" }], A, 0]);
+      // A に戻る: 1 回で終わる（残りで「切り替え先」が止まらない）・A は写しのとおり
+      b.set("sd2.auth", session("A"));
+      const back = await settle(b, { idb });
+      eq("U4 遅れて書かれた鍵を片付けた後に A へ戻る: 1 回で終わる・A は写しのとおり・B は IndexedDB", [back.error?.reason ?? back.error?.message ?? null, areaRecords(b, "u:A"), areaRecords(b, "u:B")], [null, sortedRec(A), {}]);
+    }
+    // 片付けを経ずに（残りがあるまま）その領域へ戻る: 1 回目で終わる・遅れた値は orphans（失わない）
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      await settle(b, { idb });
+      b.set(K.physicalKey("u:A", "spelldash_xp"), "999");
+      b.set(K.physicalKey("u:A", "spelldash_memory_words"), "[\"late\"]");
+      b.set("sd2.auth", session("A"));
+      const back = await settle(b, { idb });
+      eq("U4 遅れて書かれた鍵が残ったまま A へ戻る: 1 回目で終わる（理由 target で止めない）・A は写しのとおり・遅れた値 999 は orphans に残る", [back.error?.reason ?? back.error?.message ?? null, areaRecords(b, "u:A"), idb.all("orphans").some((o) => o.area === "u:A" && o.keys.spelldash_xp === "999")], [null, sortedRec(A), true]);
+    }
+    // 切り替えの途中（手順 6 で元を消した後）に、元の領域へ見え方の古いタブが書いた: 終わった後に localStorage に残らず、orphans にある
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      let fired = false;
+      const s1 = switcher(b, { idb, onRemove: (k) => { if (!fired && k.startsWith("sd2.u:A.")) { fired = true; b.set("sd2.u:A.late_key", "LATE"); } } });
+      let err = null;
+      try {
+        await s1.sw.settle();
+      } catch (e) {
+        err = e;
+      }
+      eq("U4 手順 6 の後に元の領域へ遅れて書かれた鍵: 切り替えは終わる・localStorage には B だけ・遅れた値は orphans", [err?.message ?? null, b.get("sd2.area"), areaRecords(b, "u:A"), areaRecords(b, "u:B"), idb.all("orphans").some((o) => o.area === "u:A" && o.keys.spelldash_late_key === "LATE")], [null, "u:B#3", {}, B, true]);
+    }
+    // 退避の写しを確かめた後・元を消す前に、元の領域へ見え方の古いタブが書いた: その値を失わない（localStorage・A の写し・orphans のどれかに残る）
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      let fired = false;
+      idb.corruptRead = (store, v) => {
+        if (store === "areas" && v.area === "u:B" && !fired) {
+          fired = true;
+          b.set("sd2.u:A.xp", "LATE-WINDOW");
+        }
+        return v;
+      };
+      await settle(b, { idb });
+      idb.corruptRead = null;
+      const kept = b.get("sd2.u:A.xp") === "LATE-WINDOW" || idb.peek("areas", "u:A")?.keys.spelldash_xp === "LATE-WINDOW" || idb.all("orphans").some((o) => o.keys.spelldash_xp === "LATE-WINDOW");
+      const both = Object.keys(areaRecords(b, "u:A")).length > 0 && Object.keys(areaRecords(b, "u:B")).length > 0;
+      eq("U4 確かめた後・消す前に元へ遅れて書かれた値: 失わない・localStorage に 2 人分を残さない", [kept, both], [true, false]);
+    }
+    // 切り替え先の領域へ、展開の前に見え方の古いタブが書いていた（手順 1〜6 の間）: 写しで上書きして失わない（orphans）・展開は写しのとおり・1 回で終わる
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      let fired = false;
+      const s1 = switcher(b, { idb, onRemove: (k) => { if (!fired && k.startsWith("sd2.u:A.")) { fired = true; b.set("sd2.u:B.xp", "STALE-B"); b.set("sd2.u:B.extra_key", "STALE-EXTRA"); } } });
+      let err = null;
+      try {
+        await s1.sw.settle();
+      } catch (e) {
+        err = e;
+      }
+      const o = idb.all("orphans").filter((x) => x.area === "u:B").map((x) => x.keys);
+      eq("U4 展開の前に切り替え先へ遅れて書かれた鍵: 切り替えは終わる・B は写しのとおり・遅れた値は orphans", [err?.reason ?? err?.message ?? null, areaRecords(b, "u:B"), o.some((k) => k.spelldash_xp === "STALE-B" && k.spelldash_extra_key === "STALE-EXTRA")], [null, B, true]);
+    }
+    // 展開の途中で満杯になって止める時、元の領域へ遅れて書かれた鍵を orphans へ写せない（IndexedDB に書けない）: 戻すときに遅れた値を重ねる（失わない）
+    {
+      const bigB = { ...B, spelldash_word_stats: "B".repeat(6000) };
+      const b = new Backing({ ...migratedMarks("u:B", 1), "sd2.auth": session("B"), ...Object.fromEntries(Object.entries(bigB).map(([k, v]) => [K.physicalKey("u:B", k), v])) });
+      const idb = new FakeIDB();
+      b.set("sd2.auth", session("A"));
+      await settle(b, { idb });
+      for (const [k, v] of Object.entries(A)) b.set(K.physicalKey("u:A", k), v);
+      b.set("zz.filler", "f".repeat(2000));
+      b.limit = b.size() + 3000; // A を消しても B は入らない
+      b.set("sd2.auth", session("B"));
+      let fired = false;
+      const s1 = switcher(b, { idb, onRemove: (k) => { if (!fired && k.startsWith("sd2.u:A.")) { fired = true; b.set("sd2.u:A.late_key", "LATE"); idb.failPut = (store) => (store === "orphans" ? new Error("broken") : null); } } });
+      let err = null;
+      try {
+        await s1.sw.settle();
+      } catch (e) {
+        err = e;
+      }
+      eq("U6 満杯で止める時に遅れた鍵を写せない: 理由 quota・A は localStorage に戻り、遅れた値も残る・index は ls", [err?.reason ?? null, { ...areaRecords(b, "u:A"), spelldash_late_key: undefined }, b.get("sd2.u:A.late_key"), JSON.parse(b.get("sd2.index"))["u:A"].at], ["quota", { ...sortedRec(A), spelldash_late_key: undefined }, "LATE", "ls"]);
+    }
+    // 直し（sd2.switch が残っていた）で、index が idb を指す領域の鍵が写しと違う（遅れて書かれた）: 消さずに orphans へ
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      await settle(b, { idb });
+      b.set("sd2.switch", JSON.stringify({ id: "x", op: "session", from: "u:B", to: "u:A", phase: "swap", at: "2026-10-29T00:00:00.000Z" }));
+      b.set(K.physicalKey("u:A", "spelldash_xp"), A.spelldash_xp); // 途中まで書いた（写しと同じ）
+      b.set(K.physicalKey("u:A", "spelldash_word_stats"), "LATE-WS"); // 遅れて書かれた（写しと違う）
+      const r = await settle(b, { idb });
+      eq("U4 直しで、退避した領域の鍵が写しと違う: 消さずに orphans へ・写しと同じ鍵は写さない・直した後は B だけ", [r.error?.message ?? null, areaRecords(b, "u:A"), areaRecords(b, "u:B"), idb.all("orphans").filter((o) => o.area === "u:A").map((o) => o.keys)], [null, {}, B, [{ spelldash_word_stats: "LATE-WS" }]]);
+    }
+    // 直しで、遅れて書かれた値を orphans へ写せない（IndexedDB に書けない）: 消さない・途中の印を残す（どのページも頭で止まり、復旧の画面）
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      await settle(b, { idb });
+      b.set("sd2.switch", JSON.stringify({ id: "x", op: "session", from: "u:B", to: "u:A", phase: "swap", at: "2026-10-29T00:00:00.000Z" }));
+      b.set(K.physicalKey("u:A", "spelldash_word_stats"), "LATE-WS");
+      idb.failPut = (store) => (store === "orphans" ? new Error("broken") : null);
+      const r = await settle(b, { idb });
+      eq("U4 直しで遅れた値を写せない: 止める（理由 evacuate）・遅れた値は localStorage に残る・途中の印は残る（ページは頭で止まる）", [r.error?.reason ?? r.error?.message ?? null, b.get("sd2.u:A.word_stats"), b.get("sd2.switch") !== null, openTab(new Backing(b.dump())).log.stopped], ["evacuate", "LATE-WS", true, 1]);
+    }
+    // アプリのページからの片付け: 移行の前・移行の途中は、旧い場所の記録にも退避した領域の鍵にも触れない（移行が読む本体を orphans へ移さない）
+    {
+      const deps = { keys: K, locks: new FakeLocks(), openStore: () => ST.openAreaStore(new FakeIDB()) };
+      const pre = new Backing({ ...clean(personSeed("A")), spelldash_theme: "dark" });
+      const preBefore = pre.dump();
+      const n1 = await SW.sweepOrphansFromPage(rawOf(pre), deps).catch((e) => e.message);
+      const mid = new Backing({ ...clean(personSeed("A")), ...migratedMarks("guest", 1), "sd2.migrating": JSON.stringify({ legacyId: "L1", area: "guest", at: "2026-10-29T00:00:00.000Z" }) });
+      mid.remove("sd2.migrated");
+      const midBefore = mid.dump();
+      const n2 = await SW.sweepOrphansFromPage(rawOf(mid), deps).catch((e) => e.message);
+      eq("U4 ページからの片付け: 移行の前・移行の途中は何もしない（旧い場所の記録をそのまま残す）", [n1, isDeepStrictEqual(pre.dump(), preBefore), n2, isDeepStrictEqual(mid.dump(), midBefore)], [0, true, 0, true]);
+    }
+    // アプリのページからの片付け（見張りが見つけたとき）: 退避した領域の鍵も orphans へ写して消す。切り替え・移行の途中は何もしない
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      await settle(b, { idb });
+      b.set(K.physicalKey("u:A", "spelldash_xp"), "999");
+      const deps = { keys: K, locks: new FakeLocks(), openStore: () => ST.openAreaStore(idb) };
+      b.set("sd2.switch", JSON.stringify({ id: "y", phase: "drain" }));
+      const during = typeof SW.sweepOrphansFromPage === "function" ? await SW.sweepOrphansFromPage(rawOf(b), deps).catch((e) => e.message) : "（無い）";
+      const kept = b.get("sd2.u:A.xp");
+      b.remove("sd2.switch");
+      await SW.sweepOrphansFromPage(rawOf(b), deps).catch(() => {});
+      eq("U4 ページからの片付け: 切り替えの途中は退避した領域の鍵に触れない・終わった後は orphans へ写して消す", [during === 0 || during === undefined, kept, areaRecords(b, "u:A"), idb.all("orphans").some((o) => o.area === "u:A" && o.keys.spelldash_xp === "999")], [true, "999", {}, true]);
     }
     // drain の段（§3 の 2）: ほかのページが共有のロックを持つ間は待つ。そのページの最後の書き込みは通り、その値が A の退避の写しに入る
     {
@@ -1186,13 +1521,13 @@ async function runAll() {
           }
           const lsA = areaRecords(b, "u:A");
           if (label !== "控えが開けない") {
-            const got = [isDeepStrictEqual(lsA, sortedRec(A)), idx["u:A"]?.at, b.get("sd2.area")?.split("#")[0], b.get("sd2.switch"), Object.keys(areaRecords(b, "u:B")).length, isDeepStrictEqual(expPerson, sortedRec(A)), exp?.owner?.tag === tagA];
+            const got = [isDeepStrictEqual(lsA, sortedRec(A)), idx["u:A"]?.at, b.get("sd2.area")?.split("#")[0], b.get("sd2.switch"), Object.keys(areaRecords(b, "u:B")).length, isDeepStrictEqual(expPerson, exportable(A)), exp?.owner?.tag === tagA];
             if (!isDeepStrictEqual(got, [true, "ls", "u:A", null, 0, true, true])) bad.push(`${n}: ${JSON.stringify(got)}（${second.error.reason}）`);
           } else if (idx["u:A"]?.at === "ls") {
-            if (!(isDeepStrictEqual(lsA, sortedRec(A)) && isDeepStrictEqual(expPerson, sortedRec(A)) && exp?.owner?.tag === tagA)) bad.push(`${n}: A は localStorage にあるが書き出しが A と違う`);
+            if (!(isDeepStrictEqual(lsA, sortedRec(A)) && isDeepStrictEqual(expPerson, exportable(A)) && exp?.owner?.tag === tagA)) bad.push(`${n}: A は localStorage にあるが書き出しが A と違う`);
           } else if (idx["u:B"]?.at === "ls") {
             // 落ちたのが B をそろえて index を替えた後: B が localStorage にそろっている。書き出しは B（B の持ち主）
-            if (!(isDeepStrictEqual(areaRecords(b, "u:B"), sortedRec(Bx)) && isDeepStrictEqual(expPerson, sortedRec(Bx)) && exp?.owner?.tag === tagB && isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, A))) bad.push(`${n}: B は localStorage にあるが書き出しが B と違う`);
+            if (!(isDeepStrictEqual(areaRecords(b, "u:B"), sortedRec(Bx)) && isDeepStrictEqual(expPerson, exportable(Bx)) && exp?.owner?.tag === tagB && isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, A))) bad.push(`${n}: B は localStorage にあるが書き出しが B と違う`);
           } else if (!(exp instanceof Error && isDeepStrictEqual(idb.peek("areas", "u:A")?.keys, A))) bad.push(`${n}: A は写しにしか無いのに、書き出しが ${exp instanceof Error ? "失敗" : Object.keys(expPerson).length + " 鍵の途中の A"}`);
         }
         eq(`U4 前の切り替えが落ちた後のやり直しも失敗（${label}・${points} 点）: A は写しから localStorage にそろい index は ls・書き出しは A（途中の A を出さない）`, bad, []);
@@ -1208,7 +1543,7 @@ async function runAll() {
       const b = new Backing({ ...migratedMarks("u:A", 3, { "u:A": { at: "idb:a1" }, "u:B": { at: "idb:b1" } }), "sd2.auth": session("B"), "sd2.u:A.xp": A.spelldash_xp, "sd2.u:B.xp": "999" });
       const exp = await exportOf(b, idb);
       const tagA = (await SW.ownerOf("u:A", globalThis.crypto.subtle)).tag;
-      eq("U4 書き出し: localStorage に今の領域が無い端末は、index が指す A の写し（全部）と A の持ち主の値・残りの鍵（途中の A・B）は読まない", [exp instanceof Error ? exp.message : personOf(exp.data), exp?.owner?.tag === tagA], [sortedRec(A), true]);
+      eq("U4 書き出し: localStorage に今の領域が無い端末は、index が指す A の写し（全部）と A の持ち主の値・残りの鍵（途中の A・B）は読まない", [exp instanceof Error ? exp.message : personOf(exp.data), exp?.owner?.tag === tagA], [exportable(A), true]);
       idb.failOpen = new Error("lost");
       const exp2 = await exportOf(b, idb);
       ok("U4 書き出し: その写しが読めなければ書き出さない（途中の A を A の持ち主の値で出さない）", exp2 instanceof Error);
@@ -1244,8 +1579,8 @@ const MUTANTS = [
   ["移行: legacy に写さない", "switch", "        await store.putVerified(\"legacy\", legacy);", ""],
   ["切り替え: 退避の写しを書かない", "switch", "await store.putVerified(\"areas\", { area, id, keys: snapshot,", "await Promise.resolve({ area, id, keys: snapshot,"],
   ["切り替え: swap の段にしない", "switch", 'ls.set(K.SWITCH_KEY, JSON.stringify({ ...flag, phase: "swap" }));', ""],
-  ["切り替え: 満杯のときに元を書き戻さない", "switch", '      for (const [area, snapshot] of archived) if (readIndex()[area]?.at !== "ls") restore(area, snapshot);', ""],
-  ["切り替え: 満杯のときに書いた切り替え先を消さない", "switch", [["      if (!live.includes(target)) for (const key of physicalOf(target)) ls.remove(key);\n", ""], ['      if (!sameKeys(collect(area), keys)) throw new AreaStoreError("verify", "書き戻すと中身が合わなかった。");\n    } catch (error) {\n      for (const key of physicalOf(area)) ls.remove(key);', '      if (!sameKeys(collect(area), keys)) throw new AreaStoreError("verify", "書き戻すと中身が合わなかった。");\n    } catch (error) {']]],
+  ["切り替え: 満杯のときに元を書き戻さない", "switch", '      for (const [area, snapshot] of archived) if (readIndex()[area]?.at !== "ls") restore(area, { ...snapshot, ...collect(area) });', ""],
+  ["切り替え: 満杯のときに書いた切り替え先を消さない", "switch", [["        if (wroteTarget) for (const [name, value] of Object.entries(incoming ?? {})) if (ls.get(K.physicalKey(target, name)) === value) ls.remove(K.physicalKey(target, name));\n", ""], ["        if (ls.get(phys) === value) ls.remove(phys);\n      }\n      throw error;", "      }\n      throw error;"]]],
   ["切り替え: 前の切り替えが落ちた後のやり直しが失敗しても、元を写しから戻さない", "switch", "      if (from && from !== target && liveAreas().length === 0) {", "      if (false) {"],
   ["切り替え: drain の段でページのロックを待たない", "switch", "    await drain();\n", "\n"],
   ["切り替え: drain の待ちの上限 0", "switch", "const DRAIN_MAX_MS = 3000;", "const DRAIN_MAX_MS = 0;"],
@@ -1258,8 +1593,36 @@ const MUTANTS = [
   ["見張り: 読み込みの確かめ（selfTest）をしない", "guard", '  if (!selfTest()) return unsupported("selftest");', ""],
   ["見張り: 戻ったタブ（pageshow・focus）で確かめ直さない", "guard", '  root.addEventListener("pageshow", recheck);\n  root.addEventListener("focus", () => recheck());', ""],
   ["見張り: 戻ったタブ（visibilitychange）で確かめ直さない", "guard", '      if (doc.visibilityState === "visible") recheck();', ""],
-  ["直し: idb を指す領域の残りを消さない", "switch", "      for (const key of physicalOf(area)) {\n        ls.remove(key);\n        removed++;\n      }", ""],
-  ["片付け: 旧い場所の値を消さない", "switch", "      for (const key of names) if (ls.get(key) === found[key]) ls.remove(key);", ""]
+  ["直し: idb を指す領域の残りを片付けない", "switch", "    const removed = await sweepStale(store);", "    const removed = 0;"],
+  ["直し: idb を指す領域の残りを写しと比べずに消す（遅れて書かれた値を失う）", "switch", "    const removed = await sweepStale(store);", "    let removed = 0;\n    for (const [area, entry] of Object.entries(readIndex())) if (typeof entry?.at === \"string\" && entry.at.startsWith(\"idb:\")) for (const key of physicalOf(area)) { ls.remove(key); removed++; }"],
+  ["片付け: 旧い場所の値を消さない", "switch", "      for (const key of names) if (ls.get(key) === found[key]) ls.remove(key);", ""],
+  // 反証の役の変異（S/b78/rvareas/tests2/mymutants.out の G1・S7・S8・G8a・G8b）
+  ["見張り: 同じタブのログアウト（sd2.auth の removeItem）で覚え直さない", "guard", "          const result = rawRemove.apply(this, arguments);\n          noteSession();", "          const result = rawRemove.apply(this, arguments);"],
+  ["片付け: 持ち主の印が消えていても書き直さない", "switch", "    if (ls.get(K.OWNER_KEY) === null) {", "    if (false) {"],
+  ["片付け: 写した後に値を比べずに消す（写している間に旧タブが書いた値を失う）", "switch", "      for (const key of names) if (ls.get(key) === found[key]) ls.remove(key);", "      for (const key of names) ls.remove(key);"],
+  ["見張り: 自分の確かめが容量でない例外で投げても止めない", "guard", "      return quota && ls.setItem === P.setItem && ls.getItem(PROBE_KEY) === get(phys);", "      return true;"],
+  ["見張り: 満杯の端末（確かめの書き込みが容量で入らない）で止める", "guard", "      return quota && ls.setItem === P.setItem && ls.getItem(PROBE_KEY) === get(phys);", "      return false;"],
+  // 見え方の古いタブが退避した領域へ遅れて書いた鍵（反証 fix2 の 1）
+  ["退避した領域の残り: 切り替えの画面で切り替えの前に片付けない", "switch", "      let staleError = null;\n      try {\n        await sweepStale(store);", "      let staleError = null;\n      try {\n        await Promise.resolve();"],
+  ["退避した領域の残り: 切り替えの後に片付けない", "switch", "      if (result) {\n        try {\n          await sweepStale(store);", "      if (false) {\n        try {\n          await sweepStale(store);"],
+  ["退避した領域の残り: orphans に写さずに消す", "switch", "        await store.putVerified(\"orphans\", { id: newId(), savedAt: iso(), area, keys: late, sum: sumOf(late) });", ""],
+  ["退避した領域の残り: 写しと同じ値も orphans に写す", "switch", "      for (const [name, value] of Object.entries(found)) if (!copy || copy[name] !== value) late[name] = value;", "      for (const [name, value] of Object.entries(found)) late[name] = value;"],
+  ["切り替え: 手順 6 で元を消す直前に写しと比べない", "switch", "        if (!sameKeys(collect(area), snapshot)) throw await stop(\"changed\");\n        writeIndex(", "        writeIndex("],
+  ["切り替え: 展開の前に切り替え先の残りを片付けない", "switch", "      if (!live.includes(target) && physicalOf(target).length > 0) {", "      if (false) {"],
+  ["切り替え: 止める時に元の領域の遅れた値を戻す記録に重ねない", "switch", [["{ ...snapshot, ...collect(area) }", "snapshot"], ["{ ...copy, ...collect(from) }", "copy"]]],
+  ["切り替え: 止めるときに切り替え先の index を前に戻さない", "switch", "        if (JSON.stringify(idx[target] ?? null) !== JSON.stringify(targetBefore ?? null)) {", "        if (false) {"],
+  ["切り替え: 手順 1 の印が入らないとき容量と言わない", "switch", "      ls.set(K.SWITCH_KEY, JSON.stringify(flag));\n    } catch (error) {\n      throw fail(isQuotaError(error) ? \"quota\" : \"evacuate\", error);", "      ls.set(K.SWITCH_KEY, JSON.stringify(flag));\n    } catch (error) {\n      throw error;"],
+  ["切り替え: 手順 3・6・8・9 が容量で入らないとき退避の失敗と言う", "switch", "      if (error instanceof SwitchError || stopping) throw error;\n      throw await stop(isQuotaError(error) ? \"quota\" : \"evacuate\", error);", "      if (error instanceof SwitchError || stopping) throw error;\n      throw await stop(\"evacuate\", error);"],
+  ["移行: 途中の印が入らないとき容量と言わない", "switch", "        // 途中の印が入らない: 旧い記録はそのまま（まだ何も移していない）。復旧の画面で容量不足を出す\n        throw fail(isQuotaError(error) ? \"quota\" : \"migrate\", error);", "        throw error;"],
+  ["移行: 同じ中身の確かめた legacy を使い回さない", "switch", "      if (found) legacy = found;", "      if (false) legacy = found;"],
+  ["ページからの片付け: 切り替え・移行の途中でも片付ける", "switch", "    if (raw.get(K.SWITCH_KEY) !== null || raw.get(K.MIGRATING_KEY) !== null || raw.get(K.MIGRATED_KEY) === null) return 0;", ""],
+  ["ページからの片付け: 退避した領域の残りを片付けない", "switch", "      return old + (await switcher.sweepStale(store, { page: true }));", "      return old;"],
+  ["見張り: 頭で退避した領域の残りを見つけない", "guard", "      return hit !== null && hit.area !== pageArea && isStaleArea(hit.area, index, pageArea);", "      return false;"],
+  ["見張り: 退避した領域の鍵の知らせで片付けを頼まない", "guard", "        if (hit && hit.area !== pageArea && isStaleArea(hit.area, readJson(get(INDEX_KEY)), pageArea)) scheduleSweep();", ""],
+  // 書き出し（反証 fix2 の 3）
+  ["書き出し: 持ち主の鍵・同期の印を除かない", "switch", "  for (const key of K.EXPORT_EXCLUDE ?? []) delete data[key];", ""],
+  ["見張りの書き出し: 持ち主の鍵・同期の印を除かない", "guard", "      for (const key of EXPORT_EXCLUDE) delete data[key];", ""],
+  ["見張りの書き出し: 持ち主の値を付けない", "guard", "    if (owner) backup.owner = owner;", ""]
 ];
 let mutantReport = [];
 if (MUTATE && baseFailures.length === 0) {

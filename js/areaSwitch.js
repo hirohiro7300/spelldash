@@ -101,16 +101,32 @@ export function createSwitcher(deps) {
       // 1. 旧い鍵の人の記録を全部 legacy に写す → 読み直して比べる。失敗なら旧い記録はそのまま
       const old = {};
       for (const key of legacyKeys()) old[key] = ls.get(key);
-      legacy = { id: newId(), savedAt: iso(), fromSchema: old[K.PREFIX + "schema_version"] ?? null, keys: old, sum: sumOf(old) };
-      await askPersistOnce();
+      const sum = sumOf(old);
+      // 前の回で写して確かめたが、途中の印が入らずに止まった（容量）: 同じ中身の legacy を使い回す（「もう一度」のたびに写しを増やさない）
+      let found = null;
       try {
-        await store.putVerified("legacy", legacy);
-      } catch (error) {
-        throw fail(isQuotaError(error) ? "quota" : "legacy", error);
+        found = (await store.list("legacy")).find((r) => r && typeof r.id === "string" && r.sum === sum && sumOf(r.keys) === r.sum && sameKeys(r.keys, old)) ?? null;
+      } catch {
+        found = null; // 読めなければ新しく写す
+      }
+      if (found) legacy = found;
+      else {
+        legacy = { id: newId(), savedAt: iso(), fromSchema: old[K.PREFIX + "schema_version"] ?? null, keys: old, sum };
+        await askPersistOnce();
+        try {
+          await store.putVerified("legacy", legacy);
+        } catch (error) {
+          throw fail(isQuotaError(error) ? "quota" : "legacy", error);
+        }
       }
       // 2. 領域を決める
       state = { legacyId: legacy.id, area: decideArea(old), at: iso() };
-      ls.set(K.MIGRATING_KEY, JSON.stringify(state));
+      try {
+        ls.set(K.MIGRATING_KEY, JSON.stringify(state));
+      } catch (error) {
+        // 途中の印が入らない: 旧い記録はそのまま（まだ何も移していない）。復旧の画面で容量不足を出す
+        throw fail(isQuotaError(error) ? "quota" : "migrate", error);
+      }
     }
     const area = state.area;
     // 3. 新しい鍵へ書く → 読み直して legacy と比べる。入らなければ、legacy と同じ値の旧い本体を全部消してから書き直す
@@ -234,19 +250,50 @@ export function createSwitcher(deps) {
     return names.length;
   }
 
-  // ===== 直し（§3。sd2.switch が残っていた: タブを閉じた・落ちた） =====
-  // index が指す方だけが本物。index が idb を指す領域の localStorage の残り（途中まで消した F・途中まで書いた T）は、確かめた写しと同じか
-  // 写しの一部なので消す。index が ls を指す領域はそのまま。古い写しは index が指さないので戻さない
-  function repair() {
+  // ===== 退避した領域の残りの片付け（§1.2 の 1 人だけの決まり） =====
+  // index が idb を指す領域（index に無い、領域の印でない領域も）の localStorage の鍵は、途中で落ちた残りか、見え方の古いタブ（確認の窓・長い処理・
+  // 凍結の間に切り替わった）が後から書いた物。書くたびの確かめは、そのタブの古い見え方の印を読むので止められない（§3 の 3 は、見え方が今のタブだけを止める）。
+  // index が指す確かめた写しと同じ値なら消す。違う値（写しに無い鍵も）は orphans に領域つきで写して読み直してから消す（読まない・移し直さない）。
+  // 消す直前に、同じ値で、まだ退避した領域であることを読み直す。only を渡すとその領域だけ。page（アプリのページから）は切り替えの印があれば消さない
+  function staleByArea(only = null) {
     const index = readIndex();
+    const markerArea = markerNow()?.area ?? null;
+    const out = {};
+    for (const key of ls.keys()) {
+      const hit = K.areaOfPhysical(key);
+      if (!hit || (only && !only.includes(hit.area)) || !K.isStaleArea(hit.area, index, markerArea)) continue;
+      const value = ls.get(key);
+      if (value !== null) (out[hit.area] ??= {})[hit.name] = value;
+    }
+    return out;
+  }
+  async function sweepStale(store, { only = null, page = false } = {}) {
     let removed = 0;
-    for (const [area, entry] of Object.entries(index)) {
-      if (typeof entry?.at !== "string" || !entry.at.startsWith("idb:")) continue;
-      for (const key of physicalOf(area)) {
-        ls.remove(key);
-        removed++;
+    for (const [area, found] of Object.entries(staleByArea(only))) {
+      const copy = await readCopy(store, area);
+      const late = {};
+      for (const [name, value] of Object.entries(found)) if (!copy || copy[name] !== value) late[name] = value;
+      if (Object.keys(late).length > 0) {
+        await askPersistOnce();
+        await store.putVerified("orphans", { id: newId(), savedAt: iso(), area, keys: late, sum: sumOf(late) });
+      }
+      for (const [name, value] of Object.entries(found)) {
+        const phys = K.physicalKey(area, name);
+        if (page && ls.get(K.SWITCH_KEY) !== null) return removed;
+        if (ls.get(phys) === value && K.isStaleArea(area, readIndex(), markerNow()?.area ?? null)) {
+          ls.remove(phys);
+          removed++;
+        }
       }
     }
+    return removed;
+  }
+
+  // ===== 直し（§3。sd2.switch が残っていた: タブを閉じた・落ちた） =====
+  // index が指す方だけが本物。index が idb を指す領域の localStorage の残り（途中まで消した F・途中まで書いた T）は、確かめた写しと同じなら消す。
+  // 写しと違う値（見え方の古いタブが後から書いた）は orphans へ写してから消す（sweepStale）。index が ls を指す領域はそのまま。古い写しは index が指さないので戻さない
+  async function repair(store) {
+    const removed = await sweepStale(store);
     ls.remove(K.SWITCH_KEY);
     return removed;
   }
@@ -268,13 +315,17 @@ export function createSwitcher(deps) {
     await sleep(DRAIN_SETTLE_MS);
   }
 
-  // その領域の記録を localStorage に全部書いて読み直す。書けない・合わなければ、書いたその領域の鍵を消して例外（index は替えない）
+  // その領域の記録を localStorage に全部書いて読み直す。書けない・合わなければ、書いた鍵（書いた値と同じ物）を消して例外（index は替えない）。
+  // 書いた値と違う鍵（見え方の古いタブが同じ時に書いた）は消さない（退避した領域の残りとして sweepStale が写す）
   function writeArea(area, keys) {
     try {
       for (const [name, value] of Object.entries(keys)) ls.set(K.physicalKey(area, name), value);
       if (!sameKeys(collect(area), keys)) throw new AreaStoreError("verify", "書き戻すと中身が合わなかった。");
     } catch (error) {
-      for (const key of physicalOf(area)) ls.remove(key);
+      for (const [name, value] of Object.entries(keys)) {
+        const phys = K.physicalKey(area, name);
+        if (ls.get(phys) === value) ls.remove(phys);
+      }
       throw error;
     }
   }
@@ -319,75 +370,126 @@ export function createSwitcher(deps) {
     const live = liveAreas();
     const from = live.includes(marker?.area) ? marker.area : (live[0] ?? marker?.area ?? null);
     const flag = { id, op, from, to: target, phase: "drain", at: iso() };
-    // 1. 印を書く（ほかのタブは知らせで切り替えの画面へ移る）
-    ls.set(K.SWITCH_KEY, JSON.stringify(flag));
-    // 2. ページの持ち主が 0 になるのを最大 3 秒待つ + 300ms（凍ったタブが残っても進める。3 の後は書けない）
-    await drain();
-    // 3. swap の段。ここから人の記録への書き込みは、どのタブでも拒まれる
-    ls.set(K.SWITCH_KEY, JSON.stringify({ ...flag, phase: "swap" }));
+    const targetBefore = readIndex()[target]; // 止めるときに戻す（手順 8 の後に止まった）
+    // 1. 印を書く（ほかのタブは知らせで切り替えの画面へ移る）。入らなければ何も替えずに止める
+    try {
+      ls.set(K.SWITCH_KEY, JSON.stringify(flag));
+    } catch (error) {
+      throw fail(isQuotaError(error) ? "quota" : "evacuate", error);
+    }
     const archived = [];
-    // 止める（§3 の 4・7、§4）: 書いた切り替え先の鍵を消し、元を localStorage に戻してから途中の印を消す。印は替えない。
-    // 元が localStorage に無い（前の切り替えが手順 6 の後で落ちて、やり直した）ときは、index が指す確かめた写しから戻す
+    let incoming = null;
+    let wroteTarget = false;
+    let stopping = false;
+    // 止める（§3 の 4・7、§4。どの段の書き込みが容量で入らなくても同じ）: 切り替え先の index を前に戻し、書いた切り替え先の鍵を消す（写しにある）。
+    // 元を localStorage に戻してから途中の印を消す。印は替えない。元が localStorage に無い（前の切り替えが手順 6 の後で落ちて、やり直した）ときは、
+    // index が指す確かめた写しから戻す
     const stop = async (reason, cause = null) => {
-      if (!live.includes(target)) for (const key of physicalOf(target)) ls.remove(key);
-      for (const [area, snapshot] of archived) if (readIndex()[area]?.at !== "ls") restore(area, snapshot);
+      stopping = true;
+      if (!live.includes(target)) {
+        const idx = readIndex();
+        if (JSON.stringify(idx[target] ?? null) !== JSON.stringify(targetBefore ?? null)) {
+          const back = { ...idx };
+          if (targetBefore === undefined) delete back[target];
+          else back[target] = targetBefore;
+          try {
+            writeIndex(back);
+          } catch (error) {
+            // index を戻す空きが無い: 書いた切り替え先の鍵（写しにある）を先に消してから戻す
+            if (!isQuotaError(error)) throw error;
+            for (const [name, value] of Object.entries(incoming ?? {})) if (ls.get(K.physicalKey(target, name)) === value) ls.remove(K.physicalKey(target, name));
+            writeIndex(back);
+          }
+        }
+        if (wroteTarget) for (const [name, value] of Object.entries(incoming ?? {})) if (ls.get(K.physicalKey(target, name)) === value) ls.remove(K.physicalKey(target, name));
+      }
+      // 元の領域へ遅れて書かれた鍵（手順 6 の後）は、戻す前に orphans へ。写せなければ、戻すときに残りの値を写しに重ねる（その人の後の値。失わない）
+      try {
+        await sweepStale(store, { only: [...archived.map(([area]) => area), ...(from ? [from] : [])] });
+      } catch {
+        // 写せなくても戻す
+      }
+      for (const [area, snapshot] of archived) if (readIndex()[area]?.at !== "ls") restore(area, { ...snapshot, ...collect(area) });
       if (from && from !== target && liveAreas().length === 0) {
         const copy = await readCopy(store, from);
-        if (copy) restore(from, copy);
+        if (copy) restore(from, { ...copy, ...collect(from) });
       }
       ls.remove(K.SWITCH_KEY);
       return fail(reason, cause);
     };
-    // 4. 切り替え先でない localStorage の領域（ふつうは F の 1 つ）を IndexedDB に写す → 読み直して比べる。
-    // 失敗なら止める（F は localStorage のまま・印も index も替えない）
-    for (const area of live.filter((a) => a !== target)) {
-      const snapshot = collect(area);
-      await askPersistOnce();
-      try {
-        await store.putVerified("areas", { area, id, keys: snapshot, savedAt: iso(), schema: snapshot[K.PREFIX + "schema_version"] ?? null, sum: sumOf(snapshot) });
-      } catch (error) {
-        throw await stop(isQuotaError(error) ? "quota" : "evacuate", error);
+    try {
+      // 2. ページの持ち主が 0 になるのを最大 3 秒待つ + 300ms（凍ったタブが残っても進める。3 の後は、見え方が今のタブは書けない）
+      await drain();
+      // 3. swap の段。ここから人の記録への書き込みは、見え方が今のタブでは拒まれる（見え方の古いタブの遅れた書き込みは sweepStale が片付ける）
+      ls.set(K.SWITCH_KEY, JSON.stringify({ ...flag, phase: "swap" }));
+      // 4. 切り替え先でない localStorage の領域（ふつうは F の 1 つ）を IndexedDB に写す → 読み直して比べる。
+      // 失敗なら止める（F は localStorage のまま・印も index も替えない）
+      for (const area of live.filter((a) => a !== target)) {
+        const snapshot = collect(area);
+        await askPersistOnce();
+        try {
+          await store.putVerified("areas", { area, id, keys: snapshot, savedAt: iso(), schema: snapshot[K.PREFIX + "schema_version"] ?? null, sum: sumOf(snapshot) });
+        } catch (error) {
+          throw await stop(isQuotaError(error) ? "quota" : "evacuate", error);
+        }
+        if (!sameKeys(collect(area), snapshot)) throw await stop("changed");
+        archived.push([area, snapshot]);
       }
-      if (!sameKeys(collect(area), snapshot)) throw await stop("changed");
-      archived.push([area, snapshot]);
-    }
-    // 切り替え先を、元を消す前に読む（読めなければ元を消さずに止める）
-    let incoming = null;
-    const targetAt = readIndex()[target]?.at;
-    if (typeof targetAt === "string" && targetAt.startsWith("idb:")) {
-      incoming = await readCopy(store, target);
-      if (!incoming) throw await stop("target");
-    }
-    // 6. index[F] = idb → F の鍵を localStorage から消す
-    for (const [area] of archived) {
-      writeIndex({ ...readIndex(), [area]: { at: `idb:${id}`, lastUsedAt: iso() } });
-      for (const key of physicalOf(area)) ls.remove(key);
-    }
-    // 7. T を localStorage に全部書く。容量で書けなければ、T の鍵を消し、F を写しから書き戻して index[F] = ls。印は替えない
-    if (incoming) {
-      try {
-        writeArea(target, incoming);
-      } catch (error) {
-        throw await stop(isQuotaError(error) ? "quota" : "target", error);
+      // 切り替え先を、元を消す前に読む（読めなければ元を消さずに止める）
+      const targetAt = readIndex()[target]?.at;
+      if (typeof targetAt === "string" && targetAt.startsWith("idb:")) {
+        incoming = await readCopy(store, target);
+        if (!incoming) throw await stop("target");
       }
+      // 6. index[F] = idb → F の鍵を localStorage から消す。消す直前に、元が写しと同じかを確かめる（写しの後に遅れて書かれた値を消さない。
+      // 確かめと消すのは同じ流れの中で、間にほかのタブの書き込みは入らない）
+      for (const [area, snapshot] of archived) {
+        if (!sameKeys(collect(area), snapshot)) throw await stop("changed");
+        writeIndex({ ...readIndex(), [area]: { at: `idb:${id}`, lastUsedAt: iso() } });
+        for (const key of physicalOf(area)) ls.remove(key);
+      }
+      // 7 の前: 切り替え先の領域に localStorage の残りがある（見え方の古いタブが前に書いた）。写しと違う値は orphans へ写してから消す（写しで上書きして失わない）
+      if (!live.includes(target) && physicalOf(target).length > 0) {
+        try {
+          await sweepStale(store, { only: [target] });
+        } catch (error) {
+          throw await stop(isQuotaError(error) ? "quota" : "evacuate", error);
+        }
+        if (physicalOf(target).length > 0) throw await stop("changed");
+      }
+      // 7. T を localStorage に全部書く。容量で書けなければ、T の鍵を消し、F を写しから書き戻して index[F] = ls。印は替えない
+      if (incoming) {
+        wroteTarget = true;
+        try {
+          writeArea(target, incoming);
+        } catch (error) {
+          throw await stop(isQuotaError(error) ? "quota" : "target", error);
+        }
+      }
+      // 8. index[T] = ls（新しければ作る）
+      writeIndex({ ...readIndex(), [target]: { at: "ls", lastUsedAt: iso() } });
+      // 9. 印を 1 回で替える。途中の印を消す
+      ls.set(K.AREA_KEY, K.formatMarker(target, gen));
+      ls.remove(K.SWITCH_KEY);
+    } catch (error) {
+      // 手順 3・6・8・9 の書き込みが入らない（容量）・ほかの例外: 同じ道で止める（復旧の画面は容量なら容量不足を出す）
+      if (error instanceof SwitchError || stopping) throw error;
+      throw await stop(isQuotaError(error) ? "quota" : "evacuate", error);
     }
-    // 8. index[T] = ls（新しければ作る）
-    writeIndex({ ...readIndex(), [target]: { at: "ls", lastUsedAt: iso() } });
-    // 9. 印を 1 回で替える。途中の印を消す
-    ls.set(K.AREA_KEY, K.formatMarker(target, gen));
-    ls.remove(K.SWITCH_KEY);
     return { from, to: target, gen };
   }
 
-  // 今のセッションに合う領域にする（同じで localStorage にあれば何もしない）
-  async function ensureArea(store, target = sessionArea()) {
+  // 今のセッションに合う領域にする（同じで localStorage にあれば何もしない）。退避した領域の残りを写せなかった（staleError）ときは、
+  // 切り替えずに止める（元の領域の残りを localStorage に置いたまま、別の領域を重ねて展開しない）
+  async function ensureArea(store, target = sessionArea(), staleError = null) {
     const marker = markerNow();
     const live = liveAreas();
     if (marker?.area === target && live.length === 1 && live[0] === target) return null;
+    if (staleError) throw fail(isQuotaError(staleError) ? "quota" : "evacuate", staleError);
     return switchTo(store, target);
   }
 
-  // ロックの中で流す全部: 直し → 移行 → 片付け → 今のセッションの領域へ
+  // ロックの中で流す全部: 直し → 移行 → 片付け（旧い場所・退避した領域の残り） → 今のセッションの領域へ → 退避した領域の残りをもう一度
   async function settle() {
     let store;
     try {
@@ -396,34 +498,59 @@ export function createSwitcher(deps) {
       throw fail(error?.code === "quota" ? "quota" : "open", error);
     }
     try {
-      if (ls.get(K.SWITCH_KEY) !== null) repair();
+      if (ls.get(K.SWITCH_KEY) !== null) {
+        try {
+          await repair(store);
+        } catch (error) {
+          throw error instanceof SwitchError ? error : fail(isQuotaError(error) ? "quota" : "evacuate", error);
+        }
+      }
       if (ls.get(K.MIGRATED_KEY) === null || ls.get(K.MIGRATING_KEY) !== null) await migrate(store);
       try {
         await sweepOrphans(store);
       } catch {
         // 片付けられなくても切り替えは続ける（旧い場所の値は読まない）
       }
-      return await ensureArea(store);
+      let staleError = null;
+      try {
+        await sweepStale(store);
+      } catch (error) {
+        staleError = error;
+      }
+      const result = await ensureArea(store, sessionArea(), staleError);
+      // 切り替えの間に、退避した領域へ遅れて書かれた鍵（見え方の古いタブ）。写せなければ残す（次に開いたページの見張りが見つけて片付ける）
+      if (result) {
+        try {
+          await sweepStale(store);
+        } catch {
+          // 残りは失わない（localStorage にある）
+        }
+      }
+      return result;
     } finally {
       store.close();
     }
   }
 
-  return { settle, migrate, repair, switchTo, ensureArea, sweepOrphans, decideArea, sessionArea, collect, readIndex };
+  return { settle, migrate, repair, switchTo, ensureArea, sweepOrphans, sweepStale, decideArea, sessionArea, collect, readIndex };
 }
 
-// ===== アプリのページから（見張りが旧い場所の値を見つけたとき）: 手の空いたときに片付ける =====
-// raw は見張りが渡す生の localStorage の口。ほかのタブが切り替え・移行をしている間は何もしない（次に開いたとき）
-export async function sweepOrphansFromPage(raw) {
-  const K = globalThis.SpellDashAreaKeys;
-  const locks = globalThis.navigator?.locks;
+// ===== アプリのページから（見張りが旧い場所の値・退避した領域の残りを見つけたとき）: 手の空いたときに片付ける =====
+// raw は見張りが渡す生の localStorage の口。ほかのタブが切り替え・移行をしている間（排他のロック・途中の印）は何もしない（次に開いたとき）。
+// deps は単体のための差し込み口（keys・locks・openStore）
+export async function sweepOrphansFromPage(raw, deps = {}) {
+  const K = deps.keys ?? globalThis.SpellDashAreaKeys;
+  const locks = deps.locks ?? globalThis.navigator?.locks;
+  const open = deps.openStore ?? (() => openAreaStore());
   if (!K || !locks || !raw) return 0;
   return locks.request(K.SWITCH_LOCK, { ifAvailable: true }, async (lock) => {
     if (!lock) return 0;
-    const switcher = createSwitcher({ ls: raw, keys: K, openStore: () => openAreaStore(), locks });
-    const store = await openAreaStore();
+    if (raw.get(K.SWITCH_KEY) !== null || raw.get(K.MIGRATING_KEY) !== null || raw.get(K.MIGRATED_KEY) === null) return 0;
+    const switcher = createSwitcher({ ls: raw, keys: K, openStore: open, locks });
+    const store = await open();
     try {
-      return await switcher.sweepOrphans(store);
+      const old = await switcher.sweepOrphans(store);
+      return old + (await switcher.sweepStale(store, { page: true }));
     } finally {
       store.close();
     }
@@ -436,7 +563,8 @@ export async function sweepOrphansFromPage(raw) {
 //   移行の途中（sd2.migrating がある）… 確かめた legacy（持ち主は移す先の領域）。legacy が読めなければ、残った旧い鍵に移した新しい鍵を重ねた物（持ち主は付けない）
 //   移行の後 … index が ls を指す領域。それが無ければ（切り替えが途中で止まった）index が指す確かめた写し。index が idb を指す領域の localStorage の残りは
 //              途中の物なので読まない。写しも読めなければ書き出さない（SwitchError "export"。途中の記録をその人の持ち主の値で出さない）
-// 持ち主（§5）: ゲストは { kind: "guest" }、アカウントは { kind: "account", tag }（user id から作る安定した値。生の id は書かない）
+// 持ち主（§5）: ゲストは { kind: "guest" }、アカウントは { kind: "account", tag }（user id から作る安定した値。生の id は書かない）。
+// 持ち主の鍵・同期の印など（K.EXPORT_EXCLUDE）は書き出さない
 export async function exportRecords(ls, K, { digest = globalThis.crypto?.subtle, openStore = () => openAreaStore() } = {}) {
   const index = K.readJson(ls.get(K.INDEX_KEY)) ?? {};
   const migrating = K.readJson(ls.get(K.MIGRATING_KEY));
@@ -504,6 +632,8 @@ export async function exportRecords(ls, K, { digest = globalThis.crypto?.subtle,
     }
   }
   Object.assign(data, person);
+  // バックアップと同じ鍵は入れない（持ち主の鍵は同期が書く生の user id・同期の印・送信待ち・ログアウトの時刻。js/backup.js EXCLUDE と同じ一覧）
+  for (const key of K.EXPORT_EXCLUDE ?? []) delete data[key];
   const backup = { app: "SpellDash", version: 1, exportedAt: new Date().toISOString(), data };
   if (area) backup.owner = await ownerOf(area, digest);
   return backup;

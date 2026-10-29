@@ -21730,7 +21730,8 @@ console.log("78.7 人ごとの保存の領域:");
   {
     const ctx = await rawCtx({ serviceWorkers: "block" });
     try {
-      const A = { spelldash_schema_version: "7", spelldash_word_stats: statsSeed("A"), spelldash_xp: "111" };
+      // 持ち主の鍵（同期が書く生の user id）・同期の印も入れる（書き出しに生の user id を書かないことを確かめるため）
+      const A = { spelldash_schema_version: "7", spelldash_word_stats: statsSeed("A"), spelldash_xp: "111", spelldash_owner: "A", spelldash_xp_synced: "100", spelldash_logout_at: "2026-10-01T00:00:00.000Z" };
       // 字は「あ」（1 字 2 バイトで数えるブラウザでも、字数で数えるブラウザでも、ほかの物と B の両方は入らない: 2,700,000 字 × 2）
       const B = { spelldash_schema_version: "7", spelldash_word_stats: JSON.stringify({ pad: "あ".repeat(2700000) }), spelldash_xp: "222" };
       await idbPut(ctx, [{ area: "u:B", id: "b1", keys: B, savedAt: new Date().toISOString(), schema: "7" }]);
@@ -21763,6 +21764,8 @@ console.log("78.7 人ごとの保存の領域:");
       check("78.7 満杯: 「記録を書き出す」は A の記録（元の名前）と持ち主（account・user id から作る安定した値）・B の記録と生の user id は入らない",
         file.app === "SpellDash" && file.data.spelldash_word_stats === A.spelldash_word_stats && file.data.spelldash_xp === "111" && file.owner?.kind === "account" && file.owner.tag === tag && !JSON.stringify(file).includes("ああああああああ") && !JSON.stringify(file).includes("\"A\""),
         JSON.stringify({ owner: file.owner, keys: Object.keys(file.data) }));
+      check("78.7 満杯: 書き出しに持ち主の鍵（生の user id）と同期の印（xp_synced・logout_at）を入れない（バックアップと同じ鍵を除く）",
+        !("spelldash_owner" in file.data) && !("spelldash_xp_synced" in file.data) && !("spelldash_logout_at" in file.data), JSON.stringify(Object.keys(file.data)));
       // 認証だけが先に替わった: ほかのページを開いても切り替えの画面で止まる（学習・保存・同期をしない）
       const p2 = await openApp(ctx, "/stats.html", () => !document.getElementById("switchRecovery")?.hidden);
       const r2 = await recovery(p2);
@@ -21802,9 +21805,12 @@ console.log("78.7 人ごとの保存の領域:");
   ]) {
     const ctx = await rawCtx({ serviceWorkers: "block" });
     try {
-      const A = { spelldash_schema_version: "7", spelldash_word_stats: statsSeed("G"), spelldash_xp: "5" };
-      const old = oldDevice();
-      await putRaw(ctx, oldFormat ? old : { ...marks("guest", 1, { guest: { at: "ls" } }), ...phys("guest", A), spelldash_theme: "dark" });
+      // アカウントの領域（持ち主の鍵は同期が書く生の user id）・同期の印も入れる（書き出しに生の user id を書かないことを確かめるため）
+      const UID = "0f8d2c5e-1b7a-4c3d-9e8f-123456789abc";
+      const area = `u:${UID}`;
+      const A = { spelldash_schema_version: "7", spelldash_word_stats: statsSeed("G"), spelldash_xp: "5", spelldash_owner: UID, spelldash_xp_synced: "5", spelldash_logout_at: "2026-10-01T00:00:00.000Z" };
+      const old = oldDevice({ spelldash_owner: UID, spelldash_xp_synced: "300" });
+      await putRaw(ctx, oldFormat ? old : { ...marks(area, 1, { [area]: { at: "ls" } }), [AUTH]: sess(UID), ...phys(area, A), spelldash_theme: "dark" });
       const before = await dumpRaw(ctx);
       await ctx.addInitScript(kill);
       const page = await ctx.newPage();
@@ -21830,6 +21836,11 @@ console.log("78.7 人ごとの保存の領域:");
         s.text.includes("このブラウザでは記録を安全に分けられない") && s.area && s.path === "/index.html" && !s.mainRan && page.errors.length === 0, JSON.stringify({ s: { ...s, text: s.text.slice(0, 40) }, err: page.errors[0] }));
       check(`78.7 使えないブラウザ（${name}）: localStorage に何も書かない（共用の場所へ戻さない・移行もしない）・「記録を書き出す」で今の記録を元の名前で書き出せる`,
         JSON.stringify(after) === JSON.stringify(before) && file?.data?.spelldash_word_stats === wantWs && Object.keys(file?.data ?? {}).every((k) => k.startsWith("spelldash_")), JSON.stringify({ changed: Object.keys(after).filter((k) => after[k] !== before[k]), keys: file && Object.keys(file.data) }));
+      const crypto6 = await import("crypto");
+      const tag6 = crypto6.createHash("sha256").update(`spelldash-backup-owner-v1:${UID}`).digest("hex").slice(0, 32);
+      check(`78.7 使えないブラウザ（${name}）: 書き出しのファイルに生の user id・持ち主の鍵・同期の印を書かない・持ち主は${oldFormat ? "付けない（移行の前）" : "アカウントの値（user id から作る安定した値）"}`,
+        !!file && !JSON.stringify(file).includes(UID) && !("spelldash_owner" in file.data) && !("spelldash_xp_synced" in file.data) && !("spelldash_logout_at" in file.data) && (oldFormat ? file.owner === undefined : file.owner?.kind === "account" && file.owner.tag === tag6),
+        JSON.stringify({ owner: file?.owner ?? null, raw: file ? JSON.stringify(file).includes(UID) : null, keys: file && Object.keys(file.data) }));
       await page.close();
     } finally {
       await ctx.close();
@@ -21936,6 +21947,88 @@ console.log("78.7 人ごとの保存の領域:");
           new URL(at).origin === BASE && new URL(at).pathname === "/" && !seen.slice(from).some((u) => u.startsWith("http://evil.example")), at);
         await p2.close();
       }
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // (10) 見え方の古いタブ: A の設定のページで復元の確認の窓（window.confirm）が開いたまま、ほかのタブで B へ切り替わる。窓の間はそのタブの localStorage の
+  // 見え方が古いので、OK の後の復元の書き込みは書くたびの確かめ（古い印を読む）を通って A の鍵へ入る。それでも localStorage に 2 人分を残さない:
+  // 遅れて書かれた A の鍵は IndexedDB（orphans・領域つき）へ写して消す。B の記録と印はそのまま。次のページも B だけ
+  {
+    const ctx = await rawCtx({ serviceWorkers: "block" });
+    try {
+      const UA = "11111111-2222-4333-8444-555555555555";
+      const UB = "66666666-7777-4888-9999-aaaaaaaaaaaa";
+      const A = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ [PUB[0]]: { playCount: 1, correctCount: 1, ls: 2, tag: "A" } }), spelldash_xp: "111", spelldash_rank_peak: "3" };
+      const B = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ [PUB[1]]: { playCount: 1, correctCount: 1, ls: 2, tag: "B" } }), spelldash_xp: "222" };
+      const now = new Date().toISOString();
+      await idbPut(ctx, [{ area: `u:${UB}`, id: "b1", keys: B, savedAt: now, schema: "7" }]);
+      await putRaw(ctx, { ...marks(`u:${UA}`, 2, { [`u:${UA}`]: { at: "ls" }, [`u:${UB}`]: { at: "idb:b1" } }), [AUTH]: sess(UA), spelldash_onboarded: "1", ...phys(`u:${UA}`, A) });
+      const Y = await openApp(ctx, "/profile.html", () => window.SpellDashArea !== undefined && !!document.getElementById("backupImport"));
+      let dialog = null;
+      const opened = new Promise((resolve) => Y.on("dialog", (d) => { dialog = d; resolve(d.message()); }));
+      const backup = { app: "SpellDash", version: 1, exportedAt: now, data: { spelldash_schema_version: "7", spelldash_word_stats: JSON.stringify({ [PUB[0]]: { playCount: 2, correctCount: 2, ls: 2, tag: "RESTORED" }, [PUB[2]]: { playCount: 1, correctCount: 1, ls: 2, tag: "RESTORED" } }), spelldash_xp: "999", spelldash_rank_peak: "4" } };
+      await Y.setInputFiles("#backupImport", { name: "b.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(backup)) });
+      const msg = await Promise.race([opened, new Promise((r) => setTimeout(() => r(null), 10000))]);
+      // ほかのタブで B にログインした（セッションの鍵が B）→ Z が学習のページを開く → 切り替えの画面 → B（Y は窓の間ページのロックを放さないので、drain は 3 秒待つ）
+      await putRaw(ctx, { [AUTH]: sess(UB) });
+      const Z = await openApp(ctx, "/index.html", () => location.pathname !== "/switch.html" && window.SpellDashArea?.area === "u:66666666-7777-4888-9999-aaaaaaaaaaaa");
+      const mid = await dumpRaw(ctx);
+      check("78.7 見え方の古いタブ（前の形）: 確認の窓が開いたまま、ほかのタブで B へ切り替わる（A は IndexedDB・localStorage に A の鍵は無い）",
+        !!msg && mid["sd2.area"] === `u:${UB}#3` && Object.keys(areaOf(mid, `u:${UA}`)).length === 0 && areaOf(mid, `u:${UB}`).spelldash_xp === "222", JSON.stringify({ msg: msg?.slice(0, 20), area: mid["sd2.area"], a: Object.keys(areaOf(mid, `u:${UA}`)) }));
+      // Y の利用者が OK を押す: 復元の書き込みは古い見え方で A の鍵へ入る。どのタブかが見つけて片付けるまで待つ
+      if (dialog) await dialog.accept();
+      const lateSeen = await waitUntil(async () => Object.keys(areaOf(await dumpRaw(ctx), `u:${UA}`)).length > 0, 3000, 50);
+      const swept = await waitUntil(async () => Object.keys(areaOf(await dumpRaw(ctx), `u:${UA}`)).length === 0, 15000, 250);
+      const raw = await dumpRaw(ctx);
+      const orphans = await rawDoc(ctx, (s) => new Promise((resolve) => { const r = indexedDB.open("spelldash-areas"); r.onsuccess = () => { const db = r.result; try { const q = db.transaction(s, "readonly").objectStore(s).getAll(); q.onsuccess = () => { resolve(q.result); db.close(); }; q.onerror = () => resolve([]); } catch { resolve([]); } }; r.onerror = () => resolve([]); }), "orphans");
+      const late = orphans.filter((o) => o.area === `u:${UA}`);
+      check("78.7 見え方の古いタブ: OK の後に A の鍵へ遅れて書かれた値は、localStorage から消える（B だけ）・IndexedDB の orphans に A の領域として残る（復元の値 999 も）・B の記録と印は替わらない・途中の印は無い",
+        swept && Object.keys(areaOf(raw, `u:${UA}`)).length === 0 && late.some((o) => o.keys?.spelldash_xp === "999") && areaOf(raw, `u:${UB}`).spelldash_xp === "222" && areaOf(raw, `u:${UB}`).spelldash_word_stats === B.spelldash_word_stats && raw["sd2.area"] === `u:${UB}#3` && raw["sd2.switch"] === undefined,
+        JSON.stringify({ lateSeen, swept, a: Object.keys(areaOf(raw, `u:${UA}`)), late: late.map((o) => Object.keys(o.keys ?? {})), area: raw["sd2.area"], bXp: areaOf(raw, `u:${UB}`).spelldash_xp }));
+      const aCopy = await idbGet(ctx, "areas", `u:${UA}`);
+      check("78.7 見え方の古いタブ: A の写し（index が指す）は遅れた値で変わらない（xp 111）", aCopy?.keys?.spelldash_xp === "111" && JSON.parse(raw["sd2.index"])[`u:${UA}`].at === `idb:${aCopy?.id}`, JSON.stringify({ xp: aCopy?.keys?.spelldash_xp }));
+      const W = await openApp(ctx, "/stats.html", statsReady);
+      const w = await statsView(W);
+      const raw2 = await dumpRaw(ctx);
+      check("78.7 見え方の古いタブ: 次に開く学習状況は B の領域・localStorage に A の鍵は無い", w.path === "/stats.html" && w.area === `u:${UB}` && Object.keys(areaOf(raw2, `u:${UA}`)).length === 0, JSON.stringify({ path: w.path, area: w.area, a: Object.keys(areaOf(raw2, `u:${UA}`)) }));
+      for (const p of [W, Z, Y]) await p.close().catch(() => {});
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // (11) 満杯の端末（1 字の書き込みも容量で入らない）: 読み込みの確かめ（包んだ口で書く）が容量で入らなくても止めない。学習状況は今の領域で開く（使えないブラウザの文は出さない）
+  {
+    const ctx = await rawCtx({ serviceWorkers: "block" });
+    try {
+      const G = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: statsSeed(), spelldash_xp: "5" };
+      await putRaw(ctx, { ...marks("guest", 1, { guest: { at: "ls" } }), spelldash_onboarded: "1", ...phys("guest", G) });
+      let full = null;
+      for (let attempt = 0; attempt < 3 && full !== "QuotaExceededError"; attempt++) {
+        await rawDoc(ctx, (start) => {
+          let size = 1 << 22;
+          let n = start;
+          while (size >= 1) {
+            try {
+              localStorage.setItem("zz" + n, "f".repeat(size));
+              n++;
+            } catch {
+              size = Math.floor(size / 2);
+            }
+          }
+          return n;
+        }, attempt * 1000);
+        // 書いたページを閉じた後に、別のページで 1 字が入らないことを確かめる
+        full = await rawDoc(ctx, () => { try { localStorage.setItem("zz.one", "x"); localStorage.removeItem("zz.one"); return "fits"; } catch (e) { return e.name; } });
+      }
+      const page = await openApp(ctx, "/stats.html", statsReady);
+      const v = await statsView(page);
+      const stop = await page.evaluate(() => ({ stopped: window.SpellDashAreaStopped ?? null, text: document.getElementById("areaStop")?.innerText ?? null }));
+      check("78.7 満杯の端末（1 字も入らない）: 学習状況は止めずに開く（使えないブラウザの文なし・切り替えの画面へ移らない）・今の領域（ゲスト）・3 状態の数はそのまま",
+        full === "QuotaExceededError" && v.path === "/stats.html" && v.area === "guest" && stop.stopped === null && stop.text === null && v.cards.learned === "3語", JSON.stringify({ full, v: { ...v, ws: undefined }, stop }));
+      await page.close();
     } finally {
       await ctx.close();
     }
