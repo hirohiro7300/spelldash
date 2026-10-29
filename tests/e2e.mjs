@@ -2281,7 +2281,8 @@ console.log("typing:");
   const newsItemOf = (title) => { const i = newsSrc.indexOf(`title: "${title}"`); return i < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", i), newsSrc.indexOf("},", i)); };
   const firstNews = newsItemOf("タイピング練習に長文");
   // Batch 78 段 6（創業者の決定 3）: 配信では開くと英単語のホームへ転送する（vercel.json。/list.html と同じ形）。転送が受けるパスは sw の先読みに入れない
-  // （入れるとオフラインで開けなくなる。78.5 の (4)）。ページとファイルは残す（この節は検査の台がファイルを直接返す形で流す・アプリの PAGES にもある）。古いお知らせのリンクは履歴として残す
+  // （入れるとオフラインで開けなくなる。78.5 の (4)）。ページとファイルは残す（アプリの PAGES にもある）。旗のある配信ではページの入口の門でも英単語のホームへ移る
+  // （Batch 78 段 7。78.5 の (4b)）ので、この節は 3 ページだけ旗を外したページ（newPageGateOff）で流す。古いお知らせのリンクは履歴として残す
   const typingRedirect = (src) => (JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).redirects ?? []).some((r) => r.source === src && r.destination === "/?from=old" && r.permanent === false);
   check("typing: sitemap には載せない（Batch 78 段 5a）・配信の転送で英単語のホーム（/?from=old）へ・sw の precache に入れない（Batch 78 段 6）・アプリの PAGES・お知らせ（題「タイピング練習に長文」の 1 件。履歴）に typing.html、ci.yml に教材の --check", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing.html") && typingRedirect("/typing.html") && !fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing.html"') && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing.mjs --check"));
   const typingCss = fs.readFileSync(path.join(ROOT, "css", "typing.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -4905,7 +4906,8 @@ console.log("typing game:");
   const firstNews = newsAt < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", newsAt), newsSrc.indexOf("},", newsAt));
   const typingHtml = fs.readFileSync(path.join(ROOT, "typing.html"), "utf8");
   const typingAbout = typingHtml.match(/<section class="tp-about"[\s\S]*?<\/section>/)?.[0] ?? "";
-  // Batch 78 段 6（創業者の決定 3）: 配信では開くと英単語のホームへ転送する（vercel.json）。sw の先読みに入れない。ページとファイルは残す（節 7.5 の同じ検査の注釈）
+  // Batch 78 段 6（創業者の決定 3）: 配信では開くと英単語のホームへ転送する（vercel.json）。sw の先読みに入れない。ページとファイルは残す。入口の門（段 7）と
+  // 旗を外したページで流すこと（newPageGateOff）は節 7.5 の同じ検査の注釈
   const gameRedirect = (JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).redirects ?? []).some((r) => r.source === "/typing-game.html" && r.destination === "/?from=old" && r.permanent === false);
   check("typing game: sitemap には載せない（Batch 78 段 5a）・配信の転送で英単語のホーム（/?from=old）へ・sw の precache に入れない（Batch 78 段 6）・アプリの PAGES・お知らせ（題「文を次々と打つ、90秒のタイピングゲーム」の 1 件。履歴）に typing-game.html、ci.yml に教材の --check、typing.html の札の下から導線（このページについての外）", !fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8").includes("/typing-game.html") && gameRedirect && !fs.readFileSync(path.join(ROOT, "sw.js"), "utf8").includes('"/typing-game.html"') && fs.readFileSync(path.join(ROOT, "scripts", "build-app.mjs"), "utf8").includes('"typing-game.html"') && firstNews.includes("./typing-game.html") && firstNews.includes("./typing.html") && fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8").includes("node scripts/build-typing-game.mjs --check") && /<p class="tp-more">[^<]*<a href="\.\/typing-game\.html">タイピングゲーム<\/a><\/p>/.test(typingHtml) && !typingAbout.includes("typing-game.html"));
   const gameCss = fs.readFileSync(path.join(ROOT, "css", "typing-game.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -20765,6 +20767,20 @@ console.log("home and old URLs (78.6):");
     check("78.6 Challenge の入口: 中心の学習の回の終わりのパネルに Challenge のボタン・文が無い（「Challenge（60秒）」なし）・保存した遊び方は challenge のまま・エラー 0",
       end.text.length > 0 && !end.setChallenge && !/Challenge|チャレンジ|Daily/i.test(end.text) && end.mode === "challenge" && page.errors.length === 0, JSON.stringify({ ...end, err: page.errors[0] }));
     await closeCtx(page);
+
+    // ほかのタブで記録が替わって中心の学習の回を終えた（「この回は終えた」）後の Enter でも、中心でない回（Study の 60 秒・Challenge）を始めない
+    const rp = await homePage({ spelldash_mode: "challenge" });
+    await rp.addInitScript(() => { window.__starts = []; addEventListener("spelldash:game-start", (e) => window.__starts.push(e.detail?.mode ?? null)); });
+    await rp.goto(BASE + "/?learn=new", { waitUntil: "networkidle" });
+    await waitWord(rp);
+    await rp.evaluate(() => window.dispatchEvent(new CustomEvent("spelldash:records-replaced")));
+    await waitUntil(() => rp.evaluate(() => !document.getElementById("resultPanel").hidden), 4000);
+    await rp.keyboard.press("Enter");
+    await rp.waitForTimeout(600);
+    const rep = await rp.evaluate(() => ({ starts: window.__starts.slice(), panel: document.getElementById("resultPanel").innerText.replace(/\s+/g, " ").trim(), setChallenge: !!document.getElementById("setChallenge"), mode: localStorage.getItem("spelldash_mode") }));
+    check("78.6 Challenge の入口: ほかのタブで記録が替わって回を終えた後の Enter でも新しい回を始めない（Study・Challenge とも）・パネルは「この回は終えた」・保存した遊び方は challenge のまま・エラー 0",
+      rep.starts.length === 1 && rep.panel.includes("この回は終えた") && !rep.setChallenge && rep.mode === "challenge" && rp.errors.length === 0, JSON.stringify({ ...rep, err: rp.errors[0] }));
+    await closeCtx(rp);
   }
 
   // (6) 設定: 出題の設定（今日のセットの長さ・音で出題）を出さない。値は残す。テーマ・発音・バックアップ・アカウントは出る。

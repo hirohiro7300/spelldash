@@ -7,7 +7,8 @@
 //   古い画面・古い URL から来た人は、英単語のホームへ案内して 1 行だけ「英単語の学習にまとめました。」と知らせる（下の表）。
 // 消さないもの: コード・保存の鍵（spelldash_category・spelldash_course・spelldash_packs・spelldash_mode・spelldash_session・
 //   spelldash_book_pace・マイ単語帳など）・利用者の記録（非公開の語の記録も）。読まない・書かないだけ。
-// 戻すとき: FOCUS_ENGLISH を false にし、index.html と profile.html の <html data-focus="english">（最初の描画の旗。CSS が見る）を外す。
+// 戻すとき: FOCUS_ENGLISH を false にし、index.html・profile.html・battle.html・typing.html・typing-game.html の <html data-focus="english">（最初の描画の旗。
+//   CSS と、Battle・タイピングの 3 ページの入口の門が見る）を外す。
 //
 // 古い URL（PRESTART「古い URL」・contradictions c5）:
 //   ホーム（index.html）の ?words=（単語帳の「苦手だけ練習」の回）・?add=（パックを足す）・?category=（教材・巻を選ぶ）・?genre=（分野の絞り込み）・
@@ -15,11 +16,15 @@
 //     鍵を書かない）。URL から外して、ホームに 1 行。単語帳の #packs・#myWords（配信の転送は # を持ち越す: /list.html#packs → /?from=old#packs）も外す
 //   単語帳（list.html。マイ単語帳・#packs・#myWords・?add=・?category= を含む）→ js/listView.js が最初にページの守り（leaveOldScreen）
 //   /packs/* と /packs/ → vercel.json の転送（permanent: false）とページの守り（段 5a）が MOVED_URL へ
-//   タイピングの 2 ページ（typing.html・typing-game.html）→ vercel.json の転送（permanent: false）が MOVED_URL へ（Batch 78 段 6。創業者の決定 3。古いお知らせの
-//     リンクは履歴のまま。ページとファイルは残す: アプリの器と E2E は直接開く）
-//   保存した遊び方 spelldash_mode = challenge → ホームは中心の学習を始める（値は残す: js/game.js setMode の save: false）
+//   Battle とタイピングの 2 ページ（battle.html・typing.html・typing-game.html）→ vercel.json の転送（permanent: false）と、ページの入口の門
+//     （<head> の頭の <script id="focusGate">。html[data-focus="english"] なら読み込みを止めて MOVED_URL へ置き換える。配信の転送が効かないアプリの中でも止める）が
+//     MOVED_URL へ（タイピングは Batch 78 段 6・創業者の決定 3、Battle と入口の門は段 7・創業者の確認 2026-10-29 の 4。Battle の js は変えない。古いお知らせの
+//     リンクは履歴のまま。ページとファイルと記録は残す: 旗を外せば今のまま開く。E2E の内部の検査は 3 ページだけ旗を外して開く）
+//   Challenge（と Daily Dash）の入口: 保存した遊び方 spelldash_mode = challenge → ホームは中心の学習を始める（値は残す: js/game.js setMode の save: false）。
+//     ほかの遊び方の行・Daily の札はホームに描かない（js/main.js renderHome）。Study の回の終わりの「Challenge（60秒）」は中心の学習の回の終わりには無い。
+//     Challenge を始める URL の引数は無い（?t= は時間を縮めるだけ）。Battle の画面からの Challenge は Battle の入口の門で止まる
 //   古い形の続き（Study の spelldash_session）→ 出さない（鍵は残す: js/sessionResume.js resumableFor）
-// Battle（battle.html）と加入画面（pro.html。noindex）は直接開けば今のまま動く（導線から外すだけ。段 5a・段 6）
+// 加入画面（pro.html。noindex）は直接開けば今のまま動く（導線から外すだけ。段 6）
 //
 // この module は import を持たない（どのページからも静的に読んでよい）
 
