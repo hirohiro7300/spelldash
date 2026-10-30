@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- 記録の見張り（js/areaGuard.js。人ごとの保存の領域）: ほかのどの script より先に同期で読む。読めないときは切り替えの画面へ（共用の場所で動かさない）。
+       このページでは下の入口の門より前（見張り → 門 → ほかの script と CSS の順。scripts/test-site-map.mjs の 7 と単体 test-areas の U1 が突き合わせる） -->
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
   <!-- 入口の門（Batch 78 段 7。創業者の確認 2026-10-29 の 4。js/focus.js）: 英単語の学習に絞った間（html[data-focus="english"]）は、ほかの読み込みを止めて
        英単語のホーム（/?from=old）へ置き換える。このページの js は動かさず、保存の鍵も書かない。配信の転送（vercel.json）が効かないアプリの中でも止める。
        旗を外すと（data-focus を外す）今のまま開く。Battle・タイピング練習・タイピングゲームの 3 ページで同じ文（scripts/test-site-map.mjs の 7 が突き合わせる） -->

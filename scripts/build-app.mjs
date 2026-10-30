@@ -1,7 +1,7 @@
 // アプリ（Capacitor）用に、静的ファイルを dist/ にまとめる。
 //   node scripts/build-app.mjs   → dist/ を作り直す（その後 npx cap sync）
 // ビルド工程は無い（素の HTML/JS/CSS）。アプリに要らないもの（api/ 入口ページ packs/ sitemap 等）は入れない。
-// PAGES はアプリの中から辿れるページを全部（10 ページ。フッターのタイピング練習・お知らせ・プライバシー・利用規約も）。
+// PAGES はアプリの中から辿れるページを全部（10 ページ。フッターのタイピング練習・お知らせ・プライバシー・利用規約も）と、切り替えの画面（switch.html）。
 // 加入画面（pro.html）と特商法（tokushoho.html）は Web だけのページで、アプリに入れない（アプリに Pro を出さない。ストアの決済の方針でも、
 // アプリから外の決済へ誘わない）。アプリではそこへのリンクを出さない（css/layout.css の html.native-app・js/appEnv.js。利用規約の本文は文字だけ）。
 // アプリの中で見えるリンクの行き先はどれも PAGES にあること（tests/e2e.mjs の節 15 がアプリの状態で全ページを開いて守る）。
@@ -15,7 +15,8 @@ import { isMain } from "./lib/is-main.mjs";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
 
-export const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html", "terms.html", "typing.html", "typing-game.html"];
+// switch.html は人ごとの保存の領域の切り替えの画面（js/areaSwitch.js）。リンクからは辿らないが、どのページの見張り（js/areaGuard.js）も移る先なので入れる
+export const PAGES = ["index.html", "list.html", "stats.html", "profile.html", "battle.html", "news.html", "privacy.html", "terms.html", "typing.html", "typing-game.html", "switch.html"];
 export const DIRS = ["css", "js", "data", "assets"];
 
 // SNS に貼られたときの絵（assets/images/og-*.png。og-image.png とページごとの絵）は SNS の読み取りだけが使い、アプリの中のページは出さないので入れない

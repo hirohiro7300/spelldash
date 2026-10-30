@@ -18,10 +18,12 @@
 //   6. 写しを壊すと落ちる（決まりの検査そのものが効く）: sitemap に list.html を足す・tokushoho の noindex を外したのに sitemap に無い・battle と pro の noindex を消す・
 //      パックのページの案内を消す・転送を permanent: true にする・転送の先を変える・転送が data/packs/ にも当たる・タイピングと Battle の転送を外す・ホスト名の転送を後ろへ回す・
 //      ナビに単語帳を足す・ナビの順を替える・フッターにタイピング練習を戻す・footer.js で renderFooterPro を呼ぶ・控えを取り直さない・入口の門を消す／CSS の後へ回す／
-//      旗（data-focus）を外す／行き先を変える
-//   7. 入口の門（Batch 78 段 7。創業者の確認 2026-10-29 の 4）: Battle・タイピング練習・タイピングゲームの 3 ページ（GATED_PAGES）は、<head> の最初の <script>
-//      （id="focusGate"。どの <link> より前）で、旗（<html data-focus="english">）が立っていれば英単語のホーム（/?from=old）へ置き換える。配信の転送が効かない
-//      アプリの中でも止めるため。3 ページの旗は js/focus.js FOCUS_ENGLISH と同じ（index.html・profile.html と同じ旗）。門は 3 ページで同じ文
+//      旗（data-focus）を外す／行き先を変える／見張りより前に置く／見張りとの間に別の script を挟む・見張りを消す
+//   7. 入口の門（Batch 78 段 7。創業者の確認 2026-10-29 の 4）: Battle・タイピング練習・タイピングゲームの 3 ページ（GATED_PAGES）は、記録の見張りの 1 行
+//      （js/areaGuard.js と読めなかったときの 1 文。<head> の最初の同期の script。創業者の確認 2026-10-29「見張りは、ほかのアプリ用スクリプトより先に同期的に読み込む」・
+//      単体 test-areas の U1）のすぐ後の <script>（id="focusGate"。見張りとの間は空白と注記だけ・ほかのどの <script> と <link>〔CSS・先読み〕より前）で、
+//      旗（<html data-focus="english">）が立っていれば英単語のホーム（/?from=old）へ置き換える。配信の転送が効かないアプリの中でも止めるため。
+//      3 ページの旗は js/focus.js FOCUS_ENGLISH と同じ（index.html・profile.html と同じ旗）。門は 3 ページで同じ文
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -40,6 +42,8 @@ const SITEMAP_PAGES = [["/", "index.html"], ["/stats.html", "stats.html"], ["/pr
 const HIDDEN_PAGES = ["battle.html", "typing.html", "typing-game.html", "list.html", "pro.html"];
 // 入口の門を持つページ（7）
 const GATED_PAGES = ["battle.html", "typing.html", "typing-game.html"];
+// 記録の見張りの 1 行（全ページの <head> の最初の script。scripts/test-areas.mjs の U1 の GUARD_LINE と同じ）。入口の門はこのすぐ後（7）
+const GUARD_LINE = '<script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>';
 // ナビとフッターを持つルートのページ（admin.html は対象外: 創業者の決定 §7「CRM・管理画面は今回の対象外」）
 const ROOT_PAGES = ["index.html", "stats.html", "list.html", "profile.html", "battle.html", "news.html", "terms.html", "privacy.html", "tokushoho.html", "pro.html", "typing.html", "typing-game.html"];
 const NAV = [["ホーム", "/"], ["英単語を学ぶ", "/?learn=next"], ["学習状況", "stats.html"], ["設定", "profile.html"]];
@@ -113,9 +117,13 @@ function gateProblems(pages, flagOn) {
       continue;
     }
     gates.push(gate);
-    if (head.indexOf("<script") !== head.indexOf(gate)) problems.push(`${file}: 入口の門が <head> の最初の <script> でない`);
+    const guard = head.indexOf(GUARD_LINE);
+    const at = head.indexOf(gate);
+    if (guard < 0) problems.push(`${file}: 記録の見張りの 1 行が <head> に無い`);
+    else if (head.indexOf("<script") !== guard) problems.push(`${file}: 記録の見張りの 1 行が <head> の最初の <script> でない`);
+    else if (at < guard + GUARD_LINE.length || !/^(\s|<!--[\s\S]*?-->)*$/.test(head.slice(guard + GUARD_LINE.length, at))) problems.push(`${file}: 入口の門が見張りの 1 行のすぐ後（間は空白と注記だけ）でない`);
     const link = head.indexOf("<link");
-    if (link >= 0 && link < head.indexOf(gate)) problems.push(`${file}: 入口の門が <link>（CSS・先読み）より後`);
+    if (link >= 0 && link < at) problems.push(`${file}: 入口の門が <link>（CSS・先読み）より後`);
     if (!gate.includes(`location.replace(${JSON.stringify(OLD_URL_HOME)})`) || !gate.includes('"english"') || !/dataset\.focus|data-focus/.test(gate)) problems.push(`${file}: 入口の門が旗を見て ${OLD_URL_HOME} へ置き換えない`);
   }
   if (new Set(gates).size > 1) problems.push("入口の門の文が 3 ページで違う");
@@ -229,7 +237,7 @@ const rd = redirectProblems(vercelText);
 ok(`4. vercel.json: ホスト名の転送はそのまま先頭・/packs と /packs/… と /list.html と /typing.html・/typing-game.html・/battle.html は ${OLD_URL_HOME} へ一時的・ほかの ${KEEP_PATHS.length} の URL は転送しない`, rd.length === 0, show(rd));
 const flagOn = /^export const FOCUS_ENGLISH = true;$/m.test(read("js/focus.js"));
 const gp = gateProblems(pages, flagOn);
-ok(`7. 入口の門: ${GATED_PAGES.join("・")} は <head> の最初の <script>（どの <link> より前）で旗を見て ${OLD_URL_HOME} へ置き換える・3 ページで同じ文・旗は js/focus.js FOCUS_ENGLISH と同じ（${flagOn}）`, gp.length === 0 && flagOn, show(gp));
+ok(`7. 入口の門: ${GATED_PAGES.join("・")} は記録の見張りの 1 行（<head> の最初の script）のすぐ後・ほかのどの <script> と <link> より前で旗を見て ${OLD_URL_HOME} へ置き換える・3 ページで同じ文・旗は js/focus.js FOCUS_ENGLISH と同じ（${flagOn}）`, gp.length === 0 && flagOn, show(gp));
 const ch = [...ROOT_PAGES, ...packFiles].flatMap((f) => chromeProblems(f, pages[f]));
 ok(`5. ナビは 4 つ（ホーム・英単語を学ぶ・学習状況・設定）・現在地・フッターの一文・data-no-pro・外した面へのリンクが無い（ルートの ${ROOT_PAGES.length} ページと packs/ の ${packFiles.length} ページ）`, ch.length === 0, show(ch));
 const fj = footerScriptProblems(read("js/footer.js"));
@@ -298,6 +306,10 @@ mutate("タイピング練習の入口の門を CSS の後へ回す", gateProble
 mutate("タイピングゲームの旗（data-focus）を外す", gateProblems({ ...pages, "typing-game.html": pages["typing-game.html"].replace(' data-focus="english"', "") }, true));
 mutate("旗を外したのに 3 ページに旗が残る", gateProblems(pages, false));
 mutate("Battle の入口の門の行き先を変える", gateProblems({ ...pages, "battle.html": pages["battle.html"].replace(`location.replace("${OLD_URL_HOME}")`, 'location.replace("/")') }, true));
+mutate("Battle の入口の門を見張りの 1 行より前に置く", gateProblems({ ...pages, "battle.html": pages["battle.html"].replace(gateOf("battle.html"), "").replace(GUARD_LINE, `${gateOf("battle.html")}${GUARD_LINE}`) }, true));
+mutate("タイピングゲームの見張りと門の間に別の script を挟む", gateProblems({ ...pages, "typing-game.html": pages["typing-game.html"].replace(GUARD_LINE, `${GUARD_LINE}\n  <script>document.documentElement.dataset.x = "1";</script>`) }, true));
+mutate("タイピング練習の見張りの 1 行を消す", gateProblems({ ...pages, "typing.html": pages["typing.html"].replace(GUARD_LINE, "") }, true));
+mutate("Battle の門の前の見張りを CSS の後へ回す（門が最初の script になる）", gateProblems({ ...pages, "battle.html": pages["battle.html"].replace(GUARD_LINE, "").replace("</head>", `${GUARD_LINE}</head>`) }, true));
 mutate("フッターの一文を前に戻す", chromeProblems("packs/ngsl01.html", pages["packs/ngsl01.html"].replace(TAGLINE, "タイピングで、英単語を体に覚えさせる。")));
 
 if (failures.length) {

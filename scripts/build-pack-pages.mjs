@@ -51,12 +51,14 @@ function sampleHtml(data, words) {
 
 // 本文 main.pp は body（縦の flex。layout.css）の中で margin: 0 auto なので、幅を書かないと中身に合わせた幅（fit-content）になり、
 // 一覧の説明（1 行で省略）の長さが最小の幅になって 561〜631px で横スクロールした（Batch 67 N4）。width: 100% で画面の幅に合わせる（上限 720px は今のまま）
+// 頭の最初の script は記録の見張り（js/areaGuard.js。人ごとの保存の領域。全ページで同じ 1 行。scripts/test-areas.mjs が確かめる）
 function pageShell({ title, description, canonical, body }) {
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
 ${PACK_PAGES_PUBLIC ? "" : `  <meta name="robots" content="noindex" />
   <script>location.replace(${JSON.stringify(OLD_URL_HOME)});</script>
 `}  <title>${esc(title)}</title>

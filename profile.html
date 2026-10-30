@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="./css/pages.css" />
   <link rel="stylesheet" href="./css/pro.css" />
   <meta name="theme-color" content="#1A2137" />
+  <!-- 記録の見張り（js/areaGuard.js。人ごとの保存の領域）: ほかのどの script より先に同期で読む。読めないときは切り替えの画面へ（共用の場所で動かさない） -->
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
 
 
@@ -54,13 +56,6 @@
   <link rel="modulepreload" href="./js/studyConfig.js" />
   <link rel="modulepreload" href="./js/activity.js" />
   <link rel="modulepreload" href="./js/userItemsSync.js" />
-  <link rel="modulepreload" href="./js/backup.js" />
-  <link rel="modulepreload" href="./js/rank.js" />
-  <link rel="modulepreload" href="./js/masteryMeta.js" />
-  <link rel="modulepreload" href="./js/memoryCheck.js" />
-  <link rel="modulepreload" href="./js/memoryModel.js" />
-  <link rel="modulepreload" href="./js/memoryWords.js" />
-  <link rel="modulepreload" href="./js/growthLog.js" />
   <link rel="modulepreload" href="./js/unlocks.js" />
   <link rel="modulepreload" href="./js/course.js" />
   <link rel="modulepreload" href="./js/packs.js" />
@@ -73,6 +68,10 @@
   <link rel="modulepreload" href="./js/jaScript.js" />
   <link rel="modulepreload" href="./js/retentionLog.js" />
   <link rel="modulepreload" href="./js/studyTime.js" />
+  <link rel="modulepreload" href="./js/masteryMeta.js" />
+  <link rel="modulepreload" href="./js/memoryCheck.js" />
+  <link rel="modulepreload" href="./js/memoryModel.js" />
+  <link rel="modulepreload" href="./js/memoryWords.js" />
   <link rel="modulepreload" href="./js/auth.js" />
   <link rel="modulepreload" href="./js/focusTrap.js" />
   <link rel="modulepreload" href="./js/footer.js" />
@@ -83,9 +82,12 @@
   <link rel="modulepreload" href="./js/headerStreak.js" />
   <link rel="modulepreload" href="./js/headerFit.js" />
   <link rel="modulepreload" href="./js/audio.js" />
+  <link rel="modulepreload" href="./js/backup.js" />
+  <link rel="modulepreload" href="./js/rank.js" />
   <link rel="modulepreload" href="./js/sfx.js" />
   <link rel="modulepreload" href="./js/theme.js" />
   <link rel="modulepreload" href="./js/afterCorrect.js" />
+  <link rel="modulepreload" href="./js/growthLog.js" />
   <link rel="modulepreload" href="./js/installPrompt.js" />
   <link rel="preload" href="./data/manifest.json" as="fetch" crossorigin="anonymous" />
   <link rel="preload" href="./data/english/junior.json" as="fetch" crossorigin="anonymous" />

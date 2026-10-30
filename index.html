@@ -6,6 +6,8 @@
   <title>SpellDash - 思い出して打つ、英単語タイピング学習</title>
   <!-- テーマと場面の先読みは CSS より前（後ろに置くと、インラインの script が CSS の読み込みを待たされる） -->
   <meta name="theme-color" content="#1A2137" />
+  <!-- 記録の見張り（js/areaGuard.js。人ごとの保存の領域）: ほかのどの script より先に同期で読む。読めないときは切り替えの画面へ（共用の場所で動かさない） -->
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme];
     /* 部屋の場面（LCP）の先読み: css/room.css の分岐（≥1100 = desk、高さ ≤700 = short、それ以外 = phone。dark／indigo = 夜）と同じ 1 枚だけ。CSS が同じ URL を参照するので要求は 1 回 */
     try { const bp = matchMedia("(min-width: 1100px)").matches ? "desk" : matchMedia("(max-height: 700px)").matches ? "short" : "phone"; const l = document.createElement("link"); l.rel = "preload"; l.as = "image"; l.fetchPriority = "high"; l.href = `./assets/images/room/scene-${bp}-${theme === "dark" || theme === "indigo" ? "dark" : "light"}.webp`; document.head.appendChild(l); } catch {} })();</script>
@@ -86,16 +88,13 @@
   <link rel="modulepreload" href="./js/battleConfig.js" />
   <link rel="modulepreload" href="./js/studyMix.js" />
   <link rel="modulepreload" href="./js/activity.js" />
-  <link rel="modulepreload" href="./js/backup.js" />
-  <link rel="modulepreload" href="./js/rank.js" />
+  <link rel="modulepreload" href="./js/unlocks.js" />
+  <link rel="modulepreload" href="./js/retentionLog.js" />
+  <link rel="modulepreload" href="./js/studyTime.js" />
   <link rel="modulepreload" href="./js/masteryMeta.js" />
   <link rel="modulepreload" href="./js/memoryCheck.js" />
   <link rel="modulepreload" href="./js/memoryModel.js" />
   <link rel="modulepreload" href="./js/memoryWords.js" />
-  <link rel="modulepreload" href="./js/growthLog.js" />
-  <link rel="modulepreload" href="./js/unlocks.js" />
-  <link rel="modulepreload" href="./js/retentionLog.js" />
-  <link rel="modulepreload" href="./js/studyTime.js" />
   <link rel="modulepreload" href="./js/genres.js" />
   <link rel="modulepreload" href="./js/romaji.js" />
   <link rel="modulepreload" href="./js/srLive.js" />
@@ -110,6 +109,7 @@
   <link rel="modulepreload" href="./js/focus.js" />
   <link rel="modulepreload" href="./js/focusTrap.js" />
   <link rel="modulepreload" href="./js/shelves.js" />
+  <link rel="modulepreload" href="./js/growthLog.js" />
   <link rel="modulepreload" href="./js/bgm.js" />
   <link rel="modulepreload" href="./js/learnedCard.js" />
   <link rel="modulepreload" href="./js/weeklyReport.js" />
@@ -130,6 +130,7 @@
   <link rel="modulepreload" href="./js/calcCards.js" />
   <link rel="modulepreload" href="./js/wordAi.js" />
   <link rel="modulepreload" href="./js/keyboard.js" />
+  <link rel="modulepreload" href="./js/rank.js" />
   <link rel="modulepreload" href="./js/auth.js" />
   <link rel="modulepreload" href="./js/footer.js" />
   <link rel="modulepreload" href="./js/feedback.js" />
