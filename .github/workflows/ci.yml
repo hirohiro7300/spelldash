@@ -152,9 +152,10 @@ jobs:
   # （run.mjs は分離の入った旧い木を渡すと止まる）。分離の後の本番を旧い側にする 5 段は別に作る（tests/oldtab/README.md）。
   # Service Worker あり・なし × ログインの 2 通り。守りを破る変異では漏れを見つけることも確かめる（検査が落ちることができる）
   # 終わりの値（tests/oldtab/lib/analyze.mjs exitCodeOf）: 0 = PASS・1 = 漏れか A の記録の後退・2 = 段を通れなかった（INVALID）・4 = 2 度入った（DOUBLE）・
-  # 3 = 漏れも後退も無く段も通ったが、A へ戻ったときの旧タブの学習の取り込みが足りない（NOT_IMPORTED）。取り込みはまだ入っていないので、
-  # 証明の 3 つの段（既定・古い部品 2.105.0 の 2 回）は 3 だけを注意（warning）にして通し、1・2・4 は落とす。取り込みが入ったら 3 の例外を外す
-  # （docs/SPEC_ACCOUNT_AREAS.md §11）。変異の段（--expect-leak）は前と同じ（どの回も LEAK のときだけ通る）
+  # 3 = 漏れも後退も無く段も通ったが、A へ戻ったときの旧タブの学習の取り込みが足りない（NOT_IMPORTED）。
+  # 証明の 3 つの段（既定・古い部品 2.105.0 の 2 回）は 1・2・4 をその段で落とす（漏れ・後退・段を通れないが段ごとに見える）。3 はその段では通して
+  # oldtab-logs/not-imported.txt に書き、最後の段「旧タブの学習が A に入る」で落とす（取り込みが入るまでジョブは赤。検査は弱めない。
+  # 創業者の決定 6: 隔離の場所に残るだけでは不合格）。変異の段（--expect-leak）は前と同じ（どの回も LEAK のときだけ通る）
   oldtab:
     runs-on: ubuntu-latest
     # 1 回 約 3〜4 分 × 9（既定の 4 回・変異 3 回・古い部品の 2 回）
@@ -208,7 +209,8 @@ jobs:
           rc=0
           node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --out oldtab-logs || rc=$?
           if [ "$rc" -eq 3 ]; then
-            echo "::warning title=oldtab::NOT_IMPORTED（旧タブの学習を A へ戻ったときに取り込む形はまだ入っていない。漏れ・後退〔1〕・段を通れない〔2〕・2 度入った〔4〕は落とす）"
+            mkdir -p oldtab-logs && echo "既定（Service Worker あり・なし × ログインの 2 通り）" >> oldtab-logs/not-imported.txt
+            echo "::notice title=oldtab::漏れ・後退・段の失敗は無い。取り込みが足りない（NOT_IMPORTED）は最後の段で落とす"
           elif [ "$rc" -ne 0 ]; then
             exit "$rc"
           fi
@@ -231,7 +233,8 @@ jobs:
           rc=0
           node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --order direct-link --release login --sw off --old-auth-lib 2.105.0 --expect-writeback --out oldtab-logs || rc=$?
           if [ "$rc" -eq 3 ]; then
-            echo "::warning title=oldtab::NOT_IMPORTED（旧タブの学習を A へ戻ったときに取り込む形はまだ入っていない。漏れ・後退〔1〕・段を通れない〔2〕・2 度入った〔4〕は落とす）"
+            mkdir -p oldtab-logs && echo "古い部品 2.105.0・B のリンクから" >> oldtab-logs/not-imported.txt
+            echo "::notice title=oldtab::漏れ・後退・段の失敗は無い。取り込みが足りない（NOT_IMPORTED）は最後の段で落とす"
           elif [ "$rc" -ne 0 ]; then
             exit "$rc"
           fi
@@ -242,9 +245,18 @@ jobs:
           rc=0
           node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --login none --sw off --old-auth-lib 2.105.0 --expect-writeback --out oldtab-logs || rc=$?
           if [ "$rc" -eq 3 ]; then
-            echo "::warning title=oldtab::NOT_IMPORTED（旧タブの学習を A へ戻ったときに取り込む形はまだ入っていない。漏れ・後退〔1〕・段を通れない〔2〕・2 度入った〔4〕は落とす）"
+            mkdir -p oldtab-logs && echo "古い部品 2.105.0・B にログインしない" >> oldtab-logs/not-imported.txt
+            echo "::notice title=oldtab::漏れ・後退・段の失敗は無い。取り込みが足りない（NOT_IMPORTED）は最後の段で落とす"
           elif [ "$rc" -ne 0 ]; then
             exit "$rc"
+          fi
+
+      - name: 旧タブの学習が A へ戻ったときに入る（取り込み。NOT_IMPORTED の段があれば落とす）
+        if: always()
+        run: |
+          if [ -s oldtab-logs/not-imported.txt ]; then
+            echo "::error title=oldtab::NOT_IMPORTED: 旧タブの学習が A に入っていない段がある（$(wc -l < oldtab-logs/not-imported.txt) 段）"
+            exit 3
           fi
 
       - name: 記録（全部の要求・見つけた漏れと後退）
