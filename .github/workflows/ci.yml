@@ -130,5 +130,101 @@ jobs:
       - name: Chromiumインストール
         run: npx playwright-core install --with-deps chromium
 
+      # E2E 78.7 の本物の認証の部品の検査（固定の版 2.118.0）が使う束。リポジトリには入れず、oldtab のジョブと同じ控えから戻し、
+      # tests/oldtab/lib/authLib.mjs が確かめて置く（控えが無ければ登録所から作り、固定の値で確かめる）。組の前に 1 回だけ
+      - name: 認証の部品の置き場を控えから戻す（oldtab のジョブと同じ鍵）
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/oldtab/.cache/auth-lib
+          key: oldtab-auth-lib-${{ hashFiles('tests/oldtab/lib/authLib.mjs') }}
+
+      - name: 認証の部品を置き場に用意する（控えの写しを確かめて使う。無ければ登録所から作る）
+        run: node tests/oldtab/lib/authLib.mjs --version 2.118.0
+
       - name: E2Eスモークテスト（組 ${{ matrix.shard }}/4）
         run: node scripts/e2e-shard.mjs --shard ${{ matrix.shard }}/4
+
+  # 旧タブの証明（tests/oldtab）: 直前の本番（アカウントの分離の前の最後の本番 0507672 に固定）のコードを開いたままのタブから、
+  # A の記録が B へ 1 件も送られないこと・A の記録が後ろへ戻らないことを、本物の旧いコード（git archive）と本物の認証の部品で確かめる。
+  # 認証の部品はリポジトリに入れない。検査の時に tests/oldtab/lib/authLib.mjs が登録所から固定の版を取って作り（sha512 と作った物の sha256 を固定の値で確かめる）、
+  # 置き場 tests/oldtab/.cache/auth-lib を控え（cache）に残す。控えがあっても、毎回登録所から取り直した物と 1 バイトも違わないかを確かめてから使う。
+  # 旧い側を PR の向け先にしないのは、分離が main に入った後の main は旧いタブが切り替えの画面を通って B として動いてよい木で、この 5 段の決まりが合わないため
+  # （run.mjs は分離の入った旧い木を渡すと止まる）。分離の後の本番を旧い側にする 5 段は別に作る（tests/oldtab/README.md）。
+  # Service Worker あり・なし × ログインの 2 通り。守りを破る変異では漏れを見つけることも確かめる（検査が落ちることができる）
+  oldtab:
+    runs-on: ubuntu-latest
+    # 1 回 約 3〜4 分 × 9（既定の 4 回・変異 3 回・古い部品の 2 回）
+    timeout-minutes: 75
+    env:
+      OLDTAB_OLD: 050767281b51386a451f569aba02f5d68588d763
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 依存インストール
+        run: npm install
+
+      - name: ブラウザのインストール
+        run: npx playwright-core install --with-deps chromium
+
+      - name: 直前の本番（分離の前の最後の本番）を取る
+        run: git cat-file -e "$OLDTAB_OLD^{commit}" 2>/dev/null || git fetch --no-tags --depth 1 origin "$OLDTAB_OLD"
+
+      - name: 認証の部品の置き場を控えから戻す（tests/oldtab/lib/authLib.mjs が変われば作り直す）
+        id: oldtab-auth-lib
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/oldtab/.cache/auth-lib
+          key: oldtab-auth-lib-${{ hashFiles('tests/oldtab/lib/authLib.mjs') }}
+
+      - name: 認証の部品（固定の版 2.118.0・2.105.0）を登録所から取り直して作り、固定の値と同じか（控えの写しとも 1 バイトも違わないか）
+        run: node tests/oldtab/lib/authLib.mjs --check
+
+      - name: 認証の部品を置き場に用意する（控えの写しを確かめて使う。無ければ登録所から作る）
+        run: node tests/oldtab/lib/authLib.mjs
+
+      # 後の段が落ちても控えに残す（落ちた回の後でも、次の回が取り直しを 1 度で済ませる）
+      - name: 認証の部品の置き場を控えに残す
+        if: steps.oldtab-auth-lib.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: tests/oldtab/.cache/auth-lib
+          key: ${{ steps.oldtab-auth-lib.outputs.cache-primary-key }}
+
+      - name: 漏れと後退の判定の確かめ（作った記録で。ブラウザなし）
+        run: node tests/oldtab/test-analyze.mjs
+
+      - name: 旧タブから A の記録が B へ送られない（Service Worker あり・なし × A をログアウトしてから・A のまま B のリンク）
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --out oldtab-logs
+
+      - name: 守りを破る変異では漏れを見つける（認証の鍵の分離を破る）
+        if: success() || failure()
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --mutant mirror-session --sw off --login logout --expect-leak --out oldtab-logs
+
+      - name: 守りを破る変異では漏れを見つける（記録の領域の分離を破る：人の記録の鍵を端末の鍵として扱う）
+        if: success() || failure()
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --mutant person-key-as-device --sw off --login logout --expect-leak --out oldtab-logs
+
+      - name: 守りを破る変異では漏れを見つける（旧い場所の片付けを破る：旧いタブの答えを今の領域へ写す。開き直した新しいコードが送る）
+        if: success() || failure()
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --mutant orphan-into-area --sw off --login logout --expect-leak --out oldtab-logs
+
+      - name: 旧いタブにだけ古い認証の部品 2.105.0（更新の結果を書き戻す版）・新しいコードの最初の読み込みが B のリンク・止めていた更新は B の後に書き戻す（A の記録が B へ行かない・A の記録が後ろへ戻らない）
+        if: success() || failure()
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --order direct-link --release login --sw off --old-auth-lib 2.105.0 --expect-writeback --out oldtab-logs
+
+      - name: 旧いタブにだけ古い認証の部品 2.105.0・B にログインしないまま書き戻しの後に旧いタブを戻す（A の記録が後ろへ戻らない）
+        if: success() || failure()
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --login none --sw off --old-auth-lib 2.105.0 --expect-writeback --out oldtab-logs
+
+      - name: 記録（全部の要求・見つけた漏れと後退）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oldtab-logs
+          path: oldtab-logs

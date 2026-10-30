@@ -8,3 +8,6 @@ dist/
 
 # E2E の組の一時台本（scripts/e2e-shard.mjs。止められると残ることがある）
 tests/.e2e-shard-*.mjs
+
+# 旧タブの証明の認証の部品（tests/oldtab/lib/authLib.mjs が検査の時に登録所から作って置く。リポジトリには入れない）
+tests/oldtab/.cache/
