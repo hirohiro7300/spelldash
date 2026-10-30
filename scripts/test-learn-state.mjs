@@ -23,7 +23,7 @@ function eq(name, actual, expected) {
 const ok = (name, cond) => eq(name, !!cond, true);
 
 // ===== 端末の偽物 =====
-// localStorage: 鍵と値の字数の合計に上限（Chromium と同じ数え方。既定は無限）。setItem の鍵の列を控える
+// localStorage: 鍵と値の字数の合計に上限（ブラウザと同じ数え方。既定は無限）。setItem の鍵の列を控える
 class FakeStorage {
   constructor(seed = {}, limit = Infinity) {
     this.map = new Map(Object.entries(seed).map(([k, v]) => [k, String(v)]));

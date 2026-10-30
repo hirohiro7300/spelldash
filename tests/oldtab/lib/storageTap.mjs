@@ -275,7 +275,7 @@ export async function readOrphansInPage({ db: dbName, store, wordKey }) {
   return out;
 }
 
-// ===== A へ戻る段（DECISION5 の 1）の見張り =====
+// ===== A へ戻る段（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 1）の見張り =====
 // 見張りのタブ（検査のページ lib/watch.html。アプリのコードは無い）で、ほかのタブの localStorage の書き込みの知らせ（storage イベント）を聞く。
 // 書いたタブには知らせが来ないので、アプリのタブとは別のタブで聞く。人ごとの領域の鍵（sd2.<領域>.<名前>）と端末の印（sd2.index など）の変わり目を、
 // 書いたその時に検査へ知らせる。値は語の記録（語ごとの回数・最後に答えた時刻・3 状態の欄）と送る語の印（語の id の並び）だけを要約し、

@@ -1,4 +1,4 @@
-// ===== 人ごとの記録の控え（IndexedDB。docs は S/b78/acct/DESIGN-FINAL.md §1.2・§1.3） =====
+// ===== 人ごとの記録の控え（IndexedDB。docs は docs/SPEC_ACCOUNT_AREAS.md §1.2・§1.3） =====
 // DB spelldash-areas の 4 つの入れ物:
 //   areas      … 使っていない人の記録。1 人 1 件 { area, id, keys, savedAt, schema, sum }。期限なし・自動で消さない
 //   legacy     … 移行の前の旧い記録（spelldash_* の人の記録の全部）。1 件 { id, savedAt, fromSchema, keys, sum }。期限なし・自動で消さない
@@ -200,7 +200,7 @@ function wrap(db) {
   };
 }
 
-// 永続の保存を頼む（初めて控えを書くとき）。断られても分ける（DESIGN-FINAL §7 (f)）。答えは true・false
+// 永続の保存を頼む（初めて控えを書くとき）。断られても分ける（docs/SPEC_ACCOUNT_AREAS.md §7 (f)）。答えは true・false
 export async function askPersist(storage = globalThis.navigator?.storage) {
   try {
     if (!storage || typeof storage.persist !== "function") return false;

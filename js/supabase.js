@@ -31,7 +31,7 @@ const MODULE_URL =
 
 // 認証のセッションを置く鍵（世代を分けた新しい名前。spelldash_ で始めない）。旧い既定の鍵 sb-<ref>-auth-token は、移行のときに
 // 切り替えの画面（js/areaSwitch.js）がここへ移して消す。旧コードのタブの部品は旧い鍵と旧い知らせの名前しか見ないので、
-// 新しいタブでログインした人のセッションを読めない（DESIGN-FINAL §6）。js/areaGuard.js の AUTH_KEY と同じ名前（scripts/test-areas.mjs が確かめる）
+// 新しいタブでログインした人のセッションを読めない（docs/SPEC_ACCOUNT_AREAS.md §6）。js/areaGuard.js の AUTH_KEY と同じ名前（scripts/test-areas.mjs が確かめる）
 export const AUTH_STORAGE_KEY = "sd2.auth";
 
 // 認証のセッションの置き場（部品に渡す）。部品の既定は、localStorage への試し書きが入らない端末（満杯）ではセッションをメモリーに置く。

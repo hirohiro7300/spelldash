@@ -1,4 +1,4 @@
-// ===== 記録の見張り（人ごとの保存の領域。docs は S/b78/acct/DESIGN-FINAL.md §1・§2） =====
+// ===== 記録の見張り（人ごとの保存の領域。docs は docs/SPEC_ACCOUNT_AREAS.md §1・§2） =====
 // 全ページの head の最初に、ほかのどの script より先に、同期の classic script として読む（module にしない）。
 //   <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(…切り替えの画面へ…)</script>
 // 人の記録の鍵（spelldash_<名前>。端末の設定・端末の計測・spelldash_test_* を除く全部）を、ページを開いたときの領域の鍵
@@ -572,7 +572,7 @@
     }
     return { data, area };
   }
-  // 持ち主の値（DESIGN-FINAL §5。js/areaSwitch.js ownerOf と同じ作り方）: ゲストは { kind: "guest" }、アカウントは { kind: "account", tag }。
+  // 持ち主の値（docs/SPEC_ACCOUNT_AREAS.md §5。js/areaSwitch.js ownerOf と同じ作り方）: ゲストは { kind: "guest" }、アカウントは { kind: "account", tag }。
   // tag = SHA-256("spelldash-backup-owner-v1:" + user id) の頭 32 字（端末ごとの乱数を使わない）。生の user id は書かない
   function ownerFor(area) {
     if (!area) return Promise.resolve(null);

@@ -5,7 +5,7 @@
 // 一覧:
 //   proto-defence      試作の守り: 人の記録の鍵 spelldash_* を sd2x.* へ移して読み替え（getItem・setItem・removeItem・key・length・storage イベント）、
 //                      認証のセッションの鍵 sb-<ref>-auth-token* を sd2x-auth-token* へ移して読み替え、タブをまたぐ知らせ（BroadcastChannel）の名前も替える。
-//                      最初の読み込みで旧い鍵の中身を新しい鍵へ写し、旧い鍵を消す（DESIGN-FINAL §1.1・§6 の 1 と 2 の近似）
+//                      最初の読み込みで旧い鍵の中身を新しい鍵へ写し、旧い鍵を消す（docs/SPEC_ACCOUNT_AREAS.md §1.1・§6 の 1 と 2 の近似）
 //   proto-no-authkey   proto-defence から認証の鍵と知らせの名前の分離を外す（人の記録の鍵だけ分ける）→ 漏れるはず
 //   proto-no-recordkey proto-defence から人の記録の鍵の分離を外す（認証の鍵と知らせだけ分ける）→ 漏れるはず
 //   mirror-session     守りを破る変異（どの木にも当てられる）: 新しいコードが別の鍵に置いたセッションを旧い鍵 sb-<ref>-auth-token へ写し、

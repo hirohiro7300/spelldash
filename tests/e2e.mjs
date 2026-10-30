@@ -21858,7 +21858,7 @@ console.log("learn modes (78.3):");
   }
 }
 
-// ===== 78.7 人ごとの保存の領域（Batch 78-7 内部の 1。js/areaGuard.js・js/areaSwitch.js・js/areaStore.js・switch.html。S/b78/acct/DESIGN-FINAL.md §1〜§4・§8）: 旧い形の端末の移行（記録と 3 状態はそのまま・旧い本体は localStorage に残らない・移行の前の控えは IndexedDB）・localStorage の各利用形式が領域の鍵へ・Service Worker 無効・切り替えの途中でタブを閉じても直る・展開の途中で満杯なら部分的に有効にしない・退避できなければ切り替えない・使えないブラウザは共用に戻さず止める・満杯で止める時の遅れた値を失わない・満杯の端末で本物の認証の部品がセッションをメモリーだけに置かない。内部の 2: ゲスト → A（はい・いいえ）・ログアウト・A → B → A・複数タブ・予行と退避の失敗・オフラインのログアウト・バックアップの持ち主 =====
+// ===== 78.7 人ごとの保存の領域（Batch 78-7 内部の 1。js/areaGuard.js・js/areaSwitch.js・js/areaStore.js・switch.html。docs/SPEC_ACCOUNT_AREAS.md §1〜§4・§8）: 旧い形の端末の移行（記録と 3 状態はそのまま・旧い本体は localStorage に残らない・移行の前の控えは IndexedDB）・localStorage の各利用形式が領域の鍵へ・Service Worker 無効・切り替えの途中でタブを閉じても直る・展開の途中で満杯なら部分的に有効にしない・退避できなければ切り替えない・使えないブラウザは共用に戻さず止める・満杯で止める時の遅れた値を失わない・満杯の端末で本物の認証の部品がセッションをメモリーだけに置かない。内部の 2: ゲスト → A（はい・いいえ）・ログアウト・A → B → A・複数タブ・予行と退避の失敗・オフラインのログアウト・バックアップの持ち主 =====
 // この節は見張りを初期化の script に置かない文脈（rawNewContext）で、本物の頭の 1 行の振る舞いを見る。種は見張りを読まない同じ origin の文書（/css/reset.css）で
 // 生の localStorage に書く（旧い形の端末・途中で落ちた端末を作る）。この段のスタブのログインは見張りから見えない（ゲスト）ので、セッションの人は
 // 認証の新しい鍵 sd2.auth に偽のセッションを直に書いて替える（保存の層の切り替えだけを見る。ログイン・ログアウトの確認は内部の 2）
@@ -22697,7 +22697,7 @@ console.log("78.7 人ごとの保存の領域:");
 
   // (13b) 本物の認証の部品でオフラインのログアウト（受け口 /auth/v1/logout に届かない・トークンは有効）: 部品 2.118.0 は失敗を返す前に、この端末のセッションを
   // 先に消す（SIGNED_OUT も出す）。設計の「signOut が失敗ならログインもそのまま」は、この版の部品では成り立たない（画面の扱いは創業者の判断を待つ:
-  // S/b78/impl/areas-handoff.md）。ここでは失わない・混ぜないを見る: A の記録は localStorage か確かめた写しに 1 字も違わず・2 人分を重ねない・途中の印なし。
+  // docs/SPEC_ACCOUNT_AREAS.md §11）。ここでは失わない・混ぜないを見る: A の記録は localStorage か確かめた写しに 1 字も違わず・2 人分を重ねない・途中の印なし。
   // 次に開くとゲストへ切り替わり、A は IndexedDB に 1 字も違わない
   {
     const lib = await authLib();
@@ -22892,7 +22892,7 @@ console.log("78.7 人ごとの保存の領域:");
     }
   }
 
-  // ===== 内部の 2（ゲストとアカウントの分離と切り替え。DESIGN-FINAL §3〜§5）: スタブの認証（sd2.auth・BroadcastChannel）で、見張り・切り替えの画面・同期を本物のまま流す =====
+  // ===== 内部の 2（ゲストとアカウントの分離と切り替え。docs/SPEC_ACCOUNT_AREAS.md §3〜§5）: スタブの認証（sd2.auth・BroadcastChannel）で、見張り・切り替えの画面・同期を本物のまま流す =====
   // ゲスト → A（はい・いいえ）・A → ログアウト → ゲスト・A → B → A（3 状態・最高到達ランク・回の続き・送信待ちが 1 字も違わない）・複数タブ・たずねている間に閉じる・
   // 見え方の古いタブの書き込みは断る（保存できませんでした）・予行と退避の失敗（認証も領域も替わらない）・オフラインのログアウト・トークンの更新の失敗・
   // 古いバックアップ・持ち主入りのバックアップ（同じ人・別の人・ゲスト）・別の端末（別の文脈）で同じアカウントのバックアップ・切り替えの後の同期（B のクラウドに A の行が行かない・A の送信待ちは A に戻ると送られる）
@@ -23208,7 +23208,7 @@ console.log("78.7 人ごとの保存の領域:");
           await ctx.close();
         }
       }
-      // (b) 予行の失敗（ログイン）: Google に移らない（ログインのリンクはスタブでは設定が無いので送る前に止まる。予行の順は単体 U1 が見る）
+      // (b) 予行の失敗（ログイン）: 外部のログインへ移らない（ログインのリンクはスタブでは設定が無いので送る前に止まる。予行の順は単体 U1 が見る）
       {
         const ctx = await ctxOf();
         try {
@@ -23222,7 +23222,7 @@ console.log("78.7 人ごとの保存の領域:");
           await page.click("#googleLoginButton");
           await page.waitForTimeout(1200);
           const msg = await authText(page);
-          check("78.7 予行の失敗（ログイン）: Google に移らない・文と案内を出す・ゲストのまま", oauth === 0 && msg?.startsWith(BLOCKED) && page.url().includes("/index.html") && !page.visited.includes("/switch.html"), JSON.stringify({ oauth, msg, visited: page.visited }));
+          check("78.7 予行の失敗（ログイン）: 外部のログインへ移らない・文と案内を出す・ゲストのまま", oauth === 0 && msg?.startsWith(BLOCKED) && page.url().includes("/index.html") && !page.visited.includes("/switch.html"), JSON.stringify({ oauth, msg, visited: page.visited }));
           await page.close();
         } finally {
           await ctx.close();
@@ -23320,7 +23320,7 @@ console.log("78.7 人ごとの保存の領域:");
             await page.click("#googleLoginButton");
             await page.waitForTimeout(1500); // 予行（スタブの signInWithOAuth は何もしない）
             const msg = await authText(page);
-            await signInOn(page, userA); // Google から戻った体
+            await signInOn(page, userA); // 外部のログインから戻った体
             const asked = await waitAsk(page);
             if (asked) await page.click("#switchAskNo").catch(() => {});
             const landed = await waitArea(page, `u:${UA}`, 20000);
@@ -23366,7 +23366,7 @@ console.log("78.7 人ごとの保存の領域:");
     // (P8) ログアウト（ふつう・オフライン）。スタブの signOut は本物の部品（固定した版 2.118.0 の _signOut）と同じ:
     //   (a) トークンの期限切れで更新がつながらない（部品は何も消さずに失敗を返す）: 「ログアウトできなかった。」・ログインも A の記録も印も替わらない
     //   (b) オフライン・トークンは有効（部品は受け口に届かなくても、この端末のセッションを先に消してから失敗を返す）: 設計の「signOut が失敗ならログインも
-    //       そのまま」はこの版の部品では成り立たない（画面の扱いは創業者の判断を待つ: S/b78/impl/areas-handoff.md）。ここでは失わない・混ぜないを見る。
+    //       そのまま」はこの版の部品では成り立たない（画面の扱いは創業者の判断を待つ: docs/SPEC_ACCOUNT_AREAS.md §11）。ここでは失わない・混ぜないを見る。
     //       次に開くとゲストへ切り替わり、A は IndexedDB に 1 字も違わない（本物の部品の同じ形は (13b)）
     //   (c) つながる: scope local の signOut で、A の記録は IndexedDB に 1 字も違わず、ゲストへ
     {
@@ -23501,7 +23501,7 @@ console.log("78.7 人ごとの保存の領域:");
       }
     }
 
-    // (P10) ログアウトの切り替え先（ゲスト）の写しを読めない（index はゲストを IndexedDB の写しで指すが、写しが無い・要約が合わない）: DECISION4 必須修正 1
+    // (P10) ログアウトの切り替え先（ゲスト）の写しを読めない（index はゲストを IndexedDB の写しで指すが、写しが無い・要約が合わない）: docs/SPEC_ACCOUNT_AREAS.md §4 の必須修正 1
     // （IndexedDB の読みと照合ができなければログアウトを完了しない）。写しは signOut の前に読む。signOut を呼ばない・元のページに戻って文
     // 「この端末に記録を安全に保存できなかったため、切り替えられません。…」・ログインも A の記録も印も替わらない・ホームを開いても A のまま開く。
     // 反証: signOut の後に読んでいたので、ログインを失い、A の記録は localStorage にあるのに復旧の画面から出られなかった
@@ -23662,7 +23662,7 @@ console.log("78.7 人ごとの保存の領域:");
       }
     }
 
-    // (P14) 「ゲストで学んだ記録を、このアカウントに移す？」の答えは、最初に確定した 1 つだけが効く（DECISION5 の 2）。答えたタブは排他のロックの中で答えを端末に残す
+    // (P14) 「ゲストで学んだ記録を、このアカウントに移す？」の答えは、最初に確定した 1 つだけが効く（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 2）。答えたタブは排他のロックの中で答えを端末に残す
     // （sd2.decision）。後からロックを取ったタブの答えは捨てる。決まった答えの切り替えが失敗したら、どのタブも決まった答えを出して止まり、「もう一度」でだけやり直す
     {
       // 排他のロックを手元の文書で持つ（切り替えの画面のタブを、答えた後・ロックを取る前で止める）
@@ -23909,7 +23909,7 @@ console.log("preview host (78.8):");
     const v = (el) => !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0;
     return { google: v(document.getElementById("googleLoginButton")), email: v(document.getElementById("emailInput")), send: v(document.getElementById("loginButton")), note: [...document.querySelectorAll(".account-menu__native")].map((el) => el.textContent) };
   });
-  check("Preview: ログインの入口（Google・メール）は隠し、知らせだけ", !menu.google && !menu.email && !menu.send && menu.note.some((t) => t.includes("現在調整中")), JSON.stringify(menu));
+  check("Preview: ログインの入口（外部のログイン・メール）は隠し、知らせだけ", !menu.google && !menu.email && !menu.send && menu.note.some((t) => t.includes("現在調整中")), JSON.stringify(menu));
 
   // 中心の学習は動く（これから の 1 語目）
   const p2 = await previewPage(seedOn);

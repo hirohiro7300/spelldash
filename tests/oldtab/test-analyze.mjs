@@ -12,7 +12,7 @@
 //     次の語の記録を書いた。書き込みが見えなければ（端末の語の記録が変わっていても）通さない。記録の無い古い記録だけは前の決まり（端末の変化）で見る
 //   - orphans のある木: 4 段より後に旧いコードのタブが書いた語の記録が orphans に 1 つも届かない・orphans を読めない・答えを数えたタブの最後の書き込みが
 //     届かないときは通さない。答えの窓は次の答えの打ち始めで切り、画面が次の語へ進まなかった答えは数えない
-//   - A へ戻る段（DECISION5 の 1）: 旧いタブの学習が A の領域に足される（置き換え・足りない・2 度・2 回目に増える・送信待ち・A のクラウド・
+//   - A へ戻る段（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 1）: 旧いタブの学習が A の領域に足される（置き換え・足りない・2 度・2 回目に増える・送信待ち・A のクラウド・
 //     最後に答えた時刻・学習状況の画面）、B とゲストの領域に入らない、3 状態の決まり（report・keep・関数）、古い記録と分離の前の木には無い
 import { analyze, verdictOf } from "./lib/analyze.mjs";
 import { USERS, cloudSeed } from "./lib/seed.mjs";
@@ -297,7 +297,7 @@ check("端末の計測（funnel_events）は A の文字だけを見る", !flagg
   check("orphans の無い木（分離の前）には orphans の確かめが無い", key(o4, OK) === undefined && o4.summary.orphans?.treeHasOrphans === false);
 }
 
-// ---- A へ戻る段（DECISION5 の 1）: 旧いタブの学習が A に入る・2 度入らない・B に入らない ----
+// ---- A へ戻る段（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 1）: 旧いタブの学習が A に入る・2 度入らない・B に入らない ----
 {
   const key = (rep, head) => Object.keys(rep.validity).find((k) => k.startsWith(head));
   const at0 = deployAt + 100000;

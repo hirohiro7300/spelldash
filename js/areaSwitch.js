@@ -1,4 +1,4 @@
-// ===== 切り替えの画面（switch.html）: 移行・直し・切り替え・旧い場所の片付け（docs は S/b78/acct/DESIGN-FINAL.md §3・§4・§8・§1.3） =====
+// ===== 切り替えの画面（switch.html）: 移行・直し・切り替え・旧い場所の片付け（docs は docs/SPEC_ACCOUNT_AREAS.md §3・§4・§8・§1.3） =====
 // 学習の部品は読まない。排他のロック "spelldash-area-switch" を持つタブだけが、localStorage の人の記録の置き場所を変える。
 // 決まり（不変条件）: localStorage に置く人の記録はいつも 1 人（今の領域）だけ。sd2.index が指す方だけが本物。
 // 写して読み直して確かめてから index を替え、index を替えてから元を消す。容量で書けなければ部分的に有効にしない。
@@ -500,7 +500,7 @@ export function createSwitcher(deps) {
         archived.push([area, snapshot]);
       }
       // 切り替え先を、元を消す前・ログアウトの signOut の前に読む（読めない・確かめられなければ、元を消さず、ログインもそのままで止める。
-      // DECISION4 必須修正 1: IndexedDB の読みと照合ができなければログアウトを完了しない）
+      // docs/SPEC_ACCOUNT_AREAS.md §4 の必須修正 1: IndexedDB の読みと照合ができなければログアウトを完了しない）
       if (adopt) {
         if (!adoptKeys) throw await stop("changed");
         incoming = adoptKeys;
@@ -593,7 +593,7 @@ export function createSwitcher(deps) {
     });
   }
 
-  // ===== 「移す？」の答え（DECISION5 の 2: 複数のタブで答えても、最初に確定した答えだけが効く） =====
+  // ===== 「移す？」の答え（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 2: 複数のタブで答えても、最初に確定した答えだけが効く） =====
   // 答えたタブは、排他のロックの中で答えを端末に残す（sd2.decision = { id: 判断の id, from: "guest", to: 切り替え先, answer: "yes" | "no", at, gen: 今の印の世代, failed? }）。
   // ロックを後から取ったタブは、残った答えを使い、自分のタブで押した答えは捨てる。使うのは同じ問い（ゲスト → 同じ切り替え先・同じ世代）の答えだけで、
   // 違えば（ほかのタブで別の人に入り直した・その後にほかの切り替えが済んだ）消してたずね直す。切り替えが済んだら消す。
@@ -750,7 +750,7 @@ export async function sweepOrphansFromPage(raw, deps = {}) {
   });
 }
 
-// ===== 予行（ログインのリンクを送る前・Google に移る前・ログアウトの前。js/auth.js が呼ぶ。§4） =====
+// ===== 予行（ログインのリンクを送る前・外部のログインへ移る前・ログアウトの前。js/auth.js が呼ぶ。§4） =====
 // 今の領域の記録（元の名前 → 値）を IndexedDB に写して、新しいトランザクションで読み直して比べる。写すのは本物の写し（その領域の鍵）でなく予行の鍵
 // （pre:<領域>）なので、index が指す写しにも、切り替えの途中の写しにも触れない。localStorage も印も替えない。
 // 確かめたら予行の写しを消す（残すと、その写しが切り替えの画面の本物の退避の空きを使い、空きの少ない端末で予行が通っても本物の退避が入らない。反証）。

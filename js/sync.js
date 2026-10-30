@@ -134,7 +134,7 @@ async function getUserId() {
   return data.session?.user?.id ?? null;
 }
 
-// ---- 人ごとの保存の領域（DESIGN-FINAL §5） ----
+// ---- 人ごとの保存の領域（docs/SPEC_ACCOUNT_AREAS.md §5） ----
 // ページの領域がこのアカウントの領域で、見張りが「まだこのページの人の物」と言うときだけ、クラウドを読み書きする。見張りが無い所では送らない
 function areaAllows(userId) {
   const area = globalThis.SpellDashArea;

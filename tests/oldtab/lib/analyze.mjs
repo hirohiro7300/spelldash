@@ -536,7 +536,7 @@ export function analyze(result, opts = {}) {
     const ws = oldWordWrites.filter((w) => w.tab === t);
     return [t, writeReached(ws[ws.length - 1])];
   }));
-  // ---- A へ戻る段（DECISION5 の 1。orphans のある木で、その段を流した記録だけ。古い記録・分離の前の木には無い） ----
+  // ---- A へ戻る段（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 1。orphans のある木で、その段を流した記録だけ。古い記録・分離の前の木には無い） ----
   // 旧いタブが 4 段で答えた学習（数えた答えの窓の書き込み）が、A へ戻った時に A の領域の語の記録・送る語の印・A のクラウドの行・学習状況の画面に
   // 入ったか（NOT_IMPORTED）、2 度入っていないか（DOUBLE）、B（とゲスト）の領域に一度も入っていないか（LEAK）を見る。
   // 量: 旧いタブの書き込みごとに、語ごとの「書いた値 − 書く前の値」（lib/storageTap.mjs の prev）を足す。数えた答えの窓の書き込みの和が下限（need）、

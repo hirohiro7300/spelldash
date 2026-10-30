@@ -156,7 +156,7 @@ export function createFakeSupabase({ users, tokenTtl = 100, seed = {}, log = () 
   function handleAuth(method, url, headers, body, rec) {
     const p = url.pathname.replace(/^\/auth\/v1/, "");
     rec.kind = `auth:${p.slice(1)}${url.searchParams.get("grant_type") ? ":" + url.searchParams.get("grant_type") : ""}`;
-    if (p === "/health" || p === "/settings") return json(200, p === "/health" ? { version: "fake", name: "GoTrue" } : { external: { email: true }, disable_signup: false });
+    if (p === "/health" || p === "/settings") return json(200, p === "/health" ? { version: "fake", name: "fake-auth" } : { external: { email: true }, disable_signup: false });
     if (p === "/otp" && method === "POST") {
       const email = String(body?.email ?? "").toLowerCase();
       rec.email = email;

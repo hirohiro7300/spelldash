@@ -1,6 +1,6 @@
 // 人ごとの保存の領域（ゲスト・アカウント A・アカウント B）の単体テスト。ブラウザなし（数秒）:
 //   node scripts/test-areas.mjs [<木の根>] [--no-mutate]
-// 仕様は S/b78/acct/DESIGN-FINAL.md（版 2）の §1・§2・§3・§4・§8（docs は統合の段で docs/SPEC_ACCOUNT_AREAS.md に移す）。
+// 仕様は docs/SPEC_ACCOUNT_AREAS.md の §1・§2・§3・§4・§5・§8。
 // 見張り js/areaGuard.js（classic script）は、偽の window（vm の文脈）で読む。js/areaSwitch.js・js/areaStore.js は、偽の localStorage・
 // メモリーの IndexedDB・偽の Web Locks を渡して流す。この段（内部の 1）の検査:
 //   U1 鍵の分け方と、localStorage の使い方の全数（getItem・setItem・removeItem のほかに名前が出る所をファイルごとに固定・?. と window／self／globalThis／top・
@@ -44,7 +44,7 @@ const quotaError = () => {
   error.name = "QuotaExceededError";
   return error;
 };
-// localStorage の中身（タブの間で共有する）: 鍵と値の字数の合計に上限（Chromium と同じ数え方）
+// localStorage の中身（タブの間で共有する）: 鍵と値の字数の合計に上限（ブラウザと同じ数え方）
 class Backing {
   constructor(seed = {}, limit = Infinity) {
     this.map = new Map(Object.entries(seed).map(([k, v]) => [k, String(v)]));
@@ -792,7 +792,7 @@ async function runAll() {
       return auth.slice(i, j < 0 ? undefined : i + 10 + j);
     };
     const before = (text, a, b) => text.includes(a) && text.includes(b) && text.indexOf(a) < text.indexOf(b);
-    ok("U1 js/auth.js: ログインのリンクを送る前・Google に移る前に予行（precheckArea）", before(body("sendLoginLink"), "precheckArea(", "signInWithOtp(") && before(body("signInWithGoogle"), "precheckArea(", "signInWithOAuth("));
+    ok("U1 js/auth.js: ログインのリンクを送る前・外部のログインへ移る前に予行（precheckArea）", before(body("sendLoginLink"), "precheckArea(", "signInWithOtp(") && before(body("signInWithGoogle"), "precheckArea(", "signInWithOAuth("));
     ok("U1 js/auth.js: ログアウトは予行の後に切り替えの画面へ（ログアウトは切り替えの画面で退避を確かめてから）", before(body("logout"), "precheckArea(", "goSwitch(") && /window\.SpellDashArea\.leave\(\)/.test(body("goSwitch")));
     // 控え（IndexedDB）を消すのは、予行の写し（pre:<領域>）を確かめた後だけ。本物の写し・legacy・orphans・prerestore を消す口は使わない
     const removes = [];
@@ -1954,7 +1954,7 @@ async function runAll() {
       const r = await logout(b, idb, fa);
       eq(`U5 ログアウトの退避が${name}: 理由 ${reason}・signOut を呼ばない・認証も領域も localStorage も替わらない（途中の印も残さない）`, [r.error?.reason ?? null, fa.calls.length, norm(b.dump())], [reason, 0, before]);
     }
-    // (2b) 切り替え先（ゲスト）の写しを読めない・確かめられない: 読むのは signOut の前（DECISION4 必須修正 1: IndexedDB の読みと照合ができなければログアウトを
+    // (2b) 切り替え先（ゲスト）の写しを読めない・確かめられない: 読むのは signOut の前（docs/SPEC_ACCOUNT_AREAS.md §4 の必須修正 1: IndexedDB の読みと照合ができなければログアウトを
     // 完了しない）。理由 target・signOut を呼ばない・認証も領域も localStorage も替わらない・その後のページは A のまま開く。
     // 反証: signOut の後に読んでいたので、ログインを失い、A の記録は localStorage にあるのに復旧の画面から出られなかった
     for (const [name, inject] of [
@@ -2039,7 +2039,7 @@ async function runAll() {
     }
     // (3) signOut が通信で失敗: 本物の部品（2.118.0）は、この端末のセッションを先に消してから error を返す（SIGNED_OUT も出す）。退避は確かめ済み。
     // 切り替えは止める（A は localStorage のまま・ゲストを重ねて展開しない）。セッションは無いので、次に開くとゲストへ切り替わる（A は確かめた写し）。
-    // 設計の「失敗ならログインもそのまま」はこの版の部品では成り立たない。画面の扱いは創業者の判断を待つ（S/b78/impl/areas-handoff.md）。ここでは失わない・混ぜないを見る
+    // 設計の「失敗ならログインもそのまま」はこの版の部品では成り立たない。画面の扱いは創業者の判断を待つ（docs/SPEC_ACCOUNT_AREAS.md §11）。ここでは失わない・混ぜないを見る
     {
       const { b, idb } = await loggedInA();
       const fa = fakeAuth(b, { error: { name: "AuthRetryableFetchError", message: "Failed to fetch", status: 0 } });
@@ -2268,7 +2268,7 @@ async function runAll() {
         }
       }
       ok("U5 はいの書き込みの全部の点で落として確かめた（8 点以上）", points >= 8, `${points} 点`);
-      // 答え（sd2.decision）を端末に書いた後のどの点で落ちても、次のタブはたずね直さず、残った「はい」で移し終える（DECISION5 の 2）。
+      // 答え（sd2.decision）を端末に書いた後のどの点で落ちても、次のタブはたずね直さず、残った「はい」で移し終える（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 2）。
       // 答えを書く前（移行・片付けの書き込みと、答えそのものの書き込み）で落ちたときだけ、たずね直す
       ok("U5 はいの答えを端末に書いた後で落ちた点が 8 点以上ある（答えは切り替えより先に端末に残る）", afterDecision >= 8, `${afterDecision} 点`);
       eq("U5 はいの答えを端末に書いた後のどの点で落ちても、次のタブはたずね直さない", askedAfterDecision, []);
@@ -2302,7 +2302,7 @@ async function runAll() {
       ok("U5 見張りの知らせ: 旧い場所の人の記録が書かれたら、片付けをすぐ頼む（手の空くのを待たない）", t.log.timers.slice(before).some(([, ms]) => ms === 0), JSON.stringify(t.log.timers.slice(before).map(([, ms]) => ms)));
       eq("U5 見張りの知らせ: 旧い場所の値はアプリに届けない・今の領域の値は替わらない", [t.heard.filter((h) => h[0] === "spelldash_xp").length, b.get("sd2.u:A.xp")], [0, "5"]);
     }
-    // (11) 「移す？」の答えは、最初に確定した 1 つだけが効く（DECISION5 の 2）。答えたタブはロックの中で答えを端末に残す（sd2.decision: 判断の id・元・切り替え先・
+    // (11) 「移す？」の答えは、最初に確定した 1 つだけが効く（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 2）。答えたタブはロックの中で答えを端末に残す（sd2.decision: 判断の id・元・切り替え先・
     // 答え・世代）。ロックを後から取ったタブの答えは捨てる。決まった答えの切り替えが失敗したら答えと理由を残し、「もう一度」（retry）でだけ同じ答えでやり直す
     {
       const decisionOf = (b) => {
@@ -2371,7 +2371,7 @@ async function runAll() {
         eq("U5 残った答えの世代が今の印と違う: 使わずにたずね直す（いいえ）・ゲストの記録は A に移らない・答えは消える", [asked, r.error?.message ?? null, areaRecords(b, "u:A"), decisionOf(b)], [["u:A"], null, {}, null]);
       }
     }
-    // (6c) 予行の写しを消す直前・直後でタブが落ちた（DECISION5 の 3）: 予行は元（localStorage の今の領域）を替えないので、どちらでも A は 1 字も違わない。
+    // (6c) 予行の写しを消す直前・直後でタブが落ちた（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 3）: 予行は元（localStorage の今の領域）を替えないので、どちらでも A は 1 字も違わない。
     // 残った予行の写し（pre:）は本物の写しとして読まない（次の切り替えは localStorage の今の値を退避し、戻るときもその写しから戻す）。次の予行が残りを消す
     for (const when of ["直前", "直後"]) {
       const precheck = SW.precheck ?? (async () => ({ ok: null, reason: "関数が無い" }));
@@ -2899,7 +2899,7 @@ const MUTANTS = [
   ["直し: idb を指す領域の残りを片付けない", "switch", "    const removed = await sweepStale(store);", "    const removed = 0;"],
   ["直し: idb を指す領域の残りを写しと比べずに消す（遅れて書かれた値を失う）", "switch", "    const removed = await sweepStale(store);", "    let removed = 0;\n    for (const [area, entry] of Object.entries(readIndex())) if (typeof entry?.at === \"string\" && entry.at.startsWith(\"idb:\")) for (const key of physicalOf(area)) { ls.remove(key); removed++; }"],
   ["片付け: 旧い場所の値を消さない", "switch", "      for (const key of names) if (ls.get(key) === found[key]) ls.remove(key);", ""],
-  // 反証の役の変異（S/b78/rvareas/tests2/mymutants.out の G1・S7・S8・G8a・G8b）
+  // 反証の役が足した変異（G1・S7・S8・G8a・G8b）
   ["見張り: 同じタブのログアウト（sd2.auth の removeItem）で覚え直さない", "guard", "          const result = rawRemove.apply(this, arguments);\n          noteSession();", "          const result = rawRemove.apply(this, arguments);"],
   ["片付け: 持ち主の印が消えていても書き直さない", "switch", "    if (ls.get(K.OWNER_KEY) === null) {", "    if (false) {"],
   ["片付け: 写した後に値を比べずに消す（写している間に旧タブが書いた値を失う）", "switch", "      for (const key of names) if (ls.get(key) === found[key]) ls.remove(key);", "      for (const key of names) ls.remove(key);"],
@@ -2926,7 +2926,7 @@ const MUTANTS = [
   ["書き出し: 持ち主の鍵・同期の印を除かない", "switch", "  for (const key of K.EXPORT_EXCLUDE ?? []) delete data[key];", ""],
   ["見張りの書き出し: 持ち主の鍵・同期の印を除かない", "guard", "      for (const key of EXPORT_EXCLUDE) delete data[key];", ""],
   ["見張りの書き出し: 持ち主の値を付けない", "guard", "    if (owner) backup.owner = owner;", ""],
-  // 反証 fix3（S/b78/rvareas/tests3 の G40〜G42・S29・S9・S4・S23・S6・St5 と storage3 の遅れた値）
+  // 反証の直し 3 で足した変異（G40〜G42・S29・S9・S4・S23・S6・St5 と遅れた値）
   ["見張り: setItem の読み替えを sessionStorage にも当てる（this が localStorage かを見ない）", "guard", "    P.setItem = function setItem(key, value) {\n      if (this === ls && arguments.length > 1) {", "    P.setItem = function setItem(key, value) {\n      if (arguments.length > 1) {"],
   ["見張り: removeItem の読み替えを sessionStorage にも当てる（タブの同期の印が消えない）", "guard", "    P.removeItem = function removeItem(key) {\n      if (this === ls && arguments.length > 0) {", "    P.removeItem = function removeItem(key) {\n      if (arguments.length > 0) {"],
   ["見張り: getItem の読み替えを sessionStorage にも当てる", "guard", "    P.getItem = function getItem(key) {\n      if (this === ls && arguments.length > 0) {", "    P.getItem = function getItem(key) {\n      if (arguments.length > 0) {"],

@@ -12,7 +12,7 @@ import { forgetMemoryWords } from "./memoryWords.js";
 // Local First のため、未ログインの人のデータは端末にしかない。
 // 端末の買い替え・ブラウザのデータ消去に備えて、spelldash_* をまとめてJSONで持ち出せるようにする。
 // 復元は「上書き」（マージはしない。単純で説明しやすい方を選ぶ）。
-// 人ごとの保存の領域（js/areaGuard.js。DESIGN-FINAL §5）: 書き出すのは今の領域だけで、ファイルに持ち主（owner）を付ける。
+// 人ごとの保存の領域（js/areaGuard.js。docs/SPEC_ACCOUNT_AREAS.md §5）: 書き出すのは今の領域だけで、ファイルに持ち主（owner）を付ける。
 // ゲストは { kind: "guest" }、アカウントは { kind: "account", tag }。tag は user id から作る安定した値（端末ごとの乱数なし・どの端末でも同じ）で、
 // 生の user id はファイルに書かない。戻すのは同じ持ち主の領域だけ（ゲストのファイルはゲストだけ）。持ち主の無い古いファイルは、数と入れる先を
 // 見せて確認してから今の領域へ。戻す前に今の領域の記録を IndexedDB の prerestore に写して読み直す（写せなければ戻さない）

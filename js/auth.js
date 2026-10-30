@@ -20,7 +20,7 @@ const avatarButtonElement = document.getElementById("avatarButton");
 const headerAvatarElement = document.getElementById("headerAvatar");
 const googleLoginButtonElement = document.getElementById("googleLoginButton");
 
-// いまログインから戻ってきたか（メールのリンク・Google のリダイレクト）。Supabase が URL を片付ける前に読む。
+// いまログインから戻ってきたか（メールのリンク・外部のログインからの戻り）。Supabase が URL を片付ける前に読む。
 // 戻ったと分かったら、その場で印（sessionStorage の spelldash_login_return）を残す。部品は URL の # を消し、人が替われば見張りが切り替えの画面へ移す。
 // 切り替えの画面から戻ったページ・加入画面へ移ったページは、この印で「いまログインした」と分かる。印はページがこの人の領域にそろってから消す（initializeAuth）
 const LOGIN_RETURN_KEY = "spelldash_login_return"; // js/proFunnel.js の RETURN_KEY と同じ名前
@@ -48,7 +48,7 @@ function clearLoginReturn() {
   }
 }
 
-// ===== 人ごとの保存の領域（js/areaGuard.js・js/areaSwitch.js。DESIGN-FINAL §4・§5） =====
+// ===== 人ごとの保存の領域（js/areaGuard.js・js/areaSwitch.js。docs/SPEC_ACCOUNT_AREAS.md §4・§5） =====
 // 部品の答えたセッションとページの領域を比べる。返り値:
 //   "fits"    … 同じ人（ゲストならセッション無し）で、見張りの stillMine()。同期・Pro の状態の更新をしてよい
 //   "leave"   … 人が替わったと分かった（ほかの人のセッション・ゲストのページにセッション・stillMine() でない）。同期も更新もせずに切り替えの画面へ
@@ -92,7 +92,7 @@ function showPendingNotice() {
   if (row) showAuthMessage(row[0], row[1], { scope: row[2] });
 }
 
-// 予行（ログインのリンクを送る前・Google に移る前・ログアウトの前）: 今の領域の記録を IndexedDB に写して読み直す（js/areaSwitch.js precheck）。
+// 予行（ログインのリンクを送る前・外部のログインへ移る前・ログアウトの前）: 今の領域の記録を IndexedDB に写して読み直す（js/areaSwitch.js precheck）。
 // できなければ切り替えを始めない。保存の無い端末では写す物が無い
 async function precheckArea() {
   const area = window.SpellDashArea;
@@ -264,7 +264,7 @@ async function signInWithGoogle() {
     return;
   }
 
-  // 切り替えを始める前の予行（戻ってきたら、この端末の今の記録を IndexedDB に退避してから切り替える）。できなければ Google に移らない
+  // 切り替えを始める前の予行（戻ってきたら、この端末の今の記録を IndexedDB に退避してから切り替える）。できなければ外部のログインへ移らない
   if (!(await precheckArea()).ok) {
     googleLoginButtonElement.disabled = false;
     showAuthMessage(BLOCKED_MESSAGE, "error");

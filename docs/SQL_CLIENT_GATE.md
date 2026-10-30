@@ -110,26 +110,26 @@ notify pgrst, 'reload schema';
 
 ### 4.2 本物の通り道で印が届くかを見る（§4.3 の前に必ず）
 
-§5.4 は見出しを作って入れた試しで、ゲートウェイが見出しをデータベースまで渡すかは見ない。ここで、利用者の要求と同じ道（`/rest/v1/`・公開の鍵）で関数を呼ぶ。端末（ターミナル）で流す。表には何も書かない。
+§5.4 は見出しを作って入れた試しで、ゲートウェイが見出しをデータベースまで渡すかは見ない。ここで、利用者の要求と同じ道（`/rest/v1/`・公開の鍵）で関数を呼ぶ。端末（ターミナル）の HTTP の道具で送る。表には何も書かない。
 
 鍵は js/supabase.js の `supabaseAnonKey`（公開の鍵。ダッシュボードの Project Settings → API の anon と同じ）。
 
+要求は 3 つ。どれも同じ URL への POST で、本文は `{}`。見出しの名前と値は字のとおりに送る（3 つで違うのは `X-Client-Info` だけ）。
+
 ```
-KEY='<公開の鍵>'
-URL='https://sujvgwozsnzjsjmkcrnk.supabase.co/rest/v1/rpc/spelldash_client_ok'
+POST https://sujvgwozsnzjsjmkcrnk.supabase.co/rest/v1/rpc/spelldash_client_ok
+apikey: <公開の鍵>
+Authorization: Bearer <公開の鍵>
+Content-Type: application/json
 
-# 1. 新しい版の印 → true
-curl -sS -X POST "$URL" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
-  -H 'Content-Type: application/json' -H 'X-Client-Info: spelldash/2 supabase-js-web/2.118.0' -d '{}'
-
-# 2. 印なし → false
-curl -sS -X POST "$URL" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
-  -H 'Content-Type: application/json' -d '{}'
-
-# 3. 旧い本番の印（今の部品の既定）→ false
-curl -sS -X POST "$URL" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
-  -H 'Content-Type: application/json' -H 'X-Client-Info: supabase-js/2.118.0; runtime=web' -d '{}'
+{}
 ```
+
+| # | `X-Client-Info` | 答え |
+|---|---|---|
+| 1 | `spelldash/2 supabase-js-web/2.118.0`（新しい版の印） | `true` |
+| 2 | 送らない（印なし） | `false` |
+| 3 | `supabase-js/2.118.0; runtime=web`（旧い本番の印。今の部品の既定） | `false` |
 
 - 合格: 1 が `true`、2 と 3 が `false`。このときだけ §4.3 へ進む。
 - 1 が `false`: 見出しがデータベースまで届いていない。§4.3 を流すと、新しい版の書き込みも全部断られる。ここで止めて連絡する。関数は残しても害は無い（外すなら §6）。
@@ -387,7 +387,7 @@ select count(*) as gate_function_left from pg_proc where proname = 'spelldash_cl
    - 見出しの名前の大文字・小文字を変える。部品は既定の見出しと渡した見出しを、名前の字そのままで重ねる。js/supabase.js の `"X-Client-Info"` は既定と同じ名前なので既定を置き換え、表への POST・GET・HEAD はどれも `spelldash/2 supabase-js-web/2.118.0` だけを送る（反証の役が 2.118.0 と 2.105.0 の本物の部品で確かめた）。小文字の `x-client-info` で渡すと既定も残り、送る見出しは `supabase-js/2.118.0; runtime=web, spelldash/2 …` のように 2 つがつながる。`spelldash/` で始まらないので、門は新しい版の書き込みを全部断る。
    - 単体（scripts/test-areas.mjs の U8）は、接続の口に渡す設定を名前 `X-Client-Info` そのままで引く。名前の字を変えると落ちる。部品の中の扱いの変化は、単体でも E2E でも見えない（E2E の受け口は見出しを見ない）。本物の要求に印が載るかは §3 の 6 の目視で見る。部品の版を上げたときも同じ目視をする。
 7. 門の効きは、旧タブの証明（tests/oldtab）ではまだ確かめていない。にせの受け口は見出しで断らない。§5.4 は見出しを作って入れた試し。本物の通り道（ゲートウェイが見出しをデータベースまで渡すか）は、方針を入れる前に §4.2 で見る。本物の書き込みは §3 の 4 と 6 で見る。§4.2 は関数の呼び出しで、表への書き込みではない。書き込みの道だけ見出しの扱いが違う作りなら、§3 の 6 まで気づかない（そのときは §6）。
-8. 関数は、表への API（PostgREST）が見出しを `request.headers`（小文字の名前の JSON）で渡す作りに頼る。作りが変われば関数は false を返し、書き込みが全部断られる（安全側に倒れる。利用者には黙った失敗）。§4.2 の 1 の呼び出しで気づける（`true` でなく `false` が返る）。Supabase の更新のお知らせの後や、月に 1 回などに流すとよい。日次の keepalive に足すのはコードの変更なので、ここではしない。気づいたら §6 で戻す。
+8. 関数は、表への API が見出しを `request.headers`（小文字の名前の JSON）で渡す作りに頼る。作りが変われば関数は false を返し、書き込みが全部断られる（安全側に倒れる。利用者には黙った失敗）。§4.2 の 1 の呼び出しで気づける（`true` でなく `false` が返る）。Supabase の更新のお知らせの後や、月に 1 回などに流すとよい。日次の keepalive に足すのはコードの変更なので、ここではしない。気づいたら §6 で戻す。
 9. 門は、入れた後の書き込みだけを止める。入れる前に後ろへ戻ったクラウドの記録は直さない。
 10. クライアント側の直しの代わりではない。門を外せば、新しいコードのタブが 1 つも開いていない間に、旧いタブが A の記録を後ろへ戻しうる。
 11. 門が入ると、移行と関係のない旧いタブ（新しいコードをまだ開いていない端末）の送信も断られる。§7 のとおり、多くは遅れるだけ。送り直しの仕組みの無い行は失う（クラウドの側だけ）。

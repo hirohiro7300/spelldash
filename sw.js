@@ -6,7 +6,7 @@
 // v7（Batch 78 段 7）: 先読みから Battle（/battle.html。配信の転送と入口の門で英単語のホームへ）を外した。前の版（v6）の保存は activate で消える
 // v8（Batch 78 アカウント分離 内部の 1・2。v7 と同じ公開でまとめて出す）: 先読みに切り替えの画面（/switch.html とその部品）と記録の見張り（/js/areaGuard.js）を足した。
 // 有効になったら、開いている窓に問い合わせ、答えない窓（見張りの無い古いコードのページ）を読み直させる。これは補助で、安全の根拠にしない（凍った・裏の・
-// Service Worker の無いタブは読み直されない。古いタブの守りは保存の鍵と認証の鍵の世代: DESIGN-FINAL §6）。前の版（v7・v6）の保存は activate で消える
+// Service Worker の無いタブは読み直されない。古いタブの守りは保存の鍵と認証の鍵の世代: docs/SPEC_ACCOUNT_AREAS.md §6）。前の版（v7・v6）の保存は activate で消える
 const CACHE_NAME = "spelldash-v8";
 
 // 先読みのページ。配信の転送（vercel.json の redirects）が受けるパス（/list.html・/packs/*・/typing.html・/typing-game.html・/battle.html）は入れない: cache.addAll は転送を追うので、

@@ -1,4 +1,4 @@
-// 創業者の 5 段（DECISION4「旧コードのタブ」）を 1 回流す。
+// 創業者の 5 段（docs/SPEC_ACCOUNT_AREAS.md §6 の 5 段）を 1 回流す。
 //   1. 旧い本番の木を配り、A でログインした旧いタブを 5 つ開く（lib/seed.mjs の OLD_TABS: live 学習中のまま裏へ・frozen 学習中に凍らせる・
 //      offline 学習状況のページで通信を切る・visible 見えたままトークンの更新を始める・sw 印の無いホームを裏へ）
 //   2. 配信を新しい木に替え、同じオリジンの別のタブで新しいコードを開く（移行があれば流れる）。visible の更新は、受け口が移行の後まで答えを止める
@@ -8,7 +8,7 @@
 //      旧いタブが答えた後と、旧いタブを閉じた後に、新しいタブで新しいコードの文書を開き直す（/ と /switch.html・裏と表）。移行の後に旧いタブが旧い鍵へ書いた値を、
 //      新しいコードは次の読み込みの片付け（見張りの頭・切り替えの画面）でだけ扱うので、その道を通す
 //   5. 記録した要求を lib/analyze.mjs で調べる
-//   6. A へ戻る（orphans のある木だけ。DECISION5 の 1）: 旧いタブを閉じた後に、新しいタブを A に戻す（logout の回は B をログアウトしてから A の欄で、
+//   6. A へ戻る（orphans のある木だけ。docs/SPEC_ACCOUNT_AREAS.md §0.3 の 1）: 旧いタブを閉じた後に、新しいタブを A に戻す（logout の回は B をログアウトしてから A の欄で、
 //      link の回は B のまま A のリンクで、B にログインしない回は A をログアウトしてから A の欄で）。A の領域の語の記録・送る語の印・学習状況の画面・
 //      A のクラウドの行を読む。もう一度 A から離れて（link は B へ、ほかはゲストへ）A へ戻り、同じ書き込みを 2 度取り込まないかを見る。
 //      その間ずっと、見張りのタブ（lib/watch.html）が localStorage の領域の鍵の書き込みの知らせを聞き、B（とゲスト）の領域に旧いタブの語が入らないかを見る
@@ -771,7 +771,7 @@ export async function runScenario({ browser, oldRoot, newRoot, vendorFile, oldVe
     note("1", "old-offline の通信を切った");
 
     // 見えたままの old-visible でトークンの更新を始め、受け口がその答えを止める（新しいタブの移行が終わるまで）。
-    // DESIGN-FINAL §6.2「自分のトークンの更新で旧い鍵を書き戻しても A のまま」の道: 更新の途中で旧い鍵が移されて消える
+    // docs/SPEC_ACCOUNT_AREAS.md §6 の 2「自分のトークンの更新で旧い鍵を書き戻しても A のまま」の道: 更新の途中で旧い鍵が移されて消える
     result.refreshRace = { trigger: "refreshSession", held: false };
     await oldKeyCheck("更新を止める前");
     fake.holdToken("old-visible");
