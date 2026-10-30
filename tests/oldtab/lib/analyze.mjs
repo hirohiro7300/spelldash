@@ -819,3 +819,22 @@ export function verdictOf(report, result) {
   if (report.imports?.missing?.length) return "NOT_IMPORTED";
   return "PASS";
 }
+
+// run.mjs の終わりの値（回ごとの判定から）。強い順に 1 > 2 > 4 > 3 > 0:
+//   1 = 漏れか A の記録の後退（LEAK・LOSS。途中で落ちて INVALID の回でも、見つけた漏れ・後退があれば 1）
+//   2 = 段を通れなかった回がある（INVALID）・回が 1 つも無い・知らない判定（漏れなしとは言えない）
+//   4 = 旧いタブの学習を A へ 2 度取り込んだ回がある（DOUBLE）
+//   3 = 漏れも後退も無く、どの回も段を通り、A へ戻った時の取り込みが足りないだけ（NOT_IMPORTED）
+//   0 = どの回も PASS
+// 3 は NOT_IMPORTED だけに使う（CI のジョブ oldtab は、取り込みが入るまで 3 を注意にして通すので、INVALID と DOUBLE を 3 に混ぜない）。
+// 変異の確かめ（--expect-leak）: 回が 1 つ以上あり、どの回も LEAK なら 0、ほかは 1
+export const EXIT = Object.freeze({ PASS: 0, LEAK: 1, LOSS: 1, INVALID: 2, NOT_IMPORTED: 3, DOUBLE: 4 });
+export function exitCodeOf(runs, { expectLeak = false } = {}) {
+  if (expectLeak) return runs.length && runs.every((r) => r.verdict === "LEAK") ? 0 : 1;
+  if (!runs.length) return EXIT.INVALID;
+  if (runs.some((r) => r.verdict === "LEAK" || r.verdict === "LOSS" || r.findings > 0)) return EXIT.LEAK;
+  if (runs.some((r) => r.verdict === "INVALID" || !Object.hasOwn(EXIT, r.verdict))) return EXIT.INVALID;
+  if (runs.some((r) => r.verdict === "DOUBLE")) return EXIT.DOUBLE;
+  if (runs.some((r) => r.verdict === "NOT_IMPORTED")) return EXIT.NOT_IMPORTED;
+  return EXIT.PASS;
+}

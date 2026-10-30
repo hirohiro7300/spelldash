@@ -27,9 +27,11 @@
 //   --import-state report|keep|<ファイル>  A へ戻った後の、旧いタブで答えた語の 3 状態の決まり（取り込みの仕様しだい。統合担当が決める）。
 //                  report（既定）= 値を出すだけ・keep = A の初めの状態のまま（A に無かった語は これから）・ファイル = 既定の export の関数
 //                  ({ id, prior, after, need, written, pub }) => 0（これから）|1（あやふや）|2（覚えた）|null（見ない）
-// 終わりの値: 0 = 漏れなし（どの回も 5 段を通った）・1 = 漏れか A の記録の後退あり・3 = 漏れは無いが、A へ戻った時に旧いタブの学習が入っていない
-//           （NOT_IMPORTED）か 2 度入った（DOUBLE）回がある・2 = 5 段（と戻る段）を通れなかった回がある（漏れなしとは言えない）・
-//           処理されない失敗（unhandledRejection など）で止まったときも 2（それまでの記録を書く）。1 > 3 > 2 の順に強い
+// 終わりの値（lib/analyze.mjs exitCodeOf）: 0 = 漏れなし（どの回も 5 段を通った）・1 = 漏れか A の記録の後退あり・
+//           2 = 5 段（と戻る段）を通れなかった回がある（漏れなしとは言えない。処理されない失敗〔unhandledRejection など〕で止まったときも 2。
+//           それまでの記録を書く）・4 = A へ戻った時に旧いタブの学習が 2 度入った（DOUBLE）回がある・
+//           3 = 漏れも後退も無く、どの回も段を通ったが、A へ戻った時に旧いタブの学習が入っていない（NOT_IMPORTED）回がある。
+//           1 > 2 > 4 > 3 の順に強い（3 は NOT_IMPORTED だけ。CI のジョブ oldtab は取り込みが入るまで 3 だけを注意にして通す）
 // 判定: LEAK（漏れを見つけた。旧いタブの語が B かゲストの領域に入ったのも）・LOSS（漏れは無いが A の記録が後ろへ戻った）・
 //       DOUBLE・NOT_IMPORTED（orphans のある木の A へ戻る段。上の 3）・PASS（どれも無く全部の段を通った）・
 //       INVALID（段を通れなかった。途中で落ちた回は見つけていても INVALID）
@@ -43,7 +45,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { chromium } from "playwright-core";
 import { prepareOldTree, describeTree, cacheDir } from "./lib/trees.mjs";
 import { runScenario } from "./lib/scenario.mjs";
-import { analyze, verdictOf } from "./lib/analyze.mjs";
+import { analyze, verdictOf, exitCodeOf } from "./lib/analyze.mjs";
 import { applyMutant, MUTANTS } from "./lib/mutants.mjs";
 import { VERSION as SB_VERSION, ensureAuthLib, isVersion } from "./lib/authLib.mjs";
 
@@ -258,13 +260,7 @@ try {
 }
 writeSummary();
 // 途中で落ちて INVALID の回でも、見つけた漏れ・後退があれば 1
-const anyLeak = runs.some((r) => r.verdict === "LEAK" || r.verdict === "LOSS" || r.findings > 0);
-const allLeak = runs.every((r) => r.verdict === "LEAK");
-const anyInvalid = runs.some((r) => r.verdict === "INVALID");
-const anyImport = runs.some((r) => r.verdict === "NOT_IMPORTED" || r.verdict === "DOUBLE");
 console.log(`\n${runs.map((r) => `${r.verdict} ${r.name}`).join("\n")}`);
-if (opts.expectLeak) {
-  console.log(allLeak ? "変異: どの回も漏れを見つけた（検査は落ちることができる）" : "変異なのに漏れを見つけない回か、途中で落ちた回がある（検査が甘いか、確かめになっていない）");
-  process.exit(allLeak ? 0 : 1);
-}
-process.exit(anyLeak ? 1 : anyImport ? 3 : anyInvalid ? 2 : 0);
+const code = exitCodeOf(runs, { expectLeak: opts.expectLeak });
+if (opts.expectLeak) console.log(code === 0 ? "変異: どの回も漏れを見つけた（検査は落ちることができる）" : "変異なのに漏れを見つけない回か、途中で落ちた回がある（検査が甘いか、確かめになっていない）");
+process.exit(code);

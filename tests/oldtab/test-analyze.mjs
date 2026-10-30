@@ -14,7 +14,7 @@
 //     届かないときは通さない。答えの窓は次の答えの打ち始めで切り、画面が次の語へ進まなかった答えは数えない
 //   - A へ戻る段（docs/SPEC_ACCOUNT_AREAS.md §0.3 の 1）: 旧いタブの学習が A の領域に足される（置き換え・足りない・2 度・2 回目に増える・送信待ち・A のクラウド・
 //     最後に答えた時刻・学習状況の画面）、B とゲストの領域に入らない、3 状態の決まり（report・keep・関数）、古い記録と分離の前の木には無い
-import { analyze, verdictOf } from "./lib/analyze.mjs";
+import { analyze, verdictOf, exitCodeOf } from "./lib/analyze.mjs";
 import { USERS, cloudSeed } from "./lib/seed.mjs";
 
 const A = USERS.A.id;
@@ -411,6 +411,40 @@ check("端末の計測（funnel_events）は A の文字だけを見る", !flagg
   check("A へ戻る段の無い古い記録には、取り込みの確かめも新しい判定も無い", old.imports === null && !Object.keys(old.validity).some((k) => k.startsWith("6 ")));
   const noTree = analyze(base([], { returnA: { first: { active: true } } }));
   check("orphans の無い木（分離の前）には取り込みの確かめが無い", noTree.imports === null);
+}
+
+// 終わりの値（run.mjs）: 1（LEAK・LOSS・見つけた漏れ）> 2（INVALID）> 4（DOUBLE）> 3（NOT_IMPORTED）> 0（PASS）。
+// CI のジョブ oldtab は、取り込みが入るまで 3 だけを注意にして通す。そのため 3 は「漏れも後退も無く、どの回も段を通り、足りないのは取り込みだけ」の時だけ。
+// 段を通れなかった回（INVALID）・2 度入った回（DOUBLE）・回が無い・知らない判定が 1 つでもあれば 3 にしない
+{
+  const R = (...vs) => vs.map((v, i) => (typeof v === "string" ? { name: `r${i}`, verdict: v, findings: 0 } : { name: `r${i}`, findings: 0, ...v }));
+  check("終わりの値: どの回も PASS なら 0", exitCodeOf(R("PASS", "PASS", "PASS", "PASS")) === 0);
+  check("終わりの値: PASS と NOT_IMPORTED だけなら 3", exitCodeOf(R("PASS", "NOT_IMPORTED", "NOT_IMPORTED")) === 3);
+  check("終わりの値: NOT_IMPORTED と INVALID なら 2（段を通れなかった回を取り込みの注意に隠さない）", exitCodeOf(R("NOT_IMPORTED", "INVALID", "NOT_IMPORTED", "NOT_IMPORTED")) === 2);
+  check("終わりの値: DOUBLE は 4（3 と分ける。2 度入ったのを注意で通さない）", exitCodeOf(R("DOUBLE")) === 4);
+  check("終わりの値: DOUBLE と NOT_IMPORTED なら 4", exitCodeOf(R("NOT_IMPORTED", "DOUBLE")) === 4);
+  check("終わりの値: INVALID と DOUBLE なら 2", exitCodeOf(R("DOUBLE", "INVALID")) === 2);
+  check("終わりの値: LEAK はほかの何があっても 1", exitCodeOf(R("NOT_IMPORTED", "INVALID", "DOUBLE", "LEAK")) === 1);
+  check("終わりの値: LOSS は 1", exitCodeOf(R("PASS", "LOSS")) === 1);
+  check("終わりの値: 途中で落ちた回（INVALID）でも漏れを見つけていれば 1", exitCodeOf(R("NOT_IMPORTED", { verdict: "INVALID", findings: 3 })) === 1);
+  check("終わりの値: 回が 1 つも無ければ 2（何も確かめていない）", exitCodeOf([]) === 2);
+  check("終わりの値: 知らない判定は 2", exitCodeOf(R("PASS", "WHAT")) === 2);
+  check("変異（--expect-leak）: どの回も LEAK なら 0", exitCodeOf(R("LEAK", "LEAK"), { expectLeak: true }) === 0);
+  check("変異（--expect-leak）: LEAK でない回があれば 1", exitCodeOf(R("LEAK", "INVALID"), { expectLeak: true }) === 1 && exitCodeOf(R("LEAK", "NOT_IMPORTED"), { expectLeak: true }) === 1);
+  check("変異（--expect-leak）: 回が 1 つも無ければ 1（漏れを見つけたと言わない）", exitCodeOf([], { expectLeak: true }) === 1);
+  // 3 になるのは PASS と NOT_IMPORTED だけの組で、NOT_IMPORTED が 1 つはある時だけ（判定 6 つの長さ 1〜3 の組を全部）
+  const V = ["PASS", "NOT_IMPORTED", "DOUBLE", "INVALID", "LEAK", "LOSS"];
+  const combos = [];
+  for (const a of V) {
+    combos.push([a]);
+    for (const b of V) {
+      combos.push([a, b]);
+      for (const c of V) combos.push([a, b, c]);
+    }
+  }
+  const wrong3 = combos.filter((c) => (exitCodeOf(R(...c)) === 3) !== (c.includes("NOT_IMPORTED") && c.every((v) => v === "PASS" || v === "NOT_IMPORTED")));
+  check(`終わりの値 3 は「PASS と NOT_IMPORTED だけ・NOT_IMPORTED が 1 つはある」組の時だけ（${combos.length} 組）`, wrong3.length === 0);
+  if (wrong3.length) console.log(`     違う組: ${wrong3.slice(0, 5).map((c) => c.join("+")).join(" / ")}`);
 }
 
 console.log(failed ? `\n${failed} 件 NG` : "\nすべて ok");
