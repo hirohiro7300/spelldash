@@ -23258,6 +23258,167 @@ console.log("78.7 人ごとの保存の領域:");
         for (const c of [c1, c2, c3, c4]) await c.close();
       }
     }
+
+    // (P10) ログアウトの切り替え先（ゲスト）の写しを読めない（index はゲストを IndexedDB の写しで指すが、写しが無い・要約が合わない）: DECISION4 必須修正 1
+    // （IndexedDB の読みと照合ができなければログアウトを完了しない）。写しは signOut の前に読む。signOut を呼ばない・元のページに戻って文
+    // 「この端末に記録を安全に保存できなかったため、切り替えられません。…」・ログインも A の記録も印も替わらない・ホームを開いても A のまま開く。
+    // 反証: signOut の後に読んでいたので、ログインを失い、A の記録は localStorage にあるのに復旧の画面から出られなかった
+    for (const variant of ["無い", "要約が合わない"]) {
+      const ctx = await ctxOf();
+      try {
+        const A = personRec("A", "3");
+        const G = personRec("G", "1");
+        const idx = { [`u:${UA}`]: { at: "ls", lastUsedAt: new Date().toISOString() }, guest: { at: "idb:G-1", lastUsedAt: new Date(Date.now() - 86400000).toISOString() } };
+        await putRaw(ctx, { ...marks(`u:${UA}`, 2, idx), [AUTH]: sessOf(userA), spelldash_onboarded: "1", ...phys(`u:${UA}`, A) });
+        if (variant === "無い") await idbPut(ctx, [{ area: "zz-other", id: "Z", keys: { spelldash_xp: "1" }, savedAt: new Date().toISOString(), schema: "7" }]);
+        else {
+          // 要約の合わない写し（読み直して確かめる口 putVerified は通らないので、控えの置き場を作ってから生の口で書く）
+          await rawDoc(ctx, async (rec) => {
+            const m = await import("/js/areaStore.js");
+            (await m.openAreaStore()).close();
+            await new Promise((resolve, reject) => {
+              const req = indexedDB.open(m.DB_NAME);
+              req.onerror = () => reject(req.error);
+              req.onsuccess = () => {
+                const tx = req.result.transaction("areas", "readwrite");
+                tx.objectStore("areas").put(rec);
+                tx.oncomplete = () => { req.result.close(); resolve(); };
+                tx.onerror = () => reject(tx.error);
+              };
+            });
+          }, { area: "guest", id: "G-1", keys: G, savedAt: new Date().toISOString(), schema: "7", sum: "0:00000000" });
+        }
+        const page = await openApp(ctx, "/stats.html", statsReady);
+        const before = await dumpRaw(ctx);
+        await logoutOn(page);
+        const backed = await page.waitForFunction(() => location.pathname === "/stats.html" && window.SpellDashArea?.area !== undefined && (document.getElementById("authMessage")?.textContent ?? "").length > 0, null, { timeout: 15000 }).then(() => true).catch(() => false);
+        const msg = await authText(page);
+        const rec = backed ? null : await recovery(page).catch(() => null);
+        const after = await dumpRaw(ctx);
+        check(`78.7 ログアウトの切り替え先（ゲスト）の写しが${variant}: signOut を呼ばない・元のページに戻って文（切り替えられません）・ログインも A の記録も印も替わらない・ゲストを展開しない・途中の印なし`,
+          backed && page.visited.includes("/switch.html") && String(msg ?? "").startsWith(LEAD) && sessionUser(after) === UA && JSON.stringify(pick(areaOf(after, `u:${UA}`), STABLE)) === JSON.stringify(pick(areaOf(before, `u:${UA}`), STABLE)) && after["sd2.area"] === before["sd2.area"] && Object.keys(areaOf(after, "guest")).length === 0 && after["sd2.switch"] === undefined && (await signOuts(ctx)).length === 0,
+          JSON.stringify({ backed, rec, visited: page.visited, msg, user: sessionUser(after), marker: after["sd2.area"], sw: after["sd2.switch"] ?? null, signOuts: await signOuts(ctx) }));
+        await page.close();
+        const home = await openApp(ctx, "/index.html", () => window.SpellDashArea !== undefined && document.readyState === "complete");
+        const homeState = await home.evaluate(() => ({ path: location.pathname, area: window.SpellDashArea?.area ?? null, signedIn: window.SpellDashArea?.signedIn?.() ?? null })).catch(() => null);
+        check(`78.7 ログアウトの切り替え先の写しが${variant}の後にホームを開く: 復旧の画面にならず A の領域でログインのまま開く`,
+          homeState?.path === "/index.html" && homeState.area === `u:${UA}` && homeState.signedIn === true && sessionUser(await dumpRaw(ctx)) === UA, JSON.stringify({ homeState, visited: home.visited }));
+        await home.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P11) 移行の前（この版より前）にログアウトして、未ログインのまま学んだ端末（持ち主 A・ログアウトの時刻・その後の答え・セッションなし）で A に入り直す。
+    // 移行で A の領域へ入り、未ログインなのでゲストで開く。A でログインすると「この端末の記録を、このアカウントの記録に足す。…」を 1 回たずねる（js/sync.js learnedSinceLogout）。
+    //   キャンセル → ログインをやめる（js/auth.js runInitialSync の "cancelled"）: 切り替えの画面で A を退避してから scope local の signOut・ゲストの領域で開く・
+    //     文「ログインをやめた。記録はこの端末に残る。」・クラウドに何も書かない・A の写しは 1 字も違わない（ログアウトの時刻も残る: 次のログインでまたたずねる）
+    //   OK → 足す: A のまま・この端末の答えが A のクラウドへ（A の名前で）・クラウドの記録も A の領域に入る・ログアウトの時刻は消える・signOut を呼ばない
+    for (const answer of ["cancel", "ok"]) {
+      const ctx = await rawCtx({ serviceWorkers: "block" });
+      ctx.dialogs = [];
+      ctx.on("page", (p) => p.on("dialog", (d) => { ctx.dialogs.push(d.message()); (answer === "ok" ? d.accept() : d.dismiss()).catch(() => {}); }));
+      try {
+        const cloud = createCloud({ word_progress: [wpRowOf(UA, PUB[40])], user_progress: [], user_items: [] });
+        const logoutAt = new Date(Date.now() - 86400000).toISOString();
+        const stats = JSON.stringify({ [PUB[0]]: { playCount: 2, correctCount: 2, lastPlayed: new Date().toISOString(), ls: 2, lsAt: Date.now() } });
+        const old = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_owner: UA, spelldash_logout_at: logoutAt, spelldash_word_stats: stats, spelldash_xp: "50", spelldash_tutorial: JSON.stringify({ seen: ["T1", "T2", "T3", "T4"], started: true, setDone: true }), spelldash_test_cloud: cloud.id };
+        await putRaw(ctx, old);
+        const page = await openApp(ctx, "/stats.html", statsReady);
+        const area0 = await page.evaluate(() => window.SpellDashArea?.area ?? null).catch(() => null);
+        await signInOn(page, userA);
+        const asked = await waitUntil(async () => ctx.dialogs.length > 0, 15000, 100);
+        const askedOk = area0 === "guest" && asked && String(ctx.dialogs[0] ?? "").startsWith("この端末の記録を、このアカウントの記録に足す。");
+        if (answer === "cancel") {
+          await waitUntil(async () => (await signOuts(ctx)).length > 0, 15000, 100);
+          const back = await waitArea(page, "guest", 20000);
+          await page.waitForTimeout(800);
+          const raw = await dumpRaw(ctx);
+          const aCopy = await idbGet(ctx, "areas", `u:${UA}`);
+          const msg = await authText(page);
+          const writes = cloud.writes(null).filter((e) => e.table !== "funnel_events");
+          const detail = { area0, dialogs: ctx.dialogs, back, user: sessionUser(raw), msg, signOuts: await signOuts(ctx), aStats: aCopy?.keys?.spelldash_word_stats ?? null, aLogout: aCopy?.keys?.spelldash_logout_at ?? null, writes: writes.map((e) => e.table), visited: page.visited };
+          check("78.7 移行の前のログアウトの後に学んだ端末で A に入り直す: 足すかを 1 回たずねる", askedOk && ctx.dialogs.length === 1, JSON.stringify(detail));
+          check("78.7 足すかの問いでキャンセル: ログインをやめる（ゲストの領域で開く・セッションなし・signOut は scope local で 1 回）・文「ログインをやめた。記録はこの端末に残る。」",
+            back && sessionUser(raw) === null && JSON.stringify(await signOuts(ctx)) === JSON.stringify(["local"]) && msg === "ログインをやめた。記録はこの端末に残る。", JSON.stringify(detail));
+          check("78.7 足すかの問いでキャンセル: クラウドに何も書かない・A の記録（ログアウトの後の答え）は A の写しに 1 字も違わず・ログアウトの時刻は残る（次のログインでまたたずねる）",
+            writes.length === 0 && aCopy?.keys?.spelldash_word_stats === stats && aCopy?.keys?.spelldash_logout_at === logoutAt && Object.keys(areaOf(raw, `u:${UA}`)).length === 0, JSON.stringify(detail));
+        } else {
+          const landed = await waitArea(page, `u:${UA}`, 20000);
+          await waitUntil(async () => cloud.writes("word_progress").some((e) => e.userId === UA), 10000, 200);
+          await waitUntil(async () => areaOf(await dumpRaw(ctx), `u:${UA}`).spelldash_logout_at === undefined, 10000, 200);
+          const raw = await dumpRaw(ctx);
+          const a = areaOf(raw, `u:${UA}`);
+          const ws = JSON.parse(a.spelldash_word_stats || "{}");
+          const sentA = cloud.rows("word_progress").filter((r) => r.user_id === UA).map((r) => r.word_id).sort();
+          const others = cloud.writes(null).filter((e) => e.table !== "funnel_events" && e.userId !== UA);
+          const detail = { area0, dialogs: ctx.dialogs, landed, user: sessionUser(raw), signOuts: await signOuts(ctx), words: Object.keys(ws), sentA, others: others.map((e) => [e.table, e.userId]), logout: a.spelldash_logout_at ?? null, owner: a.spelldash_owner ?? null };
+          check("78.7 足すかの問いで OK: 1 回たずねる・A のまま（A の領域・セッションは A・signOut を呼ばない）",
+            askedOk && ctx.dialogs.length === 1 && landed && sessionUser(raw) === UA && (await signOuts(ctx)).length === 0, JSON.stringify(detail));
+          check("78.7 足すかの問いで OK: この端末の答えが A のクラウドへ A の名前で送られる・クラウドの記録も A の領域に入る・ログアウトの時刻は消える・ほかの人の名前の書き込みは無い",
+            sentA.includes(PUB[0]) && Boolean(ws[PUB[0]]) && Boolean(ws[PUB[40]]) && a.spelldash_logout_at === undefined && a.spelldash_owner === UA && others.length === 0, JSON.stringify(detail));
+        }
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P12) 復旧の画面の「記録はこの端末に残っている。」は、写しを読めて確かめられたときだけ出す（js/areaSwitch.js copiesReadable）。
+    //   (a) ゲスト → 前に来た A（index は A を IndexedDB の写しで指すが、写しが無い）: 認証が先に替わり、切り替え先を読めないので復旧の画面（理由 target）。
+    //       「記録はこの端末に残っている。」は出さず、「この端末にある記録の控えの一部を読めなかった。」を出す（反証: 写しが無いのに残っていると出た）
+    //   (b) A は localStorage・セッションは B・退避の写しが入らない: 復旧の画面（理由 quota）。写しは index に無いので「記録はこの端末に残っている。」を出す
+    {
+      const lines = (page) => page.waitForFunction(() => {
+        const kept = document.getElementById("switchKept");
+        const lost = document.getElementById("switchLost");
+        return document.getElementById("switchRecovery")?.hidden === false && kept && lost && (!kept.hidden || !lost.hidden);
+      }, null, { timeout: 15000 }).then(() => true).catch(() => false).then(async (settled) => ({
+        settled,
+        ...(await page.evaluate(() => {
+          const kept = document.getElementById("switchKept");
+          const lost = document.getElementById("switchLost");
+          const shown = (el) => !!el && !el.hidden && getComputedStyle(el).display !== "none";
+          return { path: location.pathname, reason: document.getElementById("switchRecovery")?.dataset.reason ?? null, kept: shown(kept), lost: shown(lost), line: (kept ?? lost)?.parentElement?.innerText.trim() ?? null };
+        }).catch(() => ({})))
+      }));
+      {
+        const ctx = await ctxOf();
+        try {
+          const now = new Date().toISOString();
+          await putRaw(ctx, { ...marks("guest", 3, { guest: { at: "ls", lastUsedAt: now }, [`u:${UA}`]: { at: "idb:A-1", lastUsedAt: now } }), spelldash_onboarded: "1", ...phys("guest", personRec("G", "1")) });
+          await idbPut(ctx, [{ area: "zz-other", id: "Z", keys: { spelldash_xp: "1" }, savedAt: now, schema: "7" }]);
+          const page = await openApp(ctx, "/stats.html", statsReady);
+          await signInOn(page, userA);
+          const st = await lines(page);
+          check("78.7 復旧の画面（切り替え先の A の写しが無い）: 理由 target・「記録はこの端末に残っている。」は出さない・「この端末にある記録の控えの一部を読めなかった。学習・保存・同期は止めた。」",
+            st.settled && st.path === "/switch.html" && st.reason === "target" && !st.kept && st.lost && st.line === "この端末にある記録の控えの一部を読めなかった。学習・保存・同期は止めた。", JSON.stringify(st));
+          await page.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+      {
+        const ctx = await ctxOf();
+        try {
+          await putRaw(ctx, { ...marks(`u:${UA}`, 1, { [`u:${UA}`]: { at: "ls" } }), [AUTH]: sessOf(userB), spelldash_onboarded: "1", ...phys(`u:${UA}`, personRec("A", "2")) });
+          await ctx.addInitScript(() => {
+            const put = IDBObjectStore.prototype.put;
+            IDBObjectStore.prototype.put = function (value) {
+              if (this.name === "areas" && location.pathname === "/switch.html") throw new DOMException("full", "QuotaExceededError");
+              return put.apply(this, arguments);
+            };
+          });
+          const page = await openApp(ctx, "/stats.html", () => location.pathname === "/switch.html" && document.getElementById("switchRecovery")?.hidden === false);
+          const st = await lines(page);
+          check("78.7 復旧の画面（A は localStorage・退避の写しが入らない）: 理由 quota・「記録はこの端末に残っている。学習・保存・同期は止めた。」",
+            st.settled && st.path === "/switch.html" && st.reason === "quota" && st.kept && !st.lost && st.line === "記録はこの端末に残っている。学習・保存・同期は止めた。", JSON.stringify(st));
+          await page.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+    }
   }
 }
 

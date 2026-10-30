@@ -762,6 +762,8 @@ async function runAll() {
     const switchAssets = [...switchHtml.matchAll(/<(?:link rel="stylesheet"|script)[^>]*(?:href|src)="([^"]+)"/g)].map((m) => "/" + m[1].replace(/^\.?\//, ""));
     eq("U1 sw.js は切り替えの画面とその部品（見張り・js/areaSwitch.js・js/areaStore.js・css）を先読みする（オフラインでも直しと復旧の画面が開く）", ["/switch.html", ...new Set(switchAssets), "/js/areaStore.js"].filter((a) => !core.includes(a)), []);
     ok("U1 switch.html は部品が読めないとき（オフライン・取れない）に復旧の画面と「もう一度」を出す（小さい classic の script）", /<script>[^<]*switchRecovery[^<]*<\/script>/.test(switchHtml) && switchHtml.includes('id="switchOffline"'));
+    ok("U1 switch.html の復旧の画面の「記録はこの端末に残っている。」は初めは隠し、写しを確かめてから出す（読めない写しがあれば「この端末にある記録の控えの一部を読めなかった。」）",
+      /<span id="switchKept" hidden>記録はこの端末に残っている。<\/span>/.test(switchHtml) && /<span id="switchLost" hidden>この端末にある記録の控えの一部を読めなかった。<\/span>/.test(switchHtml) && !/<p>記録はこの端末に残っている。/.test(switchHtml));
     // 列挙は領域を知る口
     const backup = fs.readFileSync(path.join(ROOT, "js/backup.js"), "utf8");
     ok("U1 js/backup.js の列挙は SpellDashArea.keys()（見張りの無い所だけ key・length）", /SpellDashArea/.test(backup) && (strip(backup).match(/localStorage\.length/g) ?? []).length === 1);
@@ -1952,6 +1954,89 @@ async function runAll() {
       const r = await logout(b, idb, fa);
       eq(`U5 ログアウトの退避が${name}: 理由 ${reason}・signOut を呼ばない・認証も領域も localStorage も替わらない（途中の印も残さない）`, [r.error?.reason ?? null, fa.calls.length, norm(b.dump())], [reason, 0, before]);
     }
+    // (2b) 切り替え先（ゲスト）の写しを読めない・確かめられない: 読むのは signOut の前（DECISION4 必須修正 1: IndexedDB の読みと照合ができなければログアウトを
+    // 完了しない）。理由 target・signOut を呼ばない・認証も領域も localStorage も替わらない・その後のページは A のまま開く。
+    // 反証: signOut の後に読んでいたので、ログインを失い、A の記録は localStorage にあるのに復旧の画面から出られなかった
+    for (const [name, inject] of [
+      ["無い", (idb) => idb.dbs.get("spelldash-areas").stores.get("areas").data.delete("guest")],
+      ["要約が合わない", (idb) => { const r = idb.peek("areas", "guest"); idb.poke("areas", { ...r, sum: `${r.sum}x` }); }],
+      ["id が index と違う", (idb) => { const r = idb.peek("areas", "guest"); idb.poke("areas", { ...r, id: `${r.id}-other` }); }],
+      ["読むと中身が違う", (idb) => (idb.corruptRead = (s, v) => (s === "areas" && v.area === "guest" ? { ...v, keys: { ...v.keys, spelldash_xp: "0" } } : v))]
+    ]) {
+      const { b, idb } = await loggedInA();
+      inject(idb);
+      const before = norm(b.dump());
+      const fa = fakeAuth(b);
+      const r = await logout(b, idb, fa);
+      eq(`U5 ログアウトの切り替え先（ゲスト）の写しが${name}: 理由 target・signOut を呼ばない・認証も領域も localStorage も替わらない（途中の印も残さない）`,
+        [r.error?.reason ?? null, fa.calls.length, norm(b.dump()), b.get("sd2.auth") !== null], ["target", 0, before, true]);
+      const tab = openTab(new Backing(b.dump()));
+      ok(`U5 ログアウトの切り替え先の写しが${name}の後のページ: 頭で止めない・A の領域でログインのまま`, tab.log.stopped === 0 && tab.ctx.SpellDashArea?.area === "u:A" && tab.ctx.SpellDashArea.signedIn() === true);
+    }
+    // (2c) 切り替えの途中（drain の間）に、見え方の古いタブが切り替え先（ゲスト）の領域へ書いた残り: orphans へ写すのも signOut の前。
+    // 写せなければ止める（理由 quota・signOut を呼ばない・A の記録とログインはそのまま・残りの値は localStorage に残る）。写せれば写してから signOut
+    for (const writable of [false, true]) {
+      const { b, idb } = await loggedInA();
+      let wrote = false;
+      const onSleep = async () => {
+        if (wrote) return;
+        wrote = true;
+        b.set("sd2.guest.xp", "999");
+        if (!writable) idb.failPut = (s) => (s === "orphans" ? quotaError() : null);
+      };
+      let atCall = null;
+      const fa = fakeAuth(b, { onCall: () => (atCall = { orphans: idb.all("orphans").filter((o) => o.area === "guest").map((o) => o.keys), left: b.get("sd2.guest.xp") }) });
+      const r = await logout(b, idb, fa, { onSleep });
+      if (!writable) {
+        eq("U5 ログアウトの途中に切り替え先へ書かれた残りを写せない（容量）: 理由 quota・signOut を呼ばない・A は localStorage に 1 字も違わず・印は u:A のまま・ログインのまま・残りの値は localStorage に残る・途中の印なし",
+          [r.error?.reason ?? null, fa.calls.length, areaRecords(b, "u:A"), b.get("sd2.area"), b.get("sd2.auth") !== null, b.get("sd2.guest.xp"), b.get("sd2.switch")],
+          ["quota", 0, sortedRec(A), "u:A#2", true, "999", null]);
+      } else {
+        eq("U5 ログアウトの途中に切り替え先へ書かれた残り（写せる）: signOut の前に orphans へ領域つきで写して localStorage から消す・ログアウトは終わる（ゲストの写しの記録が戻る）",
+          [r.error?.message ?? null, fa.calls.length, atCall, b.get("sd2.area")?.split("#")[0], areaRecords(b, "guest")],
+          [null, 1, { orphans: [{ spelldash_xp: "999" }], left: null }, "guest", sortedRec(G)]);
+      }
+    }
+    // (2d) 復旧の画面の「記録はこの端末に残っている。」は、index が指す写し（移行の途中なら確かめた legacy も）を全部読めて、要約が合うときだけ出す
+    // （copiesReadable）。読めない写しがあれば、その文は出さない（反証: 切り替え先の写しが無い端末でも「記録はこの端末に残っている。」と出た）
+    {
+      const readable = typeof SW.copiesReadable === "function" ? SW.copiesReadable : null;
+      ok("U5 復旧の画面の文を決める口 copiesReadable（js/areaSwitch.js）がある", readable);
+      if (readable) {
+        const of = async (b, idb) => readable(rawOf(b), K, { openStore: () => ST.openAreaStore(idb) });
+        const got = [];
+        {
+          const b = new Backing({ ...migratedMarks("u:A", 1), ...phys("u:A", A) });
+          got.push(["写しが無い（今の領域だけ localStorage）", await of(b, new FakeIDB()), true]);
+          const idb = new FakeIDB();
+          idb.failOpen = new Error("blocked");
+          got.push(["写しが無い・控えの置き場が開けない", await of(b, idb), true]);
+        }
+        for (const [name, inject, want] of [
+          ["ゲストの写しが読める", () => {}, true],
+          ["ゲストの写しが無い", (idb) => idb.dbs.get("spelldash-areas").stores.get("areas").data.delete("guest"), false],
+          ["ゲストの写しの要約が合わない", (idb) => { const r = idb.peek("areas", "guest"); idb.poke("areas", { ...r, sum: `${r.sum}x` }); }, false],
+          ["ゲストの写しの id が index と違う", (idb) => { const r = idb.peek("areas", "guest"); idb.poke("areas", { ...r, id: `${r.id}-other` }); }, false],
+          ["控えの置き場が開けない", (idb) => (idb.failOpen = new Error("blocked")), false]
+        ]) {
+          const { b, idb } = await loggedInA();
+          inject(idb);
+          got.push([name, await of(b, idb), want]);
+        }
+        {
+          const idb = new FakeIDB();
+          const store = await ST.openAreaStore(idb);
+          const keys = clean(personSeed("G"));
+          await store.putVerified("legacy", { id: "L9", savedAt: "2026-10-01T00:00:00.000Z", fromSchema: "7", keys, sum: ST.sumOf(keys) });
+          store.close();
+          const b = new Backing({ "sd2.migrating": JSON.stringify({ legacyId: "L9", area: "guest", at: "2026-10-01T00:00:00.000Z" }) });
+          got.push(["移行の途中・legacy が読める", await of(b, idb), true]);
+          const b2 = new Backing({ "sd2.migrating": JSON.stringify({ legacyId: "L8", area: "guest", at: "2026-10-01T00:00:00.000Z" }) });
+          got.push(["移行の途中・legacy が無い", await of(b2, idb), false]);
+        }
+        eq("U5 copiesReadable: 写しを全部読めて要約と id が合うときだけ真", got.map(([n, v]) => [n, v]), got.map(([n, , w]) => [n, w]));
+      }
+    }
     // (3) signOut が通信で失敗: 本物の部品（2.118.0）は、この端末のセッションを先に消してから error を返す（SIGNED_OUT も出す）。退避は確かめ済み。
     // 切り替えは止める（A は localStorage のまま・ゲストを重ねて展開しない）。セッションは無いので、次に開くとゲストへ切り替わる（A は確かめた写し）。
     // 設計の「失敗ならログインもそのまま」はこの版の部品では成り立たない。画面の扱いは創業者の判断を待つ（S/b78/impl/areas-handoff.md）。ここでは失わない・混ぜないを見る
@@ -2647,7 +2732,7 @@ const MUTANTS = [
   ["退避した領域の残り: orphans に写さずに消す", "switch", "        await store.putVerified(\"orphans\", { id: newId(), savedAt: iso(), area, keys: late, sum: sumOf(late) });", ""],
   ["退避した領域の残り: 写しと同じ値も orphans に写す", "switch", "      for (const [name, value] of Object.entries(found)) if (!copy || copy[name] !== value) late[name] = value;", "      for (const [name, value] of Object.entries(found)) late[name] = value;"],
   ["切り替え: 手順 6 で元を消す直前に写しと比べない", "switch", "        if (!sameKeys(collect(area), snapshot)) throw await stop(\"changed\");\n        const at = {", "        const at = {"],
-  ["切り替え: 展開の前に切り替え先の残りを片付けない", "switch", "      if (!live.includes(target) && physicalOf(target).length > 0) {", "      if (false) {"],
+  ["切り替え: 展開の前に切り替え先の残りを片付けない", "switch", "        if (live.includes(target) || physicalOf(target).length === 0) return;", "        return;"],
   ["切り替え: 止める時に元の領域の遅れた値を戻す記録に重ねない", "switch", [["{ ...snapshot, ...collect(area) }", "snapshot"], ["{ ...copy, ...collect(from) }", "copy"]]],
   ["切り替え: 止めるときに切り替え先の index を前に戻さない", "switch", "        if (JSON.stringify(idx[target] ?? null) !== JSON.stringify(targetBefore ?? null)) {", "        if (false) {"],
   ["切り替え: 手順 1 の印が入らないとき容量と言わない", "switch", "      ls.set(K.SWITCH_KEY, JSON.stringify(flag));\n    } catch (error) {\n      throw fail(isQuotaError(error) ? \"quota\" : \"evacuate\", error);", "      ls.set(K.SWITCH_KEY, JSON.stringify(flag));\n    } catch (error) {\n      throw error;"],
@@ -2677,6 +2762,10 @@ const MUTANTS = [
   // 内部の 2（ログアウト・ログインの「移す？」・予行・見張りの旧い認証の鍵）
   ["ログアウト: 退避を確かめる前に signOut する", "switch", '    return switchTo(store, "guest", "logout", {\n      afterArchive: async () => {', '    await signOut();\n    return switchTo(store, "guest", "logout", {\n      afterArchive: async () => {'],
   ["ログアウト: signOut の結果（error とセッションが消えたこと）を確かめない", "switch", [['        if (result?.error) throw fail("signout", result.error);\n', ""], ['        if (sessionArea() !== "guest") throw fail("signout");\n', ""]]],
+  ["ログアウト: 切り替え先の写しを読む前に signOut する", "switch", "      // 切り替え先を、元を消す前・ログアウトの signOut の前に読む", "      if (afterArchive) await afterArchive();\n      // 切り替え先を、元を消す前・ログアウトの signOut の前に読む"],
+  ["ログアウト: 切り替え先の領域の残りを signOut の後にだけ片付ける", "switch", "      await sweepTarget();\n      // 5. ログアウトだけ", "      // 5. ログアウトだけ"],
+  ["復旧の画面: 写しを確かめずに「記録はこの端末に残っている。」を出す", "switch", "  if (copies.length === 0 && !legacyId) return true;", "  return true;"],
+  ["復旧の画面: 移行の途中の legacy を確かめない", "switch", "    if (legacyId) {\n      const record = await store.get(\"legacy\", legacyId);", "    if (false) {\n      const record = await store.get(\"legacy\", legacyId);"],
   ["ログイン: ゲストに記録があってもたずねない", "switch", '      if (ask && from === "guest"', '      if (false && from === "guest"'],
   ["ログイン: アカウントの領域が端末にあってもたずねる", "switch", " && readIndex()[target] === undefined && hasRecords(", " && hasRecords("],
   ["はい: 持ち主の鍵など 5 つを消さない", "switch", "filter(([name]) => !ADOPT_RESET.includes(name))", "filter(() => true)"],

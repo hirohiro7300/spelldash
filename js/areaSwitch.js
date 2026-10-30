@@ -499,15 +499,8 @@ export function createSwitcher(deps) {
         if (!sameKeys(collect(area), snapshot)) throw await stop("changed");
         archived.push([area, snapshot]);
       }
-      // 5. ログアウトだけ: 退避を確かめた後に signOut（scope local）と結果の確かめ。失敗なら止める（F は localStorage のまま・ログインもそのまま。写しは index が指さない）
-      if (afterArchive) {
-        try {
-          await afterArchive();
-        } catch (error) {
-          throw await stop(error instanceof SwitchError ? error.reason : "signout", error);
-        }
-      }
-      // 切り替え先を、元を消す前に読む（読めなければ元を消さずに止める）
+      // 切り替え先を、元を消す前・ログアウトの signOut の前に読む（読めない・確かめられなければ、元を消さず、ログインもそのままで止める。
+      // DECISION4 必須修正 1: IndexedDB の読みと照合ができなければログアウトを完了しない）
       if (adopt) {
         if (!adoptKeys) throw await stop("changed");
         incoming = adoptKeys;
@@ -518,6 +511,26 @@ export function createSwitcher(deps) {
           if (!incoming) throw await stop("target");
         }
       }
+      // 切り替え先の領域に localStorage の残りがある（見え方の古いタブが書いた）: 写しと違う値は orphans へ写してから消す（写しで上書きして失わない）。
+      // IndexedDB に書くので signOut の前にする。手順 7 の直前にもう一度（signOut の間に書かれた残り）
+      const sweepTarget = async () => {
+        if (live.includes(target) || physicalOf(target).length === 0) return;
+        try {
+          await sweepStale(store, { only: [target] });
+        } catch (error) {
+          throw await stop(isQuotaError(error) ? "quota" : "evacuate", error);
+        }
+        if (physicalOf(target).length > 0) throw await stop("changed");
+      };
+      await sweepTarget();
+      // 5. ログアウトだけ: 退避と切り替え先の読みを確かめた後に signOut（scope local）と結果の確かめ。失敗なら止める（F は localStorage のまま・ログインもそのまま。写しは index が指さない）
+      if (afterArchive) {
+        try {
+          await afterArchive();
+        } catch (error) {
+          throw await stop(error instanceof SwitchError ? error.reason : "signout", error);
+        }
+      }
       // 6. index[F] = idb → F の鍵を localStorage から消す。消す直前に、元が写しと同じかを確かめる（写しの後に遅れて書かれた値を消さない。
       // 確かめと消すのは同じ流れの中で、間にほかのタブの書き込みは入らない）。adopt は切り替え先の写しも同じ 1 回で index に入れる
       for (const [area, snapshot] of archived) {
@@ -526,15 +539,8 @@ export function createSwitcher(deps) {
         writeIndex({ ...readIndex(), [area]: at, ...(adopt && area === from ? { [target]: at } : {}) });
         for (const key of physicalOf(area)) ls.remove(key);
       }
-      // 7 の前: 切り替え先の領域に localStorage の残りがある（見え方の古いタブが前に書いた）。写しと違う値は orphans へ写してから消す（写しで上書きして失わない）
-      if (!live.includes(target) && physicalOf(target).length > 0) {
-        try {
-          await sweepStale(store, { only: [target] });
-        } catch (error) {
-          throw await stop(isQuotaError(error) ? "quota" : "evacuate", error);
-        }
-        if (physicalOf(target).length > 0) throw await stop("changed");
-      }
+      // 7 の前: 切り替え先の領域の残りをもう一度（ふつうは無い）
+      await sweepTarget();
       // 7. T を localStorage に全部書く。容量で書けなければ、T の鍵を消し、F を写しから書き戻して index[F] = ls。印は替えない
       if (incoming) {
         wroteTarget = true;
@@ -841,6 +847,38 @@ export async function exportRecords(ls, K, { digest = globalThis.crypto?.subtle,
   return backup;
 }
 
+// 復旧の画面の「記録はこの端末に残っている。」を出してよいか。index が IndexedDB の写しを指す領域の全部（移行の途中なら確かめた legacy も）を読めて、
+// id と要約が合うときだけ真。localStorage にある領域は読める。写しが無い・合わない・控えの置き場が開けなければ偽（その文は出さない）
+export async function copiesReadable(ls, K, { openStore = () => openAreaStore() } = {}) {
+  const index = K.readJson(ls.get(K.INDEX_KEY));
+  const entries = index && typeof index === "object" && !Array.isArray(index) ? Object.entries(index) : [];
+  const copies = entries.filter(([, entry]) => typeof entry?.at === "string" && entry.at.startsWith("idb:"));
+  const migrating = K.readJson(ls.get(K.MIGRATING_KEY));
+  const legacyId = typeof migrating?.legacyId === "string" ? migrating.legacyId : null;
+  if (copies.length === 0 && !legacyId) return true;
+  let store;
+  try {
+    store = await openStore();
+  } catch {
+    return false;
+  }
+  try {
+    if (legacyId) {
+      const record = await store.get("legacy", legacyId);
+      if (!record || record.id !== legacyId || sumOf(record.keys) !== record.sum) return false;
+    }
+    for (const [area, entry] of copies) {
+      const record = await store.get("areas", area);
+      if (!record || `idb:${record.id}` !== entry.at || sumOf(record.keys) !== record.sum) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    store.close();
+  }
+}
+
 // 持ち主の値（§5）: tag = SHA-256("spelldash-backup-owner-v1:" + user id) の頭 32 字。端末ごとの乱数を使わない
 export async function ownerOf(area, digest = globalThis.crypto?.subtle) {
   if (area === "guest") return { kind: "guest" };
@@ -1044,6 +1082,23 @@ function showRecovery(error) {
   if (lead) lead.textContent = "この端末に記録を安全に保存できなかったため、切り替えられません。";
   const quota = document.getElementById("switchQuota");
   if (quota) quota.hidden = error?.reason !== "quota";
+  // 「記録はこの端末に残っている。」は写しを確かめてから出す（読めない写しがあれば、読めなかったことを出す）
+  const kept = document.getElementById("switchKept");
+  const lost = document.getElementById("switchLost");
+  if (kept && lost) {
+    kept.hidden = true;
+    lost.hidden = true;
+    const deps = browserDeps();
+    (deps.keys ? copiesReadable(deps.ls, deps.keys, { openStore: deps.openStore }) : Promise.resolve(false)).then(
+      (readable) => {
+        kept.hidden = !readable;
+        lost.hidden = readable;
+      },
+      () => {
+        lost.hidden = false;
+      }
+    );
+  }
   const exportButton = document.getElementById("switchExport");
   if (exportButton && !exportButton.dataset.wired) {
     exportButton.dataset.wired = "1";
