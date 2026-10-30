@@ -5,7 +5,7 @@
 
 ## 0. 要点
 
-- 新しい版（アカウント分離の入った版）は、表への要求に見出し `X-Client-Info: spelldash/2 supabase-js-web/2.118.0` を付ける。js/supabase.js の `CLIENT_INFO`。ブランチ b78-7-areas の e4d22b9 から入っている。b78-6-release にはまだ入っていない。
+- 新しい版（アカウント分離の入った版）は、表への要求に見出し `X-Client-Info: spelldash/2 supabase-js-web/2.118.0` を付ける。js/supabase.js の `CLIENT_INFO`。ブランチ b78-7-areas の e4d22b9 から入っている。統合の木 b78-6-release には 459ca49（2026-10-30 の統合）で入った（統合の後に js/supabase.js の `CLIENT_INFO` とこの文書の印が同じことを確かめた）。
 - 直前の本番 0507672 までのコードは、認証の部品の既定の印だけを送る。`spelldash/` で始まらない。0507672 は部品を版を決めずに（`@2`）読むので、形は届いた版で違う。今の部品（2.118.0 など）は `supabase-js/<版>; runtime=web`。前の部品（2.105.0 など）は `supabase-js-web/<版>`。
 - 門は、書き込み（insert・update・delete）を、印の世代が 2 以上の要求だけに許す。行の権限の restrictive の方針で足す。今の許す側の方針（本人の行だけ など）はそのまま残る。読む（select）は今のまま。
 - 10 個の表に 3 つずつ、計 30 個の方針と、小さな関数 1 つ。関数を先に入れ、本物の通り道で印が届くことを確かめてから、方針を入れる（§4）。何度流しても同じ。戻し方がある（§6）。
@@ -21,7 +21,7 @@
 
 ## 2. 対象の表
 
-クライアントが書く表は、main 0507672 と b78-7-areas（5f26dc7）で同じ 10 個（js/ の `.from(` の呼び出しを全部数えた）。許す側の方針は docs と supabase/schema.sql から読んだ。本物のデータベースと違うことがあるので、§5.1 の写しで確かめる。
+クライアントが書く表は、main 0507672 と b78-7-areas（5f26dc7）と統合の木（459ca49 の後）で同じ 10 個（js/ の `.from(` の呼び出しを全部数えた）。許す側の方針は docs と supabase/schema.sql から読んだ。本物のデータベースと違うことがあるので、§5.1 の写しで確かめる。
 
 | 表 | クライアントの書き込み | 今の許す側の方針（docs から） |
 |---|---|---|
@@ -41,7 +41,7 @@
 - 門を付けない表: subscriptions（書くのは課金の webhook の service role だけ。authenticated に書く権限が無い。docs/SQL_BILLING.md）・crm_notes（service role だけ。docs/SQL_CRM.md）。
 - service role は行の権限を飛ばす。サーバーの API（api/）の書き込みはどれも service role なので、門に関係なく今のまま動く。日次の keepalive は読むだけ。
 - クライアントは関数（rpc）を呼ばない。表へ書く経路は上の 10 個だけ。
-- funnel_events は、この文書の外の前からの問題（統合担当へ）。js/funnelLog.js:110 は upsert に onConflict と ignoreDuplicates を付ける。要求は `insert … on conflict (device_id, step, source, day) do nothing` になる。衝突の先の列を名指す on conflict は、その列を読む扱いになり、select の方針が要る。docs/SQL_FUNNEL.md はわざと select の方針を作らない。反証の役が手元の使い捨てのデータベース（版 16）で試すと、門を外しても行の権限の違反（42501）で断られた。本番では確かめていない。select の方針を足すか、衝突の先を名指さない on conflict にすると通る。門はこの表の結果を変えない。
+- funnel_events は、この文書の外の前からの問題（統合担当へ）。js/funnelLog.js の funnel_events への upsert（統合の木で 113 行）は onConflict と ignoreDuplicates を付ける。要求は `insert … on conflict (device_id, step, source, day) do nothing` になる。衝突の先の列を名指す on conflict は、その列を読む扱いになり、select の方針が要る。docs/SQL_FUNNEL.md はわざと select の方針を作らない。反証の役が手元の使い捨てのデータベース（版 16）で試すと、門を外しても行の権限の違反（42501）で断られた。本番では確かめていない。select の方針を足すか、衝突の先を名指さない on conflict にすると通る。門はこの表の結果を変えない。
 
 ## 3. 順番（いちばん大事）
 
