@@ -9,11 +9,15 @@
 // 秘密の service_role キーは絶対に置かないこと。
 // 取得場所：Supabase ダッシュボード → Project Settings → API → Project API keys
 
+import { isPreviewHost } from "./previewHost.js";
+
 const supabaseUrl = "https://sujvgwozsnzjsjmkcrnk.supabase.co";
 const supabaseAnonKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN1anZnd296c256anNqbWtjcm5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2MDA5NDIsImV4cCI6MjA5ODE3Njk0Mn0.NkgB0vIgI4Q3DL5fSuF4kbtF3P4ORMbHzoPGbnOG3mc";
 
+// 確認用の Preview（*.vercel.app）では使わない（本番のクラウドの記録に触れない。js/previewHost.js）
 export const isSupabaseConfigured =
+  !isPreviewHost &&
   supabaseAnonKey.length > 20 &&
   (supabaseAnonKey.startsWith("eyJ") || supabaseAnonKey.startsWith("sb_"));
 
@@ -97,7 +101,8 @@ function guardedFetch(input, init) {
 let realClient = null;
 let loadFailed = false;
 
-const ready = import(MODULE_URL)
+// 確認用の Preview では部品を読まない（オフラインと同じ応答。ログイン・同期・送信は全部しない）
+const ready = (isPreviewHost ? Promise.reject(new Error("preview")) : import(MODULE_URL))
   .then(({ createClient }) => {
     realClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { storageKey: AUTH_STORAGE_KEY, storage: authStorage },

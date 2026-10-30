@@ -23855,6 +23855,98 @@ console.log("78.7 人ごとの保存の領域:");
   }
 }
 
+// ===== 78.8 確認用の Preview（*.vercel.app。js/previewHost.js。2026-10-30 の決定 7）: ログイン・同期・バックアップの読み込みを止める・認証の部品もクラウドも呼ばない・中心の学習・学習状況・設定は見られる・本番と手元では出ない =====
+console.log("preview host (78.8):");
+{
+  const PREVIEW = "https://sd-check.vercel.app";
+  async function previewPage(seed = {}) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const outside = [];
+    await ctx.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url.startsWith(PREVIEW + "/")) {
+        const u = new URL(url);
+        // 認証の部品の口は本物（手元のサーバーはスタブに替える）。Preview で部品もクラウドも呼ばないことを本物で見る
+        if (u.pathname === "/js/supabase.js") return route.fulfill({ status: 200, contentType: "text/javascript", body: fs.readFileSync(path.join(ROOT, "js", "supabase.js"), "utf8") });
+        const response = await route.fetch({ url: BASE + u.pathname + u.search });
+        return route.fulfill({ response });
+      }
+      if (/supabase\.co|esm\.sh/.test(url)) {
+        outside.push(url);
+        return route.abort();
+      }
+      return route.continue();
+    });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript((s) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v);
+    }, seed);
+    page.outside = outside;
+    return page;
+  }
+  const seedOn = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+  const vis = (page, sel) => page.evaluate((q) => { const el = document.querySelector(q); return !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0; }, sel);
+
+  // ホーム（初めての人）: 印・知らせ・「ログイン」の行は出さない・ヘッダーのログインを開いても入口は無く知らせだけ
+  const p1 = await previewPage();
+  await p1.goto(PREVIEW + "/", { waitUntil: "load" });
+  await waitUntil(() => p1.evaluate(() => !!document.getElementById("previewBanner")), 5000);
+  const home = await p1.evaluate(() => ({
+    cls: document.documentElement.classList.contains("preview-host"),
+    banner: document.getElementById("previewBanner")?.textContent ?? ""
+  }));
+  check("Preview: 印と知らせ（現在調整中）が出る", home.cls && home.banner.includes("現在調整中") && home.banner.includes("ログイン"), JSON.stringify(home));
+  check("Preview: 初めての人の「ログイン」の行は出さない", !(await vis(p1, ".login-line")) && !(await vis(p1, "#welcomeLogin")));
+  const toggle = await vis(p1, "#loginToggle");
+  if (toggle) await p1.click("#loginToggle");
+  const menu = await p1.evaluate(() => {
+    const v = (el) => !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0;
+    return { google: v(document.getElementById("googleLoginButton")), email: v(document.getElementById("emailInput")), send: v(document.getElementById("loginButton")), note: [...document.querySelectorAll(".account-menu__native")].map((el) => el.textContent) };
+  });
+  check("Preview: ログインの入口（Google・メール）は隠し、知らせだけ", !menu.google && !menu.email && !menu.send && menu.note.some((t) => t.includes("現在調整中")), JSON.stringify(menu));
+
+  // 中心の学習は動く（これから の 1 語目）
+  const p2 = await previewPage(seedOn);
+  await p2.goto(PREVIEW + "/?learn=next", { waitUntil: "load" });
+  const started = await waitUntil(() => p2.evaluate(() => window.__words.length >= 1), 8000);
+  check("Preview: 中心の学習が始まる", started, JSON.stringify(p2.errors));
+  // 学習状況・設定: 開ける。設定のバックアップは書き出しだけ（読み込みは止める）
+  await p2.goto(PREVIEW + "/stats.html", { waitUntil: "load" });
+  await p2.waitForTimeout(600);
+  check("Preview: 学習状況が開ける（エラーなし）", p2.errors.length === 0, JSON.stringify(p2.errors));
+  await p2.goto(PREVIEW + "/profile.html", { waitUntil: "load" });
+  await waitUntil(() => p2.evaluate(() => (document.getElementById("backupStatus")?.textContent ?? "").includes("調整中")), 5000);
+  const backup = await p2.evaluate(() => ({
+    importDisabled: document.getElementById("backupImport")?.disabled === true,
+    labelHidden: document.getElementById("backupImport")?.closest("label")?.hidden === true,
+    status: document.getElementById("backupStatus")?.textContent ?? "",
+    exportVisible: !!document.getElementById("backupExport") && document.getElementById("backupExport").getBoundingClientRect().height > 0
+  }));
+  check("Preview: バックアップの読み込みは止める（書き出しはできる）", backup.importDisabled && backup.labelHidden && backup.status.includes("現在調整中") && backup.exportVisible, JSON.stringify(backup));
+  check("Preview: 認証の部品もクラウドも呼ばない", p1.outside.length === 0 && p2.outside.length === 0, JSON.stringify([...p1.outside, ...p2.outside].slice(0, 3)));
+  check("Preview: ページのエラーなし", p1.errors.length === 0 && p2.errors.length === 0, JSON.stringify([...p1.errors, ...p2.errors]));
+  for (const p of [p1, p2]) { const c = p.context(); await p.close(); await c.close(); }
+
+  // 手元（本番と同じ判定の外）: 印も知らせも出さない・読み込みはそのまま
+  const local = await newPage();
+  await local.goto(BASE + "/profile.html", { waitUntil: "load" });
+  await local.waitForTimeout(500);
+  const lv = await local.evaluate(() => ({ cls: document.documentElement.classList.contains("preview-host"), banner: !!document.getElementById("previewBanner"), importDisabled: document.getElementById("backupImport")?.disabled === true }));
+  check("手元: Preview の印・知らせは出ず、読み込みは止めない", !lv.cls && !lv.banner && !lv.importDisabled, JSON.stringify(lv));
+  await local.close();
+
+  // 判定の関数: *.vercel.app だけ（本番・手元・アプリは外）
+  const { isPreviewHostname } = await import("../js/previewHost.js");
+  const cases = [["sd-check.vercel.app", true], ["spelldash-git-claude-b78-wip-x.vercel.app", true], ["www.spelldash.net", false], ["spelldash.net", false], ["127.0.0.1", false], ["localhost", false], ["vercel.app.example.com", false], ["", false]];
+  check("Preview の判定は *.vercel.app だけ", cases.every(([h, want]) => isPreviewHostname(h) === want), JSON.stringify(cases.map(([h]) => [h, isPreviewHostname(h)])));
+}
+
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");
 {

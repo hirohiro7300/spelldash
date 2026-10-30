@@ -11,6 +11,7 @@ import { downloadBackup, readBackupFile, inspectBackup, checkRestore, restoreBac
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme, isProTheme } from "./theme.js";
 import { isNativeApp } from "./appEnv.js";
+import { isPreviewHost } from "./previewHost.js";
 import { getPlan, isPro, postBilling, planLabel, planActionLabel } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
 import { getSetLength, setSetSize } from "./dailySet.js";
@@ -290,6 +291,13 @@ function initializeBackup() {
   const importInput = document.getElementById("backupImport");
   const status = document.getElementById("backupStatus");
   if (!exportButton || !importInput || !status) return;
+
+  // 確認用の Preview では読み込み（この端末の記録を置き換える）を止める。書き出しはできる（js/previewHost.js）
+  if (isPreviewHost) {
+    importInput.disabled = true;
+    importInput.closest("label")?.setAttribute("hidden", "");
+    status.textContent = "読み込みは現在調整中（確認用の Preview）。書き出しはできる";
+  }
 
   // 書き出すのは今の領域（ゲストか、ログイン中のアカウント）だけ。ファイルに持ち主の値を付ける（js/backup.js）
   exportButton.addEventListener("click", async () => {

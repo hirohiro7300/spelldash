@@ -1,5 +1,6 @@
 import { authRedirectOrigin } from "./appEnv.js";
 import { supabase, isSupabaseConfigured, checkAuthReachable } from "./supabase.js";
+import "./previewHost.js"; // 確認用の Preview（*.vercel.app）ではログインの入口を隠して知らせを出す（js/previewHost.js）
 import { initialSync, clearSyncedFlag } from "./sync.js";
 import { getWordStats } from "./storage.js";
 import { refreshPlan, clearPlan } from "./plan.js";
