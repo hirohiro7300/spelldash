@@ -23419,6 +23419,197 @@ console.log("78.7 人ごとの保存の領域:");
         }
       }
     }
+
+    // (P14) 「ゲストで学んだ記録を、このアカウントに移す？」の答えは、最初に確定した 1 つだけが効く（DECISION5 の 2）。答えたタブは排他のロックの中で答えを端末に残す
+    // （sd2.decision）。後からロックを取ったタブの答えは捨てる。決まった答えの切り替えが失敗したら、どのタブも決まった答えを出して止まり、「もう一度」でだけやり直す
+    {
+      // 排他のロックを手元の文書で持つ（切り替えの画面のタブを、答えた後・ロックを取る前で止める）
+      const holdLock = async (ctx) => {
+        const h = await ctx.newPage();
+        await h.goto(BASE + "/css/reset.css");
+        await h.evaluate(() => { window.__release = null; navigator.locks.request("spelldash-area-switch", () => new Promise((r) => { window.__release = r; })); });
+        await h.waitForFunction(() => typeof window.__release === "function", null, { timeout: 5000 });
+        return h;
+      };
+      const UC = "c3c3c3c3-0000-4000-8000-00000000000c";
+      const userC = { id: UC, email: "c@example.com" };
+      // (a) A について はい と答えた後、ロックを取る前にセッションが C に替わった: C についてたずね直す（ゲストの記録を C に移さない）
+      {
+        const ctx = await ctxOf();
+        try {
+          const G = personRec("G", "1");
+          await guestDevice(ctx, G);
+          const page = await openApp(ctx, "/stats.html", statsReady);
+          await signInOn(page, userA);
+          const asked = await waitAsk(page);
+          const h = await holdLock(ctx);
+          await page.click("#switchAskYes");
+          await page.waitForTimeout(400);
+          await h.evaluate((s) => localStorage.setItem("sd2.auth", s), sessOf(userC));
+          await page.waitForTimeout(400);
+          await h.evaluate(() => window.__release());
+          const askedC = await waitAsk(page, 8000);
+          if (askedC) await page.click("#switchAskNo").catch(() => {});
+          const landedC = await waitArea(page, `u:${UC}`, 20000);
+          const raw = await dumpRaw(ctx);
+          const c = areaOf(raw, `u:${UC}`);
+          const idx = JSON.parse(raw["sd2.index"] || "{}");
+          const gCopy = await idbGet(ctx, "areas", "guest");
+          check("78.7 A について「はい」と答えた後、ロックを取る前にセッションが C に替わった: C についてたずね直す・いいえで C は空・ゲストの記録は C に移らない（IndexedDB に 1 字も違わず）",
+            asked && askedC && landedC && c.spelldash_word_stats !== G.spelldash_word_stats && Boolean(idx.guest) && gCopy?.keys?.spelldash_word_stats === G.spelldash_word_stats && raw["sd2.decision"] === undefined,
+            JSON.stringify({ asked, askedC, landedC, cWords: Object.keys(JSON.parse(c.spelldash_word_stats || "{}")).length, idx: Object.fromEntries(Object.entries(idx).map(([k, v]) => [k, v?.at])), decision: raw["sd2.decision"] ?? null }));
+          await h.close();
+          await page.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+      // (b) 2 つのタブで違う答え（先にロックを取った答えだけが効く。後の答えで反転しない）: いいえ → はい と はい → いいえ
+      for (const [first, second] of [["No", "Yes"], ["Yes", "No"]]) {
+        const ctx = await ctxOf();
+        try {
+          const G = personRec("G", "1");
+          await guestDevice(ctx, G);
+          const t1 = await openApp(ctx, "/stats.html", statsReady);
+          const t2 = await openApp(ctx, "/index.html");
+          await signInOn(t1, userA);
+          const a1 = await waitAsk(t1);
+          const a2 = await waitAsk(t2);
+          const h = await holdLock(ctx);
+          await t1.click(`#switchAsk${first}`);
+          await t1.waitForTimeout(200);
+          await t2.click(`#switchAsk${second}`);
+          await t2.waitForTimeout(200);
+          await h.evaluate(() => window.__release());
+          const landed = await Promise.all([t1, t2].map((p) => waitArea(p, `u:${UA}`, 20000)));
+          await t1.waitForTimeout(500);
+          const raw = await dumpRaw(ctx);
+          const a = areaOf(raw, `u:${UA}`);
+          const idx = JSON.parse(raw["sd2.index"] || "{}");
+          const gCopy = await idbGet(ctx, "areas", "guest");
+          const adopted = a.spelldash_word_stats === G.spelldash_word_stats;
+          const want = first === "Yes";
+          check(`78.7 2 つのタブで ${want ? "はい → いいえ" : "いいえ → はい"}: 先に確定した答えだけが効く（後の答えで反転しない）・両方のタブが A の領域で開く・答えは消える`,
+            a1 && a2 && landed.every(Boolean) && adopted === want && (want ? !idx.guest : Boolean(idx.guest) && gCopy?.keys?.spelldash_word_stats === G.spelldash_word_stats) && raw["sd2.decision"] === undefined,
+            JSON.stringify({ a1, a2, landed, adopted, idx: Object.fromEntries(Object.entries(idx).map(([k, v]) => [k, v?.at])), decision: raw["sd2.decision"] ?? null }));
+          await h.close();
+          for (const p of [t1, t2]) await p.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+      // (c) はい → いいえ（4ms 後）で、はい の切り替えが容量で止まる（アカウントの写しが入らない端末）: 後の いいえ で結果を替えない。どちらのタブも復旧の画面に
+      // 決まった答え（はい）を出す。空きができて「もう一度」を押すと、決まった答えのまま移る
+      {
+        const ctx = await ctxOf();
+        try {
+          await ctx.addInitScript(() => {
+            const put = IDBObjectStore.prototype.put;
+            IDBObjectStore.prototype.put = function (record, ...rest) {
+              if (this.name === "areas" && typeof record?.area === "string" && record.area.startsWith("u:") && localStorage.getItem("zz.failAdopt") === "1") throw new DOMException("no room for the second copy", "QuotaExceededError");
+              return put.call(this, record, ...rest);
+            };
+          });
+          const G = personRec("G", "1");
+          await guestDevice(ctx, G, { "zz.failAdopt": "1" });
+          const X = await openApp(ctx, "/stats.html", statsReady);
+          const Y = await openApp(ctx, "/stats.html", statsReady);
+          await signInOn(X, userA);
+          const askedX = await waitAsk(X);
+          const askedY = await waitAsk(Y);
+          await X.evaluate(() => document.getElementById("switchAskYes").click());
+          await Y.evaluate(() => document.getElementById("switchAskNo").click());
+          const shown = (p) => p.waitForFunction(() => document.getElementById("switchRecovery")?.hidden === false, null, { timeout: 15000 }).then(() => true).catch(() => false);
+          const recX = await shown(X);
+          const recY = await shown(Y);
+          const view = (p) => p.evaluate(() => ({ path: location.pathname, reason: document.getElementById("switchRecovery")?.hidden === false ? document.getElementById("switchRecovery").dataset.reason : null, decision: document.getElementById("switchDecision")?.hidden === false ? document.getElementById("switchDecision").textContent.trim() : null })).catch((e) => ({ err: String(e) }));
+          const vX = await view(X);
+          const vY = await view(Y);
+          const raw = await dumpRaw(ctx);
+          const dec = (() => { try { return JSON.parse(raw["sd2.decision"] ?? "null"); } catch { return null; } })();
+          const idx = JSON.parse(raw["sd2.index"] || "{}");
+          check("78.7 2 つのタブで ほぼ同時に はい → いいえ・はい の切り替えが容量で止まる: 両方のタブが復旧の画面（容量）で決まった答え（はい）を出す・後の いいえ は効かない（ゲストは localStorage のまま・A を作らない）・答えは端末に残る",
+            askedX && askedY && recX && recY && vX.reason === "quota" && vY.reason === "quota" && /「はい」/.test(vX.decision ?? "") && /「はい」/.test(vY.decision ?? "") && dec?.answer === "yes" && dec?.to === `u:${UA}` && idx.guest?.at === "ls" && !idx[`u:${UA}`],
+            JSON.stringify({ askedX, askedY, recX, recY, vX, vY, dec, idx: Object.fromEntries(Object.entries(idx).map(([k, v]) => [k, v?.at])) }));
+          await rawDoc(ctx, () => localStorage.removeItem("zz.failAdopt"));
+          await Y.click("#switchRetry", { timeout: 5000 }).catch(() => {});
+          const landed = await waitArea(Y, `u:${UA}`, 20000);
+          const raw2 = await dumpRaw(ctx);
+          const a = areaOf(raw2, `u:${UA}`);
+          check("78.7 空きができて「もう一度」: 決まった答え（はい）のまま移る（ゲストの記録が A の記録になる・ゲストは index から外れる）・答えは消える",
+            landed && a.spelldash_word_stats === G.spelldash_word_stats && !JSON.parse(raw2["sd2.index"] || "{}").guest && raw2["sd2.decision"] === undefined,
+            JSON.stringify({ landed, keys: Object.keys(a).length, decision: raw2["sd2.decision"] ?? null }));
+          for (const p of [X, Y]) await p.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+    }
+
+    // (P15) 支払いの完了の送り待ち（端末の鍵 spelldash_funnel_paid_send）は払った人（A）に結ぶ。同じ端末で B がログインしても、A の checkout_done を B の名前・
+    // トークンで送らない（反証: 持ち主の無い端末の鍵で、B のページが B の user_id で送った）。払った人の分かる形は、A に戻ると A の名前で送る。
+    // 前の形（日付だけ・払った人が分からない）は、Pro でない人のページでは送らない
+    for (const legacy of [false, true]) {
+      const ctx = await ctxOf();
+      try {
+        const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [], funnel_events: [] });
+        const day = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+        // A の端末（A の領域）に A の送り待ちが残ったまま、B のセッションで開く（ほかのタブで B のリンクを開いた形。A のページの送信は届かなかった）
+        await accountDevice(ctx, userA, personRec("A", "2"), { [AUTH]: sessOf(userB), spelldash_test_cloud: cloud.id, spelldash_device_id: "dev-p15-0000000000", spelldash_funnel_paid_send: legacy ? day : JSON.stringify({ day, user: UA }) });
+        const page = await openApp(ctx, "/stats.html", statsReady);
+        const beforeB = cloud.rows("funnel_events").filter((r) => r.step === "checkout_done").length;
+        const atB = await waitArea(page, `u:${UB}`);
+        await page.waitForTimeout(2500);
+        const doneB = cloud.rows("funnel_events").filter((r) => r.step === "checkout_done");
+        const refused = cloud.log.filter((e) => e.table === "funnel_events" && e.userId === UB && e.error);
+        const kept = (await dumpRaw(ctx)).spelldash_funnel_paid_send ?? null;
+        check(`78.7 支払いの完了の送り待ち（${legacy ? "前の形・日付だけ" : "払った人 A を持つ形"}）: B がログインしても A の checkout_done を B の名前・トークンで送らない・送り待ちは残る`,
+          atB && doneB.length === 0 && refused.length === 0 && kept !== null, JSON.stringify({ atB, beforeB, doneB: doneB.map((r) => r.user_id === UB ? "B" : r.user_id === UA ? "A" : r.user_id), refused: refused.length, kept }));
+        if (!legacy) {
+          await signInOn(page, userA);
+          await waitArea(page, `u:${UA}`);
+          await waitUntil(async () => cloud.rows("funnel_events").some((r) => r.step === "checkout_done"), 6000, 200);
+          const doneA = cloud.rows("funnel_events").filter((r) => r.step === "checkout_done");
+          check("78.7 支払いの完了の送り待ち: A に戻ると A の名前で 1 回送る", doneA.length === 1 && doneA[0].user_id === UA && doneA[0].day === day, JSON.stringify(doneA));
+        }
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+
+    // (P16) ログインのリンクから戻ると加入画面へ戻る（本物の認証の部品 2.118.0。部品はセッションを保存する前に URL の # のトークンを消すので、見張りが移す切り替えの画面の
+    // 戻り先にトークンは無い）。「ログインから戻った」は sessionStorage（spelldash_login_return）でその後のページへ渡す。反証: スタブは # を消さないので節 19 だけが通っていた
+    {
+      const lib = await authLib();
+      check("78.7 ログインの戻りと加入画面（本物の部品）: 固定した版の部品の束がある（役 oldtab の木と統合した木で流す）", Boolean(lib.file), lib.why ?? "");
+      if (lib.file) {
+        const ctx = await rawCtx({ serviceWorkers: "block" });
+        try {
+          const UE = "eeeeeeee-1111-4222-8333-444455556666";
+          const exp = Math.floor(Date.now() / 1000) + 3600;
+          await realAuth(ctx, lib.file);
+          await ctx.route("https://sujvgwozsnzjsjmkcrnk.supabase.co/**", (route) => {
+            const u = new URL(route.request().url());
+            if (u.pathname === "/auth/v1/user") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(libUserOf(UE)) });
+            return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+          });
+          await putRaw(ctx, { ...marks("guest", 1, { guest: { at: "ls" } }), spelldash_onboarded: "1", spelldash_pro_intent: JSON.stringify({ at: Date.now() }) });
+          const page = await ctx.newPage();
+          const urls = [];
+          page.on("framenavigated", (f) => { if (f === page.mainFrame()) urls.push(new URL(f.url()).pathname); });
+          await page.goto(BASE + `/index.html#access_token=${jwtOf(UE, exp)}&expires_in=3600&expires_at=${exp}&refresh_token=refresh-ee&token_type=bearer&type=magiclink`, { waitUntil: "load" }).catch(() => {});
+          const back = await waitUntil(() => new URL(page.url()).pathname === "/pro.html", 15000, 200);
+          await page.waitForTimeout(500);
+          const end = await page.evaluate(() => ({ path: location.pathname, area: window.SpellDashArea?.area ?? null, hash: location.hash })).catch((e) => ({ err: String(e) }));
+          check("78.7 ログインのリンクから戻る（本物の部品が # のトークンを消す）: 切り替えの画面を通って そのアカウントの領域になり、加入画面（/pro.html）へ戻る",
+            back && urls.includes("/switch.html") && end.path === "/pro.html" && end.area === `u:${UE}` && !String(end.hash ?? "").includes("access_token"), JSON.stringify({ urls, end }));
+          await page.close();
+        } finally {
+          await ctx.close();
+        }
+      }
+    }
   }
 }
 

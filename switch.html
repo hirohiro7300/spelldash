@@ -48,6 +48,8 @@
       <p id="switchOffline" hidden><strong>通信できないため、切り替えの画面の部品を読めなかった。つながってから「もう一度」を押す。</strong></p>
       <!-- 「記録はこの端末に残っている。」は写しを確かめてから出す（js/areaSwitch.js copiesReadable）。読めない写しがあれば、読めなかったことを出す -->
       <p><span id="switchKept" hidden>記録はこの端末に残っている。</span><span id="switchLost" hidden>この端末にある記録の控えの一部を読めなかった。</span>学習・保存・同期は止めた。</p>
+      <!-- 「ゲストで学んだ記録を、このアカウントに移す？」に最初に確定した答え（sd2.decision）。「もう一度」はこの答えのまま続ける -->
+      <p id="switchDecision" hidden></p>
       <ul>
         <li>ほかの SpellDash のタブを閉じる。</li>
         <li>端末の空きを作る（使わないアプリや写真を消す）。</li>

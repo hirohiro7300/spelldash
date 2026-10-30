@@ -70,13 +70,25 @@ function writeSession(session) {
   }
 }
 // 前の形の種を新しい鍵へ（新しい鍵にセッションが無いときだけ）。本物の部品と同じく、読み込みの時ではなく最初にセッションを読む時に書く
-// （本物の部品は URL のトークンを初期化の後で保存する。読み込みの時に書くと、ページの残りの同期の書き込みが切り替えの前に断られる）
+// （本物の部品は URL のトークンを初期化の後で保存する。読み込みの時に書くと、ページの残りの同期の書き込みが切り替えの前に断られる）。
+// ログインのリンクから戻った URL（# に access_token・refresh_token）なら、本物の部品（固定した版 2.118.0 の _getSessionFromURL）と同じく、
+// セッションを保存する前に # を消す（見張りが保存で切り替えの画面へ移すとき、戻り先にトークンが残らない形を検査が通る）
 function adoptLegacySeed() {
   try {
     const legacy = readStorage(SESSION_KEY);
-    if (legacy && !fakeSession()) writeSession(makeSession(legacy));
+    if (legacy && !fakeSession()) {
+      clearLoginHash();
+      writeSession(makeSession(legacy));
+    }
   } catch {
     // 使えない環境では何もしない
+  }
+}
+function clearLoginHash() {
+  try {
+    if (typeof location !== "undefined" && /(?:^|[#&])(access_token|refresh_token)=/.test(location.hash)) location.hash = "";
+  } catch {
+    // 消せなくても続ける
   }
 }
 

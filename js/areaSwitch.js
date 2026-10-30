@@ -593,34 +593,86 @@ export function createSwitcher(deps) {
     });
   }
 
+  // ===== 「移す？」の答え（DECISION5 の 2: 複数のタブで答えても、最初に確定した答えだけが効く） =====
+  // 答えたタブは、排他のロックの中で答えを端末に残す（sd2.decision = { id: 判断の id, from: "guest", to: 切り替え先, answer: "yes" | "no", at, gen: 今の印の世代, failed? }）。
+  // ロックを後から取ったタブは、残った答えを使い、自分のタブで押した答えは捨てる。使うのは同じ問い（ゲスト → 同じ切り替え先・同じ世代）の答えだけで、
+  // 違えば（ほかのタブで別の人に入り直した・その後にほかの切り替えが済んだ）消してたずね直す。切り替えが済んだら消す。
+  // 決まった答えの切り替えが失敗したら、答えと理由（failed）を残す。「もう一度」（retry）でだけ同じ答えでやり直し、それまではどのタブも同じ理由で止まる
+  function readDecision(target, gen) {
+    const raw = ls.get(K.DECISION_KEY);
+    if (raw === null) return null;
+    const d = readJson(raw);
+    if (d && typeof d.id === "string" && d.from === "guest" && d.to === target && d.gen === gen && (d.answer === "yes" || d.answer === "no")) return d;
+    dropDecision();
+    return null;
+  }
+  function dropDecision() {
+    try {
+      if (ls.get(K.DECISION_KEY) !== null) ls.remove(K.DECISION_KEY);
+    } catch {
+      // 消せなくても、次に読むときに問い（切り替え先・世代）と合わなければ使わない
+    }
+  }
+
   // 今のセッションに合う領域にする（同じで localStorage にあれば何もしない）。退避した領域の残りを写せなかった（staleError）ときは、
   // 切り替えずに止める（元の領域の残りを localStorage に置いたまま、別の領域を重ねて展開しない）。
   // この端末で初めてアカウントに入り（index にその領域が無い）、今のゲストに学んだ記録があれば、1 回たずねる（ask）。たずねている間にセッションが
-  // 替わったら、今のセッションでやり直す（はいでも前のアカウントへは移さない）
-  async function ensureArea(store, target = sessionArea(), staleError = null) {
+  // 替わったら、今のセッションでやり直す（はいでも前のアカウントへは移さない）。答えは端末に残し、最初に確定した 1 つだけを使う（上の決まり）
+  async function ensureArea(store, target = sessionArea(), staleError = null, { retry = false } = {}) {
     for (let round = 0; round < 4; round++) {
       const marker = markerNow();
       const live = liveAreas();
-      if (marker?.area === target && live.length === 1 && live[0] === target) return null;
+      if (marker?.area === target && live.length === 1 && live[0] === target) {
+        dropDecision();
+        return null;
+      }
       if (staleError) throw fail(isQuotaError(staleError) ? "quota" : "evacuate", staleError);
       const from = live.includes(marker?.area) ? marker.area : (live[0] ?? null);
       let op = "session";
+      let decision = null;
       if (ask && from === "guest" && target !== "guest" && readIndex()[target] === undefined && hasRecords(collect("guest"))) {
-        const answer = await ask(target);
-        const now = sessionArea();
-        if (now !== target) {
-          target = now;
-          continue;
+        const gen = marker?.gen ?? 0;
+        decision = readDecision(target, gen);
+        if (!decision) {
+          const answer = await ask(target);
+          const now = sessionArea();
+          if (now !== target) {
+            target = now;
+            continue;
+          }
+          decision = { id: newId(), from: "guest", to: target, answer: answer === "yes" ? "yes" : "no", at: iso(), gen };
+          try {
+            ls.set(K.DECISION_KEY, JSON.stringify(decision));
+          } catch (error) {
+            throw fail(isQuotaError(error) ? "quota" : "evacuate", error);
+          }
+        } else if (decision.failed && !retry) {
+          // 決まった答えの切り替えが前に失敗した: 「もう一度」まではやり直さない（ほかのタブの後の答えでも替えない）
+          throw fail(decision.failed);
         }
-        if (answer === "yes") op = "adopt";
+        if (decision.answer === "yes") op = "adopt";
+      } else dropDecision();
+      try {
+        const result = await switchTo(store, target, op);
+        dropDecision();
+        return result;
+      } catch (error) {
+        if (decision) {
+          try {
+            ls.set(K.DECISION_KEY, JSON.stringify({ ...decision, failed: error instanceof SwitchError ? error.reason : "evacuate" }));
+          } catch {
+            // 理由を書けなくても答えは残っている（次も同じ答えで切り替えを試す）
+          }
+        }
+        throw error;
       }
-      return switchTo(store, target, op);
     }
     throw fail("changed");
   }
 
-  // ロックの中で流す全部: 直し → 移行 → 片付け（旧い場所・退避した領域の残り） → 今のセッションの領域へ（intent がログアウトならログアウト） → 退避した領域の残りをもう一度
-  async function settle(intent = null) {
+  // ロックの中で流す全部: 直し → 移行 → 片付け（旧い場所・退避した領域の残り） → 今のセッションの領域へ（intent がログアウトならログアウト） → 退避した領域の残りをもう一度。
+  // retry: 復旧の画面の「もう一度」から開いた（前に失敗した「移す？」の答えで、もう一度切り替える）
+  async function settle(intent = null, { retry = false } = {}) {
     let store;
     try {
       store = await openStore();
@@ -657,7 +709,7 @@ export function createSwitcher(deps) {
         if (staleError) throw fail(isQuotaError(staleError) ? "quota" : "evacuate", staleError);
         result = await logout(store);
       } else {
-        result = await ensureArea(store, session, staleError);
+        result = await ensureArea(store, session, staleError, { retry });
       }
       // 切り替えの間に、退避した領域へ遅れて書かれた鍵（見え方の古いタブ）。写せなければ残す（次に開いたページの見張りが見つけて片付ける）
       if (result) {
@@ -937,6 +989,18 @@ export function safeBack(value, origin = globalThis.location?.origin) {
   return url.pathname + url.search + url.hash;
 }
 
+// 復旧の画面の「もう一度」から開いた印（sessionStorage。このタブだけ。読んだら消す）。前に失敗した「移す？」の答えで、もう一度切り替える
+export const RETRY_KEY = "sd2.retry";
+export function takeRetry(store = globalThis.sessionStorage) {
+  try {
+    const value = store.getItem(RETRY_KEY) === "1";
+    store.removeItem(RETRY_KEY);
+    return value;
+  } catch {
+    return false;
+  }
+}
+
 // 戻り先のページへの知らせ（js/auth.js が読んで文を出す）: logout・logout-failed・logout-blocked・login-cancelled
 function setNotice(kind) {
   try {
@@ -971,7 +1035,7 @@ function askOnPage(K) {
     const first = box.hidden;
     if (status) status.hidden = true;
     box.hidden = false;
-    const watched = new Set([K.AREA_KEY, K.INDEX_KEY, K.SWITCH_KEY, K.MIGRATING_KEY, K.MIGRATED_KEY, K.AUTH_KEY, K.AUTH_KEY + "-user"]);
+    const watched = new Set([K.AREA_KEY, K.INDEX_KEY, K.SWITCH_KEY, K.MIGRATING_KEY, K.MIGRATED_KEY, K.DECISION_KEY, K.AUTH_KEY, K.AUTH_KEY + "-user"]);
     const finish = (answer) => {
       yes.removeEventListener("click", onYes);
       no.removeEventListener("click", onNo);
@@ -1027,7 +1091,9 @@ async function runSwitchPage() {
   if (!K) return showRecovery(fail("load"));
   if (!locks || typeof locks.request !== "function") return showRecovery(fail("locks"));
   const intent = takeIntent();
-  // 「移す？」の答え（このタブで受けた物。どの切り替え先の問いか）。ロックの中では、同じ切り替え先の答えだけを使う
+  const retry = takeRetry();
+  // 「移す？」の答え（このタブで受けた物。どの切り替え先の問いか）。ロックの中では、同じ切り替え先の答えだけを使う。
+  // ほかのタブの答えが先に端末に残っていれば、そちらを使う（このタブの答えは捨てる: js/areaSwitch.js ensureArea）
   let answer = null;
   const switcher = createSwitcher({
     ...browserDeps(),
@@ -1041,7 +1107,7 @@ async function runSwitchPage() {
   try {
     for (;;) {
       try {
-        await locks.request(K.SWITCH_LOCK, () => switcher.settle(intent));
+        await locks.request(K.SWITCH_LOCK, () => switcher.settle(intent, { retry }));
         break;
       } catch (error) {
         if (!(error instanceof AskNeeded)) throw error;
@@ -1082,6 +1148,15 @@ function showRecovery(error) {
   if (lead) lead.textContent = "この端末に記録を安全に保存できなかったため、切り替えられません。";
   const quota = document.getElementById("switchQuota");
   if (quota) quota.hidden = error?.reason !== "quota";
+  // 「移す？」に決まった答えがあれば出す（「もう一度」はこの答えのまま続ける。ほかのタブで後から押した答えでは替えない）
+  const decisionLine = document.getElementById("switchDecision");
+  if (decisionLine) {
+    const deps = browserDeps();
+    const d = deps.keys ? deps.keys.readJson(deps.ls.get(deps.keys.DECISION_KEY)) : null;
+    const shown = d && (d.answer === "yes" || d.answer === "no");
+    decisionLine.hidden = !shown;
+    if (shown) decisionLine.textContent = `「ゲストで学んだ記録を、このアカウントに移す？」の答えは「${d.answer === "yes" ? "はい" : "いいえ"}」。「もう一度」で、この答えのまま続ける。`;
+  }
   // 「記録はこの端末に残っている。」は写しを確かめてから出す（読めない写しがあれば、読めなかったことを出す）
   const kept = document.getElementById("switchKept");
   const lost = document.getElementById("switchLost");
@@ -1130,7 +1205,14 @@ function showRecovery(error) {
   const retry = document.getElementById("switchRetry");
   if (retry && !retry.dataset.wired) {
     retry.dataset.wired = "1";
-    retry.addEventListener("click", () => location.reload());
+    retry.addEventListener("click", () => {
+      try {
+        globalThis.sessionStorage.setItem(RETRY_KEY, "1");
+      } catch {
+        // 印が残せなくても開き直す（前に失敗した「移す？」の答えは、そのまま止まって出る）
+      }
+      location.reload();
+    });
   }
 }
 

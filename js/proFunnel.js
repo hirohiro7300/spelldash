@@ -12,7 +12,7 @@ import { isPro } from "./plan.js";
 const OPEN_KEY = "spelldash_billing_open"; // { open: bool, at: ms, price?: { month, year, trialMonths, trialDays } }（price は受付中のときだけ。加入画面の料金の 1 行の形）
 const OPEN_TTL_MS = 12 * 60 * 60 * 1000;
 const RETRY_MS = 10 * 60 * 1000; // 取れなかったときは前の値のまま、10 分後にもう一度
-const RETURN_KEY = "spelldash_login_return"; // sessionStorage: ログインから戻ってきた（加入画面へ移ったあとも freshLogin として扱う）
+const RETURN_KEY = "spelldash_login_return"; // sessionStorage: ログインから戻ってきた（加入画面へ移ったあとも同じに扱う。読んで消すのは js/auth.js）
 const INTENT_KEY = "spelldash_pro_intent"; // { at: ms }（加入画面で「ログインして始める」を押した）
 const INTENT_TTL_MS = 30 * 60 * 1000;
 
@@ -159,15 +159,4 @@ export function resumeProIntent() {
   }
   location.replace("./pro.html?resume=1");
   return true;
-}
-
-// 直前のページがログインから戻ったタブで、ここへ移ってきたか（1 回だけ読む）
-export function takeLoginReturn() {
-  try {
-    const value = sessionStorage.getItem(RETURN_KEY) === "1";
-    sessionStorage.removeItem(RETURN_KEY);
-    return value;
-  } catch {
-    return false;
-  }
 }

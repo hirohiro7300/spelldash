@@ -4,7 +4,7 @@ import { initialSync, clearSyncedFlag } from "./sync.js";
 import { getWordStats } from "./storage.js";
 import { refreshPlan, clearPlan } from "./plan.js";
 import { trapFocus } from "./focusTrap.js";
-import { resumeProIntent, takeLoginReturn } from "./proFunnel.js";
+import { resumeProIntent } from "./proFunnel.js";
 
 const accountGuestElement = document.getElementById("accountGuest");
 const accountUserElement = document.getElementById("accountUser");
@@ -19,15 +19,33 @@ const avatarButtonElement = document.getElementById("avatarButton");
 const headerAvatarElement = document.getElementById("headerAvatar");
 const googleLoginButtonElement = document.getElementById("googleLoginButton");
 
-// いまログインから戻ってきたか（メールのリンク・Google のリダイレクト）。Supabase が URL を片付ける前に読む
-// 加入画面へ移る前のページがログインから戻ったタブだった場合も同じに扱う（takeLoginReturn）
+// いまログインから戻ってきたか（メールのリンク・Google のリダイレクト）。Supabase が URL を片付ける前に読む。
+// 戻ったと分かったら、その場で印（sessionStorage の spelldash_login_return）を残す。部品は URL の # を消し、人が替われば見張りが切り替えの画面へ移す。
+// 切り替えの画面から戻ったページ・加入画面へ移ったページは、この印で「いまログインした」と分かる。印はページがこの人の領域にそろってから消す（initializeAuth）
+const LOGIN_RETURN_KEY = "spelldash_login_return"; // js/proFunnel.js の RETURN_KEY と同じ名前
 const RETURNED_FROM_LOGIN = (() => {
+  let fromUrl = false;
   try {
-    return /(?:^|[#&])(access_token|refresh_token)=/.test(location.hash) || new URLSearchParams(location.search).has("code");
+    fromUrl = /(?:^|[#&])(access_token|refresh_token)=/.test(location.hash) || new URLSearchParams(location.search).has("code");
   } catch {
-    return false;
+    fromUrl = false;
   }
-})() || takeLoginReturn();
+  try {
+    if (fromUrl) sessionStorage.setItem(LOGIN_RETURN_KEY, "1");
+    return fromUrl || sessionStorage.getItem(LOGIN_RETURN_KEY) === "1";
+  } catch {
+    return fromUrl;
+  }
+})();
+
+// ログインから戻った印を消す（1 回だけ使う。加入画面へ移るときは resumeProIntent が付け直す）
+function clearLoginReturn() {
+  try {
+    sessionStorage.removeItem(LOGIN_RETURN_KEY);
+  } catch {
+    // 消せなくても次のページで加入画面へ戻すだけ（加入の途中の印が無ければ何もしない）
+  }
+}
 
 // ===== 人ごとの保存の領域（js/areaGuard.js・js/areaSwitch.js。DESIGN-FINAL §4・§5） =====
 // 部品の答えたセッションとページの領域を比べる。返り値:
@@ -107,11 +125,12 @@ function goSwitch(op, notice = null) {
 export async function initializeAuth() {
   const { data } = await supabase.auth.getSession();
   const fit = areaFit(data.session);
-  // ページの領域がこのセッションの人でない: 切り替えの画面へ（同期・Pro の状態の更新・加入画面への戻しはその後のページで）
+  // ページの領域がこのセッションの人でない: 切り替えの画面へ（同期・Pro の状態の更新・加入画面への戻しはその後のページで。ログインから戻った印は残す）
   if (fit === "leave") {
     window.SpellDashArea?.leave?.();
     return;
   }
+  clearLoginReturn();
   // 部品の答えが分からない（"unknown"）: ページは今の領域のまま。同期と Pro の状態の更新は、部品がセッションを取り戻した知らせを待つ
   let waiting = fit === "unknown";
   const hadSessionAtLoad = (Boolean(data.session) || waiting) && !RETURNED_FROM_LOGIN;

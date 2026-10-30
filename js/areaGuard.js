@@ -25,6 +25,7 @@
   const MIGRATED_KEY = "sd2.migrated"; // { at, fromSchema, legacyId }。消さない
   const MIGRATING_KEY = "sd2.migrating"; // 移行の途中だけ
   const SWITCH_KEY = "sd2.switch"; // { id, op, from, to, phase: "drain" | "swap", at }。切り替えの途中だけ
+  const DECISION_KEY = "sd2.decision"; // 「ゲストで学んだ記録を、このアカウントに移す？」の最初に確定した答え { id, from, to, answer, at, gen, failed? }（js/areaSwitch.js）
   const AUTH_KEY = "sd2.auth"; // 認証のセッションの新しい鍵（js/supabase.js の storageKey。旧コードの部品は読まない）
   const OLD_AUTH_KEY = "sb-sujvgwozsnzjsjmkcrnk-auth-token"; // 旧い鍵。移行で新しい鍵へ移して消す
   const OWNER_KEY = PREFIX + "owner";
@@ -98,7 +99,7 @@
   };
 
   const KEYS = Object.freeze({
-    PREFIX, TEST_PREFIX, DEVICE_NAMES, AREA_KEY, INDEX_KEY, MIGRATED_KEY, MIGRATING_KEY, SWITCH_KEY, AUTH_KEY, OLD_AUTH_KEY, OWNER_KEY, OWNER_MOVED, PROBE_KEY, TABGEN_KEY, SYNC_FLAGS,
+    PREFIX, TEST_PREFIX, DEVICE_NAMES, AREA_KEY, INDEX_KEY, MIGRATED_KEY, MIGRATING_KEY, SWITCH_KEY, DECISION_KEY, AUTH_KEY, OLD_AUTH_KEY, OWNER_KEY, OWNER_MOVED, PROBE_KEY, TABGEN_KEY, SYNC_FLAGS,
     SWITCH_PATH, PAGE_LOCK, SWITCH_LOCK, EXPORT_EXCLUDE, EXPORT_SCRUB,
     isPersonKey, isDeviceKey: (key) => DEVICE.has(key), areaPrefix, physicalKey, logicalKey, areaOfUser, areaOfPhysical, isStaleArea, readJson, parseMarker, formatMarker, sessionUserOf, exportValueOf
   });

@@ -478,7 +478,7 @@ function loadKeys() {
 const settle = async (backing, opts = {}) => {
   const s = switcher(backing, opts);
   try {
-    return { result: await s.sw.settle(opts.intent ?? null), ...s };
+    return { result: await s.sw.settle(opts.intent ?? null, { retry: opts.retry === true }), ...s };
   } catch (error) {
     return { error, ...s };
   }
@@ -742,7 +742,7 @@ async function runAll() {
     const listeners = Object.entries(src).filter(([, t]) => /addEventListener\(\s*["']storage["']|\bonstorage\b/.test(strip(t))).map(([f]) => f).sort();
     // js/areaSwitch.js は切り替えの画面（見張りは包まない）で、「移す？」をたずねている間に印・index・セッションの生の鍵の知らせだけを見る（人の記録の鍵は見ない）
     eq("U1 storage イベントを聞く所は一覧のとおり（見張りが元の名前の知らせを届ける・切り替えの画面は印とセッションの生の鍵だけ）", listeners, ["js/accountEmblem.js", "js/areaGuard.js", "js/areaSwitch.js", "js/masteryMeta.js", "js/memoryWords.js", "js/statsView.js", "js/storage.js"]);
-    ok("U1 js/areaSwitch.js の storage イベントの受け手は、印・index・切り替えと移行の印・認証の新しい鍵だけを見る", /const watched = new Set\(\[K\.AREA_KEY, K\.INDEX_KEY, K\.SWITCH_KEY, K\.MIGRATING_KEY, K\.MIGRATED_KEY, K\.AUTH_KEY, K\.AUTH_KEY \+ "-user"\]\)/.test(src["js/areaSwitch.js"] ?? "") && (strip(src["js/areaSwitch.js"] ?? "").match(/addEventListener\(\s*["']storage["']/g) ?? []).length === 1);
+    ok("U1 js/areaSwitch.js の storage イベントの受け手は、印・index・切り替えと移行の印・「移す？」の決まった答え・認証の新しい鍵だけを見る", /const watched = new Set\(\[K\.AREA_KEY, K\.INDEX_KEY, K\.SWITCH_KEY, K\.MIGRATING_KEY, K\.MIGRATED_KEY, K\.DECISION_KEY, K\.AUTH_KEY, K\.AUTH_KEY \+ "-user"\]\)/.test(src["js/areaSwitch.js"] ?? "") && (strip(src["js/areaSwitch.js"] ?? "").match(/addEventListener\(\s*["']storage["']/g) ?? []).length === 1);
     // 全ページの頭: 見張りの 1 行が最初の script（色の 1 行より前）
     // 戻り先は URL の # の後ろ（#back=）に置く。? の後ろに置くと、ログインのリンクの戻り（#access_token=…）がサーバーへ送られ、Service Worker の保存の鍵にも残る
     const GUARD_LINE = '<script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>';
@@ -2245,12 +2245,15 @@ async function runAll() {
     // ゲストと A の両方に同じ記録が残らない・ゲストの記録を失わない
     {
       let points = 0;
+      let afterDecision = 0;
+      const askedAfterDecision = [];
       for (let n = 1; n < 80; n++) {
         const { b, idb } = guestDevice();
         b.set("sd2.auth", session("A"));
         const first = await settle(b, { idb, crashAt: n, ask: async () => "yes" });
         if (!first.error) break;
         points++;
+        const decided = b.get("sd2.decision") !== null;
         let askedAgain = 0;
         const second = await settle(b, { idb, ask: async () => { askedAgain++; return "no"; } });
         const idx = JSON.parse(b.get("sd2.index"));
@@ -2259,8 +2262,16 @@ async function runAll() {
         const kept = Object.keys(aRec).length === 0 && askedAgain === 1 && isDeepStrictEqual(idb.peek("areas", "guest")?.keys, G) && idx.guest?.at === `idb:${idb.peek("areas", "guest")?.id}`;
         ok(`U5 はいの ${n} 番目の書き込みで落ちた: 直すと A に移り終わる（ゲストの index は無い）か、たずね直す（いいえでゲストの写しに残る）。両方に残らない・失わない`,
           !second.error && (moved || kept) && Object.keys(areaRecords(b, "guest")).length === 0 && b.get("sd2.switch") === null, JSON.stringify({ askedAgain, a: Object.keys(aRec).length, guestIdx: idx.guest ?? null, err: second.error?.message }));
+        if (decided) {
+          afterDecision++;
+          if (askedAgain > 0) askedAfterDecision.push(n);
+        }
       }
       ok("U5 はいの書き込みの全部の点で落として確かめた（8 点以上）", points >= 8, `${points} 点`);
+      // 答え（sd2.decision）を端末に書いた後のどの点で落ちても、次のタブはたずね直さず、残った「はい」で移し終える（DECISION5 の 2）。
+      // 答えを書く前（移行・片付けの書き込みと、答えそのものの書き込み）で落ちたときだけ、たずね直す
+      ok("U5 はいの答えを端末に書いた後で落ちた点が 8 点以上ある（答えは切り替えより先に端末に残る）", afterDecision >= 8, `${afterDecision} 点`);
+      eq("U5 はいの答えを端末に書いた後のどの点で落ちても、次のタブはたずね直さない", askedAfterDecision, []);
     }
     // (9) はいで A の領域へ展開が満杯（A の鍵の名前は長い user id を含む）: 移さない・ゲストは localStorage にそろう・印は替えない・A の index も鍵も無い
     {
@@ -2291,7 +2302,124 @@ async function runAll() {
       ok("U5 見張りの知らせ: 旧い場所の人の記録が書かれたら、片付けをすぐ頼む（手の空くのを待たない）", t.log.timers.slice(before).some(([, ms]) => ms === 0), JSON.stringify(t.log.timers.slice(before).map(([, ms]) => ms)));
       eq("U5 見張りの知らせ: 旧い場所の値はアプリに届けない・今の領域の値は替わらない", [t.heard.filter((h) => h[0] === "spelldash_xp").length, b.get("sd2.u:A.xp")], [0, "5"]);
     }
+    // (11) 「移す？」の答えは、最初に確定した 1 つだけが効く（DECISION5 の 2）。答えたタブはロックの中で答えを端末に残す（sd2.decision: 判断の id・元・切り替え先・
+    // 答え・世代）。ロックを後から取ったタブの答えは捨てる。決まった答えの切り替えが失敗したら答えと理由を残し、「もう一度」（retry）でだけ同じ答えでやり直す
+    {
+      const decisionOf = (b) => {
+        try {
+          return JSON.parse(b.get("sd2.decision") ?? "null");
+        } catch {
+          return "読めない";
+        }
+      };
+      const failAccountCopy = (idb) => (idb.failPut = (s, v) => (s === "areas" && String(v?.area ?? "").startsWith("u:") ? quotaError() : null));
+      {
+        // (a) はい の切り替えが、2 つめの写し（アカウントの領域の写し）で入らない（容量）
+        const { b, idb } = guestDevice();
+        b.set("sd2.auth", session("A"));
+        failAccountCopy(idb);
+        const asked = [];
+        const r1 = await settle(b, { idb, ask: async (t) => { asked.push(t); return "yes"; } });
+        const d1 = decisionOf(b);
+        eq("U5 はいの切り替えが容量で止まる: 答え（はい・元 guest・切り替え先 u:A・世代 1・判断の id）と失敗の理由（quota）が端末に残る・ゲストは localStorage のまま・A の index は無い",
+          [r1.error?.reason ?? null, asked, d1?.answer ?? null, d1?.from ?? null, d1?.to ?? null, d1?.gen ?? null, d1?.failed ?? null, typeof d1?.id, b.get("sd2.area"), JSON.parse(b.get("sd2.index"))["u:A"] ?? null, areaRecords(b, "guest")],
+          ["quota", ["u:A"], "yes", "guest", "u:A", 1, "quota", "string", "guest#1", null, sortedRec(G)]);
+        // (b) 後から別のタブで「いいえ」を押した（そのタブはロックを後から取る）: たずねずに残った答えを使う。「もう一度」でないので、空きができていても
+        // やり直さずに同じ理由で止める
+        idb.failPut = null;
+        const asked2 = [];
+        const r2 = await settle(b, { idb, ask: async (t) => { asked2.push(t); return "no"; } });
+        eq("U5 後から別のタブの「いいえ」: そのタブの答えは使わない（たずねない）・残った答え（はい）のまま・「もう一度」まではやり直さずに止める（理由 quota）・ゲストは localStorage のまま・A は作らない",
+          [asked2, r2.error?.reason ?? null, decisionOf(b)?.answer ?? null, decisionOf(b)?.id === d1?.id, b.get("sd2.area"), JSON.parse(b.get("sd2.index"))["u:A"] ?? null, areaRecords(b, "guest")],
+          [[], "quota", "yes", true, "guest#1", null, sortedRec(G)]);
+        // (c) 「もう一度」: 残った答え（はい）でやり直す → A へ移る・答えは消える
+        const asked3 = [];
+        const r3 = await settle(b, { idb, retry: true, ask: async (t) => { asked3.push(t); return "no"; } });
+        eq("U5 「もう一度」: 残った答え（はい）でやり直す（たずねない）・ゲストの記録が A の記録になる・答えは消える",
+          [asked3, r3.error?.message ?? null, r3.result?.op ?? null, b.get("sd2.area"), areaRecords(b, "u:A"), decisionOf(b)], [[], null, "adopt", "u:A#2", sortedRec(adopted), null]);
+      }
+      {
+        // (d) いいえ が先に確定して切り替えが終わる: 答えは消える。後から届いた「はい」は効かない（もうたずねる問いが無い）
+        const { b, idb } = guestDevice();
+        b.set("sd2.auth", session("A"));
+        const r1 = await settle(b, { idb, ask: async () => "no" });
+        let asked2 = 0;
+        const r2 = await settle(b, { idb, ask: async () => { asked2++; return "yes"; } });
+        eq("U5 いいえが先に確定して切り替えが終わった: 答えは消える・後の「はい」は効かない（たずねない・A は空・ゲストは IndexedDB）",
+          [r1.error?.message ?? null, r2.error?.message ?? null, asked2, decisionOf(b), areaRecords(b, "u:A"), idb.peek("areas", "guest")?.keys], [null, null, 0, null, {}, G]);
+      }
+      {
+        // (e) 残った答えの切り替え先（A）と今のセッション（C）が違う（ほかのタブで C に入り直した）: その答えは使わずに捨て、C についてたずねる
+        const { b, idb } = guestDevice();
+        b.set("sd2.auth", session("A"));
+        failAccountCopy(idb);
+        await settle(b, { idb, ask: async () => "yes" });
+        idb.failPut = null;
+        b.set("sd2.auth", session("C"));
+        const asked = [];
+        const r = await settle(b, { idb, ask: async (t) => { asked.push(t); return "no"; } });
+        eq("U5 残った答えの切り替え先（A）とセッション（C）が違う: その答えは使わない・C についてたずねる（いいえ）・C は空・ゲストの記録は C に移らない・答えは消える",
+          [asked, r.error?.message ?? null, b.get("sd2.area")?.split("#")[0], areaRecords(b, "u:C"), decisionOf(b), idb.peek("areas", "guest")?.keys], [["u:C"], null, "u:C", {}, null, G]);
+      }
+      {
+        // (f) 残った答えの世代が今の印の世代と違う（その後にほかの切り替えが済んだ）: 使わずに捨てて、たずね直す
+        const { b, idb } = guestDevice();
+        b.set("sd2.decision", JSON.stringify({ id: "old", from: "guest", to: "u:A", answer: "yes", at: "2026-10-01T00:00:00.000Z", gen: 7 }));
+        b.set("sd2.auth", session("A"));
+        const asked = [];
+        const r = await settle(b, { idb, ask: async (t) => { asked.push(t); return "no"; } });
+        eq("U5 残った答えの世代が今の印と違う: 使わずにたずね直す（いいえ）・ゲストの記録は A に移らない・答えは消える", [asked, r.error?.message ?? null, areaRecords(b, "u:A"), decisionOf(b)], [["u:A"], null, {}, null]);
+      }
+    }
+    // (6c) 予行の写しを消す直前・直後でタブが落ちた（DECISION5 の 3）: 予行は元（localStorage の今の領域）を替えないので、どちらでも A は 1 字も違わない。
+    // 残った予行の写し（pre:）は本物の写しとして読まない（次の切り替えは localStorage の今の値を退避し、戻るときもその写しから戻す）。次の予行が残りを消す
+    for (const when of ["直前", "直後"]) {
+      const precheck = SW.precheck ?? (async () => ({ ok: null, reason: "関数が無い" }));
+      const { b, idb } = await loggedInA();
+      const before = norm(b.dump());
+      const crashing = async () => {
+        const s = await ST.openAreaStore(idb);
+        return {
+          ...s,
+          remove: async (store, key) => {
+            if (when === "直後") await s.remove(store, key);
+            throw Object.assign(new Error("crashed"), { crash: true });
+          }
+        };
+      };
+      await precheck({ area: "u:A", records: areaRecords(b, "u:A"), openStore: crashing, persist: async () => true }).catch(() => null);
+      const left = idb.peek("areas", "pre:u:A");
+      eq(`U5 予行の写しを消す${when}に落ちた: localStorage の A は 1 字も違わない（元はそのまま）・予行の写しは${when === "直前" ? "残る（A と同じ中身）" : "残らない"}`,
+        [norm(b.dump()), left ? left.keys : null], [before, when === "直前" ? A : null]);
+      b.set(K.physicalKey("u:A", "spelldash_xp"), "1999"); // 落ちた後も A で学んだ（予行の写しと違う値）
+      b.remove("sd2.auth"); // 予行を経ない次の切り替え（トークンの更新の失敗でセッションが消えた → ゲストへ）
+      const r1 = await settle(b, { idb });
+      eq(`U5 予行の写しを消す${when}に落ちた後の切り替え: 入る・A の本物の写しは localStorage の今の値（予行の写しを使わない）・ゲストの記録が戻る`,
+        [r1.error?.message ?? null, b.get("sd2.area")?.split("#")[0], idb.peek("areas", "u:A")?.keys?.spelldash_xp ?? null, areaRecords(b, "guest")], [null, "guest", "1999", sortedRec(G)]);
+      b.set("sd2.auth", session("A"));
+      const r2 = await settle(b, { idb });
+      eq(`U5 予行の写しを消す${when}に落ちた後に A へ戻る: 本物の写しから戻る（予行の写しを読まない）`, [r2.error?.message ?? null, areaRecords(b, "u:A").spelldash_xp ?? null], [null, "1999"]);
+      const r3 = await precheck({ area: "u:A", records: areaRecords(b, "u:A"), openStore: () => ST.openAreaStore(idb), persist: async () => true });
+      eq(`U5 予行の写しを消す${when}に落ちた後の次の予行: 通る・予行の写しは残らない`, [r3.ok, idb.peek("areas", "pre:u:A") ?? null], [true, null]);
+    }
+    // (6d) IndexedDB に 1.5 人分の空きしか無い端末で、予行の写しを消す直前に落ちた: 次のログアウトの予行が残りを消すので、ログアウト（退避）は入る
+    {
+      const precheck = SW.precheck ?? (async () => ({ ok: null, reason: "関数が無い" }));
+      const { b, idb } = await loggedInA();
+      const crashing = async () => {
+        const s = await ST.openAreaStore(idb);
+        return { ...s, remove: async () => { throw Object.assign(new Error("crashed"), { crash: true }); } };
+      };
+      await precheck({ area: "u:A", records: areaRecords(b, "u:A"), openStore: crashing, persist: async () => true }).catch(() => null);
+      const leftover = Boolean(idb.peek("areas", "pre:u:A"));
+      idb.budget = { areas: idbSize(idb.peek("areas", "guest")) + Math.floor(idbSize({ keys: areaRecords(b, "u:A") }) * 1.5) };
+      const pre = await precheck({ area: "u:A", records: areaRecords(b, "u:A"), openStore: () => ST.openAreaStore(idb), persist: async () => true });
+      const r = await logout(b, idb, fakeAuth(b));
+      eq("U5 空きの少ない端末で予行の写しが落ちて残った後のログアウト: 次の予行が通って残りを消す・ログアウトは入る（ゲストへ・A は IndexedDB に 1 字も違わず）",
+        [leftover, pre.ok, idb.peek("areas", "pre:u:A") ?? null, r.error?.reason ?? null, b.get("sd2.area")?.split("#")[0], idb.peek("areas", "u:A")?.keys], [true, true, null, null, "guest", A]);
+    }
   }
+
 }
 
 
@@ -2523,6 +2651,57 @@ async function runApp(root) {
       ok("U8 js/supabase.js: 送らないときは失敗の答え（成功と見せない）", rows.filter(([, , w]) => !w).every(([, g]) => g.status >= 400));
       globalThis.fetch = appFetch;
     }
+  }
+  // ── U8 支払いの完了の送り待ち（端末の鍵 spelldash_funnel_paid_send）: 払った人（user）を値に持ち、その人のログインのときだけ送る。
+  // 別のアカウント（B）のトークン・user_id で A の checkout_done を送らない（反証: 端末の鍵で持ち主が無く、B のページが B の名前で送った）
+  {
+    const FL = await import(appUrl("js/funnelLog.js"));
+    const DAY = "2026-10-30";
+    const settleSends = () => new Promise((resolve) => setTimeout(resolve, 30));
+    const doneRows = () => cloud.log.filter((e) => e.table === "funnel_events" && e.kind !== "select").flatMap((e) => e.rows ?? []).filter((r) => r?.step === "checkout_done");
+    const sendOf = () => {
+      const raw = LS.getItem("spelldash_funnel_paid_send");
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return raw;
+      }
+    };
+    const runs = [];
+    // (a) A が払い、送れずに残った（{ day, user: A }）。B のページ（Pro でない・Pro でも）では送らない・残す
+    reset({ seed: { spelldash_device_id: "dev-1234567890", spelldash_funnel_paid_send: JSON.stringify({ day: DAY, user: "uA" }) }, user: "uB", page: "u:uB" });
+    FL.flushPaidPending(false, "uB");
+    FL.flushPaidPending(true, "uB");
+    await settleSends();
+    runs.push(["A の送り待ち・B のページ（Pro でない・Pro）", doneRows().length, sendOf()?.user ?? null, 0, "uA"]);
+    // (b) 同じ端末で A に戻る: A の名前で 1 回送って消す
+    cloud.user = "uA";
+    area.area = "u:uA";
+    FL.flushPaidPending(false, "uA");
+    await settleSends();
+    runs.push(["A に戻る", doneRows().map((r) => r.user_id).join(","), sendOf(), "uA", null]);
+    // (c) 前の形（日付だけ・払った人が分からない）: Pro でない人のページでは送らない（残す）。Pro の人のページでは、その人の物として結んで送る
+    reset({ seed: { spelldash_device_id: "dev-1234567890", spelldash_funnel_paid_send: DAY }, user: "uB", page: "u:uB" });
+    FL.flushPaidPending(false, "uB");
+    await settleSends();
+    runs.push(["前の形・Pro でない B", doneRows().length, sendOf(), 0, DAY]);
+    FL.flushPaidPending(true, "uB");
+    await settleSends();
+    runs.push(["前の形・Pro の B", doneRows().map((r) => r.user_id).join(","), sendOf(), "uB", null]);
+    // (d) 支払いの印（funnel_paid { day, user: A }）が Pro の A のページで送り待ちへ移るときは、払った人を付ける
+    reset({ seed: { spelldash_device_id: "dev-1234567890", spelldash_funnel_paid: JSON.stringify({ day: new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10), user: "uA" }) }, user: "uA", page: "u:uA" });
+    cloud.onCall = (table, kind) => { if (table === "funnel_events" && kind !== "select") throw new Error("offline"); };
+    FL.flushPaidPending(true, "uA");
+    await settleSends();
+    cloud.onCall = null;
+    runs.push(["A が Pro になった（送れない）", JSON.stringify(sendOf() ? Object.keys(sendOf()).sort() : null), sendOf()?.user ?? null, JSON.stringify(["day", "user"]), "uA"]);
+    // (e) 払った人のログインでも、送る時のセッションが別の人なら送らない（トークンは払った人のときだけ）。(d) の送れなかった 1 行は数えない
+    cloud.user = "uB";
+    cloud.log = [];
+    FL.flushPaidPending(false, "uA");
+    await settleSends();
+    runs.push(["払った人の名前で呼ばれたがセッションは B", doneRows().length, sendOf()?.user ?? null, 0, "uA"]);
+    for (const [name, got, kept, wantGot, wantKept] of runs) eq(`U8 支払いの完了の送り待ち: ${name}`, [got, kept], [wantGot, wantKept]);
   }
   // ── U7 バックアップの持ち主・復元 ─────────
   {
@@ -2772,7 +2951,7 @@ const MUTANTS = [
   ["はい: 移した後にゲストを index から外さない", "switch", "      if (adopt) delete nextIndex[from];\n", ""],
   ["はい: 落ちた後の直しでゲストを index から外さない", "switch", "          finishAdopt(pending);\n", ""],
   ["はい: 切り替え先の写しを書かない", "switch", 'await store.putVerified("areas", { area: target, id, keys: adoptKeys,', 'void ({ area: target, id, keys: adoptKeys,'],
-  ["たずねた後にセッションを確かめ直さない", "switch", "        if (now !== target) {\n          target = now;\n          continue;\n        }\n", ""],
+  ["たずねた後にセッションを確かめ直さない", "switch", "          if (now !== target) {\n            target = now;\n            continue;\n          }\n", ""],
   ["予行: 読み直さない（書くだけ）", "switch", 'await store.putVerified("areas", { area: preKey,', 'await store.put("areas", { area: preKey,'],
   ["予行: 本物の写し（その領域の鍵）に書く", "switch", "const preKey = PRECHECK_PREFIX + area;", "const preKey = area;"],
   ["予行: 確かめた後に予行の写しを消さない", "switch", '        await store.remove("areas", preKey);\n', ""],
@@ -2807,13 +2986,23 @@ const MUTANTS = [
   ["バックアップ: 古いファイルの覚えた語を ls の欄だけで数える", "backup", "    if (state === null && fill) {", "    if (false) {"],
   ["バックアップ: 古いファイルの答えた語に出題だけの語を数える", "backup", "    if (stored !== null || answered(s)) answeredCount++;", "    if (stored !== null || answered(s) || (Number(s.playCount) || 0) > 0) answeredCount++;"],
   ["バックアップ: 書き出しで行の user_id を外さない", "backup", "    const value = exportValueOf(key, localStorage.getItem(key));", "    const value = localStorage.getItem(key);"],
-  ["バックアップ: 戻すときに行の user_id を外さない", "backup", "      const kept = exportValueOf(key, value); // 行の中の生の user id は戻さない", "      const kept = value;"]
+  ["バックアップ: 戻すときに行の user_id を外さない", "backup", "      const kept = exportValueOf(key, value); // 行の中の生の user id は戻さない", "      const kept = value;"],
+  ["支払いの完了: 払った人でないログインでも送る", "funnel", "    if (send.user !== userId) return;\n", ""],
+  ["支払いの完了: 送る時のセッションを確かめない", "funnel", "      if (onlyUser && userId !== onlyUser) return false;\n", ""],
+  ["支払いの完了: 前の形を Pro でない人の物として送る", "funnel", "      if (!isProNow) return;\n", ""],
+  // U5 (11) 「移す？」の最初に確定した答え
+  ["移す？: 答えを端末に残さない", "switch", "            ls.set(K.DECISION_KEY, JSON.stringify(decision));\n", ""],
+  ["移す？: 残った答えを使わない（このタブの答えを使う）", "switch", "decision = readDecision(target, gen);", "decision = null;"],
+  ["移す？: 前に失敗した答えを「もう一度」を待たずにやり直す", "switch", "} else if (decision.failed && !retry) {", "} else if (false) {"],
+  ["移す？: 失敗した理由を残さない", "switch", '            ls.set(K.DECISION_KEY, JSON.stringify({ ...decision, failed: error instanceof SwitchError ? error.reason : "evacuate" }));\n', ""],
+  ["移す？: 別の切り替え先への答えを使う", "switch", "d.to === target && ", ""],
+  ["移す？: 前の世代の答えを使う", "switch", "d.gen === gen && ", ""]
 ];
-const APP_FILES = new Set(["sync", "backup", "supabase"]);
+const APP_FILES = new Set(["sync", "backup", "supabase", "funnel"]);
 let mutantReport = [];
 if (MUTATE && baseFailures.length === 0) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "areas-mut-"));
-  const files = { guard: "js/areaGuard.js", switch: "js/areaSwitch.js", store: "js/areaStore.js", sync: "js/sync.js", backup: "js/backup.js", supabase: "js/supabase.js" };
+  const files = { guard: "js/areaGuard.js", switch: "js/areaSwitch.js", store: "js/areaStore.js", sync: "js/sync.js", backup: "js/backup.js", supabase: "js/supabase.js", funnel: "js/funnelLog.js" };
   const original = Object.fromEntries(Object.entries(files).map(([k, f]) => [k, fs.readFileSync(path.join(ROOT, f), "utf8")]));
   let n = 0;
   for (const [name, file, from, to] of MUTANTS) {
