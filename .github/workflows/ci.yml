@@ -73,6 +73,9 @@ jobs:
       - name: 人ごとの保存の領域（見張りの読み替えと書くたびの確かめ・localStorage の使い方の形・全ページの頭・移行・切り替えの直し・展開の途中で満杯・変異。js/areaGuard.js・areaSwitch.js・areaStore.js）
         run: node scripts/test-areas.mjs
 
+      - name: 旧いタブの学習の取り込み（増分・3 状態・送信待ち・二重取り込み。js/oldTabImport.js）
+        run: node scripts/test-oldtab-import.mjs
+
       - name: 中心の学習の出題の列（これから・あやふや・覚えた。js/learnQueue.js）
         run: node scripts/test-learn-queue.mjs
 
@@ -154,7 +157,7 @@ jobs:
   # 終わりの値（tests/oldtab/lib/analyze.mjs exitCodeOf）: 0 = PASS・1 = 漏れか A の記録の後退・2 = 段を通れなかった（INVALID）・4 = 2 度入った（DOUBLE）・
   # 3 = 漏れも後退も無く段も通ったが、A へ戻ったときの旧タブの学習の取り込みが足りない（NOT_IMPORTED）。
   # 証明の 3 つの段（既定・古い部品 2.105.0 の 2 回）は 1・2・4 をその段で落とす（漏れ・後退・段を通れないが段ごとに見える）。3 はその段では通して
-  # oldtab-logs/not-imported.txt に書き、最後の段「旧タブの学習が A に入る」で落とす（取り込みが入るまでジョブは赤。検査は弱めない。
+  # NOT_IMPORTED は oldtab-logs/not-imported.txt に書き、最後の段「旧タブの学習が A に入る」で落とす（検査は弱めない）。
   # 創業者の決定 6: 隔離の場所に残るだけでは不合格）。変異の段（--expect-leak）は前と同じ（どの回も LEAK のときだけ通る）
   oldtab:
     runs-on: ubuntu-latest

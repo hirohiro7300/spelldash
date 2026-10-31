@@ -2,8 +2,9 @@
 // DB spelldash-areas の 4 つの入れ物:
 //   areas      … 使っていない人の記録。1 人 1 件 { area, id, keys, savedAt, schema, sum }。期限なし・自動で消さない
 //   legacy     … 移行の前の旧い記録（spelldash_* の人の記録の全部）。1 件 { id, savedAt, fromSchema, keys, sum }。期限なし・自動で消さない
-//   orphans    … 移行の後に旧コードのタブが旧い鍵へ書いた値の写し { id, savedAt, keys, sum }。期限なし・読まない・移し直さない。
-//                退避した領域の鍵へ、見え方の古いタブが後から書いた値の写しも置く { id, savedAt, area, keys, sum }（area 付き。同じく読まない）
+//   orphans    … 移行の後に旧コードのタブが旧い鍵へ書いた値の写し { id, savedAt, keys, sum }。期限なし。
+//                area の無い行は、移行で決めた元の持ち主へ戻る時に 1 回だけ取り込む（取り込んだ id は持ち主の記録に残す）。
+//                退避した領域の鍵へ、見え方の古いタブが後から書いた値の写しも置く { id, savedAt, area, keys, sum }（area 付き。自動では取り込まない）
 //   prerestore … 復元の前の今の記録の写し（js/backup.js が使う）。期限なし
 // keys は元の名前（spelldash_<名前>）から値への表。書くときは durability strict で書き、新しいトランザクションで読み直して鍵ごとに比べる。
 // 写しを消すのは、利用者の明示の確認があるときだけ。消す口（remove）は、予行の写し（areas の pre:<領域>。js/areaSwitch.js precheck）を確かめた後に消すためだけに使う

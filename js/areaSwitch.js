@@ -6,6 +6,8 @@
 // 内部の 2: ログアウト（退避を確かめてから scope local の signOut）・ログインの「ゲストで学んだ記録を、このアカウントに移す？」（はい／いいえ）・
 // ログインとログアウトの前の予行（precheck。アプリのページが呼ぶ）。
 import { openAreaStore, sumOf, sameKeys, isQuotaError, askPersist, AreaStoreError } from "./areaStore.js";
+import { loadPublicVocab } from "./publicVocab.js";
+import { mergeOldTabOrphans } from "./oldTabImport.js";
 
 const DRAIN_MAX_MS = 3000;
 const DRAIN_STEP_MS = 100;
@@ -543,6 +545,29 @@ export function createSwitcher(deps) {
       await sweepTarget();
       // 7. T を localStorage に全部書く。容量で書けなければ、T の鍵を消し、F を写しから書き戻して index[F] = ls。印は替えない
       if (incoming) {
+        // 移行前のコードを開いたまま学んだ分は、移行で決めた元の持ち主へだけ戻す。
+        // orphan id を持ち主の記録に同時に書くので、A へ 2 回戻っても足さない。
+        const migrated = readJson(ls.get(K.MIGRATED_KEY));
+        if (migrated?.area === target) {
+          const orphans = await store.list("orphans");
+          if (orphans.some((record) => record && !record.area)) {
+            let vocab;
+            try {
+              vocab = await loadPublicVocab();
+            } catch (error) {
+              throw await stop("target", error);
+            }
+            // 旧いタブが開いた時の遊び方は、移行前の控えにある。Study だけが3状態を
+            // 動かし、Challenge / Daily は回数と日時だけを戻す（Battle は word_stats を書かない）。
+            let oldMode = "study";
+            if (typeof migrated.legacyId === "string" && migrated.legacyId) {
+              const legacy = await store.get("legacy", migrated.legacyId);
+              if (legacy?.keys?.spelldash_mode === "challenge") oldMode = "challenge";
+            }
+            const publicIds = oldMode === "study" ? new Set(vocab.order) : new Set();
+            incoming = mergeOldTabOrphans(incoming, orphans, publicIds).keys;
+          }
+        }
         wroteTarget = true;
         try {
           writeArea(target, incoming);
