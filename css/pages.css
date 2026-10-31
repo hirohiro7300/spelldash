@@ -2347,6 +2347,17 @@ html[data-theme] .setting-row--install:has(#installCard:empty) {
   display: none;
 }
 
+/* 出題の設定（今日のセットの長さ・音で出題）と、外した遊び方にだけ効く設定（ランキング表示名: Daily Dash。Batch 78 段 6）: 英単語の学習に絞った間
+   （html[data-focus="english"]。js/focus.js。Batch 78 段 5）は出さない。値は残す */
+html[data-theme][data-focus="english"] :is(.setting-row--question, .setting-row--focus-off) {
+  display: none;
+}
+
+/* プランの行（「Pro について」）: 英単語の学習に絞った間は無料の人に出さない。Pro の人（data-pro）には「解約・お支払いの管理」のために出す（Batch 78 段 6） */
+html[data-theme][data-focus="english"] .setting-row--plan:not([data-pro]) {
+  display: none;
+}
+
 html[data-theme] .setting-block .setting-row:last-child {
   border-bottom: 1px solid var(--line);
 }
@@ -2949,7 +2960,7 @@ html[data-theme] .level-bar--line {
    角丸は 2 種だけ: 部品・札 = var(--radius-room)、題箋 = 2px。影は常に rgba(var(--shadow-rgb), …)。新しい animation／transition は書かない。 */
 
 /* ---- 紙の一枚（札）: 羊皮紙の面・小口 2 段・机への暖かい影。夜は机より一段明るい暗い紙（--sheet） ---- */
-html[data-theme] body:not(.page-room) :is(.result-card, .packs, .my-fold, .cardgen__card, .word-detail__panel) {
+html[data-theme] body:not(.page-room) :is(.result-card, .packs, .my-fold, .cardgen__card, .word-detail__panel, .learn-sum, .learn-card) {
   background: var(--sheet);
   border: 1px solid var(--sheet-edge);
   border-radius: var(--radius-room);
@@ -3399,4 +3410,424 @@ html[data-theme] .stats-break a {
   color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* ===== 学習状況の最初の画面（Batch 78 段 4。stats.html #learnStatus・js/statsView.js renderLearnStatus） =====
+   覚えた N / 総数・ランク・次のランクまで（.learn-sum）と 3 つの札（.learn-card。これから・あやふや・覚えた）。どの幅でも札はこの順（1 列でも 3 列でも並べ替えない）。
+   紙は札の共通の紙（--sheet・小口・机への影。上の :is(.result-card…) に入れた）。色はトークンだけ（昼・夜・紙・藍で同じ規則）。
+   390 で 6 つが 1 画面に入るように、細い幅の札は 2 行（名前と語数・説明とボタン）。560px からは 3 列で縦に積む。
+   札のどこを押してもボタンと同じ所へ（.learn-card__go::after が札を覆う）。押せない札（0 語・今日の分は終わり）はボタンの代わりに短い 1 行 */
+html[data-theme] .learn-status {
+  margin: 0 0 8px;
+}
+
+html[data-theme] .learn-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 14px 16px;
+}
+
+html[data-theme] .learn-sum p {
+  margin: 0;
+}
+
+html[data-theme] .learn-sum__count {
+  flex: 1 0 100%;
+  color: var(--ink);
+}
+
+html[data-theme] .learn-sum__label {
+  margin-right: 6px;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-theme] .learn-sum__n {
+  font-family: var(--font-num);
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+html[data-theme] .learn-sum__total {
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+html[data-theme] .learn-sum__rank strong {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+html[data-theme] .learn-sum__next {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+html[data-theme] .learn-sum__next b {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html[data-theme] .learn-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .learn-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name count" "desc act";
+  align-items: center;
+  gap: 2px 12px;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+html[data-theme] .learn-card__name {
+  grid-area: name;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+html[data-theme] .learn-card__desc {
+  grid-area: desc;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: auto-phrase; /* 日本語は文節で折る（細い幅で「単／語」にしない） */
+}
+
+html[data-theme] .learn-card__count {
+  grid-area: count;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+html[data-theme] .learn-card__count b {
+  margin-right: 2px;
+  font-family: var(--font-num);
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--ink);
+}
+
+html[data-theme] .learn-card__act {
+  grid-area: act;
+  justify-self: end;
+  min-width: 0;
+}
+
+html[data-theme] .learn-card__go {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* 札のどこを押してもリンクへ（焦点の枠はボタンに出る） */
+html[data-theme] .learn-card__go::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+html[data-theme] .learn-card:has(.learn-card__go):hover {
+  border-color: var(--line-2);
+}
+
+html[data-theme] .learn-card__note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: right;
+}
+
+/* 細い幅の 0 語の札: 短い 1 行は説明の下に左寄せ（右の狭い所に入れて説明を折り返させない） */
+@media (max-width: 559px) {
+  html[data-theme] .learn-card.is-empty {
+    grid-template-areas: "name count" "desc desc" "act act";
+  }
+
+  html[data-theme] .learn-card.is-empty .learn-card__act {
+    justify-self: start;
+  }
+
+  html[data-theme] .learn-card.is-empty .learn-card__note {
+    text-align: left;
+  }
+}
+
+html[data-theme] .learn-card.is-done .learn-card__note {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
+@media (min-width: 560px) {
+  html[data-theme] .learn-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  html[data-theme] .learn-card {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "name" "desc" "count" "act";
+    align-content: start;
+    gap: 4px;
+    padding: 14px 16px;
+  }
+
+  html[data-theme] .learn-card__count,
+  html[data-theme] .learn-card__note {
+    text-align: left;
+  }
+
+  html[data-theme] .learn-card__act {
+    justify-self: stretch;
+    margin-top: 6px;
+  }
+
+  html[data-theme] .learn-card__go {
+    width: 100%;
+    min-height: 40px;
+  }
+}
+
+/* 覚えたの条件（依頼 §4 の文）と目安の 1 行: 札の下の小さな字 */
+html[data-theme] .learn-rule {
+  margin: 12px 2px 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+html[data-theme] .learn-pace {
+  margin: 12px 2px 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+html[data-theme] .learn-pace__title {
+  margin: 0 0 2px;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-theme] .learn-pace__line {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+html[data-theme] .learn-pace__line b {
+  font-family: var(--font-num-ui);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 600;
+}
+
+html[data-theme] .learn-pace__note {
+  margin: 2px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+/* 描く前（HTML の初めの形）: 数を見せない（初めの 0 を本当の数に見せない。高さはそのまま） */
+html[data-theme] .learn-status.is-unavailable :is(.learn-sum, .learn-cards, .learn-pace) {
+  visibility: hidden;
+}
+
+/* 表が読めなかった（オフラインで公開の語の表が無い）: 数と札の場所を空けず、短い 1 行だけ（通信が戻ったら描き直す） */
+html[data-theme] .learn-status.is-failed :is(.learn-sum, .learn-cards, .learn-pace) {
+  display: none;
+}
+
+html[data-theme] .learn-status__failed {
+  margin: 8px 0 12px;
+  color: var(--ink-2);
+  font-size: var(--fs-body);
+}
+
+/* ---- 詳しい記録（畳み。既定は閉じる） ---- */
+html[data-theme] .stats-more {
+  margin: 20px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+html[data-theme] .stats-more__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 2px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  list-style: none;
+  cursor: pointer;
+}
+
+html[data-theme] .stats-more__summary::-webkit-details-marker {
+  display: none;
+}
+
+html[data-theme] .stats-more__summary::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 4px 0 2px;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: translateY(-2px) rotate(-45deg);
+}
+
+html[data-theme] .stats-more[open] > .stats-more__summary::before {
+  transform: translateY(-3px) rotate(45deg);
+}
+
+html[data-theme] .stats-more__body > .result-card:first-child {
+  margin-top: 4px;
+}
+
+@media (min-width: 720px) {
+  html[data-theme] #overviewMore.metric-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+/* 9 段のランクの一覧（詳しい記録の中。絵は無いので名前と境の語数だけ。今のランクに「今」の札） */
+html[data-theme] .learn-ranks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .learn-ranks__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-room);
+}
+
+html[data-theme] .learn-ranks__item.is-now {
+  border-color: var(--line-2);
+  background: var(--paper-2);
+}
+
+html[data-theme] .learn-ranks__name {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  word-break: keep-all;
+}
+
+html[data-theme] .learn-ranks__at {
+  color: var(--ink-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+html[data-theme] .learn-ranks__now {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0 5px;
+  border-radius: 2px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* ---- 教材について（出典。決定 §1） ---- */
+html[data-theme] .vocab-source {
+  margin-top: 20px;
+}
+
+html[data-theme] .vocab-source__title {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+html[data-theme] .vocab-source__lead {
+  margin: 0 0 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+html[data-theme] .vocab-source__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+html[data-theme] .vocab-source__list div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+html[data-theme] .vocab-source__list dt {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+html[data-theme] .vocab-source__list dd {
+  margin: 0;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .vocab-source a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (min-width: 560px) {
+  html[data-theme] .vocab-source__list div {
+    grid-template-columns: 13em minmax(0, 1fr);
+    gap: 12px;
+  }
 }

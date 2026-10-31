@@ -14,6 +14,8 @@
   <link rel="stylesheet" href="./css/brand.css" />
   <link rel="stylesheet" href="./css/pages.css" />
   <meta name="theme-color" content="#1A2137" />
+  <!-- 記録の見張り（js/areaGuard.js。人ごとの保存の領域）: ほかのどの script より先に同期で読む。読めないときは切り替えの画面へ（共用の場所で動かさない） -->
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
 
 
@@ -40,10 +42,10 @@
       </a>
 
       <nav class="site-nav" aria-label="メインナビ">
-        <a href="/" class="site-nav__link">書斎</a>
-        <a href="./stats.html" class="site-nav__link">学習データ</a>
-        <a href="./list.html" class="site-nav__link">単語帳</a>
-        <a href="./battle.html" class="site-nav__link">バトル</a>
+        <a href="/" class="site-nav__link">ホーム</a>
+        <a href="/?learn=next" class="site-nav__link">英単語を学ぶ</a>
+        <a href="./stats.html" class="site-nav__link">学習状況</a>
+        <a href="./profile.html" class="site-nav__link">設定</a>
       </nav>
 
       <a id="headerStreak" class="header-streak" href="/stats.html" title="連続プレイ日数" hidden></a>
@@ -57,7 +59,7 @@
     <section class="hero hero--compact">
       <p class="logo">Privacy Policy</p>
       <h1>プライバシーポリシー</h1>
-      <p class="subtitle">最終更新日: 2026年10月6日</p>
+      <p class="subtitle">最終更新日: 2026年10月29日</p>
     </section>
 
     <section class="policy">
@@ -78,8 +80,14 @@
 
       <h3>保存場所</h3>
       <p>
-        学習データはお使いのブラウザ（localStorage）と、ログイン時はSupabase（クラウドデータベース）に保存されます。
+        学習データはお使いのブラウザ（localStorage と IndexedDB）と、ログイン時はSupabase（クラウドデータベース）に保存されます。
         クラウド上のデータは、下記「公開される情報」を除き、本人のアカウントからのみアクセスできます。
+      </p>
+      <p>
+        この端末では、記録を人ごとに分けて保存します（ログインしていないとき〔ゲスト〕と、ログインしたアカウントごと）。
+        表示し、更新し、同期するのは、いまの人の記録だけです。ほかの人の記録とは混ぜません。
+        ログアウトしても、その人の記録はこの端末に分けて残ります。同じアカウントでログインし直すと、その記録に戻ります。
+        いま使っていない人の記録と、保存の形を新しくする前の記録の控えは、ブラウザの IndexedDB に置きます。これらは自動では消しません。
       </p>
 
       <h3>公開される情報（ランキング）</h3>
@@ -138,11 +146,10 @@
       </div>
 
       <p class="site-footer__tagline">
-        タイピングで、英単語を体に覚えさせる。
+        ストレスなしで、英単語を覚える。
       </p>
 
       <nav class="site-footer__nav" aria-label="フッターナビ">
-        <a href="./typing.html">タイピング練習</a>
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
         <a href="./tokushoho.html">特定商取引法に基づく表記</a>

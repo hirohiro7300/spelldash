@@ -67,6 +67,21 @@ jobs:
       - name: 一冊を終えるまでの目安（その回の本だけ数える・初めて済みになった語だけ・記録を始めてからの暦日数で割る・365 日の上限。js/bookPace.js）
         run: node scripts/test-pace.mjs
 
+      - name: 3 状態・スキーマ 7 の移行・最高到達ランクの決まり（js/learnState.js・js/rank.js・js/storage.js・js/sync.js・js/backup.js）
+        run: node scripts/test-learn-state.mjs
+
+      - name: 人ごとの保存の領域（見張りの読み替えと書くたびの確かめ・localStorage の使い方の形・全ページの頭・移行・切り替えの直し・展開の途中で満杯・変異。js/areaGuard.js・areaSwitch.js・areaStore.js）
+        run: node scripts/test-areas.mjs
+
+      - name: 旧いタブの学習の取り込み（増分・3 状態・送信待ち・二重取り込み。js/oldTabImport.js）
+        run: node scripts/test-oldtab-import.mjs
+
+      - name: 中心の学習の出題の列（これから・あやふや・覚えた。js/learnQueue.js）
+        run: node scripts/test-learn-queue.mjs
+
+      - name: 学習状況の数・ランクの見せ方・覚えたで数える目安（js/learnPace.js・js/rank.js）
+        run: node scripts/test-learn-status.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 
@@ -79,6 +94,18 @@ jobs:
       - name: タイピング練習の長文の教材（data/typing-long.json）が最新か
         run: node scripts/build-typing-long.mjs --check
 
+      - name: 公開する英単語の表（data/public/english.json）が最新か（語数・機能語は最後・NGSL の順位）
+        run: node scripts/build-public-vocab.mjs --check
+
+      - name: 公開する英単語の表の決まり（教材とファイルの写しを壊すと落ちる。scripts/build-public-vocab.mjs）
+        run: node scripts/test-public-vocab.mjs
+
+      - name: 分野パックのページと sitemap.xml が生成器（scripts/build-pack-pages.mjs）どおりか
+        run: node scripts/build-pack-pages.mjs --check
+
+      - name: 検索と導線の決まり（sitemap は主導線と規約だけ・noindex・パックのページの案内・vercel.json の旧 URL の一時的な転送・ナビ 4 つとフッター。scripts/test-site-map.mjs）
+        run: node scripts/test-site-map.mjs
+
       - name: E2E の組分け（どの節もちょうど 1 つの組に入り、どの組の台本も構文が通る）
         run: node scripts/e2e-shard.mjs --check 4
 
@@ -87,7 +114,8 @@ jobs:
   e2e:
     name: e2e (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 組は表で約 865 秒。ブラウザを入れる段が 9 分かかって 20 分で止まったことがある（2026-10-27 の 2 組）ので、ゆとりを見る
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -105,5 +133,138 @@ jobs:
       - name: Chromiumインストール
         run: npx playwright-core install --with-deps chromium
 
+      # E2E 78.7 の本物の認証の部品の検査（固定の版 2.118.0）が使う束。リポジトリには入れず、oldtab のジョブと同じ控えから戻し、
+      # tests/oldtab/lib/authLib.mjs が確かめて置く（控えが無ければ登録所から作り、固定の値で確かめる）。組の前に 1 回だけ
+      - name: 認証の部品の置き場を控えから戻す（oldtab のジョブと同じ鍵）
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/oldtab/.cache/auth-lib
+          key: oldtab-auth-lib-${{ hashFiles('tests/oldtab/lib/authLib.mjs') }}
+
+      - name: 認証の部品を置き場に用意する（控えの写しを確かめて使う。無ければ登録所から作る）
+        run: node tests/oldtab/lib/authLib.mjs --version 2.118.0
+
       - name: E2Eスモークテスト（組 ${{ matrix.shard }}/4）
         run: node scripts/e2e-shard.mjs --shard ${{ matrix.shard }}/4
+
+  # 旧タブの証明（tests/oldtab）: 直前の本番（アカウントの分離の前の最後の本番 0507672 に固定）のコードを開いたままのタブから、
+  # A の記録が B へ 1 件も送られないこと・A の記録が後ろへ戻らないことを、本物の旧いコード（git archive）と本物の認証の部品で確かめる。
+  # 認証の部品はリポジトリに入れない。検査の時に tests/oldtab/lib/authLib.mjs が登録所から固定の版を取って作り（sha512 と作った物の sha256 を固定の値で確かめる）、
+  # 置き場 tests/oldtab/.cache/auth-lib を控え（cache）に残す。控えがあっても、毎回登録所から取り直した物と 1 バイトも違わないかを確かめてから使う。
+  # 旧い側を PR の向け先にしないのは、分離が main に入った後の main は旧いタブが切り替えの画面を通って B として動いてよい木で、この 5 段の決まりが合わないため
+  # （run.mjs は分離の入った旧い木を渡すと止まる）。分離の後の本番を旧い側にする 5 段は別に作る（tests/oldtab/README.md）。
+  # Service Worker あり・なし × ログインの 2 通り。守りを破る変異では漏れを見つけることも確かめる（検査が落ちることができる）
+  # 終わりの値（tests/oldtab/lib/analyze.mjs exitCodeOf）: 0 = PASS・1 = 漏れか A の記録の後退・2 = 段を通れなかった（INVALID）・4 = 2 度入った（DOUBLE）・
+  # 3 = 漏れも後退も無く段も通ったが、A へ戻ったときの旧タブの学習の取り込みが足りない（NOT_IMPORTED）。
+  # 証明の 3 つの段（既定・古い部品 2.105.0 の 2 回）は 1・2・4 をその段で落とす（漏れ・後退・段を通れないが段ごとに見える）。3 はその段では通して
+  # NOT_IMPORTED は oldtab-logs/not-imported.txt に書き、最後の段「旧タブの学習が A に入る」で落とす（検査は弱めない）。
+  # 創業者の決定 6: 隔離の場所に残るだけでは不合格）。変異の段（--expect-leak）は前と同じ（どの回も LEAK のときだけ通る）
+  oldtab:
+    runs-on: ubuntu-latest
+    # 1 回 約 3〜4 分 × 9（既定の 4 回・変異 3 回・古い部品の 2 回）
+    timeout-minutes: 75
+    env:
+      OLDTAB_OLD: 050767281b51386a451f569aba02f5d68588d763
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 依存インストール
+        run: npm install
+
+      - name: ブラウザのインストール
+        run: npx playwright-core install --with-deps chromium
+
+      - name: 直前の本番（分離の前の最後の本番）を取る
+        run: git cat-file -e "$OLDTAB_OLD^{commit}" 2>/dev/null || git fetch --no-tags --depth 1 origin "$OLDTAB_OLD"
+
+      - name: 認証の部品の置き場を控えから戻す（tests/oldtab/lib/authLib.mjs が変われば作り直す）
+        id: oldtab-auth-lib
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/oldtab/.cache/auth-lib
+          key: oldtab-auth-lib-${{ hashFiles('tests/oldtab/lib/authLib.mjs') }}
+
+      - name: 認証の部品（固定の版 2.118.0・2.105.0）を登録所から取り直して作り、固定の値と同じか（控えの写しとも 1 バイトも違わないか）
+        run: node tests/oldtab/lib/authLib.mjs --check
+
+      - name: 認証の部品を置き場に用意する（控えの写しを確かめて使う。無ければ登録所から作る）
+        run: node tests/oldtab/lib/authLib.mjs
+
+      # 後の段が落ちても控えに残す（落ちた回の後でも、次の回が取り直しを 1 度で済ませる）
+      - name: 認証の部品の置き場を控えに残す
+        if: steps.oldtab-auth-lib.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: tests/oldtab/.cache/auth-lib
+          key: ${{ steps.oldtab-auth-lib.outputs.cache-primary-key }}
+
+      - name: 漏れと後退の判定の確かめ（作った記録で。ブラウザなし）
+        run: node tests/oldtab/test-analyze.mjs
+
+      - name: 旧タブから A の記録が B へ送られない（Service Worker あり・なし × A をログアウトしてから・A のまま B のリンク）
+        run: |
+          rc=0
+          node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --out oldtab-logs || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            mkdir -p oldtab-logs && echo "既定（Service Worker あり・なし × ログインの 2 通り）" >> oldtab-logs/not-imported.txt
+            echo "::notice title=oldtab::漏れ・後退・段の失敗は無い。取り込みが足りない（NOT_IMPORTED）は最後の段で落とす"
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+
+      - name: 守りを破る変異では漏れを見つける（認証の鍵の分離を破る）
+        if: success() || failure()
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --mutant mirror-session --sw off --login logout --expect-leak --out oldtab-logs
+
+      - name: 守りを破る変異では漏れを見つける（記録の領域の分離を破る：人の記録の鍵を端末の鍵として扱う）
+        if: success() || failure()
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --mutant person-key-as-device --sw off --login logout --expect-leak --out oldtab-logs
+
+      - name: 守りを破る変異では漏れを見つける（旧い場所の片付けを破る：旧いタブの答えを今の領域へ写す。開き直した新しいコードが送る）
+        if: success() || failure()
+        run: node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --mutant orphan-into-area --sw off --login logout --expect-leak --out oldtab-logs
+
+      - name: 旧いタブにだけ古い認証の部品 2.105.0（更新の結果を書き戻す版）・新しいコードの最初の読み込みが B のリンク・止めていた更新は B の後に書き戻す（A の記録が B へ行かない・A の記録が後ろへ戻らない）
+        if: success() || failure()
+        run: |
+          rc=0
+          node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --order direct-link --release login --sw off --old-auth-lib 2.105.0 --expect-writeback --out oldtab-logs || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            mkdir -p oldtab-logs && echo "古い部品 2.105.0・B のリンクから" >> oldtab-logs/not-imported.txt
+            echo "::notice title=oldtab::漏れ・後退・段の失敗は無い。取り込みが足りない（NOT_IMPORTED）は最後の段で落とす"
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+
+      - name: 旧いタブにだけ古い認証の部品 2.105.0・B にログインしないまま書き戻しの後に旧いタブを戻す（A の記録が後ろへ戻らない）
+        if: success() || failure()
+        run: |
+          rc=0
+          node tests/oldtab/run.mjs --old "$OLDTAB_OLD" --login none --sw off --old-auth-lib 2.105.0 --expect-writeback --out oldtab-logs || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            mkdir -p oldtab-logs && echo "古い部品 2.105.0・B にログインしない" >> oldtab-logs/not-imported.txt
+            echo "::notice title=oldtab::漏れ・後退・段の失敗は無い。取り込みが足りない（NOT_IMPORTED）は最後の段で落とす"
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+
+      - name: 旧タブの学習が A へ戻ったときに入る（取り込み。NOT_IMPORTED の段があれば落とす）
+        if: always()
+        run: |
+          if [ -s oldtab-logs/not-imported.txt ]; then
+            echo "::error title=oldtab::NOT_IMPORTED: 旧タブの学習が A に入っていない段がある（$(wc -l < oldtab-logs/not-imported.txt) 段）"
+            exit 3
+          fi
+
+      - name: 記録（全部の要求・見つけた漏れと後退）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oldtab-logs
+          path: oldtab-logs

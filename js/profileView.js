@@ -7,10 +7,11 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { initWordStore } from "./wordStore.js";
 import { setupUnloadSync } from "./sync.js";
 import { getAudioSettings, saveAudioSettings, speak, getVolume, setVolume, getListenRatio, setListenRatio, getEnglishVoices, getPreferredVoiceURI, setPreferredVoiceURI, previewVoice, getSpeechRate, setSpeechRate, onVoicesReady, prettyVoiceName } from "./audio.js";
-import { downloadBackup, readBackupFile, inspectBackup, applyBackup } from "./backup.js";
+import { downloadBackup, readBackupFile, inspectBackup, checkRestore, restoreBackup, RESTORE_REFUSED } from "./backup.js";
 import { isSfxEnabled, setSfxEnabled, sfxCorrect } from "./sfx.js";
 import { getTheme, setTheme, isProTheme } from "./theme.js";
 import { isNativeApp } from "./appEnv.js";
+import { isPreviewHost } from "./previewHost.js";
 import { getPlan, isPro, postBilling, planLabel, planActionLabel } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
 import { getSetLength, setSetSize } from "./dailySet.js";
@@ -104,10 +105,12 @@ function initializeThemeSetting() {
 
   themeSelect.value = getTheme();
   themeSelect.addEventListener("change", () => {
-    // 紙・藍は Pro だけ。無料の人には案内を出して選択を戻す（適用しない）
+    // 紙・藍は Pro だけ。無料の人には案内を出して選択を戻す（適用しない）。英単語の学習に絞った間（html[data-focus]。CSS が設定の行を隠すのと同じ旗）は
+    // 加入画面へ誘わない（Batch 78 段 6。創業者の決定 3: Pro は主導線から外す）ので、案内は文だけ
     if (isProTheme(themeSelect.value) && !isPro()) {
       if (hint) {
-        hint.innerHTML = canOfferPro() ? '紙・藍は Pro のテーマ。<a href="./pro.html" data-funnel="theme">Pro について</a>' : "紙・藍は Pro のテーマ。";
+        const offer = canOfferPro() && !("focus" in document.documentElement.dataset);
+        hint.innerHTML = offer ? '紙・藍は Pro のテーマ。<a href="./pro.html" data-funnel="theme">Pro について</a>' : "紙・藍は Pro のテーマ。";
         hint.hidden = false;
       }
       themeSelect.value = getTheme();
@@ -126,6 +129,7 @@ function initializeThemeSetting() {
 initializePlanRow();
 
 function initializePlanRow() {
+  const row = document.getElementById("planRow");
   const value = document.getElementById("planValue");
   const link = document.getElementById("planLink");
   const portal = document.getElementById("planPortal");
@@ -134,6 +138,8 @@ function initializePlanRow() {
   const render = () => {
     const plan = getPlan();
     value.textContent = planLabel(plan);
+    // 英単語の学習に絞った間は、Pro の人にだけプランの行を出す（css/pages.css .setting-row--plan。解約・お支払いの管理のため）
+    row?.toggleAttribute("data-pro", plan.pro);
     // アプリでは加入・管理のボタンを出さない（Web 版で）。受付前は「Pro について」も出さない
     if (link) link.hidden = plan.pro || !canOfferPro();
     if (portal) {
@@ -286,9 +292,17 @@ function initializeBackup() {
   const status = document.getElementById("backupStatus");
   if (!exportButton || !importInput || !status) return;
 
-  exportButton.addEventListener("click", () => {
+  // 確認用の Preview では読み込み（この端末の記録を置き換える）を止める。書き出しはできる（js/previewHost.js）
+  if (isPreviewHost) {
+    importInput.disabled = true;
+    importInput.closest("label")?.setAttribute("hidden", "");
+    status.textContent = "読み込みは現在調整中（確認用の Preview）。書き出しはできる";
+  }
+
+  // 書き出すのは今の領域（ゲストか、ログイン中のアカウント）だけ。ファイルに持ち主の値を付ける（js/backup.js）
+  exportButton.addEventListener("click", async () => {
     try {
-      downloadBackup();
+      await downloadBackup();
       status.textContent = "書き出した。ダウンロードフォルダに保存";
     } catch {
       status.textContent = "書き出せなかった";
@@ -303,14 +317,28 @@ function initializeBackup() {
       const obj = await readBackupFile(file);
       const info = inspectBackup(obj);
       const when = info.exportedAt ? new Date(info.exportedAt).toLocaleString("ja-JP") : "不明";
-      const ok = window.confirm(
-        `このバックアップを読み込みますか？\n\n単語の記録: ${info.words}語 / XP: ${info.xp}\n書き出し日時: ${when}\n\nこの端末の学習データはファイルの内容で置き換わります。`
-      );
-      if (!ok) {
+      // 戻すのは同じ持ち主の領域だけ（ゲストのファイルはゲストだけ）。持ち主の無い古いファイルは数と入れる先を見せて確かめる
+      const area = window.SpellDashArea?.area ?? null;
+      const decision = await checkRestore(obj, area);
+      if (!decision.ok) {
+        status.textContent = RESTORE_REFUSED[decision.reason] ?? RESTORE_REFUSED.unknown;
+        return;
+      }
+      const target = area === "guest" ? "この端末のゲスト（ログインしていない人）" : "この端末の、ログイン中のアカウント";
+      const overwrite = "今の記録はファイルの内容で置き換わる（上書き）。前の記録は控えとしてこの端末に残す。";
+      let text;
+      if (decision.legacy) {
+        const s = decision.summary;
+        const last = s.lastAt ? new Date(s.lastAt).toLocaleDateString("ja-JP") : "なし";
+        text = `持ち主の分からない古いバックアップ。\n\n覚えた語: ${s.learned}語 / 答えた語: ${s.answered}語\n最後に学んだ日: ${last}\n書き出し日時: ${when}\n入れる先: ${target}\n\n${overwrite}\nこのバックアップを読み込む？`;
+      } else {
+        text = `このバックアップを読み込む？\n\n単語の記録: ${info.words}語 / XP: ${info.xp}\n書き出し日時: ${when}\n入れる先: ${target}\n\n${overwrite}`;
+      }
+      if (!window.confirm(text)) {
         status.textContent = "読み込みを中止した";
         return;
       }
-      applyBackup(obj);
+      await restoreBackup(obj, { area });
       status.textContent = `復元した（${info.words}語）。ページを再読み込みする`;
       setTimeout(() => location.reload(), 900);
     } catch (error) {

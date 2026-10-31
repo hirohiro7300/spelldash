@@ -623,7 +623,7 @@ spelldash_mastery_meta = {
 | 1 打ミスで下がる前の段の控え `masteryPeak`（Batch 70） | 2 台目には渡らない（送らない）。マージでも端末の欄なので残る。2 台目の ○ だけなら控えは使え、2 台目の × を取り込んだ語は `masteryPeakOf` が 0 を返す（種類が分からない × なので今の決まり）。古い版が控えを知らずに × を書いても、history の最後の × に `k` が無いので使わない。バックアップ・復元では `spelldash_word_stats` ごと入る |
 | 2 つのタブで同時に学ぶ | `spelldash_mastery_meta` は書く直前に保存を読み直し、このタブで足した分（速さの見本・集計の増分）だけを足して書く（見本は各箱の最新 40 件・集計は足し算・控えの語は足した／数えた分だけ）。書いた中身をメモリーにするので、もう一方のタブの見本も基準に入る（§11.6 の 4。段は word_stats なので今の作法のまま） |
 | バックアップ・復元 | `spelldash_*` を丸ごと持ち出す。新しい欄も新しいキーも入る。復元（backup.js:85 の `applyBackup`）でも `forgetMasteryMeta()` を `forgetWordStats()` の隣で呼ぶ（メモリーの古い基準が後から復元した中身を上書きしない）。`spelldash_memory_check`・`spelldash_memory_words` も同じで `forgetMemoryCheck()`・`forgetMemoryWords()`（Batch 68） |
-| 端末の記録を消す（`clearLocalRecords`。別のアカウントでログインしたときも） | `spelldash_mastery_meta`・`spelldash_memory_check`・`spelldash_memory_words`（と壊れた値の写し `spelldash_memory_words_corrupt`）も消える（KEEP_ON_CLEAR に入れない）。メモリーの基準と集計も捨てる（`forgetMasteryMeta()`・`forgetMemoryCheck()`・`forgetMemoryWords()` を `forgetWordStats()` の隣で呼ぶ） |
+| 端末の記録を消す（js/backup.js `clearLocalRecords`。Batch 78 の人ごとの保存の領域の後は、別のアカウントのログインでは呼ばない〔記録はその人の領域の写しに残る。docs/SPEC_ACCOUNT_AREAS.md〕。製品のコードからの呼び出しは無い） | `spelldash_mastery_meta`・`spelldash_memory_check`・`spelldash_memory_words`（と壊れた値の写し `spelldash_memory_words_corrupt`）も消える（KEEP_ON_CLEAR に入れない）。メモリーの基準と集計も捨てる（`forgetMasteryMeta()`・`forgetMemoryCheck()`・`forgetMemoryWords()` を `forgetWordStats()` の隣で呼ぶ） |
 
 ### 7.4 SQL
 
@@ -931,7 +931,7 @@ spelldash_memory_words = { v: 1, w: { "<語の id>": { t, memSv: [7], memD, memD
   - 語ごとの欄の上限を語の記録の大きさに合わせて縮める（上の「上限」）。200 万字は Safari の枠から、保持率の記録（2,000 語・1 年で約 21 万字）・速さの箱・集計・ほかの設定の分（合わせて 50 万字）を残した値。
   - 鍵の名前・退避の包み・上限の誤りの見分け方は js/storageGuard.js の 1 か所（js/storage.js・js/memoryWords.js・js/memoryCheck.js が読む）。
 - **壊れた保存**（JSON でない・表でない・版が違う）は止めずに空として読み、上書きする前に 1 つだけ `spelldash_memory_words_corrupt` に写す。写しは js/storage.js の `spelldash_word_stats_corrupt` と同じ包み（`{"at","size","head","cut"}`・512K 字まで〔超える値は頭と元の字数だけ〕・同じ壊れた値を読み直しても日時を変えない）で、30 日たったら読み込みのときに消す（Batch 68 の形〔元の値そのまま〕は今の日時で包み直す。PR #172 のレビュー 1）。容量で写せなければ元の鍵を写しへ移す。語ごとの値が表でない語は無いものとして読む（移行の値で作り直す）。
-- **バックアップに入る**（`spelldash_` で始まる。写しも）。端末の記録を消すと消える（KEEP_ON_CLEAR に入れない。別のアカウントでログインしたときの `clearLocalRecords` も同じで、word_stats と同じ扱い）。復元と消去の後は js/backup.js が `forgetMemoryWords()` でメモリーと書きかけを捨てる。同期しない（js/sync.js は読まない）。
+- **バックアップに入る**（`spelldash_` で始まる。写しも）。端末の記録を消すと消える（KEEP_ON_CLEAR に入れない。`clearLocalRecords` も同じで、word_stats と同じ扱い。Batch 78 の人ごとの保存の領域の後は、別のアカウントのログインで記録を消さない〔その人の領域の写しに残る〕）。復元と消去の後は js/backup.js が `forgetMemoryWords()` でメモリーと書きかけを捨てる。同期しない（js/sync.js は読まない）。
 - 語の記録の読み手は書き手（js/stats.js）が `useWordStatsReader(getWordStats)` で渡す（js/memoryWords.js は js/storage.js を import しない。js/masteryMeta.js からも読まれるので、保存の移行を連れてこない）。
 
 ### 12.3 影の計算（js/memoryModel.js。出題には使わない）

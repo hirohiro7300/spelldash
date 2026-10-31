@@ -151,7 +151,8 @@ export function simulate(ctx, { judge = ctx.modules.judge, answers = ctx.modules
         rival("otherPack", o.en, o.entry.id);
         for (const a of Array.isArray(o.accept) ? o.accept : []) rival("otherPack", a, o.entry.id);
       }
-      for (const e of allIndex.get(w.en) ?? []) rival("packAlt", e);
+      // 全パックの索引の鍵は js/answers.js altLookupKey（同じ綴りで別の項目にしたカード〔5月〕は id。無い前の木は綴り）
+      for (const e of allIndex.get(answers.altLookupKey ? answers.altLookupKey(w) : w.en) ?? []) rival("packAlt", e);
       const one = oneCharFor(w);
       const { jaTokens } = ctx.modules.jaAmbiguity;
       if (w.ja && !w.q) {

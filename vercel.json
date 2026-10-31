@@ -37,6 +37,36 @@
       ],
       "destination": "https://www.spelldash.net/:path*",
       "permanent": true
+    },
+    {
+      "source": "/packs",
+      "destination": "/?from=old",
+      "permanent": false
+    },
+    {
+      "source": "/packs/:path*",
+      "destination": "/?from=old",
+      "permanent": false
+    },
+    {
+      "source": "/list.html",
+      "destination": "/?from=old",
+      "permanent": false
+    },
+    {
+      "source": "/typing.html",
+      "destination": "/?from=old",
+      "permanent": false
+    },
+    {
+      "source": "/typing-game.html",
+      "destination": "/?from=old",
+      "permanent": false
+    },
+    {
+      "source": "/battle.html",
+      "destination": "/?from=old",
+      "permanent": false
     }
   ],
   "crons": [

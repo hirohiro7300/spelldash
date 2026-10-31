@@ -1,8 +1,12 @@
 // 分野パックの入口ページ（静的HTML）と sitemap.xml を生成する。
-//   node scripts/build-pack-pages.mjs
+//   node scripts/build-pack-pages.mjs          書き出す（変わったファイルだけ）
+//   node scripts/build-pack-pages.mjs --check  書き出さず、生成物（packs/*.html・sitemap.xml）が最新かを見る（違えば終了コード 1）
 // 出力: packs/<id>.html（各パック）、packs/index.html（一覧）、sitemap.xml
 // 検索から着地 → 内容のサンプルを見る → 「追加して始める」で list.html?add=<id> へ。
 // JS なしで読める（クローラ向け）。デザインは既存 CSS を流用。
+// Batch 78（創業者の決定 §7）: 公開する教材は「英単語」1 つなので、パックのページは公開しない（PACK_PAGES_PUBLIC = false）。
+// ページとファイルは残し、検索に出さない（robots noindex）・開いたら英単語のホームへ案内する（/?from=old。vercel.json の転送と同じ行き先）・sitemap に載せない。
+// 戻すときは PACK_PAGES_PUBLIC を true にして生成し直し、vercel.json の /packs の転送を外す
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -10,6 +14,10 @@ import { fileURLToPath } from "url";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SITE = "https://www.spelldash.net";
 const OUT_DIR = path.join(ROOT, "packs");
+const CHECK = process.argv.includes("--check");
+const PACK_PAGES_PUBLIC = false;
+// 古い画面の URL から案内する先（英単語のホームが 1 回だけ一文を出す。vercel.json の redirects と同じ）
+const OLD_URL_HOME = "/?from=old";
 
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));
 const subject = manifest.subjects.find((s) => s.id === "english");
@@ -43,13 +51,17 @@ function sampleHtml(data, words) {
 
 // 本文 main.pp は body（縦の flex。layout.css）の中で margin: 0 auto なので、幅を書かないと中身に合わせた幅（fit-content）になり、
 // 一覧の説明（1 行で省略）の長さが最小の幅になって 561〜631px で横スクロールした（Batch 67 N4）。width: 100% で画面の幅に合わせる（上限 720px は今のまま）
+// 頭の最初の script は記録の見張り（js/areaGuard.js。人ごとの保存の領域。全ページで同じ 1 行。scripts/test-areas.mjs が確かめる）
 function pageShell({ title, description, canonical, body }) {
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${esc(title)}</title>
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
+${PACK_PAGES_PUBLIC ? "" : `  <meta name="robots" content="noindex" />
+  <script>location.replace(${JSON.stringify(OLD_URL_HOME)});</script>
+`}  <title>${esc(title)}</title>
   <link rel="stylesheet" href="/css/reset.css" />
   <link rel="stylesheet" href="/css/fonts.css" />
   <link rel="stylesheet" href="/css/tokens.css" />
@@ -129,10 +141,10 @@ function pageShell({ title, description, canonical, body }) {
     <div class="site-header__inner">
       <a href="/" class="brand"><span class="brand__mark" aria-hidden="true">SD</span><span class="brand__name">SpellDash</span></a>
       <nav class="site-nav" aria-label="メインナビ">
-        <a href="/" class="site-nav__link">書斎</a>
-        <a href="/stats.html" class="site-nav__link">学習データ</a>
-        <a href="/list.html" class="site-nav__link">単語帳</a>
-        <a href="/battle.html" class="site-nav__link">バトル</a>
+        <a href="/" class="site-nav__link">ホーム</a>
+        <a href="/?learn=next" class="site-nav__link">英単語を学ぶ</a>
+        <a href="/stats.html" class="site-nav__link">学習状況</a>
+        <a href="/profile.html" class="site-nav__link">設定</a>
       </nav>
       <a id="headerStreak" class="header-streak" href="/stats.html" title="連続プレイ日数" hidden></a>
       <div class="account">
@@ -146,9 +158,8 @@ ${body}
   <footer class="site-footer">
     <div class="site-footer__inner">
       <div class="site-footer__brand"><span class="brand__mark" aria-hidden="true">SD</span><span class="brand__name">SpellDash</span></div>
-      <p class="site-footer__tagline">タイピングで、英単語を体に覚えさせる。</p>
+      <p class="site-footer__tagline">ストレスなしで、英単語を覚える。</p>
       <nav class="site-footer__nav" aria-label="フッターナビ">
-        <a href="/typing.html">タイピング練習</a>
         <a href="/news.html">お知らせ</a>
         <a href="/privacy.html">プライバシー</a>
         <a href="/tokushoho.html">特定商取引法に基づく表記</a>
@@ -168,7 +179,7 @@ ${body}
 `;
 }
 
-fs.mkdirSync(OUT_DIR, { recursive: true });
+const outputs = new Map(); // 書き出すファイルの絶対パス → 中身（--check はここと今のファイルを比べる）
 const groups = new Map();
 
 for (const p of packs) {
@@ -228,7 +239,7 @@ ${sampleHtml(data, sample)}
     ${siblings.length ? `<section><h2>同じグループのパック</h2><ul class="pp-related">${siblings.map((s) => `<li><a href="/packs/${s.id}.html">${esc(s.label)}</a></li>`).join("")}</ul></section>` : ""}
     ${data.source ? `<section><h2>出典</h2><p class="pp-source">語彙リスト: <a href="${esc(data.source.url)}" rel="license noopener" target="_blank">${esc(data.source.list)}</a>（${esc(data.source.license)}${data.source.ranks ? ` ・ 頻度順位 ${esc(data.source.ranks)}` : ""}）。訳・品詞・例文は SpellDash が作成。</p></section>` : ""}
   `;
-  fs.writeFileSync(path.join(OUT_DIR, `${p.id}.html`), pageShell({ title, description, canonical, body }));
+  outputs.set(path.join(OUT_DIR, `${p.id}.html`), pageShell({ title, description, canonical, body }));
   if (!groups.has(p.group)) groups.set(p.group, []);
   groups.get(p.group).push(p);
 }
@@ -247,30 +258,45 @@ const indexBody = `
 ${[...groups.entries()].map(([g, list], i) => `      <h2 id="group-${i + 1}">${esc(g)}</h2>\n      <ul>${list.map((p) => `<li><a class="packs-item" href="/packs/${p.id}.html"><b>${esc(p.label)}</b><small><span class="packs-item__n">${p.count}${unit(p)}</span><span class="packs-item__blurb"> ・ ${esc(p.blurb)}</span></small></a></li>`).join("")}</ul>`).join("\n")}
     </section>
   `;
-fs.writeFileSync(
+outputs.set(
   path.join(OUT_DIR, "index.html"),
   pageShell({ title: "分野パック一覧 | SpellDash", description: "不動産・会計・医療・SaaS・英検・TOEIC・中学高校の教科など、SpellDash の学習パック一覧。追加したパックだけがホームに出ます。", canonical: `${SITE}/packs/`, body: indexBody })
 );
 
-// sitemap.xml（基本ページ＋パックの入口ページ）
+// sitemap.xml: 主導線（ホーム・学習状況・設定）と、お知らせ・規約のページだけ（Batch 78。創業者の決定 §7: 単語帳・分野パック・タイピング・Battle は
+// 検索の対象から外す。Pro も主導線から外したので載せない）。検索に出さない印（robots noindex）のあるページは載せない
+// （特商法の表記 tokushoho.html は事業者の欄が埋まるまで noindex。外せば次の生成で載る）。scripts/test-site-map.mjs が同じ決まりを見る
+const SITE_PAGES = [
+  ["/", "index.html", "weekly", "1.0"],
+  ["/stats.html", "stats.html", "weekly", "0.6"],
+  ["/profile.html", "profile.html", "monthly", "0.3"],
+  ["/news.html", "news.html", "weekly", "0.5"],
+  ["/privacy.html", "privacy.html", "yearly", "0.2"],
+  ["/terms.html", "terms.html", "yearly", "0.2"],
+  ["/tokushoho.html", "tokushoho.html", "yearly", "0.2"]
+];
+const noindex = (file) => /<meta name="robots" content="[^"]*noindex/.test(fs.readFileSync(path.join(ROOT, file), "utf8"));
 const urls = [
-  ["/", "weekly", "1.0"],
-  ["/list.html", "weekly", "0.8"],
-  ["/packs/", "weekly", "0.8"],
-  ["/typing.html", "monthly", "0.8"],
-  ["/typing-game.html", "monthly", "0.8"],
-  ...packs.map((p) => [`/packs/${p.id}.html`, "monthly", "0.7"]),
-  ["/list.html?category=listing", "monthly", "0.6"],
-  ["/news.html", "weekly", "0.5"],
-  ["/battle.html", "monthly", "0.4"],
-  ["/privacy.html", "yearly", "0.2"],
-  ["/pro.html", "monthly", "0.6"],
-  ["/tokushoho.html", "yearly", "0.2"],
-  ["/terms.html", "yearly", "0.2"]
+  ...SITE_PAGES.filter(([, file]) => !noindex(file)).map(([u, , f, pr]) => [u, f, pr]),
+  ...(PACK_PAGES_PUBLIC ? [["/packs/", "weekly", "0.8"], ...packs.map((p) => [`/packs/${p.id}.html`, "monthly", "0.7"])] : [])
 ];
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls
   .map(([u, f, pr]) => `  <url><loc>${SITE}${u.replace(/&/g, "&amp;")}</loc><changefreq>${f}</changefreq><priority>${pr}</priority></url>`)
   .join("\n")}\n</urlset>\n`;
-fs.writeFileSync(path.join(ROOT, "sitemap.xml"), sitemap);
+outputs.set(path.join(ROOT, "sitemap.xml"), sitemap);
 
-console.log(`pack pages: ${packs.length} + index / sitemap urls: ${urls.length}`);
+const read = (file) => (fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null);
+const stale = [...outputs].filter(([file, text]) => read(file) !== text).map(([file]) => path.relative(ROOT, file));
+// 台帳から消えたパックのページ（生成しないのに残っている packs/*.html）。書き出しでは消さない（検索から来た人を 404 にしない）
+const orphans = fs.existsSync(OUT_DIR) ? fs.readdirSync(OUT_DIR).filter((f) => f.endsWith(".html") && !outputs.has(path.join(OUT_DIR, f))).map((f) => `packs/${f}`) : [];
+if (CHECK) {
+  if (stale.length) {
+    console.error(`古い生成物 ${stale.length} 件（node scripts/build-pack-pages.mjs で作り直す）: ${stale.slice(0, 8).join("、")}${stale.length > 8 ? " ほか" : ""}`);
+    process.exit(1);
+  }
+  console.log(`pack pages: ${packs.length} + index / sitemap urls: ${urls.length}（最新${orphans.length ? `。台帳に無いページ ${orphans.join("、")}` : ""}）`);
+} else {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  for (const [file, text] of outputs) if (read(file) !== text) fs.writeFileSync(file, text);
+  console.log(`pack pages: ${packs.length} + index / sitemap urls: ${urls.length}（書き換え ${stale.length} 件）`);
+}

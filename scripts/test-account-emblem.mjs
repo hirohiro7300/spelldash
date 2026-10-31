@@ -1,8 +1,10 @@
-// アカウントの紋章（Batch 75。ログイン中の人のアカウントのアイコンを今の学習のランクの紋章にする。js/accountEmblem.js）の単体テスト。ブラウザなしで 1 秒で終わる:
+// アカウントのアイコン（Batch 75。ログイン中の人のアカウントのアイコンとメニューの行に学習のランクを出す。js/accountEmblem.js）の単体テスト。
+// Batch 78 段 4 で材料を XP の 21 段から 9 段のランク（js/rank.js。覚えた語数・下がらない最高到達ランク）に替えた。ブラウザなしで 1 秒で終わる:
 //   node scripts/test-account-emblem.mjs
 // 失敗が 1 つでもあれば終了コード 1。
-// 見ること: ランクが決まる・決まらない（持ち主の印・このタブの同期・壊れた XP）、ボタンの名前とメニューの行の文（21 段）、替える時機の決まり（幕の間・プレイ中・
-// 幕を閉じた知らせ）、紋章の絵の URL とファイル、保存のキーの名前が js/sync.js・js/level.js と同じこと、js/auth.js が紋章を静的に読まないこと（modulepreload を変えない）、
+// 見ること: ランクが決まる・決まらない（持ち主の印・このタブの同期・最高到達ランクと今の語数の材料）、見せるランク（最高到達ランクより下げない・
+// 9 段の境）、ボタンの名前とメニューの行の文（「ランク」と名前・Lv なし）、見せた段を最高到達ランクに書く決まり（raiseRankPeak だけ・取り込みの途中は書かない）、絵が無い間は頭文字（URL は ""）、替える時機の決まり（幕の間・プレイ中・幕を閉じた知らせ）、
+// 保存のキーの名前が js/sync.js・js/rank.js と同じこと、js/auth.js が紋章を静的に読まないこと（modulepreload を変えない）、
 // js/game.js の幕を閉じた知らせは 1 か所で、答えの道の外にあること。
 import fs from "fs";
 import path from "path";
@@ -11,15 +13,16 @@ import { isDeepStrictEqual } from "util";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const store = new Map();
-globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k), clear: () => store.clear() };
+globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k), clear: () => store.clear(), key: (i) => [...store.keys()][i] ?? null, get length() { return store.size; } };
+globalThis.sessionStorage ??= { getItem: () => null, setItem() {}, removeItem() {} };
 globalThis.window ??= globalThis;
-// js/level.js → plan.js → supabase.js は SDK を動的に読みに行く。テストでは読めない URL の代わりに空の殻を渡す（test-level.mjs と同じ）
+// js/storage.js → sync.js → supabase.js は SDK を動的に読みに行く。テストでは読めない URL の代わりに空の殻を渡す（test-level.mjs と同じ）
 globalThis.window.__SUPABASE_MODULE_URL = "data:text/javascript,export const createClient = () => ({});";
 
 // import しただけでは document に触らない（7 ページの読み込みの後に動的 import で読む。Node でも読める）
 const hadDocument = "document" in globalThis;
 const A = await import("../js/accountEmblem.js");
-const L = await import("../js/level.js");
+const R = await import("../js/rank.js");
 const E = await import("../js/emblem.js");
 
 let passed = 0;
@@ -30,83 +33,83 @@ function eq(name, actual, expected) {
 }
 const ok = (name, cond, detail = "") => eq(`${name}${detail ? ` (${detail})` : ""}`, !!cond, true);
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
-const xpForLv = (lv) => { let x = 0; for (let l = 1; l < lv; l++) x += 100 + (l - 1) * 50; return x; };
-const brief = (s) => (s ? { name: s.rank.name, level: s.level } : null);
+const TOTAL = JSON.parse(read("data/public/english.json")).total;
+const brief = (s) => (s ? s.name : null);
 
 ok("import しただけでは document を作らない・触らない", !hadDocument && !("document" in globalThis));
 
-// ---- ランクが決まる・決まらない ----
+// ---- ランクが決まる・決まらない（材料は最高到達ランクと今の覚えた語数。XP は使わない） ----
 const U = "user-a";
-const state = (o) => brief(A.accountRankState({ userId: U, owner: U, syncedUser: null, xp: xpForLv(15), ...o }));
-eq("持ち主の印が本人 → 決まる（Lv.15 = 銀 2）", state({}), { name: "銀 2", level: 15 });
-eq("このタブで本人の同期を終えた → 決まる（持ち主の印が無くても）", state({ owner: null, syncedUser: U }), { name: "銀 2", level: 15 });
+const state = (o) => brief(A.accountRankState({ userId: U, owner: U, syncedUser: null, peak: 4, ...o }));
+eq("持ち主の印が本人・最高到達ランク 4 → 中学生", state({}), "中学生");
+eq("このタブで本人の同期を終えた → 決まる（持ち主の印が無くても）", state({ owner: null, syncedUser: U }), "中学生");
 eq("未ログイン → 決まらない", state({ userId: null }), null);
 eq("持ち主が別のアカウント・同期がまだ → 決まらない（前の人のランクを出さない）", state({ owner: "user-b" }), null);
-eq("持ち主の印が無く・同期がまだ → 決まらない（足し合わせの後に決まる）", state({ owner: null }), null);
+eq("持ち主の印が無く・同期がまだ → 決まらない", state({ owner: null }), null);
 eq("同期を終えたのが別のアカウント → 決まらない", state({ owner: null, syncedUser: "user-b" }), null);
-eq("XP 0 → 木 1・Lv.1", state({ xp: 0 }), { name: "木 1", level: 1 });
-eq("XP が負 → 木 1（level.js と同じ）", state({ xp: -5 }), { name: "木 1", level: 1 });
-eq("神 3 の上（Lv.150）→ 神 3", state({ xp: xpForLv(150) }), { name: "神 3", level: 150 });
-eq("壊れた XP（Infinity・NaN）→ 決まらない（getLevelState の繰り返しを回さない）", [Infinity, -Infinity, NaN].map((xp) => state({ xp })), [null, null, null]);
-eq(`大きすぎる XP（${A.MAX_XP} を超える）→ 決まらない`, [A.MAX_XP + 1, 1e300].map((xp) => state({ xp })), [null, null]);
-eq(`上限ちょうどの XP（${A.MAX_XP}）は決まる`, state({ xp: A.MAX_XP }) !== null, true);
-store.set("spelldash_xp", "1e309");
-eq("readXp: 保存の \"1e309\" は Infinity（決まらない側へ）", A.readXp(), Infinity);
-store.set("spelldash_xp", "abc");
-eq("readXp: 字（\"abc\"）は 0（level.js の getTotalXp と同じ）", A.readXp(), 0);
-store.set("spelldash_xp", String(xpForLv(22)));
-eq("readXp: 数の字はそのまま", A.readXp(), xpForLv(22));
-store.clear();
+eq("最高到達ランクも今の語数も無い → 決まらない（材料を待つ。頭文字のまま）", state({ peak: null }), null);
+eq("最高到達ランクが無く、今の語数 0 → 赤ちゃん", state({ peak: null, learned: 0, total: TOTAL }), "赤ちゃん");
+eq("最高到達ランクの壊れた値（9・-1・\"x\"・3.5）は無いのと同じ", [9, -1, "x", 3.5].map((peak) => state({ peak })), [null, null, null, null]);
+eq("材料は最高到達ランク（\"6\" の文字列も読む）", state({ peak: "6" }), "留学生");
+eq("最高到達ランクより今の語数の段が上（1,400 語）→ 高校生（学習状況と同じ max）", state({ learned: 1400, total: TOTAL }), "高校生");
+eq("今の語数が減っても最高到達ランクより下げない（4 のまま 300 語 → 中学生）", state({ learned: 300, total: TOTAL }), "中学生");
+eq("XP を渡しても使わない（材料に無い）", brief(A.accountRankState({ userId: U, owner: U, syncedUser: null, peak: 2, xp: 1e6 })), "単語キッズ");
+{
+  // 9 段の境の前後（最高到達ランクが無く、今の語数だけ）: 学習状況と同じ js/rank.js rankFor
+  const at = R.rankThresholds(TOTAL);
+  const rows = [];
+  for (let k = 1; k < at.length; k++) rows.push([at[k] - 1, at[k]].map((n) => brief(A.accountRankState({ userId: U, owner: U, peak: null, learned: n, total: TOTAL }))));
+  eq("9 段の境の −1 とちょうど（最高到達ランクが無いとき）", rows, R.RANK_NAMES.slice(1).map((name, i) => [R.RANK_NAMES[i], name]));
+}
 
-// ---- 文（21 段） ----
-const all = L.LEARNING_RANKS.map((rank) => ({ rank, level: rank.level }));
+// ---- 文（9 段。名前だけ・Lv なし） ----
+const all = R.RANK_NAMES.map((name, rank) => ({ rank, name }));
 eq("決まらないときのボタンの名前は今のまま「アカウントメニュー」", A.menuLabel(null), "アカウントメニュー");
-eq("ボタンの名前は「アカウントメニュー（銀 2）」（全角の括弧）", A.menuLabel({ rank: L.learningRankOf(15), level: 15 }), "アカウントメニュー（銀 2）");
-eq("メニューの行は「銀 2 ・ Lv.15」（学習データの行と同じ書き方）", A.rankRowText({ rank: L.learningRankOf(15), level: 15 }), "銀 2 ・ Lv.15");
-eq("メニューの行の読み上げは「銀 2、レベル 15」（Lv. を読ませない）", A.rankRowSpeech({ rank: L.learningRankOf(15), level: 15 }), "銀 2、レベル 15");
-eq("21 段のボタンの名前", all.map(A.menuLabel), L.LEARNING_RANKS.map((r) => `アカウントメニュー（${r.name}）`));
-eq("21 段のメニューの行", all.map(A.rankRowText), L.LEARNING_RANKS.map((r) => `${r.name} ・ Lv.${r.level}`));
-eq("21 段の読み上げ", all.map(A.rankRowSpeech), L.LEARNING_RANKS.map((r) => `${r.name}、レベル ${r.level}`));
-ok("文に undefined・NaN・Pro・Battle の段の名前が入らない", all.flatMap((s) => [A.menuLabel(s), A.rankRowText(s), A.rankRowSpeech(s)]).every((t) => !/undefined|NaN|Pro|Bronze|Silver|Gold|Diamond|Master/.test(t)));
+eq("ボタンの名前は「アカウントメニュー（中学生）」（全角の括弧）", A.menuLabel({ rank: 4, name: "中学生" }), "アカウントメニュー（中学生）");
+eq("メニューの行は「ランク 中学生」（Lv は出さない。名前だけだと学年に読める）", A.rankRowText({ rank: 4, name: "中学生" }), "ランク 中学生");
+eq("メニューの行の読み上げは「ランク 中学生」", A.rankRowSpeech({ rank: 4, name: "中学生" }), "ランク 中学生");
+eq("9 段のボタンの名前", all.map(A.menuLabel), R.RANK_NAMES.map((n) => `アカウントメニュー（${n}）`));
+eq("9 段のメニューの行", all.map(A.rankRowText), R.RANK_NAMES.map((n) => `ランク ${n}`));
+ok("文に undefined・NaN・Lv・レベル・Pro・Battle の段の名前・前の 21 段の名前が入らない", all.flatMap((s) => [A.menuLabel(s), A.rankRowText(s), A.rankRowSpeech(s)]).every((t) => !/undefined|NaN|Lv|レベル|Pro|Bronze|Silver|Gold|Diamond|Master|[木銅銀金神] \d|ダイヤ|レジェンド/.test(t)));
 
-// ---- 紋章の絵（96px の小さい絵。21 段） ----
-const dir = path.join(ROOT, "assets/images/emblems");
-eq("21 段の絵の URL は emblemSrc(rank, { small: true }) と同じ", all.map(A.emblemUrl), L.LEARNING_RANKS.map((r) => E.emblemSrc(r, { small: true })));
-ok("21 段の絵のファイルがある（-sm.webp）", all.every((s) => fs.existsSync(path.join(dir, path.basename(A.emblemUrl(s))))), all.map(A.emblemUrl).filter((u) => !fs.existsSync(path.join(dir, path.basename(u)))).join(","));
-eq("決まらない・知らないランクは空の URL", [A.emblemUrl(null), A.emblemUrl({ rank: { tier: "x", step: 1, name: "x" }, level: 1 })], ["", ""]);
+// ---- 絵（9 段の絵はまだ無い: 頭文字のまま） ----
+eq("9 段どれも絵の URL は空（js/emblem.js learnRankEmblemSrc。新しい絵は作らない）", all.map(A.emblemUrl), Array(9).fill(""));
+eq("決まらないときも空の URL", A.emblemUrl(null), "");
+eq("learnRankEmblemSrc は小さい絵でも空", [E.learnRankEmblemSrc(0), E.learnRankEmblemSrc(8, { small: true })], ["", ""]);
 
 // ---- 替える時機（nextShown） ----
-const S = (lv) => ({ rank: L.learningRankOf(lv), level: lv });
+const S = (rank) => ({ rank, name: R.RANK_NAMES[rank] });
 const n = (o) => brief(A.nextShown(o));
-const w1 = S(1), w2 = S(2), s2 = S(15), s2b = S(16), s3 = S(18), g1 = S(22);
-eq("ふだん: 今の XP のランク", n({ current: s2, shown: null }), brief(s2));
-eq("ふだん: 上がる（同期で）", n({ current: g1, shown: s2 }), brief(g1));
-eq("ふだん: 下がる（別のアカウント・置き換え）", n({ current: w1, shown: s2 }), brief(w1));
-eq("決まらない → 頭文字（前の状態を残さない）", n({ current: null, shown: s2 }), null);
-eq("幕が出ている間は替えない", n({ current: s3, shown: s2, curtainOpen: true }), brief(s2));
-eq("幕が出ている間・まだ何も出していない → 頭文字のまま", n({ current: s3, shown: null, curtainOpen: true }), null);
-eq("プレイ中に段が違う（控えた幕がある）→ 替えない", n({ current: w2, shown: w1, running: true }), brief(w1));
-eq("プレイ中でも同じ段なら Lv だけ新しく（銀 2 Lv.15 → Lv.16）", n({ current: s2b, shown: s2, running: true }), brief(s2b));
-eq("プレイ中・まだ何も出していない → 頭文字のまま（回の後か幕の後に出す）", n({ current: s2, shown: null, running: true }), null);
-eq("幕を閉じた知らせ・プレイ中でない → 今のランク", n({ current: S(5), shown: S(4), announced: S(5) }), brief(S(5)));
-eq("幕を閉じた知らせ・プレイ中（Study の回の途中）→ 幕で見せたランク", n({ current: S(5), shown: S(4), announced: S(5), running: true }), brief(S(5)));
-eq("幕を閉じた知らせ・プレイ中に次の段へもう進んでいた → 幕で見せたランクまで", n({ current: S(7), shown: S(4), announced: S(5), running: true }), brief(S(5)));
+eq("ふだん: 今の材料のランク", n({ current: S(4), shown: null }), "中学生");
+eq("ふだん: 上がる（同期・別のタブ・学習状況で上げた）", n({ current: S(5), shown: S(4) }), "高校生");
+eq("ふだん: 別のアカウント・置き換えの後は新しい人のランク", n({ current: S(1), shown: S(4) }), "よちよち");
+eq("決まらない → 頭文字（前の状態を残さない）", n({ current: null, shown: S(4) }), null);
+eq("幕が出ている間は替えない", n({ current: S(5), shown: S(4), curtainOpen: true }), "中学生");
+eq("幕が出ている間・まだ何も出していない → 頭文字のまま", n({ current: S(5), shown: null, curtainOpen: true }), null);
+eq("プレイ中に段が違う → 替えない", n({ current: S(5), shown: S(4), running: true }), "中学生");
+eq("プレイ中でも同じ段ならそのまま", n({ current: S(4), shown: S(4), running: true }), "中学生");
+eq("プレイ中・まだ何も出していない → 頭文字のまま（回の後か幕の後に出す）", n({ current: S(4), shown: null, running: true }), null);
+eq("幕を閉じた知らせ・プレイ中でない → 今のランク", n({ current: S(5), shown: S(4), announced: S(5) }), "高校生");
+eq("幕を閉じた知らせ・プレイ中に次の段へもう進んでいた → 幕で見せたランクまで", n({ current: S(6), shown: S(4), announced: S(5), running: true }), "高校生");
 eq("幕を閉じた知らせでも決まらないときは頭文字", n({ current: null, shown: S(4), announced: S(5) }), null);
-eq("幕を閉じた知らせ（壊れた detail）→ announcedFrom は null", [A.announcedFrom(null), A.announcedFrom({}), A.announcedFrom({ rank: "x 9", level: 3 }), A.announcedFrom({ rank: "銅 1", level: "abc" })], [null, null, null, null]);
-eq("幕を閉じた知らせの detail（{ rank: 名前, level }）→ ランクとレベル", brief(A.announcedFrom({ rank: "銅 1", level: 5 })), { name: "銅 1", level: 5 });
+eq("幕を閉じた知らせの detail（ランクの名前か段の番号）→ ランク", [A.announcedFrom({ rank: "中学生" }), A.announcedFrom({ rank: 5 }), A.announcedFrom({ rank: "8" })], [S(4), S(5), S(8)]);
+eq("幕を閉じた知らせ（壊れた detail・前の 21 段の名前）→ null", [A.announcedFrom(null), A.announcedFrom({}), A.announcedFrom({ rank: "銀 2", level: 15 }), A.announcedFrom({ rank: 9 })], [null, null, null, null]);
 
 // ---- 保存のキーの名前（js/sync.js は export しないので本文と突き合わせる） ----
 const syncSrc = read("js/sync.js");
-const levelSrc = read("js/level.js");
+const emblemSrcText = read("js/accountEmblem.js").replace(/\/\/[^\n]*/g, ""); // 注を除いたコード
 eq("持ち主の印のキーは js/sync.js の OWNER_KEY と同じ", syncSrc.match(/const OWNER_KEY = "([^"]+)"/)?.[1], A.OWNER_KEY);
 eq("このタブの同期を終えた印のキーは js/sync.js の DONE_FLAG と同じ", syncSrc.match(/const DONE_FLAG = "([^"]+)"/)?.[1], A.SYNC_DONE_KEY);
-eq("XP のキーは js/level.js の XP_KEY と同じ", levelSrc.match(/const XP_KEY = "([^"]+)"/)?.[1], A.XP_KEY);
+ok("最高到達ランクのキーは js/rank.js の RANK_PEAK_KEY を使う（写さない）・XP を読まない", /RANK_PEAK_KEY/.test(emblemSrcText) && !/spelldash_rank_peak|spelldash_xp|getTotalXp|getLevelState|LEARNING_RANKS/.test(emblemSrcText));
+ok("js/accountEmblem.js は見せた段を最高到達ランクに書くのを js/rank.js raiseRankPeak だけで行い（setItem を直に呼ばない）、取り込みの途中（isPulling）・回の印が替わったときは書かない",
+  !/setItem/.test(emblemSrcText) && (emblemSrcText.match(/raiseRankPeak\(/g) ?? []).length === 1 && /isPulling\(\)/.test(emblemSrcText) && /recordsEpoch\(\)/.test(emblemSrcText));
 
 // ---- js/auth.js: 紋章は動的 import（静的に読むと battle・list・pro・profile・stats の head〔modulepreload〕が変わる） ----
 const authSrc = read("js/auth.js");
 const IMPORT_RE = /^\s*(?:import|export)\s(?:[^;"']*?\sfrom\s+)?["'](\.{1,2}\/[^"']+)["']/gm; // scripts/modulepreload.mjs と同じ
 const staticDeps = [...authSrc.matchAll(IMPORT_RE)].map((m) => m[1]);
 eq("js/auth.js は accountEmblem・emblem・level を静的に import しない", staticDeps.filter((d) => /accountEmblem|emblem\.js|level\.js/.test(d)), []);
+eq("js/accountEmblem.js は js/sync.js を静的に import しない（動的 import。Node の単体で DOM の要るモジュールを読まない）", [...read("js/accountEmblem.js").matchAll(IMPORT_RE)].map((m) => m[1]).filter((d) => /sync\.js/.test(d)), []);
 ok("js/auth.js は accountEmblem.js を動的に import する", /import\(\s*["']\.\/accountEmblem\.js["']\s*\)/.test(authSrc));
 ok("js/auth.js は #headerAvatar の中身を textContent で丸ごと替えない（紋章の img を消さない）", !/headerAvatarElement\.textContent\s*=/.test(authSrc));
 

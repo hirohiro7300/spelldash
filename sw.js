@@ -1,22 +1,38 @@
 // SpellDash Service Worker
 // 方針: Network First（デプロイが即反映される）＋オフライン時はキャッシュへフォールバック。
 // Supabase等のクロスオリジンには一切触らない。
-const CACHE_NAME = "spelldash-v4";
+// v5（Batch 78）: 先読みから /list.html を外した。前の版（v4）が持つ単語帳と分野パックの古いページは activate で消える
+// v6（Batch 78 段 6）: 先読みからタイピングの 2 ページ（/typing.html・/typing-game.html。配信の転送で英単語のホームへ）を外した。前の版（v5）の保存は activate で消える
+// v7（Batch 78 段 7）: 先読みから Battle（/battle.html。配信の転送と入口の門で英単語のホームへ）を外した。前の版（v6）の保存は activate で消える
+// v8（Batch 78 アカウント分離 内部の 1・2。v7 と同じ公開でまとめて出す）: 先読みに切り替えの画面（/switch.html とその部品）と記録の見張り（/js/areaGuard.js）を足した。
+// 有効になったら、開いている窓に問い合わせ、答えない窓（見張りの無い古いコードのページ）を読み直させる。これは補助で、安全の根拠にしない（凍った・裏の・
+// Service Worker の無いタブは読み直されない。古いタブの守りは保存の鍵と認証の鍵の世代: docs/SPEC_ACCOUNT_AREAS.md §6）。前の版（v7・v6）の保存は activate で消える
+const CACHE_NAME = "spelldash-v8";
 
+// 先読みのページ。配信の転送（vercel.json の redirects）が受けるパス（/list.html・/packs/*・/typing.html・/typing-game.html・/battle.html）は入れない: cache.addAll は転送を追うので、
+// 転送の後の応答（redirected）をそのパスで保存し、オフラインでそのページを開くとブラウザが応答を断る（ページ遷移の応答は転送を含めない決まり）。
+// E2E 78.5 の (4) が vercel.json と突き合わせる
 const CORE_ASSETS = [
   "/",
   "/index.html",
-  "/battle.html",
   "/stats.html",
   "/profile.html",
   "/news.html",
-  "/list.html",
   "/pro.html",
   "/privacy.html",
   "/terms.html",
   "/tokushoho.html",
-  "/typing.html",
-  "/typing-game.html"
+  "/switch.html",
+  "/js/areaGuard.js",
+  // 切り替えの画面の部品（オフラインでも、途中で止まった切り替えの直しと復旧の画面が開く。switch.html の module と css。単体 test-areas U1 が突き合わせる）
+  "/js/areaSwitch.js",
+  "/js/areaStore.js",
+  "/css/reset.css",
+  "/css/fonts.css",
+  "/css/tokens.css",
+  "/css/layout.css",
+  "/css/brand.css",
+  "/css/pages.css"
 ];
 
 self.addEventListener("install", (event) => {
@@ -28,6 +44,8 @@ self.addEventListener("install", (event) => {
   );
 });
 
+// 有効になるまで待つのは、古い保存の片付けと clients.claim() だけ。古い窓の読み直し（補助）は待たない: 読み直しのページ遷移はこの
+// Service Worker が有効になるまで待つので、activate の waitUntil の中で待つと互いに待って止まり、どのページも数分開けなくなる（E2E 78.7 の (7)）
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
@@ -36,8 +54,49 @@ self.addEventListener("activate", (event) => {
         Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
       )
       .then(() => self.clients.claim())
+      .then(() => {
+        reloadOldWindows();
+      })
   );
 });
+
+// 開いている窓に問い合わせ（sd2-ping）、PING_MS のうちに答えない窓を読み直させる（見張り js/areaGuard.js のある新しいページは答える）。
+// 失敗しても有効になるのを止めない
+const PING_MS = 1500;
+function ping(client) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (answered) => {
+      if (done) return;
+      done = true;
+      resolve(answered);
+    };
+    try {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (event) => finish(event.data?.type === "sd2-pong");
+      client.postMessage({ type: "sd2-ping" }, [channel.port2]);
+    } catch {
+      finish(false);
+    }
+    setTimeout(() => finish(false), PING_MS);
+  });
+}
+// 読み直す URL は # の後ろを外す（ログインのリンクを開いたタブでは # の後ろに初めのトークンが入りうる。同じ文書の中の移動になり読み直しにもならない）
+function withoutHash(href) {
+  try {
+    const url = new URL(href);
+    url.hash = "";
+    return url.href;
+  } catch {
+    return href;
+  }
+}
+function reloadOldWindows() {
+  return self.clients
+    .matchAll({ type: "window", includeUncontrolled: false })
+    .then((windows) => Promise.all(windows.map((client) => ping(client).then((answered) => (answered ? null : client.navigate(withoutHash(client.url)).catch(() => null))))))
+    .catch(() => null);
+}
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;

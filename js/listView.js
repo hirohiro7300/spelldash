@@ -20,9 +20,15 @@ import { bindWordDetail } from "./wordDetail.js";
 import { groupByGenre, setGenre, getGenre, genreLabel } from "./genres.js";
 import { icon } from "./icons.js";
 import { scrollBehavior } from "./ui.js";
+import { leaveOldScreen } from "./focus.js";
 
 // ===== 単語帳（ジャンルごとの一覧） =====
 // カテゴリ → ジャンル → カード。読み物として眺められて、そのジャンルだけ練習にも入れる。
+
+// 英単語の学習に絞った間（js/focus.js。Batch 78 段 5）は、単語帳（マイ単語帳・分野パック・#packs・#myWords・?add=・?category= を含む）を開いたら
+// 英単語のホームへ案内する（1 行「英単語の学習にまとめました。」はホームが出す）。この先（?add= のパックの追加・カテゴリの保存・同期の配線）は流さない:
+// 置き換えの移動が終わるまでこの module の続きを止める（保存の鍵は何も書かない・消さない）
+if (leaveOldScreen()) await new Promise(() => {});
 
 const STATUS_LABEL = { untouched: "未着手", weak: "苦手", learning: "覚えた", mastered: "習得", known: "知ってた" };
 const CATEGORY_KEY = "spelldash_category";

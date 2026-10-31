@@ -8,6 +8,9 @@
 - ☐ **Supabase のプロジェクトを復旧する** — ダッシュボード → プロジェクト `sujvgwozsnzjsjmkcrnk` → **Restore project**。
   無料プロジェクトは 1 週間 API が呼ばれないと自動停止し、ホスト名が消える（`DNS_PROBE_FINISHED_NXDOMAIN`）。停止中はログイン・クラウド同期・ランキング・CRM・Pro の API が止まる（学習そのものは端末内で動く）。
   復旧後は、日次の `/api/cron/keepalive` が止まらないように保つ。根本対策は Supabase Pro（$25/月）。
+- ☐（**今は流さない**。案だけ・未実行・流すには創業者の明示の許可が要る。アカウント分離の版を公開する日に、上の復旧の後で）**旧いコードの書き込みを断る門** — docs/SQL_CLIENT_GATE.md。新しい版は表への要求に印 `X-Client-Info: spelldash/2 …` を付ける。印の無い書き込み（直前の本番 0507672 までのタブ）を、クライアントが書く 10 個の表で restrictive の行の権限が断る。今の方針はそのまま、読むのは今のまま。旧タブの証明で見つかった形（古い認証の部品の旧いタブが、移行の後の空の値で A のクラウドを後ろへ戻す）を、新しいコードのタブが 1 つも開いていない間も止める
+  - 順番（§3）: **(1) 新しい版のデプロイを先に作り、本番へ切り替えるだけにしておく（下の重複のプロジェクトを消すと枠が空く）→ (2) プロジェクトを復旧（上）→ (3) 公開の直前に、関数だけを流す（§4.1）→ 本物の通り道で印が届くことを見る（§4.2。印ありで true・印なしで false。違えば止める）→ 方針を流して確かめる（§4.3・§5）→ (4) 新しい版を公開 → (5) 新しい版の書き込みが 2xx で通ることを見る**。門を入れる前に新しい版を公開しない。門から公開までは旧い本番の同期が全部断られるので、同じ作業の続きでする。同じ作業の間に出せないなら、戻し方（§6）を流す。新しい版の書き込みが断られたら、すぐ §6 を流す
+  - user_items・feedback・funnel_events を後で作ったら、§4.3 をもう一度流す。印は守りではない（だれでも付けられる。手を加えていない旧いコードを止めるだけ）
 - ☐ **Vercel の重複プロジェクトを消す** — `spelldash` と `spelldash-jzf8` の 2 つが同じリポジトリに繋がっていて、デプロイ枠を 2 倍使う（過去に日次上限に到達）。消す前に: 本番ドメイン `www.spelldash.net` がどちらに付いているか／環境変数がどちらにあるか を確認し、付いていない方を削除（docs/DECISIONS_V4.md §10）。
 
 ## B. 課金（SpellDash Pro）を受け付け始めるなら — 手順は docs/BILLING.md §2
@@ -45,6 +48,55 @@
     add column if not exists mastery_rank smallint,
     add column if not exists mastery_at timestamptz,
     add column if not exists known_on_sight boolean;
+  ```
+- ☐（**案だけ・未実行・流すには創業者の明示の許可が要る**。Batch 78 の公開には要らない）3 つの状態（これから・あやふや・覚えた）と最高到達ランク（Batch 78。docs/SPEC_LEARN_STATE.md）は端末ごと（状態は word_stats の端末だけの欄 `ls`・`lsd`・`lsAt`、最高到達ランクは `spelldash_rank_peak`。送る行は 15 列のまま）。SQL が無い間、2 台目は初めの取り込みで移行の式から始まるので、1 台目と状態が違う語がある。**2 台で同じ状態を見せたくなったときに、下の SQL が要る**
+  - 足す列: word_progress に `learn_state smallint`（1 = あやふや・2 = 覚えた・NULL = 未設定）・`learn_state_at timestamptz`（中心の学習が状態を書いた時刻。マージの鍵）・`learn_ok_day integer`（あやふやの語で数えた日の日番号）。user_progress に `rank_peak smallint`（0〜8）・`rank_peak_at timestamptz`
+  - 既存の行の初めの値: **すべて NULL**（UPDATE で埋めない）。NULL は「不明」で、これからの意味に使わない。端末は NULL の行で自分の状態を残し、端末に語が無ければ移行の式で作る（今の初めの埋めと同じ）
+  - RLS・権限: 変わらない（行ごとの方針と表ごとの GRANT。列を足しても同じ）。管理画面の API は列を名指しで読むので影響なし
+  - 順番が大事: **(0) 同じプロジェクトで Supabase を復旧**（新しいプロジェクトだと user id が変わり、端末の記録の置き換えの確認が出る）→ **(1) 下の SQL を流す → (2) 確認の SELECT（列が増えた・`count(learn_state)` が 0）→ (3) 連絡** → こちらで `statToRow`／`rowToStat`（js/sync.js）と user_progress の送受信に列を足す。逆の順だと word_progress の送信が丸ごと失敗し続ける。マージは語ごとに `learn_state_at` の新しい方（行全体の `last_played` では決めない。Battle の出題でも新しくなる）、`rank_peak` は大きい方
+  ```sql
+  -- 案（未実行）。何度流しても同じ
+  begin;
+  alter table public.word_progress
+    add column if not exists learn_state smallint,
+    add column if not exists learn_state_at timestamptz,
+    add column if not exists learn_ok_day integer;
+  alter table public.user_progress
+    add column if not exists rank_peak smallint,
+    add column if not exists rank_peak_at timestamptz;
+  do $$
+  begin
+    if not exists (select 1 from pg_constraint where conname = 'word_progress_learn_state_check') then
+      alter table public.word_progress add constraint word_progress_learn_state_check check (learn_state is null or learn_state in (1, 2));
+    end if;
+    if not exists (select 1 from pg_constraint where conname = 'word_progress_learn_ok_day_check') then
+      alter table public.word_progress add constraint word_progress_learn_ok_day_check check (learn_ok_day is null or learn_ok_day between 0 and 200000);
+    end if;
+    if not exists (select 1 from pg_constraint where conname = 'user_progress_rank_peak_check') then
+      alter table public.user_progress add constraint user_progress_rank_peak_check check (rank_peak is null or rank_peak between 0 and 8);
+    end if;
+  end $$;
+  commit;
+  notify pgrst, 'reload schema';
+  -- 確認（読むだけ）
+  select count(*) as rows, count(learn_state) as rows_with_state from public.word_progress;
+  select count(*) as users, count(rank_peak) as users_with_peak from public.user_progress;
+  ```
+  - 戻し方（**先にクライアントを「列を送らない版」に戻してから**流す。消えるのはサーバーの写しだけで、各端末の欄と最高到達ランクは残る）:
+  ```sql
+  begin;
+  alter table public.user_progress
+    drop constraint if exists user_progress_rank_peak_check,
+    drop column if exists rank_peak_at,
+    drop column if exists rank_peak;
+  alter table public.word_progress
+    drop constraint if exists word_progress_learn_ok_day_check,
+    drop constraint if exists word_progress_learn_state_check,
+    drop column if exists learn_ok_day,
+    drop column if exists learn_state_at,
+    drop column if exists learn_state;
+  commit;
+  notify pgrst, 'reload schema';
   ```
 - ☐ アプリ版（Capacitor）: Mac／Xcode／TestFlight。docs/APP.md。コードは Web と同じものを `npm run app:build` で `dist/` に出す
 - ☐ 任意: 貼られたときの絵（og-image）の再取得 — 2026-10-13 に絵を作り直し、全ページの og:image の URL に版 `?v=2` を付けた（SNS は絵を URL で覚える）。新しく貼られたリンクは新しい絵になる。前に貼られたページで古い絵（1000語・7カテゴリ・絵文字）が出続けるなら、各 SNS の投稿の確かめ・再取得の画面でページの URL を取り直す（コードの変更は要らない。docs/SPEC_TYPING.md §6）
@@ -106,6 +158,11 @@
    - **Q3 復習の間隔を段とつなぐか**（apple を何度も出さない）: 既定はつなぐ。段階 1（入った）で、身についた以上の期日前の語と 2 週間後の確認を待つ知ってた語を補充・ミッション・息抜きに出さない。段階 2（入った）で、正解で期日を早めない・日をあけて思い出せた語は間隔を伸ばす・下限は身についた 7 日／即答 30 日。apple は 106 日までに 10 回＋補充 → 段階 1 で 10 回 → 段階 2 で 5 回（Challenge・Daily・Battle で答えなければ）。予定どおり続ける人の間隔と保持率の測り方はほぼ変わらない。代案: 段は見せるだけにし、出題と間隔は今のまま／段階 1 だけで止める（間隔は今のまま）
    - **Q4 打ち間違い 1 回で下がった段の戻り方**: **既定で M1・M1' を入れた（Batch 70、2026-10-15。答えが無かったので推奨のまま）**。1 打ずつ打つ道（綴り・ローマ字）の 3 字目からの 1 打ミスか隣のキーの押し間違いで下がった段は、下がる前の段を端末だけの欄 `masteryPeak` に控え、翌日以降のノーミスで時間のかからない答えで、下がる前の段まで 1 日 1 段で戻す（6 日・20 日の条件なし）。答え表示・ヒント・1〜2 字目の隣でない字・全文入力の違う答え・Battle の × は今の規則のまま（6 日・20 日あけて打てると上がる）。あわせて、即答の 30 日の下限は前の答えから 14 日以上あけた答えだけにした（M1'。× の翌日の正解 1 回から 30 日あけない）。即答の apple を 44 日目に appel と打つと、46 日目に即答へ戻り、次は 7・10・14 日後、その後 30 日ごと（前は 98 日目に即答。答え表示の × は今も 98 日目。表は SPEC_MASTERY §3.7）。語の詳細の次の条件は、控えのある語で「翌日以降に 間違えずに思い出せると 即答」と出る。戻すなら: js/mastery.js の `isSlipFail` を常に偽に、`RANK_FLOOR_GAP_DAYS` を `{ 5: 0 }` に、`RANK_RULE` の戻り方の 1 文と `rankNext` の控えの枝を消し、tests/fixtures/sim-writers.json を前の値に戻す（M1・M1' を外した模擬は前の fixture と違い 0 を確かめてある）。控えの欄は残っていても読まれない
    - 2〜4 週後（2026-10-26〜11-09 ごろ）に、設定の「バックアップ」で書き出した JSON をもらえれば、段が記憶を表しているか（同じ間隔で段が高いほど思い出せているか）を読んで仮の値を直す（SPEC_MASTERY §3.8。画面には出ない数）
+15. **アカウントの切り替え（Batch 78。2026-10-28 の決定 2・2026-10-29 の確認と必須修正。作った）**: 端末の中の記録をゲスト・アカウントごとの領域に分け、切り替えで消さない・混ぜない形を作った（docs/SPEC_ACCOUNT_AREAS.md）。前にここで決めてほしいとした 4 つは 2026-10-29 の確認で決まった（ほかのタブは自動で切り替えの画面へ・凍ったタブがあっても切り替える／退避と照合ができなければログアウトも切り替えもしない／持ち主 A・未ログインの端末は A の領域へ、ゲストは空から／ログアウトの後はゲストの記録・ログアウトの文・privacy.html）。今の切り替えは、記録を IndexedDB の写しに確かめてから領域を替える（前の「消して置き換える」の確認と、端末の記録を消す道は無い）。残って決めてほしいこと:
+   - (a) オフラインのログアウト: 固定した版の認証の部品は、受け口に届かなくても、この端末のセッションを先に消してから失敗を返す。今は切り替えを止めて復旧の画面を出す（記録は失わない・混ざらない・次に開くとゲストへ）。文が実際と合わない。(i) 退避を確かめた後なら、そのままゲストへ替えて「この端末ではログアウトした。サーバーには届かなかった。」などと出す／(ii) ログアウトの前に受け口に届くかを確かめ、届かなければログアウトしない／(iii) 今の動きのまま、復旧の画面の文だけ替える（docs/SPEC_ACCOUNT_AREAS.md §11）
+   - (b) 復旧の画面の出口: 写しが消えた・壊れた・IndexedDB にずっと書けないと、どのページを開いても復旧の画面に残る（ログインもログアウトもできない）。(1) 復旧の画面に「この端末だけログアウトする」を置く／(2) localStorage にある領域の人のログインのリンクだけ切り替えの画面で読む／(3) 写しが消えた・壊れた領域を、書き出しと確認の後に空から（アカウントはクラウドから）始める。組み合わせてもよい
+   - (c) ログインの前の予行が確かめる空きは 1 人分。「移す？」の「はい」は 2 人分を書くので、空きの少ない端末では復旧の画面になる（記録は失わない）。2 人分を確かめると、空きの少ない端末でログインを断ることが増える
+   - 受け入れの残り（判断ではなく作業）: 直前の本番のコードを開いたままのタブの学習を、A に戻ったときに A へ取り込む形（2026-10-30 の指示の 1。作っている途中）。確認用の Preview で、実機の 2 つのスマホのブラウザの裏のタブ・戻るの控え・プライベートの窓・容量の文を手で確かめる。取り込みと受け入れ基準 1〜18 と旧タブの検査が済むまで公開しない
 
 ## G. 情報があると次が決まるもの
 
