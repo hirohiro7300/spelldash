@@ -759,8 +759,8 @@ async function runAll() {
     eq("U1 切り替えの画面の戻り先を ? の後ろに置かない（見張り・頭の 1 行・packs の生成器・切り替えの画面）", [...new Set(queryBack)], []);
     const sw = fs.readFileSync(path.join(ROOT, "sw.js"), "utf8");
     const core = (sw.match(/const CORE_ASSETS = \[([\s\S]*?)\];/)?.[1] ?? "").match(/"[^"]+"/g)?.map((x) => x.slice(1, -1)) ?? [];
-    const switchAssets = [...switchHtml.matchAll(/<(?:link rel="stylesheet"|script)[^>]*(?:href|src)="([^"]+)"/g)].map((m) => "/" + m[1].replace(/^\.?\//, ""));
-    eq("U1 sw.js は切り替えの画面とその部品（見張り・js/areaSwitch.js・js/areaStore.js・css）を先読みする（オフラインでも直しと復旧の画面が開く）", ["/switch.html", ...new Set(switchAssets), "/js/areaStore.js"].filter((a) => !core.includes(a)), []);
+    const switchAssets = [...switchHtml.matchAll(/<(?:link rel="(?:stylesheet|modulepreload)"|script)[^>]*(?:href|src)="([^"]+)"/g)].map((m) => "/" + m[1].replace(/^\.?\//, ""));
+    eq("U1 sw.js は切り替えの画面とその部品（見張り・静的 import の先の全部・css）と旧タブの取り込みの教材を先読みする（オフラインでも直しと復旧の画面が開く）", ["/switch.html", ...new Set(switchAssets), "/data/public/english.json"].filter((a) => !core.includes(a)), []);
     ok("U1 switch.html は部品が読めないとき（オフライン・取れない）に復旧の画面と「もう一度」を出す（小さい classic の script）", /<script>[^<]*switchRecovery[^<]*<\/script>/.test(switchHtml) && switchHtml.includes('id="switchOffline"'));
     ok("U1 switch.html の復旧の画面の「記録はこの端末に残っている。」は初めは隠し、写しを確かめてから出す（読めない写しがあれば「この端末にある記録の控えの一部を読めなかった。」）",
       /<span id="switchKept" hidden>記録はこの端末に残っている。<\/span>/.test(switchHtml) && /<span id="switchLost" hidden>この端末にある記録の控えの一部を読めなかった。<\/span>/.test(switchHtml) && !/<p>記録はこの端末に残っている。/.test(switchHtml));

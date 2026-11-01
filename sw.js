@@ -24,9 +24,17 @@ const CORE_ASSETS = [
   "/tokushoho.html",
   "/switch.html",
   "/js/areaGuard.js",
-  // 切り替えの画面の部品（オフラインでも、途中で止まった切り替えの直しと復旧の画面が開く。switch.html の module と css。単体 test-areas U1 が突き合わせる）
+  // 切り替えの画面の部品（静的 import の先も全部）と、旧タブの取り込みで読む教材。
+  // オフラインでも、途中で止まった切り替えを直せる（switch.html の modulepreload と css。単体 test-areas U1 が突き合わせる）
   "/js/areaSwitch.js",
   "/js/areaStore.js",
+  "/js/publicVocab.js",
+  "/js/oldTabImport.js",
+  "/js/learnState.js",
+  "/js/mastery.js",
+  "/js/retentionCalc.js",
+  "/js/html.js",
+  "/data/public/english.json",
   "/css/reset.css",
   "/css/fonts.css",
   "/css/tokens.css",
