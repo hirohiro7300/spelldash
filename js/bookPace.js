@@ -241,12 +241,15 @@ let watching = false;
 // 手が空いたとき（無ければ次のタスク）
 const idle = (fn) => (typeof requestIdleCallback === "function" ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 0));
 
-// ホームで 1 回だけ呼ぶ（js/main.js。語の読み込みの後）
+// ホームで 1 回だけ呼ぶ（js/main.js。語の読み込みの後）。
+// 英単語の学習に絞ったホーム（js/focus.js。Batch 78 段 5）では書かない（false）: 机の本の Study の回はもう始まらず、学習状況の目安は中心の学習の
+// 「初めて覚えた」の印から数える（js/learnPace.js）。鍵 spelldash_book_pace は消さずに残す（読まない・書かない）
 export function watchBookPace() {
   if (watching || typeof window === "undefined") return Promise.resolve(false);
   watching = true;
-  return Promise.all([import("./wordStore.js"), import("./storage.js"), import("./categoryProgress.js"), import("./sync.js")])
-    .then(([ws, st, cp, sy]) => {
+  return Promise.all([import("./wordStore.js"), import("./storage.js"), import("./categoryProgress.js"), import("./sync.js"), import("./focus.js")])
+    .then(([ws, st, cp, sy, fo]) => {
+      if (fo.isFocusOn()) return false;
       let session = null; // Study の回の間: { book, fresh: 一度も済みになったことの無い語, since: 回の始めの時刻 }
       let pending = null; // 同期の取り込みの間に終わった回（取り込みの後に数える）
       const queue = []; // まだ書いていない進み [{ book, n }]

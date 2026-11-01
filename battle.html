@@ -1,8 +1,17 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-focus="english">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- 記録の見張り（js/areaGuard.js。人ごとの保存の領域）: ほかのどの script より先に同期で読む。読めないときは切り替えの画面へ（共用の場所で動かさない）。
+       このページでは下の入口の門より前（見張り → 門 → ほかの script と CSS の順。scripts/test-site-map.mjs の 7 と単体 test-areas の U1 が突き合わせる） -->
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
+  <!-- 入口の門（Batch 78 段 7。創業者の確認 2026-10-29 の 4。js/focus.js）: 英単語の学習に絞った間（html[data-focus="english"]）は、ほかの読み込みを止めて
+       英単語のホーム（/?from=old）へ置き換える。このページの js は動かさず、保存の鍵も書かない。配信の転送（vercel.json）が効かないアプリの中でも止める。
+       旗を外すと（data-focus を外す）今のまま開く。Battle・タイピング練習・タイピングゲームの 3 ページで同じ文（scripts/test-site-map.mjs の 7 が突き合わせる） -->
+  <script id="focusGate">(() => { if (document.documentElement.dataset.focus !== "english") return; try { window.stop(); } catch {} location.replace("/?from=old"); })();</script>
+  <!-- Batch 78（創業者の決定 §7）: 主導線・ナビ・sitemap・検索から外す。直接開いても上の入口の門で英単語のホームへ（Batch 78 段 7。Battle のロジックは変えない・記録は残す） -->
+  <meta name="robots" content="noindex" />
   <title>Battle | SpellDash</title>
 
   <link rel="stylesheet" href="./css/reset.css" />
@@ -35,9 +44,14 @@
   <link rel="modulepreload" href="./js/auth.js" />
   <link rel="modulepreload" href="./js/appEnv.js" />
   <link rel="modulepreload" href="./js/supabase.js" />
+  <link rel="modulepreload" href="./js/previewHost.js" />
   <link rel="modulepreload" href="./js/sync.js" />
   <link rel="modulepreload" href="./js/storageGuard.js" />
   <link rel="modulepreload" href="./js/storage.js" />
+  <link rel="modulepreload" href="./js/learnState.js" />
+  <link rel="modulepreload" href="./js/mastery.js" />
+  <link rel="modulepreload" href="./js/retentionCalc.js" />
+  <link rel="modulepreload" href="./js/html.js" />
   <link rel="modulepreload" href="./js/level.js" />
   <link rel="modulepreload" href="./js/plan.js" />
   <link rel="modulepreload" href="./js/battleRank.js" />
@@ -46,18 +60,6 @@
   <link rel="modulepreload" href="./js/studyConfig.js" />
   <link rel="modulepreload" href="./js/activity.js" />
   <link rel="modulepreload" href="./js/userItemsSync.js" />
-  <link rel="modulepreload" href="./js/backup.js" />
-  <link rel="modulepreload" href="./js/masteryMeta.js" />
-  <link rel="modulepreload" href="./js/retentionCalc.js" />
-  <link rel="modulepreload" href="./js/memoryCheck.js" />
-  <link rel="modulepreload" href="./js/memoryModel.js" />
-  <link rel="modulepreload" href="./js/memoryWords.js" />
-  <link rel="modulepreload" href="./js/growthLog.js" />
-  <link rel="modulepreload" href="./js/stats.js" />
-  <link rel="modulepreload" href="./js/retentionLog.js" />
-  <link rel="modulepreload" href="./js/studyTime.js" />
-  <link rel="modulepreload" href="./js/mastery.js" />
-  <link rel="modulepreload" href="./js/html.js" />
   <link rel="modulepreload" href="./js/unlocks.js" />
   <link rel="modulepreload" href="./js/course.js" />
   <link rel="modulepreload" href="./js/packs.js" />
@@ -78,6 +80,13 @@
   <link rel="modulepreload" href="./js/headerFit.js" />
   <link rel="modulepreload" href="./js/battleEngine.js" />
   <link rel="modulepreload" href="./js/cpuOpponent.js" />
+  <link rel="modulepreload" href="./js/stats.js" />
+  <link rel="modulepreload" href="./js/retentionLog.js" />
+  <link rel="modulepreload" href="./js/studyTime.js" />
+  <link rel="modulepreload" href="./js/masteryMeta.js" />
+  <link rel="modulepreload" href="./js/memoryCheck.js" />
+  <link rel="modulepreload" href="./js/memoryModel.js" />
+  <link rel="modulepreload" href="./js/memoryWords.js" />
   <link rel="modulepreload" href="./js/colors.js" />
   <link rel="modulepreload" href="./js/sfx.js" />
   <link rel="modulepreload" href="./js/audio.js" />
@@ -103,10 +112,10 @@
       </a>
 
       <nav class="site-nav" aria-label="メインナビ">
-        <a href="/" class="site-nav__link">書斎</a>
-        <a href="./stats.html" class="site-nav__link">学習データ</a>
-        <a href="./list.html" class="site-nav__link">単語帳</a>
-        <a href="./battle.html" class="site-nav__link" aria-current="page">バトル</a>
+        <a href="/" class="site-nav__link">ホーム</a>
+        <a href="/?learn=next" class="site-nav__link">英単語を学ぶ</a>
+        <a href="./stats.html" class="site-nav__link">学習状況</a>
+        <a href="./profile.html" class="site-nav__link">設定</a>
       </nav>
 
       <div class="account">
@@ -309,7 +318,7 @@
       </div>
 
       <p class="site-footer__tagline">
-        タイピングで、英単語を体に覚えさせる。
+        ストレスなしで、英単語を覚える。
       </p>
 
       <nav class="site-footer__nav" aria-label="フッターナビ">

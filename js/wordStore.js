@@ -1,7 +1,7 @@
-import { loadAllWords, loadManifest } from "./wordData.js";
+import { loadAllWords, loadManifest, loadCategory } from "./wordData.js";
 import { toWordObjects } from "./myWords.js";
 import { isCategoryLoaded, packsOf } from "./packs.js";
-import { buildAlternativeIndex, acceptedAnswers } from "./answers.js";
+import { buildAlternativeIndex, buildAlternativeIndexById, acceptedAnswers } from "./answers.js";
 import { hasJapaneseScript } from "./jaScript.js";
 
 // 読み込んだ単語をページ内で共有するストア。
@@ -122,4 +122,54 @@ export function getCategories(subjectId = "english") {
 export function getPackCatalog(subjectId = "english") {
   const subject = manifest?.subjects.find((s) => s.id === subjectId);
   return packsOf(subject?.categories).map((c) => ({ ...c, enabled: isCategoryLoaded(c) }));
+}
+
+// ===== 公開の英単語（中心の学習の 3 つのモード: これから・あやふや・覚えた。Batch 78） =====
+// 中心の学習は公開の 24 巻（data/public/english.json の packs。NGSL）のカードだけを出す。同じ id の語が基本カテゴリにもあると findWord は
+// 基本カテゴリの版を返すので、公開の版はここで別に引く（findWord・answersFor・getWordsByCategory の結果は変えない: Battle・Study は今のまま）。
+// 別解の索引は公開のカードだけから、カードの id で作る（js/answers.js buildAlternativeIndexById: 同じ綴りのカードの別解を混ぜない）。
+// 紛らわしい訳（同じ訳の語に例文の訳を添える）は、そのカードの巻の中だけで見る（publicPackWords。公開の全語を毎問走査しない）。
+// 読むのは中心の学習を始めるときだけ（ホームの読み込みでは取らない）。別解はどの巻の語でもありうるので、24 巻を並べて取る。
+// 読めなければ null（投げない。次に呼んだときに読み直す）
+let publicStore = null; // { byId: id → カード, byPack: 巻の id → カードの列, altIndex: id → 別解の綴りの集合 }
+let publicLoading = null;
+
+export function loadPublicWords(subjectId = "english") {
+  if (publicStore) return Promise.resolve(publicStore);
+  publicLoading ??= import("./publicVocab.js")
+    .then((pv) => pv.loadPublicVocab()) // 表は 1 ページに 1 回だけ取る（3 状態の数え方と同じ読み手）
+    .then(async (vocab) => {
+      const packs = vocab.packs;
+      const lists = await Promise.all(packs.map((id) => loadCategory(subjectId, id)));
+      const byId = new Map();
+      const byPack = new Map();
+      packs.forEach((id, i) => {
+        const words = lists[i].filter((w) => !w.kanjiOnly);
+        byPack.set(id, words);
+        for (const w of words) if (!byId.has(w.id)) byId.set(w.id, w);
+      });
+      if (byId.size === 0) throw new Error("公開の英単語: カードが無い");
+      publicStore = { byId, byPack, altIndex: buildAlternativeIndexById([...byId.values()]) };
+      return publicStore;
+    })
+    .catch(() => null)
+    .finally(() => {
+      publicLoading = null;
+    });
+  return publicLoading;
+}
+
+// 公開の版のカード（読めていない・公開の語でなければ null）
+export function publicWord(wordId) {
+  return publicStore?.byId.get(wordId) ?? null;
+}
+
+// 公開のカードを出したときに正解として受け入れる綴り（先頭は出題語。別解は公開のカードの id の索引から）
+export function publicAnswersFor(word) {
+  return acceptedAnswers(word, publicStore?.altIndex ?? null, word?.id);
+}
+
+// そのカードの巻の語（紛らわしい訳の判定の範囲）
+export function publicPackWords(word) {
+  return publicStore?.byPack.get(word?.category) ?? [];
 }

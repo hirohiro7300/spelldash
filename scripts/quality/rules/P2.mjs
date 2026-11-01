@@ -12,9 +12,13 @@ export default {
     // check.mjs --root=<PR #175 より前の木> は、その木の answers.js にまとめ方が無い（その木の scripts/quality/check.mjs で流す。sim-judge.mjs と同じ）
     if (typeof meaningGroups !== "function" || typeof crossesPos !== "function") throw new Error("P2: js/answers.js に meaningGroups・crossesPos が無い（PR #175 より前の木。その木の scripts/quality/check.mjs で流す）");
     const index = ctx.altIndexAll();
+    // 索引の鍵（js/answers.js altLookupKey: 同じ綴りで別の項目にしたカード〔5月〕は id、ほかは綴り）。綴り → その綴りのカードの鍵
+    const lookupKey = ctx.modules.answers.altLookupKey ?? ((w) => w.en);
+    const keysOf = new Map();
     // 組 → 共有する訳ごとに「品詞をまたぐ」か
     const pairs = new Map();
     for (const [key, m] of meaningGroups(ctx.cards)) {
+      for (const [en, e] of m) for (const w of e.cards) keysOf.set(en, (keysOf.get(en) ?? new Set()).add(lookupKey(w)));
       const list = [...m];
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
@@ -33,7 +37,8 @@ export default {
     const hits = [];
     for (const [k, p] of pairs) {
       if (p.same || p.cross.length === 0) continue; // またがない訳（札が重なる・札が確かでない・札が無い）でも結ばれる組は正しい別解
-      if (!(index.get(p.a)?.has(p.b) || index.get(p.b)?.has(p.a))) continue;
+      const linked = (a, b) => [...(keysOf.get(a) ?? [a])].some((k) => index.get(k)?.has(b));
+      if (!(linked(p.a, p.b) || linked(p.b, p.a))) continue;
       for (const w of p.cards) hits.push({ card: w.ref, detail: `${p.a} と ${p.b} が品詞をまたいで別解: ${p.cross.join("・")}`, group: k });
     }
     return hits;

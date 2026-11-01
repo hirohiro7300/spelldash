@@ -13,6 +13,7 @@ import { trapFocus } from "./focusTrap.js";
 import { scrollBehavior } from "./ui.js";
 import { shelfOf } from "./shelves.js";
 import { esc, numHtml } from "./html.js";
+import { LEARN_LABELS, LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED } from "./learnState.js";
 
 // ===== 机の上の本（ホームの 1 画面目） =====
 //
@@ -366,4 +367,47 @@ export function renderPath({ onStart, onAdvance, onCourse } = {}) {
     })
   );
   return path;
+}
+
+// ===== 英単語の学習に絞ったホーム（js/focus.js。Batch 78 段 5。創業者の決定 §7・§9 の 1・18） =====
+// 中身は index.html に静的に置いてある（最初の描画から出す。ボタン「英単語を学ぶ」は js が無くても /?learn=next へ）:
+//   左頁（#focusHead）: 教材「英単語」・覚えた N ／総数（今の状態から正直に）・ランク（最高到達ランクより下げない）
+//   右頁: 次に学ぶ状態（これから・あやふや・覚えた のどれか 1 つ）と、その回の語数か「今日の分は終わり」・「英単語を学ぶ」1 つ・学習状況へのリンク
+// ここは数と次に学ぶ状態を入れるだけ。view = { counts, rank, due, mode, setSize, doneToday } か null（材料が読めない: 数は出さないまま。ボタンはそのまま）。
+// 数が入るまでは数の行を見せない（場所は空けておく: #pathCard.focus-ready が付くまで visibility: hidden。css/game.css）
+const FOCUS_MODE_LABEL = { new: LEARN_LABELS[LEARN_NEW], unsure: LEARN_LABELS[LEARN_UNSURE], learned: LEARN_LABELS[LEARN_LEARNED] };
+const fmtNum = (n) => Number(n).toLocaleString("ja-JP");
+
+// 次に学ぶ状態の下の 1 行（js/learnQueue.js resolveNextMode の決まりで決めたモードの、その回の中身）
+export function focusModeSub(view) {
+  const { mode, counts, due, setSize } = view;
+  if (mode === "unsure") return due > 0 ? `今日の分 ${fmtNum(due)}語` : view.doneToday;
+  if (mode === "learned") return `復習 ${fmtNum(Math.min(setSize, counts.learned))}語`;
+  return `次の${fmtNum(Math.min(setSize, counts.new))}語`;
+}
+
+export function renderFocusPath(view) {
+  const card = document.getElementById("pathCard");
+  if (!card) return;
+  const set = (id, text) => {
+    const el = document.getElementById(id);
+    if (el && el.textContent !== text) el.textContent = text;
+  };
+  if (!view) {
+    card.classList.remove("focus-ready");
+    return;
+  }
+  const { counts, rank, mode } = view;
+  set("focusLearned", fmtNum(counts.learned));
+  set("focusTotal", fmtNum(counts.total));
+  set("focusRankName", rank.name);
+  const sum = document.getElementById("focusSum");
+  if (sum) {
+    sum.setAttribute("aria-label", `${fmtNum(counts.total)}語中${fmtNum(counts.learned)}語を覚えた`);
+    const bar = sum.querySelector(".progress__rule i");
+    if (bar) bar.style.width = `${counts.total > 0 ? Math.round((counts.learned / counts.total) * 100) : 0}%`;
+  }
+  set("focusMode", FOCUS_MODE_LABEL[mode] ?? FOCUS_MODE_LABEL.new);
+  set("focusModeSub", focusModeSub(view));
+  card.classList.add("focus-ready");
 }

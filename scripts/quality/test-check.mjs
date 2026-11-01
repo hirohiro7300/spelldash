@@ -43,6 +43,9 @@
 //      全文入力・ローマ字のカードの日本語の別解と、空白・記号・数字の英字の別解（物理キーで打てる。PR #191 のレビュー 4 の見直し）は出ない。
 //      綴り入力のカードの数は全部の枚数（レビュー 6）。表示と検索だけの欄 aka の誤りも NG（レビュー 3）。教材の写しは 19 と同じ（PR #191 のレビュー 7）
 //  23. 教材の問題文の向き: 保証会社の問題文は、借主に代わって貸し手へ返す向き（PR #191 のレビュー 1）
+//  24. validate-words: 同じ綴りで別の項目にするカード（sense の欄。id は english-<en>-<sense>。許可の一覧 SENSE_IDS の id だけ。Batch 78 の 5月）の
+//      誤り 7 種を NG にする。今の教材は 0 件で、sense のカードは english-may-month の 1 枚。教材の写しは 19 と同じ（形の誤りの写しに重ねる・
+//      5月を外した写し〔Batch 71 の写しに重ねる〕・助動詞の may を外した写し）
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -105,7 +108,31 @@ const editCard = (root, ref, fn) => {
   fn(json.words.find((x) => x.id === id));
   fs.writeFileSync(f, JSON.stringify(json));
 };
-// 19 で流した validate-words の結果（22 も同じ写しの結果を見る）
+// 写しの木 root からカード 1 枚（"カテゴリ:id"）を外す（無ければ何もしない）
+const dropCard = (root, ref) => {
+  const [cat, id] = ref.split(":");
+  const f = path.join(root, "data", fileOf(cat));
+  const json = JSON.parse(fs.readFileSync(f, "utf8"));
+  json.words = json.words.filter((x) => x.id !== id);
+  fs.writeFileSync(f, JSON.stringify(json));
+};
+// 写しの木 root の 5月のカード（ngsl01 english-may-month）を fn で書き換える。無い木（5月を足す前）では april の後に足してから（manifest の count も合わせる）
+const upsertMayMonth = (root, fn) => {
+  const f = path.join(root, "data", fileOf("ngsl01"));
+  const json = JSON.parse(fs.readFileSync(f, "utf8"));
+  let w = json.words.find((x) => x.id === "english-may-month");
+  if (!w) {
+    w = { id: "english-may-month", en: "may", sense: "month", ja: "5月", pos: "名", level: "easy", tags: ["n"], ex: "Roses bloom in May.", exJa: "バラは5月に咲く。" };
+    json.words.splice(json.words.findIndex((x) => x.id === "english-april") + 1, 0, w);
+    const mf = path.join(root, "data", "manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(mf, "utf8"));
+    for (const sub of manifest.subjects) for (const c of sub.categories) if (c.id === "ngsl01") c.count = json.words.length;
+    fs.writeFileSync(mf, JSON.stringify(manifest));
+  }
+  fn(w);
+  fs.writeFileSync(f, JSON.stringify(json));
+};
+// 19 で流した validate-words の結果（22・24 も同じ写しの結果を見る）
 let validateRuns = null;
 
 // 前の木（今の教材のまま）と PR の木（patch した教材）で比べる（check.mjs --base と同じ）
@@ -644,10 +671,19 @@ const FREEZE = "banking:concept-bank-freeze";
     edit("jsci1:concept-js1-mg", (w) => (w.aka = ["マグネシウム", ""]));
     edit(IWA, (w) => (w.aka = ["岩宿"]));
     edit("junior:english-apple", (w) => (w.aka = ["林檎"]));
+    // 24: 同じ綴りで別の項目にするカード（sense の欄。Batch 78 の 5月）の誤り（形の誤りの写しに重ねる）
+    edit("ngsl01:english-june", (w) => (w.sense = "month"));
+    edit("toeic500:english-ship", (w) => Object.assign(w, { id: "english-ship-send", sense: "send" }));
+    edit("ngsl01:english-july", (w) => (w.sense = 7));
+    upsertMayMonth(vroot, (w) => (w.ja = "5月・〜かもしれない"));
+    edit("listing:concept-cpc", (w) => (w.sense = "ad"));
     const vLeft = copyTo(ROOT, "v-left");
     edit(SHOTOKU, (w) => (w.acceptReadings = { 厩戸皇子: "うまやどのおうじ", 厩戸王: "うまやどのおう" }));
-    const [good, strict, bad, left] = await Promise.all([vGood, vStrict, vBad, vLeft].map((r) => nodeAsync("validate-words.mjs", [`--root=${r}`])));
-    validateRuns = { good, bad };
+    dropCard(vLeft, "ngsl01:english-may-month"); // 24: 許可の一覧の id が教材に無い
+    const vSense = copyTo(ROOT, "v-sense");
+    dropCard(vSense, "ngsl02:english-may"); // 24: 同じ綴りの元の項目（助動詞の may）が無い
+    const [good, strict, bad, left, sense] = await Promise.all([vGood, vStrict, vBad, vLeft, vSense].map((r) => nodeAsync("validate-words.mjs", [`--root=${r}`])));
+    validateRuns = { good, bad, left, sense };
 
     check("validate-words: 形の合う acceptReadings は通り、結んだ数を出す（読みを結んだ別表記 1 以上）", good.code === 0 && /読みを結んだ別表記 [1-9]/.test(good.out), good.out.slice(-300));
     const sLines = strict.out.split("\n").filter((l) => l.includes("学校・基本の別表記に読みを結んでいない"));
@@ -954,6 +990,47 @@ const FREEZE = "banking:concept-bank-freeze";
     "validate-words: aka の誤り（重複・答えと同じ・綴りで打てる語・形・綴り入力の概念カードでない）を NG で名指しする。今の教材は 0 件",
     vBad.code === 1 && lostAka.length === 0 && badAka.length === wantAka.length && akaLines(vNow.out).length === 0 && /aka（表示と検索だけの名前）: [1-9][0-9,]*語/.test(vNow.out),
     `${badAka.length} 件 無い: ${lostAka.join(" / ")} 今の教材: ${akaLines(vNow.out).slice(0, 3).join(" / ")}`
+  );
+}
+
+// 24（Batch 78・創業者の決定 2026-10-28 §1）: 同じ綴りで別の項目にするカード（5月の May と助動詞の may）。英単語のカードの id は english-<en> だが、
+// sense の欄のあるカードだけ english-<en>-<sense>（決まりの例外は scripts/validate-words.mjs の許可の一覧 SENSE_IDS の id だけ。docs/PACK_FORMAT.md）。
+// 誤りの形: sense の形（英小文字でない）・id が english-<en>-<sense> でない・許可の一覧に無い・概念カードに sense・同じ綴りの元の項目（english-<en>）が無い・
+// 元の項目と訳（かっこの外の訳の見出し）が重なる・許可の一覧の id がどの教材にも無い。今の教材は 0 件で、sense のカードは english-may-month の 1 枚
+{
+  const { good: vNow, bad: vBad, left: vLeft, sense: vSense } = validateRuns;
+  const SENSE_NG = ["sense の形", "ID不整合(sense)", "同じ綴りで別の項目にするカードが許可の一覧に無い", "sense は英単語のカードだけ", "同じ綴りの元の項目が無い", "同じ綴りの元の項目と訳が重なる", "許可の一覧の id がどの教材にも無い"];
+  const senseLines = (out) => out.split("\n").filter((l) => SENSE_NG.some((k) => l.includes(k)));
+  check(
+    "validate-words: 今の教材は sense の誤り 0 件で、同じ綴りで別の項目にしたカードは english-may-month の 1 枚（ngsl01・en may・sense month）",
+    vNow.code === 0 && senseLines(vNow.out).length === 0 && vNow.out.includes("同じ綴りで別の項目にしたカード（sense）: 1枚（english-may-month）"),
+    `exit=${vNow.code} ${senseLines(vNow.out).slice(0, 3).join(" / ")} ${vNow.out.split("\n").find((l) => l.startsWith("同じ綴り")) ?? "（数の行なし）"}`
+  );
+  const wantBad = [
+    "ID不整合(sense) packs/ngsl01.json:english-june (en=june, sense=month)",
+    "同じ綴りで別の項目にするカードが許可の一覧に無い packs/toeic500.json:english-ship-send",
+    "sense の形（英小文字だけ） packs/ngsl01.json:english-july",
+    "同じ綴りの元の項目と訳が重なる packs/ngsl01.json:english-may-month (〜かもしれない: english-may)",
+    "sense は英単語のカードだけ english/listing.json:concept-cpc"
+  ];
+  const badLines = senseLines(vBad.out);
+  const lost = wantBad.filter((x) => !badLines.some((l) => l.includes(x)));
+  check(
+    "validate-words: sense の誤り 5 種（id の形・許可の一覧に無い・sense の形・元の項目と訳が重なる・概念カード）を NG で名指しする。ほかの sense の行は出ない",
+    vBad.code === 1 && lost.length === 0 && badLines.length === wantBad.length,
+    `exit=${vBad.code} ${badLines.length} 件 無い: ${lost.join(" / ")} 出た: ${badLines.join(" / ")}`
+  );
+  const leftLines = senseLines(vLeft.out);
+  check(
+    "validate-words: 5月のカードを外した教材は「許可の一覧の id がどの教材にも無い english-may-month」の 1 件（許可の一覧を古いまま残さない）",
+    vLeft.code === 1 && leftLines.length === 1 && leftLines[0].includes("許可の一覧の id がどの教材にも無い english-may-month"),
+    leftLines.join(" / ")
+  );
+  const senseOnly = senseLines(vSense.out);
+  check(
+    "validate-words: 助動詞の may（english-may）を外した教材は「同じ綴りの元の項目が無い packs/ngsl01.json:english-may-month (english-may)」の 1 件",
+    vSense.code === 1 && senseOnly.length === 1 && senseOnly[0].includes("同じ綴りの元の項目が無い packs/ngsl01.json:english-may-month (english-may)"),
+    senseOnly.join(" / ")
   );
 }
 

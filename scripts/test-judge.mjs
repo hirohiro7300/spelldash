@@ -396,6 +396,27 @@ const type = (w, text, opts) => typeAnswer(w, cands(w), text, opts);
   }
 }
 
+// ---- 同じ綴りで別の項目（5月の May と助動詞の may。Batch 78・創業者の決定 2026-10-28 §1）----
+// 5月のカード（ngsl01 english-may-month・sense month）と助動詞の may（ngsl02 english-may・別解 might）は綴りが同じ。綴りで引く別解の索引
+// （Study・Challenge・Daily の盤面。js/wordStore.js answersFor）でも、5月の問いに助動詞の別解（might）を混ぜない。助動詞の問いは今のまま might を受ける
+{
+  const mayMonth = cards.find((c) => c.category === "ngsl01" && c.id === "english-may-month");
+  const mayAux = cards.find((c) => c.category === "ngsl02" && c.id === "english-may");
+  ok("5月: ngsl01 に english-may-month（en may・訳 5月・sense month）がある", mayMonth && mayMonth.en === "may" && mayMonth.ja === "5月" && mayMonth.sense === "month");
+  if (mayMonth && mayAux) {
+    eq("5月: 全パックの索引の候補は may だけ（助動詞の別解 might・can を混ぜない）", cands(mayMonth), ["may"]);
+    judged("5月: might と打つと 2 打目で ×", type(mayMonth, "might"), { how: "miss", at: 2 });
+    judged("5月: may は 3 打目で正解", type(mayMonth, "may"), { how: "auto", kind: "exact", at: 3 });
+    ok("助動詞の may: 候補は今のまま might を含む（先頭は may）", cands(mayAux)[0] === "may" && cands(mayAux).includes("might"));
+    judged("助動詞の may: might は別解で正解（5 打目）", type(mayAux, "might"), { how: "auto", at: 5 });
+    const packIds = new Set(manifest.subjects.flatMap((s) => s.categories.filter((c) => c.pack).map((c) => c.id)));
+    for (const packs of [["ngsl01"], ["ngsl01", "ngsl02"]]) {
+      const b = buildAlternativeIndex(cards.filter((c) => !packIds.has(c.category) || packs.includes(c.category)));
+      judged(`5月: 基本＋${packs.join("＋")} の盤面でも might は 2 打目で ×`, typeAnswer(mayMonth, acceptedAnswers(mayMonth, b), "might"), { how: "miss", at: 2 });
+    }
+  }
+}
+
 if (failures.length) {
   console.error(`test-judge: ${failures.length} 件失敗（${passed} 件通過）\n  - ${failures.join("\n  - ")}`);
   process.exit(1);

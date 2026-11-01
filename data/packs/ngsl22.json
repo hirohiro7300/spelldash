@@ -66,7 +66,7 @@
     {"id": "english-therapy", "en": "therapy", "ja": "治療・セラピー", "pos": "名", "level": "hard", "accept": ["treatment", "cure"], "tags": ["n"], "ex": "She is getting therapy for her back pain.", "exJa": "彼女は腰痛の治療を受けている。"},
     {"id": "english-orange", "en": "orange", "ja": "オレンジ・オレンジ色", "pos": "名", "level": "easy", "tags": ["n"], "ex": "I drink a glass of orange juice every morning.", "exJa": "毎朝オレンジジュースを一杯飲みます。"},
     {"id": "english-twist", "en": "twist", "ja": "ひねる・ねじる", "pos": "動", "level": "hard", "tags": ["v"], "ex": "Twist the top to open the bottle.", "exJa": "ふたをひねってボトルを開けてください。"},
-    {"id": "english-personnel", "en": "personnel", "ja": "人事", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Questions about vacation days should go to the personnel office.", "exJa": "休暇に関する質問は人事部にお問い合わせください。"},
+    {"id": "english-personnel", "en": "personnel", "ja": "職員・人員（人事部）", "pos": "名", "level": "hard", "tags": ["n"], "ex": "Questions about vacation days should go to the personnel office.", "exJa": "休暇に関する質問は人事部にお問い合わせください。"},
     {"id": "english-imagination", "en": "imagination", "ja": "想像力", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Children have a rich imagination.", "exJa": "子どもは豊かな想像力を持っている。"},
     {"id": "english-disagree", "en": "disagree", "ja": "反対する", "pos": "動", "level": "normal", "accept": ["oppose", "object"], "tags": ["v"], "ex": "I'm sorry, but I disagree with you.", "exJa": "悪いけど、私は反対だな。"},
     {"id": "english-throat", "en": "throat", "ja": "のど", "pos": "名", "level": "hard", "tags": ["n"], "ex": "My throat hurts, so I will drink some warm tea.", "exJa": "のどが痛いので温かいお茶を飲みます。"},

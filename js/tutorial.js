@@ -30,8 +30,17 @@ function dailyLength() {
   return length === "60s" ? "60秒" : `約${setMinutes(Number(length))}分`;
 }
 
-export function stepText(id) {
-  const step = STEPS[id];
+// 中心の学習（これから・あやふや・覚えた。Batch 78）の回では、T2・T3 の意味が違う: 答えを見た語はこの回にはもう出ず あやふや に移り、
+// 自力で正解した語は 覚えた になる（あやふやの語は別の日の 2 回目で）。Study の「数問後にもう一度」「日をあけて出る」は中心の学習では起きない。
+// js/game.js が spelldash:reveal・spelldash:recall の detail.learn（モードの名前 new・unsure・learned）で知らせる。文の決まりは STEPS と同じ
+export const LEARN_STEPS = {
+  T2: { new: "間違えても、あやふやに移るだけ。", unsure: "間違えても、あやふやのまま。", learned: "間違えても、あやふやに移るだけ。" },
+  T3: { new: "自力で正解した語は、覚えたになる。", unsure: "別の日に2回正解すると、覚えたになる。", learned: "自力で正解した語は、覚えたのまま。" },
+};
+
+// learn = 中心の学習のモードの名前（Study・Challenge・Daily は無し）
+export function stepText(id, { learn = "" } = {}) {
+  const step = LEARN_STEPS[id]?.[learn] ?? STEPS[id];
   return typeof step === "function" ? step() : step;
 }
 const ALL = Object.keys(STEPS);
@@ -90,7 +99,7 @@ function dismiss() {
   current = null;
 }
 
-function show(id) {
+function show(id, { learn = "" } = {}) {
   if (seen(id)) return;
   dismiss();
   markSeen(id);
@@ -102,7 +111,7 @@ function show(id) {
   document.body.appendChild(el); // 先に空の live region を置き、次のフレームで文を入れる（読み上げが拾う）
   requestAnimationFrame(() => {
     if (current?.el !== el) return;
-    el.innerHTML = `<span class="coach__text">${stepText(id)}</span>${
+    el.innerHTML = `<span class="coach__text">${stepText(id, { learn })}</span>${
       WITH_BUTTON.has(id) ? `<button type="button" class="coach__ok">わかった</button>` : ""
     }`;
     el.querySelector(".coach__ok")?.addEventListener("click", () => dismiss());
@@ -150,12 +159,12 @@ export function initTutorial() {
   });
 
   // T2: 初めて答えを見た。T3: 初めて自力で思い出せた（js/game.js が投げる）
-  window.addEventListener("spelldash:reveal", () => {
-    if (!seen("T2")) show("T2");
+  window.addEventListener("spelldash:reveal", (event) => {
+    if (!seen("T2")) show("T2", { learn: event.detail?.learn ?? "" });
   });
   window.addEventListener("spelldash:recall", (event) => {
     if (seen("T3")) return;
-    show("T3");
+    show("T3", { learn: event.detail?.learn ?? "" });
     if (event.detail) event.detail.hold = T3_MIN_MS; // 札の「この語」が次の語を指さないように、この語の待ちを延ばす
   });
 

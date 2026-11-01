@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-focus="english">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -15,14 +15,16 @@
   <link rel="stylesheet" href="./css/pages.css" />
   <link rel="stylesheet" href="./css/pro.css" />
   <meta name="theme-color" content="#1A2137" />
+  <!-- 記録の見張り（js/areaGuard.js。人ごとの保存の領域）: ほかのどの script より先に同期で読む。読めないときは切り替えの画面へ（共用の場所で動かさない） -->
+  <script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
 
 
-  <meta name="description" content="今日のセットの長さ・発音・テーマ・アカウントの設定。" />
+  <meta name="description" content="発音・テーマ・バックアップ・アカウントの設定。" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="SpellDash" />
   <meta property="og:title" content="設定 | SpellDash" />
-  <meta property="og:description" content="今日のセットの長さ・発音・テーマ・アカウントの設定。" />
+  <meta property="og:description" content="発音・テーマ・バックアップ・アカウントの設定。" />
 <link rel="canonical" href="https://www.spelldash.net/profile.html" />
   <meta property="og:url" content="https://www.spelldash.net/profile.html" />
   <meta property="og:image" content="https://www.spelldash.net/assets/images/og-image.png?v=2" />
@@ -37,10 +39,15 @@
   <link rel="modulepreload" href="./js/tutorial.js" />
   <link rel="modulepreload" href="./js/storage.js" />
   <link rel="modulepreload" href="./js/storageGuard.js" />
+  <link rel="modulepreload" href="./js/learnState.js" />
+  <link rel="modulepreload" href="./js/mastery.js" />
+  <link rel="modulepreload" href="./js/retentionCalc.js" />
+  <link rel="modulepreload" href="./js/html.js" />
   <link rel="modulepreload" href="./js/difficulty.js" />
   <link rel="modulepreload" href="./js/level.js" />
   <link rel="modulepreload" href="./js/plan.js" />
   <link rel="modulepreload" href="./js/supabase.js" />
+  <link rel="modulepreload" href="./js/previewHost.js" />
   <link rel="modulepreload" href="./js/dailySet.js" />
   <link rel="modulepreload" href="./js/stats.js" />
   <link rel="modulepreload" href="./js/sync.js" />
@@ -50,13 +57,6 @@
   <link rel="modulepreload" href="./js/studyConfig.js" />
   <link rel="modulepreload" href="./js/activity.js" />
   <link rel="modulepreload" href="./js/userItemsSync.js" />
-  <link rel="modulepreload" href="./js/backup.js" />
-  <link rel="modulepreload" href="./js/masteryMeta.js" />
-  <link rel="modulepreload" href="./js/retentionCalc.js" />
-  <link rel="modulepreload" href="./js/memoryCheck.js" />
-  <link rel="modulepreload" href="./js/memoryModel.js" />
-  <link rel="modulepreload" href="./js/memoryWords.js" />
-  <link rel="modulepreload" href="./js/growthLog.js" />
   <link rel="modulepreload" href="./js/unlocks.js" />
   <link rel="modulepreload" href="./js/course.js" />
   <link rel="modulepreload" href="./js/packs.js" />
@@ -69,8 +69,10 @@
   <link rel="modulepreload" href="./js/jaScript.js" />
   <link rel="modulepreload" href="./js/retentionLog.js" />
   <link rel="modulepreload" href="./js/studyTime.js" />
-  <link rel="modulepreload" href="./js/mastery.js" />
-  <link rel="modulepreload" href="./js/html.js" />
+  <link rel="modulepreload" href="./js/masteryMeta.js" />
+  <link rel="modulepreload" href="./js/memoryCheck.js" />
+  <link rel="modulepreload" href="./js/memoryModel.js" />
+  <link rel="modulepreload" href="./js/memoryWords.js" />
   <link rel="modulepreload" href="./js/auth.js" />
   <link rel="modulepreload" href="./js/focusTrap.js" />
   <link rel="modulepreload" href="./js/footer.js" />
@@ -81,9 +83,12 @@
   <link rel="modulepreload" href="./js/headerStreak.js" />
   <link rel="modulepreload" href="./js/headerFit.js" />
   <link rel="modulepreload" href="./js/audio.js" />
+  <link rel="modulepreload" href="./js/backup.js" />
+  <link rel="modulepreload" href="./js/rank.js" />
   <link rel="modulepreload" href="./js/sfx.js" />
   <link rel="modulepreload" href="./js/theme.js" />
   <link rel="modulepreload" href="./js/afterCorrect.js" />
+  <link rel="modulepreload" href="./js/growthLog.js" />
   <link rel="modulepreload" href="./js/installPrompt.js" />
   <link rel="preload" href="./data/manifest.json" as="fetch" crossorigin="anonymous" />
   <link rel="preload" href="./data/english/junior.json" as="fetch" crossorigin="anonymous" />
@@ -107,10 +112,10 @@
       </a>
 
       <nav class="site-nav" aria-label="メインナビ">
-        <a href="/" class="site-nav__link">書斎</a>
-        <a href="./stats.html" class="site-nav__link">学習データ</a>
-        <a href="./list.html" class="site-nav__link">単語帳</a>
-        <a href="./battle.html" class="site-nav__link">バトル</a>
+        <a href="/" class="site-nav__link">ホーム</a>
+        <a href="/?learn=next" class="site-nav__link">英単語を学ぶ</a>
+        <a href="./stats.html" class="site-nav__link">学習状況</a>
+        <a href="./profile.html" class="site-nav__link" aria-current="page">設定</a>
       </nav>
 
       <div class="account">
@@ -191,14 +196,16 @@
   <main class="app app--narrow" id="main" tabindex="-1">
     <section class="hero hero--compact">
       <h1>設定</h1>
-      <p class="subtitle">記録は<a href="./stats.html">学習データ</a>に。</p>
+      <p class="subtitle">記録は<a href="./stats.html">学習状況</a>に。</p>
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
     <section class="settings">
       <h2 class="settings__title">学習</h2>
 
-      <div class="setting-row">
+      <!-- 出題の設定（今日のセットの長さ・音で出題）: 英単語の学習に絞った間（html[data-focus]。js/focus.js）は出さない。中心の学習は 1 回 10 語・音で出題なしで、
+           この 2 つは効かない。保存した値（spelldash_set_size・spelldash_audio の listenRatio）はそのまま残す（css/pages.css .setting-row--question） -->
+      <div class="setting-row setting-row--question">
         <label for="setSizeSelect">今日のセットの長さ</label>
         <select id="setSizeSelect" class="setting-select" autocomplete="off">
           <option value="10">10語（約3分）</option>
@@ -219,7 +226,9 @@
         <p class="setting-hint">自力で正解した語の答え・例文・解説を見せる長さ。Enter で待たずに次へ</p>
       </div>
 
-      <div class="setting-row">
+      <!-- 週の学習日の目標: 英単語の学習に絞った間（html[data-focus]。js/focus.js）は出さない（Batch 78 段 6。創業者の決定 3）。ホームの週の札も出ないので、
+           選んでも効く場所が見えない。値（spelldash_week_goal）と保存の仕組みは残す（css/pages.css .setting-row--focus-off） -->
+      <div class="setting-row setting-row--focus-off">
         <label for="weekGoalSelect">週の学習日の目標</label>
         <select id="weekGoalSelect" class="setting-select">
           <option value="3">週3日</option>
@@ -271,7 +280,7 @@
         </select>
       </div>
 
-      <div class="setting-row">
+      <div class="setting-row setting-row--question">
         <label for="listenSelect">音で出題</label>
         <select id="listenSelect" class="setting-select">
           <option value="0">なし（日本語を見て打つ）</option>
@@ -335,7 +344,9 @@
             <span class="muted" id="profileJoined"></span>
           </span>
         </div>
-        <div class="setting-row" id="planRow">
+        <!-- プランの行（「プラン 無料」と「Pro について」）: 英単語の学習に絞った間（html[data-focus]）は出さない（Batch 78 段 6。創業者の決定 3: Pro は主導線から外す）。
+             Pro の人（data-pro。js/profileView.js）には出す: 規約と特商法が案内する「解約・お支払いの管理」がこの行にある。加入画面と課金の仕組みは残す（css/pages.css .setting-row--plan） -->
+        <div class="setting-row setting-row--plan" id="planRow">
           <span class="setting-row__text">プラン</span>
           <span class="setting-row__value plan-row__value">
             <span id="planValue">無料</span>
@@ -343,7 +354,9 @@
             <button type="button" class="btn btn--sm btn--ghost" id="planPortal" hidden>解約・お支払いの管理</button>
           </span>
         </div>
-        <div class="setting-row">
+        <!-- ランキング表示名: Daily Dash のランキングにだけ効く（js/dailyRank.js）。英単語の学習に絞った間（html[data-focus]。js/focus.js）は Daily Dash が画面に無いので出さない。
+             値（spelldash_display_name・profiles.display_name）と保存の仕組みは残す（css/pages.css .setting-row--focus-off） -->
+        <div class="setting-row setting-row--focus-off">
           <label for="displayNameInput">ランキング表示名</label>
           <span class="voice-row">
             <input
@@ -362,7 +375,7 @@
 
       <div class="setting-row setting-row--stack" id="backupCard">
         <span class="setting-row__text">バックアップ</span>
-        <p class="setting-hint">学習の記録・覚えた単語・マイ単語帳・メモ・設定をファイルに書き出す。端末の買い替えや、ブラウザのデータ消去に備えて</p>
+        <p class="setting-hint">学習の記録と設定をファイルに書き出す。端末の買い替えや、ブラウザのデータ消去に備えて</p>
         <div class="backup-actions">
           <button type="button" class="btn btn--sm btn--ghost" id="backupExport" title="JSON">ファイルに書き出す</button>
           <label class="btn btn--sm btn--ghost backup-import">
@@ -387,11 +400,10 @@
       </div>
 
       <p class="site-footer__tagline">
-        タイピングで、英単語を体に覚えさせる。
+        ストレスなしで、英単語を覚える。
       </p>
 
       <nav class="site-footer__nav" aria-label="フッターナビ">
-        <a href="./typing.html">タイピング練習</a>
         <a href="./news.html">お知らせ</a>
         <a href="./privacy.html">プライバシー</a>
         <a href="./tokushoho.html">特定商取引法に基づく表記</a>

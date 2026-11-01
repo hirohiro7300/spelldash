@@ -113,7 +113,7 @@
     {"id": "english-registration", "en": "registration", "ja": "登録", "pos": "名", "level": "hard", "accept": ["enrollment", "enrolment"], "tags": ["n"], "ex": "Registration for the course closes on the last day of June.", "exJa": "講座の登録受付は6月末日で締め切ります。"},
     {"id": "english-fragment", "en": "fragment", "ja": "破片・断片", "pos": "名", "level": "hard", "accept": ["piece", "shard"], "tags": ["n"], "ex": "Be careful, there are fragments of glass on the floor.", "exJa": "気をつけて、床にガラスの破片があるよ。", "exForm": "fragments"},
     {"id": "english-listener", "en": "listener", "ja": "聞き手・リスナー", "pos": "名", "level": "hard", "tags": ["n"], "ex": "She is a good listener, so people like to talk to her.", "exJa": "彼女は聞き上手なので、みんな彼女と話したがる。"},
-    {"id": "english-immigration", "en": "immigration", "ja": "移民・入国審査", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Please have your passport ready for immigration.", "exJa": "入国審査に備えてパスポートをご用意ください。"},
+    {"id": "english-immigration", "en": "immigration", "ja": "移住・入国審査", "pos": "名", "level": "normal", "tags": ["n"], "ex": "Please have your passport ready for immigration.", "exJa": "入国審査に備えてパスポートをご用意ください。"},
     {"id": "english-tender", "en": "tender", "ja": "柔らかい・優しい", "pos": "形", "level": "hard", "accept": ["soft", "gentle"], "tags": ["adj"], "ex": "Cook the meat slowly until it is tender.", "exJa": "肉が柔らかくなるまでゆっくり煮てください。"},
     {"id": "english-density", "en": "density", "ja": "密度", "pos": "名", "level": "hard", "tags": ["n"], "ex": "The population density of Tokyo is very high.", "exJa": "東京の人口密度はとても高い。"},
     {"id": "english-ugly", "en": "ugly", "ja": "醜い・不格好な", "pos": "形", "level": "easy", "tags": ["adj"], "ex": "The building is ugly, but the rooms inside are nice.", "exJa": "その建物は不格好だが、中の部屋は素敵だ。"},

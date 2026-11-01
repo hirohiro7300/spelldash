@@ -5,6 +5,7 @@ import { getActiveDaysLast7, getLearnedDelta7, getGrowthLog } from "./growthLog.
 import { localDateString } from "./stats.js";
 import { hasumiWeeklyLine, hasumiBubbleHtml } from "./hasumi.js";
 import { shouldShowWeeklyPro } from "./proFunnel.js";
+import { isFocusOn } from "./focus.js";
 
 // ===== 週間レポート（直近7日） =====
 // 「自分は前進している」証拠を週に一度まとめて見せる。
@@ -108,6 +109,9 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
   const rate = r.retention ?? r.recallRate;
   // 成長ログの無い端末: 学習した日・7日で覚えた は「–」、はちゃんは出さない（数字と矛盾しない）。注記 1 行。シェアも出さない
   const noLog = r.noLog;
+  // Pro の 1 行: 英単語の学習に絞った間（js/focus.js）は出さない（マイ単語帳・連続記録の修復は画面に出ない機能。Batch 78 段 6。反証 rv5 shouldFix 3）。
+  // 旗を外せば前と同じ決まり（shouldShowWeeklyPro）
+  const showPro = !compact && !noLog && !isFocusOn() && shouldShowWeeklyPro(getGrowthLog().filter((e) => e.active).length);
 
   const html = `
     <div class="weekly__head">
@@ -123,7 +127,7 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
     </div>
     ${noLog ? `<p class="weekly__note">この端末での記録は明日から</p>` : ""}
     ${r.retention != null ? `<p class="weekly__note">思い出せた率＝1日以上前に覚えた語を復習で思い出せた割合（${r.reviewCount}語）</p>` : ""}
-    ${!compact && !noLog && shouldShowWeeklyPro(getGrowthLog().filter((e) => e.active).length) ? `<p class="weekly__note weekly__pro">Pro なら、マイ単語帳 1,000語・連続記録の修復。<a href="./pro.html" data-funnel="weekly">Pro について</a></p>` : ""}
+    ${showPro ? `<p class="weekly__note weekly__pro">Pro なら、マイ単語帳 1,000語・連続記録の修復。<a href="./pro.html" data-funnel="weekly">Pro について</a></p>` : ""}
     ${noLog && !compact ? "" : `<div class="weekly__actions">
       ${noLog ? "" : `<button type="button" class="result-panel__action" data-weekly-share>レポートをシェア</button>`}
       ${compact ? `<a class="result-panel__action result-panel__action--ghost" href="./stats.html#weekly">くわしく見る</a>` : ""}

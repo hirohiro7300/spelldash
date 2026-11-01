@@ -243,6 +243,19 @@ html[data-theme] .avatar-button[aria-expanded="true"] .avatar.has-emblem {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* 頭文字の丸（紋章の絵が無いとき。9 段の絵はまだ無いので今はいつもこれ）: 地は頭文字のための --ink のまま（頭文字と地の比は前と同じ）、縁は紋章のときと同じ金の 1px
+   （外寸は同じ: border-box）。地は縁の内側だけに塗る（padding-box）ので、縁は帯の藍の上に描かれ、縁と帯の比は紋章のときと同じ昼 約 3.9・夜 約 4.2。
+   前は縁が無く、昼は茶の丸が藍の帯に溶けた（地と帯の比 1.0 前後。夜は縁の色＝頭文字の色が帯と 1.09: Batch 78 段 4 の引き継ぎ）。ホバー・開いている間は縁が金箔 */
+html[data-theme] .avatar:not(.has-emblem) {
+  border: 1px solid rgba(230, 200, 135, 0.55);
+  background-clip: padding-box;
+}
+
+html[data-theme] .avatar-button:hover .avatar:not(.has-emblem),
+html[data-theme] .avatar-button[aria-expanded="true"] .avatar:not(.has-emblem) {
+  border-color: var(--foil);
+}
+
 /* メニューの一番上の行（ランクとレベル）: 項目と同じ明朝 500（押せる項目ではないので字は小さく --ink-2。--sheet の上で昼 9.08・夜 9.35） */
 html[data-theme] .account-menu__rank {
   font-family: var(--font-display);
@@ -820,24 +833,15 @@ html[data-theme] .icon {
   }
 }
 
-/* 400px 未満は「バトル」タブを出さない（ホームの「ほかの遊び方」から入れる）。Battle のページでは現在地の印として残す */
-@media (max-width: 399.98px) {
-  html[data-theme] .site-nav__link[href$="battle.html"]:not([aria-current]) {
-    display: none;
-  }
-  /* 4 つ目のタブが出る Battle のページでは連続日数の丸を出さない（4 タブ＋ログインで幅いっぱい。連続日数は学習データにもある） */
-  html[data-theme] .site-header__inner:has(.site-nav__link[aria-current][href$="battle.html"]) .header-streak {
-    display: none;
-  }
-}
-
 /* ---- ヘッダー（449px 以下）: 部品（印・ナビ・連続日数・ログイン／アバター）が重ならないように詰める（Batch 67）。
    当時のナビは flex: 1・min-width: 0・overflow: visible で、幅が足りないとリンクが連続日数・ログインの下に潜った（320 の未ログイン・1234 日で 52px、
    400〜432 の 4 タブ＋連続日数も）。今は重なりそのものをヘッダーの節の構造（はみ出しを切る）が止めるので、ここは Web フォントの字で「…」も細い形も
    出さないための詰め方。いちばん混む形（未ログイン＋4 桁の連続日数）が 320〜720 のどの幅でも収まる量だけ、目立たない所から詰める:
    部品の間 6 → 4px（ログイン／アバターの前は 6px のまま: アバターの当たり判定は左へ 6px 出る）・内枠 94% → 100% − 16px・ログインの左右 8 → 6px・
-   ナビ 5px／0.08em → 4px／0.04em。足りない 2 つの帯（≤359・4 タブが出る 400〜411）だけナビを 3px／0.02em に。
-   ≤359 は連続日数を数字だけにする（書斎の room.css と同じ。炎と単位を畳む。aria-label「連続 N日」は残る）。帯の高さと字の 1 行は変えない ---- */
+   ナビ 5px／0.08em → 4px／0.04em。足りない帯（≤359）だけナビを 12px・左右 2px・字間 0 に（Batch 78: タブは全幅で 4 つ「ホーム・英単語を学ぶ・学習状況・設定」の 15 字。
+   未ログインの「ログイン」と並べて 320 で 1 行に入る量。前の 400px 未満で「バトル」を畳む形と、4 タブが出る 400〜411 の帯は要らなくなったので消した）。
+   ≤359 は連続日数を数字だけにする（書斎の room.css と同じ。炎と単位を畳む。aria-label「連続 N日」は残る。連続日数は今はどのページでも出さない: 下の「ヘッダーの連続日数」）。
+   帯の高さと字の 1 行は変えない ---- */
 @media (max-width: 449.98px) {
   html[data-theme] .site-header__inner {
     gap: 4px;
@@ -857,11 +861,12 @@ html[data-theme] .icon {
   }
 }
 
-@media (max-width: 359.98px), (min-width: 400px) and (max-width: 411.98px) {
+@media (max-width: 359.98px) {
   html[data-theme] .site-nav__link {
-    padding-right: 3px;
-    padding-left: 3px;
-    letter-spacing: 0.02em;
+    padding-right: 2px;
+    padding-left: 2px;
+    font-size: 12px;
+    letter-spacing: 0;
   }
 }
 
@@ -880,7 +885,7 @@ html[data-theme] .icon {
    入らなければ .site-header__inner の data-fit に畳むものを足していく（軽い順に試し、入った所で止める。幅の帯ではなく測った結果で決める）:
    name = 名前「SpellDash」を見た目だけ隠す（721px 以上の 1 行で効く。720px 以下はもとから印だけ。読み上げの名前は残る）。
    num = 連続日数を数字だけ（炎と単位を畳む。aria-label「連続 N日」は残る。359px 以下と同じ形）・ナビ 3px／0.02em。
-   battle = 「バトル」のタブを畳む（400px 未満と同じ。ホームの「ほかの遊び方」から入れる。Battle のページでは現在地として残し、連続日数を出さない）。
+   battle = 前は「バトル」のタブを畳んだ（Batch 78 でナビから外したので、今は畳むものが無い。js/headerFit.js の段は残っている）。
    streak = 連続日数も畳む（学習データにある）・ナビ 2px／字間 0。
    それでも入らなければリンクの字が「…」になる（上のヘッダーの節の構造。重なりはしない）。data-fit-measure は測るあいだだけ（同じ処理の中で外すので描かれない） ---- */
 html[data-theme] .site-header__inner[data-fit~="name"] .brand__name {
@@ -897,8 +902,6 @@ html[data-theme] .site-header__inner[data-fit~="name"] .brand__name {
 
 html[data-theme] .site-header__inner[data-fit~="num"] .header-streak span,
 html[data-theme] .site-header__inner[data-fit~="num"] .header-streak .icon,
-html[data-theme] .site-header__inner[data-fit~="battle"] .site-nav__link[href$="battle.html"]:not([aria-current]),
-html[data-theme] .site-header__inner[data-fit~="battle"]:has(.site-nav__link[aria-current][href$="battle.html"]) .header-streak,
 html[data-theme] .site-header__inner[data-fit~="streak"] .header-streak {
   display: none;
 }
@@ -961,6 +964,18 @@ html[data-theme] .header-streak--off {
 
 html[data-theme] .header-streak--off .icon {
   color: var(--ink-3);
+}
+
+/* 連続日数はどのページのヘッダーにも出さない（Batch 78。依頼 §6「連続記録を人質にしない」。記録 spelldash_streak と描く仕組みは残す）。
+   アプリの頁は js/headerStreak.js が描かない。静的な頁（news・privacy・terms・tokushoho・typing・packs）は js/staticHeader.js が hidden を外すので、ここで消す。
+   消した札の隣でも、ログイン／アバター／設定は右端のまま（game.css の .header-streak:not([hidden]) + .account の押し出しの取り消しを戻す）。
+   戻すときはこの 2 つの規則と js/headerStreak.js の HEADER_STREAK_SHOWN を消す */
+html[data-theme] .site-header .header-streak {
+  display: none;
+}
+
+html[data-theme] .site-header .header-streak + .account {
+  margin-left: auto;
 }
 
 /* ---- はちゃん（全ページ共通の土台）: 丸いアバター＋吹き出し。色・寸法は home.css／card.css／pages.css の各場面 ---- */

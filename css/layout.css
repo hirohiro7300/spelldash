@@ -388,6 +388,33 @@ html.native-app .account-menu__native {
   color: var(--ink-2);
 }
 
+/* 確認用の Preview（*.vercel.app。js/previewHost.js）: ログインは現在調整中。ネイティブアプリと同じく入口を隠し、知らせの文だけ出す */
+html.preview-host .account-menu--login > :not(.account-menu__native) {
+  display: none;
+}
+
+html.preview-host .account-menu__native {
+  display: block;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+html.preview-host .login-line {
+  display: none;
+}
+
+.preview-banner {
+  margin: 0;
+  padding: 6px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--ink-2);
+  background: var(--paper-2);
+}
+
 html.native-app #welcomeLogin {
   display: none;
 }

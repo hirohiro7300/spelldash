@@ -13,7 +13,7 @@ const SENT_KEY = "spelldash_funnel_sent"; // ["step:source:YYYY-MM-DD" | "step:s
 const MISSING_KEY = "spelldash_funnel_missing"; // sessionStorage: このタブでは表が無いと分かった
 const FIRST_PENDING_KEY = "spelldash_funnel_first"; // 初めて来た日（送れたら消す。表が無い・オフラインでも、後で送れる）
 const PAID_PENDING_KEY = "spelldash_funnel_paid"; // 支払いを終えて戻った { day, user }（Pro が反映されたら消す）
-const PAID_SEND_KEY = "spelldash_funnel_paid_send"; // Pro になったが checkout_done をまだ送れていない日
+const PAID_SEND_KEY = "spelldash_funnel_paid_send"; // Pro になったが checkout_done をまだ送れていない { day, user }（user は払った人。前の形は日付だけ）
 const QUEUE_KEY = "spelldash_funnel_queue"; // ページを移る直前に押されたもの（次のページで送る）[{ step, source, day }]
 // 入口のページの族: 鍵（その入口から初めて来た端末の、来た日（JST）。消さない）と、段階 → first_visit の source（docs/SQL_FUNNEL.md 5）。
 // 鍵を族ごとに分ける: 1 端末に付く印は最初の 1 ページ分だけ（markTypingArrival がもう一方の族の印を見る。2 枚のページの数が混ざらない）
@@ -91,8 +91,9 @@ async function currentUserId() {
   }
 }
 
-// 1 件記録する。戻り値の Promise は送り終わる（か諦める）と解決する。待たなくてよい
-export function logFunnel(step, source = "", day = today()) {
+// 1 件記録する。戻り値の Promise は送り終わる（か諦める）と解決する。待たなくてよい。
+// onlyUser: 送る時のセッションがこの人のときだけ送る（ほかの人のトークン・user_id で送らない）
+export function logFunnel(step, source = "", day = today(), { onlyUser = null } = {}) {
   if (!FUNNEL_STEPS.includes(step)) return Promise.resolve(false);
   const src = String(source || "").slice(0, 32);
   try {
@@ -106,7 +107,9 @@ export function logFunnel(step, source = "", day = today()) {
   if (!id) return Promise.resolve(false);
   return (async () => {
     try {
-      const row = { device_id: id, step, source: src, day, user_id: await currentUserId() };
+      const userId = await currentUserId();
+      if (onlyUser && userId !== onlyUser) return false;
+      const row = { device_id: id, step, source: src, day, user_id: userId };
       const result = await supabase.from("funnel_events").upsert(row, { onConflict: "device_id,step,source,day", ignoreDuplicates: true });
       if (result && !result.error) {
         markSent(key);
@@ -267,21 +270,47 @@ function paidAgeDays(day) {
   return (Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86400000;
 }
 
+function readPaidSend() {
+  const raw = localStorage.getItem(PAID_SEND_KEY);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (value && typeof value.day === "string") return { day: value.day, user: typeof value.user === "string" ? value.user : null };
+  } catch {
+    // 前の形（日付だけ）
+  }
+  return { day: raw, user: null };
+}
+
 // Pro になったら（全ページ。spelldash:plan のたび）、そのアカウントの印を消して checkout_done を送る。
 // 別のアカウントの印には触らない（同じブラウザで別の人が Pro でログインしても、払った人の印を残す）。
-// 送れなかったぶん（テーブル未作成・オフライン）は PAID_SEND_KEY に残して次で送り直す。印は送れたかに関係なく消す
+// 送れなかったぶん（テーブル未作成・オフライン）は PAID_SEND_KEY に払った人と残し、払った人のログインのときだけ送り直す
+// （端末の鍵なので、ほかの人の領域でも見える。その人のトークン・user_id では送らない）。前の形（日付だけ）は、Pro の人のページでその人の物として結ぶ。
+// 支払いの印は送れたかに関係なく消す
 export function flushPaidPending(isProNow, userId) {
   try {
     const pending = readPaidPending();
     if (pending && !(paidAgeDays(pending.day) <= PAID_STALE_DAYS)) localStorage.removeItem(PAID_PENDING_KEY);
     else if (pending && isProNow && userId && (!pending.user || pending.user === userId)) {
       localStorage.removeItem(PAID_PENDING_KEY);
-      localStorage.setItem(PAID_SEND_KEY, pending.day);
+      localStorage.setItem(PAID_SEND_KEY, JSON.stringify({ day: pending.day, user: userId }));
     }
-    const day = localStorage.getItem(PAID_SEND_KEY);
-    if (!day) return;
-    logFunnel("checkout_done", "", day).then((sent) => {
-      if (sent) localStorage.removeItem(PAID_SEND_KEY);
+    let send = readPaidSend();
+    if (!send || !userId) return;
+    if (!send.user) {
+      if (!isProNow) return;
+      send = { day: send.day, user: userId };
+      localStorage.setItem(PAID_SEND_KEY, JSON.stringify(send));
+    }
+    if (send.user !== userId) return;
+    logFunnel("checkout_done", "", send.day, { onlyUser: userId }).then((sent) => {
+      if (!sent) return;
+      try {
+        const now = readPaidSend();
+        if (now && now.day === send.day && now.user === send.user) localStorage.removeItem(PAID_SEND_KEY);
+      } catch {
+        // 消せなくても次は端末の送った印（funnel_sent）とサーバーの unique が重ねない
+      }
     });
   } catch {
     // 何もしない

@@ -1,4 +1,5 @@
-// 学習のランクの紋章の絵（21 段。ランクは js/level.js LEARNING_RANKS・learningRankOf。絵は scripts/build-emblems.mjs が作る assets/images/emblems/<段>-<n>.webp）。
+// 学習のランクの紋章の絵（前の XP の 21 段。ランクは js/level.js LEARNING_RANKS・learningRankOf。絵は scripts/build-emblems.mjs が作る assets/images/emblems/<段>-<n>.webp）。
+// Batch 78 の 9 段（覚えた語数のランク。js/rank.js）の絵はまだ無い: learnRankEmblemSrc（アカウントのアイコン）は "" を返す。
 // 絵は飾り: alt="" と aria-hidden。ランクの名前の文字はそのまま出す（絵だけで段を伝えない）。読めない絵（読み込み中・オフライン・404）は
 // 透明のまま枠だけ空ける（壊れた画像の印を出さない。css/game.css .rank-up__emblem・css/pages.css .level-bar__emblem・.rank-list__emblem）。
 import { getLevelState, getTotalXp, nextLearningRankOf, LEARNING_RANKS, LEARNING_RANK_TIERS } from "./level.js";
@@ -10,6 +11,15 @@ const TIER_IDS = new Set(LEARNING_RANK_TIERS.map((tier) => tier.id));
 export function emblemSrc(rank, { small = false } = {}) {
   if (!rank || !TIER_IDS.has(rank.tier) || ![1, 2, 3].includes(rank.step)) return "";
   return `${DIR}${rank.tier}-${rank.step}${small ? "-sm" : ""}.webp`;
+}
+
+// 学習のランク（Batch 78 の 9 段。js/rank.js。段の番号 0〜8）の絵の URL。9 段の絵はまだ無い（決定 §5・§12: 新しいランクの画像は今回作らない）ので、
+// どの段も ""（アカウントのアイコン js/accountEmblem.js は頭文字のまま、行と名前は文字で出す）。絵を足すときは、ここで段の番号から
+// /assets/images/emblems/ の URL を返す（small は 96px の小さい絵）。前の 21 段の絵（emblemSrc）は 9 段に当てはめない（名前と絵の調子が合わない）
+export function learnRankEmblemSrc(rank, { small = false } = {}) {
+  void rank;
+  void small;
+  return "";
 }
 
 // 絵の要素の HTML（大きさは width／height で先に決める: 読み込みで行や幕の高さが動かない）

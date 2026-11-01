@@ -48,18 +48,16 @@ export function renderStaticHeaderStreak() {
   el.setAttribute("aria-label", `連続 ${streak.current}日${streak.done ? "" : "（今日はまだ）"}`);
 }
 
-// ログイン済みらしいか: Supabase のセッション（sb-…-auth-token）か、テスト用セッション
+// ログイン済みらしいか: 認証のセッションの新しい鍵（js/supabase.js AUTH_STORAGE_KEY。見張り js/areaGuard.js が読んで覚える）か、テスト用セッション。
+// 旧い鍵（sb-…-auth-token）は見ない（移行の後に残るのは旧コードのタブが書き戻した物だけ）。鍵の一覧（key・length）は使わない
 function looksLoggedIn() {
   try {
     if (localStorage.getItem("spelldash_test_session")) return true;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i) ?? "";
-      if (key.startsWith("sb-") && key.includes("auth-token")) return true;
-    }
+    return Boolean(window.SpellDashArea?.signedIn());
   } catch {
     // localStorage が使えない環境では未ログイン扱い
+    return false;
   }
-  return false;
 }
 
 export function renderStaticAccountLink() {
