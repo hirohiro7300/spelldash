@@ -31,10 +31,12 @@ export function parseLearnMode(value) {
 
 // 「英単語を学ぶ」（ホームのボタン・ナビ。Batch 78 段 5）の入口の値。モードではなく、回を始めるときにその人の今の記録から 1 つのモードに決める（resolveNextMode）
 export const LEARN_NEXT = "next";
-// 入口として読める値（3 つのモードと LEARN_NEXT）。読めない値は null
+// マイ単語帳の学ぶ回（Batch 79。js/myWordsCore.js・docs/SPEC_MY_WORDS.md）の入口の値。公開の語の 3 つのモードではない（列・状態はマイ単語帳の語だけ）
+export const LEARN_MY = "my";
+// 入口として読める値（3 つのモードと LEARN_NEXT・LEARN_MY）。読めない値は null
 export function parseLearnEntry(value) {
   const v = String(value ?? "").trim();
-  return v === LEARN_NEXT ? v : parseLearnMode(v);
+  return v === LEARN_NEXT || v === LEARN_MY ? v : parseLearnMode(v);
 }
 
 // 「英単語を学ぶ」の行き先: あやふやの今日の分があれば あやふや、無ければ これから、これからも無ければ あやふや（今日の分は終わり）、

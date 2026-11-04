@@ -16724,7 +16724,7 @@ console.log("native app:");
   const { PAGES: APP_PAGES } = await import("../scripts/build-app.mjs");
   const WEB_ONLY = ["pro.html", "tokushoho.html"];
   const appHtml = Object.fromEntries(APP_PAGES.map((p) => [p, fs.existsSync(path.join(ROOT, p)) ? fs.readFileSync(path.join(ROOT, p), "utf8") : null]));
-  check("アプリ: PAGES は 11 ページ（terms.html と切り替えの画面 switch.html はある・pro.html と tokushoho.html は無い）、PAGES のファイルはどれもある", APP_PAGES.length === 11 && APP_PAGES.includes("terms.html") && APP_PAGES.includes("switch.html") && WEB_ONLY.every((p) => !APP_PAGES.includes(p)) && Object.values(appHtml).every((t) => t !== null), JSON.stringify({ pages: APP_PAGES, missing: APP_PAGES.filter((p) => appHtml[p] === null) }));
+  check("アプリ: PAGES は 12 ページ（terms.html と切り替えの画面 switch.html とマイ単語帳 mywords.html はある・pro.html と tokushoho.html は無い）、PAGES のファイルはどれもある", APP_PAGES.length === 12 && APP_PAGES.includes("terms.html") && APP_PAGES.includes("switch.html") && APP_PAGES.includes("mywords.html") && WEB_ONLY.every((p) => !APP_PAGES.includes(p)) && Object.values(appHtml).every((t) => t !== null), JSON.stringify({ pages: APP_PAGES, missing: APP_PAGES.filter((p) => appHtml[p] === null) }));
   const footerOut = [];
   for (const [p, t] of Object.entries(appHtml)) {
     if (p === "switch.html") continue; // 切り替えの画面（Batch 78-7）はナビもフッターも持たない（学習の部品を読まない短いページ）
@@ -20758,7 +20758,8 @@ console.log("home and old URLs (78.6):");
       learned: t("focusLearned"), total: t("focusTotal"), rank: t("focusRankName"), mode: t("focusMode"), sub: t("focusModeSub"),
       start: { text: t("pathStart"), href: document.getElementById("pathStart")?.getAttribute("href"), vis: vis(document.getElementById("pathStart")) },
       starts, status: { vis: vis(document.getElementById("focusStatus")), href: document.getElementById("focusStatus")?.getAttribute("href") },
-      room: document.querySelector(".room")?.innerText ?? "",
+      // マイ単語帳（Batch 79。創業者の決定 2026-11-03: ホームの 2 つ目のボタン）は英単語の学習の中の面なので、旧の面の名前「単語帳」の検査から外す
+      room: (document.querySelector(".room")?.innerText ?? "").replaceAll("マイ単語帳", ""),
       hidden: ["#bookshelf", "#playModes", "#homeMore", "#dailyCard", "#setupToggle", "#setupPanel", "#todayStrip", "#hasumiHome", ".pile .stack", "#welcomeFind", "#pathList"].filter((s) => vis(document.querySelector(s))),
       note: [...document.querySelectorAll("body *")].filter((el) => el.children.length === 0 && el.textContent.includes("英単語の学習にまとめました。") && vis(el)).length,
       hx: document.documentElement.scrollWidth - document.documentElement.clientWidth
@@ -20873,7 +20874,8 @@ console.log("home and old URLs (78.6):");
       spelldash_my_words: JSON.stringify([{ en: "river", ja: "川" }]), spelldash_session: JSON.stringify({ category: "jhist1", queue: ["a"], date: "2026-01-01" }),
       spelldash_book_pace: JSON.stringify({ v: 1, at: 1, b: {} }), spelldash_set_size: "25"
     };
-    const URLS = ["/index.html?words=english-when,english-think", "/?add=accounting", "/?category=jhist1", "/?category=jhist1&genre=action", "/?from=old", "/?from=old#packs", "/?from=old#myWords", "/list.html", "/list.html#myWords", "/list.html#packs", "/list.html?add=accounting", "/list.html?category=ngsl01"];
+    // 単語帳のマイ単語帳（/list.html#myWords・転送の /?from=old#myWords）はマイ単語帳の画面へ（Batch 79。79.1 が見る）
+    const URLS = ["/index.html?words=english-when,english-think", "/?add=accounting", "/?category=jhist1", "/?category=jhist1&genre=action", "/?from=old", "/?from=old#packs", "/list.html", "/list.html#packs", "/list.html?add=accounting", "/list.html?category=ngsl01"];
     const rows = [];
     for (const u of URLS) {
       const page = await homePage(seed);
@@ -23945,6 +23947,363 @@ console.log("preview host (78.8):");
   const { isPreviewHostname } = await import("../js/previewHost.js");
   const cases = [["sd-check.vercel.app", true], ["spelldash-git-claude-b78-wip-x.vercel.app", true], ["www.spelldash.net", false], ["spelldash.net", false], ["127.0.0.1", false], ["localhost", false], ["vercel.app.example.com", false], ["", false]];
   check("Preview の判定は *.vercel.app だけ", cases.every(([h, want]) => isPreviewHostname(h) === want), JSON.stringify(cases.map(([h]) => [h, isPreviewHostname(h)])));
+}
+
+// ===== 79.1 マイ単語帳（Batch 79。mywords.html・js/myWordsPage.js・js/myWordsCore.js・入口 /?learn=my。docs/SPEC_MY_WORDS.md）: ホームの 2 つ目のボタンとナビ・1 語ずつ足す・まとめて足す・熟語と大文字の語を小文字で打って正解・消す（確かめてから）・自力正解／1 打ミス／ヒントで状態・公開の語の数と学習状況は動かない・続けて学ぶ・古い URL・上限の文・人ごとの領域・バックアップ・320／390／1200 × 昼夜で横スクロール 0 =====
+// Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来では種に戻さない）
+console.log("my words (79.1):");
+{
+  const vocab = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+  const PUB = vocab.order;
+  async function myPage(storage = {}, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    page.dialogs = [];
+    page.answer = true;
+    page.on("dialog", (d) => { page.dialogs.push(d.message()); (page.answer ? d.accept() : d.dismiss()).catch(() => {}); });
+    await page.addInitScript(([seed, th]) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const openMy = async (page) => {
+    await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => window.SpellDashArea !== undefined && document.getElementById("myWordsSum")?.textContent.includes("語"), null, { timeout: 8000 }).catch(() => {});
+  };
+  const myView = (page) => page.evaluate(() => {
+    const vis = (el) => !!el && !el.hidden && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0;
+    return {
+      path: location.pathname,
+      sum: document.getElementById("myWordsSum")?.textContent.replace(/\s+/g, " ").trim() ?? null,
+      learn: { vis: vis(document.getElementById("myWordsLearn")), href: document.getElementById("myWordsLearn")?.getAttribute("href") },
+      empty: vis(document.getElementById("myWordsEmpty")) ? document.getElementById("myWordsEmpty").textContent.trim() : null,
+      rows: [...document.querySelectorAll("#myWordsList .mw-row")].map((li) => [li.querySelector(".mw-row__en")?.textContent, li.querySelector(".mw-row__ja")?.textContent, li.querySelector(".mw-row__state")?.textContent]),
+      status: document.getElementById("myWordsStatus")?.textContent.trim() ?? "",
+      addDisabled: document.getElementById("myWordsAddButton")?.disabled ?? null,
+      nav: [...document.querySelectorAll(".site-header .site-nav .site-nav__link")].map((a) => [a.textContent.trim(), a.getAttribute("href"), a.getAttribute("aria-current")]),
+      footer: !!document.querySelector("footer.site-footer .site-footer__tagline"),
+      noindex: document.querySelector('meta[name="robots"]')?.content ?? null,
+      hx: document.documentElement.scrollWidth - document.documentElement.clientWidth
+    };
+  });
+  const stored = (page) => page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
+  const addOne = async (page, en, ja) => {
+    await page.fill("#myWordsEn", en);
+    await page.fill("#myWordsJa", ja);
+    await page.click("#myWordsAddButton");
+    await page.waitForTimeout(100);
+  };
+  const statsNumbers = async (page) => {
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.getElementById("learnStatus")?.classList.contains("is-unavailable") && document.querySelectorAll("#learnCards .learn-card[data-count]").length === 3, null, { timeout: 10000 }).catch(() => {});
+    return page.evaluate(() => ({
+      learned: document.getElementById("learnCount")?.textContent, total: document.getElementById("learnTotal")?.textContent, rank: document.getElementById("learnRank")?.textContent,
+      next: document.getElementById("learnNextN")?.textContent,
+      cards: [...document.querySelectorAll("#learnCards .learn-card")].map((c) => `${c.dataset.state}:${c.dataset.count}`).join(","),
+      my: document.getElementById("statsMyWords")?.textContent.replace(/\s+/g, " ").trim() ?? null,
+      myHref: document.querySelector("#statsMyWords a")?.getAttribute("href") ?? null,
+      peak: localStorage.getItem("spelldash_rank_peak"),
+      ws: localStorage.getItem("spelldash_word_stats")
+    }));
+  };
+  const nShown = (page) => page.evaluate(() => window.__words.length);
+  const lastShown = (page) => page.evaluate(() => window.__words.at(-1) ?? null);
+  const waitNext = (page, n) => waitUntil(async () => (await nShown(page)) > n, 6000);
+  const typeKeys = async (page, keys) => { for (const ch of keys) await page.press("#input", ch); };
+  async function tabTo(page, selector, max = 40) {
+    for (let i = 0; i < max; i++) {
+      await page.keyboard.press("Tab");
+      if (await page.evaluate((s) => document.activeElement?.matches?.(s) ?? false, selector)) return true;
+    }
+    return false;
+  }
+
+  // (1) ホーム: 「英単語を学ぶ」の下に 2 つ目のボタン「マイ単語帳」（/mywords.html）。ナビは 4 つのまま。押すとマイ単語帳の画面（ヘッダー・ナビ・フッター・noindex）。
+  //     語が無いときは 1 行で何をするかを言い、「学ぶ」は出さない
+  {
+    const page = await myPage({});
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    const home = await page.evaluate(() => {
+      const vis = (el) => !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0;
+      const learn = document.getElementById("pathStart");
+      const my = document.getElementById("pathMyWords");
+      return {
+        my: my ? { text: my.textContent.trim(), href: my.getAttribute("href"), vis: vis(my), below: learn && my ? my.getBoundingClientRect().top >= learn.getBoundingClientRect().bottom - 1 : false, h: my.getBoundingClientRect().height, lh: learn?.getBoundingClientRect().height ?? 0 } : null,
+        nav: [...document.querySelectorAll(".site-header .site-nav .site-nav__link")].map((a) => a.textContent.trim())
+      };
+    });
+    check("79.1 ホーム: 「英単語を学ぶ」の下に 2 つ目のボタン「マイ単語帳」（/mywords.html・控えめな高さ）・ナビは 4 つのまま（ホーム・英単語を学ぶ・学習状況・設定）",
+      home.my?.text === "マイ単語帳" && home.my.href === "/mywords.html" && home.my.vis && home.my.below && home.my.h < home.my.lh && JSON.stringify(home.nav) === JSON.stringify(["ホーム", "英単語を学ぶ", "学習状況", "設定"]), JSON.stringify(home));
+    await page.click("#pathMyWords");
+    await page.waitForURL((u) => u.pathname === "/mywords.html", { timeout: 8000 }).catch(() => {});
+    await page.waitForFunction(() => document.getElementById("myWordsSum")?.textContent.includes("語"), null, { timeout: 8000 }).catch(() => {});
+    const v = await myView(page);
+    check("79.1 マイ単語帳の画面: ヘッダーのナビ 4 つ（現在地なし）・フッター・noindex・語が無いときは 1 行の案内・「学ぶ」は出さない・0語",
+      v.path === "/mywords.html" && v.nav.length === 4 && v.nav.every(([, , cur]) => cur === null) && v.footer && v.noindex === "noindex" && v.empty === "英語と日本語訳を入れると、ここで打って覚えられる。" && !v.learn.vis && v.sum.startsWith("0語") && v.rows.length === 0,
+      JSON.stringify(v));
+
+    // (2) 1 語ずつ足す: 熟語（due diligence）・大文字（KPI）・ハイフン（e-mail）。使えない字は足さずに理由の 1 行。同じ語は 2 度足さない
+    await addOne(page, "due diligence", "適正評価");
+    await addOne(page, "KPI", "重要業績評価指標");
+    await addOne(page, "e-mail", "電子メール");
+    await addOne(page, "café", "喫茶店");
+    const bad = await myView(page);
+    await addOne(page, "kpi", "別の訳");
+    const dup = await myView(page);
+    const s1 = await stored(page);
+    check("79.1 1 語ずつ足す: 熟語・大文字・ハイフンが入る（一覧は新しい順・状態は これから）・保存は鍵が小文字で大文字の形も残す・使えない字（café）と同じ語は足さずに 1 行",
+      JSON.stringify(bad.rows) === JSON.stringify([["e-mail", "電子メール", "これから"], ["KPI", "重要業績評価指標", "これから"], ["due diligence", "適正評価", "これから"]]) && /使えない字/.test(bad.status)
+        && /すでに登録/.test(dup.status) && dup.rows.length === 3 && s1.length === 3 && s1[1].en === "kpi" && s1[1].text === "KPI" && s1[0].en === "due diligence" && !("text" in s1[0]) && bad.learn.vis && bad.empty === null && bad.sum.startsWith("3語"),
+      JSON.stringify({ bad, dupStatus: dup.status, s1 }));
+
+    // (3) まとめて足す: カンマ・タブ区切り。足せない行は理由を出して飛ばす
+    await page.click("#myWordsBulkFold summary");
+    await page.fill("#myWordsBulk", "follow up, 追って連絡する\ninvoice\t請求書\nbad/entry, だめ");
+    await page.click("#myWordsBulkAdd");
+    await page.waitForTimeout(100);
+    const bulk = await myView(page);
+    check("79.1 まとめて足す: 「english, 訳」とタブ区切りの 2 行が入り、使えない行は理由を出して飛ばす（5語）",
+      bulk.rows.length === 5 && bulk.rows[0][0] === "invoice" && bulk.rows[1][0] === "follow up" && /2語を足した/.test(bulk.status) && /足せなかった 1行/.test(bulk.status) && bulk.sum.startsWith("5語"), JSON.stringify(bulk));
+
+    // (4) 消す: 確かめる窓でやめると残る・OK で消える（キーボードで「消す」に届く）
+    page.answer = false;
+    await page.click('#myWordsList .mw-row__del[data-key="kpi"]');
+    await page.waitForTimeout(100);
+    const kept = await myView(page);
+    page.answer = true;
+    const reached = await tabTo(page, '#myWordsList .mw-row__del');
+    await page.focus('#myWordsList .mw-row__del[data-key="kpi"]');
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    const gone = await myView(page);
+    check("79.1 消す: 確かめる窓（「KPI」）でやめると残り、OK で消える・「消す」はキーボードで届く・消した後も焦点は一覧の中",
+      page.dialogs.length === 2 && page.dialogs.every((m) => m.includes("KPI")) && kept.rows.length === 5 && gone.rows.length === 4 && !gone.rows.some((r) => r[0] === "KPI") && reached && /消した/.test(gone.status),
+      JSON.stringify({ dialogs: page.dialogs, kept: kept.rows.length, gone: gone.rows, reached }));
+    check("79.1 画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (5) 学ぶ回（/?learn=my）: これから → あやふや → 覚えた の順。KPI を kpi・熟語を小文字で打って正解（覚えた）・1 打ミスと ヒントは あやふや。
+  //     公開の語の記録・3 状態・学習状況の数（覚えた N / 総数・ランク・3 つの札）・最高到達ランクは 1 字も動かない。語の記録に マイ単語帳の語の状態の欄を書かない
+  {
+    const pubSeed = {};
+    PUB.slice(0, 3).forEach((id) => (pubSeed[id] = { playCount: 2, correctCount: 2, lastPlayed: new Date().toISOString(), ls: 2 }));
+    PUB.slice(3, 5).forEach((id) => (pubSeed[id] = { playCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date().toISOString(), ls: 1, lsd: 20000 }));
+    const words = [
+      { en: "deadline", ja: "締め切り", ls: 2, lsAt: 5 }, // 覚えた（最後）
+      { en: "kpi", text: "KPI", ja: "重要業績評価指標" },
+      { en: "due diligence", ja: "適正評価" },
+      { en: "invoice", ja: "請求書" },
+      { en: "agenda", ja: "議題", ls: 1, lsAt: 3 } // あやふや（これからの後）
+    ];
+    const page = await myPage({ spelldash_word_stats: JSON.stringify(pubSeed), spelldash_my_words: JSON.stringify(words) });
+    const before = await statsNumbers(page);
+    check("79.1 学習状況: マイ単語帳の 1 行（自分の語の数と覚えた。2,858 語の数とは別の行）・マイ単語帳へのリンク", before.my === "マイ単語帳5語・覚えた 1" && before.myHref === "./mywords.html" && before.total === vocab.total.toLocaleString("ja-JP"), JSON.stringify({ my: before.my, href: before.myHref, total: before.total }));
+    await page.goto(BASE + "/?learn=my", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    const order = [await lastShown(page)];
+    const prog = await page.evaluate(() => document.getElementById("setProgress")?.textContent.replace(/\s+/g, " ").trim());
+    // KPI: 小文字で 1 字ずつ（Enter なしで正解）
+    await typeKeys(page, "kpi");
+    await waitNext(page, 1);
+    order.push(await lastShown(page));
+    // due diligence: 全文入力（小文字・空白）＋ Enter
+    await page.type("#input", "due diligence");
+    await page.press("#input", "Enter");
+    await waitNext(page, 2);
+    order.push(await lastShown(page));
+    // invoice: 1 打ミス（× → あやふや）。答えを打ち直して次へ
+    await typeKeys(page, "x");
+    await page.waitForTimeout(150);
+    await typeKeys(page, "invoice");
+    await waitNext(page, 3);
+    order.push(await lastShown(page));
+    // agenda（あやふや）: ヒント → あやふやのまま
+    await page.evaluate(() => document.getElementById("hintButton").click());
+    await page.waitForTimeout(150);
+    await typeKeys(page, "genda");
+    await waitNext(page, 4);
+    order.push(await lastShown(page));
+    // deadline（覚えた）: 自力正解 → 覚えたのまま。5 語で尽きる → 終わりのパネル
+    await typeKeys(page, "deadline");
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const panel = await page.evaluate(() => ({
+      title: document.getElementById("resultTitle")?.textContent.trim(),
+      text: document.getElementById("resultPanel")?.innerText.replace(/\s+/g, " ").trim(),
+      my: document.getElementById("learnMyWords")?.getAttribute("href") ?? null
+    }));
+    const after = await stored(page);
+    const st = Object.fromEntries(after.map((w) => [w.en, w.ls ?? 0]));
+    check("79.1 学ぶ回: 柱は「マイ単語帳」・順は これから（足した順）→ あやふや → 覚えた",
+      JSON.stringify(order) === JSON.stringify(["my-kpi", "my-due diligence", "my-invoice", "my-agenda", "my-deadline"]) && /^マイ単語帳/.test(prog ?? ""), JSON.stringify({ order, prog }));
+    check("79.1 学ぶ回: KPI を kpi・due diligence を小文字と空白で打って正解（覚えた）・1 打ミス（invoice）とヒント（agenda）は あやふや・覚えたの語の自力正解は 覚えた のまま",
+      st.kpi === 2 && st["due diligence"] === 2 && st.invoice === 1 && st.agenda === 1 && st.deadline === 2 && after.every((w) => !("lsf" in w)), JSON.stringify(after));
+    check("79.1 学ぶ回の終わり: 「5語 終わり」・マイ単語帳の数・「マイ単語帳へ」（学習状況の 2,858 語の数は出さない）",
+      panel.title === "5語 終わり" && panel.my === "/mywords.html" && /マイ単語帳 覚えた 3 \/ 5/.test(panel.text) && !panel.text.includes(vocab.total.toLocaleString("ja-JP")), JSON.stringify(panel));
+    const afterStats = await statsNumbers(page);
+    const pubOf = (ws) => { const t = JSON.parse(ws || "{}"); return JSON.stringify(Object.fromEntries(Object.keys(t).filter((id) => !id.startsWith("my-")).sort().map((id) => [id, t[id]]))); };
+    const myStats = Object.entries(JSON.parse(afterStats.ws || "{}")).filter(([id]) => id.startsWith("my-"));
+    check(`79.1 公開の語は動かない: 学習状況の数（覚えた ${before.learned} / ${before.total}・ランク・3 つの札・次のランクまで）・最高到達ランク・公開の語の記録は 1 字も同じ・語の記録のマイ単語帳の語に 3 状態の欄（ls・lsd・lsAt・lsf）が無い`,
+      afterStats.learned === before.learned && afterStats.total === before.total && afterStats.rank === before.rank && afterStats.next === before.next && afterStats.cards === before.cards && afterStats.peak === before.peak
+        && pubOf(afterStats.ws) === pubOf(before.ws) && myStats.every(([, s]) => !["ls", "lsd", "lsAt", "lsf"].some((k) => k in s)) && afterStats.my === "マイ単語帳5語・覚えた 3",
+      JSON.stringify({ before: { ...before, ws: undefined }, after: { ...afterStats, ws: undefined }, myStats }));
+    await openMy(page);
+    const v = await myView(page);
+    check("79.1 マイ単語帳の一覧に状態（覚えた・あやふや）と数", v.rows.find((r) => r[0] === "KPI")?.[2] === "覚えた" && v.rows.find((r) => r[0] === "invoice")?.[2] === "あやふや" && /5語/.test(v.sum) && /覚えた 3/.test(v.sum) && /あやふや 2/.test(v.sum), JSON.stringify(v));
+
+    // (6) バックアップ: 書き出しにマイ単語帳（3 状態ごと）が入り、読み込むと戻る・開き直しても残る
+    const bk = await page.evaluate(async () => {
+      const m = await import("/js/backup.js");
+      const data = m.buildBackup().data;
+      const inBackup = data.spelldash_my_words ?? null;
+      localStorage.setItem("spelldash_my_words", "[]");
+      m.applyBackup({ app: "SpellDash", version: 1, data });
+      return { inBackup, restored: localStorage.getItem("spelldash_my_words") };
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    const reread = await stored(page);
+    check("79.1 バックアップ: 書き出しにマイ単語帳が 3 状態ごと入り、読み込むと同じ値に戻る・開き直しても残る",
+      !!bk.inBackup && JSON.parse(bk.inBackup).find((w) => w.en === "kpi")?.ls === 2 && bk.restored === bk.inBackup && JSON.stringify(reread) === bk.inBackup, JSON.stringify({ bk: bk.inBackup?.slice(0, 120), n: reread.length }));
+    check("79.1 学ぶ回・学習状況のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (7) 1 回 10 語: 11 語の回は 10 語で区切り「続けて学ぶ」「マイ単語帳へ」。「続けて学ぶ」で 11 語目。答えを見る（Enter）は あやふや
+  {
+    const words = Array.from({ length: 11 }, (_, i) => ({ en: `word${"abcdefghijk"[i]}`, ja: `語${i + 1}` }));
+    const page = await myPage({ spelldash_my_words: JSON.stringify(words) });
+    await page.goto(BASE + "/?learn=my", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    for (let i = 0; i < 10; i++) {
+      const n = await nShown(page);
+      await page.press("#input", "Enter"); // 答えを見る
+      await page.waitForTimeout(60);
+      await page.press("#input", "Enter"); // 次へ
+      await waitUntil(async () => (await nShown(page)) > n || !(await page.evaluate(() => document.getElementById("resultPanel").hidden)), 5000);
+    }
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const set = await page.evaluate(() => ({ title: document.getElementById("resultTitle")?.textContent.trim(), next: document.getElementById("learnNext")?.textContent.trim() ?? null, my: document.getElementById("learnMyWords")?.textContent.trim() ?? null }));
+    const n10 = await nShown(page);
+    await page.click("#learnNext");
+    await waitUntil(async () => (await nShown(page)) > n10, 6000);
+    const eleventh = await lastShown(page);
+    const st = await stored(page);
+    check("79.1 1 回 10 語: 10 語で区切り「続けて学ぶ」と「マイ単語帳へ」・続けると 11 語目・答えを見た語は あやふや",
+      set.title === "10語 終わり" && set.next === "続けて学ぶ" && set.my === "マイ単語帳へ" && eleventh === "my-wordk" && st.slice(0, 10).every((w) => w.ls === 1) && !("ls" in st[10]), JSON.stringify({ set, eleventh, st: st.map((w) => w.ls ?? 0) }));
+    await closeCtx(page);
+  }
+
+  // (8) 古い URL: 単語帳のマイ単語帳（/list.html#myWords・転送の /?from=old#myWords）はマイ単語帳の画面へ（ホームの 1 行は出さない）。#packs は今までどおりホーム
+  {
+    const rows = [];
+    for (const u of ["/list.html#myWords", "/?from=old#myWords", "/list.html#packs"]) {
+      const page = await myPage({ spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }]) });
+      await page.goto(BASE + u, { waitUntil: "networkidle" }).catch(() => {});
+      await page.waitForLoadState("networkidle").catch(() => {});
+      const url = new URL(page.url());
+      const note = await page.evaluate(() => document.documentElement.hasAttribute("data-moved"));
+      rows.push({ u, path: url.pathname, hash: url.hash, note, err: page.errors.length });
+      await closeCtx(page);
+    }
+    check("79.1 古い URL: /list.html#myWords と /?from=old#myWords はマイ単語帳の画面（1 行なし）・/list.html#packs はホームへ（前のまま）",
+      rows[0].path === "/mywords.html" && rows[1].path === "/mywords.html" && !rows[0].note && !rows[1].note && ["/", "/index.html"].includes(rows[2].path) && rows.every((r) => r.err === 0), JSON.stringify(rows));
+  }
+
+  // (9) 上限: 無料は 100 語で「足す」を止めて上限の文（受付前は Pro の話をしない）。見る・消すはできる
+  {
+    const words = Array.from({ length: 100 }, (_, i) => ({ en: `w${String(i).padStart(3, "0")}x`.replace(/\d/g, (d) => "abcdefghij"[d]), ja: "語" }));
+    const page = await myPage({ spelldash_my_words: JSON.stringify(words) });
+    await openMy(page);
+    await page.waitForTimeout(300);
+    const v = await myView(page);
+    const offer = await page.evaluate(async () => (await import("/js/proFunnel.js")).canOfferPro());
+    check("79.1 上限: 100 語で「足す」が押せず、上限の文（無料で追加できるのは100語まで）・Pro の話は js/proFunnel.js canOfferPro が許すときだけ・一覧は 100 行",
+      v.addDisabled === true && /^無料で追加できるのは100語まで/.test(v.status) && v.rows.length === 100 && /Pro/.test(v.status) === offer, JSON.stringify({ addDisabled: v.addDisabled, status: v.status, rows: v.rows.length, offer }));
+    await closeCtx(page);
+  }
+
+  // (10) 人ごとの領域: ゲストの語は「はい」で A へ移る。A の語は B とゲストに見えない。A に戻ると A の語が戻る（スタブの認証・見張り・切り替えの画面は本物）
+  {
+    const UA = "79a79a79-0000-4000-8000-00000000000a";
+    const UB = "79b79b79-0000-4000-8000-00000000000b";
+    const userA = { id: UA, email: "a79@example.com" };
+    const userB = { id: UB, email: "b79@example.com" };
+    const ctx = await rawNewContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    ctx.on("page", (p) => p.on("dialog", (d) => d.accept().catch(() => {})));
+    try {
+      const seed = await ctx.newPage();
+      await seed.goto(BASE + "/css/reset.css");
+      await seed.evaluate((w) => { for (const [k, v] of Object.entries({ spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_my_words: w })) localStorage.setItem(k, v); }, JSON.stringify([{ en: "guestword", ja: "ゲストの語" }]));
+      await seed.close();
+      const page = await ctx.newPage();
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      const listOf = () => page.evaluate(() => [...document.querySelectorAll("#myWordsList .mw-row__en")].map((e) => e.textContent)).catch(() => null);
+      const waitArea = (area) => page.waitForFunction((a) => location.pathname !== "/switch.html" && window.SpellDashArea?.area === a && document.readyState === "complete", area, { timeout: 15000 }).then(() => true).catch(() => false);
+      const waitAsk = () => page.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout: 15000 }).then(() => true).catch(() => false);
+      const signIn = (user) => page.evaluate((u) => window.__stubAuth.signIn("1", u), user).catch(() => null);
+      const backTo = async () => { if (new URL(page.url()).pathname !== "/mywords.html") await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" }); await page.waitForFunction(() => document.getElementById("myWordsSum")?.textContent.includes("語"), null, { timeout: 8000 }).catch(() => {}); };
+      await page.goto(BASE + "/mywords.html", { waitUntil: "load" }).catch(() => {});
+      await backTo();
+      const guest0 = await listOf();
+      await signIn(userA);
+      const asked = await waitAsk();
+      if (asked) await page.click("#switchAskYes");
+      const atA = await waitArea(`u:${UA}`);
+      await backTo();
+      const a1 = await listOf();
+      await addOne(page, "alpha only", "A だけの語");
+      const a2 = await listOf();
+      await page.waitForSelector("#avatarButton", { state: "visible", timeout: 10000 }).catch(() => {});
+      await page.click("#avatarButton").catch(() => {});
+      await page.click("#logoutButton").catch(() => {});
+      const atGuest = await waitArea("guest");
+      await backTo();
+      const g1 = await listOf();
+      await signIn(userB);
+      const atB = await waitArea(`u:${UB}`);
+      await backTo();
+      const b1 = await listOf();
+      await signIn(userA);
+      const backA = await waitArea(`u:${UA}`);
+      await backTo();
+      const a3 = await listOf();
+      check("79.1 人ごとの領域: ゲストの語は「はい」で A へ移る・A で足した語は ゲスト（ログアウト後）にも B にも見えない・A に戻ると A の語が戻る",
+        JSON.stringify(guest0) === '["guestword"]' && asked && atA && JSON.stringify(a1) === '["guestword"]' && JSON.stringify(a2) === '["alpha only","guestword"]'
+          && atGuest && JSON.stringify(g1) === "[]" && atB && JSON.stringify(b1) === "[]" && backA && JSON.stringify(a3) === '["alpha only","guestword"]' && page.errors.length === 0,
+        JSON.stringify({ guest0, asked, atA, a1, a2, atGuest, g1, atB, b1, backA, a3, err: page.errors[0] }));
+      await page.close();
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // (11) 320／390／1200 × 昼夜: マイ単語帳の画面（語のある一覧・まとめて足すを開いた形）と学習状況で横スクロール 0
+  {
+    const words = [{ en: "due diligence", ja: "適正評価", ls: 2 }, { en: "kpi", text: "KPI", ja: "重要業績評価指標（とても長い訳の例として四十字近くまで書いておく）", ls: 1 }, { en: "e-mail", ja: "電子メール" }];
+    const bad = [];
+    for (const width of [320, 390, 1200]) {
+      for (const theme of [null, "dark"]) {
+        const page = await myPage({ spelldash_my_words: JSON.stringify(words) }, { viewport: { width, height: 800 }, mobile: width < 600, theme });
+        await openMy(page);
+        await page.click("#myWordsBulkFold summary");
+        const v = await myView(page);
+        await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+        const sx = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        if (v.hx > 0 || sx > 0 || v.rows.length !== 3 || page.errors.length) bad.push({ width, theme, hx: v.hx, sx, rows: v.rows.length, err: page.errors[0] });
+        await closeCtx(page);
+      }
+    }
+    check("79.1 320／390／1200 × 昼夜: マイ単語帳の画面と学習状況で横スクロール 0・エラー 0", bad.length === 0, JSON.stringify(bad));
+  }
 }
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====

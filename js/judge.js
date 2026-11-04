@@ -10,9 +10,10 @@ import { createRomajiMatcher, readingEntries, primaryReading, hasJapaneseScript,
 
 // ===== 答え方 =====
 
-// 全文入力（Enter で答え全体を判定）: 答え（en）が a-z と - だけでない語（概念カードの英語の用語・英文・計算の答え）
+// 全文入力（Enter で答え全体を判定）: 答え（en）が a-z と - だけでない語（概念カードの英語の用語・英文・計算の答え）と、free の印のあるカード
+// （マイ単語帳のハイフンの語 e-mail。画面キーボードと端末のかな入力の道ではハイフンを打てないので全文入力にする: js/myWordsCore.js wordCardOf）
 export function isFreeAnswer(word) {
-  return !!word && !/^[a-z-]+$/.test(word.en);
+  return !!word && (word.free === true || !/^[a-z-]+$/.test(word.en));
 }
 
 // ローマ字で打つ読みの一覧（日本語の答え: 鎌倉幕府 など。js/romaji.js readingEntries）。空 = ローマ字で打たない

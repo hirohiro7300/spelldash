@@ -275,6 +275,29 @@ html[data-theme] a.start.focus-home__start {
   border-bottom: 0;
 }
 
+/* 「マイ単語帳」（Batch 79）: 「英単語を学ぶ」の下の 2 つ目のボタン。同じ板の形で、朱の塗りをやめた控えめな方（頁の色に金の細線。css/path.css の済んだ日の板と同じ） */
+html[data-theme] a.start.focus-home__my,
+html[data-theme] a.start.focus-home__my:hover {
+  height: 46px;
+  margin-top: 10px;
+  font-size: 17px;
+  text-decoration: none;
+  border-bottom: 0;
+  background: var(--parchment-2);
+  color: var(--ink-page);
+  text-shadow: none;
+  box-shadow: inset 0 0 0 1px rgba(138, 106, 48, 0.55), 0 1px 0 rgba(60, 20, 10, 0.2), 0 6px 12px -8px rgba(var(--shadow-rgb), 0.5);
+}
+
+html[data-theme] a.start.focus-home__my::before {
+  border-color: rgba(138, 106, 48, 0.4);
+}
+
+/* 回の間（学ぶ回の画面）は出さない */
+body.learn-run .focus-home__my {
+  display: none;
+}
+
 /* 古い画面・古い URL から来た人への 1 行（html[data-moved]。<head> の 1 行が最初の描画から付ける）。机の上の紙の札（.stack-k と同じ紙） */
 html[data-theme] .focus-note {
   display: none;
