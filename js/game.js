@@ -1057,6 +1057,7 @@ function myEntryState(word) {
 function noteMyAnswer(r, word, kind, ctx) {
   const id = word.id;
   const before = myEntryState(word);
+  r.myBefore = before; // ヒントの文（learnHintNote）が読む
   r.answered.add(id);
   r.setAnswered++;
   renderSetProgress();
@@ -1192,7 +1193,8 @@ function showLearnLine(ctx, info) {
 
 // ヒントの文の括弧（中心の学習では、この回にもう一度は出さない）
 function learnHintNote() {
-  const unsure = learnRun?.my ? myEntryState(currentWord) === LEARN_UNSURE : learnRun?.mode === "unsure";
+  // マイ単語帳の回: ヒントの × は文より先に書かれる（markRecallFail → noteMyAnswer）ので、答える前の状態で決める
+  const unsure = learnRun?.my ? learnRun.myBefore === LEARN_UNSURE : learnRun?.mode === "unsure";
   return unsure ? "ヒントを見たので、あやふやのまま" : "ヒントを見たので、あやふやに移る";
 }
 
