@@ -39,13 +39,13 @@ const OLD_URL_HOME = "/?from=old";
 const SITEMAP_PAGES = [["/", "index.html"], ["/stats.html", "stats.html"], ["/profile.html", "profile.html"], ["/news.html", "news.html"], ["/privacy.html", "privacy.html"], ["/terms.html", "terms.html"], ["/tokushoho.html", "tokushoho.html"]];
 // 検索から外すページ（加入画面は直接開けば動く。単語帳とパックのページはページの守り、Battle とタイピングの 2 ページは入口の門、単語帳と Battle とタイピングの 2 ページは
 // 配信の転送でホームへ案内する）
-const HIDDEN_PAGES = ["battle.html", "typing.html", "typing-game.html", "list.html", "pro.html", "mywords.html"]; // マイ単語帳（Batch 79）は人の道具: noindex・sitemap に載せない
+const HIDDEN_PAGES = ["battle.html", "typing.html", "typing-game.html", "list.html", "pro.html", "mywords.html", "slang.html"]; // マイ単語帳（Batch 79）とスラング（Batch 80）は人の道具: noindex・sitemap に載せない
 // 入口の門を持つページ（7）
 const GATED_PAGES = ["battle.html", "typing.html", "typing-game.html"];
 // 記録の見張りの 1 行（全ページの <head> の最初の script。scripts/test-areas.mjs の U1 の GUARD_LINE と同じ）。入口の門はこのすぐ後（7）
 const GUARD_LINE = '<script src="/js/areaGuard.js"></script><script>window.SpellDashArea||(stop(),location.replace("/switch.html#back="+encodeURIComponent(location.pathname+location.search+location.hash)))</script>';
 // ナビとフッターを持つルートのページ（admin.html は対象外: 創業者の決定 §7「CRM・管理画面は今回の対象外」）
-const ROOT_PAGES = ["index.html", "stats.html", "list.html", "profile.html", "battle.html", "news.html", "terms.html", "privacy.html", "tokushoho.html", "pro.html", "typing.html", "typing-game.html", "mywords.html"];
+const ROOT_PAGES = ["index.html", "stats.html", "list.html", "profile.html", "battle.html", "news.html", "terms.html", "privacy.html", "tokushoho.html", "pro.html", "typing.html", "typing-game.html", "mywords.html", "slang.html"];
 const NAV = [["ホーム", "/"], ["英単語を学ぶ", "/?learn=next"], ["学習状況", "stats.html"], ["設定", "profile.html"]];
 const CURRENT = { "index.html": "ホーム", "stats.html": "学習状況", "profile.html": "設定" };
 const TAGLINE = "ストレスなしで、英単語を覚える。";

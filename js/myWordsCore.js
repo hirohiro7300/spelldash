@@ -134,14 +134,17 @@ export function countMyStates(list) {
 
 const ORDER = [LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED];
 
+// 語 → カードの id（マイ単語帳は my-<鍵>。スラング〔Batch 80。js/slang.js〕は項目の id を渡す）
+const myIdOf = (w) => `${MY_ID_PREFIX}${w.en}`;
+
 // 学ぶ回の列（カードの id）: これから → あやふや → 覚えた。これからは足した順、あやふや・覚えたは最後に答えた時刻（lsAt）の古い順、同じなら足した順
-export function buildMyQueue(list) {
+export function buildMyQueue(list, idOf = myIdOf) {
   return (Array.isArray(list) ? list : [])
     .map((w, pos) => ({ w, pos }))
     .filter(({ w }) => isWordEntry(w))
     .map(({ w, pos }) => {
       const st = myStateOf(w);
-      return { id: `${MY_ID_PREFIX}${w.en}`, rank: ORDER.indexOf(st), at: st === LEARN_NEW ? 0 : Number.isFinite(w.lsAt) ? w.lsAt : 0, pos };
+      return { id: idOf(w), rank: ORDER.indexOf(st), at: st === LEARN_NEW ? 0 : Number.isFinite(w.lsAt) ? w.lsAt : 0, pos };
     })
     .sort((a, b) => a.rank - b.rank || a.at - b.at || a.pos - b.pos)
     .map((x) => x.id);
@@ -154,10 +157,10 @@ export function myLearnStep({ setAnswered, more }) {
   return "play";
 }
 
-// 回の結果（答えた語の今の状態から。同じ語は 1 回）。ids = カードの id、list = 今の語の並び、today = 今日の日番号
-export function mySummary(ids, list, today) {
+// 回の結果（答えた語の今の状態から。同じ語は 1 回）。ids = カードの id、list = 今の語の並び、today = 今日の日番号、idOf = 語 → カードの id
+export function mySummary(ids, list, today, idOf = myIdOf) {
   const byId = new Map();
-  for (const w of Array.isArray(list) ? list : []) if (isWordEntry(w)) byId.set(`${MY_ID_PREFIX}${w.en}`, w);
+  for (const w of Array.isArray(list) ? list : []) if (isWordEntry(w)) byId.set(idOf(w), w);
   let learned = 0;
   let unsure = 0;
   let dayOne = 0;

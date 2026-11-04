@@ -592,7 +592,7 @@ async function runAll() {
     const found = new Set();
     for (const text of Object.values(src)) for (const m of text.matchAll(/["'`](spelldash_[a-z0-9_]+)/g)) found.add(m[1]);
     const TAB_FLAGS = ["spelldash_synced_this_session", "spelldash_pulled_this_session", "spelldash_sync_done_this_session", "spelldash_pull_started_at", "spelldash_login_return", "spelldash_funnel_missing"];
-    const PERSON = ["activity", "battle", "best_by_category", "best_score", "book_pace", "category", "course", "daily", "daily_set", "dirty_words", "display_name", "feedback_queue", "first_sight", "genre", "growth_log", "key_miss", "learn_filled", "learn_session", "level_boost", "level_boost_note", "login_nudge", "logout_at", "mastery_meta", "memory_check", "memory_words", "memory_words_corrupt", "mission", "mode", "my_words", "oldtab_imported", "owner", "packs", "pending_battles", "placement", "placement_note", "plan", "rank_peak", "retention", "schema_version", "session", "session_log", "set_size", "sets_total", "shelf", "streak", "study_mix", "study_time", "tutorial", "typing_game", "typing_practice", "typing_stats", "user_items_dirty", "user_items_meta", "veteran", "week_goal", "word_ai", "word_notes", "word_stats", "word_stats_corrupt", "xp", "xp_synced", "xp_write"].map((n) => "spelldash_" + n);
+    const PERSON = ["activity", "battle", "best_by_category", "best_score", "book_pace", "category", "course", "daily", "daily_set", "dirty_words", "display_name", "feedback_queue", "first_sight", "genre", "growth_log", "key_miss", "learn_filled", "learn_session", "level_boost", "level_boost_note", "login_nudge", "logout_at", "mastery_meta", "memory_check", "memory_words", "memory_words_corrupt", "mission", "mode", "my_words", "oldtab_imported", "owner", "packs", "pending_battles", "placement", "placement_note", "plan", "rank_peak", "retention", "schema_version", "session", "session_log", "set_size", "sets_total", "shelf", "slang", "streak", "study_mix", "study_time", "tutorial", "typing_game", "typing_practice", "typing_stats", "user_items_dirty", "user_items_meta", "veteran", "week_goal", "word_ai", "word_notes", "word_stats", "word_stats_corrupt", "xp", "xp_synced", "xp_write"].map((n) => "spelldash_" + n);
     const classes = { device: [], test: [], tab: [], person: [], probe: [] };
     for (const key of [...found].sort()) {
       if (key === K.PROBE_KEY) classes.probe.push(key);
@@ -601,7 +601,7 @@ async function runAll() {
       else if (K.isDeviceKey(key)) classes.device.push(key);
       else classes.person.push(key);
     }
-    eq("U1 人の記録の鍵は 62 個で、一覧のとおり（後から足した鍵も人ごと。足したら一覧を直す）", classes.person, PERSON);
+    eq("U1 人の記録の鍵は 63 個で、一覧のとおり（後から足した鍵も人ごと。足したら一覧を直す。63 個目はスラングの状態 spelldash_slang: Batch 80）", classes.person, PERSON);
     eq("U1 端末の鍵は端末の設定 13 と端末の計測 10（コードに出る物は全部が一覧にある）", [K.DEVICE_NAMES.length, classes.device.length], [23, 23]);
     ok("U1 人の記録の判定: 端末の鍵・spelldash_test_・spelldash_ で始まらない鍵は人の記録でない", !K.isPersonKey("spelldash_theme") && !K.isPersonKey("spelldash_test_session") && !K.isPersonKey("sd2.guest.word_stats") && !K.isPersonKey("sb-x-auth-token") && K.isPersonKey("spelldash_word_stats") && K.isPersonKey("spelldash_new_key_later"));
     ok("U1 書き出しに入れない鍵（見張りの EXPORT_EXCLUDE。復旧の画面・使えないブラウザの書き出し）は js/backup.js の EXCLUDE と同じ（持ち主の鍵・同期の印を含む）", EXPORT_DROP.includes("spelldash_owner") && isDeepStrictEqual([...(K.EXPORT_EXCLUDE ?? [])].sort(), [...EXPORT_DROP].sort()), JSON.stringify(K.EXPORT_EXCLUDE ?? null));

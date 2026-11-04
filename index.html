@@ -14,7 +14,7 @@
   <!-- 初回（学習記録の無い端末）は最初の描画から初回の本: 判定だけここで行い html[data-first-visit] を置く。机を隠し初回の本を出すのは CSS（css/welcome.css。
        ページの中の置き場所に頼らない）。js/welcome.js が hidden に置き換えて印を外す。条件は js/welcome.js の shouldShowWelcome と同じ（鍵・空の文字列と壊れた JSON の読み方。
        E2E が同じ状態の表で 2 つを突き合わせる）。変えるときは両方を変える -->
-  <script id="firstVisit">(() => { try { const s = localStorage, q = new URLSearchParams(location.search), w = s.getItem("spelldash_word_stats"); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys((w && JSON.parse(w)) || {}).length > 0 || ["set","words","t","weekly","category","genre","mode"].some((k) => q.has(k)) || ["new","unsure","learned","next","my"].includes((q.get("learn") || "").trim()) || location.hash === "#play") return; document.documentElement.dataset.firstVisit = ""; } catch {} })();</script>
+  <script id="firstVisit">(() => { try { const s = localStorage, q = new URLSearchParams(location.search), w = s.getItem("spelldash_word_stats"); if (s.getItem("spelldash_onboarded") || Number(s.getItem("spelldash_xp")) > 0 || Object.keys((w && JSON.parse(w)) || {}).length > 0 || ["set","words","t","weekly","category","genre","mode"].some((k) => q.has(k)) || ["new","unsure","learned","next","my","slang"].includes((q.get("learn") || "").trim()) || location.hash === "#play") return; document.documentElement.dataset.firstVisit = ""; } catch {} })();</script>
   <!-- 英単語の学習に絞ったホーム（html[data-focus="english"]。js/focus.js）: 古い URL（?words= ?add= ?category= ?genre= と、転送・ページの守りのしるし ?from=old。
        js/focus.js OLD_HOME_PARAMS・MOVED_URL と同じ決まり）で来たら、最初の描画から 1 行「英単語の学習にまとめました。」を出す（html[data-moved]。
        CSS が #focusNote を出す。js/focus.js takeOldHomeUrl が引数を URL から外す） -->
@@ -365,6 +365,8 @@
                       <a class="path__start start focus-home__start" id="pathStart" href="/?learn=next" aria-describedby="focusNext">英単語を学ぶ</a>
                       <!-- マイ単語帳（Batch 79。自分で入れた語。数は公開の語の数とは別: mywords.html） -->
                       <a class="start focus-home__my" id="pathMyWords" href="/mywords.html">マイ単語帳</a>
+                      <!-- スラング（Batch 80。組み込みのくだけた表現。数は公開の語の数とは別: slang.html） -->
+                      <a class="start focus-home__my focus-home__slang" id="pathSlang" href="/slang.html">スラング</a>
                       <p class="path__links tome__links"><a class="path__unit-link" id="focusStatus" href="./stats.html">学習状況</a></p>
                     </li>
                   </ol>

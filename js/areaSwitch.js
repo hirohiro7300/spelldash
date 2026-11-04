@@ -40,7 +40,8 @@ function reasonText(reason) {
   return "この端末に記録を安全に保存できなかったため、切り替えられません。";
 }
 
-// その領域に学んだ記録があるか（元の名前 → 値）。js/sync.js の前の確認と同じ物を数える: 語・XP・マイ単語帳・メモ・Battle・学んだ跡のある成長ログ・今日のセットの履歴。
+// その領域に学んだ記録があるか（元の名前 → 値）。js/sync.js の前の確認と同じ物を数える: 語・XP・マイ単語帳・メモ・Battle・学んだ跡のある成長ログ・今日のセットの履歴・
+// スラングの状態（spelldash_slang。Batch 80。スラングだけを学んだゲストも「移す？」を聞く）。
 // 成長ログはホームを開いただけで 0 語の行が 1 つ書かれるので、学んだ跡のある行だけ数える
 export function hasRecords(rec) {
   const json = (name, fallback) => {
@@ -58,6 +59,7 @@ export function hasRecords(rec) {
     nonEmpty(json("word_stats", {})) ||
     (Number(rec?.spelldash_xp) || 0) > 0 ||
     nonEmpty(json("my_words", [])) ||
+    nonEmpty(json("slang", {})) ||
     nonEmpty(json("word_notes", {})) ||
     (Number(battle?.wins) || 0) + (Number(battle?.losses) || 0) + (Number(battle?.draws) || 0) > 0 ||
     rows.some((row) => row && (row.active === true || Number(row.learned) > 0 || Number(row.mastered) > 0)) ||
