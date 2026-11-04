@@ -24479,7 +24479,8 @@ console.log("slang (80.1):");
     await page.press("#input", "Enter");
     await waitNext(page, 4);
     order.push(await lastShown(page));
-    // 残りの 6 語: 答えを見る（Enter）→ 次へ（Enter）
+    // 残りの 6 語: 答えを見る（Enter）→ 次へ（Enter）。前の語を打ち終えた直後の Enter は飲まれる（ECHO_AFTER_DONE_MS）ので、それより後に押す
+    await page.waitForTimeout(ECHO_AFTER_DONE_MS + 150);
     for (let i = 0; i < 6; i++) {
       const k = await nShown(page);
       await page.press("#input", "Enter");
