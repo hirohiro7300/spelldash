@@ -1,21 +1,22 @@
 // ===== マイ単語帳（自分専用の単語） =====
 //
-// 仕事・試験・読んでいる本の単語を自分で入れて、同じ仕組み（思い出して打つ・
-// Recall Loop・復習期日）で覚える。端末ローカル保存（spelldash_my_words）。
-// 学習記録は既存の word_progress（word_id = "my-<en>"）にそのまま乗る。
-// ※単語定義そのものの端末間同期は未対応（将来 my_words テーブル: SQL承認案件）
+// 仕事・試験・読んでいる本の単語や熟語を自分で入れて、思い出して打って覚える。保存は spelldash_my_words（人ごとの領域の鍵: js/areaGuard.js。
+// バックアップに入る）。語の定義と 3 状態は同期の項目 user_items の my_word に乗る（表があるときだけ: docs/SQL_USER_ITEMS.md・js/userItemsSync.js）。
+// 決まり（入れられる英語・出題のカード・3 状態・学ぶ回の列）は js/myWordsCore.js（純）、画面は mywords.html（js/myWordsPage.js）、学ぶ回は js/game.js（/?learn=my）。
+// 仕様は docs/SPEC_MY_WORDS.md（Batch 79）
 
 import { touchItem } from "./userItemsSync.js";
 import { isSpellAlt } from "./answers.js";
 import { isPro } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
+import { isAnswerKind } from "./learnState.js";
+import { checkEnText, checkJaText, wordCardOf, parseWordLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT } from "./myWordsCore.js";
 
 const KEY = "spelldash_my_words";
-const EN_PATTERN = /^[a-z][a-z-]*$/;
 
 // 追加できる語数の上限（無料 100 語・Pro 1,000 語）。上限を超えて持っている人も閲覧・削除はできる（追加だけ止まる）
 export function maxMyWords() {
-  return isPro() ? 1000 : 100;
+  return isPro() ? MY_PRO_LIMIT : MY_FREE_LIMIT;
 }
 
 // 上限の文（表示側はこの文のときだけ「Pro について」のリンクを続ける）
@@ -78,16 +79,7 @@ export function toWordObjects(list = getMyWords()) {
         addedAt: w.addedAt ?? null
       };
     }
-    return {
-      id: `my-${w.en}`,
-      en: w.en,
-      ja: w.ja,
-      level: "easy",
-      tags: ["my"],
-      subject: "english",
-      category: "my",
-      addedAt: w.addedAt ?? null
-    };
+    return wordCardOf(w); // 英語と訳の語（js/myWordsCore.js。前からの語の id・en・ja は前と同じ）
   });
 }
 
@@ -127,27 +119,47 @@ export function normalizeEn(raw) {
   return String(raw ?? "").trim().toLowerCase();
 }
 
+// 英語と訳の 1 語を確かめる（js/myWordsCore.js checkEnText・checkJaText）。返り値 { ok, en（鍵）, ja, text（画面の形） } か { ok: false, error }
 export function validateEntry(en, ja, existing = getMyWords()) {
-  const e = normalizeEn(en);
-  const j = String(ja ?? "").trim();
-  if (!e) return { ok: false, error: "英単語を入力してください" };
-  if (!EN_PATTERN.test(e)) return { ok: false, error: `「${e}」は英小文字（a-z）とハイフンのみ使えます` };
-  if (e.length > 30) return { ok: false, error: "英単語が長すぎます（30文字まで）" };
-  if (!j) return { ok: false, error: "日本語訳を入力してください" };
-  if (j.length > 40) return { ok: false, error: "日本語訳が長すぎます（40文字まで）" };
-  if (existing.some((w) => w.en === e)) return { ok: false, error: `「${e}」はすでに登録されています` };
+  const e = checkEnText(en);
+  if (!e.ok) return e;
+  const j = checkJaText(ja);
+  if (!j.ok) return j;
+  if (existing.some((w) => w.en === e.key)) return { ok: false, error: `「${e.text}」はすでに登録されています` };
   if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
-  return { ok: true, en: e, ja: j };
+  return { ok: true, en: e.key, ja: j.ja, text: e.text };
 }
+
+// 保存する 1 語（画面の形 text は鍵と違うときだけ）
+const entryOf = (v) => ({ en: v.en, ja: v.ja, ...(v.text !== v.en ? { text: v.text } : {}), addedAt: new Date().toISOString() });
 
 export function addMyWord(en, ja) {
   const list = getMyWords();
   const v = validateEntry(en, ja, list);
   if (!v.ok) return v;
-  list.push({ en: v.en, ja: v.ja, addedAt: new Date().toISOString() });
+  list.push(entryOf(v));
   save(list);
   touchItem("my_word", v.en);
-  return { ok: true, en: v.en, ja: v.ja };
+  return { ok: true, en: v.text, ja: v.ja };
+}
+
+// 学ぶ回の 1 問の答えを、その語の 3 状態に当てる（js/myWordsCore.js applyMyAnswer。js/game.js がマイ単語帳の回でだけ呼ぶ）。
+// 保存の配列はそのまま読んで、その語だけを替える（形の読めない要素も消さない）。語の記録（spelldash_word_stats）には書かない。
+// 同期の印（touchItem）を付ける: user_items の表があれば、ほかの端末にも 3 状態が届く。返り値: 保存できたら true（語が無い・保存に失敗したら false）
+export function recordMyAnswer(key, kind, nowMs = Date.now()) {
+  if (!isAnswerKind(kind)) return false;
+  try {
+    const list = JSON.parse(localStorage.getItem(KEY) || "[]");
+    if (!Array.isArray(list)) return false;
+    const i = list.findIndex((w) => w && w.kind !== "concept" && w.en === key);
+    if (i < 0) return false;
+    list[i] = applyMyAnswer(list[i], kind, nowMs);
+    localStorage.setItem(KEY, JSON.stringify(list)); // 答えのたびに一覧を描き直さない（spelldash:mywords は出さない）
+    touchItem("my_word", key);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // kind: "concept"（場面カード）／"word"（英単語）。省略時は鍵が同じものをすべて（英単語と場面カードの鍵は重なりうる）
@@ -173,14 +185,8 @@ export function parseBulk(text) {
         const [answer, explain = "", accept = ""] = arrow[2].split("|").map((s) => s.trim());
         return { kind: "concept", q: arrow[1].trim(), answer, explain, accept };
       }
-      const unquote = (s) => s.trim().replace(/^"(.*)"$/, "$1");
-      // 区切りはカンマ・タブ・全角読点を優先。無ければ最初の空白で分ける
-      const sepIndex = line.search(/[,、\t]/);
-      if (sepIndex > 0) {
-        return { en: unquote(line.slice(0, sepIndex)), ja: unquote(line.slice(sepIndex + 1)) };
-      }
-      const m = line.match(/^(\S+)\s+(.+)$/);
-      return m ? { en: m[1], ja: m[2].trim() } : { en: line, ja: "" };
+      // 区切りはカンマ・タブ・全角読点を優先。無ければ英語と日本語の境、それも無ければ最初の空白で分ける（js/myWordsCore.js parseWordLine）
+      return parseWordLine(line);
     });
 }
 
@@ -205,8 +211,8 @@ export function addMyWordsBulk(text) {
       skipped.push(`${entry.en || "(空)"}: ${v.error}`);
       continue;
     }
-    list.push({ en: v.en, ja: v.ja, addedAt: new Date().toISOString() });
-    added.push(v.en);
+    list.push(entryOf(v));
+    added.push(v.text);
     touchItem("my_word", v.en);
   }
   if (added.length > 0) save(list);

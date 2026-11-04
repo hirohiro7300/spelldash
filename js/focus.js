@@ -15,6 +15,8 @@
 //     ?from=old（転送とページの守りが付けるしるし。?from= のほかの値〔typing など〕は古い URL ではない）→ 値は使わない（回を始めない・パックを足さない・
 //     鍵を書かない）。URL から外して、ホームに 1 行。単語帳の #packs・#myWords（配信の転送は # を持ち越す: /list.html#packs → /?from=old#packs）も外す
 //   単語帳（list.html。マイ単語帳・#packs・#myWords・?add=・?category= を含む）→ js/listView.js が最初にページの守り（leaveOldScreen）
+//   マイ単語帳だけは戻した（Batch 79。創業者の決定 2026-11-03）: list.html#myWords と、配信の転送で来た /?from=old#myWords は
+//     マイ単語帳の画面（MY_WORDS_URL）へ置き換える（ホームの 1 行は出さない。index.html の <head> の 1 行〔id="focusMoved"〕も同じ決まり）。ほかの決まりは前のまま
 //   /packs/* と /packs/ → vercel.json の転送（permanent: false）とページの守り（段 5a）が MOVED_URL へ
 //   Battle とタイピングの 2 ページ（battle.html・typing.html・typing-game.html）→ vercel.json の転送（permanent: false）と、ページの入口の門
 //     （<head> の頭の <script id="focusGate">。html[data-focus="english"] なら読み込みを止めて MOVED_URL へ置き換える。配信の転送が効かないアプリの中でも止める）が
@@ -44,6 +46,10 @@ export const MOVED_URL = `/?${MOVED_PARAM}=${MOVED_VALUE}`;
 
 // 「英単語を学ぶ」の入口（js/learnQueue.js LEARN_NEXT。回を始めるときに今の記録からモードを決める）
 export const LEARN_NEXT_URL = "/?learn=next";
+
+// マイ単語帳の画面（Batch 79）と、そこへ来る古い単語帳の #
+export const MY_WORDS_URL = "/mywords.html";
+export const MY_WORDS_HASH = "#myWords";
 
 // ホームで「古い URL」とみなす引数（あれば値によらず）と、しるし ?from=old（index.html の <head> の 1 行〔id="focusMoved"〕も同じ決まり。E2E が突き合わせる）
 export const OLD_HOME_PARAMS = Object.freeze(["words", "add", "category", "genre"]);
@@ -87,6 +93,10 @@ export function takeOldHomeUrl() {
     delete root.dataset.moved;
     return false;
   }
+  if (location.hash === MY_WORDS_HASH && new URLSearchParams(location.search).get(MOVED_PARAM) === MOVED_VALUE) {
+    location.replace(MY_WORDS_URL); // 古い単語帳のマイ単語帳（配信の転送で来た）: マイ単語帳の画面へ
+    return false;
+  }
   root.dataset.moved = "";
   try {
     const url = new URL(location.href);
@@ -103,6 +113,6 @@ export function takeOldHomeUrl() {
 // location.replace なので戻るボタンで古い画面に戻らない。保存の鍵は何も書かない・消さない
 export function leaveOldScreen() {
   if (!FOCUS_ENGLISH) return false;
-  location.replace(MOVED_URL);
+  location.replace(location.hash === MY_WORDS_HASH ? MY_WORDS_URL : MOVED_URL); // マイ単語帳（#myWords）はマイ単語帳の画面へ（Batch 79）
   return true;
 }
