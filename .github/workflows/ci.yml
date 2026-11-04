@@ -82,6 +82,9 @@ jobs:
       - name: 学習状況の数・ランクの見せ方・覚えたで数える目安（js/learnPace.js・js/rank.js）
         run: node scripts/test-learn-status.mjs
 
+      - name: マイ単語帳の決まり（入れられる英語・打ち方・マイ単語帳だけの 3 状態・学ぶ回の列。js/myWordsCore.js）
+        run: node scripts/test-my-words.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 
