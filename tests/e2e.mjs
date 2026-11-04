@@ -24306,6 +24306,318 @@ console.log("my words (79.1):");
   }
 }
 
+// ===== 80.1 スラング（Batch 80。slang.html・js/slangPage.js・js/slang.js・js/slangData.js・入口 /?learn=slang。docs/SPEC_SLANG.md）: ホームの 3 つ目のボタン・スラングの画面（数・学ぶ・グループの絞り込み・一覧の意味／使い方／例文／状態）・学ぶ回（略語と熟語を小文字で打って正解・1 打ミスとヒントは あやふや・ヒントで意味と使い方・1 回 10 語・続けて学ぶ・スラングへ）・語の記録・2,858 語の数・学習状況・マイ単語帳・中心の学習の続きは動かない・人ごとの領域・バックアップ・320／390／1200 × 昼夜で横スクロール 0 =====
+// Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来では種に戻さない）
+console.log("slang (80.1):");
+{
+  const vocab = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8"));
+  const PUB = vocab.order;
+  const SD = await import("../js/slangData.js").catch(() => null);
+  const SLANG = SD?.SLANG ?? [];
+  const byGroup = (g) => SLANG.filter((e) => e.g === g);
+  async function slPage(storage = {}, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    await page.addInitScript(([seed, th]) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const openSlang = async (page, q = "") => {
+    await page.goto(BASE + "/slang.html" + q, { waitUntil: "networkidle" });
+    await page.waitForFunction(() => window.SpellDashArea !== undefined && document.querySelectorAll("#slangList .sl-row").length > 0, null, { timeout: 8000 }).catch(() => {});
+  };
+  const slView = (page) => page.evaluate(() => {
+    const vis = (el) => !!el && !el.hidden && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0;
+    const rows = [...document.querySelectorAll("#slangList .sl-row")];
+    return {
+      path: location.pathname, search: location.search,
+      sum: document.getElementById("slangSum")?.textContent.replace(/\s+/g, " ").trim() ?? null,
+      learn: { vis: vis(document.getElementById("slangLearn")), href: document.getElementById("slangLearn")?.getAttribute("href") },
+      tabs: [...document.querySelectorAll("#slangFilter [data-group]")].map((b) => [b.textContent.trim(), b.dataset.group, b.getAttribute("aria-pressed")]),
+      n: rows.length,
+      first: rows[0] ? { id: rows[0].dataset.id, en: rows[0].querySelector(".sl-row__en")?.textContent, ja: rows[0].querySelector(".sl-row__ja")?.textContent, note: rows[0].querySelector(".sl-row__note")?.textContent, ex: rows[0].querySelector(".sl-row__ex")?.textContent.replace(/\s+/g, " ").trim(), state: rows[0].querySelector(".sl-row__state")?.textContent } : null,
+      groups: [...new Set(rows.map((r) => r.dataset.group))],
+      states: Object.fromEntries(rows.map((r) => [r.dataset.id, r.querySelector(".sl-row__state")?.textContent])),
+      nav: [...document.querySelectorAll(".site-header .site-nav .site-nav__link")].map((a) => [a.textContent.trim(), a.getAttribute("href"), a.getAttribute("aria-current")]),
+      footer: !!document.querySelector("footer.site-footer .site-footer__tagline"),
+      noindex: document.querySelector('meta[name="robots"]')?.content ?? null,
+      hx: document.documentElement.scrollWidth - document.documentElement.clientWidth
+    };
+  });
+  const storedSlang = (page) => page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_slang") || "{}"));
+  const statsNumbers = async (page) => {
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.getElementById("learnStatus")?.classList.contains("is-unavailable") && document.querySelectorAll("#learnCards .learn-card[data-count]").length === 3 && /語/.test(document.getElementById("statsSlangCount")?.textContent ?? ""), null, { timeout: 10000 }).catch(() => {});
+    return page.evaluate(() => ({
+      learned: document.getElementById("learnCount")?.textContent, total: document.getElementById("learnTotal")?.textContent, rank: document.getElementById("learnRank")?.textContent,
+      next: document.getElementById("learnNextN")?.textContent,
+      cards: [...document.querySelectorAll("#learnCards .learn-card")].map((c) => `${c.dataset.state}:${c.dataset.count}`).join(","),
+      my: document.getElementById("statsMyWords")?.textContent.replace(/\s+/g, " ").trim() ?? null,
+      slang: document.getElementById("statsSlang")?.textContent.replace(/\s+/g, " ").trim() ?? null,
+      slangHref: document.querySelector("#statsSlang a")?.getAttribute("href") ?? null,
+      peak: localStorage.getItem("spelldash_rank_peak"),
+      ws: localStorage.getItem("spelldash_word_stats"),
+      dirty: localStorage.getItem("spelldash_dirty_words")
+    }));
+  };
+  const nShown = (page) => page.evaluate(() => window.__words.length);
+  const lastShown = (page) => page.evaluate(() => window.__words.at(-1) ?? null);
+  const waitNext = (page, n) => waitUntil(async () => (await nShown(page)) > n, 6000);
+  async function tabTo(page, selector, max = 40) {
+    for (let i = 0; i < max; i++) {
+      await page.keyboard.press("Tab");
+      if (await page.evaluate((s) => document.activeElement?.matches?.(s) ?? false, selector)) return true;
+    }
+    return false;
+  }
+  check("80.1 組み込みの一覧が読める（約 150・3 つのグループ）", SLANG.length >= 140 && ["daily", "work", "net"].every((g) => byGroup(g).length >= 40), `n=${SLANG.length}`);
+
+  // (1) ホーム: 「マイ単語帳」の下に 3 つ目のボタン「スラング」（/slang.html・同じ控えめな形）。ナビは 4 つのまま。押すとスラングの画面
+  //     （ヘッダー・ナビ 4 つ〔現在地なし〕・フッター・noindex・数・学ぶ・グループの絞り込み・一覧に意味・使い方・例文・状態）
+  {
+    const page = await slPage({});
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    const home = await page.evaluate(() => {
+      const vis = (el) => !!el && getComputedStyle(el).display !== "none" && el.getBoundingClientRect().height > 0;
+      const my = document.getElementById("pathMyWords");
+      const sl = document.getElementById("pathSlang");
+      return {
+        sl: sl ? { text: sl.textContent.trim(), href: sl.getAttribute("href"), vis: vis(sl), below: my ? sl.getBoundingClientRect().top >= my.getBoundingClientRect().bottom - 1 : false, h: Math.round(sl.getBoundingClientRect().height), myH: Math.round(my?.getBoundingClientRect().height ?? 0), bg: getComputedStyle(sl).backgroundColor, myBg: my ? getComputedStyle(my).backgroundColor : null } : null,
+        nav: [...document.querySelectorAll(".site-header .site-nav .site-nav__link")].map((a) => a.textContent.trim())
+      };
+    });
+    check("80.1 ホーム: 「マイ単語帳」の下に 3 つ目のボタン「スラング」（/slang.html・マイ単語帳と同じ高さと色）・ナビは 4 つのまま",
+      home.sl?.text === "スラング" && home.sl.href === "/slang.html" && home.sl.vis && home.sl.below && home.sl.h === home.sl.myH && home.sl.bg === home.sl.myBg && JSON.stringify(home.nav) === JSON.stringify(["ホーム", "英単語を学ぶ", "学習状況", "設定"]), JSON.stringify(home));
+    await page.click("#pathSlang");
+    await page.waitForURL((u) => u.pathname === "/slang.html", { timeout: 8000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelectorAll("#slangList .sl-row").length > 0, null, { timeout: 8000 }).catch(() => {});
+    const v = await slView(page);
+    const e0 = SLANG[0] ?? {};
+    check("80.1 スラングの画面: ナビ 4 つ（現在地なし）・フッター・noindex・数（すべて N語・これから N）・「学ぶ」は /?learn=slang・絞り込み 4 つ（すべて が選ばれている）",
+      v.path === "/slang.html" && v.nav.length === 4 && v.nav.every(([, , cur]) => cur === null) && v.footer && v.noindex === "noindex"
+        && v.sum?.startsWith(`${SLANG.length}語`) && v.sum.includes(`これから ${SLANG.length}`) && v.learn.vis && v.learn.href === "/?learn=slang"
+        && JSON.stringify(v.tabs) === JSON.stringify([["すべて", "", "true"], ["日常会話", "daily", "false"], ["仕事", "work", "false"], ["ネット", "net", "false"]]),
+      JSON.stringify({ ...v, states: undefined }));
+    check("80.1 一覧: 全項目・1 行目は英語・意味・使い方・例文と訳・状態（これから）",
+      v.n === SLANG.length && v.first?.en === e0.en && v.first.ja === e0.ja && v.first.note === e0.note && v.first.ex?.includes(e0.ex) && v.first.ex.includes(e0.exJa) && v.first.state === "これから", JSON.stringify(v.first));
+    // (2) 絞り込み: 「仕事」で仕事の項目だけ・数と「学ぶ」もその範囲（/?learn=slang&group=work）・URL に残る。キーボードで「ネット」へ
+    await page.click('#slangFilter [data-group="work"]');
+    await page.waitForTimeout(100);
+    const w = await slView(page);
+    check("80.1 絞り込み「仕事」: 仕事の項目だけ・数もその範囲・「学ぶ」は /?learn=slang&group=work・URL に ?group=work・押したボタンが選ばれている",
+      w.n === byGroup("work").length && JSON.stringify(w.groups) === '["work"]' && w.sum.startsWith(`${byGroup("work").length}語`) && w.learn.href === "/?learn=slang&group=work" && w.search === "?group=work"
+        && w.tabs.find((t) => t[1] === "work")?.[2] === "true" && w.tabs.filter((t) => t[2] === "true").length === 1, JSON.stringify({ n: w.n, groups: w.groups, sum: w.sum, learn: w.learn, search: w.search, tabs: w.tabs }));
+    await page.focus("#slangLearn").catch(() => {});
+    const reached = await tabTo(page, '#slangFilter [data-group="net"]');
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(100);
+    const n = await slView(page);
+    const learnReached = await page.evaluate(() => { document.getElementById("slangLearn")?.focus(); return document.activeElement?.id === "slangLearn"; });
+    check("80.1 キーボード: 絞り込みのボタンに Tab で届き Enter で「ネット」・「学ぶ」も焦点を受ける",
+      reached && n.n === byGroup("net").length && JSON.stringify(n.groups) === '["net"]' && n.learn.href === "/?learn=slang&group=net" && learnReached, JSON.stringify({ reached, n: n.n, groups: n.groups, learnReached }));
+    await openSlang(page, "?group=daily");
+    const d = await slView(page);
+    check("80.1 開き直し: ?group=daily で「日常会話」が選ばれた形で開く", d.n === byGroup("daily").length && d.tabs.find((t) => t[1] === "daily")?.[2] === "true", JSON.stringify({ n: d.n, tabs: d.tabs }));
+    check("80.1 画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (3) 学ぶ回（/?learn=slang&group=work）: 柱は「スラング」・これから（一覧の順）→ あやふや → 覚えた。略語 FYI を fyi、熟語 circle back を小文字で打って Enter で正解（覚えた）・
+  //     違う答えは × で あやふや・ヒントで意味と使い方が出て あやふや・1 回 10 語で区切り「続けて学ぶ」「スラングへ」・続けると 11 語目。
+  //     公開の語の記録・送信待ち・3 状態・学習状況の数（2,858 語）・ランク・最高到達ランク・マイ単語帳・中心の学習の続き は 1 字も動かない
+  {
+    const work = byGroup("work");
+    const iCircle = work.findIndex((e) => e.id === "slang-circle-back");
+    const seededLearned = work.slice(1, iCircle); // FYI の後ろから circle back の前まで: 覚えた（列の最後へ）
+    const seed = Object.fromEntries(seededLearned.map((e, i) => [e.id, { ls: 2, lsAt: 1000 + i }]));
+    const pubSeed = {};
+    PUB.slice(0, 3).forEach((id) => (pubSeed[id] = { playCount: 2, correctCount: 2, lastPlayed: new Date().toISOString(), ls: 2 }));
+    PUB.slice(3, 5).forEach((id) => (pubSeed[id] = { playCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: new Date().toISOString(), ls: 1, lsd: 20000 }));
+    const myWords = JSON.stringify([{ en: "invoice", ja: "請求書" }]);
+    const learnSession = JSON.stringify({ mode: "new", startedAt: Date.now(), ids: [PUB[0]], setStart: 0, ackBreak: -1, setNo: 1, dayMarked: false });
+    const page = await slPage({ spelldash_word_stats: JSON.stringify(pubSeed), spelldash_slang: JSON.stringify(seed), spelldash_my_words: myWords, spelldash_learn_session: learnSession });
+    const before = await statsNumbers(page);
+    check(`80.1 学習状況: スラングの 1 行（${SLANG.length}語・覚えた ${seededLearned.length}。2,858 語の数とは別の行）・スラングへのリンク・2,858 語の総数`,
+      before.slang === `スラング${SLANG.length}語・覚えた ${seededLearned.length}` && before.slangHref === "./slang.html" && before.total === vocab.total.toLocaleString("ja-JP") && vocab.total === 2858, JSON.stringify({ slang: before.slang, href: before.slangHref, total: before.total }));
+    const lsBefore = await page.evaluate(() => localStorage.getItem("spelldash_learn_session"));
+    await page.goto(BASE + "/?learn=slang&group=work", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    const order = [await lastShown(page)];
+    const head = await page.evaluate(() => ({ prog: document.getElementById("setProgress")?.textContent.replace(/\s+/g, " ").trim(), head: document.getElementById("learnHead")?.textContent.trim(), prompt: document.getElementById("japanese")?.textContent.trim(), ph: document.getElementById("input")?.getAttribute("placeholder") }));
+    // FYI: 略語は全文入力。小文字 + Enter
+    await page.type("#input", "fyi");
+    await page.press("#input", "Enter");
+    await waitNext(page, 1);
+    order.push(await lastShown(page));
+    // circle back: 熟語。小文字 + Enter
+    await page.type("#input", "circle back");
+    await page.press("#input", "Enter");
+    await waitNext(page, 2);
+    order.push(await lastShown(page));
+    // touch base: 違う答え + Enter（× → あやふや）。答えを打ち直して次へ
+    await page.type("#input", "touch bass");
+    await page.press("#input", "Enter");
+    await page.waitForTimeout(150);
+    await page.type("#input", "touch base");
+    await page.press("#input", "Enter");
+    await waitNext(page, 3);
+    order.push(await lastShown(page));
+    // loop in: ヒント → 意味と使い方が出る・あやふや
+    await page.evaluate(() => document.getElementById("hintButton").click());
+    await page.waitForTimeout(150);
+    const hint = await page.evaluate(() => ({ explain: document.getElementById("wordExplain")?.textContent.trim() ?? "", example: document.getElementById("wordExample")?.textContent.trim() ?? "", msg: document.querySelector(".message")?.textContent.trim() ?? "" }));
+    await page.type("#input", "loop in");
+    await page.press("#input", "Enter");
+    await waitNext(page, 4);
+    order.push(await lastShown(page));
+    // 残りの 6 語: 答えを見る（Enter）→ 次へ（Enter）
+    for (let i = 0; i < 6; i++) {
+      const k = await nShown(page);
+      await page.press("#input", "Enter");
+      await page.waitForTimeout(60);
+      await page.press("#input", "Enter");
+      await waitUntil(async () => (await nShown(page)) > k || !(await page.evaluate(() => document.getElementById("resultPanel").hidden)), 5000);
+    }
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const panel = await page.evaluate(() => ({
+      title: document.getElementById("resultTitle")?.textContent.trim(),
+      text: document.getElementById("resultPanel")?.innerText.replace(/\s+/g, " ").trim(),
+      next: document.getElementById("learnNext")?.textContent.trim() ?? null,
+      back: document.getElementById("learnSlang")?.textContent.trim() ?? null,
+      backHref: document.getElementById("learnSlang")?.getAttribute("href") ?? null
+    }));
+    const n10 = await nShown(page);
+    const st = await storedSlang(page);
+    const loopIn = work.find((e) => e.id === "slang-loop-in");
+    check("80.1 学ぶ回: 柱は「スラング」・意味が出題・全文入力の案内・順は これから（一覧の順）",
+      head.head === "スラング" && /^スラング/.test(head.prog ?? "") && head.prompt === work[0].ja && head.ph === "英語を入力して Enter"
+        && JSON.stringify(order) === JSON.stringify(["slang-fyi", "slang-circle-back", "slang-touch-base", "slang-loop-in", work[iCircle + 3].id]), JSON.stringify({ head, order }));
+    check("80.1 学ぶ回: FYI を fyi・circle back を小文字で打って Enter で正解（覚えた）・違う答え（touch base）とヒント（loop in）は あやふや・答えを見た語も あやふや",
+      st["slang-fyi"]?.ls === 2 && st["slang-circle-back"]?.ls === 2 && st["slang-touch-base"]?.ls === 1 && st["slang-loop-in"]?.ls === 1
+        && work.slice(iCircle + 3, iCircle + 9).every((e) => st[e.id]?.ls === 1) && Object.values(st).every((s) => Object.keys(s).every((k) => ["ls", "lsd", "lsAt"].includes(k))),
+      JSON.stringify(st));
+    check("80.1 ヒント: 意味と使い方の 1 行が出る（例文はまだ出さない）", hint.explain.includes(loopIn?.ja ?? "?") && hint.explain.includes(loopIn?.note ?? "?") && !hint.example.includes(loopIn?.ex ?? "?"), JSON.stringify(hint));
+    check("80.1 1 回 10 語: 「10語 終わり」・スラングの数（仕事 覚えた M / N）・「続けて学ぶ」と「スラングへ」（/slang.html?group=work）・2,858 語の数は出さない",
+      panel.title === "10語 終わり" && panel.next === "続けて学ぶ" && panel.back === "スラングへ" && panel.backHref === "/slang.html?group=work" && panel.text.includes(`スラング（仕事） 覚えた ${seededLearned.length + 2} / ${work.length}`) && !panel.text.includes("2,858"), JSON.stringify(panel));
+    await page.click("#learnNext");
+    await waitUntil(async () => (await nShown(page)) > n10, 6000);
+    const eleventh = await lastShown(page);
+    check("80.1 続けて学ぶ: 11 語目（次のこれから）", eleventh === work[iCircle + 9].id, eleventh);
+    const lsAfter = await page.evaluate(() => localStorage.getItem("spelldash_learn_session"));
+    const after = await statsNumbers(page);
+    const myAfter = await page.evaluate(() => localStorage.getItem("spelldash_my_words"));
+    const ws = JSON.parse(after.ws || "{}");
+    check(`80.1 公開の語は動かない: 学習状況の数（覚えた ${before.learned} / ${before.total}・ランク・3 つの札・次のランクまで）・最高到達ランク・語の記録は 1 字も同じ・語の記録と送信待ちに slang- が無い`,
+      after.learned === before.learned && after.total === before.total && after.rank === before.rank && after.next === before.next && after.cards === before.cards && after.peak === before.peak
+        && after.ws === before.ws && !Object.keys(ws).some((id) => id.startsWith("slang-")) && !String(after.dirty ?? "").includes("slang-"),
+      JSON.stringify({ before: { ...before, ws: undefined }, after: { ...after, ws: undefined } }));
+    check("80.1 マイ単語帳と中心の学習の続きは動かない: マイ単語帳の鍵・学習状況のマイ単語帳の 1 行・spelldash_learn_session は 1 字も同じ",
+      myAfter === myWords && after.my === before.my && lsAfter === lsBefore && lsBefore === learnSession, JSON.stringify({ myAfter, my: [before.my, after.my], ls: [lsBefore, lsAfter] }));
+    check(`80.1 学習状況のスラングの 1 行が覚えたを数える（${seededLearned.length + 2}）`, after.slang === `スラング${SLANG.length}語・覚えた ${seededLearned.length + 2}`, after.slang);
+    await openSlang(page, "?group=work");
+    const v = await slView(page);
+    check("80.1 スラングの画面: 数（覚えた・あやふや）と一覧の状態が回の答えのとおり", v.states["slang-fyi"] === "覚えた" && v.states["slang-touch-base"] === "あやふや" && v.sum.includes(`覚えた ${seededLearned.length + 2}`) && v.sum.includes("あやふや 8"), JSON.stringify({ sum: v.sum, fyi: v.states["slang-fyi"] }));
+    // (4) バックアップ: 書き出しにスラングの状態が入り、読み込むと戻る・開き直しても残る
+    const bk = await page.evaluate(async () => {
+      const m = await import("/js/backup.js");
+      const data = m.buildBackup().data;
+      const inBackup = data.spelldash_slang ?? null;
+      localStorage.setItem("spelldash_slang", "{}");
+      m.applyBackup({ app: "SpellDash", version: 1, data });
+      return { inBackup, restored: localStorage.getItem("spelldash_slang") };
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    const reread = await page.evaluate(() => localStorage.getItem("spelldash_slang"));
+    check("80.1 バックアップ: 書き出しにスラングの状態が入り、読み込むと同じ値に戻る・開き直しても残る",
+      !!bk.inBackup && JSON.parse(bk.inBackup)["slang-fyi"]?.ls === 2 && bk.restored === bk.inBackup && reread === bk.inBackup, JSON.stringify({ bk: bk.inBackup?.slice(0, 120), reread: reread?.slice(0, 60) }));
+    check("80.1 学ぶ回・学習状況・スラングの画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (5) 人ごとの領域: スラングだけを学んだゲストも「移す？」を聞かれ、「はい」で A へ移る。A で学んだ分は ゲスト（ログアウト後）にも B にも見えない。A に戻ると戻る
+  {
+    const UA = "80a80a80-0000-4000-8000-00000000000a";
+    const UB = "80b80b80-0000-4000-8000-00000000000b";
+    const userA = { id: UA, email: "a80@example.com" };
+    const userB = { id: UB, email: "b80@example.com" };
+    const ctx = await rawNewContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    ctx.on("page", (p) => p.on("dialog", (d) => d.accept().catch(() => {})));
+    try {
+      const seed = await ctx.newPage();
+      await seed.goto(BASE + "/css/reset.css");
+      await seed.evaluate((s) => { for (const [k, v] of Object.entries({ spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_slang: s })) localStorage.setItem(k, v); }, JSON.stringify({ "slang-gonna": { ls: 2, lsAt: 5 } }));
+      await seed.close();
+      const page = await ctx.newPage();
+      page.errors = [];
+      page.on("pageerror", (e) => page.errors.push(e.message));
+      const learnedOf = () => page.evaluate(() => Object.entries(JSON.parse(localStorage.getItem("spelldash_slang") || "{}")).filter(([, s]) => s?.ls === 2).map(([id]) => id).sort()).catch(() => null);
+      const waitArea = (area) => page.waitForFunction((a) => location.pathname !== "/switch.html" && window.SpellDashArea?.area === a && document.readyState === "complete", area, { timeout: 15000 }).then(() => true).catch(() => false);
+      const waitAsk = () => page.waitForFunction(() => location.pathname === "/switch.html" && document.getElementById("switchAsk")?.hidden === false, null, { timeout: 15000 }).then(() => true).catch(() => false);
+      const signIn = (user) => page.evaluate((u) => window.__stubAuth.signIn("1", u), user).catch(() => null);
+      const backTo = async () => { if (new URL(page.url()).pathname !== "/slang.html") await page.goto(BASE + "/slang.html", { waitUntil: "networkidle" }); await page.waitForFunction(() => document.querySelectorAll("#slangList .sl-row").length > 0, null, { timeout: 8000 }).catch(() => {}); };
+      await page.goto(BASE + "/slang.html", { waitUntil: "load" }).catch(() => {});
+      await backTo();
+      const guest0 = await learnedOf();
+      await signIn(userA);
+      const asked = await waitAsk();
+      if (asked) await page.click("#switchAskYes");
+      const atA = await waitArea(`u:${UA}`);
+      await backTo();
+      const a1 = await learnedOf();
+      const wrote = await page.evaluate(async () => (await import("/js/slang.js")).recordSlangAnswer("slang-fyi", "exact"));
+      const a2 = await learnedOf();
+      await page.waitForSelector("#avatarButton", { state: "visible", timeout: 10000 }).catch(() => {});
+      await page.click("#avatarButton").catch(() => {});
+      await page.click("#logoutButton").catch(() => {});
+      const atGuest = await waitArea("guest");
+      await backTo();
+      const g1 = await learnedOf();
+      await signIn(userB);
+      const atB = await waitArea(`u:${UB}`);
+      await backTo();
+      const b1 = await learnedOf();
+      await signIn(userA);
+      const backA = await waitArea(`u:${UA}`);
+      await backTo();
+      const a3 = await learnedOf();
+      const sumA = await page.evaluate(() => document.getElementById("slangSum")?.textContent.replace(/\s+/g, " ").trim());
+      check("80.1 人ごとの領域: スラングだけのゲストも「移す？」を聞かれ「はい」で A へ・A で覚えた分は ゲストにも B にも見えない・A に戻ると戻る（画面の数も）",
+        JSON.stringify(guest0) === '["slang-gonna"]' && asked && atA && JSON.stringify(a1) === '["slang-gonna"]' && wrote === true && JSON.stringify(a2) === '["slang-fyi","slang-gonna"]'
+          && atGuest && JSON.stringify(g1) === "[]" && atB && JSON.stringify(b1) === "[]" && backA && JSON.stringify(a3) === '["slang-fyi","slang-gonna"]' && /覚えた 2/.test(sumA ?? "") && page.errors.length === 0,
+        JSON.stringify({ guest0, asked, atA, a1, wrote, a2, atGuest, g1, atB, b1, backA, a3, sumA, err: page.errors[0] }));
+      await page.close();
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // (6) 320／390／1200 × 昼夜: スラングの画面（絞り込みつき）と学習状況で横スクロール 0・エラー 0
+  {
+    const bad = [];
+    for (const width of [320, 390, 1200]) {
+      for (const theme of [null, "dark"]) {
+        const page = await slPage({ spelldash_slang: JSON.stringify({ "slang-per-my-last-email": { ls: 1, lsd: 1, lsAt: 3 }, "slang-low-hanging-fruit": { ls: 2, lsAt: 4 } }) }, { viewport: { width, height: 800 }, mobile: width < 600, theme });
+        await openSlang(page, "?group=work");
+        const v = await slView(page);
+        await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+        const sx = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        if (v.hx > 0 || sx > 0 || v.n !== byGroup("work").length || page.errors.length) bad.push({ width, theme, hx: v.hx, sx, n: v.n, err: page.errors[0] });
+        await closeCtx(page);
+      }
+    }
+    check("80.1 320／390／1200 × 昼夜: スラングの画面と学習状況で横スクロール 0・エラー 0", bad.length === 0, JSON.stringify(bad));
+  }
+}
+
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");
 {
