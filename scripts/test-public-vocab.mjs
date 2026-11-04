@@ -327,10 +327,12 @@ const cli = (...args) => {
     return numRe(total).test(text) || numRe(total - 1).test(text);
   });
   ok(`製品のコード（js/ と根のページ ${product.length} 本）に語数（${num(total)}・${num(total - 1)}）を書かない`, product.length > 40 && found.length === 0, found.join(" "));
-  // お知らせは Batch 78 の 1 件（配列の先頭）だけを見る（前の Batch 28 のお知らせの「24パックすべて（2,857語）」は、その時の文なので書き換えない）
+  // お知らせは Batch 78 の 1 件（題で探す。あとから先頭に足したお知らせで落ちない: Batch 79 のマイ単語帳）だけを見る
+  // （前の Batch 28 のお知らせの「24パックすべて（2,857語）」は、その時の文なので書き換えない）
   const newsSrc = fs.readFileSync(path.join(ROOT, "js", "news.js"), "utf8").normalize("NFKC");
-  const latest = newsSrc.slice(newsSrc.indexOf("const NEWS = ["), newsSrc.indexOf("\n  },", newsSrc.indexOf("const NEWS = [")));
-  ok(`お知らせ（先頭の 1 件。英単語の学習にまとめた）の語数は表の語数（${num(total)}語）。前の語数（${num(total - 1)}語）は書かない`,
+  const at = newsSrc.indexOf('title: "英単語の学習にまとめた"');
+  const latest = at < 0 ? "" : newsSrc.slice(newsSrc.lastIndexOf("{", at), newsSrc.indexOf("\n  },", at));
+  ok(`お知らせ（英単語の学習にまとめた）の語数は表の語数（${num(total)}語）。前の語数（${num(total - 1)}語）は書かない`,
     latest.includes("英単語の学習にまとめた") && latest.includes(`${num(total)}語`) && !numRe(total - 1).test(latest), latest.slice(0, 300));
 }
 
