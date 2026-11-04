@@ -4073,3 +4073,108 @@ html[data-theme] .stats-mywords__link {
   font-weight: 500;
   color: var(--ink);
 }
+
+/* ===== スラング（Batch 80。slang.html・js/slangPage.js。docs/SPEC_SLANG.md） =====
+   数と「学ぶ」はマイ単語帳の形（.mw）をそのまま使う。グループの絞り込み（押したボタンが aria-pressed）と、1 項目 1 枚の一覧（英語・状態・意味・使い方・例文） */
+html[data-theme] .sl__lead {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .sl__filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+html[data-theme] .sl__tab {
+  min-height: 44px;
+  padding: 0 16px;
+  font: 15px/1 var(--font-ui);
+  color: var(--ink-2);
+  background: var(--sheet);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+html[data-theme] .sl__tab[aria-pressed="true"] {
+  color: var(--ink);
+  font-weight: 600;
+  border-color: var(--gold-ink);
+  box-shadow: inset 0 -3px 0 var(--gold-ink);
+}
+
+html[data-theme] .sl__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .sl-row {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  box-shadow: var(--slip-shadow);
+}
+
+html[data-theme] .sl-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+html[data-theme] .sl-row__en {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] :is(.sl-row__ja, .sl-row__note, .sl-row__ex) {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .sl-row__ja {
+  color: var(--ink);
+}
+
+html[data-theme] .sl-row__note {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+html[data-theme] .sl-row__ex {
+  display: grid;
+  gap: 2px;
+  padding-left: 10px;
+  font-size: 13px;
+  color: var(--ink-2);
+  border-left: 2px solid var(--line-2);
+}
+
+html[data-theme] .sl-row__ex-en {
+  font-style: italic;
+  color: var(--ink);
+}
+
+/* 学習状況のスラングの 1 行（Batch 80）: マイ単語帳の 1 行のすぐ下に続ける（同じ形。線はマイ単語帳の 1 行の上だけ） */
+html[data-theme] .stats-mywords.stats-slang {
+  margin-top: -14px;
+  padding-top: 0;
+  border-top: 0;
+}

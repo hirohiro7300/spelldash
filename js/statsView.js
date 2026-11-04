@@ -52,6 +52,7 @@ setupUnloadSync();
 trackTypingEntry();
 renderMyWordsLine();
 window.addEventListener("spelldash:mywords", renderMyWordsLine);
+renderSlangLine();
 
 // マイ単語帳の 1 行（Batch 79）: マイ単語帳の中だけの数（語数と覚えた）。上の公開の語の数・ランク・目安には入れない
 function renderMyWordsLine() {
@@ -60,6 +61,19 @@ function renderMyWordsLine() {
   const c = countMyStates(getMyWords());
   const n = (v) => v.toLocaleString("ja-JP"); // fmt（下の const）はまだ無い: 読み込みの頭で呼ぶ
   el.textContent = c.total > 0 ? `${n(c.total)}語・覚えた ${n(c.learned)}` : "自分の英単語や熟語を入れて学ぶ";
+}
+
+// スラングの 1 行（Batch 80）: スラングの中だけの数（項目の数と覚えた）。上の公開の語の数・ランク・目安には入れない。
+// 一覧（js/slangData.js）は動的 import（静的な読み込みの表を増やさない）。読めなければ静的な文のまま
+function renderSlangLine() {
+  import("./slang.js")
+    .then((S) => {
+      const el = document.getElementById("statsSlangCount");
+      if (!el) return;
+      const c = S.countSlang();
+      el.textContent = `${c.total.toLocaleString("ja-JP")}語・覚えた ${c.learned.toLocaleString("ja-JP")}`;
+    })
+    .catch(() => {});
 }
 
 // 息抜きの入口（本文の最後の「息抜きに タイピング練習」。Batch 65 P3）: 押したら、タイピング練習・タイピングゲームから初めて来た端末だけ
