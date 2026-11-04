@@ -18,7 +18,7 @@ import { isFocusOn } from "./focus.js";
 const ONBOARDED_KEY = "spelldash_onboarded";
 // 読める ?learn= の値（中心の学習の入口。js/learnQueue.js LEARN_MODES の鍵と LEARN_NEXT・js/game.js LEARN_ENTRY_MODES・index.html の <head> の 1 行と同じ。
 // 単体 scripts/test-learn-queue.mjs が突き合わせる）。読めない値（?learn=foo）では初回の本を出す
-const LEARN_DEEP_LINKS = ["new", "unsure", "learned", "next", "my"];
+const LEARN_DEEP_LINKS = ["new", "unsure", "learned", "next", "my", "slang"];
 // 英単語の学習に絞ったホームの右頁の注（index.html の #welcomeBook の静的な文と同じ）
 const FOCUS_CAP = "1回10語。分からない語は Enter で答えを見る。";
 

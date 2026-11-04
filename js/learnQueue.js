@@ -33,10 +33,12 @@ export function parseLearnMode(value) {
 export const LEARN_NEXT = "next";
 // マイ単語帳の学ぶ回（Batch 79。js/myWordsCore.js・docs/SPEC_MY_WORDS.md）の入口の値。公開の語の 3 つのモードではない（列・状態はマイ単語帳の語だけ）
 export const LEARN_MY = "my";
-// 入口として読める値（3 つのモードと LEARN_NEXT・LEARN_MY）。読めない値は null
+// スラングの学ぶ回（Batch 80。js/slang.js・docs/SPEC_SLANG.md）の入口の値。マイ単語帳の回と同じ機械で、スラングの組み込みの一覧と人ごとの 3 状態だけ
+export const LEARN_SLANG = "slang";
+// 入口として読める値（3 つのモードと LEARN_NEXT・LEARN_MY・LEARN_SLANG）。読めない値は null
 export function parseLearnEntry(value) {
   const v = String(value ?? "").trim();
-  return v === LEARN_NEXT || v === LEARN_MY ? v : parseLearnMode(v);
+  return v === LEARN_NEXT || v === LEARN_MY || v === LEARN_SLANG ? v : parseLearnMode(v);
 }
 
 // 「英単語を学ぶ」の行き先: あやふやの今日の分があれば あやふや、無ければ これから、これからも無ければ あやふや（今日の分は終わり）、

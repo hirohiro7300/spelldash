@@ -352,8 +352,8 @@ for (const seed of [1, 2, 3]) {
   const fromGame = JSON.parse(game.match(/const LEARN_ENTRY_MODES = (\[[^\]]*\]);/)?.[1] ?? "null");
   const fromHead = JSON.parse(html.match(/(\[[^\]]*\])\.includes\(\(q\.get\("learn"\)/)?.[1] ?? "null");
   const fromWelcome = JSON.parse(welcome.match(/const LEARN_DEEP_LINKS = (\[[^\]]*\]);/)?.[1] ?? "null");
-  const entries = [...Object.keys(Q.LEARN_MODES), Q.LEARN_NEXT, Q.LEARN_MY]; // マイ単語帳の学ぶ回（?learn=my。Batch 79）も同じ写しに入れる
-  eq("入口の値の写し: js/game.js LEARN_ENTRY_MODES・index.html の <head> の 1 行・js/welcome.js LEARN_DEEP_LINKS は LEARN_MODES の鍵と LEARN_NEXT・LEARN_MY", [fromGame, fromHead, fromWelcome], [entries, entries, entries]);
+  const entries = [...Object.keys(Q.LEARN_MODES), Q.LEARN_NEXT, Q.LEARN_MY, Q.LEARN_SLANG]; // マイ単語帳（?learn=my。Batch 79）とスラング（?learn=slang。Batch 80）の学ぶ回も同じ写しに入れる
+  eq("入口の値の写し: js/game.js LEARN_ENTRY_MODES・index.html の <head> の 1 行・js/welcome.js LEARN_DEEP_LINKS は LEARN_MODES の鍵と LEARN_NEXT・LEARN_MY・LEARN_SLANG", [fromGame, fromHead, fromWelcome], [entries, entries, entries]);
 }
 
 if (failures.length) {
