@@ -26,6 +26,8 @@ import { setupUnloadSync, isPulling } from "./sync.js";
 import { logTypingStage } from "./funnelLog.js";
 import { countLearnStates, learnDayOf } from "./learnState.js";
 import { RANK_NAMES, RANK_PEAK_KEY, rankFor, rankThresholds, readRankPeak, raiseRankPeak } from "./rank.js";
+import { getMyWords } from "./myWords.js";
+import { countMyStates } from "./myWordsCore.js";
 
 // 学習状況の数と目安（js/learnPace.js。js/bookPace.js の決まりを使う）は動的 import（静的な読み込みの表を増やさない）。公開の語の表（js/storage.js loadLearnStates）と並べて先に読み始める
 const learnPaceModule = import("./learnPace.js").catch(() => null);
@@ -48,6 +50,17 @@ setFooterYear();
 renderHeaderStreak();
 setupUnloadSync();
 trackTypingEntry();
+renderMyWordsLine();
+window.addEventListener("spelldash:mywords", renderMyWordsLine);
+
+// マイ単語帳の 1 行（Batch 79）: マイ単語帳の中だけの数（語数と覚えた）。上の公開の語の数・ランク・目安には入れない
+function renderMyWordsLine() {
+  const el = document.getElementById("statsMyWordsCount");
+  if (!el) return;
+  const c = countMyStates(getMyWords());
+  const n = (v) => v.toLocaleString("ja-JP"); // fmt（下の const）はまだ無い: 読み込みの頭で呼ぶ
+  el.textContent = c.total > 0 ? `${n(c.total)}語・覚えた ${n(c.learned)}` : "自分の英単語や熟語を入れて学ぶ";
+}
 
 // 息抜きの入口（本文の最後の「息抜きに タイピング練習」。Batch 65 P3）: 押したら、タイピング練習・タイピングゲームから初めて来た端末だけ
 // first_visit の typing_stats／tgame_stats を積む（移る直前なので次のページで送る。来た日で 1 回。js/funnelLog.js logTypingStage）。移動は止めない

@@ -62,6 +62,7 @@
   <link rel="modulepreload" href="./js/answers.js" />
   <link rel="modulepreload" href="./js/jaAmbiguity.js" />
   <link rel="modulepreload" href="./js/proFunnel.js" />
+  <link rel="modulepreload" href="./js/myWordsCore.js" />
   <link rel="modulepreload" href="./js/jaScript.js" />
   <link rel="modulepreload" href="./js/focusTrap.js" />
   <link rel="modulepreload" href="./js/ui.js" />
@@ -255,6 +256,9 @@
         <p class="learn-pace__note" id="learnPaceNote"></p>
       </div>
     </section>
+
+    <!-- マイ単語帳（Batch 79）: 自分で入れた語の数。上の公開の語の数・ランクとは別の枠（js/statsView.js renderMyWordsLine） -->
+    <p class="stats-mywords" id="statsMyWords"><a class="stats-mywords__link" href="./mywords.html">マイ単語帳</a><span class="stats-mywords__count" id="statsMyWordsCount">自分の英単語や熟語を入れて学ぶ</span></p>
 
     <!-- 詳しい記録（畳み。既定は閉じる）: 前の学習データの節。#weekly・#learnedWords などの深いリンクは開いてから送る（js/statsView.js initializeMore） -->
     <details class="stats-more" id="statsMore">

@@ -3831,3 +3831,245 @@ html[data-theme] .vocab-source a {
     gap: 12px;
   }
 }
+
+/* ===== マイ単語帳（Batch 79。mywords.html・js/myWordsPage.js。docs/SPEC_MY_WORDS.md） =====
+   自分で入れた語の数（マイ単語帳の中だけの 3 状態）・1 語ずつ足す・まとめて足す・一覧（状態・消す）。前の単語帳の .my-words・.my-word とは別の名前（.mw） */
+html[data-theme] .mw {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto 24px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+html[data-theme] :is(.mw__top, .mw__add, .mw__bulk, .mw-row) {
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+  box-shadow: var(--slip-shadow);
+}
+
+html[data-theme] .mw__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px 16px;
+}
+
+html[data-theme] .mw__sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  margin: 0;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+html[data-theme] .mw__n {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+html[data-theme] .mw__learn {
+  min-width: 120px;
+  min-height: 44px;
+  font-size: 16px;
+}
+
+html[data-theme] .mw__empty {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+html[data-theme] .mw__add,
+html[data-theme] .mw__bulk {
+  padding: 12px 16px;
+  min-width: 0;
+}
+
+html[data-theme] .mw__h {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+
+html[data-theme] .mw__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+html[data-theme] .mw__field {
+  display: block;
+  min-width: 0;
+}
+
+html[data-theme] .mw__field > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+html[data-theme] .mw__field :is(input, textarea) {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  font: 16px/1.4 var(--font-ui);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+}
+
+html[data-theme] .mw__field textarea {
+  min-height: 7.5em;
+  resize: vertical;
+  font-family: var(--font-mono);
+}
+
+html[data-theme] .mw__submit {
+  min-height: 44px;
+}
+
+html[data-theme] .mw__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .mw__bulk summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+
+html[data-theme] .mw__bulk[open] summary {
+  margin-bottom: 8px;
+}
+
+html[data-theme] .mw__bulk .mw__submit {
+  margin-top: 8px;
+}
+
+html[data-theme] .mw__status {
+  margin: 0;
+  min-height: 1.5em;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .mw__status.is-error {
+  color: var(--signal-ink);
+}
+
+html[data-theme] .mw__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .mw-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 8px 6px 14px;
+  min-width: 0;
+}
+
+html[data-theme] .mw-row__en {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .mw-row__ja {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .mw-row__state {
+  padding: 1px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--ink-2);
+  border: 1px solid var(--line-2);
+  border-radius: 2px;
+}
+
+html[data-theme] .mw-row__state--learned {
+  color: var(--ok);
+  border-color: currentColor;
+}
+
+html[data-theme] .mw-row__state--unsure {
+  color: var(--gold-ink);
+  border-color: currentColor;
+}
+
+html[data-theme] .mw-row__del {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+html[data-theme] .mw-row__del:hover {
+  color: var(--paper);
+}
+
+@media (max-width: 560px) {
+  html[data-theme] .mw__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  html[data-theme] .mw-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "en state del" "ja ja del";
+  }
+  html[data-theme] .mw-row__en { grid-area: en; }
+  html[data-theme] .mw-row__ja { grid-area: ja; }
+  html[data-theme] .mw-row__state { grid-area: state; }
+  html[data-theme] .mw-row__del { grid-area: del; }
+}
+
+/* 学習状況のマイ単語帳の 1 行（Batch 79）: 公開の語の数と札の下に、枠の外の静かな 1 行（別の数だと分かるように線で区切る） */
+html[data-theme] .stats-mywords {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 4px 0 16px;
+  padding: 10px 2px 0;
+  border-top: 1px solid var(--line-2);
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+html[data-theme] .stats-mywords__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  color: var(--ink);
+}
