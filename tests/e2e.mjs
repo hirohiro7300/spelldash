@@ -20758,7 +20758,8 @@ console.log("home and old URLs (78.6):");
       learned: t("focusLearned"), total: t("focusTotal"), rank: t("focusRankName"), mode: t("focusMode"), sub: t("focusModeSub"),
       start: { text: t("pathStart"), href: document.getElementById("pathStart")?.getAttribute("href"), vis: vis(document.getElementById("pathStart")) },
       starts, status: { vis: vis(document.getElementById("focusStatus")), href: document.getElementById("focusStatus")?.getAttribute("href") },
-      room: document.querySelector(".room")?.innerText ?? "",
+      // マイ単語帳（Batch 79。創業者の決定 2026-11-03: ホームの 2 つ目のボタン）は英単語の学習の中の面なので、旧の面の名前「単語帳」の検査から外す
+      room: (document.querySelector(".room")?.innerText ?? "").replaceAll("マイ単語帳", ""),
       hidden: ["#bookshelf", "#playModes", "#homeMore", "#dailyCard", "#setupToggle", "#setupPanel", "#todayStrip", "#hasumiHome", ".pile .stack", "#welcomeFind", "#pathList"].filter((s) => vis(document.querySelector(s))),
       note: [...document.querySelectorAll("body *")].filter((el) => el.children.length === 0 && el.textContent.includes("英単語の学習にまとめました。") && vis(el)).length,
       hx: document.documentElement.scrollWidth - document.documentElement.clientWidth
