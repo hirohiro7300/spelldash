@@ -61,6 +61,63 @@ for (const e of SLANG) {
   if (e.abbr !== undefined) ok(`${tag}: abbr は true だけ`, e.abbr === true);
 }
 
+// ===== 意味の近い項目: 出題は意味（ja）だけで、判定は en 1 つと比べる（別解の欄は無い）。意味の近い項目どうしは、括弧の手がかり
+// （形・場面・字どおりの意味。英字は入れない＝答えを明かさない）で見分けられること。近い組は SYNONYM_SETS に書き、書き漏らしは近さの確かめで落とす =====
+const SYNONYM_SETS = [
+  ["slang-idk", "slang-dunno", "slang-beats-me", "slang-no-clue"],
+  ["slang-tbh", "slang-ngl"],
+  ["slang-catch-you-later", "slang-ttyl"],
+  ["slang-gotcha", "slang-noted", "slang-will-do", "slang-on-it"],
+  ["slang-no-worries", "slang-no-biggie"],
+  ["slang-kinda", "slang-lowkey"],
+  ["slang-sus", "slang-sketchy"],
+  ["slang-awesome", "slang-fire", "slang-goated", "slang-bussin"],
+  ["slang-lmk", "slang-keep-me-posted"]
+];
+const cueOf = (ja) => (ja.match(/（[^）]*）/g) ?? []).map((s) => s.slice(1, -1)).join("・");
+const coreOf = (ja) => ja.replace(/（[^）]*）/g, "").replace(/[、。？！〜\s]/g, "");
+const longestShared = (a, b) => {
+  let m = 0;
+  for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++) {
+    let k = 0;
+    while (i + k < a.length && j + k < b.length && a[i + k] === b[j + k]) k++;
+    if (k > m) m = k;
+  }
+  return m;
+};
+// 近い: 「・」で分けた部分に同じ物がある、か、共通の部分が 3 字以上で長い方の半分以上（さっぱりわからない／わからない）
+const nearJa = (a, b) => {
+  const ca = coreOf(a);
+  const cb = coreOf(b);
+  const pb = new Set(cb.split("・").filter((p) => p.length >= 2));
+  if (ca.split("・").some((p) => pb.has(p))) return true;
+  const n = longestShared(ca, cb);
+  return n >= 3 && n * 2 >= Math.max(ca.length, cb.length);
+};
+ok("近さの確かめ: わからない／さっぱりわからない・ちょっと・なんとなく／ちょっと・ひそかに は近い、わからない／参考になるかわからないけど・知らせてね／念のためのお知らせ は近くない",
+  nearJa("わからない", "さっぱりわからない") && nearJa("ちょっと・なんとなく", "ちょっと・ひそかに（若い人）") && !nearJa("わからない", "参考になるかわからないけど") && !nearJa("知らせてね", "念のためのお知らせ"));
+{
+  const setOf = new Map();
+  for (const [i, set] of SYNONYM_SETS.entries()) for (const id of set) {
+    ok(`近い組: ${id} は一覧にあり、1 つの組にだけ入る`, SLANG.some((e) => e.id === id) && !setOf.has(id));
+    setOf.set(id, i);
+  }
+  for (const set of SYNONYM_SETS) {
+    const es = set.map((id) => SLANG.find((e) => e.id === id)).filter(Boolean);
+    for (const e of es) ok(`近い組 ${set.join("／")}: ${e.id} の意味に括弧の手がかりがあり、英字を含まない（答えを明かさない）`, cueOf(e.ja) !== "" && !/[A-Za-z]/.test(cueOf(e.ja)), e.ja);
+    for (let i = 0; i < es.length; i++) for (let j = i + 1; j < es.length; j++) {
+      ok(`近い組: ${es[i].id} と ${es[j].id} は意味も手がかりも違う（見分けられる）`, coreOf(es[i].ja) !== coreOf(es[j].ja) && cueOf(es[i].ja) !== cueOf(es[j].ja), `${es[i].ja} ／ ${es[j].ja}`);
+    }
+  }
+  const missed = [];
+  for (let i = 0; i < SLANG.length; i++) for (let j = i + 1; j < SLANG.length; j++) {
+    const a = SLANG[i];
+    const b = SLANG[j];
+    if (nearJa(a.ja, b.ja) && !(setOf.has(a.id) && setOf.get(a.id) === setOf.get(b.id))) missed.push(`${a.id}「${a.ja}」／${b.id}「${b.ja}」`);
+  }
+  ok("意味の近い項目はみな近い組に書いてある（書き漏らしが無い）", missed.length === 0, missed.slice(0, 5).join(" ・ "));
+}
+
 // ===== 打ち方（js/judge.js typeAnswer。盤面と同じ 1 打の関数）: 英小文字だけの語は 1 字ずつ、熟語・ハイフン・アポストロフィ・略語は全文入力 + Enter =====
 const modes = { spell: 0, free: 0 };
 for (const e of SLANG) {
