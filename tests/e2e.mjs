@@ -16724,7 +16724,7 @@ console.log("native app:");
   const { PAGES: APP_PAGES } = await import("../scripts/build-app.mjs");
   const WEB_ONLY = ["pro.html", "tokushoho.html"];
   const appHtml = Object.fromEntries(APP_PAGES.map((p) => [p, fs.existsSync(path.join(ROOT, p)) ? fs.readFileSync(path.join(ROOT, p), "utf8") : null]));
-  check("アプリ: PAGES は 12 ページ（terms.html と切り替えの画面 switch.html とマイ単語帳 mywords.html はある・pro.html と tokushoho.html は無い）、PAGES のファイルはどれもある", APP_PAGES.length === 12 && APP_PAGES.includes("terms.html") && APP_PAGES.includes("switch.html") && APP_PAGES.includes("mywords.html") && WEB_ONLY.every((p) => !APP_PAGES.includes(p)) && Object.values(appHtml).every((t) => t !== null), JSON.stringify({ pages: APP_PAGES, missing: APP_PAGES.filter((p) => appHtml[p] === null) }));
+  check("アプリ: PAGES は 13 ページ（terms.html と切り替えの画面 switch.html とマイ単語帳 mywords.html とスラング slang.html はある・pro.html と tokushoho.html は無い）、PAGES のファイルはどれもある", APP_PAGES.length === 13 && APP_PAGES.includes("terms.html") && APP_PAGES.includes("switch.html") && APP_PAGES.includes("mywords.html") && APP_PAGES.includes("slang.html") && WEB_ONLY.every((p) => !APP_PAGES.includes(p)) && Object.values(appHtml).every((t) => t !== null), JSON.stringify({ pages: APP_PAGES, missing: APP_PAGES.filter((p) => appHtml[p] === null) }));
   const footerOut = [];
   for (const [p, t] of Object.entries(appHtml)) {
     if (p === "switch.html") continue; // 切り替えの画面（Batch 78-7）はナビもフッターも持たない（学習の部品を読まない短いページ）
