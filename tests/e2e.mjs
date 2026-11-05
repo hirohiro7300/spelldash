@@ -24680,6 +24680,8 @@ console.log("my word books (81.1):");
   const tab = (page, name) => page.locator("#myBookTabs .mw-book", { has: page.locator(".mw-book__name", { hasText: new RegExp(`^${name}$`) }) });
   const countWrites = (page) => page.evaluate(() => {
     window.__mwWrites = 0;
+    if (window.__mwTap) return; // 包むのは 1 回だけ（2 回包むと 1 回の書き込みを 2 回数える）
+    window.__mwTap = true;
     const orig = Storage.prototype.setItem;
     Storage.prototype.setItem = function (k, v) { if (k === "spelldash_my_words") window.__mwWrites++; return orig.call(this, k, v); };
   });
