@@ -334,7 +334,7 @@ function keepRankPeak(before, backup) {
 //   installed（ホーム画面に追加の案内）・onboarded（この端末でトップページを見た）・schema_version（保存形式の版。消すと移行が走り直す）、
 //   test_*（E2E のスタブのログイン状態）
 // 消すもの（主なもの）: word_stats・xp・xp_synced・streak・best_score・best_by_category・battle・pending_battles・study_mix・
-//   growth_log・daily_set・daily・sets_total・veteran・course・category・mode・packs・my_words・slang（Batch 80）・word_notes・user_items_meta／dirty・
+//   growth_log・daily_set・daily・sets_total・veteran・course・category・mode・packs・my_words・my_books（Batch 81）・slang（Batch 80）・word_notes・user_items_meta／dirty・
 //   dirty_words・session・session_log・mission・placement(_note)・first_sight・level_boost(_note)・tutorial・typing_stats・key_miss・
 //   word_ai・activity・feedback_queue・plan・display_name・login_nudge・week_goal・set_size・genre・owner・mastery_meta・memory_check・
 //   memory_words(_corrupt)・rank_peak（最高到達ランク）・logout_at・learn_filled（Batch 78）
