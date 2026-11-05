@@ -58,6 +58,21 @@ export function touchItem(kind, key, deleted = false, at = new Date().toISOStrin
   writeJson(DIRTY_KEY, [...dirty]);
 }
 
+// まとめて印を付ける（Batch 81 のマイ単語帳のまとめて消す・移す）: 印と送る待ちを 1 回ずつ書く。中身は touchItem を鍵の数だけ呼んだのと同じ
+export function touchItems(kind, keys, deleted = false, at = new Date().toISOString()) {
+  const list = (Array.isArray(keys) ? keys : []).filter(Boolean);
+  if (!kind || list.length === 0) return;
+  const meta = getItemMeta();
+  const dirty = getDirtyItems();
+  for (const key of list) {
+    const id = `${kind}:${key}`;
+    meta[id] = { updatedAt: at, deleted: !!deleted };
+    dirty.add(id);
+  }
+  writeJson(META_KEY, meta);
+  writeJson(DIRTY_KEY, [...dirty]);
+}
+
 // ---- ローカルの現在値を項目に展開 ----
 
 function localItems() {

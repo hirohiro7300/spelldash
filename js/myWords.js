@@ -3,16 +3,23 @@
 // 仕事・試験・読んでいる本の単語や熟語を自分で入れて、思い出して打って覚える。保存は spelldash_my_words（人ごとの領域の鍵: js/areaGuard.js。
 // バックアップに入る）。語の定義と 3 状態は同期の項目 user_items の my_word に乗る（表があるときだけ: docs/SQL_USER_ITEMS.md・js/userItemsSync.js）。
 // 決まり（入れられる英語・出題のカード・3 状態・学ぶ回の列）は js/myWordsCore.js（純）、画面は mywords.html（js/myWordsPage.js）、学ぶ回は js/game.js（/?learn=my）。
-// 仕様は docs/SPEC_MY_WORDS.md（Batch 79）
+// 仕様は docs/SPEC_MY_WORDS.md（Batch 79）。
+// 複数の単語帳（Batch 81）: 一覧は spelldash_my_books（[{ id, name }]。人ごとの領域の鍵・バックアップに入る・同期はしない＝端末の中だけ）。
+// 語は入っている単語帳の id を book に持つ（同期の my_word の payload に乗る）。book の無い前からの語は最初の単語帳「マイ単語帳」の語（書き直さない）。
+// 英語は全部の単語帳で 1 つ（カードの id my-<鍵> と 3 状態はそのまま）。まとめて消す・移すは語の保存を 1 回で書く
 
-import { touchItem } from "./userItemsSync.js";
+import { touchItem, touchItems } from "./userItemsSync.js";
 import { isSpellAlt } from "./answers.js";
 import { isPro } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
 import { isAnswerKind } from "./learnState.js";
-import { checkEnText, checkJaText, wordCardOf, parseWordLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT } from "./myWordsCore.js";
+import {
+  checkEnText, checkJaText, wordCardOf, parseWordLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT,
+  parseBooks, bookIdOf, entriesOfBook, checkBookName, newBookId, entryRefOf, MY_BOOKS_MAX
+} from "./myWordsCore.js";
 
 const KEY = "spelldash_my_words";
+export const MY_BOOKS_KEY = "spelldash_my_books";
 
 // 追加できる語数の上限（無料 100 語・Pro 1,000 語）。上限を超えて持っている人も閲覧・削除はできる（追加だけ止まる）
 export function maxMyWords() {
@@ -120,24 +127,35 @@ export function normalizeEn(raw) {
 }
 
 // 英語と訳の 1 語を確かめる（js/myWordsCore.js checkEnText・checkJaText）。返り値 { ok, en（鍵）, ja, text（画面の形） } か { ok: false, error }
-export function validateEntry(en, ja, existing = getMyWords()) {
+// 英語は全部の単語帳で 1 つ: ほかの単語帳にあれば、どの単語帳にあるかを言う（Batch 81）
+export function validateEntry(en, ja, existing = getMyWords(), books = getMyBooks()) {
   const e = checkEnText(en);
   if (!e.ok) return e;
   const j = checkJaText(ja);
   if (!j.ok) return j;
-  if (existing.some((w) => w.en === e.key)) return { ok: false, error: `「${e.text}」はすでに登録されています` };
+  const same = existing.find((w) => w.en === e.key);
+  if (same) {
+    const name = books.find((b) => b.id === bookIdOf(same, books))?.name ?? "マイ単語帳";
+    return { ok: false, error: `「${e.text}」はすでに「${name}」に登録されています` };
+  }
   if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
   return { ok: true, en: e.key, ja: j.ja, text: e.text };
 }
 
-// 保存する 1 語（画面の形 text は鍵と違うときだけ）
-const entryOf = (v) => ({ en: v.en, ja: v.ja, ...(v.text !== v.en ? { text: v.text } : {}), addedAt: new Date().toISOString() });
+// 保存する 1 語（画面の形 text は鍵と違うときだけ。book は入れる単語帳の id）
+const entryOf = (v, book) => ({ en: v.en, ja: v.ja, ...(v.text !== v.en ? { text: v.text } : {}), book, addedAt: new Date().toISOString() });
 
-export function addMyWord(en, ja) {
+// 足す先の単語帳の id（知らない id・省略は最初の単語帳）
+function targetBook(bookId, books = getMyBooks()) {
+  return books.some((b) => b.id === bookId) ? bookId : books[0].id;
+}
+
+export function addMyWord(en, ja, bookId) {
   const list = getMyWords();
-  const v = validateEntry(en, ja, list);
+  const books = getMyBooks();
+  const v = validateEntry(en, ja, list, books);
   if (!v.ok) return v;
-  list.push(entryOf(v));
+  list.push(entryOf(v, targetBook(bookId, books)));
   save(list);
   touchItem("my_word", v.en);
   return { ok: true, en: v.text, ja: v.ja };
@@ -190,8 +208,10 @@ export function parseBulk(text) {
     });
 }
 
-export function addMyWordsBulk(text) {
+export function addMyWordsBulk(text, bookId) {
   const list = getMyWords();
+  const books = getMyBooks();
+  const book = targetBook(bookId, books);
   const added = [];
   const skipped = [];
   for (const entry of parseBulk(text)) {
@@ -201,20 +221,166 @@ export function addMyWordsBulk(text) {
         skipped.push(`${entry.answer || "(空)"}: ${v.error}`);
         continue;
       }
-      list.push({ ...v.entry, addedAt: new Date().toISOString() });
+      list.push({ ...v.entry, book, addedAt: new Date().toISOString() });
       added.push(v.entry.answer);
       touchItem("my_word", v.entry.en);
       continue;
     }
-    const v = validateEntry(entry.en, entry.ja, list);
+    const v = validateEntry(entry.en, entry.ja, list, books);
     if (!v.ok) {
       skipped.push(`${entry.en || "(空)"}: ${v.error}`);
       continue;
     }
-    list.push(entryOf(v));
+    list.push(entryOf(v, book));
     added.push(v.text);
     touchItem("my_word", v.en);
   }
   if (added.length > 0) save(list);
   return { added, skipped };
+}
+
+// ===== 複数の単語帳（Batch 81。決まりは js/myWordsCore.js） =====
+
+// 単語帳の一覧を読む（{ ok, books }。ok: false は読めない保存の値: 最初の単語帳で見せ、作る・名前を変える・消すは断る）
+function readBooks() {
+  try {
+    return parseBooks(localStorage.getItem(MY_BOOKS_KEY));
+  } catch {
+    return parseBooks("{");
+  }
+}
+
+export function getMyBooks() {
+  return readBooks().books;
+}
+
+// id の単語帳（無ければ null）
+export function findMyBook(id) {
+  return id ? getMyBooks().find((b) => b.id === id) ?? null : null;
+}
+
+const UNREADABLE = "単語帳の保存が読めないため、変えられません";
+const SAVE_FAILED = "保存できませんでした";
+
+function saveBooks(books) {
+  localStorage.setItem(MY_BOOKS_KEY, JSON.stringify(books));
+  window.dispatchEvent(new CustomEvent("spelldash:mywords"));
+}
+
+export function createMyBook(name) {
+  const r = readBooks();
+  if (!r.ok) return { ok: false, error: UNREADABLE };
+  if (r.books.length >= MY_BOOKS_MAX) return { ok: false, error: `単語帳は${MY_BOOKS_MAX}冊まで` };
+  const v = checkBookName(name, r.books);
+  if (!v.ok) return v;
+  const book = { id: newBookId(r.books), name: v.name };
+  try {
+    saveBooks([...r.books, book]);
+  } catch {
+    return { ok: false, error: SAVE_FAILED };
+  }
+  return { ok: true, book };
+}
+
+export function renameMyBook(id, name) {
+  const r = readBooks();
+  if (!r.ok) return { ok: false, error: UNREADABLE };
+  const i = r.books.findIndex((b) => b.id === id);
+  if (i < 0) return { ok: false, error: "単語帳が見つかりません" };
+  const v = checkBookName(name, r.books, id);
+  if (!v.ok) return v;
+  const books = r.books.map((b, j) => (j === i ? { ...b, name: v.name } : b));
+  try {
+    saveBooks(books);
+  } catch {
+    return { ok: false, error: SAVE_FAILED };
+  }
+  return { ok: true, book: books[i] };
+}
+
+// 語の印（"word:<鍵>" / "concept:<鍵>"。js/myWordsCore.js entryRefOf）の集まりに当たる語を除いた並びと、除いた語
+function splitByRefs(list, refs) {
+  const want = new Set(refs);
+  const keep = [];
+  const hit = [];
+  for (const w of list) (want.has(entryRefOf(w)) ? hit : keep).push(w);
+  return { keep, hit };
+}
+
+// 消した語の同期の印: 同じ鍵の語（英語の語と場面カード）が残っていれば墓標にしない（残った方を消さない）
+function touchRemoved(hit, keep) {
+  const left = new Set(keep.map((w) => w.en));
+  const gone = [...new Set(hit.map((w) => w.en))];
+  touchItems("my_word", gone.filter((k) => !left.has(k)), true);
+  touchItems("my_word", gone.filter((k) => left.has(k)));
+}
+
+// まとめて消す（選んだ語。語の保存は 1 回で書く）。返り値 { ok, removed }
+export function removeMyWords(refs) {
+  const { keep, hit } = splitByRefs(getMyWords(), refs);
+  if (hit.length === 0) return { ok: true, removed: 0 };
+  try {
+    save(keep);
+  } catch {
+    return { ok: false, error: SAVE_FAILED };
+  }
+  touchRemoved(hit, keep);
+  return { ok: true, removed: hit.length };
+}
+
+// まとめて移す（選んだ語をほかの単語帳へ。3 状態・足した時刻は残す。語の保存は 1 回）。返り値 { ok, moved }
+export function moveMyWords(refs, toBookId) {
+  const books = getMyBooks();
+  if (!books.some((b) => b.id === toBookId)) return { ok: false, error: "移す先の単語帳が見つかりません" };
+  const want = new Set(refs);
+  const moved = [];
+  const list = getMyWords().map((w) => {
+    if (!want.has(entryRefOf(w)) || bookIdOf(w, books) === toBookId) return w;
+    moved.push(w.en);
+    return { ...w, book: toBookId };
+  });
+  if (moved.length === 0) return { ok: true, moved: 0 };
+  try {
+    save(list);
+  } catch {
+    return { ok: false, error: SAVE_FAILED };
+  }
+  touchItems("my_word", [...new Set(moved)]);
+  return { ok: true, moved: moved.length };
+}
+
+// 単語帳を消す（その単語帳の語も消す。最後の 1 冊は消さない）。返り値 { ok, removed }
+export function deleteMyBook(id) {
+  const r = readBooks();
+  if (!r.ok) return { ok: false, error: UNREADABLE };
+  if (!r.books.some((b) => b.id === id)) return { ok: false, error: "単語帳が見つかりません" };
+  if (r.books.length <= 1) return { ok: false, error: "最後の単語帳は消せません" };
+  const list = getMyWords();
+  const inBook = new Set(entriesOfBook(list, id, r.books).map(entryRefOf));
+  const { keep, hit } = splitByRefs(list, inBook);
+  try {
+    if (hit.length) save(keep); // 語を先に消す（一覧の書き込みが失敗しても、消した単語帳は空で残るだけ）
+    saveBooks(r.books.filter((b) => b.id !== id));
+  } catch {
+    return { ok: false, error: SAVE_FAILED };
+  }
+  if (hit.length) touchRemoved(hit, keep);
+  return { ok: true, removed: hit.length };
+}
+
+// 訳を直す（英語の語だけ。英語・3 状態・足した時刻・単語帳はそのまま。英語を変えるのは消して足し直す）
+export function setMyWordJa(en, ja) {
+  const j = checkJaText(ja);
+  if (!j.ok) return j;
+  const list = getMyWords();
+  const i = list.findIndex((w) => w.kind !== "concept" && w.en === en);
+  if (i < 0) return { ok: false, error: "語が見つかりません" };
+  list[i] = { ...list[i], ja: j.ja };
+  try {
+    save(list);
+  } catch {
+    return { ok: false, error: SAVE_FAILED };
+  }
+  touchItem("my_word", en);
+  return { ok: true, ja: j.ja };
 }

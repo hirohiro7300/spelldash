@@ -1,6 +1,6 @@
 import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord, answersFor, loadPublicWords, publicWord, publicAnswersFor, publicPackWords, refreshMyWords } from "./wordStore.js";
-import { getMyWords, recordMyAnswer } from "./myWords.js";
-import { buildMyQueue, myStateOf, myLearnStep, mySummary, countMyStates, MY_SET_SIZE } from "./myWordsCore.js";
+import { getMyWords, recordMyAnswer, getMyBooks } from "./myWords.js";
+import { buildMyQueue, myStateOf, myLearnStep, mySummary, countMyStates, MY_SET_SIZE, bookIdOf } from "./myWordsCore.js";
 import { answerLabel } from "./wordData.js";
 import { jaLooksSame } from "./jaAmbiguity.js";
 import {
@@ -908,24 +908,32 @@ const LEARN_INTRO = {
 };
 const LEARN_NEXT = { new: "続けて学ぶ", unsure: "続けて学ぶ", learned: "続けて復習する", my: "続けて学ぶ", slang: "続けて学ぶ" };
 const MY_WORDS_URL = "/mywords.html"; // マイ単語帳の画面（Batch 79）
-// マイ単語帳の学ぶ回の材料（Batch 79。スラング〔Batch 80〕は js/slang.js slangLearnSource が同じ形を返す）: 名前・戻り先・語の並び・カード・答えの書き手
-const MY_SOURCE = Object.freeze({
-  kind: "my",
-  label: "マイ単語帳",
-  countLabel: "マイ単語帳",
-  url: MY_WORDS_URL,
-  linkId: "learnMyWords",
-  noStats: false, // 前のマイ単語帳と同じく、今の書き手が my-<鍵> で語の記録に回答の履歴を残す
-  prepare: () => refreshMyWords(),
-  list: () => getMyWords(),
-  idOf: undefined, // my-<鍵>（js/myWordsCore.js）
-  find: (id) => findWord(id),
-  entryOf: (word) => getMyWords().find((w) => w.kind !== "concept" && w.en === word?.en) ?? null,
-  record: (word, kind) => recordMyAnswer(word.en, kind),
-  emptyTitle: "マイ単語帳に語が無い",
-  emptyNote: "マイ単語帳で英語と日本語訳を入れる。",
-  doneNote: "マイ単語帳の語を、ひととおり学んだ。"
-});
+// マイ単語帳の学ぶ回の材料（Batch 79。スラング〔Batch 80〕は js/slang.js slangLearnSource が同じ形を返す）: 名前・戻り先・語の並び・カード・答えの書き手。
+// 単語帳ごと（Batch 81。/?learn=my&book=<id>）: その単語帳の語だけ。?book= が無い・知らない id は前のまま全部の単語帳（js/myWordsCore.js bookIdOf）
+const MY_BOOK_PARAM = "book";
+function myLearnSource(bookId) {
+  const book = bookId ? getMyBooks().find((b) => b.id === bookId) ?? null : null;
+  const inBook = book ? (w) => bookIdOf(w, getMyBooks()) === book.id : () => true;
+  const words = () => getMyWords().filter(inBook);
+  const name = book ? escapeHtml(book.name) : ""; // 自分で付けた名前: 回の終わりのパネル（innerHTML）に入れるので文字のまま
+  return Object.freeze({
+    kind: "my",
+    label: "マイ単語帳",
+    countLabel: book ? name : "マイ単語帳",
+    url: book ? `${MY_WORDS_URL}?${MY_BOOK_PARAM}=${encodeURIComponent(book.id)}` : MY_WORDS_URL,
+    linkId: "learnMyWords",
+    noStats: false, // 前のマイ単語帳と同じく、今の書き手が my-<鍵> で語の記録に回答の履歴を残す
+    prepare: () => refreshMyWords(),
+    list: words,
+    idOf: undefined, // my-<鍵>（js/myWordsCore.js）
+    find: book ? (id) => (words().some((w) => w.kind !== "concept" && `my-${w.en}` === id) ? findWord(id) : null) : (id) => findWord(id),
+    entryOf: (word) => words().find((w) => w.kind !== "concept" && w.en === word?.en) ?? null,
+    record: (word, kind) => recordMyAnswer(word.en, kind),
+    emptyTitle: book ? `「${name}」に語が無い` : "マイ単語帳に語が無い",
+    emptyNote: "マイ単語帳で英語と日本語訳を入れる。",
+    doneNote: book ? `「${name}」の語を、ひととおり学んだ。` : "マイ単語帳の語を、ひととおり学んだ。"
+  });
+}
 
 // 入口から来た人には初回の本（js/welcome.js）を出さない: 読み込みのときの判定（main.js の renderWelcome）より前に印を付ける
 // （鍵は js/welcome.js の ONBOARDED_KEY と同じ。index.html の <head> の 1 行も読める ?learn= を深いリンクとして扱う）
@@ -966,7 +974,7 @@ async function beginLearn(entry) {
     Q = await import("./learnQueue.js");
     if (!Q.parseLearnEntry(entry)) return; // 読めない入口の値: ふつうのホームのまま（材料は読まない）
     if (Q.parseLearnEntry(entry) === Q.LEARN_MY) {
-      beginMyLearn(Q, MY_SOURCE);
+      beginMyLearn(Q, myLearnSource(new URLSearchParams(location.search).get(MY_BOOK_PARAM)));
       return;
     }
     if (Q.parseLearnEntry(entry) === Q.LEARN_SLANG) {
@@ -1043,7 +1051,7 @@ function showLearnLoadError() {
 // （spelldash_my_words の語の ls・lsd・lsAt。決まりは公開の語と同じ js/learnState.js applyLearnAnswer）にだけ書く（js/myWords.js recordMyAnswer）。
 // 公開の語の 3 状態・6 つの数・ランク・最高到達ランク・回の続き（spelldash_learn_session）には書かない（finishLearnCounts・persistLearnPoint）。
 // 回の終わりは「続けて学ぶ」と「マイ単語帳へ」。中心の学習の列の決まり（learnQueue.js）のうち、区切り・語数だけをマイ単語帳の決まりに替えて使う。
-// スラングの回（/?learn=slang。Batch 80）も同じ機械: src（MY_SOURCE か js/slang.js slangLearnSource）が語の並び・カード・書き手・名前を渡す。
+// スラングの回（/?learn=slang。Batch 80）も同じ機械: src（myLearnSource か js/slang.js slangLearnSource）が語の並び・カード・書き手・名前を渡す。
 // スラングは状態を spelldash_slang にだけ書き、語の記録（spelldash_word_stats・送る 15 列）には書かない（src.noStats: setNewWord が recordPlay を呼ばない）
 function beginMyLearn(Q, src) {
   setMode("study", { save: false });
@@ -1406,6 +1414,7 @@ function leaveLearn() {
     if (!url.searchParams.has("learn")) return;
     url.searchParams.delete("learn");
     url.searchParams.delete("group"); // スラングの回の絞り込み（Batch 80。js/slang.js GROUP_PARAM）
+    url.searchParams.delete(MY_BOOK_PARAM); // マイ単語帳の単語帳（Batch 81）
     history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
   } catch {
     // 無視
