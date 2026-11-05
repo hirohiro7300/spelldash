@@ -178,7 +178,7 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   ok("単語帳を作る: 最初の単語帳を先頭に残して足す・前からの語は 1 字も変えない", made.ok && books().length === 2 && books()[0].id === "main" && books()[1].name === "仕事" && store.get("spelldash_my_words") === OLD, JSON.stringify(made));
   const W = made.book.id;
   ok("同じ名前の単語帳は作らない", !M.createMyBook("仕事").ok && books().length === 2);
-  ok("名前を変える（前からの語は変えない）", M.renameMyBook(W, "仕事の英語").ok && books()[1].name === "仕事の英語" && store.get("spelldash_my_words") === OLD && !M.renameMyBook("nope", "x").ok);
+  ok("名前を変える（前からの語は変えない）", M.renameMyBook(W, "仕事の英語").ok && books()?.[1]?.name === "仕事の英語" && store.get("spelldash_my_words") === OLD && !M.renameMyBook("nope", "x").ok);
   M.renameMyBook(W, "仕事");
   // 足す: 今の単語帳の id を語に付ける。英語は全部の単語帳で 1 つ（ほかの単語帳にあれば、どの単語帳かを言う）
   const a1 = M.addMyWord("due diligence", "適正評価", W);
@@ -226,6 +226,53 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   // 単語帳の数の上限
   reset({ spelldash_my_books: JSON.stringify(Array.from({ length: C.MY_BOOKS_MAX }, (_, i) => ({ id: i ? `b${i}` : "main", name: i ? `帳${i}` : "マイ単語帳" }))) });
   ok(`単語帳は ${C.MY_BOOKS_MAX} 冊まで`, C.MY_BOOKS_MAX === 20 && !M.createMyBook("もう1つ").ok && /20/.test(M.createMyBook("もう1つ").error ?? ""));
+
+  // ---- 2 台の端末（Batch 81 の反証）: 単語帳の一覧は端末の中だけ。語の book と bookName（単語帳の名前）は同期の my_word の payload で届く ----
+  // 端末 Y: 一覧は マイ単語帳・旅行。端末 X で作った「仕事」（bx）の語と、名前の届いていない単語帳（bz）の語が同期で届いている
+  const FOREIGN = [{ en: "invoice", ja: "請求書" }, { en: "deadline", ja: "締め切り", book: "bx", bookName: "仕事", ls: 2, lsAt: 7 }, { en: "memo", ja: "メモ", book: "bz" }, { en: "ticket", ja: "切符", book: "y1", bookName: "旅行" }];
+  reset({ spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "y1", name: "旅行" }]), spelldash_my_words: JSON.stringify(FOREIGN) });
+  eq("2 台目: ほかの端末の単語帳が名前つきで出る（名前が届いていなければ「ほかの端末の単語帳」）・読むだけでは書かない", [M.getMyBooks().map((b) => b.name), writes.length], [["マイ単語帳", "旅行", "仕事", "ほかの端末の単語帳"], 0]);
+  const firstAll = C.entriesOfBook(M.getMyWords(), "main", M.getMyBooks()).map(C.entryRefOf);
+  eq("2 台目: 最初の単語帳の「すべて選ぶ」はその単語帳の語だけ（ほかの端末の単語帳の語は入らない）", firstAll, ["word:invoice"]);
+  const delMain = M.deleteMyBook("main");
+  const dl = words().find((w) => w.en === "deadline");
+  ok("2 台目: 最初の単語帳を消しても、ほかの端末の単語帳の語は残る（状態もそのまま・墓標を付けない）", delMain.ok && delMain.removed === 1 && dl?.ls === 2 && dl?.lsAt === 7 && words().some((w) => w.en === "memo") && meta()["my_word:deadline"] === undefined && meta()["my_word:memo"] === undefined && meta()["my_word:invoice"]?.deleted === true, JSON.stringify({ delMain, meta: meta() }));
+  const home = M.createMyBook("家");
+  const mvY = M.moveMyWords(["word:deadline"], home.book.id);
+  const moved = words().find((w) => w.en === "deadline");
+  ok("移すと語に移す先の単語帳の名前（bookName）も乗る（3 状態はそのまま）", mvY.ok && moved?.book === home.book.id && moved?.bookName === "家" && moved?.ls === 2, JSON.stringify(moved));
+  ok("足すと語に単語帳の名前も乗る", M.addMyWord("receipt", "領収書", home.book.id).ok && words().at(-1).bookName === "家" && words().at(-1).book === home.book.id);
+  ok("ほかの端末の単語帳へも移せる（名前つき）", M.moveMyWords(["word:receipt"], "bz").ok && words().find((w) => w.en === "receipt")?.bookName === "ほかの端末の単語帳");
+  // 端末 X に同期で届いた形: X の一覧に「家」は無いが「家」として出る（X の最初の単語帳にも「仕事」にも混ざらない）
+  reset({ spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "bx", name: "仕事" }]), spelldash_my_words: JSON.stringify([moved, { en: "budget", ja: "予算", book: "bx", bookName: "仕事" }].filter(Boolean)) });
+  ok("1 台目: ほかの端末で移した語は、その端末の単語帳の名前で出る（最初の単語帳・仕事には入らない）", JSON.stringify(M.getMyBooks().map((b) => b.name)) === '["マイ単語帳","仕事","家"]' && C.entriesOfBook(M.getMyWords(), "main", M.getMyBooks()).length === 0 && C.entriesOfBook(M.getMyWords(), "bx", M.getMyBooks()).length === 1, JSON.stringify(M.getMyBooks()));
+  // 名前を変える: その単語帳の語の bookName も替える（同期の印も）。ほかの端末の単語帳の名前を変えると、この端末の一覧に入る
+  writes.length = 0;
+  const rnX = M.renameMyBook("bx", "仕事の英語");
+  ok("名前を変えると、その単語帳の語の bookName も替わる（語の保存 1 回・同期の印）", rnX.ok && words().find((w) => w.en === "budget")?.bookName === "仕事の英語" && writesOf("spelldash_my_words") === 1 && meta()["my_word:budget"]?.deleted === false && books()?.[1]?.name === "仕事の英語", JSON.stringify({ rnX, w: words() }));
+  const rnH = M.renameMyBook(moved?.book, "家族");
+  ok("ほかの端末の単語帳の名前を変えると、この端末の一覧に入る（語の bookName も）", rnH.ok && JSON.stringify(books()?.map((b) => b.name)) === '["マイ単語帳","仕事の英語","家族"]' && words().find((w) => w.en === "deadline")?.bookName === "家族", JSON.stringify(books()));
+  // 一覧が 1 冊だけでも、ほかの端末の単語帳があれば最初の単語帳を消せる（ほかの端末の単語帳が一覧に入る。一覧を空にしない）
+  reset({ spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }]), spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "deadline", ja: "締め切り", book: "bx", bookName: "仕事" }]) });
+  const delOnly = M.deleteMyBook("main");
+  ok("一覧が最初の単語帳だけ + ほかの端末の単語帳: 最初の単語帳を消すと一覧はほかの端末の単語帳になる（語は残る）", delOnly.ok && delOnly.removed === 1 && JSON.stringify(books()) === '[{"id":"bx","name":"仕事"}]' && words().length === 1 && words()[0].en === "deadline", JSON.stringify({ delOnly, b: books() }));
+  // 最初の単語帳（main）が一覧に無い端末: book の無い語（前の版の端末から届いた語）は「マイ単語帳」に出る。今の先頭の単語帳を消しても消えない
+  reset({ spelldash_my_books: JSON.stringify([{ id: "y1", name: "旅行" }, { id: "y2", name: "家" }]), spelldash_my_words: JSON.stringify([{ en: "invoice", ja: "請求書" }, { en: "ticket", ja: "切符", book: "y1" }]) });
+  ok("main の無い端末: book の無い語は「マイ単語帳」に出る・先頭の単語帳を消しても残る", JSON.stringify(M.getMyBooks().map((b) => b.name)) === '["旅行","家","マイ単語帳"]' && M.deleteMyBook("y1").removed === 1 && words().some((w) => w.en === "invoice") && meta()["my_word:invoice"] === undefined, JSON.stringify(M.getMyBooks()));
+}
+
+// ---- 単語帳の並び（純）: 端末の一覧 + 語が持つ単語帳（ほかの端末で作った単語帳） ----
+{
+  const local = [{ id: "main", name: "マイ単語帳" }, { id: "y1", name: "旅行" }];
+  const list = [{ en: "a", ja: "x" }, { en: "b", ja: "x", book: "bx", bookName: "仕事" }, { en: "c", ja: "x", book: "bx" }, { en: "d", ja: "x", book: "bz" }, { en: "e", ja: "x", book: "bq", bookName: "旅行" }, { en: "f", ja: "x", book: "y1", bookName: "別名" }, { en: "g", ja: "x", book: "bad id!" }];
+  const wb = typeof C.withWordBooks === "function" ? C.withWordBooks : () => null;
+  eq("一覧に無い id は語の名前で後ろに足す（初めて出た順）・名前が無ければ「ほかの端末の単語帳」・一覧と同じ名前には数を付ける・一覧にある id は一覧の名前",
+    wb(local, list), [...local, { id: "bx", name: "仕事" }, { id: "bz", name: "ほかの端末の単語帳" }, { id: "bq", name: "旅行 2" }]);
+  const books = wb(local, list) ?? local;
+  eq("ほかの端末の単語帳の語はその単語帳（最初の単語帳は book の無い語と形の違う id の語だけ）", [C.entriesOfBook(list, "main", books).map((w) => w.en), C.entriesOfBook(list, "bx", books).map((w) => w.en)], [["a", "g"], ["b", "c"]]);
+  eq("main が一覧に無い: book の無い語のために「マイ単語帳」を足す", wb([{ id: "y1", name: "旅行" }], [{ en: "a", ja: "x" }]), [{ id: "y1", name: "旅行" }, { id: "main", name: "マイ単語帳" }]);
+  eq("語が無ければ一覧のまま", wb(local, []), local);
+  eq("名前は 20 字まで・空白は 1 つに", wb(local, [{ en: "a", ja: "x", book: "bl", bookName: `  ${"長".repeat(25)}  ` }])?.[2]?.name, "長".repeat(20));
 }
 
 console.log(`test-my-words: ${passed} passed, ${failed} failed`);

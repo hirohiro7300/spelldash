@@ -24965,6 +24965,36 @@ console.log("my word books (81.1):");
     }
     check("81.1 320／390／1200 × 昼夜: 単語帳の切り替え・名前の欄・選ぶの帯・長い語で横スクロール 0・エラー 0", bad.length === 0, JSON.stringify(bad));
   }
+
+  // (12) 2 台目の端末（Batch 81 の反証）: 単語帳の一覧は端末の中だけ。ほかの端末の単語帳の語（book と bookName が同期で届く）はその名前の単語帳に出る。
+  //      最初の単語帳の「すべて選ぶ」はその単語帳の語だけ・最初の単語帳を消しても、ほかの端末の単語帳の語は消えない（墓標を付けない）・その単語帳だけでも学べる
+  {
+    const books = JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "y1", name: "旅行" }]);
+    const words = [{ en: "invoice", ja: "請求書" }, { en: "deadline", ja: "締め切り", book: "bx", bookName: "仕事", ls: 2, lsAt: 7 }, { en: "ticket", ja: "切符", book: "y1", bookName: "旅行" }];
+    const page = await bookPage({ spelldash_my_words: JSON.stringify(words), spelldash_my_books: books });
+    await openBooks(page);
+    const v0 = await view(page);
+    await page.click("#myWordsSelect");
+    await page.check("#myWordsSelAll");
+    const sel = await view(page);
+    await page.click("#myWordsSelDone");
+    await page.click("#myBookDelete");
+    await page.waitForTimeout(150);
+    const v1 = await view(page);
+    const s1 = await stored(page);
+    const meta = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_user_items_meta") || "{}"));
+    const dl = s1.words.find((w) => w.en === "deadline");
+    check("81.1 2 台目: ほかの端末の単語帳「仕事」が名前つきで出る・最初の単語帳のすべて選ぶは 1 語・最初の単語帳を消しても「仕事」の語は残る（状態そのまま・墓標なし）",
+      JSON.stringify(v0.tabs) === '[["マイ単語帳","1","true"],["旅行","1","false"],["仕事","1","false"]]' && sel.selN === "1語を選んだ" && JSON.stringify(v1.tabs.map((t) => t[0])) === '["旅行","仕事"]'
+        && dl?.ls === 2 && dl?.book === "bx" && meta["my_word:deadline"] === undefined && meta["my_word:invoice"]?.deleted === true && s1.books === JSON.stringify([{ id: "y1", name: "旅行" }]),
+      JSON.stringify({ v0: v0.tabs, selN: sel.selN, v1: v1.tabs, dl, meta, books: s1.books }));
+    await page.goto(BASE + "/?learn=my&book=bx", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    const first = await page.evaluate(() => window.__words.at(-1));
+    const prog = await page.evaluate(() => document.getElementById("setProgress")?.textContent.replace(/\s+/g, " ").trim());
+    check("81.1 2 台目: ほかの端末の単語帳だけで学ぶ（/?learn=my&book=bx は「仕事」の語だけ）・エラー 0", first === "my-deadline" && /^仕事/.test(prog ?? "") && page.errors.length === 0, JSON.stringify({ first, prog, err: page.errors[0] }));
+    await closeCtx(page);
+  }
 }
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
