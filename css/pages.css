@@ -4043,7 +4043,7 @@ html[data-theme] .mw-row__input {
   color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--line-2);
-  border-radius: var(--radius);
+  border-radius: 3px;
 }
 
 html[data-theme] .mw-row__en {
@@ -4210,7 +4210,7 @@ html[data-theme] .mw-sel__to select {
   color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--line-2);
-  border-radius: var(--radius);
+  border-radius: 3px;
 }
 
 html[data-theme] .mw-sel__btn {
