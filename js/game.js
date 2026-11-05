@@ -912,9 +912,13 @@ const MY_WORDS_URL = "/mywords.html"; // マイ単語帳の画面（Batch 79）
 // 単語帳ごと（Batch 81。/?learn=my&book=<id>）: その単語帳の語だけ。?book= が無い・知らない id は前のまま全部の単語帳（js/myWordsCore.js bookIdOf）
 const MY_BOOK_PARAM = "book";
 function myLearnSource(bookId) {
-  const book = bookId ? getMyBooks().find((b) => b.id === bookId) ?? null : null;
-  const inBook = book ? (w) => bookIdOf(w, getMyBooks()) === book.id : () => true;
-  const words = () => getMyWords().filter(inBook);
+  const book = bookId ? getMyBooks().find((b) => b.id === bookId) ?? null : null; // ほかの端末の単語帳（語の bookName で出る）も
+  const words = () => {
+    const list = getMyWords();
+    if (!book) return list;
+    const books = getMyBooks(list); // 語の並びを 1 回だけ読む
+    return list.filter((w) => bookIdOf(w, books) === book.id);
+  };
   const name = book ? escapeHtml(book.name) : ""; // 自分で付けた名前: 回の終わりのパネル（innerHTML）に入れるので文字のまま
   return Object.freeze({
     kind: "my",

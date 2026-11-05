@@ -9,8 +9,9 @@
 //   ls・lsd・lsAt  マイ単語帳だけの 3 状態（これから・あやふや・覚えた）。js/learnState.js の語の記録と同じ欄の名前と同じ決まり（applyLearnAnswer）。
 //          語の記録（spelldash_word_stats）には書かない: 公開の語の 3 状態・6 つの数・ランク・最高到達ランクに入らない。
 //          語と一緒に同期の項目（user_items の my_word。表があるときだけ）に乗る
-//   book   入っている単語帳の id（Batch 81）。無い（前からの語）・知らない id（ほかの端末で作った単語帳）は最初の単語帳の語として読む（書き直さない）。
-//          語と一緒に同期の項目 my_word の payload に乗る（新しい種類・SQL は足さない）。単語帳の一覧（名前）は端末の中だけ（spelldash_my_books）
+//   book   入っている単語帳の id（Batch 81）。無い（前からの語）は最初の単語帳「マイ単語帳」（id main）の語として読む（書き直さない）。
+//   bookName その単語帳の名前（Batch 81。足す・移す・名前を変えるときに書く）。book と一緒に同期の項目 my_word の payload に乗る（新しい種類・SQL は足さない）。
+//          単語帳の一覧は端末の中だけ（spelldash_my_books）なので、一覧に無い id（ほかの端末で作った単語帳）は、語の bookName でその単語帳を出す（withWordBooks）
 // 場面カード（kind: "concept"。前の単語帳で作ったもの）はそのまま残す。学ぶ回と 3 状態の数には入れない。
 //
 // 入れられる英語: 英字・数字・ハイフン・アポストロフィ・空白（語の間に 1 つ）。英字を 1 つ以上。150 字まで（Batch 81。前は 40 字）。訳も 150 字まで。
@@ -214,10 +215,40 @@ export function parseBooks(raw) {
   return books.length ? { ok: true, books } : { ok: false, books: first() };
 }
 
-// 語の単語帳の id（無い・知らない id は最初の単語帳）
+// 語が持つ単語帳の id（形の正しい id だけ。無い・形の違う値は最初の単語帳 main）
+const bookRefOf = (w) => (typeof w?.book === "string" && BOOK_ID.test(w.book) ? w.book : MY_FIRST_BOOK.id);
+
+// 語の単語帳の id。並び（books）に無い id は先頭の単語帳（並びは withWordBooks で語の単語帳まで足したものを渡す）
 export function bookIdOf(w, books) {
-  const id = w?.book;
-  return typeof id === "string" && books.some((b) => b.id === id) ? id : books[0]?.id ?? MY_FIRST_BOOK.id;
+  const id = bookRefOf(w);
+  return books.some((b) => b.id === id) ? id : books[0]?.id ?? MY_FIRST_BOOK.id;
+}
+
+export const MY_OTHER_BOOK_NAME = "ほかの端末の単語帳";
+const cleanBookName = (raw) => (typeof raw === "string" ? raw.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, MY_BOOK_NAME_MAX) : "");
+
+// 端末の一覧（books）+ 語が持つ単語帳（Batch 81）。一覧は同期しないが、語の book と bookName は同期で届く:
+// 一覧に無い id（ほかの端末で作った単語帳）は、語の bookName（無ければ「ほかの端末の単語帳」。main は「マイ単語帳」）で一覧の後ろに足す（語の並びで初めて出た順）。
+// 一覧と同じ名前には数を付ける（「旅行 2」）。こうすると、ほかの端末の単語帳の語は最初の単語帳に混ざらない
+// （最初の単語帳を消す・すべて選んで消すで、ほかの単語帳の語を消さない）。読むだけ: 何も書かない
+export function withWordBooks(books, list) {
+  const out = books.map((b) => ({ id: b.id, name: b.name }));
+  const names = new Map(); // 一覧に無い id → 名前（語の並びで初めて見つかった bookName）
+  for (const w of Array.isArray(list) ? list : []) {
+    if (!w) continue;
+    const id = bookRefOf(w);
+    if (out.some((b) => b.id === id)) continue;
+    if (!names.get(id)) names.set(id, cleanBookName(w.bookName));
+  }
+  const taken = new Set(out.map((b) => b.name));
+  for (const [id, found] of names) {
+    const base = found || (id === MY_FIRST_BOOK.id ? MY_FIRST_BOOK.name : MY_OTHER_BOOK_NAME);
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
+    taken.add(name);
+    out.push({ id, name });
+  }
+  return out;
 }
 
 // その単語帳の語（保存の並びの順。場面カードは最初の単語帳に出る）

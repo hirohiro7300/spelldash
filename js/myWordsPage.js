@@ -170,9 +170,9 @@ function rowOf(w) {
 }
 
 function render() {
-  const books = getMyBooks();
-  if (!books.some((b) => b.id === current)) current = books[0].id;
   const list = getMyWords();
+  const books = getMyBooks(list); // 端末の一覧 + ほかの端末の単語帳（語の bookName）
+  if (!books.some((b) => b.id === current)) current = books[0].id;
   const counts = bookCounts(list, books);
   const entries = entriesOfBook(list, current, books);
   const mine = counts[current] ?? countMyStates([]);

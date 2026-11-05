@@ -24992,7 +24992,7 @@ console.log("my word books (81.1):");
     await waitUntil(async () => (await nShown(page)) >= 1, 8000);
     const first = await page.evaluate(() => window.__words.at(-1));
     const prog = await page.evaluate(() => document.getElementById("setProgress")?.textContent.replace(/\s+/g, " ").trim());
-    check("81.1 2 台目: ほかの端末の単語帳だけで学ぶ（/?learn=my&book=bx は「仕事」の語だけ）・エラー 0", first === "my-deadline" && /^仕事/.test(prog ?? "") && page.errors.length === 0, JSON.stringify({ first, prog, err: page.errors[0] }));
+    check("81.1 2 台目: ほかの端末の単語帳だけで学ぶ（/?learn=my&book=bx は「仕事」の 1 語だけ: 0 / 1）・エラー 0", first === "my-deadline" && /0 \/ 1$/.test(prog ?? "") && page.errors.length === 0, JSON.stringify({ first, prog, err: page.errors[0] }));
     await closeCtx(page);
   }
 }
