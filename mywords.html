@@ -172,24 +172,40 @@
       <p class="auth-message" id="authMessage" role="status"></p>
     </section>
 
-    <!-- マイ単語帳（Batch 79。docs/SPEC_MY_WORDS.md）: 自分で入れた英単語・熟語と訳。3 状態（これから・あやふや・覚えた）はこの中だけの数で、
+    <!-- マイ単語帳（Batch 79・81。docs/SPEC_MY_WORDS.md）: 自分で入れた英単語・熟語と訳。単語帳は複数持てる（Batch 81）。3 状態（これから・あやふや・覚えた）はこの中だけの数で、
          学習状況の公開の語の数とランクには入らない。描くのは js/myWordsPage.js -->
     <section class="mw" aria-labelledby="myWordsSumTitle">
+      <!-- 単語帳（Batch 81。docs/SPEC_MY_WORDS.md §7）: 切り替え（押した単語帳が aria-pressed。描くのは js/myWordsPage.js）・作る・名前を変える・消す（確かめてから。最後の 1 冊は消せない） -->
+      <div class="mw-books" id="myBooks">
+        <h2 class="sr-only" id="myBooksTitle">単語帳</h2>
+        <div class="sl__filter mw-books__tabs" id="myBookTabs" role="group" aria-labelledby="myBooksTitle"></div>
+        <div class="mw-books__tools">
+          <button type="button" class="mw-tool" id="myBookNew">新しい単語帳</button>
+          <button type="button" class="mw-tool" id="myBookRename">名前を変える</button>
+          <button type="button" class="mw-tool" id="myBookDelete" hidden>この単語帳を消す</button>
+        </div>
+        <form class="mw__fields mw-books__form" id="myBookForm" hidden novalidate>
+          <label class="mw__field"><span id="myBookFormLabel">新しい単語帳の名前</span><input type="text" id="myBookName" maxlength="40" autocomplete="off" placeholder="仕事" /></label>
+          <button type="submit" class="btn mw__submit" id="myBookSave">作る</button>
+          <button type="button" class="btn btn--ghost mw__submit" id="myBookCancel">やめる</button>
+        </form>
+      </div>
       <div class="mw__top">
         <h2 class="sr-only" id="myWordsSumTitle">マイ単語帳の数</h2>
         <p class="mw__sum" id="myWordsSum"><span>0語</span></p>
         <a class="btn mw__learn" id="myWordsLearn" href="/?learn=my">学ぶ</a>
       </div>
+      <p class="mw__all" id="myWordsAll" hidden><span id="myWordsAllN"></span><a href="/?learn=my">全部の単語帳で学ぶ</a></p>
       <p class="mw__empty" id="myWordsEmpty" hidden>英語と日本語訳を入れると、ここで打って覚えられる。</p>
 
       <form class="mw__add" id="myWordsAdd" novalidate>
         <h2 class="mw__h">1語ずつ足す</h2>
         <div class="mw__fields">
-          <label class="mw__field"><span>英語</span><input type="text" id="myWordsEn" name="en" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="due diligence" required /></label>
-          <label class="mw__field"><span>日本語訳</span><input type="text" id="myWordsJa" name="ja" maxlength="60" autocomplete="off" placeholder="適正評価" required /></label>
+          <label class="mw__field"><span>英語</span><input type="text" id="myWordsEn" name="en" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="due diligence" required /></label>
+          <label class="mw__field"><span>日本語訳</span><input type="text" id="myWordsJa" name="ja" maxlength="200" autocomplete="off" placeholder="適正評価" required /></label>
           <button type="submit" class="btn mw__submit" id="myWordsAddButton">足す</button>
         </div>
-        <p class="mw__hint">英字・数字・ハイフン・アポストロフィ・空白が使える（40文字まで）。打つときは大文字小文字を区別しない。</p>
+        <p class="mw__hint"><span id="myWordsTo"></span>英字・数字・ハイフン・アポストロフィ・空白が使える（英語も訳も150文字まで）。打つときは大文字小文字を区別しない。</p>
       </form>
 
       <details class="mw__bulk" id="myWordsBulkFold">
@@ -201,7 +217,21 @@
 
       <p class="mw__status" id="myWordsStatus" role="status" aria-live="polite"></p>
 
-      <h2 class="mw__h" id="myWordsListTitle">一覧</h2>
+      <div class="mw__listhead" id="myWordsListHead">
+        <h2 class="mw__h" id="myWordsListTitle">一覧</h2>
+        <button type="button" class="mw-tool" id="myWordsSelect" aria-pressed="false">選ぶ</button>
+      </div>
+      <!-- まとめて消す・移す（Batch 81）: 選ぶを押すと行ごとの印。すべて選ぶは今の単語帳の語。消すは確かめる窓 1 つ（数を言う） -->
+      <div class="mw-sel" id="myWordsSelBar" hidden>
+        <label class="mw-sel__all"><input type="checkbox" id="myWordsSelAll" />すべて選ぶ</label>
+        <span class="mw-sel__n" id="myWordsSelN" role="status">0語を選んだ</span>
+        <button type="button" class="btn mw-sel__btn" id="myWordsSelDelete" disabled>選んだ 0 語を消す</button>
+        <span class="mw-sel__move" id="myWordsMove">
+          <label class="mw-sel__to"><span>移す先</span><select id="myWordsMoveTo"></select></label>
+          <button type="button" class="btn btn--ghost mw-sel__btn" id="myWordsSelMove" disabled>選んだ語を移す</button>
+        </span>
+        <button type="button" class="btn btn--ghost mw-sel__btn" id="myWordsSelDone">やめる</button>
+      </div>
       <ul class="mw__list" id="myWordsList" aria-labelledby="myWordsListTitle"></ul>
     </section>
   </main>

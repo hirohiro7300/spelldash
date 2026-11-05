@@ -136,7 +136,7 @@ export function validateEntry(en, ja, existing = getMyWords(), books = getMyBook
   const same = existing.find((w) => w.en === e.key);
   if (same) {
     const name = books.find((b) => b.id === bookIdOf(same, books))?.name ?? "マイ単語帳";
-    return { ok: false, error: `「${e.text}」はすでに「${name}」に登録されています` };
+    return { ok: false, error: `「${e.text}」は「${name}」にすでに登録されています` };
   }
   if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
   return { ok: true, en: e.key, ja: j.ja, text: e.text };

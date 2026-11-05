@@ -3987,10 +3987,63 @@ html[data-theme] .mw__list {
 html[data-theme] .mw-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  grid-template-areas: "en ja state acts";
   align-items: center;
   gap: 4px 12px;
   padding: 6px 8px 6px 14px;
   min-width: 0;
+}
+
+/* 選ぶの最中（Batch 81）: 行の頭に印。直す・消すは出さない */
+html[data-theme] .mw__list.is-selecting .mw-row {
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-areas: "pick en ja state";
+  padding-left: 4px;
+}
+
+html[data-theme] .mw-row__en { grid-area: en; }
+html[data-theme] :is(.mw-row__ja, .mw-row__form) { grid-area: ja; }
+html[data-theme] .mw-row__state { grid-area: state; justify-self: start; }
+html[data-theme] .mw-row__acts { grid-area: acts; display: flex; gap: 6px; }
+html[data-theme] .mw-row__pick {
+  grid-area: pick;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+html[data-theme] .mw-row__check,
+html[data-theme] .mw-sel__all input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--gold-ink);
+}
+
+/* 訳をその場で直す（Batch 81） */
+html[data-theme] .mw-row__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+html[data-theme] .mw-row__input {
+  flex: 1 1 12em;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
+  font: 16px/1.4 var(--font-ui);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
 }
 
 html[data-theme] .mw-row__en {
@@ -4023,7 +4076,7 @@ html[data-theme] .mw-row__state--unsure {
   border-color: currentColor;
 }
 
-html[data-theme] .mw-row__del {
+html[data-theme] :is(.mw-row__del, .mw-row__edit, .mw-row__save, .mw-row__cancel, .mw-tool) {
   min-height: 40px;
   padding: 0 12px;
   font-size: 13px;
@@ -4034,8 +4087,134 @@ html[data-theme] .mw-row__del {
   cursor: pointer;
 }
 
-html[data-theme] .mw-row__del:hover {
+html[data-theme] :is(.mw-row__del, .mw-row__edit, .mw-row__save, .mw-row__cancel, .mw-tool):hover {
   color: var(--paper);
+}
+
+html[data-theme] .mw-tool[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--gold-ink);
+  box-shadow: inset 0 -3px 0 var(--gold-ink);
+}
+
+/* 単語帳（Batch 81）: 切り替えはスラングの絞り込みの形（.sl__filter・.sl__tab）。長い名前は折り返す */
+html[data-theme] .mw-books {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+html[data-theme] .sl__tab.mw-book {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 14px;
+  line-height: 1.3;
+  text-align: left;
+}
+
+html[data-theme] .mw-book__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .mw-book__n {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+html[data-theme] .mw-books__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+html[data-theme] .mw__fields.mw-books__form {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+html[data-theme] .mw__all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+html[data-theme] .mw__all a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+html[data-theme] .mw__listhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+html[data-theme] .mw__listhead .mw__h {
+  margin: 0;
+}
+
+/* まとめて消す・移す（Batch 81）: 選ぶの帯 */
+html[data-theme] .mw-sel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  min-width: 0;
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: var(--radius-room);
+}
+
+html[data-theme] :is(.mw-sel__all, .mw-sel__to) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+html[data-theme] .mw-sel__n {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+html[data-theme] .mw-sel__move {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+html[data-theme] .mw-sel__to select {
+  min-height: 40px;
+  min-width: 0;
+  max-width: 12em;
+  padding: 0 8px;
+  font: 15px var(--font-ui);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+}
+
+html[data-theme] .mw-sel__btn {
+  min-height: 40px;
 }
 
 @media (max-width: 560px) {
@@ -4044,12 +4223,18 @@ html[data-theme] .mw-row__del:hover {
   }
   html[data-theme] .mw-row {
     grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-areas: "en state del" "ja ja del";
+    grid-template-areas: "en state acts" "ja ja acts";
   }
-  html[data-theme] .mw-row__en { grid-area: en; }
-  html[data-theme] .mw-row__ja { grid-area: ja; }
-  html[data-theme] .mw-row__state { grid-area: state; }
-  html[data-theme] .mw-row__del { grid-area: del; }
+  html[data-theme] .mw__list.is-selecting .mw-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "pick en state" "pick ja ja";
+  }
+  html[data-theme] .mw-row__acts { flex-direction: column; }
+  html[data-theme] .mw-row__form { grid-column: 1 / -1; }
+  html[data-theme] .mw__fields.mw-books__form {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  html[data-theme] .mw-books__form .mw__field { grid-column: 1 / -1; }
 }
 
 /* 学習状況のマイ単語帳の 1 行（Batch 79）: 公開の語の数と札の下に、枠の外の静かな 1 行（別の数だと分かるように線で区切る） */
