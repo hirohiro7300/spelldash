@@ -5,7 +5,9 @@
 import { createHash } from "node:crypto";
 import * as L from "../js/slang.js";
 import { SLANG, SLANG_GROUPS } from "../js/slangData.js";
-import { checkEnText, buildMyQueue, mySummary, myLearnStep, MY_JA_MAX, MY_SET_SIZE } from "../js/myWordsCore.js";
+import { checkEnText, buildMyQueue, mySummary, myLearnStep, MY_SET_SIZE } from "../js/myWordsCore.js";
+// スラングの英語と意味は 40 字まで（Batch 80 の決まり。マイ単語帳の上限は Batch 81 で 150 字に上がったが、組み込みの一覧の短さはここで守る）
+const SLANG_TEXT_MAX = 40;
 import { typeAnswer, answerModeOf, normalizeAnswer } from "../js/judge.js";
 import { acceptedAnswers } from "../js/answers.js";
 import { ANSWER_KINDS, applyLearnAnswer, learnDayOf, LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED } from "../js/learnState.js";
@@ -44,12 +46,12 @@ for (const e of SLANG) {
   ok(`${tag}: id は重ならない`, !seen.id.has(e.id));
   seen.id.add(e.id);
   const c = checkEnText(e.en);
-  ok(`${tag}: 英語はマイ単語帳と同じ字（英字・数字・ハイフン・アポストロフィ・語の間の空白 1 つ・40 字まで）で、整えた形のまま`, c.ok && c.text === e.en, JSON.stringify(c));
+  ok(`${tag}: 英語はマイ単語帳と同じ字（英字・数字・ハイフン・アポストロフィ・語の間の空白 1 つ・${SLANG_TEXT_MAX} 字まで）で、整えた形のまま`, c.ok && c.text === e.en && e.en.length <= SLANG_TEXT_MAX, JSON.stringify(c));
   ok(`${tag}: 英語（大文字小文字を見ない）は重ならない`, !seen.key.has(e.en.toLowerCase()));
   seen.key.add(e.en.toLowerCase());
   ok(`${tag}: 全文入力の比べ方（空白・ハイフン・アポストロフィを見ない）でも重ならない`, !seen.norm.has(normalizeAnswer(e.en)));
   seen.norm.add(normalizeAnswer(e.en));
-  ok(`${tag}: 意味は ${MY_JA_MAX} 字まで・重ならない`, e.ja.length <= MY_JA_MAX && !seen.ja.has(e.ja), `${e.ja.length}`);
+  ok(`${tag}: 意味は ${SLANG_TEXT_MAX} 字まで・重ならない`, e.ja.length <= SLANG_TEXT_MAX && !seen.ja.has(e.ja), `${e.ja.length}`);
   seen.ja.add(e.ja);
   ok(`${tag}: 使い方は 1 行・${NOTE_MAX} 字まで`, !/[\r\n]/.test(e.note) && e.note.length <= NOTE_MAX, `${e.note.length}`);
   ok(`${tag}: 例文は ${EX_MAX} 字まで・訳は ${EX_JA_MAX} 字まで・1 行`, e.ex.length <= EX_MAX && e.exJa.length <= EX_JA_MAX && !/[\r\n]/.test(e.ex + e.exJa), `${e.ex.length}/${e.exJa.length}`);
