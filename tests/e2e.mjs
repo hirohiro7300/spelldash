@@ -21450,7 +21450,11 @@ console.log("learn modes (78.3):");
     const panel = await panelText(page);
     const c1 = await counts(page);
     check(`78.3 これから: 回の終わり「10語 終わり」・今回 覚えた 7・あやふや 3・覚えた 122 / ${vocab.total.toLocaleString("ja-JP")}・続けて学ぶ・学習状況`, panel.includes("10語 終わり") && /今回 覚えた 7/.test(panel) && /あやふや 3/.test(panel) && panel.includes(`覚えた 122 / ${vocab.total.toLocaleString("ja-JP")}`) && panel.includes("続けて学ぶ") && panel.includes("学習状況") && c1.learned === 122 && c1.unsure === 3, JSON.stringify({ panel, c1 }));
-    const rank = await page.evaluate(() => ({ text: document.querySelector(".rank-up")?.textContent.replace(/\s+/g, " ").trim() ?? "", img: document.querySelectorAll(".rank-up img").length, peak: localStorage.getItem("spelldash_rank_peak"), sr: document.getElementById("srStatus").textContent }));
+    const rank = await page.evaluate(() => ({ text: document.querySelector(".rank-up")?.textContent.replace(/\s+/g, " ").trim() ?? "", img: document.querySelectorAll(".rank-up img").length, peak: localStorage.getItem("spelldash_rank_peak") }));
+    // 読み上げ（#srStatus）は一度空にして 30ms 後に書く（js/ui.js announce）。幕が出た直後に読むと書かれる前のことがある（PR #202 の CI で 1 回落ちた。
+    // 節 9.955 学習のランクの srHas と同じ形）ので、文が入るまで待ってから読む（上限 1 秒: 幕の 1.2 秒の内）。幕の字と最高到達ランクは上で待たずに読んだ値
+    await page.waitForFunction(() => (document.getElementById("srStatus")?.textContent ?? "").includes("よちよち"), null, { timeout: 1000, polling: 10 }).catch(() => {});
+    rank.sr = await page.evaluate(() => document.getElementById("srStatus").textContent);
     check("78.3 これから: 回の終わりに 1 回だけランクアップの幕（赤ちゃん → よちよち・文字だけ）・最高到達ランク 1", rank.text.includes("ランクアップ") && rank.text.includes("赤ちゃん") && rank.text.includes("よちよち") && rank.img === 0 && rank.peak === "1" && rank.sr.includes("よちよち"), JSON.stringify(rank));
     const words = (await panelText(page)) + (await page.evaluate(() => document.getElementById("gameCard").innerText));
     check("78.3 これから: 回の中と終わりに XP・Lv・済み・習得・知ってた・Pro の文が無い（はちゃんの吹き出しも無い）", !/XP|Lv\.|済み|習得|知ってた|Pro/.test(words) && (await page.locator("#resultPanel .hasumi").count()) === 0, words.slice(0, 300));
