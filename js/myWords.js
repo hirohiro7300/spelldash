@@ -130,22 +130,24 @@ export function normalizeEn(raw) {
   return String(raw ?? "").trim().toLowerCase();
 }
 
-// 同じ組の語がある（どの単語帳にあるかを言う。Batch 81 の文に「同じ訳で」を足した）
-function samePairError(text, same, books) {
+// 同じ組の語がある（どの単語帳にあるかを言う。Batch 81 の文に「同じ訳で」を足した）。samePairNote は英語を前に付けない形（まとめて足すは行の名前を前に付ける）
+function samePairNote(same, books) {
   const name = books.find((b) => b.id === bookIdOf(same, books))?.name ?? "マイ単語帳";
-  return `「${text}」は同じ訳で「${name}」にすでに登録されています`;
+  return `同じ訳で「${name}」にすでに登録されています`;
 }
+const samePairError = (text, same, books) => `「${text}」は${samePairNote(same, books)}`;
 
 // 英語と訳の 1 語を確かめる（js/myWordsCore.js checkEnText・checkJaText）。返り値 { ok, en（鍵）, ja, text（画面の形） } か { ok: false, error }
 // Batch 82: 断るのは同じ英語（大文字小文字は見ない）と同じ訳（js/myWordsCore.js normJa で比べる）の組が全部の単語帳のどこかにあるときだけ。
-// 訳が違えば同じ英語も足せる。鍵は js/myWordsCore.js myIdentityFor（最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>）
+// 訳が違えば同じ英語も足せる。鍵は js/myWordsCore.js myIdentityFor（最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>）。
+// 同じ組で断るときは lineError（英語を前に付けない文。まとめて足すが「英語（訳の頭）: 」の後に続ける）も返す
 export function validateEntry(en, ja, existing = getMyWords(), books = getMyBooks(existing)) {
   const e = checkEnText(en);
   if (!e.ok) return e;
   const j = checkJaText(ja);
   if (!j.ok) return j;
   const same = findSamePair(existing, e.key, j.ja);
-  if (same) return { ok: false, error: samePairError(e.text, same, books) };
+  if (same) return { ok: false, error: samePairError(e.text, same, books), lineError: samePairNote(same, books) };
   if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
   return { ok: true, en: myIdentityFor(existing, e.key, j.ja), ja: j.ja, text: e.text };
 }
@@ -208,16 +210,20 @@ export function parseBulk(text) {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !/^(english|英単語|answer|q|場面)\s*[,\t]/i.test(line)) // CSVの見出し行は飛ばす
-    .map(parseBulkLine);
+    .map((line) => ({ line, ...parseBulkLine(line) })); // line: 貼った行（前後の空白を落とした形。足せなかった行を欄に残す）
 }
 
-// 足せなかった行の頭（英語の無い行は行の初めを見せる）
+// 足せなかった行の頭（英語の無い行は行の初めを見せる）・訳の頭
 const lineHead = (line) => {
   const t = String(line ?? "");
   return t.length > 24 ? `${t.slice(0, 24)}…` : t;
 };
 
-// 同じ組（同じ英語と同じ訳）は 1 回の貼り付けの中でも 2 つ目を飛ばす（足した語は list に入れて確かめる）。語の保存と同期の印は最後に 1 回ずつ
+// 足せなかった行の名前: 英語と訳の頭（同じ英語の行が並ぶ貼り付け〔up・down の場面の行〕でも、どの行かが分かる）。訳の無い行は英語だけ
+const lineName = (entry) => `${entry.en || "(空)"}${entry.ja ? `（${lineHead(entry.ja)}）` : ""}`;
+
+// 同じ組（同じ英語と同じ訳）は 1 回の貼り付けの中でも 2 つ目を飛ばす（足した語は list に入れて確かめる）。語の保存と同期の印は最後に 1 回ずつ。
+// 返り値 { added（足した語の画面の形）, skipped（足せなかった行の理由）, rest（足せなかった行。貼った形のまま。画面は足した後の欄にこれだけを残す） }
 export function addMyWordsBulk(text, bookId) {
   const list = getMyWords();
   const books = getMyBooks(list);
@@ -225,14 +231,17 @@ export function addMyWordsBulk(text, bookId) {
   const added = [];
   const keys = [];
   const skipped = [];
+  const rest = [];
   for (const entry of parseBulk(text)) {
     if (entry.error) {
       skipped.push(`${lineHead(entry.line)}: ${entry.error}`);
+      rest.push(entry.line);
       continue;
     }
     const v = validateEntry(entry.en, entry.ja, list, books);
     if (!v.ok) {
-      skipped.push(`${entry.en || "(空)"}: ${v.error}`);
+      skipped.push(`${lineName(entry)}: ${v.lineError ?? v.error}`);
+      rest.push(entry.line);
       continue;
     }
     list.push(entryOf(v, book));
@@ -243,7 +252,7 @@ export function addMyWordsBulk(text, bookId) {
     save(list);
     touchItems("my_word", keys); // 語を書いた後に（中身は touchItem を鍵の数だけ呼んだのと同じ）
   }
-  return { added, skipped };
+  return { added, skipped, rest };
 }
 
 // ===== 複数の単語帳（Batch 81。決まりは js/myWordsCore.js） =====

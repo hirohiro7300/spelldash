@@ -1435,7 +1435,7 @@ function renderLearnPanel(step, { summary, counts }) {
   const choice = r.my && step !== "replaced" ? r.choice ?? null : null;
   const choiceLine = choice ? `<p class="learn-panel__line" id="choiceMode">${choice.modeLine()}</p>` : "";
   const again = choice && step === "done" && (r.ids.length > 0 || r.saveFailed > 0) ? `<a class="result-panel__action" href="${choice.urls().again}" id="choiceAgain">もう一度</a>` : "";
-  const otherDir = choice ? `<a class="result-panel__action result-panel__action--ghost" href="${choice.urls().other}" id="choiceOther" aria-label="向きを替える: ${choice.otherName()}">${choice.otherName()}</a>` : "";
+  const otherDir = choice ? `<a class="result-panel__action result-panel__action--ghost" href="${choice.urls().other}" id="choiceOther">${choice.switchLabel()}</a>` : ""; // 字は回の始めの切り替えと同じ（「英語を見て訳を選ぶに替える」）
   const status = r.my
     ? `<a class="result-panel__action${(step === "done" || step === "replaced") && !again ? "" : " result-panel__action--ghost"}" href="${r.src.url}" id="${r.src.linkId}">${r.src.label}へ</a>`
     : `<a class="result-panel__action${step === "done" || step === "replaced" ? "" : " result-panel__action--ghost"}" href="./stats.html">学習状況</a>`;

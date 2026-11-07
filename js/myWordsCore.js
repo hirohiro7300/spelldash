@@ -174,25 +174,34 @@ export function parseWordLine(line) {
 
 // まとめて足すの 1 行（Batch 82）: { en, ja } か { error, line }（足さずに理由を言う）。場面カードは作らない（学ぶ回に出せない語を作らない）。
 // - 最初の区切り（カンマ・タブ・全角の読点）の前が英語として使える形なら英語の語。訳の中の「→」「、」「,」は字のまま
-//   （「up, 品質が下がった→ 同じ順位に…」は up の語。前の版は「→」のある行を場面カードにしていた）
+//   （「up, 品質が下がった→ 同じ席に高く払う。…」は up の語。前の版は「→」のある行を場面カードにしていた）
 // - そうでなく矢印（→ ⇒ => ->）があれば、最初の矢印の両側の片方が英語で、もう片方が空でなければ英語の語（「e-mail -> 電子メール」「電子メール → e-mail」）。
 //   どちらも英語でなければ断る（「english, 訳」の形を言う）
-// - 矢印も無い行は前のまま（parseWordLine。使えない字・訳なしは足すときの確かめが理由を言う）
+// - 片側が空の矢印（行の頭か終わり。「up ->」「→ 何か」）: 矢印を訳にも英語にもしない。残りが英語なら訳なしの語（足すときの確かめが「日本語訳を入力してください」）、
+//   そうでなければ英語なしで断る
+// - 矢印も無い行は前のまま（parseWordLine。使えない字・訳なしは足すときの確かめが理由を言う）。ただし英字の無い行（日本語だけ・数字や記号だけ）は英語なしで断る
 export const BULK_FORM_NOTE = "「english, 訳」の形で書く";
 const BULK_ARROW = /^(.+?)\s*(?:→|⇒|=>|->)\s*(.+)$/;
+const BULK_ARROW_EDGE = /^(?:→|⇒|=>|->)\s*|\s*(?:→|⇒|=>|->)$/g; // 行の頭と終わりの矢印（片側が空）
 export function parseBulkLine(line) {
   const text = String(line ?? "").trim();
   if (text.search(/[,、\t]/) > 0) {
     const w = parseWordLine(text);
     if (checkEnText(w.en).ok) return w;
   }
+  const noEn = { error: `英語が無い。${BULK_FORM_NOTE}`, line: text };
   const arrow = text.match(BULK_ARROW);
-  if (!arrow) return parseWordLine(text);
-  const left = arrow[1].trim();
-  const right = arrow[2].trim();
-  if (checkEnText(left).ok && right) return { en: left, ja: right };
-  if (checkEnText(right).ok && left) return { en: right, ja: left };
-  return { error: `英語が無い。${BULK_FORM_NOTE}`, line: text };
+  if (arrow) {
+    const left = arrow[1].trim();
+    const right = arrow[2].trim();
+    if (checkEnText(left).ok && right) return { en: left, ja: right };
+    if (checkEnText(right).ok && left) return { en: right, ja: left };
+    return noEn;
+  }
+  const rest = text.replace(BULK_ARROW_EDGE, "").trim();
+  if (rest !== text) return checkEnText(rest).ok ? { en: rest, ja: "" } : noEn;
+  const w = parseWordLine(text);
+  return /[a-z]/i.test(cleanEnText(w.en)) ? w : noEn;
 }
 
 // ===== 3 状態（マイ単語帳だけ。公開の語と同じ決まり: js/learnState.js applyLearnAnswer） =====

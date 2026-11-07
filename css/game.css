@@ -1679,3 +1679,10 @@ html[data-theme] :is(.choice__hint, .choice__none) {
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+
+/* 指の端末には数字のキーと Enter の案内を出さない（押す物は選択肢と「次へ」。画面キーボードも出ない） */
+@media (pointer: coarse) {
+  html[data-theme] .choice__hint {
+    display: none;
+  }
+}

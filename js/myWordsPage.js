@@ -351,14 +351,17 @@ $("myWordsAdd")?.addEventListener("submit", (event) => {
   en.focus();
 });
 
+// まとめて足す: 足した後の欄には足せなかった行だけを残す（もう一度押しても、足した行をまた断らない。全部足せたら空）。
+// 1 行も足せなかったときは欄をそのまま（打った形で直せる）。断った理由は英語と訳の頭でどの行かを言う（js/myWords.js addMyWordsBulk）
 $("myWordsBulkAdd")?.addEventListener("click", () => {
   const box = $("myWordsBulk");
-  const { added, skipped } = addMyWordsBulk(box.value, current);
+  const { added, skipped, rest } = addMyWordsBulk(box.value, current);
+  const kept = added.length > 0 && skipped.length > 0;
   const lines = [];
   if (added.length > 0) lines.push(`${added.length}語を足した`);
-  if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}`);
+  if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行${kept ? "（欄に残した）" : ""}: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}`);
   if (lines.length === 0) lines.push("1行に「english, 訳」で書く");
-  if (added.length > 0 && skipped.length === 0) box.value = "";
+  if (added.length > 0) box.value = (rest ?? []).join("\n");
   setStatus(lines.join("。"), { error: added.length === 0 });
   render();
 });

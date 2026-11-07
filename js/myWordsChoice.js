@@ -189,10 +189,11 @@ export function createChoiceGuard() {
 // ===== 画面（js/game.js が選ぶ回の始めに呼ぶ） =====
 // deps: { dir, bookId, current() → 今のカード（回が動いていなければ null）, entryOf(card) → 保存の語, scope() → 範囲の語, all() → 全部の語,
 //         pick(card, typed) → 受けたか（全文入力の答えとして判定）, unknown(card) → 受けたか（答えを見る）, next(card) → 受けたか（打つ回の Enter と同じ） }
-// 返り値: { dir, lineFor(ctx, state) → [文, 種類], modeLine(), otherName(), urls() → { again, other, typed }, destroy() }
+// 返り値: { dir, lineFor(ctx, state) → [文, 種類], modeLine(), switchLabel()（もう一方の向きへ替える道の字。回の始めの切り替えと回の終わりで同じ）, urls() → { again, other, typed }, destroy() }
 export function mountChoice(deps) {
   let dir = deps.dir === CHOICE_JA ? CHOICE_JA : CHOICE_EN;
   const otherDir = () => (dir === CHOICE_JA ? CHOICE_EN : CHOICE_JA);
+  const switchLabel = () => `${CHOICE_DIRS[otherDir()]}に替える`;
   const guard = createChoiceGuard();
   let built = null;
   let word = null;
@@ -287,7 +288,7 @@ export function mountChoice(deps) {
     next.hidden = true;
     dirLine.hidden = picked > 0;
     dirName.textContent = `${CHOICE_DIRS[dir]}。`;
-    swap.textContent = `${CHOICE_DIRS[otherDir()]}に替える`;
+    swap.textContent = switchLabel();
     hint.textContent = built.ok ? `数字のキー（1〜${buttons.length}）でも選べる。答えた後は Enter で次へ。` : "";
     hint.hidden = !built.ok;
     box.hidden = false;
@@ -428,7 +429,7 @@ export function mountChoice(deps) {
       return [`答えは ${right}（${state}）`, "revealed"];
     },
     modeLine: () => `選択式・${CHOICE_DIRS[dir]}`,
-    otherName: () => CHOICE_DIRS[otherDir()],
+    switchLabel,
     urls: () => ({ again: choiceUrl(deps.bookId, dir), other: choiceUrl(deps.bookId, otherDir()), typed: typedUrl(deps.bookId) }),
     destroy() {
       alive = false;
