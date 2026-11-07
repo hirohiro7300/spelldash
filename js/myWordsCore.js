@@ -2,9 +2,12 @@
 // 仕様は docs/SPEC_MY_WORDS.md。保存（spelldash_my_words の読み書き・同期の印）は js/myWords.js、画面は js/myWordsPage.js、学ぶ回は js/game.js。
 //
 // 1 語の形（spelldash_my_words の配列の要素。前からの形はそのまま読める）:
-//   en     鍵。英語を小文字にした形（語の間の空白は 1 つ）。カードの id は my-<en>（前からの語の id は変わらない）
+//   en     鍵（語の名前）。英語を小文字にした形（語の間の空白は 1 つ）。カードの id は my-<en>（前からの語の id は変わらない）。
+//          同期の項目 my_word:<en>・墓標・選んだ印 word:<en>・答えの書き手（recordMyAnswer）・消す・訳を直すもこの鍵で語を引く。
+//          Batch 82: 同じ英語を訳を変えて何度も入れられる。その英語の最初の語は今までどおり英語の鍵、2 つ目からの語は
+//          <英語の鍵>~<訳の印 8 桁>（myIdentityFor。「~」は英語に使えない字なので英語の鍵と重ならない）。答えの英語は answerKeyOf（鍵の「~」より前）
 //   ja     日本語訳
-//   text   画面に出す形（大文字を含むときだけ。KPI・Due Diligence）。小文字にすると en と同じ
+//   text   画面に出す形（大文字を含むときだけ。KPI・Due Diligence）。小文字にすると答えの英語と同じ。2 つ目からの語はいつも持つ（打ったとおりの英語）
 //   addedAt 足した時刻
 //   ls・lsd・lsAt  マイ単語帳だけの 3 状態（これから・あやふや・覚えた）。js/learnState.js の語の記録と同じ欄の名前と同じ決まり（applyLearnAnswer）。
 //          語の記録（spelldash_word_stats）には書かない: 公開の語の 3 状態・6 つの数・ランク・最高到達ランクに入らない。
@@ -63,10 +66,72 @@ export function isWordEntry(w) {
   return !!w && typeof w.en === "string" && !!w.en && w.kind !== "concept" && !!w.ja;
 }
 
-// 画面に出す形（text が鍵と同じ綴りのときだけ。違えば鍵）
+// ===== 鍵（語の名前）と答えの英語（Batch 82。docs/SPEC_MY_WORDS.md §11） =====
+// 鍵 = 保存の en（前からの語は英語の鍵そのもの。同じ英語の 2 つ目からの語は <英語の鍵>~<訳の印>）。
+// 答え・画面・判定・カードの en に使う英語は、いつも answerKeyOf を通す（鍵をそのまま答えにしない）
+
+export const MY_KEY_SEP = "~"; // 英語に使えない字（checkEnText: 英字・数字・ハイフン・アポストロフィ・空白だけ）
+const KEY_HASH_LENGTHS = [8, 16, 24, 32];
+
+// 語の答えの英語（小文字の鍵）。前からの語は en そのもの（英語に「~」は入らない）
+export function answerKeyOf(w) {
+  const en = String(w?.en ?? "");
+  const i = en.indexOf(MY_KEY_SEP);
+  return i < 0 ? en : en.slice(0, i);
+}
+
+// 訳を比べる形: NFKC（全角の英数字・記号を半角に）・空白の並びは 1 つ・前後の空白を落とす。同じ組か（重なり）と訳の印はこの形で見る
+export function normJa(ja) {
+  return String(ja ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+// FNV-1a（32 ビット）を UTF-8 の並びで
+function fnv1a32(text) {
+  let h = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(text)) {
+    h ^= byte;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+// 訳の印（16 進。len 桁: 8・16・24・32）。頭の 8 桁は正規化した訳の FNV-1a、続きは「<番号>\0<訳>」の FNV-1a を後ろにつなぐ。
+// 正規化した訳だけで決まる（端末・並び・時刻に依らない）: 2 台で同じ組を足すと同じ鍵になり、同期で 1 語にまとまる
+export function jaHash(ja, len = 8) {
+  const norm = normJa(ja);
+  let out = "";
+  for (let i = 0; out.length < len; i++) out += fnv1a32(i === 0 ? norm : `${i}\u0000${norm}`).toString(16).padStart(8, "0");
+  return out.slice(0, len);
+}
+
+// 新しい語の鍵（足す前に呼ぶ。list = 今の語の並び〔場面カードも〕・key = 英語の鍵・ja = 訳）。
+// その英語の語がまだ無ければ（場面カードの鍵とも重ならなければ）英語の鍵のまま（前と同じ）。あれば <英語の鍵>~<訳の印 8 桁>。
+// 8 桁の鍵がもう使われていれば（別の訳と印が重なった・訳を直した語）16・24・32 桁に長くする。
+// 鍵は 183 字まで（英語 150 字 + ~ + 32 桁）: 同期の key の上限 200 字（docs/SQL_USER_ITEMS.md）にも、メモの鍵 my-<鍵> にも収まる
+export function myIdentityFor(list, key, ja) {
+  const taken = new Set((Array.isArray(list) ? list : []).filter(Boolean).map((w) => String(w.en ?? "")));
+  if (!taken.has(key)) return key;
+  for (const len of KEY_HASH_LENGTHS) {
+    const id = `${key}${MY_KEY_SEP}${jaHash(ja, len)}`;
+    if (!taken.has(id)) return id;
+  }
+  for (let n = 2; ; n++) {
+    const id = `${key}${MY_KEY_SEP}${jaHash(ja, 32)}-${n}`; // 32 桁まで重なることは無いが、止まらないように
+    if (!taken.has(id)) return id;
+  }
+}
+
+// 同じ英語（答えの鍵）と同じ訳（normJa）の語（英語の語だけ。場面カードは見ない）。exceptKey = 自分の鍵（訳を直すとき）。無ければ null
+export function findSamePair(list, key, ja, exceptKey = null) {
+  const norm = normJa(ja);
+  return (Array.isArray(list) ? list : []).find((w) => isWordEntry(w) && w.en !== exceptKey && answerKeyOf(w) === key && normJa(w.ja) === norm) ?? null;
+}
+
+// 画面に出す形（text が答えの英語と同じ綴りのときだけ。違えば答えの英語。鍵の印は見せない）
 export function displayOf(w) {
+  const key = answerKeyOf(w);
   const text = typeof w?.text === "string" ? w.text : "";
-  return text && text.toLowerCase() === w.en ? text : String(w?.en ?? "");
+  return text && text.toLowerCase() === key ? text : key;
 }
 
 // 1 字ずつ判定できる鍵か（英小文字だけで 40 字まで）。それ以外（長い語も）は全文入力
@@ -75,15 +140,18 @@ export function isSpellKey(key) {
   return k.length <= MY_SPELL_MAX && /^[a-z]+$/.test(k);
 }
 
-// 出題のカード（js/myWords.js toWordObjects の英語の語）。前からの語（英小文字とハイフン）の id・en・ja は前と同じ
+// 出題のカード（js/myWords.js toWordObjects の英語の語）。前からの語（英小文字とハイフン）の id・en・ja は前と同じ。
+// Batch 82: id は my-<鍵>（同じ英語の語もカードは別々）・en は答えの英語（判定・別解・発音・似た綴りはこの en を見る）・key は鍵（答えの書き手と一覧の印）
 export function wordCardOf(w) {
+  const key = answerKeyOf(w);
   const text = displayOf(w);
   return {
     id: `${MY_ID_PREFIX}${w.en}`,
-    en: w.en,
+    en: key,
     ja: w.ja,
-    ...(text !== w.en ? { answer: text } : {}),
-    ...(isSpellKey(w.en) ? {} : { free: true }),
+    key: w.en,
+    ...(text !== key ? { answer: text } : {}),
+    ...(isSpellKey(key) ? {} : { free: true }),
     level: "easy",
     tags: ["my"],
     subject: "english",
@@ -93,7 +161,7 @@ export function wordCardOf(w) {
 }
 
 // まとめて追加の 1 行。「english, 訳」「english<TAB>訳」（全角の読点も可）。区切りが無ければ、英語の部分と日本語の部分の境で分ける
-// （due diligence 適正評価）。それも無ければ最初の空白で分ける。場面カードの行（→）は呼ぶ側（js/myWords.js parseBulk）
+// （due diligence 適正評価）。それも無ければ最初の空白で分ける。矢印の行は parseBulkLine
 export function parseWordLine(line) {
   const unquote = (s) => s.trim().replace(/^"(.*)"$/, "$1");
   const sep = line.search(/[,、\t]/);
@@ -102,6 +170,38 @@ export function parseWordLine(line) {
   if (mixed) return { en: mixed[1].trim(), ja: mixed[2].trim() };
   const m = line.match(/^(\S+)\s+(.+)$/);
   return m ? { en: m[1], ja: m[2].trim() } : { en: line, ja: "" };
+}
+
+// まとめて足すの 1 行（Batch 82）: { en, ja } か { error, line }（足さずに理由を言う）。場面カードは作らない（学ぶ回に出せない語を作らない）。
+// - 最初の区切り（カンマ・タブ・全角の読点）の前が英語として使える形なら英語の語。訳の中の「→」「、」「,」は字のまま
+//   （「up, 品質が下がった→ 同じ席に高く払う。…」は up の語。前の版は「→」のある行を場面カードにしていた）
+// - そうでなく矢印（→ ⇒ => ->）があれば、最初の矢印の両側の片方が英語で、もう片方が空でなければ英語の語（「e-mail -> 電子メール」「電子メール → e-mail」）。
+//   どちらも英語でなければ断る（「english, 訳」の形を言う）
+// - 片側が空の矢印（行の頭か終わり。「up ->」「→ 何か」）: 矢印を訳にも英語にもしない。残りが英語なら訳なしの語（足すときの確かめが「日本語訳を入力してください」）、
+//   そうでなければ英語なしで断る
+// - 矢印も無い行は前のまま（parseWordLine。使えない字・訳なしは足すときの確かめが理由を言う）。ただし英字の無い行（日本語だけ・数字や記号だけ）は英語なしで断る
+export const BULK_FORM_NOTE = "「english, 訳」の形で書く";
+const BULK_ARROW = /^(.+?)\s*(?:→|⇒|=>|->)\s*(.+)$/;
+const BULK_ARROW_EDGE = /^(?:→|⇒|=>|->)\s*|\s*(?:→|⇒|=>|->)$/g; // 行の頭と終わりの矢印（片側が空）
+export function parseBulkLine(line) {
+  const text = String(line ?? "").trim();
+  if (text.search(/[,、\t]/) > 0) {
+    const w = parseWordLine(text);
+    if (checkEnText(w.en).ok) return w;
+  }
+  const noEn = { error: `英語が無い。${BULK_FORM_NOTE}`, line: text };
+  const arrow = text.match(BULK_ARROW);
+  if (arrow) {
+    const left = arrow[1].trim();
+    const right = arrow[2].trim();
+    if (checkEnText(left).ok && right) return { en: left, ja: right };
+    if (checkEnText(right).ok && left) return { en: right, ja: left };
+    return noEn;
+  }
+  const rest = text.replace(BULK_ARROW_EDGE, "").trim();
+  if (rest !== text) return checkEnText(rest).ok ? { en: rest, ja: "" } : noEn;
+  const w = parseWordLine(text);
+  return /[a-z]/i.test(cleanEnText(w.en)) ? w : noEn;
 }
 
 // ===== 3 状態（マイ単語帳だけ。公開の語と同じ決まり: js/learnState.js applyLearnAnswer） =====

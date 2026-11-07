@@ -911,7 +911,10 @@ const MY_WORDS_URL = "/mywords.html"; // マイ単語帳の画面（Batch 79）
 // マイ単語帳の学ぶ回の材料（Batch 79。スラング〔Batch 80〕は js/slang.js slangLearnSource が同じ形を返す）: 名前・戻り先・語の並び・カード・答えの書き手。
 // 単語帳ごと（Batch 81。/?learn=my&book=<id>）: その単語帳の語だけ。?book= が無い・知らない id は前のまま全部の単語帳（js/myWordsCore.js bookIdOf）
 const MY_BOOK_PARAM = "book";
-function myLearnSource(bookId) {
+// 選ぶ回（Batch 82。/?learn=my[&book=<id>]&choice=en|ja。js/myWordsChoice.js）: 語の並び・数・書き手・回の終わりは打つ回と同じ材料。
+// 違うのは、カードを全文入力の形（free）にする（打鍵を 1 字ずつ見ない: 選んだ答えは全文入力の答えとして判定の道を通る・画面キーボードは出ない）と、始めの 1 行だけ
+const MY_CHOICE_PARAM = "choice"; // js/myWordsChoice.js CHOICE_PARAM と同じ（入口かどうかは module を読む前に要る）
+function myLearnSource(bookId, { choice = false } = {}) {
   const book = bookId ? getMyBooks().find((b) => b.id === bookId) ?? null : null; // ほかの端末の単語帳（語の bookName で出る）も
   const words = () => {
     const list = getMyWords();
@@ -920,19 +923,23 @@ function myLearnSource(bookId) {
     return list.filter((w) => bookIdOf(w, books) === book.id);
   };
   const name = book ? escapeHtml(book.name) : ""; // 自分で付けた名前: 回の終わりのパネル（innerHTML）に入れるので文字のまま
+  const findCard = book ? (id) => (words().some((w) => w.kind !== "concept" && `my-${w.en}` === id) ? findWord(id) : null) : (id) => findWord(id);
   return Object.freeze({
     kind: "my",
     label: "マイ単語帳",
     countLabel: book ? name : "マイ単語帳",
     url: book ? `${MY_WORDS_URL}?${MY_BOOK_PARAM}=${encodeURIComponent(book.id)}` : MY_WORDS_URL,
+    bookId: book ? book.id : null,
     linkId: "learnMyWords",
     noStats: false, // 前のマイ単語帳と同じく、今の書き手が my-<鍵> で語の記録に回答の履歴を残す
     prepare: () => refreshMyWords(),
     list: words,
     idOf: undefined, // my-<鍵>（js/myWordsCore.js）
-    find: book ? (id) => (words().some((w) => w.kind !== "concept" && `my-${w.en}` === id) ? findWord(id) : null) : (id) => findWord(id),
-    entryOf: (word) => words().find((w) => w.kind !== "concept" && w.en === word?.en) ?? null,
-    record: (word, kind) => recordMyAnswer(word.en, kind),
+    find: choice ? (id) => { const card = findCard(id); return card ? { ...card, free: true } : null; } : findCard,
+    ...(choice ? { intro: "分からないときは「分からない」。間違えても、あやふやに移るだけ" } : {}),
+    // 語はカードの鍵（key = 保存の en）で引く。カードの en は答えの英語で、同じ英語の語（Batch 82: 訳が違えば何度も入る）では同じなので使わない
+    entryOf: (word) => words().find((w) => w.kind !== "concept" && w.en === (word?.key ?? word?.en)) ?? null,
+    record: (word, kind) => recordMyAnswer(word.key ?? word.en, kind),
     emptyTitle: book ? `「${name}」に語が無い` : "マイ単語帳に語が無い",
     emptyNote: "マイ単語帳で英語と日本語訳を入れる。",
     doneNote: book ? `「${name}」の語を、ひととおり学んだ。` : "マイ単語帳の語を、ひととおり学んだ。"
@@ -978,7 +985,14 @@ async function beginLearn(entry) {
     Q = await import("./learnQueue.js");
     if (!Q.parseLearnEntry(entry)) return; // 読めない入口の値: ふつうのホームのまま（材料は読まない）
     if (Q.parseLearnEntry(entry) === Q.LEARN_MY) {
-      beginMyLearn(Q, myLearnSource(new URLSearchParams(location.search).get(MY_BOOK_PARAM)));
+      const params = new URLSearchParams(location.search);
+      // 選ぶ回（Batch 82）: ?choice= があるときだけ js/myWordsChoice.js を読む（打つ回の入口・前からのリンクは前のまま。読めなければ「読み込めなかった」）
+      if (params.has(MY_CHOICE_PARAM)) {
+        const C = await import("./myWordsChoice.js");
+        beginMyChoice(Q, C, params.get(MY_BOOK_PARAM), C.choiceDirOf(params));
+        return;
+      }
+      beginMyLearn(Q, myLearnSource(params.get(MY_BOOK_PARAM)));
       return;
     }
     if (Q.parseLearnEntry(entry) === Q.LEARN_SLANG) {
@@ -1057,14 +1071,17 @@ function showLearnLoadError() {
 // 回の終わりは「続けて学ぶ」と「マイ単語帳へ」。中心の学習の列の決まり（learnQueue.js）のうち、区切り・語数だけをマイ単語帳の決まりに替えて使う。
 // スラングの回（/?learn=slang。Batch 80）も同じ機械: src（myLearnSource か js/slang.js slangLearnSource）が語の並び・カード・書き手・名前を渡す。
 // スラングは状態を spelldash_slang にだけ書き、語の記録（spelldash_word_stats・送る 15 列）には書かない（src.noStats: setNewWord が recordPlay を呼ばない）
-function beginMyLearn(Q, src) {
+// makeChoice（選ぶ回だけ。Batch 82）: 前の回を止めた後に選ぶ回の画面を作る（js/myWordsChoice.js mountChoice）。打つ回・スラングの回は渡さない
+function beginMyLearn(Q, src, makeChoice = null) {
   setMode("study", { save: false });
   stopGame();
   src.prepare?.();
+  const choice = makeChoice ? makeChoice() : null;
   learnRun = {
     mode: src.kind,
     my: true,
     src,
+    choice,
     Q: { ...Q, LEARN_SET_SIZE: Object.freeze({ [src.kind]: MY_SET_SIZE }), learnStep: (_mode, step) => myLearnStep(step) },
     epoch: recordsEpoch(),
     queue: buildMyQueue(src.list(), src.idOf),
@@ -1084,7 +1101,45 @@ function beginMyLearn(Q, src) {
     wordDone: false
   };
   startGame();
-  elements.input.focus({ preventScroll: true });
+  elements.input.focus({ preventScroll: true }); // 選ぶ回は入力欄を畳んでいる（css/game.css body.choice-run）ので焦点は移らない
+}
+
+// ===== マイ単語帳の選ぶ回（Batch 82。/?learn=my[&book=<id>]&choice=en|ja。js/myWordsChoice.js・docs/SPEC_MY_WORDS.md §12） =====
+// 語の並び・数・回の終わり・書き手は打つ回（beginMyLearn）と同じ。選んだ答えは打つ回の全文入力の答えと同じ道を通す（創業者の決定「打つ回と同じに数える」）:
+// 正解・違う答え → submitFreeAnswer（正解は finishFreeWord → completeWord: 自力正解の書き手・XP・連続日数・学んだ日・学習時間。違うは × を書いて答えを見せる）、
+// 分からない → revealAnswer（Enter で答えを見るのと同じ）、次へ → triggerEnter（答えた後の Enter と同じ: 正解の後の待ちを飛ばす・答えを見た後は次の語）。
+// どれも 1 問に 1 回（回の側の印 isRevealed・awaitingNext・wordDone と、画面の側の守り js/myWordsChoice.js createChoiceGuard）
+function beginMyChoice(Q, C, bookId, dir) {
+  const src = myLearnSource(bookId, { choice: true });
+  let ctl = null;
+  const mine = () => !!ctl && learnRun?.choice === ctl && isPlaying;
+  const ready = (word) => mine() && !!word && currentWord === word && !isRevealed && !awaitingNext && !learnRun.wordDone;
+  beginMyLearn(Q, src, () => {
+    ctl = C.mountChoice({
+      dir,
+      bookId: src.bookId,
+      current: () => (mine() ? currentWord : null),
+      entryOf: (word) => src.entryOf(word),
+      scope: () => src.list(),
+      all: () => getMyWords(),
+      pick: (word, typed) => {
+        if (!ready(word)) return false;
+        submitFreeAnswer(typed);
+        return true;
+      },
+      unknown: (word) => {
+        if (!ready(word)) return false;
+        revealAnswer();
+        return true;
+      },
+      next: (word) => {
+        if (!mine() || currentWord !== word || !(isRevealed || awaitingNext)) return false;
+        triggerEnter();
+        return true;
+      }
+    });
+    return ctl;
+  });
 }
 
 // マイ単語帳・スラングの語の今の状態（一覧に無ければ これから）
@@ -1106,14 +1161,24 @@ function noteMyAnswer(r, word, kind, ctx) {
     if (learnRun !== r) return;
     if (!ok) {
       r.saveFailed++;
-      if (currentWord === word) showLearnLine(ctx, null);
+      if (currentWord === word) showMyLine(r, ctx, null);
       return;
     }
     r.ids.push(id);
     if (currentWord !== word) return;
     const entry = r.src.entryOf(word);
-    showLearnLine(ctx, { before, after: myEntryState(word), counted: entry?.lsd === learnDayOf(Date.now()) });
+    showMyLine(r, ctx, { before, after: myEntryState(word), counted: entry?.lsd === learnDayOf(Date.now()) });
   });
+}
+
+// マイ単語帳の回の答えの 1 行。選ぶ回（Batch 82）は「正解。up」「違う。正しい答えは up」と状態の文（js/myWordsChoice.js lineFor。打ち直しの案内は出さない）
+function showMyLine(r, ctx, info) {
+  if (!r.choice) {
+    showLearnLine(ctx, info);
+    return;
+  }
+  const [text, type] = r.choice.lineFor(ctx, info ? learnStateLine(info) : null);
+  showResult(text, type);
 }
 
 // 語がいまこの回の対象か（順が来たときに見る: ほかのタブで答えた語・公開の版の無い語は飛ばす）
@@ -1308,7 +1373,10 @@ function endLearnSet(step) {
   else persistLearnPoint(step === "set" ? { setStart: r.ids.length, ackBreak: -1, setNo: r.setNo + 1 } : null);
   renderLearnPanel(step, { summary, counts });
   if (final && answeredAny) window.dispatchEvent(new CustomEvent("spelldash:session-end", { detail: { recalled: summary?.learned ?? 0, failed: summary?.unsure ?? 0, learn: r.mode } }));
-  if (replaced) learnRun = null;
+  if (replaced) {
+    r.choice?.destroy(); // 選ぶ回（Batch 82）の箱と受け手も外す（パネルはそのまま）
+    learnRun = null;
+  }
   if (rankUp) {
     announce(`ランクアップ: ${rankUp.from} から ${rankUp.to}`);
     showLearnRankUp(rankUp);
@@ -1363,18 +1431,24 @@ function renderLearnPanel(step, { summary, counts }) {
       ? `<p class="learn-panel__line">${r.src.countLabel} 覚えた ${myCounts.learned.toLocaleString("ja-JP")} / ${myCounts.total.toLocaleString("ja-JP")}</p>`
       : "";
   const failed = r.saveFailed > 0 ? `<p class="learn-panel__line">保存できませんでした（${r.saveFailed}語）</p>` : "";
+  // 選ぶ回（Batch 82）: 回と向きの名前の 1 行・「もう一度」（終わりのとき。選ぶ回と向きのまま新しい回）・向きを替える道（js/myWordsChoice.js の URL）
+  const choice = r.my && step !== "replaced" ? r.choice ?? null : null;
+  const choiceLine = choice ? `<p class="learn-panel__line" id="choiceMode">${choice.modeLine()}</p>` : "";
+  const again = choice && step === "done" && (r.ids.length > 0 || r.saveFailed > 0) ? `<a class="result-panel__action" href="${choice.urls().again}" id="choiceAgain">もう一度</a>` : "";
+  const otherDir = choice ? `<a class="result-panel__action result-panel__action--ghost" href="${choice.urls().other}" id="choiceOther">${choice.switchLabel()}</a>` : ""; // 字は回の始めの切り替えと同じ（「英語を見て訳を選ぶに替える」）
   const status = r.my
-    ? `<a class="result-panel__action${step === "done" || step === "replaced" ? "" : " result-panel__action--ghost"}" href="${r.src.url}" id="${r.src.linkId}">${r.src.label}へ</a>`
+    ? `<a class="result-panel__action${(step === "done" || step === "replaced") && !again ? "" : " result-panel__action--ghost"}" href="${r.src.url}" id="${r.src.linkId}">${r.src.label}へ</a>`
     : `<a class="result-panel__action${step === "done" || step === "replaced" ? "" : " result-panel__action--ghost"}" href="./stats.html">学習状況</a>`;
   const actions =
     step === "break"
       ? `<button type="button" class="result-panel__action" id="learnContinue">続ける</button><button type="button" class="result-panel__action result-panel__action--ghost" id="learnStop">ここで終える</button>`
       : step === "set" || step === "stop"
-        ? `${step === "set" || learnMore() ? `<button type="button" class="result-panel__action" id="learnNext">${LEARN_NEXT[r.mode]}</button>` : ""}${status}`
-        : status;
+        ? `${step === "set" || learnMore() ? `<button type="button" class="result-panel__action" id="learnNext">${LEARN_NEXT[r.mode]}</button>` : ""}${status}${otherDir}`
+        : `${again}${status}${otherDir}`;
   panel.innerHTML = `
     <h2 class="learn-panel__title" id="resultTitle" tabindex="-1">${title}</h2>
     ${note ? `<p class="learn-panel__note">${note}</p>` : ""}
+    ${choiceLine}
     ${grid}
     ${dayOne}
     ${total}
@@ -1410,6 +1484,7 @@ function learnMore() {
 
 // 中心の学習の回をやめる（机に戻る・ほかの遊び方へ）。答えた分は残し、同じ日のうちなら続きから。開き直しで回に戻らないよう、URL の ?learn= は外す
 function leaveLearn() {
+  learnRun?.choice?.destroy(); // 選ぶ回（Batch 82）の箱と受け手を外す
   learnRun = null;
   setLearnScreen(false);
   if (LEARN_PARAM === null) return;
@@ -1419,6 +1494,7 @@ function leaveLearn() {
     url.searchParams.delete("learn");
     url.searchParams.delete("group"); // スラングの回の絞り込み（Batch 80。js/slang.js GROUP_PARAM）
     url.searchParams.delete(MY_BOOK_PARAM); // マイ単語帳の単語帳（Batch 81）
+    url.searchParams.delete(MY_CHOICE_PARAM); // マイ単語帳の選ぶ回の向き（Batch 82）
     history.replaceState(history.state, "", `${url.pathname}${url.search}${url.hash}`);
   } catch {
     // 無視
@@ -1593,7 +1669,7 @@ export function startGame(options = {}) {
   document.body.classList.toggle("placement", mode === "study" && !learn && isPlacementRun());
 
   // 中心の学習: 始めに 1 行（分からないときは答えを見る・間違えても あやふや に移るだけ。依頼 §6）
-  if (learn && isPlaying && currentWord) showMessage(LEARN_INTRO[learnRun.mode], "revealed");
+  if (learn && isPlaying && currentWord) showMessage(learnRun.src?.intro ?? LEARN_INTRO[learnRun.mode], "revealed"); // 選ぶ回（Batch 82）は材料の 1 行
 
   // セットの中身を先に伝える（何をやるか分かってから始める）
   if (mode === "study" && !learn) {
@@ -2661,9 +2737,11 @@ function findConfusables(word) {
   const family = new Set(Array.isArray(word.family) ? word.family : []);
   const seen = new Set([word.id]);
   const maxDistance = word.en.length >= 7 ? 2 : 1;
+  const my = word.category === "my";
   const out = [];
-  for (const w of getWordsByCategory(word.category === "my" ? "my" : "all")) {
-    if (seen.has(w.id) || family.has(w.id) || isConceptWord(w) || !/^[a-z-]+$/.test(w.en)) continue;
+  for (const w of getWordsByCategory(my ? "my" : "all")) {
+    // マイ単語帳は同じ英語を訳を変えて何度も持てる（Batch 82）: 同じ綴りの語は「似た綴り」に出さない
+    if (seen.has(w.id) || family.has(w.id) || isConceptWord(w) || !/^[a-z-]+$/.test(w.en) || (my && w.en === word.en)) continue;
     seen.add(w.id);
     if (levenshtein(word.en, w.en) <= maxDistance) out.push(w);
     if (out.length >= 3) break;

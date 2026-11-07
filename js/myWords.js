@@ -7,7 +7,9 @@
 // 複数の単語帳（Batch 81）: 一覧は spelldash_my_books（[{ id, name }]。人ごとの領域の鍵・バックアップに入る・同期はしない＝端末の中だけ）。
 // 語は入っている単語帳の id を book に、その名前を bookName に持つ（どちらも同期の my_word の payload に乗る）。book の無い前からの語は最初の単語帳「マイ単語帳」の語（書き直さない）。
 // 一覧に無い単語帳（ほかの端末で作った単語帳）は語の bookName で出す（js/myWordsCore.js withWordBooks）: ほかの端末の単語帳の語を、この端末の最初の単語帳の語として消さない。
-// 英語は全部の単語帳で 1 つ（カードの id my-<鍵> と 3 状態はそのまま）。まとめて消す・移すは語の保存を 1 回で書く
+// 同じ英語と同じ訳の組は全部の単語帳で 1 つ。Batch 82: 訳が違えば同じ英語を何度も入れられる（語の鍵 en は js/myWordsCore.js myIdentityFor:
+// その英語の最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>。前からの語の鍵は変えない）。語は鍵で引く（同期の印・墓標・選んだ印・答えの書き手・消す・訳を直す）。
+// まとめて消す・移すは語の保存を 1 回で書く
 
 import { touchItem, touchItems } from "./userItemsSync.js";
 import { isSpellAlt } from "./answers.js";
@@ -15,8 +17,9 @@ import { isPro } from "./plan.js";
 import { canOfferPro } from "./proFunnel.js";
 import { isAnswerKind } from "./learnState.js";
 import {
-  checkEnText, checkJaText, wordCardOf, parseWordLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT,
-  parseBooks, bookIdOf, entriesOfBook, checkBookName, newBookId, entryRefOf, withWordBooks, MY_BOOKS_MAX
+  checkEnText, checkJaText, wordCardOf, parseBulkLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT,
+  parseBooks, bookIdOf, entriesOfBook, checkBookName, newBookId, entryRefOf, withWordBooks, MY_BOOKS_MAX,
+  myIdentityFor, findSamePair, answerKeyOf, displayOf
 } from "./myWordsCore.js";
 
 const KEY = "spelldash_my_words";
@@ -127,26 +130,32 @@ export function normalizeEn(raw) {
   return String(raw ?? "").trim().toLowerCase();
 }
 
+// 同じ組の語がある（どの単語帳にあるかを言う。Batch 81 の文に「同じ訳で」を足した）。samePairNote は英語を前に付けない形（まとめて足すは行の名前を前に付ける）
+function samePairNote(same, books) {
+  const name = books.find((b) => b.id === bookIdOf(same, books))?.name ?? "マイ単語帳";
+  return `同じ訳で「${name}」にすでに登録されています`;
+}
+const samePairError = (text, same, books) => `「${text}」は${samePairNote(same, books)}`;
+
 // 英語と訳の 1 語を確かめる（js/myWordsCore.js checkEnText・checkJaText）。返り値 { ok, en（鍵）, ja, text（画面の形） } か { ok: false, error }
-// 英語は全部の単語帳で 1 つ: ほかの単語帳にあれば、どの単語帳にあるかを言う（Batch 81）
+// Batch 82: 断るのは同じ英語（大文字小文字は見ない）と同じ訳（js/myWordsCore.js normJa で比べる）の組が全部の単語帳のどこかにあるときだけ。
+// 訳が違えば同じ英語も足せる。鍵は js/myWordsCore.js myIdentityFor（最初の語は英語の鍵、2 つ目からは <英語の鍵>~<訳の印>）。
+// 同じ組で断るときは lineError（英語を前に付けない文。まとめて足すが「英語（訳の頭）: 」の後に続ける）も返す
 export function validateEntry(en, ja, existing = getMyWords(), books = getMyBooks(existing)) {
   const e = checkEnText(en);
   if (!e.ok) return e;
   const j = checkJaText(ja);
   if (!j.ok) return j;
-  const same = existing.find((w) => w.en === e.key);
-  if (same) {
-    const name = books.find((b) => b.id === bookIdOf(same, books))?.name ?? "マイ単語帳";
-    return { ok: false, error: `「${e.text}」は「${name}」にすでに登録されています` };
-  }
+  const same = findSamePair(existing, e.key, j.ja);
+  if (same) return { ok: false, error: samePairError(e.text, same, books), lineError: samePairNote(same, books) };
   if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
-  return { ok: true, en: e.key, ja: j.ja, text: e.text };
+  return { ok: true, en: myIdentityFor(existing, e.key, j.ja), ja: j.ja, text: e.text };
 }
 
 // 語の単語帳の欄（id と名前。名前は一覧を同期しないほかの端末でその単語帳を出すため）
 const bookFields = (book) => ({ book: book.id, bookName: book.name });
 
-// 保存する 1 語（画面の形 text は鍵と違うときだけ。book・bookName は入れる単語帳）
+// 保存する 1 語（画面の形 text は鍵と違うときだけ: 前からの形と同じ。2 つ目からの語は鍵に印が付くのでいつも text を持つ。book・bookName は入れる単語帳）
 const entryOf = (v, book) => ({ en: v.en, ja: v.ja, ...(v.text !== v.en ? { text: v.text } : {}), ...bookFields(book), addedAt: new Date().toISOString() });
 
 // 足す先の単語帳（知らない id・省略は最初の単語帳）
@@ -192,55 +201,58 @@ export function removeMyWord(en, kind) {
   touchItem("my_word", en, true); // 墓標: 他の端末からも消える
 }
 
-// まとめて追加:
-//   英単語:   1行に「英単語, 日本語」（カンマ・タブ・全角読点・スペース区切り）
-//   場面カード: 1行に「場面 → 答え | 解説 | 別解1/別解2」（→ ⇒ => のいずれか。解説・別解は任意）
+// まとめて追加: 1 行に「english, 訳」（カンマ・タブ・全角読点。区切りが無ければ英語と日本語の境、それも無ければ最初の空白）。
+// Batch 82: 訳の中の「→」は字のまま。区切りの無い矢印の行（→ ⇒ => ->）は英語の側と訳の側に分け、英語の無い行は断る。
+// 場面カードは作らない（学ぶ回に出せない語を作らない。前からの場面カードはそのまま読める・消せる）。決まりは js/myWordsCore.js parseBulkLine
 export function parseBulk(text) {
   return String(text ?? "")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !/^(english|英単語|answer|q|場面)\s*[,\t]/i.test(line)) // CSVの見出し行は飛ばす
-    .map((line) => {
-      const arrow = line.match(/^(.+?)\s*(?:→|⇒|=>|->)\s*(.+)$/);
-      if (arrow) {
-        const [answer, explain = "", accept = ""] = arrow[2].split("|").map((s) => s.trim());
-        return { kind: "concept", q: arrow[1].trim(), answer, explain, accept };
-      }
-      // 区切りはカンマ・タブ・全角読点を優先。無ければ英語と日本語の境、それも無ければ最初の空白で分ける（js/myWordsCore.js parseWordLine）
-      return parseWordLine(line);
-    });
+    .map((line) => ({ line, ...parseBulkLine(line) })); // line: 貼った行（前後の空白を落とした形。足せなかった行を欄に残す）
 }
 
+// 足せなかった行の頭（英語の無い行は行の初めを見せる）・訳の頭
+const lineHead = (line) => {
+  const t = String(line ?? "");
+  return t.length > 24 ? `${t.slice(0, 24)}…` : t;
+};
+
+// 足せなかった行の名前: 英語と訳の頭（同じ英語の行が並ぶ貼り付け〔up・down の場面の行〕でも、どの行かが分かる）。訳の無い行は英語だけ
+const lineName = (entry) => `${entry.en || "(空)"}${entry.ja ? `（${lineHead(entry.ja)}）` : ""}`;
+
+// 同じ組（同じ英語と同じ訳）は 1 回の貼り付けの中でも 2 つ目を飛ばす（足した語は list に入れて確かめる）。語の保存と同期の印は最後に 1 回ずつ。
+// 返り値 { added（足した語の画面の形）, skipped（足せなかった行の理由）, rest（足せなかった行。貼った形のまま。画面は足した後の欄にこれだけを残す） }
 export function addMyWordsBulk(text, bookId) {
   const list = getMyWords();
   const books = getMyBooks(list);
   const book = targetBook(bookId, books);
   const added = [];
+  const keys = [];
   const skipped = [];
+  const rest = [];
   for (const entry of parseBulk(text)) {
-    if (entry.kind === "concept") {
-      const v = validateConcept(entry, list);
-      if (!v.ok) {
-        skipped.push(`${entry.answer || "(空)"}: ${v.error}`);
-        continue;
-      }
-      list.push({ ...v.entry, ...bookFields(book), addedAt: new Date().toISOString() });
-      added.push(v.entry.answer);
-      touchItem("my_word", v.entry.en);
+    if (entry.error) {
+      skipped.push(`${lineHead(entry.line)}: ${entry.error}`);
+      rest.push(entry.line);
       continue;
     }
     const v = validateEntry(entry.en, entry.ja, list, books);
     if (!v.ok) {
-      skipped.push(`${entry.en || "(空)"}: ${v.error}`);
+      skipped.push(`${lineName(entry)}: ${v.lineError ?? v.error}`);
+      rest.push(entry.line);
       continue;
     }
     list.push(entryOf(v, book));
     added.push(v.text);
-    touchItem("my_word", v.en);
+    keys.push(v.en);
   }
-  if (added.length > 0) save(list);
-  return { added, skipped };
+  if (added.length > 0) {
+    save(list);
+    touchItems("my_word", keys); // 語を書いた後に（中身は touchItem を鍵の数だけ呼んだのと同じ）
+  }
+  return { added, skipped, rest };
 }
 
 // ===== 複数の単語帳（Batch 81。決まりは js/myWordsCore.js） =====
@@ -393,13 +405,16 @@ export function deleteMyBook(id) {
   return { ok: true, removed: hit.length };
 }
 
-// 訳を直す（英語の語だけ。英語・3 状態・足した時刻・単語帳はそのまま。英語を変えるのは消して足し直す）
+// 訳を直す（英語の語だけ。en = 語の鍵。英語・鍵・3 状態・足した時刻・単語帳はそのまま。英語を変えるのは消して足し直す）。
+// Batch 82: 直した訳が同じ英語のほかの語の訳と同じ組になるときは断る（どの単語帳にあるかを言う）
 export function setMyWordJa(en, ja) {
   const j = checkJaText(ja);
   if (!j.ok) return j;
   const list = getMyWords();
   const i = list.findIndex((w) => w.kind !== "concept" && w.en === en);
   if (i < 0) return { ok: false, error: "語が見つかりません" };
+  const same = findSamePair(list, answerKeyOf(list[i]), j.ja, en);
+  if (same) return { ok: false, error: samePairError(displayOf(list[i]), same, getMyBooks(list)) };
   list[i] = { ...list[i], ja: j.ja };
   try {
     save(list);

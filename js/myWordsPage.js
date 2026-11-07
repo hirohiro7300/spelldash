@@ -1,6 +1,7 @@
 // ===== マイ単語帳の画面（mywords.html。Batch 79・81。docs/SPEC_MY_WORDS.md） =====
 // 単語帳の切り替え（Batch 81。作る・名前を変える・消す）・1 語ずつ足す・まとめて足す（どちらも今の単語帳へ）・一覧（今の単語帳の語。状態 これから・あやふや・覚えた）・
-// 消す（確かめてから）・訳をその場で直す・選んでまとめて消す／移す・「学ぶ」（/?learn=my&book=<id>。js/game.js の学ぶ回。全部の単語帳は /?learn=my）。
+// 消す（確かめてから）・訳をその場で直す・選んでまとめて消す／移す・「学ぶ」（/?learn=my&book=<id>。js/game.js の学ぶ回。全部の単語帳は /?learn=my）・
+// 「選択式で学ぶ」（Batch 82。/?learn=my[&book=<id>]&choice=en。js/myWordsChoice.js）。
 // 数はマイ単語帳の中だけ（学習状況の公開の語の数とランクには入らない）。保存と同期の印は js/myWords.js、決まりは js/myWordsCore.js
 
 import { initializeAuth } from "./auth.js";
@@ -11,7 +12,7 @@ import {
   getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage,
   getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa
 } from "./myWords.js";
-import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, MY_BOOK_NAME_MAX } from "./myWordsCore.js";
+import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, MY_BOOK_NAME_MAX } from "./myWordsCore.js";
 import { LEARN_LABELS } from "./learnState.js";
 
 const STATE_KEY = ["new", "unsure", "learned"];
@@ -55,6 +56,28 @@ function button(cls, text, label) {
 }
 
 const shownOf = (w) => (isWordEntry(w) ? displayOf(w) : String(w.answer ?? w.en));
+
+// 同じ英語の語が 2 つ以上ある英語（Batch 82。訳が違えば同じ英語を何度も入れられる）: 行の読み上げの名前と消す前の確かめる窓に訳の頭を添えて、
+// どの語かを分ける（画面の英語の字は同じまま。1 つだけの英語は前と同じ名前）
+const JA_HEAD = 20;
+let sharedEnglish = new Set();
+function sharedEnglishOf(list) {
+  const seen = new Set();
+  const shared = new Set();
+  for (const w of list) {
+    if (!isWordEntry(w)) continue;
+    const key = answerKeyOf(w);
+    (seen.has(key) ? shared : seen).add(key);
+  }
+  return shared;
+}
+function labelOf(w) {
+  const shown = shownOf(w);
+  if (!isWordEntry(w) || !sharedEnglish.has(answerKeyOf(w))) return shown;
+  const ja = String(w.ja);
+  return `${shown}（${ja.length > JA_HEAD ? `${ja.slice(0, JA_HEAD)}…` : ja}）`;
+}
+
 const bookName = (books, id) => books.find((b) => b.id === id)?.name ?? "";
 const rowByRef = (ref) => [...document.querySelectorAll("#myWordsList .mw-row")].find((li) => li.dataset.ref === ref) ?? null;
 const pressedTab = () => document.querySelector('#myBookTabs .mw-book[aria-pressed="true"]');
@@ -124,6 +147,7 @@ function rowOf(w) {
   const ref = entryRefOf(w);
   const word = isWordEntry(w);
   const shown = shownOf(w);
+  const label = labelOf(w);
   const li = el("li", "mw-row");
   li.dataset.ref = ref;
   if (selecting) {
@@ -132,7 +156,7 @@ function rowOf(w) {
     box.type = "checkbox";
     box.dataset.ref = ref;
     box.checked = selected.has(ref);
-    box.setAttribute("aria-label", `${shown} を選ぶ`);
+    box.setAttribute("aria-label", `${label} を選ぶ`);
     pick.append(box);
     li.append(pick);
   }
@@ -146,7 +170,7 @@ function rowOf(w) {
     input.maxLength = 200;
     input.value = w.ja;
     input.autocomplete = "off";
-    input.setAttribute("aria-label", `${shown} の訳`);
+    input.setAttribute("aria-label", `${label} の訳`);
     const save = el("button", "mw-row__save", "保存");
     save.type = "submit";
     form.append(input, save, button("mw-row__cancel", "やめる"));
@@ -158,11 +182,11 @@ function rowOf(w) {
   li.append(el("span", `mw-row__state mw-row__state--${state}`, word ? LEARN_LABELS[myStateOf(w)] : "場面カード"));
   if (!selecting && editing !== ref) {
     const acts = el("span", "mw-row__acts");
-    if (word) acts.append(button("mw-row__edit", "直す", `${shown} の訳を直す`));
-    const del = button("mw-row__del", "消す", `${shown} を消す`);
-    del.dataset.key = w.en;
+    if (word) acts.append(button("mw-row__edit", "直す", `${label} の訳を直す`));
+    const del = button("mw-row__del", "消す", `${label} を消す`);
+    del.dataset.key = w.en; // 語の鍵（同じ英語の語は鍵が別々: Batch 82）
     del.dataset.kind = w.kind === "concept" ? "concept" : "word";
-    del.dataset.label = shown;
+    del.dataset.label = label;
     acts.append(del);
     li.append(acts);
   }
@@ -181,6 +205,7 @@ function render() {
   if (entries.length === 0) selecting = false;
   if (editing && !entries.some((w) => entryRefOf(w) === editing)) editing = null;
   const name = bookName(books, current);
+  sharedEnglish = sharedEnglishOf(list);
 
   renderBooks(books, counts);
   const sum = $("myWordsSum");
@@ -195,6 +220,13 @@ function render() {
     learn.hidden = mine.total === 0;
     learn.href = `/?learn=my&${BOOK_PARAM}=${encodeURIComponent(current)}`;
     learn.setAttribute("aria-label", `「${name}」を学ぶ`);
+  }
+  // 選択式で学ぶ（Batch 82。訳を見て英語を選ぶが既定。向きは回の始めと終わりで替えられる: js/myWordsChoice.js）
+  const choice = $("myWordsChoice");
+  if (choice) {
+    choice.hidden = mine.total === 0;
+    choice.href = `/?learn=my&${BOOK_PARAM}=${encodeURIComponent(current)}&choice=en`;
+    choice.setAttribute("aria-label", `「${name}」を選択式で学ぶ`);
   }
   const allTotal = countMyStates(list).total;
   const all = $("myWordsAll");
@@ -319,14 +351,17 @@ $("myWordsAdd")?.addEventListener("submit", (event) => {
   en.focus();
 });
 
+// まとめて足す: 足した後の欄には足せなかった行だけを残す（もう一度押しても、足した行をまた断らない。全部足せたら空）。
+// 1 行も足せなかったときは欄をそのまま（打った形で直せる）。断った理由は英語と訳の頭でどの行かを言う（js/myWords.js addMyWordsBulk）
 $("myWordsBulkAdd")?.addEventListener("click", () => {
   const box = $("myWordsBulk");
-  const { added, skipped } = addMyWordsBulk(box.value, current);
+  const { added, skipped, rest } = addMyWordsBulk(box.value, current);
+  const kept = added.length > 0 && skipped.length > 0;
   const lines = [];
   if (added.length > 0) lines.push(`${added.length}語を足した`);
-  if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}`);
+  if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行${kept ? "（欄に残した）" : ""}: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}`);
   if (lines.length === 0) lines.push("1行に「english, 訳」で書く");
-  if (added.length > 0 && skipped.length === 0) box.value = "";
+  if (added.length > 0) box.value = (rest ?? []).join("\n");
   setStatus(lines.join("。"), { error: added.length === 0 });
   render();
 });

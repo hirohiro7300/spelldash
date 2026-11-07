@@ -53,7 +53,8 @@ eq("行: 区切りなし（英語 1 語）", C.parseWordLine("invoice 請求書"
 eq("行: 引用符を外す", C.parseWordLine('"e-mail","電子メール"'), { en: "e-mail", ja: "電子メール" });
 
 // ===== 出題のカード =====
-eq("前からの語（英小文字）: id・en・ja は前と同じ・1 字ずつ判定", C.wordCardOf({ en: "invoice", ja: "請求書" }), { id: "my-invoice", en: "invoice", ja: "請求書", level: "easy", tags: ["my"], subject: "english", category: "my", addedAt: null });
+// Batch 82: カードに鍵（key = 保存の en）を足した。前からの語の id・en（答えの英語）・ja は前と同じ
+eq("前からの語（英小文字）: id・en・ja は前と同じ・1 字ずつ判定・key は保存の鍵", C.wordCardOf({ en: "invoice", ja: "請求書" }), { id: "my-invoice", en: "invoice", ja: "請求書", key: "invoice", level: "easy", tags: ["my"], subject: "english", category: "my", addedAt: null });
 const kpi = C.wordCardOf({ en: "kpi", text: "KPI", ja: "重要業績評価指標" });
 ok("大文字の語: 鍵は小文字・画面は KPI（answer）・1 字ずつ判定", kpi.id === "my-kpi" && kpi.en === "kpi" && kpi.answer === "KPI" && !kpi.free && answerModeOf(kpi).mode === "spell", JSON.stringify(kpi));
 const dd = C.wordCardOf({ en: "due diligence", ja: "適正評価" });
@@ -180,13 +181,13 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   ok("同じ名前の単語帳は作らない", !M.createMyBook("仕事").ok && books().length === 2);
   ok("名前を変える（前からの語は変えない）", M.renameMyBook(W, "仕事の英語").ok && books()?.[1]?.name === "仕事の英語" && store.get("spelldash_my_words") === OLD && !M.renameMyBook("nope", "x").ok);
   M.renameMyBook(W, "仕事");
-  // 足す: 今の単語帳の id を語に付ける。英語は全部の単語帳で 1 つ（ほかの単語帳にあれば、どの単語帳かを言う）
+  // 足す: 今の単語帳の id を語に付ける。同じ英語と同じ訳は全部の単語帳で 1 つ（ほかの単語帳にあれば、どの単語帳かを言う。Batch 82: 訳が違えば足せる。下の Batch 82 の節）
   const a1 = M.addMyWord("due diligence", "適正評価", W);
-  const dup = M.addMyWord("KPI", "別の訳", W);
+  const dup = M.addMyWord("KPI", "重要業績評価指標", W);
   ok("仕事に足す: 語に book（仕事の id）・ほかの欄は前と同じ形", a1.ok && words().at(-1).book === W && words().at(-1).en === "due diligence");
-  ok("同じ英語はほかの単語帳にあれば足さない（「マイ単語帳」にあると言う）", !dup.ok && /「マイ単語帳」/.test(dup.error) && /すでに/.test(dup.error), JSON.stringify(dup));
-  const dup2 = M.addMyWord("Due Diligence", "x");
-  ok("最初の単語帳に足すときも、仕事にある語は「仕事」にあると言う", !dup2.ok && /「仕事」/.test(dup2.error), JSON.stringify(dup2));
+  ok("同じ英語と同じ訳はほかの単語帳にあれば足さない（「マイ単語帳」にあると言う）", !dup.ok && /「マイ単語帳」/.test(dup.error) && /すでに/.test(dup.error), JSON.stringify(dup));
+  const dup2 = M.addMyWord("Due Diligence", "適正評価");
+  ok("最初の単語帳に足すときも、仕事にある語（同じ英語と同じ訳）は「仕事」にあると言う", !dup2.ok && /「仕事」/.test(dup2.error), JSON.stringify(dup2));
   const bulk = M.addMyWordsBulk(`follow up, 追って連絡する\ninvoice, 請求書\n${"a ".repeat(74)}bc, ${"長".repeat(150)}`, W);
   ok("まとめて足す: 今の単語帳へ・150 字の英語と 150 字の訳も入る・ほかの単語帳にある語は飛ばす", bulk.added.length === 2 && bulk.skipped.length === 1 && /「マイ単語帳」/.test(bulk.skipped[0]) && words().filter((w) => w.book === W).length === 3 && words().some((w) => w.en.length === 150 && w.ja.length === 150), JSON.stringify(bulk));
   ok("1 語ずつも 151 字は足さない", !M.addMyWord("a".repeat(151), "x", W).ok && !M.addMyWord("abc", "あ".repeat(151), W).ok);
@@ -273,6 +274,500 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   eq("main が一覧に無い: book の無い語のために「マイ単語帳」を足す", wb([{ id: "y1", name: "旅行" }], [{ en: "a", ja: "x" }]), [{ id: "y1", name: "旅行" }, { id: "main", name: "マイ単語帳" }]);
   eq("語が無ければ一覧のまま", wb(local, []), local);
   eq("名前は 20 字まで・空白は 1 つに", wb(local, [{ en: "a", ja: "x", book: "bl", bookName: `  ${"長".repeat(25)}  ` }])?.[2]?.name, "長".repeat(20));
+}
+
+// ===== Batch 82: 同じ英語を何度も（訳が違えば足せる）・鍵と答えの英語・まとめて足すの矢印（docs/SPEC_MY_WORDS.md §11） =====
+// 鍵（保存の en）は語の名前（同期の my_word:<鍵>・墓標・選んだ印 word:<鍵>・カードの id my-<鍵>・答えの書き手）。前からの語は 1 字も変えない。
+// 同じ英語の 2 つ目からの語の鍵は <英語の鍵>~<訳の印 8 桁>（「~」は英語に使えない字）。答えの英語は answerKeyOf（鍵の「~」より前）
+{
+  const fn = (name) => (typeof C[name] === "function" ? C[name] : () => undefined); // 土台（8c38c7a）には無い: 投げずに落ちた数を数える
+  const answerKeyOf = fn("answerKeyOf");
+  const normJa = fn("normJa");
+  const jaHash = fn("jaHash");
+  const identityFor = fn("myIdentityFor");
+  const parseLine = fn("parseBulkLine");
+  const RAIN = "雨の日が続いた。傘の売れ行きは上がる？下がる？";
+  // 見本と同じ形（英語は up と down・訳は場面の問い・1 行は訳に「→」）の、ほかの名前を含まない行
+  const FIX = [
+    `up, ${RAIN}`,
+    "up, 品質が下がった→ 同じ席に高く払う。費用は上がる？下がる？",
+    "up, 人気の歌手が来る。入場の料金は上がる？下がる？",
+    "down, 晴れの日が続いた。傘の売れ行きは上がる？下がる？",
+    "down, 材料の値が下がった。作る費用は上がる？下がる？",
+    "down, 近くに安い店ができた。客の数は上がる？下がる？"
+  ];
+  const jaOf = (line) => line.slice(line.indexOf(",") + 1).trim();
+
+  // ---- 純な決まり ----
+  eq("答えの英語: 前からの語は鍵そのもの・2 つ目からの語は「~」より前", [answerKeyOf({ en: "up" }), answerKeyOf({ en: "due diligence" }), answerKeyOf({ en: "up~78d1e2c6" }), answerKeyOf({ en: "kpi~0123abcd", text: "KPI" })], ["up", "due diligence", "up", "kpi"]);
+  eq("訳を比べる形: NFKC・前後の空白を落とす・空白の並びは 1 つ", normJa("  ＣＰＣ は　上がる "), "CPC は 上がる");
+  eq("訳の印: FNV-1a 32 ビット（正規化した訳の UTF-8）の 16 進 8 桁（公開の値: 空 811c9dc5・a e40c292c・foobar bf9cf968）", [jaHash(""), jaHash("a"), jaHash("foobar")], ["811c9dc5", "e40c292c", "bf9cf968"]);
+  eq("訳の印は正規化した訳で決まる（端末をまたいで同じ）・長くしても頭の 8 桁は同じ（16・32 桁は「<番号>\\0<訳>」の印を後ろに）",
+    [jaHash(RAIN), jaHash(`  ${RAIN.replace(/？/g, "?")} `), jaHash(RAIN, 16), jaHash(RAIN, 32)], ["78d1e2c6", "78d1e2c6", "78d1e2c60abc0b01", "78d1e2c60abc0b015c335524c0e73d4f"]);
+  const up = { en: "up", ja: RAIN };
+  eq("鍵: 同じ英語が無ければ英語の鍵のまま（前と同じ）", identityFor([], "up", RAIN), "up");
+  eq("鍵: 同じ英語があれば <英語>~<訳の印 8 桁>", identityFor([up], "up", "別の訳"), `up~${jaHash("別の訳")}`);
+  eq("鍵: 同じ組なら端末をまたいで同じ鍵（ほかの語や並びに依らない・訳の空白は正規化）",
+    [identityFor([up, { en: "down", ja: "x" }], "up", " 別の訳 "), identityFor([{ en: "zz", ja: "y" }, up], "up", "別の訳")], [`up~${jaHash("別の訳")}`, `up~${jaHash("別の訳")}`]);
+  eq("鍵: 8 桁の鍵がもう使われていれば（印の重なり・訳を直した語）16 桁に", identityFor([up, { en: `up~${jaHash("別の訳")}`, ja: "直した訳" }], "up", "別の訳"), `up~${jaHash("別の訳", 16)}`);
+  eq("鍵: 場面カードの鍵とも重ねない（同期の項目 my_word:<鍵> を分ける）", identityFor([{ kind: "concept", en: "ssl", q: "q", answer: "SSL" }], "ssl", "暗号化"), `ssl~${jaHash("暗号化")}`);
+  {
+    const long = "a".repeat(150);
+    const taken = [{ en: long, ja: "x" }, ...[8, 16, 24].map((n) => ({ en: `${long}~${jaHash("y", n)}`, ja: "z" }))];
+    const id = identityFor(taken, long, "y");
+    ok("鍵は 200 字まで（同期の key の上限 char_length(key) <= 200。メモの鍵 my-<鍵> も）・32 桁まで長くできる", typeof id === "string" && id === `${long}~${jaHash("y", 32)}` && `my-${id}`.length <= 200, String(id));
+  }
+  const dupUp = { en: `up~${jaHash("別の訳")}`, text: "up", ja: "別の訳" };
+  const c1 = C.wordCardOf(dupUp);
+  ok("2 つ目からの語のカード: id は my-<鍵>・en は答えの英語 up・key は鍵・1 字ずつ判定・up と打つと正解", c1.id === `my-${dupUp.en}` && c1.en === "up" && c1.key === dupUp.en && !c1.free && !("answer" in c1) && answerModeOf(c1).mode === "spell" && typeAnswer(c1, acceptedAnswers(c1, null), "up").how === "auto", JSON.stringify(c1));
+  const c2 = C.wordCardOf({ en: `kpi~${jaHash("別の訳")}`, text: "KPI", ja: "別の訳" });
+  ok("大文字の語の 2 つ目: en は kpi・画面は KPI（answer）・kpi と打って正解", c2.en === "kpi" && c2.answer === "KPI" && String(c2.key).startsWith("kpi~") && typeAnswer(c2, acceptedAnswers(c2, null), "kpi").how === "auto", JSON.stringify(c2));
+  const c3 = C.wordCardOf({ en: `due diligence~${jaHash("別の訳")}`, text: "due diligence", ja: "別の訳" });
+  ok("熟語の 2 つ目: 全文入力（答えの英語で判定）", c3.free === true && c3.en === "due diligence" && typeAnswer(c3, acceptedAnswers(c3, null), "Due Diligence").how === "enter", JSON.stringify(c3));
+  eq("画面の形: 2 つ目からの語は text（無ければ答えの英語。鍵の印は見せない）", [C.displayOf(dupUp), C.displayOf({ en: "up~0000abcd", ja: "x" }), C.displayOf({ en: "kpi~0000abcd", text: "KPI", ja: "x" })], ["up", "up", "KPI"]);
+  eq("列・回の結果・選んだ印は鍵ごと（同じ英語の語も別々）",
+    [C.buildMyQueue([up, dupUp]), C.mySummary([`my-${dupUp.en}`], [{ ...up, ls: 2 }, { ...dupUp, ls: 1 }], 0), C.entryRefOf(dupUp)], [["my-up", `my-${dupUp.en}`], { learned: 0, unsure: 1, dayOne: 0 }, `word:${dupUp.en}`]);
+
+  // ---- まとめて足すの 1 行（区切り・矢印） ----
+  eq("まとめての行: 区切りの前が英語なら英語の語（訳の中の「→」は字のまま）", parseLine(FIX[1]), { en: "up", ja: "品質が下がった→ 同じ席に高く払う。費用は上がる？下がる？" });
+  eq("まとめての行: 訳の中の読点・カンマも字のまま（区切りは最初の 1 つ）", parseLine("up, 雨、風、雪, 外の作業は増える？減る？"), { en: "up", ja: "雨、風、雪, 外の作業は増える？減る？" });
+  eq("まとめての行: 区切りの無い矢印の行は、英語の側と訳の側に分ける（→ ⇒ => ->）",
+    [parseLine("e-mail -> 電子メール"), parseLine("電子メール → e-mail"), parseLine("follow up ⇒ 追って連絡する"), parseLine("agenda => 議題")],
+    [{ en: "e-mail", ja: "電子メール" }, { en: "e-mail", ja: "電子メール" }, { en: "follow up", ja: "追って連絡する" }, { en: "agenda", ja: "議題" }]);
+  const noEn = parseLine("品質が下がった → 同じ席に高く払う");
+  ok("まとめての行: 英語の無い矢印の行は断る（「english, 訳」の形を言う）・場面カードにしない", !!noEn?.error && /「english, 訳」/.test(noEn.error) && noEn.kind !== "concept", JSON.stringify(noEn));
+  const oldScene = parseLine("Cost ÷ Click → CPC | クリック単価");
+  ok("まとめての行: 前の場面カードの形（場面 → 用語 | 解説）も場面カードにしない（断る）", !!oldScene?.error && oldScene.kind !== "concept", JSON.stringify(oldScene));
+  eq("まとめての行: 矢印の無い行は前のまま（英語と日本語の境・タブ・使えない字は確かめへ回す）",
+    [parseLine("due diligence 適正評価"), parseLine("invoice\t請求書"), parseLine("bad/entry, だめ")], [{ en: "due diligence", ja: "適正評価" }, { en: "invoice", ja: "請求書" }, { en: "bad/entry", ja: "だめ" }]);
+
+  // ---- 保存（js/myWords.js）と 2 台の同期（js/userItemsSync.js）。localStorage の写しを端末ごとに替える ----
+  const devices = { X: new Map(), Y: new Map() };
+  let cur = devices.X;
+  globalThis.localStorage = { getItem: (k) => (cur.has(k) ? cur.get(k) : null), setItem: (k, v) => { cur.set(k, String(v)); }, removeItem: (k) => cur.delete(k), clear: () => cur.clear(), key: (i) => [...cur.keys()][i] ?? null, get length() { return cur.size; } };
+  const use = (name) => { cur = devices[name]; };
+  const M = await import("../js/myWords.js");
+  const S = await import("../js/userItemsSync.js");
+  const words = () => JSON.parse(cur.get("spelldash_my_words") || "[]");
+  const meta = () => JSON.parse(cur.get("spelldash_user_items_meta") || "{}");
+  const tick = () => new Promise((r) => setTimeout(r, 5)); // 同期の印の時刻を進める（新しい方が勝つ）
+  const seed = (entries) => { cur.clear(); cur.set("spelldash_my_words", JSON.stringify(entries)); };
+  const T = "2026-11-07T00:00:00.000Z";
+
+  // 創業者の 1 回目の試しの後の形（前の版）: up（1 行目）・down（4 行目）・「→」の行から場面カードが 1 枚（前の版のまとめて足すが作った形）
+  const sceneAnswer = "同じ席に高く払う。費用は上がる？下がる？";
+  const OLD3 = [
+    { en: "up", ja: jaOf(FIX[0]), book: "main", bookName: "マイ単語帳", addedAt: T },
+    { kind: "concept", en: M.conceptKey(sceneAnswer), answer: sceneAnswer, q: "up, 品質が下がった", explain: "", accept: [], ja: "", book: "main", bookName: "マイ単語帳", addedAt: T },
+    { en: "down", ja: jaOf(FIX[3]), book: "main", bookName: "マイ単語帳", addedAt: T }
+  ];
+  seed(OLD3);
+  const r1 = M.addMyWordsBulk(FIX.join("\n"), "main");
+  const w1 = words();
+  ok("まとめて足す: 同じ英語でも訳が違う 4 行は入り、前からある同じ組（up・down の 2 行）は「同じ訳で「マイ単語帳」にすでに登録」で飛ばす",
+    r1.added.length === 4 && r1.skipped.length === 2 && r1.skipped.every((s) => /同じ訳/.test(s) && /「マイ単語帳」/.test(s) && /すでに登録/.test(s)), JSON.stringify(r1));
+  ok("前からの語と場面カードは 1 字も変えない（並びも同じ）・場面カードは増えない", JSON.stringify(w1.slice(0, 3)) === JSON.stringify(OLD3) && w1.filter((w) => w.kind === "concept").length === 1, JSON.stringify(w1.slice(0, 4)));
+  const added = w1.slice(3);
+  ok("足した 4 語: 鍵は <英語>~<訳の印 8 桁>・text は英語・訳は 1 行の全部（「→」も）・今の単語帳",
+    added.length === 4 && added.every((w) => w.kind !== "concept" && /^(up|down)~[0-9a-f]{8}$/.test(w.en) && w.en === `${w.text}~${jaHash(w.ja)}` && w.book === "main") && added[0].ja === jaOf(FIX[1]) && added[0].ja.includes("→"),
+    JSON.stringify(added));
+  const inPaste = M.addMyWordsBulk(`${FIX[2]}\nup, 新しい場面。何かは上がる？下がる？\nup, 新しい場面。何かは上がる？下がる？`, "main");
+  ok("1 回の貼り付けの中でも同じ組の 2 つ目は飛ばす（前からある組も）", inPaste.added.length === 1 && inPaste.skipped.length === 2 && words().filter((w) => w.ja === "新しい場面。何かは上がる？下がる？").length === 1, JSON.stringify(inPaste));
+  const noEnBulk = M.addMyWordsBulk("品質が下がった → 同じ席に高く払う", "main");
+  ok("まとめて足す: 英語の無い矢印の行は足さない（理由に「english, 訳」）・場面カードも作らない", noEnBulk.added.length === 0 && noEnBulk.skipped.length === 1 && /「english, 訳」/.test(noEnBulk.skipped[0]) && words().filter((w) => w.kind === "concept").length === 1, JSON.stringify(noEnBulk));
+  const caseDup = M.addMyWord("UP", `  ${jaOf(FIX[2]).replace(/？/g, "?")} `, "main");
+  ok("1 語ずつ: 大文字小文字・訳の空白と全角半角が違うだけの同じ組は断る（同じ訳で「マイ単語帳」にすでに登録）", !caseDup.ok && /同じ訳/.test(caseDup.error ?? "") && /「マイ単語帳」/.test(caseDup.error ?? ""), JSON.stringify(caseDup));
+  const other = M.addMyWord("Up", "違う訳の場面。何かは上がる？下がる？", "main");
+  ok("1 語ずつ: 違う訳なら同じ英語も足せる（画面の形は打ったとおり Up・答えは up）", other.ok && words().at(-1).text === "Up" && words().at(-1).en === `up~${jaHash("違う訳の場面。何かは上がる？下がる？")}` && C.wordCardOf(words().at(-1)).en === "up", JSON.stringify(words().at(-1)));
+  const cards = M.toWordObjects();
+  ok("出題のカード: 同じ英語の語はカードの id が別々・答えの英語は up／down・場面カードはそのまま", new Set(cards.map((c) => c.id)).size === cards.length && cards.filter((c) => c.kind !== "concept").every((c) => c.en === "up" || c.en === "down") && cards.filter((c) => c.kind === "concept").length === 1, JSON.stringify(cards.map((c) => c.id)));
+
+  // 学ぶ回の答えは鍵で当てる（同じ英語のほかの語・前からの語は変えない）
+  const idA = added[0]?.en ?? "(none)"; // 「→」の行（土台では足せないので無い）
+  const idB = added[1]?.en ?? "(none)";
+  ok("答えはその鍵の語にだけ当たる（同じ英語のほかの語・前からの語は変えない）・同期の印もその鍵だけ",
+    M.recordMyAnswer(idA, ANSWER_KINDS.exact, T0) === true && words().find((w) => w.en === idA)?.ls === 2 && words().filter((w) => w.en !== idA).every((w) => !("ls" in w)) && meta()[`my_word:${idA}`]?.deleted === false && meta()["my_word:up"] === undefined,
+    JSON.stringify(words().map((w) => [w.en, w.ls ?? 0])));
+  M.recordMyAnswer(idB, ANSWER_KINDS.miss, T0);
+  ok("1 打ミスもその鍵の語だけ（あやふや）", words().find((w) => w.en === idB)?.ls === 1 && words().find((w) => w.en === "up")?.ls === undefined && words().find((w) => w.en === idA)?.ls === 2);
+  // 1 つ消す（行の「消す」）・移す・訳を直す
+  M.removeMyWord(idB, "word");
+  ok("1 つ消す（行の「消す」）: その鍵の語だけが消え、墓標もその鍵だけ（同じ英語のほかの語・前からの語は残る）",
+    !words().some((w) => w.en === idB) && words().some((w) => w.en === idA) && JSON.stringify(words().slice(0, 3)) === JSON.stringify(OLD3) && meta()[`my_word:${idB}`]?.deleted === true && meta()["my_word:up"] === undefined, JSON.stringify(meta()));
+  const bk = M.createMyBook("場面");
+  const mv = M.moveMyWords([`word:${idA}`], bk.book?.id);
+  ok("移す: 選んだ鍵の語だけが移る（同じ英語のほかの語は今の単語帳のまま）", mv.ok && mv.moved === 1 && words().find((w) => w.en === idA)?.book === bk.book.id && words().find((w) => w.en === "up")?.book === "main" && words().find((w) => w.en === idA)?.ls === 2, JSON.stringify(mv));
+  const beforeEdit = cur.get("spelldash_my_words");
+  const ed = M.setMyWordJa(idA, jaOf(FIX[0]));
+  ok("訳を直して同じ英語と同じ訳の組になるときは断る（どの単語帳にあるかを言う・保存は変えない）", !ed.ok && /同じ訳/.test(ed.error ?? "") && /「マイ単語帳」/.test(ed.error ?? "") && cur.get("spelldash_my_words") === beforeEdit, JSON.stringify(ed));
+  const ed2 = M.setMyWordJa(idA, "直した訳。何かは上がる？下がる？");
+  ok("訳を直す: ほかの組と重ならなければ直る・鍵（en）は変えない（同期の項目は同じ）・状態と単語帳もそのまま", ed2.ok && words().find((w) => w.en === idA)?.ja === "直した訳。何かは上がる？下がる？" && words().find((w) => w.en === idA)?.ls === 2 && words().find((w) => w.en === idA)?.book === bk.book.id, JSON.stringify(ed2));
+  ok("同じ訳のまま保存しても断らない（自分とは重ならない）", M.setMyWordJa(idA, "直した訳。何かは上がる？下がる？").ok === true);
+  const again = M.addMyWord("up", jaOf(FIX[1]), "main");
+  ok("直した語の前の訳でもう一度足すと入る（その 8 桁の鍵は直した語が使っているので 16 桁）", again.ok && idA === `up~${jaHash(jaOf(FIX[1]))}` && words().at(-1).en === `up~${jaHash(jaOf(FIX[1]), 16)}`, JSON.stringify(words().at(-1)));
+  const sameNew = M.addMyWord("up", "直した訳。何かは上がる？下がる？", "main");
+  ok("訳を直した語の新しい訳と同じ組は足さない（直した語と重なる。どの単語帳かを言う）", !sameNew.ok && /同じ訳/.test(sameNew.error ?? "") && /「場面」/.test(sameNew.error ?? ""), JSON.stringify(sameNew));
+  // 上限は語の数（前のまま）
+  seed(Array.from({ length: 100 }, (_, i) => ({ en: i ? `w${"abcdefghij"[i % 10]}${"abcdefghij"[Math.floor(i / 10)]}` : "up", ja: `訳${i}` })));
+  const full = M.addMyWord("up", "まだ無い訳", "main");
+  ok("上限（無料 100 語）は語の数のまま: 同じ英語の違う訳も 101 語目は足さない", !full.ok && /100語/.test(full.error ?? ""), JSON.stringify(full));
+
+  // ---- 2 台の端末: 項目は鍵ごと（my_word:<鍵>）。同じ英語の語は別々の項目として行き来し、消すとその鍵だけ墓標 ----
+  devices.X.clear();
+  devices.Y.clear();
+  use("X");
+  M.addMyWord("up", "訳A", "main"); await tick();
+  M.addMyWord("up", "訳B", "main"); await tick();
+  M.addMyWord("up", "訳C", "main"); await tick();
+  const idsX = words().map((w) => w.en);
+  const rowsX = S.buildDirtyRows("u1");
+  S.clearDirtyItems();
+  ok("X: 同じ英語の 3 語は別々の項目（鍵 up・up~<訳B の印>・up~<訳C の印>。payload は語の全体）",
+    JSON.stringify(idsX) === JSON.stringify(["up", `up~${jaHash("訳B")}`, `up~${jaHash("訳C")}`]) && JSON.stringify(rowsX.map((r) => r.key).sort()) === JSON.stringify([...idsX].sort()) && rowsX.every((r) => r.kind === "my_word" && !r.deleted && r.payload.en === r.key),
+    JSON.stringify(rowsX.map((r) => [r.key, r.deleted])));
+  use("Y");
+  S.mergeCloudItems(rowsX, "u1");
+  ok("Y: X の 3 語がそのまま届く（payload は 1 字も同じ）", cur.get("spelldash_my_words") === devices.X.get("spelldash_my_words"), String(cur.get("spelldash_my_words")).slice(0, 200));
+  await tick();
+  M.addMyWord("up", "訳D", "main"); await tick();
+  M.removeMyWords([`word:${idsX[1]}`]); await tick();
+  const rowsY = S.buildDirtyRows("u1");
+  S.clearDirtyItems();
+  ok("Y: 足した語と消した語だけを送る（墓標は消した鍵だけ）", rowsY.length === 2 && rowsY.some((r) => r.key === idsX[1] && r.deleted) && rowsY.some((r) => r.key === `up~${jaHash("訳D")}` && !r.deleted), JSON.stringify(rowsY.map((r) => [r.key, r.deleted])));
+  use("X");
+  const plainX = JSON.stringify(words()[0]);
+  S.mergeCloudItems(rowsY, "u1");
+  ok("X: Y で消した 1 語だけが消え、Y で足した語が入る・前からの語（up）は 1 字も同じ", JSON.stringify(words().map((w) => w.en)) === JSON.stringify([idsX[0], idsX[2], `up~${jaHash("訳D")}`]) && JSON.stringify(words()[0]) === plainX, JSON.stringify(words().map((w) => w.en)));
+  // 決まった鍵: 2 台が同じ前からの up を持っていて、同じ組（up・訳E）をそれぞれ足すと同じ鍵（同期で 1 語にまとまる）
+  await tick();
+  M.addMyWord("up", "訳E", "main");
+  const eX = words().at(-1).en;
+  const rowsX2 = S.buildDirtyRows("u1");
+  S.clearDirtyItems();
+  await tick();
+  use("Y");
+  M.addMyWord("up", "訳E", "main");
+  const eY = words().at(-1).en;
+  S.mergeCloudItems(rowsX2, "u1");
+  ok("決まった鍵: 2 台で同じ組を足すと同じ鍵 up~<訳E の印>・同期で 1 語にまとまる", eX === eY && eX === `up~${jaHash("訳E")}` && words().filter((w) => w.ja === "訳E").length === 1, JSON.stringify({ eX, eY, n: words().filter((w) => w.ja === "訳E").length }));
+  // 前からの語（up）を消すと墓標は my_word:up だけ。同じ英語の 2 つ目からの語は残る
+  use("X");
+  await tick();
+  M.removeMyWord("up", "word");
+  const rowsX3 = S.buildDirtyRows("u1");
+  S.clearDirtyItems();
+  use("Y");
+  S.mergeCloudItems(rowsX3, "u1");
+  ok("前からの語を消すと、墓標は my_word:up だけ・ほかの端末でも up だけが消え、同じ英語のほかの語は残る", rowsX3.length === 1 && rowsX3[0].key === "up" && rowsX3[0].deleted && !words().some((w) => w.en === "up") && words().filter((w) => w.en.startsWith("up~")).length >= 2, JSON.stringify(words().map((w) => w.en)));
+
+  // ---- 反証の直し: まとめて足すで断った行。英語は up と down だけの行が並ぶので、理由は英語と訳の頭でどの行かを言う（英語だけでは分からない）。
+  //      断った行（貼った形のまま）を rest に返す: 画面は足した後の欄にその行だけを残す（もう一度押しても、足した行をまた断らない） ----
+  devices.X.clear();
+  use("X");
+  seed([{ en: "up", ja: RAIN, book: "main", bookName: "マイ単語帳", addedAt: T }]);
+  const NEW_A = "up, 夕方に雨がやんだ。夜の客の数は上がる？下がる？";
+  const NEW_B = "up, 祭りが近づいた。駅の人の数は上がる？下がる？";
+  const LONG_JA = `${"長い場面の説明が続く。".repeat(4)}何かは上がる？下がる？`;
+  const pasted = [NEW_A, `up, ${RAIN}`, NEW_B, NEW_A, `up, ${LONG_JA}`, `UP, ${LONG_JA}`];
+  const r5 = M.addMyWordsBulk(pasted.join("\n"), "main");
+  const sk = r5.skipped ?? [];
+  ok("まとめて足す: 訳が違う up の 3 行は入り、前からある組・貼り付けの中の 2 度目（大文字小文字だけ違う行も）の 3 行は断る",
+    r5.added?.length === 3 && sk.length === 3 && words().length === 4 && sk.every((s) => /同じ訳で「マイ単語帳」にすでに登録されています/.test(s)), JSON.stringify(r5));
+  ok("断った理由は英語と訳の頭（24 字まで）でどの行かを言う（「up（雨の日が続いた。…）: 同じ訳で…」。長い訳は頭だけ）",
+    sk[0]?.startsWith(`up（${RAIN.slice(0, 12)}`) && sk[1]?.startsWith(`up（${jaOf(NEW_A).slice(0, 12)}`) && sk[2]?.startsWith(`UP（${LONG_JA.slice(0, 24)}…）`) && !sk[2]?.includes(LONG_JA),
+    JSON.stringify(sk));
+  eq("断った行は貼った形のまま返す（画面は欄にその行だけを残す）", r5.rest ?? null, [`up, ${RAIN}`, NEW_A, `UP, ${LONG_JA}`]);
+  const r6 = M.addMyWordsBulk((r5.rest ?? pasted).join("\n"), "main");
+  ok("残した行をもう一度足すと、断るのはその行だけ（前に足した行をまた断らない）・保存は変えない", r6.added?.length === 0 && r6.skipped?.length === 3 && words().length === 4, JSON.stringify(r6));
+  const r7 = M.addMyWordsBulk("invoice\nbad/entry, だめ\n品質が下がった → 同じ席に高く払う", "main");
+  ok("ほかの理由の行も残す（訳なし・使えない字・英語の無い行）・訳のある行は訳の頭も添える", JSON.stringify(r7.rest ?? null) === JSON.stringify(["invoice", "bad/entry, だめ", "品質が下がった → 同じ席に高く払う"]) && /^invoice: 日本語訳を入力/.test(r7.skipped?.[0] ?? "") && /^bad\/entry（だめ）: /.test(r7.skipped?.[1] ?? "") && /「english, 訳」/.test(r7.skipped?.[2] ?? ""), JSON.stringify(r7));
+
+  // ---- 反証の直し: 片側が空の矢印（行の頭か終わり）と英語の無い行。矢印を訳にも英語にもしない・英語の無い行は「english, 訳」の形を言う ----
+  eq("片側が空の矢印: 英語の側だけなら訳なしの語（足すときの確かめが「日本語訳を入力してください」）・矢印を訳にしない",
+    [parseLine("up ->"), parseLine("-> up"), parseLine("e-mail →"), parseLine("follow up =>")], [{ en: "up", ja: "" }, { en: "up", ja: "" }, { en: "e-mail", ja: "" }, { en: "follow up", ja: "" }]);
+  for (const line of ["-> 訳だけ", "→ 何か", "何か →", "->", "ただの日本語の行", "123 数字", "、訳だけ"]) {
+    const p = parseLine(line);
+    ok(`英語の無い行は断る（「english, 訳」の形を言う）: 「${line}」`, !!p?.error && /^英語が無い。/.test(p.error) && /「english, 訳」/.test(p.error) && p.line === line, JSON.stringify(p));
+  }
+  eq("英字のある行は前のまま（全角の英字は NFKC で英語・使えない字と訳なしは足すときの確かめが言う）",
+    [parseLine("ＫＰＩ 指標"), parseLine("café 喫茶店"), parseLine("invoice"), parseLine("bad/entry, だめ")], [{ en: "ＫＰＩ", ja: "指標" }, { en: "café", ja: "喫茶店" }, { en: "invoice", ja: "" }, { en: "bad/entry", ja: "だめ" }]);
+  devices.X.clear();
+  const edge = M.addMyWordsBulk("up ->\n-> 訳だけ\nup, 上がる", "main");
+  ok("まとめて足す: 「up ->」は訳が「->」の語にしない（訳なしで断る）・英語の無い矢印の行も断る・ふつうの行は入る",
+    edge.added?.length === 1 && edge.skipped?.length === 2 && /^up: 日本語訳を入力/.test(edge.skipped[0] ?? "") && /「english, 訳」/.test(edge.skipped[1] ?? "") && !words().some((w) => w.ja === "->") && words().length === 1,
+    JSON.stringify({ edge, words: words().map((w) => [w.en, w.ja]) }));
+}
+
+// ===== Batch 82 部分 B: 選択式（js/myWordsChoice.js。docs/SPEC_MY_WORDS.md §12） =====
+// 向きは 2 つ（訳を見て英語を選ぶ＝既定・英語を見て訳を選ぶ。URL の ?choice= だけに持つ）。選択肢は正解 1 つと同じ範囲（単語帳）の違う答え 3 つまで（2〜4 個）。
+// 正規化して重ねない・2 つ目の正解を出さない（同じ英語の語・同じ訳の語）・範囲に違う答えが 1 つも無いときだけほかの単語帳 → 組み込みの短い一覧・決まった乱数で並ぶ。
+// 数え方は打つ回と同じ: 選んだ答えは全文入力の答えとして判定の道（js/judge.js answerMatches）を通る（正解 → 自力正解・違う → 1 打ミス・分からない → 答えを見る）。
+// 1 問に 1 回だけ記録する守り（2 度押し・キーの押しっぱなし・前の問い・開き直したページの古い問い）
+{
+  let X = {};
+  try {
+    X = await import("../js/myWordsChoice.js");
+  } catch (e) {
+    ok("選択式: js/myWordsChoice.js を読める", false, e.message);
+  }
+  const fn = (name) => (typeof X[name] === "function" ? X[name] : () => undefined); // 土台（8c38c7a・部分 A の 23102f0）には無い: 投げずに落ちた数を数える
+  const build = fn("buildChoice");
+  const dirOf = fn("choiceDirOf");
+  const urlOf = fn("choiceUrl");
+  const typedUrlOf = fn("typedUrl");
+  const typedAs = fn("typedAsOf");
+  const seeded = fn("seededRandom");
+  const guardOf = fn("createChoiceGuard");
+  const J = await import("../js/judge.js");
+  const jaHash = typeof C.jaHash === "function" ? C.jaHash : (s) => String(s.length).padStart(8, "0");
+  const answerKeyOf = typeof C.answerKeyOf === "function" ? C.answerKeyOf : (w) => String(w?.en ?? "").split("~")[0];
+  const T = "2026-11-07T00:00:00.000Z";
+  const e = (en, ja, more = {}) => ({ en, ja, addedAt: T, ...more });
+  const dup = (en, ja, more = {}) => e(`${en}~${jaHash(ja)}`, ja, { text: en, ...more });
+  const texts = (r) => (r?.options ?? []).map((o) => o.text);
+  const right = (r) => (r?.options ?? []).filter((o) => o.correct);
+  // 見本と同じ形の、ほかの名前を含まない up／down の単語帳（前の試しで 1 枚できた場面カードも入れる。出題にも選択肢にも出ない）
+  const UPDOWN = [
+    e("up", "雨の日が続いた。傘の売れ行きは上がる？下がる？", { book: "main" }),
+    { kind: "concept", en: "scene", answer: "同じ席に高く払う。費用は上がる？下がる？", q: "up, 品質が下がった", explain: "", accept: [], ja: "", book: "main", addedAt: T },
+    dup("up", "品質が下がった→ 同じ席に高く払う。費用は上がる？下がる？", { book: "main" }),
+    dup("up", "人気の歌手が来る。入場の料金は上がる？下がる？", { book: "main" }),
+    e("down", "晴れの日が続いた。傘の売れ行きは上がる？下がる？", { book: "main" }),
+    dup("down", "材料の値が下がった。作る費用は上がる？下がる？", { book: "main" }),
+    dup("down", "近くに安い店ができた。客の数は上がる？下がる？", { book: "main" })
+  ];
+  const UD = UPDOWN.filter(C.isWordEntry);
+
+  // ---- 入口と向き（URL だけに持つ。新しい保存の鍵は無い） ----
+  eq("選択式の向き: ?choice=en（既定）・?choice=ja（英語を見て訳を選ぶ）・空や知らない値は既定・?choice が無ければ打つ回（null）",
+    [dirOf("?learn=my&choice=en"), dirOf("?learn=my&book=main&choice=ja"), dirOf("?learn=my"), dirOf("?learn=my&book=main"), dirOf("?learn=my&choice="), dirOf("?learn=my&choice=xx"), dirOf(new URLSearchParams("learn=my&choice=ja"))],
+    ["en", "ja", null, null, "en", "en", "ja"]);
+  eq("選択式の URL（単語帳ごと・全部の単語帳）と打つ回の URL（前のまま /?learn=my[&book=]）",
+    [urlOf("main", "en"), urlOf("b1x", "ja"), urlOf(null, "en"), urlOf("main"), typedUrlOf("main"), typedUrlOf(null), urlOf("a b", "ja")],
+    ["/?learn=my&book=main&choice=en", "/?learn=my&book=b1x&choice=ja", "/?learn=my&choice=en", "/?learn=my&book=main&choice=en", "/?learn=my&book=main", "/?learn=my", "/?learn=my&book=a%20b&choice=ja"]);
+  eq("向きの名前", X.CHOICE_DIRS ?? null, { en: "訳を見て英語を選ぶ", ja: "英語を見て訳を選ぶ" });
+
+  // ---- 訳を見て英語を選ぶ（既定）: 創業者の up／down の単語帳はちょうど 2 択 ----
+  {
+    const bad = [];
+    for (const [i, w] of UD.entries()) {
+      for (let s = 1; s <= 8; s++) {
+        const r = build({ entry: w, scope: UPDOWN, others: [], dir: "en", rand: seeded(i * 100 + s) });
+        const t = texts(r);
+        if (!(r?.ok && t.length === 2 && JSON.stringify([...t].sort()) === '["down","up"]' && right(r).length === 1 && right(r)[0].text === answerKeyOf(w) && r.prompt === w.ja && r.from === "scope")) bad.push({ w: w.en, r });
+      }
+    }
+    ok("訳を見て英語を選ぶ（up／down の単語帳・6 語 × 8 通りの乱数）: 選択肢はちょうど up と down の 2 つ・正解は 1 つでその語の英語・問いはその語の訳（「→」の行も 1 行の全部）・範囲の中だけ（埋めない）", UD.length === 6 && bad.length === 0, JSON.stringify(bad.slice(0, 2)));
+    ok("場面カードは出題にならない（選択肢を作らない）・選択肢にも出ない", build({ entry: UPDOWN[1], scope: UPDOWN, others: [], dir: "en", rand: seeded(1) })?.ok === false
+      && UD.every((w) => { const t = texts(build({ entry: w, scope: UPDOWN, others: [], dir: "en", rand: seeded(3) })); return t.length === 2 && !t.some((x) => /同じ席|scene/.test(x)); }));
+  }
+
+  // ---- 正規化して重ねない（英語: 大文字小文字・NFKC・空白・ハイフン・アポストロフィ。打つ回の全文入力の判定と同じ形） ----
+  {
+    const NORM = [e("e-mail", "電子メール"), e("email", "メールを送る"), e("follow up", "追って連絡する"), e("follow-up", "追加の連絡"), e("kpi", "重要業績評価指標", { text: "KPI" }), e("agenda", "議題"), e("invoice", "請求書"), e("don't", "しない"), e("dont", "しないこと")];
+    const bad = [];
+    for (let s = 1; s <= 30; s++) {
+      for (const [q, ban] of [[0, "email"], [1, "e-mail"], [2, "follow-up"], [3, "follow up"], [7, "dont"], [8, "don't"]]) {
+        const r = build({ entry: NORM[q], scope: NORM, others: [], dir: "en", rand: seeded(s) });
+        const keys = texts(r).map((t) => J.normalizeAnswer(t));
+        if (!r?.ok || texts(r).includes(ban) || new Set(keys).size !== keys.length || r.options.length !== 4) bad.push({ q, s, t: texts(r) });
+      }
+    }
+    ok("正規化して重ねない: e-mail の問いに email・follow up の問いに follow-up・don't の問いに dont を違う答えとして出さない（打つ回でも正解になる綴り）・選択肢どうしも重ならない・4 つ", bad.length === 0, JSON.stringify(bad.slice(0, 3)));
+    const kpi = build({ entry: NORM[4], scope: NORM, others: [], dir: "en", rand: seeded(5) });
+    ok("大文字の語は画面の形で出す（正解の選択肢は KPI。答えの英語は kpi）", right(kpi)[0]?.text === "KPI" && right(kpi)[0]?.en === "kpi", JSON.stringify(kpi));
+  }
+
+  // ---- 2 つ目の正解を出さない: 同じ訳のほかの英語・同じ英語の語 ----
+  {
+    const SAME = [e("cost", "費用"), e("expense", "費用"), e("charge", " 費用 "), e("price", "値段"), e("fee", "料金"), e("tax", "税")];
+    const bad = [];
+    for (let s = 1; s <= 30; s++) {
+      for (const [q, bans] of [[0, ["expense", "charge"]], [1, ["cost", "charge"]], [2, ["cost", "expense"]]]) {
+        const r = build({ entry: SAME[q], scope: SAME, others: [], dir: "en", rand: seeded(s) });
+        if (!r?.ok || bans.some((b) => texts(r).includes(b)) || right(r).length !== 1 || r.options.length !== 4) bad.push({ q, s, t: texts(r) });
+      }
+    }
+    ok("訳を見て英語を選ぶ: 問いの訳と同じ訳（空白・全角半角を見ない）のほかの英語（費用 → cost・expense・charge）は違う答えに出さない（打つ回でも当たりになる）", bad.length === 0, JSON.stringify(bad.slice(0, 3)));
+    const r = build({ entry: UD[1], scope: UPDOWN, others: [], dir: "en", rand: seeded(9) });
+    ok("同じ英語の語（up が 3 つ）: up は 1 つだけ出る（重なる英語を 2 度出さない）", texts(r).filter((t) => t === "up").length === 1 && texts(r).length === 2, JSON.stringify(texts(r)));
+    const WIDTH = [e("up", "CPCは上がる？"), e("down", "CPCは上がる?"), e("left", "左へ")];
+    const w1 = build({ entry: WIDTH[0], scope: WIDTH, others: [], dir: "en", rand: seeded(2) });
+    ok("訳の全角半角（？と ?）の違いだけの語は同じ訳: その英語（down）は違う答えに出さない", w1?.ok && !texts(w1).includes("down") && texts(w1).includes("left"), JSON.stringify(texts(w1)));
+  }
+
+  // ---- 数: 正解 1 と違う答え 3 つまで（2〜4 個）。並びは決まった乱数 ----
+  {
+    const TEN = ["apple", "bread", "chair", "door", "egg", "fish", "glass", "hat", "ink", "jam"].map((w, i) => e(w, `訳${i}`));
+    const n = (list) => build({ entry: list[0], scope: list, others: [], dir: "en", rand: seeded(4) })?.options?.length ?? 0;
+    eq("選択肢の数: 10 語の範囲は 4 つ・3 語は 3 つ・2 語は 2 つ", [n(TEN), n(TEN.slice(0, 3)), n(TEN.slice(0, 2))], [4, 3, 2]);
+    const orders = new Set();
+    let same = true;
+    for (let s = 1; s <= 20; s++) {
+      const a = build({ entry: TEN[0], scope: TEN, others: [], dir: "en", rand: seeded(s) });
+      const b = build({ entry: TEN[0], scope: TEN, others: [], dir: "en", rand: seeded(s) });
+      if (!a?.options || JSON.stringify(a.options) !== JSON.stringify(b?.options)) same = false;
+      orders.add(a?.options?.findIndex((o) => o.correct));
+    }
+    ok("並びは乱数で決まる: 同じ種なら同じ並び・種を替えると正解の位置が替わる（20 通りで 3 か所以上）", same && orders.size >= 3 && !orders.has(-1) && !orders.has(undefined), JSON.stringify([...orders]));
+  }
+
+  // ---- 足りないときだけ埋める: 範囲（単語帳）→ ほかの単語帳 → 組み込みの短い一覧（通信なし）→ 作れない ----
+  {
+    const ONE = [e("memo", "覚え書き", { book: "one" })];
+    const OTHERS = [e("invoice", "請求書"), e("agenda", "議題"), e("deadline", "締め切り"), e("budget", "予算")];
+    const o = build({ entry: ONE[0], scope: ONE, others: OTHERS, dir: "en", rand: seeded(7) });
+    ok("1 語の単語帳: ほかの単語帳の英語で埋める（違う答えは全部ほかの単語帳から・正解は memo だけ）", o?.ok && o.from === "other" && o.options.length >= 2 && right(o).length === 1 && right(o)[0].text === "memo" && o.options.filter((x) => !x.correct).every((x) => OTHERS.some((w) => w.en === x.text)), JSON.stringify(o));
+    const b = build({ entry: ONE[0], scope: ONE, others: [], dir: "en", rand: seeded(7) });
+    const fill = X.CHOICE_FILL ?? [];
+    ok("1 語だけの端末: 組み込みの短い一覧で埋める（js/myWordsChoice.js の定数。通信しない）", b?.ok && b.from === "builtin" && b.options.length >= 2 && right(b).length === 1 && b.options.filter((x) => !x.correct).every((x) => fill.some((f) => f.en === x.text)), JSON.stringify(b));
+    const twoUp = [UD[0], UD[1]]; // 同じ英語（up）だけの単語帳: 範囲に違う答えが 1 つも無い
+    const tu = build({ entry: twoUp[0], scope: twoUp, others: [], dir: "en", rand: seeded(3) });
+    ok("同じ英語の語だけの単語帳（up が 2 つ）: 範囲に違う答えが無いので組み込みで埋める・up は正解の 1 つだけ", tu?.ok && tu.from === "builtin" && texts(tu).filter((t) => t === "up").length === 1, JSON.stringify(texts(tu)));
+    const never = build({ entry: UD[0], scope: UPDOWN, others: OTHERS, dir: "en", rand: seeded(3) });
+    ok("範囲に違う答えがあれば埋めない（up／down の単語帳はほかの単語帳があっても 2 択のまま）", never?.from === "scope" && JSON.stringify(texts(never).sort()) === '["down","up"]', JSON.stringify(texts(never)));
+    const none = build({ entry: ONE[0], scope: ONE, others: [], dir: "en", rand: seeded(3), fill: [] });
+    ok("どこからも違う答えが作れないときは作らない（ok: false。画面は短い文と打つ回への道）", none?.ok === false && typeof none?.prompt === "string", JSON.stringify(none));
+    const aqua = build({ entry: e("aqua", "水"), scope: [e("aqua", "水")], others: [], dir: "en", rand: seeded(3), fill: [{ en: "water", ja: "水" }, { en: "book", ja: "本" }] });
+    ok("組み込みで埋めるときも 2 つ目の正解を出さない（問いの訳と同じ訳の water は出さない）", aqua?.ok && !texts(aqua).includes("water") && texts(aqua).includes("book"), JSON.stringify(texts(aqua)));
+    ok("組み込みの一覧: 8 組以上・どれも入れられる英語（小文字）と訳・英語も訳も重ならない", fill.length >= 8 && fill.every((f) => C.checkEnText(f.en).ok && C.checkEnText(f.en).key === f.en && C.checkJaText(f.ja).ok) && new Set(fill.map((f) => f.en)).size === fill.length && new Set(fill.map((f) => f.ja)).size === fill.length, JSON.stringify(fill));
+  }
+
+  // ---- 英語を見て訳を選ぶ ----
+  {
+    const bad = [];
+    for (const [i, w] of UD.entries()) {
+      for (let s = 1; s <= 8; s++) {
+        const r = build({ entry: w, scope: UPDOWN, others: [], dir: "ja", rand: seeded(i * 50 + s) });
+        const sameEn = UD.filter((x) => answerKeyOf(x) === answerKeyOf(w));
+        const wrongs = (r?.options ?? []).filter((o) => !o.correct);
+        if (!(r?.ok && r.prompt === answerKeyOf(w) && right(r).length === 1 && right(r)[0].text === w.ja && r.options.length === 4 && wrongs.every((o) => !sameEn.some((x) => x.ja === o.text) && UD.some((x) => x.ja === o.text && answerKeyOf(x) !== answerKeyOf(w))))) bad.push({ w: w.en, s, r });
+      }
+    }
+    ok("英語を見て訳を選ぶ（up／down の単語帳）: 問いは英語（up）・正解はその語の訳・違う答えはほかの英語（down）の語の訳だけ（同じ英語のほかの訳は出さない）・4 つ", bad.length === 0, JSON.stringify(bad.slice(0, 1)));
+    const RISE = [e("up", "上がる"), e("rise", "上がる"), e("down", "下がる"), e("fall", "落ちる")];
+    const bad2 = [];
+    for (let s = 1; s <= 20; s++) {
+      const r = build({ entry: RISE[0], scope: RISE, others: [], dir: "ja", rand: seeded(s) });
+      if (!r?.ok || texts(r).filter((t) => t === "上がる").length !== 1 || right(r)[0]?.text !== "上がる" || r.options.length !== 3) bad2.push(texts(r));
+    }
+    ok("英語を見て訳を選ぶ: 違う英語（rise）の訳でも、問いの英語の訳と同じ訳（上がる）は違う答えに出さない・訳どうしも重ならない", bad2.length === 0, JSON.stringify(bad2.slice(0, 2)));
+    // 反証の直し（検査の穴）: 同じ英語のほかの語の訳（up の 2 つ目の訳B）も 2 つ目の正解。違う英語（rise）が同じ訳B を持っていても違う答えに出さない
+    const SAMEEN = [e("up", "訳A"), dup("up", "訳B"), e("rise", "訳B"), e("fall", "訳C")];
+    const bad3 = [];
+    for (let s = 1; s <= 30; s++) {
+      const r = build({ entry: SAMEEN[0], scope: SAMEEN, others: [], dir: "ja", rand: seeded(s) });
+      if (!r?.ok || texts(r).includes("訳B") || right(r)[0]?.text !== "訳A" || JSON.stringify([...texts(r)].sort()) !== '["訳A","訳C"]') bad3.push(texts(r));
+    }
+    ok("英語を見て訳を選ぶ: 同じ英語のほかの語の訳（up の 2 つ目の訳B）は、違う英語（rise）がその訳を持っていても違う答えに出さない（30 通りの乱数）", bad3.length === 0, JSON.stringify(bad3.slice(0, 2)));
+    const W2 = [e("up", "CPCは上がる？"), e("down", "CPCは 上がる?"), e("left", "左へ")];
+    const w2 = build({ entry: W2[0], scope: W2, others: [], dir: "ja", rand: seeded(1) });
+    ok("訳の正規化（NFKC・空白・全角半角）: 「CPCは 上がる?」は「CPCは上がる？」と同じ訳なので出さない", w2?.ok && texts(w2).length === 2 && texts(w2).includes("左へ"), JSON.stringify(texts(w2)));
+    const k = build({ entry: e("kpi", "重要業績評価指標", { text: "KPI" }), scope: [e("kpi", "重要業績評価指標", { text: "KPI" }), e("agenda", "議題")], others: [], dir: "ja", rand: seeded(1) });
+    ok("英語を見て訳を選ぶ: 問いは画面の形の英語（KPI）", k?.prompt === "KPI", JSON.stringify(k));
+    const one = build({ entry: e("memo", "覚え書き"), scope: [e("memo", "覚え書き")], others: [e("invoice", "請求書")], dir: "ja", rand: seeded(1) });
+    ok("英語を見て訳を選ぶ・1 語の単語帳: ほかの単語帳の訳で埋める", one?.ok && one.from === "other" && JSON.stringify(texts(one).sort()) === JSON.stringify(["覚え書き", "請求書"].sort()), JSON.stringify(one));
+  }
+
+  // ---- 150 字の英語と訳（折り返しは画面の CSS。選択肢の字は削らない） ----
+  {
+    const LONGEN = `${"keep moving ".repeat(12)}keep moving on`.slice(0, 150);
+    const L2 = [e(LONGEN, "長い訳".repeat(50)), e(`${"abcdefghij".repeat(15)}`, "とても長い".repeat(30))];
+    const a = build({ entry: L2[0], scope: L2, others: [], dir: "en", rand: seeded(1) });
+    const b = build({ entry: L2[0], scope: L2, others: [], dir: "ja", rand: seeded(1) });
+    ok("150 字の英語・150 字の訳: 選択肢と問いに全部の字が出る", a?.ok && b?.ok && texts(a).includes(LONGEN) && texts(a).some((t) => t.length === 150) && b.prompt === LONGEN && texts(b).includes("長い訳".repeat(50)), JSON.stringify([texts(a).map((t) => t.length), texts(b).map((t) => t.length)]));
+  }
+
+  // ---- 数え方は打つ回と同じ（創業者の決定「打つ回と同じに数える」）: 選んだ答えは全文入力の答えとして判定の道を通る ----
+  // js/game.js の選ぶ回: 正解・違う答えは submitFreeAnswer(typedAsOf(選んだ選択肢, カード))（正解 → finishFreeWord → completeWord: 打つ回の自力正解と同じ書き手・XP・連続日数・
+  // 学んだ日・学習時間）、分からない → revealAnswer()（打つ回の Enter で答えを見るのと同じ）。種類は js/learnQueue.js cleanKindOf・failKindOf がその道で決める（下はその道を同じ順に写したもの）
+  {
+    const freeCard = (w) => ({ ...C.wordCardOf(w), free: true }); // 選ぶ回のカード（打鍵を 1 字ずつ見ない全文入力の形）
+    const choiceKind = (opt, card) => (J.answerMatches(card, typedAs(opt, card) ?? "") ? Q.cleanKindOf(card.en, card) : Q.failKindOf("m"));
+    const typedKind = { correct: (card) => Q.cleanKindOf(card.en, card), wrong: () => Q.failKindOf("m"), unknown: () => Q.failKindOf("e") }; // 打つ回: 打ち終えた綴り・1 打ミス・Enter で答えを見る
+    const bad = [];
+    for (const dir of ["en", "ja"]) {
+      for (const [i, w] of UD.entries()) {
+        const card = freeCard(w);
+        const r = build({ entry: w, scope: UPDOWN, others: [], dir, rand: seeded(i + 11) });
+        for (const opt of r?.options ?? []) {
+          const matched = J.answerMatches(card, typedAs(opt, card) ?? "");
+          const want = opt.correct ? typedKind.correct(C.wordCardOf(w)) : typedKind.wrong();
+          if (matched !== opt.correct || choiceKind(opt, card) !== want) bad.push({ dir, w: w.en, opt, matched });
+        }
+        if (!r?.options?.length) bad.push({ dir, w: w.en, none: true });
+      }
+    }
+    ok("選んだ答えの判定（2 つの向き・6 語の全部の選択肢）: 正解の選択肢だけが打つ回の判定で正解（answerMatches）・種類は打つ回と同じ（正解 = 打ち終えた exact・違う = 1 打ミス miss）", bad.length === 0, JSON.stringify(bad.slice(0, 2)));
+    eq("種類の名前: 正解 exact・違う miss・分からない reveal（打つ回の答えを見ると同じ）", [typedKind.correct(C.wordCardOf(UD[0])), typedKind.wrong(), typedKind.unknown()], [ANSWER_KINDS.exact, ANSWER_KINDS.miss, ANSWER_KINDS.reveal]);
+
+    // 書き手は打つ回と同じ js/myWords.js recordMyAnswer（語の鍵で引く）。同じ並びの答えを打つ回と選ぶ回で当てると、保存は 1 字も同じ（別の日に 2 回の決まりも）
+    const store = new Map();
+    globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => { store.set(k, String(v)); }, removeItem: (k) => store.delete(k), clear: () => store.clear(), key: (i) => [...store.keys()][i] ?? null, get length() { return store.size; } };
+    const M = await import("../js/myWords.js");
+    const D0 = new Date(2026, 10, 7, 10, 0).getTime();
+    const D1 = new Date(2026, 10, 8, 10, 0).getTime();
+    // up: 違う → 正解 → 正解（同じ日）→ 次の日に正解。「→」の行（同じ英語の 2 つ目）: 違う → 次の日に正解 2 回。3 つ目の up: 分からない。down: 正解
+    const plan = [[UD[0], "wrong", D0], [UD[0], "correct", D0 + 60000], [UD[0], "correct", D0 + 120000], [UD[1], "wrong", D0 + 180000], [UD[2], "unknown", D0 + 240000], [UD[3], "correct", D0 + 300000], [UD[0], "correct", D1], [UD[1], "correct", D1 + 60000], [UD[1], "correct", D1 + 120000]];
+    const run = (how) => {
+      store.clear();
+      store.set("spelldash_my_words", JSON.stringify(UPDOWN));
+      const after = [];
+      for (const [w, outcome, at] of plan) {
+        let kind;
+        if (how === "typed") kind = typedKind[outcome](C.wordCardOf(w));
+        else if (outcome === "unknown") kind = Q.failKindOf("e");
+        else {
+          const card = freeCard(w);
+          const r = build({ entry: w, scope: UPDOWN, others: [], dir: "en", rand: seeded(at % 97) });
+          const opt = r?.options?.find((o) => o.correct === (outcome === "correct"));
+          kind = opt ? choiceKind(opt, card) : null;
+        }
+        if (!M.recordMyAnswer(w.en, kind, at)) after.push(`not recorded ${w.en}`);
+        after.push(JSON.parse(store.get("spelldash_my_words")).map((x) => [x.en, x.ls ?? null, x.lsd ?? null, x.lsAt ?? null]));
+      }
+      return { final: store.get("spelldash_my_words"), after };
+    };
+    const typed = run("typed");
+    const choice = run("choice");
+    ok("打つ回と選ぶ回で同じ並びの答え（違う・正解・正解・別の日に正解・分からない）を当てると、保存は 1 字も同じ（どの答えの後も）", typed.final === choice.final && JSON.stringify(typed.after) === JSON.stringify(choice.after) && !choice.after.some((a) => typeof a === "string"), JSON.stringify({ typed: typed.after.at(-1), choice: choice.after.at(-1) }));
+    const fin = Object.fromEntries(JSON.parse(choice.final ?? "[]").map((x) => [x.en, x]));
+    ok("別の日に 2 回の決まり（選ぶ回でも同じ）: 違う → あやふや、同じ日の正解 2 回は 1 日目のまま、次の日の正解で覚えた。違うを選んだ同じ英語の語（「→」の行）は、その語だけが あやふや のまま次の日に 1 日目",
+      fin.up?.ls === 2 && fin[UD[1].en]?.ls === 1 && Number.isInteger(fin[UD[1].en]?.lsd) && fin[UD[2].en]?.ls === 1 && fin[UD[2].en]?.lsd === undefined && fin.down?.ls === 2 && fin[UD[4].en]?.ls === undefined && fin[UD[5].en]?.ls === undefined,
+      JSON.stringify(fin));
+    ok("場面カード（鍵 scene）と答えていない語（down の 2 つ目・3 つ目）は 1 字も変えない", JSON.stringify(JSON.parse(choice.final ?? "[]").filter((x) => x.kind === "concept" || x.en === UD[4].en || x.en === UD[5].en)) === JSON.stringify(UPDOWN.filter((x) => x.kind === "concept" || x.en === UD[4].en || x.en === UD[5].en)));
+  }
+
+  // ---- 二重に記録しない守り（1 問に 1 回。2 度押し・キーの押しっぱなし・前の問いの押し・開き直したページの古い問い） ----
+  {
+    const g = guardOf();
+    g?.open?.("my-up#1");
+    const first = g?.claim?.("my-up#1");
+    const second = g?.claim?.("my-up#1");
+    ok("守り: 1 問に 1 回だけ受ける（2 度押しの 2 度目は受けない）", first === true && second === false);
+    const g2 = guardOf();
+    g2?.open?.("a#1");
+    const rep = g2?.claim?.("a#1", { repeat: true });
+    const after = g2?.claim?.("a#1");
+    ok("守り: キーの押しっぱなし（repeat）・2 度目のクリック（detail 2）は答えにしない・その後の普通の押しは受ける", rep === false && after === true);
+    g2?.open?.("b#2");
+    const stale = g2?.claim?.("a#1");
+    const early = g2?.next?.("b#2");
+    const pick = g2?.claim?.("b#2");
+    const next1 = g2?.next?.("b#2");
+    const next2 = g2?.next?.("b#2");
+    ok("守り: 次の問いを出した後に前の問いの押しは受けない・「次へ」は答えた後に 1 回だけ", stale === false && early === false && pick === true && next1 === true && next2 === false);
+    g2?.close?.();
+    ok("守り: 回を終えた後（閉じた）は受けない", g2?.claim?.("b#2") === false && g2?.next?.("b#2") === false);
+    const reopened = guardOf();
+    ok("開き直したページの守りは、前のページの問いを受けない（開いただけでは記録しない）", reopened?.claim?.("b#2") === false && reopened?.next?.("b#2") === false && typeof reopened?.open === "function");
+    // ダブルクリックの 2 度目（click の detail が 2 以上）を受けないのは、画面が変わって（新しい問い・答えの印・向きの切り替え）から CHOICE_CARRY_MS の間だけ。
+    // 遅いダブルクリックの設定（OS）や指の連続のタップでも、変わった画面を読んでから同じ所を押す答え・「次へ」は受ける。ふつうの 1 度押しはいつも受ける
+    const carry = fn("isCarryClick");
+    ok("ダブルクリックの 2 度目は画面が変わってから 0.5 秒の間だけ受けない（遅いダブルクリックの設定でも、読んでから同じ所を押すのは受ける・1 度押しはいつも受ける）",
+      X.CHOICE_CARRY_MS === 500 && carry(2, 0) === true && carry(2, 120) === true && carry(3, 499) === true && carry(2, 500) === false && carry(2, 1200) === false && carry(1, 10) === false && carry(0, 10) === false && carry(2, NaN) === false,
+      JSON.stringify({ ms: X.CHOICE_CARRY_MS, a: carry(2, 120), b: carry(2, 1200), c: carry(1, 10) }));
+  }
 }
 
 console.log(`test-my-words: ${passed} passed, ${failed} failed`);
