@@ -139,8 +139,16 @@ export function typedAsOf(option, card) {
   return text && !answerMatches(card, text) ? text : "-";
 }
 
+// ダブルクリック・ダブルタップの 2 度目（click の detail が 2 以上）を受けない間（ms）。画面が変わって（新しい問い・答えの印・向きの切り替え）から
+// この間だけ: 1 度目で変わった画面の同じ所（「分からない」の後の「次へ」・次の問いの選択肢）に 2 度目が当たっても進めない。
+// それより後は detail が 2 以上でも受ける（遅いダブルクリックの設定や指の連続のタップで、読んでから同じ所を押す答えを捨てない）
+export const CHOICE_CARRY_MS = 500;
+export function isCarryClick(detail, sinceChangeMs) {
+  return Number(detail) > 1 && Number.isFinite(sinceChangeMs) && sinceChangeMs < CHOICE_CARRY_MS;
+}
+
 // 二重に記録しない守り（1 問に 1 回）。問いごとの印（token = カードの id と出した回の番号）を開き、答え（claim）と「次へ」（next）をそれぞれ 1 回だけ受ける。
-// キーの押しっぱなし（keydown の repeat）・2 度目のクリック（click の detail が 2 以上）は repeat として受けない。前の問いの印・閉じた後（回の終わり）・
+// キーの押しっぱなし（keydown の repeat）・画面が変わった直後の 2 度目のクリック（isCarryClick）は repeat として受けない。前の問いの印・閉じた後（回の終わり）・
 // 開き直したページ（新しい守り）は受けない
 export function createChoiceGuard() {
   let token = null;
@@ -191,6 +199,8 @@ export function mountChoice(deps) {
   let serial = 0;
   let picked = 0; // この回で答えた数（始めの切り替えは 1 問目に答えるまで）
   let alive = true;
+  let changedAt = -Infinity; // 画面が最後に変わった時刻（新しい問い・答えの印・向きの切り替え）。isCarryClick の起点
+  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
   const el = (tag, cls, text = "") => {
     const node = document.createElement(tag);
@@ -249,6 +259,7 @@ export function mountChoice(deps) {
     if (!alive || !current) return;
     word = current;
     serial++;
+    changedAt = now();
     guard.open(`${current.id}#${serial}`);
     const entry = deps.entryOf(current);
     const scope = deps.scope();
@@ -297,6 +308,7 @@ export function mountChoice(deps) {
       if (i === pickedIndex) b.setAttribute("aria-pressed", "true");
     });
     picked++;
+    changedAt = now();
     skip.hidden = true;
     dirLine.hidden = true;
     next.hidden = false;
@@ -347,12 +359,13 @@ export function mountChoice(deps) {
   const onClick = (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
-    const repeat = event.detail > 1; // ダブルクリックの 2 度目（次の問いのボタンに当たっても答えにしない）
+    // ダブルクリック・ダブルタップの 2 度目が、1 度目で変わった画面（次の問いの選択肢・「分からない」の後に同じ所に出る「次へ」・替えた向きの切り替え）に当たったときだけ受けない
+    const repeat = isCarryClick(event.detail, now() - changedAt);
     const opt = target.closest(".choice__opt");
     if (opt && box.contains(opt)) choose(Number(opt.dataset.i), { repeat });
     else if (target.closest("#choiceSkip")) giveUp({ repeat });
-    else if (target.closest("#choiceNext")) goNext({ repeat: false });
-    else if (target.closest("#choiceSwitch")) switchDir();
+    else if (target.closest("#choiceNext")) goNext({ repeat });
+    else if (target.closest("#choiceSwitch") && !repeat) switchDir();
   };
 
   // 開いている窓（<dialog>・aria-modal の札。閉じた札は hidden か inert の中）の中の打鍵は選ぶ回のものではない

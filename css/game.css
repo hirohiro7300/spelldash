@@ -1542,7 +1542,7 @@ html[data-theme] .choice__dir {
 }
 
 html[data-theme] .choice__switch {
-  min-height: 36px;
+  min-height: 40px;
   padding: 0 12px;
   border: 1px solid var(--line-2);
   border-radius: 3px;
@@ -1552,6 +1552,13 @@ html[data-theme] .choice__switch {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+}
+
+/* 指の端末では向きの切り替えも 44px（押せる物は 40〜44px。docs/STATUS.md） */
+@media (pointer: coarse) {
+  html[data-theme] .choice__switch {
+    min-height: 44px;
+  }
 }
 
 html[data-theme] .choice__opts {
