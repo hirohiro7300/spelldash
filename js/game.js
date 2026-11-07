@@ -931,8 +931,9 @@ function myLearnSource(bookId) {
     list: words,
     idOf: undefined, // my-<鍵>（js/myWordsCore.js）
     find: book ? (id) => (words().some((w) => w.kind !== "concept" && `my-${w.en}` === id) ? findWord(id) : null) : (id) => findWord(id),
-    entryOf: (word) => words().find((w) => w.kind !== "concept" && w.en === word?.en) ?? null,
-    record: (word, kind) => recordMyAnswer(word.en, kind),
+    // 語はカードの鍵（key = 保存の en）で引く。カードの en は答えの英語で、同じ英語の語（Batch 82: 訳が違えば何度も入る）では同じなので使わない
+    entryOf: (word) => words().find((w) => w.kind !== "concept" && w.en === (word?.key ?? word?.en)) ?? null,
+    record: (word, kind) => recordMyAnswer(word.key ?? word.en, kind),
     emptyTitle: book ? `「${name}」に語が無い` : "マイ単語帳に語が無い",
     emptyNote: "マイ単語帳で英語と日本語訳を入れる。",
     doneNote: book ? `「${name}」の語を、ひととおり学んだ。` : "マイ単語帳の語を、ひととおり学んだ。"
@@ -2661,9 +2662,11 @@ function findConfusables(word) {
   const family = new Set(Array.isArray(word.family) ? word.family : []);
   const seen = new Set([word.id]);
   const maxDistance = word.en.length >= 7 ? 2 : 1;
+  const my = word.category === "my";
   const out = [];
-  for (const w of getWordsByCategory(word.category === "my" ? "my" : "all")) {
-    if (seen.has(w.id) || family.has(w.id) || isConceptWord(w) || !/^[a-z-]+$/.test(w.en)) continue;
+  for (const w of getWordsByCategory(my ? "my" : "all")) {
+    // マイ単語帳は同じ英語を訳を変えて何度も持てる（Batch 82）: 同じ綴りの語は「似た綴り」に出さない
+    if (seen.has(w.id) || family.has(w.id) || isConceptWord(w) || !/^[a-z-]+$/.test(w.en) || (my && w.en === word.en)) continue;
     seen.add(w.id);
     if (levenshtein(word.en, w.en) <= maxDistance) out.push(w);
     if (out.length >= 3) break;

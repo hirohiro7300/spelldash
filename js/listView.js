@@ -371,10 +371,11 @@ document.getElementById("listBody")?.addEventListener("click", (event) => {
   render();
 });
 
-// 保存してある鍵（toWordObjects: 英単語は en、場面カードは key）。マイ単語帳の語でなければ null
+// 保存してある鍵（toWordObjects: 英単語も場面カードも key。Batch 82: 英単語のカードの en は答えの英語で、同じ英語の語では同じなので使わない）。
+// マイ単語帳の語でなければ null
 function myWordKey(word) {
   if (word.category !== "my") return null;
-  return word.kind === "concept" ? word.key : word.en;
+  return word.key ?? word.en;
 }
 
 function cardHtml(word, stat, { removable = false, today = localDay(new Date()) } = {}) {

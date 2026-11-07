@@ -25121,9 +25121,9 @@ console.log("same english twice (82.1):");
     await page.waitForTimeout(150);
     const s3 = await stored(page);
     const v3 = await view(page);
-    check("82.1 1 つ消す: 確かめる窓のあと、その語だけが消える（同じ英語のほかの語・前からの語・場面カードは状態ごと残る）・墓標はその鍵だけ",
+    check("82.1 1 つ消す: 確かめる窓は英語と訳の頭でどの語かを言う・OK でその語だけが消える（同じ英語のほかの語・前からの語・場面カードは状態ごと残る）・墓標はその鍵だけ",
       !s3.words.some((w) => w.en === victim) && JSON.stringify(s3.words) === JSON.stringify(s2.words.filter((w) => w.en !== victim)) && s3.meta[`my_word:${victim}`]?.deleted === true
-        && Object.values(s3.meta).filter((m) => m.deleted).length === 1 && v3.rows.length === 6 && page.dialogs.length === 1 && /「down」/.test(page.dialogs[0] ?? ""),
+        && Object.values(s3.meta).filter((m) => m.deleted).length === 1 && v3.rows.length === 6 && page.dialogs.length === 1 && /^「down（材料の値が下がった。/.test(page.dialogs[0] ?? ""),
       JSON.stringify({ meta: s3.meta, rows: v3.rows.length, dialogs: page.dialogs }));
 
     // (4) 訳を直す: 同じ英語のほかの語と同じ訳にすると断る（保存は変えない・欄は開いたまま）。重ならない訳なら直る（鍵・状態はそのまま）

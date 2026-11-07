@@ -11,7 +11,7 @@ import {
   getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage,
   getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa
 } from "./myWords.js";
-import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, MY_BOOK_NAME_MAX } from "./myWordsCore.js";
+import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, MY_BOOK_NAME_MAX } from "./myWordsCore.js";
 import { LEARN_LABELS } from "./learnState.js";
 
 const STATE_KEY = ["new", "unsure", "learned"];
@@ -55,6 +55,28 @@ function button(cls, text, label) {
 }
 
 const shownOf = (w) => (isWordEntry(w) ? displayOf(w) : String(w.answer ?? w.en));
+
+// 同じ英語の語が 2 つ以上ある英語（Batch 82。訳が違えば同じ英語を何度も入れられる）: 行の読み上げの名前と消す前の確かめる窓に訳の頭を添えて、
+// どの語かを分ける（画面の英語の字は同じまま。1 つだけの英語は前と同じ名前）
+const JA_HEAD = 20;
+let sharedEnglish = new Set();
+function sharedEnglishOf(list) {
+  const seen = new Set();
+  const shared = new Set();
+  for (const w of list) {
+    if (!isWordEntry(w)) continue;
+    const key = answerKeyOf(w);
+    (seen.has(key) ? shared : seen).add(key);
+  }
+  return shared;
+}
+function labelOf(w) {
+  const shown = shownOf(w);
+  if (!isWordEntry(w) || !sharedEnglish.has(answerKeyOf(w))) return shown;
+  const ja = String(w.ja);
+  return `${shown}（${ja.length > JA_HEAD ? `${ja.slice(0, JA_HEAD)}…` : ja}）`;
+}
+
 const bookName = (books, id) => books.find((b) => b.id === id)?.name ?? "";
 const rowByRef = (ref) => [...document.querySelectorAll("#myWordsList .mw-row")].find((li) => li.dataset.ref === ref) ?? null;
 const pressedTab = () => document.querySelector('#myBookTabs .mw-book[aria-pressed="true"]');
@@ -124,6 +146,7 @@ function rowOf(w) {
   const ref = entryRefOf(w);
   const word = isWordEntry(w);
   const shown = shownOf(w);
+  const label = labelOf(w);
   const li = el("li", "mw-row");
   li.dataset.ref = ref;
   if (selecting) {
@@ -132,7 +155,7 @@ function rowOf(w) {
     box.type = "checkbox";
     box.dataset.ref = ref;
     box.checked = selected.has(ref);
-    box.setAttribute("aria-label", `${shown} を選ぶ`);
+    box.setAttribute("aria-label", `${label} を選ぶ`);
     pick.append(box);
     li.append(pick);
   }
@@ -146,7 +169,7 @@ function rowOf(w) {
     input.maxLength = 200;
     input.value = w.ja;
     input.autocomplete = "off";
-    input.setAttribute("aria-label", `${shown} の訳`);
+    input.setAttribute("aria-label", `${label} の訳`);
     const save = el("button", "mw-row__save", "保存");
     save.type = "submit";
     form.append(input, save, button("mw-row__cancel", "やめる"));
@@ -158,11 +181,11 @@ function rowOf(w) {
   li.append(el("span", `mw-row__state mw-row__state--${state}`, word ? LEARN_LABELS[myStateOf(w)] : "場面カード"));
   if (!selecting && editing !== ref) {
     const acts = el("span", "mw-row__acts");
-    if (word) acts.append(button("mw-row__edit", "直す", `${shown} の訳を直す`));
-    const del = button("mw-row__del", "消す", `${shown} を消す`);
-    del.dataset.key = w.en;
+    if (word) acts.append(button("mw-row__edit", "直す", `${label} の訳を直す`));
+    const del = button("mw-row__del", "消す", `${label} を消す`);
+    del.dataset.key = w.en; // 語の鍵（同じ英語の語は鍵が別々: Batch 82）
     del.dataset.kind = w.kind === "concept" ? "concept" : "word";
-    del.dataset.label = shown;
+    del.dataset.label = label;
     acts.append(del);
     li.append(acts);
   }
@@ -181,6 +204,7 @@ function render() {
   if (entries.length === 0) selecting = false;
   if (editing && !entries.some((w) => entryRefOf(w) === editing)) editing = null;
   const name = bookName(books, current);
+  sharedEnglish = sharedEnglishOf(list);
 
   renderBooks(books, counts);
   const sum = $("myWordsSum");
