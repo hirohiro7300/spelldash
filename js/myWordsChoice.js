@@ -256,7 +256,7 @@ export function mountChoice(deps) {
     const others = (deps.all() ?? []).filter((w) => w && !inScope.has(entryRefOf(w)));
     built = buildChoice({ entry, scope, others, dir });
     const q = document.getElementById("japanese");
-    if (q && built.prompt) q.textContent = built.prompt;
+    if (q && built.prompt && q.textContent !== built.prompt) q.textContent = built.prompt; // 訳を見て英語を選ぶは出題の行のまま（読み上げを重ねない）
     const label = document.querySelector("#gameCard .label");
     if (label) label.textContent = dir === CHOICE_JA ? "英語" : "日本語訳";
     const buttons = (built.ok ? built.options : []).map((o, i) => {
