@@ -25568,6 +25568,25 @@ console.log("my words choice (82.2):");
     check("82.2 320／390／1200 × 昼夜: 150 字の英語と訳の選択肢・問い（2 つの向き・答えた後の印も）は折り返して全部見え、横スクロール 0・エラー 0", bad.length === 0, JSON.stringify(bad));
   }
 
+  // (13) 動きを減らす設定（prefers-reduced-motion: reduce）: 選ぶ・答えの印・次の問いで動く物 0
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block", reducedMotion: "reduce", isMobile: true, hasTouch: true });
+    const page = await choicePage(seedAll, { context: ctx });
+    await page.goto(BASE + "/?learn=my&book=main&choice=en", { waitUntil: "networkidle" });
+    const v = await waitQuestion(page, 1);
+    const moving = () => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && Number(a.effect?.getTiming?.().duration ?? 0) > 1).map((a) => `${a.animationName ?? a.transitionProperty ?? "?"}@${a.effect?.target?.id || a.effect?.target?.className || "?"}`));
+    const m0 = await moving();
+    await page.tap(`#choiceOpts .choice__opt[data-i="${correctIndex(v, "up")}"]`);
+    await page.waitForTimeout(80);
+    const m1 = await moving();
+    const v2 = await waitQuestion(page, 2);
+    await page.tap(`#choiceOpts .choice__opt[data-i="${wrongIndex(v2, "up")}"]`);
+    await page.waitForTimeout(80);
+    const m2 = await moving();
+    check("82.2 動きを減らす設定: 出題・正解の印・違うの印で動く物 0（指で押しても選べる）・エラー 0", m0.length === 0 && m1.length === 0 && m2.length === 0 && (await cv(page)).opts.some((o) => o.state === "wrong") && page.errors.length === 0, JSON.stringify({ m0, m1, m2, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
   // (12) 回の長さは打つ回と同じ 1 回 10 語: 11 語の単語帳は 10 語でセットの終わり（続けて学ぶ・向きを替える）→ 続けて学ぶも選ぶ回と向きのまま → 終わり（もう一度）
   {
     const ELEVEN = ["apple", "bread", "chair", "door", "egg", "fish", "glass", "hat", "ink", "jam", "kite"].map((en, i) => ({ en, ja: `訳の${i + 1}`, addedAt: T }));
