@@ -25009,7 +25009,7 @@ console.log("my word books (81.1):");
   }
 }
 
-// ===== 82.1 同じ英語を何度も（Batch 82。js/myWordsCore.js answerKeyOf・myIdentityFor・parseBulkLine・js/myWords.js・mywords.html・入口 /?learn=my&book=<id>。docs/SPEC_MY_WORDS.md §11）: 英語が同じでも訳が違えば足せる（2 つ目からの鍵は <英語>~<訳の印 8 桁>。前からの語と場面カードは 1 字も変えない）・同じ英語と同じ訳は断る（1 回の貼り付けの中も）・まとめて足すの訳の中の「→」は字のまま・英語の無い矢印の行は断る・一覧に全部出る・学ぶ回の答えはその語に記録・1 つ消してもほかは残る（墓標はその語だけ）・訳を直して同じ組になるときは断る =====
+// ===== 82.1 同じ英語を何度も（Batch 82。js/myWordsCore.js answerKeyOf・myIdentityFor・parseBulkLine・js/myWords.js・mywords.html・入口 /?learn=my&book=<id>。docs/SPEC_MY_WORDS.md §11）: 英語が同じでも訳が違えば足せる（2 つ目からの鍵は <英語>~<訳の印 8 桁>。前からの語と場面カードは 1 字も変えない）・同じ英語と同じ訳は断る（1 回の貼り付けの中も）・まとめて足すの訳の中の「→」は字のまま・英語の無い矢印の行は断る・一覧に全部出る・学ぶ回の答えはその語に記録・1 つ消してもほかは残る（墓標はその語だけ）・訳を直して同じ組になるときは断る・まとめて足すで断った行は英語と訳の頭で言い、欄にはその行だけを残す =====
 // Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来では種に戻さない）
 console.log("same english twice (82.1):");
 {
@@ -25148,12 +25148,34 @@ console.log("same english twice (82.1):");
       /同じ訳/.test(refused.status) && /「マイ単語帳」にすでに登録/.test(refused.status) && JSON.stringify(s4.words) === JSON.stringify(s3.words) && stillEditing
         && fixed?.ja === "品質が上がった。同じ席の費用は上がる？下がる？" && fixed?.ls === 1 && s5.words.length === s3.words.length,
       JSON.stringify({ status: refused.status, stillEditing, fixed }));
+
+    // (5) まとめて足すで断った行（反証の直し）: 英語は up だけの行が並ぶので、状況の文は断った行を英語と訳の頭で言う。
+    //     足した後の欄には断った行だけが残る（もう一度押しても、足した行をまた断らない）
+    const NEWA = "up, 夕方に雨がやんだ。夜の客の数は上がる？下がる？";
+    const NEWB = "up, 祭りが近づいた。駅の人の数は上がる？下がる？";
+    await page.evaluate(() => { const d = document.getElementById("myWordsBulkFold"); if (d) d.open = true; });
+    await page.fill("#myWordsBulk", [NEWA, L[0], NEWB].join("\n")).catch(() => {});
+    await page.click("#myWordsBulkAdd").catch(() => {});
+    await page.waitForTimeout(150);
+    const v6 = await view(page);
+    const box6 = await page.inputValue("#myWordsBulk").catch(() => null);
+    const s6 = await stored(page);
+    await page.click("#myWordsBulkAdd").catch(() => {});
+    await page.waitForTimeout(150);
+    const v7 = await view(page);
+    const box7 = await page.inputValue("#myWordsBulk").catch(() => null);
+    const s7 = await stored(page);
+    const dupName = `up（${jaOf(L[0]).slice(0, 12)}`;
+    check("82.1 まとめて足すで断った行: 訳が違う up の 2 行は入り、前からある組の 1 行は断る・状況の文は英語と訳の頭でどの行かを言う（up（雨の日が続いた。…））・欄には断った 1 行だけが残る・もう一度押すと断るのはその 1 行だけ（足した 2 行をまた断らない・保存は変わらない）",
+      /2語を足した/.test(v6.status) && /足せなかった 1行/.test(v6.status) && v6.status.includes(dupName) && /同じ訳で「マイ単語帳」にすでに登録/.test(v6.status) && box6 === L[0] && s6.words.length === s5.words.length + 2
+        && /^足せなかった 1行/.test(v7.status) && v7.status.includes(dupName) && box7 === L[0] && JSON.stringify(s7.words) === JSON.stringify(s6.words),
+      JSON.stringify({ status: [v6.status, v7.status], box: [box6, box7], n: [s5.words.length, s6.words.length, s7.words.length] }));
     check("82.1 画面と学ぶ回のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
     await closeCtx(page);
   }
 }
 
-// ===== 82.2 選択式（Batch 82。js/myWordsChoice.js・js/game.js のマイ単語帳の回・mywords.html の「選択式で学ぶ」・入口 /?learn=my[&book=<id>]&choice=en|ja。docs/SPEC_MY_WORDS.md §12）: 入口（単語帳ごと・全部の単語帳・0 語では出さない・打つ回の入口は前のまま）・訳を見て英語を選ぶ（既定。up／down の単語帳はちょうど up と down の 2 択）・始めの切り替えで英語を見て訳を選ぶ（URL だけ・記録しない）・1〜4 のキーとマウス・分からない・正解と違うの字の印と aria-live の 1 行・ボタンの状態・正解の後は打つ回の間合いで進み、違うは止まる・数え方は打つ回と同じ（同じ答えを打った回と保存を突き合わせる。同じ英語の語はその語に記録）・2 度押し／キーの押しっぱなし／開き直し／戻る進む／2 つのタブで二重に記録しない・単語帳ごとの範囲・1 語の単語帳は埋める・回の終わり（向きの名前・もう一度・マイ単語帳へ・向きを替える）・150 字の選択肢と問い × 320 × 昼夜で横スクロール 0・画面キーボードと入力欄なし・打つ回の /?learn=my は前のまま・エラー 0 =====
+// ===== 82.2 選択式（Batch 82。js/myWordsChoice.js・js/game.js のマイ単語帳の回・mywords.html の「選択式で学ぶ」・入口 /?learn=my[&book=<id>]&choice=en|ja。docs/SPEC_MY_WORDS.md §12）: 入口（単語帳ごと・全部の単語帳・0 語では出さない・打つ回の入口は前のまま）・訳を見て英語を選ぶ（既定。up／down の単語帳はちょうど up と down の 2 択）・始めの切り替えで英語を見て訳を選ぶ（URL だけ・記録しない）・1〜4 のキーとマウス・分からない・正解と違うの字の印と aria-live の 1 行・ボタンの状態・正解の後は打つ回の間合いで進み、違うは止まる・数え方は打つ回と同じ（同じ答えを打った回と保存を突き合わせる。同じ英語の語はその語に記録）・2 度押し／キーの押しっぱなし／開き直し／戻る進む／2 つのタブで二重に記録しない・単語帳ごとの範囲・1 語の単語帳は埋める・回の終わり（向きの名前・もう一度・マイ単語帳へ・向きを替える）・150 字の選択肢と問い × 320 × 昼夜で横スクロール 0・画面キーボードと入力欄なし・打つ回の /?learn=my は前のまま・エラー 0・回の終わりの向きを替える道は始めの切り替えと同じ字・指の端末には数字のキーと Enter の案内を出さない =====
 // Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来・開き直しでは種に戻さない）
 console.log("my words choice (82.2):");
 {
@@ -25207,6 +25229,9 @@ console.log("my words choice (82.2):");
       panelText: document.getElementById("resultPanel")?.innerText.replace(/\s+/g, " ").trim() ?? "",
       again: document.getElementById("choiceAgain")?.getAttribute("href") ?? null,
       other: document.getElementById("choiceOther")?.getAttribute("href") ?? null,
+      otherText: document.getElementById("choiceOther")?.textContent.trim() ?? null,
+      otherLabel: document.getElementById("choiceOther")?.getAttribute("aria-label") ?? null,
+      hint: vis(document.getElementById("choiceHint")) ? document.getElementById("choiceHint").textContent.trim() : null,
       back: document.getElementById("learnMyWords")?.getAttribute("href") ?? null,
       mode: document.getElementById("choiceMode")?.textContent.trim() ?? null,
       hx: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -25321,6 +25346,7 @@ console.log("my words choice (82.2):");
       JSON.stringify(v0));
     check("82.2 選ぶ回: 入力欄も画面キーボードも出さない（設定で画面キーボードを「いつも」にしていても）・焦点は選択肢の組・始めに「分からないときは「分からない」」の 1 行（aria-live）",
       !v0.input && !v0.inputFocus && !v0.osk && v0.focusIn && /分からない/.test(v0.msg) && v0.msgLive === "polite", JSON.stringify(v0));
+    check("82.2 マウスとキーボードの端末: 数字のキーの案内が出る（「数字のキー（1〜2）でも選べる」。指の端末では出さない: (13)）", /数字のキー（1〜2）でも選べる/.test(v0.hint ?? ""), JSON.stringify(v0.hint));
 
     // (3) 始めの切り替え: 英語を見て訳を選ぶ（URL の choice=ja だけ。記録しない）→ 戻す
     check("82.2 始めの切り替え: 「訳を見て英語を選ぶ」と、もう一方の向き「英語を見て訳を選ぶ」のボタン", /訳を見て英語を選ぶ/.test(v0.dir ?? "") && /英語を見て訳を選ぶ/.test(v0.dir ?? ""), JSON.stringify(v0.dir));
@@ -25391,6 +25417,8 @@ console.log("my words choice (82.2):");
       [v4.id, v5.id, v6.id].join() === KEYS.slice(3).map((k) => `my-${k}`).join() && !end.box && end.panel && end.title === "6語 終わり" && /今回 覚えた/.test(end.panelText) && /マイ単語帳 覚えた 3 \/ 6/.test(end.panelText)
         && end.mode === "選択式・訳を見て英語を選ぶ" && end.again === "/?learn=my&book=main&choice=en" && end.back === "/mywords.html?book=main" && end.other === "/?learn=my&book=main&choice=ja",
       JSON.stringify(end));
+    check("82.2 回の終わりの向きを替える道: 見える字は回の始めの切り替えと同じ「英語を見て訳を選ぶに替える」（向きの名前だけにしない）・読み上げの名前も見える字と同じ",
+      end.otherText === "英語を見て訳を選ぶに替える" && (end.otherLabel ?? end.otherText) === end.otherText, JSON.stringify({ text: end.otherText, label: end.otherLabel }));
     check("82.2 記録はその語に: 正解の up・down 2 語は 覚えた、違うを選んだ「→」の行（同じ英語の 2 つ目）と分からないの語と最後の違うは あやふや・場面カードは 1 字も変わらない",
       st.up === 2 && st[KEYS[1]] === 1 && st[KEYS[2]] === 1 && st.down === 2 && st[KEYS[4]] === 2 && st[KEYS[5]] === 1 && JSON.stringify(choiceAfter.words.find((w) => w.kind === "concept")) === JSON.stringify(SCENE),
       JSON.stringify(st));
@@ -25589,7 +25617,9 @@ console.log("my words choice (82.2):");
     await page.tap(`#choiceOpts .choice__opt[data-i="${wrongIndex(v2, "up")}"]`);
     await page.waitForTimeout(80);
     const m2 = await moving();
-    check("82.2 動きを減らす設定: 出題・正解の印・違うの印で動く物 0（指で押しても選べる）・エラー 0", m0.length === 0 && m1.length === 0 && m2.length === 0 && (await cv(page)).opts.some((o) => o.state === "wrong") && page.errors.length === 0, JSON.stringify({ m0, m1, m2, err: page.errors[0] }));
+    const a2 = await cv(page);
+    check("82.2 動きを減らす設定: 出題・正解の印・違うの印で動く物 0（指で押しても選べる）・エラー 0", m0.length === 0 && m1.length === 0 && m2.length === 0 && a2.opts.some((o) => o.state === "wrong") && page.errors.length === 0, JSON.stringify({ m0, m1, m2, err: page.errors[0] }));
+    check("82.2 指の端末: 数字のキーと Enter の案内は出さない（出題のときも違うを選んだ後も。押す物は選択肢と「次へ」）", v.hint === null && a2.hint === null && a2.next, JSON.stringify({ before: v.hint, after: a2.hint, next: a2.next }));
     await closeCtx(page);
   }
 

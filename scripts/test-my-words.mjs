@@ -459,6 +459,43 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   use("Y");
   S.mergeCloudItems(rowsX3, "u1");
   ok("前からの語を消すと、墓標は my_word:up だけ・ほかの端末でも up だけが消え、同じ英語のほかの語は残る", rowsX3.length === 1 && rowsX3[0].key === "up" && rowsX3[0].deleted && !words().some((w) => w.en === "up") && words().filter((w) => w.en.startsWith("up~")).length >= 2, JSON.stringify(words().map((w) => w.en)));
+
+  // ---- 反証の直し: まとめて足すで断った行。英語は up と down だけの行が並ぶので、理由は英語と訳の頭でどの行かを言う（英語だけでは分からない）。
+  //      断った行（貼った形のまま）を rest に返す: 画面は足した後の欄にその行だけを残す（もう一度押しても、足した行をまた断らない） ----
+  devices.X.clear();
+  use("X");
+  seed([{ en: "up", ja: RAIN, book: "main", bookName: "マイ単語帳", addedAt: T }]);
+  const NEW_A = "up, 夕方に雨がやんだ。夜の客の数は上がる？下がる？";
+  const NEW_B = "up, 祭りが近づいた。駅の人の数は上がる？下がる？";
+  const LONG_JA = `${"長い場面の説明が続く。".repeat(4)}何かは上がる？下がる？`;
+  const pasted = [NEW_A, `up, ${RAIN}`, NEW_B, NEW_A, `up, ${LONG_JA}`, `UP, ${LONG_JA}`];
+  const r5 = M.addMyWordsBulk(pasted.join("\n"), "main");
+  const sk = r5.skipped ?? [];
+  ok("まとめて足す: 訳が違う up の 3 行は入り、前からある組・貼り付けの中の 2 度目（大文字小文字だけ違う行も）の 3 行は断る",
+    r5.added?.length === 3 && sk.length === 3 && words().length === 4 && sk.every((s) => /同じ訳で「マイ単語帳」にすでに登録されています/.test(s)), JSON.stringify(r5));
+  ok("断った理由は英語と訳の頭（24 字まで）でどの行かを言う（「up（雨の日が続いた。…）: 同じ訳で…」。長い訳は頭だけ）",
+    sk[0]?.startsWith(`up（${RAIN.slice(0, 12)}`) && sk[1]?.startsWith(`up（${jaOf(NEW_A).slice(0, 12)}`) && sk[2]?.startsWith(`UP（${LONG_JA.slice(0, 24)}…）`) && !sk[2]?.includes(LONG_JA),
+    JSON.stringify(sk));
+  eq("断った行は貼った形のまま返す（画面は欄にその行だけを残す）", r5.rest ?? null, [`up, ${RAIN}`, NEW_A, `UP, ${LONG_JA}`]);
+  const r6 = M.addMyWordsBulk((r5.rest ?? pasted).join("\n"), "main");
+  ok("残した行をもう一度足すと、断るのはその行だけ（前に足した行をまた断らない）・保存は変えない", r6.added?.length === 0 && r6.skipped?.length === 3 && words().length === 4, JSON.stringify(r6));
+  const r7 = M.addMyWordsBulk("invoice\nbad/entry, だめ\n品質が下がった → 同じ席に高く払う", "main");
+  ok("ほかの理由の行も残す（訳なし・使えない字・英語の無い行）・訳のある行は訳の頭も添える", JSON.stringify(r7.rest ?? null) === JSON.stringify(["invoice", "bad/entry, だめ", "品質が下がった → 同じ席に高く払う"]) && /^invoice: 日本語訳を入力/.test(r7.skipped?.[0] ?? "") && /^bad\/entry（だめ）: /.test(r7.skipped?.[1] ?? "") && /「english, 訳」/.test(r7.skipped?.[2] ?? ""), JSON.stringify(r7));
+
+  // ---- 反証の直し: 片側が空の矢印（行の頭か終わり）と英語の無い行。矢印を訳にも英語にもしない・英語の無い行は「english, 訳」の形を言う ----
+  eq("片側が空の矢印: 英語の側だけなら訳なしの語（足すときの確かめが「日本語訳を入力してください」）・矢印を訳にしない",
+    [parseLine("up ->"), parseLine("-> up"), parseLine("e-mail →"), parseLine("follow up =>")], [{ en: "up", ja: "" }, { en: "up", ja: "" }, { en: "e-mail", ja: "" }, { en: "follow up", ja: "" }]);
+  for (const line of ["-> 訳だけ", "→ 何か", "何か →", "->", "ただの日本語の行", "123 数字", "、訳だけ"]) {
+    const p = parseLine(line);
+    ok(`英語の無い行は断る（「english, 訳」の形を言う）: 「${line}」`, !!p?.error && /^英語が無い。/.test(p.error) && /「english, 訳」/.test(p.error) && p.line === line, JSON.stringify(p));
+  }
+  eq("英字のある行は前のまま（全角の英字は NFKC で英語・使えない字と訳なしは足すときの確かめが言う）",
+    [parseLine("ＫＰＩ 指標"), parseLine("café 喫茶店"), parseLine("invoice"), parseLine("bad/entry, だめ")], [{ en: "ＫＰＩ", ja: "指標" }, { en: "café", ja: "喫茶店" }, { en: "invoice", ja: "" }, { en: "bad/entry", ja: "だめ" }]);
+  devices.X.clear();
+  const edge = M.addMyWordsBulk("up ->\n-> 訳だけ\nup, 上がる", "main");
+  ok("まとめて足す: 「up ->」は訳が「->」の語にしない（訳なしで断る）・英語の無い矢印の行も断る・ふつうの行は入る",
+    edge.added?.length === 1 && edge.skipped?.length === 2 && /^up: 日本語訳を入力/.test(edge.skipped[0] ?? "") && /「english, 訳」/.test(edge.skipped[1] ?? "") && !words().some((w) => w.ja === "->") && words().length === 1,
+    JSON.stringify({ edge, words: words().map((w) => [w.en, w.ja]) }));
 }
 
 // ===== Batch 82 部分 B: 選択式（js/myWordsChoice.js。docs/SPEC_MY_WORDS.md §12） =====
@@ -615,6 +652,14 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
       if (!r?.ok || texts(r).filter((t) => t === "上がる").length !== 1 || right(r)[0]?.text !== "上がる" || r.options.length !== 3) bad2.push(texts(r));
     }
     ok("英語を見て訳を選ぶ: 違う英語（rise）の訳でも、問いの英語の訳と同じ訳（上がる）は違う答えに出さない・訳どうしも重ならない", bad2.length === 0, JSON.stringify(bad2.slice(0, 2)));
+    // 反証の直し（検査の穴）: 同じ英語のほかの語の訳（up の 2 つ目の訳B）も 2 つ目の正解。違う英語（rise）が同じ訳B を持っていても違う答えに出さない
+    const SAMEEN = [e("up", "訳A"), dup("up", "訳B"), e("rise", "訳B"), e("fall", "訳C")];
+    const bad3 = [];
+    for (let s = 1; s <= 30; s++) {
+      const r = build({ entry: SAMEEN[0], scope: SAMEEN, others: [], dir: "ja", rand: seeded(s) });
+      if (!r?.ok || texts(r).includes("訳B") || right(r)[0]?.text !== "訳A" || JSON.stringify([...texts(r)].sort()) !== '["訳A","訳C"]') bad3.push(texts(r));
+    }
+    ok("英語を見て訳を選ぶ: 同じ英語のほかの語の訳（up の 2 つ目の訳B）は、違う英語（rise）がその訳を持っていても違う答えに出さない（30 通りの乱数）", bad3.length === 0, JSON.stringify(bad3.slice(0, 2)));
     const W2 = [e("up", "CPCは上がる？"), e("down", "CPCは 上がる?"), e("left", "左へ")];
     const w2 = build({ entry: W2[0], scope: W2, others: [], dir: "ja", rand: seeded(1) });
     ok("訳の正規化（NFKC・空白・全角半角）: 「CPCは 上がる?」は「CPCは上がる？」と同じ訳なので出さない", w2?.ok && texts(w2).length === 2 && texts(w2).includes("左へ"), JSON.stringify(texts(w2)));
