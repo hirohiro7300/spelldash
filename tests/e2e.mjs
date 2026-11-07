@@ -24050,16 +24050,17 @@ console.log("my words (79.1):");
       v.path === "/mywords.html" && v.nav.length === 4 && v.nav.every(([, , cur]) => cur === null) && v.footer && v.noindex === "noindex" && v.empty === "英語と日本語訳を入れると、ここで打って覚えられる。" && !v.learn.vis && v.sum.startsWith("0語") && v.rows.length === 0,
       JSON.stringify(v));
 
-    // (2) 1 語ずつ足す: 熟語（due diligence）・大文字（KPI）・ハイフン（e-mail）。使えない字は足さずに理由の 1 行。同じ語は 2 度足さない
+    // (2) 1 語ずつ足す: 熟語（due diligence）・大文字（KPI）・ハイフン（e-mail）。使えない字は足さずに理由の 1 行。同じ英語と同じ訳は 2 度足さない（大文字小文字は見ない。
+    //     Batch 82: 訳が違えば同じ英語も足せる。82.1・81.1）
     await addOne(page, "due diligence", "適正評価");
     await addOne(page, "KPI", "重要業績評価指標");
     await addOne(page, "e-mail", "電子メール");
     await addOne(page, "café", "喫茶店");
     const bad = await myView(page);
-    await addOne(page, "kpi", "別の訳");
+    await addOne(page, "kpi", "重要業績評価指標");
     const dup = await myView(page);
     const s1 = await stored(page);
-    check("79.1 1 語ずつ足す: 熟語・大文字・ハイフンが入る（一覧は新しい順・状態は これから）・保存は鍵が小文字で大文字の形も残す・使えない字（café）と同じ語は足さずに 1 行",
+    check("79.1 1 語ずつ足す: 熟語・大文字・ハイフンが入る（一覧は新しい順・状態は これから）・保存は鍵が小文字で大文字の形も残す・使えない字（café）と同じ語（kpi と同じ訳）は足さずに 1 行",
       JSON.stringify(bad.rows) === JSON.stringify([["e-mail", "電子メール", "これから"], ["KPI", "重要業績評価指標", "これから"], ["due diligence", "適正評価", "これから"]]) && /使えない字/.test(bad.status)
         && /すでに登録/.test(dup.status) && dup.rows.length === 3 && s1.length === 3 && s1[1].en === "kpi" && s1[1].text === "KPI" && s1[0].en === "due diligence" && !("text" in s1[0]) && bad.learn.vis && bad.empty === null && bad.sum.startsWith("3語"),
       JSON.stringify({ bad, dupStatus: dup.status, s1 }));
@@ -24708,18 +24709,29 @@ console.log("my word books (81.1):");
       JSON.stringify(v1.tabs.map((t) => [t[0], t[2]])) === JSON.stringify([["マイ単語帳", "false"], ["仕事", "true"]]) && v1.rows.length === 0 && v1.url === `/mywords.html?book=${W}` && v1.learn === null && JSON.stringify(s1.words) === JSON.stringify(OLD) && /^[a-z0-9]+$/.test(W),
       JSON.stringify({ v1, books: s1.books }));
 
-    // (2) 足す先は今の単語帳。英語は全部の単語帳で 1 つ（ほかの単語帳にあれば、その名前を言う）。まとめて足すも今の単語帳へ
+    // (2) 足す先は今の単語帳。同じ英語と同じ訳は全部の単語帳で 1 つ（ほかの単語帳にあれば、その名前を言う）。まとめて足すも今の単語帳へ。
+    //     Batch 82（創業者の依頼「同じ単語を入れられなくなってるから、それも調整してくれ」）: 同じ英語でも訳が違えば足せる（KPI・別の訳は仕事に入る。消すとその語だけが消える）
     await addOne(page, "due diligence", "適正評価");
-    await addOne(page, "KPI", "別の訳");
+    await addOne(page, "KPI", "重要業績評価指標");
     const dupStatus = (await view(page)).status;
+    await addOne(page, "KPI", "別の訳");
+    const v2a = await view(page);
+    const kpi2 = (await stored(page)).words.find((w) => w.text === "KPI" && w.ja === "別の訳") ?? null;
+    await page.click(`#myWordsList .mw-row__del[data-key="${kpi2?.en ?? "none"}"]`).catch(() => {});
+    await page.waitForTimeout(120);
+    const s2b = await stored(page);
+    check("81.1 同じ英語でも訳が違えば足せる（Batch 82）: KPI・別の訳は今の単語帳（仕事）に入り（鍵 kpi~<8 桁>・画面は KPI）、消すとその語だけが消える（マイ単語帳の KPI はそのまま）",
+      /足した: KPI/.test(v2a.status) && v2a.rows.some((r) => r[0] === "KPI" && r[1] === "別の訳") && kpi2?.book === W && /^kpi~[0-9a-f]{8}$/.test(kpi2?.en ?? "")
+        && !s2b.words.some((w) => w.en === kpi2?.en) && JSON.stringify(s2b.words.find((w) => w.en === "kpi")) === JSON.stringify(OLD[1]),
+      JSON.stringify({ status: v2a.status, kpi2, rows: v2a.rows }));
     await page.click("#myWordsBulkFold summary");
     await page.fill("#myWordsBulk", "follow up, 追って連絡する\nagenda, 議題\ninvoice, 請求書");
     await page.click("#myWordsBulkAdd");
     await page.waitForTimeout(120);
     const v2 = await view(page);
     const s2 = await stored(page);
-    check("81.1 足す: 1 語ずつもまとめても今の単語帳（仕事）へ・ほかの単語帳にある英語（KPI・invoice）は「マイ単語帳」にあると言って足さない・単語帳ごとの数・「学ぶ」は ?book=・全部で学ぶは /?learn=my",
-      /「マイ単語帳」/.test(dupStatus) && v2.rows.length === 3 && s2.words.filter((w) => w.book === W).map((w) => w.en).join() === "due diligence,follow up,agenda" && /足せなかった 1行/.test(v2.status)
+    check("81.1 足す: 1 語ずつもまとめても今の単語帳（仕事）へ・ほかの単語帳にある同じ英語と同じ訳（KPI・invoice）は「マイ単語帳」にあると言って足さない・単語帳ごとの数・「学ぶ」は ?book=・全部で学ぶは /?learn=my",
+      /「マイ単語帳」/.test(dupStatus) && /すでに登録/.test(dupStatus) && v2.rows.length === 3 && s2.words.filter((w) => w.book === W).map((w) => w.en).join() === "due diligence,follow up,agenda" && /足せなかった 1行/.test(v2.status)
         && JSON.stringify(v2.tabs.map((t) => t[1])) === '["2","3"]' && v2.learn === `/?learn=my&book=${W}` && v2.all === "/?learn=my" && v2.del,
       JSON.stringify({ dupStatus, v2 }));
 
@@ -24993,6 +25005,150 @@ console.log("my word books (81.1):");
     const first = await page.evaluate(() => window.__words.at(-1));
     const prog = await page.evaluate(() => document.getElementById("setProgress")?.textContent.replace(/\s+/g, " ").trim());
     check("81.1 2 台目: ほかの端末の単語帳だけで学ぶ（/?learn=my&book=bx は「仕事」の 1 語だけ: 0 / 1）・エラー 0", first === "my-deadline" && /0 \/ 1$/.test(prog ?? "") && page.errors.length === 0, JSON.stringify({ first, prog, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+}
+
+// ===== 82.1 同じ英語を何度も（Batch 82。js/myWordsCore.js answerKeyOf・myIdentityFor・parseBulkLine・js/myWords.js・mywords.html・入口 /?learn=my&book=<id>。docs/SPEC_MY_WORDS.md §11）: 英語が同じでも訳が違えば足せる（2 つ目からの鍵は <英語>~<訳の印 8 桁>。前からの語と場面カードは 1 字も変えない）・同じ英語と同じ訳は断る（1 回の貼り付けの中も）・まとめて足すの訳の中の「→」は字のまま・英語の無い矢印の行は断る・一覧に全部出る・学ぶ回の答えはその語に記録・1 つ消してもほかは残る（墓標はその語だけ）・訳を直して同じ組になるときは断る =====
+// Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来では種に戻さない）
+console.log("same english twice (82.1):");
+{
+  async function samePage(storage = {}) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => page.errors.push(e.message));
+    page.dialogs = [];
+    page.on("dialog", (d) => { page.dialogs.push(d.message()); d.accept().catch(() => {}); });
+    await page.addInitScript((seed) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, storage);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const openList = async (page, q = "") => {
+    await page.goto(BASE + "/mywords.html" + q, { waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.getElementById("myWordsSum")?.textContent.includes("語") && document.querySelectorAll("#myBookTabs .mw-book").length > 0, null, { timeout: 8000 }).catch(() => {});
+  };
+  const view = (page) => page.evaluate(() => ({
+    rows: [...document.querySelectorAll("#myWordsList .mw-row")].map((li) => [li.dataset.ref, li.querySelector(".mw-row__en")?.textContent, li.querySelector(".mw-row__ja")?.textContent ?? null, li.querySelector(".mw-row__state")?.textContent]),
+    status: document.getElementById("myWordsStatus")?.textContent.trim() ?? ""
+  }));
+  const stored = (page) => page.evaluate(() => ({ words: JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"), meta: JSON.parse(localStorage.getItem("spelldash_user_items_meta") || "{}") }));
+  const nShown = (page) => page.evaluate(() => window.__words.length);
+  // 見本と同じ形（英語は up と down・訳は場面の問い・1 行は訳に「→」）の、ほかの名前を含まない行
+  const L = [
+    "up, 雨の日が続いた。傘の売れ行きは上がる？下がる？",
+    "up, 品質が下がった→ 同じ席に高く払う。費用は上がる？下がる？",
+    "up, 人気の歌手が来る。入場の料金は上がる？下がる？",
+    "down, 晴れの日が続いた。傘の売れ行きは上がる？下がる？",
+    "down, 材料の値が下がった。作る費用は上がる？下がる？",
+    "down, 近くに安い店ができた。客の数は上がる？下がる？"
+  ];
+  const NOEN = "品質が下がった → 同じ席に高く払う"; // 英語の無い矢印の行（前の版では場面カードになった）
+  const jaOf = (line) => line.slice(line.indexOf(",") + 1).trim();
+  const sceneAnswer = "同じ席に高く払う。費用は上がる？下がる？";
+  const conceptKey = (a) => String(a).normalize("NFKC").toLowerCase().replace(/[\s・／/]/g, "").slice(0, 40); // js/myWords.js conceptKey と同じ
+  const T = "2026-11-07T00:00:00.000Z";
+  // 創業者の 1 回目の試しの後の形（前の版のまとめて足す）: up（1 行目）・「→」の行から場面カードが 1 枚・down（4 行目）
+  const OLD = [
+    { en: "up", ja: jaOf(L[0]), book: "main", bookName: "マイ単語帳", addedAt: T },
+    { kind: "concept", en: conceptKey(sceneAnswer), answer: sceneAnswer, q: "up, 品質が下がった", explain: "", accept: [], ja: "", book: "main", bookName: "マイ単語帳", addedAt: T },
+    { en: "down", ja: jaOf(L[3]), book: "main", bookName: "マイ単語帳", addedAt: T }
+  ];
+  {
+    const page = await samePage({ spelldash_my_words: JSON.stringify(OLD) });
+    await openList(page);
+    const v0 = await view(page);
+    // (1) まとめて足す: 6 行 + 英語の無い矢印の行 + 同じ行の 2 度目
+    await page.click("#myWordsBulkFold summary");
+    await page.fill("#myWordsBulk", [L[0], NOEN, L[1], L[2], L[3], L[4], L[5], L[2]].join("\n"));
+    await page.click("#myWordsBulkAdd");
+    await page.waitForTimeout(150);
+    const v1 = await view(page);
+    const s1 = await stored(page);
+    const added = s1.words.slice(3);
+    check("82.1 まとめて足す: 同じ英語（up・down）でも訳が違う 4 行は入る・前からある同じ組の 2 行・英語の無い矢印の行・貼り付けの中の 2 度目は飛ばす（「同じ訳」「「マイ単語帳」」「「english, 訳」」と言う）",
+      v0.rows.length === 3 && /4語を足した/.test(v1.status) && /足せなかった 4行/.test(v1.status) && /同じ訳/.test(v1.status) && /「マイ単語帳」/.test(v1.status) && /「english, 訳」/.test(v1.status),
+      JSON.stringify({ v0: v0.rows.length, status: v1.status }));
+    check("82.1 前からの語（up・down）と場面カードは 1 字も変えない（並びも）・場面カードは増えない・足した 4 語は英語の語（鍵 up~<8 桁>／down~<8 桁>・text は英語・訳は 1 行の全部で「→」も字のまま・今の単語帳）・同期の印は足した 4 つの鍵だけ",
+      JSON.stringify(s1.words.slice(0, 3)) === JSON.stringify(OLD) && s1.words.filter((w) => w.kind === "concept").length === 1 && added.length === 4
+        && added.every((w) => /^(up|down)~[0-9a-f]{8}$/.test(w.en) && w.en.startsWith(`${w.text}~`) && w.book === "main" && s1.meta[`my_word:${w.en}`]?.deleted === false)
+        && added[0]?.ja === jaOf(L[1]) && new Set(added.map((w) => w.en)).size === 4 && s1.meta["my_word:up"] === undefined && s1.meta["my_word:down"] === undefined,
+      JSON.stringify({ words: s1.words, meta: s1.meta }));
+    check("82.1 一覧: 同じ英語の語がそれぞれの訳で全部出る（新しい順・これから）・場面カードの行も残る・鍵の印（~）は見せない",
+      v1.rows.length === 7 && JSON.stringify(v1.rows.map((r) => [r[1], r[2]])) === JSON.stringify([...[...added].reverse().map((w) => [w.text, w.ja]), ["down", jaOf(L[3])], [sceneAnswer, "up, 品質が下がった"], ["up", jaOf(L[0])]])
+        && v1.rows.filter((r) => r[3] === "これから").length === 6 && !v1.rows.some((r) => String(r[1]).includes("~")),
+      JSON.stringify(v1.rows));
+
+    // (2) 学ぶ回（/?learn=my&book=main）: 6 語が別々のカードで足した順。「→」の行は 1 打ミス（あやふや）、ほかは自力正解（覚えた）
+    await page.goto(BASE + "/?learn=my&book=main", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    const asked = [];
+    for (let i = 0; i < 6; i++) {
+      const n = await nShown(page);
+      const id = await page.evaluate(() => window.__words.at(-1));
+      const prompt = (await page.textContent("#japanese"))?.trim();
+      const w = (await stored(page)).words.find((x) => x.kind !== "concept" && `my-${x.en}` === id);
+      asked.push({ id, prompt, ja: w?.ja ?? null });
+      if (w && w.en === added[0]?.en) {
+        await page.press("#input", "x");
+        await page.waitForTimeout(150);
+      }
+      for (const ch of w ? w.text ?? w.en : "zz") await page.press("#input", ch);
+      if (i < 5) await waitUntil(async () => (await nShown(page)) > n, 6000);
+    }
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const panel = await page.evaluate(() => ({ title: document.getElementById("resultTitle")?.textContent.trim(), text: document.getElementById("resultPanel")?.innerText.replace(/\s+/g, " ").trim() }));
+    const s2 = await stored(page);
+    const st = Object.fromEntries(s2.words.filter((w) => w.kind !== "concept").map((w) => [w.en, w.ls ?? 0]));
+    check("82.1 学ぶ回（/?learn=my&book=main）: 同じ英語の 6 語が別々のカード（my-<鍵>）で足した順に出る・出題は各語の訳（「→」の行も 1 行の全部）・up／down を打って正解",
+      asked.length === 6 && JSON.stringify(asked.map((a) => a.id)) === JSON.stringify(["my-up", "my-down", ...added.map((w) => `my-${w.en}`)]) && asked.every((a) => a.ja && a.prompt === a.ja) && String(asked[2]?.prompt).includes("→"),
+      JSON.stringify(asked));
+    check("82.1 学ぶ回の答えはその語に記録: 1 打ミスした「→」の行だけ あやふや・ほかの 5 語は 覚えた（同じ英語でも状態は別々）・場面カードは変わらない・回の終わりは「マイ単語帳 覚えた 5 / 6」",
+      st.up === 2 && st.down === 2 && st[added[0]?.en] === 1 && added.slice(1).every((w) => st[w.en] === 2) && JSON.stringify(s2.words[1]) === JSON.stringify(OLD[1]) && panel.title === "6語 終わり" && /マイ単語帳 覚えた 5 \/ 6/.test(panel.text ?? ""),
+      JSON.stringify({ st, panel }));
+
+    // (3) 1 つ消す（行の「消す」・確かめる窓）: その語だけが消える。墓標はその鍵だけ
+    await openList(page, "?book=main");
+    const victim = added[2]?.en ?? "none"; // down~（材料の値が下がった）
+    await page.click(`#myWordsList .mw-row__del[data-key="${victim}"]`).catch(() => {});
+    await page.waitForTimeout(150);
+    const s3 = await stored(page);
+    const v3 = await view(page);
+    check("82.1 1 つ消す: 確かめる窓のあと、その語だけが消える（同じ英語のほかの語・前からの語・場面カードは状態ごと残る）・墓標はその鍵だけ",
+      !s3.words.some((w) => w.en === victim) && JSON.stringify(s3.words) === JSON.stringify(s2.words.filter((w) => w.en !== victim)) && s3.meta[`my_word:${victim}`]?.deleted === true
+        && Object.values(s3.meta).filter((m) => m.deleted).length === 1 && v3.rows.length === 6 && page.dialogs.length === 1 && /「down」/.test(page.dialogs[0] ?? ""),
+      JSON.stringify({ meta: s3.meta, rows: v3.rows.length, dialogs: page.dialogs }));
+
+    // (4) 訳を直す: 同じ英語のほかの語と同じ訳にすると断る（保存は変えない・欄は開いたまま）。重ならない訳なら直る（鍵・状態はそのまま）
+    const target = added[0]?.en ?? "none"; // 「→」の行（up~）
+    const row = `#myWordsList .mw-row[data-ref="word:${target}"]`;
+    await page.click(`${row} .mw-row__edit`).catch(() => {});
+    await page.fill(`${row} .mw-row__input`, jaOf(L[0])).catch(() => {}); // 前からの up と同じ訳
+    await page.press(`${row} .mw-row__input`, "Enter").catch(() => {});
+    await page.waitForTimeout(120);
+    const refused = await view(page);
+    const s4 = await stored(page);
+    const stillEditing = await page.evaluate((r) => !!document.querySelector(`${r} .mw-row__input`), row);
+    await page.press(`${row} .mw-row__input`, "Escape").catch(() => {});
+    await page.waitForTimeout(80);
+    await page.click(`${row} .mw-row__edit`).catch(() => {});
+    await page.fill(`${row} .mw-row__input`, "品質が上がった。同じ席の費用は上がる？下がる？").catch(() => {});
+    await page.press(`${row} .mw-row__input`, "Enter").catch(() => {});
+    await page.waitForTimeout(120);
+    const s5 = await stored(page);
+    const fixed = s5.words.find((w) => w.en === target);
+    check("82.1 訳を直す: 同じ英語のほかの語と同じ訳にすると断る（同じ訳で「マイ単語帳」にすでに登録・保存は変えない・欄は開いたまま）・重ならない訳なら直る（鍵・状態はそのまま）",
+      /同じ訳/.test(refused.status) && /「マイ単語帳」にすでに登録/.test(refused.status) && JSON.stringify(s4.words) === JSON.stringify(s3.words) && stillEditing
+        && fixed?.ja === "品質が上がった。同じ席の費用は上がる？下がる？" && fixed?.ls === 1 && s5.words.length === s3.words.length,
+      JSON.stringify({ status: refused.status, stillEditing, fixed }));
+    check("82.1 画面と学ぶ回のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
     await closeCtx(page);
   }
 }
