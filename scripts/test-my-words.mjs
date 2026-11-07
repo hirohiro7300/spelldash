@@ -461,5 +461,263 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   ok("前からの語を消すと、墓標は my_word:up だけ・ほかの端末でも up だけが消え、同じ英語のほかの語は残る", rowsX3.length === 1 && rowsX3[0].key === "up" && rowsX3[0].deleted && !words().some((w) => w.en === "up") && words().filter((w) => w.en.startsWith("up~")).length >= 2, JSON.stringify(words().map((w) => w.en)));
 }
 
+// ===== Batch 82 部分 B: 選択式（js/myWordsChoice.js。docs/SPEC_MY_WORDS.md §12） =====
+// 向きは 2 つ（訳を見て英語を選ぶ＝既定・英語を見て訳を選ぶ。URL の ?choice= だけに持つ）。選択肢は正解 1 つと同じ範囲（単語帳）の違う答え 3 つまで（2〜4 個）。
+// 正規化して重ねない・2 つ目の正解を出さない（同じ英語の語・同じ訳の語）・範囲に違う答えが 1 つも無いときだけほかの単語帳 → 組み込みの短い一覧・決まった乱数で並ぶ。
+// 数え方は打つ回と同じ: 選んだ答えは全文入力の答えとして判定の道（js/judge.js answerMatches）を通る（正解 → 自力正解・違う → 1 打ミス・分からない → 答えを見る）。
+// 1 問に 1 回だけ記録する守り（2 度押し・キーの押しっぱなし・前の問い・開き直したページの古い問い）
+{
+  let X = {};
+  try {
+    X = await import("../js/myWordsChoice.js");
+  } catch (e) {
+    ok("選択式: js/myWordsChoice.js を読める", false, e.message);
+  }
+  const fn = (name) => (typeof X[name] === "function" ? X[name] : () => undefined); // 土台（8c38c7a・部分 A の 23102f0）には無い: 投げずに落ちた数を数える
+  const build = fn("buildChoice");
+  const dirOf = fn("choiceDirOf");
+  const urlOf = fn("choiceUrl");
+  const typedUrlOf = fn("typedUrl");
+  const typedAs = fn("typedAsOf");
+  const seeded = fn("seededRandom");
+  const guardOf = fn("createChoiceGuard");
+  const J = await import("../js/judge.js");
+  const jaHash = typeof C.jaHash === "function" ? C.jaHash : (s) => String(s.length).padStart(8, "0");
+  const answerKeyOf = typeof C.answerKeyOf === "function" ? C.answerKeyOf : (w) => String(w?.en ?? "").split("~")[0];
+  const T = "2026-11-07T00:00:00.000Z";
+  const e = (en, ja, more = {}) => ({ en, ja, addedAt: T, ...more });
+  const dup = (en, ja, more = {}) => e(`${en}~${jaHash(ja)}`, ja, { text: en, ...more });
+  const texts = (r) => (r?.options ?? []).map((o) => o.text);
+  const right = (r) => (r?.options ?? []).filter((o) => o.correct);
+  // 見本と同じ形の、ほかの名前を含まない up／down の単語帳（前の試しで 1 枚できた場面カードも入れる。出題にも選択肢にも出ない）
+  const UPDOWN = [
+    e("up", "雨の日が続いた。傘の売れ行きは上がる？下がる？", { book: "main" }),
+    { kind: "concept", en: "scene", answer: "同じ席に高く払う。費用は上がる？下がる？", q: "up, 品質が下がった", explain: "", accept: [], ja: "", book: "main", addedAt: T },
+    dup("up", "品質が下がった→ 同じ席に高く払う。費用は上がる？下がる？", { book: "main" }),
+    dup("up", "人気の歌手が来る。入場の料金は上がる？下がる？", { book: "main" }),
+    e("down", "晴れの日が続いた。傘の売れ行きは上がる？下がる？", { book: "main" }),
+    dup("down", "材料の値が下がった。作る費用は上がる？下がる？", { book: "main" }),
+    dup("down", "近くに安い店ができた。客の数は上がる？下がる？", { book: "main" })
+  ];
+  const UD = UPDOWN.filter(C.isWordEntry);
+
+  // ---- 入口と向き（URL だけに持つ。新しい保存の鍵は無い） ----
+  eq("選択式の向き: ?choice=en（既定）・?choice=ja（英語を見て訳を選ぶ）・空や知らない値は既定・?choice が無ければ打つ回（null）",
+    [dirOf("?learn=my&choice=en"), dirOf("?learn=my&book=main&choice=ja"), dirOf("?learn=my"), dirOf("?learn=my&book=main"), dirOf("?learn=my&choice="), dirOf("?learn=my&choice=xx"), dirOf(new URLSearchParams("learn=my&choice=ja"))],
+    ["en", "ja", null, null, "en", "en", "ja"]);
+  eq("選択式の URL（単語帳ごと・全部の単語帳）と打つ回の URL（前のまま /?learn=my[&book=]）",
+    [urlOf("main", "en"), urlOf("b1x", "ja"), urlOf(null, "en"), urlOf("main"), typedUrlOf("main"), typedUrlOf(null), urlOf("a b", "ja")],
+    ["/?learn=my&book=main&choice=en", "/?learn=my&book=b1x&choice=ja", "/?learn=my&choice=en", "/?learn=my&book=main&choice=en", "/?learn=my&book=main", "/?learn=my", "/?learn=my&book=a%20b&choice=ja"]);
+  eq("向きの名前", X.CHOICE_DIRS ?? null, { en: "訳を見て英語を選ぶ", ja: "英語を見て訳を選ぶ" });
+
+  // ---- 訳を見て英語を選ぶ（既定）: 創業者の up／down の単語帳はちょうど 2 択 ----
+  {
+    const bad = [];
+    for (const [i, w] of UD.entries()) {
+      for (let s = 1; s <= 8; s++) {
+        const r = build({ entry: w, scope: UPDOWN, others: [], dir: "en", rand: seeded(i * 100 + s) });
+        const t = texts(r);
+        if (!(r?.ok && t.length === 2 && JSON.stringify([...t].sort()) === '["down","up"]' && right(r).length === 1 && right(r)[0].text === answerKeyOf(w) && r.prompt === w.ja && r.from === "scope")) bad.push({ w: w.en, r });
+      }
+    }
+    ok("訳を見て英語を選ぶ（up／down の単語帳・6 語 × 8 通りの乱数）: 選択肢はちょうど up と down の 2 つ・正解は 1 つでその語の英語・問いはその語の訳（「→」の行も 1 行の全部）・範囲の中だけ（埋めない）", UD.length === 6 && bad.length === 0, JSON.stringify(bad.slice(0, 2)));
+    ok("場面カードは出題にならない（選択肢を作らない）・選択肢にも出ない", build({ entry: UPDOWN[1], scope: UPDOWN, others: [], dir: "en", rand: seeded(1) })?.ok === false
+      && UD.every((w) => { const t = texts(build({ entry: w, scope: UPDOWN, others: [], dir: "en", rand: seeded(3) })); return t.length === 2 && !t.some((x) => /同じ席|scene/.test(x)); }));
+  }
+
+  // ---- 正規化して重ねない（英語: 大文字小文字・NFKC・空白・ハイフン・アポストロフィ。打つ回の全文入力の判定と同じ形） ----
+  {
+    const NORM = [e("e-mail", "電子メール"), e("email", "メールを送る"), e("follow up", "追って連絡する"), e("follow-up", "追加の連絡"), e("kpi", "重要業績評価指標", { text: "KPI" }), e("agenda", "議題"), e("invoice", "請求書"), e("don't", "しない"), e("dont", "しないこと")];
+    const bad = [];
+    for (let s = 1; s <= 30; s++) {
+      for (const [q, ban] of [[0, "email"], [1, "e-mail"], [2, "follow-up"], [3, "follow up"], [7, "dont"], [8, "don't"]]) {
+        const r = build({ entry: NORM[q], scope: NORM, others: [], dir: "en", rand: seeded(s) });
+        const keys = texts(r).map((t) => J.normalizeAnswer(t));
+        if (!r?.ok || texts(r).includes(ban) || new Set(keys).size !== keys.length || r.options.length !== 4) bad.push({ q, s, t: texts(r) });
+      }
+    }
+    ok("正規化して重ねない: e-mail の問いに email・follow up の問いに follow-up・don't の問いに dont を違う答えとして出さない（打つ回でも正解になる綴り）・選択肢どうしも重ならない・4 つ", bad.length === 0, JSON.stringify(bad.slice(0, 3)));
+    const kpi = build({ entry: NORM[4], scope: NORM, others: [], dir: "en", rand: seeded(5) });
+    ok("大文字の語は画面の形で出す（正解の選択肢は KPI。答えの英語は kpi）", right(kpi)[0]?.text === "KPI" && right(kpi)[0]?.en === "kpi", JSON.stringify(kpi));
+  }
+
+  // ---- 2 つ目の正解を出さない: 同じ訳のほかの英語・同じ英語の語 ----
+  {
+    const SAME = [e("cost", "費用"), e("expense", "費用"), e("charge", " 費用 "), e("price", "値段"), e("fee", "料金"), e("tax", "税")];
+    const bad = [];
+    for (let s = 1; s <= 30; s++) {
+      for (const [q, bans] of [[0, ["expense", "charge"]], [1, ["cost", "charge"]], [2, ["cost", "expense"]]]) {
+        const r = build({ entry: SAME[q], scope: SAME, others: [], dir: "en", rand: seeded(s) });
+        if (!r?.ok || bans.some((b) => texts(r).includes(b)) || right(r).length !== 1 || r.options.length !== 4) bad.push({ q, s, t: texts(r) });
+      }
+    }
+    ok("訳を見て英語を選ぶ: 問いの訳と同じ訳（空白・全角半角を見ない）のほかの英語（費用 → cost・expense・charge）は違う答えに出さない（打つ回でも当たりになる）", bad.length === 0, JSON.stringify(bad.slice(0, 3)));
+    const r = build({ entry: UD[1], scope: UPDOWN, others: [], dir: "en", rand: seeded(9) });
+    ok("同じ英語の語（up が 3 つ）: up は 1 つだけ出る（重なる英語を 2 度出さない）", texts(r).filter((t) => t === "up").length === 1 && texts(r).length === 2, JSON.stringify(texts(r)));
+    const WIDTH = [e("up", "CPCは上がる？"), e("down", "CPCは上がる?"), e("left", "左へ")];
+    const w1 = build({ entry: WIDTH[0], scope: WIDTH, others: [], dir: "en", rand: seeded(2) });
+    ok("訳の全角半角（？と ?）の違いだけの語は同じ訳: その英語（down）は違う答えに出さない", w1?.ok && !texts(w1).includes("down") && texts(w1).includes("left"), JSON.stringify(texts(w1)));
+  }
+
+  // ---- 数: 正解 1 と違う答え 3 つまで（2〜4 個）。並びは決まった乱数 ----
+  {
+    const TEN = ["apple", "bread", "chair", "door", "egg", "fish", "glass", "hat", "ink", "jam"].map((w, i) => e(w, `訳${i}`));
+    const n = (list) => build({ entry: list[0], scope: list, others: [], dir: "en", rand: seeded(4) })?.options?.length ?? 0;
+    eq("選択肢の数: 10 語の範囲は 4 つ・3 語は 3 つ・2 語は 2 つ", [n(TEN), n(TEN.slice(0, 3)), n(TEN.slice(0, 2))], [4, 3, 2]);
+    const orders = new Set();
+    let same = true;
+    for (let s = 1; s <= 20; s++) {
+      const a = build({ entry: TEN[0], scope: TEN, others: [], dir: "en", rand: seeded(s) });
+      const b = build({ entry: TEN[0], scope: TEN, others: [], dir: "en", rand: seeded(s) });
+      if (!a?.options || JSON.stringify(a.options) !== JSON.stringify(b?.options)) same = false;
+      orders.add(a?.options?.findIndex((o) => o.correct));
+    }
+    ok("並びは乱数で決まる: 同じ種なら同じ並び・種を替えると正解の位置が替わる（20 通りで 3 か所以上）", same && orders.size >= 3 && !orders.has(-1) && !orders.has(undefined), JSON.stringify([...orders]));
+  }
+
+  // ---- 足りないときだけ埋める: 範囲（単語帳）→ ほかの単語帳 → 組み込みの短い一覧（通信なし）→ 作れない ----
+  {
+    const ONE = [e("memo", "覚え書き", { book: "one" })];
+    const OTHERS = [e("invoice", "請求書"), e("agenda", "議題"), e("deadline", "締め切り"), e("budget", "予算")];
+    const o = build({ entry: ONE[0], scope: ONE, others: OTHERS, dir: "en", rand: seeded(7) });
+    ok("1 語の単語帳: ほかの単語帳の英語で埋める（違う答えは全部ほかの単語帳から・正解は memo だけ）", o?.ok && o.from === "other" && o.options.length >= 2 && right(o).length === 1 && right(o)[0].text === "memo" && o.options.filter((x) => !x.correct).every((x) => OTHERS.some((w) => w.en === x.text)), JSON.stringify(o));
+    const b = build({ entry: ONE[0], scope: ONE, others: [], dir: "en", rand: seeded(7) });
+    const fill = X.CHOICE_FILL ?? [];
+    ok("1 語だけの端末: 組み込みの短い一覧で埋める（js/myWordsChoice.js の定数。通信しない）", b?.ok && b.from === "builtin" && b.options.length >= 2 && right(b).length === 1 && b.options.filter((x) => !x.correct).every((x) => fill.some((f) => f.en === x.text)), JSON.stringify(b));
+    const twoUp = [UD[0], UD[1]]; // 同じ英語（up）だけの単語帳: 範囲に違う答えが 1 つも無い
+    const tu = build({ entry: twoUp[0], scope: twoUp, others: [], dir: "en", rand: seeded(3) });
+    ok("同じ英語の語だけの単語帳（up が 2 つ）: 範囲に違う答えが無いので組み込みで埋める・up は正解の 1 つだけ", tu?.ok && tu.from === "builtin" && texts(tu).filter((t) => t === "up").length === 1, JSON.stringify(texts(tu)));
+    const never = build({ entry: UD[0], scope: UPDOWN, others: OTHERS, dir: "en", rand: seeded(3) });
+    ok("範囲に違う答えがあれば埋めない（up／down の単語帳はほかの単語帳があっても 2 択のまま）", never?.from === "scope" && JSON.stringify(texts(never).sort()) === '["down","up"]', JSON.stringify(texts(never)));
+    const none = build({ entry: ONE[0], scope: ONE, others: [], dir: "en", rand: seeded(3), fill: [] });
+    ok("どこからも違う答えが作れないときは作らない（ok: false。画面は短い文と打つ回への道）", none?.ok === false && typeof none?.prompt === "string", JSON.stringify(none));
+    const aqua = build({ entry: e("aqua", "水"), scope: [e("aqua", "水")], others: [], dir: "en", rand: seeded(3), fill: [{ en: "water", ja: "水" }, { en: "book", ja: "本" }] });
+    ok("組み込みで埋めるときも 2 つ目の正解を出さない（問いの訳と同じ訳の water は出さない）", aqua?.ok && !texts(aqua).includes("water") && texts(aqua).includes("book"), JSON.stringify(texts(aqua)));
+    ok("組み込みの一覧: 8 組以上・どれも入れられる英語（小文字）と訳・英語も訳も重ならない", fill.length >= 8 && fill.every((f) => C.checkEnText(f.en).ok && C.checkEnText(f.en).key === f.en && C.checkJaText(f.ja).ok) && new Set(fill.map((f) => f.en)).size === fill.length && new Set(fill.map((f) => f.ja)).size === fill.length, JSON.stringify(fill));
+  }
+
+  // ---- 英語を見て訳を選ぶ ----
+  {
+    const bad = [];
+    for (const [i, w] of UD.entries()) {
+      for (let s = 1; s <= 8; s++) {
+        const r = build({ entry: w, scope: UPDOWN, others: [], dir: "ja", rand: seeded(i * 50 + s) });
+        const sameEn = UD.filter((x) => answerKeyOf(x) === answerKeyOf(w));
+        const wrongs = (r?.options ?? []).filter((o) => !o.correct);
+        if (!(r?.ok && r.prompt === answerKeyOf(w) && right(r).length === 1 && right(r)[0].text === w.ja && r.options.length === 4 && wrongs.every((o) => !sameEn.some((x) => x.ja === o.text) && UD.some((x) => x.ja === o.text && answerKeyOf(x) !== answerKeyOf(w))))) bad.push({ w: w.en, s, r });
+      }
+    }
+    ok("英語を見て訳を選ぶ（up／down の単語帳）: 問いは英語（up）・正解はその語の訳・違う答えはほかの英語（down）の語の訳だけ（同じ英語のほかの訳は出さない）・4 つ", bad.length === 0, JSON.stringify(bad.slice(0, 1)));
+    const RISE = [e("up", "上がる"), e("rise", "上がる"), e("down", "下がる"), e("fall", "落ちる")];
+    const bad2 = [];
+    for (let s = 1; s <= 20; s++) {
+      const r = build({ entry: RISE[0], scope: RISE, others: [], dir: "ja", rand: seeded(s) });
+      if (!r?.ok || texts(r).filter((t) => t === "上がる").length !== 1 || right(r)[0]?.text !== "上がる" || r.options.length !== 3) bad2.push(texts(r));
+    }
+    ok("英語を見て訳を選ぶ: 違う英語（rise）の訳でも、問いの英語の訳と同じ訳（上がる）は違う答えに出さない・訳どうしも重ならない", bad2.length === 0, JSON.stringify(bad2.slice(0, 2)));
+    const W2 = [e("up", "CPCは上がる？"), e("down", "CPCは 上がる?"), e("left", "左へ")];
+    const w2 = build({ entry: W2[0], scope: W2, others: [], dir: "ja", rand: seeded(1) });
+    ok("訳の正規化（NFKC・空白・全角半角）: 「CPCは 上がる?」は「CPCは上がる？」と同じ訳なので出さない", w2?.ok && texts(w2).length === 2 && texts(w2).includes("左へ"), JSON.stringify(texts(w2)));
+    const k = build({ entry: e("kpi", "重要業績評価指標", { text: "KPI" }), scope: [e("kpi", "重要業績評価指標", { text: "KPI" }), e("agenda", "議題")], others: [], dir: "ja", rand: seeded(1) });
+    ok("英語を見て訳を選ぶ: 問いは画面の形の英語（KPI）", k?.prompt === "KPI", JSON.stringify(k));
+    const one = build({ entry: e("memo", "覚え書き"), scope: [e("memo", "覚え書き")], others: [e("invoice", "請求書")], dir: "ja", rand: seeded(1) });
+    ok("英語を見て訳を選ぶ・1 語の単語帳: ほかの単語帳の訳で埋める", one?.ok && one.from === "other" && JSON.stringify(texts(one).sort()) === JSON.stringify(["覚え書き", "請求書"].sort()), JSON.stringify(one));
+  }
+
+  // ---- 150 字の英語と訳（折り返しは画面の CSS。選択肢の字は削らない） ----
+  {
+    const LONGEN = `${"keep moving ".repeat(12)}keep moving on`.slice(0, 150);
+    const L2 = [e(LONGEN, "長い訳".repeat(50)), e(`${"abcdefghij".repeat(15)}`, "とても長い".repeat(30))];
+    const a = build({ entry: L2[0], scope: L2, others: [], dir: "en", rand: seeded(1) });
+    const b = build({ entry: L2[0], scope: L2, others: [], dir: "ja", rand: seeded(1) });
+    ok("150 字の英語・150 字の訳: 選択肢と問いに全部の字が出る", a?.ok && b?.ok && texts(a).includes(LONGEN) && texts(a).some((t) => t.length === 150) && b.prompt === LONGEN && texts(b).includes("長い訳".repeat(50)), JSON.stringify([texts(a).map((t) => t.length), texts(b).map((t) => t.length)]));
+  }
+
+  // ---- 数え方は打つ回と同じ（創業者の決定「打つ回と同じに数える」）: 選んだ答えは全文入力の答えとして判定の道を通る ----
+  // js/game.js の選ぶ回: 正解・違う答えは submitFreeAnswer(typedAsOf(選んだ選択肢, カード))（正解 → finishFreeWord → completeWord: 打つ回の自力正解と同じ書き手・XP・連続日数・
+  // 学んだ日・学習時間）、分からない → revealAnswer()（打つ回の Enter で答えを見るのと同じ）。種類は js/learnQueue.js cleanKindOf・failKindOf がその道で決める（下はその道を同じ順に写したもの）
+  {
+    const freeCard = (w) => ({ ...C.wordCardOf(w), free: true }); // 選ぶ回のカード（打鍵を 1 字ずつ見ない全文入力の形）
+    const choiceKind = (opt, card) => (J.answerMatches(card, typedAs(opt, card) ?? "") ? Q.cleanKindOf(card.en, card) : Q.failKindOf("m"));
+    const typedKind = { correct: (card) => Q.cleanKindOf(card.en, card), wrong: () => Q.failKindOf("m"), unknown: () => Q.failKindOf("e") }; // 打つ回: 打ち終えた綴り・1 打ミス・Enter で答えを見る
+    const bad = [];
+    for (const dir of ["en", "ja"]) {
+      for (const [i, w] of UD.entries()) {
+        const card = freeCard(w);
+        const r = build({ entry: w, scope: UPDOWN, others: [], dir, rand: seeded(i + 11) });
+        for (const opt of r?.options ?? []) {
+          const matched = J.answerMatches(card, typedAs(opt, card) ?? "");
+          const want = opt.correct ? typedKind.correct(C.wordCardOf(w)) : typedKind.wrong();
+          if (matched !== opt.correct || choiceKind(opt, card) !== want) bad.push({ dir, w: w.en, opt, matched });
+        }
+        if (!r?.options?.length) bad.push({ dir, w: w.en, none: true });
+      }
+    }
+    ok("選んだ答えの判定（2 つの向き・6 語の全部の選択肢）: 正解の選択肢だけが打つ回の判定で正解（answerMatches）・種類は打つ回と同じ（正解 = 打ち終えた exact・違う = 1 打ミス miss）", bad.length === 0, JSON.stringify(bad.slice(0, 2)));
+    eq("種類の名前: 正解 exact・違う miss・分からない reveal（打つ回の答えを見ると同じ）", [typedKind.correct(C.wordCardOf(UD[0])), typedKind.wrong(), typedKind.unknown()], [ANSWER_KINDS.exact, ANSWER_KINDS.miss, ANSWER_KINDS.reveal]);
+
+    // 書き手は打つ回と同じ js/myWords.js recordMyAnswer（語の鍵で引く）。同じ並びの答えを打つ回と選ぶ回で当てると、保存は 1 字も同じ（別の日に 2 回の決まりも）
+    const store = new Map();
+    globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => { store.set(k, String(v)); }, removeItem: (k) => store.delete(k), clear: () => store.clear(), key: (i) => [...store.keys()][i] ?? null, get length() { return store.size; } };
+    const M = await import("../js/myWords.js");
+    const D0 = new Date(2026, 10, 7, 10, 0).getTime();
+    const D1 = new Date(2026, 10, 8, 10, 0).getTime();
+    // up: 違う → 正解 → 正解（同じ日）→ 次の日に正解。「→」の行（同じ英語の 2 つ目）: 違う → 次の日に正解 2 回。3 つ目の up: 分からない。down: 正解
+    const plan = [[UD[0], "wrong", D0], [UD[0], "correct", D0 + 60000], [UD[0], "correct", D0 + 120000], [UD[1], "wrong", D0 + 180000], [UD[2], "unknown", D0 + 240000], [UD[3], "correct", D0 + 300000], [UD[0], "correct", D1], [UD[1], "correct", D1 + 60000], [UD[1], "correct", D1 + 120000]];
+    const run = (how) => {
+      store.clear();
+      store.set("spelldash_my_words", JSON.stringify(UPDOWN));
+      const after = [];
+      for (const [w, outcome, at] of plan) {
+        let kind;
+        if (how === "typed") kind = typedKind[outcome](C.wordCardOf(w));
+        else if (outcome === "unknown") kind = Q.failKindOf("e");
+        else {
+          const card = freeCard(w);
+          const r = build({ entry: w, scope: UPDOWN, others: [], dir: "en", rand: seeded(at % 97) });
+          const opt = r?.options?.find((o) => o.correct === (outcome === "correct"));
+          kind = opt ? choiceKind(opt, card) : null;
+        }
+        if (!M.recordMyAnswer(w.en, kind, at)) after.push(`not recorded ${w.en}`);
+        after.push(JSON.parse(store.get("spelldash_my_words")).map((x) => [x.en, x.ls ?? null, x.lsd ?? null, x.lsAt ?? null]));
+      }
+      return { final: store.get("spelldash_my_words"), after };
+    };
+    const typed = run("typed");
+    const choice = run("choice");
+    ok("打つ回と選ぶ回で同じ並びの答え（違う・正解・正解・別の日に正解・分からない）を当てると、保存は 1 字も同じ（どの答えの後も）", typed.final === choice.final && JSON.stringify(typed.after) === JSON.stringify(choice.after) && !choice.after.some((a) => typeof a === "string"), JSON.stringify({ typed: typed.after.at(-1), choice: choice.after.at(-1) }));
+    const fin = Object.fromEntries(JSON.parse(choice.final ?? "[]").map((x) => [x.en, x]));
+    ok("別の日に 2 回の決まり（選ぶ回でも同じ）: 違う → あやふや、同じ日の正解 2 回は 1 日目のまま、次の日の正解で覚えた。違うを選んだ同じ英語の語（「→」の行）は、その語だけが あやふや のまま次の日に 1 日目",
+      fin.up?.ls === 2 && fin[UD[1].en]?.ls === 1 && Number.isInteger(fin[UD[1].en]?.lsd) && fin[UD[2].en]?.ls === 1 && fin[UD[2].en]?.lsd === undefined && fin.down?.ls === 2 && fin[UD[4].en]?.ls === undefined && fin[UD[5].en]?.ls === undefined,
+      JSON.stringify(fin));
+    ok("場面カード（鍵 scene）と答えていない語（down の 2 つ目・3 つ目）は 1 字も変えない", JSON.stringify(JSON.parse(choice.final ?? "[]").filter((x) => x.kind === "concept" || x.en === UD[4].en || x.en === UD[5].en)) === JSON.stringify(UPDOWN.filter((x) => x.kind === "concept" || x.en === UD[4].en || x.en === UD[5].en)));
+  }
+
+  // ---- 二重に記録しない守り（1 問に 1 回。2 度押し・キーの押しっぱなし・前の問いの押し・開き直したページの古い問い） ----
+  {
+    const g = guardOf();
+    g?.open?.("my-up#1");
+    const first = g?.claim?.("my-up#1");
+    const second = g?.claim?.("my-up#1");
+    ok("守り: 1 問に 1 回だけ受ける（2 度押しの 2 度目は受けない）", first === true && second === false);
+    const g2 = guardOf();
+    g2?.open?.("a#1");
+    const rep = g2?.claim?.("a#1", { repeat: true });
+    const after = g2?.claim?.("a#1");
+    ok("守り: キーの押しっぱなし（repeat）・2 度目のクリック（detail 2）は答えにしない・その後の普通の押しは受ける", rep === false && after === true);
+    g2?.open?.("b#2");
+    const stale = g2?.claim?.("a#1");
+    const early = g2?.next?.("b#2");
+    const pick = g2?.claim?.("b#2");
+    const next1 = g2?.next?.("b#2");
+    const next2 = g2?.next?.("b#2");
+    ok("守り: 次の問いを出した後に前の問いの押しは受けない・「次へ」は答えた後に 1 回だけ", stale === false && early === false && pick === true && next1 === true && next2 === false);
+    g2?.close?.();
+    ok("守り: 回を終えた後（閉じた）は受けない", g2?.claim?.("b#2") === false && g2?.next?.("b#2") === false);
+    const reopened = guardOf();
+    ok("開き直したページの守りは、前のページの問いを受けない（開いただけでは記録しない）", reopened?.claim?.("b#2") === false && reopened?.next?.("b#2") === false && typeof reopened?.open === "function");
+  }
+}
+
 console.log(`test-my-words: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
