@@ -716,6 +716,12 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
     ok("守り: 回を終えた後（閉じた）は受けない", g2?.claim?.("b#2") === false && g2?.next?.("b#2") === false);
     const reopened = guardOf();
     ok("開き直したページの守りは、前のページの問いを受けない（開いただけでは記録しない）", reopened?.claim?.("b#2") === false && reopened?.next?.("b#2") === false && typeof reopened?.open === "function");
+    // ダブルクリックの 2 度目（click の detail が 2 以上）を受けないのは、画面が変わって（新しい問い・答えの印・向きの切り替え）から CHOICE_CARRY_MS の間だけ。
+    // 遅いダブルクリックの設定（OS）や指の連続のタップでも、変わった画面を読んでから同じ所を押す答え・「次へ」は受ける。ふつうの 1 度押しはいつも受ける
+    const carry = fn("isCarryClick");
+    ok("ダブルクリックの 2 度目は画面が変わってから 0.5 秒の間だけ受けない（遅いダブルクリックの設定でも、読んでから同じ所を押すのは受ける・1 度押しはいつも受ける）",
+      X.CHOICE_CARRY_MS === 500 && carry(2, 0) === true && carry(2, 120) === true && carry(3, 499) === true && carry(2, 500) === false && carry(2, 1200) === false && carry(1, 10) === false && carry(0, 10) === false && carry(2, NaN) === false,
+      JSON.stringify({ ms: X.CHOICE_CARRY_MS, a: carry(2, 120), b: carry(2, 1200), c: carry(1, 10) }));
   }
 }
 

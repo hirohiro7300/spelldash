@@ -25568,22 +25568,75 @@ console.log("my words choice (82.2):");
     check("82.2 320／390／1200 × 昼夜: 150 字の英語と訳の選択肢・問い（2 つの向き・答えた後の印も）は折り返して全部見え、横スクロール 0・エラー 0", bad.length === 0, JSON.stringify(bad));
   }
 
-  // (13) 動きを減らす設定（prefers-reduced-motion: reduce）: 選ぶ・答えの印・次の問いで動く物 0
+  // (13) 動きを減らす設定（prefers-reduced-motion: reduce）: 選ぶ・答えの印・次の問いで動く物 0。指の端末（pointer: coarse）で押せる物の高さも
   {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block", reducedMotion: "reduce", isMobile: true, hasTouch: true });
     const page = await choicePage(seedAll, { context: ctx });
     await page.goto(BASE + "/?learn=my&book=main&choice=en", { waitUntil: "networkidle" });
     const v = await waitQuestion(page, 1);
-    const moving = () => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && Number(a.effect?.getTiming?.().duration ?? 0) > 1).map((a) => `${a.animationName ?? a.transitionProperty ?? "?"}@${a.effect?.target?.id || a.effect?.target?.className || "?"}`));
+    const sizes = await page.evaluate(() => ({
+      coarse: matchMedia("(pointer: coarse)").matches,
+      list: [...document.querySelectorAll("#choiceSwitch, #choiceOpts .choice__opt, #choiceSkip")].filter((n) => n.getClientRects().length > 0).map((n) => ({ n: n.id || `opt${n.dataset.i}`, h: Math.round(n.getBoundingClientRect().height) }))
+    }));
+    check("82.2 指の端末: 押せる物（向きの切り替え・2 つの選択肢・分からない）はどれも 44px 以上（押せる物は 40〜44px の決まり）", sizes.coarse && sizes.list.length === 4 && sizes.list.every((s) => s.h >= 44), JSON.stringify(sizes));
+    const moving =() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && Number(a.effect?.getTiming?.().duration ?? 0) > 1).map((a) => `${a.animationName ?? a.transitionProperty ?? "?"}@${a.effect?.target?.id || a.effect?.target?.className || "?"}`));
     const m0 = await moving();
     await page.tap(`#choiceOpts .choice__opt[data-i="${correctIndex(v, "up")}"]`);
     await page.waitForTimeout(80);
     const m1 = await moving();
     const v2 = await waitQuestion(page, 2);
+    await page.waitForTimeout(600); // 人が新しい問いを読む間（出てすぐの 2 度目のタップは、ダブルタップの 2 度目として受けない: (14)）
     await page.tap(`#choiceOpts .choice__opt[data-i="${wrongIndex(v2, "up")}"]`);
     await page.waitForTimeout(80);
     const m2 = await moving();
     check("82.2 動きを減らす設定: 出題・正解の印・違うの印で動く物 0（指で押しても選べる）・エラー 0", m0.length === 0 && m1.length === 0 && m2.length === 0 && (await cv(page)).opts.some((o) => o.state === "wrong") && page.errors.length === 0, JSON.stringify({ m0, m1, m2, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (14) ダブルクリック・ダブルタップの 2 度目（click の detail が 2 以上）は、画面が変わってから 0.5 秒の間だけ受けない:
+  //      分からないの 2 度目が同じ所に出た「次へ」に当たっても進まない（答えを見せたまま）・新しい問いが出てすぐの 2 度目は答えにしない・
+  //      0.5 秒より後なら detail が 2 でも受ける（遅いダブルクリックの設定・指の連続のタップで、読んでから同じ所を押す答えを捨てない）
+  {
+    const page = await choicePage(seedAll);
+    await page.goto(BASE + "/?learn=my&book=main&choice=en", { waitUntil: "networkidle" });
+    const v1 = await waitQuestion(page, 1);
+    const synth = (sel, detail) => page.evaluate(([s, d]) => {
+      const n = document.querySelector(s);
+      if (!n || n.hidden) return false;
+      n.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: d, view: window }));
+      return true;
+    }, [sel, detail]);
+    const spotOf = (id) => page.evaluate((i) => {
+      const n = document.getElementById(i);
+      if (!n || n.hidden) return null;
+      const r = n.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y) };
+    }, id);
+    // 1 問目は正解（ふつうのクリック）。2 問目からは向きの行が畳まれ、「分からない」を押すと同じ所に「次へ」が出る
+    await clickOpt(page, correctIndex(v1, "up"));
+    await waitQuestion(page, 2);
+    await page.waitForTimeout(600); // 人が新しい問いを読む間
+    const skipAt = await spotOf("choiceSkip");
+    await synth("#choiceSkip", 1);
+    const nextAt = await spotOf("choiceNext");
+    const hitEarly = await synth("#choiceNext", 2); // 分からないのダブルクリックの 2 度目
+    await page.waitForTimeout(150);
+    const stay = (await nShown(page)) === 2;
+    await page.waitForTimeout(600);
+    const hitLate = await synth("#choiceNext", 2); // 0.5 秒より後（遅いダブルクリックの設定）: 受ける
+    await waitUntil(async () => (await nShown(page)) >= 3, 5000);
+    const v3 = await waitQuestion(page, 3);
+    const idx = wrongIndex(v3, "up");
+    await synth(`#choiceOpts .choice__opt[data-i="${idx}"]`, 2); // 新しい問いが出てすぐの 2 度目: 答えにしない
+    await page.waitForTimeout(100);
+    const early = (await cv(page)).opts.every((o) => o.state === "");
+    await page.waitForTimeout(600);
+    await synth(`#choiceOpts .choice__opt[data-i="${idx}"]`, 2); // 読んでから同じ所を押す（detail 2 でも）: 受ける
+    await page.waitForTimeout(150);
+    const late = (await cv(page)).opts.some((o) => o.state === "wrong");
+    check("82.2 ダブルクリックの 2 度目: 分からないの直後に同じ所の「次へ」に当たっても進まない（答えを見せたまま）・新しい問いの直後は答えにしない・0.5 秒より後は detail 2 でも受ける・エラー 0",
+      !!skipAt && JSON.stringify(nextAt) === JSON.stringify(skipAt) && hitEarly && stay && hitLate && early && late && page.errors.length === 0,
+      JSON.stringify({ skipAt, nextAt, stay, early, late, n: await nShown(page), err: page.errors[0] }));
     await closeCtx(page);
   }
 
