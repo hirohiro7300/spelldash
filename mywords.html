@@ -193,9 +193,13 @@
       <div class="mw__top">
         <h2 class="sr-only" id="myWordsSumTitle">マイ単語帳の数</h2>
         <p class="mw__sum" id="myWordsSum"><span>0語</span></p>
-        <a class="btn mw__learn" id="myWordsLearn" href="/?learn=my">学ぶ</a>
+        <!-- 学ぶ（打つ回）と選択式で学ぶ（Batch 82。/?learn=my&book=<id>&choice=en。js/myWordsChoice.js）。0 語の単語帳では出さない（js/myWordsPage.js） -->
+        <span class="mw__go">
+          <a class="btn mw__learn" id="myWordsLearn" href="/?learn=my">学ぶ</a>
+          <a class="btn btn--ghost mw__learn mw__choice" id="myWordsChoice" href="/?learn=my&amp;choice=en">選択式で学ぶ</a>
+        </span>
       </div>
-      <p class="mw__all" id="myWordsAll" hidden><span id="myWordsAllN"></span><a href="/?learn=my">全部の単語帳で学ぶ</a></p>
+      <p class="mw__all" id="myWordsAll" hidden><span id="myWordsAllN"></span><a href="/?learn=my">全部の単語帳で学ぶ</a><a href="/?learn=my&amp;choice=en" id="myWordsAllChoice" aria-label="全部の単語帳を選択式で学ぶ">選択式で学ぶ</a></p>
       <p class="mw__empty" id="myWordsEmpty" hidden>英語と日本語訳を入れると、ここで打って覚えられる。</p>
 
       <form class="mw__add" id="myWordsAdd" novalidate>

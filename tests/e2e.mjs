@@ -25224,14 +25224,27 @@ console.log("my words choice (82.2):");
     keyMiss: localStorage.getItem("spelldash_key_miss"),
     books: localStorage.getItem("spelldash_my_books")
   }));
-  // 答えの記録（出題の回数 playCount は出すたびに増えるので、答えの数だけを比べる）
+  // 答えの記録（出題の回数 playCount と、出題で初めてできる空の行は答えではないので、答えのある行の答えの数だけを比べる）
   const answers = (s) => ({
     words: s.words.map((w) => [w.en, w.ls ?? null, w.lsd ?? null, w.lsAt ?? null]),
-    stats: Object.fromEntries(Object.entries(s.stats).filter(([id]) => id.startsWith("my-")).map(([id, r]) => [id, [r.correctCount, r.recallFail, r.typingMiss, (r.history ?? []).map((h) => h.r).join("")]])),
+    stats: Object.fromEntries(Object.entries(s.stats).filter(([id, r]) => id.startsWith("my-") && (r.correctCount || r.recallFail || r.typingMiss || (r.history ?? []).length)).map(([id, r]) => [id, [r.correctCount, r.recallFail, r.typingMiss, (r.history ?? []).map((h) => h.r).join("")]])),
     xp: s.xp
   });
   const entryOf = (s, id) => s.words.find((w) => w.kind !== "concept" && `my-${w.en}` === id) ?? null;
   const shownOf = (w) => (w ? (w.text && w.text.toLowerCase() === String(w.en).split("~")[0] ? w.text : String(w.en).split("~")[0]) : null); // 答えの英語（画面の形）
+  // 学習状況の最初の画面の公開の語の数（2,858 語・ランク・3 つの札・最高到達ランク）。マイ単語帳の行は別
+  const publicNumbers = async (page) => {
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.getElementById("learnStatus")?.classList.contains("is-unavailable") && document.querySelectorAll("#learnCards .learn-card[data-count]").length === 3, null, { timeout: 10000 }).catch(() => {});
+    return page.evaluate(() => ({
+      learned: document.getElementById("learnCount")?.textContent ?? null, total: document.getElementById("learnTotal")?.textContent ?? null, rank: document.getElementById("learnRank")?.textContent ?? null,
+      next: document.getElementById("learnNextN")?.textContent ?? null,
+      cards: [...document.querySelectorAll("#learnCards .learn-card")].map((c) => `${c.dataset.state}:${c.dataset.count}`).join(","),
+      peak: localStorage.getItem("spelldash_rank_peak"),
+      publicRows: Object.keys(JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")).filter((id) => !id.startsWith("my-")).length,
+      stateInStats: Object.values(JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")).some((r) => r && (r.ls !== undefined || r.lsd !== undefined))
+    }));
+  };
   const waitQuestion = async (page, n) => {
     await waitUntil(async () => (await nShown(page)) >= n && (await cv(page)).opts.length >= 2, 8000);
     return cv(page);
@@ -25294,8 +25307,10 @@ console.log("my words choice (82.2):");
 
   // (2)〜(4) 訳を見て英語を選ぶ（既定）: up／down の単語帳。始めの切り替え・1〜4 のキーとマウス・分からない・印・aria-live・進み方・回の終わり
   let choiceAfter = null;
+  let choiceIds = null;
   {
     const page = await choicePage(seedAll);
+    const numbers0 = await publicNumbers(page);
     await page.goto(BASE + "/?learn=my&book=main&choice=en", { waitUntil: "networkidle" });
     const v0 = await waitQuestion(page, 1);
     const s0 = await stored(page);
@@ -25370,6 +25385,7 @@ console.log("my words choice (82.2):");
     await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
     const end = await cv(page);
     choiceAfter = await stored(page);
+    choiceIds = await page.evaluate(() => window.__words.slice());
     const st = Object.fromEntries(choiceAfter.words.filter((w) => w.kind !== "concept").map((w) => [w.en, w.ls ?? 0]));
     check("82.2 回の終わり: 打つ回と同じパネル（6語 終わり・今回 覚えた／あやふや・マイ単語帳 覚えた）に選ぶ回と向きの名前・「もう一度」は選ぶ回と向きのまま・「マイ単語帳へ」はこの単語帳・向きを替える道",
       [v4.id, v5.id, v6.id].join() === KEYS.slice(3).map((k) => `my-${k}`).join() && !end.box && end.panel && end.title === "6語 終わり" && /今回 覚えた/.test(end.panelText) && /マイ単語帳 覚えた 3 \/ 6/.test(end.panelText)
@@ -25382,6 +25398,9 @@ console.log("my words choice (82.2):");
     await page.click("#choiceAgain");
     const va = await waitQuestion(page, 1);
     check("82.2 「もう一度」: 選ぶ回・訳を見て英語を選ぶのまま（新しい回の 1 語目から）", /choice=en/.test(va.url) && va.box && va.label === "日本語訳" && va.opts.length === 2, JSON.stringify(va));
+    const numbers1 = await publicNumbers(page);
+    check("82.2 選ぶ回の答えは公開の語の数に入らない: 学習状況の 2,858 語・覚えた・ランク・次のランクまで・3 つの札・最高到達ランクは回の前と 1 字も同じ・語の記録に公開の語の行も状態の欄も無い",
+      JSON.stringify(numbers1) === JSON.stringify(numbers0) && numbers0.total === "2,858" && numbers1.publicRows === 0 && !numbers1.stateInStats, JSON.stringify({ numbers0, numbers1 }));
     check("82.2 選ぶ回の画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
     await closeCtx(page);
   }
@@ -25425,8 +25444,8 @@ console.log("my words choice (82.2):");
     const a = pick(typed);
     const b = choiceAfter ? pick(choiceAfter) : null;
     const today = Object.keys(typed.time).sort().at(-1);
-    check("82.2 数え方は打つ回と同じ（同じ 6 問・同じ答え）: 3 状態（その語ごと・同じ英語の語もその語に）・XP・連続日数・学んだ日（カレンダーの印・回の数）・学習した日・語の記録（出題・正解・× の数と種類）が打つ回と 1 字も同じ",
-      ids.length === 6 && t0.input && !t0.box && JSON.stringify(a) === JSON.stringify(b) && Number(a.xp) > 0 && a.daily?.[1] === 1 && a.daily?.[2] === 6 && a.active.length === 1,
+    check("82.2 数え方は打つ回と同じ（同じ 6 問・同じ答え）: 出す語と順（打つ回と同じ）・3 状態（その語ごと・同じ英語の語もその語に）・XP・連続日数・学んだ日（カレンダーの印・回の数）・学習した日・語の記録（出題・正解・× の数と種類）が打つ回と 1 字も同じ",
+      ids.length === 6 && JSON.stringify(ids) === JSON.stringify(choiceIds) && t0.input && !t0.box && JSON.stringify(a) === JSON.stringify(b) && Number(a.xp) > 0 && a.daily?.[1] === 1 && a.daily?.[2] === 6 && a.active.length === 1,
       JSON.stringify({ typed: a, choice: b }));
     check("82.2 今日の学習時間: 打つ回も選ぶ回も同じ書き手で今日に秒が入る", today && Number(typed.time[today]) > 0 && Number(choiceAfter?.time?.[today]) > 0, JSON.stringify({ typed: typed.time, choice: choiceAfter?.time }));
     check("82.2 打鍵の無い選ぶ回は、打つ回の打鍵の記録（よく間違えるキー）だけを書かない（打つ回は 1 打ミスで書く）", typed.keyMiss !== null && (choiceAfter?.keyMiss ?? null) === null, JSON.stringify({ typed: typed.keyMiss, choice: choiceAfter?.keyMiss }));
@@ -25532,8 +25551,8 @@ console.log("my words choice (82.2):");
     const LONGEN = `${"keep moving ".repeat(12)}keep moving on`.slice(0, 150);
     const LONG = [{ en: LONGEN, ja: "長い訳".repeat(50), addedAt: T }, { en: "abcdefghij".repeat(15), ja: "とても長い".repeat(30), addedAt: T }, { en: "short", ja: "短い", addedAt: T }];
     const bad = [];
-    for (const theme of [null, "dark"]) {
-      const page = await choicePage({ spelldash_my_words: JSON.stringify(LONG) }, { viewport: { width: 320, height: 720 }, mobile: true, theme });
+    for (const [width, theme] of [[320, null], [320, "dark"], [390, null], [390, "dark"], [1200, null], [1200, "dark"]]) {
+      const page = await choicePage({ spelldash_my_words: JSON.stringify(LONG) }, { viewport: { width, height: width < 600 ? 720 : 900 }, mobile: width < 600, theme });
       for (const dir of ["en", "ja"]) {
         await page.goto(BASE + `/?learn=my&choice=${dir}`, { waitUntil: "networkidle" });
         const v = await waitQuestion(page, 1);
@@ -25542,11 +25561,39 @@ console.log("my words choice (82.2):");
         const a = await cv(page);
         const longShown = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " "));
         const wantLong = dir === "en" ? v.opts.some((o) => (o.t ?? "").length === 150) : v.q.length === 150 || v.opts.some((o) => (o.t ?? "").length >= 150);
-        if (v.hx > 0 || a.hx > 0 || v.opts.some((o) => o.over > 1 || !o.vis) || a.opts.some((o) => o.over > 1) || !wantLong || !longShown.includes("keep moving keep moving") && dir === "en" || page.errors.length) bad.push({ theme, dir, hx: [v.hx, a.hx], over: v.opts.map((o) => o.over), wantLong, err: page.errors[0] });
+        if (v.hx > 0 || a.hx > 0 || v.opts.some((o) => o.over > 1 || !o.vis) || a.opts.some((o) => o.over > 1) || !wantLong || !longShown.includes("keep moving keep moving") && dir === "en" || page.errors.length) bad.push({ width, theme, dir, hx: [v.hx, a.hx], over: v.opts.map((o) => o.over), wantLong, err: page.errors[0] });
       }
       await closeCtx(page);
     }
-    check("82.2 320 幅 × 昼夜: 150 字の英語と訳の選択肢・問い（2 つの向き・答えた後の印も）は折り返して全部見え、横スクロール 0・エラー 0", bad.length === 0, JSON.stringify(bad));
+    check("82.2 320／390／1200 × 昼夜: 150 字の英語と訳の選択肢・問い（2 つの向き・答えた後の印も）は折り返して全部見え、横スクロール 0・エラー 0", bad.length === 0, JSON.stringify(bad));
+  }
+
+  // (12) 回の長さは打つ回と同じ 1 回 10 語: 11 語の単語帳は 10 語でセットの終わり（続けて学ぶ・向きを替える）→ 続けて学ぶも選ぶ回と向きのまま → 終わり（もう一度）
+  {
+    const ELEVEN = ["apple", "bread", "chair", "door", "egg", "fish", "glass", "hat", "ink", "jam", "kite"].map((en, i) => ({ en, ja: `訳の${i + 1}`, addedAt: T }));
+    const page = await choicePage({ spelldash_my_words: JSON.stringify(ELEVEN) });
+    await page.goto(BASE + "/?learn=my&choice=ja", { waitUntil: "networkidle" });
+    const answerOne = async (n) => {
+      const v = await waitQuestion(page, n);
+      await page.keyboard.press("1");
+      await page.waitForTimeout(60);
+      await page.evaluate(() => { const b = document.getElementById("choiceNext"); if (b && !b.hidden) b.click(); }); // 正解の待ちの間なら飛ばす・違うなら次へ（待ちが終わって次の問いなら押さない）
+      return v;
+    };
+    const asked = [];
+    for (let n = 1; n <= 10; n++) asked.push((await answerOne(n)).id);
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const set = await cv(page);
+    const nextText = await page.evaluate(() => document.getElementById("learnNext")?.textContent ?? null);
+    await page.click("#learnNext").catch(() => {});
+    const v11 = await answerOne(11);
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden && /11語/.test(document.getElementById("resultTitle")?.textContent ?? ""), null, { timeout: 8000 }).catch(() => {});
+    const done = await cv(page);
+    check("82.2 1 回 10 語（打つ回と同じ）: 10 語で「10語 終わり」・「続けて学ぶ」・選ぶ回と向き（英語を見て訳を選ぶ）の名前・向きを替える道 → 続けて学ぶの 11 語目も選ぶ回と向きのまま → 「11語 終わり」と「もう一度」（向きのまま）",
+      JSON.stringify(asked) === JSON.stringify(ELEVEN.slice(0, 10).map((w) => `my-${w.en}`)) && set.title === "10語 終わり" && nextText === "続けて学ぶ" && set.mode === "選択式・英語を見て訳を選ぶ" && set.other === "/?learn=my&choice=en"
+        && v11.id === "my-kite" && v11.label === "英語" && v11.q === "kite" && done.title === "11語 終わり" && done.again === "/?learn=my&choice=ja" && page.errors.length === 0,
+      JSON.stringify({ asked, set: { title: set.title, mode: set.mode, other: set.other }, nextText, v11: { id: v11.id, label: v11.label, q: v11.q }, done: { title: done.title, again: done.again }, err: page.errors[0] }));
+    await closeCtx(page);
   }
 
   // (11) 打つ回の /?learn=my は前のまま（選ぶ回の箱は出ない・入力欄・画面キーボードの設定どおり・打って正解）

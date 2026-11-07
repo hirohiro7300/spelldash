@@ -3883,6 +3883,13 @@ html[data-theme] .mw__learn {
   font-size: 16px;
 }
 
+/* 学ぶ（打つ回）と選択式で学ぶ（Batch 82）を並べる。狭い幅では折り返す */
+html[data-theme] .mw__go {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 html[data-theme] .mw__empty {
   margin: 0;
   color: var(--ink-2);

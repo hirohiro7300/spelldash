@@ -1,6 +1,7 @@
 // ===== マイ単語帳の画面（mywords.html。Batch 79・81。docs/SPEC_MY_WORDS.md） =====
 // 単語帳の切り替え（Batch 81。作る・名前を変える・消す）・1 語ずつ足す・まとめて足す（どちらも今の単語帳へ）・一覧（今の単語帳の語。状態 これから・あやふや・覚えた）・
-// 消す（確かめてから）・訳をその場で直す・選んでまとめて消す／移す・「学ぶ」（/?learn=my&book=<id>。js/game.js の学ぶ回。全部の単語帳は /?learn=my）。
+// 消す（確かめてから）・訳をその場で直す・選んでまとめて消す／移す・「学ぶ」（/?learn=my&book=<id>。js/game.js の学ぶ回。全部の単語帳は /?learn=my）・
+// 「選択式で学ぶ」（Batch 82。/?learn=my[&book=<id>]&choice=en。js/myWordsChoice.js）。
 // 数はマイ単語帳の中だけ（学習状況の公開の語の数とランクには入らない）。保存と同期の印は js/myWords.js、決まりは js/myWordsCore.js
 
 import { initializeAuth } from "./auth.js";
@@ -219,6 +220,13 @@ function render() {
     learn.hidden = mine.total === 0;
     learn.href = `/?learn=my&${BOOK_PARAM}=${encodeURIComponent(current)}`;
     learn.setAttribute("aria-label", `「${name}」を学ぶ`);
+  }
+  // 選択式で学ぶ（Batch 82。訳を見て英語を選ぶが既定。向きは回の始めと終わりで替えられる: js/myWordsChoice.js）
+  const choice = $("myWordsChoice");
+  if (choice) {
+    choice.hidden = mine.total === 0;
+    choice.href = `/?learn=my&${BOOK_PARAM}=${encodeURIComponent(current)}&choice=en`;
+    choice.setAttribute("aria-label", `「${name}」を選択式で学ぶ`);
   }
   const allTotal = countMyStates(list).total;
   const all = $("myWordsAll");

@@ -1513,3 +1513,162 @@ body.list-compact .genre__cards {
   flex: 1 1 100%;
 }
 
+
+/* ===== マイ単語帳の選ぶ回（Batch 82。body.choice-run・#choiceBox。js/myWordsChoice.js・docs/SPEC_MY_WORDS.md §12） =====
+   打つ回の入力欄・答えの綴りの行・ヒントは出さない（選んだ答えは全文入力の答えとして判定する。画面キーボードは全文入力の形で畳まれる: js/keyboard.js）。
+   選択肢は 150 字でも折り返して全部見える（320 幅の昼夜で横スクロールなし）。正解・違うは色だけでなく字（.choice__mark）でも言う。動きは付けない */
+html[data-theme] body.choice-run :is(.input-wrapper, #word, #hintButton) {
+  display: none;
+}
+
+html[data-theme] body.choice-run #japanese {
+  font-size: clamp(22px, 4.6vw, 34px);
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .choice {
+  margin: 4px 0 8px;
+  text-align: left;
+}
+
+html[data-theme] .choice__dir {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 0 10px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+html[data-theme] .choice__switch {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+html[data-theme] .choice__opts {
+  display: grid;
+  gap: 8px;
+}
+
+html[data-theme] .choice__opts:focus {
+  outline: none;
+}
+
+html[data-theme] .choice__opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+html[data-theme] .choice__opt:hover {
+  border-color: var(--ink-3);
+}
+
+html[data-theme] :is(.choice__opt, .choice__switch, .choice__btn):focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+html[data-theme] .choice__opt[aria-disabled="true"] {
+  cursor: default;
+}
+
+html[data-theme] .choice__n {
+  flex: none;
+  min-width: 1.4em;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+html[data-theme] .choice__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html[data-theme] .choice__mark {
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+html[data-theme] .choice__mark:empty {
+  display: none;
+}
+
+html[data-theme] .choice__opt[data-state="right"] {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+
+html[data-theme] .choice__opt[data-state="right"] .choice__mark {
+  color: var(--ok);
+}
+
+html[data-theme] .choice__opt[data-state="wrong"] {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+}
+
+html[data-theme] .choice__opt[data-state="wrong"] .choice__mark {
+  color: var(--signal-ink);
+}
+
+html[data-theme] .choice__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+html[data-theme] .choice__btn {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+html[data-theme] .choice__btn--ghost {
+  border-color: var(--line-2);
+  background: transparent;
+  color: var(--ink);
+}
+
+html[data-theme] :is(.choice__hint, .choice__none) {
+  margin: 10px 0 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
