@@ -28476,6 +28476,126 @@ console.log("my words session label and nav (87.5):");
   check("87.5 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
+// ===== 88.1 守り（Batch 88。js/statsView.js renderLearnedWords・js/wordNotes.js noteChipHtml・js/html.js esc・vercel.json の script-src・ほかの HTML の組み立て。docs/SECURITY.md の Batch 88 の節）: 語と訳と人の字は HTML にしない（渡すリンクの訳・場面カードの答えと鍵・同期とバックアップで届いた語）。学習状況の 2 つの一覧（初めて見て正解した語・思い出せるようになった語）・メモの札・語の詳細・マイ単語帳で走らない・字はそのまま見える =====
+// d8f9d69: 渡すリンクの訳 `"><img src=x onerror=…>` を新しい単語帳に足して 1 回正解すると、学習状況の「初めて見て正解した語」の title から抜けて走る（window.__pwn）。
+// 場面カードの答え（<img …>）は「思い出せるようになった語」の語の字で、鍵の " は data-word-detail・data-note-word の属性から抜ける
+console.log("guard (88.1):");
+{
+  const allErrors = [];
+  const T0 = "2026-11-01T00:00:00.000Z";
+  const PAYLOAD = `"><img src=x onerror="window.__pwn=(window.__pwn||0)+1">`; // 渡すリンクの訳（今の訳の決まり checkJaText は通る）
+  const PAYLOAD2 = `'"><img src=x onerror="window.__pwn=(window.__pwn||0)+10">`;
+  const SCENE_TERM = "<img src=x onerror=window.__pwn=2>"; // 場面カードの答え（英字でないので、学ぶ回と一覧の語の字は答えのまま）
+  const SCENE_TERM_KEY = "<imgsrc=xonerror=window.__pwn=2>"; // その鍵（js/myWords.js conceptKey: 空白を外して小文字）
+  const SCENE_ID_KEY = 'x"onmouseover="window.__pwn=4"x="'; // 鍵に " がある場面カード（id は my-q-<鍵>）
+  const SCENE_ID_KEY2 = 'y"onmouseover="window.__pwn=5"y="';
+  const statLearned = { playCount: 2, correctCount: 1, missCount: 1, typingMiss: 0, recallFail: 1, cleanCorrectStreak: 1, mastered: false, lastPlayed: "2026-11-08T00:00:00.000Z", lastRecallFailAt: "2026-11-07T00:00:00.000Z", lastRecallSuccessAt: "2026-11-08T00:00:00.000Z", knownOnSight: false, history: [{ d: "2026-11-07", r: "x" }, { d: "2026-11-08", r: "o" }] };
+  const statKnown = { playCount: 1, correctCount: 0, missCount: 0, typingMiss: 0, recallFail: 0, cleanCorrectStreak: 1, mastered: false, lastPlayed: "2026-11-08T00:00:00.000Z", lastRecallSuccessAt: "2026-11-08T00:00:00.000Z", knownOnSight: true, history: [{ d: "2026-11-08", r: "o" }] };
+  async function guardPage(seed = {}, { viewport = { width: 1200, height: 900 }, init = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    if (init) await page.addInitScript(init);
+    await page.addInitScript((s) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...s })) localStorage.setItem(k, v);
+    }, seed);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  // 学習状況の 2 つの一覧を読む。属性の字（data-word-detail・data-note-word・title）は元の id と訳のまま読めるか。最後にどの札にも mouseover を送り、属性から抜けた on* が走らないかを見る
+  const readLists = (page) => page.evaluate(() => {
+    const els = [...document.querySelectorAll("#learnedWordList [data-word-detail], #learnedWordList [data-note-word], #knownWordList [data-word-detail]")];
+    for (const el of els) el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    return {
+      pwn: window.__pwn ?? null,
+      imgs: document.querySelectorAll("#learnedWordList img, #knownWordList img").length,
+      onAttrs: [...document.querySelectorAll("#learnedWordList *, #knownWordList *")].flatMap((el) => [...el.attributes].map((a) => a.name)).filter((n) => n.startsWith("on")),
+      learned: [...document.querySelectorAll("#learnedWordList .learned-item")].map((row) => ({
+        id: row.querySelector("[data-word-detail]")?.getAttribute("data-word-detail") ?? null,
+        term: row.querySelector(".learned-item__en")?.textContent ?? null,
+        ja: row.querySelector(".learned-item__ja")?.textContent ?? null,
+        note: row.querySelector("[data-note-word]")?.getAttribute("data-note-word") ?? null
+      })),
+      known: [...document.querySelectorAll("#knownWordList .known-words__item")].map((b) => ({ id: b.getAttribute("data-word-detail"), term: b.textContent, title: b.getAttribute("title") })),
+      title: document.title
+    };
+  });
+  const openStats = async (page) => {
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.querySelectorAll("#learnedWordList .learned-item, #knownWordList .known-words__item").length > 0, null, { timeout: 8000, polling: 20 }).catch(() => {});
+    await page.waitForTimeout(150);
+  };
+
+  // ----- (1) 渡すリンクの訳に HTML の字 → 新しい単語帳として足す → /?learn=my で 1 回正解 → 学習状況の「初めて見て正解した語」: 走らない・訳は title の字のまま・エラー 0 -----
+  {
+    const page = await guardPage();
+    const code = "j1." + Buffer.from(JSON.stringify({ v: 1, n: "旅行", w: [["hello", PAYLOAD]] }), "utf8").toString("base64url");
+    await page.goto(`${BASE}/mywords.html#share=${code}`, { waitUntil: "networkidle" });
+    await page.waitForSelector("#myRecvNew", { state: "visible", timeout: 8000 }).catch(() => {});
+    const preview = await page.evaluate(() => ({ pwn: window.__pwn ?? null, imgs: document.querySelectorAll("#myRecv img").length, rows: [...document.querySelectorAll("#myRecvRows .mw-recv__ja")].map((e) => e.textContent) }));
+    await page.click("#myRecvNew").catch(() => {});
+    await page.waitForFunction(() => /足した/.test(document.getElementById("myRecvStatus")?.textContent ?? ""), null, { timeout: 5000, polling: 20 }).catch(() => {});
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]").map((w) => [w.en, w.ja]));
+    await page.goto(BASE + "/?learn=my", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => window.__words.length >= 1), 10000);
+    await page.waitForTimeout(250);
+    const asked = await page.evaluate(() => window.__words.at(-1));
+    for (const ch of "hello") await page.press("#input", ch);
+    await waitUntil(() => page.evaluate(() => !!JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")["my-hello"]?.lastRecallSuccessAt), 6000);
+    const sessionPwn = await page.evaluate(() => window.__pwn ?? null);
+    await openStats(page);
+    const v = await readLists(page);
+    const row = v.known.find((k) => k.id === "my-hello");
+    check("88.1 (1) 渡すリンクの訳に HTML の字: 下見・足す・学ぶ回・学習状況で走らない（window.__pwn なし・2 つの一覧に img 0・on の属性 0）・「初めて見て正解した語」の hello の title は訳の字のまま・エラー 0",
+      JSON.stringify(stored) === JSON.stringify([["hello", PAYLOAD]]) && preview.pwn === null && preview.imgs === 0 && JSON.stringify(preview.rows) === JSON.stringify([PAYLOAD]) && asked === "my-hello" && sessionPwn === null &&
+      v.pwn === null && v.imgs === 0 && v.onAttrs.length === 0 && !!row && row.term === "hello" && row.title === PAYLOAD && page.errors.length === 0,
+      JSON.stringify({ stored, preview, asked, sessionPwn, v, err: page.errors.slice(0, 2) }));
+    await closeCtx(page);
+  }
+
+  // ----- (2) 保存の種（同期・バックアップで届いた形）: 1 回まちがえてから正解した語（思い出せるようになった語）・場面カードの答えの <img>・鍵の "・メモの札・初めて見て正解した語の title と id -----
+  {
+    const words = [
+      { en: "hello", ja: PAYLOAD, addedAt: T0 },
+      { en: "world", ja: PAYLOAD2, addedAt: T0 },
+      { kind: "concept", en: SCENE_TERM_KEY, answer: SCENE_TERM, q: "場面: 画像の札", explain: "", accept: [], ja: "画像の札の訳", addedAt: T0 },
+      { kind: "concept", en: SCENE_ID_KEY, answer: SCENE_ID_KEY, q: "場面: 属性の札", explain: "", accept: [], ja: "属性の札の訳", addedAt: T0 },
+      { kind: "concept", en: SCENE_ID_KEY2, answer: SCENE_ID_KEY2, q: "場面: 属性の札 2", explain: "", accept: [], ja: "属性の札の訳 2", addedAt: T0 }
+    ];
+    const stats = {
+      "my-hello": statLearned,
+      ["my-q-" + SCENE_TERM_KEY]: { ...statLearned, lastRecallSuccessAt: "2026-11-08T00:00:01.000Z" },
+      ["my-q-" + SCENE_ID_KEY]: { ...statLearned, lastRecallSuccessAt: "2026-11-08T00:00:02.000Z" },
+      "my-world": statKnown,
+      ["my-q-" + SCENE_ID_KEY2]: statKnown
+    };
+    const page = await guardPage({ spelldash_my_words: JSON.stringify(words), spelldash_word_stats: JSON.stringify(stats), spelldash_word_notes: JSON.stringify({ ["my-q-" + SCENE_ID_KEY]: "メモ<b>太字</b>" }) });
+    await openStats(page);
+    const v = await readLists(page);
+    const byId = Object.fromEntries(v.learned.map((r) => [r.id, r]));
+    const knownIds = v.known.map((k) => k.id).sort();
+    check("88.1 (2) 保存の種: 学習状況の 2 つの一覧で走らない（mouseover を送っても window.__pwn なし・img 0・on の属性 0）・思い出せるようになった語の訳・場面カードの答えは字のまま・data-word-detail と data-note-word は元の id（鍵の \" で抜けない）・初めて見て正解した語の title は訳の字のまま・エラー 0",
+      v.pwn === null && v.imgs === 0 && v.onAttrs.length === 0 && v.learned.length === 3 &&
+      byId["my-hello"]?.ja === PAYLOAD && byId["my-hello"]?.term === "hello" &&
+      byId["my-q-" + SCENE_TERM_KEY]?.term === SCENE_TERM &&
+      byId["my-q-" + SCENE_ID_KEY]?.term === SCENE_ID_KEY && byId["my-q-" + SCENE_ID_KEY]?.note === "my-q-" + SCENE_ID_KEY &&
+      JSON.stringify(knownIds) === JSON.stringify(["my-q-" + SCENE_ID_KEY2, "my-world"].sort()) && v.known.find((k) => k.id === "my-world")?.title === PAYLOAD2 &&
+      !/PWN/.test(v.title) && page.errors.length === 0,
+      JSON.stringify({ v, err: page.errors.slice(0, 2) }));
+    await closeCtx(page);
+  }
+  check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");
 {
