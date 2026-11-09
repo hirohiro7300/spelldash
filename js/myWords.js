@@ -19,7 +19,7 @@ import { isAnswerKind } from "./learnState.js";
 import {
   checkEnText, checkJaText, wordCardOf, parseBulkLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT,
   parseBooks, bookIdOf, entriesOfBook, checkBookName, newBookId, entryRefOf, withWordBooks, MY_BOOKS_MAX,
-  myIdentityFor, findSamePair, answerKeyOf, displayOf, uniqueBookName, withoutUnsafe
+  myIdentityFor, findSamePair, answerKeyOf, displayOf, uniqueBookName, withoutUnsafe, isSafeText, UNSAFE_TEXT_ERROR
 } from "./myWordsCore.js";
 
 const KEY = "spelldash_my_words";
@@ -118,6 +118,9 @@ export function validateConcept({ q, answer, explain = "", accept = [] }, existi
   if (!a) return { ok: false, error: "答え（用語）を入力してください" };
   if (a.length > 40) return { ok: false, error: "答えが長すぎます（40文字まで）" };
   if (ex.length > 120) return { ok: false, error: "解説が長すぎます（120文字まで）" };
+  // 名前と訳の字の決まり（js/myWordsCore.js。Batch 85）: 見えない字は断る。場面の欄は複数行なので、改行とタブ（空白の字）は前のまま通す
+  const unsafe = [["場面", [qq]], ["答え", [a]], ["解説", [ex]], ["別解", acc]].find(([, texts]) => !texts.every((s) => isSafeText(s.replace(/\s/g, " "))));
+  if (unsafe) return { ok: false, error: `${unsafe[0]}に${UNSAFE_TEXT_ERROR}` };
   const key = conceptKey(a);
   if (!key) return { ok: false, error: "答えに使える文字がありません" };
   if (existing.some((w) => w.kind === "concept" && w.en === key)) return { ok: false, error: `「${a}」の場面カードはすでにあります` };
