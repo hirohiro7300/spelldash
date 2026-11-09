@@ -1065,7 +1065,7 @@ function showLearnLoadError() {
 }
 
 // ===== マイ単語帳の学ぶ回（/?learn=my。Batch 79。js/myWordsCore.js・docs/SPEC_MY_WORDS.md） =====
-// 中心の学習と同じ画面と打ち方で、マイ単語帳の英語の語だけを出す: これから → あやふや → 覚えた の順に 1 回 10 語。答えはその語の 3 状態
+// 中心の学習と同じ画面と打ち方で、マイ単語帳の英語の語だけを出す: これから（回を始めるたびに混ぜる。Batch 86）→ あやふや → 覚えた の順に 1 回 10 語。答えはその語の 3 状態
 // （spelldash_my_words の語の ls・lsd・lsAt。決まりは公開の語と同じ js/learnState.js applyLearnAnswer）にだけ書く（js/myWords.js recordMyAnswer）。
 // 公開の語の 3 状態・6 つの数・ランク・最高到達ランク・回の続き（spelldash_learn_session）には書かない（finishLearnCounts・persistLearnPoint）。
 // 回の終わりは「続けて学ぶ」と「マイ単語帳へ」。中心の学習の列の決まり（learnQueue.js）のうち、区切り・語数だけをマイ単語帳の決まりに替えて使う。
@@ -1084,7 +1084,7 @@ function beginMyLearn(Q, src, makeChoice = null) {
     choice,
     Q: { ...Q, LEARN_SET_SIZE: Object.freeze({ [src.kind]: MY_SET_SIZE }), learnStep: (_mode, step) => myLearnStep(step) },
     epoch: recordsEpoch(),
-    queue: buildMyQueue(src.list(), src.idOf),
+    queue: buildMyQueue(src.list(), src.idOf, src.kind === "my" ? { shuffle: Math.random } : undefined), // マイ単語帳は回ごとに これから を混ぜる（Batch 86。スラングは前のまま）
     day: learnDayOf(Date.now()),
     cursor: 0,
     ids: [],
@@ -1439,12 +1439,18 @@ function renderLearnPanel(step, { summary, counts }) {
   const status = r.my
     ? `<a class="result-panel__action${(step === "done" || step === "replaced") && !again ? "" : " result-panel__action--ghost"}" href="${r.src.url}" id="${r.src.linkId}">${r.src.label}へ</a>`
     : `<a class="result-panel__action${step === "done" || step === "replaced" ? "" : " result-panel__action--ghost"}" href="./stats.html">学習状況</a>`;
+  // マイ単語帳の打つ回（Batch 86）: 「マイ単語帳へ」の隣に、同じ単語帳の選択式の回への道（ゴースト。/?learn=my[&book=<id>]&choice=en: 単語帳の画面の「選択式で学ぶ」と同じ行き先）。
+  // 選択式の回（向きを替える道がある）・スラング・中心の学習・ほかのタブで替わった回・語の無い単語帳の回には出さない
+  const toChoice =
+    r.my && r.src.kind === "my" && !r.choice && step !== "replaced" && (r.ids.length > 0 || r.saveFailed > 0)
+      ? `<a class="result-panel__action result-panel__action--ghost" href="/?learn=my${r.src.bookId ? `&${MY_BOOK_PARAM}=${encodeURIComponent(r.src.bookId)}` : ""}&${MY_CHOICE_PARAM}=en" id="learnMyChoice">選択式で学ぶ</a>`
+      : "";
   const actions =
     step === "break"
       ? `<button type="button" class="result-panel__action" id="learnContinue">続ける</button><button type="button" class="result-panel__action result-panel__action--ghost" id="learnStop">ここで終える</button>`
       : step === "set" || step === "stop"
-        ? `${step === "set" || learnMore() ? `<button type="button" class="result-panel__action" id="learnNext">${LEARN_NEXT[r.mode]}</button>` : ""}${status}${otherDir}`
-        : `${again}${status}${otherDir}`;
+        ? `${step === "set" || learnMore() ? `<button type="button" class="result-panel__action" id="learnNext">${LEARN_NEXT[r.mode]}</button>` : ""}${status}${toChoice}${otherDir}`
+        : `${again}${status}${toChoice}${otherDir}`;
   panel.innerHTML = `
     <h2 class="learn-panel__title" id="resultTitle" tabindex="-1">${title}</h2>
     ${note ? `<p class="learn-panel__note">${note}</p>` : ""}
@@ -1475,6 +1481,12 @@ function renderLearnPanel(step, { summary, counts }) {
     persistLearnPoint();
     startGame();
   });
+}
+
+// マイ単語帳の回（打つ回・選択式。Batch 86）の「机に戻る」の行き先: 回の終わりの「マイ単語帳へ」と同じ（/mywords.html?book=<id>。全部の単語帳の回は /mywords.html）。
+// ほかの回（中心の学習・スラング・Study）は null（前のとおり公開の机へ。js/main.js の「机に戻る」）
+export function myWordsReturnUrl() {
+  return learnRun?.my && learnRun.src?.kind === "my" ? learnRun.src.url : null;
 }
 
 // まだ出せる語があるか（「ここで終える」のパネルに「続けて学ぶ」を置くか）

@@ -130,6 +130,19 @@ export function hasWordRecords() {
   }
 }
 
+// マイ単語帳に語があるか（初回の判定。Batch 86: 渡された単語帳を足しただけの人も、ホームで初回の本を出さない）。鍵は js/myWords.js と同じ
+// spelldash_my_words（ここは字だけを読み、myWords.js を読み込まない）。読み方は hasWordRecords と同じ: 配列が空でなければ true。
+// 無い・""・"[]"・"null"・"{}" は false。読めない値（壊れた JSON）は true（初回と見ない）。index.html の <head> の 1 行と答えが同じ（E2E 8.8 の表）
+const MY_WORDS_KEY = "spelldash_my_words";
+export function hasMyWordsSaved() {
+  try {
+    const raw = localStorage.getItem(MY_WORDS_KEY);
+    return Object.keys((raw && JSON.parse(raw)) || {}).length > 0;
+  } catch {
+    return true;
+  }
+}
+
 // 保存の文字列を表にする。空・null は空の表。壊れた JSON と表でない値（配列・数・文字列）は、退避の鍵に写してから空の表として読む
 // （止めない: 書斎・出題・学習データ・単語帳が使える。黙って捨てない: 最初の書き込みで上書きされる前に写しが残る）
 function readStats(raw) {

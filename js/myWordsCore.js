@@ -283,17 +283,28 @@ const ORDER = [LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED];
 // 語 → カードの id（マイ単語帳は my-<鍵>。スラング〔Batch 80。js/slang.js〕は項目の id を渡す）
 const myIdOf = (w) => `${MY_ID_PREFIX}${w.en}`;
 
-// 学ぶ回の列（カードの id）: これから → あやふや → 覚えた。これからは足した順、あやふや・覚えたは最後に答えた時刻（lsAt）の古い順、同じなら足した順
-export function buildMyQueue(list, idOf = myIdOf) {
-  return (Array.isArray(list) ? list : [])
+// 学ぶ回の列（カードの id）: これから → あやふや → 覚えた。これからは足した順、あやふや・覚えたは最後に答えた時刻（lsAt）の古い順、同じなら足した順。
+// shuffle（Batch 86。0 以上 1 未満を返す関数。マイ単語帳の回は js/game.js beginMyLearn が Math.random を渡す）: これから の部分だけを混ぜる
+// （答えの同じ行がまとまった単語帳で、位置から答えが分からないように）。渡さなければ前と同じ並び（スラングの回・前からの単体の期待）
+export function buildMyQueue(list, idOf = myIdOf, { shuffle = null } = {}) {
+  const rows = (Array.isArray(list) ? list : [])
     .map((w, pos) => ({ w, pos }))
     .filter(({ w }) => isWordEntry(w))
     .map(({ w, pos }) => {
       const st = myStateOf(w);
       return { id: idOf(w), rank: ORDER.indexOf(st), at: st === LEARN_NEW ? 0 : Number.isFinite(w.lsAt) ? w.lsAt : 0, pos };
     })
-    .sort((a, b) => a.rank - b.rank || a.at - b.at || a.pos - b.pos)
-    .map((x) => x.id);
+    .sort((a, b) => a.rank - b.rank || a.at - b.at || a.pos - b.pos);
+  if (typeof shuffle === "function") {
+    let end = 0; // これから（rank 0）は並べた頭にまとまっている
+    while (end < rows.length && rows[end].rank === 0) end++;
+    for (let i = end - 1; i > 0; i--) {
+      const r = Number(shuffle());
+      const j = Number.isFinite(r) ? Math.min(i, Math.max(0, Math.floor(r * (i + 1)))) : 0; // 範囲の外・数でない値でも語は欠けない
+      [rows[i], rows[j]] = [rows[j], rows[i]];
+    }
+  }
+  return rows.map((x) => x.id);
 }
 
 // 次の一手（js/learnQueue.js learnStep と同じ名前の値）: done（出せる語が無い）・set（10 語の終わり）・play
@@ -395,6 +406,45 @@ export function withWordBooks(books, list) {
 // その単語帳の語（保存の並びの順。場面カードは最初の単語帳に出る）
 export function entriesOfBook(list, bookId, books) {
   return (Array.isArray(list) ? list : []).filter((w) => w && bookIdOf(w, books) === bookId);
+}
+
+// ?book の無い /mywords.html で開く単語帳（Batch 86）: 最初の単語帳。最初の単語帳に語が無く、ほかの単語帳に語があれば、語のある最初の単語帳
+// （渡された単語帳だけを足した人が、ホームから空の「マイ単語帳」を開かないように。新しい保存の鍵は作らない。?book があればその単語帳: 前のまま）
+export function defaultBookId(list, books) {
+  const ids = (Array.isArray(books) ? books : []).map((b) => b.id);
+  if (ids.length === 0) return MY_FIRST_BOOK.id;
+  const has = (id) => entriesOfBook(list, id, books).length > 0;
+  return has(ids[0]) ? ids[0] : ids.find(has) ?? ids[0];
+}
+
+// 渡された単語帳の語のうち、もう入っている組の数・まだの組の数（rest はまだの語。渡された並びで 1 組 1 語）と、入っている組がいちばん多い単語帳
+// （同じ数なら一覧の前の方。無ければ null）。Batch 86:
+// 同じリンクをもう一度開いたとき（全部入っている・一部・1 つも無い）に使う。同じかの決まりは足すときと同じ（js/myWords.js validateEntry:
+// 同じ英語と同じ訳の組は全部の単語帳で 1 つ。findSamePair）。足せない語（英語・訳の決まりに合わない）と、渡された中の同じ組の 2 度目は数えない
+export function sharedPresence(words, list, books) {
+  const seen = new Set();
+  const perBook = new Map();
+  const rest = [];
+  let present = 0;
+  for (const w of Array.isArray(words) ? words : []) {
+    const e = checkEnText(w?.en);
+    const j = checkJaText(w?.ja);
+    if (!e.ok || !j.ok) continue;
+    const pair = `${e.key}\n${normJa(j.ja)}`;
+    if (seen.has(pair)) continue;
+    seen.add(pair);
+    const same = findSamePair(list, e.key, j.ja);
+    if (!same) {
+      rest.push(w);
+      continue;
+    }
+    present++;
+    const id = bookIdOf(same, books);
+    perBook.set(id, (perBook.get(id) ?? 0) + 1);
+  }
+  let book = null;
+  for (const b of Array.isArray(books) ? books : []) if ((perBook.get(b.id) ?? 0) > (book ? perBook.get(book.id) : 0)) book = b;
+  return { present, missing: rest.length, book, rest };
 }
 
 // 単語帳ごとの 3 状態の数（英語の語だけ）。{ <id>: { new, unsure, learned, total } }

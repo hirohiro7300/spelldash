@@ -113,6 +113,66 @@ const list = [
   { en: "f1", ja: "x", ls: 2, lsAt: 1 }
 ];
 eq("列: これから（足した順）→ あやふや（古い順）→ 覚えた（古い順）・場面カードは出さない", C.buildMyQueue(list), ["my-b1", "my-e1", "my-d1", "my-c1", "my-f1", "my-a1"]);
+
+// Batch 86: マイ単語帳の回は、回を始めるたびに これから を混ぜる（buildMyQueue の 3 つ目 { shuffle: rng }）。
+// 答えの同じ行がまとまった単語帳（up・down の場面の行）で、位置から答えが分からないように。あやふや・覚えたの並びは前のまま。rng が無ければ前と同じ
+{
+  // 決まった種の rng（同じ種なら同じ並び）
+  const seeded = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  const updown = [
+    ...Array.from({ length: 35 }, (_, i) => ({ en: "up", ja: `〈場面〉${i + 1}。上がる？下がる？` })),
+    ...Array.from({ length: 35 }, (_, i) => ({ en: "down", ja: `〈場面〉${i + 36}。上がる？下がる？` }))
+  ];
+  const idOf = (w) => `${w.en}|${w.ja}`;
+  const answersOf = (ids) => ids.map((id) => id.split("|")[0]);
+  const head = answersOf(C.buildMyQueue(updown, idOf, { shuffle: seeded(86) }).slice(0, 10));
+  ok("混ぜる: 35 up・35 down の単語帳（決まった種）の最初の 10 語に up と down の両方", head.includes("up") && head.includes("down"), JSON.stringify(head));
+  let mixed = 0;
+  for (let seed = 1; seed <= 50; seed++) {
+    const h = answersOf(C.buildMyQueue(updown, idOf, { shuffle: seeded(seed) }).slice(0, 10));
+    if (h.includes("up") && h.includes("down")) mixed++;
+  }
+  eq("混ぜる: 種 1〜50 のどれでも、最初の 10 語に up と down の両方", mixed, 50);
+  const plain = C.buildMyQueue(updown, idOf);
+  eq("rng が無ければ前と同じ（足した順）", answersOf(plain.slice(0, 10)), Array(10).fill("up"));
+  eq("rng が無い形（undefined・{}・shuffle が関数でない）はどれも前と同じ", [C.buildMyQueue(list, undefined, undefined), C.buildMyQueue(list, undefined, {}), C.buildMyQueue(list, undefined, { shuffle: 1 })], [C.buildMyQueue(list), C.buildMyQueue(list), C.buildMyQueue(list)]);
+  const sh = C.buildMyQueue(updown, idOf, { shuffle: seeded(7) });
+  eq("混ぜても語は同じ（足りない・重なる語が無い）", [...sh].sort(), [...plain].sort());
+  ok("混ぜた並びは足した順と違う", JSON.stringify(sh) !== JSON.stringify(plain));
+  eq("同じ種なら同じ並び", C.buildMyQueue(updown, idOf, { shuffle: seeded(7) }), sh);
+  // あやふや・覚えたは前のまま（最後に答えた時刻の古い順）。混ぜるのは これから の部分だけ
+  const mq = C.buildMyQueue(list, undefined, { shuffle: seeded(3) });
+  eq("混ぜるのは これから だけ: あやふや・覚えたの並びは前のまま", mq.slice(2), ["my-d1", "my-c1", "my-f1", "my-a1"]);
+  eq("混ぜるのは これから だけ: これからの 2 語は先頭の 2 つ", [...mq.slice(0, 2)].sort(), ["my-b1", "my-e1"]);
+  const mixedStates = [
+    ...Array.from({ length: 12 }, (_, i) => ({ en: `n${i}`, ja: "x" })),
+    { en: "u1", ja: "x", ls: 1, lsAt: 30 },
+    { en: "u2", ja: "x", ls: 1, lsAt: 10 },
+    { en: "l1", ja: "x", ls: 2, lsAt: 20 }
+  ];
+  const ms = C.buildMyQueue(mixedStates, undefined, { shuffle: seeded(11) });
+  eq("これから 12 語を混ぜても、あやふや（古い順）→ 覚えたは後ろのまま", ms.slice(12), ["my-u2", "my-u1", "my-l1"]);
+  ok("これから 12 語は混ざる（足した順と違う）", JSON.stringify(ms.slice(0, 12)) !== JSON.stringify(Array.from({ length: 12 }, (_, i) => `my-n${i}`)), JSON.stringify(ms.slice(0, 12)));
+  // 偏らない（並べ替えに乱数の比べを使う形ではなく、どの位置にも同じ割合で来る）。2,000 回で先頭が up になる割合は 0.5 の近く
+  const rnd = seeded(2026);
+  let upFirst = 0;
+  for (let i = 0; i < 2000; i++) if (C.buildMyQueue(updown, idOf, { shuffle: rnd })[0].startsWith("up|")) upFirst++;
+  ok("偏らない: 2,000 回で先頭が up になる割合が 0.45〜0.55", upFirst >= 900 && upFirst <= 1100, String(upFirst));
+  // 壊れた rng（1 を返す・数でない・範囲の外）でも、語が欠けたり重なったりしない
+  for (const [name, bad] of [["1 を返す", () => 1], ["NaN を返す", () => NaN], ["負の数を返す", () => -0.5], ["2 を返す", () => 2]]) {
+    const q = C.buildMyQueue(updown, idOf, { shuffle: bad });
+    eq(`壊れた rng（${name}）でも語は同じ`, [...q].sort(), [...plain].sort());
+  }
+}
 eq("1 回 10 語", C.MY_SET_SIZE, 10);
 eq("区切り: 0 語 → play・10 語 → set・出せる語なし → done", [C.myLearnStep({ setAnswered: 0, more: true }), C.myLearnStep({ setAnswered: 10, more: true }), C.myLearnStep({ setAnswered: 3, more: false })], ["play", "set", "done"]);
 eq("回の結果", C.mySummary(["my-a1", "my-c1", "my-c1", "my-zz"], list, 99), { learned: 1, unsure: 1, dayOne: 0 });
@@ -145,6 +205,17 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const list = [{ en: "a", ja: "x" }, { en: "b", ja: "x", book: "w1", ls: 2 }, { en: "c", ja: "x", book: "w1" }, { kind: "concept", en: "q", q: "qq", answer: "Q" }];
   eq("単語帳ごとの語（場面カードは最初の単語帳の一覧に出る）", [C.entriesOfBook(list, "main", books).map((w) => w.en), C.entriesOfBook(list, "w1", books).map((w) => w.en)], [["a", "q"], ["b", "c"]]);
   eq("単語帳ごとの数（3 状態は英語の語だけ）", C.bookCounts(list, books), { main: { new: 1, unsure: 0, learned: 0, total: 1 }, w1: { new: 1, unsure: 0, learned: 1, total: 2 } });
+  // Batch 86: ?book の無い /mywords.html で開く単語帳。最初の単語帳に語が無く、ほかの単語帳に語があれば、語のある最初の単語帳（新しい保存の鍵は作らない）
+  const dfb = typeof C.defaultBookId === "function" ? C.defaultBookId : () => "（defaultBookId が無い）";
+  const three = [...books, { id: "w2", name: "家" }];
+  eq("開く単語帳: 最初の単語帳に語があれば最初の単語帳", dfb(list, books), "main");
+  eq("開く単語帳: 最初の単語帳が空で、ほかの単語帳に語があれば、語のある最初の単語帳（渡された単語帳だけを足した人）", dfb([{ en: "b", ja: "x", book: "w1" }], books), "w1");
+  eq("開く単語帳: 空の単語帳を飛ばして、語のある最初の単語帳", dfb([{ en: "b", ja: "x", book: "w2" }], three), "w2");
+  eq("開く単語帳: 語のある単語帳が 2 つなら前の方", dfb([{ en: "b", ja: "x", book: "w2" }, { en: "c", ja: "x", book: "w1" }], three), "w1");
+  eq("開く単語帳: どこにも語が無ければ最初の単語帳", [dfb([], three), dfb(null, three)], ["main", "main"]);
+  eq("開く単語帳: 一覧に無い単語帳の語（ほかの端末の単語帳）は、その単語帳を足した一覧（withWordBooks）で選べる",
+    dfb([{ en: "b", ja: "x", book: "bx", bookName: "旅" }], C.withWordBooks(books, [{ en: "b", ja: "x", book: "bx", bookName: "旅" }])), "bx");
+  eq("開く単語帳: 単語帳の一覧が空でも最初の単語帳の id", dfb([], []), "main");
   ok("名前: 空は入れない・20 字まで・同じ名前は入れない（自分の名前へは変えられる）・空白は 1 つに",
     !C.checkBookName(" ", books).ok && C.checkBookName("あ".repeat(20), books).ok && !C.checkBookName("あ".repeat(21), books).ok && /すでにあります/.test(C.checkBookName("仕事", books).error ?? "") && C.checkBookName("仕事", books, "w1").ok && C.checkBookName("  旅行   英語 ", books).name === "旅行 英語");
   const id = C.newBookId(books, () => 0.5, 1000);

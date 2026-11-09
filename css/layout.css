@@ -73,9 +73,17 @@ body {
   z-index: 60;
 }
 
-.dropdown:hover .dropdown__panel,
 .dropdown.is-open .dropdown__panel {
   display: block;
+}
+
+/* ホバーで開くのは、ホバーできる端末（マウス・トラックパッド）だけ。指の端末はタップの後もホバーが残るので、
+   is-open を外しても欄が出たままになり、ログインのリンクを送った後の文（#authMessage）を覆っていた（Batch 86 の反証）。
+   指の端末はタップ（js/auth.js の is-open）だけで開閉する */
+@media (hover: hover) and (pointer: fine) {
+  .dropdown:hover .dropdown__panel {
+    display: block;
+  }
 }
 
 .account__user {
@@ -309,6 +317,7 @@ h1 {
   min-height: 22px;
   margin: 14px 0 0;
   font-size: 14px;
+  white-space: pre-line; /* 文の中の改行で行を分ける（ログインのリンクを送った後の 2 行目。Batch 86） */
 }
 
 /* ===== サイトフッター ===== */

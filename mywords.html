@@ -238,6 +238,8 @@
       </div>
       <p class="mw__all" id="myWordsAll" hidden><span id="myWordsAllN"></span><a href="/?learn=my">全部の単語帳で学ぶ</a><a href="/?learn=my&amp;choice=en" id="myWordsAllChoice" aria-label="全部の単語帳を選択式で学ぶ">選択式で学ぶ</a></p>
       <p class="mw__empty" id="myWordsEmpty" hidden>英語と日本語訳を入れると、ここで打って覚えられる。</p>
+      <!-- ログイン中で、マイ単語帳の表（user_items）がクラウドにまだ無いときだけ（Batch 86。js/myWordsPage.js showLocalOnly）。表ができれば消える -->
+      <p class="mw__empty" id="myWordsLocal" hidden>マイ単語帳は、この端末だけに保存している（ほかの端末には届かない）。</p>
 
       <form class="mw__add" id="myWordsAdd" novalidate>
         <h2 class="mw__h">1語ずつ足す</h2>

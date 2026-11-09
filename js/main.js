@@ -13,7 +13,8 @@ import {
   startDailyGame,
   useHint,
   startGame,
-  stopGame
+  stopGame,
+  myWordsReturnUrl
 } from "./game.js";
 import { renderDailyCard, isDailyPlayedToday } from "./dailyChallenge.js";
 import { isWeakOnlyMode, setWeakOnlyMode, getWeakCount } from "./studyQueue.js";
@@ -305,6 +306,13 @@ async function pickBook(id) {
 const backToPath = document.getElementById("backToPath");
 if (backToPath) backToPath.innerHTML = `${icon("arrowLeft")}机に戻る`;
 backToPath?.addEventListener("click", () => {
+  // マイ単語帳の回（打つ回・選択式。Batch 86）: 公開の机ではなく、その単語帳の画面へ（回の終わりの「マイ単語帳へ」と同じ行き先。机の札 T4 は出さない）
+  const myBack = myWordsReturnUrl();
+  if (myBack) {
+    stopGame(); // 回を閉じて URL の ?learn= を外す（戻るで同じ回が始まり直さない）。答えた分は答えたときに保存済み
+    location.assign(myBack);
+    return;
+  }
   setMode("study", { save: !FOCUS }); // 英単語の学習に絞ったホームは、保存した遊び方（Challenge）を書き換えない
   stopGame(); // プレイ中のセットは中断する（setMode は同じモードだと止めない）
   showGame(false);

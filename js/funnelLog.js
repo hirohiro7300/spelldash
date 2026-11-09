@@ -110,8 +110,10 @@ export function logFunnel(step, source = "", day = today(), { onlyUser = null } 
       const userId = await currentUserId();
       if (onlyUser && userId !== onlyUser) return false;
       const row = { device_id: id, step, source: src, day, user_id: userId };
-      const result = await supabase.from("funnel_events").upsert(row, { onConflict: "device_id,step,source,day", ignoreDuplicates: true });
-      if (result && !result.error) {
+      // 衝突の先を名指さない insert（Batch 86）: この表には select の方針が無く、衝突の先を名指す書き込みは行の権限で断られる。
+      // 同じ行がもうある（一意の違反 23505: ほかのタブが先に送った・送った印を消した）は送れたのと同じ（印を覚えて、送り直さない）
+      const result = await supabase.from("funnel_events").insert(row);
+      if (result && (!result.error || String(result.error.code ?? "") === "23505")) {
         markSent(key);
         return true;
       }

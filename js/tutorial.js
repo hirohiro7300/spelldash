@@ -32,10 +32,11 @@ function dailyLength() {
 
 // 中心の学習（これから・あやふや・覚えた。Batch 78）の回では、T2・T3 の意味が違う: 答えを見た語はこの回にはもう出ず あやふや に移り、
 // 自力で正解した語は 覚えた になる（あやふやの語は別の日の 2 回目で）。Study の「数問後にもう一度」「日をあけて出る」は中心の学習では起きない。
-// js/game.js が spelldash:reveal・spelldash:recall の detail.learn（モードの名前 new・unsure・learned）で知らせる。文の決まりは STEPS と同じ
+// js/game.js が spelldash:reveal・spelldash:recall の detail.learn（モードの名前 new・unsure・learned・my・slang）で知らせる。文の決まりは STEPS と同じ。
+// マイ単語帳（my）・スラング（slang）の回（Batch 86）も 3 状態の決まりで、最初に出るのは これから の語なので new と同じ字
 export const LEARN_STEPS = {
-  T2: { new: "間違えても、あやふやに移るだけ。", unsure: "間違えても、あやふやのまま。", learned: "間違えても、あやふやに移るだけ。" },
-  T3: { new: "自力で正解した語は、覚えたになる。", unsure: "別の日に2回正解すると、覚えたになる。", learned: "自力で正解した語は、覚えたのまま。" },
+  T2: { new: "間違えても、あやふやに移るだけ。", unsure: "間違えても、あやふやのまま。", learned: "間違えても、あやふやに移るだけ。", my: "間違えても、あやふやに移るだけ。", slang: "間違えても、あやふやに移るだけ。" },
+  T3: { new: "自力で正解した語は、覚えたになる。", unsure: "別の日に2回正解すると、覚えたになる。", learned: "自力で正解した語は、覚えたのまま。", my: "自力で正解した語は、覚えたになる。", slang: "自力で正解した語は、覚えたになる。" },
 };
 
 // learn = 中心の学習のモードの名前（Study・Challenge・Daily は無し）
@@ -171,6 +172,8 @@ export function initTutorial() {
   // 1 セット目を終えた（やり直しのセットは除く）: 道に戻ったときに T4 を出せる
   window.addEventListener("spelldash:session-end", (event) => {
     if (event.detail?.retry) return;
+    // マイ単語帳の回（Batch 86）: 机に戻るとその単語帳の画面へ行く（js/main.js）ので、机の札（T4）の印は立てない（公開の回の 1 セット目で立てる）
+    if (event.detail?.learn === "my") return;
     if (!state.setDone) {
       state.setDone = true;
       save(state);

@@ -24,7 +24,7 @@
 
 1. Supabase ダッシュボード → Project Settings → API → **service_role** の key を控える。
    これは全テーブルを RLS 抜きで読めるキー。クライアント・リポジトリ・チャット・ログに置かない。
-2. Vercel → Project → Settings → Environment Variables に次を追加（Production と Preview）:
+2. 配信の管理画面 → プロジェクト（www.spelldash.net が付いている方）→ Settings → Environment Variables に次を追加（**Production だけ**。Preview には入れない: Preview の配信はどのブランチからも作られ、ログインも止めてある〔js/previewHost.js〕。Preview に入れてあれば消す。docs/BILLING.md §2 の 10・15 と同じ）:
 
    | 変数 | 値 | 必須 |
    |---|---|---|

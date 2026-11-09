@@ -8,13 +8,14 @@
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
-import { setupUnloadSync } from "./sync.js";
+import { setupUnloadSync, checkUserItemsTable } from "./sync.js";
 import { isNativeApp, PRODUCTION_ORIGIN } from "./appEnv.js";
+import { isPreviewHost } from "./previewHost.js";
 import {
   getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage, limitOfferText,
   getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa, addSharedWords
 } from "./myWords.js";
-import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, uniqueBookName, visibleText, MY_BOOK_NAME_MAX, MY_BOOKS_MAX } from "./myWordsCore.js";
+import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, uniqueBookName, visibleText, defaultBookId, sharedPresence, MY_BOOK_NAME_MAX, MY_BOOKS_MAX } from "./myWordsCore.js";
 import { SHARE_LONG_LINK, SHARE_MAX_WORDS, bookShare, encodeShare, decodeShare, shareCodeOf, shareLinkOf, shareTextOf } from "./myWordsShare.js";
 import { LEARN_LABELS } from "./learnState.js";
 
@@ -29,7 +30,9 @@ renderHeaderStreak();
 setupUnloadSync();
 
 let statusIsLimit = false;
-// 今の単語帳（URL の ?book=。無い・知らない id は最初の単語帳）・選ぶの最中か・選んだ語の印（js/myWordsCore.js entryRefOf）・訳を直している語・名前の欄の用途
+// 上限の文の前に置く字（Batch 86: まとめて足すで上限に達したときの「N語を足した。残りの M行は欄に残した。」）。上限の文でない字を出すと消える
+let limitLead = "";
+// 今の単語帳（URL の ?book=。無い・知らない id は js/myWordsCore.js defaultBookId: 最初の単語帳が空なら語のある最初の単語帳）・選ぶの最中か・選んだ語の印（js/myWordsCore.js entryRefOf）・訳を直している語・名前の欄の用途
 let current = new URLSearchParams(location.search).get(BOOK_PARAM) ?? "";
 let selecting = false;
 const selected = new Set();
@@ -42,14 +45,16 @@ function setStatus(text, { error = false, limit = false } = {}) {
   el.textContent = text;
   el.classList.toggle("is-error", error);
   statusIsLimit = limit;
+  if (!limit) limitLead = "";
 }
 
 // 上限の文（js/myWords.js limitMessage）。受付中の Web で Pro でない人には、文の中の「Pro なら1,000語」を加入画面へのリンクにする
 // （動線の印 mywords。js/funnelLog.js trackProEntries が押されたのを数える）。受付前・アプリ・Pro の人は文だけ（リンクも値段も出さない）
 function setLimitStatus() {
-  setStatus(limitMessage(), { limit: true });
+  const limit = limitMessage();
+  setStatus(limitLead + limit, { limit: true });
   const status = $("myWordsStatus");
-  if (status) writeWithOffer(status, "", status.textContent);
+  if (status) writeWithOffer(status, limitLead, limit);
 }
 
 // node の字を before + limit にし、limit（アプリが書いた上限の文: js/myWords.js limitMessage）の中の「Pro なら1,000語」だけを加入画面へのリンクにする
@@ -232,7 +237,7 @@ function rowOf(w) {
 function render() {
   const list = getMyWords();
   const books = getMyBooks(list); // 端末の一覧 + ほかの端末の単語帳（語の bookName）
-  if (!books.some((b) => b.id === current)) current = books[0].id;
+  if (!books.some((b) => b.id === current)) current = defaultBookId(list, books); // ?book が無い・知らない id: 最初の単語帳が空なら語のある最初の単語帳（Batch 86）
   const counts = bookCounts(list, books);
   const entries = entriesOfBook(list, current, books);
   const mine = counts[current] ?? countMyStates([]);
@@ -400,6 +405,13 @@ $("myWordsBulkAdd")?.addEventListener("click", () => {
   if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行${kept ? "（欄に残した）" : ""}: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}`);
   if (lines.length === 0) lines.push("1行に「english, 訳」で書く");
   if (added.length > 0) box.value = (rest ?? []).join("\n");
+  // 足して上限に達した（Batch 86）: 足した数と欄に残した行の数を、上限の文（描き直しが書く。リンクの決まりは setLimitStatus）の前に置く
+  if (added.length > 0 && getMyWords().length >= maxMyWords()) {
+    const left = (rest ?? []).length;
+    limitLead = `${added.length}語を足した。${left > 0 ? `残りの ${left}行は欄に残した。` : ""}`;
+    render();
+    return;
+  }
   setStatus(lines.join("。"), { error: added.length === 0 });
   render();
 });
@@ -518,12 +530,12 @@ $("myWordsSelMove")?.addEventListener("click", () => {
 });
 
 // ===== 渡す（Batch 84。docs/SPEC_MY_WORDS.md §13）: 今の単語帳のリンク（#share=<code>）と文字（まとめて足すの形）をコピーする =====
-// 中身は単語帳の名前と英語（画面の形）と訳だけ（js/myWordsShare.js bookShare）。リンクの origin は Web なら今の origin、アプリなら本番（js/appEnv.js）。
+// 中身は単語帳の名前と英語（画面の形）と訳だけ（js/myWordsShare.js bookShare）。リンクの origin は Web なら今の origin、アプリと確認用の Preview（Batch 86）なら本番（js/appEnv.js・js/previewHost.js）。
 // コピーは押した操作の中で最初に呼ぶ（リンクは開いたときに作っておく）。コピーできないときは欄に出して選んでもらう
 let give = null; // 開いている「渡す」の中身 { bookId, link, text, count }
 let giveSeq = 0;
 let giveTimer = 0;
-const shareOrigin = () => (isNativeApp ? PRODUCTION_ORIGIN : location.origin);
+const shareOrigin = () => (isNativeApp || isPreviewHost ? PRODUCTION_ORIGIN : location.origin);
 
 // later: 読み上げの行を一度空にしてから書く（同じボタンを 2 度押して同じ字を書き直しても、読み上げが黙らない。setRecvStatus と同じ）
 function setGiveStatus(text, { error = false, later = false } = {}) {
@@ -674,6 +686,7 @@ $("myGiveShare")?.addEventListener("click", async () => {
 // 初めての人（マイ単語帳の語も英単語の学習の記録も無い）には、SpellDash が何かを 1 行だけ出す
 const RECV_ROWS = 5;
 let recv = null; // 読めた中身 { name, words }
+let recvRest = null; // 一部入っているとき（Batch 86）の { book, words, present }（残りの語を足す先・まだの語・もう入っている組の数）
 let recvAbout = false; // リンクを読んだ時に初めての人だったか（足した後も同じ 1 行を出したまま）
 let recvSeq = 0;
 let recvTimer = 0;
@@ -763,15 +776,22 @@ async function readShareLink() {
     return;
   }
   recv = { name: r.name, words: r.words };
+  recvRest = null;
   recvAbout = firstVisit(getMyWords());
   setRecvStatus("");
   recvParts("ask");
   box.hidden = false;
   renderRecv();
-  $("myRecvTitle")?.focus();
+  // 全部入っている（Batch 86）は学ぶ道に焦点（「もう入っている」の 1 行は aria-describedby で読む）。ほかは前のまま題に
+  const learnNow = $("myRecvLearn");
+  (learnNow && !learnNow.hidden ? learnNow : $("myRecvTitle"))?.focus();
 }
 
-// 問いの中身（render からも呼ぶ: 今の単語帳の名前・上限までの数・単語帳の数）
+// 問いの中身（render からも呼ぶ: 今の単語帳の名前・上限までの数・単語帳の数）。Batch 86: 同じリンクをもう一度開いたときは、もう入っている語で 3 つに分ける
+// （js/myWordsCore.js sharedPresence。同じかの決まりは足すときと同じ）:
+//   全部入っている → 「この単語帳は「X」にもう入っている。」と X の「この単語帳で学ぶ」「選択式で学ぶ」「閉じる」（足すボタンは出さない。焦点は学ぶ）
+//   一部入っている → 最初のボタンは「「X」に残りの N語を足す」（足す先は X。単語帳を割らない）。「M語はもう入っている。」は知らせ（赤にしない）
+//   1 つも無い → 前のまま。ただしマイ単語帳の語が 0 の人には「今の単語帳に足す」と「今の単語帳は…」を出さない（足す先は新しい単語帳だけ）
 function renderRecv(list = getMyWords(), books = getMyBooks(list)) {
   if (!recv || $("myRecv")?.hidden !== false) return;
   const n = recv.words.length;
@@ -790,24 +810,59 @@ function renderRecv(list = getMyWords(), books = getMyBooks(list)) {
   const newName = uniqueBookName(recv.name, books);
   const room = maxMyWords() - list.length;
   const canNew = books.length < MY_BOOKS_MAX && !!newName;
-  let hint = canNew ? `新しい単語帳の名前は「${newName}」。今の単語帳は「${here.name}」。` : `単語帳は${fmt(MY_BOOKS_MAX)}冊まで。今の単語帳「${here.name}」には足せる。`;
-  if (room > 0 && room < n) hint += `上限まであと ${fmt(room)}語。`;
-  writeWithOffer($("myRecvHint"), hint, room <= 0 ? endSentence(limitMessage()) : ""); // 渡された名前は字のまま（上限の文の中だけリンク）
+  const seen = sharedPresence(recv.words, list, books);
+  const all = seen.present > 0 && seen.missing === 0 && !!seen.book;
+  const part = seen.present > 0 && seen.missing > 0 && !!seen.book;
+  recvRest = part ? { book: seen.book, words: seen.rest, present: seen.present } : null; // present: 問いの「M語はもう入っている。」と同じ数を、足した後の文にも使う
   const add = $("myRecvNew");
-  add.disabled = !canNew || room <= 0;
-  add.setAttribute("aria-label", canNew ? `新しい単語帳「${newName}」として足す` : "新しい単語帳として足す");
   const put = $("myRecvHere");
+  const hintNode = $("myRecvHint");
+  const learn = $("myRecvLearn");
+  add.hidden = all;
+  $("myRecvCancel").hidden = all;
+  $("myRecvClose").hidden = !all;
+  put.hidden = all || part || (list.length === 0 && canNew); // 語が 0 の人の「今の単語帳」は空の最初の単語帳（Batch 86）
+  showRecvNext(all ? seen.book : null);
+  if (all) learn.setAttribute("aria-describedby", "myRecvHint");
+  else learn?.removeAttribute("aria-describedby");
+  if (all) {
+    hintNode.textContent = `この単語帳は「${seen.book.name}」にもう入っている。`;
+    return;
+  }
+  const need = part ? seen.missing : n;
+  let hint = part
+    ? `${fmt(seen.present)}語はもう入っている。`
+    : canNew
+      ? put.hidden
+        ? `新しい単語帳の名前は「${newName}」。`
+        : `新しい単語帳の名前は「${newName}」。今の単語帳は「${here.name}」。`
+      : `単語帳は${fmt(MY_BOOKS_MAX)}冊まで。今の単語帳「${here.name}」には足せる。`;
+  if (room > 0 && room < need) hint += `上限まであと ${fmt(room)}語。`;
+  writeWithOffer(hintNode, hint, room <= 0 ? endSentence(limitMessage()) : ""); // 渡された名前は字のまま（上限の文の中だけリンク）
+  if (part) {
+    add.textContent = `「${seen.book.name}」に残りの ${fmt(seen.missing)}語を足す`;
+    add.disabled = room <= 0;
+    add.removeAttribute("aria-label");
+  } else {
+    add.textContent = "新しい単語帳として足す";
+    add.disabled = !canNew || room <= 0;
+    add.setAttribute("aria-label", canNew ? `新しい単語帳「${newName}」として足す` : "新しい単語帳として足す");
+  }
   put.disabled = room <= 0;
   put.setAttribute("aria-label", `今の単語帳「${here.name}」に足す`);
 }
 
 const endSentence = (text) => (/[。．.]$/.test(text) ? text : `${text}。`);
 
-function addRecv(toNew) {
+// to: "new"（新しい単語帳として足す）・"here"（今の単語帳に足す）・"rest"（Batch 86: 一部入っているとき、まだの語だけを入っている単語帳へ）
+function addRecv(to) {
   if (!recv) return;
   const asked = recv;
+  const rest = to === "rest" ? recvRest : null;
+  if (to === "rest" && !rest) return;
   recv = null; // 足している間の描き直し（語の保存が spelldash:mywords を投げる）で問いを描き直さない
-  const r = addSharedWords(asked.words, toNew ? { name: asked.name } : { book: current });
+  const already = rest ? rest.present : 0; // 問いと同じ数（渡された中の同じ組の 2 度目は数えない: sharedPresence）
+  const r = rest ? addSharedWords(rest.words, { book: rest.book.id }) : addSharedWords(asked.words, to === "new" ? { name: asked.name } : { book: current });
   if (!r.ok) {
     recv = asked;
     renderRecv();
@@ -817,10 +872,12 @@ function addRecv(toNew) {
   const parts = [];
   if (r.added.length > 0) parts.push(r.created ? `${fmt(r.added.length)}語を新しい単語帳「${r.book.name}」に足した。` : `${fmt(r.added.length)}語を「${r.book.name}」に足した。`);
   else parts.push("足せた語は無い。");
+  if (already > 0) parts.push(`${fmt(already)}語はもう入っている。`); // 知らせ（足せなかった語には数えない）
   if (r.skipped.length > 0) parts.push(`足せなかった ${fmt(r.skipped.length)}語: ${r.skipped.slice(0, 3).join(" ／ ")}${r.skipped.length > 3 ? " …" : ""}。`);
-  if (r.limited > 0) parts.push(`上限で足せなかった ${fmt(r.limited)}語。`);
+  if (r.limited > 0) parts.push(`上限で足せなかった ${fmt(r.limited)}語。`, `空きができたら、このリンクをもう一度開くと残りの ${fmt(r.limited)}語を足せる。`); // 値段も Pro も言わない文（アプリでも同じ）。空きが無いまま開き直しても残りを足すボタンは押せないので「空きができたら」
   const limitText = r.limited > 0 ? endSentence(limitMessage()) : ""; // 名前と訳の入った文の後ろに、アプリの上限の文（この中だけリンク）
   recvSeq++;
+  recvRest = null;
   dropShareHash(r.book?.id ?? null);
   if (r.book) current = r.book.id;
   selecting = false;
@@ -828,16 +885,18 @@ function addRecv(toNew) {
   editing = null;
   render();
   recvParts("done");
-  const next = r.created && r.book && r.added.length > 0 ? r.book : null; // 新しい単語帳を作ったときだけ（今の単語帳に足したときは出さない）
+  // 次の一歩: 新しい単語帳を作ったとき・残りの語を入っている単語帳へ足したとき（今の単語帳に足したときは出さない）
+  const next = r.book && r.added.length > 0 && (r.created || rest) ? r.book : null;
   showRecvNext(next);
   setRecvStatus(parts.join(""), { error: r.added.length === 0, limit: limitText });
   (next ? $("myRecvLearn") : $("myRecvClose"))?.focus();
 }
 
-$("myRecvNew")?.addEventListener("click", () => addRecv(true));
-$("myRecvHere")?.addEventListener("click", () => addRecv(false));
+$("myRecvNew")?.addEventListener("click", () => addRecv(recvRest ? "rest" : "new"));
+$("myRecvHere")?.addEventListener("click", () => addRecv("here"));
 $("myRecvCancel")?.addEventListener("click", () => {
   recv = null;
+  recvRest = null;
   recvSeq++;
   dropShareHash();
   $("myRecv").hidden = true;
@@ -845,6 +904,13 @@ $("myRecvCancel")?.addEventListener("click", () => {
   pressedTab()?.focus();
 });
 $("myRecvClose")?.addEventListener("click", () => {
+  if (recv) {
+    // 全部入っている（Batch 86）: 足さずに閉じる。# を外す（読み直しても、もう聞かない）
+    recv = null;
+    recvRest = null;
+    recvSeq++;
+    dropShareHash();
+  }
   $("myRecv").hidden = true;
   setRecvStatus("");
   pressedTab()?.focus();
@@ -867,6 +933,20 @@ window.addEventListener("spelldash:mywords", render);
 document.addEventListener("spelldash:plan", render);
 document.addEventListener("spelldash:billing", render);
 // ほかのタブで足した・学んだ語は、このタブを開き直すと出る（storage イベントは聞かない: 聞く所は js/areaGuard.js の一覧どおり。単体 test-areas U1）
+// ログイン中で、マイ単語帳の表（user_items）がクラウドにまだ無い（Batch 86。docs/SPEC_MY_WORDS.md §4）: この端末だけに保存していると 1 行で言う。
+// 知らせはこのページの中だけ（js/sync.js checkUserItemsTable・js/userItemsSync.js の spelldash:useritems-table）。ゲスト・Preview（ログインを止めてある）では出さない
+const showLocalOnly = (missing) => {
+  const el = $("myWordsLocal");
+  if (el) el.hidden = missing !== true;
+};
+window.addEventListener("spelldash:useritems-table", (event) => showLocalOnly(event.detail?.missing));
+window.addEventListener("spelldash:auth-ready", (event) => {
+  if (!event.detail?.loggedIn) {
+    showLocalOnly(false);
+    return;
+  }
+  checkUserItemsTable().then(showLocalOnly, () => {});
+});
 
 render();
 readShareLink();
