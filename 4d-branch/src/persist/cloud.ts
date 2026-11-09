@@ -1091,15 +1091,23 @@ export class CloudSync {
     const base = this.base;
     const holds = this.holdsBase();
     const onOther = !!base && base.gen !== remoteM?.gen;
-    // 基準の系譜は、届いた写しと分かれた後の世代だけを足す（戻ってきた古い世代なら、その後ろから）。それより前は
-    // 届いた写しの系譜にあるか窓を外れた古い世代で、後ろに足すと新しい世代が窓から押し出される。アカウントが空なら全部
+    // 基準の系譜を足す（届いた写しが知っている世代は nextLineage が除く）。届いた写しの窓（64）がいっぱいのときだけ、
+    // 届いた写しが知っている最初の世代より前（窓より古い世代）は足さない（後ろに足すと、新しい世代が窓から押し出される）。
+    // 系譜の並びは古い順とは限らない（送り直しでは、戻ってきた古い世代が最後に来る）ので、知っている「最後」では切らない。
+    // 分かれた所が窓に無いときは、届いた写しの方が古い（遅れて届いた古い書き込み）・系譜を持たない写しなら全部足し、
+    // 届いた写しが先へ進んでいる（基準が窓を外れるほど古い）なら足さない
     const bl = base?.lineage ?? [];
-    let fork = remoteM ? bl.lastIndexOf(remoteM.gen) : -1;
-    if (remoteM && fork < 0) {
-      const known = new Set(remoteM.lineage);
-      for (let i = bl.length - 1; i >= 0 && fork < 0; i--) if (known.has(bl[i]!)) fork = i;
+    let branch = bl;
+    if (remoteM && base) {
+      const known = new Set([...remoteM.lineage, remoteM.gen]);
+      const first = bl.findIndex((g) => known.has(g));
+      if (first >= 0) branch = remoteM.lineage.length >= LINEAGE_MAX ? bl.slice(first) : bl;
+      else {
+        const sameChain = typeof base.seq === "number" && typeof remoteM.seq === "number" && (base.chain === undefined ? remoteM.chain === undefined : remoteM.chain === base.chain);
+        const remoteOlder = remoteM.lineage.length === 0 || (sameChain && remoteM.seq! < base.seq!);
+        branch = remoteOlder ? bl : [];
+      }
     }
-    const branch = !remoteM ? bl : fork >= 0 ? bl.slice(fork + 1) : [];
     const lineage = [...this.failedGens, ...(holds && onOther ? [...branch, base!.gen] : [])];
     // 中身を持っている世代: 基準と、（読めずに置き換えた世代を知っている基準なら）その系譜
     const has = holds && base ? [base.gen, ...(base.lost ? bl : [])].filter((g) => !base.lost?.includes(g)) : [];
@@ -1108,7 +1116,9 @@ export class CloudSync {
     const unheld = [...this.unheld, ...(base?.unheld ?? [])].filter((g) => !has.includes(g) && g !== remoteM?.gen && !remoteM?.lineage.includes(g));
     const lost = [...(remoteM && this.repairing === remoteM.gen ? [remoteM.gen, ...(base && !holds ? [base.gen] : [])] : []), ...unheld];
     const after = holds && onOther && typeof base!.seq === "number" ? base!.seq : undefined;
-    return { lineage, lost, has, after, keepLost: holds && base ? base.lost ?? [] : [] };
+    // 基準の印は、届いた写しの系譜にまだその世代が無いときだけ残す（系譜にあって印が無い写しは、戻された後か、その世代から続く内容）
+    const keepLost = holds && base ? (base.lost ?? []).filter((g) => !remoteM?.lineage.includes(g)) : [];
+    return { lineage, lost, has, after, keepLost };
   }
 
   /**

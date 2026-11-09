@@ -3,7 +3,7 @@ import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { buildStressDoc } from "../../src/demo/stress";
 import { SCHEMA_VERSION, createEmptyDoc, makeNode } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
-import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type SyncBase } from "../../src/persist/cloud";
+import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
 import { mergeDocs } from "../../src/persist/io";
 import { Store } from "../../src/store/store";
 
@@ -2515,5 +2515,159 @@ describe("同期の決まり: 第 4 回の再レビューの指摘", () => {
     expect(await remoteHas(x2.repo, "G の変更")).toBe(true);
     expect(warned(x2)).toBe(true);
     x2.sync.stop();
+  });
+});
+
+describe("同期の決まり: 第 5 回の再レビューの指摘", () => {
+  const MANIFEST = "data/users/user1/fourd";
+  const warned = (d: ReturnType<typeof device>) => d.local.notices.some((x) => x.startsWith("warn:"));
+  const until = async (cond: () => boolean | Promise<boolean>, n = 160, ms = 25) => {
+    for (let i = 0; i < n && !(await cond()); i++) await tick(ms);
+  };
+  const bump = (doc: DocData, title: string): DocData => {
+    const d = structuredClone(doc);
+    const node = makeNode({ title });
+    d.nodes[node.id] = node;
+    d.updatedAt = new Date(Date.parse(d.updatedAt) + 1000).toISOString();
+    return d;
+  };
+  /** 返事が届かず、後から届く確定（分割は書き、マニフェストは持っておく） */
+  async function lateCommit(be: CloudBackend, holder: string, doc: DocData, prev: Manifest | null): Promise<Record<string, unknown>> {
+    let held: Record<string, unknown> | null = null;
+    const cap: CloudBackend = {
+      ...be,
+      async set(path, data) {
+        if (path === MANIFEST) {
+          held = structuredClone(data);
+          throw { code: "unavailable", message: "timeout" };
+        }
+        return be.set(path, data);
+      },
+    };
+    const r = new CloudRepo(cap, "user1", holder);
+    const p = await r.prepare(doc);
+    await r.writeParts(p);
+    await r.commit(p, prev).catch(() => undefined);
+    return held!;
+  }
+
+  it("同じ古い書き込みが 2 回届いて 2 回送り直しても、たどってきた世代を系譜から落とさない（H1）", async () => {
+    const { be } = memoryBackend();
+    const p = new CloudRepo(be, "user1", "P");
+    let pd = realDoc("P の内容");
+    for (let i = 0; i < 3; i++) {
+      pd = bump(pd, `P の変更 ${i}`);
+      await p.write(pd, await p.readManifest());
+    }
+    const y = structuredClone((await be.get(MANIFEST)).data!);
+    const e = device(be, "E", buildDemoDoc());
+    await e.sync.start();
+    e.edit("E の変更");
+    await e.sync.flush();
+    await until(() => remoteHas(e.repo, "E の変更"));
+    const X = e.local.base!.gen;
+    e.sync.stop();
+    const d = device(be, "D", buildDemoDoc());
+    await d.sync.start();
+    d.edit("D の変更");
+    await d.sync.flush();
+    await until(() => remoteHas(d.repo, "D の変更"));
+    for (let k = 0; k < 2; k++) {
+      await be.set(MANIFEST, y);
+      await until(async () => (await d.repo.readManifest())!.gen !== y.gen && d.sync.state === "synced");
+      expect((await d.repo.readManifest())!.lineage).toContain(X);
+    }
+    d.sync.stop();
+    const e2 = device(be, "E2", structuredClone(e.store.doc), { idb: e.local.idb });
+    await e2.sync.start();
+    await until(() => e2.has("D の変更") || warned(e2));
+    expect(warned(e2)).toBe(false);
+    expect(e2.has("D の変更")).toBe(true);
+    expect(await remoteHas(e2.repo, "D の変更")).toBe(true);
+    e2.sync.stop();
+  });
+
+  it("64 世代より後に古い書き込みが届いて送り直しても、基準の系譜を落とさない（H2）", async () => {
+    const { be } = memoryBackend();
+    const p = new CloudRepo(be, "user1", "P");
+    let pd = realDoc("P の内容");
+    for (let i = 0; i < 30; i++) {
+      pd = bump(pd, `P の変更 ${i}`);
+      await p.write(pd, await p.readManifest());
+    }
+    const f = await lateCommit(be, "F", bump(pd, "遅れて届く変更"), await p.readManifest());
+    for (let i = 0; i < 40; i++) {
+      pd = bump(pd, `P の続き ${i}`);
+      await p.write(pd, await p.readManifest());
+    }
+    const e = device(be, "E", buildDemoDoc());
+    await e.sync.start();
+    e.edit("E の変更");
+    await e.sync.flush();
+    await until(() => remoteHas(e.repo, "E の変更"));
+    const X = e.local.base!.gen;
+    e.sync.stop();
+    const d = device(be, "D", buildDemoDoc());
+    await d.sync.start();
+    for (let i = 0; i < 25; i++) {
+      d.edit(`D の変更 ${i}`);
+      await d.sync.flush();
+      await until(() => remoteHas(d.repo, `D の変更 ${i}`));
+    }
+    await be.set(MANIFEST, f);
+    await until(async () => (await d.repo.readManifest())!.gen !== f.gen && d.sync.state === "synced");
+    expect((await d.repo.readManifest())!.lineage).toContain(X);
+    d.sync.stop();
+    const e2 = device(be, "E2", structuredClone(e.store.doc), { idb: e.local.idb });
+    await e2.sync.start();
+    await until(() => e2.has("D の変更 24") || warned(e2));
+    expect(warned(e2)).toBe(false);
+    expect(e2.has("D の変更 24")).toBe(true);
+    expect(await remoteHas(e2.repo, "D の変更 24")).toBe(true);
+    e2.sync.stop();
+  });
+
+  it("ふつうの重なりで送るとき、戻された世代の印を生き返らせない（2 台目の持ち主が古い内容で戻さない）（H3）", async () => {
+    const { be, docs } = memoryBackend();
+    const c = device(be, "C", realDoc("最初の内容"));
+    await c.sync.start();
+    c.sync.stop();
+    const x = device(be, "X", buildDemoDoc());
+    await x.sync.start();
+    x.edit("G の変更");
+    await x.sync.flush();
+    await until(() => remoteHas(x.repo, "G の変更"));
+    const G = x.local.base!.gen;
+    x.sync.stop();
+    const k = device(be, "K", buildDemoDoc());
+    await k.sync.start();
+    expect(k.local.base!.gen).toBe(G);
+    k.sync.stop();
+    // G の分割が無くなり、C が書き直す（G に印）
+    for (const key of [...docs.keys()]) if (key.includes(`/parts/${G}-`)) docs.delete(key);
+    const c2 = device(be, "C2", structuredClone(c.store.doc), { idb: c.local.idb });
+    await c2.sync.start();
+    await until(() => c2.local.notices.some((n) => n.includes("書き直しました")), 160, 50);
+    c2.sync.stop();
+    // D が書き直された内容を読み込み、編集中（まだ送らない）
+    const d = device(be, "D", buildDemoDoc(), { debounceMs: 60_000 });
+    await d.sync.start();
+    d.edit("D の編集");
+    // X が開いて G を戻す（印が外れる）
+    const x2 = device(be, "X2", structuredClone(x.store.doc), { idb: x.local.idb });
+    await x2.sync.start();
+    await until(async () => (await x2.repo.readManifest())!.lost?.includes(G) === false);
+    // D は重なりとして送る: 戻された G の印を生き返らせない
+    await until(() => remoteHas(d.repo, "D の編集").catch(() => false));
+    expect((await d.repo.readManifest())!.lost ?? []).not.toContain(G);
+    x2.sync.stop();
+    d.sync.stop();
+    // K（G を持つ 2 台目、変更なし）が開く: D の編集を古い内容で戻さない
+    const k2 = device(be, "K2", structuredClone(k.store.doc), { idb: k.local.idb });
+    await k2.sync.start();
+    await until(() => k2.has("D の編集"));
+    expect(await remoteHas(k2.repo, "D の編集")).toBe(true);
+    expect(k2.has("D の編集")).toBe(true);
+    k2.sync.stop();
   });
 });

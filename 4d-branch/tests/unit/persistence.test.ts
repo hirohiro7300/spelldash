@@ -400,6 +400,8 @@ describe("Persistence（IndexedDB）", () => {
     await p.createBackup("safety", "入れ替える前", current);
     // 取り込み（置き換え）の直後、保存される前に閉じた: 緊急コピーだけが新しい内容を持つ
     const replaced = edit(createEmptyDoc("取り込んだ内容"), "取り込んだノード");
+    // ストアの入れ替えと同じく、時刻は前の内容より必ず進める（同じミリ秒に並ぶと新しい方と分からない）
+    replaced.updatedAt = nextStamp(current.updatedAt);
     current = replaced;
     p.markDirty();
     p.writeEmergency();
