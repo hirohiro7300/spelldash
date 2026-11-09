@@ -10,6 +10,7 @@ import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync, checkUserItemsTable } from "./sync.js";
 import { isNativeApp, PRODUCTION_ORIGIN } from "./appEnv.js";
+import { isPreviewHost } from "./previewHost.js";
 import {
   getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage, limitOfferText,
   getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa, addSharedWords
@@ -29,6 +30,8 @@ renderHeaderStreak();
 setupUnloadSync();
 
 let statusIsLimit = false;
+// 上限の文の前に置く字（Batch 86: まとめて足すで上限に達したときの「N語を足した。残りの M行は欄に残した。」）。上限の文でない字を出すと消える
+let limitLead = "";
 // 今の単語帳（URL の ?book=。無い・知らない id は最初の単語帳）・選ぶの最中か・選んだ語の印（js/myWordsCore.js entryRefOf）・訳を直している語・名前の欄の用途
 let current = new URLSearchParams(location.search).get(BOOK_PARAM) ?? "";
 let selecting = false;
@@ -42,14 +45,16 @@ function setStatus(text, { error = false, limit = false } = {}) {
   el.textContent = text;
   el.classList.toggle("is-error", error);
   statusIsLimit = limit;
+  if (!limit) limitLead = "";
 }
 
 // 上限の文（js/myWords.js limitMessage）。受付中の Web で Pro でない人には、文の中の「Pro なら1,000語」を加入画面へのリンクにする
 // （動線の印 mywords。js/funnelLog.js trackProEntries が押されたのを数える）。受付前・アプリ・Pro の人は文だけ（リンクも値段も出さない）
 function setLimitStatus() {
-  setStatus(limitMessage(), { limit: true });
+  const limit = limitMessage();
+  setStatus(limitLead + limit, { limit: true });
   const status = $("myWordsStatus");
-  if (status) writeWithOffer(status, "", status.textContent);
+  if (status) writeWithOffer(status, limitLead, limit);
 }
 
 // node の字を before + limit にし、limit（アプリが書いた上限の文: js/myWords.js limitMessage）の中の「Pro なら1,000語」だけを加入画面へのリンクにする
@@ -400,6 +405,13 @@ $("myWordsBulkAdd")?.addEventListener("click", () => {
   if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行${kept ? "（欄に残した）" : ""}: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}`);
   if (lines.length === 0) lines.push("1行に「english, 訳」で書く");
   if (added.length > 0) box.value = (rest ?? []).join("\n");
+  // 足して上限に達した（Batch 86）: 足した数と欄に残した行の数を、上限の文（描き直しが書く。リンクの決まりは setLimitStatus）の前に置く
+  if (added.length > 0 && getMyWords().length >= maxMyWords()) {
+    const left = (rest ?? []).length;
+    limitLead = `${added.length}語を足した。${left > 0 ? `残りの ${left}行は欄に残した。` : ""}`;
+    render();
+    return;
+  }
   setStatus(lines.join("。"), { error: added.length === 0 });
   render();
 });
@@ -518,12 +530,12 @@ $("myWordsSelMove")?.addEventListener("click", () => {
 });
 
 // ===== 渡す（Batch 84。docs/SPEC_MY_WORDS.md §13）: 今の単語帳のリンク（#share=<code>）と文字（まとめて足すの形）をコピーする =====
-// 中身は単語帳の名前と英語（画面の形）と訳だけ（js/myWordsShare.js bookShare）。リンクの origin は Web なら今の origin、アプリなら本番（js/appEnv.js）。
+// 中身は単語帳の名前と英語（画面の形）と訳だけ（js/myWordsShare.js bookShare）。リンクの origin は Web なら今の origin、アプリと確認用の Preview（Batch 86）なら本番（js/appEnv.js・js/previewHost.js）。
 // コピーは押した操作の中で最初に呼ぶ（リンクは開いたときに作っておく）。コピーできないときは欄に出して選んでもらう
 let give = null; // 開いている「渡す」の中身 { bookId, link, text, count }
 let giveSeq = 0;
 let giveTimer = 0;
-const shareOrigin = () => (isNativeApp ? PRODUCTION_ORIGIN : location.origin);
+const shareOrigin = () => (isNativeApp || isPreviewHost ? PRODUCTION_ORIGIN : location.origin);
 
 // later: 読み上げの行を一度空にしてから書く（同じボタンを 2 度押して同じ字を書き直しても、読み上げが黙らない。setRecvStatus と同じ）
 function setGiveStatus(text, { error = false, later = false } = {}) {

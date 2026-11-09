@@ -331,7 +331,8 @@ async function sendLoginLink() {
   }
 
   closeDropdown(accountGuestElement, loginToggleElement);
-  showAuthMessage("ログインリンクを送った。メールを開いて続ける。", "success");
+  // 2 行目（Batch 86）: メールのアプリの中のブラウザで開くと、ログインがこのブラウザに戻らないことがある（.auth-message は改行で行を分ける）
+  showAuthMessage("ログインリンクを送った。メールを開いて続ける。\nこのページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。", "success");
   startSendCooldown();
 }
 

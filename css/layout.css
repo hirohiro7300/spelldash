@@ -309,6 +309,7 @@ h1 {
   min-height: 22px;
   margin: 14px 0 0;
   font-size: 14px;
+  white-space: pre-line; /* 文の中の改行で行を分ける（ログインのリンクを送った後の 2 行目。Batch 86） */
 }
 
 /* ===== サイトフッター ===== */
