@@ -83,9 +83,15 @@ export function siteOrigin() {
   return String(process.env.SITE_ORIGIN || DEFAULT_ORIGIN).trim().replace(/\/+$/, "") || DEFAULT_ORIGIN;
 }
 
-// 「設定済み」= 秘密鍵と月額の Price が両方ある
+// 「設定済み」= 秘密鍵と月額の Price が両方ある（受付中。価格 /api/billing/config と加入 /api/billing/checkout が見る）
 export function billingConfigured() {
   return Boolean(stripeSecretKey()) && Boolean(priceIdFor("month"));
+}
+
+// 秘密鍵がある（決済の会社に問い合わせられる）。もう加入している人の「解約・お支払いの管理」（portal）と webhook はこれだけを見る:
+// 月額の Price の変数を外して受付を急いで止めても（docs/BILLING.md §2 の止め方）、加入者の解約・カードの変更と状態の反映は止まらない
+export function secretKeyConfigured() {
+  return Boolean(stripeSecretKey());
 }
 
 export function isUuid(value) {
@@ -285,7 +291,7 @@ export async function updateSubscriptionIfNotNewer(row) {
 }
 
 export function webhookConfigured() {
-  return billingConfigured() && Boolean(webhookSecret()) && Boolean(serviceRoleKey());
+  return secretKeyConfigured() && Boolean(webhookSecret()) && Boolean(serviceRoleKey());
 }
 
 // ----- 応答・ログ -----

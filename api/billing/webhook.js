@@ -3,7 +3,8 @@
 // POST /api/billing/webhook（Stripe が呼ぶ。Stripe-Signature ヘッダで検証）
 // → { received: true }（200）
 //   署名が無い・合わない・300 秒より古い → 400 bad_signature
-//   未設定（STRIPE_WEBHOOK_SECRET / STRIPE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY のどれかが無い）→ 503
+//   未設定（STRIPE_WEBHOOK_SECRET / STRIPE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY のどれかが無い）→ 503。月額の Price の変数は見ない
+//   （受付を止めるためにそれを外しても、加入している人の解約予定・更新・支払いの失敗は写し続ける。docs/BILLING.md §2）
 //   Supabase への書き込み失敗 → 500（Stripe が再送する）
 //
 // 扱うイベント:
