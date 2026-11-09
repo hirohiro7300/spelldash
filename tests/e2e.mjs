@@ -337,6 +337,17 @@ async function waitUntil(fn, timeout = 2000, step = 50) {
   return false;
 }
 
+// 読み上げの行（js/srLive.js createLive の行き先: #srStatus・#typingLive・#tgLive・窓の中の [data-sr-live]）は一度空にしてから 30〜50ms 後に書く。
+// 操作の直後や決め打ちの短い待ちの後に読むと、CI が重いときは書かれる前に読む。決めた文が入るまで待ってから読む（上限 1 秒・10ms ごと。Batch 84）。
+// want は文（同じ。前後の空白は見ない）か RegExp。入らなければ false でそのまま進む（検査の条件は変えない: 入らなければ検査が落ちる）
+function waitLive(page, selector, want, timeout = 1000) {
+  const isRe = want instanceof RegExp;
+  return page.waitForFunction(([sel, w, re]) => {
+    const t = document.querySelector(sel)?.textContent ?? "";
+    return re ? new RegExp(w).test(t) : t === w || t.trim() === w;
+  }, [selector, isRe ? want.source : String(want), isRe], { timeout, polling: 10 }).then(() => true, () => false);
+}
+
 // 次の語が出てから、答え表示の Enter を受け付けるまで（js/afterCorrect.js）。守りは 2 つ:
 // 次の語が出てから 300ms と、タイマーで進んだときは前の語を打ち終えてから 1,200ms。待ちは 250ms 以上なので、出てから 1,030ms で両方の外
 const afterAdvance = (page) => page.waitForTimeout(Math.max(ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS - FEEDBACK_MS) + 80);
@@ -1598,6 +1609,7 @@ console.log("typing:");
   await waitState(page, "result");
   await page.keyboard.press("Enter"); // 守りの中: やり直さない
   await page.waitForTimeout(100); // 読み上げの 1 文は行を空にして 50ms 後に書く（js/srLive.js createLive。PR #168 レビューの 6）
+  await waitLive(page, "#typingLive", "60 打/分。正確さ 71%、ミス 2。"); // 決め打ちの 100ms で書かれていなければ、入るまで待つ（上限 1 秒。Batch 84）
   const r11 = await page.evaluate(() => ({
     state: document.getElementById("typingBoard").dataset.state,
     kpm: document.getElementById("typingKpm").textContent,
@@ -2729,8 +2741,15 @@ console.log("typing long:");
         path: location.pathname, scroll: document.documentElement.scrollWidth, inner: innerWidth
       };
     });
-    // 読み上げの行（#typingLive）は行を空にして 50ms 後に書く（js/srLive.js createLive。PR #168 レビューの 6）: 100ms 後の中身
-    const liveSoon = (page) => page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve(document.getElementById("typingLive").textContent), 100)));
+    // 読み上げの行（#typingLive）は行を空にして 50ms 後に書く（js/srLive.js createLive。PR #168 レビューの 6）: 100ms 後の中身。
+    // want（RegExp）を渡したら、100ms で合わなければ合うまで見る（上限 1 秒・10ms ごと。CI が重いときに書かれる前に読まない: Batch 84）。返すのはそのときの中身
+    const liveSoon = (page, want = null) => page.evaluate(async (w) => {
+      const line = document.getElementById("typingLive");
+      await new Promise((r) => setTimeout(r, 100));
+      const t0 = performance.now();
+      while (w && !new RegExp(w).test(line.textContent) && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
+      return line.textContent;
+    }, want ? want.source : null);
     // 今の手本（#typingWord の data-rest）の頭を 1 打ずつ合成の keydown で送る（焦点のある要素へ）。n 打まで／その行の終わりまで（line）／結果まで。
     // leaveLast: 最後の行の最後の 1 打を残す。lower: 英字は小文字で送る（Shift なしの大文字）。map: 手本の字 → keydown の中身。gap: 打鍵の間（実時間 ms）。skewEach: 打鍵ごとに時計を進める ms
     const typeRest = (page, opts = {}) => page.evaluate(async ({ n = 1e9, line = false, leaveLast = false, lower = false, map = {}, gap = 0, skewEach = 0 }) => {
@@ -2821,6 +2840,7 @@ console.log("typing long:");
     const l0 = await ls(page);
     await waitL(page, "ready", 5000);
     await page.waitForTimeout(200); // 題と今の行の読み上げ（50ms 後）
+    await waitLive(page, "#typingLive", `${s01.title}。${lineOf(s01, 0)}`); // 決め打ちの 200ms で書かれていなければ、入るまで待つ（上限 1 秒。Batch 84）
     const l1 = await ls(page);
     const cls1 = await clsOf(page);
     const opts = await page.evaluate(() => [...document.querySelectorAll("#typingText optgroup")].map((g) => [g.label, [...g.querySelectorAll("option")].map((o) => [o.value, o.textContent])]));
@@ -2854,6 +2874,7 @@ console.log("typing long:");
     await typeRest(page, { line: true });
     const r2 = await ls(page);
     await page.waitForTimeout(150);
+    await waitLive(page, "#typingLive", `次の行。${lineOf(s01, 1)}`); // 次の行の読み上げ（50ms 後）が入るまで（上限 1 秒。Batch 84）
     const r2live = (await ls(page)).live;
     anims.push(["running", await motion(page)]);
     check("typing long（1200）: 「、」は , で打つ・「、」の所の x はミスで進まず印が残る、行を打ち切ると data-line・今の見出し・次の行・残り 1行が替わり、札も #typingWord の上端も動かない、読み上げは「次の行。」＋今の行",
@@ -2871,7 +2892,7 @@ console.log("typing long:");
     anims.push(["result", await motion(page)]);
     await page.keyboard.press("Enter"); // 守りの 0.6 秒の中
     const gd1 = (await ls(page)).state;
-    const resLive = await liveSoon(page); // 結果の読み上げの 1 文
+    const resLive = await liveSoon(page, /^スコア \d+。/); // 結果の読み上げの 1 文
     check("typing long（1200）: 最後のキーですぐ結果 — 柱は「題・時間」、主の数は「スコア N」（ラベルが先・lining）、補足は「打/分 N ・ 正確さ N% ・ ミス 1」、間違えたキーは「、」で出す、?l= の回なので自己ベストの句も記録も無い、ボタンは もう一度 → 次の文、焦点は主の数の行、読み上げの 1 文",
       res.state === "result" && res.partial === null && /^北風と太陽・2\d秒$/.test(res.kindText) && res.pre && !res.unit && /^\d+$/.test(res.kpm) && kpm1 > 0 && Number(res.kpm) < kpm1 && res.acc.includes(`正確さ ${acc1}%`) && res.acc.includes("ミス 1") && res.keys === "間違えたキー 、 1" && res.best === "" && stored1?.best?.long === undefined && resExtra.lining && J(resExtra.order) === J(["typingAgain", "typingNextText"]) && res.nextBtn && res.active === "typingKpmLine" && resLive === `スコア ${res.kpm}。${res.kindText.split("・")[1]}、打/分 ${kpm1}、正確さ ${acc1}%、ミス 1。` && res.study === "英単語も、打って覚える。日本語の訳だけを見て思い出して打つ。1日5分から。",
       J({ res: { ...res, live: resLive }, stored1, resExtra, correct1, acc1 }));
@@ -2906,7 +2927,7 @@ console.log("typing long:");
     const e4 = (await ls(page)).state;
     await page.keyboard.press("Escape");
     const e5 = (await ls(page)).state;
-    const e3live = await liveSoon(page); // 途中の結果の読み上げの 1 文
+    const e3live = await liveSoon(page, /^途中まで、/); // 途中の結果の読み上げの 1 文
     await page.waitForTimeout(700);
     await page.keyboard.press("Escape");
     const e6 = await ls(page);
@@ -2921,6 +2942,7 @@ console.log("typing long:");
     const clsP0 = (await clsOf(page)).cls;
     await hide(page);
     await page.waitForTimeout(120); // reduced motion の 0.01ms の transition（visibility）が描き替え終え、止めた文の読み上げ（行を空にして 50ms 後。js/srLive.js createLive）が書かれてから読む
+    await waitLive(page, "#typingLive", "止めた。打つと続きから。"); // 決め打ちの 120ms で書かれていなければ、入るまで待つ（上限 1 秒。Batch 84）
     const p1 = await ls(page);
     anims.push(["paused", await motion(page)]);
     await unhide(page);
@@ -4138,7 +4160,14 @@ console.log("typing game:");
       const t0 = performance.now();
       document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key: wrong, code: `Key${wrong.toUpperCase()}`, bubbles: true, cancelable: true }));
       const out = { wrong, term0, term1: document.getElementById("tgTerm").textContent, rest0: rest, rest1: document.getElementById("tgWord").dataset.rest, miss: document.getElementById("tgWord").classList.contains("tp-miss"), live0: document.getElementById("tgLive").textContent, dt: Math.round(performance.now() - t0) };
-      setTimeout(() => resolve({ ...out, live: document.getElementById("tgLive").textContent }), 150); // 読み上げは空にしてから次のタスクで書く
+      // 読み上げは空にしてから次のタスクで書く: 150ms 後に読み、まだ「次の文」でなければ入るまで見る（上限 1 秒・10ms ごと。Batch 84）
+      const t1 = performance.now();
+      const read = () => {
+        const live = document.getElementById("tgLive").textContent;
+        if (live === "次の文" || performance.now() - t1 > 1150) resolve({ ...out, live });
+        else setTimeout(read, 10);
+      };
+      setTimeout(read, 150);
     });
     mo.observe(board, { attributes: true, attributeFilter: ["data-lost"] });
     });
@@ -4152,6 +4181,7 @@ console.log("typing game:");
   const clsBefore = await page.evaluate(() => window.__cls || 0);
   await page.keyboard.press("Enter"); // 守りの中: やり直さない
   await page.waitForTimeout(100); // 読み上げの 1 文は行を空にして 50ms 後に書く（js/srLive.js createLive。PR #168 レビューの 6）
+  await waitLive(page, "#tgLive", /^1 文。目標に届いた。流れた \d+、打\/分 160、正確さ 94%、ミス 1。$/); // 決め打ちの 100ms で書かれていなければ入るまで（上限 1 秒。Batch 84）
   const r15 = await page.evaluate(() => ({
     state: document.getElementById("tgBoard").dataset.state,
     got: document.getElementById("tgGotNum").textContent, unit: document.getElementById("tgUnit").textContent, goal: document.getElementById("tgGoal").textContent,
@@ -6507,6 +6537,10 @@ console.log("bookshelf:");
     const said = (text) => page.evaluate(async (t) => {
       (await import("/js/ui.js")).announce(t);
       await new Promise((r) => setTimeout(r, 120));
+      // 120ms で書かれていなければ、どれかの行に入るまで見る（上限 1 秒・10ms ごと。CI が重いときに書かれる前に数えない: Batch 84）
+      const t0 = performance.now();
+      const has = () => [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].some((n) => n.textContent.trim() === t);
+      while (!has() && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
       const dlg = document.getElementById("bookFinder");
       const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === t);
       return { open: dlg.open, inside: lines.filter((n) => dlg.contains(n) && n.hasAttribute("data-sr-live")).length, outside: lines.filter((n) => !dlg.contains(n)).map((n) => n.id || n.className), finderStatus: document.getElementById("bookFinderStatus").textContent };
@@ -8805,6 +8839,10 @@ console.log("study 60s:");
       const said = (text) => wd.evaluate(async (t) => {
         (await import("/js/ui.js")).announce(t);
         await new Promise((r) => setTimeout(r, 120));
+        // 120ms で書かれていなければ、どれかの行に入るまで見る（上限 1 秒・10ms ごと。Batch 84）
+        const t0 = performance.now();
+        const has = () => [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].some((n) => n.textContent.trim() === t);
+        while (!has() && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
         const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === t);
         return { inPanel: lines.filter((n) => n.closest("#wordDetailPanel") && n.hasAttribute("data-sr-live")).length, sr: document.getElementById("srStatus").textContent === t, lines: lines.length };
       }, text);
@@ -12211,6 +12249,10 @@ console.log("learning quality:");
           createLive(document.getElementById("typingLive")).say(text);
         } else (await import("/js/ui.js")).announce(text);
         await new Promise((r) => setTimeout(r, 150));
+        // 150ms で書かれていなければ、どれかの行に入るまで見る（上限 1 秒・10ms ごと。Batch 84）
+        const t0 = performance.now();
+        const has = () => [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].some((n) => n.textContent.trim() === text);
+        while (!has() && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
         const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === text);
         return { n: lines.length, atLoad: lines.length === 1 && lines[0].dataset.atLoad === "1", inModal: lines.length === 1 && !!lines[0].closest("#feedbackForm") };
       }, url);
@@ -25878,6 +25920,599 @@ console.log("my words choice (82.2):");
       JSON.stringify({ v: { box: v.box, input: v.input, focus: v.inputFocus, osk: v.osk, label: v.label }, msg: after.msg, err: page.errors[0] }));
     await closeCtx(page);
   }
+}
+
+// ===== 84.1 単語帳を渡す（Batch 84。js/myWordsShare.js・js/myWordsPage.js の「渡す」と渡された単語帳・js/myWords.js addSharedWords・privacy.html。docs/SPEC_MY_WORDS.md §13）: 渡す（キーボードで開く・リンクと文字をコピー・中身は名前と英語〔画面の形〕と訳だけで、鍵・3 状態・id・日付は入らない・アプリは本番の origin・端末の共有）・リンクを新しい文脈で開くと上に渡された単語帳（名前・語の数・最初の 5 語・焦点が中へ）・キーボードだけで新しい単語帳として足す（どれも これから・同じ英語 2 つ）・同じ単語帳にもう一度足すと同じ組は断る（空の単語帳を作らない）・上限 100 語で一部だけ（上限の文・受付中の Web だけ加入画面へのリンク・アプリはリンクなし）・足した後とやめた後は # を外す（読み直しても聞かない）・読めないリンクは 1 行だけ・# だけ替えたリンク・ログインした人の領域・要求の URL と本文に code が入らない（ご意見のページ名・動線の計測）・320／390／1200 × 昼夜で横スクロール 0 と 150 字の行の折り返し・動きを減らす設定・エラー 0 =====
+// Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来では種に戻さない）。クリップボードは文脈に読み書きを許して、ページの navigator.clipboard で読む
+console.log("give a word book (84.1):");
+{
+  const reqs = []; // どの文脈の要求も控える（URL と本文）。最後に code が入っていないかを見る
+  const allErrors = [];
+  async function sharePage(storage = {}, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null, native = false, reducedMotion = null, init = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}), ...(reducedMotion ? { reducedMotion } : {}) });
+    await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
+    ctx.on("request", (r) => reqs.push({ url: r.url(), body: r.postData() ?? "" }));
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    if (native) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "app", nativePromise: () => Promise.resolve({}) }; });
+    if (init) await page.addInitScript(init);
+    await page.addInitScript(([seed, th]) => {
+      if (!location.origin || location.origin === "null") return; // about:blank（読めないリンクの間に挟む）には保存が無い
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const open = async (page, url) => {
+    await page.goto(url, { waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.querySelectorAll("#myBookTabs .mw-book").length > 0, null, { timeout: 8000 }).catch(() => {});
+  };
+  // 渡された単語帳が出るまで（問いの中身か、読めないリンクの 1 行が入るまで。上限 5 秒・10ms ごと）
+  const waitRecv = (page) => page.waitForFunction(() => {
+    const box = document.getElementById("myRecv");
+    return !!box && !box.hidden && (!document.getElementById("myRecvSum").hidden || document.getElementById("myRecvStatus").textContent.trim() !== "");
+  }, null, { timeout: 5000, polling: 10 }).then(() => true, () => false);
+  const waitText = (page, sel, re, timeout = 3000) => page.waitForFunction(([s, r]) => new RegExp(r).test(document.querySelector(s)?.textContent ?? ""), [sel, re.source], { timeout, polling: 10 }).then(() => true, () => false);
+  const recvView = (page) => page.evaluate(() => {
+    const vis = (el) => !!el && !el.hidden && el.getClientRects().length > 0 && !el.closest("[hidden]");
+    const box = document.getElementById("myRecv");
+    return {
+      shown: vis(box),
+      text: vis(box) ? box.innerText.replace(/\s+/g, " ").trim() : "",
+      title: vis(document.getElementById("myRecvTitle")),
+      sum: vis(document.getElementById("myRecvSum")) ? document.getElementById("myRecvSum").textContent : null,
+      rows: [...document.querySelectorAll("#myRecvRows li")].filter(vis).map((li) => [li.querySelector(".mw-recv__en")?.textContent, li.querySelector(".mw-recv__ja")?.textContent]),
+      more: vis(document.getElementById("myRecvMore")) ? document.getElementById("myRecvMore").textContent : null,
+      hint: vis(document.getElementById("myRecvHint")) ? document.getElementById("myRecvHint").textContent : null,
+      buttons: [...(box?.querySelectorAll("button") ?? [])].filter(vis).map((b) => [b.id, b.textContent.trim(), b.disabled]),
+      status: document.getElementById("myRecvStatus")?.textContent ?? "",
+      links: [...(box?.querySelectorAll("a") ?? [])].filter(vis).map((a) => ({ href: a.getAttribute("href"), text: a.textContent, funnel: a.dataset.funnel ?? null })),
+      focusIn: !!document.activeElement?.closest?.("#myRecv"),
+      active: document.activeElement?.id || document.activeElement?.className || "",
+      top: box ? Math.round(box.getBoundingClientRect().top) : null,
+      tabsTop: Math.round(document.getElementById("myBookTabs").getBoundingClientRect().top),
+      hash: location.hash,
+      search: location.search,
+      tabs: [...document.querySelectorAll("#myBookTabs .mw-book")].map((b) => [b.querySelector(".mw-book__name")?.textContent, b.getAttribute("aria-pressed")]),
+      list: [...document.querySelectorAll("#myWordsList .mw-row")].map((li) => [li.querySelector(".mw-row__en")?.textContent, li.querySelector(".mw-row__state")?.textContent]),
+      hx: document.documentElement.scrollWidth - document.documentElement.clientWidth
+    };
+  });
+  const stored = (page) => page.evaluate(() => ({
+    words: JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"),
+    books: JSON.parse(localStorage.getItem("spelldash_my_books") || "null"),
+    stats: localStorage.getItem("spelldash_word_stats"),
+    area: window.SpellDashArea?.area ?? null
+  }));
+  const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
+  const panelOpen = (page) => page.waitForFunction(() => !document.getElementById("myGive").hidden && document.getElementById("myGiveLead").textContent !== "", null, { timeout: 5000, polling: 10 }).then(() => true, () => false);
+
+  const LONG_EN = `${"word ".repeat(29)}words`; // 150 字
+  const LONG_JA = "長い訳の例を書く。".repeat(17).slice(0, 150); // 150 字
+  const SENT = [["up", "品質が上がった。順位は上がる？"], ["up", "入札を上げた。費用は上がる？"], ["KPI", "重要業績評価指標"], ["due diligence", "適正評価、買う前の調べ"], [LONG_EN, LONG_JA], ["agenda", "議題"]];
+  const GIVER = {
+    spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "w1", name: "仕事" }]),
+    spelldash_my_words: JSON.stringify([
+      { en: "invoice", ja: "請求書", addedAt: "2026-11-01T00:00:00.000Z", ls: 2, lsAt: 5 },
+      { en: "up", ja: SENT[0][1], book: "w1", bookName: "仕事", ls: 2, lsAt: 9, lsd: 20400, addedAt: "2026-11-02T00:00:00.000Z" },
+      { en: "up~94a018a8", text: "up", ja: SENT[1][1], book: "w1", bookName: "仕事", ls: 1, lsAt: 10, addedAt: "2026-11-03T00:00:00.000Z" },
+      { en: "kpi", text: "KPI", ja: SENT[2][1], book: "w1", bookName: "仕事", addedAt: "2026-11-04T00:00:00.000Z" },
+      { en: "due diligence", ja: SENT[3][1], book: "w1", bookName: "仕事", addedAt: "2026-11-05T00:00:00.000Z" },
+      { en: LONG_EN, ja: LONG_JA, book: "w1", bookName: "仕事", addedAt: "2026-11-06T00:00:00.000Z" },
+      { en: "agenda", ja: "議題", book: "w1", bookName: "仕事", addedAt: "2026-11-07T00:00:00.000Z" },
+      { kind: "concept", en: "ssl", q: "通信を暗号化する", answer: "SSL", explain: "", accept: [], ja: "", book: "w1" }
+    ])
+  };
+  const FILLER = (n) => Array.from({ length: n }, (_, i) => ({ en: `filler${"abcdefghij"[i % 10]}${"abcdefghij"[Math.floor(i / 10) % 10]}`, ja: `埋める語${i}` }));
+  let LINK = "";
+  let CODE = "";
+
+  // (1) 渡す: 仕事の単語帳で「渡す」（キーボードで開く・焦点はリンクをコピー）→ リンクと文字をコピー（クリップボード）→ Escape で閉じて焦点は「渡す」。
+  //     リンクは <この origin>/mywords.html#share=z1.<base64url>。中身は名前と英語（画面の形）と訳だけ（鍵 up~<印>・3 状態・id・日付・単語帳の id なし）。場面カードは入れない
+  {
+    const page = await sharePage(GIVER);
+    await open(page, BASE + "/mywords.html?book=w1");
+    const btn = await page.evaluate(() => { const b = document.getElementById("myBookGive"); return b && !b.hidden ? { text: b.textContent.trim(), label: b.getAttribute("aria-label"), expanded: b.getAttribute("aria-expanded"), controls: b.getAttribute("aria-controls") } : null; });
+    await page.focus("#myBookGive");
+    await page.keyboard.press("Enter");
+    await panelOpen(page);
+    await page.waitForFunction(() => document.activeElement?.id === "myGiveLink", null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const panel = await page.evaluate(() => ({
+      title: document.getElementById("myGiveTitle").textContent, lead: document.getElementById("myGiveLead").textContent,
+      note: document.getElementById("myGiveNote").hidden ? "" : document.getElementById("myGiveNote").textContent,
+      active: document.activeElement?.id, expanded: document.getElementById("myBookGive").getAttribute("aria-expanded"),
+      share: !document.getElementById("myGiveShare").hidden, group: document.getElementById("myGive").getAttribute("role"),
+      live: document.getElementById("myGiveStatus").getAttribute("role")
+    }));
+    await page.keyboard.press("Enter"); // リンクをコピー
+    const st1ok = await waitText(page, "#myGiveStatus", /リンクをコピーした/);
+    LINK = await clip(page);
+    await page.keyboard.press("Tab");
+    const onText = await page.evaluate(() => document.activeElement?.id);
+    await page.keyboard.press("Enter"); // 文字をコピー
+    const st2ok = await waitText(page, "#myGiveStatus", /文字をコピーした（6行）/);
+    const TEXT = await clip(page);
+    // 同じボタンをもう一度: 読み上げの行（role=status）を一度空にしてから同じ文を書く（同じ字を書き直すだけでは読み上げは黙る）
+    await page.evaluate(() => {
+      const s = document.getElementById("myGiveStatus");
+      window.__giveSaid = [];
+      new MutationObserver(() => window.__giveSaid.push(s.textContent)).observe(s, { childList: true, characterData: true, subtree: true });
+    });
+    await page.keyboard.press("Enter"); // もう一度 文字をコピー
+    await page.waitForFunction(() => window.__giveSaid.length > 0 && /文字をコピーした（6行）/.test(window.__giveSaid.at(-1)), null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const said2 = await page.evaluate(() => window.__giveSaid.slice());
+    check("84.1 渡す: 同じコピーのボタンをもう一度押すと、読み上げの行を空にしてから同じ文を書き直す（2 度目も読み上げる）",
+      said2.length >= 2 && said2[0] === "" && /文字をコピーした（6行）/.test(said2.at(-1)), JSON.stringify(said2));
+    await page.keyboard.press("Escape");
+    const closed = await page.evaluate(() => ({ hidden: document.getElementById("myGive").hidden, active: document.activeElement?.id, expanded: document.getElementById("myBookGive").getAttribute("aria-expanded") }));
+    CODE = LINK.replace(/^[^#]*#share=/, "");
+    const decoded = await page.evaluate(async (code) => { const m = await import("/js/myWordsShare.js"); return m.decodeShare(code); }, CODE);
+    const raw = await page.evaluate(async (code) => {
+      const bin = atob(code.slice(3).replace(/-/g, "+").replace(/_/g, "/"));
+      const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+      const s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new TextDecoder().decode(await new Response(s).arrayBuffer());
+    }, CODE).catch((e) => `ERR ${e.message}`);
+    check("84.1 渡す: 単語帳の道具に「渡す」（名前つきの読み上げ・aria-expanded・aria-controls）・キーボードで開くと題「「仕事」を渡す」・6 語・場面カードは入れないと言う・焦点はリンクをコピー・共有のボタンは navigator.share の無い端末では出さない",
+      btn?.text === "渡す" && btn.label === "「仕事」を渡す" && btn.expanded === "false" && btn.controls === "myGive" && panel.title === "「仕事」を渡す" && /^6語。/.test(panel.lead) && /場面カード 1枚は入れない/.test(panel.note)
+        && panel.active === "myGiveLink" && panel.expanded === "true" && !panel.share && panel.group === "group" && panel.live === "status",
+      JSON.stringify({ btn, panel }));
+    check("84.1 渡す: リンクをコピー（キーボード）→ クリップボードに <この origin>/mywords.html#share=z1.<base64url>（チャットで切れにくい長さ）・文字をコピー → まとめて足すの形の 6 行（画面の形の英語。鍵 up~<印> は入らない）・Escape で閉じて焦点は「渡す」",
+      st1ok && new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/mywords\\.html#share=z1\\.[A-Za-z0-9_-]+$`).test(LINK) && LINK.length < 8000 && onText === "myGiveText" && st2ok
+        && TEXT === SENT.map(([en, ja]) => `${en}, ${ja}`).join("\n") && !TEXT.includes("~") && closed.hidden && closed.active === "myBookGive" && closed.expanded === "false",
+      JSON.stringify({ st1ok, st2ok, link: LINK.slice(0, 80), len: LINK.length, onText, text: TEXT.slice(0, 120), closed }));
+    let rawJson = null;
+    try { rawJson = JSON.parse(raw); } catch { rawJson = null; }
+    check("84.1 渡す: リンクの中身は JSON {v:1, n, w} だけ（名前「仕事」と [英語, 訳] の 6 組）・3 状態・鍵・id・日付・単語帳の id・場面カードは入らない・ページの読み方で同じ 6 語に戻る",
+      !!rawJson && Object.keys(rawJson).join() === "v,n,w" && rawJson.v === 1 && rawJson.n === "仕事" && JSON.stringify(rawJson.w) === JSON.stringify(SENT)
+        && !/~|"ls|lsAt|lsd|addedAt|book|w1|2026|ssl|SSL|main/.test(raw) && decoded.ok && decoded.name === "仕事" && JSON.stringify(decoded.words) === JSON.stringify(SENT.map(([en, ja]) => ({ en, ja }))),
+      JSON.stringify({ raw: String(raw).slice(0, 200), decoded: decoded.reason ?? decoded.words?.length }));
+    check("84.1 渡す: 画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (1b) 画面で作った単語帳を渡す: まっさらなゲストが「新しい単語帳」で「旅行」を作り、1語ずつ足すで 2 語（Wi-Fi は打った形のまま）→ 渡す → リンクをコピー。
+  //      中身は名前「旅行」と 2 組。別の文脈で開いて新しい単語帳として足すと「旅行」2 語（どれも これから）
+  {
+    const page = await sharePage({});
+    await open(page, BASE + "/mywords.html");
+    await page.click("#myBookNew");
+    await page.fill("#myBookName", "旅行");
+    await page.press("#myBookName", "Enter");
+    await page.waitForFunction(() => [...document.querySelectorAll("#myBookTabs .mw-book")].some((b) => b.querySelector(".mw-book__name")?.textContent === "旅行" && b.getAttribute("aria-pressed") === "true"), null, { timeout: 3000, polling: 10 }).catch(() => {});
+    for (const [en, ja] of [["boarding pass", "搭乗券"], ["Wi-Fi", "無線の接続"]]) {
+      await page.fill("#myWordsEn", en);
+      await page.fill("#myWordsJa", ja);
+      await page.click("#myWordsAddButton");
+      await page.waitForFunction((e) => [...document.querySelectorAll("#myWordsList .mw-row__en")].some((x) => x.textContent === e), en, { timeout: 3000, polling: 10 }).catch(() => {});
+    }
+    await page.click("#myBookGive");
+    await panelOpen(page);
+    const lead = await page.textContent("#myGiveLead");
+    await page.click("#myGiveLink");
+    const ok = await waitText(page, "#myGiveStatus", /リンクをコピーした/);
+    const link = await clip(page);
+    const code = link.replace(/^[^#]*#share=/, "");
+    const dec = await page.evaluate(async (c) => { const m = await import("/js/myWordsShare.js"); return m.decodeShare(c); }, code);
+    check("84.1 渡す: 画面で作った単語帳「旅行」（新しい単語帳・1語ずつ足すで 2 語）を渡すと、リンクの中身は名前「旅行」と 2 組（英語は打った形の Wi-Fi）",
+      ok && /^2語。/.test(lead) && dec.ok && dec.name === "旅行" && JSON.stringify(dec.words) === JSON.stringify([{ en: "boarding pass", ja: "搭乗券" }, { en: "Wi-Fi", ja: "無線の接続" }]),
+      JSON.stringify({ ok, lead, dec }));
+    check("84.1 渡す（画面で作った単語帳）: 画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+    const page2 = await sharePage({});
+    await open(page2, link);
+    const shown = await waitRecv(page2);
+    const v0 = await recvView(page2);
+    await page2.click("#myRecvNew");
+    await waitText(page2, "#myRecvStatus", /2語/);
+    await page2.waitForFunction(() => location.hash === "", null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const v1 = await recvView(page2);
+    const s1 = await stored(page2);
+    check("84.1 受け取る: 画面で作った単語帳のリンクを別の文脈で開くと「「旅行」 2語」と 2 行・新しい単語帳として足すと「旅行」2 語（どれも これから）・# は外れる",
+      shown && v0.sum === "「旅行」 2語" && JSON.stringify(v0.rows) === JSON.stringify([["boarding pass", "搭乗券"], ["Wi-Fi", "無線の接続"]])
+        && v1.tabs.some(([n, p]) => n === "旅行" && p === "true") && v1.list.length === 2 && v1.list.every(([, st]) => st === "これから") && v1.hash === ""
+        && s1.words.filter((w) => w.bookName === "旅行").map((w) => w.text ?? w.en).join() === "boarding pass,Wi-Fi",
+      JSON.stringify({ shown, v0: { sum: v0.sum, rows: v0.rows }, v1: { tabs: v1.tabs, list: v1.list, hash: v1.hash, status: v1.status }, s1: s1.words.map((w) => [w.en, w.text, w.bookName]) }));
+    await closeCtx(page2);
+  }
+
+  // (1c) 今の決まりに合う語が無い単語帳（前の版で入った 151 字の英語・使えない字の英語だけ）には「渡す」を出さない（押しても何も起きないボタンを出さない）。
+  //      合う語が 1 つでもあれば出し、合わない語の数を札で言う
+  {
+    const page = await sharePage({
+      spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "w2", name: "旅" }]),
+      spelldash_my_words: JSON.stringify([
+        { en: "x".repeat(151), ja: "長い", addedAt: "2026-11-01T00:00:00.000Z" },
+        { en: "café", ja: "喫茶店", addedAt: "2026-11-02T00:00:00.000Z" },
+        { en: "a/b", ja: "斜線", book: "w2", bookName: "旅", addedAt: "2026-11-03T00:00:00.000Z" },
+        { en: "tea", ja: "お茶", book: "w2", bookName: "旅", addedAt: "2026-11-04T00:00:00.000Z" }
+      ])
+    });
+    await open(page, BASE + "/mywords.html");
+    const g0 = await page.evaluate(() => ({ hidden: document.getElementById("myBookGive").hidden, rows: document.querySelectorAll("#myWordsList .mw-row").length }));
+    await open(page, BASE + "/mywords.html?book=w2");
+    const g1 = await page.evaluate(() => ({ hidden: document.getElementById("myBookGive").hidden }));
+    await page.click("#myBookGive");
+    const opened = await panelOpen(page);
+    const p1 = await page.evaluate(() => ({ lead: document.getElementById("myGiveLead").textContent, note: document.getElementById("myGiveNote").hidden ? "" : document.getElementById("myGiveNote").textContent }));
+    check("84.1 渡す: 今の決まりに合う語が無い単語帳（151 字の英語・使えない字の英語だけ）には「渡す」を出さない・合う語があれば出して「今の決まりに合わない 1語は入れない」と言う",
+      g0.hidden === true && g0.rows === 2 && g1.hidden === false && opened && /^1語。/.test(p1.lead) && /今の決まりに合わない 1語は入れない/.test(p1.note) && page.errors.length === 0,
+      JSON.stringify({ g0, g1, opened, p1, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (2) アプリ（ネイティブの枠を偽装）: リンクは本番の origin（https://www.spelldash.net）。端末の共有（navigator.share）があればボタンを出し、リンクを渡す。加入画面へのリンクは無い
+  {
+    const page = await sharePage(GIVER, { native: true, init: () => { navigator.share = async (data) => { window.__shared = JSON.parse(JSON.stringify(data)); }; } });
+    await open(page, BASE + "/mywords.html?book=w1");
+    await page.click("#myBookGive");
+    await panelOpen(page);
+    await page.click("#myGiveLink");
+    await waitText(page, "#myGiveStatus", /リンクをコピーした/);
+    const appLink = await clip(page);
+    const shareShown = await page.evaluate(() => !document.getElementById("myGiveShare").hidden);
+    await page.click("#myGiveShare");
+    await waitText(page, "#myGiveStatus", /共有した/);
+    const shared = await page.evaluate(() => window.__shared ?? null);
+    const proLinks = await page.evaluate(() => [...document.querySelectorAll('a[href*="pro.html"]')].filter((a) => a.getClientRects().length > 0).length);
+    check("84.1 アプリ: リンクは本番の origin（https://www.spelldash.net/mywords.html#share=z1.…）・中身は Web と同じ・端末の共有のボタンがあればリンクを渡す・加入画面へのリンクなし・エラー 0",
+      appLink === `https://www.spelldash.net/mywords.html#share=${CODE}` && shareShown && shared?.url === appLink && /「仕事」を渡す/.test(shared?.title ?? "") && proLinks === 0 && page.errors.length === 0,
+      JSON.stringify({ appLink: appLink.slice(0, 70), shareShown, shared: shared && { title: shared.title, url: String(shared.url).slice(0, 60) }, proLinks, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (3) 受け取る（ゲスト・まっさらな文脈）: リンクを開くと上に渡された単語帳（名前・6 語・最初の 5 語・ほか 1 語・足す先の名前）。焦点は中（題）。
+  //     キーボードだけ: Tab で「新しい単語帳として足す」→ Enter で 6 語が新しい単語帳「仕事」に入る（どれも これから・同じ英語 2 つ・語の記録には書かない）・# を外して ?book=<新しい単語帳>・
+  //     焦点は「閉じる」→ Enter で閉じて焦点は単語帳の切り替え。読み直しても問いは出ない
+  {
+    const page = await sharePage({});
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    const shown = await waitRecv(page);
+    await page.waitForFunction(() => !!document.activeElement?.closest?.("#myRecv"), null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const v0 = await recvView(page);
+    const s0 = await stored(page);
+    check("84.1 受け取る: リンクを開くと上に渡された単語帳（名前「仕事」・6 語・最初の 5 語は字のまま・ほか 1 語・新しい単語帳の名前と今の単語帳）・焦点は中・足す 2 つとやめる・まだ何も書かない",
+      shown && v0.shown && v0.title && v0.sum === "「仕事」 6語" && JSON.stringify(v0.rows) === JSON.stringify(SENT.slice(0, 5)) && v0.more === "ほか 1語"
+        && /新しい単語帳の名前は「仕事」/.test(v0.hint ?? "") && /今の単語帳は「マイ単語帳」/.test(v0.hint ?? "") && v0.focusIn && v0.active === "myRecvTitle" && v0.top < v0.tabsTop
+        && JSON.stringify(v0.buttons) === JSON.stringify([["myRecvNew", "新しい単語帳として足す", false], ["myRecvHere", "今の単語帳に足す", false], ["myRecvCancel", "やめる", false]])
+        && s0.words.length === 0 && s0.books === null,
+      JSON.stringify({ shown, v0, s0 }));
+    await page.keyboard.press("Tab");
+    const onNew = await page.evaluate(() => document.activeElement?.id);
+    await page.keyboard.press("Enter");
+    const added = await waitText(page, "#myRecvStatus", /足した/);
+    const v1 = await recvView(page);
+    const s1 = await stored(page);
+    const book = s1.books?.find((b) => b.name === "仕事") ?? null;
+    const mine = s1.words.filter((w) => w.book === book?.id);
+    check("84.1 受け取る（キーボードだけ）: Tab で「新しい単語帳として足す」・Enter で 6 語が新しい単語帳「仕事」へ（同じ英語 2 つ・KPI の形・150 字の行）・どれも これから（3 状態の欄なし）・語の記録は書かない・結果の文は読み上げの行",
+      onNew === "myRecvNew" && added && v1.status === "6語を新しい単語帳「仕事」に足した。" && !!book && JSON.stringify(s1.books.map((b) => b.name)) === '["マイ単語帳","仕事"]'
+        && mine.length === 6 && mine.every((w) => w.bookName === "仕事" && !("ls" in w) && !("lsAt" in w) && !("lsd" in w)) && mine[0].en === "up" && /^up~[0-9a-f]{8}$/.test(mine[1].en) && mine[2].text === "KPI" && mine[4].en === LONG_EN
+        && v1.list.length === 6 && v1.list.every((r) => r[1] === "これから") && s1.stats === null,
+      JSON.stringify({ onNew, added, status: v1.status, books: s1.books, mine: mine.map((w) => w.en.slice(0, 20)), list: v1.list.slice(0, 3), stats: s1.stats }));
+    check("84.1 受け取る: 足した後は # を外す（?book=<新しい単語帳>）・単語帳の切り替えは「仕事」・問いのボタンは消えて「閉じる」に焦点",
+      v1.hash === "" && v1.search === `?book=${book?.id}` && JSON.stringify(v1.tabs) === JSON.stringify([["マイ単語帳", "false"], ["仕事", "true"]]) && JSON.stringify(v1.buttons.map((b) => b[0])) === '["myRecvClose"]' && v1.active === "myRecvClose",
+      JSON.stringify({ hash: v1.hash, search: v1.search, tabs: v1.tabs, buttons: v1.buttons, active: v1.active }));
+    await page.keyboard.press("Enter");
+    const v2 = await recvView(page);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(150);
+    const v3 = await recvView(page);
+    const s3 = await stored(page);
+    check("84.1 受け取る: 「閉じる」で閉じて焦点は単語帳の切り替え・読み直しても問いは出ない（# は外れている）・語はそのまま",
+      !v2.shown && /mw-book/.test(v2.active) && !v3.shown && v3.hash === "" && s3.words.length === 6 && JSON.stringify(s3.words) === JSON.stringify(s1.words),
+      JSON.stringify({ v2: [v2.shown, v2.active], v3: [v3.shown, v3.hash], n: s3.words.length }));
+
+    // (4) 同じ単語帳にもう一度: 今の単語帳（仕事）に足すと 6 語とも同じ組で断る（何も書かない）。新しい単語帳として足しても空の単語帳「仕事 2」は作らない
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    const w0 = await recvView(page);
+    await page.click(`#myBookTabs .mw-book[data-book="${book?.id}"]`);
+    const w1 = await recvView(page);
+    const before = JSON.stringify((await stored(page)).words);
+    await page.click("#myRecvHere");
+    await waitText(page, "#myRecvStatus", /足せた語は無い/);
+    const w2 = await recvView(page);
+    const s4 = await stored(page);
+    check("84.1 もう一度（今の単語帳）: 新しい単語帳の名前は「仕事 2」と出る・切り替えると今の単語帳は「仕事」・足すと 6 語とも同じ訳で「仕事」にすでにあると言い、何も書かない・# は外す",
+      /新しい単語帳の名前は「仕事 2」/.test(w0.hint ?? "") && /今の単語帳は「仕事」/.test(w1.hint ?? "") && w1.shown && /^足せた語は無い。足せなかった 6語: up（品質が上がった。順位は上がる？）: 同じ訳で「仕事」にすでに登録されています ／ /.test(w2.status)
+        && JSON.stringify(s4.words) === before && w2.hash === "",
+      JSON.stringify({ hint0: w0.hint, hint1: w1.hint, status: w2.status, hash: w2.hash }));
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.click("#myRecvNew");
+    await waitText(page, "#myRecvStatus", /足せた語は無い/);
+    const w3 = await recvView(page);
+    const s5 = await stored(page);
+    check("84.1 もう一度（新しい単語帳）: 全部が同じ組なら新しい単語帳を作らない（単語帳は 2 冊のまま・語も同じ）・# は外す",
+      JSON.stringify(s5.books.map((b) => b.name)) === '["マイ単語帳","仕事"]' && JSON.stringify(s5.words) === before && w3.hash === "" && /足せなかった 6語/.test(w3.status),
+      JSON.stringify({ books: s5.books, status: w3.status }));
+    check("84.1 受け取る（ゲスト）: 画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (3b) Escape: 問いの間は「やめる」と同じ（閉じる・何も書かない・# を外す・焦点は単語帳の切り替え）。足した後は「閉じる」と同じ（「渡す」の札の Escape と同じ）
+  {
+    const page = await sharePage({});
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.waitForFunction(() => document.activeElement?.id === "myRecvTitle", null, { timeout: 3000, polling: 10 }).catch(() => {});
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.getElementById("myRecv").hidden, null, { timeout: 2000, polling: 10 }).catch(() => {});
+    const e1 = await recvView(page);
+    const s1 = await stored(page);
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.click("#myRecvNew");
+    await waitText(page, "#myRecvStatus", /足した/);
+    const d0 = await recvView(page);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.getElementById("myRecv").hidden, null, { timeout: 2000, polling: 10 }).catch(() => {});
+    const e2 = await recvView(page);
+    const s2 = await stored(page);
+    check("84.1 Escape: 問いの間は「やめる」と同じ（閉じる・何も書かない・# を外す・焦点は単語帳の切り替え）・足した後は「閉じる」と同じ（語はそのまま・焦点は単語帳の切り替え）・エラー 0",
+      !e1.shown && e1.hash === "" && /mw-book/.test(e1.active) && s1.words.length === 0 && s1.books === null
+        && d0.active === "myRecvClose" && !e2.shown && /mw-book/.test(e2.active) && s2.words.length === 6 && page.errors.length === 0,
+      JSON.stringify({ e1: [e1.shown, e1.hash, e1.active], s1: [s1.words.length, s1.books], d0: d0.active, e2: [e2.shown, e2.active], n: s2.words.length, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (5) 上限（無料 100 語）: 95 語の人は「上限まであと 5語」と出て、新しい単語帳として足すと 5 語だけ入り、上限で足せなかった 1 語と上限の文（Batch 83 の文）。
+  //     受付前の Web は文だけ・受付中の Web は「Pro なら1,000語」が加入画面へのリンク（動線の印 mywords）・アプリはリンクも Pro の話もなし。100 語の人は足すボタンを止める
+  {
+    const fmtN = (n) => Number(n).toLocaleString("ja-JP");
+    const limitCase = async ({ open: billing, native = false }) => {
+      const page = await sharePage({ spelldash_my_words: JSON.stringify(FILLER(95)), spelldash_billing_open: JSON.stringify({ open: billing, at: Date.now() }) }, { native });
+      await page.goto(LINK, { waitUntil: "networkidle" });
+      await waitRecv(page);
+      const before = await recvView(page);
+      await page.click("#myRecvNew");
+      await waitText(page, "#myRecvStatus", /上限で足せなかった/);
+      const after = await recvView(page);
+      const s = await stored(page);
+      const errors = page.errors.slice(0, 1);
+      await closeCtx(page);
+      return { before, after, n: s.words.length, mine: s.words.filter((w) => w.bookName === "仕事").map((w) => w.en.slice(0, 12)), errors };
+    };
+    const closed = await limitCase({ open: false });
+    check("84.1 上限（受付前）: 95 語の人に「上限まであと 5語」・新しい単語帳として足すと 5 語だけ入り「上限で足せなかった 1語」と上限の文（リンク・Pro の話なし）・# は外す",
+      /上限まであと 5語/.test(closed.before.hint ?? "") && closed.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。無料で追加できるのは${fmtN(100)}語まで。` && closed.after.links.length === 0
+        && closed.n === 100 && closed.mine.length === 5 && !closed.mine.includes("agenda") && closed.after.hash === "" && closed.errors.length === 0,
+      JSON.stringify(closed));
+    const opened = await limitCase({ open: true });
+    check("84.1 上限（受付中の Web）: 上限の文の「Pro なら1,000語」が加入画面（./pro.html）へのリンク 1 つ（動線の印 mywords）",
+      opened.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。無料で追加できるのは${fmtN(100)}語まで（Pro なら${fmtN(1000)}語）。` && opened.after.links.length === 1
+        && opened.after.links[0].href === "./pro.html" && opened.after.links[0].text === `Pro なら${fmtN(1000)}語` && opened.after.links[0].funnel === "mywords" && opened.n === 100 && opened.errors.length === 0,
+      JSON.stringify(opened.after));
+    const app = await limitCase({ open: true, native: true });
+    check("84.1 上限（アプリ）: 受付中の控えがあっても上限の文だけ（加入画面へのリンク・Pro の話・値段なし）",
+      app.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。無料で追加できるのは${fmtN(100)}語まで。` && app.after.links.length === 0 && !/Pro|¥|円/.test(app.after.status) && app.n === 100 && app.errors.length === 0,
+      JSON.stringify(app.after));
+    const page = await sharePage({ spelldash_my_words: JSON.stringify(FILLER(100)), spelldash_billing_open: JSON.stringify({ open: false, at: Date.now() }) });
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    const full = await recvView(page);
+    check("84.1 上限に着いている人: 足すボタン 2 つを止め、上限の文を出す（やめるは押せる）",
+      JSON.stringify(full.buttons) === JSON.stringify([["myRecvNew", "新しい単語帳として足す", true], ["myRecvHere", "今の単語帳に足す", true], ["myRecvCancel", "やめる", false]]) && /無料で追加できるのは100語まで。/.test(full.hint ?? "") && page.errors.length === 0,
+      JSON.stringify(full));
+    await closeCtx(page);
+
+    // 渡された名前と訳に上限の文と同じ字（「Pro なら1,000語」）があっても、そこは加入画面へのリンクにしない（受付中の Web）。
+    // リンクにするのはアプリが書いた上限の文の中だけ: 上限の前は 0 個、上限で止まったときは上限の文の 1 個だけ
+    const offer = `Pro なら${fmtN(1000)}語`;
+    const offerCode = `j1.${Buffer.from(JSON.stringify({ v: 1, n: offer, w: [["upgrade", `${offer}の話`], ["plan", "計画"]] })).toString("base64url")}`;
+    const offerCase = async (seed) => {
+      const p = await sharePage({ spelldash_my_words: JSON.stringify(seed), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) });
+      await p.goto(`${BASE}/mywords.html#share=${offerCode}`, { waitUntil: "networkidle" });
+      await waitRecv(p);
+      const ask = await recvView(p);
+      await p.click("#myRecvNew");
+      await waitText(p, "#myRecvStatus", /足した/);
+      const done = await recvView(p);
+      const before = await p.evaluate(() => document.querySelector("#myRecvStatus a")?.previousSibling?.textContent ?? null);
+      const errors = p.errors.slice(0, 1);
+      await closeCtx(p);
+      return { ask: { hint: ask.hint, links: ask.links }, done: { status: done.status, links: done.links }, before, errors };
+    };
+    const o1 = await offerCase([{ en: "upgrade", ja: `${offer}の話` }]);
+    check("84.1 渡された名前と訳に「Pro なら1,000語」があっても加入画面へのリンクにしない（受付中の Web・上限の前: 問いの案内にも、名前と訳の入った結果の文にもリンクなし）",
+      /新しい単語帳の名前は「Pro なら1,000語」/.test(o1.ask.hint ?? "") && o1.ask.links.length === 0
+        && o1.done.status === `1語を新しい単語帳「${offer}」に足した。足せなかった 1語: upgrade（${offer}の話）: 同じ訳で「マイ単語帳」にすでに登録されています。` && o1.done.links.length === 0 && o1.errors.length === 0,
+      JSON.stringify(o1));
+    const o2 = await offerCase(FILLER(99));
+    check("84.1 渡された名前に「Pro なら1,000語」があって上限で止まったとき: リンクは上限の文の中の 1 つだけ（名前の字はリンクにしない）",
+      /上限まであと 1語/.test(o2.ask.hint ?? "") && o2.ask.links.length === 0
+        && o2.done.status === `1語を新しい単語帳「${offer}」に足した。上限で足せなかった 1語。無料で追加できるのは${fmtN(100)}語まで（${offer}）。` && o2.done.links.length === 1
+        && o2.done.links[0].href === "./pro.html" && o2.done.links[0].funnel === "mywords" && /上限で足せなかった 1語。無料で追加できるのは100語まで（$/.test(o2.before ?? "") && o2.errors.length === 0,
+      JSON.stringify(o2));
+  }
+
+  // (6) やめる・# だけ替えたリンク・読めないリンク・ご意見と動線の計測（クラウドあり: スタブが要求を送る）
+  {
+    const cloud = createCloud({});
+    const page = await sharePage({ spelldash_test_cloud: cloud.id });
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    // ご意見を、渡されたリンクを開いたまま送る（ページ名に # の後ろを入れない）
+    await page.click("[data-feedback-open]");
+    await page.fill("#feedbackMessage", "単語帳を渡すの検査");
+    await page.click("#feedbackSubmit");
+    await waitText(page, "#feedbackStatus", /ありがとうございます/, 5000);
+    await page.waitForFunction(() => document.getElementById("feedbackModal")?.hidden !== false, null, { timeout: 5000 }).catch(() => {});
+    await page.click("#myRecvCancel");
+    const c1 = await recvView(page);
+    const s1 = await stored(page);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(150);
+    const c2 = await recvView(page);
+    check("84.1 やめる: 渡された単語帳を閉じ、何も書かない・# を外す（読み直しても問いは出ない）・焦点は単語帳の切り替え",
+      !c1.shown && c1.hash === "" && /mw-book/.test(c1.active) && s1.words.length === 0 && s1.books === null && !c2.shown && c2.hash === "",
+      JSON.stringify({ c1: [c1.shown, c1.hash, c1.active], s1, c2: [c2.shown, c2.hash] }));
+
+    const B64U = (s) => Buffer.from(s).toString("base64url");
+    const bads = [
+      ["壊れた base64", "z1.@@@@"],
+      ["知らない頭の印", "x9.abc"],
+      ["版が違う", `j1.${B64U(JSON.stringify({ v: 2, n: "仕事", w: [["up", "上がる"]] }))}`],
+      ["縮めた形でない", `z1.${B64U("not deflate data at all")}`],
+      ["語が 1,001", `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: Array.from({ length: 1001 }, (_, i) => [`w${"abcdefghij"[i % 10]}${"abcdefghij"[Math.floor(i / 10) % 10]}${"abcdefghij"[Math.floor(i / 100) % 10]}`, "訳"]) }))}`],
+      ["空", ""]
+    ];
+    const badViews = [];
+    for (const [name, code] of bads) {
+      await page.goto("about:blank");
+      await page.goto(`${BASE}/mywords.html#share=${code}`, { waitUntil: "networkidle" });
+      await waitRecv(page);
+      const v = await recvView(page);
+      badViews.push({ name, ok: v.shown && v.text === "このリンクは読めません" && v.buttons.length === 0 && !v.title && v.sum === null && v.rows.length === 0 && v.hint === null && v.hx <= 0, text: v.text, buttons: v.buttons });
+    }
+    const sBad = await stored(page);
+    check("84.1 読めないリンク（壊れた base64・知らない頭の印・版が違う・縮めた形でない・1,001 語・空）: 「このリンクは読めません」の 1 行だけ（題・語・ボタンなし）・何も書かない",
+      badViews.every((b) => b.ok) && sBad.words.length === 0 && sBad.books === null, JSON.stringify(badViews.filter((b) => !b.ok)));
+    // 名前か訳に制御文字・組になっていないサロゲート・向きを上書きする字のあるリンク（手で作った物。同期の送り先が断る字で、1 語でも入ると同じ送りの組の語が届かなくなる）:
+    // 読めないリンクと同じ 1 行だけ（足すボタンが無い）・何も書かない
+    const unsafe = [
+      ["訳に NUL", `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: [["go", "行く"], ["tea", "a\u0000b"]] }))}`],
+      ["訳に ESC", `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: [["go", "\u001b[31m赤"]] }))}`],
+      ["名前に組になっていないサロゲート", `j1.${B64U('{"v":1,"n":"a\\ud800","w":[["go","行く"]]}')}`],
+      ["名前に向きを上書きする字", `j1.${B64U(JSON.stringify({ v: 1, n: "\u202eabc", w: [["go", "行く"]] }))}`]
+    ];
+    const unsafeViews = [];
+    for (const [name, code] of unsafe) {
+      await page.goto("about:blank");
+      await page.goto(`${BASE}/mywords.html#share=${code}`, { waitUntil: "networkidle" });
+      await waitRecv(page);
+      const v = await recvView(page);
+      unsafeViews.push({ name, ok: v.shown && v.text === "このリンクは読めません" && v.buttons.length === 0 && v.sum === null, text: v.text.slice(0, 60), buttons: v.buttons.map((b) => b[0]) });
+    }
+    const sUnsafe = await stored(page);
+    check("84.1 名前か訳に制御文字（NUL・ESC）・組になっていないサロゲート・向きを上書きする字のあるリンク: 「このリンクは読めません」の 1 行だけ（足すボタンなし）・何も書かない",
+      unsafeViews.every((u) => u.ok) && sUnsafe.words.length === 0 && sUnsafe.books === null, JSON.stringify(unsafeViews.filter((u) => !u.ok)));
+    // 読めないリンクの 1 行を出した後は # を外す（読み直しても同じ 1 行を出さない・同じ code を読み直す手間も繰り返さない）
+    await page.goto("about:blank");
+    await page.goto(`${BASE}/mywords.html#share=z1.@@@@`, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.waitForFunction(() => location.hash === "", null, { timeout: 2000, polling: 10 }).catch(() => {});
+    const b1 = await recvView(page);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(150);
+    const b2 = await recvView(page);
+    check("84.1 読めないリンク: 1 行を出した後は # を外す（1 行は出たまま・読み直すと出ない）",
+      b1.shown && b1.text === "このリンクは読めません" && b1.hash === "" && !b2.shown && b2.hash === "", JSON.stringify({ b1: [b1.shown, b1.text, b1.hash], b2: [b2.shown, b2.hash] }));
+    // 開いたままのページで # だけを替える（チャットからもう 1 つのリンクを開いた）: 読めないリンクの 1 行から、渡された単語帳の問いに替わる
+    await page.evaluate((l) => { location.hash = l.slice(l.indexOf("#")); }, LINK);
+    await page.waitForFunction(() => !document.getElementById("myRecvSum").hidden, null, { timeout: 5000, polling: 10 }).catch(() => {});
+    const h1 = await recvView(page);
+    check("84.1 # だけ替えたリンク: 開いたままのページでも読み直して問いを出す（読めない 1 行は消える）",
+      h1.shown && h1.sum === "「仕事」 6語" && h1.buttons.length === 3 && !/読めません/.test(h1.text), JSON.stringify(h1));
+    await page.click("#myRecvCancel");
+    check("84.1 やめる・読めないリンク・# の替え: 画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+
+    // 要求: どの文脈のどの要求の URL と本文にも code（の base64url の部分）が入らない。ご意見の行のページ名は /mywords.html（# の後ろなし）・動線の計測も送った
+    const piece = CODE.slice(3, 43);
+    const leaks = reqs.filter((r) => r.url.includes(piece) || r.body.includes(piece) || r.url.includes("share=") || /#share|share%3D/.test(r.body));
+    const fb = reqs.find((r) => r.url.endsWith("/__cloud/query") && r.body.includes('"table":"feedback"'));
+    const funnel = reqs.find((r) => r.url.endsWith("/__cloud/query") && r.body.includes('"table":"funnel_events"'));
+    check(`84.1 要求の URL と本文に code が入らない（${reqs.length} 件）・ご意見のページ名は /mywords.html だけ・動線の計測（funnel_events）にも入らない`,
+      piece.length === 40 && leaks.length === 0 && !!fb && fb.body.includes('"page":"/mywords.html"') && !fb.body.includes("#") && !!funnel,
+      JSON.stringify({ leaks: leaks.slice(0, 2).map((r) => r.url.slice(0, 80)), fb: fb?.body.slice(0, 200) ?? null, funnel: !!funnel }));
+  }
+
+  // (7) ログインした人: リンクを開いて足すと、その人の領域（u:test-user）の単語帳に入る
+  {
+    const page = await sharePage({ spelldash_test_session: "1" });
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.click("#myRecvNew");
+    await waitText(page, "#myRecvStatus", /足した/);
+    const s = await stored(page);
+    check("84.1 ログインした人: 足した語はその人の領域（u:test-user）の新しい単語帳「仕事」に入る・エラー 0",
+      s.area === "u:test-user" && s.words.length === 6 && s.books?.some((b) => b.name === "仕事") && page.errors.length === 0, JSON.stringify({ area: s.area, n: s.words.length, books: s.books, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (8) 320／390／1200 × 昼夜: 渡された単語帳（150 字の行）と開いた「渡す」で横スクロール 0・行は枠の中で折り返す。390 は動きを減らす設定でも見て、動く物 0
+  {
+    const bad = [];
+    for (const width of [320, 390, 1200]) {
+      for (const theme of [null, "dark"]) {
+        const reduce = width === 390 && theme === null;
+        const page = await sharePage(GIVER, { viewport: { width, height: 800 }, mobile: width < 600, theme, reducedMotion: reduce ? "reduce" : null });
+        await page.goto(`${BASE}/mywords.html?book=w1#share=${CODE}`, { waitUntil: "networkidle" });
+        await waitRecv(page);
+        await page.click("#myBookGive");
+        await panelOpen(page);
+        const v = await page.evaluate(() => {
+          const vw = document.documentElement.clientWidth;
+          const rows = [...document.querySelectorAll("#myRecvRows li")];
+          const long = rows[4];
+          const lh = long ? parseFloat(getComputedStyle(long.querySelector(".mw-recv__en")).lineHeight) || 20 : 20;
+          const boxes = ["myRecv", "myGive"].map((id) => document.getElementById(id).getBoundingClientRect());
+          const buttons = [...document.querySelectorAll("#myRecv button, #myGive button")].filter((b) => b.getClientRects().length > 0);
+          return {
+            hx: document.documentElement.scrollWidth - vw,
+            inside: boxes.every((r) => r.left >= 0 && r.right <= vw + 0.5),
+            rowsIn: rows.every((li) => li.scrollWidth <= li.clientWidth + 1 && li.getBoundingClientRect().right <= vw + 0.5),
+            wraps: !!long && long.querySelector(".mw-recv__en").getBoundingClientRect().height > lh * 1.5,
+            buttonsIn: buttons.every((b) => b.getBoundingClientRect().right <= vw + 0.5),
+            moving: document.getAnimations().filter((a) => a.playState === "running" && Number(a.effect?.getTiming?.().duration ?? 0) > 1).length,
+            transitions: buttons.map((b) => getComputedStyle(b).transitionDuration).filter((d) => d.split(",").some((x) => parseFloat(x) > 0.001)).length // 秒。動きを減らす設定は 0.01ms（css/game.css）
+          };
+        });
+        if (v.hx > 0 || !v.inside || !v.rowsIn || !v.wraps || !v.buttonsIn || (reduce && (v.moving > 0 || v.transitions > 0)) || page.errors.length) bad.push({ width, theme, reduce, ...v, err: page.errors[0] });
+        await closeCtx(page);
+      }
+    }
+    check("84.1 320／390／1200 × 昼夜: 渡された単語帳（150 字の行）と開いた「渡す」で横スクロール 0・枠とボタンは画面の中・長い行は折り返す・動きを減らす設定では動く物も移り変わりも 0・エラー 0",
+      bad.length === 0, JSON.stringify(bad));
+  }
+
+  // (9) 広げると 100 MB になる z1 のリンク（縮めて約 97 KB）: 縮めた物を 4 KB ずつ広げる道へ渡し、最初の数切れで上限に着いて読むのをやめる
+  //     （1 度に渡すと、ブラウザは渡した 1 切れを全部広げてから読む側に渡すので、上限で止めても全部を広げていた: 1.3 MB の code で約 1 GB）。
+  //     広げる道（DecompressionStream）に渡した切れの大きさは、本物に渡す前に控える。「このリンクは読めません」の 1 行だけ・何も書かない
+  {
+    const { deflateRawSync } = await import("zlib");
+    const bomb = `z1.${deflateRawSync(Buffer.alloc(100_000_000, 0x20), { level: 9 }).toString("base64url")}`;
+    const page = await sharePage({}, {
+      init: () => {
+        const Real = window.DecompressionStream;
+        window.__unzipWrites = [];
+        window.DecompressionStream = class {
+          constructor(format) {
+            const real = new Real(format);
+            const writer = real.writable.getWriter();
+            this.readable = real.readable;
+            this.writable = new WritableStream({
+              write: (chunk) => { window.__unzipWrites.push(chunk.byteLength); return writer.write(chunk); },
+              close: () => writer.close(),
+              abort: (reason) => writer.abort(reason)
+            });
+          }
+        };
+      }
+    });
+    const t0 = Date.now();
+    await page.goto(`${BASE}/mywords.html#share=${bomb}`, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    const ms = Date.now() - t0;
+    await page.waitForTimeout(100); // 断った後にも渡し続けていないか
+    const v = await recvView(page);
+    const writes = await page.evaluate(() => window.__unzipWrites.slice());
+    const fed = writes.reduce((a, b) => a + b, 0);
+    const s = await stored(page);
+    check("84.1 広げると 100 MB になる z1 のリンク（縮めて約 97 KB）: 4 KB ずつ広げる道へ渡し、最初の数切れ（16 KB まで）で読むのをやめる・「このリンクは読めません」の 1 行だけ・何も書かない・エラー 0",
+      bomb.length < 140000 && v.shown && v.text === "このリンクは読めません" && v.buttons.length === 0 && writes.length > 0 && writes.every((n) => n <= 4096) && fed <= 16384
+        && s.words.length === 0 && s.books === null && page.errors.length === 0,
+      JSON.stringify({ len: bomb.length, text: v.text, writes: writes.slice(0, 4), n: writes.length, fed, ms, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  check("84.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
