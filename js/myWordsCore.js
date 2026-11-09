@@ -32,6 +32,28 @@ export const MY_FREE_LIMIT = 100;
 export const MY_PRO_LIMIT = 1000;
 export const MY_ID_PREFIX = "my-";
 
+// ===== 名前と訳の字の決まり（Batch 85。docs/SPEC_MY_WORDS.md §14。決まりはここ 1 か所） =====
+// 入れない字: 制御文字（U+0000〜U+001F・U+007F〜U+009F）・組になっていないサロゲート・向きを変える制御文字（埋め込み・上書き・隔離:
+// U+202A〜U+202E・U+2066〜U+2069）。英語（checkEnText）・訳（checkJaText）・単語帳の名前（checkBookName）の確かめが使うので、
+// 1 語ずつ足す・まとめて足す・訳を直す・単語帳を作る／名前を変える・渡すリンク（js/myWordsShare.js）が同じ決まりになる。
+// タブ・改行（と縦タブ・改ページ）は先に空白の決まり（空白の並びは 1 つ）で空白になるので、ここまで来ない（今までどおり）。
+// 同期の送り先は NUL と組になっていないサロゲートを受け付けず、1 語でも入ると同じ送りの組の語がどれも届かなくなっていた（送る側の守りは js/userItemsSync.js）。
+// 向きを変える字は、名前と訳の見え方を並べ替えられるので一緒に断る。LRM・RLM・ゼロ幅の字は断らない（並べ替える力が弱く、同期も止めない）。
+// u フラグ: [\uD800-\uDFFF] は組になっていないサロゲートだけに当たる（組になった絵文字などは当たらない）
+export const UNSAFE_TEXT = /[\u0000-\u001F\u007F-\u009F‪-‮⁦-⁩]|[\uD800-\uDFFF]/u;
+const UNSAFE_TEXT_ALL = new RegExp(UNSAFE_TEXT.source, "gu");
+export const UNSAFE_TEXT_ERROR = "見えない制御文字や壊れた字は使えません";
+
+// 入れてよい字だけか
+export function isSafeText(text) {
+  return !UNSAFE_TEXT.test(String(text ?? ""));
+}
+
+// 入れない字を外した形（画面に出すだけ: 断った行の名前・直す欄の初めの字。保存は書き換えない）
+export function withoutUnsafe(text) {
+  return String(text ?? "").replace(UNSAFE_TEXT_ALL, "");
+}
+
 // 使える字（NFKC と ’ → ' の後）。頭は英字か数字
 const EN_CHARS = /^[a-z0-9][a-z0-9' -]*$/i;
 
@@ -49,15 +71,17 @@ export function checkEnText(raw) {
   const text = cleanEnText(raw);
   if (!text) return { ok: false, error: "英語を入力してください" };
   if (text.length > MY_EN_MAX) return { ok: false, error: `英語が長すぎます（${MY_EN_MAX}文字まで）` };
+  if (!isSafeText(text)) return { ok: false, error: `英語に${UNSAFE_TEXT_ERROR}` }; // 打った字を文に入れない（向きを変える字が文の見え方を並べ替える）
   if (!EN_CHARS.test(text) || !/[a-z]/i.test(text)) return { ok: false, error: `「${text}」は使えない字を含みます（英字・数字・ハイフン・アポストロフィ・空白だけ）` };
   return { ok: true, text, key: text.toLowerCase() };
 }
 
-// 日本語訳の形を確かめる
+// 日本語訳の形を確かめる（空白の決まりの後に、名前と訳の字の決まり）
 export function checkJaText(raw) {
   const ja = String(raw ?? "").replace(/\s+/g, " ").trim();
   if (!ja) return { ok: false, error: "日本語訳を入力してください" };
   if (ja.length > MY_JA_MAX) return { ok: false, error: `日本語訳が長すぎます（${MY_JA_MAX}文字まで）` };
+  if (!isSafeText(ja)) return { ok: false, error: `日本語訳に${UNSAFE_TEXT_ERROR}` };
   return { ok: true, ja };
 }
 
@@ -363,11 +387,12 @@ export function bookCounts(list, books) {
   return out;
 }
 
-// 単語帳の名前を確かめる（空白は 1 つに。同じ名前は 2 つ作らない。selfId は名前を変える単語帳）
+// 単語帳の名前を確かめる（空白は 1 つに。同じ名前は 2 つ作らない。selfId は名前を変える単語帳。名前と訳の字の決まりも: Batch 85）
 export function checkBookName(raw, books, selfId = null) {
   const name = String(raw ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
   if (!name) return { ok: false, error: "単語帳の名前を入力してください" };
   if (name.length > MY_BOOK_NAME_MAX) return { ok: false, error: `名前が長すぎます（${MY_BOOK_NAME_MAX}文字まで）` };
+  if (!isSafeText(name)) return { ok: false, error: `単語帳の名前に${UNSAFE_TEXT_ERROR}` };
   if (books.some((b) => b.id !== selfId && b.name === name)) return { ok: false, error: `「${name}」という単語帳はすでにあります` };
   return { ok: true, name };
 }
