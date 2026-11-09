@@ -26515,6 +26515,247 @@ console.log("give a word book (84.1):");
   check("84.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
+// ===== 85.1 文字の守り（Batch 85。js/myWordsCore.js の名前と訳の字の決まり・js/myWords.js・js/myWordsPage.js・mywords.html の渡された単語帳。docs/SPEC_MY_WORDS.md §14）: まとめて足すで見えない字（NUL）のある行だけ断って行の名前と理由を言い、欄にその行だけ残す・1 語ずつ足すの訳と英語・訳を直す・単語帳の名前を変える／作るに見えない字を入れると断る（何も書かない・焦点は欄）・前からある見えない字のある語は一覧に出て、直す欄は見えない字を外した形（保存すると直した語だけ書く）・渡された単語帳を新しい単語帳として足すと、焦点は「この単語帳で学ぶ」（/?learn=my&book=<id>）・次に「選択式で学ぶ」（&choice=en）・キーボードで学ぶ回へ・今の単語帳に足したときは道を出さない・初めての人にだけ SpellDash の 1 行・320 × 昼夜で横スクロール 0・エラー 0 =====
+// Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来では種に戻さない）。見えない字は字のまま書かずにエスケープで書く。
+// 組になっていないサロゲートはページとの受け渡しで替わりうるので、比べるのはページの中（真偽だけを返す）
+console.log("text guard (85.1):");
+{
+  const allErrors = [];
+  async function guardPage(storage = {}, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript(([seed, th]) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const open = async (page, q = "") => {
+    await page.goto(BASE + "/mywords.html" + q, { waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.querySelectorAll("#myBookTabs .mw-book").length > 0, null, { timeout: 8000 }).catch(() => {});
+  };
+  const waitText = (page, sel, re, timeout = 3000) => page.waitForFunction(([s, r]) => new RegExp(r).test(document.querySelector(s)?.textContent ?? ""), [sel, re.source], { timeout, polling: 10 }).then(() => true, () => false);
+  const waitAsk = (page) => page.waitForFunction(() => !document.getElementById("myRecvSum")?.hidden && document.getElementById("myRecvSum")?.textContent !== "", null, { timeout: 5000, polling: 10 }).then(() => true, () => false);
+  const status = (page) => page.evaluate(() => document.getElementById("myWordsStatus")?.textContent ?? "");
+  const active = (page) => page.evaluate(() => document.activeElement?.id || document.activeElement?.className || "");
+  const stored = (page) => page.evaluate(() => ({ words: localStorage.getItem("spelldash_my_words"), books: localStorage.getItem("spelldash_my_books") }));
+  const aboutShown = (page) => page.evaluate(() => { const a = document.getElementById("myRecvAbout"); return !!a && !a.hidden && a.getClientRects().length > 0 && !a.closest("[hidden]"); });
+  const NOTE = "見えない制御文字や壊れた字は使えません";
+  const B64U = (s) => Buffer.from(s, "utf8").toString("base64url");
+  const shareCode = `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: [["agenda", "議題"], ["invoice", "請求書"]] }))}`;
+
+  // (1) まとめて足す: NUL のある行だけ断り、行の名前（英語と訳の頭。見えない字は外して見せる）と理由を言う。ほかの行は足し、欄には断った行だけを貼った形のまま残す
+  {
+    const page = await guardPage({});
+    await open(page);
+    await page.click("#myWordsBulkFold summary");
+    await page.$eval("#myWordsBulk", (el, v) => { el.value = v; }, "go, 行く\ntea, お\u0000茶\nmoon, 月");
+    const raw = await page.$eval("#myWordsBulk", (el) => el.value);
+    await page.click("#myWordsBulkAdd");
+    await waitText(page, "#myWordsStatus", /足した/);
+    const st = await status(page);
+    const box = await page.$eval("#myWordsBulk", (el) => el.value);
+    const s = await stored(page);
+    const ws = JSON.parse(s.words || "[]");
+    check("85.1 まとめて足す: NUL のある行だけ断る（「tea（お茶）: 日本語訳に見えない制御文字や壊れた字は使えません」。行の名前は見えない字を外す）・ほかの 2 行は足す・欄には断った行だけを貼った形のまま残す",
+      raw.includes("\u0000") && st === `2語を足した。足せなかった 1行（欄に残した）: tea（お茶）: 日本語訳に${NOTE}` && box === "tea, お\u0000茶" && ws.map((w) => w.en).join() === "go,moon" && !/\\u0000/.test(s.words ?? ""),
+      JSON.stringify({ raw: raw.includes("\u0000"), st, box, words: ws.map((w) => [w.en, w.ja]) }));
+
+    // (2) 1 語ずつ足す: 訳に向きを上書きする字（U+202E）→ 日本語訳の欄の文で断り、焦点は訳の欄。英語に入れると英語の欄の文（打った字は文に入れない）で断り、焦点は英語の欄。何も書かない
+    const before = (await stored(page)).words;
+    await page.fill("#myWordsEn", "sun");
+    await page.fill("#myWordsJa", "太‮陽");
+    await page.click("#myWordsAddButton");
+    await waitText(page, "#myWordsStatus", /^日本語訳に見えない/);
+    const st2 = await status(page);
+    const a2 = await active(page);
+    await page.fill("#myWordsEn", "s‮un");
+    await page.fill("#myWordsJa", "太陽");
+    await page.click("#myWordsAddButton");
+    await waitText(page, "#myWordsStatus", /^英語に/);
+    const st3 = await status(page);
+    const a3 = await active(page);
+    const after = (await stored(page)).words;
+    check("85.1 1 語ずつ足す: 訳に向きを上書きする字 → 「日本語訳に見えない制御文字や壊れた字は使えません」・焦点は訳の欄／英語に入れる → 「英語に…」（打った字は文に入れない）・焦点は英語の欄・何も書かない",
+      st2 === `日本語訳に${NOTE}` && a2 === "myWordsJa" && st3 === `英語に${NOTE}` && !st3.includes("‮") && a3 === "myWordsEn" && after === before,
+      JSON.stringify({ st2, a2, st3, a3, same: after === before }));
+
+    // (3) 訳を直す: 向きを隔離する字（U+2066）を入れて Enter → 断る（直す欄はそのまま・焦点は欄）・保存は変えない。Escape でやめる
+    await page.click('#myWordsList .mw-row[data-ref="word:go"] .mw-row__edit');
+    await page.fill("#myWordsList .mw-row__input", "行⁦く");
+    await page.press("#myWordsList .mw-row__input", "Enter");
+    await waitText(page, "#myWordsStatus", /^日本語訳に見えない/);
+    const st4 = await status(page);
+    const editing = await page.evaluate(() => ({ open: !!document.querySelector("#myWordsList .mw-row__input"), focus: document.activeElement?.classList.contains("mw-row__input") ?? false }));
+    const after4 = (await stored(page)).words;
+    await page.press("#myWordsList .mw-row__input", "Escape").catch(() => {});
+    check("85.1 訳を直す: 向きを隔離する字を入れて Enter → 「日本語訳に見えない制御文字や壊れた字は使えません」・直す欄は開いたまま焦点も欄・保存は変えない",
+      st4 === `日本語訳に${NOTE}` && editing.open && editing.focus && after4 === before, JSON.stringify({ st4, editing, same: after4 === before }));
+
+    // (4) 単語帳: 名前を変えるに U+2066 → 断る（欄に焦点・一覧は書かない）。新しい単語帳の名前に NUL → 断る
+    await page.click("#myBookRename");
+    await page.fill("#myBookName", "マイ⁦単語帳");
+    await page.press("#myBookName", "Enter");
+    await waitText(page, "#myWordsStatus", /^単語帳の名前に/);
+    const st5 = await status(page);
+    const a5 = await active(page);
+    await page.press("#myBookName", "Escape");
+    await page.click("#myBookNew");
+    await page.$eval("#myBookName", (el, v) => { el.value = v; }, "旅\u0000行");
+    await page.press("#myBookName", "Enter");
+    await page.waitForTimeout(80);
+    const st6 = await status(page);
+    const s6 = await stored(page);
+    const tabs = await page.evaluate(() => [...document.querySelectorAll("#myBookTabs .mw-book__name")].map((b) => b.textContent));
+    check("85.1 単語帳: 名前を変える・新しい単語帳の名前に見えない字 → 「単語帳の名前に見えない制御文字や壊れた字は使えません」・焦点は名前の欄・一覧は書かない（単語帳は「マイ単語帳」だけ）",
+      st5 === `単語帳の名前に${NOTE}` && a5 === "myBookName" && st6 === `単語帳の名前に${NOTE}` && s6.books === null && JSON.stringify(tabs) === '["マイ単語帳"]',
+      JSON.stringify({ st5, a5, st6, books: s6.books, tabs }));
+    check("85.1 足す・直す・単語帳の断り: 画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (5) 前からある見えない字のある語（前の版のバックアップ・ほかの端末から）: 一覧に出る（消さない）。直す欄は見えない字を外した形で、保存すると直した語だけ書く（ほかの語は 1 字も変えない）
+  {
+    const OLD = JSON.stringify([
+      { en: "tea", ja: "お\u0000茶", addedAt: "2026-11-01T00:00:00.000Z" },
+      { en: "sun", ja: "太陽\ud800", addedAt: "2026-11-02T00:00:00.000Z" }
+    ]);
+    const page = await guardPage({ spelldash_my_words: OLD });
+    await open(page);
+    const rows = await page.evaluate(() => [...document.querySelectorAll("#myWordsList .mw-row")].map((li) => li.dataset.ref));
+    await page.click('#myWordsList .mw-row[data-ref="word:tea"] .mw-row__edit');
+    const pre = await page.$eval("#myWordsList .mw-row__input", (el) => el.value);
+    await page.press("#myWordsList .mw-row__input", "Enter");
+    await waitText(page, "#myWordsStatus", /訳を直した/);
+    const s = await page.evaluate(() => {
+      const list = JSON.parse(localStorage.getItem("spelldash_my_words") || "[]");
+      return { tea: list.find((w) => w.en === "tea")?.ja ?? null, sunKept: list.find((w) => w.en === "sun")?.ja === "太陽\ud800", n: list.length };
+    });
+    check("85.1 前からある見えない字のある語: 一覧に 2 語とも出る・直す欄は見えない字を外した「お茶」・保存すると tea だけ「お茶」になり、sun は 1 字も変えない・エラー 0",
+      JSON.stringify(rows) === '["word:sun","word:tea"]' && pre === "お茶" && s.tea === "お茶" && s.sunKept && s.n === 2 && page.errors.length === 0,
+      JSON.stringify({ rows, pre, s, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (6) 渡された単語帳を新しい単語帳として足した後の次の一歩（初めての人: マイ単語帳の語も学習の記録も無い）:
+  //     問いに SpellDash の 1 行・キーボードで「新しい単語帳として足す」→ 焦点は「この単語帳で学ぶ」（/?learn=my&book=<id>）・Tab で「選択式で学ぶ」（&choice=en）・「閉じる」・
+  //     道は単語帳の切り替えの「学ぶ」「選択式で学ぶ」と同じ URL・Shift+Tab で戻って Enter → 学ぶ回（その単語帳の語が出る）
+  {
+    const page = await guardPage({});
+    await page.goto(`${BASE}/mywords.html#share=${shareCode}`, { waitUntil: "networkidle" });
+    await waitAsk(page);
+    await page.waitForFunction(() => document.activeElement?.id === "myRecvTitle", null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const ask = await page.evaluate(() => {
+      const about = document.getElementById("myRecvAbout");
+      return { about: about && !about.hidden && about.getClientRects().length > 0 ? about.textContent : null, active: document.activeElement?.id ?? "" };
+    });
+    await page.keyboard.press("Tab");
+    const onNew = await active(page);
+    await page.keyboard.press("Enter");
+    await waitText(page, "#myRecvStatus", /足した/);
+    await page.waitForFunction(() => document.activeElement?.id === "myRecvLearn", null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const done = await page.evaluate(() => {
+      const vis = (el) => !!el && !el.hidden && el.getClientRects().length > 0 && !el.closest("[hidden]");
+      const box = document.getElementById("myRecv");
+      return {
+        status: document.getElementById("myRecvStatus").textContent,
+        active: document.activeElement?.id ?? "",
+        controls: [...box.querySelectorAll("a, button")].filter(vis).map((e) => [e.id, e.tagName, e.textContent.trim(), e.getAttribute("href"), e.getAttribute("aria-label")]),
+        learn: document.getElementById("myWordsLearn")?.getAttribute("href") ?? null,
+        choice: document.getElementById("myWordsChoice")?.getAttribute("href") ?? null,
+        choiceLabel: document.getElementById("myWordsChoice")?.getAttribute("aria-label") ?? null
+      };
+    });
+    const books = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_books") || "[]"));
+    const BOOK = books.find((b) => b.name === "仕事")?.id ?? "";
+    const learnUrl = `/?learn=my&book=${BOOK}`;
+    check("85.1 受け取る（初めての人）: 問いに「SpellDash は、英単語を打って覚えるアプリです。」の 1 行・焦点は題・Tab で「新しい単語帳として足す」",
+      ask.about === "SpellDash は、英単語を打って覚えるアプリです。" && ask.active === "myRecvTitle" && onNew === "myRecvNew", JSON.stringify({ ask, onNew }));
+    check("85.1 新しい単語帳として足した後: 焦点は「この単語帳で学ぶ」（/?learn=my&book=<id>）・次に「選択式で学ぶ」（同じ URL に &choice=en・名前は「「仕事」を選択式で学ぶ」）・次に「閉じる」・どちらも単語帳の切り替えの「学ぶ」「選択式で学ぶ」と同じ行き先",
+      !!BOOK && done.status === "2語を新しい単語帳「仕事」に足した。" && done.active === "myRecvLearn"
+        && JSON.stringify(done.controls) === JSON.stringify([["myRecvLearn", "A", "この単語帳で学ぶ", learnUrl, null], ["myRecvChoice", "A", "選択式で学ぶ", `${learnUrl}&choice=en`, "「仕事」を選択式で学ぶ"], ["myRecvClose", "BUTTON", "閉じる", null, null]])
+        && done.learn === learnUrl && done.choice === `${learnUrl}&choice=en` && done.choiceLabel === "「仕事」を選択式で学ぶ",
+      JSON.stringify({ BOOK, done }));
+    await page.keyboard.press("Tab");
+    const t1 = await active(page);
+    await page.keyboard.press("Tab");
+    const t2 = await active(page);
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Shift+Tab");
+    const t3 = await active(page);
+    await Promise.all([page.waitForURL((u) => u.search.includes("learn=my"), { timeout: 8000 }).catch(() => {}), page.keyboard.press("Enter")]);
+    await page.waitForFunction(() => window.__words.length > 0, null, { timeout: 8000, polling: 20 }).catch(() => {});
+    const learn = await page.evaluate(() => ({ url: location.pathname + location.search, first: window.__words[0] ?? null }));
+    check("85.1 キーボードだけ: Tab で「選択式で学ぶ」→「閉じる」・Shift+Tab 2 回で「この単語帳で学ぶ」・Enter でその単語帳の学ぶ回（打つ回）が始まり、渡された語が出る・エラー 0",
+      t1 === "myRecvChoice" && t2 === "myRecvClose" && t3 === "myRecvLearn" && learn.url === learnUrl && ["my-agenda", "my-invoice"].includes(learn.first) && page.errors.length === 0,
+      JSON.stringify({ t1, t2, t3, learn, err: page.errors[0] }));
+    // 「選択式で学ぶ」の行き先を開くと選ぶ回が始まり、渡された 2 語から選ぶ
+    await page.goto(`${BASE}${learnUrl}&choice=en`, { waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.querySelectorAll("#choiceOpts .choice__opt").length >= 2, null, { timeout: 8000, polling: 20 }).catch(() => {});
+    const opts = await page.evaluate(() => [...document.querySelectorAll("#choiceOpts .choice__opt .choice__text")].map((e) => e.textContent).sort());
+    check("85.1 「選択式で学ぶ」の行き先: 選ぶ回が始まり、渡された 2 語（agenda・invoice）から選ぶ・エラー 0",
+      JSON.stringify(opts) === '["agenda","invoice"]' && page.errors.length === 0, JSON.stringify({ opts, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (7) 今の単語帳に足したとき: 次の一歩の道は出さない（前からのボタン「閉じる」だけ・焦点も「閉じる」）。語のある人（前から使っている人）には SpellDash の 1 行を出さない。
+  //     マイ単語帳の語が無くても、英単語の学習の記録がある人にも出さない
+  {
+    const page = await guardPage({ spelldash_my_words: JSON.stringify([{ en: "tea", ja: "お茶", addedAt: "2026-11-01T00:00:00.000Z" }]) });
+    await page.goto(`${BASE}/mywords.html#share=${shareCode}`, { waitUntil: "networkidle" });
+    await waitAsk(page);
+    const about = await aboutShown(page);
+    await page.click("#myRecvHere");
+    await waitText(page, "#myRecvStatus", /足した/);
+    const v = await page.evaluate(() => {
+      const vis = (el) => !!el && !el.hidden && el.getClientRects().length > 0 && !el.closest("[hidden]");
+      return { controls: [...document.querySelectorAll("#myRecv a, #myRecv button")].filter(vis).map((e) => e.id), active: document.activeElement?.id ?? "", status: document.getElementById("myRecvStatus").textContent };
+    });
+    check("85.1 今の単語帳に足したとき: 道は出さない（見える物は「閉じる」だけ・焦点も「閉じる」）・語のある人には SpellDash の 1 行を出さない",
+      !about && JSON.stringify(v.controls) === '["myRecvClose"]' && v.active === "myRecvClose" && v.status === "2語を「マイ単語帳」に足した。" && page.errors.length === 0,
+      JSON.stringify({ about, v, err: page.errors[0] }));
+    await closeCtx(page);
+    const page2 = await guardPage({ spelldash_word_stats: JSON.stringify({ "w-apple": { playCount: 3, correctCount: 2, ls: 2 } }) });
+    await page2.goto(`${BASE}/mywords.html#share=${shareCode}`, { waitUntil: "networkidle" });
+    await waitAsk(page2);
+    const about2 = await aboutShown(page2);
+    check("85.1 英単語の学習の記録がある人（マイ単語帳の語は無い）にも SpellDash の 1 行を出さない・エラー 0", !about2 && page2.errors.length === 0, JSON.stringify({ about2, err: page2.errors[0] }));
+    await closeCtx(page2);
+  }
+
+  // (8) 320 × 昼夜: 問い（SpellDash の 1 行）と足した後の道（この単語帳で学ぶ・選択式で学ぶ・閉じる）で横スクロール 0・道とボタンは画面の中で高さ 44px 以上
+  {
+    const bad = [];
+    for (const theme of [null, "dark"]) {
+      const page = await guardPage({}, { viewport: { width: 320, height: 720 }, mobile: true, theme });
+      await page.goto(`${BASE}/mywords.html#share=${shareCode}`, { waitUntil: "networkidle" });
+      await waitAsk(page);
+      const ask = { hx: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), about: await aboutShown(page) };
+      await page.click("#myRecvNew");
+      await waitText(page, "#myRecvStatus", /足した/);
+      const v = await page.evaluate(() => {
+        const vw = document.documentElement.clientWidth;
+        const boxes = ["myRecvLearn", "myRecvChoice", "myRecvClose"].map((id) => document.getElementById(id)?.getBoundingClientRect() ?? null);
+        return { hx: document.documentElement.scrollWidth - vw, inside: boxes.every((r) => r && r.width > 0 && r.left >= 0 && r.right <= vw + 0.5), tall: boxes.every((r) => r && r.height >= 44) };
+      });
+      if (ask.hx > 0 || !ask.about || v.hx > 0 || !v.inside || !v.tall || page.errors.length) bad.push({ theme, ask, ...v, err: page.errors[0] });
+      await closeCtx(page);
+    }
+    check("85.1 320 × 昼夜: 問い（SpellDash の 1 行）と足した後の道で横スクロール 0・道とボタンは画面の中で高さ 44px 以上・エラー 0", bad.length === 0, JSON.stringify(bad));
+  }
+  check("85.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");
 {
