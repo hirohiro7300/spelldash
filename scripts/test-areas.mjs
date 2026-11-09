@@ -1242,6 +1242,25 @@ async function runAll() {
       await settle(b, { idb });
       eq("U4 B → A: A が 1 字も違わず戻る", [b.get("sd2.area"), areaRecords(b, "u:A"), areaRecords(b, "u:B")], ["u:A#4", A, {}]);
     }
+    // Batch 85（docs/SPEC_MY_WORDS.md §14）: 見えない字（NUL・組になっていないサロゲート・向きを変える字）のある語と単語帳の名前も、
+    // 領域の退避と戻しで 1 字も変えない（消さない・書き直さない。整えるのは同期に送る写しだけ: js/userItemsSync.js）
+    {
+      const words = JSON.stringify([{ en: "go", ja: "行\u0000く", book: "w1", bookName: "仕‮事" }, { en: "sun", ja: "太陽\ud800" }]);
+      const books = JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "w1", name: "仕‮事" }]);
+      const { b, idb } = await twoAreas();
+      const L = rawOf(b);
+      L.set(K.physicalKey("u:A", "spelldash_my_words"), words);
+      L.set(K.physicalKey("u:A", "spelldash_my_books"), books);
+      b.set("sd2.auth", session("B"));
+      const away = await settle(b, { idb });
+      const kept = idb.peek("areas", "u:A")?.keys ?? {};
+      b.set("sd2.auth", session("A"));
+      const back = await settle(b, { idb });
+      const now = areaRecords(b, "u:A");
+      ok("U4 見えない字のある語と単語帳の名前: A → B で退避した写しも、B → A で戻した記録も 1 字も変えない（Batch 85）",
+        !away.error && !back.error && kept.spelldash_my_words === words && kept.spelldash_my_books === books && now.spelldash_my_words === words && now.spelldash_my_books === books,
+        JSON.stringify({ away: away.error?.message ?? null, back: back.error?.message ?? null, kept: kept.spelldash_my_words === words, now: now.spelldash_my_words === words }));
+    }
     // 各点で落とす（A → B）
     let points = 0;
     for (let n = 1; n < 80; n++) {

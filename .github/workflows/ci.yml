@@ -88,6 +88,9 @@ jobs:
       - name: マイ単語帳を人に渡す（渡すリンクの作り方と読み方・断る形・文字で渡す形・新しい単語帳の名前・渡された語を足す・URL を送る所に # の後ろを入れない・privacy.html の 1 行。js/myWordsShare.js）
         run: node scripts/test-share.mjs
 
+      - name: 文字の守りと同期の頑丈さ（名前と訳の字の決まりは 1 か所・どの書く道も断る・前からある語は消さない・送る写しの字を整える・断られた組を分けて送り直す・断られた行は待つ・要求の数の上限・day の行は前のまま。js/myWordsCore.js・js/myWords.js・js/userItemsSync.js）
+        run: node scripts/test-text-safe.mjs
+
       - name: スラングの一覧と決まり（id・必須の欄・長さ・打てる英語・入れてはいけない語・人ごとの 3 状態・学ぶ回の列。js/slangData.js・js/slang.js）
         run: node scripts/test-slang.mjs
 
