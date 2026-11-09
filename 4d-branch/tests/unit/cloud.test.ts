@@ -704,7 +704,10 @@ describe("同期の決まり: ふだんの同期", () => {
     await tick(150);
     expect(a2.local.backups).toHaveLength(1);
     expect(a2.local.notices.filter((x) => x.startsWith("warn:"))).toHaveLength(1);
-    expect(a2.sync.state).toBe("pending");
+    // 待ちとやり直しをくり返している（その間は書かない）
+    expect(["pending", "syncing"]).toContain(a2.sync.state);
+    expect(await remoteHas(a2.repo, "B の変更")).toBe(true);
+    expect(await remoteHas(a2.repo, "A の変更")).toBe(false);
     a2.sync.stop();
     b.sync.stop();
   });
