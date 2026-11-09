@@ -27352,6 +27352,17 @@ console.log("journey (86.1):");
 
   // ----- (7) ログインのリンクを送った後の 1 行・Preview の渡すリンク（A12）-----
   //     3f03d63: 送った文だけ（ブラウザの 1 行が無い）・Preview の渡すリンクは Preview の origin
+  // ホームの机の上の文の色: 文を出しても auth-message--home を外さず、字は --on-vault（css/room.css。docs の決まり: 済みの金は紙の上の字）。
+  // 8e6effc: js/auth.js が className を「auth-message 種類」に書き替えて --home を外し、昼と紙のテーマでは机の上が紙の上の金（--gold-ink。机と 1.3:1 ほど）になっていた
+  const homeInk = (page) => page.evaluate(() => {
+    const el = document.getElementById("authMessage");
+    const probe = document.createElement("span");
+    probe.style.color = "var(--on-vault)";
+    document.body.appendChild(probe);
+    const onVault = getComputedStyle(probe).color;
+    probe.remove();
+    return { home: el.classList.contains("auth-message--home"), color: getComputedStyle(el).color, onVault };
+  });
   {
     const page = await journeyPage({ spelldash_test_configured: "1" });
     await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
@@ -27364,6 +27375,9 @@ console.log("journey (86.1):");
     check("86.1 ログインのリンクを送った後（A12）: 「ログインリンクを送った。メールを開いて続ける。」の下の行に「このページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。」・エラー 0",
       JSON.stringify(msg.lines) === JSON.stringify(["ログインリンクを送った。メールを開いて続ける。", "このページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。"]) && page.errors.length === 0,
       JSON.stringify({ msg, err: page.errors[0] }));
+    const ink = await homeInk(page);
+    check("86.1 ホームの送った文の色（A12・1200 の昼）: 文を出しても auth-message--home のまま・字は机の上の --on-vault（紙の上の金ではない）",
+      ink.home && ink.color === ink.onVault, JSON.stringify(ink));
     await closeCtx(page);
   }
   //     390 の指の端末（isMobile・hasTouch。タップ）: ホーム・マイ単語帳・加入画面で、ログインの欄はタップで開き、もう一度のタップで閉じる。
@@ -27403,6 +27417,7 @@ console.log("journey (86.1):");
           expanded: document.getElementById("loginToggle").getAttribute("aria-expanded")
         };
       });
+      if (p === "/index.html") rows.ink = await homeInk(page);
       rows.push({ p, opened, closedByTap, ...seen, err: page.errors[0] ?? null,
         ok: opened && closedByTap && JSON.stringify(seen.lines) === JSON.stringify(WANT) && seen.hits.every((h) => h === "msg") && seen.top >= 0 && seen.bottom <= seen.vh
           && seen.panel === "none" && seen.expanded === "false" && page.errors.length === 0 });
@@ -27410,6 +27425,8 @@ console.log("journey (86.1):");
     }
     check("86.1 ログインのリンクを送った後（A12・390 の指の端末でタップ）: ホーム・マイ単語帳・加入画面とも、ログインの欄はタップで開き、もう一度のタップで閉じる・送った後は欄が閉じ、2 行の文が画面の中で見える（文の上・中・下が文に当たる）・エラー 0",
       rows.length === 3 && rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).map(({ ok, ...r }) => r)));
+    check("86.1 ホームの送った文の色（A12・390 の指の端末・昼）: auth-message--home のまま・字は机の上の --on-vault",
+      !!rows.ink && rows.ink.home && rows.ink.color === rows.ink.onVault, JSON.stringify(rows.ink ?? null));
   }
   {
     const page = await previewJourney({ spelldash_my_words: JSON.stringify(TB_WORDS), spelldash_my_books: TB_BOOKS });
