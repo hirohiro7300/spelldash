@@ -14,7 +14,7 @@ import {
   getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage, limitOfferText,
   getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa, addSharedWords
 } from "./myWords.js";
-import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, uniqueBookName, withoutUnsafe, MY_BOOK_NAME_MAX, MY_BOOKS_MAX } from "./myWordsCore.js";
+import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, uniqueBookName, visibleText, MY_BOOK_NAME_MAX, MY_BOOKS_MAX } from "./myWordsCore.js";
 import { SHARE_LONG_LINK, SHARE_MAX_WORDS, bookShare, encodeShare, decodeShare, shareCodeOf, shareLinkOf, shareTextOf } from "./myWordsShare.js";
 import { LEARN_LABELS } from "./learnState.js";
 
@@ -204,7 +204,7 @@ function rowOf(w) {
     const input = el("input", "mw-row__input");
     input.type = "text";
     input.maxLength = 200;
-    input.value = withoutUnsafe(w.ja); // 前の版で入った見えない字は外した形で出す（保存すると直した訳だけ書く。やめれば前のまま: Batch 85）
+    input.value = visibleText(w.ja); // 前の版で入った見えない字は外し、タブ・改行は空白にした形で出す（保存すると直した訳だけ書く。やめれば前のまま: Batch 85）
     input.autocomplete = "off";
     input.setAttribute("aria-label", `${label} の訳`);
     const save = el("button", "mw-row__save", "保存");
@@ -308,11 +308,11 @@ function openBookForm(mode) {
   const form = $("myBookForm");
   if (!form) return;
   formMode = mode;
-  const name = bookName(getMyBooks(), current);
+  const name = visibleText(bookName(getMyBooks(), current)); // 題と欄は同じ形（前の版で入った見えない字は外し、タブ・改行は空白に: Batch 85。保存は書き換えない）
   $("myBookFormLabel").textContent = mode === "new" ? `新しい単語帳の名前（${MY_BOOK_NAME_MAX}文字まで）` : `「${name}」の新しい名前`;
   $("myBookSave").textContent = mode === "new" ? "作る" : "名前を変える";
   const input = $("myBookName");
-  input.value = mode === "new" ? "" : withoutUnsafe(name); // 前の版で入った見えない字は外した形で出す（Batch 85）
+  input.value = mode === "new" ? "" : name;
   form.hidden = false;
   input.focus();
   input.select();

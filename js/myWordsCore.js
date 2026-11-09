@@ -42,16 +42,33 @@ export const MY_ID_PREFIX = "my-";
 // u フラグ: [\uD800-\uDFFF] は組になっていないサロゲートだけに当たる（組になった絵文字などは当たらない）
 export const UNSAFE_TEXT = /[\u0000-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]|[\uD800-\uDFFF]/u;
 const UNSAFE_TEXT_ALL = new RegExp(UNSAFE_TEXT.source, "gu");
-export const UNSAFE_TEXT_ERROR = "見えない制御文字や壊れた字は使えません";
+// 断る文（「日本語訳に」などの欄の名前の後に続ける）: 字の名前（制御文字など）は言わず、何が入っているかと、どうすればよいかを言う
+// （打った字は文に入れない: 向きを変える字が文の見え方を並べ替える）
+export const UNSAFE_TEXT_ERROR = "見えない字や壊れた字が入っています。打ち直してください";
 
 // 入れてよい字だけか
 export function isSafeText(text) {
   return !UNSAFE_TEXT.test(String(text ?? ""));
 }
 
-// 入れない字を外した形（画面に出すだけ: 断った行の名前・直す欄の初めの字。保存は書き換えない）
+// 入れない字を外した形（保存は書き換えない）
 export function withoutUnsafe(text) {
   return String(text ?? "").replace(UNSAFE_TEXT_ALL, "");
+}
+
+// 画面に出す形（断った行の名前・直す欄と名前を変える欄の初めの字と題。保存は書き換えない）: タブ・改行などの空白の字は空白にしてから、
+// 入れない字を外す（タブは入れない字の範囲にも入るので、先に空白にしないと前後の語がつながる。入れる道の空白の決まりと同じ向き）
+export function visibleText(text) {
+  return withoutUnsafe(String(text ?? "").replace(/\s/g, " "));
+}
+
+// 長さ max（UTF-16 の単位。今までの slice(0, max) と同じ数え方）の頭。絵文字などの組になったサロゲートを半分にしない
+// （切る所が組の途中なら、その字の前まで。切る所が組の途中でなければ slice(0, max) と同じ）
+export function cutText(text, max) {
+  const s = String(text ?? "");
+  if (s.length <= max) return s;
+  const head = s.slice(0, max);
+  return /[\uD800-\uDBFF]$/.test(head) ? head.slice(0, -1) : head;
 }
 
 // 使える字（NFKC と ’ → ' の後）。頭は英字か数字

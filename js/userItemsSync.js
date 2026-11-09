@@ -9,7 +9,7 @@
 // テーブルが無い／未ログインなら何もしない（Local First）。
 //
 // 変更の記録: 各モジュールが書き込み時に touchItem() を呼ぶ → meta（更新時刻）と dirty（未送信）に積む。
-// 送り方（Batch 85。docs/SPEC_MY_WORDS.md §14.3）: 送る写しの字を整え（端末の保存は書き換えない）、行の中身で断られた組は半分ずつ送り直し、
+// 送り方（Batch 85。docs/SPEC_MY_WORDS.md §14.3）: 送る写しの、送り先が受け付けない字だけを U+FFFD に替え（端末の保存は書き換えない）、行の中身で断られた組は半分ずつ送り直し、
 // 1 行だけで断られた行は meta に印（failAt・failFor）を付けて、その行が変わるか UPLOAD_RETRY_MS が過ぎるまで送らない（下の「送る形と送り方」）。
 
 const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }
@@ -330,12 +330,13 @@ export function mergeCloudItems(rows, userId = null) {
 }
 
 // ---- 送る形と送り方（Batch 85。docs/SPEC_MY_WORDS.md §14.3） ----
-// 1. 字を整える: 送る行の payload の文字（入れ子・鍵の名前も）から制御文字（タブ・改行・復帰のほか: U+0000〜U+0008・U+000B・U+000C・
-//    U+000E〜U+001F・U+007F〜U+009F）を落とし、組になっていないサロゲートを U+FFFD に替える。送り先の表は NUL と組になっていないサロゲートを
-//    受け付けず、1 行でも入ると同じ要求の行がどれも届かなかった（前の版のバックアップ・ほかの端末から届いた行・80 字で切れたメモの絵文字の半分）。
-//    整えるのは送る写しだけ（端末の保存は書き換えない。端末では前の字のまま読める）。向きを変える字は送れるので残す（入れる道では断る: js/myWordsCore.js）
-// 2. 鍵に整える字がある行（とても古い場面カードの鍵など）は送らない: 鍵を替えると別の項目になる（もう一方の端末で 2 つになる）。
-//    端末にだけ残り、送る待ちにも残る（要求はしない）
+// 1. 字を整える: 送る行の payload の文字（入れ子・鍵の名前も）のうち、送り先の表が受け付けない字（NUL と組になっていないサロゲート）だけを
+//    1 字ずつ U+FFFD に替える。1 字でも入ると同じ要求の行がどれも届かなかった（前の版のバックアップ・ほかの端末から届いた行・80 字で切れた
+//    メモの絵文字の半分）。ほかの字（タブ・改行・ほかの制御文字・C1・向きを変える字）は前のまま送る: 送り先は受け付ける。字を落とすと、
+//    見えない字だけの訳や場面がほかの端末で空になって語が見えなくなり、字だけが違う 2 つの組が同じ組になる。1 字を 1 字に替えるので、空でない欄は空にならない。
+//    整えるのは送る写しだけ（端末の保存は書き換えない。端末では前の字のまま読める）。新しく入れる字は、入れる道がどれも断る（js/myWordsCore.js）
+// 2. 鍵に送り先が受け付けない字がある行（Batch 85 より前のデータから来た、とても古い場面カード・メモの鍵だけ）は送らない: 鍵を替えると
+//    別の項目になる（もう一方の端末で 2 つになる）。端末にだけ残り、送る待ちにも残る（要求はしない）。ほかの見えない字のある鍵は鍵のまま送る
 // 3. 組（UPLOAD_CHUNK 行）が行の中身で断られたら（400・413・422）、半分ずつに分けて送り直す。通った行は送れたことにし、1 行だけで断られた行に
 //    印を付ける。分けて送り直す要求は 1 回の送信で UPLOAD_SPLIT_MAX まで（上限に着いたら、まだ確かめていない行も断られた行と同じに印を付けて待つ:
 //    どの行も断られる表の食い違いで、ページを開くたびに要求を重ねない）
@@ -346,14 +347,14 @@ export const UPLOAD_CHUNK = 500;
 export const UPLOAD_SPLIT_MAX = 40; // 500 行の組に断られる行が 2 つあっても見つけられる数（1 つなら 2 × 9 = 18）
 export const UPLOAD_RETRY_MS = 24 * 60 * 60 * 1000;
 const ROW_ERRORS = new Set([400, 413, 422]); // 行の中身で断られた（ほかの行は通るかもしれない）
-const SEND_CONTROLS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
-const LONE_SURROGATES = /[\uD800-\uDFFF]/gu; // u フラグ: 組になったサロゲート（絵文字）には当たらない
+// 送り先の表が受け付けない字: NUL と組になっていないサロゲート（u フラグ: 組になったサロゲート〔絵文字〕には当たらない）
+const SEND_REFUSED = /\u0000|[\uD800-\uDFFF]/gu;
 
 const rowId = (r) => `${r.kind}:${r.key}`;
 
-// 送る文字を整える
+// 送る文字を整える（送り先が受け付けない字だけを 1 字ずつ U+FFFD に。字を落とさない）
 export function cleanSendText(text) {
-  return String(text).replace(SEND_CONTROLS, "").replace(LONE_SURROGATES, "\uFFFD");
+  return String(text).replace(SEND_REFUSED, "\uFFFD");
 }
 
 // 送る値を整えた写し（文字・配列・入れ子の物と鍵の名前。数・真偽・null はそのまま）。元の値は変えない
@@ -364,7 +365,7 @@ export function cleanSendValue(value) {
   return value;
 }
 
-// 送る写し（send）と、鍵に整える字があって送らない行（keep）
+// 送る写し（send）と、鍵に送り先が受け付けない字があって送らない行（keep）
 function prepareRows(rows) {
   const send = [];
   const keep = [];
@@ -487,7 +488,7 @@ export async function pushUserItems(supabase, userId, { now = Date.now() } = {})
   const metaAtStart = getItemMeta(); // 送信中にまた変わった項目（印の時刻が変わった）は dirty に残す
   const due = all.filter((r) => r.kind === "day" || !waiting(metaAtStart[rowId(r)], now)); // 断られて待っている行は送らない（送る待ちには残る）
   const days = await mergeDayRowsWithCloud(supabase, due.filter((r) => r.kind === "day"));
-  const { send } = prepareRows([...due.filter((r) => r.kind !== "day"), ...days]); // 鍵に送れない字がある行は送らない（送る待ちに残る）
+  const { send } = prepareRows([...due.filter((r) => r.kind !== "day"), ...days]); // 鍵に送り先が受け付けない字がある行は送らない（送る待ちに残る）
   if (send.length === 0) return;
   const { failed, rejected } = await upsertRows(supabase, send); // ベストエフォート
   const notSent = new Set([...failed, ...rejected].map(rowId));
@@ -513,7 +514,7 @@ export async function pullUserItems(supabase, userId, options = {}) {
     return { changed: null };
   }
   const { changed, toUpload } = mergeCloudItems(rows, userId);
-  // 断られて待っている行は送らない（ページを開くたびに同じ行で断られ続けない）。鍵に送れない字がある行も送らない
+  // 断られて待っている行は送らない（ページを開くたびに同じ行で断られ続けない）。鍵に送り先が受け付けない字がある行も送らない
   const meta = getItemMeta();
   const { send } = prepareRows(toUpload.filter((r) => r.kind === "day" || !waiting(meta[rowId(r)], now)));
   if (send.length > 0) {
