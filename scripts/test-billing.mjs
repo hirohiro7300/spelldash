@@ -197,6 +197,9 @@ function providerRoute(call) {
   // 顧客の契約の一覧（customer があれば、その顧客の契約だけ。customer の無い項目はどの顧客にも出す: 前からの検査の形）
   if (call.method === "GET" && p === "/v1/subscriptions") {
     if (fail("list")) return json(500, { error: { type: "api_error" } });
+    // 顧客を消した後の一覧（「その顧客は無い」の 4xx）と、つながらない一覧（fetch が投げる）
+    if (fail("list_missing")) return json(404, { error: { type: "invalid_request_error", code: "resource_missing" } });
+    if (fail("list_network")) throw new TypeError("fetch failed");
     const customer = call.params.get("customer");
     return json(200, { data: clone(P.list.filter((s) => !customer || !s.customer || s.customer === customer)) });
   }
@@ -879,6 +882,48 @@ const hook = async (event, makeReq = streamReq, opts) => {
   D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "canceled", stripe_customer_id: "cus_one", stripe_subscription_id: "sub_B", event_created: now - 50 });
   res = await hook(eventOf("customer.subscription.updated", { ...subA2, status: "past_due" }, now - 5));
   ok("6b (d3) 行が Pro でなければ、別の契約の更新は前のとおり書く（入り直した人の新しい契約）", res.statusCode === 200 && D.rows.get(U1)?.stripe_subscription_id === "sub_A" && D.rows.get(U1)?.status === "past_due");
+
+  // (d4)〜(d7) 行の契約の終わりで、同じ顧客のほかの契約の一覧が読めないとき（Batch 88 の反証）。前は一覧が読めないと毎回 500 で、
+  // 顧客を消した後（一覧は「その顧客は無い」の 4xx を返し続ける）は再送が全部失敗し、解約した人が期限 + 3 日まで Pro のままだった
+  const liveRow = (created) => ({ ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_gone", stripe_subscription_id: "sub_X", event_created: created, current_period_end: new Date(Date.now() + 20 * 86400000).toISOString() });
+  const subX = subOf({ id: "sub_X", customer: "cus_gone", status: "canceled", items: liveItems });
+  const deletedX = (created) => hook(eventOf("customer.subscription.deleted", subX, created));
+  const rowState = () => [D.rows.get(U1)?.status, lib.isProRow(D.rows.get(U1))];
+  // (d4) 顧客を消した（一覧は 404 resource_missing）: ほかの生きている契約は無いとみなして canceled を書く（消した顧客に生きている契約は残らない）
+  fresh();
+  D.rows.set(U1, liveRow(now - 50));
+  P.fail.add("list_missing");
+  logs.length = 0;
+  res = await deletedX(now - 5);
+  ok("6b (d4) 行の契約の deleted で、顧客を消した後の一覧が 4xx（その顧客は無い）なら、200 で canceled を書く（Pro が終わる。ログに番号を書かない）",
+    res.statusCode === 200 && JSON.stringify(rowState()) === JSON.stringify(["canceled", false]) && !logs.some((l) => /sub_X|cus_gone/.test(l)), JSON.stringify({ status: res.statusCode, row: rowState(), logs: logs.slice(-2) }));
+  // (d5) 一覧が一時的に失敗（500）: 届いてすぐは 500 で再送に任せる（ほかに生きている契約があるかもしれない）。再送で一覧が読めれば canceled
+  fresh();
+  D.rows.set(U1, liveRow(now - 50));
+  P.fail.add("list");
+  const firstTry = await deletedX(now - 5);
+  const keptRow = rowState();
+  P.fail.delete("list");
+  const retried = await deletedX(now - 5);
+  ok("6b (d5) 一覧が一時的に 500 なら、届いてすぐは 500（再送を待つ・行はそのまま）、再送で読めたら canceled",
+    firstTry.statusCode === 500 && JSON.stringify(keptRow) === JSON.stringify(["active", true]) && retried.statusCode === 200 && JSON.stringify(rowState()) === JSON.stringify(["canceled", false]),
+    JSON.stringify({ first: firstTry.statusCode, keptRow, retried: retried.statusCode, row: rowState() }));
+  // (d6) 一覧の 500 が 1 時間より長く続いた（再送の間ずっと読めない）: 届いた状態（canceled）を書く。いつまでも Pro のままにしない
+  fresh();
+  D.rows.set(U1, liveRow(now - 7200));
+  P.fail.add("list");
+  res = await deletedX(now - 3700);
+  ok("6b (d6) 一覧の失敗が届いてから 1 時間を過ぎても続くなら、200 で canceled を書く", res.statusCode === 200 && JSON.stringify(rowState()) === JSON.stringify(["canceled", false]), JSON.stringify({ status: res.statusCode, row: rowState() }));
+  // (d7) つながらない（fetch が投げる）: 届いてすぐは 500、1 時間を過ぎたら canceled
+  fresh();
+  D.rows.set(U1, liveRow(now - 7200));
+  P.fail.add("list_network");
+  const netFresh = await deletedX(now - 5);
+  const netFreshRow = rowState();
+  const netOld = await deletedX(now - 3700);
+  ok("6b (d7) 一覧につながらないときも、届いてすぐは 500（行はそのまま）、1 時間を過ぎた再送では canceled",
+    netFresh.statusCode === 500 && JSON.stringify(netFreshRow) === JSON.stringify(["active", true]) && netOld.statusCode === 200 && JSON.stringify(rowState()) === JSON.stringify(["canceled", false]),
+    JSON.stringify({ netFresh: netFresh.statusCode, netFreshRow, netOld: netOld.statusCode, row: rowState() }));
 }
 
 // ===== 7. お支払いの管理（portal） =====
