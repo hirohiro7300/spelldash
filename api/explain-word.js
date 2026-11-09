@@ -9,12 +9,13 @@
 // 必要な環境変数: ANTHROPIC_API_KEY（未設定なら 503）
 //   EXPLAIN_WORD_DAILY_LIMIT … 無料の 1 日回数（既定 3）/ EXPLAIN_WORD_DAILY_LIMIT_PRO … Pro の回数（既定 60）
 //   超えたら 429 { error: "daily_limit", upgrade: 無料なら true }
+//   回数は _lib/aiLimits.js の 1 か所（加入画面の比較表も /api/billing/config から同じ値を出す）
 
 import Anthropic from "@anthropic-ai/sdk";
 import { send, readBody, reject, sendUpstreamError } from "./_lib/shared.js";
+import { explainWordLimits } from "./_lib/aiLimits.js";
 
-const DAILY_LIMIT = Number(process.env.EXPLAIN_WORD_DAILY_LIMIT) || 3;
-const DAILY_LIMIT_PRO = Number(process.env.EXPLAIN_WORD_DAILY_LIMIT_PRO) || 60;
+const { free: DAILY_LIMIT, pro: DAILY_LIMIT_PRO } = explainWordLimits();
 
 const SYSTEM_PROMPT = `あなたは英単語×タイピング学習アプリ SpellDash の学習コーチです。
 ユーザーが思い出せなかった語について、次の4つを日本語で作ります。

@@ -212,17 +212,13 @@ function fakeRes() {
   return res;
 }
 
+// 調べる側のログ（billing/<label>: …）は全部ここに取る（同時に 2 つ呼んでも混ざらないよう、最初に 1 度だけ差し替える。検査の結果は out で書く）
 const logs = [];
+const keep = (...args) => logs.push(args.map(String).join(" "));
+Object.assign(console, { log: keep, error: keep, warn: keep });
 async function invoke(handler, req) {
-  const saved = { log: console.log, error: console.error, warn: console.warn };
-  const keep = (...args) => logs.push(args.map(String).join(" "));
-  Object.assign(console, { log: keep, error: keep, warn: keep });
   const res = fakeRes();
-  try {
-    await handler(req, res);
-  } finally {
-    Object.assign(console, saved);
-  }
+  await handler(req, res);
   return res;
 }
 

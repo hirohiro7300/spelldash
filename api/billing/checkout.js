@@ -11,6 +11,9 @@
 //
 // 本人の行は本人のトークンで読む（RLS）。success / cancel の URL は SITE_ORIGIN からだけ作る（リクエストヘッダは使わない）。
 // Web 専用（アプリでは購入ボタンを出さない）なので CORS は許可しない。
+// 確定の画面（決済の会社の Checkout）の確定のボタンのそばに、自動更新・最初の請求・解約の方法の文を出す（custom_text[submit][message]。
+// 特定商取引法 12 条の 6。文は _lib/billing.js checkoutSubmitMessage。金額はその画面が Price から出すので書かない）。
+// 規約への同意の欄（consent_collection）は送らない（決済の会社の画面で規約の URL を設定しないと手続きが作れなくなる。docs/BILLING.md の手順の任意の項目）
 
 import { send, readBody, verifyUserFull, bearerToken } from "../_lib/shared.js";
 import {
@@ -18,7 +21,9 @@ import {
   billingConfigured,
   priceIdFor,
   trialEndUnix,
+  trialMonths,
   trialDays,
+  checkoutSubmitMessage,
   siteOrigin,
   stripeFetch,
   fetchOwnSubscription,
@@ -86,8 +91,15 @@ export default async function handler(req, res) {
     // 同じ分の再送は同じ冪等キーになるので、trial_end も分の頭から数えて同じ値にする（違う値だと Stripe が idempotency_error を返す）
     const minute = Math.floor(Date.now() / 60000);
     const trialEnd = firstTime ? trialEndUnix(new Date(minute * 60000)) : 0;
-    if (trialEnd > 0) params.subscription_data.trial_end = trialEnd;
-    else if (firstTime && trialDays() > 0) params.subscription_data.trial_period_days = trialDays();
+    let trialLabel = ""; // 確定の画面の文に入れる無料期間の名（付くときだけ）
+    if (trialEnd > 0) {
+      params.subscription_data.trial_end = trialEnd;
+      trialLabel = `${trialMonths()}か月`;
+    } else if (firstTime && trialDays() > 0) {
+      params.subscription_data.trial_period_days = trialDays();
+      trialLabel = `${trialDays()}日`;
+    }
+    params.custom_text = { submit: { message: checkoutSubmitMessage({ interval, trialLabel }) } };
 
     const session = await stripeFetch("/v1/checkout/sessions", params, {
       idempotencyKey: `checkout:${user.id}:${interval}:${firstTime ? "trial" : "paid"}:${minute}`

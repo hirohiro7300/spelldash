@@ -7,8 +7,10 @@
 // - 鍵（STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / SUPABASE_SERVICE_ROLE_KEY）と PII（メール・顧客 id）は
 //   応答にもログにも出さない。ログは `billing/<label>: <種別> <状態>` だけ。
 //
-// 環境変数: STRIPE_SECRET_KEY（必須）, STRIPE_PRICE_MONTHLY（必須）, STRIPE_PRICE_YEARLY（任意）,
-//   STRIPE_TRIAL_DAYS（任意・既定 0）, STRIPE_WEBHOOK_SECRET（webhook に必須）, SITE_ORIGIN（既定 https://www.spelldash.net）
+// 環境変数: STRIPE_SECRET_KEY（必須）, STRIPE_PRICE_MONTHLY（必須）, STRIPE_PRICE_YEARLY（任意。年額は出さない決定なので入れない）,
+//   STRIPE_TRIAL_MONTHS（任意・初めての方の無料期間の月。決定は 1）, STRIPE_TRIAL_DAYS（任意・既定 0。月が優先）,
+//   STRIPE_WEBHOOK_SECRET（webhook に必須）, SITE_ORIGIN（既定 https://www.spelldash.net）
+// 検査: scripts/test-billing.mjs（偽の fetch。外へ出ない）
 
 import crypto from "node:crypto";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, send } from "./shared.js";
@@ -23,7 +25,7 @@ const SIGNATURE_TOLERANCE_SEC = 300;
 const PRO_STATUSES = new Set(["active", "trialing", "past_due"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// 本人の行を読むときの列（webhook の upsert で書く列と同じ）
+// 本人の行を読むときの列（webhook が書く列と同じ）
 export const SUBSCRIPTION_COLUMNS =
   "user_id,stripe_customer_id,stripe_subscription_id,status,price_id,plan_interval,current_period_end,cancel_at_period_end,event_created";
 
@@ -179,13 +181,36 @@ export function verifyStripeSignature(rawBody, header, secret, now = Math.floor(
   });
 }
 
-// bodyParser を切った関数で生ボディを読む（署名はこの文字列に対して計算する）
+// 生ボディ（署名を計算する元のバイト列）を読む。戻り値は Buffer か文字列。読めなければ null（そのときは署名を確かめられない → 400）。
+// 配信の側の作りは確かめられていない（Node の関数の req.body は読んだ時に解析する作りがあり、bodyParser: false の指定が効くかも分からない）ので、
+// どの作りでも届いたバイト列だけで確かめる:
+//   1. まだ読まれていない流れ（IncomingMessage）なら、先にそれを読む。req.body には触らない（body を読むと流れを使い切る作りがある）
+//   2. 流れが空（配信の側が先に読み切った）なら、生の値の req.rawBody、それも無ければ文字列か Buffer の req.body
+//   3. 解析済みの値（object）しか無ければ null。JSON を作り直して確かめない（届いたバイト列と同じになる保証が無い）
 export async function readRawBody(req) {
-  if (typeof req.body === "string") return req.body;
-  if (Buffer.isBuffer(req.body)) return req.body.toString("utf8");
-  const chunks = [];
-  for await (const chunk of req) chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-  return Buffer.concat(chunks).toString("utf8");
+  if (req && typeof req[Symbol.asyncIterator] === "function" && !req.readableEnded) {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const raw = Buffer.concat(chunks);
+    if (raw.length > 0) return raw;
+  }
+  for (const value of [req?.rawBody, req?.body]) {
+    if (typeof value === "string") return value;
+    if (value instanceof Uint8Array) return Buffer.from(value);
+  }
+  return null;
+}
+
+// 確定の画面（決済の会社の Checkout。確定のボタンのそば）に出す文: custom_text[submit][message]。
+// 特定商取引法 12 条の 6（最終確認の画面）: 自動で更新すること・最初の請求がいつか・解約の方法と条件を、申し込みを確定する画面で分かるようにする。
+// 金額は書かない（その画面が同じ Price から出す）。trialLabel は無料期間が付くときだけ（「1か月」「7日」）。決済の会社の上限より十分短く（500 字以内）
+export function checkoutSubmitMessage({ interval = "month", trialLabel = "" } = {}) {
+  const every = interval === "year" ? "毎年" : "毎月";
+  const first = trialLabel
+    ? `初めての方の無料期間として、最初の${trialLabel}は料金がかかりません。無料期間が終わる日に最初の請求があり、その後は${every}自動で更新します。`
+    : `お申し込みの日に最初の請求があり、その後は${every}自動で更新します。`;
+  const cancel = `解約はいつでも「設定 → 解約・お支払いの管理」からできます。${trialLabel ? "無料期間中に解約すれば請求はありません。" : ""}解約しても期間の終わりまで使え、日割りの返金はしません。`;
+  return first + cancel;
 }
 
 // ----- Supabase: subscriptions -----
@@ -228,10 +253,14 @@ export async function findSubscriptionByCustomer(customerId) {
   return (await rowsOf(response, "subscriptions"))[0] || null;
 }
 
-export async function upsertSubscription(row) {
+// 本人の行がまだ無いときの最初の書き込み: 入れるだけ（同じ人の行がもうあれば何もしない。PostgREST の resolution=ignore-duplicates ＝
+// ON CONFLICT (user_id) DO NOTHING。前の upsert の merge-duplicates と同じ書き方の別の値）。入れた行を返す。入らなかった（同時に届いた
+// 別のイベントが先に入れた）ら null で、呼び手は event_created を条件にした書き換え（updateSubscriptionIfNotNewer）へ進む。
+// 前は merge-duplicates の upsert で、2 つのイベントが同時に「行が無い」を読むと、後から書いた古いイベントが新しいイベントを上書きした
+export async function insertSubscriptionIfAbsent(row) {
   const response = await serviceFetch("/rest/v1/subscriptions?on_conflict=user_id", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
+    headers: { "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=representation" },
     body: JSON.stringify(row)
   });
   return (await rowsOf(response, "subscriptions"))[0] || null;
