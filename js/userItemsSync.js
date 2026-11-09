@@ -11,6 +11,8 @@
 // 変更の記録: 各モジュールが書き込み時に touchItem() を呼ぶ → meta（更新時刻）と dirty（未送信）に積む。
 // 送り方（Batch 85。docs/SPEC_MY_WORDS.md §14.3）: 送る写しの、送り先が受け付けない字だけを U+FFFD に替え（端末の保存は書き換えない）、行の中身で断られた組は半分ずつ送り直し、
 // 1 行だけで断られた行は meta に印（failAt・failFor）を付けて、その行が変わるか UPLOAD_RETRY_MS が過ぎるまで送らない（下の「送る形と送り方」）。
+// 読み方（Batch 87。docs/SPEC_MY_WORDS.md §14.4）: 主キーの列で並べて READ_PAGE 行ずつ、全部の行の数に届くまで読む（readAllRows）。1 ページでも読めなければ
+// 取り込み全体を止める。取り込みで送れた行・クラウドから取り込んだ行は、送る待ち（dirty）から外す（同じ行を次の送信で送り直さない）。
 
 const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }
 const DIRTY_KEY = "spelldash_user_items_dirty"; // ["kind:key", ...]
@@ -244,12 +246,14 @@ export function clearDirtyItems() {
 }
 
 // ---- クラウドの行をローカルへ反映（項目ごとに新しい方が勝つ） ----
-// 戻り値: { changed: {my_word,note,pack,day} の変更有無, toUpload: クラウドに無い／古いローカル項目 }
+// 戻り値: { changed: {my_word,note,pack,day} の変更有無, toUpload: クラウドに無い／古いローカル項目,
+//   adopted: クラウドの方が新しくて端末に取り込んだ項目の [id, その行の updated_at]（Batch 87: 取り込みの後で送る待ちから外す） }
 
 export function mergeCloudItems(rows, userId = null) {
   const meta = getItemMeta();
   const changed = { my_word: false, note: false, pack: false, day: false };
   const toUpload = [];
+  const adopted = [];
   const cloud = new Map();
   const cloudDays = new Map(); // date → payload（day は時刻ではなく値で合わせる）
   for (const r of rows ?? []) {
@@ -308,6 +312,7 @@ export function mergeCloudItems(rows, userId = null) {
       changed.pack = true;
     }
     meta[id] = { updatedAt: r.updated_at, deleted: !!r.deleted };
+    adopted.push([id, r.updated_at]);
   }
 
   // ローカルだけにある／ローカルが新しい項目 → アップロード対象
@@ -326,7 +331,7 @@ export function mergeCloudItems(rows, userId = null) {
   if (changed.note) writeJson(NOTES_KEY, notes);
   if (changed.pack) writeJson(PACKS_KEY, packs);
   writeJson(META_KEY, meta);
-  return { changed, toUpload };
+  return { changed, toUpload, adopted };
 }
 
 // ---- 送る形と送り方（Batch 85。docs/SPEC_MY_WORDS.md §14.3） ----
@@ -534,35 +539,79 @@ export async function probeUserItemsTable(supabase) {
   return tableMissing;
 }
 
+// ---- 読み方（Batch 87。docs/SPEC_MY_WORDS.md §14.4） ----
+// 送り先の API は 1 回の読みで返す行に上限がある（既定 1,000 行。上限より後ろの行は、何も言わずに届かない）。
+// 1,000 語の人の user_items（語 1,000 行と日ごとの記録）や学習記録（word_progress）を読み切るため、主キーの列で並べて READ_PAGE 行ずつ読む。
+// - 最初の読みで全部の行の数（count）を聞き、受け取った行の数がそれに届くまで続ける。次のページの頭は「受け取った行の数」（上限が READ_PAGE より
+//   小さい送り先でも抜けない）。count が来ない送り先では、0 行の答えまで読む
+// - どのページの読みが落ちても、count に届く前に 0 行の答えが来ても、READ_PAGES_MAX ページで終わらなくても、読み全体を失敗にする
+//   （途中までの行で合わせると、届かなかった行の項目を「クラウドに無い」と見て古い値で送り返す）
+// - 読みの途中で行が増えても、同じ行が 2 度届くだけ（項目ごとに合わせるので害は無い）。行は消さない（消すのは墓標）ので、抜ける行は無い
+// 戻り値: { ok: true, rows } か { ok: false, error, status }（status・error は落ちたページの答え。表が無いかの見分けに使う）
+export const READ_PAGE = 1000;
+export const READ_PAGES_MAX = 50; // 50,000 行（ここに着くのは壊れた答えだけ）
+
+export async function readAllRows(client, table, orderCols) {
+  const rows = [];
+  let total = null;
+  for (let page = 0; page < READ_PAGES_MAX; page++) {
+    let result;
+    try {
+      let query = client.from(table).select("*", page === 0 ? { count: "exact" } : {});
+      for (const col of orderCols) query = query.order(col, { ascending: true });
+      result = await query.range(rows.length, rows.length + READ_PAGE - 1);
+    } catch (error) {
+      return { ok: false, error, status: null };
+    }
+    if (!result || result.error || !Array.isArray(result.data)) return { ok: false, error: result?.error ?? null, status: result?.status ?? null };
+    if (page === 0 && typeof result.count === "number") total = result.count;
+    if (result.data.length === 0) return total === null || rows.length >= total ? { ok: true, rows } : { ok: false, error: null, status: result.status ?? null };
+    rows.push(...result.data);
+    if (total !== null && rows.length >= total) return { ok: true, rows };
+  }
+  return { ok: false, error: null, status: null };
+}
+
+// 取り込みの後で、送る待ち（dirty）から外す項目: 取り込みで送れた行（その後に変わっていない: 印の時刻が送った行と同じ）と、
+// クラウドの方が新しくて取り込んだ項目（その後に変わっていない）。送っている間に直した項目は残り、次の送信で新しい版を送る
+function clearSettledDirty(sent, adopted) {
+  if (sent.length === 0 && adopted.length === 0) return;
+  const meta = getItemMeta();
+  const settled = new Set();
+  for (const r of sent) if (meta[rowId(r)]?.updatedAt === r.updated_at) settled.add(rowId(r));
+  for (const [id, at] of adopted) if (meta[id]?.updatedAt === at) settled.add(id);
+  const dirty = [...getDirtyItems()];
+  const left = dirty.filter((id) => !settled.has(id));
+  if (left.length !== dirty.length) writeJson(DIRTY_KEY, left);
+}
+
 // options.deferPacksEvent: true なら spelldash:packs を投げない（呼び出し側が語の読み直しを 1 回にまとめる）。options.now: 今の時刻（ms。検査が渡す）
 export async function pullUserItems(supabase, userId, options = {}) {
   const now = options.now ?? Date.now();
-  let rows = null;
-  try {
-    const result = await supabase.from("user_items").select("*");
-    if (!result || result.error || !Array.isArray(result.data)) {
-      // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）。送り方は前のまま
-      if (isMissingTable(result)) {
-        noteTable(true);
-        return { changed: null, missing: true };
-      }
-      return { changed: null };
+  const read = await readAllRows(supabase, "user_items", ["kind", "key"]);
+  if (!read.ok) {
+    // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）。送り方は前のまま
+    if (isMissingTable(read)) {
+      noteTable(true);
+      return { changed: null, missing: true };
     }
-    noteTable(false);
-    rows = result.data;
-  } catch {
     return { changed: null };
   }
-  const { changed, toUpload } = mergeCloudItems(rows, userId);
+  noteTable(false);
+  const { changed, toUpload, adopted } = mergeCloudItems(read.rows, userId);
   // 断られて待っている行は送らない（ページを開くたびに同じ行で断られ続けない）。鍵に送り先が受け付けない字がある行も送らない
   const meta = getItemMeta();
   const { send } = prepareRows(toUpload.filter((r) => r.kind === "day" || !waiting(meta[rowId(r)], now)));
+  let sent = [];
   if (send.length > 0) {
     // 送れなかった行は次回の pushSync で再送する（dirty に積む）。行の中身で断られた行は印を付けて待つ
     const { failed, rejected } = await upsertRows(supabase, send);
+    const notSent = new Set([...failed, ...rejected].map(rowId));
+    sent = send.filter((r) => !notSent.has(rowId(r)));
     for (const r of failed) touchItem(r.kind, r.key, false, r.updated_at);
     markRejected(rejected, now);
   }
+  clearSettledDirty(sent, adopted);
   if (changed.my_word) window.dispatchEvent(new CustomEvent("spelldash:mywords"));
   if (changed.note) window.dispatchEvent(new CustomEvent("spelldash:notes"));
   if (changed.pack && !options.deferPacksEvent) window.dispatchEvent(new CustomEvent("spelldash:packs", { detail: { synced: true } }));
