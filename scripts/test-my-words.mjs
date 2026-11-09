@@ -205,6 +205,17 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   const list = [{ en: "a", ja: "x" }, { en: "b", ja: "x", book: "w1", ls: 2 }, { en: "c", ja: "x", book: "w1" }, { kind: "concept", en: "q", q: "qq", answer: "Q" }];
   eq("単語帳ごとの語（場面カードは最初の単語帳の一覧に出る）", [C.entriesOfBook(list, "main", books).map((w) => w.en), C.entriesOfBook(list, "w1", books).map((w) => w.en)], [["a", "q"], ["b", "c"]]);
   eq("単語帳ごとの数（3 状態は英語の語だけ）", C.bookCounts(list, books), { main: { new: 1, unsure: 0, learned: 0, total: 1 }, w1: { new: 1, unsure: 0, learned: 1, total: 2 } });
+  // Batch 86: ?book の無い /mywords.html で開く単語帳。最初の単語帳に語が無く、ほかの単語帳に語があれば、語のある最初の単語帳（新しい保存の鍵は作らない）
+  const dfb = typeof C.defaultBookId === "function" ? C.defaultBookId : () => "（defaultBookId が無い）";
+  const three = [...books, { id: "w2", name: "家" }];
+  eq("開く単語帳: 最初の単語帳に語があれば最初の単語帳", dfb(list, books), "main");
+  eq("開く単語帳: 最初の単語帳が空で、ほかの単語帳に語があれば、語のある最初の単語帳（渡された単語帳だけを足した人）", dfb([{ en: "b", ja: "x", book: "w1" }], books), "w1");
+  eq("開く単語帳: 空の単語帳を飛ばして、語のある最初の単語帳", dfb([{ en: "b", ja: "x", book: "w2" }], three), "w2");
+  eq("開く単語帳: 語のある単語帳が 2 つなら前の方", dfb([{ en: "b", ja: "x", book: "w2" }, { en: "c", ja: "x", book: "w1" }], three), "w1");
+  eq("開く単語帳: どこにも語が無ければ最初の単語帳", [dfb([], three), dfb(null, three)], ["main", "main"]);
+  eq("開く単語帳: 一覧に無い単語帳の語（ほかの端末の単語帳）は、その単語帳を足した一覧（withWordBooks）で選べる",
+    dfb([{ en: "b", ja: "x", book: "bx", bookName: "旅" }], C.withWordBooks(books, [{ en: "b", ja: "x", book: "bx", bookName: "旅" }])), "bx");
+  eq("開く単語帳: 単語帳の一覧が空でも最初の単語帳の id", dfb([], []), "main");
   ok("名前: 空は入れない・20 字まで・同じ名前は入れない（自分の名前へは変えられる）・空白は 1 つに",
     !C.checkBookName(" ", books).ok && C.checkBookName("あ".repeat(20), books).ok && !C.checkBookName("あ".repeat(21), books).ok && /すでにあります/.test(C.checkBookName("仕事", books).error ?? "") && C.checkBookName("仕事", books, "w1").ok && C.checkBookName("  旅行   英語 ", books).name === "旅行 英語");
   const id = C.newBookId(books, () => 0.5, 1000);

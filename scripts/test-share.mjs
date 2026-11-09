@@ -454,5 +454,56 @@ await t("privacy.html に渡すリンクの 1 行（入るのは単語帳の名�
   return (/単語帳の名前と英語と訳だけ/.test(para) && /サーバーには送られません/.test(para) && /リンクを知っている人はだれでも/.test(para)) || para || "no line";
 });
 
+// ===== 同じリンクをもう一度開いたとき（Batch 86。js/myWordsCore.js sharedPresence）=====
+// 渡された組のうち、もう入っている数・まだの数と、入っている組がいちばん多い単語帳（同じなら一覧の前の方）。
+// 同じかの決まりは足すときと同じ（js/myWords.js validateEntry: 同じ英語〔大文字小文字は見ない〕と同じ訳〔全角半角・空白の並びは見ない〕の組は全部の単語帳で 1 つ）
+{
+  const presence = (...a) => {
+    if (typeof C.sharedPresence !== "function") throw new Error("sharedPresence が無い");
+    const r = C.sharedPresence(...a);
+    return { present: r.present, missing: r.missing, book: r.book?.id ?? null };
+  };
+  const books = [{ id: "main", name: "マイ単語帳" }, { id: "w1", name: "仕事の英語" }];
+  const shared = [{ en: "KPI", ja: "重要業績評価指標" }, { en: "agenda", ja: "議題" }, { en: "invoice", ja: "請求書" }];
+  const inWork = [
+    { en: "kpi", text: "KPI", ja: "重要業績評価指標", book: "w1", bookName: "仕事の英語" },
+    { en: "agenda", ja: "議題", book: "w1", bookName: "仕事の英語" },
+    { en: "invoice", ja: "請求書", book: "w1", bookName: "仕事の英語" }
+  ];
+  await t("全部入っている: もう入っている 3・まだ 0・入っている単語帳は「仕事の英語」（英語の大文字小文字は見ない）", () => {
+    const r = presence(shared, inWork, books);
+    return (r.present === 3 && r.missing === 0 && r.book === "w1") || r;
+  });
+  await t("一部入っている: 足した 2 語は入っている・残りの 1 語はまだ（入っている単語帳は「仕事の英語」）", () => {
+    const r = presence(shared, inWork.slice(0, 2), books);
+    return (r.present === 2 && r.missing === 1 && r.book === "w1") || r;
+  });
+  await t("1 つも入っていない: もう入っている 0・まだ 3・単語帳なし", () => {
+    const r = presence(shared, [{ en: "deadline", ja: "締め切り" }], books);
+    return (r.present === 0 && r.missing === 3 && r.book === null) || r;
+  });
+  await t("同じ英語でも訳が違えば別の組（まだ）・訳の全角半角と空白の並びは見ない（同じ組）", () => {
+    const r = presence([{ en: "up", ja: "上がる？" }, { en: "up", ja: "下がる？" }, { en: "agenda", ja: "議題 " }], [{ en: "up", ja: "上がる?" }, { en: "agenda", ja: "議題", book: "w1" }], books);
+    return (r.present === 2 && r.missing === 1) || r;
+  });
+  await t("入っている組が 2 つの単語帳に同じ数ずつあるときは、一覧の前の単語帳", () => {
+    const r = presence(shared.slice(0, 2), [{ en: "kpi", ja: "重要業績評価指標", book: "w1" }, { en: "agenda", ja: "議題" }], books);
+    return (r.present === 2 && r.missing === 0 && r.book === "main") || r;
+  });
+  await t("渡された中の同じ組の 2 度目と、足せない英語（使えない字）は数えない", () => {
+    const r = presence([{ en: "agenda", ja: "議題" }, { en: "Agenda", ja: "議題" }, { en: "café", ja: "喫茶" }, { en: "memo", ja: "覚え書き" }], [], books);
+    return (r.present === 0 && r.missing === 2) || r;
+  });
+  await t("渡された語は足すときの決まりと同じ: 足した後に同じ組を読むと全部入っている（js/myWords.js addSharedWords と突き合わせ）", async () => {
+    const store = new Map();
+    globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k), key: () => null, length: 0 };
+    const M = await import("../js/myWords.js");
+    const r1 = M.addSharedWords(shared, { name: "仕事の英語" });
+    const list = JSON.parse(store.get("spelldash_my_words") ?? "[]");
+    const r = presence(shared, list, M.getMyBooks(list));
+    return (r1.ok && r1.added.length === 3 && r.present === 3 && r.missing === 0 && r.book === r1.book?.id) || { r1: { ok: r1.ok, added: r1.added?.length, book: r1.book }, r };
+  });
+}
+
 console.log(`test-share: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
