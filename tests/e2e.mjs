@@ -25971,7 +25971,8 @@ console.log("give a word book (84.1):");
       hint: vis(document.getElementById("myRecvHint")) ? document.getElementById("myRecvHint").textContent : null,
       buttons: [...(box?.querySelectorAll("button") ?? [])].filter(vis).map((b) => [b.id, b.textContent.trim(), b.disabled]),
       status: document.getElementById("myRecvStatus")?.textContent ?? "",
-      links: [...(box?.querySelectorAll("a") ?? [])].filter(vis).map((a) => ({ href: a.getAttribute("href"), text: a.textContent, funnel: a.dataset.funnel ?? null })),
+      // 文の中のリンク（加入画面へ）。足した後の次の一歩「この単語帳で学ぶ」「選択式で学ぶ」（Batch 85。節 85.1 が見る）は数えない
+      links: [...(box?.querySelectorAll("a") ?? [])].filter(vis).filter((a) => a.id !== "myRecvLearn" && a.id !== "myRecvChoice").map((a) => ({ href: a.getAttribute("href"), text: a.textContent, funnel: a.dataset.funnel ?? null })),
       focusIn: !!document.activeElement?.closest?.("#myRecv"),
       active: document.activeElement?.id || document.activeElement?.className || "",
       top: box ? Math.round(box.getBoundingClientRect().top) : null,
@@ -26168,7 +26169,7 @@ console.log("give a word book (84.1):");
 
   // (3) 受け取る（ゲスト・まっさらな文脈）: リンクを開くと上に渡された単語帳（名前・6 語・最初の 5 語・ほか 1 語・足す先の名前）。焦点は中（題）。
   //     キーボードだけ: Tab で「新しい単語帳として足す」→ Enter で 6 語が新しい単語帳「仕事」に入る（どれも これから・同じ英語 2 つ・語の記録には書かない）・# を外して ?book=<新しい単語帳>・
-  //     焦点は「閉じる」→ Enter で閉じて焦点は単語帳の切り替え。読み直しても問いは出ない
+  //     焦点は「この単語帳で学ぶ」（Batch 85。次の一歩は節 85.1）→ Tab 2 回で「閉じる」→ Enter で閉じて焦点は単語帳の切り替え。読み直しても問いは出ない
   {
     const page = await sharePage({});
     await page.goto(LINK, { waitUntil: "networkidle" });
@@ -26195,9 +26196,11 @@ console.log("give a word book (84.1):");
         && mine.length === 6 && mine.every((w) => w.bookName === "仕事" && !("ls" in w) && !("lsAt" in w) && !("lsd" in w)) && mine[0].en === "up" && /^up~[0-9a-f]{8}$/.test(mine[1].en) && mine[2].text === "KPI" && mine[4].en === LONG_EN
         && v1.list.length === 6 && v1.list.every((r) => r[1] === "これから") && s1.stats === null,
       JSON.stringify({ onNew, added, status: v1.status, books: s1.books, mine: mine.map((w) => w.en.slice(0, 20)), list: v1.list.slice(0, 3), stats: s1.stats }));
-    check("84.1 受け取る: 足した後は # を外す（?book=<新しい単語帳>）・単語帳の切り替えは「仕事」・問いのボタンは消えて「閉じる」に焦点",
-      v1.hash === "" && v1.search === `?book=${book?.id}` && JSON.stringify(v1.tabs) === JSON.stringify([["マイ単語帳", "false"], ["仕事", "true"]]) && JSON.stringify(v1.buttons.map((b) => b[0])) === '["myRecvClose"]' && v1.active === "myRecvClose",
+    check("84.1 受け取る: 足した後は # を外す（?book=<新しい単語帳>）・単語帳の切り替えは「仕事」・問いのボタンは消えて「閉じる」だけ・焦点は次の一歩の「この単語帳で学ぶ」（Batch 85）",
+      v1.hash === "" && v1.search === `?book=${book?.id}` && JSON.stringify(v1.tabs) === JSON.stringify([["マイ単語帳", "false"], ["仕事", "true"]]) && JSON.stringify(v1.buttons.map((b) => b[0])) === '["myRecvClose"]' && v1.active === "myRecvLearn",
       JSON.stringify({ hash: v1.hash, search: v1.search, tabs: v1.tabs, buttons: v1.buttons, active: v1.active }));
+    await page.keyboard.press("Tab"); // 選択式で学ぶ
+    await page.keyboard.press("Tab"); // 閉じる
     await page.keyboard.press("Enter");
     const v2 = await recvView(page);
     await page.reload({ waitUntil: "networkidle" });
@@ -26257,7 +26260,7 @@ console.log("give a word book (84.1):");
     const s2 = await stored(page);
     check("84.1 Escape: 問いの間は「やめる」と同じ（閉じる・何も書かない・# を外す・焦点は単語帳の切り替え）・足した後は「閉じる」と同じ（語はそのまま・焦点は単語帳の切り替え）・エラー 0",
       !e1.shown && e1.hash === "" && /mw-book/.test(e1.active) && s1.words.length === 0 && s1.books === null
-        && d0.active === "myRecvClose" && !e2.shown && /mw-book/.test(e2.active) && s2.words.length === 6 && page.errors.length === 0,
+        && d0.active === "myRecvLearn" && !e2.shown && /mw-book/.test(e2.active) && s2.words.length === 6 && page.errors.length === 0,
       JSON.stringify({ e1: [e1.shown, e1.hash, e1.active], s1: [s1.words.length, s1.books], d0: d0.active, e2: [e2.shown, e2.active], n: s2.words.length, err: page.errors[0] }));
     await closeCtx(page);
   }
