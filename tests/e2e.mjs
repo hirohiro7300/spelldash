@@ -26577,12 +26577,12 @@ console.log("text guard (85.1):");
     // (2) 1 語ずつ足す: 訳に向きを上書きする字（U+202E）→ 日本語訳の欄の文で断り、焦点は訳の欄。英語に入れると英語の欄の文（打った字は文に入れない）で断り、焦点は英語の欄。何も書かない
     const before = (await stored(page)).words;
     await page.fill("#myWordsEn", "sun");
-    await page.fill("#myWordsJa", "太‮陽");
+    await page.fill("#myWordsJa", "太\u202E陽");
     await page.click("#myWordsAddButton");
     await waitText(page, "#myWordsStatus", /^日本語訳に見えない/);
     const st2 = await status(page);
     const a2 = await active(page);
-    await page.fill("#myWordsEn", "s‮un");
+    await page.fill("#myWordsEn", "s\u202Eun");
     await page.fill("#myWordsJa", "太陽");
     await page.click("#myWordsAddButton");
     await waitText(page, "#myWordsStatus", /^英語に/);
@@ -26590,12 +26590,12 @@ console.log("text guard (85.1):");
     const a3 = await active(page);
     const after = (await stored(page)).words;
     check("85.1 1 語ずつ足す: 訳に向きを上書きする字 → 「日本語訳に見えない制御文字や壊れた字は使えません」・焦点は訳の欄／英語に入れる → 「英語に…」（打った字は文に入れない）・焦点は英語の欄・何も書かない",
-      st2 === `日本語訳に${NOTE}` && a2 === "myWordsJa" && st3 === `英語に${NOTE}` && !st3.includes("‮") && a3 === "myWordsEn" && after === before,
+      st2 === `日本語訳に${NOTE}` && a2 === "myWordsJa" && st3 === `英語に${NOTE}` && !st3.includes("\u202E") && a3 === "myWordsEn" && after === before,
       JSON.stringify({ st2, a2, st3, a3, same: after === before }));
 
     // (3) 訳を直す: 向きを隔離する字（U+2066）を入れて Enter → 断る（直す欄はそのまま・焦点は欄）・保存は変えない。Escape でやめる
     await page.click('#myWordsList .mw-row[data-ref="word:go"] .mw-row__edit');
-    await page.fill("#myWordsList .mw-row__input", "行⁦く");
+    await page.fill("#myWordsList .mw-row__input", "行\u2066く");
     await page.press("#myWordsList .mw-row__input", "Enter");
     await waitText(page, "#myWordsStatus", /^日本語訳に見えない/);
     const st4 = await status(page);
@@ -26607,7 +26607,7 @@ console.log("text guard (85.1):");
 
     // (4) 単語帳: 名前を変えるに U+2066 → 断る（欄に焦点・一覧は書かない）。新しい単語帳の名前に NUL → 断る
     await page.click("#myBookRename");
-    await page.fill("#myBookName", "マイ⁦単語帳");
+    await page.fill("#myBookName", "マイ\u2066単語帳");
     await page.press("#myBookName", "Enter");
     await waitText(page, "#myWordsStatus", /^単語帳の名前に/);
     const st5 = await status(page);

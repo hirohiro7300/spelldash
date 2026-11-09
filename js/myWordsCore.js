@@ -40,7 +40,7 @@ export const MY_ID_PREFIX = "my-";
 // 同期の送り先は NUL と組になっていないサロゲートを受け付けず、1 語でも入ると同じ送りの組の語がどれも届かなくなっていた（送る側の守りは js/userItemsSync.js）。
 // 向きを変える字は、名前と訳の見え方を並べ替えられるので一緒に断る。LRM・RLM・ゼロ幅の字は断らない（並べ替える力が弱く、同期も止めない）。
 // u フラグ: [\uD800-\uDFFF] は組になっていないサロゲートだけに当たる（組になった絵文字などは当たらない）
-export const UNSAFE_TEXT = /[\u0000-\u001F\u007F-\u009F‪-‮⁦-⁩]|[\uD800-\uDFFF]/u;
+export const UNSAFE_TEXT = /[\u0000-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]|[\uD800-\uDFFF]/u;
 const UNSAFE_TEXT_ALL = new RegExp(UNSAFE_TEXT.source, "gu");
 export const UNSAFE_TEXT_ERROR = "見えない制御文字や壊れた字は使えません";
 
