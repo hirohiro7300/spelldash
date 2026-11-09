@@ -217,6 +217,15 @@ function providerRoute(call) {
       return customer;
     });
   }
+  // 顧客のメールを書き直す（作った後に書く。Batch 88 の反証）
+  const custUpdate = call.method === "POST" && p.match(/^\/v1\/customers\/([^/]+)$/);
+  if (custUpdate) {
+    if (fail("customer_update")) return json(500, { error: { type: "api_error" } });
+    const customer = P.customers.find((c) => c.id === decodeURIComponent(custUpdate[1]));
+    if (!customer) return json(404, { error: { type: "invalid_request_error", code: "resource_missing" } });
+    if (call.form.has("email")) customer.email = call.form.get("email");
+    return json(200, clone(customer));
+  }
   // 手続き: 一覧（customer・status）と期限切れにする
   if (call.method === "GET" && p === "/v1/checkout/sessions") {
     if (fail("session_list")) return json(500, { error: { type: "api_error" } });
@@ -761,10 +770,11 @@ const hook = async (event, makeReq = streamReq, opts) => {
   const f = sessionsForm();
   const expiresAt = Number(f.get("expires_at"));
   const t0 = Math.floor((minuteStart + 5000) / 1000);
-  ok("6b (a) 行の無い人: 顧客を metadata の user_id で探し、無ければ作る（冪等キー customer:<uuid>・metadata[user_id]・メール）",
+  const mailed = calls.filter((c) => c.origin !== DB && c.method === "POST" && /^\/v1\/customers\/[^/]+$/.test(c.path));
+  ok("6b (a) 行の無い人: 顧客を metadata の user_id で探し、無ければ作る（冪等キー customer:<uuid>・本文は metadata[user_id] だけ）→ 作った後にメールを書く",
     res.statusCode === 200 && search?.params.get("query") === `metadata['user_id']:'${U1}'` && made.length === 1 && made[0].headers["idempotency-key"] === `customer:${U1}` &&
-      made[0].form.get("metadata[user_id]") === U1 && made[0].form.get("email") === "u1@example.com",
-    JSON.stringify({ status: res.statusCode, query: search?.params.get("query"), made: made.map((c) => [c.headers["idempotency-key"], c.body]) }));
+      made[0].form.get("metadata[user_id]") === U1 && !made[0].form.has("email") && mailed.length === 1 && mailed[0].form.get("email") === "u1@example.com" && P.customers[0]?.email === "u1@example.com",
+    JSON.stringify({ status: res.statusCode, query: search?.params.get("query"), made: made.map((c) => [c.headers["idempotency-key"], c.body]), mailed: mailed.map((c) => c.body) }));
   ok("6b (a) 手続きは作った顧客で（customer=）・customer_email は渡さない",
     f.get("customer") === P.customers[0]?.id && !f.has("customer_email"), [...f.keys()].join(","));
   ok("6b (a) 手続きの期限（expires_at）は今 + 30 分より後・24 時間より前（古いタブから前の手続きを最後まで進められない）",
@@ -785,6 +795,27 @@ const hook = async (event, makeReq = streamReq, opts) => {
   P.fail.add("customer_create");
   res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
   ok("6b (a4) 顧客を作れなければ 502 upstream・手続きを作らない（customer_email で作り直さない）", res.statusCode === 502 && providerCalls("POST", "/v1/checkout/sessions").length === 0);
+
+  // (a5) 作ったばかりの顧客（まだ検索に出ない）で、2 回目の前にログインのメールが変わった（Batch 88 の反証）: 前は作る要求の本文にメールがあり、
+  // 同じ冪等キーで本文が違うので決済の会社が断り（idempotency_error）、冪等キーの 24 時間は 502 のままだった。今は同じ顧客で手続きを作り、メールは新しい方
+  fresh();
+  res = await at(minuteStart + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  const before = res.statusCode;
+  const oldMail = USERS["tok-u1"].email;
+  USERS["tok-u1"].email = "u1-new@example.com";
+  try {
+    res = await at(minuteStart + 3 * 60000 + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  } finally {
+    USERS["tok-u1"].email = oldMail;
+  }
+  ok("6b (a5) 2 回目の前にメールが変わっても、2 回目は 200・顧客は 1 人のまま（同じ顧客で手続き）・顧客のメールは新しい方",
+    before === 200 && res.statusCode === 200 && P.customers.length === 1 && sessionsForm().get("customer") === P.customers[0]?.id && P.customers[0]?.email === "u1-new@example.com",
+    JSON.stringify({ before, status: res.statusCode, body: res.body, customers: P.customers.map((c) => [c.id, c.email]) }));
+  // (a6) メールを書けなくても手続きは作る（その画面でメールを聞く）
+  fresh();
+  P.fail.add("customer_update");
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("6b (a6) 顧客のメールを書けなくても、手続きは 200 で作る", res.statusCode === 200 && /^cus_new_/.test(sessionsForm().get("customer") || ""), JSON.stringify({ status: res.statusCode }));
 
   // (b) 2 分後の 2 回目（1 回目の手続きは開いたまま・作ったばかりの顧客はまだ検索に出ない）: 同じ顧客・1 回目の手続きを期限切れにしてから新しい手続き
   fresh();
