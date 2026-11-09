@@ -25894,7 +25894,7 @@ console.log("give a word book (84.1):");
     page.errors = [];
     page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
     page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
-    if (native) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) }; });
+    if (native) await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "app", nativePromise: () => Promise.resolve({}) }; });
     if (init) await page.addInitScript(init);
     await page.addInitScript(([seed, th]) => {
       if (!location.origin || location.origin === "null") return; // about:blank（読めないリンクの間に挟む）には保存が無い
@@ -26068,7 +26068,7 @@ console.log("give a word book (84.1):");
     await closeCtx(page2);
   }
 
-  // (2) アプリ（Capacitor を偽装）: リンクは本番の origin（https://www.spelldash.net）。端末の共有（navigator.share）があればボタンを出し、リンクを渡す。加入画面へのリンクは無い
+  // (2) アプリ（ネイティブの枠を偽装）: リンクは本番の origin（https://www.spelldash.net）。端末の共有（navigator.share）があればボタンを出し、リンクを渡す。加入画面へのリンクは無い
   {
     const page = await sharePage(GIVER, { native: true, init: () => { navigator.share = async (data) => { window.__shared = JSON.parse(JSON.stringify(data)); }; } });
     await open(page, BASE + "/mywords.html?book=w1");

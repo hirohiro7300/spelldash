@@ -35,7 +35,7 @@ try {
 } catch (e) {
   console.log(`(js/myWordsShare.js を読めない: ${String(e?.message ?? e).slice(0, 120)})`);
 }
-ok("js/myWordsShare.js を読める（純な module。Node から読める）", !!X);
+ok("js/myWordsShare.js を読める（純な module。この台本から直に読める）", !!X);
 const S = X ?? {};
 
 const B64 = (bytes) => Buffer.from(bytes).toString("base64url");
@@ -49,7 +49,7 @@ await t("決めた値: 版 1・頭の印 z1. と j1.・語は 1,000 語まで（
   S.SHARE_MAX_JSON === 1_100_000 && S.SHARE_MAX_CODE === 1_500_000 && S.SHARE_LONG_LINK === 8000 && S.SHARE_PARAM === "share" && S.SHARE_PATH === "/mywords.html");
 
 // ===== base64url =====
-await t("base64url: 0〜70 バイトの往復が Node の base64url と同じ（= なし）", () => {
+await t("base64url: 0〜70 バイトの往復が台本の側の base64url と同じ（= なし）", () => {
   for (let n = 0; n <= 70; n++) {
     const bytes = Uint8Array.from({ length: n }, (_, i) => (i * 37 + n * 11) & 255);
     const s = S.toBase64Url(bytes);
@@ -124,7 +124,7 @@ await t("往復（j1: 縮めない。CompressionStream の無いブラウザで�
   const dec = await S.decodeShare(enc.code);
   return (enc.format === "j1" && enc.code.startsWith("j1.") && dec.ok && dec.format === "j1" && dec.words.length === 7 && dec.words[4].en === LONG_EN && dec.words[4].ja === LONG_JA) || JSON.stringify(dec);
 });
-await t("往復: Node の zlib（deflate-raw）で作った z1 も読める（同じ形）", async () => {
+await t("往復: 台本の側の縮め方（deflate-raw）で作った z1 も読める（同じ形）", async () => {
   const dec = await S.decodeShare(zipped({ v: 1, n: "旅行", w: [["check in", "チェックインする"], ["Due Diligence", "適正評価"]] }));
   return (dec.ok && dec.name === "旅行" && dec.words[1].en === "Due Diligence") || JSON.stringify(dec);
 });
