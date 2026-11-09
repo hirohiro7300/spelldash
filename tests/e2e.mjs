@@ -27998,7 +27998,7 @@ console.log("login panel message (87.2):");
   check("87.2 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
-// ===== 87.3 マイ単語帳の画面の作り直しの数（Batch 87。js/myWordsPage.js render の一覧の材料の印・css/pages.css の .mw-row の content-visibility。docs/SPEC_MY_WORDS.md §16.3）: 一覧（#myWordsList の行）を作り直すのは、行に出す物（語・訳・状態・選ぶ最中か・選んだ語・直している行）が変わったときだけ。1 語足す・訳を直して保存・1 行消す・渡された語を新しい単語帳に足すは 1 回、単語帳を消すは 2 回まで、ページを開いたときは 1 回、行に出す物が変わらない描き直し（Pro の状態の知らせ）は 0 回。行は画面の外では描かない（content-visibility: auto）。焦点の行き先は前のまま =====
+// ===== 87.3 マイ単語帳の画面の作り直しの数（Batch 87。js/myWordsPage.js render の一覧の材料の印・css/pages.css の .mw-row の content-visibility。docs/SPEC_MY_WORDS.md §16.3）: 一覧（#myWordsList の行）を作り直すのは、行に出す物（語・訳・状態・選ぶ最中か・選んだ語・直している行）が変わったときだけ。1 語足す・訳を直して保存・1 行消す・渡された語を新しい単語帳に足すは 1 回、単語帳を消すは 2 回まで、ページを開いたときは 1 回、行に出す物が変わらない描き直し（Pro の状態の知らせ）は 0 回。行は画面の外では描かない（content-visibility: auto）。焦点の行き先は前のまま。ほかの所で訳・3 状態だけが変わっても、その行は新しい字になる。400 語の単語帳で「直す」・「やめる」・「消す」・同期の取り込みの後も、読んでいる行が動かない =====
 // 数え方: ページより先に document の子の変化を見張り、#myWordsList の子が入れ替わった回数（MutationRecord の数）を数える（作り直しの決まった数。時間は handoff に）。
 // a15294a: spelldash:mywords の受け手と操作の後の render() が 2 回とも作り直す（足す・直す・消すで 2 回、単語帳を消すで 3 回、渡された語を新しい単語帳に足すで 3 回、知らせで 1 回）・.mw-row は content-visibility: visible
 console.log("my words page rebuilds (87.3):");
@@ -28015,7 +28015,7 @@ console.log("my words page rebuilds (87.3):");
   const B64U = (s) => Buffer.from(s).toString("base64url");
   const SHARED = Array.from({ length: 30 }, (_, i) => [`share${L[Math.floor(i / 26)]}${L[i % 26]}`, `渡された訳${i + 1}`]);
   const shareCode = `j1.${B64U(JSON.stringify({ v: 1, n: "会議", w: SHARED }))}`;
-  async function wordsPage(path, { viewport = { width: 1200, height: 900 }, mobile = false } = {}) {
+  async function wordsPage(path, { viewport = { width: 1200, height: 900 }, mobile = false, seed = { spelldash_my_words: JSON.stringify(WORDS), spelldash_my_books: BOOKS } } = {}) {
     const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
     const page = await ctx.newPage();
     page.errors = [];
@@ -28034,7 +28034,7 @@ console.log("my words page rebuilds (87.3):");
       sessionStorage.setItem("spelldash_test_seeded", "1");
       const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
       for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
-    }, { spelldash_my_words: JSON.stringify(WORDS), spelldash_my_books: BOOKS });
+    }, seed);
     await page.goto(BASE + path, { waitUntil: "networkidle" });
     await waitUntil(() => page.evaluate(() => document.querySelectorAll("#myWordsList .mw-row").length > 0 || !!document.querySelector("#myRecv:not([hidden])")), 6000);
     await page.waitForTimeout(300);
@@ -28160,6 +28160,103 @@ console.log("my words page rebuilds (87.3):");
     check("87.3 行は画面の外で描かないまま（content-visibility: auto）、焦点の輪が切れない: 390 と 1200 で直す欄（3px）・「直す」・「消す」（4px）の輪が行の内側に収まる・エラー 0",
       rows.length === 2 && rows.every((r) => [r.input, r.edit, r.del].every((x) => x.fits === true && x.ring >= 3 && x.cv === "auto") && r.input.where.includes("mw-row__input") && r.edit.where.includes("mw-row__edit") && r.del.where.includes("mw-row__del") && !r.err),
       JSON.stringify(rows));
+  }
+
+  // ----- (5) 行に出す物がほかの所で変わった（同期の取り込み・ほかのタブ: 保存を書いてから spelldash:mywords）: 保存の訳だけ、次に 3 状態だけを書き替えると、
+  //     その行の訳・状態の字が新しくなる（どちらも作り直しは 1 回）。行の印から訳か状態を外すと、行が古い字のまま残って落ちる（Batch 87 の反証の直し）-----
+  {
+    const page = await wordsPage("/mywords.html?book=b2");
+    const target = WORDS[25]; // 「仕事」の語
+    const rowText = () => page.evaluate((en) => {
+      const li = [...document.querySelectorAll("#myWordsList .mw-row")].find((x) => x.querySelector(".mw-row__en")?.textContent === en);
+      return li ? { ja: li.querySelector(".mw-row__ja")?.textContent ?? null, state: li.querySelector(".mw-row__state")?.textContent ?? null } : null;
+    }, target.en);
+    const writeWord = (patch) => page.evaluate(({ en, patch }) => {
+      const list = JSON.parse(localStorage.getItem("spelldash_my_words"));
+      Object.assign(list.find((w) => w.en === en), patch);
+      localStorage.setItem("spelldash_my_words", JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent("spelldash:mywords"));
+    }, { en: target.en, patch });
+    const before = await rowText();
+    const jaOnly = await countOf(page, () => writeWord({ ja: "ほかの端末で直した訳" }));
+    const afterJa = await rowText();
+    const stateOnly = await countOf(page, () => writeWord({ ls: 2, lsAt: "2026-11-02T00:00:00.000Z" })); // 覚えた
+    const afterState = await rowText();
+    check("87.3 ほかの所で保存の訳だけが変わると、その行の訳が新しくなる（作り直し 1 回）・次に 3 状態だけが変わると、その行の状態が「覚えた」になる（作り直し 1 回）・エラー 0",
+      before?.ja === target.ja && before?.state === "これから" && jaOnly === 1 && afterJa?.ja === "ほかの端末で直した訳" && afterJa?.state === "これから"
+        && stateOnly === 1 && afterState?.state === "覚えた" && afterState?.ja === "ほかの端末で直した訳" && page.errors.length === 0,
+      JSON.stringify({ before, jaOnly, afterJa, stateOnly, afterState, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (6) 読んでいる所が動かない（Batch 87 の反証の直し）: 400 語の単語帳を 200 行目まで少しずつスクロールし（通った行は描かれる）、その行を上から 300px に置く。
+  //     「直す」・「やめる」・ほかの所で単語帳のいちばん上の語の訳が変わる（同期の取り込み）・「消す」の後で、その行（消したときは次の行）の上端が 4px より動かない。
+  //     ad823da は一覧を丸ごと作り直すので、画面の外の行が見込みの高さ（64px）に戻り、読んでいた行が数十〜数千 px 動いた -----
+  {
+    const BIG = [];
+    const LONG_JA = "会議の前に資料を読み、要点を三つにまとめて共有する。".repeat(3);
+    for (let i = 0; i < 400; i++) BIG.push({ en: i % 5 === 0 ? `${keyOf(i)} follow up on the quarterly report` : keyOf(i), ja: i % 3 === 0 ? `長い訳${i}：${LONG_JA}` : `訳${i}`, book: "big", bookName: "仕事", addedAt: T });
+    const seed = { spelldash_my_words: JSON.stringify(BIG), spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "big", name: "仕事" }]) };
+    const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 150)))));
+    const topOf = (page, ref) => page.evaluate((r) => { const li = [...document.querySelectorAll("#myWordsList .mw-row")].find((x) => x.dataset.ref === r); return li ? Math.round(li.getBoundingClientRect().top * 10) / 10 : null; }, ref);
+    const focusRow = (page) => page.evaluate(() => { const a = document.activeElement; return { row: a?.closest?.(".mw-row")?.dataset.ref ?? null, cls: a?.className ?? "" }; });
+    const clickIn = (page, ref, sel) => page.evaluate(({ r, s }) => [...document.querySelectorAll("#myWordsList .mw-row")].find((x) => x.dataset.ref === r)?.querySelector(s)?.click(), { r: ref, s: sel });
+    const runs = [];
+    for (const opts of [{ viewport: { width: 390, height: 844 }, mobile: true }, { viewport: { width: 1200, height: 900 } }]) {
+      const page = await wordsPage("/mywords.html?book=big", { ...opts, seed });
+      await waitUntil(() => page.evaluate(() => document.querySelectorAll("#myWordsList .mw-row").length === 400), 8000);
+      // 人のように少しずつ下へ（通った行は描かれて本当の高さを覚える）、200 行目を上から 300px に置く
+      const at = await page.evaluate(async () => {
+        const rowAt = (i) => document.querySelectorAll("#myWordsList .mw-row")[i];
+        for (let k = 0; k < 400; k++) {
+          const t = rowAt(200).getBoundingClientRect().top;
+          if (Math.abs(t - 300) < 2) break;
+          window.scrollBy(0, Math.max(-600, Math.min(600, t - 300)));
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        }
+        return { ref: rowAt(200).dataset.ref, next: rowAt(201).dataset.ref, top: rowAt(200).getBoundingClientRect().top, scrollY: Math.round(window.scrollY) };
+      });
+      await settle(page);
+      const moved = {};
+      const focus = {};
+      // 直す（欄が開く）→ やめる
+      let t0 = await topOf(page, at.ref);
+      await clickIn(page, at.ref, ".mw-row__edit");
+      await settle(page);
+      moved.edit = (await topOf(page, at.ref)) - t0;
+      focus.edit = await focusRow(page);
+      t0 = await topOf(page, at.ref);
+      await clickIn(page, at.ref, ".mw-row__cancel");
+      await settle(page);
+      moved.cancel = (await topOf(page, at.ref)) - t0;
+      focus.cancel = await focusRow(page);
+      // 同期の取り込み（ほかの端末で、単語帳のいちばん上の語の訳を短く直した）: 保存を書いてから spelldash:mywords
+      t0 = await topOf(page, at.ref);
+      const topEn = BIG[399].en;
+      await page.evaluate((en) => {
+        const list = JSON.parse(localStorage.getItem("spelldash_my_words"));
+        list.find((w) => w.en === en).ja = "ほかの端末で直した訳";
+        localStorage.setItem("spelldash_my_words", JSON.stringify(list));
+        window.dispatchEvent(new CustomEvent("spelldash:mywords"));
+      }, topEn);
+      await settle(page);
+      moved.sync = (await topOf(page, at.ref)) - t0;
+      const topJa = await page.evaluate(() => document.querySelector("#myWordsList .mw-row .mw-row__ja")?.textContent ?? null);
+      // 消す（確かめる窓は受ける）: 次の行が消した行の上端に来る
+      t0 = await topOf(page, at.ref);
+      await clickIn(page, at.ref, ".mw-row__del");
+      await settle(page);
+      moved.del = (await topOf(page, at.next)) - t0;
+      focus.del = await focusRow(page);
+      const rows = await page.evaluate(() => document.querySelectorAll("#myWordsList .mw-row").length);
+      runs.push({ w: opts.viewport.width, at, moved, focus, topJa, rows, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.3 読んでいる所が動かない: 400 語の単語帳の 200 行目（390 の指・1200）で、「直す」・「やめる」・同期で単語帳のいちばん上の語の訳が変わる・「消す」の後、その行（消したときは次の行）の上端が 4px より動かない・焦点は直す欄・その行の「直す」・次の行の「消す」・エラー 0",
+      runs.length === 2 && runs.every((r) => Math.abs(r.at.top - 300) < 2 && Object.values(r.moved).every((d) => Number.isFinite(d) && Math.abs(d) <= 4)
+        && r.focus.edit.row === r.at.ref && r.focus.edit.cls.includes("mw-row__input") && r.focus.cancel.row === r.at.ref && r.focus.cancel.cls.includes("mw-row__edit")
+        && r.focus.del.row === r.at.next && r.focus.del.cls.includes("mw-row__del") && r.topJa === "ほかの端末で直した訳" && r.rows === 399 && !r.err),
+      JSON.stringify(runs));
   }
   check("87.3 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }

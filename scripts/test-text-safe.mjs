@@ -769,5 +769,76 @@ await t("6.10 取り込み: クラウドの方が新しくて取り込んだ語�
   return (JSON.stringify(left) === JSON.stringify([`my_word:${three[2].en}`]) && JSON.stringify(pushed) === JSON.stringify([three[2].en]) && cloud.rows.get(`my_word:${three[2].en}`)?.deleted === true && cloud.rows.get(`my_word:${three[0].en}`)?.payload?.ja === "新しい訳") || show({ left, pushed, del: cloud.rows.get(`my_word:${three[2].en}`)?.deleted });
 });
 
+// 6.11〜6.13（Batch 87 の反証の直し）: 読みの途中で、ほかの端末が前のページの範囲に並ぶ行を足すと（今日の日の行・新しい学習記録など）、
+// 後ろの行が 1 つずつ後ろへずれる。全部の行の数（count）は最初のページの時点の数なので、受け取った数がそれに届いた所で止めると、
+// ずれて最後のページの外に出た前からの行を読まずに済ませ、その項目を「クラウドに無い」と見て端末の古い値で送り返してしまう。
+// 2 ページ目からは、数に届いても満ちたページの後はもう 1 ページ読み、満ちていないページか 0 行の答えで終える
+const rowsOfWords = (n) => Array.from({ length: n }, (_, i) => rowOfWord(wordN(i)));
+const TODAY_ROW = { ...dayRowN(0), key: "2026-11-09" }; // kind "day" は my_word より前に並ぶ（主キーの並びで表の頭）
+// 1 ページ目より後の最初の読みの直前に、ほかの端末が row を足す送り先
+const racingCloud = (rows, opts, row = TODAY_ROW) => {
+  const cloud = cloudWith(rows, opts);
+  let inserted = false;
+  opts.readAt = (from) => {
+    if (from > 0 && !inserted) {
+      inserted = true;
+      cloud.rows.set(`${row.kind}:${row.key}`, JSON.parse(JSON.stringify(row)));
+    }
+    return null;
+  };
+  return cloud;
+};
+await t("6.11 readAllRows: 読みの途中でほかの端末が前のページの範囲に並ぶ行を足しても、前からある行を 1 つも抜かさない（2,000 行を 1,000 行ずつ・1,000 行を 500 行ずつ）・数がページの行の数のちょうど倍数のときだけ 0 行の答えまで 1 回多く読む", async () => {
+  const raced = async (n, maxRows) => {
+    const cloud = racingCloud(rowsOfWords(n), { maxRows });
+    const r = await readAll(cloud);
+    const got = new Set((r.rows ?? []).map((x) => `${x.kind}:${x.key}`));
+    return { ok: r.ok, missing: rowsOfWords(n).map((x) => `my_word:${x.key}`).filter((id) => !got.has(id)), reads: cloud.reads() };
+  };
+  const a = await raced(2000, 1000);
+  const b = await raced(1000, 500);
+  const still = cloudWith(rowsOfWords(2000), { maxRows: 1000 });
+  const rs = await readAll(still);
+  return (a.ok === true && a.missing.length === 0 && JSON.stringify(a.reads) === JSON.stringify([[0, 1000], [1000, 1000], [2000, 1]])
+    && b.ok === true && b.missing.length === 0 && JSON.stringify(b.reads) === JSON.stringify([[0, 500], [500, 500], [1000, 1]])
+    && rs.ok === true && rs.rows.length === 2000 && JSON.stringify(still.reads()) === JSON.stringify([[0, 1000], [1000, 1000], [2000, 0]]))
+    || show({ a, b, still: [rs.ok, rs.rows?.length, still.reads()] });
+});
+await t("6.12 取り込み: 読みの途中でほかの端末が今日の日の行を足しても、表の終わりの語（ほかの端末で直した新しい訳）を読んで取り込み、古い訳で送り返さない（1,000 語・1 回の上限 500 行）", async () => {
+  const all = Array.from({ length: 1000 }, (_, i) => wordN(i));
+  seedSynced(all);
+  const target = all[999]; // 主キーの並びで表の終わり
+  const cloud = racingCloud([...all.slice(0, 999).map((w) => rowOfWord(w)), rowOfWord({ ...target, ja: "新しい訳" }, T_NEW)], { maxRows: 500 });
+  const r = await S.pullUserItems(cloud, "u1", { now: T0 });
+  const local = words().find((w) => w.en === target.en);
+  const sentWords = cloud.upserts().reduce((n, c) => n + c.keys.filter((k) => k.startsWith("k")).length, 0);
+  return (r.changed?.my_word === true && local?.ja === "新しい訳" && cloud.rows.get(`my_word:${target.en}`)?.payload?.ja === "新しい訳" && sentWords === 0)
+    || show({ changed: r.changed, local: local?.ja, cloud: cloud.rows.get(`my_word:${target.en}`)?.payload?.ja, sentWords, reads: cloud.reads() });
+});
+await t("6.13 取り込み: クラウドの方が新しくて取り込んだ語を、最初の送信の間に直すと、その語は送る待ちに残り、次の送信で直した訳が届く（取り込んだ時刻と印の時刻が違う）", async () => {
+  const two = [wordN(0), wordN(1)];
+  reset({
+    spelldash_my_words: two,
+    spelldash_user_items_meta: { [`my_word:${two[0].en}`]: { updatedAt: T_OLD, deleted: false }, [`my_word:${two[1].en}`]: { updatedAt: T_OLD, deleted: false } },
+    spelldash_user_items_dirty: [`my_word:${two[0].en}`]
+  });
+  let touched = false;
+  const cloud = cloudWith([rowOfWord({ ...two[1], ja: "クラウドの新しい訳" }, T_NEW)], {
+    respond: () => {
+      if (!touched) {
+        touched = true;
+        M.setMyWordJa(two[1].en, "送っている間に直した訳"); // 取り込んだ語を、最初の送信（two[0]）の間に直す
+      }
+      return null;
+    }
+  });
+  await S.pullUserItems(cloud, "u1", { now: T0 });
+  const left = dirty();
+  await S.pushUserItems(cloud, "u1", { now: T0 + 1 });
+  const sent = cloud.upserts().at(-1);
+  return (touched && JSON.stringify(left) === JSON.stringify([`my_word:${two[1].en}`]) && sent?.keys.join() === two[1].en && cloud.rows.get(`my_word:${two[1].en}`)?.payload?.ja === "送っている間に直した訳" && dirty().length === 0)
+    || show({ touched, left, sent: sent?.keys, cloud: cloud.rows.get(`my_word:${two[1].en}`)?.payload?.ja, dirty: dirty() });
+});
+
 console.log(`test-text-safe: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
