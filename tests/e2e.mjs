@@ -26518,7 +26518,7 @@ console.log("give a word book (84.1):");
   check("84.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
-// ===== 85.1 文字の守り（Batch 85。js/myWordsCore.js の名前と訳の字の決まり・js/myWords.js・js/myWordsPage.js・mywords.html の渡された単語帳。docs/SPEC_MY_WORDS.md §14）: まとめて足すで見えない字（NUL）のある行だけ断って行の名前と理由を言い、欄にその行だけ残す・1 語ずつ足すの訳と英語・訳を直す・単語帳の名前を変える／作るに見えない字を入れると断る（何も書かない・焦点は欄）・前からある見えない字のある語は一覧に出て、直す欄は見えない字を外した形（保存すると直した語だけ書く）・渡された単語帳を新しい単語帳として足すと、焦点は「この単語帳で学ぶ」（/?learn=my&book=<id>）・次に「選択式で学ぶ」（&choice=en）・キーボードで学ぶ回へ・今の単語帳に足したときは道を出さない・初めての人にだけ SpellDash の 1 行・320 × 昼夜で横スクロール 0・エラー 0 =====
+// ===== 85.1 文字の守り（Batch 85。js/myWordsCore.js の名前と訳の字の決まり・js/myWords.js・js/myWordsPage.js・mywords.html の渡された単語帳。docs/SPEC_MY_WORDS.md §14）: まとめて足すで見えない字（NUL）のある行だけ断って行の名前と理由を言い、欄にその行だけ残す・1 語ずつ足すの訳と英語・訳を直す・単語帳の名前を変える／作るに見えない字を入れると断る（何も書かない・焦点は欄）・前からある見えない字のある語は一覧に出て、直す欄は見えない字を外した形（保存すると直した語だけ書く）・前からある単語帳の名前と訳は「名前を変える」の題と欄・直す欄でタブ・改行を空白にして見えない字を外す・渡された単語帳を新しい単語帳として足すと、焦点は「この単語帳で学ぶ」（/?learn=my&book=<id>）・次に「選択式で学ぶ」（&choice=en）・キーボードで学ぶ回へ・今の単語帳に足したときは道を出さない・初めての人にだけ SpellDash の 1 行・320 × 昼夜で横スクロール 0・エラー 0 =====
 // Service Worker は止める。種は 1 回だけ入れる（同じタブの行き来では種に戻さない）。見えない字は字のまま書かずにエスケープで書く。
 // 組になっていないサロゲートはページとの受け渡しで替わりうるので、比べるのはページの中（真偽だけを返す）
 console.log("text guard (85.1):");
@@ -26553,7 +26553,7 @@ console.log("text guard (85.1):");
   const active = (page) => page.evaluate(() => document.activeElement?.id || document.activeElement?.className || "");
   const stored = (page) => page.evaluate(() => ({ words: localStorage.getItem("spelldash_my_words"), books: localStorage.getItem("spelldash_my_books") }));
   const aboutShown = (page) => page.evaluate(() => { const a = document.getElementById("myRecvAbout"); return !!a && !a.hidden && a.getClientRects().length > 0 && !a.closest("[hidden]"); });
-  const NOTE = "見えない制御文字や壊れた字は使えません";
+  const NOTE = "見えない字や壊れた字が入っています。打ち直してください";
   const B64U = (s) => Buffer.from(s, "utf8").toString("base64url");
   const shareCode = `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: [["agenda", "議題"], ["invoice", "請求書"]] }))}`;
 
@@ -26570,7 +26570,7 @@ console.log("text guard (85.1):");
     const box = await page.$eval("#myWordsBulk", (el) => el.value);
     const s = await stored(page);
     const ws = JSON.parse(s.words || "[]");
-    check("85.1 まとめて足す: NUL のある行だけ断る（「tea（お茶）: 日本語訳に見えない制御文字や壊れた字は使えません」。行の名前は見えない字を外す）・ほかの 2 行は足す・欄には断った行だけを貼った形のまま残す",
+    check("85.1 まとめて足す: NUL のある行だけ断る（「tea（お茶）: 日本語訳に見えない字や壊れた字が入っています。打ち直してください」。行の名前は見えない字を外す）・ほかの 2 行は足す・欄には断った行だけを貼った形のまま残す",
       raw.includes("\u0000") && st === `2語を足した。足せなかった 1行（欄に残した）: tea（お茶）: 日本語訳に${NOTE}` && box === "tea, お\u0000茶" && ws.map((w) => w.en).join() === "go,moon" && !/\\u0000/.test(s.words ?? ""),
       JSON.stringify({ raw: raw.includes("\u0000"), st, box, words: ws.map((w) => [w.en, w.ja]) }));
 
@@ -26589,7 +26589,7 @@ console.log("text guard (85.1):");
     const st3 = await status(page);
     const a3 = await active(page);
     const after = (await stored(page)).words;
-    check("85.1 1 語ずつ足す: 訳に向きを上書きする字 → 「日本語訳に見えない制御文字や壊れた字は使えません」・焦点は訳の欄／英語に入れる → 「英語に…」（打った字は文に入れない）・焦点は英語の欄・何も書かない",
+    check("85.1 1 語ずつ足す: 訳に向きを上書きする字 → 「日本語訳に見えない字や壊れた字が入っています。打ち直してください」・焦点は訳の欄／英語に入れる → 「英語に…」（打った字は文に入れない）・焦点は英語の欄・何も書かない",
       st2 === `日本語訳に${NOTE}` && a2 === "myWordsJa" && st3 === `英語に${NOTE}` && !st3.includes("\u202E") && a3 === "myWordsEn" && after === before,
       JSON.stringify({ st2, a2, st3, a3, same: after === before }));
 
@@ -26602,7 +26602,7 @@ console.log("text guard (85.1):");
     const editing = await page.evaluate(() => ({ open: !!document.querySelector("#myWordsList .mw-row__input"), focus: document.activeElement?.classList.contains("mw-row__input") ?? false }));
     const after4 = (await stored(page)).words;
     await page.press("#myWordsList .mw-row__input", "Escape").catch(() => {});
-    check("85.1 訳を直す: 向きを隔離する字を入れて Enter → 「日本語訳に見えない制御文字や壊れた字は使えません」・直す欄は開いたまま焦点も欄・保存は変えない",
+    check("85.1 訳を直す: 向きを隔離する字を入れて Enter → 「日本語訳に見えない字や壊れた字が入っています。打ち直してください」・直す欄は開いたまま焦点も欄・保存は変えない",
       st4 === `日本語訳に${NOTE}` && editing.open && editing.focus && after4 === before, JSON.stringify({ st4, editing, same: after4 === before }));
 
     // (4) 単語帳: 名前を変えるに U+2066 → 断る（欄に焦点・一覧は書かない）。新しい単語帳の名前に NUL → 断る
@@ -26620,7 +26620,7 @@ console.log("text guard (85.1):");
     const st6 = await status(page);
     const s6 = await stored(page);
     const tabs = await page.evaluate(() => [...document.querySelectorAll("#myBookTabs .mw-book__name")].map((b) => b.textContent));
-    check("85.1 単語帳: 名前を変える・新しい単語帳の名前に見えない字 → 「単語帳の名前に見えない制御文字や壊れた字は使えません」・焦点は名前の欄・一覧は書かない（単語帳は「マイ単語帳」だけ）",
+    check("85.1 単語帳: 名前を変える・新しい単語帳の名前に見えない字 → 「単語帳の名前に見えない字や壊れた字が入っています。打ち直してください」・焦点は名前の欄・一覧は書かない（単語帳は「マイ単語帳」だけ）",
       st5 === `単語帳の名前に${NOTE}` && a5 === "myBookName" && st6 === `単語帳の名前に${NOTE}` && s6.books === null && JSON.stringify(tabs) === '["マイ単語帳"]',
       JSON.stringify({ st5, a5, st6, books: s6.books, tabs }));
     check("85.1 足す・直す・単語帳の断り: 画面のエラー 0", page.errors.length === 0, page.errors[0] ?? "");
@@ -26647,6 +26647,26 @@ console.log("text guard (85.1):");
     check("85.1 前からある見えない字のある語: 一覧に 2 語とも出る・直す欄は見えない字を外した「お茶」・保存すると tea だけ「お茶」になり、sun は 1 字も変えない・エラー 0",
       JSON.stringify(rows) === '["word:sun","word:tea"]' && pre === "お茶" && s.tea === "お茶" && s.sunKept && s.n === 2 && page.errors.length === 0,
       JSON.stringify({ rows, pre, s, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (5b) 前からある単語帳の名前（向きを上書きする字・タブ）と訳（改行）: 「名前を変える」の題と欄は同じ形（見えない字を外し、タブ・改行は空白）で、
+  //      題の見え方が並べ替わらない。訳の「直す」の欄も同じ形。開いてやめただけでは保存を変えない
+  {
+    const BOOKS = JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "b2", name: "仕\u202Eabc\t事" }]);
+    const WORDS = JSON.stringify([{ en: "tea", ja: "お\n茶", book: "b2", bookName: "仕\u202Eabc\t事", addedAt: "2026-11-01T00:00:00.000Z" }]);
+    const page = await guardPage({ spelldash_my_books: BOOKS, spelldash_my_words: WORDS });
+    await open(page, "?book=b2");
+    await page.click("#myBookRename");
+    const ren = await page.evaluate(() => ({ label: document.getElementById("myBookFormLabel")?.textContent ?? "", value: document.getElementById("myBookName")?.value ?? "" }));
+    await page.press("#myBookName", "Escape");
+    await page.click('#myWordsList .mw-row[data-ref="word:tea"] .mw-row__edit');
+    const pre = await page.$eval("#myWordsList .mw-row__input", (el) => el.value);
+    await page.press("#myWordsList .mw-row__input", "Escape");
+    const s = await stored(page);
+    check("85.1 前からある単語帳の名前（向きを上書きする字・タブ）と訳（改行）: 「名前を変える」の題は「「仕abc 事」の新しい名前」で欄の「仕abc 事」と同じ形・訳の直す欄は「お 茶」（字がつながらない）・開いてやめただけでは保存を変えない・エラー 0",
+      ren.label === "「仕abc 事」の新しい名前" && ren.value === "仕abc 事" && pre === "お 茶" && s.books === BOOKS && s.words === WORDS && page.errors.length === 0,
+      JSON.stringify({ ren, pre, same: s.books === BOOKS && s.words === WORDS, err: page.errors[0] }));
     await closeCtx(page);
   }
 

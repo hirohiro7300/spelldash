@@ -2,8 +2,11 @@
 //   1. 名前と訳の字の決まり（見えない制御文字・組になっていないサロゲート・向きを変える制御文字は入れない）は js/myWordsCore.js の 1 か所。
 //      1 語ずつ足す・まとめて足す（その行だけ断り、行の名前を言う）・訳を直す・単語帳を作る／名前を変える・渡すリンクが同じ決まりを使う
 //   2. 前からある語（バックアップの読み込み・ほかの端末から届いた行）は消さず、そのまま読める（端末の保存は書き換えない）
-//   3. 送る形（js/userItemsSync.js）: 送る写しの字を整える・行の中身で断られた組は半分ずつ送り直す（要求の数に上限）・
+//   3. 送る形（js/userItemsSync.js）: 送る写しでは送り先が受け付けない字（NUL・組になっていないサロゲート）だけを U+FFFD に替える
+//      （ほかの字は前のまま送る: 欄を空にしない・別の組と同じ組にしない）・行の中身で断られた組は半分ずつ送り直す（要求の数に上限）・
 //      1 行だけで断られた行は待つ（その行が変わるか、待つ時間が過ぎたら送る）・day の行は前のまま
+//   4. 反証の直し: 場面カードの鍵と訳を絵文字の途中で切らない・断った行の名前と直す欄はタブ・改行を空白にしてから見えない字を外す・
+//      送り直しの 413／422・送っている間に変わった行・時計が戻ったとき
 // 使い方: node scripts/test-text-safe.mjs
 // 先に書いた検査（Batch 85 の前の木には決まりの口も送り直しも無い）: 投げても 1 件の失敗に数えて止まらない
 import fs from "fs";
@@ -101,18 +104,19 @@ const UNSAFE = [["NUL", "\u0000"], ["ESC", "\u001b"], ["US", "\u001f"], ["DEL", 
 // 組になっていないサロゲート（上だけ・下だけ・逆の順・絵文字の上の半分）
 const LONE = [["上だけ", "\ud800"], ["下だけ", "\udfff"], ["逆の順", "\udc00\ud800"], ["絵文字の半分", "\ud83d"]];
 const ALL_BAD = [...UNSAFE, ...LONE];
-const NOTE = /見えない制御文字/;
+// 断る文（欄の名前の後に続く）: 字の名前（制御文字など）は言わず、何が入っているかと、どうすればよいかを言う
+const NOTE = /見えない字や壊れた字が入っています。打ち直してください/;
 
 // ===== 1. 決まりは 1 か所（js/myWordsCore.js） =====
-await t("決まりの口: js/myWordsCore.js が UNSAFE_TEXT（正規表現）・isSafeText・withoutUnsafe・UNSAFE_TEXT_ERROR（「見えない制御文字…は使えません」）を持つ", () =>
-  (C.UNSAFE_TEXT instanceof RegExp && typeof C.isSafeText === "function" && typeof C.withoutUnsafe === "function" && NOTE.test(C.UNSAFE_TEXT_ERROR ?? "") && /使えません$/.test(C.UNSAFE_TEXT_ERROR ?? "")) ||
-  show({ re: String(C.UNSAFE_TEXT), safe: typeof C.isSafeText, without: typeof C.withoutUnsafe, err: C.UNSAFE_TEXT_ERROR }));
+await t("決まりの口: js/myWordsCore.js が UNSAFE_TEXT（正規表現）・isSafeText・withoutUnsafe・visibleText・UNSAFE_TEXT_ERROR（「見えない字や壊れた字が入っています。打ち直してください」。「制御文字」の語は使わない）を持つ", () =>
+  (C.UNSAFE_TEXT instanceof RegExp && typeof C.isSafeText === "function" && typeof C.withoutUnsafe === "function" && typeof C.visibleText === "function" && NOTE.test(C.UNSAFE_TEXT_ERROR ?? "") && /打ち直してください$/.test(C.UNSAFE_TEXT_ERROR ?? "") && !/制御文字/.test(C.UNSAFE_TEXT_ERROR ?? "")) ||
+  show({ re: String(C.UNSAFE_TEXT), safe: typeof C.isSafeText, without: typeof C.withoutUnsafe, visible: typeof C.visibleText, err: C.UNSAFE_TEXT_ERROR }));
 await t("決まりは 1 か所: js/myWordsShare.js は自分の正規表現を持たず、js/myWordsCore.js の決まりを使う（渡すリンクの振る舞いは前のまま: scripts/test-share.mjs）", () => {
   const src = fs.readFileSync(path.join(ROOT, "js", "myWordsShare.js"), "utf8");
   const own = /\bconst\s+UNSAFE_TEXT\s*=/.test(src) || /\\u202A-\\u202E/i.test(src.replace(/\/\/.*$/gm, ""));
   return !own || "js/myWordsShare.js に自分の UNSAFE_TEXT がある";
 });
-await t("訳（checkJaText）: 制御文字・C1・向きを変える制御文字・組になっていないサロゲートは断る（理由は「日本語訳に見えない制御文字…」・打った字を文に入れない）", () => {
+await t("訳（checkJaText）: 制御文字・C1・向きを変える制御文字・組になっていないサロゲートは断る（理由は「日本語訳に見えない字や壊れた字…」・打った字を文に入れない）", () => {
   const bad = ALL_BAD.map(([k, ch]) => [k, C.checkJaText(`請求${ch}書`)]).filter(([, r]) => r.ok || !/日本語訳/.test(r.error ?? "") || !NOTE.test(r.error ?? "") || ALL_BAD.some(([, c]) => (r.error ?? "").includes(c)));
   return bad.length === 0 || show(bad);
 });
@@ -120,13 +124,13 @@ await t("訳（checkJaText）: タブ・改行・縦タブは空白 1 つ（前�
   const rs = ["行く\tこと\n", "a\u000bb", "楽しい😀", "よい\u3000とても", "x\u200By", "y\u200Ez"].map((s) => C.checkJaText(s));
   return (rs.every((r) => r.ok) && rs[0].ja === "行く こと" && rs[1].ja === "a b" && rs[2].ja === "楽しい😀") || show(rs);
 });
-await t("英語（checkEnText）: 見えない字は「英語に見えない制御文字…」で断り、打った字を文に入れない（ほかの使えない字の文は前のまま）", () => {
+await t("英語（checkEnText）: 見えない字は「英語に見えない字や壊れた字…」で断り、打った字を文に入れない（ほかの使えない字の文は前のまま）", () => {
   const rs = [["NUL", "go\u0000"], ["RLO", "\u202Ego"], ["上だけ", "go\ud800"], ["C1", "go\u0085"]].map(([k, s]) => [k, C.checkEnText(s)]);
   const bad = rs.filter(([, r]) => r.ok || !/^英語に/.test(r.error ?? "") || !NOTE.test(r.error ?? "") || ALL_BAD.some(([, c]) => (r.error ?? "").includes(c)));
   const cafe = C.checkEnText("café");
   return (bad.length === 0 && !cafe.ok && /「café」は使えない字を含みます/.test(cafe.error)) || show({ bad, cafe });
 });
-await t("単語帳の名前（checkBookName）: 見えない字は「単語帳の名前に見えない制御文字…」で断る・絵文字は使える", () => {
+await t("単語帳の名前（checkBookName）: 見えない字は「単語帳の名前に見えない字や壊れた字…」で断る・絵文字は使える", () => {
   const bad = ALL_BAD.map(([k, ch]) => [k, C.checkBookName(`仕${ch}事`, [])]).filter(([, r]) => r.ok || !/単語帳の名前に/.test(r.error ?? "") || !NOTE.test(r.error ?? ""));
   const emoji = C.checkBookName("旅行😀", []);
   return (bad.length === 0 && emoji.ok) || show({ bad, emoji });
@@ -162,7 +166,7 @@ await t("まとめて足す: 見えない字のある行だけ断り、行の名
 await t("まとめて足す: 英語の側の見えない字も、その行だけ断る（行の名前から見えない字を外す）", () => {
   reset();
   const r = M.addMyWordsBulk("go\u0000, 行く\nsun, 太陽", "main");
-  return (JSON.stringify(r.added) === '["sun"]' && r.skipped.length === 1 && /^go（行く）: 英語に見えない制御文字/.test(r.skipped[0]) && JSON.stringify(r.rest) === JSON.stringify(["go\u0000, 行く"])) || show(r);
+  return (JSON.stringify(r.added) === '["sun"]' && r.skipped.length === 1 && /^go（行く）: 英語に見えない字や壊れた字/.test(r.skipped[0]) && JSON.stringify(r.rest) === JSON.stringify(["go\u0000, 行く"])) || show(r);
 });
 await t("訳を直す: 見えない字は断る・保存は変えない", () => {
   reset({ spelldash_my_words: [{ en: "go", ja: "行く", addedAt: "x" }] });
@@ -180,11 +184,11 @@ await t("単語帳を作る・名前を変える: 見えない字は断る・一
 await t("渡された語を足す（addSharedWords）も同じ確かめ: 見えない字の語は足さずに理由を言う（リンクからは読む側が先に断る）", () => {
   reset();
   const r = M.addSharedWords([{ en: "go", ja: "行く" }, { en: "tea", ja: "お\u0000茶" }], { name: "仕事" });
-  return (r.ok && r.added.join() === "go" && r.skipped.length === 1 && /^tea（お茶）: 日本語訳に見えない制御文字/.test(r.skipped[0])) || show(r);
+  return (r.ok && r.added.join() === "go" && r.skipped.length === 1 && /^tea（お茶）: 日本語訳に見えない字や壊れた字/.test(r.skipped[0])) || show(r);
 });
 await t("場面カード（addMyConcept。古い単語帳のページと文から作る道。今は閉じた画面だけ）も同じ決まり: 場面・答え・解説・別解に見えない字は断る・何も書かない・改行とタブは前のまま通す", () => {
   const base = { q: "会議の前に配る、話すことの一覧", answer: "agenda", explain: "議題", accept: "" };
-  const cases = [["q", "場面", "会議の前に\u0000配る一覧"], ["answer", "答え", "agen‮da"], ["explain", "解説", "議\ud800題"], ["accept", "別解", "agendum/age\u0085nda"]];
+  const cases = [["q", "場面", "会議の前に\u0000配る一覧"], ["answer", "答え", "agen\u202Eda"], ["explain", "解説", "議\ud800題"], ["accept", "別解", "agendum/age\u0085nda"]];
   const bad = [];
   for (const [field, label, value] of cases) {
     reset();
@@ -326,14 +330,14 @@ function seedWords(n, bad = [], extra = []) {
 }
 const sentKeys = (cloud) => [...cloud.rows.values()].map((r) => r.key);
 
-await t("送る字を整える（cleanSendValue）: NUL とほかの制御文字（タブ・改行・復帰は残す）・DEL・C1 を落とし、組になっていないサロゲートを U+FFFD に・入れ子と鍵の名前も・元の値は変えない", () => {
-  const input = { en: "go", ja: "a\u0000b\u0001c\td\ne\rf\u007f\u0085\u009fg", n: 3, ok: true, none: null, list: ["x\ud800y", "😀", "\udfff"], deep: { "k\u0000": "\u202Eabc" } };
+await t("送る字を整える（cleanSendValue）: 送り先が受け付けない字だけを U+FFFD に替える（NUL・組になっていないサロゲート。1 字を 1 字に）・ほかの制御文字・DEL・C1・向きを変える字は前のまま・入れ子と鍵の名前も・元の値は変えない", () => {
+  const input = { en: "go", ja: "a\u0000b\u0001c\td\ne\rf\u007f\u0085\u009fg", n: 3, ok: true, none: null, list: ["x\ud800y", "😀", "\udfff", "\udc00\ud800"], deep: { "k\u0000": "\u202Eabc" } };
   const copy = JSON.parse(JSON.stringify(input));
   const out = S.cleanSendValue(input);
-  const want = { en: "go", ja: "abc\td\ne\rfg", n: 3, ok: true, none: null, list: ["x\uFFFDy", "😀", "\uFFFD"], deep: { k: "\u202Eabc" } };
+  const want = { en: "go", ja: "a\uFFFDb\u0001c\td\ne\rf\u007f\u0085\u009fg", n: 3, ok: true, none: null, list: ["x\uFFFDy", "😀", "\uFFFD", "\uFFFD\uFFFD"], deep: { "k\uFFFD": "\u202Eabc" } };
   return (JSON.stringify(out) === JSON.stringify(want) && JSON.stringify(input) === JSON.stringify(copy)) || show(out);
 });
-await t("送る: 前からの見えない字のある語（バックアップ・ほかの端末から）も、整えた写しで 1 回で届く・ほかの語も届く・端末の保存は 1 字も変えない", async () => {
+await t("送る: 前からの見えない字のある語（バックアップ・ほかの端末から）も、整えた写し（NUL と組になっていないサロゲートは U+FFFD）で 1 回で届く・ほかの語も届く・端末の保存は 1 字も変えない", async () => {
   reset({
     spelldash_my_words: OLD_RAW,
     spelldash_user_items_meta: Object.fromEntries(OLD_WORDS.map((w) => [`my_word:${w.en}`, { updatedAt: "2026-11-08T00:00:00.000Z", deleted: false }])),
@@ -343,7 +347,7 @@ await t("送る: 前からの見えない字のある語（バックアップ・
   await S.pushUserItems(cloud, "u1", { now: T0 });
   const go = cloud.rows.get("my_word:go");
   const sun = cloud.rows.get("my_word:sun");
-  return (cloud.upserts().length === 1 && cloud.rows.size === 3 && go?.payload.ja === "行く" && go?.payload.bookName === "仕\u202E事" && sun?.payload.ja === "太陽\uFFFD" && dirty().length === 0 && LS.getItem("spelldash_my_words") === OLD_RAW) ||
+  return (cloud.upserts().length === 1 && cloud.rows.size === 3 && go?.payload.ja === "行\uFFFDく" && go?.payload.bookName === "仕\u202E事" && sun?.payload.ja === "太陽\uFFFD" && dirty().length === 0 && LS.getItem("spelldash_my_words") === OLD_RAW) ||
     show({ calls: cloud.calls, n: cloud.rows.size, go: go?.payload, dirty: dirty() });
 });
 await t("送る: バックアップから戻した語（見えない字あり）も、次の送信で整えて届く（戻した保存はそのまま）", async () => {
@@ -353,9 +357,9 @@ await t("送る: バックアップから戻した語（見えない字あり）
   B.applyBackup({ app: "SpellDash", version: 1, data: { spelldash_schema_version: "7", spelldash_my_words: OLD_RAW, spelldash_user_items_meta: JSON.stringify(m), spelldash_user_items_dirty: JSON.stringify(Object.keys(m)) } });
   const cloud = fakeCloud();
   await S.pushUserItems(cloud, "u1", { now: T0 });
-  return (cloud.rows.size === 3 && cloud.rows.get("my_word:go")?.payload.ja === "行く" && dirty().length === 0 && LS.getItem("spelldash_my_words") === OLD_RAW) || show({ calls: cloud.calls, dirty: dirty() });
+  return (cloud.rows.size === 3 && cloud.rows.get("my_word:go")?.payload.ja === "行\uFFFDく" && dirty().length === 0 && LS.getItem("spelldash_my_words") === OLD_RAW) || show({ calls: cloud.calls, dirty: dirty() });
 });
-await t("送る: ほかの端末から届いた行（見えない字・80 字で切れたメモ）を後で直しても、次の送信は整えて届く（同じ要求の語も届く）", async () => {
+await t("送る: ほかの端末から届いた行（見えない字・80 字で切れたメモ）を後で直しても、次の送信は届く（送り先が受け付けない字だけを替える: メモの絵文字の半分は U+FFFD・ほかの制御文字は前のまま。同じ要求の語も届く）", async () => {
   reset({ spelldash_my_words: [{ en: "tea", ja: "お茶", addedAt: "2026-11-03T00:00:00.000Z" }] });
   const note = `${"あ".repeat(79)}😀`;
   S.mergeCloudItems([
@@ -368,7 +372,8 @@ await t("送る: ほかの端末から届いた行（見えない字・80 字で
   const cloud = fakeCloud();
   await S.pushUserItems(cloud, "u1", { now: T0 });
   const n = cloud.rows.get("note:my-go")?.payload.text ?? "";
-  return (cloud.upserts().length === 1 && cloud.rows.size === 3 && n === `${"あ".repeat(79)}\uFFFD` && cloud.rows.get("my_word:go")?.payload.ja === "行く" && dirty().length === 0) || show({ calls: cloud.calls, n: n.length, dirty: dirty() });
+  const go = cloud.rows.get("my_word:go")?.payload;
+  return (cloud.upserts().length === 1 && cloud.rows.size === 3 && n === `${"あ".repeat(79)}\uFFFD` && go?.ja === "行\u0001く" && go?.bookName === "仕\u0085事" && dirty().length === 0) || show({ calls: cloud.calls, n: n.length, go, dirty: dirty() });
 });
 await t("送る: 鍵そのものに送れない字（NUL・組になっていないサロゲート）がある項目は送らない（端末に残り、送る待ちにも残る）・ほかの語は届く", async () => {
   seedWords(4, [], [{ en: "go\u0000x", ja: "行く", addedAt: "2026-11-01T00:00:00.000Z" }, { en: "sun\ud800", ja: "太陽", addedAt: "2026-11-01T00:00:00.000Z" }]);
@@ -486,6 +491,144 @@ await t("取り込み（pullUserItems）の送り直しも同じ: 断られる�
   await S.pullUserItems(cloud, "u1", { now: T0 + RETRY });
   const third = cloud.upserts().length - first - second;
   return (stored === 4 && first <= 1 + 2 * Math.ceil(Math.log2(5)) && meta()[bad]?.failAt === T0 + RETRY && second === 0 && third === 1 && dirty().includes(bad)) || show({ stored, first, second, third, mark: meta()[bad], dirty: dirty() });
+});
+
+// ===== 5. 反証の直し（fixer） =====
+// 5.1 送る写しは送り先が受け付けない字（NUL・組になっていないサロゲート）だけを U+FFFD に替える: ほかの端末で欄が空にならない（語が消えて見えない）・
+//     別の組と同じ組にならない・送り先が受け付ける字（C1・向きを変える字）が鍵にある前からの項目も送る
+// 2 台目の端末（B）: 送り先に届いた行だけを持つ空の端末で取り込む
+const onOtherDevice = (cloud) => {
+  reset();
+  S.mergeCloudItems([...cloud.rows.values()], "u1");
+  return { list: M.getMyWords(), raw: words(), notes: JSON.parse(LS.getItem("spelldash_word_notes") || "{}") };
+};
+const seedItems = (list, notes = {}, extra = []) => {
+  const ids = [...list.map((w) => `my_word:${w.en}`), ...Object.keys(notes).map((k) => `note:${k}`)];
+  const m = Object.fromEntries(ids.map((id) => [id, { updatedAt: "2026-11-08T00:00:00.000Z", deleted: false }]));
+  for (const [id, mm] of extra) m[id] = mm;
+  reset({ spelldash_my_words: list, spelldash_word_notes: notes, spelldash_user_items_meta: m, spelldash_user_items_dirty: [...ids, ...extra.map(([id]) => id)] });
+};
+await t("5.1 送る: 前からの訳・場面・メモが見えない字だけ（制御文字 2 つ・NUL だけ）でも、ほかの端末で語もメモも見える（送る写しで欄を空にしない。NUL は U+FFFD、ほかの制御文字は前のまま）", async () => {
+  const A = [
+    { en: "tab", ja: "\u0001\u0085", addedAt: "2026-01-01T00:00:00.000Z" },
+    { en: "nul", ja: "\u0000", addedAt: "2026-01-01T00:00:00.000Z" },
+    { kind: "concept", en: "scene", answer: "scene", q: "\u0002\u0003\u0004\u0005", explain: "", accept: [], ja: "", addedAt: "2026-01-01T00:00:00.000Z" }
+  ];
+  seedItems(A, { "my-tab": "\u0001\u0002" });
+  const seenOnA = M.getMyWords().length;
+  const cloud = fakeCloud();
+  await S.pushUserItems(cloud, "u1", { now: T0 });
+  const sent = { tab: cloud.rows.get("my_word:tab")?.payload.ja, nul: cloud.rows.get("my_word:nul")?.payload.ja, q: cloud.rows.get("my_word:scene")?.payload.q, note: cloud.rows.get("note:my-tab")?.payload.text };
+  const B = onOtherDevice(cloud);
+  const byEn = Object.fromEntries(B.list.map((w) => [w.en, w]));
+  return (seenOnA === 3 && cloud.upserts().length === 1 && sent.tab === "\u0001\u0085" && sent.nul === "\uFFFD" && sent.q === "\u0002\u0003\u0004\u0005" && sent.note === "\u0001\u0002"
+    && B.list.length === 3 && byEn.tab?.ja === "\u0001\u0085" && byEn.nul?.ja === "\uFFFD" && byEn.scene?.q === "\u0002\u0003\u0004\u0005" && B.notes["my-tab"] === "\u0001\u0002") ||
+    show({ seenOnA, sent, onB: B.raw, notes: B.notes });
+});
+await t("5.1 送る: NUL のある訳は U+FFFD にして送るので、ほかの端末で別の組（同じ英語・NUL の無い訳）と同じ組にならない（り・NUL・んご と りんご は 2 つの別の組のまま）", async () => {
+  const second = C.myIdentityFor([{ en: "apple" }], "apple", "りんご");
+  seedItems([{ en: "apple", ja: "り\u0000んご", addedAt: "2026-01-01T00:00:00.000Z" }, { en: second, ja: "りんご", text: "apple", addedAt: "2026-01-02T00:00:00.000Z" }]);
+  const cloud = fakeCloud();
+  await S.pushUserItems(cloud, "u1", { now: T0 });
+  const B = onOtherDevice(cloud);
+  const same = B.list.filter((w) => C.answerKeyOf(w) === "apple" && C.normJa(w.ja) === "りんご");
+  return (second !== "apple" && cloud.rows.size === 2 && B.list.length === 2 && same.length === 1 && B.list.find((w) => w.en === "apple")?.ja === "り\uFFFDんご") || show({ second, onB: B.raw });
+});
+await t("5.1 送る: 鍵に送り先が受け付ける見えない字（C1 の U+0085・向きを上書きする字）がある前からの項目は、鍵を変えずに送る（生きた項目も消した墓標も・送る待ちに残らない）。NUL の鍵は前のまま送らない", async () => {
+  const A = [
+    { kind: "concept", en: "a\u0085b", answer: "a\u0085b", q: "場面の説明です", explain: "", accept: [], ja: "", addedAt: "2026-01-01T00:00:00.000Z" },
+    { kind: "concept", en: "x\u202Ey", answer: "x\u202Ey", q: "場面の説明です", explain: "", accept: [], ja: "", addedAt: "2026-01-01T00:00:00.000Z" },
+    { kind: "concept", en: "n\u0000g", answer: "ng", q: "場面の説明です", explain: "", accept: [], ja: "", addedAt: "2026-01-01T00:00:00.000Z" }
+  ];
+  seedItems(A, {}, [["my_word:c\u0085d", { updatedAt: "2026-11-08T00:00:00.000Z", deleted: true }]]);
+  const cloud = fakeCloud();
+  await S.pushUserItems(cloud, "u1", { now: T0 });
+  const live = cloud.rows.get("my_word:a\u0085b");
+  const tomb = cloud.rows.get("my_word:c\u0085d");
+  return (cloud.upserts().length === 1 && live?.deleted === false && live?.payload.q === "場面の説明です" && cloud.rows.has("my_word:x\u202Ey") && tomb?.deleted === true && cloud.rows.size === 3
+    && JSON.stringify(dirty()) === JSON.stringify(["my_word:n\u0000g"])) || show({ keys: [...cloud.rows.keys()], dirty: dirty() });
+});
+
+// 5.2 場面カード（addMyConcept）の鍵と訳: 40 字で切るときに絵文字（組になったサロゲート）を半分にしない。切る所が絵文字の途中でなければ前と同じ
+await t("5.2 場面カードの鍵: NFKC で長くなる答え（㍿ → 株式会社）を 40 字で切るときに絵文字を半分にしない（鍵に組になっていないサロゲートを作らない）・作ったカードは送ると届く（送る待ちに残らない）", async () => {
+  reset();
+  const r = M.addMyConcept({ q: "場面の説明です", answer: `${"㍿".repeat(9)}あいう😀` });
+  const w = words().find((x) => x.kind === "concept");
+  const cloud = fakeCloud();
+  await S.pushUserItems(cloud, "u1", { now: T0 });
+  return (r.ok && w?.en === `${"株式会社".repeat(9)}あいう` && C.isSafeText(w?.en) && cloud.rows.has(`my_word:${w?.en}`) && dirty().length === 0) ||
+    show({ r, key: w?.en, tail: w?.en?.slice(-3), dirty: dirty(), calls: cloud.calls });
+});
+await t("5.2 場面カードの鍵: 切る所が絵文字の途中でなければ前と同じ（40 字目までに絵文字がまるごと入る答えは絵文字ごと・40 字より短い答えはそのまま）", () => {
+  reset();
+  const a = M.addMyConcept({ q: "場面の説明です", answer: `${"㍿".repeat(9)}あい😀` });
+  const b = M.addMyConcept({ q: "場面の説明です", answer: "Agenda 😀" });
+  const keys = words().map((x) => x.en);
+  return (a.ok && b.ok && JSON.stringify(keys) === JSON.stringify([`${"株式会社".repeat(9)}あい😀`, "agenda😀"]) && keys.every((k) => C.isSafeText(k))) || show({ a, b, keys });
+});
+await t("5.2 場面カードの訳（解説の頭 40 字）: 絵文字を半分にしない（切る所が絵文字の途中なら絵文字の前まで・40 字目までに入る絵文字は残す）", () => {
+  reset();
+  const a = M.addMyConcept({ q: "場面の説明です", answer: "用語", explain: `${"あ".repeat(39)}😀説明` });
+  const ja1 = words()[0]?.ja;
+  reset();
+  const b = M.addMyConcept({ q: "場面の説明です", answer: "用語", explain: `${"あ".repeat(38)}😀説明` });
+  const ja2 = words()[0]?.ja;
+  return (a.ok && b.ok && ja1 === "あ".repeat(39) && ja2 === `${"あ".repeat(38)}😀` && C.isSafeText(ja1) && C.isSafeText(ja2)) || show({ a, b, ja1, ja2 });
+});
+
+// 5.3 画面に出す形（visibleText）: タブ・改行などの空白の字は空白 1 つにしてから見えない字を外す（語がつながらない）。保存は書き換えない
+await t("5.3 visibleText: タブ・改行・復帰は空白にしてから見えない字を外す（「a b cde」）・字の無い物は空の文字", () => {
+  const a = C.visibleText("a\tb\nc\u0000d\u202Ee\ud800");
+  const b = C.visibleText("x\r\ny");
+  return (a === "a b cde" && b === "x  y" && C.visibleText(undefined) === "" && C.visibleText("\u0001") === "") || show({ a, b });
+});
+await t("5.3 まとめて足す: 断った行の名前はタブを空白にして見せる（「日本語だけ の行」「tea（お茶 です）」。語がつながらない）・欄に残す行は貼った形のまま", () => {
+  reset();
+  const r = M.addMyWordsBulk("go, 行く\n日本語だけ\tの行\ntea, お\u0000茶\tです", "main");
+  return (JSON.stringify(r.added) === '["go"]' && r.skipped.length === 2 && r.skipped[0] === "日本語だけ の行: 英語が無い。「english, 訳」の形で書く" && /^tea（お茶 です）: 日本語訳に/.test(r.skipped[1])
+    && JSON.stringify(r.rest) === JSON.stringify(["日本語だけ\tの行", "tea, お\u0000茶\tです"])) || show(r);
+});
+
+// 5.4 送り直しの分かれ道: 413・422 も行の中身で断られた組として半分ずつ送り直す・送っている間に変わった行には印を付けない・時計が戻ったら待たない
+await t("5.4 分けて送り直す: 送り先が 413（大きすぎる）・422（中身が合わない）で断る組も半分ずつ送り直し、ほかの 9 行は届く・断られた 1 行だけに印", async () => {
+  const bad = [];
+  for (const status of [413, 422]) {
+    seedWords(10);
+    const cloud = fakeCloud({ respond: (list) => (list.some((r) => r.key === "w006") ? { data: null, error: { code: "", message: "rejected" }, status } : null) });
+    await S.pushUserItems(cloud, "u1", { now: T0 });
+    const n = cloud.upserts().length;
+    if (!(cloud.rows.size === 9 && !cloud.rows.has("my_word:w006") && JSON.stringify(dirty()) === '["my_word:w006"]' && meta()["my_word:w006"]?.failAt === T0 && n <= 1 + 2 * Math.ceil(Math.log2(10)))) bad.push({ status, stored: cloud.rows.size, dirty: dirty(), mark: meta()["my_word:w006"], n });
+  }
+  return bad.length === 0 || show(bad);
+});
+await t("5.4 送っている間にその行が変わったら（touchItem）、断られても新しい版に印を付けない・次の送信で新しい版を送る（1 日待たない）", async () => {
+  seedWords(10, [6]);
+  const bad = `${LONG}6`;
+  let touched = false;
+  const cloud = fakeCloud({
+    respond: (list) => {
+      if (!touched && list.some((r) => r.key === bad)) {
+        touched = true;
+        S.touchItem("my_word", bad, false, "2026-11-08T12:00:00.000Z"); // 送っている間に直した
+      }
+      return null; // 返事は本物と同じ（長すぎる鍵の行があれば 400）
+    }
+  });
+  await S.pushUserItems(cloud, "u1", { now: T0 });
+  const m1 = meta()[`my_word:${bad}`];
+  const before = cloud.upserts().filter((c) => c.keys.includes(bad)).length;
+  await S.pushUserItems(cloud, "u1", { now: T0 + 1 });
+  const after = cloud.upserts().filter((c) => c.keys.includes(bad)).length;
+  return (touched && m1 && !("failAt" in m1) && m1.updatedAt === "2026-11-08T12:00:00.000Z" && dirty().includes(`my_word:${bad}`) && cloud.rows.size === 9 && after === before + 1) || show({ touched, m1, before, after, dirty: dirty() });
+});
+await t("5.4 時計が戻って印の時刻が先になったら待たない（次の送信でその行を送る）", async () => {
+  seedWords(10, [6]);
+  const bad = `${LONG}6`;
+  const cloud = fakeCloud();
+  await S.pushUserItems(cloud, "u1", { now: T0 });
+  const after1 = cloud.upserts().length;
+  await S.pushUserItems(cloud, "u1", { now: T0 - 1000 });
+  return (meta()[`my_word:${bad}`]?.failAt === T0 - 1000 && cloud.upserts().length === after1 + 1 && cloud.upserts().at(-1).keys.includes(bad)) || show({ after1, n: cloud.upserts().length, mark: meta()[`my_word:${bad}`] });
 });
 
 console.log(`test-text-safe: ${passed} passed, ${failed} failed`);
