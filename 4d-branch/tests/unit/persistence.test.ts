@@ -352,6 +352,109 @@ describe("Persistence（IndexedDB）", () => {
   });
 });
 
+/**
+ * 1 つのロックだけを扱う小さな Web Locks。ctl.deny: 要求をすべて断る（保存を禁じた枠の中などの SecurityError）。
+ * ctl.hold: 答えを止めておき、release() でまとめて出す
+ */
+function fakeLocks(init: { deny?: boolean; hold?: boolean } = {}) {
+  const ctl = { deny: false, hold: false, ...init };
+  let holder: ((err: unknown) => void) | null = null;
+  const waiting: Array<() => void> = [];
+  const request = (name: string, options: LockOptions, cb: (lock: Lock | null) => unknown): Promise<unknown> => {
+    if (ctl.deny) return Promise.reject(new DOMException("The request was denied.", "SecurityError"));
+    return new Promise((resolve, reject) => {
+      const answer = () => {
+        if (holder && !options.steal) {
+          // ifAvailable だけを扱う（このアプリは待つ要求を出さない）
+          void Promise.resolve(cb(null)).then(resolve, reject);
+          return;
+        }
+        holder?.(new DOMException("The lock request is aborted.", "AbortError"));
+        holder = reject;
+        void Promise.resolve(cb({ name, mode: "exclusive" } as Lock)).then(resolve, reject);
+      };
+      if (ctl.hold) waiting.push(answer);
+      else setTimeout(answer);
+    });
+  };
+  return { ctl, locks: { request } as unknown as LockManager, release: () => waiting.splice(0).forEach((f) => f()) };
+}
+
+describe("Persistence（タブのロック）", () => {
+  const makeL = (kv: SyncKV, name: string, locks: LockManager, lockTimeoutMs?: number) => new Persistence({ dbName: name, kv, locks, channel: false, debounceMs: 1, lockTimeoutMs });
+
+  /** 固まらないことを確かめる（ms 待っても終わらなければ失敗） */
+  const settles = <T>(p: Promise<T>, ms = 1000): Promise<T> => Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${ms}ms 待っても終わらない`)), ms))]);
+
+  /** 編集できるタブとして保存まで通る */
+  async function canSave(p: Persistence): Promise<void> {
+    const doc = createEmptyDoc("保存できるか");
+    p.attach(() => doc);
+    p.markDirty();
+    await p.flush();
+    expect(p.status).toBe("saved");
+    expect((await p.readStored())!.doc.title).toBe("保存できるか");
+  }
+
+  it("ロックの要求が断られても（保存を禁じた枠の中など）起動は止まらず、ロック無しで編集できるタブになる", async () => {
+    const p = makeL(memoryKV(), `test-${++dbSeq}`, fakeLocks({ deny: true }).locks);
+    await p.open();
+    expect(await settles(p.acquireWriter())).toBe(true);
+    expect(p.writer).toBe(true);
+    await p.loadInitial();
+    await canSave(p);
+  });
+
+  it("引き継ぎでロックの要求が断られても止まらず、編集できるタブになる", async () => {
+    const p = makeL(memoryKV(), `test-${++dbSeq}`, fakeLocks({ deny: true }).locks);
+    await p.open();
+    await p.loadInitial();
+    expect(p.writer).toBe(false);
+    await settles(p.takeOver());
+    expect(p.writer).toBe(true);
+    await canSave(p);
+  });
+
+  it("ロックの答えが来ないときは上限まで待ってロック無しで続け、遅れて取れたロックは持つ（引き継がれたら閲覧のみ）", async () => {
+    const { ctl, locks, release } = fakeLocks({ hold: true });
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const a = makeL(kv, name, locks, 30);
+    await a.open();
+    expect(await settles(a.acquireWriter())).toBe(true);
+    expect(a.writer).toBe(true);
+    // 遅れてロックが取れた → 持ち続けるので、別のタブが引き継ぐとこのタブは閲覧のみになる
+    ctl.hold = false;
+    release();
+    await wait();
+    const b = makeL(kv, name, locks);
+    await b.open();
+    await settles(b.takeOver());
+    await wait();
+    expect(b.writer).toBe(true);
+    expect(a.writer).toBe(false);
+    expect(a.status).toBe("readonly");
+  });
+
+  it("答えが遅れて、別のタブが持っていると分かったら閲覧のみに戻す", async () => {
+    const { ctl, locks, release } = fakeLocks();
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const b = makeL(kv, name, locks);
+    await b.open();
+    expect(await b.acquireWriter()).toBe(true);
+    ctl.hold = true;
+    const a = makeL(kv, name, locks, 30);
+    await a.open();
+    expect(await settles(a.acquireWriter())).toBe(true);
+    release();
+    await wait();
+    expect(a.writer).toBe(false);
+    expect(a.status).toBe("readonly");
+    expect(b.writer).toBe(true);
+  });
+});
+
 describe("インポート", () => {
   it("書き出したものを確認画面用に読める", () => {
     const doc = buildDemoDoc();

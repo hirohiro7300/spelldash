@@ -11,6 +11,8 @@ interface Step {
   target?: string;
   node?: () => string | null;
   before?: () => void;
+  /** このステップから離れるとき（次・戻る・スキップ・終わり）。before で変えた表示を戻す */
+  after?: () => void;
   place?: "right" | "left" | "top" | "bottom" | "center";
 }
 
@@ -29,12 +31,31 @@ export function startTour(app: AppContext): void {
     }
     return best?.id ?? null;
   };
+  /**
+   * パネルを照らすステップ用。閉じていれば（狭い画面では左右とも閉じて始める）そのステップの間だけ開き、
+   * 離れるときに閉じ直す（幅 0 のパネルを照らして何も無い所を指さない）
+   */
+  const showPanel = (key: "leftOpen" | "rightOpen"): Pick<Step, "before" | "after"> => {
+    const set = (open: boolean) => ui.setPrefs(key === "leftOpen" ? { leftOpen: open } : { rightOpen: open });
+    let opened = false;
+    return {
+      before: () => {
+        opened = !ui.prefs[key];
+        if (opened) set(true);
+      },
+      after: () => {
+        if (opened) set(false);
+        opened = false;
+      },
+    };
+  };
   const steps: Step[] = [
     {
       title: "プロジェクトは「所属」",
       body: "3 つのプロジェクトが 1 つのグラフを共有しています。押すとそのプロジェクトが強調され、⌘／Ctrl クリックで複数を選べます。🔗 の数字は、ほかのプロジェクトと共有しているノードの数です。",
       target: '.sidebar-left [data-section="projects"]',
       place: "right",
+      ...showPanel("leftOpen"),
     },
     {
       title: "無限のキャンバス",
@@ -65,6 +86,7 @@ export function startTour(app: AppContext): void {
       body: "選んだノードの文章・期限・条件・タグ・所属プロジェクト・シナリオを編集します。「つながり」から前後のノードへ移れます。",
       target: ".sidebar-right",
       place: "left",
+      ...showPanel("rightOpen"),
     },
     {
       title: "検索・追加・元に戻す",
@@ -92,9 +114,10 @@ export function startTour(app: AppContext): void {
   const card = h("div", { class: "tour-card", role: "dialog", attrs: { "aria-live": "polite", "aria-label": "操作ガイド" } });
   const layer = h("div", { class: "tour" }, hole, card);
   (document.getElementById("overlay-root") ?? document.body).append(layer);
-  let i = 0;
+  let i = -1;
 
   const close = () => {
+    steps[i]?.after?.();
     layer.remove();
     document.removeEventListener("keydown", onKey, true);
     window.removeEventListener("resize", place);
@@ -161,6 +184,13 @@ export function startTour(app: AppContext): void {
         left = r.left + r.width / 2 - cw / 2;
         top = r.top - ch - 16;
       }
+      // 横に並べる幅が無い（狭い画面で開いたパネルなど）ときは、対象の下か上の空いている方へ（説明で対象を隠さない）
+      const room = s.place === "right" ? window.innerWidth - r.right : s.place === "left" ? r.left : Infinity;
+      if (room < cw + 34) {
+        left = (window.innerWidth - cw) / 2;
+        if (window.innerHeight - r.bottom >= ch + 32) top = r.bottom + 16;
+        else if (r.top >= ch + 32) top = r.top - ch - 16;
+      }
     } else if (r && s.place === "center") {
       top = r.top + r.height / 2 - ch / 2;
       left = r.left + r.width / 2 - cw / 2;
@@ -172,6 +202,7 @@ export function startTour(app: AppContext): void {
   const go = (k: number) => {
     if (k >= steps.length) return close();
     if (k < 0) return;
+    steps[i]?.after?.();
     i = k;
     const s = steps[i]!;
     s.before?.();

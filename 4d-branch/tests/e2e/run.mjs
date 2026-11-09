@@ -88,6 +88,68 @@ async function startInlineEdit(page, id) {
 /** 開いているタイトルの欄を取り消して閉じる（確かめが途中で落ちても、打ちかけを後の確かめに残さない） */
 const closeInlineEditor = (page) => page.evaluate(() => document.querySelector(".inline-editor")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
 
+/** 別の書き手（ロックの使えない環境の別タブなど）が、知らないうちに版を進めた（次の保存が競合で止まる） */
+const bumpStoredRev = (page) =>
+  page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const req = indexedDB.open("4d-branch");
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const t = db.transaction("kv", "readwrite");
+          const s = t.objectStore("kv");
+          const g = s.get("meta");
+          g.onsuccess = () => s.put({ ...g.result, rev: g.result.rev + 5, writer: "t_other" }, "meta");
+          t.oncomplete = () => (db.close(), resolve());
+          t.onerror = () => reject(t.error);
+        };
+      }),
+  );
+
+// 上部バーを確かめる幅（段が切り替わる前後を含む。src/styles/app.css の「上部バーの段階」）
+const TOPBAR_WIDTHS = [320, 400, 560, 640, 700, 760, 761, 762, 860, 880, 916, 917, 1040, 1100, 1177, 1178, 1280, 1300, 1329, 1330, 1440];
+
+/** 上部バー: 横のはみ出し・画面の外に出たボタン・右のパネルの開閉ボタン（真ん中を押すとそのボタンに当たるか） */
+const measureTopbar = (page) =>
+  page.evaluate(() => {
+    const vw = window.innerWidth;
+    const bar = document.querySelector(".topbar");
+    const shown = [...bar.querySelectorAll("button")].filter((b) => b.getClientRects().length > 0 && getComputedStyle(b).visibility !== "hidden");
+    const out = shown
+      .filter((b) => {
+        const r = b.getBoundingClientRect();
+        return r.left < -0.5 || r.right > vw + 0.5;
+      })
+      .map((b) => b.getAttribute("aria-label") || b.textContent.trim() || b.className);
+    const t = bar.querySelector('[aria-label="右のパネルを開閉"]').getBoundingClientRect();
+    const x = t.left + t.width / 2;
+    const y = t.top + t.height / 2;
+    const hit = !!document.elementFromPoint(x, y)?.closest('[aria-label="右のパネルを開閉"]');
+    return { vw, doc: document.documentElement.scrollWidth, body: document.body.scrollWidth, bar: bar.scrollWidth - bar.clientWidth, out, toggle: { x, y, w: t.width, hit } };
+  });
+
+/** CSS の移り変わりが終わるまで待つ（左右のパネルの列の幅は 0.2 秒かけて変わり、その間は上部バーも広がる） */
+const settleTransitions = (page) => page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished.catch(() => undefined))));
+
+/** 幅ごとに、上部バーが収まり、右のパネルの開閉ボタンが押せる（押して開閉し、もう一度押して戻す） */
+async function checkTopbarWidths(page, label) {
+  for (const width of TOPBAR_WIDTHS) {
+    await page.setViewportSize({ width, height: 800 });
+    await settleTransitions(page);
+    const m = await measureTopbar(page);
+    const at = `${label} ${width}px`;
+    assert(m.doc <= m.vw && m.body <= m.vw && m.bar <= 0, `${at}: 横にはみ出す ${JSON.stringify(m)}`);
+    assert(m.out.length === 0, `${at}: 画面の外のボタン: ${m.out.join(" / ")}`);
+    assert(m.toggle.w > 0 && m.toggle.hit, `${at}: 右のパネルの開閉ボタンが見えない・押せない ${JSON.stringify(m.toggle)}`);
+    const before = await page.evaluate(() => window.__fourD.ui.prefs.rightOpen);
+    await page.mouse.click(m.toggle.x, m.toggle.y);
+    const after = await page.evaluate(() => window.__fourD.ui.prefs.rightOpen);
+    assert(after === !before, `${at}: 押しても右のパネルが開閉しない`);
+    await page.mouse.click(m.toggle.x, m.toggle.y);
+  }
+}
+
 async function main() {
   await startServer();
   const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
@@ -897,23 +959,7 @@ async function main() {
 
   await check("競合: 別の保存で止まったら ⌘S は「保存しました」と言わず、「最新を開く」でもこのタブの内容をバックアップに残す", async () => {
     await waitSaved(page);
-    // 別の書き手（ロックの使えない環境の別タブなど）が、知らないうちに版を進めた
-    await page.evaluate(
-      () =>
-        new Promise((resolve, reject) => {
-          const req = indexedDB.open("4d-branch");
-          req.onerror = () => reject(req.error);
-          req.onsuccess = () => {
-            const db = req.result;
-            const t = db.transaction("kv", "readwrite");
-            const s = t.objectStore("kv");
-            const g = s.get("meta");
-            g.onsuccess = () => s.put({ ...g.result, rev: g.result.rev + 5, writer: "t_other" }, "meta");
-            t.oncomplete = () => (db.close(), resolve());
-            t.onerror = () => reject(t.error);
-          };
-        }),
-    );
+    await bumpStoredRev(page);
     await page.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: -600, y: 1300 }, { title: "競合の前に足した", exact: true }));
     await page.waitForFunction(() => window.__fourD.persistence.status === "conflict", null, { timeout: 5000 });
     await page.getByRole("button", { name: "保存されている最新を開く" }).waitFor();
@@ -1013,6 +1059,145 @@ async function main() {
     assert(!leaked, "一時表示の内容がふだんのデータに入った");
     await p6.close();
   });
+
+  // ---- 画面の幅（別のコンテキスト = 初めて開いた端末。ここまでのデータとは分ける）
+  const wctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const wp = await wctx.newPage();
+  watch(wp);
+  await wp.goto(BASE, { waitUntil: "networkidle" });
+  await wp.getByRole("button", { name: "すぐに使う" }).click();
+
+  await check("上部バー: どの幅でもはみ出さず、右のパネルの開閉ボタンが見えて押せる（ふだん・一時表示）", async () => {
+    await checkTopbarWidths(wp, "ふだん");
+    // 一時表示は保存の状態の文がいちばん長い（「一時表示（保存しません）」）
+    const demo = await wctx.newPage();
+    watch(demo);
+    await demo.goto(`${BASE}#demo`, { waitUntil: "networkidle" });
+    await demo.waitForFunction(() => window.__fourD?.persistence.status === "ephemeral");
+    await checkTopbarWidths(demo, "一時表示");
+    // 検索欄がいちばん縮む所（一時表示の 1178px）でも、欄を押せば入力でき（虫めがねの所を押す）、入力の幅が残る（⌘K の印と件数に取られない）
+    await demo.setViewportSize({ width: 1178, height: 800 });
+    await settleTransitions(demo);
+    const box = await demo.locator(".search").boundingBox();
+    await demo.mouse.click(box.x + 14, box.y + box.height / 2);
+    await demo.keyboard.type("ad");
+    const s = await demo.evaluate(() => ({ focused: !!document.activeElement?.classList.contains("search-input"), q: window.__fourD.ui.search, input: Math.round(document.querySelector(".search-input").getBoundingClientRect().width) }));
+    assert(s.focused && s.q === "ad" && s.input >= 10, `縮んだ検索欄に入力できない ${JSON.stringify({ ...s, box: Math.round(box.width) })}`);
+    await demo.close();
+  });
+
+  await check("ちょうど 860px（パネルを重ねて出す幅）では、左右のパネルを閉じて始める", async () => {
+    await wp.setViewportSize({ width: 860, height: 800 });
+    await wp.reload({ waitUntil: "networkidle" });
+    await wp.waitForFunction(() => !!window.__fourD);
+    const s = await wp.evaluate(() => ({ left: window.__fourD.ui.prefs.leftOpen, right: window.__fourD.ui.prefs.rightOpen, overlay: getComputedStyle(document.querySelector(".overlay-scrim")).display }));
+    assert(!s.left && !s.right && s.overlay === "none", `パネルが重なって開いたまま始まる ${JSON.stringify(s)}`);
+  });
+
+  await check("操作ガイド（狭い画面）: パネルを照らすステップでは閉じているパネルを開き、離れると閉じる", async () => {
+    await wp.setViewportSize({ width: 400, height: 800 });
+    await wp.reload({ waitUntil: "networkidle" });
+    await wp.waitForFunction(() => !!window.__fourD);
+    const panels = () => wp.evaluate(() => ({ left: window.__fourD.ui.prefs.leftOpen, right: window.__fourD.ui.prefs.rightOpen }));
+    // 照らす枠が、幅のある対象を囲むまで待つ（枠は動いてから止まる）
+    const lit = (sel) =>
+      wp.waitForFunction(
+        (s) => {
+          const t = document.querySelector(s)?.getBoundingClientRect();
+          const hole = document.querySelector(".tour-hole");
+          const r = hole?.getBoundingClientRect();
+          return !!t && !!r && !hole.hidden && t.width > 100 && t.height > 20 && r.left <= t.left + 1 && r.right >= t.right - 1 && r.top <= t.top + 1 && r.bottom >= t.bottom - 1;
+        },
+        sel,
+        { timeout: 3000 },
+      );
+    const next = () => wp.locator(".tour-card").getByRole("button", { name: "次へ" }).click();
+    assert(JSON.stringify(await panels()) === '{"left":false,"right":false}', "狭い画面でパネルが開いて始まる");
+    await wp.evaluate(() => window.__fourD.app.startTour());
+    try {
+      await lit('.sidebar-left [data-section="projects"]');
+      assert((await panels()).left, "1 つ目で左のパネルが開かない");
+      const covered = await wp.evaluate(() => {
+        const t = document.querySelector('.sidebar-left [data-section="projects"]').getBoundingClientRect();
+        const c = document.querySelector(".tour-card").getBoundingClientRect();
+        return c.left < t.right && c.right > t.left && c.top < t.bottom && c.bottom > t.top;
+      });
+      assert(!covered, "1 つ目: 説明の札がプロジェクトの一覧を隠す");
+      await next();
+      assert(!(await panels()).left, "2 つ目で左のパネルが閉じない");
+      await next();
+      await next();
+      await lit(".sidebar-right");
+      assert((await panels()).right, "4 つ目で右のパネルが開かない");
+      await next();
+      assert(!(await panels()).right, "5 つ目で右のパネルが閉じない");
+      // 戻ると開き直し、途中でやめると閉じる
+      await wp.locator(".tour-card").getByRole("button", { name: "戻る" }).click();
+      await lit(".sidebar-right");
+      await wp.keyboard.press("Escape");
+      assert((await wp.locator(".tour").count()) === 0, "ガイドが閉じない");
+      assert(JSON.stringify(await panels()) === '{"left":false,"right":false}', `ガイドを閉じた後もパネルが開いている ${JSON.stringify(await panels())}`);
+    } finally {
+      // 落ちてもガイドを残さない（後の確かめの邪魔をしない）
+      if (await wp.locator(".tour").count()) await wp.keyboard.press("Escape");
+    }
+  });
+
+  await check("お知らせ（400px）: 画面の幅いっぱいまで使い、はみ出さない", async () => {
+    // 閲覧のみで止められたときのお知らせ（長い文）
+    await wp.evaluate(() => {
+      const f = window.__fourD;
+      f.store.readOnly = true;
+      f.store.transact("確かめ", () => undefined);
+      f.store.readOnly = false;
+    });
+    const t = await wp.locator(".toast").last().boundingBox();
+    assert(t.x >= 0 && t.x + t.width <= 400, `はみ出す ${JSON.stringify(t)}`);
+    assert(t.width >= 300, `お知らせが画面の半分ほどしか使わない（${Math.round(t.width)}px）`);
+    if (SHOTS) await wp.waitForTimeout(250); // 出てくる動きが終わってから撮る
+    await shot("e2e-08-phone-toast", wp);
+  });
+
+  await check("メニューの「性能確認」は同じ画面のまま切り替わり（新しいタブを開かない）、帯の「ふだんの画面へ」で戻る", async () => {
+    let opened = 0;
+    wctx.on("page", () => opened++);
+    await wp.locator(".topbar").getByRole("button", { name: "メニュー", exact: true }).click();
+    await Promise.all([wp.waitForEvent("load", { timeout: 10000 }), wp.getByRole("menuitem", { name: /性能確認/ }).click()]);
+    await wp.waitForFunction(() => window.__fourD && Object.keys(window.__fourD.store.doc.nodes).length === 2000, null, { timeout: 15000 });
+    assert(opened === 0, "新しいタブが開いた");
+    const s = await wp.evaluate(() => ({ hash: location.hash, status: window.__fourD.persistence.status }));
+    assert(s.hash === "#stress-2000" && s.status === "ephemeral", JSON.stringify(s));
+    await Promise.all([wp.waitForEvent("load", { timeout: 10000 }), wp.getByRole("button", { name: "ふだんの画面へ" }).click()]);
+    await wp.waitForFunction(() => !!window.__fourD);
+    const back = await wp.evaluate(() => ({ hash: location.hash, status: window.__fourD.persistence.status, nodes: Object.keys(window.__fourD.store.doc.nodes).length }));
+    assert(back.hash === "" && back.status !== "ephemeral" && back.nodes < 2000, JSON.stringify(back));
+  });
+
+  await check("競合の帯（400px）: 文は 1 行目に、2 つのボタンは下に折り返して画面に収まる", async () => {
+    await wp.waitForFunction(() => window.__fourD.persistence.writer);
+    await bumpStoredRev(wp);
+    await wp.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: -600, y: 1300 }, { title: "幅の確かめ", exact: true }));
+    await wp.waitForFunction(() => window.__fourD.persistence.status === "conflict", null, { timeout: 5000 });
+    const m = await wp.evaluate(() => {
+      const vw = window.innerWidth;
+      const banner = document.querySelector(".banner");
+      const out = [banner, ...banner.querySelectorAll("*")]
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && (r.left < -0.5 || r.right > vw + 0.5);
+        })
+        .map((el) => el.getAttribute("class") || el.tagName);
+      const text = banner.querySelector(".banner-text").getBoundingClientRect();
+      const buttons = [...banner.querySelectorAll("button")].map((b) => b.getBoundingClientRect());
+      return { vw, out, buttons: buttons.length, text: Math.round(text.width), banner: Math.round(banner.getBoundingClientRect().width), below: buttons.every((b) => b.top >= text.bottom - 1) };
+    });
+    await shot("e2e-09-phone-conflict", wp);
+    assert(m.buttons === 2, `ボタンの数 ${m.buttons}`);
+    assert(m.out.length === 0, `画面の外: ${m.out.join(" / ")}`);
+    assert(m.text >= m.banner * 0.7, `文が押しつぶされる（文 ${m.text}px・帯 ${m.banner}px）`);
+    assert(m.below, "ボタンが文の下に折り返さない");
+  });
+  await wctx.close();
 
   await check("ページのエラーが無い", async () => {
     assert(errors.length === 0, errors.join("\n"));

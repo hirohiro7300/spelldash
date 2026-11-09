@@ -82,6 +82,8 @@ export const KEEP: Record<BackupKind, number> = { auto: 24, daily: 30, manual: 5
 export const BACKUP_LABELS: Record<BackupKind, string> = { auto: "自動", daily: "日次", manual: "手動", safety: "安全用", conflict: "退避" };
 const AUTO_BACKUP_MS = 10 * 60_000;
 const MAX_WAIT_MS = 2000;
+/** タブのロックの答えを待つ上限。来なければロック無しで続ける（読み込み中の画面で止めない） */
+const LOCK_TIMEOUT_MS = 3000;
 const DB_VERSION = 1;
 
 export class ConflictError extends Error {
@@ -98,6 +100,7 @@ export interface PersistenceOptions {
   mode?: "auto" | "memory";
   debounceMs?: number;
   autoBackupMs?: number;
+  lockTimeoutMs?: number;
 }
 
 export interface PersistenceEvents {
@@ -145,6 +148,7 @@ export class Persistence {
   private stopped = false;
   private readonly debounceMs: number;
   private readonly autoBackupMs: number;
+  private readonly lockTimeoutMs: number;
   private readonly emitter = new Emitter<PersistenceEvents>();
 
   constructor(opts: PersistenceOptions = {}) {
@@ -158,6 +162,7 @@ export class Persistence {
     this.mode = opts.mode === "memory" ? "memory" : "idb";
     this.debounceMs = opts.debounceMs ?? 300;
     this.autoBackupMs = opts.autoBackupMs ?? AUTO_BACKUP_MS;
+    this.lockTimeoutMs = opts.lockTimeoutMs ?? LOCK_TIMEOUT_MS;
   }
 
   on<K extends keyof PersistenceEvents>(type: K, fn: (p: PersistenceEvents[K]) => void): () => void {
@@ -654,37 +659,14 @@ export class Persistence {
       this.writer = true;
       return true;
     }
-    if (!this.locks) {
-      this.setWriter(true);
-      return true;
-    }
-    return new Promise<boolean>((resolve) => {
-      this.locks!.request(this.lockName, { ifAvailable: true }, (lock) => {
-        if (!lock) {
-          resolve(false);
-          return;
-        }
-        this.setWriter(true);
-        resolve(true);
-        return new Promise<void>(() => {
-          /* タブを閉じるまで持ち続ける */
-        });
-      }).catch(() => this.lockLost());
-    });
+    const ok = !this.locks || (await this.requestLock({ ifAvailable: true }));
+    if (ok) this.setWriter(true);
+    return ok;
   }
 
   /** このタブで編集する（別のタブから引き継ぐ）。最新の保存内容を返す */
   async takeOver(): Promise<DocData | null> {
-    if (this.locks) {
-      await new Promise<void>((resolve) => {
-        this.locks!.request(this.lockName, { steal: true }, () => {
-          resolve();
-          return new Promise<void>(() => {
-            /* 持ち続ける */
-          });
-        }).catch(() => this.lockLost());
-      });
-    }
+    if (this.locks) await this.requestLock({ steal: true });
     const stored = await this.readStored();
     if (stored) {
       this.rev = stored.meta.rev;
@@ -699,6 +681,47 @@ export class Persistence {
     if (adopted) this.schedule();
     else this.setStatus(this.savedAt ? "saved" : "idle");
     return adopted ?? stored?.doc ?? null;
+  }
+
+  /**
+   * 書き手のロックを頼む。true: 編集してよい／false: 別のタブが持っている（ifAvailable のとき）。
+   * 取れたロックはタブを閉じるまで持ち、後で別のタブに引き継がれたら閲覧のみになる。
+   * 要求そのものが断られたとき（保存を禁じた枠の中などの SecurityError）や答えが来ないときは、
+   * Web Locks の無いブラウザと同じくロック無しで続ける（版番号の確認で守る。起動を止めない）
+   */
+  private requestLock(options: LockOptions): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      let answered = false;
+      let held = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const answer = (ok: boolean): boolean => {
+        if (answered) return false;
+        answered = true;
+        clearTimeout(timer);
+        resolve(ok);
+        return true;
+      };
+      timer = setTimeout(() => answer(true), this.lockTimeoutMs);
+      try {
+        this.locks!.request(this.lockName, options, (lock) => {
+          if (!lock) {
+            // 別のタブが持っている。答えが遅れてロック無しで編集を始めていたら、閲覧のみに戻す
+            if (!answer(false)) this.lockLost();
+            return;
+          }
+          held = true;
+          answer(true);
+          return new Promise<void>(() => {
+            /* タブを閉じるまで持ち続ける */
+          });
+        }).catch(() => {
+          if (held) this.lockLost(); // 別のタブに引き継がれた
+          else answer(true); // 要求が断られた（コールバックは呼ばれていない）
+        });
+      } catch {
+        answer(true);
+      }
+    });
   }
 
   private lockLost(): void {

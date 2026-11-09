@@ -332,7 +332,8 @@ kbd {
 }
 .topbar-search {
   flex: 1 1 260px;
-  min-width: 160px;
+  /* 足りない幅はここが吸う（右端のボタンを画面の外に押し出さない）。ふだんの幅は下の「上部バーの段階」で確保する */
+  min-width: 0;
   max-width: 440px;
   margin: 0 auto;
 }
@@ -424,8 +425,10 @@ kbd {
   transform: none;
 }
 
-.search {
+.search-box {
   position: relative;
+}
+.search {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -435,9 +438,19 @@ kbd {
   border: 1px solid var(--line-2);
   background: var(--bg-input);
   color: var(--text-3);
+  /* 欄が縮んだら中身を切る（はみ出して隣のボタンに重ねない）。候補の欄は外の .search-box にあるので切れない */
+  overflow: hidden;
+  container: search / inline-size;
   transition:
     border-color 0.12s,
     box-shadow 0.12s;
+}
+/* 欄が狭いときは、⌘K の印と件数より入力の幅を残す */
+@container search (max-width: 180px) {
+  .search-kbd,
+  .search-count {
+    display: none;
+  }
 }
 .search:focus-within {
   border-color: var(--accent-line);
@@ -963,10 +976,13 @@ button.tag-chip:hover {
   gap: 8px;
   z-index: 8;
   pointer-events: none;
+  /* 帯の並べ方は帯の幅で決める（スマホだけでなく、左右のパネルを開いて真ん中が狭いときも） */
+  container: banner / inline-size;
 }
 .banner {
   pointer-events: auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 8px 8px 8px 13px;
@@ -979,6 +995,15 @@ button.tag-chip:hover {
 }
 .banner-text {
   flex: 1;
+}
+/* 狭い帯: ボタンと並べると文が 1〜2 文字ずつに押しつぶされるので、文は印の横の 1 行目いっぱいに、ボタンは下の行に右寄せ */
+@container banner (max-width: 600px) {
+  .banner {
+    justify-content: flex-end;
+  }
+  .banner-text {
+    flex-basis: calc(100% - 25px); /* 印 15px と隙間 10px の残り */
+  }
 }
 .banner.tone-warn {
   border-color: rgba(242, 193, 78, 0.4);
@@ -2505,9 +2530,10 @@ textarea.input {
 /* ------------------------------------------------------------ お知らせ */
 .toast-stack {
   position: fixed;
-  left: 50%;
+  /* 左右の両端に付けて、画面の幅いっぱいまで使えるように（left: 50% だと、縮む幅が画面の半分までになる） */
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  right: calc(16px + env(safe-area-inset-right, 0px));
   bottom: calc(var(--bottom-h) + 18px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
   z-index: 950;
   display: grid;
   justify-items: center;
@@ -2683,12 +2709,20 @@ textarea.input {
   font-size: 15px;
 }
 
-/* ------------------------------------------------------------ 狭い画面 */
-@media (max-width: 1280px) {
-  :root {
-    --left-w: 236px;
-    --right-w: 316px;
-  }
+/* ------------------------------------------------------------ 上部バーの段階 */
+/*
+ * 狭くなるほど省く。切り替える幅は、検索欄のほかの部品の幅の合計 ＋ 隙間 ＋ 左右の余白（16px ずつ）＋ 検索欄 160px
+ * （まとめる直前の段だけ 110px）が入らなくなる所（保存の状態が「保存済み」のときに測った値）。
+ * 検索欄は 0 まで縮むので、状態の文が長いとき（一時表示 など）や安全域の余白が広いときも、右端のボタンは画面の外に出ない。
+ * 部品の幅を変えたら測り直す（E2E の「上部バー」で幅ごとに確かめる）
+ *   1330px〜       すべて                                                    1,170px ＋ 検索欄
+ *   1178〜1329px   追加ボタンは記号だけ                                       1,018px（1281px からは左のパネルが広く 1,038px）＋ 検索欄
+ *   917〜1177px    表示の切替・表示・保存の状態の文字とドキュメントの名前を省く   757px ＋ 検索欄
+ *   762〜916px     ブランドは印だけ・隙間を詰める                               652px ＋ 検索欄
+ *   〜761px        まとめる: 表示の切替・表示の設定・やり直す・ヘルプは ⋯ メニューへ、追加は 1 つのボタンに
+ *                  （246px ＋ 検索欄。src/ui/breakpoints.ts の COMPACT_TOPBAR_MAX_PX と同じ値）
+ */
+@media (max-width: 1329px) {
   .add-label {
     display: none;
   }
@@ -2696,7 +2730,7 @@ textarea.input {
     padding: 0 9px;
   }
 }
-@media (max-width: 1040px) {
+@media (max-width: 1177px) {
   .seg-btn span,
   .btn-ghost.btn-sm span,
   .save-text {
@@ -2709,6 +2743,53 @@ textarea.input {
   .doc-title {
     display: none;
   }
+}
+@media (max-width: 916px) {
+  .brand-text {
+    display: none;
+  }
+  .topbar {
+    gap: 6px;
+  }
+}
+.mobile-only {
+  display: none !important;
+}
+@media (max-width: 761px) {
+  .topbar {
+    gap: 4px;
+  }
+  .topbar .view-seg,
+  .topbar .display-btn,
+  .topbar .add-group,
+  .topbar .redo-btn,
+  .topbar .help-btn,
+  .topbar .brand {
+    display: none;
+  }
+  .mobile-only {
+    display: inline-grid !important;
+  }
+  .topbar-search {
+    flex: 1 1 auto;
+  }
+  .search-kbd,
+  .search-count {
+    display: none;
+  }
+  .save-status {
+    padding: 0 8px;
+  }
+}
+
+/* ------------------------------------------------------------ 狭い画面 */
+@media (max-width: 1280px) {
+  :root {
+    --left-w: 236px;
+    --right-w: 316px;
+  }
+}
+@media (max-width: 1040px) {
   .bottom-label span {
     display: none;
   }
@@ -2734,15 +2815,6 @@ textarea.input {
   .app-shell:not(.right-closed) .sidebar-right {
     right: 0;
   }
-  .brand-text {
-    display: none;
-  }
-  .topbar {
-    gap: 6px;
-  }
-  .topbar-search {
-    min-width: 110px;
-  }
   .scenario-side .bottom-label {
     display: none;
   }
@@ -2752,9 +2824,6 @@ textarea.input {
 }
 .overlay-scrim {
   display: none;
-}
-.mobile-only {
-  display: none !important;
 }
 @media (max-width: 860px) {
   .app-shell:not(.left-closed) .overlay-scrim,
@@ -2769,31 +2838,6 @@ textarea.input {
 @media (max-width: 640px) {
   :root {
     --bottom-h: 118px;
-  }
-  .topbar {
-    gap: 4px;
-  }
-  .topbar .view-seg,
-  .topbar .display-btn,
-  .topbar .add-group,
-  .topbar .redo-btn,
-  .topbar .help-btn,
-  .topbar .brand {
-    display: none;
-  }
-  .mobile-only {
-    display: inline-grid !important;
-  }
-  .topbar-search {
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-  .search-kbd,
-  .search-count {
-    display: none;
-  }
-  .save-status {
-    padding: 0 8px;
   }
   .minimap {
     display: none;

@@ -5,6 +5,7 @@ import { NODE_TYPES, NODE_TYPE_ORDER } from "../model/constants";
 import { formatDate } from "../model/dates";
 import type { ID } from "../model/types";
 import type { SaveStatus } from "../persist/persistence";
+import { isCompactTopbar } from "./breakpoints";
 import { MOD, clear, h } from "./dom";
 import { icon } from "./icons";
 import { menuFromButton, type MenuEntry } from "./overlays";
@@ -165,8 +166,8 @@ function displayMenu(app: AppContext): MenuEntry[] {
 
 function mainMenu(app: AppContext): MenuEntry[] {
   const ro = app.store.readOnly;
-  const narrow = window.innerWidth <= 640;
-  const compact: MenuEntry[] = narrow
+  // 上部バーをまとめている幅では、バーから外したボタンをここに出す
+  const compact: MenuEntry[] = isCompactTopbar()
     ? [
         { header: "表示" },
         { label: app.ui.prefs.view === "map" ? "リストで見る" : "マップで見る", icon: app.ui.prefs.view === "map" ? "list" : "map", run: () => app.ui.setPrefs({ view: app.ui.prefs.view === "map" ? "list" : "map" }) },
@@ -195,15 +196,9 @@ function mainMenu(app: AppContext): MenuEntry[] {
     {
       label: "性能確認（2,000 ノード・保存しない）",
       icon: "layers",
-      hint: "新しいタブで開きます",
+      // 同じ画面のまま切り替える（claude.ai の枠は新しいタブを開かせない）。# が変わると main.ts が開き直し、帯の「ふだんの画面へ」で戻る
       run: () => {
-        const a = document.createElement("a");
-        a.href = "#stress-2000";
-        a.target = "_blank";
-        a.rel = "noopener";
-        document.body.append(a);
-        a.click();
-        a.remove();
+        location.hash = "stress-2000";
       },
     },
   ];
@@ -304,5 +299,7 @@ function buildSearch(app: AppContext): HTMLElement {
     input.focus();
     input.select();
   };
-  return h("div", { class: "search" }, icon("search", 15), input, count, kbd, results);
+  // 欄は狭くなると中身を切る（上部バーの足りない幅を吸う）。候補はその外に置いて切られないようにする。
+  // 欄は label にして、入力欄がほとんど見えないほど縮んでも、欄のどこを押しても入力できるようにする
+  return h("div", { class: "search-box" }, h("label", { class: "search" }, icon("search", 15), input, count, kbd), results);
 }

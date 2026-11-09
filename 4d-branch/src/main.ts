@@ -9,6 +9,7 @@ import { buildStressDoc } from "./demo/stress";
 import type { DocData } from "./model/types";
 import { Persistence } from "./persist/persistence";
 import { Store } from "./store/store";
+import { isNarrowScreen } from "./ui/breakpoints";
 
 /** 表示の切り替え。claude.ai の Artifact ではクエリ文字列が渡らないので #stress-2000 ・ #demo も受ける */
 function readMode(): { stress: number; demo: boolean } {
@@ -30,8 +31,8 @@ async function boot(): Promise<void> {
   });
   const ui = new UiState();
   if (ephemeral) ui.persistPrefs = false;
-  // 狭い画面では左右のパネルを閉じて始める（キャンバスを広く）
-  if (window.innerWidth < 860) ui.prefs = { ...ui.prefs, leftOpen: false, rightOpen: false };
+  // 狭い画面では左右のパネルを閉じて始める（キャンバスを広く）。重ねて出す CSS と同じ判定（860px ちょうども狭い側）
+  if (isNarrowScreen()) ui.prefs = { ...ui.prefs, leftOpen: false, rightOpen: false };
   const persistence = new Persistence({ mode: ephemeral ? "memory" : "auto" });
   await persistence.open();
 
