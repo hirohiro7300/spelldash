@@ -18,6 +18,7 @@ import { canonicalRomaji, readingEntries, primaryReading, matchRomaji } from "..
 import { FEEDBACK_MS, ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS, GLANCE_MS, MILESTONE_MS, waitAfterCorrect } from "../js/afterCorrect.js";
 import { shelfIdOf } from "../js/shelves.js";
 import { webpSize, webpAlpha } from "../scripts/lib/canvas-art.mjs";
+import { globalHeaders, cspDirectives, scriptHash } from "../scripts/lib/csp.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STUB = path.join(ROOT, "tests", "mocks", "supabase-stub.js");
@@ -162,6 +163,13 @@ let fakeTrialMonths = 0; // 偽の /api/billing/config が返す無料期間（�
 // cookie にしたのは、Service Worker が取った要求（page.route が捕まえない）にも効かせるため
 const GATED_PAGES = ["/battle.html", "/typing.html", "/typing-game.html"];
 const GATE_OFF_COOKIE = "e2e_gate";
+// 本物のヘッダー（Batch 88）: 要求にこの cookie（e2e_csp=real）があれば、配る応答に vercel.json の全体のヘッダー（source "/(.*)" の 5 つ。
+// Content-Security-Policy を含む）を本番と同じに付ける。使うのは節 88.1 の (3) だけ（ほかの節の要求には cookie が無いので、振る舞いは前のまま）。
+// cookie にしたのは、ページの中で移った先（入口の門・パックのページの案内）とモジュールの要求にも同じに効かせるため。vercel.json は要求のたびに読む
+const REAL_HEADERS_COOKIE = "e2e_csp";
+const realHeadersFor = (req) => String(req.headers.cookie ?? "").split(/;\s*/).includes(`${REAL_HEADERS_COOKIE}=real`)
+  ? Object.fromEntries(globalHeaders(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).map((h) => [h.key, h.value]))
+  : {};
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (urlPath === "/") urlPath = "/index.html";
@@ -307,11 +315,11 @@ const server = http.createServer((req, res) => {
 
   if (GATED_PAGES.includes(urlPath) && String(req.headers.cookie ?? "").split(/;\s*/).includes(`${GATE_OFF_COOKIE}=off`)) {
     const html = fs.readFileSync(file, "utf8").replace(/^(<html\b[^>]*?) data-focus="english"/m, "$1");
-    res.writeHead(200, { "Content-Type": "text/html" }).end(html);
+    res.writeHead(200, { ...realHeadersFor(req), "Content-Type": "text/html" }).end(html);
     return;
   }
 
-  res.writeHead(200, { "Content-Type": MIME[path.extname(file)] ?? "application/octet-stream" });
+  res.writeHead(200, { ...realHeadersFor(req), "Content-Type": MIME[path.extname(file)] ?? "application/octet-stream" });
   fs.createReadStream(file).pipe(res);
 });
 
@@ -2426,11 +2434,14 @@ console.log("typing:");
     const head = typingHtml.slice(0, typingHtml.indexOf("</head>"));
     const kindLine = head.match(/<script>\(\(\) => \{ const K = \["en","ja","long"\];[^<]*<\/script>/)?.[0] ?? "";
     const sitemap = fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8");
-    const csp = JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")));
-    check("typing（P1）: head のインラインの 1 行が ?kind=・#long・spelldash_typing_kind を try の中で読んで html[data-typing-kind] に置く（外の script を足さない）、canonical と og:url は 1 つでパラメータなし、sitemap に ?kind= が無い、CSP の script-src は 'self' 'unsafe-inline' https://esm.sh のまま",
+    // CSP（Batch 88）: script-src は 'self'・配る HTML の inline の script のハッシュ・https://esm.sh だけ（'unsafe-inline' なし）。この 1 行の本文のハッシュも入っている
+    // （1 字でも変えたら vercel.json のハッシュも直す: node scripts/lib/csp.mjs。全部の突き合わせは scripts/test-site-map.mjs の 8）
+    const scriptSrc = (cspDirectives(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).find((d) => d.startsWith("script-src ")) ?? "").split(/\s+/);
+    const kindBody = kindLine.replace(/^<script>/, "").replace(/<\/script>$/, "");
+    check("typing（P1）: head のインラインの 1 行が ?kind=・#long・spelldash_typing_kind を try の中で読んで html[data-typing-kind] に置く（外の script を足さない）、canonical と og:url は 1 つでパラメータなし、sitemap に ?kind= が無い、CSP の script-src は 'self' と https://esm.sh と inline の script のハッシュで 'unsafe-inline' なし・この 1 行のハッシュがある（Batch 88）",
       kindLine.includes('get("kind")') && kindLine.includes('location.hash === "#long"') && kindLine.includes('localStorage.getItem("spelldash_typing_kind")') && kindLine.includes("try {") && kindLine.includes("document.documentElement.dataset.typingKind = k || \"en\"") &&
       (typingHtml.match(/rel="canonical"/g) ?? []).length === 1 && (typingHtml.match(/property="og:url"/g) ?? []).length === 1 && !/canonical"[^>]*\?kind/.test(typingHtml) &&
-      !sitemap.includes("kind=") && !sitemap.includes("#long") && csp.includes("script-src 'self' 'unsafe-inline' https://esm.sh;") && !/<script[^>]+src=(?!"\/js\/areaGuard\.js")/.test(head),
+      !sitemap.includes("kind=") && !sitemap.includes("#long") && scriptSrc[1] === "'self'" && scriptSrc.at(-1) === "https://esm.sh" && !scriptSrc.includes("'unsafe-inline'") && scriptSrc.includes(scriptHash(kindBody)) && !/<script[^>]+src=(?!"\/js\/areaGuard\.js")/.test(head),
       kindLine.slice(0, 120));
   }
   // PR #166 のレビュー 6: 開く種類の読む順と値は head の inline の 1 行（CSP・速さのため残す）と js（typingPage.js の KINDS・KIND_KEY と js/typingKeys.js の
@@ -28591,6 +28602,75 @@ console.log("guard (88.1):");
       JSON.stringify(knownIds) === JSON.stringify(["my-q-" + SCENE_ID_KEY2, "my-world"].sort()) && v.known.find((k) => k.id === "my-world")?.title === PAYLOAD2 &&
       !/PWN/.test(v.title) && page.errors.length === 0,
       JSON.stringify({ v, err: page.errors.slice(0, 2) }));
+    await closeCtx(page);
+  }
+
+  // ----- (3) 本物のヘッダー（vercel.json の全体のヘッダーを台が付ける: cookie e2e_csp=real）で全ページ: script-src は inline の script のハッシュだけ・CSP の違反 0・ページのエラー 0 -----
+  // 入口の門（Battle・タイピングの 3 ページ）・単語帳とパックのページの案内で移る先の文書も数える（違反は文書の中の知らせを sessionStorage に、console の CSP の文と合わせる）
+  const realHeaderPage = async (seed = {}) => {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    await ctx.addCookies([{ name: "e2e_csp", value: "real", url: BASE }]);
+    const page = await ctx.newPage();
+    page.errs = [];
+    page.csp = [];
+    page.visited = []; // 文書の行き先（入口の門・案内で移った先）
+    page.on("framenavigated", (f) => { if (f === page.mainFrame()) { const u = new URL(f.url()); page.visited.push(u.pathname + u.search); } });
+    page.on("pageerror", (e) => page.errs.push(e.message.slice(0, 160)));
+    page.on("console", (m) => { if (/Content Security Policy/i.test(m.text())) page.csp.push(m.text().slice(0, 160)); });
+    await page.addInitScript((s) => {
+      document.addEventListener("securitypolicyviolation", (e) => {
+        try { const a = JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]"); a.push(`${e.violatedDirective} ${e.blockedURI || "inline"}`); sessionStorage.setItem("__e2e_csp", JSON.stringify(a)); } catch {}
+      });
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...s })) localStorage.setItem(k, v);
+    }, seed);
+    return page;
+  };
+  const scriptSrcOf = (header) => (String(header ?? "").split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src ")) ?? "").split(/\s+/).slice(1);
+  {
+    const PAGES = ["/", "/?learn=next", "/?learn=my", "/stats.html", "/profile.html", "/mywords.html", "/mywords.html?book=main", "/news.html", "/privacy.html", "/terms.html", "/tokushoho.html", "/pro.html", "/switch.html", "/admin.html", "/slang.html", "/list.html", "/battle.html", "/typing.html", "/typing-game.html", "/packs/ngsl01.html"];
+    const rows = [];
+    for (const p of PAGES) {
+      const page = await realHeaderPage({ spelldash_my_words: JSON.stringify([{ en: "hello", ja: "こんにちは", addedAt: T0 }]) });
+      const res = await page.goto(BASE + p, { waitUntil: "networkidle" }).catch((e) => (page.errs.push(`goto: ${e.message.slice(0, 120)}`), null));
+      await page.waitForTimeout(300);
+      await page.waitForLoadState("networkidle").catch(() => {});
+      const inDoc = await page.evaluate(() => JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]")).catch(() => ["(読めない)"]);
+      const src = scriptSrcOf(res?.headers()["content-security-policy"]);
+      rows.push({ p, visited: page.visited, hashOnly: src[0] === "'self'" && src.at(-1) === "https://esm.sh" && src.slice(1, -1).length > 0 && src.slice(1, -1).every((t) => t.startsWith("'sha256-")), csp: [...new Set([...page.csp, ...inDoc])], errs: page.errs });
+      await closeCtx(page);
+    }
+    const bad = rows.filter((r) => !r.hashOnly || r.csp.length || r.errs.length);
+    const moved = rows.filter((r) => r.visited.slice(1).includes("/?from=old")).map((r) => r.p);
+    check(`88.1 (3) 本物のヘッダーで ${PAGES.length} ページ（script-src は 'self'・inline の script のハッシュ・https://esm.sh だけで 'unsafe-inline' なし）: CSP の違反 0・ページのエラー 0（入口の門と案内で移った先も: ${moved.join("・")}）`,
+      bad.length === 0 && moved.includes("/battle.html") && moved.includes("/packs/ngsl01.html"), JSON.stringify(bad.slice(0, 3)));
+  }
+
+  // ----- (3b) 本物のヘッダーでは、ページに入った on* の属性・後から足した inline の script は走らない（script-src-attr・script-src-elem の違反。d8f9d69 の 'unsafe-inline' では走る）-----
+  {
+    const page = await realHeaderPage();
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    const r = await page.evaluate(async () => {
+      const seen = [];
+      document.addEventListener("securitypolicyviolation", (e) => seen.push(e.violatedDirective));
+      const box = document.createElement("div");
+      box.innerHTML = '<img src="data:," onerror="window.__pwn=7"><button type="button" onclick="window.__pwn=8">x</button>';
+      document.body.append(box);
+      box.querySelector("button").click();
+      await new Promise((r) => setTimeout(r, 250));
+      const s = document.createElement("script");
+      s.textContent = "window.__pwn = 9";
+      document.body.append(s);
+      await new Promise((r) => setTimeout(r, 150));
+      box.remove();
+      s.remove();
+      return { pwn: window.__pwn ?? null, seen };
+    });
+    check("88.1 (3b) 本物のヘッダー: ページに入った on* の属性（img の onerror・button の onclick）と後から足した inline の script は走らない（window.__pwn なし・script-src-attr と script-src-elem の違反）",
+      r.pwn === null && r.seen.includes("script-src-attr") && r.seen.includes("script-src-elem"), JSON.stringify(r));
     await closeCtx(page);
   }
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));

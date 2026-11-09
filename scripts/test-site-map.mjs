@@ -24,11 +24,18 @@
 //      単体 test-areas の U1）のすぐ後の <script>（id="focusGate"。見張りとの間は空白と注記だけ・ほかのどの <script> と <link>〔CSS・先読み〕より前）で、
 //      旗（<html data-focus="english">）が立っていれば英単語のホーム（/?from=old）へ置き換える。配信の転送が効かないアプリの中でも止めるため。
 //      3 ページの旗は js/focus.js FOCUS_ENGLISH と同じ（index.html・profile.html と同じ旗）。門は 3 ページで同じ文
+//   8. CSP の script-src（Batch 88。docs/SECURITY.md）: 配る HTML 全部（.vercelignore と .git・node_modules を除いた木の *.html。今はルートと packs/）の
+//      inline の script（src なし・type なしか module・text/javascript・application/javascript）の本文の sha256 を数え、vercel.json の全体のヘッダーの
+//      Content-Security-Policy の script-src が「'self'・そのハッシュ全部（重ねない）・https://esm.sh」とちょうど同じ。'unsafe-inline'・'unsafe-eval'・
+//      'unsafe-hashes'・'strict-dynamic' は無い。script-src のほかの指示は決めた字のまま（緩めない。締めるときはこの表も直す）。配る HTML の要素に
+//      on* の属性（onclick= など）と javascript: の URL が 0。違うときは足りない・余ったハッシュと、そのハッシュの script があるファイルを出す
+//      （inline の script を 1 字でも直したら、node scripts/lib/csp.mjs が出す script-src の値を vercel.json に写す）。写しを壊すと落ちる
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
+import { servedHtml, inlineScripts, scriptHash, cspDirectives } from "./lib/csp.mjs";
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(SCRIPTS, "..");
@@ -219,6 +226,58 @@ function footerScriptProblems(js) {
   return problems;
 }
 
+// 8. CSP の script-src（Batch 88）
+// script-src のほかの指示（緩めない。締めるときはここも直す）
+const CSP_OTHER = [
+  "default-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self' https://esm.sh https://sujvgwozsnzjsjmkcrnk.supabase.co wss://sujvgwozsnzjsjmkcrnk.supabase.co",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'"
+];
+function cspProblems(vercelJson, html) {
+  const problems = [];
+  let directives;
+  try {
+    directives = cspDirectives(vercelJson);
+  } catch (e) {
+    return [`vercel.json が JSON でない: ${e.message}`];
+  }
+  const scriptSrc = directives.find((d) => d.split(/\s+/)[0] === "script-src");
+  if (!scriptSrc) return ["script-src が無い"];
+  const others = directives.filter((d) => d !== scriptSrc);
+  if (JSON.stringify(others) !== JSON.stringify(CSP_OTHER)) problems.push(`script-src のほかの指示が決めた字と違う: ${JSON.stringify(others)}`);
+  const tokens = scriptSrc.split(/\s+/).slice(1);
+  for (const bad of ["'unsafe-inline'", "'unsafe-eval'", "'unsafe-hashes'", "'strict-dynamic'", "'wasm-unsafe-eval'"]) if (tokens.includes(bad)) problems.push(`script-src に ${bad}`);
+  if (tokens[0] !== "'self'" || tokens.at(-1) !== "https://esm.sh") problems.push(`script-src の頭が 'self'・終わりが https://esm.sh でない: ${tokens.slice(0, 1)}…${tokens.slice(-1)}`);
+  const middle = tokens.slice(1, -1);
+  const where = new Map();
+  for (const [file, h] of Object.entries(html)) for (const body of inlineScripts(h)) {
+    const hash = scriptHash(body);
+    if (!where.has(hash)) where.set(hash, []);
+    where.get(hash).push(file);
+  }
+  const notHash = middle.filter((t) => !/^'sha256-[A-Za-z0-9+/]{43}='$/.test(t));
+  if (notHash.length) problems.push(`script-src の間にハッシュでない物: ${JSON.stringify(notHash)}`);
+  if (new Set(middle).size !== middle.length) problems.push("script-src に同じハッシュが 2 回");
+  const missing = [...where.keys()].filter((h) => !middle.includes(h));
+  const extra = middle.filter((t) => t.startsWith("'sha256-") && !where.has(t));
+  for (const h of missing) problems.push(`足りないハッシュ ${h}（${where.get(h).length} ファイル: ${where.get(h).slice(0, 3).join("・")}）`);
+  for (const h of extra) problems.push(`余ったハッシュ ${h}（どの配る HTML の inline の script にも当たらない）`);
+  // on* の属性と javascript: の URL（script の本文と注記は除いて、要素の開始タグの中だけを見る）
+  for (const [file, h] of Object.entries(html)) {
+    const tags = h.replace(/<!--[\s\S]*?-->/g, "").replace(/(<script\b[^>]*>)[\s\S]*?(<\/script\s*>)/gi, "$1$2").match(/<[a-zA-Z][^>]*>/g) ?? [];
+    for (const tag of tags) {
+      const on = tag.match(/[\s"'\/]on[a-z]+\s*=/i);
+      if (on) problems.push(`${file}: 要素に on* の属性 ${tag.slice(0, 80)}`);
+      if (/javascript\s*:/i.test(tag)) problems.push(`${file}: javascript: の URL ${tag.slice(0, 80)}`);
+    }
+  }
+  return problems;
+}
+
 // ── 今の木 ─────────────────────────
 const pages = Object.fromEntries([...new Set([...ROOT_PAGES, ...SITEMAP_PAGES.map(([, f]) => f), ...packFiles])].map((f) => [f, read(f)]));
 const sitemapXml = read("sitemap.xml");
@@ -243,6 +302,11 @@ ok(`5. ナビは 4 つ（ホーム・英単語を学ぶ・学習状況・設定�
 const fj = footerScriptProblems(read("js/footer.js"));
 ok("5. js/footer.js はフッターに SpellDash Pro を差し込まず、受付中かどうかの控えは取り直す（data-no-pro の頁〔タイピング練習の 2 つ〕と加入画面は前から取らない）", fj.length === 0 && ["typing.html", "typing-game.html"].every((f) => /<nav class="site-footer__nav" aria-label="フッターナビ" data-no-pro>/.test(pages[f])), show(fj));
 ok("5. admin.html は対象外（触らない）", read("admin.html").includes('<a href="./battle.html" class="site-nav__link">バトル</a>'));
+const served = servedHtml(ROOT);
+const servedFiles = Object.keys(served);
+const cp = cspProblems(vercelText, served);
+const inlineCount = new Set(Object.values(served).flatMap((h) => inlineScripts(h).map(scriptHash))).size;
+ok(`8. CSP: vercel.json の script-src は 'self'・配る HTML（${servedFiles.length} ファイル: ルートと packs/）の inline の script の sha256 全部（${inlineCount} 種類）・https://esm.sh だけ（'unsafe-inline' なし）・ほかの指示は決めた字のまま・on* の属性と javascript: の URL は 0`, cp.length === 0 && servedFiles.length >= 175 && servedFiles.includes("index.html") && servedFiles.includes("packs/ngsl01.html") && !servedFiles.some((f) => /^(tests|scripts|docs|ios|android|dist)\//.test(f)) && inlineCount >= 10, show(cp));
 
 // 3. 生成器のコマンド: 今の木で --check が通る。写しの木でページを 1 枚古くすると --check は落ち、書き出すと元に戻る
 {
@@ -311,6 +375,29 @@ mutate("タイピングゲームの見張りと門の間に別の script を挟�
 mutate("タイピング練習の見張りの 1 行を消す", gateProblems({ ...pages, "typing.html": pages["typing.html"].replace(GUARD_LINE, "") }, true));
 mutate("Battle の門の前の見張りを CSS の後へ回す（門が最初の script になる）", gateProblems({ ...pages, "battle.html": pages["battle.html"].replace(GUARD_LINE, "").replace("</head>", `${GUARD_LINE}</head>`) }, true));
 mutate("フッターの一文を前に戻す", chromeProblems("packs/ngsl01.html", pages["packs/ngsl01.html"].replace(TAGLINE, "タイピングで、英単語を体に覚えさせる。")));
+
+// 8. CSP（Batch 88）: 写しを壊すと落ちる
+const withCsp = (f) => {
+  const conf = JSON.parse(vercelText);
+  for (const h of conf.headers.find((x) => x.source === "/(.*)").headers) if (h.key === "Content-Security-Policy") h.value = f(h.value);
+  return JSON.stringify(conf);
+};
+const firstHash = (v) => v.match(/'sha256-[^']+'/)?.[0] ?? "";
+mutate("script-src に 'unsafe-inline' を戻す", cspProblems(withCsp((v) => v.replace("script-src 'self'", "script-src 'self' 'unsafe-inline'")), served));
+mutate("script-src からハッシュを 1 つ消す", cspProblems(withCsp((v) => v.replace(`${firstHash(v)} `, "")), served));
+mutate("script-src に余ったハッシュを足す", cspProblems(withCsp((v) => v.replace("https://esm.sh;", `'sha256-${"A".repeat(43)}=' https://esm.sh;`)), served));
+mutate("script-src に同じハッシュを 2 回", cspProblems(withCsp((v) => v.replace(firstHash(v), `${firstHash(v)} ${firstHash(v)}`)), served));
+mutate("ページの inline の script を 1 字変える（ハッシュを直さない）", cspProblems(vercelText, { ...served, "news.html": served["news.html"].replace("renderNews", "renderNews ") }));
+mutate("パックのページの inline の script を 1 字変える", cspProblems(vercelText, { ...served, "packs/ngsl01.html": served["packs/ngsl01.html"].replace('location.replace("/?from=old");', 'location.replace("/?from=old"); ') }));
+mutate("ページに inline の on* の属性（onclick）を足す", cspProblems(vercelText, { ...served, "terms.html": served["terms.html"].replace("<body", '<body onload="x()"') }));
+mutate("ページに javascript: の URL を足す", cspProblems(vercelText, { ...served, "privacy.html": served["privacy.html"].replace('<a href="./news.html">', '<a href="javascript:void(0)">') }));
+mutate("connect-src を緩める（https: を足す）", cspProblems(withCsp((v) => v.replace("connect-src 'self'", "connect-src 'self' https:")), served));
+mutate("script-src に外の先を足す", cspProblems(withCsp((v) => v.replace("https://esm.sh;", "https://esm.sh https://cdn.example.com;")), served));
+mutate("script-src に 'unsafe-eval' を足す", cspProblems(withCsp((v) => v.replace("script-src 'self'", "script-src 'self' 'unsafe-eval'")), served));
+mutate("frame-ancestors を消す", cspProblems(withCsp((v) => v.replace(" frame-ancestors 'none';", "")), served));
+mutate("新しいページの inline の script（ハッシュを足していない）", cspProblems(vercelText, { ...served, "new-page.html": "<!doctype html><script>console.log(1)</script>" }));
+ok("8. 壊すと落ちる: 足りないハッシュはそのハッシュとファイルの名前を出す", cspProblems(vercelText, { ...served, "news.html": served["news.html"].replace("renderNews", "renderNews ") }).some((p) => /^足りないハッシュ 'sha256-[^']+'（1 ファイル: news\.html）$/.test(p)));
+ok("8. 壊すと落ちる: 消したハッシュは「余った」ではなく「足りない」と出す", cspProblems(withCsp((v) => v.replace(`${firstHash(v)} `, "")), served).every((p) => p.startsWith("足りないハッシュ")));
 
 if (failures.length) {
   console.error(`✗ ${failures.length} 件\n  ${failures.join("\n  ")}`);
