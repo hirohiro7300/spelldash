@@ -949,6 +949,7 @@ function myLearnSource(bookId, { choice = false } = {}) {
   return Object.freeze({
     kind: "my",
     label: "マイ単語帳",
+    head: book ? book.name : "マイ単語帳", // 回の柱（#learnHead。Batch 87: 単語帳を選んだ回はその名前。setLearnScreen が textContent で字のまま出す）
     countLabel: book ? name : "マイ単語帳",
     url: book ? `${MY_WORDS_URL}?${MY_BOOK_PARAM}=${encodeURIComponent(book.id)}` : MY_WORDS_URL,
     bookId: book ? book.id : null,
@@ -987,15 +988,24 @@ function setLearnScreen(on) {
   const head = document.getElementById("learnHead");
   if (head) {
     head.hidden = !on;
-    head.textContent = on && learnRun?.my ? learnRun.src.label : "英単語"; // マイ単語帳・スラングの回（Batch 79・80）の柱
+    head.textContent = on && learnRun?.my ? learnRun.src.head ?? learnRun.src.label : "英単語"; // マイ単語帳（単語帳を選んだ回はその名前）・スラングの回（Batch 79・80・87）の柱
   }
-  // ナビの現在地（読み上げの「現在のページ」）: 回の間は「英単語を学ぶ」（/?learn=next）、机に戻るとホーム（Batch 78 段 6。反証 rv5 shouldFix 1）
+  // 打つマイ単語帳の回（Batch 87。docs/SPEC_MY_WORDS.md §16.6）: 問いの上の字は「問い」だけ（訳は本人の書いた問いのことがある）。
+  // 決まった字の段落（#promptLabelFixed）を見せ、語ごとに書く字の段落（setPromptLabel）は css/game.css body.my-typed-run で畳む（語ごとの描画は変えない）。
+  // 選択式（js/myWordsChoice.js が字を書く）・スラング・中心の学ぶ回は前のまま
+  const typedMy = on && !!learnRun?.my && learnRun.src.kind === "my" && !learnRun.choice;
+  document.body.classList.toggle("my-typed-run", typedMy);
+  const fixedLabel = document.getElementById("promptLabelFixed");
+  if (fixedLabel) fixedLabel.hidden = !typedMy;
+  // ナビの現在地（読み上げの「現在のページ」）: 中心の学ぶ回の間は「英単語を学ぶ」（/?learn=next）、机に戻るとホーム（Batch 78 段 6。反証 rv5 shouldFix 1）。
+  // マイ単語帳とスラングの回（Batch 87。F22）はどちらでもないので、どれも今の場所にしない
   const home = document.querySelector('.site-nav a[href="/"]');
   const learn = document.querySelector('.site-nav a[href="/?learn=next"]');
   if (!home || !learn) return;
-  const [now, other] = on ? [learn, home] : [home, learn];
-  now.setAttribute("aria-current", "page");
-  other.removeAttribute("aria-current");
+  home.removeAttribute("aria-current");
+  learn.removeAttribute("aria-current");
+  const now = !on ? home : learnRun?.my ? null : learn;
+  now?.setAttribute("aria-current", "page");
 }
 
 // 中心の学習を始める（入口・パネルの「続けて学ぶ」から）。材料（出題の列の module・3 状態の材料・公開の 24 巻）を読んでから、

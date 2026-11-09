@@ -25494,7 +25494,7 @@ console.log("my words choice (82.2):");
       url: location.pathname + location.search,
       id,
       box: vis(document.getElementById("choiceBox")),
-      label: document.querySelector("#gameCard .label")?.textContent.trim() ?? null,
+      label: [...document.querySelectorAll("#gameCard .label")].find(vis)?.textContent.trim() ?? null, // 見えている問いの上の字（Batch 87: 打つ回は決まった字の段落）
       q: document.getElementById("japanese")?.textContent.trim() ?? null,
       opts: opts.map((b) => ({ t: b.querySelector(".choice__text")?.textContent ?? null, n: b.querySelector(".choice__n")?.textContent ?? null, nHidden: b.querySelector(".choice__n")?.getAttribute("aria-hidden") === "true", mark: b.querySelector(".choice__mark")?.textContent ?? "", state: b.dataset.state ?? "", pressed: b.getAttribute("aria-pressed"), disabled: b.getAttribute("aria-disabled"), name: nameOf(b), over: b.scrollWidth - b.clientWidth, vis: vis(b) })),
       group: document.getElementById("choiceOpts")?.getAttribute("role") ?? null,
@@ -25627,7 +25627,7 @@ console.log("my words choice (82.2):");
     const ans0 = shownOf(e0); // 列は回ごとに混ぜる（Batch 86）: 答えは出た語から引く
     const asked = [{ id: v0.id, q: v0.q }];
     check("82.2 選ぶ回（/?learn=my&book=main&choice=en）: 問いは出た語の訳（日本語訳）・選択肢はちょうど up と down の 2 つ（1・2 の番号は読み上げない）・場面カードは出ない・分からない あり・次へ なし・選択肢は名前の付いた組",
-      v0.box && UPDOWN.some((w) => `my-${w.en}` === v0.id) && !!e0 && v0.label === "日本語訳" && v0.q === e0.ja && v0.opts.length === 2 && JSON.stringify(v0.opts.map((o) => o.t).sort()) === '["down","up"]'
+      v0.box && UPDOWN.some((w) => `my-${w.en}` === v0.id) && !!e0 && v0.label === "問い" && v0.q === e0.ja && v0.opts.length === 2 && JSON.stringify(v0.opts.map((o) => o.t).sort()) === '["down","up"]'
         && JSON.stringify(v0.opts.map((o) => o.n)) === '["1","2"]' && v0.opts.every((o) => o.nHidden && o.pressed === "false" && o.mark === "" && o.state === "") && v0.skip && !v0.next && v0.group === "group",
       JSON.stringify(v0));
     check("82.2 選ぶ回: 入力欄も画面キーボードも出さない（設定で画面キーボードを「いつも」にしていても）・焦点は選択肢の組・始めに「分からないときは「分からない」」の 1 行（aria-live）",
@@ -25721,7 +25721,7 @@ console.log("my words choice (82.2):");
     // もう一度: 同じ選ぶ回と向き（新しい回）
     await page.click("#choiceAgain");
     const va = await waitQuestion(page, 1);
-    check("82.2 「もう一度」: 選ぶ回・訳を見て英語を選ぶのまま（新しい回の 1 語目から）", /choice=en/.test(va.url) && va.box && va.label === "日本語訳" && va.opts.length === 2, JSON.stringify(va));
+    check("82.2 「もう一度」: 選ぶ回・訳を見て英語を選ぶのまま（新しい回の 1 語目から）", /choice=en/.test(va.url) && va.box && va.label === "問い" && va.opts.length === 2, JSON.stringify(va));
     const numbers1 = await publicNumbers(page);
     check("82.2 選ぶ回の答えは公開の語の数に入らない: 学習状況の 2,858 語・覚えた・ランク・次のランクまで・3 つの札・最高到達ランクは回の前と 1 字も同じ・語の記録に公開の語の行も状態の欄も無い",
       JSON.stringify(numbers1) === JSON.stringify(numbers0) && numbers0.total === "2,858" && numbers1.publicRows === 0 && !numbers1.stateInStats, JSON.stringify({ numbers0, numbers1 }));
@@ -26011,7 +26011,7 @@ console.log("my words choice (82.2):");
     await page.waitForTimeout(120);
     const after = await cv(page);
     const s = await stored(page);
-    check("82.2 打つ回（/?learn=my・choice なし）は前のまま: 選ぶ回の箱なし・入力欄あり（焦点）・画面キーボードは設定どおり・打って正解・記録", !v.box && v.input && v.inputFocus && v.osk && v.label === "日本語訳" && /正解|覚えた/.test(after.msg) && !!first && s.words.find((w) => w.en === first.en)?.ls === 2 && page.errors.length === 0,
+    check("82.2 打つ回（/?learn=my・choice なし）は前のまま: 選ぶ回の箱なし・入力欄あり（焦点）・画面キーボードは設定どおり・打って正解・記録", !v.box && v.input && v.inputFocus && v.osk && v.label === "問い" && /正解|覚えた/.test(after.msg) && !!first && s.words.find((w) => w.en === first.en)?.ls === 2 && page.errors.length === 0,
       JSON.stringify({ v: { box: v.box, input: v.input, focus: v.inputFocus, osk: v.osk, label: v.label }, msg: after.msg, err: page.errors[0] }));
     await closeCtx(page);
   }
