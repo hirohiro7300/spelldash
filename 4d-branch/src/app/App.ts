@@ -41,8 +41,16 @@ export interface AppOptions {
   mount: HTMLElement;
 }
 
-/** 代わりの内容で始めたドキュメントの id（開き直しても、同期するまでは代わりの内容として扱う） */
-const FALLBACK_DOC_KEY = "cloud:fallbackDoc";
+/**
+ * 起動したときの手元の記録（アカウントの同期の基準を書くまで残す。どのタブからも読め、開き直しても残る）。
+ * 最後に基準を書いてから最初の起動の物。代わりの内容（デモ・バックアップ）で始めたときは、その起動の物
+ */
+const BOOT_DOC_KEY = "cloud:bootDoc";
+
+function asBootDoc(v: unknown): BootDoc | null {
+  const o = v as Partial<BootDoc> | null;
+  return o && typeof o === "object" && typeof o.id === "string" && typeof o.updatedAt === "string" ? { id: o.id, updatedAt: o.updatedAt, fallback: !!o.fallback } : null;
+}
 
 export class App implements AppContext {
   readonly store: Store;
@@ -72,6 +80,8 @@ export class App implements AppContext {
   private adopting = false;
   /** 起動したときに読み込んだ手元（どの編集よりも前）。アカウントの同期で、手元が古いかを決める */
   private readonly bootDoc: BootDoc;
+  /** 起動したときの手元を記録し終えた（同期を始める前に待つ） */
+  private readonly bootRecorded: Promise<void>;
 
   private readonly shell: HTMLElement;
   private readonly banner: HTMLElement;
@@ -87,8 +97,8 @@ export class App implements AppContext {
     this.persistence = opts.persistence;
     this.ephemeral = opts.ephemeral;
     const d0 = this.store.doc;
-    this.bootDoc = { id: d0.id, updatedAt: d0.updatedAt, disposable: isDisposableDoc(d0), fallback: !!opts.bootFallback && !opts.ephemeral };
-    if (this.bootDoc.fallback && this.persistence.writer) void this.persistence.writeKv(FALLBACK_DOC_KEY, d0.id).catch(() => undefined);
+    this.bootDoc = { id: d0.id, updatedAt: d0.updatedAt, fallback: !!opts.bootFallback && !opts.ephemeral };
+    this.bootRecorded = this.recordBootDoc();
     this.vm = new ViewModel(this.store, this.ui);
     this.view = new CanvasView(this.store, this.ui, this.vm);
     this.cmd = new Commands(this.store, this.ui, this.vm, {
@@ -765,8 +775,9 @@ export class App implements AppContext {
 
   // ------------------------------------------------------------ アカウントへの同期
 
+  /** 「同期をやり直す」（利用者が押した） */
   resyncCloud(): void {
-    this.cloud?.resync();
+    this.cloud?.resync({ userAsked: true });
   }
 
   private setCloudInfo(state: CloudState | "unavailable", message = ""): void {
@@ -827,15 +838,8 @@ export class App implements AppContext {
     } catch {
       foreign = false;
     }
-    // 代わりの内容（デモ・バックアップ）で始めて、まだ同期していないドキュメントか（開き直した後も）
-    let fallbackId: string | null = null;
-    try {
-      fallbackId = await this.persistence.readKv<string>(FALLBACK_DOC_KEY);
-    } catch {
-      fallbackId = null;
-    }
-    const boot: BootDoc = { ...this.bootDoc, fallback: this.bootDoc.fallback || (!!fallbackId && fallbackId === this.bootDoc.id) };
-    let fallbackPending = boot.fallback || !!fallbackId;
+    // 起動したときの手元の記録を書き終えてから始める（記録より先に読まない）
+    await this.bootRecorded;
     /** 手元にまだ保存できていない間の基準（保存できたら書く。基準が手元より先に残らないように） */
     let pendingBase: SyncBase | null = null;
     const writeBaseNow = async (b: SyncBase) => {
@@ -843,11 +847,8 @@ export class App implements AppContext {
       // このブラウザの内容は、このアカウントのもの
       await this.persistence.writeKv("cloud:owner", uid);
       foreign = false;
-      // 代わりの内容で始めた件は、基準が決まって済んだ（後で同じドキュメントに戻しても、代わりの内容とは見なさない）
-      if (fallbackPending) {
-        fallbackPending = false;
-        await this.persistence.writeKv(FALLBACK_DOC_KEY, "").catch(() => undefined);
-      }
+      // 基準が決まった: 起動したときの手元の記録は済んだ（次に起動したときに、その手元で記録し直す）
+      await this.persistence.writeKv(BOOT_DOC_KEY, null).catch(() => undefined);
     };
     // 保存の状態が変わるたびに、保存できた内容が基準に追いついたかを見る（「保存中」ではなく、保存し終えた内容で）
     this.persistence.on("status", () => {
@@ -858,7 +859,8 @@ export class App implements AppContext {
     });
     const sync = new CloudSync(repo, {
       getDoc: () => this.store.doc,
-      bootDoc: () => boot,
+      // 起動したときの手元の記録（このタブ・前に開いたとき・別のタブのどれの物でも。読めなければ記録なし）
+      bootDoc: async () => asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY)),
       isWriter: () => this.persistence.writer && !this.store.readOnly,
       isDisposable: (doc) => isDisposableDoc(doc),
       isEditing: () => this.editor.active,
@@ -931,6 +933,20 @@ export class App implements AppContext {
     this.cloud = sync;
     sync.on((st) => this.setCloudInfo(st, sync.message));
     await sync.start();
+  }
+
+  /**
+   * 起動したときの手元を記録する（基準を書くまで残す）。前の記録が残っていればそれを残す（最後に基準を書いてから
+   * 最初の起動の物）。代わりの内容で始めたときは、この起動の物にする。編集できるタブだけが書く
+   */
+  private async recordBootDoc(): Promise<void> {
+    if (this.ephemeral || !this.persistence.writer) return;
+    try {
+      const cur = asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY));
+      if (!cur || this.bootDoc.fallback) await this.persistence.writeKv(BOOT_DOC_KEY, this.bootDoc);
+    } catch {
+      /* 記録できなくても続ける（その場合は、今の手元だけで古いかを見る） */
+    }
   }
 
   /**

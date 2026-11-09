@@ -3,7 +3,7 @@ import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { buildStressDoc } from "../../src/demo/stress";
 import { SCHEMA_VERSION, createEmptyDoc, makeNode } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
-import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type CloudBackend, type CloudDoc, type SyncBase } from "../../src/persist/cloud";
+import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type SyncBase } from "../../src/persist/cloud";
 import { mergeDocs } from "../../src/persist/io";
 import { Store } from "../../src/store/store";
 
@@ -82,9 +82,18 @@ function slow(be: CloudBackend, flags: { getMs: number; setMs: number }): CloudB
   };
 }
 
+/** 1 つのブラウザの IndexedDB（同期の基準・起動したときの手元の記録）。同じブラウザのタブ・開き直しで共有する */
+interface Browser {
+  base: SyncBase | null;
+  boot: BootDoc | null;
+}
+const browser = (base: SyncBase | null = null): Browser => ({ base, boot: null });
+
 interface DeviceOpts {
   uid?: string;
   base?: SyncBase | null;
+  /** このブラウザ（同じブラウザで開き直す・別のタブ）。無ければ新しいブラウザ */
+  idb?: Browser;
   writer?: boolean;
   debounceMs?: number;
   leaseMs?: number;
@@ -105,8 +114,16 @@ interface DeviceOpts {
 /** 1 つの端末（App と同じつなぎ方: 本物の Store。取り込み中は markDirty しない。初回・選択の取り込みは Undo の対象外） */
 function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts = {}) {
   const store = new Store(doc);
+  const idb = opts.idb ?? browser();
+  if (opts.base !== undefined) idb.base = opts.base;
   const local = {
-    base: (opts.base ?? null) as SyncBase | null,
+    get base(): SyncBase | null {
+      return idb.base;
+    },
+    set base(b: SyncBase | null) {
+      idb.base = b;
+    },
+    idb,
     backups: [] as Array<{ doc: DocData; label: string; kind?: string }>,
     notices: [] as string[],
     adopted: [] as string[],
@@ -120,14 +137,14 @@ function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts =
     /** 入れ替えの途中（手元を残している間）に呼ぶ（入力が始まる など） */
     onAdopt: null as null | (() => void),
   };
-  // 起動したときの手元（どの編集よりも前。App と同じく、作った瞬間に取る）
-  const boot = { id: doc.id, updatedAt: doc.updatedAt, disposable: isDisposableDoc(doc), fallback: !!opts.fallback };
+  // 起動したときの手元を記録する（App と同じ: 編集できるタブだけ。前の記録が残っていればそれを残し、代わりの内容で始めたら書き換える）
+  if (local.writer && (!idb.boot || opts.fallback)) idb.boot = { id: doc.id, updatedAt: doc.updatedAt, fallback: !!opts.fallback };
   const repo = new CloudRepo(be, opts.uid ?? "user1", name);
   const sync = new CloudSync(
     repo,
     {
       getDoc: () => store.doc,
-      bootDoc: () => boot,
+      bootDoc: async () => idb.boot,
       isWriter: () => local.writer,
       isDisposable: (d) => isDisposableDoc(d),
       isEditing: () => local.editing,
@@ -171,8 +188,12 @@ function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts =
         local.onAsk?.();
         return opts.choice ?? "later";
       },
-      readBase: async () => local.base,
-      writeBase: async (b) => void (local.base = b),
+      readBase: async () => idb.base,
+      // 基準を書いたら、起動したときの手元の記録は済んだ
+      writeBase: async (b) => {
+        idb.base = b;
+        idb.boot = null;
+      },
       notice: (t, tone) => void local.notices.push(`${tone}:${t}`),
     },
     { debounceMs: opts.debounceMs ?? 5, leaseMs: opts.leaseMs ?? 20, retryMs: opts.retryMs ?? 10, resubscribeMs: 30 },
@@ -552,13 +573,10 @@ describe("同期の決まり: ふだんの同期", () => {
   it("閲覧のみのタブが引き継ぐと、保存してある基準から突き合わせ、別の端末の新しい内容を取り込む（R2）", async () => {
     const { be } = memoryBackend();
     // 同じ端末の 2 つのタブが共有する IndexedDB（基準）
-    const idb = { base: null as SyncBase | null };
-    const share = (d: ReturnType<typeof device>) => Object.defineProperty(d.local, "base", { get: () => idb.base, set: (v: SyncBase | null) => void (idb.base = v), configurable: true });
-    const tab1 = device(be, "T1", buildDemoDoc());
-    share(tab1);
+    const idb = browser();
+    const tab1 = device(be, "T1", buildDemoDoc(), { idb });
     await tab1.sync.start();
-    const tab2 = device(be, "T2", tab1.store.doc, { writer: false });
-    share(tab2);
+    const tab2 = device(be, "T2", tab1.store.doc, { writer: false, idb });
     await tab2.sync.start(); // 閲覧のみ
     tab1.edit("タブ1の変更");
     await tab1.sync.flush();
@@ -1480,5 +1498,438 @@ describe("同期の決まり: 最終レビューの指摘", () => {
     expect(baseCovered({ id: "d2", updatedAt: "2026-01-01T00:00:02.000Z" }, b)).toBe(false);
     expect(baseCovered({ id: "d1", updatedAt: "2026-01-01T00:00:01.000Z" }, b)).toBe(true);
     expect(baseCovered({ id: "d1", updatedAt: "2026-01-01T00:00:02.000Z" }, b)).toBe(true);
+    // この端末が送った基準で、手元がその後に（新しい時刻で）別のドキュメントに入れ替わっていれば書いてよい
+    const own = { ...b, own: true };
+    expect(baseCovered({ id: "d2", updatedAt: "2026-01-01T00:00:02.000Z" }, own)).toBe(true);
+    expect(baseCovered({ id: "d2", updatedAt: "2026-01-01T00:00:00.500Z" }, own)).toBe(false);
+  });
+});
+
+describe("同期の決まり: 修正の再レビューの指摘", () => {
+  async function lostSave(be: CloudBackend) {
+    const a = device(be, "A", buildDemoDoc());
+    await a.sync.start();
+    const old = structuredClone(a.store.doc);
+    a.edit("消えてはいけない変更");
+    await a.sync.flush();
+    for (let i = 0; i < 50 && !(await remoteHas(a.repo, "消えてはいけない変更")); i++) await tick(10);
+    const base = a.local.base;
+    a.sync.stop();
+    return { a, old, base };
+  }
+  const backedUp = (d: ReturnType<typeof device>, title: string, kind = "conflict") => d.local.backups.some((x) => x.kind === kind && Object.values(x.doc.nodes).some((n) => n.title === title));
+  const warned = (d: ReturnType<typeof device>) => d.local.notices.some((x) => x.startsWith("warn:"));
+  /** つながらない回線（何も読み書きできない。見張りは何も届けない） */
+  const offline = (be: CloudBackend): CloudBackend => ({
+    ...be,
+    get: async () => Promise.reject({ code: "unavailable", message: "offline" }),
+    set: async () => Promise.reject({ code: "unavailable", message: "offline" }),
+    lease: async () => Promise.reject({ code: "unavailable", message: "offline" }),
+    watch: () => () => undefined,
+  });
+  const withNode = (d: DocData, title: string): DocData => {
+    const c = structuredClone(d);
+    const n = makeNode({ title });
+    c.nodes[n.id] = n;
+    return c;
+  };
+
+  it("古いバックアップで始めて同期の前に編集し、開き直しても、アカウントの新しい内容を黙って上書きしない（E0）", async () => {
+    const { be } = memoryBackend();
+    const { old, base } = await lostSave(be);
+    const idb = browser(base);
+    // 1 回目: 保存してあった内容を読めず、古いバックアップで始めた。同期は始まらないまま編集して閉じる
+    const s1 = device(be, "S1", old, { idb, fallback: true });
+    s1.edit("同期の前の編集");
+    // 2 回目: 開き直す（手元はふつうに読める、編集した内容）
+    const s2 = device(be, "S2", structuredClone(s1.store.doc), { idb });
+    await s2.sync.start();
+    await tick(60);
+    expect(backedUp(s2, "消えてはいけない変更")).toBe(true);
+    expect(warned(s2)).toBe(true);
+    expect(await remoteHas(s2.repo, "同期の前の編集")).toBe(true);
+    s2.sync.stop();
+  });
+
+  it("代わりのデモで始めてインポートで入れ替え、開き直しても、アカウントの内容を残してから送る（E1）", async () => {
+    const { be } = memoryBackend();
+    const a = device(be, "A", realDoc("本物の内容"));
+    await a.sync.start();
+    a.sync.stop();
+    const idb = browser(a.local.base);
+    const s1 = device(be, "S1", buildDemoDoc(), { idb, fallback: true });
+    s1.store.replaceDoc(realDoc("取り込んだ内容"), "インポート（置き換え）");
+    const s2 = device(be, "S2", structuredClone(s1.store.doc), { idb });
+    await s2.sync.start();
+    await tick(60);
+    expect(backedUp(s2, "本物の内容")).toBe(true);
+    expect(warned(s2)).toBe(true);
+    expect(await remoteHas(s2.repo, "取り込んだ内容")).toBe(true);
+    s2.sync.stop();
+  });
+
+  it("閲覧のみで開いたタブが引き継いでも、古かった手元を黙って送らない（E2）", async () => {
+    const { be } = memoryBackend();
+    const { old, base } = await lostSave(be);
+    const idb = browser(base);
+    // タブ 1: 古いバックアップで始めたが、つながらないまま編集する
+    const t1 = device(offline(be), "T1", old, { idb, fallback: true });
+    await t1.sync.start();
+    const t2 = device(be, "T2", old, { idb, writer: false });
+    await t2.sync.start();
+    t1.edit("タブ1の編集");
+    // タブ 2 で「このタブで編集する」: 保存されていたタブ 1 の内容を読み、突き合わせをやり直す
+    t1.local.writer = false;
+    t1.sync.writerLost();
+    t1.sync.stop();
+    t2.store.load(structuredClone(t1.store.doc), "load");
+    t2.local.writer = true;
+    t2.sync.resync();
+    for (let i = 0; i < 40 && t2.sync.state !== "synced"; i++) await tick(10);
+    expect(backedUp(t2, "消えてはいけない変更")).toBe(true);
+    expect(warned(t2)).toBe(true);
+    expect(await remoteHas(t2.repo, "タブ1の編集")).toBe(true);
+    t2.sync.stop();
+  });
+
+  it("別のタブが古い手元を解決した後に引き継いでも、重なりと取り違えない（E3）", async () => {
+    const { be } = memoryBackend();
+    const { old, base } = await lostSave(be);
+    const idb = browser(base);
+    const t1 = device(be, "T1", old, { idb });
+    const t2 = device(be, "T2", old, { idb, writer: false });
+    await t2.sync.start();
+    await t1.sync.start();
+    await tick(40);
+    expect(t1.has("消えてはいけない変更")).toBe(true);
+    t1.sync.stop();
+    t1.edit("タブ1の編集");
+    t1.local.writer = false;
+    t2.store.load(structuredClone(t1.store.doc), "load");
+    t2.local.writer = true;
+    t2.sync.resync();
+    for (let i = 0; i < 50 && !(await remoteHas(t2.repo, "タブ1の編集")); i++) await tick(10);
+    expect(await remoteHas(t2.repo, "タブ1の編集")).toBe(true);
+    expect(warned(t2)).toBe(false);
+    expect(t2.local.backups).toEqual([]);
+    t2.sync.stop();
+  });
+
+  it("保存が読めず、別のドキュメントのバックアップで始めたら、手を付ける前ならアカウントの内容を読み込む（E4）", async () => {
+    const { be } = memoryBackend();
+    const a = device(be, "A", realDoc("本物の内容"));
+    await a.sync.start();
+    a.sync.stop();
+    const s = device(be, "S", realDoc("前のバックアップの内容"), { idb: browser(a.local.base), fallback: true });
+    await s.sync.start();
+    await tick(60);
+    expect(s.has("本物の内容")).toBe(true);
+    expect(s.local.adopted).toEqual(["remote"]);
+    expect(warned(s)).toBe(false);
+    expect(await remoteHas(s.repo, "本物の内容")).toBe(true);
+    s.sync.stop();
+  });
+
+  it("読めない写しを、新しい端末のデモでは書き直さず、内容のある端末が直すのを待って読み込む（E5）", async () => {
+    const { be, docs, state } = memoryBackend();
+    const a = device(be, "A", realDoc("A の内容"));
+    await a.sync.start();
+    a.sync.stop();
+    const m = (await a.repo.readManifest())!;
+    const saved = new Map([...docs].filter(([k]) => k.includes(`/parts/${m.gen}-`)));
+    for (const k of saved.keys()) docs.delete(k);
+    const writes = state.manifestWrites;
+    const fresh = device(be, "F", buildDemoDoc());
+    await fresh.sync.start();
+    for (let i = 0; i < 120 && !fresh.sync.message.includes("最新の内容がある端末"); i++) await tick(50);
+    expect(fresh.sync.state).toBe("error");
+    expect(state.manifestWrites).toBe(writes);
+    // 内容のある端末（A）が編集して送ると直り、新しい端末はそれを読み込む
+    const a2 = device(be, "A2", structuredClone(a.store.doc), { idb: a.local.idb });
+    a2.edit("A の次の変更");
+    await a2.sync.start();
+    for (let i = 0; i < 80 && !fresh.has("A の次の変更"); i++) await tick(25);
+    expect(fresh.has("A の次の変更")).toBe(true);
+    expect(fresh.local.adopted).toEqual(["first"]);
+    fresh.sync.stop();
+    a2.sync.stop();
+  });
+
+  it("読めない世代のすぐ前の内容で書き直したら、その世代を持つ端末が自分の内容で戻す（E6）", async () => {
+    const { be, docs } = memoryBackend();
+    const a = device(be, "A", realDoc("最初の内容"));
+    await a.sync.start();
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    expect(b.has("最初の内容")).toBe(true);
+    b.sync.stop();
+    a.edit("A の変更");
+    await a.sync.flush();
+    for (let i = 0; i < 50 && !(await remoteHas(a.repo, "A の変更")); i++) await tick(10);
+    a.sync.stop();
+    const m = (await a.repo.readManifest())!;
+    for (let i = 0; i < m.parts; i++) docs.delete(`data/users/user1/fourd/parts/${m.gen}-${i}`);
+    // B（読めない世代のすぐ前の内容）が開く: 書き直し、読めなかった世代を書き残す
+    const b2 = device(be, "B2", structuredClone(b.store.doc), { idb: b.local.idb });
+    await b2.sync.start();
+    for (let i = 0; i < 120 && !b2.local.notices.some((x) => x.includes("書き直しました")); i++) await tick(50);
+    const rewritten = (await b2.repo.readManifest())!;
+    expect(rewritten.lost).toContain(m.gen);
+    b2.sync.stop();
+    // A（読めなくなった世代を確定した端末）が開く: 書き直された内容を取り込まずに、自分の内容で戻す
+    const a2 = device(be, "A2", structuredClone(a.store.doc), { idb: a.local.idb });
+    await a2.sync.start();
+    for (let i = 0; i < 50 && !(await remoteHas(a2.repo, "A の変更")); i++) await tick(10);
+    expect(await remoteHas(a2.repo, "A の変更")).toBe(true);
+    expect(a2.has("A の変更")).toBe(true);
+    expect(a2.local.notices.some((x) => x.includes("書き直されていた"))).toBe(true);
+    expect((await a2.repo.readManifest())!.lost ?? []).not.toContain(m.gen);
+    a2.sync.stop();
+  });
+
+  it("読めない写しを、変更の無い古い端末は書き直さない。「同期をやり直す」を押したら書き直す（E7）", async () => {
+    const { be, docs, state } = memoryBackend();
+    const a = device(be, "A", realDoc("最初の内容"));
+    await a.sync.start();
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    b.sync.stop();
+    for (const t of ["A の変更 1", "A の変更 2"]) {
+      a.edit(t);
+      await a.sync.flush();
+      for (let i = 0; i < 50 && !(await remoteHas(a.repo, t)); i++) await tick(10);
+    }
+    a.sync.stop();
+    const m = (await a.repo.readManifest())!;
+    for (let i = 0; i < m.parts; i++) docs.delete(`data/users/user1/fourd/parts/${m.gen}-${i}`);
+    const writes = state.manifestWrites;
+    const b2 = device(be, "B2", structuredClone(b.store.doc), { idb: b.local.idb });
+    await b2.sync.start();
+    for (let i = 0; i < 120 && !b2.sync.message.includes("最新の内容がある端末"); i++) await tick(50);
+    expect(b2.sync.state).toBe("error");
+    expect(state.manifestWrites).toBe(writes);
+    b2.sync.resync({ userAsked: true });
+    for (let i = 0; i < 120 && b2.sync.state !== "synced"; i++) await tick(50);
+    expect(b2.sync.state).toBe("synced");
+    expect((await b2.repo.readManifest())!.lost).toContain(m.gen);
+    b2.sync.stop();
+  });
+
+  /** A の確定が 1 回「返事が届かない」で失敗し、次の確定の後で届く。B はその間に新しい内容を読み込んでいる */
+  async function lateLanding() {
+    const { be } = memoryBackend();
+    const held: { data?: Record<string, unknown> } = {};
+    let reject = false;
+    const flaky: CloudBackend = {
+      ...be,
+      async set(path, data) {
+        if (reject && !path.includes("/parts/")) {
+          reject = false;
+          held.data = structuredClone(data);
+          throw { code: "unavailable", message: "x" };
+        }
+        return be.set(path, data);
+      },
+    };
+    const a = device(flaky, "A", realDoc("最初"));
+    await a.sync.start();
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    reject = true;
+    a.edit("変更 1");
+    await a.sync.flush();
+    expect(a.sync.state).toBe("offline");
+    a.edit("変更 2");
+    a.sync.resync();
+    for (let i = 0; i < 60 && !(await remoteHas(a.repo, "変更 2")); i++) await tick(10);
+    for (let i = 0; i < 60 && !b.has("変更 2"); i++) await tick(10);
+    expect(b.has("変更 2")).toBe(true);
+    const land = () => be.set("data/users/user1/fourd", held.data!);
+    return { a, b, land };
+  }
+
+  it("断られたように見えた確定が次の確定より後に届いたら、書いた端末が取り込まずに新しい内容で戻す（E8）", async () => {
+    const { a, b, land } = await lateLanding();
+    b.sync.stop();
+    await land();
+    for (let i = 0; i < 60 && !(await remoteHas(a.repo, "変更 2")); i++) await tick(10);
+    expect(await remoteHas(a.repo, "変更 2")).toBe(true);
+    expect(a.has("変更 2")).toBe(true);
+    expect(a.local.backups).toEqual([]);
+    expect(warned(a)).toBe(false);
+    a.sync.stop();
+  });
+
+  it("書いた端末がいなくても、ほかの端末が古い確定を取り込まずに新しい内容で戻す（E8b）", async () => {
+    const { a, b, land } = await lateLanding();
+    a.sync.stop();
+    await land();
+    for (let i = 0; i < 60 && !(await remoteHas(b.repo, "変更 2")); i++) await tick(10);
+    expect(await remoteHas(b.repo, "変更 2")).toBe(true);
+    expect(b.has("変更 2")).toBe(true);
+    expect(b.local.backups).toEqual([]);
+    expect(warned(b)).toBe(false);
+    b.sync.stop();
+  });
+
+  it("今公開中の版（数え方を持たない）のタブに上書きされても、黙って取り込まず重なりとして扱う（E9）", async () => {
+    const { be, docs } = memoryBackend();
+    const a = device(be, "A", realDoc("最初"));
+    await a.sync.start();
+    const m0 = (await a.repo.readManifest())!;
+    const d0 = structuredClone(a.store.doc);
+    a.edit("A の変更");
+    await a.sync.flush();
+    for (let i = 0; i < 50 && !(await remoteHas(a.repo, "A の変更")); i++) await tick(10);
+    expect(a.local.base!.own).toBe(true);
+    // 前の版のタブが、A の確定を知らないまま m0 の上に書く（通し番号・系譜はあるが、数え方を持たない。一度で書く）
+    const v3be: CloudBackend = {
+      ...be,
+      async set(path, data) {
+        if (path.endsWith("/fourd")) {
+          const legacy = { ...data };
+          delete legacy.chain;
+          delete legacy.lost;
+          return be.set(path, legacy);
+        }
+        return be.set(path, data);
+      },
+    };
+    await new CloudRepo(v3be, "user1", "v3-tab").write(withNode(d0, "前の版のタブの変更"), m0);
+    expect(docs.get("data/users/user1/fourd")!.chain).toBeUndefined();
+    for (let i = 0; i < 60 && !warned(a); i++) await tick(10);
+    for (let i = 0; i < 60 && !(await remoteHas(a.repo, "A の変更")); i++) await tick(10);
+    expect(warned(a)).toBe(true);
+    expect(backedUp(a, "前の版のタブの変更")).toBe(true);
+    expect(a.has("A の変更")).toBe(true);
+    expect(await remoteHas(a.repo, "A の変更")).toBe(true);
+    a.sync.stop();
+  });
+
+  it("はっきり断られた確定（混み合い）の分割はすぐ片付け、返事が届かなかっただけの分割は残す（E10）", async () => {
+    const { be, partGens } = memoryBackend();
+    let reject = "";
+    const flaky: CloudBackend = {
+      ...be,
+      async set(path, data) {
+        if (reject && !path.includes("/parts/")) {
+          const code = reject;
+          reject = "";
+          throw { code, message: code };
+        }
+        return be.set(path, data);
+      },
+    };
+    const a = device(flaky, "A", realDoc("最初"));
+    await a.sync.start();
+    const live = () => a.repo.readManifest().then((m) => new Set([m!.gen, ...m!.stale.map((x) => x.gen)]));
+    reject = "resource_exhausted";
+    a.edit("混み合いで断られた変更");
+    await a.sync.flush();
+    const l1 = await live();
+    expect([...partGens()].filter((g) => !l1.has(g))).toEqual([]);
+    a.sync.resync();
+    for (let i = 0; i < 60 && !(await remoteHas(a.repo, "混み合いで断られた変更")); i++) await tick(10);
+    reject = "unavailable";
+    a.edit("返事が届かなかった変更");
+    await a.sync.flush();
+    const l2 = await live();
+    expect([...partGens()].filter((g) => !l2.has(g))).toHaveLength(1);
+    a.sync.stop();
+  });
+
+  it("返事が届かなかった確定の分割は、届かないまま 10 分たったら片付ける（E12）", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const { be, partGens } = memoryBackend();
+      let reject = false;
+      const flaky: CloudBackend = {
+        ...be,
+        async set(path, data) {
+          if (reject && !path.includes("/parts/")) {
+            reject = false;
+            throw { code: "unavailable", message: "x" };
+          }
+          return be.set(path, data);
+        },
+      };
+      const a = device(flaky, "A", realDoc("最初"));
+      const run = async (p: Promise<unknown>) => {
+        const done = p.then(() => true);
+        for (let i = 0; i < 200; i++) {
+          await vi.advanceTimersByTimeAsync(10);
+          if (await Promise.race([done, Promise.resolve(false)])) return;
+        }
+      };
+      await run(a.sync.start());
+      reject = true;
+      a.edit("届かなかった変更");
+      await run(a.sync.flush());
+      const live = async () => {
+        const m = (await a.repo.readManifest())!;
+        return new Set([m.gen, ...m.stale.map((x) => x.gen)]);
+      };
+      const l1 = await live();
+      expect([...partGens()].filter((g) => !l1.has(g))).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(11 * 60_000);
+      const l2 = await live();
+      expect([...partGens()].filter((g) => !l2.has(g))).toEqual([]);
+      a.sync.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("確かめられなかった送信は、別のタブが基準を進めた後には当てはめない（E11）", async () => {
+    const { be } = memoryBackend();
+    const held: { data?: Record<string, unknown> } = {};
+    let reject = false;
+    const flaky: CloudBackend = {
+      ...be,
+      async set(path, data) {
+        if (reject && !path.includes("/parts/")) {
+          reject = false;
+          held.data = structuredClone(data);
+          throw { code: "unavailable", message: "x" };
+        }
+        return be.set(path, data);
+      },
+    };
+    const idb = browser();
+    const t1 = device(flaky, "T1", realDoc("最初"), { idb });
+    await t1.sync.start();
+    reject = true;
+    t1.edit("タブ1の変更");
+    await t1.sync.flush();
+    expect(t1.sync.state).toBe("offline");
+    // タブ 2 に引き継がれてから、送ったつもりの内容が後から届き、タブ 2 がその上に書く
+    t1.local.writer = false;
+    t1.sync.writerLost();
+    await be.set("data/users/user1/fourd", held.data!);
+    const t2 = device(be, "T2", structuredClone(t1.store.doc), { idb, writer: false });
+    await t2.sync.start();
+    t2.local.writer = true;
+    t2.sync.resync();
+    t2.edit("タブ2の変更");
+    await t2.sync.flush();
+    for (let i = 0; i < 60 && !(await remoteHas(t2.repo, "タブ2の変更")); i++) await tick(10);
+    t2.local.writer = false;
+    t2.sync.stop();
+    // 別の端末がさらに書く
+    const p = device(be, "P", buildDemoDoc());
+    await p.sync.start();
+    p.edit("別の端末の変更");
+    await p.sync.flush();
+    for (let i = 0; i < 60 && !(await remoteHas(p.repo, "別の端末の変更")); i++) await tick(10);
+    p.sync.stop();
+    // タブ 1 が引き継ぎ直す（手元は保存されていたタブ 2 の内容）
+    t1.store.load(structuredClone(t2.store.doc), "load");
+    t1.local.writer = true;
+    t1.sync.resync();
+    for (let i = 0; i < 60 && !t1.has("別の端末の変更"); i++) await tick(10);
+    expect(t1.has("別の端末の変更")).toBe(true);
+    expect(t1.local.backups).toEqual([]);
+    expect(warned(t1)).toBe(false);
+    t1.sync.stop();
   });
 });
