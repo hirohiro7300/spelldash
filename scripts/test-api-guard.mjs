@@ -10,6 +10,7 @@
 // 使い方: node scripts/test-api-guard.mjs [--root <木>]
 //   --root は別の木（直す前の main を git archive した所など。api/ と node_modules があればよい）の api/ に同じ検査を流す（直す前に落ちることを確かめる）
 import { execFile } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -316,6 +317,39 @@ const brief = (res) => JSON.stringify({ status: res.statusCode, body: res.body, 
   ok("busy: モデルが失敗しても印は外れる（502 の後の同じ人は 200）", r5.statusCode === 502 && r6.statusCode === 200, `${brief(r5)} ${brief(r6)}`);
 }
 
+// ===== 4b. 処理中の印は古くなったら効かない（Batch 88 の反証） =====
+// 関数の時間切れ（vercel.json の maxDuration。最大 60 秒）で finally が走らないまま同じインスタンスが使い回されると、前は印が残り、
+// その人は SDK の時間切れまでずっと 429 busy だった。90 秒より古い印は効かない。古い呼び出しが後から印を外しても、新しい印は外れない
+{
+  S.take.mode = "missing";
+  const realNow = Date.now;
+  const t0 = Date.UTC(2031, 0, 3, 9); // 下の 5 の日（1 月 10 日）より前: 5 が前の日の項目として捨てる
+  const stale = { id: U(31), token: "tok-free", email: "user31@example.test", emailConfirmed: true, isAnonymous: false };
+  const take = async () => {
+    const res = fakeRes();
+    const release = await shared.aiTake({ headers: {} }, res, stale, { scope: "explain", limit: 99 });
+    return { status: res.statusCode, error: res.body?.error ?? null, release };
+  };
+  try {
+    Date.now = () => t0;
+    const a = await take(); // 終わらないまま（時間切れで finally が走らなかった形）
+    Date.now = () => t0 + 30 * 1000;
+    const b = await take();
+    Date.now = () => t0 + 91 * 1000;
+    const c = await take();
+    a.release?.(); // 古い呼び出しが後から外す
+    Date.now = () => t0 + 92 * 1000;
+    const d = await take();
+    c.release?.();
+    const e = await take();
+    e.release?.();
+    eq("busy: 処理中の印は 30 秒後も効く（429）・91 秒後は古いので通る・古い呼び出しが後から外しても新しい印は残る（429）・新しい方を外せば通る",
+      [typeof a.release, b.error, typeof c.release, d.error, typeof e.release], ["function", "busy", "function", "busy", "function"]);
+  } finally {
+    Date.now = realNow;
+  }
+}
+
 // ===== 5. 昨日より前のメモリーの項目を捨てる（増やし続けない） =====
 {
   S.take.mode = "missing";
@@ -463,8 +497,22 @@ const setAdminEnv = (over = {}) => {
   const call = async (auth) => (await invoke(cron, { method: "GET", headers: auth ? { authorization: auth } : {} })).statusCode;
   eq("cron: 鍵があると、見出しなし 401・ちがう鍵（同じ長さ・ちがう長さ）401・正しい鍵 200",
     [await call(""), await call("Bearer test-cron-secret-0123456780"), await call("Bearer short"), await call("Bearer test-cron-secret-0123456789")], [401, 401, 401, 200]);
-  const src = fs.readFileSync(path.join(ROOT, "api", "cron", "keepalive.js"), "utf8");
-  ok("cron: 鍵は timingSafeEqual で比べる（字の比べ方で時間の差を出さない）", /timingSafeEqual/.test(src));
+  // 比べ方は、関数の字に timingSafeEqual があるかでなく、呼ぶ時に本当に使うかで見る（字の比べ方 !== に戻すと、上の答えは同じでも
+  // ここで呼ばれた数が 0 になる。Batch 88 の反証: 前は字を探すだけで、助けの関数を残したまま !== に戻しても通った）
+  const realTse = crypto.timingSafeEqual;
+  let tseCalls = 0;
+  crypto.timingSafeEqual = (a, b) => {
+    tseCalls++;
+    return realTse(a, b);
+  };
+  let codes = [];
+  try {
+    codes = [await call("Bearer test-cron-secret-0123456780"), await call("Bearer test-cron-secret-0123456789")];
+  } finally {
+    crypto.timingSafeEqual = realTse;
+  }
+  ok("cron: 同じ長さの鍵は timingSafeEqual で比べる（ちがう鍵 401・正しい鍵 200 のどちらでも呼ぶ。字の比べ方で時間の差を出さない）",
+    JSON.stringify(codes) === "[401,200]" && tseCalls >= 2, JSON.stringify({ codes, tseCalls }));
   delete process.env.CRON_SECRET;
 }
 
