@@ -28202,6 +28202,113 @@ console.log("my words session reads (87.4):");
   check("87.4 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
+// ===== 87.5 マイ単語帳の回の字とナビ（Batch 87。index.html の #promptLabelFixed・js/game.js setLearnScreen・js/myWordsChoice.js・css/game.css。docs/SPEC_MY_WORDS.md §16.6。BACKLOG F22）: 打つマイ単語帳の回の問いの上の字は「問い」（訳は本人の書いた問いのことがある）・選択式で訳を見る向きも「問い」（英語を見る向きは「英語」のまま）・ナビは中心の学ぶ回だけ「英単語を学ぶ」を今の場所にする（マイ単語帳とスラングの回は何も光らせない）・単語帳を選んだ回の題は単語帳の名前（字のまま）。スラングと中心の学ぶ回の字は前のまま =====
+// a15294a: マイ単語帳の回の字は「日本語訳（…）」・ナビは「英単語を学ぶ」が光る・題は単語帳を選んでも「マイ単語帳」
+console.log("my words session label and nav (87.5):");
+{
+  const allErrors = [];
+  const T = "2026-11-01T00:00:00.000Z";
+  const BOOK_NAME = "<b>仕事</b>"; // 字のまま出す（HTML にしない）
+  const WORDS = [
+    { en: "agenda", ja: "〈会議の場面〉議題が多すぎる。会議は長くなる？短くなる？", book: "main", bookName: "マイ単語帳", addedAt: T },
+    { en: "deadline", ja: "締め切り", book: "main", bookName: "マイ単語帳", addedAt: T },
+    { en: "invoice", ja: "請求書", book: "w1", bookName: BOOK_NAME, addedAt: T },
+    { en: "budget", ja: "予算", book: "w1", bookName: BOOK_NAME, addedAt: T }
+  ];
+  const BOOKS = JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "w1", name: BOOK_NAME }]);
+  async function runPage(path) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript((seed) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, { spelldash_my_words: JSON.stringify(WORDS), spelldash_my_books: BOOKS });
+    await page.goto(BASE + path, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => window.__words.length >= 1), 10000);
+    await page.waitForTimeout(250);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  // 見えている問いの上の字・ナビの今の場所・回の題
+  const screen = (page) => page.evaluate(() => {
+    const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+    const cur = [...document.querySelectorAll(".site-nav a[aria-current]")].map((a) => `${a.getAttribute("href")}=${a.getAttribute("aria-current")}`);
+    return {
+      labels: [...document.querySelectorAll("#gameCard .label")].filter(shown).map((el) => el.textContent.trim()),
+      nav: cur,
+      head: document.getElementById("learnHead")?.textContent ?? null,
+      headHtml: document.getElementById("learnHead")?.innerHTML ?? null,
+      done: document.body.classList.contains("set-done")
+    };
+  });
+  const typeKeys = async (page, keys) => { for (const ch of keys) await page.press("#input", ch); };
+
+  // ----- (1) 打つ回（/?learn=my）: 字は「問い」だけ・ナビは光らない・題は「マイ単語帳」。回の終わり（set-done）では字は隠れる（前のまま）-----
+  {
+    const page = await runPage("/?learn=my");
+    const v = await screen(page);
+    // 4 語を答えて回を終える（出た語の英語を打つ）
+    for (let i = 0; i < WORDS.length; i++) {
+      const n = await page.evaluate(() => window.__words.length);
+      const id = await page.evaluate(() => window.__words.at(-1));
+      await typeKeys(page, String(id).replace(/^my-/, ""));
+      await waitUntil(() => page.evaluate((n) => window.__words.length > n || document.body.classList.contains("set-done"), n), 6000);
+    }
+    await page.waitForFunction(() => document.body.classList.contains("set-done"), null, { timeout: 8000 }).catch(() => {});
+    const end = await screen(page);
+    check("87.5 打つ回（/?learn=my）: 問いの上の字は「問い」だけ・ナビはどれも今の場所にしない・題は「マイ単語帳」・回の終わり（set-done）では字は出ない・エラー 0",
+      JSON.stringify(v.labels) === JSON.stringify(["問い"]) && v.nav.length === 0 && v.head === "マイ単語帳" && end.done && end.labels.length === 0 && page.errors.length === 0,
+      JSON.stringify({ v, end, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (2) 単語帳を選んだ回（/?learn=my&book=w1）: 題は単語帳の名前（字のまま。HTML にしない）・字は「問い」 -----
+  {
+    const page = await runPage("/?learn=my&book=w1");
+    const v = await screen(page);
+    check("87.5 単語帳を選んだ回: 題は単語帳の名前（「<b>仕事</b>」を字のまま）・字は「問い」・ナビは光らない・エラー 0",
+      v.head === BOOK_NAME && !/<b>/.test(v.headHtml) && JSON.stringify(v.labels) === JSON.stringify(["問い"]) && v.nav.length === 0 && page.errors.length === 0,
+      JSON.stringify({ v, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (3) 選択式: 訳を見て英語を選ぶ（choice=en）は「問い」・英語を見て訳を選ぶ（choice=ja）は「英語」のまま -----
+  {
+    const rows = [];
+    for (const dir of ["en", "ja"]) {
+      const page = await runPage(`/?learn=my&choice=${dir}`);
+      await waitUntil(() => page.evaluate(() => document.querySelectorAll("#choiceOpts .choice__opt").length > 0), 6000);
+      rows.push({ dir, ...(await screen(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.5 選択式: 訳を見る向き（choice=en）の字は「問い」・英語を見る向き（choice=ja）は「英語」・ナビは光らない・エラー 0",
+      JSON.stringify(rows.map((r) => r.labels)) === JSON.stringify([["問い"], ["英語"]]) && rows.every((r) => r.nav.length === 0 && !r.err), JSON.stringify(rows));
+  }
+
+  // ----- (4) スラングの回は「日本語訳」のまま・ナビは光らない。中心の学ぶ回（/?learn=next）は前のまま（字は「日本語訳…」・ナビは「英単語を学ぶ」）-----
+  {
+    const slang = await runPage("/?learn=slang&group=work");
+    const s = await screen(slang);
+    await closeCtx(slang);
+    const core = await runPage("/?learn=next");
+    const c = await screen(core);
+    await closeCtx(core);
+    check("87.5 スラングの回: 字は「日本語訳」のまま・ナビは光らない／中心の学ぶ回: 字は「日本語訳…」のまま・ナビは「英単語を学ぶ」だけ",
+      s.labels.length === 1 && s.labels[0].startsWith("日本語訳") && s.nav.length === 0 && c.labels.length === 1 && c.labels[0].startsWith("日本語訳") && JSON.stringify(c.nav) === JSON.stringify(["/?learn=next=page"]),
+      JSON.stringify({ s, c }));
+  }
+  check("87.5 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");
 {
