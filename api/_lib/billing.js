@@ -199,7 +199,10 @@ export async function stripeFetch(path, params = null, { method = "POST", idempo
 export const LIVE_SUBSCRIPTION_STATUSES = PRO_STATUSES;
 
 // 本人の顧客の番号。行に顧客があればそれ。無ければ metadata の user_id で探し（決済の会社の検索は少し遅れて出るので、見つからなければ）、
-// 冪等キー customer:<uuid> で作る（24 時間は同じ顧客が返る。その後は webhook が行に顧客を書いている）。検索の失敗は止めない。作れなければ投げる
+// 冪等キー customer:<uuid> で作る（24 時間は同じ顧客が返る。その後は webhook が行に顧客を書いている）。検索の失敗は止めない。作れなければ投げる。
+// 作る要求の本文は人の id だけ（Batch 88 の反証）: 同じ冪等キーで本文が違うと決済の会社は断るので、本文にメールを入れると、作ってすぐ
+// （まだ検索に出ない間）にログインのメールを変えた人の 2 回目が 24 時間 502 になった。メールは作った後に書く（書けなくても手続きは続ける:
+// 手続きの画面でメールを聞く）
 export async function customerFor(user, row) {
   if (typeof row?.stripe_customer_id === "string" && row.stripe_customer_id) return row.stripe_customer_id;
   if (!isUuid(user?.id)) throw new UpstreamError("stripe", 0, "bad_user");
@@ -210,10 +213,15 @@ export async function customerFor(user, row) {
   } catch {
     // 検索できなくても作る（冪等キーで同じ顧客になる）
   }
-  const params = { metadata: { user_id: user.id } };
-  if (user.email) params.email = user.email;
-  const created = await stripeFetch("/v1/customers", params, { idempotencyKey: `customer:${user.id}` });
+  const created = await stripeFetch("/v1/customers", { metadata: { user_id: user.id } }, { idempotencyKey: `customer:${user.id}` });
   if (typeof created?.id !== "string" || !created.id) throw new UpstreamError("stripe", 0, "no_customer");
+  if (user.email && created.email !== user.email) {
+    try {
+      await stripeFetch(`/v1/customers/${encodeURIComponent(created.id)}`, { email: user.email });
+    } catch {
+      // メールは手続きの画面で聞く
+    }
+  }
   return created.id;
 }
 

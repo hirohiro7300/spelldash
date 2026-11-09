@@ -59,7 +59,7 @@ Supabase側設定の既知課題（STATUS.md記載）。Googleログインが主
 | Webhook の署名 | `Stripe-Signature` の `t` と `v1` を分解し、生ボディで HMAC-SHA256 → `crypto.timingSafeEqual`（長さ違いは不一致）。`|now − t| > 300 秒` は拒否。`bodyParser: false` で生ボディを読む。未設定なら 503 |
 | 逆順到着・再送 | `subscriptions.event_created` に最後に反映した event の `created` を持ち、それ以下は書かない。Supabase に書けなければ 500 を返して Stripe の再送に任せる |
 | RLS | `subscriptions` は本人が自分の行を select するだけ（`auth.uid() = user_id`）。insert／update／delete は anon／authenticated から revoke。書くのは webhook（service role）だけ。checkout／portal／AI の回数判定は本人のトークン + anon key で読む |
-| 冪等性・二重課金 | （2026-11-09・Batch 88 で書き直し）手続きはいつも本人の顧客 1 人で作る（行の顧客 → metadata の `user_id` で検索 → 冪等キー `customer:<userId>` で作る）。作成の冪等キーは `checkout:<userId>:<interval>:<trial|paid>:<分>`。本人の行が Pro か、本人の顧客に生きている契約があれば 409。新しい手続きを作ると同じ顧客の開いている手続きを期限切れにし、期限も 35 分。webhook は別の契約の終わりで生きている行を書かない。加入と管理の画面は 1 人 1 分 10 回まで。管理の画面は `stripe_customer_id` が無ければ 404 |
+| 冪等性・二重課金 | （2026-11-09・Batch 88 で書き直し）手続きはいつも本人の顧客 1 人で作る（行の顧客 → metadata の `user_id` で検索 → 冪等キー `customer:<userId>` で作る。作る要求の本文は人の id だけで、メールは作った後に書く）。作成の冪等キーは `checkout:<userId>:<interval>:<trial|paid>:<分>`。本人の行が Pro か、本人の顧客に生きている契約があれば 409。新しい手続きを作ると同じ顧客の開いている手続きを期限切れにし、期限も 35 分。webhook は別の契約の終わりで生きている行を書かない。加入と管理の画面は 1 人 1 分 10 回まで。管理の画面は `stripe_customer_id` が無ければ 404 |
 | リダイレクト先 | success／cancel／return の URL は `SITE_ORIGIN`（既定 本番）だけから作り、リクエストの Host／Origin ヘッダは使わない |
 | PII | ログは `billing/<label>: <種別> <状態>` だけ。メール・顧客 id・本文は書かない。CRM にも Stripe の id は出さない。応答は `Cache-Control: no-store`、sw.js は `/api/` を保存しない |
 | CSP | 外部へのリダイレクトは `location.href`（Stripe のドメイン）。スクリプト・接続先の許可は増やしていない（Stripe.js は使わない） |
