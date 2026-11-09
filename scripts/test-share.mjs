@@ -206,7 +206,7 @@ await t("断る: 1 語でも決まりに合わなければリンクごと（使�
 // 同期の送り先（user_items の payload）は NUL と組になっていないサロゲートを受け付けない: 1 語でも入ると、同じ送りの組の語・メモがどれも届かなくなる。
 // 1 語ずつ足す欄からは入らない字なので、リンクから入れない。向きを変える制御文字は、名前と訳の見え方を並べ替えられるので一緒に断る
 const JSON_LONE = (n, ja) => `j1.${B64(Buffer.from(`{"v":1,"n":${n},"w":[["up","上がる"],["go",${ja}]]}`, "utf8"))}`; // \\ud800 を JSON の書き方のまま入れる（Buffer は組になっていないサロゲートを UTF-8 にできない）
-const UNSAFE_JA = [["NUL", "a\u0000b"], ["ESC", "\u001b[31m赤"], ["US", "a\u001fb"], ["DEL", "a\u007fb"], ["NEL", "a\u0085b"], ["C1 の終わり", "a\u009fb"], ["LRE", "‪abc"], ["RLO", "‮abc"], ["LRI", "⁦abc"], ["PDI", "abc⁩"]];
+const UNSAFE_JA = [["NUL", "a\u0000b"], ["ESC", "\u001b[31m赤"], ["US", "a\u001fb"], ["DEL", "a\u007fb"], ["NEL", "a\u0085b"], ["C1 の終わり", "a\u009fb"], ["LRE", "\u202aabc"], ["RLO", "\u202eabc"], ["LRI", "\u2066abc"], ["PDI", "abc\u2069"]];
 await t("断る: 訳に制御文字（NUL・ESC・US・DEL・C1）・向きを変える制御文字（U+202A〜U+202E・U+2066〜U+2069）があればリンクごと（entry）", async () => {
   const rs = await Promise.all(UNSAFE_JA.map(([, ja]) => reasonOf(plain({ ...GOOD, w: [["up", "上がる"], ["go", ja]] }))));
   const zrs = await Promise.all(UNSAFE_JA.map(([, ja]) => reasonOf(zipped({ ...GOOD, w: [["go", ja]] }))));
@@ -217,7 +217,7 @@ await t("断る: 訳に組になっていないサロゲート（上だけ・下
   return rs.every((r) => r === "entry") || JSON.stringify(rs);
 });
 await t("断る: 単語帳の名前に制御文字・組になっていないサロゲート・向きを変える制御文字があれば（name）", async () => {
-  const rs = await Promise.all(["a\u0000b", "a\u001bb", "a\u0085b", "‮abc", "abc⁧"].map((n) => reasonOf(plain({ ...GOOD, n }))));
+  const rs = await Promise.all(["a\u0000b", "a\u001bb", "a\u0085b", "\u202eabc", "abc\u2067"].map((n) => reasonOf(plain({ ...GOOD, n }))));
   const lone = await Promise.all(['"a\\udfff"', '"\\ud800a"'].map((n) => reasonOf(JSON_LONE(n, '"行く"'))));
   return ([...rs, ...lone].every((r) => r === "name")) || JSON.stringify({ rs, lone });
 });
@@ -227,11 +227,11 @@ await t("読める: タブ・改行は空白 1 つ（今までどおり）・サ
 });
 await t("渡す側も同じ決まり: 訳に制御文字・組になっていないサロゲート・向きを変える字のある語は入れずに数える（invalid）・名前にあれば最初の単語帳の名前・作った code は必ず読める", async () => {
   const list = [
-    { en: "up", ja: "上がる", book: "w1" }, { en: "go", ja: "a\u0000b", book: "w1" }, { en: "sun", ja: "x\ud800y", book: "w1" }, { en: "moon", ja: "‮abc", book: "w1" },
+    { en: "up", ja: "上がる", book: "w1" }, { en: "go", ja: "a\u0000b", book: "w1" }, { en: "sun", ja: "x\ud800y", book: "w1" }, { en: "moon", ja: "\u202eabc", book: "w1" },
     { en: "tea", ja: "お茶😀", book: "w1" }
   ];
   const s1 = S.bookShare(list, "w1", [{ id: "main", name: "マイ単語帳" }, { id: "w1", name: "仕事" }]);
-  const s2 = S.bookShare(list, "w1", [{ id: "main", name: "マイ単語帳" }, { id: "w1", name: "仕‮事" }]);
+  const s2 = S.bookShare(list, "w1", [{ id: "main", name: "マイ単語帳" }, { id: "w1", name: "仕\u202e事" }]);
   const d1 = await S.decodeShare((await S.encodeShare(s1)).code);
   const d2 = await S.decodeShare((await S.encodeShare(s2, { zip: false })).code);
   return (JSON.stringify(s1.words) === JSON.stringify([["up", "上がる"], ["tea", "お茶😀"]]) && s1.invalid === 3 && s1.name === "仕事" && s2.name === "マイ単語帳" && d1.ok && d2.ok && d1.words.length === 2) ||
@@ -276,18 +276,23 @@ async function withUnzipSpy(fn) {
   };
   try {
     const r = await fn();
+    const atReturn = writes.length;
     await new Promise((done) => setTimeout(done, 50)); // 断った後にも渡し続けていないか
-    return { r, writes: [...writes] };
+    return { r, writes: [...writes], atReturn };
   } finally {
     globalThis.DecompressionStream = Real;
   }
 }
 const SLICE = S.SHARE_UNZIP_SLICE ?? 4096;
-await t("広げると 100 MB になる z1（縮めて約 97 KB）: 4 KB ずつ広げる道へ渡し、最初の数切れ（16 KB まで）で上限に着いて断る（size）・断った後は渡さない", async () => {
-  const bomb = `z1.${B64(zlib.deflateRawSync(Buffer.alloc(100_000_000, 0x20), { level: 9 }))}`;
-  const { r, writes } = await withUnzipSpy(() => S.decodeShare(bomb));
+// 何切れ先に受け取るかは広げる道の作りしだい（この台本の実行環境の道は先に数切れを溜める。ブラウザは 1 切れずつ全部広げる: E2E 84.1 が 16 KB までを見る）。
+// ここでは、どの切れも 4 KB まで・上限に着いたら残りを渡さない（全部は渡さない・読み終えた後に増えない）を見る
+await t("広げると 100 MB になる z1（縮めて約 97 KB）: 4 KB ずつ広げる道へ渡し、上限に着いたら読むのをやめて断る（size）・残りの切れは渡さない", async () => {
+  const packed = zlib.deflateRawSync(Buffer.alloc(100_000_000, 0x20), { level: 9 });
+  const bomb = `z1.${B64(packed)}`;
+  const { r, writes, atReturn } = await withUnzipSpy(() => S.decodeShare(bomb));
   const fed = writes.reduce((a, b) => a + b, 0);
-  return (S.SHARE_UNZIP_SLICE === 4096 && r.reason === "size" && writes.length > 0 && writes.every((n) => n <= SLICE) && fed <= 4 * SLICE) || JSON.stringify({ slice: S.SHARE_UNZIP_SLICE, reason: r.reason, writes: writes.slice(0, 5), n: writes.length, fed });
+  return (S.SHARE_UNZIP_SLICE === 4096 && r.reason === "size" && writes.length > 1 && writes.every((n) => n <= SLICE) && fed < packed.length && writes.length === atReturn) ||
+    JSON.stringify({ slice: S.SHARE_UNZIP_SLICE, reason: r.reason, writes: writes.slice(0, 5), n: writes.length, atReturn, fed, packed: packed.length });
 });
 await t("ふつうの z1 も 4 KB ずつ渡して全部読める（いちばん大きい単語帳 1,000 語 × 150 字: 渡した合計は縮めた物の長さと同じ）", async () => {
   let x = 777;

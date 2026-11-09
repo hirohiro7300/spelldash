@@ -8,10 +8,16 @@
 //   j1.  JSON の UTF-8 をそのまま（CompressionStream が無い・deflate-raw を知らないブラウザで作ったとき）
 // JSON: { "v": 1, "n": "<単語帳の名前>", "w": [["<英語（画面の形）>", "<訳>"], ...] }
 //   入れるのは単語帳の名前と、語ごとの英語（画面に出す形。鍵 up~<訳の印> は入れない）と訳だけ。覚えたかどうか（3 状態）・鍵・id・日付・アカウントは入れない。
-//   場面カードと、今の決まり（1 語ずつ足すと同じ checkEnText・checkJaText）に合わない古い語は入れない（入れなかった数を画面が言う）。
-// 読み方（decodeShare）: z1・j1 のほかは断る。base64url は形を確かめる。縮めた物は広げた大きさに上限（SHARE_MAX_JSON）を付けて読む（途中で止める）。
+//   場面カードと、今の決まり（1 語ずつ足すと同じ checkEnText・checkJaText と、下の名前と訳の字の決まり）に合わない古い語は入れない（入れなかった数を画面が言う）。
+// 読み方（decodeShare）: z1・j1 のほかは断る。base64url は形を確かめる。縮めた物は SHARE_UNZIP_SLICE（4 KB）ずつ広げる道へ渡し、
+//   広げた大きさに上限（SHARE_MAX_JSON）を付けて読む（超えたら読むのをやめ、残りは渡さない）。ブラウザの広げ方は、渡された 1 切れを全部広げてから
+//   読む側に渡すので、1 度に全部を渡すと上限で止めても広げすぎる（1.3 MB の z1 で約 1 GB）。4 KB ずつなら 1 切れを広げても約 4 MB まで。
 //   UTF-8 は壊れた並びを断る。JSON は JSON.parse だけ（eval しない）で、鍵は v・n・w の 3 つだけ・v は 1・n は単語帳の名前の決まり（20 字まで）・
 //   w は 1〜SHARE_MAX_WORDS 個の [文字, 文字]。語は 1 語ずつ足すと同じ決まり（英語・訳とも 150 字まで）で、1 つでも合わなければリンクごと断る。
+//   名前と訳の字の決まり（UNSAFE_TEXT）: 制御文字（U+0000〜U+001F・U+007F〜U+009F。タブと改行は先に空白 1 つになる）・組になっていないサロゲート・
+//   向きを変える制御文字（埋め込み・上書き・隔離: U+202A〜U+202E・U+2066〜U+2069）があれば断る。同期の送り先（user_items の payload）は NUL と
+//   組になっていないサロゲートを受け付けず、1 語でも入ると同じ送りの組の語・メモがどれも届かなくなる（1 語ずつ足す欄からは入らない字）。
+//   向きを変える字は、名前と訳の見え方を並べ替えられるので一緒に断る。渡す側（bookShare）も同じ決まりで語を選ぶ（作った code は必ず読める）。
 //   画面は読んだ字を textContent で出す（innerHTML に入れない）。
 // 上限（決めた値。docs/SPEC_MY_WORDS.md §13.3）:
 //   SHARE_MAX_WORDS = 1,000 語（Pro の上限と同じ。Pro の人の単語帳 1 冊がまるごと入る）
@@ -31,6 +37,11 @@ export const SHARE_MAX_WORDS = MY_PRO_LIMIT;
 export const SHARE_MAX_JSON = 1_100_000;
 export const SHARE_MAX_CODE = 1_500_000;
 export const SHARE_LONG_LINK = 8000;
+export const SHARE_UNZIP_SLICE = 4096; // 縮めた物を広げる道へ渡す 1 切れ（deflate は 1 バイトが最大約 1,032 バイトに広がる: 4 KB で約 4 MB まで）
+
+// 名前と訳に入れない字（u フラグ: [\uD800-\uDFFF] は組になっていないサロゲートだけに当たる。組になった絵文字などは当たらない）
+const UNSAFE_TEXT = /[\u0000-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]|[\uD800-\uDFFF]/u;
+const safeText = (text) => !UNSAFE_TEXT.test(text);
 
 // ===== base64url（= なし。RFC 4648 §5） =====
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -105,6 +116,25 @@ function streamOf(bytes) {
   });
 }
 
+// 縮めた物を size バイトずつ出す流れ（広げる道が次の切れを求めたときだけ出す: highWaterMark 0 で先に積まない）。
+// 読む側（readAll）が上限で読むのをやめると、広げる道とこの流れも止まり、残りの切れは出さない
+function sliceStream(bytes, size) {
+  let at = 0;
+  return new ReadableStream(
+    {
+      pull(controller) {
+        if (at >= bytes.length) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(bytes.subarray(at, at + size));
+        at += size;
+      }
+    },
+    { highWaterMark: 0 }
+  );
+}
+
 // 流れを読み切る。max バイトを超えたら読むのをやめて null（縮めた物を広げると大きくなりすぎる形を、全部広げずに断る）
 async function readAll(stream, max) {
   const reader = stream.getReader();
@@ -158,13 +188,13 @@ export function bookShare(list, bookId, books) {
     }
     const en = checkEnText(displayOf(w)); // 画面の形（KPI・Due Diligence）。鍵（up~<訳の印>）は入れない
     const ja = checkJaText(w.ja);
-    if (!en.ok || !ja.ok) {
+    if (!en.ok || !ja.ok || !safeText(ja.ja)) {
       invalid++;
       continue;
     }
     words.push([en.text, ja.ja]);
   }
-  return { name: named.ok ? named.name : MY_FIRST_BOOK.name, words, scenes, invalid, over: words.length > SHARE_MAX_WORDS };
+  return { name: named.ok && safeText(named.name) ? named.name : MY_FIRST_BOOK.name, words, scenes, invalid, over: words.length > SHARE_MAX_WORDS };
 }
 
 // まとめて足す（js/myWords.js parseBulk）の見出し行の決まり（「english, …」「answer, …」「q, …」の行は CSV の見出しとして飛ばす）に当たる英語。
@@ -229,7 +259,7 @@ export function readShare(value, format = "j1") {
   if (keys.length !== 3 || !keys.every((k) => k === "v" || k === "n" || k === "w")) return bad("shape");
   if (typeof value.n !== "string") return bad("name");
   const name = checkBookName(value.n, []);
-  if (!name.ok) return bad("name");
+  if (!name.ok || !safeText(name.name)) return bad("name");
   if (!Array.isArray(value.w)) return bad("shape");
   if (value.w.length === 0) return bad("empty");
   if (value.w.length > SHARE_MAX_WORDS) return bad("size");
@@ -238,7 +268,7 @@ export function readShare(value, format = "j1") {
     if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string" || typeof entry[1] !== "string") return bad("entry");
     const en = checkEnText(entry[0]);
     const ja = checkJaText(entry[1]);
-    if (!en.ok || !ja.ok) return bad("entry");
+    if (!en.ok || !ja.ok || !safeText(ja.ja)) return bad("entry"); // 英語は checkEnText が英字・数字・ハイフン・アポストロフィ・空白だけにする
     words.push({ en: en.text, ja: ja.ja });
   }
   return { ok: true, name: name.name, words, format };
@@ -257,7 +287,7 @@ export async function decodeShare(code) {
   if (head === SHARE_ZIP) {
     if (!canUnzip()) return bad("unsupported");
     try {
-      bytes = await readAll(streamOf(raw).pipeThrough(new DecompressionStream("deflate-raw")), SHARE_MAX_JSON);
+      bytes = await readAll(sliceStream(raw, SHARE_UNZIP_SLICE).pipeThrough(new DecompressionStream("deflate-raw")), SHARE_MAX_JSON);
     } catch {
       return bad("zip");
     }

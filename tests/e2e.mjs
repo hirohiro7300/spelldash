@@ -26380,7 +26380,7 @@ console.log("give a word book (84.1):");
       ["訳に NUL", `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: [["go", "行く"], ["tea", "a\u0000b"]] }))}`],
       ["訳に ESC", `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: [["go", "\u001b[31m赤"]] }))}`],
       ["名前に組になっていないサロゲート", `j1.${B64U('{"v":1,"n":"a\\ud800","w":[["go","行く"]]}')}`],
-      ["名前に向きを上書きする字", `j1.${B64U(JSON.stringify({ v: 1, n: "‮abc", w: [["go", "行く"]] }))}`]
+      ["名前に向きを上書きする字", `j1.${B64U(JSON.stringify({ v: 1, n: "\u202eabc", w: [["go", "行く"]] }))}`]
     ];
     const unsafeViews = [];
     for (const [name, code] of unsafe) {

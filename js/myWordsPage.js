@@ -49,20 +49,21 @@ function setStatus(text, { error = false, limit = false } = {}) {
 function setLimitStatus() {
   setStatus(limitMessage(), { limit: true });
   const status = $("myWordsStatus");
-  if (status) writeWithOffer(status, status.textContent);
+  if (status) writeWithOffer(status, "", status.textContent);
 }
 
-// node の字を text にし、上限の文の「Pro なら1,000語」があれば加入画面へのリンクにする（上の setLimitStatus と、渡された語を足した結果・上限の案内: Batch 84）。
+// node の字を before + limit にし、limit（アプリが書いた上限の文: js/myWords.js limitMessage）の中の「Pro なら1,000語」だけを加入画面へのリンクにする
+// （上の setLimitStatus と、渡された語を足した結果・上限の案内: Batch 84）。before は字のまま: 渡された単語帳の名前や訳が同じ字を含んでもリンクにしない。
 // リンクにするのは js/myWords.js limitOfferText が許すときだけ（受付中の Web で Pro でない人。受付前・アプリ・Pro の人は字だけ）
-function writeWithOffer(node, text) {
-  node.textContent = text;
-  const offer = limitOfferText();
-  const at = offer ? text.indexOf(offer) : -1;
+function writeWithOffer(node, before, limit = "") {
+  node.textContent = before + limit;
+  const offer = limit ? limitOfferText() : null;
+  const at = offer ? limit.indexOf(offer) : -1;
   if (at < 0) return;
   const link = el("a", "", offer);
   link.href = "./pro.html";
   link.dataset.funnel = "mywords";
-  node.replaceChildren(text.slice(0, at), link, text.slice(at + offer.length));
+  node.replaceChildren(before + limit.slice(0, at), link, limit.slice(at + offer.length));
 }
 
 function el(tag, cls, text) {
@@ -124,7 +125,8 @@ function setCurrent(id, { focusTab = false } = {}) {
   if (focusTab) pressedTab()?.focus();
 }
 
-function renderBooks(books, counts) {
+// sharable: 今の単語帳に、今の決まりで渡せる語があるか（js/myWordsShare.js bookShare。「渡す」を押したときと同じ決まり）
+function renderBooks(books, counts, sharable) {
   const name = bookName(books, current);
   $("myBookTabs")?.replaceChildren(
     ...books.map((b) => {
@@ -144,7 +146,8 @@ function renderBooks(books, counts) {
   $("myBookRename")?.setAttribute("aria-label", `「${name}」の名前を変える`);
   const give = $("myBookGive");
   if (give) {
-    give.hidden = (counts[current]?.total ?? 0) === 0; // 英語の語の無い単語帳は渡さない
+    // 渡せる語の無い単語帳には出さない（英語の語が無い・今の決まりに合わない古い語だけ。押しても何も起きないボタンを出さない）
+    give.hidden = !sharable;
     give.setAttribute("aria-label", `「${name}」を渡す`);
   }
 }
@@ -237,7 +240,7 @@ function render() {
   const name = bookName(books, current);
   sharedEnglish = sharedEnglishOf(list);
 
-  renderBooks(books, counts);
+  renderBooks(books, counts, mine.total > 0 && bookShare(list, current, books).words.length > 0);
   const sum = $("myWordsSum");
   if (sum) {
     const parts = [el("b", "mw__n", `${fmt(mine.total)}語`)];
@@ -516,13 +519,23 @@ $("myWordsSelMove")?.addEventListener("click", () => {
 // コピーは押した操作の中で最初に呼ぶ（リンクは開いたときに作っておく）。コピーできないときは欄に出して選んでもらう
 let give = null; // 開いている「渡す」の中身 { bookId, link, text, count }
 let giveSeq = 0;
+let giveTimer = 0;
 const shareOrigin = () => (isNativeApp ? PRODUCTION_ORIGIN : location.origin);
 
-function setGiveStatus(text, { error = false } = {}) {
+// later: 読み上げの行を一度空にしてから書く（同じボタンを 2 度押して同じ字を書き直しても、読み上げが黙らない。setRecvStatus と同じ）
+function setGiveStatus(text, { error = false, later = false } = {}) {
   const s = $("myGiveStatus");
   if (!s) return;
-  s.textContent = text;
+  clearTimeout(giveTimer);
   s.classList.toggle("is-error", error);
+  if (!later) {
+    s.textContent = text;
+    return;
+  }
+  s.textContent = "";
+  giveTimer = setTimeout(() => {
+    s.textContent = text;
+  }, 40);
 }
 
 // 開く（focus: 開いた後に焦点を最初のボタンへ）。開いている間に語が変わったら焦点を動かさずに作り直す（refreshGive）
@@ -599,7 +612,7 @@ async function copyGive(kind, button) {
     await navigator.clipboard.writeText(value);
     box.hidden = true;
     area.value = "";
-    setGiveStatus(done);
+    setGiveStatus(done, { later: true });
     return;
   } catch {
     // 下の欄に出して写す
@@ -617,10 +630,10 @@ async function copyGive(kind, button) {
   if (copied) {
     box.hidden = true;
     area.value = "";
-    setGiveStatus(done);
+    setGiveStatus(done, { later: true });
     button?.focus();
   } else {
-    setGiveStatus("コピーできなかった。下の欄の字を選んでコピーする。", { error: true });
+    setGiveStatus("コピーできなかった。下の欄の字を選んでコピーする。", { error: true, later: true });
   }
 }
 
@@ -643,10 +656,10 @@ $("myGiveShare")?.addEventListener("click", async () => {
   const data = give.link ? { title, text: $("myGiveLead")?.textContent ?? "", url: give.link } : { title, text: give.text };
   try {
     await navigator.share(data);
-    setGiveStatus("共有した。");
+    setGiveStatus("共有した。", { later: true });
   } catch (error) {
     if (error?.name === "AbortError") setGiveStatus("");
-    else setGiveStatus("共有できなかった。リンクか文字をコピーして渡す。", { error: true });
+    else setGiveStatus("共有できなかった。リンクか文字をコピーして渡す。", { error: true, later: true });
   }
 });
 
@@ -659,12 +672,13 @@ let recv = null; // 読めた中身 { name, words }
 let recvSeq = 0;
 let recvTimer = 0;
 
-function setRecvStatus(text, { error = false, offer = false, later = false } = {}) {
+// limit: 続けて書く上限の文（アプリの字。この中の「Pro なら1,000語」だけを加入画面へのリンクにする: writeWithOffer）。text は字のまま
+function setRecvStatus(text, { error = false, limit = "", later = false } = {}) {
   const s = $("myRecvStatus");
   if (!s) return;
   clearTimeout(recvTimer);
   s.classList.toggle("is-error", error);
-  const write = () => (offer ? writeWithOffer(s, text) : (s.textContent = text));
+  const write = () => (limit ? writeWithOffer(s, text, limit) : (s.textContent = text));
   if (!later) {
     write();
     return;
@@ -711,6 +725,7 @@ async function readShareLink() {
     recvParts("bad");
     box.hidden = false;
     setRecvStatus(r.reason === "unsupported" ? "このブラウザではこのリンクを読めません" : "このリンクは読めません", { later: true });
+    dropShareHash(); // 1 行は出したまま。読み直しても同じ 1 行を出さない（同じ code を読み直す手間も繰り返さない）
     return;
   }
   recv = { name: r.name, words: r.words };
@@ -740,10 +755,9 @@ function renderRecv(list = getMyWords(), books = getMyBooks(list)) {
   const newName = uniqueBookName(recv.name, books);
   const room = maxMyWords() - list.length;
   const canNew = books.length < MY_BOOKS_MAX && !!newName;
-  const hint = [canNew ? `新しい単語帳の名前は「${newName}」。今の単語帳は「${here.name}」。` : `単語帳は${fmt(MY_BOOKS_MAX)}冊まで。今の単語帳「${here.name}」には足せる。`];
-  if (room <= 0) hint.push(endSentence(limitMessage()));
-  else if (room < n) hint.push(`上限まであと ${fmt(room)}語。`);
-  writeWithOffer($("myRecvHint"), hint.join(""));
+  let hint = canNew ? `新しい単語帳の名前は「${newName}」。今の単語帳は「${here.name}」。` : `単語帳は${fmt(MY_BOOKS_MAX)}冊まで。今の単語帳「${here.name}」には足せる。`;
+  if (room > 0 && room < n) hint += `上限まであと ${fmt(room)}語。`;
+  writeWithOffer($("myRecvHint"), hint, room <= 0 ? endSentence(limitMessage()) : ""); // 渡された名前は字のまま（上限の文の中だけリンク）
   const add = $("myRecvNew");
   add.disabled = !canNew || room <= 0;
   add.setAttribute("aria-label", canNew ? `新しい単語帳「${newName}」として足す` : "新しい単語帳として足す");
@@ -769,7 +783,8 @@ function addRecv(toNew) {
   if (r.added.length > 0) parts.push(r.created ? `${fmt(r.added.length)}語を新しい単語帳「${r.book.name}」に足した。` : `${fmt(r.added.length)}語を「${r.book.name}」に足した。`);
   else parts.push("足せた語は無い。");
   if (r.skipped.length > 0) parts.push(`足せなかった ${fmt(r.skipped.length)}語: ${r.skipped.slice(0, 3).join(" ／ ")}${r.skipped.length > 3 ? " …" : ""}。`);
-  if (r.limited > 0) parts.push(`上限で足せなかった ${fmt(r.limited)}語。${endSentence(limitMessage())}`);
+  if (r.limited > 0) parts.push(`上限で足せなかった ${fmt(r.limited)}語。`);
+  const limitText = r.limited > 0 ? endSentence(limitMessage()) : ""; // 名前と訳の入った文の後ろに、アプリの上限の文（この中だけリンク）
   recvSeq++;
   dropShareHash(r.book?.id ?? null);
   if (r.book) current = r.book.id;
@@ -778,7 +793,7 @@ function addRecv(toNew) {
   editing = null;
   render();
   recvParts("done");
-  setRecvStatus(parts.join(""), { error: r.added.length === 0, offer: true });
+  setRecvStatus(parts.join(""), { error: r.added.length === 0, limit: limitText });
   $("myRecvClose")?.focus();
 }
 
@@ -796,6 +811,14 @@ $("myRecvClose")?.addEventListener("click", () => {
   $("myRecv").hidden = true;
   setRecvStatus("");
   pressedTab()?.focus();
+});
+// Escape（「渡す」の札と同じ）: 問いの間は「やめる」、足した後は「閉じる」と同じ。読めないリンクの 1 行（ボタンなし）では何もしない
+$("myRecv")?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const button = [$("myRecvCancel"), $("myRecvClose")].find((b) => b && !b.hidden && !b.closest("[hidden]"));
+  if (!button) return;
+  event.preventDefault();
+  button.click();
 });
 // 開いたままのページで別のリンク（# だけが違う）を開いた
 window.addEventListener("hashchange", () => {
