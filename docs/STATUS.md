@@ -66,7 +66,7 @@
 ### 有料プラン SpellDash Pro（2026-10-02 解禁、**受付はまだ**: docs/FOUNDER_TODO.md B）
 - Stripe Checkout／Billing Portal／Webhook（`api/billing/*`、SDK 無し）。価格はコードに無く Stripe の Price から表示。アプリでは購入導線を出さない（加入画面と特商法は dist に入れず、リンクも出さない）
 - entitlement: `subscriptions` 行が active／trialing／past_due かつ 期限＋3 日。クライアントは `js/plan.js` が `spelldash_plan` にキャッシュして同期判定
-- 特典: マイ単語帳 100 → 1,000 語、AI の 1 日の回数（2／3 → 20／60）、推移 30 → 90 日、シールド 3 枚＋修復、テーマ「紙」「藍」
+- 特典: マイ単語帳 100 → 1,000 語、AI の 1 日の回数（2／3 → 20／60）、推移 30 → 90 日、シールド 3 枚＋修復、テーマ「紙」「藍」。加入画面に書くのは今の画面で使える 4 つだけ（マイ単語帳・推移・テーマ・AI の覚え方〔AI の鍵があるときだけ回数〕。Batch 83。docs/BILLING.md §4）
 - 法務: `/terms.html`、`/tokushoho.html`（［ ］は創業者が記入。それまで noindex）、privacy の「お支払い情報」
 - 加入までの動線（docs/SPEC_FUNNEL.md）: フッターの「SpellDash Pro」と週間レポートの 1 行（受付中・7 日以上・Pro でない人だけ）、上限に当たった 5 か所の「Pro について」、加入ボタンの直下の「申し込みの前に」（料金・更新・解約・支払い）、加入の途中でログインしても加入画面へ戻る、加入直後に使えるようになったもの。完了パネル・道・はちゃんには Pro を出さない
 - 計測: `funnel_events`（端末のランダムな番号と段階だけ）と管理画面の「Pro までの動線」（docs/SQL_FUNNEL.md、**SQL は創業者側**）
@@ -84,9 +84,9 @@
 
 - フロント: 素の HTML／CSS／ES modules、ビルド無し。ページ: index／list／stats／profile／battle／news／privacy／terms／tokushoho／pro／admin／typing／typing-game ＋ packs/（生成）
 - デザイン: `css/tokens.css` が唯一の色・角丸・フォントの基準（昼 light／紙 paper・夜 dark／藍 indigo。同じ名前で値だけ変える）。部屋は `css/room.css`・`css/bookshelf.css`、場面の絵は `scripts/room-art/` から `assets/images/room/` に焼いた WebP。窓の行の小さな表紙は `node scripts/build-covers.mjs --src <元の PNG の置き場>` で `assets/images/covers/` に作る 48×64 の WebP 22 枚（元の PNG はリポジトリに入れない。本 → 表紙の表は `js/covers.js` の 1 か所）。フォントは自前（`css/fonts.css`: Shippori Mincho 500／700・Cormorant Garamond 600・IBM Plex Mono。外部リクエスト 0）。og-image（1200×630、全ページ共通）は型 `scripts/og-image.html` を `node scripts/build-og-image.mjs` で撮る（名前と 1 行の説明と札の見本。数字・絵文字なし。URL に版 `?v=2`: SNS は絵を URL で覚えるので、絵を変えたら全ページと E2E の版を 1 つ上げる）。打つ対象の英語と数字は等幅、部屋の中は明朝。絵文字は UI に使わない
-- サーバー: Vercel Node 関数 `api/explain-word`・`api/generate-cards`（Claude、`ANTHROPIC_API_KEY` 未設定なら「準備中」）、`api/admin/*`、`api/billing/*`、`api/cron/keepalive`。秘密鍵はすべて Vercel の環境変数（docs/SECURITY.md）
+- サーバー: Vercel Node 関数 `api/explain-word`・`api/generate-cards`（AI、`ANTHROPIC_API_KEY` 未設定なら「準備中」）、`api/admin/*`、`api/billing/*`、`api/cron/keepalive`。秘密鍵はすべて Vercel の環境変数（docs/SECURITY.md）
 - Supabase: Auth（メールリンク・Google）、テーブル profiles／word_progress／user_progress／battle_sessions／play_sessions／daily_scores／activity_days（RLS）。任意: user_items／feedback／crm_notes／subscriptions（docs/SQL_*.md、**実行は創業者**）
-- 環境変数（Vercel）: `ANTHROPIC_API_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_EMAILS`／`ADMIN_USER_IDS`、`STRIPE_SECRET_KEY`／`STRIPE_PRICE_MONTHLY`／`STRIPE_PRICE_YEARLY`／`STRIPE_TRIAL_DAYS`／`STRIPE_WEBHOOK_SECRET`、`SITE_ORIGIN`、`CRON_SECRET`、AI の回数 `CARD_GEN_DAILY_LIMIT(_PRO)`／`EXPLAIN_WORD_DAILY_LIMIT(_PRO)`
+- 環境変数（Vercel）: `ANTHROPIC_API_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_EMAILS`／`ADMIN_USER_IDS`、`STRIPE_SECRET_KEY`／`STRIPE_PRICE_MONTHLY`／`STRIPE_TRIAL_MONTHS`（`1`）／`STRIPE_WEBHOOK_SECRET`（使わない: `STRIPE_PRICE_YEARLY`・`STRIPE_TRIAL_DAYS`）、`SITE_ORIGIN`、`CRON_SECRET`、AI の回数 `CARD_GEN_DAILY_LIMIT(_PRO)`／`EXPLAIN_WORD_DAILY_LIMIT(_PRO)`
 - 性能（ホーム 390・非圧縮）: 初回表示 約 2.2 MB・161 リクエスト（フォント 479 KB・JS 577 KB・CSS 420 KB・JSON 441 KB・画像 87 KB）、読み込むのは有効なパックと画面に出た文字のフォントだけ。DOMContentLoaded 0.4 秒・LCP 0.4 秒（手元）、1 リクエスト 80ms の遅延で 1.7 秒・2.0 秒。予算: フォント ≤ 520 KB・場面の画像 ≤ 260 KB（E2E が守る）。CLS は戻ってきた人の 390 で 0（遅延 80ms。E2E が < 0.05 を守る）、初回の書斎は 1200×900・1200×1100・390 で < 0.02（遅延 80ms。E2E が守る。Batch 66）。単語帳・学習データ・加入画面の読み込みは 1200・390（遅延 80ms となし・学習記録あり／なし・昼夜・未ログイン／ログイン／Pro）で < 0.05（実測 ≤ 0.0014。直す前は 0.04〜0.91。E2E が守る。Batch 67）: js が描くまで題（学習データはタブも）より下とフッターを透明にし、描いてからまとめて出す（読み込み中の字は長くても 0.3 秒待つ〔3 ページの LCP は帯のヘッダーか題で、出す時刻に動かない。PR #170 のレビュー〕。加入画面は 1.2 秒で、config がそれより遅いときは題の下に料金の 1 行の場所を空けて出す〔config だけ 2 秒・5 秒遅れで 1200・390 とも ≤ 0.0027。空けないと 1200 で 0.069〕。ログインと無料期間が付くかが分かるまでは待ち、長くても 2.5 秒で無料期間の文を入れうる最大の形で空けて縮めない〔Pro の状態のキャッシュあり／なし × 無料期間あり／なし × 390／480／1200 で出した瞬間と後の高さが同じ。PR #170 のレビュー〕。支払いの反映待ちは config を待たない。js が動かないときは CSS が 4 秒で出す）。別解索引の構築 27 ms
 
 ## 4. 品質・流れ
