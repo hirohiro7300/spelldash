@@ -26884,6 +26884,38 @@ console.log("journey (86.1):");
   const nShown = (page) => page.evaluate(() => window.__words.length);
   const lastShown = (page) => page.evaluate(() => window.__words.at(-1) ?? null);
   const T = "2026-11-09T00:00:00.000Z";
+  // 確認用の Preview の偽装（78.8 と同じ形: PREVIEW の要求を手元のサーバーへ回し、js/supabase.js だけは本物。認証の部品とクラウドの口へ出たら控えて止める）
+  const PREVIEW = "https://sd-check.vercel.app";
+  async function previewJourney(storage = {}, { viewport = { width: 1200, height: 900 } } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block" });
+    const outside = [];
+    await ctx.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url.startsWith(PREVIEW + "/")) {
+        const u = new URL(url);
+        if (u.pathname === "/js/supabase.js") return route.fulfill({ status: 200, contentType: "text/javascript", body: fs.readFileSync(path.join(ROOT, "js", "supabase.js"), "utf8") });
+        const response = await route.fetch({ url: BASE + u.pathname + u.search });
+        return route.fulfill({ response });
+      }
+      if (/supabase\.co|esm\.sh/.test(url)) {
+        outside.push(url);
+        return route.abort();
+      }
+      return route.continue();
+    });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.outside = outside;
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript((seed) => {
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, storage);
+    return page;
+  }
   // 答えの同じ行がまとまった単語帳（見本と同じ形: up の場面の行が続き、その後に down の場面の行）。2 つ目からの語の鍵は <英語>~<8 桁>
   const hex8 = (i) => (0x1a2b3c00 + i).toString(16).padStart(8, "0");
   const UPDOWN10 = [
@@ -27058,6 +27090,84 @@ console.log("journey (86.1):");
       if (native) check("86.1 アプリの偽装（A4）: 上限で止まったとき・開き直したとき・足した後のどれにも、値段・pro.html へのリンク・購入のボタンが無い",
         [first, ask, done].every((v) => v.proLinks === 0 && !v.money && !v.buy) && !/Pro/.test(first.status), JSON.stringify([first, ask, done].map((v) => [v.proLinks, v.money, v.buy, v.status])));
       check(`86.1 上限で残った語の流れ（${tag}）のエラー 0`, page.errors.length === 0, page.errors[0] ?? "");
+      await closeCtx(page);
+    }
+  }
+
+  // ----- (4) user_items の表がまだ無い（Batch 86 の A6）: ログイン中の人にだけ、マイ単語帳はこの端末だけにある、と 1 行で言う -----
+  //     偽のデータベースは user_items の select を「表が無い」で断る（failSelect。20 の「表なし」と同じ文）。表がある・ゲスト・Preview（ログインを止めてある）では出ない。
+  //     3f03d63 にはこの 1 行が無い
+  {
+    const LOCAL_ONLY = "マイ単語帳は、この端末だけに保存している（ほかの端末には届かない）。";
+    const NO_TABLE = { failSelect: { user_items: "relation \"public.user_items\" does not exist" } };
+    const MINE = [{ en: "follow up", ja: "追って連絡する", addedAt: T }];
+    const localLine = (page) => page.evaluate((t) => {
+      const el = [...document.querySelectorAll("main p")].find((p) => p.textContent.trim() === t);
+      return { has: !!el, shown: !!el && !el.hidden && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" };
+    }, LOCAL_ONLY);
+    const syncDone = (page) => waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session")).catch(() => null)) === "test-user", 10000);
+    const waitLine = (page, ms = 6000) => waitUntil(async () => (await localLine(page)).shown, ms);
+    // (4a) ログイン中・表が無い・マイ単語帳を開く（このページの同期の取り込みが表の無いことを知らせる）
+    {
+      const cloud = createCloud({ word_progress: [], user_progress: [] }, NO_TABLE);
+      const page = await journeyPage({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_my_words: JSON.stringify(MINE) });
+      await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+      const shown = await waitLine(page);
+      const done = await syncDone(page);
+      const line = await localLine(page);
+      check("86.1 表が無い（A6・ログイン中にマイ単語帳を開く）: 「マイ単語帳は、この端末だけに保存している（ほかの端末には届かない）。」が出る・同期は終わる・エラー 0",
+        shown && line.shown && done && page.errors.length === 0, JSON.stringify({ shown, line, done, err: page.errors[0] }));
+      await closeCtx(page);
+    }
+    // (4b) 同じタブで、先にホームで同期が済んでからマイ単語帳へ移る（取り込みはホームで済み、マイ単語帳のページは取り込まない）: 1 行だけ読んで確かめ、同じ 1 行が出る
+    {
+      const cloud = createCloud({ word_progress: [], user_progress: [] }, NO_TABLE);
+      const page = await journeyPage({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_my_words: JSON.stringify(MINE) });
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      const done = await syncDone(page);
+      await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+      const shown = await waitLine(page);
+      const writes = cloud.writes("user_items").length;
+      check("86.1 表が無い（A6・ホームで同期が済んでから同じタブでマイ単語帳へ）: 同じ 1 行が出る・エラー 0",
+        done && shown && page.errors.length === 0, JSON.stringify({ done, shown, writes, err: page.errors[0] }));
+      await closeCtx(page);
+    }
+    // (4c) 表がある: 開いても、ホームから移っても出ない
+    {
+      const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+      const page = await journeyPage({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_my_words: JSON.stringify(MINE) });
+      await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+      const done = await syncDone(page);
+      await page.waitForTimeout(400);
+      const direct = await localLine(page);
+      await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+      await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+      await page.waitForTimeout(800);
+      const moved = await localLine(page);
+      check("86.1 表がある（A6）: マイ単語帳を開いても、ホームから移っても 1 行は出ない・エラー 0",
+        done && !direct.shown && !moved.shown && page.errors.length === 0, JSON.stringify({ done, direct, moved, err: page.errors[0] }));
+      await closeCtx(page);
+    }
+    // (4d) ゲスト（ログインしていない）: 表が無い偽のデータベースでも出ない
+    {
+      const cloud = createCloud({}, NO_TABLE);
+      const page = await journeyPage({ spelldash_test_cloud: cloud.id, spelldash_my_words: JSON.stringify(MINE) });
+      await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+      await page.waitForTimeout(1200);
+      const line = await localLine(page);
+      const reads = cloud.log.filter((e) => e.table === "user_items").length;
+      check("86.1 ゲスト（A6）: 1 行は出ない・user_items を読みに行かない・エラー 0", !line.shown && reads === 0 && page.errors.length === 0, JSON.stringify({ line, reads, err: page.errors[0] }));
+      await closeCtx(page);
+    }
+    // (4e) 確認用の Preview（78.8 と同じ偽装。ログインを止めてある）: ログインの印と表が無い偽のデータベースがあっても出ない
+    {
+      const cloud = createCloud({}, NO_TABLE);
+      const page = await previewJourney({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id, spelldash_my_words: JSON.stringify(MINE) });
+      await page.goto(PREVIEW + "/mywords.html", { waitUntil: "load" });
+      await waitUntil(() => page.evaluate(() => !!document.getElementById("previewBanner")), 5000);
+      await page.waitForTimeout(1200);
+      const line = await localLine(page);
+      check("86.1 Preview（A6）: 1 行は出ない・認証の部品もクラウドも呼ばない・エラー 0", !line.shown && page.outside.length === 0 && page.errors.length === 0, JSON.stringify({ line, outside: page.outside.slice(0, 2), err: page.errors[0] }));
       await closeCtx(page);
     }
   }
