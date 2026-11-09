@@ -26857,7 +26857,7 @@ console.log("text guard (85.1):");
   check("85.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
-// ===== 86.1 渡された単語帳の道のり（Batch 86。js/myWordsCore.js buildMyQueue の混ぜ方・js/game.js のマイ単語帳の回・mywords.html の渡された単語帳。docs/SPEC_MY_WORDS.md §4・§13）: 回ごとに これから を混ぜる（打つ回と選択式。答えの同じ行がまとまった単語帳で最初の語が全部同じ答えにならない） =====
+// ===== 86.1 渡された単語帳の道のり（Batch 86。js/myWordsCore.js・js/game.js・js/main.js・js/tutorial.js・js/myWordsPage.js・js/userItemsSync.js・js/sync.js・js/auth.js。docs/SPEC_MY_WORDS.md §4・§13・§15）: (1) 回ごとに これから を混ぜる（打つ回と選択式）・(2)(3) ホームから渡された単語帳へ・同じリンクの開き直し（全部・残り・上限で残った語）・(4) 表が無いときの 1 行・(5) 机に戻る・T4・コーチ・打つ回の終わりの「選択式で学ぶ」・(6) まとめて足すで上限・(7) ログインのリンクを送った後の 1 行・Preview の渡すリンク =====
 // Service Worker は止める。種は 1 回だけ入れる。列を混ぜる乱数は決まった種（seedQueueRandom。ほかの乱数は本物）
 console.log("journey (86.1):");
 {
