@@ -187,8 +187,12 @@ function cloudBuilder(cloud, table) {
   return proxy;
 }
 
-// 到達確認はテストでは常に OK（本物のサーバーには行かない）
-export const checkAuthReachable = async () => true;
+// 到達確認はテストでは常に OK（本物のサーバーには行かない）。種の spelldash_test_unreachable が "1" のページだけ「つながらない」（Batch 87: 87.2 の失敗の道）
+const UNREACHABLE_KEY = "spelldash_test_unreachable";
+export const checkAuthReachable = async () => readStorage(UNREACHABLE_KEY) !== "1";
+// 失敗の答えの偽装（Batch 87: 87.2）: 種の spelldash_test_otp_error・spelldash_test_oauth_error にある文を、本物の部品と同じく error.message で返す
+const OTP_ERROR_KEY = "spelldash_test_otp_error";
+const OAUTH_ERROR_KEY = "spelldash_test_oauth_error";
 
 export const supabase = {
   auth: {
@@ -224,9 +228,14 @@ export const supabase = {
       } catch {
         // 控えられなくても続ける
       }
+      const failure = readStorage(OTP_ERROR_KEY);
+      if (failure) return { data: null, error: { name: "AuthApiError", message: failure, status: 400 } };
       return { data: {}, error: null };
     },
-    signInWithOAuth: asyncNull,
+    signInWithOAuth: async () => {
+      const failure = readStorage(OAUTH_ERROR_KEY);
+      return failure ? { data: null, error: { name: "AuthApiError", message: failure, status: 400 } } : { data: null, error: null };
+    },
     // ログアウト（本物の部品 2.118.0 の _signOut と同じ）: scope は控える。
     //   受け口に届けば、セッション（sd2.auth・-user・-code-verifier と前の形の種）を消して SIGNED_OUT を流す（ほかのタブにも）。
     //   受け口に届かない（オフライン・spelldash_test_signout_offline が "1"）ときも、部品はこの端末のセッションを先に同じく消して SIGNED_OUT を流し、

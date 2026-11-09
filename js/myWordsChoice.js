@@ -270,7 +270,7 @@ export function mountChoice(deps) {
     const q = document.getElementById("japanese");
     if (q && built.prompt && q.textContent !== built.prompt) q.textContent = built.prompt; // 訳を見て英語を選ぶは出題の行のまま（読み上げを重ねない）
     const label = document.querySelector("#gameCard .label");
-    if (label) label.textContent = dir === CHOICE_JA ? "英語" : "日本語訳";
+    if (label) label.textContent = dir === CHOICE_JA ? "英語" : "問い"; // 訳を見る向きの字は「問い」（Batch 87。訳は本人の書いた問いのことがある: 打つ回と同じ）
     const buttons = (built.ok ? built.options : []).map((o, i) => {
       const b = el("button", "choice__opt");
       b.type = "button";

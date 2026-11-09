@@ -201,6 +201,12 @@ html[data-theme] body.learn-run :is(#pathHead, .setup-toggle, #setupPanel) {
   display: none;
 }
 
+/* 打つマイ単語帳の回（body.my-typed-run。Batch 87。js/game.js setLearnScreen・docs/SPEC_MY_WORDS.md §16.6）: 問いの上の字は決まった「問い」（#promptLabelFixed）だけ。
+   語ごとに書く字の段落（「日本語訳（名）」など）は畳む。回の終わり（body.set-done）は前のとおりどちらも出さない */
+html[data-theme] body.my-typed-run #gameCard .label:not(#promptLabelFixed) {
+  display: none;
+}
+
 /* 柱の「英単語」は、プレイ中の本の題（css/room.css の body.home--playing #pathCard .path__title）と同じ見た目。display は置かない（hidden で畳む） */
 html[data-theme] body.home--playing #pathCard .learn-head {
   overflow: hidden;

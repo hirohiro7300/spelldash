@@ -120,12 +120,18 @@ globalThis.fetch = async (u) => {
 
 // Supabase: js/supabase.js の差し替え口（window.__SUPABASE_MODULE_URL）に、メモリーの表を返す偽のクライアント
 const cloud = { user: null, tables: {}, sent: [] };
+// 読み（Batch 87）: range（切り出し）と count（切り出す前の数）は本物と同じ（js/userItemsSync.js readAllRows が 1000 行ずつ全部読む）。order は表の並びのまま
 function fakeQuery(table) {
-  const rows = () => cloud.tables[table] ?? [];
+  let range = null;
+  let counted = false;
+  const all = () => cloud.tables[table] ?? [];
+  const rows = () => (range ? all().slice(range[0], range[1] + 1) : all());
   const q = {
-    select: () => q,
+    select: (_cols, opts) => ((counted = !!opts?.count), q),
     eq: () => q,
     in: () => q,
+    order: () => q,
+    range: (from, to) => ((range = [from, to]), q),
     maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
     upsert: async (r) => {
       cloud.sent.push({ table, rows: [].concat(r) });
@@ -135,7 +141,7 @@ function fakeQuery(table) {
       cloud.sent.push({ table, rows: [].concat(r) });
       return { error: null };
     },
-    then: (resolve, reject) => Promise.resolve({ data: rows(), error: null }).then(resolve, reject)
+    then: (resolve, reject) => Promise.resolve({ data: rows(), error: null, count: counted ? all().length : null }).then(resolve, reject)
   };
   return q;
 }

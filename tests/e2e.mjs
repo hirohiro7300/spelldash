@@ -51,7 +51,10 @@ function findChromium() {
 // ---- 端末間同期の検証用「クラウド」（Supabase の表のつもり。このプロセスのメモリ） ----
 // スタブ（tests/mocks/supabase-stub.js）は localStorage の spelldash_test_cloud に id があるときだけ、from(table) を
 // POST /__cloud/query に投げる。id ごとに表・設定・呼び出しの記録を持つので、検査どうしが混ざらない。
-// 設定: failSelect { 表名: エラーの文 }（その表の select を失敗させる）、delayMs と delayTables（その表の select の応答を遅らせる）
+// 設定: failSelect { 表名: エラーの文 }（その表の select を失敗させる）、delayMs と delayTables（その表の select の応答を遅らせる）、
+// maxRows（Batch 87: 1 回の select で返す行の上限。本物の API の Max Rows と同じく、並べて range で切り出した後に切る。既定は上限なし）、
+// failSelectAt { 表名: 行の番号 }（Batch 87: range がその行から始まる select だけを失敗させる。2 ページ目の読みだけの失敗）。
+// select は order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う（limit は前のまま扱わない）
 const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"], funnel_events: ["device_id", "step", "source", "day"] };
 const CLOUD_ANON_INSERT = new Set(["funnel_events"]); // 未ログインでも書ける表（RLS: user_id が空か本人。docs/SQL_FUNNEL.md）
 // select の方針が無い表（Batch 86。docs/SQL_FUNNEL.md・docs/SQL_CLIENT_GATE.md の記録）: 衝突の先を名指す書き込み（upsert・on_conflict）は行の権限で断る（42501）。
@@ -75,8 +78,9 @@ function createCloud(tables = {}, config = {}) {
 function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
   const cloud = clouds.get(cloudKey);
   if (!cloud) return { data: null, error: { message: `unknown cloud ${cloudKey}` }, count: null };
-  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false;
+  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false, range = null;
   const filters = [];
+  const orders = []; // [列, 昇順か]（Batch 87）
   for (const [m, args] of ops) {
     if (m === "select") { kind ??= "select"; cols = args[0] ?? "*"; if (args[1]?.count) countMode = args[1].count; if (args[1]?.head) head = true; }
     else if (m === "upsert" || m === "insert" || m === "update") { kind = m; payload = args[0]; }
@@ -86,21 +90,41 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
     else if (m === "lte") filters.push((r) => r[args[0]] <= args[1]);
     else if (m === "in") filters.push((r) => (args[1] ?? []).includes(r[args[0]]));
     else if (m === "maybeSingle" || m === "single") single = true;
+    else if (m === "order") orders.push([args[0], args[1]?.ascending !== false]);
+    else if (m === "range") range = [Number(args[0]), Number(args[1])];
   }
   const entry = { table, kind, n: 0, userId };
   cloud.log.push(entry);
   if (kind === "select") {
     const fail = cloud.config.failSelect[table];
     if (fail) { entry.error = fail; return { data: null, error: { message: fail, code: "" }, count: null }; }
+    if (range) entry.from = range[0];
+    const failAt = cloud.config.failSelectAt?.[table];
+    if (failAt !== undefined && range && range[0] === failAt) { entry.error = "page"; return { data: null, error: { message: `stub: the read from row ${failAt} failed`, code: "" }, count: null }; }
     let rows = cloud.rows(table).filter((r) => userId && r.user_id === userId && filters.every((f) => f(r))); // RLS: 本人の行だけ
+    // 並べ替え（同じ値は表の順のまま）→ 数（count）→ 切り出し（range）→ 1 回の上限（maxRows）
+    if (orders.length) {
+      rows = rows.map((r, i) => [r, i]).sort((a, b) => {
+        for (const [col, asc] of orders) {
+          if (a[0][col] === b[0][col]) continue;
+          const d = a[0][col] < b[0][col] ? -1 : 1;
+          return asc ? d : -d;
+        }
+        return a[1] - b[1];
+      }).map(([r]) => r);
+    }
+    const total = rows.length;
+    if (range) rows = rows.slice(Math.max(0, range[0]), Math.max(0, range[1] + 1));
+    if (cloud.config.maxRows > 0) rows = rows.slice(0, cloud.config.maxRows);
     if (cols !== "*") { const names = cols.split(",").map((c) => c.trim()); rows = rows.map((r) => Object.fromEntries(names.map((k) => [k, r[k]]))); }
     entry.n = rows.length;
     const data = head ? null : single ? (rows[0] ?? null) : rows;
-    return { data: JSON.parse(JSON.stringify(data)), error: null, count: countMode ? rows.length : null };
+    return { data: JSON.parse(JSON.stringify(data)), error: null, count: countMode ? total : null };
   }
   if (kind === "upsert" || kind === "insert") {
     const rows = Array.isArray(payload) ? payload : [payload];
     entry.n = rows.length;
+    entry.kinds = rows.reduce((o, r) => ((o[r?.kind ?? ""] = (o[r?.kind ?? ""] ?? 0) + 1), o), {}); // 種類ごとの行の数（Batch 87: user_items の my_word と day を分けて数える）
     const allowed = CLOUD_ANON_INSERT.has(table) ? rows.every((r) => r.user_id == null || r.user_id === userId) : userId && rows.every((r) => r.user_id === userId);
     if (!allowed) { entry.error = "rls"; return { data: null, error: { message: "row-level security", code: "42501" }, count: null }; }
     const pk = CLOUD_PK[table];
@@ -24098,6 +24122,76 @@ console.log("78.7 人ごとの保存の領域:");
       }
     }
   }
+
+  // (A7) 2 つのタブで切り替えの画面（Batch 87。docs/SPEC_ACCOUNT_AREAS.md §3）: 大きな記録（マイ単語帳 1,000 語・英語と訳は 150 字）の人 A と B。A のマイ単語帳の
+  // タブを開いたままセッションを替え、もう 1 つのタブで学習状況を開く（2 つのタブが切り替えの画面へ。後からロックに入るタブは、前のタブが消した途中の印を、保存の
+  // 知らせの遅れでまだ読むことがある）。A → B・B → A を 5 回: どの回も 2 つのタブが復旧の画面を出さずに切り替え先の領域で開く・orphans は増えない・切り替え先の
+  // 語は 1 字も違わない・切り替え元の鍵は localStorage に 0・途中の印なし。a15294a では 5 回のうち 3 回、後のタブが古い見え方で直して切り替え直し、changed で
+  // 止まった（揺れはあるので、決まって落ちる検査は単体 test-areas の「2 つのタブ」）。落ちたタブの印（sd2.switch を置いて開く）は 1 秒待っても消えないので、今のとおり直して進む
+  {
+    const UA7 = "a7a7a7a7-1111-4222-8333-444455556666";
+    const UB7 = "b7b7b7b7-1111-4222-8333-444455556666";
+    const L = "abcdefghijklmnopqrstuvwxyz";
+    // 英語と訳は上限（150 字）いっぱい: 1 人の語の保存は 40 万字ほど（保存の知らせの遅れは書く量が多いほど長い）
+    const PAD_EN = " team and week renewal revenue clear contract before send risk quarterly finance".repeat(3);
+    const PAD_JA = "四半期の売上の見込みには、更新を待っている契約をすべて入れ、危うい点の短い注をつけてから、来週までに経理の担当へ送ること。".repeat(3);
+    const bigWords = (tag) => JSON.stringify(Array.from({ length: 1000 }, (_, i) => ({ en: `${tag}${L[Math.floor(i / 676) % 26]}${L[Math.floor(i / 26) % 26]}${L[i % 26]}${PAD_EN}`.slice(0, 150).trimEnd(), ja: `${tag}の訳その${i + 1}。${PAD_JA}`.slice(0, 150), book: "main", bookName: "マイ単語帳", addedAt: "2026-11-01T00:00:00.000Z" })));
+    const A7 = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: statsSeed("A"), spelldash_my_words: bigWords("a"), spelldash_xp: "700" };
+    const B7 = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: statsSeed("B"), spelldash_my_words: bigWords("b"), spelldash_xp: "800" };
+    const seedOf = { [UA7]: A7, [UB7]: B7 };
+    const orphanCount = (ctx) => rawDoc(ctx, async () => { const m = await import("/js/areaStore.js"); const db = await m.openAreaStore(); try { return (await db.list("orphans")).length; } finally { db.close(); } });
+    const landedIn = (page, area) => page.waitForFunction((a) => location.pathname !== "/switch.html" && window.SpellDashArea?.area === a && document.readyState === "complete", area, { timeout: 25000 }).then(() => true, () => false);
+    {
+      const ctx = await rawCtx({ serviceWorkers: "block" });
+      try {
+        await idbPut(ctx, [{ area: `u:${UB7}`, id: "b7", keys: B7, savedAt: new Date().toISOString(), schema: "7" }]);
+        await putRaw(ctx, { ...marks(`u:${UA7}`, 2, { [`u:${UA7}`]: { at: "ls" }, [`u:${UB7}`]: { at: "idb:b7" } }), [AUTH]: sess(UA7), spelldash_onboarded: "1", ...phys(`u:${UA7}`, A7) });
+        const keep = await openApp(ctx, "/mywords.html", () => window.SpellDashArea !== undefined && document.readyState === "complete");
+        const rounds = [];
+        for (let i = 0; i < 5; i++) {
+          const to = i % 2 === 0 ? UB7 : UA7;
+          const from = to === UB7 ? UA7 : UB7;
+          const before = await orphanCount(ctx);
+          await putRaw(ctx, { [AUTH]: sess(to) });
+          const other = await openApp(ctx, "/stats.html", () => window.SpellDashArea !== undefined);
+          const landed = await Promise.all([landedIn(keep, `u:${to}`), landedIn(other, `u:${to}`)]);
+          const shown = await Promise.all([keep, other].map((p) => recovery(p).then((r) => r.shown, () => null)));
+          const raw = await dumpRaw(ctx);
+          const after = await orphanCount(ctx);
+          rounds.push({ to: to.slice(0, 2), landed, shown, words: areaOf(raw, `u:${to}`).spelldash_my_words === seedOf[to].spelldash_my_words, left: Object.keys(areaOf(raw, `u:${from}`)).length, orphans: after - before, flag: raw["sd2.switch"] ?? null, errors: other.errors.length });
+          await other.close();
+        }
+        check("78.7 2 つのタブで切り替えの画面（Batch 87・1,000 語の A と B）: A → B・B → A を 5 回、どの回も 2 つのタブが復旧の画面を出さずに切り替え先の領域で開く・切り替え先の語は 1 字も違わない・切り替え元の鍵は localStorage に 0・orphans は増えない・途中の印なし・エラー 0",
+          rounds.length === 5 && rounds.every((r) => r.landed.every(Boolean) && r.shown.every((s) => s === false) && r.words && r.left === 0 && r.orphans === 0 && r.flag === null && r.errors === 0) && keep.errors.length === 0,
+          JSON.stringify({ rounds, keepErr: keep.errors[0] ?? null }));
+        await keep.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+    // 落ちたタブの印: A を退避する前（swap の段）に落ちた形。開くと 1 秒待っても印が消えないので、今のとおり直して B へ（A は IndexedDB にそろう）
+    {
+      const ctx = await rawCtx({ serviceWorkers: "block" });
+      try {
+        await idbPut(ctx, [{ area: `u:${UB7}`, id: "b7", keys: B7, savedAt: new Date().toISOString(), schema: "7" }]);
+        await putRaw(ctx, {
+          ...marks(`u:${UA7}`, 2, { [`u:${UA7}`]: { at: "ls" }, [`u:${UB7}`]: { at: "idb:b7" } }),
+          "sd2.switch": JSON.stringify({ id: "x7", op: "session", from: `u:${UA7}`, to: `u:${UB7}`, phase: "swap", at: new Date().toISOString() }),
+          [AUTH]: sess(UB7), spelldash_onboarded: "1", ...phys(`u:${UA7}`, A7)
+        });
+        const page = await openApp(ctx, "/stats.html", () => window.SpellDashArea !== undefined);
+        const landed = await landedIn(page, `u:${UB7}`);
+        const raw = await dumpRaw(ctx);
+        const aCopy = await idbGet(ctx, "areas", `u:${UA7}`);
+        check("78.7 落ちたタブの印（Batch 87・1,000 語）: 1 秒待っても印が消えない → 今のとおり直して B が 1 字も違わずそろう・A の鍵は localStorage に 0・A は IndexedDB にそろう・途中の印なし・復旧の画面なし",
+          landed && page.visited.includes("/switch.html") && areaOf(raw, `u:${UB7}`).spelldash_my_words === B7.spelldash_my_words && Object.keys(areaOf(raw, `u:${UA7}`)).length === 0 && aCopy?.keys?.spelldash_my_words === A7.spelldash_my_words && raw["sd2.switch"] === undefined && page.errors.length === 0,
+          JSON.stringify({ landed, visited: page.visited.slice(0, 6), a: Object.keys(areaOf(raw, `u:${UA7}`)).length, copy: !!aCopy, sw: raw["sd2.switch"] ?? null, err: page.errors[0] ?? null }));
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+  }
 }
 
 // ===== 78.8 確認用の Preview（*.vercel.app。js/previewHost.js。2026-10-30 の決定 7）: ログイン・同期・バックアップの読み込みを止める・認証の部品もクラウドも呼ばない・中心の学習・学習状況・設定は見られる・本番と手元では出ない =====
@@ -25470,7 +25564,7 @@ console.log("my words choice (82.2):");
       url: location.pathname + location.search,
       id,
       box: vis(document.getElementById("choiceBox")),
-      label: document.querySelector("#gameCard .label")?.textContent.trim() ?? null,
+      label: [...document.querySelectorAll("#gameCard .label")].find(vis)?.textContent.trim() ?? null, // 見えている問いの上の字（Batch 87: 打つ回は決まった字の段落）
       q: document.getElementById("japanese")?.textContent.trim() ?? null,
       opts: opts.map((b) => ({ t: b.querySelector(".choice__text")?.textContent ?? null, n: b.querySelector(".choice__n")?.textContent ?? null, nHidden: b.querySelector(".choice__n")?.getAttribute("aria-hidden") === "true", mark: b.querySelector(".choice__mark")?.textContent ?? "", state: b.dataset.state ?? "", pressed: b.getAttribute("aria-pressed"), disabled: b.getAttribute("aria-disabled"), name: nameOf(b), over: b.scrollWidth - b.clientWidth, vis: vis(b) })),
       group: document.getElementById("choiceOpts")?.getAttribute("role") ?? null,
@@ -25603,7 +25697,7 @@ console.log("my words choice (82.2):");
     const ans0 = shownOf(e0); // 列は回ごとに混ぜる（Batch 86）: 答えは出た語から引く
     const asked = [{ id: v0.id, q: v0.q }];
     check("82.2 選ぶ回（/?learn=my&book=main&choice=en）: 問いは出た語の訳（日本語訳）・選択肢はちょうど up と down の 2 つ（1・2 の番号は読み上げない）・場面カードは出ない・分からない あり・次へ なし・選択肢は名前の付いた組",
-      v0.box && UPDOWN.some((w) => `my-${w.en}` === v0.id) && !!e0 && v0.label === "日本語訳" && v0.q === e0.ja && v0.opts.length === 2 && JSON.stringify(v0.opts.map((o) => o.t).sort()) === '["down","up"]'
+      v0.box && UPDOWN.some((w) => `my-${w.en}` === v0.id) && !!e0 && v0.label === "問い" && v0.q === e0.ja && v0.opts.length === 2 && JSON.stringify(v0.opts.map((o) => o.t).sort()) === '["down","up"]'
         && JSON.stringify(v0.opts.map((o) => o.n)) === '["1","2"]' && v0.opts.every((o) => o.nHidden && o.pressed === "false" && o.mark === "" && o.state === "") && v0.skip && !v0.next && v0.group === "group",
       JSON.stringify(v0));
     check("82.2 選ぶ回: 入力欄も画面キーボードも出さない（設定で画面キーボードを「いつも」にしていても）・焦点は選択肢の組・始めに「分からないときは「分からない」」の 1 行（aria-live）",
@@ -25697,7 +25791,7 @@ console.log("my words choice (82.2):");
     // もう一度: 同じ選ぶ回と向き（新しい回）
     await page.click("#choiceAgain");
     const va = await waitQuestion(page, 1);
-    check("82.2 「もう一度」: 選ぶ回・訳を見て英語を選ぶのまま（新しい回の 1 語目から）", /choice=en/.test(va.url) && va.box && va.label === "日本語訳" && va.opts.length === 2, JSON.stringify(va));
+    check("82.2 「もう一度」: 選ぶ回・訳を見て英語を選ぶのまま（新しい回の 1 語目から）", /choice=en/.test(va.url) && va.box && va.label === "問い" && va.opts.length === 2, JSON.stringify(va));
     const numbers1 = await publicNumbers(page);
     check("82.2 選ぶ回の答えは公開の語の数に入らない: 学習状況の 2,858 語・覚えた・ランク・次のランクまで・3 つの札・最高到達ランクは回の前と 1 字も同じ・語の記録に公開の語の行も状態の欄も無い",
       JSON.stringify(numbers1) === JSON.stringify(numbers0) && numbers0.total === "2,858" && numbers1.publicRows === 0 && !numbers1.stateInStats, JSON.stringify({ numbers0, numbers1 }));
@@ -25987,7 +26081,7 @@ console.log("my words choice (82.2):");
     await page.waitForTimeout(120);
     const after = await cv(page);
     const s = await stored(page);
-    check("82.2 打つ回（/?learn=my・choice なし）は前のまま: 選ぶ回の箱なし・入力欄あり（焦点）・画面キーボードは設定どおり・打って正解・記録", !v.box && v.input && v.inputFocus && v.osk && v.label === "日本語訳" && /正解|覚えた/.test(after.msg) && !!first && s.words.find((w) => w.en === first.en)?.ls === 2 && page.errors.length === 0,
+    check("82.2 打つ回（/?learn=my・choice なし）は前のまま: 選ぶ回の箱なし・入力欄あり（焦点）・画面キーボードは設定どおり・打って正解・記録", !v.box && v.input && v.inputFocus && v.osk && v.label === "問い" && /正解|覚えた/.test(after.msg) && !!first && s.words.find((w) => w.en === first.en)?.ls === 2 && page.errors.length === 0,
       JSON.stringify({ v: { box: v.box, input: v.input, focus: v.inputFocus, osk: v.osk, label: v.label }, msg: after.msg, err: page.errors[0] }));
     await closeCtx(page);
   }
@@ -27350,6 +27444,35 @@ console.log("journey (86.1):");
     }
   }
 
+  // ----- (6b) まとめて足すで上限に当たったとき、決まりに合わない行の理由も言う（Batch 87。docs/SPEC_MY_WORDS.md §16.5）-----
+  //     98 語の人が 7 行（同じ組・使えない字・訳なし・新しい 4 行）を貼る: 「2語を足した。残りの 5行は欄に残した。足せなかった 3行: 理由 ／ 理由 ／ 理由。」の後ろに上限の文。
+  //     理由に上限の文を混ぜない・リンクは上限の文の「Pro なら1,000語」だけ・欄に 5 行・語は 100。a15294a は理由が消える（「2語を足した。残りの 5行は欄に残した。」の後ろがすぐ上限の文）
+  {
+    const FILL98 = Array.from({ length: 98 }, (_, i) => ({ en: `fill ${letters(i)}`, ja: `埋め${i + 1}`, addedAt: T }));
+    const PASTE7 = [`fill ${letters(0)}, 埋め1`, "bad/entry, だめ", "invoice", "alpha, アルファ", "bravo, ブラボー", "charlie, チャーリー", "delta, デルタ"].join("\n");
+    const page = await journeyPage({ spelldash_my_words: JSON.stringify(FILL98), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) });
+    await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+    await page.evaluate(() => { const d = document.getElementById("myWordsBulkFold"); if (d) d.open = true; });
+    await page.fill("#myWordsBulk", PASTE7);
+    await page.click("#myWordsBulkAdd");
+    await waitText(page, "#myWordsStatus", /100語まで/);
+    await page.waitForTimeout(200);
+    const v = await page.evaluate(() => ({
+      status: document.getElementById("myWordsStatus").textContent,
+      links: [...document.querySelectorAll("#myWordsStatus a")].map((a) => [a.getAttribute("href"), a.textContent]),
+      box: document.getElementById("myWordsBulk").value.split("\n").filter(Boolean),
+      n: JSON.parse(localStorage.getItem("spelldash_my_words") || "[]").length
+    }));
+    const head = "2語を足した。残りの 5行は欄に残した。足せなかった 3行: ";
+    const tail = "。無料で追加できるのは100語まで（Pro なら1,000語）。";
+    const reasons = v.status.startsWith(head) && v.status.endsWith(tail) ? v.status.slice(head.length, -tail.length).split(" ／ ") : [];
+    check("86.1 まとめて足すで上限（Batch 87）: 「2語を足した。残りの 5行は欄に残した。足せなかった 3行: …」の 3 つの理由（同じ組・使えない字・訳なし。上限の文を混ぜない）の後ろに上限の文・リンクは「Pro なら1,000語」だけ・欄に 5 行・語は 100・エラー 0",
+      reasons.length === 3 && /同じ訳/.test(reasons[0]) && /^bad\/entry（だめ）: /.test(reasons[1]) && /^invoice: 日本語訳を入力/.test(reasons[2]) && !reasons.some((r) => /100語/.test(r))
+        && JSON.stringify(v.links) === JSON.stringify([["./pro.html", "Pro なら1,000語"]]) && JSON.stringify(v.box) === JSON.stringify([`fill ${letters(0)}, 埋め1`, "bad/entry, だめ", "invoice", "charlie, チャーリー", "delta, デルタ"]) && v.n === 100 && page.errors.length === 0,
+      JSON.stringify({ v, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
   // ----- (7) ログインのリンクを送った後の 1 行・Preview の渡すリンク（A12）-----
   //     3f03d63: 送った文だけ（ブラウザの 1 行が無い）・Preview の渡すリンクは Preview の origin
   // ホームの机の上の文の色: 文を出しても auth-message--home を外さず、字は --on-vault（css/room.css。docs の決まり: 済みの金は紙の上の字）。
@@ -27448,6 +27571,909 @@ console.log("journey (86.1):");
     await closeCtx(page);
   }
   check("86.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 87.1 多くの語の同期（Batch 87。js/userItemsSync.js readAllRows・pullUserItems・js/sync.js initialSync。docs/SPEC_MY_WORDS.md §16.1・§16.2）: 1 回の読みで返る行に上限がある偽のデータベース（maxRows）で、マイ単語帳 1,000 語・日の行 90（user_items 1,090 行）と 1,200 語の記録が 2 台目に全部届く・ほかの端末で直した新しい訳を古い訳で戻さない・クラウドが全部持っていれば送り返さない・2 ページ目の読みの失敗では送らない・読みの要求の数・最初の同期で送れた行は送る待ちから外す（ページを移っても送り直さない・2 台目の新しい訳を戻さない） =====
+// a15294a は並べずに 1 回だけ読む（上限で 1,000 行に切れる）。届かなかった行を「クラウドに無い」と見て端末の古い値で送り返し、最初の同期で送れた行を送る待ちに残す
+console.log("many words sync (87.1):");
+{
+  const allErrors = [];
+  const U = "test-user";
+  const PUB = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8")).order;
+  const T0 = "2026-11-01T00:00:00.000Z";
+  const T1 = "2026-11-08T00:00:00.000Z";
+  const L = "abcdefghijklmnopqrstuvwxyz";
+  const keyOf = (i) => `w${L[Math.floor(i / 676) % 26]}${L[Math.floor(i / 26) % 26]}${L[i % 26]}`;
+  // 5 冊（100・400・300・100・100）の 1,000 語。Pro の上限いっぱい
+  const SPLIT = [["main", "マイ単語帳", 100], ["b2", "仕事", 400], ["b3", "試験", 300], ["b4", "本", 100], ["b5", "会議", 100]];
+  const WORDS = [];
+  for (const [id, name, count] of SPLIT) for (let i = 0; i < count; i++) WORDS.push({ en: keyOf(WORDS.length), ja: `訳${WORDS.length + 1}`, book: id, bookName: name, addedAt: T0 });
+  const BOOKS = JSON.stringify(SPLIT.map(([id, name]) => ({ id, name })));
+  const W = WORDS[37]; // ほかの端末で訳を直した語（クラウドの表では 1,001 行目より後）
+  const NEW_JA = "ほかの端末で直した訳";
+  const DAYS = Array.from({ length: 90 }, (_, k) => ymdDaysAgo(k + 1)); // 日の行（今日は入れない: 今日の分はページが書くことがある）
+  const dayPayload = (i) => ({ learned: 10 + i, mastered: 0, active: true, set: false, sets: 0 });
+  const itemRow = (w, over = {}) => ({ user_id: U, kind: "my_word", key: w.en, payload: w, deleted: false, updated_at: T0, ...over });
+  const dayRow = (date, i) => ({ user_id: U, kind: "day", key: date, payload: dayPayload(i), deleted: false, updated_at: T0 });
+  // クラウドの user_items（日の行 90・語 1,000）。新しい訳の行は表の終わり（上限 1,000 行の並べない読みでは届かない）
+  const cloudItems = () => [...DAYS.map(dayRow), ...WORDS.filter((w) => w !== W).map((w) => itemRow(w)), itemRow({ ...W, ja: NEW_JA }, { updated_at: T1 })];
+  // 1,200 語の記録（どれも × が 1 回で自力正解なし: 取り込みの初めの埋めで あやふや になる。1 台目も あやふや）
+  const WP = PUB.slice(0, 1200);
+  const wpRow = (id) => ({ user_id: U, word_id: id, play_count: 1, correct_count: 0, typing_miss: 0, recall_fail: 1, clean_correct_streak: 0, mastered: false, mastered_at: null, last_played: T0, next_review_at: null, last_recall_fail_at: T0, last_recall_success_at: null, daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: T0 });
+  const cloudTables = () => ({ word_progress: WP.map(wpRow), user_progress: [], user_items: cloudItems() });
+  const localStat = { playCount: 1, correctCount: 0, typingMiss: 0, recallFail: 1, missCount: 1, cleanCorrectStreak: 0, mastered: false, masteredAt: null, lastPlayed: T0, nextReviewAt: null, lastRecallFailAt: T0, lastRecallSuccessAt: null, dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: null, ls: 1 };
+  const growth = () => JSON.stringify(DAYS.map((date, i) => ({ date, learned: 10 + i, mastered: 0, active: true, v: 2 })).sort((a, b) => (a.date < b.date ? -1 : 1)));
+  const login = (cloud) => ({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id });
+  // 1 台目（全部ある。W は古い訳・印の時刻はクラウドと同じ T0・送る待ちは空・日の記録と 1,200 語の記録もクラウドと同じ）
+  const device1 = (cloud) => ({
+    ...login(cloud),
+    spelldash_my_words: JSON.stringify(WORDS),
+    spelldash_my_books: BOOKS,
+    spelldash_user_items_meta: JSON.stringify(Object.fromEntries([...WORDS.map((w) => [`my_word:${w.en}`, { updatedAt: T0, deleted: false }]), ...DAYS.map((d) => [`day:${d}`, { updatedAt: T0, deleted: false }])])),
+    spelldash_user_items_dirty: "[]",
+    spelldash_growth_log: growth(),
+    spelldash_word_stats: JSON.stringify(Object.fromEntries(WP.map((id) => [id, localStat]))),
+    spelldash_owner: U,
+    spelldash_learn_filled: U
+  });
+  async function syncPage(storage) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript((seed) => {
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, storage);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const syncDone = (page, ms = 20000) => waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session")).catch(() => null)) === U, ms, 100);
+  // 偽のデータベースへの要求が ms のあいだ増えなくなるまで待つ
+  const quiet = async (cloud, ms = 1200, max = 20000) => {
+    const t0 = Date.now();
+    let n = cloud.log.length;
+    let since = Date.now();
+    while (Date.now() - t0 < max) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (cloud.log.length !== n) { n = cloud.log.length; since = Date.now(); } else if (Date.now() - since >= ms) return true;
+    }
+    return false;
+  };
+  const upserts = (cloud, table, from = 0) => cloud.log.slice(from).filter((e) => e.table === table && e.kind === "upsert" && !e.error);
+  const myWordRowsSent = (cloud, from = 0) => upserts(cloud, "user_items", from).reduce((n, e) => n + (e.kinds?.my_word ?? 0), 0);
+  const rowsSent = (cloud, table, from = 0) => upserts(cloud, table, from).reduce((n, e) => n + e.n, 0);
+  const pagedReads = (cloud, table, from = 0) => cloud.log.slice(from).filter((e) => e.table === table && e.kind === "select" && e.from !== undefined).map((e) => [e.from, e.n]);
+  const cloudJa = (cloud, key) => cloud.rows("user_items").find((r) => r.kind === "my_word" && r.key === key) ?? null;
+  const local = (page) => page.evaluate(() => {
+    const read = (k) => { try { return JSON.parse(localStorage.getItem(k) ?? "null"); } catch { return null; } };
+    const words = read("spelldash_my_words") ?? [];
+    return {
+      words: words.length,
+      keys: words.map((w) => w.en),
+      ja: Object.fromEntries(words.map((w) => [w.en, w.ja])),
+      stats: Object.keys(read("spelldash_word_stats") ?? {}).length,
+      statsRaw: localStorage.getItem("spelldash_word_stats"),
+      days: (read("spelldash_growth_log") ?? []).length,
+      dirty: (read("spelldash_user_items_dirty") ?? []).length,
+      tabs: [...document.querySelectorAll("#myBookTabs .mw-book")].map((b) => b.getAttribute("aria-label")),
+      synced: sessionStorage.getItem("spelldash_synced_this_session")
+    };
+  });
+  const learnCards = async (page) => {
+    await page.goto(BASE + "/stats.html", { waitUntil: "load" });
+    await page.waitForFunction(() => !document.getElementById("learnStatus")?.classList.contains("is-unavailable") && document.querySelectorAll("#learnCards .learn-card[data-count]").length === 3, null, { timeout: 12000 }).catch(() => {});
+    return page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#learnCards .learn-card")].map((c) => [c.dataset.state, Number(c.dataset.count)])));
+  };
+  const SPLIT_TABS = SPLIT.map(([, name, count]) => `${name} ${count.toLocaleString("ja-JP")}語`);
+
+  // (a) 2 台目（空の端末）・上限 1,000 行: 1,000 語・5 冊・日の行 90・1,200 語の記録が全部届く・新しい訳・送り返さない・学習状況は 1,200 語の記録どおり（あやふや 1,200）・
+  //     user_items の読みは 1,000 行ずつ 2 回（1000＋90）
+  {
+    const cloud = createCloud(cloudTables(), { maxRows: 1000 });
+    const page = await syncPage(login(cloud));
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const v = await local(page);
+    const sentItems = rowsSent(cloud, "user_items");
+    const sentWp = rowsSent(cloud, "word_progress");
+    const reads = pagedReads(cloud, "user_items");
+    const cards = await learnCards(page);
+    check("87.1 2 台目（空の端末・1 回の読みは 1,000 行まで）: マイ単語帳 1,000 語・5 冊・日の行 90・1,200 語の記録が全部届く・ほかの端末で直した訳は新しい訳",
+      done && v.words === 1000 && WORDS.every((w) => v.keys.includes(w.en)) && JSON.stringify(v.tabs) === JSON.stringify(SPLIT_TABS) && v.days === 90 && v.stats === 1200 && v.ja[W.en] === NEW_JA,
+      JSON.stringify({ done, words: v.words, tabs: v.tabs, days: v.days, stats: v.stats, ja: v.ja[W.en] }));
+    check("87.1 2 台目: 学習状況は 1,200 語の記録どおり（あやふや 1,200。1 台目と同じ）",
+      cards.unsure === 1200 && cards.learned === 0, JSON.stringify(cards));
+    check("87.1 2 台目: クラウドが全部持っているので送り返さない（user_items・word_progress への upsert 0 行）・クラウドの訳は新しい訳のまま",
+      sentItems === 0 && sentWp === 0 && cloudJa(cloud, W.en)?.payload?.ja === NEW_JA && cloudJa(cloud, W.en)?.updated_at === T1,
+      JSON.stringify({ sentItems, sentWp, cloud: cloudJa(cloud, W.en)?.payload?.ja }));
+    check("87.1 読みの要求の数: 1,090 行の人は user_items を 1,000 行ずつ 2 回（1000＋90）",
+      JSON.stringify(reads) === JSON.stringify([[0, 1000], [1000, 90]]), JSON.stringify(reads));
+    check("87.1 2 台目: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (b) 1 台目（全部ある・W は古い訳）を開き直す・上限 1,000 行: 新しい訳を古い訳で戻さない（端末も新しい訳になる）・user_items と word_progress への upsert 0 行
+  {
+    const cloud = createCloud(cloudTables(), { maxRows: 1000 });
+    const page = await syncPage(device1(cloud));
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const v = await local(page);
+    const sentItems = rowsSent(cloud, "user_items");
+    const sentWp = rowsSent(cloud, "word_progress");
+    const row = cloudJa(cloud, W.en);
+    check("87.1 1 台目（全部ある）を開き直す: ほかの端末で直した新しい訳は、クラウドでも端末でも新しい訳のまま（古い訳で戻さない）",
+      done && row?.payload?.ja === NEW_JA && row?.updated_at === T1 && v.ja[W.en] === NEW_JA && v.words === 1000,
+      JSON.stringify({ done, cloud: row?.payload?.ja, at: row?.updated_at, local: v.ja[W.en], words: v.words }));
+    check("87.1 1 台目を開き直す: user_items・word_progress への upsert 0 行（クラウドに全部ある）・エラー 0",
+      sentItems === 0 && sentWp === 0 && page.errors.length === 0, JSON.stringify({ sentItems, sentWp, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (c) 2 ページ目の読みだけが失敗する: 読み切れなければ送らない（user_items・word_progress とも upsert 0 行）・端末の記録は変わらない・word_progress の失敗は印を戻す（次のページでやり直す）
+  for (const table of ["user_items", "word_progress"]) {
+    const cloud = createCloud(cloudTables(), { maxRows: 1000, failSelectAt: { [table]: 1000 } });
+    const seed = device1(cloud);
+    const page = await syncPage(seed);
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    await waitUntil(() => cloud.log.some((e) => e.table === table && e.error === "page"), 15000, 100);
+    await quiet(cloud);
+    const v = await local(page);
+    const sent = rowsSent(cloud, "user_items") + rowsSent(cloud, "word_progress");
+    const failedRead = cloud.log.some((e) => e.table === table && e.error === "page");
+    check(`87.1 2 ページ目の ${table} の読みだけが失敗: 送らない（user_items・word_progress への upsert 0 行）・端末の語と記録は変わらない（W は古い訳のまま・1,200 語）${table === "word_progress" ? "・取り込みの印を戻す" : ""}・エラー 0`,
+      failedRead && sent === 0 && v.words === 1000 && v.ja[W.en] === W.ja && v.statsRaw === seed.spelldash_word_stats && (table !== "word_progress" || v.synced === null) && page.errors.length === 0,
+      JSON.stringify({ failedRead, sent, words: v.words, ja: v.ja[W.en], stats: v.stats, synced: v.synced, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (d) 1 回の上限が 500 行でも全部届く（user_items の読みは 3 回: 500＋500＋90）。200 行の人は 1 回（count で終わる）
+  {
+    const cloud = createCloud(cloudTables(), { maxRows: 500 });
+    const page = await syncPage(login(cloud));
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const v = await local(page);
+    const reads = pagedReads(cloud, "user_items");
+    check("87.1 1 回の上限が 500 行: 1,000 語・日の行 90・1,200 語の記録が全部届く・user_items の読みは 3 回（500＋500＋90）・送り返さない",
+      done && v.words === 1000 && v.days === 90 && v.stats === 1200 && v.ja[W.en] === NEW_JA && JSON.stringify(reads) === JSON.stringify([[0, 500], [500, 500], [1000, 90]]) && rowsSent(cloud, "user_items") === 0 && page.errors.length === 0,
+      JSON.stringify({ done, words: v.words, days: v.days, stats: v.stats, reads, sent: rowsSent(cloud, "user_items"), err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  {
+    const small = WORDS.slice(0, 200);
+    const cloud = createCloud({ word_progress: WP.slice(0, 10).map(wpRow), user_progress: [], user_items: small.map((w) => itemRow(w)) }, { maxRows: 1000 });
+    const page = await syncPage(login(cloud));
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const v = await local(page);
+    const reads = pagedReads(cloud, "user_items");
+    check("87.1 200 行の人: user_items の読みは 1 回（count で終わる）・200 語が届く",
+      done && v.words === 200 && JSON.stringify(reads) === JSON.stringify([[0, 200]]) && page.errors.length === 0, JSON.stringify({ done, words: v.words, reads, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (e) 最初の同期（ゲストで 1,000 語を足してからログインした人: 1,000 語が送る待ち・クラウドは空）: user_items の upsert は 3 回（500／500／90）・
+  //     その後の送る待ちは 0 行・続けて 4 回ページを移っても、裏に回しても my_word の行を送り直さない・2 台目が直した新しい訳を古い訳で戻さない
+  {
+    const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+    const page = await syncPage({
+      ...login(cloud),
+      spelldash_my_words: JSON.stringify(WORDS),
+      spelldash_my_books: BOOKS,
+      spelldash_user_items_meta: JSON.stringify(Object.fromEntries(WORDS.map((w) => [`my_word:${w.en}`, { updatedAt: T0, deleted: false }]))),
+      spelldash_user_items_dirty: JSON.stringify(WORDS.map((w) => `my_word:${w.en}`)),
+      spelldash_growth_log: growth()
+    });
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const first = upserts(cloud, "user_items").map((e) => e.n);
+    const v1 = await local(page);
+    check("87.1 最初の同期（1,000 語が送る待ち・クラウドは空）: user_items の upsert は 3 回（500／500／90）・その後の送る待ちは 0 行",
+      done && JSON.stringify(first) === JSON.stringify([500, 500, 90]) && v1.dirty === 0 && cloud.rows("user_items").length === 1090,
+      JSON.stringify({ done, first, dirty: v1.dirty, cloudRows: cloud.rows("user_items").length }));
+    // 2 台目がその語の訳を新しく直して送った（クラウドの行だけ替える）
+    const X = WORDS[600];
+    const xRow = cloudJa(cloud, X.en);
+    if (xRow) Object.assign(xRow, { payload: { ...xRow.payload, ja: "2台目で直した訳" }, updated_at: T1 });
+    const mark = cloud.log.length;
+    for (const p of ["/stats.html", "/mywords.html", "/stats.html", "/mywords.html"]) {
+      await page.goto(BASE + p, { waitUntil: "load" });
+      await quiet(cloud, 800);
+    }
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("pagehide"));
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await quiet(cloud);
+    const resent = myWordRowsSent(cloud, mark);
+    const after = cloudJa(cloud, X.en);
+    check("87.1 最初の同期の後に 4 回ページを移り、裏に回しても: my_word の行を送り直さない（upsert 0 行）",
+      resent === 0, JSON.stringify({ resent, ups: upserts(cloud, "user_items", mark).map((e) => e.kinds) }));
+    check("87.1 2 台目が直した新しい訳は、1 台目がページを移った後もクラウドで新しい訳と時刻のまま・エラー 0",
+      after?.payload?.ja === "2台目で直した訳" && after?.updated_at === T1 && page.errors.length === 0, JSON.stringify({ ja: after?.payload?.ja, at: after?.updated_at, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  check("87.1 どの画面にもページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 87.2 ログインの欄の失敗の文（Batch 87。js/auth.js showAuthMessage・sendLoginLink・signInWithGoogle・formatAuthError・css/layout.css と css/responsive.css の .account-menu__msg）: 560px 以下では、送る前の失敗の文が開いたままの欄の下に隠れていた。欄の中の段落（#loginPanelMessage。読み上げは前のまま #authMessage だけ）に同じ文を出す・失敗の後の焦点は #emailInput（外部アカウントのボタンの道は #googleLoginButton）・英語の文と製品の名前を出さない・561px 以上は前のまま =====
+// a15294a: 欄の中に段落が無く、文の中心は欄の FORM・INPUT・BUTTON に当たる。焦点は BODY か BUTTON に落ちる。サーバーの英語の文がそのまま出る
+// 失敗の道はスタブ（tests/mocks/supabase-stub.js）の種で作る: spelldash_test_unreachable（つながらない）・spelldash_test_otp_error・spelldash_test_oauth_error（その文で断る）
+console.log("login panel message (87.2):");
+{
+  const allErrors = [];
+  async function authPage(storage = {}, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    await page.addInitScript(([seed, th]) => {
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const CONF = { spelldash_test_configured: "1" };
+  const UNREACHABLE = "ログインのサーバーにつながらない。学習はこのまま続けられ、記録はこの端末に残る。";
+  const SENT = ["ログインリンクを送った。メールを開いて続ける。", "このページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。"];
+  async function openAt(storage, p, opts = {}) {
+    const page = await authPage(storage, opts);
+    await page.goto(BASE + p, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => { const t = document.getElementById("loginToggle"); return !!t && t.getClientRects().length > 0 && window.SpellDashArea !== undefined; }), 6000);
+    return page;
+  }
+  const press = async (page, sel, touch) => (touch ? page.tap(sel) : page.click(sel));
+  // 送る（email が null なら外部アカウントのボタン）→ 文が送信中・移動中でなくなるまで待つ
+  async function attempt(page, { email = "", touch = false } = {}) {
+    await press(page, "#loginToggle", touch);
+    await page.waitForTimeout(150);
+    if (email === null) await press(page, "#googleLoginButton", touch);
+    else {
+      await page.fill("#emailInput", email);
+      await press(page, "#loginButton", touch);
+    }
+    await waitUntil(async () => { const m = await page.evaluate(() => document.getElementById("authMessage")?.textContent ?? ""); return m.length > 0 && !/送信中|移動する/.test(m); }, 6000, 100);
+    await page.waitForTimeout(150);
+  }
+  // 見えている文: 欄の中の段落に箱があればその中心、無ければ #authMessage の中心で elementFromPoint を見る
+  const look = (page) => page.evaluate(() => {
+    const msg = document.getElementById("authMessage");
+    const p = document.getElementById("loginPanelMessage");
+    const boxed = !!p && p.getClientRects().length > 0;
+    const target = boxed ? p : msg;
+    const r = target.getBoundingClientRect();
+    const h = r.width > 0 && r.height > 0 ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+    const ae = document.activeElement;
+    return {
+      text: msg?.textContent ?? "", lines: (msg?.innerText ?? "").split("\n").map((s) => s.trim()).filter(Boolean), cls: msg?.className ?? "",
+      panelText: p ? p.textContent : null, panelHidden: p ? p.getAttribute("aria-hidden") : null, panelCls: p ? p.className : null, inForm: !!p && !!p.closest("#accountLogin"),
+      boxed, box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
+      hit: !h ? null : boxed && (h === p || p.contains(h)) ? "panelMessage" : h === msg || msg.contains(h) ? "authMessage" : `${h.tagName}#${h.id || h.className}`,
+      inView: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth,
+      expanded: document.getElementById("loginToggle").getAttribute("aria-expanded"),
+      panelShown: getComputedStyle(document.querySelector("#accountGuest .dropdown__panel")).display !== "none",
+      focus: ae ? `${ae.tagName}#${ae.id}` : null, value: document.getElementById("emailInput").value,
+      button: document.getElementById("loginButton").textContent.trim()
+    };
+  });
+
+  // ----- (1) 390 の指の端末（タップ）: ホーム・マイ単語帳・加入画面で、空の欄・つながらない。欄は開いたまま、欄の中の段落に同じ文、焦点は #emailInput -----
+  {
+    const rows = [];
+    for (const p of ["/index.html", "/mywords.html", "/pro.html"]) {
+      for (const c of [{ k: "empty", email: "", seed: CONF, want: "メールアドレスを入れる。" }, { k: "unreachable", email: "t@example.com", seed: { ...CONF, spelldash_test_unreachable: "1" }, want: UNREACHABLE }]) {
+        const page = await openAt(c.seed, p, { viewport: { width: 390, height: 844 }, mobile: true });
+        await attempt(page, { email: c.email, touch: true });
+        const v = await look(page);
+        rows.push({ p, k: c.k, ...v, err: page.errors[0] ?? null,
+          ok: v.text === c.want && v.panelText === c.want && v.panelHidden === "true" && v.inForm && v.boxed && v.hit === "panelMessage" && v.inView
+            && v.expanded === "true" && v.panelShown && v.focus === "INPUT#emailInput" && v.value === c.email && page.errors.length === 0 });
+        await closeCtx(page);
+      }
+    }
+    check("87.2 390 の指の端末: ホーム・マイ単語帳・加入画面で、空の欄と「つながらない」の失敗の文が欄の中の段落（#loginPanelMessage・aria-hidden）に出て、その中心が段落に当たる（画面の中）・欄は開いたまま",
+      rows.length === 6 && rows.every((r) => r.text === (r.k === "empty" ? "メールアドレスを入れる。" : UNREACHABLE) && r.panelText === r.text && r.panelHidden === "true" && r.inForm && r.boxed && r.hit === "panelMessage" && r.inView && r.expanded === "true" && r.panelShown),
+      JSON.stringify(rows.filter((r) => !r.ok).map(({ ok, lines, cls, ...r }) => r).slice(0, 3)));
+    check("87.2 390 の指の端末: 失敗の後の焦点はメールアドレスの欄（#emailInput）・打った字はそのまま・エラー 0",
+      rows.length === 6 && rows.every((r) => r.focus === "INPUT#emailInput" && r.value === (r.k === "empty" ? "" : "t@example.com") && !r.err),
+      JSON.stringify(rows.map((r) => [r.p, r.k, r.focus, r.value, r.err])));
+  }
+
+  // ----- (2) 文: サーバーに形で断られた・ほかの分からない失敗・送信の上限・設定が無い・外部アカウントのボタン（390 の指と 1200）-----
+  {
+    const rows = [];
+    const CASES = [
+      { k: "invalid-format", email: "a@b", seed: { ...CONF, spelldash_test_otp_error: "Unable to validate email address: invalid format" }, want: "メールアドレスの形を確かめる。", focus: "INPUT#emailInput" },
+      { k: "unknown", email: "t@example.com", seed: { ...CONF, spelldash_test_otp_error: "Database error saving new user" }, want: "ログインリンクを送れなかった。少しあけてもう一度。", focus: "INPUT#emailInput" },
+      { k: "rate-limit", email: "t@example.com", seed: { ...CONF, spelldash_test_otp_error: "email rate limit exceeded" }, want: "メール送信の上限。約1時間あけてもう一度。", focus: "INPUT#emailInput" },
+      { k: "unconfigured", email: "t@example.com", seed: {}, want: "ログインの設定が済んでいない。管理者に知らせる。", focus: "INPUT#emailInput" },
+      { k: "oauth-failure", email: null, seed: { ...CONF, spelldash_test_oauth_error: "Unsupported provider: provider is not enabled" }, want: "ログインに失敗した。少しあけてもう一度。", focus: "BUTTON#googleLoginButton" },
+      { k: "oauth-unreachable", email: null, seed: { ...CONF, spelldash_test_unreachable: "1" }, want: UNREACHABLE, focus: "BUTTON#googleLoginButton" }
+    ];
+    for (const phone of [true, false]) {
+      for (const c of CASES) {
+        const page = await openAt(c.seed, "/mywords.html", phone ? { viewport: { width: 390, height: 844 }, mobile: true } : {});
+        await attempt(page, { email: c.email, touch: phone });
+        const v = await look(page);
+        rows.push({ w: phone ? 390 : 1200, k: c.k, want: c.want, wantFocus: c.focus, ...v, err: page.errors[0] ?? null });
+        await closeCtx(page);
+      }
+    }
+    check("87.2 文: サーバーに形で断られた（invalid format）は「メールアドレスの形を確かめる。」・ほかの分からない失敗は「ログインリンクを送れなかった。少しあけてもう一度。」・送信の上限は前のまま・どれも英字が無い（390 と 1200）",
+      ["invalid-format", "unknown", "rate-limit"].every((k) => rows.filter((r) => r.k === k).length === 2 && rows.filter((r) => r.k === k).every((r) => r.text === r.want && !/[A-Za-z]/.test(r.text) && r.cls.includes("error"))),
+      JSON.stringify(rows.filter((r) => ["invalid-format", "unknown", "rate-limit"].includes(r.k)).map((r) => [r.w, r.k, r.text])));
+    check("87.2 文: 設定が無いときは「ログインの設定が済んでいない。管理者に知らせる。」（製品の名前を出さない）・外部アカウントのボタンの失敗は「ログインに失敗した。少しあけてもう一度。」（英字が無い）・つながらないは前の文",
+      ["unconfigured", "oauth-failure", "oauth-unreachable"].every((k) => rows.filter((r) => r.k === k).length === 2 && rows.filter((r) => r.k === k).every((r) => r.text === r.want && !/[A-Za-z]/.test(r.text))),
+      JSON.stringify(rows.filter((r) => ["unconfigured", "oauth-failure", "oauth-unreachable"].includes(r.k)).map((r) => [r.w, r.k, r.text])));
+    check("87.2 失敗の後の焦点（390 と 1200）: メールの道は #emailInput・外部アカウントのボタンの道は #googleLoginButton・欄は開いたまま・エラー 0",
+      rows.length === 12 && rows.every((r) => r.focus === r.wantFocus && r.expanded === "true" && r.panelShown && !r.err),
+      JSON.stringify(rows.filter((r) => !(r.focus === r.wantFocus && r.expanded === "true" && r.panelShown && !r.err)).map((r) => [r.w, r.k, r.focus, r.expanded, r.panelShown, r.err])));
+    check("87.2 390 では欄の中の段落に同じ文が出て、その中心が段落に当たる・1200 では段落に箱が無い（#authMessage だけ。前のまま）",
+      rows.filter((r) => r.w === 390).every((r) => r.panelText === r.text && r.boxed && r.hit === "panelMessage" && r.inView)
+        && rows.filter((r) => r.w === 1200).every((r) => r.panelText === r.text && !r.boxed),
+      JSON.stringify(rows.filter((r) => (r.w === 390 ? !(r.panelText === r.text && r.boxed && r.hit === "panelMessage" && r.inView) : r.boxed || r.panelText !== r.text)).map((r) => [r.w, r.k, r.panelText, r.boxed, r.hit, r.box])));
+  }
+
+  // ----- (3) 1024 と 1200（指の無い端末）: 空の欄で送ると、段落に箱が無く #authMessage の文は前と同じ・焦点は #emailInput -----
+  {
+    const rows = [];
+    for (const vp of [{ width: 1024, height: 768 }, { width: 1200, height: 900 }]) {
+      const page = await openAt(CONF, "/index.html", { viewport: vp });
+      await attempt(page, { email: "" });
+      const v = await look(page);
+      rows.push({ w: vp.width, ...v, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.2 1024 と 1200: 段落（#loginPanelMessage）に箱が無い・#authMessage は「メールアドレスを入れる。」・焦点は #emailInput・エラー 0",
+      rows.length === 2 && rows.every((r) => !r.boxed && r.text === "メールアドレスを入れる。" && r.focus === "INPUT#emailInput" && !r.err),
+      JSON.stringify(rows.map((r) => [r.w, r.boxed, r.text, r.focus, r.err])));
+  }
+
+  // ----- (4) 送れたとき（390 の指）: 欄は閉じて #authMessage に 2 行（86.1 (7) と同じ）・開き直すと欄の中に送った文と「再送信まで N秒」-----
+  {
+    const page = await openAt(CONF, "/mywords.html", { viewport: { width: 390, height: 844 }, mobile: true });
+    await attempt(page, { email: "test@example.com", touch: true });
+    const sent = await look(page);
+    await page.tap("#loginToggle");
+    await page.waitForTimeout(200);
+    const again = await look(page);
+    check("87.2 送れたとき（390 の指）: 欄は閉じて 2 行の文・開き直すと欄の中の段落に同じ 2 行（中心が段落に当たる）とボタンの「再送信まで N秒」・エラー 0",
+      JSON.stringify(sent.lines) === JSON.stringify(SENT) && sent.expanded === "false" && !sent.panelShown
+        && again.panelText === SENT.join("\n") && again.boxed && again.hit === "panelMessage" && /^再送信まで \d+秒$/.test(again.button) && page.errors.length === 0,
+      JSON.stringify({ sent: [sent.lines, sent.expanded, sent.panelShown], again: [again.panelText, again.boxed, again.hit, again.button], err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (5) 欄の中の段落の字の明るさの比（昼・夜 × ふつう・error・success）: 4.5 以上 -----
+  {
+    const rows = [];
+    for (const theme of ["light", "dark"]) {
+      const page = await openAt(CONF, "/mywords.html", { viewport: { width: 390, height: 844 }, mobile: true, theme });
+      await page.tap("#loginToggle");
+      await page.waitForTimeout(150);
+      const res = await page.evaluate(() => {
+        const p = document.getElementById("loginPanelMessage");
+        if (!p) return null;
+        const nums = (c) => c.match(/[\d.]+/g).map(Number);
+        const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+        const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return +((x + 0.05) / (y + 0.05)).toFixed(2); };
+        let el = p.parentElement;
+        let bg = getComputedStyle(el).backgroundColor;
+        while (el && /rgba\(0, 0, 0, 0\)|transparent/.test(bg)) { el = el.parentElement; bg = el ? getComputedStyle(el).backgroundColor : "rgb(255, 255, 255)"; }
+        const before = [p.className, p.textContent];
+        const out = { bg };
+        for (const type of ["", "error", "success"]) {
+          p.className = `account-menu__msg ${type}`.trim();
+          p.textContent = "x";
+          const c = getComputedStyle(p).color;
+          out[type || "plain"] = { color: c, ratio: ratio(nums(c), nums(bg)) };
+        }
+        [p.className, p.textContent] = before;
+        return out;
+      });
+      rows.push({ theme, res, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.2 欄の中の段落の字の明るさの比（昼・夜 × ふつう・error・success）が 4.5 以上",
+      rows.length === 2 && rows.every((r) => r.res && ["plain", "error", "success"].every((t) => r.res[t].ratio >= 4.5) && !r.err),
+      JSON.stringify(rows));
+  }
+  check("87.2 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 87.3 マイ単語帳の画面の作り直しの数（Batch 87。js/myWordsPage.js render の一覧の材料の印・css/pages.css の .mw-row の content-visibility。docs/SPEC_MY_WORDS.md §16.3）: 一覧（#myWordsList の行）を作り直すのは、行に出す物（語・訳・状態・選ぶ最中か・選んだ語・直している行）が変わったときだけ。1 語足す・訳を直して保存・1 行消す・渡された語を新しい単語帳に足すは 1 回、単語帳を消すは 2 回まで、ページを開いたときは 1 回、行に出す物が変わらない描き直し（Pro の状態の知らせ）は 0 回。行は画面の外では描かない（content-visibility: auto）。焦点の行き先は前のまま。ほかの所で訳・3 状態だけが変わっても、その行は新しい字になる。400 語の単語帳で「直す」・「やめる」・「消す」・同期の取り込みの後も、読んでいる行が動かない =====
+// 数え方: ページより先に document の子の変化を見張り、#myWordsList の子が入れ替わった回数（MutationRecord の数）を数える（作り直しの決まった数。時間は handoff に）。
+// a15294a: spelldash:mywords の受け手と操作の後の render() が 2 回とも作り直す（足す・直す・消すで 2 回、単語帳を消すで 3 回、渡された語を新しい単語帳に足すで 3 回、知らせで 1 回）・.mw-row は content-visibility: visible
+console.log("my words page rebuilds (87.3):");
+{
+  const allErrors = [];
+  const T = "2026-11-01T00:00:00.000Z";
+  const L = "abcdefghijklmnopqrstuvwxyz";
+  const keyOf = (i) => `w${L[Math.floor(i / 676) % 26]}${L[Math.floor(i / 26) % 26]}${L[i % 26]}`;
+  // 3 冊（10・40・10）の 60 語（無料の上限 100 語の中: 足すボタンが使える）
+  const SPLIT = [["main", "マイ単語帳", 10], ["b2", "仕事", 40], ["b3", "試験", 10]];
+  const WORDS = [];
+  for (const [id, name, count] of SPLIT) for (let i = 0; i < count; i++) WORDS.push({ en: keyOf(WORDS.length), ja: `訳${WORDS.length + 1}`, book: id, bookName: name, addedAt: T });
+  const BOOKS = JSON.stringify(SPLIT.map(([id, name]) => ({ id, name })));
+  const B64U = (s) => Buffer.from(s).toString("base64url");
+  const SHARED = Array.from({ length: 30 }, (_, i) => [`share${L[Math.floor(i / 26)]}${L[i % 26]}`, `渡された訳${i + 1}`]);
+  const shareCode = `j1.${B64U(JSON.stringify({ v: 1, n: "会議", w: SHARED }))}`;
+  async function wordsPage(path, { viewport = { width: 1200, height: 900 }, mobile = false, seed = { spelldash_my_words: JSON.stringify(WORDS), spelldash_my_books: BOOKS } } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript((seed) => {
+      // 作り直しを数える見張り（ページの部品より先に置く。#myWordsList の子の入れ替えだけ数える）
+      window.__rebuilds = 0;
+      const count = (records) => { for (const r of records) if (r.target?.id === "myWordsList" && (r.addedNodes.length > 0 || r.removedNodes.length > 0)) window.__rebuilds++; };
+      const mo = new MutationObserver(count);
+      mo.observe(document, { childList: true, subtree: true });
+      window.__flushRebuilds = () => { count(mo.takeRecords()); return window.__rebuilds; };
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, seed);
+    await page.goto(BASE + path, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => document.querySelectorAll("#myWordsList .mw-row").length > 0 || !!document.querySelector("#myRecv:not([hidden])")), 6000);
+    await page.waitForTimeout(300);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const rebuilds = (page) => page.evaluate(() => window.__flushRebuilds());
+  // 1 つの操作で作り直した回数（操作の前に数を読み、操作の後に落ち着くまで待って差を返す）
+  async function countOf(page, act) {
+    const before = await rebuilds(page);
+    await act();
+    await page.waitForTimeout(250);
+    return (await rebuilds(page)) - before;
+  }
+  const rowsNow = (page) => page.evaluate(() => [...document.querySelectorAll("#myWordsList .mw-row")].map((li) => ({ en: li.querySelector(".mw-row__en")?.textContent ?? "", ja: li.querySelector(".mw-row__ja")?.textContent ?? null, form: !!li.querySelector(".mw-row__form") })));
+  const focusNow = (page) => page.evaluate(() => { const a = document.activeElement; const row = a?.closest?.(".mw-row"); return { tag: a?.tagName ?? null, id: a?.id ?? "", cls: a?.className ?? "", row: row?.querySelector(".mw-row__en")?.textContent ?? null }; });
+
+  // ----- (1) 開いたとき・知らせ・1 語足す・訳を直す・1 行消す（「仕事」40 語）-----
+  {
+    const page = await wordsPage("/mywords.html?book=b2");
+    const load = await rebuilds(page);
+    const css = await page.evaluate(() => { const s = getComputedStyle(document.querySelector("#myWordsList .mw-row")); return { cv: s.contentVisibility, cis: s.containIntrinsicSize }; });
+    check("87.3 行は画面の外では描かない: .mw-row の content-visibility は auto・contain-intrinsic-size は auto 64px",
+      css.cv === "auto" && /^auto 64px$|^auto none auto 64px$|64px/.test(css.cis) && String(css.cis).includes("auto"), JSON.stringify(css));
+    const plan = await countOf(page, () => page.evaluate(() => document.dispatchEvent(new CustomEvent("spelldash:plan"))));
+    // 1 語足す
+    const add = await countOf(page, async () => {
+      await page.fill("#myWordsEn", "newword");
+      await page.fill("#myWordsJa", "新しい語");
+      await page.click("#myWordsAddButton");
+    });
+    const afterAdd = await rowsNow(page);
+    const addFocus = await focusNow(page);
+    // 訳を直す: 欄を開く（作り直し 1 回は前と同じ）→ 直して保存
+    const target = WORDS[20]; // 「仕事」の語
+    const openEdit = await countOf(page, async () => {
+      await page.evaluate((en) => [...document.querySelectorAll("#myWordsList .mw-row")].find((li) => li.querySelector(".mw-row__en")?.textContent === en)?.querySelector(".mw-row__edit")?.click(), target.en);
+    });
+    const editFocus = await focusNow(page);
+    const save = await countOf(page, async () => {
+      await page.fill("#myWordsList .mw-row__input", "直した訳");
+      await page.press("#myWordsList .mw-row__input", "Enter");
+    });
+    const afterSave = await rowsNow(page);
+    const saveFocus = await focusNow(page);
+    // 1 行消す（確かめる窓は受ける）。消した後の焦点は次の行の「消す」
+    const victim = WORDS[30];
+    const rowsBefore = await rowsNow(page);
+    const nextEn = rowsBefore[rowsBefore.findIndex((r) => r.en === victim.en) + 1]?.en ?? null;
+    const del = await countOf(page, async () => {
+      await page.evaluate((en) => [...document.querySelectorAll("#myWordsList .mw-row")].find((li) => li.querySelector(".mw-row__en")?.textContent === en)?.querySelector(".mw-row__del")?.click(), victim.en);
+    });
+    const afterDel = await rowsNow(page);
+    const delFocus = await focusNow(page);
+    const counts = { load, plan, add, openEdit, save, del };
+    check("87.3 一覧の作り直しの数: 開いたとき 1・行に出す物が変わらない知らせ（spelldash:plan）0・1 語足す 1・訳を直して保存 1・1 行消す 1（直す欄を開くのは前のまま 1）",
+      load === 1 && plan === 0 && add === 1 && openEdit === 1 && save === 1 && del === 1, JSON.stringify(counts));
+    check("87.3 作り直しを減らしても一覧と焦点は前のまま: 足した語が上に出て焦点は英語の欄・直す欄に焦点・保存した訳が出て焦点はその行の「直す」・消した語が消えて焦点は次の行の「消す」・エラー 0",
+      afterAdd[0]?.en === "newword" && afterAdd[0]?.ja === "新しい語" && afterAdd.length === 41 && addFocus.id === "myWordsEn"
+        && editFocus.cls.includes("mw-row__input") && editFocus.row === target.en
+        && afterSave.find((r) => r.en === target.en)?.ja === "直した訳" && !afterSave.some((r) => r.form) && saveFocus.cls.includes("mw-row__edit") && saveFocus.row === target.en
+        && !afterDel.some((r) => r.en === victim.en) && afterDel.length === 40 && delFocus.cls.includes("mw-row__del") && delFocus.row === nextEn && page.errors.length === 0,
+      JSON.stringify({ add: [afterAdd[0], afterAdd.length, addFocus], edit: editFocus, save: [afterSave.find((r) => r.en === target.en), saveFocus], del: [afterDel.length, delFocus, nextEn], err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (2) 単語帳を消す（「試験」10 語）: 作り直しは 2 回まで・消した後は最初の単語帳 -----
+  {
+    const page = await wordsPage("/mywords.html?book=b3");
+    const del = await countOf(page, () => page.click("#myBookDelete"));
+    const state = await page.evaluate(() => ({ tab: document.querySelector('#myBookTabs .mw-book[aria-pressed="true"]')?.dataset.book ?? null, rows: document.querySelectorAll("#myWordsList .mw-row").length, tabs: document.querySelectorAll("#myBookTabs .mw-book").length }));
+    check("87.3 単語帳を消す: 一覧の作り直しは 2 回まで・消した後は最初の単語帳（10 語）・単語帳は 2 冊・エラー 0",
+      del <= 2 && del >= 1 && state.tab === "main" && state.rows === 10 && state.tabs === 2 && page.errors.length === 0, JSON.stringify({ del, state, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (3) 渡された 30 語を新しい単語帳として足す: 作り直しは 1 回・足した単語帳の 30 語が出る -----
+  {
+    const page = await wordsPage(`/mywords.html?book=b2#share=${shareCode}`);
+    await waitUntil(() => page.evaluate(() => { const b = document.getElementById("myRecvNew"); return !!b && !b.disabled && !b.closest("[hidden]"); }), 6000);
+    const add = await countOf(page, () => page.click("#myRecvNew"));
+    const state = await page.evaluate(() => ({ tab: document.querySelector('#myBookTabs .mw-book[aria-pressed="true"] .mw-book__name')?.textContent ?? null, rows: document.querySelectorAll("#myWordsList .mw-row").length, status: document.getElementById("myRecvStatus")?.textContent ?? "" }));
+    check("87.3 渡された 30 語を新しい単語帳に足す: 一覧の作り直しは 1 回・足した単語帳（会議）の 30 語が出る・エラー 0",
+      add === 1 && state.tab === "会議" && state.rows === 30 && state.status.includes("30語") && page.errors.length === 0, JSON.stringify({ add, state, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (4) 描く範囲を行に閉じても焦点の輪が切れない（390 の指と 1200）: 行は content-visibility: auto で、行の中のボタン（直す・消す）の輪
+  //     （:focus-visible の outline の幅と offset）と、直す欄の輪（box-shadow の広がり）が行の内側（枠の内側）に収まる -----
+  {
+    const rows = [];
+    for (const opts of [{ viewport: { width: 390, height: 844 }, mobile: true }, { viewport: { width: 1200, height: 900 } }]) {
+      const page = await wordsPage("/mywords.html?book=b2", opts);
+      // 1 行目の「直す」をキーボードで押して直す欄へ（欄の輪）→ Escape で「直す」へ戻る（キーボードの焦点: ボタンの輪）
+      await page.focus("#myWordsList .mw-row .mw-row__edit");
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(150);
+      const fit = () => page.evaluate(() => {
+        const a = document.activeElement;
+        const row = a?.closest(".mw-row");
+        if (!row) return { where: a?.className ?? null };
+        const s = getComputedStyle(a);
+        const rs = getComputedStyle(row);
+        let ring = 0;
+        if (s.outlineStyle !== "none") ring = Math.max(ring, parseFloat(s.outlineWidth) + parseFloat(s.outlineOffset));
+        const m = s.boxShadow.match(/(-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px/);
+        if (m) ring = Math.max(ring, Math.max(Math.abs(+m[1]), Math.abs(+m[2])) + Math.max(0, +m[3]) + +m[4]);
+        const r = row.getBoundingClientRect();
+        const box = { l: r.left + parseFloat(rs.borderLeftWidth), t: r.top + parseFloat(rs.borderTopWidth), r: r.right - parseFloat(rs.borderRightWidth), b: r.bottom - parseFloat(rs.borderBottomWidth) };
+        const e = a.getBoundingClientRect();
+        const fits = e.left - ring >= box.l - 0.5 && e.top - ring >= box.t - 0.5 && e.right + ring <= box.r + 0.5 && e.bottom + ring <= box.b + 0.5;
+        return { where: a.className, ring, fits, cv: rs.contentVisibility };
+      });
+      const input = await fit();
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(150);
+      const edit = await fit();
+      await page.keyboard.press("Tab"); // 同じ行の「消す」
+      const del = await fit();
+      rows.push({ w: opts.viewport.width, input, edit, del, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.3 行は画面の外で描かないまま（content-visibility: auto）、焦点の輪が切れない: 390 と 1200 で直す欄（3px）・「直す」・「消す」（4px）の輪が行の内側に収まる・エラー 0",
+      rows.length === 2 && rows.every((r) => [r.input, r.edit, r.del].every((x) => x.fits === true && x.ring >= 3 && x.cv === "auto") && r.input.where.includes("mw-row__input") && r.edit.where.includes("mw-row__edit") && r.del.where.includes("mw-row__del") && !r.err),
+      JSON.stringify(rows));
+  }
+
+  // ----- (5) 行に出す物がほかの所で変わった（同期の取り込み・ほかのタブ: 保存を書いてから spelldash:mywords）: 保存の訳だけ、次に 3 状態だけを書き替えると、
+  //     その行の訳・状態の字が新しくなる（どちらも作り直しは 1 回）。行の印から訳か状態を外すと、行が古い字のまま残って落ちる（Batch 87 の反証の直し）-----
+  {
+    const page = await wordsPage("/mywords.html?book=b2");
+    const target = WORDS[25]; // 「仕事」の語
+    const rowText = () => page.evaluate((en) => {
+      const li = [...document.querySelectorAll("#myWordsList .mw-row")].find((x) => x.querySelector(".mw-row__en")?.textContent === en);
+      return li ? { ja: li.querySelector(".mw-row__ja")?.textContent ?? null, state: li.querySelector(".mw-row__state")?.textContent ?? null } : null;
+    }, target.en);
+    const writeWord = (patch) => page.evaluate(({ en, patch }) => {
+      const list = JSON.parse(localStorage.getItem("spelldash_my_words"));
+      Object.assign(list.find((w) => w.en === en), patch);
+      localStorage.setItem("spelldash_my_words", JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent("spelldash:mywords"));
+    }, { en: target.en, patch });
+    const before = await rowText();
+    const jaOnly = await countOf(page, () => writeWord({ ja: "ほかの端末で直した訳" }));
+    const afterJa = await rowText();
+    const stateOnly = await countOf(page, () => writeWord({ ls: 2, lsAt: "2026-11-02T00:00:00.000Z" })); // 覚えた
+    const afterState = await rowText();
+    check("87.3 ほかの所で保存の訳だけが変わると、その行の訳が新しくなる（作り直し 1 回）・次に 3 状態だけが変わると、その行の状態が「覚えた」になる（作り直し 1 回）・エラー 0",
+      before?.ja === target.ja && before?.state === "これから" && jaOnly === 1 && afterJa?.ja === "ほかの端末で直した訳" && afterJa?.state === "これから"
+        && stateOnly === 1 && afterState?.state === "覚えた" && afterState?.ja === "ほかの端末で直した訳" && page.errors.length === 0,
+      JSON.stringify({ before, jaOnly, afterJa, stateOnly, afterState, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (6) 読んでいる所が動かない（Batch 87 の反証の直し）: 400 語の単語帳を 200 行目まで少しずつスクロールし（通った行は描かれる）、その行を上から 300px に置く。
+  //     「直す」・「やめる」・ほかの所で単語帳のいちばん上の語の訳が変わる（同期の取り込み）・「消す」の後で、その行（消したときは次の行）の上端が 4px より動かない。
+  //     ad823da は一覧を丸ごと作り直すので、画面の外の行が見込みの高さ（64px）に戻り、読んでいた行が数十〜数千 px 動いた -----
+  {
+    const BIG = [];
+    const LONG_JA = "会議の前に資料を読み、要点を三つにまとめて共有する。".repeat(3);
+    for (let i = 0; i < 400; i++) BIG.push({ en: i % 5 === 0 ? `${keyOf(i)} follow up on the quarterly report` : keyOf(i), ja: i % 3 === 0 ? `長い訳${i}：${LONG_JA}` : `訳${i}`, book: "big", bookName: "仕事", addedAt: T });
+    const seed = { spelldash_my_words: JSON.stringify(BIG), spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "big", name: "仕事" }]) };
+    const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 150)))));
+    const topOf = (page, ref) => page.evaluate((r) => { const li = [...document.querySelectorAll("#myWordsList .mw-row")].find((x) => x.dataset.ref === r); return li ? Math.round(li.getBoundingClientRect().top * 10) / 10 : null; }, ref);
+    const focusRow = (page) => page.evaluate(() => { const a = document.activeElement; return { row: a?.closest?.(".mw-row")?.dataset.ref ?? null, cls: a?.className ?? "" }; });
+    const clickIn = (page, ref, sel) => page.evaluate(({ r, s }) => [...document.querySelectorAll("#myWordsList .mw-row")].find((x) => x.dataset.ref === r)?.querySelector(s)?.click(), { r: ref, s: sel });
+    const runs = [];
+    for (const opts of [{ viewport: { width: 390, height: 844 }, mobile: true }, { viewport: { width: 1200, height: 900 } }]) {
+      const page = await wordsPage("/mywords.html?book=big", { ...opts, seed });
+      await waitUntil(() => page.evaluate(() => document.querySelectorAll("#myWordsList .mw-row").length === 400), 8000);
+      // 人のように少しずつ下へ（通った行は描かれて本当の高さを覚える）、200 行目を上から 300px に置く
+      const at = await page.evaluate(async () => {
+        const rowAt = (i) => document.querySelectorAll("#myWordsList .mw-row")[i];
+        for (let k = 0; k < 400; k++) {
+          const t = rowAt(200).getBoundingClientRect().top;
+          if (Math.abs(t - 300) < 2) break;
+          window.scrollBy(0, Math.max(-600, Math.min(600, t - 300)));
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        }
+        return { ref: rowAt(200).dataset.ref, next: rowAt(201).dataset.ref, top: rowAt(200).getBoundingClientRect().top, scrollY: Math.round(window.scrollY) };
+      });
+      await settle(page);
+      const moved = {};
+      const focus = {};
+      // 直す（欄が開く）→ やめる
+      let t0 = await topOf(page, at.ref);
+      await clickIn(page, at.ref, ".mw-row__edit");
+      await settle(page);
+      moved.edit = (await topOf(page, at.ref)) - t0;
+      focus.edit = await focusRow(page);
+      t0 = await topOf(page, at.ref);
+      await clickIn(page, at.ref, ".mw-row__cancel");
+      await settle(page);
+      moved.cancel = (await topOf(page, at.ref)) - t0;
+      focus.cancel = await focusRow(page);
+      // 同期の取り込み（ほかの端末で、単語帳のいちばん上の語の訳を短く直した）: 保存を書いてから spelldash:mywords
+      t0 = await topOf(page, at.ref);
+      const topEn = BIG[399].en;
+      await page.evaluate((en) => {
+        const list = JSON.parse(localStorage.getItem("spelldash_my_words"));
+        list.find((w) => w.en === en).ja = "ほかの端末で直した訳";
+        localStorage.setItem("spelldash_my_words", JSON.stringify(list));
+        window.dispatchEvent(new CustomEvent("spelldash:mywords"));
+      }, topEn);
+      await settle(page);
+      moved.sync = (await topOf(page, at.ref)) - t0;
+      const topJa = await page.evaluate(() => document.querySelector("#myWordsList .mw-row .mw-row__ja")?.textContent ?? null);
+      // 消す（確かめる窓は受ける）: 次の行が消した行の上端に来る
+      t0 = await topOf(page, at.ref);
+      await clickIn(page, at.ref, ".mw-row__del");
+      await settle(page);
+      moved.del = (await topOf(page, at.next)) - t0;
+      focus.del = await focusRow(page);
+      const rows = await page.evaluate(() => document.querySelectorAll("#myWordsList .mw-row").length);
+      runs.push({ w: opts.viewport.width, at, moved, focus, topJa, rows, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.3 読んでいる所が動かない: 400 語の単語帳の 200 行目（390 の指・1200）で、「直す」・「やめる」・同期で単語帳のいちばん上の語の訳が変わる・「消す」の後、その行（消したときは次の行）の上端が 4px より動かない・焦点は直す欄・その行の「直す」・次の行の「消す」・エラー 0",
+      runs.length === 2 && runs.every((r) => Math.abs(r.at.top - 300) < 2 && Object.values(r.moved).every((d) => Number.isFinite(d) && Math.abs(d) <= 4)
+        && r.focus.edit.row === r.at.ref && r.focus.edit.cls.includes("mw-row__input") && r.focus.cancel.row === r.at.ref && r.focus.cancel.cls.includes("mw-row__edit")
+        && r.focus.del.row === r.at.next && r.focus.del.cls.includes("mw-row__del") && r.topJa === "ほかの端末で直した訳" && r.rows === 399 && !r.err),
+      JSON.stringify(runs));
+  }
+  check("87.3 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 87.4 マイ単語帳の回の読み直しの数（Batch 87。js/game.js myLearnSource の語の写し。docs/SPEC_MY_WORDS.md §16.4）: 1,000 語（400 語の単語帳）の人の回で、マイ単語帳の保存（10 万字を超える JSON）を読む回数が、回の始め 3 以下・打つ答え 1 つで 2 以下・選択式の答え 1 つで 3 以下。回の途中でほかのタブが消した語は出ない（前のまま） =====
+// 数え方: ページより先に JSON.parse を包み、10 万字以上の文字列の読みを数える（検査だけの包み）。
+// a15294a: 回の始めに列の語ごとに一覧を読み直す（findCard → words() → getMyWords）ので約 400 回、打つ答え 1 つで 7 回、選択式の答え 1 つで 10 回
+console.log("my words session reads (87.4):");
+{
+  const allErrors = [];
+  const T = "2026-11-01T00:00:00.000Z";
+  const L = "abcdefghijklmnopqrstuvwxyz";
+  const keyOf = (i) => `w${L[Math.floor(i / 676) % 26]}${L[Math.floor(i / 26) % 26]}${L[i % 26]}`;
+  // 1,000 語（マイ単語帳 600・仕事 400）。訳は長め（保存の文字列が 10 万字を超える）
+  const SPLIT = [["main", "マイ単語帳", 600], ["b2", "仕事", 400]];
+  const WORDS = [];
+  for (const [id, name, count] of SPLIT) for (let i = 0; i < count; i++) WORDS.push({ en: keyOf(WORDS.length), ja: `仕事で使う言葉の訳その${WORDS.length + 1}（長めの説明をつけた訳）`, book: id, bookName: name, addedAt: T });
+  const BOOKS = JSON.stringify(SPLIT.map(([id, name]) => ({ id, name })));
+  const B2 = new Set(WORDS.filter((w) => w.book === "b2").map((w) => w.en));
+  async function sessionPage(path) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript((seed) => {
+      // 大きな読みを数える包み（ページの部品より先に置く）
+      window.__bigParses = 0;
+      const parse = JSON.parse;
+      JSON.parse = function (text, reviver) {
+        if (typeof text === "string" && text.length >= 100000) window.__bigParses++;
+        return parse.call(this, text, reviver);
+      };
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, { spelldash_my_words: JSON.stringify(WORDS), spelldash_my_books: BOOKS });
+    await page.goto(BASE + path, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => window.__words.length >= 1), 8000);
+    await page.waitForTimeout(200);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const parses = (page) => page.evaluate(() => window.__bigParses);
+  const shownIds = (page) => page.evaluate(() => [...window.__words]);
+  const typeKeys = async (page, keys) => { for (const ch of keys) await page.press("#input", ch); };
+  const enOfId = (id) => String(id ?? "").replace(/^my-/, "");
+  // 打つ回の 1 語: 今の語の英語を 1 字ずつ打つ（最後の字で正解・次の語へ）。打つ前から次の語が出るまでの大きな読みの数
+  async function typedAnswer(page) {
+    const ids = await shownIds(page);
+    const before = await parses(page);
+    await typeKeys(page, enOfId(ids.at(-1)));
+    await waitUntil(async () => (await shownIds(page)).length > ids.length, 6000);
+    await page.waitForTimeout(150);
+    return (await parses(page)) - before;
+  }
+
+  // ----- (1) 打つ回（/?learn=my&book=b2。400 語）: 始め・答え 3 つ・回の途中でほかのタブが消した語は出ない -----
+  {
+    const page = await sessionPage("/?learn=my&book=b2");
+    const size = await page.evaluate(() => localStorage.getItem("spelldash_my_words")?.length ?? 0);
+    const start = await parses(page);
+    const first = (await shownIds(page))[0];
+    const per = [];
+    for (let i = 0; i < 3; i++) per.push(await typedAnswer(page));
+    // ほかのタブで、まだ出ていない「仕事」の語を 1 つ（keep）を残して全部消す（保存の文字列が替わる。消した後は 10 万字より短いので数えない）
+    const shown = new Set((await shownIds(page)).map(enOfId));
+    const keep = [...B2].find((en) => !shown.has(en));
+    await page.evaluate(({ keep, shown }) => {
+      const list = JSON.parse(localStorage.getItem("spelldash_my_words") || "[]");
+      localStorage.setItem("spelldash_my_words", JSON.stringify(list.filter((w) => w.book !== "b2" || w.en === keep || shown.includes(w.en))));
+    }, { keep, shown: [...shown] });
+    await typedAnswer(page);
+    const next = (await shownIds(page)).at(-1);
+    check("87.4 打つ回（400 語の単語帳・保存の文字列 10 万字以上）: 回の始め（最初の問いまで）の大きな読みは 3 以下",
+      size >= 100000 && B2.has(enOfId(first)) && start <= 3, JSON.stringify({ size, start, first }));
+    check("87.4 打つ回: 答え 1 つの大きな読みは 2 以下（3 語）・回の途中でほかのタブが消した語は出ない（残した 1 語が次に出る）・エラー 0",
+      per.length === 3 && per.every((n) => n <= 2) && next === `my-${keep}` && page.errors.length === 0, JSON.stringify({ per, next, keep, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (2) 選択式（/?learn=my&book=b2&choice=en）: 答え 1 つ（正しい英語を押す → 次へ）の大きな読みは 3 以下 -----
+  {
+    const page = await sessionPage("/?learn=my&book=b2&choice=en");
+    const start = await parses(page);
+    const per = [];
+    for (let i = 0; i < 3; i++) {
+      const ids = await shownIds(page);
+      const en = enOfId(ids.at(-1));
+      await waitUntil(() => page.evaluate(() => document.querySelectorAll("#choiceOpts .choice__opt").length > 0), 4000);
+      const before = await parses(page);
+      const idx = await page.evaluate((en) => [...document.querySelectorAll("#choiceOpts .choice__opt")].findIndex((b) => b.querySelector(".choice__text")?.textContent === en), en);
+      await page.waitForTimeout(400); // 問いが出てすぐの押しは受けない守り（js/myWordsChoice.js）を待つ
+      await page.click(`#choiceOpts .choice__opt[data-i="${idx}"]`);
+      await waitUntil(() => page.evaluate(() => { const n = document.getElementById("choiceNext"); return !!n && !n.hidden; }), 4000);
+      await page.click("#choiceNext");
+      await waitUntil(async () => (await shownIds(page)).length > ids.length, 6000);
+      await page.waitForTimeout(150);
+      per.push({ idx, n: (await parses(page)) - before });
+    }
+    check("87.4 選択式（400 語の単語帳）: 回の始めの大きな読みは 3 以下・答え 1 つ（押して次へ）の大きな読みは 3 以下（3 語）・エラー 0",
+      start <= 3 && per.length === 3 && per.every((p) => p.idx >= 0 && p.n <= 3) && page.errors.length === 0, JSON.stringify({ start, per, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  check("87.4 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 87.5 マイ単語帳の回の字とナビ（Batch 87。index.html の #promptLabelFixed・js/game.js setLearnScreen・js/myWordsChoice.js・css/game.css。docs/SPEC_MY_WORDS.md §16.6。BACKLOG F22）: 打つマイ単語帳の回の問いの上の字は「問い」（訳は本人の書いた問いのことがある）・選択式で訳を見る向きも「問い」（英語を見る向きは「英語」のまま）・ナビは中心の学ぶ回だけ「英単語を学ぶ」を今の場所にする（マイ単語帳とスラングの回は何も光らせない）・単語帳を選んだ回の題は単語帳の名前（字のまま）。スラングと中心の学ぶ回の字は前のまま =====
+// a15294a: マイ単語帳の回の字は「日本語訳（…）」・ナビは「英単語を学ぶ」が光る・題は単語帳を選んでも「マイ単語帳」
+console.log("my words session label and nav (87.5):");
+{
+  const allErrors = [];
+  const T = "2026-11-01T00:00:00.000Z";
+  const BOOK_NAME = "<b>仕事</b>"; // 字のまま出す（HTML にしない）
+  const WORDS = [
+    { en: "agenda", ja: "〈会議の場面〉議題が多すぎる。会議は長くなる？短くなる？", book: "main", bookName: "マイ単語帳", addedAt: T },
+    { en: "deadline", ja: "締め切り", book: "main", bookName: "マイ単語帳", addedAt: T },
+    { en: "invoice", ja: "請求書", book: "w1", bookName: BOOK_NAME, addedAt: T },
+    { en: "budget", ja: "予算", book: "w1", bookName: BOOK_NAME, addedAt: T }
+  ];
+  const BOOKS = JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "w1", name: BOOK_NAME }]);
+  async function runPage(path) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript((seed) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, { spelldash_my_words: JSON.stringify(WORDS), spelldash_my_books: BOOKS });
+    await page.goto(BASE + path, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => window.__words.length >= 1), 10000);
+    await page.waitForTimeout(250);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  // 見えている問いの上の字・ナビの今の場所・回の題
+  const screen = (page) => page.evaluate(() => {
+    const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+    const cur = [...document.querySelectorAll(".site-nav a[aria-current]")].map((a) => `${a.getAttribute("href")}=${a.getAttribute("aria-current")}`);
+    return {
+      labels: [...document.querySelectorAll("#gameCard .label")].filter(shown).map((el) => el.textContent.trim()),
+      nav: cur,
+      head: document.getElementById("learnHead")?.textContent ?? null,
+      headHtml: document.getElementById("learnHead")?.innerHTML ?? null,
+      done: document.body.classList.contains("set-done")
+    };
+  });
+  const typeKeys = async (page, keys) => { for (const ch of keys) await page.press("#input", ch); };
+
+  // ----- (1) 打つ回（/?learn=my）: 字は「問い」だけ・ナビは光らない・題は「マイ単語帳」。回の終わり（set-done）では字は隠れる（前のまま）-----
+  {
+    const page = await runPage("/?learn=my");
+    const v = await screen(page);
+    // 4 語を答えて回を終える（出た語の英語を打つ）
+    for (let i = 0; i < WORDS.length; i++) {
+      const n = await page.evaluate(() => window.__words.length);
+      const id = await page.evaluate(() => window.__words.at(-1));
+      await typeKeys(page, String(id).replace(/^my-/, ""));
+      await waitUntil(() => page.evaluate((n) => window.__words.length > n || document.body.classList.contains("set-done"), n), 6000);
+    }
+    await page.waitForFunction(() => document.body.classList.contains("set-done"), null, { timeout: 8000 }).catch(() => {});
+    const end = await screen(page);
+    check("87.5 打つ回（/?learn=my）: 問いの上の字は「問い」だけ・ナビはどれも今の場所にしない・題は「マイ単語帳」・回の終わり（set-done）では字は出ない・エラー 0",
+      JSON.stringify(v.labels) === JSON.stringify(["問い"]) && v.nav.length === 0 && v.head === "マイ単語帳" && end.done && end.labels.length === 0 && page.errors.length === 0,
+      JSON.stringify({ v, end, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (2) 単語帳を選んだ回（/?learn=my&book=w1）: 題は単語帳の名前（字のまま。HTML にしない）・字は「問い」 -----
+  {
+    const page = await runPage("/?learn=my&book=w1");
+    const v = await screen(page);
+    check("87.5 単語帳を選んだ回: 題は単語帳の名前（「<b>仕事</b>」を字のまま）・字は「問い」・ナビは光らない・エラー 0",
+      v.head === BOOK_NAME && !/<b>/.test(v.headHtml) && JSON.stringify(v.labels) === JSON.stringify(["問い"]) && v.nav.length === 0 && page.errors.length === 0,
+      JSON.stringify({ v, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (3) 選択式: 訳を見て英語を選ぶ（choice=en）は「問い」・英語を見て訳を選ぶ（choice=ja）は「英語」のまま -----
+  {
+    const rows = [];
+    for (const dir of ["en", "ja"]) {
+      const page = await runPage(`/?learn=my&choice=${dir}`);
+      await waitUntil(() => page.evaluate(() => document.querySelectorAll("#choiceOpts .choice__opt").length > 0), 6000);
+      rows.push({ dir, ...(await screen(page)), err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.5 選択式: 訳を見る向き（choice=en）の字は「問い」・英語を見る向き（choice=ja）は「英語」・ナビは光らない・エラー 0",
+      JSON.stringify(rows.map((r) => r.labels)) === JSON.stringify([["問い"], ["英語"]]) && rows.every((r) => r.nav.length === 0 && !r.err), JSON.stringify(rows));
+  }
+
+  // ----- (4) スラングの回は「日本語訳」のまま・ナビは光らない。中心の学ぶ回（/?learn=next）は前のまま（字は「日本語訳…」・ナビは「英単語を学ぶ」）-----
+  {
+    const slang = await runPage("/?learn=slang&group=work");
+    const s = await screen(slang);
+    await closeCtx(slang);
+    const core = await runPage("/?learn=next");
+    const c = await screen(core);
+    await closeCtx(core);
+    check("87.5 スラングの回: 字は「日本語訳」のまま・ナビは光らない／中心の学ぶ回: 字は「日本語訳…」のまま・ナビは「英単語を学ぶ」だけ",
+      s.labels.length === 1 && s.labels[0].startsWith("日本語訳") && s.nav.length === 0 && c.labels.length === 1 && c.labels[0].startsWith("日本語訳") && JSON.stringify(c.nav) === JSON.stringify(["/?learn=next=page"]),
+      JSON.stringify({ s, c }));
+  }
+  check("87.5 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====

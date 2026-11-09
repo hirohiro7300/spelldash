@@ -74,7 +74,8 @@ export function initializeMyWordsView(onChange = () => {}) {
 
   bulkButton?.addEventListener("click", () => {
     const textarea = document.getElementById("myWordBulk");
-    const { added, skipped } = addMyWordsBulk(textarea.value);
+    const { added, skipped: refused, limited = 0 } = addMyWordsBulk(textarea.value);
+    const skipped = [...refused, ...Array.from({ length: limited }, () => limitMessage())]; // 上限で足せなかった行もスキップに数える（Batch 87: addMyWordsBulk は数だけを返す。スキップの数は前と同じ。字と並びは前と少し違い、上限の行は行の名前が付かず決まりに合わない行の後ろ。この画面は開けない: /list.html はホームへ移る）
     const lines = [];
     if (added.length > 0) lines.push(`${added.length}語を追加した`);
     if (skipped.length > 0) lines.push(`スキップ ${skipped.length}件: ${skipped.slice(0, 3).join(" / ")}${skipped.length > 3 ? " …" : ""}`);

@@ -11,7 +11,7 @@ import {
 } from "./battleRank.js";
 import { getStudyMix, adoptCloudRatio } from "./studyMix.js";
 import { buildActivityRow } from "./activity.js";
-import { pushUserItems, pullUserItems, probeUserItemsTable, userItemsTableMissing } from "./userItemsSync.js";
+import { pushUserItems, pullUserItems, probeUserItemsTable, userItemsTableMissing, readAllRows } from "./userItemsSync.js";
 import { markVeteranIfReturning } from "./unlocks.js";
 import { COURSES, startCourse } from "./course.js";
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
@@ -446,21 +446,22 @@ async function runInitialSyncOnce() {
 
   // 3 状態の初めの埋め（fillLearnStatesOnce）の材料は、取り込みと並べて読む（取り込みの後から表を書き終えるまでのあいだに待ちをはさまない）
   const learnFill = localStorage.getItem(LEARN_FILLED_KEY) === userId ? null : loadLearnStateDeps();
+  // 学習記録は 1,000 行ずつ読み切る（Batch 87。1 回の読みの上限より後ろの語が「クラウドに無い」ことにならない: js/userItemsSync.js の readAllRows）
   const [wordResult, progressResult, learnDeps] = await Promise.all([
-    cloud.from("word_progress").select("*"),
+    readAllRows(cloud, "word_progress", ["word_id"]),
     cloud.from("user_progress").select("*").maybeSingle(),
     learnFill
   ]);
 
-  // どちらかの取得に失敗したらフラグを戻して次回再試行（データを壊さない。user_progress の上書きにも進まない）
-  if (wordResult.error || progressResult.error) {
+  // どちらかの取得に失敗したら（学習記録は 1 ページでも読めなければ）フラグを戻して次回再試行（データを壊さない。user_progress の上書きにも進まない）
+  if (!wordResult.ok || progressResult.error) {
     sessionStorage.removeItem(SYNCED_FLAG);
     sessionStorage.removeItem(PULL_AT_FLAG);
-    const error = wordResult.error || progressResult.error;
+    const error = (!wordResult.ok && (wordResult.error ?? "word_progress read incomplete")) || progressResult.error;
     throw new Error(`sync pull failed: ${error?.message ?? error}`);
   }
 
-  const cloudRows = wordResult.data;
+  const cloudRows = wordResult.rows;
   const cloudProgress = progressResult.data;
 
   const local = getWordStats();

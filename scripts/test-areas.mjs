@@ -1804,6 +1804,95 @@ async function runAll() {
       } });
       eq("U4 drain の段: ほかのページがロックを放すまで待つ・その間の最後の書き込みは通り、A の退避の写しに入る", [r.error?.message ?? null, wrote, idb.peek("areas", "u:A")?.keys.spelldash_xp, b.get("sd2.area")?.split("#")[0]], [null, "ok", "LAST-IN-DRAIN", "u:B"]);
     }
+    // 2 つのタブで切り替えの画面（Batch 87。docs/SPEC_ACCOUNT_AREAS.md §3）: 前のタブが A → B を終えてロックを放した直後に、後のタブがロックに入る。
+    // ブラウザの保存の知らせはロックより遅れて届くので、後のタブの見え方は、前のタブが印を書いたところ（後のタブが切り替えの画面へ移った知らせ）のまま。
+    // 偽の見え方: 前のタブの書き込みは書いた順に、後のタブが 1 回待つたびに 1 つずつ届く（後のタブが自分で書いた鍵は、届いた古い値で上書きしない）。
+    // 後のタブは印が消えるのを待ってから進む: 直し（repair）も切り替えもしない・B のまま・orphans は増えない・A の写しはそのまま・途中の印なし。
+    // a15294a はすぐに直して古い見え方で A から切り替え直し、止まる（changed）。前のタブが「領域の印を書いてから途中の印を消す」順を入れ替えると、
+    // 印が消えたのを見ても古い領域の印を読み、要らない切り替え（B → B。ほかのタブを切り替えの画面へ移す）をするので落ちる
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      const before = b.dump();
+      const writes = []; // 前のタブの書き込み（順に。値 null は消した）
+      let at = null; // 後のタブの見え方の始まり（前のタブが最初に印を書いた所）
+      let t1 = Date.parse("2026-10-29T00:01:00Z");
+      const tab1 = SW.createSwitcher({
+        ls: {
+          get: (k) => b.get(k),
+          keys: () => b.keys(),
+          set: (k, v) => { b.set(k, v); writes.push([k, String(v)]); if (at === null && k === "sd2.switch") at = writes.length; },
+          remove: (k) => { b.remove(k); writes.push([k, null]); }
+        },
+        keys: K, openStore: () => ST.openAreaStore(idb), locks: new FakeLocks(), now: () => (t1 += 7), newId: () => `id${++seq}`, sleep: async (ms) => { t1 += ms ?? 100; }, persist: async () => true
+      });
+      let first;
+      try { first = { result: await tab1.settle(null) }; } catch (error) { first = { error }; }
+      const copyA = idb.peek("areas", "u:A");
+      const orphansBefore = idb.all("orphans").length;
+      const view = new Map(Object.entries(before));
+      const apply = ([k, v]) => (v === null ? view.delete(k) : view.set(k, v));
+      writes.slice(0, at ?? 0).forEach(apply);
+      let next = at ?? writes.length;
+      const mine = new Set();
+      const lagging = {
+        get: (k) => (view.has(k) ? view.get(k) : null),
+        keys: () => [...view.keys()],
+        set: (k, v) => { b.set(k, v); view.set(k, String(v)); mine.add(k); },
+        remove: (k) => { b.remove(k); view.delete(k); mine.add(k); }
+      };
+      let t2 = Date.parse("2026-10-29T00:02:00Z");
+      const sleeps = [];
+      const tab2 = SW.createSwitcher({
+        ls: lagging, keys: K, openStore: () => ST.openAreaStore(idb), locks: new FakeLocks(), now: () => t2, newId: () => `id${++seq}`,
+        sleep: async (ms) => {
+          t2 += ms ?? 100;
+          sleeps.push(ms);
+          if (next < writes.length) {
+            const w = writes[next++];
+            if (!mine.has(w[0])) apply(w);
+          }
+        },
+        persist: async () => true
+      });
+      let second;
+      try { second = { result: await tab2.settle(null) }; } catch (error) { second = { error }; }
+      const sameCopy = idb.peek("areas", "u:A")?.id === copyA?.id && JSON.stringify(idb.peek("areas", "u:A")?.keys) === JSON.stringify(copyA?.keys);
+      eq("U4 2 つのタブ（Batch 87）: 後のタブの見え方が遅れて、前のタブが消した途中の印と古い領域の印を読んでも、印が消えるのを待つ: 直しも切り替えもしない（結果 null）・B のまま・B の記録は 1 字も違わず・A の鍵は localStorage に無い・A の写しはそのまま・orphans は増えない・途中の印なし・待ちは 1 秒より短い",
+        [first.error?.message ?? null, second.error?.reason ?? second.error?.message ?? null, second.result ?? null, b.get("sd2.area"), areaRecords(b, "u:B"), areaRecords(b, "u:A"), sameCopy, idb.all("orphans").length - orphansBefore, b.get("sd2.switch"), sleeps.reduce((n, ms) => n + (ms ?? 0), 0) < 1000],
+        [null, null, null, "u:B#3", B, {}, true, 0, null, true]);
+    }
+    // 落ちたタブの印（Batch 87）: 途中の印が残ったまま（前のタブが切り替えの途中で落ちた）なら、1 秒待っても消えないので、今のとおり直して進む。
+    // 印の無いふつうの切り替えは待たない（待ちの 1 回の長さで数える）
+    {
+      const { b, idb } = await twoAreas();
+      b.set("sd2.auth", session("B"));
+      let t = Date.parse("2026-10-29T00:03:00Z");
+      let flagged = false; // 印を書いた後の書き込みで落ちる（タブを閉じた）
+      const crashOnce = () => { if (flagged) throw Object.assign(new Error("crashed"), { crash: true }); };
+      const tabCrash = SW.createSwitcher({
+        ls: { get: (k) => b.get(k), keys: () => b.keys(), set: (k, v) => { crashOnce(); b.set(k, v); if (k === "sd2.switch") flagged = true; }, remove: (k) => { crashOnce(); b.remove(k); } },
+        keys: K, openStore: () => ST.openAreaStore(idb), locks: new FakeLocks(), now: () => (t += 7), newId: () => `id${++seq}`, sleep: async (ms) => { t += ms ?? 100; }, persist: async () => true
+      });
+      const crashed = await tabCrash.settle(null).then(() => ({}), (error) => ({ error }));
+      const left = b.get("sd2.switch") !== null;
+      const sleeps = [];
+      const sw = SW.createSwitcher({ ls: rawOf(b), keys: K, openStore: () => ST.openAreaStore(idb), locks: new FakeLocks(), now: () => t, newId: () => `id${++seq}`, sleep: async (ms) => { t += ms ?? 100; sleeps.push(ms); }, persist: async () => true });
+      let r;
+      try { r = { result: await sw.settle(null) }; } catch (error) { r = { error }; }
+      const waitStep = sleeps[0];
+      const lead = sleeps.findIndex((ms) => ms !== waitStep);
+      const waited = sleeps.slice(0, lead < 0 ? sleeps.length : lead).reduce((n, ms) => n + ms, 0);
+      const fresh = await twoAreas();
+      fresh.b.set("sd2.auth", session("B"));
+      const plain = [];
+      const sw2 = SW.createSwitcher({ ls: rawOf(fresh.b), keys: K, openStore: () => ST.openAreaStore(fresh.idb), locks: new FakeLocks(), now: () => t, newId: () => `id${++seq}`, sleep: async (ms) => { t += ms ?? 100; plain.push(ms); }, persist: async () => true });
+      let r2;
+      try { r2 = { result: await sw2.settle(null) }; } catch (error) { r2 = { error }; }
+      eq("U4 落ちたタブの印（Batch 87）: 印が 1 秒たっても残る → 今のとおり直して B へ（B がそろい、A は IndexedDB にそろう・途中の印なし）。ふつうの切り替え（印なし）は待たない",
+        [Boolean(crashed.error), left, r.error?.message ?? null, waitStep > 0 && waitStep <= 50, waited >= 1000 && waited < 1100, b.get("sd2.area")?.split("#")[0], areaRecords(b, "u:B"), areaRecords(b, "u:A"), idb.peek("areas", "u:A")?.keys, b.get("sd2.switch"), r2.error?.message ?? null, plain.includes(waitStep)],
+        [true, true, null, true, true, "u:B", B, {}, A, null, null, false]);
+    }
     // 前の切り替えが落ちた（タブを閉じた）後、やり直しも失敗する（満杯・切り替え先の写しが無い・控えが開けない）:
     // 元 A は localStorage に 1 字も違わずそろい（写しから書き戻す）、index は ls・印は A・B の鍵は無い。書き出しは A と A の持ち主の値。
     // 控えが開けないときは、A が localStorage にそろっていればそれを書き出し、写しにしか無ければ書き出さない（途中まで消した A を A の持ち主の値で出さない）
@@ -2511,8 +2600,12 @@ async function runApp(root) {
       cloud.log.push({ table, kind, rows: rows === null ? null : [].concat(rows) });
       cloud.onCall?.(table, kind);
       if (kind !== "select") return { data: null, error: null };
-      const data = cloud.tables[table] ?? [];
-      return ops.some(([op]) => op === "maybeSingle") ? { data: data[0] ?? null, error: null } : { data, error: null };
+      const all = cloud.tables[table] ?? [];
+      // 読み（Batch 87）: range（切り出し）と count（切り出す前の数）は本物と同じ（js/userItemsSync.js readAllRows が 1000 行ずつ全部読む）
+      const range = ops.find(([op]) => op === "range")?.[1];
+      const data = range ? all.slice(range[0], range[1] + 1) : all;
+      const count = ops.some(([op, args]) => op === "select" && args[1]?.count) ? all.length : null;
+      return ops.some(([op]) => op === "maybeSingle") ? { data: data[0] ?? null, error: null } : { data, error: null, count };
     };
     const q = new Proxy({}, {
       get(_, prop) {
@@ -3015,7 +3108,10 @@ const MUTANTS = [
   ["移す？: 前に失敗した答えを「もう一度」を待たずにやり直す", "switch", "} else if (decision.failed && !retry) {", "} else if (false) {"],
   ["移す？: 失敗した理由を残さない", "switch", '            ls.set(K.DECISION_KEY, JSON.stringify({ ...decision, failed: error instanceof SwitchError ? error.reason : "evacuate" }));\n', ""],
   ["移す？: 別の切り替え先への答えを使う", "switch", "d.to === target && ", ""],
-  ["移す？: 前の世代の答えを使う", "switch", "d.gen === gen && ", ""]
+  ["移す？: 前の世代の答えを使う", "switch", "d.gen === gen && ", ""],
+  // Batch 87（docs/SPEC_ACCOUNT_AREAS.md §3）: 2 つのタブの切り替え（後のタブは見えた途中の印が消えるのを待つ・前のタブは領域の印を書いてから途中の印を消す）
+  ["切り替え: 見えた途中の印が消えるのを待たずに直す", "switch", "if (ls.get(K.SWITCH_KEY) !== null && !(await switchFlagCleared())) {", "if (ls.get(K.SWITCH_KEY) !== null) {"],
+  ["切り替え: 途中の印を消してから領域の印を書く", "switch", "      ls.set(K.AREA_KEY, K.formatMarker(target, gen));\n      ls.remove(K.SWITCH_KEY);\n    } catch (error) {", "      ls.remove(K.SWITCH_KEY);\n      ls.set(K.AREA_KEY, K.formatMarker(target, gen));\n    } catch (error) {"]
 ];
 const APP_FILES = new Set(["sync", "backup", "supabase", "funnel"]);
 let mutantReport = [];

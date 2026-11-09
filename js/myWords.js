@@ -61,6 +61,16 @@ export function getMyWords() {
   }
 }
 
+// 保存の文字列（Batch 87。docs/SPEC_MY_WORDS.md §16.4）: マイ単語帳と単語帳の保存をそのまま返す（読めなければ null）。
+// 学ぶ回（js/game.js myLearnSource）の語の写しの鍵: 2 つとも前と同じなら、getMyWords・getMyBooks の答えも前と同じ
+export function myWordsRaw() {
+  try {
+    return { words: localStorage.getItem(KEY), books: localStorage.getItem(MY_BOOKS_KEY) };
+  } catch {
+    return null;
+  }
+}
+
 // 場面カード用のキー（idに使う。日本語の答えもそのまま鍵にする）。40 字（UTF-16 の単位）で切るが、絵文字などの組は半分にしない
 // （Batch 85: NFKC で長くなる答え〔㍿ → 株式会社〕で、切る所が絵文字の途中になると、鍵に組になっていないサロゲートが残って同期で送れなかった。
 // 切る所が組の途中でなければ前と同じ鍵）
@@ -242,7 +252,8 @@ const lineName = (entry) => {
 };
 
 // 同じ組（同じ英語と同じ訳）は 1 回の貼り付けの中でも 2 つ目を飛ばす（足した語は list に入れて確かめる）。語の保存と同期の印は最後に 1 回ずつ。
-// 返り値 { added（足した語の画面の形）, skipped（足せなかった行の理由）, rest（足せなかった行。貼った形のまま。画面は足した後の欄にこれだけを残す） }
+// 返り値 { added（足した語の画面の形）, skipped（上限のほかで足せなかった行の理由）, limited（上限で足せなかった行の数。理由の文は持たない: 画面が上限の文を 1 つだけ出す）,
+//   rest（足せなかった行。貼った形のまま。上限で残った行も入る。画面は足した後の欄にこれだけを残す） }（Batch 87: 渡された語を足す addSharedWords と同じ形。docs/SPEC_MY_WORDS.md §16.5）
 export function addMyWordsBulk(text, bookId) {
   const list = getMyWords();
   const books = getMyBooks(list);
@@ -251,6 +262,7 @@ export function addMyWordsBulk(text, bookId) {
   const keys = [];
   const skipped = [];
   const rest = [];
+  let limited = 0;
   for (const entry of parseBulk(text)) {
     if (entry.error) {
       skipped.push(`${lineHead(entry.line)}: ${entry.error}`);
@@ -259,7 +271,8 @@ export function addMyWordsBulk(text, bookId) {
     }
     const v = validateEntry(entry.en, entry.ja, list, books);
     if (!v.ok) {
-      skipped.push(`${lineName(entry)}: ${v.lineError ?? v.error}`);
+      if (v.limit) limited++; // 上限（同じ組・字の決まりの断りは上限より先に見る: validateEntry）
+      else skipped.push(`${lineName(entry)}: ${v.lineError ?? v.error}`);
       rest.push(entry.line);
       continue;
     }
@@ -271,7 +284,7 @@ export function addMyWordsBulk(text, bookId) {
     save(list);
     touchItems("my_word", keys); // 語を書いた後に（中身は touchItem を鍵の数だけ呼んだのと同じ）
   }
-  return { added, skipped, rest };
+  return { added, skipped, limited, rest };
 }
 
 // 渡された単語帳の語を足す（Batch 84。docs/SPEC_MY_WORDS.md §13。words は js/myWordsShare.js decodeShare が読んだ [{ en, ja }]）。

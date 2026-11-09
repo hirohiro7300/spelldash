@@ -1,5 +1,5 @@
 import { getWordsByCategory, findWord, findWordIn, getCategories, promptOf, speechTextOf, isConceptWord, answersFor, loadPublicWords, publicWord, publicAnswersFor, publicPackWords, refreshMyWords } from "./wordStore.js";
-import { getMyWords, recordMyAnswer, getMyBooks } from "./myWords.js";
+import { getMyWords, recordMyAnswer, getMyBooks, myWordsRaw } from "./myWords.js";
 import { buildMyQueue, myStateOf, myLearnStep, mySummary, countMyStates, MY_SET_SIZE, bookIdOf } from "./myWordsCore.js";
 import { answerLabel } from "./wordData.js";
 import { jaLooksSame } from "./jaAmbiguity.js";
@@ -915,18 +915,41 @@ const MY_BOOK_PARAM = "book";
 // 違うのは、カードを全文入力の形（free）にする（打鍵を 1 字ずつ見ない: 選んだ答えは全文入力の答えとして判定の道を通る・画面キーボードは出ない）と、始めの 1 行だけ
 const MY_CHOICE_PARAM = "choice"; // js/myWordsChoice.js CHOICE_PARAM と同じ（入口かどうかは module を読む前に要る）
 function myLearnSource(bookId, { choice = false } = {}) {
-  const book = bookId ? getMyBooks().find((b) => b.id === bookId) ?? null : null; // ほかの端末の単語帳（語の bookName で出る）も
-  const words = () => {
-    const list = getMyWords();
-    if (!book) return list;
-    const books = getMyBooks(list); // 語の並びを 1 回だけ読む
-    return list.filter((w) => bookIdOf(w, books) === book.id);
+  // 語の写し（Batch 87。docs/SPEC_MY_WORDS.md §16.4）: 保存の文字列（マイ単語帳と単語帳の 2 つ。js/myWords.js myWordsRaw）を鍵にする。2 つとも前と同じなら、
+  // 前に作った語の並びと引き（カードの id・語の鍵）を使う（回の始めに列の語ごと・答えのたびに何度も一覧を読み直していた）。ほかのタブ・同期・この回の書き手の
+  // どれで変わっても文字列が変わるので、見える結果は前と同じ。保存が読めないときは写しを使わない。返した並びと語は呼び手が書き換えない
+  // （buildMyQueue・mySummary・countMyStates・選択式の buildChoice は読むだけ）
+  const raw0 = myWordsRaw();
+  const list0 = getMyWords();
+  const books0 = getMyBooks(list0); // 語の並びを 1 回だけ読む（ほかの端末の単語帳〔語の bookName で出る〕も）
+  const book = bookId ? books0.find((b) => b.id === bookId) ?? null : null;
+  const make = (raw, list, books) => {
+    const words = book ? list.filter((w) => bookIdOf(w, books) === book.id) : list;
+    const ids = new Set();
+    const byKey = new Map();
+    for (const w of words) {
+      if (w.kind === "concept") continue;
+      ids.add(`my-${w.en}`);
+      if (!byKey.has(w.en)) byKey.set(w.en, w);
+    }
+    return { raw, all: list, words, ids, byKey };
   };
+  let memo = raw0 ? make(raw0, list0, books0) : null;
+  const current = () => {
+    const raw = myWordsRaw();
+    if (raw && memo && memo.raw.words === raw.words && memo.raw.books === raw.books) return memo;
+    const list = getMyWords();
+    const made = make(raw, list, book ? getMyBooks(list) : null);
+    memo = raw ? made : null;
+    return made;
+  };
+  const words = () => current().words;
   const name = book ? escapeHtml(book.name) : ""; // 自分で付けた名前: 回の終わりのパネル（innerHTML）に入れるので文字のまま
-  const findCard = book ? (id) => (words().some((w) => w.kind !== "concept" && `my-${w.en}` === id) ? findWord(id) : null) : (id) => findWord(id);
+  const findCard = book ? (id) => (current().ids.has(id) ? findWord(id) : null) : (id) => findWord(id);
   return Object.freeze({
     kind: "my",
     label: "マイ単語帳",
+    head: book ? book.name : "マイ単語帳", // 回の柱（#learnHead。Batch 87: 単語帳を選んだ回はその名前。setLearnScreen が textContent で字のまま出す）
     countLabel: book ? name : "マイ単語帳",
     url: book ? `${MY_WORDS_URL}?${MY_BOOK_PARAM}=${encodeURIComponent(book.id)}` : MY_WORDS_URL,
     bookId: book ? book.id : null,
@@ -934,11 +957,12 @@ function myLearnSource(bookId, { choice = false } = {}) {
     noStats: false, // 前のマイ単語帳と同じく、今の書き手が my-<鍵> で語の記録に回答の履歴を残す
     prepare: () => refreshMyWords(),
     list: words,
+    all: () => current().all, // 全部の単語帳の語（選択式の違う答えの候補。写しの中の並び）
     idOf: undefined, // my-<鍵>（js/myWordsCore.js）
     find: choice ? (id) => { const card = findCard(id); return card ? { ...card, free: true } : null; } : findCard,
     ...(choice ? { intro: "分からないときは「分からない」。間違えても、あやふやに移るだけ" } : {}),
     // 語はカードの鍵（key = 保存の en）で引く。カードの en は答えの英語で、同じ英語の語（Batch 82: 訳が違えば何度も入る）では同じなので使わない
-    entryOf: (word) => words().find((w) => w.kind !== "concept" && w.en === (word?.key ?? word?.en)) ?? null,
+    entryOf: (word) => current().byKey.get(word?.key ?? word?.en) ?? null,
     record: (word, kind) => recordMyAnswer(word.key ?? word.en, kind),
     emptyTitle: book ? `「${name}」に語が無い` : "マイ単語帳に語が無い",
     emptyNote: "マイ単語帳で英語と日本語訳を入れる。",
@@ -964,15 +988,24 @@ function setLearnScreen(on) {
   const head = document.getElementById("learnHead");
   if (head) {
     head.hidden = !on;
-    head.textContent = on && learnRun?.my ? learnRun.src.label : "英単語"; // マイ単語帳・スラングの回（Batch 79・80）の柱
+    head.textContent = on && learnRun?.my ? learnRun.src.head ?? learnRun.src.label : "英単語"; // マイ単語帳（単語帳を選んだ回はその名前）・スラングの回（Batch 79・80・87）の柱
   }
-  // ナビの現在地（読み上げの「現在のページ」）: 回の間は「英単語を学ぶ」（/?learn=next）、机に戻るとホーム（Batch 78 段 6。反証 rv5 shouldFix 1）
+  // 打つマイ単語帳の回（Batch 87。docs/SPEC_MY_WORDS.md §16.6）: 問いの上の字は「問い」だけ（訳は本人の書いた問いのことがある）。
+  // 決まった字の段落（#promptLabelFixed）を見せ、語ごとに書く字の段落（setPromptLabel）は css/game.css body.my-typed-run で畳む（語ごとの描画は変えない）。
+  // 選択式（js/myWordsChoice.js が字を書く）・スラング・中心の学ぶ回は前のまま
+  const typedMy = on && !!learnRun?.my && learnRun.src.kind === "my" && !learnRun.choice;
+  document.body.classList.toggle("my-typed-run", typedMy);
+  const fixedLabel = document.getElementById("promptLabelFixed");
+  if (fixedLabel) fixedLabel.hidden = !typedMy;
+  // ナビの現在地（読み上げの「現在のページ」）: 中心の学ぶ回の間は「英単語を学ぶ」（/?learn=next）、机に戻るとホーム（Batch 78 段 6。反証 rv5 shouldFix 1）。
+  // マイ単語帳とスラングの回（Batch 87。F22）はどちらでもないので、どれも今の場所にしない
   const home = document.querySelector('.site-nav a[href="/"]');
   const learn = document.querySelector('.site-nav a[href="/?learn=next"]');
   if (!home || !learn) return;
-  const [now, other] = on ? [learn, home] : [home, learn];
-  now.setAttribute("aria-current", "page");
-  other.removeAttribute("aria-current");
+  home.removeAttribute("aria-current");
+  learn.removeAttribute("aria-current");
+  const now = !on ? home : learnRun?.my ? null : learn;
+  now?.setAttribute("aria-current", "page");
 }
 
 // 中心の学習を始める（入口・パネルの「続けて学ぶ」から）。材料（出題の列の module・3 状態の材料・公開の 24 巻）を読んでから、
@@ -1121,7 +1154,7 @@ function beginMyChoice(Q, C, bookId, dir) {
       current: () => (mine() ? currentWord : null),
       entryOf: (word) => src.entryOf(word),
       scope: () => src.list(),
-      all: () => getMyWords(),
+      all: () => src.all(),
       pick: (word, typed) => {
         if (!ready(word)) return false;
         submitFreeAnswer(typed);

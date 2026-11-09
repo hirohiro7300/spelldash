@@ -234,6 +234,49 @@ function rowOf(w) {
   return li;
 }
 
+// 行の印（Batch 87。docs/SPEC_MY_WORDS.md §16.3）: 行に出す物（語の印・英語の形・読み上げの名前・訳か問い・状態・消すの鍵）と、
+// 選ぶ最中か・その行を選んだか・その行を直しているか。描き直しでは、印が前と同じ行の要素はそのまま残し、変わった行と新しい行だけを作り、
+// 消えた行だけを外す（patchRows）。spelldash:mywords の受け手と操作の後の描き直しが 1 回の作り直しになり、残した行は描いた高さを覚えたまま
+// なので（.mw-row の content-visibility）、読んでいる所が動かない。描き直しの後に行を探す所（焦点）も同じ要素に当たる。数・ボタン・文は毎回書く
+let rowSigs = new Map(); // 行の鍵 → { el, sig }（前に描いた行）
+function rowSignature(w) {
+  const ref = entryRefOf(w);
+  const word = isWordEntry(w);
+  return JSON.stringify([ref, shownOf(w), labelOf(w), word ? String(w.ja ?? "") : String(w.q ?? ""), word ? myStateOf(w) : -1, String(w.en ?? ""), w.kind === "concept", selecting, selecting && selected.has(ref), editing === ref]);
+}
+// ul の子を els（この順）にする。残す行は動かさず、変わった行はその場で入れ替え（1 つの変化）、消えた行は外し、新しい行は入れる。
+// 残せる行が 1 つも無いとき（開いたとき・単語帳の切り替え・選ぶ最中の出入り）は 1 回で全部を替える
+function patchRows(ul, els) {
+  const keep = new Set(els);
+  if (![...ul.children].some((c) => keep.has(c))) {
+    ul.replaceChildren(...els);
+    return;
+  }
+  let cur = ul.firstChild; // cur より前は、els の済んだ所と同じ並び
+  for (const el of els) {
+    let placed = false;
+    while (cur && cur !== el && !keep.has(cur)) {
+      const after = cur.nextSibling;
+      if (el.parentNode !== ul) {
+        ul.replaceChild(el, cur); // 変わった行: 新しい行が前の行の場所に入る
+        placed = true;
+      } else {
+        ul.removeChild(cur); // 消えた行
+      }
+      cur = after;
+      if (placed) break;
+    }
+    if (placed) continue;
+    if (cur === el) cur = cur.nextSibling;
+    else ul.insertBefore(el, cur); // 新しい行・場所の動いた行
+  }
+  while (cur) {
+    const after = cur.nextSibling;
+    ul.removeChild(cur);
+    cur = after;
+  }
+}
+
 function render() {
   const list = getMyWords();
   const books = getMyBooks(list); // 端末の一覧 + ほかの端末の単語帳（語の bookName）
@@ -293,11 +336,21 @@ function render() {
 
   const ul = $("myWordsList");
   if (!ul) return;
-  const rows = [...entries].reverse().map(rowOf); // 新しく足した語が上
-  ul.replaceChildren(...rows);
-  ul.hidden = rows.length === 0;
+  const shown = [...entries].reverse(); // 新しく足した語が上
+  const prev = rowSigs;
+  rowSigs = new Map();
+  const els = shown.map((w) => {
+    const ref = entryRefOf(w);
+    const sig = rowSignature(w);
+    const old = prev.get(ref);
+    const el = old && old.sig === sig && old.el.parentNode === ul && !rowSigs.has(ref) ? old.el : rowOf(w);
+    rowSigs.set(ref, { el, sig });
+    return el;
+  });
+  patchRows(ul, els);
+  ul.hidden = shown.length === 0;
   const head = $("myWordsListHead");
-  if (head) head.hidden = rows.length === 0;
+  if (head) head.hidden = shown.length === 0;
   renderSelectBar(entries, books);
 }
 
@@ -398,17 +451,20 @@ $("myWordsAdd")?.addEventListener("submit", (event) => {
 // 1 行も足せなかったときは欄をそのまま（打った形で直せる）。断った理由は英語と訳の頭でどの行かを言う（js/myWords.js addMyWordsBulk）
 $("myWordsBulkAdd")?.addEventListener("click", () => {
   const box = $("myWordsBulk");
-  const { added, skipped, rest } = addMyWordsBulk(box.value, current);
+  const { added, skipped, limited = 0, rest } = addMyWordsBulk(box.value, current);
   const kept = added.length > 0 && skipped.length > 0;
+  const why = skipped.length > 0 ? `: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}` : ""; // 決まりに合わない行の理由（3 つまで。上限で残った行は入らない: limited）
   const lines = [];
   if (added.length > 0) lines.push(`${added.length}語を足した`);
-  if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行${kept ? "（欄に残した）" : ""}: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}`);
+  if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行${kept ? "（欄に残した）" : ""}${why}`);
   if (lines.length === 0) lines.push("1行に「english, 訳」で書く");
   if (added.length > 0) box.value = (rest ?? []).join("\n");
-  // 足して上限に達した（Batch 86）: 足した数と欄に残した行の数を、上限の文（描き直しが書く。リンクの決まりは setLimitStatus）の前に置く
-  if (added.length > 0 && getMyWords().length >= maxMyWords()) {
+  // 上限に達した（Batch 86・87）: 足した数・欄に残した行の数・決まりに合わずに足せなかった行の理由を、上限の文（描き直しが書く。リンクの決まりは setLimitStatus）の前に置く。
+  // 上限で残った行（limited）は上限の文が言う。limited があれば保存も上限（足した語を書いた後の数で断った）。1 語も足せずに上限なら欄はそのまま（足せなかった理由だけを前に置く）
+  if (limited > 0 || (added.length > 0 && getMyWords().length >= maxMyWords())) {
     const left = (rest ?? []).length;
-    limitLead = `${added.length}語を足した。${left > 0 ? `残りの ${left}行は欄に残した。` : ""}`;
+    const done = added.length > 0 ? `${added.length}語を足した。${left > 0 ? `残りの ${left}行は欄に残した。` : ""}` : "";
+    limitLead = `${done}${skipped.length > 0 ? endSentence(`足せなかった ${skipped.length}行${why}`) : ""}`;
     render();
     return;
   }
@@ -457,13 +513,18 @@ $("myWordsList")?.addEventListener("submit", (event) => {
   event.preventDefault();
   const row = form.closest(".mw-row");
   const ref = row?.dataset.ref ?? "";
+  const shown = row?.querySelector(".mw-row__en")?.textContent ?? "";
+  // 直しを終えてから保存する（Batch 87）: 保存が投げる spelldash:mywords の描き直しで、直した訳の行を 1 回だけ作る（下の stopEditing は作り直さない）。
+  // 断られたときは何も書いていない（描き直しも無い）ので、直しを続ける
+  editing = null;
   const r = setMyWordJa(ref.replace(/^word:/, ""), form.querySelector(".mw-row__input")?.value ?? "");
   if (!r.ok) {
+    editing = ref;
     setStatus(r.error, { error: true });
     form.querySelector(".mw-row__input")?.focus();
     return;
   }
-  setStatus(`訳を直した: ${row?.querySelector(".mw-row__en")?.textContent ?? ""}`);
+  setStatus(`訳を直した: ${shown}`);
   stopEditing(ref);
 });
 

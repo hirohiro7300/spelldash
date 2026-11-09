@@ -109,6 +109,7 @@ CSV には email が入る。保存先と共有相手に気をつける（第 9 
 
 - ユーザーの一覧は Supabase Auth の admin API（`/auth/v1/admin/users`、1000 人ずつ全ページ）
 - テーブルは PostgREST を `Range` ヘッダで 1000 行ずつ全件読む（既定の上限が 1000 行のため。Max Rows の設定は既定のまま）
+- アプリの同期（マイ単語帳などの user_items と学習記録の word_progress）も主キーで並べて 1000 行ずつ全部読む（Batch 87。docs/SPEC_MY_WORDS.md §16.1）。データベースの会社の管理画面 → API の設定 → Max Rows の値を見る。既定の 1000 なら何もしない。1000 より小さくしない（値が何でも全部読めるが、小さくすると要求の数が増える）
 - 一覧はまず RPC `admin_player_summary` を試し、無ければ profiles / user_progress / activity_days / word_progress を全件読んで同じ値を計算する。
   word_progress は「ユーザー数 × 語数」なので、プレイヤーが増えると REST 集計が数秒かかるようになる。そうなったら docs/SQL_CRM.md の関数を作る（API の変更は不要）。
   `api/admin/players.js` の maxDuration は 30 秒（vercel.json）
