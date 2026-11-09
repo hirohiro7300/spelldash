@@ -372,6 +372,28 @@ export function checkBookName(raw, books, selfId = null) {
   return { ok: true, name };
 }
 
+// 新しい単語帳の名前を、今の単語帳と重ならない形にする（Batch 84。渡された単語帳を新しい単語帳として足すとき）。
+// その名前が空いていればそのまま、使われていれば「名前 2」「名前 3」…（20 字に収まるよう名前の後ろを削る。字の途中では切らない）。
+// 名前として使えない（空・長すぎる）なら null。books は今の単語帳の並び（ほかの端末の単語帳も: js/myWords.js getMyBooks）
+export function uniqueBookName(raw, books) {
+  const list = Array.isArray(books) ? books : [];
+  const first = checkBookName(raw, list);
+  if (first.ok) return first.name;
+  const base = checkBookName(raw, []);
+  if (!base.ok) return null;
+  for (let n = 2; n <= list.length + 2; n++) {
+    const suffix = ` ${n}`;
+    let head = "";
+    for (const ch of base.name) {
+      if (head.length + ch.length > MY_BOOK_NAME_MAX - suffix.length) break;
+      head += ch;
+    }
+    const v = checkBookName(`${head.trimEnd()}${suffix}`, list);
+    if (v.ok) return v.name;
+  }
+  return null;
+}
+
 // 新しい単語帳の id（英小文字と数字。URL の ?book= にそのまま使える。ほかと重ならない）
 export function newBookId(books, rand = Math.random, now = Date.now()) {
   for (let i = 0; ; i++) {

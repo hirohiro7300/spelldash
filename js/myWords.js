@@ -19,7 +19,7 @@ import { isAnswerKind } from "./learnState.js";
 import {
   checkEnText, checkJaText, wordCardOf, parseBulkLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT,
   parseBooks, bookIdOf, entriesOfBook, checkBookName, newBookId, entryRefOf, withWordBooks, MY_BOOKS_MAX,
-  myIdentityFor, findSamePair, answerKeyOf, displayOf
+  myIdentityFor, findSamePair, answerKeyOf, displayOf, uniqueBookName
 } from "./myWordsCore.js";
 
 const KEY = "spelldash_my_words";
@@ -157,7 +157,7 @@ export function validateEntry(en, ja, existing = getMyWords(), books = getMyBook
   if (!j.ok) return j;
   const same = findSamePair(existing, e.key, j.ja);
   if (same) return { ok: false, error: samePairError(e.text, same, books), lineError: samePairNote(same, books) };
-  if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
+  if (existing.length >= maxMyWords()) return { ok: false, error: limitError(), limit: true }; // limit: 上限で断った（Batch 84: 渡された語を足すとき、上限で足せなかった数を数える）
   return { ok: true, en: myIdentityFor(existing, e.key, j.ja), ja: j.ja, text: e.text };
 }
 
@@ -262,6 +262,63 @@ export function addMyWordsBulk(text, bookId) {
     touchItems("my_word", keys); // 語を書いた後に（中身は touchItem を鍵の数だけ呼んだのと同じ）
   }
   return { added, skipped, rest };
+}
+
+// 渡された単語帳の語を足す（Batch 84。docs/SPEC_MY_WORDS.md §13。words は js/myWordsShare.js decodeShare が読んだ [{ en, ja }]）。
+// 1 語ずつ足すと同じ確かめ（validateEntry: 同じ英語と同じ訳の組は断る・訳が違えば同じ英語も足せる・上限）。渡された中の 2 つ目の同じ組も断る。
+// to: { book: <id> }（今の単語帳へ。知らない id は最初の単語帳）か { name: <名前> }（新しい単語帳として。名前は js/myWordsCore.js uniqueBookName で今の単語帳と重ねない・
+//   単語帳の数の上限 MY_BOOKS_MAX）。新しい単語帳は 1 語でも足せるときだけ作る（足せる語が無ければ作らない: 空の単語帳を残さない）。
+// 語の保存・単語帳の一覧の保存・同期の印は 1 回ずつ（語を先に書く。一覧の書き込みだけ失敗しても、語が持つ bookName でその単語帳に出る: withWordBooks）。
+// 3 状態は付けない（どの語も これから）。返り値 { ok, added（足した語の画面の形）, skipped（上限のほかで足せなかった語の理由）, limited（上限で足せなかった語の数）,
+//   book（足した先 { id, name }。新しい単語帳を作らなかったら null）, created（新しい単語帳を作った） } か { ok: false, error }
+export function addSharedWords(words, to = {}) {
+  const list = getMyWords();
+  const books = getMyBooks(list);
+  let book;
+  let saved = null; // 新しい単語帳を作るときの、端末の一覧（readBooks）
+  if (typeof to.name === "string") {
+    saved = readBooks();
+    if (!saved.ok) return { ok: false, error: UNREADABLE };
+    if (books.length >= MY_BOOKS_MAX) return { ok: false, error: `単語帳は${MY_BOOKS_MAX}冊まで` };
+    const name = uniqueBookName(to.name, books);
+    if (!name) return { ok: false, error: "単語帳の名前が使えません" };
+    book = { id: newBookId(books), name };
+  } else {
+    book = targetBook(to.book, books);
+  }
+  const named = saved ? [...books, book] : books; // 重なりの文が、作る単語帳の名前も言えるように
+  const work = [...list];
+  const added = [];
+  const keys = [];
+  const skipped = [];
+  let limited = 0;
+  for (const w of Array.isArray(words) ? words : []) {
+    const entry = { en: String(w?.en ?? ""), ja: String(w?.ja ?? "") };
+    const v = validateEntry(entry.en, entry.ja, work, named);
+    if (!v.ok) {
+      if (v.limit) limited++;
+      else skipped.push(`${lineName(entry)}: ${v.lineError ?? v.error}`);
+      continue;
+    }
+    work.push(entryOf(v, book));
+    added.push(v.text);
+    keys.push(v.en);
+  }
+  if (added.length === 0) return { ok: true, added, skipped, limited, book: saved ? null : book, created: false };
+  try {
+    save(work);
+  } catch {
+    return { ok: false, error: SAVE_FAILED };
+  }
+  if (saved) {
+    try {
+      saveBooks([...saved.books, book]);
+    } catch {
+      // 一覧に入らなくても、語は bookName でこの単語帳に出る（js/myWordsCore.js withWordBooks）
+    }
+  }
+  touchItems("my_word", keys);
+  return { ok: true, added, skipped, limited, book, created: Boolean(saved) };
 }
 
 // ===== 複数の単語帳（Batch 81。決まりは js/myWordsCore.js） =====
