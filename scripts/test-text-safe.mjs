@@ -182,6 +182,19 @@ await t("渡された語を足す（addSharedWords）も同じ確かめ: 見え�
   const r = M.addSharedWords([{ en: "go", ja: "行く" }, { en: "tea", ja: "お\u0000茶" }], { name: "仕事" });
   return (r.ok && r.added.join() === "go" && r.skipped.length === 1 && /^tea（お茶）: 日本語訳に見えない制御文字/.test(r.skipped[0])) || show(r);
 });
+await t("場面カード（addMyConcept。古い単語帳のページと文から作る道。今は閉じた画面だけ）も同じ決まり: 場面・答え・解説・別解に見えない字は断る・何も書かない・改行とタブは前のまま通す", () => {
+  const base = { q: "会議の前に配る、話すことの一覧", answer: "agenda", explain: "議題", accept: "" };
+  const cases = [["q", "場面", "会議の前に\u0000配る一覧"], ["answer", "答え", "agen‮da"], ["explain", "解説", "議\ud800題"], ["accept", "別解", "agendum/age\u0085nda"]];
+  const bad = [];
+  for (const [field, label, value] of cases) {
+    reset();
+    const r = M.addMyConcept({ ...base, [field]: value });
+    if (r.ok || !(r.error ?? "").startsWith(`${label}に`) || !NOTE.test(r.error ?? "") || LS.writes.length > 0) bad.push([field, r, LS.writes.length]);
+  }
+  reset();
+  const fine = M.addMyConcept({ ...base, q: "会議の前に\n配る、話すことの\t一覧" });
+  return (bad.length === 0 && fine.ok && words().length === 1) || show({ bad, fine });
+});
 await t("渡すリンクは前のまま: 訳・名前に見えない字のある code は読まない（entry・name）・ふつうの code は読める", async () => {
   if (!X) return "js/myWordsShare.js が無い";
   const j1 = (o) => `j1.${Buffer.from(JSON.stringify(o), "utf8").toString("base64url")}`;
