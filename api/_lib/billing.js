@@ -182,7 +182,7 @@ export function verifyStripeSignature(rawBody, header, secret, now = Math.floor(
 }
 
 // 生ボディ（署名を計算する元のバイト列）を読む。戻り値は Buffer か文字列。読めなければ null（そのときは署名を確かめられない → 400）。
-// 配信の側の作りは確かめられていない（Node の関数の req.body は読んだ時に解析する作りがあり、bodyParser: false の指定が効くかも分からない）ので、
+// 配信の側の作りは確かめられていない（サーバーの関数の req.body は読んだ時に解析する作りがあり、bodyParser: false の指定が効くかも分からない）ので、
 // どの作りでも届いたバイト列だけで確かめる:
 //   1. まだ読まれていない流れ（IncomingMessage）なら、先にそれを読む。req.body には触らない（body を読むと流れを使い切る作りがある）
 //   2. 流れが空（配信の側が先に読み切った）なら、生の値の req.rawBody、それも無ければ文字列か Buffer の req.body
@@ -253,7 +253,7 @@ export async function findSubscriptionByCustomer(customerId) {
   return (await rowsOf(response, "subscriptions"))[0] || null;
 }
 
-// 本人の行がまだ無いときの最初の書き込み: 入れるだけ（同じ人の行がもうあれば何もしない。PostgREST の resolution=ignore-duplicates ＝
+// 本人の行がまだ無いときの最初の書き込み: 入れるだけ（同じ人の行がもうあれば何もしない。データベースの REST の resolution=ignore-duplicates ＝
 // ON CONFLICT (user_id) DO NOTHING。前の upsert の merge-duplicates と同じ書き方の別の値）。入れた行を返す。入らなかった（同時に届いた
 // 別のイベントが先に入れた）ら null で、呼び手は event_created を条件にした書き換え（updateSubscriptionIfNotNewer）へ進む。
 // 前は merge-duplicates の upsert で、2 つのイベントが同時に「行が無い」を読むと、後から書いた古いイベントが新しいイベントを上書きした
