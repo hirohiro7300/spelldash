@@ -94,6 +94,7 @@ function fresh() {
   P.sessions = [];
   P.idem.clear();
   P.seq = 0;
+  lib.billingRateReset?.(); // 1 人 1 分の回数（Batch 88）を検査ごとに空に（前の形には無い）
   P.prices = new Map([["price_month_test", { id: "price_month_test", unit_amount: 980, currency: "jpy", recurring: { interval: "month" } }], ["price_year_test", { id: "price_year_test", unit_amount: 9800, currency: "jpy", recurring: { interval: "year" } }]]);
   D.rows.clear();
   D.missing = false;
@@ -896,6 +897,35 @@ const hook = async (event, makeReq = streamReq, opts) => {
   res = await invoke(portal, post({}, "tok-u2"));
   const sent = providerCalls("POST", "/v1/billing_portal/sessions").at(-1)?.form;
   ok("管理: 本人の顧客の番号で管理の画面を作り、戻り先は SITE_ORIGIN/profile.html（ほかの人の行は読めない）", res.statusCode === 200 && res.body?.url === "https://pay.test/portal/1" && sent?.get("customer") === "cus_u2" && sent?.get("return_url") === "https://site.test/profile.html", JSON.stringify(res.body));
+}
+
+// ===== 7c. 加入とお支払いの管理は 1 人 1 分 10 回まで（Batch 88。インスタンスのメモリー。同じ人の連打で決済の会社を叩かない） =====
+{
+  fresh();
+  setEnv();
+  const realNow = Date.now;
+  const t0 = Math.floor(realNow() / 60000) * 60000 + 1000;
+  try {
+    Date.now = () => t0;
+    const st = [];
+    for (let i = 0; i < 11; i++) st.push((await invoke(checkout, post({ interval: "month" }, "tok-u3"))).statusCode);
+    const last = await invoke(checkout, post({ interval: "month" }, "tok-u3"));
+    const other = await invoke(checkout, post({ interval: "month" }, "tok-u2"));
+    ok("回数: 加入は同じ人の 1 分 10 回まで（11 回目から 429 too_many・短い字）・ほかの人は 200",
+      st.slice(0, 10).every((x) => x === 200) && st[10] === 429 && last.statusCode === 429 && last.body?.error === "too_many" && typeof last.body?.message === "string" && last.body.message.length <= 40 && other.statusCode === 200,
+      JSON.stringify({ st, last: last.body, other: other.statusCode }));
+    D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_u1" });
+    D.rows.set(U2, { ...ROW_DEFAULTS, user_id: U2, status: "active", stripe_customer_id: "cus_u2" });
+    const ps = [];
+    for (let i = 0; i < 11; i++) ps.push((await invoke(portal, post({}, "tok-u1"))).statusCode);
+    const otherPortal = await invoke(portal, post({}, "tok-u2"));
+    ok("回数: 「解約・お支払いの管理」も同じ人の 1 分 10 回まで（11 回目は 429）・ほかの人は 200", ps.slice(0, 10).every((x) => x === 200) && ps[10] === 429 && otherPortal.statusCode === 200, JSON.stringify({ ps, other: otherPortal.statusCode }));
+    Date.now = () => t0 + 61000;
+    const next = await invoke(checkout, post({ interval: "month" }, "tok-u3"));
+    ok("回数: 次の分にはまた加入できる（200）", next.statusCode === 200, String(next.statusCode));
+  } finally {
+    Date.now = realNow;
+  }
 }
 
 // ===== 7b. 受付を急いで止めた後（月額の Price の変数を外して再デプロイ。docs/BILLING.md §2 の止め方） =====

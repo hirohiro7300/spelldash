@@ -28731,6 +28731,20 @@ console.log("guard (88.1):");
         r.shown && r.extra !== false && r.pwn === null && r.imgs === 0 && r.onAttrs.length === 0 && r.err.length === 0, JSON.stringify(r));
     }
   }
+  // ----- (5) ご意見のページ名は 300 字まで（Batch 88 A6。js/feedback.js。長い ?query でも送る行を大きくしない。送れないときは端末に保持した行で見る）-----
+  {
+    const page = await guardPage();
+    await page.goto(`${BASE}/news.html?q=${"a".repeat(2000)}`, { waitUntil: "networkidle" });
+    await page.click("[data-feedback-open]");
+    await page.fill("#feedbackMessage", "長いページ名の確かめ");
+    await page.click("#feedbackSubmit");
+    await waitUntil(() => page.evaluate(() => /ありがとう/.test(document.getElementById("feedbackStatus")?.textContent ?? "")), 4000);
+    const rows = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_feedback_queue") || "[]"));
+    const name = String(rows[0]?.page ?? "");
+    check("88.1 (5) ご意見: 長い ?query のページでも、送る行のページ名は 300 字まで（頭は /news.html?q=）・エラー 0",
+      rows.length === 1 && name.length > 0 && name.length <= 300 && name.startsWith("/news.html?q=aaa") && page.errors.length === 0, JSON.stringify({ n: rows.length, len: name.length, head: name.slice(0, 20), err: page.errors.slice(0, 2) }));
+    await closeCtx(page);
+  }
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 

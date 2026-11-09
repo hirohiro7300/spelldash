@@ -3,11 +3,14 @@
 //     ログインは確認済みのメールで匿名でない人だけ（ほかは 401 でモデルを呼ばない）・入力を確かめてから回数を取る（まちがった入力は回数を減らさない）・
 //     本文が普通の object でなくても落ちない・回数はデータベースの ai_take で全部のインスタンスに 1 つ（無い・失敗ならインスタンスのメモリー）・
 //     同じ人の同時の 2 つ目は 429 busy・昨日より前のメモリーの項目を捨てる・カードの自動生成は CARD_GEN_ENABLED=1 まで止めてある。
+//   ほか（Batch 88 の A6）: 管理の門（ADMIN_USER_IDS があればメールでは通さない・未ログインは設定の有無より先に 401・設定が無い 503 の字に環境変数の名前を出さない）・
+//     動線の数の行の読み残し（50 ページで止めて truncated）・cron の鍵の比べ方（timingSafeEqual）。
 // ネットワークには出ない: fetch を差し替え、認証・REST・ai_take・AI の先を偽物で答える。子のプロセス（= 別のインスタンス）は
 //   この検査が手元（127.0.0.1）に立てた偽のサーバーにだけつなぐ（子の fetch はどの宛先も手元へ向け直す）。鍵は偽の値。
 // 使い方: node scripts/test-api-guard.mjs [--root <木>]
 //   --root は別の木（直す前の main を git archive した所など。api/ と node_modules があればよい）の api/ に同じ検査を流す（直す前に落ちることを確かめる）
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -41,7 +44,9 @@ const USERS = {
   "tok-other": confirmed(15),
   "tok-fail": confirmed(16),
   "tok-weird": confirmed(17),
-  "tok-legacy": { id: U(18), email: "user18@example.test", confirmed_at: "2026-01-01T00:00:00Z" }
+  "tok-legacy": { id: U(18), email: "user18@example.test", confirmed_at: "2026-01-01T00:00:00Z" },
+  "tok-admin-id": confirmed(20),
+  "tok-admin-mail": { id: U(21), email: "boss@example.test", email_confirmed_at: "2026-01-01T00:00:00Z" }
 };
 const PRO_ROW = { user_id: U(4), status: "active", current_period_end: new Date(Date.now() + 20 * 86400000).toISOString(), stripe_customer_id: null, stripe_subscription_id: null, price_id: null, plan_interval: "month", cancel_at_period_end: false, event_created: 1 };
 const modelAnswer = (body) => {
@@ -127,7 +132,7 @@ for (const name of ["EXPLAIN_WORD_DAILY_LIMIT", "EXPLAIN_WORD_DAILY_LIMIT_PRO", 
 
 // ---- 偽の相手（この検査のプロセスの fetch） ----
 // take.mode: missing（関数が無い: 404 PGRST202）・count（人と scope ごとの数を 1 つ増やして返す）・error（500）・weird（数でない答え）
-const S = { calls: [], unexpected: [], model: 0, modelGate: null, modelFail: 0, take: { mode: "missing", counts: new Map() } };
+const S = { calls: [], unexpected: [], model: 0, modelGate: null, modelFail: 0, take: { mode: "missing", counts: new Map() }, funnelPages: 0 };
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "request-id": "req_test" } });
 const plainHeaders = (h) => Object.fromEntries(Object.entries(h instanceof Headers ? Object.fromEntries(h) : h || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
 globalThis.fetch = async (url, init = {}) => {
@@ -161,6 +166,16 @@ function dbRoute(call) {
     const n = (S.take.counts.get(key) || 0) + 1;
     S.take.counts.set(key, n);
     return json(200, n);
+  }
+  if (call.path === "/rest/v1/daily_scores") return json(200, [{ day: "2026-11-09" }]);
+  if (call.path === "/rest/v1/rpc/admin_funnel_counts") return json(404, { code: "PGRST202", message: "Could not find the function" });
+  if (call.path === "/rest/v1/funnel_events") {
+    // 動線の行: 1 ページ 1000 行で、全部の数は言わない（*）。前の形が読み続けないよう 60 ページで終える
+    S.funnelPages++;
+    if (S.funnelPages > 60) return json(200, []);
+    const [from, to] = String(call.headers.range || "0-999").split("-").map(Number);
+    const rows = Array.from({ length: to - from + 1 }, (_, k) => ({ device_id: `d${from + k}`, step: "first_visit", source: null, day: "2026-11-09" }));
+    return new Response(JSON.stringify(rows), { status: 206, headers: { "content-type": "application/json", "content-range": `${from}-${to}/*` } });
   }
   S.unexpected.push(`${call.method} ${call.path}`);
   return json(404, {});
@@ -400,8 +415,61 @@ const brief = (res) => JSON.stringify({ status: res.statusCode, body: res.body, 
   }
 }
 
-// ===== 8. ログ・外へ出ない =====
-ok("ログ: 鍵・トークン・メールを書かない", !logs.some((l) => /test-ai-key|test-anon-key|tok-|@example\.test/.test(l)), logs.filter((l) => /test-|tok-|@/.test(l)).slice(0, 3).join(" | "));
+// ===== 8. 管理の門（Batch 88 A6。api/_lib/admin.js。docs/CRM.md） =====
+const ADMIN_ENV = ["SUPABASE_SERVICE_ROLE_KEY", "ADMIN_EMAILS", "ADMIN_USER_IDS"];
+const setAdminEnv = (over = {}) => {
+  for (const name of ADMIN_ENV) delete process.env[name];
+  Object.assign(process.env, over);
+};
+{
+  const admin = await load("api/_lib/admin.js");
+  const mailUser = { id: U(21), email: "boss@example.test", emailConfirmed: true };
+  const idUser = { id: U(20), email: "other@example.test", emailConfirmed: true };
+  setAdminEnv({ SUPABASE_SERVICE_ROLE_KEY: "test-service-role", ADMIN_EMAILS: "boss@example.test", ADMIN_USER_IDS: U(20) });
+  eq("管理: ADMIN_USER_IDS が入っていれば、一覧のメールの確認済みアカウントでも管理者にしない（id の人だけ）", [admin.isAdmin(mailUser), admin.isAdmin(idUser)], [false, true]);
+  setAdminEnv({ SUPABASE_SERVICE_ROLE_KEY: "test-service-role", ADMIN_EMAILS: "boss@example.test" });
+  eq("管理: ADMIN_USER_IDS が無ければ前のとおり確認済みのメールで（確認の無いメールは通さない）", [admin.isAdmin(mailUser), admin.isAdmin({ ...mailUser, emailConfirmed: false })], [true, false]);
+  setAdminEnv({});
+  let res = fakeRes();
+  let who = await admin.requireAdmin({ headers: {} }, res);
+  ok("管理: 設定が無くても、未ログインは 401（設定の有無を先に言わない）", who === null && res.statusCode === 401 && res.body?.error === "login_required", brief(res));
+  res = fakeRes();
+  who = await admin.requireAdmin({ headers: { authorization: "Bearer tok-free" } }, res);
+  ok("管理: ログインした人への「設定が無い」503 の字に環境変数の名前を出さない", who === null && res.statusCode === 503 && res.body?.error === "not_configured" && !/[A-Z]+_[A-Z_]+/.test(String(res.body?.message)), brief(res));
+  setAdminEnv({ SUPABASE_SERVICE_ROLE_KEY: "test-service-role", ADMIN_EMAILS: "boss@example.test", ADMIN_USER_IDS: U(20) });
+  res = fakeRes();
+  who = await admin.requireAdmin({ headers: { authorization: "Bearer tok-admin-mail" } }, res);
+  ok("管理: ADMIN_USER_IDS があると、一覧のメールの人は 403", who === null && res.statusCode === 403, brief(res));
+  res = fakeRes();
+  who = await admin.requireAdmin({ headers: { authorization: "Bearer tok-admin-id" } }, res);
+  ok("管理: id の人は通る", who?.userId === U(20), brief(res));
+}
+
+// ===== 9. 動線の数: 行を読むのは 50 ページ（5 万行）まで（Batch 88 A6。api/admin/funnel.js） =====
+{
+  setAdminEnv({ SUPABASE_SERVICE_ROLE_KEY: "test-service-role", ADMIN_USER_IDS: U(20) });
+  const funnel = (await load("api/admin/funnel.js")).default;
+  S.funnelPages = 0;
+  const res = await invoke(funnel, { method: "GET", headers: { authorization: "Bearer tok-admin-id" } });
+  ok("動線の数: 関数が無いときの行の読み直しは 50 ページで止め、51 ページ目を読まない・応答に truncated: true",
+    res.statusCode === 200 && res.body?.truncated === true && S.funnelPages === 50, `${res.statusCode} truncated=${res.body?.truncated} pages=${S.funnelPages}`);
+  setAdminEnv({});
+}
+
+// ===== 10. cron の鍵の比べ方（Batch 88 A6。api/cron/keepalive.js） =====
+{
+  const cron = (await load("api/cron/keepalive.js")).default;
+  process.env.CRON_SECRET = "test-cron-secret-0123456789";
+  const call = async (auth) => (await invoke(cron, { method: "GET", headers: auth ? { authorization: auth } : {} })).statusCode;
+  eq("cron: 鍵があると、見出しなし 401・ちがう鍵（同じ長さ・ちがう長さ）401・正しい鍵 200",
+    [await call(""), await call("Bearer test-cron-secret-0123456780"), await call("Bearer short"), await call("Bearer test-cron-secret-0123456789")], [401, 401, 401, 200]);
+  const src = fs.readFileSync(path.join(ROOT, "api", "cron", "keepalive.js"), "utf8");
+  ok("cron: 鍵は timingSafeEqual で比べる（字の比べ方で時間の差を出さない）", /timingSafeEqual/.test(src));
+  delete process.env.CRON_SECRET;
+}
+
+// ===== 11. ログ・外へ出ない =====
+ok("ログ: 鍵・トークン・メールを書かない", !logs.some((l) => /test-ai-key|test-anon-key|test-service-role|test-cron-secret|tok-|@example\.test/.test(l)), logs.filter((l) => /test-|tok-|@/.test(l)).slice(0, 3).join(" | "));
 ok("偽物の知らない要求は無い（どの要求も偽の相手が答えた）", S.unexpected.length === 0, S.unexpected.join(", "));
 
 out(`test-api-guard: ${passed} passed, ${failed} failed${rootArg > 0 ? `（--root ${ROOT}）` : ""}`);

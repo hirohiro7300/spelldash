@@ -436,7 +436,8 @@ await t("URL を送る module は location を値として読まない（href・
     if (sendsUrl(src)) hits.push(f);
   }
   const feedback = fs.readFileSync(path.join(ROOT, "js", "feedback.js"), "utf8");
-  return (hits.length === 0 && /page: location\.pathname \+ location\.search,/.test(feedback)) || JSON.stringify(hits);
+  // Batch 88: ページ名は pathname + search を 300 字に切った物（.slice(0, PAGE_MAX_LENGTH)）でもよい
+  return (hits.length === 0 && /page: (?:\(location\.pathname \+ location\.search\)\.slice\(0, \w+\)|location\.pathname \+ location\.search),/.test(feedback)) || JSON.stringify(hits);
 });
 await t("URL を送る module の字の検査は、location を値として使う書き方を見つける（検査そのものの確かめ）", () => {
   const caught = ["page: location.href", "page: location.hash", "page: String(globalThis.location)", "page: String(location)", "page: `${location}`", "page: window.location.toString()",
