@@ -1439,12 +1439,18 @@ function renderLearnPanel(step, { summary, counts }) {
   const status = r.my
     ? `<a class="result-panel__action${(step === "done" || step === "replaced") && !again ? "" : " result-panel__action--ghost"}" href="${r.src.url}" id="${r.src.linkId}">${r.src.label}へ</a>`
     : `<a class="result-panel__action${step === "done" || step === "replaced" ? "" : " result-panel__action--ghost"}" href="./stats.html">学習状況</a>`;
+  // マイ単語帳の打つ回（Batch 86）: 「マイ単語帳へ」の隣に、同じ単語帳の選択式の回への道（ゴースト。/?learn=my[&book=<id>]&choice=en: 単語帳の画面の「選択式で学ぶ」と同じ行き先）。
+  // 選択式の回（向きを替える道がある）・スラング・中心の学習・ほかのタブで替わった回・語の無い単語帳の回には出さない
+  const toChoice =
+    r.my && r.src.kind === "my" && !r.choice && step !== "replaced" && (r.ids.length > 0 || r.saveFailed > 0)
+      ? `<a class="result-panel__action result-panel__action--ghost" href="/?learn=my${r.src.bookId ? `&${MY_BOOK_PARAM}=${encodeURIComponent(r.src.bookId)}` : ""}&${MY_CHOICE_PARAM}=en" id="learnMyChoice">選択式で学ぶ</a>`
+      : "";
   const actions =
     step === "break"
       ? `<button type="button" class="result-panel__action" id="learnContinue">続ける</button><button type="button" class="result-panel__action result-panel__action--ghost" id="learnStop">ここで終える</button>`
       : step === "set" || step === "stop"
-        ? `${step === "set" || learnMore() ? `<button type="button" class="result-panel__action" id="learnNext">${LEARN_NEXT[r.mode]}</button>` : ""}${status}${otherDir}`
-        : `${again}${status}${otherDir}`;
+        ? `${step === "set" || learnMore() ? `<button type="button" class="result-panel__action" id="learnNext">${LEARN_NEXT[r.mode]}</button>` : ""}${status}${toChoice}${otherDir}`
+        : `${again}${status}${toChoice}${otherDir}`;
   panel.innerHTML = `
     <h2 class="learn-panel__title" id="resultTitle" tabindex="-1">${title}</h2>
     ${note ? `<p class="learn-panel__note">${note}</p>` : ""}
@@ -1475,6 +1481,12 @@ function renderLearnPanel(step, { summary, counts }) {
     persistLearnPoint();
     startGame();
   });
+}
+
+// マイ単語帳の回（打つ回・選択式。Batch 86）の「机に戻る」の行き先: 回の終わりの「マイ単語帳へ」と同じ（/mywords.html?book=<id>。全部の単語帳の回は /mywords.html）。
+// ほかの回（中心の学習・スラング・Study）は null（前のとおり公開の机へ。js/main.js の「机に戻る」）
+export function myWordsReturnUrl() {
+  return learnRun?.my && learnRun.src?.kind === "my" ? learnRun.src.url : null;
 }
 
 // まだ出せる語があるか（「ここで終える」のパネルに「続けて学ぶ」を置くか）
