@@ -1,4 +1,4 @@
-// ===== 課金（SpellDash Pro）共通（/api/billing/* と shared.js の reject() から使う） =====
+// ===== 課金（SpellDash Pro）共通（/api/billing/* と shared.js の aiTake() から使う） =====
 //
 // - Stripe は SDK を入れず fetch + Node の crypto で呼ぶ（form エンコード、ネストは a[b][c]）。
 // - 本人の行（subscriptions）の読み取りは「本人のトークン + anon key」で行い、RLS に任せる。
