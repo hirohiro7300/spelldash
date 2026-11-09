@@ -1,6 +1,6 @@
 # 創業者側でやること（1 枚にまとめ）
 
-> 2026-10-02 作成。コード側はすべて本番に入っている。ここにあるのは **ダッシュボードの操作・SQL の実行・記入・判断** で、こちらからは代われないもの。
+> 2026-10-02 作成。コード側はすべて本番に入っている（ただし Batch 78 以降は未公開。docs/STATUS.md）。ここにあるのは **ダッシュボードの操作・SQL の実行・記入・判断** で、こちらからは代われないもの。
 > 終わったら行頭を ☐ → ✅ にして commit するか、チャットで一言ください（次の自走の前提が変わるため）。
 
 ## A. いますぐ（サービスが一部止まっている）
@@ -13,16 +13,24 @@
   - user_items・feedback・funnel_events を後で作ったら、§4.3 をもう一度流す。印は守りではない（だれでも付けられる。手を加えていない旧いコードを止めるだけ）
 - ☐ **Vercel の重複プロジェクトを消す** — `spelldash` と `spelldash-jzf8` の 2 つが同じリポジトリに繋がっていて、デプロイ枠を 2 倍使う（過去に日次上限に到達）。消す前に: 本番ドメイン `www.spelldash.net` がどちらに付いているか／環境変数がどちらにあるか を確認し、付いていない方を削除（docs/DECISIONS_V4.md §10）。
 
-## B. 課金（SpellDash Pro）を受け付け始めるなら — 手順は docs/BILLING.md §2
+## B. 課金（SpellDash Pro）を受け付け始めるなら — 上から順に（くわしい手順と確かめ方は docs/BILLING.md §2。番号は同じ）
 
-- ☐ Stripe で商品「SpellDash Pro」と **Price（月額 ¥980・税込 JPY・毎月）** を作る（2026-10-07 決定）。**価格はコードに無い**ので、Stripe の Price が画面に出る。年額は作らない（作ると画面に年額のボタンが出る）
-- ☐ Vercel の環境変数: `STRIPE_SECRET_KEY`、`STRIPE_PRICE_MONTHLY`（¥980 の Price の id）、**`STRIPE_TRIAL_MONTHS` = `1`**（初めての方は 1 か月無料。解約して入り直した人には付かない）、`STRIPE_WEBHOOK_SECRET`、`SUPABASE_SERVICE_ROLE_KEY`（CRM と共用）→ Redeploy
-- ☐ Stripe の Webhook に `https://www.spelldash.net/api/billing/webhook`（イベント: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`）
-- ☐ Supabase SQL Editor で **docs/SQL_BILLING.md**（`subscriptions` テーブル）
-- ☐ **tokushoho.html の［ ］を記入**（事業者名・運営責任者・所在地・連絡先）。記入したら `<meta name="robots" content="noindex">` の行を消す。**特定商取引法の必須項目**なので、受付開始前に必ず
-- ☐ **terms.html（利用規約）を一読**。法務の目は入っていない。特に「料金変更は 30 日前告知」「終了時は未提供期間を返金」「損害賠償の上限は直近 1 か月分」は、合意できる内容か確認
-- ✅ 無料期間 → **初めての方は 1 か月無料（随時）**（2026-10-07 決定）。`STRIPE_TRIAL_MONTHS=1` で、加入画面の料金の行・ボタン「1か月無料で始める（その後 月額 ¥980）」・「申し込みの前に」の無料期間の行（終わりの日と請求額）が自動で出る。特商法の表記と利用規約にも書いた
-- ☐ テストモードのカード `4242 4242 4242 4242` で加入 → プロフィールに「Pro」が出る → Portal で解約、まで一巡 → 本番キーに差し替え → お知らせ（下書きは docs/BILLING.md §10）
+- ✅ 価格と無料期間（2026-10-07 決定）: **月額 ¥980（税込）・初めての方は 1 か月無料（随時）・年額なし**。価格はコードに無く、Stripe の Price が画面に出る
+- ☐ 1. 本番の www がどの版かを確かめる（Batch 78 以降を出すなら、A の門の手順と同じ作業の中で。マイ単語帳と Batch 83 の直しは、その版が出るまで本番に無い）
+- ☐ 2. データベースのプロジェクトが動いているかを確かめる（止まっていれば A の復旧）
+- ☐ 3. Stripe のアカウントを本番で使える形にする（本人確認・事業の情報・入金先の口座・カードの明細に出る名前）
+- ☐ 4. **tokushoho.html の［ ］を埋める**（事業者名・運営責任者〔本名〕・所在地・メールアドレス）。所在地は電話番号と同じく「請求があれば遅滞なく開示します」でもよいとされるが、請求が来たらすぐ出せることが条件。埋めたら `<meta name="robots" content="noindex">` の行を消す。**鍵を入れる（9）より前に**
+- ☐ 5. **terms.html（利用規約）を読み、合意できるか決める**。法務の目は入っていない。特に 4. Pro（月額の自動更新・料金変更は 30 日前に告知）・終了時は未提供の期間を返金・損害賠償の上限は直近 1 か月分
+- ☐ 6. Stripe（まずテストモード）で商品「SpellDash Pro」と Price（定期・毎月・JPY・980）。年額は作らない（作って変数に入れると画面に年額のボタンが出る）
+- ☐ 7. **docs/SQL_BILLING.md を流す**（`subscriptions` の表。流すのは創業者だけ）。無いと払っても Pro にならない
+- ☐ 8. Webhook を登録: `https://www.spelldash.net/api/billing/webhook`、イベントは `checkout.session.completed`・`customer.subscription.created`・`customer.subscription.updated`・`customer.subscription.deleted` の 4 つ。署名の鍵を控える
+- ☐ 9. Vercel の環境変数: `STRIPE_SECRET_KEY`・`STRIPE_PRICE_MONTHLY`・**`STRIPE_TRIAL_MONTHS` = `1`**・`STRIPE_WEBHOOK_SECRET`・`SUPABASE_SERVICE_ROLE_KEY`（CRM と共用）→ Redeploy。`STRIPE_PRICE_YEARLY` と `STRIPE_TRIAL_DAYS` は入れない
+- ☐ 10. Billing Portal で「キャンセル」と「支払い方法の更新」を許す・領収書のメールを ON（テストモードと本番で別々）
+- ☐ 11. テストモードで一巡: 成功 `4242 4242 4242 4242`・拒否 `4000 0000 0000 0002`・3D セキュア `4000 0000 0000 3220`。確定の画面に自動更新・提供の時期・解約の方法が読めるか（特商法 12 条の 6）・webhook の 4 つが 200 か・Portal で解約できるか。テストの鍵が入っている間はだれでもテストのカードで加入の形を作れる（お金は動かない）ので、まとめて短い時間で。Preview の配信ではログインを止めているので本番の www で
+- ☐ 12. 本番に切り替える: テストモードの webhook を無効にする → Supabase の Table Editor で `subscriptions` の行を全部消す（どれもテストモードの行。SQL は流さない。残すと同じ人の本番の加入が 409 か 502 になる）→ 本番の Price・Webhook・Portal・メール → 表が空のままかを見る → 3 つの変数を本番の値に → Redeploy
+- ☐ 13. 本物のカードで自分で確かめる（12 で行を消したので初回は無料期間で 0 円 → Portal で解約 → 契約をすぐにキャンセル → 2 回目の加入で ¥980 → 返金 → その契約もすぐにキャンセル）
+- ☐ 14. 任意: お知らせ（下書きは docs/BILLING.md §10）
+- 急いで止めるとき: `STRIPE_PRICE_MONTHLY` を消して Redeploy。新しい加入だけが止まり、加入している人の「解約・お支払いの管理」と webhook は動き続ける。止める前に開いていた手続きの画面は期限（最長 24 時間）まで支払えるので、止めた後にも加入が届くことがある（すぐに全部止めるなら Stripe の側で開いている手続きを期限切れにする。docs/BILLING.md §2）
 
 ## C. 管理画面（CRM）を使うなら — docs/CRM.md §2
 
@@ -34,7 +42,7 @@
 
 ## D. AI 機能（テキストからカード・覚え方の解説）を開けるなら
 
-- ☐ Vercel の環境変数 `ANTHROPIC_API_KEY` → Redeploy。無料は 1 日 カード 2 回／解説 3 回、Pro は 20／60 回（`CARD_GEN_DAILY_LIMIT*` / `EXPLAIN_WORD_DAILY_LIMIT*` で変更可）
+- ☐ Vercel の環境変数 `ANTHROPIC_API_KEY` → Redeploy。無料は 1 日 カード 2 回／解説 3 回、Pro は 20／60 回（`CARD_GEN_DAILY_LIMIT*` / `EXPLAIN_WORD_DAILY_LIMIT*` で変更可）。入れると加入画面の比較表に「AI の覚え方」の行（解説の回数）が出る（無ければ行を出さない。Batch 83）。今の画面から使えるのは学習状況の語の詳細の「覚え方を作る」だけ（テキストからカードの入口は Batch 78 から出していない）
 
 ## E. ずっと前からの保留（効くのは該当機能だけ）
 
@@ -111,7 +119,7 @@
 3. **無料の AI 回数**（年額は出さない前提。出すなら Stripe に年額の Price を作り `STRIPE_PRICE_YEARLY` を足すだけで画面に出る）
 4. **はちゃんの台詞の方向**: Batch 38 で「1 文・！は 1 つ・盛り上げ語なし」に揃えた。物足りなければ docs/CHARACTER.md の範囲で戻せる
 5. **390px でヘッダーの「バトル」タブを隠した**（ホームの「ほかの遊び方」から入れる）。Battle を前に出したいなら戻す
-6. **アプリ版での Pro の扱い**: 購入導線は出していない（Apple 3.1.1）。Web で加入すれば同じアカウントで有効。ストア審査の方針が決まったら見直す
+6. **アプリ版での Pro の扱い**: 購入導線は出していない（ストアの審査の決まり 3.1.1）。Web で加入した状態はアカウントに付くが、アプリはまだログインできないので、アプリでは Pro にならない（docs/BILLING.md §5）。ストア審査の方針とアプリのログインが決まったら見直す
 7. ✅ **はちゃんの 4 場面目**（2026-10-17 決定: 残す）: 学習中の知らせ（`#learnToast`。覚えた瞬間「invoice、残ってた。」・3 つ続けて出てこない時）にも今どおり顔を出す。docs の数え方は「3 場面（ホームの窓辺と紙片・結果のパネル・週間レポート）＋学習中の知らせ」にそろえた（docs/CHARACTER.md §3）。同じ日に、はちゃんの絵を創業者が用意した新しい絵柄に替えた（docs/CHARACTER.md §2.5）。**残り（未決）**: はちゃんの台詞のうち「おはよう。今日の15語、いこう。」のような挨拶＋1 文（2 文）を許すかどうか
 8. **Battle の文言を日本語にした（Batch 43）**: ロジックは触っていないが、画面の英語ラベル（Ranked Match／VICTORY／Score／Miss! など）を「対戦を始める／勝ち／スコア／違う」に、CPU のタイプ名を「安定型／速攻型／堅実型／互角」にした。ランク名（Bronze…）と RP はそのまま。英語の雰囲気を残したければ戻せる（文字列だけ）
 

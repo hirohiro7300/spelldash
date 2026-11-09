@@ -9,7 +9,7 @@ import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
 import {
-  getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage,
+  getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage, limitOfferText,
   getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa
 } from "./myWords.js";
 import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, MY_BOOK_NAME_MAX } from "./myWordsCore.js";
@@ -39,6 +39,21 @@ function setStatus(text, { error = false, limit = false } = {}) {
   el.textContent = text;
   el.classList.toggle("is-error", error);
   statusIsLimit = limit;
+}
+
+// 上限の文（js/myWords.js limitMessage）。受付中の Web で Pro でない人には、文の中の「Pro なら1,000語」を加入画面へのリンクにする
+// （動線の印 mywords。js/funnelLog.js trackProEntries が押されたのを数える）。受付前・アプリ・Pro の人は文だけ（リンクも値段も出さない）
+function setLimitStatus() {
+  setStatus(limitMessage(), { limit: true });
+  const offer = limitOfferText();
+  const status = $("myWordsStatus");
+  const text = status?.textContent ?? "";
+  const at = offer ? text.indexOf(offer) : -1;
+  if (at < 0) return;
+  const link = el("a", "", offer);
+  link.href = "./pro.html";
+  link.dataset.funnel = "mywords";
+  status.replaceChildren(text.slice(0, at), link, text.slice(at + offer.length));
 }
 
 function el(tag, cls, text) {
@@ -245,7 +260,7 @@ function render() {
     const b = $(id);
     if (b) b.disabled = full;
   }
-  if (full) setStatus(limitMessage(), { limit: true });
+  if (full) setLimitStatus();
   else if (statusIsLimit) setStatus("");
 
   const ul = $("myWordsList");

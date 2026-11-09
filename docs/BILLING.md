@@ -1,17 +1,17 @@
 # SpellDash Pro（月額サブスクリプション）
 
 > 2026-10-02、創業者の「もう月額の設定進めていいよ」で、これまでの「決済禁止」を解除して実装した（Batch 34）。
-> 設計の土台は docs/MONETIZATION.md と docs/PRO_VALUE.md §3。SQL は docs/SQL_BILLING.md。
-> 実装は `api/_lib/billing.js`、`api/billing/*.js`（サーバー）、`js/plan.js`、`js/proView.js`、`pro.html`、`css/pro.css`（クライアント）。
-> Stripe ダッシュボードの操作・Vercel の環境変数・SQL の実行は創業者側（手順は第 2 節）。
+> 設計の土台は docs/MONETIZATION.md と docs/PRO_VALUE.md §3（価格はどちらも 2026-10-07 の決定より前の案。決定は第 11 節）。SQL は docs/SQL_BILLING.md。
+> 実装は `api/_lib/billing.js`、`api/_lib/aiLimits.js`、`api/billing/*.js`（サーバー）、`js/plan.js`、`js/proView.js`、`pro.html`、`css/pro.css`（クライアント）。サーバー側の単体の検査は `scripts/test-billing.mjs`（CI。偽の fetch で外へ出ない）。
+> Stripe ダッシュボードの操作・Vercel の環境変数・SQL の実行は創業者側（手順は第 2 節。docs/FOUNDER_TODO.md B は同じ順の短い一覧）。
 
 ## 1. 何であり、何でないか
 
 できること
 
-- 月額（必須）と年額（Stripe に Price があれば出す）の Pro プラン。金額はコードに書かず、Stripe の Price から取って `/pro.html` に表示する
-- 加入は Web（`/pro.html`）からログインして Stripe Checkout へ。解約・カード変更・領収書は Stripe の Billing Portal（プロフィール →「お支払いの管理」）
-- Pro の特典（第 4 節）: マイ単語帳 1,000 語、AI の回数、90 日の推移、シールド 3 枚と連続記録の修復、テーマ「紙」「藍」
+- 月額の Pro プラン（2026-10-07 の決定: **月額 ¥980（税込）・初めての方は 1 か月無料・年額なし**）。金額はコードに書かず、Stripe の Price から取って `/pro.html` に表示する。年額の Price を変数に入れれば年額も出る作りは残っているが、使わない
+- 加入は Web（`/pro.html`）からログインして Stripe Checkout へ。解約・カード変更・領収書は Stripe の Billing Portal（設定 →「解約・お支払いの管理」）
+- 加入画面で売る特典（第 4 節）は、今の画面（英単語の学習に絞った形）で本当に使えるものだけ（Batch 83）: マイ単語帳 1,000 語・思い出せるようになった語の推移 90 日・テーマ「紙」「藍」・AI の覚え方の回数（AI が使えるときだけ）
 - CRM（docs/CRM.md）にプラン列（`plan` / `planStatus` / `planPeriodEnd` / `planInterval`、要約の `pro`）
 
 しないこと（創業者の規則）
@@ -20,56 +20,87 @@
 - 通貨・ガチャ・ショップ・通知は作らない。Battle には触れない。はちゃんは docs/CHARACTER.md §3 の場所（3 場面＋学習中の知らせ）以外に出さない
 - Pro バッジのランキング表示、はちゃんの差分、「広告なし」、月間レポート PDF は入れない（広告は元から無い）
 - アプリ（Capacitor）では購入ボタンと価格を出さない（第 5 節）
-- 秘密鍵はサーバーの環境変数だけ。クライアント・応答・ログに出さない。ログにメールなどの PII を出さない。npm 依存は増やさない（Stripe は `fetch` + Node `crypto`）
+- 秘密鍵はサーバーの環境変数だけ。クライアント・応答・ログに出さない。ログにメールなどの PII を出さない。npm 依存は増やさない（Stripe は `fetch` + `crypto`）
 
-## 2. 有効にする手順（創業者側）
+## 2. 受付を始める手順（創業者側。上から順に）
 
-受付開始までは `/pro.html` に「Pro はまだ受付前です。」と出て、加入はできない（`GET /api/billing/config` が `configured:false`）。
+受付を始めるまで `/pro.html` は「Pro はまだ受付前。」と出し、加入はできない（`GET /api/billing/config` が `configured:false`）。受付中かどうかは `STRIPE_SECRET_KEY` と `STRIPE_PRICE_MONTHLY` の 2 つだけで決まる。特商法の表記が埋まったかは見ないので、**表記を埋めてから鍵を入れる**（4 を 9 より前に）。
 
-> **順番の注意**: 受付中かどうかは Stripe の鍵と月額の Price だけで決まり、特商法の表記（tokushoho.html の［ ］）が埋まったかは見ない。**特商法の表記を埋めてから鍵を入れる**（下の 7 を 3 より先に）。加入ボタンの直下から特商法の表記へリンクしている。
-> **無料期間**（2026-10-07 決定: 初めての方は 1 か月無料・随時）は `STRIPE_TRIAL_MONTHS=1`。付くのは**初めての人だけ**（本人の `subscriptions` の行が無く、Stripe 側にも user_id の契約が 1 つも無い。webhook は解約後も行を canceled で残すので、入り直した人には付かない）。終わりは日本時間で同じ日付の 1 か月後（無い日は月末）。加入画面の料金の行（「初めての方は最初の1か月無料」）・ボタン「1か月無料で始める（その後 月額 ¥980）」・「申し込みの前に」の無料期間の行（終わりの日と請求額）が自動で出て、以前に加入した人には「今回は加入した日に請求」と出る。特商法の表記と利用規約にも書いてある。日数で付けたいときは `STRIPE_TRIAL_DAYS`（月が優先）。
-> **領収書のメール**を約束するなら Stripe の Settings → Emails で「成功した支払いのメール」を ON（加入画面の FAQ は「解約・お支払いの管理」で見られる、とだけ書いている）。
+> 鍵や署名の鍵の値は、チャット・コミット・スクリーンショットに貼らない。Vercel の環境変数にだけ入れる。
+> 法と税の話は一般的な情報で、法の助言ではない。条文の逐語はこちらでは確かめていない。迷ったら専門家に聞く。
 
-1. **Stripe アカウント**を作る（https://dashboard.stripe.com）。本人確認と銀行口座は本番キーに切り替える前までに済ませる。
-2. **商品と Price**: Products → Add product → 名前「SpellDash Pro」。Price は **定期（Recurring）・JPY・税込**で、
-   - 月額（必須）: **¥980 / month**（2026-10-07 決定）
-   - 年額（任意）: 作らない（作ると画面に年額のボタンが出る）
-   それぞれの Price ID（`price_...`）を控える。テストモードと本番モードで ID は別。
-3. **Vercel → Project → Settings → Environment Variables**（Production。Preview にも入れるならテストモードのキー）:
+1. **本番の www がどの版かを確かめる**（Vercel → Deployments の Production）。Batch 78 以降の版を出すなら、旧いコードの書き込みを断る門の手順（docs/FOUNDER_TODO.md A・docs/SQL_CLIENT_GATE.md）と同じ作業の中で出す。課金はその後に重ねる。マイ単語帳（Batch 79〜82）とこの節の直し（Batch 83）は、その版が出るまで本番に無い。
+2. **データベースのプロジェクトが動いているかを確かめる**。止まっていれば復旧する（docs/FOUNDER_TODO.md A）。止まっているとログインできず、加入も webhook の書き込みもできない。
+3. **Stripe のアカウントを本番で使える形にする**: 本人確認・事業の情報・入金先の口座。カードの明細に出る名前も決める。
+4. **特商法の表記（tokushoho.html）の［ ］を埋める**: 販売事業者・運営責任者（本名）・所在地・連絡先のメールアドレスの 4 つ。
+   - 電話番号は「請求があれば遅滞なく開示します。」とすでに書いてある。所在地も、個人なら同じ書き方でよいとされる。条件は、請求が来たら本当にすぐ出せること（住所と電話番号をすぐ送れる形で持ち、メールの窓口を毎日見る）。すぐ出せないなら、初めから書く。
+   - メールは課金の問い合わせの窓口になる。公開の Issue は、個人の情報を含む問い合わせに向かない。
+   - 埋めたら `<meta name="robots" content="noindex">` の行を消す。
+5. **利用規約（terms.html）を読み、合意できるか決める**。法務の目は入っていない。とくに次の 4 つ:
+   - 4. Pro: 月額の自動更新・初めての方は 1 か月無料・解約はいつでも設定から・期間の終わりまで使える・日割りの返金なし・料金を変えるときは 30 日前に知らせる（Batch 83 で「月額または年額」を「月額」に直した）
+   - 4. の「解約後も支払い済みの期間の終わりまで Pro を使えます」は、無料期間の中で解約した人には「無料期間の終わりまで」になる（払った期間が無い）。気になるなら文を直す（こちらで直せる）
+   - 本サービスを終えるときは 30 日前に知らせ、未提供の期間を返金する
+   - 賠償の上限は、直近 1 か月に払った料金
+6. **商品と Price を作る**（まずテストモードで。本番は 12 で）: Products → Add product → 名前「SpellDash Pro」。Price は定期（Recurring）・毎月・JPY・**980**。年額の Price は作らない（作って変数に入れると、画面に年額のボタンが出る）。Price ID（`price_` で始まる）を控える。
+7. **subscriptions の表を作る**（docs/SQL_BILLING.md）。SQL を流すのは創業者だけ（こちらは流さない）。Supabase の SQL Editor で 1 回。これが無いと、払っても webhook が 500 を返し、Pro にならない。
+8. **Webhook を登録する**（テストモード）: Developers → Webhooks → Add endpoint
+   - URL: `https://www.spelldash.net/api/billing/webhook`
+   - イベントは 4 つ: `checkout.session.completed`・`customer.subscription.created`・`customer.subscription.updated`・`customer.subscription.deleted`
+   - 作ると出る署名の鍵（Signing secret）を控える（9 で入れる）
+9. **Vercel の環境変数を入れて Redeploy する**（Project → Settings → Environment Variables。Production。値はテストモードのもの）:
 
-   | 変数 | 値 | 必須 |
-   |---|---|---|
-   | `STRIPE_SECRET_KEY` | Stripe の Secret key（Developers → API keys。テストモードと本番モードで別の値。`sk_` に続く test／live でモードが分かる） | 必須 |
-   | `STRIPE_PRICE_MONTHLY` | 月額の Price ID | 必須 |
-   | `STRIPE_PRICE_YEARLY` | 年額の Price ID | 任意（無ければ年額ボタンを出さない） |
-   | `STRIPE_WEBHOOK_SECRET` | 4 で作る Webhook の Signing secret（`whsec` で始まる） | webhook に必須 |
-   | `STRIPE_TRIAL_MONTHS` | 初めての方の無料期間（暦の月）。**1** | 推奨（2026-10-07 決定） |
-   | `STRIPE_TRIAL_DAYS` | 無料期間を日数で（`STRIPE_TRIAL_MONTHS` が優先） | 任意（既定 0） |
-   | `SITE_ORIGIN` | `https://www.spelldash.net` | 任意（既定がこの値。success / cancel / return の URL はこれだけから作る） |
-   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase の service_role key（CRM と共用） | webhook の書き込みに必須 |
+   | 変数 | 値 |
+   |---|---|
+   | `STRIPE_SECRET_KEY` | Secret key（Developers → API keys。テストモードと本番モードで別の値） |
+   | `STRIPE_PRICE_MONTHLY` | 6 の Price ID |
+   | `STRIPE_TRIAL_MONTHS` | `1`（初めての方は 1 か月無料。解約して入り直した人には付かない） |
+   | `STRIPE_WEBHOOK_SECRET` | 8 の署名の鍵 |
+   | `SUPABASE_SERVICE_ROLE_KEY` | service_role key（webhook の書き込み。CRM と共用） |
 
-   「設定済み」= `STRIPE_SECRET_KEY` と `STRIPE_PRICE_MONTHLY` が両方ある。
-4. **Webhook**: Developers → Webhooks → Add endpoint。
-   - Endpoint URL: `https://www.spelldash.net/api/billing/webhook`
-   - Events: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
-   - 作ったら Signing secret（`whsec` で始まる）を控え、3 の `STRIPE_WEBHOOK_SECRET` に入れる
-5. **Redeploy**（環境変数は次のデプロイから効く）。
-6. **docs/SQL_BILLING.md** の SQL を Supabase の SQL Editor で実行する（`subscriptions` テーブル）。
-   これが無いと、加入はできても webhook が 500 を返し、Pro にならない。
-7. **tokushoho.html の［ ］を埋める**（販売事業者・運営責任者・所在地・連絡先）。公開ページなので、受付開始の前に。
-   個人の場合、所在地と電話番号は「請求があれば遅滞なく開示します」でもよい。
-8. **テストモードで一巡**（Stripe のキーがテストモードのうちに）:
-   1. `/pro.html` を開く。価格が 2 つ（または月額だけ）出る
-   2. ログインして「月額 ¥… で始める」→ Stripe Checkout
-   3. カード番号 `4242 4242 4242 4242`、有効期限は未来の任意、CVC は任意の 3 桁、名前・住所は任意
-   4. 支払うと `/pro.html?pro=done` に戻り、「お支払いを確認中…」→「Pro になった。ありがとう」と、使えるようになったもの（マイ単語帳・テーマ・推移・シールド・AI）が並ぶ
-      プラン行が「Pro（次回の更新 YYYY/M/D）」になる。Stripe → Developers → Webhooks → 該当エンドポイントで 4 イベントが 200
-   5. 「お支払いの管理」→ Billing Portal が開く。そこで「プランをキャンセル」→ プロフィールが「Pro（解約予定・YYYY/M/D まで）」
-   6. 失敗のカード `4000 0000 0000 0002`（拒否）、`4000 0000 0000 3220`（3D セキュア）も試す
-   7. マイ単語帳 101 語目・学習データの 90 日・テーマ「紙」が使える
-9. **本番キーに差し替え**: `STRIPE_SECRET_KEY` を本番モードの Secret key、Price ID を本番モードのもの、Webhook も本番モードで作り直して `STRIPE_WEBHOOK_SECRET` を差し替える → Redeploy。
-   Billing Portal の設定（Settings → Billing → Customer portal）で「サブスクリプションのキャンセル」と「支払い方法の更新」を許可しておく（テストモードと本番モードで別々）。
-10. **告知**: news.html に第 10 節の下書きを貼る。
+   - 入れないもの: `STRIPE_PRICE_YEARLY`（年額なし）・`STRIPE_TRIAL_DAYS`（日数の無料期間。月が優先で使わない）。`SITE_ORIGIN` は既定が `https://www.spelldash.net` なので入れなくてよい（success / cancel / return の URL はこれだけから作る）
+   - 任意: `ANTHROPIC_API_KEY`（入れると加入画面の比較表に「AI の覚え方」の行〔1 日の回数。無料 3・Pro 60〕が出る。無ければ行を出さない〔使えない特典を売り文に並べない〕。docs/FOUNDER_TODO.md D）
+   - 変数は次のデプロイから効く。入れたら Redeploy
+10. **Billing Portal と領収書のメールを設定する**（テストモードと本番モードで別々。本番は 12 でもう一度）
+    - Settings → Billing → Customer portal: 「サブスクリプションのキャンセル」（期間の終わりに止める形）と「支払い方法の更新」を許す。請求の履歴（領収書）も見られるようにする
+    - Settings → Emails: 成功した支払いのメール（領収書）を ON。加入画面のよくある質問は「解約・お支払いの管理で、過去の請求と領収書を見られる」と書いている
+11. **テストモードで一巡する**（9 でテストの鍵を本番の www に入れているので、この間はだれでも加入画面を開け、公開されているテストのカードで加入の形だけを作れる〔お金は動かない〕。一巡はまとめて短い時間で行い、終わったらすぐ 12 へ進む〔12 でテストの行を全部消す〕。Preview の配信ではログインを止めているので、この一巡は本番の www でしか行えない）
+    1. `/pro.html` を開く。見出しの下が「月額 ¥980（税込）。初めての方は最初の1か月無料。いつでも解約できる。」（年額は出ない）。「いつでも解約できる」の条件（期間の終わりまで使える・日割りの返金なし）は、同じ画面の「申し込みの前に」の解約の行と確定の画面の文にある。見出しの下の 1 行にも条件を入れたいと思ったら言ってもらえれば直せる（字の高さの検査も直す）。比較表はマイ単語帳・推移・テーマの 3 行（AI の鍵を入れたときは AI の覚え方を足した 4 行）。「申し込みの前に」は料金・無料期間・更新・解約・支払い・提供
+    2. ログインして「1か月無料で始める（その後 月額 ¥980）」→ Stripe の確定の画面
+    3. **確定の画面を見る**（特商法 12 条の 6 の最終確認の画面にあたる。スマホの幅でも）。払うボタンを押す前に、次が同じ画面で読めるか:
+       - 価格（月額 ¥980・税込）と、無料期間（1 か月）・最初の請求の日
+       - 自動で更新すること
+       - 解約の方法と時期（いつでも「設定 → 解約・お支払いの管理」から・期間の終わりまで使える・日割りの返金なし）。ボタンの近くに出る文はこちらが渡している（`custom_text[submit][message]`。`api/_lib/billing.js` の `checkoutSubmitMessage`。金額は書かず、無料期間が付く人にだけ無料と言う）
+       - 提供の時期（お申し込みの手続きが終わるとすぐ使える・無料期間中も同じ）。確定の画面の文にも入れてある（特商法の表記の提供時期と同じ。Batch 83 の反証）
+       - 足りないと思ったら、文はこちらで直せる。同意のチェック欄（規約への同意）は付けていない。付けたいときは言ってもらえれば足せる
+    4. カード（期限は未来の任意・CVC は任意の 3 桁・名前と住所は任意）:
+       - 成功: `4242 4242 4242 4242` → 加入になる
+       - 拒否: `4000 0000 0000 0002` → 「カードが拒否された」と出て、加入にならない
+       - 3D セキュア: `4000 0000 0000 3220` → 確かめの画面が出る。通すと加入、失敗にすると加入にならない
+    5. 払うと `/pro.html?pro=done` に戻り、「Pro になった。ありがとう」と、使えるようになったもの（マイ単語帳 1,000語まで・思い出せるようになった語の推移 90日・テーマ 紙・藍、AI の鍵があれば AI の覚え方 1日 60 回）が並ぶ。設定のプランは「Pro の無料期間中（YYYY/M/D から有料で自動更新）」
+    6. **webhook の応答を見る**: Developers → Webhooks → 8 のエンドポイント → 配信の一覧。4 つとも 200 なら正しい。番号の読み方:
+       - 200: 受け取った（扱わないイベントと、前の行より古いイベントも 200 で何もしない）
+       - 400 `bad_signature`: 署名が合わない。署名の鍵の取り違え（テストと本番・別のエンドポイント）が多い。Vercel の関数のログに `billing/webhook: bad_signature (no raw body)` と出ていれば、届いた本文がそのまま読めていない（Vercel の関数の既定の形〔本文を先に読み切る〕は Batch 83 の反証で読めるように直した。それでも出たらこちらで直す。第 7 節・第 8 節）
+       - 400 `bad_request`: 署名は合うが本文が JSON でない
+       - 500: 表に書けない（7 の表が無い・`SUPABASE_SERVICE_ROLE_KEY` が違う）。Stripe が再送するので、直したら Resend
+       - 503: 変数が足りない（`STRIPE_WEBHOOK_SECRET`・`STRIPE_SECRET_KEY`・`SUPABASE_SERVICE_ROLE_KEY` のどれか）
+    7. 設定 →「解約・お支払いの管理」→ Billing Portal でカードの変更ができる。「キャンセル」すると設定のプランが「Pro（解約予定・YYYY/M/D まで使える）」
+    8. マイ単語帳で 101 語目が足せる・学習状況の「詳しい記録」の推移で 90日 が選べる・設定の「見た目」で紙・藍が選べる
+12. **本番に切り替える**（この順で。テストモードで作った行を本番に持ち込まない）:
+    1. Stripe のテストモードで、8 の webhook のエンドポイントを無効にする（Disable。消してもよい）。これでテストの行はもう書かれない
+    2. Supabase の Table Editor で `subscriptions` の行を全部消す（表の画面で全部を選んで Delete。SQL は流さない。表の形は変えない）。この表は 7 で作ったばかりなので、ここまでの行はどれもテストモードの加入（自分の 11 の行と、テストの間に加入画面からテストのカードで加入した人の行）。残すと、その人が本番で加入しようとしたときに、まだ無料期間の中なら「すでに Pro」（409）、終わっていても無料期間が付かず、テストモードの顧客の番号を本番の Stripe に渡して「手続きを始められませんでした」（502）になる。「解約・お支払いの管理」も同じ理由で開けない。テストの行の人は、消した後は Pro ではない（テストの契約でお金は動いていない）
+    3. Stripe を本番モードにして 6・8・10 をもう一度（Price・Webhook・Portal・メールの設定は本番で別）
+    4. 差し替える直前に、`subscriptions` がまだ空かを Table Editor で見る（行があれば 2 をもう一度）。`STRIPE_SECRET_KEY`・`STRIPE_PRICE_MONTHLY`・`STRIPE_WEBHOOK_SECRET` を本番の値に差し替えて Redeploy
+13. **本物のカードで自分で一度確かめる**:
+    1. 自分のアカウントで加入する（12 でテストの行を消したので、本番では行の無い初めての人として 1 か月無料になり、この時点の請求は 0 円。行が残っていると 409 か 502 になる: 12 の 2）→ 設定に Pro と出る → webhook が 200 → Portal でキャンセル → 「解約予定」と出る
+    2. 本当の請求も見るなら: 1 で解約予定にした契約を Subscriptions から「すぐにキャンセル」する（解約予定のままだと無料期間の終わりまで Pro なので、加入し直せない）→ 設定のプランが「無料」に戻る → 同じアカウントでもう一度加入する（2 回目は無料期間が付かないので、その場で ¥980 が請求される）→ 領収書のメールが届く → Payments からその支払いを返金（Refund）→ Subscriptions からその契約もすぐにキャンセル（返金だけでは契約は止まらない）
+14. **知らせる**（任意）: news.html に第 10 節の下書きを貼る。受付中になると、マイ単語帳の上限の文の「Pro なら1,000語」が加入画面へのリンクになる（Web だけ。アプリでは出ない）。フッター・設定の「Pro について」は Batch 78 から出していないので、広く知らせるときは `/pro.html` の URL を直接渡す。
+
+### 受付を急いで止めるとき
+
+- Vercel の環境変数から `STRIPE_PRICE_MONTHLY` を消して Redeploy する。加入画面は「受付前」になり、新しい加入（`/api/billing/checkout`）は 503 になる。マイ単語帳の上限の文のリンクは、端末の控え（最長 12 時間）が切れると消える（それまでに開いても加入画面は「受付前」）。
+- もう加入している人の「解約・お支払いの管理」と webhook（解約予定・更新・支払いの失敗の反映）は動き続ける（秘密鍵だけを見る。Batch 83）。`STRIPE_SECRET_KEY` まで消すと、こちらも 503 で止まる（webhook は Stripe が再送する）。
+- 止めるのは新しい手続きの画面を作ることだけ。止める前に作られた手続きの画面（Checkout）は、その期限（作ってから最長 24 時間）までは支払える。だから止めた後にも加入が届くことがある（webhook が記録するので、払った人は Pro になる）。すぐに全部止めたいときは、Stripe の側で開いている手続きを期限切れにする（Checkout Session の expire）。止めた後に届いた加入を断りたいときは、第 6 節の返金と契約のすぐのキャンセル。
+- 再開は変数を戻して Redeploy。
 
 ## 3. entitlement（Pro かどうか）の定義
 
@@ -83,48 +114,51 @@ isProRow(row, now) =
 ```
 
 - **3 日の猶予**: 更新日に支払いが失敗しても、Stripe の再試行（Smart Retries）が走る数日は Pro を切らない。期限 + 3 日を過ぎたら、status が何であれ free
-- **past_due も Pro**: 支払い失敗の直後に特典を止めると、カードの期限切れだけで記録の修復やテーマが突然消える。猶予の 3 日で回収する
-- `canceled` / `unpaid` / `incomplete` / `incomplete_expired` / `none` は free。解約予定（`cancel_at_period_end: true`）は status が `active` のままなので、期間末まで Pro
-- クライアントは本人の行を `localStorage` の `spelldash_plan` にキャッシュし、`isPro()` は同期的にそれを見る（ネットワークに行かない）。更新のタイミングはログイン直後・各ページの表示時（`refreshPlan()`）・`?pro=done` のとき（`waitForPro()`、2 秒 × 6 回）。ログアウトで消す
+- **past_due も Pro**: 支払い失敗の直後に特典を止めると、カードの期限切れだけでマイ単語帳の追加やテーマが突然使えなくなる。猶予の 3 日で回収する
+- `canceled` / `unpaid` / `incomplete` / `incomplete_expired` / `none` は free。解約予定（`cancel_at_period_end: true`）は status が `active`（無料期間なら `trialing`）のままなので、期間末まで Pro
+- クライアントは本人の行を `localStorage` の `spelldash_plan` にキャッシュし、`isPro()` は同期的にそれを見る（ネットワークに行かない）。更新のタイミングはログイン直後・各ページの表示時（`refreshPlan()`）・`?pro=done` のとき（`waitForPro()`）。ログアウトで消す
 - 最終判断はサーバー: AI の回数（`api/_lib/shared.js` の `reject()`）は本人のトークンで `subscriptions` を読んで決める（ユーザーごと 5 分キャッシュ）。クライアントの判定は表示とローカルのゲート（単語帳の上限・推移・テーマ・修復）だけ
 
 ## 4. 特典とゲートの一覧
 
-| 特典 | 無料 | Pro | どこで変わるか |
-|---|---|---|---|
-| マイ単語帳の語数 | 100 語まで | 1,000 語まで | `js/myWords.js` `maxMyWords()`。超えている人も閲覧・削除はできる（追加だけ止まる）。上限の文に「Pro について」のリンク（`js/myWordsView.js`） |
-| AI（テキストからカード） | 1 日 2 回（`CARD_GEN_DAILY_LIMIT`） | 1 日 20 回（`CARD_GEN_DAILY_LIMIT_PRO`） | サーバー `api/generate-cards.js` → `reject()`。429 `daily_limit` の `upgrade:true` で `#cardGenStatus` に「Pro について」 |
-| AI（覚え方の解説） | 1 日 3 回（`EXPLAIN_WORD_DAILY_LIMIT`） | 1 日 60 回（`EXPLAIN_WORD_DAILY_LIMIT_PRO`） | サーバー `api/explain-word.js` → `reject()`。`js/wordAi.js` が `.ai-upgrade` のリンクを添える |
-| 覚えた単語の推移 | 30 日 | 90 日 | `stats.html` の `[data-trend-range]`。free が 90 を押すと `.trend-range__hint`。選択は `spelldash_trend_range`（growthLog は 120 日ぶん保持済み） |
-| シールドの上限 | 2 枚 | 3 枚 | `js/level.js` `shieldMax()` |
-| 連続記録の修復 | なし | 月 1 回、途切れてから 7 日以内 | `js/level.js` `getLostStreak()` / `canRepairStreak()` / `repairStreak()`。`stats.html` の `#streakRepair`（`repairedMonth` を `spelldash_streak` に保存。sync.js はクラウド採用時に `lost` / `repairedMonth` も写す） |
-| テーマ | 白・黒 | 白・黒・紙（paper）・藍（indigo） | `js/theme.js`。free の保存値が紙・藍なら白・黒に落として保存し直す。プロフィールの `#themeHint`。head のスニペットは Pro 判定をしない（失効直後は 1 瞬だけ旧テーマ、theme.js が直す） |
+加入画面の比較表と加入直後の一覧（`js/proView.js`）に書くのは、今の画面（英単語の学習に絞った形）で本当に使えるものだけ（Batch 83）。数はコードの値から入れる（字がずれない）。ゲートそのものは変えていない（書かない特典も、Pro の人には今のとおり効く）。
 
-AI の上限の 429 メッセージ: 無料「今日の無料ぶん（N回）は使い切った。Pro なら1日M回」/ Pro「今日の上限（M回）に達した。また明日」。表示側（`js/wordAi.js`）は無料の文の末尾に「（Pro について）」のリンクを括弧で続ける。
+| 特典 | 無料 | Pro | 加入画面 | どこで変わるか |
+|---|---|---|---|---|
+| マイ単語帳の語数 | 100 語まで | 1,000 語まで | 書く | `js/myWordsCore.js` の `MY_FREE_LIMIT`・`MY_PRO_LIMIT`、`js/myWords.js` `maxMyWords()`。超えている人も見る・消す・移す・練習はできる（追加だけ止まる）。上限の文の「Pro なら1,000語」は、受付中の Web だけ加入画面へのリンク（`js/myWordsPage.js`。受付前・アプリ・Pro の人は文だけ） |
+| 思い出せるようになった語の推移 | 30 日 | 90 日 | 書く | `js/plan.js` の `TREND_DAYS`（学習状況のゲート `js/statsView.js` と比較表が同じ値）。学習状況の「詳しい記録」の中。30／90 の切り替えは Pro の人にだけ出す。選択は `spelldash_trend_range`（growthLog は 120 日ぶん保持） |
+| テーマ | 白・黒 | 白・黒・紙（paper）・藍（indigo） | 書く | `js/theme.js`。free の保存値が紙・藍なら白・黒に落として保存し直す。設定の「見た目」の `#themeHint`。head のスニペットは Pro 判定をしない（失効直後は 1 瞬だけ旧テーマ、theme.js が直す） |
+| AI（覚え方） | 1 日 3 回 | 1 日 60 回 | 書く（AI の鍵があるときだけ。無ければ行を出さない〔加入直後の一覧も〕。前に取れた config に AI があった端末は、config が遅いときも行を先に出して回数を後から入れる〔`spelldash_billing_open` の `ai`〕。初めて開いて config が遅い〔画面を出した後に届く〕ときは、その画面では AI の行を足さない〔足すと下の節が動く。次に開くと出る〕） | サーバー `api/explain-word.js` → `reject()`。回数は `api/_lib/aiLimits.js`（`EXPLAIN_WORD_DAILY_LIMIT`・`EXPLAIN_WORD_DAILY_LIMIT_PRO`）だけで決まり、`/api/billing/config` の `ai` が同じ値を比較表に返す。使う場所は学習状況の語の詳細の「覚え方を作る」（ログイン中） |
+| AI（テキストからカード） | 1 日 2 回 | 1 日 20 回 | 書かない（入口の list.html は転送で、今の画面から届かない） | サーバー `api/generate-cards.js` → `reject()`（`CARD_GEN_DAILY_LIMIT`・`_PRO`） |
+| シールドの上限 | 2 枚 | 3 枚 | 書かない（今の画面は連続日数とシールドを出さない） | `js/level.js` `shieldMax()` |
+| 連続記録の修復 | なし | 月 1 回、途切れてから 7 日以内 | 書かない（学習状況の「詳しい記録」の中にだけ出る） | `js/level.js` `getLostStreak()` / `canRepairStreak()` / `repairStreak()`。`stats.html` の `#streakRepair`（`repairedMonth` を `spelldash_streak` に保存。sync.js はクラウド採用時に `lost` / `repairedMonth` も写す） |
+
+AI の上限の 429 の文: 無料「今日の無料ぶん（N回）は使い切った。」と別の欄 `offer`「Pro なら1日M回」/ Pro「今日の上限（M回）に達した。また明日」。表示側（`js/wordAi.js`）は、受付中で、英単語の学習に絞っていない形（旗を外した形）のときだけ `offer` と「（Pro について）」のリンクを続ける。今の画面では文だけ。
 
 ## 5. アプリ版（Capacitor）の扱い
 
-- 加入画面 `/pro.html` と特商法 `/tokushoho.html` はアプリに入れず（scripts/build-app.mjs の PAGES に無い）、アプリではそこへのリンクも出さない（2026-10-13、PR #164 のレビュー。docs/APP.md の課金の行）。`/pro.html` に残る `isNativeApp` の分岐（価格と購入ボタン `#proPlans` を出さず「Pro の加入と管理は Web 版（www.spelldash.net）で。」と状態だけ）は、通らない経路の守りとして残す。プロフィールのプラン行もボタン無し（値だけ）
-- 理由: App Store Review Guideline 3.1.1。アプリ内でデジタルコンテンツの購入へ誘導すると、アプリ内課金（StoreKit）が必要になり、Stripe への誘導は審査で落ちる。価格やリンクを出さない「リーダー型」なら、Web で加入した状態をアプリで使うのは可
+- 加入画面 `/pro.html` と特商法 `/tokushoho.html` はアプリに入れず（scripts/build-app.mjs の PAGES に無い）、アプリではそこへのリンクも出さない（2026-10-13、PR #164 のレビュー。docs/APP.md の課金の行）。`/pro.html` に残る `isNativeApp` の分岐（価格と購入ボタン `#proPlans` を出さず「Pro の加入と管理は Web 版（www.spelldash.net）で。」と状態だけ）は、通らない経路の守りとして残す。プロフィールのプラン行もボタン無し（値だけ）。マイ単語帳の上限の文も、アプリでは Pro の話をしない
+- 理由: ストアの審査の決まり（3.1.1）。アプリ内でデジタルコンテンツの購入へ誘導すると、アプリ内課金が必要になり、外の決済への誘導は審査で落ちる。価格やリンクを出さない「リーダー型」なら、Web で加入した状態をアプリで使うのは可
 - Web で加入した状態は user_id に紐づく（`subscriptions`）。ただしアプリはまだログインできないので、アプリで Pro にはならない。アプリのログインができるまで「アプリでも使える」とは書かない（加入画面の FAQ からも外した）
-- 将来 StoreKit / Google Play Billing を入れるなら、`subscriptions` に `source`（stripe / apple / google）列を足し、`isProRow` はそのまま使える。いまは判断しない（docs/APP.md）
+- 将来ストアの課金を入れるなら、`subscriptions` に `source`（stripe / ストアの名前）列を足し、`isProRow` はそのまま使える。いまは判断しない（docs/APP.md）
 - 審査の説明文に「購入はアプリ外。アプリ内に価格・購入導線は無い」と書く（docs/APP.md §5 と合わせる）
 
 ## 6. 解約・返金・問い合わせの運用
 
-- **解約は本人が Billing Portal で**（プロフィール →「お支払いの管理」）。期間末で止まり（`cancel_at_period_end`）、それまで Pro。日割りの返金はしない（tokushoho.html・privacy.html・/pro.html の FAQ に明記）。解約の取り消しも Portal から
+- **解約は本人が Billing Portal で**（設定 →「解約・お支払いの管理」）。期間末で止まり（`cancel_at_period_end`）、それまで Pro。日割りの返金はしない（tokushoho.html・terms.html・/pro.html の「申し込みの前に」と確定の画面の文に明記）。解約の取り消しも Portal から
 - **返金**は Stripe ダッシュボード → Payments → 該当の支払い → Refund で手動。返金しても subscription は止まらないので、必要なら Subscriptions → Cancel も行う（webhook が `deleted` → `canceled` を書く）
-- **領収書**は Stripe が支払いのたびにメールで送る（Settings → Emails で「成功した支払いのメール」を ON にしておく）。Portal からも過去の請求書を見られる
+- **領収書**は Stripe が支払いのたびにメールで送る（Settings → Emails で成功した支払いのメールを ON。第 2 節の 10）。Portal からも過去の請求書を見られる
 - **問い合わせ**: 「加入したのに Pro にならない」は第 8 節。「カードを変えたい」は Portal。「アカウントを消したい」はこれまでどおり（Supabase の `auth.users` を消すと `subscriptions` も `on delete cascade`。Stripe 側の顧客は残るので、必要なら Customers から削除）
-- **価格を変えるとき**: Stripe で新しい Price を作って `STRIPE_PRICE_MONTHLY` を差し替える（既存の加入者は旧 Price のまま続く＝実質値上げなし）。コードの変更は不要
+- **価格を変えるとき**: Stripe で新しい Price を作って `STRIPE_PRICE_MONTHLY` を差し替える（既存の加入者は旧 Price のまま続く＝実質値上げなし）。コードの変更は不要。特商法の表記と規約は第 11 節
 - Pro を手で付けたいとき（お礼・検証）: Stripe で 100% のクーポンを作り Checkout の「プロモーションコード」欄で使ってもらう（`allow_promotion_codes=true`）。DB を直接書くのは最後の手段（docs/SQL_BILLING.md §3）
 
 ## 7. プライバシーとセキュリティ
 
-- 鍵の置き場: `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `SUPABASE_SERVICE_ROLE_KEY` は Vercel の環境変数だけ。クライアントに渡さず、応答にも含めず、ログにも書かない。リポジトリには Stripe の鍵（`sk_` や `whsec` で始まる文字列）を置かない（受け入れ基準の grep）
+- 鍵の置き場: `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `SUPABASE_SERVICE_ROLE_KEY` は Vercel の環境変数だけ。クライアントに渡さず、応答にも含めず、ログにも書かない。リポジトリには Stripe の鍵（`sk_` や `whsec` で始まる文字列）を置かない（受け入れ基準の grep。`scripts/test-billing.mjs` の偽の鍵もこの形にしていない）
 - カード番号は Stripe Checkout（Stripe のドメイン）で入力され、SpellDash のサーバーには来ない（PCI DSS の SAQ A 相当）。SpellDash が持つのは `status` / 更新日 / `stripe_customer_id` / `stripe_subscription_id` / `price_id` だけ（privacy.html「お支払い情報」）
-- Webhook の署名検証: `Stripe-Signature: t=...,v1=...` を分解し、`HMAC-SHA256(secret, "${t}.${rawBody}")` の hex を `v1` のどれかと `crypto.timingSafeEqual`（長さ違いは不一致）。`|now - t| > 300 秒` は拒否。生ボディを使うため `bodyParser: false`
-- 逆順到着: `subscriptions.event_created` に最後に反映した event の `created` を持ち、それ以下のイベントは書かない（`updated` の後に古い `created` が届いても巻き戻らない）
+- Webhook の署名検証: `Stripe-Signature: t=...,v1=...` を分解し、`HMAC-SHA256(secret, "${t}.${rawBody}")` の hex を `v1` のどれかと `crypto.timingSafeEqual`（長さ違いは不一致）。`|now - t| > 300 秒` は拒否
+- 生ボディ（Batch 83）: Vercel の関数は、既定の補助（helpers）が関数を呼ぶ前に本文を最後まで読み、読み切ったバイト列の写しへ `req.on('data'/'end')` と `req.read` を付け替え、`req.body` は読んだ時に JSON にする（`rawBody` は置かない）。`webhook.js` の `bodyParser: false` の指定は読まない（効かない。Batch 83 の反証で、公開されている実行環境の版の中身を読み、その形を組み直した要求で確かめた）。補助は切らない（関数は `res.status`・`res.json` を使う）。だから `readRawBody` は `rawBody` → 付け替えた `req.on` の写し → まだ読まれていない流れ → 文字列か Buffer の `body` の順に読み、`req.body` は最後まで触らない（読むと解析する・例外を出す作りがある）。写しが終わらないときは 5 秒で諦める。解析済みの値しか無ければ署名を確かめず 400（JSON を作り直して確かめない）。`scripts/test-billing.mjs` がこの形（と前からの 7 つの形）を確かめる。テストモードの一巡（第 2 節の 11）で 200 になれば、本番の形で読めている
+- 逆順到着: `subscriptions.event_created` に最後に反映した event の `created` を持ち、それ以下のイベントは書かない（`updated` の後に古い `created` が届いても巻き戻らない）。本人の行がまだ無いときの最初の書き込みは「入れるだけ」（`resolution=ignore-duplicates`）。入らなかった（同時に届いた別のイベントが先に入れた）ら、`event_created` を条件にした書き換えへ進む（同時に届いても新しいイベントが残る。Batch 83）
 - RLS: `subscriptions` は本人が自分の行を **読むだけ**。insert / update / delete は `anon` / `authenticated` から revoke。書くのは webhook（service role）だけ。checkout / portal / AI の回数判定は本人のトークン + anon key で読む（RLS で本人だけ）
 - 冪等性: Checkout の作成に `Idempotency-Key: checkout:<userId>:<interval>:<分>` を付け、二重押しで 2 つのセッションを作らない。すでに Pro の人は 409 `already_subscribed`
 - ログは `billing/<label>: <種別> <状態>` だけ。メール・顧客 id・リクエスト本文は書かない。CRM にも Stripe の id は出さない
@@ -135,19 +169,21 @@ AI の上限の 429 メッセージ: 無料「今日の無料ぶん（N回）は
 
 | 画面の表示・症状 | API / ログ | 原因 | 直し方 |
 |---|---|---|---|
-| /pro.html に「Pro はまだ受付前です。」 | `GET /api/billing/config` が `configured:false` / checkout が 503 `not_configured` | `STRIPE_SECRET_KEY` か `STRIPE_PRICE_MONTHLY` が無い | 第 2 節の 3 を入れて Redeploy |
-| 価格が出ず「手続きを始められませんでした」 | config が 502 `upstream`、ログ `billing/config: upstream` | Price ID が違う（テスト／本番の取り違え）、キーが違う | Stripe の Price ID と鍵のモードをそろえる |
-| 年額ボタンが出ない | config の `prices` に year が無い | `STRIPE_PRICE_YEARLY` が無い、または取れなかった | 任意。出すなら Price を作って変数に入れる |
-| 支払ったのに Free のまま（`?pro=done` で「反映まで少しお待ちください」） | Stripe → Webhooks に配信が無い、または 400 / 500 | webhook 未設定／URL 違い／`STRIPE_WEBHOOK_SECRET` 違い（400 `bad_signature`）／`subscriptions` 未作成（500、ログ `subscriptions table missing`） | 第 2 節の 4〜6。Stripe は失敗した配信を再送する（3 日間）。直したら Webhooks → 該当イベント → Resend。プロフィールを開き直すと反映 |
-| Webhook のログが 400 `bad_signature` | `billing/webhook: bad_signature` | Signing secret の取り違え（テスト／本番、別エンドポイント）、またはプロキシで本文が変わった | 該当エンドポイントの Signing secret を入れ直して Redeploy。時刻ずれなら 300 秒以内か確かめる |
-| Webhook のログが 500 | `billing/webhook <type>: upstream subscriptions <status> <code>`（Supabase に書けない）/ `billing/webhook: <type> subscriptions table missing`（テーブル無し）/ `billing/webhook <type>: upstream stripe …`（checkout.session.completed で subscription を取り直せない） | Supabase に書けない（テーブル無し、service role key 違い） | docs/SQL_BILLING.md を実行、`SUPABASE_SERVICE_ROLE_KEY` を確かめる。再送で入る |
+| /pro.html に「Pro はまだ受付前。」 | `GET /api/billing/config` が `configured:false` / checkout が 503 `not_configured` | `STRIPE_SECRET_KEY` か `STRIPE_PRICE_MONTHLY` が無い | 第 2 節の 9 を入れて Redeploy |
+| 鍵と Price を入れたのに「Pro はまだ受付前。」 | config が 502 `upstream`、ログ `billing/config: upstream` | Price ID が違う（テスト／本番の取り違え）、キーが違う | Stripe の Price ID と鍵のモードをそろえる |
+| 年額ボタンが出ない | config の `prices` に year が無い | 年額は出さない決定（`STRIPE_PRICE_YEARLY` を入れていない） | 正常 |
+| 支払ったのに Free のまま（`?pro=done` で「反映を待っている」） | Stripe → Webhooks に配信が無い、または 400 / 500 / 503 | webhook 未設定／URL 違い／`STRIPE_WEBHOOK_SECRET` 違い（400 `bad_signature`）／`subscriptions` 未作成（500、ログ `subscriptions table missing`）／変数の不足（503） | 第 2 節の 7〜9。Stripe は失敗した配信を再送する。直したら Webhooks → 該当イベント → Resend。設定を開き直すと反映 |
+| Webhook が 400 `bad_signature` | `billing/webhook: bad_signature` | Signing secret の取り違え（テスト／本番、別エンドポイント）、またはプロキシで本文が変わった | 該当エンドポイントの Signing secret を入れ直して Redeploy。時刻ずれなら 300 秒以内か確かめる |
+| Webhook が 400 で、ログに `(no raw body)` | `billing/webhook: bad_signature (no raw body)` | 届いた本文のバイト列が読めない（配信の側が先に読み切り、生の値も写しも残していない。今の Vercel の既定の形〔写しを `req.on` に付け替える〕は読める） | コードの側で直す（`readRawBody`。第 7 節）。それまで Stripe は再送を続ける |
+| Webhook が 500 | `billing/webhook <type>: upstream subscriptions <status> <code>`（Supabase に書けない）/ `billing/webhook: <type> subscriptions table missing`（テーブル無し）/ `billing/webhook <type>: upstream stripe …`（checkout.session.completed で subscription を取り直せない） | Supabase に書けない（テーブル無し、service role key 違い） | docs/SQL_BILLING.md を実行、`SUPABASE_SERVICE_ROLE_KEY` を確かめる。再送で入る |
 | Webhook のログに `no user for customer` | 200 で無視 | `metadata.user_id` が無く、`stripe_customer_id` でも行が見つからない（Stripe ダッシュボードで手で作った subscription など） | Checkout 経由で加入し直すか、docs/SQL_BILLING.md §3 の手順で行を作る |
-| 「すでに Pro です。」 | checkout 409 `already_subscribed` | 本人の行が isProRow | 正常。プロフィールの「お支払いの管理」へ |
-| 「お支払いの記録が見つかりません」 | portal 404 `no_subscription` | `stripe_customer_id` が無い（加入直後で webhook 未着、または一度も加入していない） | 数分待って開き直す。それでも無ければ webhook（上の行） |
+| 「すでに Pro。」 | checkout 409 `already_subscribed` | 本人の行が isProRow | 正常。設定の「解約・お支払いの管理」へ |
+| 「お支払いの記録が無い」 | portal 404 `no_subscription` | `stripe_customer_id` が無い（加入直後で webhook 未着、または一度も加入していない） | 数分待って開き直す。それでも無ければ webhook（上の行） |
 | 解約したのに Pro のまま | | 期間末まで Pro（解約予定）。期限 + 3 日の猶予 | 仕様。`#planValue` が「解約予定・YYYY/M/D まで」なら正常 |
 | 支払い失敗の人が Pro のまま／急に Free になった | status `past_due` | 期限 + 3 日は猶予（第 3 節）。過ぎると free | Portal でカードを更新してもらう。Stripe の Smart Retries が成功すれば `active` に戻る。画面の文は「お支払いが確認できていない。カードを更新しないと無料に戻る」で日付を出さない（更新に失敗した時点で current_period_end は次の期間の終わりに進んでいて、無料に戻る日は Stripe の再試行と解約の設定が決める） |
 | テーマが白／黒に戻った | | 失効したので紙・藍を落とした（`getTheme()`） | 仕様。再加入で選び直せる |
 | ログインし直したら Pro の表示が消えた | | `spelldash_plan` のキャッシュをログアウトで消す。ログイン直後の `refreshPlan()` が終わる前 | 1〜2 秒待つ。続くなら `subscriptions` の RLS（本人 select）を docs/SQL_BILLING.md (a)(b) で確かめる |
+| 加入画面の比較表に「AI の覚え方」の行が無い | config の `ai` が null | `ANTHROPIC_API_KEY` が無い（AI が使えない間は行を出さない。Batch 83 の反証） | 任意。入れて Redeploy（docs/FOUNDER_TODO.md D） |
 | CRM の `missing` に `subscriptions` | `GET /api/admin/players` | テーブル未作成 | docs/SQL_BILLING.md。無くても CRM は動く（全員 free 表示） |
 
 Stripe のダッシュボードで見る場所: Payments（支払い・返金）、Subscriptions（状態・解約予定）、Customers（メールで検索。SpellDash の `user_id` は subscription の metadata）、Developers → Webhooks（配信ログ。応答本文も見える）、Developers → Logs（API 呼び出し。Idempotency の重複も分かる）。
@@ -158,20 +194,20 @@ Stripe のダッシュボードで見る場所: Payments（支払い・返金）
 
 | エンドポイント | 認証 | 応答 |
 |---|---|---|
-| `GET /api/billing/config` | 不要 | `{ configured: boolean, prices: [{ interval: "month"\|"year", amount: number, currency: "jpy" }], trialMonths: number, trialDays: number }`（無料期間は初めての人だけ。月が設定されていれば trialDays は 0）。未設定なら `{ configured:false, prices:[], trialDays:0, trialMonths:0 }`（200）。Price は 10 分メモリキャッシュ。`amount` は `unit_amount` そのまま（JPY はゼロ小数） |
+| `GET /api/billing/config` | 不要 | `{ configured: boolean, prices: [{ interval: "month"\|"year", amount: number, currency: "jpy" }], trialMonths: number, trialDays: number, trialEndsAt?: string, ai: { explain: { free, pro } } \| null }`（無料期間は初めての人だけ。月が設定されていれば trialDays は 0。`ai` は AI の鍵があるときだけ、`api/_lib/aiLimits.js` の 1 日の回数）。未設定なら `{ configured:false, prices:[], trialDays:0, trialMonths:0, ai }`（200）。Price は 10 分メモリキャッシュ。`amount` は `unit_amount` そのまま（JPY はゼロ小数） |
 | `POST /api/billing/checkout` `{ interval }` | Bearer 必須 | `{ url }`（Stripe Checkout）。503 `not_configured` / 401 `login_required` / 400 `bad_request`（interval が month / year 以外、または year 未設定）/ 409 `already_subscribed` / 502 `upstream` |
-| `POST /api/billing/portal` | Bearer 必須 | `{ url }`（Billing Portal、return は `/profile.html`）。404 `no_subscription` / 503 / 401 / 502 |
-| `POST /api/billing/webhook` | `Stripe-Signature` | `{ received: true }`（200）。400 `bad_signature`（署名不正・300 秒超）/ 503（未設定）/ 500（Supabase 書き込み失敗 → Stripe が再送） |
+| `POST /api/billing/portal` | Bearer 必須 | `{ url }`（Billing Portal、return は `/profile.html`）。404 `no_subscription` / 503（秘密鍵が無い。月額の Price は見ない）/ 401 / 502 |
+| `POST /api/billing/webhook` | `Stripe-Signature` | `{ received: true }`（200）。400 `bad_signature`（署名不正・300 秒超・生の本文が読めない）/ 400 `bad_request`（JSON でない）/ 503（署名の鍵・秘密鍵・service role の鍵のどれかが無い。月額の Price は見ない）/ 500（Supabase 書き込み失敗 → Stripe が再送） |
 
-Checkout セッションの中身: `mode=subscription`、`line_items[0][price]`、`client_reference_id=<userId>`、既存の `stripe_customer_id` があれば `customer=`、無ければ `customer_email=`、`metadata[user_id]` と `subscription_data[metadata][user_id]`、`success_url=${SITE_ORIGIN}/pro.html?pro=done`（旧 `/profile.html?pro=done` も引き続き反映を待つ）、`cancel_url=${SITE_ORIGIN}/pro.html?pro=cancel`、`locale=ja`、`allow_promotion_codes=true`、初めての人（行が無く、Stripe の検索でも契約が無い）だけ `subscription_data[trial_end]`（`STRIPE_TRIAL_MONTHS` なら日本時間で n か月後、`STRIPE_TRIAL_DAYS` なら n 日後の UNIX 秒）。
+Checkout セッションの中身: `mode=subscription`、`line_items[0][price]`、`client_reference_id=<userId>`、既存の `stripe_customer_id` があれば `customer=`、無ければ `customer_email=`、`metadata[user_id]` と `subscription_data[metadata][user_id]`、`success_url=${SITE_ORIGIN}/pro.html?pro=done`（旧 `/profile.html?pro=done` も引き続き反映を待つ）、`cancel_url=${SITE_ORIGIN}/pro.html?pro=cancel`、`locale=ja`、`allow_promotion_codes=true`、初めての人（行が無く、Stripe の検索でも契約が無い）だけ `subscription_data[trial_end]`（`STRIPE_TRIAL_MONTHS` なら日本時間で n か月後、`STRIPE_TRIAL_DAYS` なら n 日後の UNIX 秒）。確定の画面のボタンの近くの文 `custom_text[submit][message]`（Batch 83。`checkoutSubmitMessage`: 自動更新・最初の請求の日・解約の場所と時期・日割りの返金なし。無料期間が付くときだけ無料と言う。金額は書かない。500 字以内）。同意のチェック欄（`consent_collection`）は付けない（第 2 節の 11 で確定の画面を見てから決める）。
 
-Webhook が扱うイベント: `checkout.session.completed`（`mode=subscription` のみ。`subscription` id で `GET /v1/subscriptions/{id}` を取り直して upsert）、`customer.subscription.created` / `updated` / `deleted`（`deleted` は `status=canceled`）。他は 200 で無視。upsert は `POST /rest/v1/subscriptions?on_conflict=user_id`、`Prefer: resolution=merge-duplicates`。
+Webhook が扱うイベント: `checkout.session.completed`（`mode=subscription` のみ。`subscription` id で `GET /v1/subscriptions/{id}` を取り直して書く）、`customer.subscription.created` / `updated` / `deleted`（`deleted` は `status=canceled`）。他は 200 で無視。本人の行が無ければ `POST /rest/v1/subscriptions?on_conflict=user_id`・`Prefer: resolution=ignore-duplicates,return=representation`（入れるだけ）、行がある・入らなかったときは `PATCH ...?user_id=eq.<id>&event_created=lte.<created>`（新しくないときだけ書き換える）。
 
 AI の回数（`api/_lib/shared.js` `reject(req, res, { scope, limit, proLimit })`）: 超えたら 429 `{ error: "daily_limit", upgrade: !isPro, message }`。
 
-クライアント（`js/plan.js`）: `getPlan()` → `{ pro, status, interval, periodEnd, cancelAtPeriodEnd, checkedAt }`（`localStorage.spelldash_plan`）、`isPro(now)`、`refreshPlan()`（`document` に `spelldash:plan` イベント）、`waitForPro({ tries, interval })`、`clearPlan()`、`postBilling(path, payload)`。
+クライアント（`js/plan.js`）: `getPlan()` → `{ pro, status, interval, periodEnd, cancelAtPeriodEnd, checkedAt }`（`localStorage.spelldash_plan`）、`isPro(now)`、`refreshPlan()`（`document` に `spelldash:plan` イベント）、`waitForPro({ tries, interval })`、`clearPlan()`、`postBilling(path, payload)`、`TREND_DAYS`（推移の日数）。
 
-E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/billing/*` を偽装（config は常に configured。checkout は Bearer 無し 401・`pro-token` 409・他は `/pro.html?pro=done` へ。portal は `pro-token` だけ 200）。スタブの `from("subscriptions")` は `localStorage.spelldash_test_plan` を本人の行として返す。`localStorage.spelldash_test_delay`（`{"session": ms, "plan": ms}`）があれば、getSession と subscriptions の読みをページを開いてからその時刻まで返さない（加入画面の読み込みの検査。2026-10-14 PR #170 のレビュー）。Webhook・署名・逆順・form の中身はネットワーク無しの `scratchpad/billing-test.mjs`（fetch 差し替え）で確かめる。
+検査: サーバー側は `scripts/test-billing.mjs`（CI の単体の検査。偽の fetch が決済の会社とデータベースの代わりに答え、外へ出ない。署名（設定した鍵で確かめる・鍵の入れ替えも）・webhook のイベントの書き込みと逆順・同時に届いた 2 つのイベント・生ボディの 9 つの形（配信の補助が先に読み切った本番の既定の形・rawBody を先に見る形を含む）と写しが終わらないときの守り・加入と管理の守り・確定の画面の文（提供の時期も）・受付を止めた後・価格と AI の回数・Pro の判定と無料期間・ログに鍵やメールを書かない）。画面は E2E（`npm test` の節「19. SpellDash Pro」）: ローカルサーバーが `/api/billing/*` を偽装（config は常に configured・`ai` は無料 3・Pro 60。checkout は Bearer 無し 401・`pro-token` 409・他は `/pro.html?pro=done` へ。portal は `pro-token` だけ 200）。スタブの `from("subscriptions")` は `localStorage.spelldash_test_plan` を本人の行として返す。`localStorage.spelldash_test_delay`（`{"session": ms, "plan": ms}`）があれば、getSession と subscriptions の読みをページを開いてからその時刻まで返さない（加入画面の読み込みの検査。2026-10-14 PR #170 のレビュー）。
 
 ## 10. 告知文の下書き（news.html 用。受付開始時に創業者が貼る）
 
@@ -181,21 +217,20 @@ E2E（`npm test` の「pro:」、84 件）: ローカルサーバーが `/api/bi
 > Pro は、自分の単語をもっと入れたい人、長く続けている人のための追加機能です。
 >
 > - マイ単語帳: 100 語 → 1,000 語
-> - AI（テキストからカード・覚え方の解説）: 1 日に使える回数が増えます
-> - 覚えた単語の推移: 30 日 → 90 日
-> - 連続記録: シールドが最大 3 枚。途切れても月 1 回、7 日以内なら前の連続日数を取り戻せます
+> - 思い出せるようになった語の推移: 30 日 → 90 日
 > - テーマ: 「紙」と「藍」
+> - AI の覚え方: 1 日に使える回数が増えます
 >
 > 月額 ¥980。初めての方は最初の 1 か月無料で、その間に解約すれば料金はかかりません。いつでも解約でき、期間の終わりまで使えます。
 > 覚えやすさや判定が有利になるものは売りません。ランキングも無料のままです。
 > 詳しくは [SpellDash Pro](./pro.html) へ。
 
-金額は Stripe で決めた額に直してから貼る。news.html の既存の書式（`<article>`、日付）に合わせる。
+金額は Stripe で決めた額に直してから貼る。AI の覚え方の行は `ANTHROPIC_API_KEY` を入れたときだけ残す（無ければ消す）。news.html の既存の書式（`<article>`、日付）に合わせる。
 
-## 11. 価格の仮説
+## 11. 価格
 
-- **決定（2026-10-07）: 月額 ¥980、初めての方は 1 か月無料（随時）。年額は出さない**
-- 以前の仮説: docs/MONETIZATION.md 由来の ¥580/月・¥4,800/年（中高生が小遣いで払える上限を意識して低め）
-- 比較: Duolingo Super 約 ¥1,100、mikan Premium 約 ¥600〜1,000、abceed 約 ¥1,400（2026-07 時点）。docs/PRO_VALUE.md の「月額 1,000 円払ってもやりたい」は価値設計の目標で、価格の決定ではない
-- 決めるのは創業者。画面の金額は Stripe の Price から出るので、Stripe の Price を作り直して環境変数を差し替えれば加入画面は変わる（既存の加入者は旧 Price のまま）。**ただし特定商取引法の表記（tokushoho.html の販売価格・支払時期）と利用規約（terms.html の 4.）には「月額 980 円」「1 か月の無料期間」を文で書いてあるので、価格・無料期間・年額を変えたら必ず両方を直す**
+- **決定（2026-10-07）: 月額 ¥980（税込）、初めての方は 1 か月無料（随時）。年額は出さない**
+- 以前の仮説（docs/MONETIZATION.md 由来の ¥580/月・¥4,800/年。中高生が小遣いで払える上限を意識して低め）は、この決定で置き換わった。docs/MONETIZATION.md・docs/DECISIONS_V4.md §9・docs/PRO_VALUE.md §6 の ¥580 は、決定より前の記録として残している（それぞれに置き換わった旨の 1 行がある）
+- docs/PRO_VALUE.md の「月額 1,000 円払ってもやりたい」は価値設計の目標で、価格の決定ではない
+- 決めるのは創業者。画面の金額は Stripe の Price から出るので、Stripe の Price を作り直して環境変数を差し替えれば加入画面は変わる（既存の加入者は旧 Price のまま）。**ただし文で書いてある所がある**: 特商法の表記（tokushoho.html の販売価格・支払時期）には「月額 980 円」「1 か月の無料期間」、利用規約（terms.html の 4.）には「月額の自動更新」「1 か月の無料期間」（規約に金額は無く、加入画面に表示するとだけ書く）。価格・無料期間を変えたら両方を直す。年額を出すなら規約の 4. も直す
 - 最初の 10 人・20 人のうちは、価格より「何に払うか」の反応を見る（docs/PRO_VALUE.md §5）。無料期間（1 か月）があるので、最初の数字は「無料期間からの継続率」で見る（管理画面の動線の checkout_done は無料期間の開始で数える）

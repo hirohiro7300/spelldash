@@ -194,15 +194,15 @@ const server = http.createServer((req, res) => {
   }
 
   // /api/billing/* の偽装（SpellDash Pro。本物の Stripe・Supabase には接続しない）。
-  // config は常に configured（月額 580・年額 4,800）。checkout は Bearer 無し → 401、pro-token → 409、他 → Checkout の代わりに
-  // pro.html?pro=done へ。portal は pro-token → profile.html、他 → 404 no_subscription。webhook は偽装しない（オフラインテストで検証）
+  // config は常に configured（月額 580・年額 4,800。比較表の AI の回数 ai は無料 3・Pro 60 で、AI が使える体）。checkout は Bearer 無し → 401、pro-token → 409、他 → Checkout の代わりに
+  // pro.html?pro=done へ。portal は pro-token → profile.html、他 → 404 no_subscription。webhook は偽装しない（scripts/test-billing.mjs が偽の fetch で確かめる）
   if (urlPath.startsWith("/api/billing/")) {
     const json = (status, body) => res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify(body));
     const route = urlPath.slice("/api/billing/".length);
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
     if (route === "config") {
       if (req.method !== "GET") return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
-      return json(200, { configured: true, prices: [{ interval: "month", amount: 580, currency: "jpy" }, { interval: "year", amount: 4800, currency: "jpy" }], trialDays: 0, trialMonths: fakeTrialMonths, ...(fakeTrialMonths ? { trialEndsAt: "2026-11-07T03:00:00.000Z" } : {}) });
+      return json(200, { configured: true, prices: [{ interval: "month", amount: 580, currency: "jpy" }, { interval: "year", amount: 4800, currency: "jpy" }], trialDays: 0, trialMonths: fakeTrialMonths, ...(fakeTrialMonths ? { trialEndsAt: "2026-11-07T03:00:00.000Z" } : {}), ai: { explain: { free: 3, pro: 60 } } });
     }
     if (route !== "checkout" && route !== "portal") return json(404, { error: "not_found", message: "そのAPIはありません。" });
     if (req.method !== "POST") return json(405, { error: "method_not_allowed", message: "許可されていないメソッドです。" });
@@ -18522,6 +18522,10 @@ console.log("pro:");
   const visible = (page, selector) => page.$eval(selector, (el) => !el.hidden && el.getClientRects().length > 0).catch(() => false);
   const theme = (page) => page.evaluate(() => document.documentElement.dataset.theme);
   const noHorizontalScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  // 「申し込みの前に」の行（[項目, 中身]）と、比較表の見えている行の名前（Batch 83 の反証）
+  const termRows = (page) => page.$$eval(".pro-terms > div", (els) => els.map((d) => [d.querySelector("dt")?.textContent.trim() ?? "", d.querySelector("dd")?.textContent.replace(/\s+/g, " ").trim() ?? ""])).catch(() => []);
+  const shownCompareRows = (page) => page.$$eval("#proCompare tbody tr", (els) => els.filter((tr) => !tr.hidden && tr.getClientRects().length > 0).map((tr) => tr.querySelector("th")?.firstChild?.textContent.trim() ?? "")).catch(() => []);
+  const rememberedAi = (page) => page.evaluate(() => { try { return JSON.parse(localStorage.getItem("spelldash_billing_open") || "null")?.ai ?? null; } catch { return null; } });
 
   // 1. 未ログイン: 価格 2 つ・CTA は「ログインして始める」（#proLoginStart）→ 押すとヘッダーのログインが開く（Batch 42: #proCheckoutMonth はログイン後だけ。#proState は空）
   {
@@ -18532,9 +18536,46 @@ console.log("pro:");
     check("Pro: 未ログインでも価格が 2 つ出る（580 と 4,800）", loaded && plans.includes("580") && plans.includes("4,800"), plans);
     const terms = await text(page, ".pro-terms");
     check("Pro: 未ログインは年額ボタンを出さず、申し込みの前に（料金・更新・解約・支払い）をボタンの直下に", (await page.$("#proCheckoutYear")) === null && terms.includes("月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）（税込）") && terms.includes("自動で更新") && terms.includes("お支払いの管理") && terms.includes("Stripe"), terms);
+    // Batch 83 の反証: 提供の時期（特定商取引法 12 条の 6 の確認の項目。特商法の表記の提供時期と同じ）も「申し込みの前に」の最後に書く
+    const rows0 = await termRows(page);
+    check("Pro（Batch 83 反証）: 「申し込みの前に」の最後は「提供」＝「手続きが終わるとすぐ使える」（無料期間の設定が無いときは無料期間の話をしない）",
+      JSON.stringify(rows0.at(-1)) === JSON.stringify(["提供", "手続きが終わるとすぐ使える"]) && rows0.map((r) => r[0]).join("|") === "料金|更新|解約|支払い|提供", JSON.stringify(rows0));
     check("Pro: 見出しの直下（最初の画面）に料金と「いつでも解約できる」の 1 行", (await text(page, "#proPrice")) === "月額 ¥580 ／ 年額 ¥4,800（税込）。いつでも解約できる。" && (await page.$eval("#proPrice", (el) => el.getBoundingClientRect().bottom < window.innerHeight)), await text(page, "#proPrice"));
     check("Pro: h1 は「単語の学習は無料のまま」（「学習の核」は使わない）", (await text(page, "h1")).includes("単語の学習は無料のまま") && !(await page.content()).includes("学習の核"), await text(page, "h1"));
-    check("Pro: 比較表は 5 項目", (await page.$$("#proCompare tbody tr")).length === 5);
+    // Batch 83: 比較表は今の画面（英単語の学習に絞った形）で本当に使える特典だけ。数はコードの値から（js/proView.js が入れる）
+    const compare = await page.evaluate(async () => {
+      const core = await import("/js/myWordsCore.js");
+      const plan = await import("/js/plan.js").catch(() => ({}));
+      const rows = [...document.querySelectorAll("#proCompare tbody tr")].map((tr) => ({
+        name: tr.querySelector("th")?.firstChild?.textContent.trim() ?? "",
+        sub: tr.querySelector(".pro-compare__sub")?.textContent.trim() ?? "",
+        cells: [...tr.querySelectorAll("td")].map((td) => td.textContent.replace(/\s+/g, " ").trim())
+      }));
+      return { rows, table: document.getElementById("proCompareSection").textContent, free: core.MY_FREE_LIMIT, pro: core.MY_PRO_LIMIT, trend: plan.TREND_DAYS ?? null, faq: [...document.querySelectorAll("details.pro-faq")].map((d) => d.textContent.replace(/\s+/g, "")).join(" "), meta: document.querySelector('meta[name="description"]')?.content ?? "" };
+    });
+    const fmtN = (n) => Number(n).toLocaleString("ja-JP");
+    const row = Object.fromEntries(compare.rows.map((r) => [r.name, r]));
+    check("Pro（Batch 83）: 比較表は今の画面で使える 4 項目（マイ単語帳・思い出せるようになった語の推移・テーマ・AI の覚え方）。連続記録のシールド・修復とテキストからカードは書かない（今の画面から届かない）・ページの説明文も同じ",
+      JSON.stringify(compare.rows.map((r) => r.name)) === JSON.stringify(["マイ単語帳", "思い出せるようになった語の推移", "テーマ", "AI の覚え方"]) && !/シールド|修復|連続記録|テキストからカード|カード作成/.test(compare.table) && !/シールド|修復/.test(compare.meta),
+      JSON.stringify({ rows: compare.rows.map((r) => r.name), meta: compare.meta }));
+    check("Pro（Batch 83）: 比較表の数はコードの値（マイ単語帳は js/myWordsCore.js の MY_FREE_LIMIT・MY_PRO_LIMIT、推移は js/plan.js の TREND_DAYS、AI の回数は /api/billing/config の ai）・よくある質問の語数も同じ",
+      compare.trend !== null && row["マイ単語帳"]?.cells.join("|") === `${fmtN(compare.free)}語まで|${fmtN(compare.pro)}語まで` && row["思い出せるようになった語の推移"]?.cells.join("|") === `${compare.trend.free} 日|${compare.trend.pro} 日` &&
+        row["AI の覚え方"]?.cells.join("|") === "3 回|60 回" && compare.faq.includes(`${fmtN(compare.free)}語を超えたぶん`) && compare.faq.includes(`${fmtN(compare.free)}語までに戻る`),
+      JSON.stringify({ rows: compare.rows, free: compare.free, pro: compare.pro, trend: compare.trend }));
+    check("Pro（Batch 83）: AI の行はどこで使うか（学習状況の語の詳細）と「AI が使えるときだけ」を書く", /語の詳細/.test(row["AI の覚え方"]?.sub ?? "") && /AI が使えるときだけ/.test(row["AI の覚え方"]?.sub ?? ""), row["AI の覚え方"]?.sub ?? "");
+    check("Pro（Batch 83 反証）: AI が使える（config に ai がある）ときは比較表の 4 行がどれも見えている・config の AI の有無を覚える（次に config が遅いときに行を先に出しておく）",
+      JSON.stringify(await shownCompareRows(page)) === JSON.stringify(["マイ単語帳", "思い出せるようになった語の推移", "テーマ", "AI の覚え方"]) && (await rememberedAi(page)) === true,
+      JSON.stringify({ shown: await shownCompareRows(page), ai: await rememberedAi(page) }));
+    // 静的な字（読み込みの間の形）もコードの値と同じ（ずれていると、読み込みの後で js/proView.js が書き換えて字が動く）。
+    // AI の行は静的には隠しておく（Batch 83 の反証: AI が使えないときは行ごと出さない。config に ai があるとき・前の config に ai があったときだけ出す）。字は回数を約束しない「…」
+    const staticHtml = fs.readFileSync(path.join(ROOT, "pro.html"), "utf8");
+    const staticNums = [...staticHtml.matchAll(/data-pro-num="(\w+)">([^<]+)</g)].map((m) => [m[1], m[2]]);
+    const wantNums = { myFree: fmtN(compare.free), myPro: fmtN(compare.pro), trendFree: String(compare.trend?.free), trendPro: String(compare.trend?.pro) };
+    const staticAi = [...staticHtml.matchAll(/data-pro-ai="\w+">([^<]+)</g)].map((m) => m[1]);
+    const staticAiRow = staticHtml.match(/<tr\b[^>]*\bid="proCompareAi"[^>]*>/)?.[0] ?? "";
+    check("Pro（Batch 83）: pro.html の静的な数（data-pro-num の 6 か所）はコードの値と同じ・AI の行は静的には隠し（hidden）、字は回数を約束しない「…」",
+      staticNums.length === 6 && staticNums.every(([k, v]) => wantNums[k] === v) && /\shidden(?=[\s>])/.test(staticAiRow) && JSON.stringify(staticAi) === JSON.stringify(["…", "…"]) && !/準備中/.test(staticHtml.match(/<table class="pro-compare"[\s\S]*?<\/table>/)?.[0] ?? "準備中"),
+      JSON.stringify({ staticNums, staticAi, staticAiRow }));
     check("Pro: 未ログインは #proState が空で、#proCheckoutMonth は無く #proLoginStart「ログインして始める」", (await text(page, "#proState")) === "" && (await page.$("#proCheckoutMonth")) === null && (await text(page, "#proLoginStart")).includes("ログインして始める"), await text(page, "#proState"));
     await page.click("#proLoginStart");
     await waitUntil(async () => (await page.getAttribute("#loginToggle", "aria-expanded")) === "true", 2000);
@@ -18553,6 +18594,62 @@ console.log("pro:");
     await page.close();
   }
 
+  // 1b. Batch 83 の反証: AI が使えない（config の ai が null。AI の鍵が無い。今の本番）ときは、比較表に AI の行を出さない（使えない特典を売り文に並べない。
+  //     加入直後の一覧も AI の行を出さない。前は両方の欄が「準備中」の行を出していた）。前の config で AI があったと覚えていても、config が来たら隠して覚え直す。
+  //     390 は行を grid で並べる幅（hidden の行が出てこない）
+  for (const [label, size] of [["1200", { viewport: { width: 1200, height: 900 } }], ["390", { viewport: { width: 390, height: 844 }, mobile: true }]]) {
+    const page = await newPage({ ...size, storage: { spelldash_billing_open: JSON.stringify({ open: true, at: Date.now(), ai: true }) } });
+    await page.route("**/api/billing/config", async (route) => {
+      const res = await route.fetch();
+      await route.fulfill({ response: res, body: JSON.stringify({ ...(await res.json()), ai: null }), headers: { ...res.headers(), "content-type": "application/json" } });
+    });
+    await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
+    const shown = await shownCompareRows(page);
+    const tableText = await page.$eval("#proCompareSection", (el) => el.innerText).catch(() => "");
+    const ai = await rememberedAi(page);
+    check(`Pro（Batch 83 反証）: AI が使えない（config の ai が null）ときは比較表に AI の行を出さない（マイ単語帳・推移・テーマの 3 行。${label}）・覚えた AI の有無も「なし」に直す・エラー 0`,
+      JSON.stringify(shown) === JSON.stringify(["マイ単語帳", "思い出せるようになった語の推移", "テーマ"]) && !/AI|準備中/.test(tableText) && ai === false && page.errors.length === 0,
+      JSON.stringify({ shown, ai, tableText: tableText.slice(0, 200), errors: page.errors.slice(0, 1) }));
+    await page.close();
+  }
+
+  // 1c. Batch 83 の反証: 前の config に AI があった（覚えている）人は、config が遅くても AI の行を先に出しておき（字は回数を約束しない「…」）、
+  //     届いたら同じ行に回数が入る（行が後から入って料金の節が下がらない: 比較表の高さが、出した瞬間と届いた後で同じ）
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_billing_open: JSON.stringify({ open: true, at: Date.now(), price: { month: 580, year: 4800, trialMonths: 0, trialDays: 0 }, ai: true }) } });
+    await page.route("**/api/billing/config", async (route) => { await new Promise((r) => setTimeout(r, 2000)); await route.fallback(); });
+    await page.goto(BASE + "/pro.html", { waitUntil: "load" });
+    await waitUntil(async () => !(await page.evaluate(() => document.body.hasAttribute("data-pending"))), 3000);
+    const snap = () => page.evaluate(() => ({ h: Math.round(document.getElementById("proCompare").getBoundingClientRect().height), cells: [...document.querySelectorAll("#proCompare [data-pro-ai]")].map((e) => e.textContent.trim()), shown: document.getElementById("proCompareAi")?.hidden === false }));
+    const during = await snap();
+    await waitUntil(async () => (await snap()).cells[1] === "60 回", 4000);
+    const after = await snap();
+    check("Pro（Batch 83 反証）: 前の config に AI があった人は、config が遅くても AI の行を先に出し（字は「…」）、届いたら同じ行に回数が入る（比較表の高さは同じ）",
+      during.shown && JSON.stringify(during.cells) === JSON.stringify(["…", "…"]) && after.shown && JSON.stringify(after.cells) === JSON.stringify(["3 回", "60 回"]) && after.h === during.h && page.errors.length === 0,
+      JSON.stringify({ during, after, errors: page.errors.slice(0, 1) }));
+    await page.close();
+    // 初めて開いた（覚えた ai が無い）人で config が遅い: 出した後には AI の行を足さない（足すと下の節が 1 行ぶん動く: 1200 で CLS 0.049・390 で 0.094）。
+    // AI の有無は覚え、開き直すと先に出る（4 行）
+    const first = await newPage({ viewport: { width: 1200, height: 900 } });
+    await first.route("**/api/billing/config", async (route) => { await new Promise((r) => setTimeout(r, 2000)); await route.fallback(); });
+    await first.goto(BASE + "/pro.html", { waitUntil: "load" });
+    await waitUntil(async () => !(await first.evaluate(() => document.body.hasAttribute("data-pending"))), 3000);
+    const aiSnap = () => first.evaluate(() => ({ shown: document.getElementById("proCompareAi")?.hidden === false, h: Math.round(document.getElementById("proCompare").getBoundingClientRect().height) }));
+    const firstDuring = await aiSnap();
+    await waitUntil(async () => (await rememberedAi(first)) === true, 4000);
+    await first.waitForTimeout(200);
+    const firstAfter = await aiSnap();
+    await first.unroute("**/api/billing/config");
+    await first.reload({ waitUntil: "networkidle" });
+    await waitUntil(async () => (await first.$("#proLoginStart")) !== null, 5000);
+    const again = await shownCompareRows(first);
+    check("Pro（Batch 83 反証）: 初めて開いて config が遅いときは、出した後に AI の行を足さない（比較表の高さは同じ）・AI の有無は覚え、開き直すと 4 行",
+      !firstDuring.shown && !firstAfter.shown && firstAfter.h === firstDuring.h && (await rememberedAi(first)) === true && again.length === 4 && first.errors.length === 0,
+      JSON.stringify({ firstDuring, firstAfter, again, errors: first.errors.slice(0, 1) }));
+    await first.close();
+  }
+
   // 2. ログイン済み free: 月額ボタン → Checkout（偽: pro.html?pro=done）→ 反映されると「Pro になった」と、使えるようになったもの
   {
     const page = await newPage({ storage: { spelldash_test_session: "1" } });
@@ -18565,7 +18662,12 @@ console.log("pro:");
     const moved = await waitUntil(() => page.url().includes("/pro.html"), 5000);
     check("Pro: 月額ボタンで Checkout（偽）→ 加入画面に戻る", moved, page.url());
     const thanked = await waitUntil(async () => (await text(page, "#proWelcome")).includes("Pro になった"), 8000);
-    check("Pro: ?pro=done で反映を待ち「Pro になった」と、使えるようになったもの 5 つ（マイ単語帳・テーマへのリンク）", thanked && (await page.$$("#proWelcome li")).length === 5 && (await page.$('#proWelcome a[href="./list.html#myWords"]')) !== null && (await page.$('#proWelcome a[href="./profile.html#appearance"]')) !== null, await text(page, "#proWelcome"));
+    const welcome = await text(page, "#proWelcome");
+    check("Pro: ?pro=done で反映を待ち「Pro になった」と、使えるようになったもの 4 つ（Batch 83: 今の画面で使えるものだけ。マイ単語帳・推移・テーマ・AI の覚え方へのリンク。シールド・修復・カード作成は書かない・前の単語帳の list.html へは行かない）",
+      thanked && (await page.$$("#proWelcome li")).length === 4 && (await page.$('#proWelcome a[href="./mywords.html"]')) !== null && (await page.$('#proWelcome a[href="./stats.html#growth"]')) !== null &&
+        (await page.$('#proWelcome a[href="./profile.html#appearance"]')) !== null && (await page.$('#proWelcome a[href="./stats.html#learnedWords"]')) !== null && (await page.$('#proWelcome a[href*="list.html"]')) === null &&
+        !/シールド|修復|カード作成/.test(welcome) && welcome.includes("1日 60 回"),
+      welcome);
     check("Pro: 加入直後は購入ボタンを出さず、URL の ?pro=done を消す", (await page.$("#proCheckoutMonth")) === null && !page.url().includes("pro=done"), page.url());
     await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
     await waitUntil(async () => (await text(page, "#planValue")).includes("Pro"), 5000);
@@ -18706,6 +18808,9 @@ console.log("pro:");
     await waitUntil(async () => (await text(guest, "#proPrice")).includes("¥580"), 5000);
     check("無料期間: 未ログインの料金の行に「初めての方は最初の1か月無料」", (await text(guest, "#proPrice")).includes("初めての方は最初の1か月無料"), await text(guest, "#proPrice"));
     check("無料期間: 未ログインの「申し込みの前に」に「初めての方だけ、最初の1か月は無料」", (await text(guest, ".pro-terms")).includes("初めての方だけ、最初の1か月は無料"), await text(guest, ".pro-terms"));
+    const guestRows = await termRows(guest);
+    check("無料期間（Batch 83 反証）: 未ログインの「申し込みの前に」の「提供」は「手続きが終わるとすぐ使える（無料期間中も同じ）」（特商法の提供時期と同じ）",
+      JSON.stringify(guestRows.at(-1)) === JSON.stringify(["提供", "手続きが終わるとすぐ使える（無料期間中も同じ）"]), JSON.stringify(guestRows));
     await guest.close();
 
     const first = await newPage({ storage: { spelldash_test_session: "1" } });
@@ -18714,6 +18819,8 @@ console.log("pro:");
     const button = await text(first, "#proCheckoutMonth");
     check("無料期間: 初めての人のボタンは「1か月無料で始める（その後 月額 ¥580）」", button === "1か月無料で始める（その後 月額 ¥580）", button);
     check("無料期間: 初めての人にはサーバーの終わりの日（11/7 に 月額…を請求）", (await text(first, ".pro-terms")).includes("11/7 に 月額 ¥580"), await text(first, ".pro-terms"));
+    const firstRows = await termRows(first);
+    check("無料期間（Batch 83 反証）: 初めての人の「提供」も「手続きが終わるとすぐ使える（無料期間中も同じ）」", JSON.stringify(firstRows.at(-1)) === JSON.stringify(["提供", "手続きが終わるとすぐ使える（無料期間中も同じ）"]), JSON.stringify(firstRows));
     await first.close();
 
     const again = await newPage({ storage: proStorage({ status: "canceled", current_period_end: isoDaysFromNow(-40) }) });
@@ -18721,6 +18828,8 @@ console.log("pro:");
     await waitUntil(async () => (await again.$("#proCheckoutMonth")) !== null, 5000);
     check("無料期間: 以前に加入した人のボタンは「月額 ¥580 で始める」（無料と言わない）", (await text(again, "#proCheckoutMonth")) === "月額 ¥580 で始める" && !(await text(again, "#proPrice")).includes("無料"), `${await text(again, "#proCheckoutMonth")} / ${await text(again, "#proPrice")}`);
     check("無料期間: 以前に加入した人には「今回は加入した日に…請求」", (await text(again, ".pro-terms")).includes("以前に加入したことがあるので"), await text(again, ".pro-terms"));
+    const againRows = await termRows(again);
+    check("無料期間（Batch 83 反証）: 以前に加入した人の「提供」は「手続きが終わるとすぐ使える」（無料期間の話はしない）", JSON.stringify(againRows.at(-1)) === JSON.stringify(["提供", "手続きが終わるとすぐ使える"]), JSON.stringify(againRows));
     await again.close();
   } finally {
     await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
@@ -18836,6 +18945,49 @@ console.log("pro:");
     check("Pro: Pro は 101 語目を追加できる", count2 === 101 && (await text(page2, "#myWordList")).includes("negotiate"), `count=${count2} status=${await text(page2, "#myWordStatus")}`);
     check("Pro: マイ単語帳のゲートでエラー0", page.errors.length === 0 && page2.errors.length === 0, page.errors[0] ?? page2.errors[0] ?? "");
     await page2.close();
+  }
+
+  // 6b. Batch 83: マイ単語帳の画面（mywords.html。英単語の学習に絞った形の入口）の上限の文。受付中の Web なら「（Pro なら1,000語）」が加入画面へのリンク 1 つ。
+  //     受付前とアプリでは Pro の話もリンクも値段も出さない（数は js/myWordsCore.js の MY_FREE_LIMIT・MY_PRO_LIMIT。受付中かは spelldash_billing_open の控え）
+  {
+    const full = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ en: `word${String.fromCharCode(97 + Math.floor(i / 26))}${String.fromCharCode(97 + (i % 26))}`, ja: `語${i}` })));
+    const NATIVE = () => {
+      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", nativePromise: () => Promise.resolve({}) };
+    };
+    const limitView = async ({ open, native = false }) => {
+      const page = await newPage({ storage: { spelldash_my_words: full, spelldash_billing_open: JSON.stringify({ open, at: Date.now() }) } });
+      if (native) await page.addInitScript(NATIVE);
+      await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+      await waitUntil(async () => (await text(page, "#myWordsStatus")).includes("語まで"), 5000);
+      const view = await page.evaluate(async () => {
+        const core = await import("/js/myWordsCore.js");
+        const el = document.getElementById("myWordsStatus");
+        return {
+          path: location.pathname,
+          text: el.textContent.replace(/\s+/g, " ").trim(),
+          links: [...el.querySelectorAll("a")].map((a) => ({ href: a.getAttribute("href"), text: a.textContent, funnel: a.dataset.funnel ?? null })),
+          free: core.MY_FREE_LIMIT,
+          pro: core.MY_PRO_LIMIT,
+          addDisabled: document.getElementById("myWordsAddButton")?.disabled ?? null,
+          native: document.documentElement.classList.contains("native-app")
+        };
+      });
+      view.errors = page.errors.slice(0, 1);
+      await page.close();
+      return view;
+    };
+    const fmtN = (n) => Number(n).toLocaleString("ja-JP");
+    const open = await limitView({ open: true });
+    check("マイ単語帳（Batch 83）: 受付中の Web では上限の文の「Pro なら1,000語」が加入画面（./pro.html）へのリンク 1 つ（動線の印 mywords）・足すボタンは止まる・エラー 0",
+      open.path === "/mywords.html" && open.text === `無料で追加できるのは${fmtN(open.free)}語まで（Pro なら${fmtN(open.pro)}語）。` && open.links.length === 1 && open.links[0].href === "./pro.html" &&
+        open.links[0].text === `Pro なら${fmtN(open.pro)}語` && open.links[0].funnel === "mywords" && open.addDisabled === true && open.errors.length === 0,
+      JSON.stringify(open));
+    const closed = await limitView({ open: false });
+    check("マイ単語帳（Batch 83）: 受付前は上限の文だけ（Pro の話・リンク・値段なし）",
+      closed.text === `無料で追加できるのは${fmtN(closed.free)}語まで。` && closed.links.length === 0 && !/Pro|¥|円/.test(closed.text) && closed.errors.length === 0, JSON.stringify(closed));
+    const app = await limitView({ open: true, native: true });
+    check("マイ単語帳（Batch 83）: アプリでは受付中の控えがあっても上限の文だけ（Pro の話・加入画面へのリンク・値段なし）",
+      app.native && app.text === `無料で追加できるのは${fmtN(app.free)}語まで。` && app.links.length === 0 && !/Pro|¥|円/.test(app.text) && app.errors.length === 0, JSON.stringify(app));
   }
 
   // 7. 推移（学習状況の「詳しい記録」の中。Batch 78 段 4）: free には 30／90 の切り替えも Pro の案内も出さない（30 日で描く）。Pro は 90 日で描き直し、選択を保存
@@ -18974,7 +19126,15 @@ console.log("pro:");
     const dl = await page.$$eval("dl.legal dt", (els) => els.map((e) => e.textContent.trim()));
     check("Pro: 特商法の項目（販売事業者〜動作環境の 11 項目）", dl.length === 11 && ["販売事業者", "販売価格", "支払方法", "解約・返金", "動作環境"].every((s) => dl.includes(s)), dl.join(","));
     check("Pro: tokushoho.html エラー0", page.errors.length === 0, page.errors[0] ?? "");
+    // Batch 83: 提供時期は、無料期間で払う前に使い始める人にも合う文（前は「決済完了後すぐに」だけ）。事業者の欄は創業者が埋めるまで［ ］のまま
+    const provide = await page.$$eval("dl.legal > div", (divs) => divs.find((d) => d.querySelector("dt")?.textContent.trim() === "提供時期")?.querySelector("dd")?.textContent.replace(/\s+/g, "") ?? "");
+    check("特商法（Batch 83）: 提供時期は「お申し込みの手続きが終わるとすぐに」（無料期間でも同じ。「決済完了後」だけにしない）・事業者の欄は［ ］のまま",
+      provide.includes("お申し込みの手続きが終わるとすぐに") && provide.includes("無料期間") && !provide.includes("決済完了後") && (await page.content()).includes("［氏名を記入］") && (await page.content()).includes("［事業者名を記入］"), provide);
     await page.close();
+    // Batch 83: 規約の Pro の節は月額だけ（年額は出さない決定。2026-10-07）
+    const termsHtml = fs.readFileSync(path.join(ROOT, "terms.html"), "utf8");
+    const proTerms = termsHtml.match(/<h3>4\. Pro（有料プラン）<\/h3>[\s\S]*?<h3>5\./)?.[0] ?? "";
+    check("規約（Batch 83）: 4. Pro は「月額の自動更新のプラン」（「月額または年額」と年額の文は無い）", proTerms.includes("Pro は月額の自動更新のプランです。") && !proTerms.includes("年額") && !termsHtml.includes("月額または年額"), proTerms.slice(0, 160));
     const LINK = '<a href="./tokushoho.html">特定商取引法に基づく表記</a>';
     const missing = ["index.html", "battle.html", "stats.html", "profile.html", "privacy.html", "news.html", "list.html", "admin.html", "pro.html", "tokushoho.html", "typing.html", "typing-game.html"].filter((f) => {
       const html = fs.readFileSync(path.join(ROOT, f), "utf8");
@@ -19167,7 +19327,8 @@ console.log("pro:");
       return r;
     };
     const fresh = () => createCloud({}).id; // 1 回ごとに空のクラウド（使い回すと前の回が送った記録を取り込み、題の下に「記録を同期した。」が後から入って比較表が下がる。この検査の外の動き）
-    const shapeOf = (trial) => JSON.stringify({ open: true, at: Date.now(), price: { month: 580, year: 4800, trialMonths: trial, trialDays: 0 } });
+    // ai: 偽の config には AI の回数がある（前に取れた config と今の config を同じにする。Batch 83 の反証で AI の有無も覚える）
+    const shapeOf = (trial) => JSON.stringify({ open: true, at: Date.now(), price: { month: 580, year: 4800, trialMonths: trial, trialDays: 0 }, ai: true });
     const planNone = JSON.stringify({ user: "test-user", status: "none", interval: null, periodEnd: null, cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() });
     const sizes = [["390", { width: 390, height: 844, mobile: true }], ["480", { width: 480, height: 844, mobile: true }], ["1200", {}]];
     const runs = {};
@@ -19717,7 +19878,7 @@ console.log("78.5 導線と検索:");
       rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).slice(0, 2)));
   }
 
-  // (8) 出典（受け入れ 17）: 規約の 5・6 は学習状況の「教材について」（stats.html#vocabSource）を指す・最終更新日 2026年10月28日・リンクで学習状況の「教材について」が見える。
+  // (8) 出典（受け入れ 17）: 規約の 5・6 は学習状況の「教材について」（stats.html#vocabSource）を指す・最終更新日（Batch 83 で 2026年11月9日）・リンクで学習状況の「教材について」が見える。
   //     Battle とタイピングは開くと英単語のホームへ移る（入口の門。Batch 78 段 7。中身は 3 ページだけ旗を外したページで節 7.5・7.6・8.7・8.9・78.3 が見る）。
   //     公開していない教材のデータ（data/ は配信される: data/packs の TSL・BSL・NAWL の巻と data/sources の元のリスト）の出典とライセンスは、規約の 6 の
   //     「公開していない教材のデータ」（#dataSources）に出す（創業者の決定 2026-10-28。data/sources のどのリストの名前も載る・CC BY-SA 4.0 へのリンク・配布元へのリンク）
@@ -19745,8 +19906,9 @@ console.log("78.5 導線と検索:");
     await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
     await page.waitForFunction(() => document.getElementById("vocabSourceBody")?.textContent.trim().length > 0, null, { timeout: 8000 }).catch(() => {});
     const src = await page.evaluate(() => { const el = document.getElementById("vocabSource"); const b = el?.getBoundingClientRect(); return { title: document.getElementById("vocabSourceTitle")?.textContent.trim(), ngsl: /NGSL|New General Service List/.test(el?.textContent ?? ""), h: Math.round(b?.height ?? 0) }; });
-    check("出典: 規約の 5・6 の 2 か所が学習状況の「教材について」を指す（「各パック」の文は無い）・最終更新日 2026年10月28日・押すと学習状況の「教材について」（NGSL）が出る・エラー 0",
-      terms.links.length === 2 && terms.links.every((t) => t === "学習状況の「教材について」") && terms.date === "最終更新日: 2026年10月28日" && !terms.old && src.title === "教材について" && src.ngsl && src.h > 0 && page.errors.length === 0,
+    // 最終更新日は Batch 83（2026-11-09: 4. Pro を月額だけにした）で変わった。出典の文は 2026-10-28 のまま
+    check("出典: 規約の 5・6 の 2 か所が学習状況の「教材について」を指す（「各パック」の文は無い）・最終更新日 2026年11月9日・押すと学習状況の「教材について」（NGSL）が出る・エラー 0",
+      terms.links.length === 2 && terms.links.every((t) => t === "学習状況の「教材について」") && terms.date === "最終更新日: 2026年11月9日" && !terms.old && src.title === "教材について" && src.ngsl && src.h > 0 && page.errors.length === 0,
       JSON.stringify({ terms, src, url: page.url(), err: page.errors[0] }));
     await page.close();
   }

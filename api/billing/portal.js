@@ -8,11 +8,12 @@
 // 戻り先は SITE_ORIGIN/profile.html（リクエストヘッダは使わない）。Web 専用なので CORS は許可しない。
 
 import { send, verifyUserFull, bearerToken } from "../_lib/shared.js";
-import { rejectMethod, billingConfigured, siteOrigin, stripeFetch, fetchOwnSubscription, sendUpstream, MESSAGES } from "../_lib/billing.js";
+import { rejectMethod, secretKeyConfigured, siteOrigin, stripeFetch, fetchOwnSubscription, sendUpstream, MESSAGES } from "../_lib/billing.js";
 
 export default async function handler(req, res) {
   if (rejectMethod(req, res, "POST")) return;
-  if (!billingConfigured()) return send(res, 503, { error: "not_configured", message: MESSAGES.notConfigured });
+  // 秘密鍵だけを見る（受付を止めて月額の Price の変数を外しても、加入している人は解約・カードの変更ができる）
+  if (!secretKeyConfigured()) return send(res, 503, { error: "not_configured", message: MESSAGES.notConfigured });
 
   const user = await verifyUserFull(req.headers.authorization);
   if (!user) return send(res, 401, { error: "login_required", message: MESSAGES.login });

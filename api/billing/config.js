@@ -1,13 +1,16 @@
 // ===== Pro の価格（Vercel Serverless Function、ログイン不要） =====
 //
 // GET /api/billing/config
-// → { configured: boolean, prices: [{ interval: "month"|"year", amount, currency }], trialMonths, trialDays, trialEndsAt? }（無料期間は初めての人だけ）
-//   未設定（STRIPE_SECRET_KEY か STRIPE_PRICE_MONTHLY が無い）なら { configured: false, prices: [], trialDays: 0 }（200）。
+// → { configured: boolean, prices: [{ interval: "month"|"year", amount, currency }], trialMonths, trialDays, trialEndsAt?, ai }（無料期間は初めての人だけ）
+//   未設定（STRIPE_SECRET_KEY か STRIPE_PRICE_MONTHLY が無い）なら { configured: false, prices: [], trialDays: 0, trialMonths: 0, ai }（200）。
+//   ai: 加入画面の比較表の「AI の覚え方」の 1 日の回数 { explain: { free, pro } }。AI の鍵が無ければ null（画面は「準備中」）。
+//     回数は api/explain-word.js のゲートと同じ値（_lib/aiLimits.js の 1 か所）。受付前でも返す（比較表は受付前も出る）
 //   金額はコードに書かず Stripe の Price（GET /v1/prices/{id}）から取る。unit_amount をそのまま（JPY はゼロ小数）。
 //   Stripe の応答は 10 分メモリキャッシュ。月額の Price が取れなければ 502、年額が取れなければ年額だけ出さない。
 
 import { send } from "../_lib/shared.js";
 import { rejectMethod, billingConfigured, priceIdFor, trialDays, trialMonths, trialEndUnix, stripeFetch, logBilling, sendUpstream } from "../_lib/billing.js";
+import { explainWordLimits, aiConfigured } from "../_lib/aiLimits.js";
 
 const CACHE_MS = 10 * 60 * 1000;
 const priceCache = new Map();
@@ -29,9 +32,14 @@ function priceInfo(interval, price) {
   };
 }
 
+// 比較表の AI の回数（AI が使えないときは null）
+function aiInfo() {
+  return aiConfigured() ? { explain: explainWordLimits() } : null;
+}
+
 export default async function handler(req, res) {
   if (rejectMethod(req, res, "GET")) return;
-  if (!billingConfigured()) return send(res, 200, { configured: false, prices: [], trialDays: 0, trialMonths: 0 });
+  if (!billingConfigured()) return send(res, 200, { configured: false, prices: [], trialDays: 0, trialMonths: 0, ai: aiInfo() });
 
   const prices = [];
   try {
@@ -51,5 +59,5 @@ export default async function handler(req, res) {
   // trialEndsAt: いま加入したときの無料期間の終わり（ISO。月の指定があるとき）。画面は日付の計算をせず、これを表示するだけ
   const months = trialMonths();
   const end = trialEndUnix();
-  return send(res, 200, { configured: true, prices, trialMonths: months, trialDays: months > 0 ? 0 : trialDays(), ...(end ? { trialEndsAt: new Date(end * 1000).toISOString() } : {}) });
+  return send(res, 200, { configured: true, prices, trialMonths: months, trialDays: months > 0 ? 0 : trialDays(), ...(end ? { trialEndsAt: new Date(end * 1000).toISOString() } : {}), ai: aiInfo() });
 }

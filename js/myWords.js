@@ -30,11 +30,20 @@ export function maxMyWords() {
   return isPro() ? MY_PRO_LIMIT : MY_FREE_LIMIT;
 }
 
-// 上限の文（表示側はこの文のときだけ「Pro について」のリンクを続ける）
+const fmtCount = (n) => Number(n).toLocaleString("ja-JP");
+
+// 上限の文のうち、加入画面へのリンクにする部分（「Pro なら1,000語」）。受付中の Web で Pro でない人だけ。ほかは null
+// （受付前・アプリでは Pro の話をしない: 買えないものを勧めない。js/proFunnel.js canOfferPro）
+export function limitOfferText() {
+  return !isPro() && canOfferPro() ? `Pro なら${fmtCount(MY_PRO_LIMIT)}語` : null;
+}
+
+// 上限の文（数は js/myWordsCore.js の MY_FREE_LIMIT・MY_PRO_LIMIT。加入画面の比較表と同じ値）。
+// マイ単語帳の画面（js/myWordsPage.js）は limitOfferText の部分をリンクにし、前の単語帳の画面（js/myWordsView.js）は「Pro について」を続ける
 export function limitMessage() {
-  if (isPro()) return "追加できるのは1,000語まで";
-  // 受付前・アプリでは Pro の話をしない（買えないものを勧めない）
-  return canOfferPro() ? "無料で追加できるのは100語まで（Pro なら1,000語）。" : "無料で追加できるのは100語まで。";
+  if (isPro()) return `追加できるのは${fmtCount(MY_PRO_LIMIT)}語まで`;
+  const offer = limitOfferText();
+  return offer ? `無料で追加できるのは${fmtCount(MY_FREE_LIMIT)}語まで（${offer}）。` : `無料で追加できるのは${fmtCount(MY_FREE_LIMIT)}語まで。`;
 }
 
 function limitError() {

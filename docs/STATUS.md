@@ -47,6 +47,13 @@
 - まとめて足すの訳の中の「→」は字のまま（場面カードにしない）。断った行は英語と訳の頭で言い、足した後の欄にはその行だけを残す。前の版で作られた場面カードは残る。仕様は docs/SPEC_MY_WORDS.md §11。
 - 選択式: マイ単語帳の「学ぶ」の隣の「選択式で学ぶ」（`/?learn=my[&book=<id>]&choice=en`）。訳を見て英語を選ぶ（既定）と英語を見て訳を選ぶ（`&choice=ja`。回の始めと終わりで替える）。選択肢は同じ単語帳の違う答えから 2〜4 個（up／down の単語帳は 2 択・2 つ目の正解は出さない・足りなければほかの単語帳 → 組み込みの短い一覧）。数え方は打つ回と同じ（正解 = 自力正解・違う = 1 打ミス・分からない = 答えを見る）。仕様は docs/SPEC_MY_WORDS.md §12。
 
+### Batch 83（月額の受付の準備・コードの側。2026-11-09。未公開）
+
+- 加入画面の比較表は今の画面で使えるもの（マイ単語帳・思い出せるようになった語の推移・テーマ・AI の覚え方）だけ。数はコードの値から（AI の回数は `/api/billing/config` の `ai`。AI が使えないときは AI の行を出さない）。規約 4. は月額だけ、特商法の提供時期は無料期間にも合う文。
+- 確定の画面に自動更新・最初の請求・提供の時期・解約の場所の文（`custom_text[submit][message]`）。webhook の生ボディは配信の既定の形（関数の前に本文を読み切り、写しを `req.on` に付け替える）でも読む。最初の行は入れるだけ（同時に届いても新しいイベントが残る）。受付を止めても加入者の管理と webhook は動く。
+- マイ単語帳の上限の文の「Pro なら1,000語」は、受付中の Web だけ加入画面へのリンク。
+- 受付を始める手順は docs/BILLING.md §2（14 番。docs/FOUNDER_TODO.md B。本番に切り替える前にテストモードの行を消す）。サーバー側の単体 `scripts/test-billing.mjs`（117 件）を CI に足した。
+
 ### 学習
 - **4 モード（増やさない）**: Study（セット・Recall Loop・SRS。長さは 10／15／25 語か 60 秒）／Challenge（60 秒）／Daily Dash（全員同じ問題・ランキング）／Battle（CPU ランクマッチ。ロジックは凍結、色・面・文字列だけ触る）
 - **タイピング練習**（`/typing.html`、2026-10 創業者指示で足した集客の入口のページ。Batch 78 段 6 から Web では開くと英単語のホームへ転送し、段 7 からはページの入口の門でもホームへ〔アプリの中も。ファイルは残す〕。**学習のモードではない・学習記録を変えない**）: 見本を見て 1 分打つ。英単語（訳つき）／日本語（小・中学校の用語の読みをローマ字で）。3 つ目の種類「長文」（2026-10-12、Batch 62）は書き下ろしの文章 20 編（日本語 12・英語 8。英語は 1 行ごとに訳つき）から 1 本選んで最後の行まで打つ（句読点・英語の記号も打つ・Esc やスマホの「やめる」でそこまでの結果・裏に回ると止める）。結果は打/分・正確さ・間違えたキー・自己ベスト（端末。1 分の結果の高さは札の箱が始めから取るので、時間切れで結果が出ても下が動かない。720 以上は 2 列。スマホで画面キーボードが出ている始まる前は、箱の空き〔札のすぐ下〕にタイピングゲームへの 1 行を出す。長文の始まる前は札の 1 行目の select の右に「ゲーム」）、長文はスコア（打/分×正確さの 2 乗）と時間、本体へ「思い出して打つ」。**種類への深いリンクと記憶**（Batch 65）: `?kind=en`／`ja`／`long`（`#long` も）→ この端末に覚えた種類（タブを押したときだけ書く）→ 英単語。head の 1 行が最初の描画の前に html に印を付け、CSS がタブ・札・文を出し分ける（英単語を描いてから替えない）。タブを押すと URL を `?kind=` に合わせる（replaceState）。`#long` は読み込みのときに `?kind=long` に替える。canonical は 1 つ。入口は全ページのフッターの先頭・お知らせ・sitemap・学習データの本文の最後の 1 行「息抜きに タイピング練習」。計測は first_visit の source に typing*（長文は typing_long*、最初の 1 ページが深いリンクなら typing_link、学習データの 1 行は typing_stats）（docs/SPEC_TYPING.md）
@@ -66,9 +73,9 @@
 ### 有料プラン SpellDash Pro（2026-10-02 解禁、**受付はまだ**: docs/FOUNDER_TODO.md B）
 - Stripe Checkout／Billing Portal／Webhook（`api/billing/*`、SDK 無し）。価格はコードに無く Stripe の Price から表示。アプリでは購入導線を出さない（加入画面と特商法は dist に入れず、リンクも出さない）
 - entitlement: `subscriptions` 行が active／trialing／past_due かつ 期限＋3 日。クライアントは `js/plan.js` が `spelldash_plan` にキャッシュして同期判定
-- 特典: マイ単語帳 100 → 1,000 語、AI の 1 日の回数（2／3 → 20／60）、推移 30 → 90 日、シールド 3 枚＋修復、テーマ「紙」「藍」
+- 特典: マイ単語帳 100 → 1,000 語、AI の 1 日の回数（2／3 → 20／60）、推移 30 → 90 日、シールド 3 枚＋修復、テーマ「紙」「藍」。加入画面に書くのは今の画面で使えるものだけ（マイ単語帳・推移・テーマ・AI の覚え方〔AI の鍵があるときだけ行を出す〕。Batch 83。docs/BILLING.md §4）
 - 法務: `/terms.html`、`/tokushoho.html`（［ ］は創業者が記入。それまで noindex）、privacy の「お支払い情報」
-- 加入までの動線（docs/SPEC_FUNNEL.md）: フッターの「SpellDash Pro」と週間レポートの 1 行（受付中・7 日以上・Pro でない人だけ）、上限に当たった 5 か所の「Pro について」、加入ボタンの直下の「申し込みの前に」（料金・更新・解約・支払い）、加入の途中でログインしても加入画面へ戻る、加入直後に使えるようになったもの。完了パネル・道・はちゃんには Pro を出さない
+- 加入までの動線（docs/SPEC_FUNNEL.md）: 今の画面（英単語の学習に絞った形）の入口は、受付中の Web のマイ単語帳の上限の文の「Pro なら1,000語」だけ（Batch 83）。旗を外した前の形では、フッターの「SpellDash Pro」と週間レポートの 1 行（受付中・7 日以上・Pro でない人だけ）、上限に当たった 5 か所の「Pro について」。加入ボタンの直下の「申し込みの前に」（料金・無料期間・更新・解約・支払い・提供）、加入の途中でログインしても加入画面へ戻る、加入直後に使えるようになったもの。完了パネル・道・はちゃんには Pro を出さない
 - 計測: `funnel_events`（端末のランダムな番号と段階だけ）と管理画面の「Pro までの動線」（docs/SQL_FUNNEL.md、**SQL は創業者側**）
 
 ### 2 台で使う（Batch 48）
@@ -84,9 +91,9 @@
 
 - フロント: 素の HTML／CSS／ES modules、ビルド無し。ページ: index／list／stats／profile／battle／news／privacy／terms／tokushoho／pro／admin／typing／typing-game ＋ packs/（生成）
 - デザイン: `css/tokens.css` が唯一の色・角丸・フォントの基準（昼 light／紙 paper・夜 dark／藍 indigo。同じ名前で値だけ変える）。部屋は `css/room.css`・`css/bookshelf.css`、場面の絵は `scripts/room-art/` から `assets/images/room/` に焼いた WebP。窓の行の小さな表紙は `node scripts/build-covers.mjs --src <元の PNG の置き場>` で `assets/images/covers/` に作る 48×64 の WebP 22 枚（元の PNG はリポジトリに入れない。本 → 表紙の表は `js/covers.js` の 1 か所）。フォントは自前（`css/fonts.css`: Shippori Mincho 500／700・Cormorant Garamond 600・IBM Plex Mono。外部リクエスト 0）。og-image（1200×630、全ページ共通）は型 `scripts/og-image.html` を `node scripts/build-og-image.mjs` で撮る（名前と 1 行の説明と札の見本。数字・絵文字なし。URL に版 `?v=2`: SNS は絵を URL で覚えるので、絵を変えたら全ページと E2E の版を 1 つ上げる）。打つ対象の英語と数字は等幅、部屋の中は明朝。絵文字は UI に使わない
-- サーバー: Vercel Node 関数 `api/explain-word`・`api/generate-cards`（Claude、`ANTHROPIC_API_KEY` 未設定なら「準備中」）、`api/admin/*`、`api/billing/*`、`api/cron/keepalive`。秘密鍵はすべて Vercel の環境変数（docs/SECURITY.md）
+- サーバー: Vercel Node 関数 `api/explain-word`・`api/generate-cards`（AI、`ANTHROPIC_API_KEY` 未設定なら「準備中」）、`api/admin/*`、`api/billing/*`、`api/cron/keepalive`。秘密鍵はすべて Vercel の環境変数（docs/SECURITY.md）
 - Supabase: Auth（メールリンク・Google）、テーブル profiles／word_progress／user_progress／battle_sessions／play_sessions／daily_scores／activity_days（RLS）。任意: user_items／feedback／crm_notes／subscriptions（docs/SQL_*.md、**実行は創業者**）
-- 環境変数（Vercel）: `ANTHROPIC_API_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_EMAILS`／`ADMIN_USER_IDS`、`STRIPE_SECRET_KEY`／`STRIPE_PRICE_MONTHLY`／`STRIPE_PRICE_YEARLY`／`STRIPE_TRIAL_DAYS`／`STRIPE_WEBHOOK_SECRET`、`SITE_ORIGIN`、`CRON_SECRET`、AI の回数 `CARD_GEN_DAILY_LIMIT(_PRO)`／`EXPLAIN_WORD_DAILY_LIMIT(_PRO)`
+- 環境変数（Vercel）: `ANTHROPIC_API_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_EMAILS`／`ADMIN_USER_IDS`、`STRIPE_SECRET_KEY`／`STRIPE_PRICE_MONTHLY`／`STRIPE_TRIAL_MONTHS`（`1`）／`STRIPE_WEBHOOK_SECRET`（使わない: `STRIPE_PRICE_YEARLY`・`STRIPE_TRIAL_DAYS`）、`SITE_ORIGIN`、`CRON_SECRET`、AI の回数 `CARD_GEN_DAILY_LIMIT(_PRO)`／`EXPLAIN_WORD_DAILY_LIMIT(_PRO)`
 - 性能（ホーム 390・非圧縮）: 初回表示 約 2.2 MB・161 リクエスト（フォント 479 KB・JS 577 KB・CSS 420 KB・JSON 441 KB・画像 87 KB）、読み込むのは有効なパックと画面に出た文字のフォントだけ。DOMContentLoaded 0.4 秒・LCP 0.4 秒（手元）、1 リクエスト 80ms の遅延で 1.7 秒・2.0 秒。予算: フォント ≤ 520 KB・場面の画像 ≤ 260 KB（E2E が守る）。CLS は戻ってきた人の 390 で 0（遅延 80ms。E2E が < 0.05 を守る）、初回の書斎は 1200×900・1200×1100・390 で < 0.02（遅延 80ms。E2E が守る。Batch 66）。単語帳・学習データ・加入画面の読み込みは 1200・390（遅延 80ms となし・学習記録あり／なし・昼夜・未ログイン／ログイン／Pro）で < 0.05（実測 ≤ 0.0014。直す前は 0.04〜0.91。E2E が守る。Batch 67）: js が描くまで題（学習データはタブも）より下とフッターを透明にし、描いてからまとめて出す（読み込み中の字は長くても 0.3 秒待つ〔3 ページの LCP は帯のヘッダーか題で、出す時刻に動かない。PR #170 のレビュー〕。加入画面は 1.2 秒で、config がそれより遅いときは題の下に料金の 1 行の場所を空けて出す〔config だけ 2 秒・5 秒遅れで 1200・390 とも ≤ 0.0027。空けないと 1200 で 0.069〕。ログインと無料期間が付くかが分かるまでは待ち、長くても 2.5 秒で無料期間の文を入れうる最大の形で空けて縮めない〔Pro の状態のキャッシュあり／なし × 無料期間あり／なし × 390／480／1200 で出した瞬間と後の高さが同じ。PR #170 のレビュー〕。支払いの反映待ちは config を待たない。js が動かないときは CSS が 4 秒で出す）。別解索引の構築 27 ms
 
 ## 4. 品質・流れ

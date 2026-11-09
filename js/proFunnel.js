@@ -9,7 +9,7 @@
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { isPro } from "./plan.js";
 
-const OPEN_KEY = "spelldash_billing_open"; // { open: bool, at: ms, price?: { month, year, trialMonths, trialDays } }（price は受付中のときだけ。加入画面の料金の 1 行の形）
+const OPEN_KEY = "spelldash_billing_open"; // { open: bool, at: ms, price?: { month, year, trialMonths, trialDays }, ai?: bool }（price は受付中のときだけ。加入画面の料金の 1 行の形。ai は取れた config に AI の回数があったか。加入画面の比較表の AI の行を config を待つ間も出すか）
 const OPEN_TTL_MS = 12 * 60 * 60 * 1000;
 const RETRY_MS = 10 * 60 * 1000; // 取れなかったときは前の値のまま、10 分後にもう一度
 const RETURN_KEY = "spelldash_login_return"; // sessionStorage: ログインから戻ってきた（加入画面へ移ったあとも同じに扱う。読んで消すのは js/auth.js）
@@ -32,11 +32,13 @@ export function isBillingOpen() {
 }
 
 // 加入画面が取った config をそのまま覚える（js/proView.js）。price: 料金の 1 行の形（月額・年額・無料期間。受付中のときだけ）。
-// 加入画面で config が遅いとき、題の下に 1 行の場所を空けておく大きさに使う（字には使わない。表示する金額は毎回取り直した config から）
-export function rememberBillingOpen(open, price = null) {
+// 加入画面で config が遅いとき、題の下に 1 行の場所を空けておく大きさに使う（字には使わない。表示する金額は毎回取り直した config から）。
+// ai: config に AI の回数があったか（true／false。分からなければ書かない）。加入画面で config が遅いとき、比較表の AI の行を先に出しておくかに使う
+// （回数は書かない。行が後から入って下が動かないように。Batch 83 の反証）
+export function rememberBillingOpen(open, price = null, ai = undefined) {
   const before = isBillingOpen();
   try {
-    localStorage.setItem(OPEN_KEY, JSON.stringify({ open: !!open, at: Date.now(), ...(open && price ? { price } : {}) }));
+    localStorage.setItem(OPEN_KEY, JSON.stringify({ open: !!open, at: Date.now(), ...(open && price ? { price } : {}), ...(typeof ai === "boolean" ? { ai } : {}) }));
   } catch {
     // 保存できなくても動線が出ないだけ
   }
@@ -54,10 +56,18 @@ export async function fetchBillingConfig() {
       ? body.prices.filter((p) => p && (p.interval === "month" || p.interval === "year") && Number.isFinite(Number(p.amount)))
       : [];
     const configured = response.ok && body?.configured === true && prices.some((p) => p.interval === "month");
-    return { ok: response.ok, configured, prices, trialMonths: Number(body?.trialMonths) || 0, trialDays: Number(body?.trialDays) || 0, trialEndsAt: typeof body?.trialEndsAt === "string" ? body.trialEndsAt : "" };
+    return { ok: response.ok, configured, prices, trialMonths: Number(body?.trialMonths) || 0, trialDays: Number(body?.trialDays) || 0, trialEndsAt: typeof body?.trialEndsAt === "string" ? body.trialEndsAt : "", ai: aiOf(body) };
   } catch {
-    return { ok: false, configured: false, prices: [], trialMonths: 0, trialDays: 0 };
+    return { ok: false, configured: false, prices: [], trialMonths: 0, trialDays: 0, ai: null };
   }
+}
+
+// 加入画面の比較表の AI の行（覚え方の 1 日の回数。api/billing/config.js の ai）。AI が使えない・前のサーバー・読めない形は null（加入画面は AI の行を出さない）
+function aiOf(body) {
+  const explain = body?.ai?.explain;
+  const free = Number(explain?.free);
+  const pro = Number(explain?.pro);
+  return Number.isFinite(free) && Number.isFinite(pro) && free > 0 && pro > 0 ? { explain: { free, pro } } : null;
 }
 
 // 取れた config だけを覚える。取れなかったときは前の値のまま、10 分後に取り直す
@@ -65,12 +75,12 @@ export function rememberBillingConfig(config) {
   if (config.ok) {
     const month = config.prices.find((p) => p.interval === "month");
     const year = config.prices.find((p) => p.interval === "year");
-    rememberBillingOpen(config.configured, month ? { month: Number(month.amount), year: year ? Number(year.amount) : null, trialMonths: config.trialMonths, trialDays: config.trialDays } : null);
+    rememberBillingOpen(config.configured, month ? { month: Number(month.amount), year: year ? Number(year.amount) : null, trialMonths: config.trialMonths, trialDays: config.trialDays } : null, Boolean(config.ai));
     return;
   }
   try {
     const prev = readJson(OPEN_KEY);
-    localStorage.setItem(OPEN_KEY, JSON.stringify({ open: prev?.open === true, at: Date.now() - OPEN_TTL_MS + RETRY_MS, ...(prev?.price ? { price: prev.price } : {}) }));
+    localStorage.setItem(OPEN_KEY, JSON.stringify({ open: prev?.open === true, at: Date.now() - OPEN_TTL_MS + RETRY_MS, ...(prev?.price ? { price: prev.price } : {}), ...(typeof prev?.ai === "boolean" ? { ai: prev.ai } : {}) }));
   } catch {
     // 何もしない
   }
@@ -81,6 +91,12 @@ export function rememberedBillingPrice() {
   const price = readJson(OPEN_KEY)?.price;
   if (!price || !Number.isFinite(price.month)) return null;
   return { month: price.month, year: Number.isFinite(price.year) ? price.year : null, trialMonths: Number(price.trialMonths) || 0, trialDays: Number(price.trialDays) || 0 };
+}
+
+// 前に取れた config に AI の回数があったか（rememberBillingOpen の ai）。分からない・アプリでは false（加入画面は AI の行を config を待ってから決める）
+export function rememberedBillingAi() {
+  if (isNativeApp) return false;
+  return readJson(OPEN_KEY)?.ai === true;
 }
 
 // キャッシュが古い（または無い）ときだけ config を取りに行く。戻り値: 受付中か
