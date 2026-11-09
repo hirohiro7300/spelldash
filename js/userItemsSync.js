@@ -502,13 +502,53 @@ export async function pushUserItems(supabase, userId, { now = Date.now() } = {})
   markRejected(rejected, now);
 }
 
+// ---- 表がまだ無い（Batch 86。docs/SPEC_MY_WORDS.md §4） ----
+// user_items の表がクラウドに無い（作るのは創業者: docs/SQL_USER_ITEMS.md）とき、マイ単語帳の画面はログイン中の人に「この端末だけに保存している」と 1 行で言う。
+// 知らせはこのページの中だけ（保存の鍵は作らない）: tableMissing（null は分からない）と spelldash:useritems-table（detail.missing）。表ができれば次に読んだときに消える
+let tableMissing = null;
+function noteTable(missing) {
+  if (tableMissing === missing) return;
+  tableMissing = missing;
+  window.dispatchEvent(new CustomEvent("spelldash:useritems-table", { detail: { missing } }));
+}
+// 表が無いときの答え: js/funnelLog.js の isMissingError と同じ見分け（42P01・PGRST205・「does not exist」「schema cache」）に、HTTP の 404 を足す
+function isMissingTable(result) {
+  const error = result?.error;
+  if (!error) return false;
+  const code = String(error.code ?? "");
+  return Number(result?.status) === 404 || code === "42P01" || code === "PGRST205" || /does not exist|schema cache/i.test(String(error.message ?? ""));
+}
+export function userItemsTableMissing() {
+  return tableMissing;
+}
+// 1 行だけ読んで表があるかを確かめる（同じタブのほかのページで同期が済み、このページでは取り込まないとき。js/sync.js の checkUserItemsTable）。
+// 戻り値: true（無い）・false（ある）・null（分からない: つながらない・ほかの失敗）。端末には何も書かない
+export async function probeUserItemsTable(supabase) {
+  try {
+    const result = await supabase.from("user_items").select("kind").limit(1);
+    if (result && !result.error) noteTable(false);
+    else if (isMissingTable(result)) noteTable(true);
+  } catch {
+    // 分からないまま
+  }
+  return tableMissing;
+}
+
 // options.deferPacksEvent: true なら spelldash:packs を投げない（呼び出し側が語の読み直しを 1 回にまとめる）。options.now: 今の時刻（ms。検査が渡す）
 export async function pullUserItems(supabase, userId, options = {}) {
   const now = options.now ?? Date.now();
   let rows = null;
   try {
     const result = await supabase.from("user_items").select("*");
-    if (!result || result.error || !Array.isArray(result.data)) return { changed: null };
+    if (!result || result.error || !Array.isArray(result.data)) {
+      // 表がまだ無い（Batch 86）: このページに知らせる（マイ単語帳の画面の 1 行）。送り方は前のまま
+      if (isMissingTable(result)) {
+        noteTable(true);
+        return { changed: null, missing: true };
+      }
+      return { changed: null };
+    }
+    noteTable(false);
     rows = result.data;
   } catch {
     return { changed: null };

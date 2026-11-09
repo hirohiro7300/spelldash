@@ -8,7 +8,7 @@
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
-import { setupUnloadSync } from "./sync.js";
+import { setupUnloadSync, checkUserItemsTable } from "./sync.js";
 import { isNativeApp, PRODUCTION_ORIGIN } from "./appEnv.js";
 import {
   getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage, limitOfferText,
@@ -921,6 +921,20 @@ window.addEventListener("spelldash:mywords", render);
 document.addEventListener("spelldash:plan", render);
 document.addEventListener("spelldash:billing", render);
 // ほかのタブで足した・学んだ語は、このタブを開き直すと出る（storage イベントは聞かない: 聞く所は js/areaGuard.js の一覧どおり。単体 test-areas U1）
+// ログイン中で、マイ単語帳の表（user_items）がクラウドにまだ無い（Batch 86。docs/SPEC_MY_WORDS.md §4）: この端末だけに保存していると 1 行で言う。
+// 知らせはこのページの中だけ（js/sync.js checkUserItemsTable・js/userItemsSync.js の spelldash:useritems-table）。ゲスト・Preview（ログインを止めてある）では出さない
+const showLocalOnly = (missing) => {
+  const el = $("myWordsLocal");
+  if (el) el.hidden = missing !== true;
+};
+window.addEventListener("spelldash:useritems-table", (event) => showLocalOnly(event.detail?.missing));
+window.addEventListener("spelldash:auth-ready", (event) => {
+  if (!event.detail?.loggedIn) {
+    showLocalOnly(false);
+    return;
+  }
+  checkUserItemsTable().then(showLocalOnly, () => {});
+});
 
 render();
 readShareLink();

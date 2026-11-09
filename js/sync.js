@@ -11,7 +11,7 @@ import {
 } from "./battleRank.js";
 import { getStudyMix, adoptCloudRatio } from "./studyMix.js";
 import { buildActivityRow } from "./activity.js";
-import { pushUserItems, pullUserItems } from "./userItemsSync.js";
+import { pushUserItems, pullUserItems, probeUserItemsTable, userItemsTableMissing } from "./userItemsSync.js";
 import { markVeteranIfReturning } from "./unlocks.js";
 import { COURSES, startCourse } from "./course.js";
 import { getEnabledPackIds, setPackEnabled } from "./packs.js";
@@ -394,16 +394,33 @@ function learnedSinceLogout() {
 }
 
 let syncInFlight = false; // 同じページで 2 回走らせない（auth-ready と SIGNED_IN が続けて来る）
+let syncRun = null; // このページで走らせた初回同期（checkUserItemsTable が終わりを待つ）
 
 // options（freshLogin）は受けるが使わない（ゲストの記録を移すかは切り替えの画面がたずねる。呼び手の形を変えない）
 export async function initialSync(options = {}) {
   if (syncInFlight) return false;
   syncInFlight = true;
   try {
-    return await runInitialSyncOnce(options);
+    syncRun = runInitialSyncOnce(options);
+    return await syncRun;
   } finally {
     syncInFlight = false;
   }
+}
+
+// マイ単語帳の表（user_items）がクラウドにまだ無いか（Batch 86。mywords.html の 1 行）。true: 無い・false: ある・null: 分からない（未ログイン・ページの領域が違う・つながらない）。
+// このページの取り込みが読んでいればその答え。読んでいなければ（同じタブのほかのページで同期が済んだ）1 行だけ読んで確かめる。端末には何も書かない
+export async function checkUserItemsTable() {
+  try {
+    await syncRun;
+  } catch {
+    // 取り込みの失敗はここでは扱わない
+  }
+  const known = userItemsTableMissing();
+  if (known !== null) return known;
+  const userId = await getUserId();
+  if (!userId || !areaAllows(userId)) return null;
+  return probeUserItemsTable(cloudFor(userId));
 }
 
 async function runInitialSyncOnce() {
