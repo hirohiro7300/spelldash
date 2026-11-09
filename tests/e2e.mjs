@@ -599,6 +599,24 @@ function recallSeed(extra = {}) {
   };
 }
 
+// マイ単語帳の学ぶ回の列を混ぜる乱数（Batch 86。js/myWordsCore.js buildMyQueue の { shuffle }。画面は Math.random）だけを、ページを開くたびに
+// 決まった種の列にする（page.addInitScript(seedQueueRandom, 種)。ほかの Math.random〔選択肢の並び・端末の印など〕は本物のまま）。
+// 同じ語・同じ種なら、打つ回と選ぶ回で同じ並びになる（82.2 の突き合わせ）。86.1 は混ざることを決まった並びで確かめる（揺れない）
+function seedQueueRandom(seed) {
+  const real = Math.random;
+  let a = seed >>> 0;
+  const next = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  Math.random = function random() {
+    return /buildMyQueue/.test(new Error().stack ?? "") ? next() : real();
+  };
+}
+
 // ===== 1. 全ページがエラーなく表示される =====
 // 各ページの <link rel="modulepreload">（scripts/modulepreload.mjs）が import の依存と揃っている（足した import の先読みを忘れない）
 console.log("modulepreload:");
@@ -24320,21 +24338,24 @@ console.log("my words (79.1):");
     await waitUntil(async () => (await nShown(page)) >= 1, 8000);
     const order = [await lastShown(page)];
     const prog = await page.evaluate(() => document.getElementById("setProgress")?.textContent.replace(/\s+/g, " ").trim());
-    // KPI: 小文字で 1 字ずつ（Enter なしで正解）
-    await typeKeys(page, "kpi");
-    await waitNext(page, 1);
-    order.push(await lastShown(page));
-    // due diligence: 全文入力（小文字・空白）＋ Enter
-    await page.type("#input", "due diligence");
-    await page.press("#input", "Enter");
-    await waitNext(page, 2);
-    order.push(await lastShown(page));
-    // invoice: 1 打ミス（× → あやふや）。答えを打ち直して次へ
-    await typeKeys(page, "x");
-    await page.waitForTimeout(150);
-    await typeKeys(page, "invoice");
-    await waitNext(page, 3);
-    order.push(await lastShown(page));
+    // これからの 3 語は回ごとに混ぜる（Batch 86）: 出た語ごとに答え方を決める
+    //   KPI: 小文字で 1 字ずつ（Enter なしで正解）・due diligence: 全文入力（小文字・空白）＋ Enter・invoice: 1 打ミス（× → あやふや）。答えを打ち直して次へ
+    const answerNew = async (id) => {
+      if (id === "my-kpi") await typeKeys(page, "kpi");
+      else if (id === "my-due diligence") {
+        await page.type("#input", "due diligence");
+        await page.press("#input", "Enter");
+      } else if (id === "my-invoice") {
+        await typeKeys(page, "x");
+        await page.waitForTimeout(150);
+        await typeKeys(page, "invoice");
+      }
+    };
+    for (let i = 1; i <= 3; i++) {
+      await answerNew(order.at(-1));
+      await waitNext(page, i);
+      order.push(await lastShown(page));
+    }
     // agenda（あやふや）: ヒント → あやふやのまま
     await page.evaluate(() => document.getElementById("hintButton").click());
     await page.waitForTimeout(150);
@@ -24351,8 +24372,8 @@ console.log("my words (79.1):");
     }));
     const after = await stored(page);
     const st = Object.fromEntries(after.map((w) => [w.en, w.ls ?? 0]));
-    check("79.1 学ぶ回: 柱は「マイ単語帳」・順は これから（足した順）→ あやふや → 覚えた",
-      JSON.stringify(order) === JSON.stringify(["my-kpi", "my-due diligence", "my-invoice", "my-agenda", "my-deadline"]) && /^マイ単語帳/.test(prog ?? ""), JSON.stringify({ order, prog }));
+    check("79.1 学ぶ回: 柱は「マイ単語帳」・順は これから（3 語。回ごとに混ぜる）→ あやふや → 覚えた",
+      JSON.stringify(order.slice(0, 3).sort()) === JSON.stringify(["my-due diligence", "my-invoice", "my-kpi"]) && JSON.stringify(order.slice(3)) === JSON.stringify(["my-agenda", "my-deadline"]) && /^マイ単語帳/.test(prog ?? ""), JSON.stringify({ order, prog }));
     check("79.1 学ぶ回: KPI を kpi・due diligence を小文字と空白で打って正解（覚えた）・1 打ミス（invoice）とヒント（agenda）は あやふや・覚えたの語の自力正解は 覚えた のまま",
       st.kpi === 2 && st["due diligence"] === 2 && st.invoice === 1 && st.agenda === 1 && st.deadline === 2 && after.every((w) => !("lsf" in w)), JSON.stringify(after));
     check("79.1 学ぶ回の終わり: 「5語 終わり」・マイ単語帳の数・「マイ単語帳へ」（学習状況の 2,858 語の数は出さない）",
@@ -24400,13 +24421,17 @@ console.log("my words (79.1):");
     }
     await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
     const set = await page.evaluate(() => ({ title: document.getElementById("resultTitle")?.textContent.trim(), next: document.getElementById("learnNext")?.textContent.trim() ?? null, my: document.getElementById("learnMyWords")?.textContent.trim() ?? null }));
+    const first10 = await page.evaluate(() => window.__words.slice(0, 10));
     const n10 = await nShown(page);
     await page.click("#learnNext");
     await waitUntil(async () => (await nShown(page)) > n10, 6000);
     const eleventh = await lastShown(page);
     const st = await stored(page);
-    check("79.1 1 回 10 語: 10 語で区切り「続けて学ぶ」と「マイ単語帳へ」・続けると 11 語目・答えを見た語は あやふや",
-      set.title === "10語 終わり" && set.next === "続けて学ぶ" && set.my === "マイ単語帳へ" && eleventh === "my-wordk" && st.slice(0, 10).every((w) => w.ls === 1) && !("ls" in st[10]), JSON.stringify({ set, eleventh, st: st.map((w) => w.ls ?? 0) }));
+    // これからの語は回ごとに混ぜる（Batch 86）: 11 語目は最初の 10 語に出なかった語。答えを見た 10 語は あやふや・11 語目はまだ答えていない
+    const rest = words.find((w) => !first10.includes(`my-${w.en}`));
+    check("79.1 1 回 10 語: 10 語で区切り「続けて学ぶ」と「マイ単語帳へ」・続けると 11 語目（残りの 1 語）・答えを見た語は あやふや",
+      set.title === "10語 終わり" && set.next === "続けて学ぶ" && set.my === "マイ単語帳へ" && new Set(first10).size === 10 && !!rest && eleventh === `my-${rest.en}`
+        && st.every((w) => (w.en === rest.en ? !("ls" in w) : w.ls === 1)), JSON.stringify({ set, first10, eleventh, st: st.map((w) => w.ls ?? 0) }));
     await closeCtx(page);
   }
 
@@ -25037,18 +25062,24 @@ console.log("my word books (81.1):");
     const words = [{ en: "invoice", ja: "請求書" }, { en: LONG, ja: "一歩ずつの長い言い回し", book: "w1" }, { en: "agenda", ja: "議題", book: "w1" }];
     const page = await bookPage({ spelldash_my_words: JSON.stringify(words), spelldash_my_books: books });
     await page.goto(BASE + "/?learn=my&book=w1", { waitUntil: "networkidle" });
+    // 並びは回ごとに混ぜる（Batch 86）: 出た語の答えを打つ（150 字の熟語は全部打って Enter・agenda は 1 字ずつ）
+    const answerShown = async () => {
+      const id = await page.evaluate(() => window.__words.at(-1));
+      if (id === `my-${LONG}`) {
+        await page.type("#input", LONG, { delay: 0 });
+        await page.press("#input", "Enter");
+      } else if (id === "my-agenda") for (const ch of "agenda") await page.press("#input", ch);
+      return id;
+    };
     await waitUntil(async () => (await nShown(page)) >= 1, 8000);
-    const first = await page.evaluate(() => window.__words.at(-1));
-    await page.type("#input", LONG, { delay: 0 });
-    await page.press("#input", "Enter");
+    const first = await answerShown();
     await waitUntil(async () => (await nShown(page)) >= 2, 6000);
-    const second = await page.evaluate(() => window.__words.at(-1));
-    for (const ch of "agenda") await page.press("#input", ch);
+    const second = await answerShown();
     await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
     const panel = await page.evaluate(() => ({ title: document.getElementById("resultTitle")?.textContent.trim(), text: document.getElementById("resultPanel")?.innerText.replace(/\s+/g, " ").trim(), back: document.getElementById("learnMyWords")?.getAttribute("href") ?? null }));
     const st = (await stored(page)).words;
     check(`81.1 単語帳ごとに学ぶ: /?learn=my&book=w1 は「仕事」の 2 語だけ（${LONG.length} 字の熟語を全部打って Enter で正解・覚えた）・回の終わりは「仕事 覚えた 2 / 2」と「マイ単語帳へ」（/mywords.html?book=w1）・ほかの単語帳の語は出ない・URL の ?book= は回をやめると外れる`,
-      LONG.length === 150 && first === `my-${LONG}` && second === "my-agenda" && panel.title === "2語 終わり" && /仕事 覚えた 2 \/ 2/.test(panel.text) && panel.back === "/mywords.html?book=w1" && st.find((w) => w.en === LONG)?.ls === 2 && !("ls" in st.find((w) => w.en === "invoice")),
+      LONG.length === 150 && JSON.stringify([first, second].sort()) === JSON.stringify([`my-${LONG}`, "my-agenda"].sort()) && panel.title === "2語 終わり" && /仕事 覚えた 2 \/ 2/.test(panel.text) && panel.back === "/mywords.html?book=w1" && st.find((w) => w.en === LONG)?.ls === 2 && !("ls" in st.find((w) => w.en === "invoice")),
       JSON.stringify({ first, second, panel, st: st.map((w) => [w.en.slice(0, 12), w.ls ?? 0]) }));
     await page.goto(BASE + "/?learn=my", { waitUntil: "networkidle" });
     await waitUntil(async () => (await nShown(page)) >= 1, 8000);
@@ -25063,7 +25094,8 @@ console.log("my word books (81.1):");
   {
     const LONGEN = `${"keep moving ".repeat(12)}keep moving on`.slice(0, 150);
     const LONGJA = "長い訳".repeat(50);
-    const words = [{ en: LONGEN, ja: LONGJA }, { en: `${"abcdefghij".repeat(4)}x`, ja: "長い 1 語" }];
+    // 2 つ目の語は あやふや（列は これから → あやふや。これからの中は回ごとに混ぜる〔Batch 86〕ので、150 字の語を必ず最初に出す）
+    const words = [{ en: LONGEN, ja: LONGJA }, { en: `${"abcdefghij".repeat(4)}x`, ja: "長い 1 語", ls: 1, lsAt: 1 }];
     const bad = [];
     for (const theme of [null, "dark"]) {
       const page = await bookPage({ spelldash_my_words: JSON.stringify(words), spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "w2", name: "とても長い名前の単語帳をここに二十字" }]) }, { viewport: { width: 320, height: 720 }, mobile: true, theme });
@@ -25315,8 +25347,9 @@ console.log("same english twice (82.1):");
     const panel = await page.evaluate(() => ({ title: document.getElementById("resultTitle")?.textContent.trim(), text: document.getElementById("resultPanel")?.innerText.replace(/\s+/g, " ").trim() }));
     const s2 = await stored(page);
     const st = Object.fromEntries(s2.words.filter((w) => w.kind !== "concept").map((w) => [w.en, w.ls ?? 0]));
-    check("82.1 学ぶ回（/?learn=my&book=main）: 同じ英語の 6 語が別々のカード（my-<鍵>）で足した順に出る・出題は各語の訳（「→」の行も 1 行の全部）・up／down を打って正解",
-      asked.length === 6 && JSON.stringify(asked.map((a) => a.id)) === JSON.stringify(["my-up", "my-down", ...added.map((w) => `my-${w.en}`)]) && asked.every((a) => a.ja && a.prompt === a.ja) && String(asked[2]?.prompt).includes("→"),
+    const askedArrow = asked.find((a) => a.id === `my-${added[0]?.en}`); // 「→」の行（並びは回ごとに混ぜる。Batch 86）
+    check("82.1 学ぶ回（/?learn=my&book=main）: 同じ英語の 6 語が別々のカード（my-<鍵>）で 1 回ずつ出る・出題は各語の訳（「→」の行も 1 行の全部）・up／down を打って正解",
+      asked.length === 6 && JSON.stringify(asked.map((a) => a.id).sort()) === JSON.stringify(["my-up", "my-down", ...added.map((w) => `my-${w.en}`)].sort()) && asked.every((a) => a.ja && a.prompt === a.ja) && String(askedArrow?.prompt).includes("→") && askedArrow?.prompt === jaOf(L[1]),
       JSON.stringify(asked));
     check("82.1 学ぶ回の答えはその語に記録: 1 打ミスした「→」の行だけ あやふや・ほかの 5 語は 覚えた（同じ英語でも状態は別々）・場面カードは変わらない・回の終わりは「マイ単語帳 覚えた 5 / 6」",
       st.up === 2 && st.down === 2 && st[added[0]?.en] === 1 && added.slice(1).every((w) => st[w.en] === 2) && JSON.stringify(s2.words[1]) === JSON.stringify(OLD[1]) && panel.title === "6語 終わり" && /マイ単語帳 覚えた 5 \/ 6/.test(panel.text ?? ""),
@@ -25393,6 +25426,8 @@ console.log("my words choice (82.2):");
     page.errors = [];
     page.on("pageerror", (e) => page.errors.push(e.message));
     page.on("console", (m) => { if (m.type() === "error") page.errors.push(`console: ${m.text()}`); });
+    // 回ごとに混ぜる列（Batch 86）は決まった種: 同じ語なら打つ回と選ぶ回で同じ並び（(5) の突き合わせ）。どの検査も出た語から答えを引く
+    await page.addInitScript(seedQueueRandom, 822);
     await page.addInitScript(([seed, th]) => {
       window.__words = [];
       addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
@@ -25548,8 +25583,10 @@ console.log("my words choice (82.2):");
     const v0 = await waitQuestion(page, 1);
     const s0 = await stored(page);
     const e0 = entryOf(s0, v0.id);
-    check("82.2 選ぶ回（/?learn=my&book=main&choice=en）: 問いは 1 語目の訳（日本語訳）・選択肢はちょうど up と down の 2 つ（1・2 の番号は読み上げない）・場面カードは出ない・分からない あり・次へ なし・選択肢は名前の付いた組",
-      v0.box && v0.id === "my-up" && e0?.en === "up" && v0.label === "日本語訳" && v0.q === UPDOWN[0].ja && v0.opts.length === 2 && JSON.stringify(v0.opts.map((o) => o.t).sort()) === '["down","up"]'
+    const ans0 = shownOf(e0); // 列は回ごとに混ぜる（Batch 86）: 答えは出た語から引く
+    const asked = [{ id: v0.id, q: v0.q }];
+    check("82.2 選ぶ回（/?learn=my&book=main&choice=en）: 問いは出た語の訳（日本語訳）・選択肢はちょうど up と down の 2 つ（1・2 の番号は読み上げない）・場面カードは出ない・分からない あり・次へ なし・選択肢は名前の付いた組",
+      v0.box && UPDOWN.some((w) => `my-${w.en}` === v0.id) && !!e0 && v0.label === "日本語訳" && v0.q === e0.ja && v0.opts.length === 2 && JSON.stringify(v0.opts.map((o) => o.t).sort()) === '["down","up"]'
         && JSON.stringify(v0.opts.map((o) => o.n)) === '["1","2"]' && v0.opts.every((o) => o.nHidden && o.pressed === "false" && o.mark === "" && o.state === "") && v0.skip && !v0.next && v0.group === "group",
       JSON.stringify(v0));
     check("82.2 選ぶ回: 入力欄も画面キーボードも出さない（設定で画面キーボードを「いつも」にしていても）・焦点は選択肢の組・始めに「分からないときは「分からない」」の 1 行（aria-live）",
@@ -25561,75 +25598,85 @@ console.log("my words choice (82.2):");
     await page.click("#choiceSwitch");
     await page.waitForTimeout(120);
     const vj = await cv(page);
-    const ups = UPDOWN.filter((w) => w.en.split("~")[0] === "up").map((w) => w.ja);
-    check("82.2 英語を見て訳を選ぶ（切り替え）: URL は choice=ja・問いは英語（up）・選択肢は訳（2〜4 つ）で、正解はこの語の訳 1 つだけ・ほかの up の訳は出さない・切り替えでは記録しない",
-      /[?&]choice=ja(&|$)/.test(vj.url) && vj.label === "英語" && vj.q === "up" && vj.opts.length >= 2 && vj.opts.length <= 4 && vj.opts.filter((o) => o.t === UPDOWN[0].ja).length === 1
-        && !vj.opts.some((o) => o.t !== UPDOWN[0].ja && ups.includes(o.t)) && JSON.stringify(answers(await stored(page))) === JSON.stringify(answers(s0)) && vj.id === v0.id,
+    const sameEn = UPDOWN.filter((w) => shownOf(w) === ans0).map((w) => w.ja); // 出た語と同じ英語の語の訳
+    check("82.2 英語を見て訳を選ぶ（切り替え）: URL は choice=ja・問いは英語（出た語の英語）・選択肢は訳（2〜4 つ）で、正解はこの語の訳 1 つだけ・同じ英語のほかの語の訳は出さない・切り替えでは記録しない",
+      /[?&]choice=ja(&|$)/.test(vj.url) && vj.label === "英語" && vj.q === ans0 && vj.opts.length >= 2 && vj.opts.length <= 4 && vj.opts.filter((o) => o.t === e0.ja).length === 1
+        && !vj.opts.some((o) => o.t !== e0.ja && sameEn.includes(o.t)) && JSON.stringify(answers(await stored(page))) === JSON.stringify(answers(s0)) && vj.id === v0.id,
       JSON.stringify(vj));
     await page.click("#choiceSwitch");
     await page.waitForTimeout(120);
     const ve = await cv(page);
-    check("82.2 切り替えを戻す: choice=en・問いは訳・選択肢は up と down", /[?&]choice=en(&|$)/.test(ve.url) && ve.q === UPDOWN[0].ja && JSON.stringify(ve.opts.map((o) => o.t).sort()) === '["down","up"]' && ve.id === v0.id, JSON.stringify(ve));
+    check("82.2 切り替えを戻す: choice=en・問いは訳・選択肢は up と down", /[?&]choice=en(&|$)/.test(ve.url) && ve.q === e0.ja && JSON.stringify(ve.opts.map((o) => o.t).sort()) === '["down","up"]' && ve.id === v0.id, JSON.stringify(ve));
 
-    // Q1（up）: 正解をキーで → 印・aria-live・打つ回の間合いで次へ（待ちの後に自分で進む）
-    const k1 = correctIndex(ve, "up");
+    // Q1: 正解をキーで → 印・aria-live・打つ回の間合いで次へ（待ちの後に自分で進む）
+    const k1 = correctIndex(ve, ans0);
     await page.keyboard.press(String(k1 + 1));
     await page.waitForTimeout(60);
     const a1 = await cv(page);
-    check("82.2 正解をキー（1〜4）で選ぶ: 選んだ選択肢に「正解」の字（色だけでない）・押した状態（aria-pressed）・ほかは選べない（aria-disabled）・aria-live の 1 行は「正解。up」・次へ が出る・切り替えは消える",
-      a1.opts[k1]?.state === "right" && a1.opts[k1]?.mark === "正解" && a1.opts[k1]?.pressed === "true" && /正解/.test(a1.opts[k1]?.name ?? "") && a1.opts.every((o) => o.disabled === "true") && /^正解。up/.test(a1.msg) && a1.next && !a1.skip && a1.dir === null,
+    check(`82.2 正解をキー（1〜4）で選ぶ: 選んだ選択肢に「正解」の字（色だけでない）・押した状態（aria-pressed）・ほかは選べない（aria-disabled）・aria-live の 1 行は「正解。${ans0}」・次へ が出る・切り替えは消える`,
+      a1.opts[k1]?.state === "right" && a1.opts[k1]?.mark === "正解" && a1.opts[k1]?.pressed === "true" && /正解/.test(a1.opts[k1]?.name ?? "") && a1.opts.every((o) => o.disabled === "true") && a1.msg.startsWith(`正解。${ans0}`) && a1.next && !a1.skip && a1.dir === null,
       JSON.stringify(a1));
     await waitUntil(async () => (await nShown(page)) >= 2, 5000);
     const v2 = await waitQuestion(page, 2);
-    check("82.2 正解の後は打つ回と同じ間合いで次の問いへ（待ちの後に自分で進む）・次の問いは「→」の行（同じ英語の 2 つ目）の訳の全部", v2.id === `my-${KEYS[1]}` && v2.q === UPDOWN[1].ja && v2.q.includes("→") && JSON.stringify(v2.opts.map((o) => o.t).sort()) === '["down","up"]' && v2.opts.every((o) => o.state === ""), JSON.stringify(v2));
+    const ans2 = shownOf(entryOf(s0, v2.id));
+    asked.push({ id: v2.id, q: v2.q });
+    check("82.2 正解の後は打つ回と同じ間合いで次の問いへ（待ちの後に自分で進む）・次の問いは別の語の訳の全部", v2.id !== v0.id && v2.q === entryOf(s0, v2.id)?.ja && JSON.stringify(v2.opts.map((o) => o.t).sort()) === '["down","up"]' && v2.opts.every((o) => o.state === ""), JSON.stringify(v2));
 
-    // Q2（「→」の行）: 違う答えをマウスで → 違うの印・正解の印・止まる（自分で進むまで待つ）・Space で次へ
-    const w2 = wrongIndex(v2, "up");
+    // Q2: 違う答えをマウスで → 違うの印・正解の印・止まる（自分で進むまで待つ）・Space で次へ
+    const w2 = wrongIndex(v2, ans2);
     await clickOpt(page, w2);
     await page.waitForTimeout(60);
     const a2 = await cv(page);
-    const c2 = correctIndex(a2, "up");
-    check("82.2 違う答えをマウスで選ぶ: 選んだ選択肢に「違う」の字・正しい選択肢に「正解」の字・aria-live は「違う。正しい答えは up」・ボタンの状態",
-      a2.opts[w2]?.state === "wrong" && a2.opts[w2]?.mark === "違う" && a2.opts[w2]?.pressed === "true" && a2.opts[c2]?.state === "right" && a2.opts[c2]?.mark === "正解" && a2.opts[c2]?.pressed === "false" && /違う/.test(a2.opts[w2]?.name ?? "") && /^違う。正しい答えは up/.test(a2.msg) && a2.next,
+    const c2 = correctIndex(a2, ans2);
+    check(`82.2 違う答えをマウスで選ぶ: 選んだ選択肢に「違う」の字・正しい選択肢に「正解」の字・aria-live は「違う。正しい答えは ${ans2}」・ボタンの状態`,
+      a2.opts[w2]?.state === "wrong" && a2.opts[w2]?.mark === "違う" && a2.opts[w2]?.pressed === "true" && a2.opts[c2]?.state === "right" && a2.opts[c2]?.mark === "正解" && a2.opts[c2]?.pressed === "false" && /違う/.test(a2.opts[w2]?.name ?? "") && a2.msg.startsWith(`違う。正しい答えは ${ans2}`) && a2.next,
       JSON.stringify(a2));
     await page.waitForTimeout(1600);
     check("82.2 違う答えの後は自分で進むまで止まる（急がせない）", (await nShown(page)) === 2 && (await cv(page)).next, "");
     await page.keyboard.press(" ");
     const v3 = await waitQuestion(page, 3);
+    const ans3 = shownOf(entryOf(s0, v3.id));
+    asked.push({ id: v3.id, q: v3.q });
 
     // Q3: 分からない → 正しい選択肢に印・止まる・Enter で次へ
     await page.waitForTimeout(80);
     await page.click("#choiceSkip");
     await page.waitForTimeout(60);
     const a3 = await cv(page);
-    const c3 = correctIndex(a3, "up");
-    check("82.2 分からない: 正しい選択肢に「正解」の字（どれも押していない）・aria-live は「答えは up」・止まる",
-      v3.id === `my-${KEYS[2]}` && a3.opts[c3]?.state === "right" && a3.opts[c3]?.mark === "正解" && a3.opts.every((o) => o.pressed === "false") && /^答えは up/.test(a3.msg) && a3.next,
+    const c3 = correctIndex(a3, ans3);
+    check(`82.2 分からない: 正しい選択肢に「正解」の字（どれも押していない）・aria-live は「答えは ${ans3}」・止まる`,
+      ![v0.id, v2.id].includes(v3.id) && a3.opts[c3]?.state === "right" && a3.opts[c3]?.mark === "正解" && a3.opts.every((o) => o.pressed === "false") && a3.msg.startsWith(`答えは ${ans3}`) && a3.next,
       JSON.stringify(a3));
     await page.keyboard.press("Enter");
     const v4 = await waitQuestion(page, 4);
-    // Q4（down）: 正解をマウスで。Q5: 正解をキーで。Q6: 違う答えをキーで → 次へ のボタン
-    await clickOpt(page, correctIndex(v4, "down"));
+    // Q4: 正解をマウスで。Q5: 正解をキーで。Q6: 違う答えをキーで → 次へ のボタン
+    await clickOpt(page, correctIndex(v4, shownOf(entryOf(s0, v4.id))));
     const v5 = await waitQuestion(page, 5);
-    await page.keyboard.press(String(correctIndex(v5, "down") + 1));
+    await page.keyboard.press(String(correctIndex(v5, shownOf(entryOf(s0, v5.id))) + 1));
     const v6 = await waitQuestion(page, 6);
-    await page.keyboard.press(String(wrongIndex(v6, "down") + 1));
+    await page.keyboard.press(String(wrongIndex(v6, shownOf(entryOf(s0, v6.id))) + 1));
     await page.waitForTimeout(60);
     await page.click("#choiceNext");
+    asked.push(...[v4, v5, v6].map((v) => ({ id: v.id, q: v.q })));
     await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
     const end = await cv(page);
     choiceAfter = await stored(page);
     choiceIds = await page.evaluate(() => window.__words.slice());
     const st = Object.fromEntries(choiceAfter.words.filter((w) => w.kind !== "concept").map((w) => [w.en, w.ls ?? 0]));
-    check("82.2 回の終わり: 打つ回と同じパネル（6語 終わり・今回 覚えた／あやふや・マイ単語帳 覚えた）に選ぶ回と向きの名前・「もう一度」は選ぶ回と向きのまま・「マイ単語帳へ」はこの単語帳・向きを替える道",
-      [v4.id, v5.id, v6.id].join() === KEYS.slice(3).map((k) => `my-${k}`).join() && !end.box && end.panel && end.title === "6語 終わり" && /今回 覚えた/.test(end.panelText) && /マイ単語帳 覚えた 3 \/ 6/.test(end.panelText)
+    const ids6 = asked.map((a) => a.id);
+    check("82.2 回の終わり: 打つ回と同じパネル（6語 終わり・今回 覚えた／あやふや・マイ単語帳 覚えた）に選ぶ回と向きの名前・「もう一度」は選ぶ回と向きのまま・「マイ単語帳へ」はこの単語帳・向きを替える道・6 語が 1 回ずつ出た",
+      JSON.stringify([...ids6].sort()) === JSON.stringify(KEYS.map((k) => `my-${k}`).sort()) && !end.box && end.panel && end.title === "6語 終わり" && /今回 覚えた/.test(end.panelText) && /マイ単語帳 覚えた 3 \/ 6/.test(end.panelText)
         && end.mode === "選択式・訳を見て英語を選ぶ" && end.again === "/?learn=my&book=main&choice=en" && end.back === "/mywords.html?book=main" && end.other === "/?learn=my&book=main&choice=ja",
-      JSON.stringify(end));
+      JSON.stringify({ end, ids6 }));
+    check("82.2 「→」の行（同じ英語の 2 つ目）の問いは訳の全部（「→」も字のまま）・どの問いも出た語の訳",
+      asked.find((a) => a.id === `my-${KEYS[1]}`)?.q === UPDOWN[1].ja && UPDOWN[1].ja.includes("→") && asked.every((a) => a.q === entryOf(s0, a.id)?.ja), JSON.stringify(asked));
     check("82.2 回の終わりの向きを替える道: 見える字は回の始めの切り替えと同じ「英語を見て訳を選ぶに替える」（向きの名前だけにしない）・読み上げの名前も見える字と同じ",
       end.otherText === "英語を見て訳を選ぶに替える" && (end.otherLabel ?? end.otherText) === end.otherText, JSON.stringify({ text: end.otherText, label: end.otherLabel }));
-    check("82.2 記録はその語に: 正解の up・down 2 語は 覚えた、違うを選んだ「→」の行（同じ英語の 2 つ目）と分からないの語と最後の違うは あやふや・場面カードは 1 字も変わらない",
-      st.up === 2 && st[KEYS[1]] === 1 && st[KEYS[2]] === 1 && st.down === 2 && st[KEYS[4]] === 2 && st[KEYS[5]] === 1 && JSON.stringify(choiceAfter.words.find((w) => w.kind === "concept")) === JSON.stringify(SCENE),
-      JSON.stringify(st));
+    // 答え方ごとの状態: 1・4・5 問目は正解（覚えた）、2 問目は違う・3 問目は分からない・6 問目は違う（あやふや）。同じ英語でもその語に
+    const expectLs = [2, 1, 1, 2, 2, 1];
+    check("82.2 記録はその語に: 正解を選んだ 3 語は 覚えた、違うを選んだ 2 語と分からないの語は あやふや（同じ英語の語もその語ごと）・場面カードは 1 字も変わらない",
+      ids6.every((id, i) => st[id.slice(3)] === expectLs[i]) && JSON.stringify(choiceAfter.words.find((w) => w.kind === "concept")) === JSON.stringify(SCENE),
+      JSON.stringify({ st, ids6 }));
     // もう一度: 同じ選ぶ回と向き（新しい回）
     await page.click("#choiceAgain");
     const va = await waitQuestion(page, 1);
@@ -25646,9 +25693,11 @@ console.log("my words choice (82.2):");
     const page = await choicePage(seedAll);
     await page.goto(BASE + "/?learn=my&book=main", { waitUntil: "networkidle" });
     const typeWord = async (w) => { for (const ch of w) await page.press("#input", ch); };
+    const s5 = await stored(page);
+    const shownAnswer = async () => shownOf(entryOf(s5, (await cv(page)).id)); // 出た語の答え（列は選ぶ回と同じ種で混ぜる）
     await waitUntil(async () => (await nShown(page)) >= 1, 8000);
     const t0 = await cv(page);
-    await typeWord("up");
+    await typeWord(await shownAnswer());
     await waitUntil(async () => (await nShown(page)) >= 2, 6000);
     await page.press("#input", "x"); // 1 打ミス（答えが出る）
     await page.waitForTimeout(150);
@@ -25659,9 +25708,9 @@ console.log("my words choice (82.2):");
     await page.waitForTimeout(150);
     await page.press("#input", "Enter"); // 次へ
     await waitUntil(async () => (await nShown(page)) >= 4, 6000);
-    await typeWord("down");
+    await typeWord(await shownAnswer());
     await waitUntil(async () => (await nShown(page)) >= 5, 6000);
-    await typeWord("down");
+    await typeWord(await shownAnswer());
     await waitUntil(async () => (await nShown(page)) >= 6, 6000);
     await page.press("#input", "x");
     await page.waitForTimeout(150);
@@ -25694,15 +25743,16 @@ console.log("my words choice (82.2):");
     const page = await choicePage(seedAll);
     await page.goto(BASE + "/?learn=my&book=main&choice=en", { waitUntil: "networkidle" });
     const v1 = await waitQuestion(page, 1);
-    await page.dblclick(`#choiceOpts .choice__opt[data-i="${correctIndex(v1, "up")}"]`);
+    const s6 = await stored(page);
+    await page.dblclick(`#choiceOpts .choice__opt[data-i="${correctIndex(v1, shownOf(entryOf(s6, v1.id)))}"]`);
     await waitUntil(async () => (await nShown(page)) >= 2, 5000);
     await page.waitForTimeout(700);
     const s1 = await stored(page);
     const v2 = await cv(page);
     check("82.2 2 度押し（ダブルクリック）: 1 回だけ記録（正解 1・XP 1 回分）・次の問いを飛ばさない",
-      s1.stats["my-up"]?.correctCount === 1 && (s1.stats["my-up"]?.history ?? []).length === 1 && (await nShown(page)) === 2 && v2.id === `my-${KEYS[1]}` && v2.opts.every((o) => o.state === ""),
-      JSON.stringify({ up: s1.stats["my-up"], xp: s1.xp, n: await nShown(page) }));
-    const wk = String(wrongIndex(v2, "up") + 1);
+      s1.stats[v1.id]?.correctCount === 1 && (s1.stats[v1.id]?.history ?? []).length === 1 && (await nShown(page)) === 2 && v2.id !== v1.id && KEYS.some((k) => `my-${k}` === v2.id) && v2.opts.every((o) => o.state === ""),
+      JSON.stringify({ first: v1.id, rec: s1.stats[v1.id], second: v2.id, xp: s1.xp, n: await nShown(page) }));
+    const wk = String(wrongIndex(v2, shownOf(entryOf(s6, v2.id))) + 1);
     await page.keyboard.down(wk);
     await page.keyboard.down(wk); // 押しっぱなし（repeat）
     await page.keyboard.down(wk);
@@ -25714,7 +25764,7 @@ console.log("my words choice (82.2):");
     await page.keyboard.up("Enter");
     await page.waitForTimeout(600);
     const s2 = await stored(page);
-    const id2 = `my-${KEYS[1]}`;
+    const id2 = v2.id;
     check("82.2 キーの押しっぱなし: 選ぶのも次へも 1 回だけ（× 1・打ち間違い 1・問いは 1 つだけ進む）", s2.stats[id2]?.recallFail === 1 && s2.stats[id2]?.typingMiss === 1 && (await nShown(page)) === 3 && s2.xp === s1.xp, JSON.stringify({ r: s2.stats[id2], n: await nShown(page) }));
     // 開き直し: 答えた分は 1 回のまま（開いただけでは記録しない）
     const before = answers(await stored(page));
@@ -25817,12 +25867,13 @@ console.log("my words choice (82.2):");
     check("82.2 指の端末: 押せる物（向きの切り替え・2 つの選択肢・分からない）はどれも 44px 以上（押せる物は 40〜44px の決まり）", sizes.coarse && sizes.list.length === 4 && sizes.list.every((s) => s.h >= 44), JSON.stringify(sizes));
     const moving =() => page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && Number(a.effect?.getTiming?.().duration ?? 0) > 1).map((a) => `${a.animationName ?? a.transitionProperty ?? "?"}@${a.effect?.target?.id || a.effect?.target?.className || "?"}`));
     const m0 = await moving();
-    await page.tap(`#choiceOpts .choice__opt[data-i="${correctIndex(v, "up")}"]`);
+    const s13 = await stored(page);
+    await page.tap(`#choiceOpts .choice__opt[data-i="${correctIndex(v, shownOf(entryOf(s13, v.id)))}"]`);
     await page.waitForTimeout(80);
     const m1 = await moving();
     const v2 = await waitQuestion(page, 2);
     await page.waitForTimeout(600); // 人が新しい問いを読む間（出てすぐの 2 度目のタップは、ダブルタップの 2 度目として受けない: (14)）
-    await page.tap(`#choiceOpts .choice__opt[data-i="${wrongIndex(v2, "up")}"]`);
+    await page.tap(`#choiceOpts .choice__opt[data-i="${wrongIndex(v2, shownOf(entryOf(s13, v2.id)))}"]`);
     await page.waitForTimeout(80);
     const m2 = await moving();
     const a2 = await cv(page);
@@ -25851,7 +25902,8 @@ console.log("my words choice (82.2):");
       return { x: Math.round(r.x), y: Math.round(r.y) };
     }, id);
     // 1 問目は正解（ふつうのクリック）。2 問目からは向きの行が畳まれ、「分からない」を押すと同じ所に「次へ」が出る
-    await clickOpt(page, correctIndex(v1, "up"));
+    const s14 = await stored(page);
+    await clickOpt(page, correctIndex(v1, shownOf(entryOf(s14, v1.id))));
     await waitQuestion(page, 2);
     await page.waitForTimeout(600); // 人が新しい問いを読む間
     const skipAt = await spotOf("choiceSkip");
@@ -25864,7 +25916,7 @@ console.log("my words choice (82.2):");
     const hitLate = await synth("#choiceNext", 2); // 0.5 秒より後（遅いダブルクリックの設定）: 受ける
     await waitUntil(async () => (await nShown(page)) >= 3, 5000);
     const v3 = await waitQuestion(page, 3);
-    const idx = wrongIndex(v3, "up");
+    const idx = wrongIndex(v3, shownOf(entryOf(s14, v3.id)));
     await synth(`#choiceOpts .choice__opt[data-i="${idx}"]`, 2); // 新しい問いが出てすぐの 2 度目: 答えにしない
     await page.waitForTimeout(100);
     const early = (await cv(page)).opts.every((o) => o.state === "");
@@ -25899,9 +25951,10 @@ console.log("my words choice (82.2):");
     const v11 = await answerOne(11);
     await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden && /11語/.test(document.getElementById("resultTitle")?.textContent ?? ""), null, { timeout: 8000 }).catch(() => {});
     const done = await cv(page);
-    check("82.2 1 回 10 語（打つ回と同じ）: 10 語で「10語 終わり」・「続けて学ぶ」・選ぶ回と向き（英語を見て訳を選ぶ）の名前・向きを替える道 → 続けて学ぶの 11 語目も選ぶ回と向きのまま → 「11語 終わり」と「もう一度」（向きのまま）",
-      JSON.stringify(asked) === JSON.stringify(ELEVEN.slice(0, 10).map((w) => `my-${w.en}`)) && set.title === "10語 終わり" && nextText === "続けて学ぶ" && set.mode === "選択式・英語を見て訳を選ぶ" && set.other === "/?learn=my&choice=en"
-        && v11.id === "my-kite" && v11.label === "英語" && v11.q === "kite" && done.title === "11語 終わり" && done.again === "/?learn=my&choice=ja" && page.errors.length === 0,
+    const rest = ELEVEN.find((w) => !asked.includes(`my-${w.en}`)); // 1 回目の 10 語に出なかった語（列は回ごとに混ぜる。Batch 86）
+    check("82.2 1 回 10 語（打つ回と同じ）: 10 語で「10語 終わり」・「続けて学ぶ」・選ぶ回と向き（英語を見て訳を選ぶ）の名前・向きを替える道 → 続けて学ぶの 11 語目（残りの 1 語）も選ぶ回と向きのまま → 「11語 終わり」と「もう一度」（向きのまま）",
+      asked.length === 10 && new Set(asked).size === 10 && asked.every((id) => ELEVEN.some((w) => `my-${w.en}` === id)) && !!rest && set.title === "10語 終わり" && nextText === "続けて学ぶ" && set.mode === "選択式・英語を見て訳を選ぶ" && set.other === "/?learn=my&choice=en"
+        && v11.id === `my-${rest.en}` && v11.label === "英語" && v11.q === rest.en && done.title === "11語 終わり" && done.again === "/?learn=my&choice=ja" && page.errors.length === 0,
       JSON.stringify({ asked, set: { title: set.title, mode: set.mode, other: set.other }, nextText, v11: { id: v11.id, label: v11.label, q: v11.q }, done: { title: done.title, again: done.again }, err: page.errors[0] }));
     await closeCtx(page);
   }
@@ -25912,11 +25965,12 @@ console.log("my words choice (82.2):");
     await page.goto(BASE + "/?learn=my", { waitUntil: "networkidle" });
     await waitUntil(async () => (await nShown(page)) >= 1, 8000);
     const v = await cv(page);
-    for (const ch of "up") await page.press("#input", ch);
+    const first = entryOf(await stored(page), v.id); // 出た語（列は回ごとに混ぜる。Batch 86）
+    for (const ch of shownOf(first) ?? "zz") await page.press("#input", ch);
     await page.waitForTimeout(120);
     const after = await cv(page);
     const s = await stored(page);
-    check("82.2 打つ回（/?learn=my・choice なし）は前のまま: 選ぶ回の箱なし・入力欄あり（焦点）・画面キーボードは設定どおり・打って正解・記録", !v.box && v.input && v.inputFocus && v.osk && v.label === "日本語訳" && /正解|覚えた/.test(after.msg) && s.words.find((w) => w.en === "up")?.ls === 2 && page.errors.length === 0,
+    check("82.2 打つ回（/?learn=my・choice なし）は前のまま: 選ぶ回の箱なし・入力欄あり（焦点）・画面キーボードは設定どおり・打って正解・記録", !v.box && v.input && v.inputFocus && v.osk && v.label === "日本語訳" && /正解|覚えた/.test(after.msg) && !!first && s.words.find((w) => w.en === first.en)?.ls === 2 && page.errors.length === 0,
       JSON.stringify({ v: { box: v.box, input: v.input, focus: v.inputFocus, osk: v.osk, label: v.label }, msg: after.msg, err: page.errors[0] }));
     await closeCtx(page);
   }
@@ -26777,6 +26831,75 @@ console.log("text guard (85.1):");
     check("85.1 320 × 昼夜: 問い（SpellDash の 1 行）と足した後の道で横スクロール 0・道とボタンは画面の中で高さ 44px 以上・エラー 0", bad.length === 0, JSON.stringify(bad));
   }
   check("85.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 86.1 渡された単語帳の道のり（Batch 86。js/myWordsCore.js buildMyQueue の混ぜ方・js/game.js のマイ単語帳の回・mywords.html の渡された単語帳。docs/SPEC_MY_WORDS.md §4・§13）: 回ごとに これから を混ぜる（打つ回と選択式。答えの同じ行がまとまった単語帳で最初の語が全部同じ答えにならない） =====
+// Service Worker は止める。種は 1 回だけ入れる。列を混ぜる乱数は決まった種（seedQueueRandom。ほかの乱数は本物）
+console.log("journey (86.1):");
+{
+  const allErrors = [];
+  async function journeyPage(storage = {}, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null, queueSeed = 861 } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript(seedQueueRandom, queueSeed);
+    await page.addInitScript(([seed, th]) => {
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const nShown = (page) => page.evaluate(() => window.__words.length);
+  const lastShown = (page) => page.evaluate(() => window.__words.at(-1) ?? null);
+  const T = "2026-11-09T00:00:00.000Z";
+  // 答えの同じ行がまとまった単語帳（見本と同じ形: up の場面の行が続き、その後に down の場面の行）。2 つ目からの語の鍵は <英語>~<8 桁>
+  const hex8 = (i) => (0x1a2b3c00 + i).toString(16).padStart(8, "0");
+  const UPDOWN10 = [
+    ...Array.from({ length: 10 }, (_, i) => ({ en: i === 0 ? "up" : `up~${hex8(i)}`, ...(i === 0 ? {} : { text: "up" }), ja: `〈場面〉${i + 1}。値は上がる？下がる？`, book: "ud", bookName: "上下", addedAt: T })),
+    ...Array.from({ length: 10 }, (_, i) => ({ en: i === 0 ? "down" : `down~${hex8(i + 10)}`, ...(i === 0 ? {} : { text: "down" }), ja: `〈場面〉${i + 11}。値は上がる？下がる？`, book: "ud", bookName: "上下", addedAt: T }))
+  ];
+  const UD_BOOKS = JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "ud", name: "上下" }]);
+  const answerOfId = (id) => String(id ?? "").replace(/^my-/, "").split("~")[0]; // 鍵の頭が答えの英語（up／down）
+
+  // (1) 回ごとに これから を混ぜる: 10 up・10 down の単語帳の 1 回目（10 語）に up と down の両方が出る（打つ回と選択式）。
+  //     3f03d63 は足した順なので 10 語とも up。種は決まっているので揺れない
+  for (const mode of ["typed", "choice"]) {
+    const page = await journeyPage({ spelldash_my_words: JSON.stringify(UPDOWN10), spelldash_my_books: UD_BOOKS });
+    await page.goto(BASE + `/?learn=my&book=ud${mode === "choice" ? "&choice=en" : ""}`, { waitUntil: "networkidle" });
+    const asked = [];
+    for (let n = 1; n <= 10; n++) {
+      const ok = await waitUntil(async () => (await nShown(page)) >= n && (mode === "typed" || (await page.evaluate(() => document.querySelectorAll("#choiceOpts .choice__opt").length)) >= 2), 8000);
+      if (!ok) break;
+      const id = await lastShown(page);
+      asked.push(id);
+      const ans = answerOfId(id);
+      if (mode === "typed") for (const ch of ans) await page.press("#input", ch);
+      else {
+        const i = await page.evaluate((a) => [...document.querySelectorAll("#choiceOpts .choice__opt")].findIndex((b) => b.querySelector(".choice__text")?.textContent === a), ans);
+        await page.click(`#choiceOpts .choice__opt[data-i="${Math.max(0, i)}"]`);
+        await page.waitForTimeout(60);
+        await page.evaluate(() => { const b = document.getElementById("choiceNext"); if (b && !b.hidden) b.click(); });
+      }
+    }
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const title = await page.evaluate(() => document.getElementById("resultTitle")?.textContent.trim() ?? null);
+    const answers = asked.map(answerOfId);
+    check(`86.1 回ごとに これから を混ぜる（${mode === "typed" ? "打つ回" : "選択式"}）: 答えの同じ行がまとまった 10 up・10 down の単語帳で、1 回目の 10 語に up と down の両方が出る（足した順なら 10 語とも up）・10 語は別々の語・「10語 終わり」`,
+      asked.length === 10 && new Set(asked).size === 10 && answers.includes("up") && answers.includes("down") && title === "10語 終わり" && page.errors.length === 0,
+      JSON.stringify({ answers, title, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  check("86.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
