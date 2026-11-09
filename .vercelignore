@@ -5,3 +5,5 @@ node_modules/
 tests/
 scripts/
 docs/
+# 4D Branch は SpellDash とは別のプロジェクト（4d-branch/README.md）。SpellDash の配信には含めない
+4d-branch/

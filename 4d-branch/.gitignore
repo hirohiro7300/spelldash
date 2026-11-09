@@ -1,0 +1,5 @@
+node_modules/
+dist/
+test-results/
+# 依存のずれを防ぐため、このプロジェクトではロックファイルを管理する（親の .gitignore の指定を打ち消す）
+!package-lock.json

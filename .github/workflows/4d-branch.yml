@@ -1,0 +1,47 @@
+name: 4D Branch
+
+# 4d-branch/ を変えたときだけ動く（SpellDash の CI とは別）
+on:
+  pull_request:
+    paths:
+      - "4d-branch/**"
+      - ".github/workflows/4d-branch.yml"
+  push:
+    branches: [main]
+    paths:
+      - "4d-branch/**"
+      - ".github/workflows/4d-branch.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: 4d-branch
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 4d-branch/package-lock.json
+
+      - name: 依存インストール
+        run: npm ci
+
+      - name: 型チェック
+        run: npm run typecheck
+
+      - name: 単体テスト（データモデル・ストア・折りたたみ・保存・取り込み）
+        run: npm test
+
+      - name: ビルド
+        run: npm run build
+
+      - name: ブラウザのインストール
+        run: npx playwright-core install --with-deps chromium
+
+      - name: E2E（操作の通し・再読み込み・複数タブ・入出力・2,000 ノードの描画時間）
+        run: npm run e2e

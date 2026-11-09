@@ -1,0 +1,27 @@
+{
+  "name": "4d-branch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "目標・行動・分岐・結果をノードとしてつなぎ、未来の分岐を見える化するメモ帳",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "node tests/e2e/run.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run e2e"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.6",
+    "playwright-core": "1.63.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

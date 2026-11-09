@@ -1,0 +1,77 @@
+/* 4D Branch のデザイントークン（ダーク基調）。色は src/model/constants.ts と合わせる */
+:root {
+  color-scheme: dark;
+
+  /* 面 */
+  --bg-app: #07090d;
+  --bg-panel: #0c0f15;
+  --bg-panel-2: #10141c;
+  --bg-elev: #141924;
+  --bg-elev-2: #1a2030;
+  --bg-input: #0a0d13;
+  --bg-hover: rgba(255, 255, 255, 0.045);
+  --bg-active: rgba(255, 255, 255, 0.075);
+  --canvas-center: #0f1420;
+  --canvas-edge: #080a0f;
+
+  /* 線 */
+  --line: rgba(255, 255, 255, 0.065);
+  --line-2: rgba(255, 255, 255, 0.11);
+  --line-3: rgba(255, 255, 255, 0.18);
+
+  /* 文字 */
+  --text-1: #e7eaf1;
+  --text-2: #a3abba;
+  --text-3: #6f7889;
+  --text-4: #4b5363;
+
+  /* 強調（ブランド） */
+  --accent: #8b7bff;
+  --accent-2: #a597ff;
+  --accent-soft: rgba(139, 123, 255, 0.14);
+  --accent-line: rgba(139, 123, 255, 0.45);
+  --brand-grad: linear-gradient(135deg, #ffb547 0%, #ff6fb5 35%, #8b7bff 68%, #4fd1e8 100%);
+
+  /* ノードの種類 */
+  --goal: #ffb547;
+  --action: #4da3ff;
+  --branch: #b983ff;
+  --result: #3dd9a4;
+
+  /* 接続の関係 */
+  --rel-leads: #8a97b1;
+  --rel-condition: #f2c14e;
+  --rel-supports: #ff6fb5;
+  --rel-blocks: #ff5d6c;
+  --rel-feedback: #4fd1e8;
+
+  /* 状態 */
+  --ok: #3dd9a4;
+  --warn: #f2c14e;
+  --danger: #ff5d6c;
+  --info: #4da3ff;
+
+  /* 形 */
+  --r-xs: 5px;
+  --r-sm: 7px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --shadow-pop: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  /* 寸法 */
+  --top-h: 52px;
+  --left-w: 256px;
+  --right-w: 332px;
+  --bottom-h: 128px;
+
+  /* 文字 */
+  --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}

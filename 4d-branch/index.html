@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>4D Branch</title>
+    <meta name="description" content="目標・行動・分岐・結果をつないで、プロジェクトをまたぐ未来の分岐を見える化するメモ帳" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#07090d" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <style>
+      /* 読み込み中の一瞬も暗い背景のまま（白く光らせない） */
+      html, body { margin: 0; height: 100%; background: #07090d; color: #e7eaf1; }
+      .boot { position: fixed; inset: 0; display: grid; place-items: center; font: 13px system-ui, sans-serif; color: #6f7889; letter-spacing: .04em; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot">4D Branch を読み込んでいます…</div>
+      <noscript>4D Branch を使うには JavaScript を有効にしてください。</noscript>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
