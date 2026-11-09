@@ -13,7 +13,7 @@ import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
 import { getPlan, refreshPlan, postBilling, waitForPro, planLabel, planActionLabel, TREND_DAYS } from "./plan.js";
 import { MY_FREE_LIMIT, MY_PRO_LIMIT } from "./myWordsCore.js";
-import { fetchBillingConfig, rememberBillingConfig, rememberedBillingPrice, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
+import { fetchBillingConfig, rememberBillingConfig, rememberedBillingPrice, rememberedBillingAi, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
 import { logFunnel, logFunnelBeforeLeave, markPaidPending, hasPaidPending, freshPaidPending, bindPaidPending } from "./funnelLog.js";
 
 const MESSAGES = {
@@ -65,15 +65,26 @@ function fillNumbers() {
 fillNumbers();
 
 // 比較表の AI の行（覚え方の 1 日の回数）。config の ai（/api/billing/config。api/_lib/aiLimits.js が explain-word のゲートと同じ値を返す）。
-// AI が使えない（鍵が無い）・config が届かないときは「準備中」のまま（回数を約束しない）。字の長さはどちらも短く、表の幅は変わらない
+// AI が使えない（鍵が無い）・config が届かない（取れなかった）ときは行ごと出さない（使えない特典を売り文に並べない。加入直後の一覧 unlockedItems と同じ。
+// Batch 83 の反証: 前は両方の欄が「準備中」の行を出していた）。config を待つ間は、前に取れた config に AI があった端末（rememberedBillingAi）だけ
+// 行を先に出しておき、字は回数を約束しない「…」（表の列の幅は決まっているので字の差しかえで動かない）。
+// もう出した画面（body[data-pending] を外した後。config が 1.2 秒より遅いとき）には行を後から足さない: 足すと下の節が 1 行ぶん動く
+// （初めて開いて config が 2 秒遅いと 1200 で CLS 0.049・390 で 0.094）。その画面では AI の行を書かないだけで（少なく書く側）、次に開いたときは覚えた ai で先に出す
+const aiRow = document.getElementById("proCompareAi");
 function renderAiRow() {
-  const explain = config?.ai?.explain ?? null;
+  const explain = config ? config.ai?.explain ?? null : null;
+  if (aiRow) {
+    if (!config) aiRow.hidden = !rememberedBillingAi();
+    else if (!explain) aiRow.hidden = true;
+    else if (!aiRow.hidden || document.body.hasAttribute("data-pending")) aiRow.hidden = false;
+  }
   for (const cell of document.querySelectorAll("[data-pro-ai]")) {
     const n = explain ? Number(explain[cell.dataset.proAi]) : NaN;
     if (Number.isFinite(n) && n > 0) cell.innerHTML = `<b class="mono">${fmtCount(n)}</b> 回`;
-    else cell.textContent = "準備中";
+    else cell.textContent = "…";
   }
 }
+renderAiRow();
 
 initializeAuth();
 setFooterYear();
@@ -309,7 +320,8 @@ function renderPlans(plan) {
   return "text";
 }
 
-// 申し込みの前に確かめること（料金・無料期間・更新・解約・支払い）。ボタンの直下に置く（次の Stripe の画面で確定する）
+// 申し込みの前に確かめること（料金・無料期間・更新・解約・支払い・提供）。ボタンの直下に置く（次の Stripe の画面で確定する）。
+// 提供は特商法の表記の提供時期と確定の画面の文（api/_lib/billing.js checkoutSubmitMessage）と同じ: 手続きが終わるとすぐ・無料期間中も同じ（Batch 83 の反証）
 function termsHtml(month, year, perMonth, { withPerMonth = true } = {}) {
   // 月あたりは年額のボタンが言うので、ボタンが出るとき（ログイン済み）は繰り返さない
   const price = `月額 ${yen(month.amount)}${year ? ` ／ 年額 ${yen(year.amount)}${withPerMonth ? `（月あたり ${yen(perMonth)}）` : ""}` : ""}（税込）`;
@@ -329,6 +341,7 @@ function termsHtml(month, year, perMonth, { withPerMonth = true } = {}) {
       <div><dt>更新</dt><dd>${year ? "毎月（年額は毎年）" : "毎月"}、同じ料金で自動で更新</dd></div>
       <div><dt>解約</dt><dd>いつでも設定の「解約・お支払いの管理」から。期間の終わりまで使え、日割りの返金はしない</dd></div>
       <div><dt>支払い</dt><dd>カード（次の Stripe の画面で入力して確定）</dd></div>
+      <div><dt>提供</dt><dd>手続きが終わるとすぐ使える${info && (trialEligible() || trialUnknown()) ? "（無料期間中も同じ）" : ""}</dd></div>
     </dl>
     <p class="pro-plans__hint"><a href="./tokushoho.html">特定商取引法に基づく表記</a> ・ <a href="./terms.html">利用規約</a></p>`;
 }

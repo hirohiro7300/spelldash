@@ -185,7 +185,8 @@
         </thead>
         <!-- 今の画面（英単語の学習に絞った形）で本当に使える特典だけ（Batch 83）。数は js/proView.js が入れる: マイ単語帳は js/myWordsCore.js の
              MY_FREE_LIMIT・MY_PRO_LIMIT、推移は js/plan.js の TREND_DAYS（ここの字は同じ値。読み込みの間の形）、AI の回数は /api/billing/config の ai
-             （api/_lib/aiLimits.js。AI が使えないときと届かないときは「準備中」） -->
+             （api/_lib/aiLimits.js）。AI の行は静的には隠し、config に ai があるとき（前に取れた config に ai があったときは config を待つ間も）だけ出す。
+             AI が使えないときと届かないときは行ごと出さない（使えない特典を売り文に並べない。Batch 83 の反証） -->
         <tbody>
           <tr>
             <th scope="row">マイ単語帳<span class="pro-compare__sub">自分の仕事・試験の単語を入れて、同じ仕組みで覚える</span></th>
@@ -202,10 +203,10 @@
             <td>白・黒</td>
             <td>白・黒・紙・藍</td>
           </tr>
-          <tr>
+          <tr id="proCompareAi" hidden>
             <th scope="row">AI の覚え方<span class="pro-compare__sub">学習状況の語の詳細にある「覚え方を作る」の 1 日の回数（ログインして使う。AI が使えるときだけ）</span></th>
-            <td data-pro-ai="free">準備中</td>
-            <td data-pro-ai="pro">準備中</td>
+            <td data-pro-ai="free">…</td>
+            <td data-pro-ai="pro">…</td>
           </tr>
         </tbody>
       </table>
