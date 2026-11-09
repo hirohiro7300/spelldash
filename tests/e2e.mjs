@@ -24122,6 +24122,76 @@ console.log("78.7 人ごとの保存の領域:");
       }
     }
   }
+
+  // (A7) 2 つのタブで切り替えの画面（Batch 87。docs/SPEC_ACCOUNT_AREAS.md §3）: 大きな記録（マイ単語帳 1,000 語・英語と訳は 150 字）の人 A と B。A のマイ単語帳の
+  // タブを開いたままセッションを替え、もう 1 つのタブで学習状況を開く（2 つのタブが切り替えの画面へ。後からロックに入るタブは、前のタブが消した途中の印を、保存の
+  // 知らせの遅れでまだ読むことがある）。A → B・B → A を 5 回: どの回も 2 つのタブが復旧の画面を出さずに切り替え先の領域で開く・orphans は増えない・切り替え先の
+  // 語は 1 字も違わない・切り替え元の鍵は localStorage に 0・途中の印なし。a15294a では 5 回のうち 3 回、後のタブが古い見え方で直して切り替え直し、changed で
+  // 止まった（揺れはあるので、決まって落ちる検査は単体 test-areas の「2 つのタブ」）。落ちたタブの印（sd2.switch を置いて開く）は 1 秒待っても消えないので、今のとおり直して進む
+  {
+    const UA7 = "a7a7a7a7-1111-4222-8333-444455556666";
+    const UB7 = "b7b7b7b7-1111-4222-8333-444455556666";
+    const L = "abcdefghijklmnopqrstuvwxyz";
+    // 英語と訳は上限（150 字）いっぱい: 1 人の語の保存は 40 万字ほど（保存の知らせの遅れは書く量が多いほど長い）
+    const PAD_EN = " team and week renewal revenue clear contract before send risk quarterly finance".repeat(3);
+    const PAD_JA = "四半期の売上の見込みには、更新を待っている契約をすべて入れ、危うい点の短い注をつけてから、来週までに経理の担当へ送ること。".repeat(3);
+    const bigWords = (tag) => JSON.stringify(Array.from({ length: 1000 }, (_, i) => ({ en: `${tag}${L[Math.floor(i / 676) % 26]}${L[Math.floor(i / 26) % 26]}${L[i % 26]}${PAD_EN}`.slice(0, 150).trimEnd(), ja: `${tag}の訳その${i + 1}。${PAD_JA}`.slice(0, 150), book: "main", bookName: "マイ単語帳", addedAt: "2026-11-01T00:00:00.000Z" })));
+    const A7 = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: statsSeed("A"), spelldash_my_words: bigWords("a"), spelldash_xp: "700" };
+    const B7 = { spelldash_schema_version: "7", spelldash_placement: "done", spelldash_word_stats: statsSeed("B"), spelldash_my_words: bigWords("b"), spelldash_xp: "800" };
+    const seedOf = { [UA7]: A7, [UB7]: B7 };
+    const orphanCount = (ctx) => rawDoc(ctx, async () => { const m = await import("/js/areaStore.js"); const db = await m.openAreaStore(); try { return (await db.list("orphans")).length; } finally { db.close(); } });
+    const landedIn = (page, area) => page.waitForFunction((a) => location.pathname !== "/switch.html" && window.SpellDashArea?.area === a && document.readyState === "complete", area, { timeout: 25000 }).then(() => true, () => false);
+    {
+      const ctx = await rawCtx({ serviceWorkers: "block" });
+      try {
+        await idbPut(ctx, [{ area: `u:${UB7}`, id: "b7", keys: B7, savedAt: new Date().toISOString(), schema: "7" }]);
+        await putRaw(ctx, { ...marks(`u:${UA7}`, 2, { [`u:${UA7}`]: { at: "ls" }, [`u:${UB7}`]: { at: "idb:b7" } }), [AUTH]: sess(UA7), spelldash_onboarded: "1", ...phys(`u:${UA7}`, A7) });
+        const keep = await openApp(ctx, "/mywords.html", () => window.SpellDashArea !== undefined && document.readyState === "complete");
+        const rounds = [];
+        for (let i = 0; i < 5; i++) {
+          const to = i % 2 === 0 ? UB7 : UA7;
+          const from = to === UB7 ? UA7 : UB7;
+          const before = await orphanCount(ctx);
+          await putRaw(ctx, { [AUTH]: sess(to) });
+          const other = await openApp(ctx, "/stats.html", () => window.SpellDashArea !== undefined);
+          const landed = await Promise.all([landedIn(keep, `u:${to}`), landedIn(other, `u:${to}`)]);
+          const shown = await Promise.all([keep, other].map((p) => recovery(p).then((r) => r.shown, () => null)));
+          const raw = await dumpRaw(ctx);
+          const after = await orphanCount(ctx);
+          rounds.push({ to: to.slice(0, 2), landed, shown, words: areaOf(raw, `u:${to}`).spelldash_my_words === seedOf[to].spelldash_my_words, left: Object.keys(areaOf(raw, `u:${from}`)).length, orphans: after - before, flag: raw["sd2.switch"] ?? null, errors: other.errors.length });
+          await other.close();
+        }
+        check("78.7 2 つのタブで切り替えの画面（Batch 87・1,000 語の A と B）: A → B・B → A を 5 回、どの回も 2 つのタブが復旧の画面を出さずに切り替え先の領域で開く・切り替え先の語は 1 字も違わない・切り替え元の鍵は localStorage に 0・orphans は増えない・途中の印なし・エラー 0",
+          rounds.length === 5 && rounds.every((r) => r.landed.every(Boolean) && r.shown.every((s) => s === false) && r.words && r.left === 0 && r.orphans === 0 && r.flag === null && r.errors === 0) && keep.errors.length === 0,
+          JSON.stringify({ rounds, keepErr: keep.errors[0] ?? null }));
+        await keep.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+    // 落ちたタブの印: A を退避する前（swap の段）に落ちた形。開くと 1 秒待っても印が消えないので、今のとおり直して B へ（A は IndexedDB にそろう）
+    {
+      const ctx = await rawCtx({ serviceWorkers: "block" });
+      try {
+        await idbPut(ctx, [{ area: `u:${UB7}`, id: "b7", keys: B7, savedAt: new Date().toISOString(), schema: "7" }]);
+        await putRaw(ctx, {
+          ...marks(`u:${UA7}`, 2, { [`u:${UA7}`]: { at: "ls" }, [`u:${UB7}`]: { at: "idb:b7" } }),
+          "sd2.switch": JSON.stringify({ id: "x7", op: "session", from: `u:${UA7}`, to: `u:${UB7}`, phase: "swap", at: new Date().toISOString() }),
+          [AUTH]: sess(UB7), spelldash_onboarded: "1", ...phys(`u:${UA7}`, A7)
+        });
+        const page = await openApp(ctx, "/stats.html", () => window.SpellDashArea !== undefined);
+        const landed = await landedIn(page, `u:${UB7}`);
+        const raw = await dumpRaw(ctx);
+        const aCopy = await idbGet(ctx, "areas", `u:${UA7}`);
+        check("78.7 落ちたタブの印（Batch 87・1,000 語）: 1 秒待っても印が消えない → 今のとおり直して B が 1 字も違わずそろう・A の鍵は localStorage に 0・A は IndexedDB にそろう・途中の印なし・復旧の画面なし",
+          landed && page.visited.includes("/switch.html") && areaOf(raw, `u:${UB7}`).spelldash_my_words === B7.spelldash_my_words && Object.keys(areaOf(raw, `u:${UA7}`)).length === 0 && aCopy?.keys?.spelldash_my_words === A7.spelldash_my_words && raw["sd2.switch"] === undefined && page.errors.length === 0,
+          JSON.stringify({ landed, visited: page.visited.slice(0, 6), a: Object.keys(areaOf(raw, `u:${UA7}`)).length, copy: !!aCopy, sw: raw["sd2.switch"] ?? null, err: page.errors[0] ?? null }));
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    }
+  }
 }
 
 // ===== 78.8 確認用の Preview（*.vercel.app。js/previewHost.js。2026-10-30 の決定 7）: ログイン・同期・バックアップの読み込みを止める・認証の部品もクラウドも呼ばない・中心の学習・学習状況・設定は見られる・本番と手元では出ない =====

@@ -12,6 +12,9 @@ import { mergeOldTabOrphans } from "./oldTabImport.js";
 const DRAIN_MAX_MS = 3000;
 const DRAIN_STEP_MS = 100;
 const DRAIN_SETTLE_MS = 300;
+// ロックに入ったときに見えた途中の印（sd2.switch）が消えるのを待つ長さと 1 回の間（Batch 87。docs/SPEC_ACCOUNT_AREAS.md §3。settle の switchFlagCleared）
+const SWITCH_WAIT_MAX_MS = 1000;
+const SWITCH_WAIT_STEP_MS = 20;
 // 「はい」でゲストの記録をアカウントへ移すときに消す鍵（持ち主の鍵・同期の基準と送信の控え・ログアウトの時刻・3 状態の初めの埋めの印）
 export const ADOPT_RESET = Object.freeze(["spelldash_owner", "spelldash_xp_synced", "spelldash_xp_write", "spelldash_logout_at", "spelldash_learn_filled"]);
 // 予行の写しの置き場（areas の別の鍵。本物の写し〔その領域の鍵〕には触れない）
@@ -342,6 +345,20 @@ export function createSwitcher(deps) {
     return removed;
   }
 
+  // ロックに入ったときに途中の印が見えた（Batch 87。docs/SPEC_ACCOUNT_AREAS.md §3）: 前のタブが切り替えを終えてロックを放した直後は、その書き込みの
+  // 保存の知らせがロックより遅れて届き、もう消えた印と古い領域の印がまだ見えることがある（そのまま直すと、古い見え方で切り替え直して止まる）。
+  // 最大 SWITCH_WAIT_MAX_MS、印が消えるのを待つ。消えれば真（直さない: 前のタブは手順 9 で領域の印を書いてから印を消すので、新しい領域の印も見えている）。
+  // 残れば偽（タブが落ちた形: 前のとおり直す）。待ちの数にも上限（時計が進まなくても終わる）。印が見えないとき（ふつうの切り替え）は呼ばない
+  async function switchFlagCleared() {
+    const start = now();
+    for (let step = 0; step < SWITCH_WAIT_MAX_MS / SWITCH_WAIT_STEP_MS; step++) {
+      await sleep(SWITCH_WAIT_STEP_MS);
+      if (ls.get(K.SWITCH_KEY) === null) return true;
+      if (now() - start >= SWITCH_WAIT_MAX_MS) break;
+    }
+    return false;
+  }
+
   // ===== 切り替え（§3 の 1〜9。F → T） =====
   async function drain() {
     const start = now();
@@ -581,7 +598,8 @@ export function createSwitcher(deps) {
       const nextIndex = { ...readIndex(), [target]: { at: "ls", lastUsedAt: iso() } };
       if (adopt) delete nextIndex[from];
       writeIndex(nextIndex);
-      // 9. 印を 1 回で替える。途中の印を消す
+      // 9. 印を 1 回で替える。途中の印を消す。この順（領域の印を書いてから途中の印を消す）を入れ替えない: 後からロックに入ったタブは、見えた途中の印が
+      // 消えるのを待ち、消えたのを見たら直さずに進む（settle の switchFlagCleared）。保存の知らせは書いた順に届くので、印が消えたのが見えれば新しい領域の印も見えている
       ls.set(K.AREA_KEY, K.formatMarker(target, gen));
       ls.remove(K.SWITCH_KEY);
     } catch (error) {
@@ -707,8 +725,8 @@ export function createSwitcher(deps) {
       throw fail(error?.code === "quota" ? "quota" : "open", error);
     }
     try {
-      const pending = readJson(ls.get(K.SWITCH_KEY));
-      if (ls.get(K.SWITCH_KEY) !== null) {
+      if (ls.get(K.SWITCH_KEY) !== null && !(await switchFlagCleared())) {
+        const pending = readJson(ls.get(K.SWITCH_KEY));
         try {
           await repair(store);
           finishAdopt(pending);
