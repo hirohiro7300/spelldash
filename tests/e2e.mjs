@@ -337,6 +337,17 @@ async function waitUntil(fn, timeout = 2000, step = 50) {
   return false;
 }
 
+// 読み上げの行（js/srLive.js createLive の行き先: #srStatus・#typingLive・#tgLive・窓の中の [data-sr-live]）は一度空にしてから 30〜50ms 後に書く。
+// 操作の直後や決め打ちの短い待ちの後に読むと、CI が重いときは書かれる前に読む。決めた文が入るまで待ってから読む（上限 1 秒・10ms ごと。Batch 84）。
+// want は文（同じ。前後の空白は見ない）か RegExp。入らなければ false でそのまま進む（検査の条件は変えない: 入らなければ検査が落ちる）
+function waitLive(page, selector, want, timeout = 1000) {
+  const isRe = want instanceof RegExp;
+  return page.waitForFunction(([sel, w, re]) => {
+    const t = document.querySelector(sel)?.textContent ?? "";
+    return re ? new RegExp(w).test(t) : t === w || t.trim() === w;
+  }, [selector, isRe ? want.source : String(want), isRe], { timeout, polling: 10 }).then(() => true, () => false);
+}
+
 // 次の語が出てから、答え表示の Enter を受け付けるまで（js/afterCorrect.js）。守りは 2 つ:
 // 次の語が出てから 300ms と、タイマーで進んだときは前の語を打ち終えてから 1,200ms。待ちは 250ms 以上なので、出てから 1,030ms で両方の外
 const afterAdvance = (page) => page.waitForTimeout(Math.max(ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS - FEEDBACK_MS) + 80);
@@ -1598,6 +1609,7 @@ console.log("typing:");
   await waitState(page, "result");
   await page.keyboard.press("Enter"); // 守りの中: やり直さない
   await page.waitForTimeout(100); // 読み上げの 1 文は行を空にして 50ms 後に書く（js/srLive.js createLive。PR #168 レビューの 6）
+  await waitLive(page, "#typingLive", "60 打/分。正確さ 71%、ミス 2。"); // 決め打ちの 100ms で書かれていなければ、入るまで待つ（上限 1 秒。Batch 84）
   const r11 = await page.evaluate(() => ({
     state: document.getElementById("typingBoard").dataset.state,
     kpm: document.getElementById("typingKpm").textContent,
@@ -2729,8 +2741,15 @@ console.log("typing long:");
         path: location.pathname, scroll: document.documentElement.scrollWidth, inner: innerWidth
       };
     });
-    // 読み上げの行（#typingLive）は行を空にして 50ms 後に書く（js/srLive.js createLive。PR #168 レビューの 6）: 100ms 後の中身
-    const liveSoon = (page) => page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve(document.getElementById("typingLive").textContent), 100)));
+    // 読み上げの行（#typingLive）は行を空にして 50ms 後に書く（js/srLive.js createLive。PR #168 レビューの 6）: 100ms 後の中身。
+    // want（RegExp）を渡したら、100ms で合わなければ合うまで見る（上限 1 秒・10ms ごと。CI が重いときに書かれる前に読まない: Batch 84）。返すのはそのときの中身
+    const liveSoon = (page, want = null) => page.evaluate(async (w) => {
+      const line = document.getElementById("typingLive");
+      await new Promise((r) => setTimeout(r, 100));
+      const t0 = performance.now();
+      while (w && !new RegExp(w).test(line.textContent) && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
+      return line.textContent;
+    }, want ? want.source : null);
     // 今の手本（#typingWord の data-rest）の頭を 1 打ずつ合成の keydown で送る（焦点のある要素へ）。n 打まで／その行の終わりまで（line）／結果まで。
     // leaveLast: 最後の行の最後の 1 打を残す。lower: 英字は小文字で送る（Shift なしの大文字）。map: 手本の字 → keydown の中身。gap: 打鍵の間（実時間 ms）。skewEach: 打鍵ごとに時計を進める ms
     const typeRest = (page, opts = {}) => page.evaluate(async ({ n = 1e9, line = false, leaveLast = false, lower = false, map = {}, gap = 0, skewEach = 0 }) => {
@@ -2821,6 +2840,7 @@ console.log("typing long:");
     const l0 = await ls(page);
     await waitL(page, "ready", 5000);
     await page.waitForTimeout(200); // 題と今の行の読み上げ（50ms 後）
+    await waitLive(page, "#typingLive", `${s01.title}。${lineOf(s01, 0)}`); // 決め打ちの 200ms で書かれていなければ、入るまで待つ（上限 1 秒。Batch 84）
     const l1 = await ls(page);
     const cls1 = await clsOf(page);
     const opts = await page.evaluate(() => [...document.querySelectorAll("#typingText optgroup")].map((g) => [g.label, [...g.querySelectorAll("option")].map((o) => [o.value, o.textContent])]));
@@ -2854,6 +2874,7 @@ console.log("typing long:");
     await typeRest(page, { line: true });
     const r2 = await ls(page);
     await page.waitForTimeout(150);
+    await waitLive(page, "#typingLive", `次の行。${lineOf(s01, 1)}`); // 次の行の読み上げ（50ms 後）が入るまで（上限 1 秒。Batch 84）
     const r2live = (await ls(page)).live;
     anims.push(["running", await motion(page)]);
     check("typing long（1200）: 「、」は , で打つ・「、」の所の x はミスで進まず印が残る、行を打ち切ると data-line・今の見出し・次の行・残り 1行が替わり、札も #typingWord の上端も動かない、読み上げは「次の行。」＋今の行",
@@ -2871,7 +2892,7 @@ console.log("typing long:");
     anims.push(["result", await motion(page)]);
     await page.keyboard.press("Enter"); // 守りの 0.6 秒の中
     const gd1 = (await ls(page)).state;
-    const resLive = await liveSoon(page); // 結果の読み上げの 1 文
+    const resLive = await liveSoon(page, /^スコア \d+。/); // 結果の読み上げの 1 文
     check("typing long（1200）: 最後のキーですぐ結果 — 柱は「題・時間」、主の数は「スコア N」（ラベルが先・lining）、補足は「打/分 N ・ 正確さ N% ・ ミス 1」、間違えたキーは「、」で出す、?l= の回なので自己ベストの句も記録も無い、ボタンは もう一度 → 次の文、焦点は主の数の行、読み上げの 1 文",
       res.state === "result" && res.partial === null && /^北風と太陽・2\d秒$/.test(res.kindText) && res.pre && !res.unit && /^\d+$/.test(res.kpm) && kpm1 > 0 && Number(res.kpm) < kpm1 && res.acc.includes(`正確さ ${acc1}%`) && res.acc.includes("ミス 1") && res.keys === "間違えたキー 、 1" && res.best === "" && stored1?.best?.long === undefined && resExtra.lining && J(resExtra.order) === J(["typingAgain", "typingNextText"]) && res.nextBtn && res.active === "typingKpmLine" && resLive === `スコア ${res.kpm}。${res.kindText.split("・")[1]}、打/分 ${kpm1}、正確さ ${acc1}%、ミス 1。` && res.study === "英単語も、打って覚える。日本語の訳だけを見て思い出して打つ。1日5分から。",
       J({ res: { ...res, live: resLive }, stored1, resExtra, correct1, acc1 }));
@@ -2906,7 +2927,7 @@ console.log("typing long:");
     const e4 = (await ls(page)).state;
     await page.keyboard.press("Escape");
     const e5 = (await ls(page)).state;
-    const e3live = await liveSoon(page); // 途中の結果の読み上げの 1 文
+    const e3live = await liveSoon(page, /^途中まで、/); // 途中の結果の読み上げの 1 文
     await page.waitForTimeout(700);
     await page.keyboard.press("Escape");
     const e6 = await ls(page);
@@ -2921,6 +2942,7 @@ console.log("typing long:");
     const clsP0 = (await clsOf(page)).cls;
     await hide(page);
     await page.waitForTimeout(120); // reduced motion の 0.01ms の transition（visibility）が描き替え終え、止めた文の読み上げ（行を空にして 50ms 後。js/srLive.js createLive）が書かれてから読む
+    await waitLive(page, "#typingLive", "止めた。打つと続きから。"); // 決め打ちの 120ms で書かれていなければ、入るまで待つ（上限 1 秒。Batch 84）
     const p1 = await ls(page);
     anims.push(["paused", await motion(page)]);
     await unhide(page);
@@ -4138,7 +4160,14 @@ console.log("typing game:");
       const t0 = performance.now();
       document.getElementById("input").dispatchEvent(new KeyboardEvent("keydown", { key: wrong, code: `Key${wrong.toUpperCase()}`, bubbles: true, cancelable: true }));
       const out = { wrong, term0, term1: document.getElementById("tgTerm").textContent, rest0: rest, rest1: document.getElementById("tgWord").dataset.rest, miss: document.getElementById("tgWord").classList.contains("tp-miss"), live0: document.getElementById("tgLive").textContent, dt: Math.round(performance.now() - t0) };
-      setTimeout(() => resolve({ ...out, live: document.getElementById("tgLive").textContent }), 150); // 読み上げは空にしてから次のタスクで書く
+      // 読み上げは空にしてから次のタスクで書く: 150ms 後に読み、まだ「次の文」でなければ入るまで見る（上限 1 秒・10ms ごと。Batch 84）
+      const t1 = performance.now();
+      const read = () => {
+        const live = document.getElementById("tgLive").textContent;
+        if (live === "次の文" || performance.now() - t1 > 1150) resolve({ ...out, live });
+        else setTimeout(read, 10);
+      };
+      setTimeout(read, 150);
     });
     mo.observe(board, { attributes: true, attributeFilter: ["data-lost"] });
     });
@@ -4152,6 +4181,7 @@ console.log("typing game:");
   const clsBefore = await page.evaluate(() => window.__cls || 0);
   await page.keyboard.press("Enter"); // 守りの中: やり直さない
   await page.waitForTimeout(100); // 読み上げの 1 文は行を空にして 50ms 後に書く（js/srLive.js createLive。PR #168 レビューの 6）
+  await waitLive(page, "#tgLive", /^1 文。目標に届いた。流れた \d+、打\/分 160、正確さ 94%、ミス 1。$/); // 決め打ちの 100ms で書かれていなければ入るまで（上限 1 秒。Batch 84）
   const r15 = await page.evaluate(() => ({
     state: document.getElementById("tgBoard").dataset.state,
     got: document.getElementById("tgGotNum").textContent, unit: document.getElementById("tgUnit").textContent, goal: document.getElementById("tgGoal").textContent,
