@@ -6537,6 +6537,10 @@ console.log("bookshelf:");
     const said = (text) => page.evaluate(async (t) => {
       (await import("/js/ui.js")).announce(t);
       await new Promise((r) => setTimeout(r, 120));
+      // 120ms で書かれていなければ、どれかの行に入るまで見る（上限 1 秒・10ms ごと。CI が重いときに書かれる前に数えない: Batch 84）
+      const t0 = performance.now();
+      const has = () => [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].some((n) => n.textContent.trim() === t);
+      while (!has() && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
       const dlg = document.getElementById("bookFinder");
       const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === t);
       return { open: dlg.open, inside: lines.filter((n) => dlg.contains(n) && n.hasAttribute("data-sr-live")).length, outside: lines.filter((n) => !dlg.contains(n)).map((n) => n.id || n.className), finderStatus: document.getElementById("bookFinderStatus").textContent };
@@ -8835,6 +8839,10 @@ console.log("study 60s:");
       const said = (text) => wd.evaluate(async (t) => {
         (await import("/js/ui.js")).announce(t);
         await new Promise((r) => setTimeout(r, 120));
+        // 120ms で書かれていなければ、どれかの行に入るまで見る（上限 1 秒・10ms ごと。Batch 84）
+        const t0 = performance.now();
+        const has = () => [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].some((n) => n.textContent.trim() === t);
+        while (!has() && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
         const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === t);
         return { inPanel: lines.filter((n) => n.closest("#wordDetailPanel") && n.hasAttribute("data-sr-live")).length, sr: document.getElementById("srStatus").textContent === t, lines: lines.length };
       }, text);
@@ -12241,6 +12249,10 @@ console.log("learning quality:");
           createLive(document.getElementById("typingLive")).say(text);
         } else (await import("/js/ui.js")).announce(text);
         await new Promise((r) => setTimeout(r, 150));
+        // 150ms で書かれていなければ、どれかの行に入るまで見る（上限 1 秒・10ms ごと。Batch 84）
+        const t0 = performance.now();
+        const has = () => [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].some((n) => n.textContent.trim() === text);
+        while (!has() && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
         const lines = [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === text);
         return { n: lines.length, atLoad: lines.length === 1 && lines[0].dataset.atLoad === "1", inModal: lines.length === 1 && !!lines[0].closest("#feedbackForm") };
       }, url);
