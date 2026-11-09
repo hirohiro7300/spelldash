@@ -7,7 +7,11 @@
 //   409 already_subscribed（本人の行がすでに Pro）/ 502 upstream
 //
 // 無料期間（STRIPE_TRIAL_MONTHS／STRIPE_TRIAL_DAYS）は初めての人だけ: 本人の行が無く（webhook は解約後も行を canceled で残す）、
-// Stripe 側にも user_id の契約が 1 つも無いとき。解約して入り直した人には付けない
+// 決済の会社の契約の検索にも user_id の契約が 1 つも無く、本人の顧客にも契約が 1 つも無いとき。解約して入り直した人には付けない
+//
+// 1 人に顧客 1 人・開いた手続きは 1 つ（Batch 88。_lib/billing.js customerFor）: 手続きはいつも本人の顧客（customer）で作り、customer_email は渡さない。
+// 生きている契約の確かめは本人の顧客の契約の一覧（遅れない）。新しい手続きを作ったら、同じ顧客の開いている別の手続きを期限切れにし、
+// 手続きの期限（expires_at）も作ってから 35 分にする（古いタブ・履歴から前の手続きを払って、契約が 2 つになるのを止める）
 //
 // 本人の行は本人のトークンで読む（RLS）。success / cancel の URL は SITE_ORIGIN からだけ作る（リクエストヘッダは使わない）。
 // Web 専用（アプリでは購入ボタンを出さない）なので CORS は許可しない。
@@ -28,9 +32,15 @@ import {
   stripeFetch,
   fetchOwnSubscription,
   isProRow,
+  customerFor,
+  subscriptionsOfCustomer,
+  expireOtherOpenSessions,
   sendUpstream,
   MESSAGES
 } from "../_lib/billing.js";
+
+// 手続きの期限（作ってから。決済の会社の下限は 30 分）。分の頭から数える（同じ分の二度押しの冪等キーで、同じ本文になる）
+const SESSION_TTL_SEC = 35 * 60;
 
 // Stripe 側で「まだ生きている」契約。これがあるうちは新しい Checkout を作らない
 const LIVE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid"]);
@@ -65,16 +75,20 @@ export default async function handler(req, res) {
         // 検索できなくても加入は止めない（行が無い初めての人）
       }
     }
-    if (row?.stripe_customer_id) {
-      const list = await stripeFetch("/v1/subscriptions", { customer: row.stripe_customer_id, status: "all", limit: 10 }, { method: "GET" });
-      if ((Array.isArray(list?.data) ? list.data : []).some((s) => LIVE_STATUSES.has(s?.status))) {
-        return send(res, 409, { error: "already_subscribed", message: MESSAGES.alreadySubscribed });
-      }
+    // 本人の顧客（行の顧客 → 検索 → 冪等キーで作る）と、その顧客の契約の一覧（検索と違い遅れない）。生きている契約があれば断り、契約が 1 つでもあれば初めてではない
+    const customerId = await customerFor(user, row);
+    const customerSubs = await subscriptionsOfCustomer(customerId);
+    if (customerSubs.some((s) => LIVE_STATUSES.has(s?.status))) {
+      return send(res, 409, { error: "already_subscribed", message: MESSAGES.alreadySubscribed });
     }
+    if (customerSubs.length > 0) firstTime = false;
 
     const origin = siteOrigin();
+    const minute = Math.floor(Date.now() / 60000);
     const params = {
       mode: "subscription",
+      customer: customerId,
+      expires_at: minute * 60 + SESSION_TTL_SEC,
       line_items: [{ price: priceId, quantity: 1 }],
       client_reference_id: user.id,
       metadata: { user_id: user.id },
@@ -84,12 +98,8 @@ export default async function handler(req, res) {
       locale: "ja",
       allow_promotion_codes: "true"
     };
-    // 既に Stripe の顧客なら同じ顧客に紐づける（Portal で履歴が 1 つにまとまる）。初めてならメールだけ渡す
-    if (row?.stripe_customer_id) params.customer = row.stripe_customer_id;
-    else if (user.email) params.customer_email = user.email;
     // 無料期間は初めての人だけ。月は暦で終わりの時刻（trial_end）、日数は trial_period_days。
     // 同じ分の再送は同じ冪等キーになるので、trial_end も分の頭から数えて同じ値にする（違う値だと Stripe が idempotency_error を返す）
-    const minute = Math.floor(Date.now() / 60000);
     const trialEnd = firstTime ? trialEndUnix(new Date(minute * 60000)) : 0;
     let trialLabel = ""; // 確定の画面の文に入れる無料期間の名（付くときだけ）
     if (trialEnd > 0) {
@@ -105,6 +115,8 @@ export default async function handler(req, res) {
       idempotencyKey: `checkout:${user.id}:${interval}:${firstTime ? "trial" : "paid"}:${minute}`
     });
     if (typeof session?.url !== "string" || !session.url) throw new Error("checkout session has no url");
+    // 同じ顧客の開いている前の手続きを閉じる（今作った手続き〔同じ分の二度押しなら同じ手続き〕は閉じない。失敗しても手続きは返す）
+    await expireOtherOpenSessions(customerId, typeof session.id === "string" ? session.id : "");
     return send(res, 200, { url: session.url });
   } catch (error) {
     return sendUpstream(res, "checkout", error);
