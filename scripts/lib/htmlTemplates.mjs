@@ -7,6 +7,9 @@
 // .map((w) => …) は戻りの式を見る（{ … } の本体なら return の式）。
 // 字の解析は小さな字句の読み方（文字列・コメント・正規表現・入れ子の ${}）で、JS の全部の形は読まない。見落としを減らすため、
 // 自信が無い式は「出る」とみなす（検査の側の許す一覧に理由つきで置く）。
+// *Html の呼び出しを数えないのは、その関数が中で守るから。だから *Html という名の関数そのものも見る（scanHtmlParams。Batch 88 の反証）:
+// 字の名前の引数（text・term・label・name・title・ja・en・q・explain・answer・word。{ text } のように分けて受けた物も）を、
+// esc を通さずに HTML に出していれば挙げる（前は名前だけで信じたので、hasumiBubbleHtml が一言〔覚えた語の名前を含む〕をそのまま出していた）。
 
 // テンプレートを集める: [{ line, quasis: [字...], exprs: [{ src, line }] }]（入れ子のテンプレートも 1 つずつ）
 export function templates(src) {
@@ -48,7 +51,7 @@ export function templates(src) {
     while (i < n && /[a-z]/.test(src[i])) i++;
   };
   const readTemplate = () => {
-    const t = { line: lineAt(i), quasis: [], exprs: [] };
+    const t = { line: lineAt(i), start: i, end: -1, quasis: [], exprs: [] };
     i++;
     let text = "";
     while (i < n) {
@@ -76,6 +79,7 @@ export function templates(src) {
       i++;
     }
     t.quasis.push(text);
+    t.end = i;
     out.push(t);
   };
   const KEYWORDS_BEFORE_REGEX = new Set(["return", "typeof", "case", "of", "in", "void", "delete", "throw", "new", "else", "do", "yield", "await"]);
@@ -226,7 +230,11 @@ export function foldCalls(s) {
       const m = out.match(/([A-Za-z_$][\w$]*)\s*$/);
       if (m && !NOT_CALLS.has(m[1])) {
         if (SAFE_CALL.test(m[1])) out = `${out.slice(0, out.length - m[0].length)}""`;
-        else if (m[1] === "map" && /\.\s*map\s*$/.test(out)) out += `(${mapBody(inner)})`;
+        else if (m[1] === "map" && /\.\s*map\s*$/.test(out)) {
+          // .map(esc)・.map(escapeHtml): 中身はどれも守られる（並べた物ごと ""）
+          if (SAFE_CALL.test(inner.trim())) out = out.replace(/[A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*\s*\??\.\s*map\s*$/, '""');
+          else out += `(${mapBody(inner)})`;
+        }
         else out += "()";
       } else {
         out += `(${foldCalls(inner)})`;
@@ -262,7 +270,7 @@ function mapBody(arg) {
 const RISKY = /\.(ja|en|term|label|q|explain|name|id)\b|\banswerLabel\(|(?<![.\w$])(ja|en|label|wordId)\b/;
 
 // 畳んだ式の、値になる部分に危ない字があるか
-export function risky(expr) {
+export function risky(expr, leaf = RISKY) {
   let s = expr.trim();
   if (!s) return false;
   while (s.startsWith("(") && matchClose(s, 0) === s.length - 1) s = s.slice(1, -1).trim();
@@ -276,17 +284,17 @@ export function risky(expr) {
       else if (")]}".includes(c)) depth--;
       else if (depth === 0 && c === "?" && s[k + 1] !== "." && s[k + 1] !== "?" && s[k - 1] !== "?") nest++;
       else if (depth === 0 && c === ":") {
-        if (nest === 0) return risky(s.slice(q.at + 1, k)) || risky(s.slice(k + 1));
+        if (nest === 0) return risky(s.slice(q.at + 1, k), leaf) || risky(s.slice(k + 1), leaf);
         nest--;
       }
     }
   }
   const or = topLevel(s, /\|\||\?\?/);
-  if (or) return risky(s.slice(0, or.at)) || risky(s.slice(or.at + or.len));
+  if (or) return risky(s.slice(0, or.at), leaf) || risky(s.slice(or.at + or.len), leaf);
   const and = topLevel(s, /&&/);
-  if (and) return risky(s.slice(and.at + 2));
+  if (and) return risky(s.slice(and.at + 2), leaf);
   if (s.startsWith("!") || topLevel(s, /===|!==|==|!=|<=|>=|<(?!=)|(?<!=)>(?!=)|(?<![\w$])(instanceof|in)(?![\w$])/)) return false;
-  return RISKY.test(s);
+  return leaf.test(s);
 }
 
 const HTMLISH = /<[a-zA-Z!/]/;
@@ -303,4 +311,60 @@ export function scanHtmlTemplates(src) {
     }
   }
   return { hits, exprs };
+}
+
+// ----- *Html という名の関数の、字の名前の引数（Batch 88 の反証） -----
+const TEXT_PARAMS = /^(text|term|label|name|title|ja|en|q|explain|answer|word)$/;
+const HTML_FN = /\bfunction\s+([A-Za-z_$][\w$]*Html)\s*\(|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*Html)\s*=\s*(?:async\s+)?(?:function\s*)?\(/g;
+
+// 引数の字（"a, { b, c = 1 }, d = \"x\""）→ 名前（既定の値は外す。分けて受けた物の中の名前も）
+function paramNames(list) {
+  const bare = list.replace(/=\s*("[^"]*"|'[^']*'|`[^`]*`|\[[^\]]*\]|[^,{}()]+)/g, "");
+  return [...new Set(bare.match(/[A-Za-z_$][\w$]*/g) ?? [])];
+}
+
+// *Html という名の関数: [{ name, params, start, end }]（start〜end は本体の字の位置。式だけの矢印の関数は、その行の終わりまで）
+export function htmlFunctions(src) {
+  const out = [];
+  const re = new RegExp(HTML_FN.source, "g");
+  let m;
+  while ((m = re.exec(src))) {
+    const open = m.index + m[0].length - 1;
+    const close = matchClose(src, open);
+    const params = paramNames(src.slice(open + 1, close));
+    let k = close + 1;
+    while (k < src.length && /\s/.test(src[k])) k++;
+    if (src.startsWith("=>", k)) {
+      k += 2;
+      while (k < src.length && /\s/.test(src[k])) k++;
+    }
+    let start = k;
+    let end;
+    if (src[k] === "{") end = matchClose(src, k);
+    else {
+      start = k;
+      end = src.indexOf("\n", k);
+      if (end < 0) end = src.length;
+    }
+    out.push({ name: m[1] || m[2], params, start, end });
+  }
+  return out;
+}
+
+// 1 つのファイルの字から、*Html の関数が字の名前の引数を守らずに HTML に出す式: { hits: [{ line, fn, expr }], fns }
+export function scanHtmlParams(src) {
+  const hits = [];
+  const fns = htmlFunctions(src);
+  if (fns.length === 0) return { hits, fns: 0 };
+  const tpls = templates(src);
+  for (const f of fns) {
+    const names = f.params.filter((p) => TEXT_PARAMS.test(p));
+    if (names.length === 0) continue;
+    const leaf = new RegExp(`(?<![.\\w$])(?:${names.join("|")})(?![\\w$]|\\s*\\()`);
+    for (const t of tpls) {
+      if (t.start < f.start || t.start > f.end || !t.quasis.some((q) => HTMLISH.test(q))) continue;
+      for (const e of t.exprs) if (risky(foldCalls(stripLiterals(e.src)), leaf)) hits.push({ line: e.line, fn: f.name, expr: e.src.replace(/\s+/g, " ").trim() });
+    }
+  }
+  return { hits, fns: fns.length };
 }

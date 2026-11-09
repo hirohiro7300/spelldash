@@ -880,6 +880,31 @@ await t("6.13 取り込み: クラウドの方が新しくて取り込んだ語�
   const stale = ALLOW.filter((a) => !found.some((h) => h.file === a.file && h.expr === a.expr));
   ok("見張り: 許す一覧の項目はどれも今の木にある（直した所は一覧から外す）", stale.length === 0, show(stale.map((a) => `${a.file} ${a.expr}`)));
 
+  // *Html という名の関数そのもの（上の見張りはその呼び出しを数えないので、関数の中で字の名前の引数を守っているかを見る。Batch 88 の反証:
+  // hasumiBubbleHtml が一言〔今日覚えた語の名前を含む〕をそのまま出していた）
+  const ALLOW_PARAMS = [
+    { file: "covers.js", fn: "coverImgHtml", expr: "name", why: "表紙の絵の名前（js/covers.js の表の定数だけ。人の字は入らない）" }
+  ];
+  const sampleP = (code) => H.scanHtmlParams(code).hits.map((h) => `${h.fn} ${h.expr}`);
+  ok("見張り（*Html の関数）: 字の名前の引数（分けて受けた { text } も）を守らずに出すと挙げる",
+    show(sampleP('export function aHtml({ mood, text }, extra = "") { return `<b class="${extra}">${text}</b>`; }\nfunction bHtml(label) { return `<i>${on ? label : ""}</i>`; }')) === show(["aHtml text", "bHtml on ? label : \"\""]),
+    show(sampleP('export function aHtml({ mood, text }, extra = "") { return `<b class="${extra}">${text}</b>`; }\nfunction bHtml(label) { return `<i>${on ? label : ""}</i>`; }')));
+  ok("見張り（*Html の関数）: esc を通した引数・字の名前でない引数・比べる式・.map(esc) は挙げない",
+    sampleP('function cHtml({ text }, size, word) { return `<b style="${size}">${esc(text)}${text.length > 3 ? "…" : ""}${word.accept.map(escapeHtml).join(" / ")}</b>`; }').length === 0,
+    show(sampleP('function cHtml({ text }, size, word) { return `<b style="${size}">${esc(text)}${text.length > 3 ? "…" : ""}${word.accept.map(escapeHtml).join(" / ")}</b>`; }')));
+  const foundP = [];
+  let fns = 0;
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".js")).sort()) {
+    const r = H.scanHtmlParams(fs.readFileSync(path.join(dir, file), "utf8"));
+    fns += r.fns;
+    for (const h of r.hits) foundP.push({ file, ...h });
+  }
+  const badP = foundP.filter((h) => !ALLOW_PARAMS.some((a) => a.file === h.file && a.fn === h.fn && a.expr === h.expr));
+  ok(`見張り（*Html の関数 ${fns} 個）: 字の名前の引数を esc を通さずに HTML に出す所は 0（許す一覧 ${ALLOW_PARAMS.length} 件を除く）`,
+    fns > 20 && badP.length === 0, `${badP.length} 件: ${badP.map((h) => `${h.file}:${h.line} ${h.fn} \${${h.expr.slice(0, 80)}}`).join(" | ")}`);
+  const staleP = ALLOW_PARAMS.filter((a) => !foundP.some((h) => h.file === a.file && h.fn === a.fn && h.expr === a.expr));
+  ok("見張り（*Html の関数）: 許す一覧の項目はどれも今の木にある", staleP.length === 0, show(staleP.map((a) => `${a.file} ${a.fn} ${a.expr}`)));
+
   // esc は ' も実体に（adminView・wordAi の escapeHtml とそろえる。textContent は変わらない）
   const { esc } = await import("../js/html.js");
   ok("esc: & < > \" ' を実体に（' は &#39;）", esc(`<a href="x">&'`) === "&lt;a href=&quot;x&quot;&gt;&amp;&#39;", esc(`<a href="x">&'`));

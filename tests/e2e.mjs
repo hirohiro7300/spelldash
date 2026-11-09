@@ -28745,6 +28745,39 @@ console.log("guard (88.1):");
       rows.length === 1 && name.length > 0 && name.length <= 300 && name.startsWith("/news.html?q=aaa") && page.errors.length === 0, JSON.stringify({ n: rows.length, len: name.length, head: name.slice(0, 20), err: page.errors.slice(0, 2) }));
     await closeCtx(page);
   }
+  // ----- (6) はちゃんの一言（Batch 88 の反証。js/hasumi.js hasumiBubbleHtml・renderHasumiHome）: 今日覚えた語の名前（場面カードの答え）を HTML にしない -----
+  // ホームの紙片（学ぶ回の今日最初の答えの後などに描き直す）と、覚えた瞬間の吹き出し（js/game.js の #learnToast）。どちらも語の名前を文に入れて HTML にしていた
+  {
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const y = new Date(Date.now() - 86400000);
+    const yesterday = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+    const nowIso = new Date().toISOString();
+    const ANS6 = 'h"><img src=x onerror=window.__pwn=61>'; // 場面カードの答え（今日覚えた語の名前になる字）
+    const KEY6 = 'h"><imgsrc=xonerror=window.__pwn=61>'; // その鍵（js/myWords.js conceptKey）
+    const page = await guardPage({
+      spelldash_my_words: JSON.stringify([{ kind: "concept", en: KEY6, answer: ANS6, q: "場面: はちゃんの札", explain: "", accept: [], ja: "はちゃんの札の訳", addedAt: T0 }]),
+      spelldash_word_stats: JSON.stringify({ ["my-q-" + KEY6]: { ...statLearned, lastPlayed: nowIso, lastRecallFailAt: new Date(Date.now() - 86400000).toISOString(), lastRecallSuccessAt: nowIso, history: [{ d: yesterday, r: "x" }, { d: today, r: "o" }] } }),
+      spelldash_streak: JSON.stringify({ last: today, current: 1, best: 1 })
+    });
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    const r = await page.evaluate(async (ans) => {
+      const m = await import("/js/hasumi.js");
+      m.renderHasumiHome();
+      const box = document.createElement("div");
+      box.id = "hasumiProbe";
+      box.innerHTML = m.hasumiBubbleHtml(m.hasumiLearnedLine(ans), "hasumi--result");
+      document.body.append(box);
+      await new Promise((res) => setTimeout(res, 300));
+      const home = document.getElementById("hasumiHome")?.textContent ?? "";
+      const out = { pwn: window.__pwn ?? null, imgs: document.querySelectorAll('img[src="x"]').length, home: home.includes(ans), homeText: home.slice(0, 80), bubble: box.textContent.includes(ans) };
+      box.remove();
+      return out;
+    }, ANS6);
+    check("88.1 (6) はちゃんの一言: 今日覚えた語の名前（場面カードの答え）の HTML の字が、ホームの紙片と覚えた瞬間の吹き出しで走らない（window.__pwn なし・<img src=\"x\"> 0）・字はそのまま見える・エラー 0",
+      r.pwn === null && r.imgs === 0 && r.home && r.bubble && page.errors.length === 0, JSON.stringify({ ...r, err: page.errors.slice(0, 2) }));
+    await closeCtx(page);
+  }
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
