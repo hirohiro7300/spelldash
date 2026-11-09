@@ -88,6 +88,9 @@ jobs:
       - name: スラングの一覧と決まり（id・必須の欄・長さ・打てる英語・入れてはいけない語・人ごとの 3 状態・学ぶ回の列。js/slangData.js・js/slang.js）
         run: node scripts/test-slang.mjs
 
+      - name: 課金のサーバー側（署名・webhook の書き込みと順番・生ボディの読み方・加入とお支払いの管理の守り・確定の画面の文・無料期間・受付前の config・比較表の AI の回数。偽の fetch で外へ出ない。api/_lib/billing.js・api/billing/*・api/_lib/aiLimits.js）
+        run: node scripts/test-billing.mjs
+
       - name: モジュールの先読み（modulepreload）が最新か
         run: node scripts/modulepreload.mjs --check
 
