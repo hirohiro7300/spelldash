@@ -120,6 +120,42 @@ describe("Store と履歴", () => {
     expect(other.nodes[x.id]!.title).toBe("X");
   });
 
+  it("ドキュメントの更新時刻は変更のたびに必ず進む（同じミリ秒・時計が戻った・古い物との入れ替え・その Undo/Redo でも）", () => {
+    const { store, a } = setup();
+    const seen: string[] = [store.doc.updatedAt];
+    const push = () => {
+      const t = store.doc.updatedAt;
+      expect(t > seen[seen.length - 1]!).toBe(true);
+      seen.push(t);
+    };
+    // 同じミリ秒に続けて変える
+    for (const t of ["1", "2", "3"]) {
+      store.transact("t", (tx) => tx.updateNode(a.id, { title: t }));
+      push();
+    }
+    // 時計が 1 時間戻った
+    const realNow = Date.now;
+    try {
+      Date.now = () => realNow() - 3_600_000;
+      store.transact("t", (tx) => tx.updateNode(a.id, { title: "戻った" }));
+      push();
+    } finally {
+      Date.now = realNow;
+    }
+    // 古い時刻を持つ物（1 年前のバックアップなど）と入れ替える
+    const old = createEmptyDoc("古い");
+    old.updatedAt = new Date(Date.now() - 365 * 86_400_000).toISOString();
+    store.replaceDoc(old, "復元");
+    push();
+    expect(old.updatedAt < seen[1]!).toBe(true); // 渡した物は変えない
+    store.undo();
+    push();
+    store.redo();
+    push();
+    store.undo();
+    push();
+  });
+
   it("閲覧専用では変更を受けない", () => {
     const { store, a } = setup();
     store.readOnly = true;

@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
 import { buildDemoDoc } from "../../src/demo/demo";
 import { buildStressDoc } from "../../src/demo/stress";
+import { nextStamp } from "../../src/model/ids";
 import { createEmptyDoc, makeNode, makeProject, serializeDoc } from "../../src/model/schema";
 import { mergeDocs, previewImport } from "../../src/persist/io";
 import { KEEP, Persistence, memoryKV, type SyncKV } from "../../src/persist/persistence";
@@ -16,10 +17,11 @@ async function wait(ms = 20) {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+/** ストアと同じく、更新時刻は必ず進める（同じミリ秒に 2 回編集しても前より後になる） */
 function edit(doc: DocData, title: string): DocData {
   const n = makeNode({ title });
   doc.nodes[n.id] = n;
-  doc.updatedAt = new Date(Date.now() + 1000).toISOString();
+  doc.updatedAt = nextStamp(new Date(Math.max(Date.parse(doc.updatedAt), Date.now() + 1000)).toISOString());
   return doc;
 }
 

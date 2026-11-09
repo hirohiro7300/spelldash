@@ -17,3 +17,14 @@ export function newId(prefix: "n" | "e" | "p" | "s" | "c" | "d" | "b" | "t"): ID
 export function nowISO(): string {
   return new Date().toISOString();
 }
+
+/**
+ * ドキュメントの更新時刻を進める。前の時刻より必ず後になる
+ * （同じミリ秒に続いた変更・時計が戻ったとき・古い時刻を持つファイルやバックアップを読み込んだときでも、
+ * 「新しい方」の比べ方が崩れない。緊急コピーと同期が頼る）
+ */
+export function nextStamp(prev: string | undefined): string {
+  const now = Date.now();
+  const p = prev ? Date.parse(prev) : Number.NaN;
+  return new Date(Number.isFinite(p) && p >= now ? p + 1 : now).toISOString();
+}

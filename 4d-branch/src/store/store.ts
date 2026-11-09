@@ -1,7 +1,7 @@
 // ストア: ドキュメントを持ち、すべての変更をトランザクションで受ける。
 // 変更は 1 か所を通るので、Undo/Redo・自動保存・再描画が漏れなくつながる。設計: docs/DESIGN.md §2
 
-import { nowISO } from "../model/ids";
+import { nextStamp, nowISO } from "../model/ids";
 import { cloneDocShallow } from "../model/schema";
 import type { Collection, DocData, EntityOf, GEdge, GNode, ID, Project, Scenario } from "../model/types";
 import { Emitter } from "./emitter";
@@ -339,7 +339,7 @@ export class Store {
       this.current = null;
     }
     if (isEmptyEntry(entry)) return true;
-    this.doc.updatedAt = nowISO();
+    this.doc.updatedAt = nextStamp(this.doc.updatedAt);
     if (opts.record !== false) this.history.push(entry);
     this.revision++;
     this.emitter.emit("change", info);
@@ -381,7 +381,10 @@ export class Store {
     }
     const entry = newEntry(label);
     entry.replace = { before: cloneDocShallow(this.doc), after: cloneDocShallow(next) };
+    const prev = this.doc.updatedAt;
     this.doc = cloneDocShallow(next);
+    // 入れ替えも変更なので時刻を進める（読み込んだ物の時刻が古くても、保存や緊急コピーで「古い」と見なされない）
+    this.doc.updatedAt = nextStamp(prev);
     this.history.push(entry);
     this.finish(newInfo("replace", label, true));
     return true;
@@ -403,7 +406,9 @@ export class Store {
   private apply(entry: HistoryEntry, dir: "undo" | "redo"): ChangeInfo {
     const info = newInfo(dir, entry.label);
     if (entry.replace) {
+      const prev = this.doc.updatedAt;
       this.doc = cloneDocShallow(dir === "undo" ? entry.replace.before : entry.replace.after);
+      this.doc.updatedAt = nextStamp(prev);
       info.full = true;
       info.positionsOnly = false;
       return info;
@@ -432,7 +437,7 @@ export class Store {
     for (const [k, o] of entry.orders) this.doc[k] = dir === "undo" ? o.before : o.after;
     if (entry.title) this.doc.title = dir === "undo" ? entry.title.before : entry.title.after;
     info.positionsOnly = posOnly;
-    this.doc.updatedAt = nowISO();
+    this.doc.updatedAt = nextStamp(this.doc.updatedAt);
     return info;
   }
 }
