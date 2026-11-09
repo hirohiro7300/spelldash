@@ -58,13 +58,33 @@ export function inArtifactHost(): boolean {
   return claudeHost() !== null;
 }
 
+/** 機能の返事を待つ上限（確かめ用に window.__fourDCapabilityTimeoutMs で短くできる） */
+function capabilityTimeoutMs(): number {
+  const v = (globalThis as { __fourDCapabilityTimeoutMs?: unknown }).__fourDCapabilityTimeoutMs;
+  return typeof v === "number" && v > 0 ? v : 12_000;
+}
+
 /** 機能を取り出す。使えない・答えが無いときは null（ページはそれ無しで動く） */
-export async function useCapability<T>(name: "db" | "user" | "downloads", timeoutMs = 12_000): Promise<T | null> {
+export async function useCapability<T>(name: "db" | "user" | "downloads", timeoutMs = capabilityTimeoutMs()): Promise<T | null> {
   const host = claudeHost();
   if (!host) return null;
   try {
     const res = await Promise.race([host.use(name), new Promise((r) => setTimeout(() => r(null), timeoutMs))]);
     return (res as T | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 機能の返事を、時間で区切らずに待つ（use() はページの中で使い回されるので、何度呼んでも同じ返事）。
+ * 時間切れで一度あきらめた後、遅れて使えるようになったら同期を始めるのに使う
+ */
+export async function capabilityWhenReady<T>(name: "db" | "user" | "downloads"): Promise<T | null> {
+  const host = claudeHost();
+  if (!host) return null;
+  try {
+    return ((await host.use(name)) as T | null) ?? null;
   } catch {
     return null;
   }

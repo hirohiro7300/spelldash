@@ -58,9 +58,11 @@ export function dbBackend(db: DbApi): CloudBackend {
       try {
         return (await ref.acquire({ holder, ttlMs })).acquired;
       } catch (e) {
-        // 貸し出しの仕組みが使えないときは、協調なしで進める（マニフェストの確かめは残る）
-        if (errorCode(e) === "resource_exhausted") throw e;
-        return true;
+        const code = errorCode(e);
+        // 貸し出しの仕組みそのものが無い runtime だけ、協調なしで進める（確定の前の確かめは残る）
+        if (code === "capability_removed" || code === "capability_disabled") return true;
+        // つながらない・混み合いなどは「取れなかった」。協調なしで書き始めない（失敗として待つ）
+        throw e;
       }
     },
     async list(path) {
@@ -97,7 +99,18 @@ export interface Manifest {
   writer: string;
   /** まだ片付けていない古い世代 */
   stale: Array<{ gen: string; parts: number; savedAt: string }>;
+  /** 確定の通し番号（前の世代 + 1）。前の版で書かれた写しには無い */
+  seq?: number;
+  /** この世代に至る直前までの世代（新しい物が後ろ・最大 64）。上書きされたかを見分ける */
+  lineage: string[];
 }
+
+/** 知っている符号化 */
+const ENCODINGS = new Set(["gzip-b64", "utf8-b64", "json"]);
+/** マニフェストに入れる題名の長さ（表示用。中身の題名は分割の方にある） */
+const MANIFEST_TITLE_MAX = 200;
+/** 系譜に覚えておく世代の数 */
+const LINEAGE_MAX = 64;
 
 function toB64(bytes: Uint8Array): string {
   let s = "";
@@ -152,7 +165,13 @@ export async function decodeDoc(enc: Manifest["enc"], payload: string): Promise<
   }
 }
 
+/**
+ * マニフェストを読む。新しい版の形・知らない符号化なら投げる（空と見なして上書きしない）。
+ * この版の形で中身が壊れているときは null（読めない写しは手元で書き直す）
+ */
 function parseManifest(d: Record<string, unknown> | undefined): Manifest | null {
+  if (d && typeof d.format === "number" && d.format !== 1) throw new CloudError("format", d.format > 1 ? "アカウントの写しは新しい版のアプリで保存されています" : "アカウントの写しの形が違います");
+  if (d && d.enc !== undefined && !ENCODINGS.has(String(d.enc))) throw new CloudError("format", "アカウントの写しは新しい版のアプリで保存されています（知らない符号化）");
   if (!d || d.format !== 1 || typeof d.gen !== "string" || typeof d.parts !== "number" || typeof d.hash !== "string") return null;
   const stale = Array.isArray(d.stale)
     ? d.stale.filter((s): s is Manifest["stale"][number] => !!s && typeof s === "object" && typeof (s as { gen?: unknown }).gen === "string" && typeof (s as { parts?: unknown }).parts === "number")
@@ -172,6 +191,8 @@ function parseManifest(d: Record<string, unknown> | undefined): Manifest | null 
     savedAt: typeof d.savedAt === "string" ? d.savedAt : "",
     writer: typeof d.writer === "string" ? d.writer : "",
     stale,
+    seq: typeof d.seq === "number" && Number.isFinite(d.seq) ? d.seq : undefined,
+    lineage: Array.isArray(d.lineage) ? d.lineage.filter((g): g is string => typeof g === "string").slice(-LINEAGE_MAX) : [],
   };
 }
 
@@ -269,7 +290,8 @@ export class CloudRepo {
     const counts = docCounts(doc);
     const docId = doc.id;
     const docUpdatedAt = doc.updatedAt;
-    const title = doc.title;
+    // 題名はマニフェストでは表示に使うだけ。長すぎて 256 KiB を超えないよう切る（中身は分割の方に全部ある）
+    const title = [...doc.title].slice(0, MANIFEST_TITLE_MAX).join("");
     const { enc, payload, bytes } = await encodeDoc(doc);
     const parts: string[] = [];
     for (let i = 0; i < payload.length; i += PART_CHARS) parts.push(payload.slice(i, i + PART_CHARS));
@@ -296,13 +318,10 @@ export class CloudRepo {
    * 消すのは確定のあと（確定に失敗しても、今のマニフェストが指す物は消さない）
    */
   async commit(p: Prepared, prev: Manifest | null): Promise<{ manifest: Manifest; drop: Manifest["stale"] }> {
+    const expired = new Set(prev ? this.expiredStale(prev).map((s) => s.gen) : []);
     const keep: Manifest["stale"] = [];
     const drop: Manifest["stale"] = [];
-    for (const s of prev?.stale ?? []) {
-      const at = Date.parse(s.savedAt);
-      if (Number.isFinite(at) && this.now() - at > STALE_MS) drop.push(s);
-      else keep.push(s);
-    }
+    for (const s of prev?.stale ?? []) (expired.has(s.gen) ? drop : keep).push(s);
     if (prev) keep.push({ gen: prev.gen, parts: prev.parts, savedAt: prev.savedAt });
     while (keep.length > MAX_STALE) drop.push(keep.shift()!);
     const m: Manifest = {
@@ -320,9 +339,21 @@ export class CloudRepo {
       savedAt: p.savedAt,
       writer: this.holder,
       stale: keep,
+      seq: (prev?.seq ?? 0) + 1,
+      lineage: prev ? [...prev.lineage, prev.gen].slice(-LINEAGE_MAX) : [],
     };
+    // 自分の書き込みが大きすぎるときは、共有の権限の問題と取り違えないよう、送る前に止める
+    if (new TextEncoder().encode(JSON.stringify(m)).length > 250 * 1024) throw new CloudError("too_large", "アカウントの写しの目録が大きすぎて保存できません");
     await this.be.set(this.manifestPath, m as unknown as Record<string, unknown>);
     return { manifest: m, drop };
+  }
+
+  /** 片付けてよい古い世代: 次の世代に置き換えられてから 2 分たった物（作られた時刻ではなく、置き換えられた時刻で数える） */
+  expiredStale(m: Manifest): Manifest["stale"] {
+    return m.stale.filter((_s, i) => {
+      const at = Date.parse((m.stale[i + 1] ?? m).savedAt);
+      return Number.isFinite(at) && this.now() - at > STALE_MS;
+    });
   }
 
   /** まとめて書く（固める → 分割 → 確定 → 片付け）。テストや一度きりの書き込みに */
@@ -361,8 +392,22 @@ export class CloudRepo {
     return n;
   }
 
-  watch(next: (m: Manifest | null) => void, error: (code: string) => void): () => void {
-    return this.be.watch(this.manifestPath, (d) => next(d.exists ? parseManifest(d.data) : null), error);
+  /** マニフェストを見張る。読めない形（新しい版など）なら unreadable を呼ぶ */
+  watch(next: (m: Manifest | null) => void, error: (code: string) => void, unreadable?: () => void): () => void {
+    return this.be.watch(
+      this.manifestPath,
+      (d) => {
+        if (!d.exists) return next(null);
+        let m: Manifest | null;
+        try {
+          m = parseManifest(d.data);
+        } catch {
+          return unreadable?.();
+        }
+        next(m);
+      },
+      error,
+    );
   }
 }
 
@@ -376,6 +421,10 @@ export interface SyncBase {
   /** そのときの手元のドキュメント */
   docId: string;
   docUpdatedAt: string;
+  /** その世代の通し番号 */
+  seq?: number;
+  /** その世代はこの端末が確定した物か（後から系譜に無い世代が来たら、上書きされた） */
+  own?: boolean;
 }
 
 /**
@@ -383,23 +432,35 @@ export interface SyncBase {
  */
 export type AdoptHow = "first" | "choice" | "remote";
 
+/** 入れ替えた瞬間の手元の印（この後の編集は、次の送信に回る） */
+export interface DocIdent {
+  id: string;
+  updatedAt: string;
+}
+
 export interface CloudSyncDeps {
   getDoc(): DocData;
   /** この端末のこのタブが書いてよいか（別のタブが編集中なら false） */
   isWriter(): boolean;
-  /** 捨ててよい中身か（何もしていないデモ・空）。初めての同期で、聞かずにもう一方を採ってよい */
+  /** 捨ててよい中身か（何もしていないデモ・まっさらな空）。初めての同期で、聞かずにもう一方を採ってよい */
   isDisposable(doc: DocData): boolean;
   /** その場の入力（題名の書き換えなど）の途中か。確定するまで取り込みを待つ */
   isEditing(): boolean;
   /** このブラウザの内容が、前に別のアカウントで同期していた物か（聞かずにこのアカウントへ送らない） */
   isForeign(): boolean;
   /**
-   * 入れ替える。手元にも保存してから返す。stillOk() が false なら（その間に手元が変わった）入れ替えずに false を返す。
-   * choice で手元のバックアップを作れなかったときも false
+   * 入れ替える。入れ替えた瞬間の手元の印を返す（手元にも保存してから返す）。
+   * stillOk() が false なら（その間に手元が変わった）・閲覧のみなら・choice で手元を残せなかったら、入れ替えずに null
    */
-  adopt(doc: DocData, how: AdoptHow, stillOk: () => boolean): Promise<boolean>;
-  /** 手元のバックアップに残す。残せなかったら false */
-  backup(doc: DocData, label: string): Promise<boolean>;
+  adopt(doc: DocData, how: AdoptHow, stillOk: () => boolean): Promise<DocIdent | null>;
+  /**
+   * 手元のバックアップに残す。kept = 利用者の選択で使わなかった内容（ふだんの入れ替えで押し出さない）。残せなかったら false
+   */
+  backup(doc: DocData, label: string, kind: "conflict" | "kept"): Promise<boolean>;
+  /**
+   * バックアップを作れないブラウザで、置き換える内容（doc）を書き出してから続けてよいか聞く。続けるなら true
+   */
+  confirmWithoutBackup(doc: DocData, what: "account" | "browser"): Promise<boolean>;
   /**
    * 初めての同期で、どちらを使うか聞く。remote が null なら「アカウントは空。別のアカウントの内容を送ってよいか」
    */
@@ -431,6 +492,7 @@ export class CloudSync {
   private lastPushedGen: string | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private remoteTimer: ReturnType<typeof setTimeout> | null = null;
+  private cleanupTimer: ReturnType<typeof setTimeout> | null = null;
   /** 今の窓で最初に変わった時刻（送る内容を固めたら 0 に戻す） */
   private firstPendingAt = 0;
   /** 失敗の後、この時刻までは送らない（入力があっても縮めない） */
@@ -446,6 +508,8 @@ export class CloudSync {
   private corruptGen: string | null = null;
   /** 退避済みの相手の世代（貸し出し待ちのやり直しで、同じ物を何度も退避しない） */
   private backedUpGen: string | null = null;
+  /** 別のアカウントの内容を、このアカウントへ送ってよいと答えてもらった */
+  private foreignConsent = false;
   private swept = false;
   private readonly emitter = new Emitter<{ state: CloudState }>();
   private readonly debounceMs: number;
@@ -486,10 +550,21 @@ export class CloudSync {
     this.setState("paused", message);
   }
 
+  /**
+   * 保存してある基準を読む。このブラウザの内容が別のアカウントの物になっていたら、
+   * 手元がその基準のときのままでない限り使わない（古い基準で、別のアカウントの内容を黙って送らない）
+   */
+  private async loadBase(fallback: SyncBase | null): Promise<SyncBase | null> {
+    const b = await this.deps.readBase().catch(() => fallback);
+    if (!b || !this.deps.isForeign()) return b;
+    const d = this.deps.getDoc();
+    return d.id === b.docId && d.updatedAt === b.docUpdatedAt ? b : null;
+  }
+
   /** 起動: クラウドと手元を突き合わせ、以後の変更を見張る */
   async start(): Promise<void> {
     this.setState("connecting");
-    this.base = await this.deps.readBase().catch(() => null);
+    this.base = await this.loadBase(null);
     await this.sync("start");
     this.subscribe();
   }
@@ -511,14 +586,22 @@ export class CloudSync {
     void this.sync("remote");
   }
 
+  /** このタブが書き手でなくなった（別のタブに引き継がれた） */
+  writerLost(): void {
+    if (this.stopped || this.state === "off" || this.state === "denied") return;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.setState("pending", "別のタブが編集中");
+  }
+
   stop(): void {
     this.stopped = true;
     this.unwatch?.();
     this.unwatch = null;
-    if (this.timer) clearTimeout(this.timer);
-    if (this.remoteTimer) clearTimeout(this.remoteTimer);
+    for (const t of [this.timer, this.remoteTimer, this.cleanupTimer]) if (t) clearTimeout(t);
     this.timer = null;
     this.remoteTimer = null;
+    this.cleanupTimer = null;
   }
 
   private subscribe(): void {
@@ -540,6 +623,10 @@ export class CloudSync {
         this.watchFailures++;
         setTimeout(() => this.subscribe(), wait);
       },
+      // 読めない形の写し（新しい版など）が来た: 読みに行けば止まる（上書きしない）
+      () => {
+        if (!this.stopped && !this.paused) void this.sync("remote");
+      },
     );
   }
 
@@ -548,6 +635,17 @@ export class CloudSync {
     if (!this.base) return true;
     const doc = this.deps.getDoc();
     return doc.id !== this.base.docId || doc.updatedAt !== this.base.docUpdatedAt;
+  }
+
+  /**
+   * 手元が基準より古いか（基準だけが保存され、手元の保存が失われた・壊れた: そのまま送ると新しい写しを古い手元で潰す）。
+   * 更新時刻は必ず進むので、同じドキュメントで基準より前の時刻なら古い。違うドキュメントが捨ててよい中身（デモなど）でも同じ
+   */
+  private localBehindBase(): boolean {
+    if (!this.base) return false;
+    const doc = this.deps.getDoc();
+    if (doc.id === this.base.docId) return doc.updatedAt < this.base.docUpdatedAt;
+    return this.deps.isDisposable(doc);
   }
 
   /** 手元で変更があった（ストアの変更のたびに呼ぶ） */
@@ -571,12 +669,13 @@ export class CloudSync {
     }, wait);
   }
 
-  /** 別の端末の変更を、少し待ってから読み直す（入力の途中など） */
+  /** 別の端末の変更を、少し待ってから読み直す。入力の途中なら db には触れずに待ち続ける（終わってから 1 回だけ読む） */
   private scheduleRemote(delay: number): void {
     if (this.stopped || this.paused) return;
     if (this.remoteTimer) clearTimeout(this.remoteTimer);
     this.remoteTimer = setTimeout(() => {
       this.remoteTimer = null;
+      if (this.deps.isEditing()) return this.scheduleRemote(delay);
       void this.sync("remote");
     }, delay);
   }
@@ -628,16 +727,34 @@ export class CloudSync {
     return run;
   }
 
-  private async setBase(gen: string, doc: { id: string; updatedAt: string }): Promise<void> {
-    this.base = { gen, docId: doc.id, docUpdatedAt: doc.updatedAt };
+  private async setBase(gen: string, doc: DocIdent, extra: { seq?: number; own: boolean }): Promise<void> {
+    this.base = { gen, docId: doc.id, docUpdatedAt: doc.updatedAt, seq: extra.seq, own: extra.own };
     await this.deps.writeBase(this.base).catch(() => undefined);
+  }
+
+  /** 入れ替えが済んだ: 入れ替えた瞬間の手元を基準にする。その後に手元が変わっていれば送る */
+  private async adopted(m: Manifest, ident: DocIdent, notice: string): Promise<void> {
+    await this.setBase(m.gen, ident, { seq: m.seq, own: false });
+    if (this.localChanged()) {
+      this.setState("pending");
+      if (!this.firstPendingAt) this.firstPendingAt = Date.now();
+      this.schedule();
+    } else this.setState("synced");
+    this.deps.notice(notice, "info");
+  }
+
+  /** 書き手でなくなっていたら止める（別のタブに引き継がれた。そのタブが同期する） */
+  private stillWriter(): boolean {
+    if (this.deps.isWriter()) return true;
+    this.setState("pending", "別のタブが編集中");
+    return false;
   }
 
   private async doSync(reason: Reason): Promise<void> {
     if (this.stopped) return;
-    if (reason === "resync") this.base = await this.deps.readBase().catch(() => this.base);
+    if (reason === "resync") this.base = await this.loadBase(this.base);
     if (!this.deps.isWriter()) {
-      if (reason === "start") this.setState("pending", "別のタブが編集中");
+      if (reason === "start" || reason === "resync") this.setState("pending", "別のタブが編集中");
       return;
     }
     if (this.paused) return;
@@ -645,6 +762,7 @@ export class CloudSync {
     for (let attempt = 0; attempt < 3; attempt++) {
       const remoteM = await this.repo.readManifest();
       if ((await this.decide(remoteM, reason)) === "done") return;
+      if (!this.stillWriter()) return;
       // 送る内容を固める。ここからの変更は次の送信へ（まとめる窓もここで区切る）
       const prep = await this.repo.prepare(this.deps.getDoc());
       this.firstPendingAt = 0;
@@ -658,18 +776,38 @@ export class CloudSync {
       // 決めている間に、別の端末が書いたかもしれない
       if (((await this.repo.readManifest())?.gen ?? null) !== (remoteM?.gen ?? null)) continue;
       await this.repo.writeParts(prep);
+      const drop = async () => this.repo.deleteGens([{ gen: prep.gen, parts: prep.parts.length, savedAt: prep.savedAt }]);
       // 書いている間に貸し出しが切れて、別の端末が先に確定したかもしれない: 延ばして確かめてから確定する
-      const renewed = await this.repo.lease(ttl);
-      if (!renewed || ((await this.repo.readManifest())?.gen ?? null) !== (remoteM?.gen ?? null)) {
-        await this.repo.deleteGens([{ gen: prep.gen, parts: prep.parts.length, savedAt: prep.savedAt }]);
+      let renewed: boolean;
+      try {
+        renewed = (await this.repo.lease(ttl)) && ((await this.repo.readManifest())?.gen ?? null) === (remoteM?.gen ?? null);
+      } catch (e) {
+        await drop();
+        throw e;
+      }
+      if (!renewed) {
+        await drop();
         continue;
       }
-      const { manifest, drop } = await this.repo.commit(prep, remoteM);
+      if (!this.deps.isWriter()) {
+        await drop();
+        this.stillWriter();
+        return;
+      }
+      let committed: { manifest: Manifest; drop: Manifest["stale"] };
+      try {
+        committed = await this.repo.commit(prep, remoteM);
+      } catch (e) {
+        await drop();
+        throw e;
+      }
+      const { manifest } = committed;
       this.lastPushedGen = manifest.gen;
       this.corruptGen = null;
       this.notBefore = 0;
-      await this.setBase(manifest.gen, { id: prep.docId, updatedAt: prep.docUpdatedAt });
-      void this.repo.deleteGens(drop).catch(() => undefined);
+      await this.setBase(manifest.gen, { id: prep.docId, updatedAt: prep.docUpdatedAt }, { seq: manifest.seq, own: true });
+      void this.repo.deleteGens(committed.drop).catch(() => undefined);
+      this.scheduleCleanup();
       if (!this.swept) {
         this.swept = true;
         void this.repo.sweep(manifest).catch(() => undefined);
@@ -687,28 +825,48 @@ export class CloudSync {
     this.schedule(this.retryMs);
   }
 
+  /** 置き換えられた古い世代を、2 分たったら次の送信を待たずに片付ける（共有の 25,000 文書の枠を空ける） */
+  private scheduleCleanup(): void {
+    if (this.cleanupTimer) clearTimeout(this.cleanupTimer);
+    this.cleanupTimer = setTimeout(() => {
+      this.cleanupTimer = null;
+      if (this.stopped) return;
+      void this.repo
+        .readManifest()
+        .then((m) => (m ? this.repo.deleteGens(this.repo.expiredStale(m)) : undefined))
+        .catch(() => undefined);
+    }, STALE_MS + 5000);
+  }
+
+  /** 基準が無く、別のアカウントで同期していた（捨ててよい物でない）中身を送る前に聞く。送ってよければ true */
+  private async foreignOk(): Promise<boolean> {
+    if (this.base || this.foreignConsent || !this.deps.isForeign() || this.deps.isDisposable(this.deps.getDoc())) return true;
+    this.setState("pending", "このアカウントに保存するか、選んでください");
+    const choice = await this.deps.chooseFirst(null);
+    if (this.stopped || !this.stillWriter()) return false;
+    if (choice !== "local") {
+      this.pause("このブラウザの内容をこのアカウントに保存するか決めるまで、同期を止めています");
+      return false;
+    }
+    this.foreignConsent = true;
+    return true;
+  }
+
   /** 取り込みや確認だけで済む・止めたなら "done"、送る必要があれば "push" */
   private async decide(remoteM: Manifest | null, reason: Reason): Promise<"done" | "push"> {
     if (!remoteM) {
-      // アカウントは空: 手元を送る（初めての端末・写しが消されていた）。
-      // ただし別のアカウントで同期していた中身は、聞いてから
-      if (!this.base && this.deps.isForeign() && !this.deps.isDisposable(this.deps.getDoc())) {
-        const choice = await this.deps.chooseFirst(null);
-        if (this.stopped) return "done";
-        if (choice !== "local") {
-          this.pause("このブラウザの内容をこのアカウントに保存するか決めるまで、同期を止めています");
-          return "done";
-        }
-      }
-      return "push";
+      // アカウントは空: 手元を送る（初めての端末・写しが消されていた）。別のアカウントで同期していた中身は、聞いてから
+      return (await this.foreignOk()) ? "push" : "done";
     }
     // 壊れていた写しは、手元の内容で書き直す
-    if (this.corruptGen && remoteM.gen === this.corruptGen) return "push";
+    if (this.corruptGen && remoteM.gen === this.corruptGen) return (await this.foreignOk()) ? "push" : "done";
     if (this.base && remoteM.gen === this.base.gen) {
       if (!this.localChanged()) {
         this.setState("synced");
         return "done";
       }
+      // 手元が基準より古い（手元の保存が失われた）: 送らずに、アカウントの内容を読み込む
+      if (this.localBehindBase()) return this.recoverBehind();
       // アカウントは変わっていない。手元の変更は、まとめる間隔を守って送る（確かめのついでにすぐ送らない）
       if (reason === "remote") {
         this.setState("pending");
@@ -719,33 +877,58 @@ export class CloudSync {
       return "push";
     }
     const remote = await this.repo.read();
-    if (!remote) return "push";
+    if (!remote) return (await this.foreignOk()) ? "push" : "done";
     const doc = this.deps.getDoc();
     if (remote.doc.id === doc.id && remote.doc.updatedAt === doc.updatedAt) {
       // 中身は同じ（この端末が送ったもの・基準の保存に失敗していたなど）
-      await this.setBase(remote.manifest.gen, doc);
+      await this.setBase(remote.manifest.gen, doc, { seq: remote.manifest.seq, own: false });
       this.setState("synced");
       return "done";
     }
     if (!this.base) return this.decideFirst(remote);
-    // 読み終えてから確かめる（読んでいる間の変更を見落とさない）
-    if (!this.localChanged()) {
+    // 読み終えてから確かめる（読んでいる間の変更を見落とさない）。
+    // この端末が確定した世代が、相手の系譜に無い（上書きされた）ときも、手元に変更があるのと同じに扱う
+    if (!this.localChanged() && !this.overwritten(remote.manifest)) {
       if (this.deps.isEditing()) {
-        // その場の入力の途中: 確定すれば重なり、やめれば取り込みになる。少し待って読み直す
+        // その場の入力の途中: 確定すれば重なり、やめれば取り込みになる。終わるまで待って読み直す
         this.setState("pending", "入力が終わってから、別の端末の変更を読み込みます");
         this.scheduleRemote(this.retryMs);
         return "done";
       }
-      const adopted = await this.deps.adopt(remote.doc, "remote", () => !this.localChanged() && !this.deps.isEditing());
-      if (adopted) {
-        await this.setBase(remote.manifest.gen, this.deps.getDoc());
-        this.setState("synced");
-        this.deps.notice("別の端末で保存された内容を読み込みました。", "info");
+      const ident = await this.deps.adopt(remote.doc, "remote", () => !this.localChanged() && !this.deps.isEditing() && this.deps.isWriter());
+      if (ident) {
+        await this.adopted(remote.manifest, ident, "別の端末で保存された内容を読み込みました。");
         return "done";
       }
+      if (!this.stillWriter()) return "done";
       // 読み込む直前に手元が変わった: 重なりとして扱う
     }
-    return this.keepLocal(remote, "別の端末で保存されていた内容（同期で重なった）", "別の端末の内容と重なったため、手元の内容で同期し、別の端末の内容はバックアップに残しました（メニュー →「バックアップと復元」）。", "warn");
+    return this.keepLocal(remote, "conflict", "別の端末で保存されていた内容（同期で重なった）", "別の端末の内容と重なったため、手元の内容で同期し、別の端末の内容はバックアップに残しました（メニュー →「バックアップと復元」）。", "warn");
+  }
+
+  /**
+   * この端末が確定した世代（基準）が、届いた写しの系譜に無い: 書いている間に貸し出しが切れるなどして、
+   * 別の端末がこちらの確定を知らずに上書きした。前の版の写し（通し番号が無い）・系譜の窓を外れた古い基準は見分けない
+   */
+  private overwritten(m: Manifest): boolean {
+    const b = this.base;
+    if (!b?.own || typeof b.seq !== "number" || typeof m.seq !== "number") return false;
+    if (m.seq <= b.seq) return true;
+    if (m.seq - b.seq > m.lineage.length) return false;
+    return !m.lineage.includes(b.gen);
+  }
+
+  /** 手元が基準より古かった: 新しいアカウントの内容を読み込む（読み込む前の手元はバックアップに残る） */
+  private async recoverBehind(): Promise<"done" | "push"> {
+    const remote = await this.repo.read();
+    if (!remote) return "push";
+    const ident = await this.deps.adopt(remote.doc, "remote", () => this.localBehindBase() && !this.deps.isEditing() && this.deps.isWriter());
+    if (ident) {
+      await this.adopted(remote.manifest, ident, "この端末に保存されていた内容が古かったため、アカウントの新しい内容を読み込みました。");
+      return "done";
+    }
+    if (!this.stillWriter()) return "done";
+    return this.keepLocal(remote, "conflict", "アカウントの内容（手元の古い内容と重なった）", "この端末の内容がアカウントの記録より古かったため、アカウントの内容をバックアップに残してから手元で同期しました。", "warn");
   }
 
   /** この端末で初めての同期（基準が無い）で、アカウントに手元と違う中身がある */
@@ -756,47 +939,60 @@ export class CloudSync {
       return "done";
     }
     const local = this.deps.getDoc();
+    const foreign = this.deps.isForeign();
     if (this.deps.isDisposable(local)) {
-      // 手元は何もしていないデモ（か空）: アカウントの内容を採る（元に戻す対象にしない）
-      const adopted = await this.deps.adopt(remote.doc, "first", () => this.deps.isDisposable(this.deps.getDoc()) && !this.deps.isEditing());
-      if (adopted) {
-        await this.setBase(remote.manifest.gen, this.deps.getDoc());
-        this.setState("synced");
-        this.deps.notice("アカウントに保存されていた内容を読み込みました。", "info");
+      // 手元は何もしていないデモ（かまっさらな空）: アカウントの内容を採る（元に戻す対象にしない）
+      const ident = await this.deps.adopt(remote.doc, "first", () => this.deps.isDisposable(this.deps.getDoc()) && !this.deps.isEditing() && this.deps.isWriter());
+      if (ident) {
+        await this.adopted(remote.manifest, ident, "アカウントに保存されていた内容を読み込みました。");
         return "done";
       }
+      if (!this.stillWriter()) return "done";
       // その間に手元に中身ができた: 下で聞く
-    } else if (this.deps.isDisposable(remote.doc)) {
-      // アカウントにあるのは何もしていないデモ（か空）: 手元を送る
+    } else if (this.deps.isDisposable(remote.doc) && !foreign) {
+      // アカウントにあるのは何もしていないデモ（か空）: 手元を送る（別のアカウントの中身なら聞く）
       return "push";
     }
+    this.setState("pending", "どちらの内容を使うか、選んでください");
     const choice = await this.deps.chooseFirst(remote);
     if (this.stopped) return "done";
+    if (!this.deps.isWriter()) {
+      this.stillWriter();
+      this.deps.notice("別のタブで編集中のため、この選択は使いませんでした。編集中のタブで選んでください。", "warn");
+      return "done";
+    }
     if (choice === "later") {
       this.pause("このブラウザの内容とアカウントの内容のどちらを使うか決めるまで、同期を止めています");
       return "done";
     }
     if (choice === "remote") {
-      const adopted = await this.deps.adopt(remote.doc, "choice", () => true);
-      if (!adopted) {
-        this.pause("このブラウザの内容をバックアップに残せなかったため、切り替えをやめました。JSON で書き出してから「同期をやり直す」を押してください");
+      const ident = await this.deps.adopt(remote.doc, "choice", () => this.deps.isWriter());
+      if (!ident) {
+        if (!this.stillWriter()) return "done";
+        this.pause("このブラウザの内容を残せなかったため、切り替えをやめました。「同期をやり直す」から、書き出してから続けられます");
         return "done";
       }
-      await this.setBase(remote.manifest.gen, this.deps.getDoc());
-      this.setState("synced");
-      this.deps.notice("アカウントの内容に切り替えました。このブラウザにあった内容はバックアップに残しています（メニュー →「バックアップと復元」）。", "info");
+      await this.adopted(remote.manifest, ident, "アカウントの内容に切り替えました。このブラウザにあった内容はバックアップに残しています（メニュー →「バックアップと復元」）。");
       return "done";
     }
-    return this.keepLocal(remote, "このブラウザの内容で置き換える前のアカウントの内容", "このブラウザの内容で同期しました。アカウントにあった内容はバックアップに残しています（メニュー →「バックアップと復元」）。", "info");
+    this.foreignConsent = true;
+    return this.keepLocal(remote, "kept", "このブラウザの内容で置き換える前のアカウントの内容", "このブラウザの内容で同期しました。アカウントにあった内容はバックアップに残しています（メニュー →「バックアップと復元」）。", "info");
   }
 
-  /** 手元を正として送る前に、相手の内容をバックアップへ（同じ世代は 1 回だけ）。残せなければ止める */
-  private async keepLocal(remote: { manifest: Manifest; doc: DocData }, label: string, notice: string, tone: "info" | "warn"): Promise<"done" | "push"> {
+  /**
+   * 手元を正として送る前に、相手の内容をバックアップへ（同じ世代は 1 回だけ）。
+   * バックアップを作れないブラウザでは、書き出してから続けるか聞き、断られたら止める
+   */
+  private async keepLocal(remote: { manifest: Manifest; doc: DocData }, kind: "conflict" | "kept", label: string, notice: string, tone: "info" | "warn"): Promise<"done" | "push"> {
     if (this.backedUpGen !== remote.manifest.gen) {
-      if (!(await this.deps.backup(remote.doc, label))) {
-        this.pause("アカウントの内容と重なりましたが、このブラウザではバックアップを作れないため、上書きせずに同期を止めました。JSON で書き出してから「同期をやり直す」を押してください");
-        return "done";
+      if (!(await this.deps.backup(remote.doc, label, kind))) {
+        if (!(await this.deps.confirmWithoutBackup(remote.doc, "account"))) {
+          this.pause("アカウントの内容を残せないため、上書きせずに同期を止めました。「同期をやり直す」から、書き出してから続けられます");
+          return "done";
+        }
+        notice = "アカウントにあった内容を書き出してから、手元の内容で同期しました。";
       }
+      if (!this.stillWriter()) return "done";
       this.backedUpGen = remote.manifest.gen;
       this.deps.notice(notice, tone);
     }
@@ -811,6 +1007,11 @@ export class CloudSync {
 
   private fail(e: unknown): void {
     if (this.stopped) return;
+    // 書き手でなくなっていた（入れ替えの途中で引き継がれた など）: 失敗として待たない。そのタブが同期する
+    if (!this.deps.isWriter()) {
+      this.setState("pending", "別のタブが編集中");
+      return;
+    }
     const code = e instanceof CloudError ? e.code : errorCode(e);
     if (code === "invalid_argument" || code === "not_granted" || code === "transform_error") {
       // 自分の場所に書けない（閲覧のみの共有など）: このブラウザだけに保存する
@@ -828,12 +1029,19 @@ export class CloudSync {
       this.pause(code === "format" ? `アカウントの写しを読めません（${e instanceof Error ? e.message : ""}）。ページを開き直してください` : e instanceof Error ? e.message : "アカウントの写しを読めません");
       return;
     }
+    if (code === "too_large") {
+      this.pause(`${e instanceof Error ? e.message : "大きすぎて保存できません"}。ドキュメントの名前を短くしてから「同期をやり直す」を押してください`);
+      return;
+    }
     if (code === "quota_exceeded") {
       this.setState("error", "アカウント側の保存容量がいっぱいです。使われていない写しを片付けてから、しばらくしてもう一度試します");
-      // 使われていない分割を片付ける（溜まっていれば、それで空く）
+      // 使われていない分割・置き換えられて 2 分たった世代を片付ける（溜まっていれば、それで空く）
       void this.repo
         .readManifest()
-        .then((m) => this.repo.sweep(m))
+        .then(async (m) => {
+          if (m) await this.repo.deleteGens(this.repo.expiredStale(m));
+          await this.repo.sweep(m);
+        })
         .catch(() => undefined);
       this.backoff(10 * 60_000);
       return;

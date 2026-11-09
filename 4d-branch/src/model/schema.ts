@@ -21,7 +21,10 @@ export interface NormalizeReport {
 
 // ---------------------------------------------------------------- 作成
 
-export function createEmptyDoc(title = "マイ・ブランチ"): DocData {
+/** 名前を付けていないドキュメントの名前 */
+export const DEFAULT_DOC_TITLE = "マイ・ブランチ";
+
+export function createEmptyDoc(title = DEFAULT_DOC_TITLE): DocData {
   const t = nowISO();
   return {
     schema: SCHEMA,
@@ -490,7 +493,7 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
     schema: SCHEMA,
     version: SCHEMA_VERSION,
     id: validId(raw.id) ? raw.id : newId("d"),
-    title: str(raw.title).trim() || "マイ・ブランチ",
+    title: str(raw.title).trim() || DEFAULT_DOC_TITLE,
     createdAt: isoOr(raw.createdAt, now),
     updatedAt: isoOr(raw.updatedAt, now),
     projects,

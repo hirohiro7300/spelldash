@@ -1,7 +1,7 @@
 // 初回起動のデモ: 3 つのプロジェクトが「広告運用を学ぶ」などの共通の行動・結果でつながり、相乗効果が見える。
 // 横の位置はおおよそ時間（左 = 今、右 = 未来）。上から SpellDash・FC マーケティング・独立 の帯に並べる。
 
-import { createEmptyDoc, makeCondition, makeEdge, makeNode, makeProject, makeScenario } from "../model/schema";
+import { DEFAULT_DOC_TITLE, createEmptyDoc, makeCondition, makeEdge, makeNode, makeProject, makeScenario } from "../model/schema";
 import type { DocData, GNode, NodeStatus, NodeType, Relation } from "../model/types";
 
 interface N {
@@ -237,11 +237,18 @@ function contentSignature(doc: DocData): string {
 let demoSignature: string | null = null;
 
 /**
- * 捨ててよい手元か: 初回のデモに何も足していない（動かした・畳んだだけ）か、ノードが 1 つも無い。
- * アカウントに内容があれば、聞かずにそちらを採ってよい
+ * 捨ててよい中身か: 初回のデモに何も足していない（動かした・畳んだだけ）か、まっさらな空
+ * （ノード・接続・プロジェクト・シナリオが無く、名前も付けていない）。
+ * 初めての同期で、聞かずにもう一方を採ってよい。プロジェクトだけ作った・名前だけ付けた物は捨てない
  */
 export function isDisposableDoc(doc: DocData): boolean {
-  if (Object.keys(doc.nodes).length === 0) return true;
+  const blank =
+    Object.keys(doc.nodes).length === 0 &&
+    Object.keys(doc.edges).length === 0 &&
+    Object.keys(doc.projects).length === 0 &&
+    Object.keys(doc.scenarios).length === 0 &&
+    doc.title === DEFAULT_DOC_TITLE;
+  if (blank) return true;
   demoSignature ??= contentSignature(buildDemoDoc());
   return contentSignature(doc) === demoSignature;
 }

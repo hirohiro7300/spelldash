@@ -15,7 +15,11 @@ import { Emitter } from "../store/emitter";
 import { done, openDb, req } from "./idb";
 
 export type SaveStatus = "idle" | "pending" | "saving" | "saved" | "error" | "conflict" | "readonly" | "ephemeral";
-export type BackupKind = "auto" | "daily" | "manual" | "safety" | "conflict";
+/**
+ * バックアップの種類。sync = 別の端末の内容を読み込む前（ふだんの同期で多い）、
+ * kept = 利用者の選択で使わなかった内容（ほかの種類に押し出されない・自分の枠で多めに残す）
+ */
+export type BackupKind = "auto" | "daily" | "manual" | "safety" | "conflict" | "sync" | "kept";
 
 export interface BackupMeta {
   id: ID;
@@ -78,8 +82,8 @@ export function memoryKV(): SyncKV & { data: Map<string, string> } {
   return { data, get: (k) => data.get(k) ?? null, set: (k, v) => void data.set(k, v), remove: (k) => void data.delete(k), keys: () => [...data.keys()] };
 }
 
-export const KEEP: Record<BackupKind, number> = { auto: 24, daily: 30, manual: 50, safety: 20, conflict: 20 };
-export const BACKUP_LABELS: Record<BackupKind, string> = { auto: "自動", daily: "日次", manual: "手動", safety: "安全用", conflict: "退避" };
+export const KEEP: Record<BackupKind, number> = { auto: 24, daily: 30, manual: 50, safety: 20, conflict: 20, sync: 20, kept: 50 };
+export const BACKUP_LABELS: Record<BackupKind, string> = { auto: "自動", daily: "日次", manual: "手動", safety: "安全用", conflict: "退避", sync: "同期", kept: "選ばなかった内容" };
 const AUTO_BACKUP_MS = 10 * 60_000;
 const MAX_WAIT_MS = 2000;
 /** タブのロックの答えを待つ上限。来なければロック無しで続ける（読み込み中の画面で止めない） */

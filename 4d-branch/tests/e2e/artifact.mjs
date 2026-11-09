@@ -65,8 +65,19 @@ const FAKE_CLAUDE = () => {
     },
   });
   window.__saved = [];
+  // 機能の返事が遅い（時間切れの後に返ってくる）
+  if (flags.slowUseMs) window.__fourDCapabilityTimeoutMs = 300;
+  // IndexedDB の使えないブラウザ（localStorage だけ。バックアップは作れない）
+  if (flags.noIdb) Object.defineProperty(window, "indexedDB", { value: undefined, configurable: true });
+  const memo = new Map();
   window.claude = {
-    async use(name) {
+    // 本物と同じく、同じ名前の use() は同じ返事を使い回す
+    use(name) {
+      if (!memo.has(name)) memo.set(name, this.useOnce(name));
+      return memo.get(name);
+    },
+    async useOnce(name) {
+      if (flags.slowUseMs) await new Promise((r) => setTimeout(r, flags.slowUseMs));
       if (name === "downloads") {
         if (flags.noDownloads) return null;
         return Object.freeze({
@@ -192,7 +203,7 @@ await check("新しい端末で開くと、デモではなくアカウントの�
   await A.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "端末Bで足した行動"), null, { timeout: 15000 });
   // 取り込む前の手元はバックアップに残る
   const kinds = await A.page.evaluate(async () => (await window.__fourD.persistence.listBackups()).map((b) => b.kind + ":" + b.label));
-  assert(kinds.some((k) => k.startsWith("safety:別の端末の内容を読み込む前")), kinds.join(","));
+  assert(kinds.some((k) => k.startsWith("sync:別の端末の内容を読み込む前")), kinds.join(","));
   await B.ctx.close();
 });
 
@@ -212,7 +223,8 @@ await check("サインインせずに書いたブラウザで、あとからサ�
   const dialog = E.page.getByRole("dialog", { name: "どちらの内容を使いますか？" });
   await dialog.waitFor({ timeout: 15000 });
   // 決めるまでは送らない
-  assert((await cloudState(E.page)) === "syncing" || (await cloudState(E.page)) === "connecting", `決める前の状態 ${await cloudState(E.page)}`);
+  const waiting = await E.page.evaluate(() => window.__fourD.app.cloudInfo);
+  assert(waiting.state === "pending" && waiting.message.includes("選んで"), `決める前の状態 ${JSON.stringify(waiting)}`);
   if (SHOTS) {
     await E.page.waitForTimeout(300);
     await E.page.screenshot({ path: path.join(SHOTS, "artifact-choose.png") });
@@ -240,6 +252,43 @@ await check("サインインせずに書いたブラウザで、あとからサ�
   assert(r.canUndo === false, "切り替えを元に戻せてしまう");
   assert(r.state === "synced", `状態 ${r.state}`);
   await E.ctx.close();
+});
+
+await check("機能の返事が遅くても「サインインしていない」とは言わず、返事が来たら同期を始める", async () => {
+  const L = await newDevice({ slowUseMs: 1500 });
+  await L.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "unavailable", null, { timeout: 15000 });
+  const msg = await L.page.evaluate(() => window.__fourD.app.cloudInfo.message);
+  assert(!msg.includes("サインインしていない"), `時間切れなのにサインインしていないと言う: ${msg}`);
+  await L.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 20000 });
+  await L.ctx.close();
+});
+
+await check("バックアップを作れないブラウザでも、書き出してからアカウントの内容に切り替えられる", async () => {
+  const N = await newDevice({ signedOut: true, noIdb: true });
+  await N.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "unavailable", null, { timeout: 15000 });
+  assert((await N.page.evaluate(() => window.__fourD.persistence.canBackup)) === false, "バックアップが作れてしまう（前提が違う）");
+  await N.page.evaluate(() => document.querySelector(".modal-close")?.click());
+  await N.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 0, y: 1600 }, { title: "IndexedDB の無いブラウザで書いた目標", exact: true }));
+  await N.page.waitForFunction(() => window.__fourD.persistence.status === "saved");
+  await N.ctx.addInitScript(() => {
+    if (window.__fakeFlags) window.__fakeFlags.signedOut = false;
+  });
+  await N.page.reload({ waitUntil: "load" });
+  await N.page.waitForFunction(() => !!window.__fourD);
+  const dialog = N.page.getByRole("dialog", { name: "どちらの内容を使いますか？" });
+  await dialog.waitFor({ timeout: 15000 });
+  await dialog.getByRole("button", { name: "アカウントの内容を使う" }).click();
+  const confirm = N.page.getByRole("dialog", { name: "このブラウザではバックアップを作れません" });
+  await confirm.waitFor({ timeout: 10000 });
+  await confirm.getByRole("button", { name: "書き出して続ける" }).click();
+  await N.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  const r = await N.page.evaluate(() => ({
+    switched: Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "端末Aで書いた目標"),
+    exported: window.__saved.some((x) => x.data.includes("IndexedDB の無いブラウザで書いた目標")),
+  }));
+  assert(r.switched, "アカウントの内容に切り替わらない");
+  assert(r.exported, "置き換える前の内容が書き出されていない");
+  await N.ctx.close();
 });
 
 await check("書き出しの機能が無いときは、コピーできる画面を出す", async () => {

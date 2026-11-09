@@ -8,7 +8,7 @@ import { buildDemoDoc } from "../demo/demo";
 import { APP_VERSION, NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
 import { createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
-import { errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
+import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
 import { isDisposableDoc } from "../demo/demo";
 import { CloudRepo, CloudSync, dbBackend, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
@@ -60,6 +60,8 @@ export class App implements AppContext {
   afterTour?: () => void;
   /** アカウントへの同期（claude.ai の Artifact の中で、サインインしているときだけ） */
   cloud: CloudSync | null = null;
+  private cloudStarting = false;
+  private cloudLateArmed = false;
   cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null = null;
   onCloudChanged: () => void = () => undefined;
   private adopting = false;
@@ -150,7 +152,10 @@ export class App implements AppContext {
 
     // ---- 配線
     this.store.on("change", () => this.syncEmpty());
-    this.persistence.on("writer", () => this.renderBanner());
+    this.persistence.on("writer", (w) => {
+      this.renderBanner();
+      if (!w) this.cloud?.writerLost();
+    });
     this.store.on("blocked", () => toast("このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。", { tone: "warn" }));
     this.ui.on("prefs", (p) => this.applyPrefs(p));
     this.view.onCamera(() => this.onCamera());
@@ -748,10 +753,20 @@ export class App implements AppContext {
   }
 
   /** claude.ai の Artifact の中で、サインインしていて自分の場所に書けるなら、アカウントにも写しを置く */
-  async startCloud(): Promise<void> {
-    if (this.ephemeral || !inArtifactHost() || this.cloud) return;
+  async startCloud(late?: { db: DbApi; user: UserApi }): Promise<void> {
+    if (this.ephemeral || !inArtifactHost() || this.cloud || this.cloudStarting) return;
+    this.cloudStarting = true;
+    try {
+      await this.startCloudInner(late);
+    } finally {
+      this.cloudStarting = false;
+    }
+  }
+
+  /** late: 時間切れの後に返ってきた機能（もう一度待たずにそれを使う） */
+  private async startCloudInner(late?: { db: DbApi; user: UserApi }): Promise<void> {
     this.setCloudInfo("connecting");
-    const [db, user] = await Promise.all([useCapability<DbApi>("db"), useCapability<UserApi>("user")]);
+    const [db, user] = late ? [late.db, late.user] : await Promise.all([useCapability<DbApi>("db"), useCapability<UserApi>("user")]);
     let uid: string | null = null;
     try {
       uid = user ? await user.id() : null;
@@ -759,7 +774,18 @@ export class App implements AppContext {
       uid = null;
     }
     if (!db || !uid) {
-      this.setCloudInfo("unavailable", "サインインしていないため、このブラウザだけに保存します");
+      if (user && !uid) {
+        this.setCloudInfo("unavailable", "サインインしていないため、このブラウザだけに保存します");
+        return;
+      }
+      // 機能の返事が遅い・読み込めなかった: サインインしていないとは限らない。返事が来たら、そのときに始める
+      this.setCloudInfo("unavailable", "アカウントに接続できないため、このブラウザだけに保存しています（つながりしだい同期します）");
+      if (!this.cloudLateArmed) {
+        this.cloudLateArmed = true;
+        void Promise.all([capabilityWhenReady<DbApi>("db"), capabilityWhenReady<UserApi>("user")]).then(([d, u]) => {
+          if (d && u && !this.cloud) void this.startCloud({ db: d, user: u });
+        });
+      }
       return;
     }
     let repo: CloudRepo;
@@ -779,6 +805,21 @@ export class App implements AppContext {
     } catch {
       foreign = false;
     }
+    /** 手元にまだ保存できていない間の基準（保存できたら書く。基準が手元より先に残らないように） */
+    let pendingBase: SyncBase | null = null;
+    const writeBaseNow = async (b: SyncBase) => {
+      await this.persistence.writeKv(baseKey, b);
+      // このブラウザの内容は、このアカウントのもの
+      await this.persistence.writeKv("cloud:owner", uid);
+      foreign = false;
+    };
+    const savedDurably = () => !this.persistence.hasUnsaved && this.persistence.status !== "error" && this.persistence.status !== "conflict";
+    this.persistence.on("status", () => {
+      if (!pendingBase || !savedDurably()) return;
+      const b = pendingBase;
+      pendingBase = null;
+      void writeBaseNow(b).catch(() => undefined);
+    });
     const sync = new CloudSync(repo, {
       getDoc: () => this.store.doc,
       isWriter: () => this.persistence.writer && !this.store.readOnly,
@@ -786,21 +827,29 @@ export class App implements AppContext {
       isEditing: () => this.editor.active,
       isForeign: () => foreign,
       adopt: async (doc, how, stillOk) => {
-        // 入れ替える前の手元を残す: 別の端末の変更なら安全用に、利用者が選んだ切り替えなら必ず（残せなければやめる）。
+        const canWrite = () => this.persistence.writer && !this.store.readOnly;
+        if (!canWrite() || !stillOk()) return null;
+        // 入れ替える前の手元を残す: 別の端末の変更ならふだんの「同期」の枠に、利用者が選んだ切り替えなら押し出されない枠に。
         // 捨ててよい手元（何もしていないデモ・空）は残さない
-        if (how === "remote") await this.persistence.createBackup("safety", "別の端末の内容を読み込む前", this.store.doc).catch(() => undefined);
+        if (how === "remote") await this.persistence.createBackup("sync", "別の端末の内容を読み込む前", this.store.doc).catch(() => undefined);
         if (how === "choice") {
-          const saved = await this.persistence.createBackup("safety", "アカウントの内容に切り替える前のこのブラウザの内容", this.store.doc).catch(() => null);
-          if (!saved) return false;
+          let kept = false;
+          // 残している間に書き足されたら、書き足した後の内容で残し直す
+          for (let i = 0; i < 3 && !kept; i++) {
+            const at = this.store.doc.updatedAt;
+            const saved = await this.persistence.createBackup("kept", "アカウントの内容に切り替える前のこのブラウザの内容", this.store.doc).catch(() => null);
+            if (!saved) break;
+            kept = this.store.doc.updatedAt === at;
+          }
+          if (!kept && !(await this.confirmWithoutBackup(this.store.doc, "browser"))) return null;
         }
-        // 読んでいる間・バックアップの間に手元が変わった（入力が始まった）: 入れ替えない
-        if (!stillOk()) return false;
-        if (!this.persistence.writer || this.store.readOnly) throw new Error("読み込めませんでした（このタブは閲覧のみ）");
+        // 読んでいる間・残している間に手元が変わった（入力が始まった）・書き手でなくなった: 入れ替えない
+        if (!canWrite() || !stillOk()) return null;
         this.editor.cancel();
         if (how === "remote") {
           this.adopting = true;
           try {
-            if (!this.store.replaceDoc(doc, "別の端末の内容を読み込む")) throw new Error("読み込めませんでした（このタブは閲覧のみ）");
+            if (!this.store.replaceDoc(doc, "別の端末の内容を読み込む")) return null;
           } finally {
             this.adopting = false;
           }
@@ -809,31 +858,54 @@ export class App implements AppContext {
           this.store.load(doc, "load");
           this.persistence.markDirty();
         }
+        // 入れ替えた瞬間の手元（この後の編集は、次の送信に回す）
+        const ident = { id: this.store.doc.id, updatedAt: this.store.doc.updatedAt };
         // 手元への保存を先に済ませる（同期の基準だけが先に残り、閉じたあとで古い手元を送ってしまうのを防ぐ）
         await this.persistence.flush().catch(() => undefined);
         this.ui.pruneSelection((kind, id) => (kind === "node" ? !!this.store.doc.nodes[id] : !!this.store.doc.edges[id]));
         if (how !== "remote") this.view.fit(undefined, { animate: false });
         void this.refreshLastBackup();
-        return true;
+        return ident;
       },
-      backup: async (doc, label) => {
-        const saved = await this.persistence.createBackup("conflict", label, doc).catch(() => null);
+      backup: async (doc, label, kind) => {
+        const saved = await this.persistence.createBackup(kind, label, doc).catch(() => null);
         void this.refreshLastBackup();
         return !!saved;
       },
+      confirmWithoutBackup: (doc, what) => this.confirmWithoutBackup(doc, what),
       chooseFirst: (remote) => chooseSyncSource({ local: this.store.doc, remote: remote?.manifest ?? null, foreign }),
       readBase: () => this.persistence.readKv<SyncBase>(baseKey),
       writeBase: async (b) => {
-        await this.persistence.writeKv(baseKey, b);
-        // このブラウザの内容は、このアカウントのもの
-        await this.persistence.writeKv("cloud:owner", uid);
-        foreign = false;
+        // 基準は、手元にその内容が保存できてから書く（保存に失敗していれば、保存できたときに書く）
+        await this.persistence.flush().catch(() => undefined);
+        if (!savedDurably()) {
+          pendingBase = b;
+          return;
+        }
+        pendingBase = null;
+        await writeBaseNow(b);
       },
       notice: (text, tone) => toast(text, { tone, ms: 8000 }),
     });
     this.cloud = sync;
     sync.on((st) => this.setCloudInfo(st, sync.message));
     await sync.start();
+  }
+
+  /**
+   * バックアップを作れないブラウザで、置き換えられる内容を書き出してから続けるか聞く。
+   * 書き出す（保存を頼む・コピーの画面を出す）と続ける。やめると false
+   */
+  private async confirmWithoutBackup(doc: DocData, what: "account" | "browser"): Promise<boolean> {
+    const ok = await confirmDialog({
+      title: "このブラウザではバックアップを作れません",
+      body: `置き換えられる${what === "account" ? "アカウントの内容" : "このブラウザの内容"}は、どこにも残りません。JSON で書き出してから続けますか？`,
+      ok: "書き出して続ける",
+      danger: true,
+    });
+    if (!ok) return false;
+    this.exportJson(doc, exportFileName().replace(/\.json$/, what === "account" ? "_account.json" : "_browser.json"));
+    return true;
   }
 
   /** 初めてガイドを終えたときに一度だけ、ブラウザに自動削除からの保護を頼む */

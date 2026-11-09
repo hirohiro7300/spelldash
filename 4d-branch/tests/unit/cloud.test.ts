@@ -94,6 +94,10 @@ interface DeviceOpts {
   /** バックアップを作れない保存先（localStorage だけのブラウザ） */
   canBackup?: boolean;
   foreign?: boolean;
+  /** バックアップを作れないとき、書き出して続けると答えるか */
+  confirmNoBackup?: boolean;
+  /** 入れ替えの後、手元へ保存するのにかかる時間（その間の編集を見る） */
+  adoptFlushMs?: number;
 }
 
 /** 1 つの端末（App と同じつなぎ方: 本物の Store。取り込み中は markDirty しない。初回・選択の取り込みは Undo の対象外） */
@@ -101,13 +105,16 @@ function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts =
   const store = new Store(doc);
   const local = {
     base: (opts.base ?? null) as SyncBase | null,
-    backups: [] as Array<{ doc: DocData; label: string }>,
+    backups: [] as Array<{ doc: DocData; label: string; kind?: string }>,
     notices: [] as string[],
     adopted: [] as string[],
     asked: 0,
+    confirms: [] as string[],
     writer: opts.writer ?? true,
     adopting: false,
     editing: false,
+    /** 聞かれている間に呼ぶ（書き手でなくなる など） */
+    onAsk: null as null | (() => void),
   };
   const repo = new CloudRepo(be, opts.uid ?? "user1", name);
   const sync = new CloudSync(
@@ -119,12 +126,15 @@ function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts =
       isEditing: () => local.editing,
       isForeign: () => !!opts.foreign,
       adopt: async (d, how, stillOk) => {
+        if (!local.writer || !stillOk()) return null;
         if (how === "choice") {
-          if (opts.canBackup === false) return false;
-          local.backups.push({ doc: store.doc, label: "切り替える前のこのブラウザの内容" });
+          if (opts.canBackup === false) {
+            local.confirms.push("browser");
+            if (!opts.confirmNoBackup) return null;
+          } else local.backups.push({ doc: store.doc, label: "切り替える前のこのブラウザの内容", kind: "kept" });
         }
         await tick(1);
-        if (!stillOk()) return false;
+        if (!local.writer || !stillOk()) return null;
         if (how === "remote") {
           local.adopting = true;
           try {
@@ -133,16 +143,24 @@ function device(be: CloudBackend, name: string, doc: DocData, opts: DeviceOpts =
             local.adopting = false;
           }
         } else store.load(d, "load");
+        // 入れ替えた瞬間の印（App と同じ: この後の手元への保存の間の編集は、次の送信へ）
+        const ident = { id: store.doc.id, updatedAt: store.doc.updatedAt };
+        if (opts.adoptFlushMs) await tick(opts.adoptFlushMs);
         local.adopted.push(how);
+        return ident;
+      },
+      backup: async (d, label, kind) => {
+        if (opts.canBackup === false) return false;
+        local.backups.push({ doc: d, label, kind });
         return true;
       },
-      backup: async (d, label) => {
-        if (opts.canBackup === false) return false;
-        local.backups.push({ doc: d, label });
-        return true;
+      confirmWithoutBackup: async (_d, what) => {
+        local.confirms.push(what);
+        return !!opts.confirmNoBackup;
       },
       chooseFirst: async () => {
         local.asked++;
+        local.onAsk?.();
         return opts.choice ?? "later";
       },
       readBase: async () => local.base,
@@ -793,5 +811,261 @@ describe("同期の決まり: ふだんの同期", () => {
     expect(a.sync.message).toContain("開き直して");
     expect((await repo.readManifest())!.gen).toBe(before);
     a.sync.stop();
+  });
+});
+
+describe("同期の決まり: 再レビューの指摘", () => {
+  it("別のアカウントの中身は、アカウントに何もしていないデモしか無くても、聞かずに送らない（C0）", async () => {
+    const { be, state } = memoryBackend();
+    const yPhone = device(be, "Yphone", buildDemoDoc(), { uid: "Y" });
+    await yPhone.sync.start(); // Y のアカウントにはデモ
+    const writes = state.writes;
+    const shared = device(be, "shared", realDoc("X の個人的な内容"), { uid: "Y", foreign: true, choice: "later" });
+    await shared.sync.start();
+    await tick(80);
+    expect(shared.local.asked).toBe(1);
+    expect(state.writes).toBe(writes);
+    expect(await remoteHas(yPhone.repo, "X の個人的な内容")).toBe(false);
+    expect(yPhone.has("X の個人的な内容")).toBe(false);
+    // やり直してもまた聞くだけで、送らない
+    shared.sync.resync();
+    await tick(80);
+    expect(shared.local.asked).toBe(2);
+    expect(state.writes).toBe(writes);
+    yPhone.sync.stop();
+    shared.sync.stop();
+  });
+
+  it("別のアカウントに切り替わった後の古い基準では、黙って送らない（X→Y→X）（C1）", async () => {
+    const { be } = memoryBackend();
+    // X がこのブラウザで同期していた（X の基準が残っている）
+    const x1 = device(be, "x1", realDoc("X の内容"), { uid: "X" });
+    await x1.sync.start();
+    const staleXBase = x1.local.base;
+    x1.sync.stop();
+    // その後 Y の内容に変わった（owner = Y）。X が戻ってくる
+    const back = device(be, "x2", realDoc("Y の個人的な内容"), { uid: "X", foreign: true, base: staleXBase, choice: "later" });
+    await back.sync.start();
+    await tick(80);
+    expect(back.local.asked).toBe(1);
+    expect(await remoteHas(back.repo, "Y の個人的な内容")).toBe(false);
+    expect(await remoteHas(back.repo, "X の内容")).toBe(true);
+    back.sync.stop();
+  });
+
+  it("自分の確定が別の端末に上書きされたら、黙って取り込まず、重なりとして扱う（C2）", async () => {
+    const { be } = memoryBackend();
+    const a = device(be, "A", buildDemoDoc());
+    await a.sync.start();
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    a.sync.stop();
+    // B が確定する
+    b.edit("B の変更");
+    await b.sync.flush();
+    for (let i = 0; i < 50 && !(b.local.base?.own && (await remoteHas(b.repo, "B の変更"))); i++) await tick(10);
+    const mB = (await b.repo.readManifest())!;
+    expect(b.local.base!.own).toBe(true);
+    // A の遅れた書き込み: B の世代を知らないまま（B の前の世代を元に）確定する
+    const prev = { ...mB, gen: mB.lineage[mB.lineage.length - 1]!, seq: (mB.seq ?? 1) - 1, lineage: mB.lineage.slice(0, -1) };
+    const late = { ...a.store.doc, nodes: { ...a.store.doc.nodes } };
+    const n = makeNode({ title: "A の遅れた変更" });
+    late.nodes[n.id] = n;
+    await a.repo.write(late, prev);
+    await tick(150);
+    // B は自分の変更を失わない（手元で送り、A の内容はバックアップへ・警告）
+    expect(b.has("B の変更")).toBe(true);
+    expect(await remoteHas(b.repo, "B の変更")).toBe(true);
+    expect(b.local.backups.some((x) => Object.values(x.doc.nodes).some((m) => m.title === "A の遅れた変更"))).toBe(true);
+    expect(b.local.notices.some((x) => x.startsWith("warn:"))).toBe(true);
+    b.sync.stop();
+  });
+
+  it("取り込みの後で手元へ保存している間の編集は、基準に入れずに送る（C3）", async () => {
+    const { be } = memoryBackend();
+    const a = device(be, "A", buildDemoDoc(), { adoptFlushMs: 60 });
+    await a.sync.start();
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    await tick(30);
+    b.edit("B の変更");
+    await b.sync.flush();
+    // A が取り込んで、手元へ保存している間に編集する
+    for (let i = 0; i < 40 && !a.has("B の変更"); i++) await tick(5);
+    expect(a.has("B の変更")).toBe(true);
+    a.edit("取り込み中の編集");
+    await tick(200);
+    expect(await remoteHas(a.repo, "取り込み中の編集")).toBe(true);
+    expect(a.sync.state).toBe("synced");
+    a.sync.stop();
+    b.sync.stop();
+  });
+
+  it("手元が基準より古い（手元の保存が失われた）なら、送らずにアカウントの内容を読み込む（C4）", async () => {
+    const { be } = memoryBackend();
+    const a = device(be, "A", buildDemoDoc());
+    await a.sync.start();
+    const old = structuredClone(a.store.doc);
+    a.edit("消えてはいけない変更");
+    await a.sync.flush();
+    const base = a.local.base;
+    a.sync.stop();
+    // 開き直すと、手元は古い内容（保存に失敗していた）。基準は新しい
+    const again = device(be, "A2", old, { base });
+    await again.sync.start();
+    await tick(60);
+    expect(await remoteHas(again.repo, "消えてはいけない変更")).toBe(true);
+    expect(again.has("消えてはいけない変更")).toBe(true);
+    again.sync.stop();
+  });
+
+  it("新しい版の形のマニフェスト・知らない符号化は、空と見なして上書きせずに止める（C5）", async () => {
+    for (const patch of [{ format: 2 }, { enc: "brotli-b64" }]) {
+      const { be, docs } = memoryBackend();
+      const repo = new CloudRepo(be, "user1", "newer");
+      await repo.write(realDoc("新しい版の内容"), null);
+      const key = "data/users/user1/fourd";
+      docs.set(key, { ...docs.get(key)!, ...patch });
+      const before = JSON.stringify(docs.get(key));
+      const a = device(be, "A", realDoc("手元"));
+      await a.sync.start();
+      await tick(30);
+      expect(a.sync.state).toBe("paused");
+      expect(JSON.stringify(docs.get(key))).toBe(before);
+      a.sync.stop();
+    }
+  });
+
+  it("バックアップを作れないブラウザでも、書き出して続けると答えれば先へ進める（C6）", async () => {
+    const { be } = memoryBackend();
+    const a = device(be, "A", buildDemoDoc());
+    await a.sync.start();
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    a.sync.stop();
+    b.edit("B の変更");
+    await b.sync.flush();
+    const a2 = device(be, "A2", a.store.doc, { base: a.local.base, canBackup: false, confirmNoBackup: true });
+    a2.edit("A の変更");
+    await a2.sync.start();
+    for (let i = 0; i < 40 && a2.sync.state !== "synced"; i++) await tick(10);
+    expect(a2.local.confirms).toEqual(["account"]);
+    expect(a2.sync.state).toBe("synced");
+    expect(await remoteHas(a2.repo, "A の変更")).toBe(true);
+    a2.sync.stop();
+    b.sync.stop();
+  });
+
+  it("題名の入力中は、別の端末の写しを何度も読み直さない（C7）", async () => {
+    const { be } = memoryBackend();
+    let partReads = 0;
+    const counting: CloudBackend = {
+      ...be,
+      async get(path) {
+        if (path.includes("/parts/")) partReads++;
+        return be.get(path);
+      },
+    };
+    const a = device(counting, "A", buildDemoDoc(), { retryMs: 10 });
+    await a.sync.start();
+    const b = device(be, "B", buildDemoDoc());
+    await b.sync.start();
+    a.local.editing = true;
+    b.edit("B の変更");
+    await b.sync.flush();
+    await tick(60);
+    const reads = partReads;
+    await tick(300); // 入力が続く
+    expect(partReads - reads).toBe(0);
+    a.local.editing = false;
+    await tick(100);
+    expect(a.has("B の変更")).toBe(true);
+    a.sync.stop();
+    b.sync.stop();
+  });
+
+  it("とても長い題名でも、マニフェストは大きくならず同期できる（C8）", async () => {
+    const { be, docs } = memoryBackend();
+    const d = realDoc("中身");
+    d.title = "長".repeat(200_000);
+    const a = device(be, "A", d);
+    await a.sync.start();
+    expect(a.sync.state).toBe("synced");
+    const m = await a.repo.readManifest();
+    expect([...m!.title].length).toBeLessThanOrEqual(200);
+    expect(bytesOf(docs.get("data/users/user1/fourd"))).toBeLessThan(LIMIT);
+    expect((await a.repo.read())!.doc.title.length).toBe(200_000);
+    a.sync.stop();
+  });
+
+  it("置き換えられた古い世代は、次の送信を待たずに 2 分後に片付く（C9）", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const { be, partGens } = memoryBackend();
+      const a = device(be, "A", buildDemoDoc());
+      const run = async (p: Promise<unknown>) => {
+        const done = p.then(() => true);
+        for (let i = 0; i < 200; i++) {
+          await vi.advanceTimersByTimeAsync(10);
+          if (await Promise.race([done, Promise.resolve(false)])) return;
+        }
+      };
+      await run(a.sync.start());
+      for (let i = 0; i < 3; i++) {
+        a.edit(`変更 ${i}`);
+        await run(a.sync.flush());
+      }
+      expect(partGens().size).toBeGreaterThan(1);
+      await vi.advanceTimersByTimeAsync(3 * 60_000);
+      const m = await a.repo.readManifest();
+      // 置き換えられてから 2 分たった世代はすべて片付き、今の世代だけが残る
+      expect([...partGens()]).toEqual([m!.gen]);
+      a.sync.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ノードが無くても、プロジェクト・シナリオ・名前のあるドキュメントは捨ててよい物と見なさない（C10）", () => {
+    const empty = createEmptyDoc();
+    expect(isDisposableDoc(empty)).toBe(true);
+    const named = createEmptyDoc("新しい計画");
+    expect(isDisposableDoc(named)).toBe(false);
+    const withProject = createEmptyDoc();
+    const p = { ...buildDemoDoc().projects.p_spelldash! };
+    withProject.projects[p.id] = p;
+    withProject.projectOrder.push(p.id);
+    expect(isDisposableDoc(withProject)).toBe(false);
+    expect(isDisposableDoc(buildDemoDoc())).toBe(true);
+  });
+
+  it("選ばなかった内容は「選ばなかった内容」として残し、ふだんの同期のバックアップに押し出されない（C17）", async () => {
+    const { be } = memoryBackend();
+    const a = device(be, "A", realDoc("アカウントの内容"));
+    await a.sync.start();
+    const b = device(be, "B", realDoc("このブラウザの内容"), { choice: "local" });
+    await b.sync.start();
+    await tick(60);
+    expect(b.local.backups.some((x) => x.kind === "kept" && Object.values(x.doc.nodes).some((n) => n.title === "アカウントの内容"))).toBe(true);
+    a.sync.stop();
+    b.sync.stop();
+  });
+
+  it("聞いている間に書き手でなくなったら、答えても送らない（C18）", async () => {
+    const { be, state } = memoryBackend();
+    const a = device(be, "A", realDoc("アカウントの内容"));
+    await a.sync.start();
+    const writes = state.writes;
+    const b = device(be, "B", realDoc("このブラウザの内容"), { choice: "local" });
+    b.local.onAsk = () => {
+      b.local.writer = false; // 別のタブが引き継いだ
+    };
+    await b.sync.start();
+    await tick(60);
+    expect(state.writes).toBe(writes);
+    expect(b.sync.state).toBe("pending");
+    expect(b.sync.message).toContain("別のタブ");
+    a.sync.stop();
+    b.sync.stop();
   });
 });
