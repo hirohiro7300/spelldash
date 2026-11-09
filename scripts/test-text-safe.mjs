@@ -242,7 +242,9 @@ await t("ほかの端末から届いた行（mergeCloudItems）: 見えない字
 
 // ===== 4. 送る形と送り方（js/userItemsSync.js） =====
 // 送り先の偽物（user_items の表）: 本物と同じに、要求の中に NUL か組になっていないサロゲートのある文字（鍵の名前も）があれば要求ごと断る（400）。
-// key が 200 字より長い行も要求ごと断る（400・23514: 表の check）。断るときは 1 行も書かない（要求は 1 つの文）。respond で答えを差し替える
+// key が 200 字より長い行も要求ごと断る（400・23514: 表の check）。断るときは 1 行も書かない（要求は 1 つの文）。respond で答えを差し替える。
+// 読み（Batch 87）: order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う。maxRows: 1 回の読みで返す行の上限（本物の Max Rows）。
+// noCount: count を返さない。readAt(from): その行から始まる読みの答えを差し替える（失敗・行が消えた形）。行はクラウドの表の並び（rows の入れた順）
 function fakeCloud(opts = {}) {
   const rows = new Map();
   const calls = [];
@@ -290,25 +292,47 @@ function fakeCloud(opts = {}) {
       call.ok = true;
       return { data: null, error: null, status: 201 };
     }
-    calls.push({ op: "select" });
+    const range = ops.find((o) => o[0] === "range");
+    const call = { op: "select", from: range ? range[1] : null, n: 0 };
+    calls.push(call);
+    const swap = range && opts.readAt ? opts.readAt(range[1]) : null;
+    if (swap) return swap;
     let data = [...rows.values()];
     for (const o of ops) {
       if (o[0] === "eq") data = data.filter((r) => r[o[1]] === o[2]);
       if (o[0] === "in") data = data.filter((r) => o[2].includes(r[o[1]]));
     }
-    return { data: JSON.parse(JSON.stringify(data)), error: null, status: 200 };
+    const orders = ops.filter((o) => o[0] === "order").map((o) => [o[1], o[2]?.ascending !== false]);
+    if (orders.length) {
+      data = data.map((r, i) => [r, i]).sort((a, b) => {
+        for (const [col, asc] of orders) {
+          if (a[0][col] === b[0][col]) continue;
+          return (a[0][col] < b[0][col] ? -1 : 1) * (asc ? 1 : -1);
+        }
+        return a[1] - b[1];
+      }).map(([r]) => r);
+    }
+    const total = data.length;
+    if (range) data = data.slice(range[1], range[2] + 1);
+    if (opts.maxRows > 0) data = data.slice(0, opts.maxRows);
+    call.n = data.length;
+    const counted = ops.some((o) => o[0] === "select" && o[2]?.count) && !opts.noCount;
+    return { data: JSON.parse(JSON.stringify(data)), error: null, status: 200, count: counted ? total : null };
   }
   return {
     rows,
     calls,
     upserts: () => calls.filter((c) => c.op === "upsert"),
+    reads: () => calls.filter((c) => c.op === "select" && c.from !== null).map((c) => [c.from, c.n]),
     from() {
       const ops = [];
       const b = {
         upsert(x) { ops.push(["upsert", x]); return b; },
-        select(c) { ops.push(["select", c]); return b; },
+        select(c, o) { ops.push(["select", c, o]); return b; },
         eq(k, v) { ops.push(["eq", k, v]); return b; },
         in(k, v) { ops.push(["in", k, v]); return b; },
+        order(c, o) { ops.push(["order", c, o]); return b; },
+        range(f, t) { ops.push(["range", f, t]); return b; },
         then(resolve, reject) { return Promise.resolve().then(() => run(ops)).then(resolve, reject); }
       };
       return b;
@@ -629,6 +653,120 @@ await t("5.4 時計が戻って印の時刻が先になったら待たない（�
   const after1 = cloud.upserts().length;
   await S.pushUserItems(cloud, "u1", { now: T0 - 1000 });
   return (meta()[`my_word:${bad}`]?.failAt === T0 - 1000 && cloud.upserts().length === after1 + 1 && cloud.upserts().at(-1).keys.includes(bad)) || show({ after1, n: cloud.upserts().length, mark: meta()[`my_word:${bad}`] });
+});
+
+// ===== 6. 読み方と送る待ち（Batch 87。docs/SPEC_MY_WORDS.md §14.4） =====
+// 1 回の読みで返る行には上限がある（データベースの会社の API の既定は 1000 行）。readAllRows は主キーの列で並べて 1000 行ずつ、count に届くまで読む。
+// 読み切れなければ失敗（取り込みは「クラウドに無い」と見て送り返す道へ進まない）。最初の取り込みで送れた行は送る待ちから外す
+const T_OLD = "2026-11-01T00:00:00.000Z";
+const T_NEW = "2026-11-08T00:00:00.000Z";
+const keyN = (i) => `k${String(i).padStart(4, "0")}`;
+const wordN = (i, ja = `訳${i}`) => ({ en: keyN(i), ja, addedAt: T_OLD });
+const rowOfWord = (w, at = T_OLD) => ({ user_id: "u1", kind: "my_word", key: w.en, payload: w, deleted: false, updated_at: at });
+const dayRowN = (i) => ({ user_id: "u1", kind: "day", key: `2026-08-${String(1 + (i % 28)).padStart(2, "0")}`, payload: { learned: i, mastered: 0, active: true, set: false, sets: 0 }, deleted: false, updated_at: T_OLD });
+// 送り先の表に行を入れた順で置く（words の後ろに extra。並べない読みでは、上限より後ろの行は届かない）
+const cloudWith = (rowsInOrder, opts = {}) => {
+  const cloud = fakeCloud(opts);
+  for (const r of rowsInOrder) cloud.rows.set(`${r.kind}:${r.key}`, r);
+  return cloud;
+};
+const readAll = (cloud) => (typeof S.readAllRows === "function" ? S.readAllRows(cloud, "user_items", ["kind", "key"]) : Promise.reject(new Error("readAllRows が無い")));
+await t("6.1 readAllRows: 1,090 行（上限 1000 行）を 1000 行ずつ 2 回で全部読む（1000＋90）・並びは主キーの列", async () => {
+  const words = Array.from({ length: 1000 }, (_, i) => wordN(i));
+  const cloud = cloudWith([...words.map((w) => rowOfWord(w)), ...Array.from({ length: 90 }, (_, i) => ({ ...dayRowN(i), key: `2026-0${1 + Math.floor(i / 28)}-${String(1 + (i % 28)).padStart(2, "0")}` }))], { maxRows: 1000 });
+  const r = await readAll(cloud);
+  const keys = (r.rows ?? []).map((x) => `${x.kind}:${x.key}`);
+  return (r.ok === true && r.rows.length === 1090 && new Set(keys).size === 1090 && JSON.stringify(cloud.reads()) === JSON.stringify([[0, 1000], [1000, 90]]) && keys[0].startsWith("day:")) || show({ ok: r.ok, n: r.rows?.length, reads: cloud.reads() });
+});
+await t("6.2 readAllRows: 1 回の上限が 500 行でも全部読む（500＋500＋90。次の頭は受け取った行の数だけ進める）", async () => {
+  const cloud = cloudWith(Array.from({ length: 1090 }, (_, i) => rowOfWord(wordN(i))), { maxRows: 500 });
+  const r = await readAll(cloud);
+  return (r.ok === true && r.rows.length === 1090 && JSON.stringify(cloud.reads()) === JSON.stringify([[0, 500], [500, 500], [1000, 90]])) || show({ ok: r.ok, n: r.rows?.length, reads: cloud.reads() });
+});
+await t("6.3 readAllRows: 200 行の人は 1 回（count で終わる）・count を返さない送り先では 0 行の答えまで読む（2 回）", async () => {
+  const a = cloudWith(Array.from({ length: 200 }, (_, i) => rowOfWord(wordN(i))), { maxRows: 1000 });
+  const ra = await readAll(a);
+  const b = cloudWith(Array.from({ length: 200 }, (_, i) => rowOfWord(wordN(i))), { maxRows: 1000, noCount: true });
+  const rb = await readAll(b);
+  return (ra.ok && ra.rows.length === 200 && JSON.stringify(a.reads()) === JSON.stringify([[0, 200]]) && rb.ok && rb.rows.length === 200 && JSON.stringify(b.reads()) === JSON.stringify([[0, 200], [200, 0]])) || show({ a: [ra.ok, ra.rows?.length, a.reads()], b: [rb.ok, rb.rows?.length, b.reads()] });
+});
+await t("6.4 readAllRows: 2 ページ目の読みの失敗・count に届く前の 0 行の答え・ページの数の上限（50）では読みは失敗（行を返さない）", async () => {
+  const fail = cloudWith(Array.from({ length: 1090 }, (_, i) => rowOfWord(wordN(i))), { maxRows: 1000, readAt: (from) => (from === 1000 ? { data: null, error: { message: "boom" }, status: 500 } : null) });
+  const rf = await readAll(fail);
+  const gone = cloudWith(Array.from({ length: 1090 }, (_, i) => rowOfWord(wordN(i))), { maxRows: 1000, readAt: (from) => (from === 1000 ? { data: [], error: null, status: 200, count: 1090 } : null) });
+  const rg = await readAll(gone);
+  const many = cloudWith(Array.from({ length: 60 }, (_, i) => rowOfWord(wordN(i))), { maxRows: 1 });
+  const rm = await readAll(many);
+  return (rf.ok === false && !rf.rows && rg.ok === false && !rg.rows && rm.ok === false && many.reads().length === 50) || show({ rf: rf.ok, rg: rg.ok, rm: rm.ok, reads: many.reads().length });
+});
+// 1 台目の端末（全部ある）: 1,000 語・印の時刻はクラウドと同じ・送る待ちは空。target の語は古い訳
+const seedSynced = (words) => reset({ spelldash_my_words: words, spelldash_user_items_meta: Object.fromEntries(words.map((w) => [`my_word:${w.en}`, { updatedAt: T_OLD, deleted: false }])), spelldash_user_items_dirty: [] });
+await t("6.5 取り込み: 上限 1000 行の送り先に 1,090 行（新しい訳の行は 1,001 行目より後）でも全部読む・新しい訳を取り込み、古い訳で送り返さない（upsert 0）", async () => {
+  const all = Array.from({ length: 1000 }, (_, i) => wordN(i));
+  seedSynced(all);
+  const target = all[3];
+  const cloud = cloudWith([...all.filter((w) => w !== target).map((w) => rowOfWord(w)), ...Array.from({ length: 90 }, (_, i) => ({ ...dayRowN(i), key: `2026-0${1 + Math.floor(i / 28)}-${String(1 + (i % 28)).padStart(2, "0")}` })), rowOfWord({ ...target, ja: "新しい訳" }, T_NEW)], { maxRows: 1000 });
+  const r = await S.pullUserItems(cloud, "u1", { now: T0 });
+  const local = words().find((w) => w.en === target.en);
+  const sentWords = cloud.upserts().reduce((n, c) => n + c.keys.filter((k) => k.startsWith("k")).length, 0);
+  return (r.changed?.my_word === true && local?.ja === "新しい訳" && cloud.rows.get(`my_word:${target.en}`)?.payload?.ja === "新しい訳" && sentWords === 0) || show({ changed: r.changed, local: local?.ja, cloud: cloud.rows.get(`my_word:${target.en}`)?.payload?.ja, sentWords, reads: cloud.reads() });
+});
+await t("6.6 取り込み: 2 ページ目の読みが失敗したら何も取り込まず・何も送らない（changed は null・端末の語は前のまま）", async () => {
+  const all = Array.from({ length: 1000 }, (_, i) => wordN(i));
+  seedSynced(all);
+  const before = LS.getItem("spelldash_my_words");
+  const cloud = cloudWith([...all.slice(0, 990).map((w) => rowOfWord(w)), ...all.slice(990).map((w) => rowOfWord({ ...w, ja: "新しい訳" }, T_NEW)), ...Array.from({ length: 90 }, (_, i) => ({ ...dayRowN(i), key: `2026-0${1 + Math.floor(i / 28)}-${String(1 + (i % 28)).padStart(2, "0")}` }))], { maxRows: 1000, readAt: (from) => (from === 1000 ? { data: null, error: { message: "boom" }, status: 503 } : null) });
+  const r = await S.pullUserItems(cloud, "u1", { now: T0 });
+  return (r.changed === null && cloud.upserts().length === 0 && LS.getItem("spelldash_my_words") === before) || show({ changed: r.changed, ups: cloud.upserts().length, same: LS.getItem("spelldash_my_words") === before });
+});
+await t("6.7 最初の取り込み（1,000 語が送る待ち・送り先は空）: 送れた行は送る待ちから外す（0 行）・続けて送っても 0 回", async () => {
+  seedWords(1000);
+  const cloud = fakeCloud();
+  await S.pullUserItems(cloud, "u1", { now: T0 });
+  const first = cloud.upserts().map((c) => c.n);
+  const left = dirty().length;
+  await S.pushUserItems(cloud, "u1", { now: T0 + 1 });
+  return (JSON.stringify(first) === "[500,500]" && left === 0 && cloud.upserts().length === 2 && cloud.rows.size === 1000) || show({ first, left, ups: cloud.upserts().length, stored: cloud.rows.size });
+});
+await t("6.8 最初の取り込み: 送っている間にまた直した語は送る待ちに残り、次の送信で新しい訳が届く（ほかの語は外す）", async () => {
+  seedWords(20);
+  let touched = false;
+  const cloud = fakeCloud({
+    respond: () => {
+      if (!touched) {
+        touched = true;
+        M.setMyWordJa("w005", "送っている間に直した訳");
+      }
+      return null;
+    }
+  });
+  await S.pullUserItems(cloud, "u1", { now: T0 });
+  const left = dirty();
+  await S.pushUserItems(cloud, "u1", { now: T0 + 1 });
+  const sent = cloud.upserts().at(-1);
+  return (touched && JSON.stringify(left) === JSON.stringify(["my_word:w005"]) && sent?.keys.join() === "w005" && cloud.rows.get("my_word:w005")?.payload?.ja === "送っている間に直した訳" && dirty().length === 0) || show({ touched, left, sent: sent?.keys, cloud: cloud.rows.get("my_word:w005")?.payload?.ja, dirty: dirty() });
+});
+await t("6.9 最初の取り込み: 送れなかった組（503）の行だけ送る待ちに残る・送れた組の行は外す", async () => {
+  seedWords(1000);
+  const cloud = fakeCloud({ respond: (list) => (list.some((r) => r.key === "w700") ? { data: null, error: { code: "", message: "unavailable" }, status: 503 } : null) });
+  await S.pullUserItems(cloud, "u1", { now: T0 });
+  const left = new Set(dirty());
+  const want = Array.from({ length: 500 }, (_, i) => `my_word:w${String(500 + i).padStart(3, "0")}`);
+  return (left.size === 500 && want.every((id) => left.has(id)) && cloud.rows.size === 500) || show({ left: left.size, sample: [...left].slice(0, 3), stored: cloud.rows.size });
+});
+await t("6.10 取り込み: クラウドの方が新しくて取り込んだ語は送る待ちから外す（送り返さない）・消した語の墓標は送る待ちに残り、次の送信で送る", async () => {
+  const three = Array.from({ length: 3 }, (_, i) => wordN(i));
+  reset({
+    spelldash_my_words: three.slice(0, 2),
+    spelldash_user_items_meta: { [`my_word:${three[0].en}`]: { updatedAt: T_OLD, deleted: false }, [`my_word:${three[1].en}`]: { updatedAt: T_OLD, deleted: false }, [`my_word:${three[2].en}`]: { updatedAt: T_OLD, deleted: true } },
+    spelldash_user_items_dirty: [`my_word:${three[0].en}`, `my_word:${three[2].en}`]
+  });
+  const cloud = cloudWith([rowOfWord({ ...three[0], ja: "新しい訳" }, T_NEW), rowOfWord(three[1]), rowOfWord(three[2], "2026-10-01T00:00:00.000Z")]);
+  await S.pullUserItems(cloud, "u1", { now: T0 });
+  const left = dirty();
+  await S.pushUserItems(cloud, "u1", { now: T0 + 1 });
+  const pushed = cloud.upserts().map((c) => c.keys.join());
+  return (JSON.stringify(left) === JSON.stringify([`my_word:${three[2].en}`]) && JSON.stringify(pushed) === JSON.stringify([three[2].en]) && cloud.rows.get(`my_word:${three[2].en}`)?.deleted === true && cloud.rows.get(`my_word:${three[0].en}`)?.payload?.ja === "新しい訳") || show({ left, pushed, del: cloud.rows.get(`my_word:${three[2].en}`)?.deleted });
 });
 
 console.log(`test-text-safe: ${passed} passed, ${failed} failed`);

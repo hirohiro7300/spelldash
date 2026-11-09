@@ -2511,8 +2511,12 @@ async function runApp(root) {
       cloud.log.push({ table, kind, rows: rows === null ? null : [].concat(rows) });
       cloud.onCall?.(table, kind);
       if (kind !== "select") return { data: null, error: null };
-      const data = cloud.tables[table] ?? [];
-      return ops.some(([op]) => op === "maybeSingle") ? { data: data[0] ?? null, error: null } : { data, error: null };
+      const all = cloud.tables[table] ?? [];
+      // 読み（Batch 87）: range（切り出し）と count（切り出す前の数）は本物と同じ（js/userItemsSync.js readAllRows が 1000 行ずつ全部読む）
+      const range = ops.find(([op]) => op === "range")?.[1];
+      const data = range ? all.slice(range[0], range[1] + 1) : all;
+      const count = ops.some(([op, args]) => op === "select" && args[1]?.count) ? all.length : null;
+      return ops.some(([op]) => op === "maybeSingle") ? { data: data[0] ?? null, error: null } : { data, error: null, count };
     };
     const q = new Proxy({}, {
       get(_, prop) {

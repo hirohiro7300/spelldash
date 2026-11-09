@@ -51,7 +51,10 @@ function findChromium() {
 // ---- 端末間同期の検証用「クラウド」（Supabase の表のつもり。このプロセスのメモリ） ----
 // スタブ（tests/mocks/supabase-stub.js）は localStorage の spelldash_test_cloud に id があるときだけ、from(table) を
 // POST /__cloud/query に投げる。id ごとに表・設定・呼び出しの記録を持つので、検査どうしが混ざらない。
-// 設定: failSelect { 表名: エラーの文 }（その表の select を失敗させる）、delayMs と delayTables（その表の select の応答を遅らせる）
+// 設定: failSelect { 表名: エラーの文 }（その表の select を失敗させる）、delayMs と delayTables（その表の select の応答を遅らせる）、
+// maxRows（Batch 87: 1 回の select で返す行の上限。本物の API の Max Rows と同じく、並べて range で切り出した後に切る。既定は上限なし）、
+// failSelectAt { 表名: 行の番号 }（Batch 87: range がその行から始まる select だけを失敗させる。2 ページ目の読みだけの失敗）。
+// select は order（安定な並べ替え）・range（切り出し）・count（並べて切り出す前の数）を本物と同じに扱う（limit は前のまま扱わない）
 const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"], funnel_events: ["device_id", "step", "source", "day"] };
 const CLOUD_ANON_INSERT = new Set(["funnel_events"]); // 未ログインでも書ける表（RLS: user_id が空か本人。docs/SQL_FUNNEL.md）
 // select の方針が無い表（Batch 86。docs/SQL_FUNNEL.md・docs/SQL_CLIENT_GATE.md の記録）: 衝突の先を名指す書き込み（upsert・on_conflict）は行の権限で断る（42501）。
@@ -75,8 +78,9 @@ function createCloud(tables = {}, config = {}) {
 function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
   const cloud = clouds.get(cloudKey);
   if (!cloud) return { data: null, error: { message: `unknown cloud ${cloudKey}` }, count: null };
-  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false;
+  let kind = null, payload = null, single = false, cols = "*", countMode = null, head = false, range = null;
   const filters = [];
+  const orders = []; // [列, 昇順か]（Batch 87）
   for (const [m, args] of ops) {
     if (m === "select") { kind ??= "select"; cols = args[0] ?? "*"; if (args[1]?.count) countMode = args[1].count; if (args[1]?.head) head = true; }
     else if (m === "upsert" || m === "insert" || m === "update") { kind = m; payload = args[0]; }
@@ -86,21 +90,41 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
     else if (m === "lte") filters.push((r) => r[args[0]] <= args[1]);
     else if (m === "in") filters.push((r) => (args[1] ?? []).includes(r[args[0]]));
     else if (m === "maybeSingle" || m === "single") single = true;
+    else if (m === "order") orders.push([args[0], args[1]?.ascending !== false]);
+    else if (m === "range") range = [Number(args[0]), Number(args[1])];
   }
   const entry = { table, kind, n: 0, userId };
   cloud.log.push(entry);
   if (kind === "select") {
     const fail = cloud.config.failSelect[table];
     if (fail) { entry.error = fail; return { data: null, error: { message: fail, code: "" }, count: null }; }
+    if (range) entry.from = range[0];
+    const failAt = cloud.config.failSelectAt?.[table];
+    if (failAt !== undefined && range && range[0] === failAt) { entry.error = "page"; return { data: null, error: { message: `stub: the read from row ${failAt} failed`, code: "" }, count: null }; }
     let rows = cloud.rows(table).filter((r) => userId && r.user_id === userId && filters.every((f) => f(r))); // RLS: 本人の行だけ
+    // 並べ替え（同じ値は表の順のまま）→ 数（count）→ 切り出し（range）→ 1 回の上限（maxRows）
+    if (orders.length) {
+      rows = rows.map((r, i) => [r, i]).sort((a, b) => {
+        for (const [col, asc] of orders) {
+          if (a[0][col] === b[0][col]) continue;
+          const d = a[0][col] < b[0][col] ? -1 : 1;
+          return asc ? d : -d;
+        }
+        return a[1] - b[1];
+      }).map(([r]) => r);
+    }
+    const total = rows.length;
+    if (range) rows = rows.slice(Math.max(0, range[0]), Math.max(0, range[1] + 1));
+    if (cloud.config.maxRows > 0) rows = rows.slice(0, cloud.config.maxRows);
     if (cols !== "*") { const names = cols.split(",").map((c) => c.trim()); rows = rows.map((r) => Object.fromEntries(names.map((k) => [k, r[k]]))); }
     entry.n = rows.length;
     const data = head ? null : single ? (rows[0] ?? null) : rows;
-    return { data: JSON.parse(JSON.stringify(data)), error: null, count: countMode ? rows.length : null };
+    return { data: JSON.parse(JSON.stringify(data)), error: null, count: countMode ? total : null };
   }
   if (kind === "upsert" || kind === "insert") {
     const rows = Array.isArray(payload) ? payload : [payload];
     entry.n = rows.length;
+    entry.kinds = rows.reduce((o, r) => ((o[r?.kind ?? ""] = (o[r?.kind ?? ""] ?? 0) + 1), o), {}); // 種類ごとの行の数（Batch 87: user_items の my_word と day を分けて数える）
     const allowed = CLOUD_ANON_INSERT.has(table) ? rows.every((r) => r.user_id == null || r.user_id === userId) : userId && rows.every((r) => r.user_id === userId);
     if (!allowed) { entry.error = "rls"; return { data: null, error: { message: "row-level security", code: "42501" }, count: null }; }
     const pk = CLOUD_PK[table];
@@ -27448,6 +27472,241 @@ console.log("journey (86.1):");
     await closeCtx(page);
   }
   check("86.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
+// ===== 87.1 多くの語の同期（Batch 87。js/userItemsSync.js readAllRows・pullUserItems・js/sync.js initialSync。docs/SPEC_MY_WORDS.md §14.4）: 1 回の読みで返る行に上限がある偽のデータベース（maxRows）で、マイ単語帳 1,000 語・日の行 90（user_items 1,090 行）と 1,200 語の記録が 2 台目に全部届く・ほかの端末で直した新しい訳を古い訳で戻さない・クラウドが全部持っていれば送り返さない・2 ページ目の読みの失敗では送らない・読みの要求の数・最初の同期で送れた行は送る待ちから外す（ページを移っても送り直さない・2 台目の新しい訳を戻さない） =====
+// a15294a は並べずに 1 回だけ読む（上限で 1,000 行に切れる）。届かなかった行を「クラウドに無い」と見て端末の古い値で送り返し、最初の同期で送れた行を送る待ちに残す
+console.log("many words sync (87.1):");
+{
+  const allErrors = [];
+  const U = "test-user";
+  const PUB = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8")).order;
+  const T0 = "2026-11-01T00:00:00.000Z";
+  const T1 = "2026-11-08T00:00:00.000Z";
+  const L = "abcdefghijklmnopqrstuvwxyz";
+  const keyOf = (i) => `w${L[Math.floor(i / 676) % 26]}${L[Math.floor(i / 26) % 26]}${L[i % 26]}`;
+  // 5 冊（100・400・300・100・100）の 1,000 語。Pro の上限いっぱい
+  const SPLIT = [["main", "マイ単語帳", 100], ["b2", "仕事", 400], ["b3", "試験", 300], ["b4", "本", 100], ["b5", "会議", 100]];
+  const WORDS = [];
+  for (const [id, name, count] of SPLIT) for (let i = 0; i < count; i++) WORDS.push({ en: keyOf(WORDS.length), ja: `訳${WORDS.length + 1}`, book: id, bookName: name, addedAt: T0 });
+  const BOOKS = JSON.stringify(SPLIT.map(([id, name]) => ({ id, name })));
+  const W = WORDS[37]; // ほかの端末で訳を直した語（クラウドの表では 1,001 行目より後）
+  const NEW_JA = "ほかの端末で直した訳";
+  const DAYS = Array.from({ length: 90 }, (_, k) => ymdDaysAgo(k + 1)); // 日の行（今日は入れない: 今日の分はページが書くことがある）
+  const dayPayload = (i) => ({ learned: 10 + i, mastered: 0, active: true, set: false, sets: 0 });
+  const itemRow = (w, over = {}) => ({ user_id: U, kind: "my_word", key: w.en, payload: w, deleted: false, updated_at: T0, ...over });
+  const dayRow = (date, i) => ({ user_id: U, kind: "day", key: date, payload: dayPayload(i), deleted: false, updated_at: T0 });
+  // クラウドの user_items（日の行 90・語 1,000）。新しい訳の行は表の終わり（上限 1,000 行の並べない読みでは届かない）
+  const cloudItems = () => [...DAYS.map(dayRow), ...WORDS.filter((w) => w !== W).map((w) => itemRow(w)), itemRow({ ...W, ja: NEW_JA }, { updated_at: T1 })];
+  // 1,200 語の記録（どれも × が 1 回で自力正解なし: 取り込みの初めの埋めで あやふや になる。1 台目も あやふや）
+  const WP = PUB.slice(0, 1200);
+  const wpRow = (id) => ({ user_id: U, word_id: id, play_count: 1, correct_count: 0, typing_miss: 0, recall_fail: 1, clean_correct_streak: 0, mastered: false, mastered_at: null, last_played: T0, next_review_at: null, last_recall_fail_at: T0, last_recall_success_at: null, daily_learning_date: null, daily_learning_stage: 0, srs_advanced_on: null, updated_at: T0 });
+  const cloudTables = () => ({ word_progress: WP.map(wpRow), user_progress: [], user_items: cloudItems() });
+  const localStat = { playCount: 1, correctCount: 0, typingMiss: 0, recallFail: 1, missCount: 1, cleanCorrectStreak: 0, mastered: false, masteredAt: null, lastPlayed: T0, nextReviewAt: null, lastRecallFailAt: T0, lastRecallSuccessAt: null, dailyLearningDate: null, dailyLearningStage: 0, srsAdvancedOn: null, ls: 1 };
+  const growth = () => JSON.stringify(DAYS.map((date, i) => ({ date, learned: 10 + i, mastered: 0, active: true, v: 2 })).sort((a, b) => (a.date < b.date ? -1 : 1)));
+  const login = (cloud) => ({ spelldash_test_session: "1", spelldash_test_cloud: cloud.id });
+  // 1 台目（全部ある。W は古い訳・印の時刻はクラウドと同じ T0・送る待ちは空・日の記録と 1,200 語の記録もクラウドと同じ）
+  const device1 = (cloud) => ({
+    ...login(cloud),
+    spelldash_my_words: JSON.stringify(WORDS),
+    spelldash_my_books: BOOKS,
+    spelldash_user_items_meta: JSON.stringify(Object.fromEntries([...WORDS.map((w) => [`my_word:${w.en}`, { updatedAt: T0, deleted: false }]), ...DAYS.map((d) => [`day:${d}`, { updatedAt: T0, deleted: false }])])),
+    spelldash_user_items_dirty: "[]",
+    spelldash_growth_log: growth(),
+    spelldash_word_stats: JSON.stringify(Object.fromEntries(WP.map((id) => [id, localStat]))),
+    spelldash_owner: U,
+    spelldash_learn_filled: U
+  });
+  async function syncPage(storage) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript((seed) => {
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, storage);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const syncDone = (page, ms = 20000) => waitUntil(async () => (await page.evaluate(() => sessionStorage.getItem("spelldash_sync_done_this_session")).catch(() => null)) === U, ms, 100);
+  // 偽のデータベースへの要求が ms のあいだ増えなくなるまで待つ
+  const quiet = async (cloud, ms = 1200, max = 20000) => {
+    const t0 = Date.now();
+    let n = cloud.log.length;
+    let since = Date.now();
+    while (Date.now() - t0 < max) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (cloud.log.length !== n) { n = cloud.log.length; since = Date.now(); } else if (Date.now() - since >= ms) return true;
+    }
+    return false;
+  };
+  const upserts = (cloud, table, from = 0) => cloud.log.slice(from).filter((e) => e.table === table && e.kind === "upsert" && !e.error);
+  const myWordRowsSent = (cloud, from = 0) => upserts(cloud, "user_items", from).reduce((n, e) => n + (e.kinds?.my_word ?? 0), 0);
+  const rowsSent = (cloud, table, from = 0) => upserts(cloud, table, from).reduce((n, e) => n + e.n, 0);
+  const pagedReads = (cloud, table, from = 0) => cloud.log.slice(from).filter((e) => e.table === table && e.kind === "select" && e.from !== undefined).map((e) => [e.from, e.n]);
+  const cloudJa = (cloud, key) => cloud.rows("user_items").find((r) => r.kind === "my_word" && r.key === key) ?? null;
+  const local = (page) => page.evaluate(() => {
+    const read = (k) => { try { return JSON.parse(localStorage.getItem(k) ?? "null"); } catch { return null; } };
+    const words = read("spelldash_my_words") ?? [];
+    return {
+      words: words.length,
+      keys: words.map((w) => w.en),
+      ja: Object.fromEntries(words.map((w) => [w.en, w.ja])),
+      stats: Object.keys(read("spelldash_word_stats") ?? {}).length,
+      statsRaw: localStorage.getItem("spelldash_word_stats"),
+      days: (read("spelldash_growth_log") ?? []).length,
+      dirty: (read("spelldash_user_items_dirty") ?? []).length,
+      tabs: [...document.querySelectorAll("#myBookTabs .mw-book")].map((b) => b.getAttribute("aria-label")),
+      synced: sessionStorage.getItem("spelldash_synced_this_session")
+    };
+  });
+  const learnCards = async (page) => {
+    await page.goto(BASE + "/stats.html", { waitUntil: "load" });
+    await page.waitForFunction(() => !document.getElementById("learnStatus")?.classList.contains("is-unavailable") && document.querySelectorAll("#learnCards .learn-card[data-count]").length === 3, null, { timeout: 12000 }).catch(() => {});
+    return page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#learnCards .learn-card")].map((c) => [c.dataset.state, Number(c.dataset.count)])));
+  };
+  const SPLIT_TABS = SPLIT.map(([, name, count]) => `${name} ${count.toLocaleString("ja-JP")}語`);
+
+  // (a) 2 台目（空の端末）・上限 1,000 行: 1,000 語・5 冊・日の行 90・1,200 語の記録が全部届く・新しい訳・送り返さない・学習状況は 1,200 語の記録どおり（あやふや 1,200）・
+  //     user_items の読みは 1,000 行ずつ 2 回（1000＋90）
+  {
+    const cloud = createCloud(cloudTables(), { maxRows: 1000 });
+    const page = await syncPage(login(cloud));
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const v = await local(page);
+    const sentItems = rowsSent(cloud, "user_items");
+    const sentWp = rowsSent(cloud, "word_progress");
+    const reads = pagedReads(cloud, "user_items");
+    const cards = await learnCards(page);
+    check("87.1 2 台目（空の端末・1 回の読みは 1,000 行まで）: マイ単語帳 1,000 語・5 冊・日の行 90・1,200 語の記録が全部届く・ほかの端末で直した訳は新しい訳",
+      done && v.words === 1000 && WORDS.every((w) => v.keys.includes(w.en)) && JSON.stringify(v.tabs) === JSON.stringify(SPLIT_TABS) && v.days === 90 && v.stats === 1200 && v.ja[W.en] === NEW_JA,
+      JSON.stringify({ done, words: v.words, tabs: v.tabs, days: v.days, stats: v.stats, ja: v.ja[W.en] }));
+    check("87.1 2 台目: 学習状況は 1,200 語の記録どおり（あやふや 1,200。1 台目と同じ）",
+      cards.unsure === 1200 && cards.learned === 0, JSON.stringify(cards));
+    check("87.1 2 台目: クラウドが全部持っているので送り返さない（user_items・word_progress への upsert 0 行）・クラウドの訳は新しい訳のまま",
+      sentItems === 0 && sentWp === 0 && cloudJa(cloud, W.en)?.payload?.ja === NEW_JA && cloudJa(cloud, W.en)?.updated_at === T1,
+      JSON.stringify({ sentItems, sentWp, cloud: cloudJa(cloud, W.en)?.payload?.ja }));
+    check("87.1 読みの要求の数: 1,090 行の人は user_items を 1,000 行ずつ 2 回（1000＋90）",
+      JSON.stringify(reads) === JSON.stringify([[0, 1000], [1000, 90]]), JSON.stringify(reads));
+    check("87.1 2 台目: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (b) 1 台目（全部ある・W は古い訳）を開き直す・上限 1,000 行: 新しい訳を古い訳で戻さない（端末も新しい訳になる）・user_items と word_progress への upsert 0 行
+  {
+    const cloud = createCloud(cloudTables(), { maxRows: 1000 });
+    const page = await syncPage(device1(cloud));
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const v = await local(page);
+    const sentItems = rowsSent(cloud, "user_items");
+    const sentWp = rowsSent(cloud, "word_progress");
+    const row = cloudJa(cloud, W.en);
+    check("87.1 1 台目（全部ある）を開き直す: ほかの端末で直した新しい訳は、クラウドでも端末でも新しい訳のまま（古い訳で戻さない）",
+      done && row?.payload?.ja === NEW_JA && row?.updated_at === T1 && v.ja[W.en] === NEW_JA && v.words === 1000,
+      JSON.stringify({ done, cloud: row?.payload?.ja, at: row?.updated_at, local: v.ja[W.en], words: v.words }));
+    check("87.1 1 台目を開き直す: user_items・word_progress への upsert 0 行（クラウドに全部ある）・エラー 0",
+      sentItems === 0 && sentWp === 0 && page.errors.length === 0, JSON.stringify({ sentItems, sentWp, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (c) 2 ページ目の読みだけが失敗する: 読み切れなければ送らない（user_items・word_progress とも upsert 0 行）・端末の記録は変わらない・word_progress の失敗は印を戻す（次のページでやり直す）
+  for (const table of ["user_items", "word_progress"]) {
+    const cloud = createCloud(cloudTables(), { maxRows: 1000, failSelectAt: { [table]: 1000 } });
+    const seed = device1(cloud);
+    const page = await syncPage(seed);
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    await waitUntil(() => cloud.log.some((e) => e.table === table && e.error === "page"), 15000, 100);
+    await quiet(cloud);
+    const v = await local(page);
+    const sent = rowsSent(cloud, "user_items") + rowsSent(cloud, "word_progress");
+    const failedRead = cloud.log.some((e) => e.table === table && e.error === "page");
+    check(`87.1 2 ページ目の ${table} の読みだけが失敗: 送らない（user_items・word_progress への upsert 0 行）・端末の語と記録は変わらない（W は古い訳のまま・1,200 語）${table === "word_progress" ? "・取り込みの印を戻す" : ""}・エラー 0`,
+      failedRead && sent === 0 && v.words === 1000 && v.ja[W.en] === W.ja && v.statsRaw === seed.spelldash_word_stats && (table !== "word_progress" || v.synced === null) && page.errors.length === 0,
+      JSON.stringify({ failedRead, sent, words: v.words, ja: v.ja[W.en], stats: v.stats, synced: v.synced, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (d) 1 回の上限が 500 行でも全部届く（user_items の読みは 3 回: 500＋500＋90）。200 行の人は 1 回（count で終わる）
+  {
+    const cloud = createCloud(cloudTables(), { maxRows: 500 });
+    const page = await syncPage(login(cloud));
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const v = await local(page);
+    const reads = pagedReads(cloud, "user_items");
+    check("87.1 1 回の上限が 500 行: 1,000 語・日の行 90・1,200 語の記録が全部届く・user_items の読みは 3 回（500＋500＋90）・送り返さない",
+      done && v.words === 1000 && v.days === 90 && v.stats === 1200 && v.ja[W.en] === NEW_JA && JSON.stringify(reads) === JSON.stringify([[0, 500], [500, 500], [1000, 90]]) && rowsSent(cloud, "user_items") === 0 && page.errors.length === 0,
+      JSON.stringify({ done, words: v.words, days: v.days, stats: v.stats, reads, sent: rowsSent(cloud, "user_items"), err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  {
+    const small = WORDS.slice(0, 200);
+    const cloud = createCloud({ word_progress: WP.slice(0, 10).map(wpRow), user_progress: [], user_items: small.map((w) => itemRow(w)) }, { maxRows: 1000 });
+    const page = await syncPage(login(cloud));
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const v = await local(page);
+    const reads = pagedReads(cloud, "user_items");
+    check("87.1 200 行の人: user_items の読みは 1 回（count で終わる）・200 語が届く",
+      done && v.words === 200 && JSON.stringify(reads) === JSON.stringify([[0, 200]]) && page.errors.length === 0, JSON.stringify({ done, words: v.words, reads, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // (e) 最初の同期（ゲストで 1,000 語を足してからログインした人: 1,000 語が送る待ち・クラウドは空）: user_items の upsert は 3 回（500／500／90）・
+  //     その後の送る待ちは 0 行・続けて 4 回ページを移っても、裏に回しても my_word の行を送り直さない・2 台目が直した新しい訳を古い訳で戻さない
+  {
+    const cloud = createCloud({ word_progress: [], user_progress: [], user_items: [] });
+    const page = await syncPage({
+      ...login(cloud),
+      spelldash_my_words: JSON.stringify(WORDS),
+      spelldash_my_books: BOOKS,
+      spelldash_user_items_meta: JSON.stringify(Object.fromEntries(WORDS.map((w) => [`my_word:${w.en}`, { updatedAt: T0, deleted: false }]))),
+      spelldash_user_items_dirty: JSON.stringify(WORDS.map((w) => `my_word:${w.en}`)),
+      spelldash_growth_log: growth()
+    });
+    await page.goto(BASE + "/mywords.html", { waitUntil: "load" });
+    const done = await syncDone(page);
+    await quiet(cloud);
+    const first = upserts(cloud, "user_items").map((e) => e.n);
+    const v1 = await local(page);
+    check("87.1 最初の同期（1,000 語が送る待ち・クラウドは空）: user_items の upsert は 3 回（500／500／90）・その後の送る待ちは 0 行",
+      done && JSON.stringify(first) === JSON.stringify([500, 500, 90]) && v1.dirty === 0 && cloud.rows("user_items").length === 1090,
+      JSON.stringify({ done, first, dirty: v1.dirty, cloudRows: cloud.rows("user_items").length }));
+    // 2 台目がその語の訳を新しく直して送った（クラウドの行だけ替える）
+    const X = WORDS[600];
+    const xRow = cloudJa(cloud, X.en);
+    if (xRow) Object.assign(xRow, { payload: { ...xRow.payload, ja: "2台目で直した訳" }, updated_at: T1 });
+    const mark = cloud.log.length;
+    for (const p of ["/stats.html", "/mywords.html", "/stats.html", "/mywords.html"]) {
+      await page.goto(BASE + p, { waitUntil: "load" });
+      await quiet(cloud, 800);
+    }
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("pagehide"));
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await quiet(cloud);
+    const resent = myWordRowsSent(cloud, mark);
+    const after = cloudJa(cloud, X.en);
+    check("87.1 最初の同期の後に 4 回ページを移り、裏に回しても: my_word の行を送り直さない（upsert 0 行）",
+      resent === 0, JSON.stringify({ resent, ups: upserts(cloud, "user_items", mark).map((e) => e.kinds) }));
+    check("87.1 2 台目が直した新しい訳は、1 台目がページを移った後もクラウドで新しい訳と時刻のまま・エラー 0",
+      after?.payload?.ja === "2台目で直した訳" && after?.updated_at === T1 && page.errors.length === 0, JSON.stringify({ ja: after?.payload?.ja, at: after?.updated_at, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  check("87.1 どの画面にもページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
