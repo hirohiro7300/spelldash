@@ -26951,6 +26951,10 @@ console.log("journey (86.1):");
     check(`86.1 回ごとに これから を混ぜる（${mode === "typed" ? "打つ回" : "選択式"}）: 答えの同じ行がまとまった 10 up・10 down の単語帳で、1 回目の 10 語に up と down の両方が出る（足した順なら 10 語とも up）・10 語は別々の語・「10語 終わり」`,
       asked.length === 10 && new Set(asked).size === 10 && answers.includes("up") && answers.includes("down") && title === "10語 終わり" && page.errors.length === 0,
       JSON.stringify({ answers, title, err: page.errors[0] }));
+    if (mode === "choice") {
+      const links = await page.evaluate(() => [...document.querySelectorAll("#resultPanel a")].map((a) => a.textContent.trim()));
+      check("86.1 選択式の回の終わり（A9）: 「選択式で学ぶ」は足さない（選択式の回の道はもう一度・向きを替える・マイ単語帳へ）", links.length > 0 && !links.includes("選択式で学ぶ"), JSON.stringify(links));
+    }
     await closeCtx(page);
   }
 
@@ -27172,6 +27176,123 @@ console.log("journey (86.1):");
     }
   }
 
+
+  // ----- (5) マイ単語帳の回の「机に戻る」・T4（A7）・コーチの文（A8）・打つ回の終わりの「選択式で学ぶ」（A9） -----
+  //     3f03d63: 机に戻るは公開の机（/）へ行き T4 を出す・コーチの文は Study の字・終わりのパネルに「選択式で学ぶ」が無い
+  const TEN = ["apple", "bread", "chair", "dance", "eagle", "fruit", "grape", "horse", "juice", "lemon"];
+  const TB_WORDS = TEN.map((en, i) => ({ en, ja: `十語の訳${i + 1}`, book: "tb", bookName: "十語", addedAt: T }));
+  const TB_BOOKS = JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "tb", name: "十語" }]);
+  const QUIET = { spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+  const coachNow = (page) => page.evaluate(() => { const el = document.querySelector(".coach:not(.coach--out)"); return el ? { step: el.dataset.step, text: el.textContent.trim() } : null; });
+  const tutorialState = (page) => page.evaluate(() => { try { return JSON.parse(localStorage.getItem("spelldash_tutorial") || "null"); } catch { return null; } });
+  const panelLinks = (page) => page.evaluate(() => [...document.querySelectorAll("#resultPanel a, #resultPanel button")].map((a) => [a.textContent.trim(), a.getAttribute("href") ?? "", a.classList.contains("result-panel__action--ghost")]));
+  const hereNow = (page) => { try { const u = new URL(page.url()); return u.pathname + u.search; } catch { return page.url(); } };
+  // 打つ回を n 語まで進める（1 語目だけ答えを見る: reveal1）。戻り値は出た札（T2・T3）
+  async function playTyped(page, n, { reveal1 = false } = {}) {
+    const coaches = {};
+    for (let i = 1; i <= n; i++) {
+      if (!(await waitUntil(async () => (await nShown(page)) >= i, 8000))) break;
+      await page.waitForTimeout(120);
+      const id = await lastShown(page);
+      if (reveal1 && i === 1) {
+        await page.press("#input", "Enter");
+        await page.waitForTimeout(250);
+        const c = await coachNow(page);
+        if (c) coaches[c.step] ??= c.text;
+        await page.press("#input", "Enter");
+        continue;
+      }
+      for (const ch of answerOfId(id)) await page.press("#input", ch);
+      await page.waitForTimeout(200);
+      const c = await coachNow(page);
+      if (c) coaches[c.step] ??= c.text;
+    }
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    return coaches;
+  }
+  // (5a) 初めての端末（チュートリアルの回）で十語の単語帳の打つ回: 1 語目は答えを見る（T2）、2 語目から自力で打つ（T3）。
+  //      終わりのパネルに「マイ単語帳へ」と「選択式で学ぶ」（ゴースト・/?learn=my&book=tb&choice=en）。机に戻る → /mywords.html?book=tb・T4 は出ず 1 セット目の印も立たない
+  {
+    const page = await journeyPage({ ...QUIET, spelldash_my_words: JSON.stringify(TB_WORDS), spelldash_my_books: TB_BOOKS }, { fresh: true });
+    await page.goto(BASE + "/?learn=my&book=tb", { waitUntil: "networkidle" });
+    const coaches = await playTyped(page, 10, { reveal1: true });
+    const title = await page.evaluate(() => document.getElementById("resultTitle")?.textContent.trim() ?? null);
+    const links = await panelLinks(page);
+    const st = await tutorialState(page);
+    check("86.1 コーチの文（A8）: マイ単語帳の回の最初の答えを見たら「間違えても、あやふやに移るだけ。」・最初の自力の正解で「自力で正解した語は、覚えたになる。」（Study の字ではない）",
+      coaches.T2 === "間違えても、あやふやに移るだけ。" && coaches.T3 === "自力で正解した語は、覚えたになる。", JSON.stringify(coaches));
+    const myLink = links.find((l) => l[0] === "マイ単語帳へ");
+    const choiceLink = links.find((l) => l[0] === "選択式で学ぶ");
+    check("86.1 打つ回の終わり（A9）: 「マイ単語帳へ」（/mywords.html?book=tb）の隣にゴーストの「選択式で学ぶ」（同じ単語帳の /?learn=my&book=tb&choice=en）",
+      title === "10語 終わり" && myLink?.[1] === "/mywords.html?book=tb" && choiceLink?.[1] === "/?learn=my&book=tb&choice=en" && choiceLink?.[2] === true
+        && links.findIndex((l) => l[0] === "選択式で学ぶ") === links.findIndex((l) => l[0] === "マイ単語帳へ") + 1,
+      JSON.stringify({ title, links }));
+    await page.click("#backToPath");
+    await page.waitForURL(/\/mywords\.html/, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const st2 = await tutorialState(page);
+    check("86.1 マイ単語帳の回の後の「机に戻る」（A7）: /mywords.html?book=tb へ・T4 は出ない（1 セット目の印 setDone も立たない）・エラー 0",
+      hereNow(page) === "/mywords.html?book=tb" && !st?.setDone && !st2?.setDone && !(st2?.seen ?? []).includes("T4") && page.errors.length === 0,
+      JSON.stringify({ here: hereNow(page), st, st2, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  // (5b) 選択式の回（途中）で机に戻る → /mywords.html?book=tb。(5c) 全部の単語帳の打つ回（途中）→ /mywords.html
+  for (const [label, url, want] of [["選択式・十語", "/?learn=my&book=tb&choice=en", "/mywords.html?book=tb"], ["打つ回・全部の単語帳", "/?learn=my", "/mywords.html"]]) {
+    const page = await journeyPage({ spelldash_my_words: JSON.stringify(TB_WORDS), spelldash_my_books: TB_BOOKS });
+    await page.goto(BASE + url, { waitUntil: "networkidle" });
+    await waitUntil(async () => (await nShown(page)) >= 1, 8000);
+    await page.waitForTimeout(200);
+    const shown = await page.evaluate(() => { const b = document.getElementById("backToPath"); return !!b && !b.hidden && b.getClientRects().length > 0; });
+    await page.click("#backToPath");
+    if (want) await page.waitForURL(/\/mywords\.html/, { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => ({ path: location.pathname, desk: (() => { const c = document.getElementById("pathCard"); return !!c && c.getClientRects().length > 0; })(), focus: document.activeElement?.id ?? null }));
+    check(`86.1 机に戻る（A7・${label}）: ${want} へ（回の終わりの「マイ単語帳へ」と同じ行き先）・エラー 0`,
+      shown && hereNow(page) === want && page.errors.length === 0, JSON.stringify({ shown, here: hereNow(page), after, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  // (5d) 公開の回（中心の学習の これから 10 語）は前のとおり: 終わりのパネルは「学習状況」で「選択式で学ぶ」は無い・机に戻ると公開の机（焦点はスタート）
+  {
+    const page = await journeyPage({ spelldash_my_words: JSON.stringify(TB_WORDS), spelldash_my_books: TB_BOOKS });
+    await page.goto(BASE + "/?learn=next", { waitUntil: "networkidle" });
+    for (let i = 1; i <= 10; i++) {
+      if (!(await waitUntil(async () => (await nShown(page)) >= i, 8000))) break;
+      await page.waitForTimeout(150);
+      const id = await lastShown(page);
+      for (const ch of String(id).replace(/^english-/, "")) await page.press("#input", ch); // 公開の並びの頭（チュートリアルの節と同じ打ち方）
+      await page.waitForTimeout(150);
+    }
+    await page.waitForFunction(() => !document.getElementById("resultPanel")?.hidden, null, { timeout: 8000 }).catch(() => {});
+    const links = await panelLinks(page);
+    await page.click("#backToPath");
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => ({ path: location.pathname, desk: (() => { const c = document.getElementById("pathCard"); return !!c && c.getClientRects().length > 0; })(), focus: document.activeElement?.id ?? null }));
+    check("86.1 公開の回は前のとおり（A7・A9）: 終わりのパネルは「学習状況」・「選択式で学ぶ」は無い・机に戻ると公開の机（焦点はスタート）・エラー 0",
+      links.some((l) => l[0] === "学習状況") && !links.some((l) => l[0] === "選択式で学ぶ") && (after.path === "/" || after.path === "/index.html") && after.desk && after.focus === "pathStart" && page.errors.length === 0,
+      JSON.stringify({ links, after, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  // (5e) 打つ回の終わりの「選択式で学ぶ」を押すと選択式の回（&choice=en）。390・320 の幅、昼と夜で横にはみ出さない（A9）
+  {
+    const TWO = TB_WORDS.slice(0, 2);
+    for (const [w, theme] of [[390, "light"], [390, "dark"], [320, "light"], [320, "dark"]]) {
+      const page = await journeyPage({ spelldash_my_words: JSON.stringify(TWO), spelldash_my_books: TB_BOOKS }, { viewport: { width: w, height: 800 }, mobile: true, theme });
+      await page.goto(BASE + "/?learn=my&book=tb", { waitUntil: "networkidle" });
+      await playTyped(page, 2);
+      const links = await panelLinks(page);
+      const wide = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth, panel: (() => { const r = document.getElementById("resultPanel")?.getBoundingClientRect(); return r ? [Math.round(r.left), Math.round(r.right)] : null; })() }));
+      let opened = null;
+      if (w === 390 && theme === "light") {
+        await page.click("#resultPanel a[href$='&choice=en']").catch(() => {});
+        await page.waitForURL(/choice=en/, { timeout: 5000 }).catch(() => {});
+        opened = await waitUntil(() => page.evaluate(() => document.querySelectorAll("#choiceOpts .choice__opt").length >= 2), 8000);
+      }
+      check(`86.1 打つ回の終わりの「選択式で学ぶ」（A9・${w}px・${theme}）: リンクがある・横にはみ出さない${opened !== null ? "・押すと &choice=en の選択式の回" : ""}・エラー 0`,
+        links.some((l) => l[0] === "選択式で学ぶ" && l[1] === "/?learn=my&book=tb&choice=en") && wide.sw <= wide.iw && (opened === null || (opened && hereNow(page) === "/?learn=my&book=tb&choice=en")) && page.errors.length === 0,
+        JSON.stringify({ links, wide, opened, here: hereNow(page), err: page.errors[0] }));
+      await closeCtx(page);
+    }
+  }
   check("86.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
