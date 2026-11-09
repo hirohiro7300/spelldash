@@ -1,5 +1,5 @@
 // マイ単語帳を人に渡す（Batch 84。docs/SPEC_MY_WORDS.md §13）の単体: 渡す code の作り方と読み方（js/myWordsShare.js）・文字で渡す形・
-// 新しい単語帳の名前（js/myWordsCore.js uniqueBookName）・渡された語を足す（js/myWords.js addSharedWords）・URL を送る所に # の後ろを入れない。
+// 新しい単語帳の名前（js/myWordsCore.js uniqueBookName）・渡された語を足す（js/myWords.js addSharedWords）・URL を送る所に # の後ろを入れない・privacy.html の 1 行。
 // 使い方: node scripts/test-share.mjs
 // 先に書いた検査（Batch 84 の前の木には js/myWordsShare.js も addSharedWords も無い）: 読めない module・関数は 1 件ずつの失敗に数える（止まらない）
 import fs from "fs";
@@ -342,6 +342,13 @@ await t("URL を送る module は location.href・location.hash・document.URL �
   }
   const feedback = fs.readFileSync(path.join(ROOT, "js", "feedback.js"), "utf8");
   return (hits.length === 0 && /page: location\.pathname \+ location\.search,/.test(feedback)) || JSON.stringify(hits);
+});
+
+// ===== プライバシーポリシーの 1 行 =====
+await t("privacy.html に渡すリンクの 1 行（入るのは単語帳の名前と英語と訳だけ・# から後ろはサーバーに送られない・リンクを知っている人はだれでも見られる）", () => {
+  const html = fs.readFileSync(path.join(ROOT, "privacy.html"), "utf8");
+  const para = html.split("<p>").find((s) => s.includes("「渡す」"))?.split("</p>")[0].replace(/\s+/g, " ") ?? "";
+  return (/単語帳の名前と英語と訳だけ/.test(para) && /サーバーには送られません/.test(para) && /リンクを知っている人はだれでも/.test(para)) || para || "no line";
 });
 
 console.log(`test-share: ${passed} passed, ${failed} failed`);
