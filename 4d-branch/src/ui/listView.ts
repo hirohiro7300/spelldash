@@ -137,5 +137,10 @@ export function buildListView(app: AppContext): HTMLElement {
     refresh();
   };
   app.refreshList = refresh;
+  // リストに今見えている行（⌘A は表に出ている物だけを選ぶ）
+  app.listIds = () => {
+    compute();
+    return [...ids];
+  };
   return root;
 }

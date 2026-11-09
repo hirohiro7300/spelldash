@@ -156,6 +156,25 @@ describe("Store と履歴", () => {
     push();
   });
 
+  it("受け手の 1 つが失敗しても、ほかの受け手（自動保存など）には届く", () => {
+    const { store, a } = setup();
+    const got: string[] = [];
+    const errs: unknown[] = [];
+    const orig = console.error;
+    console.error = (e: unknown) => void errs.push(e);
+    try {
+      store.on("change", () => {
+        throw new Error("描画の失敗");
+      });
+      store.on("change", () => void got.push("保存"));
+      store.transact("t", (tx) => tx.updateNode(a.id, { title: "Z" }));
+    } finally {
+      console.error = orig;
+    }
+    expect(got).toEqual(["保存"]);
+    expect(errs).toHaveLength(1);
+  });
+
   it("閲覧専用では変更を受けない", () => {
     const { store, a } = setup();
     store.readOnly = true;

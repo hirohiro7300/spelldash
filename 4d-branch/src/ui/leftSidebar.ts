@@ -1,11 +1,12 @@
 // 左: プロジェクト一覧・シナリオ一覧・タグ・保存の状態
 
 import type { AppContext } from "../app/context";
+import { onlyTimeCursor } from "../app/uiState";
 import { PROJECT_COLORS, SCENARIO_COLORS } from "../model/constants";
 import type { ID } from "../model/types";
 import { BACKUP_LABELS } from "../persist/persistence";
 import { cloudText } from "./dialogs";
-import { MOD, clear, h } from "./dom";
+import { MOD, clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { menuFromButton, showMenu, type MenuEntry, type MenuItem } from "./overlays";
 
@@ -68,8 +69,10 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
       render();
     };
     input.addEventListener("keydown", (ev) => {
-      ev.stopPropagation();
-      if (ev.key === "Enter" && !ev.isComposing) done(true);
+      // ⌘S・⌘K などはアプリへ通す（ブラウザの「ページを保存」を出さない）。文字の操作はこの欄で
+      if (!(ev.metaKey || ev.ctrlKey)) ev.stopPropagation();
+      if (isImeKey(ev)) return;
+      if (ev.key === "Enter") done(true);
       if (ev.key === "Escape") done(false);
     });
     input.addEventListener("blur", () => done(true));
@@ -292,7 +295,9 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
   store.on("change", (info) => {
     if (!info.positionsOnly) render();
   });
-  ui.on("prefs", render);
+  ui.on("prefs", (p) => {
+    if (!onlyTimeCursor(p)) render();
+  });
   ui.on("search", render);
   app.persistence.on("status", renderFooter);
   app.onBackupsChanged = renderFooter;

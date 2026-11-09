@@ -2,10 +2,11 @@
 // 入力中の欄は上書きしない（ストアの変更では値だけ合わせ、選択が変わったときだけ作り直す）
 
 import type { AppContext } from "../app/context";
+import { onlyTimeCursor } from "../app/uiState";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
 import { MAX_YEAR, MIN_YEAR, formatDate, normalizeDateStr, relativeDue } from "../model/dates";
 import type { GEdge, GNode, ID } from "../model/types";
-import { MOD, autosize, clear, h, setValue } from "./dom";
+import { MOD, autosize, clear, h, isImeKey, setValue } from "./dom";
 import { icon } from "./icons";
 import { toast } from "./overlays";
 
@@ -58,7 +59,9 @@ export function buildInspector(app: AppContext): HTMLElement {
     if (info.full) render(true);
     else render();
   });
-  ui.on("prefs", () => render());
+  ui.on("prefs", (p) => {
+    if (!onlyTimeCursor(p)) render();
+  });
   app.persistence.on("writer", () => render(true));
   app.focusInspectorTitle = () => {
     const t = body.querySelector<HTMLTextAreaElement>(".insp-title");
@@ -127,11 +130,17 @@ function typePicker(app: AppContext, current: () => GNode["type"] | null, onPick
 
 function statusSelect(app: AppContext, current: () => GNode["status"] | null, onPick: (s: GNode["status"]) => void, push: (u: Updater) => void): HTMLSelectElement {
   const sel = h("select", { class: "input select-status", attrs: { "aria-label": "状態" } });
+  // 複数選択で状態がそろっていないとき用（どの状態を選んでも変更として届くように）
+  const mixed = h("option", { value: "", disabled: true }, "混在");
+  sel.append(mixed);
   for (const s of STATUS_ORDER) sel.append(h("option", { value: s }, STATUSES[s].label));
-  sel.addEventListener("change", () => onPick(sel.value as GNode["status"]));
+  sel.addEventListener("change", () => {
+    if (sel.value) onPick(sel.value as GNode["status"]);
+  });
   push(() => {
     const cur = current();
-    if (cur) setValue(sel, cur);
+    mixed.hidden = !!cur;
+    setValue(sel, cur ?? "");
     sel.dataset.status = cur ?? "";
     sel.disabled = app.store.readOnly;
   });
@@ -168,7 +177,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   const title = h("textarea", { class: "insp-title", placeholder: "タイトル", attrs: { rows: "1", "aria-label": "タイトル", spellcheck: "false" } });
   bindText(app, title, (v) => cmd.updateNode(id, { title: v.replace(/\n/g, " ") }, { label: "タイトルを編集", coalesce: `title:${id}` }));
   title.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && !ev.isComposing && ev.keyCode !== 229) {
+    if (ev.key === "Enter" && !isImeKey(ev)) {
       ev.preventDefault();
       title.blur();
     }
@@ -203,7 +212,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   const condList = h("div", { class: "cond-list" });
   const condAdd = h("input", { class: "input input-sm", placeholder: "条件を追加（Enter）", attrs: { "aria-label": "条件を追加" } });
   condAdd.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && !ev.isComposing && condAdd.value.trim()) {
+    if (ev.key === "Enter" && !isImeKey(ev) && condAdd.value.trim()) {
       ev.preventDefault();
       cmd.addCondition(id, condAdd.value);
       condAdd.value = "";
@@ -219,11 +228,12 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   const tagInput = h("input", { class: "tag-input", placeholder: "タグを追加", attrs: { "aria-label": "タグを追加", list: "tag-suggestions" } });
   const datalist = h("datalist", { attrs: { id: "tag-suggestions" } });
   tagInput.addEventListener("keydown", (ev) => {
-    if ((ev.key === "Enter" || ev.key === ",") && !ev.isComposing && tagInput.value.trim()) {
+    if ((ev.key === "Enter" || ev.key === ",") && !isImeKey(ev) && tagInput.value.trim()) {
       ev.preventDefault();
       cmd.addTag([id], tagInput.value);
       tagInput.value = "";
-    } else if (ev.key === "Backspace" && !tagInput.value) {
+    } else if (ev.key === "Backspace" && !tagInput.value && !ev.repeat && !isImeKey(ev)) {
+      // 長押しの繰り返しでは消さない（文字を消し終えた勢いで、今あるタグまで消さない）
       const n = node();
       const last = n?.tags[n.tags.length - 1];
       if (last) cmd.removeTag(id, last);
@@ -283,7 +293,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     const met = n.conditions.filter((c) => c.met).length;
     condCount.textContent = n.conditions.length ? `${met}/${n.conditions.length}` : "";
     const seen = new Set<ID>();
-    for (const c of n.conditions) {
+    n.conditions.forEach((c, i) => {
       seen.add(c.id);
       let r2 = condRows.get(c.id);
       if (!r2) {
@@ -292,7 +302,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
         const text = h("input", { class: "cond-text", attrs: { "aria-label": "条件" } });
         bindText(app, text, (v) => cmd.updateCondition(id, c.id, { text: v }, `cond:${c.id}`));
         text.addEventListener("keydown", (ev) => {
-          if (ev.key === "Enter" && !ev.isComposing) text.blur();
+          if (ev.key === "Enter" && !isImeKey(ev)) text.blur();
         });
         const del = h("button", { class: "icon-btn icon-btn-xs cond-del", type: "button", ariaLabel: "条件を削除", title: "条件を削除", onClick: () => cmd.removeCondition(id, c.id) }, icon("x", 13));
         r2 = { row: h("div", { class: "cond-row" }, box, text, del), box, text };
@@ -303,8 +313,10 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
       r2.text.disabled = ro();
       r2.row.classList.toggle("met", c.met);
       setValue(r2.text, c.text);
-      condList.append(r2.row); // 並び順をそろえる
-    }
+      // 並び順をそろえる。順番が合っている行は動かさない（動かすと入力中の欄からフォーカスが外れ、次のキーがキャンバスへ行く）
+      const at = condList.children[i];
+      if (at !== r2.row) condList.insertBefore(r2.row, at ?? null);
+    });
     for (const [cid, r3] of condRows) {
       if (!seen.has(cid)) {
         r3.row.remove();
@@ -494,7 +506,7 @@ function multiPanel(app: AppContext, root: HTMLElement, push: (u: Updater) => vo
 
   const tagInput = h("input", { class: "input input-sm", placeholder: "まとめてタグを追加（Enter）", attrs: { "aria-label": "タグを追加" } });
   tagInput.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && !ev.isComposing && tagInput.value.trim()) {
+    if (ev.key === "Enter" && !isImeKey(ev) && tagInput.value.trim()) {
       cmd.addTag(ids(), tagInput.value);
       tagInput.value = "";
     }

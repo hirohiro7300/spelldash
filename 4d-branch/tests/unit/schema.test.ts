@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, dayNumber, normalizeDateStr } from "../../src/model/dates";
+import { addMonths, dayNumber, fromDayNumber, normalizeDateStr } from "../../src/model/dates";
 import { buildIndex } from "../../src/model/graph";
 import { DocFormatError, SCHEMA_VERSION, createEmptyDoc, makeEdge, makeNode, makeProject, normalizeDoc, parseDocText, serializeDoc } from "../../src/model/schema";
 
@@ -148,6 +148,25 @@ describe("外から作ったファイルの取り込み（AI・表計算・手�
     expect(conds[1]).toMatchObject({ id: "c2", met: true });
   });
 
+  it("入れ子がとても深い項目（5,000 段）は省き、保存・書き出しできる形にする", () => {
+    const deep = `${'{"a":'.repeat(5000)}{"leaf":1}${"}".repeat(5000)}`;
+    const text = `{"schema":"4d-branch","nodes":[{"id":"a","title":"A","x":0,"y":0,"meta":${deep},"extra":${deep}}],"edges":[]}`;
+    const { doc, report } = parseDocText(text);
+    expect(() => JSON.stringify(doc)).not.toThrow();
+    expect(() => structuredClone(doc)).not.toThrow();
+    expect(report.warnings.join()).toContain("入れ子が深すぎる");
+    expect(doc.nodes.a!.title).toBe("A");
+  });
+
+  it("とても遠い位置（1e307）は無限大にせず、下の方に並べる", () => {
+    const { doc } = normalizeDoc({ schema: "4d-branch", nodes: [{ id: "a", x: 1e307, y: 0 }, { id: "b", x: -5e7, y: 10 }, { id: "c", x: 120, y: 340 }], edges: [] });
+    for (const n of Object.values(doc.nodes)) {
+      expect(Number.isFinite(n.x) && Number.isFinite(n.y)).toBe(true);
+      expect(Math.abs(n.x)).toBeLessThanOrEqual(1e7);
+    }
+    expect(doc.nodes.c).toMatchObject({ x: 120, y: 340 });
+  });
+
   it("時刻つきの期限も日付として読み、読めない期限は警告して外す", () => {
     const { doc, report } = normalizeDoc({
       nodes: [
@@ -179,6 +198,7 @@ describe("dates", () => {
     expect(normalizeDateStr("9999-12-31")).toBeNull();
     expect(normalizeDateStr("0999-01-01")).toBeNull();
     expect(addMonths("2999-12-31", 2)).toBe("3000-02-28");
+    expect(fromDayNumber(dayNumber("1900-01-01") - 365 * 1500)).toMatch(/^\d{4}-\d{2}-\d{2}$/); // 4 桁にそろえる
     expect(dayNumber(addMonths("2999-12-31", 2))).not.toBeNaN();
   });
 });

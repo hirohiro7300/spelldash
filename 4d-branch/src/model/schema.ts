@@ -119,12 +119,33 @@ function isObj(v: unknown): v is Obj {
 
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+/** 持ち越す値の入れ子の深さの上限（深すぎると保存・書き出し・バックアップがすべて失敗する） */
+const MAX_DEPTH = 32;
+/** 今の正規化で、深すぎて省いた値の数（警告に使う） */
+let truncatedDeep = 0;
+
+/** 入れ子を上限までの深さで写す（それより深い所は null にする）。危ない名前の鍵は落とす */
+function bounded(v: unknown, depth: number): unknown {
+  if (v === null || typeof v !== "object") return v;
+  if (depth >= MAX_DEPTH) {
+    truncatedDeep++;
+    return null;
+  }
+  if (Array.isArray(v)) return v.map((x) => bounded(x, depth + 1));
+  const out: Obj = {};
+  for (const k of Object.keys(v)) {
+    if (FORBIDDEN_KEYS.has(k)) continue;
+    out[k] = bounded((v as Obj)[k], depth + 1);
+  }
+  return out;
+}
+
 /** 知らない項目を持ち越す（新しい版で足された項目を古い版で消さない） */
 function extras(raw: Obj, known: ReadonlySet<string>): Obj {
   const out: Obj = {};
   for (const k of Object.keys(raw)) {
     if (known.has(k) || FORBIDDEN_KEYS.has(k)) continue;
-    out[k] = raw[k];
+    out[k] = bounded(raw[k], 1);
   }
   return out;
 }
@@ -166,7 +187,7 @@ function isoOr(v: unknown, fallback: string): string {
 }
 
 function metaOf(v: unknown): Meta {
-  return isObj(v) ? { ...v } : {};
+  return isObj(v) ? (bounded(v, 1) as Meta) : {};
 }
 
 function colorOr(v: unknown, fallback: string): string {
@@ -268,6 +289,7 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
   const warnings: string[] = [];
   const dropped = { nodes: 0, edges: 0, projects: 0, scenarios: 0 };
   const now = nowISO();
+  truncatedDeep = 0;
 
   if (input.schema !== undefined && input.schema !== SCHEMA) {
     throw new DocFormatError("4D Branch のファイルではありません（schema が違います）。");
@@ -360,8 +382,10 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
         if (!badDateExample) badDateExample = `「${str(value.title).slice(0, 20)}」の「${str(r).slice(0, 30)}」`;
       }
     }
-    let x = typeof value.x === "number" && Number.isFinite(value.x) ? value.x : NaN;
-    let y = typeof value.y === "number" && Number.isFinite(value.y) ? value.y : NaN;
+    // 位置は ±1,000 万まで（それより遠いと、丸めた後に無限大になったり画面に戻れなくなったりする）
+    const coord = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 1e7 ? v : NaN);
+    let x = coord(value.x);
+    let y = coord(value.y);
     if (Number.isNaN(x) || Number.isNaN(y)) {
       // 位置の無いノードは格子に並べる
       x = (unplaced % 6) * 300;
@@ -388,7 +412,7 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
       meta: metaOf(value.meta),
     } as GNode;
   }
-  if (unplaced) warnings.push(`位置の無いノード ${unplaced} 件を下の方に並べました。`);
+  if (unplaced) warnings.push(`位置の無い（または遠すぎる）ノード ${unplaced} 件を下の方に並べました。`);
   if (renamed) warnings.push(`使えない形の ID（空白入りなど）を持つノード ${renamed} 件に新しい ID を振りました（接続はそのままつなぎました）。`);
   if (badDates) warnings.push(`日付として読めない期限・開始日 ${badDates} 件を外しました（例: ${badDateExample}）。`);
 
@@ -458,6 +482,8 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
 
   const docExtras = extras(raw, DOC_KEYS);
   for (const k of EXPORT_ONLY_KEYS) delete docExtras[k];
+  const docMeta = metaOf(raw.meta);
+  if (truncatedDeep) warnings.push(`入れ子が深すぎる項目（${MAX_DEPTH} 段より深い所）${truncatedDeep} か所を省きました。`);
 
   const doc: DocData = {
     ...docExtras,
@@ -473,7 +499,7 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
     edges,
     projectOrder: order(raw.projectOrder, projects, projectRemap),
     scenarioOrder: order(raw.scenarioOrder, scenarios, scenarioRemap),
-    meta: metaOf(raw.meta),
+    meta: docMeta,
   };
   return { doc, report: { warnings, dropped } };
 }

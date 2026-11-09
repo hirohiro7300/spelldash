@@ -12,6 +12,13 @@ export class Emitter<E extends object> {
   emit<K extends keyof E>(type: K, payload: E[K]): void {
     const set = this.handlers.get(type);
     if (!set) return;
-    for (const fn of [...set]) (fn as (p: E[K]) => void)(payload);
+    for (const fn of [...set]) {
+      try {
+        (fn as (p: E[K]) => void)(payload);
+      } catch (err) {
+        // 1 つの受け手の失敗で、ほかの受け手（自動保存など）を止めない
+        console.error(err);
+      }
+    }
   }
 }

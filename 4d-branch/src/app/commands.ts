@@ -167,6 +167,23 @@ export class Commands {
     });
   }
 
+  /**
+   * お知らせの「元に戻す」: そのお知らせの操作がまだいちばん上にあるときだけ戻す
+   * （その後に別の操作をしていたら、そちらを代わりに戻さない）
+   */
+  undoAction(): { label: string; run: () => void } {
+    const stack = this.store.history.undoStack;
+    const entry = stack[stack.length - 1];
+    return {
+      label: "元に戻す",
+      run: () => {
+        const top = this.store.history.undoStack[this.store.history.undoStack.length - 1];
+        if (entry && top === entry) this.undo();
+        else this.hooks.toast("そのあとに別の操作をしたため、ここからは戻せません（上部の「元に戻す」で順に戻せます）", { tone: "warn" });
+      },
+    };
+  }
+
   /** すべての折りたたみを開く */
   expandAll(): void {
     const ns = Object.values(this.doc.nodes).filter((n) => n.collapsed);
@@ -189,7 +206,7 @@ export class Commands {
     });
     if (!ok) return;
     this.ui.clearSelection();
-    this.hooks.toast(`${label}しました`, { action: { label: "元に戻す", run: () => this.undo() } });
+    this.hooks.toast(`${label}しました`, { action: this.undoAction() });
   }
 
   deleteSelection(): void {
@@ -312,7 +329,7 @@ export class Commands {
     if (!ok) return;
     if (this.store.transact(`プロジェクト「${p.name}」を削除`, (tx) => tx.deleteProject(id))) {
       if (this.ui.prefs.projectFilter.includes(id)) this.ui.setPrefs({ projectFilter: this.ui.prefs.projectFilter.filter((x) => x !== id) });
-      this.hooks.toast(`プロジェクト「${p.name}」を削除しました`, { action: { label: "元に戻す", run: () => this.undo() } });
+      this.hooks.toast(`プロジェクト「${p.name}」を削除しました`, { action: this.undoAction() });
     }
   }
 
@@ -366,7 +383,7 @@ export class Commands {
     if (!ok) return;
     if (this.store.transact(`シナリオ「${s.name}」を削除`, (tx) => tx.deleteScenario(id))) {
       if (this.ui.prefs.scenarioId === id) this.ui.setPrefs({ scenarioId: null });
-      this.hooks.toast(`シナリオ「${s.name}」を削除しました`, { action: { label: "元に戻す", run: () => this.undo() } });
+      this.hooks.toast(`シナリオ「${s.name}」を削除しました`, { action: this.undoAction() });
     }
   }
 

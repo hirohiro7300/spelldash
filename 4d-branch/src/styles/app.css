@@ -2148,6 +2148,9 @@ textarea.input {
   /* 閉じている途中の 2 回目の押下を通さない */
   pointer-events: none;
 }
+.modal:focus {
+  outline: none;
+}
 .modal {
   display: flex;
   flex-direction: column;

@@ -44,7 +44,8 @@ export function previewImport(text: string): ImportPreview {
   return { doc, report, counts: docCounts(doc) };
 }
 
-const sameName = (a: string, b: string) => normalizeText(a.trim()) === normalizeText(b.trim());
+/** 同じ名前と見なす鍵（全角半角・大文字小文字・カタカナひらがなをそろえる） */
+const nameKey = (name: string) => normalizeText(name.trim());
 
 /**
  * 追加の取り込み: 取り込む側の ID をすべて振り直して足す（今のデータを上書きしない）。
@@ -59,33 +60,40 @@ export function mergeDocs(base: DocData, incoming: DocData): { doc: DocData; add
   let addedProjects = 0;
   let addedScenarios = 0;
 
+  // 名前の照らし合わせは辞書で（数千件のプロジェクトでも、総当たりで固まらない）
+  const pByName = new Map<string, ID>();
+  for (const p of Object.values(doc.projects)) if (!pByName.has(nameKey(p.name))) pByName.set(nameKey(p.name), p.id);
   for (const pid of incoming.projectOrder) {
     const p = incoming.projects[pid];
     if (!p) continue;
-    const hit = Object.values(doc.projects).find((x) => sameName(x.name, p.name));
+    const hit = pByName.get(nameKey(p.name));
     if (hit) {
-      pMap.set(pid, hit.id);
+      pMap.set(pid, hit);
       reusedProjects++;
     } else {
       const id = newId("p");
       doc.projects[id] = { ...p, id };
       doc.projectOrder.push(id);
       pMap.set(pid, id);
+      pByName.set(nameKey(p.name), id);
       addedProjects++;
     }
   }
+  const sByName = new Map<string, ID>();
+  for (const s of Object.values(doc.scenarios)) if (!sByName.has(nameKey(s.name))) sByName.set(nameKey(s.name), s.id);
   for (const sid of incoming.scenarioOrder) {
     const s = incoming.scenarios[sid];
     if (!s) continue;
-    const hit = Object.values(doc.scenarios).find((x) => sameName(x.name, s.name));
+    const hit = sByName.get(nameKey(s.name));
     if (hit) {
-      sMap.set(sid, hit.id);
+      sMap.set(sid, hit);
       reusedScenarios++;
     } else {
       const id = newId("s");
       doc.scenarios[id] = { ...s, id };
       doc.scenarioOrder.push(id);
       sMap.set(sid, id);
+      sByName.set(nameKey(s.name), id);
       addedScenarios++;
     }
   }

@@ -241,6 +241,70 @@ async function main() {
     await shot("e2e-03-inspector");
   });
 
+  await check("詳細: 今ある条件を直しても、入力の途中でフォーカスが外れない（次の Backspace でノードを消さない）", async () => {
+    const id = await page.evaluate(() => Object.values(window.__fourD.store.doc.nodes).find((n) => n.title === "E2Eの目標").id);
+    await page.evaluate((nid) => window.__fourD.ui.select([nid]), id);
+    const text = page.locator(".cond-text").first();
+    await text.click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type("XY");
+    const r = await page.evaluate((nid) => {
+      const n = window.__fourD.store.doc.nodes[nid];
+      return { exists: !!n, cond: n?.conditions[0]?.text, focused: document.activeElement?.classList.contains("cond-text") };
+    }, id);
+    assert(r.exists, "ノードが消えた");
+    assert(r.cond === "月 10 時間をXY", `条件 ${r.cond}`);
+    assert(r.focused, "フォーカスが外れた");
+    await page.keyboard.press("Enter");
+  });
+
+  await check("メニュー: 「ここに作る」で数字キーを押すと、その種類で作る（選んでいるノードの種類は変えない）", async () => {
+    const id = await page.evaluate(() => Object.values(window.__fourD.store.doc.nodes).find((n) => n.title === "E2Eの目標").id);
+    await page.evaluate((nid) => window.__fourD.ui.select([nid]), id);
+    await page.waitForTimeout(50);
+    const p = await screenOf(page, id);
+    const before = await state(page);
+    const typeBefore = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].type, id);
+    await page.mouse.move(p.x + p.halfW, p.y);
+    await page.mouse.down();
+    await page.mouse.move(p.x + p.halfW + 140, p.y + 260, { steps: 10 });
+    await page.mouse.up();
+    await page.locator(".type-menu").waitFor();
+    await page.keyboard.press("4"); // 開いた直後に押しても、メニューが受ける
+    await page.waitForFunction(() => document.activeElement?.classList.contains("inline-editor"), null, { timeout: 5000 });
+    await page.keyboard.type("数字キーで作った結果");
+    await page.keyboard.press("Enter");
+    const after = await state(page);
+    const r = await page.evaluate((nid) => ({ type: window.__fourD.store.doc.nodes[nid].type, made: Object.values(window.__fourD.store.doc.nodes).find((n) => n.title === "数字キーで作った結果")?.type }), id);
+    assert(after.nodes === before.nodes + 1, JSON.stringify({ before, after }));
+    assert(r.type === typeBefore, `元のノードの種類が変わった: ${typeBefore} → ${r.type}`);
+    assert(r.made === "result", `作ったノードの種類: ${r.made}`);
+  });
+
+  await check("ダイアログ: 開くとフォーカスが中に入り、Tab が外へ出ない。重ねた確認の Esc は確認だけを閉じる", async () => {
+    await page.evaluate(() => window.__fourD.app.openBackups());
+    const dlg = page.getByRole("dialog", { name: "バックアップと復元" });
+    await dlg.waitFor();
+    await page.waitForTimeout(100);
+    for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
+    const inside = await page.evaluate(() => !!document.activeElement?.closest(".modal"));
+    assert(inside, "Tab でダイアログの外へ出た");
+    // 復元の確認を重ねて Esc → 確認だけが閉じる
+    const restore = dlg.locator(".backup-row button", { hasText: "復元" }).first();
+    if (await restore.count()) {
+      await restore.click();
+      await page.getByRole("dialog", { name: "このバックアップに戻しますか？" }).waitFor();
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(250);
+      assert((await page.getByRole("dialog", { name: "このバックアップに戻しますか？" }).count()) === 0, "確認が閉じない");
+      assert((await dlg.count()) === 1, "下のダイアログまで閉じた");
+    }
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+  });
+
   await check("検索: 候補から選ぶとそのノードへ", async () => {
     await page.keyboard.press("Control+k");
     await page.keyboard.type("ポートフォリオ");
@@ -320,6 +384,37 @@ async function main() {
     await shot("e2e-04-time-scenario");
     await page.locator(".scen-chip", { hasText: "すべて" }).click();
     await page.locator(".timeline-cursor-btn").click();
+  });
+
+  await check("時間軸の再生中でも、シナリオのボタンが押せる", async () => {
+    await page.locator(".timeline-play").click();
+    await page.waitForTimeout(300);
+    await page.locator(".scen-chip", { hasText: "早期独立" }).click();
+    const sid = await page.evaluate(() => window.__fourD.ui.prefs.scenarioId);
+    assert(sid === "s_early", `再生中に押せない: ${sid}`);
+    await page.locator(".scen-chip", { hasText: "すべて" }).click();
+    await page.waitForTimeout(7200); // 再生が終わるまで
+    if (await page.locator(".timeline-cursor-btn.on").count()) await page.locator(".timeline-cursor-btn").click();
+  });
+
+  await check("リスト: 絞り込んだときの全選択は、表に出ている行だけ", async () => {
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.ui.setPrefs({ view: "list", projectFilter: ["p_spelldash"], projectMode: "dim" });
+    });
+    await page.waitForTimeout(200);
+    const shown = await page.evaluate(() => window.__fourD.app.listIds().length);
+    await page.locator(".list-view").click({ position: { x: 300, y: 80 } }).catch(() => undefined);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press("Control+a");
+    const sel = await page.evaluate(() => window.__fourD.ui.selection.nodes.size);
+    const total = await page.evaluate(() => Object.keys(window.__fourD.store.doc.nodes).length);
+    assert(sel === shown && sel < total, `選ばれた ${sel}・表 ${shown}・全体 ${total}`);
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.ui.clearSelection();
+      f.ui.setPrefs({ view: "map", projectFilter: [] });
+    });
   });
 
   await check("保存して再読み込みしても残る（ようこそは出ない）", async () => {

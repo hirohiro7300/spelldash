@@ -32,6 +32,7 @@ export function showMenu(x: number, y: number, entries: MenuEntry[], opts: { min
   closeMenus();
   const layer = document.getElementById("overlay-root") ?? document.body;
   let sub: HTMLElement | null = null;
+  let subItems: MenuEntry[] = [];
   const close = () => {
     el.remove();
     sub?.remove();
@@ -67,6 +68,7 @@ export function showMenu(x: number, y: number, entries: MenuEntry[], opts: { min
         const openSub = () => {
           sub?.remove();
           sub = build(items2, true);
+          subItems = items2;
           layer.append(sub);
           const r = row.getBoundingClientRect();
           place(sub, r.right - 4, r.top - 6, r.left + 4);
@@ -104,6 +106,14 @@ export function showMenu(x: number, y: number, entries: MenuEntry[], opts: { min
     if (ev.key === "Escape") {
       ev.stopPropagation();
       close();
+    } else if (!ev.metaKey && !ev.ctrlKey && !ev.altKey && ev.key !== " " && (ev.key.length === 1 || ev.key === "Backspace" || ev.key === "Delete")) {
+      // メニューが開いている間のキーは、キャンバスのショートカットへ渡さない。項目に書いてあるキー（1〜4 など）はその項目を選ぶ
+      ev.preventDefault();
+      ev.stopPropagation();
+      const items = sub && sub.contains(document.activeElement) ? subItems : entries;
+      const hit = items.find((it): it is Exclude<MenuEntry, "sep" | { header: string }> => typeof it === "object" && "label" in it && !!it.shortcut && it.shortcut.toLowerCase() === ev.key.toLowerCase() && !it.disabled && !it.submenu);
+      close();
+      hit?.run?.();
     } else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
       ev.preventDefault();
       const scope = sub && sub.contains(document.activeElement) ? sub : el;
@@ -113,9 +123,12 @@ export function showMenu(x: number, y: number, entries: MenuEntry[], opts: { min
       next?.focus();
     }
   };
+  // キーはすぐに受ける（開いた直後に押したキーがキャンバスへ行かないように）。
+  // 外側の押下・ウィンドウを離れたときは、開いた操作そのものに反応しないよう次のタスクから
+  document.addEventListener("keydown", onKey, true);
   setTimeout(() => {
+    if (!el.isConnected) return;
     document.addEventListener("pointerdown", onDoc, true);
-    document.addEventListener("keydown", onKey, true);
     window.addEventListener("blur", close);
   });
   openMenu = { el, close };
@@ -157,6 +170,16 @@ export interface ModalHandle {
   close: () => void;
 }
 
+/** 開いているダイアログの数（後ろの画面を操作できなくする・Esc は一番上だけ） */
+let openModals = 0;
+
+function setShellInert(on: boolean): void {
+  const shell = document.querySelector(".app-shell");
+  if (!shell) return;
+  if (on) shell.setAttribute("inert", "");
+  else shell.removeAttribute("inert");
+}
+
 export function openModal(opts: { title: string; subtitle?: string; width?: number; className?: string; onClose?: () => void; icon?: string }): ModalHandle {
   closeMenus();
   const layer = document.getElementById("overlay-root") ?? document.body;
@@ -172,6 +195,7 @@ export function openModal(opts: { title: string; subtitle?: string; width?: numb
     footer,
   );
   if (opts.width) panel.style.width = `min(${opts.width}px, calc(100vw - 32px))`;
+  panel.tabIndex = -1;
   const backdrop = h("div", { class: "modal-backdrop" }, panel);
   let closed = false;
   const close = () => {
@@ -180,22 +204,35 @@ export function openModal(opts: { title: string; subtitle?: string; width?: numb
     backdrop.classList.add("closing");
     document.removeEventListener("keydown", onKey, true);
     setTimeout(() => backdrop.remove(), 140);
+    openModals = Math.max(0, openModals - 1);
+    if (openModals === 0) setShellInert(false);
     opts.onClose?.();
     prevFocus?.focus?.();
   };
+  const focusables = () => [...panel.querySelectorAll<HTMLElement>("button,input,textarea,select,[tabindex]:not([tabindex='-1'])")].filter((x) => !x.hasAttribute("disabled"));
+  /** いちばん上に開いているダイアログか（重なったときは一番上だけが Esc・Tab に応える） */
+  const isTop = () => [...document.querySelectorAll(".modal-backdrop:not(.closing)")].pop() === backdrop;
   const onKey = (ev: KeyboardEvent) => {
+    if (!isTop()) return;
     if (ev.key === "Escape" && !document.querySelector(".menu")) {
       ev.stopPropagation();
       ev.preventDefault();
       close();
     }
     if (ev.key === "Tab") {
-      // フォーカスをダイアログの中に留める
-      const f = [...panel.querySelectorAll<HTMLElement>("button,input,textarea,select,[tabindex]:not([tabindex='-1'])")].filter((x) => !x.hasAttribute("disabled"));
-      if (!f.length) return;
+      // フォーカスをダイアログの中に留める（外にあれば中へ戻す）
+      const f = focusables();
+      if (!f.length) {
+        ev.preventDefault();
+        panel.focus();
+        return;
+      }
       const first = f[0]!;
       const last = f[f.length - 1]!;
-      if (ev.shiftKey && document.activeElement === first) {
+      if (!panel.contains(document.activeElement)) {
+        ev.preventDefault();
+        (ev.shiftKey ? last : first).focus();
+      } else if (ev.shiftKey && document.activeElement === first) {
         ev.preventDefault();
         last.focus();
       } else if (!ev.shiftKey && document.activeElement === last) {
@@ -210,7 +247,14 @@ export function openModal(opts: { title: string; subtitle?: string; width?: numb
   });
   document.addEventListener("keydown", onKey, true);
   layer.append(backdrop);
-  requestAnimationFrame(() => backdrop.classList.add("open"));
+  openModals++;
+  // 後ろの画面は、開いている間は操作もフォーカスもできない
+  setShellInert(true);
+  requestAnimationFrame(() => {
+    backdrop.classList.add("open");
+    // 中身がフォーカスを決めていなければ、ダイアログ自体へ
+    if (!closed && !panel.contains(document.activeElement)) panel.focus();
+  });
   return { el: panel, body, footer, close };
 }
 

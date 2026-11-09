@@ -2,6 +2,7 @@
 // 時点を動かすと、その日より後の期限のノードが薄くなる（未来が時間とともに現れる）
 
 import type { AppContext } from "../app/context";
+import { onlyTimeCursor } from "../app/uiState";
 import { NODE_TYPES, NODE_TYPE_ORDER } from "../model/constants";
 import { addMonths, dayNumber, formatDate, fromDayNumber, todayStr } from "../model/dates";
 import type { ID, NodeType } from "../model/types";
@@ -222,9 +223,13 @@ export function buildBottomBar(app: AppContext): HTMLElement {
       cursorBtn.classList.remove("on");
       cursorBtn.title = "時間軸を押すと、その日までを表示します";
     }
-    clear(playBtn);
-    playBtn.append(icon(playing ? "pause" : "play", 15));
-    playBtn.title = playing ? "止める" : "今日から未来へ再生（時点を動かす）";
+    // 再生ボタンの印は、再生しているかが変わったときだけ差し替える（毎フレーム差し替えると押せなくなる）
+    if (playBtn.dataset.playing !== String(!!playing)) {
+      playBtn.dataset.playing = String(!!playing);
+      clear(playBtn);
+      playBtn.append(icon(playing ? "pause" : "play", 15));
+      playBtn.title = playing ? "止める" : "今日から未来へ再生（時点を動かす）";
+    }
   };
 
   const setCursorAt = (x: number) => {
@@ -365,9 +370,9 @@ export function buildBottomBar(app: AppContext): HTMLElement {
     if (!info.positionsOnly) renderScenarios();
   });
   ui.on("visual", schedule);
-  ui.on("prefs", () => {
+  ui.on("prefs", (p) => {
     schedule();
-    renderScenarios();
+    if (!onlyTimeCursor(p)) renderScenarios();
   });
   renderScenarios();
   return root;

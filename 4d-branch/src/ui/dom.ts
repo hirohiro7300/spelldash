@@ -102,6 +102,14 @@ export function isTypingTarget(t: EventTarget | null): boolean {
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 export const MOD = isMac ? "⌘" : "Ctrl+";
 
+/**
+ * 日本語入力（IME）が使っているキーか。変換を確定する Enter・変換をやめる Esc を、欄の操作として扱わない
+ * （Safari は確定の Enter を isComposing=false・keyCode 229 で送る）
+ */
+export function isImeKey(ev: KeyboardEvent): boolean {
+  return ev.isComposing || ev.keyCode === 229;
+}
+
 /** テキストエリアを中身に合わせて伸ばす */
 export function autosize(ta: HTMLTextAreaElement, max = 360): void {
   ta.style.height = "auto";

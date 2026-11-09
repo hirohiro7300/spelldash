@@ -29,6 +29,8 @@ export interface AppContext {
   focusEdgeCondition: () => void;
   revealInList: (id: ID) => void;
   refreshList: () => void;
+  /** リストに今出ている行のノード */
+  listIds: () => ID[];
   afterTour?: () => void;
   renameDoc(): void;
   editDescription(kind: "project" | "scenario", id: ID): void;

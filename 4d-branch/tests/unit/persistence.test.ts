@@ -297,6 +297,15 @@ describe("Persistence（IndexedDB）", () => {
     p.close();
   });
 
+  it("写せない中身のバックアップは失敗として返し、見出しだけの行を残さない", async () => {
+    const p = makeP(memoryKV());
+    await p.open();
+    await p.acquireWriter();
+    const bad = { ...createEmptyDoc("x"), meta: { f: () => 1 } } as unknown as DocData;
+    await expect(p.createBackup("manual", "写せない", bad)).rejects.toBeTruthy();
+    expect(await p.listBackups()).toEqual([]);
+  });
+
   it("バックアップは種類ごとに件数で間引き、復元できる", async () => {
     const p = makeP(memoryKV());
     await p.open();
@@ -349,6 +358,24 @@ describe("インポート", () => {
     const pv = previewImport(serializeDoc(doc, "0.1.0"));
     expect(pv.counts.nodes).toBe(Object.keys(doc.nodes).length);
     expect(pv.report.warnings).toEqual([]);
+  });
+
+  it("追加: 数千件のプロジェクトでも、名前の照らし合わせで固まらない", () => {
+    const base = createEmptyDoc("base");
+    const incoming = createEmptyDoc("in");
+    for (let i = 0; i < 3000; i++) {
+      const a = makeProject({ name: `プロジェクト ${i}` });
+      base.projects[a.id] = a;
+      base.projectOrder.push(a.id);
+      const b = makeProject({ name: `ﾌﾟﾛｼﾞｪｸﾄ ${i + 1500}` }); // 半角でも同じ名前ならまとめる
+      incoming.projects[b.id] = b;
+      incoming.projectOrder.push(b.id);
+    }
+    const t0 = performance.now();
+    const res = mergeDocs(base, incoming);
+    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(res.reusedProjects).toBe(1500);
+    expect(res.doc.projectOrder).toHaveLength(4500);
   });
 
   it("追加: ID を振り直し、同じ名前のプロジェクトはまとめ、元のデータを壊さない", () => {

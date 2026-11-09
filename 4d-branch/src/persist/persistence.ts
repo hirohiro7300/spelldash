@@ -571,8 +571,18 @@ export class Persistence {
     if (!d || !this.canBackup) return null;
     const meta: BackupMeta = { id: newId("b"), kind, label, createdAt: nowISO(), docTitle: d.title, counts: docCounts(d) };
     const t = this.db!.transaction(["backupMeta", "backupData"], "readwrite");
-    t.objectStore("backupMeta").put(meta);
-    t.objectStore("backupData").put({ id: meta.id, doc: d });
+    try {
+      // 中身を先に（写せない中身なら、見出しだけの行を残さない）
+      t.objectStore("backupData").put({ id: meta.id, doc: d });
+      t.objectStore("backupMeta").put(meta);
+    } catch (e) {
+      try {
+        t.abort();
+      } catch {
+        /* すでに終わっている */
+      }
+      throw e;
+    }
     await done(t);
     await this.prune(kind);
     return meta;

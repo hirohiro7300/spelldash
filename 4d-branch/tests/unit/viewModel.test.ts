@@ -125,3 +125,35 @@ describe("経路の強調", () => {
     expect(vm.node("br").alpha).toBe(1);
   });
 });
+
+describe("お知らせの「元に戻す」", () => {
+  it("そのお知らせの操作がまだいちばん上にあるときだけ戻す（あとの別の操作を代わりに戻さない）", () => {
+    const { store, cmd, toasts } = setup(graph("a>b, c>d"));
+    cmd.deleteNodes(["a"]);
+    const del = cmd.undoAction(); // 「削除しました」のお知らせが持つ
+    store.transact("c の題名", (tx) => tx.updateNode("c", { title: "あとで変えた" }));
+    del.run();
+    expect(store.doc.nodes.c!.title).toBe("あとで変えた"); // 別の操作は戻さない
+    expect(store.doc.nodes.a).toBeUndefined();
+    expect(toasts.join()).toContain("ここからは戻せません");
+    // すぐ押したときは戻る
+    cmd.deleteNodes(["d"]);
+    const del2 = cmd.undoAction();
+    del2.run();
+    expect(store.doc.nodes.d).toBeDefined();
+  });
+});
+
+describe("表示の設定の読み込み", () => {
+  it("壊れた時点（NaN）は外して読み込む", async () => {
+    const saved = (globalThis as { localStorage?: unknown }).localStorage;
+    (globalThis as { localStorage?: unknown }).localStorage = { getItem: () => JSON.stringify({ timeCursor: "NaN-NaN-NaN", view: "list" }), setItem: () => undefined };
+    try {
+      const ui = new UiState();
+      expect(ui.prefs.timeCursor).toBeNull();
+      expect(ui.prefs.view).toBe("list");
+    } finally {
+      (globalThis as { localStorage?: unknown }).localStorage = saved;
+    }
+  });
+});

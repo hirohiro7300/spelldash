@@ -55,6 +55,7 @@ export class App implements AppContext {
   focusInspectorTitle: () => void = () => undefined;
   focusEdgeCondition: () => void = () => undefined;
   revealInList: (id: ID) => void = () => undefined;
+  listIds: () => ID[] = () => [];
   refreshList: () => void = () => undefined;
   afterTour?: () => void;
   /** アカウントへの同期（claude.ai の Artifact の中で、サインインしているときだけ） */
@@ -133,26 +134,29 @@ export class App implements AppContext {
     scrim.addEventListener("click", () => this.ui.setPrefs({ leftOpen: false, rightOpen: false }));
     const center = h("main", { class: "center", ariaLabel: "キャンバス" }, this.banner, this.view.root, this.listEl, scrim);
 
-    this.shell = h("div", { class: "app-shell" }, buildTopbar(this), buildLeftSidebar(this), center, buildInspector(this), buildBottomBar(this));
-    opts.mount.replaceChildren(this.shell, h("div", { attrs: { id: "overlay-root" } }));
-
-    // ---- 配線
+    // 保存と「閲覧のみ」の切替は、画面の部品より先につなぐ（部品が先に反応すると古い状態で描く・部品の失敗で保存が止まる）
     this.store.on("change", (info) => {
       if (!this.ephemeral && info.source !== "load" && info.source !== "remote") this.persistence.markDirty();
       if (info.source === "tx" || info.source === "undo" || info.source === "redo" || (info.source === "replace" && !this.adopting)) {
         this.cloud?.markDirty();
       }
-      this.syncEmpty();
     });
+    this.persistence.on("writer", (w) => {
+      this.store.readOnly = !w && !this.ephemeral;
+    });
+
+    this.shell = h("div", { class: "app-shell" }, buildTopbar(this), buildLeftSidebar(this), center, buildInspector(this), buildBottomBar(this));
+    opts.mount.replaceChildren(this.shell, h("div", { attrs: { id: "overlay-root" } }));
+
+    // ---- 配線
+    this.store.on("change", () => this.syncEmpty());
+    this.persistence.on("writer", () => this.renderBanner());
     this.store.on("blocked", () => toast("このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。", { tone: "warn" }));
     this.ui.on("prefs", (p) => this.applyPrefs(p));
     this.view.onCamera(() => this.onCamera());
     this.persistence.on("status", () => this.renderBanner());
     this.persistence.on("notice", (n) => toast(n.text, { tone: n.level === "error" ? "error" : n.level === "warn" ? "warn" : "info", ms: 7000 }));
-    this.persistence.on("writer", (w) => {
-      this.store.readOnly = !w && !this.ephemeral;
-      this.renderBanner();
-    });
+
     this.persistence.on("remote", () => this.scheduleRemoteReload());
     this.bindKeys();
     this.bindLifecycle();
@@ -351,7 +355,7 @@ export class App implements AppContext {
         ...NODE_TYPE_ORDER.map((t) => ({ label: NODE_TYPES[t].label, icon: t, hint: NODE_TYPES[t].hint, disabled: ro, run: () => cmd.createNode(t, world, { edit: true, exact: true }) })),
         "sep",
         { label: "全体を表示", icon: "fit", shortcut: "F", run: () => this.view.fit() },
-        { label: "すべて選択", icon: "layers", shortcut: `${MOD}A`, run: () => cmd.selectAll() },
+        { label: "すべて選択", icon: "layers", shortcut: `${MOD}A`, run: () => (this.ui.prefs.view === "list" ? this.ui.select(this.listIds()) : cmd.selectAll()) },
         { label: "折りたたみをすべて開く", icon: "expand", disabled: ro, run: () => cmd.expandAll() },
       ];
     }
@@ -419,7 +423,9 @@ export class App implements AppContext {
       const onCanvas = active === document.body || active === this.view.canvas || active === null || this.listEl.contains(active);
       if (mod && lower === "a" && onCanvas) {
         ev.preventDefault();
-        this.cmd.selectAll();
+        // リストでは、絞り込み・検索で表に出ている行だけを選ぶ（見えない行まで消したり変えたりしない）
+        if (this.ui.prefs.view === "list") this.ui.select(this.listIds());
+        else this.cmd.selectAll();
         return;
       }
       if (mod && lower === "d") {
@@ -596,7 +602,13 @@ export class App implements AppContext {
   }
 
   private async exportJsonAsync(doc: DocData, filename: string): Promise<void> {
-    const text = exportText(doc, APP_VERSION);
+    let text: string;
+    try {
+      text = exportText(doc, APP_VERSION);
+    } catch (e) {
+      toast(`書き出せませんでした（${e instanceof Error ? e.message : String(e)}）`, { tone: "error", ms: 9000 });
+      return;
+    }
     const done = () => {
       try {
         localStorage.setItem("4d-branch:lastExport", new Date().toISOString());
@@ -664,7 +676,7 @@ export class App implements AppContext {
     this.ui.setPrefs({ projectFilter: [], scenarioId: null, timeCursor: null });
     this.ui.setSearch("");
     this.view.fit();
-    toast(`${label}しました`, { tone: "ok", action: { label: "元に戻す", run: () => this.cmd.undo() } });
+    toast(`${label}しました`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
   }
 
@@ -677,7 +689,7 @@ export class App implements AppContext {
     const added = Object.keys(this.store.doc.nodes).filter((id) => !before.has(id));
     this.ui.select(added);
     this.view.fit(added);
-    toast(`ノード ${res.added.nodes} 件・接続 ${res.added.edges} 本を追加しました${res.reusedProjects ? `（同じ名前のプロジェクト ${res.reusedProjects} 件はまとめました）` : ""}`, { tone: "ok", action: { label: "元に戻す", run: () => this.cmd.undo() } });
+    toast(`ノード ${res.added.nodes} 件・接続 ${res.added.edges} 本を追加しました${res.reusedProjects ? `（同じ名前のプロジェクト ${res.reusedProjects} 件はまとめました）` : ""}`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
   }
 

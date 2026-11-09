@@ -61,7 +61,7 @@ export function dayNumber(s: string): number {
 
 export function fromDayNumber(n: number): string {
   const d = new Date(n * DAY_MS);
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  return `${String(d.getUTCFullYear()).padStart(4, "0")}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
 export function addDays(s: string, days: number): string {

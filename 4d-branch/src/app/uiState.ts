@@ -2,6 +2,7 @@
 // 表示の設定は localStorage に、カメラの位置はドキュメントごとに覚える
 
 import type { ID } from "../model/types";
+import { isDateStr } from "../model/dates";
 import { Emitter } from "../store/emitter";
 
 export type ViewMode = "map" | "list";
@@ -76,6 +77,12 @@ export interface UiEvents {
   visual: void;
 }
 
+/** 時点（再生中は毎フレーム変わる）だけの変更か。パネルの作り直しはしない（押したボタンが差し替わってクリックが消えるため） */
+export function onlyTimeCursor(p: Partial<Prefs>): boolean {
+  const keys = Object.keys(p);
+  return keys.length > 0 && keys.every((k) => k === "timeCursor");
+}
+
 const PREFS_KEY = "4d-branch:prefs";
 const CAMERA_KEY = "4d-branch:camera:";
 
@@ -84,6 +91,8 @@ function loadPrefs(): Prefs {
     const raw = globalThis.localStorage?.getItem(PREFS_KEY);
     if (!raw) return structuredClone(DEFAULT_PREFS);
     const p = JSON.parse(raw) as Partial<Prefs>;
+    // 壊れた時点（前の版で保存された NaN など）は外す
+    if (p.timeCursor != null && !isDateStr(p.timeCursor)) p.timeCursor = null;
     return { ...structuredClone(DEFAULT_PREFS), ...p, sections: { ...DEFAULT_PREFS.sections, ...(p.sections ?? {}) }, listSort: { ...DEFAULT_PREFS.listSort, ...(p.listSort ?? {}) } };
   } catch {
     return structuredClone(DEFAULT_PREFS);

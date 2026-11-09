@@ -7,7 +7,7 @@ import type { DocData } from "../model/types";
 import { previewImport, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
 import { BACKUP_LABELS, type BackupMeta } from "../persist/persistence";
-import { MOD, clear, h } from "./dom";
+import { MOD, clear, h, isImeKey } from "./dom";
 import { icon } from "./icons";
 import { confirmDialog, openModal, toast } from "./overlays";
 
@@ -298,7 +298,7 @@ export function openTextDialog(opts: { title: string; label: string; value: stri
     ok.addEventListener("click", submit);
     field.addEventListener("keydown", (ev) => {
       const e = ev as KeyboardEvent;
-      if (e.key === "Enter" && !e.isComposing && (!opts.multiline || e.metaKey || e.ctrlKey)) {
+      if (e.key === "Enter" && !isImeKey(e) && (!opts.multiline || e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         submit();
       }
