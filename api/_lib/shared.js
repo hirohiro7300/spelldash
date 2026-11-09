@@ -73,7 +73,10 @@ export async function verifyUser(authorization) {
 
 // このインスタンスのメモリー: 回数（"<scope>:<user>" → { day, count }。ai_take が使えないときだけ）・Pro の覚え・処理中の人
 const usage = new Map();
-const busy = new Set();
+const busy = new Map(); // 処理中の人 → 印（{ at: 始めた時刻 }）
+// 処理中の印は BUSY_STALE_MS で古いとみなす（関数の時間切れ〔vercel.json の maxDuration。最大 60 秒〕で finally が走らないまま、
+// 同じインスタンスが使い回されても、その人をずっと 429 busy にしない。Batch 88 の反証）
+const BUSY_STALE_MS = 90 * 1000;
 
 // 本人が Pro かどうか（ユーザーごと 5 分のメモリキャッシュ。読めなければ無料として扱う）。
 // 無料も覚える。無料の上限で断る前は、30 秒より古い答えなら読み直す（fresh。加入した直後の人を無料の上限で断らない。
@@ -119,6 +122,7 @@ function pruneMemory(today) {
   for (const [key, entry] of usage) if (entry.day !== today) usage.delete(key);
   const now = Date.now();
   for (const [key, entry] of planCache) if (now - entry.at >= PLAN_CACHE_MS) planCache.delete(key);
+  for (const [key, mark] of busy) if (now - mark.at >= BUSY_STALE_MS) busy.delete(key); // 外されないまま古くなった印
 }
 
 // 検査とログ用: メモリーの項目の数
@@ -206,16 +210,19 @@ export async function aiGate(req, res) {
 // 断ったら応答して null。通れば、終わりに必ず呼ぶ関数（処理中の印を外す）を返す
 // limit は無料の 1 日上限、proLimit は Pro の上限（省略時は limit と同じ）
 export async function aiTake(req, res, user, { scope, limit, proLimit = limit }) {
-  if (busy.has(user.id)) {
+  const held = busy.get(user.id);
+  if (held && Date.now() - held.at < BUSY_STALE_MS) {
     send(res, 429, BUSY);
     return null;
   }
-  busy.add(user.id);
+  const mark = { at: Date.now() };
+  busy.set(user.id, mark);
   let released = false;
+  // 外すのは自分の印だけ（古い印の呼び出しが後から終わっても、後から始めた人の印を外さない）
   const release = () => {
     if (released) return;
     released = true;
-    busy.delete(user.id);
+    if (busy.get(user.id) === mark) busy.delete(user.id);
   };
   try {
     const today = todayUtc();
