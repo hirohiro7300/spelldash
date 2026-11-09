@@ -148,11 +148,15 @@ await t("いちばん大きい単語帳（1,000 語・英語 150 字・訳 150 �
   const dj = await S.decodeShare(j.code);
   return (z.fits && j.fits && dz.ok && dj.ok && dz.words.length === 1000 && dj.words.length === 1000) || JSON.stringify({ z: z.code.length, j: j.code.length, dz: dz.reason, dj: dj.reason });
 });
-await t("訳の字を JSON がいちばん長く書く形（制御文字は 1 字 6 バイト）でも、1,000 語 × 150 字は j1 の上限の内", async () => {
-  const words = Array.from({ length: 1000 }, (_, i) => [`${"a".repeat(146)}${String(i).padStart(4, "0")}`.replace(/\d/g, (d) => "abcdefghij"[d]), "\u0001".repeat(150)]);
-  const j = await S.encodeShare({ name: "あ".repeat(20), words }, { zip: false });
-  const dj = await S.decodeShare(j.code);
-  return (j.fits && j.code.length <= S.SHARE_MAX_CODE && dj.ok && dj.words.length === 1000) || JSON.stringify({ len: j.code.length, r: dj.reason });
+await t("訳の字を JSON がいちばん長く書く形（どの字も \\uXXXX の 1 字 6 バイト）でも、1,000 語 × 150 字は j1 の上限の内", async () => {
+  // 制御文字は読む側が断る（下の「断る: 名前か訳に制御文字…」）。ほかの書き方の JSON を考えて、ふつうの字（あ）を全部 あ と書いた形で測る
+  const esc = (n) => "\\u3042".repeat(n);
+  const en = (i) => `${"a".repeat(146)}${String(i).padStart(4, "0")}`.replace(/\d/g, (d) => "abcdefghij"[d]);
+  const json = `{"v":1,"n":"${esc(20)}","w":[${Array.from({ length: 1000 }, (_, i) => `["${en(i)}","${esc(150)}"]`).join(",")}]}`;
+  const code = `j1.${B64(Buffer.from(json, "utf8"))}`;
+  const dj = await S.decodeShare(code);
+  return (json.length <= S.SHARE_MAX_JSON && code.length <= S.SHARE_MAX_CODE && dj.ok && dj.words.length === 1000 && dj.name === "あ".repeat(20) && dj.words[999].ja === "あ".repeat(150)) ||
+    JSON.stringify({ json: json.length, len: code.length, r: dj.reason });
 });
 
 // ===== 断る =====
@@ -199,6 +203,40 @@ await t("断る: 1 語でも決まりに合わなければリンクごと（使�
   const rs = await Promise.all([["café", "喫茶店"], ["a".repeat(151), "x"], ["abc", "あ".repeat(151)], ["abc", " "], ["123", "数"]].map((e) => reasonOf(plain({ ...GOOD, w: [["up", "上がる"], e] }))));
   return rs.every((r) => r === "entry") || JSON.stringify(rs);
 });
+// 同期の送り先（user_items の payload）は NUL と組になっていないサロゲートを受け付けない: 1 語でも入ると、同じ送りの組の語・メモがどれも届かなくなる。
+// 1 語ずつ足す欄からは入らない字なので、リンクから入れない。向きを変える制御文字は、名前と訳の見え方を並べ替えられるので一緒に断る
+const JSON_LONE = (n, ja) => `j1.${B64(Buffer.from(`{"v":1,"n":${n},"w":[["up","上がる"],["go",${ja}]]}`, "utf8"))}`; // \\ud800 を JSON の書き方のまま入れる（Buffer は組になっていないサロゲートを UTF-8 にできない）
+const UNSAFE_JA = [["NUL", "a\u0000b"], ["ESC", "\u001b[31m赤"], ["US", "a\u001fb"], ["DEL", "a\u007fb"], ["NEL", "a\u0085b"], ["C1 の終わり", "a\u009fb"], ["LRE", "‪abc"], ["RLO", "‮abc"], ["LRI", "⁦abc"], ["PDI", "abc⁩"]];
+await t("断る: 訳に制御文字（NUL・ESC・US・DEL・C1）・向きを変える制御文字（U+202A〜U+202E・U+2066〜U+2069）があればリンクごと（entry）", async () => {
+  const rs = await Promise.all(UNSAFE_JA.map(([, ja]) => reasonOf(plain({ ...GOOD, w: [["up", "上がる"], ["go", ja]] }))));
+  const zrs = await Promise.all(UNSAFE_JA.map(([, ja]) => reasonOf(zipped({ ...GOOD, w: [["go", ja]] }))));
+  return (rs.every((r) => r === "entry") && zrs.every((r) => r === "entry")) || JSON.stringify(UNSAFE_JA.map(([k], i) => [k, rs[i], zrs[i]]));
+});
+await t("断る: 訳に組になっていないサロゲート（上だけ・下だけ・逆の順）があればリンクごと（entry）", async () => {
+  const rs = await Promise.all(['"x\\ud800y"', '"x\\udfffy"', '"\\udc00\\ud800"', '"\\ud83d"'].map((ja) => reasonOf(JSON_LONE('"仕事"', ja))));
+  return rs.every((r) => r === "entry") || JSON.stringify(rs);
+});
+await t("断る: 単語帳の名前に制御文字・組になっていないサロゲート・向きを変える制御文字があれば（name）", async () => {
+  const rs = await Promise.all(["a\u0000b", "a\u001bb", "a\u0085b", "‮abc", "abc⁧"].map((n) => reasonOf(plain({ ...GOOD, n }))));
+  const lone = await Promise.all(['"a\\udfff"', '"\\ud800a"'].map((n) => reasonOf(JSON_LONE(n, '"行く"'))));
+  return ([...rs, ...lone].every((r) => r === "name")) || JSON.stringify({ rs, lone });
+});
+await t("読める: タブ・改行は空白 1 つ（今までどおり）・サロゲートの組（絵文字）・向きを変えない字（全角の空白・ゼロ幅の字）はそのまま", async () => {
+  const dec = await S.decodeShare(plain({ v: 1, n: "旅行😀", w: [["go", "行く\tこと\n"], ["fun", "楽しい😀"], ["ok", "よい　とても"]] }));
+  return (dec.ok && dec.name === "旅行😀" && JSON.stringify(dec.words.map((w) => w.ja)) === JSON.stringify(["行く こと", "楽しい😀", "よい とても"])) || JSON.stringify(dec);
+});
+await t("渡す側も同じ決まり: 訳に制御文字・組になっていないサロゲート・向きを変える字のある語は入れずに数える（invalid）・名前にあれば最初の単語帳の名前・作った code は必ず読める", async () => {
+  const list = [
+    { en: "up", ja: "上がる", book: "w1" }, { en: "go", ja: "a\u0000b", book: "w1" }, { en: "sun", ja: "x\ud800y", book: "w1" }, { en: "moon", ja: "‮abc", book: "w1" },
+    { en: "tea", ja: "お茶😀", book: "w1" }
+  ];
+  const s1 = S.bookShare(list, "w1", [{ id: "main", name: "マイ単語帳" }, { id: "w1", name: "仕事" }]);
+  const s2 = S.bookShare(list, "w1", [{ id: "main", name: "マイ単語帳" }, { id: "w1", name: "仕‮事" }]);
+  const d1 = await S.decodeShare((await S.encodeShare(s1)).code);
+  const d2 = await S.decodeShare((await S.encodeShare(s2, { zip: false })).code);
+  return (JSON.stringify(s1.words) === JSON.stringify([["up", "上がる"], ["tea", "お茶😀"]]) && s1.invalid === 3 && s1.name === "仕事" && s2.name === "マイ単語帳" && d1.ok && d2.ok && d1.words.length === 2) ||
+    JSON.stringify({ s1, s2: s2.name, d1: d1.reason ?? d1.words?.length, d2: d2.reason });
+});
 await t("断る: 語の数の上限（1,000 語は読める・1,001 語は断る）", async () => {
   const w = (n) => Array.from({ length: n }, (_, i) => [`w${"abcdefghij"[i % 10]}${"abcdefghij"[Math.floor(i / 10) % 10]}${"abcdefghij"[Math.floor(i / 100) % 10]}`, `語${i}`]);
   const a = await S.decodeShare(zipped({ v: 1, n: "仕事", w: w(1000) }));
@@ -214,6 +252,52 @@ await t("断る: 広げると大きすぎる z1（2 MB の空白を縮めた物�
   const big = `j1.${B64(Buffer.from(" ".repeat(S.SHARE_MAX_JSON + 1)))}`;
   const rs = [bomb.length < S.SHARE_MAX_CODE, await reasonOf(bomb), await reasonOf(big)];
   return (rs[0] && rs[1] === "size" && rs[2] === "size") || JSON.stringify(rs);
+});
+
+// 縮めた物は小さく切って広げる道へ渡す（ブラウザの広げ方は、渡された 1 切れを全部広げてから読む側に渡す: 1.3 MB の z1 を 1 度に渡すと
+// 上限で読むのをやめても約 1 GB を広げていた）。広げる道（DecompressionStream）に渡した切れの大きさを、本物に渡す前に控えて確かめる
+async function withUnzipSpy(fn) {
+  const Real = globalThis.DecompressionStream;
+  const writes = [];
+  globalThis.DecompressionStream = class {
+    constructor(format) {
+      const real = new Real(format);
+      const writer = real.writable.getWriter();
+      this.readable = real.readable;
+      this.writable = new WritableStream({
+        write(chunk) {
+          writes.push(chunk.byteLength);
+          return writer.write(chunk);
+        },
+        close: () => writer.close(),
+        abort: (reason) => writer.abort(reason)
+      });
+    }
+  };
+  try {
+    const r = await fn();
+    await new Promise((done) => setTimeout(done, 50)); // 断った後にも渡し続けていないか
+    return { r, writes: [...writes] };
+  } finally {
+    globalThis.DecompressionStream = Real;
+  }
+}
+const SLICE = S.SHARE_UNZIP_SLICE ?? 4096;
+await t("広げると 100 MB になる z1（縮めて約 97 KB）: 4 KB ずつ広げる道へ渡し、最初の数切れ（16 KB まで）で上限に着いて断る（size）・断った後は渡さない", async () => {
+  const bomb = `z1.${B64(zlib.deflateRawSync(Buffer.alloc(100_000_000, 0x20), { level: 9 }))}`;
+  const { r, writes } = await withUnzipSpy(() => S.decodeShare(bomb));
+  const fed = writes.reduce((a, b) => a + b, 0);
+  return (S.SHARE_UNZIP_SLICE === 4096 && r.reason === "size" && writes.length > 0 && writes.every((n) => n <= SLICE) && fed <= 4 * SLICE) || JSON.stringify({ slice: S.SHARE_UNZIP_SLICE, reason: r.reason, writes: writes.slice(0, 5), n: writes.length, fed });
+});
+await t("ふつうの z1 も 4 KB ずつ渡して全部読める（いちばん大きい単語帳 1,000 語 × 150 字: 渡した合計は縮めた物の長さと同じ）", async () => {
+  let x = 777;
+  const rnd = () => ((x = (x * 1103515245 + 12345) >>> 0) / 4294967296);
+  const words = Array.from({ length: 1000 }, (_, i) => [`${"abcdefghijklmnopqrstuvwxyz"[i % 26]}${Array.from({ length: 149 }, () => "abcdefghijklmnopqrstuvwxyz"[Math.floor(rnd() * 26)]).join("")}`, Array.from({ length: 150 }, () => "あいうえおかきくけこ日本語英会話仕事"[Math.floor(rnd() * 18)]).join("")]);
+  const enc = await S.encodeShare({ name: "仕事", words });
+  const raw = Buffer.from(enc.code.slice(3), "base64url").length;
+  const { r, writes } = await withUnzipSpy(() => S.decodeShare(enc.code));
+  const fed = writes.reduce((a, b) => a + b, 0);
+  return (r.ok && r.words.length === 1000 && r.words[999].ja === words[999][1] && writes.length > 2 && writes.every((n) => n <= SLICE) && fed === raw) || JSON.stringify({ ok: r.ok, reason: r.reason, n: writes.length, fed, raw });
 });
 await t("読む道に eval・Function・innerHTML が無い（JSON.parse だけ）", () => {
   const src = fs.readFileSync(path.join(ROOT, "js", "myWordsShare.js"), "utf8").replace(/\/\/.*$/gm, "");
@@ -333,15 +417,29 @@ await t("新しい単語帳の名前: 字の途中（サロゲートの組）で
 }
 
 // ===== URL を送る所に # の後ろを入れない（ご意見のページ名・動線の計測・同期・送信） =====
-await t("URL を送る module は location.href・location.hash・document.URL を読まない（ご意見のページ名は pathname + search だけ）", () => {
+// location を値として使う所（location.href・location.hash・String(location)・window.location・globalThis.location・self.location・document.location・
+// 分けて取る const { hash } = location など）は全部当たり。許すのは pathname・search・origin・protocol・host・hostname・port と、ページを替える replace・assign・reload だけ。
+// 字を見る検査なので、書き方を替えれば抜けうる（本当の守りは E2E 84.1 の「要求の URL と本文に code が入らない」）
+const LOCATION_VALUE = /\blocation\b(?!\s*\.\s*(?:pathname|search|origin|protocol|host|hostname|port|replace|assign|reload)\b)/;
+const DOCUMENT_URL = /\bdocument\s*\.\s*(?:URL|documentURI|baseURI)\b/;
+const sendsUrl = (src) => LOCATION_VALUE.test(src) || DOCUMENT_URL.test(src);
+await t("URL を送る module は location を値として読まない（href・hash・String(location)・window.location・globalThis.location・document.URL。ご意見のページ名は pathname + search だけ）", () => {
   const files = ["feedback.js", "funnelLog.js", "sync.js", "userItemsSync.js", "supabase.js", "plan.js", "proFunnel.js", "wordAi.js", "cardGen.js", "myWords.js", "myWordsShare.js"];
   const hits = [];
   for (const f of files) {
-    const src = fs.readFileSync(path.join(ROOT, "js", f), "utf8").replace(/\/\/.*$/gm, "");
-    if (/location\.href|location\.hash|document\.URL|document\.location|location\.toString\(\)|String\(location\)|`\$\{location\}`/.test(src)) hits.push(f);
+    const src = fs.readFileSync(path.join(ROOT, "js", f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    if (sendsUrl(src)) hits.push(f);
   }
   const feedback = fs.readFileSync(path.join(ROOT, "js", "feedback.js"), "utf8");
   return (hits.length === 0 && /page: location\.pathname \+ location\.search,/.test(feedback)) || JSON.stringify(hits);
+});
+await t("URL を送る module の字の検査は、location を値として使う書き方を見つける（検査そのものの確かめ）", () => {
+  const caught = ["page: location.href", "page: location.hash", "page: String(globalThis.location)", "page: String(location)", "page: `${location}`", "page: window.location.toString()",
+    "const { hash } = location;", "page: self.location + ''", "page: document.location.href", "page: document.URL", "u: new URL(location)", "page: location['hash']"];
+  const fine = ["page: location.pathname + location.search,", "if (location.pathname.endsWith('/pro.html')) return;", "location.replace('./pro.html?resume=1');", "const o = location.origin;", "geolocation: 1"];
+  const missed = caught.filter((s) => !sendsUrl(s));
+  const wrong = fine.filter((s) => sendsUrl(s));
+  return (missed.length === 0 && wrong.length === 0) || JSON.stringify({ missed, wrong });
 });
 
 // ===== プライバシーポリシーの 1 行 =====

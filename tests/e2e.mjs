@@ -26037,6 +26037,17 @@ console.log("give a word book (84.1):");
     await page.keyboard.press("Enter"); // 文字をコピー
     const st2ok = await waitText(page, "#myGiveStatus", /文字をコピーした（6行）/);
     const TEXT = await clip(page);
+    // 同じボタンをもう一度: 読み上げの行（role=status）を一度空にしてから同じ文を書く（同じ字を書き直すだけでは読み上げは黙る）
+    await page.evaluate(() => {
+      const s = document.getElementById("myGiveStatus");
+      window.__giveSaid = [];
+      new MutationObserver(() => window.__giveSaid.push(s.textContent)).observe(s, { childList: true, characterData: true, subtree: true });
+    });
+    await page.keyboard.press("Enter"); // もう一度 文字をコピー
+    await page.waitForFunction(() => window.__giveSaid.length > 0 && /文字をコピーした（6行）/.test(window.__giveSaid.at(-1)), null, { timeout: 3000, polling: 10 }).catch(() => {});
+    const said2 = await page.evaluate(() => window.__giveSaid.slice());
+    check("84.1 渡す: 同じコピーのボタンをもう一度押すと、読み上げの行を空にしてから同じ文を書き直す（2 度目も読み上げる）",
+      said2.length >= 2 && said2[0] === "" && /文字をコピーした（6行）/.test(said2.at(-1)), JSON.stringify(said2));
     await page.keyboard.press("Escape");
     const closed = await page.evaluate(() => ({ hidden: document.getElementById("myGive").hidden, active: document.activeElement?.id, expanded: document.getElementById("myBookGive").getAttribute("aria-expanded") }));
     CODE = LINK.replace(/^[^#]*#share=/, "");
@@ -26108,6 +26119,31 @@ console.log("give a word book (84.1):");
         && s1.words.filter((w) => w.bookName === "旅行").map((w) => w.text ?? w.en).join() === "boarding pass,Wi-Fi",
       JSON.stringify({ shown, v0: { sum: v0.sum, rows: v0.rows }, v1: { tabs: v1.tabs, list: v1.list, hash: v1.hash, status: v1.status }, s1: s1.words.map((w) => [w.en, w.text, w.bookName]) }));
     await closeCtx(page2);
+  }
+
+  // (1c) 今の決まりに合う語が無い単語帳（前の版で入った 151 字の英語・使えない字の英語だけ）には「渡す」を出さない（押しても何も起きないボタンを出さない）。
+  //      合う語が 1 つでもあれば出し、合わない語の数を札で言う
+  {
+    const page = await sharePage({
+      spelldash_my_books: JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "w2", name: "旅" }]),
+      spelldash_my_words: JSON.stringify([
+        { en: "x".repeat(151), ja: "長い", addedAt: "2026-11-01T00:00:00.000Z" },
+        { en: "café", ja: "喫茶店", addedAt: "2026-11-02T00:00:00.000Z" },
+        { en: "a/b", ja: "斜線", book: "w2", bookName: "旅", addedAt: "2026-11-03T00:00:00.000Z" },
+        { en: "tea", ja: "お茶", book: "w2", bookName: "旅", addedAt: "2026-11-04T00:00:00.000Z" }
+      ])
+    });
+    await open(page, BASE + "/mywords.html");
+    const g0 = await page.evaluate(() => ({ hidden: document.getElementById("myBookGive").hidden, rows: document.querySelectorAll("#myWordsList .mw-row").length }));
+    await open(page, BASE + "/mywords.html?book=w2");
+    const g1 = await page.evaluate(() => ({ hidden: document.getElementById("myBookGive").hidden }));
+    await page.click("#myBookGive");
+    const opened = await panelOpen(page);
+    const p1 = await page.evaluate(() => ({ lead: document.getElementById("myGiveLead").textContent, note: document.getElementById("myGiveNote").hidden ? "" : document.getElementById("myGiveNote").textContent }));
+    check("84.1 渡す: 今の決まりに合う語が無い単語帳（151 字の英語・使えない字の英語だけ）には「渡す」を出さない・合う語があれば出して「今の決まりに合わない 1語は入れない」と言う",
+      g0.hidden === true && g0.rows === 2 && g1.hidden === false && opened && /^1語。/.test(p1.lead) && /今の決まりに合わない 1語は入れない/.test(p1.note) && page.errors.length === 0,
+      JSON.stringify({ g0, g1, opened, p1, err: page.errors[0] }));
+    await closeCtx(page);
   }
 
   // (2) アプリ（ネイティブの枠を偽装）: リンクは本番の origin（https://www.spelldash.net）。端末の共有（navigator.share）があればボタンを出し、リンクを渡す。加入画面へのリンクは無い
@@ -26200,6 +26236,32 @@ console.log("give a word book (84.1):");
     await closeCtx(page);
   }
 
+  // (3b) Escape: 問いの間は「やめる」と同じ（閉じる・何も書かない・# を外す・焦点は単語帳の切り替え）。足した後は「閉じる」と同じ（「渡す」の札の Escape と同じ）
+  {
+    const page = await sharePage({});
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.waitForFunction(() => document.activeElement?.id === "myRecvTitle", null, { timeout: 3000, polling: 10 }).catch(() => {});
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.getElementById("myRecv").hidden, null, { timeout: 2000, polling: 10 }).catch(() => {});
+    const e1 = await recvView(page);
+    const s1 = await stored(page);
+    await page.goto(LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.click("#myRecvNew");
+    await waitText(page, "#myRecvStatus", /足した/);
+    const d0 = await recvView(page);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.getElementById("myRecv").hidden, null, { timeout: 2000, polling: 10 }).catch(() => {});
+    const e2 = await recvView(page);
+    const s2 = await stored(page);
+    check("84.1 Escape: 問いの間は「やめる」と同じ（閉じる・何も書かない・# を外す・焦点は単語帳の切り替え）・足した後は「閉じる」と同じ（語はそのまま・焦点は単語帳の切り替え）・エラー 0",
+      !e1.shown && e1.hash === "" && /mw-book/.test(e1.active) && s1.words.length === 0 && s1.books === null
+        && d0.active === "myRecvClose" && !e2.shown && /mw-book/.test(e2.active) && s2.words.length === 6 && page.errors.length === 0,
+      JSON.stringify({ e1: [e1.shown, e1.hash, e1.active], s1: [s1.words.length, s1.books], d0: d0.active, e2: [e2.shown, e2.active], n: s2.words.length, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
   // (5) 上限（無料 100 語）: 95 語の人は「上限まであと 5語」と出て、新しい単語帳として足すと 5 語だけ入り、上限で足せなかった 1 語と上限の文（Batch 83 の文）。
   //     受付前の Web は文だけ・受付中の Web は「Pro なら1,000語」が加入画面へのリンク（動線の印 mywords）・アプリはリンクも Pro の話もなし。100 語の人は足すボタンを止める
   {
@@ -26239,6 +26301,35 @@ console.log("give a word book (84.1):");
       JSON.stringify(full.buttons) === JSON.stringify([["myRecvNew", "新しい単語帳として足す", true], ["myRecvHere", "今の単語帳に足す", true], ["myRecvCancel", "やめる", false]]) && /無料で追加できるのは100語まで。/.test(full.hint ?? "") && page.errors.length === 0,
       JSON.stringify(full));
     await closeCtx(page);
+
+    // 渡された名前と訳に上限の文と同じ字（「Pro なら1,000語」）があっても、そこは加入画面へのリンクにしない（受付中の Web）。
+    // リンクにするのはアプリが書いた上限の文の中だけ: 上限の前は 0 個、上限で止まったときは上限の文の 1 個だけ
+    const offer = `Pro なら${fmtN(1000)}語`;
+    const offerCode = `j1.${Buffer.from(JSON.stringify({ v: 1, n: offer, w: [["upgrade", `${offer}の話`], ["plan", "計画"]] })).toString("base64url")}`;
+    const offerCase = async (seed) => {
+      const p = await sharePage({ spelldash_my_words: JSON.stringify(seed), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) });
+      await p.goto(`${BASE}/mywords.html#share=${offerCode}`, { waitUntil: "networkidle" });
+      await waitRecv(p);
+      const ask = await recvView(p);
+      await p.click("#myRecvNew");
+      await waitText(p, "#myRecvStatus", /足した/);
+      const done = await recvView(p);
+      const before = await p.evaluate(() => document.querySelector("#myRecvStatus a")?.previousSibling?.textContent ?? null);
+      const errors = p.errors.slice(0, 1);
+      await closeCtx(p);
+      return { ask: { hint: ask.hint, links: ask.links }, done: { status: done.status, links: done.links }, before, errors };
+    };
+    const o1 = await offerCase([{ en: "upgrade", ja: `${offer}の話` }]);
+    check("84.1 渡された名前と訳に「Pro なら1,000語」があっても加入画面へのリンクにしない（受付中の Web・上限の前: 問いの案内にも、名前と訳の入った結果の文にもリンクなし）",
+      /新しい単語帳の名前は「Pro なら1,000語」/.test(o1.ask.hint ?? "") && o1.ask.links.length === 0
+        && o1.done.status === `1語を新しい単語帳「${offer}」に足した。足せなかった 1語: upgrade（${offer}の話）: 同じ訳で「マイ単語帳」にすでに登録されています。` && o1.done.links.length === 0 && o1.errors.length === 0,
+      JSON.stringify(o1));
+    const o2 = await offerCase(FILLER(99));
+    check("84.1 渡された名前に「Pro なら1,000語」があって上限で止まったとき: リンクは上限の文の中の 1 つだけ（名前の字はリンクにしない）",
+      /上限まであと 1語/.test(o2.ask.hint ?? "") && o2.ask.links.length === 0
+        && o2.done.status === `1語を新しい単語帳「${offer}」に足した。上限で足せなかった 1語。無料で追加できるのは${fmtN(100)}語まで（${offer}）。` && o2.done.links.length === 1
+        && o2.done.links[0].href === "./pro.html" && o2.done.links[0].funnel === "mywords" && /上限で足せなかった 1語。無料で追加できるのは100語まで（$/.test(o2.before ?? "") && o2.errors.length === 0,
+      JSON.stringify(o2));
   }
 
   // (6) やめる・# だけ替えたリンク・読めないリンク・ご意見と動線の計測（クラウドあり: スタブが要求を送る）
@@ -26283,6 +26374,36 @@ console.log("give a word book (84.1):");
     const sBad = await stored(page);
     check("84.1 読めないリンク（壊れた base64・知らない頭の印・版が違う・縮めた形でない・1,001 語・空）: 「このリンクは読めません」の 1 行だけ（題・語・ボタンなし）・何も書かない",
       badViews.every((b) => b.ok) && sBad.words.length === 0 && sBad.books === null, JSON.stringify(badViews.filter((b) => !b.ok)));
+    // 名前か訳に制御文字・組になっていないサロゲート・向きを上書きする字のあるリンク（手で作った物。同期の送り先が断る字で、1 語でも入ると同じ送りの組の語が届かなくなる）:
+    // 読めないリンクと同じ 1 行だけ（足すボタンが無い）・何も書かない
+    const unsafe = [
+      ["訳に NUL", `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: [["go", "行く"], ["tea", "a\u0000b"]] }))}`],
+      ["訳に ESC", `j1.${B64U(JSON.stringify({ v: 1, n: "仕事", w: [["go", "\u001b[31m赤"]] }))}`],
+      ["名前に組になっていないサロゲート", `j1.${B64U('{"v":1,"n":"a\\ud800","w":[["go","行く"]]}')}`],
+      ["名前に向きを上書きする字", `j1.${B64U(JSON.stringify({ v: 1, n: "‮abc", w: [["go", "行く"]] }))}`]
+    ];
+    const unsafeViews = [];
+    for (const [name, code] of unsafe) {
+      await page.goto("about:blank");
+      await page.goto(`${BASE}/mywords.html#share=${code}`, { waitUntil: "networkidle" });
+      await waitRecv(page);
+      const v = await recvView(page);
+      unsafeViews.push({ name, ok: v.shown && v.text === "このリンクは読めません" && v.buttons.length === 0 && v.sum === null, text: v.text.slice(0, 60), buttons: v.buttons.map((b) => b[0]) });
+    }
+    const sUnsafe = await stored(page);
+    check("84.1 名前か訳に制御文字（NUL・ESC）・組になっていないサロゲート・向きを上書きする字のあるリンク: 「このリンクは読めません」の 1 行だけ（足すボタンなし）・何も書かない",
+      unsafeViews.every((u) => u.ok) && sUnsafe.words.length === 0 && sUnsafe.books === null, JSON.stringify(unsafeViews.filter((u) => !u.ok)));
+    // 読めないリンクの 1 行を出した後は # を外す（読み直しても同じ 1 行を出さない・同じ code を読み直す手間も繰り返さない）
+    await page.goto("about:blank");
+    await page.goto(`${BASE}/mywords.html#share=z1.@@@@`, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.waitForFunction(() => location.hash === "", null, { timeout: 2000, polling: 10 }).catch(() => {});
+    const b1 = await recvView(page);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(150);
+    const b2 = await recvView(page);
+    check("84.1 読めないリンク: 1 行を出した後は # を外す（1 行は出たまま・読み直すと出ない）",
+      b1.shown && b1.text === "このリンクは読めません" && b1.hash === "" && !b2.shown && b2.hash === "", JSON.stringify({ b1: [b1.shown, b1.text, b1.hash], b2: [b2.shown, b2.hash] }));
     // 開いたままのページで # だけを替える（チャットからもう 1 つのリンクを開いた）: 読めないリンクの 1 行から、渡された単語帳の問いに替わる
     await page.evaluate((l) => { location.hash = l.slice(l.indexOf("#")); }, LINK);
     await page.waitForFunction(() => !document.getElementById("myRecvSum").hidden, null, { timeout: 5000, polling: 10 }).catch(() => {});
@@ -26350,6 +26471,46 @@ console.log("give a word book (84.1):");
     }
     check("84.1 320／390／1200 × 昼夜: 渡された単語帳（150 字の行）と開いた「渡す」で横スクロール 0・枠とボタンは画面の中・長い行は折り返す・動きを減らす設定では動く物も移り変わりも 0・エラー 0",
       bad.length === 0, JSON.stringify(bad));
+  }
+
+  // (9) 広げると 100 MB になる z1 のリンク（縮めて約 97 KB）: 縮めた物を 4 KB ずつ広げる道へ渡し、最初の数切れで上限に着いて読むのをやめる
+  //     （1 度に渡すと、ブラウザは渡した 1 切れを全部広げてから読む側に渡すので、上限で止めても全部を広げていた: 1.3 MB の code で約 1 GB）。
+  //     広げる道（DecompressionStream）に渡した切れの大きさは、本物に渡す前に控える。「このリンクは読めません」の 1 行だけ・何も書かない
+  {
+    const { deflateRawSync } = await import("zlib");
+    const bomb = `z1.${deflateRawSync(Buffer.alloc(100_000_000, 0x20), { level: 9 }).toString("base64url")}`;
+    const page = await sharePage({}, {
+      init: () => {
+        const Real = window.DecompressionStream;
+        window.__unzipWrites = [];
+        window.DecompressionStream = class {
+          constructor(format) {
+            const real = new Real(format);
+            const writer = real.writable.getWriter();
+            this.readable = real.readable;
+            this.writable = new WritableStream({
+              write: (chunk) => { window.__unzipWrites.push(chunk.byteLength); return writer.write(chunk); },
+              close: () => writer.close(),
+              abort: (reason) => writer.abort(reason)
+            });
+          }
+        };
+      }
+    });
+    const t0 = Date.now();
+    await page.goto(`${BASE}/mywords.html#share=${bomb}`, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    const ms = Date.now() - t0;
+    await page.waitForTimeout(100); // 断った後にも渡し続けていないか
+    const v = await recvView(page);
+    const writes = await page.evaluate(() => window.__unzipWrites.slice());
+    const fed = writes.reduce((a, b) => a + b, 0);
+    const s = await stored(page);
+    check("84.1 広げると 100 MB になる z1 のリンク（縮めて約 97 KB）: 4 KB ずつ広げる道へ渡し、最初の数切れ（16 KB まで）で読むのをやめる・「このリンクは読めません」の 1 行だけ・何も書かない・エラー 0",
+      bomb.length < 140000 && v.shown && v.text === "このリンクは読めません" && v.buttons.length === 0 && writes.length > 0 && writes.every((n) => n <= 4096) && fed <= 16384
+        && s.words.length === 0 && s.books === null && page.errors.length === 0,
+      JSON.stringify({ len: bomb.length, text: v.text, writes: writes.slice(0, 4), n: writes.length, fed, ms, err: page.errors[0] }));
+    await closeCtx(page);
   }
   check("84.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
