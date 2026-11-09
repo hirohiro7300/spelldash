@@ -655,7 +655,7 @@ await t("5.4 時計が戻って印の時刻が先になったら待たない（�
   return (meta()[`my_word:${bad}`]?.failAt === T0 - 1000 && cloud.upserts().length === after1 + 1 && cloud.upserts().at(-1).keys.includes(bad)) || show({ after1, n: cloud.upserts().length, mark: meta()[`my_word:${bad}`] });
 });
 
-// ===== 6. 読み方と送る待ち（Batch 87。docs/SPEC_MY_WORDS.md §14.4） =====
+// ===== 6. 読み方と送る待ち（Batch 87。docs/SPEC_MY_WORDS.md §16.1・§16.2） =====
 // 1 回の読みで返る行には上限がある（データベースの会社の API の既定は 1000 行）。readAllRows は主キーの列で並べて 1000 行ずつ、count に届くまで読む。
 // 読み切れなければ失敗（取り込みは「クラウドに無い」と見て送り返す道へ進まない）。最初の取り込みで送れた行は送る待ちから外す
 const T_OLD = "2026-11-01T00:00:00.000Z";

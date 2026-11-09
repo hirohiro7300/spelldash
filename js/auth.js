@@ -297,7 +297,7 @@ async function signInWithGoogle() {
     }
   });
 
-  // 成功時はGoogleへページ遷移するため、ここに戻るのはエラー時のみ。サーバーの英語の文は出さない（Batch 87）
+  // 成功時は外部アカウントのページへ移るため、ここに戻るのはエラー時のみ。サーバーの英語の文は出さない（Batch 87）
   if (error) {
     googleLoginButtonElement.disabled = false;
     showAuthMessage("ログインに失敗した。少しあけてもう一度。", "error");

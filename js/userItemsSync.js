@@ -11,7 +11,7 @@
 // 変更の記録: 各モジュールが書き込み時に touchItem() を呼ぶ → meta（更新時刻）と dirty（未送信）に積む。
 // 送り方（Batch 85。docs/SPEC_MY_WORDS.md §14.3）: 送る写しの、送り先が受け付けない字だけを U+FFFD に替え（端末の保存は書き換えない）、行の中身で断られた組は半分ずつ送り直し、
 // 1 行だけで断られた行は meta に印（failAt・failFor）を付けて、その行が変わるか UPLOAD_RETRY_MS が過ぎるまで送らない（下の「送る形と送り方」）。
-// 読み方（Batch 87。docs/SPEC_MY_WORDS.md §14.4）: 主キーの列で並べて READ_PAGE 行ずつ、全部の行の数に届くまで読む（readAllRows）。1 ページでも読めなければ
+// 読み方（Batch 87。docs/SPEC_MY_WORDS.md §16.1・§16.2）: 主キーの列で並べて READ_PAGE 行ずつ、全部の行の数に届くまで読む（readAllRows）。1 ページでも読めなければ
 // 取り込み全体を止める。取り込みで送れた行・クラウドから取り込んだ行は、送る待ち（dirty）から外す（同じ行を次の送信で送り直さない）。
 
 const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }
@@ -539,7 +539,7 @@ export async function probeUserItemsTable(supabase) {
   return tableMissing;
 }
 
-// ---- 読み方（Batch 87。docs/SPEC_MY_WORDS.md §14.4） ----
+// ---- 読み方（Batch 87。docs/SPEC_MY_WORDS.md §16.1・§16.2） ----
 // 送り先の API は 1 回の読みで返す行に上限がある（既定 1,000 行。上限より後ろの行は、何も言わずに届かない）。
 // 1,000 語の人の user_items（語 1,000 行と日ごとの記録）や学習記録（word_progress）を読み切るため、主キーの列で並べて READ_PAGE 行ずつ読む。
 // - 最初の読みで全部の行の数（count）を聞き、受け取った行の数がそれに届くまで続ける。次のページの頭は「受け取った行の数」（上限が READ_PAGE より
