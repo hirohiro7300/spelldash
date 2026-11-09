@@ -16,7 +16,7 @@ export interface MenuItem {
   danger?: boolean;
   hint?: string;
   run?: () => void;
-  submenu?: MenuItem[];
+  submenu?: MenuEntry[];
 }
 
 export type MenuEntry = MenuItem | "sep" | { header: string };

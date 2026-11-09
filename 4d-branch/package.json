@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node tests/e2e/run.mjs",
-    "check": "npm run typecheck && npm test && npm run build && npm run e2e"
+    "check": "npm run typecheck && npm test && npm run build && npm run e2e && node scripts/build-artifact.mjs && npm run e2e:artifact",
+    "build:artifact": "npm run build && node scripts/build-artifact.mjs",
+    "e2e:artifact": "node tests/e2e/artifact.mjs"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.6",

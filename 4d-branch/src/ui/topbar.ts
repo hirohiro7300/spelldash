@@ -39,9 +39,9 @@ export function buildTopbar(app: AppContext): HTMLElement {
   // ---- 表示切替
   const mapBtn = h("button", { class: "seg-btn", type: "button", title: "マップ（キャンバス）", onClick: () => ui.setPrefs({ view: "map" }) }, icon("map", 15), h("span", null, "マップ"));
   const listBtn = h("button", { class: "seg-btn", type: "button", title: "リスト（表）", onClick: () => ui.setPrefs({ view: "list" }) }, icon("list", 15), h("span", null, "リスト"));
-  const viewSeg = h("div", { class: "seg", role: "tablist", ariaLabel: "表示の切り替え" }, mapBtn, listBtn);
+  const viewSeg = h("div", { class: "seg view-seg", role: "tablist", ariaLabel: "表示の切り替え" }, mapBtn, listBtn);
 
-  const displayBtn = h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "表示の設定" }, icon("sliders", 15), h("span", null, "表示"), icon("chevronDown", 13));
+  const displayBtn = h("button", { class: "btn btn-ghost btn-sm display-btn", type: "button", title: "表示の設定" }, icon("sliders", 15), h("span", null, "表示"), icon("chevronDown", 13));
   displayBtn.addEventListener("click", () => menuFromButton(displayBtn, displayMenu(app), { minWidth: 260 }));
 
   // ---- 検索
@@ -62,9 +62,15 @@ export function buildTopbar(app: AppContext): HTMLElement {
     addGroup.append(b);
   }
 
+  // 狭い画面では 4 つの追加ボタンの代わりに 1 つ（押すと種類を選ぶ）
+  const addMobile = h("button", { class: "icon-btn mobile-only", type: "button", title: "ノードを追加", ariaLabel: "ノードを追加" }, icon("plus", 18));
+  addMobile.addEventListener("click", () =>
+    menuFromButton(addMobile, [{ header: "ノードを追加" }, ...NODE_TYPE_ORDER.map((t) => ({ label: NODE_TYPES[t].label, icon: t, hint: NODE_TYPES[t].hint, disabled: store.readOnly, run: () => cmd.createNode(t, undefined, { edit: true }) }))], { minWidth: 200 }),
+  );
+
   // ---- 元に戻す
   const undoBtn = h("button", { class: "icon-btn", type: "button", ariaLabel: "元に戻す", onClick: () => cmd.undo() }, icon("undo", 17));
-  const redoBtn = h("button", { class: "icon-btn", type: "button", ariaLabel: "やり直す", onClick: () => cmd.redo() }, icon("redo", 17));
+  const redoBtn = h("button", { class: "icon-btn redo-btn", type: "button", ariaLabel: "やり直す", onClick: () => cmd.redo() }, icon("redo", 17));
   const updateHistory = () => {
     const hist = store.history;
     undoBtn.disabled = !hist.canUndo || store.readOnly;
@@ -91,7 +97,7 @@ export function buildTopbar(app: AppContext): HTMLElement {
 
   const menuBtn = h("button", { class: "icon-btn", type: "button", title: "メニュー", ariaLabel: "メニュー" }, icon("more", 18));
   menuBtn.addEventListener("click", () => menuFromButton(menuBtn, mainMenu(app), { align: "right", minWidth: 270 }));
-  const helpBtn = h("button", { class: "icon-btn", type: "button", title: "ヘルプと操作ガイド（?）", ariaLabel: "ヘルプ", onClick: () => app.openHelp() }, icon("help", 18));
+  const helpBtn = h("button", { class: "icon-btn help-btn", type: "button", title: "ヘルプと操作ガイド（?）", ariaLabel: "ヘルプ", onClick: () => app.openHelp() }, icon("help", 18));
 
   const bar = h(
     "header",
@@ -99,7 +105,7 @@ export function buildTopbar(app: AppContext): HTMLElement {
     brand,
     h("div", { class: "topbar-group" }, leftToggle, viewSeg, displayBtn),
     h("div", { class: "topbar-search" }, search),
-    h("div", { class: "topbar-group" }, addGroup),
+    h("div", { class: "topbar-group" }, addGroup, addMobile),
     h("div", { class: "topbar-group" }, undoBtn, redoBtn),
     h("div", { class: "topbar-group topbar-right" }, saveBtn, menuBtn, helpBtn, rightToggle),
   );
@@ -159,7 +165,19 @@ function displayMenu(app: AppContext): MenuEntry[] {
 
 function mainMenu(app: AppContext): MenuEntry[] {
   const ro = app.store.readOnly;
+  const narrow = window.innerWidth <= 640;
+  const compact: MenuEntry[] = narrow
+    ? [
+        { header: "表示" },
+        { label: app.ui.prefs.view === "map" ? "リストで見る" : "マップで見る", icon: app.ui.prefs.view === "map" ? "list" : "map", run: () => app.ui.setPrefs({ view: app.ui.prefs.view === "map" ? "list" : "map" }) },
+        { label: "表示の設定", icon: "sliders", submenu: displayMenu(app) },
+        { label: "やり直す", icon: "redo", disabled: !app.store.history.canRedo || ro, run: () => app.cmd.redo() },
+        { label: "ヘルプ", icon: "help", run: () => app.openHelp() },
+        "sep",
+      ]
+    : [];
   return [
+    ...compact,
     { header: "データ" },
     { label: "JSON でエクスポート", icon: "download", shortcut: `${MOD}E`, run: () => app.exportJson() },
     { label: "JSON をインポート…", icon: "upload", disabled: ro, run: () => app.pickImport() },
@@ -174,7 +192,20 @@ function mainMenu(app: AppContext): MenuEntry[] {
     { header: "そのほか" },
     { label: "操作ガイドを見る", icon: "help", run: () => app.startTour() },
     { label: "ショートカット一覧", icon: "keyboard", shortcut: "?", run: () => app.openHelp() },
-    { label: "性能確認（2,000 ノード・保存しない）", icon: "layers", run: () => window.open(`${location.pathname}?stress=2000`, "_blank", "noopener") },
+    {
+      label: "性能確認（2,000 ノード・保存しない）",
+      icon: "layers",
+      hint: "新しいタブで開きます",
+      run: () => {
+        const a = document.createElement("a");
+        a.href = "#stress-2000";
+        a.target = "_blank";
+        a.rel = "noopener";
+        document.body.append(a);
+        a.click();
+        a.remove();
+      },
+    },
   ];
 }
 

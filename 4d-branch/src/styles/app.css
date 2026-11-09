@@ -71,6 +71,9 @@ kbd {
 .grow {
   flex: 1;
 }
+#app {
+  height: 100%;
+}
 .boot {
   position: fixed;
   inset: 0;
@@ -122,8 +125,7 @@ kbd {
     "top top top"
     "left center right"
     "left bottom right";
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   background: var(--bg-app);
   transition: grid-template-columns 0.2s var(--ease);
 }
@@ -264,7 +266,8 @@ kbd {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-right: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, #0c0f16, #090c11);
   position: relative;
@@ -276,8 +279,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: calc(var(--left-w) - 10px);
-  padding-left: 16px;
+  width: calc(var(--left-w) - 26px);
   min-width: 0;
 }
 .brand-mark {
@@ -585,7 +587,9 @@ kbd {
 .side-scroll {
   flex: 1;
   overflow: auto;
-  padding: 12px 10px 16px;
+  padding-block: 12px 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: 10px;
 }
 .side-section {
   margin-bottom: 14px;
@@ -632,7 +636,7 @@ kbd {
   gap: 9px;
   width: 100%;
   height: 36px;
-  padding: 0 6px 0 11px;
+  padding: 0 6px 0 8px;
   border-radius: 9px;
   border: 0;
   background: transparent;
@@ -775,7 +779,9 @@ button.tag-chip:hover {
 .side-footer {
   display: grid;
   gap: 6px;
-  padding: 10px 12px 12px;
+  padding-block: 10px 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: 12px;
   border-top: 1px solid var(--line);
   color: var(--text-3);
   font-size: 11.5px;
@@ -840,7 +846,7 @@ button.tag-chip:hover {
 }
 .minimap {
   position: absolute;
-  right: 14px;
+  right: calc(14px + env(safe-area-inset-right, 0px));
   bottom: 58px;
   width: 210px;
   height: 134px;
@@ -863,7 +869,7 @@ button.tag-chip:hover {
 }
 .zoom-ctl {
   position: absolute;
-  right: 14px;
+  right: calc(14px + env(safe-area-inset-right, 0px));
   bottom: 14px;
   display: flex;
   align-items: center;
@@ -1114,7 +1120,8 @@ button.tag-chip:hover {
   align-items: center;
   justify-content: space-between;
   height: 46px;
-  padding: 0 16px;
+  padding-left: 16px;
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   border-bottom: 1px solid var(--line);
 }
 .insp-head-title {
@@ -1128,7 +1135,9 @@ button.tag-chip:hover {
 .insp-body-scroll {
   flex: 1;
   overflow: auto;
-  padding: 14px 16px 28px;
+  padding-block: 14px 28px;
+  padding-left: 16px;
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 .insp-row-between {
   display: flex;
@@ -1879,7 +1888,8 @@ textarea.input {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 0 12px 0 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   min-width: 0;
 }
 .timeline-side,
@@ -1888,6 +1898,9 @@ textarea.input {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+.timeline-side {
+  flex: none;
 }
 .scenario-side {
   overflow-x: auto;
@@ -1938,7 +1951,9 @@ textarea.input {
 .timeline-area {
   position: relative;
   min-width: 0;
-  padding: 0 0 6px;
+  padding-block: 0 6px;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 .timeline-canvas {
   display: block;
@@ -2105,7 +2120,9 @@ textarea.input {
   z-index: 900;
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   background: rgba(3, 5, 8, 0.64);
   backdrop-filter: blur(4px);
   opacity: 0;
@@ -2443,7 +2460,7 @@ textarea.input {
 .toast-stack {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--bottom-h) + 18px);
+  bottom: calc(var(--bottom-h) + 18px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 950;
   display: grid;
@@ -2659,8 +2676,8 @@ textarea.input {
   .app-shell:not(.left-closed) .sidebar-left,
   .app-shell:not(.right-closed) .sidebar-right {
     position: fixed;
-    top: var(--top-h);
-    bottom: 0;
+    top: calc(var(--top-h) + env(safe-area-inset-top, 0px));
+    bottom: env(safe-area-inset-bottom, 0px);
     width: min(300px, 86vw);
     z-index: 40;
     box-shadow: var(--shadow-pop);
@@ -2685,6 +2702,81 @@ textarea.input {
   }
   .welcome-types {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.overlay-scrim {
+  display: none;
+}
+.mobile-only {
+  display: none !important;
+}
+@media (max-width: 860px) {
+  .app-shell:not(.left-closed) .overlay-scrim,
+  .app-shell:not(.right-closed) .overlay-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    background: rgba(3, 5, 8, 0.5);
+  }
+}
+@media (max-width: 640px) {
+  :root {
+    --bottom-h: 118px;
+  }
+  .topbar {
+    gap: 4px;
+  }
+  .topbar .view-seg,
+  .topbar .display-btn,
+  .topbar .add-group,
+  .topbar .redo-btn,
+  .topbar .help-btn,
+  .topbar .brand {
+    display: none;
+  }
+  .mobile-only {
+    display: inline-grid !important;
+  }
+  .topbar-search {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .search-kbd,
+  .search-count {
+    display: none;
+  }
+  .save-status {
+    padding: 0 8px;
+  }
+  .minimap {
+    display: none;
+  }
+  .timeline-cursor-btn span {
+    display: inline-block;
+    max-width: 92px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bottom-row {
+    gap: 8px;
+  }
+  .import-counts {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .legend-grid,
+  .shortcut-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .backup-row {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+  }
+  .backup-counts {
+    display: none;
+  }
+  .storage-k {
+    width: 100%;
   }
 }
 @media (prefers-reduced-motion: reduce) {

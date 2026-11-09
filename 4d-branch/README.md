@@ -28,6 +28,8 @@ npm run dev
 | `npm run preview` | ビルドした物を本番と同じセキュリティヘッダーで確かめる（http://localhost:4178） |
 | `npm test` | 単体テスト（Vitest） |
 | `npm run e2e` | ブラウザでの通しのテスト（Playwright。先に `npm run build`） |
+| `npm run build:artifact` | claude.ai の Artifact 用の 1 枚のページ（`artifact/4d-branch.html`） |
+| `npm run e2e:artifact` | Artifact 版の通しのテスト（偽の `window.claude` で同期・書き出し・スマホの幅） |
 | `npm run check` | 上の全部 |
 
 E2E は `vite preview` を自分で立ち上げます。ブラウザが無ければ `npx playwright-core install chromium` で入れてください。
@@ -56,12 +58,12 @@ E2E は `vite preview` を自分で立ち上げます。ブラウザが無けれ
 
 ## データの守り方
 
-- 変更はすぐこのブラウザ（IndexedDB）に自動保存。閉じる瞬間の変更は緊急コピー（localStorage）で守り、次の起動で新しい方を採ります。
+- 変更はすぐこのブラウザ（IndexedDB）に自動保存。閉じる瞬間の変更は緊急コピー（localStorage）で守り、次の起動で新しい方を採ります。Artifact 版では、サインインしていればアカウントにも写しを置きます。
 - 保存のたびに版番号を確かめ、別の場所の書き込みを黙って上書きしません（重なった内容はバックアップへ退避）。
 - 同じブラウザでタブを 2 つ以上開くと、編集できるのは 1 つだけ（ほかは閲覧のみ・引き継ぎ可）。
 - バックアップ: 10 分ごと（変更がある間）・毎日・取り込みや復元の直前に自動。メニュー →「バックアップと復元」から戻せます。
 - JSON でいつでも書き出し・読み込み（置き換え／追加）。**ブラウザのデータを消すと消えるので、大事なときは書き出して別の場所にも残してください。**
-- `?stress=2000` は保存しない性能確認用の一時表示で、ふだんのデータには触れません。
+- `?stress=2000`（Artifact 版は `#stress-2000`）は保存しない性能確認用の一時表示で、ふだんのデータには触れません。
 
 ## 構成
 
@@ -82,6 +84,17 @@ E2E は `vite preview` を自分で立ち上げます。ブラウザが無けれ
 ```
 
 実行時に読み込む外部のライブラリはありません（ビルドに Vite と TypeScript を使うだけ）。
+
+## claude.ai の Artifact 版
+
+`npm run build:artifact` で `artifact/4d-branch.html`（CSS と JS を埋め込んだ 1 枚。公開のときに claude.ai が骨組みで包む）を作り、
+claude.ai の Artifact として公開しています。Artifact の中では次が変わります（同じコードが、動いている場所を見て切り替える）。
+
+- **アカウントへの同期**: サインインしていれば、あなただけが読める場所（この Artifact の db の `data/users/<id>/`）にも写しを置き、別の端末でも同じ内容が出ます。手元（IndexedDB）が主のままで、重なったときはどちらの内容もバックアップに残します（[docs/DESIGN.md](docs/DESIGN.md) §5.1）
+- **書き出し**: `downloads` 機能で保存を頼みます（使えない画面ではコピーできるダイアログ）
+- **性能確認**: `#stress-2000`（新しいタブ）
+
+`npm run e2e:artifact` は、公開と同じ骨組みと偽の `window.claude`（db・user・downloads）で、同期・別の端末・書き出し・スマホの幅を確かめます。
 
 ## デプロイ
 

@@ -45,3 +45,9 @@ jobs:
 
       - name: E2E（操作の通し・再読み込み・複数タブ・入出力・2,000 ノードの描画時間）
         run: npm run e2e
+
+      - name: Artifact 用の 1 枚のページを作る
+        run: node scripts/build-artifact.mjs
+
+      - name: Artifact 版の E2E（偽の window.claude で同期・別の端末・書き出し・スマホの幅）
+        run: npm run e2e:artifact

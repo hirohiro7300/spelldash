@@ -1,6 +1,7 @@
 // 画面の部品どうしが使う共通の入口
 import type { CanvasView } from "../canvas/CanvasView";
 import type { DocData, ID } from "../model/types";
+import type { CloudState } from "../persist/cloud";
 import type { BackupKind, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import type { Commands } from "./commands";
@@ -18,6 +19,9 @@ export interface AppContext {
   ephemeral: boolean;
   lastBackupLabel: { kind: BackupKind; when: string } | null;
   onBackupsChanged: () => void;
+  /** アカウントへの同期の状態（claude.ai の Artifact の外では null） */
+  cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null;
+  onCloudChanged: () => void;
   focusSearch: () => void;
   focusInspectorTitle: () => void;
   focusEdgeCondition: () => void;

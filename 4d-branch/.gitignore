@@ -1,5 +1,7 @@
 node_modules/
 dist/
 test-results/
+# Artifact 用に生成する 1 枚のページ（npm run build:artifact）
+artifact/
 # 依存のずれを防ぐため、このプロジェクトではロックファイルを管理する（親の .gitignore の指定を打ち消す）
 !package-lock.json

@@ -5,6 +5,7 @@ import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER } from "../model
 import { DocFormatError } from "../model/schema";
 import type { DocData } from "../model/types";
 import { previewImport, type ImportPreview } from "../persist/io";
+import { inArtifactHost } from "../host/claude";
 import { BACKUP_LABELS, type BackupMeta } from "../persist/persistence";
 import { MOD, clear, h } from "./dom";
 import { icon } from "./icons";
@@ -73,6 +74,7 @@ export function openBackupDialog(app: AppContext): void {
       h("div", { class: "storage-row" }, h("span", { class: "storage-k" }, "使用量"), h("span", null, `${fmtBytes(s.usage)} / ${fmtBytes(s.quota)}`)),
       h("div", { class: "storage-row" }, h("span", { class: "storage-k" }, "自動削除からの保護"), protect),
     );
+    if (app.cloudInfo) info.append(h("div", { class: "storage-row" }, h("span", { class: "storage-k" }, "アカウント（claude.ai）"), h("span", null, cloudText(app.cloudInfo))));
   };
 
   const renderList = async () => {
@@ -229,7 +231,10 @@ export function openHelpDialog(app: AppContext): void {
       h("li", null, "変更はすぐこのブラウザ（IndexedDB）に保存されます。閉じる瞬間の変更も緊急コピーで守ります。"),
       h("li", null, "バックアップ: 10 分ごと・毎日・取り込みや復元の直前に自動で残ります（メニュー →「バックアップと復元」）。"),
       h("li", null, "同じブラウザで 2 つ以上のタブを開くと、編集できるのは 1 つだけです（ほかは閲覧のみ）。"),
-      h("li", null, "ブラウザのデータを消すと消えます。大事なときは JSON で書き出して、別の場所にも残してください。"),
+      inArtifactHost()
+        ? h("li", null, "claude.ai にサインインしていれば、あなただけが読める場所（この Artifact の中）にも写しを置き、別の端末で開いても同じ内容が出ます。ほかの人には見えません。")
+        : h("li", null, "ブラウザのデータを消すと消えます。大事なときは JSON で書き出して、別の場所にも残してください。"),
+      h("li", null, "大事な節目には JSON で書き出して、別の場所にも残してください。"),
     ),
   );
   m.footer.append(h("button", { class: "btn", type: "button", onClick: () => m.close() }, "閉じる"));
@@ -245,7 +250,13 @@ export function openWelcome(app: AppContext): void {
     h("p", { class: "welcome-lead" }, "目標・行動・分岐・結果をノードとしてつなぎ、", h("b", null, "未来の分岐"), "を見える化するメモ帳です。プロジェクトをまたいで、1 つの行動が複数の目標に効く様子を描けます。"),
     types,
     h("div", { class: "welcome-demo" }, icon("sparkle", 16), h("div", null, h("b", null, "デモを開いています: "), "「SpellDash事業」「FCマーケティングでの業務」「広告運用事業での独立」の 3 つが、「広告運用を学ぶ」などの共通のノードでつながっています。")),
-    h("p", { class: "muted small" }, "データはこのブラウザの中だけに保存されます（サーバーには送りません）。AI による分析や予測はしません。外部の AI と考えた内容を、ここに自由に記録してください。"),
+    h(
+      "p",
+      { class: "muted small" },
+      inArtifactHost()
+        ? "データはこのブラウザに保存し、claude.ai にサインインしていれば、あなただけが読める場所（この Artifact の中）にも同期します。ほかの人には見えません。AI による分析や予測はしません。外部の AI と考えた内容を、ここに自由に記録してください。"
+        : "データはこのブラウザの中だけに保存されます（サーバーには送りません）。AI による分析や予測はしません。外部の AI と考えた内容を、ここに自由に記録してください。",
+    ),
   );
   const tourBtn = h("button", { class: "btn btn-primary", type: "button" }, icon("play", 14), "操作ガイドを見る（1 分）");
   tourBtn.addEventListener("click", () => {
@@ -288,3 +299,54 @@ export function openTextDialog(opts: { title: string; label: string; value: stri
 }
 
 export type { DocData };
+
+// ------------------------------------------------------------ 同期の状態の文
+
+export function cloudText(c: { state: string; message: string; lastSyncedAt: string | null }): string {
+  const at = c.lastSyncedAt ? new Date(c.lastSyncedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }) : "";
+  switch (c.state) {
+    case "synced":
+      return `同期済み${at ? `（${at}）` : ""}`;
+    case "pending":
+      return c.message || "同期待ち（少しまとめてから送ります）";
+    case "syncing":
+      return "同期中…";
+    case "connecting":
+      return "接続中…";
+    case "offline":
+    case "error":
+    case "denied":
+    case "unavailable":
+      return c.message || "このブラウザだけに保存しています";
+    default:
+      return "同期していません";
+  }
+}
+
+// ------------------------------------------------------------ 書き出しの代わり（ファイルを保存できない画面）
+
+export function openCopyDialog(text: string, filename: string): void {
+  const m = openModal({ title: "JSON を書き出す", subtitle: filename, width: 620, icon: "download" });
+  const ta = h("textarea", { class: "input copy-area", attrs: { readonly: "", rows: "12", "aria-label": "書き出す内容", spellcheck: "false" } });
+  ta.value = text;
+  m.body.append(
+    h("p", { class: "modal-text" }, "この画面からはファイルを直接保存できません。下の内容をコピーして、テキストエディタなどで「", h("b", null, filename), "」として保存してください。読み込むときは、その .json ファイルを選びます。"),
+    ta,
+    h("p", { class: "muted small" }, `${(text.length / 1024).toFixed(1)} KB`),
+  );
+  const copy = h("button", { class: "btn btn-primary", type: "button" }, icon("copy", 14), "コピー");
+  copy.addEventListener("click", () => {
+    const fallback = () => {
+      ta.focus();
+      ta.select();
+      toast("選択しました。⌘C（Ctrl+C）でコピーしてください");
+    };
+    try {
+      navigator.clipboard.writeText(text).then(() => toast("コピーしました", { tone: "ok" }), fallback);
+    } catch {
+      fallback();
+    }
+  });
+  m.footer.append(h("button", { class: "btn", type: "button", onClick: () => m.close() }, "閉じる"), copy);
+  setTimeout(() => copy.focus());
+}

@@ -500,6 +500,44 @@ export class Persistence {
     return null;
   }
 
+  // ------------------------------------------------------------ 小さな鍵と値（同期の基準など。本体と同じ寿命の場所に置く）
+
+  private memKv = new Map<string, unknown>();
+
+  async readKv<T>(key: string): Promise<T | null> {
+    if (this.mode === "idb" && this.db) {
+      const t = this.db.transaction("kv", "readonly");
+      return ((await req(t.objectStore("kv").get(`x:${key}`))) as T | undefined) ?? null;
+    }
+    if (this.mode === "local") {
+      const raw = this.kv.get(`${this.dbName}:x:${key}`);
+      try {
+        return raw ? (JSON.parse(raw) as T) : null;
+      } catch {
+        return null;
+      }
+    }
+    return (this.memKv.get(key) as T | undefined) ?? null;
+  }
+
+  async writeKv(key: string, value: unknown): Promise<void> {
+    if (this.mode === "idb" && this.db) {
+      const t = this.db.transaction("kv", "readwrite");
+      t.objectStore("kv").put(value, `x:${key}`);
+      await done(t);
+      return;
+    }
+    if (this.mode === "local") {
+      try {
+        this.kv.set(`${this.dbName}:x:${key}`, JSON.stringify(value));
+      } catch {
+        /* 容量不足など */
+      }
+      return;
+    }
+    this.memKv.set(key, value);
+  }
+
   // ------------------------------------------------------------ バックアップ
 
   private async maybeAutoBackup(doc: DocData): Promise<void> {

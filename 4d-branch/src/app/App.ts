@@ -8,11 +8,13 @@ import { buildDemoDoc } from "../demo/demo";
 import { APP_VERSION, NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
 import { createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
+import { errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
+import { CloudRepo, CloudSync, dbBackend, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
 import type { BackupKind, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
-import { openBackupDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome } from "../ui/dialogs";
+import { openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome } from "../ui/dialogs";
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { buildInspector } from "../ui/inspector";
@@ -54,6 +56,13 @@ export class App implements AppContext {
   revealInList: (id: ID) => void = () => undefined;
   refreshList: () => void = () => undefined;
   afterTour?: () => void;
+  /** アカウントへの同期（claude.ai の Artifact の中で、サインインしているときだけ） */
+  cloud: CloudSync | null = null;
+  cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null = null;
+  onCloudChanged: () => void = () => undefined;
+  private userEdited = false;
+  private adopting = false;
+  private readonly firstRun: boolean;
 
   private readonly shell: HTMLElement;
   private readonly banner: HTMLElement;
@@ -68,6 +77,7 @@ export class App implements AppContext {
     this.ui = opts.ui;
     this.persistence = opts.persistence;
     this.ephemeral = opts.ephemeral;
+    this.firstRun = opts.firstRun;
     this.vm = new ViewModel(this.store, this.ui);
     this.view = new CanvasView(this.store, this.ui, this.vm);
     this.cmd = new Commands(this.store, this.ui, this.vm, {
@@ -120,7 +130,10 @@ export class App implements AppContext {
     this.view.root.append(minimap.el, zoomCtl, this.emptyHint);
     this.listEl = buildListView(this);
     this.banner = h("div", { class: "banner-area", attrs: { "aria-live": "polite" } });
-    const center = h("main", { class: "center", ariaLabel: "キャンバス" }, this.banner, this.view.root, this.listEl);
+    // 狭い画面でパネルを重ねて出しているとき、外側を押すと閉じる
+    const scrim = h("div", { class: "overlay-scrim", attrs: { "aria-hidden": "true" } });
+    scrim.addEventListener("click", () => this.ui.setPrefs({ leftOpen: false, rightOpen: false }));
+    const center = h("main", { class: "center", ariaLabel: "キャンバス" }, this.banner, this.view.root, this.listEl, scrim);
 
     this.shell = h("div", { class: "app-shell" }, buildTopbar(this), buildLeftSidebar(this), center, buildInspector(this), buildBottomBar(this));
     opts.mount.replaceChildren(this.shell, h("div", { attrs: { id: "overlay-root" } }));
@@ -128,6 +141,10 @@ export class App implements AppContext {
     // ---- 配線
     this.store.on("change", (info) => {
       if (!this.ephemeral && info.source !== "load" && info.source !== "remote") this.persistence.markDirty();
+      if (info.source === "tx" || info.source === "undo" || info.source === "redo" || (info.source === "replace" && !this.adopting)) {
+        this.userEdited = true;
+        this.cloud?.markDirty();
+      }
       this.syncEmpty();
     });
     this.store.on("blocked", () => toast("このタブは閲覧のみです。編集するには上の「このタブで編集する」を押してください。", { tone: "warn" }));
@@ -214,7 +231,12 @@ export class App implements AppContext {
     const per = this.persistence;
     const add = (tone: string, iconName: string, text: string, ...actions: HTMLElement[]) => b.append(h("div", { class: `banner tone-${tone}` }, icon(iconName, 15), h("span", { class: "banner-text" }, text), ...actions));
     if (this.ephemeral) {
-      add("info", "layers", `性能確認用の一時表示です（${Object.keys(this.store.doc.nodes).length.toLocaleString("ja-JP")} ノード）。変更は保存されず、ふだんのデータにも触れません。`, h("a", { class: "btn btn-sm", attrs: { href: location.pathname } }, "ふだんの画面へ"));
+      const back = h("button", { class: "btn btn-sm", type: "button" }, "ふだんの画面へ");
+      back.addEventListener("click", () => {
+        history.replaceState(null, "", location.pathname + location.search.replace(/[?&](stress|demo)(=[^&]*)?/g, "").replace(/^&/, "?"));
+        location.reload();
+      });
+      add("info", "layers", `性能確認用の一時表示です（${Object.keys(this.store.doc.nodes).length.toLocaleString("ja-JP")} ノード）。変更は保存されず、ふだんのデータにも触れません。`, back);
       return;
     }
     if (!per.writer) {
@@ -241,6 +263,7 @@ export class App implements AppContext {
     const doc = await this.persistence.takeOver();
     if (doc) this.store.load(doc, "load");
     this.store.readOnly = false;
+    this.cloud?.resync();
     this.renderBanner();
     toast("このタブで編集できるようになりました", { tone: "ok" });
   }
@@ -367,7 +390,7 @@ export class App implements AppContext {
       }
       if (mod && lower === "s") {
         ev.preventDefault();
-        void this.persistence.flush().then(() => toast(this.ephemeral ? "一時表示のため保存しません" : "保存しました", { tone: "ok", ms: 1500 }));
+        void Promise.all([this.persistence.flush(), this.cloud?.flush()]).then(() => toast(this.ephemeral ? "一時表示のため保存しません" : "保存しました", { tone: "ok", ms: 1500 }));
         return;
       }
       if (mod && lower === "k") {
@@ -502,6 +525,7 @@ export class App implements AppContext {
         this.editor.commit();
         this.persistence.writeEmergency();
         void this.persistence.flush();
+        void this.cloud?.flush();
         this.ui.saveCamera(this.store.doc.id, this.view.camera);
       }
     });
@@ -553,13 +577,39 @@ export class App implements AppContext {
   // ------------------------------------------------------------ データの出し入れ
 
   exportJson(doc: DocData = this.store.doc, filename = exportFileName()): void {
-    downloadText(filename, exportText(doc, APP_VERSION));
-    toast(`書き出しました: ${filename}`, { tone: "ok" });
-    try {
-      localStorage.setItem("4d-branch:lastExport", new Date().toISOString());
-    } catch {
-      /* 記録できなくてもよい */
+    void this.exportJsonAsync(doc, filename);
+  }
+
+  private async exportJsonAsync(doc: DocData, filename: string): Promise<void> {
+    const text = exportText(doc, APP_VERSION);
+    const done = () => {
+      try {
+        localStorage.setItem("4d-branch:lastExport", new Date().toISOString());
+      } catch {
+        /* 記録できなくてもよい */
+      }
+    };
+    if (inArtifactHost()) {
+      // claude.ai の Artifact の中: ページからは直接ダウンロードできないので、downloads 機能で保存を頼む
+      const dl = await useCapability<DownloadsApi>("downloads", 5000);
+      if (dl) {
+        try {
+          const r = await dl.save({ filename, data: text });
+          toast(r.status === "saved" ? `書き出しました: ${filename}` : "書き出しました", { tone: "ok" });
+          done();
+          return;
+        } catch (e) {
+          const code = errorCode(e);
+          if (code === "declined") return void toast("書き出しをやめました");
+          if (code === "rate_limited") return void toast("保存の確認が開いています。閉じてから、もう一度お試しください", { tone: "warn" });
+        }
+      }
+      openCopyDialog(text, filename);
+      return;
     }
+    downloadText(filename, text);
+    toast(`書き出しました: ${filename}`, { tone: "ok" });
+    done();
   }
 
   pickImport(): void {
@@ -655,6 +705,78 @@ export class App implements AppContext {
   startTour(): void {
     closeMenus();
     startTour(this);
+  }
+
+  // ------------------------------------------------------------ アカウントへの同期
+
+  private setCloudInfo(state: CloudState | "unavailable", message = ""): void {
+    this.cloudInfo = { state, message, lastSyncedAt: this.cloud?.lastSyncedAt ?? null };
+    this.onCloudChanged();
+  }
+
+  /** claude.ai の Artifact の中で、サインインしていて自分の場所に書けるなら、アカウントにも写しを置く */
+  async startCloud(): Promise<void> {
+    if (this.ephemeral || !inArtifactHost() || this.cloud) return;
+    this.setCloudInfo("connecting");
+    const [db, user] = await Promise.all([useCapability<DbApi>("db"), useCapability<UserApi>("user")]);
+    let uid: string | null = null;
+    try {
+      uid = user ? await user.id() : null;
+    } catch {
+      uid = null;
+    }
+    if (!db || !uid) {
+      this.setCloudInfo("unavailable", "サインインしていないため、このブラウザだけに保存します");
+      return;
+    }
+    let repo: CloudRepo;
+    try {
+      repo = new CloudRepo(dbBackend(db), uid, this.persistence.tabId);
+      db.doc(repo.manifestPath); // 置き場所の名前が使えるか（使えなければ TypeError）
+    } catch {
+      this.setCloudInfo("unavailable", "アカウントの保存場所を使えないため、このブラウザだけに保存します");
+      return;
+    }
+    const baseKey = `cloud:${uid}`;
+    const sync = new CloudSync(
+      repo,
+      {
+        getDoc: () => this.store.doc,
+        isWriter: () => this.persistence.writer && !this.store.readOnly,
+        adopt: async (doc, firstLoad) => {
+          // 入れ替える前の手元の内容は、バックアップに残す（初回のまま何も変えていないデモは残さない）
+          if (!(firstLoad && this.firstRun && !this.userEdited)) {
+            await this.persistence.createBackup("safety", "別の端末の内容を読み込む前", this.store.doc).catch(() => undefined);
+          }
+          this.editor.cancel();
+          this.adopting = true;
+          let replaced = false;
+          try {
+            replaced = this.store.replaceDoc(doc, "別の端末の内容を読み込む");
+          } finally {
+            this.adopting = false;
+          }
+          // 閲覧のみになっていた等で入れ替えられなかった: 同期の基準を進めない（あとでやり直す）
+          if (!replaced) throw new Error("読み込めませんでした（このタブは閲覧のみ）");
+          // 手元への保存を先に済ませる（同期の基準だけが先に残り、閉じたあとで古い手元を送ってしまうのを防ぐ）
+          await this.persistence.flush().catch(() => undefined);
+          this.ui.pruneSelection((kind, id) => (kind === "node" ? !!this.store.doc.nodes[id] : !!this.store.doc.edges[id]));
+          if (firstLoad) this.view.fit(undefined, { animate: false });
+          void this.refreshLastBackup();
+        },
+        backup: async (doc, label) => {
+          await this.persistence.createBackup("conflict", label, doc);
+          void this.refreshLastBackup();
+        },
+        readBase: () => this.persistence.readKv<SyncBase>(baseKey),
+        writeBase: (b) => this.persistence.writeKv(baseKey, b),
+        notice: (text, tone) => toast(text, { tone, ms: 8000 }),
+      },
+      { localFresh: this.firstRun && !this.userEdited },
+    );
+    this.cloud = sync;
+    sync.on((st) => this.setCloudInfo(st, sync.message));
+    await sync.start();
   }
 
   /** 初めてガイドを終えたときに一度だけ、ブラウザに自動削除からの保護を頼む */

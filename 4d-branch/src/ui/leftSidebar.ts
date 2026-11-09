@@ -4,6 +4,7 @@ import type { AppContext } from "../app/context";
 import { PROJECT_COLORS, SCENARIO_COLORS } from "../model/constants";
 import type { ID } from "../model/types";
 import { BACKUP_LABELS } from "../persist/persistence";
+import { cloudText } from "./dialogs";
 import { MOD, clear, h } from "./dom";
 import { icon } from "./icons";
 import { menuFromButton, showMenu, type MenuEntry, type MenuItem } from "./overlays";
@@ -276,6 +277,7 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
     const per = app.persistence;
     const where = per.mode === "idb" ? "このブラウザ（IndexedDB）" : per.mode === "local" ? "このブラウザ（localStorage）" : "保存しない一時表示";
     footer.append(h("div", { class: "side-footer-row" }, icon("shield", 14), h("span", null, `保存先: ${where}`)));
+    if (app.cloudInfo) footer.append(h("div", { class: `side-footer-row cloud-${app.cloudInfo.state}` }, icon("layers", 14), h("span", { title: app.cloudInfo.message }, `アカウント: ${cloudText(app.cloudInfo)}`)));
     if (app.lastBackupLabel) footer.append(h("div", { class: "side-footer-row muted" }, icon("clock", 14), h("span", null, `最新のバックアップ（${BACKUP_LABELS[app.lastBackupLabel.kind]}）${app.lastBackupLabel.when}`)));
     footer.append(
       h(
@@ -294,6 +296,7 @@ export function buildLeftSidebar(app: AppContext): HTMLElement {
   ui.on("search", render);
   app.persistence.on("status", renderFooter);
   app.onBackupsChanged = renderFooter;
+  app.onCloudChanged = renderFooter;
   render();
   return root;
 }
