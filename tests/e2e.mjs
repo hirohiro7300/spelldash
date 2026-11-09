@@ -28065,6 +28065,114 @@ console.log("my words page rebuilds (87.3):");
   check("87.3 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
+// ===== 87.4 マイ単語帳の回の読み直しの数（Batch 87。js/game.js myLearnSource の語の写し。docs/SPEC_MY_WORDS.md §16.4）: 1,000 語（400 語の単語帳）の人の回で、マイ単語帳の保存（10 万字を超える JSON）を読む回数が、回の始め 3 以下・打つ答え 1 つで 2 以下・選択式の答え 1 つで 3 以下。回の途中でほかのタブが消した語は出ない（前のまま） =====
+// 数え方: ページより先に JSON.parse を包み、10 万字以上の文字列の読みを数える（検査だけの包み）。
+// a15294a: 回の始めに列の語ごとに一覧を読み直す（findCard → words() → getMyWords）ので約 400 回、打つ答え 1 つで 7 回、選択式の答え 1 つで 10 回
+console.log("my words session reads (87.4):");
+{
+  const allErrors = [];
+  const T = "2026-11-01T00:00:00.000Z";
+  const L = "abcdefghijklmnopqrstuvwxyz";
+  const keyOf = (i) => `w${L[Math.floor(i / 676) % 26]}${L[Math.floor(i / 26) % 26]}${L[i % 26]}`;
+  // 1,000 語（マイ単語帳 600・仕事 400）。訳は長め（保存の文字列が 10 万字を超える）
+  const SPLIT = [["main", "マイ単語帳", 600], ["b2", "仕事", 400]];
+  const WORDS = [];
+  for (const [id, name, count] of SPLIT) for (let i = 0; i < count; i++) WORDS.push({ en: keyOf(WORDS.length), ja: `仕事で使う言葉の訳その${WORDS.length + 1}（長めの説明をつけた訳）`, book: id, bookName: name, addedAt: T });
+  const BOOKS = JSON.stringify(SPLIT.map(([id, name]) => ({ id, name })));
+  const B2 = new Set(WORDS.filter((w) => w.book === "b2").map((w) => w.en));
+  async function sessionPage(path) {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    page.on("dialog", (d) => d.accept().catch(() => {}));
+    await page.addInitScript((seed) => {
+      // 大きな読みを数える包み（ページの部品より先に置く）
+      window.__bigParses = 0;
+      const parse = JSON.parse;
+      JSON.parse = function (text, reviver) {
+        if (typeof text === "string" && text.length >= 100000) window.__bigParses++;
+        return parse.call(this, text, reviver);
+      };
+      window.__words = [];
+      addEventListener("spelldash:word", (e) => window.__words.push(e.detail?.id ?? null));
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...seed })) localStorage.setItem(k, v);
+    }, { spelldash_my_words: JSON.stringify(WORDS), spelldash_my_books: BOOKS });
+    await page.goto(BASE + path, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => window.__words.length >= 1), 8000);
+    await page.waitForTimeout(200);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const parses = (page) => page.evaluate(() => window.__bigParses);
+  const shownIds = (page) => page.evaluate(() => [...window.__words]);
+  const typeKeys = async (page, keys) => { for (const ch of keys) await page.press("#input", ch); };
+  const enOfId = (id) => String(id ?? "").replace(/^my-/, "");
+  // 打つ回の 1 語: 今の語の英語を 1 字ずつ打つ（最後の字で正解・次の語へ）。打つ前から次の語が出るまでの大きな読みの数
+  async function typedAnswer(page) {
+    const ids = await shownIds(page);
+    const before = await parses(page);
+    await typeKeys(page, enOfId(ids.at(-1)));
+    await waitUntil(async () => (await shownIds(page)).length > ids.length, 6000);
+    await page.waitForTimeout(150);
+    return (await parses(page)) - before;
+  }
+
+  // ----- (1) 打つ回（/?learn=my&book=b2。400 語）: 始め・答え 3 つ・回の途中でほかのタブが消した語は出ない -----
+  {
+    const page = await sessionPage("/?learn=my&book=b2");
+    const size = await page.evaluate(() => localStorage.getItem("spelldash_my_words")?.length ?? 0);
+    const start = await parses(page);
+    const first = (await shownIds(page))[0];
+    const per = [];
+    for (let i = 0; i < 3; i++) per.push(await typedAnswer(page));
+    // ほかのタブで、まだ出ていない「仕事」の語を 1 つ（keep）を残して全部消す（保存の文字列が替わる。消した後は 10 万字より短いので数えない）
+    const shown = new Set((await shownIds(page)).map(enOfId));
+    const keep = [...B2].find((en) => !shown.has(en));
+    await page.evaluate(({ keep, shown }) => {
+      const list = JSON.parse(localStorage.getItem("spelldash_my_words") || "[]");
+      localStorage.setItem("spelldash_my_words", JSON.stringify(list.filter((w) => w.book !== "b2" || w.en === keep || shown.includes(w.en))));
+    }, { keep, shown: [...shown] });
+    await typedAnswer(page);
+    const next = (await shownIds(page)).at(-1);
+    check("87.4 打つ回（400 語の単語帳・保存の文字列 10 万字以上）: 回の始め（最初の問いまで）の大きな読みは 3 以下",
+      size >= 100000 && B2.has(enOfId(first)) && start <= 3, JSON.stringify({ size, start, first }));
+    check("87.4 打つ回: 答え 1 つの大きな読みは 2 以下（3 語）・回の途中でほかのタブが消した語は出ない（残した 1 語が次に出る）・エラー 0",
+      per.length === 3 && per.every((n) => n <= 2) && next === `my-${keep}` && page.errors.length === 0, JSON.stringify({ per, next, keep, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (2) 選択式（/?learn=my&book=b2&choice=en）: 答え 1 つ（正しい英語を押す → 次へ）の大きな読みは 3 以下 -----
+  {
+    const page = await sessionPage("/?learn=my&book=b2&choice=en");
+    const start = await parses(page);
+    const per = [];
+    for (let i = 0; i < 3; i++) {
+      const ids = await shownIds(page);
+      const en = enOfId(ids.at(-1));
+      await waitUntil(() => page.evaluate(() => document.querySelectorAll("#choiceOpts .choice__opt").length > 0), 4000);
+      const before = await parses(page);
+      const idx = await page.evaluate((en) => [...document.querySelectorAll("#choiceOpts .choice__opt")].findIndex((b) => b.querySelector(".choice__text")?.textContent === en), en);
+      await page.waitForTimeout(400); // 問いが出てすぐの押しは受けない守り（js/myWordsChoice.js）を待つ
+      await page.click(`#choiceOpts .choice__opt[data-i="${idx}"]`);
+      await waitUntil(() => page.evaluate(() => { const n = document.getElementById("choiceNext"); return !!n && !n.hidden; }), 4000);
+      await page.click("#choiceNext");
+      await waitUntil(async () => (await shownIds(page)).length > ids.length, 6000);
+      await page.waitForTimeout(150);
+      per.push({ idx, n: (await parses(page)) - before });
+    }
+    check("87.4 選択式（400 語の単語帳）: 回の始めの大きな読みは 3 以下・答え 1 つ（押して次へ）の大きな読みは 3 以下（3 語）・エラー 0",
+      start <= 3 && per.length === 3 && per.every((p) => p.idx >= 0 && p.n <= 3) && page.errors.length === 0, JSON.stringify({ start, per, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  check("87.4 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");
 {
