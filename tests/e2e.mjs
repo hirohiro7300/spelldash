@@ -18522,6 +18522,10 @@ console.log("pro:");
   const visible = (page, selector) => page.$eval(selector, (el) => !el.hidden && el.getClientRects().length > 0).catch(() => false);
   const theme = (page) => page.evaluate(() => document.documentElement.dataset.theme);
   const noHorizontalScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  // 「申し込みの前に」の行（[項目, 中身]）と、比較表の見えている行の名前（Batch 83 の反証）
+  const termRows = (page) => page.$$eval(".pro-terms > div", (els) => els.map((d) => [d.querySelector("dt")?.textContent.trim() ?? "", d.querySelector("dd")?.textContent.replace(/\s+/g, " ").trim() ?? ""])).catch(() => []);
+  const shownCompareRows = (page) => page.$$eval("#proCompare tbody tr", (els) => els.filter((tr) => !tr.hidden && tr.getClientRects().length > 0).map((tr) => tr.querySelector("th")?.firstChild?.textContent.trim() ?? "")).catch(() => []);
+  const rememberedAi = (page) => page.evaluate(() => { try { return JSON.parse(localStorage.getItem("spelldash_billing_open") || "null")?.ai ?? null; } catch { return null; } });
 
   // 1. 未ログイン: 価格 2 つ・CTA は「ログインして始める」（#proLoginStart）→ 押すとヘッダーのログインが開く（Batch 42: #proCheckoutMonth はログイン後だけ。#proState は空）
   {
@@ -18532,6 +18536,10 @@ console.log("pro:");
     check("Pro: 未ログインでも価格が 2 つ出る（580 と 4,800）", loaded && plans.includes("580") && plans.includes("4,800"), plans);
     const terms = await text(page, ".pro-terms");
     check("Pro: 未ログインは年額ボタンを出さず、申し込みの前に（料金・更新・解約・支払い）をボタンの直下に", (await page.$("#proCheckoutYear")) === null && terms.includes("月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）（税込）") && terms.includes("自動で更新") && terms.includes("お支払いの管理") && terms.includes("Stripe"), terms);
+    // Batch 83 の反証: 提供の時期（特定商取引法 12 条の 6 の確認の項目。特商法の表記の提供時期と同じ）も「申し込みの前に」の最後に書く
+    const rows0 = await termRows(page);
+    check("Pro（Batch 83 反証）: 「申し込みの前に」の最後は「提供」＝「手続きが終わるとすぐ使える」（無料期間の設定が無いときは無料期間の話をしない）",
+      JSON.stringify(rows0.at(-1)) === JSON.stringify(["提供", "手続きが終わるとすぐ使える"]) && rows0.map((r) => r[0]).join("|") === "料金|更新|解約|支払い|提供", JSON.stringify(rows0));
     check("Pro: 見出しの直下（最初の画面）に料金と「いつでも解約できる」の 1 行", (await text(page, "#proPrice")) === "月額 ¥580 ／ 年額 ¥4,800（税込）。いつでも解約できる。" && (await page.$eval("#proPrice", (el) => el.getBoundingClientRect().bottom < window.innerHeight)), await text(page, "#proPrice"));
     check("Pro: h1 は「単語の学習は無料のまま」（「学習の核」は使わない）", (await text(page, "h1")).includes("単語の学習は無料のまま") && !(await page.content()).includes("学習の核"), await text(page, "h1"));
     // Batch 83: 比較表は今の画面（英単語の学習に絞った形）で本当に使える特典だけ。数はコードの値から（js/proView.js が入れる）
@@ -18555,14 +18563,19 @@ console.log("pro:");
         row["AI の覚え方"]?.cells.join("|") === "3 回|60 回" && compare.faq.includes(`${fmtN(compare.free)}語を超えたぶん`) && compare.faq.includes(`${fmtN(compare.free)}語までに戻る`),
       JSON.stringify({ rows: compare.rows, free: compare.free, pro: compare.pro, trend: compare.trend }));
     check("Pro（Batch 83）: AI の行はどこで使うか（学習状況の語の詳細）と「AI が使えるときだけ」を書く", /語の詳細/.test(row["AI の覚え方"]?.sub ?? "") && /AI が使えるときだけ/.test(row["AI の覚え方"]?.sub ?? ""), row["AI の覚え方"]?.sub ?? "");
-    // 静的な字（読み込みの間の形）もコードの値と同じ（ずれていると、読み込みの後で js/proView.js が書き換えて字が動く）。AI の行は config が来るまで「準備中」
+    check("Pro（Batch 83 反証）: AI が使える（config に ai がある）ときは比較表の 4 行がどれも見えている・config の AI の有無を覚える（次に config が遅いときに行を先に出しておく）",
+      JSON.stringify(await shownCompareRows(page)) === JSON.stringify(["マイ単語帳", "思い出せるようになった語の推移", "テーマ", "AI の覚え方"]) && (await rememberedAi(page)) === true,
+      JSON.stringify({ shown: await shownCompareRows(page), ai: await rememberedAi(page) }));
+    // 静的な字（読み込みの間の形）もコードの値と同じ（ずれていると、読み込みの後で js/proView.js が書き換えて字が動く）。
+    // AI の行は静的には隠しておく（Batch 83 の反証: AI が使えないときは行ごと出さない。config に ai があるとき・前の config に ai があったときだけ出す）。字は回数を約束しない「…」
     const staticHtml = fs.readFileSync(path.join(ROOT, "pro.html"), "utf8");
     const staticNums = [...staticHtml.matchAll(/data-pro-num="(\w+)">([^<]+)</g)].map((m) => [m[1], m[2]]);
     const wantNums = { myFree: fmtN(compare.free), myPro: fmtN(compare.pro), trendFree: String(compare.trend?.free), trendPro: String(compare.trend?.pro) };
     const staticAi = [...staticHtml.matchAll(/data-pro-ai="\w+">([^<]+)</g)].map((m) => m[1]);
-    check("Pro（Batch 83）: pro.html の静的な数（data-pro-num の 6 か所）はコードの値と同じ・AI の行の静的な字は「準備中」（回数を約束しない）",
-      staticNums.length === 6 && staticNums.every(([k, v]) => wantNums[k] === v) && JSON.stringify(staticAi) === JSON.stringify(["準備中", "準備中"]),
-      JSON.stringify({ staticNums, staticAi }));
+    const staticAiRow = staticHtml.match(/<tr\b[^>]*\bid="proCompareAi"[^>]*>/)?.[0] ?? "";
+    check("Pro（Batch 83）: pro.html の静的な数（data-pro-num の 6 か所）はコードの値と同じ・AI の行は静的には隠し（hidden）、字は回数を約束しない「…」",
+      staticNums.length === 6 && staticNums.every(([k, v]) => wantNums[k] === v) && /\shidden(?=[\s>])/.test(staticAiRow) && JSON.stringify(staticAi) === JSON.stringify(["…", "…"]) && !/準備中/.test(staticHtml.match(/<table class="pro-compare"[\s\S]*?<\/table>/)?.[0] ?? "準備中"),
+      JSON.stringify({ staticNums, staticAi, staticAiRow }));
     check("Pro: 未ログインは #proState が空で、#proCheckoutMonth は無く #proLoginStart「ログインして始める」", (await text(page, "#proState")) === "" && (await page.$("#proCheckoutMonth")) === null && (await text(page, "#proLoginStart")).includes("ログインして始める"), await text(page, "#proState"));
     await page.click("#proLoginStart");
     await waitUntil(async () => (await page.getAttribute("#loginToggle", "aria-expanded")) === "true", 2000);
@@ -18581,19 +18594,60 @@ console.log("pro:");
     await page.close();
   }
 
-  // 1b. Batch 83: AI が使えない（config の ai が null。AI の鍵が無い）ときは、比較表の AI の行は「準備中」（回数を約束しない）。ほかの行は同じ
-  {
-    const page = await newPage({ viewport: { width: 1200, height: 900 } });
+  // 1b. Batch 83 の反証: AI が使えない（config の ai が null。AI の鍵が無い。今の本番）ときは、比較表に AI の行を出さない（使えない特典を売り文に並べない。
+  //     加入直後の一覧も AI の行を出さない。前は両方の欄が「準備中」の行を出していた）。前の config で AI があったと覚えていても、config が来たら隠して覚え直す。
+  //     390 は行を grid で並べる幅（hidden の行が出てこない）
+  for (const [label, size] of [["1200", { viewport: { width: 1200, height: 900 } }], ["390", { viewport: { width: 390, height: 844 }, mobile: true }]]) {
+    const page = await newPage({ ...size, storage: { spelldash_billing_open: JSON.stringify({ open: true, at: Date.now(), ai: true }) } });
     await page.route("**/api/billing/config", async (route) => {
       const res = await route.fetch();
       await route.fulfill({ response: res, body: JSON.stringify({ ...(await res.json()), ai: null }), headers: { ...res.headers(), "content-type": "application/json" } });
     });
     await page.goto(BASE + "/pro.html", { waitUntil: "networkidle" });
     await waitUntil(async () => (await page.$("#proLoginStart")) !== null, 5000);
-    const cells = await page.$$eval("#proCompare [data-pro-ai]", (els) => els.map((e) => e.textContent.trim()));
-    check("Pro（Batch 83）: AI が使えない（config の ai が null）ときは比較表の AI の行が「準備中」（回数を約束しない）・ほかの行はそのまま・エラー 0",
-      JSON.stringify(cells) === JSON.stringify(["準備中", "準備中"]) && (await page.$$("#proCompare tbody tr")).length === 4 && page.errors.length === 0, JSON.stringify({ cells, errors: page.errors.slice(0, 1) }));
+    const shown = await shownCompareRows(page);
+    const tableText = await page.$eval("#proCompareSection", (el) => el.innerText).catch(() => "");
+    const ai = await rememberedAi(page);
+    check(`Pro（Batch 83 反証）: AI が使えない（config の ai が null）ときは比較表に AI の行を出さない（マイ単語帳・推移・テーマの 3 行。${label}）・覚えた AI の有無も「なし」に直す・エラー 0`,
+      JSON.stringify(shown) === JSON.stringify(["マイ単語帳", "思い出せるようになった語の推移", "テーマ"]) && !/AI|準備中/.test(tableText) && ai === false && page.errors.length === 0,
+      JSON.stringify({ shown, ai, tableText: tableText.slice(0, 200), errors: page.errors.slice(0, 1) }));
     await page.close();
+  }
+
+  // 1c. Batch 83 の反証: 前の config に AI があった（覚えている）人は、config が遅くても AI の行を先に出しておき（字は回数を約束しない「…」）、
+  //     届いたら同じ行に回数が入る（行が後から入って料金の節が下がらない: 比較表の高さが、出した瞬間と届いた後で同じ）
+  {
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_billing_open: JSON.stringify({ open: true, at: Date.now(), price: { month: 580, year: 4800, trialMonths: 0, trialDays: 0 }, ai: true }) } });
+    await page.route("**/api/billing/config", async (route) => { await new Promise((r) => setTimeout(r, 2000)); await route.fallback(); });
+    await page.goto(BASE + "/pro.html", { waitUntil: "load" });
+    await waitUntil(async () => !(await page.evaluate(() => document.body.hasAttribute("data-pending"))), 3000);
+    const snap = () => page.evaluate(() => ({ h: Math.round(document.getElementById("proCompare").getBoundingClientRect().height), cells: [...document.querySelectorAll("#proCompare [data-pro-ai]")].map((e) => e.textContent.trim()), shown: document.getElementById("proCompareAi")?.hidden === false }));
+    const during = await snap();
+    await waitUntil(async () => (await snap()).cells[1] === "60 回", 4000);
+    const after = await snap();
+    check("Pro（Batch 83 反証）: 前の config に AI があった人は、config が遅くても AI の行を先に出し（字は「…」）、届いたら同じ行に回数が入る（比較表の高さは同じ）",
+      during.shown && JSON.stringify(during.cells) === JSON.stringify(["…", "…"]) && after.shown && JSON.stringify(after.cells) === JSON.stringify(["3 回", "60 回"]) && after.h === during.h && page.errors.length === 0,
+      JSON.stringify({ during, after, errors: page.errors.slice(0, 1) }));
+    await page.close();
+    // 初めて開いた（覚えた ai が無い）人で config が遅い: 出した後には AI の行を足さない（足すと下の節が 1 行ぶん動く: 1200 で CLS 0.049・390 で 0.094）。
+    // AI の有無は覚え、開き直すと先に出る（4 行）
+    const first = await newPage({ viewport: { width: 1200, height: 900 } });
+    await first.route("**/api/billing/config", async (route) => { await new Promise((r) => setTimeout(r, 2000)); await route.fallback(); });
+    await first.goto(BASE + "/pro.html", { waitUntil: "load" });
+    await waitUntil(async () => !(await first.evaluate(() => document.body.hasAttribute("data-pending"))), 3000);
+    const aiSnap = () => first.evaluate(() => ({ shown: document.getElementById("proCompareAi")?.hidden === false, h: Math.round(document.getElementById("proCompare").getBoundingClientRect().height) }));
+    const firstDuring = await aiSnap();
+    await waitUntil(async () => (await rememberedAi(first)) === true, 4000);
+    await first.waitForTimeout(200);
+    const firstAfter = await aiSnap();
+    await first.unroute("**/api/billing/config");
+    await first.reload({ waitUntil: "networkidle" });
+    await waitUntil(async () => (await first.$("#proLoginStart")) !== null, 5000);
+    const again = await shownCompareRows(first);
+    check("Pro（Batch 83 反証）: 初めて開いて config が遅いときは、出した後に AI の行を足さない（比較表の高さは同じ）・AI の有無は覚え、開き直すと 4 行",
+      !firstDuring.shown && !firstAfter.shown && firstAfter.h === firstDuring.h && (await rememberedAi(first)) === true && again.length === 4 && first.errors.length === 0,
+      JSON.stringify({ firstDuring, firstAfter, again, errors: first.errors.slice(0, 1) }));
+    await first.close();
   }
 
   // 2. ログイン済み free: 月額ボタン → Checkout（偽: pro.html?pro=done）→ 反映されると「Pro になった」と、使えるようになったもの
@@ -18754,6 +18808,9 @@ console.log("pro:");
     await waitUntil(async () => (await text(guest, "#proPrice")).includes("¥580"), 5000);
     check("無料期間: 未ログインの料金の行に「初めての方は最初の1か月無料」", (await text(guest, "#proPrice")).includes("初めての方は最初の1か月無料"), await text(guest, "#proPrice"));
     check("無料期間: 未ログインの「申し込みの前に」に「初めての方だけ、最初の1か月は無料」", (await text(guest, ".pro-terms")).includes("初めての方だけ、最初の1か月は無料"), await text(guest, ".pro-terms"));
+    const guestRows = await termRows(guest);
+    check("無料期間（Batch 83 反証）: 未ログインの「申し込みの前に」の「提供」は「手続きが終わるとすぐ使える（無料期間中も同じ）」（特商法の提供時期と同じ）",
+      JSON.stringify(guestRows.at(-1)) === JSON.stringify(["提供", "手続きが終わるとすぐ使える（無料期間中も同じ）"]), JSON.stringify(guestRows));
     await guest.close();
 
     const first = await newPage({ storage: { spelldash_test_session: "1" } });
@@ -18762,6 +18819,8 @@ console.log("pro:");
     const button = await text(first, "#proCheckoutMonth");
     check("無料期間: 初めての人のボタンは「1か月無料で始める（その後 月額 ¥580）」", button === "1か月無料で始める（その後 月額 ¥580）", button);
     check("無料期間: 初めての人にはサーバーの終わりの日（11/7 に 月額…を請求）", (await text(first, ".pro-terms")).includes("11/7 に 月額 ¥580"), await text(first, ".pro-terms"));
+    const firstRows = await termRows(first);
+    check("無料期間（Batch 83 反証）: 初めての人の「提供」も「手続きが終わるとすぐ使える（無料期間中も同じ）」", JSON.stringify(firstRows.at(-1)) === JSON.stringify(["提供", "手続きが終わるとすぐ使える（無料期間中も同じ）"]), JSON.stringify(firstRows));
     await first.close();
 
     const again = await newPage({ storage: proStorage({ status: "canceled", current_period_end: isoDaysFromNow(-40) }) });
@@ -18769,6 +18828,8 @@ console.log("pro:");
     await waitUntil(async () => (await again.$("#proCheckoutMonth")) !== null, 5000);
     check("無料期間: 以前に加入した人のボタンは「月額 ¥580 で始める」（無料と言わない）", (await text(again, "#proCheckoutMonth")) === "月額 ¥580 で始める" && !(await text(again, "#proPrice")).includes("無料"), `${await text(again, "#proCheckoutMonth")} / ${await text(again, "#proPrice")}`);
     check("無料期間: 以前に加入した人には「今回は加入した日に…請求」", (await text(again, ".pro-terms")).includes("以前に加入したことがあるので"), await text(again, ".pro-terms"));
+    const againRows = await termRows(again);
+    check("無料期間（Batch 83 反証）: 以前に加入した人の「提供」は「手続きが終わるとすぐ使える」（無料期間の話はしない）", JSON.stringify(againRows.at(-1)) === JSON.stringify(["提供", "手続きが終わるとすぐ使える"]), JSON.stringify(againRows));
     await again.close();
   } finally {
     await fetch(BASE + "/__billing/trial?months=0", { method: "POST" });
@@ -19266,7 +19327,8 @@ console.log("pro:");
       return r;
     };
     const fresh = () => createCloud({}).id; // 1 回ごとに空のクラウド（使い回すと前の回が送った記録を取り込み、題の下に「記録を同期した。」が後から入って比較表が下がる。この検査の外の動き）
-    const shapeOf = (trial) => JSON.stringify({ open: true, at: Date.now(), price: { month: 580, year: 4800, trialMonths: trial, trialDays: 0 } });
+    // ai: 偽の config には AI の回数がある（前に取れた config と今の config を同じにする。Batch 83 の反証で AI の有無も覚える）
+    const shapeOf = (trial) => JSON.stringify({ open: true, at: Date.now(), price: { month: 580, year: 4800, trialMonths: trial, trialDays: 0 }, ai: true });
     const planNone = JSON.stringify({ user: "test-user", status: "none", interval: null, periodEnd: null, cancelAtPeriodEnd: false, checkedAt: new Date().toISOString() });
     const sizes = [["390", { width: 390, height: 844, mobile: true }], ["480", { width: 480, height: 844, mobile: true }], ["1200", {}]];
     const runs = {};

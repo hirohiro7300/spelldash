@@ -1,8 +1,9 @@
 // 課金のサーバー側の単体（Batch 83。api/_lib/billing.js・api/billing/{checkout,config,portal,webhook}.js・api/_lib/aiLimits.js）:
-//   署名の確かめ（正しい・違う鍵・本文の書き換え・v1 が複数・300 秒の外）・webhook のイベントの書き込み（加入の完了・契約の作成／更新／解約、
+//   署名の確かめ（正しい・違う鍵・本文の書き換え・v1 が複数・300 秒の外・設定した鍵で確かめる・鍵の入れ替え）・webhook のイベントの書き込み（加入の完了・契約の作成／更新／解約、
 //   人は client_reference_id か metadata、知らない人は書かない、表が無いときの応答）・最初の行は「入れるだけ」で、同時に届いても新しいイベントが残る・
-//   生ボディの読み方（流れだけ・文字列・Buffer・読むと流れを使い切る body・rawBody・解析済みの値しか無いときは作り直さない）・
-//   加入の守り（受付前・ログイン・二重加入・無料期間は初めての人だけ・確定の画面の文）・お支払いの管理の守り・Pro の判定と無料期間の終わり・
+//   生ボディの読み方（流れだけ・文字列・Buffer・読むと流れを使い切る body・rawBody を先に・解析済みの値しか無いときは作り直さない・
+//   配信の補助が先に読み切って req.on を写しに付け替えた形〔本番の既定〕・写しが終わらなくても待ち続けない）・
+//   加入の守り（受付前・ログイン・二重加入・無料期間は初めての人だけ・確定の画面の文〔提供の時期も〕）・お支払いの管理の守り・Pro の判定と無料期間の終わり・
 //   受付前の config・比較表の AI の回数（サーバーの値と同じ）・ログに鍵とメールと顧客の番号を書かない。
 // ネットワークには出ない: fetch を差し替え、決済の会社の API とデータベース（認証と REST）を偽物で答える。鍵は偽の値（本物の鍵の形にしない）。
 // 使い方: node scripts/test-billing.mjs [--root <木>]
@@ -10,7 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const rootArg = process.argv.indexOf("--root");
@@ -255,6 +256,45 @@ function consumingReq(raw, headers) {
   });
   return stream;
 }
+// 配信の側のサーバーの関数の補助（既定で入る）の形（Batch 83 の反証。公開されている実行環境の版で確かめた形を自分で組み直したもの）:
+// 関数を呼ぶ前に流れを最後まで読み（元の流れは readableEnded）、読み切ったバイト列の写しを持つ流れへ req.on('data'/'end')・req.addListener・req.read を
+// 付け替える（自分の持ち物として上書き）。req.body は読んだ時に JSON にする。rawBody は置かない。bodyParser: false の指定は読まない
+async function platformReq(raw, headers, { endCopy = true } = {}) {
+  const stream = streamReq(raw, headers);
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const bytes = Buffer.concat(chunks);
+  const copy = new PassThrough();
+  const ownOn = stream.on.bind(stream);
+  const copyOn = copy.on.bind(copy);
+  stream.read = copy.read.bind(copy);
+  stream.on = stream.addListener = (name, listener) => (name === "data" || name === "end" ? copyOn(name, listener) : ownOn(name, listener));
+  if (endCopy) copy.end(bytes);
+  else copy.write(bytes); // 写しが終わらない（守りの検査: 待ち続けない）
+  let parsed;
+  Object.defineProperty(stream, "body", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      parsed ??= JSON.parse(bytes.toString("utf8"));
+      return parsed;
+    }
+  });
+  return stream;
+}
+// 流れは読み切られ、生の値 rawBody はあるが、body を読むと例外（解析の失敗）。body を読んだ回数を数える
+async function rawBodyFirstReq(raw, headers) {
+  const stream = await drainedReq(raw, headers);
+  let reads = 0;
+  Object.defineProperty(stream, "body", {
+    configurable: true,
+    get() {
+      reads++;
+      throw new Error("Invalid JSON");
+    }
+  });
+  return Object.assign(stream, { rawBody: Buffer.from(raw, "utf8"), bodyReads: () => reads });
+}
 
 const subOf = (over = {}) => ({
   id: "sub_test_1",
@@ -289,6 +329,10 @@ const hook = async (event, makeReq = streamReq, opts) => {
   ok("署名: t が無い・v1 が無い・形が違う・鍵が空なら通らない",
     [`v1=${good()}`, `t=${t}`, "garbage", ""].every((h) => v(raw, h, ENV.STRIPE_WEBHOOK_SECRET, t) === false) && v(raw, `t=${t},v1=${good()}`, "", t) === false && v(raw, undefined, ENV.STRIPE_WEBHOOK_SECRET, t) === false);
   ok("署名: 長さの違う v1 は比べずに外す（例外を出さない）", v(raw, `t=${t},v1=abc`, ENV.STRIPE_WEBHOOK_SECRET, t) === false);
+  // 確かめに使うのは渡された（設定した）鍵だけ: 同じ署名でも設定した鍵が違えば通らず、別の鍵で作った署名はその鍵を設定すれば通る
+  // （ほかの検査はどれも同じ鍵を設定するので、決まった字の鍵で計算する作りでも通ってしまう。Batch 83 の反証）
+  ok("署名: 設定した鍵で確かめる（同じ署名でも設定した鍵が違えば通らない・別の鍵で作った署名はその鍵を設定すれば通る）",
+    v(raw, `t=${t},v1=${good()}`, "another-configured-secret", t) === false && v(raw, `t=${t},v1=${good(raw, "another-configured-secret")}`, "another-configured-secret", t) === true);
 }
 
 // ===== 2. webhook: 受け付けの前の守り =====
@@ -317,6 +361,14 @@ const hook = async (event, makeReq = streamReq, opts) => {
   const broken = "{not json";
   res = await invoke(webhook, streamReq(broken, hookHeaders(broken)));
   ok("webhook: 署名は合うが JSON でない本文は 400 bad_request", res.statusCode === 400 && res.body?.error === "bad_request", JSON.stringify(res.body));
+  // 署名の鍵を入れ替えた（STRIPE_WEBHOOK_SECRET を変えて Redeploy）: 前の鍵の署名は断り、新しい鍵の署名は通す
+  fresh();
+  setEnv({ STRIPE_WEBHOOK_SECRET: "rotated-secret" });
+  res = await invoke(webhook, streamReq(raw, hookHeaders(raw)));
+  const oldRefused = res.statusCode === 400 && res.body?.error === "bad_signature" && writes().length === 0;
+  res = await invoke(webhook, streamReq(raw, hookHeaders(raw, { secret: "rotated-secret" })));
+  ok("webhook: 署名の鍵を入れ替えると、前の鍵の署名は 400 bad_signature（書かない）・新しい鍵の署名は 200（設定した鍵で確かめる）", oldRefused && res.statusCode === 200 && D.rows.has(U1), JSON.stringify({ oldRefused, status: res.statusCode }));
+  setEnv();
 }
 
 // ===== 3. webhook: イベントごとの書き込み =====
@@ -453,7 +505,10 @@ const hook = async (event, makeReq = streamReq, opts) => {
     ["body を読むと流れを使い切る（先に流れを読む）", (raw, h) => consumingReq(raw, h), 200],
     ["流れは読み切られ、rawBody（Buffer）と解析済みの body", async (raw, h) => Object.assign(await drainedReq(raw, h), { rawBody: Buffer.from(raw), body: JSON.parse(raw) }), 200],
     ["流れは読み切られ、解析済みの body しか無い（作り直した JSON では確かめない）", async (raw, h) => Object.assign(await drainedReq(raw, h), { body: JSON.parse(raw) }), 400],
-    ["流れでない要求（body が文字列）", (raw, h) => ({ method: "POST", headers: h, body: raw }), 200]
+    ["流れでない要求（body が文字列）", (raw, h) => ({ method: "POST", headers: h, body: raw }), 200],
+    // Batch 83 の反証（本番の既定の形）: 直す前は流れが読み終わっているので読まず、body は解析済みの値で 400 (no raw body) だった
+    ["配信の補助が先に流れを読み切り、req.on('data'/'end') を写しに付け替え・body は読んだ時に解析・rawBody なし", (raw, h) => platformReq(raw, h), 200],
+    ["流れは読み切られ、rawBody があり、body を読むと例外（rawBody を先に見る）", (raw, h) => rawBodyFirstReq(raw, h), 200]
   ];
   for (const [label, makeReq, expected] of cases) {
     fresh();
@@ -468,6 +523,21 @@ const hook = async (event, makeReq = streamReq, opts) => {
   const text = (value) => (value == null ? null : Buffer.isBuffer(value) ? value.toString("utf8") : typeof value === "string" ? value : null);
   ok("生ボディ: readRawBody は body を見る前に流れを読む（読むと流れを使い切る body でも届いたバイト列）", text(await lib.readRawBody(consumingReq(raw, {}))) === raw);
   ok("生ボディ: readRawBody は流れも生の値も無ければ空にする（解析済みの値から作り直さない）", !text(await lib.readRawBody(Object.assign(await drainedReq(raw, {}), { body: JSON.parse(raw) }))));
+  // 配信の補助の形: 元の流れは読み終わっている（readableEnded）が、付け替えた req.on('data'/'end') から届いたバイト列がそのまま読める
+  const platform = await platformReq(raw, {});
+  const platformEnded = platform.readableEnded === true && Object.hasOwn(platform, "on");
+  ok("生ボディ: readRawBody は、配信の補助が先に読み切って req.on を写しに付け替えた要求から、届いたバイト列をそのまま返す（body の解析済みの値は使わない）",
+    platformEnded && text(await lib.readRawBody(platform)) === raw, JSON.stringify({ platformEnded }));
+  // rawBody があれば body に触らない（body を読むと例外になる作りでも、生の値で確かめられる）
+  const first = await rawBodyFirstReq(raw, {});
+  let threw = "";
+  const got = await lib.readRawBody(first).catch((error) => { threw = String(error?.message || error); return null; });
+  ok("生ボディ: readRawBody は rawBody を先に見て、あれば body に触らない（body を読むと例外の作りでも生の値を返す）", text(got) === raw && first.bodyReads() === 0 && !threw, JSON.stringify({ threw, reads: first.bodyReads() }));
+  // 付け替えた写しが終わらない（ありえない形の守り）: 待ち続けず、決めた時間で「読めない」にする（400 (no raw body)。関数の時間切れにしない）
+  const stalled = await platformReq(raw, {}, { endCopy: false });
+  const started = Date.now();
+  const late = await Promise.race([lib.readRawBody(stalled, { waitMs: 50 }), new Promise((resolve) => setTimeout(() => resolve("hung"), 2000))]);
+  ok("生ボディ: 付け替えた req.on の写しが終わらなくても待ち続けない（決めた時間で null）", late === null && Date.now() - started < 1500, JSON.stringify({ late: late === null ? null : String(late).slice(0, 20), ms: Date.now() - started }));
 }
 
 // ===== 6. 加入（checkout） =====
@@ -538,6 +608,9 @@ const hook = async (event, makeReq = streamReq, opts) => {
   ok("確定の画面の文: 解約はいつでも「設定 → 解約・お支払いの管理」から・期間の終わりまで使える・日割りの返金はしない",
     trialText.includes("いつでも「設定 → 解約・お支払いの管理」から") && /期間の終わりまで使え/.test(trialText) && /日割りの返金はしません/.test(trialText), trialText);
   ok("確定の画面の文: 金額は書かない（画面が Price から出す）・500 字以内（決済の会社の上限の内）", noAmount(trialText) && trialText.length <= 500, `${trialText.length}字`);
+  // 提供の時期（特定商取引法 12 条の 6 の最終確認の画面で分かるようにする項目。特商法の表記の「提供時期」と同じ: 手続きが終わるとすぐ・無料期間中も同じ）
+  ok("確定の画面の文（無料期間あり）: 提供の時期「お申し込みの手続きが終わるとすぐに使えます（無料期間中も同じです）」",
+    trialText.includes("お申し込みの手続きが終わるとすぐに使えます（無料期間中も同じです）。"), trialText);
   ok("加入: 同意の欄（consent_collection）は送らない（規約の URL を決済の会社の画面で設定するまで使えない）", ![...f.keys()].some((k) => k.startsWith("consent_collection")));
 
   // 以前に加入した人（行が canceled・顧客あり）: 無料期間なし・確定の画面の文も無料と言わない
@@ -550,6 +623,8 @@ const hook = async (event, makeReq = streamReq, opts) => {
   ok("加入: 以前に加入した人の冪等キーは paid", /:month:paid:\d+$/.test(providerCalls("POST", "/v1/checkout/sessions").at(-1)?.headers["idempotency-key"] || ""));
   ok("確定の画面の文（無料期間なし）: お申し込みの日に最初の請求・毎月自動で更新・解約の方法。無料とは言わない",
     /お申し込みの日に最初の請求/.test(paidText) && /毎月自動で更新/.test(paidText) && paidText.includes("「設定 → 解約・お支払いの管理」") && /日割りの返金はしません/.test(paidText) && !/無料/.test(paidText) && noAmount(paidText), paidText);
+  ok("確定の画面の文（無料期間なし）: 提供の時期「お申し込みの手続きが終わるとすぐに使えます。」（無料期間の話はしない）",
+    paidText.includes("お申し込みの手続きが終わるとすぐに使えます。") && !paidText.includes("無料期間中"), paidText);
 
   // 行は無いが、決済の会社に終わった契約がある（webhook の前に解約）: 初めてではない
   fresh();
@@ -595,6 +670,7 @@ const hook = async (event, makeReq = streamReq, opts) => {
     const m1 = build({ interval: "month", trialLabel: "1か月" });
     const m0 = build({ interval: "month" });
     ok("確定の画面の文: 関数は無料期間の名を入れたときだけ無料と言う・どちらも 500 字以内", /最初の1か月は料金がかかりません/.test(m1) && !/無料/.test(m0) && m1.length <= 500 && m0.length <= 500, `${m1} / ${m0}`);
+    ok("確定の画面の文: 関数の文はどちらも提供の時期（手続きが終わるとすぐに使えます）を言う", m1.includes("手続きが終わるとすぐに使えます") && m0.includes("手続きが終わるとすぐに使えます"), `${m1} / ${m0}`);
   }
 }
 
