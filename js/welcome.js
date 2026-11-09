@@ -3,7 +3,7 @@ import { getTotalXp } from "./level.js";
 import { PLACEMENT_NOTE, PLACEMENT_MINUTES } from "./course.js";
 import { renderHasumiHome } from "./hasumi.js"; // 紙片の文は body.welcome-open を見る: 畳んだら描き直す
 import { esc, numHtml } from "./html.js";
-import { hasWordRecords } from "./storage.js";
+import { hasWordRecords, hasMyWordsSaved } from "./storage.js";
 import { isFocusOn } from "./focus.js";
 
 // ===== 初めて来た人向けのトップページ（書斎の机に置いた最初の本） =====
@@ -51,6 +51,8 @@ export function shouldShowWelcome() {
   if (getTotalXp() > 0) return false;
   // 語の記録は保存の文字列を 1 行と同じ読み方で見る（js/storage.js hasWordRecords。鍵と読み方は storage.js が持つ）
   if (hasWordRecords()) return false;
+  // マイ単語帳に語がある人（渡された単語帳を足しただけで、まだ回を始めていない人も）は初回と見ない（Batch 86。js/storage.js hasMyWordsSaved）
+  if (hasMyWordsSaved()) return false;
   // アプリ内への深いリンク（?set= ?words= ?t= など）で来た人には出さない。それ以外のパラメータ（計測用等）では出す
   const params = new URLSearchParams(location.search);
   if (["set", "words", "t", "weekly", "category", "genre", "mode"].some((k) => params.has(k))) return false;

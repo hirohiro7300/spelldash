@@ -408,6 +408,45 @@ export function entriesOfBook(list, bookId, books) {
   return (Array.isArray(list) ? list : []).filter((w) => w && bookIdOf(w, books) === bookId);
 }
 
+// ?book の無い /mywords.html で開く単語帳（Batch 86）: 最初の単語帳。最初の単語帳に語が無く、ほかの単語帳に語があれば、語のある最初の単語帳
+// （渡された単語帳だけを足した人が、ホームから空の「マイ単語帳」を開かないように。新しい保存の鍵は作らない。?book があればその単語帳: 前のまま）
+export function defaultBookId(list, books) {
+  const ids = (Array.isArray(books) ? books : []).map((b) => b.id);
+  if (ids.length === 0) return MY_FIRST_BOOK.id;
+  const has = (id) => entriesOfBook(list, id, books).length > 0;
+  return has(ids[0]) ? ids[0] : ids.find(has) ?? ids[0];
+}
+
+// 渡された単語帳の語のうち、もう入っている組の数・まだの組の数（rest はまだの語。渡された並びで 1 組 1 語）と、入っている組がいちばん多い単語帳
+// （同じ数なら一覧の前の方。無ければ null）。Batch 86:
+// 同じリンクをもう一度開いたとき（全部入っている・一部・1 つも無い）に使う。同じかの決まりは足すときと同じ（js/myWords.js validateEntry:
+// 同じ英語と同じ訳の組は全部の単語帳で 1 つ。findSamePair）。足せない語（英語・訳の決まりに合わない）と、渡された中の同じ組の 2 度目は数えない
+export function sharedPresence(words, list, books) {
+  const seen = new Set();
+  const perBook = new Map();
+  const rest = [];
+  let present = 0;
+  for (const w of Array.isArray(words) ? words : []) {
+    const e = checkEnText(w?.en);
+    const j = checkJaText(w?.ja);
+    if (!e.ok || !j.ok) continue;
+    const pair = `${e.key}\n${normJa(j.ja)}`;
+    if (seen.has(pair)) continue;
+    seen.add(pair);
+    const same = findSamePair(list, e.key, j.ja);
+    if (!same) {
+      rest.push(w);
+      continue;
+    }
+    present++;
+    const id = bookIdOf(same, books);
+    perBook.set(id, (perBook.get(id) ?? 0) + 1);
+  }
+  let book = null;
+  for (const b of Array.isArray(books) ? books : []) if ((perBook.get(b.id) ?? 0) > (book ? perBook.get(book.id) : 0)) book = b;
+  return { present, missing: rest.length, book, rest };
+}
+
 // 単語帳ごとの 3 状態の数（英語の語だけ）。{ <id>: { new, unsure, learned, total } }
 export function bookCounts(list, books) {
   const out = {};
