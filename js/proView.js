@@ -3,6 +3,7 @@
 // 価格は /api/billing/config から取る（コードに金額を書かない。Stripe の Price が正）。
 // 加入は /api/billing/checkout → Stripe Checkout へ移動。管理は /api/billing/portal → Billing Portal へ。
 // アプリ（Capacitor）では購入ボタンと価格を出さず、状態だけ出す（加入と管理は Web 版で）。
+// 比較表は今の画面（英単語の学習に絞った形）で本当に使える特典だけ（Batch 83）。数はコードの値から入れる（fillNumbers・renderAiRow。字がずれない）
 
 import { initializeAuth } from "./auth.js";
 import { setFooterYear, revealPendingPage } from "./footer.js";
@@ -10,7 +11,8 @@ import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
 import { supabase } from "./supabase.js";
 import { apiUrl, isNativeApp } from "./appEnv.js";
-import { getPlan, refreshPlan, postBilling, waitForPro, planLabel, planActionLabel } from "./plan.js";
+import { getPlan, refreshPlan, postBilling, waitForPro, planLabel, planActionLabel, TREND_DAYS } from "./plan.js";
+import { MY_FREE_LIMIT, MY_PRO_LIMIT } from "./myWordsCore.js";
 import { fetchBillingConfig, rememberBillingConfig, rememberedBillingPrice, setProIntent, hasProIntent, clearProIntent } from "./proFunnel.js";
 import { logFunnel, logFunnelBeforeLeave, markPaidPending, hasPaidPending, freshPaidPending, bindPaidPending } from "./funnelLog.js";
 
@@ -34,7 +36,8 @@ const PAID_WAIT_TEXT = "手続きは完了。反映を待っている。もう�
 const stateElement = document.getElementById("proState");
 const messageElement = document.getElementById("proMessage");
 
-let config = null; // { configured, prices, trialMonths, trialDays, trialEndsAt }（取得前は null）
+let config = null; // { configured, prices, trialMonths, trialDays, trialEndsAt, ai }（取得前は null）
+let configReady = null; // config を取りに行った約束（加入直後の一覧が AI の回数を待つ。アプリでは取りに行かない）
 let session = null;
 let busy = false;
 const params = new URLSearchParams(location.search);
@@ -48,6 +51,28 @@ let planSeen = false; // このページで Pro の状態を読み直したか�
 if (params.has("resume") || params.has("pro")) {
   // 開き直したときに同じ案内を繰り返さない
   history.replaceState(null, "", location.pathname + location.hash);
+}
+
+// 比較表とよくある質問の数（マイ単語帳は js/myWordsCore.js、推移は js/plan.js TREND_DAYS。静的な字も同じ値なので、ずれたときだけ書き換わる）
+const fmtCount = (n) => Number(n).toLocaleString("ja-JP");
+const COMPARE_NUMBERS = { myFree: MY_FREE_LIMIT, myPro: MY_PRO_LIMIT, trendFree: TREND_DAYS.free, trendPro: TREND_DAYS.pro };
+function fillNumbers() {
+  for (const node of document.querySelectorAll("[data-pro-num]")) {
+    const value = COMPARE_NUMBERS[node.dataset.proNum];
+    if (value !== undefined) node.textContent = fmtCount(value);
+  }
+}
+fillNumbers();
+
+// 比較表の AI の行（覚え方の 1 日の回数）。config の ai（/api/billing/config。api/_lib/aiLimits.js が explain-word のゲートと同じ値を返す）。
+// AI が使えない（鍵が無い）・config が届かないときは「準備中」のまま（回数を約束しない）。字の長さはどちらも短く、表の幅は変わらない
+function renderAiRow() {
+  const explain = config?.ai?.explain ?? null;
+  for (const cell of document.querySelectorAll("[data-pro-ai]")) {
+    const n = explain ? Number(explain[cell.dataset.proAi]) : NaN;
+    if (Number.isFinite(n) && n > 0) cell.innerHTML = `<b class="mono">${fmtCount(n)}</b> 回`;
+    else cell.textContent = "準備中";
+  }
 }
 
 initializeAuth();
@@ -100,7 +125,10 @@ setTimeout(() => {
 
 // アプリでは購入 UI を出さないので価格も取りに行かない（/api/billing/* は CORS を許可していない）
 if (isNativeApp) render();
-else loadConfig().then(() => render());
+else {
+  configReady = loadConfig();
+  configReady.then(() => render());
+}
 
 plansElement.addEventListener("click", (event) => {
   // 未ログイン: ヘッダーのログインを開く（ログインが済むと onAuthStateChange で描き直す）
@@ -121,7 +149,8 @@ stateElement.addEventListener("click", (event) => {
 async function loadConfig() {
   const fetched = await fetchBillingConfig(); // 全ページのキャッシュと同じ規則（js/proFunnel.js）
   rememberBillingConfig(fetched); // 取れなかったときは受付前と覚えない（前の値のまま 10 分後に取り直す）
-  config = { configured: fetched.configured, prices: fetched.prices, trialMonths: fetched.trialMonths, trialDays: fetched.trialDays, trialEndsAt: fetched.trialEndsAt };
+  config = { configured: fetched.configured, prices: fetched.prices, trialMonths: fetched.trialMonths, trialDays: fetched.trialDays, trialEndsAt: fetched.trialEndsAt, ai: fetched.ai ?? null };
+  renderAiRow();
 }
 
 // 無料期間（初めての方だけ。api/billing/checkout.js が判定する）。無ければ null
@@ -367,14 +396,17 @@ function maybeResume(plan) {
   document.getElementById("proCheckoutMonth")?.focus({ preventScroll: false });
 }
 
-// 支払いを終えて戻った: 反映を待って、使えるようになったものを並べる
-const UNLOCKED = [
-  { label: "マイ単語帳 1,000語まで", href: "./list.html#myWords" },
-  { label: "テーマ 紙・藍", href: "./profile.html#appearance" },
-  { label: "覚えた単語の推移 90日", href: "./stats.html#week" },
-  { label: "連続記録の修復 月 1 回", href: "" },
-  { label: "AI の解説 1 日 60 回・カード作成 20 回", href: "" }
-];
+// 支払いを終えて戻った: 反映を待って、使えるようになったものを並べる（比較表と同じ。今の画面で届く場所へ。AI の覚え方は使えるときだけ）
+function unlockedItems() {
+  const items = [
+    { label: `マイ単語帳 ${fmtCount(MY_PRO_LIMIT)}語まで`, href: "./mywords.html" },
+    { label: `思い出せるようになった語の推移 ${fmtCount(TREND_DAYS.pro)}日`, href: "./stats.html#growth" },
+    { label: "テーマ 紙・藍", href: "./profile.html#appearance" }
+  ];
+  const ai = Number(config?.ai?.explain?.pro);
+  if (Number.isFinite(ai) && ai > 0) items.push({ label: `AI の覚え方 1日 ${fmtCount(ai)} 回`, href: "./stats.html#learnedWords" });
+  return items;
+}
 
 function maybeWelcome() {
   if (!donePending || !welcomeElement) return;
@@ -392,13 +424,15 @@ function maybeWelcome() {
   clearProIntent();
   welcomeElement.hidden = false;
   welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">手続きを確認中…</p>`;
-  waitForPro({ tries: 30 }).then((ok) => {
+  waitForPro({ tries: 30 }).then(async (ok) => {
     if (!ok) {
       // 反映がまだ（約 1 分待った）: 購入ボタンは出さないまま。開き直しても「支払い済み」の印で出さない（renderPlans）
       welcomeElement.innerHTML = `<p class="pro-welcome__title" role="status">${PAID_WAIT_TEXT}</p>`;
       return;
     }
-    const items = UNLOCKED.map((u) => `<li>${u.href ? `<a href="${u.href}">${u.label}</a>` : u.label}</li>`).join("");
+    // AI の覚え方の行は config の ai で決まる: 届いていなければ長くて 3 秒待つ（届かなければ AI の行なしで出す）
+    if (!config && configReady) await Promise.race([configReady, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    const items = unlockedItems().map((u) => `<li><a href="${u.href}">${u.label}</a></li>`).join("");
     welcomeElement.innerHTML = `
       <p class="pro-welcome__title" role="status">Pro になった。ありがとう</p>
       <p class="pro-welcome__lead">いまから使えるもの</p>

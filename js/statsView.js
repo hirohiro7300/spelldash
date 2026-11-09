@@ -4,7 +4,7 @@ import { setFooterYear, revealPendingPage } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { computeSummary, computeTypingSummary } from "./summary.js";
 import { getStreak, getLostStreak, canRepairStreak, repairStreak } from "./level.js";
-import { isPro } from "./plan.js";
+import { isPro, TREND_DAYS } from "./plan.js";
 import { getWordStats, getSessionLog, loadLearnStates, learnStateSource, recordsEpoch, STORAGE_KEY } from "./storage.js";
 import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
@@ -576,10 +576,10 @@ function renderMonthlySummary() {
 // 30 日と 90 日の切り替えは Pro の人にだけ出す（Pro でない人に 90 日の案内を出さない: 決定 §7。保存値はそのまま）
 const TREND_RANGE_KEY = "spelldash_trend_range";
 
-// 表示する日数。90 は Pro だけ（無料の人の保存値が 90 でも 30 で描く）
+// 表示する日数。90 は Pro だけ（無料の人の保存値が 90 でも 30 で描く）。日数は js/plan.js の TREND_DAYS（加入画面の比較表と同じ値）
 function getTrendRange() {
   const saved = localStorage.getItem(TREND_RANGE_KEY);
-  return saved === "90" && isPro() ? 90 : 30;
+  return saved === String(TREND_DAYS.pro) && isPro() ? TREND_DAYS.pro : TREND_DAYS.free;
 }
 
 function initializeTrendRange() {
@@ -589,7 +589,7 @@ function initializeTrendRange() {
   group.addEventListener("click", (event) => {
     const button = event.target.closest("[data-trend-range]");
     if (!button || !isPro()) return;
-    localStorage.setItem(TREND_RANGE_KEY, button.dataset.trendRange === "90" ? "90" : "30");
+    localStorage.setItem(TREND_RANGE_KEY, String(button.dataset.trendRange === String(TREND_DAYS.pro) ? TREND_DAYS.pro : TREND_DAYS.free));
     renderGrowthTrend();
   });
 }
@@ -619,7 +619,7 @@ function renderGrowthTrend() {
   // 90 日でも記録が短い人は、最初の記録の日から描く（左の空白で線が詰まらない）
   const fullSeries = getLearnedSeries(days);
   const firstRecorded = fullSeries.findIndex((p) => p.learned != null);
-  const series = days === 90 && firstRecorded > 0 ? fullSeries.slice(Math.max(0, Math.min(firstRecorded, fullSeries.length - 30))) : fullSeries;
+  const series = days === TREND_DAYS.pro && firstRecorded > 0 ? fullSeries.slice(Math.max(0, Math.min(firstRecorded, fullSeries.length - TREND_DAYS.free))) : fullSeries;
   const points = series.filter((p) => p.learned != null);
 
   if (points.length < 2) {

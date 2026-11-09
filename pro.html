@@ -21,7 +21,7 @@
   <script>(() => { const t = localStorage.getItem("spelldash_theme"); const theme = ["dark","paper","indigo"].includes(t) ? t : "light"; document.documentElement.dataset.theme = theme; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = { light: "#1A2137", dark: "#04060B", paper: "#20243A", indigo: "#03050C" }[theme]; })();</script>
 
 
-  <meta name="description" content="SpellDash Pro。単語の学習は無料のまま、マイ単語帳の上限・AI の回数・90日の推移・連続記録の修復・追加テーマを。" />
+  <meta name="description" content="SpellDash Pro。単語の学習は無料のまま。マイ単語帳に入れられる語の数・推移のグラフの日数・テーマが増える。" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="SpellDash" />
   <meta property="og:title" content="SpellDash Pro | SpellDash" />
@@ -183,32 +183,29 @@
             <th scope="col"><span class="pro-chip">Pro</span></th>
           </tr>
         </thead>
+        <!-- 今の画面（英単語の学習に絞った形）で本当に使える特典だけ（Batch 83）。数は js/proView.js が入れる: マイ単語帳は js/myWordsCore.js の
+             MY_FREE_LIMIT・MY_PRO_LIMIT、推移は js/plan.js の TREND_DAYS（ここの字は同じ値。読み込みの間の形）、AI の回数は /api/billing/config の ai
+             （api/_lib/aiLimits.js。AI が使えないときと届かないときは「準備中」） -->
         <tbody>
           <tr>
             <th scope="row">マイ単語帳<span class="pro-compare__sub">自分の仕事・試験の単語を入れて、同じ仕組みで覚える</span></th>
-            <td><b class="mono">100</b>語まで</td>
-            <td><b class="mono">1,000</b>語まで</td>
+            <td><b class="mono" data-pro-num="myFree">100</b>語まで</td>
+            <td><b class="mono" data-pro-num="myPro">1,000</b>語まで</td>
           </tr>
           <tr>
-            <th scope="row">AI<span class="pro-compare__sub">1日の回数。覚え方の解説・テキストからカード</span></th>
-            <!-- 値は api/explain-word.js（3／60）と api/generate-cards.js（2／20）の既定。env を変えたらここも -->
-            <td>解説 <b class="mono">3</b>・カード <b class="mono">2</b></td>
-            <td>解説 <b class="mono">60</b>・カード <b class="mono">20</b></td>
-          </tr>
-          <tr>
-            <th scope="row">覚えた単語の推移<span class="pro-compare__sub">学習データのグラフ</span></th>
-            <td><b class="mono">30</b> 日</td>
-            <td><b class="mono">90</b> 日</td>
-          </tr>
-          <tr>
-            <th scope="row">連続記録<span class="pro-compare__sub">休んだ日を守るシールドと、途切れたときの修復</span></th>
-            <td>休んだ日を守るシールド 最大 <b class="mono">2</b> 枚</td>
-            <td>シールド 最大 <b class="mono">3</b> 枚＋修復 月 <b class="mono">1</b> 回（途切れて 7 日以内）</td>
+            <th scope="row">思い出せるようになった語の推移<span class="pro-compare__sub">学習状況の「詳しい記録」のグラフ</span></th>
+            <td><b class="mono" data-pro-num="trendFree">30</b> 日</td>
+            <td><b class="mono" data-pro-num="trendPro">90</b> 日</td>
           </tr>
           <tr>
             <th scope="row">テーマ<span class="pro-compare__sub">設定 →「見た目」</span></th>
             <td>白・黒</td>
             <td>白・黒・紙・藍</td>
+          </tr>
+          <tr>
+            <th scope="row">AI の覚え方<span class="pro-compare__sub">学習状況の語の詳細にある「覚え方を作る」の 1 日の回数（ログインして使う。AI が使えるときだけ）</span></th>
+            <td data-pro-ai="free">準備中</td>
+            <td data-pro-ai="pro">準備中</td>
           </tr>
         </tbody>
       </table>
@@ -234,7 +231,7 @@
       </details>
       <details class="pro-faq">
         <summary>Pro をやめたら、入れた単語はどうなる</summary>
-        <p>消えない。100語を超えたぶんもそのまま見られて練習できる。新しく追加できるのが100語までに戻るだけ。</p>
+        <p>消えない。<span data-pro-num="myFree">100</span>語を超えたぶんもそのまま見られて練習できる。新しく追加できるのが<span data-pro-num="myFree">100</span>語までに戻るだけ。</p>
       </details>
     </section>
 

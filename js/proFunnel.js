@@ -54,10 +54,18 @@ export async function fetchBillingConfig() {
       ? body.prices.filter((p) => p && (p.interval === "month" || p.interval === "year") && Number.isFinite(Number(p.amount)))
       : [];
     const configured = response.ok && body?.configured === true && prices.some((p) => p.interval === "month");
-    return { ok: response.ok, configured, prices, trialMonths: Number(body?.trialMonths) || 0, trialDays: Number(body?.trialDays) || 0, trialEndsAt: typeof body?.trialEndsAt === "string" ? body.trialEndsAt : "" };
+    return { ok: response.ok, configured, prices, trialMonths: Number(body?.trialMonths) || 0, trialDays: Number(body?.trialDays) || 0, trialEndsAt: typeof body?.trialEndsAt === "string" ? body.trialEndsAt : "", ai: aiOf(body) };
   } catch {
-    return { ok: false, configured: false, prices: [], trialMonths: 0, trialDays: 0 };
+    return { ok: false, configured: false, prices: [], trialMonths: 0, trialDays: 0, ai: null };
   }
+}
+
+// 加入画面の比較表の AI の行（覚え方の 1 日の回数。api/billing/config.js の ai）。AI が使えない・前のサーバー・読めない形は null（「準備中」）
+function aiOf(body) {
+  const explain = body?.ai?.explain;
+  const free = Number(explain?.free);
+  const pro = Number(explain?.pro);
+  return Number.isFinite(free) && Number.isFinite(pro) && free > 0 && pro > 0 ? { explain: { free, pro } } : null;
 }
 
 // 取れた config だけを覚える。取れなかったときは前の値のまま、10 分後に取り直す
