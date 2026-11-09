@@ -26,11 +26,11 @@
 - ☐ 8. Webhook を登録: `https://www.spelldash.net/api/billing/webhook`、イベントは `checkout.session.completed`・`customer.subscription.created`・`customer.subscription.updated`・`customer.subscription.deleted` の 4 つ。署名の鍵を控える
 - ☐ 9. Vercel の環境変数: `STRIPE_SECRET_KEY`・`STRIPE_PRICE_MONTHLY`・**`STRIPE_TRIAL_MONTHS` = `1`**・`STRIPE_WEBHOOK_SECRET`・`SUPABASE_SERVICE_ROLE_KEY`（CRM と共用）→ Redeploy。`STRIPE_PRICE_YEARLY` と `STRIPE_TRIAL_DAYS` は入れない
 - ☐ 10. Billing Portal で「キャンセル」と「支払い方法の更新」を許す・領収書のメールを ON（テストモードと本番で別々）
-- ☐ 11. テストモードで一巡: 成功 `4242 4242 4242 4242`・拒否 `4000 0000 0000 0002`・3D セキュア `4000 0000 0000 3220`。確定の画面に自動更新と解約の方法が読めるか（特商法 12 条の 6）・webhook の 4 つが 200 か・Portal で解約できるか
-- ☐ 12. 本番に切り替える（本番の Price・Webhook・Portal・メール。3 つの変数を本番の値に → Redeploy）
-- ☐ 13. 本物のカードで自分で確かめる（初回は無料期間で 0 円 → Portal で解約 → 契約をすぐにキャンセル → 2 回目の加入で ¥980 → 返金 → その契約もすぐにキャンセル）
+- ☐ 11. テストモードで一巡: 成功 `4242 4242 4242 4242`・拒否 `4000 0000 0000 0002`・3D セキュア `4000 0000 0000 3220`。確定の画面に自動更新・提供の時期・解約の方法が読めるか（特商法 12 条の 6）・webhook の 4 つが 200 か・Portal で解約できるか。テストの鍵が入っている間はだれでもテストのカードで加入の形を作れる（お金は動かない）ので、まとめて短い時間で。Preview の配信ではログインを止めているので本番の www で
+- ☐ 12. 本番に切り替える: テストモードの webhook を無効にする → Supabase の Table Editor で `subscriptions` の行を全部消す（どれもテストモードの行。SQL は流さない。残すと同じ人の本番の加入が 409 か 502 になる）→ 本番の Price・Webhook・Portal・メール → 表が空のままかを見る → 3 つの変数を本番の値に → Redeploy
+- ☐ 13. 本物のカードで自分で確かめる（12 で行を消したので初回は無料期間で 0 円 → Portal で解約 → 契約をすぐにキャンセル → 2 回目の加入で ¥980 → 返金 → その契約もすぐにキャンセル）
 - ☐ 14. 任意: お知らせ（下書きは docs/BILLING.md §10）
-- 急いで止めるとき: `STRIPE_PRICE_MONTHLY` を消して Redeploy。新しい加入だけが止まり、加入している人の「解約・お支払いの管理」と webhook は動き続ける（docs/BILLING.md §2）
+- 急いで止めるとき: `STRIPE_PRICE_MONTHLY` を消して Redeploy。新しい加入だけが止まり、加入している人の「解約・お支払いの管理」と webhook は動き続ける。止める前に開いていた手続きの画面は期限（最長 24 時間）まで支払えるので、止めた後にも加入が届くことがある（すぐに全部止めるなら Stripe の側で開いている手続きを期限切れにする。docs/BILLING.md §2）
 
 ## C. 管理画面（CRM）を使うなら — docs/CRM.md §2
 
@@ -42,7 +42,7 @@
 
 ## D. AI 機能（テキストからカード・覚え方の解説）を開けるなら
 
-- ☐ Vercel の環境変数 `ANTHROPIC_API_KEY` → Redeploy。無料は 1 日 カード 2 回／解説 3 回、Pro は 20／60 回（`CARD_GEN_DAILY_LIMIT*` / `EXPLAIN_WORD_DAILY_LIMIT*` で変更可）。入れると加入画面の「AI の覚え方」の行に解説の回数が出る（無ければ「準備中」。Batch 83）。今の画面から使えるのは学習状況の語の詳細の「覚え方を作る」だけ（テキストからカードの入口は Batch 78 から出していない）
+- ☐ Vercel の環境変数 `ANTHROPIC_API_KEY` → Redeploy。無料は 1 日 カード 2 回／解説 3 回、Pro は 20／60 回（`CARD_GEN_DAILY_LIMIT*` / `EXPLAIN_WORD_DAILY_LIMIT*` で変更可）。入れると加入画面の比較表に「AI の覚え方」の行（解説の回数）が出る（無ければ行を出さない。Batch 83）。今の画面から使えるのは学習状況の語の詳細の「覚え方を作る」だけ（テキストからカードの入口は Batch 78 から出していない）
 
 ## E. ずっと前からの保留（効くのは該当機能だけ）
 
