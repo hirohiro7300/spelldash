@@ -822,7 +822,11 @@ async function main() {
   await check("保存して再読み込みしても残る（ようこそは出ない）", async () => {
     await waitSaved(page);
     const before = await state(page);
+    // 表示の設定を変えてすぐ開き直しても、設定は残る（まとめて書く前でも、閉じるときに書く）
+    await page.evaluate(() => window.__fourD.ui.setPrefs({ edgeMode: "cross" }));
     await page.reload({ waitUntil: "networkidle" });
+    assert((await page.evaluate(() => window.__fourD.ui.prefs.edgeMode)) === "cross", "すぐ開き直すと表示の設定が消えた");
+    await page.evaluate(() => window.__fourD.ui.setPrefs({ edgeMode: "all" }));
     await page.waitForFunction(() => !!window.__fourD);
     const after = await state(page);
     assert(after.nodes === before.nodes && after.edges === before.edges, JSON.stringify({ before, after }));
@@ -958,6 +962,9 @@ async function main() {
     assert(n === 2000, `nodes ${n}`);
     const status = await p5.evaluate(() => window.__fourD.persistence.status);
     assert(status === "ephemeral", status);
+    // 地図で測る（前の確かめでリスト表示が残っていても）
+    await p5.evaluate(() => window.__fourD.ui.setPrefs({ view: "map" }));
+    await p5.waitForFunction(() => window.__fourD.app.view.width > 0);
     const stats = await p5.evaluate(async () => {
       const f = window.__fourD;
       const v = f.app.view;
@@ -985,7 +992,11 @@ async function main() {
     });
     console.log(`      描画時間 ms（平均 / 95%）: 全体 ${stats.all.avg.toFixed(1)}/${stats.all.p95.toFixed(1)}・中 ${stats.mid.avg.toFixed(1)}/${stats.mid.p95.toFixed(1)}・寄り ${stats.near.avg.toFixed(1)}/${stats.near.p95.toFixed(1)}・選択中 ${stats.sel.avg.toFixed(1)}/${stats.sel.p95.toFixed(1)}`);
     await shot("e2e-07-stress", p5);
-    for (const [k, v] of Object.entries(stats)) assert(v.p95 < 33, `${k}: 95% が 33ms 以上 (${v.p95.toFixed(1)})`);
+    for (const [k, v] of Object.entries(stats)) {
+      // 描いていない（0ms）なら測れていない
+      assert(v.avg > 0, `${k}: 描画されていない（${v.avg}ms）`);
+      assert(v.p95 < 33, `${k}: 95% が 33ms 以上 (${v.p95.toFixed(1)})`);
+    }
     // 一時表示は保存しない（ふだんのデータに触れない）
     const saved = await p5.evaluate(async () => {
       const f = window.__fourD;

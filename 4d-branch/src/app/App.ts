@@ -544,6 +544,7 @@ export class App implements AppContext {
         void this.persistence.flush();
         void this.cloud?.flush();
         this.ui.saveCamera(this.store.doc.id, this.view.camera);
+        this.ui.flushPrefs();
       } else {
         // 戻ってきた: 別の端末の変更が無いか確かめる（見張りが切れていても追いつく）
         this.cloud?.checkRemote();
@@ -553,6 +554,7 @@ export class App implements AppContext {
     window.addEventListener("pagehide", () => {
       this.editor.commit();
       this.persistence.writeEmergency();
+      this.ui.flushPrefs();
     });
     window.addEventListener("beforeunload", (ev) => {
       this.editor.commit();

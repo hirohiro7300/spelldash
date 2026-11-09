@@ -127,13 +127,24 @@ export class UiState {
   private savePrefsSoon(): void {
     if (!this.persistPrefs) return;
     if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => {
-      try {
-        globalThis.localStorage?.setItem(PREFS_KEY, JSON.stringify(this.prefs));
-      } catch {
-        /* 保存できなくても動く */
-      }
-    }, 200);
+    this.saveTimer = setTimeout(() => this.writePrefs(), 200);
+  }
+
+  /** まとめて書く前の表示の設定を、今すぐ書く（閉じる・隠れるとき。すぐ開き直しても設定を失わない） */
+  flushPrefs(): void {
+    if (!this.saveTimer) return;
+    this.writePrefs();
+  }
+
+  private writePrefs(): void {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    if (!this.persistPrefs) return;
+    try {
+      globalThis.localStorage?.setItem(PREFS_KEY, JSON.stringify(this.prefs));
+    } catch {
+      /* 保存できなくても動く */
+    }
   }
 
   // ---- 選択
