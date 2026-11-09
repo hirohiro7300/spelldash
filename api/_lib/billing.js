@@ -188,35 +188,74 @@ export function verifyStripeSignature(rawBody, header, secret, now = Math.floor(
 }
 
 // 生ボディ（署名を計算する元のバイト列）を読む。戻り値は Buffer か文字列。読めなければ null（そのときは署名を確かめられない → 400）。
-// 配信の側の作りは確かめられていない（サーバーの関数の req.body は読んだ時に解析する作りがあり、bodyParser: false の指定が効くかも分からない）ので、
-// どの作りでも届いたバイト列だけで確かめる:
-//   1. まだ読まれていない流れ（IncomingMessage）なら、先にそれを読む。req.body には触らない（body を読むと流れを使い切る作りがある）
-//   2. 流れが空（配信の側が先に読み切った）なら、生の値の req.rawBody、それも無ければ文字列か Buffer の req.body
-//   3. 解析済みの値（object）しか無ければ null。JSON を作り直して確かめない（届いたバイト列と同じになる保証が無い）
-export async function readRawBody(req) {
-  if (req && typeof req[Symbol.asyncIterator] === "function" && !req.readableEnded) {
-    const chunks = [];
-    for await (const chunk of req) chunks.push(Buffer.from(chunk));
-    const raw = Buffer.concat(chunks);
-    if (raw.length > 0) return raw;
-  }
-  for (const value of [req?.rawBody, req?.body]) {
-    if (typeof value === "string") return value;
-    if (value instanceof Uint8Array) return Buffer.from(value);
-  }
+// 今の配信のサーバーの関数は、既定の補助（helpers）が関数を呼ぶ前に本文の流れを最後まで読み、読み切ったバイト列の写しを持つ流れへ
+// req.on('data'/'end')（と req.read）を付け替え、req.body は読んだ時に JSON にする（rawBody は置かない。bodyParser: false の指定は読まない）。
+// 元の流れは読み終わっている（readableEnded）ので、流れを直に読む作りでは何も読めない（Batch 83 の反証。公開されている実行環境の版で確かめた）。
+// ほかの作りもありうるので、どの作りでも届いたバイト列だけで確かめる:
+//   1. 生の値の req.rawBody（文字列か Buffer）があればそれ。req.body には触らない（body を読むと解析する・例外を出す・流れを使い切る作りがある）
+//   2. req.on が自分の持ち物として付け替えられていれば（配信の補助）、それで 'data' を集めて 'end' を待つ（写しが終わらなくても RAW_BODY_WAIT_MS で諦める）
+//   3. そうでなく、まだ読まれていない流れ（IncomingMessage）なら、それを読む
+//   4. それでも空なら、文字列か Buffer の req.body。解析済みの値（object）しか無ければ null。JSON を作り直して確かめない（届いたバイト列と同じになる保証が無い）
+const RAW_BODY_WAIT_MS = 5000;
+
+function bytesOf(value) {
+  if (typeof value === "string") return value.length > 0 ? value : null;
+  if (value instanceof Uint8Array) return value.length > 0 ? Buffer.from(value) : null;
   return null;
 }
 
+// 付け替えた req.on から集める。終わらなければ waitMs で null（関数の時間切れまで待たない）。流れの失敗は投げる（呼び手は 400）
+function readThroughListeners(req, waitMs) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let done = false;
+    let timer = null;
+    const finish = (value, error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(value);
+    };
+    timer = setTimeout(() => finish(null), waitMs);
+    req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    req.on("end", () => finish(Buffer.concat(chunks)));
+    req.on("error", (error) => finish(null, error));
+  });
+}
+
+export async function readRawBody(req, { waitMs = RAW_BODY_WAIT_MS } = {}) {
+  if (!req) return null;
+  const raw = bytesOf(req.rawBody);
+  if (raw !== null) return raw;
+  let read = null;
+  if (typeof req.on === "function" && Object.prototype.hasOwnProperty.call(req, "on")) {
+    read = await readThroughListeners(req, waitMs);
+  } else if (typeof req[Symbol.asyncIterator] === "function" && !req.readableEnded) {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    read = Buffer.concat(chunks);
+  }
+  if (read && read.length > 0) return read;
+  try {
+    return bytesOf(req.body);
+  } catch {
+    return null; // body を読むと例外（解析の失敗など）: 生の値は無い
+  }
+}
+
 // 確定の画面（決済の会社の Checkout。確定のボタンのそば）に出す文: custom_text[submit][message]。
-// 特定商取引法 12 条の 6（最終確認の画面）: 自動で更新すること・最初の請求がいつか・解約の方法と条件を、申し込みを確定する画面で分かるようにする。
+// 特定商取引法 12 条の 6（最終確認の画面）: 自動で更新すること・最初の請求がいつか・提供の時期・解約の方法と条件を、申し込みを確定する画面で分かるようにする。
+// 提供の時期は特商法の表記（tokushoho.html の提供時期）と同じ: 手続きが終わるとすぐ・無料期間中も同じ。
 // 金額は書かない（その画面が同じ Price から出す）。trialLabel は無料期間が付くときだけ（「1か月」「7日」）。決済の会社の上限より十分短く（500 字以内）
 export function checkoutSubmitMessage({ interval = "month", trialLabel = "" } = {}) {
   const every = interval === "year" ? "毎年" : "毎月";
   const first = trialLabel
     ? `初めての方の無料期間として、最初の${trialLabel}は料金がかかりません。無料期間が終わる日に最初の請求があり、その後は${every}自動で更新します。`
     : `お申し込みの日に最初の請求があり、その後は${every}自動で更新します。`;
+  const provide = `お申し込みの手続きが終わるとすぐに使えます${trialLabel ? "（無料期間中も同じです）" : ""}。`;
   const cancel = `解約はいつでも「設定 → 解約・お支払いの管理」からできます。${trialLabel ? "無料期間中に解約すれば請求はありません。" : ""}解約しても期間の終わりまで使え、日割りの返金はしません。`;
-  return first + cancel;
+  return first + provide + cancel;
 }
 
 // ----- Supabase: subscriptions -----

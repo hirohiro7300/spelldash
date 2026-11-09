@@ -17,8 +17,9 @@
 // 行が無い時の最初の書き込みは「入れるだけ」（同じ人の行がもうあれば何もしない）で、入らなければ同じ条件つきの PATCH へ進む。
 // だから 2 つのイベントが同時に届いても古い状態で上書きしない（同じ秒のイベントは後から来たものを採用）。scripts/test-billing.mjs が両方の順で確かめる。
 // ログは `billing/webhook: <type> <結果>` だけ（メール・顧客 id・本文は書かない）。
-// 署名は届いたバイト列で確かめる（readRawBody: 流れを先に読み、req.body は後回し。解析済みの値から JSON を作り直さない）。
-// 下の config（bodyParser: false）は、その指定を読む配信のために残す（効かない配信でも readRawBody が流れか生の値を読む）
+// 署名は届いたバイト列で確かめる（readRawBody: rawBody → 配信の補助が付け替えた req.on の写し → まだ読まれていない流れ → 文字列か Buffer の body の順。
+// 解析済みの値から JSON を作り直さない）。今の配信のサーバーの関数は、関数を呼ぶ前に本文を読み切って req.on を写しに付け替える補助が既定で入り、
+// 下の config（bodyParser: false）は読まない（効かない。Batch 83 の反証）。その指定を読む作りのために残すだけで、補助は切らない（res.status / res.json を使う）
 
 import { send } from "../_lib/shared.js";
 import { MissingTableError } from "../_lib/admin.js";
