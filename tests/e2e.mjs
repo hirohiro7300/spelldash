@@ -27916,8 +27916,8 @@ console.log("my words page rebuilds (87.3):");
   const B64U = (s) => Buffer.from(s).toString("base64url");
   const SHARED = Array.from({ length: 30 }, (_, i) => [`share${L[Math.floor(i / 26)]}${L[i % 26]}`, `渡された訳${i + 1}`]);
   const shareCode = `j1.${B64U(JSON.stringify({ v: 1, n: "会議", w: SHARED }))}`;
-  async function wordsPage(path) {
-    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+  async function wordsPage(path, { viewport = { width: 1200, height: 900 }, mobile = false } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
     const page = await ctx.newPage();
     page.errors = [];
     page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
@@ -28021,6 +28021,46 @@ console.log("my words page rebuilds (87.3):");
     check("87.3 渡された 30 語を新しい単語帳に足す: 一覧の作り直しは 1 回・足した単語帳（会議）の 30 語が出る・エラー 0",
       add === 1 && state.tab === "会議" && state.rows === 30 && state.status.includes("30語") && page.errors.length === 0, JSON.stringify({ add, state, err: page.errors[0] }));
     await closeCtx(page);
+  }
+
+  // ----- (4) 描く範囲を行に閉じても焦点の輪が切れない（390 の指と 1200）: 行は content-visibility: auto で、行の中のボタン（直す・消す）の輪
+  //     （:focus-visible の outline の幅と offset）と、直す欄の輪（box-shadow の広がり）が行の内側（枠の内側）に収まる -----
+  {
+    const rows = [];
+    for (const opts of [{ viewport: { width: 390, height: 844 }, mobile: true }, { viewport: { width: 1200, height: 900 } }]) {
+      const page = await wordsPage("/mywords.html?book=b2", opts);
+      // 1 行目の「直す」をキーボードで押して直す欄へ（欄の輪）→ Escape で「直す」へ戻る（キーボードの焦点: ボタンの輪）
+      await page.focus("#myWordsList .mw-row .mw-row__edit");
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(150);
+      const fit = () => page.evaluate(() => {
+        const a = document.activeElement;
+        const row = a?.closest(".mw-row");
+        if (!row) return { where: a?.className ?? null };
+        const s = getComputedStyle(a);
+        const rs = getComputedStyle(row);
+        let ring = 0;
+        if (s.outlineStyle !== "none") ring = Math.max(ring, parseFloat(s.outlineWidth) + parseFloat(s.outlineOffset));
+        const m = s.boxShadow.match(/(-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px/);
+        if (m) ring = Math.max(ring, Math.max(Math.abs(+m[1]), Math.abs(+m[2])) + Math.max(0, +m[3]) + +m[4]);
+        const r = row.getBoundingClientRect();
+        const box = { l: r.left + parseFloat(rs.borderLeftWidth), t: r.top + parseFloat(rs.borderTopWidth), r: r.right - parseFloat(rs.borderRightWidth), b: r.bottom - parseFloat(rs.borderBottomWidth) };
+        const e = a.getBoundingClientRect();
+        const fits = e.left - ring >= box.l - 0.5 && e.top - ring >= box.t - 0.5 && e.right + ring <= box.r + 0.5 && e.bottom + ring <= box.b + 0.5;
+        return { where: a.className, ring, fits, cv: rs.contentVisibility };
+      });
+      const input = await fit();
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(150);
+      const edit = await fit();
+      await page.keyboard.press("Tab"); // 同じ行の「消す」
+      const del = await fit();
+      rows.push({ w: opts.viewport.width, input, edit, del, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.3 行は画面の外で描かないまま（content-visibility: auto）、焦点の輪が切れない: 390 と 1200 で直す欄（3px）・「直す」・「消す」（4px）の輪が行の内側に収まる・エラー 0",
+      rows.length === 2 && rows.every((r) => [r.input, r.edit, r.del].every((x) => x.fits === true && x.ring >= 3 && x.cv === "auto") && r.input.where.includes("mw-row__input") && r.edit.where.includes("mw-row__edit") && r.del.where.includes("mw-row__del") && !r.err),
+      JSON.stringify(rows));
   }
   check("87.3 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }

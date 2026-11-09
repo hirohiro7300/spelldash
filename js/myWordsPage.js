@@ -234,6 +234,22 @@ function rowOf(w) {
   return li;
 }
 
+// 一覧の材料の印（Batch 87。docs/SPEC_MY_WORDS.md §16.3）: 行に出す物（語の印・英語の形・読み上げの名前・訳か問い・状態・消すの鍵）と、
+// 選ぶ最中か・選んだ語・直している行。前に一覧を作ったときと同じなら行を作り直さない（spelldash:mywords の受け手と操作の後の描き直しが
+// 1 回の作り直しになる。行の要素はそのまま残るので、描き直しの後に行を探す所〔焦点〕も同じ要素に当たる）。数・ボタン・文は毎回書く
+let listSig = null;
+function listSignature(shown) {
+  return JSON.stringify([
+    selecting,
+    editing,
+    selecting ? [...selected].sort() : [],
+    shown.map((w) => {
+      const word = isWordEntry(w);
+      return [entryRefOf(w), shownOf(w), labelOf(w), word ? String(w.ja ?? "") : String(w.q ?? ""), word ? myStateOf(w) : -1, String(w.en ?? ""), w.kind === "concept"];
+    })
+  ]);
+}
+
 function render() {
   const list = getMyWords();
   const books = getMyBooks(list); // 端末の一覧 + ほかの端末の単語帳（語の bookName）
@@ -293,11 +309,15 @@ function render() {
 
   const ul = $("myWordsList");
   if (!ul) return;
-  const rows = [...entries].reverse().map(rowOf); // 新しく足した語が上
-  ul.replaceChildren(...rows);
-  ul.hidden = rows.length === 0;
+  const shown = [...entries].reverse(); // 新しく足した語が上
+  const sig = listSignature(shown);
+  if (sig !== listSig || ul.childElementCount !== shown.length) {
+    ul.replaceChildren(...shown.map(rowOf));
+    listSig = sig;
+  }
+  ul.hidden = shown.length === 0;
   const head = $("myWordsListHead");
-  if (head) head.hidden = rows.length === 0;
+  if (head) head.hidden = shown.length === 0;
   renderSelectBar(entries, books);
 }
 
@@ -457,13 +477,18 @@ $("myWordsList")?.addEventListener("submit", (event) => {
   event.preventDefault();
   const row = form.closest(".mw-row");
   const ref = row?.dataset.ref ?? "";
+  const shown = row?.querySelector(".mw-row__en")?.textContent ?? "";
+  // 直しを終えてから保存する（Batch 87）: 保存が投げる spelldash:mywords の描き直しで、直した訳の行を 1 回だけ作る（下の stopEditing は作り直さない）。
+  // 断られたときは何も書いていない（描き直しも無い）ので、直しを続ける
+  editing = null;
   const r = setMyWordJa(ref.replace(/^word:/, ""), form.querySelector(".mw-row__input")?.value ?? "");
   if (!r.ok) {
+    editing = ref;
     setStatus(r.error, { error: true });
     form.querySelector(".mw-row__input")?.focus();
     return;
   }
-  setStatus(`訳を直した: ${row?.querySelector(".mw-row__en")?.textContent ?? ""}`);
+  setStatus(`訳を直した: ${shown}`);
   stopEditing(ref);
 });
 

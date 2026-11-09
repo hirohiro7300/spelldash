@@ -3999,6 +3999,10 @@ html[data-theme] .mw-row {
   gap: 4px 12px;
   padding: 6px 8px 6px 14px;
   min-width: 0;
+  /* 画面の外の行は描かない（Batch 87。400 語の単語帳でも開くのと操作が軽い）。行の中ははみ出す部品が無い:
+     焦点の輪（outline 2px・offset 2px）・直す欄の輪（3px）は行の余白（6px 以上）の中に収まる。高さの見込みは描いた後の高さを覚える */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
 }
 
 /* 選ぶの最中（Batch 81）: 行の頭に印。直す・消すは出さない */
