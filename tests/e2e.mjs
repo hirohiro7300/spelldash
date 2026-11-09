@@ -27709,6 +27709,196 @@ console.log("many words sync (87.1):");
   check("87.1 どの画面にもページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
+// ===== 87.2 ログインの欄の失敗の文（Batch 87。js/auth.js showAuthMessage・sendLoginLink・signInWithGoogle・formatAuthError・css/layout.css と css/responsive.css の .account-menu__msg）: 560px 以下では、送る前の失敗の文が開いたままの欄の下に隠れていた。欄の中の段落（#loginPanelMessage。読み上げは前のまま #authMessage だけ）に同じ文を出す・失敗の後の焦点は #emailInput（外部アカウントのボタンの道は #googleLoginButton）・英語の文と製品の名前を出さない・561px 以上は前のまま =====
+// a15294a: 欄の中に段落が無く、文の中心は欄の FORM・INPUT・BUTTON に当たる。焦点は BODY か BUTTON に落ちる。サーバーの英語の文がそのまま出る
+// 失敗の道はスタブ（tests/mocks/supabase-stub.js）の種で作る: spelldash_test_unreachable（つながらない）・spelldash_test_otp_error・spelldash_test_oauth_error（その文で断る）
+console.log("login panel message (87.2):");
+{
+  const allErrors = [];
+  async function authPage(storage = {}, { viewport = { width: 1200, height: 900 }, mobile = false, theme = null } = {}) {
+    const ctx = await browser.newContext({ viewport, serviceWorkers: "block", ...(mobile ? { isMobile: true, hasTouch: true } : {}) });
+    const page = await ctx.newPage();
+    page.errors = [];
+    page.on("pageerror", (e) => { page.errors.push(e.message); allErrors.push(e.message); });
+    page.on("console", (m) => { if (m.type() === "error") { page.errors.push(`console: ${m.text()}`); allErrors.push(`console: ${m.text()}`); } });
+    await page.addInitScript(([seed, th]) => {
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...(th ? { spelldash_theme: th } : {}), ...seed })) localStorage.setItem(k, v);
+    }, [storage, theme]);
+    return page;
+  }
+  const closeCtx = async (page) => { const ctx = page.context(); await page.close(); await ctx.close(); };
+  const CONF = { spelldash_test_configured: "1" };
+  const UNREACHABLE = "ログインのサーバーにつながらない。学習はこのまま続けられ、記録はこの端末に残る。";
+  const SENT = ["ログインリンクを送った。メールを開いて続ける。", "このページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。"];
+  async function openAt(storage, p, opts = {}) {
+    const page = await authPage(storage, opts);
+    await page.goto(BASE + p, { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => { const t = document.getElementById("loginToggle"); return !!t && t.getClientRects().length > 0 && window.SpellDashArea !== undefined; }), 6000);
+    return page;
+  }
+  const press = async (page, sel, touch) => (touch ? page.tap(sel) : page.click(sel));
+  // 送る（email が null なら外部アカウントのボタン）→ 文が送信中・移動中でなくなるまで待つ
+  async function attempt(page, { email = "", touch = false } = {}) {
+    await press(page, "#loginToggle", touch);
+    await page.waitForTimeout(150);
+    if (email === null) await press(page, "#googleLoginButton", touch);
+    else {
+      await page.fill("#emailInput", email);
+      await press(page, "#loginButton", touch);
+    }
+    await waitUntil(async () => { const m = await page.evaluate(() => document.getElementById("authMessage")?.textContent ?? ""); return m.length > 0 && !/送信中|移動する/.test(m); }, 6000, 100);
+    await page.waitForTimeout(150);
+  }
+  // 見えている文: 欄の中の段落に箱があればその中心、無ければ #authMessage の中心で elementFromPoint を見る
+  const look = (page) => page.evaluate(() => {
+    const msg = document.getElementById("authMessage");
+    const p = document.getElementById("loginPanelMessage");
+    const boxed = !!p && p.getClientRects().length > 0;
+    const target = boxed ? p : msg;
+    const r = target.getBoundingClientRect();
+    const h = r.width > 0 && r.height > 0 ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+    const ae = document.activeElement;
+    return {
+      text: msg?.textContent ?? "", lines: (msg?.innerText ?? "").split("\n").map((s) => s.trim()).filter(Boolean), cls: msg?.className ?? "",
+      panelText: p ? p.textContent : null, panelHidden: p ? p.getAttribute("aria-hidden") : null, panelCls: p ? p.className : null, inForm: !!p && !!p.closest("#accountLogin"),
+      boxed, box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
+      hit: !h ? null : boxed && (h === p || p.contains(h)) ? "panelMessage" : h === msg || msg.contains(h) ? "authMessage" : `${h.tagName}#${h.id || h.className}`,
+      inView: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth,
+      expanded: document.getElementById("loginToggle").getAttribute("aria-expanded"),
+      panelShown: getComputedStyle(document.querySelector("#accountGuest .dropdown__panel")).display !== "none",
+      focus: ae ? `${ae.tagName}#${ae.id}` : null, value: document.getElementById("emailInput").value,
+      button: document.getElementById("loginButton").textContent.trim()
+    };
+  });
+
+  // ----- (1) 390 の指の端末（タップ）: ホーム・マイ単語帳・加入画面で、空の欄・つながらない。欄は開いたまま、欄の中の段落に同じ文、焦点は #emailInput -----
+  {
+    const rows = [];
+    for (const p of ["/index.html", "/mywords.html", "/pro.html"]) {
+      for (const c of [{ k: "empty", email: "", seed: CONF, want: "メールアドレスを入れる。" }, { k: "unreachable", email: "t@example.com", seed: { ...CONF, spelldash_test_unreachable: "1" }, want: UNREACHABLE }]) {
+        const page = await openAt(c.seed, p, { viewport: { width: 390, height: 844 }, mobile: true });
+        await attempt(page, { email: c.email, touch: true });
+        const v = await look(page);
+        rows.push({ p, k: c.k, ...v, err: page.errors[0] ?? null,
+          ok: v.text === c.want && v.panelText === c.want && v.panelHidden === "true" && v.inForm && v.boxed && v.hit === "panelMessage" && v.inView
+            && v.expanded === "true" && v.panelShown && v.focus === "INPUT#emailInput" && v.value === c.email && page.errors.length === 0 });
+        await closeCtx(page);
+      }
+    }
+    check("87.2 390 の指の端末: ホーム・マイ単語帳・加入画面で、空の欄と「つながらない」の失敗の文が欄の中の段落（#loginPanelMessage・aria-hidden）に出て、その中心が段落に当たる（画面の中）・欄は開いたまま",
+      rows.length === 6 && rows.every((r) => r.text === (r.k === "empty" ? "メールアドレスを入れる。" : UNREACHABLE) && r.panelText === r.text && r.panelHidden === "true" && r.inForm && r.boxed && r.hit === "panelMessage" && r.inView && r.expanded === "true" && r.panelShown),
+      JSON.stringify(rows.filter((r) => !r.ok).map(({ ok, lines, cls, ...r }) => r).slice(0, 3)));
+    check("87.2 390 の指の端末: 失敗の後の焦点はメールアドレスの欄（#emailInput）・打った字はそのまま・エラー 0",
+      rows.length === 6 && rows.every((r) => r.focus === "INPUT#emailInput" && r.value === (r.k === "empty" ? "" : "t@example.com") && !r.err),
+      JSON.stringify(rows.map((r) => [r.p, r.k, r.focus, r.value, r.err])));
+  }
+
+  // ----- (2) 文: サーバーに形で断られた・ほかの分からない失敗・送信の上限・設定が無い・外部アカウントのボタン（390 の指と 1200）-----
+  {
+    const rows = [];
+    const CASES = [
+      { k: "invalid-format", email: "a@b", seed: { ...CONF, spelldash_test_otp_error: "Unable to validate email address: invalid format" }, want: "メールアドレスの形を確かめる。", focus: "INPUT#emailInput" },
+      { k: "unknown", email: "t@example.com", seed: { ...CONF, spelldash_test_otp_error: "Database error saving new user" }, want: "ログインリンクを送れなかった。少しあけてもう一度。", focus: "INPUT#emailInput" },
+      { k: "rate-limit", email: "t@example.com", seed: { ...CONF, spelldash_test_otp_error: "email rate limit exceeded" }, want: "メール送信の上限。約1時間あけてもう一度。", focus: "INPUT#emailInput" },
+      { k: "unconfigured", email: "t@example.com", seed: {}, want: "ログインの設定が済んでいない。管理者に知らせる。", focus: "INPUT#emailInput" },
+      { k: "oauth-failure", email: null, seed: { ...CONF, spelldash_test_oauth_error: "Unsupported provider: provider is not enabled" }, want: "ログインに失敗した。少しあけてもう一度。", focus: "BUTTON#googleLoginButton" },
+      { k: "oauth-unreachable", email: null, seed: { ...CONF, spelldash_test_unreachable: "1" }, want: UNREACHABLE, focus: "BUTTON#googleLoginButton" }
+    ];
+    for (const phone of [true, false]) {
+      for (const c of CASES) {
+        const page = await openAt(c.seed, "/mywords.html", phone ? { viewport: { width: 390, height: 844 }, mobile: true } : {});
+        await attempt(page, { email: c.email, touch: phone });
+        const v = await look(page);
+        rows.push({ w: phone ? 390 : 1200, k: c.k, want: c.want, wantFocus: c.focus, ...v, err: page.errors[0] ?? null });
+        await closeCtx(page);
+      }
+    }
+    check("87.2 文: サーバーに形で断られた（invalid format）は「メールアドレスの形を確かめる。」・ほかの分からない失敗は「ログインリンクを送れなかった。少しあけてもう一度。」・送信の上限は前のまま・どれも英字が無い（390 と 1200）",
+      ["invalid-format", "unknown", "rate-limit"].every((k) => rows.filter((r) => r.k === k).length === 2 && rows.filter((r) => r.k === k).every((r) => r.text === r.want && !/[A-Za-z]/.test(r.text) && r.cls.includes("error"))),
+      JSON.stringify(rows.filter((r) => ["invalid-format", "unknown", "rate-limit"].includes(r.k)).map((r) => [r.w, r.k, r.text])));
+    check("87.2 文: 設定が無いときは「ログインの設定が済んでいない。管理者に知らせる。」（製品の名前を出さない）・外部アカウントのボタンの失敗は「ログインに失敗した。少しあけてもう一度。」（英字が無い）・つながらないは前の文",
+      ["unconfigured", "oauth-failure", "oauth-unreachable"].every((k) => rows.filter((r) => r.k === k).length === 2 && rows.filter((r) => r.k === k).every((r) => r.text === r.want && !/[A-Za-z]/.test(r.text))),
+      JSON.stringify(rows.filter((r) => ["unconfigured", "oauth-failure", "oauth-unreachable"].includes(r.k)).map((r) => [r.w, r.k, r.text])));
+    check("87.2 失敗の後の焦点（390 と 1200）: メールの道は #emailInput・外部アカウントのボタンの道は #googleLoginButton・欄は開いたまま・エラー 0",
+      rows.length === 12 && rows.every((r) => r.focus === r.wantFocus && r.expanded === "true" && r.panelShown && !r.err),
+      JSON.stringify(rows.filter((r) => !(r.focus === r.wantFocus && r.expanded === "true" && r.panelShown && !r.err)).map((r) => [r.w, r.k, r.focus, r.expanded, r.panelShown, r.err])));
+    check("87.2 390 では欄の中の段落に同じ文が出て、その中心が段落に当たる・1200 では段落に箱が無い（#authMessage だけ。前のまま）",
+      rows.filter((r) => r.w === 390).every((r) => r.panelText === r.text && r.boxed && r.hit === "panelMessage" && r.inView)
+        && rows.filter((r) => r.w === 1200).every((r) => r.panelText === r.text && !r.boxed),
+      JSON.stringify(rows.filter((r) => (r.w === 390 ? !(r.panelText === r.text && r.boxed && r.hit === "panelMessage" && r.inView) : r.boxed || r.panelText !== r.text)).map((r) => [r.w, r.k, r.panelText, r.boxed, r.hit, r.box])));
+  }
+
+  // ----- (3) 1024 と 1200（指の無い端末）: 空の欄で送ると、段落に箱が無く #authMessage の文は前と同じ・焦点は #emailInput -----
+  {
+    const rows = [];
+    for (const vp of [{ width: 1024, height: 768 }, { width: 1200, height: 900 }]) {
+      const page = await openAt(CONF, "/index.html", { viewport: vp });
+      await attempt(page, { email: "" });
+      const v = await look(page);
+      rows.push({ w: vp.width, ...v, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.2 1024 と 1200: 段落（#loginPanelMessage）に箱が無い・#authMessage は「メールアドレスを入れる。」・焦点は #emailInput・エラー 0",
+      rows.length === 2 && rows.every((r) => !r.boxed && r.text === "メールアドレスを入れる。" && r.focus === "INPUT#emailInput" && !r.err),
+      JSON.stringify(rows.map((r) => [r.w, r.boxed, r.text, r.focus, r.err])));
+  }
+
+  // ----- (4) 送れたとき（390 の指）: 欄は閉じて #authMessage に 2 行（86.1 (7) と同じ）・開き直すと欄の中に送った文と「再送信まで N秒」-----
+  {
+    const page = await openAt(CONF, "/mywords.html", { viewport: { width: 390, height: 844 }, mobile: true });
+    await attempt(page, { email: "test@example.com", touch: true });
+    const sent = await look(page);
+    await page.tap("#loginToggle");
+    await page.waitForTimeout(200);
+    const again = await look(page);
+    check("87.2 送れたとき（390 の指）: 欄は閉じて 2 行の文・開き直すと欄の中の段落に同じ 2 行（中心が段落に当たる）とボタンの「再送信まで N秒」・エラー 0",
+      JSON.stringify(sent.lines) === JSON.stringify(SENT) && sent.expanded === "false" && !sent.panelShown
+        && again.panelText === SENT.join("\n") && again.boxed && again.hit === "panelMessage" && /^再送信まで \d+秒$/.test(again.button) && page.errors.length === 0,
+      JSON.stringify({ sent: [sent.lines, sent.expanded, sent.panelShown], again: [again.panelText, again.boxed, again.hit, again.button], err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
+  // ----- (5) 欄の中の段落の字の明るさの比（昼・夜 × ふつう・error・success）: 4.5 以上 -----
+  {
+    const rows = [];
+    for (const theme of ["light", "dark"]) {
+      const page = await openAt(CONF, "/mywords.html", { viewport: { width: 390, height: 844 }, mobile: true, theme });
+      await page.tap("#loginToggle");
+      await page.waitForTimeout(150);
+      const res = await page.evaluate(() => {
+        const p = document.getElementById("loginPanelMessage");
+        if (!p) return null;
+        const nums = (c) => c.match(/[\d.]+/g).map(Number);
+        const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+        const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return +((x + 0.05) / (y + 0.05)).toFixed(2); };
+        let el = p.parentElement;
+        let bg = getComputedStyle(el).backgroundColor;
+        while (el && /rgba\(0, 0, 0, 0\)|transparent/.test(bg)) { el = el.parentElement; bg = el ? getComputedStyle(el).backgroundColor : "rgb(255, 255, 255)"; }
+        const before = [p.className, p.textContent];
+        const out = { bg };
+        for (const type of ["", "error", "success"]) {
+          p.className = `account-menu__msg ${type}`.trim();
+          p.textContent = "x";
+          const c = getComputedStyle(p).color;
+          out[type || "plain"] = { color: c, ratio: ratio(nums(c), nums(bg)) };
+        }
+        [p.className, p.textContent] = before;
+        return out;
+      });
+      rows.push({ theme, res, err: page.errors[0] ?? null });
+      await closeCtx(page);
+    }
+    check("87.2 欄の中の段落の字の明るさの比（昼・夜 × ふつう・error・success）が 4.5 以上",
+      rows.length === 2 && rows.every((r) => r.res && ["plain", "error", "success"].every((t) => r.res[t].ratio >= 4.5) && !r.err),
+      JSON.stringify(rows));
+  }
+  check("87.2 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
+}
+
 // ===== 21. Pro までの動線の計測（funnel_events。docs/SQL_FUNNEL.md） =====
 console.log("funnel log:");
 {
