@@ -18,6 +18,9 @@
 //   - 行が Pro のまま別の契約が生きている状態で届いたら、前のとおり新しい方を書き、ログに billing/webhook: duplicate live subscription（番号は書かない。
 //     docs/BILLING.md §8: 片方を返金してすぐキャンセルする）
 //   - 行の契約が生きていない状態になったら、同じ顧客にほかの生きている契約が無いかを一覧で見て、あればそちらを書く（Pro のまま。どちらを先に止めても行は壊れない）
+//   - その一覧が読めないとき（Batch 88 の反証）: 4xx（429 を除く。顧客を消した後の「その顧客は無い」など）は、ほかの生きている契約は無いとみなして届いた状態を書く
+//     （顧客を消すと決済の会社はその契約を全部止める）。5xx・429・つながらないときは、イベントができてから 1 時間までは 500 で再送に任せ、
+//     それより後は届いた状態を書く（一覧が読めないままでも、解約した人をいつまでも Pro にしない）
 // 逆順到着の対策: 既存行の event_created より古いイベントは捨てる。行がある時の書き込みは event_created を条件にした PATCH、
 // 行が無い時の最初の書き込みは「入れるだけ」（同じ人の行がもうあれば何もしない）で、入らなければ同じ条件つきの PATCH へ進む。
 // だから 2 つのイベントが同時に届いても古い状態で上書きしない（同じ秒のイベントは後から来たものを採用）。scripts/test-billing.mjs が両方の順で確かめる。
@@ -27,7 +30,7 @@
 // 下の config（bodyParser: false）は読まない（効かない。Batch 83 の反証）。その指定を読む作りのために残すだけで、補助は切らない（res.status / res.json を使う）
 
 import { send } from "../_lib/shared.js";
-import { MissingTableError } from "../_lib/admin.js";
+import { MissingTableError, UpstreamError } from "../_lib/admin.js";
 import {
   rejectMethod,
   webhookConfigured,
@@ -76,12 +79,22 @@ function rowFrom(userId, sub, eventCreated, status) {
   };
 }
 
-// 同じ顧客のほかの生きている契約（exceptId でない物）。期限のいちばん先の物。無ければ null。読めなければ投げる（500 で再送させる: 決めずに書かない）
+// 同じ顧客のほかの生きている契約（exceptId でない物）。期限のいちばん先の物。無ければ null。読めなければ投げる（呼び手の apply が lookupSettled で決める）
 async function otherLiveSubscription(customerId, exceptId) {
   if (!customerId) return null;
   const live = (await subscriptionsOfCustomer(customerId)).filter((s) => idOf(s) && idOf(s) !== exceptId && LIVE_SUBSCRIPTION_STATUSES.has(String(s?.status)));
   const endOf = (s) => (typeof s?.current_period_end === "number" ? s.current_period_end : Number(s?.items?.data?.[0]?.current_period_end) || 0);
   return live.sort((a, b) => endOf(b) - endOf(a))[0] ?? null;
+}
+
+// ほかの契約の一覧が読めなかったとき、決めずに書いてよいか（true: ほかの生きている契約は無いとみなして届いた状態を書く。false: 投げて 500 で再送を待つ）。
+// 4xx（429 を除く）は何度読んでも同じ（消した顧客の「その顧客は無い」・鍵の不足）。一時的な失敗（5xx・429・つながらない）は、イベントができてから
+// OTHER_LOOKUP_RETRY_SEC までは再送を待ち、それより後は書く（再送が続く間ずっと Pro のままにしない）
+const OTHER_LOOKUP_RETRY_SEC = 3600;
+function lookupSettled(error, eventCreated, nowSec = Math.floor(Date.now() / 1000)) {
+  const status = error instanceof UpstreamError ? Number(error.status) || 0 : 0;
+  if (status >= 400 && status < 500 && status !== 429) return true;
+  return nowSec - eventCreated > OTHER_LOOKUP_RETRY_SEC;
 }
 
 // 既存行より古いイベントは捨て、そうでなければ書く。戻り値はログ用の短い結果
@@ -102,7 +115,13 @@ async function apply(userId, sub, eventCreated, status) {
   let kept = "";
   // 行の契約が生きていない状態になった: 同じ顧客にほかの生きている契約があれば、そちらを書く（Pro のまま）
   if (!live && existing && !otherSub && existingPro) {
-    const alive = await otherLiveSubscription(idOf(sub?.customer) || existing.stripe_customer_id, subId);
+    let alive = null;
+    try {
+      alive = await otherLiveSubscription(idOf(sub?.customer) || existing.stripe_customer_id, subId);
+    } catch (error) {
+      if (!lookupSettled(error, eventCreated)) throw error;
+      kept = " (other subscriptions unread)";
+    }
     if (alive) {
       target = alive;
       targetStatus = String(alive.status);
