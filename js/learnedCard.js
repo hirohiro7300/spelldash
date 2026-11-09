@@ -1,3 +1,4 @@
+import { esc } from "./html.js";
 import { computeCategoryProgress, computeLegacyLearnedCount } from "./categoryProgress.js";
 import { getRecalledTodayCount } from "./studyQueue.js";
 import { getLearnedDelta7, recordGrowthSnapshot, getWeekGoal, getThisWeekDays } from "./growthLog.js";
@@ -58,7 +59,7 @@ export function renderLearnedCard() {
   // 「今日はまだ」は今日 1 語も思い出していないときだけ（上の「今日 N語」と同じカードで矛盾させない）
   const todayLine =
     learnedToday.length > 0
-      ? `今日覚えた: ${learnedToday.slice(0, 4).map((w) => `<b title="${w.ja}">${w.term}</b>`).join("・")}${learnedToday.length > 4 ? ` ほか${learnedToday.length - 4}語` : ""}`
+      ? `今日覚えた: ${learnedToday.slice(0, 4).map((w) => `<b title="${esc(w.ja)}">${esc(w.term)}</b>`).join("・")}${learnedToday.length > 4 ? ` ほか${learnedToday.length - 4}語` : ""}`
       : today > 0
         ? ""
         : "今日はまだ。1セットで1語は増える";

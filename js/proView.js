@@ -5,6 +5,7 @@
 // アプリ（Capacitor）では購入ボタンと価格を出さず、状態だけ出す（加入と管理は Web 版で）。
 // 比較表は今の画面（英単語の学習に絞った形）で本当に使える特典だけ（Batch 83）。数はコードの値から入れる（fillNumbers・renderAiRow。字がずれない）
 
+import { esc } from "./html.js";
 import { initializeAuth } from "./auth.js";
 import { setFooterYear, revealPendingPage } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
@@ -330,9 +331,9 @@ function termsHtml(month, year, perMonth, { withPerMonth = true } = {}) {
   const trial = !info
     ? ""
     : trialEligible()
-      ? `<div><dt>無料期間</dt><dd>初めての方だけ、最初の${info.label}は無料。${session && info.endText ? `${info.endText} に` : "無料期間の終わりに"} ${charge}を請求。それまでに解約すれば請求は無い</dd></div>`
+      ? `<div><dt>無料期間</dt><dd>初めての方だけ、最初の${esc(info.label)}は無料。${session && info.endText ? `${info.endText} に` : "無料期間の終わりに"} ${charge}を請求。それまでに解約すれば請求は無い</dd></div>`
       : trialUnknown()
-        ? `<div><dt>無料期間</dt><dd>初めての方だけ、最初の${info.label}は無料（付くかどうかは次の Stripe の画面に出る）</dd></div>`
+        ? `<div><dt>無料期間</dt><dd>初めての方だけ、最初の${esc(info.label)}は無料（付くかどうかは次のお支払いの画面に出る）</dd></div>`
         : `<div><dt>無料期間</dt><dd>初めての方だけ（以前に加入したことがあるので、今回は加入した日に ${charge}を請求）</dd></div>`;
   return `
     <dl class="pro-terms" aria-label="申し込みの前に">
@@ -340,7 +341,7 @@ function termsHtml(month, year, perMonth, { withPerMonth = true } = {}) {
       ${trial}
       <div><dt>更新</dt><dd>${year ? "毎月（年額は毎年）" : "毎月"}、同じ料金で自動で更新</dd></div>
       <div><dt>解約</dt><dd>いつでも設定の「解約・お支払いの管理」から。期間の終わりまで使え、日割りの返金はしない</dd></div>
-      <div><dt>支払い</dt><dd>カード（次の Stripe の画面で入力して確定）</dd></div>
+      <div><dt>支払い</dt><dd>カード（次のお支払いの画面で入力して確定）</dd></div>
       <div><dt>提供</dt><dd>手続きが終わるとすぐ使える${info && (trialEligible() || trialUnknown()) ? "（無料期間中も同じ）" : ""}</dd></div>
     </dl>
     <p class="pro-plans__hint"><a href="./tokushoho.html">特定商取引法に基づく表記</a> ・ <a href="./terms.html">利用規約</a></p>`;
@@ -445,7 +446,7 @@ function maybeWelcome() {
     }
     // AI の覚え方の行は config の ai で決まる: 届いていなければ長くて 3 秒待つ（届かなければ AI の行なしで出す）
     if (!config && configReady) await Promise.race([configReady, new Promise((resolve) => setTimeout(resolve, 3000))]);
-    const items = unlockedItems().map((u) => `<li><a href="${u.href}">${u.label}</a></li>`).join("");
+    const items = unlockedItems().map((u) => `<li><a href="${u.href}">${esc(u.label)}</a></li>`).join("");
     welcomeElement.innerHTML = `
       <p class="pro-welcome__title" role="status">Pro になった。ありがとう</p>
       <p class="pro-welcome__lead">いまから使えるもの</p>

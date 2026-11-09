@@ -133,7 +133,7 @@ let selectBound = false;
 function renderCategorySelect(categories) {
   const select = document.getElementById("listCategory");
   if (!select) return;
-  select.innerHTML = categories.map((c) => `<option value="${c.id}"${c.id === categoryId ? " selected" : ""}>${c.label}</option>`).join("");
+  select.innerHTML = categories.map((c) => `<option value="${escapeHtml(c.id)}"${c.id === categoryId ? " selected" : ""}>${escapeHtml(c.label)}</option>`).join("");
   if (selectBound) return;
   selectBound = true;
   select.addEventListener("change", () => {
@@ -181,15 +181,15 @@ function renderPacks() {
   // 単位: 英単語パックは「語」、場面カード（kind: concept）は「枚」
   const unit = (p) => (p.kind === "concept" ? "枚" : "語");
   const card = (p) => `
-        <article class="pack${p.enabled ? " pack--on" : ""}" data-pack="${p.id}"${p.audience ? ` title="${escapeHtml(p.audience)}向け"` : ""}>
+        <article class="pack${p.enabled ? " pack--on" : ""}" data-pack="${escapeHtml(p.id)}"${p.audience ? ` title="${escapeHtml(p.audience)}向け"` : ""}>
           <div class="pack__head">
             <h3 class="pack__title">${escapeHtml(p.label)}</h3>
             <span class="pack__count mono">${p.count ?? ""}${p.count ? unit(p) : ""}</span>
           </div>
           <p class="pack__blurb">${escapeHtml(p.blurb ?? "")}</p>
           <div class="pack__actions">
-            ${p.enabled ? `<button type="button" class="btn btn--sm btn--ghost" data-pack-view="${p.id}">一覧</button>` : ""}
-            <button type="button" class="btn btn--sm btn--ghost${p.enabled ? " pack__toggle--on" : ""}" data-pack-toggle="${p.id}">${p.enabled ? `${icon("check", { size: 14 })}追加済み` : "追加する"}</button>
+            ${p.enabled ? `<button type="button" class="btn btn--sm btn--ghost" data-pack-view="${escapeHtml(p.id)}">一覧</button>` : ""}
+            <button type="button" class="btn btn--sm btn--ghost${p.enabled ? " pack__toggle--on" : ""}" data-pack-toggle="${escapeHtml(p.id)}">${p.enabled ? `${icon("check", { size: 14 })}追加済み` : "追加する"}</button>
           </div>
         </article>`;
 
@@ -323,7 +323,7 @@ function render() {
             <h2 class="genre__title">${escapeHtml(g.label)} <span class="genre__count mono">${g.words.length}語</span>${done === g.words.length ? ` <span class="genre__clear">${icon("check", { size: 12 })}全部済み</span>` : ""}</h2>
             ${done > 0 || weak > 0 ? `<div class="genre__meta">${done > 0 ? `覚えた ${done}` : ""}${done > 0 && weak > 0 ? " ・ " : ""}${weak > 0 ? `苦手 ${weak}` : ""}</div>` : ""}
             <div class="genre__actions">
-              ${weak > 0 ? `<button type="button" class="btn btn--sm btn--ghost genre__weak" data-practice-words="${g.words.filter((w) => classifyWord(stats[w.id]) === "weak").map((w) => w.id).join(",")}">苦手 ${weak}語だけ練習</button>` : ""}
+              ${weak > 0 ? `<button type="button" class="btn btn--sm btn--ghost genre__weak" data-practice-words="${escapeHtml(g.words.filter((w) => classifyWord(stats[w.id]) === "weak").map((w) => w.id).join(","))}">苦手 ${weak}語だけ練習</button>` : ""}
               <button type="button" class="genre__practice${practicing ? " genre__practice--on" : ""}" data-practice="${g.tag}"${practicing ? ' aria-current="true"' : ""}>${practicing ? "このジャンルを練習中" : "このジャンルを練習"}</button>
             </div>
           </div>
@@ -401,7 +401,7 @@ function cardHtml(word, stat, { removable = false, today = localDay(new Date()) 
   return `
     <article class="gcard gcard--${status}">
       <div class="gcard__head">
-        <button type="button" class="${termClass}" data-word-detail="${word.id}" data-word-category="${escapeHtml(word.category ?? "")}">${term}</button>
+        <button type="button" class="${termClass}" data-word-detail="${escapeHtml(word.id)}" data-word-category="${escapeHtml(word.category ?? "")}">${term}</button>
         ${concept
           ? `<p class="gcard__ja">${escapeHtml(word.ja)}</p>`
           : `<p class="gcard__ja">${escapeHtml(word.ja)}${word.pos ? ` <span class="gcard__pos">${escapeHtml(word.pos)}</span>` : ""}</p>`}

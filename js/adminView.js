@@ -457,7 +457,7 @@ function renderSummary() {
     ["離脱", c.churned], ["登録のみ", c.dormant], ["今週の新規", c.newThisWeek], ["Pro", c.pro]
   ];
   els.summary.innerHTML = items
-    .map(([label, n]) => `<span class="admin-summary__item">${label} <b class="admin-n">${num(n)}</b></span>`)
+    .map(([label, n]) => `<span class="admin-summary__item">${escapeHtml(label)} <b class="admin-n">${num(n)}</b></span>`)
     .join('<span class="admin-summary__sep" aria-hidden="true"> ・ </span>');
 }
 
@@ -502,7 +502,7 @@ function lastActiveHtml(player) {
 
 function numCell(label, value, { mono = true } = {}) {
   const n = Number(value) || 0;
-  return `<div class="admin-cell admin-cell--num" data-label="${label}"><span class="admin-num${n === 0 ? " admin-num--zero" : ""}${mono ? "" : " admin-num--plain"}">${n}</span></div>`;
+  return `<div class="admin-cell admin-cell--num" data-label="${escapeHtml(label)}"><span class="admin-num${n === 0 ? " admin-num--zero" : ""}${mono ? "" : " admin-num--plain"}">${n}</span></div>`;
 }
 
 function tagsHtml(tags, { mono = false, empty = "" } = {}) {

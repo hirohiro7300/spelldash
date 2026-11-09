@@ -1,3 +1,4 @@
+import { esc } from "./html.js";
 import { renderColoredWord } from "./colors.js";
 import { getBestScore, getWordStats } from "./storage.js";
 import { findWord } from "./wordStore.js";
@@ -156,8 +157,8 @@ export function renderWeakWords() {
         return `
           <div class="word-item">
             <span class="gcard__status gcard__status--weak">苦手</span>
-            <b class="mono">${word ? `<button type="button" class="word-item__detail" data-word-detail="${wordId}">${en}</button>` : en}</b>
-            ${ja ? `<span class="word-item__ja">${ja}</span>` : ""}
+            <b class="mono">${word ? `<button type="button" class="word-item__detail" data-word-detail="${esc(wordId)}">${esc(en)}</button>` : esc(en)}</b>
+            ${ja ? `<span class="word-item__ja">${esc(ja)}</span>` : ""}
             ${missDetail}${leech}${noteChipHtml(wordId, { onlyIfHas: true })}
           </div>
         `;

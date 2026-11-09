@@ -1,3 +1,4 @@
+import { esc } from "./html.js";
 import { getLevelState, LEARNING_RANKS } from "./level.js";
 import { renderTodayStrip, pulseTodayStrip } from "./homeStrip.js";
 import { emblemImgHtml, revealEmblem } from "./emblem.js";
@@ -70,7 +71,7 @@ function renderRankList(current) {
   let details = host.querySelector("details");
   if (!details) {
     host.innerHTML = `<details class="rank-list"><summary class="rank-list__summary">ランクの一覧</summary><ol class="rank-list__items">${LEARNING_RANKS.map(
-      (rank) => `<li class="rank-list__item"><span class="sr-only"></span><span class="rank-list__row" aria-hidden="true"><span class="rank-list__emblem"></span><span class="rank-list__name">${rank.name}</span><span class="rank-list__lv">Lv.${rank.level} から</span></span></li>`
+      (rank) => `<li class="rank-list__item"><span class="sr-only"></span><span class="rank-list__row" aria-hidden="true"><span class="rank-list__emblem"></span><span class="rank-list__name">${esc(rank.name)}</span><span class="rank-list__lv">Lv.${rank.level} から</span></span></li>`
     ).join("")}</ol></details>`;
     const created = host.querySelector("details");
     details = created;

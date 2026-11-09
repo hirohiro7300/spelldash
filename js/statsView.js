@@ -388,7 +388,7 @@ function renderCards(container, cards) {
     .map(
       (card) => `
         <div class="stat-card">
-          <span>${card.label}</span>
+          <span>${esc(card.label)}</span>
           <strong class="mono"${card.title ? ` title="${card.title}"` : ""}>${card.value}</strong>
         </div>
       `

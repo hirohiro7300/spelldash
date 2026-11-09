@@ -11,6 +11,7 @@
 // 将来拡張の予約フィールド（今は未使用・実装しない）:
 //   tag: "feature" | "fix" | "event" / pinned: true / hasumiComment: "..."
 
+import { esc } from "./html.js";
 const NEWS = [
   {
     date: "2026.11.09",
@@ -494,6 +495,6 @@ export function renderNews() {
   container.innerHTML =
     recent.map(itemHtml).join("") +
     [...months.entries()]
-      .map(([label, items]) => `<details class="news-month"><summary>${label}（${items.length}件）</summary>${items.map(itemHtml).join("")}</details>`)
+      .map(([label, items]) => `<details class="news-month"><summary>${esc(label)}（${items.length}件）</summary>${items.map(itemHtml).join("")}</details>`)
       .join("");
 }

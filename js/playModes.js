@@ -1,3 +1,4 @@
+import { esc } from "./html.js";
 import { isUnlocked, setsUntil } from "./unlocks.js";
 import { isDailyPlayedToday } from "./dailyChallenge.js";
 
@@ -36,7 +37,7 @@ export function renderPlayModes({ onChallenge, onDaily } = {}) {
         .map((r) => {
           const unlocked = isUnlocked(r.id);
           const left = setsUntil(r.id);
-          return `<li class="play-modes__row${unlocked ? "" : " play-modes__row--locked"}" data-play-mode="${r.id}">${
+          return `<li class="play-modes__row${unlocked ? "" : " play-modes__row--locked"}" data-play-mode="${esc(r.id)}">${
             unlocked ? r.action : `${r.locked}<span class="play-modes__lock">あと${left}セットで解放</span>`
           }</li>`;
         })

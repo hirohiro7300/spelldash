@@ -1,3 +1,4 @@
+import { esc } from "./html.js";
 import { getQueueSnapshot, getRecalledTodayCount, getSecuredTodayCount } from "./studyQueue.js";
 import { findWord } from "./wordStore.js";
 import { icon } from "./icons.js";
@@ -32,9 +33,9 @@ export function renderStudyQueue(visible) {
           <div
             class="queue-chip queue-chip--unresolved"
             role="img"
-            aria-label="${label}"
-            title="${label}"
-          ><span class="queue-chip__ja">${ja}</span></div>
+            aria-label="${esc(label)}"
+            title="${esc(label)}"
+          ><span class="queue-chip__ja">${esc(ja)}</span></div>
         `;
       }
 
