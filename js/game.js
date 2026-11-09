@@ -1065,7 +1065,7 @@ function showLearnLoadError() {
 }
 
 // ===== マイ単語帳の学ぶ回（/?learn=my。Batch 79。js/myWordsCore.js・docs/SPEC_MY_WORDS.md） =====
-// 中心の学習と同じ画面と打ち方で、マイ単語帳の英語の語だけを出す: これから → あやふや → 覚えた の順に 1 回 10 語。答えはその語の 3 状態
+// 中心の学習と同じ画面と打ち方で、マイ単語帳の英語の語だけを出す: これから（回を始めるたびに混ぜる。Batch 86）→ あやふや → 覚えた の順に 1 回 10 語。答えはその語の 3 状態
 // （spelldash_my_words の語の ls・lsd・lsAt。決まりは公開の語と同じ js/learnState.js applyLearnAnswer）にだけ書く（js/myWords.js recordMyAnswer）。
 // 公開の語の 3 状態・6 つの数・ランク・最高到達ランク・回の続き（spelldash_learn_session）には書かない（finishLearnCounts・persistLearnPoint）。
 // 回の終わりは「続けて学ぶ」と「マイ単語帳へ」。中心の学習の列の決まり（learnQueue.js）のうち、区切り・語数だけをマイ単語帳の決まりに替えて使う。
@@ -1084,7 +1084,7 @@ function beginMyLearn(Q, src, makeChoice = null) {
     choice,
     Q: { ...Q, LEARN_SET_SIZE: Object.freeze({ [src.kind]: MY_SET_SIZE }), learnStep: (_mode, step) => myLearnStep(step) },
     epoch: recordsEpoch(),
-    queue: buildMyQueue(src.list(), src.idOf),
+    queue: buildMyQueue(src.list(), src.idOf, src.kind === "my" ? { shuffle: Math.random } : undefined), // マイ単語帳は回ごとに これから を混ぜる（Batch 86。スラングは前のまま）
     day: learnDayOf(Date.now()),
     cursor: 0,
     ids: [],

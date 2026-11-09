@@ -283,17 +283,28 @@ const ORDER = [LEARN_NEW, LEARN_UNSURE, LEARN_LEARNED];
 // 語 → カードの id（マイ単語帳は my-<鍵>。スラング〔Batch 80。js/slang.js〕は項目の id を渡す）
 const myIdOf = (w) => `${MY_ID_PREFIX}${w.en}`;
 
-// 学ぶ回の列（カードの id）: これから → あやふや → 覚えた。これからは足した順、あやふや・覚えたは最後に答えた時刻（lsAt）の古い順、同じなら足した順
-export function buildMyQueue(list, idOf = myIdOf) {
-  return (Array.isArray(list) ? list : [])
+// 学ぶ回の列（カードの id）: これから → あやふや → 覚えた。これからは足した順、あやふや・覚えたは最後に答えた時刻（lsAt）の古い順、同じなら足した順。
+// shuffle（Batch 86。0 以上 1 未満を返す関数。マイ単語帳の回は js/game.js beginMyLearn が Math.random を渡す）: これから の部分だけを混ぜる
+// （答えの同じ行がまとまった単語帳で、位置から答えが分からないように）。渡さなければ前と同じ並び（スラングの回・前からの単体の期待）
+export function buildMyQueue(list, idOf = myIdOf, { shuffle = null } = {}) {
+  const rows = (Array.isArray(list) ? list : [])
     .map((w, pos) => ({ w, pos }))
     .filter(({ w }) => isWordEntry(w))
     .map(({ w, pos }) => {
       const st = myStateOf(w);
       return { id: idOf(w), rank: ORDER.indexOf(st), at: st === LEARN_NEW ? 0 : Number.isFinite(w.lsAt) ? w.lsAt : 0, pos };
     })
-    .sort((a, b) => a.rank - b.rank || a.at - b.at || a.pos - b.pos)
-    .map((x) => x.id);
+    .sort((a, b) => a.rank - b.rank || a.at - b.at || a.pos - b.pos);
+  if (typeof shuffle === "function") {
+    let end = 0; // これから（rank 0）は並べた頭にまとまっている
+    while (end < rows.length && rows[end].rank === 0) end++;
+    for (let i = end - 1; i > 0; i--) {
+      const r = Number(shuffle());
+      const j = Number.isFinite(r) ? Math.min(i, Math.max(0, Math.floor(r * (i + 1)))) : 0; // 範囲の外・数でない値でも語は欠けない
+      [rows[i], rows[j]] = [rows[j], rows[i]];
+    }
+  }
+  return rows.map((x) => x.id);
 }
 
 // 次の一手（js/learnQueue.js learnStep と同じ名前の値）: done（出せる語が無い）・set（10 語の終わり）・play
