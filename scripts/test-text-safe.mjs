@@ -840,5 +840,51 @@ await t("6.13 取り込み: クラウドの方が新しくて取り込んだ語�
     || show({ touched, left, sent: sent?.keys, cloud: cloud.rows.get(`my_word:${two[1].en}`)?.payload?.ja, dirty: dirty() });
 });
 
+// ===== 7. HTML の組み立ての見張り（Batch 88。docs/SECURITY.md の Batch 88 の節） =====
+// js/*.js の HTML を組むテンプレートで、語・訳・名前・id の字が esc／escapeHtml／numHtml を通らずに出る所は 0。
+// 見張りの読み方は scripts/lib/htmlTemplates.mjs。許すのは下の一覧だけ（理由つき。直したら一覧から外す: 一覧の項目が見つからなければ落ちる）
+{
+  const H = await import("./lib/htmlTemplates.mjs");
+  const ALLOW = [
+    { file: "battleView.js", expr: "c.id", why: "Battle の分野の選びの value。分野は組み込みの表（data の manifest）と「マイ単語帳」の定数だけで、人の字は入らない。js/battle*.js は変えない決まり" },
+    { file: "battleView.js", expr: "c.label", why: "同じ選びの名前（組み込みの分野の名前と定数）。js/battle*.js は変えない決まり" },
+    { file: "game.js", expr: "learnRun.my ? learnRun.src.label : LEARN_LABELS[learnRun.Q.LEARN_MODES[learnRun.mode]]", why: "回の進みの名前。src.label は定数「マイ単語帳」（単語帳の名前は countLabel で escapeHtml 済み・回の柱は textContent）と LEARN_LABELS の定数。答えるたびに描く所なので変えない（基準 13）" }
+  ];
+  // 見張りそのものの確かめ（見張りが何も見つけずに通らない）
+  const sample = (code) => H.scanHtmlTemplates(code).hits.map((h) => h.expr);
+  ok("見張り: 守っていない語・訳・id・名前・answerLabel・裸の ja を挙げる",
+    show(sample('el.innerHTML = `<b data-id="${w.id}">${w.en}</b><i>${answerLabel(w)}</i><s title="${ja}">${book.name}</s>`;')) === show(["w.id", "w.en", "answerLabel(w)", "ja", "book.name"]),
+    show(sample('el.innerHTML = `<b data-id="${w.id}">${w.en}</b><i>${answerLabel(w)}</i><s title="${ja}">${book.name}</s>`;')));
+  ok("見張り: esc・escapeHtml・numHtml・*Html の呼び出し・三項の条件・比べる式・数・入れ子のテンプレートの外側は挙げない",
+    sample('el.innerHTML = `<b class="${w.id === cur ? "on" : ""}" aria-pressed="${c.id === saved}">${esc(w.en)}${escapeHtml(answerLabel(w))}${numHtml(n)}${noteChipHtml(w.id)}${w.ja ? `<i>${esc(w.ja)}</i>` : ""}${items.map((x) => esc(x.label)).join("・")}${count}</b>`;').length === 0,
+    show(sample('el.innerHTML = `<b class="${w.id === cur ? "on" : ""}" aria-pressed="${c.id === saved}">${esc(w.en)}${escapeHtml(answerLabel(w))}${numHtml(n)}${noteChipHtml(w.id)}${w.ja ? `<i>${esc(w.ja)}</i>` : ""}${items.map((x) => esc(x.label)).join("・")}${count}</b>`;')));
+  ok("見張り: 入れ子のテンプレートの中・.map の戻り・三項の枝・&& の右・{ } の本体の return も見る",
+    show(sample('el.innerHTML = `<ul>${list.map((w) => `<li>${w.ja}</li>`).join("")}${ids.map((w) => w.id).join(",")}${on ? w.term : ""}${has && x.label}${rows.map((r) => { const k = r.id === 1; return r.name; }).join("")}</ul>`;')) === show(["w.ja", "ids.map((w) => w.id).join(\",\")", "on ? w.term : \"\"", "has && x.label", "rows.map((r) => { const k = r.id === 1; return r.name; }).join(\"\")"]),
+    show(sample('el.innerHTML = `<ul>${list.map((w) => `<li>${w.ja}</li>`).join("")}${ids.map((w) => w.id).join(",")}${on ? w.term : ""}${has && x.label}${rows.map((r) => { const k = r.id === 1; return r.name; }).join("")}</ul>`;')));
+  ok("見張り: HTML のタグの無いテンプレート（文の字）・コメントと文字列の中の ` は見ない",
+    sample('const a = `${w.ja}を覚えた`; // `<b>${w.en}</b>`\nconst b = "`<i>${w.q}</i>`"; const re = /`/; const c = `<p>${n}</p>`;').length === 0,
+    show(sample('const a = `${w.ja}を覚えた`; // `<b>${w.en}</b>`\nconst b = "`<i>${w.q}</i>`"; const re = /`/; const c = `<p>${n}</p>`;')));
+
+  const dir = path.join(ROOT, "js");
+  const found = [];
+  let exprs = 0;
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".js")).sort()) {
+    const r = H.scanHtmlTemplates(fs.readFileSync(path.join(dir, file), "utf8"));
+    exprs += r.exprs;
+    for (const h of r.hits) found.push({ file, ...h });
+  }
+  const allowed = (h) => ALLOW.some((a) => a.file === h.file && a.expr === h.expr);
+  const bad = found.filter((h) => !allowed(h));
+  ok(`見張り: js/*.js の HTML のテンプレート（式 ${exprs}）で、語・訳・名前・id の字が esc／escapeHtml／numHtml を通らずに出る所は 0（許す一覧 ${ALLOW.length} 件を除く）`,
+    exprs > 500 && bad.length === 0, `${bad.length} 件: ${bad.slice(0, 40).map((h) => `${h.file}:${h.line} \${${h.expr.slice(0, 80)}}`).join(" | ")}`);
+  const stale = ALLOW.filter((a) => !found.some((h) => h.file === a.file && h.expr === a.expr));
+  ok("見張り: 許す一覧の項目はどれも今の木にある（直した所は一覧から外す）", stale.length === 0, show(stale.map((a) => `${a.file} ${a.expr}`)));
+
+  // esc は ' も実体に（adminView・wordAi の escapeHtml とそろえる。textContent は変わらない）
+  const { esc } = await import("../js/html.js");
+  ok("esc: & < > \" ' を実体に（' は &#39;）", esc(`<a href="x">&'`) === "&lt;a href=&quot;x&quot;&gt;&amp;&#39;", esc(`<a href="x">&'`));
+  ok("js/wordList.js（どこからも読まれていない一覧）は無い", !fs.existsSync(path.join(ROOT, "js", "wordList.js")));
+}
+
 console.log(`test-text-safe: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

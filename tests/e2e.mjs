@@ -28673,6 +28673,64 @@ console.log("guard (88.1):");
       r.pwn === null && r.seen.includes("script-src-attr") && r.seen.includes("script-src-elem"), JSON.stringify(r));
     await closeCtx(page);
   }
+  // ----- (4) ほかの HTML の組み立て（Batch 88 A5。js/learnedCard.js・js/listView.js・js/wordDetail.js・マイ単語帳）: 場面カードの答えと訳に HTML の字・鍵に " -----
+  // 前のホーム（旗を外したページ）の「今日覚えた」・単語帳（list.html の マイ単語帳。苦手だけ練習のボタンの語の列）・学習状況の語の詳細・マイ単語帳で、
+  // どの要素に mouseover を送っても走らない（window.__pwn なし）・<img src="x"> 0・on の属性 0・答えの字はそのまま見える
+  {
+    const localDay = (offset = 0) => { const d = new Date(Date.now() + offset * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    const nowIso = new Date().toISOString();
+    const ANS = 'x"><img src=x onerror=window.__pwn=41>'; // 場面カードの答え（学ぶ回と一覧で出る字）
+    const ANS_KEY = 'x"><imgsrc=xonerror=window.__pwn=41>'; // その鍵（js/myWords.js conceptKey）
+    const JA4 = "<img src=x onerror=window.__pwn=42>";
+    const KEY_Q = 'z"onmouseover="window.__pwn=44"z="'; // 鍵に " がある苦手な語（id は my-q-<鍵>。属性に入る）
+    const ID_A = "my-q-" + ANS_KEY;
+    const seed = {
+      spelldash_my_words: JSON.stringify([
+        { kind: "concept", en: ANS_KEY, answer: ANS, q: "場面: 画像の札 4", explain: "", accept: [], ja: JA4, addedAt: T0 },
+        { kind: "concept", en: KEY_Q, answer: KEY_Q, q: "場面: 属性の札 4", explain: "", accept: [], ja: "属性の札の訳 4", addedAt: T0 }
+      ]),
+      spelldash_word_stats: JSON.stringify({
+        [ID_A]: { ...statLearned, lastPlayed: nowIso, lastRecallFailAt: new Date(Date.now() - 86400000).toISOString(), lastRecallSuccessAt: nowIso, history: [{ d: localDay(-1), r: "x" }, { d: localDay(0), r: "o" }] },
+        ["my-q-" + KEY_Q]: { playCount: 2, correctCount: 0, missCount: 2, typingMiss: 0, recallFail: 2, cleanCorrectStreak: 0, mastered: false, lastPlayed: nowIso, lastRecallFailAt: nowIso, knownOnSight: false, history: [{ d: localDay(0), r: "x" }] }
+      })
+    };
+    const probe = (page) => page.evaluate(() => {
+      const els = [document.body, ...document.body.querySelectorAll("*")];
+      for (const el of els) el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      return { pwn: window.__pwn ?? null, imgs: document.querySelectorAll('img[src="x"]').length, onAttrs: els.flatMap((el) => [...el.attributes].map((a) => a.name)).filter((n) => n.startsWith("on")).slice(0, 5) };
+    });
+    const view = async (name, path, ready, { flagOff = false, after = null } = {}) => {
+      const page = await guardPage(seed);
+      if (flagOff) await focusOff(page);
+      await page.goto(BASE + path, { waitUntil: "networkidle" });
+      const shown = await page.waitForFunction(ready, null, { timeout: 8000, polling: 20 }).then(() => true, () => false);
+      const extra = after ? await after(page) : null;
+      await page.waitForTimeout(150);
+      const v = await probe(page);
+      const r = { name, shown, extra, ...v, err: page.errors.slice(0, 2) };
+      await closeCtx(page);
+      return r;
+    };
+    const rows = [
+      await view("前のホームの今日覚えた", "/", () => /今日覚えた/.test(document.getElementById("learnedCard")?.textContent ?? ""), {
+        flagOff: true, after: (page) => page.evaluate((a) => (document.getElementById("learnedCard")?.textContent ?? "").includes(a), ANS)
+      }),
+      await view("単語帳のマイ単語帳", "/list.html?category=my", () => document.querySelectorAll("[data-practice-words]").length > 0, {
+        flagOff: true, after: (page) => page.evaluate((k) => [...document.querySelectorAll("[data-practice-words]")].some((b) => b.getAttribute("data-practice-words").split(",").includes("my-q-" + k)), KEY_Q)
+      }),
+      await view("学習状況の語の詳細", "/stats.html", () => document.querySelectorAll("#learnedWordList [data-word-detail]").length > 0, {
+        after: async (page) => {
+          await page.evaluate((id) => [...document.querySelectorAll("#learnedWordList [data-word-detail]")].find((b) => b.getAttribute("data-word-detail") === id)?.click(), ID_A);
+          return page.waitForFunction(() => document.getElementById("wordDetail") && !document.getElementById("wordDetail").hidden, null, { timeout: 5000, polling: 20 }).then(() => true, () => false);
+        }
+      }),
+      await view("マイ単語帳", "/mywords.html", () => /属性の札|z"onmouseover/.test(document.body.textContent))
+    ];
+    for (const r of rows) {
+      check(`88.1 (4) ${r.name}: 場面カードの答え・訳・鍵の HTML の字が走らない（mouseover を送っても window.__pwn なし・<img src="x"> 0・on の属性 0）・画面が出て字はそのまま・エラー 0`,
+        r.shown && r.extra !== false && r.pwn === null && r.imgs === 0 && r.onAttrs.length === 0 && r.err.length === 0, JSON.stringify(r));
+    }
+  }
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
 
