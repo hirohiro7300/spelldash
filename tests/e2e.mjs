@@ -54,6 +54,9 @@ function findChromium() {
 // 設定: failSelect { 表名: エラーの文 }（その表の select を失敗させる）、delayMs と delayTables（その表の select の応答を遅らせる）
 const CLOUD_PK = { word_progress: ["user_id", "word_id"], user_progress: ["user_id"], user_items: ["user_id", "kind", "key"], profiles: ["user_id"], activity_days: ["user_id", "day"], funnel_events: ["device_id", "step", "source", "day"] };
 const CLOUD_ANON_INSERT = new Set(["funnel_events"]); // 未ログインでも書ける表（RLS: user_id が空か本人。docs/SQL_FUNNEL.md）
+// select の方針が無い表（Batch 86。docs/SQL_FUNNEL.md・docs/SQL_CLIENT_GATE.md の記録）: 衝突の先を名指す書き込み（upsert・on_conflict）は行の権限で断る（42501）。
+// ふつうの insert は入り、同じ鍵（CLOUD_PK）の 2 度目は一意の違反（23505）で断る（1 文ごと: 1 行でも重なれば全部入れない）
+const CLOUD_NO_SELECT = new Set(["funnel_events"]);
 const clouds = new Map();
 let cloudSeq = 0;
 function createCloud(tables = {}, config = {}) {
@@ -101,6 +104,11 @@ function runCloudQuery({ cloud: cloudKey, table, ops, userId }) {
     const allowed = CLOUD_ANON_INSERT.has(table) ? rows.every((r) => r.user_id == null || r.user_id === userId) : userId && rows.every((r) => r.user_id === userId);
     if (!allowed) { entry.error = "rls"; return { data: null, error: { message: "row-level security", code: "42501" }, count: null }; }
     const pk = CLOUD_PK[table];
+    if (CLOUD_NO_SELECT.has(table) && kind === "upsert") { entry.error = "rls-upsert"; return { data: null, error: { message: "new row violates row-level security policy for table", code: "42501" }, count: null }; }
+    if (CLOUD_NO_SELECT.has(table) && pk && rows.some((r) => cloud.rows(table).some((x) => pk.every((k) => x[k] === r[k])))) {
+      entry.error = "duplicate";
+      return { data: null, error: { message: "duplicate key value violates unique constraint", code: "23505" }, count: null };
+    }
     for (const r of rows) {
       const list = cloud.rows(table);
       const i = pk ? list.findIndex((x) => pk.every((k) => x[k] === r[k])) : -1;
@@ -27111,6 +27119,27 @@ console.log("funnel log:");
   check("計測: 加入して戻る → checkout_done", await waitUntil(async () => steps("checkout_done").length === 1, 10000), JSON.stringify(steps("checkout_done")));
   check("計測（加入）でエラー0", buyer.errors.length === 0, buyer.errors[0] ?? "");
   await buyer.close();
+  // Batch 86: 送り方は衝突の先を名指さない insert（select の方針が無い表でも書ける）。偽のデータベースは upsert を 42501 で断る（CLOUD_NO_SELECT）
+  const funnelWrites = cloud.log.filter((e) => e.table === "funnel_events" && e.kind !== "select");
+  check("計測（Batch 86）: 動線の計測は insert で送る（upsert・on_conflict を使わない）・行の権限で断られた書き込み 0",
+    funnelWrites.length > 0 && funnelWrites.every((e) => e.kind === "insert") && !funnelWrites.some((e) => e.error === "rls-upsert" || e.error === "rls"), JSON.stringify(funnelWrites.map((e) => [e.kind, e.error ?? ""])));
+  // 同じ行がもうある（ほかのタブが送った・覚えを消した）: 一意の違反（23505）は送れたことにする（覚えて、同じ段を送り直さない）
+  {
+    const dupCloud = createCloud({ funnel_events: [{ device_id: "dev-dup-0001", step: "first_visit", source: "", day: "2026-11-01", user_id: null }] });
+    const dup = await newPage({ storage: { spelldash_test_cloud: dupCloud.id, spelldash_device_id: "dev-dup-0001", spelldash_funnel_first: "2026-11-01" } });
+    await dup.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    const tried = await waitUntil(async () => dupCloud.log.some((e) => e.table === "funnel_events" && e.error === "duplicate"), 5000);
+    await dup.waitForTimeout(200);
+    const kept = await dup.evaluate(() => ({ first: localStorage.getItem("spelldash_funnel_first"), sent: localStorage.getItem("spelldash_funnel_sent") }));
+    const n1 = dupCloud.log.filter((e) => e.table === "funnel_events" && e.kind !== "select").length;
+    await dup.reload({ waitUntil: "networkidle" });
+    await dup.waitForTimeout(400);
+    const n2 = dupCloud.log.filter((e) => e.table === "funnel_events" && e.kind !== "select").length;
+    check("計測（Batch 86）: 同じ行がもうあるとき（一意の違反 23505）は送れたことにする: 初めて来た日の控えを消し、送った印を覚え、開き直しても送り直さない・行は 1 つのまま・エラー 0",
+      tried && kept.first === null && /first_visit::once/.test(kept.sent ?? "") && n2 === n1 && dupCloud.rows("funnel_events").length === 1 && dup.errors.length === 0,
+      JSON.stringify({ tried, kept, n1, n2, rows: dupCloud.rows("funnel_events").length, err: dup.errors[0] }));
+    await dup.close();
+  }
 }
 
 // ===== 21.5 タイピング練習から来た端末（first_visit の source に typing*。SQL は変えない。docs/SQL_FUNNEL.md 5） =====
