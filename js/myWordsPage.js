@@ -32,7 +32,7 @@ setupUnloadSync();
 let statusIsLimit = false;
 // 上限の文の前に置く字（Batch 86: まとめて足すで上限に達したときの「N語を足した。残りの M行は欄に残した。」）。上限の文でない字を出すと消える
 let limitLead = "";
-// 今の単語帳（URL の ?book=。無い・知らない id は最初の単語帳）・選ぶの最中か・選んだ語の印（js/myWordsCore.js entryRefOf）・訳を直している語・名前の欄の用途
+// 今の単語帳（URL の ?book=。無い・知らない id は js/myWordsCore.js defaultBookId: 最初の単語帳が空なら語のある最初の単語帳）・選ぶの最中か・選んだ語の印（js/myWordsCore.js entryRefOf）・訳を直している語・名前の欄の用途
 let current = new URLSearchParams(location.search).get(BOOK_PARAM) ?? "";
 let selecting = false;
 const selected = new Set();
@@ -686,7 +686,7 @@ $("myGiveShare")?.addEventListener("click", async () => {
 // 初めての人（マイ単語帳の語も英単語の学習の記録も無い）には、SpellDash が何かを 1 行だけ出す
 const RECV_ROWS = 5;
 let recv = null; // 読めた中身 { name, words }
-let recvRest = null; // 一部入っているとき（Batch 86）の { book, words }（残りの語を足す先と、まだの語）
+let recvRest = null; // 一部入っているとき（Batch 86）の { book, words, present }（残りの語を足す先・まだの語・もう入っている組の数）
 let recvAbout = false; // リンクを読んだ時に初めての人だったか（足した後も同じ 1 行を出したまま）
 let recvSeq = 0;
 let recvTimer = 0;
@@ -813,7 +813,7 @@ function renderRecv(list = getMyWords(), books = getMyBooks(list)) {
   const seen = sharedPresence(recv.words, list, books);
   const all = seen.present > 0 && seen.missing === 0 && !!seen.book;
   const part = seen.present > 0 && seen.missing > 0 && !!seen.book;
-  recvRest = part ? { book: seen.book, words: seen.rest } : null;
+  recvRest = part ? { book: seen.book, words: seen.rest, present: seen.present } : null; // present: 問いの「M語はもう入っている。」と同じ数を、足した後の文にも使う
   const add = $("myRecvNew");
   const put = $("myRecvHere");
   const hintNode = $("myRecvHint");
@@ -861,7 +861,7 @@ function addRecv(to) {
   const rest = to === "rest" ? recvRest : null;
   if (to === "rest" && !rest) return;
   recv = null; // 足している間の描き直し（語の保存が spelldash:mywords を投げる）で問いを描き直さない
-  const already = rest ? asked.words.length - rest.words.length : 0;
+  const already = rest ? rest.present : 0; // 問いと同じ数（渡された中の同じ組の 2 度目は数えない: sharedPresence）
   const r = rest ? addSharedWords(rest.words, { book: rest.book.id }) : addSharedWords(asked.words, to === "new" ? { name: asked.name } : { book: current });
   if (!r.ok) {
     recv = asked;
@@ -874,7 +874,7 @@ function addRecv(to) {
   else parts.push("足せた語は無い。");
   if (already > 0) parts.push(`${fmt(already)}語はもう入っている。`); // 知らせ（足せなかった語には数えない）
   if (r.skipped.length > 0) parts.push(`足せなかった ${fmt(r.skipped.length)}語: ${r.skipped.slice(0, 3).join(" ／ ")}${r.skipped.length > 3 ? " …" : ""}。`);
-  if (r.limited > 0) parts.push(`上限で足せなかった ${fmt(r.limited)}語。`, `残りの ${fmt(r.limited)}語は、このリンクをもう一度開くと足せる。`); // 値段も Pro も言わない文（アプリでも同じ）
+  if (r.limited > 0) parts.push(`上限で足せなかった ${fmt(r.limited)}語。`, `空きができたら、このリンクをもう一度開くと残りの ${fmt(r.limited)}語を足せる。`); // 値段も Pro も言わない文（アプリでも同じ）。空きが無いまま開き直しても残りを足すボタンは押せないので「空きができたら」
   const limitText = r.limited > 0 ? endSentence(limitMessage()) : ""; // 名前と訳の入った文の後ろに、アプリの上限の文（この中だけリンク）
   recvSeq++;
   recvRest = null;

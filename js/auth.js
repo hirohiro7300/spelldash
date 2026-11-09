@@ -498,6 +498,8 @@ function pageMessageShown() {
 // "user" はログイン中の文（同期の結果）。"page" はほかのページが同じ欄に書く文（プロフィールの Pro の反映など）で、auth は消さず上書きもしない
 function showAuthMessage(text, type = "", { scope = "guest" } = {}) {
   authMessageElement.textContent = text;
-  authMessageElement.className = `auth-message ${type}`.trim();
+  // ホームの欄の印（auth-message--home: 机の上の字の色と置き場。css/room.css）は残す。外すと昼と紙のテーマで机の上が紙の上の金になり読めない（Batch 86 の反証）
+  const home = authMessageElement.classList.contains("auth-message--home") ? " auth-message--home" : "";
+  authMessageElement.className = `auth-message${home} ${type}`.trim();
   authMessageElement.dataset.scope = scope;
 }
