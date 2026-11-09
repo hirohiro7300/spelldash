@@ -2367,3 +2367,153 @@ describe("同期の決まり: 第 3 回の再レビューの指摘", () => {
     b.sync.stop();
   });
 });
+
+describe("同期の決まり: 第 4 回の再レビューの指摘", () => {
+  const MANIFEST = "data/users/user1/fourd";
+  const backedUp = (d: ReturnType<typeof device>, title: string, kind = "conflict") => d.local.backups.some((x) => x.kind === kind && Object.values(x.doc.nodes).some((n) => n.title === title));
+  const warned = (d: ReturnType<typeof device>) => d.local.notices.some((x) => x.startsWith("warn:"));
+  const recording = (be: CloudBackend, writes: Array<Record<string, unknown>>): CloudBackend => ({
+    ...be,
+    async set(path, data) {
+      await be.set(path, data);
+      if (path === MANIFEST) writes.push(structuredClone(data));
+    },
+  });
+  const until = async (cond: () => boolean | Promise<boolean>, n = 80, ms = 25) => {
+    for (let i = 0; i < n && !(await cond()); i++) await tick(ms);
+  };
+  /** 別の端末がまとめて書く（中身は問わない。世代と系譜だけを進める） */
+  async function writeMany(repo: CloudRepo, doc: DocData, n: number): Promise<DocData> {
+    let d = doc;
+    for (let i = 0; i < n; i++) {
+      d = structuredClone(d);
+      const node = makeNode({ title: `P の変更 ${i}` });
+      d.nodes[node.id] = node;
+      d.updatedAt = new Date(Date.parse(d.updatedAt) + 1000).toISOString();
+      await repo.write(d, await repo.readManifest());
+    }
+    return d;
+  }
+
+  it("ふつうの重なりで送るとき、系譜の窓から新しい世代を押し出さない（戻ってきた端末が上書きと取り違えない）（G1）", async () => {
+    const { be } = memoryBackend();
+    const p = new CloudRepo(be, "user1", "P");
+    let pd = await writeMany(p, realDoc("P の内容"), 3);
+    // A がその上に確定して閉じる（seq 4）
+    const a = device(be, "A", buildDemoDoc());
+    await a.sync.start();
+    a.edit("A の変更");
+    await a.sync.flush();
+    await until(() => remoteHas(a.repo, "A の変更"));
+    a.sync.stop();
+    const aGen = a.local.base!.gen;
+    expect(a.local.base!.own).toBe(true);
+    // P が 62 回書く。D はその最新（R-1）を読み込んで閉じる。P がもう 1 回書く（R）
+    pd = await writeMany(p, pd, 62);
+    const d = device(be, "D", buildDemoDoc());
+    await d.sync.start();
+    d.sync.stop();
+    await writeMany(p, pd, 1);
+    // D が編集して開き直す: ふつうの重なり（P の内容を退避して、D の内容を送る）
+    const d2 = device(be, "D2", structuredClone(d.store.doc), { idb: d.local.idb });
+    d2.edit("D の編集");
+    await d2.sync.start();
+    await until(() => remoteHas(d2.repo, "D の編集"));
+    const n = (await d2.repo.readManifest())!;
+    expect(n.lineage).toContain(aGen);
+    d2.sync.stop();
+    // A が変更なしで開き直す: 上書きと取り違えずに取り込む
+    const a2 = device(be, "A2", structuredClone(a.store.doc), { idb: a.local.idb });
+    await a2.sync.start();
+    await until(() => a2.has("D の編集"));
+    expect(a2.has("D の編集")).toBe(true);
+    expect(warned(a2)).toBe(false);
+    expect(await remoteHas(a2.repo, "D の編集")).toBe(true);
+    a2.sync.stop();
+  });
+
+  it("古い世代が戻ってきて「同期をやり直す」で読み込んだ後に送っても、持っていなかった新しい基準を書き残す（G2）", async () => {
+    const { be } = memoryBackend();
+    const writesA: Array<Record<string, unknown>> = [];
+    const a = device(recording(be, writesA), "A", realDoc("最初"));
+    await a.sync.start();
+    const g1doc = structuredClone(a.store.doc);
+    a.edit("変更 1");
+    await a.sync.flush();
+    await until(() => remoteHas(a.repo, "変更 1"));
+    const g2 = writesA[writesA.length - 1]!;
+    a.edit("変更 2");
+    await a.sync.flush();
+    await until(() => remoteHas(a.repo, "変更 2"));
+    // H が新しい内容（g3）を読み込んで眠る。A は閉じる
+    const h = device(be, "H", buildDemoDoc());
+    await h.sync.start();
+    expect(h.has("変更 2")).toBe(true);
+    h.sync.stop();
+    a.sync.stop();
+    // g2 の書き込みがもう一度届く。A は古いバックアップで開き、「同期をやり直す」で g2 を読み込んで編集する
+    await be.set(MANIFEST, g2);
+    const a2 = device(be, "A2", g1doc, { idb: a.local.idb, fallback: true });
+    await a2.sync.start();
+    await tick(60);
+    expect(a2.sync.state).toBe("error");
+    a2.sync.resync({ userAsked: true });
+    await until(() => a2.sync.state === "synced");
+    expect(a2.local.notices.some((x) => x.includes("古い内容に戻っていた物"))).toBe(true);
+    a2.edit("A の続きの編集");
+    await a2.sync.flush();
+    await until(() => remoteHas(a2.repo, "A の続きの編集"));
+    a2.sync.stop();
+    // H が起きる: 新しい内容（変更 2）を黙って失わず、自分の内容で戻す（A の編集は退避に残る）
+    const h2 = device(be, "H2", structuredClone(h.store.doc), { idb: h.local.idb });
+    await h2.sync.start();
+    await until(() => remoteHas(h2.repo, "変更 2"));
+    expect(await remoteHas(h2.repo, "変更 2")).toBe(true);
+    expect(warned(h2)).toBe(true);
+    expect(backedUp(h2, "A の続きの編集")).toBe(true);
+    h2.sync.stop();
+  });
+
+  it("古い世代の上に送り直しても、読めずに置き換えた世代の印を落とさない（その世代を持つ端末が戻せる）（G3）", async () => {
+    const { be, docs } = memoryBackend();
+    const writesC: Array<Record<string, unknown>> = [];
+    const c = device(recording(be, writesC), "C", realDoc("最初の内容"));
+    await c.sync.start();
+    const g0 = writesC[writesC.length - 1]!;
+    c.sync.stop();
+    // X が G を確定して閉じる（G にしか無い変更）
+    const x = device(be, "X", buildDemoDoc());
+    await x.sync.start();
+    x.edit("G の変更");
+    await x.sync.flush();
+    await until(() => remoteHas(x.repo, "G の変更"));
+    x.sync.stop();
+    const G = x.local.base!.gen;
+    // G の分割が無くなり、C（G のすぐ前の内容）が書き直す
+    for (const k of [...docs.keys()]) if (k.includes(`/parts/${G}-`)) docs.delete(k);
+    const c2 = device(be, "C2", structuredClone(c.store.doc), { idb: c.local.idb });
+    await c2.sync.start();
+    await until(() => c2.local.notices.some((n) => n.includes("書き直しました")), 160, 50);
+    c2.sync.stop();
+    // D が書き直された内容を読み込んで確定する
+    const d = device(be, "D", buildDemoDoc());
+    await d.sync.start();
+    d.edit("D の変更");
+    await d.sync.flush();
+    await until(() => remoteHas(d.repo, "D の変更"));
+    expect((await d.repo.readManifest())!.lost).toContain(G);
+    // C の最初の書き込み（g0）がもう一度届く: D が送り直す
+    await be.set(MANIFEST, g0);
+    await tick(50);
+    await until(() => remoteHas(d.repo, "D の変更"));
+    expect((await d.repo.readManifest())!.lost).toContain(G);
+    d.sync.stop();
+    // X が変更なしで開き直す: G の変更を黙って失わず、戻す
+    const x2 = device(be, "X2", structuredClone(x.store.doc), { idb: x.local.idb });
+    await x2.sync.start();
+    await until(() => remoteHas(x2.repo, "G の変更"));
+    expect(await remoteHas(x2.repo, "G の変更")).toBe(true);
+    expect(warned(x2)).toBe(true);
+    x2.sync.stop();
+  });
+});

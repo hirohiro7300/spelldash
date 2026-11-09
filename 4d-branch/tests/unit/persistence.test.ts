@@ -386,6 +386,46 @@ describe("Persistence（IndexedDB）", () => {
     again.close();
   });
 
+  it("本体が読めなくても、その版の続きの緊急コピー（入れ替えた直後に閉じた）で始めたなら、代わりの内容とは見なさない", async () => {
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const p = makeP(kv, name);
+    await p.open();
+    await p.acquireWriter();
+    await p.loadInitial();
+    let current = edit(createEmptyDoc("本体"), "保存した内容");
+    p.attach(() => current);
+    p.markDirty();
+    await p.flush();
+    await p.createBackup("safety", "入れ替える前", current);
+    // 取り込み（置き換え）の直後、保存される前に閉じた: 緊急コピーだけが新しい内容を持つ
+    const replaced = edit(createEmptyDoc("取り込んだ内容"), "取り込んだノード");
+    current = replaced;
+    p.markDirty();
+    p.writeEmergency();
+    p.close();
+    await new Promise<void>((resolve, reject) => {
+      const r = indexedDB.open(name);
+      r.onerror = () => reject(r.error);
+      r.onsuccess = () => {
+        const t = r.result.transaction("kv", "readwrite");
+        t.objectStore("kv").put("壊れた内容", "doc");
+        t.oncomplete = () => {
+          r.result.close();
+          resolve();
+        };
+        t.onerror = () => reject(t.error);
+      };
+    });
+    const again = makeP(kv, name);
+    await again.open();
+    await again.acquireWriter();
+    const loaded = await again.loadInitial();
+    expect(loaded.doc!.id).toBe(replaced.id);
+    expect(loaded.recovered).toBe(false);
+    again.close();
+  });
+
   it("写せない中身のバックアップは失敗として返し、見出しだけの行を残さない", async () => {
     const p = makeP(memoryKV());
     await p.open();

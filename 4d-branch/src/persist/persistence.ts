@@ -290,7 +290,7 @@ export class Persistence {
    * 本体より新しく、本体がその続き（同じ版から・同じタブが書いた）なら採る。別の保存と重なっていたらバックアップへ退避。
    * 本体と同じか古ければ、もう保存されているので黙って消す
    */
-  private async consumeEmergencies(stored: { doc: DocData; meta: StoredMeta } | null, notices: string[]): Promise<DocData | null> {
+  private async consumeEmergencies(stored: { doc: DocData; meta: StoredMeta } | null, notices: string[], how?: { sameBase: boolean }): Promise<DocData | null> {
     if (!this.writer) return null;
     let adopted: DocData | null = null;
     for (const em of this.readEmergencies()) {
@@ -302,6 +302,7 @@ export class Persistence {
           const continues = !stored || sameBase || (em.tabId !== "" && stored.meta.writer === em.tabId);
           if (continues && !adopted) {
             adopted = em.doc;
+            if (how) how.sameBase = sameBase;
             notices.push("前回、保存しきれなかった変更を復元しました。");
           } else {
             const saved = await this.createBackup("conflict", "前回の未保存の変更（別の保存と重なった）", em.doc).catch(() => null);
@@ -323,13 +324,16 @@ export class Persistence {
   /**
    * 起動時の読み込み。緊急コピーがあれば、保存してある本体と比べて新しい方を採る
    * （本体の版が緊急コピーの元の版より進んでいたら＝別のタブが保存していたら、緊急コピーはバックアップへ退避）。
-   * recovered: 保存してあった本体を読めず、バックアップ（か何も無し）で始めた
+   * recovered: 保存してあった本体を読めず、バックアップ（か何も無し）で始めた。ただし、読めなかった本体の版の続きの
+   * 緊急コピー（このブラウザの最新）を採ったときは、代わりの内容で始めたのではない
    */
   async loadInitial(): Promise<{ doc: DocData | null; notices: string[]; recovered: boolean }> {
     const notices: string[] = [];
     if (this.mode === "memory") return { doc: null, notices, recovered: false };
     let stored: { doc: DocData; meta: StoredMeta } | null = null;
     let recovered = false;
+    /** 読めなかった本体の版（meta）は読めた */
+    let metaKnown = true;
     try {
       stored = await this.readStored();
     } catch {
@@ -337,7 +341,9 @@ export class Persistence {
       const fallback = await this.latestBackupDoc();
       if (fallback) {
         notices.push("保存してあったデータを読めなかったため、いちばん新しいバックアップから復元しました。");
-        stored = { doc: fallback, meta: (await this.readMeta().catch(() => null)) ?? { rev: 0, savedAt: fallback.updatedAt, writer: "" } };
+        const meta = await this.readMeta().catch(() => null);
+        metaKnown = !!meta;
+        stored = { doc: fallback, meta: meta ?? { rev: 0, savedAt: fallback.updatedAt, writer: "" } };
         this.dirty = true;
       } else {
         notices.push("保存してあったデータを読めませんでした。");
@@ -349,9 +355,11 @@ export class Persistence {
       // 保存できている内容（バックアップから戻した物・緊急コピーは、まだ本体に保存できていない）
       if (!recovered) this.lastStored = { id: stored.doc.id, updatedAt: stored.doc.updatedAt };
     }
-    const adopted = await this.consumeEmergencies(stored, notices);
+    const how = { sameBase: false };
+    const adopted = await this.consumeEmergencies(stored, notices, how);
     const doc = adopted ?? stored?.doc ?? null;
-    return { doc, notices, recovered };
+    // 採った緊急コピーが、読めなかった本体の版の続き（このブラウザの最新）なら、代わりの内容で始めたのではない
+    return { doc, notices, recovered: recovered && !(adopted && how.sameBase && metaKnown) };
   }
 
   /**
