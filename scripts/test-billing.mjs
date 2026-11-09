@@ -949,6 +949,15 @@ const hook = async (event, makeReq = streamReq, opts) => {
   }
   const explain = fs.readFileSync(path.join(ROOT, "api", "explain-word.js"), "utf8");
   ok("AI の回数: api/explain-word.js のゲートは api/_lib/aiLimits.js の explainWordLimits から数を読む（既定の数を自分で持たない）", /explainWordLimits\(\)/.test(explain) && !/EXPLAIN_WORD_DAILY_LIMIT\)\s*\|\|/.test(explain));
+  // Batch 88: カードの自動生成の回数も同じ 1 か所（既定 2・20 は前と同じ）。比較表（config の ai）は前のとおり覚え方だけ
+  ok("AI の回数: カードの自動生成の回数も api/_lib/aiLimits.js（cardGenLimits）", typeof ai.cardGenLimits === "function");
+  if (typeof ai.cardGenLimits === "function") {
+    eq("AI の回数: カードの既定は無料 2・Pro 20・環境変数で変わる・読めない値は既定",
+      [ai.cardGenLimits({}), ai.cardGenLimits({ CARD_GEN_DAILY_LIMIT: "3", CARD_GEN_DAILY_LIMIT_PRO: "30" }), ai.cardGenLimits({ CARD_GEN_DAILY_LIMIT: "x", CARD_GEN_DAILY_LIMIT_PRO: "0" })],
+      [{ free: 2, pro: 20 }, { free: 3, pro: 30 }, { free: 2, pro: 20 }]);
+  }
+  const cardsSource = fs.readFileSync(path.join(ROOT, "api", "generate-cards.js"), "utf8");
+  ok("AI の回数: api/generate-cards.js も aiLimits の cardGenLimits から数を読む（既定の数を自分で持たない）", /cardGenLimits\(\)/.test(cardsSource) && !/CARD_GEN_DAILY_LIMIT(_PRO)?\)\s*\|\|/.test(cardsSource));
 }
 
 // ===== 9. Pro の判定・無料期間の終わり・form の書き方 =====
