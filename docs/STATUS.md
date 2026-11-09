@@ -84,6 +84,7 @@
 ### Batch 88（守り。2026-11-09）
 
 - 本物の支払いの前の守り（docs/SECURITY.md の Batch 88 の節）: 語・訳・名前・id は HTML に入れる前に必ず esc（渡すリンクの訳で学習状況の一覧に script が走った穴を塞いだ。テンプレートの見張りは test-text-safe の 7）。CSP の script-src はインラインの script のハッシュだけ（`'unsafe-inline'` なし。直し方は `node scripts/lib/csp.mjs`）。1 人に 2 つの契約を作らない（本人の顧客 1 人・開いている手続きを期限切れに・webhook は別の契約の終わりで生きている行を書かない）。AI はメールを確認したログインの人だけ、1 日の回数は全部のインスタンスで 1 つ（`ai_take`。SQL は創業者: docs/SQL_AI_USAGE.md）。管理画面は `ADMIN_USER_IDS` があれば id だけ。動線の数は 5 万行まで。cron の鍵の比べ方。加入と管理は 1 人 1 分 10 回。ご意見のページ名は 300 字まで。
+- 反証の直し: webhook の解約の書き込み（ほかの契約の一覧が読めないとき）・顧客を作る要求の本文・AI の処理中の印の古さ・はちゃんの一言の esc・*Html の関数の見張り。認証の部品の配信元が script-src に残る間は CSP が入った HTML の script を止めきれないので、外すのは 1 人目の前（決めてほしいことの 16）。user_items の上限の案は書き直しでも越えられない形に（docs/SQL_USER_ITEMS.md §4）
 - 創業者の作業は docs/FOUNDER_TODO.md の「守り」1〜14（SQL 4 本はどれも流さなくても動く）、決めてほしいことは 10〜17。アプリの包みの CSP の meta（計画の A8）は入れていない（アプリを出す回で）。E2E 88.1（10 件）と単体 test-api-guard（40）を CI に。
 
 ### 学習
