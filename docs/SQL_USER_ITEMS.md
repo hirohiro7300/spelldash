@@ -73,3 +73,56 @@ group by kind;
 ```sql
 delete from public.user_items where deleted and updated_at < now() - interval '90 days';
 ```
+
+## 4. 1 行の大きさと 1 人の行の数の上限（Batch 88・docs/FOUNDER_TODO.md の守り 8。任意だが 1 人目の前に勧める）
+
+本人のトークンで書ける表なので、上限が無いと 1 人が巨大な行や大量の行を書いて、データベースの容量と費用を使える（端末の決まり〔100／1,000 語・字数〕は端末の中だけで、直接書けば通る）。
+上限はプランに関係ない量の上限（1 行 8,192 バイト・1 人 20,000 行・消していない語 1,000）。1,000 語は Pro の上限と同じで、無料の 100 語は端末の決まりのまま（docs/FOUNDER_TODO.md の決めてほしいことの 17）。
+断られた行は 400（check_violation）で返り、端末は Batch 85 の形でその行だけ 1 日待つ（ほかの行の同期は止まらない・端末のデータは消えない）。
+
+**先に、今のデータが上限の内かを見る**（読むだけ）。どれかが越えていたら流さずに知らせる:
+
+```sql
+select
+  (select coalesce(max(octet_length(payload::text)), 0) from public.user_items) as max_payload_bytes,      -- 8192 以下
+  (select coalesce(max(c), 0) from (select count(*) c from public.user_items group by user_id) s) as max_rows_per_user, -- 20000 未満
+  (select coalesce(max(c), 0) from (select count(*) c from public.user_items where kind = 'my_word' and not deleted group by user_id) s) as max_live_words_per_user; -- 1000 以下
+```
+
+内なら（何度流しても同じ）:
+
+```sql
+create or replace function public.user_items_guard() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if octet_length(new.payload::text) > 8192 then
+    raise exception 'user_items payload too large' using errcode = 'check_violation';
+  end if;
+  -- 今ある鍵の書き直し（upsert）は数えない
+  if tg_op = 'INSERT' and not exists (
+    select 1 from public.user_items where user_id = new.user_id and kind = new.kind and key = new.key
+  ) then
+    if (select count(*) from (select 1 from public.user_items where user_id = new.user_id limit 20000) s) >= 20000 then
+      raise exception 'user_items too many rows' using errcode = 'check_violation';
+    end if;
+    if new.kind = 'my_word' and not new.deleted and (
+      select count(*) from (select 1 from public.user_items where user_id = new.user_id and kind = 'my_word' and not deleted limit 1000) s
+    ) >= 1000 then
+      raise exception 'user_items too many words' using errcode = 'check_violation';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists user_items_guard on public.user_items;
+create trigger user_items_guard before insert or update on public.user_items
+  for each row execute function public.user_items_guard();
+```
+
+確かめ（読むだけ）: `select tgname from pg_trigger where tgrelid = 'public.user_items'::regclass and not tgisinternal;` → `user_items_guard` の 1 行。
+
+戻し方:
+
+```sql
+drop trigger if exists user_items_guard on public.user_items;
+drop function if exists public.user_items_guard();
+```

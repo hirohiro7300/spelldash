@@ -43,7 +43,7 @@ export function bearerToken(authorization) {
   return String(authorization || "").replace(/^Bearer\s+/i, "").trim();
 }
 
-// Supabaseのアクセストークンを検証し、{ id, email, emailConfirmed, isAnonymous } を返す（無効なら null）
+// ログインのアクセストークンを検証し、{ id, email, emailConfirmed, isAnonymous } を返す（無効なら null）
 export async function verifyUserFull(authorization) {
   const token = bearerToken(authorization);
   if (!token) return null;

@@ -1,6 +1,6 @@
 // ===== 管理 API 共通（/api/admin/* から使う。`_` で始まるディレクトリはルートにならない） =====
 //
-// - requireAdmin: Supabase のトークンを検証し、id が ADMIN_USER_IDS（入っていればこれだけ。無ければ email が ADMIN_EMAILS）に
+// - requireAdmin: ログインのトークンを検証し、id が ADMIN_USER_IDS（入っていればこれだけ。無ければ email が ADMIN_EMAILS）に
 //   含まれる人だけ通す。通らないときは自分で 401 / 403 / 503 を応答して null を返す（Batch 88: 未ログインは設定の有無より先に 401）。
 // - serviceFetch: service role key を付けて Supabase を呼ぶ。キーはサーバーの環境変数にだけ置く。
 // - restAll: PostgREST の Range ヘッダで 1000 行ずつ全件を取る（既定の上限が 1000 行のため）。

@@ -52,6 +52,27 @@ order by created_at desc
 limit 50;
 ```
 
+## 4. ページ名と端末の名の長さの上限（Batch 88・docs/FOUNDER_TODO.md の守り 9。1 人目の前に勧める）
+
+ログインなしで書ける表なので、長い `page`・`user_agent` で行を大きくできる。アプリは Batch 88 からページ名を 300 字・端末の名を 200 字に切って送る（`js/feedback.js`）。
+表にも同じ上限を付ける（前からの行はそのまま: `not valid`。何度流しても同じ）:
+
+```sql
+alter table public.feedback drop constraint if exists feedback_page_length;
+alter table public.feedback add constraint feedback_page_length check (page is null or char_length(page) <= 300) not valid;
+alter table public.feedback drop constraint if exists feedback_user_agent_length;
+alter table public.feedback add constraint feedback_user_agent_length check (user_agent is null or char_length(user_agent) <= 300) not valid;
+```
+
+確かめ（読むだけ）: `select conname, convalidated from pg_constraint where conrelid = 'public.feedback'::regclass and conname like 'feedback_%_length';` → 2 行（convalidated は false でよい）。
+
+戻し方:
+
+```sql
+alter table public.feedback drop constraint if exists feedback_page_length;
+alter table public.feedback drop constraint if exists feedback_user_agent_length;
+```
+
 ---
 
 # 参考: 単語メモのクラウド同期（将来・任意）
