@@ -26357,18 +26357,18 @@ console.log("give a word book (84.1):");
       return { before, after, n: s.words.length, mine: s.words.filter((w) => w.bookName === "仕事").map((w) => w.en.slice(0, 12)), errors };
     };
     const closed = await limitCase({ open: false });
-    check("84.1 上限（受付前）: 95 語の人に「上限まであと 5語」・新しい単語帳として足すと 5 語だけ入り「上限で足せなかった 1語」・「残りの 1語は、このリンクをもう一度開くと足せる。」（Batch 86）と上限の文（リンク・Pro の話なし）・# は外す",
-      /上限まであと 5語/.test(closed.before.hint ?? "") && closed.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。残りの 1語は、このリンクをもう一度開くと足せる。無料で追加できるのは${fmtN(100)}語まで。` && closed.after.links.length === 0
+    check("84.1 上限（受付前）: 95 語の人に「上限まであと 5語」・新しい単語帳として足すと 5 語だけ入り「上限で足せなかった 1語」・「空きができたら、このリンクをもう一度開くと残りの 1語を足せる。」（Batch 86）と上限の文（リンク・Pro の話なし）・# は外す",
+      /上限まであと 5語/.test(closed.before.hint ?? "") && closed.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。空きができたら、このリンクをもう一度開くと残りの 1語を足せる。無料で追加できるのは${fmtN(100)}語まで。` && closed.after.links.length === 0
         && closed.n === 100 && closed.mine.length === 5 && !closed.mine.includes("agenda") && closed.after.hash === "" && closed.errors.length === 0,
       JSON.stringify(closed));
     const opened = await limitCase({ open: true });
     check("84.1 上限（受付中の Web）: 上限の文の「Pro なら1,000語」が加入画面（./pro.html）へのリンク 1 つ（動線の印 mywords）",
-      opened.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。残りの 1語は、このリンクをもう一度開くと足せる。無料で追加できるのは${fmtN(100)}語まで（Pro なら${fmtN(1000)}語）。` && opened.after.links.length === 1
+      opened.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。空きができたら、このリンクをもう一度開くと残りの 1語を足せる。無料で追加できるのは${fmtN(100)}語まで（Pro なら${fmtN(1000)}語）。` && opened.after.links.length === 1
         && opened.after.links[0].href === "./pro.html" && opened.after.links[0].text === `Pro なら${fmtN(1000)}語` && opened.after.links[0].funnel === "mywords" && opened.n === 100 && opened.errors.length === 0,
       JSON.stringify(opened.after));
     const app = await limitCase({ open: true, native: true });
     check("84.1 上限（アプリ）: 受付中の控えがあっても上限の文だけ（加入画面へのリンク・Pro の話・値段なし）",
-      app.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。残りの 1語は、このリンクをもう一度開くと足せる。無料で追加できるのは${fmtN(100)}語まで。` && app.after.links.length === 0 && !/Pro|¥|円/.test(app.after.status) && app.n === 100 && app.errors.length === 0,
+      app.after.status === `5語を新しい単語帳「仕事」に足した。上限で足せなかった 1語。空きができたら、このリンクをもう一度開くと残りの 1語を足せる。無料で追加できるのは${fmtN(100)}語まで。` && app.after.links.length === 0 && !/Pro|¥|円/.test(app.after.status) && app.n === 100 && app.errors.length === 0,
       JSON.stringify(app.after));
     const page = await sharePage({ spelldash_my_words: JSON.stringify(FILLER(100)), spelldash_billing_open: JSON.stringify({ open: false, at: Date.now() }) });
     await page.goto(LINK, { waitUntil: "networkidle" });
@@ -26407,8 +26407,8 @@ console.log("give a word book (84.1):");
     const o2 = await offerCase(FILLER(99));
     check("84.1 渡された名前に「Pro なら1,000語」があって上限で止まったとき: リンクは上限の文の中の 1 つだけ（名前の字はリンクにしない）",
       /上限まであと 1語/.test(o2.ask.hint ?? "") && o2.ask.links.length === 0
-        && o2.done.status === `1語を新しい単語帳「${offer}」に足した。上限で足せなかった 1語。残りの 1語は、このリンクをもう一度開くと足せる。無料で追加できるのは${fmtN(100)}語まで（${offer}）。` && o2.done.links.length === 1
-        && o2.done.links[0].href === "./pro.html" && o2.done.links[0].funnel === "mywords" && /上限で足せなかった 1語。残りの 1語は、このリンクをもう一度開くと足せる。無料で追加できるのは100語まで（$/.test(o2.before ?? "") && o2.errors.length === 0,
+        && o2.done.status === `1語を新しい単語帳「${offer}」に足した。上限で足せなかった 1語。空きができたら、このリンクをもう一度開くと残りの 1語を足せる。無料で追加できるのは${fmtN(100)}語まで（${offer}）。` && o2.done.links.length === 1
+        && o2.done.links[0].href === "./pro.html" && o2.done.links[0].funnel === "mywords" && /上限で足せなかった 1語。空きができたら、このリンクをもう一度開くと残りの 1語を足せる。無料で追加できるのは100語まで（$/.test(o2.before ?? "") && o2.errors.length === 0,
       JSON.stringify(o2));
   }
 
@@ -27055,7 +27055,7 @@ console.log("journey (86.1):");
     await closeCtx(page);
   }
 
-  // (3) 上限で残った語（A4）: 95 語の人が 30 語のリンク「仕事の英語」を新しい単語帳として足す → 5 語だけ入り「残りの 25語は、このリンクをもう一度開くと足せる。」→
+  // (3) 上限で残った語（A4）: 95 語の人が 30 語のリンク「仕事の英語」を新しい単語帳として足す → 5 語だけ入り「空きができたら、このリンクをもう一度開くと残りの 25語を足せる。」→
   //     Pro になる（E2E の偽の加入）→ 同じリンク → 「「仕事の英語」に残りの 25語を足す」（「5語はもう入っている。」は知らせで赤にしない）→ 「仕事の英語」が 30 語・ほかの単語帳は増えない・
   //     足した後は「仕事の英語」の次の一歩。アプリの偽装でも同じ流れで、値段・pro.html へのリンク・購入のボタンが出ない
   {
@@ -27072,8 +27072,8 @@ console.log("journey (86.1):");
       await waitText(page, "#myRecvStatus", /上限で足せなかった/);
       const first = await recvView(page);
       const s1 = await myStore(page);
-      check(`86.1 上限で残った語（${tag}・A4）: 95 語の人が 30 語のリンクを足すと 5 語だけ入り、「残りの 25語は、このリンクをもう一度開くと足せる。」が上限の文の前に出る`,
-        first.status.startsWith("5語を新しい単語帳「仕事の英語」に足した。上限で足せなかった 25語。残りの 25語は、このリンクをもう一度開くと足せる。無料で追加できるのは100語まで") && s1.words.length === 100 && s1.byBook?.["仕事の英語"] === 5,
+      check(`86.1 上限で残った語（${tag}・A4）: 95 語の人が 30 語のリンクを足すと 5 語だけ入り、「空きができたら、このリンクをもう一度開くと残りの 25語を足せる。」が上限の文の前に出る`,
+        first.status.startsWith("5語を新しい単語帳「仕事の英語」に足した。上限で足せなかった 25語。空きができたら、このリンクをもう一度開くと残りの 25語を足せる。無料で追加できるのは100語まで") && s1.words.length === 100 && s1.byBook?.["仕事の英語"] === 5,
         JSON.stringify({ status: first.status, n: s1.words.length, byBook: s1.byBook }));
       // Pro になる（偽の加入の行と、端末のプランの控え）。開き直す
       await page.evaluate((pro) => { for (const [k, v] of Object.entries(pro)) localStorage.setItem(k, v); }, PRO);
@@ -27099,6 +27099,27 @@ console.log("journey (86.1):");
       check(`86.1 上限で残った語の流れ（${tag}）のエラー 0`, page.errors.length === 0, page.errors[0] ?? "");
       await closeCtx(page);
     }
+  }
+
+  // (3b) 手で作ったリンクに同じ組が 2 度ある（画面の「渡す」が作るリンクでは起きない）: 問いの「M語はもう入っている。」と、残りを足した後の
+  //      「M語はもう入っている。」が同じ数。8e6effc: 足した後の数は「リンクの語の数 − 残りの語の数」で、2 度目の組も数えて 1 多い
+  {
+    const FR = [{ en: "apple", ja: "りんご" }, { en: "pear", ja: "なし" }].map((w) => ({ ...w, book: "fr", bookName: "果物", addedAt: T }));
+    const FR_BOOKS = JSON.stringify([{ id: "main", name: "マイ単語帳" }, { id: "fr", name: "果物" }]);
+    const DUP_LINK = shareLink("果物", [["apple", "りんご"], ["pear", "なし"], ["kiwi", "キウイ"], ["kiwi", "キウイ"]]);
+    const page = await journeyPage({ spelldash_my_words: JSON.stringify(FR), spelldash_my_books: FR_BOOKS });
+    await page.goto(DUP_LINK, { waitUntil: "networkidle" });
+    await waitRecv(page);
+    await page.waitForFunction(() => /残りの/.test(document.getElementById("myRecvNew")?.textContent ?? ""), null, { timeout: 4000, polling: 20 }).catch(() => {});
+    const ask = await recvView(page);
+    await page.click("#myRecvNew");
+    await waitText(page, "#myRecvStatus", /足した/);
+    const done = await recvView(page);
+    const s = await myStore(page);
+    check("86.1 同じ組が 2 度あるリンク（手で作ったリンク）: 問いは「「果物」に残りの 1語を足す」と「2語はもう入っている。」・足した後も「1語を「果物」に足した。2語はもう入っている。」（問いと同じ数）・「果物」は 3 語・赤にしない・エラー 0",
+      ask.buttons[0]?.[1] === "「果物」に残りの 1語を足す" && /^2語はもう入っている。/.test(ask.hint ?? "") && done.status === "1語を「果物」に足した。2語はもう入っている。" && !done.red && s.byBook?.["果物"] === 3 && page.errors.length === 0,
+      JSON.stringify({ ask: [ask.buttons, ask.hint], status: done.status, byBook: s.byBook, err: page.errors[0] }));
+    await closeCtx(page);
   }
 
   // ----- (4) user_items の表がまだ無い（Batch 86 の A6）: ログイン中の人にだけ、マイ単語帳はこの端末だけにある、と 1 行で言う -----
@@ -27344,6 +27365,51 @@ console.log("journey (86.1):");
       JSON.stringify(msg.lines) === JSON.stringify(["ログインリンクを送った。メールを開いて続ける。", "このページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。"]) && page.errors.length === 0,
       JSON.stringify({ msg, err: page.errors[0] }));
     await closeCtx(page);
+  }
+  //     390 の指の端末（isMobile・hasTouch。タップ）: ホーム・マイ単語帳・加入画面で、ログインの欄はタップで開き、もう一度のタップで閉じる。
+  //     送った後は欄が閉じ、2 行の文が画面の中で見える（文の上・中・下の点で elementFromPoint が文に当たる）。
+  //     8e6effc: 「.dropdown:hover で開く」がタップの後も残るホバーで欄を出したまま（is-open は外れている）にし、送った文を欄が覆った
+  {
+    const rows = [];
+    const WANT = ["ログインリンクを送った。メールを開いて続ける。", "このページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。"];
+    for (const p of ["/index.html", "/mywords.html", "/pro.html"]) {
+      const page = await journeyPage({ spelldash_test_configured: "1" }, { viewport: { width: 390, height: 844 }, mobile: true });
+      await page.goto(BASE + p, { waitUntil: "networkidle" });
+      await waitUntil(() => page.evaluate(() => { const t = document.getElementById("loginToggle"); return !!t && t.getClientRects().length > 0 && window.SpellDashArea !== undefined; }), 6000);
+      const panelShown = () => page.evaluate(() => getComputedStyle(document.querySelector("#accountGuest .dropdown__panel")).display !== "none");
+      await page.tap("#loginToggle");
+      await page.waitForTimeout(150);
+      const opened = await panelShown();
+      await page.tap("#loginToggle");
+      await page.waitForTimeout(150);
+      const closedByTap = !(await panelShown());
+      await page.tap("#loginToggle");
+      await page.waitForTimeout(150);
+      await page.fill("#emailInput", "test@example.com");
+      await page.tap("#loginButton");
+      await waitUntil(async () => { const m = await page.evaluate(() => document.getElementById("authMessage")?.textContent ?? ""); return m.length > 0 && !/送信中/.test(m); }, 6000, 100);
+      await page.waitForTimeout(150);
+      const seen = await page.evaluate(() => {
+        const el = document.getElementById("authMessage");
+        const r = el.getBoundingClientRect();
+        const hits = [0.2, 0.5, 0.8].map((f) => {
+          const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height * f);
+          return !!h && (h === el || el.contains(h)) ? "msg" : h ? `${h.tagName}#${h.id}` : null;
+        });
+        return {
+          lines: (el.innerText ?? "").split("\n").map((s) => s.trim()).filter(Boolean),
+          top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight, hits,
+          panel: getComputedStyle(document.querySelector("#accountGuest .dropdown__panel")).display,
+          expanded: document.getElementById("loginToggle").getAttribute("aria-expanded")
+        };
+      });
+      rows.push({ p, opened, closedByTap, ...seen, err: page.errors[0] ?? null,
+        ok: opened && closedByTap && JSON.stringify(seen.lines) === JSON.stringify(WANT) && seen.hits.every((h) => h === "msg") && seen.top >= 0 && seen.bottom <= seen.vh
+          && seen.panel === "none" && seen.expanded === "false" && page.errors.length === 0 });
+      await closeCtx(page);
+    }
+    check("86.1 ログインのリンクを送った後（A12・390 の指の端末でタップ）: ホーム・マイ単語帳・加入画面とも、ログインの欄はタップで開き、もう一度のタップで閉じる・送った後は欄が閉じ、2 行の文が画面の中で見える（文の上・中・下が文に当たる）・エラー 0",
+      rows.length === 3 && rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok).map(({ ok, ...r }) => r)));
   }
   {
     const page = await previewJourney({ spelldash_my_words: JSON.stringify(TB_WORDS), spelldash_my_books: TB_BOOKS });
