@@ -27374,6 +27374,35 @@ console.log("journey (86.1):");
     }
   }
 
+  // ----- (6b) まとめて足すで上限に当たったとき、決まりに合わない行の理由も言う（Batch 87。docs/SPEC_MY_WORDS.md §16.5）-----
+  //     98 語の人が 7 行（同じ組・使えない字・訳なし・新しい 4 行）を貼る: 「2語を足した。残りの 5行は欄に残した。足せなかった 3行: 理由 ／ 理由 ／ 理由。」の後ろに上限の文。
+  //     理由に上限の文を混ぜない・リンクは上限の文の「Pro なら1,000語」だけ・欄に 5 行・語は 100。a15294a は理由が消える（「2語を足した。残りの 5行は欄に残した。」の後ろがすぐ上限の文）
+  {
+    const FILL98 = Array.from({ length: 98 }, (_, i) => ({ en: `fill ${letters(i)}`, ja: `埋め${i + 1}`, addedAt: T }));
+    const PASTE7 = [`fill ${letters(0)}, 埋め1`, "bad/entry, だめ", "invoice", "alpha, アルファ", "bravo, ブラボー", "charlie, チャーリー", "delta, デルタ"].join("\n");
+    const page = await journeyPage({ spelldash_my_words: JSON.stringify(FILL98), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) });
+    await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+    await page.evaluate(() => { const d = document.getElementById("myWordsBulkFold"); if (d) d.open = true; });
+    await page.fill("#myWordsBulk", PASTE7);
+    await page.click("#myWordsBulkAdd");
+    await waitText(page, "#myWordsStatus", /100語まで/);
+    await page.waitForTimeout(200);
+    const v = await page.evaluate(() => ({
+      status: document.getElementById("myWordsStatus").textContent,
+      links: [...document.querySelectorAll("#myWordsStatus a")].map((a) => [a.getAttribute("href"), a.textContent]),
+      box: document.getElementById("myWordsBulk").value.split("\n").filter(Boolean),
+      n: JSON.parse(localStorage.getItem("spelldash_my_words") || "[]").length
+    }));
+    const head = "2語を足した。残りの 5行は欄に残した。足せなかった 3行: ";
+    const tail = "。無料で追加できるのは100語まで（Pro なら1,000語）。";
+    const reasons = v.status.startsWith(head) && v.status.endsWith(tail) ? v.status.slice(head.length, -tail.length).split(" ／ ") : [];
+    check("86.1 まとめて足すで上限（Batch 87）: 「2語を足した。残りの 5行は欄に残した。足せなかった 3行: …」の 3 つの理由（同じ組・使えない字・訳なし。上限の文を混ぜない）の後ろに上限の文・リンクは「Pro なら1,000語」だけ・欄に 5 行・語は 100・エラー 0",
+      reasons.length === 3 && /同じ訳/.test(reasons[0]) && /^bad\/entry（だめ）: /.test(reasons[1]) && /^invoice: 日本語訳を入力/.test(reasons[2]) && !reasons.some((r) => /100語/.test(r))
+        && JSON.stringify(v.links) === JSON.stringify([["./pro.html", "Pro なら1,000語"]]) && JSON.stringify(v.box) === JSON.stringify([`fill ${letters(0)}, 埋め1`, "bad/entry, だめ", "invoice", "charlie, チャーリー", "delta, デルタ"]) && v.n === 100 && page.errors.length === 0,
+      JSON.stringify({ v, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+
   // ----- (7) ログインのリンクを送った後の 1 行・Preview の渡すリンク（A12）-----
   //     3f03d63: 送った文だけ（ブラウザの 1 行が無い）・Preview の渡すリンクは Preview の origin
   // ホームの机の上の文の色: 文を出しても auth-message--home を外さず、字は --on-vault（css/room.css。docs の決まり: 済みの金は紙の上の字）。

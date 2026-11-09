@@ -482,6 +482,15 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   seed(Array.from({ length: 100 }, (_, i) => ({ en: i ? `w${"abcdefghij"[i % 10]}${"abcdefghij"[Math.floor(i / 10)]}` : "up", ja: `訳${i}` })));
   const full = M.addMyWord("up", "まだ無い訳", "main");
   ok("上限（無料 100 語）は語の数のまま: 同じ英語の違う訳も 101 語目は足さない", !full.ok && /100語/.test(full.error ?? ""), JSON.stringify(full));
+  // Batch 87（docs/SPEC_MY_WORDS.md §16.5）: まとめて足すで上限に当たった行は数えるだけ（limited）。決まりに合わない行の理由（skipped）に上限の文を混ぜない。
+  // 98 語の人が 7 行（同じ組・使えない字・訳なし・新しい 4 行）を貼る → 2 語を足し、上限で 2 行・理由のある 3 行。欄に残す 5 行は貼った形と順のまま
+  seed(Array.from({ length: 98 }, (_, i) => ({ en: i ? `w${"abcdefghij"[i % 10]}${"abcdefghij"[Math.floor(i / 10)]}` : "up", ja: `訳${i}` })));
+  const lim = M.addMyWordsBulk(["up, 訳0", "bad/entry, だめ", "invoice", "alpha, アルファ", "bravo, ブラボー", "charlie, チャーリー", "delta, デルタ"].join("\n"), "main");
+  ok("まとめて足すで上限: 98 語の人に 7 行 → added 2・limited 2・skipped 3（同じ組・使えない字・訳なし。上限の文を含まない）・rest 5（貼った形と順のまま）・保存は 100 語",
+    lim.added?.length === 2 && lim.limited === 2 && lim.skipped?.length === 3 && !lim.skipped.some((s) => /100語/.test(s))
+      && /同じ訳/.test(lim.skipped[0] ?? "") && /^bad\/entry（だめ）: /.test(lim.skipped[1] ?? "") && /^invoice: 日本語訳を入力/.test(lim.skipped[2] ?? "")
+      && JSON.stringify(lim.rest) === JSON.stringify(["up, 訳0", "bad/entry, だめ", "invoice", "charlie, チャーリー", "delta, デルタ"]) && words().length === 100,
+    JSON.stringify(lim));
 
   // ---- 2 台の端末: 項目は鍵ごと（my_word:<鍵>）。同じ英語の語は別々の項目として行き来し、消すとその鍵だけ墓標 ----
   devices.X.clear();
