@@ -55,6 +55,15 @@
     width: 100%;
   }
 
+  /* 欄がページの文（#authMessage）を覆うので、欄の中にも同じ文を出す（Batch 87。css/layout.css .account-menu__msg） */
+  .account-menu__msg:not(:empty) {
+    display: block;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-line;
+  }
+
   .app {
     padding: 28px 0;
   }

@@ -19,6 +19,17 @@ const authMessageElement = document.getElementById("authMessage");
 const avatarButtonElement = document.getElementById("avatarButton");
 const headerAvatarElement = document.getElementById("headerAvatar");
 const googleLoginButtonElement = document.getElementById("googleLoginButton");
+// 欄の中の文（Batch 87）: 560px 以下では欄がページの文（#authMessage）を覆うので、未ログインの文を欄の中にも写す（css/responsive.css が 560px 以下でだけ出す）。
+// 読み上げは前のまま #authMessage（role=status）だけ: こちらは aria-hidden。9 ページの HTML は触らず、ここで欄の終わりに 1 つ足す
+const panelMessageElement = (() => {
+  if (!accountLoginElement) return null;
+  const p = document.createElement("p");
+  p.id = "loginPanelMessage";
+  p.className = "account-menu__msg";
+  p.setAttribute("aria-hidden", "true");
+  accountLoginElement.append(p);
+  return p;
+})();
 
 // いまログインから戻ってきたか（メールのリンク・外部のログインからの戻り）。Supabase が URL を片付ける前に読む。
 // 戻ったと分かったら、その場で印（sessionStorage の spelldash_login_return）を残す。部品は URL の # を消し、人が替われば見張りが切り替えの画面へ移す。
@@ -253,6 +264,12 @@ function closeDropdown(dropdown, trigger) {
 
 const UNREACHABLE_MESSAGE = "ログインのサーバーにつながらない。学習はこのまま続けられ、記録はこの端末に残る。";
 
+// 失敗の後、欄が開いたままなら焦点を欄に戻す（Batch 87）。送信中はボタンを使えなくするので、押したボタンにあった焦点は body に落ちている。
+// メールの道は #emailInput（打った字はそのまま）、外部アカウントのボタンの道はそのボタンへ。欄が閉じていれば（ホバーが外れた）何もしない
+function refocusLogin(element) {
+  if (element && element.getClientRects().length > 0) element.focus();
+}
+
 async function signInWithGoogle() {
   googleLoginButtonElement.disabled = true;
   showAuthMessage("Google に移動する…");
@@ -261,6 +278,7 @@ async function signInWithGoogle() {
   if (!(await checkAuthReachable())) {
     googleLoginButtonElement.disabled = false;
     showAuthMessage(UNREACHABLE_MESSAGE, "error");
+    refocusLogin(googleLoginButtonElement);
     return;
   }
 
@@ -268,6 +286,7 @@ async function signInWithGoogle() {
   if (!(await precheckArea()).ok) {
     googleLoginButtonElement.disabled = false;
     showAuthMessage(BLOCKED_MESSAGE, "error");
+    refocusLogin(googleLoginButtonElement);
     return;
   }
 
@@ -278,19 +297,18 @@ async function signInWithGoogle() {
     }
   });
 
-  // 成功時はGoogleへページ遷移するため、ここに戻るのはエラー時のみ
+  // 成功時はGoogleへページ遷移するため、ここに戻るのはエラー時のみ。サーバーの英語の文は出さない（Batch 87）
   if (error) {
     googleLoginButtonElement.disabled = false;
-    showAuthMessage(`Google ログインに失敗した: ${error.message}`, "error");
+    showAuthMessage("ログインに失敗した。少しあけてもう一度。", "error");
+    refocusLogin(googleLoginButtonElement);
   }
 }
 
 async function sendLoginLink() {
   if (!isSupabaseConfigured) {
-    showAuthMessage(
-      "ログインの設定が済んでいない（Supabase のキーが無い）。管理者に知らせる。",
-      "error"
-    );
+    showAuthMessage("ログインの設定が済んでいない。管理者に知らせる。", "error");
+    refocusLogin(emailInputElement);
     return;
   }
 
@@ -298,6 +316,7 @@ async function sendLoginLink() {
 
   if (!email) {
     showAuthMessage("メールアドレスを入れる。", "error");
+    refocusLogin(emailInputElement);
     return;
   }
 
@@ -307,6 +326,7 @@ async function sendLoginLink() {
   if (!(await checkAuthReachable())) {
     loginButtonElement.disabled = false;
     showAuthMessage(UNREACHABLE_MESSAGE, "error");
+    refocusLogin(emailInputElement);
     return;
   }
 
@@ -314,6 +334,7 @@ async function sendLoginLink() {
   if (!(await precheckArea()).ok) {
     loginButtonElement.disabled = false;
     showAuthMessage(BLOCKED_MESSAGE, "error");
+    refocusLogin(emailInputElement);
     return;
   }
 
@@ -327,6 +348,7 @@ async function sendLoginLink() {
   if (error) {
     loginButtonElement.disabled = false;
     showAuthMessage(formatAuthError(error), "error");
+    refocusLogin(emailInputElement);
     return;
   }
 
@@ -367,7 +389,12 @@ function formatAuthError(error) {
     return "ログインの設定に問題がある（API キーが無効）。管理者に知らせる。";
   }
 
-  return `ログインリンクの送信に失敗した: ${message}`;
+  // アドレスの形で断られた（"Unable to validate email address: invalid format" など）。ほかの分からない失敗も英語の文は出さない（Batch 87）
+  if (/invalid format|validate email/i.test(message)) {
+    return "メールアドレスの形を確かめる。";
+  }
+
+  return "ログインリンクを送れなかった。少しあけてもう一度。";
 }
 
 // ログアウト: 予行の後に切り替えの画面へ。切り替えの画面が今の領域を IndexedDB に退避して確かめてから signOut（scope local）し、ゲストの領域を戻す。
@@ -502,4 +529,10 @@ function showAuthMessage(text, type = "", { scope = "guest" } = {}) {
   const home = authMessageElement.classList.contains("auth-message--home") ? " auth-message--home" : "";
   authMessageElement.className = `auth-message${home} ${type}`.trim();
   authMessageElement.dataset.scope = scope;
+  // 欄の中の写し（Batch 87）: 未ログインの文だけ。ログイン中・ほかのページの文は欄に出さない
+  if (panelMessageElement) {
+    const guest = scope === "guest";
+    panelMessageElement.textContent = guest ? text : "";
+    panelMessageElement.className = `account-menu__msg ${guest ? type : ""}`.trim();
+  }
 }

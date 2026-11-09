@@ -177,6 +177,24 @@ body {
   line-height: 1.6;
 }
 
+/* ログインの欄の中の文（Batch 87。js/auth.js が #authMessage の未ログインの文を写す）: 出すのは 560px 以下だけ（css/responsive.css）。
+   それより広い画面では欄がページの文を覆わないので、前のまま #authMessage だけ。色は .auth-message と同じ（css/brand.css） */
+.account-menu__msg {
+  display: none;
+}
+
+html[data-theme] .account-menu__msg {
+  color: var(--ink-3);
+}
+
+html[data-theme] .account-menu__msg.error {
+  color: var(--signal-ink);
+}
+
+html[data-theme] .account-menu__msg.success {
+  color: var(--gold-ink);
+}
+
 .account-menu--login input {
   width: 100%;
   padding: 10px 14px;
