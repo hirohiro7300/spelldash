@@ -616,6 +616,28 @@ const hook = async (event, makeReq = streamReq, opts) => {
   ok("管理: 本人の顧客の番号で管理の画面を作り、戻り先は SITE_ORIGIN/profile.html（ほかの人の行は読めない）", res.statusCode === 200 && res.body?.url === "https://pay.test/portal/1" && sent?.get("customer") === "cus_u2" && sent?.get("return_url") === "https://site.test/profile.html", JSON.stringify(res.body));
 }
 
+// ===== 7b. 受付を急いで止めた後（月額の Price の変数を外して再デプロイ。docs/BILLING.md §2 の止め方） =====
+// 新しい加入だけが止まり、もう加入している人の「解約・お支払いの管理」と webhook（解約予定・更新・支払いの失敗の反映）は動き続ける。
+// 確定の画面の文は「解約はいつでも「設定 → 解約・お支払いの管理」からできます」と約束している
+{
+  fresh();
+  setEnv({ STRIPE_PRICE_MONTHLY: null });
+  let res = await invoke(config, { method: "GET", headers: {} });
+  ok("止めた後: 価格は受付前（configured:false）で、加入画面は「受付前」になる", res.statusCode === 200 && res.body?.configured === false, JSON.stringify(res.body));
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("止めた後: 新しい加入は 503 not_configured", res.statusCode === 503 && res.body?.error === "not_configured", JSON.stringify(res.body));
+  D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_test_1", stripe_subscription_id: "sub_test_1", event_created: 100 });
+  res = await invoke(portal, post({}, "tok-u1"));
+  ok("止めた後: 加入している人の「解約・お支払いの管理」は開ける（200・本人の顧客の番号）", res.statusCode === 200 && providerCalls("POST", "/v1/billing_portal/sessions").at(-1)?.form?.get("customer") === "cus_test_1", JSON.stringify(res.body));
+  res = await hook(eventOf("customer.subscription.updated", subOf({ cancel_at_period_end: true }), 200));
+  ok("止めた後: webhook は加入している人の変化（解約予定）を書く（200）", res.statusCode === 200 && D.rows.get(U1)?.cancel_at_period_end === true && D.rows.get(U1)?.event_created === 200, JSON.stringify({ body: res.body, row: D.rows.get(U1) }));
+  setEnv({ STRIPE_PRICE_MONTHLY: null, STRIPE_SECRET_KEY: null });
+  res = await invoke(portal, post({}, "tok-u1"));
+  const portalOff = res.statusCode === 503;
+  res = await hook(eventOf("customer.subscription.updated", subOf({ cancel_at_period_end: false }), 300));
+  ok("秘密鍵まで外すと、管理と webhook も 503（決済の会社は webhook を再送する）・書かない", portalOff && res.statusCode === 503 && D.rows.get(U1)?.event_created === 200, String(res.statusCode));
+}
+
 // ===== 8. 価格（config）と比較表の AI の回数 =====
 {
   fresh();
