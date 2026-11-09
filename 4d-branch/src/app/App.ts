@@ -9,12 +9,13 @@ import { APP_VERSION, NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, ST
 import { createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
 import { errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
+import { isDisposableDoc } from "../demo/demo";
 import { CloudRepo, CloudSync, dbBackend, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
 import type { BackupKind, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
-import { openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome } from "../ui/dialogs";
+import { chooseSyncSource, openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome } from "../ui/dialogs";
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { buildInspector } from "../ui/inspector";
@@ -60,9 +61,7 @@ export class App implements AppContext {
   cloud: CloudSync | null = null;
   cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null = null;
   onCloudChanged: () => void = () => undefined;
-  private userEdited = false;
   private adopting = false;
-  private readonly firstRun: boolean;
 
   private readonly shell: HTMLElement;
   private readonly banner: HTMLElement;
@@ -77,7 +76,6 @@ export class App implements AppContext {
     this.ui = opts.ui;
     this.persistence = opts.persistence;
     this.ephemeral = opts.ephemeral;
-    this.firstRun = opts.firstRun;
     this.vm = new ViewModel(this.store, this.ui);
     this.view = new CanvasView(this.store, this.ui, this.vm);
     this.cmd = new Commands(this.store, this.ui, this.vm, {
@@ -142,7 +140,6 @@ export class App implements AppContext {
     this.store.on("change", (info) => {
       if (!this.ephemeral && info.source !== "load" && info.source !== "remote") this.persistence.markDirty();
       if (info.source === "tx" || info.source === "undo" || info.source === "redo" || (info.source === "replace" && !this.adopting)) {
-        this.userEdited = true;
         this.cloud?.markDirty();
       }
       this.syncEmpty();
@@ -541,8 +538,12 @@ export class App implements AppContext {
         void this.persistence.flush();
         void this.cloud?.flush();
         this.ui.saveCamera(this.store.doc.id, this.view.camera);
+      } else {
+        // 戻ってきた: 別の端末の変更が無いか確かめる（見張りが切れていても追いつく）
+        this.cloud?.checkRemote();
       }
     });
+    window.addEventListener("online", () => this.cloud?.checkRemote());
     window.addEventListener("pagehide", () => {
       this.editor.commit();
       this.persistence.writeEmergency();
@@ -723,6 +724,10 @@ export class App implements AppContext {
 
   // ------------------------------------------------------------ アカウントへの同期
 
+  resyncCloud(): void {
+    this.cloud?.resync();
+  }
+
   private setCloudInfo(state: CloudState | "unavailable", message = ""): void {
     this.cloudInfo = { state, message, lastSyncedAt: this.cloud?.lastSyncedAt ?? null };
     this.onCloudChanged();
@@ -752,42 +757,66 @@ export class App implements AppContext {
       return;
     }
     const baseKey = `cloud:${uid}`;
-    const sync = new CloudSync(
-      repo,
-      {
-        getDoc: () => this.store.doc,
-        isWriter: () => this.persistence.writer && !this.store.readOnly,
-        adopt: async (doc, firstLoad) => {
-          // 入れ替える前の手元の内容は、バックアップに残す（初回のまま何も変えていないデモは残さない）
-          if (!(firstLoad && this.firstRun && !this.userEdited)) {
-            await this.persistence.createBackup("safety", "別の端末の内容を読み込む前", this.store.doc).catch(() => undefined);
-          }
-          this.editor.cancel();
+    // このブラウザの内容が、前に別のアカウントで同期していた物か（その場合は聞かずに送らない）
+    let foreign = false;
+    try {
+      const owner = await this.persistence.readKv<string>("cloud:owner");
+      foreign = !!owner && owner !== uid;
+    } catch {
+      foreign = false;
+    }
+    const sync = new CloudSync(repo, {
+      getDoc: () => this.store.doc,
+      isWriter: () => this.persistence.writer && !this.store.readOnly,
+      isDisposable: (doc) => isDisposableDoc(doc),
+      isEditing: () => this.editor.active,
+      isForeign: () => foreign,
+      adopt: async (doc, how, stillOk) => {
+        // 入れ替える前の手元を残す: 別の端末の変更なら安全用に、利用者が選んだ切り替えなら必ず（残せなければやめる）。
+        // 捨ててよい手元（何もしていないデモ・空）は残さない
+        if (how === "remote") await this.persistence.createBackup("safety", "別の端末の内容を読み込む前", this.store.doc).catch(() => undefined);
+        if (how === "choice") {
+          const saved = await this.persistence.createBackup("safety", "アカウントの内容に切り替える前のこのブラウザの内容", this.store.doc).catch(() => null);
+          if (!saved) return false;
+        }
+        // 読んでいる間・バックアップの間に手元が変わった（入力が始まった）: 入れ替えない
+        if (!stillOk()) return false;
+        if (!this.persistence.writer || this.store.readOnly) throw new Error("読み込めませんでした（このタブは閲覧のみ）");
+        this.editor.cancel();
+        if (how === "remote") {
           this.adopting = true;
-          let replaced = false;
           try {
-            replaced = this.store.replaceDoc(doc, "別の端末の内容を読み込む");
+            if (!this.store.replaceDoc(doc, "別の端末の内容を読み込む")) throw new Error("読み込めませんでした（このタブは閲覧のみ）");
           } finally {
             this.adopting = false;
           }
-          // 閲覧のみになっていた等で入れ替えられなかった: 同期の基準を進めない（あとでやり直す）
-          if (!replaced) throw new Error("読み込めませんでした（このタブは閲覧のみ）");
-          // 手元への保存を先に済ませる（同期の基準だけが先に残り、閉じたあとで古い手元を送ってしまうのを防ぐ）
-          await this.persistence.flush().catch(() => undefined);
-          this.ui.pruneSelection((kind, id) => (kind === "node" ? !!this.store.doc.nodes[id] : !!this.store.doc.edges[id]));
-          if (firstLoad) this.view.fit(undefined, { animate: false });
-          void this.refreshLastBackup();
-        },
-        backup: async (doc, label) => {
-          await this.persistence.createBackup("conflict", label, doc);
-          void this.refreshLastBackup();
-        },
-        readBase: () => this.persistence.readKv<SyncBase>(baseKey),
-        writeBase: (b) => this.persistence.writeKv(baseKey, b),
-        notice: (text, tone) => toast(text, { tone, ms: 8000 }),
+        } else {
+          // 初めての同期・利用者の選択は「元に戻す」の対象にしない（戻すと、捨てたデモや選ばなかった内容がアカウントへ送られる）
+          this.store.load(doc, "load");
+          this.persistence.markDirty();
+        }
+        // 手元への保存を先に済ませる（同期の基準だけが先に残り、閉じたあとで古い手元を送ってしまうのを防ぐ）
+        await this.persistence.flush().catch(() => undefined);
+        this.ui.pruneSelection((kind, id) => (kind === "node" ? !!this.store.doc.nodes[id] : !!this.store.doc.edges[id]));
+        if (how !== "remote") this.view.fit(undefined, { animate: false });
+        void this.refreshLastBackup();
+        return true;
       },
-      { localFresh: this.firstRun && !this.userEdited },
-    );
+      backup: async (doc, label) => {
+        const saved = await this.persistence.createBackup("conflict", label, doc).catch(() => null);
+        void this.refreshLastBackup();
+        return !!saved;
+      },
+      chooseFirst: (remote) => chooseSyncSource({ local: this.store.doc, remote: remote?.manifest ?? null, foreign }),
+      readBase: () => this.persistence.readKv<SyncBase>(baseKey),
+      writeBase: async (b) => {
+        await this.persistence.writeKv(baseKey, b);
+        // このブラウザの内容は、このアカウントのもの
+        await this.persistence.writeKv("cloud:owner", uid);
+        foreign = false;
+      },
+      notice: (text, tone) => toast(text, { tone, ms: 8000 }),
+    });
     this.cloud = sync;
     sync.on((st) => this.setCloudInfo(st, sync.message));
     await sync.start();

@@ -74,7 +74,15 @@ export function openBackupDialog(app: AppContext): void {
       h("div", { class: "storage-row" }, h("span", { class: "storage-k" }, "使用量"), h("span", null, `${fmtBytes(s.usage)} / ${fmtBytes(s.quota)}`)),
       h("div", { class: "storage-row" }, h("span", { class: "storage-k" }, "自動削除からの保護"), protect),
     );
-    if (app.cloudInfo) info.append(h("div", { class: "storage-row" }, h("span", { class: "storage-k" }, "アカウント（claude.ai）"), h("span", null, cloudText(app.cloudInfo))));
+    if (app.cloudInfo) {
+      const c = app.cloudInfo;
+      // 止めている・失敗している同期は、ここからやり直せる
+      const retry =
+        c.state === "paused" || c.state === "error" || c.state === "offline"
+          ? h("button", { class: "btn btn-sm", type: "button", onClick: () => (app.resyncCloud(), toast("アカウントとの同期をやり直します")) }, "同期をやり直す")
+          : null;
+      info.append(h("div", { class: "storage-row" }, h("span", { class: "storage-k" }, "アカウント（claude.ai）"), h("span", null, cloudText(c)), retry));
+    }
   };
 
   const renderList = async () => {
@@ -318,6 +326,8 @@ export function cloudText(c: { state: string; message: string; lastSyncedAt: str
       return "同期中…";
     case "connecting":
       return "接続中…";
+    case "paused":
+      return c.message || "同期を止めています";
     case "offline":
     case "error":
     case "denied":
@@ -326,6 +336,69 @@ export function cloudText(c: { state: string; message: string; lastSyncedAt: str
     default:
       return "同期していません";
   }
+}
+
+// ------------------------------------------------------------ 初めての同期で、どちらを使うか
+
+/**
+ * この端末で初めてアカウントと同期するとき、このブラウザとアカウントの両方に中身があれば聞く。
+ * 閉じた（Esc）ときは「あとで決める」（決めるまで同期しない）
+ */
+export function chooseSyncSource(o: { local: DocData; remote: { title: string; nodes: number; savedAt: string } | null; foreign: boolean }): Promise<"remote" | "local" | "later"> {
+  if (!o.remote) return askUploadForeign(o.local);
+  const remote = o.remote;
+  return new Promise((resolve) => {
+    let result: "remote" | "local" | "later" = "later";
+    const m = openModal({ title: "どちらの内容を使いますか？", subtitle: "アカウントと、このブラウザに別々の内容があります", width: 560, icon: "layers", onClose: () => resolve(result) });
+    const card = (head: string, title: string, nodes: number, when: string) =>
+      h("div", { class: "sync-choice-card" }, h("div", { class: "sync-choice-head" }, head), h("div", { class: "sync-choice-title" }, title || "（無題）"), h("div", { class: "muted small" }, `ノード ${nodes} 件 · ${when}`));
+    m.body.append(
+      h(
+        "p",
+        { class: "modal-text" },
+        o.foreign ? "このブラウザの内容は、前に別のアカウントで同期していたものです。" : "このブラウザには、まだアカウントと同期していない内容があります。",
+        "使わなかった方も消さずに、このブラウザのバックアップに残します（メニュー →「バックアップと復元」）。",
+      ),
+      h(
+        "div",
+        { class: "sync-choice" },
+        card("アカウント", remote.title, remote.nodes, remote.savedAt ? `保存 ${fmtWhen(remote.savedAt)}` : "保存日時不明"),
+        card("このブラウザ", o.local.title, Object.keys(o.local.nodes).length, `更新 ${fmtWhen(o.local.updatedAt)}`),
+      ),
+    );
+    const pick = (r: "remote" | "local" | "later") => () => {
+      result = r;
+      m.close();
+    };
+    const useRemote = h("button", { class: "btn btn-primary", type: "button", onClick: pick("remote") }, "アカウントの内容を使う");
+    m.footer.append(
+      h("button", { class: "btn", type: "button", onClick: pick("later") }, "あとで決める"),
+      h("button", { class: "btn", type: "button", onClick: pick("local") }, "このブラウザの内容を使う"),
+      useRemote,
+    );
+    setTimeout(() => useRemote.focus());
+  });
+}
+
+/** アカウントは空で、このブラウザの内容は別のアカウントで同期していた: このアカウントにも保存するか聞く */
+function askUploadForeign(local: DocData): Promise<"local" | "later"> {
+  return new Promise((resolve) => {
+    let result: "local" | "later" = "later";
+    const m = openModal({ title: "このアカウントにも保存しますか？", width: 480, icon: "help", onClose: () => resolve(result) });
+    m.body.append(
+      h(
+        "p",
+        { class: "modal-text" },
+        `このブラウザの内容（${local.title || "無題"}・ノード ${Object.keys(local.nodes).length} 件）は、前に別のアカウントで同期していたものです。今のアカウントはまだ空です。保存すると、今のアカウントのほかの端末でも同じ内容が出ます。`,
+      ),
+    );
+    const save = h("button", { class: "btn btn-primary", type: "button" }, "このアカウントに保存する");
+    save.addEventListener("click", () => {
+      result = "local";
+      m.close();
+    });
+    m.footer.append(h("button", { class: "btn", type: "button", onClick: () => m.close() }, "保存しない（あとで決める）"), save);
+  });
 }
 
 // ------------------------------------------------------------ 書き出しの代わり（ファイルを保存できない画面）

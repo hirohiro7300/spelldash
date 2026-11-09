@@ -216,3 +216,32 @@ export function buildDemoDoc(): DocData {
   }
   return doc;
 }
+
+// ------------------------------------------------------------ 何もしていないデモか
+
+/** 中身の指紋（位置・折りたたみ・時刻・接続や条件の ID は除く。動かしただけ・畳んだだけのデモは同じ） */
+function contentSignature(doc: DocData): string {
+  const nodes = Object.values(doc.nodes)
+    .map((n) => [n.id, n.type, n.title, n.body, n.status, n.time.due, n.time.start, n.conditions.map((c) => [c.text, c.met]), n.tags, n.projectIds, n.scenarioIds])
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const edges = Object.values(doc.edges)
+    .map((e) => [e.source, e.target, e.relation, e.label, e.condition, e.scenarioIds])
+    .sort((a, b) => `${a[0]}>${a[1]}`.localeCompare(`${b[0]}>${b[1]}`));
+  const groups = (m: DocData["projects"] | DocData["scenarios"]) =>
+    Object.values(m)
+      .map((g) => [g.id, g.name, g.color, g.description])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return JSON.stringify([doc.title, nodes, edges, groups(doc.projects), groups(doc.scenarios)]);
+}
+
+let demoSignature: string | null = null;
+
+/**
+ * 捨ててよい手元か: 初回のデモに何も足していない（動かした・畳んだだけ）か、ノードが 1 つも無い。
+ * アカウントに内容があれば、聞かずにそちらを採ってよい
+ */
+export function isDisposableDoc(doc: DocData): boolean {
+  if (Object.keys(doc.nodes).length === 0) return true;
+  demoSignature ??= contentSignature(buildDemoDoc());
+  return contentSignature(doc) === demoSignature;
+}

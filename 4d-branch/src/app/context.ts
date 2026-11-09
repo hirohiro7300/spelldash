@@ -22,6 +22,8 @@ export interface AppContext {
   /** アカウントへの同期の状態（claude.ai の Artifact の外では null） */
   cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null;
   onCloudChanged: () => void;
+  /** アカウントとの突き合わせをやり直す（止めていた同期の再開） */
+  resyncCloud(): void;
   focusSearch: () => void;
   focusInspectorTitle: () => void;
   focusEdgeCondition: () => void;

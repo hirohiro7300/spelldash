@@ -77,7 +77,11 @@ const FAKE_CLAUDE = () => {
         });
       }
       if (name === "user") return Object.freeze({ id: async () => (flags.signedOut ? null : "u_test") });
-      if (name === "db") return flags.signedOut ? null : Object.freeze({ doc: mkDoc, collection: (p) => ({ doc: (id) => mkDoc(`${p}/${id}`), get: async () => ({ docs: [] }) }) });
+      if (name === "db") {
+        if (flags.signedOut) return null;
+        const list = async (p) => ({ docs: (await window.__dbList(p)).map((d) => ({ id: d.id, exists: true, data: () => d.data })) });
+        return Object.freeze({ doc: mkDoc, collection: (p) => ({ doc: (id) => mkDoc(`${p}/${id}`), get: () => list(p), limit: () => ({ get: () => list(p) }) }) });
+      }
       return null;
     },
   };
@@ -110,6 +114,9 @@ async function newDevice(flags = {}, viewport = { width: 1440, height: 900 }) {
     return "";
   });
   await ctx.exposeBinding("__dbDel", (_s, p) => void dbStore.delete(p));
+  await ctx.exposeBinding("__dbList", (_s, p) =>
+    [...dbStore.keys()].filter((k) => k.startsWith(`${p}/`) && !k.slice(p.length + 1).includes("/")).map((k) => ({ id: k.slice(p.length + 1), data: JSON.parse(dbStore.get(k)) })),
+  );
   await ctx.exposeBinding("__dbLease", (_s, p, holder, ttl) => {
     const cur = leases.get(p);
     if (cur && cur.holder !== holder && cur.until > Date.now()) return false;
@@ -173,6 +180,8 @@ await check("新しい端末で開くと、デモではなくアカウントの�
   const B = await newDevice();
   await B.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "端末Aで書いた目標"), null, { timeout: 15000 });
   await B.page.locator(".toast", { hasText: "アカウントに保存されていた内容を読み込みました" }).waitFor();
+  // 最初の読み込みは「元に戻す」の対象にしない（戻すと、捨てたデモがアカウントへ送られてしまう）
+  assert((await B.page.evaluate(() => window.__fourD.store.history.canUndo)) === false, "最初の読み込みを元に戻せてしまう");
   // 端末 B で書く → 端末 A に届く（A は未変更なので取り込む）
   await B.page.evaluate(async () => {
     const f = window.__fourD;
@@ -185,6 +194,52 @@ await check("新しい端末で開くと、デモではなくアカウントの�
   const kinds = await A.page.evaluate(async () => (await window.__fourD.persistence.listBackups()).map((b) => b.kind + ":" + b.label));
   assert(kinds.some((k) => k.startsWith("safety:別の端末の内容を読み込む前")), kinds.join(","));
   await B.ctx.close();
+});
+
+await check("サインインせずに書いたブラウザで、あとからサインインすると、どちらの内容を使うか聞く", async () => {
+  // サインインしていない間に書く（このブラウザだけに保存）
+  const E = await newDevice({ signedOut: true });
+  await E.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "unavailable", null, { timeout: 15000 });
+  await E.page.evaluate(() => document.querySelector(".modal-close")?.click());
+  await E.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 0, y: 1500 }, { title: "サインイン前に書いた目標", exact: true }));
+  await E.page.waitForFunction(() => window.__fourD.persistence.status === "saved");
+  // サインインして開き直す
+  await E.ctx.addInitScript(() => {
+    if (window.__fakeFlags) window.__fakeFlags.signedOut = false;
+  });
+  await E.page.reload({ waitUntil: "load" });
+  await E.page.waitForFunction(() => !!window.__fourD);
+  const dialog = E.page.getByRole("dialog", { name: "どちらの内容を使いますか？" });
+  await dialog.waitFor({ timeout: 15000 });
+  // 決めるまでは送らない
+  assert((await cloudState(E.page)) === "syncing" || (await cloudState(E.page)) === "connecting", `決める前の状態 ${await cloudState(E.page)}`);
+  if (SHOTS) {
+    await E.page.waitForTimeout(300);
+    await E.page.screenshot({ path: path.join(SHOTS, "artifact-choose.png") });
+    await E.page.setViewportSize({ width: 400, height: 800 });
+    await E.page.waitForTimeout(300);
+    await E.page.screenshot({ path: path.join(SHOTS, "artifact-choose-phone.png") });
+    await E.page.setViewportSize({ width: 1440, height: 900 });
+  }
+  await dialog.getByRole("button", { name: "アカウントの内容を使う" }).click();
+  await E.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "端末Aで書いた目標"), null, { timeout: 15000 });
+  // 手元へ保存してから「同期済み」になる
+  await E.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "synced", null, { timeout: 15000 });
+  const r = await E.page.evaluate(async () => {
+    const f = window.__fourD;
+    const backups = await f.persistence.listBackups();
+    const b = backups.find((x) => x.label === "アカウントの内容に切り替える前のこのブラウザの内容");
+    const d = b ? await f.persistence.readBackup(b.id) : null;
+    return {
+      kept: !!d && Object.values(d.nodes).some((n) => n.title === "サインイン前に書いた目標"),
+      canUndo: f.store.history.canUndo,
+      state: f.app.cloudInfo?.state,
+    };
+  });
+  assert(r.kept, "このブラウザの内容がバックアップに無い");
+  assert(r.canUndo === false, "切り替えを元に戻せてしまう");
+  assert(r.state === "synced", `状態 ${r.state}`);
+  await E.ctx.close();
 });
 
 await check("書き出しの機能が無いときは、コピーできる画面を出す", async () => {

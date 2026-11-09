@@ -20,9 +20,14 @@ export interface DbDocRef {
   acquire?(options: { holder: string; ttlMs?: number }): Promise<{ acquired: boolean; expiresAt?: string }>;
 }
 
+export interface DbQuerySnap {
+  docs: Array<DbDocSnap & { id: string }>;
+}
+
 export interface DbCollRef {
   doc(id?: string): DbDocRef;
-  get(): Promise<{ docs: Array<DbDocSnap & { id: string }> }>;
+  get(): Promise<DbQuerySnap>;
+  limit(n: number): { get(): Promise<DbQuerySnap> };
 }
 
 export interface DbApi {
