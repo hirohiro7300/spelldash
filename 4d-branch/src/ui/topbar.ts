@@ -246,7 +246,7 @@ function buildSearch(app: AppContext): HTMLElement {
         { class: `search-row${i === active ? " active" : ""}`, type: "button", role: "option", attrs: { "aria-selected": String(i === active) } },
         h("span", { class: `type-chip type-${n.type}` }, icon(n.type, 13)),
         h("span", { class: "search-title" }, n.title || "（無題）"),
-        ui.prefs.view === "map" && vm.node(id).hidden ? h("span", { class: "search-hidden", title: "折りたたみや表示の絞り込みで隠れています。選ぶと表示します" }, "隠れています") : null,
+        ui.prefs.view === "map" && vm.node(id).hidden ? h("span", { class: "search-hidden", title: "折りたたみや表示の絞り込みで隠れています。選ぶと表示します", attrs: { role: "img", "aria-label": "隠れています" } }, icon("eyeOff", 13)) : null,
         h("span", { class: "search-meta" }, ...colors.slice(0, 4).map((c) => h("span", { class: "dot", style: { background: c } })), n.time.due ? h("span", { class: "search-due" }, formatDate(n.time.due)) : null),
       );
       row.addEventListener("pointerdown", (ev) => ev.preventDefault());

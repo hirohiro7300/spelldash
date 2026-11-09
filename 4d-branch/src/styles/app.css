@@ -512,11 +512,15 @@ kbd {
 }
 .search-hidden {
   flex: none;
-  padding: 1px 6px;
-  border: 1px solid var(--line-2);
-  border-radius: 999px;
+  display: inline-flex;
   color: var(--text-3);
-  font-size: 10.5px;
+}
+@media (min-width: 900px) {
+  /* 候補は検索欄より広く（題名が読める幅） */
+  .search-results {
+    right: auto;
+    width: max(100%, 400px);
+  }
 }
 .search-empty {
   padding: 12px;

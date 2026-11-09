@@ -128,9 +128,10 @@ export function buildBottomBar(app: AppContext): HTMLElement {
       ctx.lineTo(x, height - 4);
       ctx.stroke();
       // 文字は重ならない間隔のときだけ
-      if ((isYear || (pxPerMonth > 30 && isQuarter) || pxPerMonth > 54) && x - lastLabel > 38) {
+      const label = isYear ? `${y}年` : `${Number(mo)}月`;
+      if ((isYear || (pxPerMonth > 30 && isQuarter) || pxPerMonth > 54) && x - lastLabel > 38 && x + 4 + ctx.measureText(label).width <= width - 2) {
         ctx.fillStyle = isYear ? "rgba(231,234,241,0.85)" : "rgba(163,171,186,0.6)";
-        ctx.fillText(isYear ? `${y}年` : `${Number(mo)}月`, x + 4, 3);
+        ctx.fillText(label, x + 4, 3);
         lastLabel = x;
       }
       m = addMonths(m, step);
