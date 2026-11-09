@@ -18644,7 +18644,7 @@ console.log("pro:");
     const plans = await text(page, "#proPlans");
     check("Pro: 未ログインでも価格が 2 つ出る（580 と 4,800）", loaded && plans.includes("580") && plans.includes("4,800"), plans);
     const terms = await text(page, ".pro-terms");
-    check("Pro: 未ログインは年額ボタンを出さず、申し込みの前に（料金・更新・解約・支払い）をボタンの直下に", (await page.$("#proCheckoutYear")) === null && terms.includes("月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）（税込）") && terms.includes("自動で更新") && terms.includes("お支払いの管理") && terms.includes("Stripe"), terms);
+    check("Pro: 未ログインは年額ボタンを出さず、申し込みの前に（料金・更新・解約・支払い）をボタンの直下に", (await page.$("#proCheckoutYear")) === null && terms.includes("月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）（税込）") && terms.includes("自動で更新") && terms.includes("お支払いの管理") && terms.includes("次のお支払いの画面で入力して確定"), terms);
     // Batch 83 の反証: 提供の時期（特定商取引法 12 条の 6 の確認の項目。特商法の表記の提供時期と同じ）も「申し込みの前に」の最後に書く
     const rows0 = await termRows(page);
     check("Pro（Batch 83 反証）: 「申し込みの前に」の最後は「提供」＝「手続きが終わるとすぐ使える」（無料期間の設定が無いときは無料期間の話をしない）",
