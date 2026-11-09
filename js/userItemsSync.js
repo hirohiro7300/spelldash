@@ -11,7 +11,7 @@
 // 変更の記録: 各モジュールが書き込み時に touchItem() を呼ぶ → meta（更新時刻）と dirty（未送信）に積む。
 // 送り方（Batch 85。docs/SPEC_MY_WORDS.md §14.3）: 送る写しの、送り先が受け付けない字だけを U+FFFD に替え（端末の保存は書き換えない）、行の中身で断られた組は半分ずつ送り直し、
 // 1 行だけで断られた行は meta に印（failAt・failFor）を付けて、その行が変わるか UPLOAD_RETRY_MS が過ぎるまで送らない（下の「送る形と送り方」）。
-// 読み方（Batch 87。docs/SPEC_MY_WORDS.md §16.1・§16.2）: 主キーの列で並べて READ_PAGE 行ずつ、全部の行の数に届くまで読む（readAllRows）。1 ページでも読めなければ
+// 読み方（Batch 87。docs/SPEC_MY_WORDS.md §16.1・§16.2）: 主キーの列で並べて READ_PAGE 行ずつ、全部の行の数に届き、満ちていないページが来るまで読む（readAllRows）。1 ページでも読めなければ
 // 取り込み全体を止める。取り込みで送れた行・クラウドから取り込んだ行は、送る待ち（dirty）から外す（同じ行を次の送信で送り直さない）。
 
 const META_KEY = "spelldash_user_items_meta"; // { "kind:key": { updatedAt, deleted } }
@@ -542,11 +542,16 @@ export async function probeUserItemsTable(supabase) {
 // ---- 読み方（Batch 87。docs/SPEC_MY_WORDS.md §16.1・§16.2） ----
 // 送り先の API は 1 回の読みで返す行に上限がある（既定 1,000 行。上限より後ろの行は、何も言わずに届かない）。
 // 1,000 語の人の user_items（語 1,000 行と日ごとの記録）や学習記録（word_progress）を読み切るため、主キーの列で並べて READ_PAGE 行ずつ読む。
-// - 最初の読みで全部の行の数（count）を聞き、受け取った行の数がそれに届くまで続ける。次のページの頭は「受け取った行の数」（上限が READ_PAGE より
-//   小さい送り先でも抜けない）。count が来ない送り先では、0 行の答えまで読む
+// - 最初の読みで全部の行の数（count）を聞く。次のページの頭は「受け取った行の数」（上限が READ_PAGE より小さい送り先でも抜けない）。
+//   1 ページ目は数と同じ時点の行なので、数に届けば終わり。2 ページ目からは、数に届いても、そのページが満ちていれば（1 ページ目と同じ行の数）
+//   もう 1 ページ読み、満ちていないページか 0 行の答えで終える（数がページの行の数のちょうど倍数のときだけ、要求が 1 回増える）。
+//   count が来ない送り先では、0 行の答えまで読む
 // - どのページの読みが落ちても、count に届く前に 0 行の答えが来ても、READ_PAGES_MAX ページで終わらなくても、読み全体を失敗にする
 //   （途中までの行で合わせると、届かなかった行の項目を「クラウドに無い」と見て古い値で送り返す）
-// - 読みの途中で行が増えても、同じ行が 2 度届くだけ（項目ごとに合わせるので害は無い）。行は消さない（消すのは墓標）ので、抜ける行は無い
+// - 読みの途中でほかの端末が、前のページの範囲に並ぶ行を足すと（今日の日の行・新しい学習記録など）、後ろの行が 1 つずつ後ろへずれる。
+//   数（1 ページ目の時点）に届いた所で止めると、ずれて最後のページの外に出た前からの行を読まずに済ませてしまうので、満ちていないページまで読む。
+//   行は消さない（消すのは墓標）ので、足されただけなら、満ちていないページまで読めば前からある行はどれも 1 度は届く（同じ行が 2 度届くことは
+//   ある: 項目ごとに合わせるので害は無い）。読みを始めた後に足された行は届かないことがある（読む前の表を読んだのと同じ。次の同期で届く）
 // 戻り値: { ok: true, rows } か { ok: false, error, status }（status・error は落ちたページの答え。表が無いかの見分けに使う）
 export const READ_PAGE = 1000;
 export const READ_PAGES_MAX = 50; // 50,000 行（ここに着くのは壊れた答えだけ）
@@ -554,6 +559,7 @@ export const READ_PAGES_MAX = 50; // 50,000 行（ここに着くのは壊れた
 export async function readAllRows(client, table, orderCols) {
   const rows = [];
   let total = null;
+  let full = 0; // 満ちたページの行の数（1 ページ目の行の数: 送り先の 1 回の上限か READ_PAGE）
   for (let page = 0; page < READ_PAGES_MAX; page++) {
     let result;
     try {
@@ -564,10 +570,14 @@ export async function readAllRows(client, table, orderCols) {
       return { ok: false, error, status: null };
     }
     if (!result || result.error || !Array.isArray(result.data)) return { ok: false, error: result?.error ?? null, status: result?.status ?? null };
-    if (page === 0 && typeof result.count === "number") total = result.count;
-    if (result.data.length === 0) return total === null || rows.length >= total ? { ok: true, rows } : { ok: false, error: null, status: result.status ?? null };
+    const got = result.data.length;
+    if (page === 0) {
+      if (typeof result.count === "number") total = result.count;
+      full = got;
+    }
+    if (got === 0) return total === null || rows.length >= total ? { ok: true, rows } : { ok: false, error: null, status: result.status ?? null };
     rows.push(...result.data);
-    if (total !== null && rows.length >= total) return { ok: true, rows };
+    if (total !== null && rows.length >= total && (page === 0 || got < full)) return { ok: true, rows };
   }
   return { ok: false, error: null, status: null };
 }
