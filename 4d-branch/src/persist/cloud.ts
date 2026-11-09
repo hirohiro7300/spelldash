@@ -82,6 +82,8 @@ const STALE_MS = 120_000;
 const MAX_STALE = 20;
 /** 掃除で消さない新しさ（別の端末が書いている途中の分割かもしれない） */
 const SWEEP_MIN_AGE_MS = 10 * 60_000;
+/** 分割が見つからないときに読み直すまでの間（回ごとに延ばす） */
+const READ_RETRY_MS = 250;
 
 export interface Manifest {
   format: 1;
@@ -101,6 +103,11 @@ export interface Manifest {
   stale: Array<{ gen: string; parts: number; savedAt: string }>;
   /** 確定の通し番号（前の世代 + 1）。前の版で書かれた写しには無い */
   seq?: number;
+  /**
+   * 通し番号を数え始めた世代（空のアカウントからなら ""）。前の版の写し（通し番号・系譜が無い）の上に
+   * 書くと数え直しになるので、同じ数え方の中でだけ通し番号と系譜を比べる
+   */
+  chain?: string;
   /** この世代に至る直前までの世代（新しい物が後ろ・最大 64）。上書きされたかを見分ける */
   lineage: string[];
 }
@@ -192,8 +199,16 @@ function parseManifest(d: Record<string, unknown> | undefined): Manifest | null 
     writer: typeof d.writer === "string" ? d.writer : "",
     stale,
     seq: typeof d.seq === "number" && Number.isFinite(d.seq) ? d.seq : undefined,
+    chain: typeof d.chain === "string" ? d.chain : undefined,
     lineage: Array.isArray(d.lineage) ? d.lineage.filter((g): g is string => typeof g === "string").slice(-LINEAGE_MAX) : [],
   };
+}
+
+/** prev の次に確定する世代の通し番号と、その数え方（前の版の写しの上なら、その世代から数え直す） */
+function nextSeq(prev: Manifest | null): { seq: number; chain: string } {
+  if (!prev) return { seq: 1, chain: "" };
+  const counted = typeof prev.seq === "number" && typeof prev.chain === "string";
+  return { seq: (prev.seq ?? 0) + 1, chain: counted ? prev.chain! : prev.gen };
 }
 
 // ------------------------------------------------------------ 読み書き
@@ -251,9 +266,15 @@ export class CloudRepo {
     return d.exists ? parseManifest(d.data) : null;
   }
 
-  /** 確定している最新を読む。書き換えの途中で古い分割が消えていたら、マニフェストから読み直す */
+  /**
+   * 確定している最新を読む。書き換えの途中で古い分割が消えていたら、マニフェストから読み直す。
+   * マニフェストが同じ世代を指したまま、何度読んでも分割が無ければ、その世代は壊れている（世代を添えて知らせ、
+   * 手元の内容で書き直せるようにする。そのままだと、どの端末も読めないまま止まり続ける）
+   */
   async read(): Promise<{ manifest: Manifest; doc: DocData } | null> {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let missingGen = "";
+    let misses = 0;
+    for (let attempt = 0; attempt < 6; attempt++) {
       const m = await this.readManifest();
       if (!m) return null;
       const chunks: string[] = [];
@@ -267,7 +288,13 @@ export class CloudRepo {
         }
         chunks.push(data);
       }
-      if (missing) continue;
+      if (missing) {
+        misses = m.gen === missingGen ? misses + 1 : 1;
+        missingGen = m.gen;
+        if (misses >= 3) throw new CloudError("corrupt", "アカウントの写しの一部が見つかりません", m.gen);
+        await new Promise((r) => setTimeout(r, READ_RETRY_MS * misses));
+        continue;
+      }
       const payload = chunks.join("");
       if ((await sha256Hex(payload)) !== m.hash) throw new CloudError("corrupt", "アカウントの写しが壊れています（ハッシュが合わない）", m.gen);
       try {
@@ -339,7 +366,7 @@ export class CloudRepo {
       savedAt: p.savedAt,
       writer: this.holder,
       stale: keep,
-      seq: (prev?.seq ?? 0) + 1,
+      ...nextSeq(prev),
       lineage: prev ? [...prev.lineage, prev.gen].slice(-LINEAGE_MAX) : [],
     };
     // 自分の書き込みが大きすぎるときは、共有の権限の問題と取り違えないよう、送る前に止める
@@ -421,14 +448,21 @@ export interface SyncBase {
   /** そのときの手元のドキュメント */
   docId: string;
   docUpdatedAt: string;
-  /** その世代の通し番号 */
+  /** その世代の通し番号と、その数え方（Manifest.chain） */
   seq?: number;
+  chain?: string;
   /** その世代はこの端末が確定した物か（後から系譜に無い世代が来たら、上書きされた） */
   own?: boolean;
 }
 
+/** 基準が、手元に保存できている内容を超えていないか（stored = 手元に保存できた最新の印）。超えた基準は書かない */
+export function baseCovered(stored: DocIdent | null, b: SyncBase): boolean {
+  return !!stored && stored.id === b.docId && stored.updatedAt >= b.docUpdatedAt;
+}
+
 /**
- * 入れ替えの種類: first = 初めての同期で、捨ててよい手元を / choice = 利用者が選んで / remote = 別の端末の変更を
+ * 入れ替えの種類: first = 捨ててよい手元（初めての同期・保存が失われて代わりに始めたデモなど）を /
+ * choice = 利用者が選んで / remote = 別の端末の変更・新しいアカウントの内容を
  */
 export type AdoptHow = "first" | "choice" | "remote";
 
@@ -438,8 +472,20 @@ export interface DocIdent {
   updatedAt: string;
 }
 
+/** 起動したときに読み込んだ手元（どの編集よりも前） */
+export interface BootDoc extends DocIdent {
+  disposable: boolean;
+  /** 保存してあった内容を読めず、代わりの内容（デモ・バックアップ）で始めた */
+  fallback: boolean;
+}
+
 export interface CloudSyncDeps {
   getDoc(): DocData;
+  /**
+   * 起動したときに読み込んだ手元。手元が基準より古い（保存が失われた）かは、これで決める
+   * （同期が始まる前に編集しても、古かったことを見落とさない）。無ければ、同期を始めたときの手元
+   */
+  bootDoc?(): BootDoc;
   /** この端末のこのタブが書いてよいか（別のタブが編集中なら false） */
   isWriter(): boolean;
   /** 捨ててよい中身か（何もしていないデモ・まっさらな空）。初めての同期で、聞かずにもう一方を採ってよい */
@@ -511,6 +557,17 @@ export class CloudSync {
   /** 別のアカウントの内容を、このアカウントへ送ってよいと答えてもらった */
   private foreignConsent = false;
   private swept = false;
+  /** 起動したときの手元（start で決める） */
+  private boot: BootDoc | null = null;
+  /** 起動したときの手元が、基準と違うドキュメントの代わりの内容だった（基準を決め直すまで） */
+  private bootLost = false;
+  /**
+   * 手元が基準より古いと分かった基準の世代。解決する（読み込む・アカウントの内容を残してから送る）まで、
+   * その後に編集されても黙って送らない
+   */
+  private behindGen: string | null = null;
+  /** 確定に失敗したように見えた送信（返事が届かなかっただけで、書けているかもしれない） */
+  private unconfirmed: { gen: string; docId: string; docUpdatedAt: string; seq: number; chain: string } | null = null;
   private readonly emitter = new Emitter<{ state: CloudState }>();
   private readonly debounceMs: number;
   private readonly leaseMs: number;
@@ -533,6 +590,8 @@ export class CloudSync {
   }
 
   private setState(state: CloudState, message = ""): void {
+    // 止めた後（共有の取り消しなど）は、走り終えた同期が「同期済み」などで上書きしない
+    if (this.stopped) return;
     this.state = state;
     this.message = message;
     if (state === "synced") {
@@ -565,6 +624,13 @@ export class CloudSync {
   async start(): Promise<void> {
     this.setState("connecting");
     this.base = await this.loadBase(null);
+    const now = this.deps.getDoc();
+    const boot = this.deps.bootDoc?.() ?? { id: now.id, updatedAt: now.updatedAt, disposable: this.deps.isDisposable(now), fallback: false };
+    this.boot = boot;
+    const b = this.base;
+    if (b && boot.id !== b.docId && boot.fallback) this.bootLost = true;
+    // 起動したときに手元が基準より古かった（保存が失われた）: 同期が始まる前に編集していても、黙って送らない
+    if (b && this.deps.isWriter() && (boot.id === b.docId ? boot.updatedAt < b.docUpdatedAt : this.bootLost)) this.behindGen = b.gen;
     await this.sync("start");
     this.subscribe();
   }
@@ -638,14 +704,16 @@ export class CloudSync {
   }
 
   /**
-   * 手元が基準より古いか（基準だけが保存され、手元の保存が失われた・壊れた: そのまま送ると新しい写しを古い手元で潰す）。
-   * 更新時刻は必ず進むので、同じドキュメントで基準より前の時刻なら古い。違うドキュメントが捨ててよい中身（デモなど）でも同じ
+   * 今の手元が基準より古いか（基準だけが保存され、手元の保存が失われた・壊れた: そのまま送ると新しい写しを古い手元で潰す）。
+   * 更新時刻は必ず進むので、同じドキュメントで基準より前の時刻なら古い。
+   * 違うドキュメントは、保存が失われて代わりに始めた内容（デモ・空）を、捨ててよいまま使っているときだけ。
+   * 利用者が入れ替えた内容（空にする・デモを読み込む・復元・インポート）は新しい id になり、ふだんどおり送る
    */
   private localBehindBase(): boolean {
     if (!this.base) return false;
     const doc = this.deps.getDoc();
     if (doc.id === this.base.docId) return doc.updatedAt < this.base.docUpdatedAt;
-    return this.deps.isDisposable(doc);
+    return this.bootLost && doc.id === this.boot?.id && this.deps.isDisposable(doc);
   }
 
   /** 手元で変更があった（ストアの変更のたびに呼ぶ） */
@@ -678,6 +746,13 @@ export class CloudSync {
       if (this.deps.isEditing()) return this.scheduleRemote(delay);
       void this.sync("remote");
     }, delay);
+  }
+
+  /** その場の入力（題名など）が終わってから、もう一度アカウントの内容と突き合わせる（入れ替えも重なりの扱いもしない） */
+  private waitForEditing(message: string): "done" {
+    this.setState("pending", message);
+    this.scheduleRemote(this.retryMs);
+    return "done";
   }
 
   /** すぐに同期する（タブが隠れたとき・⌘S）。失敗の後の待ちは守る */
@@ -727,14 +802,18 @@ export class CloudSync {
     return run;
   }
 
-  private async setBase(gen: string, doc: DocIdent, extra: { seq?: number; own: boolean }): Promise<void> {
-    this.base = { gen, docId: doc.id, docUpdatedAt: doc.updatedAt, seq: extra.seq, own: extra.own };
+  private async setBase(gen: string, doc: DocIdent, extra: { seq?: number; chain?: string; own: boolean }): Promise<void> {
+    this.base = { gen, docId: doc.id, docUpdatedAt: doc.updatedAt, seq: extra.seq, chain: extra.chain, own: extra.own };
+    // 基準を決め直した: 古かった手元・代わりに始めた内容・確かめられなかった送信の扱いは済んだ
+    this.behindGen = null;
+    this.bootLost = false;
+    this.unconfirmed = null;
     await this.deps.writeBase(this.base).catch(() => undefined);
   }
 
   /** 入れ替えが済んだ: 入れ替えた瞬間の手元を基準にする。その後に手元が変わっていれば送る */
   private async adopted(m: Manifest, ident: DocIdent, notice: string): Promise<void> {
-    await this.setBase(m.gen, ident, { seq: m.seq, own: false });
+    await this.setBase(m.gen, ident, { seq: m.seq, chain: m.chain, own: false });
     if (this.localChanged()) {
       this.setState("pending");
       if (!this.firstPendingAt) this.firstPendingAt = Date.now();
@@ -798,15 +877,29 @@ export class CloudSync {
       try {
         committed = await this.repo.commit(prep, remoteM);
       } catch (e) {
-        await drop();
-        throw e;
+        // 書く前に止めた（大きすぎる）: この分割はどこからも指されない
+        if (e instanceof CloudError) {
+          await drop();
+          throw e;
+        }
+        // 断られたように見えても、書けていることがある（返事だけが届かなかった・やり直しが後で届く）。
+        // 分割は消さない（書けていればマニフェストが指している。書けていなければ、どこからも指されず掃除で消える）
+        const now = await this.repo.readManifest().catch(() => null);
+        if (now?.gen !== prep.gen) {
+          this.unconfirmed = { gen: prep.gen, docId: prep.docId, docUpdatedAt: prep.docUpdatedAt, ...nextSeq(remoteM) };
+          throw e;
+        }
+        // 書けていた: ふだんの確定と同じに続ける（置き換えで外れた世代も片付ける）
+        committed = { manifest: now, drop: (remoteM?.stale ?? []).filter((s) => !now.stale.some((k) => k.gen === s.gen)) };
       }
       const { manifest } = committed;
       this.lastPushedGen = manifest.gen;
       this.corruptGen = null;
       this.notBefore = 0;
-      await this.setBase(manifest.gen, { id: prep.docId, updatedAt: prep.docUpdatedAt }, { seq: manifest.seq, own: true });
+      await this.setBase(manifest.gen, { id: prep.docId, updatedAt: prep.docUpdatedAt }, { seq: manifest.seq, chain: manifest.chain, own: true });
       void this.repo.deleteGens(committed.drop).catch(() => undefined);
+      // 確定している間に止めた（共有の取り消しなど）: 基準は残し、片付けの予約・掃除・状態の更新はしない
+      if (this.stopped) return;
       this.scheduleCleanup();
       if (!this.swept) {
         this.swept = true;
@@ -827,6 +920,7 @@ export class CloudSync {
 
   /** 置き換えられた古い世代を、2 分たったら次の送信を待たずに片付ける（共有の 25,000 文書の枠を空ける） */
   private scheduleCleanup(): void {
+    if (this.stopped) return;
     if (this.cleanupTimer) clearTimeout(this.cleanupTimer);
     this.cleanupTimer = setTimeout(() => {
       this.cleanupTimer = null;
@@ -858,6 +952,12 @@ export class CloudSync {
       // アカウントは空: 手元を送る（初めての端末・写しが消されていた）。別のアカウントで同期していた中身は、聞いてから
       return (await this.foreignOk()) ? "push" : "done";
     }
+    // 確定に失敗したように見えた送信が、実は書けていた（その上に別の端末が書いていても）: この端末が確定した物として基準にする
+    const u = this.unconfirmed;
+    if (u && (remoteM.gen === u.gen || remoteM.lineage.includes(u.gen))) {
+      this.lastPushedGen = u.gen;
+      await this.setBase(u.gen, { id: u.docId, updatedAt: u.docUpdatedAt }, { seq: u.seq, chain: u.chain, own: true });
+    }
     // 壊れていた写しは、手元の内容で書き直す
     if (this.corruptGen && remoteM.gen === this.corruptGen) return (await this.foreignOk()) ? "push" : "done";
     if (this.base && remoteM.gen === this.base.gen) {
@@ -865,8 +965,9 @@ export class CloudSync {
         this.setState("synced");
         return "done";
       }
-      // 手元が基準より古い（手元の保存が失われた）: 送らずに、アカウントの内容を読み込む
-      if (this.localBehindBase()) return this.recoverBehind();
+      // 手元が基準より古い（手元の保存が失われた）: 送らずに、アカウントの内容を読み込む。
+      // 古かった手元を、その後に編集していても、黙っては送らない（アカウントの内容を残してから送る）
+      if (this.localBehindBase() || this.behindGen === remoteM.gen) return this.recoverBehind();
       // アカウントは変わっていない。手元の変更は、まとめる間隔を守って送る（確かめのついでにすぐ送らない）
       if (reason === "remote") {
         this.setState("pending");
@@ -881,26 +982,26 @@ export class CloudSync {
     const doc = this.deps.getDoc();
     if (remote.doc.id === doc.id && remote.doc.updatedAt === doc.updatedAt) {
       // 中身は同じ（この端末が送ったもの・基準の保存に失敗していたなど）
-      await this.setBase(remote.manifest.gen, doc, { seq: remote.manifest.seq, own: false });
+      await this.setBase(remote.manifest.gen, doc, { seq: remote.manifest.seq, chain: remote.manifest.chain, own: false });
       this.setState("synced");
       return "done";
     }
     if (!this.base) return this.decideFirst(remote);
+    // 手元が基準より古い: アカウントが基準より先へ進んでいても、古い手元では上書きしない
+    if (this.localBehindBase() || this.behindGen === this.base.gen) return this.recoverBehind(remote);
     // 読み終えてから確かめる（読んでいる間の変更を見落とさない）。
     // この端末が確定した世代が、相手の系譜に無い（上書きされた）ときも、手元に変更があるのと同じに扱う
     if (!this.localChanged() && !this.overwritten(remote.manifest)) {
-      if (this.deps.isEditing()) {
-        // その場の入力の途中: 確定すれば重なり、やめれば取り込みになる。終わるまで待って読み直す
-        this.setState("pending", "入力が終わってから、別の端末の変更を読み込みます");
-        this.scheduleRemote(this.retryMs);
-        return "done";
-      }
+      // その場の入力の途中: 確定すれば重なり、やめれば取り込みになる。終わるまで待って読み直す
+      if (this.deps.isEditing()) return this.waitForEditing("入力が終わってから、別の端末の変更を読み込みます");
       const ident = await this.deps.adopt(remote.doc, "remote", () => !this.localChanged() && !this.deps.isEditing() && this.deps.isWriter());
       if (ident) {
         await this.adopted(remote.manifest, ident, "別の端末で保存された内容を読み込みました。");
         return "done";
       }
       if (!this.stillWriter()) return "done";
+      // 読み込む直前に入力が始まった（手元は変わっていない）: 重なりにせず、入力が終わってから読み直す
+      if (!this.localChanged()) return this.waitForEditing("入力が終わってから、別の端末の変更を読み込みます");
       // 読み込む直前に手元が変わった: 重なりとして扱う
     }
     return this.keepLocal(remote, "conflict", "別の端末で保存されていた内容（同期で重なった）", "別の端末の内容と重なったため、手元の内容で同期し、別の端末の内容はバックアップに残しました（メニュー →「バックアップと復元」）。", "warn");
@@ -908,36 +1009,45 @@ export class CloudSync {
 
   /**
    * この端末が確定した世代（基準）が、届いた写しの系譜に無い: 書いている間に貸し出しが切れるなどして、
-   * 別の端末がこちらの確定を知らずに上書きした。前の版の写し（通し番号が無い）・系譜の窓を外れた古い基準は見分けない
+   * 別の端末がこちらの確定を知らずに上書きした。通し番号の数え方が違う（間に前の版の写しが入った）・
+   * 系譜の窓を外れた古い基準は見分けない（重なりと決めつけない）
    */
   private overwritten(m: Manifest): boolean {
     const b = this.base;
     if (!b?.own || typeof b.seq !== "number" || typeof m.seq !== "number") return false;
+    if (b.chain === undefined || m.chain !== b.chain) return false;
     if (m.seq <= b.seq) return true;
     if (m.seq - b.seq > m.lineage.length) return false;
     return !m.lineage.includes(b.gen);
   }
 
-  /** 手元が基準より古かった: 新しいアカウントの内容を読み込む（読み込む前の手元はバックアップに残る） */
-  private async recoverBehind(): Promise<"done" | "push"> {
-    const remote = await this.repo.read();
+  /**
+   * 手元が基準より古かった: 新しいアカウントの内容を読み込む（読み込む前の手元はバックアップに残る）。
+   * 入力の途中なら、終わってから。古かった手元をその後に編集していたら、アカウントの内容を残してから手元で送る
+   */
+  private async recoverBehind(known?: { manifest: Manifest; doc: DocData }): Promise<"done" | "push"> {
+    this.behindGen = this.base!.gen;
+    if (this.localBehindBase() && this.deps.isEditing()) return this.waitForEditing("入力が終わってから、アカウントの内容を読み込みます");
+    const remote = known ?? (await this.repo.read());
     if (!remote) return "push";
-    const ident = await this.deps.adopt(remote.doc, "remote", () => this.localBehindBase() && !this.deps.isEditing() && this.deps.isWriter());
-    if (ident) {
-      await this.adopted(remote.manifest, ident, "この端末に保存されていた内容が古かったため、アカウントの新しい内容を読み込みました。");
-      return "done";
+    if (this.localBehindBase()) {
+      // 違うドキュメント（保存が失われて代わりに始めたデモ・空）: 残すまでもなく、元に戻すの対象にもしない
+      const lost = this.deps.getDoc().id !== this.base!.docId;
+      const ident = await this.deps.adopt(remote.doc, lost ? "first" : "remote", () => this.localBehindBase() && !this.deps.isEditing() && this.deps.isWriter());
+      if (ident) {
+        await this.adopted(remote.manifest, ident, lost ? "この端末に保存されていた内容を読めなかったため、アカウントの内容を読み込みました。" : "この端末に保存されていた内容が古かったため、アカウントの新しい内容を読み込みました。");
+        return "done";
+      }
+      if (!this.stillWriter()) return "done";
+      // 読み込む直前に入力が始まった（手元はまだ古いまま）: 入力が終わってから読み込む
+      if (this.localBehindBase()) return this.waitForEditing("入力が終わってから、アカウントの内容を読み込みます");
     }
-    if (!this.stillWriter()) return "done";
     return this.keepLocal(remote, "conflict", "アカウントの内容（手元の古い内容と重なった）", "この端末の内容がアカウントの記録より古かったため、アカウントの内容をバックアップに残してから手元で同期しました。", "warn");
   }
 
   /** この端末で初めての同期（基準が無い）で、アカウントに手元と違う中身がある */
   private async decideFirst(remote: { manifest: Manifest; doc: DocData }): Promise<"done" | "push"> {
-    if (this.deps.isEditing()) {
-      this.setState("pending", "入力が終わってから、アカウントの内容と突き合わせます");
-      this.scheduleRemote(this.retryMs);
-      return "done";
-    }
+    if (this.deps.isEditing()) return this.waitForEditing("入力が終わってから、アカウントの内容と突き合わせます");
     const local = this.deps.getDoc();
     const foreign = this.deps.isForeign();
     if (this.deps.isDisposable(local)) {
@@ -948,6 +1058,8 @@ export class CloudSync {
         return "done";
       }
       if (!this.stillWriter()) return "done";
+      // 読み込む直前に入力が始まった（手元はまだ捨ててよいまま）: 入力が終わってから突き合わせる
+      if (this.deps.isDisposable(this.deps.getDoc())) return this.waitForEditing("入力が終わってから、アカウントの内容と突き合わせます");
       // その間に手元に中身ができた: 下で聞く
     } else if (this.deps.isDisposable(remote.doc) && !foreign) {
       // アカウントにあるのは何もしていないデモ（か空）: 手元を送る（別のアカウントの中身なら聞く）

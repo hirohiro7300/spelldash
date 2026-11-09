@@ -39,6 +39,8 @@ async function boot(): Promise<void> {
   let doc: DocData | null = null;
   let notices: string[] = [];
   let firstRun = false;
+  /** 保存してあった内容を読めず、代わりの内容（デモ・バックアップ）で始めた（アカウントの同期で、古い手元として扱う） */
+  let bootFallback = false;
   if (mode.stress > 0) doc = buildStressDoc(mode.stress);
   else if (ephemeral) doc = buildDemoDoc();
   else {
@@ -46,15 +48,17 @@ async function boot(): Promise<void> {
     const loaded = await persistence.loadInitial();
     doc = loaded.doc;
     notices = loaded.notices;
+    bootFallback = loaded.recovered;
     if (!doc) {
       doc = buildDemoDoc();
       firstRun = true;
+      bootFallback = true;
     }
   }
 
   const store = new Store(doc);
   store.readOnly = !persistence.writer;
-  const app = new App({ store, ui, persistence, ephemeral, firstRun, notices, mount });
+  const app = new App({ store, ui, persistence, ephemeral, firstRun, bootFallback, notices, mount });
   persistence.attach(() => store.doc);
   if (!ephemeral) {
     if (firstRun) persistence.markDirty();

@@ -132,6 +132,11 @@ export class Persistence {
   savedAt: string | null = null;
   rev = 0;
   writer = false;
+  /**
+   * 手元に保存できている最新の印（保存が終わってから更新する）。アカウントの同期の基準は、
+   * これを超えないときだけ書く（基準だけが先に残ると、次に開いたときに新しい写しを古い手元で潰しかねない）
+   */
+  lastStored: { id: string; updatedAt: string } | null = null;
 
   private readonly dbName: string;
   private readonly keys: { emergencyPrefix: string; emergency: string; doc: string; meta: string };
@@ -317,15 +322,18 @@ export class Persistence {
 
   /**
    * 起動時の読み込み。緊急コピーがあれば、保存してある本体と比べて新しい方を採る
-   * （本体の版が緊急コピーの元の版より進んでいたら＝別のタブが保存していたら、緊急コピーはバックアップへ退避）
+   * （本体の版が緊急コピーの元の版より進んでいたら＝別のタブが保存していたら、緊急コピーはバックアップへ退避）。
+   * recovered: 保存してあった本体を読めず、バックアップ（か何も無し）で始めた
    */
-  async loadInitial(): Promise<{ doc: DocData | null; notices: string[] }> {
+  async loadInitial(): Promise<{ doc: DocData | null; notices: string[]; recovered: boolean }> {
     const notices: string[] = [];
-    if (this.mode === "memory") return { doc: null, notices };
+    if (this.mode === "memory") return { doc: null, notices, recovered: false };
     let stored: { doc: DocData; meta: StoredMeta } | null = null;
+    let recovered = false;
     try {
       stored = await this.readStored();
     } catch {
+      recovered = true;
       const fallback = await this.latestBackupDoc();
       if (fallback) {
         notices.push("保存してあったデータを読めなかったため、いちばん新しいバックアップから復元しました。");
@@ -338,10 +346,12 @@ export class Persistence {
     if (stored) {
       this.rev = stored.meta.rev;
       this.savedAt = stored.meta.savedAt;
+      // 保存できている内容（バックアップから戻した物・緊急コピーは、まだ本体に保存できていない）
+      if (!recovered) this.lastStored = { id: stored.doc.id, updatedAt: stored.doc.updatedAt };
     }
     const adopted = await this.consumeEmergencies(stored, notices);
     const doc = adopted ?? stored?.doc ?? null;
-    return { doc, notices };
+    return { doc, notices, recovered };
   }
 
   private async latestBackupDoc(): Promise<DocData | null> {
@@ -417,9 +427,12 @@ export class Persistence {
     this.setStatus("saving");
     const run = async () => {
       const doc = this.getDoc!();
+      // 書く前に印を取る（書き終わるまでの間の変更は、印より新しいだけ。保存できた内容を多く見積もらない）
+      const ident = { id: doc.id, updatedAt: doc.updatedAt };
       try {
         const newRev = await this.writeStored(doc, this.rev);
         this.rev = newRev;
+        this.lastStored = ident;
         this.savedAt = nowISO();
         if (!this.dirty) this.kv.remove(this.keys.emergency);
         this.bc?.postMessage({ type: "saved", rev: newRev, tabId: this.tabId });
@@ -510,6 +523,7 @@ export class Persistence {
       if (s) {
         this.rev = s.meta.rev;
         this.savedAt = s.meta.savedAt;
+        this.lastStored = { id: s.doc.id, updatedAt: s.doc.updatedAt };
       }
       this.stopped = false;
       this.dirty = false;
@@ -675,6 +689,7 @@ export class Persistence {
     if (stored) {
       this.rev = stored.meta.rev;
       this.savedAt = stored.meta.savedAt;
+      this.lastStored = { id: stored.doc.id, updatedAt: stored.doc.updatedAt };
     }
     this.stopped = false;
     this.dirty = false;

@@ -297,6 +297,51 @@ describe("Persistence（IndexedDB）", () => {
     p.close();
   });
 
+  it("保存できた内容の印は、保存し終えてから進み、失敗では進まない（同期の基準を手元より先に書かない）", async () => {
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const p = makeP(kv, name);
+    await p.open();
+    await p.acquireWriter();
+    await p.loadInitial();
+    expect(p.lastStored).toBeNull();
+    const doc = createEmptyDoc("最初");
+    p.attach(() => doc);
+    p.markDirty();
+    await p.flush();
+    const first = { id: doc.id, updatedAt: doc.updatedAt };
+    expect(p.lastStored).toEqual(first);
+    type W = { writeStored: (d: DocData, r: number) => Promise<number> };
+    const real = (p as unknown as W).writeStored.bind(p);
+    let fail = true;
+    (p as unknown as W).writeStored = async (d, r) => {
+      if (fail) throw new DOMException("full", "QuotaExceededError");
+      return real(d, r);
+    };
+    const seen: Array<{ status: string; stored: unknown }> = [];
+    p.on("status", (st) => seen.push({ status: st.status, stored: p.lastStored && { ...p.lastStored } }));
+    edit(doc, "保存できない変更");
+    p.markDirty();
+    await p.flush();
+    expect(p.status).toBe("error");
+    expect(p.lastStored).toEqual(first);
+    // 「保存中」の知らせの時点では、まだ前の印（ここで基準を書くと、保存に失敗したときに先へ進んでしまう）
+    expect(seen.find((x) => x.status === "saving")?.stored).toEqual(first);
+    fail = false;
+    await p.flush();
+    expect(p.status).toBe("saved");
+    expect(p.lastStored).toEqual({ id: doc.id, updatedAt: doc.updatedAt });
+    p.close();
+    // 開き直すと、保存してあった内容の印から始まる
+    const again = makeP(kv, name);
+    await again.open();
+    await again.acquireWriter();
+    const loaded = await again.loadInitial();
+    expect(loaded.recovered).toBe(false);
+    expect(again.lastStored).toEqual({ id: doc.id, updatedAt: doc.updatedAt });
+    again.close();
+  });
+
   it("写せない中身のバックアップは失敗として返し、見出しだけの行を残さない", async () => {
     const p = makeP(memoryKV());
     await p.open();

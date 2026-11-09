@@ -403,28 +403,41 @@ function askUploadForeign(local: DocData): Promise<"local" | "later"> {
 
 // ------------------------------------------------------------ 書き出しの代わり（ファイルを保存できない画面）
 
-export function openCopyDialog(text: string, filename: string): void {
-  const m = openModal({ title: "JSON を書き出す", subtitle: filename, width: 620, icon: "download" });
-  const ta = h("textarea", { class: "input copy-area", attrs: { readonly: "", rows: "12", "aria-label": "書き出す内容", spellcheck: "false" } });
-  ta.value = text;
-  m.body.append(
-    h("p", { class: "modal-text" }, "この画面からはファイルを直接保存できません。下の内容をコピーして、テキストエディタなどで「", h("b", null, filename), "」として保存してください。読み込むときは、その .json ファイルを選びます。"),
-    ta,
-    h("p", { class: "muted small" }, `${(text.length / 1024).toFixed(1)} KB`),
-  );
-  const copy = h("button", { class: "btn btn-primary", type: "button" }, icon("copy", 14), "コピー");
-  copy.addEventListener("click", () => {
-    const fallback = () => {
-      ta.focus();
-      ta.select();
-      toast("選択しました。⌘C（Ctrl+C）でコピーしてください");
-    };
-    try {
-      navigator.clipboard.writeText(text).then(() => toast("コピーしました", { tone: "ok" }), fallback);
-    } catch {
-      fallback();
+/**
+ * 書き出す内容をコピーできる画面（ページから直接は保存できないとき）。
+ * mustSave: 置き換える前の内容を残すための書き出し。「保存しました」を押して閉じたときだけ true（ほかの閉じ方は false）
+ */
+export function openCopyDialog(text: string, filename: string, opts: { mustSave?: boolean } = {}): Promise<boolean> {
+  return new Promise((resolve) => {
+    let saved = !opts.mustSave;
+    const m = openModal({ title: "JSON を書き出す", subtitle: filename, width: 620, icon: "download", onClose: () => resolve(saved) });
+    const ta = h("textarea", { class: "input copy-area", attrs: { readonly: "", rows: "12", "aria-label": "書き出す内容", spellcheck: "false" } });
+    ta.value = text;
+    m.body.append(h("p", { class: "modal-text" }, "この画面からはファイルを直接保存できません。下の内容をコピーして、テキストエディタなどで「", h("b", null, filename), "」として保存してください。読み込むときは、その .json ファイルを選びます。"));
+    if (opts.mustSave) m.body.append(h("p", { class: "modal-text" }, "保存できたら「保存しました」を押してください。やめると、置き換えずに止めます。"));
+    m.body.append(ta, h("p", { class: "muted small" }, `${(text.length / 1024).toFixed(1)} KB`));
+    const copy = h("button", { class: opts.mustSave ? "btn" : "btn btn-primary", type: "button" }, icon("copy", 14), "コピー");
+    copy.addEventListener("click", () => {
+      const fallback = () => {
+        ta.focus();
+        ta.select();
+        toast("選択しました。⌘C（Ctrl+C）でコピーしてください");
+      };
+      try {
+        navigator.clipboard.writeText(text).then(() => toast("コピーしました", { tone: "ok" }), fallback);
+      } catch {
+        fallback();
+      }
+    });
+    m.footer.append(h("button", { class: "btn", type: "button", onClick: () => m.close() }, opts.mustSave ? "やめる" : "閉じる"), copy);
+    if (opts.mustSave) {
+      const done = h("button", { class: "btn btn-primary", type: "button" }, "保存しました");
+      done.addEventListener("click", () => {
+        saved = true;
+        m.close();
+      });
+      m.footer.append(done);
     }
+    setTimeout(() => copy.focus());
   });
-  m.footer.append(h("button", { class: "btn", type: "button", onClick: () => m.close() }, "閉じる"), copy);
-  setTimeout(() => copy.focus());
 }

@@ -10,7 +10,7 @@ import { createEmptyDoc } from "../model/schema";
 import type { DocData, ID, NodeType } from "../model/types";
 import { capabilityWhenReady, errorCode, inArtifactHost, useCapability, type DbApi, type DownloadsApi, type UserApi } from "../host/claude";
 import { isDisposableDoc } from "../demo/demo";
-import { CloudRepo, CloudSync, dbBackend, type CloudState, type SyncBase } from "../persist/cloud";
+import { CloudRepo, CloudSync, baseCovered, dbBackend, type BootDoc, type CloudState, type SyncBase } from "../persist/cloud";
 import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/io";
 import type { BackupKind, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
@@ -35,9 +35,14 @@ export interface AppOptions {
   persistence: Persistence;
   ephemeral: boolean;
   firstRun: boolean;
+  /** 保存してあった内容を読めず、代わりの内容（デモ・バックアップ）で始めた */
+  bootFallback?: boolean;
   notices: string[];
   mount: HTMLElement;
 }
+
+/** 代わりの内容で始めたドキュメントの id（開き直しても、同期するまでは代わりの内容として扱う） */
+const FALLBACK_DOC_KEY = "cloud:fallbackDoc";
 
 export class App implements AppContext {
   readonly store: Store;
@@ -65,6 +70,8 @@ export class App implements AppContext {
   cloudInfo: { state: CloudState | "unavailable"; message: string; lastSyncedAt: string | null } | null = null;
   onCloudChanged: () => void = () => undefined;
   private adopting = false;
+  /** 起動したときに読み込んだ手元（どの編集よりも前）。アカウントの同期で、手元が古いかを決める */
+  private readonly bootDoc: BootDoc;
 
   private readonly shell: HTMLElement;
   private readonly banner: HTMLElement;
@@ -79,6 +86,9 @@ export class App implements AppContext {
     this.ui = opts.ui;
     this.persistence = opts.persistence;
     this.ephemeral = opts.ephemeral;
+    const d0 = this.store.doc;
+    this.bootDoc = { id: d0.id, updatedAt: d0.updatedAt, disposable: isDisposableDoc(d0), fallback: !!opts.bootFallback && !opts.ephemeral };
+    if (this.bootDoc.fallback && this.persistence.writer) void this.persistence.writeKv(FALLBACK_DOC_KEY, d0.id).catch(() => undefined);
     this.vm = new ViewModel(this.store, this.ui);
     this.view = new CanvasView(this.store, this.ui, this.vm);
     this.cmd = new Commands(this.store, this.ui, this.vm, {
@@ -608,13 +618,17 @@ export class App implements AppContext {
     void this.exportJsonAsync(doc, filename);
   }
 
-  private async exportJsonAsync(doc: DocData, filename: string): Promise<void> {
+  /**
+   * 書き出す。保存できた（保存を頼んで受けてもらえた・コピーの画面で「保存しました」）なら true。
+   * 断られた・確認が重なった・書き出せなかったなら false。mustSave: コピーの画面は「保存しました」を押したときだけ true
+   */
+  private async exportJsonAsync(doc: DocData, filename: string, mustSave = false): Promise<boolean> {
     let text: string;
     try {
       text = exportText(doc, APP_VERSION);
     } catch (e) {
       toast(`書き出せませんでした（${e instanceof Error ? e.message : String(e)}）`, { tone: "error", ms: 9000 });
-      return;
+      return false;
     }
     const done = () => {
       try {
@@ -631,19 +645,27 @@ export class App implements AppContext {
           const r = await dl.save({ filename, data: text });
           toast(r.status === "saved" ? `書き出しました: ${filename}` : "書き出しました", { tone: "ok" });
           done();
-          return;
+          return true;
         } catch (e) {
           const code = errorCode(e);
-          if (code === "declined") return void toast("書き出しをやめました");
-          if (code === "rate_limited") return void toast("保存の確認が開いています。閉じてから、もう一度お試しください", { tone: "warn" });
+          if (code === "declined") {
+            toast("書き出しをやめました");
+            return false;
+          }
+          if (code === "rate_limited") {
+            toast("保存の確認が開いています。閉じてから、もう一度お試しください", { tone: "warn" });
+            return false;
+          }
         }
       }
-      openCopyDialog(text, filename);
-      return;
+      const saved = await openCopyDialog(text, filename, { mustSave });
+      if (saved && mustSave) done();
+      return saved;
     }
     downloadText(filename, text);
     toast(`書き出しました: ${filename}`, { tone: "ok" });
     done();
+    return true;
   }
 
   pickImport(): void {
@@ -805,6 +827,15 @@ export class App implements AppContext {
     } catch {
       foreign = false;
     }
+    // 代わりの内容（デモ・バックアップ）で始めて、まだ同期していないドキュメントか（開き直した後も）
+    let fallbackId: string | null = null;
+    try {
+      fallbackId = await this.persistence.readKv<string>(FALLBACK_DOC_KEY);
+    } catch {
+      fallbackId = null;
+    }
+    const boot: BootDoc = { ...this.bootDoc, fallback: this.bootDoc.fallback || (!!fallbackId && fallbackId === this.bootDoc.id) };
+    let fallbackPending = boot.fallback || !!fallbackId;
     /** 手元にまだ保存できていない間の基準（保存できたら書く。基準が手元より先に残らないように） */
     let pendingBase: SyncBase | null = null;
     const writeBaseNow = async (b: SyncBase) => {
@@ -812,16 +843,22 @@ export class App implements AppContext {
       // このブラウザの内容は、このアカウントのもの
       await this.persistence.writeKv("cloud:owner", uid);
       foreign = false;
+      // 代わりの内容で始めた件は、基準が決まって済んだ（後で同じドキュメントに戻しても、代わりの内容とは見なさない）
+      if (fallbackPending) {
+        fallbackPending = false;
+        await this.persistence.writeKv(FALLBACK_DOC_KEY, "").catch(() => undefined);
+      }
     };
-    const savedDurably = () => !this.persistence.hasUnsaved && this.persistence.status !== "error" && this.persistence.status !== "conflict";
+    // 保存の状態が変わるたびに、保存できた内容が基準に追いついたかを見る（「保存中」ではなく、保存し終えた内容で）
     this.persistence.on("status", () => {
-      if (!pendingBase || !savedDurably()) return;
+      if (!pendingBase || !baseCovered(this.persistence.lastStored, pendingBase)) return;
       const b = pendingBase;
       pendingBase = null;
       void writeBaseNow(b).catch(() => undefined);
     });
     const sync = new CloudSync(repo, {
       getDoc: () => this.store.doc,
+      bootDoc: () => boot,
       isWriter: () => this.persistence.writer && !this.store.readOnly,
       isDisposable: (doc) => isDisposableDoc(doc),
       isEditing: () => this.editor.active,
@@ -841,7 +878,11 @@ export class App implements AppContext {
             if (!saved) break;
             kept = this.store.doc.updatedAt === at;
           }
-          if (!kept && !(await this.confirmWithoutBackup(this.store.doc, "browser"))) return null;
+          if (!kept) {
+            // 残せない: 書き出してもらう（保存を断られた・書き出している間に書き足された なら、切り替えない）
+            const at = this.store.doc.updatedAt;
+            if (!(await this.confirmWithoutBackup(this.store.doc, "browser")) || this.store.doc.updatedAt !== at) return null;
+          }
         }
         // 読んでいる間・残している間に手元が変わった（入力が始まった）・書き手でなくなった: 入れ替えない
         if (!canWrite() || !stillOk()) return null;
@@ -878,7 +919,7 @@ export class App implements AppContext {
       writeBase: async (b) => {
         // 基準は、手元にその内容が保存できてから書く（保存に失敗していれば、保存できたときに書く）
         await this.persistence.flush().catch(() => undefined);
-        if (!savedDurably()) {
+        if (!baseCovered(this.persistence.lastStored, b)) {
           pendingBase = b;
           return;
         }
@@ -894,18 +935,17 @@ export class App implements AppContext {
 
   /**
    * バックアップを作れないブラウザで、置き換えられる内容を書き出してから続けるか聞く。
-   * 書き出す（保存を頼む・コピーの画面を出す）と続ける。やめると false
+   * 書き出しが済んだ（保存を受けてもらえた・コピーの画面で「保存しました」）ときだけ続ける。やめた・断られたら false
    */
   private async confirmWithoutBackup(doc: DocData, what: "account" | "browser"): Promise<boolean> {
     const ok = await confirmDialog({
       title: "このブラウザではバックアップを作れません",
-      body: `置き換えられる${what === "account" ? "アカウントの内容" : "このブラウザの内容"}は、どこにも残りません。JSON で書き出してから続けますか？`,
+      body: `置き換えられる${what === "account" ? "アカウントの内容" : "このブラウザの内容"}は、どこにも残りません。JSON で書き出してから続けますか？（保存できなかったときは、置き換えずに止めます）`,
       ok: "書き出して続ける",
       danger: true,
     });
     if (!ok) return false;
-    this.exportJson(doc, exportFileName().replace(/\.json$/, what === "account" ? "_account.json" : "_browser.json"));
-    return true;
+    return this.exportJsonAsync(doc, exportFileName().replace(/\.json$/, what === "account" ? "_account.json" : "_browser.json"), true);
   }
 
   /** 初めてガイドを終えたときに一度だけ、ブラウザに自動削除からの保護を頼む */

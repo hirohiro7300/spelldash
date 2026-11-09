@@ -82,6 +82,8 @@ const FAKE_CLAUDE = () => {
         if (flags.noDownloads) return null;
         return Object.freeze({
           async save({ filename, data }) {
+            // 見る人が保存の確認を断った
+            if (flags.declineDownloads) throw { code: "declined", message: "declined" };
             window.__saved.push({ filename, data: String(data) });
             return { status: "saved" };
           },
@@ -288,6 +290,33 @@ await check("バックアップを作れないブラウザでも、書き出し�
   }));
   assert(r.switched, "アカウントの内容に切り替わらない");
   assert(r.exported, "置き換える前の内容が書き出されていない");
+  await N.ctx.close();
+});
+
+await check("書き出しを断ったら、バックアップを作れないブラウザの内容を置き換えずに止める", async () => {
+  const N = await newDevice({ signedOut: true, noIdb: true, declineDownloads: true });
+  await N.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "unavailable", null, { timeout: 15000 });
+  await N.page.evaluate(() => document.querySelector(".modal-close")?.click());
+  await N.page.evaluate(() => window.__fourD.app.cmd.createNode("goal", { x: 0, y: 1700 }, { title: "断ったときに残る目標", exact: true }));
+  await N.page.waitForFunction(() => window.__fourD.persistence.status === "saved");
+  await N.ctx.addInitScript(() => {
+    if (window.__fakeFlags) window.__fakeFlags.signedOut = false;
+  });
+  await N.page.reload({ waitUntil: "load" });
+  await N.page.waitForFunction(() => !!window.__fourD);
+  const dialog = N.page.getByRole("dialog", { name: "どちらの内容を使いますか？" });
+  await dialog.waitFor({ timeout: 15000 });
+  await dialog.getByRole("button", { name: "アカウントの内容を使う" }).click();
+  const confirm = N.page.getByRole("dialog", { name: "このブラウザではバックアップを作れません" });
+  await confirm.waitFor({ timeout: 10000 });
+  await confirm.getByRole("button", { name: "書き出して続ける" }).click();
+  await N.page.waitForFunction(() => window.__fourD.app.cloudInfo?.state === "paused", null, { timeout: 15000 });
+  const r = await N.page.evaluate(() => ({
+    kept: Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "断ったときに残る目標"),
+    switched: Object.values(window.__fourD.store.doc.nodes).some((n) => n.title === "端末Aで書いた目標"),
+    message: window.__fourD.app.cloudInfo.message,
+  }));
+  assert(r.kept && !r.switched, `置き換えてしまった: ${JSON.stringify(r)}`);
   await N.ctx.close();
 });
 
