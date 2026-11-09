@@ -18663,7 +18663,10 @@ console.log("pro:");
     check("動線: ログインから戻ると加入画面へ戻り「ログインした。月額か年額を選ぶ。」", back && resumed && !page.url().includes("resume="), `${page.url()} / ${await text(page, "#proMessage")} / plans=${(await text(page, "#proPlans")).slice(0, 60)} / auth=${await text(page, "#authMessage")}`);
     check("動線: 戻ったら加入の途中の印を消し、月額のボタンに焦点", (await page.evaluate(() => localStorage.getItem("spelldash_pro_intent"))) === null && (await page.evaluate(() => document.activeElement?.id)) === "proCheckoutMonth");
     check("Pro: ページ内に特商法のリンク", (await page.$$('a[href="./tokushoho.html"]')).length >= 2);
-    check("Pro: よくある質問は 3 つ（「アプリ版でも使える」はアプリのログインができるまで出さない）、常体", (await page.$$("details.pro-faq")).length === 3 && !(await page.content()).includes("アプリ版でも使える") && !(await page.content()).includes("いつでも解約できますか") && !(await page.$$eval("details.pro-faq", (els) => els.map((e) => e.textContent).join(""))).includes("ますか"), String((await page.$$("details.pro-faq")).length));
+    check("Pro: よくある質問は 4 つ（Batch 86 で「どこで使える」を足した。「アプリ版でも使える」はアプリのログインができるまで出さない）、常体", (await page.$$("details.pro-faq")).length === 4 && !(await page.content()).includes("アプリ版でも使える") && !(await page.content()).includes("いつでも解約できますか") && !(await page.$$eval("details.pro-faq", (els) => els.map((e) => e.textContent).join(""))).includes("ますか"), String((await page.$$("details.pro-faq")).length));
+    const where = await page.evaluate(() => [...document.querySelectorAll("details.pro-faq")].map((d) => [d.querySelector("summary")?.textContent.trim() ?? "", d.querySelector("p")?.textContent.trim() ?? ""]).find((f) => f[0] === "どこで使える") ?? null);
+    check("Pro（Batch 86）: よくある質問に「どこで使える」→「Web 版にログインして使う。アプリ版はまだログインできないので、Pro にはならない。」（値段・中身・ゲートは変えない）",
+      where?.[1] === "Web 版にログインして使う。アプリ版はまだログインできないので、Pro にはならない。", JSON.stringify(where));
     check("Pro: 未ログインでエラー0", page.errors.length === 0, page.errors[0] ?? "");
     await page.close();
   }
@@ -27292,6 +27295,74 @@ console.log("journey (86.1):");
         JSON.stringify({ links, wide, opened, here: hereNow(page), err: page.errors[0] }));
       await closeCtx(page);
     }
+  }
+
+  // ----- (6) まとめて足すで上限に当たっても、足した数を言う（A10）-----
+  //     40 語ある所に 73 行を貼ると 60 語が入る。字は「60語を足した。残りの 13行は欄に残した。」の後ろに上限の文（受付中の Web の無料の人は「Pro なら1,000語」がリンク）。
+  //     アプリ（ネイティブの枠）は前の決まりどおりリンクなし。描き直し（プランの知らせ）でも消えない。3f03d63 は上限の文だけ（描き直しが上書き）
+  {
+    const FILL40 = Array.from({ length: 40 }, (_, i) => ({ en: `fill ${letters(i)}`, ja: `埋め${i + 1}`, addedAt: T }));
+    const PASTE = Array.from({ length: 73 }, (_, i) => `paste ${letters(i)}, 貼る${i + 1}`).join("\n");
+    for (const native of [false, true]) {
+      const page = await journeyPage({ spelldash_my_words: JSON.stringify(FILL40), spelldash_billing_open: JSON.stringify({ open: true, at: Date.now() }) }, { native });
+      await page.goto(BASE + "/mywords.html", { waitUntil: "networkidle" });
+      await page.evaluate(() => { const d = document.getElementById("myWordsBulkFold"); if (d) d.open = true; });
+      await page.fill("#myWordsBulk", PASTE);
+      await page.click("#myWordsBulkAdd");
+      await waitText(page, "#myWordsStatus", /100語まで/);
+      await page.waitForTimeout(200);
+      const view = () => page.evaluate(() => ({
+        status: document.getElementById("myWordsStatus").textContent,
+        link: document.querySelector("#myWordsStatus a")?.getAttribute("href") ?? null,
+        left: document.getElementById("myWordsBulk").value.split("\n").filter(Boolean).length,
+        n: JSON.parse(localStorage.getItem("spelldash_my_words") || "[]").length
+      }));
+      const v = await view();
+      await page.evaluate(() => document.dispatchEvent(new CustomEvent("spelldash:plan")));
+      await page.waitForTimeout(200);
+      const again = await view();
+      const want = native ? "60語を足した。残りの 13行は欄に残した。無料で追加できるのは100語まで。" : "60語を足した。残りの 13行は欄に残した。無料で追加できるのは100語まで（Pro なら1,000語）。";
+      check(`86.1 まとめて足すで上限に当たる（A10・${native ? "アプリ" : "Web の無料"}）: 「${want}」・${native ? "リンクなし" : "「Pro なら1,000語」だけが加入画面へのリンク"}・欄に 13 行・語は 100・描き直しでも消えない・エラー 0`,
+        v.status === want && again.status === want && (native ? v.link === null && again.link === null : v.link === "./pro.html" && again.link === "./pro.html") && v.left === 13 && v.n === 100 && page.errors.length === 0,
+        JSON.stringify({ v, again, err: page.errors[0] }));
+      await closeCtx(page);
+    }
+  }
+
+  // ----- (7) ログインのリンクを送った後の 1 行・Preview の渡すリンク（A12）-----
+  //     3f03d63: 送った文だけ（ブラウザの 1 行が無い）・Preview の渡すリンクは Preview の origin
+  {
+    const page = await journeyPage({ spelldash_test_configured: "1" });
+    await page.goto(BASE + "/index.html", { waitUntil: "networkidle" });
+    await waitUntil(() => page.evaluate(() => { const t = document.getElementById("loginToggle"); return !!t && t.getClientRects().length > 0 && window.SpellDashArea !== undefined; }), 6000);
+    await page.click("#loginToggle");
+    await page.fill("#emailInput", "test@example.com");
+    await page.click("#loginButton");
+    await waitUntil(async () => { const m = await page.evaluate(() => document.getElementById("authMessage")?.textContent ?? ""); return m.length > 0 && !/送信中/.test(m); }, 6000, 100);
+    const msg = await page.evaluate(() => { const el = document.getElementById("authMessage"); return { text: el?.textContent ?? "", lines: (el?.innerText ?? "").split("\n").map((s) => s.trim()).filter(Boolean) }; });
+    check("86.1 ログインのリンクを送った後（A12）: 「ログインリンクを送った。メールを開いて続ける。」の下の行に「このページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。」・エラー 0",
+      JSON.stringify(msg.lines) === JSON.stringify(["ログインリンクを送った。メールを開いて続ける。", "このページを開いたブラウザで開く（メールのアプリの中で開くと、ここに戻れないことがある）。"]) && page.errors.length === 0,
+      JSON.stringify({ msg, err: page.errors[0] }));
+    await closeCtx(page);
+  }
+  {
+    const page = await previewJourney({ spelldash_my_words: JSON.stringify(TB_WORDS), spelldash_my_books: TB_BOOKS });
+    await page.goto(PREVIEW + "/mywords.html?book=tb", { waitUntil: "load" });
+    await waitUntil(() => page.evaluate(() => { const b = document.getElementById("myBookGive"); return !!b && !b.hidden; }), 6000);
+    await page.evaluate(() => {
+      window.__copied = null;
+      const fake = { writeText: async (t) => { window.__copied = String(t); } };
+      try { Object.defineProperty(navigator, "clipboard", { value: fake, configurable: true }); } catch { navigator.clipboard.writeText = fake.writeText; }
+    });
+    await page.click("#myBookGive");
+    await waitUntil(() => page.evaluate(() => { const g = document.getElementById("myGive"); const b = document.getElementById("myGiveLink"); return !!g && !g.hidden && !!b && !b.disabled; }), 6000);
+    await page.click("#myGiveLink");
+    await waitUntil(() => page.evaluate(() => window.__copied !== null), 4000);
+    const link = await page.evaluate(() => window.__copied);
+    check("86.1 確認用の Preview の渡すリンク（A12）: アプリと同じく本番の origin で作る（https://www.spelldash.net/mywords.html#share= で始まる）・認証の部品もクラウドも呼ばない・エラー 0",
+      typeof link === "string" && link.startsWith("https://www.spelldash.net/mywords.html#share=") && page.outside.length === 0 && page.errors.length === 0,
+      JSON.stringify({ link: String(link).slice(0, 80), outside: page.outside.slice(0, 2), err: page.errors[0] }));
+    await closeCtx(page);
   }
   check("86.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));
 }
