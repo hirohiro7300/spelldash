@@ -33,7 +33,7 @@
 | play_sessions | insert（js/sync.js） | select・insert（本人）。supabase/schema.sql |
 | daily_scores | insert（js/dailyRank.js） | select（全員）・insert・delete（本人）。supabase/schema.sql |
 | user_items | upsert（js/userItemsSync.js） | select・insert・update・delete（本人）。docs/SQL_USER_ITEMS.md。まだ作っていないかもしれない |
-| funnel_events | upsert・重複は無視（js/funnelLog.js） | insert（未ログインも。user_id は空か本人）。select は無い。docs/SQL_FUNNEL.md。まだ作っていないかもしれない。今の書き込みは門が無くても断られているおそれがある（下） |
+| funnel_events | insert（衝突の指定なし。同じ行がもうある 23505 は送れたことにする。js/funnelLog.js。Batch 86） | insert（未ログインも。user_id は空か本人）。select は無い。docs/SQL_FUNNEL.md。まだ作っていないかもしれない。Batch 85 までの書き込みは門が無くても断られていた（下） |
 | feedback | insert（js/feedback.js） | insert（未ログインも）。docs/SQL_FEEDBACK.md §2 の版なら本人だけ。まだ作っていないかもしれない |
 
 - 3 つの命令を全部の表にそろえる。許す側の方針が無い命令（例 battle_sessions の update）は、もともと断られる。門を足しても変わらない。
@@ -41,7 +41,7 @@
 - 門を付けない表: subscriptions（書くのは課金の webhook の service role だけ。authenticated に書く権限が無い。docs/SQL_BILLING.md）・crm_notes（service role だけ。docs/SQL_CRM.md）。
 - service role は行の権限を飛ばす。サーバーの API（api/）の書き込みはどれも service role なので、門に関係なく今のまま動く。日次の keepalive は読むだけ。
 - クライアントは関数（rpc）を呼ばない。表へ書く経路は上の 10 個だけ。
-- funnel_events は、この文書の外の前からの問題（統合担当へ）。js/funnelLog.js の funnel_events への upsert（統合の木で 113 行）は onConflict と ignoreDuplicates を付ける。要求は `insert … on conflict (device_id, step, source, day) do nothing` になる。衝突の先の列を名指す on conflict は、その列を読む扱いになり、select の方針が要る。docs/SQL_FUNNEL.md はわざと select の方針を作らない。反証の役が手元の使い捨てのデータベース（版 16）で試すと、門を外しても行の権限の違反（42501）で断られた。本番では確かめていない。select の方針を足すか、衝突の先を名指さない on conflict にすると通る。門はこの表の結果を変えない。
+- funnel_events（Batch 86 で直した）。Batch 85 までの js/funnelLog.js は funnel_events へ onConflict と ignoreDuplicates を付けた upsert を出し、要求は `insert … on conflict (device_id, step, source, day) do nothing` になっていた。衝突の先の列を名指す on conflict は、その列を読む扱いになり、select の方針が要る。docs/SQL_FUNNEL.md はわざと select の方針を作らない。反証の役が手元の使い捨てのデータベース（版 16）で試すと、門を外しても行の権限の違反（42501）で断られた（本番では確かめていない）。Batch 86 から、衝突の指定の無いふつうの insert を出す（SQL は変えない）。同じ行がもうあるときの一意の違反（23505）は、送れたのと同じに扱う（端末で印を覚え、同じ段を送り直さない）。E2E の偽のデータベースも、この表への衝突の先を名指す書き込みを 42501 で断り、重なる insert に 23505 を返す（tests/e2e.mjs の CLOUD_NO_SELECT）。門はこの表の結果を変えない。
 
 ## 3. 順番（いちばん大事）
 
