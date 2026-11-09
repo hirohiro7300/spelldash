@@ -1103,7 +1103,7 @@ export class CloudSync {
     // 読めない写し: 中身のある、古くない手元なら、その内容で書き直す（読めなかった世代を書き残し、その世代を持つ端末が戻せるように）
     if (this.corruptGen && remoteM.gen === this.corruptGen) {
       if (!this.canRepair(remoteM)) {
-        this.setState("error", "アカウントの写しが読めません。最新の内容がある端末で開くと直ります（この端末の内容で書き直すときは「同期をやり直す」）");
+        this.setState("error", "アカウントの写しが読めません。最新の内容がある端末で開くと直ります（この端末の内容で書き直すときは、メニュー →「バックアップと復元」の「同期をやり直す」）");
         return "done";
       }
       if (!(await this.foreignOk())) return "done";
