@@ -74,7 +74,8 @@ export function initializeMyWordsView(onChange = () => {}) {
 
   bulkButton?.addEventListener("click", () => {
     const textarea = document.getElementById("myWordBulk");
-    const { added, skipped } = addMyWordsBulk(textarea.value);
+    const { added, skipped: refused, limited = 0 } = addMyWordsBulk(textarea.value);
+    const skipped = [...refused, ...Array.from({ length: limited }, () => limitMessage())]; // 上限で足せなかった行も前のとおりスキップに数える（Batch 87: addMyWordsBulk は数だけを返す）
     const lines = [];
     if (added.length > 0) lines.push(`${added.length}語を追加した`);
     if (skipped.length > 0) lines.push(`スキップ ${skipped.length}件: ${skipped.slice(0, 3).join(" / ")}${skipped.length > 3 ? " …" : ""}`);

@@ -418,17 +418,20 @@ $("myWordsAdd")?.addEventListener("submit", (event) => {
 // 1 行も足せなかったときは欄をそのまま（打った形で直せる）。断った理由は英語と訳の頭でどの行かを言う（js/myWords.js addMyWordsBulk）
 $("myWordsBulkAdd")?.addEventListener("click", () => {
   const box = $("myWordsBulk");
-  const { added, skipped, rest } = addMyWordsBulk(box.value, current);
+  const { added, skipped, limited = 0, rest } = addMyWordsBulk(box.value, current);
   const kept = added.length > 0 && skipped.length > 0;
+  const why = skipped.length > 0 ? `: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}` : ""; // 決まりに合わない行の理由（3 つまで。上限で残った行は入らない: limited）
   const lines = [];
   if (added.length > 0) lines.push(`${added.length}語を足した`);
-  if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行${kept ? "（欄に残した）" : ""}: ${skipped.slice(0, 3).join(" ／ ")}${skipped.length > 3 ? " …" : ""}`);
+  if (skipped.length > 0) lines.push(`足せなかった ${skipped.length}行${kept ? "（欄に残した）" : ""}${why}`);
   if (lines.length === 0) lines.push("1行に「english, 訳」で書く");
   if (added.length > 0) box.value = (rest ?? []).join("\n");
-  // 足して上限に達した（Batch 86）: 足した数と欄に残した行の数を、上限の文（描き直しが書く。リンクの決まりは setLimitStatus）の前に置く
-  if (added.length > 0 && getMyWords().length >= maxMyWords()) {
+  // 上限に達した（Batch 86・87）: 足した数・欄に残した行の数・決まりに合わずに足せなかった行の理由を、上限の文（描き直しが書く。リンクの決まりは setLimitStatus）の前に置く。
+  // 上限で残った行（limited）は上限の文が言う。limited があれば保存も上限（足した語を書いた後の数で断った）。1 語も足せずに上限なら欄はそのまま（足せなかった理由だけを前に置く）
+  if (limited > 0 || (added.length > 0 && getMyWords().length >= maxMyWords())) {
     const left = (rest ?? []).length;
-    limitLead = `${added.length}語を足した。${left > 0 ? `残りの ${left}行は欄に残した。` : ""}`;
+    const done = added.length > 0 ? `${added.length}語を足した。${left > 0 ? `残りの ${left}行は欄に残した。` : ""}` : "";
+    limitLead = `${done}${skipped.length > 0 ? endSentence(`足せなかった ${skipped.length}行${why}`) : ""}`;
     render();
     return;
   }
