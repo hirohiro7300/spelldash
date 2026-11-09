@@ -2,17 +2,20 @@
 // 単語帳の切り替え（Batch 81。作る・名前を変える・消す）・1 語ずつ足す・まとめて足す（どちらも今の単語帳へ）・一覧（今の単語帳の語。状態 これから・あやふや・覚えた）・
 // 消す（確かめてから）・訳をその場で直す・選んでまとめて消す／移す・「学ぶ」（/?learn=my&book=<id>。js/game.js の学ぶ回。全部の単語帳は /?learn=my）・
 // 「選択式で学ぶ」（Batch 82。/?learn=my[&book=<id>]&choice=en。js/myWordsChoice.js）。
+// 単語帳を人に渡す（Batch 84。docs/SPEC_MY_WORDS.md §13）: 「渡す」でリンクと文字をコピー（形は js/myWordsShare.js）、リンク（#share=<code>）を開くと上に渡された単語帳。
 // 数はマイ単語帳の中だけ（学習状況の公開の語の数とランクには入らない）。保存と同期の印は js/myWords.js、決まりは js/myWordsCore.js
 
 import { initializeAuth } from "./auth.js";
 import { setFooterYear } from "./footer.js";
 import { renderHeaderStreak } from "./headerStreak.js";
 import { setupUnloadSync } from "./sync.js";
+import { isNativeApp, PRODUCTION_ORIGIN } from "./appEnv.js";
 import {
   getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage, limitOfferText,
-  getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa
+  getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa, addSharedWords
 } from "./myWords.js";
-import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, MY_BOOK_NAME_MAX } from "./myWordsCore.js";
+import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, uniqueBookName, MY_BOOK_NAME_MAX, MY_BOOKS_MAX } from "./myWordsCore.js";
+import { SHARE_LONG_LINK, SHARE_MAX_WORDS, bookShare, encodeShare, decodeShare, shareCodeOf, shareLinkOf, shareTextOf } from "./myWordsShare.js";
 import { LEARN_LABELS } from "./learnState.js";
 
 const STATE_KEY = ["new", "unsure", "learned"];
@@ -45,15 +48,21 @@ function setStatus(text, { error = false, limit = false } = {}) {
 // （動線の印 mywords。js/funnelLog.js trackProEntries が押されたのを数える）。受付前・アプリ・Pro の人は文だけ（リンクも値段も出さない）
 function setLimitStatus() {
   setStatus(limitMessage(), { limit: true });
-  const offer = limitOfferText();
   const status = $("myWordsStatus");
-  const text = status?.textContent ?? "";
+  if (status) writeWithOffer(status, status.textContent);
+}
+
+// node の字を text にし、上限の文の「Pro なら1,000語」があれば加入画面へのリンクにする（上の setLimitStatus と、渡された語を足した結果・上限の案内: Batch 84）。
+// リンクにするのは js/myWords.js limitOfferText が許すときだけ（受付中の Web で Pro でない人。受付前・アプリ・Pro の人は字だけ）
+function writeWithOffer(node, text) {
+  node.textContent = text;
+  const offer = limitOfferText();
   const at = offer ? text.indexOf(offer) : -1;
   if (at < 0) return;
   const link = el("a", "", offer);
   link.href = "./pro.html";
   link.dataset.funnel = "mywords";
-  status.replaceChildren(text.slice(0, at), link, text.slice(at + offer.length));
+  node.replaceChildren(text.slice(0, at), link, text.slice(at + offer.length));
 }
 
 function el(tag, cls, text) {
@@ -103,6 +112,7 @@ function setCurrent(id, { focusTab = false } = {}) {
   selecting = false;
   selected.clear();
   editing = null;
+  closeGive(); // 渡すのは今の単語帳（替えたら閉じる）
   try {
     const url = new URL(location.href);
     url.searchParams.set(BOOK_PARAM, id);
@@ -132,6 +142,11 @@ function renderBooks(books, counts) {
     del.setAttribute("aria-label", `「${name}」を消す`);
   }
   $("myBookRename")?.setAttribute("aria-label", `「${name}」の名前を変える`);
+  const give = $("myBookGive");
+  if (give) {
+    give.hidden = (counts[current]?.total ?? 0) === 0; // 英語の語の無い単語帳は渡さない
+    give.setAttribute("aria-label", `「${name}」を渡す`);
+  }
 }
 
 function renderSelectBar(entries, books) {
@@ -262,6 +277,8 @@ function render() {
   }
   if (full) setLimitStatus();
   else if (statusIsLimit) setStatus("");
+  renderRecv(list, books); // 渡された単語帳（足す先の名前・上限の案内は今の単語帳と語の数で変わる）
+  refreshGive(list, books); // 開いている「渡す」の中身（語を足した・消した・同期で届いた）
 
   const ul = $("myWordsList");
   if (!ul) return;
@@ -494,6 +511,297 @@ $("myWordsSelMove")?.addEventListener("click", () => {
   (selecting ? $("myWordsSelAll") : $("myWordsEn"))?.focus();
 });
 
+// ===== 渡す（Batch 84。docs/SPEC_MY_WORDS.md §13）: 今の単語帳のリンク（#share=<code>）と文字（まとめて足すの形）をコピーする =====
+// 中身は単語帳の名前と英語（画面の形）と訳だけ（js/myWordsShare.js bookShare）。リンクの origin は Web なら今の origin、アプリなら本番（js/appEnv.js）。
+// コピーは押した操作の中で最初に呼ぶ（リンクは開いたときに作っておく）。コピーできないときは欄に出して選んでもらう
+let give = null; // 開いている「渡す」の中身 { bookId, link, text, count }
+let giveSeq = 0;
+const shareOrigin = () => (isNativeApp ? PRODUCTION_ORIGIN : location.origin);
+
+function setGiveStatus(text, { error = false } = {}) {
+  const s = $("myGiveStatus");
+  if (!s) return;
+  s.textContent = text;
+  s.classList.toggle("is-error", error);
+}
+
+// 開く（focus: 開いた後に焦点を最初のボタンへ）。開いている間に語が変わったら焦点を動かさずに作り直す（refreshGive）
+async function openGive({ focus = true } = {}) {
+  const list = getMyWords();
+  const books = getMyBooks(list);
+  const bookId = books.some((b) => b.id === current) ? current : books[0].id;
+  const share = bookShare(list, bookId, books);
+  if (share.words.length === 0) {
+    closeGive();
+    return;
+  }
+  const seq = ++giveSeq;
+  const enc = share.over ? null : await encodeShare(share);
+  if (seq !== giveSeq) return; // 作っている間に閉じた・開き直した
+  const link = enc?.fits ? shareLinkOf(shareOrigin(), enc.code) : null;
+  const text = shareTextOf(share.words);
+  give = { bookId, link, text, count: share.words.length };
+  $("myGiveTitle").textContent = `「${share.name}」を渡す`;
+  $("myGiveLead").textContent = `${fmt(share.words.length)}語。リンクを開いた人は、自分のマイ単語帳に足せる。文字は相手の「まとめて足す」に貼ると同じ語になる。`;
+  const notes = [];
+  if (share.scenes) notes.push(`場面カード ${fmt(share.scenes)}枚は入れない。`);
+  if (share.invalid) notes.push(`今の決まりに合わない ${fmt(share.invalid)}語は入れない。`);
+  if (share.over) notes.push(`${fmt(SHARE_MAX_WORDS)}語より多いので、リンクにはできない。「文字をコピー」で渡す。`);
+  else if (!link) notes.push("リンクにするには長すぎる。「文字をコピー」で渡す。");
+  else if (link.length > SHARE_LONG_LINK) notes.push(`リンクが長い（${fmt(link.length)}字）。チャットやメールによっては途中で切れる。そのときは「文字をコピー」で渡す。`);
+  const note = $("myGiveNote");
+  note.textContent = notes.join("");
+  note.hidden = notes.length === 0;
+  $("myGiveLink").disabled = !link;
+  $("myGiveShare").hidden = typeof navigator.share !== "function";
+  const panel = $("myGive");
+  const opening = panel.hidden;
+  panel.hidden = false;
+  $("myBookGive")?.setAttribute("aria-expanded", "true");
+  if (opening) setGiveStatus("");
+  if (focus) (link ? $("myGiveLink") : $("myGiveText"))?.focus();
+}
+
+function closeGive({ focus = false } = {}) {
+  giveSeq++;
+  give = null;
+  const panel = $("myGive");
+  const wasOpen = !!panel && !panel.hidden;
+  if (panel) panel.hidden = true;
+  $("myBookGive")?.setAttribute("aria-expanded", "false");
+  const box = $("myGiveCopyBox");
+  if (box) box.hidden = true;
+  const area = $("myGiveCopy");
+  if (area) area.value = "";
+  setGiveStatus("");
+  if (focus && wasOpen) $("myBookGive")?.focus();
+}
+
+// 開いている「渡す」を今の語で作り直す（焦点は動かさない）。中身が同じなら何もしない
+function refreshGive(list, books) {
+  const panel = $("myGive");
+  if (!give || !panel || panel.hidden) return;
+  if (give.bookId !== current) {
+    closeGive();
+    return;
+  }
+  if (shareTextOf(bookShare(list, current, books).words) !== give.text) openGive({ focus: false });
+}
+
+async function copyGive(kind, button) {
+  if (!give) return;
+  const value = kind === "link" ? give.link : give.text;
+  if (!value) return;
+  const done = kind === "link" ? "リンクをコピーした。チャットやメールに貼って渡す。" : `文字をコピーした（${fmt(give.count)}行）。相手は「まとめて足す」に貼る。`;
+  const box = $("myGiveCopyBox");
+  const area = $("myGiveCopy");
+  try {
+    await navigator.clipboard.writeText(value);
+    box.hidden = true;
+    area.value = "";
+    setGiveStatus(done);
+    return;
+  } catch {
+    // 下の欄に出して写す
+  }
+  box.hidden = false;
+  area.value = value;
+  area.focus();
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+  if (copied) {
+    box.hidden = true;
+    area.value = "";
+    setGiveStatus(done);
+    button?.focus();
+  } else {
+    setGiveStatus("コピーできなかった。下の欄の字を選んでコピーする。", { error: true });
+  }
+}
+
+$("myBookGive")?.addEventListener("click", () => {
+  if ($("myGive")?.hidden === false) closeGive({ focus: true });
+  else openGive();
+});
+$("myGiveClose")?.addEventListener("click", () => closeGive({ focus: true }));
+$("myGive")?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  closeGive({ focus: true });
+});
+$("myGiveLink")?.addEventListener("click", (event) => copyGive("link", event.currentTarget));
+$("myGiveText")?.addEventListener("click", (event) => copyGive("text", event.currentTarget));
+// 端末の共有の画面（navigator.share があるときだけボタンを出す。ネイティブのプラグインは足していない）。リンクにできないときは文字を渡す
+$("myGiveShare")?.addEventListener("click", async () => {
+  if (!give || typeof navigator.share !== "function") return;
+  const title = $("myGiveTitle")?.textContent ?? "単語帳を渡す";
+  const data = give.link ? { title, text: $("myGiveLead")?.textContent ?? "", url: give.link } : { title, text: give.text };
+  try {
+    await navigator.share(data);
+    setGiveStatus("共有した。");
+  } catch (error) {
+    if (error?.name === "AbortError") setGiveStatus("");
+    else setGiveStatus("共有できなかった。リンクか文字をコピーして渡す。", { error: true });
+  }
+});
+
+// ===== 渡された単語帳（Batch 84）: mywords.html#share=<code> を開くと上に出す =====
+// 名前・語の数・最初の 5 語（字だけ）と、新しい単語帳として足す（既定。名前は今の単語帳と重ねない）・今の単語帳に足す・やめる。
+// 足すのは 1 語ずつ足すと同じ決まり（js/myWords.js addSharedWords）。足した後とやめた後は # を外す（読み直しても、もう聞かない）。
+// 読めないリンクは 1 行だけ（このリンクは読めません）。ゲストもログインした人も、今の人の領域に足す
+const RECV_ROWS = 5;
+let recv = null; // 読めた中身 { name, words }
+let recvSeq = 0;
+let recvTimer = 0;
+
+function setRecvStatus(text, { error = false, offer = false, later = false } = {}) {
+  const s = $("myRecvStatus");
+  if (!s) return;
+  clearTimeout(recvTimer);
+  s.classList.toggle("is-error", error);
+  const write = () => (offer ? writeWithOffer(s, text) : (s.textContent = text));
+  if (!later) {
+    write();
+    return;
+  }
+  s.textContent = ""; // 出したばかりの読み上げの行は、空にしてから書く（読み上げが拾う）
+  recvTimer = setTimeout(write, 40);
+}
+
+// # を外す（足した後とやめた後）。足した先の単語帳があれば ?book= もその単語帳に
+function dropShareHash(bookId = null) {
+  try {
+    const url = new URL(location.href);
+    url.hash = "";
+    if (bookId) url.searchParams.set(BOOK_PARAM, bookId);
+    history.replaceState(history.state, "", `${url.pathname}${url.search}`);
+  } catch {
+    // 外せなくても読み直しで同じ問いが出るだけ
+  }
+}
+
+// 区切り（行の部品の出し入れ）。mode: "ask"（問い）・"done"（足した後）・"bad"（読めない: 1 行だけ）
+function recvParts(mode) {
+  const ask = mode === "ask";
+  for (const id of ["myRecvSum", "myRecvRows", "myRecvHint", "myRecvNew", "myRecvHere", "myRecvCancel"]) {
+    const node = $(id);
+    if (node) node.hidden = !ask;
+  }
+  if (!ask) $("myRecvMore").hidden = true;
+  $("myRecvTitle").hidden = mode === "bad";
+  $("myRecvActs").hidden = mode === "bad";
+  $("myRecvClose").hidden = mode !== "done";
+}
+
+async function readShareLink() {
+  const code = shareCodeOf(location.hash);
+  if (code === null) return;
+  const seq = ++recvSeq;
+  recv = null;
+  const r = await decodeShare(code);
+  if (seq !== recvSeq) return;
+  const box = $("myRecv");
+  if (!box) return;
+  if (!r.ok) {
+    recvParts("bad");
+    box.hidden = false;
+    setRecvStatus(r.reason === "unsupported" ? "このブラウザではこのリンクを読めません" : "このリンクは読めません", { later: true });
+    return;
+  }
+  recv = { name: r.name, words: r.words };
+  setRecvStatus("");
+  recvParts("ask");
+  box.hidden = false;
+  renderRecv();
+  $("myRecvTitle")?.focus();
+}
+
+// 問いの中身（render からも呼ぶ: 今の単語帳の名前・上限までの数・単語帳の数）
+function renderRecv(list = getMyWords(), books = getMyBooks(list)) {
+  if (!recv || $("myRecv")?.hidden !== false) return;
+  const n = recv.words.length;
+  $("myRecvSum").textContent = `「${recv.name}」 ${fmt(n)}語`;
+  $("myRecvRows").replaceChildren(
+    ...recv.words.slice(0, RECV_ROWS).map((w) => {
+      const li = el("li", "mw-recv__row");
+      li.append(el("span", "mw-recv__en", w.en), el("span", "mw-recv__ja", w.ja));
+      return li;
+    })
+  );
+  const more = $("myRecvMore");
+  more.hidden = n <= RECV_ROWS;
+  more.textContent = n > RECV_ROWS ? `ほか ${fmt(n - RECV_ROWS)}語` : "";
+  const here = books.find((b) => b.id === current) ?? books[0];
+  const newName = uniqueBookName(recv.name, books);
+  const room = maxMyWords() - list.length;
+  const canNew = books.length < MY_BOOKS_MAX && !!newName;
+  const hint = [canNew ? `新しい単語帳の名前は「${newName}」。今の単語帳は「${here.name}」。` : `単語帳は${fmt(MY_BOOKS_MAX)}冊まで。今の単語帳「${here.name}」には足せる。`];
+  if (room <= 0) hint.push(endSentence(limitMessage()));
+  else if (room < n) hint.push(`上限まであと ${fmt(room)}語。`);
+  writeWithOffer($("myRecvHint"), hint.join(""));
+  const add = $("myRecvNew");
+  add.disabled = !canNew || room <= 0;
+  add.setAttribute("aria-label", canNew ? `新しい単語帳「${newName}」として足す` : "新しい単語帳として足す");
+  const put = $("myRecvHere");
+  put.disabled = room <= 0;
+  put.setAttribute("aria-label", `今の単語帳「${here.name}」に足す`);
+}
+
+const endSentence = (text) => (/[。．.]$/.test(text) ? text : `${text}。`);
+
+function addRecv(toNew) {
+  if (!recv) return;
+  const asked = recv;
+  recv = null; // 足している間の描き直し（語の保存が spelldash:mywords を投げる）で問いを描き直さない
+  const r = addSharedWords(asked.words, toNew ? { name: asked.name } : { book: current });
+  if (!r.ok) {
+    recv = asked;
+    renderRecv();
+    setRecvStatus(r.error, { error: true });
+    return;
+  }
+  const parts = [];
+  if (r.added.length > 0) parts.push(r.created ? `${fmt(r.added.length)}語を新しい単語帳「${r.book.name}」に足した。` : `${fmt(r.added.length)}語を「${r.book.name}」に足した。`);
+  else parts.push("足せた語は無い。");
+  if (r.skipped.length > 0) parts.push(`足せなかった ${fmt(r.skipped.length)}語: ${r.skipped.slice(0, 3).join(" ／ ")}${r.skipped.length > 3 ? " …" : ""}。`);
+  if (r.limited > 0) parts.push(`上限で足せなかった ${fmt(r.limited)}語。${endSentence(limitMessage())}`);
+  recvSeq++;
+  dropShareHash(r.book?.id ?? null);
+  if (r.book) current = r.book.id;
+  selecting = false;
+  selected.clear();
+  editing = null;
+  render();
+  recvParts("done");
+  setRecvStatus(parts.join(""), { error: r.added.length === 0, offer: true });
+  $("myRecvClose")?.focus();
+}
+
+$("myRecvNew")?.addEventListener("click", () => addRecv(true));
+$("myRecvHere")?.addEventListener("click", () => addRecv(false));
+$("myRecvCancel")?.addEventListener("click", () => {
+  recv = null;
+  recvSeq++;
+  dropShareHash();
+  $("myRecv").hidden = true;
+  setRecvStatus("");
+  pressedTab()?.focus();
+});
+$("myRecvClose")?.addEventListener("click", () => {
+  $("myRecv").hidden = true;
+  setRecvStatus("");
+  pressedTab()?.focus();
+});
+// 開いたままのページで別のリンク（# だけが違う）を開いた
+window.addEventListener("hashchange", () => {
+  if (shareCodeOf(location.hash) !== null) readShareLink();
+});
+
 // 同期で別の端末の語が届いた・消えた（js/userItemsSync.js）・Pro の状態や受付が後から分かった（上限と文）
 window.addEventListener("spelldash:mywords", render);
 document.addEventListener("spelldash:plan", render);
@@ -501,3 +809,4 @@ document.addEventListener("spelldash:billing", render);
 // ほかのタブで足した・学んだ語は、このタブを開き直すと出る（storage イベントは聞かない: 聞く所は js/areaGuard.js の一覧どおり。単体 test-areas U1）
 
 render();
+readShareLink();

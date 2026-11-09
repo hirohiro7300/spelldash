@@ -73,6 +73,7 @@
   <link rel="modulepreload" href="./js/funnelLog.js" />
   <link rel="modulepreload" href="./js/headerStreak.js" />
   <link rel="modulepreload" href="./js/headerFit.js" />
+  <link rel="modulepreload" href="./js/myWordsShare.js" />
   <!-- modulepreload:end -->
 </head>
 <body>
@@ -175,6 +176,22 @@
     <!-- マイ単語帳（Batch 79・81。docs/SPEC_MY_WORDS.md）: 自分で入れた英単語・熟語と訳。単語帳は複数持てる（Batch 81）。3 状態（これから・あやふや・覚えた）はこの中だけの数で、
          学習状況の公開の語の数とランクには入らない。描くのは js/myWordsPage.js -->
     <section class="mw" aria-labelledby="myWordsSumTitle">
+      <!-- 渡された単語帳（Batch 84。docs/SPEC_MY_WORDS.md §13）: リンク mywords.html#share=<code> を開くと上に出る（読むのは js/myWordsShare.js、描くのは js/myWordsPage.js。字は textContent だけ）。
+           名前・語の数・最初の 5 語と、新しい単語帳として足す（既定）・今の単語帳に足す・やめる。足した後とやめた後は # を外す。読めないリンクは 1 行だけ -->
+      <section class="mw-recv" id="myRecv" aria-labelledby="myRecvTitle" hidden>
+        <h2 class="mw__h" id="myRecvTitle" tabindex="-1">渡された単語帳</h2>
+        <p class="mw-recv__sum" id="myRecvSum"></p>
+        <ul class="mw-recv__rows" id="myRecvRows" aria-label="最初の語"></ul>
+        <p class="mw-recv__more" id="myRecvMore" hidden></p>
+        <p class="mw-recv__hint" id="myRecvHint"></p>
+        <div class="mw-recv__acts" id="myRecvActs">
+          <button type="button" class="btn mw-recv__btn" id="myRecvNew">新しい単語帳として足す</button>
+          <button type="button" class="btn btn--ghost mw-recv__btn" id="myRecvHere">今の単語帳に足す</button>
+          <button type="button" class="btn btn--ghost mw-recv__btn" id="myRecvCancel">やめる</button>
+          <button type="button" class="btn btn--ghost mw-recv__btn" id="myRecvClose" hidden>閉じる</button>
+        </div>
+        <p class="mw__status mw-recv__status" id="myRecvStatus" role="status" aria-live="polite"></p>
+      </section>
       <!-- 単語帳（Batch 81。docs/SPEC_MY_WORDS.md §7）: 切り替え（押した単語帳が aria-pressed。描くのは js/myWordsPage.js）・作る・名前を変える・消す（確かめてから。最後の 1 冊は消せない） -->
       <div class="mw-books" id="myBooks">
         <h2 class="sr-only" id="myBooksTitle">単語帳</h2>
@@ -182,6 +199,7 @@
         <div class="mw-books__tools">
           <button type="button" class="mw-tool" id="myBookNew">新しい単語帳</button>
           <button type="button" class="mw-tool" id="myBookRename">名前を変える</button>
+          <button type="button" class="mw-tool" id="myBookGive" aria-expanded="false" aria-controls="myGive" hidden>渡す</button>
           <button type="button" class="mw-tool" id="myBookDelete" hidden>この単語帳を消す</button>
         </div>
         <form class="mw__fields mw-books__form" id="myBookForm" hidden novalidate>
@@ -189,6 +207,21 @@
           <button type="submit" class="btn mw__submit" id="myBookSave">作る</button>
           <button type="button" class="btn btn--ghost mw__submit" id="myBookCancel">やめる</button>
         </form>
+        <!-- 渡す（Batch 84。docs/SPEC_MY_WORDS.md §13）: 今の単語帳を人に渡すリンク（mywords.html#share=<code>）と文字（まとめて足すの形）。中身は名前と英語と訳だけ -->
+        <div class="mw-give" id="myGive" role="group" aria-labelledby="myGiveTitle" hidden>
+          <h3 class="mw__h" id="myGiveTitle">単語帳を渡す</h3>
+          <p class="mw-give__lead" id="myGiveLead"></p>
+          <div class="mw-give__acts">
+            <button type="button" class="btn mw-give__btn" id="myGiveLink">リンクをコピー</button>
+            <button type="button" class="btn btn--ghost mw-give__btn" id="myGiveText">文字をコピー</button>
+            <button type="button" class="btn btn--ghost mw-give__btn" id="myGiveShare" hidden>共有</button>
+            <button type="button" class="btn btn--ghost mw-give__btn" id="myGiveClose">閉じる</button>
+          </div>
+          <p class="mw-give__note" id="myGiveNote" hidden></p>
+          <p class="mw-give__note">入るのは単語帳の名前と英語と訳だけ（覚えたかどうかは入らない）。リンクを知っている人はだれでも、この単語を見られる。</p>
+          <p class="mw__status mw-give__status" id="myGiveStatus" role="status" aria-live="polite"></p>
+          <label class="mw__field mw-give__copy" id="myGiveCopyBox" hidden><span>コピーする字（選んでコピーする）</span><textarea id="myGiveCopy" rows="4" readonly spellcheck="false"></textarea></label>
+        </div>
       </div>
       <div class="mw__top">
         <h2 class="sr-only" id="myWordsSumTitle">マイ単語帳の数</h2>

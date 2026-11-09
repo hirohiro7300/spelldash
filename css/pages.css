@@ -4224,7 +4224,93 @@ html[data-theme] .mw-sel__btn {
   min-height: 40px;
 }
 
+/* 渡す・渡された単語帳（Batch 84。docs/SPEC_MY_WORDS.md §13）: 紙の札（.mw__top と同じ面）。角は 3px・色は今の名前の色だけ・動きなし。
+   渡された単語帳は画面の上に出るので、縁を金の字の色にして分ける。長い英語と訳（150 字）は折り返す */
+html[data-theme] :is(.mw-give, .mw-recv) {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  min-width: 0;
+  background: var(--sheet);
+  border: 1px solid var(--sheet-edge);
+  border-radius: 3px;
+  box-shadow: var(--slip-shadow);
+  overflow-wrap: anywhere;
+}
+
+html[data-theme] .mw-recv {
+  border-color: var(--gold-ink);
+}
+
+html[data-theme] :is(.mw-give, .mw-recv) .mw__h {
+  margin: 0;
+}
+
+html[data-theme] :is(.mw-give__lead, .mw-recv__sum, .mw-recv__more, .mw-recv__hint) {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+html[data-theme] .mw-recv__sum {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+
+html[data-theme] .mw-give__note {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+html[data-theme] .mw-recv__rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+html[data-theme] .mw-recv__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2px 12px;
+  padding: 6px 0;
+  min-width: 0;
+  border-top: 1px solid var(--line-2);
+}
+
+html[data-theme] .mw-recv__en {
+  min-width: 0;
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+html[data-theme] .mw-recv__ja {
+  min-width: 0;
+  color: var(--ink-2);
+}
+
+html[data-theme] :is(.mw-give__acts, .mw-recv__acts) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+html[data-theme] :is(.mw-give__btn, .mw-recv__btn) {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+}
+
+html[data-theme] .mw-give__copy textarea {
+  min-height: 6em;
+}
+
 @media (max-width: 560px) {
+  html[data-theme] .mw-recv__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
   html[data-theme] .mw__fields {
     grid-template-columns: minmax(0, 1fr);
   }
