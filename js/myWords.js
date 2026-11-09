@@ -19,7 +19,7 @@ import { isAnswerKind } from "./learnState.js";
 import {
   checkEnText, checkJaText, wordCardOf, parseBulkLine, applyMyAnswer, MY_FREE_LIMIT, MY_PRO_LIMIT,
   parseBooks, bookIdOf, entriesOfBook, checkBookName, newBookId, entryRefOf, withWordBooks, MY_BOOKS_MAX,
-  myIdentityFor, findSamePair, answerKeyOf, displayOf, uniqueBookName
+  myIdentityFor, findSamePair, answerKeyOf, displayOf, uniqueBookName, visibleText, cutText, isSafeText, UNSAFE_TEXT_ERROR
 } from "./myWordsCore.js";
 
 const KEY = "spelldash_my_words";
@@ -61,9 +61,11 @@ export function getMyWords() {
   }
 }
 
-// 場面カード用のキー（idに使う。日本語の答えもそのまま鍵にする）
+// 場面カード用のキー（idに使う。日本語の答えもそのまま鍵にする）。40 字（UTF-16 の単位）で切るが、絵文字などの組は半分にしない
+// （Batch 85: NFKC で長くなる答え〔㍿ → 株式会社〕で、切る所が絵文字の途中になると、鍵に組になっていないサロゲートが残って同期で送れなかった。
+// 切る所が組の途中でなければ前と同じ鍵）
 export function conceptKey(answer) {
-  return String(answer ?? "").normalize("NFKC").toLowerCase().replace(/[\s・／/]/g, "").slice(0, 40);
+  return cutText(String(answer ?? "").normalize("NFKC").toLowerCase().replace(/[\s・／/]/g, ""), 40);
 }
 
 function save(list) {
@@ -118,11 +120,15 @@ export function validateConcept({ q, answer, explain = "", accept = [] }, existi
   if (!a) return { ok: false, error: "答え（用語）を入力してください" };
   if (a.length > 40) return { ok: false, error: "答えが長すぎます（40文字まで）" };
   if (ex.length > 120) return { ok: false, error: "解説が長すぎます（120文字まで）" };
+  // 名前と訳の字の決まり（js/myWordsCore.js。Batch 85）: 見えない字は断る。場面の欄は複数行なので、改行とタブ（空白の字）は前のまま通す
+  const unsafe = [["場面", [qq]], ["答え", [a]], ["解説", [ex]], ["別解", acc]].find(([, texts]) => !texts.every((s) => isSafeText(s.replace(/\s/g, " "))));
+  if (unsafe) return { ok: false, error: `${unsafe[0]}に${UNSAFE_TEXT_ERROR}` };
   const key = conceptKey(a);
   if (!key) return { ok: false, error: "答えに使える文字がありません" };
+  if (!isSafeText(key)) return { ok: false, error: `答えに${UNSAFE_TEXT_ERROR}` }; // 鍵（同期の項目の鍵）も同じ決まりで確かめる（答えが決まりに合えば、切っても合う）
   if (existing.some((w) => w.kind === "concept" && w.en === key)) return { ok: false, error: `「${a}」の場面カードはすでにあります` };
   if (existing.length >= maxMyWords()) return { ok: false, error: limitError() };
-  return { ok: true, entry: { kind: "concept", en: key, answer: a, q: qq, explain: ex, accept: acc, ja: ex ? ex.slice(0, 40) : "" } };
+  return { ok: true, entry: { kind: "concept", en: key, answer: a, q: qq, explain: ex, accept: acc, ja: ex ? cutText(ex, 40) : "" } }; // 訳は解説の頭 40 字（絵文字を半分にしない）
 }
 
 export function addMyConcept(fields) {
@@ -222,14 +228,18 @@ export function parseBulk(text) {
     .map((line) => ({ line, ...parseBulkLine(line) })); // line: 貼った行（前後の空白を落とした形。足せなかった行を欄に残す）
 }
 
-// 足せなかった行の頭（英語の無い行は行の初めを見せる）・訳の頭
+// 足せなかった行の頭（英語の無い行は行の初めを見せる）・訳の頭。画面に出す形（js/myWordsCore.js visibleText: タブは空白にして、見えない字は外す）
+// （Batch 85: 断った理由の文の見え方を、行の中の向きを変える字が並べ替えない・タブで分けた語がつながらない。欄に残す行は貼った形のまま）
 const lineHead = (line) => {
-  const t = String(line ?? "");
-  return t.length > 24 ? `${t.slice(0, 24)}…` : t;
+  const t = visibleText(line);
+  return t.length > 24 ? `${cutText(t, 24)}…` : t; // 頭 24 字（絵文字を半分にしない）
 };
 
 // 足せなかった行の名前: 英語と訳の頭（同じ英語の行が並ぶ貼り付け〔up・down の場面の行〕でも、どの行かが分かる）。訳の無い行は英語だけ
-const lineName = (entry) => `${entry.en || "(空)"}${entry.ja ? `（${lineHead(entry.ja)}）` : ""}`;
+const lineName = (entry) => {
+  const ja = lineHead(entry.ja);
+  return `${visibleText(entry.en) || "(空)"}${ja ? `（${ja}）` : ""}`;
+};
 
 // 同じ組（同じ英語と同じ訳）は 1 回の貼り付けの中でも 2 つ目を飛ばす（足した語は list に入れて確かめる）。語の保存と同期の印は最後に 1 回ずつ。
 // 返り値 { added（足した語の画面の形）, skipped（足せなかった行の理由）, rest（足せなかった行。貼った形のまま。画面は足した後の欄にこれだけを残す） }

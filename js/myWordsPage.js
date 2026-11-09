@@ -14,7 +14,7 @@ import {
   getMyWords, addMyWord, addMyWordsBulk, removeMyWord, maxMyWords, limitMessage, limitOfferText,
   getMyBooks, createMyBook, renameMyBook, deleteMyBook, removeMyWords, moveMyWords, setMyWordJa, addSharedWords
 } from "./myWords.js";
-import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, uniqueBookName, MY_BOOK_NAME_MAX, MY_BOOKS_MAX } from "./myWordsCore.js";
+import { countMyStates, displayOf, isWordEntry, myStateOf, bookCounts, entriesOfBook, entryRefOf, answerKeyOf, uniqueBookName, visibleText, MY_BOOK_NAME_MAX, MY_BOOKS_MAX } from "./myWordsCore.js";
 import { SHARE_LONG_LINK, SHARE_MAX_WORDS, bookShare, encodeShare, decodeShare, shareCodeOf, shareLinkOf, shareTextOf } from "./myWordsShare.js";
 import { LEARN_LABELS } from "./learnState.js";
 
@@ -104,6 +104,9 @@ function labelOf(w) {
 }
 
 const bookName = (books, id) => books.find((b) => b.id === id)?.name ?? "";
+// 単語帳の「学ぶ」（打つ回）と「選択式で学ぶ」（Batch 82）の行き先。渡された単語帳を足した後の次の一歩（Batch 85）も同じ行き先
+const learnHref = (id) => `/?learn=my&${BOOK_PARAM}=${encodeURIComponent(id)}`;
+const choiceHref = (id) => `${learnHref(id)}&choice=en`;
 const rowByRef = (ref) => [...document.querySelectorAll("#myWordsList .mw-row")].find((li) => li.dataset.ref === ref) ?? null;
 const pressedTab = () => document.querySelector('#myBookTabs .mw-book[aria-pressed="true"]');
 
@@ -201,7 +204,7 @@ function rowOf(w) {
     const input = el("input", "mw-row__input");
     input.type = "text";
     input.maxLength = 200;
-    input.value = w.ja;
+    input.value = visibleText(w.ja); // 前の版で入った見えない字は外し、タブ・改行は空白にした形で出す（保存すると直した訳だけ書く。やめれば前のまま: Batch 85）
     input.autocomplete = "off";
     input.setAttribute("aria-label", `${label} の訳`);
     const save = el("button", "mw-row__save", "保存");
@@ -251,14 +254,14 @@ function render() {
   const learn = $("myWordsLearn");
   if (learn) {
     learn.hidden = mine.total === 0;
-    learn.href = `/?learn=my&${BOOK_PARAM}=${encodeURIComponent(current)}`;
+    learn.href = learnHref(current);
     learn.setAttribute("aria-label", `「${name}」を学ぶ`);
   }
   // 選択式で学ぶ（Batch 82。訳を見て英語を選ぶが既定。向きは回の始めと終わりで替えられる: js/myWordsChoice.js）
   const choice = $("myWordsChoice");
   if (choice) {
     choice.hidden = mine.total === 0;
-    choice.href = `/?learn=my&${BOOK_PARAM}=${encodeURIComponent(current)}&choice=en`;
+    choice.href = choiceHref(current);
     choice.setAttribute("aria-label", `「${name}」を選択式で学ぶ`);
   }
   const allTotal = countMyStates(list).total;
@@ -305,7 +308,7 @@ function openBookForm(mode) {
   const form = $("myBookForm");
   if (!form) return;
   formMode = mode;
-  const name = bookName(getMyBooks(), current);
+  const name = visibleText(bookName(getMyBooks(), current)); // 題と欄は同じ形（前の版で入った見えない字は外し、タブ・改行は空白に: Batch 85。保存は書き換えない）
   $("myBookFormLabel").textContent = mode === "new" ? `新しい単語帳の名前（${MY_BOOK_NAME_MAX}文字まで）` : `「${name}」の新しい名前`;
   $("myBookSave").textContent = mode === "new" ? "作る" : "名前を変える";
   const input = $("myBookName");
@@ -666,9 +669,12 @@ $("myGiveShare")?.addEventListener("click", async () => {
 // ===== 渡された単語帳（Batch 84）: mywords.html#share=<code> を開くと上に出す =====
 // 名前・語の数・最初の 5 語（字だけ）と、新しい単語帳として足す（既定。名前は今の単語帳と重ねない）・今の単語帳に足す・やめる。
 // 足すのは 1 語ずつ足すと同じ決まり（js/myWords.js addSharedWords）。足した後とやめた後は # を外す（読み直しても、もう聞かない）。
-// 読めないリンクは 1 行だけ（このリンクは読めません）。ゲストもログインした人も、今の人の領域に足す
+// 読めないリンクは 1 行だけ（このリンクは読めません）。ゲストもログインした人も、今の人の領域に足す。
+// Batch 85: 新しい単語帳として足した後は、その単語帳の次の一歩（「この単語帳で学ぶ」・「選択式で学ぶ」。焦点は前者）を出す。今の単語帳に足したときは出さない。
+// 初めての人（マイ単語帳の語も英単語の学習の記録も無い）には、SpellDash が何かを 1 行だけ出す
 const RECV_ROWS = 5;
 let recv = null; // 読めた中身 { name, words }
+let recvAbout = false; // リンクを読んだ時に初めての人だったか（足した後も同じ 1 行を出したまま）
 let recvSeq = 0;
 let recvTimer = 0;
 
@@ -710,6 +716,34 @@ function recvParts(mode) {
   $("myRecvTitle").hidden = mode === "bad";
   $("myRecvActs").hidden = mode === "bad";
   $("myRecvClose").hidden = mode !== "done";
+  const about = $("myRecvAbout");
+  if (about) about.hidden = mode === "bad" || !recvAbout;
+  if (mode !== "done") showRecvNext(null);
+}
+
+// 初めての人か: マイ単語帳の語も、英単語の学習の記録（語の記録）も無い（渡されたリンクから初めて SpellDash を開いた人）
+function firstVisit(list) {
+  if (list.length > 0) return false;
+  try {
+    const stats = localStorage.getItem("spelldash_word_stats");
+    return !stats || stats === "{}";
+  } catch {
+    return false;
+  }
+}
+
+// 新しい単語帳として足した後の次の一歩（book が null なら隠す）。行き先と「選択式で学ぶ」の読み上げの名前は、単語帳の切り替えの下の
+// 「学ぶ」「選択式で学ぶ」と同じ（/?learn=my&book=<id>・&choice=en）。「この単語帳で学ぶ」は見える字が名前
+function showRecvNext(book) {
+  const learn = $("myRecvLearn");
+  const choice = $("myRecvChoice");
+  if (!learn || !choice) return;
+  learn.hidden = !book;
+  choice.hidden = !book;
+  if (!book) return;
+  learn.href = learnHref(book.id);
+  choice.href = choiceHref(book.id);
+  choice.setAttribute("aria-label", `「${book.name}」を選択式で学ぶ`);
 }
 
 async function readShareLink() {
@@ -729,6 +763,7 @@ async function readShareLink() {
     return;
   }
   recv = { name: r.name, words: r.words };
+  recvAbout = firstVisit(getMyWords());
   setRecvStatus("");
   recvParts("ask");
   box.hidden = false;
@@ -793,8 +828,10 @@ function addRecv(toNew) {
   editing = null;
   render();
   recvParts("done");
+  const next = r.created && r.book && r.added.length > 0 ? r.book : null; // 新しい単語帳を作ったときだけ（今の単語帳に足したときは出さない）
+  showRecvNext(next);
   setRecvStatus(parts.join(""), { error: r.added.length === 0, limit: limitText });
-  $("myRecvClose")?.focus();
+  (next ? $("myRecvLearn") : $("myRecvClose"))?.focus();
 }
 
 $("myRecvNew")?.addEventListener("click", () => addRecv(true));

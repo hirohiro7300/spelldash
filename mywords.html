@@ -177,9 +177,11 @@
          学習状況の公開の語の数とランクには入らない。描くのは js/myWordsPage.js -->
     <section class="mw" aria-labelledby="myWordsSumTitle">
       <!-- 渡された単語帳（Batch 84。docs/SPEC_MY_WORDS.md §13）: リンク mywords.html#share=<code> を開くと上に出る（読むのは js/myWordsShare.js、描くのは js/myWordsPage.js。字は textContent だけ）。
-           名前・語の数・最初の 5 語と、新しい単語帳として足す（既定）・今の単語帳に足す・やめる。足した後とやめた後は # を外す。読めないリンクは 1 行だけ -->
+           名前・語の数・最初の 5 語と、新しい単語帳として足す（既定）・今の単語帳に足す・やめる。足した後とやめた後は # を外す。読めないリンクは 1 行だけ。
+           Batch 85（§14.4）: 新しい単語帳として足した後は「この単語帳で学ぶ」「選択式で学ぶ」（単語帳の切り替えの下と同じ行き先）。初めての人には SpellDash の 1 行 -->
       <section class="mw-recv" id="myRecv" aria-labelledby="myRecvTitle" hidden>
         <h2 class="mw__h" id="myRecvTitle" tabindex="-1">渡された単語帳</h2>
+        <p class="mw-recv__about" id="myRecvAbout" hidden>SpellDash は、英単語を打って覚えるアプリです。</p>
         <p class="mw-recv__sum" id="myRecvSum"></p>
         <ul class="mw-recv__rows" id="myRecvRows" aria-label="最初の語"></ul>
         <p class="mw-recv__more" id="myRecvMore" hidden></p>
@@ -188,6 +190,8 @@
           <button type="button" class="btn mw-recv__btn" id="myRecvNew">新しい単語帳として足す</button>
           <button type="button" class="btn btn--ghost mw-recv__btn" id="myRecvHere">今の単語帳に足す</button>
           <button type="button" class="btn btn--ghost mw-recv__btn" id="myRecvCancel">やめる</button>
+          <a class="btn mw-recv__btn" id="myRecvLearn" href="/?learn=my" hidden>この単語帳で学ぶ</a>
+          <a class="btn btn--ghost mw-recv__btn" id="myRecvChoice" href="/?learn=my&amp;choice=en" hidden>選択式で学ぶ</a>
           <button type="button" class="btn btn--ghost mw-recv__btn" id="myRecvClose" hidden>閉じる</button>
         </div>
         <p class="mw__status mw-recv__status" id="myRecvStatus" role="status" aria-live="polite"></p>

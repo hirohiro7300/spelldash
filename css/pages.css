@@ -4246,7 +4246,7 @@ html[data-theme] :is(.mw-give, .mw-recv) .mw__h {
   margin: 0;
 }
 
-html[data-theme] :is(.mw-give__lead, .mw-recv__sum, .mw-recv__more, .mw-recv__hint) {
+html[data-theme] :is(.mw-give__lead, .mw-recv__about, .mw-recv__sum, .mw-recv__more, .mw-recv__hint) {
   margin: 0;
   color: var(--ink-2);
   font-size: 14px;
