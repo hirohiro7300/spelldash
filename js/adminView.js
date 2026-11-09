@@ -430,6 +430,7 @@ async function loadFunnel() {
       <tbody>${rows}</tbody>
     </table>
     <p class="admin-funnel__note">入口（30 日）: ${sources || "まだ無い"}</p>
+    ${body.truncated ? `<p class="admin-funnel__note">${escapeHtml("数は途中まで（行が多いので、はじめの 5 万行だけで数えた。全部を数えるには docs/SQL_FUNNEL.md の 2 の関数を作る）")}</p>` : ""}
     <p class="admin-funnel__note">「${escapeHtml(FUNNEL_LABEL.day7)}」には以前から使っている人も入る（その期間にホームを開いた端末）。ログイン済みの人はログインの 2 段を通らない。</p>`;
 }
 

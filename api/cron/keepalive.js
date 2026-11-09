@@ -4,8 +4,16 @@
 // Supabase の無料プロジェクトは API が 1 週間呼ばれないと一時停止し、ログインと同期が止まる
 // （2026-10-02 に実際に起きた）。公開テーブル daily_scores を anon key で 1 行だけ読んで「使われている」状態を保つ。
 // Vercel の環境変数 CRON_SECRET があれば、その Bearer が無い呼び出しは 401。無ければ誰が呼んでも 1 行読むだけ（害は無い）。
+// 鍵は timingSafeEqual で比べる（Batch 88。字の比べ方の時間の差から鍵を当てさせない。長さが違えば不一致）。
 
+import crypto from "crypto";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, send } from "../_lib/shared.js";
+
+function sameSecret(header, secret) {
+  const got = Buffer.from(String(header || ""), "utf8");
+  const want = Buffer.from(`Bearer ${secret}`, "utf8");
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
+}
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -13,7 +21,7 @@ export default async function handler(req, res) {
     return send(res, 405, { error: "method_not_allowed" });
   }
   const secret = String(process.env.CRON_SECRET || "").trim();
-  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+  if (secret && !sameSecret(req.headers.authorization, secret)) {
     return send(res, 401, { error: "unauthorized" });
   }
   try {

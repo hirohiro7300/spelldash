@@ -8,7 +8,7 @@
 // 戻り先は SITE_ORIGIN/profile.html（リクエストヘッダは使わない）。Web 専用なので CORS は許可しない。
 
 import { send, verifyUserFull, bearerToken } from "../_lib/shared.js";
-import { rejectMethod, secretKeyConfigured, siteOrigin, stripeFetch, fetchOwnSubscription, sendUpstream, MESSAGES } from "../_lib/billing.js";
+import { rejectMethod, secretKeyConfigured, siteOrigin, stripeFetch, fetchOwnSubscription, sendUpstream, overBillingRate, MESSAGES } from "../_lib/billing.js";
 
 export default async function handler(req, res) {
   if (rejectMethod(req, res, "POST")) return;
@@ -17,6 +17,8 @@ export default async function handler(req, res) {
 
   const user = await verifyUserFull(req.headers.authorization);
   if (!user) return send(res, 401, { error: "login_required", message: MESSAGES.login });
+  // 同じ人は 1 分 10 回まで（Batch 88。_lib/billing.js overBillingRate）
+  if (overBillingRate("portal", user.id)) return send(res, 429, { error: "too_many", message: MESSAGES.tooMany });
 
   try {
     const row = await fetchOwnSubscription(bearerToken(req.headers.authorization), user.id);

@@ -35,6 +35,7 @@ import {
   customerFor,
   subscriptionsOfCustomer,
   expireOtherOpenSessions,
+  overBillingRate,
   sendUpstream,
   MESSAGES
 } from "../_lib/billing.js";
@@ -51,6 +52,8 @@ export default async function handler(req, res) {
 
   const user = await verifyUserFull(req.headers.authorization);
   if (!user) return send(res, 401, { error: "login_required", message: MESSAGES.login });
+  // 同じ人は 1 分 10 回まで（Batch 88。_lib/billing.js overBillingRate）
+  if (overBillingRate("checkout", user.id)) return send(res, 429, { error: "too_many", message: MESSAGES.tooMany });
 
   const interval = readBody(req).interval;
   if (interval !== "month" && interval !== "year") return send(res, 400, { error: "bad_request", message: MESSAGES.badInterval });

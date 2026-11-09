@@ -39,8 +39,33 @@ export const MESSAGES = {
   upstream: "手続きを始められませんでした。時間をおいてお試しください。",
   badSignature: "署名が正しくありません。",
   badRequest: "リクエストが正しくありません。",
-  webhookFailed: "保存できませんでした。"
+  webhookFailed: "保存できませんでした。",
+  tooMany: "少し待ってからもう一度お試しください。"
 };
+
+// ----- 1 人 1 分の回数（Batch 88。加入とお支払いの管理。インスタンスのメモリー: 同じ人の連打で決済の会社を叩かない） -----
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 60 * 1000;
+const rate = new Map(); // "<scope>:<user>" → { at: 分の頭, count }
+
+// 今の分の回数を 1 つ増やし、上限を超えたら true（超えた呼び出しも数える）。古い分の項目は 1000 件を超えたら捨てる
+export function overBillingRate(scope, userId, now = Date.now()) {
+  const minute = Math.floor(now / RATE_WINDOW_MS) * RATE_WINDOW_MS;
+  if (rate.size > 1000) for (const [key, entry] of rate) if (entry.at !== minute) rate.delete(key);
+  const key = `${scope}:${userId}`;
+  const entry = rate.get(key);
+  if (!entry || entry.at !== minute) {
+    rate.set(key, { at: minute, count: 1 });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > RATE_LIMIT;
+}
+
+// 検査用: 回数を空に
+export function billingRateReset() {
+  rate.clear();
+}
 
 // ----- 設定 -----
 

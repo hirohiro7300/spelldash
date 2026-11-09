@@ -10,6 +10,7 @@ import { trapFocus } from "./focusTrap.js";
 
 const QUEUE_KEY = "spelldash_feedback_queue";
 const MAX_LENGTH = 1000;
+const PAGE_MAX_LENGTH = 300; // 送るページ名（pathname + search）の上限（Batch 88: 長い ?query で行を大きくしない。docs/SQL_FEEDBACK.md の字数の決まりと同じ）
 
 function loadQueue() {
   try {
@@ -64,7 +65,7 @@ export async function submitFeedback({ message, contact = "" }) {
     user_id: await currentUserId(),
     message: text,
     contact: String(contact ?? "").trim().slice(0, 120) || null,
-    page: location.pathname + location.search,
+    page: (location.pathname + location.search).slice(0, PAGE_MAX_LENGTH),
     user_agent: navigator.userAgent.slice(0, 200),
     created_at: new Date().toISOString()
   };
