@@ -61,6 +61,16 @@ export function getMyWords() {
   }
 }
 
+// 保存の文字列（Batch 87。docs/SPEC_MY_WORDS.md §16.4）: マイ単語帳と単語帳の保存をそのまま返す（読めなければ null）。
+// 学ぶ回（js/game.js myLearnSource）の語の写しの鍵: 2 つとも前と同じなら、getMyWords・getMyBooks の答えも前と同じ
+export function myWordsRaw() {
+  try {
+    return { words: localStorage.getItem(KEY), books: localStorage.getItem(MY_BOOKS_KEY) };
+  } catch {
+    return null;
+  }
+}
+
 // 場面カード用のキー（idに使う。日本語の答えもそのまま鍵にする）。40 字（UTF-16 の単位）で切るが、絵文字などの組は半分にしない
 // （Batch 85: NFKC で長くなる答え〔㍿ → 株式会社〕で、切る所が絵文字の途中になると、鍵に組になっていないサロゲートが残って同期で送れなかった。
 // 切る所が組の途中でなければ前と同じ鍵）
