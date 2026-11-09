@@ -177,7 +177,12 @@ export async function openImportDialog(app: AppContext, file: File): Promise<voi
     ),
   );
   const go = h("button", { class: "btn btn-primary", type: "button" }, "読み込む");
+  let done = false;
   go.addEventListener("click", async () => {
+    // 2 回押しても 1 回だけ読み込む
+    if (done) return;
+    done = true;
+    go.disabled = true;
     m.close();
     if (mode.v === "replace") await app.replaceDocSafely(pv.doc, "インポート（置き換え）");
     else app.mergeDoc(pv.doc);

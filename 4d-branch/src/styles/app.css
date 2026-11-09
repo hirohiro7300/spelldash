@@ -510,6 +510,14 @@ kbd {
 .search-due {
   margin-left: 4px;
 }
+.search-hidden {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
 .search-empty {
   padding: 12px;
   color: var(--text-3);
@@ -2133,6 +2141,8 @@ textarea.input {
 }
 .modal-backdrop.closing {
   opacity: 0;
+  /* 閉じている途中の 2 回目の押下を通さない */
+  pointer-events: none;
 }
 .modal {
   display: flex;

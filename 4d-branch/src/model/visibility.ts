@@ -3,9 +3,11 @@
 // 折りたたみ:
 //   1. 折りたたんだノードの出る線・折りたたんだ線を「止める線」にする
 //   2. 入口から、止める線を通らずにたどれるノードだけを表示する
-//      入口 = 入る線の無いノード ＋ 外から入る線の無い「強連結成分」（循環のかたまり）の中の折りたたみの起点
+//      入口 = 入る線の無いノード（「フィードバック」の線は数えない。循環を閉じる線なので、戻られる側は根のまま）
+//           ＋ フィードバック以外の線で外から入る線の無い「強連結成分」（循環のかたまり）の中の折りたたみの起点
 //      （起点が無い循環は全員を入口にする）→ 循環だけのかたまりでも、折りたたんだノード自身は消えない
 //   3. 別の親が見えていれば合流先は消えない（入口からたどれるため）
+//   4. 件数 = その起点の先で、隠れているノードだけをたどって届く数（見えている所で止める＝開くと出てくる物）
 
 import type { GraphIndex } from "./graph";
 import type { DocData, GEdge, ID } from "./types";
@@ -73,31 +75,35 @@ interface Block {
 
 function adjacency(doc: DocData, index: GraphIndex, scope: Set<ID>, edgeOk: (e: GEdge) => boolean) {
   const outE = new Map<ID, GEdge[]>();
-  const indeg = new Map<ID, number>();
-  for (const id of scope) indeg.set(id, 0);
   for (const id of scope) {
     const list: GEdge[] = [];
     for (const eid of index.out.get(id) ?? []) {
       const e = doc.edges[eid];
       if (!e || e.source === e.target || !scope.has(e.target) || !edgeOk(e)) continue;
       list.push(e);
-      indeg.set(e.target, indeg.get(e.target)! + 1);
     }
     outE.set(id, list);
   }
-  return { outE, indeg };
+  return outE;
 }
 
+/** 入口を決めるときに数える線（フィードバック＝循環を閉じる線は数えない。たどるときは通る） */
+const countsForEntry = (e: GEdge) => e.relation !== "feedback";
+
 /** 入口から、止める線を通らずにたどれないノードを求める（折りたたみ・シナリオの推定で共通） */
-function unreachedCore(scope: Set<ID>, outE: Map<ID, GEdge[]>, indeg: Map<ID, number>, blocked: Set<ID>, blocks: Array<Block & { starts: ID[] }>, withCounts: boolean): CollapseResult {
+function unreachedCore(scope: Set<ID>, outE: Map<ID, GEdge[]>, blocked: Set<ID>, blocks: Array<Block & { starts: ID[] }>, withCounts: boolean): CollapseResult {
+  const indeg = new Map<ID, number>();
+  for (const id of scope) indeg.set(id, 0);
+  for (const list of outE.values()) for (const e of list) if (countsForEntry(e)) indeg.set(e.target, indeg.get(e.target)! + 1);
   const entries: ID[] = [];
   for (const id of scope) if (indeg.get(id) === 0) entries.push(id);
   const ids = [...scope];
-  const comp = stronglyConnected(ids, (v) => outE.get(v)!.map((e) => e.target));
+  const comp = stronglyConnected(ids, (v) => outE.get(v)!.filter(countsForEntry).map((e) => e.target));
   const hasOuterIn = new Set<number>();
   for (const [v, list] of outE) {
     const a = comp.get(v)!;
     for (const e of list) {
+      if (!countsForEntry(e)) continue;
       const b = comp.get(e.target)!;
       if (a !== b) hasOuterIn.add(b);
     }
@@ -133,14 +139,16 @@ function unreachedCore(scope: Set<ID>, outE: Map<ID, GEdge[]>, indeg: Map<ID, nu
   const counts = new Map<ID, number>();
   if (withCounts) {
     for (const o of blocks) {
-      const seen = new Set<ID>([o.node]);
+      // 起点が隠れていれば印は描かないので数えない。たどるのは隠れているノードだけ（見えている所で止める）
+      if (hidden.has(o.node)) continue;
+      const seen = new Set<ID>();
       const q: ID[] = [];
-      for (const s of o.starts) if (!seen.has(s)) (seen.add(s), q.push(s));
+      for (const s of o.starts) if (hidden.has(s) && !seen.has(s)) (seen.add(s), q.push(s));
       let k = 0;
       while (q.length) {
         const cur = q.pop()!;
-        if (hidden.has(cur)) k++;
-        for (const e of outE.get(cur)!) if (!seen.has(e.target)) (seen.add(e.target), q.push(e.target));
+        k++;
+        for (const e of outE.get(cur)!) if (hidden.has(e.target) && !seen.has(e.target)) (seen.add(e.target), q.push(e.target));
       }
       counts.set(o.key, k);
     }
@@ -153,7 +161,7 @@ function unreachedCore(scope: Set<ID>, outE: Map<ID, GEdge[]>, indeg: Map<ID, nu
  * edgeOk で数に入れる接続を絞れる（シナリオで「隠す」ときなど）。
  */
 export function computeCollapse(doc: DocData, index: GraphIndex, scope: Set<ID>, edgeOk: (e: GEdge) => boolean = () => true): CollapseResult {
-  const { outE, indeg } = adjacency(doc, index, scope, edgeOk);
+  const outE = adjacency(doc, index, scope, edgeOk);
   const blocked = new Set<ID>();
   const blocks: Array<Block & { starts: ID[] }> = [];
   for (const id of scope) {
@@ -170,7 +178,7 @@ export function computeCollapse(doc: DocData, index: GraphIndex, scope: Set<ID>,
     }
   }
   if (blocks.length === 0) return EMPTY;
-  return unreachedCore(scope, outE, indeg, blocked, blocks, true);
+  return unreachedCore(scope, outE, blocked, blocks, true);
 }
 
 /**
@@ -178,7 +186,7 @@ export function computeCollapse(doc: DocData, index: GraphIndex, scope: Set<ID>,
  * 入る線の無いノードと、どれか 1 本でもシナリオの道で届くノードは対象外
  */
 export function computeUnreached(doc: DocData, index: GraphIndex, scope: Set<ID>, isActive: (e: GEdge) => boolean): Set<ID> {
-  const { outE, indeg } = adjacency(doc, index, scope, () => true);
+  const outE = adjacency(doc, index, scope, () => true);
   const blocked = new Set<ID>();
   const blocks: Array<Block & { starts: ID[] }> = [];
   for (const [id, list] of outE) {
@@ -190,7 +198,7 @@ export function computeUnreached(doc: DocData, index: GraphIndex, scope: Set<ID>
     }
   }
   if (blocks.length === 0) return new Set();
-  return unreachedCore(scope, outE, indeg, blocked, blocks, false).hidden;
+  return unreachedCore(scope, outE, blocked, blocks, false).hidden;
 }
 
 /** 選んだノードの上流（そこへ至る道）と下流（そこから広がる未来）。循環しても止まる */

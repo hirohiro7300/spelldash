@@ -3,8 +3,8 @@
 
 import { buildIndex, inScenario, type GraphIndex } from "../model/graph";
 import { isEmptyQuery, parseQuery, searchNodes } from "../model/search";
-import type { GEdge, ID } from "../model/types";
-import { computeCollapse, computePaths, computeUnreached } from "../model/visibility";
+import type { DocData, GEdge, ID } from "../model/types";
+import { computeCollapse, computePaths, computeUnreached, type CollapseResult } from "../model/visibility";
 import type { Store } from "../store/store";
 import type { UiState } from "./uiState";
 
@@ -52,6 +52,17 @@ export class ViewModel {
   version = 0;
   private dirtyIndex = true;
   private dirtyVis = true;
+  /** 直前の計算の中身（隠れた理由を答える・折りたたみを開く計画に使う） */
+  private last: {
+    scope: Set<ID>;
+    edgeOk: (e: GEdge) => boolean;
+    col: CollapseResult;
+    unreached: Set<ID>;
+    hideScen: boolean;
+    sid: ID | null;
+    focus: boolean;
+    inProj: (pids: ID[]) => boolean;
+  } | null = null;
 
   constructor(
     private readonly store: Store,
@@ -144,10 +155,13 @@ export class ViewModel {
     this.searchHits = this.searchActive ? searchNodes(doc, q) : [];
     const hitSet = new Set(this.searchHits.map((h) => h.id));
 
-    // 4) 経路
-    const selected = [...sel.nodes].filter((id) => scope.has(id) && !col.hidden.has(id));
+    this.last = { scope, edgeOk, col, unreached, hideScen, sid, focus, inProj };
+
+    // 4) 経路（隠れているノードからは強調しない。シナリオで隠した推定の先も同じ）
+    const shown = (id: ID) => scope.has(id) && !col.hidden.has(id) && !(hideScen && unreached.has(id));
+    const selected = [...sel.nodes].filter(shown);
     this.pathActive = prefs.pathHighlight && selected.length > 0;
-    const paths = this.pathActive ? computePaths(doc, idx, selected, (e) => edgeOk(e) && (!sid || edgeInScen(e)) && scope.has(e.source) && scope.has(e.target) && !col.hidden.has(e.source) && !col.hidden.has(e.target)) : null;
+    const paths = this.pathActive ? computePaths(doc, idx, selected, (e) => edgeOk(e) && (!sid || edgeInScen(e)) && shown(e.source) && shown(e.target)) : null;
 
     // 5) ノード
     this.nodes.clear();
@@ -203,6 +217,53 @@ export class ViewModel {
     }
     this.drawEdges = edgesNormal.concat(edgesTop);
     this.stubEdges = stubs;
+  }
+
+  /** そのノードが表示の設定（プロジェクトに絞る・シナリオで隠す）で隠れているか */
+  hiddenBy(id: ID): { focus: boolean; scenario: boolean; collapse: boolean } {
+    this.ensure();
+    const n = this.store.doc.nodes[id];
+    const l = this.last;
+    if (!n || !l) return { focus: false, scenario: false, collapse: false };
+    const scenario = l.hideScen && (!inScenario(n.scenarioIds, l.sid) || l.unreached.has(id));
+    const focus = l.focus && !l.scope.has(id) && !l.inProj(n.projectIds);
+    return { focus, scenario, collapse: l.scope.has(id) && l.col.hidden.has(id) };
+  }
+
+  /**
+   * 折りたたみで隠れたノードを出すために開く物（上流の折りたたんだノードと接続）。
+   * 隠れた上流を逆にたどり、そこへ入る線を止めている折りたたみを開く。開くと入口が変わることがあるので、見えるまで確かめ直す
+   */
+  collapseBlockers(id: ID): { nodes: ID[]; edges: ID[] } {
+    this.ensure();
+    const l = this.last;
+    const openN = new Set<ID>();
+    const openE = new Set<ID>();
+    if (!l || !l.scope.has(id) || !l.col.hidden.has(id)) return { nodes: [], edges: [] };
+    let sim: DocData = this.store.doc;
+    let col = l.col;
+    for (let round = 0; round < 8 && col.hidden.has(id); round++) {
+      const region = new Set<ID>([id]);
+      const stack: ID[] = [id];
+      while (stack.length) {
+        const v = stack.pop()!;
+        for (const eid of this.index.inc.get(v) ?? []) {
+          const e = sim.edges[eid];
+          if (!e || e.source === e.target || !l.scope.has(e.source) || !l.edgeOk(e)) continue;
+          if (sim.nodes[e.source]?.collapsed) openN.add(e.source);
+          if (e.collapsed) openE.add(eid);
+          if (col.hidden.has(e.source) && !region.has(e.source)) {
+            region.add(e.source);
+            stack.push(e.source);
+          }
+        }
+      }
+      sim = { ...sim, nodes: { ...sim.nodes }, edges: { ...sim.edges } };
+      for (const u of openN) sim.nodes[u] = { ...sim.nodes[u]!, collapsed: false };
+      for (const e of openE) sim.edges[e] = { ...sim.edges[e]!, collapsed: false };
+      col = computeCollapse(sim, this.index, l.scope, l.edgeOk);
+    }
+    return { nodes: [...openN], edges: [...openE] };
   }
 
   /** 表示中のノードを囲む範囲（全体を表示に使う） */

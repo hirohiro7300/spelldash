@@ -3,10 +3,11 @@
 
 import type { AppContext } from "../app/context";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER, STATUSES, STATUS_ORDER } from "../model/constants";
-import { formatDate, normalizeDateStr, relativeDue } from "../model/dates";
+import { MAX_YEAR, MIN_YEAR, formatDate, normalizeDateStr, relativeDue } from "../model/dates";
 import type { GEdge, GNode, ID } from "../model/types";
 import { MOD, autosize, clear, h, setValue } from "./dom";
 import { icon } from "./icons";
+import { toast } from "./overlays";
 
 type Updater = () => void;
 
@@ -92,7 +93,15 @@ function bindText(app: AppContext, el: HTMLInputElement | HTMLTextAreaElement, w
 
 function dateInput(value: string | null, onChange: (v: string | null) => void, label: string): HTMLInputElement {
   const el = h("input", { class: "input input-date", type: "date", value: value ?? "", attrs: { "aria-label": label, min: "1900-01-01", max: "2999-12-31" } });
-  el.addEventListener("change", () => onChange(normalizeDateStr(el.value)));
+  el.addEventListener("change", () => {
+    const v = normalizeDateStr(el.value);
+    // 範囲の外など読めない日付で、今の期限を黙って消さない
+    if (el.value && !v) {
+      toast(`日付は ${MIN_YEAR}〜${MAX_YEAR} 年の間で入れてください`, { tone: "warn" });
+      return;
+    }
+    onChange(v);
+  });
   return el;
 }
 

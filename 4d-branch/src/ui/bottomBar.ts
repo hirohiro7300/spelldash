@@ -101,12 +101,21 @@ export function buildBottomBar(app: AppContext): HTMLElement {
       ctx.stroke();
     }
 
-    // 目盛り（月・年）
-    const pxPerMonth = (width - PAD_L - PAD_R) / Math.max(1, (range.end - range.start) / 30.4);
+    // 目盛り（月・年）。何十年も先の期限があっても最後まで描けるよう、長いときは 1 年・10 年おきにする
+    const months = Math.max(1, (range.end - range.start) / 30.4);
+    const pxPerMonth = (width - PAD_L - PAD_R) / months;
+    const step = months > 2400 ? 120 : months > 240 ? 12 : 1;
     let m = fromDayNumber(range.start);
+    if (step > 1) {
+      // 1 月 1 日（10 年おきなら 10 で割り切れる年）にそろえる
+      let yy = Number(m.slice(0, 4)) + (m.slice(5) === "01-01" ? 0 : 1);
+      if (step === 120) yy = Math.ceil(yy / 10) * 10;
+      m = `${yy}-01-01`;
+    }
     ctx.font = `600 10.5px ${font}`;
     ctx.textBaseline = "top";
     let guard = 0;
+    let lastLabel = -Infinity;
     while (dayNumber(m) <= range.end && guard++ < 400) {
       const d = dayNumber(m);
       const x = Math.round(xOf(d)) + 0.5;
@@ -118,11 +127,13 @@ export function buildBottomBar(app: AppContext): HTMLElement {
       ctx.moveTo(x, isYear ? 4 : 14);
       ctx.lineTo(x, height - 4);
       ctx.stroke();
-      if (isYear || (pxPerMonth > 30 && isQuarter) || pxPerMonth > 54) {
+      // 文字は重ならない間隔のときだけ
+      if ((isYear || (pxPerMonth > 30 && isQuarter) || pxPerMonth > 54) && x - lastLabel > 38) {
         ctx.fillStyle = isYear ? "rgba(231,234,241,0.85)" : "rgba(163,171,186,0.6)";
         ctx.fillText(isYear ? `${y}年` : `${Number(mo)}月`, x + 4, 3);
+        lastLabel = x;
       }
-      m = addMonths(m, 1);
+      m = addMonths(m, step);
     }
 
     // 時点より後を暗く

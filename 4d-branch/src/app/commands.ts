@@ -143,6 +143,30 @@ export class Commands {
     if (collapse) this.ui.select(nodes.map((n) => n.id));
   }
 
+  /**
+   * 隠れているノードを出す（検索で選んだときなど）。
+   * プロジェクトに絞る・シナリオで隠すで隠れていれば「薄くする」表示に切り替え、折りたたみの中なら上流を開く（元に戻せる）
+   */
+  revealNode(id: ID): void {
+    if (!this.doc.nodes[id] || !this.vm.node(id).hidden) return;
+    const why = this.vm.hiddenBy(id);
+    const patch: { projectMode?: "dim"; scenarioMode?: "dim" } = {};
+    if (why.focus) patch.projectMode = "dim";
+    if (why.scenario) patch.scenarioMode = "dim";
+    if (patch.projectMode || patch.scenarioMode) {
+      this.ui.setPrefs(patch);
+      const what = [patch.projectMode ? "プロジェクトの絞り込み" : "", patch.scenarioMode ? "シナリオ" : ""].filter(Boolean).join("と");
+      this.hooks.toast(`隠れていたノードを出すため、${what}の表示を「薄くする」にしました`, { tone: "info" });
+    }
+    if (!this.vm.node(id).hidden) return;
+    const open = this.vm.collapseBlockers(id);
+    if (!open.nodes.length && !open.edges.length) return;
+    this.store.transact("隠れていたノードを表示", (tx) => {
+      for (const n of open.nodes) tx.updateNode(n, { collapsed: false });
+      for (const e of open.edges) tx.updateEdge(e, { collapsed: false });
+    });
+  }
+
   /** すべての折りたたみを開く */
   expandAll(): void {
     const ns = Object.values(this.doc.nodes).filter((n) => n.collapsed);

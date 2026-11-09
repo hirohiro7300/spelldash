@@ -275,8 +275,14 @@ export class App implements AppContext {
       const latest = await this.persistence.readStored().catch(() => null);
       if (latest) await this.persistence.createBackup("conflict", "上書きされる前に保存されていた内容", latest.doc).catch(() => undefined);
     }
+    if (choice === "reload") {
+      // 競合に気づいた後の変更はまだどこにも無いので、開く前にこのタブの内容をもう一度退避する
+      const saved = await this.persistence.createBackup("conflict", "保存されている最新を開く前のこのタブの内容", this.store.doc).catch(() => null);
+      if (saved) void this.refreshLastBackup();
+    }
     const doc = await this.persistence.resolveConflict(choice);
     if (doc) this.store.load(doc, "load");
+    if (choice === "reload" && doc) toast("保存されている最新を開きました。このタブの内容はバックアップに残してあります（メニュー →「バックアップと復元」）。", { ms: 6000 });
     this.renderBanner();
   }
 
@@ -390,7 +396,15 @@ export class App implements AppContext {
       }
       if (mod && lower === "s") {
         ev.preventDefault();
-        void Promise.all([this.persistence.flush(), this.cloud?.flush()]).then(() => toast(this.ephemeral ? "一時表示のため保存しません" : "保存しました", { tone: "ok", ms: 1500 }));
+        void Promise.all([this.persistence.flush(), this.cloud?.flush()]).then(() => {
+          const per = this.persistence;
+          // 本当に保存できたときだけ「保存しました」と言う
+          if (this.ephemeral) toast("一時表示のため保存しません", { ms: 1500 });
+          else if (!per.writer) toast("このタブは閲覧のみです（別のタブで編集中）", { tone: "warn" });
+          else if (per.status === "conflict" || per.status === "error") toast(per.statusMessage || "保存できませんでした", { tone: "error" });
+          else if (per.hasUnsaved) toast("保存しています…", { ms: 1500 });
+          else toast("保存しました", { tone: "ok", ms: 1500 });
+        });
         return;
       }
       if (mod && lower === "k") {

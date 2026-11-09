@@ -204,6 +204,99 @@ describe("Persistence（IndexedDB）", () => {
     expect((await reader.readStored())!.doc).toEqual(taken);
   });
 
+  it("緊急コピー: 本体がその元の版のままなら、時刻が古く見えても写しの方を採る（時計のずれ・古い時刻の取り込み）", async () => {
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const p = makeP(kv, name);
+    await p.open();
+    await p.acquireWriter();
+    await p.loadInitial();
+    const doc = createEmptyDoc("最初");
+    doc.updatedAt = new Date(Date.now() + 3_600_000).toISOString(); // 時計が進んでいた端末で保存された
+    p.attach(() => doc);
+    p.markDirty();
+    await p.flush();
+    const later = { ...doc, nodes: { ...doc.nodes }, updatedAt: new Date(Date.now()).toISOString() };
+    const n = makeNode({ title: "閉じる直前" });
+    later.nodes[n.id] = n;
+    p.attach(() => later);
+    p.markDirty();
+    p.writeEmergency();
+    p.close();
+    const next = makeP(kv, name);
+    await next.open();
+    await next.acquireWriter();
+    const { doc: back, notices } = await next.loadInitial();
+    expect(back!.nodes[n.id]?.title).toBe("閉じる直前");
+    expect(notices.join()).toContain("復元しました");
+  });
+
+  it("緊急コピー: 重なった写しの退避に失敗したら、写しは消さずに残す", async () => {
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const p = makeP(kv, name);
+    await p.open();
+    await p.acquireWriter();
+    await p.loadInitial();
+    const doc = createEmptyDoc("最初");
+    p.attach(() => doc);
+    p.markDirty();
+    await p.flush();
+    edit(doc, "このタブの未保存");
+    p.markDirty();
+    p.writeEmergency();
+    p.close();
+    const other = makeP(kv, name);
+    await other.open();
+    await other.acquireWriter();
+    (other as unknown as { rev: number }).rev = 1;
+    const otherDoc = createEmptyDoc("別のタブ");
+    other.attach(() => otherDoc);
+    other.markDirty();
+    await other.flush();
+    const next = makeP(kv, name);
+    await next.open();
+    await next.acquireWriter();
+    (next as unknown as { createBackup: () => Promise<never> }).createBackup = () => Promise.reject(new DOMException("full", "QuotaExceededError"));
+    const { notices } = await next.loadInitial();
+    expect(notices.join()).toContain("消さずに残しています");
+    expect(hasEmergency(kv)).toBe(true);
+  });
+
+  it("保存に失敗している間は、入力のたびに保存し直したり緊急コピーを書いたりしない", async () => {
+    const kv = memoryKV();
+    const p = makeP(kv);
+    await p.open();
+    await p.acquireWriter();
+    await p.loadInitial();
+    const doc = createEmptyDoc("最初");
+    p.attach(() => doc);
+    let attempts = 0;
+    (p as unknown as { writeStored: () => Promise<number> }).writeStored = async () => {
+      attempts++;
+      throw new DOMException("full", "QuotaExceededError");
+    };
+    let emergencyWrites = 0;
+    const set = kv.set;
+    kv.set = (k, v) => {
+      if (k.includes(":emergency:")) emergencyWrites++;
+      set(k, v);
+    };
+    p.markDirty();
+    await p.flush();
+    expect(p.status).toBe("error");
+    for (let i = 0; i < 10; i++) {
+      edit(doc, `入力 ${i}`);
+      p.markDirty();
+      await wait(5);
+    }
+    await wait(30);
+    expect(attempts).toBe(1);
+    expect(emergencyWrites).toBe(1);
+    expect(p.status).toBe("error");
+    p.close();
+  });
+
   it("バックアップは種類ごとに件数で間引き、復元できる", async () => {
     const p = makeP(memoryKV());
     await p.open();

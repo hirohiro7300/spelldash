@@ -136,9 +136,29 @@ function str(v: unknown, fallback = ""): string {
   return fallback;
 }
 
-function validId(v: unknown): v is string {
-  return typeof v === "string" && v.length > 0 && v.length <= 100 && !/\s/.test(v);
+/**
+ * ID として使える形か（空白なし・100 文字まで）。Object の組み込みの名前（constructor・toString・__proto__ など）は
+ * 辞書を引き間違えるので使わない。数（AI や表計算が書きがちな 1, 2, 3）は文字にして受ける
+ */
+function idOf(v: unknown): string | null {
+  const s = typeof v === "number" && Number.isFinite(v) ? String(v) : v;
+  if (typeof s !== "string" || s.length === 0 || s.length > 100 || /\s/.test(s)) return null;
+  if (s in Object.prototype) return null;
+  return s;
 }
+
+function validId(v: unknown): v is string {
+  return typeof v === "string" && idOf(v) !== null;
+}
+
+/** ほかから指すときに書かれていた名前（接続の端・所属など）。照らし合わせ用 */
+function refOf(v: unknown): string | null {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/** 辞書に自分の項目として持っているか（組み込みの名前に引っかからない） */
+const has = (o: object, k: string): boolean => Object.hasOwn(o, k);
 
 function isoOr(v: unknown, fallback: string): string {
   if (typeof v === "string" && !Number.isNaN(Date.parse(v))) return v;
@@ -189,27 +209,37 @@ function normalizeConditions(v: unknown): Condition[] {
     let text = "";
     let met = false;
     let id: string | null = null;
+    let extra: Obj = {};
     if (typeof raw === "string") text = raw;
     else if (isObj(raw)) {
       text = str(raw.text);
       met = raw.met === true;
       id = validId(raw.id) ? raw.id : null;
-    }
-    if (!text.trim()) continue;
+      extra = extras(raw, CONDITION_KEYS); // 知らない項目は持ち越す
+    } else continue;
+    // 文が空でも、チェック済みや知らない項目があれば残す（読み込みのたびに黙って消さない）
+    if (!text.trim() && !met && Object.keys(extra).length === 0) continue;
     if (!id || seen.has(id)) id = newId("c");
     seen.add(id);
-    out.push({ id, text, met });
+    out.push({ ...extra, id, text, met });
   }
   return out;
 }
 
-function idList(v: unknown, exists: (id: string) => boolean): ID[] {
+/** ID の並び（所属・順番）。振り直した ID へ読み替え、無い物と重なりは外す */
+function idList(v: unknown, map: object, remap?: ReadonlyMap<string, ID>): ID[] {
   if (!Array.isArray(v)) return [];
   const out: ID[] = [];
-  for (const id of v) if (typeof id === "string" && exists(id) && !out.includes(id)) out.push(id);
+  for (const raw of v) {
+    const ref = refOf(raw);
+    if (ref === null) continue;
+    const id = remap?.get(ref) ?? ref;
+    if (has(map, id) && !out.includes(id)) out.push(id);
+  }
   return out;
 }
 
+const CONDITION_KEYS = new Set(["id", "text", "met"]);
 const NODE_KEYS = new Set(["id", "type", "title", "body", "status", "time", "conditions", "tags", "projectIds", "scenarioIds", "x", "y", "collapsed", "createdAt", "updatedAt", "meta"]);
 const TIME_KEYS = new Set(["due", "start"]);
 const EDGE_KEYS = new Set(["id", "source", "target", "relation", "label", "condition", "scenarioIds", "collapsed", "createdAt", "updatedAt", "meta"]);
@@ -248,8 +278,10 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
   }
   const raw = migrate(input);
 
-  // プロジェクト・シナリオ
-  const groups = <T extends Project | Scenario>(v: unknown, kind: "projects" | "scenarios", palette: string[], label: string): Record<ID, T> => {
+  // プロジェクト・シナリオ（使えない形の ID は振り直し、ノードや接続からの参照も読み替える）
+  const projectRemap = new Map<string, ID>();
+  const scenarioRemap = new Map<string, ID>();
+  const groups = <T extends Project | Scenario>(v: unknown, kind: "projects" | "scenarios", palette: string[], label: string, remap: Map<string, ID>): Record<ID, T> => {
     const out: Record<ID, T> = {};
     let i = 0;
     for (const { key, value } of entriesOf(v)) {
@@ -257,10 +289,13 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
         dropped[kind]++;
         continue;
       }
-      let id = validId(value.id) ? value.id : validId(key) ? key : null;
-      if (!id || out[id]) {
+      let id = idOf(value.id) ?? (key !== null ? idOf(key) : null);
+      if (!id || has(out, id)) {
         if (id) warnings.push(`${label}の ID「${id}」が重複していたので、新しい ID を振りました。`);
-        id = newId(kind === "projects" ? "p" : "s");
+        const fresh = newId(kind === "projects" ? "p" : "s");
+        const ref = refOf(value.id) ?? key;
+        if (!id && ref !== null && !remap.has(ref)) remap.set(ref, fresh);
+        id = fresh;
       }
       const name = str(value.name).trim() || `無題の${label}`;
       out[id] = {
@@ -277,23 +312,36 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
     }
     return out;
   };
-  const projects = groups<Project>(raw.projects, "projects", PROJECT_COLORS, "プロジェクト");
-  const scenarios = groups<Scenario>(raw.scenarios, "scenarios", SCENARIO_COLORS, "シナリオ");
+  const projects = groups<Project>(raw.projects, "projects", PROJECT_COLORS, "プロジェクト", projectRemap);
+  const scenarios = groups<Scenario>(raw.scenarios, "scenarios", SCENARIO_COLORS, "シナリオ", scenarioRemap);
 
   // ノード
   const nodes: Record<ID, GNode> = {};
+  const nodeRemap = new Map<string, ID>();
   let unplaced = 0;
+  let renamed = 0;
+  let badDates = 0;
+  let badDateExample = "";
   for (const { key, value } of entriesOf(raw.nodes)) {
     if (!isObj(value)) {
       dropped.nodes++;
       continue;
     }
-    let id = validId(value.id) ? value.id : validId(key) ? key : null;
+    let id = idOf(value.id) ?? (key !== null ? idOf(key) : null);
+    const ref = refOf(value.id) ?? key;
     if (!id) {
-      // ID の無いノードは接続でたどれないので、新しい ID で残す
+      if (ref !== null && nodeRemap.has(ref)) {
+        warnings.push(`ノードの ID「${ref.slice(0, 40)}」が重複していたので、後の方を捨てました。`);
+        dropped.nodes++;
+        continue;
+      }
+      // 使えない形の ID（空白入り・組み込みの名前など）は振り直し、接続はそのままつなぐ。ID の無いノードも新しい ID で残す
       id = newId("n");
-      warnings.push(`ID の無いノード「${str(value.title).slice(0, 20)}」に新しい ID を振りました。`);
-    } else if (nodes[id]) {
+      if (ref !== null) {
+        nodeRemap.set(ref, id);
+        renamed++;
+      } else warnings.push(`ID の無いノード「${str(value.title).slice(0, 20)}」に新しい ID を振りました。`);
+    } else if (has(nodes, id)) {
       warnings.push(`ノードの ID「${id}」が重複していたので、後の方を捨てました。`);
       dropped.nodes++;
       continue;
@@ -302,8 +350,16 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
     if (value.type !== undefined && type !== value.type) warnings.push(`ノード「${str(value.title).slice(0, 20)}」の種類「${str(value.type)}」は使えないので「行動」にしました。`);
     const status: NodeStatus = STATUS_ORDER.includes(value.status as NodeStatus) ? (value.status as NodeStatus) : "open";
     const rawTime = isObj(value.time) ? value.time : {};
-    const due = normalizeDateStr(rawTime.due ?? value.due ?? value.deadline ?? null);
-    const start = normalizeDateStr(rawTime.start ?? null);
+    const rawDue = rawTime.due ?? value.due ?? value.deadline ?? null;
+    const rawStart = rawTime.start ?? null;
+    const due = normalizeDateStr(rawDue);
+    const start = normalizeDateStr(rawStart);
+    for (const [r, v] of [[rawDue, due], [rawStart, start]] as const) {
+      if (v === null && r !== null && r !== "") {
+        badDates++;
+        if (!badDateExample) badDateExample = `「${str(value.title).slice(0, 20)}」の「${str(r).slice(0, 30)}」`;
+      }
+    }
     let x = typeof value.x === "number" && Number.isFinite(value.x) ? value.x : NaN;
     let y = typeof value.y === "number" && Number.isFinite(value.y) ? value.y : NaN;
     if (Number.isNaN(x) || Number.isNaN(y)) {
@@ -322,8 +378,8 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
       time: { ...extras(rawTime, TIME_KEYS), due, start },
       conditions: normalizeConditions(value.conditions),
       tags: normalizeTags(value.tags),
-      projectIds: idList(value.projectIds, (p) => p in projects),
-      scenarioIds: idList(value.scenarioIds, (s) => s in scenarios),
+      projectIds: idList(value.projectIds, projects, projectRemap),
+      scenarioIds: idList(value.scenarioIds, scenarios, scenarioRemap),
       x: Math.round(x * 100) / 100,
       y: Math.round(y * 100) / 100,
       collapsed: value.collapsed === true,
@@ -333,6 +389,8 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
     } as GNode;
   }
   if (unplaced) warnings.push(`位置の無いノード ${unplaced} 件を下の方に並べました。`);
+  if (renamed) warnings.push(`使えない形の ID（空白入りなど）を持つノード ${renamed} 件に新しい ID を振りました（接続はそのままつなぎました）。`);
+  if (badDates) warnings.push(`日付として読めない期限・開始日 ${badDates} 件を外しました（例: ${badDateExample}）。`);
 
   // 接続
   const edges: Record<ID, GEdge> = {};
@@ -344,9 +402,14 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
       dropped.edges++;
       continue;
     }
-    const source = str(value.source);
-    const target = str(value.target);
-    if (!(source in nodes) || !(target in nodes) || source === target) {
+    // 接続の端は from / to でも受ける（AI が書きがちな形）。振り直したノードの ID へ読み替える
+    const end = (v: unknown): string => {
+      const r = refOf(v);
+      return r === null ? "" : (nodeRemap.get(r) ?? r);
+    };
+    const source = end(value.source ?? value.from);
+    const target = end(value.target ?? value.to);
+    if (!has(nodes, source) || !has(nodes, target) || source === target) {
       badEnds++;
       dropped.edges++;
       continue;
@@ -357,19 +420,22 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
       dropped.edges++;
       continue;
     }
-    let id = validId(value.id) ? value.id : validId(key) ? key : null;
-    if (!id || edges[id]) id = newId("e");
+    let id = idOf(value.id) ?? (key !== null ? idOf(key) : null);
+    if (!id || has(edges, id)) id = newId("e");
     pairs.add(pair);
     const relation: Relation = RELATION_ORDER.includes(value.relation as Relation) ? (value.relation as Relation) : "leads";
+    const extra = extras(value, EDGE_KEYS);
+    if (value.source === undefined) delete extra.from;
+    if (value.target === undefined) delete extra.to;
     edges[id] = {
-      ...extras(value, EDGE_KEYS),
+      ...extra,
       id,
       source,
       target,
       relation,
       label: str(value.label),
       condition: str(value.condition),
-      scenarioIds: idList(value.scenarioIds, (s) => s in scenarios),
+      scenarioIds: idList(value.scenarioIds, scenarios, scenarioRemap),
       collapsed: value.collapsed === true,
       createdAt: isoOr(value.createdAt, now),
       updatedAt: isoOr(value.updatedAt, now),
@@ -382,8 +448,8 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
   if (dropped.projects) warnings.push(`読めないプロジェクト ${dropped.projects} 件を捨てました。`);
   if (dropped.scenarios) warnings.push(`読めないシナリオ ${dropped.scenarios} 件を捨てました。`);
 
-  const order = (v: unknown, map: Record<ID, Project | Scenario>): ID[] => {
-    const out = idList(v, (id) => id in map);
+  const order = (v: unknown, map: Record<ID, Project | Scenario>, remap: ReadonlyMap<string, ID>): ID[] => {
+    const out = idList(v, map, remap);
     const rest = Object.values(map)
       .filter((g) => !out.includes(g.id))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -405,8 +471,8 @@ export function normalizeDoc(input: unknown): { doc: DocData; report: NormalizeR
     scenarios,
     nodes,
     edges,
-    projectOrder: order(raw.projectOrder, projects),
-    scenarioOrder: order(raw.scenarioOrder, scenarios),
+    projectOrder: order(raw.projectOrder, projects, projectRemap),
+    scenarioOrder: order(raw.scenarioOrder, scenarios, scenarioRemap),
     meta: metaOf(raw.meta),
   };
   return { doc, report: { warnings, dropped } };

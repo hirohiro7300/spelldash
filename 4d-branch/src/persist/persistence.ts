@@ -120,6 +120,7 @@ export class Persistence {
   readonly tabId = newId("t");
   mode: "idb" | "local" | "memory";
   status: SaveStatus = "idle";
+  private lastFailEmergencyAt = 0;
   statusMessage = "";
   savedAt: string | null = null;
   rev = 0;
@@ -280,14 +281,21 @@ export class Persistence {
     let adopted: DocData | null = null;
     for (const em of this.readEmergencies()) {
       if (em.doc) {
-        const newer = !stored || em.doc.updatedAt > stored.doc.updatedAt;
+        // 本体がこの写しの元の版のまま（その後に保存が無い）なら、時刻が違えば写しの方が先の内容
+        const sameBase = !!stored && em.baseRev === stored.meta.rev;
+        const newer = !stored || em.doc.updatedAt > stored.doc.updatedAt || (sameBase && em.doc.updatedAt !== stored.doc.updatedAt);
         if (newer) {
-          const continues = !stored || em.baseRev === stored.meta.rev || (em.tabId !== "" && stored.meta.writer === em.tabId);
+          const continues = !stored || sameBase || (em.tabId !== "" && stored.meta.writer === em.tabId);
           if (continues && !adopted) {
             adopted = em.doc;
             notices.push("前回、保存しきれなかった変更を復元しました。");
           } else {
-            await this.createBackup("conflict", "前回の未保存の変更（別の保存と重なった）", em.doc).catch(() => undefined);
+            const saved = await this.createBackup("conflict", "前回の未保存の変更（別の保存と重なった）", em.doc).catch(() => null);
+            if (!saved) {
+              // 退避できなかった写しは消さない（次に開いたときにもう一度試す）
+              notices.push("前回の未保存の変更が別の保存と重なりましたが、バックアップを作れなかったため、消さずに残しています（JSON で書き出しておくと安心です）。");
+              continue;
+            }
             notices.push("前回の未保存の変更が別の保存と重なったため、バックアップに退避しました（メニュー →「バックアップと復元」）。");
           }
         }
@@ -360,6 +368,8 @@ export class Persistence {
     }
     if (this.stopped) return this.setStatus("conflict", this.statusMessage);
     if (!this.writer) return this.setStatus("readonly");
+    // 保存に失敗している間は、表示を「保存できません」のままにして、5 秒後の再試行を待つ
+    if (this.status === "error" && this.retryTimer) return;
     this.setStatus("pending");
     this.schedule();
   }
@@ -408,12 +418,17 @@ export class Persistence {
         await this.maybeAutoBackup(doc).catch(() => undefined);
       } catch (e) {
         this.dirty = true;
+        // 失敗の後は、入力のたびにすぐ保存し直さない（やり直しは 5 秒後の再試行に任せる）
+        this.firstDirtyAt = Date.now();
         if (e instanceof ConflictError) {
           this.stopped = true;
           await this.createBackup("conflict", "保存の競合で退避した内容", doc).catch(() => undefined);
           this.setStatus("conflict", "別のタブで保存された内容があるため、上書きせずに止めました。手元の内容はバックアップに退避してあります。");
         } else {
-          this.writeEmergency(true);
+          if (Date.now() - this.lastFailEmergencyAt > 5000) {
+            this.lastFailEmergencyAt = Date.now();
+            this.writeEmergency(true);
+          }
           this.setStatus("error", errorMessage(e));
           this.retryTimer = setTimeout(() => {
             this.retryTimer = null;

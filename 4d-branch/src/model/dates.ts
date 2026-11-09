@@ -1,6 +1,8 @@
 // 期限などの日付は「YYYY-MM-DD」のローカル日付として持つ（時刻・時差を持たない）
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const MIN_YEAR = 1900;
+export const MAX_YEAR = 2999;
 const DAY_MS = 86_400_000;
 
 function pad(n: number): string {
@@ -22,6 +24,8 @@ export function isDateStr(s: unknown): s is string {
   const y = Number(m[1]);
   const mo = Number(m[2]);
   const d = Number(m[3]);
+  // 時間軸の計算が 4 桁の年で閉じるよう、入力欄と同じ 1900〜2999 年に限る
+  if (y < MIN_YEAR || y > MAX_YEAR) return false;
   if (mo < 1 || mo > 12 || d < 1) return false;
   return d <= daysInMonth(y, mo);
 }
@@ -36,8 +40,8 @@ export function normalizeDateStr(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const s = input.trim().normalize("NFKC");
   if (isDateStr(s)) return s;
-  // 2027/3/31・2027.3.31・2027-3-31
-  const m = /^(\d{4})[/.\-年](\d{1,2})[/.\-月](\d{1,2})日?$/.exec(s);
+  // 2027/3/31・2027.3.31・2027-3-31・2027年3月31日（後ろに時刻が付いていても日付だけ使う: 2027-03-31 10:00）
+  const m = /^(\d{4})[/.\-年](\d{1,2})[/.\-月](\d{1,2})日?(?:[ T].*)?$/.exec(s);
   if (m) {
     const out = `${m[1]}-${pad(Number(m[2]))}-${pad(Number(m[3]))}`;
     return isDateStr(out) ? out : null;

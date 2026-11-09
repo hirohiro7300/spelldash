@@ -271,6 +271,42 @@ async function main() {
     assert(hidden2 === 0, `戻らない ${hidden2}`);
   });
 
+  await check("検索: 折りたたみで隠れたノードも「隠れています」と出て、選ぶと開いて表示する", async () => {
+    const target = await page.evaluate(() => {
+      const f = window.__fourD;
+      f.app.cmd.toggleCollapse(["n_demo_learn_ads"]);
+      f.app.vm.ensure();
+      const counts = new Map();
+      for (const n of Object.values(f.store.doc.nodes)) counts.set(n.title, (counts.get(n.title) ?? 0) + 1);
+      const id = [...f.app.vm.nodes.entries()].find(([nid, v]) => v.hidden && f.store.doc.nodes[nid].title && counts.get(f.store.doc.nodes[nid].title) === 1)?.[0];
+      return id ? { id, title: f.store.doc.nodes[id].title } : null;
+    });
+    assert(target, "折りたたみで隠れたノードが無い");
+    await page.keyboard.press("Control+k");
+    await page.keyboard.type(target.title);
+    const esc = target.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const row = page.locator(".search-row").filter({ has: page.locator(".search-title", { hasText: new RegExp(`^${esc}$`) }) });
+    await row.first().waitFor();
+    assert((await row.first().locator(".search-hidden").count()) === 1, "「隠れています」が出ない");
+    await row.first().click();
+    const vis = await page.evaluate((id) => {
+      const f = window.__fourD;
+      return { hidden: f.app.vm.node(id).hidden, sel: f.ui.singleNode };
+    }, target.id);
+    assert(!vis.hidden && vis.sel === target.id, JSON.stringify(vis));
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    // 片付け: 開いた分と折りたたみを戻す
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.store.undo();
+      f.store.undo();
+      f.ui.clearSelection();
+    });
+    const left = await page.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.hiddenCount));
+    assert(left === 0, `片付けで戻らない ${left}`);
+  });
+
   await check("時間軸を押すと時点が決まり、シナリオを切り替えられる", async () => {
     const box = await page.locator(".timeline-canvas").boundingBox();
     await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
@@ -356,6 +392,47 @@ async function main() {
     await page.locator(".backup-row .kind-manual").first().waitFor();
     await shot("e2e-06-backups");
     await page.keyboard.press("Escape");
+  });
+
+  await check("競合: 別の保存で止まったら ⌘S は「保存しました」と言わず、「最新を開く」でもこのタブの内容をバックアップに残す", async () => {
+    await waitSaved(page);
+    // 別の書き手（ロックの使えない環境の別タブなど）が、知らないうちに版を進めた
+    await page.evaluate(
+      () =>
+        new Promise((resolve, reject) => {
+          const req = indexedDB.open("4d-branch");
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            const db = req.result;
+            const t = db.transaction("kv", "readwrite");
+            const s = t.objectStore("kv");
+            const g = s.get("meta");
+            g.onsuccess = () => s.put({ ...g.result, rev: g.result.rev + 5, writer: "t_other" }, "meta");
+            t.oncomplete = () => (db.close(), resolve());
+            t.onerror = () => reject(t.error);
+          };
+        }),
+    );
+    await page.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: -600, y: 1300 }, { title: "競合の前に足した", exact: true }));
+    await page.waitForFunction(() => window.__fourD.persistence.status === "conflict", null, { timeout: 5000 });
+    await page.getByRole("button", { name: "保存されている最新を開く" }).waitFor();
+    // 競合に気づいた後にも書き足す（この変更はまだどこにも無い）
+    await page.evaluate(() => window.__fourD.app.cmd.createNode("action", { x: -600, y: 1450 }, { title: "気づいた後の変更", exact: true }));
+    await page.locator(".graph-canvas").focus();
+    await page.keyboard.press("Control+s");
+    await page.waitForTimeout(300);
+    const toasts = await page.locator(".toast-text").allTextContents();
+    assert(!toasts.includes("保存しました"), `競合なのに「保存しました」: ${toasts.join(" / ")}`);
+    await page.getByRole("button", { name: "保存されている最新を開く" }).click();
+    await page.waitForFunction(() => window.__fourD.persistence.status === "saved", null, { timeout: 5000 });
+    const kept = await page.evaluate(async () => {
+      const p = window.__fourD.persistence;
+      const b = (await p.listBackups()).find((x) => x.label === "保存されている最新を開く前のこのタブの内容");
+      if (!b) return "バックアップが無い";
+      const d = await p.readBackup(b.id);
+      return Object.values(d.nodes).some((n) => n.title === "気づいた後の変更") ? "ok" : "気づいた後の変更が無い";
+    });
+    assert(kept === "ok", kept);
   });
 
   await check("閉じる直前の変更も消えない（緊急コピー）", async () => {

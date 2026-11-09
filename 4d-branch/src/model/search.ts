@@ -1,7 +1,7 @@
 // ノード検索。全角・半角、大文字・小文字、カタカナ・ひらがなの違いを無視する。`#タグ` でタグを絞る
 
 import { NODE_TYPES, STATUSES } from "./constants";
-import type { DocData, GNode, ID } from "./types";
+import type { DocData, GNode, ID, Project } from "./types";
 
 export function normalizeText(s: string): string {
   return s
@@ -32,19 +32,21 @@ export function isEmptyQuery(q: SearchQuery): boolean {
   return q.terms.length === 0 && q.tags.length === 0;
 }
 
-// ノードは不変なので、オブジェクトごとに正規化した文をキャッシュできる
-const hayCache = new WeakMap<GNode, { title: string; all: string; tags: string[] }>();
+// ノードもプロジェクトも不変（変えると別のオブジェクトになる）なので、ノードごとに正規化した文をキャッシュできる。
+// プロジェクトの名前も文に入るので、所属するプロジェクトのオブジェクトが変わったら（名前の変更など）作り直す
+const hayCache = new WeakMap<GNode, { title: string; all: string; tags: string[]; projects: Array<Project | undefined> }>();
 
 function hayOf(n: GNode, doc: DocData) {
   let h = hayCache.get(n);
-  if (!h) {
+  const projects = n.projectIds.map((p) => doc.projects[p]);
+  if (!h || h.projects.length !== projects.length || projects.some((p, i) => p !== h!.projects[i])) {
     const title = normalizeText(n.title);
     const tags = n.tags.map(normalizeText);
-    const projects = n.projectIds.map((p) => doc.projects[p]?.name ?? "").join(" ");
+    const names = projects.map((p) => p?.name ?? "").join(" ");
     const all = normalizeText(
-      [n.title, n.body, n.tags.join(" "), n.conditions.map((c) => c.text).join(" "), NODE_TYPES[n.type].label, STATUSES[n.status].label, projects, n.time.due ?? ""].join("\n"),
+      [n.title, n.body, n.tags.join(" "), n.conditions.map((c) => c.text).join(" "), NODE_TYPES[n.type].label, STATUSES[n.status].label, names, n.time.due ?? ""].join("\n"),
     );
-    h = { title, all, tags };
+    h = { title, all, tags, projects };
     hayCache.set(n, h);
   }
   return h;

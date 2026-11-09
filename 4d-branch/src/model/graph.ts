@@ -65,11 +65,14 @@ export function buildIndex(doc: DocData): GraphIndex {
   }
   for (const id in doc.edges) {
     const e = doc.edges[id]!;
-    const a = doc.nodes[e.source];
-    const b = doc.nodes[e.target];
-    if (!a || !b) continue;
-    out.get(e.source)!.push(id);
-    inc.get(e.target)!.push(id);
+    // 端が自分の項目として無い接続は飛ばす（組み込みの名前を引いても落ちない）
+    const os = out.get(e.source);
+    const is = inc.get(e.target);
+    if (!os || !is) continue;
+    const a = doc.nodes[e.source]!;
+    const b = doc.nodes[e.target]!;
+    os.push(id);
+    is.push(id);
     if (isCross(a, b)) cross.add(id);
     for (const s of e.scenarioIds) scenarioCounts.set(s, (scenarioCounts.get(s) ?? 0) + 1);
   }

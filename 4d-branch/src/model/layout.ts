@@ -24,14 +24,21 @@ export function findFreeSpot(doc: DocData, x: number, y: number, opts: { ignore?
   const ignore = opts.ignore ?? new Set<ID>();
   const extra = opts.extra ?? [];
   const step = NODE_H + GAP_Y + 8;
-  for (let i = 0; i < 40; i++) {
-    const k = Math.ceil(i / 2);
-    const dir = opts.preferDown ? (i % 2 === 1 ? 1 : -1) : i % 2 === 1 ? 1 : -1;
-    const cy = i === 0 ? y : y + dir * k * step;
-    if (!overlaps(doc, x, cy, ignore, extra)) return { x, y: cy };
+  // 縦に交互に探し、その列が詰まっていれば右の列へ（確かめずに置かない）
+  for (let col = 0; col < 24; col++) {
+    const cx = x + col * (NODE_W + GAP_X);
+    for (let i = 0; i < 40; i++) {
+      const k = Math.ceil(i / 2);
+      const dir = opts.preferDown ? (i % 2 === 1 ? 1 : -1) : i % 2 === 1 ? 1 : -1;
+      const cy = i === 0 ? y : y + dir * k * step;
+      if (!overlaps(doc, cx, cy, ignore, extra)) return { x: cx, y: cy };
+    }
   }
-  // 見つからなければ右へずらす
-  return { x: x + NODE_W + GAP_X, y };
+  // それでも無ければ、いちばん右のノードのさらに右（必ず空いている）
+  let maxX = x;
+  for (const id in doc.nodes) if (!ignore.has(id)) maxX = Math.max(maxX, doc.nodes[id]!.x);
+  for (const p of extra) maxX = Math.max(maxX, p.x);
+  return { x: maxX + NODE_W + GAP_X, y };
 }
 
 /** 子（分岐の先）を置く場所: 親の右。すでに子がいれば、いちばん下の子の下 */
