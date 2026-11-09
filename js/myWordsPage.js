@@ -234,20 +234,47 @@ function rowOf(w) {
   return li;
 }
 
-// 一覧の材料の印（Batch 87。docs/SPEC_MY_WORDS.md §16.3）: 行に出す物（語の印・英語の形・読み上げの名前・訳か問い・状態・消すの鍵）と、
-// 選ぶ最中か・選んだ語・直している行。前に一覧を作ったときと同じなら行を作り直さない（spelldash:mywords の受け手と操作の後の描き直しが
-// 1 回の作り直しになる。行の要素はそのまま残るので、描き直しの後に行を探す所〔焦点〕も同じ要素に当たる）。数・ボタン・文は毎回書く
-let listSig = null;
-function listSignature(shown) {
-  return JSON.stringify([
-    selecting,
-    editing,
-    selecting ? [...selected].sort() : [],
-    shown.map((w) => {
-      const word = isWordEntry(w);
-      return [entryRefOf(w), shownOf(w), labelOf(w), word ? String(w.ja ?? "") : String(w.q ?? ""), word ? myStateOf(w) : -1, String(w.en ?? ""), w.kind === "concept"];
-    })
-  ]);
+// 行の印（Batch 87。docs/SPEC_MY_WORDS.md §16.3）: 行に出す物（語の印・英語の形・読み上げの名前・訳か問い・状態・消すの鍵）と、
+// 選ぶ最中か・その行を選んだか・その行を直しているか。描き直しでは、印が前と同じ行の要素はそのまま残し、変わった行と新しい行だけを作り、
+// 消えた行だけを外す（patchRows）。spelldash:mywords の受け手と操作の後の描き直しが 1 回の作り直しになり、残した行は描いた高さを覚えたまま
+// なので（.mw-row の content-visibility）、読んでいる所が動かない。描き直しの後に行を探す所（焦点）も同じ要素に当たる。数・ボタン・文は毎回書く
+let rowSigs = new Map(); // 行の鍵 → { el, sig }（前に描いた行）
+function rowSignature(w) {
+  const ref = entryRefOf(w);
+  const word = isWordEntry(w);
+  return JSON.stringify([ref, shownOf(w), labelOf(w), word ? String(w.ja ?? "") : String(w.q ?? ""), word ? myStateOf(w) : -1, String(w.en ?? ""), w.kind === "concept", selecting, selecting && selected.has(ref), editing === ref]);
+}
+// ul の子を els（この順）にする。残す行は動かさず、変わった行はその場で入れ替え（1 つの変化）、消えた行は外し、新しい行は入れる。
+// 残せる行が 1 つも無いとき（開いたとき・単語帳の切り替え・選ぶ最中の出入り）は 1 回で全部を替える
+function patchRows(ul, els) {
+  const keep = new Set(els);
+  if (![...ul.children].some((c) => keep.has(c))) {
+    ul.replaceChildren(...els);
+    return;
+  }
+  let cur = ul.firstChild; // cur より前は、els の済んだ所と同じ並び
+  for (const el of els) {
+    let placed = false;
+    while (cur && cur !== el && !keep.has(cur)) {
+      const after = cur.nextSibling;
+      if (el.parentNode !== ul) {
+        ul.replaceChild(el, cur); // 変わった行: 新しい行が前の行の場所に入る
+        placed = true;
+      } else {
+        ul.removeChild(cur); // 消えた行
+      }
+      cur = after;
+      if (placed) break;
+    }
+    if (placed) continue;
+    if (cur === el) cur = cur.nextSibling;
+    else ul.insertBefore(el, cur); // 新しい行・場所の動いた行
+  }
+  while (cur) {
+    const after = cur.nextSibling;
+    ul.removeChild(cur);
+    cur = after;
+  }
 }
 
 function render() {
@@ -310,11 +337,17 @@ function render() {
   const ul = $("myWordsList");
   if (!ul) return;
   const shown = [...entries].reverse(); // 新しく足した語が上
-  const sig = listSignature(shown);
-  if (sig !== listSig || ul.childElementCount !== shown.length) {
-    ul.replaceChildren(...shown.map(rowOf));
-    listSig = sig;
-  }
+  const prev = rowSigs;
+  rowSigs = new Map();
+  const els = shown.map((w) => {
+    const ref = entryRefOf(w);
+    const sig = rowSignature(w);
+    const old = prev.get(ref);
+    const el = old && old.sig === sig && old.el.parentNode === ul && !rowSigs.has(ref) ? old.el : rowOf(w);
+    rowSigs.set(ref, { el, sig });
+    return el;
+  });
+  patchRows(ul, els);
   ul.hidden = shown.length === 0;
   const head = $("myWordsListHead");
   if (head) head.hidden = shown.length === 0;
