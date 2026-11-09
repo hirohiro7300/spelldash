@@ -1,12 +1,15 @@
-// ノードの上で直接タイトルを編集する欄（日本語入力の変換中の Enter では確定しない）
+// ノードの上で直接タイトルを編集する欄（日本語入力の変換中の Enter・Esc・Tab は入力に任せる）
 
 import type { Commands } from "../app/commands";
 import { NODE_W } from "../model/constants";
 import type { ID } from "../model/types";
 import type { Store } from "../store/store";
-import { h } from "../ui/dom";
+import { h, isMac } from "../ui/dom";
 import type { CanvasView } from "./CanvasView";
 import { HALF_H, HALF_W } from "./geometry";
+
+/** 欄が自分で使うキー（⌘・Ctrl と一緒でもアプリへは通さない） */
+const EDITOR_KEYS = new Set(["Enter", "Escape", "Tab"]);
 
 export class InlineEditor {
   private el: HTMLTextAreaElement | null = null;
@@ -42,8 +45,24 @@ export class InlineEditor {
     ta.value = n.title;
     ta.placeholder = "タイトルを入力";
     ta.addEventListener("keydown", (ev) => {
+      // 変換中のキーは日本語入力のもの（macOS の Chrome は isComposing、Safari は keyCode 229 で分かる）
+      const composing = ev.isComposing || ev.keyCode === 229;
+      // ⌘S（保存）・⌘K（検索）・⌘E（書き出し）はアプリのショートカットへ通す（止めるとブラウザの「ページを保存」などが開く）。
+      // ⌘Z・⌘A などは、入力中の欄にはアプリが手を出さないので、ふだんの文字の編集のまま。
+      // Mac の Ctrl+K・Ctrl+E は行の編集のキーなので通さない
+      if (!composing && (isMac ? ev.metaKey : ev.ctrlKey) && !EDITOR_KEYS.has(ev.key)) {
+        const key = ev.key.toLowerCase();
+        if (key === "s" || key === "e") {
+          // 保存・書き出しには打っている題名も入れる
+          this.commit();
+          this.view.canvas.focus();
+        }
+        return;
+      }
       ev.stopPropagation();
-      if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229) {
+      // 変換中は欄のショートカットも使わない（Esc で編集ごと取り消さない・Tab で子を作らない）
+      if (composing) return;
+      if (ev.key === "Enter" && !ev.shiftKey) {
         ev.preventDefault();
         this.commit();
         this.view.canvas.focus();
@@ -51,7 +70,7 @@ export class InlineEditor {
         ev.preventDefault();
         this.cancel();
         this.view.canvas.focus();
-      } else if (ev.key === "Tab" && !ev.isComposing) {
+      } else if (ev.key === "Tab") {
         // 確定して、続けて子を作る
         ev.preventDefault();
         const nid = this.id;

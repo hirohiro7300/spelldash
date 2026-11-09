@@ -1,10 +1,11 @@
-// キャンバスの操作: パン・ズーム・選択・範囲選択・ドラッグ・接続（つまみから）・タッチのピンチ
+// キャンバスの操作: パン・ズーム・選択・範囲選択・ドラッグ・接続（つまみから）・タッチのピンチ・Safari のトラックパッドのピンチ
 
 import type { Commands } from "../app/commands";
 import type { UiState } from "../app/uiState";
 import type { ViewModel } from "../app/viewModel";
 import type { ID } from "../model/types";
 import type { Store } from "../store/store";
+import { isMac } from "../ui/dom";
 import type { CanvasView, Hit } from "./CanvasView";
 import { HALF_W } from "./geometry";
 
@@ -31,6 +32,12 @@ export class Interaction {
   spaceDown = false;
   private hoverRaf = 0;
   private lastMove: { x: number; y: number } | null = null;
+  /** 押した所（離すまでに動いたかを見る） */
+  private downAt: { x: number; y: number } | null = null;
+  /** 直前に離した操作が動いたか（クリックのすぐ後のドラッグ・パンで出る dblclick を無視する） */
+  private lastUpMoved = false;
+  /** Safari のピンチ（gesture*）の直前の scale */
+  private gestureScale = 1;
 
   constructor(
     private readonly view: CanvasView,
@@ -46,11 +53,21 @@ export class Interaction {
     c.addEventListener("pointerup", this.onUp);
     c.addEventListener("pointercancel", this.onCancel);
     c.addEventListener("pointerleave", () => {
+      // 出る直前の動きで予約したホバーの更新が、消した後に光を戻さないように
+      cancelAnimationFrame(this.hoverRaf);
+      this.hoverRaf = 0;
+      this.lastMove = null;
       if (this.mode.kind === "idle") this.ui.setHover(null, null);
     });
     c.addEventListener("wheel", this.onWheel, { passive: false });
     c.addEventListener("dblclick", this.onDbl);
     c.addEventListener("contextmenu", this.onContext);
+    // Safari（macOS）のトラックパッドのピンチは ctrl+ホイールではなく gesture* で来る。止めないとページごと拡大される
+    if ("GestureEvent" in globalThis) {
+      c.addEventListener("gesturestart", this.onGesture);
+      c.addEventListener("gesturechange", this.onGesture);
+      c.addEventListener("gestureend", this.onGesture);
+    }
   }
 
   get busy(): boolean {
@@ -69,10 +86,13 @@ export class Interaction {
   // ------------------------------------------------------------ 押す
 
   private onDown = (ev: PointerEvent) => {
-    if (ev.button === 2) return;
+    // 右クリックは contextmenu に任せる。Mac の Ctrl+クリックも右クリック（ボタン 0 で来て、すぐ contextmenu が続く）なので、
+    // ここで選択に足すと、メニューが押していないノードにまで効く
+    if (ev.button === 2 || (isMac && ev.ctrlKey && ev.button === 0)) return;
     this.view.canvas.focus({ preventScroll: true });
     this.view.stopCameraAnimation();
     const p = this.local(ev);
+    this.downAt = p;
     this.pointers.set(ev.pointerId, { ...p, type: ev.pointerType });
     this.view.canvas.setPointerCapture(ev.pointerId);
 
@@ -94,7 +114,8 @@ export class Interaction {
       return;
     }
     const hit = this.view.hitTest(p.x, p.y);
-    const additive = ev.shiftKey || ev.metaKey || ev.ctrlKey;
+    // 選択に足す: Shift・⌘（Mac）/ Shift・Ctrl（ほか）
+    const additive = ev.shiftKey || ev.metaKey || (!isMac && ev.ctrlKey);
     switch (hit.kind) {
       case "port": {
         if (this.store.readOnly) return;
@@ -262,6 +283,9 @@ export class Interaction {
       /* もう離れている */
     }
     const m = this.mode;
+    const from = this.downAt;
+    this.downAt = null;
+    this.lastUpMoved = m.kind === "pinch" || ((m.kind === "pan" || m.kind === "drag") && m.moved) || (!!from && Math.hypot(p.x - from.x, p.y - from.y) > 5);
     if (m.kind === "pinch") {
       if (this.pointers.size === 0) this.mode = { kind: "idle" };
       return;
@@ -317,6 +341,7 @@ export class Interaction {
 
   private onCancel = (ev: PointerEvent) => {
     this.pointers.delete(ev.pointerId);
+    this.downAt = null;
     this.view.drag = null;
     this.view.connect = null;
     this.view.marquee = null;
@@ -354,7 +379,29 @@ export class Interaction {
     this.view.cameraChanged();
   };
 
+  /** Safari のピンチ: scale は始めからの倍率なので、前の値との比だけ拡大縮小する */
+  private onGesture = (ev: Event) => {
+    ev.preventDefault();
+    const { scale: s, clientX, clientY } = ev as Event & { scale?: number; clientX?: number; clientY?: number };
+    const scale = s && s > 0 ? s : 1;
+    if (ev.type === "gesturestart") {
+      this.gestureScale = scale;
+      this.view.stopCameraAnimation();
+      return;
+    }
+    const factor = scale / this.gestureScale;
+    this.gestureScale = scale;
+    if (ev.type !== "gesturechange") return;
+    // 指のピンチ（iPhone・iPad でも gesture* が来る）はポインターの側で拡大している
+    if (this.mode.kind === "pinch" || [...this.pointers.values()].some((x) => x.type === "touch")) return;
+    const p = typeof clientX === "number" && typeof clientY === "number" ? this.local({ clientX, clientY }) : { x: this.view.width / 2, y: this.view.height / 2 };
+    this.view.camera.zoomAt(p.x, p.y, factor);
+    this.view.cameraChanged();
+  };
+
   private onDbl = (ev: MouseEvent) => {
+    // クリックのすぐ後にドラッグ・パンすると、離した所で dblclick が来る（ノードを作ったり編集を始めたりしない）
+    if (this.lastUpMoved) return;
     const p = this.local(ev);
     const hit = this.view.hitTest(p.x, p.y);
     if (hit.kind === "node") this.hooks.startEdit(hit.node);

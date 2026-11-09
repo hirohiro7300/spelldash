@@ -874,6 +874,8 @@ button.tag-chip:hover {
 .minimap-canvas {
   display: block;
   cursor: pointer;
+  /* 指で動かしてもブラウザのスクロールに取られない（取られると最初の 1 回で止まる） */
+  touch-action: none;
 }
 .minimap.idle {
   opacity: 0;

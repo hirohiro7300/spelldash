@@ -7,6 +7,7 @@ import type { Store } from "../store/store";
 import { h } from "../ui/dom";
 import type { CanvasView } from "./CanvasView";
 import { HALF_H, HALF_W } from "./geometry";
+import { onPixelRatioChange } from "./pixelRatio";
 
 const W = 208;
 const H = 132;
@@ -27,13 +28,15 @@ export class Minimap {
     private readonly ui: UiState,
   ) {
     this.canvas = h("canvas", { class: "minimap-canvas", attrs: { "aria-hidden": "true" } });
-    const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
-    this.canvas.width = W * dpr;
-    this.canvas.height = H * dpr;
     this.canvas.style.width = `${W}px`;
     this.canvas.style.height = `${H}px`;
     this.ctx = this.canvas.getContext("2d")!;
-    this.ctx.scale(dpr, dpr);
+    this.applyPixelRatio();
+    // 画素の細かさが違う画面へ移ったら、描く大きさを合わせて描き直す
+    onPixelRatioChange(() => {
+      this.applyPixelRatio();
+      this.schedule();
+    });
     this.el = h("div", { class: "minimap", title: "ミニマップ（押すとその場所へ）" }, this.canvas);
     view.onRender(() => this.schedule());
     this.canvas.addEventListener("pointerdown", (ev) => {
@@ -44,13 +47,27 @@ export class Minimap {
     this.canvas.addEventListener("pointermove", (ev) => {
       if (this.dragging) this.jump(ev);
     });
-    this.canvas.addEventListener("pointerup", () => (this.dragging = false));
+    // 離したときのほか、ブラウザに取られた（pointercancel）・捕まえが外れたときも止める（押したままにならないように）
+    const stop = () => {
+      this.dragging = false;
+    };
+    this.canvas.addEventListener("pointerup", stop);
+    this.canvas.addEventListener("pointercancel", stop);
+    this.canvas.addEventListener("lostpointercapture", stop);
     this.canvas.addEventListener("wheel", (ev) => {
       ev.preventDefault();
       this.view.zoomBy(Math.exp(-Math.max(-60, Math.min(60, ev.deltaY)) * 0.006));
     }, { passive: false });
     ui.on("prefs", () => this.applyVisible());
     this.applyVisible();
+  }
+
+  /** 描く大きさを今の画素の細かさに合わせる（大きさを変えると変換も戻るので、かけ直す） */
+  private applyPixelRatio(): void {
+    const dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
+    this.canvas.width = Math.round(W * dpr);
+    this.canvas.height = Math.round(H * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   private applyVisible(): void {

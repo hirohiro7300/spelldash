@@ -8,8 +8,9 @@ import type { GNode, ID, Relation } from "../model/types";
 import type { Store } from "../store/store";
 import { h } from "../ui/dom";
 import { Camera } from "./camera";
-import { badgeScale, drawEdge, drawEdgeLabel, drawNode, drawPort, drawStub, gridPattern, lodFor, rgba } from "./draw";
+import { badgeScale, drawEdge, drawEdgeLabel, drawNode, drawPort, drawStub, gridPattern, lodFor, rgba, type Lod } from "./draw";
 import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, distToEdge, edgeGeom, inNode, rectsIntersect, type EdgeGeom } from "./geometry";
+import { onPixelRatioChange } from "./pixelRatio";
 import { CANVAS_FONT, wrapText } from "./text";
 
 export type Hit =
@@ -82,6 +83,7 @@ export class CanvasView {
     if (!ctx) throw new Error("Canvas 2D が使えません");
     this.ctx = ctx;
     new ResizeObserver(() => this.resize()).observe(this.root);
+    onPixelRatioChange(() => this.resize());
     store.on("change", () => this.requestRender());
     ui.on("visual", () => this.requestRender());
     ui.on("hover", () => this.requestRender());
@@ -112,6 +114,8 @@ export class CanvasView {
     const hgt = Math.round(r.height);
     if (w === this.width && hgt === this.height && dpr === this.dpr) {
       this.runPendingFit();
+      // 隠れていた間（リスト表示）は描いていないので、また出たら描き直す
+      this.requestRender();
       return;
     }
     const first = this.width === 0;
@@ -258,10 +262,16 @@ export class CanvasView {
     return out.filter((id) => this.store.doc.nodes[id] && !this.vm.node(id).hidden);
   }
 
-  private badgeFor(id: ID): boolean {
+  /**
+   * 折りたたみの印を描くか。描画と当たり判定はこれだけで決める（描かれていない印は押せない）。
+   * 折りたたみ中は full・compact で描く。出る線のあるノードのホバー・選択中の「−」は full だけ。low・dot では描かない
+   */
+  private badgeVisible(id: ID, lod: Lod): boolean {
+    if (lod !== "full" && lod !== "compact") return false;
     const n = this.store.doc.nodes[id];
     if (!n) return false;
-    if (n.collapsed) return true;
+    if (n.collapsed || (this.vm.nodes.get(id)?.collapsedCount ?? 0) > 0) return true;
+    if (lod !== "full") return false;
     const hasOut = (this.vm.index.out.get(id)?.length ?? 0) > 0;
     return hasOut && (this.ui.hover.node === id || this.ui.selection.nodes.has(id));
   }
@@ -287,7 +297,7 @@ export class CanvasView {
       const k = badgeScale(z);
       for (let i = this.vm.drawNodes.length - 1; i >= 0; i--) {
         const id = this.vm.drawNodes[i]!;
-        if (!this.badgeFor(id)) continue;
+        if (!this.badgeVisible(id, lod)) continue;
         const n = doc.nodes[id]!;
         const p = this.pos(id, n);
         const c = badgeCenter(p.x, p.y);
@@ -378,7 +388,8 @@ export class CanvasView {
 
   private render(now: number): void {
     this.scheduled = false;
-    if (this.width === 0) return;
+    // 隠れている間（リスト表示）は描かない（流れの動きで毎フレーム描き続けない）。また出たら resize() から描き直す
+    if (this.width === 0 || this.root.hidden) return;
     const t0 = performance.now();
     this.stepCamera(now);
     this.vm.ensure();
@@ -486,7 +497,7 @@ export class CanvasView {
         editing: this.editingId === id,
         projectColors: colors,
         collapsedCount: nv.collapsedCount,
-        showBadge: lod === "full" && this.badgeFor(id),
+        showBadge: this.badgeVisible(id, lod),
         today,
       });
       if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ n, x: p.x, y: p.y, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2 });

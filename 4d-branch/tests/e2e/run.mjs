@@ -66,6 +66,28 @@ async function waitSaved(page) {
   await page.waitForFunction(() => window.__fourD.persistence.status === "saved", null, { timeout: 5000 });
 }
 
+/** ms の間にキャンバスを描いた回数 */
+const framesIn = (page, ms) =>
+  page.evaluate(async (wait) => {
+    const v = window.__fourD.app.view;
+    const f0 = v.frames;
+    await new Promise((r) => setTimeout(r, wait));
+    return v.frames - f0;
+  }, ms);
+
+const idByTitle = (page, title) => page.evaluate((t) => Object.values(window.__fourD.store.doc.nodes).find((n) => n.title === t)?.id, title);
+
+/** 欄の上で直接タイトルを編集し始める（選んで Enter） */
+async function startInlineEdit(page, id) {
+  await page.evaluate((nid) => window.__fourD.ui.select([nid]), id);
+  await page.locator(".graph-canvas").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.activeElement?.classList.contains("inline-editor"));
+}
+
+/** 開いているタイトルの欄を取り消して閉じる（確かめが途中で落ちても、打ちかけを後の確かめに残さない） */
+const closeInlineEditor = (page) => page.evaluate(() => document.querySelector(".inline-editor")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+
 async function main() {
   await startServer();
   const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
@@ -369,6 +391,386 @@ async function main() {
     });
     const left = await page.evaluate(() => (window.__fourD.app.vm.ensure(), window.__fourD.app.vm.hiddenCount));
     assert(left === 0, `片付けで戻らない ${left}`);
+  });
+
+  await check("縮小（30〜80%）: 描かれていない折りたたみの印の所を押しても折りたたまず、そこからノードを動かせる", async () => {
+    const t = await page.evaluate(() => {
+      const f = window.__fourD;
+      const v = f.app.view;
+      f.app.vm.ensure();
+      // 出る線があり、折りたたんでいないノード（選択・ホバー中でも compact では印を描かない）
+      const id = f.app.vm.drawNodes.find((nid) => !f.store.doc.nodes[nid].collapsed && (f.app.vm.index.out.get(nid)?.length ?? 0) > 0);
+      const n = f.store.doc.nodes[id];
+      f.ui.select([id]);
+      // 前の確かめの寄る動き（検索で選んだノードへ）が残っていると、置いたカメラが上書きされる
+      v.stopCameraAnimation();
+      v.camera.zoom = 0.5;
+      v.camera.x = v.width / 2 - n.x * 0.5;
+      v.camera.y = v.height / 2 - n.y * 0.5;
+      v.cameraChanged();
+      // 印の中心（ノードの下の縁の右寄り: x + 106 - 34, y + 48）の少し上 = ノードの中
+      const s = v.camera.toScreen(n.x + 72, n.y + 40);
+      const r = v.canvas.getBoundingClientRect();
+      return { id, x0: n.x, y0: n.y, sx: s.x, sy: s.y, cx: r.left + s.x, cy: r.top + s.y };
+    });
+    const hitAt = () => page.evaluate(({ sx, sy }) => window.__fourD.app.view.hitTest(sx, sy).kind, t);
+    assert((await hitAt()) === "node", `描かれていない印に当たる: ${await hitAt()}`);
+    await page.mouse.move(t.cx, t.cy);
+    await page.waitForTimeout(60);
+    await page.mouse.down();
+    await page.mouse.up();
+    const collapsed = await page.evaluate((id) => window.__fourD.store.doc.nodes[id].collapsed, t.id);
+    assert(collapsed === false, "描かれていない印の所を押したら折りたたまれた");
+    await page.mouse.down();
+    await page.mouse.move(t.cx + 40, t.cy + 30, { steps: 5 });
+    await page.mouse.up();
+    const moved = await page.evaluate(({ id, x0, y0 }) => {
+      const n = window.__fourD.store.doc.nodes[id];
+      return Math.hypot(n.x - x0, n.y - y0);
+    }, t);
+    assert(moved > 50, `そこから押して動かしてもノードが動かない (${moved})`);
+    await page.evaluate(() => window.__fourD.store.undo());
+    // 折りたたみ中は compact でも印を描くので、押すと開く
+    await page.evaluate((id) => window.__fourD.app.cmd.toggleCollapse([id]), t.id);
+    assert((await hitAt()) === "badge", `折りたたみ中の印に当たらない: ${await hitAt()}`);
+    await page.mouse.click(t.cx, t.cy);
+    const reopened = await page.evaluate((id) => window.__fourD.store.doc.nodes[id].collapsed, t.id);
+    assert(reopened === false, "折りたたみ中の印を押しても開かない");
+    await page.evaluate(() => {
+      const f = window.__fourD;
+      f.store.undo();
+      f.store.undo();
+      f.ui.clearSelection();
+    });
+  });
+
+  await check("クリックのすぐ後にパン・ドラッグしても、離した所の dblclick でノードを作ったり編集を始めたりしない", async () => {
+    const id = await idByTitle(page, "E2Eの目標");
+    const center = (nid) =>
+      page.evaluate((x) => {
+        const f = window.__fourD;
+        const v = f.app.view;
+        const n = f.store.doc.nodes[x];
+        f.ui.clearSelection();
+        v.stopCameraAnimation();
+        v.camera.zoom = 1;
+        v.camera.x = v.width / 2 - n.x;
+        v.camera.y = v.height / 2 - n.y;
+        v.cameraChanged();
+      }, nid);
+    await center(id);
+    await page.waitForTimeout(60);
+    const r = await page.locator(".graph-canvas").boundingBox();
+    // 何もない所（右下のミニマップ・拡大縮小のボタンにかからない所）
+    const empty = await page.evaluate(() => {
+      const v = window.__fourD.app.view;
+      for (let y = 120; y < v.height - 200; y += 37) for (let x = 120; x < v.width - 340; x += 41) if (v.hitTest(x, y).kind === "empty") return { x, y };
+      return null;
+    });
+    assert(empty, "空き所が見つからない");
+    const editing = () => page.evaluate(() => !!document.querySelector(".inline-editor"));
+    try {
+      // 何もない所: クリック → すぐに押してパン（2 回目の押しはダブルクリックの数え方になる）
+      const before = await state(page);
+      await page.mouse.click(r.x + empty.x, r.y + empty.y);
+      await page.mouse.down({ clickCount: 2 });
+      await page.mouse.move(r.x + empty.x + 90, r.y + empty.y + 20, { steps: 6 });
+      await page.mouse.up({ clickCount: 2 });
+      await page.waitForTimeout(60);
+      const mid = await state(page);
+      assert(mid.nodes === before.nodes && !(await editing()), `パンの後の dblclick でノードができた: ${before.nodes} → ${mid.nodes}`);
+    } finally {
+      await closeInlineEditor(page);
+    }
+    // ノード: クリック → すぐに押してドラッグ
+    await center(id);
+    await page.waitForTimeout(60);
+    const p = await screenOf(page, id);
+    const n0 = await page.evaluate((nid) => ({ ...window.__fourD.store.doc.nodes[nid] }), id);
+    try {
+      await page.mouse.click(p.x, p.y);
+      await page.mouse.down({ clickCount: 2 });
+      await page.mouse.move(p.x + 60, p.y + 40, { steps: 6 });
+      await page.mouse.up({ clickCount: 2 });
+      await page.waitForTimeout(60);
+      const n1 = await page.evaluate((nid) => ({ ...window.__fourD.store.doc.nodes[nid] }), id);
+      assert(n1.x !== n0.x && !(await editing()), `ドラッグの後の dblclick で編集が始まった（動き ${n1.x - n0.x}）`);
+    } finally {
+      await closeInlineEditor(page);
+      await page.evaluate(() => window.__fourD.store.undo());
+    }
+    // ふつうのダブルクリックは今までどおり編集を始める
+    await page.mouse.dblclick(p.x, p.y);
+    await page.waitForFunction(() => document.activeElement?.classList.contains("inline-editor"));
+    await page.keyboard.press("Escape");
+    assert(!(await editing()), "Esc で編集が閉じない");
+  });
+
+  await check("タイトルの欄: 日本語入力の変換中の Esc・Tab は入力に任せる（編集を取り消さない・子を作らない）", async () => {
+    const id = await idByTitle(page, "E2Eの目標");
+    await startInlineEdit(page, id);
+    const before = await state(page);
+    const r = await page.evaluate(() => {
+      const ta = document.querySelector(".inline-editor");
+      const open = () => !!document.querySelector(".inline-editor");
+      const send = (init) => ta.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+      send({ key: "Escape", isComposing: true }); // macOS の Chrome
+      const esc1 = open();
+      send({ key: "Escape", keyCode: 229 }); // Safari（isComposing は false で来る）
+      const esc2 = open();
+      send({ key: "Tab", keyCode: 229 }); // Safari の変換中の Tab
+      return { esc1, esc2, tab: open() };
+    });
+    const after = await state(page);
+    assert(r.esc1 && r.esc2, `変換中の Esc で編集が取り消された: ${JSON.stringify(r)}`);
+    assert(r.tab && after.nodes === before.nodes, `変換中の Tab で確定して子ができた: ${JSON.stringify(r)} ${before.nodes} → ${after.nodes}`);
+    // 変換していない Esc は今までどおり取り消す
+    await page.keyboard.press("Escape");
+    const closed = await page.evaluate((nid) => ({ open: !!document.querySelector(".inline-editor"), title: window.__fourD.store.doc.nodes[nid].title }), id);
+    assert(!closed.open && closed.title === "E2Eの目標", JSON.stringify(closed));
+  });
+
+  await check("タイトルの欄: Ctrl+S は題名を確定してアプリが保存する（ブラウザの保存に行かない）。Ctrl+Z・Ctrl+A は文字の編集のまま", async () => {
+    const id = await idByTitle(page, "E2Eの目標");
+    await startInlineEdit(page, id);
+    const value = () => page.evaluate(() => document.querySelector(".inline-editor")?.value ?? null);
+    let r;
+    try {
+      const rev0 = await page.evaluate(() => window.__fourD.store.revision);
+      await page.keyboard.type("abc");
+      await page.keyboard.press("Control+z");
+      const v1 = await value();
+      assert(v1 !== null && v1 !== "abc", `Ctrl+Z で欄の文字が戻らない: ${v1}`);
+      await page.keyboard.press("Control+a");
+      await page.keyboard.type("保存の題名");
+      assert((await value()) === "保存の題名", `Ctrl+A で欄の文字を全部選べない: ${await value()}`);
+      const rev1 = await page.evaluate(() => window.__fourD.store.revision);
+      assert(rev1 === rev0, "欄の中の Ctrl+Z・Ctrl+A がドキュメントの操作になった");
+      await page.evaluate(() => {
+        window.__saveKey = null;
+        window.__saveKeyFn = (e) => {
+          if (e.key.toLowerCase() === "s") window.__saveKey = e.defaultPrevented;
+        };
+        window.addEventListener("keydown", window.__saveKeyFn);
+      });
+      await page.keyboard.press("Control+s");
+      await page.locator(".toast-text", { hasText: /保存しました|保存しています/ }).first().waitFor({ timeout: 3000 }).catch(() => undefined);
+      r = await page.evaluate((nid) => {
+        window.removeEventListener("keydown", window.__saveKeyFn);
+        return { title: window.__fourD.store.doc.nodes[nid].title, open: !!document.querySelector(".inline-editor"), prevented: window.__saveKey, toasts: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent) };
+      }, id);
+    } finally {
+      await closeInlineEditor(page);
+    }
+    assert(r.prevented === true, `Ctrl+S がアプリに届かない（ブラウザの「ページを保存」が開く）: ${JSON.stringify(r)}`);
+    assert(r.title === "保存の題名" && !r.open, `Ctrl+S で題名が確定しない: ${JSON.stringify(r)}`);
+    assert(r.toasts.some((t) => /保存しました|保存しています/.test(t)), `保存のお知らせが出ない: ${r.toasts.join(" / ")}`);
+    await page.evaluate(() => window.__fourD.store.undo());
+    const title = await page.evaluate((nid) => window.__fourD.store.doc.nodes[nid].title, id);
+    assert(title === "E2Eの目標", `片付けで戻らない: ${title}`);
+  });
+
+  await check("キャンバスから素早く出ても、ノードのホバーの光が残らない", async () => {
+    const id = await idByTitle(page, "E2Eの目標");
+    const p = await screenOf(page, id);
+    const hover = await page.evaluate(async ({ x, y }) => {
+      const f = window.__fourD;
+      const c = f.app.view.canvas;
+      f.ui.setHover(null, null);
+      const o = { pointerId: 1, pointerType: "mouse", isPrimary: true, clientX: x, clientY: y };
+      // ノードの上で動いた（ホバーの更新は次のフレーム）→ そのフレームより前に外へ出た
+      c.dispatchEvent(new PointerEvent("pointermove", { ...o, bubbles: true }));
+      c.dispatchEvent(new PointerEvent("pointerleave", o));
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return f.ui.hover.node;
+    }, p);
+    assert(hover === null, `外へ出たのにホバーが残る: ${hover}`);
+  });
+
+  await check("リスト表示の間は隠れたキャンバスを描き続けない（地図に戻すと描き直す）", async () => {
+    const id = await idByTitle(page, "E2Eの目標");
+    await page.evaluate((nid) => {
+      const f = window.__fourD;
+      const v = f.app.view;
+      const n = f.store.doc.nodes[nid];
+      f.ui.select([nid]);
+      v.stopCameraAnimation();
+      v.camera.zoom = 1;
+      v.camera.x = v.width / 2 - n.x;
+      v.camera.y = v.height / 2 - n.y;
+      v.cameraChanged();
+    }, id);
+    await page.waitForTimeout(100);
+    const flowing = await framesIn(page, 300);
+    assert(flowing > 5, `確かめの前提: 選んだ経路の流れが動いていない (${flowing} フレーム)`);
+    let hidden;
+    try {
+      await page.evaluate(() => window.__fourD.ui.setPrefs({ view: "list" }));
+      await page.waitForTimeout(100);
+      hidden = await framesIn(page, 400);
+    } finally {
+      await page.evaluate(() => window.__fourD.ui.setPrefs({ view: "map" }));
+    }
+    assert(hidden <= 1, `リスト表示の間もキャンバスを描いている (${hidden} フレーム)`);
+    await page.waitForTimeout(100);
+    const back = await framesIn(page, 300);
+    assert(back > 5, `地図に戻しても描き直さない (${back} フレーム)`);
+    await page.evaluate(() => window.__fourD.ui.clearSelection());
+  });
+
+  await check("ミニマップ: 指で動かしてもブラウザに取られず、取られて止まったら押したままにしない", async () => {
+    const r = await page.evaluate(() => {
+      const v = window.__fourD.app.view;
+      const c = document.querySelector(".minimap-canvas");
+      const b = c.getBoundingClientRect();
+      const at = (x, y) => ({ pointerId: 1, pointerType: "touch", isPrimary: true, clientX: b.left + x, clientY: b.top + y, bubbles: true, cancelable: true });
+      const out = { touchAction: getComputedStyle(c).touchAction };
+      for (const end of ["pointercancel", "lostpointercapture"]) {
+        c.dispatchEvent(new PointerEvent("pointerdown", at(60, 60)));
+        c.dispatchEvent(new PointerEvent(end, at(60, 60)));
+        // 指はもう離れている（押していない）のに来た動き
+        const cam = { x: v.camera.x, y: v.camera.y };
+        c.dispatchEvent(new PointerEvent("pointermove", at(150, 100)));
+        out[end] = Math.hypot(v.camera.x - cam.x, v.camera.y - cam.y);
+      }
+      c.dispatchEvent(new PointerEvent("pointerup", at(150, 100)));
+      if (c.hasPointerCapture(1)) c.releasePointerCapture(1);
+      return out;
+    });
+    assert(r.touchAction === "none", `指で動かすとブラウザのスクロールに取られる（touch-action: ${r.touchAction}）`);
+    assert(r.pointercancel === 0, `pointercancel の後も押したままになる（${r.pointercancel.toFixed(1)}px 動いた）`);
+    assert(r.lostpointercapture === 0, `捕まえが外れた後も押したままになる（${r.lostpointercapture.toFixed(1)}px 動いた）`);
+  });
+
+  // Safari・Mac でだけ起きることは、その環境のふりをした一時表示（?demo）で確かめる
+  let envPage = null;
+  const openEnvPage = async () => {
+    if (envPage) return envPage;
+    envPage = await ctx.newPage();
+    watch(envPage);
+    await envPage.addInitScript(() => {
+      // Safari のように GestureEvent がある・Mac として振る舞う・resolution のメディアクエリを覚えておく
+      window.GestureEvent = class GestureEvent extends UIEvent {};
+      Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel", configurable: true });
+      const orig = window.matchMedia.bind(window);
+      window.__resolutionQueries = [];
+      window.matchMedia = (q) => {
+        const m = orig(q);
+        if (q.includes("resolution")) window.__resolutionQueries.push(m);
+        return m;
+      };
+    });
+    await envPage.goto(`${BASE}?demo`, { waitUntil: "networkidle" });
+    await envPage.waitForFunction(() => !!window.__fourD);
+    // 前の確かめの表示の設定（リスト表示など）を持ち込まない（一時表示なので設定は保存されない）
+    await envPage.evaluate(() => window.__fourD.ui.setPrefs({ view: "map", showMinimap: true }));
+    await envPage.waitForFunction(() => window.__fourD.app.view.width > 0);
+    return envPage;
+  };
+
+  await check("Safari（macOS）のトラックパッドのピンチ（gesture*）でキャンバスを拡大縮小し、ページは拡大させない", async () => {
+    const p = await openEnvPage();
+    const r = await p.evaluate(() => {
+      const v = window.__fourD.app.view;
+      v.stopCameraAnimation();
+      v.camera.x = 0;
+      v.camera.y = 0;
+      v.camera.zoom = 1;
+      v.cameraChanged();
+      const c = v.canvas;
+      const b = c.getBoundingClientRect();
+      const send = (type, scale) => {
+        const e = new Event(type, { bubbles: true, cancelable: true });
+        Object.assign(e, { scale, clientX: b.left + 200, clientY: b.top + 100 });
+        c.dispatchEvent(e);
+        return e.defaultPrevented;
+      };
+      const prevented = [send("gesturestart", 1), send("gesturechange", 1.5), send("gesturechange", 2)];
+      const mid = { zoom: v.camera.zoom, x: v.camera.x, y: v.camera.y };
+      prevented.push(send("gestureend", 2));
+      return { prevented, mid, end: v.camera.zoom };
+    });
+    assert(r.prevented.every(Boolean), `gesture* を止めない（ページごと拡大される）: ${r.prevented}`);
+    // 2 倍に。指の下（200, 100）の所は動かない
+    const near = (a, b) => Math.abs(a - b) < 1e-6;
+    assert(near(r.mid.zoom, 2) && near(r.mid.x, -200) && near(r.mid.y, -100), `ピンチで拡大しない: ${JSON.stringify(r.mid)}`);
+    assert(near(r.end, 2), `ピンチの終わりで拡大率が変わった: ${r.end}`);
+  });
+
+  await check("Mac の Ctrl+クリック（右クリック）は選択に足さず、メニューは押したノードだけに効く", async () => {
+    const p = await openEnvPage();
+    const t = await p.evaluate(() => {
+      const f = window.__fourD;
+      const v = f.app.view;
+      v.fit(undefined, { animate: false });
+      f.app.vm.ensure();
+      // 画面の中ほど（ミニマップ・拡大縮小のボタンにかからない所）にあるノードを 2 つ
+      const inner = f.app.vm.drawNodes.filter((id) => {
+        const n = f.store.doc.nodes[id];
+        const s = v.camera.toScreen(n.x, n.y);
+        const hit = v.hitTest(s.x, s.y);
+        return s.x > 120 && s.x < v.width - 260 && s.y > 80 && s.y < v.height - 200 && hit.kind === "node" && hit.node === id;
+      });
+      if (inner.length < 2) return null;
+      const [a, b] = inner;
+      f.ui.select([a]);
+      const r = v.canvas.getBoundingClientRect();
+      const at = (id) => {
+        const n = f.store.doc.nodes[id];
+        const s = v.camera.toScreen(n.x, n.y);
+        return { x: r.left + s.x, y: r.top + s.y };
+      };
+      return { a, b, pa: at(a), pb: at(b) };
+    });
+    assert(t, "押せるノードが 2 つ見つからない");
+    const sel = () => p.evaluate(() => [...window.__fourD.ui.selection.nodes]);
+    await p.keyboard.down("Control");
+    await p.mouse.click(t.pb.x, t.pb.y);
+    await p.keyboard.up("Control");
+    const afterDown = await sel();
+    // Mac では続けて contextmenu が来る（Linux の Chromium では来ないので送る）
+    await p.evaluate(({ x, y }) => window.__fourD.app.view.canvas.dispatchEvent(new MouseEvent("contextmenu", { clientX: x, clientY: y, ctrlKey: true, bubbles: true, cancelable: true })), t.pb);
+    const afterMenu = await sel();
+    await p.waitForTimeout(20);
+    await p.keyboard.press("Escape");
+    assert(afterDown.length === 1 && afterDown[0] === t.a, `Ctrl+クリックで選択に足された: ${afterDown.join(", ")}`);
+    assert(afterMenu.length === 1 && afterMenu[0] === t.b, `メニューが押していないノードにも効く: ${afterMenu.join(", ")}`);
+    // ⌘+クリックは今までどおり選択に足す
+    await p.keyboard.down("Meta");
+    await p.mouse.click(t.pa.x, t.pa.y);
+    await p.keyboard.up("Meta");
+    const added = await sel();
+    assert(added.length === 2 && added.includes(t.a) && added.includes(t.b), `⌘+クリックで選択に足せない: ${added.join(", ")}`);
+  });
+
+  await check("画素の細かさが違う画面へ移ると、キャンバスとミニマップの描く大きさを合わせ直す", async () => {
+    const p = await openEnvPage();
+    const size = () => p.evaluate(() => ({ dpr: devicePixelRatio, canvas: window.__fourD.app.view.canvas.width, css: window.__fourD.app.view.width, mini: document.querySelector(".minimap-canvas").width }));
+    const s0 = await size();
+    assert(s0.dpr === 1 && s0.canvas === s0.css && s0.mini === 208, `確かめの前提: ${JSON.stringify(s0)}`);
+    const cdp = await ctx.newCDPSession(p);
+    // 画面を移ると、ブラウザは外れた resolution のメディアクエリに change を送る（ヘッドレスの切り替えでは来ないので、ここで送る）
+    const moveTo = async (dsf) => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: dsf, mobile: false });
+      await p.evaluate(() => {
+        const list = window.__resolutionQueries;
+        window.__resolutionQueries = [];
+        for (const m of list) {
+          if (m.matches) window.__resolutionQueries.push(m);
+          else m.dispatchEvent(new Event("change"));
+        }
+      });
+      await p.waitForTimeout(200);
+    };
+    await moveTo(2);
+    const s1 = await size();
+    await moveTo(1);
+    const s2 = await size();
+    await cdp.detach();
+    await p.close();
+    envPage = null;
+    assert(s1.dpr === 2 && s1.canvas === s1.css * 2 && s1.mini === 416, `2 倍の画面へ移っても描く大きさが前のまま: ${JSON.stringify(s1)}`);
+    assert(s2.dpr === 1 && s2.canvas === s2.css && s2.mini === 208, `1 倍の画面へ戻しても合わない: ${JSON.stringify(s2)}`);
   });
 
   await check("時間軸を押すと時点が決まり、シナリオを切り替えられる", async () => {

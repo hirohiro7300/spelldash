@@ -139,6 +139,7 @@ export interface NodeDrawOpts {
   editing: boolean;
   projectColors: string[];
   collapsedCount: number;
+  /** 折りたたみの印を描くか（当たり判定と同じ答え。CanvasView.badgeVisible） */
   showBadge: boolean;
   today: string;
 }
@@ -338,8 +339,8 @@ export function drawNode(ctx: CanvasRenderingContext2D, n: GNode, x: number, y: 
     if (n.status === "done" && !(o.showBadge || n.collapsed)) drawDoneMark(ctx, left + NODE_W - inset - 4, fy - 4, a, 1);
   }
 
-  // 折りたたみの印
-  if (o.collapsedCount > 0 || o.showBadge || n.collapsed) drawBadge(ctx, x, y, n.collapsed, o.collapsedCount, color, a, o.lod, o.zoom);
+  // 折りたたみの印（描くかどうかは呼ぶ側が当たり判定と同じ決まりで渡す）
+  if (o.showBadge) drawBadge(ctx, x, y, n.collapsed, o.collapsedCount, color, a, o.lod, o.zoom);
   ctx.restore();
 }
 
