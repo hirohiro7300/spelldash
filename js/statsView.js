@@ -28,6 +28,7 @@ import { countLearnStates, learnDayOf } from "./learnState.js";
 import { RANK_NAMES, RANK_PEAK_KEY, rankFor, rankThresholds, readRankPeak, raiseRankPeak } from "./rank.js";
 import { getMyWords } from "./myWords.js";
 import { countMyStates } from "./myWordsCore.js";
+import { esc } from "./html.js";
 
 // 学習状況の数と目安（js/learnPace.js。js/bookPace.js の決まりを使う）は動的 import（静的な読み込みの表を増やさない）。公開の語の表（js/storage.js loadLearnStates）と並べて先に読み始める
 const learnPaceModule = import("./learnPace.js").catch(() => null);
@@ -764,19 +765,20 @@ function renderLearnedWords() {
     container.innerHTML = '<p class="muted">まだない。思い出せなかった語が、次に自力で打てたときにここへ入る。</p>';
   } else {
     const shown = list.slice(0, 60);
-    // 1行＝1語: 語・訳（・メモがある語だけメモ）／右端にカテゴリと履歴の点
+    // 1行＝1語: 語・訳（・メモがある語だけメモ）／右端にカテゴリと履歴の点。
+    // 語・訳・id・カテゴリ名は esc してから入れる（Batch 88: 渡すリンクの訳・場面カードの答えと鍵〔" < > を残しうる〕は利用者の字。HTML にしない）
     container.innerHTML =
       shown
         .map(
           (w) => `
           <div class="learned-item">
             <span class="learned-item__main">
-              <button type="button" class="learned-item__en mono" data-word-detail="${w.id}">${w.term}</button>
-              <span class="learned-item__ja">${w.ja}</span>
+              <button type="button" class="learned-item__en mono" data-word-detail="${esc(w.id)}">${esc(w.term)}</button>
+              <span class="learned-item__ja">${esc(w.ja)}</span>
               <span class="learned-item__note">${noteChipHtml(w.id, { onlyIfHas: true })}</span>
             </span>
             <span class="learned-item__side">
-              <span class="learned-item__meta">${w.label}</span>
+              <span class="learned-item__meta">${esc(w.label)}</span>
               ${historyDotsHtml(w.stat)}
             </span>
           </div>`
@@ -790,7 +792,7 @@ function renderLearnedWords() {
   if (knownContainer) {
     // 並びは CSS の flex-wrap（空白文字に頼らない）
     knownContainer.innerHTML = known.length
-      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<button type="button" class="known-words__item mono" data-word-detail="${w.id}" title="${w.ja}">${w.term}</button>`).join("")}${known.length > 200 ? `<span class="known-words__more">ほか ${known.length - 200}語</span>` : ""}</p>`
+      ? `<p class="known-words">${known.slice(0, 200).map((w) => `<button type="button" class="known-words__item mono" data-word-detail="${esc(w.id)}" title="${esc(w.ja)}">${esc(w.term)}</button>`).join("")}${known.length > 200 ? `<span class="known-words__more">ほか ${known.length - 200}語</span>` : ""}</p>`
       : '<p class="muted">まだない。</p>';
   }
 }

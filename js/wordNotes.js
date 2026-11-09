@@ -50,10 +50,11 @@ export function escapeHtml(text) {
 
 // 一覧用: メモの表示＋編集ボタン（クリック処理は bindNoteEditors で委譲）
 // onlyIfHas: メモが無い語には何も出さない（一覧で「メモ」ボタンが模様にならないように）
+// 語の id は属性に入れる前に escapeHtml（Batch 88: 場面カードの id は答えの字から作るので " < > を残しうる）
 export function noteChipHtml(wordId, { onlyIfHas = false } = {}) {
   const note = getNote(wordId);
   if (onlyIfHas && !note) return "";
-  return `<button type="button" class="note-chip${note ? " note-chip--has" : ""}" data-note-word="${wordId}" title="${note ? "メモを編集" : "覚え方をメモ"}">${icon("note", { size: 14 })}${note ? escapeHtml(note) : "メモ"}</button>`;
+  return `<button type="button" class="note-chip${note ? " note-chip--has" : ""}" data-note-word="${escapeHtml(wordId)}" title="${note ? "メモを編集" : "覚え方をメモ"}">${icon("note", { size: 14 })}${note ? escapeHtml(note) : "メモ"}</button>`;
 }
 
 // 一覧内のメモボタンをインライン編集にする（container内で委譲）
