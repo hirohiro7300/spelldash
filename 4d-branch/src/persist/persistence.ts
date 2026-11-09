@@ -354,10 +354,15 @@ export class Persistence {
     return { doc, notices, recovered };
   }
 
+  /**
+   * 起動で使う、いちばん新しいバックアップ。「退避」（別の端末・別のタブの内容）と「選ばなかった内容」は、
+   * このブラウザで続けてきた内容ではないので使わない（それを手元として送ると、新しい内容を古い内容で潰しかねない）
+   */
   private async latestBackupDoc(): Promise<DocData | null> {
     try {
       const list = await this.listBackups();
       for (const b of list) {
+        if (b.kind === "conflict" || b.kind === "kept") continue;
         const d = await this.readBackup(b.id);
         if (d) return d;
       }

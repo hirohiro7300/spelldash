@@ -342,6 +342,50 @@ describe("Persistence（IndexedDB）", () => {
     again.close();
   });
 
+  it("保存してあった内容を読めないとき、「退避」「選ばなかった内容」のバックアップでは始めない（ほかの端末の内容を手元として送らない）", async () => {
+    const kv = memoryKV();
+    const name = `test-${++dbSeq}`;
+    const p = makeP(kv, name);
+    await p.open();
+    await p.acquireWriter();
+    await p.loadInitial();
+    const doc = edit(createEmptyDoc("本体"), "このブラウザの内容");
+    p.attach(() => doc);
+    p.markDirty();
+    await p.flush();
+    await p.createBackup("auto", "自動のバックアップ", doc);
+    await wait(5);
+    const other = edit(structuredClone(doc), "別の端末の内容");
+    await p.createBackup("conflict", "別の端末で保存されていた内容", other);
+    await wait(5);
+    await p.createBackup("kept", "選ばなかった内容", other);
+    p.close();
+    // 保存してあった本体が読めなくなる
+    await new Promise<void>((resolve, reject) => {
+      const r = indexedDB.open(name);
+      r.onerror = () => reject(r.error);
+      r.onsuccess = () => {
+        const t = r.result.transaction("kv", "readwrite");
+        t.objectStore("kv").put("壊れた内容", "doc");
+        t.oncomplete = () => {
+          r.result.close();
+          resolve();
+        };
+        t.onerror = () => reject(t.error);
+      };
+    });
+    const again = makeP(kv, name);
+    await again.open();
+    await again.acquireWriter();
+    const loaded = await again.loadInitial();
+    expect(loaded.recovered).toBe(true);
+    const titles = Object.values(loaded.doc!.nodes).map((n) => n.title);
+    expect(titles).toContain("このブラウザの内容");
+    expect(titles).not.toContain("別の端末の内容");
+    expect(again.lastStored).toBeNull();
+    again.close();
+  });
+
   it("写せない中身のバックアップは失敗として返し、見出しだけの行を残さない", async () => {
     const p = makeP(memoryKV());
     await p.open();

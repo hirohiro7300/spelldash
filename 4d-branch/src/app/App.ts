@@ -49,7 +49,17 @@ const BOOT_DOC_KEY = "cloud:bootDoc";
 
 function asBootDoc(v: unknown): BootDoc | null {
   const o = v as Partial<BootDoc> | null;
-  return o && typeof o === "object" && typeof o.id === "string" && typeof o.updatedAt === "string" ? { id: o.id, updatedAt: o.updatedAt, fallback: !!o.fallback } : null;
+  if (!o || typeof o !== "object" || typeof o.id !== "string" || typeof o.updatedAt !== "string") return null;
+  const on = o.on;
+  const okOn = on === null || (!!on && typeof on === "object" && typeof on.gen === "string" && typeof on.docId === "string" && typeof on.docUpdatedAt === "string");
+  return { id: o.id, updatedAt: o.updatedAt, fallback: !!o.fallback, on: okOn ? (on ? { gen: on.gen, docId: on.docId, docUpdatedAt: on.docUpdatedAt } : null) : undefined };
+}
+
+/** 記録したときの基準が同じか */
+function sameOn(a: BootDoc["on"], b: BootDoc["on"]): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  if (a === null || b === null) return a === b;
+  return a.gen === b.gen && a.docId === b.docId && a.docUpdatedAt === b.docUpdatedAt;
 }
 
 export class App implements AppContext {
@@ -857,10 +867,15 @@ export class App implements AppContext {
       pendingBase = null;
       void writeBaseNow(b).catch(() => undefined);
     });
+    // 書き手でなくなった: 書けずにいた基準は、引き継いだタブの物ではない（後から古い基準を書かない）
+    this.persistence.on("writer", (w) => {
+      if (!w) pendingBase = null;
+    });
     const sync = new CloudSync(repo, {
       getDoc: () => this.store.doc,
-      // 起動したときの手元の記録（このタブ・前に開いたとき・別のタブのどれの物でも。読めなければ記録なし）
-      bootDoc: async () => asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY)),
+      // 起動したときの手元の記録（このタブ・前に開いたとき・別のタブのどれの物でも。読めなければ記録なし）。
+      // 書けずにいる新しい基準があるなら、記録はもう済んだ物として扱う
+      bootDoc: async () => (pendingBase ? null : asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY))),
       isWriter: () => this.persistence.writer && !this.store.readOnly,
       isDisposable: (doc) => isDisposableDoc(doc),
       isEditing: () => this.editor.active,
@@ -917,16 +932,26 @@ export class App implements AppContext {
       },
       confirmWithoutBackup: (doc, what) => this.confirmWithoutBackup(doc, what),
       chooseFirst: (remote) => chooseSyncSource({ local: this.store.doc, remote: remote?.manifest ?? null, foreign }),
-      readBase: () => this.persistence.readKv<SyncBase>(baseKey),
+      // 書けずにいる基準があれば、それが今の基準（保存してある古い基準で、自分が送った内容を重なりと取り違えない）
+      readBase: async () => pendingBase ?? (await this.persistence.readKv<SyncBase>(baseKey)),
       writeBase: async (b) => {
         // 基準は、手元にその内容が保存できてから書く（保存に失敗していれば、保存できたときに書く）
         await this.persistence.flush().catch(() => undefined);
         if (!baseCovered(this.persistence.lastStored, b)) {
-          pendingBase = b;
+          pendingBase = this.persistence.writer ? b : null;
           return;
         }
         pendingBase = null;
         await writeBaseNow(b);
+      },
+      // 突き合わせをやり直す前に、このブラウザの内容がどのアカウントの物かを読み直す（別のタブが同期していたかもしれない）
+      refresh: async () => {
+        try {
+          const owner = await this.persistence.readKv<string>("cloud:owner");
+          foreign = !!owner && owner !== uid;
+        } catch {
+          /* 読めなければ前のまま */
+        }
       },
       notice: (text, tone) => toast(text, { tone, ms: 8000 }),
     });
@@ -942,8 +967,13 @@ export class App implements AppContext {
   private async recordBootDoc(): Promise<void> {
     if (this.ephemeral || !this.persistence.writer) return;
     try {
+      // 今の基準（このブラウザの内容を最後に同期したアカウントの物）。記録はこの基準に結び付ける
+      const owner = await this.persistence.readKv<string>("cloud:owner");
+      const base = owner ? await this.persistence.readKv<SyncBase>(`cloud:${owner}`) : null;
+      const on: BootDoc["on"] = owner ? (base ? { gen: base.gen, docId: base.docId, docUpdatedAt: base.docUpdatedAt } : null) : undefined;
       const cur = asBootDoc(await this.persistence.readKv(BOOT_DOC_KEY));
-      if (!cur || this.bootDoc.fallback) await this.persistence.writeKv(BOOT_DOC_KEY, this.bootDoc);
+      // 前の記録は、同じ基準のままなら残す。基準が書き換わっていた（前の版のタブが書いた など）・代わりの内容で始めたなら、この起動で記録し直す
+      if (!cur || this.bootDoc.fallback || !sameOn(cur.on, on)) await this.persistence.writeKv(BOOT_DOC_KEY, { ...this.bootDoc, on });
     } catch {
       /* 記録できなくても続ける（その場合は、今の手元だけで古いかを見る） */
     }
