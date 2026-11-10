@@ -10,9 +10,10 @@
 //   EXPLAIN_WORD_DAILY_LIMIT … 無料の 1 日回数（既定 3）/ EXPLAIN_WORD_DAILY_LIMIT_PRO … Pro の回数（既定 60）
 //   超えたら 429 { error: "daily_limit", upgrade: 無料なら true }
 //   回数は _lib/aiLimits.js の 1 か所（加入画面の比較表も /api/billing/config から同じ値を出す）
+// 順（Batch 88）: aiGate（確認済みのメールで匿名でない人だけ）→ 入力の確かめ（400。回数を減らさない）→ aiTake（同じ人の処理中は 429 busy・回数）→ モデル
 
 import Anthropic from "@anthropic-ai/sdk";
-import { send, readBody, reject, sendUpstreamError } from "./_lib/shared.js";
+import { send, readBody, aiGate, aiTake, sendUpstreamError } from "./_lib/shared.js";
 import { explainWordLimits } from "./_lib/aiLimits.js";
 
 const { free: DAILY_LIMIT, pro: DAILY_LIMIT_PRO } = explainWordLimits();
@@ -45,7 +46,8 @@ function clean(value, max) {
 }
 
 export default async function handler(req, res) {
-  if (await reject(req, res, { scope: "explain", limit: DAILY_LIMIT, proLimit: DAILY_LIMIT_PRO })) return;
+  const user = await aiGate(req, res);
+  if (!user) return;
 
   const { word } = readBody(req);
   const en = clean(word?.en, 60);
@@ -55,6 +57,8 @@ export default async function handler(req, res) {
   if (!en || !ja) {
     return send(res, 400, { error: "bad_word", message: "語の情報が足りません。" });
   }
+  const done = await aiTake(req, res, user, { scope: "explain", limit: DAILY_LIMIT, proLimit: DAILY_LIMIT_PRO });
+  if (!done) return;
 
   const lines = [`語: ${en}`, `意味: ${ja}`];
   if (q) lines.push(`場面: ${q}`);
@@ -87,5 +91,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     return sendUpstreamError(res, Anthropic, error, "explain-word");
+  } finally {
+    done();
   }
 }

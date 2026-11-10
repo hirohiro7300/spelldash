@@ -18,6 +18,7 @@ import { canonicalRomaji, readingEntries, primaryReading, matchRomaji } from "..
 import { FEEDBACK_MS, ADVANCE_GUARD_MS, ECHO_AFTER_DONE_MS, GLANCE_MS, MILESTONE_MS, waitAfterCorrect } from "../js/afterCorrect.js";
 import { shelfIdOf } from "../js/shelves.js";
 import { webpSize, webpAlpha } from "../scripts/lib/canvas-art.mjs";
+import { globalHeaders, cspDirectives, scriptHash } from "../scripts/lib/csp.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STUB = path.join(ROOT, "tests", "mocks", "supabase-stub.js");
@@ -162,6 +163,13 @@ let fakeTrialMonths = 0; // 偽の /api/billing/config が返す無料期間（�
 // cookie にしたのは、Service Worker が取った要求（page.route が捕まえない）にも効かせるため
 const GATED_PAGES = ["/battle.html", "/typing.html", "/typing-game.html"];
 const GATE_OFF_COOKIE = "e2e_gate";
+// 本物のヘッダー（Batch 88）: 要求にこの cookie（e2e_csp=real）があれば、配る応答に vercel.json の全体のヘッダー（source "/(.*)" の 5 つ。
+// Content-Security-Policy を含む）を本番と同じに付ける。使うのは節 88.1 の (3) だけ（ほかの節の要求には cookie が無いので、振る舞いは前のまま）。
+// cookie にしたのは、ページの中で移った先（入口の門・パックのページの案内）とモジュールの要求にも同じに効かせるため。vercel.json は要求のたびに読む
+const REAL_HEADERS_COOKIE = "e2e_csp";
+const realHeadersFor = (req) => String(req.headers.cookie ?? "").split(/;\s*/).includes(`${REAL_HEADERS_COOKIE}=real`)
+  ? Object.fromEntries(globalHeaders(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).map((h) => [h.key, h.value]))
+  : {};
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (urlPath === "/") urlPath = "/index.html";
@@ -307,11 +315,11 @@ const server = http.createServer((req, res) => {
 
   if (GATED_PAGES.includes(urlPath) && String(req.headers.cookie ?? "").split(/;\s*/).includes(`${GATE_OFF_COOKIE}=off`)) {
     const html = fs.readFileSync(file, "utf8").replace(/^(<html\b[^>]*?) data-focus="english"/m, "$1");
-    res.writeHead(200, { "Content-Type": "text/html" }).end(html);
+    res.writeHead(200, { ...realHeadersFor(req), "Content-Type": "text/html" }).end(html);
     return;
   }
 
-  res.writeHead(200, { "Content-Type": MIME[path.extname(file)] ?? "application/octet-stream" });
+  res.writeHead(200, { ...realHeadersFor(req), "Content-Type": MIME[path.extname(file)] ?? "application/octet-stream" });
   fs.createReadStream(file).pipe(res);
 });
 
@@ -2426,11 +2434,14 @@ console.log("typing:");
     const head = typingHtml.slice(0, typingHtml.indexOf("</head>"));
     const kindLine = head.match(/<script>\(\(\) => \{ const K = \["en","ja","long"\];[^<]*<\/script>/)?.[0] ?? "";
     const sitemap = fs.readFileSync(path.join(ROOT, "sitemap.xml"), "utf8");
-    const csp = JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")));
-    check("typing（P1）: head のインラインの 1 行が ?kind=・#long・spelldash_typing_kind を try の中で読んで html[data-typing-kind] に置く（外の script を足さない）、canonical と og:url は 1 つでパラメータなし、sitemap に ?kind= が無い、CSP の script-src は 'self' 'unsafe-inline' https://esm.sh のまま",
+    // CSP（Batch 88）: script-src は 'self'・配る HTML の inline の script のハッシュ・https://esm.sh だけ（'unsafe-inline' なし）。この 1 行の本文のハッシュも入っている
+    // （1 字でも変えたら vercel.json のハッシュも直す: node scripts/lib/csp.mjs。全部の突き合わせは scripts/test-site-map.mjs の 8）
+    const scriptSrc = (cspDirectives(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).find((d) => d.startsWith("script-src ")) ?? "").split(/\s+/);
+    const kindBody = kindLine.replace(/^<script>/, "").replace(/<\/script>$/, "");
+    check("typing（P1）: head のインラインの 1 行が ?kind=・#long・spelldash_typing_kind を try の中で読んで html[data-typing-kind] に置く（外の script を足さない）、canonical と og:url は 1 つでパラメータなし、sitemap に ?kind= が無い、CSP の script-src は 'self' と https://esm.sh と inline の script のハッシュで 'unsafe-inline' なし・この 1 行のハッシュがある（Batch 88）",
       kindLine.includes('get("kind")') && kindLine.includes('location.hash === "#long"') && kindLine.includes('localStorage.getItem("spelldash_typing_kind")') && kindLine.includes("try {") && kindLine.includes("document.documentElement.dataset.typingKind = k || \"en\"") &&
       (typingHtml.match(/rel="canonical"/g) ?? []).length === 1 && (typingHtml.match(/property="og:url"/g) ?? []).length === 1 && !/canonical"[^>]*\?kind/.test(typingHtml) &&
-      !sitemap.includes("kind=") && !sitemap.includes("#long") && csp.includes("script-src 'self' 'unsafe-inline' https://esm.sh;") && !/<script[^>]+src=(?!"\/js\/areaGuard\.js")/.test(head),
+      !sitemap.includes("kind=") && !sitemap.includes("#long") && scriptSrc[1] === "'self'" && scriptSrc.at(-1) === "https://esm.sh" && !scriptSrc.includes("'unsafe-inline'") && scriptSrc.includes(scriptHash(kindBody)) && !/<script[^>]+src=(?!"\/js\/areaGuard\.js")/.test(head),
       kindLine.slice(0, 120));
   }
   // PR #166 のレビュー 6: 開く種類の読む順と値は head の inline の 1 行（CSP・速さのため残す）と js（typingPage.js の KINDS・KIND_KEY と js/typingKeys.js の
@@ -18633,7 +18644,7 @@ console.log("pro:");
     const plans = await text(page, "#proPlans");
     check("Pro: 未ログインでも価格が 2 つ出る（580 と 4,800）", loaded && plans.includes("580") && plans.includes("4,800"), plans);
     const terms = await text(page, ".pro-terms");
-    check("Pro: 未ログインは年額ボタンを出さず、申し込みの前に（料金・更新・解約・支払い）をボタンの直下に", (await page.$("#proCheckoutYear")) === null && terms.includes("月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）（税込）") && terms.includes("自動で更新") && terms.includes("お支払いの管理") && terms.includes("Stripe"), terms);
+    check("Pro: 未ログインは年額ボタンを出さず、申し込みの前に（料金・更新・解約・支払い）をボタンの直下に", (await page.$("#proCheckoutYear")) === null && terms.includes("月額 ¥580 ／ 年額 ¥4,800（月あたり ¥400）（税込）") && terms.includes("自動で更新") && terms.includes("お支払いの管理") && terms.includes("次のお支払いの画面で入力して確定"), terms);
     // Batch 83 の反証: 提供の時期（特定商取引法 12 条の 6 の確認の項目。特商法の表記の提供時期と同じ）も「申し込みの前に」の最後に書く
     const rows0 = await termRows(page);
     check("Pro（Batch 83 反証）: 「申し込みの前に」の最後は「提供」＝「手続きが終わるとすぐ使える」（無料期間の設定が無いときは無料期間の話をしない）",
@@ -28591,6 +28602,180 @@ console.log("guard (88.1):");
       JSON.stringify(knownIds) === JSON.stringify(["my-q-" + SCENE_ID_KEY2, "my-world"].sort()) && v.known.find((k) => k.id === "my-world")?.title === PAYLOAD2 &&
       !/PWN/.test(v.title) && page.errors.length === 0,
       JSON.stringify({ v, err: page.errors.slice(0, 2) }));
+    await closeCtx(page);
+  }
+
+  // ----- (3) 本物のヘッダー（vercel.json の全体のヘッダーを台が付ける: cookie e2e_csp=real）で全ページ: script-src は inline の script のハッシュだけ・CSP の違反 0・ページのエラー 0 -----
+  // 入口の門（Battle・タイピングの 3 ページ）・単語帳とパックのページの案内で移る先の文書も数える（違反は文書の中の知らせを sessionStorage に、console の CSP の文と合わせる）
+  const realHeaderPage = async (seed = {}) => {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+    await ctx.addCookies([{ name: "e2e_csp", value: "real", url: BASE }]);
+    const page = await ctx.newPage();
+    page.errs = [];
+    page.csp = [];
+    page.visited = []; // 文書の行き先（入口の門・案内で移った先）
+    page.on("framenavigated", (f) => { if (f === page.mainFrame()) { const u = new URL(f.url()); page.visited.push(u.pathname + u.search); } });
+    page.on("pageerror", (e) => page.errs.push(e.message.slice(0, 160)));
+    page.on("console", (m) => { if (/Content Security Policy/i.test(m.text())) page.csp.push(m.text().slice(0, 160)); });
+    await page.addInitScript((s) => {
+      document.addEventListener("securitypolicyviolation", (e) => {
+        try { const a = JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]"); a.push(`${e.violatedDirective} ${e.blockedURI || "inline"}`); sessionStorage.setItem("__e2e_csp", JSON.stringify(a)); } catch {}
+      });
+      if (!location.origin || location.origin === "null") return;
+      if (sessionStorage.getItem("spelldash_test_seeded")) return;
+      sessionStorage.setItem("spelldash_test_seeded", "1");
+      const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" };
+      for (const [k, v] of Object.entries({ ...base, ...s })) localStorage.setItem(k, v);
+    }, seed);
+    return page;
+  };
+  const scriptSrcOf = (header) => (String(header ?? "").split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src ")) ?? "").split(/\s+/).slice(1);
+  {
+    const PAGES = ["/", "/?learn=next", "/?learn=my", "/stats.html", "/profile.html", "/mywords.html", "/mywords.html?book=main", "/news.html", "/privacy.html", "/terms.html", "/tokushoho.html", "/pro.html", "/switch.html", "/admin.html", "/slang.html", "/list.html", "/battle.html", "/typing.html", "/typing-game.html", "/packs/ngsl01.html"];
+    const rows = [];
+    for (const p of PAGES) {
+      const page = await realHeaderPage({ spelldash_my_words: JSON.stringify([{ en: "hello", ja: "こんにちは", addedAt: T0 }]) });
+      const res = await page.goto(BASE + p, { waitUntil: "networkidle" }).catch((e) => (page.errs.push(`goto: ${e.message.slice(0, 120)}`), null));
+      await page.waitForTimeout(300);
+      await page.waitForLoadState("networkidle").catch(() => {});
+      const inDoc = await page.evaluate(() => JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]")).catch(() => ["(読めない)"]);
+      const src = scriptSrcOf(res?.headers()["content-security-policy"]);
+      rows.push({ p, visited: page.visited, hashOnly: src[0] === "'self'" && src.at(-1) === "https://esm.sh" && src.slice(1, -1).length > 0 && src.slice(1, -1).every((t) => t.startsWith("'sha256-")), csp: [...new Set([...page.csp, ...inDoc])], errs: page.errs });
+      await closeCtx(page);
+    }
+    const bad = rows.filter((r) => !r.hashOnly || r.csp.length || r.errs.length);
+    const moved = rows.filter((r) => r.visited.slice(1).includes("/?from=old")).map((r) => r.p);
+    check(`88.1 (3) 本物のヘッダーで ${PAGES.length} ページ（script-src は 'self'・inline の script のハッシュ・https://esm.sh だけで 'unsafe-inline' なし）: CSP の違反 0・ページのエラー 0（入口の門と案内で移った先も: ${moved.join("・")}）`,
+      bad.length === 0 && moved.includes("/battle.html") && moved.includes("/packs/ngsl01.html"), JSON.stringify(bad.slice(0, 3)));
+  }
+
+  // ----- (3b) 本物のヘッダーでは、ページに入った on* の属性・後から足した inline の script は走らない（script-src-attr・script-src-elem の違反。d8f9d69 の 'unsafe-inline' では走る）-----
+  {
+    const page = await realHeaderPage();
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    const r = await page.evaluate(async () => {
+      const seen = [];
+      document.addEventListener("securitypolicyviolation", (e) => seen.push(e.violatedDirective));
+      const box = document.createElement("div");
+      box.innerHTML = '<img src="data:," onerror="window.__pwn=7"><button type="button" onclick="window.__pwn=8">x</button>';
+      document.body.append(box);
+      box.querySelector("button").click();
+      await new Promise((r) => setTimeout(r, 250));
+      const s = document.createElement("script");
+      s.textContent = "window.__pwn = 9";
+      document.body.append(s);
+      await new Promise((r) => setTimeout(r, 150));
+      box.remove();
+      s.remove();
+      return { pwn: window.__pwn ?? null, seen };
+    });
+    check("88.1 (3b) 本物のヘッダー: ページに入った on* の属性（img の onerror・button の onclick）と後から足した inline の script は走らない（window.__pwn なし・script-src-attr と script-src-elem の違反）",
+      r.pwn === null && r.seen.includes("script-src-attr") && r.seen.includes("script-src-elem"), JSON.stringify(r));
+    await closeCtx(page);
+  }
+  // ----- (4) ほかの HTML の組み立て（Batch 88 A5。js/learnedCard.js・js/listView.js・js/wordDetail.js・マイ単語帳）: 場面カードの答えと訳に HTML の字・鍵に " -----
+  // 前のホーム（旗を外したページ）の「今日覚えた」・単語帳（list.html の マイ単語帳。苦手だけ練習のボタンの語の列）・学習状況の語の詳細・マイ単語帳で、
+  // どの要素に mouseover を送っても走らない（window.__pwn なし）・<img src="x"> 0・on の属性 0・答えの字はそのまま見える
+  {
+    const localDay = (offset = 0) => { const d = new Date(Date.now() + offset * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    const nowIso = new Date().toISOString();
+    const ANS = 'x"><img src=x onerror=window.__pwn=41>'; // 場面カードの答え（学ぶ回と一覧で出る字）
+    const ANS_KEY = 'x"><imgsrc=xonerror=window.__pwn=41>'; // その鍵（js/myWords.js conceptKey）
+    const JA4 = "<img src=x onerror=window.__pwn=42>";
+    const KEY_Q = 'z"onmouseover="window.__pwn=44"z="'; // 鍵に " がある苦手な語（id は my-q-<鍵>。属性に入る）
+    const ID_A = "my-q-" + ANS_KEY;
+    const seed = {
+      spelldash_my_words: JSON.stringify([
+        { kind: "concept", en: ANS_KEY, answer: ANS, q: "場面: 画像の札 4", explain: "", accept: [], ja: JA4, addedAt: T0 },
+        { kind: "concept", en: KEY_Q, answer: KEY_Q, q: "場面: 属性の札 4", explain: "", accept: [], ja: "属性の札の訳 4", addedAt: T0 }
+      ]),
+      spelldash_word_stats: JSON.stringify({
+        [ID_A]: { ...statLearned, lastPlayed: nowIso, lastRecallFailAt: new Date(Date.now() - 86400000).toISOString(), lastRecallSuccessAt: nowIso, history: [{ d: localDay(-1), r: "x" }, { d: localDay(0), r: "o" }] },
+        ["my-q-" + KEY_Q]: { playCount: 2, correctCount: 0, missCount: 2, typingMiss: 0, recallFail: 2, cleanCorrectStreak: 0, mastered: false, lastPlayed: nowIso, lastRecallFailAt: nowIso, knownOnSight: false, history: [{ d: localDay(0), r: "x" }] }
+      })
+    };
+    const probe = (page) => page.evaluate(() => {
+      const els = [document.body, ...document.body.querySelectorAll("*")];
+      for (const el of els) el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      return { pwn: window.__pwn ?? null, imgs: document.querySelectorAll('img[src="x"]').length, onAttrs: els.flatMap((el) => [...el.attributes].map((a) => a.name)).filter((n) => n.startsWith("on")).slice(0, 5) };
+    });
+    const view = async (name, path, ready, { flagOff = false, after = null } = {}) => {
+      const page = await guardPage(seed);
+      if (flagOff) await focusOff(page);
+      await page.goto(BASE + path, { waitUntil: "networkidle" });
+      const shown = await page.waitForFunction(ready, null, { timeout: 8000, polling: 20 }).then(() => true, () => false);
+      const extra = after ? await after(page) : null;
+      await page.waitForTimeout(150);
+      const v = await probe(page);
+      const r = { name, shown, extra, ...v, err: page.errors.slice(0, 2) };
+      await closeCtx(page);
+      return r;
+    };
+    const rows = [
+      await view("前のホームの今日覚えた", "/", () => /今日覚えた/.test(document.getElementById("learnedCard")?.textContent ?? ""), {
+        flagOff: true, after: (page) => page.evaluate((a) => (document.getElementById("learnedCard")?.textContent ?? "").includes(a), ANS)
+      }),
+      await view("単語帳のマイ単語帳", "/list.html?category=my", () => document.querySelectorAll("[data-practice-words]").length > 0, {
+        flagOff: true, after: (page) => page.evaluate((k) => [...document.querySelectorAll("[data-practice-words]")].some((b) => b.getAttribute("data-practice-words").split(",").includes("my-q-" + k)), KEY_Q)
+      }),
+      await view("学習状況の語の詳細", "/stats.html", () => document.querySelectorAll("#learnedWordList [data-word-detail]").length > 0, {
+        after: async (page) => {
+          await page.evaluate((id) => [...document.querySelectorAll("#learnedWordList [data-word-detail]")].find((b) => b.getAttribute("data-word-detail") === id)?.click(), ID_A);
+          return page.waitForFunction(() => document.getElementById("wordDetail") && !document.getElementById("wordDetail").hidden, null, { timeout: 5000, polling: 20 }).then(() => true, () => false);
+        }
+      }),
+      await view("マイ単語帳", "/mywords.html", () => /属性の札|z"onmouseover/.test(document.body.textContent))
+    ];
+    for (const r of rows) {
+      check(`88.1 (4) ${r.name}: 場面カードの答え・訳・鍵の HTML の字が走らない（mouseover を送っても window.__pwn なし・<img src="x"> 0・on の属性 0）・画面が出て字はそのまま・エラー 0`,
+        r.shown && r.extra !== false && r.pwn === null && r.imgs === 0 && r.onAttrs.length === 0 && r.err.length === 0, JSON.stringify(r));
+    }
+  }
+  // ----- (5) ご意見のページ名は 300 字まで（Batch 88 A6。js/feedback.js。長い ?query でも送る行を大きくしない。送れないときは端末に保持した行で見る）-----
+  {
+    const page = await guardPage();
+    await page.goto(`${BASE}/news.html?q=${"a".repeat(2000)}`, { waitUntil: "networkidle" });
+    await page.click("[data-feedback-open]");
+    await page.fill("#feedbackMessage", "長いページ名の確かめ");
+    await page.click("#feedbackSubmit");
+    await waitUntil(() => page.evaluate(() => /ありがとう/.test(document.getElementById("feedbackStatus")?.textContent ?? "")), 4000);
+    const rows = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_feedback_queue") || "[]"));
+    const name = String(rows[0]?.page ?? "");
+    check("88.1 (5) ご意見: 長い ?query のページでも、送る行のページ名は 300 字まで（頭は /news.html?q=）・エラー 0",
+      rows.length === 1 && name.length > 0 && name.length <= 300 && name.startsWith("/news.html?q=aaa") && page.errors.length === 0, JSON.stringify({ n: rows.length, len: name.length, head: name.slice(0, 20), err: page.errors.slice(0, 2) }));
+    await closeCtx(page);
+  }
+  // ----- (6) はちゃんの一言（Batch 88 の反証。js/hasumi.js hasumiBubbleHtml・renderHasumiHome）: 今日覚えた語の名前（場面カードの答え）を HTML にしない -----
+  // ホームの紙片（学ぶ回の今日最初の答えの後などに描き直す）と、覚えた瞬間の吹き出し（js/game.js の #learnToast）。どちらも語の名前を文に入れて HTML にしていた
+  {
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const y = new Date(Date.now() - 86400000);
+    const yesterday = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+    const nowIso = new Date().toISOString();
+    const ANS6 = 'h"><img src=x onerror=window.__pwn=61>'; // 場面カードの答え（今日覚えた語の名前になる字）
+    const KEY6 = 'h"><imgsrc=xonerror=window.__pwn=61>'; // その鍵（js/myWords.js conceptKey）
+    const page = await guardPage({
+      spelldash_my_words: JSON.stringify([{ kind: "concept", en: KEY6, answer: ANS6, q: "場面: はちゃんの札", explain: "", accept: [], ja: "はちゃんの札の訳", addedAt: T0 }]),
+      spelldash_word_stats: JSON.stringify({ ["my-q-" + KEY6]: { ...statLearned, lastPlayed: nowIso, lastRecallFailAt: new Date(Date.now() - 86400000).toISOString(), lastRecallSuccessAt: nowIso, history: [{ d: yesterday, r: "x" }, { d: today, r: "o" }] } }),
+      spelldash_streak: JSON.stringify({ last: today, current: 1, best: 1 })
+    });
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    const r = await page.evaluate(async (ans) => {
+      const m = await import("/js/hasumi.js");
+      m.renderHasumiHome();
+      const box = document.createElement("div");
+      box.id = "hasumiProbe";
+      box.innerHTML = m.hasumiBubbleHtml(m.hasumiLearnedLine(ans), "hasumi--result");
+      document.body.append(box);
+      await new Promise((res) => setTimeout(res, 300));
+      const home = document.getElementById("hasumiHome")?.textContent ?? "";
+      const out = { pwn: window.__pwn ?? null, imgs: document.querySelectorAll('img[src="x"]').length, home: home.includes(ans), homeText: home.slice(0, 80), bubble: box.textContent.includes(ans) };
+      box.remove();
+      return out;
+    }, ANS6);
+    check("88.1 (6) はちゃんの一言: 今日覚えた語の名前（場面カードの答え）の HTML の字が、ホームの紙片と覚えた瞬間の吹き出しで走らない（window.__pwn なし・<img src=\"x\"> 0）・字はそのまま見える・エラー 0",
+      r.pwn === null && r.imgs === 0 && r.home && r.bubble && page.errors.length === 0, JSON.stringify({ ...r, err: page.errors.slice(0, 2) }));
     await closeCtx(page);
   }
   check("88.1 どの画面にも console のエラーとページのエラーが無い", allErrors.length === 0, allErrors.slice(0, 3).join(" / "));

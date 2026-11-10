@@ -1,3 +1,4 @@
+import { esc } from "./html.js";
 import { getGrowthLog } from "./growthLog.js";
 import { getSessionLog } from "./storage.js";
 import { localDateString } from "./stats.js";
@@ -84,7 +85,7 @@ export function renderCalendar(containerId) {
   });
   const monthRow = `<div class="cal__months" style="grid-template-columns: repeat(${weeks}, 1fr)">${Array.from({ length: weeks }, (_, c) => {
     const m = months.find((x) => x.col === c);
-    return `<span>${m ? m.label : ""}</span>`;
+    return `<span>${m ? esc(m.label) : ""}</span>`;
   }).join("")}</div>`;
 
   // 凡例は「少ない ■■■■ 多い」だけ。濃さの説明は summary の後ろに 1 文（1 回だけ）

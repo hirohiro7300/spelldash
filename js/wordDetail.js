@@ -124,7 +124,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
       </div>
     </div>
     <div class="word-detail__ai" id="wordDetailAi"></div>
-    ${family.length ? `<div class="word-detail__family">同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${w.id}">${escapeHtml(answerLabel(w))}</button>`).join(" ")}</div>` : ""}
+    ${family.length ? `<div class="word-detail__family">同じ仲間: ${family.map((w) => `<button type="button" class="family-chip" data-word-detail="${escapeHtml(w.id)}">${escapeHtml(answerLabel(w))}</button>`).join(" ")}</div>` : ""}
     <p class="sr-only" role="status" aria-live="polite" data-sr-live></p>
   `;
   modal.hidden = false;

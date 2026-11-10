@@ -34,9 +34,9 @@ create policy "funnel_events_insert_anyone"
 -- select ポリシーは作らない（集計は管理画面の /api/admin/funnel が service role で読む）
 ```
 
-## 2. 管理画面の集計を軽くする関数（任意。行が増えてから）
+## 2. 管理画面の集計を軽くする関数（勧め。1 人目の前に: docs/FOUNDER_TODO.md の守り 13）
 
-管理画面は、この関数があれば数十行の集計だけを受け取る（無ければ 30 日分の行を読んで数える）。入口の行は source が空なら other にまとめる（段階の合計の行は source が空）。以前の版を流してあれば、同じ文をもう一度流すと置き換わる。
+管理画面は、この関数があれば数十行の集計だけを受け取る（無ければ 30 日分の行を読んで数える。行を読むのは 5 万行〔50 ページ〕までで、それを越えると管理画面に「数は途中まで」と出る: Batch 88）。入口の行は source が空なら other にまとめる（段階の合計の行は source が空）。以前の版を流してあれば、同じ文をもう一度流すと置き換わる。
 
 ```sql
 create or replace function public.admin_funnel_counts(p_today date)

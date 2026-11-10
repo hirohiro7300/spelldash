@@ -78,7 +78,9 @@ const USERS = { "tok-u1": { id: U1, email: "u1@example.com" }, "tok-u2": { id: U
 
 let calls = []; // 全部の要求（相手・メソッド・パス・問い合わせ・頭・本文）
 let unexpected = []; // 偽物が知らない要求（検査の外へ出ようとした）
-const P = { subs: new Map(), search: [], list: [], prices: new Map(), fail: new Set() }; // 決済の会社
+const P = { subs: new Map(), search: [], list: [], prices: new Map(), fail: new Set(), customers: [], sessions: [], idem: new Map(), seq: 0 }; // 決済の会社
+// customers: 顧客（{ id, email, metadata, searchable }。作ったばかりの顧客は検索に出ない〔決済の会社の検索は遅れて出る〕）・sessions: 手続き（{ id, url, customer, status, expires_at }）・
+// idem: 冪等キー → 最初の要求の本文と答え（同じキーで同じ本文なら同じ答え・違う本文なら 400 idempotency_error。決済の会社と同じ）
 const D = { rows: new Map(), missing: false, readGate: null, writeGate: null }; // データベース（subscriptions）
 
 function fresh() {
@@ -88,6 +90,11 @@ function fresh() {
   P.search = [];
   P.list = [];
   P.fail.clear();
+  P.customers = [];
+  P.sessions = [];
+  P.idem.clear();
+  P.seq = 0;
+  lib.billingRateReset?.(); // 1 人 1 分の回数（Batch 88）を検査ごとに空に（前の形には無い）
   P.prices = new Map([["price_month_test", { id: "price_month_test", unit_amount: 980, currency: "jpy", recurring: { interval: "month" } }], ["price_year_test", { id: "price_year_test", unit_amount: 9800, currency: "jpy", recurring: { interval: "year" } }]]);
   D.rows.clear();
   D.missing = false;
@@ -176,8 +183,63 @@ function providerRoute(call) {
   call.form = call.method === "GET" ? call.params : new URLSearchParams(call.body);
   const fail = (name) => P.fail.has(name);
   const p = call.path;
+  // 冪等キー: 同じキーで同じ本文なら最初の答えを返す・違う本文なら 400（決済の会社と同じ。分の頭から作る値がずれると、ここで落ちる）
+  // make は答えの値を返す（200 で返し、冪等キーがあれば本文と答えを覚える）
+  const replay = (make) => {
+    const key = call.headers["idempotency-key"];
+    const seen = key ? P.idem.get(key) : null;
+    if (seen) return seen.body === call.body ? json(200, clone(seen.answer)) : json(400, { error: { type: "idempotency_error" } });
+    const answer = make();
+    if (key) P.idem.set(key, { body: call.body, answer: clone(answer) });
+    return json(200, clone(answer));
+  };
   if (call.method === "GET" && p === "/v1/subscriptions/search") return fail("search") ? json(500, { error: { type: "api_error" } }) : json(200, { data: clone(P.search) });
-  if (call.method === "GET" && p === "/v1/subscriptions") return json(200, { data: clone(P.list) });
+  // 顧客の契約の一覧（customer があれば、その顧客の契約だけ。customer の無い項目はどの顧客にも出す: 前からの検査の形）
+  if (call.method === "GET" && p === "/v1/subscriptions") {
+    if (fail("list")) return json(500, { error: { type: "api_error" } });
+    // 顧客を消した後の一覧（「その顧客は無い」の 4xx）と、つながらない一覧（fetch が投げる）
+    if (fail("list_missing")) return json(404, { error: { type: "invalid_request_error", code: "resource_missing" } });
+    if (fail("list_network")) throw new TypeError("fetch failed");
+    const customer = call.params.get("customer");
+    return json(200, { data: clone(P.list.filter((s) => !customer || !s.customer || s.customer === customer)) });
+  }
+  // 顧客: 検索（metadata['user_id']:'<uuid>'。作ったばかりの顧客は出ない）と作成（冪等キーで同じ顧客）
+  if (call.method === "GET" && p === "/v1/customers/search") {
+    if (fail("customer_search")) return json(500, { error: { type: "api_error" } });
+    const user = (call.params.get("query") || "").match(/^metadata\['user_id'\]:'([0-9a-f-]{36})'$/)?.[1] ?? null;
+    return json(200, { data: clone(P.customers.filter((c) => c.searchable && user && c.metadata?.user_id === user)) });
+  }
+  if (call.method === "POST" && p === "/v1/customers") {
+    if (fail("customer_create")) return json(500, { error: { type: "api_error" } });
+    return replay(() => {
+      const customer = { id: `cus_new_${++P.seq}`, email: call.form.get("email") || null, metadata: { user_id: call.form.get("metadata[user_id]") || null }, searchable: false };
+      P.customers.push(customer);
+      return customer;
+    });
+  }
+  // 顧客のメールを書き直す（作った後に書く。Batch 88 の反証）
+  const custUpdate = call.method === "POST" && p.match(/^\/v1\/customers\/([^/]+)$/);
+  if (custUpdate) {
+    if (fail("customer_update")) return json(500, { error: { type: "api_error" } });
+    const customer = P.customers.find((c) => c.id === decodeURIComponent(custUpdate[1]));
+    if (!customer) return json(404, { error: { type: "invalid_request_error", code: "resource_missing" } });
+    if (call.form.has("email")) customer.email = call.form.get("email");
+    return json(200, clone(customer));
+  }
+  // 手続き: 一覧（customer・status）と期限切れにする
+  if (call.method === "GET" && p === "/v1/checkout/sessions") {
+    if (fail("session_list")) return json(500, { error: { type: "api_error" } });
+    const customer = call.params.get("customer");
+    const status = call.params.get("status");
+    return json(200, { data: clone(P.sessions.filter((x) => (!customer || x.customer === customer) && (!status || x.status === status))) });
+  }
+  const expire = call.method === "POST" && p.match(/^\/v1\/checkout\/sessions\/([^/]+)\/expire$/);
+  if (expire) {
+    const session = P.sessions.find((x) => x.id === decodeURIComponent(expire[1]));
+    if (fail("expire") || !session || session.status !== "open") return json(400, { error: { type: "invalid_request_error" } });
+    session.status = "expired";
+    return json(200, clone(session));
+  }
   if (call.method === "GET" && p.startsWith("/v1/subscriptions/")) {
     const sub = P.subs.get(decodeURIComponent(p.slice("/v1/subscriptions/".length)));
     return fail("subscription") || !sub ? json(404, { error: { type: "invalid_request_error" } }) : json(200, clone(sub));
@@ -186,7 +248,15 @@ function providerRoute(call) {
     const price = P.prices.get(decodeURIComponent(p.slice("/v1/prices/".length)));
     return fail("price") || !price ? json(404, { error: { type: "invalid_request_error" } }) : json(200, clone(price));
   }
-  if (call.method === "POST" && p === "/v1/checkout/sessions") return fail("checkout") ? json(500, { error: { type: "api_error" } }) : json(200, { id: "cs_test_1", url: "https://pay.test/checkout/1" });
+  if (call.method === "POST" && p === "/v1/checkout/sessions") {
+    if (fail("checkout")) return json(500, { error: { type: "api_error" } });
+    return replay(() => {
+      const n = P.sessions.length + 1;
+      const session = { id: `cs_test_${n}`, url: `https://pay.test/checkout/${n}`, customer: call.form.get("customer") || null, status: "open", expires_at: Number(call.form.get("expires_at")) || null };
+      P.sessions.push(session);
+      return session;
+    });
+  }
   if (call.method === "POST" && p === "/v1/billing_portal/sessions") return json(200, { url: "https://pay.test/portal/1" });
   unexpected.push(`${call.method} ${p}`);
   return json(404, { error: { type: "invalid_request_error" } });
@@ -593,10 +663,11 @@ const hook = async (event, makeReq = streamReq, opts) => {
   const sent = providerCalls("POST", "/v1/checkout/sessions").at(-1);
   const trialEnd = Number(f.get("subscription_data[trial_end]"));
   ok("加入: 初めての人（行も契約も無い）は 200 で手続きの URL を返す", res.statusCode === 200 && res.body?.url === "https://pay.test/checkout/1", JSON.stringify(res.body));
-  ok("加入: 手続きの中身（月額の Price 1 つ・本人の印 3 か所・戻り先は SITE_ORIGIN から・日本語・メール）",
+  // Batch 88: 初めての人も customer（本人の顧客。下の 6b）で作り、customer_email は渡さない（前は customer_email で、手続きのたびに別の顧客ができた）
+  ok("加入: 手続きの中身（月額の Price 1 つ・本人の印 3 か所・戻り先は SITE_ORIGIN から・日本語・本人の顧客〔customer。customer_email は渡さない〕）",
     f.get("mode") === "subscription" && f.get("line_items[0][price]") === "price_month_test" && f.get("line_items[0][quantity]") === "1" && f.get("client_reference_id") === U1 &&
       f.get("metadata[user_id]") === U1 && f.get("subscription_data[metadata][user_id]") === U1 && f.get("success_url") === "https://site.test/pro.html?pro=done" &&
-      f.get("cancel_url") === "https://site.test/pro.html?pro=cancel" && f.get("locale") === "ja" && f.get("customer_email") === "u1@example.com" && !f.has("customer"),
+      f.get("cancel_url") === "https://site.test/pro.html?pro=cancel" && f.get("locale") === "ja" && /^cus_/.test(f.get("customer") || "") && !f.has("customer_email"),
     [...f.keys()].join(","));
   ok("加入: 初めての人の無料期間は暦の 1 か月（trial_end = 日本時間で同じ日付の 1 か月後。分の頭から数える）",
     trialEnd > 0 && [before, after].some((m) => trialEnd === lib.trialEndUnix(new Date(m * 1000))) && !f.has("subscription_data[trial_period_days]"), `${trialEnd} vs ${lib.trialEndUnix(new Date(before * 1000))}`);
@@ -674,6 +745,218 @@ const hook = async (event, makeReq = streamReq, opts) => {
   }
 }
 
+// ===== 6b. 1 人に顧客 1 人・開いた手続きを閉じる・別の契約の終わりで生きている行を上書きしない（Batch 88） =====
+// d8f9d69 では、行の無い人の加入は customer_email だけで手続きを作り（手続きのたびに別の顧客）、前の手続きは開いたまま（期限 24 時間）。
+// 2 つの手続きを両方払うと契約が 2 つになり、古い方の終わり（deleted）が生きている方の行を canceled にした（Pro でないのに課金は続く）
+{
+  const sessionsForm = () => providerCalls("POST", "/v1/checkout/sessions").at(-1)?.form ?? new URLSearchParams();
+  const realNow = Date.now;
+  const at = async (ms, fn) => {
+    Date.now = () => ms;
+    try {
+      return await fn();
+    } finally {
+      Date.now = realNow;
+    }
+  };
+  const minuteStart = Math.floor(realNow() / 60000) * 60000;
+
+  // (a) 行の無い人: 顧客を探し、無ければ作る（冪等キー customer:<uuid>）→ 手続きは customer で（customer_email なし）・期限は今 + 30 分より後
+  fresh();
+  setEnv();
+  let res = await at(minuteStart + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  const search = providerCalls("GET", "/v1/customers/search").at(-1);
+  const made = providerCalls("POST", "/v1/customers");
+  const f = sessionsForm();
+  const expiresAt = Number(f.get("expires_at"));
+  const t0 = Math.floor((minuteStart + 5000) / 1000);
+  const mailed = calls.filter((c) => c.origin !== DB && c.method === "POST" && /^\/v1\/customers\/[^/]+$/.test(c.path));
+  ok("6b (a) 行の無い人: 顧客を metadata の user_id で探し、無ければ作る（冪等キー customer:<uuid>・本文は metadata[user_id] だけ）→ 作った後にメールを書く",
+    res.statusCode === 200 && search?.params.get("query") === `metadata['user_id']:'${U1}'` && made.length === 1 && made[0].headers["idempotency-key"] === `customer:${U1}` &&
+      made[0].form.get("metadata[user_id]") === U1 && !made[0].form.has("email") && mailed.length === 1 && mailed[0].form.get("email") === "u1@example.com" && P.customers[0]?.email === "u1@example.com",
+    JSON.stringify({ status: res.statusCode, query: search?.params.get("query"), made: made.map((c) => [c.headers["idempotency-key"], c.body]), mailed: mailed.map((c) => c.body) }));
+  ok("6b (a) 手続きは作った顧客で（customer=）・customer_email は渡さない",
+    f.get("customer") === P.customers[0]?.id && !f.has("customer_email"), [...f.keys()].join(","));
+  ok("6b (a) 手続きの期限（expires_at）は今 + 30 分より後・24 時間より前（古いタブから前の手続きを最後まで進められない）",
+    expiresAt > t0 + 30 * 60 && expiresAt < t0 + 24 * 3600, `${expiresAt - t0} 秒後`);
+
+  // (a2) 顧客の検索で見つかれば、作らずにその顧客を使う
+  fresh();
+  P.customers.push({ id: "cus_found", email: "u1@example.com", metadata: { user_id: U1 }, searchable: true });
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("6b (a2) 検索で本人の顧客が見つかれば作らずにその顧客で手続きを作る", res.statusCode === 200 && providerCalls("POST", "/v1/customers").length === 0 && sessionsForm().get("customer") === "cus_found", [...sessionsForm().keys()].join(","));
+
+  // (a3) 顧客の検索が失敗しても止めない（冪等キーで同じ顧客になる）。(a4) 顧客を作れなければ 502・手続きを作らない
+  fresh();
+  P.fail.add("customer_search");
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("6b (a3) 顧客の検索が失敗しても加入は止めない（作る。冪等キーで同じ顧客）", res.statusCode === 200 && providerCalls("POST", "/v1/customers").length === 1 && /^cus_new_/.test(sessionsForm().get("customer") || ""));
+  fresh();
+  P.fail.add("customer_create");
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("6b (a4) 顧客を作れなければ 502 upstream・手続きを作らない（customer_email で作り直さない）", res.statusCode === 502 && providerCalls("POST", "/v1/checkout/sessions").length === 0);
+
+  // (a5) 作ったばかりの顧客（まだ検索に出ない）で、2 回目の前にログインのメールが変わった（Batch 88 の反証）: 前は作る要求の本文にメールがあり、
+  // 同じ冪等キーで本文が違うので決済の会社が断り（idempotency_error）、冪等キーの 24 時間は 502 のままだった。今は同じ顧客で手続きを作り、メールは新しい方
+  fresh();
+  res = await at(minuteStart + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  const before = res.statusCode;
+  const oldMail = USERS["tok-u1"].email;
+  USERS["tok-u1"].email = "u1-new@example.com";
+  try {
+    res = await at(minuteStart + 3 * 60000 + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  } finally {
+    USERS["tok-u1"].email = oldMail;
+  }
+  ok("6b (a5) 2 回目の前にメールが変わっても、2 回目は 200・顧客は 1 人のまま（同じ顧客で手続き）・顧客のメールは新しい方",
+    before === 200 && res.statusCode === 200 && P.customers.length === 1 && sessionsForm().get("customer") === P.customers[0]?.id && P.customers[0]?.email === "u1-new@example.com",
+    JSON.stringify({ before, status: res.statusCode, body: res.body, customers: P.customers.map((c) => [c.id, c.email]) }));
+  // (a6) メールを書けなくても手続きは作る（その画面でメールを聞く）
+  fresh();
+  P.fail.add("customer_update");
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("6b (a6) 顧客のメールを書けなくても、手続きは 200 で作る", res.statusCode === 200 && /^cus_new_/.test(sessionsForm().get("customer") || ""), JSON.stringify({ status: res.statusCode }));
+
+  // (b) 2 分後の 2 回目（1 回目の手続きは開いたまま・作ったばかりの顧客はまだ検索に出ない）: 同じ顧客・1 回目の手続きを期限切れにしてから新しい手続き
+  fresh();
+  res = await at(minuteStart + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  const first = res.body?.url;
+  res = await at(minuteStart + 2 * 60000 + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  const second = res.body?.url;
+  const customersSent = providerCalls("POST", "/v1/checkout/sessions").map((c) => c.form.get("customer"));
+  ok("6b (b) 2 分後の 2 回目: 顧客は 1 人のまま（冪等キーで同じ顧客）・2 つの手続きは同じ顧客",
+    res.statusCode === 200 && P.customers.length === 1 && customersSent.length === 2 && customersSent[0] === customersSent[1] && customersSent[0] === P.customers[0].id,
+    JSON.stringify({ customers: P.customers.map((c) => c.id), customersSent }));
+  ok("6b (b) 2 回目は 1 回目の開いた手続きを期限切れにする（新しい手続きは開いたまま）・別の URL",
+    first === "https://pay.test/checkout/1" && second === "https://pay.test/checkout/2" && P.sessions[0]?.status === "expired" && P.sessions[1]?.status === "open" &&
+      providerCalls("POST", "/v1/checkout/sessions/cs_test_1/expire").length === 1 && providerCalls("POST", "/v1/checkout/sessions/cs_test_2/expire").length === 0,
+    JSON.stringify({ first, second, sessions: P.sessions.map((x) => [x.id, x.status]) }));
+
+  // (b2) 同じ分の二度押し: 冪等キーで同じ手続きが返り、それを閉じない（期限の値も分の頭から作るので、同じ本文になる）
+  fresh();
+  const r1 = await at(minuteStart + 1000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  const r2 = await at(minuteStart + 40000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  ok("6b (b2) 同じ分の二度押しは同じ手続き（同じ URL）で、それを期限切れにしない",
+    r1.statusCode === 200 && r2.statusCode === 200 && r1.body?.url === r2.body?.url && P.sessions.length === 1 && P.sessions[0].status === "open",
+    JSON.stringify({ r1: [r1.statusCode, r1.body], r2: [r2.statusCode, r2.body], sessions: P.sessions.map((x) => [x.id, x.status]) }));
+
+  // (b3) 前の手続きを閉じられなくても新しい手続きは返す（閉じるのは守りの上乗せ。期限 35 分が残る）
+  fresh();
+  await at(minuteStart + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  P.fail.add("expire");
+  res = await at(minuteStart + 2 * 60000 + 5000, () => invoke(checkout, post({ interval: "month" }, "tok-u1")));
+  ok("6b (b3) 前の手続きを期限切れにできなくても、新しい手続きは 200 で返す", res.statusCode === 200 && res.body?.url === "https://pay.test/checkout/2");
+
+  // (e) 無料期間: 行も検索の契約も無いが、本人の顧客に解約済みの契約がある → 初めてではない（無料期間なし）
+  fresh();
+  P.customers.push({ id: "cus_old", email: "u1@example.com", metadata: { user_id: U1 }, searchable: true });
+  P.list = [{ id: "sub_old", status: "canceled", customer: "cus_old" }];
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("6b (e) 本人の顧客に解約済みの契約があれば無料期間を付けない（行と契約の検索に無くても）",
+    res.statusCode === 200 && sessionsForm().get("customer") === "cus_old" && !sessionsForm().has("subscription_data[trial_end]") && !sessionsForm().has("subscription_data[trial_period_days]"),
+    [...sessionsForm().keys()].join(","));
+  // (e2) 本人の顧客に生きている契約（webhook の前・検索に出る前）があれば 409
+  fresh();
+  P.customers.push({ id: "cus_live", email: "u1@example.com", metadata: { user_id: U1 }, searchable: true });
+  P.list = [{ id: "sub_live", status: "trialing", customer: "cus_live" }];
+  res = await invoke(checkout, post({ interval: "month" }, "tok-u1"));
+  ok("6b (e2) 行が無く契約の検索にも出ていなくても、本人の顧客に生きている契約があれば 409・手続きを作らない", res.statusCode === 409 && providerCalls("POST", "/v1/checkout/sessions").length === 0);
+
+  // (c) 2 つの契約が両方できてしまった（d8f9d69 の形や手での作成）: 古い方の終わり（deleted）で、生きている方の行を canceled にしない
+  fresh();
+  setEnv();
+  const now = nowSec();
+  // 期間の終わりは先（subOf の既定の 2026-01-01 は過ぎていて、Pro の行にならない）
+  const liveItems = { data: [{ price: { id: "price_month_test", recurring: { interval: "month" } }, current_period_end: now + 30 * 86400 }] };
+  const subA = subOf({ id: "sub_A", customer: "cus_one", status: "trialing", items: liveItems });
+  const subB = subOf({ id: "sub_B", customer: "cus_one", status: "trialing", items: liveItems });
+  P.subs.set("sub_A", subA);
+  P.subs.set("sub_B", subB);
+  P.list = [subA, subB];
+  logs.length = 0;
+  await hook(eventOf("checkout.session.completed", { object: "checkout.session", mode: "subscription", client_reference_id: U1, subscription: "sub_A" }, now - 100));
+  await hook(eventOf("checkout.session.completed", { object: "checkout.session", mode: "subscription", client_reference_id: U1, subscription: "sub_B" }, now - 50));
+  const dupLog = logs.find((l) => l.includes("duplicate live subscription")) ?? "";
+  ok("6b (c) 生きている契約が 2 つになったら、新しい方を書き、ログに duplicate live subscription（番号は書かない）",
+    D.rows.get(U1)?.stripe_subscription_id === "sub_B" && dupLog.startsWith("billing/webhook: duplicate live subscription") && !/sub_|cus_|@/.test(dupLog), JSON.stringify({ row: D.rows.get(U1), dupLog }));
+  P.list = [{ ...subA, status: "canceled" }, subB];
+  const res3 = await hook(eventOf("customer.subscription.deleted", { ...subA, status: "canceled" }, now - 10));
+  const rowC = D.rows.get(U1);
+  ok("6b (c) 古い方（sub_A）の deleted が来ても、行は生きている方（sub_B・trialing）のまま・Pro のまま・ログは other subscription ignored",
+    res3.statusCode === 200 && rowC?.stripe_subscription_id === "sub_B" && rowC?.status === "trialing" && lib.isProRow(rowC) && logs.some((l) => l.includes("other subscription ignored")),
+    JSON.stringify(rowC));
+  res = await invoke(portal, post({}, "tok-u1"));
+  ok("6b (c) 「解約・お支払いの管理」は同じ顧客（cus_one）で開く", res.statusCode === 200 && providerCalls("POST", "/v1/billing_portal/sessions").at(-1)?.form?.get("customer") === "cus_one");
+
+  // (d2) 行の契約（sub_B）が終わっても、同じ顧客に生きている契約（sub_A）があれば、そちらを書く（Pro のまま）
+  fresh();
+  const subA2 = subOf({ id: "sub_A", customer: "cus_one", status: "active", items: liveItems });
+  const subB2 = subOf({ id: "sub_B", customer: "cus_one", status: "active", items: liveItems });
+  D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_one", stripe_subscription_id: "sub_B", event_created: now - 50, current_period_end: new Date(Date.now() + 20 * 86400000).toISOString() });
+  P.list = [subA2, { ...subB2, status: "canceled" }];
+  logs.length = 0;
+  res = await hook(eventOf("customer.subscription.deleted", { ...subB2, status: "canceled" }, now - 5));
+  const rowD2 = D.rows.get(U1);
+  ok("6b (d2) 行の契約が終わっても、同じ顧客に生きている別の契約があれば、そちらの契約を書く（Pro のまま。返金した重複の方を先に止めても行は壊れない）",
+    res.statusCode === 200 && rowD2?.stripe_subscription_id === "sub_A" && rowD2?.status === "active" && lib.isProRow(rowD2) && rowD2?.event_created === now - 5,
+    JSON.stringify(rowD2));
+
+  // (d) ふつうの解約: 行の契約が終わり、ほかに生きている契約が無ければ前のとおり canceled（Pro が終わる）
+  fresh();
+  D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_one", stripe_subscription_id: "sub_B", event_created: now - 50 });
+  P.list = [{ ...subB2, status: "canceled" }, { ...subA2, status: "canceled" }];
+  res = await hook(eventOf("customer.subscription.deleted", { ...subB2, status: "canceled" }, now - 5));
+  ok("6b (d) 行の契約の deleted で、ほかに生きている契約が無ければ canceled（Pro が終わる）", res.statusCode === 200 && D.rows.get(U1)?.status === "canceled" && D.rows.get(U1)?.stripe_subscription_id === "sub_B" && !lib.isProRow(D.rows.get(U1)), JSON.stringify(D.rows.get(U1)));
+
+  // (d3) 行が Pro でないとき（解約済み）に別の契約の終わりが届いても、前のとおり書く（生きている行を守るときだけ断る）
+  fresh();
+  D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "canceled", stripe_customer_id: "cus_one", stripe_subscription_id: "sub_B", event_created: now - 50 });
+  res = await hook(eventOf("customer.subscription.updated", { ...subA2, status: "past_due" }, now - 5));
+  ok("6b (d3) 行が Pro でなければ、別の契約の更新は前のとおり書く（入り直した人の新しい契約）", res.statusCode === 200 && D.rows.get(U1)?.stripe_subscription_id === "sub_A" && D.rows.get(U1)?.status === "past_due");
+
+  // (d4)〜(d7) 行の契約の終わりで、同じ顧客のほかの契約の一覧が読めないとき（Batch 88 の反証）。前は一覧が読めないと毎回 500 で、
+  // 顧客を消した後（一覧は「その顧客は無い」の 4xx を返し続ける）は再送が全部失敗し、解約した人が期限 + 3 日まで Pro のままだった
+  const liveRow = (created) => ({ ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_gone", stripe_subscription_id: "sub_X", event_created: created, current_period_end: new Date(Date.now() + 20 * 86400000).toISOString() });
+  const subX = subOf({ id: "sub_X", customer: "cus_gone", status: "canceled", items: liveItems });
+  const deletedX = (created) => hook(eventOf("customer.subscription.deleted", subX, created));
+  const rowState = () => [D.rows.get(U1)?.status, lib.isProRow(D.rows.get(U1))];
+  // (d4) 顧客を消した（一覧は 404 resource_missing）: ほかの生きている契約は無いとみなして canceled を書く（消した顧客に生きている契約は残らない）
+  fresh();
+  D.rows.set(U1, liveRow(now - 50));
+  P.fail.add("list_missing");
+  logs.length = 0;
+  res = await deletedX(now - 5);
+  ok("6b (d4) 行の契約の deleted で、顧客を消した後の一覧が 4xx（その顧客は無い）なら、200 で canceled を書く（Pro が終わる。ログに番号を書かない）",
+    res.statusCode === 200 && JSON.stringify(rowState()) === JSON.stringify(["canceled", false]) && !logs.some((l) => /sub_X|cus_gone/.test(l)), JSON.stringify({ status: res.statusCode, row: rowState(), logs: logs.slice(-2) }));
+  // (d5) 一覧が一時的に失敗（500）: 届いてすぐは 500 で再送に任せる（ほかに生きている契約があるかもしれない）。再送で一覧が読めれば canceled
+  fresh();
+  D.rows.set(U1, liveRow(now - 50));
+  P.fail.add("list");
+  const firstTry = await deletedX(now - 5);
+  const keptRow = rowState();
+  P.fail.delete("list");
+  const retried = await deletedX(now - 5);
+  ok("6b (d5) 一覧が一時的に 500 なら、届いてすぐは 500（再送を待つ・行はそのまま）、再送で読めたら canceled",
+    firstTry.statusCode === 500 && JSON.stringify(keptRow) === JSON.stringify(["active", true]) && retried.statusCode === 200 && JSON.stringify(rowState()) === JSON.stringify(["canceled", false]),
+    JSON.stringify({ first: firstTry.statusCode, keptRow, retried: retried.statusCode, row: rowState() }));
+  // (d6) 一覧の 500 が 1 時間より長く続いた（再送の間ずっと読めない）: 届いた状態（canceled）を書く。いつまでも Pro のままにしない
+  fresh();
+  D.rows.set(U1, liveRow(now - 7200));
+  P.fail.add("list");
+  res = await deletedX(now - 3700);
+  ok("6b (d6) 一覧の失敗が届いてから 1 時間を過ぎても続くなら、200 で canceled を書く", res.statusCode === 200 && JSON.stringify(rowState()) === JSON.stringify(["canceled", false]), JSON.stringify({ status: res.statusCode, row: rowState() }));
+  // (d7) つながらない（fetch が投げる）: 届いてすぐは 500、1 時間を過ぎたら canceled
+  fresh();
+  D.rows.set(U1, liveRow(now - 7200));
+  P.fail.add("list_network");
+  const netFresh = await deletedX(now - 5);
+  const netFreshRow = rowState();
+  const netOld = await deletedX(now - 3700);
+  ok("6b (d7) 一覧につながらないときも、届いてすぐは 500（行はそのまま）、1 時間を過ぎた再送では canceled",
+    netFresh.statusCode === 500 && JSON.stringify(netFreshRow) === JSON.stringify(["active", true]) && netOld.statusCode === 200 && JSON.stringify(rowState()) === JSON.stringify(["canceled", false]),
+    JSON.stringify({ netFresh: netFresh.statusCode, netFreshRow, netOld: netOld.statusCode, row: rowState() }));
+}
+
 // ===== 7. お支払いの管理（portal） =====
 {
   fresh();
@@ -690,6 +973,35 @@ const hook = async (event, makeReq = streamReq, opts) => {
   res = await invoke(portal, post({}, "tok-u2"));
   const sent = providerCalls("POST", "/v1/billing_portal/sessions").at(-1)?.form;
   ok("管理: 本人の顧客の番号で管理の画面を作り、戻り先は SITE_ORIGIN/profile.html（ほかの人の行は読めない）", res.statusCode === 200 && res.body?.url === "https://pay.test/portal/1" && sent?.get("customer") === "cus_u2" && sent?.get("return_url") === "https://site.test/profile.html", JSON.stringify(res.body));
+}
+
+// ===== 7c. 加入とお支払いの管理は 1 人 1 分 10 回まで（Batch 88。インスタンスのメモリー。同じ人の連打で決済の会社を叩かない） =====
+{
+  fresh();
+  setEnv();
+  const realNow = Date.now;
+  const t0 = Math.floor(realNow() / 60000) * 60000 + 1000;
+  try {
+    Date.now = () => t0;
+    const st = [];
+    for (let i = 0; i < 11; i++) st.push((await invoke(checkout, post({ interval: "month" }, "tok-u3"))).statusCode);
+    const last = await invoke(checkout, post({ interval: "month" }, "tok-u3"));
+    const other = await invoke(checkout, post({ interval: "month" }, "tok-u2"));
+    ok("回数: 加入は同じ人の 1 分 10 回まで（11 回目から 429 too_many・短い字）・ほかの人は 200",
+      st.slice(0, 10).every((x) => x === 200) && st[10] === 429 && last.statusCode === 429 && last.body?.error === "too_many" && typeof last.body?.message === "string" && last.body.message.length <= 40 && other.statusCode === 200,
+      JSON.stringify({ st, last: last.body, other: other.statusCode }));
+    D.rows.set(U1, { ...ROW_DEFAULTS, user_id: U1, status: "active", stripe_customer_id: "cus_u1" });
+    D.rows.set(U2, { ...ROW_DEFAULTS, user_id: U2, status: "active", stripe_customer_id: "cus_u2" });
+    const ps = [];
+    for (let i = 0; i < 11; i++) ps.push((await invoke(portal, post({}, "tok-u1"))).statusCode);
+    const otherPortal = await invoke(portal, post({}, "tok-u2"));
+    ok("回数: 「解約・お支払いの管理」も同じ人の 1 分 10 回まで（11 回目は 429）・ほかの人は 200", ps.slice(0, 10).every((x) => x === 200) && ps[10] === 429 && otherPortal.statusCode === 200, JSON.stringify({ ps, other: otherPortal.statusCode }));
+    Date.now = () => t0 + 61000;
+    const next = await invoke(checkout, post({ interval: "month" }, "tok-u3"));
+    ok("回数: 次の分にはまた加入できる（200）", next.statusCode === 200, String(next.statusCode));
+  } finally {
+    Date.now = realNow;
+  }
 }
 
 // ===== 7b. 受付を急いで止めた後（月額の Price の変数を外して再デプロイ。docs/BILLING.md §2 の止め方） =====
@@ -743,6 +1055,15 @@ const hook = async (event, makeReq = streamReq, opts) => {
   }
   const explain = fs.readFileSync(path.join(ROOT, "api", "explain-word.js"), "utf8");
   ok("AI の回数: api/explain-word.js のゲートは api/_lib/aiLimits.js の explainWordLimits から数を読む（既定の数を自分で持たない）", /explainWordLimits\(\)/.test(explain) && !/EXPLAIN_WORD_DAILY_LIMIT\)\s*\|\|/.test(explain));
+  // Batch 88: カードの自動生成の回数も同じ 1 か所（既定 2・20 は前と同じ）。比較表（config の ai）は前のとおり覚え方だけ
+  ok("AI の回数: カードの自動生成の回数も api/_lib/aiLimits.js（cardGenLimits）", typeof ai.cardGenLimits === "function");
+  if (typeof ai.cardGenLimits === "function") {
+    eq("AI の回数: カードの既定は無料 2・Pro 20・環境変数で変わる・読めない値は既定",
+      [ai.cardGenLimits({}), ai.cardGenLimits({ CARD_GEN_DAILY_LIMIT: "3", CARD_GEN_DAILY_LIMIT_PRO: "30" }), ai.cardGenLimits({ CARD_GEN_DAILY_LIMIT: "x", CARD_GEN_DAILY_LIMIT_PRO: "0" })],
+      [{ free: 2, pro: 20 }, { free: 3, pro: 30 }, { free: 2, pro: 20 }]);
+  }
+  const cardsSource = fs.readFileSync(path.join(ROOT, "api", "generate-cards.js"), "utf8");
+  ok("AI の回数: api/generate-cards.js も aiLimits の cardGenLimits から数を読む（既定の数を自分で持たない）", /cardGenLimits\(\)/.test(cardsSource) && !/CARD_GEN_DAILY_LIMIT(_PRO)?\)\s*\|\|/.test(cardsSource));
 }
 
 // ===== 9. Pro の判定・無料期間の終わり・form の書き方 =====

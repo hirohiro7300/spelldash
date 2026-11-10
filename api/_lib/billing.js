@@ -1,4 +1,4 @@
-// ===== 課金（SpellDash Pro）共通（/api/billing/* と shared.js の reject() から使う） =====
+// ===== 課金（SpellDash Pro）共通（/api/billing/* と shared.js の aiTake() から使う） =====
 //
 // - Stripe は SDK を入れず fetch + Node の crypto で呼ぶ（form エンコード、ネストは a[b][c]）。
 // - 本人の行（subscriptions）の読み取りは「本人のトークン + anon key」で行い、RLS に任せる。
@@ -39,8 +39,33 @@ export const MESSAGES = {
   upstream: "手続きを始められませんでした。時間をおいてお試しください。",
   badSignature: "署名が正しくありません。",
   badRequest: "リクエストが正しくありません。",
-  webhookFailed: "保存できませんでした。"
+  webhookFailed: "保存できませんでした。",
+  tooMany: "少し待ってからもう一度お試しください。"
 };
+
+// ----- 1 人 1 分の回数（Batch 88。加入とお支払いの管理。インスタンスのメモリー: 同じ人の連打で決済の会社を叩かない） -----
+const RATE_LIMIT = 10;
+const RATE_WINDOW_MS = 60 * 1000;
+const rate = new Map(); // "<scope>:<user>" → { at: 分の頭, count }
+
+// 今の分の回数を 1 つ増やし、上限を超えたら true（超えた呼び出しも数える）。古い分の項目は 1000 件を超えたら捨てる
+export function overBillingRate(scope, userId, now = Date.now()) {
+  const minute = Math.floor(now / RATE_WINDOW_MS) * RATE_WINDOW_MS;
+  if (rate.size > 1000) for (const [key, entry] of rate) if (entry.at !== minute) rate.delete(key);
+  const key = `${scope}:${userId}`;
+  const entry = rate.get(key);
+  if (!entry || entry.at !== minute) {
+    rate.set(key, { at: minute, count: 1 });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > RATE_LIMIT;
+}
+
+// 検査用: 回数を空に
+export function billingRateReset() {
+  rate.clear();
+}
 
 // ----- 設定 -----
 
@@ -162,6 +187,65 @@ export async function stripeFetch(path, params = null, { method = "POST", idempo
   }
   if (!response.ok) throw new UpstreamError("stripe", response.status, String(data?.error?.type || data?.error?.code || ""));
   return data;
+}
+
+// ----- 1 人に顧客 1 人・開いた手続きは 1 つ（Batch 88） -----
+// 前は行の無い人の手続きを customer_email だけで作っていたので、手続きのたびに決済の会社に別の顧客ができ、開いたままの手続きを 2 つとも払うと
+// 契約が 2 つになった（「解約・お支払いの管理」は片方の顧客しか開けず、片方の終わりで行が canceled になると Pro でないのに課金が続く）。
+// 今は手続きの前に本人の顧客を決め（行の顧客 → metadata の user_id で検索 → 冪等キー customer:<uuid> で作る）、手続きはいつも customer で作る。
+// 新しい手続きを作ったら、同じ顧客の開いている別の手続きを期限切れにする（古いタブ・履歴から前の手続きを最後まで進められない）。
+
+// 契約が「生きている」（Pro の判定と同じ 3 つ。新しい手続きを断る側は unpaid も生きているとみなす: checkout.js の LIVE_STATUSES）
+export const LIVE_SUBSCRIPTION_STATUSES = PRO_STATUSES;
+
+// 本人の顧客の番号。行に顧客があればそれ。無ければ metadata の user_id で探し（決済の会社の検索は少し遅れて出るので、見つからなければ）、
+// 冪等キー customer:<uuid> で作る（24 時間は同じ顧客が返る。その後は webhook が行に顧客を書いている）。検索の失敗は止めない。作れなければ投げる。
+// 作る要求の本文は人の id だけ（Batch 88 の反証）: 同じ冪等キーで本文が違うと決済の会社は断るので、本文にメールを入れると、作ってすぐ
+// （まだ検索に出ない間）にログインのメールを変えた人の 2 回目が 24 時間 502 になった。メールは作った後に書く（書けなくても手続きは続ける:
+// 手続きの画面でメールを聞く）
+export async function customerFor(user, row) {
+  if (typeof row?.stripe_customer_id === "string" && row.stripe_customer_id) return row.stripe_customer_id;
+  if (!isUuid(user?.id)) throw new UpstreamError("stripe", 0, "bad_user");
+  try {
+    const found = await stripeFetch("/v1/customers/search", { query: `metadata['user_id']:'${user.id}'`, limit: 1 }, { method: "GET" });
+    const id = Array.isArray(found?.data) ? found.data.find((c) => typeof c?.id === "string" && c.metadata?.user_id === user.id)?.id : null;
+    if (id) return id;
+  } catch {
+    // 検索できなくても作る（冪等キーで同じ顧客になる）
+  }
+  const created = await stripeFetch("/v1/customers", { metadata: { user_id: user.id } }, { idempotencyKey: `customer:${user.id}` });
+  if (typeof created?.id !== "string" || !created.id) throw new UpstreamError("stripe", 0, "no_customer");
+  if (user.email && created.email !== user.email) {
+    try {
+      await stripeFetch(`/v1/customers/${encodeURIComponent(created.id)}`, { email: user.email });
+    } catch {
+      // メールは手続きの画面で聞く
+    }
+  }
+  return created.id;
+}
+
+// 顧客の契約（状態を問わず。最大 20）。読めなければ投げる（生きている契約が無いと確かめられないまま手続きを作らない）
+export async function subscriptionsOfCustomer(customerId) {
+  const list = await stripeFetch("/v1/subscriptions", { customer: customerId, status: "all", limit: 20 }, { method: "GET" });
+  return Array.isArray(list?.data) ? list.data : [];
+}
+
+// 同じ顧客の開いている手続きのうち、keepId でない物を期限切れにする（守りの上乗せ。失敗しても止めない: 手続きの期限〔作ってから 35 分〕が残る）
+export async function expireOtherOpenSessions(customerId, keepId) {
+  try {
+    const open = await stripeFetch("/v1/checkout/sessions", { customer: customerId, status: "open", limit: 10 }, { method: "GET" });
+    for (const session of Array.isArray(open?.data) ? open.data : []) {
+      if (typeof session?.id !== "string" || !session.id || session.id === keepId) continue;
+      try {
+        await stripeFetch(`/v1/checkout/sessions/${encodeURIComponent(session.id)}/expire`, {});
+      } catch {
+        // もう払われた・期限が来た手続きなど
+      }
+    }
+  } catch {
+    // 一覧が読めない
+  }
 }
 
 // Stripe-Signature: t=<unix 秒>,v1=<hex>[,v1=<hex>...]。

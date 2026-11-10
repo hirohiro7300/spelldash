@@ -1,7 +1,7 @@
 // ===== 管理 API 共通（/api/admin/* から使う。`_` で始まるディレクトリはルートにならない） =====
 //
-// - requireAdmin: Supabase のトークンを検証し、email が ADMIN_EMAILS（または id が ADMIN_USER_IDS）に
-//   含まれる人だけ通す。通らないときは自分で 401 / 403 / 503 を応答して null を返す。
+// - requireAdmin: ログインのトークンを検証し、id が ADMIN_USER_IDS（入っていればこれだけ。無ければ email が ADMIN_EMAILS）に
+//   含まれる人だけ通す。通らないときは自分で 401 / 403 / 503 を応答して null を返す（Batch 88: 未ログインは設定の有無より先に 401）。
 // - serviceFetch: service role key を付けて Supabase を呼ぶ。キーはサーバーの環境変数にだけ置く。
 // - restAll: PostgREST の Range ヘッダで 1000 行ずつ全件を取る（既定の上限が 1000 行のため）。
 // - isMissingTable / MissingTableError: 未作成のテーブル（404 / SQLSTATE 42P01）を「無い」として扱う。
@@ -22,8 +22,8 @@ const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 export const MESSAGES = {
   login: "ログインしてください。",
   forbidden: "このアカウントには権限がありません。",
-  notConfigured:
-    "管理画面はまだ設定されていません。Vercel の環境変数 SUPABASE_SERVICE_ROLE_KEY と ADMIN_EMAILS を設定してください（手順: docs/CRM.md）。",
+  // 環境変数の名前は出さない（Batch 88。名前と手順は docs/CRM.md）
+  notConfigured: "管理画面はまだ設定されていません（手順: docs/CRM.md）。",
   notesMissing: "メモとタグを保存するには crm_notes テーブルが必要です（手順: docs/SQL_CRM.md）。",
   method: "このメソッドは使えません。",
   upstream: "データを取得できませんでした。時間をおいてお試しください。",
@@ -130,10 +130,11 @@ export function adminConfigured() {
 export function isAdmin(user) {
   const email = String(user?.email || "").trim().toLowerCase();
   const id = String(user?.id || "").trim().toLowerCase();
+  // ADMIN_USER_IDS が入っていれば id だけで決める（Batch 88: メールは名乗り直せる・変えられるので、id を入れたら一覧のメールでは通さない）
+  const ids = envList("ADMIN_USER_IDS");
+  if (ids.length > 0) return Boolean(id) && ids.includes(id);
   // メールでの一致は、そのメールが確認済みのときだけ信じる（確認なしで名乗れる設定だった場合の備え）
-  if (email && user?.emailConfirmed !== false && envList("ADMIN_EMAILS").includes(email)) return true;
-  if (id && envList("ADMIN_USER_IDS").includes(id)) return true;
-  return false;
+  return Boolean(email) && user?.emailConfirmed !== false && envList("ADMIN_EMAILS").includes(email);
 }
 
 // shared.js の verifyUser は id しか返さないので、email も返す版
@@ -157,15 +158,15 @@ export async function verifyUserFull(authorization) {
   }
 }
 
-// 設定 → ログイン → 権限 の順に確かめる。通らなければ応答して null
+// ログイン → 設定 → 権限 の順に確かめる（Batch 88: 未ログインの人には設定の有無を言わない）。通らなければ応答して null
 export async function requireAdmin(req, res) {
-  if (!adminConfigured()) {
-    send(res, 503, { error: "not_configured", message: MESSAGES.notConfigured });
-    return null;
-  }
   const user = await verifyUserFull(req.headers?.authorization);
   if (!user) {
     send(res, 401, { error: "login_required", message: MESSAGES.login });
+    return null;
+  }
+  if (!adminConfigured()) {
+    send(res, 503, { error: "not_configured", message: MESSAGES.notConfigured });
     return null;
   }
   if (!isAdmin(user)) {
@@ -273,19 +274,21 @@ function pageDone(response, batch) {
   return batch.length < PAGE_SIZE;
 }
 
-async function pagedRows(label, path, init = {}, from = 0) {
+// maxPages ページで止める（Batch 88: 止めたときは truncated。onTruncated に知らせる）
+async function pagedRows(label, path, init = {}, from = 0, { maxPages = MAX_PAGES, onTruncated = null } = {}) {
   const rows = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
+  for (let page = 0; page < maxPages; page++) {
     const response = await serviceFetch(path, {
       ...init,
       headers: { ...(init.headers || {}), Range: `${from}-${from + PAGE_SIZE - 1}`, "Range-Unit": "items" }
     });
-    if (response.status === 416) break; // 範囲外 = もう無い
+    if (response.status === 416) return rows; // 範囲外 = もう無い
     const batch = await readRows(response, label);
     for (const row of batch) rows.push(row);
-    if (pageDone(response, batch)) break;
+    if (pageDone(response, batch)) return rows;
     from += batch.length;
   }
+  onTruncated?.();
   return rows;
 }
 
@@ -294,19 +297,27 @@ export function restAll(table, query) {
   return pagedRows(table, `/rest/v1/${table}?${query}`);
 }
 
+// テーブルを maxPages ページ（PAGE_SIZE 行ずつ）まで → { rows, truncated }（読み残しがあれば truncated。数は途中まで）
+export async function restUpTo(table, query, maxPages) {
+  let truncated = false;
+  const rows = await pagedRows(table, `/rest/v1/${table}?${query}`, {}, 0, { maxPages, onTruncated: () => (truncated = true) });
+  return { rows, truncated };
+}
+
 // limit 付きの小さな問い合わせ（1 回で済むので Range は付けない）
 export async function restGet(table, query) {
   const response = await serviceFetch(`/rest/v1/${table}?${query}`);
   return readRows(response, table);
 }
 
-// 無いかもしれないテーブル → { rows, missing }
-export async function restOptional(table, query, { all = true } = {}) {
+// 無いかもしれないテーブル → { rows, missing, truncated }（maxPages を渡すとそのページ数まで）
+export async function restOptional(table, query, { all = true, maxPages = 0 } = {}) {
   try {
+    if (all && maxPages > 0) return { ...(await restUpTo(table, query, maxPages)), missing: false };
     const rows = all ? await restAll(table, query) : await restGet(table, query);
-    return { rows, missing: false };
+    return { rows, missing: false, truncated: false };
   } catch (error) {
-    if (error instanceof MissingTableError) return { rows: [], missing: true };
+    if (error instanceof MissingTableError) return { rows: [], missing: true, truncated: false };
     throw error;
   }
 }

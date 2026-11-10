@@ -22,6 +22,7 @@ create table if not exists public.subscriptions (
   updated_at timestamptz not null default now()
 );
 alter table public.subscriptions enable row level security;
+drop policy if exists "subscriptions_select_own" on public.subscriptions;  -- Batch 88: 2 回流しても止まらない（同じ方針を作り直す）
 create policy "subscriptions_select_own" on public.subscriptions for select using (auth.uid() = user_id);
 revoke all on public.subscriptions from anon, authenticated;        -- 既定で付く権限をいったん全部外す
 grant select on public.subscriptions to authenticated;              -- 本人は読むだけ（行は RLS で本人のみ）

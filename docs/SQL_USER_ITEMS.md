@@ -68,8 +68,106 @@ from public.user_items
 group by kind;
 ```
 
-## 3. 墓標の掃除（任意・月1など）
+## 3. 墓標と古い日の行の掃除（任意・月1など。4 の 1 人 5,000 行に近づかないように）
 
 ```sql
 delete from public.user_items where deleted and updated_at < now() - interval '90 days';
+```
+
+日ごとの記録（`day`）は消す印を使わず、1 日 1 行ずつ増える。端末は 120 日より古い日を読み込まない（js/userItemsSync.js）ので、400 日より古い日の行は消してよい:
+
+```sql
+delete from public.user_items where kind = 'day' and key < to_char(now() - interval '400 days', 'YYYY-MM-DD');
+```
+
+## 4. 1 行の大きさと 1 人の行の数の上限（Batch 88・docs/FOUNDER_TODO.md の守り 8。任意だが 1 人目の前に勧める）
+
+本人のトークンで書ける表なので、上限が無いと 1 人が巨大な行や大量の行を書いて、データベースの容量と費用を使える（端末の決まり〔100／1,000 語・字数〕は端末の中だけで、直接書けば通る）。
+上限はプランに関係ない量の上限（無料の 100 語は端末の決まりのまま。docs/FOUNDER_TODO.md の決めてほしいことの 17）:
+
+| 上限 | 値 | 今の端末が書く最大（目安） |
+|---|---|---|
+| 1 行の中身（`payload`）: `my_word` | 4,096 バイト | 語 約 1,000 バイト（英語 150 字・訳 150 字）・前の場面カード 約 1,500〜2,300 バイト |
+| 1 行の中身: `note`・`pack`・`day` | 512 バイト | メモ 約 250 バイト（80 字）・日 約 80 バイト・パック 17 バイト |
+| 鍵（`key`） | 256 バイト | 183 バイト（英語 150 字 + 印） |
+| 1 人の行（消した印も数える） | 5,000 行 | 語 1,000 行 + 消した印 + メモ + パック + 日（1 日 1 行） |
+| 1 人の消していない語（`my_word`） | 1,000 行 | Pro の上限と同じ |
+
+- 消していない語の数は、新しい鍵を入れるときだけでなく、書き直し（`update` と upsert の書き直し）で語が増える形でも数える: 消した語（`deleted = true`）を戻す・ほかの kind の行を語に替える。前の案は新しい鍵の `insert` だけを数えたので、消した語として 1,000 を超えて入れてから `deleted = false` に書き直すと上限を越えられた。
+- 消した印（`deleted = true` の行）の中身は空（`{}`）にして保存する。読む側（js/userItemsSync.js）は消した印の中身を見ない。
+- 同じ人の同時の書き込みは 1 つずつ数える（取引の間だけの印 `pg_advisory_xact_lock`）。印が無いと、同時に送った要求どうしがお互いの行を数えず、上限を越えられる。
+- 1 人が上限まで書いたときの大きさ（行の頭と索引を含めた目安）: 語 1,000 行 × 約 4.8 KB ＋ ほかの行 4,000 行 × 約 1.2 KB ＝ **約 10 MB**。無料のプランのデータベースの容量（500 MB）の 2% で、埋めるには上限まで書いたアカウントが 50 ほど要る（前の案〔1 行 8,192 バイト・1 人 20,000 行〕は 1 人 約 164 MB で、3 人で埋まった）。アカウントを多く作れば上限は越えられるので、守り 14 の量の見張り（1 人だけ桁が違う行の数・週の行の急な増え方）と、データベースの使用量の知らせも入れる。埋めた人がいたら、その人の認証のユーザーを消す（行は `on delete cascade` で消える）。
+- 長く使う人が 5,000 行に近づかないように、3 の掃除（消した印と古い日の行）を月 1 回ほど流す。届いたら、その人の新しい鍵の行だけが断られる（今ある行の書き直しは通る・端末のデータは消えない）。
+
+断られた行は 400（check_violation）で返り、端末は Batch 85 の形でその行だけ 1 日待つ（ほかの行の同期は止まらない・端末のデータは消えない）。
+
+**先に、今のデータが上限の内かを見る**（読むだけ）。どれかが越えていたら流さずに知らせる:
+
+```sql
+select
+  (select coalesce(max(octet_length(payload::text)), 0) from public.user_items where kind = 'my_word' and not deleted) as max_word_payload_bytes,   -- 4096 以下
+  (select coalesce(max(octet_length(payload::text)), 0) from public.user_items where kind <> 'my_word' and not deleted) as max_other_payload_bytes, -- 512 以下
+  (select coalesce(max(octet_length(key)), 0) from public.user_items) as max_key_bytes,                                                          -- 256 以下
+  (select coalesce(max(c), 0) from (select count(*) c from public.user_items group by user_id) s) as max_rows_per_user,                          -- 5000 未満
+  (select coalesce(max(c), 0) from (select count(*) c from public.user_items where kind = 'my_word' and not deleted group by user_id) s) as max_live_words_per_user; -- 1000 以下
+```
+
+内なら（何度流しても同じ。前の版の 4 を流してあっても、この 2 文がそのまま置き換える）:
+
+```sql
+create or replace function public.user_items_guard() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  became_live_word boolean;
+begin
+  -- 消した印は中身を持たない（読む側は消した印の中身を見ない）
+  if new.deleted then
+    new.payload := '{}'::jsonb;
+  end if;
+  if octet_length(new.key) > 256 then
+    raise exception 'user_items key too long' using errcode = 'check_violation';
+  end if;
+  if octet_length(new.payload::text) > (case when new.kind = 'my_word' then 4096 else 512 end) then
+    raise exception 'user_items payload too large' using errcode = 'check_violation';
+  end if;
+  -- 同じ人の書き込みを 1 つずつ数える（取引が終わると外れる）
+  perform pg_advisory_xact_lock(hashtextextended('user_items_guard:' || new.user_id::text, 0));
+  if tg_op = 'INSERT' then
+    -- 今ある鍵への upsert は、続く書き直し（UPDATE の側）で数える
+    if exists (select 1 from public.user_items where user_id = new.user_id and kind = new.kind and key = new.key) then
+      return new;
+    end if;
+    if (select count(*) from (select 1 from public.user_items where user_id = new.user_id limit 5000) s) >= 5000 then
+      raise exception 'user_items too many rows' using errcode = 'check_violation';
+    end if;
+    became_live_word := new.kind = 'my_word' and not new.deleted;
+  else
+    -- 書き直しで消していない語が増える形（消した語を戻す・ほかの kind から語へ）
+    became_live_word := new.kind = 'my_word' and not new.deleted and not (old.kind = 'my_word' and not old.deleted);
+  end if;
+  if became_live_word and (
+    select count(*) from (select 1 from public.user_items where user_id = new.user_id and kind = 'my_word' and not deleted limit 1000) s
+  ) >= 1000 then
+    raise exception 'user_items too many words' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+drop trigger if exists user_items_guard on public.user_items;
+create trigger user_items_guard before insert or update on public.user_items
+  for each row execute function public.user_items_guard();
+```
+
+確かめ（読むだけ）:
+
+```sql
+select tgname from pg_trigger where tgrelid = 'public.user_items'::regclass and not tgisinternal;   -- user_items_guard の 1 行
+select position('became_live_word' in prosrc) > 0 as counts_updates, position('pg_advisory_xact_lock' in prosrc) > 0 as one_at_a_time
+from pg_proc where proname = 'user_items_guard';                                                       -- どちらも true（前の案のままなら false）
+```
+
+戻し方:
+
+```sql
+drop trigger if exists user_items_guard on public.user_items;
+drop function if exists public.user_items_guard();
 ```

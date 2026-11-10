@@ -5,6 +5,7 @@ import { getLearnedWordsToday } from "./learnedWords.js";
 import { buildPath } from "./pathView.js";
 import { isDailySetDone, isTimedSet } from "./dailySet.js";
 import { resumableFor } from "./sessionResume.js";
+import { esc } from "./html.js";
 
 // ===== はちゃん（はすみ / Hasumi）: 学習パートナー =====
 //
@@ -146,13 +147,13 @@ export function hasumiWeeklyLine(r) {
   return { mood: "normal", text: "今週は休み。今日から1セット、いこう。" };
 }
 
-// 吹き出しUI（アバター＋一言）を組み立てる共通部品
+// 吹き出しUI（アバター＋一言）を組み立てる共通部品。一言は字として入れる（覚えた語の名前〔場面カードの答え〕を含む。Batch 88 の反証）
 export function hasumiBubbleHtml({ mood, text }, extraClass = "") {
   const m = AVATAR[mood] ? mood : "normal";
   return `
-    <div class="hasumi ${extraClass}">
+    <div class="hasumi ${esc(extraClass)}">
       <img class="hasumi__avatar" src="${AVATAR[m]}" srcset="${AVATAR_2X[m]} 2x, ${AVATAR_3X[m]} 3x" alt="はちゃん" width="32" height="32" />
-      <div class="hasumi__bubble">${text}</div>
+      <div class="hasumi__bubble">${esc(text)}</div>
     </div>
   `;
 }
@@ -164,7 +165,8 @@ export function renderHasumiHome() {
   if (!container) return;
   const line = hasumiHomeLine();
   const { text } = line;
-  // 句読点のあとでだけ折り返す（<wbr>。textContent は変わらない）。文が自分で折る位置を持っていればそれ（html）
-  const html = line.html ?? text.replace(/([。、])/g, "$1<wbr>");
+  // 句読点のあとでだけ折り返す（<wbr>。textContent は変わらない）。文が自分で折る位置を持っていればそれ（html。決まった字だけ）。
+  // 一言は字として入れてから <wbr> を足す（今日覚えた語の名前〔場面カードの答え〕を含む。Batch 88 の反証）
+  const html = line.html ?? esc(text).replace(/([。、])/g, "$1<wbr>");
   container.innerHTML = `<p class="hasumi__bubble slip${text.length > 14 ? " slip--long" : ""}">${html}</p><figcaption class="sr-only">はちゃん（見習い）</figcaption>`;
 }

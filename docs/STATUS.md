@@ -81,6 +81,12 @@
 - マイ単語帳: 画面の一覧は 1 回の操作で変わった行だけ作り直し（読んでいる所が動かない）、画面の外の行は描かない（速いスクロールの引き換えは docs/SPEC_MY_WORDS.md §16.3。残すかは統合担当・創業者が決める）・学ぶ回は語の並びを保存が変わったときだけ読み直す・まとめて足すで上限に当たっても足せなかった行の理由を言う・打つ回の問いの上は「問い」、ナビは中心の学ぶ回だけ光る、単語帳を選んだ回の題はその名前（F22）。
 - スマホでログインに失敗した文を欄の中にも出し、焦点を欄に戻す（英語の文は出さない）。2 つのタブで切り替えの画面が開いても「切り替えられません」にならない（見えた途中の印が消えるのを最大 1 秒待つ。docs/SPEC_ACCOUNT_AREAS.md §3）。E2E 87.1〜87.5 を CI に。
 
+### Batch 88（守り。2026-11-09）
+
+- 本物の支払いの前の守り（docs/SECURITY.md の Batch 88 の節）: 語・訳・名前・id は HTML に入れる前に必ず esc（渡すリンクの訳で学習状況の一覧に script が走った穴を塞いだ。テンプレートの見張りは test-text-safe の 7）。CSP の script-src はインラインの script のハッシュだけ（`'unsafe-inline'` なし。直し方は `node scripts/lib/csp.mjs`）。1 人に 2 つの契約を作らない（本人の顧客 1 人・開いている手続きを期限切れに・webhook は別の契約の終わりで生きている行を書かない）。AI はメールを確認したログインの人だけ、1 日の回数は全部のインスタンスで 1 つ（`ai_take`。SQL は創業者: docs/SQL_AI_USAGE.md）。管理画面は `ADMIN_USER_IDS` があれば id だけ。動線の数は 5 万行まで。cron の鍵の比べ方。加入と管理は 1 人 1 分 10 回。ご意見のページ名は 300 字まで。
+- 反証の直し: webhook の解約の書き込み（ほかの契約の一覧が読めないとき）・顧客を作る要求の本文・AI の処理中の印の古さ・はちゃんの一言の esc・*Html の関数の見張り。認証の部品の配信元が script-src に残る間は CSP が入った HTML の script を止めきれないので、外すのは 1 人目の前（決めてほしいことの 16）。user_items の上限の案は書き直しでも越えられない形に（docs/SQL_USER_ITEMS.md §4）
+- 創業者の作業は docs/FOUNDER_TODO.md の「守り」1〜14（SQL 4 本はどれも流さなくても動く）、決めてほしいことは 10〜17。アプリの包みの CSP の meta（計画の A8）は入れていない（アプリを出す回で）。E2E 88.1（10 件）と単体 test-api-guard（40）を CI に。
+
 ### 学習
 - **4 モード（増やさない）**: Study（セット・Recall Loop・SRS。長さは 10／15／25 語か 60 秒）／Challenge（60 秒）／Daily Dash（全員同じ問題・ランキング）／Battle（CPU ランクマッチ。ロジックは凍結、色・面・文字列だけ触る）
 - **タイピング練習**（`/typing.html`、2026-10 創業者指示で足した集客の入口のページ。Batch 78 段 6 から Web では開くと英単語のホームへ転送し、段 7 からはページの入口の門でもホームへ〔アプリの中も。ファイルは残す〕。**学習のモードではない・学習記録を変えない**）: 見本を見て 1 分打つ。英単語（訳つき）／日本語（小・中学校の用語の読みをローマ字で）。3 つ目の種類「長文」（2026-10-12、Batch 62）は書き下ろしの文章 20 編（日本語 12・英語 8。英語は 1 行ごとに訳つき）から 1 本選んで最後の行まで打つ（句読点・英語の記号も打つ・Esc やスマホの「やめる」でそこまでの結果・裏に回ると止める）。結果は打/分・正確さ・間違えたキー・自己ベスト（端末。1 分の結果の高さは札の箱が始めから取るので、時間切れで結果が出ても下が動かない。720 以上は 2 列。スマホで画面キーボードが出ている始まる前は、箱の空き〔札のすぐ下〕にタイピングゲームへの 1 行を出す。長文の始まる前は札の 1 行目の select の右に「ゲーム」）、長文はスコア（打/分×正確さの 2 乗）と時間、本体へ「思い出して打つ」。**種類への深いリンクと記憶**（Batch 65）: `?kind=en`／`ja`／`long`（`#long` も）→ この端末に覚えた種類（タブを押したときだけ書く）→ 英単語。head の 1 行が最初の描画の前に html に印を付け、CSS がタブ・札・文を出し分ける（英単語を描いてから替えない）。タブを押すと URL を `?kind=` に合わせる（replaceState）。`#long` は読み込みのときに `?kind=long` に替える。canonical は 1 つ。入口は全ページのフッターの先頭・お知らせ・sitemap・学習データの本文の最後の 1 行「息抜きに タイピング練習」。計測は first_visit の source に typing*（長文は typing_long*、最初の 1 ページが深いリンクなら typing_link、学習データの 1 行は typing_stats）（docs/SPEC_TYPING.md）
@@ -110,7 +116,7 @@
 - 端末の語の記録（`spelldash_word_stats`）が読めない値（壊れた JSON・表でない値）なら、上書きする前に `spelldash_word_stats_corrupt` に写して（1 つだけ・同期しない・バックアップには入る・別のアカウントでログインすると消える。写しは退避した日時つきで 512K 字まで〔超える値は頭と元の字数だけ〕・30 日たったら読み込みのときに消す・語の記録が端末の保存の上限で書けなければ写しを消して書き直し、それでも書けなければ記録の質の 2 つのキーも消して書き直す。PR #170・#172 のレビュー。記録の質の語ごとの欄 `spelldash_memory_words` の写しも同じ包み・上限・期限）空の表として読む。書斎・出題・学習データ・単語帳は止まらない。壊れた値は送らず、ログインした端末はクラウドの記録を空の端末と同じく取り込む。初回の判定は今どおり壊れた値を初回と見ない（机）（Batch 67。前は js/main.js が止まっていた）
 
 ### 運営
-- **CRM** `/admin.html`（創業者専用。`ADMIN_EMAILS` で権限）: 全プレイヤーのセグメント（活動中／離れかけ／離脱／登録のみ）・活動・覚えた語・プラン、詳細、メモ／タグ／ピン、CSV。docs/CRM.md
+- **CRM** `/admin.html`（創業者専用。`ADMIN_USER_IDS` があれば id だけ、無ければ `ADMIN_EMAILS` で権限。Batch 88）: 全プレイヤーのセグメント（活動中／離れかけ／離脱／登録のみ）・活動・覚えた語・プラン、詳細、メモ／タグ／ピン、CSV。docs/CRM.md
 - ご意見フォーム（全ページのフッター。保存先 `feedback` は SQL 未実行）、お知らせ `/news.html`（直近 6 件＋月ごとの畳み）。静的ページのヘッダーもアプリと同じ右端（連続日数＋ログイン／設定）
 - Supabase の自動停止対策: 日次 `/api/cron/keepalive`。停止中はログイン画面に「つながりません」と案内し、学習は続けられる
 
@@ -118,9 +124,9 @@
 
 - フロント: 素の HTML／CSS／ES modules、ビルド無し。ページ: index／list／stats／profile／battle／news／privacy／terms／tokushoho／pro／admin／typing／typing-game ＋ packs/（生成）
 - デザイン: `css/tokens.css` が唯一の色・角丸・フォントの基準（昼 light／紙 paper・夜 dark／藍 indigo。同じ名前で値だけ変える）。部屋は `css/room.css`・`css/bookshelf.css`、場面の絵は `scripts/room-art/` から `assets/images/room/` に焼いた WebP。窓の行の小さな表紙は `node scripts/build-covers.mjs --src <元の PNG の置き場>` で `assets/images/covers/` に作る 48×64 の WebP 22 枚（元の PNG はリポジトリに入れない。本 → 表紙の表は `js/covers.js` の 1 か所）。フォントは自前（`css/fonts.css`: Shippori Mincho 500／700・Cormorant Garamond 600・IBM Plex Mono。外部リクエスト 0）。og-image（1200×630、全ページ共通）は型 `scripts/og-image.html` を `node scripts/build-og-image.mjs` で撮る（名前と 1 行の説明と札の見本。数字・絵文字なし。URL に版 `?v=2`: SNS は絵を URL で覚えるので、絵を変えたら全ページと E2E の版を 1 つ上げる）。打つ対象の英語と数字は等幅、部屋の中は明朝。絵文字は UI に使わない
-- サーバー: Vercel Node 関数 `api/explain-word`・`api/generate-cards`（AI、`ANTHROPIC_API_KEY` 未設定なら「準備中」）、`api/admin/*`、`api/billing/*`、`api/cron/keepalive`。秘密鍵はすべて Vercel の環境変数（docs/SECURITY.md）
+- サーバー: 配信の関数 `api/explain-word`・`api/generate-cards`（AI、`ANTHROPIC_API_KEY` 未設定なら「準備中」。メールを確認したログインの人だけ・1 日の回数は `ai_take` で数える〔無ければインスタンスのメモリー〕・カードの口は `CARD_GEN_ENABLED=1` のときだけ。Batch 88）、`api/admin/*`、`api/billing/*`、`api/cron/keepalive`。秘密鍵はすべて配信の環境変数（docs/SECURITY.md）
 - Supabase: Auth（メールリンク・Google）、テーブル profiles／word_progress／user_progress／battle_sessions／play_sessions／daily_scores／activity_days（RLS）。任意: user_items／feedback／crm_notes／subscriptions（docs/SQL_*.md、**実行は創業者**）
-- 環境変数（Vercel）: `ANTHROPIC_API_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_EMAILS`／`ADMIN_USER_IDS`、`STRIPE_SECRET_KEY`／`STRIPE_PRICE_MONTHLY`／`STRIPE_TRIAL_MONTHS`（`1`）／`STRIPE_WEBHOOK_SECRET`（使わない: `STRIPE_PRICE_YEARLY`・`STRIPE_TRIAL_DAYS`）、`SITE_ORIGIN`、`CRON_SECRET`、AI の回数 `CARD_GEN_DAILY_LIMIT(_PRO)`／`EXPLAIN_WORD_DAILY_LIMIT(_PRO)`
+- 環境変数（配信）: `ANTHROPIC_API_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`ADMIN_EMAILS`／`ADMIN_USER_IDS`、`STRIPE_SECRET_KEY`／`STRIPE_PRICE_MONTHLY`／`STRIPE_TRIAL_MONTHS`（`1`）／`STRIPE_WEBHOOK_SECRET`（使わない: `STRIPE_PRICE_YEARLY`・`STRIPE_TRIAL_DAYS`）、`SITE_ORIGIN`、`CRON_SECRET`、AI の回数 `CARD_GEN_DAILY_LIMIT(_PRO)`／`EXPLAIN_WORD_DAILY_LIMIT(_PRO)`、`CARD_GEN_ENABLED`（`1` のときだけカードを作る口が動く。今は入れない。Batch 88）
 - 性能（ホーム 390・非圧縮）: 初回表示 約 2.2 MB・161 リクエスト（フォント 479 KB・JS 577 KB・CSS 420 KB・JSON 441 KB・画像 87 KB）、読み込むのは有効なパックと画面に出た文字のフォントだけ。DOMContentLoaded 0.4 秒・LCP 0.4 秒（手元）、1 リクエスト 80ms の遅延で 1.7 秒・2.0 秒。予算: フォント ≤ 520 KB・場面の画像 ≤ 260 KB（E2E が守る）。CLS は戻ってきた人の 390 で 0（遅延 80ms。E2E が < 0.05 を守る）、初回の書斎は 1200×900・1200×1100・390 で < 0.02（遅延 80ms。E2E が守る。Batch 66）。単語帳・学習データ・加入画面の読み込みは 1200・390（遅延 80ms となし・学習記録あり／なし・昼夜・未ログイン／ログイン／Pro）で < 0.05（実測 ≤ 0.0014。直す前は 0.04〜0.91。E2E が守る。Batch 67）: js が描くまで題（学習データはタブも）より下とフッターを透明にし、描いてからまとめて出す（読み込み中の字は長くても 0.3 秒待つ〔3 ページの LCP は帯のヘッダーか題で、出す時刻に動かない。PR #170 のレビュー〕。加入画面は 1.2 秒で、config がそれより遅いときは題の下に料金の 1 行の場所を空けて出す〔config だけ 2 秒・5 秒遅れで 1200・390 とも ≤ 0.0027。空けないと 1200 で 0.069〕。ログインと無料期間が付くかが分かるまでは待ち、長くても 2.5 秒で無料期間の文を入れうる最大の形で空けて縮めない〔Pro の状態のキャッシュあり／なし × 無料期間あり／なし × 390／480／1200 で出した瞬間と後の高さが同じ。PR #170 のレビュー〕。支払いの反映待ちは config を待たない。js が動かないときは CSS が 4 秒で出す）。別解索引の構築 27 ms
 
 ## 4. 品質・流れ

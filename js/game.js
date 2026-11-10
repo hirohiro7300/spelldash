@@ -1470,7 +1470,7 @@ function renderLearnPanel(step, { summary, counts }) {
   const again = choice && step === "done" && (r.ids.length > 0 || r.saveFailed > 0) ? `<a class="result-panel__action" href="${choice.urls().again}" id="choiceAgain">もう一度</a>` : "";
   const otherDir = choice ? `<a class="result-panel__action result-panel__action--ghost" href="${choice.urls().other}" id="choiceOther">${choice.switchLabel()}</a>` : ""; // 字は回の始めの切り替えと同じ（「英語を見て訳を選ぶに替える」）
   const status = r.my
-    ? `<a class="result-panel__action${(step === "done" || step === "replaced") && !again ? "" : " result-panel__action--ghost"}" href="${r.src.url}" id="${r.src.linkId}">${r.src.label}へ</a>`
+    ? `<a class="result-panel__action${(step === "done" || step === "replaced") && !again ? "" : " result-panel__action--ghost"}" href="${r.src.url}" id="${r.src.linkId}">${escapeHtml(r.src.label)}へ</a>`
     : `<a class="result-panel__action${step === "done" || step === "replaced" ? "" : " result-panel__action--ghost"}" href="./stats.html">学習状況</a>`;
   // マイ単語帳の打つ回（Batch 86）: 「マイ単語帳へ」の隣に、同じ単語帳の選択式の回への道（ゴースト。/?learn=my[&book=<id>]&choice=en: 単語帳の画面の「選択式で学ぶ」と同じ行き先）。
   // 選択式の回（向きを替える道がある）・スラング・中心の学習・ほかのタブで替わった回・語の無い単語帳の回には出さない
@@ -3319,7 +3319,7 @@ function renderPlayScore() {
 function renderSetWordChips() {
   const chip = (id, cls = "") => {
     const w = findWord(id);
-    return w ? `<button type="button" class="word-chip ${cls}" data-speak="${w.en}"><b>${answerLabel(w)}</b><small>${w.ja}</small></button>` : "";
+    return w ? `<button type="button" class="word-chip ${cls}" data-speak="${escapeHtml(w.en)}"><b>${escapeHtml(answerLabel(w))}</b><small>${escapeHtml(w.ja)}</small></button>` : ""; // 語と訳は人の字もある（場面カード・渡すリンク。Batch 88）
   };
   const learned = [...setLearnEvents].filter(([, e]) => e === "learned").map(([id]) => id);
   const recovered = [...setLearnEvents].filter(([, e]) => e === "recovered").map(([id]) => id);
@@ -3399,7 +3399,7 @@ function renderRankMoves(exclude = new Set()) {
   }
   const line = (label, items) =>
     items.length
-      ? `<p class="rank-moves">${label}: ${items.slice(0, RANK_MOVES_PER_LINE).join("・ ")}${items.length > RANK_MOVES_PER_LINE ? ` ほか${items.length - RANK_MOVES_PER_LINE}語` : ""}</p>`
+      ? `<p class="rank-moves">${escapeHtml(label)}: ${items.slice(0, RANK_MOVES_PER_LINE).join("・ ")}${items.length > RANK_MOVES_PER_LINE ? ` ほか${items.length - RANK_MOVES_PER_LINE}語` : ""}</p>`
       : "";
   return line("習熟度が上がった", ups) + line("習熟度が下がった", downs) + line("時間がかかった", slows);
 }
@@ -3466,7 +3466,7 @@ function endStudySession({ timed = false } = {}) {
   const dueWords = tomorrowWords.slice(0, 3);
   const tomorrowLine =
     dueTomorrow > 0
-      ? `<div class="result-panel__tomorrow">明日の復習: <b>${dueWords.map((w) => answerLabel(w)).join("・")}</b>${dueTomorrow > dueWords.length ? ` ほか${dueTomorrow - dueWords.length}語` : ""}</div>`
+      ? `<div class="result-panel__tomorrow">明日の復習: <b>${dueWords.map((w) => escapeHtml(answerLabel(w))).join("・")}</b>${dueTomorrow > dueWords.length ? ` ほか${dueTomorrow - dueWords.length}語` : ""}</div>`
       : `<div class="result-panel__tomorrow">明日の復習はまだ無い。新しい語から</div>`;
 
   // 週の目標（学習日数）: ちょうど達成した日だけ一言添える（途中経過の数字は出さない。数字は 1 行の原則）
@@ -4211,7 +4211,7 @@ function celebrateRankUp(result) {
     <div class="rank-up__inner">
       <div class="rank-up__emblem">${emblemImgHtml(after)}</div>
       <div class="rank-up__label">ランクアップ</div>
-      <div class="rank-up__title"><span class="rank-up__from"><span data-rank-name>${before.name}</span><i>→</i></span><b data-rank-name>${after.name}</b></div>
+      <div class="rank-up__title"><span class="rank-up__from"><span data-rank-name>${escapeHtml(before.name)}</span><i>→</i></span><b data-rank-name>${escapeHtml(after.name)}</b></div>
       <div class="rank-up__sub">${unlockNoteForLevel(result.after.level).replace(/^。/, "")}</div>
     </div>
   `;

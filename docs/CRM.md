@@ -29,13 +29,13 @@
    | 変数 | 値 | 必須 |
    |---|---|---|
    | `SUPABASE_SERVICE_ROLE_KEY` | 1 で控えた key | 必須 |
-   | `ADMIN_EMAILS` | 管理者のメールアドレス（カンマ区切り。大文字小文字は区別しない） | `ADMIN_USER_IDS` が無ければ必須 |
-   | `ADMIN_USER_IDS` | 管理者の Supabase ユーザー id（カンマ区切り） | 任意 |
+   | `ADMIN_EMAILS` | 管理者のメールアドレス（カンマ区切り。大文字小文字は区別しない。確認済みのアカウントだけ） | `ADMIN_USER_IDS` が無ければ必須 |
+   | `ADMIN_USER_IDS` | 管理者のユーザー id（カンマ区切り）。**入れると id だけで決め、`ADMIN_EMAILS` は見ない**（Batch 88: メールは名乗り直せる・変えられる。勧め: 自分の id を入れる。docs/FOUNDER_TODO.md の守り 12） | 勧め |
 
    `SUPABASE_URL` / `SUPABASE_ANON_KEY` は `api/_lib/shared.js` の既定値が使われる（別プロジェクトなら上書き）。
 3. Redeploy する（環境変数は次のデプロイから効く）。
 4. `/admin.html` を開き、右上からいつもどおりログインする（ログインの仕組みは他のページと同じ）。
-   `ADMIN_EMAILS` に入っているアカウントなら一覧が出る。
+   `ADMIN_USER_IDS` に入っている id のアカウント（入れていなければ `ADMIN_EMAILS` に入っている確認済みのアカウント）なら一覧が出る。
 5. 任意: docs/SQL_CRM.md の SQL を Supabase の SQL Editor で実行する。
    - `crm_notes` — メモ・タグ・ピン留めを保存できるようになる
    - `admin_player_summary()` — 人数が増えて一覧が遅くなったら。API が自動で使う
@@ -132,8 +132,8 @@ CSV には email が入る。保存先と共有相手に気をつける（第 9 
 | 画面の表示 | API | 原因 | 直し方 |
 |---|---|---|---|
 | ログインしてください。右上からログインできます。 | 401 `login_required` | 未ログイン、またはセッション切れ | 右上からログインし直す |
-| このアカウントには権限がありません。 | 403 `forbidden` | ログインした email が `ADMIN_EMAILS` に無い（id も `ADMIN_USER_IDS` に無い） | 綴り・大文字小文字・余分な空白を確かめる。別アカウントでログインしていないか確かめる。変えたら Redeploy |
-| 管理画面はまだ設定されていません…（docs/CRM.md） | 503 `not_configured` | `SUPABASE_SERVICE_ROLE_KEY` が無い、または `ADMIN_EMAILS` と `ADMIN_USER_IDS` が両方無い | 第 2 節の環境変数を入れて Redeploy |
+| このアカウントには権限がありません。 | 403 `forbidden` | `ADMIN_USER_IDS` があるときはログインした人の id がそこに無い（メールが `ADMIN_EMAILS` にあっても通さない）。無いときはメールが `ADMIN_EMAILS` に無い | 綴り・大文字小文字・余分な空白を確かめる。別アカウントでログインしていないか確かめる。変えたら Redeploy |
+| 管理画面はまだ設定されていません（手順: docs/CRM.md）。 | 503 `not_configured`（ログインした人にだけ返す。未ログインは先に 401。Batch 88） | `SUPABASE_SERVICE_ROLE_KEY` が無い、または `ADMIN_EMAILS` と `ADMIN_USER_IDS` が両方無い（画面の字には変数の名前を出さない。名前はこの表と第 2 節） | 第 2 節の環境変数を入れて Redeploy |
 | 取得できませんでした。 | 502 `upstream` ／ 504 ／ 応答なし | Supabase からエラー（キーが違う、プロジェクトが停止中、テーブルが無い など）、関数のタイムアウト（30 秒）、通信断 | Vercel のログの `admin/players: upstream <table> <status> <SQLSTATE>` を見る。401/403 なら key が service_role か確かめる。42P01 なら supabase/schema.sql を実行する |
 | 一覧の上に「メモとタグを保存するには docs/SQL_CRM.md のテーブルが必要です」 | 200（`missing` に `crm_notes`） | `crm_notes` が未作成 | docs/SQL_CRM.md の 1 を実行する。一覧はそのまま使える |
 | 保存ボタンで「…crm_notes テーブルが必要です（手順: docs/SQL_CRM.md）」 | 503 `not_configured` | 同上 | 同上。作った直後なら `notify pgrst, 'reload schema';` |

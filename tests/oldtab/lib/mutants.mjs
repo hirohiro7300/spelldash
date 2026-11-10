@@ -24,6 +24,7 @@
 //                      sd2.oldtab-imported に残す（2 度取り込まない）。orphans の値は移行の後の空の旧い場所に旧いタブが書いた物なので、値そのものが増えた分
 //   proto-import-every proto-import から「取り込んだ記録の id を残す」を外す（A へ戻るたびに同じ記録を足す）→ DOUBLE のはず
 //   proto-import-replace proto-import の「回数を足す」を「旧いタブの値で置き換える」にする（A の回数が旧いタブの値に戻る）→ NOT_IMPORTED（と LOSS）のはず
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { copyTree } from "./trees.mjs";
@@ -168,5 +169,29 @@ export function applyMutant(spec, srcRoot, dstRoot) {
     }
   };
   walk(dstRoot);
+  if (scripts) allowMutantScripts(dstRoot, names.filter((n) => MUTANTS[n].script).map((n) => MUTANTS[n].script()));
   return { root: dstRoot, names, pages, edits, note: names.map((n) => `${n}: ${MUTANTS[n].note}`).concat(edits).join(" / ") };
+}
+
+// 写しの vercel.json の CSP の script-src に、差し込んだ変異の script の本文の sha256 を足す（Batch 88: 配る木の script-src は inline の script の
+// ハッシュだけ〔'unsafe-inline' なし〕なので、足さないと検査の台〔lib/server.mjs〕が付ける CSP が変異の script を止め、変異が働かない）。
+// 変異は「守りを破る版を配った」形なので、その版の inline の script も配信の CSP が許す形にする（製品の木の vercel.json は変えない）
+function allowMutantScripts(root, bodies) {
+  const file = path.join(root, "vercel.json");
+  if (!fs.existsSync(file)) return;
+  const conf = JSON.parse(fs.readFileSync(file, "utf8"));
+  const hashes = bodies.map((b) => `'sha256-${crypto.createHash("sha256").update(b, "utf8").digest("base64")}'`);
+  let changed = false;
+  for (const rule of conf.headers ?? []) {
+    for (const h of rule.headers ?? []) {
+      if (h.key !== "Content-Security-Policy") continue;
+      h.value = h.value.split(";").map((d) => {
+        const t = d.trim();
+        if (!t.startsWith("script-src ") || !/'sha256-/.test(t)) return d; // ハッシュの無い script-src（'unsafe-inline' の前の木）はそのまま
+        changed = true;
+        return ` ${t} ${hashes.join(" ")}`;
+      }).join(";").replace(/^ /, "");
+    }
+  }
+  if (changed) fs.writeFileSync(file, JSON.stringify(conf, null, 2) + "\n");
 }

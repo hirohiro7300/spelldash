@@ -7,19 +7,21 @@
 // 必要な環境変数（Vercel → Settings → Environment Variables）:
 //   ANTHROPIC_API_KEY   … Claude APIキー（未設定なら 503 で「準備中」を返す）
 //   SUPABASE_URL / SUPABASE_ANON_KEY … 省略時はフロントと同じ公開値を使う
-//   CARD_GEN_DAILY_LIMIT … 無料の 1 日生成回数の目安（既定 2。インスタンス内メモリなので概算）
-//   CARD_GEN_DAILY_LIMIT_PRO … Pro の回数（既定 20）。超えたら 429 { error: "daily_limit", upgrade: 無料なら true }
+//   CARD_GEN_ENABLED … "1" のときだけ受け付ける（Batch 88。今の画面に入口が無いので止めてある。無ければ鍵より前に 503「準備中」）
+//   CARD_GEN_DAILY_LIMIT … 無料の 1 日生成回数（既定 2）/ CARD_GEN_DAILY_LIMIT_PRO … Pro の回数（既定 20）。_lib/aiLimits.js の cardGenLimits
+//   超えたら 429 { error: "daily_limit", upgrade: 無料なら true }。回数の数え方は _lib/shared.js（ai_take か、無ければインスタンス内メモリ）
+// 順: aiGate（確認済みのメールで匿名でない人だけ）→ 入力の確かめ（400。回数を減らさない）→ aiTake（同じ人の処理中は 429 busy・回数）→ モデル
 //
 // 秘密鍵はブラウザに出さない。ここ（サーバー側）だけで扱う。
 
 import Anthropic from "@anthropic-ai/sdk";
-import { send, readBody, reject, sendUpstreamError } from "./_lib/shared.js";
+import { send, readBody, aiGate, aiTake, sendUpstreamError } from "./_lib/shared.js";
+import { cardGenLimits, cardGenEnabled } from "./_lib/aiLimits.js";
 
 const MIN_CHARS = 20;
 const MAX_CHARS = 4000;
 const MAX_CARDS = 20;
-const DAILY_LIMIT = Number(process.env.CARD_GEN_DAILY_LIMIT) || 2;
-const DAILY_LIMIT_PRO = Number(process.env.CARD_GEN_DAILY_LIMIT_PRO) || 20;
+const { free: DAILY_LIMIT, pro: DAILY_LIMIT_PRO } = cardGenLimits();
 
 const SYSTEM_PROMPT = `あなたは英単語×タイピング学習アプリ SpellDash の教材編集者です。
 ユーザーが貼り付けたテキスト（業務マニュアル・研修資料・会議メモ・教科書・記事など、日本語または英語）から、
@@ -82,7 +84,9 @@ function sanitizeCards(cards) {
 }
 
 export default async function handler(req, res) {
-  if (await reject(req, res, { scope: "cards", limit: DAILY_LIMIT, proLimit: DAILY_LIMIT_PRO })) return;
+  if (!cardGenEnabled()) return send(res, 503, { error: "not_configured", message: "この機能は準備中" });
+  const user = await aiGate(req, res);
+  if (!user) return;
 
   const { text } = readBody(req);
   const source = String(text ?? "").replace(/\r\n/g, "\n").trim();
@@ -92,6 +96,8 @@ export default async function handler(req, res) {
   if (source.length > MAX_CHARS) {
     return send(res, 400, { error: "too_long", message: `テキストが長すぎます（${MAX_CHARS}文字まで）。` });
   }
+  const done = await aiTake(req, res, user, { scope: "cards", limit: DAILY_LIMIT, proLimit: DAILY_LIMIT_PRO });
+  if (!done) return;
 
   const client = new Anthropic();
   try {
@@ -123,5 +129,7 @@ export default async function handler(req, res) {
     return send(res, 200, { cards, usage: { input: response.usage?.input_tokens ?? 0, output: response.usage?.output_tokens ?? 0 } });
   } catch (error) {
     return sendUpstreamError(res, Anthropic, error, "generate-cards");
+  } finally {
+    done();
   }
 }

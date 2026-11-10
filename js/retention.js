@@ -3,6 +3,7 @@
 // 実測だけを出す。予測の数字は出さない（docs/SPEC_RETENTION.md）。
 // 週間レポートの「思い出せた率」（今週の復習の成功率）とは別の指標なので、注記で区別する。
 
+import { esc } from "./html.js";
 import { computeRetention, localDay } from "./retentionCalc.js";
 import { getRetentionRecords } from "./retentionLog.js";
 import { getStudySecondsByDay } from "./studyTime.js";
@@ -55,7 +56,7 @@ export function renderRetention(containerId) {
   el.innerHTML = `
     <p class="muted">${LEAD}</p>
     ${rows.length > 0
-      ? `<div class="weekly__grid">${rows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}</div>
+      ? `<div class="weekly__grid">${rows.map(([label, value]) => `<div><span>${esc(label)}</span><strong>${value}</strong></div>`).join("")}</div>
     <p class="weekly__note">${NOTE}</p>`
       : `<p class="weekly__note">覚えた語が 7 日たつと、保持率がここに出る。測定は ${formatSince(r.since)} 以降に覚えた語。</p>`}
   `;

@@ -1,3 +1,4 @@
+import { esc } from "./html.js";
 import { getCategories, getWordsByCategory } from "./wordStore.js";
 import { setActiveCategory, isGamePlaying } from "./game.js";
 import { renderLearnedCard } from "./learnedCard.js";
@@ -29,10 +30,10 @@ export function initializeCategoryPicker() {
         <button
           type="button"
           class="category-chip${c.id === saved ? " category-chip--active" : ""}"
-          data-category="${c.id}"
+          data-category="${esc(c.id)}"
           aria-pressed="${c.id === saved}"
         >
-          ${c.label}<span class="category-chip__count">${count}</span>
+          ${esc(c.label)}<span class="category-chip__count">${count}</span>
         </button>
       `;
     })
