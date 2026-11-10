@@ -432,7 +432,8 @@ export class CanvasView {
       const base = e.condition.trim() || e.label.trim();
       const prob = edgeProb(e);
       const text = prob === null ? base : base ? `${prob}%｜${base}` : `${prob}%`;
-      if (text && (lod === "full" || lod === "compact") && ((prefs.showLabels && z >= 0.55 && ev.alpha > 0.25) || selected || hovered)) {
+      // 見込みのある分かれ道の線は、少し縮小しても読めるように早めに出す
+      if (text && (lod === "full" || lod === "compact") && ((prefs.showLabels && z >= (prob === null ? 0.55 : 0.4) && ev.alpha > 0.25) || selected || hovered)) {
         labels.push({ id: eid, g, text, rel: e.relation, alpha: Math.max(ev.alpha, selected || hovered ? 1 : 0), emph: selected || hovered || ev.path });
       }
     }
