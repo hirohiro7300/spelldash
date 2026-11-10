@@ -1,11 +1,11 @@
 import { esc } from "./html.js";
-import { getGrowthLog } from "./growthLog.js";
+import { getCoreDayGains } from "./growthLog.js";
 import { getSessionLog } from "./storage.js";
 import { localDateString } from "./stats.js";
 
 // ===== 学習カレンダー（直近13週） =====
 // 「学習した日」を草として見せる。積み上がりの証拠。
-// 濃さ＝その日に覚えた語数（growth log の learned の前日差）。
+// 濃さ＝その日に覚えた語数（Batch 90: 学習状況の 覚えた と同じ数〔成長ログの core〕の、前の行との差。js/growthLog.js getCoreDayGains）。
 //   学習した日で 0 語 → 1、1〜3 語 → 2、4〜7 語 → 3、8 語以上 → 4
 
 const WEEKS = 13;
@@ -27,14 +27,8 @@ function loadSetHistory() {
 }
 
 export function computeCalendarDays(weeks = WEEKS) {
-  // 学習した日 → その日に覚えた語数（growth log の累計の前日差。最初の行は前日が無いので増分は不明＝null）
-  const active = new Map();
-  let prevLearned = null;
-  for (const e of [...getGrowthLog()].sort((a, b) => a.date.localeCompare(b.date))) {
-    const learned = e.learned ?? prevLearned ?? 0;
-    if (e.active) active.set(e.date, { gained: prevLearned == null ? null : Math.max(0, learned - prevLearned) });
-    prevLearned = learned;
-  }
+  // 学習した日 → その日に覚えた語数（前の core の行との差。この端末で数え始めた行は始まりの値 core0 から。分からない日は null: 濃さは最小・title に語数を出さない）
+  const active = getCoreDayGains();
   // growth log の無い日でも、セット完了や Challenge・Daily の記録があれば学習した日（濃さは最小）
   for (const date of loadSetHistory()) if (!active.has(date)) active.set(date, { gained: 0 });
   for (const e of getSessionLog()) {

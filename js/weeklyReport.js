@@ -1,7 +1,6 @@
 import { getWordStats, getSessionLog } from "./storage.js";
-import { getLearnedCount } from "./learnedWords.js";
 import { getStreak, hasPlayedToday } from "./level.js";
-import { getActiveDaysLast7, getLearnedDelta7, getGrowthLog } from "./growthLog.js";
+import { getActiveDaysLast7, getCoreDelta7, getCoreNow, getGrowthLog } from "./growthLog.js";
 import { localDateString } from "./stats.js";
 import { hasumiWeeklyLine, hasumiBubbleHtml } from "./hasumi.js";
 import { shouldShowWeeklyPro } from "./proFunnel.js";
@@ -57,8 +56,10 @@ export function computeWeeklyReport() {
     }
   }
 
-  const learnedTotal = getLearnedCount(); // ホーム・学習データ・推移の記録と同じ数（パックの語も含む）
-  const learnedDelta = getLearnedDelta7(learnedTotal, includeToday ? 0 : 1);
+  // 覚えた は学習状況の最初の画面と同じ数（3 状態。公開の語だけ。Batch 90: js/growthLog.js getCoreNow・getCoreDelta7）。
+  // 増えは「今（今日まだ学んでいなければ昨日の終わり）− 窓の前の日の終わり」。null は分からない（この端末で数え始める前のほかの端末の日が窓に入る・表が一度も読めない）
+  const learnedTotal = getCoreNow();
+  const learnedDelta = getCoreDelta7(includeToday ? 0 : 1);
   const activeDays = getActiveDaysLast7(includeToday ? 0 : 1);
 
   const runs = getSessionLog().filter((e) => inWindow(e.at));
@@ -86,9 +87,12 @@ export function computeWeeklyReport() {
   };
 }
 
+// 覚えた の増えか累計が分からない（null）ときは、その部分だけ省く（シェアは残す）
+const knowsLearned = (r) => r.learnedDelta !== null && r.learnedTotal !== null;
+
 export function buildWeeklyShareText(r = computeWeeklyReport()) {
   const lines = [`SpellDash 週間レポート ${r.range}`];
-  lines.push(`学習 ${r.activeDays}/7日 ・ 覚えた +${r.learnedDelta}語（累計 ${r.learnedTotal}）`);
+  lines.push(knowsLearned(r) ? `学習 ${r.activeDays}/7日 ・ 覚えた +${r.learnedDelta}語（累計 ${r.learnedTotal}）` : `学習 ${r.activeDays}/7日`);
   const rate = r.retention ?? r.recallRate;
   if (rate != null) lines.push(`思い出せた率 ${rate}%${r.streak > 0 ? ` ・ ${r.streak}日連続` : ""}`);
   else if (r.streak > 0) lines.push(`${r.streak}日連続`);
@@ -109,6 +113,9 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
   const rate = r.retention ?? r.recallRate;
   // 成長ログの無い端末: 学習した日・7日で覚えた は「–」、はちゃんは出さない（数字と矛盾しない）。注記 1 行。シェアも出さない
   const noLog = r.noLog;
+  // 覚えた の増えが分からない（null。2 台目でこの端末の数え始めより前の日が窓に入る間など）: 7日で 覚えた は「–」と注記 1 行。シェアは残す（文の 覚えた の部分だけ省く）。
+  // はちゃんの一言は増え 0 と同じ扱い（js/hasumi.js hasumiWeeklyLine）
+  const unknown = !noLog && !knowsLearned(r);
   // Pro の 1 行: 英単語の学習に絞った間（js/focus.js）は出さない（マイ単語帳・連続記録の修復は画面に出ない機能。Batch 78 段 6。反証 rv5 shouldFix 3）。
   // 旗を外せば前と同じ決まり（shouldShowWeeklyPro）
   const showPro = !compact && !noLog && !isFocusOn() && shouldShowWeeklyPro(getGrowthLog().filter((e) => e.active).length);
@@ -121,11 +128,11 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
     ${compact || noLog ? "" : hasumiBubbleHtml(hasumiWeeklyLine(r), "hasumi--result")}
     <div class="weekly__grid">
       <div><span>学習した日</span><strong>${noLog ? "–" : `${r.activeDays}<small> / 7</small>`}</strong></div>
-      <div><span>7日で 覚えた</span><strong>${noLog ? "–" : `+${r.learnedDelta}<small> 語</small>`}</strong></div>
+      <div><span>7日で 覚えた</span><strong>${noLog || unknown ? "–" : `+${r.learnedDelta}<small> 語</small>`}</strong></div>
       <div><span>思い出せた率</span><strong>${rate == null ? "–" : `${rate}<small>%</small>`}</strong></div>
       ${r.bestScore ? `<div><span>ベスト</span><strong>${r.bestScore}</strong></div>` : ""}
     </div>
-    ${noLog ? `<p class="weekly__note">この端末での記録は明日から</p>` : ""}
+    ${noLog ? `<p class="weekly__note">この端末での記録は明日から</p>` : unknown ? `<p class="weekly__note">覚えた の増えは、この端末で数え始めた日から数える。</p>` : ""}
     ${r.retention != null ? `<p class="weekly__note">思い出せた率＝1日以上前に覚えた語を復習で思い出せた割合（${r.reviewCount}語）</p>` : ""}
     ${showPro ? `<p class="weekly__note weekly__pro">Pro なら、マイ単語帳 1,000語・連続記録の修復。<a href="./pro.html" data-funnel="weekly">Pro について</a></p>` : ""}
     ${noLog && !compact ? "" : `<div class="weekly__actions">
@@ -180,17 +187,20 @@ export function buildWeeklyReportImage(r = computeWeeklyReport()) {
   ctx.font = "800 60px sans-serif";
   ctx.fillText(`週間レポート ${r.range}`, 80, 300);
 
+  // 大きい数は 7 日で覚えた語。分からない（null）ときは学習した日を大きく出す（下の行に重ねない）
+  const known = knowsLearned(r);
+  const big = known ? `+${r.learnedDelta}` : `${r.activeDays}`;
   ctx.fillStyle = "#f8fafc";
   ctx.font = "800 200px sans-serif";
-  ctx.fillText(`+${r.learnedDelta}`, 80, 500);
-  const w = ctx.measureText(`+${r.learnedDelta}`).width;
+  ctx.fillText(big, 80, 500);
+  const w = ctx.measureText(big).width;
   ctx.fillStyle = "#94a3b8";
   ctx.font = "700 56px sans-serif";
-  ctx.fillText("語 覚えた", 80 + w + 24, 520);
+  ctx.fillText(known ? "語 覚えた" : "/ 7日 学習した", 80 + w + 24, 520);
 
   const rate = r.retention ?? r.recallRate;
   const rows = [
-    `学習した日  ${r.activeDays} / 7`,
+    known ? `学習した日  ${r.activeDays} / 7` : null,
     rate == null ? null : `↻ 思い出せた率  ${rate}%`,
     r.streak > 0 ? `${r.streak}日連続` : null,
     r.bestScore > 0 ? `⏱ 今週のベスト  ${r.bestScore}` : null

@@ -10,7 +10,7 @@ import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { isFocusOn } from "./focus.js";
 import { renderRetention } from "./retention.js";
-import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog, getMonthLearnedDelta } from "./growthLog.js";
+import { getCoreSeries, getCoreMonthDelta, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCounts } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
@@ -36,6 +36,7 @@ const learnPaceModule = import("./learnPace.js").catch(() => null);
 const typingElement = document.getElementById("typingMetrics");
 let trendsReady = false; // 推移グラフは単語ストアの初期化後にだけ描く（growth log を空の値で上書きしないため）
 let weeklyReady = false; // 週間レポートを描いてよい（単語ストアの初期化と成長ログの今日の行の後。初期化に失敗したときは失敗の後: renderWeekly）
+let growthCounted = false; // 推移・カレンダー・今月の行・週間レポートを、公開の語の表が読めた状態で描いた（Batch 90。読めずに描いたら、読めたときに 1 回描き直す）
 let resizeTimer = null;
 
 // 週間レポート（Batch 72）: 単語ストアの初期化と成長ログの今日の行（renderGrowthTrend。前の形の行の語数も合わせる）の後にだけ描く。先に届いた知らせ
@@ -44,6 +45,19 @@ let resizeTimer = null;
 // 単語の表が読めない（オフラインで目録やパックの写しが無い）ときは、失敗の後に今の記録で描く（週間レポートは語の表を読まずに描ける。PR #189 のレビュー 3）
 function renderWeekly() {
   if (weeklyReady) renderWeeklyReport("weeklyReport");
+}
+
+// 推移・カレンダー・今月の行・週間レポート（Batch 90。docs/SPEC_LEARN_STATE.md §12）: 数は学習状況の最初の画面と同じ 覚えた（3 状態。公開の語の表が要る）。
+// 描く順は 推移（成長ログの今日の行を書く）→ カレンダー → 今月の行 → 週間レポート（後の 3 つは推移が書いた今日の行を読む）。
+// 推移・カレンダー・今月の行は単語ストアの初期化の後だけ（trendsReady。推移の書き手が前の数え方の語数も書くため）
+function renderGrowthViews() {
+  if (trendsReady) {
+    renderGrowthTrend();
+    renderCalendar("calendarGrid");
+    renderMonthlySummary();
+  }
+  renderWeekly();
+  growthCounted = weeklyReady && learnStateSource() !== null;
 }
 
 initializeAuth();
@@ -138,6 +152,8 @@ async function renderLearnStatus() {
   renderRankList(status.rank.rank, source.vocab.total);
   renderVocabSource(source.vocab.source);
   if (status.computed > (readRankPeak() ?? -1)) raisePeakLater(epoch);
+  // 推移・カレンダー・今月の行・週間レポートを公開の語の表が読めないまま描いていたら（オフラインで開いた）、読めた今 1 回描き直す（Batch 90）
+  if (weeklyReady && !growthCounted) renderGrowthViews();
 }
 
 // 回の印が替わった（ほかのタブで記録が置き換わった）ら書かない（records-replaced の描き直しが新しい人の数で予約し直す）
@@ -312,14 +328,10 @@ const moreOpenAtStart = initializeMore();
 const statusReady = renderLearnStatus();
 watchLearnStatus();
 
-const storeReady = initWordStore().then(() => {
+const wordStore = initWordStore();
+const storeReady = wordStore.then(() => {
   renderOverview();
   renderTyping();
-  renderGrowthTrend(); // 今日の行のスナップショットを先に取る（カレンダー・今月のまとめが同じ行を読む）
-  trendsReady = true;
-  weeklyReady = true;
-  renderCalendar("calendarGrid");
-  renderMonthlySummary();
   bindWordDetail({ onNoteSaved: () => renderLearnedWords() });
   document.getElementById("learnedCsv")?.addEventListener("click", (event) => {
     const n = downloadLearnedCsv();
@@ -329,7 +341,6 @@ const storeReady = initWordStore().then(() => {
   renderScoreTrend();
   renderMastery();
   renderLearnedWords();
-  renderWeekly();
   renderRetention("retentionReport");
   // マイ単語帳の作成・管理は「単語帳」ページ（教材）へ移動。ここは記録だけ
   window.addEventListener("spelldash:mywords", () => {
@@ -337,10 +348,16 @@ const storeReady = initWordStore().then(() => {
     renderLearnedWords();
     renderOverview();
   });
-}, () => {
-  // 単語の表が読めなかった（初期化の失敗だけ。上の描画の失敗はここに来ない）: 週間レポートは今の記録で描く。後から届く知らせ（課金・修復・同期）でも描き直す
+}, () => {});
+
+// 推移・カレンダー・今月の行・週間レポート（Batch 90）は、単語ストアの初期化と最初の画面（公開の語の表: renderLearnStatus）の両方が済んでから 1 回だけ描く。
+// 先に描いて表の後に描き直すと、週間レポートを 2 回描く（はちゃんの顔も 2 回読む。Batch 72）。最初の画面は表を待ってから出す（body[data-pending]）ので、待っても見え方は変わらない。
+// 単語の表が読めなかった（初期化の失敗だけ。上の描画の失敗はここに来ない）ときは、失敗の後に週間レポートだけ今の記録で描く（PR #189 のレビュー 3）。
+// 後から届く知らせ（課金・修復・同期）でも描き直す
+const growthReady = Promise.allSettled([wordStore, statusReady]).then(([store]) => {
+  if (store.status === "fulfilled") trendsReady = true;
   weeklyReady = true;
-  renderWeekly();
+  renderGrowthViews();
 });
 
 // 詳しい記録の一覧と数（思い出せるようになった語・初めて見て正解した語・外したパックの数・出会った語・習熟度・語の詳細・CSV）は、中心の学習の語
@@ -367,7 +384,7 @@ function loadMoreWords() {
 
 // 読み込みの間は題より下とフッターを透明にしている（body[data-pending]。css/pages.css）。最初の画面（数・3 つの札・目安・教材について）を描き終えてから出す。
 // 詳しい記録は閉じていれば高さが変わらないので待たない。深いリンクで開いて始まったときだけ、中の節（公開の語も引いた一覧）も描き終えてから出す。読めなかったときも出す
-Promise.allSettled([statusReady, moreOpenAtStart ? loadMoreWords() : null]).then(() => revealPendingPage());
+Promise.allSettled([statusReady, moreOpenAtStart ? loadMoreWords() : null, moreOpenAtStart ? growthReady : null]).then(() => revealPendingPage());
 
 // Pro の状態が届いたら（ページ表示直後は未確定）、期間と修復の表示を合わせる。
 // 推移は単語ストアの初期化後にだけ描く（先に描くと growth log の今日の行を 0 で上書きし、カレンダーの濃さが狂う）
@@ -397,14 +414,11 @@ window.addEventListener("spelldash:synced", () => {
   renderLearnStatus(); // 最高到達ランクは別のタスクで、取り込みを終えた今の記録から書く（raisePeakLater）
   renderOverview();
   renderTyping();
-  if (trendsReady) renderGrowthTrend(); // 単語ストアの初期化前に同期が届いても、今日の行を 0 で上書きしない
-  renderCalendar("calendarGrid");
-  renderMonthlySummary();
   renderScoreTrend();
   renderMastery();
   renderLearnedWords();
-  renderWeekly();
   renderRetention("retentionReport");
+  renderGrowthViews(); // 単語ストアの初期化前に同期が届いても、推移は描かない（今日の行を 0 で上書きしない）。週間レポートも初めの描画の後だけ
 });
 
 function renderCards(container, cards) {
@@ -577,8 +591,9 @@ function renderTyping() {
   ]);
 }
 
-// ===== 今月のまとめ（学習した日・思い出せるようになった語・セット。値が 0 の項目は出さない） =====
-// 語の増えは成長ログ（前の数え方: js/learnedWords.js getLearnedCounts）の数なので「覚えた」と呼ばない（最初の画面の 3 状態の 覚えた と別の数）
+// ===== 今月のまとめ（学習した日・覚えた・セット。値が 0 の項目は出さない） =====
+// 覚えた は学習状況の最初の画面と同じ数（3 状態。公開の語だけ）の今月の増え（Batch 90。js/growthLog.js getCoreMonthDelta）。分からない（null: この端末で
+// 数え始める前のほかの端末の学習した日が今月にある）ときは 覚えた の項目を出さない（学習した日とセットは出す）
 function renderMonthlySummary() {
   const container = document.getElementById("monthlySummary");
   if (!container) return;
@@ -586,8 +601,8 @@ function renderMonthlySummary() {
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const all = getGrowthLog();
   const activeDays = all.filter((e) => e.date?.startsWith(ym) && e.active).length;
-  // 起点は今月より前で最後の行（月の初日の増えも数える。Batch 89。js/growthLog.js getMonthLearnedDelta）
-  const learnedDelta = getMonthLearnedDelta(ym, all);
+  // 起点は今月より前で最後の行（月の初日の増えも数える。Batch 89 と同じ）。無ければこの端末で数え始めた行の始まりの値
+  const learnedDelta = getCoreMonthDelta(now);
   let sets = 0;
   try {
     sets = (JSON.parse(localStorage.getItem("spelldash_daily_set") || "{}").history ?? []).filter((d) => d.startsWith(ym)).length;
@@ -596,13 +611,14 @@ function renderMonthlySummary() {
   }
   // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない
   const parts = [`学習した日 <b>${activeDays}</b>日`];
-  if (learnedDelta > 0) parts.push(`思い出せるようになった語 <b>+${learnedDelta}</b>`);
+  if (learnedDelta > 0) parts.push(`覚えた <b>+${learnedDelta}</b>`);
   if (sets > 0) parts.push(`セット <b>${sets}</b>回`);
   container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月 ${parts.join(" ・ ")}</p>`;
 }
 
-// ===== 思い出せるようになった語の推移（無料 30日・Pro 90日） =====
-// 数は成長ログ（前の数え方。下の「思い出せるようになった語」の一覧と同じ数え方）。最初の画面の 3 状態の 覚えた と別の数なので「覚えた」と呼ばない
+// ===== 覚えた語の推移（無料 30日・Pro 90日） =====
+// 数は学習状況の最初の画面と同じ 覚えた（3 状態。公開の語だけ。Batch 90: 成長ログの core。js/growthLog.js getCoreSeries）。今日の点は今の 覚えた。
+// 下の「思い出せるようになった語」の一覧（前の数え方: 一度つまずいてから自力で思い出せた語）は別の物差しで、名前も別のまま
 // 30 日と 90 日の切り替えは Pro の人にだけ出す（Pro でない人に 90 日の案内を出さない: 決定 §7。保存値はそのまま）
 const TREND_RANGE_KEY = "spelldash_trend_range";
 
@@ -647,13 +663,13 @@ function renderGrowthTrend() {
   syncTrendRangeButtons(days);
   recordGrowthSnapshot({ ...getLearnedCounts(), legacyLearned: computeLegacyLearnedCount });
   // 90 日でも記録が短い人は、最初の記録の日から描く（左の空白で線が詰まらない）
-  const fullSeries = getLearnedSeries(days);
+  const fullSeries = getCoreSeries(days);
   const firstRecorded = fullSeries.findIndex((p) => p.learned != null);
   const series = days === TREND_DAYS.pro && firstRecorded > 0 ? fullSeries.slice(Math.max(0, Math.min(firstRecorded, fullSeries.length - TREND_DAYS.free))) : fullSeries;
   const points = series.filter((p) => p.learned != null);
 
   if (points.length < 2) {
-    container.innerHTML = '<p class="score-trend__empty">毎日少しずつ学ぶと、思い出せるようになった語の増え方がここに描かれる（明日から）。</p>';
+    container.innerHTML = '<p class="score-trend__empty">毎日少しずつ学ぶと、覚えた語の増え方がここに描かれる（明日から）。</p>';
     return;
   }
 
@@ -679,11 +695,11 @@ function renderGrowthTrend() {
   const area = `${d}L${x(lastIdx).toFixed(1)},${(pad.top + innerH).toFixed(1)}L${x(firstIdx).toFixed(1)},${(pad.top + innerH).toFixed(1)}Z`;
   // 点が多すぎると打たない（90 日分だと間隔が 3px ほどになり、朱の帯に見える）。記録が短く 30 日ほどに切った 90 日は打つ
   const dots = (series.length > 45 ? [] : series)
-    .map((p, i) => (p.active && p.learned != null ? `<circle cx="${x(i).toFixed(1)}" cy="${y(p.learned).toFixed(1)}" r="3" fill="var(--signal)"><title>${p.date}: ${p.learned}語</title></circle>` : ""))
+    .map((p, i) => (p.active && p.learned != null ? `<circle cx="${x(i).toFixed(1)}" cy="${y(p.learned).toFixed(1)}" r="3" fill="var(--signal)"><title>${p.date}: 覚えた ${p.learned}語</title></circle>` : ""))
     .join("");
 
   container.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="思い出せるようになった語の推移" style="width:100%;height:auto;display:block">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="覚えた語の推移" style="width:100%;height:auto;display:block">
       <text x="${pad.left - 6}" y="${pad.top + 4}" text-anchor="end" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${max}</text>
       <text x="${pad.left - 6}" y="${pad.top + innerH + 4}" text-anchor="end" font-size="12" font-family="var(--font-mono)" fill="var(--ink-3)">${min}</text>
       <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="var(--line-2)" />
