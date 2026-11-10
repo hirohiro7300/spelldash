@@ -21348,6 +21348,92 @@ console.log("home and old URLs (78.6):");
     await closeCtx(page);
   }
 
+  // (2b) プレイ前のホームの畳んだ盤面（Batch 89 A5。js/main.js showGame・index.html の #gameCard と .stats--strip）: 読み込み直後・ナビの「ホーム」の後・机に戻るの後で、
+  //      Tab の列に見えない入力欄（#input と畳んだ盤面の中の部品）が無く、読み上げの木に「いまの問題」「このセッションの数字」が出ない。
+  //      「英単語を学ぶ」・何も選んでいないときの Enter・/?learn=new・机に戻った後のスタートのどれで始めても、焦点は #input に入り 1 語目を打てる
+  {
+    const learned = vocab.order.slice(0, 3);
+    const page = await homePage({ spelldash_word_stats: JSON.stringify(stateOf(learned, { ls: 2 })) });
+    // Tab を頭から押して、フッターに着くまでの焦点の列（畳んだ盤面の中に入ったら名前を控える）
+    const tabWalk = async () => {
+      await page.evaluate(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); });
+      const seen = [];
+      for (let i = 0; i < 60; i++) {
+        await page.keyboard.press("Tab");
+        const a = await page.evaluate(() => { const el = document.activeElement; return { id: el?.id ?? "", tag: el?.tagName ?? "", folded: !!el?.closest?.("#gameCard, .stats--strip"), footer: !!el?.closest?.("footer") }; });
+        seen.push(a);
+        if (a.footer || a.tag === "BODY") break;
+      }
+      return { input: seen.some((a) => a.id === "input"), folded: seen.filter((a) => a.folded).map((a) => a.id || a.tag), steps: seen.length, end: seen.at(-1) };
+    };
+    // 読み上げの木（CDP の Accessibility.getFullAXTree。無視される節は数えない）に出る名前
+    const axNames = async () => {
+      const cdp = await page.context().newCDPSession(page);
+      try {
+        const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+        return nodes.filter((n) => !n.ignored).map((n) => n.name?.value ?? "").filter(Boolean);
+      } finally {
+        await cdp.detach().catch(() => {});
+      }
+    };
+    const homeState = async (label) => {
+      const walk = await tabWalk();
+      const names = await axNames();
+      return { label, walk, card: names.includes("いまの問題"), strip: names.includes("このセッションの数字") };
+    };
+    // 始めた後: 焦点は #input・1 語目の頭の 1 文字を打つと打った字が出る
+    const typedFirst = async () => {
+      await waitUntil(async () => (await page.evaluate(() => document.getElementById("japanese")?.textContent.trim() ?? "")) !== "", 8000);
+      await page.waitForTimeout(200);
+      const focus = await page.evaluate(() => document.activeElement?.id ?? "");
+      const id = (await shownIds(page)).at(-1) ?? "";
+      const head = id.replace(/^english-/, "").charAt(0);
+      await page.keyboard.press(head);
+      await page.waitForTimeout(100);
+      const typed = await page.evaluate(() => (document.querySelector(".typed-preview")?.textContent ?? document.getElementById("input")?.value ?? "").trim());
+      return { focus, head, ok: focus === "input" && typed.startsWith(head) };
+    };
+    const rows = [];
+    const starts = {};
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await homeView(page)).ready, 6000);
+    rows.push(await homeState("読み込み直後"));
+    await page.click('.site-nav a[href="/"]');
+    await page.waitForLoadState("networkidle");
+    await waitUntil(async () => (await homeView(page)).ready, 6000);
+    rows.push(await homeState("ナビのホームの後"));
+    await page.click("#pathStart");
+    await page.waitForURL(/learn=/, { timeout: 8000 }).catch(() => {});
+    await waitWord(page);
+    starts.button = await typedFirst();
+    await page.click("#backToPath");
+    await page.waitForTimeout(300);
+    rows.push(await homeState("机に戻るの後"));
+    starts.label = (await page.textContent("#pathStart")).trim();
+    await page.click("#pathStart");
+    await page.waitForURL(/learn=/, { timeout: 8000 }).catch(() => {});
+    await waitUntil(async () => (await shownIds(page)).length >= 1, 8000);
+    starts.again = await typedFirst();
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await homeView(page)).ready, 6000);
+    await page.evaluate(() => document.activeElement?.blur?.());
+    await page.keyboard.press("Enter");
+    await page.waitForURL(/learn=/, { timeout: 8000 }).catch(() => {});
+    await waitUntil(async () => (await shownIds(page)).length >= 1, 8000);
+    starts.enter = await typedFirst();
+    await page.goto(BASE + "/?learn=new", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await shownIds(page)).length >= 1, 8000);
+    starts.deep = await typedFirst();
+    check("78.6 プレイ前のホーム（読み込み直後・ナビのホームの後・机に戻るの後）: Tab の列に見えない入力欄（#input と畳んだ盤面の部品）が無い",
+      rows.length === 3 && rows.every((r) => !r.walk.input && r.walk.folded.length === 0 && r.walk.end?.footer), JSON.stringify(rows.map((r) => ({ label: r.label, ...r.walk }))));
+    check("78.6 プレイ前のホーム: 読み上げの木に「いまの問題」「このセッションの数字」が出ない（畳んだ盤面の古い数を読まない）",
+      rows.every((r) => !r.card && !r.strip), JSON.stringify(rows.map((r) => ({ label: r.label, card: r.card, strip: r.strip }))));
+    check("78.6 始めると焦点は #input で 1 語目を打てる（「英単語を学ぶ」・机に戻った後のスタート・何も選んでいないときの Enter・/?learn=new）",
+      starts.button.ok && starts.again.ok && starts.enter.ok && starts.deep.ok, JSON.stringify(starts));
+    check("78.6 プレイ前のホームの畳んだ盤面: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
   // (3) あやふやの今日の分が済んだ（今日数えた）ら これから、これからも無ければ あやふや（今日の分は終わり）、全部覚えたら 覚えた の復習
   {
     const today = dayNo(Date.now());
