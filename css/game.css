@@ -224,11 +224,14 @@ html[data-theme] body.learn-run .hist__x {
 }
 
 /* ===== 画面キーボードを出して学ぶ回（body.learn-run.osk-open）の高さの足りない画面（Batch 89） =====
-   縦向き（高さ 481px 以上）: 答えを出すと入力欄を盤面の上へ寄せる（js/game.js revealAnswer の scrollIntoView nearest と css/keyboard.css の
-   scroll-padding-bottom）。寄せる先を 20px 上げて、入力欄の下の知らせ（2 行）がチュートリアルの札（盤面の上に固定）に重ならないようにする。寸法は変えない。
+   縦向き: 答えを出すと入力欄を盤面の上へ寄せる（js/game.js revealAnswer の scrollIntoView nearest と css/keyboard.css の
+   scroll-padding-bottom の鍵盤＋88px）。チュートリアルの札（js/tutorial.js が body の直下に置く .coach。盤面の上に固定）が出ている間だけ、
+   寄せる先を 20px 上げて、入力欄の下の知らせ（2 行）が札に重ならないようにする。寸法は変えない。
+   札の出ない回では上げない（どの答え表示でも上げると、背の低いスマホで答えの行が画面の上へ押し出された: 375×553 で答えの行が -36〜0）。
+   高さ 640px 未満は札が出ていても上げない（答えを見せる方を先にする。知らせの 2 行目に札が掛かるのは前と同じ）。
    入力欄の scroll-margin-bottom では効かない（nearest は入力欄の枠が寄せる先の中にあると動かない: 390×844 で確かめた）ので、寄せる先そのものを上げる */
-@media (min-height: 481px) {
-  html:has(body.learn-run.osk-open) {
+@media (min-height: 640px) {
+  html:has(body.learn-run.osk-open > .coach:not(.coach--out)) {
     scroll-padding-bottom: calc(var(--osk-h, 236px) + 108px);
   }
 }
