@@ -8,7 +8,7 @@ export function computeSummary() {
 
   // 語は id で 1 回だけ数える（同じ id が基本カテゴリとパックに別々に入っている）。
   // 分子も「いま読み込んでいる語」に限る（外したパックや消したマイ単語の記録を数えない＝分母と同じ母集団）。
-  // 中心の学習の語（公開の 2,858 語。読み込んだ後だけ: js/wordStore.js loadPublicWords）も足す。重ねて数えない（Batch 89）
+  // 中心の学習の語（公開の語。読み込んだ後だけ: js/wordStore.js loadPublicWords）も足す。重ねて数えない（Batch 89）
   const ids = new Set(words.map((word) => word.id));
   for (const id of publicWordIds()) ids.add(id);
   const total = ids.size;

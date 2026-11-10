@@ -165,7 +165,7 @@ export function publicWord(wordId) {
 }
 
 // 学習状況の「詳しい記録」の語の引き方（Batch 89）: 読み込んだ語（findWord）に無ければ公開の版（publicWord。loadPublicWords の後だけ）。
-// 中心の学習の語（公開の 2,858 語）のうち 2,252 語は基本カテゴリに無く、findWord では引けない。思い出せるようになった語・初めて見て正解した語・
+// 中心の学習の語（公開の語）の大半は基本カテゴリに無く、findWord では引けない。思い出せるようになった語・初めて見て正解した語・
 // 外したパックの数・出会った語・習熟度・語の詳細・CSV はこの 1 つの口で引く。findWord・answersFor・getWordsByCategory の結果は変えない
 export function findRecordWord(wordId) {
   return findWord(wordId) ?? publicWord(wordId);
