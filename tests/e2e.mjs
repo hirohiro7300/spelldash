@@ -19641,8 +19641,16 @@ console.log("tutorial:");
   await page3.close();
 
   // 指の端末の縦（320×640・390×844。Batch 89 A1）: 初めての人の最初の答え表示で、札（T2）が知らせ（#message。2 行）の下に重ならない
-  // （css/game.css body.learn-run.osk-open #input の scroll-margin-bottom。札は画面キーボードの上に固定）
-  for (const [w, h] of [[320, 640], [390, 844]]) {
+  // （css/game.css の html:has(… > .coach) の scroll-padding-bottom: 札が出ている間だけ、高さ 640px 以上で答えの寄せ先の余白を鍵盤＋108px に。
+  //  札は画面キーボードの上に固定）。札が消えた後の答え表示は鍵盤＋88px に戻る（Batch 89 の反証。札の出ない回で答えの行を上へ押し出さない）。
+  // 375×553（背の低いスマホのブラウザ）は札が出ていても鍵盤＋88px: 20px 足すと答えの行が画面の上へ押し出されるので、答えを見せる方を先にする
+  // （知らせの 2 行目に札が掛かるのは 2aa2222 と同じ）
+  const portraitGeo = (p) => p.evaluate(() => {
+    const r = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top * 10) / 10, bottom: Math.round(b.bottom * 10) / 10 }; };
+    const cs = getComputedStyle(document.documentElement);
+    return { msg: r("#message"), coach: r(".coach:not(.coach--out)"), word: r("#word"), input: r("#input"), text: document.getElementById("message").textContent.trim(), reserve: Math.round((parseFloat(cs.scrollPaddingBottom) - parseFloat(cs.getPropertyValue("--osk-h"))) * 10) / 10 };
+  });
+  for (const [w, h] of [[320, 640], [390, 844], [375, 553]]) {
     const pm = await newPage({ mobile: true, viewport: { width: w, height: h } });
     await watchWords(pm);
     await pm.goto(LEARN_URL, { waitUntil: "networkidle" });
@@ -19651,11 +19659,23 @@ console.log("tutorial:");
     await pm.press("#input", "Enter"); // 答えを見る → T2
     await waitUntil(async () => (await coach(pm))?.step === "T2", 3000);
     await pm.waitForTimeout(700); // 入力欄を見える所へ寄せる動き（smooth）の後
-    const g = await pm.evaluate(() => {
-      const r = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top * 10) / 10, bottom: Math.round(b.bottom * 10) / 10 }; };
-      return { msg: r("#message"), coach: r(".coach:not(.coach--out)"), word: r("#word"), input: r("#input"), text: document.getElementById("message").textContent.trim() };
-    });
-    check(`チュートリアル スマホ ${w}×${h}: 最初の答え表示で知らせの下端が札の上端より上（重ならない）・答えと入力欄は見えている`, !!g.msg && !!g.coach && g.msg.bottom <= g.coach.top + 0.5 && g.word.top >= -0.5 && g.input.bottom <= g.coach.top + 0.5 && pm.errors.length === 0, JSON.stringify({ ...g, err: pm.errors[0] }));
+    const g = await portraitGeo(pm);
+    if (h >= 640) {
+      check(`チュートリアル スマホ ${w}×${h}: 最初の答え表示で知らせの下端が札の上端より上（重ならない）・答えと入力欄は見えている・寄せ先の余白は鍵盤＋108px`, !!g.msg && !!g.coach && g.msg.bottom <= g.coach.top + 0.5 && g.word.top >= -0.5 && g.input.bottom <= g.coach.top + 0.5 && g.reserve === 108 && pm.errors.length === 0, JSON.stringify({ ...g, err: pm.errors[0] }));
+    } else {
+      check(`チュートリアル スマホ ${w}×${h}（背の低い画面）: 札が出ていても寄せ先の余白は鍵盤＋88px で、答えの行の下の部分が画面の上端より 10px 以上下に見える`, !!g.coach && !!g.word && g.reserve === 88 && g.word.bottom >= 10 && pm.errors.length === 0, JSON.stringify({ ...g, err: pm.errors[0] }));
+    }
+    if (w === 390) {
+      // 札が消えた後（2 語目の答え表示。T2 は見た・自力正解していないので T3 も出ない）: 余白は鍵盤＋88px に戻る
+      await pm.press("#input", "Enter"); // 次へ（札は次の語で消える）
+      await waitWordT(pm, 2);
+      await pm.waitForTimeout(400);
+      await pm.press("#input", "Enter"); // 2 語目の答えを見る
+      await waitUntil(() => pm.evaluate(() => !!document.querySelector("#word .cl")), 3000);
+      await pm.waitForTimeout(700);
+      const g2 = await portraitGeo(pm);
+      check(`チュートリアル スマホ ${w}×${h}: 札が消えた後の答え表示では寄せ先の余白は鍵盤＋88px に戻る`, g2.coach === null && g2.reserve === 88 && pm.errors.length === 0, JSON.stringify({ ...g2, err: pm.errors[0] }));
+    }
     await pm.close();
   }
 }
@@ -22528,6 +22548,50 @@ console.log("learn modes (78.3):");
     check("78.3 横向き: 390×844 で始めて 844×390 へ回しても、答えの前は訳と入力欄・後は答えと入力欄が画面キーボードの上に入る", before(rot.g0) && after(rot.g1) && before(rot.g2) && rot.errors.length === 0, JSON.stringify({ ...rot, errors: rot.errors[0] }));
     const night = await runLand([568, 320], { theme: "dark" });
     check("78.3 横向き 568×320 夜: 同じく入る・横スクロール 0", before(night.g0) && after(night.g1) && before(night.g2) && night.errors.length === 0, JSON.stringify({ ...night, errors: night.errors[0] }));
+  }
+
+  // (12b) 縦向きで答えを出したときの寄せ先（Batch 89 の反証）: 答えを出すと入力欄を画面キーボードの上へ寄せる（js/game.js revealAnswer の
+  //       scrollIntoView nearest と html の scroll-padding-bottom）。寄せ先の余白は鍵盤＋88px（css/keyboard.css。2aa2222 と同じ）。チュートリアルの札が
+  //       出ていない回で 20px 足すと、背の低いスマホ（375×553 = 小さいスマホのブラウザ）で答えの行（#word）が画面の上へ押し出されて見えなかった。
+  //       答えを出した後: 余白は鍵盤＋88px（375×553 と 390×844）・375×553 では入力欄の下端が「画面の高さ − 鍵盤 − 88」で、答えの行の下の部分が
+  //       画面の上端より 10px 以上下に見える・知らせは鍵盤の上・横スクロール 0
+  {
+    const portraitGeo = (page) => page.evaluate(() => {
+      const root = document.documentElement;
+      const cs = getComputedStyle(root);
+      const box = (s) => {
+        const e = document.querySelector(s);
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return { top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10 };
+      };
+      const osk = document.getElementById("osk");
+      const oskH = parseFloat(cs.getPropertyValue("--osk-h"));
+      return {
+        h: innerHeight, oskH, reserve: Math.round((parseFloat(cs.scrollPaddingBottom) - oskH) * 10) / 10,
+        oskTop: osk && !osk.hidden ? Math.round(osk.getBoundingClientRect().top * 10) / 10 : null,
+        word: box("#word"), input: box("#input"), msg: box("#message"),
+        coach: !!document.querySelector(".coach"), revealed: !!document.querySelector("#word .cl"),
+        hs: root.scrollWidth - root.clientWidth, y: Math.round(scrollY)
+      };
+    });
+    const port = {};
+    for (const [w, h] of [[375, 553], [390, 844]]) {
+      const page = await learnPage({ spelldash_word_stats: "{}" }, { viewport: { width: w, height: h }, mobile: true });
+      await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+      await waitWord(page, 1);
+      await page.waitForTimeout(600);
+      await page.keyboard.press("Enter"); // 答えを見る
+      await waitUntil(() => page.evaluate(() => !!document.querySelector("#word .cl")), 3000);
+      await page.waitForTimeout(700); // 入力欄を寄せる動き（smooth）の後
+      port[`${w}x${h}`] = { ...(await portraitGeo(page)), errors: page.errors.slice(0, 1) };
+      await page.context().close();
+    }
+    const s = port["375x553"], t = port["390x844"];
+    check("78.3 縦向き: 札の出ない回で答えを出したときの寄せ先の余白は鍵盤＋88px（375×553・390×844。20px 足さない）",
+      s.revealed && t.revealed && !s.coach && !t.coach && s.reserve === 88 && t.reserve === 88 && s.errors.length === 0 && t.errors.length === 0, JSON.stringify(port));
+    check("78.3 縦向き 375×553: 答えを出した後、入力欄の下端は画面の高さ − 鍵盤 − 88・答えの行の下の部分が画面の上端より 10px 以上下・知らせは鍵盤の上・横スクロール 0",
+      !!s.input && !!s.word && !!s.msg && s.oskTop != null && Math.abs(s.input.bottom - (s.h - s.oskH - 88)) <= 1.5 && s.word.bottom >= 10 && s.msg.bottom <= s.oskTop + 0.5 && s.hs <= 0, JSON.stringify(s));
   }
 
   // (13) 夜の学ぶ盤面の灰色の字（Batch 89 A7。css/room.css の夜の #gameCard の --ink-3）: 紙（--parchment）に重ね（--far-page）を載せた色の上で、
