@@ -288,6 +288,7 @@ initializeBackup();
 
 function initializeBackup() {
   const exportButton = document.getElementById("backupExport");
+  const importButton = document.getElementById("backupImportButton");
   const importInput = document.getElementById("backupImport");
   const status = document.getElementById("backupStatus");
   if (!exportButton || !importInput || !status) return;
@@ -295,9 +296,12 @@ function initializeBackup() {
   // 確認用の Preview では読み込み（この端末の記録を置き換える）を止める。書き出しはできる（js/previewHost.js）
   if (isPreviewHost) {
     importInput.disabled = true;
-    importInput.closest("label")?.setAttribute("hidden", "");
+    importButton?.setAttribute("hidden", "");
     status.textContent = "読み込みは現在調整中（確認用の Preview）。書き出しはできる";
   }
+
+  // 読み込みのボタン（Batch 89）: 隠したファイルの欄を開く。前の label の中の欄は Tab でも読み上げでも届かなかった（Enter・Space はボタンの click になる）
+  importButton?.addEventListener("click", () => importInput.click());
 
   // 書き出すのは今の領域（ゲストか、ログイン中のアカウント）だけ。ファイルに持ち主の値を付ける（js/backup.js）
   exportButton.addEventListener("click", async () => {

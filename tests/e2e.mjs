@@ -12277,9 +12277,15 @@ console.log("learning quality:");
     await pageK.keyboard.press("Tab");
     const k = { next: await pageK.evaluate(() => ({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent.trim() ?? "" })) };
     const onImport = k.next.tag === "BUTTON" && k.next.text === "読み込む";
+    // ファイルを選ぶ窓は数えて見る（受け手を先に付けておく: 押す直前に waitForEvent を付けると、窓を捕まえる設定が押すのに間に合わないことがある）
+    let choosers = 0;
+    pageK.on("filechooser", () => choosers++);
+    await pageK.waitForTimeout(200);
     const opens = async (key) => {
-      const [chooser] = await Promise.all([pageK.waitForEvent("filechooser", { timeout: 2000 }).catch(() => null), pageK.keyboard.press(key)]);
-      return !!chooser;
+      const before = choosers;
+      await pageK.keyboard.press(key);
+      await waitUntil(async () => choosers > before, 2000);
+      return choosers > before;
     };
     // 焦点が「読み込む」に無いときはキーを押さない（ほかのリンクで Enter を押してページを移らない）
     k.enter = onImport ? await opens("Enter") : false;

@@ -1005,11 +1005,6 @@ button {
   display: none;
 }
 
-.backup-import {
-  display: inline-flex;
-  align-items: center;
-}
-
 /* ===== Batch 3: 学習カレンダー・よく間違えるキー・単語詳細・CSV ===== */
 .cal__summary {
   margin: 0 0 6px;
