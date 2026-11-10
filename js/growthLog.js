@@ -1,11 +1,23 @@
 import { localDateString } from "./stats.js";
 import { touchItem } from "./userItemsSync.js";
+import { getWordStats, learnStateSource } from "./storage.js";
+import { learnStateOf, LEARN_LEARNED, LEARN_NEW } from "./learnState.js";
+import { dayNoOf, ymdOfDayNo } from "./retentionCalc.js";
 
 // ===== 成長ログ =====
 // 1日1行 {date, learned, mastered, active} を端末に残し、
 // 「今週 +N語」「30日の推移」「学習日数 x/7」の材料にする（最大120日）。
 // 学習記録そのものではなく派生値のスナップショット。失っても学習には影響しない。
 // ログイン中は 1 日分を user_items の day 項目として端末間で合わせる（js/userItemsSync.js。変わった日だけ touchItem）。
+//
+// 覚えた の増え（Batch 90。docs/SPEC_LEARN_STATE.md §12）: 行に端末だけの欄を足した。送らない（日の行の中身は learned・mastered・active・set・sets のまま）。
+//   core   その日の終わり（その日の最後に書いたとき）の 覚えた。学習状況の最初の画面と同じ数（3 状態。公開の語だけ: js/learnState.js countLearnStates）。
+//          数・null（見たが分からない日: ほかの端末から来た語を持つ端末の、この端末の始まりより前の日。もう見ない）・無い（まだ見ていない）
+//   core0  この端末で数え始めた最初の行だけ。その日の始まりの 覚えた（前の日の終わり）。一度入れたら替えない
+//   cb     core を測ったときの 前からの 覚えた（tallyCore の base）。書いた後は替えない。読み手が「今の base − 行の cb」を正でも負でも足して読む
+//   nf     書いたときの「その日に初めて覚えた語の数」（印 lsf がその日で、今 覚えた）。回の途中で閉じた日の後の分を、次の書き込みでその日に戻す
+// 週間レポート・今月の行・推移・カレンダーは core を読む（getCore*）。learned・mastered は前の数え方のまま書き続ける（古いタブとほかの端末の古い版が読む）。
+// 前の読み手（getLearnedDelta7・getMonthLearnedDelta・getLearnedSeries）は旗を外したときのホームのカードと単体のために残す
 
 const KEY = "spelldash_growth_log";
 const MAX_DAYS = 120;
@@ -43,14 +55,129 @@ export function recordGrowthSnapshot({ learned, mastered, active = false, legacy
   const idx = list.findIndex((e) => e.date === today);
   const prev = idx >= 0 ? list[idx] : null;
   const row = { date: today, learned, mastered, active: !!(prev?.active || active), v: 2 };
+  // core: 公開の語の表が読めていれば（learnStateSource）今の数と 前からの 覚えた を書く。読めていなければ前の値を写すだけ（0 を書かない・下げない）
+  const src = learnStateSource();
+  const table = src ? getWordStats() : null;
+  const t = src ? tallyCore(table, src) : null;
+  if (t) {
+    row.core = t.learned;
+    row.cb = t.base;
+    if (Number.isInteger(prev?.core0)) row.core0 = prev.core0;
+  } else {
+    for (const key of ["core", "core0", "cb", "nf"]) if (Number.isInteger(prev?.[key])) row[key] = prev[key];
+  }
   if (idx >= 0) list[idx] = row;
   else list.push(row);
   list.sort((a, b) => (a.date < b.date ? -1 : 1));
+  if (t) {
+    fillCoreRows(list, today, t.learned, src, table);
+    noteFirstLearned(list, today, row, src, table);
+    for (const e of list) if (Number.isInteger(e?.core) && !Number.isInteger(e.cb)) e.cb = t.base; // 数え直した行も今の値で測った扱い
+  }
   save(list);
   // 描画のたびに呼ばれるので、同期の印は「クラウドの値（大きい方で合わせる）を上げうる」ときだけ付ける。
-  // 語数が減った（覚えた語が苦手に戻った）だけなら送らない（送っても合わせると元の値に戻り、送り直しを繰り返すため）
+  // 語数が減った（覚えた語が苦手に戻った）だけなら送らない（送っても合わせると元の値に戻り、送り直しを繰り返すため）。
+  // core・core0・cb・nf は送らない欄なので、それだけが変わっても付けない
   if (legacy != null || !prev || row.learned > (prev.learned ?? 0) || row.mastered > (prev.mastered ?? 0) || (row.active && !prev.active)) touchItem("day", today);
   return row;
+}
+
+// 1 回の走査で 覚えた（learned）と 前からの 覚えた（base）を数える。前からの 覚えた = 覚えた で印 lsf の無い語（移行・同期の初めの埋め・版 6 の式で
+// 覚えた になり、まだ中心の学習で答えていない語）＋ 印が 0 の語で あやふや か 覚えた の語（前から覚えていた語に中心の学習で答えた。あやふや に戻っても数えたまま）。
+// 前からの語が外れても覚え直しても base は変わらない（増えるのは埋めと移行のときだけ）。外れは learned の減りとして学習状況と同じに見える
+function tallyCore(table, src) {
+  let learned = 0;
+  let base = 0;
+  for (const id of src.vocab.order) {
+    const s = table?.[id];
+    const st = learnStateOf(s, src.pending?.get(id));
+    if (st === LEARN_LEARNED) learned++;
+    if ((st === LEARN_LEARNED && s?.lsf === undefined) || (s?.lsf === 0 && st !== LEARN_NEW)) base++;
+  }
+  return { learned, base };
+}
+
+// core の無い前の日の行（切り替えの前の行・旧いタブが作り直した行・ほかの端末から届いた行）に、語ごとの「初めて覚えた日」lsf から数え直した値を入れる（一度だけ）。
+// 値 = 今の 覚えた − （今 覚えた で lsf がその日より後の語）。lsf の無い 覚えた の語（移行・埋め）は初めから覚えていた扱い。
+// ほかの端末から来た語（答えの記録 history の無い あやふや・覚えた の公開の語。同期の初めの埋めの形）を持つ端末だけ、この端末の始まり
+// （history の最も古い日と lsf の最も古い日の早い方）より前の行を null にする（数えない日。週と今月は「–」）。1 台だけの人の行は null にしない。
+// 数え始めた最初の行（core が数の最初の行。その前は null だけ）には、その日の始まりの値 core0 も同じ式で一度だけ入れる
+function fillCoreRows(list, today, coreNow, src, table) {
+  let missing = false;
+  for (const e of list) if (e && e.date < today && e.core === undefined) { missing = true; break; }
+  const first = list.find((e) => Number.isInteger(e?.core));
+  if (!missing && !(first && first.core0 === undefined)) return;
+  let histStart = null;
+  let lsfStart = null;
+  const dated = [];
+  for (const id in table) {
+    const s = table[id];
+    if (!s || typeof s !== "object") continue;
+    const h = Array.isArray(s.history) ? s.history[0]?.d : null;
+    if (typeof h === "string" && (histStart === null || h < histStart)) histStart = h;
+    const f = Number.isInteger(s.lsf) && s.lsf > 0 ? s.lsf : null;
+    if (f === null) continue;
+    if (lsfStart === null || f < lsfStart) lsfStart = f;
+    if (src.vocab.isPublic(id) && learnStateOf(s, src.pending?.get(id)) === LEARN_LEARNED) dated.push(f);
+  }
+  let foreign = false;
+  for (const id of src.vocab.order) {
+    const s = table?.[id];
+    if (s && learnStateOf(s, src.pending?.get(id)) !== LEARN_NEW && !(Array.isArray(s.history) && s.history.length > 0)) {
+      foreign = true;
+      break;
+    }
+  }
+  const lsfYmd = lsfStart === null ? null : ymdOfDayNo(lsfStart);
+  const start = histStart === null ? lsfYmd : lsfYmd === null || histStart < lsfYmd ? histStart : lsfYmd;
+  dated.sort((a, b) => a - b);
+  const at = (dayNo) => {
+    let lo = 0;
+    let hi = dated.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (dated[mid] <= dayNo) lo = mid + 1;
+      else hi = mid;
+    }
+    return Math.max(0, coreNow - (dated.length - lo));
+  };
+  if (missing) {
+    for (const e of list) {
+      if (!e || !(e.date < today) || e.core !== undefined) continue;
+      const d = !foreign || (start !== null && e.date >= start) ? dayNoOf(e.date) : null;
+      e.core = Number.isInteger(d) ? at(d) : null;
+    }
+  }
+  const head = list.find((e) => Number.isInteger(e?.core));
+  if (head && head.core0 === undefined && list.every((e) => e === head || !e || e.date > head.date || e.core === null)) {
+    const d = dayNoOf(head.date);
+    head.core0 = Number.isInteger(d) ? Math.min(head.core, at(d - 1)) : head.core;
+  }
+}
+
+// 回の途中で閉じた日（あやふや の回の区切り・アプリを閉じた: 回の終わりの書き手が走らない）の後に覚えた語を、次の書き込みでその日に戻す。
+// 今日の nf = lsf が今日で今 覚えた の語。前の行（今日より前で core のある最後の行）に nf があり、その日の lsf の 覚えた の語がそれより多ければ、
+// 差だけ前の行の core を上げ、nf をその数にする（下げない。core0・cb は替えない）。lsf の日で数えるので、覚え直し（lsf 0）は前の日へ持ち込まない
+function noteFirstLearned(list, today, row, src, table) {
+  const tdn = dayNoOf(today);
+  let last = null;
+  for (const e of list) if (e && e.date < today && Number.isInteger(e.core)) last = e;
+  const ldn = last ? dayNoOf(last.date) : null;
+  let nToday = 0;
+  let nLast = 0;
+  for (const id of src.vocab.order) {
+    const s = table?.[id];
+    const f = s?.lsf;
+    if (!Number.isInteger(f) || f <= 0 || (f !== tdn && f !== ldn)) continue;
+    if (learnStateOf(s, src.pending?.get(id)) !== LEARN_LEARNED) continue;
+    if (f === tdn) nToday++;
+    else nLast++;
+  }
+  row.nf = nToday;
+  if (last && Number.isInteger(last.nf) && nLast > last.nf) {
+    last.core += nLast - last.nf;
+    last.nf = nLast;
+  }
 }
 
 export function markActiveToday() {
