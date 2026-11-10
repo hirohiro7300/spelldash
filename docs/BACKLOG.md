@@ -454,6 +454,7 @@
   - ⚠ **2 台で 3 状態と最高到達ランクをそろえる**: SQL が要る（docs/FOUNDER_TODO.md E。案だけ・未実行・許可が要る）。流してもらってから js/sync.js の statToRow／rowToStat と user_progress に列を足す（逆の順だと送信が失敗し続ける）。マージは語ごとに learn_state_at の新しい方、rank_peak は大きい方
   - ☐ **保留の E2E 28 節**（docs/E2E_CLASSIFICATION.md に節ごとの 4 つの理由と、同じ仕様を CI で守る検査。scripts/e2e-shard.mjs の HOLD）: 英単語の学習に絞った形で利用者が届かない面だけ。3 Daily Dash・4 ストリークカード・5 Challenge・6 モバイル（Challenge の結果と道）・8.6 わたしの本棚・8.6 窓の表紙・9 難易度ゲート・9.3 Challenge の手触り・9.4 今日のセット・study 60s・9.5 学習データ（カテゴリ別の行）・9.5 覚えた瞬間 v2・9.6 マイ単語帳・9.8 初回体験と継続・9.955 学習のランク（21 段）・9.97 概念カード・9.98 単語帳・9.99 Batch 5a・9.995 Batch 5b・9.999 Batch 6・9.9995 Batch 7a・9.9996 Batch 8・日本語の答え・12・12.5・13（コースと道）と目印 2 つ（Batch 58 ここまで・10.）。旗（js/focus.js FOCUS_ENGLISH）を外して前の面を戻すときは、その面の節を HOLD から外して直す。消すかは前の面のコードを消す Batch で決める
   - ☐ 詳しい記録の語の詳細と CSV に前の状態名（覚えた・習得・苦手・知ってた）と習熟度の段の名前（段 2 が「あやふや」で 3 状態の名前と同じ）が残る。週間レポート・保持率・カレンダーの「覚えた」も前の数え方（js/wordDetail.js・js/exportCsv.js・js/weeklyReport.js・js/retention.js・js/calendarView.js）
+  - ☐ 2 台目の端末で週間レポートの「7日で +N 語」と詳しい記録の今月の行の増えが跳ねる（日の行にどの端末から来たかの印が無い。Batch 89 の歩き直し）。勧めは上の数え方の回と一緒に「この端末の行だけで増えを出し、ほかの端末の行しか無い間は『–』」。決まるまで変えない（docs/FOUNDER_TODO.md の決めてほしいことの 18）
   - ✅ 設定の「週の学習日の目標」と「プラン・Pro について」は旗の間は出さない・pro.html に noindex・タイピングの 2 ページは英単語のホームへ（2026-10-28 の決定 3。段 6）。☐ Pro の人には「プラン・Pro について」の行を出している（規約と特商法の表記が解約を設定のこの行で案内するため）。Pro の人にも隠すなら、2 つの表記の解約の文を直す（創業者の確認待ち）
   - ✅ 段 3 の回の終わりは、回の始めに見せた段も最高到達ランクに書く（js/game.js `raiseRankPeak(Math.max(r.rankShown, reached))`。統合のときに直した）
   - ☐ js/rank.js parseRankPeak は Number() で読む（" 4"・"08" も通る。書くのは String(段) だけなので普段は起きない）
