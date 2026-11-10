@@ -96,7 +96,8 @@ window.addEventListener("spelldash:auth-ready", (event) => {
 });
 
 // 道が見えている間（プレイ前）の Enter は、見えない入力欄でゲームを始めず、道のスタートと同じ動きにする。
-// 英単語の学習に絞ったホームでは、保存した遊び方（Challenge）・単語帳のジャンルに関わらず「英単語を学ぶ」（見えない入力欄で Study・Challenge を始めない）
+// 英単語の学習に絞ったホームでは、保存した遊び方（Challenge）・単語帳のジャンルに関わらず「英単語を学ぶ」（見えない入力欄で Study・Challenge を始めない）。
+// Batch 89 から英単語の学習に絞ったホームの畳んだ盤面は inert（setFoldedBoardInert）で、ここに届くのは旗を外した前のホームだけ（絞ったホームの Enter は下の document の受け手）
 elements.input.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
   if (document.body.classList.contains("home--playing")) return;
@@ -158,9 +159,18 @@ function scrollGameIntoView() {
 // ===== 道（ホームの1画面目）: スタート1個でStudy、ほかの遊び方は解放式の一覧 =====
 function showGame(show) {
   document.body.classList.toggle("home--playing", show);
+  setFoldedBoardInert(FOCUS && !show);
   const back = document.getElementById("backToPath");
   if (back) back.hidden = !show;
 }
+
+// 英単語の学習に絞ったホームでプレイ前に畳んだ盤面（css/path.css。高さ 0・透明）は、Tab の列と読み上げの木から外す（Batch 89。index.html の初めの形も inert）。
+// 出すときは入力欄に焦点を移す前に外す（始める道はどれも焦点を移す前に showGame(true) か spelldash:game-start を通る）。
+// 旗を外した前のホームは、見えない入力欄が Enter の入口（Study は道のスタート、Challenge・ジャンルの回はそのまま始まる。上の keydown）なので外さない
+function setFoldedBoardInert(on) {
+  for (const el of document.querySelectorAll("#gameCard, .stats--strip")) el.inert = on;
+}
+if (!FOCUS) setFoldedBoardInert(false);
 
 // 道のスタート／復習: 新しく出す語をそのユニットに絞ってStudyを始める（復習はカテゴリ全体から）
 function startUnit(unit, opts = {}) {
