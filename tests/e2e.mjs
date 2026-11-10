@@ -9549,9 +9549,19 @@ console.log("growth:");
 // どちらでも、描く回数 1・はちゃんの顔は うれしい 1 つ・読むアバター 1 枚・読み込みの CLS < 0.05
 {
   const growthW = [6, 5, 4, 2, 1].map((n, i) => ({ date: ymdDaysAgo(n), learned: 10 + i * 6, mastered: i * 2, active: true }));
+  // 7日で 覚えた は学習状況の 覚えた（3 状態。公開の語）の増え（Batch 90）。clsRecords の語は状態の欄が無い（これから）ので、この 5 日に中心の学習で初めて覚えた
+  // 公開の語（印 lsf と答えの記録）を足す（増えが 0 のままだと、はちゃんは うれしい にならない）
+  const recW = clsRecords();
+  const statsW = JSON.parse(recW.spelldash_word_stats);
+  const dayNoW = (k) => { const [y, m, d] = ymdDaysAgo(k).split("-").map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1970, 0, 1)) / 86400000); };
+  JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8")).order.filter((id) => !statsW[id]).slice(0, 5).forEach((id, i) => {
+    const at = Date.now() - (i + 1) * 86400000;
+    statsW[id] = { playCount: 1, correctCount: 1, lastPlayed: new Date(at).toISOString(), lastRecallSuccessAt: new Date(at).toISOString(), history: [{ d: ymdDaysAgo(i + 1), r: "o" }], ls: 2, lsf: dayNoW(i + 1), lsAt: at };
+  });
+  const seedW = { ...recW, spelldash_word_stats: JSON.stringify(statsW), spelldash_growth_log: JSON.stringify(growthW) };
   const runsW = {};
   for (const delay of [0, 80]) {
-    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { ...clsRecords(), spelldash_growth_log: JSON.stringify(growthW) } });
+    const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: seedW });
     await page.addInitScript(() => {
       window.__weekly = [];
       window.__cls = 0;
@@ -19148,11 +19158,22 @@ console.log("pro:");
       app.native && app.text === `無料で追加できるのは${fmtN(app.free)}語まで。` && app.links.length === 0 && !/Pro|¥|円/.test(app.text) && app.errors.length === 0, JSON.stringify(app));
   }
 
-  // 7. 推移（学習状況の「詳しい記録」の中。Batch 78 段 4）: free には 30／90 の切り替えも Pro の案内も出さない（30 日で描く）。Pro は 90 日で描き直し、選択を保存
+  // 7. 推移（学習状況の「詳しい記録」の中。Batch 78 段 4）: free には 30／90 の切り替えも Pro の案内も出さない（30 日で描く）。Pro は 90 日で描き直し、選択を保存。
+  //    推移の数は学習状況の 覚えた（Batch 90）: 100 日の成長ログの行（前の数え方）に、この 90 日に中心の学習で初めて覚えた公開の語 30 語（印 lsf と答えの記録）を足す
   {
     const log = JSON.stringify(Array.from({ length: 100 }, (_, i) => ({ date: ymdDaysAgo(99 - i), learned: i, mastered: Math.floor(i / 2), active: true })));
+    const trendStats = (() => {
+      const dayNoT = (k) => { const [y, m, d] = ymdDaysAgo(k).split("-").map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1970, 0, 1)) / 86400000); };
+      const out = {};
+      JSON.parse(fs.readFileSync(path.join(ROOT, "data", "public", "english.json"), "utf8")).order.slice(0, 30).forEach((id, i) => {
+        const k = 1 + i * 3; // 1〜88 日前に 1 語ずつ
+        const at = Date.now() - k * 86400000;
+        out[id] = { playCount: 1, correctCount: 1, lastPlayed: new Date(at).toISOString(), lastRecallSuccessAt: new Date(at).toISOString(), history: [{ d: ymdDaysAgo(k), r: "o" }], ls: 2, lsf: dayNoT(k), lsAt: at };
+      });
+      return JSON.stringify(out);
+    })();
     const openMore = (pg) => pg.evaluate(() => { const d = document.getElementById("statsMore"); if (d) d.open = true; });
-    const page = await newPage({ storage: { spelldash_growth_log: log, spelldash_trend_range: "90" } });
+    const page = await newPage({ storage: { spelldash_growth_log: log, spelldash_word_stats: trendStats, spelldash_trend_range: "90" } });
     await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     await openMore(page);
@@ -19160,7 +19181,7 @@ console.log("pro:");
     check("Pro: free には推移の 30／90 の切り替えを出さない（保存値が 90 でも 30 日で描く）・Pro の案内も無い",
       !(await visible(page, ".trend-range")) && (await text(page, "#growthDays")) === "30" && (await page.$(".trend-range__hint")) === null && !(await text(page, "#growth")).includes("Pro"), await text(page, "#growthDays"));
     await page.close();
-    const page2 = await newPage({ storage: proStorage({}, { spelldash_growth_log: log }) });
+    const page2 = await newPage({ storage: proStorage({}, { spelldash_growth_log: log, spelldash_word_stats: trendStats }) });
     await page2.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
     await page2.waitForTimeout(900);
     await openMore(page2);
@@ -20431,10 +20452,11 @@ console.log("78.4 学習状況とランク:");
     }
   }
 
-  // ---- (11) 詳しい記録の中の前の数え方の数（成長ログの語数・今月のまとめ）は「覚えた」と呼ばない（最初の画面の 3 状態の 覚えた と別の数） ----
+  // ---- (11) 深いリンク（#growth）で詳しい記録が開く・スコアを作る遊び方の誘いが無い。推移と今月の行の名前（覚えた語の推移・覚えた +N）は (14e)
+  //      （Batch 90 で推移と今月の行は 3 状態の 覚えた の数になった。前は前の数え方の数なので「覚えた」と呼ばないことをここで見ていた） ----
   {
     const seed = seedOf({ learned: 40, extra: { spelldash_growth_log: JSON.stringify([{ date: ymdDaysAgo(3), learned: 0, mastered: 0, active: true, v: 2 }]) } });
-    for (const [label, storage] of [["推移あり", seed], ["推移なし", seedOf({ learned: 40 })]]) {
+    for (const [label, storage] of [["成長ログあり", seed], ["成長ログなし", seedOf({ learned: 40 })]]) {
       const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage });
       await page.goto(BASE + "/stats.html#growth", { waitUntil: "networkidle" });
       await page.waitForTimeout(500);
@@ -20446,8 +20468,8 @@ console.log("78.4 学習状況とランク:");
         monthly: document.getElementById("monthlySummary")?.textContent.trim(),
         modes: (document.getElementById("statsMore")?.innerText ?? "").match(/[^\n]*(Challenge|Daily)[^\n]*/g) ?? []
       }));
-      check(`78.4 詳しい記録（${label}）: 推移の見出しは「思い出せるようになった語の推移（30日）」・推移と今月のまとめに「覚えた」が無い`,
-        r.open === true && r.title === "思い出せるようになった語の推移（30日）" && ![r.trend, r.aria, r.monthly].some((t) => (t ?? "").includes("覚えた")) && (label === "推移なし" || r.aria === "思い出せるようになった語の推移") && page.errors.length === 0,
+      check(`78.4 詳しい記録（${label}）: 深いリンク #growth で詳しい記録が開く・推移の節に見出しがある・エラー 0`,
+        r.open === true && !!r.title && page.errors.length === 0,
         JSON.stringify({ ...r, err: page.errors[0] }));
       // スコアを作る遊び方（Challenge・Daily Dash）は画面に無い: 開いた「詳しい記録」でそれを遊ぶよう誘わない（スコアの記録が無い人には節ごと出さない。反証 rv5 shouldFix 8）
       check(`78.4 詳しい記録（${label}）: 「Challenge」「Daily」の文が無い（スコア推移の空の誘いを出さない）`, r.modes.length === 0, JSON.stringify(r.modes));
@@ -20593,6 +20615,149 @@ console.log("78.4 学習状況とランク:");
       !!packId && r2.count === "1語" && JSON.stringify(r2.words) === JSON.stringify(["english-zero"]) && r2.dropped === "ほか 1語は外したパックの語" && p2.errors.length === 0,
       JSON.stringify({ packId, ...r2, err: p2.errors[0] }));
     await p2.close();
+  }
+
+  // ---- (14) 覚えた の増え（Batch 90。js/growthLog.js getCoreNow・getCoreDelta7・getCoreMonthDelta・getCoreSeries・getCoreDayGains、js/weeklyReport.js・js/calendarView.js・
+  //      js/statsView.js。docs/SPEC_LEARN_STATE.md §12）: 詳しい記録の週間レポート「7日で 覚えた」・今月の行「覚えた +N」・推移（覚えた語の推移）・カレンダーの語数は、
+  //      最初の画面の 覚えた（3 状態。公開の語だけ）と同じ数の増え。前の数え方（成長ログの learned）は中心の学習で覚えた語をほとんど数えず、毎日学んでも +0 だった。
+  //      ほかの端末から届いた学習した日（この端末で数え始める前の日）が窓に入る間は「–」と注記 1 行（シェアは残す）。1 台だけの人は「–」にしない
+  {
+    const ymdNo = (s) => { const [y, m, d] = s.split("-").map(Number); return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1970, 0, 1)) / DAY); };
+    const num = (s) => (s == null ? null : Number(String(s).replace(/,/g, "")));
+    const after = (re, s) => { const m = re.exec(s ?? ""); return m ? num(m[1]) : null; };
+    const manifest14 = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));
+    const english14 = manifest14.subjects.find((s) => s.id === "english");
+    const baseIds14 = new Set(english14.categories.filter((c) => !c.pack).flatMap((c) => JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id)));
+    const NONBASE = PUB.filter((id) => !baseIds14.has(id)); // 基本カテゴリに無い公開の語（前の数え方の語数に入らない）
+    const row = (k, extra = {}) => ({ date: ymdDaysAgo(k), learned: 0, mastered: 0, active: true, v: 2, ...extra });
+    const answered = (k, extra = {}) => ({ playCount: 1, correctCount: 1, lastPlayed: new Date(Date.now() - k * DAY).toISOString(), lastRecallSuccessAt: new Date(Date.now() - k * DAY).toISOString(), history: [{ d: ymdDaysAgo(k), r: "o" }], ls: 2, lsf: dayNo(k), lsAt: Date.now() - k * DAY, ...extra });
+    // 詳しい記録を開いて 4 つ（と最初の画面の 覚えた）を読む
+    const growthView = async (page) => {
+      await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+      await page.click("#statsMore > summary");
+      await page.waitForTimeout(500);
+      return page.evaluate(() => {
+        const t = (sel) => document.querySelector(sel)?.textContent.replace(/\s+/g, " ").trim() ?? null;
+        const cell = (label) => [...document.querySelectorAll("#weeklyReport .weekly__grid > div")].find((d) => d.querySelector("span")?.textContent.trim() === label)?.querySelector("strong")?.textContent.replace(/\s+/g, " ").trim() ?? null;
+        const titles = [...document.querySelectorAll("#growthTrend svg circle title")].map((e) => e.textContent.trim());
+        return {
+          count: t("#learnCount"),
+          weekly: cell("7日で 覚えた"), days: cell("学習した日"),
+          notes: [...document.querySelectorAll("#weeklyReport .weekly__note")].map((e) => e.textContent.trim()),
+          share: !!document.querySelector("#weeklyReport [data-weekly-share]"),
+          monthly: t("#monthlySummary"),
+          title: t("#growth h3"), aria: document.querySelector("#growthTrend svg")?.getAttribute("aria-label") ?? null, empty: t("#growthTrend .score-trend__empty"),
+          lastTitle: titles.at(-1) ?? null,
+          calToday: document.querySelector("#calendarGrid .cal__day--today")?.getAttribute("title") ?? null,
+          log: JSON.parse(localStorage.getItem("spelldash_growth_log") || "[]")
+        };
+      });
+    };
+    const UNKNOWN_NOTE = "覚えた の増えは、この端末で数え始めた日から数える。";
+
+    // (14a) 実際に 1 セット: 新しい人が /?learn=new を 1 セット（1 語は答えを見て、9 語は打って正解。基本カテゴリに無い公開の語を含む）。昨日は学習状況を開いただけ
+    //       （学んでいない行）。最初の画面の 覚えた N と、7日で 覚えた・今月の行・推移の最後の点・今日のカレンダーの語数がどれも N（0 より大きい）
+    {
+      const EN = {};
+      for (const id of PUBLIC.packs) for (const w of JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", `${id}.json`), "utf8")).words) EN[w.id] ??= w.en;
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" } });
+      // 成長ログの種は最初の読み込みでだけ置く（newPage の種は読み込みのたびに置き直すので、回で書いた今日の行を消さない）
+      await page.addInitScript((log) => { if (!localStorage.getItem("spelldash_growth_log")) localStorage.setItem("spelldash_growth_log", log); }, JSON.stringify([row(1, { active: false })]));
+      await page.addInitScript(() => {
+        window.__w = [];
+        addEventListener("spelldash:word", (e) => window.__w.push(e.detail?.id ?? null));
+      });
+      await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+      const shown = () => page.evaluate(() => window.__w.slice());
+      for (let i = 1; i <= 10; i++) {
+        await waitUntil(async () => (await shown()).length >= i, 8000);
+        await afterAdvance(page);
+        const id = (await shown())[i - 1];
+        if (i === 1) {
+          await page.press("#input", "Enter"); // 答えを見る → あやふや
+          await page.waitForTimeout(300);
+          await page.press("#input", "Enter"); // 次へ
+          continue;
+        }
+        for (const ch of String(EN[id] ?? "")) await page.press("#input", ch);
+      }
+      await waitUntil(() => page.evaluate(() => document.getElementById("resultPanel")?.hidden === false), 8000);
+      const ids = await shown();
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      const r = await growthView(page);
+      const n = num(r.count);
+      const got = { weekly: after(/^\+([\d,]+)/, r.weekly), monthly: after(/覚えた \+([\d,]+)/, r.monthly), trend: after(/: 覚えた ([\d,]+)語$/, r.lastTitle), cal: after(/ ・ 覚えた ([\d,]+)語$/, r.calToday) };
+      check("78.4 覚えた の増え (14a)（Batch 90）: 新しい人が中心の学習を 1 セット（基本カテゴリに無い公開の語を含む）→ 最初の画面の 覚えた N（> 0）と、詳しい記録の 7日で 覚えた +N・今月の行 覚えた +N・推移の最後の点・今日のカレンダーの語数がどれも N",
+        ids.some((id) => NONBASE.includes(id)) && n > 0 && got.weekly === n && got.monthly === n && got.trend === n && got.cal === n && r.lastTitle?.startsWith(ymdDaysAgo(0)) && page.errors.length === 0,
+        JSON.stringify({ n, got, weekly: r.weekly, monthly: r.monthly, lastTitle: r.lastTitle, calToday: r.calToday, err: page.errors[0] }));
+      await page.close();
+    }
+
+    // (14b) 切り替えの日: 前の数え方の行（learned だけ・core なし）が 11 日分（今日も学んだ行）と、答えの記録のある語（前から覚えた 40 語〔印 lsf なし〕・この 5 日で初めて覚えた 15 語・
+    //       覚えた後に あやふや に戻った 3 語・あやふや 5 語）。開くと書き手が前の行を数え直す。7日で 覚えた と今月の行は種の 3 状態から数えた値・推移の最後の点は最初の画面の 覚えた
+    {
+      const stats = {};
+      PUB.slice(0, 40).forEach((id) => { stats[id] = { ...answered(30), lsf: undefined, lsAt: undefined }; });
+      const win = PUB.slice(40, 55);
+      win.forEach((id, i) => { stats[id] = answered(1 + (i % 5)); });
+      PUB.slice(55, 58).forEach((id) => { stats[id] = { ...answered(3), ls: 1, recallFail: 1, lastRecallFailAt: new Date(Date.now() - DAY).toISOString(), history: [{ d: ymdDaysAgo(3), r: "o" }, { d: ymdDaysAgo(1), r: "x" }] }; });
+      PUB.slice(58, 63).forEach((id) => { stats[id] = { playCount: 1, recallFail: 1, lastPlayed: new Date(Date.now() - 2 * DAY).toISOString(), lastRecallFailAt: new Date(Date.now() - 2 * DAY).toISOString(), history: [{ d: ymdDaysAgo(2), r: "x" }], ls: 1 }; });
+      const rows = Array.from({ length: 11 }, (_, i) => row(10 - i, { learned: 100 + i * 3, mastered: i }));
+      const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { spelldash_placement: "done", spelldash_word_stats: JSON.stringify(stats), spelldash_growth_log: JSON.stringify(rows) } });
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      const r = await growthView(page);
+      // 今日まだ学んでいない（連続日数の記録なし）ので週は昨日までの 7 日: 8 日前の終わり → 昨日の終わりに初めて覚えた語（今も 覚えた）
+      const lsfOf = win.map((id) => stats[id].lsf);
+      const weekWant = lsfOf.filter((f) => f > dayNo(8) && f <= dayNo(1)).length;
+      // 今月: 今月より前で最後の行の終わりから（無ければ数え始めた 10 日前の行の始まりから）
+      const firstOfMonth = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+      const before = rows.map((e) => e.date).filter((d) => d < firstOfMonth);
+      const since = before.length ? ymdNo(before.at(-1)) : dayNo(11);
+      const monthWant = lsfOf.filter((f) => f > since).length;
+      const got = { weekly: after(/^\+([\d,]+)/, r.weekly), monthly: after(/覚えた \+([\d,]+)/, r.monthly), trend: after(/: 覚えた ([\d,]+)語$/, r.lastTitle) };
+      check(`78.4 覚えた の増え (14b)（Batch 90）: 前の数え方の行だけの人が開いた切り替えの日 → 7日で 覚えた +${weekWant}・今月の行 覚えた +${monthWant}（種の 3 状態から）・推移の最後の点は最初の画面の 覚えた（55）・前の行の learned は変えない`,
+        weekWant === 15 && got.weekly === weekWant && (monthWant === 0 ? !/覚えた/.test(r.monthly ?? "") : got.monthly === monthWant) && num(r.count) === 55 && got.trend === 55 &&
+          rows.filter((e) => e.date !== ymdDaysAgo(0)).every((e) => r.log.some((x) => x.date === e.date && x.learned === e.learned && x.mastered === e.mastered && x.active === true && x.v === 2)) && page.errors.length === 0,
+        JSON.stringify({ weekWant, monthWant, got, count: r.count, weekly: r.weekly, monthly: r.monthly, lastTitle: r.lastTitle, err: page.errors[0] }));
+      await page.close();
+    }
+
+    // (14c) 2 台目（ログインなし。同期で届いた形の種）: ほかの端末から届いた学習した日の行（core なし）が 6 日分と、同期の初めの埋めの形の語（覚えた・印 lsf なし・
+    //       答えの記録 history なし）30 語。この端末ではまだ学んでいない → 7日で 覚えた は「–」と注記・今月の行に 覚えた の項目なし・シェアのボタンはある・推移は「明日から」
+    {
+      const stats = {};
+      PUB.slice(0, 30).forEach((id) => { stats[id] = { playCount: 2, correctCount: 2, lastPlayed: new Date(Date.now() - 3 * DAY).toISOString(), lastRecallSuccessAt: new Date(Date.now() - 3 * DAY).toISOString(), ls: 2 }; });
+      const rows = [6, 5, 4, 3, 2, 1].map((k, i) => row(k, { learned: 200 + i * 20, mastered: i }));
+      const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { spelldash_placement: "done", spelldash_word_stats: JSON.stringify(stats), spelldash_growth_log: JSON.stringify(rows) } });
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      const r = await growthView(page);
+      check("78.4 覚えた の増え (14c)（Batch 90）: 2 台目（ほかの端末の学習した日の行・埋めの形の語）→ 7日で 覚えた は「–」と注記「覚えた の増えは、この端末で数え始めた日から数える。」・学習した日は 6 / 7・今月の行に 覚えた なし・シェアのボタンはある・推移は「明日から」の文・最初の画面は 覚えた 30",
+        r.weekly === "–" && r.notes.includes(UNKNOWN_NOTE) && r.days === "6 / 7" && !/覚えた/.test(r.monthly ?? "") && /学習した日/.test(r.monthly ?? "") && r.share === true &&
+          r.empty === "毎日少しずつ学ぶと、覚えた語の増え方がここに描かれる（明日から）。" && r.count === "30" && page.errors.length === 0,
+        JSON.stringify({ ...r, log: undefined, err: page.errors[0] }));
+      await page.close();
+    }
+
+    // (14d) 1 台だけの人（ログインなし）: 3 日前はマイ単語帳だけの日（学習した日の行だけ。公開の語の答えなし）、2 日前から今日まで中心の学習で 6・7・7 語を初めて覚えた
+    //       （基本カテゴリに無い公開の語。history と印 lsf）。行に core は無い（この端末で初めて開いた）。7日で 覚えた は数（「–」でない）で、最初の画面の 覚えた の 3 日の増え（20）と同じ
+    // (14e) 名前: 推移の見出し「覚えた語の推移（30日）」・aria-label「覚えた語の推移」・今月の行「覚えた +N」（前の「思い出せるようになった語」は詳しい記録の一覧の名前だけ）
+    {
+      const stats = {};
+      const plan = [[2, 6], [1, 7], [0, 7]];
+      let at = 0;
+      for (const [k, count] of plan) for (let j = 0; j < count; j++) stats[NONBASE[at++]] = answered(k);
+      const rows = [row(3), row(2), row(1), row(0)];
+      const page = await newPage({ viewport: { width: 390, height: 844 }, mobile: true, storage: { spelldash_placement: "done", spelldash_word_stats: JSON.stringify(stats), spelldash_growth_log: JSON.stringify(rows), spelldash_streak: JSON.stringify({ current: 4, best: 4, last: ymdDaysAgo(0) }) } });
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      const r = await growthView(page);
+      check("78.4 覚えた の増え (14d)（Batch 90）: 1 台だけの人（3 日前はマイ単語帳だけ・2 日前から中心の学習）→ 7日で 覚えた +20（「–」でない）= 最初の画面の 覚えた 20・注記なし・推移の最後の点 20・行に core: null が無い",
+        r.weekly === "+20 語" && r.count === "20" && !r.notes.includes(UNKNOWN_NOTE) && after(/: 覚えた ([\d,]+)語$/, r.lastTitle) === 20 && !r.log.some((e) => e.core === null) && page.errors.length === 0,
+        JSON.stringify({ ...r, log: r.log.map((e) => [e.date, e.core]), err: page.errors[0] }));
+      check("78.4 覚えた の増え (14e)（Batch 90）: 推移の見出しは「覚えた語の推移（30日）」・aria-label「覚えた語の推移」・点の title は「日付: 覚えた N語」・今月の行は「覚えた +N」（「思い出せるようになった語」は推移と今月の行に無い）",
+        r.title === "覚えた語の推移（30日）" && r.aria === "覚えた語の推移" && /^\d{4}-\d{2}-\d{2}: 覚えた \d+語$/.test(r.lastTitle ?? "") && /覚えた \+\d+/.test(r.monthly ?? "") && ![r.title, r.aria, r.monthly].some((s) => (s ?? "").includes("思い出せるようになった語")),
+        JSON.stringify({ title: r.title, aria: r.aria, lastTitle: r.lastTitle, monthly: r.monthly }));
+      await page.close();
+    }
   }
 }
 
