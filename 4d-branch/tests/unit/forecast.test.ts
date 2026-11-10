@@ -287,9 +287,10 @@ describe("同梱の未来の道筋", () => {
     expect(r.ends.length).toBe(stats.ends);
     expect(r.ends.every((id) => doc.nodes[id]!.tags.includes("10年後"))).toBe(true);
     expect(r.ends.reduce((n, id) => n + r.reach.get(id)!.p, 0)).toBeCloseTo(1, 9);
-    // シナリオを選んだ場合も、行き先の見込みは合計 100%
+    // シナリオを選んだ場合も、行き先は 10 年後のノードだけ（途中で行き止まりにならない）で、見込みは合計 100%
     for (const sid of doc.scenarioOrder) {
       const s = computeForecast(doc, buildIndex(doc).out, sid);
+      expect(s.ends.filter((id) => !doc.nodes[id]!.tags.includes("10年後")).map((id) => doc.nodes[id]!.title), sid).toEqual([]);
       expect(s.ends.reduce((n, id) => n + s.reach.get(id)!.p, 0), sid).toBeCloseTo(1, 9);
     }
   });

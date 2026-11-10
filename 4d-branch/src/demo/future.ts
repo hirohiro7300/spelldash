@@ -203,20 +203,32 @@ export function buildFutureDoc(data: FutureData, today = new Date()): DocData {
     for (const k of w.steps) pos.set(k, { x: x0 + w.layer.get(k)! * dx, y: (stateY.get(s[0]) ?? 0) + w.lane.get(k)! * ROW_H });
   }
 
-  // シナリオ: 6 か月目の状態のどれから届くか（今日から 6 か月目までの歩みは全シナリオ共通）
-  const scen = new Map<string, Set<string>>();
-  for (const s of data.states) {
-    if (s[1] !== FUTURE_GATES[1] || s[2] === "start") continue;
-    const sid = SCENARIOS[s[2]].id;
-    const stack = [s[0]];
+  // シナリオ: 6 か月目の 3 つの状態（両立・早期独立・SpellDash集中）で決める。
+  // 6 か月目から先は、そこへ届く 6 か月目の道。6 か月目より前は、そこから届く 6 か月目の道（3 つとも届けば全シナリオ共通）。
+  // こうすると、分かれ道の選択肢と 6 か月目の状態の間に歩みがあっても、選択肢の線からそのシナリオになる
+  const m6 = data.states.filter((s) => s[1] === FUTURE_GATES[1] && s[2] !== "start");
+  const after = new Map<string, Set<string>>();
+  const before = new Map<string, Set<string>>();
+  const spread = (from: string, sid: string, links: Map<string, string[]>, into: Map<string, Set<string>>, self: boolean) => {
+    const stack = [from];
     const seen = new Set(stack);
     while (stack.length) {
       const k = stack.pop()!;
-      scen.set(k, new Set([...(scen.get(k) ?? []), sid]));
-      for (const n of next.get(k) ?? []) if (!seen.has(n)) (seen.add(n), stack.push(n));
+      if (k !== from || self) into.set(k, new Set([...(into.get(k) ?? []), sid]));
+      for (const n of links.get(k) ?? []) if (!seen.has(n)) (seen.add(n), stack.push(n));
     }
+  };
+  for (const s of m6) {
+    const sid = SCENARIOS[s[2] as Exclude<FutureLine, "start">].id;
+    spread(s[0], sid, next, after, true);
+    spread(s[0], sid, prev, before, false);
   }
-  const scenOf = (k: string) => [...(scen.get(k) ?? [])].sort();
+  const scenOf = (k: string): string[] => {
+    const a = after.get(k);
+    if (a) return [...a].sort();
+    const b = before.get(k);
+    return b && b.size < m6.length ? [...b].sort() : [];
+  };
 
   for (const s of data.states) {
     const [key, month, line, title, body] = s;
@@ -262,9 +274,9 @@ export function buildFutureDoc(data: FutureData, today = new Date()): DocData {
     const b = nodeId(to);
     if (!doc.nodes[a] || !doc.nodes[b] || a === b || seen.has(`${a}>${b}`)) continue;
     seen.add(`${a}>${b}`);
-    // 6 か月目へ入る線はそのシナリオだけ。それより先はたどり着く元と同じシナリオ
-    const target = states.get(to);
-    const scenarioIds = target && target[1] === FUTURE_GATES[1] && target[2] !== "start" ? [SCENARIOS[target[2]].id] : scenOf(from);
+    // 線のシナリオは元のノードと同じ。全シナリオ共通のノードから出る線は、入る先のシナリオ（分かれ道の選択肢で分かれる）
+    const fromScen = scenOf(from);
+    const scenarioIds = fromScen.length ? fromScen : scenOf(to);
     const e = makeEdge({
       id: `e_f_${(++seq).toString(36)}`,
       source: a,

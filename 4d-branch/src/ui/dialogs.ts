@@ -344,14 +344,14 @@ export function openFutureDialog(app: AppContext): void {
     after: {
       replaceDone: "未来の道筋に入れ替えました。右の概要に 10 年後の行き先の見込みが出ます",
       mergeDone: "未来の道筋: ",
-      // 全体は横に長すぎて読めないので、今日から最初の分かれ道までに寄る
+      // 全体は横に長すぎて読めないので、今日から数歩先までに寄る（カードの文字が読める大きさで始める）
       fitTo: (doc, added) => {
         const root = added.find((id) => doc.nodes[id]?.meta.forecastRoot === true);
         if (!root) return added;
         const r = doc.nodes[root]!;
         const near = added.filter((id) => {
           const n = doc.nodes[id]!;
-          return n.x >= r.x && n.x <= r.x + 12 * 300 && Math.abs(n.y - r.y) <= 900;
+          return n.x >= r.x && n.x <= r.x + 5 * 300 && Math.abs(n.y - r.y) <= 600;
         });
         return near.length ? near : added;
       },
