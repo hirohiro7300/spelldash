@@ -325,6 +325,20 @@ backToPath?.addEventListener("click", () => {
 // どの入口から始まっても（Enter キー含む）ゲームカードを出す
 window.addEventListener("spelldash:game-start", () => showGame(true));
 
+// 指の端末の横向き（高さ 480px 以下。css/game.css の同じ media）で画面キーボードを出して学ぶ回（Batch 89）: ヘッダーと柱の下の盤面が鍵盤の裏に落ちるので、
+// 回の始め（spelldash:game-start。画面キーボードは js/keyboard.js が同じ合図の後に出す）と、横向きに回したときに 1 回だけ盤面を画面の上へ寄せる。
+// 語ごとの描画・答えの道には入れない（答えを出したときの寄せは css の scroll-padding-bottom）
+const SHORT_SCREEN = window.matchMedia?.("(max-height: 480px)") ?? null;
+function fitLearnBoard() {
+  const body = document.body;
+  if (!SHORT_SCREEN?.matches || !body.classList.contains("learn-run") || !body.classList.contains("osk-open") || body.classList.contains("set-done")) return;
+  document.getElementById("gameCard")?.scrollIntoView({ block: "start" });
+}
+window.addEventListener("spelldash:game-start", () => setTimeout(fitLearnBoard, 0));
+SHORT_SCREEN?.addEventListener?.("change", (event) => {
+  if (event.matches) setTimeout(fitLearnBoard, 0);
+});
+
 // セットが終わったら道の数字を更新（結果パネルはそのまま）
 window.addEventListener("spelldash:session-end", () => {
   const path = renderHome();
