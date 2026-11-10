@@ -478,13 +478,15 @@
 
       <p id="message" class="message" aria-live="polite">単語データを読み込み中…</p>
       <div id="learnToast" class="learn-toast" role="status" hidden></div>
-      <!-- 読み上げ専用のステータス行（ランクアップ等の演出は aria-hidden にして、文言はここに流す） -->
-      <p id="srStatus" class="sr-only" role="status"></p>
 
       <div id="resultPanel" class="result-panel" role="region" aria-labelledby="resultTitle" hidden></div>
 
       <button id="restart" class="btn btn--ghost btn--sm">もう一回</button>
     </section>
+
+      <!-- 読み上げ専用のステータス行（ランクアップ等の演出は aria-hidden にして、文言はここに流す）。盤面の外に置く: プレイ前のホームで畳んだ盤面は inert なので、
+           中に置くと机に戻ったあとのランクアップの文などが読まれない（Batch 89） -->
+      <p id="srStatus" class="sr-only" role="status"></p>
 
       <!-- セッションの数字: 1行の静かなテキスト（正解 3 ・ 思い出せず 1 ・ 今日 20）。要素は残す -->
       <section class="stats stats--strip" aria-label="このセッションの数字" inert>
