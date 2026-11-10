@@ -22514,6 +22514,43 @@ console.log("learn modes (78.3):");
     const night = await runLand([568, 320], { theme: "dark" });
     check("78.3 横向き 568×320 夜: 同じく入る・横スクロール 0", before(night.g0) && after(night.g1) && before(night.g2) && night.errors.length === 0, JSON.stringify({ ...night, errors: night.errors[0] }));
   }
+
+  // (13) 夜の学ぶ盤面の灰色の字（Batch 89 A7。css/room.css の夜の #gameCard の --ink-3）: 紙（--parchment）に重ね（--far-page）を載せた色の上で、
+  //      計算のコントラストが 4.7 以上（#word の案内の行 14px・#setProgress 12px の字。画素で測ると紙の模様で揺れるので計算で見る）。昼の値は前と同じ
+  {
+    const hexRgb = (s) => { const m = String(s).trim().match(/^#([0-9a-f]{6})$/i); return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null; };
+    const rgbaOf = (s) => { const m = String(s).match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(",").map((x) => Number(x.trim())); return { rgb: p.slice(0, 3), a: p[3] ?? 1 }; };
+    const lin = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const lum = (rgb) => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    // 回の盤面を 1 つ開き、data-theme を切り替えて盤面（#gameCard）の値を読む（藍は Pro のテーマなので保存値では開けない。8.9 の 4 テーマの比と同じ読み方）
+    const page = await learnPage({});
+    await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const vals = await page.evaluate(() => {
+      const was = document.documentElement.dataset.theme;
+      const out = {};
+      for (const t of ["light", "dark", "indigo"]) {
+        document.documentElement.dataset.theme = t;
+        const cs = getComputedStyle(document.getElementById("gameCard"));
+        out[t] = { ink3: cs.getPropertyValue("--ink-3").trim(), parchment: cs.getPropertyValue("--parchment").trim(), far: cs.getPropertyValue("--far-page").trim(), playing: document.body.classList.contains("home--playing") };
+      }
+      document.documentElement.dataset.theme = was;
+      return out;
+    });
+    const rows = {};
+    for (const [t, v] of Object.entries(vals)) {
+      const ink = hexRgb(v.ink3);
+      const paper = hexRgb(v.parchment);
+      const far = rgbaOf(v.far) ?? { rgb: [0, 0, 0], a: 0 };
+      const bg = paper ? paper.map((c, i) => c * (1 - far.a) + far.rgb[i] * far.a) : null;
+      rows[t] = { ...v, ratio: ink && bg ? Math.round(ratio(ink, bg) * 100) / 100 : null };
+    }
+    check("78.3 夜の盤面（黒・藍）: --ink-3 の字と紙（--parchment に --far-page を重ねた色）の計算のコントラストが 4.7 以上",
+      ["dark", "indigo"].every((t) => rows[t].playing && rows[t].ratio >= 4.7), JSON.stringify(rows));
+    check("78.3 昼の盤面の --ink-3 は前と同じ値（#5E5040）・エラー 0", rows.light.ink3.toUpperCase() === "#5E5040" && page.errors.length === 0, JSON.stringify({ light: rows.light, err: page.errors[0] ?? "" }));
+    await page.context().close();
+  }
 }
 
 // ===== 78.7 人ごとの保存の領域（Batch 78-7 内部の 1。js/areaGuard.js・js/areaSwitch.js・js/areaStore.js・switch.html。docs/SPEC_ACCOUNT_AREAS.md §1〜§4・§8）: 旧い形の端末の移行（記録と 3 状態はそのまま・旧い本体は localStorage に残らない・移行の前の控えは IndexedDB）・localStorage の各利用形式が領域の鍵へ・Service Worker 無効・切り替えの途中でタブを閉じても直る・展開の途中で満杯なら部分的に有効にしない・退避できなければ切り替えない・使えないブラウザは共用に戻さず止める・満杯で止める時の遅れた値を失わない・満杯の端末で本物の認証の部品がセッションをメモリーだけに置かない。内部の 2: ゲスト → A（はい・いいえ）・ログアウト・A → B → A・複数タブ・予行と退避の失敗・オフラインのログアウト・バックアップの持ち主 =====
