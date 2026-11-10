@@ -21215,6 +21215,68 @@ console.log("home and old URLs (78.6):");
     await closeCtx(page);
   }
 
+  // (1b) 初めての人の試しの 3 語（Batch 89 A3。js/welcome.js setupDemo・index.html #welcomeDemoInput・#welcomeDemoMsg）: キーボードだけで 3 語を終えると、焦点は「英単語を学ぶ」
+  //      （輪が見える。止めた入力欄から BODY に落ちない）・次の Tab はフッターへ飛ばない。入力欄の読み上げの説明に問い（りんご・学校）が入り、
+  //      正解の知らせと答えを見たときの文は #welcomeDemoMsg（role=status）に出る。指の端末（鍵盤）では、3 語の後に鍵盤を出す欄へ焦点を戻さず、画面も動かさない
+  {
+    const page = await homePage({}, { fresh: true });
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    const said = () => page.evaluate(() => [...document.querySelectorAll('#welcome [role="status"]')].map((el) => el.textContent.trim()).join(" "));
+    const described = () => page.evaluate(() => {
+      const ids = (document.getElementById("welcomeDemoInput").getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+      return { ids, text: ids.map((id) => document.getElementById(id)?.textContent.trim() ?? "").join(" ") };
+    });
+    const demoJa = async () => (await page.textContent("#welcomeDemoJa")).trim();
+    const a = { reached: await tabTo(page, "#welcomeDemoInput"), role: await page.getAttribute("#welcomeDemoMsg", "role"), d1: await described() };
+    for (const ch of "apple") await page.keyboard.press(ch);
+    await waitUntil(async () => (await said()).includes("思い出せた"), 2000);
+    a.ok = await said();
+    await waitUntil(async () => (await demoJa()) === "学校", 3000);
+    a.d2 = (await described()).text;
+    await page.keyboard.press("Enter");
+    await waitUntil(async () => (await said()).includes("school"), 2000);
+    a.reveal = await said();
+    for (const ch of "school") await page.keyboard.press(ch);
+    await waitUntil(async () => (await demoJa()) === "交渉する", 3000);
+    for (const ch of "negotiate") await page.keyboard.press(ch);
+    await waitUntil(async () => (await demoJa()) === "できた", 3000);
+    await page.waitForTimeout(150);
+    const f = await page.evaluate(() => {
+      const el = document.activeElement;
+      return { tag: el?.tagName, start: !!el?.matches?.("#welcome .welcome__start"), ring: !!el?.matches?.(":focus-visible") && getComputedStyle(el).outlineStyle !== "none", inputOff: document.getElementById("welcomeDemoInput").disabled };
+    });
+    await page.keyboard.press("Tab");
+    f.next = await page.evaluate(() => { const el = document.activeElement; return { tag: el?.tagName, id: el?.id ?? "", footer: !!el?.closest?.("footer") }; });
+    check("78.6 初めての人の試し（キーボードだけ）: #welcomeDemoMsg は role=status・入力欄の aria-describedby に問い（#welcomeDemoJa）と知らせ（#welcomeDemoMsg）。読み上げの説明に りんご → 次の語で 学校",
+      a.reached && a.role === "status" && a.d1.ids.includes("welcomeDemoJa") && a.d1.ids.includes("welcomeDemoMsg") && a.d1.text.includes("りんご") && a.d2.includes("学校"), JSON.stringify(a));
+    check("78.6 初めての人の試し（キーボードだけ）: 正解の知らせ（思い出せた）と Enter で答えを見たときの文（school）が role=status の領域に出る", a.ok.includes("思い出せた") && a.reveal.includes("school"), JSON.stringify({ ok: a.ok, reveal: a.reveal }));
+    check("78.6 初めての人の試し（キーボードだけ）: 3 語を終えると焦点は「英単語を学ぶ」（BODY に落ちない・焦点の輪が見える）・次の Tab はフッターへ飛ばない",
+      f.inputOff && f.start && f.tag !== "BODY" && f.ring && !f.next.footer && f.next.tag !== "BODY", JSON.stringify(f));
+    check("78.6 初めての人の試し（キーボードだけ）: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+
+    // 指の端末: 入力欄を指で選び、鍵盤の入力（input イベント）で 3 語。終わった後に鍵盤を出す欄へ焦点は無く、画面は動かない
+    const touch = await homePage({}, { fresh: true, mobile: true, viewport: { width: 390, height: 844 } });
+    await touch.goto(BASE + "/", { waitUntil: "networkidle" });
+    await touch.tap("#welcomeDemoInput");
+    const typeWord = async (word) => {
+      await touch.evaluate((w) => { const el = document.getElementById("welcomeDemoInput"); el.value = w; el.dispatchEvent(new Event("input", { bubbles: true })); }, word);
+    };
+    const touchJa = async () => (await touch.textContent("#welcomeDemoJa")).trim();
+    await typeWord("apple");
+    await waitUntil(async () => (await touchJa()) === "学校", 3000);
+    await typeWord("school");
+    await waitUntil(async () => (await touchJa()) === "交渉する", 3000);
+    const y0 = await touch.evaluate(() => Math.round(scrollY));
+    await typeWord("negotiate");
+    await waitUntil(async () => (await touchJa()) === "できた", 3000);
+    await touch.waitForTimeout(150);
+    const t = await touch.evaluate(() => { const el = document.activeElement; return { tag: el?.tagName, type: el?.type ?? null, editable: !!el?.matches?.("input:not([type=button]):not([type=submit]), textarea, [contenteditable]"), y: Math.round(scrollY) }; });
+    t.y0 = y0;
+    check("78.6 初めての人の試し（指の端末）: 3 語の後に鍵盤を出す欄へ焦点は無く（入力欄は止まる）、画面は動かない・エラー 0", !t.editable && t.y === t.y0 && touch.errors.length === 0, JSON.stringify({ ...t, err: touch.errors[0] ?? "" }));
+    await closeCtx(touch);
+  }
+
   // (2) 戻ってきた人: ホームは「英単語を学ぶ」1 つと 覚えた N ／総数・ランク・学習状況へ。あやふやの今日の分があれば あやふや（何も選んでいないときの Enter で始まる）
   {
     const learned = vocab.order.slice(0, 130); // 覚えた 130 語（よちよち 120 の上）
