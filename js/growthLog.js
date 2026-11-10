@@ -1,7 +1,7 @@
 import { localDateString } from "./stats.js";
 import { touchItem } from "./userItemsSync.js";
 import { getWordStats, learnStateSource } from "./storage.js";
-import { learnStateOf, LEARN_LEARNED, LEARN_NEW } from "./learnState.js";
+import { countLearnStates, learnStateOf, LEARN_LEARNED, LEARN_NEW } from "./learnState.js";
 import { dayNoOf, ymdOfDayNo } from "./retentionCalc.js";
 
 // ===== 成長ログ =====
@@ -290,4 +290,131 @@ export function getLearnedSeries(days = 30) {
   }
   // 先頭の欠損は、窓より前に実測が無い限り null のまま（最初の実測値より前）
   return series;
+}
+
+// ===== 覚えた の増え（Batch 90。学習状況の詳しい記録の週間レポート・今月の行・推移・カレンダー） =====
+// 数は core（学習状況の最初の画面と同じ 覚えた）。数え始める前の行（core の無い行）は読まない。端末ごとの数（3 状態は端末ごと）。
+// 増えは差（正味）で、0 より小さければ 0。null は「分からない」（画面は「–」か語数を出さない）
+
+const hasCore = (e) => Number.isInteger(e?.core);
+
+// 読み手の行: 日付の順（同期で足した行・端末の時刻帯が西へ戻った日の行の並びに頼らない）。core と cb のある行に「今の 前からの 覚えた − 行の cb」を
+// 正でも負でも足して読む（core0 にも。保存は変えない）。埋め・移行で増えた 覚えた は前からの 覚えた にも同じだけ入るので、どの 2 つの日の差にも入らない。
+// 今の 前からの 覚えた は、表が読めていれば数え、読めていなければ cb のある最後の行の値（その行の差は 0）
+function coreLog() {
+  const log = getGrowthLog()
+    .filter((e) => e && typeof e === "object" && typeof e.date === "string")
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  if (!log.some((e) => Number.isInteger(e.cb))) return log;
+  const src = learnStateSource();
+  let base = src ? tallyCore(getWordStats(), src).base : null;
+  for (let i = log.length - 1; i >= 0 && base === null; i--) if (Number.isInteger(log[i].cb)) base = log[i].cb;
+  return log.map((e) => {
+    const lift = hasCore(e) && Number.isInteger(e.cb) ? base - e.cb : 0;
+    return lift !== 0 ? { ...e, core: e.core + lift, ...(Number.isInteger(e.core0) ? { core0: e.core0 + lift } : {}) } : e;
+  });
+}
+
+// 今の 覚えた（学習状況と同じ）。表が読めていなければ今日までで最後の core。どちらも無ければ null
+export function getCoreNow() {
+  const src = learnStateSource();
+  if (src) return countLearnStates(getWordStats(), src.vocab, src.pending).learned;
+  const today = localDateString();
+  const log = coreLog();
+  for (let i = log.length - 1; i >= 0; i--) if (log[i].date <= today && hasCore(log[i])) return log[i].core;
+  return null;
+}
+
+// key の日の終わりの 覚えた: key 以前で最後の core の行。無ければ、この端末で数え始めた行の core0（その日の始まり）。
+// 窓の中で数え始めた日より前に core の無い学習した日がある（ほかの端末から届いた日・数えない日）なら null
+function coreAt(log, key) {
+  let base = null;
+  for (const e of log) {
+    if (e.date > key) break;
+    if (hasCore(e)) base = e;
+  }
+  if (base) return base.core;
+  const first = log.find(hasCore);
+  if (!first) return null;
+  if (log.some((e) => e.active && !hasCore(e) && e.date > key && e.date < first.date)) return null;
+  if (Number.isInteger(first.core0)) return first.core0;
+  return log.some((e) => e.date < first.date) ? null : first.core;
+}
+
+// 7 日の増え（null = 分からない「–」）。endOffset = 1 なら昨日までの 7 日（今日まだ学んでいない朝の週間レポート）。
+// 窓の中に数えない学習した日（active で core が null の行）が 1 日でもあれば null
+export function getCoreDelta7(endOffset = 0) {
+  const log = coreLog();
+  if (log.length === 0) return 0;
+  const key7 = dateKeyDaysAgo(7 + endOffset);
+  const end7 = dateKeyDaysAgo(endOffset);
+  if (log.some((e) => e.active && e.core === null && e.date > key7 && e.date <= end7)) return null;
+  const base = coreAt(log, key7);
+  if (base === null) return null;
+  let current = null;
+  if (endOffset > 0) {
+    for (const e of log) {
+      if (e.date > end7) break;
+      if (hasCore(e)) current = e.core;
+    }
+  }
+  current ??= getCoreNow();
+  if (current === null) return null;
+  return Math.max(0, current - base);
+}
+
+// 今月の増え（null = 分からない: 項目を出さない）。起点は今月より前で最後の core の行（月の初日の増えも数える。Batch 89 の今月の行と同じ）。
+// 無ければこの端末で数え始めた行の core0。今月に数えない学習した日があれば null
+export function getCoreMonthDelta(now = new Date()) {
+  const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const ym = first.slice(0, 7);
+  const log = coreLog();
+  const inMonth = log.filter((e) => e.date.startsWith(ym));
+  if (inMonth.length === 0) return 0;
+  if (inMonth.some((e) => e.active && e.core === null)) return null;
+  let base = null;
+  for (const e of log) if (e.date < first && hasCore(e)) base = e.core;
+  if (base === null) {
+    const head = log.find(hasCore);
+    if (!head) return null;
+    if (log.some((e) => e.active && !hasCore(e) && e.date >= first && e.date < head.date)) return null;
+    if (Number.isInteger(head.core0)) base = head.core0;
+    else if (log.some((e) => e.date < head.date)) return null;
+    else base = head.core;
+  }
+  const current = getCoreNow();
+  return current === null ? null : Math.max(0, current - base);
+}
+
+// N 日の系列（推移。窓より前で最後の core から埋める〔Batch 89 と同じ起点〕・core の無い日は前の値・最初の core より前は null）。
+// 今日の点は今の 覚えた（学習状況と同じ数で終わる）
+export function getCoreSeries(days = 30) {
+  const log = coreLog();
+  const byDate = new Map(log.map((e) => [e.date, e]));
+  const startKey = dateKeyDaysAgo(days - 1);
+  let last = null;
+  for (const e of log) if (e.date < startKey && hasCore(e)) last = e.core;
+  const series = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const key = dateKeyDaysAgo(i);
+    const row = byDate.get(key);
+    if (hasCore(row)) last = row.core;
+    series.push({ date: key, learned: last, active: !!row?.active });
+  }
+  const end = series.at(-1);
+  if (end && end.learned !== null) end.learned = getCoreNow() ?? end.learned;
+  return series;
+}
+
+// カレンダー: 学習した日 → その日に増えた 覚えた（前の core の行との差。数え始めた行は core0 から。分からない日は null。0 未満は 0）
+export function getCoreDayGains() {
+  const out = new Map();
+  let prev = null;
+  for (const e of coreLog()) {
+    const has = hasCore(e);
+    if (has && prev === null && Number.isInteger(e.core0)) prev = e.core0;
+    if (e.active) out.set(e.date, { gained: has && prev !== null ? Math.max(0, e.core - prev) : null });
+    if (has) prev = e.core;
+  }
+  return out;
 }
