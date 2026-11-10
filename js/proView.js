@@ -414,7 +414,7 @@ function maybeResume(plan) {
 function unlockedItems() {
   const items = [
     { label: `マイ単語帳 ${fmtCount(MY_PRO_LIMIT)}語まで`, href: "./mywords.html" },
-    { label: `思い出せるようになった語の推移 ${fmtCount(TREND_DAYS.pro)}日`, href: "./stats.html#growth" },
+    { label: `覚えた語の推移 ${fmtCount(TREND_DAYS.pro)}日`, href: "./stats.html#growth" },
     { label: "テーマ 紙・藍", href: "./profile.html#appearance" }
   ];
   const ai = Number(config?.ai?.explain?.pro);
