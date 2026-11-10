@@ -210,8 +210,10 @@ export class UiState {
   setSearch(q: string): void {
     if (this.search === q) return;
     this.search = q;
-    this.emitter.emit("search", q);
+    // 先に「見え方が変わった」を知らせて当たりを計算し直させてから、検索欄（件数・候補）に知らせる。
+    // 逆の順だと、検索欄が 1 つ前の言葉の当たりを出す（貼り付けると「0 件・見つかりません」になる）
     this.emitter.emit("visual", undefined);
+    this.emitter.emit("search", q);
   }
 
   // ---- カメラ（ドキュメントごと）

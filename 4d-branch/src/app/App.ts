@@ -1,5 +1,6 @@
 // 画面の組み立てと配線: 5 つの領域・ショートカット・右クリック・取り込み・保存の出来事
 
+import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import { CanvasView, type Hit } from "../canvas/CanvasView";
 import { InlineEditor } from "../canvas/inlineEditor";
 import { Interaction } from "../canvas/interaction";
@@ -748,7 +749,7 @@ export class App implements AppContext {
     void this.refreshLastBackup();
   }
 
-  /** やりたいことリスト（2,000 件）を、確かめてから読み込む */
+  /** やりたいことリストを、確かめてから読み込む */
   loadWishlist(): void {
     if (this.store.readOnly) return;
     if (!this.ui.prefs.wishlistOffered) this.ui.setPrefs({ wishlistOffered: true });
@@ -765,7 +766,7 @@ export class App implements AppContext {
     const show = (): void => {
       if (this.store.readOnly || this.ui.prefs.wishlistOffered || this.ui.storedPrefs().wishlistOffered) return;
       this.ui.setPrefs({ wishlistOffered: true });
-      toast("やりたいことリスト（2,000 件）を用意しました。メニューからいつでも読み込めます", { action: { label: "見る", run: () => this.loadWishlist() }, ms: 15000 });
+      toast(`やりたいことリスト（${WISHLIST_SIZE_LABEL} 件）を用意しました。メニューからいつでも読み込めます`, { action: { label: "見る", run: () => this.loadWishlist() }, ms: 15000 });
     };
     setTimeout(() => {
       if (!this.store.readOnly) return show();

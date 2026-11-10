@@ -1,4 +1,4 @@
-// やりたいことリスト（2,000 件）を 4D Branch の文書に組み立てる。
+// やりたいことリスト（3,000 件）を 4D Branch の文書に組み立てる。
 // 領域（プロジェクト）→ テーマ（見出し）→ やりたいこと の順に左から右へつなぎ、分岐（選択肢）と領域をまたぐつながりを足す。
 // 並べ方: 横 = 時間の見通し（左 = 今すぐ、右 = いつか）、縦 = 領域の帯の中にテーマの段を重ねる
 
@@ -39,7 +39,10 @@ export interface WishData {
   links: WishLink[];
 }
 
-export const WISHLIST_TITLE = "やりたいことリスト 2,000";
+/** 同梱のやりたいことの件数（画面の文言に使う。データの件数と同じことを単体テストで確かめる） */
+export const WISHLIST_SIZE = 3000;
+export const WISHLIST_SIZE_LABEL = WISHLIST_SIZE.toLocaleString("ja-JP");
+export const WISHLIST_TITLE = `やりたいことリスト ${WISHLIST_SIZE_LABEL}`;
 
 const HORIZONS: Horizon[] = ["now", "y1", "y3", "y5", "y10"];
 /** 時間の見通しの言葉（ハブの本文・ヘルプ用） */

@@ -19,6 +19,8 @@ const HORIZONS = [
 const TYPE = { action: "行動", goal: "目標", result: "結果" };
 const SCEN = { base: "両立（基本）", early: "早期独立", focus: "SpellDash集中" };
 const REL = { supports: "相乗効果", condition: "条件", blocks: "阻害", feedback: "循環" };
+/** 行動の 1 つ目のタグに付く所要時間（一覧では種類の横に出す） */
+const EFFORT = new Set(["15分", "1時間", "半日", "1日", "1週間", "1か月", "3か月+"]);
 
 const titleOf = new Map();
 const areaOf = new Map();
@@ -44,8 +46,9 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 const index = [];
 index.push(`# やりたいことリスト ${count.toLocaleString("ja-JP")}`);
 index.push("");
-index.push(`> 4D Branch のメニュー「やりたいことリスト（2,000）を読み込む…」で地図として読み込めるデータの一覧です（\`node scripts/wishlist-md.mjs\` で \`src/demo/wishlist-data.json\` から作り直せます）。`);
+index.push(`> 4D Branch のメニュー「やりたいことリスト（${count.toLocaleString("ja-JP")}）を読み込む…」で地図として読み込めるデータの一覧です（\`node scripts/wishlist-md.mjs\` で \`src/demo/wishlist-data.json\` から作り直せます）。`);
 index.push(`> ${data.areas.length} の領域・${themes} のテーマ・やりたいこと ${count.toLocaleString("ja-JP")} 件・分岐 ${branches} 個・領域をまたぐつながり ${data.links.length} 本。`);
+index.push("> 仕事の 3 領域の行動には所要時間を「[行動・1時間]」のように付けています（アプリでは `#1時間` のように検索すると、今ある時間でできることが並びます）。各テーマの「判断ルール」「判断ライン」は、続ける・やめる・受ける・断るを数字で決めるための線です。");
 index.push("");
 index.push("| 領域 | 件数 | テーマ |");
 index.push("| --- | ---: | --- |");
@@ -74,7 +77,8 @@ data.areas.forEach((a, i) => {
       for (const it of items) {
         const after = it[6].length ? `（先に: ${it[6].map((x) => titleOf.get(x) ?? x).join("、")}）` : "";
         const cond = it[7].length ? ` 目安: ${it[7].join("／")}` : "";
-        out.push(`- [${TYPE[it[1]]}] **${esc(it[2])}** — ${esc(it[3])}${cond}${after}`);
+        const effort = it[1] === "action" && EFFORT.has(it[5][0]) ? `・${it[5][0]}` : "";
+        out.push(`- [${TYPE[it[1]]}${effort}] **${esc(it[2])}** — ${esc(it[3])}${cond}${after}`);
       }
     }
     if (t.branches.length) {

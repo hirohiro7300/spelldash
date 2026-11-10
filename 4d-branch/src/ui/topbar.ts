@@ -1,5 +1,6 @@
 // 上部: 表示切替・検索・編集ツール・保存状態・メニュー
 
+import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import type { AppContext } from "../app/context";
 import { NODE_TYPES, NODE_TYPE_ORDER } from "../model/constants";
 import { formatDate } from "../model/dates";
@@ -187,7 +188,7 @@ function mainMenu(app: AppContext): MenuEntry[] {
     "sep",
     { header: "ドキュメント" },
     { label: "名前を変更…", icon: "tag", disabled: ro, run: () => app.renameDoc() },
-    { label: "やりたいことリスト（2,000）を読み込む…", icon: "goal", disabled: ro, run: () => app.loadWishlist() },
+    { label: `やりたいことリスト（${WISHLIST_SIZE_LABEL}）を読み込む…`, icon: "goal", disabled: ro, run: () => app.loadWishlist() },
     { label: "デモを読み込む（置き換え）", icon: "sparkle", disabled: ro, run: () => void app.loadDemo() },
     { label: "空のドキュメントにする", icon: "reset", disabled: ro, run: () => void app.newEmptyDoc() },
     "sep",

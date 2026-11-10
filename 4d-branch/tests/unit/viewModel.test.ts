@@ -126,6 +126,27 @@ describe("経路の強調", () => {
   });
 });
 
+describe("検索", () => {
+  it("検索の言葉が変わったと聞いた時点で、当たりはもう新しい言葉のもの（検索欄が 1 つ前の当たりを出さない）", () => {
+    const doc = graph("a>b, b>c");
+    doc.nodes.a = { ...doc.nodes.a!, title: "広告の計測", tags: ["1時間"] };
+    doc.nodes.b = { ...doc.nodes.b!, title: "英単語", tags: ["1日"] };
+    const { ui, vm } = setup(doc);
+    vm.ensure();
+    // 地図は「見え方が変わった」たびに描き直す（そのたびに計算し直しが済む）。アプリでは打つたびにこうなる
+    ui.on("visual", () => vm.ensure());
+    const seen: string[][] = [];
+    ui.on("search", () => {
+      vm.ensure();
+      seen.push(vm.searchHits.map((h) => h.id));
+    });
+    ui.setSearch("#1時間");
+    ui.setSearch("英単語");
+    ui.setSearch("");
+    expect(seen).toEqual([["a"], ["b"], []]);
+  });
+});
+
 describe("お知らせの「元に戻す」", () => {
   it("そのお知らせの操作がまだいちばん上にあるときだけ戻す（あとの別の操作を代わりに戻さない）", () => {
     const { store, cmd, toasts } = setup(graph("a>b, c>d"));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDemoDoc } from "../../src/demo/demo";
-import { buildWishlistDoc, countWishes, type WishData, type WishItem } from "../../src/demo/wishlist";
+import { WISHLIST_SIZE, buildWishlistDoc, countWishes, type WishData, type WishItem } from "../../src/demo/wishlist";
 import { buildWishlist, wishlistData } from "../../src/demo/wishlistBundle";
 import { normalizeDoc } from "../../src/model/schema";
 import { mergeDocs } from "../../src/persist/io";
@@ -181,8 +181,8 @@ describe("やりたいことリストの組み立て", () => {
 describe("同梱のやりたいことリスト", () => {
   const data = wishlistData();
 
-  it("やりたいことはちょうど 2,000 件、12 の領域・100 を超えるテーマ", () => {
-    expect(countWishes(data)).toBe(2000);
+  it(`やりたいことはちょうど ${WISHLIST_SIZE.toLocaleString("ja-JP")} 件（画面の文言と同じ）、12 の領域・100 を超えるテーマ`, () => {
+    expect(countWishes(data)).toBe(WISHLIST_SIZE);
     expect(data.areas.length).toBe(12);
     expect(data.areas.reduce((n, a) => n + a.themes.length, 0)).toBeGreaterThanOrEqual(100);
   });
@@ -215,7 +215,7 @@ describe("同梱のやりたいことリスト", () => {
     }
   });
 
-  it("タイトルは空でなく短く、同じタイトルが二度出ない。本文・タグがあり、テーマごとに分岐が 1〜3 個", () => {
+  it("タイトルは空でなく短く、同じタイトルが二度出ない。本文・タグがあり、テーマごとに分岐が 1〜8 個", () => {
     const items = data.areas.flatMap((a) => a.themes.flatMap((t) => t.items));
     for (const it of items) {
       expect(it[2].trim().length, it[0]).toBeGreaterThan(0);
@@ -228,14 +228,28 @@ describe("同梱のやりたいことリスト", () => {
     for (const a of data.areas)
       for (const t of a.themes) {
         expect(t.branches.length, t.key).toBeGreaterThanOrEqual(1);
-        expect(t.branches.length, t.key).toBeLessThanOrEqual(3);
+        expect(t.branches.length, t.key).toBeLessThanOrEqual(8);
       }
+  });
+
+  it("仕事の 3 領域に足した行動には、1 つ目のタグに所要時間が付く（今ある時間で探せる）", () => {
+    const EFFORT = ["15分", "1時間", "半日", "1日", "1週間", "1か月", "3か月+"];
+    let n = 0;
+    for (const a of data.areas.filter((x) => ["spell", "fc", "ind"].includes(x.key)))
+      for (const t of a.themes)
+        for (const it of t.items) {
+          const added = /-d\d{2}$/.test(it[0]) || /-(rules|week|line|deal)-\d{2}$/.test(it[0]);
+          if (!added || it[1] !== "action") continue;
+          expect(EFFORT, `${it[0]} ${it[5].join(",")}`).toContain(it[5][0]);
+          n++;
+        }
+    expect(n).toBeGreaterThan(600);
   });
 
   it("組み立てて検証しても直すところが無く、すべてのノードが入口からたどれる", () => {
     const { pv, stats } = buildWishlist(TODAY);
     expect(pv.report.warnings).toEqual([]);
-    expect(stats.wishes).toBe(2000);
+    expect(stats.wishes).toBe(WISHLIST_SIZE);
     const all = Object.values(pv.doc.nodes);
     const roots = all.filter((n) => n.id.startsWith("n_w_root_")).map((n) => n.id);
     expect(reachable(pv.doc, roots).size).toBe(all.length);

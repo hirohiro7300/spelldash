@@ -4,6 +4,7 @@ import type { AppContext, LoadOpts } from "../app/context";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER } from "../model/constants";
 import { DocFormatError } from "../model/schema";
 import type { DocData } from "../model/types";
+import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import { buildWishlist } from "../demo/wishlistBundle";
 import { previewImport, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
@@ -234,7 +235,7 @@ function openImportPreview(app: AppContext, pv: ImportPreview, o: ImportPreviewO
 /** 確かめの画面を開いている間は、もう 1 枚開かない（メニューとお知らせの両方から開ける） */
 let wishlistOpen = false;
 
-/** やりたいことリスト（2,000 件）を読み込む前の確認。組み立てに失敗したら、そう伝えて閉じる */
+/** やりたいことリストを読み込む前の確認。組み立てに失敗したら、そう伝えて閉じる */
 export function openWishlistDialog(app: AppContext): void {
   if (wishlistOpen) return;
   let built: ReturnType<typeof buildWishlist>;
@@ -257,6 +258,7 @@ export function openWishlistDialog(app: AppContext): void {
       h("li", null, h("b", null, "横"), "は時間の見通し（左 = 今すぐ、右 = いつか）。期限は今日から 10 年先までに散らしてあります。"),
       h("li", null, h("b", null, "縦"), "は領域ごとの帯。左のプロジェクトを押すと、その領域に寄ります。"),
       h("li", null, h("b", null, "分岐"), "は「どちらを選ぶか」の分かれ道。仕事の道筋に関わるものはシナリオ（両立・早期独立・SpellDash集中）に結んであります。"),
+      h("li", null, h("b", null, "仕事"), "の 3 領域には、すぐ動ける作業と判断の線（数値の基準）を足してあります。行動には所要時間のタグ（#15分 〜 #3か月+）があり、検索すると今ある時間でできることを探せます。"),
       h("li", null, h("b", null, "リスト"), "表示（上の「リスト」）は期限の順に並ぶので、今すぐできることから見られます。"),
     ),
   );
@@ -356,7 +358,7 @@ export function openWelcome(app: AppContext): void {
     h("p", { class: "welcome-lead" }, "目標・行動・分岐・結果をノードとしてつなぎ、", h("b", null, "未来の分岐"), "を見える化するメモ帳です。プロジェクトをまたいで、1 つの行動が複数の目標に効く様子を描けます。"),
     types,
     h("div", { class: "welcome-demo" }, icon("sparkle", 16), h("div", null, h("b", null, "デモを開いています: "), "「SpellDash事業」「FCマーケティングでの業務」「広告運用事業での独立」の 3 つが、「広告運用を学ぶ」などの共通のノードでつながっています。")),
-    h("div", { class: "welcome-demo" }, icon("goal", 16), h("div", null, h("b", null, "やりたいことリスト: "), "仕事・学び・お金・健康・旅などのやりたいこと 2,000 件と、そこから分かれる道を、メニュー（右上の ⋯）からいつでも読み込めます。")),
+    h("div", { class: "welcome-demo" }, icon("goal", 16), h("div", null, h("b", null, "やりたいことリスト: "), `仕事・学び・お金・健康・旅などのやりたいこと ${WISHLIST_SIZE_LABEL} 件と、そこから分かれる道を、メニュー（右上の ⋯）からいつでも読み込めます。`)),
     h(
       "p",
       { class: "muted small" },

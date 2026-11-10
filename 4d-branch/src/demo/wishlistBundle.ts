@@ -1,5 +1,5 @@
 // アプリに同梱する「やりたいことリスト」。データは文字列のまま持ち、読み込むときに初めて解釈する
-// （起動のたびに 2,000 件ぶんのオブジェクトを作らない）
+// （起動のたびに 3,000 件ぶんのオブジェクトを作らない）
 
 import { docCounts, normalizeDoc } from "../model/schema";
 import type { ImportPreview } from "../persist/io";

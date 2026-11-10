@@ -400,6 +400,26 @@ async function main() {
     await page.keyboard.press("Escape");
   });
 
+  await check("検索: 貼り付けで一度に入れても、件数と候補はその言葉の当たり（1 つ前の言葉の当たりを出さない）", async () => {
+    await page.keyboard.press("Control+k");
+    const read = () =>
+      page.evaluate(() => ({
+        count: document.querySelector(".search-count")?.textContent,
+        rows: document.querySelectorAll(".search-row").length,
+        empty: !!document.querySelector(".search-empty"),
+        hits: window.__fourD.app.vm.searchHits.length,
+      }));
+    await page.locator(".search-input").fill("ポートフォリオ");
+    const a = await read();
+    assert(a.hits > 0 && a.count === `${a.hits} 件` && a.rows === Math.min(50, a.hits) && !a.empty, `貼り付け: ${JSON.stringify(a)}`);
+    // 別の言葉に入れ替えても、前の言葉の当たりが残らない
+    await page.locator(".search-input").fill("存在しない言葉ぴよ");
+    const b = await read();
+    assert(b.hits === 0 && b.count === "0 件" && b.rows === 0 && b.empty, `入れ替え: ${JSON.stringify(b)}`);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+  });
+
   await check("折りたたみ: C で下流が隠れ、もう一度で戻る（合流先は残る）", async () => {
     await page.evaluate(() => window.__fourD.ui.select(["n_demo_learn_ads"]));
     await page.locator(".graph-canvas").focus();
@@ -1225,25 +1245,25 @@ async function main() {
     assert((await offerToast().count()) === 0, "ようこそを見た人にもお知らせが出た");
   });
 
-  await check("やりたいことリスト: メニューから確かめて読み込み（置き換え）、2,000 件が地図に出て、滑らかに動き、元に戻せる", async () => {
+  await check("やりたいことリスト: メニューから確かめて読み込み（置き換え）、3,000 件が地図に出て、滑らかに動き、元に戻せる", async () => {
     const before = await state(lp);
     await lp.getByRole("button", { name: "メニュー", exact: true }).click();
     await lp.getByRole("menuitem", { name: /やりたいことリスト/ }).click();
     const dlg = lp.getByRole("dialog", { name: "やりたいことリストを読み込む" });
     await dlg.waitFor();
     const shown = await dlg.locator(".stat-value").first().textContent();
-    assert(shown === "2,000", `やりたいことの件数の表示: ${shown}`);
+    assert(shown === "3,000", `やりたいことの件数の表示: ${shown}`);
     await shot("e2e-10-wishlist-dialog", lp);
     await dlg.locator(".radio-card", { hasText: "置き換える" }).click();
     await dlg.getByRole("button", { name: "読み込む" }).click();
-    await lp.waitForFunction(() => Object.keys(window.__fourD.store.doc.nodes).length > 2000);
+    await lp.waitForFunction(() => Object.keys(window.__fourD.store.doc.nodes).length > 3000);
     const s = await lp.evaluate(() => {
       const d = window.__fourD.store.doc;
       const all = Object.values(d.nodes);
       const wishes = all.filter((n) => n.id.startsWith("n_w_") && !/^n_w_(root|hub)_/.test(n.id) && n.type !== "branch");
       return { wishes: wishes.length, branches: all.filter((n) => n.type === "branch").length, projects: d.projectOrder.length, title: d.title, sel: window.__fourD.ui.selection.nodes.size };
     });
-    assert(s.wishes === 2000, `やりたいこと ${s.wishes}`);
+    assert(s.wishes === 3000, `やりたいこと ${s.wishes}`);
     assert(s.branches >= 100, `分岐 ${s.branches}`);
     assert(s.projects === 12, `領域 ${s.projects}`);
     assert(s.sel === 0, `置き換えた後に選択が残っている: ${s.sel}`);
@@ -1311,6 +1331,19 @@ async function main() {
     assert(focus.inView >= focus.ids * 0.9, `旅・体験の大半が画面の外: ${focus.inView}/${focus.ids}`);
     await shot("e2e-12-wishlist-travel", lp);
     await lp.locator(".side-row", { hasText: "旅・体験" }).click();
+    // 所要時間のタグで探せる（#1時間 を貼り付けると、その件数と候補がすぐ出る）
+    await lp.keyboard.press("Control+k");
+    await lp.locator(".search-input").fill("#1時間");
+    const hour = await lp.evaluate(() => ({
+      count: document.querySelector(".search-count")?.textContent,
+      rows: [...document.querySelectorAll(".search-row .search-title")].map((x) => x.textContent),
+      tagged: Object.values(window.__fourD.store.doc.nodes).filter((n) => n.tags.includes("1時間")).length,
+    }));
+    assert(hour.tagged > 100, `#1時間 のタグ ${hour.tagged} 件`);
+    assert(hour.count === `${hour.tagged} 件` && hour.rows.length === 50, `#1時間: ${hour.count}・候補 ${hour.rows.length}`);
+    await shot("e2e-13-wishlist-search-1h", lp);
+    await lp.keyboard.press("Escape");
+    await lp.keyboard.press("Escape");
     // 元に戻すと、読み込む前（デモ）に戻る
     await lp.locator(".graph-canvas").focus();
     await lp.keyboard.press("Control+z");
@@ -1324,12 +1357,12 @@ async function main() {
     const dlg = lp.getByRole("dialog", { name: "やりたいことリストを読み込む" });
     await dlg.waitFor();
     await dlg.getByRole("button", { name: "読み込む" }).click();
-    await lp.waitForFunction((n) => Object.keys(window.__fourD.store.doc.nodes).length > n + 2000, before.nodes);
+    await lp.waitForFunction((n) => Object.keys(window.__fourD.store.doc.nodes).length > n + 3000, before.nodes);
     const s = await lp.evaluate(() => ({ projects: window.__fourD.store.doc.projectOrder.length, scenarios: window.__fourD.store.doc.scenarioOrder.length, sel: window.__fourD.ui.selection.nodes.size, toast: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent).join(" / ") }));
     assert(s.sel === 0, `追加した分を全部選んでいる（Delete 1 回で消える）: ${s.sel}`);
     assert(s.projects === before.projects + 9, `プロジェクト ${before.projects} → ${s.projects}（事業 3 つはまとまるはず）`);
     assert(s.scenarios === before.scenarios, `シナリオ ${before.scenarios} → ${s.scenarios}`);
-    assert(/やりたいことリスト: ノード 2,\d{3} 件/.test(s.toast) && s.toast.includes("プロジェクト 3 件・シナリオ 3 件はまとめました"), `お知らせ: ${s.toast}`);
+    assert(/やりたいことリスト: ノード 3,\d{3} 件/.test(s.toast) && s.toast.includes("プロジェクト 3 件・シナリオ 3 件はまとめました"), `お知らせ: ${s.toast}`);
     await lp.locator(".graph-canvas").focus();
     await lp.keyboard.press("Control+z");
   });

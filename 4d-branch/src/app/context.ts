@@ -49,7 +49,7 @@ export interface AppContext {
   pickImport(): void;
   backupNow(): Promise<void>;
   loadDemo(): Promise<void>;
-  /** やりたいことリスト（2,000 件）を読み込む前の確認を開く */
+  /** やりたいことリストを読み込む前の確認を開く */
   loadWishlist(): void;
   newEmptyDoc(): Promise<void>;
   /** 文書を入れ替える（label は元に戻す・安全用バックアップの名前） */
