@@ -1608,7 +1608,7 @@ html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard
   --paper-3: var(--parchment-2);
   --ink: #2A2119;
   --ink-2: #4A3D30;
-  --ink-3: #5E5040;
+  --ink-3: #544738; /* 夜の紙（黒 #E2D5BA・藍 #DED4BE）は昼より暗いので、昼の #5E5040 より 1 段濃く。重ねの上で計算 5.2:1（Batch 89。E2E 78.3 (13)） */
   --ink-4: #8A7B66;
   --line: #C4B48E;
   --line-2: #9A8864;
