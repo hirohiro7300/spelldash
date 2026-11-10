@@ -12327,7 +12327,7 @@ console.log("learning quality:");
 
   // Batch 67 C2: ご意見の窓の殻と窓の中の読み上げの行（[data-sr-live]）は読み込みのときに置く（前は初めて開くときに作り、開いた直後の読み上げが
   // 「後から差し込んだ live 領域」に入っていた。読まない環境がある）。DOMContentLoaded の時点で窓の中に行があり、隠したまま（display: none・矩形 0）・
-  // どこにも inert が無い・ページの焦点の順に入らない。開いたあとの読み上げは、読み込みのときからあった同じ行に入る（書斎・単語帳・タイピング練習・設定）
+  // どこにも inert が無い（ホームで畳んだ盤面の inert は除く。Batch 89 A5）・ページの焦点の順に入らない。開いたあとの読み上げは、読み込みのときからあった同じ行に入る（書斎・単語帳・タイピング練習・設定）
   {
     const runs = {};
     for (const url of ["/index.html", "/list.html", "/typing.html", "/profile.html"]) {
@@ -12341,7 +12341,9 @@ console.log("learning quality:");
       await page.waitForTimeout(300);
       const idle = await page.evaluate(() => {
         const m = document.getElementById("feedbackModal");
-        return { ...window.__fbAtLoad, display: m ? getComputedStyle(m).display : null, rects: m ? m.getClientRects().length : null, inert: document.querySelectorAll("[inert]").length, modals: document.querySelectorAll("#feedbackModal").length };
+        // 英単語の学習に絞ったホームでプレイ前に畳んだ盤面（#gameCard と .stats--strip）は inert（Batch 89 A5）。窓が残した inert ではないので数えない
+        const folded = (el) => el.matches("#gameCard, .stats--strip") && !document.body.classList.contains("home--playing");
+        return { ...window.__fbAtLoad, display: m ? getComputedStyle(m).display : null, rects: m ? m.getClientRects().length : null, inert: [...document.querySelectorAll("[inert]")].filter((el) => !folded(el)).length, modals: document.querySelectorAll("#feedbackModal").length };
       });
       // Tab で 40 回進めても焦点は窓に入らない（隠した窓は焦点の順の外）
       let tabbedIn = false;
@@ -21350,6 +21352,7 @@ console.log("home and old URLs (78.6):");
 
   // (2b) プレイ前のホームの畳んだ盤面（Batch 89 A5。js/main.js showGame・index.html の #gameCard と .stats--strip）: 読み込み直後・ナビの「ホーム」の後・机に戻るの後で、
   //      Tab の列に見えない入力欄（#input と畳んだ盤面の中の部品）が無く、読み上げの木に「いまの問題」「このセッションの数字」が出ない。
+  //      ページの読み上げの行（#srStatus。js/ui.js announce）は畳んだ盤面の inert の中に無く、ホームで言った文が読まれる（机に戻ったあとのランクアップの文など）。
   //      「英単語を学ぶ」・何も選んでいないときの Enter・/?learn=new・机に戻った後のスタートのどれで始めても、焦点は #input に入り 1 語目を打てる
   {
     const learned = vocab.order.slice(0, 3);
@@ -21376,10 +21379,19 @@ console.log("home and old URLs (78.6):");
         await cdp.detach().catch(() => {});
       }
     };
+    // ページの読み上げ（js/ui.js announce。机に戻ったあとのランクアップの文など）が、畳んだ盤面の inert の中ではなく読まれる行に入るか
+    const sayHome = () => page.evaluate(async () => {
+      (await import("/js/ui.js")).announce("机に戻った");
+      const t0 = performance.now();
+      const lines = () => [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === "机に戻った");
+      while (!lines().length && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
+      const got = lines();
+      return { n: got.length, id: got[0]?.id ?? "", readable: got.length === 1 && !got[0].closest('[inert], [hidden], [aria-hidden="true"]') };
+    });
     const homeState = async (label) => {
       const walk = await tabWalk();
       const names = await axNames();
-      return { label, walk, card: names.includes("いまの問題"), strip: names.includes("このセッションの数字") };
+      return { label, walk, card: names.includes("いまの問題"), strip: names.includes("このセッションの数字"), said: await sayHome() };
     };
     // 始めた後: 焦点は #input・1 語目の頭の 1 文字を打つと打った字が出る
     const typedFirst = async () => {
@@ -21428,6 +21440,8 @@ console.log("home and old URLs (78.6):");
       rows.length === 3 && rows.every((r) => !r.walk.input && r.walk.folded.length === 0 && r.walk.end?.footer), JSON.stringify(rows.map((r) => ({ label: r.label, ...r.walk }))));
     check("78.6 プレイ前のホーム: 読み上げの木に「いまの問題」「このセッションの数字」が出ない（畳んだ盤面の古い数を読まない）",
       rows.every((r) => !r.card && !r.strip), JSON.stringify(rows.map((r) => ({ label: r.label, card: r.card, strip: r.strip }))));
+    check("78.6 プレイ前のホーム: ページの読み上げ（announce）は畳んだ盤面の inert の中ではない読まれる行に 1 つだけ入る（机に戻ったあとのランクアップの文も読まれる）",
+      rows.every((r) => r.said.n === 1 && r.said.readable), JSON.stringify(rows.map((r) => ({ label: r.label, ...r.said }))));
     check("78.6 始めると焦点は #input で 1 語目を打てる（「英単語を学ぶ」・机に戻った後のスタート・何も選んでいないときの Enter・/?learn=new）",
       starts.button.ok && starts.again.ok && starts.enter.ok && starts.deep.ok, JSON.stringify(starts));
     check("78.6 プレイ前のホームの畳んだ盤面: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
