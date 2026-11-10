@@ -97,7 +97,7 @@ jobs:
       - name: 課金のサーバー側（署名・webhook の書き込みと順番・生ボディの読み方・加入とお支払いの管理の守り・確定の画面の文・無料期間・受付前の config・比較表の AI の回数。偽の fetch で外へ出ない。api/_lib/billing.js・api/billing/*・api/_lib/aiLimits.js）
         run: node scripts/test-billing.mjs
 
-      - name: api の守り（AI の入口: 確認済みのメールのログインだけ・入力を確かめてから回数・回数は ai_take で全部のインスタンスに 1 つ〔無ければメモリー〕・同じ人の同時の 2 つ目は busy・カードの自動生成は止めてある。偽の fetch と手元の偽のサーバーで外へ出ない。api/_lib/shared.js・api/explain-word.js・api/generate-cards.js）
+      - name: api の守り（AI の入口は確認済みのメールのログインだけ・入力を確かめてから回数・回数は ai_take で全部のインスタンスに 1 つ〔無ければメモリー〕・同じ人の同時の 2 つ目は busy・カードの自動生成は止めてある。偽の fetch と手元の偽のサーバーで外へ出ない。api/_lib/shared.js・api/explain-word.js・api/generate-cards.js）
         run: node scripts/test-api-guard.mjs
 
       - name: モジュールの先読み（modulepreload）が最新か
