@@ -6,6 +6,8 @@
 //   5 旧いタブ  6 2 台目  7 ほかの端末の大きい learned  8 前からの 覚えた の差（埋め・競り合い・書き手より先の読み・埋めた語の復習・旧いタブ・古い写し・前の行を書き換えない）
 //   9 表が読めない  10 30 日空き・西へ・東へ  11 復元  12 答えの道の守り（js/game.js の本文）  13 前からの語の外れと覚え直し  14 埋めた語の外れと覚え直し
 //   15 1 台の人の「–」  16 回の途中で閉じた日  17 2 台目で埋めの日に開いた  18 乱数の見張り（1 台・40 日・旧いタブ・外れ・覚え直し・古い写し・埋め）
+//   19 数え始めた日に同じ日の埋め（ゲストで学んだ日にログインして「はい」）  20 回の途中で閉じた日の前からの語の外れ（前の行を上げすぎない）
+//   21 読み手の決まり（今月の数えない日・窓の前の数えない日・推移の今日の点）。4 は送る道（pushUserItems）の中身も見る
 // 端末の偽物（localStorage・時計・fetch）はこのファイルの中だけ。時計は Asia/Tokyo（10 は時刻帯を替える）。
 process.env.TZ = "Asia/Tokyo";
 
@@ -367,6 +369,27 @@ const NONBASE = PUB.filter((id) => !baseIds.has(id));
   const payloads = toUpload.filter((r) => r.kind === "day").map((r) => r.payload);
   ok("4 日の行の中身は learned・mastered・active・set・sets の 5 つの欄だけ（core・cb・nf は送らない）", payloads.length >= 3 && payloads.every((p) => JSON.stringify(Object.keys(p).sort()) === JSON.stringify(["active", "learned", "mastered", "set", "sets"])), payloads);
   ok("4 日の行の中身は 80 バイト以下（表の上限 512 の測り方）", payloads.every((p) => Buffer.byteLength(jsonbText(p), "utf8") <= 80), payloads.map((p) => Buffer.byteLength(jsonbText(p), "utf8")));
+  // 送る道（pushUserItems → buildDirtyRows → 送り先の upsert）。クラウドに同じ日の行が無い最初の送信（合わせ直しを通らない形）でも 5 つの欄だけ
+  U.touchItems("day", growth().map((e) => e.date));
+  const sent = [];
+  const fakeClient = {
+    from() {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        in: () => q,
+        then: (resolve) => resolve({ data: [], error: null }),
+        upsert: async (rows) => {
+          sent.push(...rows);
+          return { error: null, status: 201 };
+        }
+      };
+      return q;
+    }
+  };
+  await U.pushUserItems(fakeClient, "u1", { now: clock });
+  const pushed = sent.filter((r) => r.kind === "day").map((r) => r.payload);
+  ok("4 送る道（pushUserItems）で送った日の行の中身も 5 つの欄だけ・80 バイト以下", pushed.length === growth().length && pushed.every((p) => JSON.stringify(Object.keys(p).sort()) === JSON.stringify(["active", "learned", "mastered", "set", "sets"]) && Buffer.byteLength(jsonbText(p), "utf8") <= 80), pushed);
   // max と OR: クラウドの大きい learned・active が届いても、端末だけの欄（core など）は残る
   const before = growth().find((e) => e.date === "2026-12-02");
   U.mergeCloudItems([{ kind: "day", key: "2026-12-02", payload: { learned: 999, mastered: 0, active: true, set: false, sets: 0 }, deleted: false, updated_at: new RealDate(clock).toISOString() }], "u1");
@@ -867,6 +890,156 @@ function fourDays(name) {
     }
   }
   eq(`18 乱数の見張り（種 3 つ × 10 回 × 40 日）: 週と今月が正解と違う日 0（${runs} 回）`, misses.slice(0, 3), []);
+}
+
+// ── 19. 数え始めた日に同じ日の埋めが入る（ゲストで学んだ日にログインして「はい」→ 同期の初めの埋め）: 週・今月・カレンダーはこの端末で覚えた語だけ ─────────────
+{
+  device("sameday");
+  learnNew(5, "2026-12-05", 9);
+  endOfSet(); // 数え始めた最初の書き込み（その日の始まり core0 と 前からの 覚えた cb を測る）
+  setNow("2026-12-05", 12);
+  const n = fillNow(); // 同じ日に、答えの記録の無い 覚えた の語（前からの 覚えた が変わる）
+  endOfSet(); // 同じ日の書き直し
+  const filled = [n, week(0), month(), gainOf("2026-12-05"), seriesEnd()];
+  learnNew(10, "2026-12-05", 21);
+  endOfSet();
+  const evening = [week(0), month(), gainOf("2026-12-05")];
+  setNow("2026-12-07", 20);
+  endOfSet();
+  const later = [week(0), month(), gainOf("2026-12-05")];
+  eq("19 ゲストで 5 語学んだ日に同じ日の埋め（300 語）: 週・今月・その日のカレンダー +5（埋めを数えない）・推移の最後は今の 覚えた 305", filled, [300, 5, 5, 5, 305]);
+  eq("19 同じ日にさらに 10 語: 週・今月・カレンダー +15", evening, [15, 15, 15]);
+  eq("19 2 日後も 週・今月・その日のカレンダー +15", later, [15, 15, 15]);
+  // 前の日から学んでいた端末（数え始めた日が埋めの日より前）
+  device("sameday2");
+  learnNew(5, "2026-12-04", 21);
+  endOfSet();
+  learnNew(5, "2026-12-05", 9);
+  endOfSet();
+  setNow("2026-12-05", 12);
+  fillNow();
+  endOfSet();
+  eq("19 前の日から学んでいた端末: 週・今月 +10・埋めの日のカレンダー +5", [week(0), month(), gainOf("2026-12-05")], [10, 10, 5]);
+}
+
+// ── 20. 回の途中で閉じた日に、前からの語の外れや覚え直しもある: 前の行はその日の終わりの 覚えた（新しい語だけを足して上げすぎない） ─────────────
+{
+  // 6 日、毎日 10 語。7 日目は 10 語で回の終わりの書き手（その日の最後の書き込み）
+  const sevenDays = (name) => {
+    device(name);
+    for (let n = 1; n <= 6; n++) {
+      learnNew(10, `2026-12-0${n}`, 21);
+      endOfSet();
+    }
+    learnNew(10, "2026-12-07", 20);
+    endOfSet();
+  };
+  const older = (n) => {
+    const ws = table();
+    return PUB.filter((id) => ws[id]?.ls === 2 && ws[id].lsf === R.dayNoOf("2026-12-01")).slice(0, n);
+  };
+  const row07 = () => growth().find((e) => e.date === "2026-12-07")?.core;
+  const morning = () => {
+    setNow("2026-12-08", 7, 30);
+    G.recordGrowthSnapshot({ learned: 0, mastered: 0 }); // 次の朝、学ぶ前に学習状況を開く
+    return WR.computeWeeklyReport();
+  };
+  // (a) 覚えた の復習の回で前からの語を 3 語外して閉じ、新しい語の回で 5 語覚えて閉じた（どちらも書き手なし）
+  sevenDays("cut-a");
+  answer(older(3), "miss", at("2026-12-07", 21, 0));
+  for (let i = 0; i < 5; i++) learnNew(1, "2026-12-07", 21, 30);
+  const endA = live();
+  const rA = morning();
+  eq("20 (a) 外れ 3・新しい語 5 の次の朝: 12-07 の行・昨日までの 7 日・週間レポートの増えと累計は その日の終わりの 72（75 でない）・カレンダーの 12-07 +12・推移の 12-07 は 72", [endA, row07(), week(1), rA.learnedDelta, rA.learnedTotal, gainOf("2026-12-07"), seriesPoint("2026-12-07")], [72, 72, 72, 72, 72, 12, 72]);
+  for (let n = 8; n <= 14; n++) {
+    learnNew(2, `2026-12-${pad(n)}`, 21);
+    endOfSet();
+  }
+  setNow("2026-12-15", 7, 30);
+  G.recordGrowthSnapshot({ learned: 0, mastered: 0 });
+  eq("20 (a) 7 日後の朝: 昨日までの 7 日 +14（12-08〜12-14 に 2 語ずつ。11 でない）", week(1), 14);
+  // (b) 同じ 7 日目の後、次の日は先に新しい語の回を 5 語終える（その日の最初の書き込みが回の終わり）
+  sevenDays("cut-b");
+  answer(older(3), "miss", at("2026-12-07", 21, 0));
+  for (let i = 0; i < 5; i++) learnNew(1, "2026-12-07", 21, 30);
+  learnNew(5, "2026-12-08", 9);
+  endOfSet();
+  eq("20 (b) 次の日に先に 5 語学んでから書く: 12-07 の行 72・カレンダーの 12-07 +12・12-08 +5・週 +67（12-01 の終わりの 10 から 77）", [row07(), gainOf("2026-12-07"), gainOf("2026-12-08"), week(0)], [72, 12, 5, 67]);
+  // (c) 外れだけ（新しい語なし）: 12-07 の行は下がる
+  sevenDays("cut-c");
+  answer(older(3), "miss", at("2026-12-07", 21, 0));
+  const rC = morning();
+  eq("20 (c) 外れ 3 だけの次の朝: 12-07 の行・昨日までの 7 日・週間レポートの増えと累計は 67（70 でない）・カレンダーの 12-07 +7", [row07(), week(1), rC.learnedDelta, rC.learnedTotal, gainOf("2026-12-07")], [67, 67, 67, 67, 7]);
+  // (d) 覚え直し: 12-05 に外し、12-06 に あやふや の 1 日目、12-07 の書き手の後に 2 日目の自力正解で 覚えた に戻して閉じた
+  device("cut-d");
+  let back = [];
+  for (let n = 1; n <= 6; n++) {
+    const d = `2026-12-0${n}`;
+    learnNew(10, d, 21);
+    if (n === 5) {
+      back = older(1);
+      answer(back, "miss", at(d, 21, 5));
+    }
+    if (n === 6) answer(back, "exact", at(d, 21, 5));
+    endOfSet();
+  }
+  learnNew(10, "2026-12-07", 20);
+  endOfSet();
+  answer(back, "exact", at("2026-12-07", 21, 0));
+  morning();
+  eq("20 (d) 書き手の後に覚え直して閉じた日の次の朝: 12-07 の行と昨日までの 7 日はその日の終わりの 70・カレンダーの 12-07 +11", [live(), row07(), week(1), gainOf("2026-12-07")], [70, 70, 70, 11]);
+}
+
+// ── 21. 読み手の決まり（決定の V3・V6）: 今月の数えない日・窓の前の数えない日・推移の今日の点 ─────────────
+{
+  // (a) 2 台目 B が 11-28 の埋めの日に学習状況を開き、12-04 まで学ばない。12-01〜12-03 は A だけの学習した日（B では core: null）
+  device("A21");
+  for (let n = 25; n <= 27; n++) {
+    learnNew(10, `2026-11-${n}`, 21);
+    endOfSet();
+  }
+  const wsA = table();
+  const rowsA = growth();
+  device("B21");
+  setNow("2026-11-28", 22);
+  setTable(L.fillLearnStates(viaCloud(wsA), VOCAB.isPublic, isDone, {}).table);
+  U.mergeCloudItems(cloudDays(rowsA), "u1");
+  endOfSet();
+  switchTo("A21");
+  for (let i = 0; i < 6; i++) {
+    learnNew(10, shift("2026-11-28", i), 21);
+    endOfSet();
+  }
+  const rowsA2 = growth();
+  switchTo("B21");
+  setNow("2026-12-04", 21);
+  U.mergeCloudItems(cloudDays(rowsA2), "u1");
+  learnNew(10, "2026-12-04", 21, 30);
+  endOfSet();
+  eq("21 (a) 数え始めた 11-28 の行の後、今月に数えない学習した日（12-01〜12-03）がある: 今月は「–」（B の +10 でない）・今は 40", [growth().filter((e) => e.date >= "2026-12-01" && e.date < "2026-12-04").map((e) => e.core), month(), coreNow()], [[null, null, null], null, 40]);
+  // (b) 埋めの日に書き手が走った後で、ほかの端末の日の行（core の無い active な行）が届き、次に書く前に読む: 窓の始めより前に core の行が無く、
+  //     数え始めた日より前にまだ数えていない学習した日がある → 週は「–」
+  device("A21b");
+  for (let n = 1; n <= 4; n++) {
+    learnNew(10, `2026-12-0${n}`, 21);
+    endOfSet();
+  }
+  const wsA3 = table();
+  const rowsA3 = growth();
+  device("B21b");
+  setNow("2026-12-05", 22);
+  setTable(L.fillLearnStates(viaCloud(wsA3), VOCAB.isPublic, isDone, {}).table);
+  endOfSet();
+  U.mergeCloudItems(cloudDays(rowsA3), "u1");
+  eq("21 (b) 数え始めた日より前に、まだ数えていない学習した日が届いた直後: 週は「–」（+0 でない）", [growth().filter((e) => e.date < "2026-12-05").map((e) => e.core), week(0)], [[undefined, undefined, undefined, undefined], null]);
+  // (c) 推移の今日の点は今の 覚えた（今日の行の core が古い: 回の途中で閉じた）
+  device("series21");
+  for (let n = 1; n <= 3; n++) {
+    learnNew(10, `2026-12-0${n}`, 21);
+    endOfSet();
+  }
+  learnNew(4, "2026-12-03", 22);
+  eq("21 (c) 今日の行の core 30 のまま今の 覚えた 34: 推移の最後の点は 34", [growth().at(-1).core, seriesEnd(), coreNow()], [30, 34, 34]);
 }
 
 if (failures.length) {
