@@ -21366,7 +21366,7 @@ console.log("home and old URLs (78.6):");
       }
       return { input: seen.some((a) => a.id === "input"), folded: seen.filter((a) => a.folded).map((a) => a.id || a.tag), steps: seen.length, end: seen.at(-1) };
     };
-    // 読み上げの木（CDP の Accessibility.getFullAXTree。無視される節は数えない）に出る名前
+    // 読み上げの木（ブラウザの開発用の口で木の全体を取る。無視される節は数えない）に出る名前
     const axNames = async () => {
       const cdp = await page.context().newCDPSession(page);
       try {
@@ -22550,6 +22550,40 @@ console.log("learn modes (78.3):");
       ["dark", "indigo"].every((t) => rows[t].playing && rows[t].ratio >= 4.7), JSON.stringify(rows));
     check("78.3 昼の盤面の --ink-3 は前と同じ値（#5E5040）・エラー 0", rows.light.ink3.toUpperCase() === "#5E5040" && page.errors.length === 0, JSON.stringify({ light: rows.light, err: page.errors[0] ?? "" }));
     await page.context().close();
+  }
+
+  // (13b) 夜の盤面に部屋の周辺減光（.room__vignette。multiply で端を 5 割まで沈める）を掛けない（Batch 89 A7 の続き）。スマホの幅では盤面が画面いっぱいで、
+  //       右側の字（#word の案内の行・#message）が字の矩形の画素で 3.2 前後まで落ちていた。周辺減光に一時的に pointer-events を付けて、盤面の右端の点
+  //       （進みの行の高さ）を elementFromPoint で引くと盤面の中の部品であることを見る（画素は紙の模様で揺れるので、重なりの順で見る）。昼の重なりは前のまま
+  {
+    const rows = {};
+    for (const [w, h] of [[390, 844], [1200, 900]]) {
+      const page = await learnPage({}, { viewport: { width: w, height: h } });
+      await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+      await waitWord(page, 1);
+      rows[w] = await page.evaluate(() => {
+        const card = document.getElementById("gameCard");
+        const vig = document.querySelector(".room__vignette");
+        const was = document.documentElement.dataset.theme;
+        const out = { vignette: !!vig && getComputedStyle(vig).display !== "none" };
+        for (const t of ["dark", "indigo"]) {
+          document.documentElement.dataset.theme = t;
+          const r = card.getBoundingClientRect();
+          const sp = document.getElementById("setProgress").getBoundingClientRect();
+          const x = r.right - 24, y = sp.top + sp.height / 2;
+          if (vig) vig.style.pointerEvents = "auto";
+          const top = document.elementFromPoint(x, y);
+          if (vig) vig.style.pointerEvents = "";
+          out[t] = { onBoard: !!top && card.contains(top), top: top ? (top.id ? "#" + top.id : top.className) : null, x: Math.round(x), y: Math.round(y) };
+        }
+        document.documentElement.dataset.theme = was;
+        return out;
+      });
+      rows[w].errors = page.errors.length;
+      await page.context().close();
+    }
+    check("78.3 夜の盤面（黒・藍 × 390・1200）は部屋の周辺減光の上（盤面の右端の点を引くと盤面の部品）・エラー 0",
+      Object.values(rows).every((r) => r.vignette && r.dark.onBoard && r.indigo.onBoard && r.errors === 0), JSON.stringify(rows));
   }
 }
 
