@@ -184,6 +184,65 @@ ok("縮めた元の置き場（scripts/emblems/）は無い", !fs.existsSync(pat
   else store.set(KEY, keep);
 }
 
+// ---- 連続日数の 2 日以上先の last（Batch 89 の反証）: 時刻帯の差で last が今日より先になるのは 1 日まで。2 日以上先は端末の時計の狂い
+//      （一度だけ先に進めた端末・その行を同期で受け取った端末）で、「今日はもう遊んだ」と見ると、その日まで書かずに止まる（同期で別の端末にも広がる）。
+//      前と同じく途切れた扱い（表示は 0・遊ぶと 1 で last を今日に書き直し、次の日から伸びる）。先の日付の途切れは取り戻しの記録（lost）にしない ----
+{
+  const RealDate = Date;
+  let now = new RealDate(2026, 11, 10, 12, 0, 0).getTime(); // 端末の時刻で 2026-12-10 12:00
+  class FakeDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(now);
+      else super(...args);
+    }
+    static now() {
+      return now;
+    }
+  }
+  const KEY = "spelldash_streak";
+  const DAY = 86400000;
+  const seed = (last, over = {}) => store.set(KEY, JSON.stringify({ last, current: 3, best: 3, shields: 0, shieldSavedOn: null, lost: null, repairedMonth: null, ...over }));
+  const saved = () => JSON.parse(store.get(KEY));
+  const withClock = (fn) => {
+    globalThis.Date = FakeDate;
+    try {
+      return fn();
+    } finally {
+      globalThis.Date = RealDate;
+    }
+  };
+  const keep = store.get(KEY);
+  // 30 日先（2027-01-09）: 遊ぶ前は途切れた表示（0）・まだ遊んでいない。遊ぶと 1 で last は今日・先の日付の lost は作らない。次の日・その次の日は 2・3
+  seed("2027-01-09");
+  const f = withClock(() => ({ get: L.getStreak().current, played: L.hasPlayedToday(), lostBefore: L.getLostStreak(), up: L.updateStreak() }));
+  eq("連続日数: last が 30 日先なら遊ぶ前の表示は 0・hasPlayedToday は false・取り戻せる記録なし（2 日以上先は西へ戻った日ではない）",
+    { get: f.get, played: f.played, lostBefore: f.lostBefore }, { get: 0, played: false, lostBefore: null });
+  eq("連続日数: last が 30 日先でも遊ぶと今日最初のプレイ（isFirstToday true・current 1）で、last を今日に書き直す・先の日付の lost は作らない",
+    { first: f.up.isFirstToday, current: f.up.current, last: saved().last, lost: saved().lost }, { first: true, current: 1, last: "2026-12-10", lost: null });
+  const days = [];
+  for (let d = 1; d <= 2; d++) {
+    now += DAY;
+    days.push(withClock(() => ({ played: L.hasPlayedToday(), get: L.getStreak().current, first: L.updateStreak().isFirstToday, current: L.getStreak().current, last: saved().last })));
+  }
+  eq("連続日数: 30 日先の last を直した後は 1 日ごとに伸びる（12-11 に 2・12-12 に 3。遊ぶ前は「まだ」）", days, [
+    { played: false, get: 1, first: true, current: 2, last: "2026-12-11" },
+    { played: false, get: 2, first: true, current: 3, last: "2026-12-12" }
+  ]);
+  // 2 日先（12-12）: 同じく途切れた扱い。前からある本物の途切れの記録（12-06・7 日以内）はそのまま残す
+  now = new RealDate(2026, 11, 10, 12, 0, 0).getTime();
+  seed("2026-12-12", { lost: { count: 5, on: "2026-12-06" } });
+  const two = withClock(() => ({ get: L.getStreak().current, played: L.hasPlayedToday(), up: L.updateStreak(), lostAfter: L.getLostStreak() }));
+  eq("連続日数: last が 2 日先なら表示は 0・遊ぶと 1・last は今日・前の本物の途切れ（5 日・12-06）はそのまま",
+    { get: two.get, played: two.played, first: two.up.isFirstToday, current: two.up.current, last: saved().last, lost: saved().lost, lostAfter: two.lostAfter },
+    { get: 0, played: false, first: true, current: 1, last: "2026-12-10", lost: { count: 5, on: "2026-12-06" }, lostAfter: { count: 5, on: "2026-12-06" } });
+  // 壊れた last（日付でない文字）: 「もう遊んだ」と見ない（前と同じく遊ぶと 1）
+  seed("garbage");
+  const bad = withClock(() => ({ played: L.hasPlayedToday(), up: L.updateStreak() }));
+  eq("連続日数: last が日付でない文字なら hasPlayedToday は false・遊ぶと 1 で last は今日", { played: bad.played, first: bad.up.isFirstToday, current: bad.up.current, last: saved().last }, { played: false, first: true, current: 1, last: "2026-12-10" });
+  if (keep === undefined) store.delete(KEY);
+  else store.set(KEY, keep);
+}
+
 if (failures.length) {
   console.log(`test-level: ${passed} passed, ${failures.length} failed`);
   for (const f of failures) console.log(`  ✗ ${f}`);
