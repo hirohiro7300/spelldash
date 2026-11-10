@@ -743,7 +743,8 @@ console.log("og image:");
   const versionNote = ["build-og-image.mjs", "og-image.html", "og-image-page.html"].filter((f) => !fs.readFileSync(path.join(ROOT, "scripts", f), "utf8").includes("絵を変えたら版を上げる"));
   check("og-image: URL に版（?v=N）があり、packs の生成元（scripts/build-pack-pages.mjs）も同じ URL を書く、生成器と 2 つの型の頭に「絵を変えたら版を上げる」",
     /\?v=\d+$/.test(OG_URL) && Object.values(OG_PAGES).every((u) => /\?v=\d+$/.test(u)) && packGen.includes(`content="${OG_URL.replace("https://www.spelldash.net", "${SITE}")}"`) && !/og-image\.png"/.test(packGen) && versionNote.length === 0, JSON.stringify({ versionNote }));
-  const files = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html") && f !== "admin.html" && f !== "switch.html"), ...fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html")).map((f) => `packs/${f}`)];
+  // 404.html は見つからない道の行き先（noindex・配信は 404 で返す）で、共有のカードを出すページではない（switch.html と同じく数えない。Batch 89）
+  const files = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html") && f !== "admin.html" && f !== "switch.html" && f !== "404.html"), ...fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html")).map((f) => `packs/${f}`)];
   const ogBad = [];
   for (const f of files) {
     const html = fs.readFileSync(path.join(ROOT, f), "utf8");
