@@ -289,6 +289,40 @@ const paceOfSeed = (table, today = TODAY) => {
   ok("目安とランクの文に 未着手・苦手・習得・知ってた・済み が無い", texts.every((t) => !/未着手|苦手|習得|知ってた|済み/.test(t)));
 }
 
+// ── 6. 詳しい記録の今月の行と 30 日の推移（js/growthLog.js。Batch 89 A8。描画だけで保存は変えない） ─────────────
+//    今月の行の起点は「今月より前で最後の行」（無ければ今月の最初の行）: 月の初日の増えも数える。推移は窓より前で最後の行の値から埋める（30 日以上空いても横の線）
+{
+  const G = await import(modUrl("js/growthLog.js"));
+  const row = (date, learned, active = true) => ({ date, learned, mastered: 0, active, v: 2 });
+  const withLog = (rows, fn) => {
+    const keep = LS;
+    LS = new FakeStorage({ spelldash_schema_version: "7", spelldash_growth_log: JSON.stringify(rows) });
+    try {
+      return fn();
+    } finally {
+      LS = keep;
+    }
+  };
+  const monthDelta = (ym) => (typeof G.getMonthLearnedDelta === "function" ? G.getMonthLearnedDelta(ym) : "getMonthLearnedDelta が無い");
+  clock = at(2026, 11, 1, 20); // 11/1 の夜
+  eq("今月の行: 10-31 が 31 語・11-01 が 33 語なら、11 月の行は +2（月の初日の増えも数える）", withLog([row("2026-10-31", 31), row("2026-11-01", 33)], () => monthDelta("2026-11")), 2);
+  clock = at(2026, 11, 10, 20);
+  eq("今月の行: 今月より前の最後の行（10-20 の 30 語）が起点。11-03 の 34・11-09 の 40 なら +10", withLog([row("2026-10-01", 10), row("2026-10-20", 30), row("2026-11-03", 34), row("2026-11-09", 40)], () => monthDelta("2026-11")), 10);
+  eq("今月の行: 今月より前に行が無ければ今月の最初の行が起点（11-02 の 5・11-09 の 12 → +7）", withLog([row("2026-11-02", 5), row("2026-11-09", 12)], () => monthDelta("2026-11")), 7);
+  eq("今月の行: 今月の行が無ければ 0・減ったときも 0（負にしない）", [withLog([row("2026-10-20", 30)], () => monthDelta("2026-11")), withLog([row("2026-10-31", 40), row("2026-11-05", 35)], () => monthDelta("2026-11"))], [0, 0]);
+  // 推移: 30 日以上空いた人（窓より前の 10-01 に 50 語）。窓の頭から 50 の横の線で、点は 30 個（「明日から」の案内にならない）
+  const gap = withLog([row("2026-10-01", 50)], () => G.getLearnedSeries(30));
+  eq("推移: 窓より前の行（10-01 の 50 語）から埋める。30 日以上空いても 30 点の横の線（null なし・値は 50）", [gap.length, gap.filter((p) => p.learned != null).length, [...new Set(gap.map((p) => p.learned))]], [30, 30, [50]]);
+  const mid = withLog([row("2026-10-05", 20), row("2026-11-01", 25), row("2026-11-08", 28)], () => G.getLearnedSeries(30));
+  eq("推移: 窓の頭は窓より前の最後の行の値（20）、11-01 から 25、11-08 から 28（欠けた日は直前の値で埋める・学んだ日の印はその日だけ）",
+    [mid[0].date, mid[0].learned, mid.find((p) => p.date === "2026-11-01").learned, mid.at(-1).learned, mid.filter((p) => p.active).map((p) => p.date)], ["2026-10-12", 20, 25, 28, ["2026-11-01", "2026-11-08"]]);
+  const none = withLog([], () => G.getLearnedSeries(30));
+  eq("推移: 行が 1 つも無い人は今のまま（30 点とも null）", none.filter((p) => p.learned != null).length, 0);
+  const inside = withLog([row("2026-11-05", 7)], () => G.getLearnedSeries(30));
+  eq("推移: 窓の中にしか行が無い人は今のまま（その行より前は null）", [inside.findIndex((p) => p.learned != null), inside.find((p) => p.learned != null)?.date], [24, "2026-11-05"]);
+  clock = null;
+}
+
 if (failures.length) {
   console.error(failures.map((f) => `✗ ${f}`).join("\n"));
   console.error(`\n${passed} passed, ${failures.length} failed`);

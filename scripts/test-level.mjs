@@ -135,6 +135,114 @@ const want = new Set((L.LEARNING_RANKS ?? []).flatMap((r) => (B.SIZES ?? []).map
 eq("絵の置き場には 21 段 × 2 種だけ（前の 8 段の F.webp などは無い）", want.size === 42 ? fs.readdirSync(dir).filter((f) => !want.has(f)) : [`want ${want.size}`], []);
 ok("縮めた元の置き場（scripts/emblems/）は無い", !fs.existsSync(path.join(ROOT, "scripts/emblems")));
 
+// ---- 連続日数（getStreak・updateStreak・hasPlayedToday。Batch 89 A9）: 偽の時計で 2026-12-10 の昼。端末の時刻帯が西へ戻った日（保存した last が明日）は
+//      途切れたと見ず、今の値のまま（書かない・lost を作らない）。今日・昨日・一昨日の流れは前と同じ ----
+{
+  const RealDate = Date;
+  const NOW = new RealDate(2026, 11, 10, 12, 0, 0).getTime(); // 端末の時刻で 2026-12-10 12:00
+  class FakeDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(NOW);
+      else super(...args);
+    }
+    static now() {
+      return NOW;
+    }
+  }
+  const KEY = "spelldash_streak";
+  const seed = (last, over = {}) => store.set(KEY, JSON.stringify({ last, current: 3, best: 3, shields: 0, shieldSavedOn: null, lost: null, repairedMonth: null, ...over }));
+  const withClock = (fn) => {
+    globalThis.Date = FakeDate;
+    try {
+      return fn();
+    } finally {
+      globalThis.Date = RealDate;
+    }
+  };
+  const keep = store.get(KEY);
+  // 明日（西へ移った日）: 表示は 3 のまま・遊んでも書かない（current・lost そのまま）・今日はもう遊んだ
+  seed("2026-12-11");
+  const before = store.get(KEY);
+  const w = withClock(() => ({ get: L.getStreak().current, played: L.hasPlayedToday(), up: L.updateStreak(), lost: L.getLostStreak() }));
+  eq("連続日数: last が明日（時刻帯が西へ戻った日）の getStreak は今の値（3）", w.get, 3);
+  eq("連続日数: last が明日の updateStreak は「今日はもう遊んだ」（isFirstToday false・current 3・lost なし）で、保存を書かない",
+    { first: w.up.isFirstToday, current: w.up.current, lost: w.up.lost, same: store.get(KEY) === before }, { first: false, current: 3, lost: null, same: true });
+  eq("連続日数: last が明日なら今日はもう遊んだ（hasPlayedToday）・途切れた記録は作らない（getLostStreak null）", { played: w.played, lost: w.lost }, { played: true, lost: null });
+  // 今日: 前と同じ（3 のまま・書かない）
+  seed("2026-12-10");
+  const t = withClock(() => ({ get: L.getStreak().current, up: L.updateStreak() }));
+  eq("連続日数: last が今日なら 3 のまま・updateStreak は isFirstToday false", { get: t.get, first: t.up.isFirstToday, current: t.up.current }, { get: 3, first: false, current: 3 });
+  // 昨日: 表示は 3・遊ぶと 4（前と同じ）
+  seed("2026-12-09");
+  const y = withClock(() => ({ get: L.getStreak().current, up: L.updateStreak() }));
+  eq("連続日数: last が昨日なら表示は 3・遊ぶと 4（isFirstToday true・last は今日）", { get: y.get, first: y.up.isFirstToday, current: y.up.current, last: JSON.parse(store.get(KEY)).last }, { get: 3, first: true, current: 4, last: "2026-12-10" });
+  // 一昨日（1 日空き・シールドなし）: 表示は 0・遊ぶと 1 で、途切れた 3 日を lost に残す（前と同じ）
+  seed("2026-12-08");
+  const g = withClock(() => ({ get: L.getStreak().current, up: L.updateStreak() }));
+  eq("連続日数: last が一昨日（シールドなし）なら表示は 0・遊ぶと 1・lost は { 3, 12-08 }", { get: g.get, first: g.up.isFirstToday, current: g.up.current, lost: g.up.lost }, { get: 0, first: true, current: 1, lost: { count: 3, on: "2026-12-08" } });
+  if (keep === undefined) store.delete(KEY);
+  else store.set(KEY, keep);
+}
+
+// ---- 連続日数の 2 日以上先の last（Batch 89 の反証）: 時刻帯の差で last が今日より先になるのは 1 日まで。2 日以上先は端末の時計の狂い
+//      （一度だけ先に進めた端末・その行を同期で受け取った端末）で、「今日はもう遊んだ」と見ると、その日まで書かずに止まる（同期で別の端末にも広がる）。
+//      前と同じく途切れた扱い（表示は 0・遊ぶと 1 で last を今日に書き直し、次の日から伸びる）。先の日付の途切れは取り戻しの記録（lost）にしない ----
+{
+  const RealDate = Date;
+  let now = new RealDate(2026, 11, 10, 12, 0, 0).getTime(); // 端末の時刻で 2026-12-10 12:00
+  class FakeDate extends RealDate {
+    constructor(...args) {
+      if (args.length === 0) super(now);
+      else super(...args);
+    }
+    static now() {
+      return now;
+    }
+  }
+  const KEY = "spelldash_streak";
+  const DAY = 86400000;
+  const seed = (last, over = {}) => store.set(KEY, JSON.stringify({ last, current: 3, best: 3, shields: 0, shieldSavedOn: null, lost: null, repairedMonth: null, ...over }));
+  const saved = () => JSON.parse(store.get(KEY));
+  const withClock = (fn) => {
+    globalThis.Date = FakeDate;
+    try {
+      return fn();
+    } finally {
+      globalThis.Date = RealDate;
+    }
+  };
+  const keep = store.get(KEY);
+  // 30 日先（2027-01-09）: 遊ぶ前は途切れた表示（0）・まだ遊んでいない。遊ぶと 1 で last は今日・先の日付の lost は作らない。次の日・その次の日は 2・3
+  seed("2027-01-09");
+  const f = withClock(() => ({ get: L.getStreak().current, played: L.hasPlayedToday(), lostBefore: L.getLostStreak(), up: L.updateStreak() }));
+  eq("連続日数: last が 30 日先なら遊ぶ前の表示は 0・hasPlayedToday は false・取り戻せる記録なし（2 日以上先は西へ戻った日ではない）",
+    { get: f.get, played: f.played, lostBefore: f.lostBefore }, { get: 0, played: false, lostBefore: null });
+  eq("連続日数: last が 30 日先でも遊ぶと今日最初のプレイ（isFirstToday true・current 1）で、last を今日に書き直す・先の日付の lost は作らない",
+    { first: f.up.isFirstToday, current: f.up.current, last: saved().last, lost: saved().lost }, { first: true, current: 1, last: "2026-12-10", lost: null });
+  const days = [];
+  for (let d = 1; d <= 2; d++) {
+    now += DAY;
+    days.push(withClock(() => ({ played: L.hasPlayedToday(), get: L.getStreak().current, first: L.updateStreak().isFirstToday, current: L.getStreak().current, last: saved().last })));
+  }
+  eq("連続日数: 30 日先の last を直した後は 1 日ごとに伸びる（12-11 に 2・12-12 に 3。遊ぶ前は「まだ」）", days, [
+    { played: false, get: 1, first: true, current: 2, last: "2026-12-11" },
+    { played: false, get: 2, first: true, current: 3, last: "2026-12-12" }
+  ]);
+  // 2 日先（12-12）: 同じく途切れた扱い。前からある本物の途切れの記録（12-06・7 日以内）はそのまま残す
+  now = new RealDate(2026, 11, 10, 12, 0, 0).getTime();
+  seed("2026-12-12", { lost: { count: 5, on: "2026-12-06" } });
+  const two = withClock(() => ({ get: L.getStreak().current, played: L.hasPlayedToday(), up: L.updateStreak(), lostAfter: L.getLostStreak() }));
+  eq("連続日数: last が 2 日先なら表示は 0・遊ぶと 1・last は今日・前の本物の途切れ（5 日・12-06）はそのまま",
+    { get: two.get, played: two.played, first: two.up.isFirstToday, current: two.up.current, last: saved().last, lost: saved().lost, lostAfter: two.lostAfter },
+    { get: 0, played: false, first: true, current: 1, last: "2026-12-10", lost: { count: 5, on: "2026-12-06" }, lostAfter: { count: 5, on: "2026-12-06" } });
+  // 壊れた last（日付でない文字）: 「もう遊んだ」と見ない（前と同じく遊ぶと 1）
+  seed("garbage");
+  const bad = withClock(() => ({ played: L.hasPlayedToday(), up: L.updateStreak() }));
+  eq("連続日数: last が日付でない文字なら hasPlayedToday は false・遊ぶと 1 で last は今日", { played: bad.played, first: bad.up.isFirstToday, current: bad.up.current, last: saved().last }, { played: false, first: true, current: 1, last: "2026-12-10" });
+  if (keep === undefined) store.delete(KEY);
+  else store.set(KEY, keep);
+}
+
 if (failures.length) {
   console.log(`test-level: ${passed} passed, ${failures.length} failed`);
   for (const f of failures) console.log(`  ✗ ${f}`);

@@ -308,6 +308,36 @@ const cp = cspProblems(vercelText, served);
 const inlineCount = new Set(Object.values(served).flatMap((h) => inlineScripts(h).map(scriptHash))).size;
 ok(`8. CSP: vercel.json の script-src は 'self'・配る HTML（${servedFiles.length} ファイル: ルートと packs/）の inline の script の sha256 全部（${inlineCount} 種類）・https://esm.sh だけ（'unsafe-inline' なし）・ほかの指示は決めた字のまま・on* の属性と javascript: の URL は 0`, cp.length === 0 && servedFiles.length >= 175 && servedFiles.includes("index.html") && servedFiles.includes("packs/ngsl01.html") && !servedFiles.some((f) => /^(tests|scripts|docs|ios|android|dist)\//.test(f)) && inlineCount >= 10, show(cp));
 
+// 9. 間違えた URL の行き先（Batch 89 A6）: root の 404.html（配信は見つからない道でこれを返す）。noindex・sitemap に無い・ナビの 4 つとフッター（5 と同じ決まり。現在地なし）・
+//    「ページが見つからない。」と「ホームへ」（href="/"）・入れ子の道（/a/b）でも読めるよう href と src は / か https:// か # で始まる・inline の script はほかの配るページと
+//    同じ字（8 のハッシュの一覧を増やさない）・値段・加入・pro.html への道が無い
+function notFoundProblems(html, others) {
+  if (html === null) return ["404.html が無い"];
+  const problems = [];
+  if (!isNoindex(html)) problems.push("noindex が無い");
+  if (/404\.html/.test(read("sitemap.xml"))) problems.push("sitemap に載っている");
+  problems.push(...chromeProblems("404.html", html));
+  const text = html.replace(/<script\b[\s\S]*?<\/script>/g, "").replace(/<[^>]*>/g, " ");
+  if (!/<h1[^>]*>\s*ページが見つからない。\s*<\/h1>/.test(html)) problems.push("見出し「ページが見つからない。」が無い");
+  if (!/<a\b[^>]*href="\/"[^>]*>\s*ホームへ\s*<\/a>/.test(html)) problems.push("「ホームへ」（href=\"/\"）が無い");
+  for (const m of html.matchAll(/\s(?:href|src)="([^"]*)"/g)) if (!/^(\/|https:\/\/|#)/.test(m[1])) problems.push(`入れ子の道で外れる相対の道: ${m[1]}`);
+  const otherBodies = new Set(Object.entries(others).filter(([f]) => f !== "404.html").flatMap(([, h]) => inlineScripts(h)));
+  for (const body of inlineScripts(html)) if (!otherBodies.has(body)) problems.push(`ほかのページに無い inline の script（ハッシュの一覧が増える）: ${body.trim().slice(0, 40)}`);
+  if (/pro\.html|円|¥|加入/.test(html) || /Pro/.test(text)) problems.push("値段・加入・Pro への道がある");
+  return problems;
+}
+const notFoundHtml = fs.existsSync(path.join(ROOT, "404.html")) ? read("404.html") : null;
+const nf = notFoundProblems(notFoundHtml, served);
+ok("9. 404.html: ある・noindex・sitemap に無い・ナビの 4 つとフッター・「ページが見つからない。」と「ホームへ」・href と src は / から（入れ子の道でも読める）・inline の script はほかのページと同じ字・値段と加入の道なし", nf.length === 0 && servedFiles.includes("404.html"), show(nf));
+if (notFoundHtml) {
+  const broken = (name, html) => ok(`9. 壊すと落ちる: ${name}`, notFoundProblems(html, served).length > 0);
+  broken("404.html の noindex を消す", notFoundHtml.replace(/<meta name="robots"[^>]*>/, ""));
+  broken("404.html の CSS を相対の道にする", notFoundHtml.replace('href="/css/reset.css"', 'href="./css/reset.css"'));
+  broken("404.html に新しい inline の script を足す", notFoundHtml.replace("</body>", "<script>console.log(1)</script>\n</body>"));
+  broken("404.html に加入画面へのリンクを足す", notFoundHtml.replace("</main>", '<a href="/pro.html">SpellDash Pro</a></main>'));
+  broken("404.html の「ホームへ」を消す", notFoundHtml.replace(/<a\b[^>]*href="\/"[^>]*>\s*ホームへ\s*<\/a>/, ""));
+}
+
 // 3. 生成器のコマンド: 今の木で --check が通る。写しの木でページを 1 枚古くすると --check は落ち、書き出すと元に戻る
 {
   const out = execFileSync(process.execPath, [path.join(SCRIPTS, "build-pack-pages.mjs"), "--check"], { cwd: ROOT, encoding: "utf8" });

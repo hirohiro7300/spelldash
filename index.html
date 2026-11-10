@@ -300,8 +300,8 @@
                     <div class="welcome-demo__card">
                       <p class="welcome-demo__ja" id="welcomeDemoJa">りんご</p>
                       <p class="welcome-demo__preview mono" id="welcomeDemoPreview" aria-hidden="true"></p>
-                      <input id="welcomeDemoInput" class="welcome-demo__input mono" type="text" placeholder="英単語を入力" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英単語を入力" />
-                      <p class="welcome-demo__msg" id="welcomeDemoMsg"></p>
+                      <input id="welcomeDemoInput" class="welcome-demo__input mono" type="text" placeholder="英単語を入力" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="英単語を入力" aria-describedby="welcomeDemoJa welcomeDemoMsg" />
+                      <p class="welcome-demo__msg" id="welcomeDemoMsg" role="status"></p>
                     </div>
                     <p class="welcome-demo__after" id="welcomeAfterDemo" hidden>スタートから本番へ。</p>
                   </div>
@@ -429,7 +429,7 @@
         </div>
       </div>
 
-    <section class="game-card" id="gameCard" aria-label="いまの問題">
+    <section class="game-card" id="gameCard" aria-label="いまの問題" inert>
       <div class="big-timer" id="bigTimer" hidden aria-label="残り時間">60</div>
       <div class="play-score" id="playScore" hidden aria-label="現在のスコア"></div>
       <div class="set-progress" id="setProgress" aria-label="今日のセットの進捗"></div>
@@ -478,16 +478,18 @@
 
       <p id="message" class="message" aria-live="polite">単語データを読み込み中…</p>
       <div id="learnToast" class="learn-toast" role="status" hidden></div>
-      <!-- 読み上げ専用のステータス行（ランクアップ等の演出は aria-hidden にして、文言はここに流す） -->
-      <p id="srStatus" class="sr-only" role="status"></p>
 
       <div id="resultPanel" class="result-panel" role="region" aria-labelledby="resultTitle" hidden></div>
 
       <button id="restart" class="btn btn--ghost btn--sm">もう一回</button>
     </section>
 
+      <!-- 読み上げ専用のステータス行（ランクアップ等の演出は aria-hidden にして、文言はここに流す）。盤面の外に置く: プレイ前のホームで畳んだ盤面は inert なので、
+           中に置くと机に戻ったあとのランクアップの文などが読まれない（Batch 89） -->
+      <p id="srStatus" class="sr-only" role="status"></p>
+
       <!-- セッションの数字: 1行の静かなテキスト（正解 3 ・ 思い出せず 1 ・ 今日 20）。要素は残す -->
-      <section class="stats stats--strip" aria-label="このセッションの数字">
+      <section class="stats stats--strip" aria-label="このセッションの数字" inert>
         <div class="stat-card"><span>思い出せた</span><strong id="score">0</strong></div>
         <div class="stat-card"><span>思い出せず</span><strong id="recallFail">0</strong></div>
         <div class="stat-card stat-card--study"><span>今日 思い出せた</span><strong id="recalledToday">0</strong><span class="stat-card__sub" id="securedToday"></span></div>

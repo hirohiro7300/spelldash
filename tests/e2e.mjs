@@ -743,7 +743,8 @@ console.log("og image:");
   const versionNote = ["build-og-image.mjs", "og-image.html", "og-image-page.html"].filter((f) => !fs.readFileSync(path.join(ROOT, "scripts", f), "utf8").includes("絵を変えたら版を上げる"));
   check("og-image: URL に版（?v=N）があり、packs の生成元（scripts/build-pack-pages.mjs）も同じ URL を書く、生成器と 2 つの型の頭に「絵を変えたら版を上げる」",
     /\?v=\d+$/.test(OG_URL) && Object.values(OG_PAGES).every((u) => /\?v=\d+$/.test(u)) && packGen.includes(`content="${OG_URL.replace("https://www.spelldash.net", "${SITE}")}"`) && !/og-image\.png"/.test(packGen) && versionNote.length === 0, JSON.stringify({ versionNote }));
-  const files = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html") && f !== "admin.html" && f !== "switch.html"), ...fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html")).map((f) => `packs/${f}`)];
+  // 404.html は見つからない道の行き先（noindex・配信は 404 で返す）で、共有のカードを出すページではない（switch.html と同じく数えない。Batch 89）
+  const files = [...fs.readdirSync(ROOT).filter((f) => f.endsWith(".html") && f !== "admin.html" && f !== "switch.html" && f !== "404.html"), ...fs.readdirSync(path.join(ROOT, "packs")).filter((f) => f.endsWith(".html")).map((f) => `packs/${f}`)];
   const ogBad = [];
   for (const f of files) {
     const html = fs.readFileSync(path.join(ROOT, f), "utf8");
@@ -12266,6 +12267,49 @@ console.log("learning quality:");
   check("プロフィール（設定・バックアップ）でエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
   await page3.close();
 
+  // 設定のバックアップをキーボードと読み上げで（Batch 89 A4。profile.html #backupImportButton・js/profileView.js initializeBackup）: Tab で「ファイルに書き出す」の次に「読み込む」、
+  // Enter と Space でファイルを選ぶ窓が開く。結果の文（#backupStatus: 書き出した・読み込みを中止した）と音の設定の「保存済み」（#audioSettingStatus）は role=status の領域に出る
+  {
+    const pageK = await newPage({ storage: { spelldash_xp: "1234", spelldash_audio: JSON.stringify({ mode: "auto" }) } });
+    await pageK.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+    await pageK.waitForTimeout(500);
+    const said = (id) => pageK.evaluate((i) => { const el = document.getElementById(i); return el?.getAttribute("role") === "status" ? el.textContent.trim() : `(role=${el?.getAttribute("role") ?? "なし"}) ${el?.textContent.trim() ?? ""}`; }, id);
+    await pageK.focus("#backupExport");
+    await pageK.keyboard.press("Tab");
+    const k = { next: await pageK.evaluate(() => ({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent.trim() ?? "" })) };
+    const onImport = k.next.tag === "BUTTON" && k.next.text === "読み込む";
+    // ファイルを選ぶ窓は数えて見る（受け手を先に付けておく: 押す直前に waitForEvent を付けると、窓を捕まえる設定が押すのに間に合わないことがある）
+    let choosers = 0;
+    pageK.on("filechooser", () => choosers++);
+    await pageK.waitForTimeout(200);
+    const opens = async (key) => {
+      const before = choosers;
+      await pageK.keyboard.press(key);
+      await waitUntil(async () => choosers > before, 2000);
+      return choosers > before;
+    };
+    // 焦点が「読み込む」に無いときはキーを押さない（ほかのリンクで Enter を押してページを移らない）
+    k.enter = onImport ? await opens("Enter") : false;
+    k.space = onImport ? await opens("Space") : false;
+    k.roles = await pageK.evaluate(() => ["backupStatus", "audioSettingStatus"].map((id) => document.getElementById(id)?.getAttribute("role") ?? null));
+    await Promise.all([pageK.waitForEvent("download", { timeout: 5000 }).catch(() => null), pageK.click("#backupExport")]);
+    await waitUntil(async () => (await said("backupStatus")).startsWith("書き出した"), 3000);
+    k.exported = await said("backupStatus");
+    const file = await pageK.evaluate(async () => JSON.stringify((await import("/js/backup.js")).buildBackup()));
+    pageK.once("dialog", (d) => d.dismiss());
+    await pageK.setInputFiles("#backupImport", { name: "spelldash-backup.json", mimeType: "application/json", buffer: Buffer.from(file) });
+    await waitUntil(async () => (await said("backupStatus")).includes("中止"), 3000);
+    k.cancelled = await said("backupStatus");
+    await pageK.selectOption("#audioModeSelect", "off");
+    await waitUntil(async () => (await said("audioSettingStatus")) === "保存済み", 2000);
+    k.saved = await said("audioSettingStatus");
+    check("設定（キーボードだけ）: Tab で「ファイルに書き出す」の次に「読み込む」（ボタン）・Enter と Space でファイルを選ぶ窓が開く", onImport && k.enter && k.space, JSON.stringify(k));
+    check("設定（読み上げ）: #backupStatus と #audioSettingStatus は role=status。書き出した・読み込みを中止した・保存済み がその領域に出る",
+      k.roles.every((r) => r === "status") && k.exported.startsWith("書き出した") && k.cancelled.includes("中止") && k.saved === "保存済み", JSON.stringify(k));
+    check("設定（キーボードと読み上げ）: エラー 0", pageK.errors.length === 0, pageK.errors[0] ?? "");
+    await pageK.close();
+  }
+
   // ご意見フォーム: フッターから開く→送信（スタブでは失敗→端末に保持）
   const page4 = await newPage();
   await page4.goto(BASE + "/news.html", { waitUntil: "networkidle" });
@@ -12284,7 +12328,7 @@ console.log("learning quality:");
 
   // Batch 67 C2: ご意見の窓の殻と窓の中の読み上げの行（[data-sr-live]）は読み込みのときに置く（前は初めて開くときに作り、開いた直後の読み上げが
   // 「後から差し込んだ live 領域」に入っていた。読まない環境がある）。DOMContentLoaded の時点で窓の中に行があり、隠したまま（display: none・矩形 0）・
-  // どこにも inert が無い・ページの焦点の順に入らない。開いたあとの読み上げは、読み込みのときからあった同じ行に入る（書斎・単語帳・タイピング練習・設定）
+  // どこにも inert が無い（ホームで畳んだ盤面の inert は除く。Batch 89 A5）・ページの焦点の順に入らない。開いたあとの読み上げは、読み込みのときからあった同じ行に入る（書斎・単語帳・タイピング練習・設定）
   {
     const runs = {};
     for (const url of ["/index.html", "/list.html", "/typing.html", "/profile.html"]) {
@@ -12298,7 +12342,9 @@ console.log("learning quality:");
       await page.waitForTimeout(300);
       const idle = await page.evaluate(() => {
         const m = document.getElementById("feedbackModal");
-        return { ...window.__fbAtLoad, display: m ? getComputedStyle(m).display : null, rects: m ? m.getClientRects().length : null, inert: document.querySelectorAll("[inert]").length, modals: document.querySelectorAll("#feedbackModal").length };
+        // 英単語の学習に絞ったホームでプレイ前に畳んだ盤面（#gameCard と .stats--strip）は inert（Batch 89 A5）。窓が残した inert ではないので数えない
+        const folded = (el) => el.matches("#gameCard, .stats--strip") && !document.body.classList.contains("home--playing");
+        return { ...window.__fbAtLoad, display: m ? getComputedStyle(m).display : null, rects: m ? m.getClientRects().length : null, inert: [...document.querySelectorAll("[inert]")].filter((el) => !folded(el)).length, modals: document.querySelectorAll("#feedbackModal").length };
       });
       // Tab で 40 回進めても焦点は窓に入らない（隠した窓は焦点の順の外）
       let tabbedIn = false;
@@ -19593,6 +19639,45 @@ console.log("tutorial:");
   await page3.waitForTimeout(300);
   check("チュートリアル: 学習記録のある人には出ない", (await coach(page3)) === null && (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length)) === 3);
   await page3.close();
+
+  // 指の端末の縦（320×640・390×844。Batch 89 A1）: 初めての人の最初の答え表示で、札（T2）が知らせ（#message。2 行）の下に重ならない
+  // （css/game.css の html:has(… > .coach) の scroll-padding-bottom: 札が出ている間だけ、高さ 640px 以上で答えの寄せ先の余白を鍵盤＋108px に。
+  //  札は画面キーボードの上に固定）。札が消えた後の答え表示は鍵盤＋88px に戻る（Batch 89 の反証。札の出ない回で答えの行を上へ押し出さない）。
+  // 375×553（背の低いスマホのブラウザ）は札が出ていても鍵盤＋88px: 20px 足すと答えの行が画面の上へ押し出されるので、答えを見せる方を先にする
+  // （知らせの 2 行目に札が掛かるのは 2aa2222 と同じ）
+  const portraitGeo = (p) => p.evaluate(() => {
+    const r = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top * 10) / 10, bottom: Math.round(b.bottom * 10) / 10 }; };
+    const cs = getComputedStyle(document.documentElement);
+    return { msg: r("#message"), coach: r(".coach:not(.coach--out)"), word: r("#word"), input: r("#input"), text: document.getElementById("message").textContent.trim(), reserve: Math.round((parseFloat(cs.scrollPaddingBottom) - parseFloat(cs.getPropertyValue("--osk-h"))) * 10) / 10 };
+  });
+  for (const [w, h] of [[320, 640], [390, 844], [375, 553]]) {
+    const pm = await newPage({ mobile: true, viewport: { width: w, height: h } });
+    await watchWords(pm);
+    await pm.goto(LEARN_URL, { waitUntil: "networkidle" });
+    await waitWordT(pm, 1);
+    await pm.waitForTimeout(300);
+    await pm.press("#input", "Enter"); // 答えを見る → T2
+    await waitUntil(async () => (await coach(pm))?.step === "T2", 3000);
+    await pm.waitForTimeout(700); // 入力欄を見える所へ寄せる動き（smooth）の後
+    const g = await portraitGeo(pm);
+    if (h >= 640) {
+      check(`チュートリアル スマホ ${w}×${h}: 最初の答え表示で知らせの下端が札の上端より上（重ならない）・答えと入力欄は見えている・寄せ先の余白は鍵盤＋108px`, !!g.msg && !!g.coach && g.msg.bottom <= g.coach.top + 0.5 && g.word.top >= -0.5 && g.input.bottom <= g.coach.top + 0.5 && g.reserve === 108 && pm.errors.length === 0, JSON.stringify({ ...g, err: pm.errors[0] }));
+    } else {
+      check(`チュートリアル スマホ ${w}×${h}（背の低い画面）: 札が出ていても寄せ先の余白は鍵盤＋88px で、答えの行の下の部分が画面の上端より 10px 以上下に見える`, !!g.coach && !!g.word && g.reserve === 88 && g.word.bottom >= 10 && pm.errors.length === 0, JSON.stringify({ ...g, err: pm.errors[0] }));
+    }
+    if (w === 390) {
+      // 札が消えた後（2 語目の答え表示。T2 は見た・自力正解していないので T3 も出ない）: 余白は鍵盤＋88px に戻る
+      await pm.press("#input", "Enter"); // 次へ（札は次の語で消える）
+      await waitWordT(pm, 2);
+      await pm.waitForTimeout(400);
+      await pm.press("#input", "Enter"); // 2 語目の答えを見る
+      await waitUntil(() => pm.evaluate(() => !!document.querySelector("#word .cl")), 3000);
+      await pm.waitForTimeout(700);
+      const g2 = await portraitGeo(pm);
+      check(`チュートリアル スマホ ${w}×${h}: 札が消えた後の答え表示では寄せ先の余白は鍵盤＋88px に戻る`, g2.coach === null && g2.reserve === 88 && pm.errors.length === 0, JSON.stringify({ ...g2, err: pm.errors[0] }));
+    }
+    await pm.close();
+  }
 }
 
 // ===== 78.5 導線と検索（Batch 78 段 5a。創業者の決定 §7・§9 の 1・10・11・12・17）: ナビは全ページで 4 つ（ホーム・英単語を学ぶ・学習状況・設定）・英単語を学ぶ は /?learn=next・フッターの一文・Pro とタイピングの導線なし・連続日数を出さない・noindex と sitemap・パックのページはホームへ・320／390／1200 で横スクロール 0・キーボード・頭文字の丸の縁 =====
@@ -20399,6 +20484,116 @@ console.log("78.4 学習状況とランク:");
       JSON.stringify({ off, on, err: page.errors[0] }));
     await ctx.close();
   }
+
+  // ---- (13) 詳しい記録は中心の学習の語も見る（Batch 89 A2。js/wordStore.js findRecordWord・js/learnedWords.js・js/summary.js・js/statsView.js・js/wordDetail.js・js/exportCsv.js）:
+  //      公開の 2,858 語のうち基本カテゴリに無い 2,252 語（english-zero など。中心の学習の最初の 10 語もそう）を、詳しい記録の一覧・数・語の詳細・CSV が引ける。
+  //      新しい人が 1 セット（1 語は答えを出し、残りは打つ）を終えて開くと、出会った語 ＝ 答えた 10 語・初めて見て正解した語 ＝ 打った 9 語・外したパックの行なし・
+  //      一覧の語を押すと語の詳細（英語と訳）・CSV にその語。最初の画面の数は開く前と同じ。旗の間はタイピングの札とベストスコア（隠れた遊び方だけが書く数）を出さない
+  {
+    const EN = {};
+    for (const id of PUBLIC.packs) for (const w of JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", `${id}.json`), "utf8")).words) EN[w.id] ??= w.en;
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" } });
+    await page.addInitScript(() => {
+      window.__w = [];
+      addEventListener("spelldash:word", (e) => window.__w.push(e.detail?.id ?? null));
+    });
+    await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+    const shown = () => page.evaluate(() => window.__w.slice());
+    const typed = [];
+    for (let i = 1; i <= 10; i++) {
+      await waitUntil(async () => (await shown()).length >= i, 8000);
+      await afterAdvance(page);
+      const id = (await shown())[i - 1];
+      if (i === 1) {
+        await page.press("#input", "Enter"); // 答えを見る → あやふや
+        await page.waitForTimeout(300);
+        await page.press("#input", "Enter"); // 次へ
+        continue;
+      }
+      for (const ch of String(EN[id] ?? "")) await page.press("#input", ch);
+      typed.push(id);
+    }
+    await waitUntil(() => page.evaluate(() => document.getElementById("resultPanel")?.hidden === false), 8000);
+    const ids = await shown();
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+    const firstScreen = () => page.evaluate(() => ["learnCount", "learnTotal", "learnRank", "learnNext"].map((id) => document.getElementById(id)?.textContent.trim() ?? null).concat([...document.querySelectorAll("#learnCards .learn-card__count")].map((e) => e.textContent.trim())));
+    const before = await firstScreen();
+    await page.click("#statsMore > summary");
+    await waitUntil(() => page.evaluate(() => /初めて見て正解した語 [1-9]/.test(document.getElementById("knownWordsSummary")?.textContent ?? "")), 6000);
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => {
+      const card = (label) => [...document.querySelectorAll("#overviewMore .stat-card")].find((c) => c.querySelector("span")?.textContent.trim() === label)?.querySelector("strong")?.textContent.trim() ?? null;
+      const typing = document.getElementById("typingMetrics")?.closest(".result-card");
+      return {
+        met: card("出会った語"), best: card("ベストスコア"),
+        typingShown: !!typing && !typing.hidden && getComputedStyle(typing).display !== "none",
+        known: document.getElementById("knownWordsSummary")?.textContent.trim(),
+        knownItems: [...document.querySelectorAll("#knownWordList [data-word-detail]")].map((b) => b.dataset.wordDetail),
+        dropped: document.querySelector(".learned-dropped")?.textContent.trim() ?? null,
+        stats: Object.entries(JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")).filter(([, s]) => (s.playCount ?? 0) > 0).length
+      };
+    });
+    const after = await firstScreen();
+    const firstKnown = r.knownItems[0] ?? null;
+    let detail = null;
+    if (firstKnown) {
+      await page.click("#knownWordsSummary"); // 「初めて見て正解した語」の畳みを開く
+      await page.click(`#knownWordList [data-word-detail="${firstKnown}"]`);
+      await page.waitForTimeout(300);
+      detail = await page.evaluate(() => {
+        const m = document.getElementById("wordDetail");
+        return m && !m.hidden ? { en: document.getElementById("wordDetailTitle")?.textContent.trim(), ja: document.querySelector(".word-detail__ja")?.textContent.trim() } : null;
+      });
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(200);
+    }
+    let csv = "";
+    try {
+      const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 5000 }), page.click("#learnedCsv")]);
+      csv = fs.readFileSync(await dl.path(), "utf8");
+    } catch {}
+    const typedEn = typed.map((id) => EN[id]);
+    const notBase = ids.filter((id) => id === "english-zero" || id === "english-two");
+    check("78.4 詳しい記録（Batch 89）: 新しい人が中心の学習を 1 セット（1 語は答えを見て、9 語は打って正解）を終えて開くと、出会った語 10・初めて見て正解した語 9 語（打った語）・外したパックの行なし（基本カテゴリに無い english-zero などの公開の語）",
+      ids.length >= 10 && notBase.length >= 1 && r.met === "10" && r.stats === 10 && r.known === "初めて見て正解した語 9語" && r.knownItems.length === 9 && typed.every((id) => r.knownItems.includes(id)) && r.dropped === null && page.errors.length === 0,
+      JSON.stringify({ ids, typed, ...r, err: page.errors[0] }));
+    check("78.4 詳しい記録（Batch 89）: 一覧の語を押すと語の詳細に英語と訳・CSV にその語（英語の列）が入る",
+      !!detail && detail.en === EN[firstKnown] && !!detail.ja && typedEn.every((en) => csv.split("\r\n").some((line) => line.startsWith(`${en},`))),
+      JSON.stringify({ firstKnown, detail, csv: csv.slice(0, 300) }));
+    check("78.4 詳しい記録（Batch 89）: 開いても最初の画面の数（覚えた N / 総数・ランク・次のランクまで・3 つの札）は開く前と同じ",
+      JSON.stringify(before) === JSON.stringify(after) && before[1] === fmt(TOTAL), JSON.stringify({ before, after }));
+    check("78.4 詳しい記録（Batch 89）: 旗の間はタイピングの札とその他の数字のベストスコア（隠れた遊び方だけが書く数）を出さない",
+      r.typingShown === false && r.best === null, JSON.stringify({ typingShown: r.typingShown, best: r.best }));
+    await page.close();
+
+    // 翌日にあやふやの語を自力で正解した公開の語（english-zero: 前の日に ×、今日 ○）は「思い出せるようになった語」に出る。本当に外したパックの語（読み込んでいない分野パックの語）は
+    // 今までどおり「ほか N語は外したパックの語」に数え、公開の語はそこに数えない
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));
+    const english = manifest.subjects.find((s) => s.id === "english");
+    const baseIds = new Set(english.categories.filter((c) => !c.pack).flatMap((c) => JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id)));
+    const pubIds = new Set(PUB);
+    let packId = null;
+    for (const c of english.categories.filter((c) => c.pack)) {
+      packId = JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id).find((id) => !baseIds.has(id) && !pubIds.has(id)) ?? null;
+      if (packId) break;
+    }
+    const yesterday = new Date(Date.now() - DAY);
+    const learnedRec = { playCount: 2, correctCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: yesterday.toISOString(), lastRecallSuccessAt: new Date().toISOString(), history: [{ d: ymdDaysAgo(1), r: "x" }, { d: ymdDaysAgo(0), r: "o" }], ls: 1, lsd: dayNo(0) };
+    const p2 = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-zero": learnedRec, ...(packId ? { [packId]: { ...learnedRec, ls: undefined, lsd: undefined } } : {}) }) } });
+    await p2.goto(BASE + "/stats.html#learnedWords", { waitUntil: "networkidle" });
+    await waitUntil(() => p2.evaluate(() => /zero/.test(document.getElementById("learnedWordList")?.textContent ?? "")), 6000);
+    await p2.waitForTimeout(300);
+    const r2 = await p2.evaluate(() => ({
+      count: document.getElementById("learnedWordsCount")?.textContent.trim(),
+      words: [...document.querySelectorAll("#learnedWordList [data-word-detail]")].map((b) => b.dataset.wordDetail),
+      dropped: document.querySelector(".learned-dropped")?.textContent.trim() ?? null
+    }));
+    check("78.4 詳しい記録（Batch 89）: 前の日に × で今日 ○ の公開の語（english-zero）は「思い出せるようになった語」に出る・本当に外したパックの語は「ほか 1語は外したパックの語」（公開の語は数えない）",
+      !!packId && r2.count === "1語" && JSON.stringify(r2.words) === JSON.stringify(["english-zero"]) && r2.dropped === "ほか 1語は外したパックの語" && p2.errors.length === 0,
+      JSON.stringify({ packId, ...r2, err: p2.errors[0] }));
+    await p2.close();
+  }
 }
 
 // ===== 20. Batch 48: 2 台目の端末（ログイン・同期・マージ） =====
@@ -21086,6 +21281,68 @@ console.log("home and old URLs (78.6):");
     await closeCtx(page);
   }
 
+  // (1b) 初めての人の試しの 3 語（Batch 89 A3。js/welcome.js setupDemo・index.html #welcomeDemoInput・#welcomeDemoMsg）: キーボードだけで 3 語を終えると、焦点は「英単語を学ぶ」
+  //      （輪が見える。止めた入力欄から BODY に落ちない）・次の Tab はフッターへ飛ばない。入力欄の読み上げの説明に問い（りんご・学校）が入り、
+  //      正解の知らせと答えを見たときの文は #welcomeDemoMsg（role=status）に出る。指の端末（鍵盤）では、3 語の後に鍵盤を出す欄へ焦点を戻さず、画面も動かさない
+  {
+    const page = await homePage({}, { fresh: true });
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    const said = () => page.evaluate(() => [...document.querySelectorAll('#welcome [role="status"]')].map((el) => el.textContent.trim()).join(" "));
+    const described = () => page.evaluate(() => {
+      const ids = (document.getElementById("welcomeDemoInput").getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+      return { ids, text: ids.map((id) => document.getElementById(id)?.textContent.trim() ?? "").join(" ") };
+    });
+    const demoJa = async () => (await page.textContent("#welcomeDemoJa")).trim();
+    const a = { reached: await tabTo(page, "#welcomeDemoInput"), role: await page.getAttribute("#welcomeDemoMsg", "role"), d1: await described() };
+    for (const ch of "apple") await page.keyboard.press(ch);
+    await waitUntil(async () => (await said()).includes("思い出せた"), 2000);
+    a.ok = await said();
+    await waitUntil(async () => (await demoJa()) === "学校", 3000);
+    a.d2 = (await described()).text;
+    await page.keyboard.press("Enter");
+    await waitUntil(async () => (await said()).includes("school"), 2000);
+    a.reveal = await said();
+    for (const ch of "school") await page.keyboard.press(ch);
+    await waitUntil(async () => (await demoJa()) === "交渉する", 3000);
+    for (const ch of "negotiate") await page.keyboard.press(ch);
+    await waitUntil(async () => (await demoJa()) === "できた", 3000);
+    await page.waitForTimeout(150);
+    const f = await page.evaluate(() => {
+      const el = document.activeElement;
+      return { tag: el?.tagName, start: !!el?.matches?.("#welcome .welcome__start"), ring: !!el?.matches?.(":focus-visible") && getComputedStyle(el).outlineStyle !== "none", inputOff: document.getElementById("welcomeDemoInput").disabled };
+    });
+    await page.keyboard.press("Tab");
+    f.next = await page.evaluate(() => { const el = document.activeElement; return { tag: el?.tagName, id: el?.id ?? "", footer: !!el?.closest?.("footer") }; });
+    check("78.6 初めての人の試し（キーボードだけ）: #welcomeDemoMsg は role=status・入力欄の aria-describedby に問い（#welcomeDemoJa）と知らせ（#welcomeDemoMsg）。読み上げの説明に りんご → 次の語で 学校",
+      a.reached && a.role === "status" && a.d1.ids.includes("welcomeDemoJa") && a.d1.ids.includes("welcomeDemoMsg") && a.d1.text.includes("りんご") && a.d2.includes("学校"), JSON.stringify(a));
+    check("78.6 初めての人の試し（キーボードだけ）: 正解の知らせ（思い出せた）と Enter で答えを見たときの文（school）が role=status の領域に出る", a.ok.includes("思い出せた") && a.reveal.includes("school"), JSON.stringify({ ok: a.ok, reveal: a.reveal }));
+    check("78.6 初めての人の試し（キーボードだけ）: 3 語を終えると焦点は「英単語を学ぶ」（BODY に落ちない・焦点の輪が見える）・次の Tab はフッターへ飛ばない",
+      f.inputOff && f.start && f.tag !== "BODY" && f.ring && !f.next.footer && f.next.tag !== "BODY", JSON.stringify(f));
+    check("78.6 初めての人の試し（キーボードだけ）: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+
+    // 指の端末: 入力欄を指で選び、鍵盤の入力（input イベント）で 3 語。終わった後に鍵盤を出す欄へ焦点は無く、画面は動かない
+    const touch = await homePage({}, { fresh: true, mobile: true, viewport: { width: 390, height: 844 } });
+    await touch.goto(BASE + "/", { waitUntil: "networkidle" });
+    await touch.tap("#welcomeDemoInput");
+    const typeWord = async (word) => {
+      await touch.evaluate((w) => { const el = document.getElementById("welcomeDemoInput"); el.value = w; el.dispatchEvent(new Event("input", { bubbles: true })); }, word);
+    };
+    const touchJa = async () => (await touch.textContent("#welcomeDemoJa")).trim();
+    await typeWord("apple");
+    await waitUntil(async () => (await touchJa()) === "学校", 3000);
+    await typeWord("school");
+    await waitUntil(async () => (await touchJa()) === "交渉する", 3000);
+    const y0 = await touch.evaluate(() => Math.round(scrollY));
+    await typeWord("negotiate");
+    await waitUntil(async () => (await touchJa()) === "できた", 3000);
+    await touch.waitForTimeout(150);
+    const t = await touch.evaluate(() => { const el = document.activeElement; return { tag: el?.tagName, type: el?.type ?? null, editable: !!el?.matches?.("input:not([type=button]):not([type=submit]), textarea, [contenteditable]"), y: Math.round(scrollY) }; });
+    t.y0 = y0;
+    check("78.6 初めての人の試し（指の端末）: 3 語の後に鍵盤を出す欄へ焦点は無く（入力欄は止まる）、画面は動かない・エラー 0", !t.editable && t.y === t.y0 && touch.errors.length === 0, JSON.stringify({ ...t, err: touch.errors[0] ?? "" }));
+    await closeCtx(touch);
+  }
+
   // (2) 戻ってきた人: ホームは「英単語を学ぶ」1 つと 覚えた N ／総数・ランク・学習状況へ。あやふやの今日の分があれば あやふや（何も選んでいないときの Enter で始まる）
   {
     const learned = vocab.order.slice(0, 130); // 覚えた 130 語（よちよち 120 の上）
@@ -21111,6 +21368,104 @@ console.log("home and old URLs (78.6):");
     const r = { url: page.url().replace(BASE, ""), prog: await progress(page) };
     check("78.6 開き直し: 同じモードの続き（あやふや のまま。「英単語を学ぶ」の決まりで別のモードに替わらない）", /\?learn=unsure$/.test(r.url) && r.prog.startsWith("あやふや"), JSON.stringify(r));
     check("78.6 戻ってきた人: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
+    await closeCtx(page);
+  }
+
+  // (2b) プレイ前のホームの畳んだ盤面（Batch 89 A5。js/main.js showGame・index.html の #gameCard と .stats--strip）: 読み込み直後・ナビの「ホーム」の後・机に戻るの後で、
+  //      Tab の列に見えない入力欄（#input と畳んだ盤面の中の部品）が無く、読み上げの木に「いまの問題」「このセッションの数字」が出ない。
+  //      ページの読み上げの行（#srStatus。js/ui.js announce）は畳んだ盤面の inert の中に無く、ホームで言った文が読まれる（机に戻ったあとのランクアップの文など）。
+  //      「英単語を学ぶ」・何も選んでいないときの Enter・/?learn=new・机に戻った後のスタートのどれで始めても、焦点は #input に入り 1 語目を打てる
+  {
+    const learned = vocab.order.slice(0, 3);
+    const page = await homePage({ spelldash_word_stats: JSON.stringify(stateOf(learned, { ls: 2 })) });
+    // Tab を頭から押して、フッターに着くまでの焦点の列（畳んだ盤面の中に入ったら名前を控える）
+    const tabWalk = async () => {
+      await page.evaluate(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); });
+      const seen = [];
+      for (let i = 0; i < 60; i++) {
+        await page.keyboard.press("Tab");
+        const a = await page.evaluate(() => { const el = document.activeElement; return { id: el?.id ?? "", tag: el?.tagName ?? "", folded: !!el?.closest?.("#gameCard, .stats--strip"), footer: !!el?.closest?.("footer") }; });
+        seen.push(a);
+        if (a.footer || a.tag === "BODY") break;
+      }
+      return { input: seen.some((a) => a.id === "input"), folded: seen.filter((a) => a.folded).map((a) => a.id || a.tag), steps: seen.length, end: seen.at(-1) };
+    };
+    // 読み上げの木（ブラウザの開発用の口で木の全体を取る。無視される節は数えない）に出る名前
+    const axNames = async () => {
+      const cdp = await page.context().newCDPSession(page);
+      try {
+        const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+        return nodes.filter((n) => !n.ignored).map((n) => n.name?.value ?? "").filter(Boolean);
+      } finally {
+        await cdp.detach().catch(() => {});
+      }
+    };
+    // ページの読み上げ（js/ui.js announce。机に戻ったあとのランクアップの文など）が、畳んだ盤面の inert の中ではなく読まれる行に入るか
+    const sayHome = () => page.evaluate(async () => {
+      (await import("/js/ui.js")).announce("机に戻った");
+      const t0 = performance.now();
+      const lines = () => [...document.querySelectorAll('[role="status"], [aria-live]:not([aria-live="off"])')].filter((n) => n.textContent.trim() === "机に戻った");
+      while (!lines().length && performance.now() - t0 < 1000) await new Promise((r) => setTimeout(r, 10));
+      const got = lines();
+      return { n: got.length, id: got[0]?.id ?? "", readable: got.length === 1 && !got[0].closest('[inert], [hidden], [aria-hidden="true"]') };
+    });
+    const homeState = async (label) => {
+      const walk = await tabWalk();
+      const names = await axNames();
+      return { label, walk, card: names.includes("いまの問題"), strip: names.includes("このセッションの数字"), said: await sayHome() };
+    };
+    // 始めた後: 焦点は #input・1 語目の頭の 1 文字を打つと打った字が出る
+    const typedFirst = async () => {
+      await waitUntil(async () => (await page.evaluate(() => document.getElementById("japanese")?.textContent.trim() ?? "")) !== "", 8000);
+      await page.waitForTimeout(200);
+      const focus = await page.evaluate(() => document.activeElement?.id ?? "");
+      const id = (await shownIds(page)).at(-1) ?? "";
+      const head = id.replace(/^english-/, "").charAt(0);
+      await page.keyboard.press(head);
+      await page.waitForTimeout(100);
+      const typed = await page.evaluate(() => (document.querySelector(".typed-preview")?.textContent ?? document.getElementById("input")?.value ?? "").trim());
+      return { focus, head, ok: focus === "input" && typed.startsWith(head) };
+    };
+    const rows = [];
+    const starts = {};
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await homeView(page)).ready, 6000);
+    rows.push(await homeState("読み込み直後"));
+    await page.click('.site-nav a[href="/"]');
+    await page.waitForLoadState("networkidle");
+    await waitUntil(async () => (await homeView(page)).ready, 6000);
+    rows.push(await homeState("ナビのホームの後"));
+    await page.click("#pathStart");
+    await page.waitForURL(/learn=/, { timeout: 8000 }).catch(() => {});
+    await waitWord(page);
+    starts.button = await typedFirst();
+    await page.click("#backToPath");
+    await page.waitForTimeout(300);
+    rows.push(await homeState("机に戻るの後"));
+    starts.label = (await page.textContent("#pathStart")).trim();
+    await page.click("#pathStart");
+    await page.waitForURL(/learn=/, { timeout: 8000 }).catch(() => {});
+    await waitUntil(async () => (await shownIds(page)).length >= 1, 8000);
+    starts.again = await typedFirst();
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await homeView(page)).ready, 6000);
+    await page.evaluate(() => document.activeElement?.blur?.());
+    await page.keyboard.press("Enter");
+    await page.waitForURL(/learn=/, { timeout: 8000 }).catch(() => {});
+    await waitUntil(async () => (await shownIds(page)).length >= 1, 8000);
+    starts.enter = await typedFirst();
+    await page.goto(BASE + "/?learn=new", { waitUntil: "networkidle" });
+    await waitUntil(async () => (await shownIds(page)).length >= 1, 8000);
+    starts.deep = await typedFirst();
+    check("78.6 プレイ前のホーム（読み込み直後・ナビのホームの後・机に戻るの後）: Tab の列に見えない入力欄（#input と畳んだ盤面の部品）が無い",
+      rows.length === 3 && rows.every((r) => !r.walk.input && r.walk.folded.length === 0 && r.walk.end?.footer), JSON.stringify(rows.map((r) => ({ label: r.label, ...r.walk }))));
+    check("78.6 プレイ前のホーム: 読み上げの木に「いまの問題」「このセッションの数字」が出ない（畳んだ盤面の古い数を読まない）",
+      rows.every((r) => !r.card && !r.strip), JSON.stringify(rows.map((r) => ({ label: r.label, card: r.card, strip: r.strip }))));
+    check("78.6 プレイ前のホーム: ページの読み上げ（announce）は畳んだ盤面の inert の中ではない読まれる行に 1 つだけ入る（机に戻ったあとのランクアップの文も読まれる）",
+      rows.every((r) => r.said.n === 1 && r.said.readable), JSON.stringify(rows.map((r) => ({ label: r.label, ...r.said }))));
+    check("78.6 始めると焦点は #input で 1 語目を打てる（「英単語を学ぶ」・机に戻った後のスタート・何も選んでいないときの Enter・/?learn=new）",
+      starts.button.ok && starts.again.ok && starts.enter.ok && starts.deep.ok, JSON.stringify(starts));
+    check("78.6 プレイ前のホームの畳んだ盤面: エラー 0", page.errors.length === 0, page.errors[0] ?? "");
     await closeCtx(page);
   }
 
@@ -22135,6 +22490,179 @@ console.log("learn modes (78.3):");
     check("78.3 5月: may の自力正解 → 5月は 覚えた・助動詞の may は あやふや のまま（1 つの答えで 2 つの項目を動かさない）",
       JSON.stringify(good.writes) === JSON.stringify([{ id: MONTH, kind: "exact" }]) && good.t[MONTH]?.ls === 2 && good.t[AUX]?.ls === 1 && good.line === "覚えた" && good.errors.length === 0,
       JSON.stringify({ writes: good.writes, month: good.t[MONTH]?.ls, aux: good.t[AUX]?.ls, line: good.line, err: good.errors[0] }));
+  }
+
+  // (12) 横向きの学ぶ画面（Batch 89 A1。css/game.css の @media (max-height: 480px)・js/main.js fitLearnBoard）: 指の端末の横向き（高さ 480 以下）では
+  //      画面キーボード（.osk）が下の 160px ほどを覆う。答えを出す前は訳（#japanese）と入力欄、答えを出した後は答え（#word）と入力欄が、
+  //      画面の上端から .osk の上端までの間に全部入る（2 つ目の語も・縦から横へ回しても）。ヘッダーは貼り付けない（sticky／fixed にしない）。横スクロール 0（昼・夜）
+  {
+    const landGeo = (page) => page.evaluate(() => {
+      const box = (s) => {
+        const e = document.querySelector(s);
+        if (!e || getComputedStyle(e).display === "none") return null;
+        const r = e.getBoundingClientRect();
+        return { top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10 };
+      };
+      const osk = document.getElementById("osk");
+      return {
+        ja: box("#japanese"), word: box("#word"), input: box("#input"),
+        oskTop: osk && !osk.hidden ? Math.round(osk.getBoundingClientRect().top * 10) / 10 : null,
+        header: getComputedStyle(document.querySelector(".site-header")).position,
+        revealed: !!document.querySelector("#word .cl"),
+        hs: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        y: Math.round(scrollY)
+      };
+    });
+    const inBand = (b, top) => !!b && top != null && b.top >= -0.5 && b.bottom <= top + 0.5;
+    const before = (g) => inBand(g.ja, g.oskTop) && inBand(g.input, g.oskTop) && !g.revealed && !["sticky", "fixed"].includes(g.header) && g.hs <= 0;
+    const after = (g) => inBand(g.word, g.oskTop) && inBand(g.input, g.oskTop) && g.revealed && g.hs <= 0;
+    const runLand = async ([w, h], { theme = "light", rotate = false } = {}) => {
+      const page = await learnPage({ spelldash_word_stats: "{}", spelldash_theme: theme }, { viewport: rotate ? { width: h, height: w } : { width: w, height: h }, mobile: true });
+      await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+      await waitWord(page, 1);
+      await page.waitForTimeout(600);
+      if (rotate) {
+        await page.setViewportSize({ width: w, height: h }); // 縦（390×844）で始めて横（844×390）へ回す
+        await page.waitForTimeout(700);
+      }
+      const g0 = await landGeo(page);
+      await page.keyboard.press("Enter"); // 答えを見る
+      await waitUntil(() => page.evaluate(() => !!document.querySelector("#word .cl")), 3000);
+      await page.waitForTimeout(700);
+      const g1 = await landGeo(page);
+      await page.keyboard.press("Enter"); // 次へ
+      await waitWord(page, 2);
+      await page.waitForTimeout(700);
+      const g2 = await landGeo(page);
+      const errors = page.errors.slice();
+      await page.context().close();
+      return { g0, g1, g2, errors };
+    };
+    const land = {};
+    for (const size of [[844, 390], [740, 360], [667, 375], [568, 320]]) land[size.join("x")] = await runLand(size);
+    for (const [key, r] of Object.entries(land)) {
+      check(`78.3 横向き ${key}: 答えを出す前は訳と入力欄が画面の上端から画面キーボードの上端までに入る（2 つ目の語も）・ヘッダーは貼り付けない・横スクロール 0`, before(r.g0) && before(r.g2) && r.errors.length === 0, JSON.stringify({ g0: r.g0, g2: r.g2, err: r.errors[0] }));
+      check(`78.3 横向き ${key}: 答えを出した後は答え（#word）と入力欄が同じ範囲に入る`, after(r.g1), JSON.stringify(r.g1));
+    }
+    const rot = await runLand([844, 390], { rotate: true });
+    check("78.3 横向き: 390×844 で始めて 844×390 へ回しても、答えの前は訳と入力欄・後は答えと入力欄が画面キーボードの上に入る", before(rot.g0) && after(rot.g1) && before(rot.g2) && rot.errors.length === 0, JSON.stringify({ ...rot, errors: rot.errors[0] }));
+    const night = await runLand([568, 320], { theme: "dark" });
+    check("78.3 横向き 568×320 夜: 同じく入る・横スクロール 0", before(night.g0) && after(night.g1) && before(night.g2) && night.errors.length === 0, JSON.stringify({ ...night, errors: night.errors[0] }));
+  }
+
+  // (12b) 縦向きで答えを出したときの寄せ先（Batch 89 の反証）: 答えを出すと入力欄を画面キーボードの上へ寄せる（js/game.js revealAnswer の
+  //       scrollIntoView nearest と html の scroll-padding-bottom）。寄せ先の余白は鍵盤＋88px（css/keyboard.css。2aa2222 と同じ）。チュートリアルの札が
+  //       出ていない回で 20px 足すと、背の低いスマホ（375×553 = 小さいスマホのブラウザ）で答えの行（#word）が画面の上へ押し出されて見えなかった。
+  //       答えを出した後: 余白は鍵盤＋88px（375×553 と 390×844）・375×553 では入力欄の下端が「画面の高さ − 鍵盤 − 88」で、答えの行の下の部分が
+  //       画面の上端より 10px 以上下に見える・知らせは鍵盤の上・横スクロール 0
+  {
+    const portraitGeo = (page) => page.evaluate(() => {
+      const root = document.documentElement;
+      const cs = getComputedStyle(root);
+      const box = (s) => {
+        const e = document.querySelector(s);
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return { top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10 };
+      };
+      const osk = document.getElementById("osk");
+      const oskH = parseFloat(cs.getPropertyValue("--osk-h"));
+      return {
+        h: innerHeight, oskH, reserve: Math.round((parseFloat(cs.scrollPaddingBottom) - oskH) * 10) / 10,
+        oskTop: osk && !osk.hidden ? Math.round(osk.getBoundingClientRect().top * 10) / 10 : null,
+        word: box("#word"), input: box("#input"), msg: box("#message"),
+        coach: !!document.querySelector(".coach"), revealed: !!document.querySelector("#word .cl"),
+        hs: root.scrollWidth - root.clientWidth, y: Math.round(scrollY)
+      };
+    });
+    const port = {};
+    for (const [w, h] of [[375, 553], [390, 844]]) {
+      const page = await learnPage({ spelldash_word_stats: "{}" }, { viewport: { width: w, height: h }, mobile: true });
+      await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+      await waitWord(page, 1);
+      await page.waitForTimeout(600);
+      await page.keyboard.press("Enter"); // 答えを見る
+      await waitUntil(() => page.evaluate(() => !!document.querySelector("#word .cl")), 3000);
+      await page.waitForTimeout(700); // 入力欄を寄せる動き（smooth）の後
+      port[`${w}x${h}`] = { ...(await portraitGeo(page)), errors: page.errors.slice(0, 1) };
+      await page.context().close();
+    }
+    const s = port["375x553"], t = port["390x844"];
+    check("78.3 縦向き: 札の出ない回で答えを出したときの寄せ先の余白は鍵盤＋88px（375×553・390×844。20px 足さない）",
+      s.revealed && t.revealed && !s.coach && !t.coach && s.reserve === 88 && t.reserve === 88 && s.errors.length === 0 && t.errors.length === 0, JSON.stringify(port));
+    check("78.3 縦向き 375×553: 答えを出した後、入力欄の下端は画面の高さ − 鍵盤 − 88・答えの行の下の部分が画面の上端より 10px 以上下・知らせは鍵盤の上・横スクロール 0",
+      !!s.input && !!s.word && !!s.msg && s.oskTop != null && Math.abs(s.input.bottom - (s.h - s.oskH - 88)) <= 1.5 && s.word.bottom >= 10 && s.msg.bottom <= s.oskTop + 0.5 && s.hs <= 0, JSON.stringify(s));
+  }
+
+  // (13) 夜の学ぶ盤面の灰色の字（Batch 89 A7。css/room.css の夜の #gameCard の --ink-3）: 紙（--parchment）に重ね（--far-page）を載せた色の上で、
+  //      計算のコントラストが 4.7 以上（#word の案内の行 14px・#setProgress 12px の字。画素で測ると紙の模様で揺れるので計算で見る）。昼の値は前と同じ
+  {
+    const hexRgb = (s) => { const m = String(s).trim().match(/^#([0-9a-f]{6})$/i); return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null; };
+    const rgbaOf = (s) => { const m = String(s).match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(",").map((x) => Number(x.trim())); return { rgb: p.slice(0, 3), a: p[3] ?? 1 }; };
+    const lin = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const lum = (rgb) => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+    // 回の盤面を 1 つ開き、data-theme を切り替えて盤面（#gameCard）の値を読む（藍は Pro のテーマなので保存値では開けない。8.9 の 4 テーマの比と同じ読み方）
+    const page = await learnPage({});
+    await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+    await waitWord(page, 1);
+    const vals = await page.evaluate(() => {
+      const was = document.documentElement.dataset.theme;
+      const out = {};
+      for (const t of ["light", "dark", "indigo"]) {
+        document.documentElement.dataset.theme = t;
+        const cs = getComputedStyle(document.getElementById("gameCard"));
+        out[t] = { ink3: cs.getPropertyValue("--ink-3").trim(), parchment: cs.getPropertyValue("--parchment").trim(), far: cs.getPropertyValue("--far-page").trim(), playing: document.body.classList.contains("home--playing") };
+      }
+      document.documentElement.dataset.theme = was;
+      return out;
+    });
+    const rows = {};
+    for (const [t, v] of Object.entries(vals)) {
+      const ink = hexRgb(v.ink3);
+      const paper = hexRgb(v.parchment);
+      const far = rgbaOf(v.far) ?? { rgb: [0, 0, 0], a: 0 };
+      const bg = paper ? paper.map((c, i) => c * (1 - far.a) + far.rgb[i] * far.a) : null;
+      rows[t] = { ...v, ratio: ink && bg ? Math.round(ratio(ink, bg) * 100) / 100 : null };
+    }
+    check("78.3 夜の盤面（黒・藍）: --ink-3 の字と紙（--parchment に --far-page を重ねた色）の計算のコントラストが 4.7 以上",
+      ["dark", "indigo"].every((t) => rows[t].playing && rows[t].ratio >= 4.7), JSON.stringify(rows));
+    check("78.3 昼の盤面の --ink-3 は前と同じ値（#5E5040）・エラー 0", rows.light.ink3.toUpperCase() === "#5E5040" && page.errors.length === 0, JSON.stringify({ light: rows.light, err: page.errors[0] ?? "" }));
+    await page.context().close();
+  }
+
+  // (13b) 夜の盤面に部屋の周辺減光（.room__vignette。multiply で端を 5 割まで沈める）を掛けない（Batch 89 A7 の続き）。スマホの幅では盤面が画面いっぱいで、
+  //       右側の字（#word の案内の行・#message）が字の矩形の画素で 3.2 前後まで落ちていた。周辺減光に一時的に pointer-events を付けて、盤面の右端の点
+  //       （進みの行の高さ）を elementFromPoint で引くと盤面の中の部品であることを見る（画素は紙の模様で揺れるので、重なりの順で見る）。昼の重なりは前のまま
+  {
+    const rows = {};
+    for (const [w, h] of [[390, 844], [1200, 900]]) {
+      const page = await learnPage({}, { viewport: { width: w, height: h } });
+      await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+      await waitWord(page, 1);
+      rows[w] = await page.evaluate(() => {
+        const card = document.getElementById("gameCard");
+        const vig = document.querySelector(".room__vignette");
+        const was = document.documentElement.dataset.theme;
+        const out = { vignette: !!vig && getComputedStyle(vig).display !== "none" };
+        for (const t of ["dark", "indigo"]) {
+          document.documentElement.dataset.theme = t;
+          const r = card.getBoundingClientRect();
+          const sp = document.getElementById("setProgress").getBoundingClientRect();
+          const x = r.right - 24, y = sp.top + sp.height / 2;
+          if (vig) vig.style.pointerEvents = "auto";
+          const top = document.elementFromPoint(x, y);
+          if (vig) vig.style.pointerEvents = "";
+          out[t] = { onBoard: !!top && card.contains(top), top: top ? (top.id ? "#" + top.id : top.className) : null, x: Math.round(x), y: Math.round(y) };
+        }
+        document.documentElement.dataset.theme = was;
+        return out;
+      });
+      rows[w].errors = page.errors.length;
+      await page.context().close();
+    }
+    check("78.3 夜の盤面（黒・藍 × 390・1200）は部屋の周辺減光の上（盤面の右端の点を引くと盤面の部品）・エラー 0",
+      Object.values(rows).every((r) => r.vignette && r.dark.onBoard && r.indigo.onBoard && r.errors === 0), JSON.stringify(rows));
   }
 }
 
@@ -24274,11 +24802,13 @@ console.log("preview host (78.8):");
   await waitUntil(() => p2.evaluate(() => (document.getElementById("backupStatus")?.textContent ?? "").includes("調整中")), 5000);
   const backup = await p2.evaluate(() => ({
     importDisabled: document.getElementById("backupImport")?.disabled === true,
-    labelHidden: document.getElementById("backupImport")?.closest("label")?.hidden === true,
+    // 読み込みのボタン（Batch 89 A4: label をやめて #backupImportButton）も隠す。見える「読み込む」の部品（ボタン・label）が 1 つも無い
+    buttonHidden: document.getElementById("backupImportButton")?.hidden === true,
+    shownImport: [...document.querySelectorAll("#backupCard button, #backupCard label")].filter((el) => el.textContent.trim() === "読み込む" && el.getClientRects().length > 0).length,
     status: document.getElementById("backupStatus")?.textContent ?? "",
     exportVisible: !!document.getElementById("backupExport") && document.getElementById("backupExport").getBoundingClientRect().height > 0
   }));
-  check("Preview: バックアップの読み込みは止める（書き出しはできる）", backup.importDisabled && backup.labelHidden && backup.status.includes("現在調整中") && backup.exportVisible, JSON.stringify(backup));
+  check("Preview: バックアップの読み込みは止める（読み込むのボタンも隠す・書き出しはできる）", backup.importDisabled && backup.buttonHidden && backup.shownImport === 0 && backup.status.includes("現在調整中") && backup.exportVisible, JSON.stringify(backup));
   check("Preview: 認証の部品もクラウドも呼ばない", p1.outside.length === 0 && p2.outside.length === 0, JSON.stringify([...p1.outside, ...p2.outside].slice(0, 3)));
   check("Preview: ページのエラーなし", p1.errors.length === 0 && p2.errors.length === 0, JSON.stringify([...p1.errors, ...p2.errors]));
   for (const p of [p1, p2]) { const c = p.context(); await p.close(); await c.close(); }

@@ -2425,10 +2425,6 @@ html[data-theme] .backup-actions {
   margin: 6px 0;
 }
 
-html[data-theme] .backup-import {
-  cursor: pointer;
-}
-
 html[data-theme] .install__done {
   margin: 0;
   color: var(--ok);

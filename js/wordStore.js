@@ -164,6 +164,23 @@ export function publicWord(wordId) {
   return publicStore?.byId.get(wordId) ?? null;
 }
 
+// 学習状況の「詳しい記録」の語の引き方（Batch 89）: 読み込んだ語（findWord）に無ければ公開の版（publicWord。loadPublicWords の後だけ）。
+// 中心の学習の語（公開の語）の大半は基本カテゴリに無く、findWord では引けない。思い出せるようになった語・初めて見て正解した語・
+// 外したパックの数・出会った語・習熟度・語の詳細・CSV はこの 1 つの口で引く。findWord・answersFor・getWordsByCategory の結果は変えない
+export function findRecordWord(wordId) {
+  return findWord(wordId) ?? publicWord(wordId);
+}
+
+// 公開の語の表を読めたか（読めるまでは「外したパックの語」を数えない: 公開の語を外したパックの語と読み違えない）
+export function publicWordsReady() {
+  return !!publicStore;
+}
+
+// 公開の語の id（読めていなければ空）
+export function publicWordIds() {
+  return publicStore ? [...publicStore.byId.keys()] : [];
+}
+
 // 公開のカードを出したときに正解として受け入れる綴り（先頭は出題語。別解は公開のカードの id の索引から）
 export function publicAnswersFor(word) {
   return acceptedAnswers(word, publicStore?.altIndex ?? null, word?.id);

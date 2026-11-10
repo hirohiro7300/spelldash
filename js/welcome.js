@@ -97,6 +97,9 @@ function setupDemo(root, onDone) {
         ja.textContent = "できた";
         preview.innerHTML = "";
         input.value = "";
+        // 焦点の行き先（Batch 89）: 入力欄を止める前に「英単語を学ぶ」へ移す（止めた入力欄から焦点が BODY に落ち、次の Tab がフッターへ飛ばない）。
+        // 指の端末では画面を動かさない（ボタンは鍵盤を出さない）。焦点がよそにあれば動かさない
+        if (document.activeElement === input) root.querySelector(".welcome__start")?.focus({ preventScroll: matchMedia("(pointer: coarse)").matches });
         input.disabled = true;
         onDone?.();
         return;

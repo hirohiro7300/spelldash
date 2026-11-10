@@ -1,5 +1,5 @@
 import { exampleHtml, hasExample } from "./wordExample.js";
-import { findWord, findWordIn, getCategories, promptOf } from "./wordStore.js";
+import { findRecordWord, findWordIn, getCategories, promptOf } from "./wordStore.js";
 import { answerLabel } from "./wordData.js";
 import { getWordStats } from "./storage.js";
 import { classifyWord } from "./categoryProgress.js";
@@ -81,8 +81,9 @@ export function closeWordDetail() {
 // category を渡すと、そのカテゴリに入っている版の語を優先して引く。
 // 同じ id の語が複数のパックにあり、パックごとに訳・例文が違うことがあるため
 // （例: compile は IT パックでは「コンパイルする」、TOEIC パックでは「まとめる」）。
+// 読み込んだ語に無い中心の学習の語（公開の語）は公開の版（js/wordStore.js findRecordWord。Batch 89）
 export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } = {}) {
-  const word = findWordIn(fromCategory, wordId) ?? findWord(wordId);
+  const word = findWordIn(fromCategory, wordId) ?? findRecordWord(wordId);
   if (!word) return;
   const modal = ensureModal();
   const panel = modal.querySelector("#wordDetailPanel");
@@ -90,7 +91,7 @@ export function openWordDetail(wordId, { onNoteSaved, category: fromCategory } =
   const status = classifyWord(stat);
   const category = getCategories().find((c) => c.id === word.category)?.label ?? "";
   const note = getNote(wordId);
-  const family = (Array.isArray(word.family) ? word.family : []).map((id) => findWord(id)).filter(Boolean);
+  const family = (Array.isArray(word.family) ? word.family : []).map((id) => findRecordWord(id)).filter(Boolean);
   const nextReview = nextReviewText(stat); // 期日までのローカルの暦日の差で 今日・明日・N日後（js/mastery.js。Batch 72。出さない語は空）
   // 題箋の title: 思い出せず・ノーミス連続。「思い出せた N回」（correctCount は答えを見た後の打ち直しも数えて多めに出る）は出さない
   const statusTitle = stat ? `思い出せず ${stat.recallFail ?? 0}回${stat.cleanCorrectStreak ? ` ・ ノーミス連続 ${stat.cleanCorrectStreak}/10` : ""}` : "";

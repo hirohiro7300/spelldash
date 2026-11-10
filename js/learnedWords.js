@@ -1,5 +1,5 @@
 import { getWordStats } from "./storage.js";
-import { findWord, getCategories, getWordsByCategory, getAllWords } from "./wordStore.js";
+import { findWord, findRecordWord, publicWordsReady, getCategories, getWordsByCategory, getAllWords } from "./wordStore.js";
 import { classifyWord } from "./categoryProgress.js";
 import { localDateString } from "./stats.js";
 import { answerLabel } from "./wordData.js";
@@ -65,7 +65,7 @@ export function getMasteredCount() {
 
 // 覚えた単語帳: 覚えた＋習得（知ってた語は除く）、新しい順。
 // カテゴリ名は、いまのカテゴリ（spelldash_category）に同じ id があればそちら（道で覚えた名前）、
-// 無ければ追加したパックの版、それも無ければ findWord の版（基本カテゴリの読み込み順）
+// 無ければ追加したパックの版、それも無ければ findRecordWord の版（基本カテゴリの読み込み順。そこに無い中心の学習の語は公開の版: Batch 89）
 export function getLearnedWordList() {
   const stats = getWordStats();
   const activeId = localStorage.getItem("spelldash_category") || "all";
@@ -77,7 +77,7 @@ export function getLearnedWordList() {
   for (const [id, stat] of Object.entries(stats)) {
     const status = classifyWord(stat);
     if (status !== "learning" && status !== "mastered") continue;
-    const word = inActive.get(id) ?? inPack.get(id) ?? findWord(id);
+    const word = inActive.get(id) ?? inPack.get(id) ?? findRecordWord(id);
     if (!word) continue;
     list.push({ id, en: word.en, term: answerLabel(word), ja: word.ja, category: word.category, label: categoryLabel(word.category), status, stat });
   }
@@ -85,12 +85,14 @@ export function getLearnedWordList() {
 }
 
 // 覚えた（learning＋習得）が記録にあるのに、語が引けない id の数（外したパックの語）。
-// 覚えた単語帳には出せないので、件数だけ 1 行で添える
+// 覚えた単語帳には出せないので、件数だけ 1 行で添える。公開の語の表（js/wordStore.js loadPublicWords）を読めるまでは数えない（null）:
+// 中心の学習の語を外したパックの語と読み違えない（Batch 89）
 export function getDroppedLearnedCount() {
+  if (!publicWordsReady()) return null;
   let n = 0;
   for (const [id, stat] of Object.entries(getWordStats())) {
     const status = classifyWord(stat);
-    if ((status === "learning" || status === "mastered") && !findWord(id)) n++;
+    if ((status === "learning" || status === "mastered") && !findRecordWord(id)) n++;
   }
   return n;
 }
@@ -100,7 +102,7 @@ export function getKnownWordList() {
   const list = [];
   for (const [id, stat] of Object.entries(stats)) {
     if (classifyWord(stat) !== "known") continue;
-    const word = findWord(id);
+    const word = findRecordWord(id);
     if (word) list.push({ id, en: word.en, term: answerLabel(word), ja: word.ja });
   }
   return list.sort((a, b) => a.en.localeCompare(b.en));

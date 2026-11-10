@@ -131,18 +131,36 @@ export function getLearnedDelta7(currentLearned, endOffset = 0) {
   return Math.max(0, current - (baseline.learned ?? 0));
 }
 
+// 日付の順に並べた行（learned のある行だけ。同期で合わせた行の並びに頼らない）
+function measuredRows(log) {
+  return log.filter((e) => e && typeof e.date === "string" && e.learned != null).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+// 今月（ym = "YYYY-MM"）に思い出せるようになった語の増え（学習状況の詳しい記録の月の行。Batch 89）。起点は今月より前で最後の行
+// （無ければ今月の最初の行）で、月の初日の増えも数える。終わりは今月の最後の行。減っていれば 0（負にしない）。描画だけで、保存は変えない
+export function getMonthLearnedDelta(ym, log = getGrowthLog()) {
+  const rows = measuredRows(log);
+  const inMonth = rows.filter((e) => e.date.startsWith(ym));
+  const last = inMonth.at(-1);
+  if (!last) return 0;
+  const base = rows.filter((e) => e.date < `${ym}-01`).at(-1) ?? inMonth[0];
+  return Math.max(0, (last.learned ?? 0) - (base.learned ?? 0));
+}
+
 // 直近N日の系列（欠損日は直前の値で埋める）
 export function getLearnedSeries(days = 30) {
   const log = getGrowthLog();
   const byDate = new Map(log.map((e) => [e.date, e]));
   const series = [];
-  let lastLearned = null;
+  // 窓より前で最後の行の値から埋める（Batch 89。30 日以上空いた人も窓の頭から横の線になり、「明日から」の案内にしない）
+  const start = dateKeyDaysAgo(days - 1);
+  let lastLearned = measuredRows(log).filter((e) => e.date < start).at(-1)?.learned ?? null;
   for (let i = days - 1; i >= 0; i--) {
     const key = dateKeyDaysAgo(i);
     const row = byDate.get(key);
     if (row) lastLearned = row.learned;
     series.push({ date: key, learned: lastLearned, active: !!row?.active });
   }
-  // 先頭の欠損は最初の実測値より前なので、それ以前の実測が無い限りnullのまま
+  // 先頭の欠損は、窓より前に実測が無い限り null のまま（最初の実測値より前）
   return series;
 }

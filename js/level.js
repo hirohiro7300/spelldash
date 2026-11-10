@@ -134,19 +134,32 @@ function normalizeStreak() {
   return data;
 }
 
+// 保存した last が「今日遊んだ」に当たるか: 今日か、端末の時刻帯が西へ戻った日の 1 日先（Batch 89。時刻帯の差は最大でも 1 日ずれるだけ）。
+// 2 日以上先は時計の狂い（一度だけ先に進めた端末・その行を同期で受け取った端末）なので当たらない: 当たると見ると、その日まで書かずに
+// 連続が止まり、同期で別の端末にも広がる。前と同じく途切れた扱いにして、遊んだ日に last を今日へ書き直す。日付でない値も当たらない
+function playedOnDay(last, today) {
+  if (!last) return false;
+  const ahead = daysBetween(today, last);
+  return ahead === 0 || ahead === 1;
+}
+
 export function getStreak() {
   const data = normalizeStreak();
 
+  // 今日遊んだ（西へ戻った日の 1 日先の last を含む）: 途切れたと見ず、今の値のまま
+  if (playedOnDay(data.last, todayString())) return data;
+
   // 昨日までにプレイが途切れていたら、表示上は0に戻す
-  if (data.last !== todayString() && data.last !== yesterdayString()) {
+  if (data.last !== yesterdayString()) {
     return { ...data, current: 0 };
   }
 
   return data;
 }
 
+// 今日はもう遊んだ（last が今日か、時刻帯が西へ戻った日の 1 日先。updateStreak と同じ決まり）
 export function hasPlayedToday() {
-  return loadStreak().last === todayString();
+  return playedOnDay(loadStreak().last, todayString());
 }
 
 // ゲーム終了時に呼ぶ。今日最初のプレイかどうか・シールド獲得を返す
@@ -154,7 +167,8 @@ export function updateStreak() {
   const data = normalizeStreak();
   const today = todayString();
 
-  if (data.last === today) {
+  // 今日もう遊んだ。保存した last が 1 日先（端末の時刻帯が西へ戻った日。Batch 89）も同じに扱い、書かない（current も lost も変えない）
+  if (playedOnDay(data.last, today)) {
     return { ...data, isFirstToday: false, earnedShield: false };
   }
 
@@ -162,9 +176,10 @@ export function updateStreak() {
   const current = continued ? data.current + 1 : 1;
   const best = Math.max(current, data.best);
 
-  // 途切れた（昨日でも今日でもない）: 直前の連続日数を残す（修復用。1日だけなら残さない）
+  // 途切れた（昨日でも今日でもない）: 直前の連続日数を残す（修復用。1日だけなら残さない）。
+  // last が 2 日以上先（時計の狂い）は途切れた日が分からないので残さない（前の記録はそのまま。先の日付で取り戻しの文を出さない）
   let lost = data.lost ?? null;
-  if (!continued && data.last && data.current >= 2) {
+  if (!continued && data.last && data.last < today && data.current >= 2) {
     lost = { count: data.current, on: data.last };
   }
 

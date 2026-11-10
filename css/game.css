@@ -223,6 +223,127 @@ html[data-theme] body.learn-run .hist__x {
   background: var(--ink-3);
 }
 
+/* ===== 画面キーボードを出して学ぶ回（body.learn-run.osk-open）の高さの足りない画面（Batch 89） =====
+   縦向き: 答えを出すと入力欄を盤面の上へ寄せる（js/game.js revealAnswer の scrollIntoView nearest と css/keyboard.css の
+   scroll-padding-bottom の鍵盤＋88px）。チュートリアルの札（js/tutorial.js が body の直下に置く .coach。盤面の上に固定）が出ている間だけ、
+   寄せる先を 20px 上げて、入力欄の下の知らせ（2 行）が札に重ならないようにする。寸法は変えない。
+   札の出ない回では上げない（どの答え表示でも上げると、背の低いスマホで答えの行が画面の上へ押し出された: 375×553 で答えの行が -36〜0）。
+   高さ 640px 未満は札が出ていても上げない（答えを見せる方を先にする。知らせの 2 行目に札が掛かるのは前と同じ）。
+   入力欄の scroll-margin-bottom では効かない（nearest は入力欄の枠が寄せる先の中にあると動かない: 390×844 で確かめた）ので、寄せる先そのものを上げる */
+@media (min-height: 640px) {
+  html:has(body.learn-run.osk-open > .coach:not(.coach--out)) {
+    scroll-padding-bottom: calc(var(--osk-h, 236px) + 108px);
+  }
+}
+
+/* 指の端末の横向き（高さ 480px 以下。css/typing.css の同じ media に倣う）: 画面キーボードが下の 160px ほどを覆う（css/keyboard.css の --osk-h 170px）。
+   js/main.js fitLearnBoard が回の始めと横向きに回したときに盤面を画面の上へ寄せ（ヘッダーと柱は上へ流れる。ヘッダーは貼り付けない: css/room.css の absolute のまま）、
+   ここで盤面を詰める: 答えを出す前は訳と入力欄、出した後は答えと入力欄が鍵盤の上に入る。進み（「これから 3 / 10」）と問いの上の字は 1 行に並べ、
+   出題中の案内の行（#word の「分からないときは Enter で答えを表示」。鍵盤の Enter が同じことをする）は高さを取らない（読み上げの木には残す）。
+   答えの後に出る履歴・例文・メモと発音の行は、入力欄と知らせの下へ（画面の並びだけ。読み上げの順は前のまま）。チュートリアルの札は画面の上端に小さく */
+@media (max-height: 480px) {
+  html:has(body.learn-run.osk-open) {
+    scroll-padding-bottom: calc(var(--osk-h, 170px) + 30px); /* 盤面＋知らせの 1 行（札は上に置くので 88px は取らない） */
+  }
+
+  html[data-theme] body.learn-run.osk-open #pathCard {
+    margin-bottom: 6px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  html[data-theme] body.learn-run.osk-open #gameCard {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    column-gap: 12px;
+    padding: 4px 12px 8px;
+    scroll-margin-top: 0;
+  }
+
+  html[data-theme] body.learn-run.osk-open #gameCard > * {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  html[data-theme] body.learn-run.osk-open #gameCard > #setProgress {
+    flex: 1 1 0;
+    margin: 0 0 2px;
+  }
+
+  html[data-theme] body.learn-run.osk-open #gameCard > .label {
+    flex: 0 0 auto;
+    margin: 0 0 2px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  html[data-theme] body.learn-run.osk-open #gameCard > .input-wrapper {
+    flex: 0 1 auto;
+    margin: 0 auto;
+  }
+
+  html[data-theme] body.learn-run.osk-open #japanese {
+    margin: 0 0 4px;
+    font-size: 22px;
+  }
+
+  html[data-theme] body.learn-run.osk-open #promptContext {
+    margin: 0 auto 4px;
+  }
+
+  html[data-theme] body.learn-run.osk-open #word:not(:has(.cl)):not(.hidden-word--hint) {
+    height: 0;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  html[data-theme] body.learn-run.osk-open #word {
+    min-height: 0;
+    margin: 0 0 4px;
+  }
+
+  html[data-theme] body.learn-run.osk-open #word:has(.cl) {
+    font-size: 24px;
+  }
+
+  html[data-theme] body.learn-run.osk-open #word.hidden-word--long:has(.cl) {
+    font-size: 18px;
+  }
+
+  html[data-theme] body.learn-run.osk-open #gameCard > .word-actions {
+    margin: 0 0 4px;
+  }
+
+  html[data-theme] body.learn-run.osk-open #gameCard > :is(#wordHistory, #wordExplain, #wordExample, #wordFamily),
+  html[data-theme] body.learn-run.osk-open #gameCard:has(#word .cl) > .word-actions {
+    order: 1;
+  }
+
+  html[data-theme] body.learn-run.osk-open #gameCard > :is(#resultPanel, #restart) {
+    order: 2;
+  }
+
+  html[data-theme] body.learn-run.osk-open:not(.romaji-answer) :is(#input, .typed-preview) {
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  html[data-theme] body.learn-run.osk-open .message {
+    min-height: 0;
+    margin: 4px 0 0;
+  }
+
+  html[data-theme] body.learn-run.osk-open .coach {
+    top: calc(4px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    padding: 6px 12px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+}
+
 /* ===== 英単語の学習に絞ったホーム（html[data-focus="english"]。js/focus.js。Batch 78 段 5。決定 §7・§9 の 1・10・11・18） =====
    出さないもの（中身とコードは残す。旗を外すと前のまま）: 初回の本の積んだ本と「N冊から選ぶ」・机の本の目次の頁と「出題: … ・ 設定」・
    ほかの遊び方（Challenge・Daily・Battle）・机の下の「覚えた単語」（前の数え方）と Daily の札・わたしの本棚・連続日数の札・はちゃんの紙片
@@ -885,11 +1006,6 @@ button {
 
 .word-note:empty {
   display: none;
-}
-
-.backup-import {
-  display: inline-flex;
-  align-items: center;
 }
 
 /* ===== Batch 3: 学習カレンダー・よく間違えるキー・単語詳細・CSV ===== */

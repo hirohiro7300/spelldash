@@ -302,7 +302,7 @@
         </span>
       </div>
 
-      <p class="muted setting-status" id="audioSettingStatus"></p>
+      <p class="muted setting-status" id="audioSettingStatus" role="status"></p>
     </section>
 
     <section class="settings" id="appearance">
@@ -379,12 +379,10 @@
         <p class="setting-hint">学習の記録と設定をファイルに書き出す。端末の買い替えや、ブラウザのデータ消去に備えて</p>
         <div class="backup-actions">
           <button type="button" class="btn btn--sm btn--ghost" id="backupExport" title="JSON">ファイルに書き出す</button>
-          <label class="btn btn--sm btn--ghost backup-import">
-            読み込む
-            <input type="file" id="backupImport" accept="application/json,.json" hidden />
-          </label>
+          <button type="button" class="btn btn--sm btn--ghost" id="backupImportButton">読み込む</button>
+          <input type="file" id="backupImport" accept="application/json,.json" hidden />
         </div>
-        <p class="setting-hint" id="backupStatus">読み込むと、この端末のデータはファイルの内容に置き換わる</p>
+        <p class="setting-hint" id="backupStatus" role="status">読み込むと、この端末のデータはファイルの内容に置き換わる</p>
       </div>
 
       <div class="setting-row setting-row--stack setting-row--install" id="installSection">

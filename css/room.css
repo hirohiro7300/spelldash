@@ -1602,13 +1602,14 @@ html[data-theme] body.home--playing #gameCard.game-card--failed {
 
 /* 夜も紙は明るく、墨は濃い（§3.13: 頁は L* 88 のろうそくの紙）。盤面の中の紙と墨のトークンだけを昼の値に戻す */
 html:is([data-theme="dark"], [data-theme="indigo"]) body.home--playing #gameCard {
+  z-index: 2; /* 部屋の周辺減光（.room__vignette。z-index 1・multiply で端を 5 割まで沈める）より上に置く。スマホ（縦・横）では盤面の端の字が沈み 4.5:1 を切っていた（Batch 89。E2E 78.3 (13b)） */
   --far-page: rgba(70, 40, 12, 0.1); /* 盤面の紙は沈めない（.page-room の夜の値より前の値） */
   --paper: #E8DCC2;
   --paper-2: var(--parchment);
   --paper-3: var(--parchment-2);
   --ink: #2A2119;
   --ink-2: #4A3D30;
-  --ink-3: #5E5040;
+  --ink-3: #544738; /* 夜の紙（黒 #E2D5BA・藍 #DED4BE）は昼より暗いので、昼の #5E5040 より 1 段濃く。重ねの上で計算 5.2:1（Batch 89。E2E 78.3 (13)） */
   --ink-4: #8A7B66;
   --line: #C4B48E;
   --line-2: #9A8864;

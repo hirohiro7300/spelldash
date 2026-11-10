@@ -1,5 +1,5 @@
 import { getWordStats, getBestScore, getTypingStats } from "./storage.js";
-import { getAllWords } from "./wordStore.js";
+import { getAllWords, publicWordIds } from "./wordStore.js";
 
 export function computeSummary() {
   const stats = getWordStats();
@@ -7,8 +7,10 @@ export function computeSummary() {
   const words = getAllWords().filter((word) => !word.kanjiOnly); // 漢字の書き分けのカードは学習に出さないので数えない
 
   // 語は id で 1 回だけ数える（同じ id が基本カテゴリとパックに別々に入っている）。
-  // 分子も「いま読み込んでいる語」に限る（外したパックや消したマイ単語の記録を数えない＝分母と同じ母集団）
+  // 分子も「いま読み込んでいる語」に限る（外したパックや消したマイ単語の記録を数えない＝分母と同じ母集団）。
+  // 中心の学習の語（公開の語。読み込んだ後だけ: js/wordStore.js loadPublicWords）も足す。重ねて数えない（Batch 89）
   const ids = new Set(words.map((word) => word.id));
+  for (const id of publicWordIds()) ids.add(id);
   const total = ids.size;
   const loaded = Object.entries(stats).filter(([id]) => ids.has(id)).map(([, data]) => data);
   const learned = loaded.filter((data) => (data.playCount ?? 0) > 0).length;

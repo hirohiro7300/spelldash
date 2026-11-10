@@ -10,7 +10,7 @@ import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { isFocusOn } from "./focus.js";
 import { renderRetention } from "./retention.js";
-import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
+import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog, getMonthLearnedDelta } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCounts } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
@@ -21,7 +21,7 @@ import { getMemoryWord } from "./memoryWords.js";
 import { getRankCheck } from "./masteryMeta.js";
 import { bindWordDetail } from "./wordDetail.js";
 
-import { initWordStore, findWord, promptOf } from "./wordStore.js";
+import { initWordStore, findRecordWord, loadPublicWords, promptOf } from "./wordStore.js";
 import { setupUnloadSync, isPulling } from "./sync.js";
 import { logTypingStage } from "./funnelLog.js";
 import { countLearnStates, learnDayOf } from "./learnState.js";
@@ -289,7 +289,9 @@ function initializeMore() {
   const more = document.getElementById("statsMore");
   if (!more) return false;
   more.addEventListener("toggle", () => {
-    if (more.open) rerenderTrends();
+    if (!more.open) return;
+    rerenderTrends();
+    loadMoreWords();
   });
   const resolve = () => {
     const hash = decodeURIComponent(location.hash.replace("#", ""));
@@ -341,9 +343,31 @@ const storeReady = initWordStore().then(() => {
   renderWeekly();
 });
 
+// 詳しい記録の一覧と数（思い出せるようになった語・初めて見て正解した語・外したパックの数・出会った語・習熟度・語の詳細・CSV）は、中心の学習の語
+// （公開の語。その大半は基本カテゴリに無い）も引く（Batch 89。js/wordStore.js findRecordWord）。公開の語の表（24 巻）は詳しい記録を
+// 開いたとき（読み込みの時点で開いていればすぐ）に 1 回だけ読み、読めたら一覧と数を描き直す。読めなければ次に開いたときに読み直す。
+// 最初の画面（3 状態の数・ランク・次のランクまで）は前のまま js/storage.js loadLearnStates の表から（ここでは読まない）
+let moreWords = null;
+function loadMoreWords() {
+  moreWords ??= Promise.all([storeReady, loadPublicWords()])
+    .then(([, store]) => {
+      if (!store) {
+        moreWords = null;
+        return;
+      }
+      renderOverview();
+      renderMastery();
+      renderLearnedWords();
+    })
+    .catch(() => {
+      moreWords = null;
+    });
+  return moreWords;
+}
+
 // 読み込みの間は題より下とフッターを透明にしている（body[data-pending]。css/pages.css）。最初の画面（数・3 つの札・目安・教材について）を描き終えてから出す。
-// 詳しい記録は閉じていれば高さが変わらないので待たない。深いリンクで開いて始まったときだけ、中の節も描き終えてから出す。読めなかったときも出す
-Promise.allSettled([statusReady, moreOpenAtStart ? storeReady : null]).then(() => revealPendingPage());
+// 詳しい記録は閉じていれば高さが変わらないので待たない。深いリンクで開いて始まったときだけ、中の節（公開の語も引いた一覧）も描き終えてから出す。読めなかったときも出す
+Promise.allSettled([statusReady, moreOpenAtStart ? loadMoreWords() : null]).then(() => revealPendingPage());
 
 // Pro の状態が届いたら（ページ表示直後は未確定）、期間と修復の表示を合わせる。
 // 推移は単語ストアの初期化後にだけ描く（先に描くと growth log の今日の行を 0 で上書きし、カレンダーの濃さが狂う）
@@ -397,7 +421,8 @@ function renderCards(container, cards) {
 }
 
 // 詳しい記録の「その他の数字」: 連続・最長連続・出会った語・プレイ回数・ベストスコア（前の概要の「覚えた」は最初の画面の 3 状態の数に替えた。
-// 前の数え方の「覚えた」を同じページに 2 つ出さない）
+// 前の数え方の「覚えた」を同じページに 2 つ出さない）。ベストスコアは Challenge・Daily Dash だけが書く数なので、英単語の学習に絞った間（js/focus.js）は
+// 出さない（スコア推移の節と同じ。Batch 89。値は残す）
 function renderOverview() {
   const s = computeSummary();
   const streak = getStreak();
@@ -408,7 +433,7 @@ function renderOverview() {
       { label: "最長連続", value: `${streak.best}日` },
       { label: "出会った語", value: s.learned, title: `${s.learned} / ${s.total}語` },
       { label: "プレイ回数", value: s.totalPlays },
-      { label: "ベストスコア", value: s.best }
+      ...(isFocusOn() ? [] : [{ label: "ベストスコア", value: s.best }])
     ]);
   }
   renderStreakRepair();
@@ -536,6 +561,11 @@ function renderScoreTrend() {
 }
 
 function renderTyping() {
+  // タイピングの 4 枚は Challenge・Daily Dash の回の終わりだけが書く数（js/game.js recordTypingSession）。英単語の学習に絞った間（js/focus.js）は
+  // 節ごと出さない（中心の学習では増えず、いつも 0 に見える。Batch 89。値は残す）
+  const card = typingElement?.closest(".result-card");
+  if (card) card.hidden = isFocusOn();
+  if (isFocusOn()) return;
   const t = computeTypingSummary();
 
   // 4 枚。単位は「打つ」で統一（1分あたりの語数は出さない）
@@ -554,11 +584,10 @@ function renderMonthlySummary() {
   if (!container) return;
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const log = getGrowthLog().filter((e) => e.date.startsWith(ym));
-  const activeDays = log.filter((e) => e.active).length;
-  const first = log.find((e) => e.learned != null);
-  const last = [...log].reverse().find((e) => e.learned != null);
-  const learnedDelta = first && last ? Math.max(0, (last.learned ?? 0) - (first.learned ?? 0)) : 0;
+  const all = getGrowthLog();
+  const activeDays = all.filter((e) => e.date?.startsWith(ym) && e.active).length;
+  // 起点は今月より前で最後の行（月の初日の増えも数える。Batch 89。js/growthLog.js getMonthLearnedDelta）
+  const learnedDelta = getMonthLearnedDelta(ym, all);
   let sets = 0;
   try {
     sets = (JSON.parse(localStorage.getItem("spelldash_daily_set") || "{}").history ?? []).filter((d) => d.startsWith(ym)).length;
@@ -670,7 +699,7 @@ function renderGrowthTrend() {
 // ===== 習熟度（docs/SPEC_MASTERY.md §5.3）: 段ごとの語数（詳しい記録の中） =====
 // 行は段 5 → 1。目盛りと「段 N」・語数・入り方によらず真の短い説明（RANK_GLOSS）。段の名前（まだ・あやふや・思い出せる・身についた・即答）は
 // このページに出さない（3 状態の「あやふや」と別の意味の名前を同じページに出さない: Batch 78 段 4）。目盛りの読み上げは「5段のうち N」（「習熟度」は見出しが言うので重ねない）。
-// 数えるのは語が引ける（findWord）語のうち段 1 以上（外したパックの語は数えない）。0 の行は出さず、1 語も無ければ節ごと出さない。
+// 数えるのは語が引ける（findRecordWord: 読み込んだ語と中心の学習の公開の語。Batch 89）語のうち段 1 以上（外したパックの語は数えない）。0 の行は出さず、1 語も無ければ節ごと出さない。
 // 率・合計・推移は出さない。段は rankOf で読むだけ（記録を書き換えない）。
 // 思い出す速さと段ごとの実測（Batch 70。D1 §3.3）は、習熟度の行と注記の下に 1〜2 行（speedLines）
 function masteryMeterHtml(r) {
@@ -685,7 +714,7 @@ function renderMastery() {
   const speeds = { fast: 0, normal: 0, slow: 0 };
   for (const [id, stat] of Object.entries(getWordStats())) {
     const r = rankOf(stat);
-    const word = r >= 1 ? findWord(id) : null;
+    const word = r >= 1 ? findRecordWord(id) : null;
     if (!word) continue;
     counts[r]++;
     if (r >= 2 && r <= 4) {
@@ -755,7 +784,7 @@ function renderLearnedWords() {
 
   const list = getLearnedWordList();
   const known = getKnownWordList();
-  const dropped = getDroppedLearnedCount(); // 外したパックの語（単語帳には出せないが、記録は残っている）
+  const dropped = getDroppedLearnedCount(); // 外したパックの語（単語帳には出せないが、記録は残っている）。公開の語の表を読めるまでは null
   const count = document.getElementById("learnedWordsCount");
   if (count) count.textContent = `${list.length}語`;
   const knownSummary = document.getElementById("knownWordsSummary");
@@ -786,7 +815,7 @@ function renderLearnedWords() {
         .join("") + (list.length > shown.length ? `<p class="muted">ほか ${list.length - shown.length}語</p>` : "");
     bindNoteEditors(container, () => renderLearnedWords());
   }
-  if (dropped > 0) container.insertAdjacentHTML("beforeend", `<p class="muted learned-dropped">ほか ${dropped}語は外したパックの語</p>`);
+  if (dropped > 0) container.insertAdjacentHTML("beforeend", `<p class="muted learned-dropped">ほか ${dropped}語は外したパックの語</p>`); // 公開の語の表を読めるまでは null（出さない）
 
   const knownContainer = document.getElementById("knownWordList");
   if (knownContainer) {
