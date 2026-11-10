@@ -298,7 +298,24 @@ export function toast(text: string, opts: ToastOpts = {}): void {
   };
   if (opts.action) {
     const a = opts.action;
-    el.append(h("button", { class: "toast-action", type: "button", onClick: () => (close(), a.run()) }, a.label));
+    // 1 回だけ効かせる（閉じかけのお知らせはまだ押せるので、ダブルクリックの 2 回目で同じことを繰り返さない）
+    let fired = false;
+    el.append(
+      h(
+        "button",
+        {
+          class: "toast-action",
+          type: "button",
+          onClick: () => {
+            if (fired) return;
+            fired = true;
+            close();
+            a.run();
+          },
+        },
+        a.label,
+      ),
+    );
   }
   el.append(h("button", { class: "toast-close icon-btn", type: "button", ariaLabel: "閉じる", onClick: close }, icon("x", 14)));
   stack.append(el);

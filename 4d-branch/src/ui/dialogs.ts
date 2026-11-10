@@ -1,9 +1,10 @@
 // ダイアログ: バックアップと復元・インポート・ヘルプ・ようこそ・文章の編集
 
-import type { AppContext } from "../app/context";
+import type { AppContext, LoadOpts } from "../app/context";
 import { NODE_TYPES, NODE_TYPE_ORDER, RELATIONS, RELATION_ORDER } from "../model/constants";
 import { DocFormatError } from "../model/schema";
 import type { DocData } from "../model/types";
+import { buildWishlist } from "../demo/wishlistBundle";
 import { previewImport, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
 import { BACKUP_LABELS, type BackupMeta } from "../persist/persistence";
@@ -152,38 +153,67 @@ export async function openImportDialog(app: AppContext, file: File): Promise<voi
     m.footer.append(h("button", { class: "btn btn-primary", type: "button", onClick: () => m.close() }, "閉じる"));
     return;
   }
-  const m = openModal({ title: "JSON を読み込む", subtitle: file.name, width: 560, icon: "upload" });
   const c = pv.counts;
-  m.body.append(
-    h(
-      "div",
-      { class: "import-counts" },
-      ...[
-        ["ノード", c.nodes],
-        ["接続", c.edges],
-        ["プロジェクト", c.projects],
-        ["シナリオ", c.scenarios],
-      ].map(([k, v]) => h("div", { class: "stat" }, h("span", { class: "stat-value" }, String(v)), h("span", { class: "stat-label" }, String(k)))),
-    ),
-  );
+  openImportPreview(app, pv, {
+    title: "JSON を読み込む",
+    subtitle: file.name,
+    icon: "upload",
+    stats: [
+      ["ノード", c.nodes],
+      ["接続", c.edges],
+      ["プロジェクト", c.projects],
+      ["シナリオ", c.scenarios],
+    ],
+    mode: "merge",
+    mergeDesc: "今のデータはそのまま。取り込んだ分を右側に足します（ID は振り直し、同じ名前のプロジェクト・シナリオはまとめます）。外部の AI と作った案を足すときに。",
+    replaceDesc: "今のデータを取り込んだ内容に入れ替えます。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。",
+    label: { merge: "インポート（追加）", replace: "インポート（置き換え）" },
+    selectAdded: true,
+  });
+}
+
+type ImportMode = "merge" | "replace";
+
+interface ImportPreviewOpts {
+  title: string;
+  subtitle?: string;
+  icon: string;
+  /** 件数の上に出す説明 */
+  lead?: HTMLElement;
+  stats: Array<[string, number]>;
+  /** 最初に選んでおく読み込み方 */
+  mode: ImportMode;
+  mergeDesc: string;
+  replaceDesc: string;
+  /** 元に戻す・安全用バックアップに出る名前 */
+  label: Record<ImportMode, string>;
+  /** 追加したノードを選んでおく（数千件のときは選ばず、寄るだけにする） */
+  selectAdded: boolean;
+  /** 読み込んだ後の見せ方（お知らせの文・寄る所） */
+  after?: { replaceDone?: string; mergeDone?: string; fitTo?: LoadOpts["fitTo"] };
+  onClose?: () => void;
+}
+
+/** ラジオの組の名前を画面ごとに分ける（2 枚重なっても、互いの選択を外さない） */
+let importSeq = 0;
+
+/** 読み込む前の確認（件数・直したところ・追加か置き換えか） */
+function openImportPreview(app: AppContext, pv: ImportPreview, o: ImportPreviewOpts): void {
+  const m = openModal({ title: o.title, subtitle: o.subtitle, width: 560, icon: o.icon, onClose: o.onClose });
+  if (o.lead) m.body.append(o.lead);
+  const group = `import-mode-${++importSeq}`;
+  m.body.append(h("div", { class: "import-counts" }, ...o.stats.map(([k, v]) => h("div", { class: "stat" }, h("span", { class: "stat-value" }, v.toLocaleString("ja-JP")), h("span", { class: "stat-label" }, k)))));
   if (pv.report.warnings.length) {
     const det = h("details", { class: "import-warn" }, h("summary", null, icon("alert", 14), `直したところ ${pv.report.warnings.length} 件（読み込みはできます）`), h("ul", null, ...pv.report.warnings.slice(0, 30).map((w) => h("li", null, w))));
     m.body.append(det);
   }
-  const mode = { v: "merge" as "merge" | "replace" };
-  const opt = (v: "merge" | "replace", title: string, desc: string) => {
-    const input = h("input", { type: "radio", attrs: { name: "import-mode", value: v }, checked: mode.v === v });
+  const mode = { v: o.mode };
+  const opt = (v: ImportMode, title: string, desc: string) => {
+    const input = h("input", { type: "radio", attrs: { name: group, value: v }, checked: mode.v === v });
     input.addEventListener("change", () => (mode.v = v));
     return h("label", { class: "radio-card" }, input, h("div", null, h("div", { class: "radio-title" }, title), h("div", { class: "radio-desc" }, desc)));
   };
-  m.body.append(
-    h(
-      "div",
-      { class: "radio-cards" },
-      opt("merge", "追加する", "今のデータはそのまま。取り込んだ分を右側に足します（ID は振り直し、同じ名前のプロジェクト・シナリオはまとめます）。外部の AI と作った案を足すときに。"),
-      opt("replace", "置き換える", "今のデータを取り込んだ内容に入れ替えます。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。"),
-    ),
-  );
+  m.body.append(h("div", { class: "radio-cards" }, opt("merge", "追加する", o.mergeDesc), opt("replace", "置き換える", o.replaceDesc)));
   const go = h("button", { class: "btn btn-primary", type: "button" }, "読み込む");
   let done = false;
   go.addEventListener("click", async () => {
@@ -192,10 +222,73 @@ export async function openImportDialog(app: AppContext, file: File): Promise<voi
     done = true;
     go.disabled = true;
     m.close();
-    if (mode.v === "replace") await app.replaceDocSafely(pv.doc, "インポート（置き換え）");
-    else app.mergeDoc(pv.doc);
+    if (mode.v === "replace") await app.replaceDocSafely(pv.doc, o.label.replace, { done: o.after?.replaceDone, fitTo: o.after?.fitTo });
+    else app.mergeDoc(pv.doc, { label: o.label.merge, select: o.selectAdded, done: o.after?.mergeDone, fitTo: o.after?.fitTo });
   });
   m.footer.append(h("button", { class: "btn", type: "button", onClick: () => m.close() }, "キャンセル"), go);
+  setTimeout(() => go.focus());
+}
+
+// ------------------------------------------------------------ やりたいことリスト
+
+/** 確かめの画面を開いている間は、もう 1 枚開かない（メニューとお知らせの両方から開ける） */
+let wishlistOpen = false;
+
+/** やりたいことリスト（2,000 件）を読み込む前の確認。組み立てに失敗したら、そう伝えて閉じる */
+export function openWishlistDialog(app: AppContext): void {
+  if (wishlistOpen) return;
+  let built: ReturnType<typeof buildWishlist>;
+  try {
+    built = buildWishlist();
+  } catch {
+    const m = openModal({ title: "読み込めませんでした", width: 460, icon: "alert" });
+    m.body.append(h("p", { class: "modal-text" }, "やりたいことリストを組み立てられませんでした。ページを開き直してから、もう一度試してください。"));
+    m.footer.append(h("button", { class: "btn btn-primary", type: "button", onClick: () => m.close() }, "閉じる"));
+    return;
+  }
+  const { pv, stats } = built;
+  const lead = h(
+    "div",
+    { class: "wish-lead" },
+    h("p", { class: "modal-text" }, "仕事（SpellDash・FC マーケティング・独立）から、学び・お金・健康・旅・暮らし・人・趣味・社会・内面まで、", h("b", null, `${stats.areas} の領域・${stats.themes} のテーマ`), "に分けた「やりたいこと」の地図です。"),
+    h(
+      "ul",
+      { class: "wish-howto" },
+      h("li", null, h("b", null, "横"), "は時間の見通し（左 = 今すぐ、右 = いつか）。期限は今日から 10 年先までに散らしてあります。"),
+      h("li", null, h("b", null, "縦"), "は領域ごとの帯。左のプロジェクトを押すと、その領域に寄ります。"),
+      h("li", null, h("b", null, "分岐"), "は「どちらを選ぶか」の分かれ道。仕事の道筋に関わるものはシナリオ（両立・早期独立・SpellDash集中）に結んであります。"),
+      h("li", null, h("b", null, "リスト"), "表示（上の「リスト」）は期限の順に並ぶので、今すぐできることから見られます。"),
+    ),
+  );
+  wishlistOpen = true;
+  openImportPreview(app, pv, {
+    onClose: () => (wishlistOpen = false),
+    title: "やりたいことリストを読み込む",
+    subtitle: `やりたいこと ${stats.wishes.toLocaleString("ja-JP")} 件と、そこから分かれる道`,
+    icon: "goal",
+    lead,
+    stats: [
+      ["やりたいこと", stats.wishes],
+      ["分岐", stats.branches],
+      ["テーマ", stats.themes],
+      ["接続", pv.counts.edges],
+    ],
+    mode: "merge",
+    mergeDesc: "今のデータはそのまま。リストを右側に足します。SpellDash事業など同じ名前のプロジェクトとシナリオはまとめます。",
+    replaceDesc: "今のデータをリストだけに入れ替えます。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。",
+    label: { merge: "やりたいことリストを追加", replace: "やりたいことリストに入れ替え" },
+    selectAdded: false,
+    after: {
+      replaceDone: "やりたいことリストに入れ替えました。左のプロジェクトを押すと、その領域に寄ります",
+      mergeDone: "やりたいことリスト: ",
+      // 全体は大きすぎて読めないので、最初の領域（SpellDash事業）に寄る
+      fitTo: (doc, added) => {
+        const pid = doc.projectOrder.find((p) => doc.projects[p]?.name === stats.firstArea);
+        const ids = pid ? added.filter((id) => doc.nodes[id]?.projectIds.includes(pid)) : [];
+        return ids.length ? ids : added;
+      },
+    },
+  });
 }
 
 // ------------------------------------------------------------ ヘルプ
@@ -256,13 +349,14 @@ export function openHelpDialog(app: AppContext): void {
 // ------------------------------------------------------------ ようこそ
 
 export function openWelcome(app: AppContext): void {
-  const m = openModal({ title: "4D Branch へようこそ", width: 620, className: "welcome-modal", onClose: () => app.ui.setPrefs({ onboardingDone: true }) });
+  const m = openModal({ title: "4D Branch へようこそ", width: 620, className: "welcome-modal", onClose: () => app.ui.setPrefs({ onboardingDone: true, wishlistOffered: true }) });
   const types = h("div", { class: "welcome-types" });
   for (const t of NODE_TYPE_ORDER) types.append(h("div", { class: `welcome-type type-${t}` }, h("span", { class: `type-chip type-${t}` }, icon(t, 16)), h("b", null, NODE_TYPES[t].label), h("span", null, NODE_TYPES[t].hint)));
   m.body.append(
     h("p", { class: "welcome-lead" }, "目標・行動・分岐・結果をノードとしてつなぎ、", h("b", null, "未来の分岐"), "を見える化するメモ帳です。プロジェクトをまたいで、1 つの行動が複数の目標に効く様子を描けます。"),
     types,
     h("div", { class: "welcome-demo" }, icon("sparkle", 16), h("div", null, h("b", null, "デモを開いています: "), "「SpellDash事業」「FCマーケティングでの業務」「広告運用事業での独立」の 3 つが、「広告運用を学ぶ」などの共通のノードでつながっています。")),
+    h("div", { class: "welcome-demo" }, icon("goal", 16), h("div", null, h("b", null, "やりたいことリスト: "), "仕事・学び・お金・健康・旅などのやりたいこと 2,000 件と、そこから分かれる道を、メニュー（右上の ⋯）からいつでも読み込めます。")),
     h(
       "p",
       { class: "muted small" },

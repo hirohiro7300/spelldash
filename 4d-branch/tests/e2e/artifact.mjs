@@ -369,6 +369,21 @@ await check("スマホの幅（400px）: 横にはみ出さず、上部バーが
   await P.ctx.close();
 });
 
+await check("やりたいことリスト（2,000 件）を読み込むと、アカウントの写しも分割して新しくなる", async () => {
+  const before = JSON.parse(dbStore.get("data/users/u_test/fourd")).gen;
+  await A.page.evaluate(() => window.__fourD.app.loadWishlist());
+  const dlg = A.page.getByRole("dialog", { name: "やりたいことリストを読み込む" });
+  await dlg.waitFor();
+  await dlg.locator(".radio-card", { hasText: "置き換える" }).click();
+  await dlg.getByRole("button", { name: "読み込む" }).click();
+  await A.page.waitForFunction(() => Object.keys(window.__fourD.store.doc.nodes).length > 2000);
+  await A.page.evaluate(() => window.__fourD.app.cloud.flush());
+  const m = JSON.parse(dbStore.get("data/users/u_test/fourd"));
+  assert(m.gen !== before && m.nodes > 2000, `写し: ${m.nodes} ノード`);
+  for (let i = 0; i < m.parts; i++) assert(dbStore.has(`data/users/u_test/fourd/parts/${m.gen}-${i}`), `分割 ${i} が無い`);
+  assert((await cloudState(A.page)) === "synced", await cloudState(A.page));
+});
+
 await check("ページのエラーが無い", async () => {
   assert(errors.length === 0, errors.join("\n"));
 });

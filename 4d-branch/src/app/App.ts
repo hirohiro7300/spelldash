@@ -15,7 +15,7 @@ import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/
 import type { BackupKind, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
-import { chooseSyncSource, openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome } from "../ui/dialogs";
+import { chooseSyncSource, openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { buildInspector } from "../ui/inspector";
@@ -25,7 +25,7 @@ import { startTour } from "../ui/onboarding";
 import { closeMenus, confirmDialog, showMenu, toast, type MenuEntry } from "../ui/overlays";
 import { buildTopbar } from "../ui/topbar";
 import { Commands } from "./commands";
-import type { AppContext } from "./context";
+import type { AppContext, LoadOpts } from "./context";
 import type { UiState } from "./uiState";
 import { ViewModel } from "./viewModel";
 
@@ -155,6 +155,7 @@ export class App implements AppContext {
         "div",
         { class: "btn-row center" },
         h("button", { class: "btn btn-primary", type: "button", onClick: () => this.cmd.createNode("goal", undefined, { edit: true }) }, icon("goal", 15), "目標を作る"),
+        h("button", { class: "btn", type: "button", onClick: () => this.loadWishlist() }, icon("goal", 15), "やりたいことリスト"),
         h("button", { class: "btn", type: "button", onClick: () => void this.loadDemo() }, icon("sparkle", 15), "デモを読み込む"),
       ),
     );
@@ -214,6 +215,7 @@ export class App implements AppContext {
       } else this.view.fit(undefined, { animate: false });
       for (const n of opts.notices) toast(n, { tone: "warn", ms: 9000 });
       if (opts.firstRun && !this.ui.prefs.onboardingDone && !this.ephemeral) openWelcome(this);
+      else this.offerWishlistOnce();
       this.afterTour = () => void this.askPersistOnce();
     });
     void this.refreshLastBackup();
@@ -715,7 +717,7 @@ export class App implements AppContext {
   }
 
   /** 入れ替える前に安全用バックアップを残し、Undo でも戻せるようにする */
-  async replaceDocSafely(doc: DocData, label: string): Promise<void> {
+  async replaceDocSafely(doc: DocData, label: string, opts: LoadOpts = {}): Promise<void> {
     if (this.store.readOnly) return;
     await this.persistence.flush().catch(() => undefined);
     await this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
@@ -724,32 +726,65 @@ export class App implements AppContext {
     this.ui.select([]);
     this.ui.setPrefs({ projectFilter: [], scenarioId: null, timeCursor: null });
     this.ui.setSearch("");
-    this.view.fit();
-    toast(`${label}しました`, { tone: "ok", action: this.cmd.undoAction() });
+    const all = Object.keys(this.store.doc.nodes);
+    this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, all) : undefined);
+    toast(opts.done ?? `${label}しました`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
   }
 
-  mergeDoc(doc: DocData): void {
+  mergeDoc(doc: DocData, opts: LoadOpts & { label?: string; select?: boolean } = {}): void {
     if (this.store.readOnly) return;
-    void this.persistence.createBackup("safety", "「インポート（追加）」の前", this.store.doc).catch(() => undefined);
+    const label = opts.label ?? "インポート（追加）";
+    void this.persistence.createBackup("safety", `「${label}」の前`, this.store.doc).catch(() => undefined);
     const before = new Set(Object.keys(this.store.doc.nodes));
     const res = mergeDocs(this.store.doc, doc);
-    this.store.replaceDoc(res.doc, "インポート（追加）");
+    this.store.replaceDoc(res.doc, label);
     const added = Object.keys(this.store.doc.nodes).filter((id) => !before.has(id));
-    this.ui.select(added);
-    this.view.fit(added);
-    toast(`ノード ${res.added.nodes} 件・接続 ${res.added.edges} 本を追加しました${res.reusedProjects ? `（同じ名前のプロジェクト ${res.reusedProjects} 件はまとめました）` : ""}`, { tone: "ok", action: this.cmd.undoAction() });
+    this.ui.select(opts.select === false ? [] : added);
+    this.view.fit(opts.fitTo ? opts.fitTo(this.store.doc, added) : added);
+    const n = (v: number) => v.toLocaleString("ja-JP");
+    const reused = [res.reusedProjects ? `プロジェクト ${res.reusedProjects} 件` : "", res.reusedScenarios ? `シナリオ ${res.reusedScenarios} 件` : ""].filter(Boolean).join("・");
+    toast(`${opts.done ?? ""}ノード ${n(res.added.nodes)} 件・接続 ${n(res.added.edges)} 本を追加しました${reused ? `（同じ名前の${reused}はまとめました）` : ""}`, { tone: "ok", action: this.cmd.undoAction() });
     void this.refreshLastBackup();
+  }
+
+  /** やりたいことリスト（2,000 件）を、確かめてから読み込む */
+  loadWishlist(): void {
+    if (this.store.readOnly) return;
+    if (!this.ui.prefs.wishlistOffered) this.ui.setPrefs({ wishlistOffered: true });
+    openWishlistDialog(this);
+  }
+
+  /**
+   * 前から使っている人に、一度だけ「やりたいことリスト」を知らせる（初めての人には、ようこそ画面で伝える）。
+   * 印は実際に出すときに立てる（出す前に閉じた・閲覧のみのタブで使い切らない）。閲覧のみのタブは編集できるようになってから出し、
+   * 別のタブがもう出していれば（保存された印を読み直して）出さない
+   */
+  private offerWishlistOnce(): void {
+    if (this.ephemeral || this.ui.prefs.wishlistOffered || !this.ui.prefs.onboardingDone) return;
+    const show = (): void => {
+      if (this.store.readOnly || this.ui.prefs.wishlistOffered || this.ui.storedPrefs().wishlistOffered) return;
+      this.ui.setPrefs({ wishlistOffered: true });
+      toast("やりたいことリスト（2,000 件）を用意しました。メニューからいつでも読み込めます", { action: { label: "見る", run: () => this.loadWishlist() }, ms: 15000 });
+    };
+    setTimeout(() => {
+      if (!this.store.readOnly) return show();
+      const off = this.persistence.on("writer", (w) => {
+        if (!w) return;
+        off();
+        setTimeout(show, 1200);
+      });
+    }, 1200);
   }
 
   async loadDemo(): Promise<void> {
     const ok = await confirmDialog({ title: "デモを読み込みますか？", body: "今のデータをデモ（3 つのプロジェクト）に入れ替えます。今の内容は安全用バックアップに残り、「元に戻す」でも戻せます。", ok: "読み込む" });
-    if (ok) await this.replaceDocSafely(buildDemoDoc(), "デモを読み込む");
+    if (ok) await this.replaceDocSafely(buildDemoDoc(), "デモを読み込む", { done: "デモを読み込みました" });
   }
 
   async newEmptyDoc(): Promise<void> {
     const ok = await confirmDialog({ title: "空のドキュメントにしますか？", body: "すべてのノード・プロジェクト・シナリオを片付けて、白紙から始めます。今の内容は安全用バックアップに残り、「元に戻す」でも戻せます。", ok: "空にする", danger: true });
-    if (ok) await this.replaceDocSafely(createEmptyDoc(), "空のドキュメントにする");
+    if (ok) await this.replaceDocSafely(createEmptyDoc(), "空のドキュメントにする", { done: "空のドキュメントにしました" });
   }
 
   renameDoc(): void {

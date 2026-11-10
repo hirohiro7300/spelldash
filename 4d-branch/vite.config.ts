@@ -11,7 +11,8 @@ export default defineConfig({
   build: {
     target: "es2022",
     sourcemap: true,
-    chunkSizeWarningLimit: 800,
+    // やりたいことリスト（2,000 件、文字列のまま同梱）を含めて 1 つの JS にする（Artifact 版は 1 枚のページに埋め込むため分けない）
+    chunkSizeWarningLimit: 1600,
   },
   server: { port: 5178 },
   preview: { port: 4178, headers: securityHeaders },

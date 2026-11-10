@@ -940,6 +940,7 @@ async function main() {
     await page.getByRole("button", { name: "読み込む" }).click();
     const mid = await state(page);
     assert(mid.nodes === before.nodes * 2, `追加: ${before.nodes} → ${mid.nodes}`);
+    assert(mid.sel.length === mid.nodes - before.nodes, `足した分が選ばれていない: ${mid.sel.length}`);
     const projects = await page.evaluate(() => window.__fourD.store.doc.projectOrder.length);
     assert(projects === 3, `同じ名前のプロジェクトはまとまる: ${projects}`);
     await page.locator(".graph-canvas").focus();
@@ -1198,6 +1199,191 @@ async function main() {
     assert(m.below, "ボタンが文の下に折り返さない");
   });
   await wctx.close();
+
+  // ---- やりたいことリスト（別のコンテキスト = 初めて開いた端末）
+  const lctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const lp = await lctx.newPage();
+  watch(lp);
+  await lp.goto(BASE, { waitUntil: "networkidle" });
+  await lp.getByRole("button", { name: "すぐに使う" }).click();
+  const offerToast = () => lp.locator(".toast", { hasText: "やりたいことリスト" });
+  const storedOffered = () => lp.evaluate(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").wishlistOffered === true);
+  const clearOffered = () =>
+    lp.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+      delete p.wishlistOffered;
+      localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+    });
+
+  await check("やりたいことリスト: ようこそで知らせた人には、開き直してもお知らせを出さない", async () => {
+    // 設定の保存（200ms 遅れ）を待ってから、ほかの確かめが印を付ける前に見る
+    await lp.waitForFunction(() => JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}").onboardingDone === true);
+    assert(await storedOffered(), "ようこそで印が付かない");
+    await lp.reload({ waitUntil: "networkidle" });
+    await lp.waitForFunction(() => !!window.__fourD?.app);
+    await lp.waitForTimeout(1200 + 1000);
+    assert((await offerToast().count()) === 0, "ようこそを見た人にもお知らせが出た");
+  });
+
+  await check("やりたいことリスト: メニューから確かめて読み込み（置き換え）、2,000 件が地図に出て、滑らかに動き、元に戻せる", async () => {
+    const before = await state(lp);
+    await lp.getByRole("button", { name: "メニュー", exact: true }).click();
+    await lp.getByRole("menuitem", { name: /やりたいことリスト/ }).click();
+    const dlg = lp.getByRole("dialog", { name: "やりたいことリストを読み込む" });
+    await dlg.waitFor();
+    const shown = await dlg.locator(".stat-value").first().textContent();
+    assert(shown === "2,000", `やりたいことの件数の表示: ${shown}`);
+    await shot("e2e-10-wishlist-dialog", lp);
+    await dlg.locator(".radio-card", { hasText: "置き換える" }).click();
+    await dlg.getByRole("button", { name: "読み込む" }).click();
+    await lp.waitForFunction(() => Object.keys(window.__fourD.store.doc.nodes).length > 2000);
+    const s = await lp.evaluate(() => {
+      const d = window.__fourD.store.doc;
+      const all = Object.values(d.nodes);
+      const wishes = all.filter((n) => n.id.startsWith("n_w_") && !/^n_w_(root|hub)_/.test(n.id) && n.type !== "branch");
+      return { wishes: wishes.length, branches: all.filter((n) => n.type === "branch").length, projects: d.projectOrder.length, title: d.title, sel: window.__fourD.ui.selection.nodes.size };
+    });
+    assert(s.wishes === 2000, `やりたいこと ${s.wishes}`);
+    assert(s.branches >= 100, `分岐 ${s.branches}`);
+    assert(s.projects === 12, `領域 ${s.projects}`);
+    assert(s.sel === 0, `置き換えた後に選択が残っている: ${s.sel}`);
+    await lp.waitForTimeout(400);
+    await shot("e2e-11-wishlist-first", lp);
+    // 全体は大きすぎるので、最初の領域（SpellDash事業）に寄って始める
+    const first = await lp.evaluate(() => {
+      const f = window.__fourD;
+      const v = f.app.view;
+      const cam = v.camera;
+      const pid = f.store.doc.projectOrder.find((p) => f.store.doc.projects[p].name === "SpellDash事業");
+      const ids = f.app.vm.index.projectNodes.get(pid) ?? [];
+      let inView = 0;
+      for (const id of ids) {
+        const n = f.store.doc.nodes[id];
+        const { x: sx, y: sy } = cam.toScreen(n.x, n.y);
+        if (sx > -50 && sy > -50 && sx < v.width + 50 && sy < v.height + 50) inView++;
+      }
+      return { ids: ids.length, inView, toast: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent).join(" / ") };
+    });
+    assert(first.ids > 200 && first.inView >= first.ids * 0.9, `SpellDash事業に寄っていない: ${first.inView}/${first.ids}`);
+    assert(first.toast.includes("やりたいことリストに入れ替えました"), `お知らせ: ${first.toast}`);
+    // 地図を動かしても滑らか（全体・中くらい・寄り）
+    const stats = await lp.evaluate(async () => {
+      const v = window.__fourD.app.view;
+      const measure = async (zoom, frames) => {
+        v.camera.zoom = zoom;
+        const times = [];
+        for (let i = 0; i < frames; i++) {
+          v.camera.x -= 25;
+          v.camera.y += i % 2 ? 10 : -10;
+          v.cameraChanged();
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          times.push(v.lastFrameMs);
+        }
+        times.sort((a, b) => a - b);
+        return { avg: times.reduce((s2, t) => s2 + t, 0) / times.length, p95: times[Math.floor(times.length * 0.95)] };
+      };
+      v.fit(undefined, { animate: false });
+      return { all: await measure(v.camera.zoom, 30), mid: await measure(0.3, 30), near: await measure(0.9, 30) };
+    });
+    console.log(`      描画時間 ms（平均 / 95%）: 全体 ${stats.all.avg.toFixed(1)}/${stats.all.p95.toFixed(1)}・中 ${stats.mid.avg.toFixed(1)}/${stats.mid.p95.toFixed(1)}・寄り ${stats.near.avg.toFixed(1)}/${stats.near.p95.toFixed(1)}`);
+    for (const [k, v] of Object.entries(stats)) {
+      assert(v.avg > 0, `${k}: 描画されていない（${v.avg}ms）`);
+      assert(v.p95 < 33, `${k}: 95% が 33ms 以上 (${v.p95.toFixed(1)})`);
+    }
+    // 左のプロジェクト（領域）を押すと、その領域に寄る
+    await lp.locator(".side-row", { hasText: "旅・体験" }).click();
+    await lp.waitForTimeout(500);
+    const focus = await lp.evaluate(() => {
+      const f = window.__fourD;
+      const v = f.app.view;
+      const pid = f.store.doc.projectOrder.find((p) => f.store.doc.projects[p].name === "旅・体験");
+      const ids = f.app.vm.index.projectNodes.get(pid) ?? [];
+      const cam = v.camera;
+      let inView = 0;
+      for (const id of ids) {
+        const n = f.store.doc.nodes[id];
+        const { x: sx, y: sy } = cam.toScreen(n.x, n.y);
+        if (sx > -50 && sy > -50 && sx < v.width + 50 && sy < v.height + 50) inView++;
+      }
+      return { filter: f.ui.prefs.projectFilter.length, ids: ids.length, inView };
+    });
+    assert(focus.filter === 1 && focus.ids > 200, JSON.stringify(focus));
+    assert(focus.inView >= focus.ids * 0.9, `旅・体験の大半が画面の外: ${focus.inView}/${focus.ids}`);
+    await shot("e2e-12-wishlist-travel", lp);
+    await lp.locator(".side-row", { hasText: "旅・体験" }).click();
+    // 元に戻すと、読み込む前（デモ）に戻る
+    await lp.locator(".graph-canvas").focus();
+    await lp.keyboard.press("Control+z");
+    const after = await state(lp);
+    assert(after.nodes === before.nodes, `Undo で戻らない: ${after.nodes} / ${before.nodes}`);
+  });
+
+  await check("やりたいことリスト: 追加で読み込むと、デモの 3 つの事業とシナリオにまとまる", async () => {
+    const before = await lp.evaluate(() => ({ nodes: Object.keys(window.__fourD.store.doc.nodes).length, projects: window.__fourD.store.doc.projectOrder.length, scenarios: window.__fourD.store.doc.scenarioOrder.length }));
+    await lp.evaluate(() => window.__fourD.app.loadWishlist());
+    const dlg = lp.getByRole("dialog", { name: "やりたいことリストを読み込む" });
+    await dlg.waitFor();
+    await dlg.getByRole("button", { name: "読み込む" }).click();
+    await lp.waitForFunction((n) => Object.keys(window.__fourD.store.doc.nodes).length > n + 2000, before.nodes);
+    const s = await lp.evaluate(() => ({ projects: window.__fourD.store.doc.projectOrder.length, scenarios: window.__fourD.store.doc.scenarioOrder.length, sel: window.__fourD.ui.selection.nodes.size, toast: [...document.querySelectorAll(".toast-text")].map((t) => t.textContent).join(" / ") }));
+    assert(s.sel === 0, `追加した分を全部選んでいる（Delete 1 回で消える）: ${s.sel}`);
+    assert(s.projects === before.projects + 9, `プロジェクト ${before.projects} → ${s.projects}（事業 3 つはまとまるはず）`);
+    assert(s.scenarios === before.scenarios, `シナリオ ${before.scenarios} → ${s.scenarios}`);
+    assert(/やりたいことリスト: ノード 2,\d{3} 件/.test(s.toast) && s.toast.includes("プロジェクト 3 件・シナリオ 3 件はまとめました"), `お知らせ: ${s.toast}`);
+    await lp.locator(".graph-canvas").focus();
+    await lp.keyboard.press("Control+z");
+  });
+
+  await check("やりたいことリスト: 前から使っている人には一度だけお知らせが出て、押さずに開き直しても二度は出ない", async () => {
+    await clearOffered();
+    await lp.reload({ waitUntil: "networkidle" });
+    await offerToast().waitFor({ timeout: 5000 });
+    assert(await lp.evaluate(() => window.__fourD.ui.prefs.wishlistOffered === true), "出したのに印が立たない");
+    await lp.reload({ waitUntil: "networkidle" });
+    await lp.waitForFunction(() => !!window.__fourD?.app);
+    await lp.waitForTimeout(1200 + 1000);
+    assert((await offerToast().count()) === 0, "お知らせが二度出た");
+  });
+
+  await check("やりたいことリスト: お知らせの「見る」をダブルクリックしても、確かめの画面は 1 枚だけ（2 回読み込まない）", async () => {
+    await clearOffered();
+    await lp.reload({ waitUntil: "networkidle" });
+    await offerToast().waitFor({ timeout: 5000 });
+    await offerToast().getByRole("button", { name: "見る" }).dblclick();
+    await lp.getByRole("dialog", { name: "やりたいことリストを読み込む" }).first().waitFor();
+    await lp.waitForTimeout(300);
+    const dialogs = await lp.getByRole("dialog", { name: "やりたいことリストを読み込む" }).count();
+    assert(dialogs === 1, `確かめの画面が ${dialogs} 枚開いた`);
+    // 開いている間にメニューから開こうとしても、もう 1 枚は開かない
+    await lp.evaluate(() => window.__fourD.app.loadWishlist());
+    assert((await lp.getByRole("dialog", { name: "やりたいことリストを読み込む" }).count()) === 1, "メニューからも 2 枚目が開いた");
+    // ラジオは画面ごとの組で、どちらかが選ばれている
+    const checked = await lp.locator(".modal .radio-card input:checked").count();
+    assert(checked === 1, `選ばれている読み込み方が ${checked} 個`);
+    await lp.keyboard.press("Escape");
+    await lp.waitForTimeout(300);
+    // 閉じた後は、また開ける
+    await lp.evaluate(() => window.__fourD.app.loadWishlist());
+    await lp.getByRole("dialog", { name: "やりたいことリストを読み込む" }).waitFor();
+    await lp.keyboard.press("Escape");
+  });
+
+  await check("やりたいことリスト: 閲覧のみのタブは印を使い切らず、「このタブで編集する」で編集できるようになってからお知らせを出す", async () => {
+    await clearOffered();
+    const lp2 = await lctx.newPage();
+    watch(lp2);
+    await lp2.goto(BASE, { waitUntil: "networkidle" });
+    await lp2.waitForFunction(() => !!window.__fourD?.app && window.__fourD.store.readOnly === true);
+    await lp2.waitForTimeout(1200 + 1000);
+    assert((await lp2.locator(".toast", { hasText: "やりたいことリスト" }).count()) === 0, "閲覧のみのタブにお知らせが出た");
+    assert(!(await storedOffered()), "閲覧のみのタブが印を立てた");
+    await lp2.getByRole("button", { name: "このタブで編集する" }).click();
+    await lp2.locator(".toast", { hasText: "やりたいことリスト" }).waitFor({ timeout: 5000 });
+    await lp2.waitForTimeout(400);
+    assert(await storedOffered(), "出したのに印が保存されない");
+    await lp2.close();
+  });
+  await lctx.close();
 
   await check("ページのエラーが無い", async () => {
     assert(errors.length === 0, errors.join("\n"));

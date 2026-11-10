@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { buildStressDoc } from "../../src/demo/stress";
+import { buildWishlist } from "../../src/demo/wishlistBundle";
 import { SCHEMA_VERSION, createEmptyDoc, makeNode } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
 import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
@@ -247,6 +248,18 @@ describe("符号化と保存先", () => {
     const back = await repo.read();
     expect(back!.doc).toEqual(big);
     expect(back!.manifest.nodes).toBe(2000);
+  });
+
+  it("やりたいことリスト（2,000 件・日本語の本文つき）も、分割して往復できる", async () => {
+    const { be, docs } = memoryBackend();
+    const repo = new CloudRepo(be, "u", "dev");
+    const wish = buildWishlist(new Date(2026, 10, 10)).pv.doc;
+    const m = await repo.write(wish, null);
+    for (const [, d] of docs) expect(bytesOf(d)).toBeLessThan(LIMIT);
+    const back = await repo.read();
+    expect(back!.doc).toEqual(wish);
+    expect(back!.manifest.nodes).toBe(Object.keys(wish.nodes).length);
+    expect(m.nodes).toBeGreaterThan(2000);
   });
 
   it("圧縮の無いブラウザでも、日本語の多い内容の分割が 256 KiB を超えない（UTF-8 を base64 に）", async () => {

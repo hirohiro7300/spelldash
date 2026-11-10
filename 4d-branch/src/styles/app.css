@@ -2389,6 +2389,23 @@ textarea.input {
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
+/* やりたいことリスト: 地図の読み方 */
+.wish-lead {
+  margin-bottom: 12px;
+}
+.wish-howto {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.wish-howto b {
+  color: var(--text-1);
+  margin-right: 4px;
+}
 .import-warn {
   margin-top: 12px;
   padding: 9px 12px;

@@ -35,6 +35,8 @@ export interface Prefs {
   sections: { projects: boolean; scenarios: boolean; tags: boolean };
   listSort: { key: ListSortKey; dir: 1 | -1 };
   onboardingDone: boolean;
+  /** 「やりたいことリスト」を知らせた（ようこそ画面か、一度だけのお知らせで） */
+  wishlistOffered: boolean;
   persistAsked: boolean;
   lastType: "goal" | "action" | "branch" | "result";
 }
@@ -58,6 +60,7 @@ export const DEFAULT_PREFS: Prefs = {
   sections: { projects: true, scenarios: true, tags: true },
   listSort: { key: "due", dir: 1 },
   onboardingDone: false,
+  wishlistOffered: false,
   persistAsked: false,
   lastType: "action",
 };
@@ -128,6 +131,15 @@ export class UiState {
     if (!this.persistPrefs) return;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.writePrefs(), 200);
+  }
+
+  /** このブラウザに保存されている設定（別のタブが書いた物も含む。読めなければ空） */
+  storedPrefs(): Partial<Prefs> {
+    try {
+      return JSON.parse(globalThis.localStorage?.getItem(PREFS_KEY) || "{}") as Partial<Prefs>;
+    } catch {
+      return {};
+    }
   }
 
   /** まとめて書く前の表示の設定を、今すぐ書く（閉じる・隠れるとき。すぐ開き直しても設定を失わない） */
