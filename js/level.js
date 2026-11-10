@@ -137,16 +137,21 @@ function normalizeStreak() {
 export function getStreak() {
   const data = normalizeStreak();
 
+  // 端末の時刻帯が西へ戻った日（保存した last が今日より後の日付。Batch 89）: 途切れたと見ず、今の値のまま（"YYYY-MM-DD" は文字の順が日付の順）
+  if (data.last && data.last >= todayString()) return data;
+
   // 昨日までにプレイが途切れていたら、表示上は0に戻す
-  if (data.last !== todayString() && data.last !== yesterdayString()) {
+  if (data.last !== yesterdayString()) {
     return { ...data, current: 0 };
   }
 
   return data;
 }
 
+// 今日はもう遊んだ（last が今日。時刻帯が西へ戻って last が今日より後の日付のときも、もう遊んだと見る。updateStreak と同じ決まり）
 export function hasPlayedToday() {
-  return loadStreak().last === todayString();
+  const last = loadStreak().last;
+  return !!last && last >= todayString();
 }
 
 // ゲーム終了時に呼ぶ。今日最初のプレイかどうか・シールド獲得を返す
@@ -154,7 +159,8 @@ export function updateStreak() {
   const data = normalizeStreak();
   const today = todayString();
 
-  if (data.last === today) {
+  // 今日もう遊んだ。保存した last が今日より後の日付（端末の時刻帯が西へ戻った日。Batch 89）も同じに扱い、書かない（current も lost も変えない）
+  if (data.last && data.last >= today) {
     return { ...data, isFirstToday: false, earnedShield: false };
   }
 
