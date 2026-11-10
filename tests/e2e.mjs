@@ -12266,6 +12266,43 @@ console.log("learning quality:");
   check("プロフィール（設定・バックアップ）でエラー0", page3.errors.length === 0, page3.errors[0] ?? "");
   await page3.close();
 
+  // 設定のバックアップをキーボードと読み上げで（Batch 89 A4。profile.html #backupImportButton・js/profileView.js initializeBackup）: Tab で「ファイルに書き出す」の次に「読み込む」、
+  // Enter と Space でファイルを選ぶ窓が開く。結果の文（#backupStatus: 書き出した・読み込みを中止した）と音の設定の「保存済み」（#audioSettingStatus）は role=status の領域に出る
+  {
+    const pageK = await newPage({ storage: { spelldash_xp: "1234", spelldash_audio: JSON.stringify({ mode: "auto" }) } });
+    await pageK.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
+    await pageK.waitForTimeout(500);
+    const said = (id) => pageK.evaluate((i) => { const el = document.getElementById(i); return el?.getAttribute("role") === "status" ? el.textContent.trim() : `(role=${el?.getAttribute("role") ?? "なし"}) ${el?.textContent.trim() ?? ""}`; }, id);
+    await pageK.focus("#backupExport");
+    await pageK.keyboard.press("Tab");
+    const k = { next: await pageK.evaluate(() => ({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent.trim() ?? "" })) };
+    const onImport = k.next.tag === "BUTTON" && k.next.text === "読み込む";
+    const opens = async (key) => {
+      const [chooser] = await Promise.all([pageK.waitForEvent("filechooser", { timeout: 2000 }).catch(() => null), pageK.keyboard.press(key)]);
+      return !!chooser;
+    };
+    // 焦点が「読み込む」に無いときはキーを押さない（ほかのリンクで Enter を押してページを移らない）
+    k.enter = onImport ? await opens("Enter") : false;
+    k.space = onImport ? await opens("Space") : false;
+    k.roles = await pageK.evaluate(() => ["backupStatus", "audioSettingStatus"].map((id) => document.getElementById(id)?.getAttribute("role") ?? null));
+    await Promise.all([pageK.waitForEvent("download", { timeout: 5000 }).catch(() => null), pageK.click("#backupExport")]);
+    await waitUntil(async () => (await said("backupStatus")).startsWith("書き出した"), 3000);
+    k.exported = await said("backupStatus");
+    const file = await pageK.evaluate(async () => JSON.stringify((await import("/js/backup.js")).buildBackup()));
+    pageK.once("dialog", (d) => d.dismiss());
+    await pageK.setInputFiles("#backupImport", { name: "spelldash-backup.json", mimeType: "application/json", buffer: Buffer.from(file) });
+    await waitUntil(async () => (await said("backupStatus")).includes("中止"), 3000);
+    k.cancelled = await said("backupStatus");
+    await pageK.selectOption("#audioModeSelect", "off");
+    await waitUntil(async () => (await said("audioSettingStatus")) === "保存済み", 2000);
+    k.saved = await said("audioSettingStatus");
+    check("設定（キーボードだけ）: Tab で「ファイルに書き出す」の次に「読み込む」（ボタン）・Enter と Space でファイルを選ぶ窓が開く", onImport && k.enter && k.space, JSON.stringify(k));
+    check("設定（読み上げ）: #backupStatus と #audioSettingStatus は role=status。書き出した・読み込みを中止した・保存済み がその領域に出る",
+      k.roles.every((r) => r === "status") && k.exported.startsWith("書き出した") && k.cancelled.includes("中止") && k.saved === "保存済み", JSON.stringify(k));
+    check("設定（キーボードと読み上げ）: エラー 0", pageK.errors.length === 0, pageK.errors[0] ?? "");
+    await pageK.close();
+  }
+
   // ご意見フォーム: フッターから開く→送信（スタブでは失敗→端末に保持）
   const page4 = await newPage();
   await page4.goto(BASE + "/news.html", { waitUntil: "networkidle" });
@@ -24523,11 +24560,13 @@ console.log("preview host (78.8):");
   await waitUntil(() => p2.evaluate(() => (document.getElementById("backupStatus")?.textContent ?? "").includes("調整中")), 5000);
   const backup = await p2.evaluate(() => ({
     importDisabled: document.getElementById("backupImport")?.disabled === true,
-    labelHidden: document.getElementById("backupImport")?.closest("label")?.hidden === true,
+    // 読み込みのボタン（Batch 89 A4: label をやめて #backupImportButton）も隠す。見える「読み込む」の部品（ボタン・label）が 1 つも無い
+    buttonHidden: document.getElementById("backupImportButton")?.hidden === true,
+    shownImport: [...document.querySelectorAll("#backupCard button, #backupCard label")].filter((el) => el.textContent.trim() === "読み込む" && el.getClientRects().length > 0).length,
     status: document.getElementById("backupStatus")?.textContent ?? "",
     exportVisible: !!document.getElementById("backupExport") && document.getElementById("backupExport").getBoundingClientRect().height > 0
   }));
-  check("Preview: バックアップの読み込みは止める（書き出しはできる）", backup.importDisabled && backup.labelHidden && backup.status.includes("現在調整中") && backup.exportVisible, JSON.stringify(backup));
+  check("Preview: バックアップの読み込みは止める（読み込むのボタンも隠す・書き出しはできる）", backup.importDisabled && backup.buttonHidden && backup.shownImport === 0 && backup.status.includes("現在調整中") && backup.exportVisible, JSON.stringify(backup));
   check("Preview: 認証の部品もクラウドも呼ばない", p1.outside.length === 0 && p2.outside.length === 0, JSON.stringify([...p1.outside, ...p2.outside].slice(0, 3)));
   check("Preview: ページのエラーなし", p1.errors.length === 0 && p2.errors.length === 0, JSON.stringify([...p1.errors, ...p2.errors]));
   for (const p of [p1, p2]) { const c = p.context(); await p.close(); await c.close(); }
