@@ -18720,16 +18720,17 @@ console.log("pro:");
     });
     const fmtN = (n) => Number(n).toLocaleString("ja-JP");
     const row = Object.fromEntries(compare.rows.map((r) => [r.name, r]));
-    check("Pro（Batch 83）: 比較表は今の画面で使える 4 項目（マイ単語帳・思い出せるようになった語の推移・テーマ・AI の覚え方）。連続記録のシールド・修復とテキストからカードは書かない（今の画面から届かない）・ページの説明文も同じ",
-      JSON.stringify(compare.rows.map((r) => r.name)) === JSON.stringify(["マイ単語帳", "思い出せるようになった語の推移", "テーマ", "AI の覚え方"]) && !/シールド|修復|連続記録|テキストからカード|カード作成/.test(compare.table) && !/シールド|修復/.test(compare.meta),
+    // 推移の行の名前は学習状況の見出しと同じ「覚えた語の推移」（Batch 90。推移が学習状況の 覚えた と同じ数になった。字だけ: 日数・ゲート・値段は同じ）
+    check("Pro（Batch 83・Batch 90）: 比較表は今の画面で使える 4 項目（マイ単語帳・覚えた語の推移・テーマ・AI の覚え方）。連続記録のシールド・修復とテキストからカードは書かない（今の画面から届かない）・ページの説明文も同じ",
+      JSON.stringify(compare.rows.map((r) => r.name)) === JSON.stringify(["マイ単語帳", "覚えた語の推移", "テーマ", "AI の覚え方"]) && !/シールド|修復|連続記録|テキストからカード|カード作成/.test(compare.table) && !/シールド|修復/.test(compare.meta),
       JSON.stringify({ rows: compare.rows.map((r) => r.name), meta: compare.meta }));
     check("Pro（Batch 83）: 比較表の数はコードの値（マイ単語帳は js/myWordsCore.js の MY_FREE_LIMIT・MY_PRO_LIMIT、推移は js/plan.js の TREND_DAYS、AI の回数は /api/billing/config の ai）・よくある質問の語数も同じ",
-      compare.trend !== null && row["マイ単語帳"]?.cells.join("|") === `${fmtN(compare.free)}語まで|${fmtN(compare.pro)}語まで` && row["思い出せるようになった語の推移"]?.cells.join("|") === `${compare.trend.free} 日|${compare.trend.pro} 日` &&
+      compare.trend !== null && row["マイ単語帳"]?.cells.join("|") === `${fmtN(compare.free)}語まで|${fmtN(compare.pro)}語まで` && row["覚えた語の推移"]?.cells.join("|") === `${compare.trend.free} 日|${compare.trend.pro} 日` &&
         row["AI の覚え方"]?.cells.join("|") === "3 回|60 回" && compare.faq.includes(`${fmtN(compare.free)}語を超えたぶん`) && compare.faq.includes(`${fmtN(compare.free)}語までに戻る`),
       JSON.stringify({ rows: compare.rows, free: compare.free, pro: compare.pro, trend: compare.trend }));
     check("Pro（Batch 83）: AI の行はどこで使うか（学習状況の語の詳細）と「AI が使えるときだけ」を書く", /語の詳細/.test(row["AI の覚え方"]?.sub ?? "") && /AI が使えるときだけ/.test(row["AI の覚え方"]?.sub ?? ""), row["AI の覚え方"]?.sub ?? "");
     check("Pro（Batch 83 反証）: AI が使える（config に ai がある）ときは比較表の 4 行がどれも見えている・config の AI の有無を覚える（次に config が遅いときに行を先に出しておく）",
-      JSON.stringify(await shownCompareRows(page)) === JSON.stringify(["マイ単語帳", "思い出せるようになった語の推移", "テーマ", "AI の覚え方"]) && (await rememberedAi(page)) === true,
+      JSON.stringify(await shownCompareRows(page)) === JSON.stringify(["マイ単語帳", "覚えた語の推移", "テーマ", "AI の覚え方"]) && (await rememberedAi(page)) === true,
       JSON.stringify({ shown: await shownCompareRows(page), ai: await rememberedAi(page) }));
     // 静的な字（読み込みの間の形）もコードの値と同じ（ずれていると、読み込みの後で js/proView.js が書き換えて字が動く）。
     // AI の行は静的には隠しておく（Batch 83 の反証: AI が使えないときは行ごと出さない。config に ai があるとき・前の config に ai があったときだけ出す）。字は回数を約束しない「…」
@@ -18777,7 +18778,7 @@ console.log("pro:");
     const tableText = await page.$eval("#proCompareSection", (el) => el.innerText).catch(() => "");
     const ai = await rememberedAi(page);
     check(`Pro（Batch 83 反証）: AI が使えない（config の ai が null）ときは比較表に AI の行を出さない（マイ単語帳・推移・テーマの 3 行。${label}）・覚えた AI の有無も「なし」に直す・エラー 0`,
-      JSON.stringify(shown) === JSON.stringify(["マイ単語帳", "思い出せるようになった語の推移", "テーマ"]) && !/AI|準備中/.test(tableText) && ai === false && page.errors.length === 0,
+      JSON.stringify(shown) === JSON.stringify(["マイ単語帳", "覚えた語の推移", "テーマ"]) && !/AI|準備中/.test(tableText) && ai === false && page.errors.length === 0,
       JSON.stringify({ shown, ai, tableText: tableText.slice(0, 200), errors: page.errors.slice(0, 1) }));
     await page.close();
   }
@@ -18836,6 +18837,8 @@ console.log("pro:");
         (await page.$('#proWelcome a[href="./profile.html#appearance"]')) !== null && (await page.$('#proWelcome a[href="./stats.html#learnedWords"]')) !== null && (await page.$('#proWelcome a[href*="list.html"]')) === null &&
         !/シールド|修復|カード作成/.test(welcome) && welcome.includes("1日 60 回"),
       welcome);
+    const trendItem = await page.$eval('#proWelcome a[href="./stats.html#growth"]', (a) => a.textContent.trim()).catch(() => null);
+    check("Pro（Batch 90）: 加入直後の一覧の推移の行は学習状況の見出しと同じ名前「覚えた語の推移 N日」（字だけ。日数は js/plan.js の TREND_DAYS.pro）", /^覚えた語の推移 \d+日$/.test(trendItem ?? ""), String(trendItem));
     check("Pro: 加入直後は購入ボタンを出さず、URL の ?pro=done を消す", (await page.$("#proCheckoutMonth")) === null && !page.url().includes("pro=done"), page.url());
     await page.goto(BASE + "/profile.html", { waitUntil: "networkidle" });
     await waitUntil(async () => (await text(page, "#planValue")).includes("Pro"), 5000);
