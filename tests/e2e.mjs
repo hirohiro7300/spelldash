@@ -20418,6 +20418,116 @@ console.log("78.4 学習状況とランク:");
       JSON.stringify({ off, on, err: page.errors[0] }));
     await ctx.close();
   }
+
+  // ---- (13) 詳しい記録は中心の学習の語も見る（Batch 89 A2。js/wordStore.js findRecordWord・js/learnedWords.js・js/summary.js・js/statsView.js・js/wordDetail.js・js/exportCsv.js）:
+  //      公開の 2,858 語のうち基本カテゴリに無い 2,252 語（english-zero など。中心の学習の最初の 10 語もそう）を、詳しい記録の一覧・数・語の詳細・CSV が引ける。
+  //      新しい人が 1 セット（1 語は答えを出し、残りは打つ）を終えて開くと、出会った語 ＝ 答えた 10 語・初めて見て正解した語 ＝ 打った 9 語・外したパックの行なし・
+  //      一覧の語を押すと語の詳細（英語と訳）・CSV にその語。最初の画面の数は開く前と同じ。旗の間はタイピングの札とベストスコア（隠れた遊び方だけが書く数）を出さない
+  {
+    const EN = {};
+    for (const id of PUBLIC.packs) for (const w of JSON.parse(fs.readFileSync(path.join(ROOT, "data", "packs", `${id}.json`), "utf8")).words) EN[w.id] ??= w.en;
+    const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" } });
+    await page.addInitScript(() => {
+      window.__w = [];
+      addEventListener("spelldash:word", (e) => window.__w.push(e.detail?.id ?? null));
+    });
+    await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+    const shown = () => page.evaluate(() => window.__w.slice());
+    const typed = [];
+    for (let i = 1; i <= 10; i++) {
+      await waitUntil(async () => (await shown()).length >= i, 8000);
+      await afterAdvance(page);
+      const id = (await shown())[i - 1];
+      if (i === 1) {
+        await page.press("#input", "Enter"); // 答えを見る → あやふや
+        await page.waitForTimeout(300);
+        await page.press("#input", "Enter"); // 次へ
+        continue;
+      }
+      for (const ch of String(EN[id] ?? "")) await page.press("#input", ch);
+      typed.push(id);
+    }
+    await waitUntil(() => page.evaluate(() => document.getElementById("resultPanel")?.hidden === false), 8000);
+    const ids = await shown();
+    await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+    await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+    const firstScreen = () => page.evaluate(() => ["learnCount", "learnTotal", "learnRank", "learnNext"].map((id) => document.getElementById(id)?.textContent.trim() ?? null).concat([...document.querySelectorAll("#learnCards .learn-card__count")].map((e) => e.textContent.trim())));
+    const before = await firstScreen();
+    await page.click("#statsMore > summary");
+    await waitUntil(() => page.evaluate(() => /初めて見て正解した語 [1-9]/.test(document.getElementById("knownWordsSummary")?.textContent ?? "")), 6000);
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => {
+      const card = (label) => [...document.querySelectorAll("#overviewMore .stat-card")].find((c) => c.querySelector("span")?.textContent.trim() === label)?.querySelector("strong")?.textContent.trim() ?? null;
+      const typing = document.getElementById("typingMetrics")?.closest(".result-card");
+      return {
+        met: card("出会った語"), best: card("ベストスコア"),
+        typingShown: !!typing && !typing.hidden && getComputedStyle(typing).display !== "none",
+        known: document.getElementById("knownWordsSummary")?.textContent.trim(),
+        knownItems: [...document.querySelectorAll("#knownWordList [data-word-detail]")].map((b) => b.dataset.wordDetail),
+        dropped: document.querySelector(".learned-dropped")?.textContent.trim() ?? null,
+        stats: Object.entries(JSON.parse(localStorage.getItem("spelldash_word_stats") || "{}")).filter(([, s]) => (s.playCount ?? 0) > 0).length
+      };
+    });
+    const after = await firstScreen();
+    const firstKnown = r.knownItems[0] ?? null;
+    let detail = null;
+    if (firstKnown) {
+      await page.click("#knownWordsSummary"); // 「初めて見て正解した語」の畳みを開く
+      await page.click(`#knownWordList [data-word-detail="${firstKnown}"]`);
+      await page.waitForTimeout(300);
+      detail = await page.evaluate(() => {
+        const m = document.getElementById("wordDetail");
+        return m && !m.hidden ? { en: document.getElementById("wordDetailTitle")?.textContent.trim(), ja: document.querySelector(".word-detail__ja")?.textContent.trim() } : null;
+      });
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(200);
+    }
+    let csv = "";
+    try {
+      const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 5000 }), page.click("#learnedCsv")]);
+      csv = fs.readFileSync(await dl.path(), "utf8");
+    } catch {}
+    const typedEn = typed.map((id) => EN[id]);
+    const notBase = ids.filter((id) => id === "english-zero" || id === "english-two");
+    check("78.4 詳しい記録（Batch 89）: 新しい人が中心の学習を 1 セット（1 語は答えを見て、9 語は打って正解）を終えて開くと、出会った語 10・初めて見て正解した語 9 語（打った語）・外したパックの行なし（基本カテゴリに無い english-zero などの公開の語）",
+      ids.length >= 10 && notBase.length >= 1 && r.met === "10" && r.stats === 10 && r.known === "初めて見て正解した語 9語" && r.knownItems.length === 9 && typed.every((id) => r.knownItems.includes(id)) && r.dropped === null && page.errors.length === 0,
+      JSON.stringify({ ids, typed, ...r, err: page.errors[0] }));
+    check("78.4 詳しい記録（Batch 89）: 一覧の語を押すと語の詳細に英語と訳・CSV にその語（英語の列）が入る",
+      !!detail && detail.en === EN[firstKnown] && !!detail.ja && typedEn.every((en) => csv.split("\r\n").some((line) => line.startsWith(`${en},`))),
+      JSON.stringify({ firstKnown, detail, csv: csv.slice(0, 300) }));
+    check("78.4 詳しい記録（Batch 89）: 開いても最初の画面の数（覚えた N / 総数・ランク・次のランクまで・3 つの札）は開く前と同じ",
+      JSON.stringify(before) === JSON.stringify(after) && before[1] === fmt(TOTAL), JSON.stringify({ before, after }));
+    check("78.4 詳しい記録（Batch 89）: 旗の間はタイピングの札とその他の数字のベストスコア（隠れた遊び方だけが書く数）を出さない",
+      r.typingShown === false && r.best === null, JSON.stringify({ typingShown: r.typingShown, best: r.best }));
+    await page.close();
+
+    // 翌日にあやふやの語を自力で正解した公開の語（english-zero: 前の日に ×、今日 ○）は「思い出せるようになった語」に出る。本当に外したパックの語（読み込んでいない分野パックの語）は
+    // 今までどおり「ほか N語は外したパックの語」に数え、公開の語はそこに数えない
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "manifest.json"), "utf8"));
+    const english = manifest.subjects.find((s) => s.id === "english");
+    const baseIds = new Set(english.categories.filter((c) => !c.pack).flatMap((c) => JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id)));
+    const pubIds = new Set(PUB);
+    let packId = null;
+    for (const c of english.categories.filter((c) => c.pack)) {
+      packId = JSON.parse(fs.readFileSync(path.join(ROOT, "data", c.file), "utf8")).words.map((w) => w.id).find((id) => !baseIds.has(id) && !pubIds.has(id)) ?? null;
+      if (packId) break;
+    }
+    const yesterday = new Date(Date.now() - DAY);
+    const learnedRec = { playCount: 2, correctCount: 1, recallFail: 1, lastPlayed: new Date().toISOString(), lastRecallFailAt: yesterday.toISOString(), lastRecallSuccessAt: new Date().toISOString(), history: [{ d: ymdDaysAgo(1), r: "x" }, { d: ymdDaysAgo(0), r: "o" }], ls: 1, lsd: dayNo(0) };
+    const p2 = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_word_stats: JSON.stringify({ "english-zero": learnedRec, ...(packId ? { [packId]: { ...learnedRec, ls: undefined, lsd: undefined } } : {}) }) } });
+    await p2.goto(BASE + "/stats.html#learnedWords", { waitUntil: "networkidle" });
+    await waitUntil(() => p2.evaluate(() => /zero/.test(document.getElementById("learnedWordList")?.textContent ?? "")), 6000);
+    await p2.waitForTimeout(300);
+    const r2 = await p2.evaluate(() => ({
+      count: document.getElementById("learnedWordsCount")?.textContent.trim(),
+      words: [...document.querySelectorAll("#learnedWordList [data-word-detail]")].map((b) => b.dataset.wordDetail),
+      dropped: document.querySelector(".learned-dropped")?.textContent.trim() ?? null
+    }));
+    check("78.4 詳しい記録（Batch 89）: 前の日に × で今日 ○ の公開の語（english-zero）は「思い出せるようになった語」に出る・本当に外したパックの語は「ほか 1語は外したパックの語」（公開の語は数えない）",
+      !!packId && r2.count === "1語" && JSON.stringify(r2.words) === JSON.stringify(["english-zero"]) && r2.dropped === "ほか 1語は外したパックの語" && p2.errors.length === 0,
+      JSON.stringify({ packId, ...r2, err: p2.errors[0] }));
+    await p2.close();
+  }
 }
 
 // ===== 20. Batch 48: 2 台目の端末（ログイン・同期・マージ） =====
