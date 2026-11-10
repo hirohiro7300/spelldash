@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildDemoDoc, isDisposableDoc } from "../../src/demo/demo";
 import { buildStressDoc } from "../../src/demo/stress";
 import { buildWishlist } from "../../src/demo/wishlistBundle";
+import { buildFuture } from "../../src/demo/futureBundle";
 import { SCHEMA_VERSION, createEmptyDoc, makeNode } from "../../src/model/schema";
 import type { DocData } from "../../src/model/types";
 import { CloudRepo, CloudSync, baseCovered, decodeDoc, encodeDoc, type BootDoc, type CloudBackend, type CloudDoc, type Manifest, type SyncBase } from "../../src/persist/cloud";
@@ -260,6 +261,18 @@ describe("符号化と保存先", () => {
     expect(back!.doc).toEqual(wish);
     expect(back!.manifest.nodes).toBe(Object.keys(wish.nodes).length);
     expect(m.nodes).toBeGreaterThan(3000);
+  });
+
+  it("未来の道筋も、線の見込み（%）と予測の入口の印ごと往復できる", async () => {
+    const { be } = memoryBackend();
+    const repo = new CloudRepo(be, "u", "dev");
+    const future = buildFuture(new Date(2026, 10, 10)).pv.doc;
+    await repo.write(future, null);
+    const back = await repo.read();
+    expect(back!.doc).toEqual(future);
+    const probs = Object.values(back!.doc.edges).filter((e) => typeof e.meta.prob === "number");
+    expect(probs.length).toBeGreaterThanOrEqual(3);
+    expect(Object.values(back!.doc.nodes).filter((n) => n.meta.forecastRoot === true).length).toBe(1);
   });
 
   it("圧縮の無いブラウザでも、日本語の多い内容の分割が 256 KiB を超えない（UTF-8 を base64 に）", async () => {

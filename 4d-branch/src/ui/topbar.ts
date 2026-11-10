@@ -189,6 +189,7 @@ function mainMenu(app: AppContext): MenuEntry[] {
     { header: "ドキュメント" },
     { label: "名前を変更…", icon: "tag", disabled: ro, run: () => app.renameDoc() },
     { label: `やりたいことリスト（${WISHLIST_SIZE_LABEL}）を読み込む…`, icon: "goal", disabled: ro, run: () => app.loadWishlist() },
+    { label: "未来の道筋（仕事・10 年）を読み込む…", icon: "split", disabled: ro, run: () => app.loadFuture() },
     { label: "デモを読み込む（置き換え）", icon: "sparkle", disabled: ro, run: () => void app.loadDemo() },
     { label: "空のドキュメントにする", icon: "reset", disabled: ro, run: () => void app.newEmptyDoc() },
     "sep",

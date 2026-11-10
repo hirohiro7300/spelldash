@@ -3,6 +3,7 @@
 import type { ViewModel } from "../app/viewModel";
 import type { UiState } from "../app/uiState";
 import { NODE_TYPES } from "../model/constants";
+import { edgeProb, formatPercent } from "../model/forecast";
 import { todayStr } from "../model/dates";
 import type { GNode, ID, Relation } from "../model/types";
 import type { Store } from "../store/store";
@@ -427,7 +428,10 @@ export class CanvasView {
       const hovered = hover.edge === eid;
       drawEdge(ctx, g, { lod, zoom: z, alpha: ev.alpha, relation: e.relation, selected, hovered, path: ev.path, cross: ev.cross, offScenario: ev.offScenario, flowT });
       if (flowT !== null && (ev.path || selected) && lod !== "low" && lod !== "dot") animating = true;
-      const text = e.condition.trim() || e.label.trim();
+      // 分かれ道の線は見込み（%）を先頭に出す（長い条件が省略されても見込みは見える）
+      const base = e.condition.trim() || e.label.trim();
+      const prob = edgeProb(e);
+      const text = prob === null ? base : base ? `${prob}%｜${base}` : `${prob}%`;
       if (text && (lod === "full" || lod === "compact") && ((prefs.showLabels && z >= 0.55 && ev.alpha > 0.25) || selected || hovered)) {
         labels.push({ id: eid, g, text, rel: e.relation, alpha: Math.max(ev.alpha, selected || hovered ? 1 : 0), emph: selected || hovered || ev.path });
       }
@@ -472,7 +476,8 @@ export class CanvasView {
     }
 
     // ノード
-    const screenLabels: Array<{ n: GNode; x: number; y: number; alpha: number; rank: number }> = [];
+    const fc = vm.forecast;
+    const screenLabels: Array<{ n: GNode; x: number; y: number; alpha: number; rank: number; reach?: number }> = [];
     for (const id of vm.drawNodes) {
       const n = doc.nodes[id]!;
       const p = this.pos(id, n);
@@ -499,8 +504,9 @@ export class CanvasView {
         collapsedCount: nv.collapsedCount,
         showBadge: this.badgeVisible(id, lod),
         today,
+        reach: fc.active ? fc.reach.get(id)?.p : undefined,
       });
-      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ n, x: p.x, y: p.y, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2 });
+      if ((lod === "low" || lod === "dot") && (n.type === "goal" || selected || nv.match)) screenLabels.push({ n, x: p.x, y: p.y, alpha: nv.alpha, rank: selected ? 0 : nv.match ? 1 : 2, reach: fc.active ? fc.reach.get(id)?.p : undefined });
     }
     // つまみ
     if (lod === "full" || lod === "compact") {
@@ -537,7 +543,7 @@ export class CanvasView {
   }
 
   /** 縮小したときの目印（目標・選択中・検索の当たりの名前を画面の大きさで） */
-  private drawScreenLabels(items: Array<{ n: GNode; x: number; y: number; alpha: number; rank: number }>): void {
+  private drawScreenLabels(items: Array<{ n: GNode; x: number; y: number; alpha: number; rank: number; reach?: number }>): void {
     const ctx = this.ctx;
     const z = this.camera.zoom;
     const cam = this.camera;
@@ -553,7 +559,9 @@ export class CanvasView {
       const sx = it.x * z + cam.x;
       const sy = (it.y - HALF_H) * z + cam.y - 6;
       if (sx < -100 || sx > this.width + 100 || sy < -20 || sy > this.height + 20) continue;
-      const text = wrapText(ctx, it.n.title.trim() || "（無題）", 180, 1)[0] ?? "";
+      const title = wrapText(ctx, it.n.title.trim() || "（無題）", 180, 1)[0] ?? "";
+      // 未来の道筋の行き先などは、縮小しても見込みが分かるように添える
+      const text = it.reach !== undefined && it.reach < 0.9995 ? `${title}（${formatPercent(it.reach)}）` : title;
       const w = ctx.measureText(text).width;
       const box = { x0: sx - w / 2 - 4, y0: sy - 14, x1: sx + w / 2 + 4, y1: sy + 4 };
       if (it.rank > 0 && placed.some((b) => b.x0 < box.x1 && b.x1 > box.x0 && b.y0 < box.y1 && b.y1 > box.y0)) continue;

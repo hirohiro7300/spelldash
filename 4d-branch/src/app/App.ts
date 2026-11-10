@@ -16,7 +16,7 @@ import { downloadText, exportFileName, exportText, mergeDocs } from "../persist/
 import type { BackupKind, Persistence } from "../persist/persistence";
 import type { Store } from "../store/store";
 import { buildBottomBar } from "../ui/bottomBar";
-import { chooseSyncSource, openBackupDialog, openCopyDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
+import { chooseSyncSource, openBackupDialog, openCopyDialog, openFutureDialog, openHelpDialog, openImportDialog, openTextDialog, openWelcome, openWishlistDialog } from "../ui/dialogs";
 import { MOD, h, isTypingTarget } from "../ui/dom";
 import { icon } from "../ui/icons";
 import { buildInspector } from "../ui/inspector";
@@ -157,6 +157,7 @@ export class App implements AppContext {
         { class: "btn-row center" },
         h("button", { class: "btn btn-primary", type: "button", onClick: () => this.cmd.createNode("goal", undefined, { edit: true }) }, icon("goal", 15), "目標を作る"),
         h("button", { class: "btn", type: "button", onClick: () => this.loadWishlist() }, icon("goal", 15), "やりたいことリスト"),
+        h("button", { class: "btn", type: "button", onClick: () => this.loadFuture() }, icon("split", 15), "未来の道筋"),
         h("button", { class: "btn", type: "button", onClick: () => void this.loadDemo() }, icon("sparkle", 15), "デモを読み込む"),
       ),
     );
@@ -216,7 +217,7 @@ export class App implements AppContext {
       } else this.view.fit(undefined, { animate: false });
       for (const n of opts.notices) toast(n, { tone: "warn", ms: 9000 });
       if (opts.firstRun && !this.ui.prefs.onboardingDone && !this.ephemeral) openWelcome(this);
-      else this.offerWishlistOnce();
+      else this.offerOnce();
       this.afterTour = () => void this.askPersistOnce();
     });
     void this.refreshLastBackup();
@@ -756,17 +757,32 @@ export class App implements AppContext {
     openWishlistDialog(this);
   }
 
+  /** 未来の道筋（仕事・10 年）を、確かめてから読み込む */
+  loadFuture(): void {
+    if (this.store.readOnly) return;
+    if (!this.ui.prefs.futureOffered) this.ui.setPrefs({ futureOffered: true });
+    openFutureDialog(this);
+  }
+
   /**
-   * 前から使っている人に、一度だけ「やりたいことリスト」を知らせる（初めての人には、ようこそ画面で伝える）。
+   * 前から使っている人に、一度だけ新しい同梱データを知らせる（初めての人には、ようこそ画面で伝える）。
+   * やりたいことリストをまだ知らせていなければそれを、知らせていれば未来の道筋を（1 回の起動で 1 つだけ）。
    * 印は実際に出すときに立てる（出す前に閉じた・閲覧のみのタブで使い切らない）。閲覧のみのタブは編集できるようになってから出し、
    * 別のタブがもう出していれば（保存された印を読み直して）出さない
    */
-  private offerWishlistOnce(): void {
-    if (this.ephemeral || this.ui.prefs.wishlistOffered || !this.ui.prefs.onboardingDone) return;
+  private offerOnce(): void {
+    if (this.ephemeral || !this.ui.prefs.onboardingDone || (this.ui.prefs.wishlistOffered && this.ui.prefs.futureOffered)) return;
     const show = (): void => {
-      if (this.store.readOnly || this.ui.prefs.wishlistOffered || this.ui.storedPrefs().wishlistOffered) return;
-      this.ui.setPrefs({ wishlistOffered: true });
-      toast(`やりたいことリスト（${WISHLIST_SIZE_LABEL} 件）を用意しました。メニューからいつでも読み込めます`, { action: { label: "見る", run: () => this.loadWishlist() }, ms: 15000 });
+      if (this.store.readOnly) return;
+      const stored = this.ui.storedPrefs();
+      if (!this.ui.prefs.wishlistOffered && !stored.wishlistOffered) {
+        this.ui.setPrefs({ wishlistOffered: true });
+        toast(`やりたいことリスト（${WISHLIST_SIZE_LABEL} 件）を用意しました。メニューからいつでも読み込めます`, { action: { label: "見る", run: () => this.loadWishlist() }, ms: 15000 });
+        return;
+      }
+      if (this.ui.prefs.futureOffered || stored.futureOffered) return;
+      this.ui.setPrefs({ futureOffered: true });
+      toast(`未来の道筋（仕事・10 年）を用意しました。分かれ道ごとの見込みと 10 年後の行き先が見られます（やりたいことリストも ${WISHLIST_SIZE_LABEL} 件になりました）`, { action: { label: "見る", run: () => this.loadFuture() }, ms: 15000 });
     };
     setTimeout(() => {
       if (!this.store.readOnly) return show();

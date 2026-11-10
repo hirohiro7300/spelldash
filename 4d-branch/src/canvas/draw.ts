@@ -5,6 +5,7 @@ import { dayNumber, formatShort } from "../model/dates";
 import type { GNode, NodeType, Relation } from "../model/types";
 import { BADGE_H, BADGE_W, HALF_H, HALF_W, badgeCenter, bezierPoint, type EdgeGeom } from "./geometry";
 import { CANVAS_FONT, ellipsize, wrapText } from "./text";
+import { formatPercent } from "../model/forecast";
 
 /**
  * 拡大率ごとの描き方（意味のあるズーム）:
@@ -142,6 +143,8 @@ export interface NodeDrawOpts {
   /** 折りたたみの印を描くか（当たり判定と同じ答え。CanvasView.badgeVisible） */
   showBadge: boolean;
   today: string;
+  /** 未来の道筋で、ここに至る見込み（0〜1。見込みの無い文書では undefined） */
+  reach?: number;
 }
 
 const FONT_TITLE = `600 14px ${CANVAS_FONT}`;
@@ -329,6 +332,7 @@ export function drawNode(ctx: CanvasRenderingContext2D, n: GNode, x: number, y: 
     if (o.projectColors.length) fx += 4;
     ctx.font = FONT_META;
     const parts: string[] = [];
+    if (o.reach !== undefined && o.reach < 0.9995) parts.push(`見込み ${formatPercent(o.reach)}`);
     if (n.conditions.length) parts.push(`条件 ${n.conditions.filter((c) => c.met).length}/${n.conditions.length}`);
     if (n.tags.length) parts.push(n.tags.slice(0, 3).map((t) => `#${t}`).join(" "));
     if (parts.length) {

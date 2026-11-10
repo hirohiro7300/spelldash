@@ -1418,6 +1418,143 @@ async function main() {
   });
   await lctx.close();
 
+  // ---- 未来の道筋（別のコンテキスト = 初めて開いた端末）
+  const fctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const fp = await fctx.newPage();
+  watch(fp);
+  await fp.goto(BASE, { waitUntil: "networkidle" });
+  await fp.getByRole("button", { name: "すぐに使う" }).click();
+  const forecastOf = () =>
+    fp.evaluate(() => {
+      const fc = window.__fourD.app.vm.forecast;
+      return { active: fc.active, ends: fc.ends.length, sum: fc.ends.reduce((n, id) => n + fc.reach.get(id).p, 0), longest: fc.longest };
+    });
+
+  await check("未来の道筋: メニューから確かめて読み込み（置き換え）、今日の近くに寄り、行き先の見込みが合計 100% で並ぶ", async () => {
+    const before = await state(fp);
+    await fp.getByRole("button", { name: "メニュー", exact: true }).click();
+    await fp.getByRole("menuitem", { name: /未来の道筋/ }).click();
+    const dlg = fp.getByRole("dialog", { name: "未来の道筋を読み込む" });
+    await dlg.waitFor();
+    await shot("e2e-14-future-dialog", fp);
+    await dlg.locator(".radio-card", { hasText: "置き換える" }).click();
+    await dlg.getByRole("button", { name: "読み込む" }).click();
+    await fp.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+    await fp.waitForTimeout(500);
+    const fc = await forecastOf();
+    assert(fc.active && fc.ends >= 3, JSON.stringify(fc));
+    assert(Math.abs(fc.sum - 1) < 1e-6, `行き先の見込みの合計 ${fc.sum}`);
+    const ov = await fp.evaluate(() => [...document.querySelectorAll(".forecast-ends .end-row .end-pct")].map((x) => x.textContent));
+    assert(ov.length === Math.min(14, fc.ends) && ov.every((t) => /%/.test(t)), `概要: ${JSON.stringify(ov)}`);
+    const root = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const n = Object.values(f.store.doc.nodes).find((x) => x.meta?.forecastRoot);
+      const v = f.app.view;
+      const p = v.camera.toScreen(n.x, n.y);
+      return { x: p.x, y: p.y, w: v.width, h: v.height, sel: f.ui.selection.nodes.size };
+    });
+    assert(root.x > -50 && root.x < root.w + 50 && root.y > -50 && root.y < root.h + 50, `今日が画面の外: ${JSON.stringify(root)}`);
+    assert(root.sel === 0, `読み込んだ後に選択が残っている: ${root.sel}`);
+    assert((await state(fp)).nodes !== before.nodes, "入れ替わっていない");
+    await shot("e2e-15-future-start", fp);
+  });
+
+  await check("未来の道筋: 行き先を押すと寄って、ここに至る見込みと今日から何歩目かが出る", async () => {
+    await fp.locator(".forecast-ends .end-row").first().click();
+    await fp.waitForTimeout(400);
+    const t = (await fp.locator(".insp-forecast").textContent()) ?? "";
+    assert(/ここに至る見込み/.test(t) && /%/.test(t) && /歩目/.test(t), t);
+    await shot("e2e-16-future-end", fp);
+  });
+
+  await check("未来の道筋: 分かれ道の線の % を直すと、見込みを計算し直し、元に戻せる", async () => {
+    const pick = await fp.evaluate(() => {
+      const f = window.__fourD;
+      const d = f.store.doc;
+      const e = Object.values(d.edges).find((x) => typeof x.meta?.prob === "number" && x.meta.prob >= 10 && x.meta.prob <= 80 && d.nodes[x.source]?.type === "branch");
+      return { id: e.id, prob: e.meta.prob, target: e.target, p: f.app.vm.forecast.reach.get(e.target).p };
+    });
+    await fp.evaluate((id) => window.__fourD.ui.select([], [id]), pick.id);
+    const input = fp.locator(".edge-prob");
+    await input.waitFor();
+    assert((await input.inputValue()) === String(pick.prob), `入力欄 ${await input.inputValue()} / ${pick.prob}`);
+    await input.fill(String(pick.prob + 15));
+    await input.press("Tab");
+    const after = await fp.evaluate((id) => {
+      const f = window.__fourD;
+      const e = f.store.doc.edges[id];
+      return { prob: e.meta.prob, p: f.app.vm.forecast.reach.get(e.target).p };
+    }, pick.id);
+    assert(after.prob === pick.prob + 15, `見込み ${after.prob}`);
+    assert(after.p > pick.p, `計算し直していない: ${pick.p} → ${after.p}`);
+    const sum = (await fp.locator(".prob-sum").textContent()) ?? "";
+    assert(/合計 \d+%/.test(sum), sum);
+    const fc = await forecastOf();
+    assert(Math.abs(fc.sum - 1) < 1e-6, `合計が 100% から外れた: ${fc.sum}`);
+    await fp.locator(".graph-canvas").focus();
+    await fp.keyboard.press("Control+z");
+    const undone = await fp.evaluate((id) => window.__fourD.store.doc.edges[id].meta.prob, pick.id);
+    assert(undone === pick.prob, `元に戻らない: ${undone}`);
+  });
+
+  await check("未来の道筋: シナリオを選ぶと、その道を選んだ場合の見込み（合計 100%）に変わる", async () => {
+    await fp.evaluate(() => window.__fourD.ui.clearSelection());
+    await fp.locator(".scen-chip", { hasText: "早期独立" }).click();
+    await fp.waitForTimeout(300);
+    const head = (await fp.locator(".forecast-ends .insp-label").textContent()) ?? "";
+    assert(head.includes("早期独立を選んだ場合"), head);
+    const fc = await forecastOf();
+    assert(fc.active && Math.abs(fc.sum - 1) < 1e-6, `合計 ${fc.sum}`);
+    await fp.locator(".scen-chip", { hasText: "すべて" }).click();
+  });
+
+  await check("未来の道筋: 地図を動かしても滑らか", async () => {
+    const stats = await fp.evaluate(async () => {
+      const v = window.__fourD.app.view;
+      const measure = async (zoom, frames) => {
+        v.camera.zoom = zoom;
+        const times = [];
+        for (let i = 0; i < frames; i++) {
+          v.camera.x -= 25;
+          v.camera.y += i % 2 ? 10 : -10;
+          v.cameraChanged();
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          times.push(v.lastFrameMs);
+        }
+        times.sort((a, b) => a - b);
+        return { avg: times.reduce((s2, t) => s2 + t, 0) / times.length, p95: times[Math.floor(times.length * 0.95)] };
+      };
+      v.fit(undefined, { animate: false });
+      return { all: await measure(v.camera.zoom, 30), mid: await measure(0.3, 30), near: await measure(0.9, 30) };
+    });
+    console.log(`      描画時間 ms（平均 / 95%）: 全体 ${stats.all.avg.toFixed(1)}/${stats.all.p95.toFixed(1)}・中 ${stats.mid.avg.toFixed(1)}/${stats.mid.p95.toFixed(1)}・寄り ${stats.near.avg.toFixed(1)}/${stats.near.p95.toFixed(1)}`);
+    for (const [k, v] of Object.entries(stats)) {
+      assert(v.avg > 0, `${k}: 描画されていない（${v.avg}ms）`);
+      assert(v.p95 < 33, `${k}: 95% が 33ms 以上 (${v.p95.toFixed(1)})`);
+    }
+  });
+
+  await check("未来の道筋: 前から使っている人には一度だけお知らせが出て、「見る」で確かめの画面が開く", async () => {
+    await fp.waitForTimeout(500);
+    await fp.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem("4d-branch:prefs") || "{}");
+      delete p.futureOffered;
+      p.wishlistOffered = true;
+      localStorage.setItem("4d-branch:prefs", JSON.stringify(p));
+    });
+    await fp.reload({ waitUntil: "networkidle" });
+    const offer = fp.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を用意しました" });
+    await offer.waitFor({ timeout: 6000 });
+    await offer.getByRole("button", { name: "見る" }).click();
+    await fp.getByRole("dialog", { name: "未来の道筋を読み込む" }).waitFor();
+    await fp.keyboard.press("Escape");
+    await fp.waitForTimeout(500);
+    await fp.reload({ waitUntil: "networkidle" });
+    await fp.waitForTimeout(1200 + 1000);
+    assert((await fp.locator(".toast", { hasText: "未来の道筋（仕事・10 年）を用意しました" }).count()) === 0, "二度目のお知らせが出た");
+  });
+  await fctx.close();
+
   await check("ページのエラーが無い", async () => {
     assert(errors.length === 0, errors.join("\n"));
   });

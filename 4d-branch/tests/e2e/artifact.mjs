@@ -384,6 +384,25 @@ await check("やりたいことリスト（3,000 件）を読み込むと、ア�
   assert((await cloudState(A.page)) === "synced", await cloudState(A.page));
 });
 
+await check("未来の道筋を追加で読み込むと、見込み（線の %・予測の入口）ごとアカウントの写しも新しくなる", async () => {
+  const before = JSON.parse(dbStore.get("data/users/u_test/fourd"));
+  await A.page.evaluate(() => window.__fourD.app.loadFuture());
+  const dlg = A.page.getByRole("dialog", { name: "未来の道筋を読み込む" });
+  await dlg.waitFor();
+  await dlg.getByRole("button", { name: "読み込む" }).click();
+  await A.page.waitForFunction(() => Object.values(window.__fourD.store.doc.nodes).some((n) => n.meta?.forecastRoot === true));
+  const local = await A.page.evaluate(() => {
+    const f = window.__fourD;
+    const fc = f.app.vm.forecast;
+    return { nodes: Object.keys(f.store.doc.nodes).length, probs: Object.values(f.store.doc.edges).filter((e) => typeof e.meta?.prob === "number").length, ends: fc.ends.length, sum: fc.ends.reduce((n, id) => n + fc.reach.get(id).p, 0) };
+  });
+  assert(local.probs >= 3 && local.ends >= 3 && Math.abs(local.sum - 1) < 1e-6, JSON.stringify(local));
+  await A.page.evaluate(() => window.__fourD.app.cloud.flush());
+  const m = JSON.parse(dbStore.get("data/users/u_test/fourd"));
+  assert(m.gen !== before.gen && m.nodes === local.nodes && m.nodes > before.nodes, `写し: ${m.nodes} / ${local.nodes}`);
+  assert((await cloudState(A.page)) === "synced", await cloudState(A.page));
+});
+
 await check("ページのエラーが無い", async () => {
   assert(errors.length === 0, errors.join("\n"));
 });

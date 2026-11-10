@@ -1,6 +1,7 @@
 // 見え方の計算: プロジェクトの絞り込み・シナリオ・時点・検索・折りたたみ・経路の強調 → ノードと接続ごとの「隠す・薄さ」
 // 変更のたびに作り直す（O(ノード + 接続)）。位置だけの変更では作り直さない
 
+import { computeForecast, type ForecastResult } from "../model/forecast";
 import { buildIndex, inScenario, type GraphIndex } from "../model/graph";
 import { isEmptyQuery, parseQuery, searchNodes } from "../model/search";
 import type { DocData, GEdge, ID } from "../model/types";
@@ -50,6 +51,10 @@ export class ViewModel {
   pathActive = false;
   hiddenCount = 0;
   version = 0;
+  /** 索引を作り直した回数（見込みの作り直しの目印） */
+  private indexVersion = 0;
+  private forecastKey = "";
+  private forecastCache: ForecastResult = { active: false, reach: new Map(), ends: [], longest: 0 };
   private dirtyIndex = true;
   private dirtyVis = true;
   /** 直前の計算の中身（隠れた理由を答える・折りたたみを開く計画に使う） */
@@ -87,6 +92,7 @@ export class ViewModel {
   ensure(): void {
     if (this.dirtyIndex) {
       this.index = buildIndex(this.store.doc);
+      this.indexVersion++;
       this.dirtyIndex = false;
       this.dirtyVis = true;
     }
@@ -100,6 +106,21 @@ export class ViewModel {
   node(id: ID): NodeVis {
     this.ensure();
     return this.nodes.get(id) ?? HIDDEN_NODE;
+  }
+
+  /**
+   * 未来の道筋の見込み（予測の入口があるときだけ active）。シナリオを選んでいれば、そのシナリオを選んだ場合の見込み。
+   * 文書が変わるか、選んだシナリオが変わったときだけ計算し直す
+   */
+  get forecast(): ForecastResult {
+    this.ensure();
+    const sid = this.ui.prefs.scenarioId ?? null;
+    const key = `${this.indexVersion}|${sid ?? ""}`;
+    if (key !== this.forecastKey) {
+      this.forecastCache = computeForecast(this.store.doc, this.index.out, sid && this.store.doc.scenarios[sid] ? sid : null);
+      this.forecastKey = key;
+    }
+    return this.forecastCache;
   }
 
   private compute(): void {

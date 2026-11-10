@@ -6,6 +6,7 @@ import { DocFormatError } from "../model/schema";
 import type { DocData } from "../model/types";
 import { WISHLIST_SIZE_LABEL } from "../demo/wishlist";
 import { buildWishlist } from "../demo/wishlistBundle";
+import { buildFuture } from "../demo/futureBundle";
 import { previewImport, type ImportPreview } from "../persist/io";
 import { inArtifactHost } from "../host/claude";
 import { BACKUP_LABELS, type BackupMeta } from "../persist/persistence";
@@ -293,6 +294,71 @@ export function openWishlistDialog(app: AppContext): void {
   });
 }
 
+/** 確かめの画面を開いている間は、もう 1 枚開かない */
+let futureOpen = false;
+
+/** 未来の道筋（仕事・10 年）を読み込む前の確認。組み立てに失敗したら、そう伝えて閉じる */
+export function openFutureDialog(app: AppContext): void {
+  if (futureOpen) return;
+  let built: ReturnType<typeof buildFuture>;
+  try {
+    built = buildFuture();
+  } catch {
+    const m = openModal({ title: "読み込めませんでした", width: 460, icon: "alert" });
+    m.body.append(h("p", { class: "modal-text" }, "未来の道筋を組み立てられませんでした。ページを開き直してから、もう一度試してください。"));
+    m.footer.append(h("button", { class: "btn btn-primary", type: "button", onClick: () => m.close() }, "閉じる"));
+    return;
+  }
+  const { pv, stats } = built;
+  const lead = h(
+    "div",
+    { class: "wish-lead" },
+    h("p", { class: "modal-text" }, "SpellDash・FC マーケティング・独立の 3 つの仕事が、今日から 10 年後までどう分かれていくかを予測した地図です。", h("b", null, `1 本の道は今日から ${stats.shortest}〜${stats.longest} 歩`), "続き、", h("b", null, `${stats.ends} の行き先`), "に分かれます。"),
+    h(
+      "ul",
+      { class: "wish-howto" },
+      h("li", null, h("b", null, "横"), "は時間。6・12・24・36・60・84 か月目と 10 年後に節目の状態があり、その間を具体的な歩み（やりたいことリストの作業や、起きること）で埋めてあります。"),
+      h("li", null, h("b", null, "分かれ道"), "には判断の線（この数字を越えたらこちら）と見込み % が付いています。線を選ぶと % を直せ、見込みが計算し直されます。"),
+      h("li", null, h("b", null, "右の概要"), "に 10 年後の行き先と、そこに至る見込みが並びます。下のシナリオ（両立・早期独立・SpellDash集中）を選ぶと、その道を選んだ場合の見込みに変わります。"),
+      h("li", null, h("b", null, "ノード"), "を選ぶと、そこに至る見込みと、今日から何歩目かが出ます。"),
+    ),
+  );
+  futureOpen = true;
+  openImportPreview(app, pv, {
+    onClose: () => (futureOpen = false),
+    title: "未来の道筋を読み込む",
+    subtitle: `今日から 10 年後まで、${stats.ends} の行き先に分かれる道`,
+    icon: "split",
+    lead,
+    stats: [
+      ["歩み", stats.steps],
+      ["分かれ道", stats.forks],
+      ["行き先", stats.ends],
+      ["最長の歩数", stats.longest],
+    ],
+    mode: "merge",
+    mergeDesc: "今のデータはそのまま。未来の道筋を右側に足します。SpellDash事業など同じ名前のプロジェクトとシナリオはまとめます。",
+    replaceDesc: "今のデータを未来の道筋だけに入れ替えます。直前の状態は安全用バックアップに残り、「元に戻す」でも戻せます。",
+    label: { merge: "未来の道筋を追加", replace: "未来の道筋に入れ替え" },
+    selectAdded: false,
+    after: {
+      replaceDone: "未来の道筋に入れ替えました。右の概要に 10 年後の行き先の見込みが出ます",
+      mergeDone: "未来の道筋: ",
+      // 全体は横に長すぎて読めないので、今日から最初の分かれ道までに寄る
+      fitTo: (doc, added) => {
+        const root = added.find((id) => doc.nodes[id]?.meta.forecastRoot === true);
+        if (!root) return added;
+        const r = doc.nodes[root]!;
+        const near = added.filter((id) => {
+          const n = doc.nodes[id]!;
+          return n.x >= r.x && n.x <= r.x + 12 * 300 && Math.abs(n.y - r.y) <= 900;
+        });
+        return near.length ? near : added;
+      },
+    },
+  });
+}
+
 // ------------------------------------------------------------ ヘルプ
 
 const SHORTCUTS: Array<[string, string]> = [
@@ -351,7 +417,7 @@ export function openHelpDialog(app: AppContext): void {
 // ------------------------------------------------------------ ようこそ
 
 export function openWelcome(app: AppContext): void {
-  const m = openModal({ title: "4D Branch へようこそ", width: 620, className: "welcome-modal", onClose: () => app.ui.setPrefs({ onboardingDone: true, wishlistOffered: true }) });
+  const m = openModal({ title: "4D Branch へようこそ", width: 620, className: "welcome-modal", onClose: () => app.ui.setPrefs({ onboardingDone: true, wishlistOffered: true, futureOffered: true }) });
   const types = h("div", { class: "welcome-types" });
   for (const t of NODE_TYPE_ORDER) types.append(h("div", { class: `welcome-type type-${t}` }, h("span", { class: `type-chip type-${t}` }, icon(t, 16)), h("b", null, NODE_TYPES[t].label), h("span", null, NODE_TYPES[t].hint)));
   m.body.append(
@@ -359,12 +425,13 @@ export function openWelcome(app: AppContext): void {
     types,
     h("div", { class: "welcome-demo" }, icon("sparkle", 16), h("div", null, h("b", null, "デモを開いています: "), "「SpellDash事業」「FCマーケティングでの業務」「広告運用事業での独立」の 3 つが、「広告運用を学ぶ」などの共通のノードでつながっています。")),
     h("div", { class: "welcome-demo" }, icon("goal", 16), h("div", null, h("b", null, "やりたいことリスト: "), `仕事・学び・お金・健康・旅などのやりたいこと ${WISHLIST_SIZE_LABEL} 件と、そこから分かれる道を、メニュー（右上の ⋯）からいつでも読み込めます。`)),
+    h("div", { class: "welcome-demo" }, icon("split", 16), h("div", null, h("b", null, "未来の道筋: "), "仕事の 3 つの道（両立・早期独立・SpellDash集中）が今日から 10 年後まで分かれていく地図です。分かれ道ごとの判断の線と見込み %、10 年後の行き先の見込みが見られます（メニューから読み込めます）。")),
     h(
       "p",
       { class: "muted small" },
       inArtifactHost()
-        ? "データはこのブラウザに保存し、claude.ai にサインインしていれば、あなただけが読める場所（この Artifact の中）にも同期します。ほかの人には見えません。AI による分析や予測はしません。外部の AI と考えた内容を、ここに自由に記録してください。"
-        : "データはこのブラウザの中だけに保存されます（サーバーには送りません）。AI による分析や予測はしません。外部の AI と考えた内容を、ここに自由に記録してください。",
+        ? "データはこのブラウザに保存し、claude.ai にサインインしていれば、あなただけが読める場所（この Artifact の中）にも同期します。ほかの人には見えません。アプリの中で AI は動きません（未来の道筋の見込みは、線に付いた % から計算しています）。外部の AI と考えた内容を、ここに自由に記録してください。"
+        : "データはこのブラウザの中だけに保存されます（サーバーには送りません）。アプリの中で AI は動きません（未来の道筋の見込みは、線に付いた % から計算しています）。外部の AI と考えた内容を、ここに自由に記録してください。",
     ),
   );
   const tourBtn = h("button", { class: "btn btn-primary", type: "button" }, icon("play", 14), "操作ガイドを見る（1 分）");

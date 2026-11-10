@@ -9,6 +9,7 @@ import type { GEdge, GNode, ID } from "../model/types";
 import { MOD, autosize, clear, h, isImeKey, setValue } from "./dom";
 import { icon } from "./icons";
 import { toast } from "./overlays";
+import { edgeProb, formatPercent } from "../model/forecast";
 
 type Updater = () => void;
 
@@ -186,6 +187,10 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
 
   const projLine = h("div", { class: "insp-projline" });
   wrap.append(h("div", { class: "insp-meta" }, status, projLine));
+  // 未来の道筋: ここに至る見込みと、今日から何歩目か
+  const forecastLine = h("div", { class: "insp-forecast", attrs: { role: "status" } });
+  forecastLine.hidden = true;
+  wrap.append(forecastLine);
 
   // 文章
   const bodyTa = h("textarea", { class: "input insp-text", placeholder: "メモ・背景・外部の AI と考えたこと…", attrs: { rows: "3", "aria-label": "文章" } });
@@ -289,6 +294,25 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     if (n.projectIds.length > 1) projLine.append(h("span", { class: "shared-pill", title: "複数のプロジェクトから参照されている共有ノード" }, icon("link", 12), "共有"));
     if (!n.projectIds.length) projLine.append(h("span", { class: "muted-pill" }, "未分類"));
 
+    // 見込み（予測の入口から届くノードだけ）
+    const fc = vm.forecast;
+    const reach = fc.active ? fc.reach.get(id) : undefined;
+    forecastLine.hidden = !reach;
+    clear(forecastLine);
+    if (reach) {
+      const sid = ui.prefs.scenarioId;
+      const scen = sid ? doc.scenarios[sid] : undefined;
+      const steps = reach.minSteps === reach.maxSteps ? `${reach.minSteps}` : `${reach.minSteps}〜${reach.maxSteps}`;
+      if (reach.maxSteps === 0) forecastLine.append(icon("sparkle", 13), h("span", null, "予測の入口（今日）。ここから先の見込みを計算しています"));
+      else
+        forecastLine.append(
+          icon("sparkle", 13),
+          h("span", null, "ここに至る見込み "),
+          h("b", { class: "forecast-pct" }, formatPercent(reach.p)),
+          h("span", { class: "muted" }, `・今日から ${steps} 歩目${scen ? `（${scen.name}を選んだ場合）` : ""}`),
+        );
+    }
+
     // 条件（ID ごとに行を残す＝入力中の行を壊さない）
     const met = n.conditions.filter((c) => c.met).length;
     condCount.textContent = n.conditions.length ? `${met}/${n.conditions.length}` : "";
@@ -365,7 +389,7 @@ function nodePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
         { class: "conn-row" },
         h("span", { class: "conn-dir", title: dir === "in" ? "入る（ここへ至る）" : "出る（ここから進む）" }, icon(dir === "in" ? "arrowLeft" : "arrowRight", 13)),
         h("button", { class: "conn-node", type: "button", title: "このノードへ移動", onClick: () => (ui.select([other.id]), app.view.centerOn(other.id, { onlyIfHidden: true })) }, h("span", { class: `type-chip type-${other.type}` }, icon(other.type, 12)), h("span", { class: "conn-title" }, other.title || "（無題）")),
-        h("button", { class: "conn-rel", type: "button", title: `${relMeta.label}${e.condition ? `: ${e.condition}` : ""}（接続を選ぶ）`, style: { "--rel": relMeta.color }, onClick: () => ui.select([], [eid]) }, h("span", { class: "dot", style: { background: relMeta.color } }), relMeta.label),
+        h("button", { class: "conn-rel", type: "button", title: `${relMeta.label}${e.condition ? `: ${e.condition}` : ""}（接続を選ぶ）`, style: { "--rel": relMeta.color }, onClick: () => ui.select([], [eid]) }, h("span", { class: "dot", style: { background: relMeta.color } }), edgeProb(e) === null ? relMeta.label : `${relMeta.label} ${edgeProb(e)}%`),
       );
       if (vm.index.cross.has(eid)) row.classList.add("cross");
       return row;
@@ -411,6 +435,25 @@ function edgePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
   bindText(app, cond, (v) => cmd.updateEdge(id, { condition: v }, { label: "条件を編集", coalesce: `econd:${id}` }));
   wrap.append(sectionEl("条件（この道に進む条件）", cond));
 
+  // 見込み（%）: 分かれ道から出る線に付ける。未来の道筋の「ここに至る見込み」の計算に使う
+  const prob = h("input", { class: "input input-sm edge-prob", type: "number", attrs: { min: "0", max: "100", step: "1", inputmode: "numeric", "aria-label": "見込み（%）", placeholder: "例: 30" } });
+  const probSum = h("span", { class: "prob-sum" });
+  prob.addEventListener("change", () => {
+    const e = edge();
+    if (!e || ro()) return;
+    const raw = prob.value.trim();
+    const meta = { ...e.meta };
+    if (raw === "") delete meta.prob;
+    else {
+      const v = Math.round(Number(raw));
+      if (!Number.isFinite(v)) return;
+      meta.prob = Math.max(0, Math.min(100, v));
+    }
+    cmd.updateEdge(id, { meta }, { label: "見込みを編集", coalesce: `eprob:${id}` });
+  });
+  const probSec = sectionEl("見込み（この道に進む見込み %）", h("div", { class: "prob-row" }, prob, h("span", { class: "prob-unit" }, "%"), probSum));
+  wrap.append(probSec);
+
   const label = h("input", { class: "input", placeholder: "例: 実績が営業材料になる", attrs: { "aria-label": "説明" } });
   bindText(app, label, (v) => cmd.updateEdge(id, { label: v }, { label: "説明を編集", coalesce: `elabel:${id}` }));
   wrap.append(sectionEl("説明", label));
@@ -448,6 +491,19 @@ function edgePanel(app: AppContext, id: ID, root: HTMLElement, push: (u: Updater
     }
     setValue(cond, e.condition);
     autosize(cond);
+    // 見込みは分かれ道から出る線か、すでに見込みのある線にだけ出す
+    const p0 = edgeProb(e);
+    const fromBranch = doc.nodes[e.source]?.type === "branch";
+    probSec.hidden = !fromBranch && p0 === null;
+    if (document.activeElement !== prob) prob.value = p0 === null ? "" : String(p0);
+    prob.disabled = ro();
+    if (fromBranch) {
+      const sibs = (vm.index.out.get(e.source) ?? []).map((x) => doc.edges[x]!).filter((x) => x.relation === "leads" || x.relation === "condition");
+      const total = sibs.reduce((n, x) => n + (edgeProb(x) ?? 0), 0);
+      const missing = sibs.filter((x) => edgeProb(x) === null).length;
+      probSum.textContent = `この分かれ道の合計 ${total}%${missing ? `（見込みの無い線 ${missing} 本には残りを等分）` : ""}`;
+      probSum.dataset.tone = !missing && total !== 100 ? "warn" : "ok";
+    } else probSum.textContent = "";
     setValue(label, e.label);
     cond.disabled = ro();
     label.disabled = ro();
@@ -556,7 +612,9 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
   const stats = h("div", { class: "stat-grid" });
   const bars = h("div", { class: "type-bars" });
   const insight = h("div", { class: "insight" });
-  wrap.append(stats, bars, insight);
+  // 未来の道筋: 行き先（その先が無いノード）の見込み
+  const ends = h("div", { class: "forecast-ends" });
+  wrap.append(ends, stats, bars, insight);
   wrap.append(
     h(
       "div",
@@ -579,6 +637,34 @@ function overviewPanel(app: AppContext, root: HTMLElement, push: (u: Updater) =>
     vm.ensure();
     const doc = store.doc;
     const nodes = Object.values(doc.nodes);
+    clear(ends);
+    const fc = vm.forecast;
+    ends.hidden = !fc.active || !fc.ends.length;
+    if (fc.active && fc.ends.length) {
+      const sid = ui.prefs.scenarioId;
+      const scen = sid ? doc.scenarios[sid] : undefined;
+      const forks = [...fc.reach.keys()].filter((id) => doc.nodes[id]?.type === "branch").length;
+      ends.append(
+        h("h3", { class: "insp-label" }, "行き先の見込み", scen ? h("span", { class: "insp-count" }, `${scen.name}を選んだ場合`) : null),
+        h("div", { class: "muted small forecast-sub" }, `今日から最長 ${fc.longest} 歩・分かれ道 ${forks} 個。線の % を直すと計算し直します`),
+      );
+      const LIMIT = 14;
+      for (const id of fc.ends.slice(0, LIMIT)) {
+        const n = doc.nodes[id]!;
+        const p = fc.reach.get(id)!.p;
+        ends.append(
+          h(
+            "button",
+            { class: "end-row", type: "button", title: `${n.title}（${formatPercent(p)}）へ移動`, onClick: () => (ui.select([id]), app.view.centerOn(id)) },
+            h("span", { class: `type-chip type-${n.type}` }, icon(n.type, 12)),
+            h("span", { class: "end-title" }, n.title || "（無題）"),
+            h("span", { class: "end-bar", style: { "--w": `${Math.max(2, Math.round(p * 100))}%` } }),
+            h("span", { class: "end-pct" }, formatPercent(p)),
+          ),
+        );
+      }
+      if (fc.ends.length > LIMIT) ends.append(h("div", { class: "muted small" }, `ほか ${fc.ends.length - LIMIT} か所`));
+    }
     clear(stats);
     const stat = (label: string, value: number, hint: string, iconName: string) => h("div", { class: "stat", title: hint }, h("span", { class: "stat-icon" }, icon(iconName, 14)), h("span", { class: "stat-value" }, value.toLocaleString("ja-JP")), h("span", { class: "stat-label" }, label));
     stats.append(

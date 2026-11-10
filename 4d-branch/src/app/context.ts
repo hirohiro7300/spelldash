@@ -51,6 +51,8 @@ export interface AppContext {
   loadDemo(): Promise<void>;
   /** やりたいことリストを読み込む前の確認を開く */
   loadWishlist(): void;
+  /** 未来の道筋（仕事・10 年）を読み込む前の確認を開く */
+  loadFuture(): void;
   newEmptyDoc(): Promise<void>;
   /** 文書を入れ替える（label は元に戻す・安全用バックアップの名前） */
   replaceDocSafely(doc: DocData, label: string, opts?: LoadOpts): Promise<void>;

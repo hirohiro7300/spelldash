@@ -37,6 +37,8 @@ export interface Prefs {
   onboardingDone: boolean;
   /** 「やりたいことリスト」を知らせた（ようこそ画面か、一度だけのお知らせで） */
   wishlistOffered: boolean;
+  /** 「未来の道筋」を知らせた（ようこそ画面か、一度だけのお知らせで） */
+  futureOffered: boolean;
   persistAsked: boolean;
   lastType: "goal" | "action" | "branch" | "result";
 }
@@ -61,6 +63,7 @@ export const DEFAULT_PREFS: Prefs = {
   listSort: { key: "due", dir: 1 },
   onboardingDone: false,
   wishlistOffered: false,
+  futureOffered: false,
   persistAsked: false,
   lastType: "action",
 };
