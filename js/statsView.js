@@ -10,7 +10,7 @@ import { computeLegacyLearnedCount } from "./categoryProgress.js";
 import { renderWeeklyReport } from "./weeklyReport.js";
 import { isFocusOn } from "./focus.js";
 import { renderRetention } from "./retention.js";
-import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog } from "./growthLog.js";
+import { getLearnedSeries, recordGrowthSnapshot, getGrowthLog, getMonthLearnedDelta } from "./growthLog.js";
 import { getLearnedWordList, getKnownWordList, getDroppedLearnedCount, historyDotsHtml, getLearnedCounts } from "./learnedWords.js";
 import { noteChipHtml, bindNoteEditors } from "./wordNotes.js";
 import { renderCalendar } from "./calendarView.js";
@@ -584,11 +584,10 @@ function renderMonthlySummary() {
   if (!container) return;
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const log = getGrowthLog().filter((e) => e.date.startsWith(ym));
-  const activeDays = log.filter((e) => e.active).length;
-  const first = log.find((e) => e.learned != null);
-  const last = [...log].reverse().find((e) => e.learned != null);
-  const learnedDelta = first && last ? Math.max(0, (last.learned ?? 0) - (first.learned ?? 0)) : 0;
+  const all = getGrowthLog();
+  const activeDays = all.filter((e) => e.date?.startsWith(ym) && e.active).length;
+  // 起点は今月より前で最後の行（月の初日の増えも数える。Batch 89。js/growthLog.js getMonthLearnedDelta）
+  const learnedDelta = getMonthLearnedDelta(ym, all);
   let sets = 0;
   try {
     sets = (JSON.parse(localStorage.getItem("spelldash_daily_set") || "{}").history ?? []).filter((d) => d.startsWith(ym)).length;
