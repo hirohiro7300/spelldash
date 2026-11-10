@@ -19593,6 +19593,25 @@ console.log("tutorial:");
   await page3.waitForTimeout(300);
   check("チュートリアル: 学習記録のある人には出ない", (await coach(page3)) === null && (await page3.evaluate(() => JSON.parse(localStorage.getItem("spelldash_tutorial") || "{}").seen?.length)) === 3);
   await page3.close();
+
+  // 指の端末の縦（320×640・390×844。Batch 89 A1）: 初めての人の最初の答え表示で、札（T2）が知らせ（#message。2 行）の下に重ならない
+  // （css/game.css body.learn-run.osk-open #input の scroll-margin-bottom。札は画面キーボードの上に固定）
+  for (const [w, h] of [[320, 640], [390, 844]]) {
+    const pm = await newPage({ mobile: true, viewport: { width: w, height: h } });
+    await watchWords(pm);
+    await pm.goto(LEARN_URL, { waitUntil: "networkidle" });
+    await waitWordT(pm, 1);
+    await pm.waitForTimeout(300);
+    await pm.press("#input", "Enter"); // 答えを見る → T2
+    await waitUntil(async () => (await coach(pm))?.step === "T2", 3000);
+    await pm.waitForTimeout(700); // 入力欄を見える所へ寄せる動き（smooth）の後
+    const g = await pm.evaluate(() => {
+      const r = (s) => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { top: Math.round(b.top * 10) / 10, bottom: Math.round(b.bottom * 10) / 10 }; };
+      return { msg: r("#message"), coach: r(".coach:not(.coach--out)"), word: r("#word"), input: r("#input"), text: document.getElementById("message").textContent.trim() };
+    });
+    check(`チュートリアル スマホ ${w}×${h}: 最初の答え表示で知らせの下端が札の上端より上（重ならない）・答えと入力欄は見えている`, !!g.msg && !!g.coach && g.msg.bottom <= g.coach.top + 0.5 && g.word.top >= -0.5 && g.input.bottom <= g.coach.top + 0.5 && pm.errors.length === 0, JSON.stringify({ ...g, err: pm.errors[0] }));
+    await pm.close();
+  }
 }
 
 // ===== 78.5 導線と検索（Batch 78 段 5a。創業者の決定 §7・§9 の 1・10・11・12・17）: ナビは全ページで 4 つ（ホーム・英単語を学ぶ・学習状況・設定）・英単語を学ぶ は /?learn=next・フッターの一文・Pro とタイピングの導線なし・連続日数を出さない・noindex と sitemap・パックのページはホームへ・320／390／1200 で横スクロール 0・キーボード・頭文字の丸の縁 =====
@@ -22135,6 +22154,64 @@ console.log("learn modes (78.3):");
     check("78.3 5月: may の自力正解 → 5月は 覚えた・助動詞の may は あやふや のまま（1 つの答えで 2 つの項目を動かさない）",
       JSON.stringify(good.writes) === JSON.stringify([{ id: MONTH, kind: "exact" }]) && good.t[MONTH]?.ls === 2 && good.t[AUX]?.ls === 1 && good.line === "覚えた" && good.errors.length === 0,
       JSON.stringify({ writes: good.writes, month: good.t[MONTH]?.ls, aux: good.t[AUX]?.ls, line: good.line, err: good.errors[0] }));
+  }
+
+  // (12) 横向きの学ぶ画面（Batch 89 A1。css/game.css の @media (max-height: 480px)・js/main.js fitLearnBoard）: 指の端末の横向き（高さ 480 以下）では
+  //      画面キーボード（.osk）が下の 160px ほどを覆う。答えを出す前は訳（#japanese）と入力欄、答えを出した後は答え（#word）と入力欄が、
+  //      画面の上端から .osk の上端までの間に全部入る（2 つ目の語も・縦から横へ回しても）。ヘッダーは貼り付けない（sticky／fixed にしない）。横スクロール 0（昼・夜）
+  {
+    const landGeo = (page) => page.evaluate(() => {
+      const box = (s) => {
+        const e = document.querySelector(s);
+        if (!e || getComputedStyle(e).display === "none") return null;
+        const r = e.getBoundingClientRect();
+        return { top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10 };
+      };
+      const osk = document.getElementById("osk");
+      return {
+        ja: box("#japanese"), word: box("#word"), input: box("#input"),
+        oskTop: osk && !osk.hidden ? Math.round(osk.getBoundingClientRect().top * 10) / 10 : null,
+        header: getComputedStyle(document.querySelector(".site-header")).position,
+        revealed: !!document.querySelector("#word .cl"),
+        hs: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        y: Math.round(scrollY)
+      };
+    });
+    const inBand = (b, top) => !!b && top != null && b.top >= -0.5 && b.bottom <= top + 0.5;
+    const before = (g) => inBand(g.ja, g.oskTop) && inBand(g.input, g.oskTop) && !g.revealed && !["sticky", "fixed"].includes(g.header) && g.hs <= 0;
+    const after = (g) => inBand(g.word, g.oskTop) && inBand(g.input, g.oskTop) && g.revealed && g.hs <= 0;
+    const runLand = async ([w, h], { theme = "light", rotate = false } = {}) => {
+      const page = await learnPage({ spelldash_word_stats: "{}", spelldash_theme: theme }, { viewport: rotate ? { width: h, height: w } : { width: w, height: h }, mobile: true });
+      await page.goto(BASE + "/index.html?learn=new&hintms=600000", { waitUntil: "networkidle" });
+      await waitWord(page, 1);
+      await page.waitForTimeout(600);
+      if (rotate) {
+        await page.setViewportSize({ width: w, height: h }); // 縦（390×844）で始めて横（844×390）へ回す
+        await page.waitForTimeout(700);
+      }
+      const g0 = await landGeo(page);
+      await page.keyboard.press("Enter"); // 答えを見る
+      await waitUntil(() => page.evaluate(() => !!document.querySelector("#word .cl")), 3000);
+      await page.waitForTimeout(700);
+      const g1 = await landGeo(page);
+      await page.keyboard.press("Enter"); // 次へ
+      await waitWord(page, 2);
+      await page.waitForTimeout(700);
+      const g2 = await landGeo(page);
+      const errors = page.errors.slice();
+      await page.context().close();
+      return { g0, g1, g2, errors };
+    };
+    const land = {};
+    for (const size of [[844, 390], [740, 360], [667, 375], [568, 320]]) land[size.join("x")] = await runLand(size);
+    for (const [key, r] of Object.entries(land)) {
+      check(`78.3 横向き ${key}: 答えを出す前は訳と入力欄が画面の上端から画面キーボードの上端までに入る（2 つ目の語も）・ヘッダーは貼り付けない・横スクロール 0`, before(r.g0) && before(r.g2) && r.errors.length === 0, JSON.stringify({ g0: r.g0, g2: r.g2, err: r.errors[0] }));
+      check(`78.3 横向き ${key}: 答えを出した後は答え（#word）と入力欄が同じ範囲に入る`, after(r.g1), JSON.stringify(r.g1));
+    }
+    const rot = await runLand([844, 390], { rotate: true });
+    check("78.3 横向き: 390×844 で始めて 844×390 へ回しても、答えの前は訳と入力欄・後は答えと入力欄が画面キーボードの上に入る", before(rot.g0) && after(rot.g1) && before(rot.g2) && rot.errors.length === 0, JSON.stringify({ ...rot, errors: rot.errors[0] }));
+    const night = await runLand([568, 320], { theme: "dark" });
+    check("78.3 横向き 568×320 夜: 同じく入る・横スクロール 0", before(night.g0) && after(night.g1) && before(night.g2) && night.errors.length === 0, JSON.stringify({ ...night, errors: night.errors[0] }));
   }
 }
 
