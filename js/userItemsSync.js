@@ -245,9 +245,23 @@ export function clearDirtyItems() {
   writeJson(DIRTY_KEY, []);
 }
 
+// ---- マイ単語帳の「初めて 覚えた になった日」lf を取り込みで残す（Batch 91。docs/SPEC_MY_WORDS.md §17） ----
+// 語の行は新しい方が勝つ（ほかの欄はそのまま）。lf だけは、同じ語（足した時刻 addedAt が同じ）の早い方を残す: 勝った行の lf が無いか遅く、
+// 負けた側（keep）に 0 以上の整数の lf があれば、keep の lf を写した語を返す。それ以外は win のまま（同じ物を返す: 呼ぶ側は !== で写したかを見る）。
+// 0（前から 覚えた。数えない）はどの日より早い。消して足し直した語（addedAt が違う）・字などの読めない lf には写さない（純）
+export function keepFirstLearned(win, keep) {
+  const own = keep?.lf;
+  if (!Number.isInteger(own) || own < 0) return win;
+  if (!win || win.addedAt !== keep.addedAt) return win;
+  const theirs = win.lf;
+  if (Number.isInteger(theirs) && theirs >= 0 && theirs <= own) return win;
+  return { ...win, lf: own };
+}
+
 // ---- クラウドの行をローカルへ反映（項目ごとに新しい方が勝つ） ----
 // 戻り値: { changed: {my_word,note,pack,day} の変更有無, toUpload: クラウドに無い／古いローカル項目,
 //   adopted: クラウドの方が新しくて端末に取り込んだ項目の [id, その行の updated_at]（Batch 87: 取り込みの後で送る待ちから外す） }
+// マイ単語帳の語の lf（Batch 91）: 雲の行が勝っても端末の早い lf を残し、その語を今の時刻で送り返す（ほかの端末にも早い日を届ける）
 
 export function mergeCloudItems(rows, userId = null) {
   const meta = getItemMeta();
@@ -283,6 +297,7 @@ export function mergeCloudItems(rows, userId = null) {
   let packs = readJson(PACKS_KEY, []).filter((id) => typeof id === "string");
 
   const localTime = (id, item) => Date.parse(meta[id]?.updatedAt ?? item?.payload?.addedAt ?? 0) || 0;
+  const relabeled = []; // 勝った雲の行に端末の早い lf を残した語（Batch 91。送り返す）
 
   // クラウド → ローカル
   for (const [id, r] of cloud) {
@@ -297,8 +312,11 @@ export function mergeCloudItems(rows, userId = null) {
       if (r.deleted) {
         if (idx >= 0) myWords.splice(idx, 1);
       } else if (r.payload && r.payload.en) {
-        if (idx >= 0) myWords[idx] = r.payload;
-        else myWords.push(r.payload);
+        if (idx >= 0) {
+          const kept = keepFirstLearned(r.payload, myWords[idx]);
+          myWords[idx] = kept;
+          if (kept !== r.payload) relabeled.push({ key: r.key, payload: kept });
+        } else myWords.push(r.payload);
       }
       changed.my_word = true;
     } else if (r.kind === "note") {
@@ -322,9 +340,29 @@ export function mergeCloudItems(rows, userId = null) {
     const cloudTime = r ? Date.parse(r.updated_at ?? 0) || 0 : -1;
     if (!r || lTime > cloudTime) {
       const at = meta[id]?.updatedAt ?? item.payload?.addedAt ?? new Date().toISOString();
-      toUpload.push({ user_id: userId, kind: item.kind, key: item.key, payload: item.payload, deleted: false, updated_at: at });
+      let payload = item.payload;
+      // 端末の語が新しくて勝つときも、雲の行の早い lf（同じ語）を端末の語に写してから送る（雲の早い日を遅い日で消さない。Batch 91）。
+      // 写す語は localItems と同じ、同じ鍵の最後の語。送る時刻は前のまま
+      if (item.kind === "my_word" && r && !r.deleted && r.payload) {
+        const kept = keepFirstLearned(item.payload, r.payload);
+        if (kept !== item.payload) {
+          let i = myWords.length - 1;
+          while (i >= 0 && myWords[i].en !== item.key) i--;
+          if (i >= 0) {
+            myWords[i] = { ...myWords[i], lf: kept.lf };
+            payload = myWords[i];
+            changed.my_word = true;
+          }
+        }
+      }
+      toUpload.push({ user_id: userId, kind: item.kind, key: item.key, payload, deleted: false, updated_at: at });
       if (!meta[id]) meta[id] = { updatedAt: at, deleted: false };
     }
+  }
+
+  for (const { key, payload } of relabeled) {
+    toUpload.push({ user_id: userId, kind: "my_word", key, payload, deleted: false, updated_at: nowIso });
+    meta[`my_word:${key}`] = { updatedAt: nowIso, deleted: false };
   }
 
   if (changed.my_word) writeJson(MY_WORDS_KEY, myWords);
