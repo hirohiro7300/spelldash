@@ -9,7 +9,7 @@
 | もの | 場所 | 備考 |
 |---|---|---|
 | Capacitor 設定 | `capacitor.config.json` | appId `net.spelldash.app`、webDir `dist`。起動時の色は書斎に合わせてある（StatusBar は DARK＝白い文字・背景は帯の紺 `#1A2137`、WebView の背景は紙 `#F4ECDA`、スプラッシュは帯の紺。js/appEnv.js の `THEME_COLOR` と同じ値）。変えたら `npx cap sync` |
-| Web → dist の組み立て | `scripts/build-app.mjs`（`npm run app:build`） | index/list/stats/profile/battle/news/privacy/terms/typing/typing-game の 10 ページ（`PAGES`。フッターの利用規約はアプリの中で切れない）。加入画面 pro.html と特商法 tokushoho.html は Web だけのページで入れず、アプリではそこへのリンクを出さない（アプリに Pro を出さない。下の課金の行。2026-10-13、PR #164 のレビュー）。アプリの状態で全 `PAGES` を開き、加入画面・特商法へ見えるリンクが 0 件・見える内部リンクの行き先がどれも `PAGES` であることは E2E の節 15 が守る＋ css/js/data/assets（タイピング練習の教材 data/typing.json・タイピングゲームの教材 data/typing-game.json は data ごと入る）。api・packs/・sitemap は入れない |
+| Web → dist の組み立て | `scripts/build-app.mjs`（`npm run app:build`） | index/list/stats/profile/battle/news/privacy/terms/typing/typing-game/switch/mywords/slang/shortcuts の 14 ページ（`PAGES`。フッターの利用規約はアプリの中で切れない）。加入画面 pro.html と特商法 tokushoho.html は Web だけのページで入れず、アプリではそこへのリンクを出さない（アプリに Pro を出さない。下の課金の行。2026-10-13、PR #164 のレビュー）。アプリの状態で全 `PAGES` を開き、加入画面・特商法へ見えるリンクが 0 件・見える内部リンクの行き先がどれも `PAGES` であることは E2E の節 15 が守る＋ css/js/data/assets（タイピング練習の教材 data/typing.json・タイピングゲームの教材 data/typing-game.json は data ごと入る）。api・packs/・sitemap は入れない |
 | iOS プロジェクト | `ios/App/App.xcodeproj` | Swift Package Manager（CocoaPods 不要）。`ios/App/App/public` は生成物（git 管理外） |
 | Android プロジェクト | `android/` | `android/app/src/main/assets/public` は生成物（git 管理外） |
 | アイコン・スプラッシュの元 | `assets/app/`（icon.png 1024 / splash.png 2732） | `npx @capacitor/assets generate --assetPath assets/app --ios --android` で各サイズを生成済み |
