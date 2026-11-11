@@ -372,13 +372,14 @@ t("3 判定（レビュー）: 表の全部を回し、切り替えを聞く押�
   }
   return (bad.length === 0 && prompts > 30) || { prompts, bad };
 });
-t("3 ほかの項目の組の文: 「それは前のページに戻る組。」（動きの言葉にはそのまま 組）・「それはページを 1 画面ずつ下への組。」（へ で終わる名には の）・50 項目どれも「それは…組。」で、動きの言葉の後に の を挟まない", () => {
+t("3 ほかの項目の組の文: 「それは前のページに戻る組。」（動きの言葉にはそのまま 組）・両向きの組は向きのない名（「それはページを 1 画面ずつ動かす組。」「それは探した言葉の場所を順に移る組。」。Batch 93 F7: 上へ・前への組にも合う）・へ で終わる名には の（「…下への組。」）・50 項目どれも「それは…組。」で、動きの言葉の後に の を挟まない", () => {
   if (typeof C.ownText !== "function") return "ownText が無い";
   const a = C.ownText(item("br.back"));
   const b = C.ownText(item("br.scroll-page"));
   const c = C.ownText(item("br.find-next"));
+  const d = C.ownText({ short: "ページを 1 画面ずつ下へ" });
   const bad = ITEMS.map((x) => [x.id, C.ownText(x)]).filter(([, s]) => !/^それは.+組。$/.test(s) || /[うくぐすつぬぶむる]の組。$/.test(s));
-  return (a === "それは前のページに戻る組。" && b === "それはページを 1 画面ずつ下への組。" && c === "それは探した言葉の次の場所への組。" && bad.length === 0) || { a, b, c, bad };
+  return (a === "それは前のページに戻る組。" && b === "それはページを 1 画面ずつ動かす組。" && c === "それは探した言葉の場所を順に移る組。" && d === "それはページを 1 画面ずつ下への組。" && bad.length === 0) || { a, b, c, d, bad };
 });
 
 // ===== 4. 止める・日本語入力 =====
@@ -828,6 +829,167 @@ t("11 入口: 学習状況の行は開いた後も描き直す — 戻る（page
     seqBeforeCall: seqAt > 0 && firstCall > 0 && seqAt < firstCall
   };
   return Object.values(r).every(Boolean) || r;
+});
+
+// ===== 12. Batch 93（ショートカットキーの仕上げ。docs/SPEC_SHORTCUTS.md §12・§2.2・§11） =====
+// 絵: 1 キー = 20 単位。字の幅の見積もり（em）は仕様 §12 の表（細い字 /il1.,;:'|![] 0.32・mwMW 0.88・ほかの大文字 0.68・ほかの ASCII 0.58・それ以外 1）。
+// 寄せた絵の札の大きさは、320 の幅の絵の幅（262px）で数える（font-size × 描いた幅 ÷ viewBox の幅。描いた幅は width の値と 262 の小さい方）
+const KU = 20;
+const ARRS = ["jis", "us"];
+const emOf = (s) => [...String(s)].reduce((a, ch) => a + (/[/il1.,;:'|!\[\]]/.test(ch) ? 0.32 : /[mwMW]/.test(ch) ? 0.88 : /[A-Z]/.test(ch) ? 0.68 : /[ -~]/.test(ch) ? 0.58 : 1), 0);
+const unesc = (s) => String(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+// 絵のキー: <g class="kb-k" data-code data-t><rect …/>（<text … font-size>札</text> か <path class="kb-sym" d transform="translate(…) scale(…)"/>）</g>
+const KEY_RE = /<g class="kb-k" data-code="([^"]*)" data-t="([^"]*)"><rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)"[^>]*\/>(?:<text [^>]*font-size="([\d.]+)"[^>]*>([^<]*)<\/text>|<path class="kb-sym" d="([^"]*)" transform="translate\([^)]*\) scale\(([\d.]+)\)"\/>)?<\/g>/g;
+const svgKeys = (svg) => [...String(svg).matchAll(KEY_RE)].map((m) => ({ code: m[1], t: unesc(m[2]), x: +m[3] - 1, y: +m[4] - 1, w: +m[5] + 2, h: +m[6] + 2,
+  fs: m[7] ? +m[7] : null, label: m[8] !== undefined ? unesc(m[8]) : null, d: m[9] ?? null, box: m[10] ? +m[10] * 10 : null }));
+// 記号の線の広がり（10 単位の箱の中の割合。点だけで数えるので小さめの見積もり）
+function symSpan(d) {
+  const xs = [];
+  const ys = [];
+  let cx = 0;
+  let cy = 0;
+  for (const m of String(d).matchAll(/([MLHVAZ])([^MLHVAZ]*)/g)) {
+    const n = (m[2].match(/-?\d*\.?\d+/g) ?? []).map(Number);
+    if (m[1] === "M" || m[1] === "L") for (let i = 0; i + 1 < n.length; i += 2) [cx, cy] = [n[i], n[i + 1]];
+    else if (m[1] === "H") cx = n[n.length - 1] ?? cx;
+    else if (m[1] === "V") cy = n[n.length - 1] ?? cy;
+    else if (m[1] === "A") for (let i = 0; i + 6 < n.length; i += 7) [cx, cy] = [n[i + 5], n[i + 6]];
+    else continue;
+    xs.push(cx);
+    ys.push(cy);
+  }
+  return xs.length ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) / 10 : 0;
+}
+const MOD_T = new Set(["ctrl", "alt", "shift", "meta"]);
+const targetOf = (tokens) => (k) => tokens.includes(k.t) && !(MOD_T.has(k.t) && /Right$/.test(k.code));
+// 押す組の札: 見せる組（n 番目は 2〜8 の全部）と、別の組の札（その組で答えたときに金にする）
+const capsSetsOf = (x, l) => {
+  const k = keysOf(x, l);
+  if (!k) return [];
+  const nths = k.show.some((caps) => caps.includes("1〜8")) ? [2, 3, 4, 5, 6, 7, 8] : [null];
+  return [...nths.flatMap((n) => C.capsOf(x, l, n)), ...(k.alt ?? [])];
+};
+const ART_FNS = ["boardKeys", "focusWindows", "focusSvg", "keyboardSvg", "tokensOfCaps"].filter((f) => typeof A[f] !== "function");
+const artMissing = () => (ART_FNS.length ? `js/shortcutsArt.js に ${ART_FNS.join("・")} が無い` : null);
+
+t("12 絵（全体の絵）: 4 種の札は 6.95 単位以上（絵の幅 560px で Ctrl 11.5px・⌘ 12.8px 以上。前は 5.6 単位）・字の幅の見積もりはキーの幅 − 3 以下（はみ出さない）", () => {
+  if (artMissing()) return artMissing();
+  const bad = [];
+  let n = 0;
+  for (const l of LAYOUTS) for (const arr of ARRS) {
+    const svg = A.keyboardSvg(l, arr);
+    const vbW = Number(svg.match(/viewBox="[-\d.]+ [-\d.]+ ([\d.]+) /)?.[1]);
+    for (const k of svgKeys(svg)) {
+      if (k.label === null) continue;
+      n++;
+      if (!(k.fs >= 6.95) || (k.fs * 560) / vbW < 11) bad.push(`${l}/${arr} ${k.label} ${k.fs}`);
+      if (emOf(k.label) * k.fs > k.w - 3 + 0.02) bad.push(`${l}/${arr} ${k.label} はみ出し ${(emOf(k.label) * k.fs).toFixed(1)}/${k.w - 3}`);
+    }
+  }
+  return (n > 200 && bad.length === 0) || { n, bad: bad.slice(0, 20) };
+});
+t("12 絵（全体の絵）: Ctrl の日本語の並びの Backspace の札は「BS」・PrtScn の札は「PrtSc」（data-code・読み上げの名前・結果の札は今のまま）・無変換は 1.25 キー（Space は 3.25 キー。段の幅は同じ）・Ins〜PgDn の列は 1.25 キー（Ctrl の絵は 16.65 キー）", () => {
+  if (artMissing()) return artMissing();
+  const kj = A.boardKeys("ctrl", "jis");
+  const ku = A.boardKeys("ctrl", "us");
+  const by = (ks, code) => ks.find((k) => k.code === code) ?? {};
+  const row5 = (ks) => ks.filter((k) => Math.abs(k.y - (0.92 * KU + 4 * KU)) < 0.01 && k.x < 12 * KU).reduce((a, k) => a + k.w, 0);
+  const r = {
+    bs: [by(kj, "Backspace").label, by(ku, "Backspace").label, by(A.boardKeys("cmd", "jis"), "Backspace").label],
+    prt: [by(kj, "PrintScreen").label, by(ku, "PrintScreen").label],
+    nc: by(kj, "NonConvert").w, sp: by(kj, "Space").w, row5: [row5(kj), row5(ku)],
+    side: ["Insert", "Delete", "Home", "End", "PageUp", "PageDown"].flatMap((c) => [by(kj, c).w, by(ku, c).w]),
+    vb: A.keyboardSvg("ctrl", "jis").match(/viewBox="([^"]*)"/)?.[1],
+    words: [C.spokenCap("PrtScn"), C.textCaps(C.capsOfCombo({ meta: true, key: "PrintScreen" }, "ctrl")), C.textCaps(C.capsOfCombo({ ctrl: true, key: "Backspace" }, "ctrl"))]
+  };
+  return (show(r.bs) === '["BS","Backspace","delete"]' && show(r.prt) === '["PrtSc","PrtSc"]' && r.nc === 25 && r.sp === 65 && show(r.row5) === "[230,230]" && r.side.every((w) => w === 25)
+    && r.vb === "-2 -2 337 122" && show(r.words) === '["プリントスクリーン","⊞ + PrtScn","Ctrl + Backspace"]') || r;
+});
+t("12 絵（寄せた絵）: 50 組 × 2 × 2 の全部の押す組（見せる組・n 番目は 2〜8・別の組の札）で、窓は 1〜2・押すキー（修飾は左だけ）は全部どれかの窓に全部入る・窓の高さは 4 段（80 単位）以下・幅は 3 キー以上・全体の絵の中", () => {
+  if (artMissing()) return artMissing();
+  const bad = [];
+  let n = 0;
+  let two = 0;
+  for (const x of ITEMS) for (const l of LAYOUTS) for (const arr of ARRS) for (const caps of capsSetsOf(x, l)) {
+    const tk = A.tokensOfCaps(caps, l);
+    const keys = A.boardKeys(l, arr);
+    const targets = keys.filter(targetOf(tk));
+    if (!targets.length) continue;
+    const ws = A.focusWindows(l, arr, tk);
+    n++;
+    if (ws.length === 2) two++;
+    const W = Math.max(...keys.map((k) => k.x + k.w));
+    const H = Math.max(...keys.map((k) => k.y + k.h));
+    const id = `${x.id}@${l}/${arr} ${caps.join("+")}`;
+    if (ws.length < 1 || ws.length > 2) bad.push(`${id}: 窓 ${ws.length}`);
+    for (const w of ws) {
+      if (w.y1 - w.y0 > 4 * KU + 1e-6 || w.x1 - w.x0 < 3 * KU - 1e-6 || w.x0 < -1e-6 || w.y0 < -1e-6 || w.x1 > W + 1e-6 || w.y1 > H + 1e-6) bad.push(`${id}: 窓 ${show(w)}`);
+    }
+    for (const k of targets) if (!ws.some((w) => k.x >= w.x0 - 1e-6 && k.x + k.w <= w.x1 + 1e-6 && k.y >= w.y0 - 1e-6 && k.y + k.h <= w.y1 + 1e-6)) bad.push(`${id}: ${k.code} が窓の外`);
+  }
+  return (n > 250 && two > 50 && bad.length === 0) || { n, two, bad: bad.slice(0, 20) };
+});
+t("12 絵（寄せた絵）: 320 の幅の絵（262px）で、窓に全部入るキーの札は 11px 以上・押すキーの記号（線の広がり）は 8.5px 以上・札は字の幅の見積もりでキーに収まる（50 組 × 2 × 2 の全部の押す組）・押すキーは全部どこかの窓に全部見える・寄せた絵は aria-hidden・枠（kb-win）は全体の絵に frames を渡したときだけ", () => {
+  if (artMissing()) return artMissing();
+  const bad = [];
+  let n = 0;
+  let minPx = 99;
+  let minSym = 99;
+  for (const l of LAYOUTS) for (const arr of ARRS) if (/kb-win|kb-focus/.test(A.keyboardSvg(l, arr))) bad.push(`${l}/${arr}: frames 無しの絵に枠`);
+  for (const x of ITEMS) for (const l of LAYOUTS) for (const arr of ARRS) for (const caps of capsSetsOf(x, l)) {
+    const tk = A.tokensOfCaps(caps, l);
+    const targets = A.boardKeys(l, arr).filter(targetOf(tk));
+    const svg = A.focusSvg(l, arr, tk);
+    const id = `${x.id}@${l}/${arr} ${caps.join("+")}`;
+    if (!targets.length) {
+      if (svg !== "") bad.push(`${id}: 押すキーが無いのに寄せた絵`);
+      continue;
+    }
+    n++;
+    const head = svg.match(/^<svg class="kb kb-focus" viewBox="[-\d.]+ [-\d.]+ ([\d.]+) [\d.]+" width="(\d+)" aria-hidden="true" focusable="false">/);
+    if (!head) {
+      bad.push(`${id}: 頭 ${svg.slice(0, 90)}`);
+      continue;
+    }
+    const scale = Math.min(+head[2], 262) / +head[1];
+    const wins = [...svg.matchAll(/<svg x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+" viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)">([\s\S]*?)<\/svg>/g)];
+    const ws = A.focusWindows(l, arr, tk);
+    const frames = (A.keyboardSvg(l, arr, { frames: ws }).match(/class="kb-win"/g) ?? []).length;
+    if (wins.length !== ws.length || (svg.match(/class="kb-win"/g) ?? []).length !== ws.length || frames !== ws.length) bad.push(`${id}: 窓 ${wins.length}・枠 ${frames}`);
+    const seen = new Set();
+    for (const w of wins) {
+      const [x0, y0, ww, wh] = [+w[1], +w[2], +w[3], +w[4]];
+      for (const k of svgKeys(w[5])) {
+        if (k.label !== null && emOf(k.label) * k.fs > k.w - 3 + 0.02) bad.push(`${id}: ${k.label} はみ出し`);
+        if (!(k.x >= x0 - 0.06 && k.x + k.w <= x0 + ww + 0.06 && k.y >= y0 - 0.06 && k.y + k.h <= y0 + wh + 0.06)) continue;
+        const isT = targets.some((q) => q.code === k.code);
+        if (isT) seen.add(k.code);
+        if (k.label !== null) {
+          minPx = Math.min(minPx, k.fs * scale);
+          if (k.fs * scale < 11) bad.push(`${id}: ${k.label} ${(k.fs * scale).toFixed(2)}px`);
+        } else if (isT && k.d) {
+          const px = symSpan(k.d) * k.box * scale;
+          minSym = Math.min(minSym, px);
+          if (px < 8.5) bad.push(`${id}: 記号 ${k.code} ${px.toFixed(2)}px`);
+        }
+      }
+    }
+    for (const q of targets) if (!seen.has(q.code)) bad.push(`${id}: ${q.code} が窓に全部入らない`);
+  }
+  return (n > 250 && minPx >= 11 && minSym >= 8.5 && bad.length === 0) || { n, minPx, minSym, bad: bad.slice(0, 20) };
+});
+t("12 画面の位置（F1）: fitDelta は [top, bottom] を見える範囲 [viewTop, viewBottom] へ入れる最小の移動（見えていれば 0・上にはみ出せば上をそろえる・下にはみ出せば下をそろえる・入りきらなければ上をそろえる）", () => {
+  if (typeof C.fitDelta !== "function") return "js/shortcutsCore.js に fitDelta が無い";
+  const r = [C.fitDelta(100, 200, 65, 892), C.fitDelta(-81, -52, 65, 892), C.fitDelta(700, 950, 65, 892), C.fitDelta(100, 1100, 65, 892), C.fitDelta(-300, 1100, 65, 892), C.fitDelta(65, 892, 65, 892), C.fitDelta(40, 60, 65, 892)];
+  return show(r) === show([0, -146, 58, 35, -365, 0, -25]) || r;
+});
+t("12 短い名（F7）: 両向きの組は向きのない名（br.scroll-page「ページを 1 画面ずつ動かす」・br.find-next「探した言葉の場所を順に移る」。問いの字 ja は今のまま）・ほかの 48 組の short は働きから括弧を除いた字（a63604a と同じ）", () => {
+  const sp = item("br.scroll-page");
+  const fn = item("br.find-next");
+  const other = ITEMS.filter((x) => !["br.scroll-page", "br.find-next"].includes(x.id));
+  const bad = other.filter((x) => x.short !== x.ja.replace(/（[^）]*）/g, "").trim()).map((x) => x.id);
+  return (sp.short === "ページを 1 画面ずつ動かす" && fn.short === "探した言葉の場所を順に移る" && sp.ja === "ページを 1 画面ずつ下へ（上へは Shift 付き）" && fn.ja === "探した言葉の次の場所へ（前へは Shift 付き）"
+    && other.length === 48 && bad.length === 0) || { sp: sp.short, fn: fn.short, n: other.length, bad };
 });
 
 console.log(`test-shortcuts: ${passed} passed, ${failed} failed`);
