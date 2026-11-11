@@ -29993,7 +29993,8 @@ console.log("shortcuts (92.1):");
     // 戻る（入口のレビュー）: 学習状況 → 行のリンクで練習のページ → ⌘ のキーボードに替える → 戻る。ページを残して戻る（bfcache）とモジュールは
     // 走り直さないので、行は pageshow（persisted）で描き直す。今のこのエンジンはロック（Web Locks）を持つページを bfcache に入れないので、
     // ロックがあっても入れる読み手と同じ形にするため navigator.locks を何も持たない形に替えて開く（領域の見張りは動く）。この台本の共有の
-    // ブラウザは bfcache を切って開くので、切らない物を別に開く
+    // ブラウザは bfcache を切って開くので、切らない物を別に開く。このエンジンは残している間に来た storage の知らせを戻った後に届けるが、
+    // 届けない読み手もあるので、残している間（pagehide の persisted から後）の storage の知らせはページに届かない形にする（pageshow で描き直すことを見る）
     {
       const bf = await chromium.launch({ executablePath: findChromium(), args: ["--no-sandbox"], ignoreDefaultArgs: ["--disable-back-forward-cache"] });
       try {
@@ -30008,6 +30009,9 @@ console.log("shortcuts (92.1):");
           try { Object.defineProperty(Navigator.prototype, "locks", { get: () => fake, configurable: true }); } catch {}
           window.__ps = [];
           addEventListener("pageshow", (e) => window.__ps.push(e.persisted));
+          let cached = false;
+          addEventListener("pagehide", (e) => { if (e.persisted) cached = true; });
+          addEventListener("storage", (e) => { if (cached) { window.__dropped = (window.__dropped ?? 0) + 1; e.stopImmediatePropagation(); } }, true);
           if (sessionStorage.getItem("spelldash_test_seeded")) return;
           sessionStorage.setItem("spelldash_test_seeded", "1");
           const base = { spelldash_schema_version: "7", spelldash_onboarded: "1", spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }) };
@@ -30027,10 +30031,10 @@ console.log("shortcuts (92.1):");
         await page.waitForFunction(() => location.pathname === "/stats.html" && (window.__ps ?? []).includes(true), null, { timeout: 8000 }).catch(() => {});
         await lineIs(lineOf("cmd", WANT.cmd), 4000);
         const back = await page.evaluate(() => ({
-          path: location.pathname, ps: window.__ps ?? null, line: document.getElementById("statsShortcutsCount")?.textContent.trim() ?? null, learned: document.getElementById("learnCount")?.textContent.trim() ?? null,
+          path: location.pathname, ps: window.__ps ?? null, dropped: window.__dropped ?? 0, line: document.getElementById("statsShortcutsCount")?.textContent.trim() ?? null, learned: document.getElementById("learnCount")?.textContent.trim() ?? null,
           dev: (() => { try { return JSON.parse(localStorage.getItem("spelldash_shortcut_device") || "null")?.layout ?? null; } catch { return "bad"; } })()
         }));
-        check("92.1 入口 (1) 学習状況 → 行のリンクで練習のページ → ⌘ のキーボードに替える → 戻る（ページを残して戻る〔bfcache〕。ロックで止めない形）: 戻った学習状況は pageshow の persisted・行は替えたキーボードの数「覚えた 3 / 49（⌘ のキーボード）」（練習のページの数の札と同じ）・最初の画面の 覚えた 130 はそのまま・エラー 0",
+        check("92.1 入口 (1) 学習状況 → 行のリンクで練習のページ → ⌘ のキーボードに替える → 戻る（ページを残して戻る〔bfcache〕。ロックで止めない形・残している間の storage の知らせは届かない形）: 戻った学習状況は pageshow の persisted・行は替えたキーボードの数「覚えた 3 / 49（⌘ のキーボード）」（練習のページの数の札と同じ）・最初の画面の 覚えた 130 はそのまま・エラー 0",
           first === lineOf("ctrl", WANT.ctrl) && back.path === "/stats.html" && JSON.stringify(back.ps) === "[false,true]" && back.dev === "cmd" && back.line === lineOf("cmd", WANT.cmd) && pageN(sum) === WANT.cmd && back.learned === "130" && errs.length === 0,
           JSON.stringify({ first, sum, back, err: errs[0] }));
       } finally {
