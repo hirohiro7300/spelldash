@@ -20762,6 +20762,158 @@ console.log("78.4 学習状況とランク:");
       await page.close();
     }
   }
+
+  // ---- (15) マイ単語帳で 覚えた（Batch 91。js/myWordsCore.js countMyGain・myGainByDay・myStudiedSince、js/weeklyReport.js・js/statsView.js・js/calendarView.js。
+  //      docs/SPEC_MY_WORDS.md §17）: マイ単語帳の語の「初めて 覚えた になった日」lf で数える。週間レポートの数の並びに「マイ単語帳で 覚えた」のマス（英単語のマスの
+  //      見出しは「英単語で 覚えた」）・今月の行の項目・カレンダーの title。英単語の数（最初の画面の 覚えた・ランク）には入れない。語と訳は検査で作る
+  {
+    const myWord = (en, ja, extra = {}) => ({ en, ja, addedAt: new Date(Date.now() - 20 * DAY).toISOString(), ...extra });
+    const learnedOn = (k) => ({ ls: 2, lf: dayNo(k), lsAt: Date.now() - k * DAY });
+    const activeRow = (k) => ({ date: ymdDaysAgo(k), learned: 0, mastered: 0, active: true, v: 2 });
+    const firstOfMonth = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    const MY_HEADS = ["学習した日", "英単語で 覚えた", "マイ単語帳で 覚えた", "思い出せた率"];
+    const PLAIN_HEADS = ["学習した日", "7日で 覚えた", "思い出せた率"];
+    const NOTE_EN = "英単語の 覚えた の増えは、この端末で数え始めた日から数える。";
+    // 詳しい記録を開いて、週間レポートのマス・注記・今月の行（項目と、その箱の行の数）・カレンダーの title・最初の画面の 覚えた・マイ単語帳の 1 行を読む
+    const myView = async (page) => {
+      await page.waitForFunction(() => !document.body.hasAttribute("data-pending"), null, { timeout: 8000 }).catch(() => {});
+      await page.click("#statsMore > summary");
+      await page.waitForTimeout(500);
+      return page.evaluate(() => {
+        const norm = (s) => (s ?? "").replace(/\s+/g, " ").trim();
+        // 箱の行の数: 中の字と <b> は別の矩形で返るので、矩形の縦の中ほどが前の行の下より下なら次の行と数える
+        const lines = (e) => { let n = 0, low = -Infinity; for (const x of [...e.getClientRects()].filter((x) => x.width > 0).sort((a, b) => a.top - b.top)) { if ((x.top + x.bottom) / 2 > low) { n++; low = x.bottom; } else low = Math.max(low, x.bottom); } return n; };
+        return {
+          count: norm(document.getElementById("learnCount")?.textContent),
+          cells: [...document.querySelectorAll("#weeklyReport .weekly__grid > div")].map((d) => [norm(d.querySelector("span")?.textContent), norm(d.querySelector("strong")?.textContent)]),
+          notes: [...document.querySelectorAll("#weeklyReport .weekly__note")].map((e) => norm(e.textContent)),
+          monthly: norm(document.getElementById("monthlySummary")?.textContent),
+          items: [...document.querySelectorAll("#monthlySummary .monthly-line__item")].map((e) => ({ t: norm(e.textContent), lines: lines(e) })),
+          titles: Object.fromEntries([...document.querySelectorAll("#calendarGrid .cal .cal__day[title]")].map((e) => [e.getAttribute("title").slice(0, 10), e.getAttribute("title")])),
+          myLine: norm(document.getElementById("statsMyWordsCount")?.textContent),
+          scroll: document.documentElement.scrollWidth, inner: document.documentElement.clientWidth
+        };
+      });
+    };
+    const cellOf = (r, label) => r.cells.find(([h]) => h === label)?.[1] ?? null;
+    const heads = (r) => r.cells.map(([h]) => h);
+    const open = async (storage, { w = 390, h = 844, theme = "light", csp = false } = {}) => {
+      const page = await newPage({ viewport: { width: w, height: h }, mobile: w < 1000, storage: { spelldash_placement: "done", spelldash_theme: theme, ...storage } });
+      page.csp = [];
+      if (csp) {
+        await page.context().addCookies([{ name: "e2e_csp", value: "real", url: BASE }]);
+        page.on("console", (m) => { if (/Content Security Policy/i.test(m.text())) page.csp.push(m.text().slice(0, 160)); });
+        await page.addInitScript(() => document.addEventListener("securitypolicyviolation", (e) => {
+          try { const a = JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]"); a.push(`${e.violatedDirective} ${e.blockedURI || "inline"}`); sessionStorage.setItem("__e2e_csp", JSON.stringify(a)); } catch {}
+        }));
+      }
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      const r = await myView(page);
+      r.errors = page.errors.slice(0, 2);
+      r.csp = [...page.csp, ...(csp ? await page.evaluate(() => JSON.parse(sessionStorage.getItem("__e2e_csp") || "[]")).catch(() => ["(読めない)"]) : [])];
+      await page.close();
+      return r;
+    };
+
+    // (15a) 種: マイ単語帳だけで 14 日（1 日 1 語を初めて覚えた。覚えた後に あやふや に戻った語・前から 覚えた〔lf 0〕の語・場面カードは数えない）。今日も学んだ
+    {
+      const words = Array.from({ length: 14 }, (_, i) => myWord(`seed word ${String.fromCharCode(97 + i)}`, `種の訳 ${i + 1}`, learnedOn(i)));
+      words.push(myWord("back to unsure", "あやふやに戻った", { ls: 1, lsd: dayNo(1), lf: dayNo(2), lsAt: Date.now() - DAY }));
+      words.push(myWord("known before", "前から覚えた", { ls: 2, lf: 0, lsAt: Date.now() - 3 * DAY }));
+      words.push({ kind: "concept", en: "scene card", ja: "場面のカード", addedAt: new Date(Date.now() - 20 * DAY).toISOString(), ls: 2, lf: dayNo(1) });
+      const monthWant = Array.from({ length: 14 }, (_, i) => ymdDaysAgo(i)).filter((d) => d >= firstOfMonth).length;
+      const r = await open({ spelldash_my_words: JSON.stringify(words), spelldash_growth_log: JSON.stringify(Array.from({ length: 14 }, (_, i) => activeRow(13 - i))), spelldash_streak: JSON.stringify({ current: 14, best: 14, last: ymdDaysAgo(0) }) });
+      check(`78.4 マイ単語帳で 覚えた (15a)（Batch 91）: マイ単語帳だけで 14 日 → 週間レポートの数の並びは 学習した日・英単語で 覚えた（+0 語）・マイ単語帳で 覚えた（+7 語）・思い出せた率。今月の行に「マイ単語帳で 覚えた +${monthWant}」${monthWant ? "" : "（今月 0 なら項目なし）"}・2 日前のカレンダーの title の後ろに「 ・ マイ単語帳で 覚えた 1語」・最初の画面の 覚えた は 0 のまま・マイ単語帳の 1 行は前のまま（16語・覚えた 15）`,
+        JSON.stringify(heads(r)) === JSON.stringify(MY_HEADS) && cellOf(r, "マイ単語帳で 覚えた") === "+7 語" && cellOf(r, "英単語で 覚えた") === "+0 語" &&
+          (monthWant > 0 ? r.monthly.includes(`マイ単語帳で 覚えた +${monthWant}`) : !r.monthly.includes("マイ単語帳")) &&
+          (r.titles[ymdDaysAgo(2)] ?? "").endsWith(" ・ マイ単語帳で 覚えた 1語") && r.count === "0" && r.myLine === "16語・覚えた 15" && r.errors.length === 0,
+        JSON.stringify({ cells: r.cells, monthly: r.monthly, monthWant, title2: r.titles[ymdDaysAgo(2)], count: r.count, myLine: r.myLine, err: r.errors }));
+    }
+
+    // (15b) 実際の回: /?learn=my&book=main&choice=en で これから の語 3 つに正しい選択肢 → マス +3 語・今日のカレンダーの title「 ・ マイ単語帳で 覚えた 3語」・今月の行 +3
+    {
+      const WORDS = [["maple", "かえで"], ["cedar", "すぎ"], ["birch", "かば"], ["aspen", "ポプラ"], ["larch", "からまつ"]];
+      const page = await newPage({ viewport: { width: 1200, height: 900 }, storage: { spelldash_placement: "done", spelldash_audio: JSON.stringify({ mode: "off" }), spelldash_after_correct: "quick" } });
+      // 語の種は最初の読み込みでだけ置く（newPage の種は読み込みのたびに置き直すので、回で書いた答えを消さない）
+      await page.addInitScript((list) => { if (!localStorage.getItem("spelldash_my_words")) localStorage.setItem("spelldash_my_words", list); }, JSON.stringify(WORDS.map(([en, ja]) => myWord(en, ja))));
+      await page.addInitScript(() => {
+        window.__w = [];
+        addEventListener("spelldash:word", (e) => window.__w.push(e.detail?.id ?? null));
+      });
+      await page.goto(BASE + "/?learn=my&book=main&choice=en", { waitUntil: "networkidle" });
+      const answered15 = [];
+      for (let i = 1; i <= 3; i++) {
+        await waitUntil(async () => (await page.evaluate(() => window.__w.length)) >= i, 8000);
+        const en = String(await page.evaluate((n) => window.__w[n - 1], i)).replace(/^my-/, "");
+        await page.waitForFunction((want) => [...document.querySelectorAll("#choiceOpts .choice__opt .choice__text")].some((t) => t.textContent === want), en, { timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(600); // 人が新しい問いを読む間
+        const idx = await page.evaluate((want) => [...document.querySelectorAll("#choiceOpts .choice__opt .choice__text")].findIndex((t) => t.textContent === want), en);
+        if (idx >= 0) await page.locator("#choiceOpts .choice__opt").nth(idx).click();
+        answered15.push(en);
+      }
+      await page.waitForTimeout(400);
+      const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]"));
+      await page.goto(BASE + "/stats.html", { waitUntil: "networkidle" });
+      const r = await myView(page);
+      const marked = stored.filter((w) => w.ls === 2 && w.lf === dayNo(0)).map((w) => w.en).sort();
+      check("78.4 マイ単語帳で 覚えた (15b)（Batch 91）: 選択式（/?learn=my&book=main&choice=en）で これから の語 3 つに正しい選択肢 → その 3 語は 覚えた・lf は今日。週間レポートのマス「マイ単語帳で 覚えた +3 語」（英単語は「英単語で 覚えた」）・今日のカレンダーの title の後ろに「 ・ マイ単語帳で 覚えた 3語」・今月の行に「マイ単語帳で 覚えた +3」・最初の画面の 覚えた は 0",
+        JSON.stringify(marked) === JSON.stringify([...answered15].sort()) && cellOf(r, "マイ単語帳で 覚えた") === "+3 語" && heads(r).includes("英単語で 覚えた") &&
+          (r.titles[ymdDaysAgo(0)] ?? "").endsWith(" ・ マイ単語帳で 覚えた 3語") && r.monthly.includes("マイ単語帳で 覚えた +3") && r.count === "0" && page.errors.length === 0,
+        JSON.stringify({ answered15, marked, cells: r.cells, titleToday: r.titles[ymdDaysAgo(0)], monthly: r.monthly, count: r.count, err: page.errors[0] }));
+      await page.close();
+    }
+
+    // (15c)（守り）マイ単語帳を使わない人・窓の中でマイ単語帳の語に答えていない人（10 日前に覚えた語だけ）: マスなし・「7日で 覚えた」のまま
+    {
+      const plain = await open(seedOf({ learned: 6, paced: 6 }));
+      const old = await open({ spelldash_my_words: JSON.stringify([myWord("old leaf", "古い葉", learnedOn(10)), myWord("old root", "古い根", learnedOn(12))]), spelldash_growth_log: JSON.stringify([activeRow(12), activeRow(10)]) });
+      check("78.4 マイ単語帳で 覚えた (15c)（Batch 91・守り）: マイ単語帳を使わない人と、窓の前にだけマイ単語帳の語に答えた人 → 週間レポートの数の並びは 学習した日・7日で 覚えた・思い出せた率（マイ単語帳のマスは出さない）",
+        JSON.stringify(heads(plain)) === JSON.stringify(PLAIN_HEADS) && JSON.stringify(heads(old)) === JSON.stringify(PLAIN_HEADS) && plain.errors.length === 0 && old.errors.length === 0,
+        JSON.stringify({ plain: plain.cells, old: old.cells, err: [...plain.errors, ...old.errors] }));
+    }
+
+    // (15d) 今月の行の 4 つの項目（学習した日・覚えた・マイ単語帳で 覚えた・セット）: 320 で項目の中で折れない（項目の箱は 1 行）・320／390／1200 × 昼夜で横スクロール 0・
+    //       ページの誤りと CSP の違反 0（本物のヘッダー）
+    {
+      const stats = {};
+      PUB.slice(0, 7).forEach((id) => { stats[id] = { playCount: 1, correctCount: 1, lastPlayed: new Date().toISOString(), lastRecallSuccessAt: new Date().toISOString(), history: [{ d: ymdDaysAgo(0), r: "o" }], ls: 2, lsf: dayNo(0), lsAt: Date.now() }; });
+      const seed = {
+        spelldash_word_stats: JSON.stringify(stats),
+        spelldash_my_words: JSON.stringify([myWord("wide pine", "広い松", learnedOn(0)), myWord("tall oak", "高い樫", learnedOn(0))]),
+        spelldash_growth_log: JSON.stringify([activeRow(1), activeRow(0)]),
+        spelldash_streak: JSON.stringify({ current: 2, best: 2, last: ymdDaysAgo(0) }),
+        spelldash_daily_set: JSON.stringify({ history: [ymdDaysAgo(0)], setsToday: 1, setsTodayDate: ymdDaysAgo(0) })
+      };
+      const rows = [];
+      for (const [w, h] of [[320, 640], [390, 844], [1200, 900]]) {
+        for (const theme of ["light", "dark"]) {
+          const r = await open(seed, { w, h, theme, csp: true });
+          rows.push({ w, theme, items: r.items, monthly: r.monthly, scroll: r.scroll, inner: r.inner, errors: r.errors, csp: r.csp });
+        }
+      }
+      const narrow = rows.filter((x) => x.w === 320);
+      check("78.4 マイ単語帳で 覚えた (15d)（Batch 91）: 今月の行の項目は 学習した日・覚えた・マイ単語帳で 覚えた・セット の 4 つで、320 の昼夜とも項目の中で折れない（項目の箱は 1 行）",
+        narrow.every((x) => x.items.length === 4 && x.items[2]?.t === "マイ単語帳で 覚えた +2" && x.items.every((it) => it.lines === 1)),
+        JSON.stringify(narrow.map((x) => ({ theme: x.theme, items: x.items, monthly: x.monthly }))));
+      check("78.4 マイ単語帳で 覚えた (15d)（Batch 91）: 320／390／1200 × 昼夜で横スクロール 0・ページの誤り 0・CSP の違反 0（本物のヘッダー）",
+        rows.length === 6 && rows.every((x) => x.scroll <= x.inner && x.errors.length === 0 && x.csp.length === 0),
+        JSON.stringify(rows.filter((x) => !(x.scroll <= x.inner && x.errors.length === 0 && x.csp.length === 0)).map((x) => ({ w: x.w, theme: x.theme, scroll: x.scroll, inner: x.inner, err: x.errors, csp: x.csp }))));
+    }
+
+    // (15e) 前から 覚えた の語（lf 0）だけに今週答えた人: マス「+0 語」・見出しは「英単語で 覚えた」。2 台目で英単語の増えが「–」の人にマスを出すときは、注記の頭に「英単語の」
+    {
+      const zero = await open({ spelldash_my_words: JSON.stringify([myWord("old friend", "旧友", { ls: 2, lf: 0, lsAt: Date.now() - DAY }), myWord("old school", "母校", { ls: 2, lf: 0, lsAt: Date.now() - 2 * DAY })]), spelldash_growth_log: JSON.stringify([activeRow(2), activeRow(1)]) });
+      check("78.4 マイ単語帳で 覚えた (15e)（Batch 91）: 前から 覚えた の語（lf 0）だけに今週答えた → マス「マイ単語帳で 覚えた +0 語」・見出しは「英単語で 覚えた」",
+        JSON.stringify(heads(zero)) === JSON.stringify(MY_HEADS) && cellOf(zero, "マイ単語帳で 覚えた") === "+0 語" && zero.errors.length === 0,
+        JSON.stringify({ cells: zero.cells, err: zero.errors }));
+      const filled = {};
+      PUB.slice(0, 30).forEach((id) => { filled[id] = { playCount: 2, correctCount: 2, lastPlayed: new Date(Date.now() - 3 * DAY).toISOString(), lastRecallSuccessAt: new Date(Date.now() - 3 * DAY).toISOString(), ls: 2 }; });
+      const second = await open({ spelldash_word_stats: JSON.stringify(filled), spelldash_growth_log: JSON.stringify([6, 5, 4, 3, 2, 1].map((k, i) => ({ ...activeRow(k), learned: 200 + i * 20, mastered: i }))), spelldash_my_words: JSON.stringify([myWord("new branch", "新しい枝", learnedOn(1))]) });
+      check("78.4 マイ単語帳で 覚えた (15e)（Batch 91）: 2 台目（英単語の増えは「–」）でマイ単語帳の語を昨日覚えた → マス「マイ単語帳で 覚えた +1 語」・英単語は「–」・注記は「英単語の 覚えた の増えは、この端末で数え始めた日から数える。」",
+        cellOf(second, "英単語で 覚えた") === "–" && cellOf(second, "マイ単語帳で 覚えた") === "+1 語" && second.notes.includes(NOTE_EN) && !second.notes.includes("覚えた の増えは、この端末で数え始めた日から数える。") && second.errors.length === 0,
+        JSON.stringify({ cells: second.cells, notes: second.notes, err: second.errors }));
+    }
+  }
 }
 
 // ===== 20. Batch 48: 2 台目の端末（ログイン・同期・マージ） =====

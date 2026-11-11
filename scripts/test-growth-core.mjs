@@ -1061,6 +1061,130 @@ function fourDays(name) {
   eq("21 (c) 今日の行の core 30 のまま今の 覚えた 34: 推移の最後の点は 34", [growth().at(-1).core, seriesEnd(), coreNow()], [30, 34, 34]);
 }
 
+// ── 22. マイ単語帳で 覚えた（Batch 91。docs/SPEC_MY_WORDS.md §17）: 週間レポートのマス・シェアの文と絵の行・はちゃんの一言（W1〜W4）と、
+//        英単語の数と日の行はマイ単語帳の語の有無で同じ（W5。直す前の木でも通る守り） ─────────────
+{
+  const M = await import(modUrl("js/myWords.js"));
+  const H = await import(modUrl("js/hasumi.js"));
+  const K = L.ANSWER_KINDS;
+  // 描いた週間レポート（入れ物の偽物。シェアのボタンの受け手は付けない）
+  const drawWeekly = () => {
+    const box = { innerHTML: "", querySelector: () => null };
+    const real = document.getElementById;
+    document.getElementById = (id) => (id === "weeklyW" ? box : null);
+    try {
+      WR.renderWeeklyReport("weeklyW");
+    } finally {
+      document.getElementById = real;
+    }
+    return box.innerHTML;
+  };
+  // 数の並び（weekly__grid）のマスの [見出し, 値]
+  const cells = (html) => [...html.matchAll(/<div><span>([^<]*)<\/span><strong>(.*?)<\/strong><\/div>/g)].map((m) => [m[1], m[2]]);
+  const heads = (html) => cells(html).map(([h]) => h);
+  const myCell = (html) => cells(html).find(([h]) => h === "マイ単語帳で 覚えた") ?? null;
+  const shareLines = (r) => WR.buildWeeklyShareText(r).split("\n");
+  const imageRows = (r) => (typeof WR.weeklyImageRows === "function" ? WR.weeklyImageRows(r) : ["weeklyImageRows が無い"]);
+  // マイ単語帳の回の 1 問: 答えの書き手と、答えのたびの学習した日の印・連続日数（js/game.js applyLearnXp と同じ）
+  const myAnswer = (key, kind) => {
+    M.recordMyAnswer(key, kind, clock);
+    G.markActiveToday();
+    LV.updateStreak();
+  };
+  // 学習状況のページを開いた: 成長ログの書き手（js/statsView.js renderGrowthTrend。回の終わりと同じ呼び方）の後に週間レポートを数える
+  const openStats = () => {
+    endOfSet();
+    return WR.computeWeeklyReport();
+  };
+
+  // W1〜W3: マイ単語帳だけの人。2 語を覚え、1 語は外した（窓は 12-02〜12-08）
+  device("w-my");
+  setNow("2026-12-07", 20);
+  M.addMyWordsBulk("alpha one, 一\nbeta two, 二\ngamma three, 三");
+  setNow("2026-12-08", 21);
+  myAnswer("alpha one", K.exact);
+  myAnswer("beta two", K.exact);
+  myAnswer("gamma three", K.miss);
+  const r1 = openStats();
+  eq("W1 マイ単語帳だけの人（2 語を覚え、1 語を外した）: myGain 2・マスを出す", [r1.myGain, r1.myShow], [2, true]);
+  const html1 = drawWeekly();
+  eq("W2 描いた数の並び: 学習した日・英単語で 覚えた・マイ単語帳で 覚えた（+2 語）・思い出せた率の順。「7日で 覚えた」は無い",
+    [heads(html1), myCell(html1), html1.includes("7日で 覚えた")],
+    [["学習した日", "英単語で 覚えた", "マイ単語帳で 覚えた", "思い出せた率"], ["マイ単語帳で 覚えた", "+2<small> 語</small>"], false]);
+  eq("W2 英単語のマスは +0 語のまま（マイ単語帳の語を混ぜない）・はちゃんの一言は増えた週の字", [cells(html1).find(([h]) => h === "英単語で 覚えた")?.[1], H.hasumiWeeklyLine(r1).text], ["+0<small> 語</small>", "増えた語は、来週も復習で出る。"]);
+  const lines1 = shareLines(r1);
+  const li = lines1.findIndex((s) => s.startsWith("学習 "));
+  eq("W3 シェアの文: 「学習 …」の行の次に「マイ単語帳で 覚えた +2語」", lines1[li + 1], "マイ単語帳で 覚えた +2語");
+  ok("W3 シェアの絵の行に「マイ単語帳で 覚えた  +2語」", imageRows(r1).includes("マイ単語帳で 覚えた  +2語"), imageRows(r1));
+
+  // W4 (a) 窓の中で答えたが増え 0（外しただけ）: マスは +0 語で出る・はちゃんは増えた週の字にしない
+  device("w-zero");
+  setNow("2026-12-07", 20);
+  M.addMyWordsBulk("delta four, 四");
+  setNow("2026-12-08", 21);
+  myAnswer("delta four", K.miss);
+  const r4a = openStats();
+  const html4a = drawWeekly();
+  eq("W4 (a) 窓の中で答えたが増え 0: myGain 0・マス「+0 語」・見出し「英単語で 覚えた」・シェアの文に「マイ単語帳で 覚えた +0語」",
+    [r4a.myGain, r4a.myShow, myCell(html4a), heads(html4a).includes("英単語で 覚えた"), shareLines(r4a).includes("マイ単語帳で 覚えた +0語")],
+    [0, true, ["マイ単語帳で 覚えた", "+0<small> 語</small>"], true, true]);
+  ok("W4 (a) はちゃんの一言は増えた週の字にしない", H.hasumiWeeklyLine(r4a).text !== "増えた語は、来週も復習で出る。", H.hasumiWeeklyLine(r4a));
+  // W4 (b) 前から 覚えた の語（lf の無い ls 2）に今週答えた: lf 0 で数えない。マスは +0 語で出る
+  device("w-prev");
+  setNow("2026-12-07", 20);
+  LS.setItem("spelldash_my_words", JSON.stringify([{ en: "epsilon five", ja: "五", addedAt: "2026-10-01T00:00:00.000Z", ls: 2, lsAt: at("2026-10-05", 20) }]));
+  setNow("2026-12-08", 21);
+  myAnswer("epsilon five", K.exact);
+  const r4b = openStats();
+  eq("W4 (b) 前から 覚えた の語に今週答えた: lf 0・myGain 0・マス「+0 語」", [JSON.parse(LS.getItem("spelldash_my_words"))[0].lf, r4b.myGain, myCell(drawWeekly())], [0, 0, ["マイ単語帳で 覚えた", "+0<small> 語</small>"]]);
+  // W4 (c)（守り）窓の中でマイ単語帳の語に答えていない人（窓の前に覚えた語だけ）・マイ単語帳を使わない人: マスなし・「7日で 覚えた」のまま・シェアの文と絵の行もそのまま
+  device("w-old");
+  setNow("2026-11-20", 20);
+  M.addMyWordsBulk("zeta six, 六");
+  setNow("2026-11-21", 21);
+  myAnswer("zeta six", K.exact);
+  endOfSet();
+  learnNew(3, "2026-12-08", 21, 0, NONBASE);
+  LV.updateStreak();
+  const r4c = openStats();
+  const html4c = drawWeekly();
+  eq("W4 (c)（守り）窓の中で答えていない人: マスなし・「7日で 覚えた」・シェアの文にマイ単語帳の字なし（英単語は +3）",
+    [myCell(html4c), heads(html4c).includes("7日で 覚えた"), shareLines(r4c).some((s) => s.includes("マイ単語帳")), WR.buildWeeklyShareText(r4c).includes("覚えた +3語")],
+    [null, true, false, true]);
+  device("w-none");
+  learnNew(3, "2026-12-08", 21, 0, NONBASE);
+  LV.updateStreak();
+  openStats();
+  const html4d = drawWeekly();
+  eq("W4 (c)（守り）マイ単語帳を使わない人: マスなし・「7日で 覚えた」", [myCell(html4d), heads(html4d)], [null, ["学習した日", "7日で 覚えた", "思い出せた率"]]);
+
+  // W5（守り）英単語の数（週・今月・今の 覚えた・日ごとの増え）と送る日の行は、マイ単語帳の語を足して答えた人と、そうでない人で同じ
+  const englishOf = (withMy) => {
+    device(withMy ? "w5-my" : "w5-plain");
+    const keys = ["eta seven", "theta eight", "iota nine", "kappa ten"];
+    if (withMy) {
+      setNow("2026-12-01", 8);
+      M.addMyWordsBulk(keys.map((k, i) => `${k}, 訳${i}`).join("\n"));
+    }
+    for (let n = 1; n <= 8; n++) {
+      const d = `2026-12-0${n}`;
+      learnNew(5, d, 20, 0, NONBASE);
+      LV.updateStreak();
+      if (withMy && n <= keys.length) {
+        setNow(d, 20, 30);
+        myAnswer(keys[n - 1], n % 2 ? K.exact : K.miss);
+      }
+      endOfSet();
+    }
+    const gains = fn("getCoreDayGains")();
+    const days = U.mergeCloudItems([], "u1").toUpload.filter((r) => r.kind === "day").map((r) => [r.key, r.payload]);
+    return { week: week(0), month: month(), now: coreNow(), gains: gains instanceof Map ? [...gains] : gains, days, rows: growth().map(({ date, learned, mastered, active }) => ({ date, learned, mastered, active })) };
+  };
+  const plain = englishOf(false);
+  const withMy = englishOf(true);
+  eq("W5（守り）英単語の週・今月・今の 覚えた・日ごとの増え・送る日の行（5 つの欄）・成長ログの行は、マイ単語帳の語の有無で同じ", withMy, plain);
+}
+
 if (failures.length) {
   console.error(failures.map((f) => `✗ ${f}`).join("\n"));
   console.error(`\n${passed} passed, ${failures.length} failed`);
