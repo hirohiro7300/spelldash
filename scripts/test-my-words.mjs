@@ -916,5 +916,284 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   ok("T12 守り: 答えが 2 つだけの単語帳は 600 問とも 2 択", two === 600, String(two));
 }
 
+// ===== Batch 91 T1〜T11・T10b: マイ単語帳の「初めて 覚えた になった日」lf（docs/SPEC_MY_WORDS.md §17） =====
+// 書き手は js/myWordsCore.js applyMyAnswer だけ（公開の語の lsf と同じ決まり: js/learnState.js firstLearnedMark の返りを語に写す。新しい呼び出し・読み書き・輪は無い）。
+// 読み手（純）: myFirstLearnedDay・countMyGain・myGainByDay・myStudiedSince。取り込み: js/userItemsSync.js keepFirstLearned と mergeCloudItems の 2 つの向き。
+// 端末の偽物（localStorage・時計）はこの節の中だけ（終わりで本物の時計に戻す）。語と訳はここで作る
+{
+  const U = await import("../js/userItemsSync.js");
+  const M = await import("../js/myWords.js");
+  const SL = await import("../js/slang.js");
+  const fs = await import("node:fs");
+  const missing = (name) => () => `${name} が無い`; // 直す前の木には無い: 呼ぶと字を返して検査が落ちる
+  const coreFn = (name) => (typeof C[name] === "function" ? C[name] : missing(name));
+  const countMyGain = coreFn("countMyGain");
+  const myGainByDay = coreFn("myGainByDay");
+  const myStudiedSince = coreFn("myStudiedSince");
+  const myFirstLearnedDay = coreFn("myFirstLearnedDay");
+  const keep = typeof U.keepFirstLearned === "function" ? U.keepFirstLearned : missing("keepFirstLearned");
+  const RealDate = Date;
+  const HOUR = 3600000;
+  const DAY = 24 * HOUR;
+  const D0 = new RealDate(2026, 10, 12, 9, 0).getTime(); // 1 日目の 9 時（端末の時刻）
+  let NOW = D0;
+  globalThis.Date = class extends RealDate {
+    constructor(...a) {
+      super(...(a.length ? a : [NOW]));
+    }
+    static now() {
+      return NOW;
+    }
+  };
+  const at = (n, h = 9) => (NOW = D0 + (n - 1) * DAY + (h - 9) * HOUR);
+  const dayNo = (n) => learnDayOf(D0 + (n - 1) * DAY);
+  class Store {
+    constructor() {
+      this.map = new Map();
+      this.sets = 0;
+    }
+    getItem(k) {
+      return this.map.has(k) ? this.map.get(k) : null;
+    }
+    setItem(k, v) {
+      this.sets++;
+      this.map.set(k, String(v));
+    }
+    removeItem(k) {
+      this.map.delete(k);
+    }
+    clear() {
+      this.map.clear();
+    }
+    key(i) {
+      return [...this.map.keys()][i] ?? null;
+    }
+    get length() {
+      return this.map.size;
+    }
+  }
+  const devices = {};
+  const use = (name) => (globalThis.localStorage = devices[name] ??= new Store());
+  const wordsOf = () => JSON.parse(localStorage.getItem("spelldash_my_words") || "[]");
+  const wordOf = (en) => wordsOf().find((w) => w.en === en);
+  try {
+    // ---- T1〜T4: 書き手（applyMyAnswer） ----
+    const T = D0;
+    const d1 = dayNo(1);
+    const a = C.applyMyAnswer({ en: "x", ja: "y" }, ANSWER_KINDS.exact, T);
+    ok("T1 これから + 自力正解 → lf は今日の日番号", a.lf === d1 && C.myStateOf(a) === LEARN_LEARNED, JSON.stringify(a));
+    const b = C.applyMyAnswer({ en: "x", ja: "y", ls: 2, lsAt: T - 3 * DAY }, ANSWER_KINDS.miss, T);
+    const b2 = C.applyMyAnswer(C.applyMyAnswer(b, ANSWER_KINDS.exact, T + DAY), ANSWER_KINDS.exact, T + 2 * DAY);
+    const b3 = C.applyMyAnswer({ en: "x", ja: "y", ls: 2, lsAt: T - 3 * DAY }, ANSWER_KINDS.exact, T);
+    ok("T2 lf の無い 覚えた の語に答える → lf 0（前から 覚えた。数えない）・外して覚え直しても 0 のまま",
+      b.lf === 0 && b3.lf === 0 && b2.lf === 0 && C.myStateOf(b2) === LEARN_LEARNED, JSON.stringify({ b: b.lf, b2: b2.lf, b3: b3.lf, ls: b2.ls }));
+    const c1 = C.applyMyAnswer({ en: "x", ja: "y" }, ANSWER_KINDS.miss, T);
+    const c2 = C.applyMyAnswer(c1, ANSWER_KINDS.exact, T + HOUR);
+    const c3 = C.applyMyAnswer(c2, ANSWER_KINDS.exact, T + DAY);
+    const c4 = C.applyMyAnswer(C.applyMyAnswer(c3, ANSWER_KINDS.reveal, T + 3 * DAY), ANSWER_KINDS.exact, T + 4 * DAY);
+    const c5 = C.applyMyAnswer(c4, ANSWER_KINDS.exact, T + 5 * DAY);
+    ok("T3 これから → ×（あやふや）→ 同じ日の正解（lf なし）→ 次の日の正解で 覚えた（lf は次の日）→ 外して覚え直しても次の日のまま（一度付けたら替えない）",
+      !("lf" in c1) && !("lf" in c2) && c3.lf === dayNo(2) && C.myStateOf(c3) === LEARN_LEARNED && c4.lf === dayNo(2) && c5.lf === dayNo(2) && C.myStateOf(c5) === LEARN_LEARNED,
+      JSON.stringify([c1.lf, c2.lf, c3.lf, c4.lf, c5.lf, c5.ls]));
+    const e = C.applyMyAnswer({ en: "x~1234abcd", ja: "y", text: "X", book: "b1", bookName: "仕事", addedAt: "2026-11-01T00:00:00.000Z", zz: 1 }, ANSWER_KINDS.exact, T);
+    ok("T4（守り）ほかの欄（en・ja・text・book・bookName・addedAt・知らない欄）はそのまま", e.en === "x~1234abcd" && e.ja === "y" && e.text === "X" && e.book === "b1" && e.bookName === "仕事" && e.addedAt === "2026-11-01T00:00:00.000Z" && e.zz === 1, JSON.stringify(e));
+    const odd = [C.applyMyAnswer({ en: "x", ja: "y", lf: "3" }, ANSWER_KINDS.exact, T), C.applyMyAnswer({ en: "x", ja: "y", lf: dayNo(-5) }, ANSWER_KINDS.exact, T)];
+    ok("T4 lf がある語は、字の lf でも前の日の lf でも書き換えない（一度付けたら替えない）", odd[0].lf === "3" && odd[1].lf === dayNo(-5), JSON.stringify(odd.map((w) => w.lf)));
+
+    // ---- T5: countMyGain（窓の中で初めて 覚えた になり、今も 覚えた の語。英語の語だけ） ----
+    const list = [
+      { en: "a", ja: "1", ls: 2, lf: d1 }, { en: "b", ja: "2", ls: 2, lf: d1 - 6 }, { en: "c", ja: "3", ls: 2, lf: d1 - 7 },
+      { en: "d", ja: "4", ls: 2, lf: 0 }, { en: "e", ja: "5", ls: 1, lf: d1 }, { en: "f", ja: "6", ls: 2 }, { en: "g", ja: "7", ls: 2, lf: "x" },
+      { kind: "concept", en: "h", q: "q", answer: "h", ja: "", ls: 2, lf: d1 }
+    ];
+    ok("T5 countMyGain（窓 6 日前〜今日）= 2: lf 0・窓の外・あやふや に戻った語・lf の無い語・字の lf・場面カードは数えない", countMyGain(list, d1 - 6, d1) === 2, String(countMyGain(list, d1 - 6, d1)));
+    ok("T5 myFirstLearnedDay: 1 以上の整数の lf だけ（0・無い・字・場面カードは null）",
+      myFirstLearnedDay(list[0]) === d1 && myFirstLearnedDay(list[3]) === null && myFirstLearnedDay(list[5]) === null && myFirstLearnedDay(list[6]) === null, "");
+
+    // ---- T6: keepFirstLearned（取り込みで端末の早い lf を残す。純） ----
+    const base = { en: "a", ja: "1", addedAt: "2026-11-01T00:00:00.000Z" };
+    const same = (x) => x;
+    const k1 = keep({ ...base, ls: 1 }, { ...base, lf: d1 });
+    const k2 = keep({ ...base, lf: d1 + 1 }, { ...base, lf: d1 });
+    const inc3 = { ...base, lf: d1 };
+    const k3 = keep(inc3, { ...base, lf: d1 + 1 });
+    const k4 = keep({ ...base, lf: d1 }, { ...base, lf: 0 });
+    const inc5 = { ...base, ls: 2 };
+    const k5 = keep(inc5, { ...base, addedAt: "2026-11-05T00:00:00.000Z", lf: d1 });
+    const inc6 = { ...base, ls: 2 };
+    const k6 = keep(inc6, { ...base, lf: "x" });
+    const inc7 = { ...base, lf: 0 };
+    const k7 = keep(inc7, { ...base, lf: 0 });
+    ok("T6 keepFirstLearned: 勝った行に lf が無い・遅い → 端末の lf を写す・行が早い（同じ）→ 行のまま（同じ物）・0 はどの日より早い・足し直した語（addedAt が違う）と字の lf には写さない",
+      k1?.lf === d1 && k1?.ls === 1 && k2?.lf === d1 && same(k3) === inc3 && k4?.lf === 0 && same(k5) === inc5 && same(k6) === inc6 && same(k7) === inc7,
+      JSON.stringify({ k1, k2: k2?.lf, k3: k3 === inc3, k4: k4?.lf, k5: k5 === inc5, k6: k6 === inc6, k7: k7 === inc7 }));
+
+    // ---- T7: mergeCloudItems（本物）: 雲の後の行（lf なし）に負けても端末の lf が残り、送り返す行に入る。もう一度取り込むと送り返さない ----
+    use("T7");
+    localStorage.setItem("spelldash_my_words", JSON.stringify([{ ...base, ls: 2, lf: d1, lsAt: T }]));
+    localStorage.setItem("spelldash_user_items_meta", JSON.stringify({ "my_word:a": { updatedAt: new RealDate(T).toISOString(), deleted: false } }));
+    at(1, 12);
+    const cloudRow = { kind: "my_word", key: "a", payload: { ...base, ls: 1, lsd: d1, lsAt: T + 2 * HOUR }, deleted: false, updated_at: new RealDate(T + 2 * HOUR).toISOString() };
+    const r7 = U.mergeCloudItems([cloudRow], "u1");
+    const after7 = wordOf("a");
+    const up7 = r7.toUpload.find((r) => r.kind === "my_word" && r.key === "a");
+    const again7 = up7 ? U.mergeCloudItems([{ ...up7, payload: JSON.parse(JSON.stringify(up7.payload)) }], "u1") : { toUpload: ["送る行が無い"] };
+    ok("T7 取り込み（雲の行が新しくて勝つ）: 語の状態は雲の行（あやふや）・lf は端末の早い日のまま・その行を送り返す（lf 入り）・もう一度取り込むと送り返さない（収まる）",
+      after7?.ls === 1 && after7?.lf === d1 && up7?.payload?.lf === d1 && up7?.payload?.ls === 1 && again7.toUpload.filter((r) => r.kind === "my_word").length === 0,
+      JSON.stringify({ after7, up: up7?.payload ?? null, again: again7.toUpload }));
+
+    // ---- T8: 答えの書き手 recordMyAnswer（本物）は lf を付け、保存は今と同じ回数（語 1 回・印 2 回）。答えの道は新しい読み手を呼ばない ----
+    use("T8");
+    localStorage.setItem("spelldash_my_words", JSON.stringify([{ ...base }]));
+    at(1, 10);
+    localStorage.sets = 0;
+    const rec8 = M.recordMyAnswer("a", ANSWER_KINDS.exact);
+    const sets8 = localStorage.sets;
+    ok("T8 recordMyAnswer: lf が付き（今日）、setItem は今と同じ 3 回（語 1 回・送る印 2 回）", rec8 === true && wordOf("a")?.lf === d1 && sets8 === 3, JSON.stringify({ rec8, lf: wordOf("a")?.lf, sets8 }));
+    const bodyOf = (src, name) => {
+      const m = new RegExp(`(?:^|\\n)(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(`).exec(src);
+      if (!m) return null;
+      let depth = 0;
+      let j = m.index + m[0].length - 1;
+      for (; j < src.length; j++) {
+        if (src[j] === "(") depth++;
+        else if (src[j] === ")" && --depth === 0) break;
+      }
+      const open = src.indexOf("{", j);
+      depth = 0;
+      for (let k = open; k < src.length; k++) {
+        if (src[k] === "{") depth++;
+        else if (src[k] === "}" && --depth === 0) return src.slice(open, k + 1);
+      }
+      return null;
+    };
+    const read = (rel) => fs.readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
+    const NEW_READERS = /countMyGain|myGainByDay|myStudiedSince|keepFirstLearned|myFirstLearnedDay|sharedAnswersOf/;
+    const watched = [
+      ["js/game.js", "completeWord"], ["js/game.js", "acceptChar"], ["js/game.js", "advanceNow"], ["js/game.js", "applyLearnXp"],
+      ["js/myWords.js", "recordMyAnswer"], ["js/myWordsCore.js", "applyMyAnswer"]
+    ].map(([file, name]) => ({ file, name, body: bodyOf(read(file), name) }));
+    ok("T8 答えの道（js/game.js completeWord・acceptChar・advanceNow・applyLearnXp・recordMyAnswer・applyMyAnswer）の本文に新しい読み手・取り込み・組の集まりの呼び出しが無い",
+      watched.every((w) => w.body !== null && !NEW_READERS.test(w.body)), JSON.stringify(watched.map((w) => [w.name, w.body === null ? "関数が無い" : NEW_READERS.exec(w.body)?.[0] ?? "ok"])));
+    const calls = [...(watched.find((w) => w.name === "applyMyAnswer")?.body ?? "").matchAll(/([A-Za-z_$][\w$]*)\s*\(/g)].map((m) => m[1]).filter((n) => !["if", "for", "while", "switch", "return", "function"].includes(n));
+    ok("T8 applyMyAnswer が呼ぶ関数は今と同じ applyLearnAnswer だけ（新しい関数の呼び出し・輪が無い）", JSON.stringify([...new Set(calls)]) === '["applyLearnAnswer"]' && !/\bfor\b|\bwhile\b|\.forEach\(|\.map\(|\.filter\(/.test(watched.find((w) => w.name === "applyMyAnswer")?.body ?? ""), JSON.stringify(calls));
+
+    // ---- T9（反証 R1 の形）: 回の途中で閉じた日に 覚えた になった語に、次の日にもう一度正解 → lf は最初の日。その 2 日の間から始まる窓では数えない ----
+    use("T9");
+    localStorage.setItem("spelldash_my_words", JSON.stringify([{ en: "r1", ja: "試しの訳 一", addedAt: "2026-11-01T00:00:00.000Z" }, { en: "r2", ja: "試しの訳 二", addedAt: "2026-11-01T00:00:00.000Z" }]));
+    at(2, 21);
+    M.recordMyAnswer("r1", ANSWER_KINDS.exact); // 2 日目: 回の途中で閉じた（回の終わりの書き手は走らない）
+    at(3, 20);
+    M.recordMyAnswer("r1", ANSWER_KINDS.exact); // 3 日目: もう一度正解
+    const w9 = wordsOf();
+    ok("T9 回の途中で閉じた日に 覚えた になった語に次の日にもう一度正解 → lf は 2 日目のまま・窓 3〜9 日目は +0・窓 2〜8 日目は +1",
+      wordOf("r1")?.lf === dayNo(2) && countMyGain(w9, dayNo(3), dayNo(9)) === 0 && countMyGain(w9, dayNo(2), dayNo(8)) === 1,
+      JSON.stringify({ lf: wordOf("r1")?.lf, d2: dayNo(2), w39: countMyGain(w9, dayNo(3), dayNo(9)), w28: countMyGain(w9, dayNo(2), dayNo(8)) }));
+
+    // ---- T10（反証 R2 の形。本物の buildDirtyRows・mergeCloudItems）: B が 2 日目に覚え、3 日目にもう一度正解して送る → A の lf は 2 日目 ----
+    const cloud = new Map();
+    const upsert = (r) => cloud.set(`${r.kind}:${r.key}`, JSON.parse(JSON.stringify(r))); // 送り方は比べない上書き（upsertRows）
+    const push = () => {
+      for (const r of U.buildDirtyRows("u1")) upsert(r);
+      U.clearDirtyItems();
+    };
+    const pull = () => {
+      const res = U.mergeCloudItems([...cloud.values()], "u1");
+      for (const r of res.toUpload) upsert(r);
+      return res;
+    };
+    use("A10");
+    at(1, 8);
+    M.addMyWordsBulk("shared phrase, 試しの訳 共有\nside phrase, 試しの訳 横");
+    push();
+    use("B10");
+    at(1, 9);
+    pull();
+    push();
+    at(2, 21);
+    M.recordMyAnswer("shared phrase", ANSWER_KINDS.exact);
+    at(3, 8);
+    M.recordMyAnswer("shared phrase", ANSWER_KINDS.exact); // 送る前にもう一度正解
+    push();
+    use("A10");
+    at(3, 9);
+    pull();
+    ok("T10 B が 2 日目に覚えて 3 日目にもう一度正解してから送る → A の語の lf は 2 日目・A の窓 3〜9 日目は +0",
+      wordOf("shared phrase")?.lf === dayNo(2) && countMyGain(wordsOf(), dayNo(3), dayNo(9)) === 0, JSON.stringify({ lf: wordOf("shared phrase")?.lf, d2: dayNo(2) }));
+
+    // ---- T10b（反証 X1 の形）: A が 2 日目に覚えて送る。B はつながらないまま 4 日目に同じ語を初めて覚える。5 日目に B が取り込む（B の行が新しくて勝つ）
+    //      → B の語の lf と送る行の lf は 2 日目。もう一度取り込んでも送り返さない。ほかの端末 C も窓 3〜9 日目は +0 ----
+    cloud.clear();
+    use("A11");
+    at(1, 7);
+    M.addMyWordsBulk("target word, 試しの訳 対象\nother word, 試しの訳 ほか\nthird word, 試しの訳 三");
+    push();
+    use("B11");
+    at(1, 8);
+    pull();
+    push();
+    use("A11");
+    at(2, 8);
+    M.recordMyAnswer("target word", ANSWER_KINDS.exact);
+    M.recordMyAnswer("other word", ANSWER_KINDS.miss);
+    push();
+    const cloudLf2 = cloud.get("my_word:target word")?.payload?.lf;
+    use("B11");
+    at(4, 20);
+    M.recordMyAnswer("target word", ANSWER_KINDS.exact); // つながらない（送れない）
+    M.recordMyAnswer("third word", ANSWER_KINDS.miss);
+    const bBefore = wordOf("target word")?.lf;
+    at(5, 8);
+    const r11 = pull();
+    const sent11 = r11.toUpload.find((r) => r.kind === "my_word" && r.key === "target word");
+    push();
+    const bAfter = wordOf("target word")?.lf;
+    const cloudAfter = cloud.get("my_word:target word")?.payload?.lf;
+    const r11b = pull();
+    use("C11");
+    at(5, 9);
+    pull();
+    const cLf = wordOf("target word")?.lf;
+    at(9, 22);
+    const cGain = countMyGain(wordsOf(), dayNo(3), dayNo(9));
+    use("B11");
+    const bGain = countMyGain(wordsOf(), dayNo(3), dayNo(9));
+    ok("T10b 端末の行が新しくて勝つ取り込み: 雲の早い lf（2 日目）を端末の語に写して送る（B の lf・送る行・雲の lf は 2 日目）・もう一度取り込んでも送り返さない・B と新しい端末 C の窓 3〜9 日目は +0（真実と同じ）",
+      cloudLf2 === dayNo(2) && bBefore === dayNo(4) && bAfter === dayNo(2) && sent11?.payload?.lf === dayNo(2) && cloudAfter === dayNo(2) && r11b.toUpload.filter((r) => r.kind === "my_word").length === 0 && cLf === dayNo(2) && cGain === 0 && bGain === 0,
+      JSON.stringify({ d2: dayNo(2), d4: dayNo(4), cloudLf2, bBefore, bAfter, sent: sent11?.payload?.lf ?? null, cloudAfter, resend: r11b.toUpload.map((r) => r.key), cLf, cGain, bGain }));
+
+    // ---- T11: myGainByDay の窓の日の和 = countMyGain・myStudiedSince は窓の始めより前の答えだけなら偽 ----
+    const days11 = [0, 1, 2, 2, 5, 6, 8, 9].map((k) => dayNo(1) + k);
+    const list11 = days11.map((d, i) => ({ en: `w${i}`, ja: `訳 ${i}`, ls: i === 3 ? 1 : 2, lf: d, lsAt: D0 + (d - dayNo(1)) * DAY }));
+    const byDay = myGainByDay(list11);
+    const sum = byDay instanceof Map ? [...byDay].filter(([d]) => d >= dayNo(3) && d <= dayNo(9)).reduce((s, [, n]) => s + n, 0) : byDay;
+    ok("T11 myGainByDay の窓 3〜9 日目の日の和 = countMyGain（あやふや に戻った語は数えない）", byDay instanceof Map && sum === countMyGain(list11, dayNo(3), dayNo(9)) && sum === 4, JSON.stringify({ sum, count: countMyGain(list11, dayNo(3), dayNo(9)) }));
+    const before = [{ en: "p", ja: "訳", ls: 2, lf: 0, lsAt: D0 }];
+    ok("T11 myStudiedSince: 窓の始めより前の答えだけなら偽・窓の中に答えがあれば真（ほかの端末から届いた語の lsAt も）",
+      myStudiedSince(before, D0 + DAY) === false && myStudiedSince(before, D0 - DAY) === true && myStudiedSince([], D0) === false && myStudiedSince([{ kind: "concept", en: "s", q: "q", answer: "s", ja: "", lsAt: D0 + 2 * DAY }], D0) === false,
+      JSON.stringify([myStudiedSince(before, D0 + DAY), myStudiedSince(before, D0 - DAY)]));
+
+    // ---- 守り: スラング（js/slang.js）は ls・lsAt・lsd だけを写すので保存の形は変わらない ----
+    const slangStore = new Store();
+    const firstSlang = SL.SLANG[0]?.id;
+    SL.recordSlangAnswer(firstSlang, ANSWER_KINDS.exact, D0, slangStore);
+    const slangRec = JSON.parse(slangStore.getItem(SL.SLANG_KEY) || "{}")[firstSlang] ?? {};
+    ok("守り（スラング）: 答えの記録は ls・lsAt だけ（lf を持たない）", JSON.stringify(Object.keys(slangRec).sort()) === '["ls","lsAt"]', JSON.stringify(slangRec));
+
+    // ---- 大きさ: いちばん大きい語の payload（表の上限 4,096 バイト。docs/SQL_USER_ITEMS.md §4 の数え方: 鍵は短い順 → 字の順、": " と ", "） ----
+    const jsonbText = (o) => "{" + Object.keys(o).sort((x, y) => x.length - y.length || (x < y ? -1 : x > y ? 1 : 0)).map((k) => JSON.stringify(k) + ": " + JSON.stringify(o[k])).join(", ") + "}";
+    const bytes = (o) => Buffer.byteLength(jsonbText(o), "utf8");
+    const bigJa = "訳".repeat(150);
+    const big = { en: `${"a".repeat(150)}~${C.jaHash(bigJa, 32)}`, ja: bigJa, text: "A".repeat(150), book: "b".repeat(24), bookName: "単".repeat(20), addedAt: "2026-11-11T00:00:00.000Z" };
+    const bigAnswered = C.applyMyAnswer(C.applyMyAnswer(big, ANSWER_KINDS.miss, D0), ANSWER_KINDS.exact, D0 + DAY);
+    const bigLearned = C.applyMyAnswer(bigAnswered, ANSWER_KINDS.exact, D0 + 2 * DAY);
+    const noLf = { ...bigLearned };
+    delete noLf.lf;
+    ok(`大きさ: いちばん大きい語の payload は ${bytes(bigLearned)} バイト（lf で +${bytes(bigLearned) - bytes(noLf)}）・上限 4,096 以下`, bytes(bigLearned) <= 4096 && (bigLearned.lf === undefined || bytes(bigLearned) - bytes(noLf) <= 13), JSON.stringify({ with: bytes(bigLearned), without: bytes(noLf) }));
+  } finally {
+    globalThis.Date = RealDate;
+  }
+}
+
 console.log(`test-my-words: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
