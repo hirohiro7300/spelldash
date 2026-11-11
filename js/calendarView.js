@@ -2,11 +2,15 @@ import { esc } from "./html.js";
 import { getCoreDayGains } from "./growthLog.js";
 import { getSessionLog } from "./storage.js";
 import { localDateString } from "./stats.js";
+import { getMyWords } from "./myWords.js";
+import { myGainByDay } from "./myWordsCore.js";
+import { dayNoOf } from "./retentionCalc.js";
 
 // ===== 学習カレンダー（直近13週） =====
 // 「学習した日」を草として見せる。積み上がりの証拠。
 // 濃さ＝その日に覚えた語数（Batch 90: 学習状況の 覚えた と同じ数〔成長ログの core〕の、前の行との差。js/growthLog.js getCoreDayGains）。
 //   学習した日で 0 語 → 1、1〜3 語 → 2、4〜7 語 → 3、8 語以上 → 4
+// マイ単語帳で 覚えた（Batch 91。docs/SPEC_MY_WORDS.md §17）: その日に初めて 覚えた になり、今も 覚えた の語の数を title の後ろにだけ足す（濃さは英単語のまま）
 
 const WEEKS = 13;
 
@@ -26,7 +30,8 @@ function loadSetHistory() {
   }
 }
 
-export function computeCalendarDays(weeks = WEEKS) {
+// myList: マイ単語帳の語の並び（学習状況の 1 回の描画で 1 回だけ読んで渡す。渡さなければここで読む）
+export function computeCalendarDays(weeks = WEEKS, myList = null) {
   // 学習した日 → その日に覚えた語数（前の core の行との差。この端末で数え始めた行は始まりの値 core0 から。分からない日は null: 濃さは最小・title に語数を出さない）
   const active = getCoreDayGains();
   // growth log の無い日でも、セット完了や Challenge・Daily の記録があれば学習した日（濃さは最小）
@@ -35,6 +40,8 @@ export function computeCalendarDays(weeks = WEEKS) {
     const date = e.at ? localDateString(new Date(e.at)) : null;
     if (date && !active.has(date)) active.set(date, { gained: 0 });
   }
+
+  const myByDay = myGainByDay(Array.isArray(myList) ? myList : getMyWords()); // 日番号 → マイ単語帳で 覚えた 語の数
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -52,6 +59,7 @@ export function computeCalendarDays(weeks = WEEKS) {
       date: key,
       level: info ? levelOf(info.gained) : 0,
       gained: info ? info.gained : null,
+      my: myByDay.get(dayNoOf(key)) ?? 0,
       isToday: d.getTime() === today.getTime(),
       isFuture: d.getTime() > today.getTime(),
       month: d.getDate() === 1 || i === 0 ? d.getMonth() + 1 : null
@@ -60,16 +68,16 @@ export function computeCalendarDays(weeks = WEEKS) {
   return { days, weeks };
 }
 
-export function renderCalendar(containerId) {
+export function renderCalendar(containerId, { myList = null } = {}) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  const { days, weeks } = computeCalendarDays();
+  const { days, weeks } = computeCalendarDays(WEEKS, myList);
 
   // 列＝週、行＝曜日（月〜日）。CSS grid で列方向に流す
   const cells = days
     .map(
       (d) =>
-        `<i class="cal__day cal__day--${d.level}${d.isToday ? " cal__day--today" : ""}${d.isFuture ? " cal__day--future" : ""}" title="${d.date}${d.gained != null ? ` ・ 覚えた ${d.gained}語` : ""}"></i>`
+        `<i class="cal__day cal__day--${d.level}${d.isToday ? " cal__day--today" : ""}${d.isFuture ? " cal__day--future" : ""}" title="${d.date}${d.gained != null ? ` ・ 覚えた ${d.gained}語` : ""}${d.my > 0 ? ` ・ マイ単語帳で 覚えた ${d.my}語` : ""}"></i>`
     )
     .join("");
   const months = [];

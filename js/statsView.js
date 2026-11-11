@@ -27,7 +27,7 @@ import { logTypingStage } from "./funnelLog.js";
 import { countLearnStates, learnDayOf } from "./learnState.js";
 import { RANK_NAMES, RANK_PEAK_KEY, rankFor, rankThresholds, readRankPeak, raiseRankPeak } from "./rank.js";
 import { getMyWords } from "./myWords.js";
-import { countMyStates } from "./myWordsCore.js";
+import { countMyStates, countMyGain } from "./myWordsCore.js";
 import { esc } from "./html.js";
 
 // 学習状況の数と目安（js/learnPace.js。js/bookPace.js の決まりを使う）は動的 import（静的な読み込みの表を増やさない）。公開の語の表（js/storage.js loadLearnStates）と並べて先に読み始める
@@ -43,20 +43,23 @@ let resizeTimer = null;
 // （Pro の受付の返事 spelldash:billing・同期）で描くと、読み直す前の数で描いてすぐ描き直し、はちゃんの顔と一言が替わっていた（2 つ目の顔も読む）。
 // 初めの描画は届いた知らせの後の状態を読むので、先に届いた分は描かなくてよい。同じ中身なら js/weeklyReport.js が描き直さない。
 // 単語の表が読めない（オフラインで目録やパックの写しが無い）ときは、失敗の後に今の記録で描く（週間レポートは語の表を読まずに描ける。PR #189 のレビュー 3）
-function renderWeekly() {
-  if (weeklyReady) renderWeeklyReport("weeklyReport");
+// myList: マイ単語帳の語の並び（renderGrowthViews が 1 回だけ読んで渡す。後から届く知らせの描き直しでは渡さず、週間レポートが読む）
+function renderWeekly(myList = null) {
+  if (weeklyReady) renderWeeklyReport("weeklyReport", { myList });
 }
 
 // 推移・カレンダー・今月の行・週間レポート（Batch 90。docs/SPEC_LEARN_STATE.md §12）: 数は学習状況の最初の画面と同じ 覚えた（3 状態。公開の語の表が要る）。
 // 描く順は 推移（成長ログの今日の行を書く）→ カレンダー → 今月の行 → 週間レポート（後の 3 つは推移が書いた今日の行を読む）。
-// 推移・カレンダー・今月の行は単語ストアの初期化の後だけ（trendsReady。推移の書き手が前の数え方の語数も書くため）
+// 推移・カレンダー・今月の行は単語ストアの初期化の後だけ（trendsReady。推移の書き手が前の数え方の語数も書くため）。
+// マイ単語帳で 覚えた（Batch 91）: マイ単語帳の語は 1 回の描画で 1 回だけ読み、カレンダー・今月の行・週間レポートに渡す
 function renderGrowthViews() {
+  const myList = trendsReady || weeklyReady ? getMyWords() : null;
   if (trendsReady) {
     renderGrowthTrend();
-    renderCalendar("calendarGrid");
-    renderMonthlySummary();
+    renderCalendar("calendarGrid", { myList });
+    renderMonthlySummary(myList);
   }
-  renderWeekly();
+  renderWeekly(myList);
   growthCounted = weeklyReady && learnStateSource() !== null;
 }
 
@@ -594,7 +597,7 @@ function renderTyping() {
 // ===== 今月のまとめ（学習した日・覚えた・セット。値が 0 の項目は出さない） =====
 // 覚えた は学習状況の最初の画面と同じ数（3 状態。公開の語だけ）の今月の増え（Batch 90。js/growthLog.js getCoreMonthDelta）。分からない（null: この端末で
 // 数え始める前のほかの端末の学習した日が今月にある）ときは 覚えた の項目を出さない（学習した日とセットは出す）
-function renderMonthlySummary() {
+function renderMonthlySummary(myList = getMyWords()) {
   const container = document.getElementById("monthlySummary");
   if (!container) return;
   const now = new Date();
@@ -609,11 +612,14 @@ function renderMonthlySummary() {
   } catch {
     sets = 0;
   }
-  // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない
+  // マイ単語帳で 覚えた（Batch 91。docs/SPEC_MY_WORDS.md §17）: 今月の 1 日〜今日に初めて 覚えた になり、今も 覚えた の語（英単語の 覚えた には入れない）
+  const myMonth = countMyGain(myList, learnDayOf(new Date(now.getFullYear(), now.getMonth(), 1, 12).getTime()), learnDayOf(now.getTime()));
+  // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない。項目は中で折れない箱（css/pages.css .monthly-line__item。狭い幅では項目の間で折れる）
   const parts = [`学習した日 <b>${activeDays}</b>日`];
   if (learnedDelta > 0) parts.push(`覚えた <b>+${learnedDelta}</b>`);
+  if (myMonth > 0) parts.push(`マイ単語帳で 覚えた <b>+${myMonth}</b>`);
   if (sets > 0) parts.push(`セット <b>${sets}</b>回`);
-  container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月 ${parts.join(" ・ ")}</p>`;
+  container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月 ${parts.map((p) => `<span class="monthly-line__item">${p}</span>`).join(" ・ ")}</p>`;
 }
 
 // ===== 覚えた語の推移（無料 30日・Pro 90日） =====

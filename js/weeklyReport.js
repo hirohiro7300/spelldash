@@ -5,6 +5,9 @@ import { localDateString } from "./stats.js";
 import { hasumiWeeklyLine, hasumiBubbleHtml } from "./hasumi.js";
 import { shouldShowWeeklyPro } from "./proFunnel.js";
 import { isFocusOn } from "./focus.js";
+import { getMyWords } from "./myWords.js";
+import { countMyGain, myStudiedSince } from "./myWordsCore.js";
+import { learnDayOf } from "./learnState.js";
 
 // ===== 週間レポート（直近7日） =====
 // 「自分は前進している」証拠を週に一度まとめて見せる。
@@ -29,7 +32,8 @@ export function isGrowthLogMissing() {
   return streak > (todayActive ? 1 : 0);
 }
 
-export function computeWeeklyReport() {
+// myList: マイ単語帳の語の並び（学習状況の 1 回の描画で 1 回だけ読んで渡す。渡さなければここで読む）
+export function computeWeeklyReport({ myList = null } = {}) {
   // 今日まだやっていなければ「昨日までの 7 日」で数える（朝に開いても 6/7 にならない）
   const includeToday = hasPlayedToday();
   const endDay = new Date();
@@ -68,6 +72,12 @@ export function computeWeeklyReport() {
   const retention = reviewOk + reviewNg > 0 ? Math.round((reviewOk / (reviewOk + reviewNg)) * 100) : null;
   const recallRate = recalled + failed > 0 ? Math.round((recalled / (recalled + failed)) * 100) : null;
 
+  // マイ単語帳で 覚えた（Batch 91。docs/SPEC_MY_WORDS.md §17）: 窓の日（start〜endDay）に初めて 覚えた になり、今も 覚えた の語（語の lf。英単語の数には入れない。
+  // 語と一緒に同期・バックアップ・領域で動くので、端末の成長ログは見ない）。マスは窓の中でマイ単語帳の語に答えたか、増えが 1 以上のときだけ出す
+  const list = Array.isArray(myList) ? myList : getMyWords();
+  const myGain = countMyGain(list, learnDayOf(since), learnDayOf(endDay.getTime()));
+  const myShow = myGain > 0 || myStudiedSince(list, since);
+
   const end = new Date(endDay);
   const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
 
@@ -83,7 +93,9 @@ export function computeWeeklyReport() {
     reviewCount: reviewOk + reviewNg,
     bestScore,
     streak: getStreak().current,
-    noLog: isGrowthLogMissing()
+    noLog: isGrowthLogMissing(),
+    myGain,
+    myShow
   };
 }
 
@@ -93,6 +105,7 @@ const knowsLearned = (r) => r.learnedDelta !== null && r.learnedTotal !== null;
 export function buildWeeklyShareText(r = computeWeeklyReport()) {
   const lines = [`SpellDash 週間レポート ${r.range}`];
   lines.push(knowsLearned(r) ? `学習 ${r.activeDays}/7日 ・ 覚えた +${r.learnedDelta}語（累計 ${r.learnedTotal}）` : `学習 ${r.activeDays}/7日`);
+  if (r.myShow) lines.push(`マイ単語帳で 覚えた +${r.myGain}語`);
   const rate = r.retention ?? r.recallRate;
   if (rate != null) lines.push(`思い出せた率 ${rate}%${r.streak > 0 ? ` ・ ${r.streak}日連続` : ""}`);
   else if (r.streak > 0) lines.push(`${r.streak}日連続`);
@@ -106,10 +119,10 @@ export function buildWeeklyShareText(r = computeWeeklyReport()) {
 // はちゃんの絵を読み直し、押した「レポートをシェア」の文も戻っていた）
 const lastHtml = new WeakMap();
 
-export function renderWeeklyReport(containerId, { compact = false } = {}) {
+export function renderWeeklyReport(containerId, { compact = false, myList = null } = {}) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  const r = computeWeeklyReport();
+  const r = computeWeeklyReport({ myList });
   const rate = r.retention ?? r.recallRate;
   // 成長ログの無い端末: 学習した日・7日で覚えた は「–」、はちゃんは出さない（数字と矛盾しない）。注記 1 行。シェアも出さない
   const noLog = r.noLog;
@@ -128,11 +141,12 @@ export function renderWeeklyReport(containerId, { compact = false } = {}) {
     ${compact || noLog ? "" : hasumiBubbleHtml(hasumiWeeklyLine(r), "hasumi--result")}
     <div class="weekly__grid">
       <div><span>学習した日</span><strong>${noLog ? "–" : `${r.activeDays}<small> / 7</small>`}</strong></div>
-      <div><span>7日で 覚えた</span><strong>${noLog || unknown ? "–" : `+${r.learnedDelta}<small> 語</small>`}</strong></div>
+      <div><span>${r.myShow ? "英単語で 覚えた" : "7日で 覚えた"}</span><strong>${noLog || unknown ? "–" : `+${r.learnedDelta}<small> 語</small>`}</strong></div>
+      ${r.myShow ? `<div><span>マイ単語帳で 覚えた</span><strong>+${r.myGain}<small> 語</small></strong></div>` : ""}
       <div><span>思い出せた率</span><strong>${rate == null ? "–" : `${rate}<small>%</small>`}</strong></div>
       ${r.bestScore ? `<div><span>ベスト</span><strong>${r.bestScore}</strong></div>` : ""}
     </div>
-    ${noLog ? `<p class="weekly__note">この端末での記録は明日から</p>` : unknown ? `<p class="weekly__note">覚えた の増えは、この端末で数え始めた日から数える。</p>` : ""}
+    ${noLog ? `<p class="weekly__note">この端末での記録は明日から</p>` : unknown ? `<p class="weekly__note">${r.myShow ? "英単語の " : ""}覚えた の増えは、この端末で数え始めた日から数える。</p>` : ""}
     ${r.retention != null ? `<p class="weekly__note">思い出せた率＝1日以上前に覚えた語を復習で思い出せた割合（${r.reviewCount}語）</p>` : ""}
     ${showPro ? `<p class="weekly__note weekly__pro">Pro なら、マイ単語帳 1,000語・連続記録の修復。<a href="./pro.html" data-funnel="weekly">Pro について</a></p>` : ""}
     ${noLog && !compact ? "" : `<div class="weekly__actions">
@@ -198,21 +212,28 @@ export function buildWeeklyReportImage(r = computeWeeklyReport()) {
   ctx.font = "700 56px sans-serif";
   ctx.fillText(known ? "語 覚えた" : "/ 7日 学習した", 80 + w + 24, 520);
 
-  const rate = r.retention ?? r.recallRate;
-  const rows = [
-    known ? `学習した日  ${r.activeDays} / 7` : null,
-    rate == null ? null : `↻ 思い出せた率  ${rate}%`,
-    r.streak > 0 ? `${r.streak}日連続` : null,
-    r.bestScore > 0 ? `⏱ 今週のベスト  ${r.bestScore}` : null
-  ].filter(Boolean);
+  const rows = weeklyImageRows(r);
   ctx.fillStyle = "#e2e8f0";
   ctx.font = "700 52px sans-serif";
-  rows.forEach((line, i) => ctx.fillText(line, 80, 660 + i * 84));
+  const gap = rows.length > 4 ? 68 : 84; // 5 行（マイ単語帳の行を足した週）でも下の spelldash.net に重ねない
+  rows.forEach((line, i) => ctx.fillText(line, 80, 660 + i * gap));
 
   ctx.fillStyle = "#64748b";
   ctx.font = "600 40px sans-serif";
   ctx.fillText("spelldash.net", 80, H - 70);
   return canvas;
+}
+
+// シェアの絵の大きい数の下の行（純）。マイ単語帳の行（Batch 91）は数の並びにマスを出す週だけ、学習した日の次に
+export function weeklyImageRows(r) {
+  const rate = r.retention ?? r.recallRate;
+  return [
+    knowsLearned(r) ? `学習した日  ${r.activeDays} / 7` : null,
+    r.myShow ? `マイ単語帳で 覚えた  +${r.myGain}語` : null,
+    rate == null ? null : `↻ 思い出せた率  ${rate}%`,
+    r.streak > 0 ? `${r.streak}日連続` : null,
+    r.bestScore > 0 ? `⏱ 今週のベスト  ${r.bestScore}` : null
+  ].filter(Boolean);
 }
 
 function roundRect(ctx, x, y, w, h, r) {

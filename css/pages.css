@@ -1813,6 +1813,11 @@ html[data-theme] .monthly-line b {
   color: var(--ink);
 }
 
+/* 今月の行の項目（Batch 91）: 項目の中では折れない（狭い幅では項目の間で折れる） */
+.monthly-line__item {
+  white-space: nowrap;
+}
+
 html[data-theme] .cal__summary {
   color: var(--ink-3);
   font-size: 13px;
