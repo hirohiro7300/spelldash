@@ -29651,6 +29651,65 @@ console.log("shortcuts (92.1):");
       m.id === "pc.copy" && m.kind === "ok" && m2.id === "pc.paste" && m2.state === "waiting" && (await art(page2))?.down.length === 0 && page2.errors.length === 0, JSON.stringify({ m: [m.id, m.kind], m2: [m2.id, m2.state] }));
     await closeCtx(page2);
   });
+  // (5) 次へのキー（レビュー 2）: 答えたキーの keyup が「次へ」の上に来た後の、すぐの Enter で次へ進む（答えたキーの keyup で立てた印が残って
+  //     Enter の click を飲まない）。0 ms の待ちは入力より後に回ることがあるので、keyup の中で作った 0 ms の待ちを 400 ms 後に回して、いつもその形にする。
+  //     選ぶ問いを Enter で答えて押し続けても、repeat の keydown では次へ進まない（仕様 §8）
+  await part("(5) 小節 7b", async () => {
+    const slowZero = () => {
+      const st = window.setTimeout;
+      window.setTimeout = function (fn, ms, ...a) { return st.call(this, fn, window.event?.type === "keyup" && !(ms > 0) ? 400 : ms, ...a); };
+    };
+    const sp = {};
+    for (const hold of [true, false]) {
+      const page = await scPage({ init: slowZero, storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["br.scroll-page"], "ctrl") } });
+      await openSc(page);
+      await start(page);
+      await page.focus("#scPad");
+      await page.keyboard.down("Space");
+      await waitState(page, "done");
+      if (hold) {
+        await page.keyboard.down("Space");
+        await page.keyboard.down("Space");
+        await page.waitForTimeout(150);
+      }
+      const a = await play(page);
+      await page.keyboard.up("Space");
+      await page.keyboard.press("Enter");
+      await waitPlay(page, () => document.getElementById("scPlay")?.dataset.id !== "br.scroll-page", null, 1500);
+      const b = await play(page);
+      sp[hold ? "hold" : "tap"] = [a.id, a.state, a.kind, b.id, b.state, b.count, page.errors.length];
+      await closeCtx(page);
+    }
+    const spOk = (r) => r[0] === "br.scroll-page" && r[1] === "done" && r[2] === "ok" && r[3] !== "br.scroll-page" && r[4] === "waiting" && r[5] === "2 / 10" && r[6] === 0;
+    check("92.1 次へのキー（レビュー 2）: Space で答えて押し続け（repeat）・離してすぐの Enter で次へ。押してすぐ離したときも同じ（keyup の中の 0 ms の待ちを後に回しても）",
+      spOk(sp.hold) && spOk(sp.tap), JSON.stringify(sp));
+    const ch = {};
+    for (const hold of [true, false]) {
+      const page = await scPage({ init: slowZero, storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.lock"], "ctrl") } });
+      await openSc(page);
+      await start(page);
+      const q0 = await play(page);
+      await page.focus('#scChoices .sc-choice[data-ok="1"]');
+      await page.keyboard.down("Enter");
+      await waitState(page, "done");
+      const a = await play(page);
+      if (hold) {
+        await page.keyboard.down("Enter");
+        await page.keyboard.down("Enter");
+        await page.waitForTimeout(150);
+      }
+      const b = await play(page);
+      await page.keyboard.up("Enter");
+      await page.keyboard.press("Enter");
+      await waitPlay(page, () => document.getElementById("scPlay")?.dataset.id !== "pc.lock", null, 1500);
+      const c = await play(page);
+      ch[hold ? "hold" : "tap"] = [q0.id, q0.mode, a.kind, a.active, b.id, b.state, c.id, c.state, c.count, page.errors.length];
+      await closeCtx(page);
+    }
+    const chOk = (r) => r[0] === "pc.lock" && r[1] === "choice" && r[2] === "ok" && r[3] === "scNext" && r[4] === "pc.lock" && r[5] === "done" && r[6] !== "pc.lock" && r[7] === "waiting" && r[8] === "2 / 10" && r[9] === 0;
+    check("92.1 次へのキー（レビュー 2）: 選ぶ問いを Enter で答えて押し続けても（repeat）次へ進まず結果が残る・離してすぐの Enter で次へ。押してすぐ離したときも、すぐの Enter で次へ",
+      chOk(ch.hold) && chOk(ch.tap), JSON.stringify(ch));
+  });
 
   // (6) Esc で選ぶ形へ・Tab と Shift+Tab で枠を出る（止めない）・Shift+Tab の後も端末の miss が空
   await part("(6) 小節 8", async () => {
