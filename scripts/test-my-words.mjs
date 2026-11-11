@@ -850,5 +850,71 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
   }
 }
 
+// ===== Batch 91 T12: 選択式の組の答え（js/myWordsChoice.js sharedAnswersOf・buildChoice の shared。docs/SPEC_MY_WORDS.md §12.2） =====
+// 答えが同じ行（場面の問い）と別の語句が混ざった単語帳では、組のもう一方の答えがほとんど選択肢に出ず、答えが選択肢の形から分かった
+// （Batch 90 の頭で、訳を見て英語を選ぶ向き 600 問中 534 問・英語を見て訳を選ぶ向き 147 問）。回の始めに 1 回、範囲で 2 語以上にある答えの集まりを作り、
+// 問いの答えが集まりにあれば、違う答えをまず集まりのほかの答え（訳を選ぶ向きはその行の訳）から選ぶ。語と訳はここで作る（見本の行は使わない）
+{
+  const X = await import("../js/myWordsChoice.js");
+  const sharedOf = typeof X.sharedAnswersOf === "function" ? X.sharedAnswersOf : () => undefined; // 直す前の木には無い（渡さないのと同じ）
+  const { createHash } = await import("node:crypto");
+  const at = "2026-11-11T00:00:00.000Z";
+  const sceneJa = (side, i) => `試しの場面 ${side}の${i}。数は上か下か`;
+  const sceneWord = (answer, side, i) => (i === 1 ? { en: answer, ja: sceneJa(side, i), addedAt: at } : { en: `${answer}~${C.jaHash(sceneJa(side, i))}`, ja: sceneJa(side, i), text: answer, addedAt: at });
+  const MIX = [];
+  for (let i = 1; i <= 15; i++) MIX.push(sceneWord("rise", "上", i));
+  for (let i = 1; i <= 15; i++) MIX.push(sceneWord("fall", "下", i));
+  for (let i = 1; i <= 25; i++) MIX.push({ en: `phrase number ${String.fromCharCode(96 + ((i - 1) % 26) + 1)}${i}`, ja: `ふつうの語句 ${i}`, addedAt: at });
+  const SCENE = MIX.filter((w) => /上か下か$/.test(w.ja));
+  const partnerOf = (w) => (C.answerKeyOf(w) === "rise" ? "fall" : "rise");
+  const shared = sharedOf(MIX);
+  ok("T12 sharedAnswersOf: 範囲で 2 語以上にある答え（rise・fall）の集まり。1 語だけの答え・場面カードは入れない",
+    shared instanceof Set && shared.size === 2 && shared.has("rise") && shared.has("fall") && sharedOf([...MIX, { kind: "concept", en: "scene", answer: "x", q: "q", ja: "" }, { kind: "concept", en: "scene", answer: "x", q: "q2", ja: "" }])?.size === 2,
+    JSON.stringify(shared instanceof Set ? [...shared] : shared));
+  ok("T12 sharedAnswersOf: 答えは打つ回の判定と同じ形で比べる（follow-up と follow up は同じ答え）",
+    sharedOf([{ en: "follow-up", ja: "追加の連絡" }, { en: "follow up", ja: "追って連絡する" }, { en: "agenda", ja: "議題" }])?.has?.(X.enKey("follow up")) === true, "");
+  // 600 問 × 2 つの向き（決まった乱数。1 つの乱数を 2 つの向きで続けて使う）
+  const rand = X.seededRandom(7);
+  const miss = { en: 0, ja: 0 };
+  const seen = { en: 0, ja: 0 };
+  for (const dir of ["en", "ja"]) {
+    for (let rep = 0; rep < 20; rep++) {
+      for (const w of SCENE) {
+        const r = X.buildChoice({ entry: w, scope: MIX, others: [], dir, rand, shared });
+        seen[dir]++;
+        if (dir === "en") {
+          if (!(r?.options ?? []).some((o) => o.en === partnerOf(w))) miss.en++;
+        } else if (!(r?.options ?? []).some((o) => !o.correct && SCENE.some((x) => C.answerKeyOf(x) === partnerOf(w) && x.ja === o.text))) miss.ja++;
+      }
+    }
+  }
+  ok(`T12 訳を見て英語を選ぶ（答えが同じ行 15 と 15・ほかの語句 25 の単語帳・600 問）: 組のもう一方の答えがいつも選択肢にある（無かった問い ${miss.en}）`, seen.en === 600 && miss.en === 0, JSON.stringify({ seen: seen.en, miss: miss.en }));
+  ok(`T12 英語を見て訳を選ぶ（同じ単語帳・600 問）: 違う答えの少なくとも 1 つは組のもう一方の行の訳（無かった問い ${miss.ja}）`, seen.ja === 600 && miss.ja === 0, JSON.stringify({ seen: seen.ja, miss: miss.ja }));
+  // 守り（直す前の木でも通る）: 集まりの無い単語帳は同じ乱数で今と同じ選択肢と並び（2,000 問。直す前の木の出力の指紋と、集まりを渡した出力の両方）
+  const PLAIN = Array.from({ length: 40 }, (_, i) => ({ en: `phrase ${String.fromCharCode(97 + (i % 26))}${i}`, ja: `ふつうの語句 ${i}`, addedAt: at }));
+  const outs = { none: [], with: [] };
+  for (const dir of ["en", "ja"]) {
+    const ra = X.seededRandom(11);
+    const rb = X.seededRandom(11);
+    const s = sharedOf(PLAIN);
+    for (let rep = 0; rep < 25; rep++) {
+      for (const w of PLAIN) {
+        outs.none.push(X.buildChoice({ entry: w, scope: PLAIN, dir, rand: ra }));
+        outs.with.push(X.buildChoice({ entry: w, scope: PLAIN, dir, rand: rb, shared: s }));
+      }
+    }
+  }
+  const digest = createHash("sha256").update(JSON.stringify(outs.none)).digest("hex");
+  ok("T12 守り: 集まりの無い単語帳（2,000 問）は、集まりを渡しても渡さなくても同じ選択肢と並び・直す前の木（Batch 90 の頭）の出力と 1 字も同じ",
+    outs.none.length === 2000 && JSON.stringify(outs.none) === JSON.stringify(outs.with) && digest === "74ba892e4c73fcfe381465126c2136891e1960627c52bc8e3440b5a22fe4a4cf" && (sharedOf(PLAIN) === undefined || sharedOf(PLAIN).size === 0),
+    digest);
+  // 守り（直す前の木でも通る）: 答えが 2 つだけの単語帳（場面の問いだけ）は 600 問とも 2 択
+  const onlyShared = sharedOf(SCENE);
+  const r2 = X.seededRandom(7);
+  let two = 0;
+  for (let rep = 0; rep < 20; rep++) for (const w of SCENE) if (X.buildChoice({ entry: w, scope: SCENE, others: [], dir: "en", rand: r2, shared: onlyShared })?.options?.length === 2) two++;
+  ok("T12 守り: 答えが 2 つだけの単語帳は 600 問とも 2 択", two === 600, String(two));
+}
+
 console.log(`test-my-words: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

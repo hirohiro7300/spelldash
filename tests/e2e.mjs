@@ -26794,6 +26794,31 @@ console.log("my words choice (82.2):");
       JSON.stringify({ v: { box: v.box, input: v.input, focus: v.inputFocus, osk: v.osk, label: v.label }, msg: after.msg, err: page.errors[0] }));
     await closeCtx(page);
   }
+
+  // (15) Batch 91（walk F1）: 答えが同じ行（場面の問い。答えは rise と fall）とほかの語句が混ざった単語帳でも、場面の問いの選択肢には組の 2 つの答えが必ず出る
+  //      （前は組のもう一方がほとんど出ず、答えが選択肢の形から分かった）。語と訳はここで作る。1 回 10 問の場面の問い（5 つ以上）のどれにも rise と fall
+  {
+    const sceneJa = (side, i) => `試しの場面 ${side}の${i}。数は上か下か`;
+    const sceneRows = (answer, side) => Array.from({ length: 15 }, (_, k) => ({ en: k === 0 ? answer : `${answer}~${String(k).padStart(8, "0")}`, ja: sceneJa(side, k + 1), ...(k ? { text: answer } : {}), addedAt: T }));
+    const MIXED = [...sceneRows("rise", "上"), ...sceneRows("fall", "下"), ...Array.from({ length: 10 }, (_, k) => ({ en: `phrase number ${String.fromCharCode(97 + k)}${k + 1}`, ja: `ふつうの語句 ${k + 1}`, addedAt: T }))];
+    const page = await choicePage({ spelldash_my_words: JSON.stringify(MIXED) });
+    await page.goto(BASE + "/?learn=my&book=main&choice=en", { waitUntil: "networkidle" });
+    const rows = [];
+    for (let n = 1; n <= 10; n++) {
+      const v = await waitQuestion(page, n);
+      const e = MIXED.find((w) => `my-${w.en}` === v.id);
+      const texts = v.opts.map((o) => o.t);
+      rows.push({ q: v.q, scene: !!e && /上か下か$/.test(e.ja), both: texts.includes("rise") && texts.includes("fall"), n: texts.length });
+      await page.keyboard.press("1");
+      await page.waitForTimeout(60);
+      await page.evaluate(() => { const b = document.getElementById("choiceNext"); if (b && !b.hidden) b.click(); }); // 正解の待ちの間なら飛ばす・違うなら次へ
+    }
+    const scenes = rows.filter((r) => r.scene);
+    check("82.2 混ざった単語帳（Batch 91）: 答えが同じ行（rise 15・fall 15）とほかの語句 10 の単語帳の選択式で、場面の問い（5 つ以上）のどれにも組の 2 つの答え rise と fall が出る・選択肢は 2〜4 個・エラー 0",
+      scenes.length >= 5 && scenes.every((r) => r.both) && rows.every((r) => r.n >= 2 && r.n <= 4) && page.errors.length === 0,
+      JSON.stringify({ scenes: scenes.length, missing: scenes.filter((r) => !r.both).length, rows, err: page.errors[0] }));
+    await closeCtx(page);
+  }
 }
 
 // ===== 84.1 単語帳を渡す（Batch 84。js/myWordsShare.js・js/myWordsPage.js の「渡す」と渡された単語帳・js/myWords.js addSharedWords・privacy.html。docs/SPEC_MY_WORDS.md §13）: 渡す（キーボードで開く・リンクと文字をコピー・中身は名前と英語〔画面の形〕と訳だけで、鍵・3 状態・id・日付は入らない・アプリは本番の origin・端末の共有）・リンクを新しい文脈で開くと上に渡された単語帳（名前・語の数・最初の 5 語・焦点が中へ）・キーボードだけで新しい単語帳として足す（どれも これから・同じ英語 2 つ）・同じ単語帳にもう一度足すと同じ組は断る（空の単語帳を作らない）・上限 100 語で一部だけ（上限の文・受付中の Web だけ加入画面へのリンク・アプリはリンクなし）・足した後とやめた後は # を外す（読み直しても聞かない）・読めないリンクは 1 行だけ・# だけ替えたリンク・ログインした人の領域・要求の URL と本文に code が入らない（ご意見のページ名・動線の計測）・320／390／1200 × 昼夜で横スクロール 0 と 150 字の行の折り返し・動きを減らす設定・エラー 0 =====
