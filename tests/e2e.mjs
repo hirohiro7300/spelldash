@@ -21511,6 +21511,41 @@ console.log("home and old URLs (78.6):");
     await closeCtx(touch);
   }
 
+  // (1c) Batch 91（walk F3）: 初めての人の画面（#welcome）に、マイ単語帳への入口の 1 行（p.welcome__my。創業者の決定「ホームに 2 つ目のボタン」を初めての人の画面でも満たす）。
+  //      1200 と 390（指）でリンクが見え、字と行き先はちょうど・押すと /mywords.html・指の端末で高さ 44px 以上・横スクロール 0・#welcome の中で「単語帳」を含むのはこの行だけ
+  {
+    const MY_LINK = "自分の語句を覚えるなら マイ単語帳";
+    const rows = [];
+    for (const [vw, vh, mobile] of [[1200, 900, false], [390, 844, true]]) {
+      const page = await homePage({}, { fresh: true, mobile, viewport: { width: vw, height: vh } });
+      await page.goto(BASE + "/", { waitUntil: "networkidle" });
+      const l = await page.evaluate(() => {
+        const a = document.querySelector("#welcome p.welcome__my a");
+        const r = a?.getBoundingClientRect();
+        const leaves = [...document.querySelectorAll("#welcome *")].filter((el) => el.children.length === 0 && el.textContent.includes("単語帳"));
+        return {
+          open: document.body.classList.contains("welcome-open"),
+          text: a?.textContent.trim() ?? null, href: a?.getAttribute("href") ?? null,
+          w: r ? Math.round(r.width) : 0, h: r ? Math.round(r.height) : 0,
+          vis: !!a && getComputedStyle(a).visibility !== "hidden" && getComputedStyle(a).display !== "none",
+          only: leaves.length > 0 && leaves.every((el) => !!el.closest("p.welcome__my")),
+          hx: document.documentElement.scrollWidth - document.documentElement.clientWidth
+        };
+      });
+      if (l.text) {
+        if (mobile) await page.tap("#welcome p.welcome__my a");
+        else await page.click("#welcome p.welcome__my a");
+        await page.waitForURL(/\/mywords\.html/, { timeout: 8000 }).catch(() => {});
+      }
+      rows.push({ vw, ...l, url: new URL(page.url()).pathname, err: page.errors[0] ?? "" });
+      await closeCtx(page);
+    }
+    check(`78.6 初めての人（Batch 91）: #welcome にマイ単語帳への 1 行（字は「${MY_LINK}」ちょうど・href ./mywords.html）が 1200 と 390（指）で見え、押すと /mywords.html・エラー 0`,
+      rows.length === 2 && rows.every((l) => l.open && l.text === MY_LINK && l.href === "./mywords.html" && l.vis && l.w > 0 && l.h > 0 && l.url === "/mywords.html" && !l.err), JSON.stringify(rows));
+    check("78.6 初めての人（Batch 91）: 390（指）でマイ単語帳のリンクの高さ 44px 以上・1200 と 390 で横スクロール 0・#welcome の中で「単語帳」を含むのはその 1 行（p.welcome__my）だけ",
+      (rows.find((l) => l.vw === 390)?.h ?? 0) >= 44 && rows.every((l) => l.hx <= 0 && l.only), JSON.stringify(rows.map(({ vw, h, hx, only }) => ({ vw, h, hx, only }))));
+  }
+
   // (2) 戻ってきた人: ホームは「英単語を学ぶ」1 つと 覚えた N ／総数・ランク・学習状況へ。あやふやの今日の分があれば あやふや（何も選んでいないときの Enter で始まる）
   {
     const learned = vocab.order.slice(0, 130); // 覚えた 130 語（よちよち 120 の上）
