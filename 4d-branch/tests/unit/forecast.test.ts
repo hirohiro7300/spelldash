@@ -298,6 +298,13 @@ describe("同梱の未来の道筋", () => {
     }
   });
 
+  it("どの道も、今日から 10 年後の行き先まで 200〜300 歩続く", () => {
+    const { stats } = buildFuture(TODAY);
+    expect(stats.shortest).toBeGreaterThanOrEqual(200);
+    expect(stats.longest).toBeLessThanOrEqual(300);
+    expect(stats.forks).toBeGreaterThanOrEqual(100);
+  });
+
   it("ノードが重ならず、線はどれも左から右へ進む", () => {
     const doc = buildFuture(TODAY).pv.doc;
     const nodes = Object.values(doc.nodes).sort((a, b) => a.x - b.x);
