@@ -73,11 +73,11 @@ export function renderCalendar(containerId, { myList = null } = {}) {
   if (!el) return;
   const { days, weeks } = computeCalendarDays(WEEKS, myList);
 
-  // 列＝週、行＝曜日（月〜日）。CSS grid で列方向に流す
+  // 列＝週、行＝曜日（月〜日）。CSS grid で列方向に流す。マイ単語帳の数と並ぶ日は、英単語の数も「英単語で 覚えた」（頭で分ける）
   const cells = days
     .map(
       (d) =>
-        `<i class="cal__day cal__day--${d.level}${d.isToday ? " cal__day--today" : ""}${d.isFuture ? " cal__day--future" : ""}" title="${d.date}${d.gained != null ? ` ・ 覚えた ${d.gained}語` : ""}${d.my > 0 ? ` ・ マイ単語帳で 覚えた ${d.my}語` : ""}"></i>`
+        `<i class="cal__day cal__day--${d.level}${d.isToday ? " cal__day--today" : ""}${d.isFuture ? " cal__day--future" : ""}" title="${d.date}${d.gained != null ? ` ・ ${d.my > 0 ? "英単語で " : ""}覚えた ${d.gained}語` : ""}${d.my > 0 ? ` ・ マイ単語帳で 覚えた ${d.my}語` : ""}"></i>`
     )
     .join("");
   const months = [];

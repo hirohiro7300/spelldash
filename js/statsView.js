@@ -614,9 +614,10 @@ function renderMonthlySummary(myList = getMyWords()) {
   }
   // マイ単語帳で 覚えた（Batch 91。docs/SPEC_MY_WORDS.md §17）: 今月の 1 日〜今日に初めて 覚えた になり、今も 覚えた の語（英単語の 覚えた には入れない）
   const myMonth = countMyGain(myList, learnDayOf(new Date(now.getFullYear(), now.getMonth(), 1, 12).getTime()), learnDayOf(now.getTime()));
-  // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない。項目は中で折れない箱（css/pages.css .monthly-line__item。狭い幅では項目の間で折れる）
+  // カードではなく 1 行。「学習した日」は常に出し、0 の項目は出さない。項目は中で折れない箱（css/pages.css .monthly-line__item。狭い幅では項目の間で折れる）。
+  // マイ単語帳の項目と並ぶときは、英単語の項目も「英単語で 覚えた」（週間レポートの数の並びと同じく頭で分ける）
   const parts = [`学習した日 <b>${activeDays}</b>日`];
-  if (learnedDelta > 0) parts.push(`覚えた <b>+${learnedDelta}</b>`);
+  if (learnedDelta > 0) parts.push(`${myMonth > 0 ? "英単語で " : ""}覚えた <b>+${learnedDelta}</b>`);
   if (myMonth > 0) parts.push(`マイ単語帳で 覚えた <b>+${myMonth}</b>`);
   if (sets > 0) parts.push(`セット <b>${sets}</b>回`);
   container.innerHTML = `<p class="monthly-line">${now.getMonth() + 1}月 ${parts.map((p) => `<span class="monthly-line__item">${p}</span>`).join(" ・ ")}</p>`;
