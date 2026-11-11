@@ -14,7 +14,7 @@ import {
   readProgress, recordAnswer, stateOf, countStates, dayOf, buildRound, newRound, roundAnswer, capsOf, capsOfCombo, spokenCaps, sigOfCaps, comboString,
   buildChoices, tokensOfCaps, notesOf
 } from "./shortcutsCore.js";
-import { capsHtml, keyboardSvg, paintKeys, keyboardLabel, scenePairHtml, tileHtml, missedRowHtml, resultHtml, nearHtml } from "./shortcutsArt.js";
+import { capsHtml, keyboardSvg, focusSvg, focusWindows, paintKeys, keyboardLabel, scenePairHtml, tileHtml, missedRowHtml, resultHtml, nearHtml } from "./shortcutsArt.js";
 
 initializeAuth();
 setFooterYear();
@@ -43,7 +43,7 @@ const S = {
   nextArmed: false,
   open: null
 };
-const kbEl = () => $("scKb").querySelector(".kb");
+const paintKb = (p) => { for (const svg of $("scKb").querySelectorAll("svg.kb")) paintKeys(svg, p); };
 const layoutOf = () => S.dev.layout ?? "ctrl";
 const itemsOf = (layout) => SHORTCUTS.filter((x) => x.keys?.[layout]);
 const env = () => ({ keyboard: S.keyboard, miss: S.dev.miss });
@@ -94,9 +94,8 @@ function paintDetail(id) {
   if (!tile || !x) return;
   const layout = layoutOf();
   const caps = capsOf(x, layout, 2)[0];
-  const svg = tile.querySelector(".sc-detail__kb .kb");
-  paintKeys(svg, { target: tokensOfCaps(caps, layout) });
-  svg?.setAttribute("aria-label", keyboardLabel(layout, caps));
+  for (const svg of tile.querySelectorAll(".sc-detail__kb svg.kb")) paintKeys(svg, { target: tokensOfCaps(caps, layout) });
+  tile.querySelector(".sc-detail__kb .kb")?.setAttribute("aria-label", keyboardLabel(layout, caps));
 }
 
 $("scMap").addEventListener("click", (e) => {
@@ -254,7 +253,7 @@ $("scPad").addEventListener("keydown", (e) => {
   if (!e.isTrusted) return;
   const now = performance.now();
   if (e.code) q.down.add(e.code);
-  paintKeys(kbEl(), { down: [...q.down] });
+  paintKb({ down: [...q.down] });
   if (isModifierEvent(e)) {
     if (shouldCancel(e)) e.preventDefault();
     S.watcher.keydown(e, now);
@@ -297,7 +296,7 @@ $("scPad").addEventListener("keyup", (e) => {
   S.watcher.keyup(e);
   if (isModifierEvent(e)) q.down.clear();
   else q.down.delete(e.code);
-  paintKeys(kbEl(), q.state === "done" ? { ...q.paint, down: [...q.down] } : { down: [...q.down] });
+  paintKb(q.state === "done" ? { ...q.paint, down: [...q.down] } : { down: [...q.down] });
 });
 
 function lost() {
@@ -308,7 +307,7 @@ function lost() {
     S.watcher.reset();
     return;
   }
-  paintKeys(kbEl(), {});
+  paintKb({});
   const r = S.watcher.lost(performance.now(), q.item, q.layout);
   if (!r) return;
   q.force = "choice";
@@ -430,10 +429,11 @@ function answer(result, how, { combo = null, code = "", picked = null, dunno = f
   $("scNotes").textContent = notes.join(" ");
   $("scNotes").hidden = notes.length === 0;
   q.paint = { target: tokensOfCaps(right, q.layout), wrong: result === "wrong" && combo ? tokensOfCaps(capsOfCombo(combo, q.layout), q.layout) : [] };
-  $("scKb").hidden = false;
-  const svg = kbEl();
-  paintKeys(svg, { ...q.paint, down: [...q.down] });
-  svg?.setAttribute("aria-label", keyboardLabel(q.layout, right));
+  const kb = $("scKb");
+  kb.hidden = false;
+  kb.innerHTML = keyboardSvg(q.layout, S.dev.arr, { frames: focusWindows(q.layout, S.dev.arr, q.paint.target) }) + focusSvg(q.layout, S.dev.arr, q.paint.target);
+  paintKb({ ...q.paint, down: [...q.down] });
+  kb.querySelector(".kb")?.setAttribute("aria-label", keyboardLabel(q.layout, right));
   playScene($("scScene").querySelector(".sc-cell--after"));
   renderMode(false);
   $("scPlay").dataset.state = "done";

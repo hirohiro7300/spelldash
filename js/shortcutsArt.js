@@ -41,7 +41,9 @@ export function tileHtml(x, layout, { state = 0, choice = false, open = false, a
 }
 export function detailHtml(x, layout, arr = "jis") {
   const notes = notesOf(x, layout).map((s) => `<p class="sc-detail__note">${esc(s)}</p>`).join("");
-  return `<div class="sc-detail__keys">${variantsHtml(capsOf(x, layout, 2))}</div>${scenePairHtml(x, layout, 2)}<div class="sc-detail__kb">${keyboardSvg(layout, arr)}</div>${notes}` +
+  const tk = capsTokens(capsOf(x, layout, 2)[0] ?? [], layout);
+  return `<div class="sc-detail__keys">${variantsHtml(capsOf(x, layout, 2))}</div>${scenePairHtml(x, layout, 2)}` +
+    `<div class="sc-detail__kb">${keyboardSvg(layout, arr, { frames: focusWindows(layout, arr, tk) })}${focusSvg(layout, arr, tk)}</div>${notes}` +
     `<button type="button" class="btn btn--sm btn--ghost sc-detail__replay">動きをもう一度見る</button>`;
 }
 export const missedRowHtml = (x, layout) => `<li class="sc-end__row"><span class="sc-end__keys">${capsHtml(capsOf(x, layout, 2)[0] ?? [])}</span><span class="sc-end__ja">${esc(x.short)}</span></li>`;
@@ -54,8 +56,11 @@ export function resultHtml({ head, right, pressed = null, picked = null, lines =
 }
 export const nearHtml = (pressed, right) => `${esc(textCaps(pressed))} を使うアプリもある。ここでは ${esc(textCaps(right))} で答える。`;
 
-// == キーボードの絵
+// == キーボードの絵（1 キー = 20 単位。仕様 §12）
 const U = 20;
+const FH = 0.72 * U;
+const BOARD_H = FH + 0.2 * U + 5 * U;
+const boardW = (layout) => (layout === "ctrl" ? 16.65 : 15) * U;
 // [札, code, 判定の字, 幅]
 function rowsOf(layout, arr) {
   const L = (s) => [...s].map((c) => [c.toUpperCase(), "Key" + c.toUpperCase(), c, 1]);
@@ -65,8 +70,8 @@ function rowsOf(layout, arr) {
   const gap = ["", "", "", 0.25];
   const fn = [["Esc", "Escape", "Escape", 1], gap, ...[1, 2, 3, 4].map((i) => ["F" + i, "F" + i, "F" + i, 1]), gap, ...[5, 6, 7, 8].map((i) => ["F" + i, "F" + i, "F" + i, 1]), gap,
     ...[9, 10, 11, 12].map((i) => ["F" + i, "F" + i, "F" + i, 1])];
-  if (!cmd) fn.push(["PrtScn", "PrintScreen", "PrintScreen", 1.25]);
-  const bs = cmd ? ["delete", "Backspace", "Backspace"] : ["Backspace", "Backspace", "Backspace"];
+  if (!cmd) fn.push(["PrtSc", "PrintScreen", "PrintScreen", 1.25]);
+  const bs = cmd ? ["delete", "Backspace", "Backspace"] : [jis ? "BS" : "Backspace", "Backspace", "Backspace"];
   const r1 = jis
     ? [...(cmd ? [] : [["半/全", "Backquote", "`", 1]]), ...D("1234567890"), ["-", "Minus", "minus", 1], ["^", "Equal", "^", 1], ["¥", "IntlYen", "¥", 1], [...bs, cmd ? 2 : 1]]
     : [["`", "Backquote", "`", 1], ...D("1234567890"), ["-", "Minus", "minus", 1], ["= +", "Equal", "plus", 1], [...bs, 2]];
@@ -85,7 +90,7 @@ function rowsOf(layout, arr) {
   let r5;
   if (!cmd) {
     r5 = jis
-      ? [["Ctrl", "ControlLeft", "ctrl", 1.25], ["⊞", "MetaLeft", "meta", 1.25], ["Alt", "AltLeft", "alt", 1.25], ["無変換", "NonConvert", "NonConvert", 1], ["Space", "Space", "Space", 3.5],
+      ? [["Ctrl", "ControlLeft", "ctrl", 1.25], ["⊞", "MetaLeft", "meta", 1.25], ["Alt", "AltLeft", "alt", 1.25], ["無変換", "NonConvert", "NonConvert", 1.25], ["Space", "Space", "Space", 3.25],
         ["変換", "Convert", "Convert", 1], ["かな", "KanaMode", "KanaMode", 1], ["Ctrl", "ControlRight", "ctrl", 1.25]]
       : [["Ctrl", "ControlLeft", "ctrl", 1.25], ["⊞", "MetaLeft", "meta", 1.25], ["Alt", "AltLeft", "alt", 1.25], ["Space", "Space", "Space", 5.25], ["Alt", "AltRight", "alt", 1.25], ["Ctrl", "ControlRight", "ctrl", 1.25]];
   } else {
@@ -98,66 +103,137 @@ function rowsOf(layout, arr) {
   return { fn, rows: [r1, r2, r3, r4, r5] };
 }
 
-export function keyboardSvg(layout, arr = "jis") {
+// キーの一覧（全体の絵と寄せた絵が使う）
+export function boardKeys(layout, arr = "jis") {
   const { fn, rows } = rowsOf(layout, arr);
-  const side = layout === "ctrl";
-  const W = (side ? 16.4 : 15) * U;
-  const fh = 0.72 * U;
-  const H = fh + 0.2 * U + 5 * U;
-  const parts = [];
-  const key = (x, y, w, h, [label, code, t]) => {
-    const cx = x + (w * U) / 2;
-    const cy = y + h / 2;
-    const d = SYM[label];
-    let face = "";
-    if (d) {
-      const s = Math.min(h * 0.5, 9);
-      face = `<path class="kb-sym" d="${esc(d)}" transform="translate(${(cx - s / 2).toFixed(1)} ${(cy - s / 2).toFixed(1)}) scale(${(s / 10).toFixed(2)})"/>`;
-    } else if (label) {
-      const fs = label.length > 4 ? 5.6 : label.length > 2 ? 6.4 : label.length === 1 ? 8.6 : 7.4;
-      face = `<text x="${cx.toFixed(1)}" y="${(cy + fs * 0.35).toFixed(1)}" font-size="${fs}">${esc(label)}</text>`;
-    }
-    parts.push(`<g class="kb-k" data-code="${esc(code)}" data-t="${esc(t)}"><rect x="${(x + 1).toFixed(1)}" y="${(y + 1).toFixed(1)}" width="${(w * U - 2).toFixed(1)}" height="${(h - 2).toFixed(1)}" rx="2.6"/>${face}</g>`);
-  };
+  const out = [];
+  const add = (x, y, w, h, [label, code, t]) => out.push({ x, y, w: w * U, h, label, code, t });
   let x = 0;
   for (const k of fn) {
-    if (k[1]) key(x, 0, k[3], fh, k);
+    if (k[1]) add(x, 0, k[3], FH, k);
     x += k[3] * U;
   }
   rows.forEach((row, i) => {
     let xx = 0;
-    const y = fh + 0.2 * U + i * U;
+    const y = FH + 0.2 * U + i * U;
     for (const k of row) {
-      key(xx, y, k[3], U, k);
+      add(xx, y, k[3], U, k);
       xx += k[3] * U;
     }
     if (i === 4) {
       const ax = 12 * U;
-      key(ax + U, y, 1, U / 2, ["↑", "ArrowUp", "ArrowUp"]);
-      key(ax, y + U / 2, 1, U / 2, ["←", "ArrowLeft", "ArrowLeft"]);
-      key(ax + U, y + U / 2, 1, U / 2, ["↓", "ArrowDown", "ArrowDown"]);
-      key(ax + 2 * U, y + U / 2, 1, U / 2, ["→", "ArrowRight", "ArrowRight"]);
+      add(ax + U, y, 1, U / 2, ["↑", "ArrowUp", "ArrowUp"]);
+      add(ax, y + U / 2, 1, U / 2, ["←", "ArrowLeft", "ArrowLeft"]);
+      add(ax + U, y + U / 2, 1, U / 2, ["↓", "ArrowDown", "ArrowDown"]);
+      add(ax + 2 * U, y + U / 2, 1, U / 2, ["→", "ArrowRight", "ArrowRight"]);
     }
   });
-  if (side) {
+  if (layout === "ctrl") {
     const sx = 15.4 * U;
-    key(sx, 0, 1, fh, ["Ins", "Insert", "Insert"]);
-    [["Del", "Delete"], ["Home", "Home"], ["End", "End"], ["PgUp", "PageUp"], ["PgDn", "PageDown"]].forEach(([l, c], i) => key(sx, fh + 0.2 * U + i * U, 1, U, [l, c, c]));
+    add(sx, 0, 1.25, FH, ["Ins", "Insert", "Insert"]);
+    [["Del", "Delete"], ["Home", "Home"], ["End", "End"], ["PgUp", "PageUp"], ["PgDn", "PageDown"]].forEach(([l, c], i) => add(sx, FH + 0.2 * U + i * U, 1.25, U, [l, c, c]));
   }
+  return out;
+}
+
+// 字の幅の見積もり（em）とキーに収める字の大きさ
+const emW = (s) => [...String(s)].reduce((a, ch) => a + (/[/il1.,;:'|!\[\]]/.test(ch) ? 0.32 : /[mwMW]/.test(ch) ? 0.88 : /[A-Z]/.test(ch) ? 0.68 : /[ -~]/.test(ch) ? 0.58 : 1), 0);
+const fitFont = (k, want) => Math.min(want, (k.w - 3) / emW(k.label), (k.h - 2) * 0.62);
+function keyHtml(k, font, sym) {
+  const cx = k.x + k.w / 2;
+  const cy = k.y + k.h / 2;
+  const d = SYM[k.label];
+  let face = "";
+  if (d) {
+    const s = sym(k);
+    face = `<path class="kb-sym" d="${esc(d)}" transform="translate(${(cx - s / 2).toFixed(1)} ${(cy - s / 2).toFixed(1)}) scale(${(s / 10).toFixed(3)})"/>`;
+  } else if (k.label) {
+    const fs = Math.floor(font(k) * 100) / 100;
+    face = `<text x="${cx.toFixed(1)}" y="${(cy + fs * 0.35).toFixed(1)}" font-size="${fs}">${esc(k.label)}</text>`;
+  }
+  return `<g class="kb-k" data-code="${esc(k.code)}" data-t="${esc(k.t)}"><rect x="${(k.x + 1).toFixed(1)}" y="${(k.y + 1).toFixed(1)}" width="${(k.w - 2).toFixed(1)}" height="${(k.h - 2).toFixed(1)}" rx="2.6"/>${face}</g>`;
+}
+const rectAt = (cls, x, y, w, h) => `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="3"/>`;
+
+// frames: 寄せた所の枠
+export function keyboardSvg(layout, arr = "jis", { frames = [] } = {}) {
+  const keys = boardKeys(layout, arr).map((k) => keyHtml(k, (q) => fitFont(q, [...q.label].length === 1 ? 8.6 : 7), (q) => Math.min(q.h * 0.75, 11))).join("");
+  const fr = frames.map((f) => rectAt("kb-win", f.x0, f.y0, f.x1 - f.x0, f.y1 - f.y0)).join("");
   const label = `${LAYOUT_LABEL[layout] ?? ""}の絵`;
-  return `<svg class="kb" viewBox="-2 -2 ${(W + 4).toFixed(0)} ${(H + 4).toFixed(0)}" role="img" aria-label="${esc(label)}" focusable="false">${parts.join("")}</svg>`;
+  return `<svg class="kb${fr ? " kb-over" : ""}" viewBox="-2 -2 ${(boardW(layout) + 4).toFixed(0)} ${(BOARD_H + 4).toFixed(0)}" role="img" aria-label="${esc(label)}" focusable="false">${keys}${fr}</svg>`;
 }
 
 const MODS = new Set(["ctrl", "alt", "shift", "meta"]);
+// 修飾は左のキーだけ
+const isHit = (list, t, code) => list.includes(t) && !(MODS.has(t) && /Right$/.test(code));
+
+// == 寄せた絵（仕様 §12）
+export const FOCUS_AVAIL = 262; // 320 の幅の絵の幅（px）
+const SEP = 0.8 * U;
+const S_MAX = 1.75;
+const union = (a, b) => ({ x0: Math.min(a.x0, b.x0), x1: Math.max(a.x1, b.x1), y0: Math.min(a.y0, b.y0), y1: Math.max(a.y1, b.y1) });
+// 窓: 近い押すキーをまとめて 2 か所まで。横に 1 キー（½・0）の余白、縦は 4 段まで
+export function focusWindows(layout, arr, tokens) {
+  const cl = [];
+  for (const k of boardKeys(layout, arr).filter((q) => isHit(tokens, q.t, q.code)).sort((a, b) => a.x - b.x)) {
+    const b = { x0: k.x, x1: k.x + k.w, y0: k.y, y1: k.y + k.h };
+    const i = cl.findIndex((c) => b.x0 - c.x1 <= 3 * U && Math.max(c.y1, b.y1) - Math.min(c.y0, b.y0) <= 4 * U + 1);
+    if (i < 0) cl.push(b);
+    else cl[i] = union(cl[i], b);
+  }
+  while (cl.length > 2) cl.push(union(cl.pop(), cl.pop()));
+  const BW = boardW(layout);
+  const plan = (m) => cl.map((c) => {
+    let x0 = Math.max(0, c.x0 - m);
+    let x1 = Math.min(BW, c.x1 + m);
+    if (x1 - x0 < 3 * U) {
+      x0 = Math.max(0, Math.min((x0 + x1) / 2 - 1.5 * U, BW - 3 * U));
+      x1 = x0 + 3 * U;
+    }
+    const pad = Math.max(0, Math.min(U, (4 * U - (c.y1 - c.y0)) / 2));
+    return { x0, x1, y0: Math.max(0, c.y0 - pad), y1: Math.min(BOARD_H, c.y1 + pad) };
+  });
+  for (const m of [U, U / 2]) {
+    const ws = plan(m);
+    if ((ws.reduce((a, w) => a + w.x1 - w.x0, 0) + SEP * (ws.length - 1)) * 1.7 <= FOCUS_AVAIL) return ws;
+  }
+  return plan(0);
+}
+// 窓は入れ子の svg で切る。札は 12px（1 字は 14px）÷ 倍率
+export function focusSvg(layout, arr, tokens) {
+  const wins = focusWindows(layout, arr, tokens);
+  if (!wins.length) return "";
+  const totalW = wins.reduce((a, w) => a + w.x1 - w.x0, 0) + SEP * (wins.length - 1);
+  const maxH = Math.max(...wins.map((w) => w.y1 - w.y0));
+  const s = Math.min(S_MAX, FOCUS_AVAIL / totalW);
+  const keys = boardKeys(layout, arr);
+  const font = (q) => fitFont(q, ([...q.label].length === 1 ? 14 : 12) / s);
+  const sym = (q) => Math.min(q.h * 0.85, 15 / s);
+  let ox = 0;
+  const parts = wins.map((w, i) => {
+    const ww = w.x1 - w.x0;
+    const wh = w.y1 - w.y0;
+    const at = `x="${ox.toFixed(1)}" y="${((maxH - wh) / 2).toFixed(1)}" width="${ww.toFixed(1)}" height="${wh.toFixed(1)}"`;
+    const body = keys.filter((k) => k.x < w.x1 && k.x + k.w > w.x0 && k.y < w.y1 && k.y + k.h > w.y0).map((k) => keyHtml(k, font, sym)).join("");
+    let out = `<svg ${at} viewBox="${w.x0.toFixed(1)} ${w.y0.toFixed(1)} ${ww.toFixed(1)} ${wh.toFixed(1)}">${body}</svg>${rectAt("kb-win", ox, (maxH - wh) / 2, ww, wh)}`;
+    ox += ww;
+    if (i < wins.length - 1) {
+      out += `<path class="kb-sep" d="M${(ox + SEP / 2).toFixed(1)} 4V${(maxH - 4).toFixed(1)}"/>`;
+      ox += SEP;
+    }
+    return out;
+  });
+  return `<svg class="kb kb-focus" viewBox="-1 -1 ${(totalW + 2).toFixed(1)} ${(maxH + 2).toFixed(1)}" width="${Math.round(totalW * S_MAX)}" aria-hidden="true" focusable="false">${parts.join("")}</svg>`;
+}
+
 export function paintKeys(svg, { target = [], down = [], wrong = [] } = {}) {
   if (!svg) return;
   for (const g of svg.querySelectorAll(".kb-k")) {
     const t = g.getAttribute("data-t");
     const code = g.getAttribute("data-code") || "";
-    const hit = (list) => list.includes(t) && !(MODS.has(t) && /Right$/.test(code));
-    const isTarget = hit(target);
+    const isTarget = isHit(target, t, code);
     g.classList.toggle("is-target", isTarget);
-    g.classList.toggle("is-wrong", !isTarget && hit(wrong));
+    g.classList.toggle("is-wrong", !isTarget && isHit(wrong, t, code));
     g.classList.toggle("is-down", down.includes(code));
   }
 }

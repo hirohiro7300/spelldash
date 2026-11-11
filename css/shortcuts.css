@@ -207,7 +207,8 @@ html[data-theme] .sc-detail {
 }
 
 html[data-theme] .sc-detail__kb {
-  max-width: 520px;
+  max-width: 560px;
+  container-type: inline-size;
 }
 
 html[data-theme] .sc-detail__note {
@@ -264,6 +265,41 @@ html[data-theme] .kc-or {
 
 html[data-theme] .sc-kb {
   min-width: 0;
+  container-type: inline-size;
+}
+
+/* 寄せた絵は箱が 551px 以下のときだけ（仕様 §12） */
+html[data-theme] .kb.kb-focus,
+html[data-theme] .kb-win,
+html[data-theme] .kb-sep {
+  display: none;
+}
+
+@container (max-width: 551px) {
+  html[data-theme] .kb.kb-focus {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    margin: 8px auto 0;
+  }
+
+  html[data-theme] .kb.kb-over {
+    max-width: 72%;
+    margin: 0 auto;
+  }
+
+  html[data-theme] .kb-win,
+  html[data-theme] .kb-sep {
+    display: inline;
+    fill: none;
+    stroke: var(--ink-2);
+    stroke-width: 1.4;
+  }
+
+  html[data-theme] .kb-sep {
+    stroke: var(--ink-3);
+    stroke-dasharray: 2 3;
+  }
 }
 
 html[data-theme] .kb {
