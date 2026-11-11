@@ -280,7 +280,7 @@ describe("同梱の未来の道筋", () => {
     const positional = /(?<![以売向最頂地途格つ段])(上|下)(の|に|と)(?!限)|すぐ(上|下)|いちばん(上|下)/;
     expect(data.links.filter((l) => positional.test(l[2])).map((l) => `${l[0]} → ${l[1]}: ${l[2]}`)).toEqual([]);
     const tag = /（([^（）]+?)の線）/g;
-    const ref = /の線に(?:も)?(?:届か|当たら|当たる)/g;
+    const ref = /の線に(?:も)?(?:届か|当たら|当たる)|の線にも/g;
     const byFork = new Map<string, FutureData["links"]>();
     for (const l of data.links) byFork.set(l[0], [...(byFork.get(l[0]) ?? []), l]);
     const unnamed: string[] = [];
