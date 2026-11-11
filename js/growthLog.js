@@ -11,11 +11,13 @@ import { dayNoOf, ymdOfDayNo } from "./retentionCalc.js";
 // ログイン中は 1 日分を user_items の day 項目として端末間で合わせる（js/userItemsSync.js。変わった日だけ touchItem）。
 //
 // 覚えた の増え（Batch 90。docs/SPEC_LEARN_STATE.md §12）: 行に端末だけの欄を足した。送らない（日の行の中身は learned・mastered・active・set・sets のまま）。
-//   core   その日の終わり（その日の最後に書いたとき）の 覚えた。学習状況の最初の画面と同じ数（3 状態。公開の語だけ: js/learnState.js countLearnStates）。
+//   core   その日の終わりの 覚えた。学習状況の最初の画面と同じ数（3 状態。公開の語だけ: js/learnState.js countLearnStates）。その日の最後に書いた値を、
+//          次の日以後の最初の書き込みで直す（回の途中で閉じた日の後の分。noteFirstLearned）。
 //          数・null（見たが分からない日: ほかの端末から来た語を持つ端末の、この端末の始まりより前の日。もう見ない）・無い（まだ見ていない）
-//   core0  この端末で数え始めた最初の行だけ。その日の始まりの 覚えた（前の日の終わり）。一度入れたら替えない
-//   cb     core を測ったときの 前からの 覚えた（tallyCore の base）。書いた後は替えない。読み手が「今の base − 行の cb」を正でも負でも足して読む
-//   nf     書いたときの「その日に初めて覚えた語の数」（印 lsf がその日で、今 覚えた）。回の途中で閉じた日の後の分を、次の書き込みでその日に戻す
+//   core0  この端末で数え始めた最初の行だけ。その日の始まりの 覚えた（前の日の終わり）。同じ日の書き直しでも残す（その日の最初に測った値）。
+//          core と同じく行の cb の物差しで持つので、同じ日の書き直しで cb が替わったら（同じ日の埋め・移行）同じ差だけ動かす
+//   cb     core を測ったときの 前からの 覚えた（tallyCore の base）。前の日の行の cb は替えない。読み手が「今の base − 行の cb」を正でも負でも足して読む
+//   nf     その日に初めて覚えた語の数（印 lsf がその日で、今 覚えた）。書き込みのたびに今日の行に書き、次の日以後の最初の書き込みでその行を直したら消す
 // 週間レポート・今月の行・推移・カレンダーは core を読む（getCore*）。learned・mastered は前の数え方のまま書き続ける（古いタブとほかの端末の古い版が読む）。
 // 前の読み手（getLearnedDelta7・getMonthLearnedDelta・getLearnedSeries）は旗を外したときのホームのカードと単体のために残す
 
@@ -62,7 +64,8 @@ export function recordGrowthSnapshot({ learned, mastered, active = false, legacy
   if (t) {
     row.core = t.learned;
     row.cb = t.base;
-    if (Number.isInteger(prev?.core0)) row.core0 = prev.core0;
+    // core0 は残し、新しい cb の物差しへ動かす（読み手が足す差と同じ。動かさないと、数え始めた日の埋めがその日の増えに入る）
+    if (Number.isInteger(prev?.core0)) row.core0 = prev.core0 + (Number.isInteger(prev?.cb) ? t.base - prev.cb : 0);
   } else {
     for (const key of ["core", "core0", "cb", "nf"]) if (Number.isInteger(prev?.[key])) row[key] = prev[key];
   }
@@ -71,7 +74,7 @@ export function recordGrowthSnapshot({ learned, mastered, active = false, legacy
   list.sort((a, b) => (a.date < b.date ? -1 : 1));
   if (t) {
     fillCoreRows(list, today, t.learned, src, table);
-    noteFirstLearned(list, today, row, src, table);
+    noteFirstLearned(list, today, row, src, table, t.base);
     for (const e of list) if (Number.isInteger(e?.core) && !Number.isInteger(e.cb)) e.cb = t.base; // 数え直した行も今の値で測った扱い
   }
   save(list);
@@ -155,29 +158,51 @@ function fillCoreRows(list, today, coreNow, src, table) {
   }
 }
 
-// 回の途中で閉じた日（あやふや の回の区切り・アプリを閉じた: 回の終わりの書き手が走らない）の後に覚えた語を、次の書き込みでその日に戻す。
-// 今日の nf = lsf が今日で今 覚えた の語。前の行（今日より前で core のある最後の行）に nf があり、その日の lsf の 覚えた の語がそれより多ければ、
-// 差だけ前の行の core を上げ、nf をその数にする（下げない。core0・cb は替えない）。lsf の日で数えるので、覚え直し（lsf 0）は前の日へ持ち込まない
-function noteFirstLearned(list, today, row, src, table) {
+// 回の途中で閉じた日（あやふや の回の区切り・アプリを閉じた: 回の終わりの書き手が走らない）の、最後の書き込みの後の分を、次の日以後の最初の書き込みで
+// その日に戻す。今日の nf = lsf が今日で今 覚えた の語。直すのは前の行（今日より前で core のある最後の行）に nf があるとき（その日に書き手が書いて、
+// まだ直していない行。R2 で数え直した行は lsf の日で数えてあるので触らない）。core0・cb は替えない。語ごとの最後の答えの時刻 lsAt で分ける:
+//   - その日より後に中心の学習の答えが無い: 今の状態がその日の終わりの状態。前の行の core = 今の 覚えた −（今の 前からの 覚えた − 行の cb）。
+//     書き手の後の新しい語・外れた語・覚え直した語が、どれもその日に入る（上げも下げもする）
+//   - その日より後に答えがある: lsf がその日の 覚えた の語が nf より多ければ、差だけ上げる（lsf の日で数えるので、前からの語の後の日の覚え直しを
+//     前の日へ持ち込まない）。ただし上限を超えない（超えた分は下げる）: その日より後に答えていない語は今の状態がその日の終わりの状態、
+//     その日より後に答えた語のうち その日までに覚えた語（lsf が 0 かその日以前）は 覚えた だった扱い。書き手の後に外れた語を、新しい語の分で隠さない
+// 直したら前の行の nf を消す（直すのは 1 回だけ。その後の答えはもうその日の分でないので、後の日の覚え直しをその日へ足さない）
+function noteFirstLearned(list, today, row, src, table, base) {
   const tdn = dayNoOf(today);
   let last = null;
   for (const e of list) if (e && e.date < today && Number.isInteger(e.core)) last = e;
   const ldn = last ? dayNoOf(last.date) : null;
+  const after = last && Number.isInteger(last.nf) && Number.isInteger(ldn) ? nextDayStart(last.date) : null;
   let nToday = 0;
   let nLast = 0;
+  let kept = 0; // 今 覚えた で、その日より後に答えていない語
+  let open = 0; // その日より後に答えた語のうち、その日までに覚えた語
+  let late = false; // その日より後に答えた語がある
   for (const id of src.vocab.order) {
     const s = table?.[id];
+    const st = learnStateOf(s, src.pending?.get(id));
     const f = s?.lsf;
-    if (!Number.isInteger(f) || f <= 0 || (f !== tdn && f !== ldn)) continue;
-    if (learnStateOf(s, src.pending?.get(id)) !== LEARN_LEARNED) continue;
-    if (f === tdn) nToday++;
-    else nLast++;
+    if (st === LEARN_LEARNED && Number.isInteger(f) && f > 0) {
+      if (f === tdn) nToday++;
+      else if (f === ldn) nLast++;
+    }
+    if (after === null) continue;
+    if (Number.isFinite(s?.lsAt) && s.lsAt >= after) {
+      late = true;
+      if (Number.isInteger(f) && f >= 0 && f <= ldn) open++;
+    } else if (st === LEARN_LEARNED) kept++;
   }
   row.nf = nToday;
-  if (last && Number.isInteger(last.nf) && nLast > last.nf) {
-    last.core += nLast - last.nf;
-    last.nf = nLast;
-  }
+  if (after === null) return;
+  const bound = kept + open - (base - (Number.isInteger(last.cb) ? last.cb : base));
+  last.core = late ? Math.min(last.core + Math.max(0, nLast - last.nf), bound) : bound;
+  delete last.nf;
+}
+
+// ローカルの日 ymd の次の日の 0 時（この端末の時刻帯。ms）。読めなければ null
+function nextDayStart(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof ymd === "string" ? ymd : "");
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1).getTime() : null;
 }
 
 export function markActiveToday() {
