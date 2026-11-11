@@ -12,6 +12,11 @@ html[data-theme] .sc-map__group {
   min-width: 0;
 }
 
+/* 埋まるまで場所を取る（仕様 §2.1） */
+html[data-theme] .sc-map:empty {
+  min-height: 100vh;
+}
+
 html[data-theme] .sc__lead,
 html[data-theme] .sc-foot {
   margin: 0;
