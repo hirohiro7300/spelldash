@@ -1162,6 +1162,99 @@ eq("同じ id の 2 つ目と形の違う要素は読まない", C.parseBooks(JS
       cloudLf2 === dayNo(2) && bBefore === dayNo(4) && bAfter === dayNo(2) && sent11?.payload?.lf === dayNo(2) && cloudAfter === dayNo(2) && r11b.toUpload.filter((r) => r.kind === "my_word").length === 0 && cLf === dayNo(2) && cGain === 0 && bGain === 0,
       JSON.stringify({ d2: dayNo(2), d4: dayNo(4), cloudLf2, bBefore, bAfter, sent: sent11?.payload?.lf ?? null, cloudAfter, resend: r11b.toUpload.map((r) => r.key), cLf, cGain, bGain }));
 
+    // ---- T10c（反証の形。本物の pullUserItems・buildDirtyRows と偽の送り先）: 勝った雲の行に端末の早い lf を残して送り返す行は、その雲の行の時刻 + 1 ms で送る。
+    //      今の時刻で送ると、雲の行より後にほかの端末がした、まだ送っていない変更（訳の直し・消す・答え）が、その端末の次の取り込みで負けて消える。
+    //      A が 2 日目に覚えて送る → 取り込んでいない B が外して送る（行に lf が無い）→ つながらない C が変える → A が取り込む（B の行が勝ち、lf を残して送り返す）
+    //      → C がつながって取り込み、送る → A・B が取り込む。C の変更が 3 台と雲に残る。訳を直した語の lf は 2 日目のまま ----
+    {
+      const sky = new Map();
+      const put = (r) => sky.set(`${r.kind}:${r.key}`, JSON.parse(JSON.stringify(r))); // 送り方は比べない上書き（upsertRows）
+      const client = {
+        from() {
+          const q = {
+            select: () => q,
+            order: () => q,
+            range: (a, b) => {
+              const all = [...sky.values()].map((r) => JSON.parse(JSON.stringify(r)));
+              return Promise.resolve({ data: all.slice(a, b + 1), count: all.length, error: null, status: 200 });
+            },
+            upsert: (rows) => {
+              rows.forEach(put);
+              return Promise.resolve({ error: null, status: 201 });
+            }
+          };
+          return q;
+        }
+      };
+      const pullOn = (name) => {
+        use(name);
+        return U.pullUserItems(client, "u1", { now: NOW });
+      };
+      const pushOn = (name) => {
+        use(name);
+        U.buildDirtyRows("u1").forEach(put);
+        U.clearDirtyItems();
+      };
+      const KEY = "deal word";
+      const MIN = 60000;
+      const runCase = async (tag, change) => {
+        sky.clear();
+        const [A, B, C] = ["A", "B", "C"].map((n) => `${n}12${tag}`);
+        at(1, 9);
+        use(A);
+        M.addMyWord(KEY, "試しの訳 取引");
+        pushOn(A);
+        NOW += MIN;
+        await pullOn(B);
+        await pullOn(C);
+        at(2, 9);
+        use(A);
+        M.recordMyAnswer(KEY, ANSWER_KINDS.exact); // A: 2 日目に初めて覚えた（lf は 2 日目）
+        pushOn(A);
+        NOW += 10 * MIN; // 9:10: B（取り込んでいないタブ）が外して送る（行に lf が無い）
+        use(B);
+        M.recordMyAnswer(KEY, ANSWER_KINDS.miss);
+        pushOn(B);
+        const bAt = sky.get(`my_word:${KEY}`)?.updated_at;
+        NOW += 10 * MIN; // 9:20: C はつながらないまま変える（まだ送らない）
+        use(C);
+        change();
+        const cAt = NOW;
+        NOW += 10 * MIN; // 9:30: A が取り込む（B の行が勝つ・A の lf を残して送り返す）
+        await pullOn(A);
+        const back = sky.get(`my_word:${KEY}`);
+        NOW += 10 * MIN; // 9:40: C がつながって取り込み、送る
+        await pullOn(C);
+        pushOn(C);
+        NOW += 10 * MIN; // 9:50: A・B が取り込む
+        await pullOn(A);
+        await pullOn(B);
+        const words = {};
+        for (const n of [A, B, C]) {
+          use(n);
+          words[n.slice(0, 1)] = wordOf(KEY) ?? null;
+        }
+        return { bAt, cAt, back: { at: back?.updated_at ?? null, lf: back?.payload?.lf ?? null }, row: sky.get(`my_word:${KEY}`) ?? null, words };
+      };
+      const plusOne = (iso) => new RealDate(RealDate.parse(iso) + 1).toISOString();
+      const ja = await runCase("j", () => M.setMyWordJa(KEY, "試しの訳 取引・契約"));
+      ok("T10c 送り返す行（A が lf を残した B の行）の時刻は、勝った雲の行の時刻 + 1 ms（今の時刻でない）・lf は 2 日目",
+        ja.back.at === plusOne(ja.bAt) && ja.back.lf === dayNo(2), JSON.stringify({ bAt: ja.bAt, back: ja.back, want: plusOne(ja.bAt) }));
+      const jaOf = (w) => w?.ja ?? null;
+      ok("T10c まだ送っていない C の訳の直しは、A の送り返しに負けない: 雲と 3 台の訳は直した訳・lf は 2 日目のまま",
+        ja.row?.payload?.ja === "試しの訳 取引・契約" && ja.row?.payload?.lf === dayNo(2) && ["A", "B", "C"].every((n) => jaOf(ja.words[n]) === "試しの訳 取引・契約" && ja.words[n]?.lf === dayNo(2)),
+        JSON.stringify({ row: ja.row?.payload ?? null, ja: Object.fromEntries(Object.entries(ja.words).map(([n, w]) => [n, [jaOf(w), w?.lf ?? null]])) }));
+      const del = await runCase("d", () => M.removeMyWord(KEY, "word"));
+      ok("T10c まだ送っていない C の消す（墓標）は、A の送り返しに負けない: 雲は消した印・3 台とも語が無い（戻ってこない）",
+        del.row?.deleted === true && ["A", "B", "C"].every((n) => del.words[n] === null),
+        JSON.stringify({ deleted: del.row?.deleted ?? null, at: del.row?.updated_at ?? null, words: Object.fromEntries(Object.entries(del.words).map(([n, w]) => [n, w ? jaOf(w) : null])) }));
+      const ans = await runCase("a", () => M.recordMyAnswer(KEY, ANSWER_KINDS.exact));
+      const lsOf = (w) => (w ? [w.ls ?? null, w.lsAt ?? null] : null);
+      ok("T10c まだ送っていない C の答え（9:20 の正解で 覚えた）は、A の送り返しに負けない: 雲と 3 台の 3 状態は C の答え",
+        JSON.stringify(lsOf(ans.row?.payload)) === JSON.stringify([2, ans.cAt]) && ["A", "B", "C"].every((n) => JSON.stringify(lsOf(ans.words[n])) === JSON.stringify([2, ans.cAt])),
+        JSON.stringify({ want: [2, ans.cAt], row: lsOf(ans.row?.payload), words: Object.fromEntries(Object.entries(ans.words).map(([n, w]) => [n, lsOf(w)])) }));
+    }
+
     // ---- T11: myGainByDay の窓の日の和 = countMyGain・myStudiedSince は窓の始めより前の答えだけなら偽 ----
     const days11 = [0, 1, 2, 2, 5, 6, 8, 9].map((k) => dayNo(1) + k);
     const list11 = days11.map((d, i) => ({ en: `w${i}`, ja: `訳 ${i}`, ls: i === 3 ? 1 : 2, lf: d, lsAt: D0 + (d - dayNo(1)) * DAY }));
