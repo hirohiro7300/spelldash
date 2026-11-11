@@ -126,6 +126,21 @@ t("1 表（判定役の直し）: 「次を検索」に F3 は無い・「探す
   return (fn && !(fn.accept ?? []).includes("F3") && (f?.accept ?? []).includes("F3") && item("pc.close-window").ja === "いまのウィンドウを閉じる"
     && !ITEMS.some((x) => /名前を付けて保存/.test(x.ja)) && show([...(rl?.src ?? [])].sort()) === show(["os-cmd", "web-e"])) || { fn: fn?.accept, f: f?.accept, cw: item("pc.close-window").ja, rl: rl?.src };
 });
+t("1 表（レビューの小さな直し）: 出典は組を載せた頁だけ（⌘ のダウンロードは web-g と web-e・⌘ の Esc は web-e・⌘ の開く／新しいウィンドウに doc は無い）・拡大と縮小の後の絵は 1 回押した値（110%・90%）・n 番目のタブは左端から跳ぶ（2〜8 のどれでも前と後が違う）・⌘ の絵文字に Fn + E・⌘ の検索に入力の切り替えの注・「もう一度で戻す」は Ctrl の注だけ", () => {
+  const src = (id, l) => [...(keysOf(item(id), l)?.src ?? [])].sort();
+  const tab = item("br.tab-n").scene?.a?.on;
+  const emoji = keysOf(item("pc.emoji"), "cmd");
+  const r = {
+    dl: show(src("br.downloads", "cmd")) === show(["web-e", "web-g"]), esc: show(src("pc.cancel", "cmd")) === show(["web-e"]),
+    open: !src("pc.open", "cmd").includes("doc") && src("pc.open", "cmd").length > 0, nw: !src("pc.new", "cmd").includes("doc") && src("pc.new", "cmd").length > 0,
+    zoom: item("br.zoom-in").scene?.b?.pct === "110%" && item("br.zoom-out").scene?.b?.pct === "90%",
+    tab: Number.isInteger(tab) && ![1, 2, 3, 4, 5, 6, 7].includes(tab),
+    emoji: (emoji?.alt ?? []).some((caps) => show(caps) === show(["Fn", "E"])) && /Fn \+ E/.test(emoji?.note ?? ""),
+    search: /⌘ \+ Space/.test(keysOf(item("pc.search"), "cmd")?.note ?? ""),
+    desk: !/もう一度/.test(item("pc.show-desktop").ja) && /もう一度/.test(keysOf(item("pc.show-desktop"), "ctrl")?.note ?? "") && !/もう一度/.test(keysOf(item("pc.show-desktop"), "cmd")?.note ?? "")
+  };
+  return Object.values(r).every(Boolean) || r;
+});
 
 // ===== 2. 答え方 =====
 const ENV_KB = { keyboard: true, miss: { ctrl: [], cmd: [] } };
@@ -279,6 +294,12 @@ t("3 判定: アドレスバーは Ctrl+L と Alt+D が正解・F6 と F4 は近
     judgeOf("br.back", "cmd", ev({ key: "ArrowLeft", code: "ArrowLeft", metaKey: true }))];
   return show(r) === show(["ok", "ok", "near", "near", "near"]) || r;
 });
+t("3 判定（レビュー）: ⌘ の進むの ⌘→ は、戻るの ⌘← と同じ近い組（公式の頁にある・一部のブラウザだけ。数えない）で、注は「⌘ + → を使うブラウザもある。」", () => {
+  const a = judgeOf("br.forward", "cmd", ev({ key: "ArrowRight", code: "ArrowRight", metaKey: true }));
+  const b = judgeOf("br.back", "cmd", ev({ key: "ArrowLeft", code: "ArrowLeft", metaKey: true }));
+  const note = keysOf(item("br.forward"), "cmd")?.note;
+  return (a === "near" && b === "near" && note === "⌘ + → を使うブラウザもある。") || { a, b, note };
+});
 t("3 判定: ⌘ のキーボードの delete は key Backspace（⌥+delete で前の 1 語を消す）・n 番目のタブは問いの数だけ正解・Enter は答えにしない", () => {
   const a = judgeOf("pc.delete-word", "cmd", ev({ key: "Backspace", code: "Backspace", altKey: true }));
   const b = judgeOf("br.tab-n", "ctrl", ev({ key: "3", code: "Digit3", ctrlKey: true }), 3);
@@ -313,6 +334,43 @@ t("3 判定（反証 5）: Ctrl の「1 語ずつ動かす」で Alt+← は「�
   const b = C.afterWrong(item("br.back"), "cmd", read(ev({ key: "ArrowLeft", code: "ArrowLeft", altKey: true }), "cmd"), 3, ITEMS);
   const c = C.afterWrong(item("pc.copy"), "ctrl", read(ev({ key: "c", code: "KeyC", metaKey: true }), "ctrl"), 3, ITEMS);
   return (a?.own?.id === "br.back" && !a.suggest && a.own.short === "前のページに戻る" && b?.own?.id === "pc.word-left-right" && !b.suggest && c?.suggest === "cmd" && !c.own) || { a: a?.own?.id ?? a, b: b?.own?.id ?? b, c };
+});
+// 選ぶ項目（accept の無い ⊞ の組など）の見せる組と、別の組の札（alt）も「ほかの項目の正解」（仕様 §7）。押した組の札の並びで照らす
+const shownBy = (l) => {
+  const m = new Map();
+  for (const y of ITEMS) {
+    const k = keysOf(y, l);
+    if (!k) continue;
+    for (const caps of [...(k.show ?? []), ...(k.alt ?? [])]) if (!caps.includes("1〜8")) m.set(C.sigOfCaps(caps, l), [...(m.get(C.sigOfCaps(caps, l)) ?? []), y.id]);
+  }
+  return m;
+};
+t("3 判定（レビュー）: Ctrl のキーボードで ⊞ の組（選ぶ項目の正解）を押したら、その項目の組（own）で、切り替えは聞かない: 貼り付けで ⊞+V・保存で ⊞+S・アドレスバーで ⊞+L・ブックマークで ⊞+D", () => {
+  const cases = [["pc.paste", "v", "pc.clipboard-history"], ["pc.save", "s", "pc.search"], ["br.address", "l", "pc.lock"], ["br.bookmark", "d", "pc.show-desktop"]];
+  const got = cases.map(([id, k]) => C.afterWrong(item(id), "ctrl", read(ev({ key: k, code: "Key" + k.toUpperCase(), metaKey: true }), "ctrl"), 3, ITEMS));
+  return got.every((r, i) => r?.own?.id === cases[i][2] && !r.suggest) || got.map((r) => r?.own?.id ?? r);
+});
+t("3 判定（レビュー）: 表の全部を回し、切り替えを聞く押し方は、今のキーボードのほかの項目の見せる組・別の組の札（選ぶ項目の組を含む）でもない", () => {
+  const bad = [];
+  let prompts = 0;
+  for (const l of LAYOUTS) {
+    const o = l === "ctrl" ? "cmd" : "ctrl";
+    const shown = shownBy(l);
+    for (const x of ITEMS) {
+      const k = keysOf(x, l);
+      const ko = keysOf(x, o);
+      if (!pressHow(k) || !ko?.accept) continue;
+      for (const a of [...ko.accept, ...(ko.also ?? [])]) {
+        const combo = read(eventOf(a, 3), l);
+        const r = C.afterWrong(x, l, combo, 3, ITEMS);
+        if (!r?.suggest) continue;
+        prompts++;
+        const hit = (shown.get(C.sigOfCaps(C.capsOfCombo(combo, l), l)) ?? []).filter((id) => id !== x.id);
+        if (hit.length) bad.push(`${l}/${x.id}/${a}: ${hit.join(",")}`);
+      }
+    }
+  }
+  return (bad.length === 0 && prompts > 30) || { prompts, bad };
 });
 t("3 ほかの項目の組の文: 「それは前のページに戻る組。」（動きの言葉にはそのまま 組）・「それはページを 1 画面ずつ下への組。」（へ で終わる名には の）・50 項目どれも「それは…組。」で、動きの言葉の後に の を挟まない", () => {
   if (typeof C.ownText !== "function") return "ownText が無い";
@@ -420,6 +478,12 @@ t("5c 守り: 読み込みで印の段を見たら印だけを外す（ほかの
     C.reloadCounted({ sdReload: { id: "pc.copy", layout: "ctrl", at: 1000 } }, "reload", 2000)];
   return (show(a) === show({ sdReload: { id: "br.reload", layout: "ctrl", at: 5 } }) && b === null && show(r) === show(["cmd", null, null, null, null])) || { a, b, r };
 });
+t("5c 守り（レビュー）: 再読み込みの印は「回の中の最初の答えか」（first）を持つ。2 回目の出題（回の中のやり直し）の印は first が偽で、数えるのは first が真のときだけ（仕様 §10「2 回目からは記録しない」）", () => {
+  const a = C.reloadCounted({ sdReload: C.reloadMark("br.reload", "ctrl", 1000, true) }, "reload", 2000);
+  const b = C.reloadCounted({ sdReload: C.reloadMark("br.reload", "ctrl", 1000, false) }, "reload", 2000);
+  const c = C.reloadCounted({ sdReload: C.reloadMark("br.reload", "cmd", 1000) }, "reload", 2000);
+  return (a?.first === true && b?.first === false && b?.id === "br.reload" && c?.first === true) || { a, b, c };
+});
 
 // ===== 5d. 端末の鍵 =====
 const memStore = (init = {}) => {
@@ -443,6 +507,17 @@ t("5d 端末の鍵: 届かなかった組はキーボードごとに 40 まで�
   const ok1 = d.miss.ctrl.length === 40 && d.miss.ctrl.includes("ctrl+k44") && !d.miss.ctrl.includes("ctrl+k0") && show(d.miss.cmd) === '["meta+c"]';
   const e = C.clearMiss(d);
   return (ok1 && e.miss.ctrl.length === 0 && e.miss.cmd.length === 0) || { d: d.miss, e: e?.miss };
+});
+t("5d 端末の鍵（レビュー: 2 つのタブ）: updateDevice は書く直前に読み直し、変えた欄だけを替えて書く（ほかのタブが覚えた miss・選んだキーボードを消さない）", () => {
+  if (typeof C.updateDevice !== "function") return "updateDevice が無い";
+  const s = memStore({ spelldash_shortcut_device: JSON.stringify({ layout: "ctrl", arr: "jis", miss: { ctrl: ["ctrl+c"], cmd: [] } }) });
+  const r1 = C.updateDevice(s, (d) => ({ ...d, arr: "us" }));
+  const d1 = C.readDevice(s);
+  const r2 = C.updateDevice(s, (d) => C.addMiss(d, "cmd", ["meta+v"]));
+  const d2 = C.readDevice(s);
+  const r3 = C.updateDevice({ getItem: () => null, setItem: () => { throw new Error("quota"); } }, (d) => ({ ...d, layout: "cmd" }));
+  return (r1?.saved === true && d1.layout === "ctrl" && d1.arr === "us" && show(d1.miss.ctrl) === '["ctrl+c"]' && show(d2.miss) === show({ ctrl: ["ctrl+c"], cmd: ["meta+v"] }) && d2.arr === "us"
+    && show(r2.device) === show(d2) && r3?.saved === false && r3.device?.layout === "cmd") || { r1, d1, d2, r3 };
 });
 
 // ===== 6. 3 状態 =====
@@ -469,6 +544,21 @@ t("6 保存: 読めない JSON・形の違う値は空として読む・書い�
   const throwing = C.writeProgress({ getItem: () => null, setItem: () => { throw new Error("quota"); } }, p);
   return (ok === true && show(back) === show(p) && [...s.map.keys()].join() === "spelldash_shortcuts" && C.PROGRESS_KEY === "spelldash_shortcuts" && C.DEVICE_KEY === "spelldash_shortcut_device"
     && bad.every((b) => show(b) === show(C.emptyProgress())) && throwing === false) || { back, bad };
+});
+t("6 保存（レビュー: 2 つのタブ）: recordAnswer は書く直前に記録を読み直し、その 1 問だけを当てて書く（ほかのタブが書いた項目を消さない・下げない）・書けたかと書いた形を返す・1 問に setItem は 1 回", () => {
+  if (typeof C.recordAnswer !== "function") return "recordAnswer が無い";
+  const s = memStore({});
+  let sets = 0;
+  const counted = { getItem: (k) => s.getItem(k), setItem: (k, v) => { sets++; s.setItem(k, v); } };
+  // タブ A がコピーと貼り付けに正解。タブ B（その前に開き、記録を読んだまま）が新しいタブを開くに正解
+  C.recordAnswer(counted, "pc.copy", "ctrl", true, day(11), "p");
+  C.recordAnswer(counted, "pc.paste", "ctrl", true, day(11), "p");
+  const r = C.recordAnswer(counted, "br.new-tab", "ctrl", true, day(11), "c");
+  const back = C.readProgress(s);
+  const keys = Object.keys(back.it).sort();
+  const quota = C.recordAnswer({ getItem: () => null, setItem: () => { throw new Error("quota"); } }, "pc.cut", "ctrl", true, day(11), "p");
+  return (show(keys) === show(["br.new-tab@ctrl", "pc.copy@ctrl", "pc.paste@ctrl"]) && back.it["pc.copy@ctrl"].s === 2 && back.it["pc.paste@ctrl"].s === 2 && back.it["br.new-tab@ctrl"].how === "c"
+    && r?.saved === true && show(r.progress) === show(back) && sets === 3 && quota?.saved === false && quota.progress?.it?.["pc.cut@ctrl"]?.s === 2) || { keys, r, sets, quota };
 });
 t("6 数: これから＋あやふや＋覚えた＝そのキーボードの項目の数（Ctrl 50・⌘ 49）・群で絞れる", () => {
   let p = C.applyAnswer(C.emptyProgress(), "pc.copy", "ctrl", true, day(11), "p");

@@ -938,6 +938,23 @@ await t("6.13 取り込み: クラウドの方が新しくて取り込んだ語�
   const pair = typeof A?.scenePairHtml === "function" ? A.scenePairHtml({ id: "x", ja: bad, short: bad, say: [bad, bad], scene: { k: "doc", a: { t: bad }, b: { t: bad, clip: bad } } }, "ctrl") : "";
   ok("ショートカットキー: キーの札・前と後の絵の字と読み上げの文は esc して出す（タグも属性も作らない）",
     caps.includes("&lt;img") && !caps.includes("<img") && pair.includes("&lt;img") && !pair.includes("<img") && !/onerror="/.test(pair), show({ caps: caps.slice(0, 120), pair: pair.slice(0, 200) }));
+  // 画面の組み立て（一覧の札・詳しい欄・回の終わりの行・結果の行・近い組の文）も js/shortcutsArt.js の純な関数にして、毒の字を通す（Batch 92 のレビュー:
+  // 7 の見張りの字の名前に入らない欄〔short・注・押したキーの字〕の esc を外しても、見張りは黙っていた）
+  const it = { id: "x", g: "pc", p: "A", ja: bad, short: bad, say: [bad, bad], scene: { k: "doc", a: { t: bad }, b: { t: bad } },
+    keys: { ctrl: { show: [[bad, "C"]], how: "choice", why: "os", src: ["os-ctrl"], note: bad, alt: [[bad]] } } };
+  const builders = ["tileHtml", "detailHtml", "missedRowHtml", "resultHtml", "nearHtml"];
+  const missing = builders.filter((f) => typeof A?.[f] !== "function");
+  const outs = missing.length ? [] : [
+    A.tileHtml(it, "ctrl", { state: 1, choice: true, open: true, arr: "jis" }),
+    A.detailHtml(it, "ctrl", "us"),
+    A.missedRowHtml(it, "ctrl"),
+    A.resultHtml({ head: bad, right: [bad, "C"], pressed: [bad, "V"], lines: [bad] }),
+    A.resultHtml({ head: bad, right: [bad], picked: [bad], lines: [bad, bad] }),
+    A.nearHtml([bad, "Z"], [bad, "Y"])
+  ];
+  const leaks = outs.map((h, i) => (String(h).includes("<img") || /onerror="/.test(h) || !String(h).includes("&lt;img") ? i : -1)).filter((i) => i >= 0);
+  ok("ショートカットキー（レビュー）: 一覧の札・詳しい欄の注・回の終わりの行（short）・結果の行（押したキー・選んだ組・ほかの項目の組の文）・近い組の文も純な関数で組み、字は esc して出す",
+    missing.length === 0 && outs.length === 6 && leaks.length === 0, show({ missing, leaks }));
 }
 
 console.log(`test-text-safe: ${passed} passed, ${failed} failed`);
