@@ -71,6 +71,7 @@ trackTypingEntry();
 renderMyWordsLine();
 window.addEventListener("spelldash:mywords", renderMyWordsLine);
 renderSlangLine();
+renderShortcutsLine();
 
 // マイ単語帳の 1 行（Batch 79）: マイ単語帳の中だけの数（語数と覚えた）。上の公開の語の数・ランク・目安には入れない
 function renderMyWordsLine() {
@@ -90,6 +91,27 @@ function renderSlangLine() {
       if (!el) return;
       const c = S.countSlang();
       el.textContent = `${c.total.toLocaleString("ja-JP")}語・覚えた ${c.learned.toLocaleString("ja-JP")}`;
+    })
+    .catch(() => {});
+}
+
+// ショートカットキーの 1 行（Batch 92。docs/SPEC_SHORTCUTS.md §1）: この端末で選んだキーボードの 覚えた と組の数。上の公開の語の数・ランク・目安には入れない。
+// 数は練習のページの数の札と同じ関数（js/shortcutsCore.js の readDevice・readProgress・countStates。表は js/shortcutsData.js）。どちらも動的 import
+// （静的な読み込みの表を増やさない）。キーボードを選んでいなければ表は読まずに 1 文。読めなければ静的な文のまま
+function renderShortcutsLine() {
+  const store = { getItem: (k) => localStorage.getItem(k) }; // getItem だけの口（scripts/test-areas.mjs U1）
+  import("./shortcutsCore.js")
+    .then(async (C) => {
+      const el = document.getElementById("statsShortcutsCount");
+      if (!el) return;
+      const layout = C.readDevice(store).layout;
+      if (!layout) {
+        el.textContent = "キーボードを選ぶと数が出る";
+        return;
+      }
+      const { SHORTCUTS } = await import("./shortcutsData.js");
+      const c = C.countStates(C.readProgress(store), SHORTCUTS, layout);
+      el.textContent = `覚えた ${c.learned} / ${c.total}（${C.LAYOUT_LABEL[layout]}）`;
     })
     .catch(() => {});
 }
