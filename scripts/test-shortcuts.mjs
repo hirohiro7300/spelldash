@@ -81,9 +81,11 @@ t("1 表: 50 項目（パソコン共通 30・ブラウザ 20。優先 A 21・B 
   const p = (v) => ITEMS.filter((x) => x.p === v).length;
   return (ITEMS.length === 50 && new Set(ids).size === 50 && g("pc") === 30 && g("br") === 20 && p("A") === 21 && p("B") === 29 && Object.isFrozen(D.SHORTCUTS) && ITEMS.every((x) => Object.isFrozen(x))) || { n: ITEMS.length, pc: g("pc"), br: g("br"), A: p("A"), B: p("B") };
 });
-t("1 表: どの項目にも 群・優先・働き（問い）・short（働きから括弧を除いた字）・前と後の絵（文字の編集・ブラウザ・パソコンの画面）・読み上げの文 2 つ", () => {
+// 両向きの 2 組の short は向きのない名（Batch 93 F7。12 の短い名も見る）
+const TWO_WAY = { "br.scroll-page": "ページを 1 画面ずつ動かす", "br.find-next": "探した言葉の場所を順に移る" };
+t("1 表: どの項目にも 群・優先・働き（問い）・short（働きから括弧を除いた字。両向きの 2 組は向きのない名）・前と後の絵（文字の編集・ブラウザ・パソコンの画面）・読み上げの文 2 つ", () => {
   const bad = ITEMS.filter((x) => !["pc", "br"].includes(x.g) || !["A", "B"].includes(x.p) || typeof x.ja !== "string" || !x.ja
-    || x.short !== x.ja.replace(/（[^）]*）/g, "").trim() || !x.short || /[（）]/.test(x.short)
+    || x.short !== (TWO_WAY[x.id] ?? x.ja.replace(/（[^）]*）/g, "").trim()) || !x.short || /[（）]/.test(x.short)
     || !x.scene || !["doc", "web", "desk"].includes(x.scene.k) || !x.scene.a || !x.scene.b
     || !Array.isArray(x.say) || x.say.length !== 2 || !x.say.every((s) => typeof s === "string" && s.length > 2));
   return (ITEMS.length === 50 && bad.length === 0) || bad.map((x) => x.id);
