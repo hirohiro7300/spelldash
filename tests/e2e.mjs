@@ -29745,6 +29745,24 @@ console.log("shortcuts (92.1):");
       JSON.stringify({ v: [v.mode, v.choices, v.retry, v.result], back: [back.pad, back.mode], d, mark }));
     await closeCtx(page);
   });
+  // (6) 1 回目の「押せなかった」の後に選んで答える → 「もう一度押す」は答えた後に残さない（押しても何も起きないボタンを出さない）・「次へ」が出る
+  await part("(6) 小節 10b", async () => {
+    const page = await scPage({ storage: { spelldash_shortcut_device: dev("cmd"), spelldash_shortcuts: learnedExcept(["pc.copy"], "cmd") } });
+    await openSc(page);
+    await start(page);
+    await page.focus("#scPad");
+    await page.keyboard.down("Meta");
+    await page.evaluate(() => document.getElementById("scQuit")?.focus());
+    await page.keyboard.up("Meta");
+    await page.waitForTimeout(150);
+    const v = await play(page);
+    await page.click('#scAnswer .sc-choice[data-ok="1"]');
+    await waitState(page, "done");
+    const a = await play(page);
+    check("92.1 1 回目の「押せなかった」の後に選んで答える → 「もう一度押す」は消え、「次へ」が出る（答えた後に効かないボタンを残さない）",
+      v.retry && v.mode === "choice" && a.kind === "ok" && !a.retry && a.next && page.errors.length === 0, JSON.stringify({ v: [v.retry, v.mode], a: [a.kind, a.retry, a.next] }));
+    await closeCtx(page);
+  });
   // (6) Ctrl を押したまま外れる、を同じ押す項目（コピー）で 2 回 → miss に覚え、読み込み直すと札に「選んで答える」の印と一覧の上の知らせ。「押して答えるに戻す」で空になり印が消える
   await part("(6) 小節 11", async () => {
     const page = await scPage({ storage: { spelldash_shortcut_device: dev("ctrl"), spelldash_shortcuts: learnedExcept(["pc.copy"], "ctrl") } });
