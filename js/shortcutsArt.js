@@ -199,7 +199,7 @@ export function focusWindows(layout, arr, tokens) {
   }
   return plan(0);
 }
-// 窓は入れ子の svg で切る。札は 12px（1 字は 14px）÷ 倍率
+// 窓は入れ子の svg で切る（一部だけ入るキーは形だけ）。札は 12px（1 字は 14px）÷ 倍率
 export function focusSvg(layout, arr, tokens) {
   const wins = focusWindows(layout, arr, tokens);
   if (!wins.length) return "";
@@ -214,7 +214,8 @@ export function focusSvg(layout, arr, tokens) {
     const ww = w.x1 - w.x0;
     const wh = w.y1 - w.y0;
     const at = `x="${ox.toFixed(1)}" y="${((maxH - wh) / 2).toFixed(1)}" width="${ww.toFixed(1)}" height="${wh.toFixed(1)}"`;
-    const body = keys.filter((k) => k.x < w.x1 && k.x + k.w > w.x0 && k.y < w.y1 && k.y + k.h > w.y0).map((k) => keyHtml(k, font, sym)).join("");
+    const body = keys.filter((k) => k.x < w.x1 && k.x + k.w > w.x0 && k.y < w.y1 && k.y + k.h > w.y0)
+      .map((k) => (k.x < w.x0 - 0.5 || k.x + k.w > w.x1 + 0.5 || k.y < w.y0 - 0.5 || k.y + k.h > w.y1 + 0.5 ? rectAt("kb-cut", k.x + 1, k.y + 1, k.w - 2, k.h - 2) : keyHtml(k, font, sym))).join("");
     let out = `<svg ${at} viewBox="${w.x0.toFixed(1)} ${w.y0.toFixed(1)} ${ww.toFixed(1)} ${wh.toFixed(1)}">${body}</svg>${rectAt("kb-win", ox, (maxH - wh) / 2, ww, wh)}`;
     ox += ww;
     if (i < wins.length - 1) {

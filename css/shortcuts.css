@@ -326,6 +326,11 @@ html[data-theme] .kb-k rect {
   stroke-width: 1;
 }
 
+html[data-theme] .kb-cut {
+  fill: none;
+  stroke: var(--line-2);
+}
+
 html[data-theme] .kb-k text {
   fill: var(--ink-2);
   font-family: var(--font-ui);
